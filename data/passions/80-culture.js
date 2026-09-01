@@ -1,0 +1,273 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   RÉFÉRENTIEL PLAT DES PASSIONS — culture et savoirs
+   ───────────────────────────────────────────────────────────────────────────
+   ⚠️ IL N'Y A QU'UN SEUL NIVEAU. Chaque ligne de ce fichier est une PASSION
+   directement sélectionnable, au même rang que toutes les autres. « Enduro »
+   n'est pas « sous » Moto : on la choisit sans jamais passer par Moto.
+
+   Le découpage en fichiers et le champ `broader` sont deux commodités qui ne
+   sortent JAMAIS à l'écran :
+     · le fichier sert à relire et à réviser le référentiel par domaine ;
+     · `broader` alimente la table technique `passion_relations`, invisible,
+       qui ne sert qu'à mieux suggérer (et jamais à filtrer, ni à imposer un
+       passage par un terme plus général).
+
+   FORMAT D'UNE LIGNE
+     [ id, libellé, "alias1,alias2", broader, { emoji, color, pop, broad } ]
+
+     id       identifiant TEXTE STABLE. Il est écrit dans `posts.passion_id`,
+              `events.passion_id`… : ne JAMAIS le renommer, jamais le réutiliser.
+     libellé  ce que la personne lit. Unique après normalisation.
+     alias    synonymes et variantes de recherche, séparés par des virgules.
+              Un synonyme simple reste un ALIAS — il ne devient pas une passion.
+     broader  identifiant d'un terme plus général, ou "" — relation invisible.
+     emoji    obligatoire quand `broader` est vide, hérité sinon.
+     color    idem.
+     pop:1    proposée au repos, avant toute frappe.
+     broad:1  terme très général (« Sport », « Musique ») : la recherche le
+              rétrograde derrière un terme précis de même pertinence.
+   ═══════════════════════════════════════════════════════════════════════════ */
+module.exports = [
+
+  // ── Littérature ────────────────────────────────────────────
+  ["litterature", "Littérature", "livre,livres,lecture,lire,bouquin", "", { emoji: "📚", color: "#8b5cf6", pop: 1, broad: 1 }],
+  ["litterature-romans", "Romans", "", "litterature", { pop: 1 }],
+  ["litterature-polar", "Polar et thriller", "", "litterature"],
+  ["litterature-science-fiction", "Science-fiction", "sf", "litterature"],
+  ["litterature-fantasy", "Fantasy", "", "litterature"],
+  ["litterature-poesie", "Poésie", "", "litterature"],
+  ["litterature-essais", "Essais", "", "litterature"],
+  ["litterature-biographie", "Biographies", "", "litterature"],
+  ["litterature-bd-litterature", "Bande dessinée", "", "litterature"],
+  ["litterature-manga", "Manga", "", "litterature"],
+  ["litterature-classiques", "Classiques", "", "litterature"],
+  ["litterature-club-lecture", "Club de lecture", "", "litterature"],
+  ["litterature-ecriture", "Écriture", "écrire,écrivain", "litterature"],
+  ["litterature-ecriture-creative", "Écriture créative", "", "litterature"],
+  ["litterature-nouvelle", "Nouvelles", "", "litterature"],
+  ["litterature-roman-en-cours", "Mon roman en cours", "", "litterature"],
+  ["litterature-edition", "Édition", "", "litterature"],
+  ["litterature-auto-edition", "Auto-édition", "", "litterature"],
+  ["litterature-librairie", "Librairies", "", "litterature"],
+  ["litterature-bibliotheque", "Bibliothèques", "", "litterature"],
+  ["litterature-litterature-jeunesse", "Littérature jeunesse", "", "litterature"],
+  ["litterature-theatre-texte", "Textes de théâtre", "", "litterature"],
+
+  // ── Cinéma ────────────────────────────────────────────
+  ["cinema", "Cinéma", "films", "", { emoji: "🎬", color: "#7c3aed", pop: 1, broad: 1 }],
+  ["cinema-series", "Séries", "série,serie", "cinema", { pop: 1 }],
+  ["cinema-films-cultes", "Films cultes", "", "cinema"],
+  ["cinema-cinema-francais", "Cinéma français", "", "cinema"],
+  ["cinema-cinema-asiatique", "Cinéma asiatique", "", "cinema"],
+  ["cinema-documentaires", "Documentaires", "", "cinema"],
+  ["cinema-animation", "Animation", "", "cinema"],
+  ["cinema-horreur", "Horreur", "épouvante", "cinema"],
+  ["cinema-thriller", "Thriller", "", "cinema"],
+  ["cinema-comedie-film", "Comédie au cinéma", "", "cinema"],
+  ["cinema-sf-film", "Science-fiction au cinéma", "", "cinema"],
+  ["cinema-festival", "Festivals", "", "cinema"],
+  ["cinema-critique", "Critique de films", "", "cinema"],
+  ["cinema-realisation", "Réalisation", "", "cinema"],
+  ["cinema-courts-metrages", "Courts-métrages", "", "cinema"],
+  ["cinema-streaming-series", "Plateformes et streaming", "netflix", "cinema"],
+  ["cinema-super-heros", "Super-héros", "marvel,dc", "cinema"],
+  ["cinema-studio-ghibli", "Studio Ghibli", "ghibli", "cinema"],
+  ["cinema-western", "Western", "", "cinema"],
+  ["cinema-film-noir", "Film noir", "", "cinema"],
+  ["cinema-cinema-independant", "Cinéma indépendant", "", "cinema"],
+
+  // ── Podcast ────────────────────────────────────────────
+  ["podcast", "Podcast", "podcasts,audio", "", { emoji: "🎙", color: "#7c3aed", broad: 1 }],
+  ["podcast-true-crime", "True crime", "faits divers", "podcast"],
+  ["podcast-interviews", "Interviews", "", "podcast"],
+  ["podcast-culture-podcast", "Culture", "", "podcast"],
+  ["podcast-actualite-podcast", "Podcast info", "", "podcast"],
+  ["podcast-humour-podcast", "Humour", "", "podcast"],
+  ["podcast-histoire-podcast", "Histoire", "", "podcast"],
+  ["podcast-science-podcast", "Science", "", "podcast"],
+  ["podcast-business-podcast", "Business", "", "podcast"],
+  ["podcast-fiction-audio", "Fiction audio", "", "podcast"],
+  ["podcast-radio", "Radio", "", "podcast"],
+  ["podcast-creation-podcast", "Créer son podcast", "", "podcast"],
+  ["podcast-montage-audio", "Montage audio", "", "podcast"],
+  ["podcast-micro", "Micro et matériel", "", "podcast"],
+  ["podcast-diffusion", "Diffusion et audience", "", "podcast"],
+
+  // ── Actualité ────────────────────────────────────────────
+  ["actu", "Actualité", "actu,news,info", "", { emoji: "🌍", color: "#7c3aed", broad: 1 }],
+  ["actu-politique", "Politique", "", "actu"],
+  ["actu-geopolitique", "Géopolitique", "", "actu"],
+  ["actu-economie", "Économie", "", "actu"],
+  ["actu-societe", "Société", "", "actu"],
+  ["actu-medias", "Médias", "", "actu"],
+  ["actu-journalisme", "Journalisme", "", "actu"],
+  ["actu-environnement-actu", "Environnement", "", "actu"],
+  ["actu-europe-actu", "Actualité européenne", "", "actu"],
+  ["actu-international", "International", "", "actu"],
+  ["actu-local", "Actualité locale", "", "actu"],
+  ["actu-debat", "Débats", "", "actu"],
+  ["actu-decryptage", "Décryptage", "", "actu"],
+  ["actu-fact-checking", "Fact-checking", "vérification", "actu"],
+  ["actu-presse", "Presse écrite", "", "actu"],
+  ["actu-opinion", "Tribunes et opinions", "", "actu"],
+  ["actu-elections", "Élections", "", "actu"],
+
+  // ── Histoire et patrimoine ────────────────────────────────────────────
+  ["histoire", "Histoire et patrimoine", "passé", "", { emoji: "🏛️", color: "#6d28d9", broad: 1 }],
+  ["histoire-antiquite", "Antiquité", "rome", "histoire"],
+  ["histoire-moyen-age", "Moyen Âge", "médiéval", "histoire"],
+  ["histoire-renaissance", "Renaissance", "", "histoire"],
+  ["histoire-revolution", "Révolution française", "", "histoire"],
+  ["histoire-premiere-guerre", "Première Guerre mondiale", "14-18", "histoire"],
+  ["histoire-seconde-guerre", "Seconde Guerre mondiale", "39-45", "histoire"],
+  ["histoire-histoire-locale", "Histoire locale", "", "histoire"],
+  ["histoire-genealogie", "Généalogie", "arbre généalogique", "histoire"],
+  ["histoire-archeologie", "Archéologie", "", "histoire"],
+  ["histoire-patrimoine", "Patrimoine", "", "histoire"],
+  ["histoire-chateaux", "Châteaux", "", "histoire"],
+  ["histoire-musees", "Musées", "", "histoire"],
+  ["histoire-histoire-de-l-art", "Histoire de l'art", "", "histoire"],
+  ["histoire-histoire-militaire", "Histoire militaire", "", "histoire"],
+  ["histoire-egyptologie", "Égyptologie", "", "histoire"],
+  ["histoire-prehistoire", "Préhistoire", "", "histoire"],
+  ["histoire-histoire-contemporaine", "Histoire contemporaine", "", "histoire"],
+  ["histoire-reconstitution", "Reconstitution historique", "", "histoire"],
+
+  // ── Jeux de société ────────────────────────────────────────────
+  ["jeux", "Jeux de société", "jeux,jeu de société,plateau", "", { emoji: "🎲", color: "#8b5cf6", broad: 1 }],
+  ["jeux-jeux-de-plateau", "Jeux de plateau", "board game", "jeux"],
+  ["jeux-jeux-de-cartes", "Jeux de cartes", "", "jeux"],
+  ["jeux-jeux-de-role", "Jeux de rôle", "jdr", "jeux"],
+  ["jeux-echecs", "Échecs", "chess,jeux d'échecs,jeu d'échecs", "jeux", { pop: 1 }],
+  ["jeux-dames", "Dames", "", "jeux"],
+  ["jeux-go", "Go", "jeu de go,baduk,goban", "jeux"],
+  ["jeux-poker", "Poker", "", "jeux"],
+  ["jeux-tarot", "Tarot", "", "jeux"],
+  ["jeux-belote", "Belote", "", "jeux"],
+  ["jeux-escape-game", "Escape game", "", "jeux"],
+  ["jeux-enigmes", "Énigmes", "", "jeux"],
+  ["jeux-jeux-cooperatifs", "Jeux coopératifs", "coop", "jeux"],
+  ["jeux-wargames", "Wargames", "", "jeux"],
+  ["jeux-figurines", "Figurines et peinture", "", "jeux"],
+  ["jeux-puzzles", "Puzzles", "", "jeux"],
+  ["jeux-quiz", "Quiz et culture générale", "blind test", "jeux"],
+  ["jeux-jeux-de-des", "Jeux de dés", "", "jeux"],
+  ["jeux-murder-party", "Murder party", "", "jeux"],
+
+  // ── Littérature (compléments) ─────────────────────────────────────────
+  ["litterature-romance", "Romance", "romantasy,new romance", "litterature"],
+  ["litterature-feel-good", "Feel-good", "", "litterature"],
+  ["litterature-historique", "Roman historique", "", "litterature"],
+  ["litterature-dystopie", "Dystopie", "", "litterature"],
+  ["litterature-horreur", "Horreur et fantastique", "", "litterature"],
+  ["litterature-young-adult", "Young adult", "ya", "litterature"],
+  ["litterature-non-fiction", "Non-fiction", "documents,récits vrais", "litterature"],
+  ["litterature-recits-voyage", "Récits de voyage littéraires", "", "litterature"],
+  ["litterature-correspondances", "Correspondances et journaux", "", "litterature"],
+  ["litterature-haiku", "Haïku", "", "litterature"],
+  ["litterature-fanfiction", "Fanfiction", "", "litterature"],
+  ["litterature-nanowrimo", "Défis d'écriture", "nanowrimo", "litterature"],
+  ["litterature-atelier-ecriture", "Atelier d'écriture", "", "litterature"],
+  ["litterature-relecture", "Relecture et correction", "bêta-lecture,correction", "litterature"],
+  ["litterature-traduction-litteraire", "Traduction littéraire", "", "litterature"],
+  ["litterature-booktube", "Booktube et Bookstagram", "booktok,chroniques de lecture", "litterature"],
+  ["litterature-prix", "Prix littéraires", "", "litterature"],
+  ["litterature-salons", "Salons et dédicaces", "salon du livre", "litterature"],
+  ["litterature-audio", "Livres audio", "audiolivre", "litterature"],
+  ["litterature-relecture-classiques", "Relire les classiques", "", "litterature"],
+
+  // ── Cinéma (compléments) ──────────────────────────────────────────────
+  ["cinema-nouvelle-vague", "Nouvelle Vague", "", "cinema"],
+  ["cinema-italien", "Cinéma italien", "", "cinema"],
+  ["cinema-espagnol", "Cinéma hispanophone", "", "cinema"],
+  ["cinema-coreen", "Cinéma coréen", "", "cinema"],
+  ["cinema-bollywood", "Bollywood", "cinéma indien", "cinema"],
+  ["cinema-anime", "Animation japonaise", "anime,animé", "cinema"],
+  ["cinema-muet", "Cinéma muet", "", "cinema"],
+  ["cinema-comedie-romantique", "Comédie romantique", "", "cinema"],
+  ["cinema-policier", "Policier", "film policier", "cinema"],
+  ["cinema-guerre", "Film de guerre", "", "cinema"],
+  ["cinema-biopic", "Biopic", "", "cinema"],
+  ["cinema-fantastique", "Fantastique", "", "cinema"],
+  ["cinema-auteur", "Films d'auteur", "", "cinema"],
+  ["cinema-blockbuster", "Blockbusters", "", "cinema"],
+  ["cinema-musique-film", "Bandes originales", "", "cinema"],
+  ["cinema-analyse", "Analyse filmique", "décryptage de films", "cinema"],
+  ["cinema-cineclub", "Ciné-club", "cinémathèque", "cinema"],
+  ["cinema-series-policieres", "Séries policières", "", "cinema"],
+  ["cinema-series-comiques", "Séries comiques", "sitcom", "cinema"],
+  ["cinema-mini-series", "Mini-séries", "", "cinema"],
+  ["cinema-vost", "Version originale", "vost,vo", "cinema"],
+  ["cinema-salle", "Aller au cinéma", "sortie ciné", "cinema"],
+
+  // ── Podcast (compléments) ─────────────────────────────────────────────
+  ["podcast-dev-perso", "Podcast développement personnel", "", "podcast"],
+  ["podcast-sport-podcast", "Podcast sport", "", "podcast"],
+  ["podcast-cinema-podcast", "Podcast cinéma", "", "podcast"],
+  ["podcast-musique-podcast", "Podcast musique", "", "podcast"],
+  ["podcast-jeux-podcast", "Podcast jeux vidéo", "", "podcast"],
+  ["podcast-societe-podcast", "Podcast société", "", "podcast"],
+  ["podcast-nature-podcast", "Podcast nature", "", "podcast"],
+  ["podcast-tech-podcast", "Podcast tech", "", "podcast"],
+  ["podcast-education", "Podcast éducatif", "", "podcast"],
+  ["podcast-anglais", "Podcast en anglais", "", "podcast"],
+  ["podcast-monetisation", "Monétisation de podcast", "", "podcast"],
+  ["podcast-invites", "Trouver des invités", "", "podcast"],
+
+  // ── Actualité (compléments) ───────────────────────────────────────────
+  ["actu-justice", "Justice", "affaires judiciaires", "actu"],
+  ["actu-education", "Système éducatif", "école et société", "actu"],
+  ["actu-sante-publique", "Santé publique", "", "actu"],
+  ["actu-sciences-actu", "Actualité scientifique", "", "actu"],
+  ["actu-sport-actu", "Actualité sportive", "", "actu"],
+  ["actu-tech-actu", "Actualité tech", "", "actu"],
+  ["actu-culture-actu", "Actualité culturelle", "", "actu"],
+  ["actu-desinformation", "Désinformation", "fake news,infox", "actu"],
+  ["actu-data-journalisme", "Data journalisme", "", "actu"],
+  ["actu-revue-de-presse", "Revue de presse", "", "actu"],
+
+  // ── Histoire (compléments) ────────────────────────────────────────────
+  ["histoire-rome", "Rome antique", "empire romain,romains", "histoire"],
+  ["histoire-gaulois", "Gaulois et Celtes", "celtes", "histoire"],
+  ["histoire-vikings", "Vikings", "", "histoire"],
+  ["histoire-croisades", "Croisades", "", "histoire"],
+  ["histoire-renaissance-italienne", "Renaissance italienne", "", "histoire"],
+  ["histoire-louis-xiv", "Grand Siècle", "louis xiv,versailles", "histoire"],
+  ["histoire-napoleon", "Napoléon", "empire,napoléonien", "histoire"],
+  ["histoire-belle-epoque", "Belle Époque", "", "histoire"],
+  ["histoire-annees-folles", "Années folles", "", "histoire"],
+  ["histoire-guerre-froide", "Guerre froide", "", "histoire"],
+  ["histoire-decolonisation", "Décolonisation", "", "histoire"],
+  ["histoire-mai-68", "Mai 68", "", "histoire"],
+  ["histoire-femmes", "Histoire des femmes", "", "histoire"],
+  ["histoire-ouvriere", "Histoire sociale", "histoire ouvrière", "histoire"],
+  ["histoire-heraldique", "Héraldique", "blasons", "histoire"],
+  ["histoire-paleographie", "Paléographie", "lire les vieux écrits", "histoire"],
+  ["histoire-archives", "Archives", "recherche en archives", "histoire"],
+  ["histoire-cartes-anciennes", "Cartes anciennes", "", "histoire"],
+  ["histoire-patrimoine-industriel", "Patrimoine industriel", "friches,usines", "histoire"],
+  ["histoire-monuments", "Monuments et cathédrales", "cathédrales,églises", "histoire"],
+  ["histoire-villages", "Villages et bastides", "", "histoire"],
+  ["histoire-fortifications", "Fortifications", "vauban,citadelles", "histoire"],
+  ["histoire-lieux-abandonnes", "Lieux abandonnés", "urbex historique", "histoire"],
+
+  // ── Jeux de société (compléments) ─────────────────────────────────────
+  ["jeux-bridge", "Bridge", "", "jeux"],
+  ["jeux-scrabble", "Scrabble", "", "jeux"],
+  ["jeux-mots-croises", "Mots croisés", "mots fléchés", "jeux"],
+  ["jeux-sudoku", "Sudoku", "", "jeux"],
+  ["jeux-lettres", "Jeux de lettres", "", "jeux"],
+  ["jeux-ambiance", "Jeux d'ambiance", "party games", "jeux"],
+  ["jeux-experts", "Jeux experts", "", "jeux"],
+  ["jeux-deck-building", "Deck building", "", "jeux"],
+  ["jeux-legacy", "Jeux legacy et campagnes", "", "jeux"],
+  ["jeux-solo", "Jeux en solo", "", "jeux"],
+  ["jeux-a-deux", "Jeux à deux", "", "jeux"],
+  ["jeux-kubb", "Jeux d'extérieur", "kubb,jeux de plein air", "jeux"],
+  ["jeux-jdr-table", "Donjons et Dragons", "d&d,dnd", "jeux"],
+  ["jeux-maitre-du-jeu", "Maîtriser une partie", "mj,game master", "jeux"],
+  ["jeux-warhammer", "Warhammer", "", "jeux"],
+  ["jeux-casse-tete", "Casse-tête", "rubik's cube,speedcubing", "jeux"],
+  ["jeux-creation-jeu", "Créer un jeu de société", "auteur de jeux,prototypage ludique", "jeux"],
+  ["jeux-ludotheque", "Ludothèque et soirées jeux", "soirée jeux,festival de jeux", "jeux"],
+];
