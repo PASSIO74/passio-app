@@ -28,8 +28,13 @@ async function couperReseauSupabase(page, journal) {
 }
 
 // Démarre l'application en VISITEUR : gate déverrouillé, rien d'autre.
-// `opts.flag` : "on" (défaut) | "off" — "off" laisse le drapeau à sa valeur par
-// défaut (coupé), ce qui doit restituer le parcours historique.
+// `opts.flag` : "on" (défaut) | "off".
+// ⚠️ LES DEUX SENS ONT ÉTÉ INVERSÉS LE 2026-09-01, quand le lot est passé actif
+// par défaut. "on" n'écrit désormais RIEN — c'est tout l'intérêt : le test
+// mesure le VRAI défaut de production, pas un drapeau que le helper aurait posé
+// lui-même. "off" pose explicitement la coupure `"0"`, alors qu'il se contentait
+// avant de nettoyer la clé. Un helper qui aurait gardé l'ancien "off" (nettoyer)
+// serait devenu un synonyme silencieux de "on".
 // `opts.prefs` : préférences d'invité pré-existantes (retour de visite).
 // `opts.hash`  : lien profond à ouvrir.
 // `opts.sansBienvenue` : ferme la carte de bienvenue AVANT le boot, pour libérer
@@ -43,14 +48,17 @@ async function bootVisiteur(page, opts = {}) {
       sessionStorage.setItem(k, t);
       sessionStorage.setItem("passio_pwa_dismissed", "1");
       // ⚠️ `addInitScript` tourne à CHAQUE navigation, rechargement compris.
-      // Nettoyer le drapeau à chaque fois effaçait ce que l'aperçu venait de
-      // persister, et le test « survit à un rechargement » mesurait alors le
-      // helper au lieu du programme. On ne nettoie donc qu'au premier passage.
+      // "on" n'écrit RIEN : le parcours est actif par défaut, et poser une
+      // valeur positive masquerait justement une régression du défaut.
+      // On nettoie quand même un éventuel "1" laissé par un ancien aperçu, une
+      // seule fois, pour qu'aucun cas ne s'appuie dessus sans le dire.
       if (on) {
-        localStorage.setItem("passio_first_run_experience_v1", "1");
-      } else if (!sessionStorage.getItem("__fr_drapeau_nettoye")) {
-        localStorage.removeItem("passio_first_run_experience_v1");
-        sessionStorage.setItem("__fr_drapeau_nettoye", "1");
+        if (!sessionStorage.getItem("__fr_drapeau_nettoye")) {
+          localStorage.removeItem("passio_first_run_experience_v1");
+          sessionStorage.setItem("__fr_drapeau_nettoye", "1");
+        }
+      } else {
+        localStorage.setItem("passio_first_run_experience_v1", "0");
       }
       if (prefs) localStorage.setItem("passio_first_run_v1", JSON.stringify(prefs));
       // ⚠️ La fermeture de la carte de bienvenue vit dans `sessionStorage`, PAS
