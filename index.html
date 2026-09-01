@@ -418,6 +418,13 @@
         <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();openPrivacySettings()">Confidentialité</button>
         <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();openBlockedList()">🚫 Comptes bloqués</button>
         <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();openContentSettings()">Contenu & feed</button>
+        <!-- Première visite : le panneau de passions et les trois repères
+             contextuels restent atteignables depuis les options (exigence
+             « relançable depuis l'aide ou les options »). `.fr-only` les masque
+             tant que `html.passio-first-run` n'est pas posée — donc pour tout
+             compte existant, et dès que le drapeau est coupé. -->
+        <button class="btn ghost fr-only" onclick="event.stopPropagation();toggleDevPanel();PassioFirstRun.ouvrirPersonnalisation('options')">✨ Mes passions</button>
+        <button class="btn ghost fr-only" onclick="event.stopPropagation();toggleDevPanel();PassioFirstRun.relancerTour()">🧭 Revoir les repères</button>
       </div>
     </div>
 
@@ -1314,6 +1321,22 @@
 </div>
 
 <script src="js/idb-store.js"></script>
+<!-- PREMIÈRE VISITE (drapeau `first_run_experience_v1`) — composant autonome
+     (IIFE window.PassioFirstRun), COUPÉ par défaut ; activé par
+     ?passio_preview=first-run-v1 ou localStorage.passio_first_run_experience_v1="1",
+     coupé par "0" ou window.PASSIO_FIRST_RUN_V1=false.
+
+     ⚠️ PLACÉ AVANT LE BLOC APP, ET C'EST OBLIGATOIRE. `app-09` lance
+     `(window.__gateReady || Promise.resolve()).then(() => boot())` : quand le
+     gate est déjà déverrouillé, cette microtâche part dès que la pile se vide,
+     donc AVANT l'exécution du script suivant. Placé après le bloc, ce module
+     n'était pas encore évalué au moment où `boot()` cherchait
+     `window.PassioFirstRun` — la garde échouait, la landing historique
+     s'affichait, et le drapeau paraissait sans effet. En développement l'ordre
+     des balises fait foi ; en production `scripts/build.js` inline ce fichier
+     en place et charge le bloc app APRÈS le gate, donc l'ordre est le même. -->
+<script src="js/first-run.js"></script>
+
 <!-- BUILD:APP-START — ces 9 fichiers sont assemblés en un seul <script> au déploiement -->
 <script src="js/app-01-diag-seed.js"></script>
 <script src="js/app-02-state-utils.js"></script>

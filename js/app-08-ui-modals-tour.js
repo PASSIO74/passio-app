@@ -575,6 +575,16 @@ var meState = { mode: "story", media: null, mediaType: null, bg: STORY_BGS[0], b
 var meCam = { stream: null, facing: "user", recorder: null, chunks: [], recording: false, recTimer: null, recStart: 0, holdTimer: null, maxTimer: null, _boundShutter: false };
 
 function meOpen(mode) {
+  // ⚠️ GARDE AVANT TOUT LE RESTE. `mePublish` était gardée, pas `meOpen` — or
+  // c'est `meOpen` qui ouvre l'éditeur média en `phase-capture`, donc qui
+  // déclenche la demande d'accès CAMÉRA. Mesuré le 2026-09-01 : un visiteur
+  // sans compte touchant « Ta story » dans la rangée du Fil se retrouvait dans
+  // la capture caméra plein écran, à une tape de l'entrée directe. Deux règles
+  // du lot y passaient d'un coup — « aucune demande de permission à l'entrée »
+  // et « l'inscription arrive au moment de l'action engageante », publier une
+  // story en étant une. Rien à voir avec un écran : `screen-feed` reste actif,
+  // seul `#mediaEditor` se pose par-dessus — un contrôle d'écran ne le voit pas.
+  if (window.requireAuthentication && !requireAuthentication(mode === "bobine" ? "bobine" : "publier")) return;
   meState = { mode: mode || "story", media: null, mediaType: null, bg: STORY_BGS[0], bgIdx: 0, overlays: [], _seq: 0 };
   var ed = document.getElementById("mediaEditor"); if (!ed) return;
   document.getElementById("meMedia").innerHTML = "";
@@ -1261,6 +1271,10 @@ function _meOverlaysData() {
   });
 }
 async function mePublish() {
+  // Mode invité (première visite) : cette action engage le compte. Le gate
+  // EXPLIQUE l'action puis propose la création de compte ; il ne rejoue jamais
+  // l'action après coup. Rend `true` — donc inerte — hors mode invité.
+  if (window.requireAuthentication && !requireAuthentication("bobine")) return;
   // Anti clic-fantôme : ignore une publication déclenchée dans la foulée d'une capture.
   if (meState._enteredEditAt && (Date.now() - meState._enteredEditAt) < 700) return;
   if (meState.mode === "bobine" && meState.mediaType !== "video") { toast("Une bobine est une vidéo — filme ou choisis une vidéo"); return; }
@@ -2271,6 +2285,17 @@ async function boot() {
       }
     });
   } catch(e) {}
+
+  // ── PREMIÈRE VISITE (drapeau `first_run_experience_v1`) ──────────────────
+  // « L'application est elle-même le pitch » : un visiteur sans compte entre
+  // DIRECTEMENT dans le fil, sans landing, sans onboarding, sans formulaire.
+  // `entreeDirecte()` rend `false` quand le drapeau est coupé OU qu'un compte
+  // existe déjà sur cet appareil — le parcours historique reprend alors la main,
+  // à l'octet près. Elle est appelée ICI, après la tentative de session : un
+  // compte connecté a déjà quitté `boot()` par le `return` plus haut.
+  try {
+    if (window.PassioFirstRun && PassioFirstRun.entreeDirecte()) return;
+  } catch (e) { console.warn("first-run:", e); }
 
   showLanding();
 }
