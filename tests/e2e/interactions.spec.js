@@ -16,7 +16,7 @@
 //
 // Aucune écriture Supabase : les fonctions de sync sont neutralisées après boot.
 const { test, expect } = require("@playwright/test");
-const { bootOnboarded } = require("./app-helper");
+const { bootOnboarded, sansPublicationsDistantes } = require("./app-helper");
 
 // Neutralise, POUR CETTE SUITE SEULEMENT, l'optimisation de peinture
 // `.post { content-visibility: auto; contain-intrinsic-size: auto 320px }`
@@ -55,6 +55,13 @@ async function bootInteractions(page) {
   // d'initialisation enregistré après lui ne s'appliquerait qu'au chargement
   // suivant.
   await poserLayoutDeterministe(page);
+  // ⚠️ ET C'EST POUR LA MÊME RAISON QUE CELLE-CI EST ICI, pas plus bas. Le stub
+  // `window.supaLoadPosts` du `page.evaluate` qui suit arrive APRÈS le `goto` :
+  // la requête du boot est déjà partie et, en CI, elle rapporte les vraies
+  // publications de production. Elles disputent alors sa place au post semé dans
+  // les 20 que `renderFeed` peint, et ce fichier échoue sur des PR qui ne le
+  // touchent pas. Détail mesuré dans `app-helper.js`.
+  await sansPublicationsDistantes(page);
   await bootOnboarded(page);
   await page.evaluate(() => {
     // ⚠️ supaSetPostLike est stubbé à part : il doit répondre { ok:true }, pas
@@ -307,6 +314,15 @@ async function seedServerPost(page, { writeResult = { ok: true, error: null }, m
  * Le remède attaque la cause : on attend que cette requête ait ATTERRI avant de
  * semer. Après elle, plus personne ne remplace le tableau. Le réessai reste en
  * second rideau pour les cas non couverts.
+ *
+ * ⚠️ LE DIAGNOSTIC A DEUX BRANCHES, et seule la première était documentée ici.
+ * `dansEtat: false` = la requête du boot a REMPLACÉ le tableau (le cas ci-dessus).
+ * `dansEtat: true` = le post est bien en mémoire et le RENDU ne le montre pas —
+ * il a perdu le classement face aux vraies publications, `renderFeed` ne peignant
+ * que les 20 premières. Mesuré le 2026-09-01 : à 34 publications de production
+ * engageantes, le post semé tombe 43e. C'est cette seconde branche que
+ * `sansPublicationsDistantes` ferme, en interdisant le chargement AVANT la
+ * navigation — le seul moment où il est encore interceptable.
  *
  * Rien de tout cela ne masque un défaut produit : injecter un post à la main
  * dans une structure que l'application possède et reconstruit est une
