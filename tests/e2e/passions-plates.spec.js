@@ -39,8 +39,18 @@ async function ouvrirRecherche(page) {
 
 async function chercher(page, texte) {
   await page.locator(".psel-input").fill(texte);
-  // L'anti-rebond est à 160 ms ; on attend que la liste ait été repeinte.
-  await page.waitForTimeout(450);
+  // ⚠️ ON ATTEND LA RÉPONSE, PAS UNE DURÉE. Un `waitForTimeout(450)` supposait
+  // que la recherche répond en moins de 450 ms — vrai avec le repli local,
+  // FAUX depuis que la migration est appliquée et que la recherche SERVEUR
+  // entre en jeu. La CI a alors lu la liste pendant qu'une réponse était encore
+  // en vol et vu les résultats de la frappe PRÉCÉDENTE : « GUITARE ELECTRIQUE »
+  // rendait « Cuisine coréenne ». Ce n'était pas un défaut de classement, mais
+  // une mesure prise trop tôt — le pire genre de rouge, celui qui envoie
+  // chercher au mauvais endroit.
+  //
+  // La liste porte désormais la frappe à laquelle elle correspond.
+  await page.locator('[data-psel-zone="liste"][data-psel-q="' + texte.replace(/"/g, '\\"') + '"]')
+    .waitFor({ state: "attached", timeout: 15000 });
   return page.locator(".psel-item-label").allTextContents();
 }
 
@@ -629,6 +639,15 @@ test.describe("la porte d'ajout et son plafond", () => {
     // ⚠️ AUCUN BOUTON « PAYER » : le paiement n'est pas ouvert, un bouton qui
     // ne mène nulle part est un clic mort.
     expect(texte).not.toMatch(/payer|s'abonner|souscrire/i);
+    // ⚠️ REPRISE EXPLICITE DE LA GARANTIE D'ADR-009. Le test « créer un 4ᵉ
+    // profil est libre » (adr-009-retrait-economie) observe la surface d'avant
+    // le plafond et pose donc le kill switch. Ce qu'il protégeait vraiment,
+    // c'est l'ABSENCE DE MONNAIE INTERMÉDIAIRE — pas l'absence de tout paiement,
+    // que l'ADR autorise explicitement en monnaie réelle. Cette garantie-là est
+    // reprise ici, sur la surface neuve, sinon l'éteindre là-bas l'aurait
+    // simplement fait disparaître.
+    expect(texte, "l'économie retirée par ADR-009 réapparaît dans la fenêtre")
+      .not.toMatch(/💎|Passia|Pass Passion|points?\b|étoiles?|solde|rang/i);
     // La seule action réelle est proposée : réorganiser ses trois passions.
     await expect(page.locator('[data-tel="passion_paywall_gerer"]')).toBeVisible();
   });

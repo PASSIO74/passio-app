@@ -191,6 +191,16 @@
       .then(function (r) {
         if (mien !== self.jeton) return;      // une frappe plus récente a gagné
         self.resultats = r || [];
+        // ⚠️ LA LISTE DIT À QUELLE FRAPPE ELLE CORRESPOND. Tant qu'une recherche
+        // est en vol, l'écran garde les résultats PRÉCÉDENTS — c'est le bon
+        // comportement (vider la liste à chaque touche ferait clignoter
+        // l'écran), mais rien ne permettait de distinguer « voici tes résultats »
+        // de « voici encore les précédents ». Sans ce marqueur, un observateur
+        // qui lit trop tôt conclut à un défaut de classement là où il n'y a
+        // qu'une réponse en route : c'est exactement ce qui a fait rougir la CI
+        // le 2026-09-01, la migration appliquée ayant activé la recherche
+        // SERVEUR, plus lente que le repli local.
+        self.frappeRendue = q;
         self.rendreListe();
       })
       .catch(function (e) { journal("chercher", e); });
@@ -210,6 +220,10 @@
   };
 
   Selecteur.prototype.rendreListe = function () {
+    try {
+      var zone = this.hote.querySelector('[data-psel-zone="liste"]');
+      if (zone) zone.setAttribute("data-psel-q", this.frappeRendue == null ? "" : this.frappeRendue);
+    } catch (e) {}
     var m = moteur();
     var q = String(this.frappe || "").trim();
     var html = "";
