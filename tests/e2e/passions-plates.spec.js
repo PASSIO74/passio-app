@@ -697,6 +697,49 @@ test.describe("la porte d'ajout et son plafond", () => {
     await expect(page.locator("#modalContent")).toContainText("Trois passions offertes");
   });
 
+  test("㉓ ter — depuis la PORTE réelle, reprendre une passion archivée est gratuit", async ({ page }) => {
+    // ⚠️ CONTREPARTIE DU KILL SWITCH POSÉ SUR `ui-v8-passions.spec.js`.
+    // Cette suite-là portait le verrou « quota : archiver puis restaurer ne
+    // réclame jamais de paiement » — la porte dérobée ④ du lot UI-8, où l'on
+    // réclamait de l'argent pour reprendre une passion qu'on possédait déjà.
+    // Son test passe par `#newProfileGrid`, la grille que ce lot remplace : il
+    // est donc éteint chez lui. L'éteindre SANS reprendre la garantie ici,
+    // c'eût été désarmer un verrou de sécurité au motif que la surface a changé.
+    //
+    // On l'exerce ici par le geste RÉEL — la bulle « + » du Profil — et non en
+    // appelant `restaurerPassion` directement (ce que fait déjà ㉓) : ce que le
+    // verrou protège, c'est la PORTE.
+    await bootOnboarded(page, null, 1, { query: APERCU });
+    await poserNPassions(page, 3);
+    // On archive : 3 vivantes → 2. Une place se libère, la passion reste
+    // possédée, rangée dans les archives.
+    await page.evaluate(() => archiverPassion(state.user.profiles[2].id));
+    await page.waitForTimeout(300);
+
+    await page.evaluate(() => goTo("profiles"));
+    await page.waitForTimeout(600);
+    await page.locator('#v9ProfilePassions [data-passion-tile="__ajouter__"]').click();
+    // Aucune fenêtre payante : on est sous le plafond.
+    await expect(page.locator(".psel-input")).toBeVisible({ timeout: 10000 });
+    expect(await page.locator("#modalContent").textContent() || "").not.toContain("Trois passions offertes");
+
+    await page.waitForFunction(() => window.PassioPassions && window.PassioPassions.pret(), null, { timeout: 15000 });
+    await chercher(page, "sport");
+    await page.locator('.psel-item[data-psel-id="sport"]').click();
+    await page.locator('[data-psel="valider"]').click();
+    await page.waitForTimeout(900);
+
+    const etat = await page.evaluate(() => {
+      const tous = (state.user.profiles || []).filter((p) => p.passion === "sport");
+      return { entrees: tous.length, vivantes: tous.filter((p) => !p.archived).length };
+    });
+    // ⚠️ UNE SEULE ENTRÉE : la passion est RESTAURÉE, pas recréée. Un doublon
+    // serait dédupliqué plus tard par la fusion défensive d'app-02, en silence,
+    // et l'utilisateur perdrait la photo et la bio de l'entrée d'origine.
+    expect(etat.entrees, "la passion a été recréée en doublon au lieu d'être restaurée").toBe(1);
+    expect(etat.vivantes).toBe(1);
+  });
+
   test("㉔ kill switch : drapeau coupé, aucun plafond", async ({ page }) => {
     // Le plafond vit sous `flat_passions_v1`. Coupé, aucun compte existant ne
     // se voit imposer une limite qu'il n'avait pas hier.
