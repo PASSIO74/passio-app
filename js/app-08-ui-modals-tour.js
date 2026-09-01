@@ -575,6 +575,16 @@ var meState = { mode: "story", media: null, mediaType: null, bg: STORY_BGS[0], b
 var meCam = { stream: null, facing: "user", recorder: null, chunks: [], recording: false, recTimer: null, recStart: 0, holdTimer: null, maxTimer: null, _boundShutter: false };
 
 function meOpen(mode) {
+  // ⚠️ GARDE AVANT TOUT LE RESTE. `mePublish` était gardée, pas `meOpen` — or
+  // c'est `meOpen` qui ouvre l'éditeur média en `phase-capture`, donc qui
+  // déclenche la demande d'accès CAMÉRA. Mesuré le 2026-09-01 : un visiteur
+  // sans compte touchant « Ta story » dans la rangée du Fil se retrouvait dans
+  // la capture caméra plein écran, à une tape de l'entrée directe. Deux règles
+  // du lot y passaient d'un coup — « aucune demande de permission à l'entrée »
+  // et « l'inscription arrive au moment de l'action engageante », publier une
+  // story en étant une. Rien à voir avec un écran : `screen-feed` reste actif,
+  // seul `#mediaEditor` se pose par-dessus — un contrôle d'écran ne le voit pas.
+  if (window.requireAuthentication && !requireAuthentication(mode === "bobine" ? "bobine" : "publier")) return;
   meState = { mode: mode || "story", media: null, mediaType: null, bg: STORY_BGS[0], bgIdx: 0, overlays: [], _seq: 0 };
   var ed = document.getElementById("mediaEditor"); if (!ed) return;
   document.getElementById("meMedia").innerHTML = "";

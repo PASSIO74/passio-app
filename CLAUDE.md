@@ -391,7 +391,7 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
 ## 🚪 PREMIÈRE VISITE — « l'application est elle-même le pitch » (drapeau `first_run_experience_v1`, COUPÉ par défaut)
 
 `js/first-run.js` (IIFE `window.PassioFirstRun`) + bloc « PASSIO — PREMIÈRE VISITE » dans
-`styles.css`, tests `tests/e2e/first-run.spec.js` (25) et helper
+`styles.css`, tests `tests/e2e/first-run.spec.js` (37) et helper
 `tests/e2e/first-run-helper.js`. Activation : `?passio_preview=first-run-v1` ou
 `localStorage.passio_first_run_experience_v1="1"` ; coupure prioritaire `"0"` ou
 `window.PASSIO_FIRST_RUN_V1=false`. **Drapeau coupé = landing + onboarding + tour
@@ -515,6 +515,39 @@ personne.
    piège d'UI-4A4, « une chip arrachée par son propre clic ». ⚠️ Aucun écouteur
    CLAVIER n'est ajouté : app-08 en porte déjà un pour tout `[role="button"]` non
    natif, qui appelle `el.click()`.
+
+⑫ **UNE AIDE PEUT ÊTRE MORTE SANS QUE RIEN NE LE DISE — et c'est arrivé.**
+   L'aide « bobines » a été livrée avec une ancre inexistante :
+   `.app-nav-v2 [data-v2-key="reels"]` ne matche RIEN (`DESTINATIONS` de
+   `ui-v2-shell` ne contient que discover, meet, create, messages, profile) et
+   son repli `.app-nav .nav-bobines` existe bien dans `index.html` mais vit dans
+   la nav HISTORIQUE, que UI-1 met en `display: none`. Mesuré : 0×0,
+   `offsetParent` nul, `montrerEtape("bobines")` toujours `false`. Même piège
+   que l'étape « Créer », qui visait `.app-nav .nav-cta` avant correction —
+   famille « une règle qui survit à la disparition de sa cible ».
+   Elle a été **retirée**, pas rafistolée : même avec une ancre valide il n'y a
+   aucun MOMENT où la montrer, toute porte vers les bobines ouvrant le lecteur
+   en z-index 9999 quand `.fr-tip` est à 9000 — et relâcher `ecranOccupe()`
+   pour ce cas rouvrirait le défaut ④. Les bobines restent expliquées par la
+   rangée d'actions qu'UI-5 pose dans `.reel-info`, à l'intérieur du lecteur.
+   ⚠️ Le verrou n'est pas le cas mais la FAMILLE : le test « toute aide déclarée
+   a une ancre RÉELLEMENT atteignable » interroge `PassioFirstRun.zonesGeste()`
+   et `cibleEtape()` — la table de PRODUCTION, jamais une copie recopiée dans le
+   test, qui serait restée verte le jour où la production perd son ancre.
+   Éprouvé par mutation : remettre l'ancre morte le fait rougir.
+
+⑬ **`meOpen` OUVRAIT LA CAMÉRA À UN VISITEUR SANS COMPTE.** `mePublish` était
+   gardée, pas `meOpen` — or c'est `meOpen` qui pose `#mediaEditor` en
+   `phase-capture open`, donc qui déclenche la demande d'accès CAMÉRA. Mesuré :
+   toucher « Ta story » dans la rangée du Fil y menait **à une seule tape** de
+   l'entrée directe. Deux règles du lot tombaient d'un coup — « aucune demande
+   de permission à l'entrée » et « l'inscription au moment de l'action
+   engageante ». ⚠️ **Aucun contrôle d'ÉCRAN ne voyait ce défaut** :
+   `#mediaEditor` se pose PAR-DESSUS le Fil, qui reste l'écran actif. Règle
+   générale : garder la fonction qui ÉCRIT ne suffit pas, il faut garder celle
+   qui OUVRE LA PORTE. Verrous : `meOpen` entre dans l'énumération des portes
+   d'écriture, plus un test d'EFFET sur le geste réel (« Ta story » n'ouvre pas
+   la caméra).
 
 ⚠️ **AVANT TOUT CHOIX, LE RAIL DU HAUT NE CONTIENT QUE « Suivis ».**
    `renderProfileStrip` rend les passions DU COMPTE (`state.user.profiles`), et un
