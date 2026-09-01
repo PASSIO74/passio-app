@@ -696,6 +696,14 @@
       <label class="field" id="fieldPassion">
         <span>Passion liée</span>
         <select class="input" id="postPassion" onchange="onStudioPassionChange()"></select>
+        <!-- Lot flat_passions_v1 : le choix de la passion devient une RECHERCHE.
+             ⚠️ Le `<select>` ci-dessus reste la SOURCE DE VÉRITÉ — `publishPost`
+             lit `$("#postPassion").value`. Ce bouton n'affiche que ce qu'il
+             contient et écrit dedans ; il ne publie jamais lui-même.
+             `hidden` par défaut : hors lot, l'écran est inchangé. -->
+        <button type="button" class="input" id="studioPassionBtn" hidden
+                onclick="ouvrirRecherchePassionStudio()"
+                style="text-align:left;cursor:pointer;min-height:46px;">Choisir une passion</button>
         <!-- Rempli par renderStudio, et SEULEMENT quand une passion a été écartée
              du choix (passion personnelle, non publiable — sortie A du 2026-08-30). -->
         <div id="studioPassionNote" style="display:none;font-size:11px;color:var(--muted);margin-top:6px;line-height:1.45;"></div>
@@ -1494,6 +1502,30 @@
      la feuille de finition de bobine ne publie RIEN elle-même — elle renseigne
      meState.details puis appelle mePublish(), seul moteur de publication. -->
 <script src="js/ui-v7-lot.js"></script>
+
+<!-- ══ LOT flat_passions_v1 — référentiel PLAT des passions ═══════════════════
+     « Recherche et choisis directement ce qui te passionne. »
+     Il n'y a QU'UN SEUL NIVEAU : « Enduro » est une passion, au même rang que
+     « Moto ». Aucun univers, aucune catégorie à ouvrir.
+
+     ⚠️ LE RÉFÉRENTIEL N'EST PAS DANS CES FICHIERS. Les 1 908 passions vivent
+     dans `data/passions-v1.json`, téléchargé au premier usage réel de la
+     recherche — `scripts/build.js` inline TOUT `<script src="js/…">`, donc un
+     référentiel en JS finirait dans le monolithe, sur le chemin critique du
+     démarrage.
+
+     L'ORDRE COMPTE : le sélecteur lit `window.PassioPassions`, la colle lit
+     `window.PassionSearchSelector`.
+
+     ÉTEINT PAR DÉFAUT — aperçu seulement :
+       ?passio_preview=flat-passions-v1   ·   ?flat_passions_v1=1
+     Coupures, prioritaires : localStorage.flat_passions_v1 = "0"
+                              window.PASSIO_FLAT_PASSIONS = false
+     Ces trois fichiers sont HORS du bloc BUILD:APP (invariant : exactement
+     9 fichiers app-*.js entre les marqueurs). -->
+<script src="js/passions-flat.js"></script>
+<script src="js/passion-selector.js"></script>
+<script src="js/passions-flat-ui.js"></script>
 
 
 <!-- ======== PWA INSTALL OVERLAY ======== -->

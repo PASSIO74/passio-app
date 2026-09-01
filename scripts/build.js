@@ -120,6 +120,30 @@ fs.writeFileSync(path.join(path.dirname(outPath), "app.js"), appJs);
 fs.writeFileSync(path.join(path.dirname(outPath), "styles.css"), css);
 fs.writeFileSync(path.join(path.dirname(outPath), "sw.js"), sw);
 fs.writeFileSync(path.join(path.dirname(outPath), "release.json"), JSON.stringify(release, null, 2) + "\n");
+
+// 6. Données servies À LA DEMANDE (data/*.json) — recopiées telles quelles.
+//    ⚠️ ELLES NE DOIVENT SURTOUT PAS PASSER PAR L'ÉTAPE 4 : celle-ci inline
+//    tout `<script src="js/…">` dans le monolithe. Le référentiel des passions
+//    (≈ 160 Ko) atterrirait alors sur le chemin critique du démarrage, pour une
+//    donnée dont la plupart des sessions n'ont jamais besoin. C'est un JSON,
+//    chargé par `fetch` au premier usage réel de la recherche.
+//
+//    La copie vit ICI et pas dans le workflow de déploiement, pour que
+//    `node scripts/build.js` produise un `dist/` complet et testable en local —
+//    un asset qui n'existe qu'en CI est un asset qu'on découvre manquant en
+//    production.
+const dataDir = path.join(root, "data");
+if (fs.existsSync(dataDir)) {
+  const cible = path.join(path.dirname(outPath), "data");
+  fs.mkdirSync(cible, { recursive: true });
+  let nData = 0;
+  for (const f of fs.readdirSync(dataDir)) {
+    if (!f.endsWith(".json")) continue;   // les sources .js du référentiel restent hors de dist
+    fs.copyFileSync(path.join(dataDir, f), path.join(cible, f));
+    nData++;
+  }
+  if (nData) console.log("  + data/ :", nData, "fichier(s) JSON copié(s)");
+}
 console.log("Build OK →", outPath,
   "(", Buffer.byteLength(html), "octets ) + app.js (", Buffer.byteLength(appJs),
   "octets, v=" + appHash + ") + styles.css (", Buffer.byteLength(css),

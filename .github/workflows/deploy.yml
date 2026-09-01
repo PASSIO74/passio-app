@@ -175,6 +175,16 @@ jobs:
       - name: Audits statiques (cles de telemetrie vs filtre PII)
         run: node scripts/audit-telemetry-keys.js
 
+      # Referentiel plat des passions (lot flat_passions_v1).
+      # Deux controles, et le second est le plus important : le JSON servi au
+      # navigateur et la migration SQL sont GENERES depuis data/passions/*.js.
+      # Modifier la source sans regenerer laisserait les deux decrire un
+      # referentiel qui n'existe plus, et personne ne le verrait avant la prod.
+      - name: Referentiel des passions (validation + miroirs a jour)
+        run: |
+          node scripts/valider-referentiel-passions.js
+          node scripts/construire-referentiel-passions.js --verifier
+
       # Le banc des frontieres de confiance du canal Claude Code. Il verifie
       # mecaniquement que les garde-fous sont intacts : Claude sans droit de
       # push, action epinglee au SHA, allowed_bots jamais « * », cible ET
@@ -204,6 +214,14 @@ jobs:
       # ci-dessus, qui a vecu une journee sans garder quoi que ce soit).
       - name: Banc Trust & Safety serveur (RLS, PostgreSQL jetable)
         run: bash tests/sql/migration-ts-serveur.test.sh
+
+      # La migration du referentiel plat, EXECUTEE deux fois sur un PostgreSQL
+      # jetable : idempotence, preservation des 19 identifiants historiques,
+      # RLS en lecture seule sur le referentiel, et retour arriere.
+      # Relire une migration ne prouve pas son idempotence — le lot precedent
+      # en a livre une qui ne l'etait pas, trouvee en l'executant.
+      - name: Migration du referentiel plat (PostgreSQL jetable)
+        run: bash scripts/verifier-migration-passions.sh
 
       # Le centre de pilotage est une application à part entière. Ses tests
       # déterministes (Sentinel, Guardian, Autopilot, rollback) sont désormais

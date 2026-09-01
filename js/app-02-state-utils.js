@@ -1002,7 +1002,31 @@ function allPassions() {
   return [...PASSIONS, ...custom];
 }
 function passionById(id) {
-  return allPassions().find(p => p.id === id) || { emoji: "✨", label: "Passion", color: "#8b5cf6" };
+  var trouve = allPassions().find(p => p.id === id);
+  if (trouve) return trouve;
+  // ── Lot flat_passions_v1 : le référentiel plat sert de REPLI D'AFFICHAGE ──
+  // ⚠️ SANS CE REPLI, TOUTE PASSION DU RÉFÉRENTIEL S'AFFICHE « ✨ Passion ».
+  // `allPassions()` ne connaît que les 19 du socle embarqué plus les passions
+  // personnelles : un identifiant venu de la recherche (« moto-enduro ») lui est
+  // inconnu, et le générique prenait sa place — dans la bulle du Fil, dans le
+  // rail du Profil, dans le Studio. Mesuré à l'écran par Benjamin sur la
+  // preview du 2026-09-01.
+  //
+  // ⚠️ C'est un défaut DÉJÀ trouvé et corrigé par le lot TAXO-1, et que ce lot
+  // avait laissé revenir en reprenant ses données sans son correctif. Pire que
+  // l'affichage : `ajouterPassionAuCompte` RECOPIE `emoji` et `color` dans
+  // l'entrée qu'elle crée, donc la valeur générique était PERSISTÉE.
+  //
+  // ⚠️ C'est un ajout d'AFFICHAGE, et rien d'autre. `estPassionCanonique` n'est
+  // pas touchée : le serveur reste seul juge de ce qui est publiable, et aucune
+  // passion ne devient publiable parce qu'elle sait s'afficher.
+  try {
+    if (window.PassioPassions && PassioPassions.actif()) {
+      var pl = PassioPassions.parId(id);
+      if (pl) return { id: pl.id, emoji: pl.emoji, label: pl.label, color: pl.color };
+    }
+  } catch (e) {}
+  return { emoji: "✨", label: "Passion", color: "#8b5cf6" };
 }
 
 // Filtre d'AFFICHAGE de la colonne jsonb `profiles.passions` (la liste des
@@ -2552,6 +2576,37 @@ function renderPassionGrid() {
     texteEl.textContent = v2
       ? "Choisis ce que tu veux voir dans ton Fil. Tu pourras tout modifier plus tard."
       : "Choisis 1 à 3 passions. Chacune crée un profil dédié.";
+  }
+
+  // ── Lot flat_passions_v1 : la grille devient une RECHERCHE ────────────────
+  // « Recherche et choisis directement ce que tu aimes. » On ne fait plus
+  // choisir dans une grille de 19 tuiles : on tape « Enduro », et c'est tout.
+  //
+  // ⚠️ MONTÉ UNE SEULE FOIS (`monterOnboarding` porte le garde). Cette fonction
+  // est rappelée à CHAQUE sélection : re-monter le composant viderait le champ
+  // et refermerait le clavier à chaque passion cochée.
+  //
+  // Hors lot, la suite de la fonction s'exécute exactement comme avant.
+  if (typeof PassioFlatUI !== "undefined" && PassioFlatUI.actif()) {
+    if (titreEl) titreEl.textContent = "Qu'est-ce qui te passionne ?";
+    if (texteEl) texteEl.textContent = "Recherche et choisis directement ce que tu aimes.";
+    const champHisto = $("#onbPassionSearch");
+    if (champHisto) champHisto.style.display = "none";   // le sélecteur a le sien
+    PassioFlatUI.monterOnboarding(grid, {
+      selection: selectedPassions,
+      max: onbMaxPassions(),
+      onChangement: function (ids) {
+        // On VIDE et on remplit le tableau en place. `selectedPassions` est
+        // un `let` de portée script — donc absent de `window` : le réaffecter
+        // depuis un autre fichier serait impossible, et `onbFinish` lit
+        // `selectedPassions[0]` comme passion de départ.
+        selectedPassions.length = 0;
+        ids.forEach(function (id) { selectedPassions.push(id); });
+        renderOnbStarter();
+      },
+    });
+    renderOnbStarter();
+    return;
   }
 
   // Recherche : n'apparaît qu'en V2 et qu'au-delà du seuil — un champ de

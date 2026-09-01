@@ -24,7 +24,12 @@
     "skills:lint": "node .claude/scripts/skills-lint.js",
     "skills:routing": "node .claude/scripts/skills-routing.js",
     "skills:check": "npm run skills:lint && npm run skills:routing",
-    "schema:baseline": "node scripts/schema-baseline.js"
+    "schema:baseline": "node scripts/schema-baseline.js",
+    "passions:valider": "node scripts/valider-referentiel-passions.js",
+    "passions:construire": "node scripts/construire-referentiel-passions.js",
+    "passions:dedupliquer": "node scripts/deduplique-alias-passions.js",
+    "passions:verifier": "node scripts/valider-referentiel-passions.js && node scripts/construire-referentiel-passions.js --verifier",
+    "passions:migration": "bash scripts/verifier-migration-passions.sh"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",

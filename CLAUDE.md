@@ -464,6 +464,79 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
 
 ⚠️ **`.claude/` est désormais versionné SÉLECTIVEMENT** (skills + subagents = savoir projet, ils doivent survivre à un changement de machine). `.claude/settings.local.json` reste exclu : il a longtemps contenu des JWT et une clé `sb_secret_…` en clair dans ses commandes autorisées (9 entrées, purgées le 2026-08-15 par `npm run permissions:compact`, qui refuse désormais de conserver toute règle porteuse de secret). Il reste hors versionnement : c'est un fichier de poste, pas du savoir projet.
 
+  **Lot flat_passions_v1 — LE RÉFÉRENTIEL DES PASSIONS EST PLAT (2026-09-01), ÉTEINT PAR DÉFAUT.**
+  `docs/PASSIONS_REFERENTIEL_PLAT_2026-09-01.md`. Aperçu :
+  `?passio_preview=flat-passions-v1` ; coupures `localStorage.flat_passions_v1="0"`
+  et `window.PASSIO_FLAT_PASSIONS=false`, prioritaires sur tout. Il REMPLACE le
+  catalogue hiérarchique Univers → Passion → Sous-passion (PR #231, fermée),
+  dont il reprend et APLATIT les données.
+  **Tout est directement une PASSION** : « Enduro » est au même rang que « Moto »,
+  et on la choisit sans jamais passer par elle. 1 908 passions · 1 578 alias ·
+  3 830 relations INVISIBLES. Source `data/passions/*.js` ; `data/passions-v1.json`
+  et `migrations/migration_passions_plat.sql` en sont des MIROIRS GÉNÉRÉS, dont la
+  CI vérifie qu'ils n'ont pas divergé (`npm run passions:verifier`).
+  Implémentation : `js/passions-flat.js` (moteur), `js/passion-selector.js`
+  (`PassionSearchSelector`, le composant unique des 7 surfaces),
+  `js/passions-flat-ui.js` (la colle). Tests : `tests/e2e/passions-plates.spec.js` (31)
+  et `scripts/verifier-migration-passions.sh` (migration EXÉCUTÉE sur PostgreSQL).
+  ⚠️ **Six pièges de ce lot.** ① **Le référentiel ne doit JAMAIS entrer dans le
+  bundle** : `scripts/build.js` inline TOUT `<script src="js/…">`, donc un
+  référentiel en JS finirait dans le monolithe, sur le chemin critique du
+  démarrage. C'est un JSON, chargé au premier usage réel de la recherche, et
+  copié dans `dist/` par le build lui-même (pas par le workflow — un asset qui
+  n'existe qu'en CI est un asset qu'on découvre manquant en production). ② **Deux
+  pliages, et c'est voulu** : `norme()` sert à CHERCHER (elle jette la
+  ponctuation, donc « C », « C++ » et « C# » s'y confondent — ce qu'on veut),
+  `normeIdentite()` sert à l'UNICITÉ (elle garde `+`, `#`, `&`, sinon elle
+  refuserait « C++ » à côté de « C# »). Les trois pliages — navigateur,
+  générateur, base — doivent rester identiques, sinon « moto cross » trouve
+  « Motocross » d'un côté et pas de l'autre. ③ **Un `grant … to anon,
+  authenticated` inconditionnel rend une migration intestable** : ces rôles sont
+  fournis par la plateforme Supabase et n'existent pas sur un PostgreSQL nu, donc
+  le `grant` fait échouer TOUTE la migration (une seule transaction). ④
+  **`unaccent()` n'est pas IMMUTABLE**, donc pas indexable, et l'extension n'est
+  pas garantie : `normalized_label` est calculé par le générateur et STOCKÉ, et
+  `unaccent_immutable()` doit être définie EN TÊTE de la migration. ⑤ **Le bouton
+  qui affiche la frappe porte un `data-tel` explicite** : `telemetry.js` retombe
+  sinon sur `textContent.slice(0, 40)` et emporterait la recherche libre de la
+  personne. ⑥ **`[hidden]` est une règle du NAVIGATEUR** : un `display` posé sur
+  une classe la bat en spécificité — la croix « effacer » s'affichait sur un champ
+  vide, mesurée en 320 px.
+  ⚠️ **LA PORTE D'AJOUT EST SUR LE PROFIL, ET ELLE EST PLAFONNÉE (2026-09-01).**
+  Demandes de Benjamin après essai réel de la preview : « la bulle de rajout de
+  passion doit être sur le profil, pas dans le fil » puis « rajoute un mode
+  payant, 3 gratuits le reste payant, pour l'instant tu bloques et tu mets une
+  fenêtre qui annonce que ça sera payant », enfin « ne mets pas de valeur, tu
+  mets juste que ça va être payant mais pas de tarif pour l'instant ».
+  ① Le rail du Fil est une commande de **lecture** : plus aucune bulle « + ».
+  `ouvrirRecherchePassionsFil` et `PassioFlatUI.ouvrirPassionsDuFil` sont
+  **retirées** — sans appelant, et fausses sous le plafond (elles appelaient
+  `ajouterPassionAuCompte` par passion cochée, donc au plafond elles auraient
+  coché dans `_activeFeedPassions` des passions que le compte ne possède pas).
+  ② `PASSIONS_OFFERTES = 3` (app-06) + `openPassionPaywall()`. **AUCUN MONTANT
+  N'EST AFFICHÉ**, aucun bouton « Payer » (le paiement n'est pas ouvert : un
+  bouton qui ne mène nulle part est un clic mort). ⚠️ **Ce n'est pas un retour
+  de l'économie retirée par ADR-009** : l'ADR interdit une monnaie
+  INTERMÉDIAIRE et prévoit explicitement un paiement DIRECT en monnaie réelle —
+  c'est exactement ce cas. ⚠️ Le plafond vit sous `flat_passions_v1`, coupé par
+  défaut : aucun compte de production n'est limité aujourd'hui. ⚠️ **On compte
+  les passions VIVANTES**, écart assumé avec « archiver ne libère pas
+  d'emplacement » (UI-8) — sinon un compte au plafond n'aurait aucune sortie ;
+  le plafond se lit « trois **à la fois** ». ⚠️ **La porte dérobée ④ d'UI-8
+  n'est pas rouverte** : restaurer une archive reste GRATUIT sous trois
+  vivantes, et n'est barré que si ce serait la quatrième. ⚠️ Gardé aux **deux**
+  bouts — portes (`openCreateProfile`, `ouvrirAjoutPassions`, le `max` du
+  sélecteur) ET points d'écriture (`ajouterPassionAuCompte`,
+  `restaurerPassion`) : mesuré, neutraliser l'un laisse l'autre vert.
+  ⚠️ `ouvrirGestionPassionsDepuisPaywall` change d'écran AVANT d'ouvrir
+  `#passionManager`, qui vit dans `#screen-profiles` — déplié depuis le Fil il
+  serait invisible.
+  ⚠️ **La migration n'est PAS appliquée en production.** Les 1 889 passions
+  nouvelles sont sélectionnables et lisibles mais **pas publiables** : la clé
+  étrangère de `posts.passion_id` les refuserait. `estPassionCanonique` reste la
+  seule autorité, et le Studio REFUSE avant l'insert avec un message qui dit quoi
+  faire — plutôt qu'un post visible chez son auteur, jamais arrivé au serveur.
+
 ## 🚪 PREMIÈRE VISITE — « l'application est elle-même le pitch » (drapeau `first_run_experience_v1`, COUPÉ par défaut)
 
 `js/first-run.js` (IIFE `window.PassioFirstRun`) + bloc « PASSIO — PREMIÈRE VISITE » dans
@@ -1722,6 +1795,8 @@ personne.
   verts, ce qui montre qu'il s'agit d'un défaut d'affichage et non d'une faille.
 
 - **`.passio/adr/ADR-011-refonte-multi-passion.md` — la refonte du 2026-08-31** : fil additif (OU inclusif), profil à deux onglets, identité centralisée, Studio seul point de choix, retrait du Carnet de voyage. Elle complète ADR-010 et en amende l'interface.
+- `docs/PASSIONS_REFERENTIEL_PLAT_2026-09-01.md` — le référentiel PLAT (2026-09-01) : modèle, données, recherche, migration, RLS, pièges.
+
 - **Première visite** : `js/first-run.js` (drapeau `first_run_experience_v1`, coupé par défaut), tests `tests/e2e/first-run.spec.js`, captures `docs/captures/first-run/`.
 - `docs/PIEGES_CONNUS.md` — les 59 fiches détaillées (extrait de ce fichier le 2026-08-07, recompté le 2026-08-29).
 - `docs/HISTORIQUE_PROJET.md` — état 2026-06-11, backlog terminé, logs d’optimisation.

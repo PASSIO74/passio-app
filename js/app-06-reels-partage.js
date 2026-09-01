@@ -1722,6 +1722,16 @@ function renderProfilePassionRail() {
     });
   }).join("");
 
+  // Lot flat_passions_v1 : la même porte qu'au Fil, au même endroit visuel.
+  if (typeof PassioFlatUI !== "undefined" && PassioFlatUI.actif()) {
+    html += '<div class="profile-tile psel-tile-plus" role="button" tabindex="0"'
+      + ' data-passion-tile="__ajouter__" title="Ajouter une passion"'
+      + ' aria-label="Ajouter une passion" onclick="ouvrirRecherchePassionsCompte()">'
+      + '<div class="profile-tile-avatar" style="position:relative;">+</div>'
+      + '<div class="profile-tile-label">Ajouter</div>'
+      + "</div>";
+  }
+
   rail.innerHTML = html;
   return rail;
 }
@@ -1847,6 +1857,14 @@ function archiverPassion(profileId) {
 function restaurerPassion(profileId) {
   var pr = (state.user.profiles || []).find(function (p) { return p.id === profileId; });
   if (!pr) return;
+  // ⚠️ LA LISTE DES ARCHIVÉES EST UNE PORTE D'ACQUISITION, ELLE AUSSI. Sans ce
+  // garde, un compte au plafond en archivait une, en restaurait deux, et se
+  // retrouvait à quatre vivantes : le plafond n'aurait tenu que sur le chemin
+  // qu'on avait pensé à garder.
+  if (pr.archived && plafondPassionsAtteint()) {
+    try { openPassionPaywall(); } catch (e) {}
+    return;
+  }
   pr.archived = false;
   delete pr.archivedAt;
   // Symétrique d'`archiverPassion`, qui l'avait retirée du Fil : sans ça, un
@@ -2405,7 +2423,12 @@ function renderProfileStrip() {
     const isSelected = _activeFeedPassions.has(p.passion);
     const isDimmed = !isSelected && (hasPassionFilter || enSuivis);
     return passionTileHTML({
-      emoji: p.emoji,
+      // ⚠️ Le référentiel D'ABORD, l'entrée persistée ensuite. Une passion
+      // ajoutée avant le correctif de `passionById` porte un « ✨ » ÉCRIT dans
+      // `state.user.profiles` : sans cette préférence, la bulle garderait
+      // l'emoji générique même après réparation. `_passionEtiquette` (rail du
+      // Profil) applique déjà cet ordre — le Fil en était le seul survivant.
+      emoji: passion.emoji || p.emoji,
       label: passion.label,
       photoUrl: passionPhotoUrl(passion),
       fallbackUrl: passionPhotoFallback(p.passion),
@@ -2418,9 +2441,132 @@ function renderProfileStrip() {
     });
   }).join("");
 
+  // ⚠️ PAS DE BULLE « AJOUTER » ICI (demande de Benjamin, 2026-09-01 : « la
+  // bulle de rajout de passion doit être sur le profil, pas dans le fil »).
+  // Le rail du Fil est une commande de LECTURE — il dit ce qu'on veut voir. Y
+  // poser la porte d'acquisition mélangeait deux gestes, et surtout plaçait
+  // devant une offre payante quelqu'un qui voulait seulement filtrer son fil.
+  // La porte unique est la bulle « + » du rail du Profil
+  // (`renderProfilePassionRail`), à côté des passions qu'on possède.
+
   // Perf : appelé à chaque renderFeed — pas de rebuild si rien n'a changé
   // (les tuiles portent des photos Unsplash : re-set innerHTML = re-décodage/flash).
   if (box._lastHtml !== tilesHTML) { box.innerHTML = tilesHTML; box._lastHtml = tilesHTML; }
+}
+
+// ⚠️ FONCTION GLOBALE, et c'est nécessaire : `audit:handlers` exige qu'un
+// `onclick` inline désigne une fonction globale EXISTANTE. Elle ne fait que
+// déléguer — aucun moteur ici.
+//
+// ⚠️ `ouvrirRecherchePassionsFil` A ÉTÉ RETIRÉE avec la bulle du Fil
+// (2026-09-01). Elle n'avait plus aucun appelant, et une fonction globale sans
+// appelant est exactement ce que l'audit du 2026-06-10 a trouvé sept fois.
+function ouvrirRecherchePassionsCompte() {
+  try { if (typeof PassioFlatUI !== "undefined") PassioFlatUI.ouvrirAjoutPassions(); }
+  catch (e) { if (typeof diagLog === "function") diagLog("compte_recherche_passion " + (e && e.message)); }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// TROIS PASSIONS OFFERTES, LES SUIVANTES SERONT PAYANTES (2026-09-01)
+// ──────────────────────────────────────────────────────────────────────────
+// Demande de Benjamin : « 3 profils gratuits, le reste payant ; pour l'instant
+// tu bloques et tu mets une fenêtre qui annonce que ça sera payant » — puis,
+// une minute plus tard : « ne mets pas de valeur, tu mets juste que ça va être
+// payant mais pas de tarif pour l'instant ». AUCUN MONTANT N'EST AFFICHÉ.
+//
+// ⚠️ CE N'EST PAS UN RETOUR DE L'ÉCONOMIE INTERNE RETIRÉE PAR ADR-009. L'ADR
+// interdit une monnaie intermédiaire (Passia, points, étoiles) et prévoit
+// explicitement qu'« un paiement futur devra être un paiement DIRECT en monnaie
+// réelle ». Un abonnement est exactement ce cas-là. Rien de ce que l'ADR a
+// retiré n'est réintroduit : ni solde, ni pack, ni prix libellé en jeton.
+//
+// ⚠️ LE PLAFOND VIT SOUS LE DRAPEAU `flat_passions_v1`, ET C'EST DÉLIBÉRÉ.
+// Le drapeau est COUPÉ par défaut : aucun compte de production ne se voit donc
+// imposer une limite qu'il n'avait pas hier. Couper le drapeau rend le
+// comportement historique — passions illimitées — à l'octet près.
+//
+// ⚠️ ON COMPTE LES PASSIONS VIVANTES, PAS LES ENTRÉES. Écart ASSUMÉ avec la
+// règle héritée du lot UI-8 (« archiver ne libère pas d'emplacement payant ») :
+// sans cet écart, un compte au plafond n'aurait AUCUNE sortie — il ne pourrait
+// ni ajouter, ni échanger, et la fenêtre lui annoncerait une offre fermée sans
+// rien lui proposer. Le plafond se lit donc « trois passions À LA FOIS », ce
+// que la fenêtre dit en toutes lettres.
+//
+// ⚠️ ET IL NE REFERME PAS LA PORTE DÉROBÉE ④ DU LOT UI-8. Là-bas, le paywall
+// barrait la RESTAURATION d'une passion déjà possédée, en comptant les
+// archivées : on réclamait de l'argent pour reprendre ce qu'on avait déjà.
+// Ici, restaurer une passion archivée est GRATUIT tant qu'on reste sous trois
+// vivantes, et la fenêtre nomme le geste qui débloque.
+// ══════════════════════════════════════════════════════════════════════════
+const PASSIONS_OFFERTES = 3;
+
+function plafondPassionsActif() {
+  try { return typeof PassioFlatUI !== "undefined" && PassioFlatUI.actif(); }
+  catch (e) { return false; }
+}
+
+function nbPassionsVivantes() {
+  try {
+    return ((state && state.user && state.user.profiles) || [])
+      .filter(function (p) { return p && !p.archived; }).length;
+  } catch (e) { return 0; }
+}
+
+// Rend `Infinity` quand le plafond ne s'applique pas : la valeur est passée
+// telle quelle au `max` du sélecteur, qui traite tout nombre non nul comme un
+// plafond — `Infinity` n'en bloque jamais aucune.
+function passionsRestantesOffertes() {
+  if (!plafondPassionsActif()) return Infinity;
+  return Math.max(0, PASSIONS_OFFERTES - nbPassionsVivantes());
+}
+
+function plafondPassionsAtteint() { return passionsRestantesOffertes() <= 0; }
+
+// ⚠️ AUCUN BOUTON « PAYER ». Le paiement n'est pas ouvert : un bouton qui ne
+// mène nulle part est un clic mort, et ce dépôt en a déjà payé le prix (l'aide
+// « bobines » d'UI-4A4, ancrée sur une cible inexistante). La fenêtre dit ce
+// qui est vrai aujourd'hui — c'est à venir, rien n'est débité — et offre la
+// seule action qui existe réellement : réorganiser ses trois passions.
+function openPassionPaywall() {
+  const archivees = (typeof passionsArchivees === "function") ? passionsArchivees().length : 0;
+  openModal(`
+    <div class="modal-handle"></div>
+    <div style="text-align:center;margin-bottom:16px;">
+      <div style="font-size:30px;margin-bottom:8px;">🔒</div>
+      <div style="font-weight:800;font-size:18px;color:var(--text);margin-bottom:6px;">Trois passions offertes</div>
+      <div style="font-size:13px;color:var(--muted);line-height:1.6;">
+        Tu suis déjà ${PASSIONS_OFFERTES} passions. Au-delà, les passions
+        supplémentaires feront partie d'une formule <strong>payante</strong>.
+      </div>
+    </div>
+    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:12px 14px;font-size:12.5px;color:var(--muted);line-height:1.6;margin-bottom:14px;">
+      Cette formule <strong>n'est pas encore ouverte</strong> : aucun paiement n'est
+      possible aujourd'hui et rien ne t'est débité. Le tarif sera annoncé au lancement.
+    </div>
+    <div style="font-size:12.5px;color:var(--muted);line-height:1.6;margin-bottom:14px;">
+      En attendant, tu peux <strong>changer de passion quand tu veux</strong> :
+      archives-en une pour en activer une autre.${archivees ? ` Tu en as ${archivees} en archive.` : ""}
+    </div>
+    <button type="button" class="btn primary block" data-tel="passion_paywall_gerer"
+      onclick="ouvrirGestionPassionsDepuisPaywall()">Gérer mes passions</button>
+    <button type="button" class="btn block" style="margin-top:8px;" data-tel="passion_paywall_compris"
+      onclick="closeModal()">J'ai compris</button>
+  `);
+}
+
+// ⚠️ FONCTION À PART, et pas trois instructions dans l'`onclick`. Le panneau
+// `#passionManager` vit DANS `#screen-profiles` : ouvert depuis le Fil sans
+// changer d'écran, il serait déplié mais invisible — le défaut exact des aides
+// d'UI-7 posées sur une ancre sans `offsetParent`.
+function ouvrirGestionPassionsDepuisPaywall() {
+  try { closeModal(); } catch (e) {}
+  try { if (typeof goTo === "function") goTo("profiles"); } catch (e) {}
+  try { if (typeof openPassionManager === "function") openPassionManager(); } catch (e) {}
+}
+
+function ouvrirRecherchePassionStudio() {
+  try { if (typeof PassioFlatUI !== "undefined") PassioFlatUI.ouvrirChoixStudio(); }
+  catch (e) { if (typeof diagLog === "function") diagLog("studio_recherche_passion " + (e && e.message)); }
 }
 
 // `toggleFollowingFilter` a été SUPPRIMÉE le 2026-08-30 (ADR-010) avec la
@@ -2523,6 +2669,20 @@ function openCreateProfile() {
   // Elle reste entière dans `state.user.customPassions` et reste un centre
   // d'intérêt du fil ; c'est la porte d'ÉCRITURE qui se ferme, pas la passion.
   const pool = passionsPubliables().filter(p => !already.includes(p.id));
+
+  // ── Lot flat_passions_v1 : on ne présente plus une grille ────────────────
+  // ⚠️ La grille montrait `passionsPubliables()` — 19 tuiles. Avec 1 900
+  // passions elle serait illisible, et surtout elle raconterait le contraire
+  // de ce lot : on ne CHOISIT PLUS dans une liste, on CHERCHE. Le sélecteur
+  // remplace donc la modale entière, y compris la bio (facultative, et
+  // modifiable ensuite depuis la carte de passion).
+  if (typeof PassioFlatUI !== "undefined" && PassioFlatUI.actif()) {
+    // Au plafond, on n'ouvre pas une recherche qui ne pourra rien conclure.
+    if (plafondPassionsAtteint()) { openPassionPaywall(); return; }
+    PassioFlatUI.ouvrirAjoutPassions({ titre: "Ajouter une passion" });
+    return;
+  }
+
   openModal(`
     <div class="modal-handle"></div>
     <div style="text-align:center;margin-bottom:18px;">
@@ -2560,6 +2720,43 @@ function selectNewProfilePassion(id) {
 async function confirmCreateProfile() {
   const pid = window._newProfilePassion;
   if (!pid) { toast("Choisis une passion"); return; }
+  const bio = ($("#newProfileBio") ? $("#newProfileBio").value.trim() : "") || "";
+  const ajoutee = ajouterPassionAuCompte(pid, bio);
+  if (!ajoutee) return;                       // restauration : déjà traitée
+  closeModal();
+  renderProfilesScreen();
+  renderTopbar();
+  toast(`✨ ${passionById(pid).label} ajoutée à tes passions`, "success");
+}
+
+// ⚠️ EXTRAIT DE `confirmCreateProfile` (lot flat_passions_v1) — un SEUL moteur
+// d'ajout de passion au compte. Le sélecteur de recherche peut en ajouter
+// plusieurs d'un coup ; recopier cette logique là-bas aurait donné deux façons
+// de créer une passion, qui auraient divergé au premier correctif — c'est
+// exactement ce qui est arrivé à `sharePostInFeed` et `shareReelInFeed`
+// (`createdAt` manquant d'un seul côté, partages jamais arrivés au serveur).
+//
+// Rend l'entrée créée, ou `null` quand la passion a été RESTAURÉE depuis les
+// archives (le chemin de restauration se suffit à lui-même : il rend la main
+// après avoir rendu l'écran).
+function ajouterPassionAuCompte(pid, bio) {
+  if (!pid) return null;
+  const _existante = (state.user.profiles || []).find(function (x) { return x.passion === pid && !x.archived; });
+  if (_existante) return _existante;          // déjà là : rien à créer
+
+  // ⚠️ LE PLAFOND EST GARDÉ ICI, AU POINT DE CONVERGENCE, ET AUSSI AUX PORTES.
+  // Garder seulement les portes laisserait passer tout appelant futur ; garder
+  // seulement ce point laisserait quelqu'un chercher, choisir, valider, puis se
+  // faire refuser — la leçon de `meOpen` (garder la fonction qui ÉCRIT ne suffit
+  // pas, il faut garder celle qui OUVRE LA PORTE), prise dans les deux sens.
+  //
+  // Placé AVANT la restauration : restaurer une quatrième passion vivante
+  // dépasserait le plafond aussi sûrement qu'en créer une. Sous le plafond,
+  // la restauration reste gratuite (voir la note d'`openPassionPaywall`).
+  if (plafondPassionsAtteint()) {
+    try { openPassionPaywall(); } catch (e) {}
+    return null;
+  }
 
   // ⚠️ Lot UI-8 : cette passion existe peut-être déjà, ARCHIVÉE. La recréer
   // ferait un doublon (deux entrées pour la même passion, que la fusion
@@ -2567,12 +2764,11 @@ async function confirmCreateProfile() {
   // rien effacer.
   if (passionsUnifieesActives()) {
     const _arch = (state.user.profiles || []).find(function (x) { return x.archived && x.passion === pid; });
-    if (_arch) { restaurerPassion(_arch.id); return; }
+    if (_arch) { restaurerPassion(_arch.id); return null; }
   }
 
   // Identité centralisée : on réutilise toujours le nom principal du compte.
   const name = (state.user.general && state.user.general.username) || state.user.name || "Passionné";
-  const bio = ($("#newProfileBio") ? $("#newProfileBio").value.trim() : "") || "";
   const p = passionById(pid);
   const np = {
     id: uid(),
@@ -2599,10 +2795,7 @@ async function confirmCreateProfile() {
   // Pousse immédiatement user_state (liste complète des profils) sans attendre le
   // debounce de 2500ms — sinon un logout rapide perd le nouveau profil.
   if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch(e) {} }
-  closeModal();
-  renderProfilesScreen();
-  renderTopbar();
-  toast(`✨ ${p.label} ajoutée à tes passions`, "success");
+  return np;
 }
 
 function switchProfileModal() {
@@ -2670,6 +2863,19 @@ function renderStudio() {
   // une information ; « AUCUNE passion publiable » est une impasse, et une
   // impasse doit nommer la sortie. Les confondre laissait un compte 100 %
   // passions personnelles devant un select vide, sans rien à faire.
+  // ── Lot flat_passions_v1 : le `<select>` cède la place à une recherche ───
+  // ⚠️ `#postPassion` RESTE dans le DOM et RESTE la source de vérité :
+  // `publishPost` lit `$("#postPassion").value`. On le masque, on ne le retire
+  // pas — le retirer publierait sous la mauvaise passion, en silence (piège
+  // exact du lot UI-6 avec `studioType`).
+  const _btnP = $("#studioPassionBtn");
+  if (_btnP) {
+    const _flat = (typeof PassioFlatUI !== "undefined") && PassioFlatUI.actif();
+    _btnP.hidden = !_flat;
+    sel.style.display = _flat ? "none" : "";
+    if (_flat) PassioFlatUI.rafraichirBoutonStudio();
+  }
+
   const _horsCat = _poolBrut.length - _pool.length;
   const _noteP = $("#studioPassionNote");
   if (_noteP) {

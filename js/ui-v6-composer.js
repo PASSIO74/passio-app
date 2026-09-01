@@ -208,6 +208,17 @@
     resume.appendChild(txt);
     var champPassion = el("fieldPassion");
     resume.appendChild(lienTexte(v8() ? "Changer" : "Modifier", function () {
+      // ── Lot flat_passions_v1 : « Changer » ouvre la RECHERCHE ─────────────
+      // ⚠️ DEUX MODULES NE PEUVENT PAS ÉCRIRE LA MÊME SURFACE. Sans ce
+      // renvoi, le composer déplierait son `<select>` pendant que le lot plat
+      // propose son propre bouton de recherche : deux commandes pour un seul
+      // choix, dont l'une ne montre que les passions du compte. Même garde que
+      // `ficheReprisParV4b` (UI-4B) et `cartesReprisesParV8` (UI-8).
+      // Le `<select>` reste la SOURCE DE VÉRITÉ dans les deux cas.
+      try {
+        if (typeof PassioFlatUI !== "undefined" && PassioFlatUI.actif()
+            && PassioFlatUI.ouvrirChoixStudio()) return;
+      } catch (e) {}
       if (!champPassion) return;
       var ouvert = champPassion.classList.toggle("v6-ouvert");
       if (ouvert) { var s = el("postPassion"); if (s) s.focus(); }
@@ -339,5 +350,10 @@
     isEnabled: actif,
     apply: apply,
     decorate: decorer,
+    // Exposée pour le lot flat_passions_v1 : quand la passion est choisie
+    // ailleurs (dans le sélecteur de recherche), le résumé « Publier dans : X »
+    // doit suivre. Sans ce point d'entrée, la source de vérité changerait et
+    // l'écran continuerait d'annoncer l'ancienne passion.
+    sync: syncResume,
   };
 })();
