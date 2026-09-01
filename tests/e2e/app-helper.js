@@ -85,4 +85,51 @@ async function bootOnboarded(page, errors, nProfiles = 1, opts = {}) {
   });
 }
 
-module.exports = { onboardedState, bootOnboarded, PASSIONS };
+// ══════════════════════════════════════════════════════════════════════════
+// LE FIL SANS LES PUBLICATIONS DE PRODUCTION
+// ──────────────────────────────────────────────────────────────────────────
+// ⚠️ NEUTRALISER `window.supaLoadPosts` APRÈS LE BOOT ARRIVE TROP TARD, et c'est
+// ce qui rendait `interactions` et `reel-deeplink` dépendantes de la production.
+//
+// `bootOnboarded` fait lui-même le `goto` : quand une suite pose son stub dans le
+// `page.evaluate` qui suit, la requête du boot est DÉJÀ PARTIE. Le stub protège
+// des chargements suivants, jamais du premier. En CI (avec réseau) ce premier
+// chargement rapporte les vraies publications de `posts`.
+//
+// Conséquence mesurée le 2026-09-01 sur la PR #235 : `renderFeed` ne peint que
+// `sortedPosts.slice(0, renderLimit)` avec `renderLimit = 20`, et le post semé
+// par `seedServerPost` (`likes: 4`, auteur inconnu) DISPUTE SA PLACE aux vraies
+// publications. Sonde lancée à l'identique sur `main` et sur une branche de
+// feature, avec des publications simulées à `likes: 500+` :
+//
+//     34 posts → le post semé ranke 43e, non rendu   (les deux arbres)
+//     60 posts → 69e, non rendu                       (les deux arbres)
+//     publications à likes: 0 → rang 9, rendu         (les deux arbres)
+//
+// Le basculement dépend donc du CONTENU DE LA PRODUCTION, pas du code testé —
+// d'où des échecs qui frappent des PR au hasard, sans rapport avec leur diff.
+// Même maladie pour `reel-deeplink` : `buildReels` tronque à 30, et une bobine
+// réelle pousse dehors la bobine de démonstration attendue.
+//
+// Le remède attaque la cause à la seule frontière que le code de l'application
+// ne peut pas reprendre : le RÉSEAU, interdit avant même la navigation. Un stub
+// posé sur `window` serait de toute façon écrasé par la déclaration
+// `function supaLoadPosts` d'app-08 au chargement du script.
+//
+// ⚠️ Portée volontairement étroite. Seules les LECTURES de la table `posts` sont
+// court-circuitées : les écritures (POST) passent, pour qu'une suite qui exerce
+// un vrai chemin de publication continue de le faire. Et `post_likes` /
+// `post_comments` ne matchent pas — le motif exige `posts?`.
+//
+// ⚠️ Sans réseau (conteneur de dev sans accès à Supabase), cette route ne se
+// déclenche jamais : le comportement local est INCHANGÉ. Le correctif ne peut
+// donc rien casser là où il ne sert à rien — mais il ne peut pas non plus y être
+// vérifié. C'est la CI qui en fait foi.
+async function sansPublicationsDistantes(page) {
+  await page.route(/\/rest\/v1\/posts\?/, (route) => {
+    if (route.request().method() !== "GET") return route.continue();
+    return route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+  });
+}
+
+module.exports = { onboardedState, bootOnboarded, sansPublicationsDistantes, PASSIONS };
