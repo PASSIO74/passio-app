@@ -905,6 +905,55 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
   `ui-v4a4-outils` et `ui-v7-lot` posent au boot `passio_ui_4a5="0"` et gardent TOUTES
   leurs assertions ; la cohabitation est prouvée à part.
 
+  **⚠️ Les carrés violets sont des LAVIS, plus des aplats (2026-09-01), SANS drapeau.**
+  Trois demandes de Benjamin après essai réel : « sur Publication, écris en petit
+  dessous : photo / vidéo » · « supprime "publier en tant que…", on a changé le
+  concept de multi-profil, ça ne sert plus à rien, supprime-le de partout » · « les
+  grands carrés violets sont agressifs, mets plutôt des carrés violet très léger et
+  écris en violet foncé », puis « pour les onglets violets, mets les mêmes sur le
+  filtre dans Rencontrer ».
+  ① **Trois jetons de palette neufs** — `--accent-tile`, `--accent-tile-on`,
+  `--accent-tile-line` — déclarés dans les DEUX palettes (`:root` historique et
+  `:root.passio-ui-v2`). Ils remplacent le couple `--accent` + blanc partout où une
+  SURFACE ENTIÈRE était peinte en violet plein : la feuille « Créer »
+  (`#v2CreateSheet`) et les cases du panneau Filtres de Rencontrer (`#v4a5Outils`,
+  `.v4a5-intents`, `#v4a5Passions`, y compris le dépliant « Autres »). L'écriture
+  passe en `--accent-2` : 6,2:1 sur le lavis, très au-dessus de l'AA. La FORME ne
+  bouge pas — mêmes hauteurs, mêmes rayons, même grille : seule la densité de
+  couleur change. Les onglets `.v7-tab[aria-selected="true"]` ne sont PAS touchés :
+  un indicateur d'onglet sélectionné n'est pas un « grand carré ».
+  ⚠️ Ce sont des couleurs OPAQUES, jamais des `rgba` comme `--accent-wash` : le
+  contrôle de contraste du projet remonte les ancêtres jusqu'au premier fond opaque
+  et prendrait une teinte translucide pour une couleur pleine, alpha ignoré.
+  ⚠️ **La grammaire d'état a dû changer avec la couleur.** Ces cases distinguaient
+  coché de décoché par `opacity: 0.55`. Sur un carré déjà très clair, cela efface la
+  case décochée ET fait tomber son texte sous le seuil AA : l'état se lit désormais à
+  la DENSITÉ du lavis (`--accent-tile-on`) et au filet violet plein, la coche ✓
+  continuant de le porter une seconde fois. Un éclaircissement fait sans y toucher
+  aurait rendu l'état invisible, en silence.
+  ⚠️ Le compteur d'une bulle de passion (`.msg-tile-badge`) S'INVERSE avec le fond :
+  il était blanc sur violet plein, il devient violet sur lavis.
+  ② **« Publication » porte un sous-titre, et elle seule.** `CREATE_CHOICES`
+  (`js/ui-v2-shell.js`) retrouve un champ `hint`, FACULTATIF : c'est la seule entrée
+  dont le nom ne dit pas ce qu'elle accepte — « Bobine », « Story », « Audio /
+  podcast » nomment déjà leur format. Le nom et son sous-titre sont empilés dans
+  `.v2-sheet-text`, le conteneur que la feuille d'UI-3 utilise déjà pour la même
+  paire : c'est LUI qui porte le centrage dans la ligne, pas le titre seul — deux
+  nœuds centrés séparément se centreraient sur deux largeurs différentes.
+  ③ **« Publier en tant que … » est retirée du composer**, avec sa classe
+  `.v6-identite*`, ses règles CSS et `identiteCourante()`. Elle n'avait de sens que
+  tant qu'on pouvait publier SOUS plusieurs identités ; depuis ADR-010/ADR-011 il n'y
+  a qu'un profil personnel, l'expéditeur n'est plus un choix. Le seul choix restant —
+  DANS QUELLE PASSION on publie — vit sur la ligne « Publier dans : ». Rien n'est
+  masqué : le nœud n'est plus construit, et le moteur n'est pas touché (`publishPost`
+  envoie toujours `state.user.general.username`, ce qu'un test vérifie).
+  Verrous : `tests/e2e/cases-violet-leger.spec.js` (2 cas — seuils de luminance, de
+  teinte et de contraste, jamais des valeurs hexadécimales, plus la distinguabilité
+  de l'état coché) et une assertion de sous-titre dans `ui-v2-shell.spec.js`.
+  Convention appliquée : les assertions dont la cible a disparu ont été RETOURNÉES,
+  jamais vidées — `ui-v6-composer.spec.js` et `ui-v7-lot.spec.js` exigent désormais
+  l'ABSENCE de la ligne d'identité, pour qu'un retour silencieux reste visible.
+
   **⚠️ La vue Carte s'affiche SOUS les onglets (2026-08-30), dans `js/ui-v4a3-vue.js`.**
   Demandé par Benjamin après essai réel : « quand je clique sur Carte je voudrais qu'elle
   apparaisse dessous les trois onglets, comme quand je clique sur Liste — le même effet

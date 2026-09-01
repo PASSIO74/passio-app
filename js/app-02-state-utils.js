@@ -4058,7 +4058,10 @@ function renderFeedExplorationFallback(list) {
 var HINTS = {
   feed_auteur: "Appuie sur l'auteur pour découvrir sa Passio",
   profil_visite: "Suis-le, ou envoie-lui un message",
-  second_profil: "Tu peux créer un profil pour une autre Passio",
+  // ⚠️ La CLÉ reste `second_profil` — `hintsVus`, les tests et les ancres en
+  // dépendent. Seul le LIBELLÉ suit ADR-011 : on n'ajoute plus un « profil »,
+  // on ajoute une PASSION à son profil unique (2026-09-01).
+  second_profil: "Tu peux ajouter une autre passion à ton profil",
   conversation_irl: "Quand vous êtes prêts, propose un moment IRL autour de votre passion",
 };
 
