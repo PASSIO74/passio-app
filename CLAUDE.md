@@ -839,10 +839,25 @@ personne.
   ④ **Un lot sans contenu éligible est indiscernable d'un lot cassé.** UI-3B ne décore
      qu'une publication portant `eventId` : aucune publication du contenu de démo n'en
      porte, donc « Voir l'activité » n'apparaissait nulle part. Le lot marchait.
+  ⑤ **UNE PREVIEW DE PR EST UNE AUTRE ORIGINE** (mesuré le 2026-09-01, PR #232).
+     Le correctif de ① garde la redirection iOS-autre-navigateur par
+     `location.origin === 'https://passio-app.netlify.app'`. Or Netlify sert les
+     déploiements de PR et de branche sous un SOUS-DOMAINE —
+     `pr-232--passio-app.netlify.app` — donc sous une origine différente : la garde
+     ne reconnaissait pas le site, et ramenait en PRODUCTION quelqu'un venu tester
+     un aperçu. Le `?passio_preview=…` survivait au voyage et atterrissait sur un
+     code qui ne contient pas le lot : on conclut « l'aperçu ne marche pas » alors
+     qu'il n'a jamais été chargé. Le prédicat est désormais
+     `_estDeploiementPassio()` (`js/platform.js`), qui accepte l'adresse canonique
+     ET `*--passio-app.netlify.app`, et il garde AUSSI l'`intent://` de Firefox
+     Android, qui avait exactement le même défaut. ⚠️ L'ancre `$` de sa regex n'est
+     pas cosmétique : sans elle, `mechant--passio-app.netlify.app.attaquant.fr`
+     serait accepté. Éprouvé sur huit hôtes, dont trois usurpations de suffixe.
   **Angle mort structurel confirmé :** `tests/e2e/app-helper.js` pose le jeton du gate
   AVANT la navigation, donc **aucune suite n'exerce la fenêtre « gate affiché,
   application absente »** — celle où ①, ② et ③ se produisent. Un vert e2e n'infirme
-  jamais ces quatre causes.
+  jamais ces cinq causes. ⑤ y échappe pour une autre raison : la suite tourne sur
+  `127.0.0.1`, donc aucun test ne peut porter un hôte `*--passio-app.netlify.app`.
 
   **Lots UI-4A4, UI-5, UI-6, UI-6A et UI-6B (2026-08-28) — tous ACTIFS PAR DÉFAUT**, chacun
   coupable seul (`localStorage.passio_ui_4a4|5|6|6a|6b = "0"`, ou le `window.PASSIO_UI_*`
