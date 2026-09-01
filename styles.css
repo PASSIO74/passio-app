@@ -7614,12 +7614,11 @@ body.ctx-locked #appMain { overflow: hidden; }
 .v2-sheet-item:hover { background: var(--accent-wash); border-color: var(--border-strong); }
 .v2-sheet-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-.v2-sheet-emoji { font-size: 24px; line-height: 1; flex-shrink: 0; width: 30px; text-align: center; }
 .v2-sheet-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .v2-sheet-item-title { font-size: 15px; font-weight: 700; color: var(--text); }
 .v2-sheet-item-hint { font-size: 12px; line-height: 1.35; color: var(--muted); }
 
-/* ── Feuille « Créer » : des onglets, pas des lignes de menu ───────────────
+/* ── Feuilles « Créer » et « Trouver une expérience » : des onglets ────────
    Demande de Benjamin du 2026-08-31 : icônes en violet, plus d'emoji, plus de
    texte d'explication, nom centré, coins arrondis.
 
@@ -7631,12 +7630,21 @@ body.ctx-locked #appMain { overflow: hidden; }
    `--accent-tile` avec l'écriture en `--accent-2`. La FORME ne bouge pas —
    même hauteur, même rayon, même centrage : seule la densité de couleur change.
 
-   ⚠️ TOUT EST ANCRÉ À `#v2CreateSheet`, jamais à `.v2-sheet-item` seul : la
-   passerelle UI-3 (`js/ui-v3-passerelle.js`) réutilise EXACTEMENT les mêmes
-   classes `.v2-sheet-*` pour sa propre feuille, avec emoji ET sous-titre. Une
-   règle non bornée lui retirerait son emoji et centrerait ses libellés, à
-   l'autre bout de l'application et sans que rien ne le signale. */
-#v2CreateSheet .v2-sheet-item {
+   ⚠️ ÉTENDU le 2026-09-01 à la feuille « Trouver une expérience » d'UI-3, sur
+   demande de Benjamin après second essai réel : « dans le fil quand je clique
+   sur un post → Trouver une expérience, je veux les mêmes onglets que dans
+   (+), même design fond violet clair écriture violet foncé ; supprime les
+   textes explicatifs et les emojis. » Les deux feuilles basses disent donc la
+   même chose de la même façon, et ces règles sont PARTAGÉES plutôt que
+   recopiées — deux copies auraient divergé au premier retouchage.
+
+   ⚠️ CE QUI N'A PAS CHANGÉ : tout reste ancré à un IDENTIFIANT de feuille,
+   jamais à `.v2-sheet-item` seul. La classe est le socle générique de toute
+   feuille basse ; non bornée, elle imposerait à la prochaine un centrage et
+   une pastille dont personne n'aurait décidé, à l'autre bout de
+   l'application et sans que rien ne le signale. */
+#v2CreateSheet .v2-sheet-item,
+#v3PassioSheet .v2-sheet-item {
   /* 52 px : la cible tactile reste très au-dessus des 44 px de référence du
      projet, sous-titre ou non — c'est `min-height`, la ligne s'agrandit
      d'elle-même sous « Publication », la seule entrée qui en porte un. */
@@ -7654,7 +7662,8 @@ body.ctx-locked #appMain { overflow: hidden; }
 /* L'icône reste VIOLETTE, sur une pastille blanche qui la détache du lavis.
    Le tracé hérite de `currentColor`, donc un seul jeu d'icônes suffit — rien
    n'est dupliqué pour obtenir la seconde couleur. */
-#v2CreateSheet .v2-sheet-icon {
+#v2CreateSheet .v2-sheet-icon,
+#v3PassioSheet .v2-sheet-icon {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
@@ -7665,7 +7674,8 @@ body.ctx-locked #appMain { overflow: hidden; }
   background: #fff;
   color: var(--accent);
 }
-#v2CreateSheet .v2-sheet-icon svg { width: 21px; height: 21px; display: block; }
+#v2CreateSheet .v2-sheet-icon svg,
+#v3PassioSheet .v2-sheet-icon svg { width: 21px; height: 21px; display: block; }
 
 /* Le nom est centré DANS LA LIGNE, pas juste après l'icône : il prend toute la
    largeur restante et se recentre par rapport à elle. La marge droite égale à
@@ -7675,7 +7685,8 @@ body.ctx-locked #appMain { overflow: hidden; }
    centrage, et non plus le titre seul : « Publication » a un sous-titre, et
    deux nœuds centrés séparément se centreraient sur deux largeurs différentes
    — le sous-titre paraîtrait décalé sous son propre titre. */
-#v2CreateSheet .v2-sheet-text {
+#v2CreateSheet .v2-sheet-text,
+#v3PassioSheet .v2-sheet-text {
   flex: 1 1 auto;
   min-width: 0;
   align-items: center;
@@ -7685,26 +7696,36 @@ body.ctx-locked #appMain { overflow: hidden; }
   margin-right: 44px;
   text-align: center;
 }
-#v2CreateSheet .v2-sheet-item-title {
+#v2CreateSheet .v2-sheet-item-title,
+#v3PassioSheet .v2-sheet-item-title {
   font-size: 15.5px;
   font-weight: 700;
   color: var(--accent-2);
 }
 /* Le sous-titre « Photo / vidéo » : en petit, sous le nom, et dans le même
-   violet simplement atténué — le gris `--muted` de la feuille d'UI-3 serait
-   éteint sur ce lavis. */
-#v2CreateSheet .v2-sheet-item-hint {
+   violet simplement atténué — le gris `--muted` du socle générique serait
+   éteint sur ce lavis.
+   ⚠️ La feuille « Trouver une expérience » n'en rend AUCUN depuis le
+   2026-09-01 (« supprime les textes explicatifs ») : elle est tout de même
+   nommée ici, délibérément, pour que le jour où l'un de ses trois libellés
+   cesserait de se suffire, son aide naisse dans la bonne couleur au lieu du
+   gris éteint que le socle lui donnerait. */
+#v2CreateSheet .v2-sheet-item-hint,
+#v3PassioSheet .v2-sheet-item-hint {
   font-size: 11.5px;
   font-weight: 600;
   line-height: 1.25;
   color: var(--accent);
 }
 #v2CreateSheet .v2-sheet-item:hover,
-#v2CreateSheet .v2-sheet-item:active {
+#v2CreateSheet .v2-sheet-item:active,
+#v3PassioSheet .v2-sheet-item:hover,
+#v3PassioSheet .v2-sheet-item:active {
   background: var(--accent-tile-on);
   border-color: var(--accent-tile-line);
 }
-#v2CreateSheet .v2-sheet-item:focus-visible {
+#v2CreateSheet .v2-sheet-item:focus-visible,
+#v3PassioSheet .v2-sheet-item:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -8099,9 +8120,12 @@ body.ctx-locked #appMain { overflow: hidden; }
 }
 #v3PassioSheet.open .v3-sheet-trace { transform: scaleX(1); }
 
-/* 56 px comme les entrées de la feuille « Créer » : cible tactile confortable
-   au pouce, titre + aide lisibles sur une largeur de 320 px. */
-#v3PassioSheet .v3-sheet-item { min-height: 56px; }
+/* La même hauteur que les entrées de la feuille « Créer », dont cette feuille
+   partage désormais toute la mise en forme (2026-09-01). 52 px reste très
+   au-dessus des 44 px de cible tactile de référence du projet, et le libellé
+   n'a plus d'aide sous lui à loger depuis que les textes explicatifs ont été
+   retirés. */
+#v3PassioSheet .v3-sheet-item { min-height: 52px; }
 
 @media (prefers-reduced-motion: reduce) {
   #v3PassioSheet .v3-sheet-trace { transition: none; transform: scaleX(1); }

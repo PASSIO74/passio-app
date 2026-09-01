@@ -1983,16 +1983,29 @@ function buildReels(pinnedId) {
     .sort(function(a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
 
   const liste = eligibles.slice(0, 30);
-  // `pinnedId` : la bobine visée par un lien partagé (#reel=<id>). Elle peut être
-  // plus ancienne que les 30 plus récentes — et dans ce cas openReelById ne la
-  // trouvait pas dans la liste, laissant le viewer sur la PREMIÈRE bobine : un
-  // lien qui montre autre chose que ce qu'il promet. On l'épingle en tête, sans
-  // élargir la liste ni changer l'ordre du cas normal.
+  // `pinnedId` : la bobine visée par un lien partagé (#reel=<id>), ou choisie
+  // dans l'onglet Bobines d'un profil. Elle est TOUJOURS épinglée en tête —
+  // sans élargir la liste, et sans rien changer au cas normal (aucun appelant
+  // ne passe `pinnedId` hors de ces deux parcours).
+  //
+  // ⚠️ L'épinglage ne valait AUTREFOIS que pour une bobine sortie des 30 plus
+  // récentes. C'était insuffisant, et mesuré le 2026-09-01 : quand la cible est
+  // DANS la liste mais pas en tête, `openReels` ouvre le viewer sur la bobine
+  // n° 0 puis `openReelById` la corrige par un `scrollIntoView`, dont l'effet
+  // n'est visible qu'au tour de rendu SUIVANT. Entre les deux, l'écran montre
+  // la bobine de QUELQU'UN D'AUTRE — exactement le mensonge que le booléen de
+  // `openReelById` existe pour éviter. Sonde : cible en position 5, lecture
+  // immédiate à l'ouverture → `reelsState.current === 0`, correction ~2 s plus
+  // tard. Sur un appareil chargé, cette fenêtre s'allonge d'autant.
+  //
+  // Épingler en tête supprime la fenêtre au lieu de la raccourcir : la cible
+  // EST l'indice 0, `openReelById` n'a plus rien à corriger, et la personne
+  // qui ouvre le lien voit ce qu'on lui a partagé, tout de suite.
   if (pinnedId) {
-    const dedans = liste.some(function(p) { return p.id === pinnedId; });
-    if (!dedans) {
-      const cible = eligibles.find(function(p) { return p.id === pinnedId; });
-      if (cible) return [cible].concat(liste.slice(0, 29));
+    const cible = eligibles.find(function(p) { return p.id === pinnedId; });
+    if (cible) {
+      return [cible].concat(
+        liste.filter(function(p) { return p.id !== pinnedId; }).slice(0, 29));
     }
   }
   return liste;

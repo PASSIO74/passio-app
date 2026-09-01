@@ -1284,6 +1284,67 @@ personne.
   Convention appliquée : les assertions dont la cible a disparu ont été RETOURNÉES,
   jamais vidées — `ui-v6-composer.spec.js` et `ui-v7-lot.spec.js` exigent désormais
   l'ABSENCE de la ligne d'identité, pour qu'un retour silencieux reste visible.
+  ④ **ÉTENDU LE MÊME JOUR À LA FEUILLE « TROUVER UNE EXPÉRIENCE » DU FIL**, sur
+  demande de Benjamin après essai réel : « dans le fil quand je clique sur un post
+  → Trouver une expérience, je veux les mêmes onglets que dans (+), même design
+  fond violet clair écriture violet foncé ; supprime les textes explicatifs et les
+  emojis. » `js/ui-v3-passerelle.js` rend donc ses trois entrées comme la feuille
+  « Créer » : une icône SVG violette dans une pastille blanche à la place de
+  l'emoji (📍 🧑‍🤝‍🧑 ✨), le libellé seul et centré, aucune aide sous lui.
+  ⚠️ **Les règles CSS sont PARTAGÉES, pas recopiées** : le bloc du 2026-08-31
+  groupe désormais `#v2CreateSheet` et `#v3PassioSheet` (sept sélecteurs). Deux
+  copies auraient divergé au premier retouchage — c'est exactement ce que le
+  commentaire d'origine redoutait en sens inverse (il interdisait alors d'élargir
+  la règle, parce que la feuille d'UI-3 portait emoji ET sous-titre : la
+  contrainte tombe avec eux). **Ce qui n'a PAS changé : tout reste ancré à un
+  IDENTIFIANT de feuille, jamais à `.v2-sheet-item` seul**, qui reste le socle
+  générique de toute feuille basse à venir.
+  ⚠️ `.v2-sheet-emoji` est **retirée** de `styles.css` : la feuille d'UI-3 en
+  était l'unique consommatrice, et une règle qui survit à sa cible est un piège
+  déjà payé ici (défaut ⑤ de l'audit du 2026-08-29).
+  ⚠️ `#v3PassioSheet .v2-sheet-item-hint` est **conservée** alors qu'aucun nœud ne
+  la porte plus — délibérément : le jour où l'un des trois libellés cesserait de se
+  suffire, son aide naîtrait sinon dans le gris `--muted` du socle, éteint sur le
+  lavis. C'est la seule exception, et elle est écrite dans le fichier.
+  Verrou : `ui-v3-passerelle.spec.js`, cas ⑨ (absence d'emoji et d'aide, une icône
+  SVG par entrée, lavis mesuré sur la case ET son titre, libellé centré). La sonde
+  de lavis a déménagé dans `tests/e2e/lavis-helper.js` — trois suites la mesurent
+  désormais, et deux copies de ces seuils auraient divergé.
+
+  **⚠️ UN LIEN DE BOBINE MONTRAIT LA BOBINE DE QUELQU'UN D'AUTRE (2026-09-01).**
+  `buildReels(pinnedId)` n'épinglait la cible que si elle était SORTIE des 30
+  plus récentes. Quand elle est dans la liste sans en être la tête, `openReels`
+  ouvre le viewer sur la bobine n° 0 et `openReelById` la corrige par un
+  `scrollIntoView` dont l'effet n'arrive qu'au tour de rendu SUIVANT. Sonde :
+  cible en position 5 → `reelsState.current === 0` à l'ouverture, correction
+  ~2 s plus tard. Entre les deux, l'écran montre le contenu d'un tiers —
+  exactement ce que le booléen de `openReelById` existe pour empêcher.
+  ⚠️ **Épingler TOUJOURS supprime la fenêtre au lieu de la raccourcir** : la
+  cible EST l'indice 0, il n'y a plus rien à corriger. La liste ne s'allonge pas
+  (`[cible] + 29`) et ne porte pas de doublon (la cible est retirée de la suite).
+  ⚠️ **Ce défaut était INVISIBLE sans contenu plus récent que la démonstration** :
+  sans lui, la cible EST déjà l'indice 0. C'est ce qui l'a laissé passer, et ce
+  qui a fait rougir la CI le jour où la production a porté des bobines récentes.
+  Verrou : `reel-deeplink.spec.js`, « cible dans les 30 mais pas la plus
+  récente ». ⚠️ Il lit l'état **dès** l'ouverture du viewer, sans attente : une
+  attente le rendrait vert sur le code fautif, donc aveugle. Éprouvé par
+  mutation — remettre l'épinglage conditionnel le fait rougir en affichant
+  `reel_recent_4`.
+
+  **⚠️ LA SUITE N'EST PAS ISOLÉE DE LA PRODUCTION, ET ÇA SE VOIT EN CI.**
+  `tests/e2e/interactions.spec.js` stubbe `supaLoadPosts` APRÈS `bootOnboarded`
+  (qui attend 2,5 s) : la première requête du démarrage a déjà ramené le contenu
+  RÉEL, qui grossit de jour en jour. Diagnostic CI du 2026-09-01 :
+  `{"dansEtat":true,"nbPosts":35,"nbNoeuds":20}` — le fixture était dans l'état,
+  mais `renderFeed` peint en **deux temps** (les `FAST` = 20 premières cartes
+  tout de suite, le reste dans un `requestIdleCallback` qu'un nouveau rendu
+  ANNULE). Au-delà de 20 posts réels, le fixture pouvait n'arriver jamais, et
+  trois tests de like rougissaient sur `main` comme sur les branches, sans
+  qu'aucun code n'ait changé. `seedServerPost` vide donc `state.supabasePosts`
+  avant de semer : le fixture est le SEUL post serveur.
+  ⚠️ Famille générale : **un test qui laisse une requête de production remplir
+  son état ne mesure pas ce qu'il croit**. Le fichier documentait déjà ce piège
+  un cran plus haut ; il manquait ce cran-ci.
 
   **⚠️ La vue Carte s'affiche SOUS les onglets (2026-08-30), dans `js/ui-v4a3-vue.js`.**
   Demandé par Benjamin après essai réel : « quand je clique sur Carte je voudrais qu'elle

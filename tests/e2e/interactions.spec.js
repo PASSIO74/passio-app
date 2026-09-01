@@ -267,10 +267,28 @@ async function showFeed(page) {
 async function seedServerPost(page, { writeResult = { ok: true, error: null }, manual = false } = {}) {
   return page.evaluate(([res, isManual]) => {
     const passion = allFeedPosts().filter((p) => p.type !== "vlog")[0].passion;
-    state.supabasePosts = state.supabasePosts || [];
+    // ⚠️ LE FIXTURE EST LE SEUL POST SERVEUR, et c'est le point de la ligne
+    // ci-dessous. Le stub de `supaLoadPosts` n'est posé qu'APRÈS `bootOnboarded`
+    // (qui attend 2,5 s) : la première requête du démarrage a donc déjà ramené
+    // le contenu RÉEL de la production, et il grossit de jour en jour.
+    //
+    // Ce que ça cassait, mesuré en CI le 2026-09-01 :
+    // `{"dansEtat":true,"nbPosts":35,"nbNoeuds":20}` — le post semé était bien
+    // dans l'état, mais le fil n'en peignait que 20. `renderFeed` peint en DEUX
+    // temps (les `FAST` = 20 premières cartes tout de suite, le reste dans un
+    // `requestIdleCallback` annulé par tout nouveau rendu) : au-delà de 20 posts,
+    // le fixture tombait dans le second lot et pouvait n'arriver jamais.
+    // `seedServerPostStable` échouait alors sur « le post semé n'a jamais atteint
+    // le fil », trois tests d'affilée, sur `main` comme sur les branches.
+    //
+    // Vider le tableau rend la suite indépendante du contenu de production, ce
+    // que le commentaire de `bootInteractions` réclamait déjà un cran plus haut
+    // (« un chargement différé qui se termine APRÈS seedServerPost remplaçait le
+    // tableau en bloc »). Aucune assertion n'y perd : ces tests observent le
+    // comportement du like sur UN post serveur, jamais le voisinage.
     // Idempotent : le seed peut être rejoué (cf. seedServerPostStable), et deux
     // exemplaires du même post fausseraient tous les compteurs.
-    state.supabasePosts = state.supabasePosts.filter((p) => p.id !== "p_srv_test");
+    state.supabasePosts = [];
     state.supabasePosts.unshift({
       id: "p_srv_test", authorId: "u_autre", authorName: "Autre", authorEmoji: "✨",
       passion, mood: "all", type: "text", text: "post serveur", createdAt: Date.now(),
