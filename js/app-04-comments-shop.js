@@ -77,10 +77,15 @@ function _delObSave(arr) { try { localStorage.setItem(_DEL_OUTBOX_KEY, JSON.stri
 function _delObStartTimer() { if (!_delObTimer) _delObTimer = setInterval(function () { if (!document.hidden) _delObFlush(); }, 15000); }
 function _delObStopTimer() { if (_delObTimer) { clearInterval(_delObTimer); _delObTimer = null; } }
 
+// ⚠️ L'entrée porte le COMPTE. La clé de file est unique pour l'origine, et
+// deux comptes se succèdent sur le même appareil : sans ce champ, la
+// suppression de A était rejouée sous l'identité de B — refusée par la RLS
+// (author_id ≠ auth.uid()), donc retentée en boucle jusqu'à la borne, pour rien.
+// Même leçon que la file `user_state`, dont la clé est suffixée par compte.
 function _enqueuePostDelete(postId, paths) {
   if (!postId) return;
   var arr = _delObLoad().filter(function (o) { return o.postId !== postId; });
-  arr.push({ postId: postId, paths: paths || [], tries: 0, ts: Date.now() });
+  arr.push({ postId: postId, paths: paths || [], uid: (typeof MY_UID !== "undefined" ? MY_UID : null), tries: 0, ts: Date.now() });
   _delObSave(arr);
   _delObStartTimer();
   _delObFlush();
@@ -130,6 +135,7 @@ async function _delObFlush() {
     for (var i = 0; i < arr.length; i++) {
       var op = arr[i];
       if ((op.tries || 0) >= _DEL_OB_MAX_TRIES) continue;
+      if (op.uid && op.uid !== MY_UID) continue;   // suppression d'un AUTRE compte : pas la nôtre à rejouer
       var ok = false;
       try { ok = await _delObRun(op); } catch (e) { ok = false; }
       if (ok) {
@@ -140,7 +146,9 @@ async function _delObFlush() {
       }
     }
   } finally { _delObFlushing = false; }
-  var pend = _delObLoad().filter(function (o) { return (o.tries || 0) < _DEL_OB_MAX_TRIES; });
+  var pend = _delObLoad().filter(function (o) {
+    return (o.tries || 0) < _DEL_OB_MAX_TRIES && (!o.uid || o.uid === MY_UID);
+  });
   if (pend.length) _delObStartTimer(); else _delObStopTimer();
 }
 
