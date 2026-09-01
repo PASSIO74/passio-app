@@ -98,6 +98,50 @@ test.describe("Lien partagé #reel=<id>", () => {
     expect(info.taille).toBeLessThanOrEqual(30);
   });
 
+  // ── La cible est DANS les 30, mais pas la plus récente ────────────────────
+  // Défaut mesuré le 2026-09-01, en production comme en CI : l'épinglage ne
+  // valait que pour une bobine sortie des 30 plus récentes. Quand la cible était
+  // dans la liste sans en être la tête, `openReels` ouvrait le viewer sur la
+  // bobine n° 0 et `openReelById` la corrigeait par un `scrollIntoView` dont
+  // l'effet n'arrive qu'au tour de rendu suivant. Sonde : cible en position 5,
+  // lecture immédiate → `reelsState.current === 0` (la bobine de QUELQU'UN
+  // D'AUTRE), correction ~2 s plus tard.
+  //
+  // ⚠️ Ce test lit l'état DÈS l'ouverture du viewer, sans attente : c'est
+  // précisément la fenêtre du défaut. Une attente le rendrait vert sur le code
+  // fautif, donc aveugle.
+  //
+  // ⚠️ Il dit aussi pourquoi la CI rougissait : sans bobine plus récente que le
+  // contenu de démonstration, la cible EST l'indice 0 et le défaut est
+  // invisible. En CI, `supaLoadPosts` atteint la vraie base de production, dont
+  // les bobines récentes reléguaient la cible plus bas — d'où trois tests de
+  // cette suite au rouge sur `main` sans qu'aucun code n'ait changé.
+  test("cible dans les 30 mais pas la plus récente : elle est à l'écran TOUT DE SUITE", async ({ page }) => {
+    const recentes = [];
+    for (let i = 0; i < 5; i++) recentes.push(bobine("reel_recent_" + i, MAINTENANT + 1000 + i));
+
+    await bootAvecLien(page, "#reel=" + BOBINE_SEED, { userPosts: recentes });
+    await viewerOuvert(page);
+
+    // Aucune fenêtre pendant laquelle on montrerait autre chose : la cible est
+    // épinglée en tête, donc l'indice courant vaut 0 et désigne bien la cible.
+    const vu = await page.evaluate(() => ({
+      id: (reelsState.items || [])[reelsState.current || 0]
+        ? reelsState.items[reelsState.current || 0].id : null,
+      premier: (reelsState.items || [])[0] ? reelsState.items[0].id : null,
+      courant: reelsState.current,
+      taille: (reelsState.items || []).length,
+    }));
+    expect(vu.id, "la bobine affichée à l'ouverture").toBe(BOBINE_SEED);
+    expect(vu.premier, "la cible est épinglée en tête").toBe(BOBINE_SEED);
+    expect(vu.courant).toBe(0);
+    // Épingler n'allonge pas la liste, et n'y laisse pas de doublon.
+    expect(vu.taille).toBeLessThanOrEqual(30);
+    expect(await page.evaluate(
+      () => (reelsState.items || []).filter((p) => p.id === "reel_seed_cuisine_1").length,
+    )).toBe(1);
+  });
+
   test("un identifiant inconnu le dit, et n'ouvre aucune autre bobine", async ({ page }) => {
     await bootAvecLien(page, "#reel=bobine_qui_nexiste_pas");
 
