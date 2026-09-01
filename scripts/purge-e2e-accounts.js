@@ -83,6 +83,22 @@ if (out) {
   // rouge sans que rien ne désigne la cause.
   if (n !== "0") process.exitCode = 1;
 } else {
-  console.warn("[purge:e2e] ⚠️ purge impossible (CLI Supabase non liée ?) — purge manuelle : " +
-    "supabase db query --linked --file scripts/purge_e2e_accounts.sql depuis le repo principal.");
+  // ⚠️ REPLI REST — C'EST LE CHEMIN DE LA CI (2026-09-01). La CLI Supabase n'y
+  // est ni installée ni liée : sans ce repli, la purge s'y soldait par le seul
+  // avertissement ci-dessous, que le teardown Playwright ignore par conception.
+  // Les comptes créés par `authz-critical`, `blocage-acces` et
+  // `user-state-horodatage` — de VRAIS comptes, sur la VRAIE prod — n'étaient
+  // donc JAMAIS supprimés. Ils se sont accumulés jusqu'à pousser le post semé
+  // par les tests hors des vingt premières cartes du fil : `main` au rouge,
+  // déploiement production sauté, et rien pour désigner la cause.
+  console.warn("[purge:e2e] CLI Supabase non liée — repli sur le chemin REST.");
+  try {
+    execSync("node scripts/purge-e2e-rest.js", {
+      cwd: path.resolve(__dirname, ".."), stdio: "inherit", timeout: 240000,
+    });
+  } catch (e) {
+    console.warn("[purge:e2e] ⚠️ repli REST en échec — purge manuelle : " +
+      "supabase db query --linked --file scripts/purge_e2e_accounts.sql depuis le repo principal.");
+    process.exitCode = 1;
+  }
 }
