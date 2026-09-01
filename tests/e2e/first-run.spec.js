@@ -419,6 +419,14 @@ test.describe("Aides au geste", () => {
   const zones = [
     ["#profileStrip .profile-tile", "passions", "Tes passions filtrent le Fil"],
     ["#feedIntentSelector .feed-intent-btn", "envies", "Ton envie du moment"],
+    // ⚠️ Deux pièges dans cette seule ligne. ① La classe est `.story-item`, PAS
+    // `.story` — une sonde écrite avec `.story` rend 0 et fait conclure à tort
+    // que le rail est vide pour un visiteur. Il ne l'est pas : « Ta story »
+    // suivie des comptes de la graine. ② On écarte la PREMIÈRE bulle : c'est
+    // « Ta story », donc une action de CRÉATION, désormais arrêtée par le gate —
+    // et le gate ouvre une modale, que `ecranOccupe()` refuse (à raison). Le
+    // geste qui porte l'aide est celui d'un visiteur qui REGARDE une story.
+    ["#storiesRowFeed .story-item:not(:first-child)", "stories", "Ce qui se passe maintenant"],
   ];
 
   for (const [selecteur, etape, titre] of zones) {
@@ -440,6 +448,17 @@ test.describe("Aides au geste", () => {
       // Une seule fois : refermée, un second geste ne la ramène pas.
       await page.locator(".fr-tip-ok").click();
       await expect(page.locator(".fr-tip")).toHaveCount(0);
+      // ⚠️ On revient d'abord au Fil. Le geste qui déclenche l'aide OUVRE
+      // souvent quelque chose par-dessus le rail (ouvrir une story pose le
+      // lecteur plein écran) : sans ce retour, le second clic ne rate pas
+      // parce que l'aide serait revenue, mais parce que la commande n'est plus
+      // atteignable — un rouge qui ne dirait rien de ce qu'on veut prouver.
+      await page.evaluate(() => {
+        try { closeStoryViewer(); } catch (e) {}
+        try { closeModal(); } catch (e) {}
+        if (typeof goTo === "function") goTo("feed");
+      });
+      await page.waitForTimeout(800);
       await cible.click();
       await page.waitForTimeout(1200);
       expect(await page.locator(`.fr-tip[data-fr-tip="${etape}"]`).count()).toBe(0);
@@ -470,6 +489,49 @@ test.describe("Aides au geste", () => {
       suivis: state.feedFollowingOn !== false,
     }));
     expect(apres.passions !== avant.passions || apres.suivis !== avant.suivis).toBe(true);
+  });
+
+  test("toute aide déclarée a une ancre RÉELLEMENT atteignable", async ({ page }) => {
+    // ⚠️ CE TEST EST LE VERROU DE LA FAMILLE, pas d'un cas. Une aide « bobines »
+    // a été livrée le 2026-09-01 avec une ancre qui n'existait pas :
+    // `.app-nav-v2 [data-v2-key="reels"]` ne matche rien (`DESTINATIONS` n'a
+    // pas cette clé) et son repli `.app-nav .nav-bobines` vit dans la nav
+    // historique que UI-1 met en `display: none`. Résultat mesuré : 0×0,
+    // `offsetParent` nul, `montrerEtape("bobines")` toujours `false`. L'aide
+    // était morte — et rien ne le disait, parce qu'aucun test ne l'exerçait.
+    // C'est la famille « une règle qui survit à la disparition de sa cible »,
+    // déjà payée trois fois dans ce projet. On mesure donc l'ancre de CHAQUE
+    // aide au geste, pas seulement celles qu'on a pensé à tester.
+    await bootVisiteur(page, { sansBienvenue: true });
+    const bilan = await page.evaluate(() => {
+      const out = [];
+      for (const [selecteur, id] of PassioFirstRun.zonesGeste()) {
+        const zone = document.querySelector(selecteur);
+        const cible = PassioFirstRun.cibleEtape(id);
+        const r = cible ? cible.getBoundingClientRect() : null;
+        out.push({
+          id,
+          selecteur,
+          zonePresente: !!zone,
+          cibleTrouvee: !!cible,
+          cibleVisible: !!(cible && cible.offsetParent && r && (r.width || r.height)),
+        });
+      }
+      return out;
+    });
+    // Au moins une aide, sinon le test ne prouve rien.
+    expect(bilan.length).toBeGreaterThan(0);
+    for (const z of bilan) {
+      // La ZONE peut légitimement être un repli absent (`#moodSelector` est
+      // masqué sous UI-7) — ce qui ne doit JAMAIS arriver, c'est qu'AUCUNE des
+      // zones d'une aide ne soit présente, ou que sa cible soit invisible.
+      expect(z.cibleTrouvee, `aide « ${z.id} » : cible introuvable`).toBe(true);
+      expect(z.cibleVisible, `aide « ${z.id} » : cible présente mais INVISIBLE (0×0 ou offsetParent nul)`).toBe(true);
+    }
+    const idsAvecZone = new Set(bilan.filter((z) => z.zonePresente).map((z) => z.id));
+    for (const z of bilan) {
+      expect(idsAvecZone.has(z.id), `aide « ${z.id} » : aucune de ses zones n'existe dans le DOM`).toBe(true);
+    }
   });
 
   test("jamais deux bulles à l'écran en même temps", async ({ page }) => {
@@ -554,6 +616,13 @@ test.describe("Gate d'authentification", () => {
       "sendMessage", "sendMessageFp", "publishPost", "mePublish",
       "openCreateEvent", "submitEvent", "setEventRsvp",
       "toggleReelLike", "submitReelComment", "likeReelComment",
+      // ⚠️ `meOpen` a été ajoutée le 2026-09-01, après mesure. `mePublish`
+      // était gardée, pas elle — or c'est `meOpen` qui OUVRE l'éditeur média en
+      // `phase-capture`, donc qui demande l'accès CAMÉRA. Un visiteur touchant
+      // « Ta story » dans la rangée du Fil y tombait à une seule tape de
+      // l'entrée directe. Garder la seule fonction qui écrit ne suffit pas :
+      // il faut garder celle qui ouvre la porte.
+      "meOpen",
     ];
     const resultat = await page.evaluate((noms) => {
       const sansGate = [];
@@ -574,6 +643,29 @@ test.describe("Gate d'authentification", () => {
 
     expect(resultat.absentes).toEqual([]);   // aucun nom n'a été renommé sans suite
     expect(resultat.sansGate).toEqual([]);   // aucune porte n'est restée ouverte
+  });
+
+  test("« Ta story » n'ouvre PAS la caméra à un visiteur", async ({ page }) => {
+    // Le contrôle par nom de fonction ci-dessus prouve le gate ; celui-ci
+    // prouve l'EFFET, sur le geste réel, parce que c'est l'effet qui comptait :
+    // l'éditeur média ne doit jamais recevoir sa classe `open`, seul moment où
+    // la capture démarre et où le navigateur réclame la caméra. ⚠️ Aucun
+    // contrôle d'ÉCRAN ne verrait ce défaut — `#mediaEditor` se pose par-dessus
+    // le Fil, qui reste l'écran actif.
+    await bootVisiteur(page, { sansBienvenue: true });
+    const rail = page.locator("#storiesRowFeed .story-item").first();
+    await expect(rail).toBeVisible({ timeout: 15000 });
+    await page.evaluate(() => PassioFirstRun.fermerBulle());
+    await rail.click();
+    await page.waitForTimeout(1000);
+    const r = await page.evaluate(() => ({
+      editeurOuvert: !!(document.getElementById("mediaEditor") || {}).classList
+        && document.getElementById("mediaEditor").classList.contains("open"),
+      gate: !!document.querySelector("#modalBackdrop.active")
+        && /Crée ton compte/.test((document.getElementById("modalContent") || {}).textContent || ""),
+    }));
+    expect(r.editeurOuvert).toBe(false);
+    expect(r.gate).toBe(true);
   });
 
   test("le contenu de démonstration est étiqueté « Exemple PASSIO »", async ({ page }) => {

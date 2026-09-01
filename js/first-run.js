@@ -1119,11 +1119,22 @@
       texte: "Des moments courts, publiés dans la journée. Ils disparaissent au bout de 24 h.",
       cible: function () { return document.getElementById("storiesRowFeed"); }
     },
-    bobines: {
-      titre: "Des vidéos courtes, par passion",
-      texte: "Fais défiler vers le haut. Chaque bobine peut mener à une vraie activité.",
-      cible: function () { return document.querySelector(".app-nav-v2 [data-v2-key=\"reels\"]") || document.querySelector(".app-nav .nav-bobines"); }
-    }
+    // ⚠️ PAS D'AIDE « BOBINES », ET C'EST DÉLIBÉRÉ. Elle a existé, elle a été
+    // retirée le 2026-09-01 après mesure : elle ne pouvait PAS s'afficher.
+    // ① Son ancre n'existait pas. `.app-nav-v2 [data-v2-key="reels"]` ne matche
+    //    rien — `DESTINATIONS` (ui-v2-shell) ne contient que discover, meet,
+    //    create, messages et profile ; et le repli `.app-nav .nav-bobines`
+    //    existe bien dans index.html mais vit dans la nav HISTORIQUE, que UI-1
+    //    met en `display: none` : mesuré à 0×0, `offsetParent` nul, donc refusé
+    //    par la garde de `montrerEtape`. Même piège que l'étape « Créer », qui
+    //    visait `.app-nav .nav-cta` avant correction.
+    // ② Et même avec une ancre valide, il n'y a aucun MOMENT où la montrer :
+    //    toute porte vers les bobines ouvre le lecteur en z-index 9999, quand
+    //    `.fr-tip` est à 9000. `ecranOccupe()` la refuserait donc — et relâcher
+    //    cette garde pour un cas particulier rouvrirait exactement le défaut ④
+    //    du lot (une bulle posée par-dessus une destination déjà ouverte).
+    // Les bobines restent expliquées là où c'est vrai : la rangée d'actions
+    // qu'UI-5 pose dans `.reel-info`, à l'intérieur du lecteur.
   };
 
   // Quelle aide au geste correspond à l'élément touché ? La correspondance se
@@ -1133,9 +1144,7 @@
     ["#profileStrip", "passions"],
     ["#feedIntentSelector", "envies"],
     ["#moodSelector", "envies"],
-    ["#storiesRowFeed", "stories"],
-    ['.app-nav-v2 [data-v2-key="reels"]', "bobines"],
-    [".app-nav .nav-bobines", "bobines"]
+    ["#storiesRowFeed", "stories"]
   ];
   // ⚠️ SEULES CES TROIS ÉTAPES forment le premier tour. Ajouter une entrée à
   // `ETAPES` n'y change rien — il faudrait l'ajouter ici aussi, et le lot
@@ -1690,6 +1699,15 @@
     abandonnerTour: abandonnerTour,
     fermerBulle: fermerBulle,
     montrerEtape: montrerEtape,
+    // Exposés pour que le verrou « toute aide déclarée a une ancre atteignable »
+    // interroge la table RÉELLE, et non une copie recopiée dans le test — une
+    // copie serait restée verte le jour où la production a perdu son ancre.
+    zonesGeste: function () { return ZONES_GESTE.slice(); },
+    cibleEtape: function (id) {
+      var e = ETAPES[id];
+      if (!e || typeof e.cible !== "function") return null;
+      try { return e.cible() || null; } catch (_) { return null; }
+    },
     // Auth
     requireAuthentication: requireAuthentication,
     allerInscription: allerInscription,
