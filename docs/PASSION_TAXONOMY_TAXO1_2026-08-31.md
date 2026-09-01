@@ -207,7 +207,38 @@ l'écran. Corollaire de test : il faut ouvrir le champ par le **vrai** bouton.
 app n'est injecté qu'après le code d'accès, et un budget de reprise consommé
 pendant la saisie ne se reconstitue pas seul. Jamais de `requestAnimationFrame`.
 
-⑨ **`styles.css` est en CRLF**, et le bloc « PASSIO UI V4 — lot UI-4A5 » doit
+⑨ **`allPassions()` devait apprendre le catalogue, sinon 23 passions sur 42
+s'appelaient « Passion ».** `passionById` retombe sur un générique
+`{ emoji: "✨", label: "Passion" }` dès que l'identifiant lui est inconnu — et
+`confirmCreateProfile` **recopie** cet emoji et cette couleur dans le profil
+qu'elle crée. La valeur fausse n'était donc pas seulement affichée, elle était
+**persistée** dans `state.user.profiles`, puis publiée. L'union posée dans
+`allPassions()` est un ajout d'**affichage** et rien d'autre :
+`estPassionCanonique` n'est pas touchée, et rien de nouveau ne devient
+publiable avant la migration.
+
+⑩ **`confirmCreateProfile` n'appelle pas `renderProfileStrip`** (mais bien
+`renderProfilesScreen` et `renderTopbar`). Le rail du Fil gardait donc
+l'ancienne liste alors qu'`ajouterPassionAuFil` venait de changer la sélection :
+la passion était cochée dans un rail qui ne la montrait pas. Le lot passe par
+`_feedSelectionChanged`, le point unique documenté, qui invalide aussi le guard
+no-op de `renderFeed`.
+
+⑪ **`confirmCreateProfile` termine par `closeModal()`** — la feuille « Toutes
+les passions » se refermait à chaque tap, dans l'écran même dont la raison
+d'être est d'en cocher plusieurs. Elle est rouverte par-dessus, recherche
+préservée. ⚠️ Et la sonde « est-elle ouverte ? » ne peut PAS se contenter de
+`getElementById` : `closeModal` (app-08) ne retire que la classe `active` de
+`#modalBackdrop`, le contenu reste dans le DOM. Le premier correctif portait
+exactement l'erreur qu'il devait fermer.
+
+⑫ **`passio:app-ready` n'est émis QU'EN PRODUCTION** (`scripts/build.js`), et au
+**chargement** d'app.js — pas à la fin de `boot()`, qui attend encore
+`ensureSupabase()` avant de poser `state`. Le compteur de reprise repart bien à
+zéro sur cet événement, mais doit ensuite couvrir seul un démarrage réseau
+froid : 120 réveils de 250 ms (30 s), pas 40.
+
+⑬ **`styles.css` est en CRLF**, et le bloc « PASSIO UI V4 — lot UI-4A5 » doit
 rester le DERNIER du fichier. Le bloc TAXO-1 est donc posé juste avant lui ; les
 deux familles de sélecteurs sont disjointes, rien ne se recouvre.
 
@@ -216,11 +247,14 @@ deux familles de sélecteurs sont disjointes, rien ne se recouvre.
 ## 8. Limites connues
 
 1. **La migration n'est pas appliquée.** Tant qu'elle ne l'est pas :
-   - les 23 passions nouvelles **ne sont pas publiables** — le socle embarqué
-     `PASSIONS` en compte 19 et le serveur ne sert que celles-là. Le Studio ne
-     les propose donc pas, et `requiredCanonicalPassion` refuse **avant** toute
-     requête : aucune publication n'est perdue, mais choisir « Sports de combat »
-     comme centre d'intérêt donne un filtre sans contenu ;
+   - les 23 passions nouvelles **s'affichent correctement** (nom, emoji,
+     couleur — voir le piège ⑨) mais **ne sont pas publiables** : le socle
+     embarqué `PASSIONS` en compte 19 et le serveur ne sert que celles-là. Le
+     Studio ne les propose donc pas, et `requiredCanonicalPassion` refuse
+     **avant** toute requête : aucune publication n'est perdue, mais choisir
+     « Sports de combat » comme centre d'intérêt donne un **filtre sans
+     contenu** — exactement ce qu'ADR-010 voulait éviter. Cela se résout de
+     soi-même à l'application de la migration, sans un octet de code client ;
    - `user_passions`, `user_passion_specialties` et `passion_requests`
      n'existent pas : les écritures échouent, sont journalisées par `diagLog` et
      **la source de vérité reste locale** (`state.user`) ;
