@@ -24,6 +24,22 @@
       --accent-5-soft: #ddd6fe;
       --accent-wash: rgba(124, 58, 237, 0.08); /* fond d'état actif discret */
 
+      /* ── Cases « violet léger » (2026-09-01) ───────────────────────────────
+         Demande de Benjamin : « les grands carrés violets sont agressifs, mets
+         plutôt des carrés violet très léger et écris en violet foncé. » Ces
+         trois jetons remplacent le couple `--accent` + blanc partout où une
+         SURFACE entière était peinte en violet plein (feuille « Créer », cases
+         du panneau Filtres de Rencontrer).
+         ⚠️ Ce sont des couleurs OPAQUES, pas des `rgba` comme `--accent-wash` :
+         le test de contraste du projet remonte les ancêtres jusqu'au premier
+         fond opaque et prendrait une teinte translucide pour une couleur
+         pleine, alpha ignoré — il mesurerait alors un rapport qui ne prouve
+         rien. L'écriture est `--accent-2` : 6,2:1 sur `--accent-tile`, très
+         au-dessus des 4,5:1 de l'AA. */
+      --accent-tile: #f5efff;       /* le carré au repos : un lavis violet */
+      --accent-tile-on: #e5d9fc;    /* le même, coché : un ton plus dense */
+      --accent-tile-line: #d6c4f5;  /* le filet qui les cerne */
+
       --text: #1b1830;
       --text-dim: #4a4663;
       --muted: #6e6987; /* assombri pour contraste WCAG AA (4.5+ sur blanc, ~4.2 sur bg-deep ; était #8a86a0 à 3.5/2.8) */
@@ -7305,6 +7321,10 @@ body.ctx-locked #appMain { overflow: hidden; }
   --accent-4: var(--v2-iris);
   --accent-5: #c8b2ff;
   --accent-wash: rgba(109, 50, 244, 0.08);
+  /* Les cases « violet léger », accordées au violet #6D32F4 de la charte. */
+  --accent-tile: #f3eeff;
+  --accent-tile-on: #e3d7ff;
+  --accent-tile-line: #d2c2fb;
 
   --text: var(--v2-ink);
   --text-dim: #47435f;
@@ -7573,9 +7593,15 @@ body.ctx-locked #appMain { overflow: hidden; }
 
 /* ── Feuille « Créer » : des onglets, pas des lignes de menu ───────────────
    Demande de Benjamin du 2026-08-31 : icônes en violet, plus d'emoji, plus de
-   texte d'explication, nom centré, et « l'onglet Publication du profil » comme
-   référence esthétique — c'est-à-dire `.v7-tab[aria-selected="true"]` :
-   violet plein, écriture blanche, coins arrondis.
+   texte d'explication, nom centré, coins arrondis.
+
+   ⚠️ RECTIFIÉ le 2026-09-01, sur essai réel : « les grands carrés violets sont
+   agressifs, mets plutôt des carrés violet TRÈS LÉGER et écris en violet
+   foncé. » Le violet plein + écriture blanche (la formule reprise de l'onglet
+   Publication du profil) posait six aplats saturés pleine largeur les uns sous
+   les autres : la feuille criait au lieu de proposer. Elle passe donc au lavis
+   `--accent-tile` avec l'écriture en `--accent-2`. La FORME ne bouge pas —
+   même hauteur, même rayon, même centrage : seule la densité de couleur change.
 
    ⚠️ TOUT EST ANCRÉ À `#v2CreateSheet`, jamais à `.v2-sheet-item` seul : la
    passerelle UI-3 (`js/ui-v3-passerelle.js`) réutilise EXACTEMENT les mêmes
@@ -7583,23 +7609,23 @@ body.ctx-locked #appMain { overflow: hidden; }
    règle non bornée lui retirerait son emoji et centrerait ses libellés, à
    l'autre bout de l'application et sans que rien ne le signale. */
 #v2CreateSheet .v2-sheet-item {
-  /* 52 px : le sous-titre est parti, la ligne n'a plus besoin de 56 px, et la
-     cible tactile reste très au-dessus des 44 px de référence du projet. */
+  /* 52 px : la cible tactile reste très au-dessus des 44 px de référence du
+     projet, sous-titre ou non — c'est `min-height`, la ligne s'agrandit
+     d'elle-même sous « Publication », la seule entrée qui en porte un. */
   min-height: 52px;
   gap: 10px;
   padding: 10px 14px;
   text-align: center;
   border-radius: 14px;
-  /* « Carré violet + écriture blanche » : la même formule que l'onglet
-     Publication du profil, et que les cases du panneau Filtres de Rencontrer. */
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-  transition: filter 150ms ease;
+  /* « Carré violet très léger + écriture violet foncé. » */
+  background: var(--accent-tile);
+  border-color: var(--accent-tile-line);
+  color: var(--accent-2);
+  transition: background 150ms ease, border-color 150ms ease;
 }
-/* L'icône est VIOLETTE, comme demandé : elle est peinte sur une pastille
-   blanche posée sur le violet. Le tracé hérite de `currentColor`, donc un seul
-   jeu d'icônes suffit — rien n'est dupliqué pour obtenir la seconde couleur. */
+/* L'icône reste VIOLETTE, sur une pastille blanche qui la détache du lavis.
+   Le tracé hérite de `currentColor`, donc un seul jeu d'icônes suffit — rien
+   n'est dupliqué pour obtenir la seconde couleur. */
 #v2CreateSheet .v2-sheet-icon {
   flex: 0 0 auto;
   display: inline-flex;
@@ -7616,23 +7642,42 @@ body.ctx-locked #appMain { overflow: hidden; }
 /* Le nom est centré DANS LA LIGNE, pas juste après l'icône : il prend toute la
    largeur restante et se recentre par rapport à elle. La marge droite égale à
    la largeur de l'icône + le `gap` compense l'icône de gauche, sinon le texte
-   serait centré sur l'espace résiduel et paraîtrait décalé à droite. */
-#v2CreateSheet .v2-sheet-item-title {
+   serait centré sur l'espace résiduel et paraîtrait décalé à droite.
+   ⚠️ Depuis le 2026-09-01 c'est le CONTENEUR `.v2-sheet-text` qui porte ce
+   centrage, et non plus le titre seul : « Publication » a un sous-titre, et
+   deux nœuds centrés séparément se centreraient sur deux largeurs différentes
+   — le sous-titre paraîtrait décalé sous son propre titre. */
+#v2CreateSheet .v2-sheet-text {
   flex: 1 1 auto;
   min-width: 0;
-  /* Le nom est centré DANS LA LIGNE : la marge droite compense exactement la
-     pastille de gauche (34 px) et le `gap` (10 px), sinon le texte serait
-     centré sur l'espace résiduel et paraîtrait poussé vers la droite. */
+  align-items: center;
+  gap: 1px;
+  /* La marge droite compense exactement la pastille de gauche (34 px) et le
+     `gap` (10 px). */
   margin-right: 44px;
   text-align: center;
+}
+#v2CreateSheet .v2-sheet-item-title {
   font-size: 15.5px;
   font-weight: 700;
-  color: #fff;
+  color: var(--accent-2);
+}
+/* Le sous-titre « Photo / vidéo » : en petit, sous le nom, et dans le même
+   violet simplement atténué — le gris `--muted` de la feuille d'UI-3 serait
+   éteint sur ce lavis. */
+#v2CreateSheet .v2-sheet-item-hint {
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--accent);
 }
 #v2CreateSheet .v2-sheet-item:hover,
-#v2CreateSheet .v2-sheet-item:active { filter: brightness(1.08); }
+#v2CreateSheet .v2-sheet-item:active {
+  background: var(--accent-tile-on);
+  border-color: var(--accent-tile-line);
+}
 #v2CreateSheet .v2-sheet-item:focus-visible {
-  outline: 2px solid var(--text);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
@@ -8992,8 +9037,11 @@ body.ctx-locked #appMain { overflow: hidden; }
   gap: 12px;
 }
 
-/* « Publier en tant que … · Changer » : une ligne calme, pas un formulaire. */
-:root.passio-ui-6 .v6-identite,
+/* « Publier dans : … · Changer » : une ligne calme, pas un formulaire.
+   ⚠️ `.v6-identite*` a été RETIRÉE le 2026-09-01 avec la ligne « Publier en
+   tant que … » qu'elle habillait (le multi-profil n'existe plus, l'expéditeur
+   n'est plus un choix). Une règle qui survit à la disparition de sa cible est
+   un piège maison connu : elle part avec elle. */
 :root.passio-ui-6 .v6-passio {
   display: flex;
   align-items: center;
@@ -9005,7 +9053,6 @@ body.ctx-locked #appMain { overflow: hidden; }
   border: 1px solid var(--border);
   min-width: 0;
 }
-:root.passio-ui-6 .v6-identite-txt,
 :root.passio-ui-6 .v6-passio-txt {
   font-size: 13px;
   font-weight: 600;
@@ -10280,19 +10327,24 @@ html:not(.passio-first-run) .fr-only { display: none !important; }
   /* La MÊME hauteur pour toutes les cases : c'est ce qui les « ordonne ». */
   min-height: 56px;
   padding: 8px 10px;
-  border: 1px solid var(--accent);
+  /* ⚠️ VIOLET LÉGER + ÉCRITURE VIOLET FONCÉ depuis le 2026-09-01, sur essai
+     réel de Benjamin (« les grands carrés violets sont agressifs… mets les
+     mêmes sur le filtre dans Rencontrer ») : ce panneau et la feuille
+     « Créer » suivent la MÊME formule, ce sont les deux surfaces qui
+     empilaient des aplats violets pleins. */
+  border: 1px solid var(--accent-tile-line);
   border-radius: 14px;
-  background: var(--accent);
-  color: #fff;
+  background: var(--accent-tile);
+  color: var(--accent-2);
   text-align: center;
   font-size: 13px;
   font-weight: 700;
   box-shadow: none;
-  transition: opacity .16s ease;
+  transition: background .16s ease, border-color .16s ease;
 }
 :root.passio-ui-4a5 .v4a5-intents .v4a0-chip .v4a0-chip-label,
 :root.passio-ui-4a5 #v4a5Outils .ctx-item .ctx-item-label {
-  color: #fff;
+  color: var(--accent-2);
   font-size: 13px;
   font-weight: 700;
   line-height: 1.2;
@@ -10305,7 +10357,7 @@ html:not(.passio-first-run) .fr-only { display: none !important; }
   min-width: 0;
 }
 :root.passio-ui-4a5 #v4a5Outils .ctx-item .ctx-item-sub {
-  color: rgba(255, 255, 255, 0.78);
+  color: var(--accent);
   font-size: 10.5px;
   font-weight: 600;
 }
@@ -10313,19 +10365,24 @@ html:not(.passio-first-run) .fr-only { display: none !important; }
 :root.passio-ui-4a5 #v4a5Outils .ctx-item .ctx-item-ico,
 :root.passio-ui-4a5 #v4a5Outils .ctx-item .ctx-item-go { display: none; }
 
-/* L'ÉTAT COCHÉ reste lisible sans quitter le violet : une case non cochée est
-   le même carré, simplement atténué, et la coche ✓ ne s'affiche que sur la
-   sélection (règle héritée d'UI-4A0, conservée telle quelle).
+/* L'ÉTAT COCHÉ se lit désormais à la DENSITÉ du lavis et à son filet, plus à
+   l'opacité : sur un carré déjà très clair, atténuer encore à 0,55 effaçait la
+   case décochée et faisait tomber son texte sous le seuil AA. Cochée, elle
+   prend le ton plus dense et le filet violet plein ; la coche ✓ ne s'affiche
+   toujours que sur la sélection (règle héritée d'UI-4A0, conservée telle
+   quelle) — l'état ne repose donc jamais sur la seule couleur.
    ⚠️ « Choisir une ville » n'est pas une bascule mais une ACTION : elle ne porte
-   pas `aria-pressed` et reste donc pleine — c'est voulu, elle n'a pas d'état. */
-:root.passio-ui-4a5 .v4a5-intents .v4a0-chip[aria-pressed="false"],
-:root.passio-ui-4a5 #v4a5Outils .ctx-item[aria-pressed="false"] { opacity: 0.55; }
+   pas `aria-pressed` et garde donc l'aspect au repos — c'est voulu, elle n'a
+   pas d'état à montrer. */
 :root.passio-ui-4a5 .v4a5-intents .v4a0-chip[aria-pressed="true"],
-:root.passio-ui-4a5 #v4a5Outils .ctx-item[aria-pressed="true"] { opacity: 1; }
-:root.passio-ui-4a5 .v4a5-intents .v4a0-chip .v4a0-chip-mark { color: #fff; }
+:root.passio-ui-4a5 #v4a5Outils .ctx-item[aria-pressed="true"] {
+  background: var(--accent-tile-on);
+  border-color: var(--accent);
+}
+:root.passio-ui-4a5 .v4a5-intents .v4a0-chip .v4a0-chip-mark { color: var(--accent); }
 :root.passio-ui-4a5 .v4a5-intents .v4a0-chip:focus-visible,
 :root.passio-ui-4a5 #v4a5Outils .ctx-item:focus-visible {
-  outline: 2px solid var(--text);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 @media (prefers-reduced-motion: reduce) {
@@ -10374,74 +10431,76 @@ html:not(.passio-first-run) .fr-only { display: none !important; }
   justify-content: center;
   gap: 6px;
   padding: 8px 10px;
-  border: 1px solid var(--accent);
+  border: 1px solid var(--accent-tile-line);
   border-radius: 14px;
-  background: var(--accent);
-  color: #fff;
+  background: var(--accent-tile);
+  color: var(--accent-2);
   font-size: 13px;
   font-weight: 700;
   box-shadow: none;
-  transition: opacity .16s ease;
+  transition: background .16s ease, border-color .16s ease;
 }
 /* L'emoji de la passion et le marqueur « ✦ » : masqués, jamais retirés. */
 :root.passio-ui-4a5 #v4a5Passions .msg-tile .msg-tile-icon { display: none; }
 :root.passio-ui-4a5 #v4a5Passions .msg-tile .msg-tile-label {
   max-width: none;
-  color: #fff;
+  color: var(--accent-2);
   font-size: 13px;
   font-weight: 700;
   letter-spacing: 0;
 }
 /* Le compteur reste une INFORMATION (nombre d'activités dans cette passion) :
-   il n'est pas masqué, il passe simplement en pastille blanche sur le violet —
-   le rose de la messagerie hurlait sur ce fond. */
+   il n'est pas masqué, il passe simplement en pastille violette sur le lavis —
+   le rose de la messagerie hurlait sur ce fond. (Elle était blanche sur violet
+   plein ; le fond ayant changé de sens, la pastille s'inverse avec lui.) */
 :root.passio-ui-4a5 #v4a5Passions .msg-tile .msg-tile-badge {
   top: 6px;
   right: 6px;
-  background: #fff;
-  color: var(--accent);
+  background: var(--accent);
+  color: #fff;
   border-color: transparent;
   box-shadow: none;
 }
-/* Même grammaire d'état que les autres cases : coché = plein, décoché =
-   atténué. « Autres » porte `aria-expanded` et non `aria-pressed` : c'est une
-   ACTION, elle reste pleine — comme « Choisir une ville ». */
-:root.passio-ui-4a5 #v4a5Passions .msg-tile[aria-pressed="false"] { opacity: 0.55; }
+/* Même grammaire d'état que les autres cases : coché = lavis dense et filet
+   violet, décoché = lavis au repos. « Autres » porte `aria-expanded` et non
+   `aria-pressed` : c'est une ACTION, elle garde l'aspect au repos — comme
+   « Choisir une ville ». */
 :root.passio-ui-4a5 #v4a5Passions .msg-tile[aria-pressed="true"],
-:root.passio-ui-4a5 #v4a5Passions .msg-tile.active { opacity: 1; }
+:root.passio-ui-4a5 #v4a5Passions .msg-tile.active {
+  background: var(--accent-tile-on);
+  border-color: var(--accent);
+}
 :root.passio-ui-4a5 #v4a5Passions .msg-tile.active .msg-tile-icon { box-shadow: none; }
-:root.passio-ui-4a5 #v4a5Passions .msg-tile:hover { color: #fff; }
+:root.passio-ui-4a5 #v4a5Passions .msg-tile:hover { color: var(--accent-2); }
 :root.passio-ui-4a5 #v4a5Passions .msg-tile:focus-visible {
-  outline: 2px solid var(--text);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
 /* Le panneau « Autres » — la liste dépliée par la tuile du même nom — parle la
-   même langue : des pastilles violettes à écriture blanche, la case à cocher
-   inversée pour rester lisible sur le violet. */
+   même langue : des pastilles au lavis violet, écriture violet foncé, et la
+   case à cocher qui se remplit de violet une fois cochée. */
 :root.passio-ui-4a5 #v4a5Passions .irl-extra-chip {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: #fff;
-  opacity: 0.55;
+  border-color: var(--accent-tile-line);
+  background: var(--accent-tile);
+  color: var(--accent-2);
   min-height: 38px;
 }
 :root.passio-ui-4a5 #v4a5Passions .irl-extra-chip.on {
   border-color: var(--accent);
-  background: var(--accent);
-  color: #fff;
-  opacity: 1;
+  background: var(--accent-tile-on);
+  color: var(--accent-2);
 }
 :root.passio-ui-4a5 #v4a5Passions .irl-extra-chip b,
-:root.passio-ui-4a5 #v4a5Passions .irl-extra-chip.on b { color: rgba(255, 255, 255, 0.8); }
+:root.passio-ui-4a5 #v4a5Passions .irl-extra-chip.on b { color: var(--accent); }
 :root.passio-ui-4a5 #v4a5Passions .irl-extra-chip .irl-extra-box {
-  border-color: rgba(255, 255, 255, 0.75);
-  color: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
 }
 :root.passio-ui-4a5 #v4a5Passions .irl-extra-chip.on .irl-extra-box {
-  background: #fff;
-  border-color: #fff;
-  color: var(--accent);
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
 }
 
 @media (max-width: 359px) {

@@ -5,7 +5,6 @@
 //  avant de commencer. »  — §9
 //
 // Cible :
-//   Publier en tant que [identité active]   Changer
 //   [Écris quelque chose…]
 //   [Ajouter photo ou vidéo]
 //   Passio : [préremplie]                   Modifier
@@ -129,27 +128,6 @@
   // ne disait pas du tout qu'il s'agissait d'un choix.
   function libellePublieDans() { return v8() ? "Publier dans : " : "Passion : "; }
 
-  // ⚠️ Lot UI-8 : le PSEUDO GÉNÉRAL d'abord. Cette fonction lisait
-  // `currentProfile().name` — le nom porté par la passion active — et le Studio
-  // annonçait donc de publier « en tant que » quelque chose qui n'est pas
-  // l'identité publique. Ce n'est pas une nuance de vocabulaire : c'est le
-  // pseudo général qui part réellement avec le post (`publishPost` prend
-  // `state.user.general.username` en premier), et lui seul.
-  function identiteCourante() {
-    try {
-      var g = (typeof state !== "undefined" && state && state.user && state.user.general) || {};
-      if (g.username) return String(g.username);
-      if (typeof state !== "undefined" && state && state.user && state.user.name) return String(state.user.name);
-      var p = (typeof currentProfile === "function") ? currentProfile() : null;
-      if (p && p.name) return String(p.name);
-      if (p && p.passion && typeof passionById === "function") {
-        var meta = passionById(p.passion);
-        if (meta && meta.label) return String(meta.label);
-      }
-    } catch (e) {}
-    return "moi";
-  }
-
   function libellePassionChoisie() {
     try {
       var s = el("postPassion");
@@ -168,19 +146,18 @@
     hote.className = "v6-composer";
     hote.id = HOTE_ID;
 
-    // ① « Publier en tant que … · Changer »
-    var identite = ligne("v6-identite");
-    var qui = document.createElement("span");
-    qui.className = "v6-identite-txt";
-    qui.textContent = "Publier en tant que " + identiteCourante();
-    identite.appendChild(qui);
-    // ⚠️ Lot UI-8 : plus de « Changer de profil » ici. Publier ne change JAMAIS
-    // d'identité — il n'y a qu'un profil personnel. Ce qui se choisit, c'est la
-    // PASSION, et elle se choisit sur la ligne « Publication dans » ci-dessous.
-    identite.appendChild(lienTexte(v8() ? "Voir mon profil" : "Changer de profil", function () {
-      if (typeof goTo === "function") goTo("profiles");
-    }));
-    hote.appendChild(identite);
+    // ⚠️ ① LA LIGNE D'IDENTITÉ A ÉTÉ RETIRÉE le 2026-09-01, sur demande de
+    // Benjamin (« nous avons changé le concept de multi-profil, ça ne sert plus
+    // à rien »). Elle annonçait « Publier en tant que <pseudo> · Voir mon
+    // profil » — une phrase qui n'avait de sens que tant qu'on pouvait publier
+    // SOUS plusieurs identités. Depuis ADR-010/ADR-011 il n'y a qu'un seul
+    // profil personnel : l'expéditeur n'est plus un choix, donc l'annoncer à
+    // chaque publication ne renseigne sur rien. Le seul choix restant — DANS
+    // QUELLE PASSION on publie — vit sur la ligne « Publier dans : » ci-dessous.
+    // Rien n'est masqué : le nœud n'est plus construit du tout, et
+    // `identiteCourante()` part avec lui (une fonction sans appelant est un
+    // piège maison connu). `publishPost` continue d'envoyer
+    // `state.user.general.username` : le moteur n'est pas touché.
 
     // ② Le texte, tel quel.
     var champTexte = el("postText");
@@ -275,8 +252,6 @@
     try {
       var t = document.querySelector("[data-v6-passio]");
       if (t) t.textContent = libellePublieDans() + (libellePassionChoisie() || "—");
-      var q = document.querySelector(".v6-identite-txt");
-      if (q) q.textContent = "Publier en tant que " + identiteCourante();
     } catch (e) {}
   }
 

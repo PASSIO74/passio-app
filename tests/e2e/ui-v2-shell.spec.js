@@ -156,6 +156,15 @@ test("aperçu : « Créer » ouvre le sélecteur et non l'écran Studio", async 
     "Publication", "Bobine", "Activité", "Story", "Live vidéo", "Audio / podcast",
   ]);
 
+  // ⚠️ « Publication » — et ELLE SEULE — porte un sous-titre depuis le
+  // 2026-09-01 : c'est la seule entrée dont le nom ne dit pas ce qu'elle
+  // accepte (les autres nomment déjà leur format). Les cinq autres restent
+  // nues, sans quoi la feuille redeviendrait la liste de menu qu'elle a cessé
+  // d'être le 2026-08-31.
+  await expect(sheet.locator('[data-v2-create="post"] .v2-sheet-item-hint'))
+    .toHaveText("Photo / vidéo");
+  await expect(sheet.locator(".v2-sheet-item-hint")).toHaveCount(1);
+
   // Le sous-menu a disparu : ni « Plus », ni « Retour », nulle part.
   await expect(sheet.locator('[data-v2-create="more"]')).toHaveCount(0);
   await expect(sheet.locator('[data-v2-create="back"]')).toHaveCount(0);
