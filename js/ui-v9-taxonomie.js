@@ -338,11 +338,37 @@
       + "</div>";
   }
 
-  function ouvrirCatalogue() {
+  // ⚠️ LA PRÉSENCE DU NŒUD NE DIT PAS QUE LA FEUILLE EST OUVERTE. `closeModal`
+  // (app-08) ne fait QUE retirer la classe `active` de `#modalBackdrop` : le
+  // contenu de la modale reste dans le DOM, masqué. Une sonde qui ne testait
+  // que `getElementById` répondait donc « ouverte » sur une feuille fermée, et
+  // la réouverture n'avait jamais lieu — c'est le défaut que ce correctif
+  // devait fermer, réintroduit dans le correctif lui-même.
+  function catalogueOuvert() {
+    if (!document.getElementById("taxoCatalogueCorps")) return false;
+    var b = document.getElementById("modalBackdrop");
+    return !!(b && b.classList.contains("active"));
+  }
+
+  // `preserver` : rouvrir la feuille SANS perdre la recherche en cours.
+  //
+  // ⚠️ ELLE EXISTE PARCE QUE `confirmCreateProfile` TERMINE PAR `closeModal()`.
+  // Ajouter une passion depuis « Toutes les passions » refermait donc la
+  // feuille à chaque tap — dans l'écran même dont la raison d'être est d'en
+  // cocher plusieurs. On ne touche pas au moteur (ce `closeModal` est correct
+  // quand la modale est celle du moteur) : on rouvre par-dessus, ce qui est
+  // aussi le seul geste compatible avec « openModal n'empile pas ».
+  function ouvrirCatalogue(preserver) {
     if (!actif()) return;
-    _rechercheCatalogue = "";
+    if (!preserver) _rechercheCatalogue = "";
     try { openModal(catalogueHTML()); } catch (e) { fail("ouvrirCatalogue", e); return; }
     brancherRecherche();
+    // Le champ reprend le focus et le curseur en fin de texte : sans ça, le
+    // clavier mobile se referme entre deux sélections.
+    if (preserver && _rechercheCatalogue) {
+      var c = document.getElementById("taxoCatalogueSearch");
+      if (c) { try { c.focus(); c.setSelectionRange(c.value.length, c.value.length); } catch (e) {} }
+    }
   }
 
   // Repeint SEULEMENT le corps : réécrire la feuille entière ferait perdre le
@@ -846,21 +872,24 @@
       saveState();
     } catch (e) { fail("passionRequests", e); }
 
-    // ⚠️ On lit `{ error }` : le SDK ne lève pas sur un refus RLS, et un envoi
-    // qui n'atteint jamais la base ne doit pas s'annoncer « envoyé ».
-    var envoye = false;
+    // ⚠️ On lit `{ error }` : le SDK ne LÈVE PAS sur un refus RLS.
+    //
+    // ⚠️ Et le message ne PROMET PAS l'arrivée en base. L'insert est
+    // asynchrone : une variable posée dans le `.then()` serait encore fausse au
+    // moment de composer le toast — un « envoyé » calculé là serait un mensonge
+    // par construction, pas une mesure. La demande est ENREGISTRÉE localement,
+    // c'est ce que le message dit, et c'est vrai dans tous les cas.
     if (supaPret()) {
       try {
         supa.from("passion_requests").insert({
           id: dem.id, user_id: monUid(), label: label, note: note || null, status: "pending"
         }).then(function (r) {
           if (r && r.error) fail("insert passion_requests", r.error.message);
-          else envoye = true;
         }).catch(function (e) { fail("insert passion_requests", e); });
       } catch (e) { fail("insert passion_requests", e); }
     }
     try { closeModal(); } catch (e) {}
-    dire("Merci — « " + label + " » est envoyée pour examen." + (envoye ? "" : ""), "success");
+    dire("Merci — « " + label + " » est notée. Elle sera examinée avant d'entrer au catalogue.", "success");
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -888,13 +917,25 @@
 
       if (act === "onb") { tapOnb(id); return; }
 
+      // La feuille du catalogue était-elle ouverte AVANT l'action ? Les
+      // moteurs d'ajout la referment (voir `ouvrirCatalogue`), et il faut
+      // savoir s'il y a lieu de la rouvrir.
+      var feuilleAvant = catalogueOuvert();
+
       if (act === "passion") {
         // Dans l'onboarding, une passion du catalogue passe par `togglePassion`
         // (plafond, passion de départ). Ailleurs, elle s'ajoute ou s'archive.
         if (onboardingEnCours()) { tapOnb(id); repeindreCatalogue(); return; }
-        if (aPassion(id)) { retirerPassion(id); }
-        else if (ajouterPassion(id)) { dire("Passion ajoutée", "success"); }
+        if (aPassion(id)) {
+          // ⚠️ On NE rouvre PAS après un retrait : `confirmArchivePassion`
+          // ouvre une demande de confirmation, et rouvrir la feuille par-dessus
+          // l'effacerait — on demanderait une confirmation invisible.
+          retirerPassion(id);
+          return;
+        }
+        if (ajouterPassion(id)) dire("Passion ajoutée", "success");
         rafraichir();
+        if (feuilleAvant && !catalogueOuvert()) ouvrirCatalogue(true);
         return;
       }
 
@@ -911,6 +952,7 @@
         if (!aPassion(pid)) ajouterPassion(pid);
         toggleSpecialite(pid, id);
         rafraichir();
+        if (feuilleAvant && !catalogueOuvert()) ouvrirCatalogue(true);
         return;
       }
 

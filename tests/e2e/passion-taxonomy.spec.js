@@ -179,6 +179,37 @@ test.describe("TAXO-1 · interface", () => {
     expect(apres.specs).toContain("moto-enduro");
   });
 
+  test("le catalogue reste ouvert après un ajout : on en coche plusieurs d'affilée", async ({ page }) => {
+    // ⚠️ DÉFAUT RÉEL, trouvé en relisant le diff. `confirmCreateProfile` —
+    // le moteur d'ajout — termine par `closeModal()`. La feuille « Toutes les
+    // passions » se refermait donc à CHAQUE tap, dans l'écran même dont la
+    // raison d'être est d'en cocher plusieurs.
+    await bootTaxo(page);
+    await page.evaluate(() => { window.PassioTaxo.ouvrirCatalogue(); });
+    await expect(page.locator("#taxoCatalogueCorps")).toBeVisible();
+
+    await page.locator('.taxo-chip[data-taxo-act="passion"][data-taxo-id="combat"]').first().click();
+    await page.waitForTimeout(500);
+    await expect(page.locator("#taxoCatalogueCorps"), "la feuille s'est refermée après le premier ajout").toBeVisible();
+
+    await page.locator('.taxo-chip[data-taxo-act="passion"][data-taxo-id="peche"]').first().click();
+    await page.waitForTimeout(500);
+    await expect(page.locator("#taxoCatalogueCorps")).toBeVisible();
+
+    const p = await page.evaluate(() => window.PassioTaxo.mesPassions());
+    expect(p).toContain("combat");
+    expect(p).toContain("peche");
+
+    // Et la recherche en cours n'est pas perdue au passage.
+    await page.locator("#taxoCatalogueSearch").fill("guitare");
+    await page.waitForTimeout(250);
+    await page.locator('.taxo-chip[data-taxo-id="musique-guitare"]').first().click();
+    await page.waitForTimeout(500);
+    await expect(page.locator("#taxoCatalogueCorps")).toBeVisible();
+    expect(await page.locator("#taxoCatalogueSearch").inputValue(),
+      "la recherche en cours a été perdue").toBe("guitare");
+  });
+
   test("la sélection survit à un rechargement", async ({ page }) => {
     await bootTaxo(page);
     await page.evaluate(() => {
