@@ -401,12 +401,42 @@ et écrit en binaire.
   1 889 passions nouvelles sont **sélectionnables et lisibles**, mais **pas
   publiables** : la clé étrangère de `posts.passion_id` les refuserait. Le
   Studio refuse **avant** l'insert, avec un message qui dit quoi faire (test ⑮).
-- **Traiter les demandes.** `passion_requests` se remplit ; aucun outil
-  d'opérateur n'existe encore pour les promouvoir en passions. C'est un travail
-  d'administration, hors périmètre de ce lot.
+  Mode d'emploi complet : **`docs/APPLIQUER_MIGRATION_PASSIONS.md`** (les deux
+  chemins réels, les requêtes de vérification, le retour arrière).
+- ~~**Traiter les demandes.**~~ **Fait le 2026-09-01** :
+  `npm run passions:demandes -- lister | proposer | resoudre | refuser`
+  (`scripts/passions-demandes.js`). ⚠️ C'est un outil d'**opérateur**, en ligne de
+  commande, qui exige `SUPABASE_SERVICE_ROLE_KEY` — jamais une interface du
+  navigateur : la migration ne pose NI policy UPDATE NI policy DELETE sur
+  `passion_requests`, donc changer un statut exige `service_role`. Il **n'écrit
+  pas non plus le référentiel** : il propose la ligne à coller dans la source
+  versionnée, détecte les doublons (`normeIdentite`) et les quasi-doublons
+  (`norme`), et ne marque une demande résolue qu'après que la passion existe
+  réellement. ⚠️ Vie privée : il n'affiche **aucun `user_id`** — une demande est
+  du texte libre tapé par une personne, l'opérateur a besoin du libellé, pas de
+  savoir qui l'a écrit. Il ne sélectionne donc même pas la colonne.
 - **Grossir le référentiel** vers 10 000–20 000 entrées.
-- **`user_passions` n'est pas encore écrite par l'application.** La table
-  existe, la RLS est posée, la double écriture reste à brancher.
+- ~~**`user_passions` n'est pas encore écrite.**~~ **Branchée le 2026-09-01** :
+  `supaMiroirUserPassions()` (app-08), appelée par `supaSavePassionState` après
+  l'écriture du jsonb. Tests : `tests/e2e/user-passions-miroir.spec.js` (5).
+  ⚠️ **`profiles.passions` reste la source de vérité et rien ne LIT la table
+  normalisée** — c'est ce qui garde le retour arrière sûr. On écrit à côté pour
+  que la table soit peuplée le jour de la bascule : basculer la lecture sur une
+  table vide perdrait les passions de tout le monde.
+  ⚠️ **Le miroir doit être inerte ET SILENCIEUX tant que la migration n'est pas
+  appliquée** — c'est l'état de la production. Sans son sondage à un coup
+  (`_userPassionsDispo`), chaque enregistrement de passion produirait une erreur
+  PostgREST, à chaque geste, sur tous les comptes. Il se désarme pour la session
+  sur `PGRST205`, `42P01` et `42501`, et se réarmera de lui-même après la
+  migration.
+  ⚠️ **Aucun identifiant local n'est envoyé sans passer par `estPassionCanonique`** :
+  `user_passions.passion_id` porte une clé étrangère, et un seul identifiant
+  inconnu ferait rejeter TOUTE l'écriture en 23503 — les passions valides seraient
+  perdues avec lui.
+  ⚠️ **Piège de test payé ici** : `supa` et `MY_UID` sont des `let` de portée
+  script — ils existent comme identifiants globaux mais **ne sont pas** des
+  propriétés de `window`. Un stub posé sur `window.supa` n'intercepte rien, et le
+  test passe **vert-aveugle** sans qu'aucune assertion ne le signale.
 - **La recherche serveur n'a jamais tourné contre Supabase**, seulement contre
   un PostgreSQL jetable. Elle est écrite, indexée et testée ; elle sera exercée
   pour de vrai le jour où la migration passera.

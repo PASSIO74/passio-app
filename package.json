@@ -29,7 +29,8 @@
     "passions:construire": "node scripts/construire-referentiel-passions.js",
     "passions:dedupliquer": "node scripts/deduplique-alias-passions.js",
     "passions:verifier": "node scripts/valider-referentiel-passions.js && node scripts/construire-referentiel-passions.js --verifier",
-    "passions:migration": "bash scripts/verifier-migration-passions.sh"
+    "passions:migration": "bash scripts/verifier-migration-passions.sh",
+    "passions:demandes": "node scripts/passions-demandes.js"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",

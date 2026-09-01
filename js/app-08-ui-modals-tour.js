@@ -2908,8 +2908,99 @@ async function supaSavePassionState() {
       delete corps.passions;
       res = await supa.from("profiles").update(corps).eq("id", MY_UID).select("id");
     }
-    return _writeVerdict(res, { expectRows: true, label: "profil (passions)" }).ok;
+    const ok = _writeVerdict(res, { expectRows: true, label: "profil (passions)" }).ok;
+    // Le miroir normalisé ne conditionne RIEN : il suit l'écriture qui fait
+    // autorité, et son échec n'invalide jamais le verdict.
+    if (ok) { try { await supaMiroirUserPassions(); } catch (e) {} }
+    return ok;
   } catch (e) { console.warn("profil (passions) :", e && e.message); return false; }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// MIROIR NORMALISÉ `user_passions` (lot flat_passions_v1)
+// ──────────────────────────────────────────────────────────────────────────
+// ⚠️ `profiles.passions` (jsonb) RESTE LA SOURCE DE VÉRITÉ, et c'est ce qui rend
+// le retour arrière sûr : rien ne LIT `user_passions` aujourd'hui. On écrit à
+// côté, pour que la table soit peuplée le jour où on basculera la lecture — une
+// bascule sur une table vide perdrait les passions de tout le monde.
+//
+// ⚠️ LA MIGRATION N'EST PAS APPLIQUÉE EN PRODUCTION. Ce chemin doit donc être
+// INERTE aujourd'hui, et surtout SILENCIEUX : sans le sondage ci-dessous, chaque
+// enregistrement de passion produirait une erreur PostgREST, à chaque geste, sur
+// tous les comptes. On sonde UNE fois par session et on se désarme.
+//
+// ⚠️ ON NE FAIT PAS CONFIANCE À UN IDENTIFIANT LOCAL. `user_passions.passion_id`
+// porte une clé étrangère vers `public.passions` : un identifiant absent du
+// référentiel SERVEUR ferait rejeter l'écriture en 23503. `estPassionCanonique`
+// est la seule autorité, la même qu'au Studio.
+// ══════════════════════════════════════════════════════════════════════════
+let _userPassionsDispo = null;      // null = pas encore sondé · false = table absente
+
+function _miroirTableAbsente(e) {
+  if (!e) return false;
+  const code = String(e.code || "");
+  // PGRST205 : PostgREST ne connaît pas la table (schéma non rechargé ou absente).
+  // 42P01 : PostgreSQL, « relation inexistante ». 42501 : la table existe mais
+  // aucune policy ne laisse écrire — se réarmer à chaque geste n'y changerait rien.
+  if (code === "PGRST205" || code === "42P01" || code === "42501") return true;
+  const msg = String(e.message || "") + " " + String(e.details || "");
+  return /user_passions/.test(msg) && /(does not exist|not find|schema cache)/i.test(msg);
+}
+
+async function supaMiroirUserPassions() {
+  try {
+    if (_userPassionsDispo === false) return false;
+    if (typeof MY_UID === "undefined" || !MY_UID) return false;
+    if (typeof supa === "undefined" || !supa || !window._supaReal) return false;
+
+    const profils = (state && state.user && state.user.profiles) || [];
+    const vus = {};
+    const lignes = [];
+    for (let i = 0; i < profils.length; i++) {
+      const pr = profils[i];
+      const pid = pr && pr.passion;
+      // Slug strict : ces valeurs partent dans un filtre PostgREST `in.(…)`
+      // plus bas, où une virgule ou une parenthèse changerait la requête.
+      if (!pid || vus[pid] || !/^[a-z0-9_-]+$/i.test(pid)) continue;
+      if (typeof estPassionCanonique === "function" && !estPassionCanonique(pid)) continue;
+      vus[pid] = 1;
+      lignes.push({ user_id: MY_UID, passion_id: pid, position: lignes.length, archived: !!pr.archived });
+    }
+
+    if (lignes.length) {
+      const { error } = await supa.from("user_passions")
+        .upsert(lignes, { onConflict: "user_id,passion_id" });
+      if (error) {
+        if (_miroirTableAbsente(error)) {
+          _userPassionsDispo = false;
+          if (typeof diagLog === "function") diagLog("user_passions absente — miroir désarmé pour la session");
+          return false;
+        }
+        // ⚠️ On LIT l'erreur et on la journalise. Un refus RLS ne LÈVE PAS côté
+        // SDK : sans cette lecture, l'écriture paraîtrait réussie et la table
+        // resterait vide sans que personne ne le sache.
+        if (typeof diagLog === "function") diagLog("user_passions upsert " + (error.message || error.code));
+        return false;
+      }
+      _userPassionsDispo = true;
+    }
+
+    // Retrait de ce qui n'est plus là. Sans cette passe, une passion supprimée
+    // sur cet appareil survivrait indéfiniment dans le miroir.
+    let req = supa.from("user_passions").delete().eq("user_id", MY_UID);
+    if (lignes.length) req = req.not("passion_id", "in", "(" + lignes.map(function (l) { return l.passion_id; }).join(",") + ")");
+    const res = await req;
+    if (res && res.error) {
+      if (_miroirTableAbsente(res.error)) { _userPassionsDispo = false; return false; }
+      if (typeof diagLog === "function") diagLog("user_passions delete " + (res.error.message || res.error.code));
+      return false;
+    }
+    if (_userPassionsDispo === null) _userPassionsDispo = true;
+    return true;
+  } catch (e) {
+    if (typeof diagLog === "function") diagLog("user_passions " + (e && e.message));
+    return false;
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════════
