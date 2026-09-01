@@ -335,21 +335,39 @@ test.describe("le modèle et les garde-fous", () => {
   });
 
   test("⑮ publier sous une passion absente du serveur est REFUSÉ, et dit pourquoi", async ({ page }) => {
-    // ⚠️ Le référentiel LOCAL propose 1 908 passions ; le serveur n'en connaît
-    // que 19 tant que la migration n'est pas appliquée. La clé étrangère de
-    // `posts.passion_id` refuserait l'insert : on refuse AVANT, avec un message.
+    // ⚠️ CE TEST A CHANGÉ D'EXEMPLE LE 2026-09-01, PAS DE SUJET. Il s'appuyait
+    // sur « moto-enduro », absente du serveur tant que la migration n'était pas
+    // appliquée. Elle l'est désormais (vérifié en production : 1 908 passions
+    // actives, 0 publication orpheline), donc les 1 908 sont publiables et cet
+    // exemple ne prouve plus rien.
+    //
+    // Ce qui compte n'était pas l'accident de données mais le MÉCANISME : une
+    // passion que le serveur ne connaît pas doit être refusée AVANT l'insert,
+    // avec un motif visible. On l'exerce donc en neutralisant l'autorité
+    // (`estPassionCanonique`) plutôt qu'en comptant sur un trou du référentiel
+    // — un test qui dépend d'un état de la base se retourne le jour où la base
+    // change, et c'est exactement ce qui vient d'arriver.
     await bootOnboarded(page, null, 1, { query: APERCU });
-    const publiable = await page.evaluate(() => ({
+
+    // Le plancher local refuse toujours un identifiant inconnu, migration ou pas.
+    const plancher = await page.evaluate(() => ({
       historique: estPassionCanonique("musique"),
-      nouvelle: estPassionCanonique("moto-enduro"),
-      refusParLUI: PassioFlatUI.passionPubliable("moto-enduro"),
+      inventee: estPassionCanonique("zorglubisme-quantique-inexistant"),
     }));
-    expect(publiable.historique).toBe(true);
-    expect(publiable.nouvelle, "une passion non déployée est devenue publiable").toBe(false);
-    expect(publiable.refusParLUI).toBe(false);
+    expect(plancher.historique).toBe(true);
+    expect(plancher.inventee, "un identifiant inventé est devenu publiable").toBe(false);
 
     await page.evaluate(() => goTo("studio"));
     await page.waitForTimeout(500);
+    // ⚠️ IDENTIFIANT NU, jamais `window.estPassionCanonique` : c'est le binding
+    // global que `PassioFlatUI.passionPubliable` résout, et un stub posé à côté
+    // laisserait le test vert-aveugle (piège déjà payé sur `supa` et `MY_UID`).
+    await page.evaluate(() => {
+      const vrai = estPassionCanonique;
+      estPassionCanonique = (id) => (id === "moto-enduro" ? false : vrai(id));
+    });
+    expect(await page.evaluate(() => PassioFlatUI.passionPubliable("moto-enduro"))).toBe(false);
+
     await page.locator(".v6-passio .v6-lien").first().click();
     await page.waitForFunction(() => window.PassioPassions && window.PassioPassions.pret(), null, { timeout: 15000 });
     await chercher(page, "enduro");
@@ -413,14 +431,21 @@ test.describe("le modèle et les garde-fous", () => {
     expect(await page.locator(".psel-input").count()).toBe(0);
   });
 
-  test("⑰ bis — sans aperçu, le lot est totalement absent", async ({ page }) => {
+  test("⑰ bis — sans aperçu, le lot est ACTIF : c'est le défaut depuis le 2026-09-01", async ({ page }) => {
+    // ⚠️ ASSERTION RETOURNÉE, PAS SUPPRIMÉE. Ce test exigeait l'ABSENCE du lot
+    // sur une URL normale, ce qui était vrai tant que le drapeau était éteint.
+    // Il exige désormais sa PRÉSENCE — de sorte qu'une extinction accidentelle
+    // du lot reste visible. Vider le test l'aurait rendue invisible.
     await bootOnboarded(page, null, 1);          // URL normale, aucun paramètre
     const etat = await page.evaluate(() => window.PassioPassions._etat());
-    expect(etat.actif).toBe(false);
-    expect(etat.pret, "le référentiel a été téléchargé hors aperçu").toBe(false);
+    expect(etat.actif, "le lot n'est pas actif par défaut").toBe(true);
+    // ⚠️ MAIS LE RÉFÉRENTIEL N'EST TOUJOURS PAS CHARGÉ AU DÉMARRAGE. C'est
+    // l'invariant qui protège le temps de démarrage : 160 Ko ne partent qu'au
+    // premier usage RÉEL de la recherche, jamais au boot.
+    expect(etat.pret, "le référentiel est téléchargé au démarrage").toBe(false);
     await page.evaluate(() => goTo("profiles"));
     await page.waitForTimeout(500);
-    expect(await page.locator('#v9ProfilePassions [data-passion-tile="__ajouter__"]').count()).toBe(0);
+    expect(await page.locator('#v9ProfilePassions [data-passion-tile="__ajouter__"]').count()).toBe(1);
   });
 
   test("⑱ le pliage du navigateur est celui du référentiel construit", async ({ page }) => {

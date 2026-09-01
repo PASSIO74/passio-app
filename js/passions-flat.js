@@ -17,16 +17,16 @@
 // finirait donc sur le chemin critique du démarrage, pour une donnée dont la
 // grande majorité des sessions n'a jamais besoin.
 //
-// ── ACTIVATION — ÉTEINT PAR DÉFAUT ────────────────────────────────────────
-//     ?passio_preview=flat-passions-v1   → aperçu (alias : ?flat_passions_v1=1)
-//     window.PASSIO_FLAT_PASSIONS = true → forçage en mémoire
-//   Coupures, prioritaires sur tout :
+// ── ACTIVATION — ACTIF PAR DÉFAUT depuis le 2026-09-01 ────────────────────
+//   Le drapeau ne sait plus qu'ENLEVER. Coupures, prioritaires sur tout :
 //     localStorage.flat_passions_v1 = "0"
 //     window.PASSIO_FLAT_PASSIONS = false
+//   Les anciens liens `?passio_preview=flat-passions-v1` restent tolérés, mais
+//   ne décident plus rien.
 //
-// Aucune activation positive n'est écrite dans `localStorage` : l'aperçu vient
-// de l'URL, jamais d'un état posé sur l'appareil de qui teste. Drapeau à faux
-// = l'application se comporte exactement comme avant, à l'octet près.
+// Aucune activation positive n'est écrite dans `localStorage`. Coupé, le lot
+// rend l'application d'avant à l'octet près — c'est ce qui rend le retour
+// arrière gratuit, sans redéploiement.
 //
 // ── QUATRE PIÈGES DE CE DÉPÔT, ÉVITÉS ICI EXPRESSÉMENT ────────────────────
 // ① `state` vaut **null**, pas `undefined`, jusqu'à `state = loadState()`.
@@ -53,7 +53,6 @@
 (function () {
   "use strict";
 
-  var PREVIEW_NAME = "flat-passions-v1";
   var STORAGE_KEY = "flat_passions_v1";
   var URL_DATA = "data/passions-v1.json";
   var CLE_RECENTES = "passio_passions_recentes";
@@ -68,13 +67,22 @@
   // ══════════════════════════════════════════════════════════════════════════
   // DRAPEAU
   // ══════════════════════════════════════════════════════════════════════════
-  function apercuDemande() {
-    try {
-      var q = new URLSearchParams(window.location.search);
-      return q.get("passio_preview") === PREVIEW_NAME || q.get(STORAGE_KEY) === "1";
-    } catch (e) { journal("query", e); return false; }
-  }
-
+  // ⚠️ ACTIF PAR DÉFAUT DEPUIS LE 2026-09-01, ET LE DRAPEAU NE SAIT PLUS
+  // QU'ENLEVER. Même patron que les lots UI-3A et UI-4 : aucune valeur positive
+  // n'active, rien n'est écrit dans `localStorage`, et les anciens liens
+  // `?passio_preview=flat-passions-v1` restent tolérés sans plus rien décider.
+  //
+  // ⚠️ CE BASCULEMENT SUPPOSE LA MIGRATION APPLIQUÉE, et elle l'est : vérifié en
+  // production le 2026-09-01 — 1 908 passions actives, 3 830 relations, les 19
+  // identifiants historiques conservés, ZÉRO publication orpheline. L'ordre
+  // n'était pas négociable : allumer avant la migration aurait ouvert une
+  // recherche promettant 1 889 passions que la clé étrangère de
+  // `posts.passion_id` aurait refusées à la publication.
+  //
+  // ⚠️ LA COUPURE RESTE ENTIÈRE, et c'est elle qui rend le retour arrière
+  // gratuit : `localStorage.flat_passions_v1 = "0"` ou
+  // `window.PASSIO_FLAT_PASSIONS = false` rendent le catalogue historique à
+  // l'octet près, sans redéploiement.
   function coupeLocalement() {
     try { return localStorage.getItem(STORAGE_KEY) === "0"; } catch (e) { return false; }
   }
@@ -82,8 +90,7 @@
   function actif() {
     try { if (window.PASSIO_FLAT_PASSIONS === false) return false; } catch (e) {}
     if (coupeLocalement()) return false;
-    try { if (window.PASSIO_FLAT_PASSIONS === true) return true; } catch (e) {}
-    return apercuDemande();
+    return true;
   }
 
   // ══════════════════════════════════════════════════════════════════════════
