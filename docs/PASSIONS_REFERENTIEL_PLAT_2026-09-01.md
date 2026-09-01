@@ -397,10 +397,17 @@ et écrit en binaire.
 
 ## 11. Ce qui reste à faire
 
-- **Appliquer la migration en production.** Tant qu'elle ne l'est pas, les
-  1 889 passions nouvelles sont **sélectionnables et lisibles**, mais **pas
-  publiables** : la clé étrangère de `posts.passion_id` les refuserait. Le
-  Studio refuse **avant** l'insert, avec un message qui dit quoi faire (test ⑮).
+- ~~**Appliquer la migration en production.**~~ **FAIT le 2026-09-01.**
+  Appliquée par Benjamin depuis la CLI Supabase liée, et vérifiée dans la
+  foulée : **1 908 passions actives · 3 830 relations · 19 identifiants
+  historiques · 0 publication orpheline**. Les 1 908 sont désormais publiables.
+  ⚠️ Le refus AVANT insert n'a pas disparu pour autant : `estPassionCanonique`
+  reste la seule autorité, et protège des identifiants inventés comme d'un
+  référentiel serveur tronqué par le plafond `max-rows` de PostgREST.
+- ~~**Le drapeau est éteint par défaut.**~~ **ALLUMÉ le 2026-09-01**, après la
+  migration et dans cet ordre — l'inverse aurait ouvert une recherche promettant
+  1 889 passions impubliables. Le drapeau ne sait plus qu'ENLEVER ; la coupure
+  reste entière et rend le retour arrière gratuit, sans redéploiement.
   Mode d'emploi complet : **`docs/APPLIQUER_MIGRATION_PASSIONS.md`** (les deux
   chemins réels, les requêtes de vérification, le retour arrière).
 - ~~**Traiter les demandes.**~~ **Fait le 2026-09-01** :
