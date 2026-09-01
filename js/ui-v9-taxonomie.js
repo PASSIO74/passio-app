@@ -985,7 +985,16 @@
   // tout seul (cause ③ du 2026-08-28).
   // ══════════════════════════════════════════════════════════════════════════
   var _essais = 0;
-  var ESSAIS_MAX = 40;
+  // ⚠️ 30 s, et ce n'est pas de la marge gratuite. En PRODUCTION,
+  // `passio:app-ready` est émis par `scripts/build.js` au CHARGEMENT d'app.js —
+  // pas à la fin de `boot()`, qui attend encore `ensureSupabase()` avant de
+  // poser `state`. Le compteur repart donc à zéro sur cet événement, puis doit
+  // couvrir seul un démarrage réseau froid. Un budget trop court se consume en
+  // silence et la surface n'est jamais posée : c'est exactement la cause ③ du
+  // 2026-08-28 (ui-v4b-fiche brûlait ses essais pendant la saisie du code).
+  // 120 réveils qui ne font que deux `typeof` ne coûtent rien ; en manquer un
+  // coûte le lot entier.
+  var ESSAIS_MAX = 120;
   var _timer = null;
   var _observateur = null;
   var _branche = false;
