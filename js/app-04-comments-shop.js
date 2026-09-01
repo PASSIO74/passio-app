@@ -929,6 +929,10 @@ async function openComments(postId) {
 }
 
 function submitComment(postId) {
+  // Mode invité (première visite) : cette action engage le compte. Le gate
+  // EXPLIQUE l'action puis propose la création de compte ; il ne rejoue jamais
+  // l'action après coup. Rend `true` — donc inerte — hors mode invité.
+  if (window.requireAuthentication && !requireAuthentication("commenter")) return;
   const text = $("#newComment").value.trim();
   if (text.length < 2) { toast("Trop court"); return; }
   let post = findPostAnywhere(postId);
@@ -1414,6 +1418,10 @@ function openCommentSheet(threadId, title) {
 }
 
 function submitCommentSheet(threadId) {
+  // Mode invité (première visite) : cette action engage le compte. Le gate
+  // EXPLIQUE l'action puis propose la création de compte ; il ne rejoue jamais
+  // l'action après coup. Rend `true` — donc inerte — hors mode invité.
+  if (window.requireAuthentication && !requireAuthentication("commenter")) return;
   var inp = document.getElementById("cmtThreadInput");
   if (!inp || !inp.value.trim()) return;
   var thread = _findCommentThread(threadId);
@@ -2500,6 +2508,9 @@ async function startDirectMessage(userId, userName, userEmoji, userAvatar, userP
 }
 
 async function openUserProfile(authorId, source) {
+  // Première visite : trace l'OUVERTURE d'un contenu par un visiteur — un
+  // compteur, jamais un identifiant ni un libellé. Inerte hors mode invité.
+  try { if (window.PassioFirstRun) PassioFirstRun.contenuOuvert("profil"); } catch (e) {}
   // Ajouter à l'historique pour que le bouton back fonctionne
   pushOverlayToHistory("profile", authorId);
 
@@ -3049,6 +3060,10 @@ function _renderVisitedContent() {
 var VISITED_PROFILE_COLS = "id,username,emoji,color,passion_id,passions,bio,avatar_url,cover_url,is_private,rs_links";
 
 function toggleFollowUser(userId, userName) {
+  // Mode invité (première visite) : cette action engage le compte. Le gate
+  // EXPLIQUE l'action puis propose la création de compte ; il ne rejoue jamais
+  // l'action après coup. Rend `true` — donc inerte — hors mode invité.
+  if (window.requireAuthentication && !requireAuthentication("suivre")) return;
   var btn = document.getElementById("followBtn_" + userId);
   if (!btn) return;
   state.user.following = state.user.following || [];
@@ -4157,6 +4172,10 @@ function _applyReactionEvent(c, ev) {
 }
 
 function sendMessageFp(convId, displayName) {
+  // Mode invité (première visite) : cette action engage le compte. Le gate
+  // EXPLIQUE l'action puis propose la création de compte ; il ne rejoue jamais
+  // l'action après coup. Rend `true` — donc inerte — hors mode invité.
+  if (window.requireAuthentication && !requireAuthentication("message")) return;
   // 1. Récupérer le texte
   var inp = document.getElementById("convFpInput");
   if (!inp) { console.error("sendMessageFp: input not found"); return; }

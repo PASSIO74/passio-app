@@ -1,0 +1,660 @@
+// ══════════════════════════════════════════════════════════════════════════
+// PREMIÈRE VISITE — « l'application est elle-même le pitch »
+// Drapeau `first_run_experience_v1`. Couvre les 16 points de vérification du lot.
+// ══════════════════════════════════════════════════════════════════════════
+const { test, expect } = require("@playwright/test");
+const { bootVisiteur, couperReseauSupabase, etatOnboarde, GATE_TOKEN, GATE_KEY } = require("./first-run-helper");
+
+const feedActif = () => {
+  const el = document.getElementById("screen-feed");
+  return !!el && el.classList.contains("active");
+};
+
+// ─────────────────────────────────────────────────────────────────────────
+// 1. ENTRÉE DIRECTE
+// ─────────────────────────────────────────────────────────────────────────
+test.describe("Entrée", () => {
+  test("un nouveau visiteur arrive directement dans Découvrir", async ({ page }) => {
+    await bootVisiteur(page);
+
+    expect(await page.evaluate(feedActif)).toBe(true);
+    // Rien de ce que le lot interdit avant le fil.
+    expect(await page.locator("#landing.active").count()).toBe(0);
+    expect(await page.locator("#onboarding.active").count()).toBe(0);
+    expect(await page.locator("#tourOverlay.active").count()).toBe(0);
+    // Le formulaire d'inscription n'est pas à l'écran (il vit dans #onboarding).
+    await expect(page.locator("#authSubmitBtn")).toBeHidden();
+    // Et du contenu est VISIBLE tout de suite : c'est la promesse du lot.
+    expect(await page.locator("#feedList .post").count()).toBeGreaterThan(0);
+  });
+
+  test("aucune demande de géolocalisation ni de notification n'est déclenchée", async ({ page }) => {
+    // Sondes posées AVANT tout script de l'application.
+    await page.addInitScript(() => {
+      window.__geo = 0;
+      window.__notif = 0;
+      try {
+        const g = navigator.geolocation;
+        if (g) {
+          const vrai = g.getCurrentPosition.bind(g);
+          g.getCurrentPosition = function () { window.__geo++; return vrai.apply(g, arguments); };
+          const vraiW = g.watchPosition && g.watchPosition.bind(g);
+          if (vraiW) g.watchPosition = function () { window.__geo++; return vraiW.apply(g, arguments); };
+        }
+      } catch (e) {}
+      try {
+        if (window.Notification && Notification.requestPermission) {
+          Notification.requestPermission = function () { window.__notif++; return Promise.resolve("default"); };
+        }
+      } catch (e) {}
+    });
+    await bootVisiteur(page);
+    expect(await page.evaluate(() => window.__geo)).toBe(0);
+    expect(await page.evaluate(() => window.__notif)).toBe(0);
+
+    // Et même en allant sur Rencontrer, l'écran qui a le plus de raisons d'en
+    // vouloir une : « sans activer automatiquement ta position ».
+    await page.evaluate(() => goTo("irl"));
+    await page.waitForTimeout(1200);
+    expect(await page.evaluate(() => window.__geo)).toBe(0);
+    expect(await page.evaluate(() => window.__notif)).toBe(0);
+  });
+
+  test("aucune écriture Supabase en mode invité — et pas de compte anonyme", async ({ page }) => {
+    const journal = await bootVisiteur(page);
+    // Le réseau Supabase est coupé : rien n'a pu partir. On vérifie en plus que
+    // le code n'a même pas TENTÉ de créer une identité anonyme ni d'upserter un
+    // profil — la garde ne doit pas être le réseau, mais le programme.
+    await page.evaluate(() => {
+      window.__ecritures = [];
+      ["supaEnsureProfileExists", "supaSaveUserState", "supaUpsertProfile", "supaPublishPostWithRetry", "supaInit"].forEach((n) => {
+        if (typeof window[n] === "function") {
+          window[n] = function () { window.__ecritures.push(n); return Promise.resolve(null); };
+        }
+      });
+    });
+    await page.waitForTimeout(2500);
+    expect(await page.evaluate(() => window.__ecritures)).toEqual([]);
+    // ⚠️ `passio_uid` N'EST PAS VIDE, et ce n'est pas un défaut : `getMyUserId()`
+    // (app-08) fabrique un identifiant LOCAL `u_xxxxxxxx` au chargement, pour
+    // tout le monde, depuis toujours. Ce qui doit être vrai, c'est qu'aucune
+    // IDENTITÉ SUPABASE n'a été créée — donc que cet identifiant n'est pas un
+    // uuid. Exiger `null` ici aurait fait échouer le test sur un comportement
+    // historique sans rapport avec ce lot.
+    const uid = await page.evaluate(() => localStorage.getItem("passio_uid"));
+    expect(uid).toMatch(/^u_/);
+    expect(uid).not.toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-/i);
+    expect(await page.evaluate(() => PassioFirstRun.estVisiteur())).toBe(true);
+    // Aucune requête d'ÉCRITURE n'a même été tentée vers Supabase.
+    expect(journal.filter((l) => /^(POST|PATCH|PUT|DELETE) /.test(l))).toEqual([]);
+  });
+
+  test("un utilisateur existant n'est jamais renvoyé dans le nouveau parcours", async ({ page }) => {
+    await couperReseauSupabase(page);
+    await page.addInitScript(
+      ([k, t, st]) => {
+        sessionStorage.setItem(k, t);
+        sessionStorage.setItem("passio_pwa_dismissed", "1");
+        localStorage.setItem("passio_first_run_experience_v1", "1"); // drapeau ACTIF
+        localStorage.setItem("passio_mvp_state_v1", JSON.stringify(st));
+      },
+      [GATE_KEY, GATE_TOKEN, etatOnboarde()]
+    );
+    await page.goto("/index.html");
+    await page.waitForTimeout(3200);
+
+    // Le parcours de première visite ne s'est PAS déclenché, malgré le drapeau.
+    expect(await page.evaluate(() => PassioFirstRun.estVisiteur())).toBe(false);
+    expect(await page.evaluate(() => document.documentElement.classList.contains("passio-first-run"))).toBe(false);
+    expect(await page.locator("#frWelcome").count()).toBe(0);
+    expect(await page.locator(".fr-tip").count()).toBe(0);
+    // Et son fil n'est pas étiqueté « Exemple PASSIO ».
+    expect(await page.locator(".fr-demo-tag").count()).toBe(0);
+  });
+
+  test("un lien profond garde sa destination, le tour est différé", async ({ page }) => {
+    await bootVisiteur(page, { hash: "#irl-event-e1" });
+
+    // La DESTINATION est ouverte. ⚠️ On ne mesure pas le hash : `openEventDetails`
+    // repose `#event-e1` par-dessus `#irl-event-e1`, donc un test ancré sur la
+    // forme d'ENTRÉE conclurait à tort que le lien est perdu.
+    expect(await page.evaluate(() => {
+      const e = document.getElementById("eventDetailPage");
+      return !!e && e.style.display !== "none" && e.style.display !== "";
+    })).toBe(true);
+    expect(await page.evaluate(() => (document.querySelector(".screen.active") || {}).id)).toBe("screen-irl");
+
+    // Et RIEN du parcours n'est posé par-dessus : ni la carte de bienvenue, ni
+    // une indication. Le tour est différé, pas annulé.
+    expect(await page.locator("#frWelcome").count()).toBe(0);
+    expect(await page.locator(".fr-tip").count()).toBe(0);
+    await page.waitForTimeout(2500);   // laisse toute la chaîne de reprise passer
+    expect(await page.locator(".fr-tip").count()).toBe(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// 2. CARTE DE BIENVENUE
+// ─────────────────────────────────────────────────────────────────────────
+test.describe("Carte de bienvenue", () => {
+  test("elle s'affiche, ne masque pas l'écran, et se ferme sans revenir", async ({ page }) => {
+    await bootVisiteur(page);
+    const carte = page.locator("#frWelcome");
+    await expect(carte).toBeVisible({ timeout: 15000 });
+    await expect(carte).toContainText("Bienvenue sur PASSIO");
+    await expect(carte).toContainText("Tout ce que tu aimes, au même endroit.");
+
+    // Non bloquante : elle occupe une fraction de l'écran, et le fil reste là.
+    const boite = await carte.boundingBox();
+    const h = page.viewportSize().height;
+    expect(boite.height).toBeLessThan(h * 0.5);
+    expect(await page.locator("#feedList .post").count()).toBeGreaterThan(0);
+
+    // Elle est posée en FRÈRE de #feedList : un repeint du fil ne l'emporte pas.
+    expect(await page.evaluate(() => !!document.querySelector("#feedList #frWelcome"))).toBe(false);
+    await page.evaluate(() => renderFeed());
+    await expect(carte).toBeVisible();
+
+    await page.locator("#frWelcome .fr-welcome-alt").click();  // « Explorer d'abord »
+    await expect(carte).toHaveCount(0);
+    // Elle ne réapparaît pas, même après un rechargement complet.
+    await page.reload();
+    await page.waitForTimeout(3200);
+    expect(await page.locator("#frWelcome").count()).toBe(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// 3. PERSONNALISATION DES PASSIONS
+// ─────────────────────────────────────────────────────────────────────────
+test.describe("Personnalisation", () => {
+  test("le panneau propose les populaires, la recherche, tout le catalogue et les spécialités", async ({ page }) => {
+    await bootVisiteur(page);
+    await page.locator("#frWelcome .fr-welcome-cta").click();
+
+    await expect(page.locator("#modalContent")).toContainText("Qu'est-ce qui te passionne ?");
+    await expect(page.locator("#modalContent")).toContainText("Choisis quelques sujets");
+
+    // 10 à 12 passions populaires (+ la tuile « Voir toutes »).
+    const populaires = await page.locator("#frGrid .fr-tile:not(.fr-tile-more)").count();
+    expect(populaires).toBeGreaterThanOrEqual(10);
+    expect(populaires).toBeLessThanOrEqual(12);
+
+    // « Voir toutes les passions » déplie le catalogue entier.
+    await page.locator("#frGrid .fr-tile-more").click();
+    const toutes = await page.locator("#frGrid .fr-tile").count();
+    expect(toutes).toBeGreaterThan(populaires);
+
+    // Recherche COMMUNE : un synonyme trouve sa passion…
+    await page.fill("#frSearch", "gaming");
+    await expect(page.locator('#frGrid [data-fr-passion="jeuxvideo"]')).toHaveCount(1);
+    // …et une spécialité trouve sa passion parente.
+    await page.fill("#frSearch", "pâtisserie");
+    await expect(page.locator('#frGrid [data-fr-passion="cuisine"]')).toHaveCount(1);
+  });
+
+  test("choisir une spécialité sélectionne automatiquement sa passion principale", async ({ page }) => {
+    await bootVisiteur(page);
+    await page.evaluate(() => PassioFirstRun.ouvrirPersonnalisation("test"));
+    await page.locator('#frGrid [data-fr-passion="musique"]').click();
+    // Les spécialités de la passion retenue apparaissent.
+    await expect(page.locator('#frSpecs [data-fr-spec="musique:guitare"]')).toHaveCount(1);
+
+    // On coche une spécialité d'une AUTRE passion, non encore choisie.
+    await page.evaluate(() => PassioFirstRun.basculerSpecialite("photo:portrait"));
+    expect(await page.evaluate(() => {
+      const t = document.querySelector('#frGrid [data-fr-passion="photo"]');
+      return !!t && t.classList.contains("is-on");
+    })).toBe(true);
+  });
+
+  test("après validation, le Fil se personnalise IMMÉDIATEMENT, sans rechargement", async ({ page }) => {
+    await bootVisiteur(page);
+    let rechargements = 0;
+    page.on("load", () => rechargements++);
+
+    await page.evaluate(() => PassioFirstRun.ouvrirPersonnalisation("test"));
+    await page.locator('#frGrid [data-fr-passion="moto"]').click();
+    await page.locator("#frValider").click();
+    await page.waitForTimeout(900);
+
+    // Le moteur EXISTANT porte la sélection — aucun second moteur de fil.
+    expect(await page.evaluate(() => Array.from(_activeFeedPassions))).toContain("moto");
+    expect(await page.evaluate(() => state.selectedFeedPassions)).toContain("moto");
+    // Persistée dans le format versionné.
+    const prefs = await page.evaluate(() => JSON.parse(localStorage.getItem("passio_first_run_v1")));
+    expect(prefs.v).toBe(1);
+    expect(prefs.passions).toContain("moto");
+    // Aucun rechargement, aucun second onboarding.
+    expect(rechargements).toBe(0);
+    expect(await page.locator("#onboarding.active").count()).toBe(0);
+    expect(await page.evaluate(feedActif)).toBe(true);
+
+    // Et le fil montre bien des publications de cette passion.
+    await page.waitForTimeout(600);
+    expect(await page.locator("#feedList .post").count()).toBeGreaterThan(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// 4. TOUR CONTEXTUEL
+// ─────────────────────────────────────────────────────────────────────────
+test.describe("Tour contextuel", () => {
+  test("trois indications au maximum, non bloquantes, mémorisées, relançables", async ({ page }) => {
+    await bootVisiteur(page);
+    await page.locator("#frWelcome .fr-welcome-alt").click(); // libère la place
+
+    const bulle = page.locator(".fr-tip");
+    await expect(bulle).toBeVisible({ timeout: 15000 });
+    await expect(bulle).toContainText("Un Fil construit autour de tes passions");
+    // Une seule bulle à la fois — jamais d'accumulation de fenêtres.
+    expect(await bulle.count()).toBe(1);
+    // Non bloquante : elle ne couvre pas l'écran et le fil reste défilable.
+    const b = await bulle.boundingBox();
+    expect(b.height).toBeLessThan(page.viewportSize().height * 0.4);
+
+    // Fermée par « Compris », elle ne revient pas.
+    await page.locator(".fr-tip-ok").click();
+    await expect(bulle).toHaveCount(0);
+    await page.waitForTimeout(1200);
+    expect(await page.evaluate(() => {
+      const t = document.querySelector(".fr-tip");
+      return t ? t.getAttribute("data-fr-tip") : null;
+    })).not.toBe("decouvrir");
+
+    // Mémorisée dans les préférences versionnées.
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem("passio_first_run_v1")).tour.decouvrir)).toBe(true);
+
+    // Relançable : les trois repères repartent de zéro.
+    await page.evaluate(() => PassioFirstRun.relancerTour());
+    await page.waitForTimeout(1400);
+    await expect(page.locator('.fr-tip[data-fr-tip="decouvrir"]')).toHaveCount(1);
+  });
+
+  test("l'étape « Rencontrer » apparaît à la première ouverture de l'écran IRL", async ({ page }) => {
+    await bootVisiteur(page, { prefs: { v: 1, passions: ["moto"], specialites: [], intents: [], tour: {}, bienvenue: "fermee", retour: null, migre: false, debut: 1 } });
+    await page.evaluate(() => goTo("irl"));
+    await page.waitForTimeout(1600);
+    const bulle = page.locator('.fr-tip[data-fr-tip="rencontrer"]');
+    await expect(bulle).toHaveCount(1);
+    await expect(bulle).toContainText("Passe du numérique au réel");
+    await expect(bulle).toContainText("sans activer automatiquement ta position");
+  });
+
+  test("navigation clavier : Entrée active une seule fois, Échap ferme", async ({ page }) => {
+    await bootVisiteur(page);
+    await page.locator("#frWelcome .fr-welcome-alt").click();
+    await expect(page.locator(".fr-tip")).toBeVisible({ timeout: 15000 });
+
+    // Le bouton « Compris » reçoit le focus : la bulle est utilisable au clavier.
+    expect(await page.evaluate(() => !!document.activeElement && document.activeElement.classList.contains("fr-tip-ok"))).toBe(true);
+
+    // ⚠️ DOUBLE ACTIVATION. app-08 porte un délégué clavier générique pour tout
+    // `[role="button"]` NON natif. Nos boutons sont des `<button>` natifs, que ce
+    // délégué exclut : une frappe = une activation. On le PROUVE en comptant les
+    // clics reçus, pas en le supposant.
+    await page.evaluate(() => {
+      window.__clics = 0;
+      document.querySelector(".fr-tip-ok").addEventListener("click", () => { window.__clics++; });
+    });
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(300);
+    expect(await page.evaluate(() => window.__clics)).toBe(1);
+    await expect(page.locator(".fr-tip")).toHaveCount(0);
+
+    // Échap ferme aussi, sans toucher au reste.
+    await page.evaluate(() => PassioFirstRun.relancerTour());
+    await page.waitForTimeout(1400);
+    await expect(page.locator(".fr-tip")).toHaveCount(1);
+    await page.locator(".fr-tip-ok").focus();
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(200);
+    await expect(page.locator(".fr-tip")).toHaveCount(0);
+  });
+
+  test("le premier tour s'arrête à trois étapes ; Profil, Messages et Studio ont la leur, à part", async ({ page }) => {
+    await bootVisiteur(page, { prefs: { v: 1, passions: ["moto"], specialites: [], intents: [], tour: {}, bienvenue: "fermee", retour: null, migre: false, debut: 1 } });
+
+    // Les trois surfaces du premier tour portent leur formulation courte.
+    // ⚠️ CHAQUE ÉTAPE EST ANCRÉE À UN ÉLÉMENT DE SON ÉCRAN : `montrerHint` et
+    // `montrerEtape` refusent une cible sans `offsetParent`, donc demander
+    // « Rencontrer » depuis le Fil ne pose rien — et le test échouerait pour une
+    // raison qui n'a rien à voir avec ce qu'il mesure. On navigue d'abord.
+    const attendus = [
+      ["decouvrir", "feed", "Ce qui t'inspire"],
+      ["rencontrer", "irl", "Ce que tu veux vivre"],
+      ["creer", "feed", "Ce que tu veux partager"],
+    ];
+    for (const [etape, ecran, formule] of attendus) {
+      await page.evaluate(([e, ec]) => {
+        PassioFirstRun.fermerBulle();
+        PassioFirstRun.prefs().tour = {};
+        goTo(ec);
+      }, [etape, ecran]);
+      await page.waitForTimeout(900);
+      await page.evaluate((e) => { PassioFirstRun.fermerBulle(); PassioFirstRun.prefs().tour = {}; PassioFirstRun.montrerEtape(e); }, etape);
+      await page.waitForTimeout(300);
+      await expect(page.locator(".fr-tip .fr-tip-eyebrow")).toHaveText(formule);
+    }
+    await page.evaluate(() => { PassioFirstRun.fermerBulle(); goTo("feed"); });
+    await page.waitForTimeout(600);
+
+    // ⚠️ Profil / Messages / Studio ne sont PAS dans le premier tour : ils ne se
+    // déclenchent qu'à l'ouverture de leur propre écran.
+    await page.evaluate(() => { PassioFirstRun.fermerBulle(); PassioFirstRun.prefs().tour = {}; goTo("profiles"); });
+    await page.waitForTimeout(1400);
+    await expect(page.locator('.fr-tip[data-fr-tip="profil"]')).toHaveCount(1);
+    await expect(page.locator(".fr-tip .fr-tip-eyebrow")).toHaveText("Tout ce qui te passionne");
+
+    // Et une seule fois : y revenir ne la remontre pas.
+    await page.evaluate(() => { PassioFirstRun.fermerBulle(); goTo("feed"); });
+    await page.waitForTimeout(500);
+    await page.evaluate(() => { PassioFirstRun.fermerBulle(); goTo("profiles"); });
+    await page.waitForTimeout(1400);
+    await expect(page.locator('.fr-tip[data-fr-tip="profil"]')).toHaveCount(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// 5. GATES D'AUTHENTIFICATION
+// ─────────────────────────────────────────────────────────────────────────
+test.describe("Gate d'authentification", () => {
+  test("le gate EXPLIQUE l'action demandée, et propose trois issues", async ({ page }) => {
+    await bootVisiteur(page);
+    const cas = [
+      ["suivre", "Crée ton compte pour suivre cette personne"],
+      ["rejoindre", "Crée ton compte pour participer à cette activité"],
+      ["publier", "Crée ton compte pour publier ta création"],
+      ["preferences", "Crée ton compte pour conserver tes passions"],
+    ];
+    for (const [ctx, attendu] of cas) {
+      const autorise = await page.evaluate((c) => requireAuthentication(c), ctx);
+      expect(autorise).toBe(false); // l'action est ARRÊTÉE
+      await expect(page.locator("#modalContent")).toContainText(attendu);
+      await expect(page.locator("#modalContent")).toContainText("Tes passions et tes préférences seront conservées.");
+      // Le pitch principal n'a pas d'écran à lui : il apparaît là où il sert,
+      // au moment où quelqu'un décide s'il crée un compte.
+      await expect(page.locator("#modalContent .fr-gate-pitch")).toContainText("Toutes tes passions. Une seule identité.");
+      await expect(page.locator("#modalContent")).toContainText("Créer mon compte");
+      await expect(page.locator("#modalContent")).toContainText("J'ai déjà un compte");
+      await expect(page.locator("#modalContent")).toContainText("Continuer à explorer");
+      await page.evaluate(() => closeModal());
+    }
+  });
+
+  test("un like de visiteur est ARRÊTÉ : ni état local modifié, ni écriture", async ({ page }) => {
+    await bootVisiteur(page);
+    const avant = await page.evaluate(() => (state.user.likedPosts || []).length);
+    await page.evaluate(() => {
+      const p = allFeedPosts()[0];
+      window.__pid = p.id;
+      likePost(p.id);
+    });
+    await page.waitForTimeout(400);
+    await expect(page.locator("#modalContent")).toContainText("Crée ton compte pour aimer");
+    expect(await page.evaluate(() => (state.user.likedPosts || []).length)).toBe(avant);
+  });
+
+  test("une activité de DÉMONSTRATION refuse la participation, sans promettre un compte", async ({ page }) => {
+    await bootVisiteur(page);
+    // On neutralise le gate d'auth pour isoler la garde « exemple » : c'est elle
+    // qu'on mesure, et elle doit s'appliquer AVANT toute écriture.
+    await page.evaluate(async () => {
+      window.__toasts = [];
+      const vrai = window.toast;
+      window.toast = function (t) { window.__toasts.push(String(t)); return vrai.apply(null, arguments); };
+      window.requireAuthentication = () => true;
+      const ev = allEvents().find((e) => /^e\d+$/.test(e.id));
+      window.__evid = ev && ev.id;
+      if (ev) await setEventRsvp(ev.id, "going");
+    });
+    await page.waitForTimeout(400);
+    const toasts = await page.evaluate(() => window.__toasts);
+    expect(toasts.join(" ")).toContain("exemple");
+    // Aucune participation n'a été enregistrée.
+    expect(await page.evaluate(() => myRsvp(window.__evid))).toBeFalsy();
+  });
+
+  test("TOUTES les portes d'écriture sont gardées, y compris celles des bobines", async ({ page }) => {
+    await bootVisiteur(page);
+    // ⚠️ Le lecteur de bobines et la feuille de commentaires ont leurs PROPRES
+    // chemins d'écriture : ils ne passent ni par `likePost` ni par
+    // `submitComment`. Garder seulement les points « évidents » laissait donc
+    // des portes ouvertes. Ce test énumère la surface entière : il rougira le
+    // jour où un nouveau point d'écriture oubliera son gate.
+    const portes = [
+      "likePost", "submitComment", "submitCommentSheet", "toggleFollowUser",
+      "sendMessage", "sendMessageFp", "publishPost", "mePublish",
+      "openCreateEvent", "submitEvent", "setEventRsvp",
+      "toggleReelLike", "submitReelComment", "likeReelComment",
+    ];
+    const resultat = await page.evaluate((noms) => {
+      const sansGate = [];
+      const absentes = [];
+      for (const n of noms) {
+        if (typeof window[n] !== "function") { absentes.push(n); continue; }
+        // Le gate ouvre la modale : on la referme et on regarde si elle s'est
+        // ouverte. Une porte gardée l'ouvre, une porte ouverte ne l'ouvre pas.
+        closeModal();
+        try { window[n]("x", "y"); } catch (e) { /* l'important est le gate, pas la suite */ }
+        const ouverte = !!document.querySelector("#modalBackdrop.active")
+          && /Crée ton compte/.test(document.getElementById("modalContent").textContent || "");
+        if (!ouverte) sansGate.push(n);
+      }
+      closeModal();
+      return { sansGate, absentes };
+    }, portes);
+
+    expect(resultat.absentes).toEqual([]);   // aucun nom n'a été renommé sans suite
+    expect(resultat.sansGate).toEqual([]);   // aucune porte n'est restée ouverte
+  });
+
+  test("le contenu de démonstration est étiqueté « Exemple PASSIO »", async ({ page }) => {
+    await bootVisiteur(page);
+    expect(await page.locator("#feedList .fr-demo-tag").count()).toBeGreaterThan(0);
+    await expect(page.locator("#feedList .fr-demo-tag").first()).toHaveText("Exemple PASSIO");
+  });
+
+  test("une activité de démonstration n'invente ni proximité ni participants", async ({ page }) => {
+    await bootVisiteur(page);
+    await page.evaluate(() => goTo("irl"));
+    await page.waitForTimeout(1600);
+
+    const texte = await page.locator("#eventList").innerText();
+    // Elle DIT ce qu'elle est…
+    expect(texte).toContain("Exemple PASSIO");
+    // …et ne promet ni distance, ni participants. ⚠️ La distance venait d'un
+    // point de RÉFÉRENCE, jamais de la position du visiteur (qu'on ne demande
+    // pas) : posée sur un exemple, elle laissait croire à une rencontre à côté
+    // de chez soi. Mesuré en capture avant correction : « environ 8,6 km ».
+    expect(texte).not.toContain("environ ");
+    expect(texte).not.toMatch(/\d+ participants?/);
+
+    // Et le kill switch rend les chiffres historiques.
+    await page.evaluate(() => { window.PASSIO_FIRST_RUN_V1 = false; renderIRL(); });
+    await page.waitForTimeout(900);
+    const apres = await page.locator("#eventList").innerText();
+    expect(apres).not.toContain("Exemple PASSIO");
+    expect(apres).toMatch(/\d+ participants?/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// 6. MIGRATION DES PRÉFÉRENCES
+// ─────────────────────────────────────────────────────────────────────────
+test.describe("Transfert du mode invité", () => {
+  const prefsInvite = {
+    v: 1, passions: ["moto", "photo", "moto", "passion_qui_n_existe_pas"],
+    specialites: ["moto:balade", "photo:portrait", "cuisine:bbq"],
+    intents: [], tour: { decouvrir: true }, bienvenue: "fermee", retour: null, migre: false, debut: 1,
+  };
+
+  test("elle fusionne sans écraser, dédoublonne, nettoie, et ne tourne qu'une fois", async ({ page }) => {
+    await bootVisiteur(page, { prefs: prefsInvite });
+    const resultat = await page.evaluate(() => {
+      // Un compte qui a DÉJÀ des choix : ils doivent survivre et rester premiers.
+      state.selectedFeedPassions = ["musique"];
+      state.onboarded = true;                       // le compte existe désormais
+      const premier = PassioFirstRun.migrerPreferences();
+      const apres1 = state.selectedFeedPassions.slice();
+      const second = PassioFirstRun.migrerPreferences();  // relance : idempotente
+      return { premier, second, apres1, apres2: state.selectedFeedPassions.slice(),
+               specs: state.user.passionSpecialites, tour: state.firstRunTour };
+    });
+
+    expect(resultat.premier).toBe(true);
+    expect(resultat.second).toBe(false);              // ne tourne qu'une fois
+    expect(resultat.apres1[0]).toBe("musique");       // le choix du compte reste PREMIER
+    expect(resultat.apres1).toContain("moto");
+    expect(resultat.apres1).toContain("photo");
+    expect(resultat.apres1).not.toContain("passion_qui_n_existe_pas"); // identifiant inconnu nettoyé
+    expect(resultat.apres1.filter((x) => x === "moto").length).toBe(1); // dédoublonné
+    expect(resultat.apres2).toEqual(resultat.apres1);  // relance sans doublon
+    // Une spécialité dont la passion parente n'a pas été retenue ne passe pas.
+    expect(resultat.specs).toContain("moto:balade");
+    expect(resultat.specs).not.toContain("cuisine:bbq");
+    // L'état du tour est reporté : on ne le relance pas depuis le début.
+    expect(resultat.tour.decouvrir).toBe(true);
+  });
+
+  test("une interruption laisse la migration à refaire, et la refaire aboutit", async ({ page }) => {
+    await bootVisiteur(page, { prefs: prefsInvite });
+    const r = await page.evaluate(() => {
+      state.onboarded = true;
+      // Panne au moment d'écrire : `setFeedPassions` lève.
+      const vrai = window.setFeedPassions;
+      window.setFeedPassions = function () { throw new Error("réseau"); };
+      const echec = PassioFirstRun.migrerPreferences();
+      const marqueApresEchec = PassioFirstRun.prefs().migre;
+      window.setFeedPassions = vrai;
+      const reussite = PassioFirstRun.migrerPreferences();
+      return { echec, marqueApresEchec, reussite, passions: state.selectedFeedPassions };
+    });
+    expect(r.echec).toBe(false);
+    expect(r.marqueApresEchec).toBe(false);  // le drapeau n'est posé qu'APRÈS le travail
+    expect(r.reussite).toBe(true);
+    expect(r.passions).toContain("moto");
+  });
+
+  test("après authentification : retour à la destination, et AUCUNE action rejouée", async ({ page }) => {
+    await bootVisiteur(page, { prefs: prefsInvite });
+    const r = await page.evaluate(async () => {
+      const journal = [];
+      ["publishPost", "mePublish", "submitEvent", "sendMessage", "sendMessageFp", "setEventRsvp", "likePost", "submitComment", "toggleFollowUser"]
+        .forEach((n) => { if (typeof window[n] === "function") { window[n] = function () { journal.push(n); }; } });
+      // Le visiteur voulait rejoindre une activité, depuis l'écran IRL.
+      requireAuthentication("rejoindre");
+      closeModal();
+      // …puis le compte est créé (chemin réel : la fin d'`onbFinish`).
+      state.onboarded = true;
+      PassioFirstRun.apresAuthentification();
+      await new Promise((r2) => setTimeout(r2, 900));
+      return { journal, ecran: (document.querySelector(".screen.active") || {}).id,
+               migre: PassioFirstRun.prefs().migre, passions: state.selectedFeedPassions };
+    });
+    // ⚠️ LE POINT CENTRAL DU LOT : rien n'est publié, envoyé ni rejoint tout seul.
+    expect(r.journal).toEqual([]);
+    expect(r.migre).toBe(true);
+    expect(r.passions).toContain("moto");
+    // La destination existait (« feed ») : on y revient proprement.
+    expect(r.ecran).toBe("screen-feed");
+  });
+
+  test("une destination disparue ramène proprement dans Découvrir", async ({ page }) => {
+    await bootVisiteur(page, { prefs: prefsInvite });
+    const ecran = await page.evaluate(async () => {
+      const p = PassioFirstRun.prefs();
+      p.retour = { screen: "ecran-qui-nexiste-plus", hash: "", action: "suivre", scroll: 0 };
+      state.onboarded = true;
+      goTo("irl");
+      PassioFirstRun.apresAuthentification();
+      await new Promise((r) => setTimeout(r, 900));
+      return (document.querySelector(".screen.active") || {}).id;
+    });
+    expect(ecran).toBe("screen-feed");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// 7. KILL SWITCH
+// ─────────────────────────────────────────────────────────────────────────
+test.describe("Kill switch", () => {
+  test("drapeau COUPÉ : l'ancien parcours est restitué, sans aucune trace du lot", async ({ page }) => {
+    await bootVisiteur(page, { flag: "off" });
+
+    // La landing historique reprend la main — c'est le comportement d'avant.
+    await expect(page.locator("#landing")).toHaveClass(/active/);
+    expect(await page.evaluate(() => PassioFirstRun.actif())).toBe(false);
+    expect(await page.evaluate(() => PassioFirstRun.estVisiteur())).toBe(false);
+    expect(await page.evaluate(() => document.documentElement.classList.contains("passio-first-run"))).toBe(false);
+    expect(await page.locator("#frWelcome").count()).toBe(0);
+    expect(await page.locator(".fr-tip").count()).toBe(0);
+    expect(await page.locator(".fr-demo-tag").count()).toBe(0);
+    // Rien n'est écrit dans localStorage par le lot.
+    expect(await page.evaluate(() => localStorage.getItem("passio_first_run_v1"))).toBeNull();
+    // Et le gate laisse TOUT passer : aucune action n'est bloquée.
+    expect(await page.evaluate(() => requireAuthentication("publier"))).toBe(true);
+    expect(await page.evaluate(() => requireAuthentication("rejoindre"))).toBe(true);
+    // Les entrées d'options du lot restent invisibles.
+    await expect(page.locator(".fr-only").first()).toBeHidden();
+
+    // ⚠️ ET LA MISE EN PAGE HISTORIQUE EST INTACTE. Une première version du bloc
+    // CSS posait `#onboarding { position: relative }` pour ancrer le bouton
+    // « ← Continuer à explorer » — or `.onboarding-shell` est déjà
+    // `position: absolute; inset: 0`, et un sélecteur d'ID bat sa classe : la
+    // règle transformait l'onboarding en bloc relatif POUR TOUT LE MONDE, drapeau
+    // coupé compris. Aucun test ne l'aurait vu ; celui-ci le voit.
+    expect(await page.evaluate(() => getComputedStyle(document.getElementById("onboarding")).position)).toBe("absolute");
+    expect(await page.evaluate(() => document.querySelectorAll("#frBackToExplore").length)).toBe(0);
+  });
+
+  test("le paramètre d'aperçu active le parcours et survit à un rechargement", async ({ page }) => {
+    await bootVisiteur(page, { flag: "off", query: "?passio_preview=first-run-v1" });
+    expect(await page.evaluate(() => PassioFirstRun.actif())).toBe(true);
+    expect(await page.evaluate(feedActif)).toBe(true);
+    // Persisté : la confirmation d'e-mail ramène par un lien NEUF, sans le paramètre.
+    expect(await page.evaluate(() => localStorage.getItem("passio_first_run_experience_v1"))).toBe("1");
+    await page.goto("/index.html");
+    await page.waitForTimeout(3200);
+    expect(await page.evaluate(() => PassioFirstRun.actif())).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// 8. MOBILE
+// ─────────────────────────────────────────────────────────────────────────
+test.describe("Cadrage mobile", () => {
+  for (const largeur of [320, 390, 430]) {
+    test(`à ${largeur} px : aucun débordement horizontal, cibles ≥ 44 px`, async ({ page }) => {
+      await page.setViewportSize({ width: largeur, height: 780 });
+      await bootVisiteur(page);
+      await expect(page.locator("#frWelcome")).toBeVisible({ timeout: 15000 });
+
+      // Aucune barre horizontale sur le document.
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+
+      // Les actions de la carte tiennent dans l'écran et sont assez grandes.
+      for (const sel of ["#frWelcome .fr-welcome-cta", "#frWelcome .fr-welcome-alt", "#frWelcome .fr-welcome-close"]) {
+        const b = await page.locator(sel).boundingBox();
+        expect(b.height).toBeGreaterThanOrEqual(43.5);
+        expect(b.x).toBeGreaterThanOrEqual(-0.5);
+        expect(b.x + b.width).toBeLessThanOrEqual(largeur + 0.5);
+      }
+
+      // Le panneau : la grille de passions PASSE À LA LIGNE, elle ne se fait pas
+      // défiler horizontalement (« aucune barre horizontale nécessitant un
+      // glissement pour atteindre une action essentielle »).
+      await page.locator("#frWelcome .fr-welcome-cta").click();
+      await expect(page.locator("#frGrid")).toBeVisible();
+      expect(await page.evaluate(() => {
+        const g = document.getElementById("frGrid");
+        return g.scrollWidth <= g.clientWidth + 1;
+      })).toBe(true);
+      const valider = await page.locator("#frValider").boundingBox();
+      expect(valider.height).toBeGreaterThanOrEqual(43.5);
+      expect(valider.x + valider.width).toBeLessThanOrEqual(largeur + 0.5);
+      // Le champ de recherche est à 16 px : en dessous, iOS zoome au focus.
+      expect(await page.evaluate(() => parseFloat(getComputedStyle(document.getElementById("frSearch")).fontSize))).toBeGreaterThanOrEqual(16);
+    });
+  }
+});

@@ -317,6 +317,14 @@
   function ligneOu(ev) {
     var bouts = [];
     if (ev && ev.city) bouts.push(String(ev.city));
+    // Première visite : « ne pas inventer une proximité géographique » sur une
+    // activité de démonstration. La distance est calculée depuis un point de
+    // RÉFÉRENCE (jamais la position du visiteur, qu'on ne demande pas) : posée
+    // sur un exemple, elle laisse croire à une rencontre accessible à côté de
+    // chez soi. La ville reste, elle décrit l'exemple sans rien promettre.
+    try {
+      if (window.PassioFirstRun && PassioFirstRun.masquerChiffresDemo(ev)) return bouts.join(" · ");
+    } catch (e) {}
     var km = null;
     try {
       if (typeof _eventDistanceKm === "function") km = _eventDistanceKm(ev, null);
@@ -336,6 +344,13 @@
   // (§A24). Les deux nombres sont CALCULÉS — `attendees` pour les participants,
   // `_eventSpotsLeft` (le moteur) pour les places — jamais écrits en dur.
   function ligneMonde(ev) {
+    // Première visite : « ne pas afficher de faux participants ». Une activité
+    // de démonstration dit ce qu'elle est, à la place des chiffres.
+    try {
+      if (window.PassioFirstRun && PassioFirstRun.masquerChiffresDemo(ev)) {
+        return "Exemple PASSIO · participation désactivée";
+      }
+    } catch (e) {}
     var n = ((ev && ev.attendees) || []).length;
     var bouts = [n + " participant" + (n > 1 ? "s" : "")];
     var reste = placesRestantes(ev);

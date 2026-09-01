@@ -1261,6 +1261,10 @@ function _meOverlaysData() {
   });
 }
 async function mePublish() {
+  // Mode invité (première visite) : cette action engage le compte. Le gate
+  // EXPLIQUE l'action puis propose la création de compte ; il ne rejoue jamais
+  // l'action après coup. Rend `true` — donc inerte — hors mode invité.
+  if (window.requireAuthentication && !requireAuthentication("bobine")) return;
   // Anti clic-fantôme : ignore une publication déclenchée dans la foulée d'une capture.
   if (meState._enteredEditAt && (Date.now() - meState._enteredEditAt) < 700) return;
   if (meState.mode === "bobine" && meState.mediaType !== "video") { toast("Une bobine est une vidéo — filme ou choisis une vidéo"); return; }
@@ -2271,6 +2275,17 @@ async function boot() {
       }
     });
   } catch(e) {}
+
+  // ── PREMIÈRE VISITE (drapeau `first_run_experience_v1`) ──────────────────
+  // « L'application est elle-même le pitch » : un visiteur sans compte entre
+  // DIRECTEMENT dans le fil, sans landing, sans onboarding, sans formulaire.
+  // `entreeDirecte()` rend `false` quand le drapeau est coupé OU qu'un compte
+  // existe déjà sur cet appareil — le parcours historique reprend alors la main,
+  // à l'octet près. Elle est appelée ICI, après la tentative de session : un
+  // compte connecté a déjà quitté `boot()` par le `return` plus haut.
+  try {
+    if (window.PassioFirstRun && PassioFirstRun.entreeDirecte()) return;
+  } catch (e) { console.warn("first-run:", e); }
 
   showLanding();
 }

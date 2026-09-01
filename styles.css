@@ -9772,6 +9772,281 @@ body.ctx-locked #appMain { overflow: hidden; }
 /* Le panneau de gestion des passions, ouvert depuis les options du profil. */
 #passionManager[hidden] { display: none !important; }
 
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PASSIO — PREMIÈRE VISITE (drapeau `first_run_experience_v1`).  COUPÉ PAR DÉFAUT.
+   (activation : ?passio_preview=first-run-v1 · localStorage.passio_first_run_experience_v1="1"
+    coupures  : localStorage.passio_first_run_experience_v1="0" · window.PASSIO_FIRST_RUN_V1=false)
+
+   Aucune seconde identité visuelle : tout réutilise les jetons du thème
+   (--bg-card, --border, --muted, --accent, --radius-*), la feuille basse
+   `.modal` et les boutons `.btn`. Ce bloc n'ajoute que ce qui n'existe pas —
+   la carte de bienvenue, la grille de passions du panneau, la bulle d'aide
+   contextuelle et l'étiquette du contenu de démonstration.
+
+   ⚠️ Tout est ancré à des classes NEUVES (`.fr-*`) ou à `:root.passio-first-run`.
+   Aucune règle existante n'est réécrite : drapeau coupé, la feuille rend le
+   thème historique à l'octet près, et la classe racine n'est jamais posée.
+
+   ⚠️ Ce bloc est placé AVANT celui du lot UI-4A5, qui doit rester le DERNIER de
+   la feuille (ses sélecteurs gagnent par la position). Les deux familles sont
+   disjointes : rien ne se recouvre, l'ordre ne fait qu'honorer cette contrainte.
+
+   ⚠️ Cibles tactiles : 44 px MESURÉS SUR LA BOÎTE du bouton. Là où le visuel est
+   plus petit (l'étiquette de démonstration n'est pas cliquable, la puce de
+   spécialité l'est), c'est la boîte qui porte la hauteur — un débord en
+   pseudo-élément ne satisferait pas la mesure.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Carte de bienvenue : posée en FRÈRE de #feedList, jamais dedans ──────── */
+.fr-welcome {
+  position: relative;
+  margin: 10px 12px 14px;
+  padding: 16px 44px 16px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 2px 12px rgba(24, 18, 48, 0.05);
+}
+.fr-welcome-title {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: -0.2px;
+}
+.fr-welcome-text {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 4px;
+  line-height: 1.45;
+}
+.fr-welcome-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+/* `flex: 1 1 auto` et non `1 1 0` : à colonnes égales, le libellé long se
+   faisait couper pendant que le court laissait du vide (piège ④ du lot UI-7). */
+.fr-welcome-actions .btn { flex: 1 1 auto; min-height: 44px; }
+.fr-welcome-cta { min-width: 60%; }
+.fr-welcome-close {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 44px;
+  height: 44px;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 50%;
+}
+.fr-welcome-close:hover { color: var(--text); }
+
+/* ── Panneau « Qu'est-ce qui te passionne ? » ─────────────────────────────── */
+.fr-search-wrap { margin: 12px 0 10px; }
+/* 16 px minimum : en dessous, iOS zoome au focus et la feuille basse saute. */
+.fr-search { width: 100%; box-sizing: border-box; font-size: 16px; min-height: 44px; }
+
+/* Grille QUI PASSE À LA LIGNE, jamais une rangée à faire défiler : « aucune
+   barre horizontale nécessitant un glissement pour atteindre une action
+   essentielle ». */
+.fr-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+  max-height: 44vh;
+  overflow-y: auto;
+  padding: 2px;
+  -webkit-overflow-scrolling: touch;
+}
+.fr-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 76px;
+  padding: 10px 6px;
+  background: var(--bg-card);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 0.15s, background 0.15s;
+}
+.fr-tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.fr-tile.is-on {
+  border-color: var(--accent);
+  background: rgba(124, 58, 237, 0.08);
+}
+.fr-tile-emoji { font-size: 22px; line-height: 1; }
+.fr-tile-label {
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.25;
+  color: inherit;
+  overflow-wrap: anywhere;
+}
+.fr-tile.is-on .fr-tile-label { color: var(--accent); }
+.fr-tile-more { border-style: dashed; }
+.fr-vide {
+  grid-column: 1 / -1;
+  padding: 18px 8px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* ── Spécialités rattachées aux passions retenues ─────────────────────────── */
+.fr-specs { margin-top: 12px; max-height: 26vh; overflow-y: auto; }
+.fr-spec-intro { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+.fr-spec-bloc { margin-bottom: 10px; }
+.fr-spec-titre { font-size: 12px; font-weight: 800; color: var(--text); margin-bottom: 6px; }
+.fr-spec-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.fr-chip {
+  min-height: 44px;
+  padding: 6px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.fr-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.fr-chip.is-on { border-color: var(--accent); color: var(--accent); background: rgba(124, 58, 237, 0.08); }
+
+.fr-panel-footer { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+.fr-panel-footer .btn { min-height: 48px; }
+.fr-valider[disabled] { opacity: 0.5; cursor: not-allowed; }
+.fr-revoir { font-size: 12px; min-height: 44px; }
+
+/* ── Gate d'authentification ──────────────────────────────────────────────── */
+.fr-gate-title { line-height: 1.3; }
+.fr-gate-pitch {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: rgba(124, 58, 237, 0.06);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.fr-gate-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+.fr-gate-actions .btn { min-height: 48px; }
+.fr-gate-stay { font-size: 13px; }
+
+/* ── Bulle d'indication contextuelle (tour en trois étapes) ───────────────── */
+/* z-index 9000 : au-dessus du fil et de la barre de navigation, SOUS la feuille
+   basse (`.modal-backdrop`, 10001) et sous le lecteur de bobines (9999) — une
+   bulle qui recouvrirait une modale serait un blocage, ce que le lot interdit. */
+.fr-tip {
+  position: fixed;
+  z-index: 9000;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 10px 32px rgba(24, 18, 48, 0.18);
+  padding: 12px 14px;
+  max-width: calc(100vw - 24px);
+}
+.fr-tip-eyebrow {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 3px;
+}
+.fr-tip-title { font-size: 13px; font-weight: 800; color: var(--text); line-height: 1.3; }
+.fr-tip-text { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.45; }
+.fr-tip-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+}
+.fr-tip-skip, .fr-tip-ok {
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.fr-tip-skip { background: none; border: none; color: var(--muted); padding-left: 0; }
+.fr-tip-ok { background: var(--accent); border: none; color: #fff; }
+.fr-tip-skip:focus-visible, .fr-tip-ok:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ── Sortie « Continuer à explorer » depuis l'écran d'authentification ────── */
+/* Sans elle, l'onboarding est un cul-de-sac : plein écran, sans fermeture. */
+.fr-back-explore {
+  position: absolute;
+  top: calc(10px + env(safe-area-inset-top, 0px));
+  left: 10px;
+  z-index: 5;
+  min-height: 44px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #4c1d95;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgba(24, 18, 48, 0.18);
+}
+.fr-back-explore:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* ⚠️ AUCUNE RÈGLE DE POSITIONNEMENT SUR `#onboarding` ICI. Une première
+   version posait `#onboarding { position: relative }` pour ancrer le bouton
+   ci-dessus — or `.onboarding-shell` est DÉJÀ `position: absolute; inset: 0`,
+   et un sélecteur d'ID (spécificité 100) bat sa classe (010) : la règle
+   transformait l'onboarding historique en bloc relatif, pour TOUT LE MONDE,
+   drapeau coupé compris. Un élément absolu se contente du conteneur déjà
+   positionné : il n'y avait rien à ajouter. */
+
+/* ── Étiquette du contenu de démonstration ────────────────────────────────── */
+/* Non cliquable : pas de contrainte de cible tactile ici. */
+.fr-demo-tag {
+  margin-left: auto;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(124, 58, 237, 0.06);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+/* ── Entrées d'options réservées au parcours de première visite ───────────── */
+/* Masquées tant que la classe racine n'est pas posée : le kill switch rend donc
+   aussi les MOTS, pas seulement les comportements. */
+html:not(.passio-first-run) .fr-only { display: none !important; }
+
+/* ── Safe areas et petits écrans (320 px) ─────────────────────────────────── */
+@media (max-width: 360px) {
+  .fr-grid { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); }
+  .fr-tile { min-height: 70px; }
+  .fr-tile-label { font-size: 10px; }
+  .fr-welcome { margin-left: 8px; margin-right: 8px; }
+}
+@supports (padding: env(safe-area-inset-bottom)) {
+  .fr-tip { margin-bottom: env(safe-area-inset-bottom); }
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    PASSIO UI V4 — lot UI-4A5 : « Filtres » est une VUE, et les bulles de passion
    vivent dedans.  ACTIF PAR DÉFAUT.

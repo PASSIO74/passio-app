@@ -388,6 +388,104 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
 
 ⚠️ **`.claude/` est désormais versionné SÉLECTIVEMENT** (skills + subagents = savoir projet, ils doivent survivre à un changement de machine). `.claude/settings.local.json` reste exclu : il a longtemps contenu des JWT et une clé `sb_secret_…` en clair dans ses commandes autorisées (9 entrées, purgées le 2026-08-15 par `npm run permissions:compact`, qui refuse désormais de conserver toute règle porteuse de secret). Il reste hors versionnement : c'est un fichier de poste, pas du savoir projet.
 
+## 🚪 PREMIÈRE VISITE — « l'application est elle-même le pitch » (drapeau `first_run_experience_v1`, COUPÉ par défaut)
+
+`js/first-run.js` (IIFE `window.PassioFirstRun`) + bloc « PASSIO — PREMIÈRE VISITE » dans
+`styles.css`, tests `tests/e2e/first-run.spec.js` (25) et helper
+`tests/e2e/first-run-helper.js`. Activation : `?passio_preview=first-run-v1` ou
+`localStorage.passio_first_run_experience_v1="1"` ; coupure prioritaire `"0"` ou
+`window.PASSIO_FIRST_RUN_V1=false`. **Drapeau coupé = landing + onboarding + tour
+historiques, à l'octet près.**
+
+Un visiteur sans compte entre DIRECTEMENT dans le fil (aucune landing, aucun carrousel,
+aucun formulaire, aucun GPS, aucune notification), voit une carte de bienvenue non
+bloquante, choisit ses passions dans un panneau, explore Découvrir et Rencontrer, et ne
+rencontre l'inscription qu'au moment où il tente une action engageante
+(`requireAuthentication(ctx)`). Ses préférences vivent dans une clé versionnée
+`localStorage["passio_first_run_v1"]` et sont migrées vers son compte, une fois, sans
+écraser ce que ce compte porte déjà.
+
+⚠️ **Neuf pièges de ce lot, tous mesurés, aucun déduit.**
+
+① **`MY_UID` NE PROUVE PAS QU'UN COMPTE EXISTE.** `getMyUserId()` (app-08) FABRIQUE un
+   identifiant local `u_xxxxxxxx` au chargement du script — pour tout le monde, toujours —
+   et l'écrit dans `localStorage.passio_uid`. La garde « compte existant » testait sa
+   présence : elle rendait donc TOUJOURS vrai, `entreeDirecte()` sortait, la landing
+   s'affichait, et le drapeau paraissait sans effet. Le seul identifiant qui prouve un
+   compte est un **uuid** Supabase (`RE_UUID`). Corollaire pour tout futur code : ne jamais
+   traiter `MY_UID` comme une preuve d'authentification.
+
+② **`js/first-run.js` DOIT être chargé AVANT le bloc `BUILD:APP`.** `app-09` fait
+   `(window.__gateReady || Promise.resolve()).then(() => boot())` : quand le gate est déjà
+   déverrouillé, cette microtâche part dès que la pile se vide — donc AVANT l'exécution du
+   script suivant. Placé après le bloc, le module n'était pas encore évalué au moment où
+   `boot()` cherchait `window.PassioFirstRun`. En production `scripts/build.js` inline ce
+   fichier en place et charge `app.js` après le gate : l'ordre est le même.
+
+③ **Un visiteur qui n'a rien choisi voit un CUL-DE-SAC, pas un fil.** `feedFollowingOn`
+   vaut `true` par défaut et un visiteur ne suit personne : la sélection additive
+   (ADR-011) est vide et `renderFeed` affiche « Tu ne suis encore personne ». D'où le
+   **fil de découverte** (`PassioFirstRun.filDecouverte()`, consommé dans `renderFeed`) :
+   tout le contenu affichable, classé par le moteur habituel. ⚠️ Rien n'est coché ni
+   persisté — aucune tuile ne s'allume, `_activeFeedPassions` et
+   `state.selectedFeedPassions` restent vides — sinon la migration transférerait au compte
+   des « choix » que personne n'a faits.
+
+④ **La fiche d'activité n'a PAS de classe d'état** : `#eventDetailPage` reste dans le DOM
+   et c'est `style.display` qui l'ouvre. Chercher une classe `active`/`open` rendait
+   toujours `false`, et une bulle d'aide se posait par-dessus une fiche ouverte par lien
+   profond — exactement ce que « le tour est différé » interdit.
+
+⑤ **Le hash d'arrivée n'est pas celui qu'on retrouve.** `#irl-event-e1` amène
+   `openEventDetails`, qui repose `#event-e1`. Un test ancré sur la forme d'ENTRÉE
+   conclurait à tort que le lien profond est perdu. La vérité est l'ÉCRAN affiché, pas le
+   hash.
+
+⑥ **Le formulaire d'authentification vit sur l'étape `splash`, pas sur `auth`.** L'étape
+   `data-onb-step="auth"` existe encore mais porte `display:none!important` : c'est un
+   alias mort. L'ouvrir affiche un écran VIDE, sans la moindre erreur. Et `onbStepIdx`
+   doit repartir de 0, sinon le `onbNext()` du succès saute l'âge ou le prénom.
+
+⑦ **L'onboarding est un cul-de-sac sans porte de sortie.** Une fois dedans, un visiteur qui
+   change d'avis — ou qui vient de créer un compte et attend son e-mail de confirmation —
+   n'a plus aucun moyen de revenir au fil. « Continuer à explorer » est une des trois
+   issues promises par le gate : `poserSortieExploration()` la rend vraie après ouverture.
+
+⑧ **Deux chemins mènent à l'après-authentification, et un seul passe par `onbFinish`.**
+   « J'ai déjà un compte » fait `location.reload()` dans `onbDoAuth`, et la confirmation
+   d'e-mail ramène par un lien NEUF : dans les deux cas `onbFinish` n'est jamais atteint.
+   C'est `reprise()` (sur `passio:app-ready`) qui prend le relais — **indépendamment du
+   drapeau**, sinon des préférences créées sous le parcours seraient perdues parce que
+   l'URL a changé. Garde `_apresFait` contre le double envoi.
+
+⑨ **Le marqueur anti-géolocalisation est consommé par `renderIRL`**, donc il doit être armé
+   AVANT lui : le crochet `PassioFirstRun.surNavigation(screen)` est appelé dans `goTo`
+   **avant** la ligne de re-rendu. Posé après, il arrivait trop tard pour le premier rendu —
+   celui qui compte. Le lot UI-4A0 masquait ce défaut en armant le même marqueur dans son
+   enveloppe de `renderIRL` ; couper ce lot l'aurait rouvert sans aucun symptôme.
+
+**Sécurité et données.** Aucune RLS n'est desserrée : la policy « Lecture respectant les
+comptes privés » autorise déjà, sans session, la lecture des publications d'auteurs non
+privés (`auth.uid()` NULL, deuxième branche du OU). Le mode invité ne fait que LIRE
+(`supaLoadPosts`, `supaLoadEvents`) et ne passe JAMAIS par `supaInit()`, qui écrit
+(`supaEnsureProfileExists`, `supaSaveUserState`). **Aucun compte anonyme n'est créé** —
+contrairement au chemin historique `onbSkipAuth`, qui appelle `signInAnonymously`. Le
+contenu de démonstration (`_source === "seed"`) porte l'étiquette « Exemple PASSIO » et
+refuse la participation avant toute écriture. Rien de sensible ni de base64 n'entre dans la
+clé versionnée : uniquement des identifiants du catalogue et une route de retour.
+
+**Catalogue.** `PASSIONS` (app-01) + le référentiel serveur restent la SEULE source de
+vérité des passions ; `SPECIALITES` et `SYNONYMES` sont une couche ADDITIVE indexée par
+identifiant existant, lue par `specialitesDe()` et `chercher()` seulement. Le jour où un
+vrai catalogue hiérarchique arrive, il remplace ces deux tables et rien d'autre ne bouge.
+Une spécialité n'est jamais publiée comme une passion (elle n'est pas canonique) : la
+choisir SÉLECTIONNE sa passion parente.
+
+**Ce qui n'est jamais rejoué après inscription** : aucune publication, aucun message,
+aucune inscription à une activité. `apresAuthentification()` restaure l'écran, la position
+et le contenu, puis RAPPELLE l'action par un toast — le dernier geste appartient à la
+personne.
+
 ## 📚 Références projet
 - **`docs/PASSIO_UI_V2_DIRECTION_2026-08-25.md` — direction UX canonique (2026-08-25).** Elle
   consolide et **remplace l'ancien ordre qui plaçait la refonte visuelle après la performance** :
@@ -1415,6 +1513,7 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
   verts, ce qui montre qu'il s'agit d'un défaut d'affichage et non d'une faille.
 
 - **`.passio/adr/ADR-011-refonte-multi-passion.md` — la refonte du 2026-08-31** : fil additif (OU inclusif), profil à deux onglets, identité centralisée, Studio seul point de choix, retrait du Carnet de voyage. Elle complète ADR-010 et en amende l'interface.
+- **Première visite** : `js/first-run.js` (drapeau `first_run_experience_v1`, coupé par défaut), tests `tests/e2e/first-run.spec.js`, captures `docs/captures/first-run/`.
 - `docs/PIEGES_CONNUS.md` — les 59 fiches détaillées (extrait de ce fichier le 2026-08-07, recompté le 2026-08-29).
 - `docs/HISTORIQUE_PROJET.md` — état 2026-06-11, backlog terminé, logs d’optimisation.
 - `docs/ARCHITECTURE.md`, `docs/CONTROLE_16_MISSIONS.md`, `docs/CHECKLIST_COMMERCIALISATION.md`.

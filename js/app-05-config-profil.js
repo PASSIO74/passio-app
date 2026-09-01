@@ -1591,6 +1591,10 @@ function editGroupDescription(convId) {
 }
 
 function sendMessage(convId) {
+  // Mode invité (première visite) : cette action engage le compte. Le gate
+  // EXPLIQUE l'action puis propose la création de compte ; il ne rejoue jamais
+  // l'action après coup. Rend `true` — donc inerte — hors mode invité.
+  if (window.requireAuthentication && !requireAuthentication("message")) return;
   // Redirige vers sendMessageFp qui utilise la vraie UI pleine page
   sendMessageFp(convId);
 }
@@ -2356,6 +2360,10 @@ function maybePromptPause() {
 // rechargement), rien envoyé à Supabase, et l'auteur n'était jamais notifié — le
 // même contenu apparaissait « aimé » dans les Bobines et « non aimé » dans le fil.
 function toggleReelLike(postId, btn) {
+  // Mode invité (première visite) : cette action engage le compte. Le gate
+  // EXPLIQUE l'action puis propose la création de compte ; il ne rejoue jamais
+  // l'action après coup. Rend `true` — donc inerte — hors mode invité.
+  if (window.requireAuthentication && !requireAuthentication("aimer")) return;
   if (typeof likePost === "function") likePost(postId, true, null);
   var post = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
   var liked = (state.user.likedPosts || []).indexOf(postId) > -1;
@@ -2538,6 +2546,10 @@ function _envoyerCommentaireBobine(postId, op) {
 }
 
 function submitReelComment() {
+  // Mode invité (première visite) : cette action engage le compte. Le gate
+  // EXPLIQUE l'action puis propose la création de compte ; il ne rejoue jamais
+  // l'action après coup. Rend `true` — donc inerte — hors mode invité.
+  if (window.requireAuthentication && !requireAuthentication("commenter")) return;
   const input = document.getElementById("reelCommentInput");
   if (!input || !window.currentReelCommentPostId) return;
 
@@ -2616,6 +2628,10 @@ function submitReelComment() {
 }
 
 function likeReelComment(postId, commentIdx) {
+  // Mode invité (première visite) : cette action engage le compte. Le gate
+  // EXPLIQUE l'action puis propose la création de compte ; il ne rejoue jamais
+  // l'action après coup. Rend `true` — donc inerte — hors mode invité.
+  if (window.requireAuthentication && !requireAuthentication("aimer")) return;
   const reel = findPostAnywhere(postId);
   if (!reel || !reel.comments || !reel.comments[commentIdx]) return;
 

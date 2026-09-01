@@ -292,6 +292,10 @@ async function supaSetPostLike(postId, want, cid) {
 }
 
 function likePost(id, skipRender = false, el = null) {
+  // Mode invité (première visite) : cette action engage le compte. Le gate
+  // EXPLIQUE l'action puis propose la création de compte ; il ne rejoue jamais
+  // l'action après coup. Rend `true` — donc inerte — hors mode invité.
+  if (window.requireAuthentication && !requireAuthentication("aimer")) return;
   const post = findPostAnywhere(id);
   // Clics sans effet : ils étaient avalés en silence — l'utilisateur voyait un
   // bouton qui ne réagit pas, et le centre de pilotage ne voyait RIEN (pas même
