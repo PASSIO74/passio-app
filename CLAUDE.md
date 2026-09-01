@@ -1208,6 +1208,32 @@ personne.
   Convention appliquée : les assertions dont la cible a disparu ont été RETOURNÉES,
   jamais vidées — `ui-v6-composer.spec.js` et `ui-v7-lot.spec.js` exigent désormais
   l'ABSENCE de la ligne d'identité, pour qu'un retour silencieux reste visible.
+  ④ **ÉTENDU LE MÊME JOUR À LA FEUILLE « TROUVER UNE EXPÉRIENCE » DU FIL**, sur
+  demande de Benjamin après essai réel : « dans le fil quand je clique sur un post
+  → Trouver une expérience, je veux les mêmes onglets que dans (+), même design
+  fond violet clair écriture violet foncé ; supprime les textes explicatifs et les
+  emojis. » `js/ui-v3-passerelle.js` rend donc ses trois entrées comme la feuille
+  « Créer » : une icône SVG violette dans une pastille blanche à la place de
+  l'emoji (📍 🧑‍🤝‍🧑 ✨), le libellé seul et centré, aucune aide sous lui.
+  ⚠️ **Les règles CSS sont PARTAGÉES, pas recopiées** : le bloc du 2026-08-31
+  groupe désormais `#v2CreateSheet` et `#v3PassioSheet` (sept sélecteurs). Deux
+  copies auraient divergé au premier retouchage — c'est exactement ce que le
+  commentaire d'origine redoutait en sens inverse (il interdisait alors d'élargir
+  la règle, parce que la feuille d'UI-3 portait emoji ET sous-titre : la
+  contrainte tombe avec eux). **Ce qui n'a PAS changé : tout reste ancré à un
+  IDENTIFIANT de feuille, jamais à `.v2-sheet-item` seul**, qui reste le socle
+  générique de toute feuille basse à venir.
+  ⚠️ `.v2-sheet-emoji` est **retirée** de `styles.css` : la feuille d'UI-3 en
+  était l'unique consommatrice, et une règle qui survit à sa cible est un piège
+  déjà payé ici (défaut ⑤ de l'audit du 2026-08-29).
+  ⚠️ `#v3PassioSheet .v2-sheet-item-hint` est **conservée** alors qu'aucun nœud ne
+  la porte plus — délibérément : le jour où l'un des trois libellés cesserait de se
+  suffire, son aide naîtrait sinon dans le gris `--muted` du socle, éteint sur le
+  lavis. C'est la seule exception, et elle est écrite dans le fichier.
+  Verrou : `ui-v3-passerelle.spec.js`, cas ⑨ (absence d'emoji et d'aide, une icône
+  SVG par entrée, lavis mesuré sur la case ET son titre, libellé centré). La sonde
+  de lavis a déménagé dans `tests/e2e/lavis-helper.js` — trois suites la mesurent
+  désormais, et deux copies de ces seuils auraient divergé.
 
   **⚠️ La vue Carte s'affiche SOUS les onglets (2026-08-30), dans `js/ui-v4a3-vue.js`.**
   Demandé par Benjamin après essai réel : « quand je clique sur Carte je voudrais qu'elle
