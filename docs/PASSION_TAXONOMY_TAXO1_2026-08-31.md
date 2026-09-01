@@ -135,9 +135,53 @@ npm run valider:catalogue   # échoue si les deux divergent
 - **Idempotente** — `create … if not exists`, `add column if not exists`,
   `insert … on conflict do update`, `drop policy if exists`. La rejouer n'a
   aucun effet observable.
-- **Réversible** — bloc de retour arrière complet en fin de fichier. Comme
-  `specialty_id` vaut `null` partout tant que le lot n'a pas tourné en
-  production, **aucune donnée de contenu n'est perdue** au rollback.
+- **Réversible** — bloc de retour arrière complet en fin de fichier.
+
+### Vérifié en l'EXÉCUTANT, pas en le relisant
+
+La migration a été appliquée **trois fois de suite** sur un PostgreSQL 16 réel,
+sur un socle qui mime la production (les cinq tables porteuses de `passion_id`,
+la table `passions` telle que la migration du 2026-08-15 l'a posée, un
+`auth.uid()` factice, et du contenu d'avant le lot).
+
+⚠️ **C'est ce qui a trouvé le défaut d'idempotence.** Le patron habituel du
+dépôt — `drop constraint if exists` puis `add` — est **inapplicable** à
+`passion_specialties_id_passion_key` : quatre clés étrangères s'appuient sur
+l'index unique qu'elle crée. Au second passage, PostgreSQL sortait
+« cannot drop constraint … because other objects depend on it » et la migration
+s'arrêtait **au tiers**. Elle est désormais posée par un `do $$ … if not exists`.
+Aucune relecture ne l'aurait vu.
+
+Ce que l'exécution prouve, mesuré :
+
+| Contrôle | Résultat |
+|---|---|
+| 3 applications de suite | ✓ aucune erreur |
+| volumes en base | 10 univers · 42 passions · 790 spécialités |
+| les 19 canoniques | présentes, toutes rattachées à un univers |
+| contenu d'avant | intact, `specialty_id` à `null` |
+| orphelins | 0 spécialité, 0 passion |
+| couple cohérent (`moto` + `moto-enduro`) | **accepté** |
+| couple croisé (`moto` + `cuisine-patisserie`) | **refusé** — `posts_specialty_fk` |
+| spécialité inventée | **refusée** |
+| spécialité **sans** passion | **refusée** — `posts_specialty_needs_passion` |
+| idem sur `events` et `stories` | même comportement |
+| RLS | active sur les 6 tables |
+| policies | catalogue : `SELECT` seul · sélections : 4 chacune · demandes : `SELECT` + `INSERT` |
+
+Le contrôle « spécialité sans passion » est celui qui **prouve que le `check`
+n'est pas décoratif** : la clé étrangère seule laissait passer la ligne.
+
+### Ce que le rollback perd, exactement
+
+Exécuté lui aussi : 42 passions redeviennent 19, les publications, l'activité et
+la story de test survivent, plus aucune colonne `specialty_id` ne subsiste.
+
+⚠️ Il **supprime la colonne** `specialty_id` : toute spécialité posée sur un
+contenu *pendant que le lot tournait* part avec elle. Les `passion_id`, eux, ne
+sont pas touchés — aucune publication ne perd son classement principal. Tant que
+le lot n'a pas tourné en production, `specialty_id` vaut `null` partout et le
+retour arrière est donc **sans aucune perte**.
 
 Le seul geste que le rollback ne rend pas : le `sort_order` d'origine des 19
 canoniques. Rejouer `migrations/migration_passions_referentiel.sql` le fait.

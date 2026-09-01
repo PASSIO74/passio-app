@@ -26,7 +26,8 @@
     "skills:check": "npm run skills:lint && npm run skills:routing",
     "schema:baseline": "node scripts/schema-baseline.js",
     "valider:catalogue": "node scripts/valider-catalogue.js",
-    "generer:catalogue": "node scripts/generer-migration-catalogue.js"
+    "generer:catalogue": "node scripts/generer-migration-catalogue.js",
+    "verifier:migration-catalogue": "bash scripts/verifier-migration-catalogue.sh"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",

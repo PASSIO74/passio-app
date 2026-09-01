@@ -138,10 +138,27 @@ create table if not exists public.passion_specialties (
 );
 
 -- La cible des clés étrangères COMPOSITES des tables de contenu.
-alter table public.passion_specialties
-  drop constraint if exists passion_specialties_id_passion_key;
-alter table public.passion_specialties
-  add  constraint passion_specialties_id_passion_key unique (id, passion_id);
+--
+-- ⚠️ POSÉE SI ELLE MANQUE, JAMAIS RECRÉÉE. Le patron habituel du dépôt
+-- (`drop constraint if exists` puis `add`) est ici INAPPLICABLE : quatre
+-- clés étrangères s'appuient sur l'index unique qu'elle crée
+-- (`user_passion_specialties`, `posts`, `stories`, `events`). Au second
+-- passage, le `drop` sort en « cannot drop constraint … because other
+-- objects depend on it » et la migration s'arrête au tiers — mesuré en
+-- l'appliquant deux fois sur un PostgreSQL 16 réel. Un `cascade` serait
+-- pire : il emporterait les quatre clés, qu'on remettrait plus bas… donc
+-- une fenêtre où le contenu n'est plus contraint.
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+     where conname = 'passion_specialties_id_passion_key'
+       and conrelid = 'public.passion_specialties'::regclass
+  ) then
+    alter table public.passion_specialties
+      add constraint passion_specialties_id_passion_key unique (id, passion_id);
+  end if;
+end $$;
 
 create index if not exists idx_passion_specialties_passion
   on public.passion_specialties (passion_id);
@@ -1148,8 +1165,19 @@ commit;
 --   -> catalogue : SELECT seulement. Sélections : 4 policies, toutes
 --      ancrées sur auth.uid().
 --
--- RETOUR ARRIÈRE COMPLET (aucune donnée de contenu perdue : `specialty_id`
--- vaut `null` partout tant que le lot n'a pas tourné en production)
+-- RETOUR ARRIÈRE COMPLET
+--
+-- ⚠️ CE QU'IL PERD, EXACTEMENT. Il supprime la colonne `specialty_id` :
+-- toute spécialité posée sur une publication PENDANT que le lot tournait
+-- part avec elle, et un nouvel aller n'en retrouvera aucune. Publications,
+-- activités, stories, conversations et profils, eux, sont intacts — leur
+-- `passion_id` n'est pas touché. Vérifié en exécutant ce bloc sur un
+-- PostgreSQL 16 réel : 42 passions redeviennent 19, les 2 publications, la
+-- story et l'activité de test survivent, et plus aucune colonne
+-- `specialty_id` ne subsiste.
+--
+-- Tant que le lot n'a pas tourné en production, `specialty_id` vaut `null`
+-- partout : le retour arrière est alors sans aucune perte.
 --   begin;
 --     alter table public.posts drop constraint if exists posts_specialty_fk;
 --     alter table public.posts drop constraint if exists posts_specialty_needs_passion;
