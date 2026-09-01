@@ -934,6 +934,7 @@
           return;
         }
         if (ajouterPassion(id)) dire("Passion ajoutée", "success");
+        railChange();
         rafraichir();
         if (feuilleAvant && !catalogueOuvert()) ouvrirCatalogue(true);
         return;
@@ -949,7 +950,8 @@
           repeindreCatalogue();
           return;
         }
-        if (!aPassion(pid)) ajouterPassion(pid);
+        var ajoutee = !aPassion(pid);
+        if (ajoutee) { ajouterPassion(pid); railChange(); }
         toggleSpecialite(pid, id);
         rafraichir();
         if (feuilleAvant && !catalogueOuvert()) ouvrirCatalogue(true);
@@ -972,6 +974,22 @@
     repeindreCatalogue();
     monterStudio();
     monterAffiner(true);
+  }
+
+  // Après un AJOUT ou un RETRAIT de passion. `confirmCreateProfile` appelle
+  // `renderProfilesScreen` et `renderTopbar`, mais PAS `renderProfileStrip` :
+  // le rail du Fil gardait donc l'ancienne liste jusqu'au rendu suivant, alors
+  // que `ajouterPassionAuFil` venait de changer la sélection — la passion était
+  // cochée dans un rail qui ne la montrait pas.
+  //
+  // On passe par `_feedSelectionChanged`, le point unique documenté : il
+  // invalide le guard no-op de `renderFeed` (sans quoi le repeint est sauté) et
+  // repeint le rail. Le refaire à la main serait une deuxième vérité.
+  function railChange() {
+    try {
+      if (typeof _feedSelectionChanged === "function") { _feedSelectionChanged(); return; }
+      if (typeof renderProfileStrip === "function") renderProfileStrip();
+    } catch (e) { fail("railChange", e); }
   }
 
   // ══════════════════════════════════════════════════════════════════════════

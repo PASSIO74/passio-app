@@ -210,6 +210,32 @@ test.describe("TAXO-1 · interface", () => {
       "la recherche en cours a été perdue").toBe("guitare");
   });
 
+  test("une passion nouvelle garde son nom et son emoji — pas « ✨ Passion »", async ({ page }) => {
+    // ⚠️ DÉFAUT RÉEL, mesuré à l'écran. `passionById` retombe sur un générique
+    // { emoji: "✨", label: "Passion" } dès que l'identifiant lui est inconnu —
+    // et `confirmCreateProfile` RECOPIE cet emoji dans le profil qu'elle crée.
+    // Les 23 passions hors des 19 canoniques s'affichaient donc « ✨ Passion »
+    // partout, et la valeur fausse était PERSISTÉE.
+    await bootTaxo(page);
+    await page.evaluate(() => { window.PassioTaxo.ouvrirCatalogue(); });
+    await page.locator('.taxo-chip[data-taxo-act="passion"][data-taxo-id="combat"]').first().click();
+    await page.waitForTimeout(700);
+
+    const r = await page.evaluate(() => ({
+      meta: passionById("combat"),
+      profil: state.user.profiles.find(x => x.passion === "combat"),
+      rail: (document.getElementById("profileStrip") || {}).innerText || ""
+    }));
+    expect(r.meta.label).toBe("Sports de combat");
+    expect(r.meta.emoji).toBe("🥊");
+    // La valeur PERSISTÉE, pas seulement celle affichée.
+    expect(r.profil.emoji, "l'emoji générique a été enregistré dans le profil").toBe("🥊");
+    // Et le rail du Fil la montre TOUT DE SUITE : `confirmCreateProfile`
+    // n'appelle pas `renderProfileStrip`, donc la passion était cochée dans un
+    // rail qui ne l'affichait pas encore.
+    expect(r.rail, "le rail du Fil n'a pas été repeint").toContain("Sports de combat");
+  });
+
   test("la sélection survit à un rechargement", async ({ page }) => {
     await bootTaxo(page);
     await page.evaluate(() => {

@@ -979,7 +979,30 @@ function commentThreadCount(comments) {
 
 function allPassions() {
   const custom = (state && state.user && state.user.customPassions) || [];
-  return [...PASSIONS, ...custom];
+  // ── Lot TAXO-1 : le catalogue complète le socle, POUR L'AFFICHAGE ─────────
+  // ⚠️ SANS CETTE UNION, LES 23 PASSIONS NOUVELLES S'AFFICHENT « ✨ Passion ».
+  // `passionById` retombe sur un générique dès que l'identifiant lui est
+  // inconnu — et `confirmCreateProfile` RECOPIE cet emoji et cette couleur dans
+  // le profil qu'elle crée. Le rail, le gestionnaire et le Studio disaient donc
+  // « Passion » à la place de « Sports de combat », et la valeur fausse était
+  // PERSISTÉE dans `state.user.profiles`, puis publiée. Mesuré à l'écran.
+  //
+  // ⚠️ C'est un ajout d'AFFICHAGE, et rien d'autre. `estPassionCanonique` n'est
+  // pas touchée : le socle embarqué reste les 19, le serveur reste seul à
+  // pouvoir en ajouter (ADR-010), et aucune passion nouvelle ne devient
+  // publiable avant que la migration du catalogue ne soit appliquée.
+  //
+  // Hors lot, `taxo` est vide et cette fonction rend exactement ce qu'elle
+  // rendait avant.
+  let taxo = [];
+  try {
+    if (window.PassioTaxo && PassioTaxo.actif()) {
+      const cat = PassioTaxo.catalogue();
+      const connus = new Set(PASSIONS.map(p => p.id));
+      if (cat) taxo = cat.passions.filter(p => p.is_active && !connus.has(p.id));
+    }
+  } catch (e) {}
+  return [...PASSIONS, ...taxo, ...custom];
 }
 function passionById(id) {
   return allPassions().find(p => p.id === id) || { emoji: "✨", label: "Passion", color: "#8b5cf6" };
