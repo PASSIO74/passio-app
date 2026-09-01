@@ -10,7 +10,17 @@ test.beforeEach(async ({ page }) => {
   page.on("pageerror", (err) => pageErrors.push(err.message));
   // Déverrouille l'Access Gate pour tester l'app elle-même
   // (le gate a sa propre suite : access-gate.spec.js)
-  await page.addInitScript(([k, t]) => sessionStorage.setItem(k, t), [GATE_KEY, GATE_TOKEN]);
+  //
+  // ⚠️ ET POSE LE KILL SWITCH DE LA PREMIÈRE VISITE. Depuis le 2026-09-01 ce
+  // lot est ACTIF par défaut : un appareil vierge entre directement dans le Fil
+  // et ne voit plus la landing. Cette suite observe le parcours HISTORIQUE —
+  // elle pose donc la coupure et garde TOUTES ses assertions, convention déjà
+  // appliquée aux mises en ligne d'UI-3A et des lots UI-4. Le nouveau parcours
+  // par défaut a sa propre suite, `first-run.spec.js` (37 cas).
+  await page.addInitScript(([k, t]) => {
+    sessionStorage.setItem(k, t);
+    localStorage.setItem("passio_first_run_experience_v1", "0");
+  }, [GATE_KEY, GATE_TOKEN]);
 });
 
 test("la page charge avec le bon titre", async ({ page }) => {
