@@ -224,7 +224,14 @@ function filterExplore() {
   });
 }
 
-function openPassionExplorer(pid) {
+// `retourUserId` (2026-09-01) : d'où l'on vient, quand on vient d'un profil.
+// ⚠️ `openModal` N'EMPILE PAS — ouvrir cette page depuis la modale d'un profil
+// visité la REMPLACE. Sans chemin de retour, découvrir une passion faisait
+// perdre la personne par qui on l'avait découverte : la fermeture rendait le
+// fil, pas le profil. Le paramètre est facultatif, et les huit appels
+// historiques (Explorer, tuiles de tendance, IA, passerelle UI-3) le laissent
+// vide — ils viennent d'un écran, pas d'une modale, et n'ont rien à restituer.
+function openPassionExplorer(pid, retourUserId) {
   var p = passionById(pid);
   if (!p) { toast("Passion non trouvée"); return; }
   var posts = allFeedPosts().filter(function(x) { return x.passion === pid; });
@@ -255,8 +262,16 @@ function openPassionExplorer(pid) {
       ? '<span class="pill active">Ta passion</span>'
       : '<button class="btn small primary" onclick="quickCreateProfile(\'' + escapeJsArg(pid) + '\')">+ Créer profil</button>');
 
+  // Le retour est un LIEN, pas une croix : la croix ferme déjà la modale, et
+  // fermer ne ramène pas au profil. Le libellé nomme la destination.
+  var retourHTML = retourUserId
+    ? '<div class="passion-explorer-retour"><span class="link" role="button" tabindex="0"'
+      + ' onclick="openUserProfile(\'' + escapeJsArg(String(retourUserId)) + '\')">\u2190 Retour au profil</span></div>'
+    : '';
+
   var html = '\
     <div class="modal-handle"></div>\
+    ' + retourHTML + '\
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">\
       <div style="font-size:42px;">' + p.emoji + '</div>\
       <div>\
