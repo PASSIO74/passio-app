@@ -5693,30 +5693,11 @@ function _seedBadgesSeen() {
   } catch (e) {}
 }
 
-function openBadgesSheet() {
-  var list = myBadges();
-  var earned = list.filter(function (b) { return b.earned; });
-  var locked = list.filter(function (b) { return !b.earned; });
-
-  var card = function (b) {
-    return '<div class="badge-card' + (b.earned ? " earned" : "") + '">'
-      + '<div class="badge-emoji">' + b.emoji + '</div>'
-      + '<div style="flex:1;min-width:0;">'
-      + '<div class="badge-label">' + escapeHtml(b.label) + '</div>'
-      + '<div class="badge-desc">' + escapeHtml(b.desc) + '</div>'
-      + (b.earned ? "" : '<div class="badge-bar"><i style="width:' + b.pct + '%"></i></div>')
-      + '</div>'
-      + '<div class="badge-count">' + (b.earned ? "\u{2713}" : b.have + "/" + b.goal) + '</div>'
-      + '</div>';
-  };
-
-  openModal('<span class="modal-close" onclick="closeModal()">×</span>'
-    + '<div class="modal-title">\u{1F3C5} Mes badges</div>'
-    + '<div style="font-size:12px;color:var(--muted);margin-bottom:14px;">'
-    + earned.length + ' badge' + (earned.length > 1 ? "s" : "") + ' sur ' + list.length + '</div>'
-    + (earned.length ? earned.map(card).join("") : '<div style="text-align:center;padding:16px;color:var(--muted);font-size:12px;">Ton premier badge t\'attend à ta première sortie \u{1F44B}</div>')
-    + (locked.length ? '<div style="font-weight:800;font-size:13px;color:var(--text);margin:16px 0 8px;">À débloquer</div>' + locked.map(card).join("") : ""));
-}
+// ⚠️ `openBadgesSheet()` a été RETIRÉE le 2026-08-31 : la pastille « 🏅 N » du
+// profil, son unique appelant, est partie avec le système de points. Le moteur
+// de badges (`myBadges`, `_announceNewBadges`) reste : il fête un jalon par un
+// toast, il n'expose plus aucun compteur. Réintroduire une visionneuse
+// demanderait d'abord une porte d'entrée — sans elle, c'est du code mort.
 
 /* ============================================================================
    IRL — RETOUR D'EXPÉRIENCE APRÈS L'ÉVÉNEMENT (2026-07-21)

@@ -151,8 +151,10 @@ test.describe("UI-4A0 — tête de Rencontrer", () => {
     const head = page.locator("#v4a0Head");
     await expect(head).toBeVisible();
     await expect(head.locator(".v4a0-title")).toHaveText("Rencontrer");
-    await expect(head.locator(".v4a0-sub"))
-      .toHaveText("Des activités à vivre autour de tes passions");
+    // ⚠️ Plus de sous-titre depuis le 2026-08-31 (« Des activités à vivre autour
+    // de tes passions », retiré sur demande de Benjamin). On l'exige ABSENT :
+    // supprimer l'assertion aurait laissé son retour passer inaperçu.
+    await expect(head.locator(".v4a0-sub")).toHaveCount(0);
     await expect(head.locator("#v4a0Search")).toBeVisible();
     await expect(head.locator("[data-v4a0-intent]")).toHaveCount(4);
     await expect(head.locator("[data-v4a0-intent]")).toHaveText([

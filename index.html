@@ -562,13 +562,19 @@
             </div>
           </div>
           <div class="main-profile-username" id="mainProfileUsername">Mon profil</div>
-          <div class="profile-chips-row">
-            <!-- ADR-009 : plus de pastille score/rang ni de solde Passia. Restent
-                 les badges d'assiduité, jalons CONCRETS (sorties, villes, pays)
-                 et non un score global. Masqués tant qu'aucun n'est acquis. -->
-            <button class="profile-stars-chip" id="mainProfileBadges" onclick="openBadgesSheet()" style="display:none;" title="Tes badges" aria-label="Tes badges">🏅 <b id="profileBadgeCount">0</b></button>
-          </div>
-          <div class="main-profile-bio" id="mainProfileBio">Ajoute une biographie…</div>
+          <!-- ⚠️ 2026-08-31 : plus AUCUNE pastille sous le pseudo. ADR-009 avait
+               retiré le score, le rang et le solde Passia et laissé la médaille
+               des badges d'assiduité ; Benjamin l'a retirée à son tour — « l'app
+               générale n'a plus du tout le système de points ». La rangée entière
+               part avec elle : vide, elle ne laissait qu'une gouttière. -->
+          <!-- ⚠️ La ligne de bio OUVRE l'éditeur (2026-08-31). Vide, elle affiche
+               « Ajoute une biographie… » : une invitation explicite qui, jusqu'ici,
+               ne réagissait à aucun tap — le clic mort exact que ce projet traque.
+               Le seul moteur reste `openEditMainProfile`, celui du crayon. -->
+          <div class="main-profile-bio" id="mainProfileBio" role="button" tabindex="0"
+               onclick="openEditMainProfile()"
+               onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openEditMainProfile();}"
+               title="Modifier ta biographie">Ajoute une biographie…</div>
           <div class="main-profile-rs" id="mainProfileRs"></div>
           <div class="main-profile-stats">
             <div class="main-profile-stat" onclick="openMyPostsTab()" style="cursor:pointer;"><span id="mainStatPosts">0</span><span>posts</span></div>
@@ -601,7 +607,6 @@
       </div>
 
       <!-- ONGLETS CONTENU -->
-      <p class="profile-tabs-hint">Filtre ce que tu affiches ci-dessous — coche un ou plusieurs types (rien de coché = tout).</p>
       <div class="profile-tabs" role="group" aria-label="Filtrer par type de contenu (multi-sélection)">
         <button class="profile-tab active" data-tab="posts" aria-pressed="true" onclick="switchProfileTab('posts',this)" title="Tout" aria-label="Tout">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2.5"/><path d="M8 9h8"/><path d="M8 13h8"/><path d="M8 17h5"/></svg><span class="profile-tab-lbl">Tout</span>
@@ -615,16 +620,19 @@
         <button class="profile-tab" data-tab="bobines" aria-pressed="false" onclick="switchProfileTab('bobines',this)" title="Bobines" aria-label="Bobines">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2.5"/><path d="M8 4v16"/><path d="M16 4v16"/><path d="M4 8h4"/><path d="M4 16h4"/><path d="M16 8h4"/><path d="M16 16h4"/></svg><span class="profile-tab-lbl">Bobines</span>
         </button>
+        <!-- ⚠️ « Audio / podcast » remplace l'ancien onglet « Carnets », retiré
+             avec le Carnet de voyage (ADR-011 §6). La clé `audio` doit rester
+             alignée sur `PROFILE_TAB_KEYS` (app-06) : c'est ce référentiel qui
+             filtre, ici comme sur le profil visité. -->
+        <button class="profile-tab" data-tab="audio" aria-pressed="false" onclick="switchProfileTab('audio',this)" title="Audio / podcast" aria-label="Audio / podcast">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11c0 3.9 3.1 7 7 7s7-3.1 7-7"/><path d="M12 18v3.5"/><path d="M9 21.5h6"/></svg><span class="profile-tab-lbl">Audio</span>
+        </button>
       </div>
       <div id="myPosts"></div>
 
       <!-- ÉVÉNEMENTS IRL -->
-      <div class="section-title" style="margin-top:18px;">🤝 Mes activités</div>
+      <div class="section-title" style="margin-top:18px;">Mes activités</div>
       <div id="profileEvents" style="margin-bottom:14px;"></div>
-
-      <!-- TOP POSTS -->
-      <div class="section-title" style="margin-top:14px;">🔥 Publications populaires</div>
-      <div id="profileTopPosts" style="margin-bottom:14px;"></div>
 
     </section>
 

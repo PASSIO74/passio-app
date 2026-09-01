@@ -57,7 +57,9 @@
   var VERSION = "ui4a0";
 
   var TITRE = "Rencontrer";
-  var SOUS_TITRE = "Des activités à vivre autour de tes passions";
+  // ⚠️ 2026-08-31 : plus de sous-titre. « Des activités à vivre autour de tes
+  // passions » a été retiré sur demande de Benjamin — le titre « Rencontrer » et
+  // la liste dessous disent déjà ce que fait l'écran.
   var PLACEHOLDER = "Rechercher une activité ou une ville";
 
   // Les quatre intentions arrêtées par Benjamin. `pour_toi` n'est pas une
@@ -193,11 +195,6 @@
     h.className = "v4a0-title";
     h.textContent = TITRE;
     wrap.appendChild(h);
-
-    var sub = document.createElement("p");
-    sub.className = "v4a0-sub";
-    sub.textContent = SOUS_TITRE;
-    wrap.appendChild(sub);
 
     var box = document.createElement("div");
     box.className = "v4a0-searchbox";
