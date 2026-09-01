@@ -1967,6 +1967,10 @@ function buildReels(pinnedId) {
   const eligibles = sources
     .filter(function(p) {
       if (!p || !p.isReel) return false;
+      // 🪦 Une bobine supprimée ne revient pas non plus par ici : `buildReels`
+      // relit les trois mêmes tableaux que le fil, et le lecteur les affiche
+      // sans repasser par `allFeedPosts`.
+      if (typeof postSupprime === "function" && postSupprime(p.id)) return false;
       if (seen.has(p.id)) return false;
       seen.add(p.id);
       if (blocked.length && blocked.includes(p.authorId)) return false;

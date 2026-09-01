@@ -3217,7 +3217,22 @@ async function publishPost() {
         diagLog("🔄 Reloading posts after publish...");
         const newPosts = await supaLoadPosts();
         if (newPosts && newPosts.length > 0) {
-          state.seed.posts = newPosts;
+          // ⚠️ DANS `supabasePosts`, JAMAIS DANS `seed.posts` — c'est CETTE
+          // ligne qui faisait « ressortir dans le fil tout l'ancien contenu
+          // supprimé » au moment d'une publication (signalé le 2026-09-01).
+          // Elle déversait la page serveur ENTIÈRE dans le tableau du contenu
+          // de DÉMONSTRATION, c'est-à-dire précisément celui que `deletePost`
+          // venait de filtrer : tout ce que la base avait gardé (une
+          // suppression serveur non vérifiée en laissait) réapparaissait d'un
+          // bloc. Elle écrasait au passage le contenu de démonstration jusqu'au
+          // rechargement suivant. Le tableau des posts RÉSEAU est
+          // `supabasePosts` — la convention de tous les autres chemins
+          // (temps réel, pull-to-refresh, boucle de rafraîchissement), et le
+          // seul que `_feedExtraPosts` sait protéger.
+          const extra = (window._feedExtraPosts || []).filter(function (p) {
+            return !newPosts.some(function (x) { return x.id === p.id; });
+          });
+          state.supabasePosts = newPosts.concat(extra);
           diagLog(`✅ ${newPosts.length} posts reloaded`);
         }
       } catch(e) { /* erreur réseau non bloquante */ }
