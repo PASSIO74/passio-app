@@ -1785,20 +1785,28 @@
     .main-profile-cover {
       /* Format 3:2 (agrandi le 2026-07-20) : la photo de couverture s'affiche
          entière telle que recadrée — même ratio que le recadreur (1080×720).
-         ⚠️ RABOTÉE le 2026-08-31, sur essai réel de Benjamin : « le grand carré
-         avec photo prend trop de place, réduis-le pour voir directement dessous
-         tout le reste ». À 390 × 844 la carte d'identité mesurait 395 px pour
-         714 px de zone visible, soit 55 % — le rail de passions et les onglets
-         ne commençaient qu'après un défilement. Le plafond est désormais une
-         FRACTION DE LA HAUTEUR, pas seulement des pixels : la carte tient sous
-         la moitié de l'écran (cover 202 px + corps 158 px = 360 px, 50 % de la
-         zone visible et 43 % de l'écran).
+         ⚠️ RABOTÉE le 2026-08-31 (« le grand carré avec photo prend trop de
+         place »), puis RÉÉLARGIE le 2026-09-01 sur essai réel de Benjamin :
+         « la photo de fond devrait aller jusqu'à juste au-dessus du nom de
+         profil ». Les deux demandes ne se contredisent pas — la première visait
+         la CARTE ENTIÈRE, celle-ci vise la seule PHOTO. Ce qui rend la place
+         n'est donc pas un plafond plus bas mais l'avatar, qui passe ENTIÈREMENT
+         sur la couverture (`.main-profile-avatar-wrap`) : les 45 px qu'il
+         occupait dans le corps reviennent à la photo, et le pseudo se pose au
+         ras de son bord bas. MESURÉ à 390 × 844 : cover 237 px, carte 393 px
+         pour 714 px de zone visible (55 %) — la photo gagne 35 px de hauteur
+         PLUS les 45 px de débord que l'avatar lui rendait, pendant que la carte
+         ne prend que 33 px. C'est ce report qui fait tout le travail.
+         ⚠️ L'ASPECT-RATIO RESTE 3/2, celui du recadreur (1080×720) : le plafond
+         seul monte. Un rapport plus haut rognerait les côtés de photos déjà
+         recadrées par leurs auteurs — on n'élargit jamais une photo en coupant
+         celles qui existent.
          ⚠️ `--app-vh` et JAMAIS `100dvh` : c'est la variable mesurée en JS
          (app-09) qui fait autorité sur le cadrage dans ce projet — `dvh` est mal
          résolu par plusieurs navigateurs mobiles au moment où la barre d'URL
          bouge. Le repli `100svh` ne sert qu'avant sa première mesure. */
       aspect-ratio: 3 / 2;
-      max-height: min(360px, calc(var(--app-vh, 100svh) * 0.24));
+      max-height: min(420px, calc(var(--app-vh, 100svh) * 0.34));
       width: 100%;
       background: var(--grad-hero);
       background-size: cover;
@@ -1808,7 +1816,7 @@
     }
     /* Fallback vieux navigateurs sans aspect-ratio */
     @supports not (aspect-ratio: 3 / 2) {
-      .main-profile-cover { height: min(250px, calc(var(--app-vh, 100svh) * 0.24)); }
+      .main-profile-cover { height: min(300px, calc(var(--app-vh, 100svh) * 0.34)); }
     }
     .main-profile-body {
       padding: 0 16px 18px;
@@ -1817,13 +1825,28 @@
       display: flex;
       align-items: flex-end;
       justify-content: space-between;
-      /* Moitié de la hauteur de l'avatar (90px) : il chevauche la couverture */
-      margin-top: -45px;
-      margin-bottom: 10px;
+      /* ⚠️ 2026-09-01 : l'avatar ne CHEVAUCHE plus la couverture, il est DEDANS.
+         Il descendait jusqu'à sa moitié dans le corps (`margin-top: -45px` pour
+         90 px de haut) ; la photo s'arrêtait donc visuellement à 45 px du bord
+         supérieur du corps, loin du pseudo. Le calcul est maintenant
+         « -(hauteur de l'avatar + garde) » : 116 + 14 = 130. L'avatar tient
+         entier sur la photo, son bord bas à 14 px du bas de la couverture.
+         L'avance verticale du bloc vaut -130 + 116 + 18 = +4 px : le pseudo se
+         pose 4 px SOUS le bord de la photo, ce que demandait Benjamin
+         (« jusqu'à juste au-dessus du nom de profil »).
+         ⚠️ Ces trois nombres sont liés. Changer la taille de l'avatar sans
+         changer `margin-top` le fait déborder dans le corps (avatar plus grand)
+         ou flotter au milieu de la photo (avatar plus petit) — le rapport n'est
+         plus « la moitié », il est « tout ». */
+      margin-top: -130px;
+      margin-bottom: 18px;
     }
     .main-profile-avatar {
-      width: 90px;
-      height: 90px;
+      /* 90 → 116 px (2026-09-01, demande de Benjamin : « la photo de profil plus
+         grande »). `box-sizing: border-box` est global : la bordure blanche de
+         3 px est COMPRISE dans ces 116 px, et la boîte mesure donc bien 116. */
+      width: 116px;
+      height: 116px;
       border-radius: 50%;
       background: linear-gradient(135deg, #a78bfa, #7c3aed);
       background-size: cover;
@@ -1831,23 +1854,28 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 40px;
+      font-size: 52px;
       border: 3px solid #fff;
-      box-shadow: 0 4px 14px rgba(139,92,246,0.28);
+      /* Ombre portée renforcée : l'avatar est désormais POSÉ SUR la photo de
+         couverture sur toute sa hauteur. Sur un cliché clair, la seule bordure
+         blanche ne le détachait plus du fond. */
+      box-shadow: 0 6px 20px rgba(15, 8, 40, 0.32);
       flex-shrink: 0;
       cursor: pointer;
       position: relative;
     }
     .main-profile-avatar-badge {
       position: absolute;
-      bottom: -2px;
-      right: -2px;
-      width: 22px;
-      height: 22px;
+      bottom: 0;
+      right: 0;
+      /* Suit l'agrandissement de l'avatar (22 → 26) : à 116 px, une pastille de
+         22 px se lisait comme une poussière. */
+      width: 26px;
+      height: 26px;
       border-radius: 50%;
       background: var(--accent);
       color: #fff;
-      font-size: 11px;
+      font-size: 13px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -9868,9 +9896,124 @@ body.ctx-locked #appMain { overflow: hidden; }
   max-width: 90%;
 }
 
+/* ──────────────────────────────────────────────────────────────────────────
+   LES PASSIONS D'UN PROFIL SONT DES PORTES (2026-09-01)
+   Demande de Benjamin : « je voudrais que les passions soient cliquables et que
+   ça renvoie vers la page de cette passion, pour que les utilisateurs puissent
+   aller découvrir les passions directement. » La ligne d'identité du profil —
+   la mienne comme celle d'un profil visité — cesse d'être un libellé et devient
+   une rangée de pastilles, chacune ouvrant `openPassionExplorer`.
+
+   ⚠️ CE MODIFICATEUR DÉFAIT LA TRONCATURE, ET C'EST BORNÉ À CE CONTEXTE.
+   `.ident-passions` est `nowrap` + `ellipsis` pour une raison écrite plus haut :
+   sur les surfaces denses (commentaires, listes de personnes, messages) une
+   identité longue pousse hors de l'écran l'action posée À CÔTÉ d'elle
+   (« Message → », « Voir → »). Ici la ligne occupe sa propre rangée, sans rien
+   à sa droite : elle peut passer à la ligne sans rien bousculer. Le rendu reste
+   borné côté JS (`identitePassionsChipsHTML`, 6 + « +N ») — un
+   `flex-wrap` n'est pas une autorisation à afficher une liste non bornée venue
+   du jsonb `profiles.passions` d'un autre compte.
+
+   ⚠️ La double classe (`.ident-passions.ident-passions-links`) n'est pas une
+   coquetterie : elle gagne sur `.ident-passions` par la SPÉCIFICITÉ, donc sans
+   dépendre de la position de ce bloc dans la feuille — et le bloc UI-4A5 doit
+   rester le dernier. */
+.ident-passions.ident-passions-links {
+  display: flex;
+  flex-wrap: wrap;
+  /* ⚠️ ALIGNÉES À GAUCHE, comme le pseudo et la bio. `.main-profile-body
+     .ident-passions` centrait cette ligne alors que tout le corps du profil est
+     ferré à gauche — un décalage discret tant qu'il s'agissait d'un libellé gris,
+     franchement visible dès qu'il devient une rangée de pastilles. Cette règle a
+     la même spécificité (0,2,0) et vient APRÈS : c'est elle qui l'emporte. */
+  justify-content: flex-start;
+  align-items: center;
+  gap: 14px 6px;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  max-width: 100%;
+  margin: 10px 0 0;
+}
+
+/* ⚠️ LA CIBLE TACTILE FAIT 44 px, LA PASTILLE VISIBLE 30 px — même patron que
+   `.v3-tempt` (UI-3A) et que le crayon d'UI-6B. La cible se mesure sur la BOÎTE
+   du bouton, qu'un simple débord en pseudo-élément ne satisferait pas : la boîte
+   garde donc ses 44 px et c'est le `::before` (en `inset: 7px 0`, z-index
+   négatif) qui PEINT la pilule. Les marges négatives rendent au corps du profil
+   les 14 px que cette boîte ajoute, et le `row-gap` de 14 px garantit que deux
+   rangées de pastilles ne se CHEVAUCHENT pas : 30 + 14 = 44, soit exactement la
+   hauteur d'une boîte. Sans lui, un tap entre deux lignes atteindrait la
+   pastille du dessous.
+
+   ⚠️ Le fond ne peut PAS être `var(--bg-card)` : ces pastilles vivent DANS
+   `.main-profile-card`, qui est déjà `--bg-card` (#fff), et la bordure du thème
+   est à 7 % d'opacité. Une pastille blanche sur carte blanche est invisible —
+   d'où le lavis violet `--accent-wash`, le jeton d'« état actif discret » du
+   thème, déjà utilisé partout ailleurs pour ça. */
+.ident-passion-lien {
+  position: relative;
+  z-index: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  min-height: 44px;
+  margin: -7px 0;
+  padding: 0 12px;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color 0.15s ease;
+}
+.ident-passion-lien::before {
+  content: "";
+  position: absolute;
+  inset: 7px 0;
+  z-index: -1;
+  border-radius: 999px;
+  background: var(--accent-wash);
+  border: 1px solid var(--accent-wash);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.ident-passion-lien:hover::before,
+.ident-passion-lien:focus-visible::before {
+  background: rgba(124, 58, 237, 0.16);
+  border-color: var(--accent);
+}
+.ident-passion-nom { overflow: hidden; text-overflow: ellipsis; }
+.ident-passion-emoji { font-size: 13px; line-height: 1; flex-shrink: 0; }
+
+/* Le reliquat « +N » n'ouvre rien : il DIT qu'il y en a d'autres, il ne prétend
+   pas être une porte. Un faux bouton est pire qu'une information. */
+.ident-passion-plus {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--muted);
+  padding: 5px 4px;
+}
+
+/* Le retour vers le profil d'où l'on vient, en tête de la page d'une passion
+   (`openPassionExplorer(pid, retourUserId)`). Posé au-dessus du titre, là où on
+   cherche un retour — jamais confondu avec la croix, qui ferme. */
+.passion-explorer-retour {
+  margin: 2px 0 10px;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+.passion-explorer-retour .link { cursor: pointer; }
+
 @media (max-width: 359px) {
   .ident-passions { font-size: 11px; }
   .ident-passions-sm { font-size: 10px; }
+  .ident-passion-lien { font-size: 11.5px; padding: 0 10px; }
 }
 
 /* ══════════════════════════════════════════════════════════════════════════

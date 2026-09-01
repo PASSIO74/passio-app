@@ -327,7 +327,7 @@ function renderMainProfile() {
     avatarEl.style.backgroundImage = "";
     var _ini = _profileInitials(g.username || state.user.name);
     avatarEl.innerHTML = (_ini
-        ? '<span style="font-weight:800;font-size:30px;color:#fff;letter-spacing:.02em;">' + escapeHtml(_ini) + '</span>'
+        ? '<span style="font-weight:800;font-size:40px;color:#fff;letter-spacing:.02em;">' + escapeHtml(_ini) + '</span>'
         : (g.emoji || (cur ? cur.emoji : "✨")))
       + '<div class="main-profile-avatar-badge">📷</div><input type="file" id="avatarPhotoInput" accept="image/*" style="display:none;" onchange="changeAvatarPhoto(event)"/>';
   }
@@ -336,22 +336,43 @@ function renderMainProfile() {
   // §2 : mes passions sous mon pseudo, comme sur toutes les autres surfaces.
   // Nœud créé une fois, tenu à jour ensuite — pas de `innerHTML` sur la carte,
   // qui emporterait l'input de photo qu'elle héberge.
+  //
+  // ⚠️ 2026-09-01 : ce n'est plus une ligne de texte mais une rangée de PORTES
+  // (`identitePassionsChipsHTML`, app-02) — chaque passion ouvre sa page. Le
+  // nœud reste le même et garde sa classe : seule sa nature change.
   try {
     var identEl = document.getElementById("mainProfileIdent");
-    var identTxt = (typeof identitePassionsTexte === "function")
-      ? identitePassionsTexte({ id: (typeof MY_UID !== "undefined" && MY_UID) || "me" }) : "";
-    if (!identEl && identTxt) {
+    var moi = { id: (typeof MY_UID !== "undefined" && MY_UID) || "me" };
+    var identChips = (typeof identitePassionsChipsHTML === "function")
+      ? identitePassionsChipsHTML(moi) : "";
+    // La signature évite de repeindre à chaque `renderMainProfile` (rappelée à
+    // chaque publication, chaque commentaire, chaque RSVP) : réécrire l'HTML
+    // sans raison relancerait la transition des pastilles à chaque geste.
+    // ⚠️ Elle porte sur ce que la pastille MONTRE — id, emoji ET libellé — et pas
+    // sur la seule ligne de texte : changer l'emoji d'une passion sans changer son
+    // nom laisserait sinon l'ancien à l'écran jusqu'au prochain rechargement.
+    var identSig = "";
+    try {
+      identSig = passionsAffichables(moi).map(function (p) {
+        return p.id + ":" + p.emoji + ":" + p.label;
+      }).join("|");
+    } catch (e) {}
+    if (!identEl && identChips) {
       identEl = document.createElement("div");
       identEl.id = "mainProfileIdent";
-      identEl.className = "ident-passions";
+      identEl.className = "ident-passions ident-passions-links";
+      identEl.setAttribute("role", "group");
+      identEl.setAttribute("aria-label", "Mes passions — toucher pour les découvrir");
       usernameEl.parentNode.insertBefore(identEl, usernameEl.nextSibling);
     }
     if (identEl) {
-      // Un libellé vide ne doit rien peindre : une ligne vide sous un pseudo se
+      if (identEl.getAttribute("data-ident-sig") !== identSig) {
+        identEl.setAttribute("data-ident-sig", identSig);
+        identEl.innerHTML = identChips;
+      }
+      // Une rangée vide ne doit rien peindre : une ligne vide sous un pseudo se
       // lit comme un chargement qui n'arrive jamais.
-      identEl.textContent = identTxt;
-      identEl.title = identTxt;
-      identEl.hidden = !identTxt;
+      identEl.hidden = !identChips;
     }
   } catch (e) { _v8Echec("ident_passions", e); }
   // Bio : afficher seulement si renseignée (sinon rien, pas de placeholder)

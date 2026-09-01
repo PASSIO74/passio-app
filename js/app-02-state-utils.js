@@ -1290,6 +1290,88 @@ function identitePassionsHTML(u, cls) {
     + escapeHtml(t) + '">' + escapeHtml(t) + '</div>';
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// L'IDENTITÉ CLIQUABLE — chaque passion d'un profil est une PORTE (2026-09-01)
+// ──────────────────────────────────────────────────────────────────────────
+// Demande de Benjamin, après essai réel : « je voudrais que les passions soient
+// cliquables et que ça renvoie vers la page de cette passion, pour que les
+// utilisateurs puissent aller découvrir les passions directement. »
+//
+// Sur un profil, les passions ne sont pas une étiquette : ce sont les seuls
+// endroits de l'écran qui nomment un univers de contenu que le visiteur ne
+// connaît pas encore. Elles ouvrent donc `openPassionExplorer(pid)`, la page qui
+// existe déjà pour ça (créateurs + publications de la passion), et qui était
+// jusqu'ici atteignable seulement depuis Explorer.
+//
+// ⚠️ PÉRIMÈTRE : LES DEUX EN-TÊTES DE PROFIL, ET RIEN D'AUTRE. Les surfaces
+// denses (`ident-passions-sm` : cartes de publication, commentaires et réponses,
+// listes d'abonnés, recherche, inbox) gardent `identitePassionsHTML`, en texte
+// inerte. Deux raisons, aucune décorative : ① ces lignes vivent DANS une rangée
+// qui a déjà son geste (ouvrir le profil de la personne, ouvrir la publication)
+// — un second bouton imbriqué y produirait deux destinations pour un tap ;
+// ② elles mesurent 10,5 px, très en dessous des 44 px de cible tactile.
+//
+// ⚠️ LE GESTIONNAIRE N'EST PAS UNE CHAÎNE LIBRE — même règle que
+// `_passionTileOnclick` : chaque branche écrit son appel EN TOUTES LETTRES, seul
+// l'argument circule, et il passe par `escapeJsArg`. Un `onclick` doit se relire
+// à l'œil sans remonter la provenance de la chaîne (`audit:echappement`).
+//
+// ⚠️ AUCUNE ACTIVATION CLAVIER ICI, et c'est délibéré : `app-08` porte le
+// délégué unique qui active tout `[role="button"]` non natif à Entrée/Espace.
+// En ajouter un second produirait DEUX activations pour une touche.
+function _identPassionOnclick(passionId, retourUserId) {
+  var pid = escapeJsArg(String(passionId == null ? "" : passionId));
+  // Ouverte depuis un profil VISITÉ, la page de passion REMPLACE la modale de ce
+  // profil (`openModal` n'empile pas) : sans ce second argument, découvrir une
+  // passion faisait perdre la personne par qui on l'avait découverte, sans
+  // aucun chemin de retour. Le retour est une donnée, pas une chaîne d'appel.
+  if (retourUserId) {
+    return "openPassionExplorer('" + pid + "','" + escapeJsArg(String(retourUserId)) + "')";
+  }
+  return "openPassionExplorer('" + pid + "')";
+}
+
+// Combien de pastilles avant le reliquat « +N ». Plus large que la ligne de
+// texte (3) : sur un en-tête de profil la rangée occupe sa propre ligne, sans
+// rien à sa droite, donc elle peut passer à la ligne sans pousser aucune action
+// hors de l'écran. Elle reste BORNÉE — la liste vient du jsonb
+// `profiles.passions` d'un autre compte, que rien ne limite côté produit. Le
+// « +N » n'est PAS une porte : un faux bouton est pire qu'une information.
+var IDENT_PASSIONS_MAX_PROFIL = 6;
+
+// Les pastilles seules, sans conteneur : `renderMainProfile` tient un nœud
+// persistant (`#mainProfileIdent`) et n'y écrit que le contenu.
+function identitePassionsChipsHTML(u, opts) {
+  opts = opts || {};
+  var liste = passionsAffichables(u);
+  if (!liste.length) return "";
+  var max = opts.max || IDENT_PASSIONS_MAX_PROFIL;
+  var visibles = liste.slice(0, max);
+  var reste = liste.length - visibles.length;
+  var html = visibles.map(function (p) {
+    var court = _passionCourteIdent(p.label);
+    return '<span class="ident-passion-lien" role="button" tabindex="0"'
+      + ' data-ident-passion="' + escapeHtml(String(p.id)) + '"'
+      + ' onclick="' + _identPassionOnclick(p.id, opts.retourUserId) + '"'
+      + ' title="Découvrir ' + escapeHtml(court) + '">'
+      + '<span class="ident-passion-emoji" aria-hidden="true">' + escapeHtml(p.emoji) + '</span>'
+      + '<span class="ident-passion-nom">' + escapeHtml(court) + '</span></span>';
+  }).join("");
+  if (reste > 0) html += '<span class="ident-passion-plus">+' + Number(reste) + '</span>';
+  return html;
+}
+
+// La rangée complète, conteneur compris — pour les surfaces qui composent une
+// chaîne HTML d'un bloc (le profil visité).
+function identitePassionsLiensHTML(u, opts) {
+  var chips = identitePassionsChipsHTML(u, opts);
+  if (!chips) return "";
+  var cls = (opts && opts.cls) ? " " + escapeHtml(opts.cls) : "";
+  return '<div class="ident-passions ident-passions-links' + cls + '"'
+    + ' role="group" aria-label="Ses passions — toucher pour les découvrir">'
+    + chips + '</div>';
+}
+
 function userById(id) {
   if (id === "me" || (typeof MY_UID !== "undefined" && MY_UID && id === MY_UID)) {
     const p = currentProfile ? currentProfile() : null;
