@@ -111,12 +111,19 @@
       + '<path d="M5 11c0 3.9 3.1 7 7 7s7-3.1 7-7"/><path d="M12 18v3.5"/><path d="M9 21.5h6"/></svg>',
   };
 
-  // ⚠️ Plus de `hint` : la ligne d'explication a été retirée le 2026-08-31 (même
-  // demande). Le libellé porte seul, centré — d'où « Activité » et non plus
-  // « Activité IRL » : le sigle ne disait rien de plus que le mot.
+  // ⚠️ Les lignes d'explication ont été retirées le 2026-08-31 (même demande) :
+  // le libellé porte seul, centré — d'où « Activité » et non plus « Activité
+  // IRL », le sigle ne disant rien de plus que le mot.
+  // ⚠️ UNE SEULE EXCEPTION depuis le 2026-09-01, demandée par Benjamin : « sur
+  // Publication, écris en petit dessous : photo / vidéo ». C'est la seule
+  // entrée dont le nom ne dit pas ce qu'elle accepte — « Bobine », « Story » ou
+  // « Audio / podcast » nomment déjà leur format, tandis que « Publication »
+  // ouvre le Studio, qui prend un texte AVEC ou SANS média. Le champ `hint`
+  // reste donc FACULTATIF : une entrée sans lui ne rend aucun nœud, et rien ne
+  // s'ajoute sous les cinq autres.
   var CREATE_CHOICES = [
     {
-      key: "post", icon: ICONS.post, title: "Publication",
+      key: "post", icon: ICONS.post, title: "Publication", hint: "Photo / vidéo",
       run: function () { goToScreen("studio"); },
     },
     {
@@ -304,9 +311,16 @@
       btn.setAttribute("data-v2-create", c.key);
       // Libellés constants définis ici : aucune donnée utilisateur n'entre dans
       // ce markup, donc aucun besoin d'échappement — et surtout aucun risque.
+      // Le nom et son éventuel sous-titre sont empilés dans `.v2-sheet-text`,
+      // le conteneur que la feuille d'UI-3 utilise déjà pour la même paire :
+      // c'est lui qui est centré dans la ligne, pas le titre seul, sinon le
+      // sous-titre se centrerait sur une largeur différente de son titre.
       btn.innerHTML =
         '<span class="v2-sheet-icon" aria-hidden="true">' + c.icon + "</span>"
-        + '<span class="v2-sheet-item-title">' + c.title + "</span>";
+        + '<span class="v2-sheet-text">'
+        + '<span class="v2-sheet-item-title">' + c.title + "</span>"
+        + (c.hint ? '<span class="v2-sheet-item-hint">' + c.hint + "</span>" : "")
+        + "</span>";
       btn.addEventListener("click", function () {
         track("ui_v2_create", { choice: c.key });
         // Toute entrée ouvre désormais un éditeur : on referme AVANT de lancer,

@@ -24,6 +24,22 @@
       --accent-5-soft: #ddd6fe;
       --accent-wash: rgba(124, 58, 237, 0.08); /* fond d'état actif discret */
 
+      /* ── Cases « violet léger » (2026-09-01) ───────────────────────────────
+         Demande de Benjamin : « les grands carrés violets sont agressifs, mets
+         plutôt des carrés violet très léger et écris en violet foncé. » Ces
+         trois jetons remplacent le couple `--accent` + blanc partout où une
+         SURFACE entière était peinte en violet plein (feuille « Créer », cases
+         du panneau Filtres de Rencontrer).
+         ⚠️ Ce sont des couleurs OPAQUES, pas des `rgba` comme `--accent-wash` :
+         le test de contraste du projet remonte les ancêtres jusqu'au premier
+         fond opaque et prendrait une teinte translucide pour une couleur
+         pleine, alpha ignoré — il mesurerait alors un rapport qui ne prouve
+         rien. L'écriture est `--accent-2` : 6,2:1 sur `--accent-tile`, très
+         au-dessus des 4,5:1 de l'AA. */
+      --accent-tile: #f5efff;       /* le carré au repos : un lavis violet */
+      --accent-tile-on: #e5d9fc;    /* le même, coché : un ton plus dense */
+      --accent-tile-line: #d6c4f5;  /* le filet qui les cerne */
+
       --text: #1b1830;
       --text-dim: #4a4663;
       --muted: #6e6987; /* assombri pour contraste WCAG AA (4.5+ sur blanc, ~4.2 sur bg-deep ; était #8a86a0 à 3.5/2.8) */
@@ -7333,6 +7349,10 @@ body.ctx-locked #appMain { overflow: hidden; }
   --accent-4: var(--v2-iris);
   --accent-5: #c8b2ff;
   --accent-wash: rgba(109, 50, 244, 0.08);
+  /* Les cases « violet léger », accordées au violet #6D32F4 de la charte. */
+  --accent-tile: #f3eeff;
+  --accent-tile-on: #e3d7ff;
+  --accent-tile-line: #d2c2fb;
 
   --text: var(--v2-ink);
   --text-dim: #47435f;
@@ -7601,9 +7621,15 @@ body.ctx-locked #appMain { overflow: hidden; }
 
 /* ── Feuille « Créer » : des onglets, pas des lignes de menu ───────────────
    Demande de Benjamin du 2026-08-31 : icônes en violet, plus d'emoji, plus de
-   texte d'explication, nom centré, et « l'onglet Publication du profil » comme
-   référence esthétique — c'est-à-dire `.v7-tab[aria-selected="true"]` :
-   violet plein, écriture blanche, coins arrondis.
+   texte d'explication, nom centré, coins arrondis.
+
+   ⚠️ RECTIFIÉ le 2026-09-01, sur essai réel : « les grands carrés violets sont
+   agressifs, mets plutôt des carrés violet TRÈS LÉGER et écris en violet
+   foncé. » Le violet plein + écriture blanche (la formule reprise de l'onglet
+   Publication du profil) posait six aplats saturés pleine largeur les uns sous
+   les autres : la feuille criait au lieu de proposer. Elle passe donc au lavis
+   `--accent-tile` avec l'écriture en `--accent-2`. La FORME ne bouge pas —
+   même hauteur, même rayon, même centrage : seule la densité de couleur change.
 
    ⚠️ TOUT EST ANCRÉ À `#v2CreateSheet`, jamais à `.v2-sheet-item` seul : la
    passerelle UI-3 (`js/ui-v3-passerelle.js`) réutilise EXACTEMENT les mêmes
@@ -7611,23 +7637,23 @@ body.ctx-locked #appMain { overflow: hidden; }
    règle non bornée lui retirerait son emoji et centrerait ses libellés, à
    l'autre bout de l'application et sans que rien ne le signale. */
 #v2CreateSheet .v2-sheet-item {
-  /* 52 px : le sous-titre est parti, la ligne n'a plus besoin de 56 px, et la
-     cible tactile reste très au-dessus des 44 px de référence du projet. */
+  /* 52 px : la cible tactile reste très au-dessus des 44 px de référence du
+     projet, sous-titre ou non — c'est `min-height`, la ligne s'agrandit
+     d'elle-même sous « Publication », la seule entrée qui en porte un. */
   min-height: 52px;
   gap: 10px;
   padding: 10px 14px;
   text-align: center;
   border-radius: 14px;
-  /* « Carré violet + écriture blanche » : la même formule que l'onglet
-     Publication du profil, et que les cases du panneau Filtres de Rencontrer. */
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-  transition: filter 150ms ease;
+  /* « Carré violet très léger + écriture violet foncé. » */
+  background: var(--accent-tile);
+  border-color: var(--accent-tile-line);
+  color: var(--accent-2);
+  transition: background 150ms ease, border-color 150ms ease;
 }
-/* L'icône est VIOLETTE, comme demandé : elle est peinte sur une pastille
-   blanche posée sur le violet. Le tracé hérite de `currentColor`, donc un seul
-   jeu d'icônes suffit — rien n'est dupliqué pour obtenir la seconde couleur. */
+/* L'icône reste VIOLETTE, sur une pastille blanche qui la détache du lavis.
+   Le tracé hérite de `currentColor`, donc un seul jeu d'icônes suffit — rien
+   n'est dupliqué pour obtenir la seconde couleur. */
 #v2CreateSheet .v2-sheet-icon {
   flex: 0 0 auto;
   display: inline-flex;
@@ -7644,23 +7670,42 @@ body.ctx-locked #appMain { overflow: hidden; }
 /* Le nom est centré DANS LA LIGNE, pas juste après l'icône : il prend toute la
    largeur restante et se recentre par rapport à elle. La marge droite égale à
    la largeur de l'icône + le `gap` compense l'icône de gauche, sinon le texte
-   serait centré sur l'espace résiduel et paraîtrait décalé à droite. */
-#v2CreateSheet .v2-sheet-item-title {
+   serait centré sur l'espace résiduel et paraîtrait décalé à droite.
+   ⚠️ Depuis le 2026-09-01 c'est le CONTENEUR `.v2-sheet-text` qui porte ce
+   centrage, et non plus le titre seul : « Publication » a un sous-titre, et
+   deux nœuds centrés séparément se centreraient sur deux largeurs différentes
+   — le sous-titre paraîtrait décalé sous son propre titre. */
+#v2CreateSheet .v2-sheet-text {
   flex: 1 1 auto;
   min-width: 0;
-  /* Le nom est centré DANS LA LIGNE : la marge droite compense exactement la
-     pastille de gauche (34 px) et le `gap` (10 px), sinon le texte serait
-     centré sur l'espace résiduel et paraîtrait poussé vers la droite. */
+  align-items: center;
+  gap: 1px;
+  /* La marge droite compense exactement la pastille de gauche (34 px) et le
+     `gap` (10 px). */
   margin-right: 44px;
   text-align: center;
+}
+#v2CreateSheet .v2-sheet-item-title {
   font-size: 15.5px;
   font-weight: 700;
-  color: #fff;
+  color: var(--accent-2);
+}
+/* Le sous-titre « Photo / vidéo » : en petit, sous le nom, et dans le même
+   violet simplement atténué — le gris `--muted` de la feuille d'UI-3 serait
+   éteint sur ce lavis. */
+#v2CreateSheet .v2-sheet-item-hint {
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--accent);
 }
 #v2CreateSheet .v2-sheet-item:hover,
-#v2CreateSheet .v2-sheet-item:active { filter: brightness(1.08); }
+#v2CreateSheet .v2-sheet-item:active {
+  background: var(--accent-tile-on);
+  border-color: var(--accent-tile-line);
+}
 #v2CreateSheet .v2-sheet-item:focus-visible {
-  outline: 2px solid var(--text);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
@@ -9020,8 +9065,11 @@ body.ctx-locked #appMain { overflow: hidden; }
   gap: 12px;
 }
 
-/* « Publier en tant que … · Changer » : une ligne calme, pas un formulaire. */
-:root.passio-ui-6 .v6-identite,
+/* « Publier dans : … · Changer » : une ligne calme, pas un formulaire.
+   ⚠️ `.v6-identite*` a été RETIRÉE le 2026-09-01 avec la ligne « Publier en
+   tant que … » qu'elle habillait (le multi-profil n'existe plus, l'expéditeur
+   n'est plus un choix). Une règle qui survit à la disparition de sa cible est
+   un piège maison connu : elle part avec elle. */
 :root.passio-ui-6 .v6-passio {
   display: flex;
   align-items: center;
@@ -9033,7 +9081,6 @@ body.ctx-locked #appMain { overflow: hidden; }
   border: 1px solid var(--border);
   min-width: 0;
 }
-:root.passio-ui-6 .v6-identite-txt,
 :root.passio-ui-6 .v6-passio-txt {
   font-size: 13px;
   font-weight: 600;
@@ -9995,6 +10042,281 @@ body.ctx-locked #appMain { overflow: hidden; }
 /* Le panneau de gestion des passions, ouvert depuis les options du profil. */
 #passionManager[hidden] { display: none !important; }
 
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PASSIO — PREMIÈRE VISITE (drapeau `first_run_experience_v1`).  COUPÉ PAR DÉFAUT.
+   (activation : ?passio_preview=first-run-v1 · localStorage.passio_first_run_experience_v1="1"
+    coupures  : localStorage.passio_first_run_experience_v1="0" · window.PASSIO_FIRST_RUN_V1=false)
+
+   Aucune seconde identité visuelle : tout réutilise les jetons du thème
+   (--bg-card, --border, --muted, --accent, --radius-*), la feuille basse
+   `.modal` et les boutons `.btn`. Ce bloc n'ajoute que ce qui n'existe pas —
+   la carte de bienvenue, la grille de passions du panneau, la bulle d'aide
+   contextuelle et l'étiquette du contenu de démonstration.
+
+   ⚠️ Tout est ancré à des classes NEUVES (`.fr-*`) ou à `:root.passio-first-run`.
+   Aucune règle existante n'est réécrite : drapeau coupé, la feuille rend le
+   thème historique à l'octet près, et la classe racine n'est jamais posée.
+
+   ⚠️ Ce bloc est placé AVANT celui du lot UI-4A5, qui doit rester le DERNIER de
+   la feuille (ses sélecteurs gagnent par la position). Les deux familles sont
+   disjointes : rien ne se recouvre, l'ordre ne fait qu'honorer cette contrainte.
+
+   ⚠️ Cibles tactiles : 44 px MESURÉS SUR LA BOÎTE du bouton. Là où le visuel est
+   plus petit (l'étiquette de démonstration n'est pas cliquable, la puce de
+   spécialité l'est), c'est la boîte qui porte la hauteur — un débord en
+   pseudo-élément ne satisferait pas la mesure.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Carte de bienvenue : posée en FRÈRE de #feedList, jamais dedans ──────── */
+.fr-welcome {
+  position: relative;
+  margin: 10px 12px 14px;
+  padding: 16px 44px 16px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 2px 12px rgba(24, 18, 48, 0.05);
+}
+.fr-welcome-title {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: -0.2px;
+}
+.fr-welcome-text {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 4px;
+  line-height: 1.45;
+}
+.fr-welcome-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+/* `flex: 1 1 auto` et non `1 1 0` : à colonnes égales, le libellé long se
+   faisait couper pendant que le court laissait du vide (piège ④ du lot UI-7). */
+.fr-welcome-actions .btn { flex: 1 1 auto; min-height: 44px; }
+.fr-welcome-cta { min-width: 60%; }
+.fr-welcome-close {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 44px;
+  height: 44px;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 50%;
+}
+.fr-welcome-close:hover { color: var(--text); }
+
+/* ── Panneau « Qu'est-ce qui te passionne ? » ─────────────────────────────── */
+.fr-search-wrap { margin: 12px 0 10px; }
+/* 16 px minimum : en dessous, iOS zoome au focus et la feuille basse saute. */
+.fr-search { width: 100%; box-sizing: border-box; font-size: 16px; min-height: 44px; }
+
+/* Grille QUI PASSE À LA LIGNE, jamais une rangée à faire défiler : « aucune
+   barre horizontale nécessitant un glissement pour atteindre une action
+   essentielle ». */
+.fr-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+  max-height: 44vh;
+  overflow-y: auto;
+  padding: 2px;
+  -webkit-overflow-scrolling: touch;
+}
+.fr-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 76px;
+  padding: 10px 6px;
+  background: var(--bg-card);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 0.15s, background 0.15s;
+}
+.fr-tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.fr-tile.is-on {
+  border-color: var(--accent);
+  background: rgba(124, 58, 237, 0.08);
+}
+.fr-tile-emoji { font-size: 22px; line-height: 1; }
+.fr-tile-label {
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.25;
+  color: inherit;
+  overflow-wrap: anywhere;
+}
+.fr-tile.is-on .fr-tile-label { color: var(--accent); }
+.fr-tile-more { border-style: dashed; }
+.fr-vide {
+  grid-column: 1 / -1;
+  padding: 18px 8px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* ── Spécialités rattachées aux passions retenues ─────────────────────────── */
+.fr-specs { margin-top: 12px; max-height: 26vh; overflow-y: auto; }
+.fr-spec-intro { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+.fr-spec-bloc { margin-bottom: 10px; }
+.fr-spec-titre { font-size: 12px; font-weight: 800; color: var(--text); margin-bottom: 6px; }
+.fr-spec-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.fr-chip {
+  min-height: 44px;
+  padding: 6px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.fr-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.fr-chip.is-on { border-color: var(--accent); color: var(--accent); background: rgba(124, 58, 237, 0.08); }
+
+.fr-panel-footer { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+.fr-panel-footer .btn { min-height: 48px; }
+.fr-valider[disabled] { opacity: 0.5; cursor: not-allowed; }
+.fr-revoir { font-size: 12px; min-height: 44px; }
+
+/* ── Gate d'authentification ──────────────────────────────────────────────── */
+.fr-gate-title { line-height: 1.3; }
+.fr-gate-pitch {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: rgba(124, 58, 237, 0.06);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.fr-gate-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+.fr-gate-actions .btn { min-height: 48px; }
+.fr-gate-stay { font-size: 13px; }
+
+/* ── Bulle d'indication contextuelle (tour en trois étapes) ───────────────── */
+/* z-index 9000 : au-dessus du fil et de la barre de navigation, SOUS la feuille
+   basse (`.modal-backdrop`, 10001) et sous le lecteur de bobines (9999) — une
+   bulle qui recouvrirait une modale serait un blocage, ce que le lot interdit. */
+.fr-tip {
+  position: fixed;
+  z-index: 9000;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 10px 32px rgba(24, 18, 48, 0.18);
+  padding: 12px 14px;
+  max-width: calc(100vw - 24px);
+}
+.fr-tip-eyebrow {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 3px;
+}
+.fr-tip-title { font-size: 13px; font-weight: 800; color: var(--text); line-height: 1.3; }
+.fr-tip-text { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.45; }
+.fr-tip-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+}
+.fr-tip-skip, .fr-tip-ok {
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.fr-tip-skip { background: none; border: none; color: var(--muted); padding-left: 0; }
+.fr-tip-ok { background: var(--accent); border: none; color: #fff; }
+.fr-tip-skip:focus-visible, .fr-tip-ok:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ── Sortie « Continuer à explorer » depuis l'écran d'authentification ────── */
+/* Sans elle, l'onboarding est un cul-de-sac : plein écran, sans fermeture. */
+.fr-back-explore {
+  position: absolute;
+  top: calc(10px + env(safe-area-inset-top, 0px));
+  left: 10px;
+  z-index: 5;
+  min-height: 44px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #4c1d95;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgba(24, 18, 48, 0.18);
+}
+.fr-back-explore:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* ⚠️ AUCUNE RÈGLE DE POSITIONNEMENT SUR `#onboarding` ICI. Une première
+   version posait `#onboarding { position: relative }` pour ancrer le bouton
+   ci-dessus — or `.onboarding-shell` est DÉJÀ `position: absolute; inset: 0`,
+   et un sélecteur d'ID (spécificité 100) bat sa classe (010) : la règle
+   transformait l'onboarding historique en bloc relatif, pour TOUT LE MONDE,
+   drapeau coupé compris. Un élément absolu se contente du conteneur déjà
+   positionné : il n'y avait rien à ajouter. */
+
+/* ── Étiquette du contenu de démonstration ────────────────────────────────── */
+/* Non cliquable : pas de contrainte de cible tactile ici. */
+.fr-demo-tag {
+  margin-left: auto;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(124, 58, 237, 0.06);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+/* ── Entrées d'options réservées au parcours de première visite ───────────── */
+/* Masquées tant que la classe racine n'est pas posée : le kill switch rend donc
+   aussi les MOTS, pas seulement les comportements. */
+html:not(.passio-first-run) .fr-only { display: none !important; }
+
+/* ── Safe areas et petits écrans (320 px) ─────────────────────────────────── */
+@media (max-width: 360px) {
+  .fr-grid { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); }
+  .fr-tile { min-height: 70px; }
+  .fr-tile-label { font-size: 10px; }
+  .fr-welcome { margin-left: 8px; margin-right: 8px; }
+}
+@supports (padding: env(safe-area-inset-bottom)) {
+  .fr-tip { margin-bottom: env(safe-area-inset-bottom); }
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    PASSIO UI V4 — lot UI-4A5 : « Filtres » est une VUE, et les bulles de passion
    vivent dedans.  ACTIF PAR DÉFAUT.
@@ -10148,19 +10470,24 @@ body.ctx-locked #appMain { overflow: hidden; }
   /* La MÊME hauteur pour toutes les cases : c'est ce qui les « ordonne ». */
   min-height: 56px;
   padding: 8px 10px;
-  border: 1px solid var(--accent);
+  /* ⚠️ VIOLET LÉGER + ÉCRITURE VIOLET FONCÉ depuis le 2026-09-01, sur essai
+     réel de Benjamin (« les grands carrés violets sont agressifs… mets les
+     mêmes sur le filtre dans Rencontrer ») : ce panneau et la feuille
+     « Créer » suivent la MÊME formule, ce sont les deux surfaces qui
+     empilaient des aplats violets pleins. */
+  border: 1px solid var(--accent-tile-line);
   border-radius: 14px;
-  background: var(--accent);
-  color: #fff;
+  background: var(--accent-tile);
+  color: var(--accent-2);
   text-align: center;
   font-size: 13px;
   font-weight: 700;
   box-shadow: none;
-  transition: opacity .16s ease;
+  transition: background .16s ease, border-color .16s ease;
 }
 :root.passio-ui-4a5 .v4a5-intents .v4a0-chip .v4a0-chip-label,
 :root.passio-ui-4a5 #v4a5Outils .ctx-item .ctx-item-label {
-  color: #fff;
+  color: var(--accent-2);
   font-size: 13px;
   font-weight: 700;
   line-height: 1.2;
@@ -10173,7 +10500,7 @@ body.ctx-locked #appMain { overflow: hidden; }
   min-width: 0;
 }
 :root.passio-ui-4a5 #v4a5Outils .ctx-item .ctx-item-sub {
-  color: rgba(255, 255, 255, 0.78);
+  color: var(--accent);
   font-size: 10.5px;
   font-weight: 600;
 }
@@ -10181,19 +10508,24 @@ body.ctx-locked #appMain { overflow: hidden; }
 :root.passio-ui-4a5 #v4a5Outils .ctx-item .ctx-item-ico,
 :root.passio-ui-4a5 #v4a5Outils .ctx-item .ctx-item-go { display: none; }
 
-/* L'ÉTAT COCHÉ reste lisible sans quitter le violet : une case non cochée est
-   le même carré, simplement atténué, et la coche ✓ ne s'affiche que sur la
-   sélection (règle héritée d'UI-4A0, conservée telle quelle).
+/* L'ÉTAT COCHÉ se lit désormais à la DENSITÉ du lavis et à son filet, plus à
+   l'opacité : sur un carré déjà très clair, atténuer encore à 0,55 effaçait la
+   case décochée et faisait tomber son texte sous le seuil AA. Cochée, elle
+   prend le ton plus dense et le filet violet plein ; la coche ✓ ne s'affiche
+   toujours que sur la sélection (règle héritée d'UI-4A0, conservée telle
+   quelle) — l'état ne repose donc jamais sur la seule couleur.
    ⚠️ « Choisir une ville » n'est pas une bascule mais une ACTION : elle ne porte
-   pas `aria-pressed` et reste donc pleine — c'est voulu, elle n'a pas d'état. */
-:root.passio-ui-4a5 .v4a5-intents .v4a0-chip[aria-pressed="false"],
-:root.passio-ui-4a5 #v4a5Outils .ctx-item[aria-pressed="false"] { opacity: 0.55; }
+   pas `aria-pressed` et garde donc l'aspect au repos — c'est voulu, elle n'a
+   pas d'état à montrer. */
 :root.passio-ui-4a5 .v4a5-intents .v4a0-chip[aria-pressed="true"],
-:root.passio-ui-4a5 #v4a5Outils .ctx-item[aria-pressed="true"] { opacity: 1; }
-:root.passio-ui-4a5 .v4a5-intents .v4a0-chip .v4a0-chip-mark { color: #fff; }
+:root.passio-ui-4a5 #v4a5Outils .ctx-item[aria-pressed="true"] {
+  background: var(--accent-tile-on);
+  border-color: var(--accent);
+}
+:root.passio-ui-4a5 .v4a5-intents .v4a0-chip .v4a0-chip-mark { color: var(--accent); }
 :root.passio-ui-4a5 .v4a5-intents .v4a0-chip:focus-visible,
 :root.passio-ui-4a5 #v4a5Outils .ctx-item:focus-visible {
-  outline: 2px solid var(--text);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 @media (prefers-reduced-motion: reduce) {
@@ -10242,74 +10574,76 @@ body.ctx-locked #appMain { overflow: hidden; }
   justify-content: center;
   gap: 6px;
   padding: 8px 10px;
-  border: 1px solid var(--accent);
+  border: 1px solid var(--accent-tile-line);
   border-radius: 14px;
-  background: var(--accent);
-  color: #fff;
+  background: var(--accent-tile);
+  color: var(--accent-2);
   font-size: 13px;
   font-weight: 700;
   box-shadow: none;
-  transition: opacity .16s ease;
+  transition: background .16s ease, border-color .16s ease;
 }
 /* L'emoji de la passion et le marqueur « ✦ » : masqués, jamais retirés. */
 :root.passio-ui-4a5 #v4a5Passions .msg-tile .msg-tile-icon { display: none; }
 :root.passio-ui-4a5 #v4a5Passions .msg-tile .msg-tile-label {
   max-width: none;
-  color: #fff;
+  color: var(--accent-2);
   font-size: 13px;
   font-weight: 700;
   letter-spacing: 0;
 }
 /* Le compteur reste une INFORMATION (nombre d'activités dans cette passion) :
-   il n'est pas masqué, il passe simplement en pastille blanche sur le violet —
-   le rose de la messagerie hurlait sur ce fond. */
+   il n'est pas masqué, il passe simplement en pastille violette sur le lavis —
+   le rose de la messagerie hurlait sur ce fond. (Elle était blanche sur violet
+   plein ; le fond ayant changé de sens, la pastille s'inverse avec lui.) */
 :root.passio-ui-4a5 #v4a5Passions .msg-tile .msg-tile-badge {
   top: 6px;
   right: 6px;
-  background: #fff;
-  color: var(--accent);
+  background: var(--accent);
+  color: #fff;
   border-color: transparent;
   box-shadow: none;
 }
-/* Même grammaire d'état que les autres cases : coché = plein, décoché =
-   atténué. « Autres » porte `aria-expanded` et non `aria-pressed` : c'est une
-   ACTION, elle reste pleine — comme « Choisir une ville ». */
-:root.passio-ui-4a5 #v4a5Passions .msg-tile[aria-pressed="false"] { opacity: 0.55; }
+/* Même grammaire d'état que les autres cases : coché = lavis dense et filet
+   violet, décoché = lavis au repos. « Autres » porte `aria-expanded` et non
+   `aria-pressed` : c'est une ACTION, elle garde l'aspect au repos — comme
+   « Choisir une ville ». */
 :root.passio-ui-4a5 #v4a5Passions .msg-tile[aria-pressed="true"],
-:root.passio-ui-4a5 #v4a5Passions .msg-tile.active { opacity: 1; }
+:root.passio-ui-4a5 #v4a5Passions .msg-tile.active {
+  background: var(--accent-tile-on);
+  border-color: var(--accent);
+}
 :root.passio-ui-4a5 #v4a5Passions .msg-tile.active .msg-tile-icon { box-shadow: none; }
-:root.passio-ui-4a5 #v4a5Passions .msg-tile:hover { color: #fff; }
+:root.passio-ui-4a5 #v4a5Passions .msg-tile:hover { color: var(--accent-2); }
 :root.passio-ui-4a5 #v4a5Passions .msg-tile:focus-visible {
-  outline: 2px solid var(--text);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
 /* Le panneau « Autres » — la liste dépliée par la tuile du même nom — parle la
-   même langue : des pastilles violettes à écriture blanche, la case à cocher
-   inversée pour rester lisible sur le violet. */
+   même langue : des pastilles au lavis violet, écriture violet foncé, et la
+   case à cocher qui se remplit de violet une fois cochée. */
 :root.passio-ui-4a5 #v4a5Passions .irl-extra-chip {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: #fff;
-  opacity: 0.55;
+  border-color: var(--accent-tile-line);
+  background: var(--accent-tile);
+  color: var(--accent-2);
   min-height: 38px;
 }
 :root.passio-ui-4a5 #v4a5Passions .irl-extra-chip.on {
   border-color: var(--accent);
-  background: var(--accent);
-  color: #fff;
-  opacity: 1;
+  background: var(--accent-tile-on);
+  color: var(--accent-2);
 }
 :root.passio-ui-4a5 #v4a5Passions .irl-extra-chip b,
-:root.passio-ui-4a5 #v4a5Passions .irl-extra-chip.on b { color: rgba(255, 255, 255, 0.8); }
+:root.passio-ui-4a5 #v4a5Passions .irl-extra-chip.on b { color: var(--accent); }
 :root.passio-ui-4a5 #v4a5Passions .irl-extra-chip .irl-extra-box {
-  border-color: rgba(255, 255, 255, 0.75);
-  color: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
 }
 :root.passio-ui-4a5 #v4a5Passions .irl-extra-chip.on .irl-extra-box {
-  background: #fff;
-  border-color: #fff;
-  color: var(--accent);
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
 }
 
 @media (max-width: 359px) {

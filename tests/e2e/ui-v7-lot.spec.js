@@ -76,12 +76,19 @@ test.describe("UI-7 §1 — vocabulaire visible", () => {
       (b) => b.map((x) => x.getAttribute("data-intent"))))
       .toEqual(["discover", "learn", "create", "meet"]);
 
-    // Studio : « Passion : … », « Options », « Changer de profil ».
+    // Studio : « Passion : … », « Options ».
     await page.evaluate(() => goTo("studio"));
     await page.waitForTimeout(600);
     await expect(page.locator("[data-v6-passio]")).toContainText("Passion : ");
     await expect(page.locator(".v6-affiner summary")).toHaveText("Options");
-    await expect(page.locator(".v6-identite")).toContainText("Changer de profil");
+    // ⚠️ ASSERTION RETOURNÉE, JAMAIS VIDÉE (2026-09-01). Ce cas exigeait
+    // « Changer de profil » dans `.v6-identite` : c'était le libellé que ce lot
+    // rendait sous le kill switch d'UI-8. La ligne d'identité a été RETIRÉE
+    // depuis, le multi-profil n'existant plus — couper UI-8 ne doit donc pas la
+    // ressusciter, et c'est ce que ce cas vérifie maintenant.
+    await expect(page.locator(".v6-identite")).toHaveCount(0);
+    expect(await page.evaluate(() =>
+      document.getElementById("screen-studio").textContent.includes("Changer de profil"))).toBe(false);
 
     // Profil : « Mes passions », « + Ajouter une passion ».
     // ⚠️ ANCRE DÉPLACÉE, ASSERTION CONSERVÉE. La refonte multi-passion (ADR-011)

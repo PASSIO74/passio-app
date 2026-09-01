@@ -120,6 +120,19 @@
 
     window._pwaPrompt = null;
 
+    // Sommes-nous déjà sur un déploiement PASSIO ? L'adresse canonique, mais
+    // AUSSI les previews de PR et de branche (`pr-232--passio-app.netlify.app`,
+    // `<branche>--passio-app.netlify.app`), que Netlify sert sous un sous-domaine
+    // — donc sous une ORIGINE différente. Les redirections ci-dessous ne doivent
+    // jamais faire quitter un de ces déploiements : elles ramèneraient en
+    // production quelqu'un venu tester autre chose.
+    function _estDeploiementPassio() {
+      try {
+        var h = window.location.hostname || '';
+        return h === 'passio-app.netlify.app' || /--passio-app\.netlify\.app$/.test(h);
+      } catch (e) { return false; }
+    }
+
     if (!_isStandalone) {
 
       // ══ ANDROID / DESKTOP compatible ══
@@ -158,17 +171,29 @@
         //      page pour rien, et pouvait le refaire à chaque chargement.
         // On ne ramène donc plus que depuis une AUTRE origine, et en conservant
         // query et fragment.
+        //   ③ ⚠️ UNE PREVIEW DE PR EST UNE AUTRE ORIGINE. Netlify sert les
+        //      déploiements de branche sous `pr-<n>--passio-app.netlify.app` :
+        //      la garde d'origine du ② les prenait donc pour « un autre site »
+        //      et ramenait sur la PRODUCTION — c'est-à-dire hors de l'aperçu
+        //      qu'on venait précisément d'ouvrir. Le paramètre `?passio_preview=…`
+        //      survivait au voyage, mais atterrissait sur un code qui ne contient
+        //      pas encore le lot : on concluait « l'aperçu ne marche pas » alors
+        //      qu'il n'avait jamais été chargé. Mesuré le 2026-09-01 en préparant
+        //      la preview de la PR #232. Même famille que ①, et même remède :
+        //      ne jamais déplacer quelqu'un qui est DÉJÀ sur un déploiement PASSIO.
         else if (_isIOSOther) {
           setTimeout(function() {
             try {
-              if (window.location.origin === 'https://passio-app.netlify.app') return;
+              if (_estDeploiementPassio()) return;
               window.location.href = 'https://passio-app.netlify.app/'
                 + window.location.search + window.location.hash;
             } catch (e) {}
           }, 800);
         }
         // ══ Firefox Android : ouvrir Chrome ══
-        else if (_isAndroid && _isFirefox) {
+        // Même garde : depuis une preview de PR, cet `intent://` renverrait sur
+        // la production, et l'aperçu testé serait perdu en silence.
+        else if (_isAndroid && _isFirefox && !_estDeploiementPassio()) {
           setTimeout(function() {
             window.location.href = 'intent://passio-app.netlify.app/#Intent;scheme=https;package=com.android.chrome;end';
           }, 600);

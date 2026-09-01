@@ -2877,10 +2877,22 @@ function toggleJoinEvent(id) {
 // Cœur du système de participation. `rsvp` : "going" | "maybe" | "declined" |
 // "waitlist" | null (= retrait complet).
 async function setEventRsvp(id, rsvp) {
+  // Mode invité (première visite) : cette action engage le compte. Le gate
+  // EXPLIQUE l'action puis propose la création de compte ; il ne rejoue jamais
+  // l'action après coup. Rend `true` — donc inerte — hors mode invité.
+  if (window.requireAuthentication && !requireAuthentication("rejoindre")) return;
   // Muter l'objet canonique (state), pas une copie de allEvents() — sinon le
   // compteur d'inscrits et les avatars ne se mettaient jamais à jour localement.
   const ev = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
   if (!ev) return;
+  // Première visite : « une activité fictive ne doit jamais sembler être une
+  // véritable rencontre disponible ». Le contenu de démonstration refuse la
+  // participation AVANT toute écriture, avec sa propre explication — le gate
+  // d'authentification ci-dessus ne suffirait pas, il laisserait croire qu'un
+  // compte donnerait accès à cette rencontre-là.
+  try {
+    if (window.PassioFirstRun && !PassioFirstRun.participationPossible(ev)) return;
+  } catch (e) {}
   if (_eventIsCancelled(ev) && rsvp) { toast("Cet événement a été annulé"); return; }
   const meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
   const prev = myRsvp(id);
@@ -3280,6 +3292,9 @@ function calculateDistance(lat1, lng1, lat2, lng2) {
 }
 
 function openEventDetails(id) {
+  // Première visite : trace l'OUVERTURE d'un contenu par un visiteur — un
+  // compteur, jamais un identifiant ni un libellé. Inerte hors mode invité.
+  try { if (window.PassioFirstRun) PassioFirstRun.contenuOuvert("activite"); } catch (e) {}
   // Ajouter à l'historique pour que le bouton back fonctionne. ⚠️ PAS lors d'un
   // simple re-rendu de la fiche déjà ouverte (_refreshEventDetailIfOpen), sinon
   // chaque changement de RSVP empilait une entrée d'historique et il fallait
@@ -4749,6 +4764,10 @@ async function irlProposalOpenFromConversation(convId, targetUserId, btn) {
 // centaines de mètres reste EXACT.
 
 function openCreateEvent(editId) {
+  // Mode invité (première visite) : cette action engage le compte. Le gate
+  // EXPLIQUE l'action puis propose la création de compte ; il ne rejoue jamais
+  // l'action après coup. Rend `true` — donc inerte — hors mode invité.
+  if (window.requireAuthentication && !requireAuthentication("activite")) return;
   // Repartir d'une origine vierge : un marqueur laissé par un brouillon
   // abandonné ne doit pas être attribué à CETTE création. Le pont repose le
   // sien juste après (feedIrlBridgeOpen → openCreateEvent → prefill).
@@ -5164,6 +5183,10 @@ function reportEvent(id) {
 }
 
 async function submitEvent(editId) {
+  // Mode invité (première visite) : cette action engage le compte. Le gate
+  // EXPLIQUE l'action puis propose la création de compte ; il ne rejoue jamais
+  // l'action après coup. Rend `true` — donc inerte — hors mode invité.
+  if (window.requireAuthentication && !requireAuthentication("activite")) return;
   const g = (id) => document.getElementById(id);
   const title = (g("evTitle")?.value || "").trim();
   const passion = g("evPassion")?.value || "";

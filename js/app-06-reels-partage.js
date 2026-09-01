@@ -3040,6 +3040,10 @@ function clearAudio() {
 let _publishInProgress = false;
 
 async function publishPost() {
+  // Mode invité (première visite) : cette action engage le compte. Le gate
+  // EXPLIQUE l'action puis propose la création de compte ; il ne rejoue jamais
+  // l'action après coup. Rend `true` — donc inerte — hors mode invité.
+  if (window.requireAuthentication && !requireAuthentication("publier")) return false;
   if (_publishInProgress) {
     toast("Publication en cours, attends un moment...");
     return;
