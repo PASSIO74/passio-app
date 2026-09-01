@@ -157,10 +157,59 @@ test.describe("Carte de bienvenue", () => {
 
     await page.locator("#frWelcome .fr-welcome-alt").click();  // « Explorer d'abord »
     await expect(carte).toHaveCount(0);
-    // Elle ne réapparaît pas, même après un rechargement complet.
-    await page.reload();
-    await page.waitForTimeout(3200);
+    // Fermée, elle n'insiste pas DANS CETTE SESSION : un simple repeint du fil
+    // ne la ramène pas.
+    await page.evaluate(() => renderFeed());
+    await page.waitForTimeout(600);
     expect(await page.locator("#frWelcome").count()).toBe(0);
+  });
+
+  test("tant qu'aucun compte n'existe, elle REVIENT à la visite suivante", async ({ page }) => {
+    // ⚠️ CE TEST INVERSE CE QUE LA PREMIÈRE VERSION AFFIRMAIT, et c'est délibéré.
+    // La carte écrivait sa fermeture dans `localStorage` : elle ne revenait donc
+    // JAMAIS. Benjamin l'a fermée pour réessayer et s'est retrouvé sans aucun
+    // moyen de rouvrir le panneau de passions — la seule autre porte étant une
+    // entrée du menu Paramètres, que personne ne va chercher. Résultat mesuré à
+    // l'usage : le panneau n'a tout simplement jamais été vu.
+    //
+    // Tant qu'aucun compte n'existe, rien n'est acquis : la fermeture ne vaut
+    // que pour la session en cours.
+    await bootVisiteur(page);
+    await expect(page.locator("#frWelcome")).toBeVisible({ timeout: 15000 });
+    await page.locator("#frWelcome .fr-welcome-close").click();
+    await expect(page.locator("#frWelcome")).toHaveCount(0);
+
+    // Nouvelle visite = `sessionStorage` reparti de zéro, comme quand on rouvre
+    // l'application. ⚠️ On ne vide PAS tout `sessionStorage` : le jeton du code
+    // d'accès y vit aussi, et l'effacer ferait mesurer le gate au lieu de la
+    // carte. On retire donc la seule clé en jeu, puis on recharge — ce qui est
+    // exactement l'état d'un nouvel onglet du point de vue du module.
+    await page.evaluate(() => sessionStorage.removeItem("passio_first_run_bienvenue_fermee"));
+    await page.reload();
+    await page.waitForTimeout(3400);
+    await expect(page.locator("#frWelcome")).toBeVisible({ timeout: 15000 });
+
+    // Et la preuve que ce n'est pas le rechargement qui la ramène : refermée,
+    // elle reste absente tant que la clé de session est là.
+    await page.locator("#frWelcome .fr-welcome-close").click();
+    await page.reload();
+    await page.waitForTimeout(3400);
+    expect(await page.locator("#frWelcome").count()).toBe(0);
+  });
+
+  test("quand des passions sont déjà choisies, la carte le DIT au lieu de répéter « Bienvenue »", async ({ page }) => {
+    await bootVisiteur(page, { prefs: { v: 1, passions: ["moto"], specialites: [], intents: [], tour: {}, bienvenue: "vue", retour: null, migre: false, debut: 1 } });
+    const carte = page.locator("#frWelcome");
+    await expect(carte).toBeVisible({ timeout: 15000 });
+    // Le message suit l'état réel : ce que la personne ignore à ce stade n'est
+    // plus ce qu'est PASSIO, c'est que ses choix ne vivent que sur cet appareil.
+    await expect(carte).toContainText("Tes passions sont sur cet appareil");
+    await expect(carte).toContainText("Crée ton compte pour les garder");
+    await expect(carte).not.toContainText("Bienvenue sur PASSIO");
+    // Et la porte du panneau reste là, sous un libellé qui dit ce qu'elle fait.
+    await expect(carte.locator(".fr-welcome-cta")).toHaveText("Modifier mes passions");
+    await carte.locator(".fr-welcome-cta").click();
+    await expect(page.locator("#modalContent")).toContainText("Qu'est-ce qui te passionne ?");
   });
 });
 
@@ -272,7 +321,7 @@ test.describe("Tour contextuel", () => {
   });
 
   test("l'étape « Rencontrer » apparaît à la première ouverture de l'écran IRL", async ({ page }) => {
-    await bootVisiteur(page, { prefs: { v: 1, passions: ["moto"], specialites: [], intents: [], tour: {}, bienvenue: "fermee", retour: null, migre: false, debut: 1 } });
+    await bootVisiteur(page, { sansBienvenue: true, prefs: { v: 1, passions: ["moto"], specialites: [], intents: [], tour: {}, bienvenue: "vue", retour: null, migre: false, debut: 1 } });
     await page.evaluate(() => goTo("irl"));
     await page.waitForTimeout(1600);
     const bulle = page.locator('.fr-tip[data-fr-tip="rencontrer"]');
@@ -313,7 +362,7 @@ test.describe("Tour contextuel", () => {
   });
 
   test("le premier tour s'arrête à trois étapes ; Profil, Messages et Studio ont la leur, à part", async ({ page }) => {
-    await bootVisiteur(page, { prefs: { v: 1, passions: ["moto"], specialites: [], intents: [], tour: {}, bienvenue: "fermee", retour: null, migre: false, debut: 1 } });
+    await bootVisiteur(page, { sansBienvenue: true, prefs: { v: 1, passions: ["moto"], specialites: [], intents: [], tour: {}, bienvenue: "vue", retour: null, migre: false, debut: 1 } });
 
     // Les trois surfaces du premier tour portent leur formulation courte.
     // ⚠️ CHAQUE ÉTAPE EST ANCRÉE À UN ÉLÉMENT DE SON ÉCRAN : `montrerHint` et
@@ -486,7 +535,7 @@ test.describe("Transfert du mode invité", () => {
   const prefsInvite = {
     v: 1, passions: ["moto", "photo", "moto", "passion_qui_n_existe_pas"],
     specialites: ["moto:balade", "photo:portrait", "cuisine:bbq"],
-    intents: [], tour: { decouvrir: true }, bienvenue: "fermee", retour: null, migre: false, debut: 1,
+    intents: [], tour: { decouvrir: true }, bienvenue: "vue", retour: null, migre: false, debut: 1,
   };
 
   test("elle fusionne sans écraser, dédoublonne, nettoie, et ne tourne qu'une fois", async ({ page }) => {

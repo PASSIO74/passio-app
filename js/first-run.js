@@ -522,15 +522,50 @@
   // n'y survit — c'est le piège ① du lot UI-7. Et le fenêtrage du Fil
   // (`feed_window_v1`) remplace en plus le contenu de chaque carte à la
   // réhydratation. En frère, la carte ne dépend d'aucun de ces cycles.
+  // ⚠️ FERMER LA CARTE EST UNE DÉCISION DE SESSION, PAS UNE DÉCISION DÉFINITIVE.
+  //
+  // La première version écrivait `prefs().bienvenue = "fermee"` dans
+  // `localStorage` : la carte ne revenait alors JAMAIS. Benjamin l'a fermée pour
+  // « réessayer » et s'est retrouvé sans aucun moyen de rouvrir le panneau de
+  // passions — la seule autre porte étant une entrée du menu Paramètres, que
+  // personne ne va chercher. Le parcours devenait un aller simple, et le panneau
+  // n'a tout simplement jamais été vu.
+  //
+  // Tant qu'AUCUN COMPTE n'existe, rien n'est acquis : les choix ne vivent que
+  // sur cet appareil, et la carte est le rappel de ce fait autant que la porte
+  // du panneau. Elle revient donc à chaque nouvelle visite, et la fermeture ne
+  // vaut que pour la session en cours. Dès qu'un compte existe, `estVisiteur()`
+  // devient faux et la carte ne se pose plus du tout.
+  var CLE_BIENVENUE_SESSION = "passio_first_run_bienvenue_fermee";
+
+  function bienvenueFermeeCetteSession() {
+    try { return sessionStorage.getItem(CLE_BIENVENUE_SESSION) === "1"; } catch (e) { return false; }
+  }
+
+  function marquerBienvenueFermee() {
+    try { sessionStorage.setItem(CLE_BIENVENUE_SESSION, "1"); } catch (e) {}
+  }
+
   function carteBienvenueHTML() {
+    // Le message suit l'état réel. Répéter « Bienvenue sur PASSIO » à quelqu'un
+    // qui a DÉJÀ choisi ses passions serait sourd : à ce stade, ce qu'il ignore
+    // n'est plus ce qu'est PASSIO, c'est que ses choix ne vivent que sur cet
+    // appareil tant qu'il n'a pas de compte.
+    var dejaChoisi = prefs().passions.length > 0;
+    var titre = dejaChoisi ? "Tes passions sont sur cet appareil" : "Bienvenue sur PASSIO";
+    var texte = dejaChoisi
+      ? "Crée ton compte pour les garder, ou continue d'explorer."
+      : "Tout ce que tu aimes, au même endroit.";
+    var principal = dejaChoisi ? "Modifier mes passions" : "Personnaliser mon expérience";
+    var secondaire = dejaChoisi ? "Plus tard" : "Explorer d'abord";
     return ''
       + '<section class="fr-welcome" id="frWelcome" role="region" aria-labelledby="frWelcomeTitle">'
       +   '<button type="button" class="fr-welcome-close" onclick="PassioFirstRun.fermerBienvenue()" aria-label="Fermer la carte de bienvenue">×</button>'
-      +   '<div class="fr-welcome-title" id="frWelcomeTitle">Bienvenue sur PASSIO</div>'
-      +   '<div class="fr-welcome-text">Tout ce que tu aimes, au même endroit.</div>'
+      +   '<div class="fr-welcome-title" id="frWelcomeTitle">' + escapeHtml(titre) + '</div>'
+      +   '<div class="fr-welcome-text">' + escapeHtml(texte) + '</div>'
       +   '<div class="fr-welcome-actions">'
-      +     '<button type="button" class="btn primary fr-welcome-cta" onclick="PassioFirstRun.ouvrirPersonnalisation(\'bienvenue\')">Personnaliser mon expérience</button>'
-      +     '<button type="button" class="btn ghost fr-welcome-alt" onclick="PassioFirstRun.fermerBienvenue()">Explorer d\'abord</button>'
+      +     '<button type="button" class="btn primary fr-welcome-cta" onclick="PassioFirstRun.ouvrirPersonnalisation(\'bienvenue\')">' + escapeHtml(principal) + '</button>'
+      +     '<button type="button" class="btn ghost fr-welcome-alt" onclick="PassioFirstRun.fermerBienvenue()">' + escapeHtml(secondaire) + '</button>'
       +   '</div>'
       + '</section>';
   }
@@ -538,8 +573,9 @@
   function poserBienvenue() {
     if (!estVisiteur()) return false;
     var p = prefs();
-    // « Elle doit pouvoir être fermée et ne pas réapparaître sans raison. »
-    if (p.bienvenue === "fermee") return false;
+    // Fermée dans CETTE session : on n'insiste pas. Elle reviendra à la
+    // prochaine visite, tant qu'aucun compte n'existe (cf. la note ci-dessus).
+    if (bienvenueFermeeCetteSession()) return false;
     if (document.getElementById("frWelcome")) return true;
     if (ecranOccupe() || ecranActif() !== "feed") return false;
     var liste = document.getElementById("feedList");
@@ -555,9 +591,7 @@
   function fermerBienvenue() {
     var el = document.getElementById("frWelcome");
     if (el && el.parentNode) el.parentNode.removeChild(el);
-    var p = prefs();
-    p.bienvenue = "fermee";
-    sauverPrefs();
+    marquerBienvenueFermee();
     // La carte partie, la première indication contextuelle peut prendre sa place.
     planifierTour();
   }
@@ -753,12 +787,14 @@
     p.specialites = Object.keys(_selSpecialites || {}).filter(specialiteValide);
     if (!p.debut) p.debut = Date.now();
     p.migre = false; // de nouveaux choix : la migration a de nouveau du travail
-    // La carte de bienvenue a joué son rôle : elle invitait à personnaliser, et
-    // c'est fait. La laisser en tête du fil personnalisé, c'est laisser un appel
-    // à l'action déjà accompli — et occuper la place que le premier repère doit
-    // prendre. Elle est donc retirée, pas seulement masquée pour cette session.
-    p.bienvenue = "fermee";
+    // La carte a joué son rôle POUR CETTE SESSION : elle invitait à
+    // personnaliser, c'est fait, et la laisser en tête du fil occuperait la
+    // place du premier repère. Elle reviendra à la prochaine visite — sous une
+    // autre forme, « Tes passions sont sur cet appareil » — tant qu'aucun compte
+    // ne les met à l'abri.
+    p.bienvenue = "vue";
     sauverPrefs();
+    marquerBienvenueFermee();
     var carte = document.getElementById("frWelcome");
     if (carte && carte.parentNode) carte.parentNode.removeChild(carte);
     appliquerPrefs();
@@ -1342,7 +1378,7 @@
       try {
         if (!estVisiteur()) return;
         if (ecranOccupe() || ecranActif() !== "feed") { planifierAccueil(); return; }
-        if (prefs().bienvenue === "fermee") { planifierTour(); return; }
+        if (bienvenueFermeeCetteSession()) { planifierTour(); return; }
         if (!poserBienvenue()) { planifierAccueil(); return; }
       } catch (e) {
         // Le corps entier est sous `try` et REPLANIFIE au lieu de conclure :

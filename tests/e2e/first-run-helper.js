@@ -32,12 +32,14 @@ async function couperReseauSupabase(page, journal) {
 // défaut (coupé), ce qui doit restituer le parcours historique.
 // `opts.prefs` : préférences d'invité pré-existantes (retour de visite).
 // `opts.hash`  : lien profond à ouvrir.
+// `opts.sansBienvenue` : ferme la carte de bienvenue AVANT le boot, pour libérer
+//   la place quand le test porte sur autre chose (le tour, par exemple).
 async function bootVisiteur(page, opts = {}) {
   const flagOn = opts.flag !== "off";
   const journalReseau = [];
   await couperReseauSupabase(page, journalReseau);
   await page.addInitScript(
-    ([k, t, on, prefs]) => {
+    ([k, t, on, prefs, sansBienvenue]) => {
       sessionStorage.setItem(k, t);
       sessionStorage.setItem("passio_pwa_dismissed", "1");
       // ⚠️ `addInitScript` tourne à CHAQUE navigation, rechargement compris.
@@ -51,8 +53,13 @@ async function bootVisiteur(page, opts = {}) {
         sessionStorage.setItem("__fr_drapeau_nettoye", "1");
       }
       if (prefs) localStorage.setItem("passio_first_run_v1", JSON.stringify(prefs));
+      // ⚠️ La fermeture de la carte de bienvenue vit dans `sessionStorage`, PAS
+      // dans les préférences : tant qu'aucun compte n'existe, elle revient à
+      // chaque visite. Un test qui veut la place libre doit donc poser CE
+      // marqueur — poser `bienvenue: "fermee"` dans les prefs ne fait plus rien.
+      if (sansBienvenue) sessionStorage.setItem("passio_first_run_bienvenue_fermee", "1");
     },
-    [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null]
+    [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
   );
   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
