@@ -1514,6 +1514,13 @@ function toggleIrlExtraPanel() {
   renderIrlPassionTiles();
 }
 
+// ⚠️ FONCTION GLOBALE : `audit:handlers` exige qu'un `onclick` inline désigne
+// une fonction globale EXISTANTE. Elle ne fait que déléguer.
+function ouvrirRecherchePassionIRL() {
+  try { if (typeof PassioFlatUI !== "undefined") PassioFlatUI.ouvrirFiltreIRL(); }
+  catch (e) { if (typeof diagLog === "function") diagLog("irl_recherche_passion " + (e && e.message)); }
+}
+
 function renderIrlPassionTiles() {
   const row = $("#irlPassionRow");
   if (!row) return;
@@ -1555,9 +1562,25 @@ function renderIrlPassionTiles() {
   const open = !!window._irlExtraOpen;
   const nExtra = extra.length;
 
+  // ── Lot flat_passions_v1 : chercher une passion précise ──────────────────
+  // ⚠️ Posée DANS le rendu : `renderIrlPassionTiles` réécrit `#irlPassionRow`
+  // en entier à chaque `renderIRL`, et UI-4A5 DÉPLACE ce nœud dans sa vue
+  // « Filtres ». Une injection après coup serait effacée au rendu suivant ; un
+  // observateur se battrait avec le déplacement.
+  //
+  // Sans elle, l'écran ne propose que les passions du compte et celles qui ont
+  // déjà une activité : chercher « yoga aérien » serait impossible.
+  const chercheTile = (typeof PassioFlatUI !== "undefined" && PassioFlatUI.actif())
+    ? `<button class="msg-tile psel-tile-chercher" onclick="ouvrirRecherchePassionIRL()"
+         title="Chercher une passion" aria-label="Chercher une passion">
+         <span class="msg-tile-icon">🔍</span>
+         <span class="msg-tile-label">Chercher</span>
+       </button>`
+    : "";
+
   row.className = "irl-passion-zone";
   row.innerHTML = `
-    <div class="msg-filter-tiles">
+    <div class="msg-filter-tiles">${chercheTile}
       ${shown.map(tileHtml).join("")}
       <button class="msg-tile irl-tile-more${open ? " active" : ""}" id="irlExtraToggle"
         aria-expanded="${escapeHtml(open)}" onclick="toggleIrlExtraPanel()" title="Ajouter d'autres passions">

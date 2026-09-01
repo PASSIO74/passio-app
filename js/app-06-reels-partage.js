@@ -1722,6 +1722,16 @@ function renderProfilePassionRail() {
     });
   }).join("");
 
+  // Lot flat_passions_v1 : la même porte qu'au Fil, au même endroit visuel.
+  if (typeof PassioFlatUI !== "undefined" && PassioFlatUI.actif()) {
+    html += '<div class="profile-tile psel-tile-plus" role="button" tabindex="0"'
+      + ' data-passion-tile="__ajouter__" title="Ajouter une passion"'
+      + ' aria-label="Ajouter une passion" onclick="ouvrirRecherchePassionsCompte()">'
+      + '<div class="profile-tile-avatar" style="position:relative;">+</div>'
+      + '<div class="profile-tile-label">Ajouter</div>'
+      + "</div>";
+  }
+
   rail.innerHTML = html;
   return rail;
 }
@@ -2418,9 +2428,44 @@ function renderProfileStrip() {
     });
   }).join("");
 
+  // ── Lot flat_passions_v1 : la porte vers les 1 900 passions ──────────────
+  // ⚠️ POSÉE ICI, DANS LE RENDU, ET PAS PAR UN OBSERVATEUR. `renderProfileStrip`
+  // réécrit `#profileStrip` EN ENTIER (cache `_lastHtml` compris) : rien
+  // d'injecté après coup n'y survit — c'est un piège documenté de ce dépôt.
+  //
+  // La bulle ferme aussi un défaut du modèle plat : le rail ne montre que les
+  // passions du compte, donc sans elle il n'existerait AUCUNE commande pour
+  // aller chercher « Enduro » depuis le Fil.
+  if (typeof PassioFlatUI !== "undefined" && PassioFlatUI.actif()) {
+    tilesHTML += '<div class="profile-tile psel-tile-plus" role="button" tabindex="0"'
+      + ' data-passion-tile="__ajouter__" title="Ajouter une passion"'
+      + ' aria-label="Ajouter une passion" onclick="ouvrirRecherchePassionsFil()">'
+      + '<div class="profile-tile-avatar" style="position:relative;">+</div>'
+      + '<div class="profile-tile-label">Ajouter</div>'
+      + "</div>";
+  }
+
   // Perf : appelé à chaque renderFeed — pas de rebuild si rien n'a changé
   // (les tuiles portent des photos Unsplash : re-set innerHTML = re-décodage/flash).
   if (box._lastHtml !== tilesHTML) { box.innerHTML = tilesHTML; box._lastHtml = tilesHTML; }
+}
+
+// ⚠️ FONCTION GLOBALE, et c'est nécessaire : `audit:handlers` exige qu'un
+// `onclick` inline désigne une fonction globale EXISTANTE. Elle ne fait que
+// déléguer — aucun moteur ici.
+function ouvrirRecherchePassionsFil() {
+  try { if (typeof PassioFlatUI !== "undefined") PassioFlatUI.ouvrirPassionsDuFil(); }
+  catch (e) { if (typeof diagLog === "function") diagLog("fil_recherche_passion " + (e && e.message)); }
+}
+
+function ouvrirRecherchePassionsCompte() {
+  try { if (typeof PassioFlatUI !== "undefined") PassioFlatUI.ouvrirAjoutPassions(); }
+  catch (e) { if (typeof diagLog === "function") diagLog("compte_recherche_passion " + (e && e.message)); }
+}
+
+function ouvrirRecherchePassionStudio() {
+  try { if (typeof PassioFlatUI !== "undefined") PassioFlatUI.ouvrirChoixStudio(); }
+  catch (e) { if (typeof diagLog === "function") diagLog("studio_recherche_passion " + (e && e.message)); }
 }
 
 // `toggleFollowingFilter` a été SUPPRIMÉE le 2026-08-30 (ADR-010) avec la
@@ -2523,6 +2568,18 @@ function openCreateProfile() {
   // Elle reste entière dans `state.user.customPassions` et reste un centre
   // d'intérêt du fil ; c'est la porte d'ÉCRITURE qui se ferme, pas la passion.
   const pool = passionsPubliables().filter(p => !already.includes(p.id));
+
+  // ── Lot flat_passions_v1 : on ne présente plus une grille ────────────────
+  // ⚠️ La grille montrait `passionsPubliables()` — 19 tuiles. Avec 1 900
+  // passions elle serait illisible, et surtout elle raconterait le contraire
+  // de ce lot : on ne CHOISIT PLUS dans une liste, on CHERCHE. Le sélecteur
+  // remplace donc la modale entière, y compris la bio (facultative, et
+  // modifiable ensuite depuis la carte de passion).
+  if (typeof PassioFlatUI !== "undefined" && PassioFlatUI.actif()) {
+    PassioFlatUI.ouvrirAjoutPassions({ titre: "Ajouter une passion" });
+    return;
+  }
+
   openModal(`
     <div class="modal-handle"></div>
     <div style="text-align:center;margin-bottom:18px;">
@@ -2560,6 +2617,29 @@ function selectNewProfilePassion(id) {
 async function confirmCreateProfile() {
   const pid = window._newProfilePassion;
   if (!pid) { toast("Choisis une passion"); return; }
+  const bio = ($("#newProfileBio") ? $("#newProfileBio").value.trim() : "") || "";
+  const ajoutee = ajouterPassionAuCompte(pid, bio);
+  if (!ajoutee) return;                       // restauration : déjà traitée
+  closeModal();
+  renderProfilesScreen();
+  renderTopbar();
+  toast(`✨ ${passionById(pid).label} ajoutée à tes passions`, "success");
+}
+
+// ⚠️ EXTRAIT DE `confirmCreateProfile` (lot flat_passions_v1) — un SEUL moteur
+// d'ajout de passion au compte. Le sélecteur de recherche peut en ajouter
+// plusieurs d'un coup ; recopier cette logique là-bas aurait donné deux façons
+// de créer une passion, qui auraient divergé au premier correctif — c'est
+// exactement ce qui est arrivé à `sharePostInFeed` et `shareReelInFeed`
+// (`createdAt` manquant d'un seul côté, partages jamais arrivés au serveur).
+//
+// Rend l'entrée créée, ou `null` quand la passion a été RESTAURÉE depuis les
+// archives (le chemin de restauration se suffit à lui-même : il rend la main
+// après avoir rendu l'écran).
+function ajouterPassionAuCompte(pid, bio) {
+  if (!pid) return null;
+  const _existante = (state.user.profiles || []).find(function (x) { return x.passion === pid && !x.archived; });
+  if (_existante) return _existante;          // déjà là : rien à créer
 
   // ⚠️ Lot UI-8 : cette passion existe peut-être déjà, ARCHIVÉE. La recréer
   // ferait un doublon (deux entrées pour la même passion, que la fusion
@@ -2567,12 +2647,11 @@ async function confirmCreateProfile() {
   // rien effacer.
   if (passionsUnifieesActives()) {
     const _arch = (state.user.profiles || []).find(function (x) { return x.archived && x.passion === pid; });
-    if (_arch) { restaurerPassion(_arch.id); return; }
+    if (_arch) { restaurerPassion(_arch.id); return null; }
   }
 
   // Identité centralisée : on réutilise toujours le nom principal du compte.
   const name = (state.user.general && state.user.general.username) || state.user.name || "Passionné";
-  const bio = ($("#newProfileBio") ? $("#newProfileBio").value.trim() : "") || "";
   const p = passionById(pid);
   const np = {
     id: uid(),
@@ -2599,10 +2678,7 @@ async function confirmCreateProfile() {
   // Pousse immédiatement user_state (liste complète des profils) sans attendre le
   // debounce de 2500ms — sinon un logout rapide perd le nouveau profil.
   if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch(e) {} }
-  closeModal();
-  renderProfilesScreen();
-  renderTopbar();
-  toast(`✨ ${p.label} ajoutée à tes passions`, "success");
+  return np;
 }
 
 function switchProfileModal() {
@@ -2670,6 +2746,19 @@ function renderStudio() {
   // une information ; « AUCUNE passion publiable » est une impasse, et une
   // impasse doit nommer la sortie. Les confondre laissait un compte 100 %
   // passions personnelles devant un select vide, sans rien à faire.
+  // ── Lot flat_passions_v1 : le `<select>` cède la place à une recherche ───
+  // ⚠️ `#postPassion` RESTE dans le DOM et RESTE la source de vérité :
+  // `publishPost` lit `$("#postPassion").value`. On le masque, on ne le retire
+  // pas — le retirer publierait sous la mauvaise passion, en silence (piège
+  // exact du lot UI-6 avec `studioType`).
+  const _btnP = $("#studioPassionBtn");
+  if (_btnP) {
+    const _flat = (typeof PassioFlatUI !== "undefined") && PassioFlatUI.actif();
+    _btnP.hidden = !_flat;
+    sel.style.display = _flat ? "none" : "";
+    if (_flat) PassioFlatUI.rafraichirBoutonStudio();
+  }
+
   const _horsCat = _poolBrut.length - _pool.length;
   const _noteP = $("#studioPassionNote");
   if (_noteP) {

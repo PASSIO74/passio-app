@@ -40,3 +40,12 @@
   Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' https://njkiyoklssvefstljemx.supabase.co wss://njkiyoklssvefstljemx.supabase.co https://tiles.openfreemap.org https://api-adresse.data.gouv.fr https://photon.komoot.io https://tenor.googleapis.com https://api.giphy.com stun:stun.l.google.com:19302 stun:stun1.l.google.com:19302 stun:stun2.l.google.com:19302 turn:openrelay.metered.ca:80 turn:openrelay.metered.ca:443; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(self), microphone=(self), geolocation=(self)
+# data/passions-v1.json : le référentiel plat des passions.
+# La VERSION est dans le NOM du fichier (…-v1.json) : un référentiel modifié
+# sortira en -v2, donc l'URL change avec le contenu et un cache long est sûr.
+# ⚠️ Ne pas mettre `immutable` : le fichier peut être régénéré à l'identique de
+# nom pendant la phase d'aperçu, et un `immutable` empêcherait toute
+# revalidation même après un déploiement correctif.
+/data/passions-v1.json
+  Cache-Control: public, max-age=86400
+  Content-Type: application/json; charset=utf-8

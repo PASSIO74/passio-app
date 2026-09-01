@@ -2516,6 +2516,37 @@ function renderPassionGrid() {
       : "Choisis 1 à 3 passions. Chacune crée un profil dédié.";
   }
 
+  // ── Lot flat_passions_v1 : la grille devient une RECHERCHE ────────────────
+  // « Recherche et choisis directement ce que tu aimes. » On ne fait plus
+  // choisir dans une grille de 19 tuiles : on tape « Enduro », et c'est tout.
+  //
+  // ⚠️ MONTÉ UNE SEULE FOIS (`monterOnboarding` porte le garde). Cette fonction
+  // est rappelée à CHAQUE sélection : re-monter le composant viderait le champ
+  // et refermerait le clavier à chaque passion cochée.
+  //
+  // Hors lot, la suite de la fonction s'exécute exactement comme avant.
+  if (typeof PassioFlatUI !== "undefined" && PassioFlatUI.actif()) {
+    if (titreEl) titreEl.textContent = "Qu'est-ce qui te passionne ?";
+    if (texteEl) texteEl.textContent = "Recherche et choisis directement ce que tu aimes.";
+    const champHisto = $("#onbPassionSearch");
+    if (champHisto) champHisto.style.display = "none";   // le sélecteur a le sien
+    PassioFlatUI.monterOnboarding(grid, {
+      selection: selectedPassions,
+      max: onbMaxPassions(),
+      onChangement: function (ids) {
+        // On VIDE et on remplit le tableau en place. `selectedPassions` est
+        // un `let` de portée script — donc absent de `window` : le réaffecter
+        // depuis un autre fichier serait impossible, et `onbFinish` lit
+        // `selectedPassions[0]` comme passion de départ.
+        selectedPassions.length = 0;
+        ids.forEach(function (id) { selectedPassions.push(id); });
+        renderOnbStarter();
+      },
+    });
+    renderOnbStarter();
+    return;
+  }
+
   // Recherche : n'apparaît qu'en V2 et qu'au-delà du seuil — un champ de
   // recherche au-dessus de douze tuiles ajoute une étape sans rien filtrer.
   const rechercheEl = $("#onbPassionSearch");
