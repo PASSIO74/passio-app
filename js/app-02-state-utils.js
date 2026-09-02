@@ -166,6 +166,14 @@ function loadState() {
     if (!Array.isArray(parsed.user.seenNotifIds)) parsed.user.seenNotifIds = [];
     if (!parsed.user.passionSignals || typeof parsed.user.passionSignals !== "object"
         || Array.isArray(parsed.user.passionSignals)) parsed.user.passionSignals = {};
+    // Journal des changements de passion (quota, 2026-09-02). Normalisé ICI en
+    // plus de `journalPassions()` (app-06) : un état antérieur au lot, un blob
+    // `user_state` tronqué ou un tableau là où on attend un objet sont des
+    // entrées NORMALES. Un objet vide vaut « aucun changement consommé » — un
+    // compte existant ne se voit donc pas facturer un quota rétroactif.
+    if (!parsed.user.passionChanges || typeof parsed.user.passionChanges !== "object"
+        || Array.isArray(parsed.user.passionChanges)) parsed.user.passionChanges = { entries: [] };
+    if (!Array.isArray(parsed.user.passionChanges.entries)) parsed.user.passionChanges.entries = [];
     if (!Array.isArray(parsed.selectedFeedPassions)) parsed.selectedFeedPassions = [];
     // Vue du Fil (ADR-010). Toute valeur inconnue — et tout état antérieur, qui
     // n'a pas cette clé — retombe sur « accueil » : c'est la vue par défaut, et
@@ -810,7 +818,31 @@ async function supaLoadUserState() {
       }
       // Mémorise le currentProfileId local AVANT l'écrasement (pour le restaurer si valide).
       const localCurrentId = state.user && state.user.currentProfileId;
+      // ⚠️ ET LE JOURNAL DES CHANGEMENTS DE PASSION. Il porte un QUOTA : la
+      // règle de fusion « le serveur plus récent gagne » y serait une porte
+      // dérobée — vider `localStorage`, ou arriver avec un blob serveur écrit
+      // avant les derniers archivages, rendrait des changements déjà consommés.
+      // On garde donc le journal QUI EN COMPTE LE PLUS, jamais le plus récent.
+      const localJournal = (state.user && state.user.passionChanges
+        && Array.isArray(state.user.passionChanges.entries))
+        ? state.user.passionChanges.entries : [];
       _applyUserState(data.data);
+      try {
+        const _nbArchives = function (l) {
+          // Même prédicat qu'`_estChangementFacturable` (app-06) : une entrée
+          // faite en démo (`compte: false`) ne compte NULLE PART, fusion incluse.
+          return (Array.isArray(l) ? l : [])
+            .filter(function (e) { return e && e.type === "archive" && e.compte !== false; }).length;
+        };
+        const srvJournal = (state.user && state.user.passionChanges
+          && Array.isArray(state.user.passionChanges.entries))
+          ? state.user.passionChanges.entries : [];
+        if (_nbArchives(localJournal) > _nbArchives(srvJournal)) {
+          state.user.passionChanges = { entries: localJournal };
+        } else {
+          state.user.passionChanges = { entries: srvJournal };
+        }
+      } catch (e) { console.warn("passionChanges (fusion) :", e && e.message); }
       // Fusion défensive : ré-injecte les profils locaux ABSENTS du serveur (créés
       // entre la dernière sync et la fermeture) ET les versions locales des profils
       // MODIFIÉS (contenu plus récent — photo, bio, photoUrl…).
