@@ -10308,6 +10308,25 @@ body.ctx-locked #appMain { overflow: hidden; }
   border-radius: 50%;
 }
 .fr-welcome-close:hover { color: var(--text); }
+/* « J'ai déjà un compte » : un lien, pas un troisième bouton dans la rangée
+   (les deux actions du dessus sont en `flex: 1 1 auto` — un troisième y
+   couperait les libelles). Cible de 44 px quand meme : c'est une action
+   essentielle, la seule porte visible vers un compte déjà créé. */
+.fr-welcome-signin {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  padding: 0;
+  min-height: 44px;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+  cursor: pointer;
+}
+.fr-welcome-signin:hover { text-decoration: underline; }
 
 /* ── Panneau « Qu'est-ce qui te passionne ? » ─────────────────────────────── */
 .fr-search-wrap { margin: 12px 0 10px; }
