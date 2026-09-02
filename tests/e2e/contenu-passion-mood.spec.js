@@ -7,10 +7,10 @@
 //
 // Deux causes distinctes, donc deux familles de contrôles ici.
 //
-// ① LA COULEUR. Les cinq envies portaient bien leur libellé, mais toutes dans la
+// ① LA COULEUR. Les envies portaient bien leur libellé, mais toutes dans la
 //    MÊME capsule grisée : deux cartes voisines ne se distinguaient qu'au mot
 //    près. Chaque envie a désormais sa teinte (`data-mood` + le bloc « PASTILLE
-//    DE MOOD » de styles.css). On vérifie que les cinq fonds sont RÉELLEMENT
+//    DE MOOD » de styles.css). On vérifie que les trois fonds sont RÉELLEMENT
 //    différents deux à deux — un jeton recopié par erreur rendrait deux envies
 //    identiques sans casser quoi que ce soit d'autre — et que chaque pastille
 //    tient l'AA, mesurée sur le fond opaque effectif.
@@ -23,6 +23,11 @@
 //    sans quoi un testeur qui coche une passion et une envie tombe sur un fil
 //    vide et croit que la fonctionnalité est cassée.
 //
+// ③ LE VOCABULAIRE MORT. « chill » et « actu » ne sont plus publiables ni
+//    nommables. Une carte qui les porte ne doit plus rien afficher : les
+//    ressusciter en pastille remettrait sous les yeux du testeur deux mots
+//    qu'il ne trouvera nulle part ailleurs dans le produit.
+//
 // ⚠️ Ce fichier ne remplace pas `pastille-mood.spec.js`, qui tient l'autre bord :
 // le neutre et le mood inconnu ne dessinent AUCUNE pastille. La couleur ne doit
 // jamais ressusciter la capsule creuse corrigée le 2026-08-29.
@@ -30,12 +35,21 @@
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
 
-const MOODS = ["creation", "learn", "irl", "chill", "actu"];
+// ⚠️ TROIS, et pas cinq. « chill » et « actu » ont perdu leur libellé le
+// 2026-09-02 : le produit n'a plus que quatre intentions (Explorer · Apprendre ·
+// Idées · Rencontrer), dont trois seulement sont posées par l'AUTEUR.
+// « Explorer » n'est pas ici et ne peut pas y être : elle se calcule côté
+// lecteur (auteur non suivi, passion non cochée) et ne regarde jamais le mood.
+const MOODS = ["creation", "learn", "irl"];
+
+// Les valeurs léguées : plus de libellé, donc plus de pastille — mais toujours
+// admises dans le fil, ce que `exploration-moods.spec.js` tient de son côté.
+const MOODS_LEGUES = ["chill", "actu"];
 
 // Sème une publication par envie, sur une passion que le compte suit — sinon le
 // repli d'exploration écarte la carte et l'on mesurerait une absence de rendu au
 // lieu d'une absence de couleur (piège documenté dans `pastille-mood.spec.js`).
-async function semerLesCinqEnvies(page) {
+async function semerLesEnvies(page, moods) {
   await page.evaluate((moods) => {
     state.seed.posts = moods.map((m, i) => ({
       id: "p_env_" + m, authorId: "u_lea", passion: "cuisine", mood: m,
@@ -48,15 +62,16 @@ async function semerLesCinqEnvies(page) {
     // ramenée par un rafraîchissement asynchrone se réinvite après le semis.
     window._feedExtraPosts = [];
     saveState(); goTo("feed"); renderFeed();
-  }, MOODS);
+  }, moods);
   await page.waitForTimeout(900);
 }
+const semerLesTroisEnvies = (page) => semerLesEnvies(page, MOODS);
 
 test.describe("le fil dit sa passion et son envie", () => {
   // ── ① La couleur : cinq envies, cinq fonds ────────────────────────────────
   test("chaque envie porte une couleur qui n'appartient qu'à elle", async ({ page }) => {
     await bootOnboarded(page);
-    await semerLesCinqEnvies(page);
+    await semerLesTroisEnvies(page);
 
     const vues = await page.evaluate(() => {
       const out = {};
@@ -82,7 +97,7 @@ test.describe("le fil dit sa passion et son envie", () => {
   // ── ① bis. Une couleur illisible ne différencie rien ──────────────────────
   test("chaque pastille tient le contraste AA (4,5:1) sur son propre fond", async ({ page }) => {
     await bootOnboarded(page);
-    await semerLesCinqEnvies(page);
+    await semerLesTroisEnvies(page);
 
     const mesures = await page.evaluate(() => {
       const lin = (c) => { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
@@ -117,10 +132,75 @@ test.describe("le fil dit sa passion et son envie", () => {
     }
   });
 
+  // ── ① ter. La PASSION doit se voir autant que l'envie ────────────────────
+  // La remarque du testeur visait « la passion ET le mood ». La carte ne nomme
+  // la passion qu'une fois (fiche 11) et cette mention partageait le gris
+  // `--muted` avec l'heure : invisible. Elle est enrobée dans
+  // `.post-passion-tag`, en accent et graisse 700.
+  //
+  // ⚠️ Ce test tient TROIS bords à la fois, parce que le volet est fragile aux
+  // deux extrêmes : l'enrobage doit exister, il ne doit pas devenir une SECONDE
+  // mention (un nettoyage « une seule mention » retirerait le span sans rien
+  // casser d'autre), et le texte rendu doit rester identique à ce que deux
+  // autres suites assertent déjà.
+  test("la passion de la publication est lisible, et nommée une seule fois", async ({ page }) => {
+    await bootOnboarded(page);
+
+    const vu = await page.evaluate(() => {
+      const box = document.createElement("div");
+      box.innerHTML = renderPostHTML({
+        id: "p_pass", authorId: "me", passion: "moto", type: "text",
+        text: "Contrôle.", mood: "creation", createdAt: Date.now(),
+        likes: 0, comments: [], _source: "me",
+      });
+      document.body.appendChild(box);
+      const meta = box.querySelector(".post-author-meta");
+      const tag = box.querySelector(".post-passion-tag");
+      const csTag = tag ? getComputedStyle(tag) : null;
+      const csMeta = meta ? getComputedStyle(meta) : null;
+      const r = {
+        tags: box.querySelectorAll(".post-passion-tag").length,
+        identites: box.querySelectorAll(".ident-passions").length,
+        texteTag: tag ? tag.textContent.trim() : "",
+        texteMeta: meta ? meta.textContent.trim() : "",
+        couleurTag: csTag ? csTag.color : "",
+        couleurMeta: csMeta ? csMeta.color : "",
+        graisse: csTag ? csTag.fontWeight : "",
+      };
+      box.remove();
+      return r;
+    });
+
+    expect(vu.tags, "une seule mention, enrobée").toBe(1);
+    expect(vu.identites, "et toujours pas de ligne d'identité sur une carte").toBe(0);
+    expect(vu.texteTag, "l'enrobage porte bien la passion de la PUBLICATION").toContain("Moto");
+    expect(vu.texteMeta, "le texte de la ligne est inchangé : passion puis heure").toContain("Moto ·");
+    // Le point du lot : la passion ne se lit plus dans le gris de l'heure.
+    expect(vu.couleurTag, `passion ${vu.couleurTag} vs heure ${vu.couleurMeta}`).not.toBe(vu.couleurMeta);
+    expect(Number(vu.graisse), "et elle est en gras").toBeGreaterThanOrEqual(700);
+  });
+
+  // ── ③ Le vocabulaire mort ne revient pas par la couleur ──────────────────
+  // `data-mood` colore la pastille : si « chill » ou « actu » retrouvait un
+  // libellé, il retrouverait AUSSI une couleur, et le testeur relirait deux mots
+  // que le Studio ne propose plus. Le test sème les deux valeurs et exige zéro
+  // pastille — la publication, elle, doit rester rendue.
+  test("les valeurs léguées ne dessinent plus aucune pastille", async ({ page }) => {
+    await bootOnboarded(page);
+    await semerLesEnvies(page, MOODS_LEGUES);
+
+    const vu = await page.evaluate(() => ({
+      cartes: document.querySelectorAll("#feedList article.post").length,
+      pastilles: document.querySelectorAll("#feedList .post-mood-tag").length,
+    }));
+    expect(vu.cartes, "les publications léguées restent rendues").toBeGreaterThanOrEqual(MOODS_LEGUES.length);
+    expect(vu.pastilles, "…mais muettes, comme le neutre").toBe(0);
+  });
+
   // ── ② La couverture : aucune case vide du tableau passion × envie ─────────
   // Un testeur qui coche une passion et une envie et ne voit RIEN conclut que
   // l'application est cassée, pas que le contenu manque.
-  test("chaque passion du catalogue a du contenu dans les cinq envies", async ({ page }) => {
+  test("chaque passion du catalogue a du contenu dans les trois envies", async ({ page }) => {
     await bootOnboarded(page);
 
     const trous = await page.evaluate((moods) => {
@@ -139,9 +219,18 @@ test.describe("le fil dit sa passion et son envie", () => {
 
   // ── ② bis. Les séries de démonstration gardent leur forme ─────────────────
   // Les quinze publications p401→p415 sont les EXEMPLES TYPES montrés en premier
-  // (ce sont les plus fraîches de leur passion). Si l'une change d'envie, le
-  // dégradé de couleurs du haut du fil disparaît sans que rien ne casse.
-  test("les trois séries de démonstration couvrent bien les cinq envies", async ({ page }) => {
+  // (ce sont les plus fraîches de leur passion). Chaque série tient la même
+  // partition, et c'est elle qui donne au testeur le dégradé du haut du fil :
+  //
+  //     💡 Idées · 📚 Apprendre · 🤝 Rencontrer · 🤝 Rencontrer (avec activité) · neutre
+  //
+  // ⚠️ QUATRE cartes portent une pastille, la cinquième AUCUNE — et c'est le
+  // produit qui l'impose, pas un choix de mise en scène : il n'y a plus que
+  // trois envies d'auteur depuis le 2026-09-02. La quatrième intention du rail,
+  // « Explorer », ne peut pas apparaître ici : elle se calcule côté lecteur.
+  // Une série qui redeviendrait « cinq envies distinctes » signifierait que le
+  // vocabulaire mort est revenu.
+  test("les trois séries de démonstration tiennent la partition des envies", async ({ page }) => {
     await bootOnboarded(page);
 
     const series = await page.evaluate(() => {
@@ -157,9 +246,39 @@ test.describe("le fil dit sa passion et son envie", () => {
     for (const [passion, lot] of Object.entries(series)) {
       expect(lot.filter(Boolean).length, `série ${passion} : les 5 publications existent`).toBe(5);
       expect(lot.every((p) => p.passion === passion), `série ${passion} : toutes sur la même passion`).toBe(true);
-      expect(new Set(lot.map((p) => p.mood)).size, `série ${passion} : cinq envies distinctes`).toBe(5);
-      lot.forEach((p) => expect(MOODS, `${p.id} : envie connue de la table des libellés`).toContain(p.mood));
+      expect(lot.map((p) => p.mood), `série ${passion} : la partition`)
+        .toEqual(["creation", "learn", "irl", "irl", "all"]);
+      // Exactement UNE carte de la série est reliée à une activité réelle : elle
+      // porte « Voir l'activité » au lieu de « Trouver une activité ».
+      const reliees = lot.filter((p) => p.eventId);
+      expect(reliees.length, `série ${passion} : une seule carte reliée`).toBe(1);
+      expect(reliees[0].mood, "et c'est une « Rencontrer »").toBe("irl");
     }
+  });
+
+  // ── ② quater. « Voir l'activité » a besoin d'une activité qui EXISTE ──────
+  // `refEvenement` accepte l'`eventId`, mais `decorerActivite` ne pose le lien
+  // que si `trouverEvenement` retrouve la fiche : un identifiant fantaisiste ne
+  // casse rien — il ne peint simplement RIEN, et le défaut est invisible.
+  // C'est le pire cas pour du contenu de démonstration, d'où ce contrôle.
+  test("chaque publication reliée pointe vers une activité réellement présente", async ({ page }) => {
+    await bootOnboarded(page);
+
+    const r = await page.evaluate(() => {
+      const ids = new Set((typeof allEvents === "function" ? allEvents() : []).map((e) => e && e.id));
+      const reliees = (state.seed.posts || []).filter((p) => p.eventId);
+      return {
+        combien: reliees.length,
+        orphelines: reliees.filter((p) => !ids.has(String(p.eventId))).map((p) => p.id + "→" + p.eventId),
+        // Une publication reliée qui ne serait pas « Rencontrer » afficherait un
+        // rendez-vous sous une étiquette qui ne l'annonce pas.
+        malEtiquetees: reliees.filter((p) => p.mood !== "irl").map((p) => p.id + " (" + p.mood + ")"),
+      };
+    });
+
+    expect(r.combien, "le socle propose bien des rencontres reliées").toBeGreaterThan(0);
+    expect(r.orphelines, `activités introuvables : ${r.orphelines.join(", ")}`).toEqual([]);
+    expect(r.malEtiquetees, `reliées sans être « Rencontrer » : ${r.malEtiquetees.join(", ")}`).toEqual([]);
   });
 
   // ── ② ter. « Rencontrer » se reconnaît sans lire la pastille ──────────────

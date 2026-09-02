@@ -5,7 +5,7 @@
 // code seul :
 //
 // ① `selectedMoods` démarre à {"creation"}. Or 4 passions du seed sur 17
-//    (yoga, bienetre, cinema, actu) n'ont AUCUN post de ce mood. Un compte neuf
+//    (yoga, bienetre, cinema, actu) n'avaient AUCUN post de ce mood. Un compte neuf
 //    qui choisissait « yoga » voyait « Aucun post pour cette sélection » alors
 //    que trois posts yoga existaient — et le bouton "creation", seul mood actif,
 //    était grisé avec pointer-events:none : impossible de le décocher. Le fil
@@ -68,6 +68,33 @@ async function viderPassion(page, passion) {
   }, passion);
 }
 
+// Vide une passion de son contenu D'UNE SEULE ENVIE. Le vidage large ci-dessus
+// ne convient pas ici : retirer TOUT le yoga déclencherait le repli
+// d'exploration, et les tests mesureraient alors autre chose que ce qu'ils
+// affirment.
+//
+// ⚠️ POURQUOI CE HELPER EXISTE (2026-09-02). Trois tests de ce fichier
+// reposaient sur un ACCIDENT du socle de démonstration : la case
+// « yoga × creation » y était vide, donc `terminerOnboarding(page, "yoga")`
+// déclenchait mécaniquement l'élargissement de mood. Ce n'était écrit nulle
+// part. Le jour où le socle a comblé cette case — délibérément, parce qu'un
+// compte qui cochait yoga + Idées tombait sur un fil vide — les trois tests sont
+// devenus rouges sans qu'aucun comportement ne change.
+//
+// La prémisse « une passion sans contenu de l'envie choisie » appartient au
+// FIXTURE, pas au hasard du contenu. Elle est désormais posée explicitement.
+async function viderPassionEnvie(page, passion, envie) {
+  await page.evaluate(([pa, mo]) => {
+    const sans = (l) => (l || []).filter((p) => !(p.passion === pa && p.mood === mo));
+    state.seed.posts = sans(state.seed.posts);
+    state.userPosts = sans(state.userPosts);
+    state.supabasePosts = sans(state.supabasePosts);
+    // QUATRIÈME tableau : il survit aux écrasements de `supabasePosts`.
+    window._feedExtraPosts = sans(window._feedExtraPosts);
+    window._feedDomSig = null;   // le guard no-op sauterait le rendu suivant
+  }, [passion, envie]);
+}
+
 // Attend que le fil soit ENTIÈREMENT peint. `renderFeed` peint d'abord 12
 // cartes puis complète le reste en idle : mesurer tout de suite compte 12 là où
 // la passion en a davantage. On attend la condition, jamais une durée.
@@ -122,6 +149,7 @@ test("§7 règle absolue — une passion sans post « création » affiche quand
 
 test("§7 — le filtre mood réglé par l'utilisateur est respecté, même s'il vide le fil", async ({ page }) => {
   await bootVierge(page, { uiV2: false });
+  await viderPassionEnvie(page, "yoga", "creation");
   await terminerOnboarding(page, "yoga");
 
   const r = await page.evaluate(() => {
@@ -246,6 +274,7 @@ test("§7 — la télémétrie émise survit au filtre PII de js/telemetry.js", 
   // explicitement sous le kill switch, tandis que le repli reste commun.
   await bootVierge(page, { uiV2: false });
   await viderPassion(page, "moto");
+  await viderPassionEnvie(page, "yoga", "creation");   // la prémisse, posée explicitement
   await terminerOnboarding(page, "yoga");   // déclenche feed_moods_widened
   await page.evaluate(() => { setFeedPassions(["moto"]); renderFeed(); }); // repli
 
@@ -273,6 +302,7 @@ test("§7 — la télémétrie émise survit au filtre PII de js/telemetry.js", 
 
 test("§7 — kill switch UI V2 : ancien comportement strictement rétabli", async ({ page }) => {
   await bootVierge(page, { v2: false, uiV2: false });
+  await viderPassionEnvie(page, "yoga", "creation");
   await terminerOnboarding(page, "yoga");
   await page.evaluate(() => { setFeedPassions(["yoga"]); renderFeed(); });
 

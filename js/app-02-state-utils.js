@@ -3772,11 +3772,18 @@ function legacyMoodToFeedIntent(mood) {
 // (`moodMap[p.mood] || ""`), et un post « irl » sortait « IRL » ici et « Tout »
 // là-bas.
 //
-// Les LIBELLÉS suivent le rail d'intentions du Fil (lot UI-7 : Tous · Explorer ·
-// Apprendre · Idées · Rencontrer) : ce qu'on choisit en publiant porte le même
-// mot que ce qu'on choisit en lisant. Les VALEURS, elles, ne bougent pas — elles
-// sont écrites en base (`posts.mood`), relues par `legacyMoodToFeedIntent`, et
+// Les LIBELLÉS suivent le rail d'intentions du Fil (Explorer · Apprendre ·
+// Idées · Rencontrer) : ce qu'on choisit en publiant porte le même mot que ce
+// qu'on choisit en lisant. Les VALEURS, elles, ne bougent pas — elles sont
+// écrites en base (`posts.mood`), relues par `legacyMoodToFeedIntent`, et
 // portées par des milliers de publications existantes.
+//
+// ⚠️ TROIS entrées, et c'est le produit qui les compte, pas cette table :
+// le Studio ne propose que 💡 Idées · 📚 Apprendre · 🤝 Rencontrer · ✨ Tous.
+// « Explorer » n'est PAS ici et ne peut pas y être : c'est une question posée au
+// LECTEUR (auteur non suivi, passion non cochée), jamais une étiquette posée par
+// l'auteur — lui donner une pastille la rendrait décorative, donc mensongère.
+// « chill » et « actu » n'y sont plus : voir la scission juste en dessous.
 //
 // ⚠️ « all » n'est PAS dans la table, et c'est délibéré : le neutre ne porte
 // aucune étiquette sur la carte (`moodTagLabel` rend ""). L'ajouter collerait un
@@ -3787,9 +3794,48 @@ var PASSIO_MOOD_LABELS = {
   creation: { emoji: "💡", label: "Idées" },
   learn:    { emoji: "📚", label: "Apprendre" },
   irl:      { emoji: "🤝", label: "Rencontrer" },
-  chill:    { emoji: "😌", label: "Chill" },
-  actu:     { emoji: "🌍", label: "Actu" },
 };
+
+// ── AFFICHER ET ADMETTRE SONT DEUX CHOSES (2026-09-02) ───────────────────────
+//
+// `PASSIO_MOOD_LABELS` portait CINQ entrées et servait à DEUX usages qui n'ont
+// rien à voir — c'est en retirant « chill » et « actu » du produit qu'on s'en
+// est aperçu :
+//
+//   ① NOMMER une envie sur une carte (`moodTagLabel`, `moodShortLabel`) ;
+//   ② ADMETTRE une valeur de `posts.mood` dans le repli d'exploration
+//      (`moodsAffichables`, plus bas dans ce fichier).
+//
+// Les deux listes viennent de DIVERGER, et devaient diverger : le Studio ne
+// propose plus que Idées · Apprendre · Rencontrer · Tous — « chill » et « actu »
+// ne sont plus publiables depuis le 2026-08-29 — donc plus rien ne doit les
+// NOMMER. Mais la base de production porte des milliers de publications qui les
+// portent encore, et les retirer de la liste d'ADMISSION les ferait disparaître
+// du fil de tout le monde. Un retrait de vocabulaire ne doit pas effacer du
+// contenu réel.
+//
+// D'où la scission. `PASSIO_MOOD_LABELS` ne garde que ce qui s'affiche ;
+// `PASSIO_MOODS_ADMIS` garde tout ce qui a le droit d'exister en base.
+//
+// ⚠️ Conséquence VOULUE : une publication « chill » ou « actu » se comporte
+// désormais exactement comme le neutre `all` — elle entre dans le fil, elle
+// entre dans l'exploration, et elle ne porte AUCUNE pastille. C'est ce que
+// `moodTagLabel` fait déjà de toute valeur qu'elle ne connaît pas.
+//
+// ⚠️ `legacyMoodToFeedIntent` n'est PAS touchée : elle rendait déjà « generic »
+// pour « chill » et « actu ». Ces publications ne satisfaisaient donc déjà
+// aucune des envies du rail — le produit avait tranché avant l'affichage.
+//
+// ⚠️ NE PAS confondre le MOOD « actu », mort, et la PASSION « actu »
+// (Actualité 🌍), qui est l'une des 19 du catalogue et reste vivante.
+var PASSIO_MOODS_ADMIS = (function () {
+  var admis = {};
+  Object.keys(PASSIO_MOOD_LABELS).forEach(function (m) { admis[m] = 1; });
+  // Valeurs LÉGUÉES : plus publiables, plus affichables, toujours admises.
+  admis.chill = 1;
+  admis.actu = 1;
+  return admis;
+})();
 
 // Étiquette de la carte (fil, post ouvert) : emoji + libellé, ou "" pour le
 // neutre et pour toute valeur inconnue venue de la base.
@@ -4277,10 +4323,15 @@ function renderFeedExplorationFallback(list) {
   //    l'exploration — invisible pour exactement les gens qu'elle cherche.
   //    « Rencontrer » est devenu publiable le 2026-08-29 (#194) ; le défaut
   //    n'existait pas avant, faute de moyen de produire un tel post.
-  // La table canonique `PASSIO_MOOD_LABELS` fait foi. Elle reste une liste
+  // La table canonique `PASSIO_MOODS_ADMIS` fait foi. Elle reste une liste
   // BLANCHE : un mood inconnu venu de la base n'entre toujours pas.
+  // ⚠️ C'est bien `PASSIO_MOODS_ADMIS` et NON `PASSIO_MOOD_LABELS` : depuis la
+  // scission du 2026-09-02, la seconde ne contient plus que ce qui s'AFFICHE
+  // (trois envies). Lire les libellés ici ferait disparaître du fil toutes les
+  // publications de production portant « chill » ou « actu » — c'est-à-dire du
+  // contenu réel effacé par un changement de vocabulaire.
   try {
-    Object.keys(PASSIO_MOOD_LABELS).forEach(function(m) { moodsAffichables[m] = 1; });
+    Object.keys(PASSIO_MOODS_ADMIS).forEach(function(m) { moodsAffichables[m] = 1; });
   } catch (e) {}
 
   var candidats = [];
@@ -5233,9 +5284,22 @@ function renderFeed() {
     const _fill = function() {
       if (window._feedRenderToken !== _token) return;          // rendu obsolète
       if (!document.body.contains(list)) return;
+      // ⚠️ `visible` est un INSTANTANÉ pris avant l'attente idle, et ses posts
+      // sont des copies (`allFeedPosts` fait `{...p}`). Ses compteurs ont pu
+      // bouger depuis — c'est exactement ce qui arrive à un like optimiste
+      // ANNULÉ par un refus serveur : la carte sortait « 🤍 5 », le cœur relu en
+      // direct (`state.user.likedPosts`) mais le nombre figé à sa valeur
+      // optimiste, et ce faux compteur survivait jusqu'au prochain rendu
+      // complet. Les cartes du premier lot, elles, sont rattrapées par la
+      // retouche en place ; celles-ci n'existaient pas encore, donc rien ne
+      // pouvait les corriger. Défaut mesuré le 2026-09-02, atteignable dès
+      // qu'une carte dépasse la douzième position.
+      // On ne re-CLASSE rien : l'ordre reste celui de l'instantané, sinon les
+      // cartes sauteraient sous le doigt pendant le défilement.
+      const frais = visible.map(_feedCompteursFrais);
       list.insertAdjacentHTML("beforeend",
-        visible.slice(FAST).map(_renderPostHTMLSafe).join("") + feedWindowTailHtml(hasMore, moreBtnHtml));
-      if (feedWindowEnabled()) list._fwSigs = visible.map(_feedWindowCardSig);
+        frais.slice(FAST).map(_renderPostHTMLSafe).join("") + feedWindowTailHtml(hasMore, moreBtnHtml));
+      if (feedWindowEnabled()) list._fwSigs = frais.map(_feedWindowCardSig);
       feedWindowSync(list);
     };
     (window.requestIdleCallback || function(f){ return setTimeout(f, 50); })(_fill, { timeout: 300 });
@@ -5408,6 +5472,36 @@ function _renderPostHTMLSafe(p) {
   try { return renderPostHTML(p); }
   catch (e) { try { if (typeof diagLog === "function") diagLog("renderPostHTML fail", (p && p.id) || "?", e && e.message); } catch (_) {} return ""; }
 }
+// Compteurs volatils relus sur l'objet CANONIQUE, sans toucher au classement.
+//
+// Un post rendu dans le fil est une COPIE (`allFeedPosts` fait `{...p}`), figée
+// à l'instant du classement. Tout ce qui bouge après — un like optimiste, son
+// annulation sur refus serveur, un commentaire arrivé en realtime — ne bouge que
+// sur l'original. Peindre la copie plus tard affiche donc un nombre périmé.
+//
+// ⚠️ La propriété du post se retrouve par `findPostAnywhere`, jamais par
+// `seed.posts.find || userPosts.find` : un post vit dans QUATRE tableaux.
+// ⚠️ On ne recopie QUE les compteurs. Reprendre l'objet canonique entier
+// perdrait les champs d'affichage que `allFeedPosts` a posés sur la copie
+// (`_source`, `authorName`, `authorEmoji`…), et la carte sortirait anonyme.
+// ⚠️ Retour tel quel quand rien n'a bougé : pas de copie inutile par carte.
+function _feedCompteursFrais(p) {
+  try {
+    if (!p || !p.id || typeof findPostAnywhere !== "function") return p;
+    var vrai = findPostAnywhere(p.id);
+    if (!vrai) return p;
+    var nbC = (vrai.comments || []).length, nbCp = (p.comments || []).length;
+    var nbR = Array.isArray(vrai.reactions) ? vrai.reactions.length : -1;
+    var nbRp = Array.isArray(p.reactions) ? p.reactions.length : -1;
+    if ((vrai.likes || 0) === (p.likes || 0) && nbC === nbCp && nbR === nbRp) return p;
+    var copie = Object.assign({}, p);
+    copie.likes = vrai.likes;
+    if (vrai.comments) copie.comments = vrai.comments;
+    if (Array.isArray(vrai.reactions)) copie.reactions = vrai.reactions;
+    return copie;
+  } catch (e) { return p; }
+}
+
 function renderPostHTML(p) {
   // ✅ AFFICHER TOUJOURS LE VRAI NOM DU PROFIL!
   let authorName = p.authorName;
@@ -5579,6 +5673,14 @@ function renderPostHTML(p) {
   // 2026-09-02 : « on ne voit pas assez à quelle passion appartient un post ».
   // Le `textContent` de `.post-author-meta` est INCHANGÉ à l'octet près —
   // deux suites l'assertent (`profil-entete-passions`, `refonte-multi-passion`).
+  //
+  // ⚠️ `passion.label` PASSE PAR `escapeHtml`, et ce n'est pas décoratif :
+  // `passionById` peut rendre une entrée de `state.user.customPassions`, dont le
+  // libellé est de la saisie libre (`label: name`). La portée est le compte
+  // lui-même — aucun libellé d'un TIERS n'atteint cette ligne — mais la
+  // convention maison ne souffre pas d'exception, et la ligne d'origine ne
+  // l'échappait déjà pas. Corrigé en même temps que l'enrobage plutôt que laissé
+  // pour plus tard.
   // L'identité complète reste centralisée (ADR-011 §3) : elle vit sur les DEUX
   // en-têtes de profil, où elle est cliquable, et sur les surfaces denses
   // (commentaires, listes, inbox) — aucune de celles-là n'affiche de passion à
@@ -5590,7 +5692,7 @@ function renderPostHTML(p) {
       <div class="post-author" style="cursor:pointer;" onclick="openUserProfile('${escapeJsArg(p.authorId)}','${escapeJsArg(p._source)}')">
         <div class="post-author-name">${escapeHtml(author.name || "Moi")}</div>
         <div class="post-author-meta">
-          <span class="post-passion-tag">${passion.emoji} ${passion.label}</span> · ${fmtTime(p.createdAt)}
+          <span class="post-passion-tag">${escapeHtml(passion.emoji)} ${escapeHtml(passion.label)}</span> · ${fmtTime(p.createdAt)}
           ${p._source === "me" && p.syncStatus ? `
             ${p.syncStatus === "syncing" ? '<span style="margin-left:8px;font-size:10px;color:var(--muted);">⏳ Sync...</span>' : ""}
             ${p.syncStatus === "synced" ? '<span style="margin-left:8px;font-size:10px;color:#22c55e;">📡 En ligne</span>' : ""}
@@ -5681,7 +5783,7 @@ async function openPost(id) {
         <div class="avatar" style="background:${avatarBg(author)};cursor:pointer;" onclick="openUserProfile('${escapeJsArg(post.authorId)}','${escapeJsArg(post._source || "seed")}')">${avatarInner(author)}</div>
         <div class="post-author" style="cursor:pointer;" onclick="openUserProfile('${escapeJsArg(post.authorId)}','${escapeJsArg(post._source || "seed")}')">
           <div class="post-author-name">${escapeHtml(author.name || "Utilisateur")}</div>
-          <div class="post-author-meta"><span class="post-passion-tag">${passion.emoji} ${passion.label}</span> · ${fmtTime(post.createdAt)}</div>
+          <div class="post-author-meta"><span class="post-passion-tag">${escapeHtml(passion.emoji)} ${escapeHtml(passion.label)}</span> · ${fmtTime(post.createdAt)}</div>
         </div>
         ${(state.userPosts || []).some(function(up){ return up.id === id; }) ? `<button class="post-menu-btn" onclick="event.stopPropagation();openPostOptions('${escapeJsArg(id)}')" aria-label="Options du post" title="Options">
           <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>

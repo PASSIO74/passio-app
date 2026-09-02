@@ -1637,12 +1637,17 @@ const SEED_REEL_VIDEOS = [
   },
   {
     id: "reel_seed_sport_skate_1",
-    eventId: "e11",  // lot UI-5 : la bobine EST le skate jam des Chartrons
+    // lot UI-5 : la bobine EST le skate jam des Chartrons. ⚠️ `eventId` fait
+    // apparaître « Voir l'activité » en bas de la carte (`refEvenement`,
+    // js/ui-v3-passerelle.js) : l'envie DOIT donc être « irl », sinon la carte
+    // ouvre un rendez-vous sous une étiquette qui n'en annonce aucun. Verrou :
+    // `contenu-passion-mood.spec.js` ② quater.
+    eventId: "e11",
     video: "https://videos.pexels.com/video-files/5765270/5765270-sd_640_360_24fps.mp4",
     poster: "https://images.unsplash.com/photo-1543364195-077a52659557?w=720&h=1280&fit=crop&auto=format&q=80",
     fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
-    userId: "u_theo", passion: "sport", mood: "actu",
-    text: "Session skate dimanche matin. Kickflip en cours depuis trois mois. Aujourd'hui ça commence à venir. 🛹",
+    userId: "u_theo", passion: "sport", mood: "irl",
+    text: "📍 Bordeaux, skatepark des Chartrons — 📅 dimanche 14h\nSkate jam ouvert : on tourne, on filme, personne ne note personne. Je bosse mon kickflip depuis trois mois et aujourd'hui ça commence à venir, donc venez rire.\nPas de niveau, prêt de planche possible. Dis-moi en commentaire si tu passes.",
     createdAt: Date.now() - 4 * 3600000,
   },
   {
@@ -1651,8 +1656,8 @@ const SEED_REEL_VIDEOS = [
     video: "https://videos.pexels.com/video-files/5765163/5765163-sd_640_360_24fps.mp4",
     poster: "https://images.unsplash.com/photo-1510915361894-db8b60106cb1?w=720&h=1280&fit=crop&auto=format&q=80",
     fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4",
-    userId: "u_lea", passion: "musique", mood: "creation",
-    text: "Impro guitare ce matin. En bricolant on trouve les meilleurs accords. 🎸",
+    userId: "u_lea", passion: "musique", mood: "irl",
+    text: "📍 Lyon, Café des Arts — 📅 jeudi 18h30\nCe que vous entendez, c'est l'impro de ce matin — c'est exactement ce qu'on fera jeudi à la jam, en moins seul.\nGuitaristes débutants bienvenus, il reste 4 places. Instrument sur place si tu n'as pas le tien.",
     createdAt: Date.now() - 6 * 3600000,
   },
   {
@@ -2965,7 +2970,13 @@ async function shareReelInFeed(postId) {
     likes: 0,
     comments: [],
     passion: passionDeRepartage(reel.passion),   // cf. `sharePostInFeed` (app-03)
-    mood: reel.mood || "chill",
+    // ⚠️ Le repli était `"chill"` — une valeur que le Studio ne propose plus
+    // depuis le 2026-08-29 et qui n'a plus de libellé depuis le 2026-09-02.
+    // Repartager une bobine sans mood ÉCRIVAIT donc du vocabulaire mort dans
+    // `posts.mood`, en production, à chaque partage. Le neutre `all` est la
+    // valeur juste : c'est déjà celle de toute publication venue de Supabase,
+    // et c'est ce que rend `normalizeStudioMood` pour un mood inconnu.
+    mood: reel.mood || "all",
     sharedReel: postId,
     sharedReelData: {
       id: reel.id,

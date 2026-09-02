@@ -10515,10 +10515,17 @@ html:not(.passio-first-run) .fr-only { display: none !important; }
 
    Remarque d'un testeur, essai réel : « le contenu du fil n'est pas assez
    explicite par rapport à la passion et au mood, il faut qu'on comprenne la
-   différence visuellement ». Les cinq envies portaient bien leur libellé, mais
+   différence visuellement ». Les envies portaient bien leur libellé, mais
    toutes dans la MÊME capsule grisée : deux cartes côte à côte se distinguaient
    au mot près, jamais au coup d'œil. Une couleur par envie suffit à rendre le
    fil lisible en diagonale, ce que fait exactement un testeur.
+
+   ⚠️ TROIS pastilles, et pas une de plus. Le Studio ne propose que 💡 Idées ·
+   📚 Apprendre · 🤝 Rencontrer · ✨ Tous ; « chill » et « actu » ne sont plus
+   publiables et ont perdu leur libellé le 2026-09-02, donc leur couleur avec.
+   Une publication qui les porte encore se peint désormais comme le neutre :
+   aucune pastille. Et « Explorer » n'en aura jamais — c'est une question posée
+   au lecteur, pas une étiquette d'auteur.
 
    ⚠️ Le discriminant est l'attribut `data-mood`, posé par `_moodTagHTML`
    (app-02) et UNIQUEMENT sur la branche où `moodTagLabel` a rendu un libellé.
@@ -10529,8 +10536,8 @@ html:not(.passio-first-run) .fr-only { display: none !important; }
    ⚠️ Les fonds sont OPAQUES, jamais des `rgba` : le contrôle de contraste du
    projet remonte au premier fond opaque et prendrait une teinte translucide
    pour une couleur pleine, alpha ignoré. Rapports mesurés de l'encre sur son
-   propre fond — Idées 7,7:1 · Apprendre 5,8:1 · Rencontrer 5,9:1 · Chill 6,1:1
-   · Actu 5,7:1 — tous au-dessus des 4,5:1 de l'AA.
+   propre fond — Idées 7,7:1 · Apprendre 5,8:1 · Rencontrer 5,9:1 — tous
+   au-dessus des 4,5:1 de l'AA.
 
    ⚠️ Le ton chaud de « Rencontrer » est un cousin du corail #FF6B57, et c'est
    la SEULE raison qui l'autorise ici : §5 de la direction réserve la couleur
@@ -10562,14 +10569,6 @@ html:not(.passio-first-run) .fr-only { display: none !important; }
   --mood-meet-bg:     #ffede9;
   --mood-meet-ink:    #a83218;
   --mood-meet-line:   #ffd2c8;
-  /* 😌 Chill — vert doux, sans urgence */
-  --mood-chill-bg:    #e8f6ee;
-  --mood-chill-ink:   #15683f;
-  --mood-chill-line:  #c7e8d6;
-  /* 🌍 Actu — ambre, la couleur du direct */
-  --mood-news-bg:     #fff3dc;
-  --mood-news-ink:    #92500a;
-  --mood-news-line:   #fae0b4;
 }
 
 /* La passion de la PUBLICATION : la seule mention de la carte (fiche 11), donc
@@ -10579,7 +10578,11 @@ html:not(.passio-first-run) .fr-only { display: none !important; }
    ⚠️ C'est un ENROBAGE, pas une seconde mention : `renderPostHTML` et `openPost`
    rendent exactement le même texte qu'avant.
    ⚠️ Couleur uniforme `--accent`, jamais `passion.color` : le catalogue contient
-   du #a78bfa, qui ne donne que 2,6:1 sur blanc. L'accent, lui, tient 6,15:1. */
+   du #a78bfa, qui ne donne que 2,6:1 sur blanc. L'accent, lui, tient l'AA dans
+   les DEUX chartes — 6,15:1 sous `.passio-ui-v2` (#6D32F4) et 5,70:1 sous la
+   palette historique (#7c3aed), que le kill switch `passio_ui_v2="0"` restitue.
+   Ne citer qu'un seul de ces deux chiffres laisserait croire que la mesure vaut
+   partout. */
 .post-author-meta .post-passion-tag {
   color: var(--accent);
   font-weight: 700;
@@ -10596,6 +10599,16 @@ html:not(.passio-first-run) .fr-only { display: none !important; }
   line-height: 1.5;
   white-space: nowrap;
   flex-shrink: 0;
+  /* ⚠️ REPLI OBLIGATOIRE. Ce sélecteur attrape TOUT `data-mood`, alors que les
+     règles colorées ci-dessous n'en nomment que trois. La note de
+     `PASSIO_MOOD_LABELS` prévoit explicitement que la table grandisse : sans ce
+     repli, une quatrième envie sortirait plus grosse et plus grasse DANS
+     L'ANCIENNE capsule grise translucide — un état intermédiaire que personne
+     n'aurait dessiné. Le violet de la famille est le défaut le moins surprenant.
+     Contraste du repli : 7,7:1, le même que « Idées ». */
+  background: var(--mood-create-bg);
+  color: var(--mood-create-ink);
+  border-color: var(--mood-create-line);
 }
 .post-mood-tag[data-mood="creation"] {
   background: var(--mood-create-bg);
@@ -10611,16 +10624,6 @@ html:not(.passio-first-run) .fr-only { display: none !important; }
   background: var(--mood-meet-bg);
   color: var(--mood-meet-ink);
   border-color: var(--mood-meet-line);
-}
-.post-mood-tag[data-mood="chill"] {
-  background: var(--mood-chill-bg);
-  color: var(--mood-chill-ink);
-  border-color: var(--mood-chill-line);
-}
-.post-mood-tag[data-mood="actu"] {
-  background: var(--mood-news-bg);
-  color: var(--mood-news-ink);
-  border-color: var(--mood-news-line);
 }
 
 /* Écran étroit : on garde la couleur ET le libellé entier, on rend le padding.
