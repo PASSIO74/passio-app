@@ -139,6 +139,14 @@
 
   ### Les survivants du vocabulaire mort
 
+  Trouvés par une traque à trois lentilles disjointes (le code, les tests, la
+  documentation), menée en parallèle de la réécriture. **49 occurrences
+  rapportées, dont 16 marquées « conserver volontairement »** — et ces
+  seize-là valent autant que les autres, parce qu'un nettoyage naïf les aurait
+  emportées : les quatre copies de la liste des PASSIONS (où « actu » est la
+  passion Actualité, pas le mood), le fixture de `feed-intents` qui a besoin
+  d'une valeur générique, et les verrous eux-mêmes.
+
   - `js/app-05-config-profil.js` : `mood: reel.mood || "chill"`. **Repartager
     une bobine écrivait une valeur morte dans `posts.mood`, en production, à
     chaque partage.** Corrigé en `all`.
@@ -152,6 +160,18 @@
     `u_anais`, `u_chloe`) qui n'existent pas : `userById` rendait null et la
     carte sortait avec « ? » comme auteur. Défaut **préexistant**, visible en
     production, trouvé en vérifiant l'intégrité du socle.
+  - `tests/e2e/multi-comptes.spec.js` : `mood: "chill"` sur une publication
+    envoyée par `supaPublishPostWithRetry`. **Seule occurrence du dépôt qui
+    écrivait du vocabulaire mort dans la VRAIE base** — cette suite tourne sur
+    des comptes réels (`npm run test:prod`), donc chaque exécution en ajoutait
+    une ligne en production. Corrigé en `all`.
+  - **Onze personas de démonstration** portaient encore `mood: "chill"` ou
+    `"actu"` sur l'objet UTILISATEUR. Rien ne lit ce champ (vérifié : aucun
+    `user.mood` dans `js/`), mais une valeur morte recopiée dans une donnée
+    d'exemple finit par se propager. Recalés sur l'envie vivante du persona.
+  - La **légende du bloc « EXEMPLES D'ENVIE »** décrivait encore cinq formes
+    d'écriture, dont deux mortes — mon propre commentaire, périmé par la
+    correction de Benjamin.
   - Le **rail historique masqué** `#moodSelector` (index.html) propose encore
     Chill et Actu. Il est **volontairement laissé tel quel** : c'est la roue de
     secours du kill switch `passio_feed_intents_v1="0"`, que la fiche 07 exige

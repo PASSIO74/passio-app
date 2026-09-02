@@ -124,20 +124,20 @@ function buildSeed() {
 
   const seedUsers = [
     { id: "u_lea",   name: "Léa Moreau",    avatar: "#8b5cf6", passion: "musique", mood: "creation", bio: "Guitariste passionnée · Lyon", profileEmoji: "🎸" },
-    { id: "u_karim", name: "Karim Belkacem", avatar: "#8b5cf6", passion: "photo", mood: "chill", bio: "Photographe de rue · Paris", profileEmoji: "📷" },
+    { id: "u_karim", name: "Karim Belkacem", avatar: "#8b5cf6", passion: "photo", mood: "creation", bio: "Photographe de rue · Paris", profileEmoji: "📷" },
     { id: "u_nina",  name: "Nina Costa",    avatar: "#8b5cf6", passion: "voyage", mood: "irl", bio: "Nomade digitale · Partout", profileEmoji: "🌍" },
     { id: "u_theo",  name: "Théo Roussel",  avatar: "#7c3aed", passion: "cuisine", mood: "learn", bio: "Chef à domicile · Marseille", profileEmoji: "🍳" },
-    { id: "u_sofia", name: "Sofia Lindqvist", avatar: "#a78bfa", passion: "litterature", mood: "chill", bio: "Lectrice insatiable · Bordeaux", profileEmoji: "📚" },
+    { id: "u_sofia", name: "Sofia Lindqvist", avatar: "#a78bfa", passion: "litterature", mood: "learn", bio: "Lectrice insatiable · Bordeaux", profileEmoji: "📚" },
     { id: "u_yanis", name: "Yanis Perez",    avatar: "#a78bfa", passion: "tech", mood: "learn", bio: "Vibe-coder IA · Toulouse", profileEmoji: "💻" },
     { id: "u_amira", name: "Amira Haddad",   avatar: "#a78bfa", passion: "danse", mood: "creation", bio: "Danseuse hip-hop · Lille", profileEmoji: "💃" },
     { id: "u_paul",  name: "Paul Lacroix",   avatar: "#7c3aed", passion: "metier", mood: "creation", bio: "Ébéniste · Tours", profileEmoji: "🛠" },
-    { id: "u_emma",  name: "Emma Wright",   avatar: "#8b5cf6", passion: "yoga", mood: "chill", bio: "Prof yoga · Biarritz", profileEmoji: "🧘" },
+    { id: "u_emma",  name: "Emma Wright",   avatar: "#8b5cf6", passion: "yoga", mood: "learn", bio: "Prof yoga · Biarritz", profileEmoji: "🧘" },
     { id: "u_liam",  name: "Liam Dufresne",  avatar: "#7c3aed", passion: "podcast", mood: "learn", bio: "Podcasteur indé · Montréal", profileEmoji: "🎙" },
     { id: "u_zoe",   name: "Zoé Marchand",   avatar: "#7c3aed", passion: "mode", mood: "creation", bio: "Styliste upcycling · Paris", profileEmoji: "👗" },
     { id: "u_mehdi", name: "Mehdi Saïd",    avatar: "#8b5cf6", passion: "sport", mood: "irl", bio: "Trail runner · Annecy", profileEmoji: "🏃" },
     { id: "u_inès",  name: "Inès Vidal",     avatar: "#8b5cf6", passion: "art", mood: "creation", bio: "Illustratrice freelance · Nantes", profileEmoji: "🎨" },
-    { id: "u_tom",   name: "Tom Larivière",   avatar: "#a78bfa", passion: "jeuxvideo", mood: "chill", bio: "Speedrunner Zelda · Rennes", profileEmoji: "🎮" },
-    { id: "u_chloé", name: "Chloé Dubois",   avatar: "#a78bfa", passion: "yoga", mood: "chill", bio: "Naturopathe · Aix-en-Provence", profileEmoji: "🌿" },
+    { id: "u_tom",   name: "Tom Larivière",   avatar: "#a78bfa", passion: "jeuxvideo", mood: "creation", bio: "Speedrunner Zelda · Rennes", profileEmoji: "🎮" },
+    { id: "u_chloé", name: "Chloé Dubois",   avatar: "#a78bfa", passion: "yoga", mood: "learn", bio: "Naturopathe · Aix-en-Provence", profileEmoji: "🌿" },
     { id: "u_oussa", name: "Oussama Farid",   avatar: "#7c3aed", passion: "musique", mood: "creation", bio: "Beatmaker studio home · Saint-Denis", profileEmoji: "🎧" },
     { id: "u_clara", name: "Clara Jensen",    avatar: "#8b5cf6", passion: "voyage", mood: "irl", bio: "Cyclo-voyageuse · Copenhague→Rome", profileEmoji: "🚴" },
     { id: "u_noa",   name: "Noa Benhaim",     avatar: "#7c3aed", passion: "cinema", mood: "learn", bio: "Monteuse indé · Paris", profileEmoji: "🎬" },
@@ -145,15 +145,15 @@ function buildSeed() {
     { id: "u_mila",  name: "Mila Andreani",   avatar: "#8b5cf6", passion: "danse", mood: "irl", bio: "Prof contemporaine · Ajaccio", profileEmoji: "🩰" },
     { id: "u_jona",  name: "Jonas Weber",    avatar: "#a78bfa", passion: "sport", mood: "learn", bio: "Climber + coach mental · Chamonix", profileEmoji: "🧗" },
     { id: "u_anaïs", name: "Anaïs Tremblay",  avatar: "#a78bfa", passion: "litterature", mood: "creation", bio: "Poétesse · Québec", profileEmoji: "📝" },
-    { id: "u_hugo",  name: "Hugo Martelli",   avatar: "#a78bfa", passion: "cuisine", mood: "chill", bio: "Pâtissier véganisant · Nice", profileEmoji: "🧁" },
+    { id: "u_hugo",  name: "Hugo Martelli",   avatar: "#a78bfa", passion: "cuisine", mood: "creation", bio: "Pâtissier véganisant · Nice", profileEmoji: "🧁" },
     { id: "u_rita",  name: "Rita Kamara",     avatar: "#8b5cf6", passion: "mode", mood: "irl", bio: "Fashion week organizer · Dakar↔Paris", profileEmoji: "🧵" },
-    { id: "u_lou",   name: "Lou Petit",       avatar: "#7c3aed", passion: "art", mood: "chill", bio: "Céramiste · Uzès", profileEmoji: "🏺" },
-    { id: "u_sami",  name: "Sami Ouedraogo",  avatar: "#7c3aed", passion: "actu", mood: "actu", bio: "Journaliste indé · Bruxelles", profileEmoji: "🗞" },
-    { id: "u_val",   name: "Valentine Roux",  avatar: "#7c3aed", passion: "actu", mood: "actu", bio: "Géopolitologue · Sciences Po", profileEmoji: "🌍" },
-    { id: "u_kaoru", name: "Kaoru Tanaka",    avatar: "#8b5cf6", passion: "actu", mood: "actu", bio: "Correspondant Tokyo · desk international", profileEmoji: "🗺" },
+    { id: "u_lou",   name: "Lou Petit",       avatar: "#7c3aed", passion: "art", mood: "creation", bio: "Céramiste · Uzès", profileEmoji: "🏺" },
+    { id: "u_sami",  name: "Sami Ouedraogo",  avatar: "#7c3aed", passion: "actu", mood: "learn", bio: "Journaliste indé · Bruxelles", profileEmoji: "🗞" },
+    { id: "u_val",   name: "Valentine Roux",  avatar: "#7c3aed", passion: "actu", mood: "learn", bio: "Géopolitologue · Sciences Po", profileEmoji: "🌍" },
+    { id: "u_kaoru", name: "Kaoru Tanaka",    avatar: "#8b5cf6", passion: "actu", mood: "learn", bio: "Correspondant Tokyo · desk international", profileEmoji: "🗺" },
     // Quatre passions du catalogue n'avaient AUCUN persona, donc aucun contenu :
     // un compte qui les cochait tombait sur un fil vide (2026-08-28).
-    { id: "u_lucie", name: "Lucie Vernet",     avatar: "#8b5cf6", passion: "jardinage", mood: "chill", bio: "Permacultrice · Angers", profileEmoji: "🌱" },
+    { id: "u_lucie", name: "Lucie Vernet",     avatar: "#8b5cf6", passion: "jardinage", mood: "learn", bio: "Permacultrice · Angers", profileEmoji: "🌱" },
     { id: "u_nabil", name: "Nabil Cherif",     avatar: "#7c3aed", passion: "jeuxvideo", mood: "creation", bio: "Créateur de jeux indé · Rennes", profileEmoji: "🎮" },
     { id: "u_greg",  name: "Greg Aubert",      avatar: "#a78bfa", passion: "moto", mood: "irl", bio: "Roadtrips et mécanique · Clermont-Ferrand", profileEmoji: "🏍" },
     { id: "u_maya",  name: "Maya Lorenzi",     avatar: "#a78bfa", passion: "animaux", mood: "learn", bio: "Comportementaliste canin · Toulouse", profileEmoji: "🐾" },
@@ -1342,19 +1342,25 @@ function buildSeed() {
     //   💡 Idées      → on FABRIQUE : un état d'avancement, une version, un reste à faire
     //   📚 Apprendre  → on TRANSMET : une règle ou des étapes numérotées, réutilisables
     //   🤝 Rencontrer → on SE DONNE RENDEZ-VOUS : 📍 lieu, 📅 date, places, « qui vient ? »
-    //   😌 Chill      → on RACONTE UN MOMENT : aucune leçon, aucune invitation, rien à faire
-    //   🌍 Actu       → on RAPPORTE UN FAIT DATÉ : un chiffre, une source, ce que ça change
+    //   (neutre)      → on RACONTE UN MOMENT : aucune leçon, aucune invitation, rien à faire
+    //
+    // ⚠️ TROIS envies d'auteur, et le neutre. « Explorer », la quatrième
+    // intention du rail, n'est PAS une forme d'écriture : elle se calcule côté
+    // LECTEUR (auteur non suivi, passion non cochée) et ne regarde jamais le
+    // mood. « Chill » et « Actu » ont été retirés du produit le 2026-09-02 : ce
+    // bloc en portait deux formes, elles sont mortes avec elles.
     //
     // Les quinze premières forment trois séries complètes (Musique, Photo,
-    // Cuisine) : cinq envies sur UNE passion, pour qu'un testeur qui coche une
-    // seule passion voie les cinq couleurs se suivre dans son fil. Les
-    // suivantes comblent les cases vides du tableau passion × envie — chaque
-    // passion du catalogue a désormais au moins un exemple de chaque envie.
+    // Cuisine) qui tiennent toutes la MÊME partition — Idées · Apprendre ·
+    // Rencontrer · Rencontrer (reliée à une activité) · neutre — pour qu'un
+    // testeur qui coche une seule passion voie le dégradé se suivre dans son
+    // fil, et rencontre « Voir l'activité » dès le premier écran. Les suivantes
+    // comblent les cases vides du tableau passion × envie.
     //
     // ⚠️ Ajoutées EN FIN de tableau : trois suites prennent `state.seed.posts[0]`
     // sans le choisir, insérer en tête changerait leur sujet en silence.
 
-    // ── Série MUSIQUE : les cinq envies sur une seule passion ────────────────
+    // ── Série MUSIQUE : la partition complète sur une seule passion ─────────
     { id: "p401", authorId: "u_lea", passion: "musique", mood: "creation", type: "text", cover: "studio",
       text: "Chantier de la semaine : je réécris le refrain de « Après l'orage » à la basse au lieu de la guitare. Version 12, et c'est la première qui tient debout sans que je force la voix.\nIl reste la batterie, que je vais programmer avant d'oser demander à quelqu'un de la jouer. Je poste la maquette dès qu'elle ne me fait plus honte.",
       createdAt: hours(0.2), likes: 41, liked: false, comments: [
