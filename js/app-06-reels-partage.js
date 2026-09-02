@@ -333,48 +333,19 @@ function renderMainProfile() {
   }
 
   usernameEl.textContent = g.username || state.user.name || "Mon profil";
-  // §2 : mes passions sous mon pseudo, comme sur toutes les autres surfaces.
-  // Nœud créé une fois, tenu à jour ensuite — pas de `innerHTML` sur la carte,
-  // qui emporterait l'input de photo qu'elle héberge.
+  // ⚠️ PLUS DE LIGNE DE PASSIONS SOUS LE PSEUDO, et c'est un choix de Benjamin du
+  // 2026-09-02 : « on va supprimer les titres de passion dans le profil sous le
+  // pseudo et garder seulement les bulles dessous. » Le profil les nommait DEUX
+  // fois à 5 px d'écart — ici en pastilles-portes (§2 + lot du 2026-09-01), puis
+  // dans le rail `#v9ProfilePassions` juste dessous, qui filtre et compte. Deux
+  // rangées disant les mêmes mots : c'est le doublon de la carte du fil, sur le
+  // profil. Le rail reste, la ligne part.
   //
-  // ⚠️ 2026-09-01 : ce n'est plus une ligne de texte mais une rangée de PORTES
-  // (`identitePassionsChipsHTML`, app-02) — chaque passion ouvre sa page. Le
-  // nœud reste le même et garde sa classe : seule sa nature change.
-  try {
-    var identEl = document.getElementById("mainProfileIdent");
-    var moi = { id: (typeof MY_UID !== "undefined" && MY_UID) || "me" };
-    var identChips = (typeof identitePassionsChipsHTML === "function")
-      ? identitePassionsChipsHTML(moi) : "";
-    // La signature évite de repeindre à chaque `renderMainProfile` (rappelée à
-    // chaque publication, chaque commentaire, chaque RSVP) : réécrire l'HTML
-    // sans raison relancerait la transition des pastilles à chaque geste.
-    // ⚠️ Elle porte sur ce que la pastille MONTRE — id, emoji ET libellé — et pas
-    // sur la seule ligne de texte : changer l'emoji d'une passion sans changer son
-    // nom laisserait sinon l'ancien à l'écran jusqu'au prochain rechargement.
-    var identSig = "";
-    try {
-      identSig = passionsAffichables(moi).map(function (p) {
-        return p.id + ":" + p.emoji + ":" + p.label;
-      }).join("|");
-    } catch (e) {}
-    if (!identEl && identChips) {
-      identEl = document.createElement("div");
-      identEl.id = "mainProfileIdent";
-      identEl.className = "ident-passions ident-passions-links";
-      identEl.setAttribute("role", "group");
-      identEl.setAttribute("aria-label", "Mes passions — toucher pour les découvrir");
-      usernameEl.parentNode.insertBefore(identEl, usernameEl.nextSibling);
-    }
-    if (identEl) {
-      if (identEl.getAttribute("data-ident-sig") !== identSig) {
-        identEl.setAttribute("data-ident-sig", identSig);
-        identEl.innerHTML = identChips;
-      }
-      // Une rangée vide ne doit rien peindre : une ligne vide sous un pseudo se
-      // lit comme un chargement qui n'arrive jamais.
-      identEl.hidden = !identChips;
-    }
-  } catch (e) { _v8Echec("ident_passions", e); }
+  // ⚠️ NE PAS RECRÉER `#mainProfileIdent` ICI SANS RELIRE CE QUI SUIT. Le nœud
+  // était créé par ce renderer, rappelé à CHAQUE publication, commentaire et
+  // RSVP : le remettre ferait revenir la rangée partout, sans qu'aucun test de
+  // rendu ne s'en émeuve. L'identité complète reste centralisée (ADR-011 §3) et
+  // s'affiche sur les surfaces denses, où rien ne la double.
   // Bio : afficher seulement si renseignée (sinon rien, pas de placeholder)
   bioEl.textContent = g.bio || "";
   bioEl.style.display = g.bio ? "" : "none";
@@ -1607,10 +1578,21 @@ function setEventPassionFilter(profileId) { return setProfilePassion(profileId);
 // ══════════════════════════════════════════════════════════════════════════
 // LE RAIL DE PASSIONS DU PROFIL (refonte multi-passion, §1)
 // ──────────────────────────────────────────────────────────────────────────
-// Les passions se présentent en haut du profil, dans le MÊME composant que le
-// Fil — `passionTileHTML` (app-02), donc mêmes classes, mêmes dimensions, mêmes
-// espacements, mêmes états. Deux différences assumées avec le Fil, et une seule
-// est visuelle :
+// Les passions se présentent en haut du profil, en PASTILLES DE TEXTE
+// (`passionChipHTML`, app-02) depuis le 2026-09-02.
+//
+// ⚠️ CE RAIL A PORTÉ LES BULLES DU FIL JUSQU'AU 2026-09-02, et ce n'est plus le
+// cas : « enlève les onglets ronds violets sous le pseudo des passions, c'est
+// trop gros trop visible ; tu mets juste les passions en question, fin élégant »
+// (Benjamin, après essai réel). Les vignettes de 46 px, leur pastille d'emoji et
+// leur libellé formaient un second bloc massif juste sous la carte d'identité.
+// Le FIL, lui, garde ses bulles à l'octet près : la demande du 2026-08-29
+// (« remets les profils du fil comme avant, en bulle ») tient toujours, elle ne
+// portait pas sur cet écran. Les deux surfaces ne partagent donc plus leur
+// rendu — mais elles partagent toujours leur GESTE (`_passionTileOnclick`) et
+// leur état, qui sont ce qui divergeait vraiment quand chacune avait sa copie.
+//
+// Deux différences assumées avec le Fil, et une seule est visuelle :
 //
 //   · MULTI-SÉLECTION, comme le Fil. La version précédente imposait ici un choix
 //     unique et une bulle « Toutes » ; Benjamin a demandé l'inverse le
@@ -1685,7 +1667,11 @@ function renderProfilePassionRail() {
   if (!rail) {
     rail = document.createElement("div");
     rail.id = "v9ProfilePassions";
-    rail.className = "profile-strip v9-profile-strip";
+    // ⚠️ PLUS `profile-strip` : cette classe apporte le défilement horizontal,
+    // les colonnes égales (`flex: 1 1 0`) et la désaturation des bulles non
+    // cochées du Fil — trois comportements qui n'ont aucun sens pour une rangée
+    // de pastilles de texte, qui passe à la ligne.
+    rail.className = "v9-profile-strip";
     rail.setAttribute("role", "group");
     rail.setAttribute("aria-label", "Filtrer ce profil par passion");
   }
@@ -1729,14 +1715,15 @@ function renderProfilePassionRail() {
     var meta = {};
     try { meta = passionById(pr.passion) || {}; } catch (e) {}
     var on = !!selIds[pr.id];
-    return passionTileHTML({
+    // ⚠️ Ni `photoUrl` ni `dimmed` : la pastille n'a pas de vignette à illustrer,
+    // et l'estompage des non-cochées n'a plus lieu d'être — un contour vide se
+    // distingue déjà d'un contour rempli, alors que deux vignettes photo ne se
+    // distinguaient QUE par l'opacité.
+    return passionChipHTML({
       emoji: et.emoji,
       label: et.label,
-      photoUrl: pr.photoUrl || pr.photo || passionPhotoUrl(meta),
-      fallbackUrl: passionPhotoFallback(pr.passion),
       count: posts.filter(function (x) { return _postDeLaPassion(x, pr); }).length,
       selected: on,
-      dimmed: !on && nbSel > 0,
       action: "profilePassion", arg: String(pr.id),
       title: et.label,
       tileKey: pr.id,
@@ -1745,11 +1732,11 @@ function renderProfilePassionRail() {
 
   // Lot flat_passions_v1 : la même porte qu'au Fil, au même endroit visuel.
   if (typeof PassioFlatUI !== "undefined" && PassioFlatUI.actif()) {
-    html += '<div class="profile-tile psel-tile-plus" role="button" tabindex="0"'
+    html += '<div class="v9-passion-chip v9-chip-ajout" role="button" tabindex="0"'
       + ' data-passion-tile="__ajouter__" title="Ajouter une passion"'
       + ' aria-label="Ajouter une passion" onclick="ouvrirRecherchePassionsCompte()">'
-      + '<div class="profile-tile-avatar" style="position:relative;">+</div>'
-      + '<div class="profile-tile-label">Ajouter</div>'
+      + '<span class="v9-chip-emoji" aria-hidden="true">+</span>'
+      + '<span class="v9-chip-nom">Ajouter</span>'
       + "</div>";
   }
 

@@ -2783,9 +2783,11 @@ async function openUserProfile(authorId, source) {
   // ⚠️ MÊME COMPOSANT QUE LE FIL ET QUE MON PROFIL (refonte multi-passion, §1).
   // Ces pastilles étaient d'abord de grandes `.profile-card` — indiscernables
   // d'une liste de comptes — puis des puces `.v10-vfilter` propres à cet écran.
-  // Elles deviennent les BULLES `passionTileHTML` (app-02) : un seul rendu, donc
-  // les mêmes dimensions et les mêmes états partout où une passion se choisit.
-  // Le choix reste UNIQUE ici, comme sur mon profil.
+  // Elles deviennent les PASTILLES `passionChipHTML` (app-02) : un seul rendu,
+  // donc les mêmes dimensions et les mêmes états que sur mon profil, où le rail
+  // a quitté les bulles le 2026-09-02 (« trop gros trop visible »). Laisser des
+  // bulles ici aurait donné deux réponses visuelles à la même question, selon le
+  // profil ouvert. Le choix reste UNIQUE ici, comme sur mon profil.
   //
   // ⚠️ `p.emoji` et `p.label` viennent du jsonb `profiles.passions` d'un AUTRE
   // compte, colonne que toute session authentifiée écrit librement sur SA ligne :
@@ -2793,7 +2795,7 @@ async function openUserProfile(authorId, source) {
   // `passionTileHTML` échappe (texte + `safeUrlAttr` pour la photo) ; ne jamais
   // contourner ce chemin.
   const passionsHTML = userPassions.length > 0
-    ? '<div id="visitedPassions" class="profile-strip v9-profile-strip" role="group" aria-label="Filtrer ses publications par passion">'
+    ? '<div id="visitedPassions" class="v9-profile-strip" role="group" aria-label="Filtrer ses publications par passion">'
       + userPassions.map(p => {
           const pas = passionById(p.id);
           // ⚠️ L'ORDRE compte. `passionById` ne rend JAMAIS null : sur un id
@@ -2805,13 +2807,10 @@ async function openUserProfile(authorId, source) {
           const _catalogue = (pas && pas.label) || "";
           const label = (_catalogue && _catalogue !== "Passion" ? _catalogue : "")
             || p.label || _catalogue || "Passion";
-          return passionTileHTML({
+          return passionChipHTML({
             emoji: p.emoji || "\u2728",
             label: label,
-            photoUrl: passionPhotoUrl(pas),
-            fallbackUrl: passionPhotoFallback(p.id),
             selected: false,
-            dimmed: false,
             action: "visitedPassion", arg: p.id,
             title: label,
             tileKey: p.id,
@@ -2819,6 +2818,12 @@ async function openUserProfile(authorId, source) {
         }).join("")
       + '</div>'
     : '';
+
+  // ⚠️ AUCUNE LIGNE DE PASSIONS SOUS LE PSEUDO, comme sur mon profil depuis le
+  // 2026-09-02 (« supprime les titres de passion dans le profil sous le pseudo et
+  // garde seulement les bulles dessous »). Ses passions sont dans
+  // `#visitedPassions`, plus bas : elles s'y nomment une fois, et le tap y FILTRE
+  // ses publications au lieu de quitter son profil.
 
   // 🔗 Réseaux sociaux — mêmes pastilles que sur mon profil.
   var RS_ICONS = { instagram:"📸", facebook:"👤", tiktok:"🎵", youtube:"▶️", twitter:"𝕏", linkedin:"💼", snapchat:"👻", autre:"🔗" };
@@ -2932,6 +2937,9 @@ async function openUserProfile(authorId, source) {
   var html = '\
     <span class="modal-close" onclick="closeModal()" style="z-index:20;">×</span>\
     \
+    <!-- OPTIONS DU PROFIL VISITE : voir openVisitedProfileMenu ci-dessus. -->\
+    <button class="profile-dots-btn on-cover" style="right:56px;z-index:20;" onclick="openVisitedProfileMenu(event,\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\')" title="Options" aria-label="Options du profil" aria-haspopup="menu">⋯</button>\
+    \
     <!-- CARTE PROFIL (même structure que #mainProfileCard) -->\
     <div class="main-profile-card" style="margin:0 -18px 4px;border-radius:0;border-left:0;border-right:0;border-top:0;">\
       <div class="main-profile-cover" style="' + coverStyle + 'cursor:default;"></div>\
@@ -2940,7 +2948,6 @@ async function openUserProfile(authorId, source) {
           <div class="main-profile-avatar" style="background:' + avatarBg(user) + ';background-size:cover;background-position:center;cursor:default;">' + avatarInner(user) + '</div>\
         </div>\
         <div class="main-profile-username">' + escapeHtml(user.name || "Passionné") + (user.isPrivate ? ' <span title="Compte privé" style="font-size:13px;">🔒</span>' : '') + '</div>\
-        ' + identitePassionsLiensHTML({ id: authorId, passions: userPassions, passion: user.passion }, { retourUserId: authorId }) + '\
         ' + (user.bio ? '<div class="main-profile-bio">' + escapeHtml(user.bio) + '</div>' : '') + '\
         ' + (rsLinks.length ? '<div class="main-profile-rs">' + rsLinks.map(function(l) { return '<a class="main-profile-rs-link" href="' + safeUrlAttr(l.url || "") + '" target="_blank" rel="noopener">' + (RS_ICONS[l.platform] || "🔗") + ' ' + escapeHtml(l.platform || "lien") + '</a>'; }).join("") + '</div>' : '') + '\
         <div class="main-profile-stats">\
@@ -2956,14 +2963,6 @@ async function openUserProfile(authorId, source) {
       <button class="btn primary" onclick="closeModal();startDirectMessage(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "Passionné") + '\',\'' + escapeJsArg(user.profileEmoji || "✨") + '\',\'' + escapeJsArg(user.avatar || "#8b5cf6") + '\',\'' + escapeJsArg(user.photoUrl || "") + '\')" style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;">💬 Message</button>\
       <button class="btn ghost" id="followBtn_' + authorId + '" onclick="toggleFollowUser(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\')" style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;' + (isFollowing ? 'background:var(--accent);color:#fff;border-color:var(--accent);' : '') + '">' + (isFollowing ? '✓ Suivi' : '➕ Suivre') + '</button>\
     </div>\
-    \
-    <!-- ACTIONS RAPIDES -->\
-    <div style="display:flex;gap:8px;margin-bottom:4px;">\
-      <button class="btn ghost" onclick="shareUserProfile(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\')" style="flex:1;font-size:11px;padding:8px;">' + shareIconSvg(14) + ' Partager</button>\
-      <button class="btn ghost" onclick="reportUser(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\')" style="flex:1;font-size:11px;padding:8px;color:#f59e0b;border-color:rgba(245,158,11,0.3);">🚩 Signaler</button>\
-      ' + (isBlocked(authorId)
-        ? '<button class="btn ghost" onclick="unblockUser(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\');closeModal();" style="flex:1;font-size:11px;padding:8px;">✅ Débloquer</button>'
-        : '<button class="btn ghost" onclick="blockUser(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\')" style="flex:1;font-size:11px;padding:8px;color:#ef4444;border-color:rgba(239,68,68,0.3);">🚫 Bloquer</button>') + '\
     </div>\
     \
     ' + passionsHTML + '\
@@ -2987,6 +2986,32 @@ async function openUserProfile(authorId, source) {
       setTimeout(function () { montrerHint("profil_visite", "#visitedProfileActions"); }, 350);
     }
   } catch (e) {}
+}
+
+// Menu ⋯ du PROFIL VISITÉ (2026-09-02). Il remplace la rangée de trois boutons
+// « Partager / Signaler / Bloquer » posée sous la carte d'identité.
+// ⚠️ Il réutilise `_profileDotsOpen` (app-06) plutôt que d'ouvrir une feuille :
+// c'est déjà le composant des trois points de mon profil et des cartes passion,
+// et deux popovers d'options auraient divergé au premier retouchage.
+// ⚠️ Chaque entrée appelle la MÊME fonction qu'avant — aucune règle de
+// modération n'est redéfinie ici, seule la surface change.
+// ⚠️ Le bouton ⋯ est posé en `right: 56px` et non dans le coin : dans une
+// modale, `.modal-close` occupe déjà le haut droite (top/right 12 px, 34 px de
+// côté). Il est `position: absolute` et son ancêtre positionné est `.modal`
+// (`position: relative`), pas la carte — inutile donc de positionner celle-ci,
+// qui est en `overflow: hidden` et clipperait le menu si on l'y mettait.
+// ⚠️ Et `.profile-dots-menu` a dû passer de 1200 à 10002 : `.modal-backdrop`
+// est à 10001, donc le menu s'ouvrait DERRIÈRE la modale — dans le DOM, et
+// invisible. C'est la première fois que ce composant sert depuis une modale.
+function openVisitedProfileMenu(ev, authorId, name) {
+  var bloque = (typeof isBlocked === "function") && isBlocked(authorId);
+  _profileDotsOpen(ev, [
+    { icon: "🔗", label: "Partager le profil", run: function () { shareUserProfile(authorId, name); }, sep: true },
+    { icon: "🚩", label: "Signaler", run: function () { reportUser(authorId, name); } },
+    bloque
+      ? { icon: "✅", label: "Débloquer", run: function () { unblockUser(authorId, name); closeModal(); } }
+      : { icon: "🚫", label: "Bloquer", danger: true, run: function () { blockUser(authorId, name); } }
+  ]);
 }
 
 // ======== PROFIL VISITÉ — filtres passion + type de contenu ========
@@ -3116,7 +3141,6 @@ function switchVisitedTab(tab) {
 // renderProfilesScreen) et les onglets (classe active + aria-pressed).
 function _syncVisitedUI() {
   var v = window._visited; if (!v) return;
-  var _unFiltre = v.passionSel.size > 0;
   document.querySelectorAll("#visitedPassions [data-passion-tile]").forEach(function(c) {
     var id = c.getAttribute("data-passion-tile") || "";
     // Plus de bulle « Toutes » : rien de coché DIT déjà « toutes ». Chaque bulle
@@ -3124,12 +3148,12 @@ function _syncVisitedUI() {
     var on = !!id && v.passionSel.has(id);
     c.classList.toggle("active", on);
     c.setAttribute("aria-pressed", on ? "true" : "false");
-    // Mêmes états visuels que le Fil et que mon profil : l'opacité et l'échelle
-    // sont posées en style inline par `passionTileHTML`, on les tient à jour.
-    c.style.opacity = on ? "1" : (_unFiltre ? "0.3" : "1");
-    c.style.transform = on ? "scale(1.07)" : "scale(1)";
-    var lbl = c.querySelector(".profile-tile-label");
-    if (lbl) { lbl.style.fontWeight = on ? "800" : "600"; lbl.style.color = on ? "var(--accent)" : ""; }
+    // ⚠️ PLUS AUCUN STYLE INLINE À TENIR À JOUR depuis le 2026-09-02. La bulle
+    // posait son opacité, son échelle et le poids de son libellé en inline :
+    // il fallait les réécrire ici à chaque changement. La pastille de texte
+    // n'exprime son état que par la classe `active` (remplissage, couleur) et
+    // par `aria-pressed` — un seul endroit à corriger, et le CSS reprend la
+    // main quand le rendu change.
   });
   document.querySelectorAll("#visitedTabs .profile-tab").forEach(function(b) {
     var on = v.tabSel.has(b.getAttribute("data-vtab"));
@@ -3162,7 +3186,10 @@ function _renderVisitedContent() {
   try {
     var _noms = [];
     v.passionSel.forEach(function (id) {
-      var t = document.querySelector('#visitedPassions [data-passion-tile="' + CSS.escape(id) + '"] .profile-tile-label');
+      // ⚠️ `.v9-chip-nom` et non plus `.profile-tile-label` : la pastille a
+      // remplacé la bulle. Un sélecteur qui survit à sa cible rend ici un état
+      // vide MUET (« aucune publication » au lieu de « rien en Moto »).
+      var t = document.querySelector('#visitedPassions [data-passion-tile="' + CSS.escape(id) + '"] .v9-chip-nom');
       if (t && t.textContent) _noms.push(t.textContent);
     });
     _nomFiltre = _noms.join(" · ");

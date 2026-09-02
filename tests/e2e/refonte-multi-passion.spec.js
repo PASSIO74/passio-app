@@ -129,9 +129,15 @@ test("① le profil porte le rail de passions du Fil, au-dessus des onglets", as
     if (!rail) return { rail: false };
     return {
       rail: true,
-      // MÊME composant que le Fil : mêmes classes, donc mêmes dimensions.
-      memeComposant: rail.classList.contains("profile-strip")
-        && rail.querySelectorAll(".profile-tile .profile-tile-avatar").length > 0,
+      // ⚠️ ASSERTION RETOURNÉE LE 2026-09-02, jamais vidée. Ce rail portait le
+      // composant du Fil (`.profile-strip` + `.profile-tile` + vignette photo) ;
+      // Benjamin l'a jugé « trop gros trop visible » sur le profil et demandé
+      // « juste les passions, fin élégant ». Il rend donc des pastilles de
+      // texte, et le test garantit maintenant que la bulle NE REVIENT PAS —
+      // ce que « plus de vignette » seul ne dirait pas.
+      pastilles: rail.querySelectorAll(".v9-passion-chip").length,
+      plusDeBulle: !rail.classList.contains("profile-strip")
+        && rail.querySelectorAll(".profile-tile, .profile-tile-avatar").length === 0,
       cles: Array.from(rail.querySelectorAll("[data-passion-tile]"))
         .map(t => t.getAttribute("data-passion-tile")),
       // Au-DESSUS des onglets : le rail précède la barre dans le document.
@@ -140,7 +146,8 @@ test("① le profil porte le rail de passions du Fil, au-dessus des onglets", as
     };
   });
   expect(vu.rail, "le rail de passions doit exister sur le profil").toBe(true);
-  expect(vu.memeComposant, "il réutilise le composant .profile-tile du Fil").toBe(true);
+  expect(vu.pastilles, "une pastille de texte par passion").toBe(3);
+  expect(vu.plusDeBulle, "le profil ne porte plus les bulles du Fil").toBe(true);
   // ⚠️ PLUS DE BULLE « Toutes » (demande de Benjamin, 2026-08-31). Le rail est
   // passé en MULTISÉLECTION comme celui du Fil : ne rien cocher DIT « toutes »,
   // donc la bulle offrait une seconde commande pour un état déjà atteignable.
@@ -327,7 +334,7 @@ test("① quater — un profil sans passion affiche un état propre, pas une ran
   await page.waitForTimeout(600);
   const vu = await page.evaluate(() => {
     const rail = document.getElementById("v9ProfilePassions");
-    return { txt: rail ? rail.innerText : "", bulles: rail ? rail.querySelectorAll(".profile-tile").length : -1 };
+    return { txt: rail ? rail.innerText : "", bulles: rail ? rail.querySelectorAll(".v9-passion-chip").length : -1 };
   });
   expect(vu.bulles, "aucune bulle, mais pas une rangée muette").toBe(0);
   expect(vu.txt).toContain("Aucune passion");
@@ -352,25 +359,35 @@ test("① quinquies — une passion sans publication et sans activité le DIT", 
 // ② IDENTITÉ — le pseudo du compte, ses passions dessous
 // ══════════════════════════════════════════════════════════════════════════
 
-test("② une publication Moto affiche Benjamin, avec toutes ses passions", async ({ page }) => {
+test("② une publication Moto affiche Benjamin, et la seule passion du post", async ({ page }) => {
+  // ⚠️ ASSERTION AMENDÉE LE 2026-09-02. §3 (identité centralisée) tient toujours,
+  // mais la CARTE n'en est plus une surface : Benjamin y a fait retirer la ligne
+  // d'identité, qui doublait la passion écrite juste dessous avec l'heure. Ce que
+  // la refonte garantissait ici — l'auteur est le COMPTE, pas une persona par
+  // passion — reste vérifié ; les trois passions du compte, elles, se vérifient
+  // là où elles s'affichent désormais (les deux en-têtes de profil, testés par
+  // profil-entete-passions.spec.js, et `identitePassionsTexte` ci-dessous).
   await poser(page);
   const vu = await page.evaluate(() => {
-    const carte = document.querySelector('#feedList [data-postid="me_moto"]')
-      || document.querySelector("#feedList .post");
     // Publication de MOI, dans la passion Moto : l'auteur reste le compte.
     const mienne = renderPostHTML(Object.assign({}, state.userPosts[0], { _source: "me" }));
     const box = document.createElement("div");
     box.innerHTML = mienne;
+    const meta = box.querySelector(".post-author-meta");
     return {
       nom: box.querySelector(".post-author-name").textContent.trim(),
-      passions: box.querySelector(".ident-passions") ? box.querySelector(".ident-passions").textContent.trim() : "",
+      identite: box.querySelectorAll(".ident-passions").length,
+      meta: meta ? meta.textContent.trim() : "",
+      // L'identité complète reste calculable pour toutes les surfaces qui la rendent.
+      texteIdentite: identitePassionsTexte(userById(MY_UID) || { passions: state.user.profiles }),
     };
   });
   expect(vu.nom, "l'auteur visible est le profil principal").toBe("Benjamin");
-  // Les trois passions du compte, pas seulement celle de la publication.
-  expect(vu.passions).toContain("Moto");
-  expect(vu.passions).toContain("Podcast");
-  expect(vu.passions).toContain("Voyage");
+  expect(vu.identite, "la carte ne répète plus les passions du compte").toBe(0);
+  expect(vu.meta, "elle nomme la passion DE LA PUBLICATION, avec l'heure").toContain("Moto");
+  expect(vu.texteIdentite).toContain("Moto");
+  expect(vu.texteIdentite).toContain("Podcast");
+  expect(vu.texteIdentite).toContain("Voyage");
 });
 
 test("② bis — les passions ARCHIVÉES ne fuient pas dans l'identité affichée", async ({ page }) => {
