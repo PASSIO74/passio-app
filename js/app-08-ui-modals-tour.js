@@ -2156,32 +2156,34 @@ async function boot() {
     // ne touche pas le jeton `sb-…-auth-token` : hors ligne, la session peut
     // survivre à un `doLogout` dont la purge locale, elle, a bien eu lieu.
     // Entrer ici remettrait la personne EN SILENCE dans le compte qu'elle vient
-    // de quitter, avec un état local déjà vidé. On termine donc le travail.
+    // de quitter, avec un état local déjà vidé. On termine donc le travail —
+    // ET ON RECHARGE, exactement comme `doLogout`.
+    //
+    // ⚠️ LE RECHARGEMENT N'EST PAS UN DÉTAIL DE CONFORT, c'est ce qui ferme une
+    // FUITE INTER-COMPTES. `purgeAccountScopedData` vide `localStorage` et
+    // IndexedDB, mais pas la MÉMOIRE : `conversationsState` (app-04) porte
+    // encore les messages privés du compte quitté, et ni `saveConversations` ni
+    // `saveConversationsNow` ne consultent le verrou `_accountPurged` — la
+    // première écriture venue les réinstallerait sur l'appareil, à la
+    // disposition du compte suivant. Même famille que la fuite corrigée le
+    // 2026-08-12. Poursuivre `boot()` sans recharger, c'est la rouvrir.
+    //
+    // ⚠️ ET IL NE PEUT PAS BOUCLER : `purgerJetonAuthLocal()` retire le jeton
+    // que le SDK relit au démarrage, donc le prochain `getSession()` ne trouve
+    // plus rien et cette branche n'est pas réatteignable. L'intention est
+    // re-posée pour que ce prochain démarrage aboutisse bien à l'écran demandé.
     if (session?.user && _authIntent) {
-      // ⚠️ ON LIT `{ error }`, et on ne s'arrête pas là s'il y en a un. Le SDK ne
-      // LÈVE PAS sur un refus : un `signOut` qui échoue (hors ligne, jeton non
-      // révocable) laisserait la session en place, et le démarrage SUIVANT —
-      // l'intention étant déjà consommée — rouvrirait le compte quitté en
-      // silence. `purgerJetonAuthLocal()` ferme donc la session CÔTÉ APPAREIL,
-      // sans réseau : pour le SDK, le jeton EST la session.
-      let _echecSignOut = false;
+      // On lit `{ error }` : le SDK ne LÈVE PAS sur un refus, et une
+      // déconnexion qui échoue en silence est précisément ce qui nous a amenés ici.
       try {
         const _so = await supa.auth.signOut();
-        if (_so && _so.error) _echecSignOut = true;
-      } catch (e) { _echecSignOut = true; }
-      if (_echecSignOut) { try { purgerJetonAuthLocal(); } catch (e) {} }
+        if (_so && _so.error) console.warn("signOut refusé :", _so.error.message || _so.error);
+      } catch (e) { console.warn("signOut indisponible :", e); }
+      try { purgerJetonAuthLocal(); } catch (e) {}
       try { await purgeAccountScopedData(); } catch (e) {}
-      // ⚠️ L'ÉTAT EN MÉMOIRE PORTE ENCORE LE COMPTE QUITTÉ. La purge vide
-      // `localStorage`, pas l'objet `state` déjà chargé : sans ce rechargement,
-      // `compteExistant()` (first-run) le lirait encore et `entreeDirecte()`
-      // refuserait de construire le mode invité.
-      try { state = loadState(); } catch (e) { console.warn("auth intent (état):", e); }
-      // ⚠️ AUCUN `return` ICI, ET C'EST LE POINT. La fin de `boot()` fait
-      // `entreeDirecte()` PUIS `openAuthScreen()` — le seul ordre qui construit
-      // le mode invité avant de poser le formulaire par-dessus. Sortir ici pour
-      // ouvrir le formulaire tout de suite rejouerait, dans cette branche, le
-      // défaut même que ce lot corrige : un fil à moitié bâti derrière
-      // « ← Continuer à explorer ».
+      try { poserIntentionAuth(_authIntent); } catch (e) {}
+      setTimeout(function () { try { location.reload(); } catch (e) {} }, 0);
+      return;
     }
     if (session?.user && !_authIntent) {
       MY_UID = session.user.id;

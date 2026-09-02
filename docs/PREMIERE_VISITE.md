@@ -238,7 +238,8 @@ spontanément, refermait la porte au lieu de l'ouvrir.
 `doLogout` pose donc une INTENTION (`passio_auth_intent_v1`) **APRÈS** la purge,
 sur une clé d'APPAREIL délibérément absente d'`ACCOUNT_SCOPED_KEYS` ; `boot()`
 la lit et l'EFFACE tout au début (consommée une seule fois, quel que soit le
-chemin de démarrage), et l'applique juste **avant** `entreeDirecte()`. Une
+chemin de démarrage), et l'applique **APRÈS** `entreeDirecte()` — voir le piège
+⓵ ci-dessous, l'ordre inverse rendait un fil à moitié construit. Une
 session valide sort de `boot()` bien plus haut : on ne peut donc pas voler son
 écran à quelqu'un de connecté.
 ⚠️ **Et uniquement quand le parcours invité est ACTIF** : drapeau coupé, la
@@ -283,11 +284,17 @@ alors la personne EN SILENCE dans le compte qu'elle venait de quitter, avec un
   réseau : pour supabase-js, le jeton `sb-<ref>-auth-token` EST la session. Il
   est retrouvé par MOTIF, jamais recopié en dur, et rien n'est détruit côté
   serveur. `doLogout` l'appelle aussi — c'est le chemin le plus fréquent ;
-- **la branche de `boot()` ne sort PAS par un `return`** : elle recharge
-  `state` (la purge vide `localStorage`, pas l'objet déjà en mémoire, que
-  `compteExistant()` lirait encore) puis laisse la fin de `boot()` faire
-  `entreeDirecte()` **puis** `openAuthScreen()`. Ouvrir le formulaire sur place
-  rejouerait, dans cette branche, exactement le piège ⓵.
+- **la branche RECHARGE la page**, exactement comme `doLogout`. Ce n'est pas du
+  confort : `purgeAccountScopedData` vide `localStorage` et IndexedDB, mais pas
+  la MÉMOIRE — `conversationsState` (app-04) porte encore les messages privés du
+  compte quitté, et ni `saveConversations` ni `saveConversationsNow` ne
+  consultent le verrou `_accountPurged`. La première écriture venue les
+  réinstallerait sur l'appareil, à la disposition du compte suivant : même
+  famille que la fuite inter-comptes corrigée le 2026-08-12. Poursuivre `boot()`
+  sans recharger la rouvrait — et ouvrir le formulaire sur place rejouait en
+  prime le piège ⓵. ⚠️ Le rechargement ne peut pas boucler : le jeton ayant été
+  retiré, le prochain `getSession()` ne trouve plus rien, et l'intention
+  re-posée conduit au chemin normal (`entreeDirecte()` puis l'écran demandé).
 
 ⓷ **L'INTENTION EST HORODATÉE (TTL 10 min).** Entre `setItem` et le rechargement
 il s'écoule 1,2 s : une application fermée dans cette fenêtre laisserait la clé

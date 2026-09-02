@@ -40,6 +40,11 @@ async function bootCompteExistant(page) {
   await page.goto("/index.html");
   await page.waitForFunction(() => typeof window.doLogout === "function", null, { timeout: 20000 });
   await page.waitForTimeout(3200);
+  // Prémisse VÉRIFIÉE, jamais supposée — même exigence que `first-run-helper` :
+  // si un VRAI client Supabase s'était construit, ces cas mesureraient la
+  // production au lieu du programme.
+  const reel = await page.evaluate(() => window._supaReal);
+  if (reel) throw new Error("prémisse cassée : un VRAI client Supabase s'est construit");
 }
 
 // Ouvre le panneau Paramètres et déplie la section « Compte ».
@@ -94,7 +99,12 @@ test.describe("Paramètres → Compte", () => {
 
     await expect(page.locator("#settingsAuthSwitch")).toHaveText("🔑 J'ai déjà un compte — me connecter");
     // Rien à déconnecter : proposer la sortie enverrait sur une purge sans effet.
+    // Et tout ce qui suppose un compte part avec — sinon « Changer mon mot de
+    // passe » appellerait `supa.auth.updateUser` sans session, et « Supprimer
+    // mon compte » proposerait d'effacer ce qui n'existe pas.
     await expect(page.locator("#settingsLogout")).toBeHidden();
+    await expect(page.locator("#settingsChangePassword")).toBeHidden();
+    await expect(page.locator("#settingsDeleteAccount")).toBeHidden();
 
     await page.locator("#settingsAuthSwitch").click();
     await page.waitForTimeout(500);
@@ -304,9 +314,37 @@ test.describe("Déconnexion", () => {
   test("le bouton « Se déconnecter » des Paramètres passe bien par la confirmation", async ({ page }) => {
     await bootCompteExistant(page);
     await ouvrirSectionCompte(page);
+    // ⚠️ ON SUIT LA PORTE JUSQU'AU BOUT. S'arrêter à la modale laisserait
+    // passer un bouton qui appelle `doLogout()` sans argument : la confirmation
+    // s'afficherait, la déconnexion aurait lieu, et l'écran de connexion promis
+    // ne s'ouvrirait jamais — le défaut d'origine, à un argument près.
+    await page.evaluate(() => {
+      window.__logoutArgs = null;
+      const vrai = window.doLogout;
+      window.doLogout = function () { window.__logoutArgs = Array.from(arguments); return Promise.resolve(); };
+      window.doLogout.__vrai = vrai;
+    });
     await page.locator("#settingsLogout").click();
     await page.waitForTimeout(400);
     await expect(page.locator("#modalBackdrop.active .modal-title")).toContainText("Se déconnecter");
     expect(await page.evaluate(() => localStorage.getItem("passio_auth_intent_v1"))).toBeNull();
+
+    await page.locator("#modalBackdrop.active .btn.primary").click();
+    await page.waitForTimeout(300);
+    expect(await page.evaluate(() => window.__logoutArgs)).toEqual(["signin"]);
+  });
+
+  test("« Changer de compte » va lui aussi jusqu'à doLogout('signin')", async ({ page }) => {
+    await bootCompteExistant(page);
+    await ouvrirSectionCompte(page);
+    await page.evaluate(() => {
+      window.__logoutArgs = null;
+      window.doLogout = function () { window.__logoutArgs = Array.from(arguments); return Promise.resolve(); };
+    });
+    await page.locator("#settingsAuthSwitch").click();
+    await page.waitForTimeout(400);
+    await page.locator("#modalBackdrop.active .btn.primary").click();
+    await page.waitForTimeout(300);
+    expect(await page.evaluate(() => window.__logoutArgs)).toEqual(["signin"]);
   });
 });
