@@ -2937,6 +2937,9 @@ async function openUserProfile(authorId, source) {
   var html = '\
     <span class="modal-close" onclick="closeModal()" style="z-index:20;">×</span>\
     \
+    <!-- OPTIONS DU PROFIL VISITE : voir openVisitedProfileMenu ci-dessus. -->\
+    <button class="profile-dots-btn on-cover" style="right:56px;z-index:20;" onclick="openVisitedProfileMenu(event,\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\')" title="Options" aria-label="Options du profil" aria-haspopup="menu">⋯</button>\
+    \
     <!-- CARTE PROFIL (même structure que #mainProfileCard) -->\
     <div class="main-profile-card" style="margin:0 -18px 4px;border-radius:0;border-left:0;border-right:0;border-top:0;">\
       <div class="main-profile-cover" style="' + coverStyle + 'cursor:default;"></div>\
@@ -2960,14 +2963,6 @@ async function openUserProfile(authorId, source) {
       <button class="btn primary" onclick="closeModal();startDirectMessage(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "Passionné") + '\',\'' + escapeJsArg(user.profileEmoji || "✨") + '\',\'' + escapeJsArg(user.avatar || "#8b5cf6") + '\',\'' + escapeJsArg(user.photoUrl || "") + '\')" style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;">💬 Message</button>\
       <button class="btn ghost" id="followBtn_' + authorId + '" onclick="toggleFollowUser(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\')" style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;' + (isFollowing ? 'background:var(--accent);color:#fff;border-color:var(--accent);' : '') + '">' + (isFollowing ? '✓ Suivi' : '➕ Suivre') + '</button>\
     </div>\
-    \
-    <!-- ACTIONS RAPIDES -->\
-    <div style="display:flex;gap:8px;margin-bottom:4px;">\
-      <button class="btn ghost" onclick="shareUserProfile(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\')" style="flex:1;font-size:11px;padding:8px;">' + shareIconSvg(14) + ' Partager</button>\
-      <button class="btn ghost" onclick="reportUser(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\')" style="flex:1;font-size:11px;padding:8px;color:#f59e0b;border-color:rgba(245,158,11,0.3);">🚩 Signaler</button>\
-      ' + (isBlocked(authorId)
-        ? '<button class="btn ghost" onclick="unblockUser(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\');closeModal();" style="flex:1;font-size:11px;padding:8px;">✅ Débloquer</button>'
-        : '<button class="btn ghost" onclick="blockUser(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\')" style="flex:1;font-size:11px;padding:8px;color:#ef4444;border-color:rgba(239,68,68,0.3);">🚫 Bloquer</button>') + '\
     </div>\
     \
     ' + passionsHTML + '\
@@ -2991,6 +2986,32 @@ async function openUserProfile(authorId, source) {
       setTimeout(function () { montrerHint("profil_visite", "#visitedProfileActions"); }, 350);
     }
   } catch (e) {}
+}
+
+// Menu ⋯ du PROFIL VISITÉ (2026-09-02). Il remplace la rangée de trois boutons
+// « Partager / Signaler / Bloquer » posée sous la carte d'identité.
+// ⚠️ Il réutilise `_profileDotsOpen` (app-06) plutôt que d'ouvrir une feuille :
+// c'est déjà le composant des trois points de mon profil et des cartes passion,
+// et deux popovers d'options auraient divergé au premier retouchage.
+// ⚠️ Chaque entrée appelle la MÊME fonction qu'avant — aucune règle de
+// modération n'est redéfinie ici, seule la surface change.
+// ⚠️ Le bouton ⋯ est posé en `right: 56px` et non dans le coin : dans une
+// modale, `.modal-close` occupe déjà le haut droite (top/right 12 px, 34 px de
+// côté). Il est `position: absolute` et son ancêtre positionné est `.modal`
+// (`position: relative`), pas la carte — inutile donc de positionner celle-ci,
+// qui est en `overflow: hidden` et clipperait le menu si on l'y mettait.
+// ⚠️ Et `.profile-dots-menu` a dû passer de 1200 à 10002 : `.modal-backdrop`
+// est à 10001, donc le menu s'ouvrait DERRIÈRE la modale — dans le DOM, et
+// invisible. C'est la première fois que ce composant sert depuis une modale.
+function openVisitedProfileMenu(ev, authorId, name) {
+  var bloque = (typeof isBlocked === "function") && isBlocked(authorId);
+  _profileDotsOpen(ev, [
+    { icon: "🔗", label: "Partager le profil", run: function () { shareUserProfile(authorId, name); }, sep: true },
+    { icon: "🚩", label: "Signaler", run: function () { reportUser(authorId, name); } },
+    bloque
+      ? { icon: "✅", label: "Débloquer", run: function () { unblockUser(authorId, name); closeModal(); } }
+      : { icon: "🚫", label: "Bloquer", danger: true, run: function () { blockUser(authorId, name); } }
+  ]);
 }
 
 // ======== PROFIL VISITÉ — filtres passion + type de contenu ========
