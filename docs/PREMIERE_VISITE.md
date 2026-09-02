@@ -197,3 +197,120 @@ personne.
    visiteur n'en a aucune : les tuiles n'apparaissent qu'une fois ses passions
    choisies. Un test qui y chercherait une tuile de passion chercherait ce qui
    n'existe pas encore.
+
+---
+
+## 🔑 SE CONNECTER À UN COMPTE DÉJÀ CRÉÉ (2026-09-02)
+
+**Le défaut, vécu au premier essai réel.** « Je n'arrive plus à me connecter avec
+le compte qui était déjà créé avant ; j'ai essayé de taper sur déconnecter mais
+il manque un onglet dans les paramètres. » L'entrée directe supprime la landing,
+donc le formulaire de connexion **n'est plus à l'écran** ; et le parcours ne
+tient sa promesse (« un compte existant n'entre jamais ici ») que si l'appareil
+PORTE encore la trace de ce compte. Il suffit d'un appareil neuf, d'un cache
+vidé, d'une session expirée — ou justement d'une déconnexion — pour qu'une
+personne qui a un compte se retrouve traitée en visiteur, sans porte vers lui.
+
+**Trois portes, désormais, et aucune ne demande de geste préalable :**
+
+① **La carte de bienvenue du fil invité** porte le lien « J'ai déjà un compte —
+me connecter » (`.fr-welcome-signin` → `PassioFirstRun.allerConnexion`). Le gate
+d'action engageante l'offrait déjà, mais il faut avoir tenté un like ou un
+commentaire pour le voir : ce n'est pas une porte, c'est une conséquence.
+⚠️ C'est une TROISIÈME LIGNE, pas un troisième bouton dans `.fr-welcome-actions`
+— les deux actions y sont en `flex: 1 1 auto`, un troisième y couperait les
+libellés (piège ④ du lot UI-7).
+
+② **Paramètres → Compte** porte un bouton dont le libellé suit l'état RÉEL,
+réécrit à chaque ouverture du panneau par `majSectionCompte()` (app-02, appelée
+par `toggleDevPanel`) : « 🔑 J'ai déjà un compte — me connecter » pour un
+visiteur, « 🔄 Se connecter avec un autre compte » pour un compte connecté (qui
+passe alors par une confirmation, puisque changer de compte déconnecte).
+⚠️ Le panneau est du balisage STATIQUE : sans cette réécriture il ne peut rien
+dire de juste, et il affichait à un visiteur un « Se déconnecter » sans objet —
+masqué pour lui désormais.
+
+③ **Toute déconnexion volontaire ouvre l'écran de connexion.** C'était le piège
+le plus retors : `purgeAccountScopedData` efface `STATE_KEY` et `passio_uid`,
+donc au rechargement `compteExistant()` rend `false` et l'appareil **retombe
+dans le parcours invité** — la déconnexion, seule sortie qu'on cherche
+spontanément, refermait la porte au lieu de l'ouvrir.
+`doLogout` pose donc une INTENTION (`passio_auth_intent_v1`) **APRÈS** la purge,
+sur une clé d'APPAREIL délibérément absente d'`ACCOUNT_SCOPED_KEYS` ; `boot()`
+la lit et l'EFFACE tout au début (consommée une seule fois, quel que soit le
+chemin de démarrage), et l'applique juste **avant** `entreeDirecte()`. Une
+session valide sort de `boot()` bien plus haut : on ne peut donc pas voler son
+écran à quelqu'un de connecté.
+⚠️ **Et uniquement quand le parcours invité est ACTIF** : drapeau coupé, la
+landing historique porte déjà « Se connecter » — il n'y a aucun piège à
+défaire, et lui voler l'écran romprait la coupure « à l'octet près ».
+
+**Aucun second système d'auth.** Les trois portes rouvrent le formulaire
+EXISTANT — étape `splash` de l'onboarding, `onbStepIdx` remis à 0 — et laissent
+`onbDoAuth` faire tout le travail (validation, confirmation d'e-mail Brevo,
+anti-énumération, renvoi de lien). ⚠️ Le formulaire vit sur `splash`, **jamais**
+sur l'étape `auth`, qui n'est plus qu'un alias en `display:none!important` :
+l'ouvrir afficherait un écran VIDE sans la moindre erreur.
+
+**La porte de sortie voyage avec le formulaire.** `openAuthScreen` (app-02)
+appelle `PassioFirstRun.poserSortieExploration()` quand le parcours est actif :
+l'onboarding est un écran plein sans retour, et « ← Continuer à explorer » est
+une des trois issues promises par le gate.
+
+**Cinq pièges de ce correctif, tous mesurés.**
+
+⓵ **L'ORDRE DANS `boot()` EST LE CORRECTIF.** Ouvrir le formulaire *avant*
+`entreeDirecte()` (et sortir de `boot()`) laisse derrière lui un fil à MOITIÉ
+construit : pas de classe racine `passio-first-run` — donc `.fr-only` masque
+« ✨ Mes passions » et « 🧭 Revoir les repères » dans les Paramètres —, aucun
+contenu public chargé, aucune carte de bienvenue planifiée, aucune aide au geste
+armée. La personne qui clique « ← Continuer à explorer » y tombe, **sans une
+seule erreur en console**. L'entrée invitée passe donc d'abord, le formulaire
+se pose par-dessus, et `entreeDirecte()` retirant `#onboarding.active`, l'ordre
+inverse est le seul qui marche. Éprouvé par mutation.
+
+⓶ **UNE SESSION SURVIVANTE + UNE INTENTION EN ATTENTE = DÉCONNEXION INACHEVÉE.**
+`supa.auth.signOut()` est sous un `try` avale-tout et `ACCOUNT_SCOPED_KEYS` ne
+touche pas le jeton `sb-…-auth-token` : hors ligne, la session peut survivre à
+un `doLogout` dont la purge locale, elle, a bien eu lieu. `boot()` remettait
+alors la personne EN SILENCE dans le compte qu'elle venait de quitter, avec un
+état local déjà vidé. Cette branche termine le travail (signOut + purge) puis
+ouvre l'écran demandé.
+
+⓷ **L'INTENTION EST HORODATÉE (TTL 10 min).** Entre `setItem` et le rechargement
+il s'écoule 1,2 s : une application fermée dans cette fenêtre laisserait la clé
+sur l'appareil pour toujours, et le prochain démarrage — le lendemain, ou pour
+quelqu'un d'autre sur un appareil partagé — s'ouvrirait sur un **mur de
+connexion** au lieu du fil. `poserIntentionAuth` / `consommerIntentionAuth`
+(app-02) sont le seul couple d'écriture et de lecture ; la lecture EFFACE
+toujours, et ne rend le mode que s'il est encore frais.
+
+⓸ **L'INTENTION SUIT LE PARAMÈTRE DE `doLogout`, jamais le hasard.** Les deux
+boutons volontaires passent `doLogout('signin')` ; `doLogout()` sans argument
+reste l'ancien comportement à l'octet près, pour qu'un appelant futur — session
+expirée, suppression de compte — n'hérite pas d'un écran de connexion qu'il n'a
+pas demandé.
+
+⓹ **UN CATCH QUI RENONCE.** `openAuthScreen` rendait `true` même si
+`showOnbStep` levait : `#onboarding` restait actif SANS aucune `.onb-step
+.active` — écran vide, zéro erreur, application inatteignable. Il journalise
+(`diagLog`) et rend `false`, et `boot()` reprend son chemin normal.
+
+⚠️ **`majSectionCompte` masque TOUT ce qui suppose un compte**, pas seulement
+l'entrée qui a motivé le correctif : « Se déconnecter », « Changer mon mot de
+passe » (`supa.auth.updateUser` sans session) et « Supprimer mon compte ». Même
+classe de défaut, au même endroit.
+
+⚠️ **Un seul moteur d'ouverture** : `openAuthScreen` délègue à
+`PassioFirstRun.allerConnexion` quand le module est là, et ne garde sa copie que
+comme repli. Deux copies de l'étape `splash` seraient deux endroits à corriger le
+jour où le formulaire déménage — le piège que ce fichier décrit déjà.
+
+⚠️ **Mesure** : `guest_signin_started` (`ctx` en liste fermée) part de
+`ouvrirAuth`, seul point de passage. Sans elle, les trois portes seraient
+indiscernables de portes cassées.
+
+Verrou : `tests/e2e/connexion-compte-existant.spec.js` (12 cas — les trois
+portes, la survie de l'intention à la purge, sa consommation unique, sa
+péremption, le retour à un fil invité COMPLET, le drapeau coupé, et
+`doLogout()` sans argument).
