@@ -1391,7 +1391,12 @@
     try {
       var profils = (s.user && Array.isArray(s.user.profiles)) ? s.user.profiles : [];
       for (var i = 0; i < profils.length; i++) {
-        if (profils[i] && profils[i].passion && !profils[i].archived) return true;
+        // ⚠️ `_parDefaut` EXCLU : `boot()` (app-08) fabrique un profil de
+        // remplissage — « Musique » — pour tout compte dont le serveur ne rend
+        // aucun profil. Le compter revenait à dire « ce compte a déjà ses
+        // passions » d'un compte qui vient de naître, et à JETER les trois
+        // passions que le visiteur venait de choisir.
+        if (profils[i] && profils[i].passion && !profils[i].archived && !profils[i]._parDefaut) return true;
       }
     } catch (e) {}
     try {
@@ -1444,12 +1449,17 @@
       return false;
     }
 
-    // ② Le compte n'a rien à lui (garde ci-dessus) : ce qui reste dans
-    // `selectedFeedPassions` ne peut venir que de l'exploration elle-même. On
-    // le concatène quand même — la fusion par ensemble reste ce qui rend la
-    // fonction relançable sans produire de doublon.
+    // ② LES CHOIX DU VISITEUR PASSENT EN TÊTE, et l'ordre porte le sens : le
+    // premier identifiant est la passion PRIMAIRE (cf. `setFeedPassions`).
+    //
+    // ⚠️ L'ordre inverse était un défaut mesuré. Le compte n'a rien à lui (garde
+    // ci-dessus), donc `selectedFeedPassions` ne contient au mieux que le profil
+    // de remplissage fabriqué par `boot()` — « Musique ». Le concaténer d'abord
+    // en faisait la passion primaire de quelqu'un qui avait choisi Cuisine,
+    // Photo et Randonnée. Le reste est conservé en queue : la fusion par
+    // ensemble est ce qui rend la fonction relançable sans produire de doublon.
     var duCompte = Array.isArray(s.selectedFeedPassions) ? s.selectedFeedPassions : [];
-    var fusion = idsRetenus(duCompte.concat(p.passions));
+    var fusion = idsRetenus(p.passions.concat(duCompte));
     if (fusion.length) {
       try { if (typeof setFeedPassions === "function") setFeedPassions(fusion); } catch (e) { journal("migration passions", e); return false; }
     }

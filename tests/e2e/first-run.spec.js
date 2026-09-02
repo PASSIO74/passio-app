@@ -761,6 +761,50 @@ test.describe("Transfert du mode invité", () => {
     expect(r.passions).toEqual(["musique"]);
   });
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // LE PROFIL « MUSIQUE » FABRIQUÉ PAR boot() N'EST PAS UN CHOIX (2026-09-02)
+  //
+  // ⚠️ TROIS DÉFAUTS EN DÉCOULAIENT, tous trouvés par la revue adversariale.
+  // Quand le serveur ne rend aucun profil, `boot()` (app-08) en fabrique un avec
+  // `allPassions()[0]` — « Musique ». Le compter comme une passion du compte
+  // faisait JETER les passions que le visiteur venait de choisir, et le
+  // concaténer en tête en faisait sa passion PRIMAIRE.
+  // ══════════════════════════════════════════════════════════════════════════
+  test("le profil de remplissage de boot() ne fait pas passer un compte neuf pour un compte garni", async ({ page }) => {
+    await bootVisiteur(page, { prefs: prefsInvite });
+    const r = await page.evaluate(() => {
+      delete window._comptePassionsServeur;      // pas de verdict : on éprouve le repli local
+      state.selectedFeedPassions = [];
+      // Exactement ce que fabrique `boot()` quand le serveur ne rend rien.
+      state.user.profiles = [{ id: "pp_0", name: "Moi", passion: "musique", emoji: "🎸", createdAt: 1, _parDefaut: true }];
+      state.onboarded = true;
+      const possede = PassioFirstRun.comptePossedeSesPassions();
+      const migre = PassioFirstRun.migrerPreferences();
+      return { possede, migre, passions: state.selectedFeedPassions.slice() };
+    });
+    expect(r.possede).toBe(false);          // ⚠️ valait `true` avant le correctif
+    expect(r.migre).toBe(true);
+    expect(r.passions).toContain("moto");
+    expect(r.passions).toContain("photo");
+  });
+
+  test("les choix du visiteur passent en TÊTE : le remplissage ne devient pas la passion primaire", async ({ page }) => {
+    await bootVisiteur(page, { prefs: prefsInvite });
+    const r = await page.evaluate(() => {
+      window._comptePassionsServeur = false;   // compte neuf, verdict serveur net
+      // `restoreFeedPassions` a amorcé la sélection depuis le profil fabriqué.
+      state.selectedFeedPassions = ["musique"];
+      state.user.profiles = [{ id: "pp_0", name: "Moi", passion: "musique", emoji: "🎸", createdAt: 1, _parDefaut: true }];
+      state.onboarded = true;
+      PassioFirstRun.migrerPreferences();
+      return state.selectedFeedPassions.slice();
+    });
+    // La passion PRIMAIRE est celle que la personne a réellement choisie.
+    expect(r[0]).toBe("moto");
+    expect(r).not.toEqual(["musique", "moto", "photo"]);
+    expect(r).toContain("photo");
+  });
+
   test("un compte NEUF adopte les choix du visiteur : dédoublonnés, nettoyés, une seule fois", async ({ page }) => {
     await bootVisiteur(page, { prefs: prefsInvite });
     const resultat = await page.evaluate(() => {

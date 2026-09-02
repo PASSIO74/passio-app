@@ -386,6 +386,63 @@ function _writeVerdict(res, opts) {
   return { ok: true, error: null, rows: rows };
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// UN APPAREIL VIDÉ N'ÉCRASE JAMAIS LE COMPTE QU'IL VIENT D'ADOPTER
+// ──────────────────────────────────────────────────────────────────────────
+// ⚠️ DÉFAUT CRÉÉ PAR LA PURGE ELLE-MÊME (2026-09-02, revue adversariale, second
+// constat bloquant). La séquence, entièrement plausible :
+//   ① `adopterCompteConnecte` purge l'état local et recharge ;
+//   ② au démarrage, `supaLoadUserState` tente de lire `user_state`… et échoue
+//      (réseau coupé, 5xx, jeton pas encore rafraîchi). Elle `console.warn` et
+//      rend `false` — l'état du compte n'est PAS restauré ;
+//   ③ `boot()` continue, pose `state.onboarded = true` ;
+//   ④ la première `saveState()` venue arme la synchronisation, qui POSTe l'état
+//      VIDE dans `user_state` — et le compte est effacé, sur tous ses appareils.
+// Avant la purge, ce chemin n'existait pas : l'état local n'était jamais vide.
+// C'est donc à la purge d'apporter sa propre garde.
+//
+// Deux conditions, chacune suffisante pour interdire toute écriture d'état :
+//
+//  ① LA RESTAURATION N'EST PAS CONFIRMÉE. Le drapeau est posé par l'adoption,
+//     PERSISTÉ (il doit survivre au rechargement qu'elle déclenche), et levé par
+//     `supaLoadUserState` au premier verdict RÉUSSI — y compris « ce compte n'a
+//     pas encore de ligne », qui est une réponse, pas un échec.
+//
+//  ② L'ÉTAT LOCAL N'APPARTIENT PAS AU COMPTE CONNECTÉ. `_uidProprietaireEtat`
+//     est l'identité que l'état portait à l'ouverture de la page ; tant qu'elle
+//     diffère de `MY_UID`, pousser reviendrait à donner au compte l'état de
+//     quelqu'un d'autre. C'est ce qui protège le parcours « mot de passe
+//     oublié », où l'adoption est volontairement différée jusqu'au changement
+//     effectif du mot de passe (`_showPasswordRecoveryUI`).
+//
+// ⚠️ ELLE NE BLOQUE QUE L'ÉCRITURE D'ÉTAT. Les lectures, le rendu et toutes les
+// autres tables continuent normalement — refuser de pousser n'est pas se figer.
+const CLE_RESTAURATION_REQUISE = "passio_restauration_requise";
+
+function _exigerRestaurationAvantEcriture(uidCompte) {
+  try { localStorage.setItem(CLE_RESTAURATION_REQUISE, uidCompte); } catch (e) {}
+}
+
+function _restaurationConfirmee() {
+  try { localStorage.removeItem(CLE_RESTAURATION_REQUISE); } catch (e) {}
+}
+
+function _peutPousserEtat() {
+  // ① restauration en attente pour CE compte
+  try {
+    const attendu = localStorage.getItem(CLE_RESTAURATION_REQUISE);
+    if (attendu && typeof MY_UID !== "undefined" && attendu === MY_UID) return false;
+  } catch (e) {}
+  // ② l'état local appartient à quelqu'un d'autre
+  try {
+    if (typeof MY_UID !== "undefined" && MY_UID && RE_UID_COMPTE.test(MY_UID)
+        && _uidProprietaireEtat && _uidProprietaireEtat !== MY_UID) return false;
+  } catch (e) {}
+  return true;
+}
+window._peutPousserEtat = _peutPousserEtat;
+window._exigerRestaurationAvantEcriture = _exigerRestaurationAvantEcriture;
+
 let _stateSyncTimer = null;
 // Drapeau « l'état a changé depuis la dernière sauvegarde aboutie ». saveState() est
 // l'entonnoir unique des mutations (il appelle _scheduleStateSync), donc c'est ici
@@ -493,6 +550,11 @@ async function _supaSaveUserStateOnce() {
   try {
     if (typeof supa === "undefined" || !supa || !window._supaReal) return;
     if (typeof MY_UID === "undefined" || !MY_UID) return;
+    // ⚠️ Un appareil vidé par l'adoption, ou porteur de l'état d'un autre, ne
+    // pousse RIEN tant qu'il n'a pas vu l'état du compte (cf. le bloc
+    // `_peutPousserEtat` ci-dessus). Sans cette ligne, une seule lecture
+    // `user_state` en échec suffisait à effacer le compte.
+    if (!_peutPousserEtat()) return;
     // Le beacon de passage en arrière-plan a pu envoyer cette même génération d'état
     // juste avant que le timer de debounce n'arrive à échéance : sans cette garde, le
     // retour du bfcache déclenchait un SECOND upsert du MÊME état, mais horodaté
@@ -567,6 +629,9 @@ function supaSaveUserStateBeacon() {
     if (!cfg || !cfg.url || !cfg.anon) return;
     if (typeof MY_UID === "undefined" || !MY_UID) return;
     if (typeof state === "undefined" || !state || !state.onboarded) return;
+    // Même garde que `supaSaveUserState` : le beacon est un chemin d'écriture à
+    // part entière, et c'est même LUI qui portait le défaut d'origine.
+    if (!_peutPousserEtat()) return;
     // Rien n'a bougé depuis la dernière sauvegarde aboutie → rien à envoyer. Cette
     // garde sert aussi de dédoublonnage : pagehide ET visibilitychange(hidden) tirent
     // tous les deux à la fermeture, le second trouve le drapeau déjà retombé.
@@ -802,6 +867,11 @@ async function supaLoadUserState() {
       // Aucune sauvegarde serveur → on pousse l'état local (création de la ligne).
       // Aucune ligne = compte qui n'a encore RIEN à lui : le verdict est « non ».
       window._comptePassionsServeur = false;
+      // ⚠️ « PAS DE LIGNE » EST UNE RÉPONSE, PAS UN ÉCHEC. La lecture a abouti :
+      // il n'y a rien à restaurer, donc rien à protéger, et la création de la
+      // ligne ci-dessous doit pouvoir passer. Ne pas lever ici laisserait un
+      // compte neuf incapable d'écrire son état, pour toujours.
+      _restaurationConfirmee();
       await supaSaveUserState();
       return false;
     }
@@ -815,8 +885,13 @@ async function supaLoadUserState() {
       const _blob = data.data || {};
       const _sel = Array.isArray(_blob.selectedFeedPassions) ? _blob.selectedFeedPassions : [];
       const _prof = (_blob.user && Array.isArray(_blob.user.profiles)) ? _blob.user.profiles : [];
+      // ⚠️ `_parDefaut` EST EXCLU : c'est le profil de remplissage fabriqué par
+      // `boot()` quand le serveur ne rend rien (« Musique »), pas un choix. Sans
+      // cette exclusion, un compte NEUF dont le lien de confirmation a été ouvert
+      // dans un autre navigateur — cas ordinaire sur mobile — passait pour un
+      // compte qui a déjà ses passions, et le visiteur perdait les siennes.
       window._comptePassionsServeur = !!(_sel.length
-        || _prof.some(function (pr) { return pr && pr.passion && !pr.archived; }));
+        || _prof.some(function (pr) { return pr && pr.passion && !pr.archived && !pr._parDefaut; }));
     } catch (_e) {}
     const serverTs = data.updated_at ? new Date(data.updated_at).getTime() : 0;
     const localTs = state._stateSyncedAt ? new Date(state._stateSyncedAt).getTime() : 0;
@@ -830,6 +905,8 @@ async function supaLoadUserState() {
       const localProfiles = (state.user && Array.isArray(state.user.profiles)) ? state.user.profiles : [];
       if (incomingProfiles.length === 0 && localProfiles.length > 0) {
         state.onboarded = true; // session active = compte onboardé
+        // La lecture a abouti : l'appareil a vu le compte, il peut écrire.
+        _restaurationConfirmee();
         await supaSaveUserState();
         return false;
       }
@@ -880,6 +957,8 @@ async function supaLoadUserState() {
       // Restaure le profil actif local, et garantit qu'il est VIVANT.
       restaurerPassionActiveApresFusion(localCurrentId);
       state._stateSyncedAt = data.updated_at;
+      // ⚠️ L'état du compte est là : l'appareil peut de nouveau écrire.
+      _restaurationConfirmee();
       // supaLoadUserState n'est appelée qu'avec une session active → l'utilisateur
       // est connecté, donc onboardé (évite de retomber sur la landing).
       state.onboarded = true;
@@ -887,7 +966,9 @@ async function supaLoadUserState() {
       try { saveState(); } finally { window._hydratingState = false; }
       return true;
     }
-    // Local plus récent → on pousse vers le serveur.
+    // Local plus récent → on pousse vers le serveur. La lecture a abouti et son
+    // contenu a été comparé : l'appareil a bien VU le compte.
+    _restaurationConfirmee();
     await supaSaveUserState();
     return false;
   } catch (e) { console.warn("supaLoadUserState:", e && e.message); return false; }
@@ -2105,33 +2186,95 @@ window.purgeAccountScopedData = purgeAccountScopedData;
 // partir sous la nouvelle identité avec l'ancien état.
 const RE_UID_COMPTE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// ⚠️⚠️ LE DISCRIMINANT EST UN INSTANTANÉ PRIS AU CHARGEMENT, PAS UNE RELECTURE.
+// C'est LA correction du 2026-09-02 (revue adversariale, constat bloquant), et
+// sans elle tout ce qui précède ne sert à rien sur le chemin le plus courant.
+//
+// Trois points du code écrivent `localStorage.passio_uid` : `getMyUserId`
+// (placeholder au chargement), `onbDoAuth`, et le handler `onAuthStateChange`
+// (app-08). Or supabase-js NOTIFIE SES ABONNÉS PENDANT `signInWithPassword`,
+// avant d'en résoudre la promesse — le dépôt le documente lui-même (« le client
+// tient un verrou auth pendant l'émission de l'événement »). Donc, sur le
+// parcours réel « j'explore sans compte → J'ai déjà un compte » :
+//     ① le visiteur se connecte ;
+//     ② `onAuthStateChange` reçoit SIGNED_IN et écrit `passio_uid = <uuid>` ;
+//     ③ la promesse de `signInWithPassword` résout ENFIN ;
+//     ④ `adopterCompteConnecte` relit `passio_uid`… et y trouve l'uuid.
+// La garde concluait « l'état local est déjà le sien », ne purgeait RIEN, et le
+// beacon de `pagehide` repartait avec l'état anonyme : le défaut d'origine,
+// intact, sur le chemin exact qui l'avait fait remonter.
+//
+// L'instantané est pris à l'ÉVALUATION de ce fichier — avant `getMyUserId`
+// (app-08, chargé après), donc avant tout événement d'auth, donc hors d'atteinte
+// des trois écrivains. Il répond à la seule question qui compte : « à quelle
+// identité appartenait l'état local quand cette page s'est ouverte ? »
+let _uidProprietaireEtat = null;
+try { _uidProprietaireEtat = localStorage.getItem("passio_uid"); } catch (e) {}
+
 async function adopterCompteConnecte(uidCompte) {
   if (typeof uidCompte !== "string" || !RE_UID_COMPTE.test(uidCompte)) return false;
-  let precedent = null;
-  try { precedent = localStorage.getItem("passio_uid"); } catch (e) {}
-  if (precedent === uidCompte) return false;   // l'état local est DÉJÀ le sien
+  if (_uidProprietaireEtat === uidCompte) return false;   // l'état local est DÉJÀ le sien
   // ⚠️ ON NE PURGE QUE SI L'ON PEUT MÉMORISER LE COMPTE ADOPTÉ. Sans
   // `localStorage` utilisable (navigation privée stricte, stockage refusé),
-  // l'écriture ci-dessous échouerait en silence, `passio_uid` resterait vide,
-  // et le démarrage suivant re-purgerait puis rechargerait — une boucle de
-  // rechargement infinie, très au-dessus du défaut qu'on corrige. On l'écrit
-  // donc D'ABORD, on la RELIT, et on n'engage la purge que si elle a pris.
-  // (Rien de durable à protéger dans ce cas : l'état local n'y survit pas non
-  // plus d'un chargement à l'autre.)
+  // l'écriture finale échouerait en silence, `passio_uid` resterait vide, et le
+  // démarrage suivant re-purgerait puis rechargerait — une boucle de
+  // rechargement infinie, très au-dessus du défaut qu'on corrige.
+  //
+  // ⚠️ LA SONDE D'ÉCRITURE EST UNE CLÉ JETABLE, PAS `passio_uid` (constat majeur
+  // de la même revue). Sonder avec la clé qu'on garde ouvrait une fenêtre —
+  // entre la sonde et la purge — où l'appareil « connaissait » le compte tout en
+  // portant encore l'état anonyme : l'exact contraire de l'invariant. Une
+  // interruption là (onglet fermé, plantage) laissait la garde désarmée À VIE,
+  // puisque le démarrage suivant lisait `passio_uid` = compte. La clé jetable
+  // prouve la même chose sans jamais mentir sur la propriété de l'état.
   let memorise = false;
   try {
-    localStorage.setItem("passio_uid", uidCompte);
-    memorise = (localStorage.getItem("passio_uid") === uidCompte);
+    const sonde = "passio_probe_ecriture";
+    localStorage.setItem(sonde, "1");
+    memorise = (localStorage.getItem(sonde) === "1");
+    localStorage.removeItem(sonde);
   } catch (e) {}
   if (!memorise) return false;
   try { if (typeof diagLog === "function") diagLog("adoption_compte purge_etat_anonyme"); } catch (e) {}
+  // ⚠️ ARMÉ AVANT LA PURGE, et volontairement : à partir de l'instant où l'état
+  // local peut être vide, plus rien ne doit pouvoir le pousser dans `user_state`
+  // tant que le compte n'a pas été RELU. `purgeAccountScopedData` ne touche pas
+  // cette clé (elle n'est pas dans `ACCOUNT_SCOPED_KEYS`), et c'est nécessaire :
+  // elle doit survivre au rechargement que l'appelant déclenche.
+  _exigerRestaurationAvantEcriture(uidCompte);
   try { await purgeAccountScopedData(); } catch (e) {}
-  // ⚠️ RÉÉCRIT APRÈS LA PURGE, qui retire `passio_uid` : c'est ce qui ferme
-  // la boucle purge → rechargement → purge.
+  // ⚠️ ÉCRIT UNE SEULE FOIS, ET APRÈS LA PURGE (qui retire `passio_uid`) : c'est
+  // ce qui ferme la boucle purge → rechargement → purge, sans jamais laisser
+  // l'appareil affirmer qu'il possède un état qu'il n'a pas encore purgé.
+  _uidProprietaireEtat = uidCompte;   // l'instantané suit, sinon un second appel dans la même page re-purgerait
   try { localStorage.setItem("passio_uid", uidCompte); } catch (e) {}
   return true;
 }
 window.adopterCompteConnecte = adopterCompteConnecte;
+
+// L'ÉTAT LOCAL DEVIENT DÉLIBÉRÉMENT CELUI DE CE COMPTE — sans rien purger.
+//
+// ⚠️ LA CONTREPARTIE INDISPENSABLE D'`adopterCompteConnecte`. Il existe des
+// chemins où l'état local DOIT suivre l'identité qui vient d'être créée : une
+// inscription qui rend une session, et `onbSkipAuth` (session anonyme). Là,
+// l'état local porte l'onboarding qu'on vient de saisir — âge, prénom,
+// passions — et il appartient bel et bien au compte qui naît. Le purger serait
+// jeter le travail de la personne au milieu de son inscription.
+//
+// Sans cette fonction, le handler `onAuthStateChange` (app-08), qui adopte
+// désormais toute session arrivant sur une page qui n'en avait pas, purgerait
+// exactement ces deux chemins : `signInAnonymously` rend un VRAI uuid, donc
+// différent de l'instantané, donc « un autre compte » pour la garde.
+//
+// Elle ne fait qu'une chose : déclarer le propriétaire. Aucune purge, aucun
+// rechargement, aucune écriture serveur.
+function attribuerEtatLocalAuCompte(uidCompte) {
+  if (typeof uidCompte !== "string" || !RE_UID_COMPTE.test(uidCompte)) return false;
+  _uidProprietaireEtat = uidCompte;
+  try { localStorage.setItem("passio_uid", uidCompte); } catch (e) {}
+  return true;
+}
+window.attribuerEtatLocalAuCompte = attribuerEtatLocalAuCompte;
 
 async function doLogout() {
   // Flush immédiat : pousse les changements en attente (debounce 2500ms non encore
@@ -2516,8 +2659,20 @@ function _showPasswordRecoveryUI() {
       const { error } = await supa.auth.updateUser({ password: pwd });
       if (error) { msg.style.color = "#e11d48"; msg.textContent = error.message; btn.disabled = false; btn.textContent = "Valider"; return; }
       msg.style.color = "#16a34a"; msg.textContent = "✅ Mot de passe mis à jour.";
-      if (typeof state !== "undefined") { state.onboarded = true; try { saveState(); } catch (e) {} }
-      setTimeout(function () { window.location.reload(); }, 900);
+      // ⚠️ L'ADOPTION SE FAIT ICI, ET NULLE PART AILLEURS SUR CE PARCOURS.
+      // `boot()` et le handler `onAuthStateChange` s'abstiennent tant que le
+      // fragment `type=recovery` est là : recharger pendant que ce formulaire
+      // est affiché condamnerait un lien à usage unique. Ce point-ci est le
+      // seul moment sûr — le mot de passe est changé, et on recharge de toute
+      // façon. L'ordre compte : adopter AVANT `state.onboarded = true` +
+      // `saveState()`, la paire qui arme le beacon de `pagehide`.
+      (async function () {
+        try {
+          if (typeof adopterCompteConnecte === "function") await adopterCompteConnecte(MY_UID);
+        } catch (e) { console.warn("adoption récupération:", e); }
+        if (typeof state !== "undefined") { state.onboarded = true; try { saveState(); } catch (e) {} }
+        setTimeout(function () { window.location.reload(); }, 900);
+      })();
     } catch (e) {
       msg.style.color = "#e11d48"; msg.textContent = "Erreur réseau."; btn.disabled = false; btn.textContent = "Valider";
     }
@@ -2641,6 +2796,12 @@ async function onbDoAuth() {
         window.location.reload();
         return;
       }
+      // ⚠️ INSCRIPTION QUI REND UNE SESSION : l'état local (âge, prénom, passions
+      // en cours de saisie) appartient à ce compte qui naît — on DÉCLARE la
+      // propriété au lieu de l'adopter, sinon le handler `onAuthStateChange`
+      // (app-08), qui adopte toute session arrivant sur une page qui n'en avait
+      // pas, purgerait l'onboarding en cours.
+      if (_authMode !== "signin") { try { attribuerEtatLocalAuCompte(uidCompte); } catch (e) {} }
       MY_UID = uidCompte;
       localStorage.setItem("passio_uid", MY_UID);
       if (_authMode === "signin") {
@@ -2681,6 +2842,12 @@ async function onbSkipAuth() {
       if (!error && data && data.session) {
         MY_UID = data.session.user.id;
         window.MY_UID = MY_UID;
+        // ⚠️ DÉCLARER LA PROPRIÉTÉ, PAS ADOPTER. `signInAnonymously` rend un
+        // VRAI uuid : sans cette ligne, le handler `onAuthStateChange` (app-08)
+        // verrait « un autre compte » que l'instantané pris au chargement, et
+        // purgerait l'onboarding que la personne est en train de saisir. Cet
+        // état-là appartient bien à la session qui vient de naître.
+        try { attribuerEtatLocalAuCompte(MY_UID); } catch (e) {}
         try { localStorage.setItem("passio_uid", MY_UID); } catch(e) {}
         console.log("Session anonyme créée");
       } else if (error) {

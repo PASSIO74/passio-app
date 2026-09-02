@@ -2137,7 +2137,21 @@ async function boot() {
 
   // Retour depuis un lien « mot de passe oublié » : l'URL contient type=recovery.
   // On affiche l'UI de nouveau mot de passe par-dessus l'écran courant.
-  if ((window.location.hash || "").indexOf("type=recovery") !== -1) {
+  //
+  // ⚠️ CE PARCOURS NE DOIT JAMAIS ÊTRE RECHARGÉ EN COURS DE ROUTE (2026-09-02,
+  // revue adversariale). Le lien de récupération ouvre une session, donc la
+  // garde d'adoption plus bas la voyait arriver sur un appareil qui ne connaît
+  // pas ce compte, purgeait, et RECHARGEAIT — ce qui détruisait le formulaire de
+  // nouveau mot de passe qu'on vient d'afficher, alors que le fragment
+  // `type=recovery` a DÉJÀ été consommé par le SDK. La personne se retrouvait
+  // devant une application ordinaire, sans aucun moyen de finir sa
+  // réinitialisation : le lien reçu par e-mail est à usage unique.
+  //
+  // L'adoption n'est donc pas annulée, elle est DÉPLACÉE au seul moment sûr :
+  // juste avant le rechargement que `_showPasswordRecoveryUI` déclenche
+  // lui-même, une fois le mot de passe changé (app-02).
+  const _recuperationEnCours = (window.location.hash || "").indexOf("type=recovery") !== -1;
+  if (_recuperationEnCours) {
     try { if (typeof _showPasswordRecoveryUI === "function") _showPasswordRecoveryUI(); } catch(e) {}
   }
 
@@ -2151,10 +2165,28 @@ async function boot() {
       // retour de `signInWithOAuth`, lien de confirmation d'e-mail qui ouvre
       // directement une session. Sans lui, l'état d'une exploration anonyme
       // serait poussé dans `user_state` du compte à la première sauvegarde.
-      if (typeof adopterCompteConnecte === "function"
+      if (!_recuperationEnCours
+          && typeof adopterCompteConnecte === "function"
           && await adopterCompteConnecte(session.user.id)) { window.location.reload(); return; }
+      // ⚠️ RÉCUPÉRATION EN COURS : l'adoption est différée, donc l'état local
+      // appartient encore à quelqu'un d'autre — ou à personne. Sans cette
+      // ligne, `supaLoadUserState` pourrait juger le local plus récent et
+      // POUSSER l'état du propriétaire précédent dans le compte qu'on est en
+      // train de récupérer : le défaut d'origine, par une autre porte (constat
+      // majeur de la revue du 2026-09-02). On interdit donc toute écriture
+      // d'état jusqu'à l'adoption, qui aura lieu au changement effectif du mot
+      // de passe (`_showPasswordRecoveryUI`, app-02).
+      if (_recuperationEnCours) {
+        try { _exigerRestaurationAvantEcriture(session.user.id); } catch (e) {}
+      }
       MY_UID = session.user.id;
-      localStorage.setItem("passio_uid", MY_UID);
+      // ⚠️ PENDANT UNE RÉCUPÉRATION, ON N'ÉCRIT PAS `passio_uid` (constat majeur
+      // de la seconde passe). L'adoption est différée ; écrire la clé ferait
+      // croire au démarrage SUIVANT que cet appareil possède déjà l'état du
+      // compte — et si la personne abandonne le formulaire, la garde reste
+      // désarmée POUR TOUJOURS, avec l'état de l'exploration attribué au compte.
+      // La clé sera écrite par l'adoption, au changement effectif du mot de passe.
+      if (!_recuperationEnCours) localStorage.setItem("passio_uid", MY_UID);
       if (localStorage.getItem("passio_oauth_pending")) localStorage.removeItem("passio_oauth_pending");
       // 🔑 Une session Supabase valide = compte réel connecté → on entre dans l'app,
       // même si le flag d'onboarding local est absent (nouvel appareil, réinstallation,
@@ -2224,6 +2256,22 @@ async function boot() {
             });
           } else {
             // Fallback : 1 seul profil avec la passion principale
+            //
+            // ⚠️ CE PROFIL N'EST PAS UN CHOIX, ET IL DOIT LE DIRE (2026-09-02).
+            // Quand le serveur ne rend RIEN, `defPassion` vaut `allPassions()[0]`,
+            // c'est-à-dire « Musique » — une valeur de remplissage que personne
+            // n'a demandée. Trois défauts en découlaient, tous mesurés :
+            //   • `comptePossedeSesPassions` (first-run) y voyait une passion
+            //     vivante et JETAIT les passions du visiteur ;
+            //   • le verdict serveur `_comptePassionsServeur` passait à vrai dès
+            //     que ce profil avait été poussé dans `user_state` — donc pour un
+            //     compte neuf dont le lien de confirmation a été ouvert ailleurs ;
+            //   • `migrerPreferences` le concaténait EN TÊTE, et « Musique »
+            //     devenait la passion primaire de quelqu'un qui avait choisi
+            //     Cuisine, Photo et Randonnée.
+            // Le marqueur ne change RIEN à l'affichage : il dit seulement « ceci
+            // est un remplissage », pour que personne ne le prenne pour un choix.
+            const _sansProfilServeur = !(srvProf && srvProf.passion_id);
             state.user.profiles = [{
               id: uid(),
               name: _name,
@@ -2232,6 +2280,7 @@ async function boot() {
               color: (srvProf && srvProf.color) || defPassion.color,
               bio: (srvProf && srvProf.bio) || "",
               createdAt: Date.now(),
+              ...(_sansProfilServeur ? { _parDefaut: true } : {}),
             }];
           }
           // La passion active ne doit JAMAIS être archivée (invariant du lot UI-8) :
@@ -2282,15 +2331,79 @@ async function boot() {
         return;
       }
       if (session?.user) {
-        MY_UID = session.user.id;
+        // ⚠️⚠️ TROISIÈME POINT D'ENTRÉE, ET LE PLUS PIÉGEUX (2026-09-02, revue
+        // adversariale). Ce handler n'est enregistré que lorsque `boot()` n'a
+        // trouvé AUCUNE session — donc précisément pour un visiteur en première
+        // visite — et il refaisait ici le défaut d'origine mot pour mot :
+        // `MY_UID` + `passio_uid` + `onboarded` + `saveState()` + `reload()`,
+        // c'est-à-dire les quatre gestes qui lèvent les trois gardes du beacon
+        // et poussent l'état ANONYME dans `user_state` du compte.
+        //
+        // Pire : en écrivant `passio_uid` ici, il DÉSARMAIT la garde de
+        // `onbDoAuth`, qui relisait cette clé juste après. supabase-js notifie
+        // ses abonnés PENDANT `signInWithPassword`, avant d'en résoudre la
+        // promesse — l'ordre réel est donc ② ce handler, puis ④ la garde. C'est
+        // pourquoi le discriminant est désormais un INSTANTANÉ pris au
+        // chargement (`_uidProprietaireEtat`, app-02) : l'écriture ci-dessous ne
+        // peut plus lui mentir, quel que soit l'ordre.
+        //
+        // ⚠️ L'ADOPTION EST DIFFÉRÉE PAR `setTimeout(…, 0)`, comme tout le reste
+        // de ce handler : le client tient un verrou auth pendant l'émission, et
+        // ce qui part d'ici doit sortir du callback avant d'agir.
+        const _uidSession = session.user.id;
+        const _oauthEnAttente = !!localStorage.getItem("passio_oauth_pending");
+        MY_UID = _uidSession;
         localStorage.setItem("passio_uid", MY_UID);
         // Retour OAuth (Google) arrivé après le boot : finaliser + recharger dans l'app.
-        if (event === "SIGNED_IN" && localStorage.getItem("passio_oauth_pending")) {
+        if (event === "SIGNED_IN" && _oauthEnAttente) {
           localStorage.removeItem("passio_oauth_pending");
-          if (typeof state !== "undefined") { state.onboarded = true; try { saveState(); } catch(e) {} }
-          setTimeout(() => { try { window.location.reload(); } catch(e) {} }, 0);
+          setTimeout(async () => {
+            try {
+              // Adopter AVANT `state.onboarded = true` + `saveState()` : c'est
+              // cette paire qui arme le beacon de `pagehide` déclenché par le
+              // rechargement. Si l'adoption purge, elle a déjà levé
+              // `_accountPurged` et plus rien ne peut partir.
+              if (typeof adopterCompteConnecte === "function"
+                  && await adopterCompteConnecte(_uidSession)) {
+                try { window.location.reload(); } catch(e) {}
+                return;
+              }
+            } catch (e) { console.warn("adoption OAuth:", e); }
+            if (typeof state !== "undefined") { state.onboarded = true; try { saveState(); } catch(e) {} }
+            try { window.location.reload(); } catch(e) {}
+          }, 0);
           return;
         }
+        // Toute autre arrivée de session sur une page ouverte SANS compte
+        // (connexion faite dans un autre onglet, confirmation d'e-mail,
+        // rafraîchissement de jeton après un changement d'identité) : l'état
+        // local de cette page-ci n'appartient pas au compte qui vient
+        // d'arriver, et cette page continuerait à le sauvegarder sous sa
+        // nouvelle identité. On adopte, donc on purge et on recharge.
+        // ⚠️ ON PROTÈGE, ON NE PURGE PAS, ET SURTOUT ON NE RECHARGE PAS. La
+        // première rédaction de ce garde adoptait ici comme ailleurs — et c'était
+        // un défaut à elle seule (constat bloquant de la seconde passe de revue) :
+        // ce handler reçoit SIGNED_IN pour toute session ouverte sur une page qui
+        // n'en avait pas, y compris une connexion faite par le SDK sans passer par
+        // `onbDoAuth`. Il aurait donc rechargé la page sous les pieds des suites
+        // e2e à comptes réels (`authz-critical`, `blocage-acces`,
+        // `user-state-horodatage`, `multi-comptes`), qui ouvrent l'app sans
+        // session puis se connectent — CI rouge, déploiement sauté.
+        //
+        // Or purger n'est pas nécessaire ici : le seul dommage possible est une
+        // ÉCRITURE de l'état local sous la nouvelle identité. Il suffit donc de
+        // l'interdire jusqu'à ce que l'appareil ait vu le compte. L'adoption, elle,
+        // aura lieu au prochain démarrage, où `adopterCompteConnecte` dispose de
+        // l'instantané et où un rechargement ne coûte rien à personne.
+        //
+        // Aucune exception à faire pour `type=recovery` : on n'ouvre plus rien, on
+        // ne fait que fermer une porte.
+        try {
+          if (typeof _exigerRestaurationAvantEcriture === "function"
+              && _uidProprietaireEtat !== _uidSession) {
+            _exigerRestaurationAvantEcriture(_uidSession);
+          }
+        } catch (e) { console.warn("protection auth-change:", e); }
         // ✅ FIX CRITIQUE : déclencher supaInit() dès qu'une session est établie
         // Sans ça, les posts Supabase ne chargent jamais sur un nouvel appareil
         if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
