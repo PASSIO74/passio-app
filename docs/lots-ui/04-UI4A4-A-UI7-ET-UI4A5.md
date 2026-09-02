@@ -164,3 +164,50 @@
   Convention de test appliquée : `contextual-nav`, `irl`, `ui-v4a2-cartes`, `ui-v4a3-vue`,
   `ui-v4a4-outils` et `ui-v7-lot` posent au boot `passio_ui_4a5="0"` et gardent TOUTES
   leurs assertions ; la cohabitation est prouvée à part.
+
+  **⚠️ LE PANNEAU FILTRES TIENT SUR UN ÉCRAN (2026-09-02), SANS NOUVEAU DRAPEAU.**
+  Demande de Benjamin après essai réel : « repositionne les onglets dans la page
+  filtre de Rencontrer, les onglets sont trop gros, mal ordonnés ; je voudrais
+  que tout tienne sur la page sans descendre. » Mesuré AVANT à 390 × 844 :
+  panneau de **1 018 px pour 714 px visibles**, « Voir les activités » hors de
+  l'écran — donc valider ses choix demandait de descendre. Mesuré APRÈS : **377 px,
+  zéro débordement**, le pied à 643 px. Aucun moteur n'est touché, aucune case ne
+  disparaît, et `passio_ui_4a5="0"` rend l'écran d'avant à la lettre.
+  ⚠️ **La cause n° 1 n'était pas la taille des cases, c'était un volet OUVERT
+  D'OFFICE** : le volet Date pesait 337 px à lui seul — un tiers du panneau —
+  alors que Distance et Horaire, eux, étaient repliés. Les trois partent
+  désormais repliés, et un tap ouvre celui qu'on veut.
+  ⚠️ **Le repli se fait en JS, jamais en CSS.** `_syncIrlFilterTabs()` pose la
+  classe `on` sur le volet de `window._irlFilterTab || "date"` à CHAQUE
+  `renderIRL()` : masquer les volets en CSS aurait laissé le moteur croire qu'un
+  volet est ouvert, et la pastille « ce filtre est actif » de l'onglet aurait
+  menti. Le module pose donc `window._irlFilterTab = "aucun"` — une valeur qui
+  ne désigne aucun onglet. Elle doit être **NON VIDE** (`""` est faux, le moteur
+  retomberait sur « date ») et elle est **rendue à `"date"`** quand la vue se
+  ferme ou que le drapeau tombe : `openIrlFiltersPanel` ne repose la valeur que
+  si elle est ABSENTE, la feuille historique se serait donc ouverte sans aucun
+  volet et sans onglet sélectionné — un dialogue vide, sans erreur.
+  ⚠️ **Un onglet de volet déjà ouvert se referme au second tap**, intercepté en
+  phase de CAPTURE comme celui de `#irlToolsBtn` : l'`onclick` inline
+  `setIrlFilterTab('date')` n'a pas de bascule, et sans elle le panneau ne
+  saurait que grandir.
+  ⚠️ **Une seule hauteur de case dans tout le panneau : 44 px** (bulles de
+  passion, intentions, ville / mes activités, et les trois onglets de volet, qui
+  faisaient 92 px avec leur icône empilée — c'était le « mal ordonné »). Leurs
+  couleurs ne bougent pas : la demande du 2026-08-31 (« sauf Date, Distance,
+  Horaire, laisse comme ça ») portait sur la PEAU, pas sur la taille.
+  ⚠️ **`display: contents` aplatit les deux sous-sections de `#v4a5Outils`** :
+  « Autour de moi » (une case) et « Mes événements » (deux) formaient trois
+  lignes de gabarits différents ; les trois cases deviennent une rangée de trois
+  colonnes. Leurs titres sont MASQUÉS, jamais retirés, et la règle est bornée à
+  `#v4a5Outils` — `.ctx-section` est le composant commun des outils contextuels,
+  servi dans le dialogue des autres écrans.
+  ⚠️ **PAS D'ELLIPSE sur ces libellés : deux lignes.** Essayé, mesuré, rejeté —
+  à trois colonnes, `text-overflow` sortait « Choisir une … », « Mes évène… » et
+  « Mes inscript… », trois cases dont plus aucune ne disait ce qu'elle fait.
+  Verrou : `ui-v4a5-filtres.spec.js`, trois cas — « tout tient sur un écran »
+  (qui mesure la ZONE DE DÉFILEMENT `.app-main`, la seule qui décide s'il faut
+  descendre, et vérifie qu'aucun libellé n'est coupé), « partent repliés, et se
+  referment au second tap », « la feuille historique retrouve son volet Date
+  ouvert ». Éprouvés par mutation : rouvrir le volet Date d'office fait rougir
+  les deux premiers.

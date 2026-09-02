@@ -10,13 +10,18 @@
 //      les passions directement ».
 //
 // ⚠️ LE POINT ③ A ÉTÉ DÉFAIT LE LENDEMAIN, ET LA SECTION QUI LE COUVRAIT A ÉTÉ
-// RETOURNÉE PLUTÔT QUE SUPPRIMÉE. Le 2026-09-02 le rail de passions du profil
-// est devenu lui aussi une rangée de pastilles : les mêmes passions étaient
-// nommées deux fois, à 5 px d'écart. « On va supprimer les titres de passion
-// dans le profil sous le pseudo et garder seulement les bulles dessous. » Les
-// tests vérifient désormais que la ligne NE REVIENT PAS, et ce que ③ avait
-// acquis (44 px de cible, pas de chevauchement, aucune fuite d'archive) est
-// mesuré sur le rail, où les passions vivent.
+// RETOURNÉE PLUTÔT QUE SUPPRIMÉE. Le 2026-09-02, Benjamin fait retirer cette
+// rangée : « supprime les titres de passion dans le profil sous le pseudo et
+// garde seulement les bulles dessous. » Les tests vérifient désormais que la
+// ligne NE REVIENT PAS, et ce que ③ avait acquis (cible tactile, aucune fuite de
+// passion archivée) est mesuré sur le rail, où les passions vivent.
+//
+// ⚠️ ET LES BULLES DU RAIL, ELLES, N'ONT PAS CHANGÉ. Elles sont passées par des
+// pastilles de texte pendant quelques heures ce même jour, sur une lecture trop
+// littérale de « enlève les onglets ronds violets » — qui visait la ligne de
+// titres, pas le rail. « Sur le profil remets les bulles rondes comme avant, pas
+// de rangée de passions ovale » : c'est ce que ③ mesure explicitement
+// (`.profile-tile-avatar` présent), pour qu'un troisième tour n'ait pas lieu.
 //
 // ⚠️ ① ET ② SONT LIÉS, ET C'EST LE CŒUR DE LA SUITE. Ce qui rend la place à la
 // photo n'est pas un plafond plus haut — c'est l'avatar, qui passe ENTIÈREMENT
@@ -132,22 +137,29 @@ test("① ter — la carte d'identité reste sous les deux tiers de l'écran", a
 // ══════════════════════════════════════════════════════════════════════════
 
 // ══════════════════════════════════════════════════════════════════════════
-// ③ LES PASSIONS DU PROFIL — UNE SEULE RANGÉE, CELLE DU RAIL
+// ③ LES PASSIONS DU PROFIL — UNE SEULE RANGÉE, LES BULLES
 // ──────────────────────────────────────────────────────────────────────────
-// ⚠️ ASSERTIONS RETOURNÉES LE 2026-09-02, JAMAIS VIDÉES. Cette section exigeait
-// une rangée de pastilles-portes sous le pseudo (demande du 2026-09-01). Le
-// lendemain, le rail de passions du profil est devenu lui aussi une rangée de
-// pastilles de texte : le profil nommait les mêmes passions DEUX fois, à 5 px
-// d'écart. Arbitrage de Benjamin : « on va supprimer les titres de passion dans
-// le profil sous le pseudo et garder seulement les bulles dessous. »
+// ⚠️ ASSERTIONS RETOURNÉES LE 2026-09-02, JAMAIS VIDÉES — et il a fallu deux
+// tours pour comprendre ce que Benjamin demandait, ce que ces tests fixent
+// maintenant pour de bon.
 //
-// Ce que ces tests garantissent maintenant : la ligne NE REVIENT PAS, et tout ce
-// que le lot du 2026-09-01 avait acquis (cible tactile de 44 px, deux rangées qui
-// ne se chevauchent pas, une passion archivée qui ne fuite pas) est vérifié là où
-// les passions vivent désormais — le rail `#v9ProfilePassions`.
+// Le lot du 2026-09-01 avait posé sous le pseudo une rangée de pastilles-portes,
+// chacune ouvrant la page de sa passion. Le lendemain matin : « enlève les
+// onglets ronds violets sous le pseudo des passions, c'est trop gros trop
+// visible ; tu mets juste les passions en question, fin élégant. » Lu comme une
+// consigne sur les BULLES du rail, il en est sorti une rangée de pastilles de
+// texte — et un profil qui nommait ses passions deux fois. Le soir, l'arbitrage :
+// « supprime les titres de passion dans le profil sous le pseudo et garde
+// seulement les bulles dessous », puis « remets les bulles rondes comme avant,
+// pas de rangée de passions ovale ».
+//
+// État final, celui que cette section verrouille : AUCUNE ligne de passions sous
+// le pseudo, les BULLES du rail inchangées, sur mon profil comme sur celui d'un
+// autre. Les acquis du lot d'hier (cible tactile, aucune fuite de passion
+// archivée) sont vérifiés là où les passions vivent désormais.
 // ══════════════════════════════════════════════════════════════════════════
 
-test("③ aucune ligne de passions sous le pseudo — le rail en dessous les porte", async ({ page }) => {
+test("③ aucune ligne de passions sous le pseudo — les bulles du rail les portent", async ({ page }) => {
   await poser(page);
   const vu = await page.evaluate(() => {
     const carte = document.querySelector("#screen-profiles .main-profile-card");
@@ -155,23 +167,27 @@ test("③ aucune ligne de passions sous le pseudo — le rail en dessous les por
     return {
       ligneIdent: !!document.getElementById("mainProfileIdent"),
       dansLaCarte: carte ? carte.querySelectorAll(".ident-passions, .ident-passion-lien").length : -1,
-      pastilles: rail
-        ? [...rail.querySelectorAll(".v9-passion-chip[data-passion-tile]")]
+      // ⚠️ Les BULLES, pas des pastilles de texte : la vignette ronde est ce que
+      // Benjamin a explicitement redemandé. Une rangée « ovale » (un
+      // `.v9-passion-chip`, sans `.profile-tile-avatar`) ferait rougir ce test.
+      bulles: rail
+        ? [...rail.querySelectorAll(".profile-tile[data-passion-tile]")]
             .map((c) => c.getAttribute("data-passion-tile"))
         : [],
+      vignettes: rail ? rail.querySelectorAll(".profile-tile .profile-tile-avatar").length : 0,
     };
   });
   expect(vu.ligneIdent, "la ligne sous le pseudo ne doit pas revenir").toBe(false);
   expect(vu.dansLaCarte, "aucune passion nommée dans la carte d'identité").toBe(0);
-  // Elles sont bien quelque part : le rail, avec la porte d'ajout au bout.
-  expect(vu.pastilles).toEqual(["pp_moto", "pp_pod", "pp_voy", "__ajouter__"]);
+  expect(vu.bulles).toEqual(["pp_moto", "pp_pod", "pp_voy", "__ajouter__"]);
+  expect(vu.vignettes, "des bulles rondes, pas une rangée ovale").toBe(4);
 });
 
-test("③ bis — toucher une passion du rail FILTRE, elle ne quitte plus le profil", async ({ page }) => {
-  // ⚠️ RETOURNEMENT ASSUMÉ. Ce test exigeait qu'un tap OUVRE la page de la
-  // passion ; la seule rangée qui reste est le rail, dont le geste est le
-  // filtre. Un tap qui ferait les deux est exclu par construction : une
-  // pastille, une destination.
+test("③ bis — toucher une bulle FILTRE, elle ne quitte plus le profil", async ({ page }) => {
+  // ⚠️ RETOURNEMENT ASSUMÉ. Ce test exigeait qu'un tap sous le pseudo OUVRE la
+  // page de la passion ; cette rangée n'existe plus. La seule qui reste est le
+  // rail, dont le geste est le filtre — et une bulle ne peut pas avoir deux
+  // destinations.
   await poser(page);
   await page.evaluate(() => {
     window.__ouvert = [];
@@ -190,36 +206,33 @@ test("③ bis — toucher une passion du rail FILTRE, elle ne quitte plus le pro
   expect(vu.modaleOuverte, "on reste sur le profil").toBe(false);
 });
 
-test("③ ter — la cible tactile fait 44 px, la pastille visible reste discrète", async ({ page }) => {
+test("③ ter — une bulle reste une cible tactile confortable", async ({ page }) => {
   await poser(page);
-  const m = await page.evaluate(() => {
-    const chips = [...document.querySelectorAll("#v9ProfilePassions .v9-passion-chip")];
-    // La cible se mesure sur la BOÎTE ; la pilule est peinte par un ::before,
-    // qui ne satisferait pas la mesure s'il portait seul la hauteur.
-    const boites = chips.map((c) => c.getBoundingClientRect().height);
-    const st = getComputedStyle(chips[0], "::before");
-    return { min: Math.min(...boites), peinte: st.getPropertyValue("inset-block-start"),
-             bord: st.borderTopWidth };
+  const min = await page.evaluate(() => {
+    const b = [...document.querySelectorAll("#v9ProfilePassions .profile-tile")];
+    return Math.min(...b.map((c) => c.getBoundingClientRect().height));
   });
-  expect(m.min, "cible tactile d'une passion").toBeGreaterThanOrEqual(44);
-  // La pilule est peinte à 7 px des bords de la boîte : 44 - 2 × 7 = 30 px visibles.
-  expect(m.peinte).toBe("7px");
-  // Et elle se voit : un contour, sans quoi la pastille décochée n'existerait pas.
-  expect(parseFloat(m.bord)).toBeGreaterThan(0);
+  expect(min, "cible tactile d'une bulle de passion").toBeGreaterThanOrEqual(44);
 });
 
-test("③ quater — deux rangées de pastilles ne se chevauchent PAS", async ({ page }) => {
-  // Six passions : la rangée passe forcément à la ligne en 390 px. Les boîtes
-  // font 44 px pour 30 px peints : sans `row-gap`, un tap entre deux lignes
-  // atteindrait la pastille du dessous.
+test("③ quater — six passions : la rangée défile, elle ne s'empile pas", async ({ page }) => {
+  // ⚠️ CE TEST A CHANGÉ DE QUESTION AVEC LE COMPOSANT. Il vérifiait qu'une rangée
+  // de pastilles passée à la ligne ne se chevauchait pas. Les bulles, elles,
+  // vivent dans `.profile-strip` et portent `flex: 1 1 0` : à sept, elles
+  // RÉTRÉCISSENT pour tenir sur une seule rangée — elles ne passent pas à la
+  // ligne, et elles ne débordent pas non plus (mesuré : `scrollWidth` reste égal
+  // à `clientWidth`, contrairement à ce qu'un rail « qui défile » laisserait
+  // croire). Ce qu'on garantit donc ici : une seule rangée, aucune bulle qui en
+  // recouvre une autre, rien qui déborde de l'écran, et une hauteur qui ne
+  // repousse pas la carte d'identité.
   await poser(page, {
     profiles: ["moto", "podcast", "voyage", "cuisine", "musique", "sport"].map((p, i) => ({
       id: "pp_" + p, name: "Benjamin", passion: p, emoji: "✨", color: "#7c3aed", createdAt: i + 1,
     })),
   });
   const vu = await page.evaluate(() => {
-    const chips = [...document.querySelectorAll("#v9ProfilePassions .v9-passion-chip")];
-    const rects = chips.map((c) => c.getBoundingClientRect());
+    const rail = document.getElementById("v9ProfilePassions");
+    const rects = [...rail.querySelectorAll(".profile-tile")].map((c) => c.getBoundingClientRect());
     let chevauche = false;
     for (let i = 0; i < rects.length; i++) {
       for (let j = i + 1; j < rects.length; j++) {
@@ -227,12 +240,19 @@ test("③ quater — deux rangées de pastilles ne se chevauchent PAS", async ({
         if (a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom) chevauche = true;
       }
     }
-    // Le test ne vaut que si la rangée est réellement passée à la ligne.
-    const lignes = new Set(rects.map((r) => Math.round(r.top))).size;
-    return { chevauche, lignes };
+    return {
+      chevauche,
+      lignes: new Set(rects.map((r) => Math.round(r.top))).size,
+      nb: rects.length,
+      deborde: rects.some((r) => r.right > window.innerWidth + 1 || r.left < -1),
+      hauteur: Math.round(rail.getBoundingClientRect().height),
+    };
   });
-  expect(vu.lignes, "six passions doivent tenir sur au moins deux rangées").toBeGreaterThan(1);
-  expect(vu.chevauche, "aucune paire de pastilles ne se recouvre").toBe(false);
+  expect(vu.nb, "six passions plus la porte d'ajout").toBe(7);
+  expect(vu.chevauche, "aucune paire de bulles ne se recouvre").toBe(false);
+  expect(vu.lignes, "une seule rangée : elles rétrécissent, elles ne s'empilent pas").toBe(1);
+  expect(vu.deborde, "aucune bulle ne sort de l'écran en 390 px").toBe(false);
+  expect(vu.hauteur, "le rail reste une rangée, pas un bloc").toBeLessThan(120);
 });
 
 test("③ quinquies — une passion ARCHIVÉE ne réapparaît pas dans le rail", async ({ page }) => {
@@ -246,7 +266,7 @@ test("③ quinquies — une passion ARCHIVÉE ne réapparaît pas dans le rail",
     renderMainProfile();
     renderProfilePassionRail();
     return {
-      rail: [...document.querySelectorAll("#v9ProfilePassions .v9-passion-chip[data-passion-tile]")]
+      rail: [...document.querySelectorAll("#v9ProfilePassions .profile-tile[data-passion-tile]")]
         .map((c) => c.getAttribute("data-passion-tile")),
       // Et l'identité TEXTE des surfaces denses ne la laisse pas fuir non plus.
       texte: identitePassionsTexte({ id: MY_UID, passions: state.user.profiles }),
@@ -275,7 +295,7 @@ async function ouvrirProfilVisite(page) {
   await page.waitForTimeout(900);
 }
 
-test("③ sexies — un profil visité suit la même règle : une seule rangée", async ({ page }) => {
+test("③ sexies — un profil visité suit la même règle : une seule rangée, en bulles", async ({ page }) => {
   await poser(page);
   await ouvrirProfilVisite(page);
   // ⚠️ La requête est bornée à la MODALE : mon propre profil est toujours dans
@@ -283,11 +303,13 @@ test("③ sexies — un profil visité suit la même règle : une seule rangée"
   // ferait passer ce test pour la mauvaise raison.
   const vu = await page.evaluate(() => ({
     sousLePseudo: document.querySelectorAll(".modal .main-profile-body .ident-passions").length,
-    rail: [...document.querySelectorAll(".modal #visitedPassions .v9-passion-chip")]
+    rail: [...document.querySelectorAll(".modal #visitedPassions .profile-tile")]
       .map((c) => c.getAttribute("data-passion-tile")),
+    vignettes: document.querySelectorAll(".modal #visitedPassions .profile-tile-avatar").length,
   }));
   expect(vu.sousLePseudo, "aucune ligne de passions sous son pseudo").toBe(0);
   expect(vu.rail, "ses passions sont dans le rail, une seule fois").toEqual(["cuisine", "jardinage"]);
+  expect(vu.vignettes, "des bulles rondes, comme sur mon profil").toBe(2);
 });
 
 test("③ septies — le RETOUR de la page de passion reste servi (chemin dormant)", async ({ page }) => {

@@ -319,6 +319,114 @@ test.describe("UI-4A5 — « Filtres », troisième vue de Rencontrer", () => {
     await expect(page.locator("#irlToolsBtn")).toHaveAttribute("aria-haspopup", "dialog");
   });
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // ⑥ TOUT TIENT SUR UN ÉCRAN, SANS DESCENDRE (2026-09-02)
+  // Demande de Benjamin après essai réel : « les onglets sont trop gros, mal
+  // ordonnés ; je voudrais que tout tienne sur la page sans descendre. »
+  // Mesuré avant correction, à 390 × 844 : panneau de 1 018 px pour 714 px de
+  // zone visible, « Voir les activités » hors de l'écran — valider ses choix
+  // demandait de descendre.
+  //
+  // ⚠️ Le test mesure la ZONE DE DÉFILEMENT RÉELLE (`.app-main`), pas la
+  // hauteur du panneau : c'est elle qui décide s'il faut descendre, et elle
+  // seule tient compte de la tête d'écran, du commutateur et de la barre de
+  // navigation. Éprouvé par mutation : rouvrir le volet Date d'office
+  // (`window._irlFilterTab = "date"`) le fait rougir.
+  // ══════════════════════════════════════════════════════════════════════════
+  test("tout tient sur un écran : aucun défilement, le pied est visible", async ({ page }) => {
+    const errors = { js: [], console: [], network: [] };
+    await boot(page, { errors });
+    await ouvrirIrl(page);
+    await ouvrirFiltres(page);
+
+    const m = await page.evaluate(() => {
+      const main = document.querySelector(".app-main");
+      const done = document.getElementById("v4a5Done");
+      const r = done.getBoundingClientRect();
+      return {
+        deborde: main.scrollHeight - main.clientHeight,
+        basDuPied: Math.round(r.bottom),
+        basVisible: Math.round(main.getBoundingClientRect().bottom),
+      };
+    });
+    expect(m.deborde, "hauteur à descendre").toBeLessThanOrEqual(1);
+    expect(m.basDuPied, "bas de « Voir les activités »").toBeLessThanOrEqual(m.basVisible);
+
+    // « Mal ordonné » : une seule hauteur de case dans tout le panneau. Les
+    // onglets de volet faisaient 92 px contre 56 px pour leurs voisines.
+    const hauteurs = await page.evaluate(() => {
+      const h = (sel) => {
+        const n = document.querySelector(sel);
+        return n ? Math.round(n.getBoundingClientRect().height) : null;
+      };
+      return {
+        passion: h("#v4a5Passions .msg-tile"),
+        intention: h("#v4a5Intents .v4a0-chip"),
+        ftab: h("#v4a5Avance .irl-ftab"),
+      };
+    });
+    expect(hauteurs.passion).toBe(44);
+    expect(hauteurs.intention).toBe(44);
+    expect(hauteurs.ftab).toBe(44);
+
+    // Une case reste une cible tactile, et son libellé reste LISIBLE : pas
+    // d'ellipse (« Mes inscript… » ne dit plus ce que fait la case).
+    const libelles = await page.$$eval("#v4a5Outils .ctx-item .ctx-item-label",
+      (ns) => ns.map((n) => ({ txt: n.textContent.trim(), coupe: n.scrollWidth > n.clientWidth + 1 })));
+    expect(libelles.length).toBe(3);
+    for (const l of libelles) expect(l.coupe, "libellé coupé : " + l.txt).toBe(false);
+
+    expect(errors.js, "exceptions JS").toEqual([]);
+    expect(errors.console, "erreurs console").toEqual([]);
+  });
+
+  // ⑦ Les volets partent REPLIÉS, et un second tap referme celui qu'on a
+  //    ouvert. Sans cette bascule le panneau ne saurait que grandir : on peut
+  //    déplier Date, jamais le replier — et on retombe sur l'écran qu'il faut
+  //    descendre. Le `onclick` inline `setIrlFilterTab('date')` n'a pas de
+  //    bascule : c'est le lot qui l'ajoute, en capture.
+  test("Date / Distance / Horaire partent repliés, et se referment au second tap", async ({ page }) => {
+    await boot(page);
+    await ouvrirIrl(page);
+    await ouvrirFiltres(page);
+
+    const ouverts = () => page.evaluate(() => ["irlPaneDate", "irlPaneDist", "irlPaneTime"]
+      .filter((id) => document.getElementById(id).classList.contains("on")));
+
+    expect(await ouverts(), "à l'ouverture, aucun volet déplié").toEqual([]);
+    await expect(page.locator("#irlPaneDate")).toBeHidden();
+
+    await page.locator("#irlFtabDate").click();
+    await page.waitForTimeout(300);
+    expect(await ouverts()).toEqual(["irlPaneDate"]);
+    await expect(page.locator("#irlPaneDate")).toBeVisible();
+
+    await page.locator("#irlFtabDate").click();
+    await page.waitForTimeout(300);
+    expect(await ouverts(), "un second tap referme").toEqual([]);
+
+    // Le repli ne touche à AUCUN filtre : le pied compte toujours la même chose.
+    await expect(page.locator("#v4a5Done")).toBeVisible();
+  });
+
+  // ⑧ Le repli est propre à cette vue. `openIrlFiltersPanel` ne repose la
+  //    valeur que si elle est ABSENTE : sans restitution, la feuille historique
+  //    se serait ouverte avec ses trois volets repliés et aucun onglet
+  //    sélectionné — un dialogue vide, sans erreur.
+  test("coupure : la feuille historique retrouve son volet Date ouvert", async ({ page }) => {
+    await boot(page);
+    await ouvrirIrl(page);
+    await ouvrirFiltres(page);
+
+    await page.evaluate(() => { window.PASSIO_UI_4A5 = false; PassioUIV4A5.apply(); });
+    await page.waitForTimeout(400);
+    await page.evaluate(() => openIrlFiltersPanel());
+    await page.waitForTimeout(300);
+
+    await expect(page.locator("#irlFiltersPanel #irlPaneDate")).toBeVisible();
+    await expect(page.locator("#irlFtabDate")).toHaveAttribute("aria-selected", "true");
+  });
+
   for (const largeur of [320, 390, 430]) {
     test(`mobile ${largeur} px : aucun débordement horizontal`, async ({ page }) => {
       await page.setViewportSize({ width: largeur, height: 780 });

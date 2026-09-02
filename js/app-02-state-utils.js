@@ -3111,54 +3111,21 @@ function passionTileHTML(o) {
     + '</div>';
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// LA PASTILLE DE PASSION DU PROFIL — la même question, en beaucoup plus discret
-// ──────────────────────────────────────────────────────────────────────────
-// Demande de Benjamin du 2026-09-02, après essai réel : « sur la page profil
-// enlève les onglets ronds violets sous le pseudo des passions, c'est trop gros
-// trop visible ; tu mets juste les passions en question, fin élégant. »
+// ⚠️ `passionChipHTML` A VÉCU ICI LE 2026-09-02, ET SEULEMENT CE JOUR-LÀ. Elle
+// rendait le rail du profil en pastilles de texte (emoji · libellé · décompte),
+// sur une lecture trop littérale de « enlève les onglets ronds violets sous le
+// pseudo des passions, c'est trop gros trop visible ; tu mets juste les passions
+// en question, fin élégant » : Benjamin visait la LIGNE DE TITRES de la carte
+// d'identité, qui répétait les mêmes mots 5 px plus haut. Verdict le soir même :
+// « sur le profil remets les bulles rondes comme avant, pas de rangée de
+// passions ovale. » La ligne de titres reste retirée, la bulle revient, et la
+// fonction part avec ses règles CSS plutôt que de survivre sans appelant.
 //
-// La bulle du Fil (`passionTileHTML`) empile une vignette photo de 46 px, une
-// pastille d'emoji, un compteur et un libellé : sur le Fil c'est le sujet même
-// de l'écran, sur le Profil cela faisait un second bloc massif juste sous la
-// carte d'identité. Le PROFIL passe donc à une pastille de texte — emoji,
-// libellé, décompte — pendant que le FIL garde ses bulles à l'identique (« remets
-// les profils du fil comme avant, en bulle », 2026-08-29 : cette demande-là n'est
-// pas annulée, elle ne portait pas sur le même écran).
-//
-// ⚠️ C'EST DÉSORMAIS LA SEULE RANGÉE DE PASSIONS DU PROFIL. La carte d'identité
-// en portait une seconde, juste au-dessus, où chaque pastille ouvrait la page de
-// la passion ; les deux nommaient les mêmes mots à 5 px d'écart. Benjamin a
-// tranché le 2026-09-02 : « supprime les titres de passion dans le profil sous
-// le pseudo et garde seulement les bulles dessous. » Ne pas la remettre sans
-// retirer celle-ci — deux rangées, ou une rangée à deux destinations, sont les
-// deux façons de rouvrir le défaut.
-//
-// ⚠️ MÊME RÈGLE DE GESTIONNAIRE que la bulle : `_passionTileOnclick` écrit
-// l'appel en toutes lettres, seul `arg` circule et il passe par `escapeJsArg`.
-// ⚠️ ET TOUJOURS PAS D'ACTIVATION CLAVIER ICI : le délégué unique d'app-08
-// active tout `[role="button"]` non natif. En ajouter un second produirait deux
-// basculements pour une touche, qui s'annulent (défaut mesuré le 2026-08-31).
-//
-// Champs : { emoji, label, count, selected, action, arg, title, tileKey }
-function passionChipHTML(o) {
-  o = o || {};
-  var emoji = String(o.emoji || "✨");
-  var label = String(o.label || "Passion");
-  var selected = !!o.selected;
-  var nb = Number(o.count) > 0
-    ? '<span class="v9-chip-nb">' + Number(o.count) + '</span>'
-    : '';
-  return '<div class="v9-passion-chip' + (selected ? " active" : "") + '"'
-    + ' onclick="' + _passionTileOnclick(o.action, o.arg) + '"'
-    + ' title="' + escapeHtml(o.title || label) + '"'
-    + (o.tileKey === undefined ? "" : ' data-passion-tile="' + escapeHtml(String(o.tileKey)) + '"')
-    + ' role="button" tabindex="0" aria-pressed="' + (selected ? "true" : "false") + '">'
-    + '<span class="v9-chip-emoji" aria-hidden="true">' + escapeHtml(emoji) + '</span>'
-    + '<span class="v9-chip-nom">' + escapeHtml(label) + '</span>'
-    + nb
-    + '</div>';
-}
+// Ce qu'il faut en retenir avant de refaire une pastille : le Fil et le Profil
+// affichent la MÊME bulle (`passionTileHTML` ci-dessus), c'est une exigence de
+// la refonte multi-passion (§1 et §7) et une leçon de ce dépôt — les deux tables
+// de libellés de mood, puis les deux écrans de profil, ont divergé parce que
+// chacun portait sa copie du rendu.
 
 // L'URL de la photo d'illustration d'une passion du catalogue (identifiant
 // Unsplash), et son repli. Le Fil et le Profil en avaient deux copies.
