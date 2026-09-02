@@ -3589,13 +3589,44 @@ async function openConversation(convId) {
   }
   if (btn) btn.onclick = () => sendMessageFp(convId, displayName);
 
-  // ── Afficher pleine page ──
   const fp = document.getElementById("conv-fullpage");
+  var thread = document.getElementById("convFpThread");
+  // Fond de conversation personnalisé (réglages → 🎨), sinon fond par défaut.
+  if (thread) thread.style.background = c.bg || "var(--bg-deep)";
+
+  // ⚠️ LE FIL EST PEINT AVANT QUE LE PANNEAU N'ENTRE À L'ÉCRAN.
+  // Défaut vécu (« j'ouvre une conversation, les messages déjà envoyés ne
+  // s'affichent pas, je dois retaper sur l'écran pour les faire apparaître ») :
+  // `.active` était posé D'ABORD, donc la transition `translateX(100%) → 0`
+  // démarrait sur un fil VIDE (ou sur celui de la conversation précédente), et
+  // le contenu était injecté dans la foulée, alors que la couche composée du
+  // panneau — promue en permanence par `will-change` et entièrement découpée
+  // par l'`overflow:hidden` de `.app-shell` — venait d'être demandée vide.
+  // Sur Android, ces tuiles revenaient blanches et n'étaient re-rasterisées
+  // qu'à la prochaine invalidation, c'est-à-dire au premier toucher.
+  // Règle générale : on ne révèle jamais un panneau animé avant d'y avoir mis
+  // son contenu. (Le `will-change` permanent a été retiré de `styles.css` :
+  // la transition promeut déjà la couche le temps de l'animation.)
+  renderConvFpThread(c, displayName);
+  if (thread) thread.scrollTop = thread.scrollHeight;
+
+  // ── Afficher pleine page ──
   if (fp) {
     fp.setAttribute("data-conv-id", convId);
     fp.setAttribute("data-display-name", displayName);
     fp.classList.add("active");
   }
+
+  // Le fil est scrollé en bas AVANT l'entrée du panneau, donc pendant que
+  // celui-ci est encore découpé : certaines hauteurs (médias, polices) ne sont
+  // connues qu'une fois visible. On re-épingle le bas à la fin de la transition
+  // (280 ms), sauf si la personne a déjà remonté le fil elle-même.
+  setTimeout(function() {
+    if (window._openedConvId !== convId) return;
+    var t = document.getElementById("convFpThread");
+    if (!t || t._loadingOlder) return;
+    if (t.scrollTop + t.clientHeight >= t.scrollHeight - 80) t.scrollTop = t.scrollHeight;
+  }, 320);
 
   // Le CTA IRL n'est jamais présent dans le HTML initial. Il est ajouté
   // seulement après le verdict serveur âge + blocage de #136. Le drapeau reste
@@ -3605,10 +3636,6 @@ async function openConversation(convId) {
     irlProposalMountConversationAction(convId, c.userId);
   }
 
-  var thread = document.getElementById("convFpThread");
-  // Fond de conversation personnalisé (réglages → 🎨), sinon fond par défaut.
-  if (thread) thread.style.background = c.bg || "var(--bg-deep)";
-
   // Souscrire aux nouveaux messages en temps réel
   _supaConvSpecificChannel(convId, displayName);
   _subscribeTyping(convId);
@@ -3616,9 +3643,6 @@ async function openConversation(convId) {
   try { if (typeof supaMarkRead === "function") supaMarkRead(convId); } catch(e) {}
   try { if (typeof supaLoadOtherRead === "function") supaLoadOtherRead(convId); } catch(e) {}
 
-  // Affichage immédiat avec les messages locaux (feedback instantané)
-  renderConvFpThread(c, displayName);
-  if (thread) thread.scrollTop = thread.scrollHeight;
   if (inp) inp.focus();
   try { renderMessages(); } catch(e) {}
 
