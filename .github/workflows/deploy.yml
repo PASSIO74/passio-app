@@ -454,7 +454,28 @@ jobs:
   preview:
     name: Déploiement preview (PR)
     if: github.event_name == 'pull_request'
-    needs: [governance, audits, test-prod, test-local, gates-artefact]
+    # ⚠️ L'APERÇU NE DÉPEND QUE DES AUDITS, ET C'EST DÉLIBÉRÉ (2026-09-02).
+    #
+    # Un aperçu Netlify n'est pas la production : c'est l'URL par laquelle
+    # Benjamin REGARDE le changement, souvent depuis son téléphone. Le faire
+    # attendre la suite complète, c'est attendre ~9 minutes (~30 avant le
+    # découpage) pour voir si une pastille est à la bonne taille — et c'est
+    # exactement ce qui rendait les retouches esthétiques si longues. Il les voit
+    # désormais en ~2 minutes.
+    #
+    # CE QUI N'EST PAS AFFAIBLI, et il faut le lire attentivement : le
+    # déploiement de PRODUCTION (`deploy`, plus haut) garde TOUTES les barrières
+    # — gouvernance, audits, suites prod, suites navigateur, gates artefact. Les
+    # tests continuent de tourner sur la PR et d'y publier leur verdict ; ce sont
+    # eux qui décident de la fusion, pas ce job. Rien de ce qui protège `main`
+    # n'est déplacé ici.
+    #
+    # `audits` est GARDÉ comme filet minimal : 40 secondes, aucun secret, aucun
+    # navigateur. Il attrape la faute de syntaxe, le global écrasé, le handler
+    # inline fantôme, l'échappement manquant. Sans lui on publierait un aperçu
+    # sur du code qui ne démarre pas — un aperçu blanc coûte plus de temps qu'il
+    # n'en fait gagner, puisqu'il faut alors chercher pourquoi.
+    needs: [audits]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
