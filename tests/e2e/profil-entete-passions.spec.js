@@ -179,7 +179,11 @@ test("③ aucune ligne de passions sous le pseudo — les bulles du rail les por
   });
   expect(vu.ligneIdent, "la ligne sous le pseudo ne doit pas revenir").toBe(false);
   expect(vu.dansLaCarte, "aucune passion nommée dans la carte d'identité").toBe(0);
-  expect(vu.bulles).toEqual(["pp_moto", "pp_pod", "pp_voy", "__ajouter__"]);
+  // ⚠️ LA PORTE D'AJOUT EST EN TÊTE DEPUIS LE 2026-09-02, et cet ordre-ci est le
+  // contrat : en queue d'un rail devenu coulissant, elle sortait du scrollport
+  // (mesuré à 320 px avec 3 passions : elle commençait à x=326 pour un rail qui
+  // s'arrête à 304). Voir `③ nonies`, qui mesure sa visibilité réelle.
+  expect(vu.bulles).toEqual(["__ajouter__", "pp_moto", "pp_pod", "pp_voy"]);
   expect(vu.vignettes, "des bulles rondes, pas une rangée ovale").toBe(4);
 });
 
