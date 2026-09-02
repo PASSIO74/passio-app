@@ -176,7 +176,18 @@ async function boot(page, opts = {}) {
   // test de compatibilité du lien d'aperçu demande explicitement `preview: true` :
   // faire l'inverse laisserait la promotion couverte par un seul cas, alors
   // qu'elle est désormais ce que voit tout le monde.
-  await bootOnboarded(page, opts.errors, 1, opts.preview === true ? { query: PREVIEW } : {});
+  // ⚠️ `sansIsolationDesPublications` : cette suite gère le réseau ELLE-MÊME.
+  // Depuis le 2026-09-02, `bootOnboarded` pose par défaut une route qui répond
+  // `[]` aux GET sur `/rest/v1/posts`. Playwright évaluant les routes dans
+  // l'ORDRE INVERSE de leur enregistrement, celle-là — posée après — écraserait
+  // le `couperSupabase` ci-dessus, qui ABORTE tout `*.supabase.co`. La requête
+  // `posts` serait alors servie au lieu d'être coupée : une autre simulation que
+  // celle que cette suite mesure. Sa barrière est de toute façon plus large que
+  // l'isolation par défaut, donc rien n'est perdu à la garder seule maîtresse.
+  await bootOnboarded(page, opts.errors, 1, Object.assign(
+    { sansIsolationDesPublications: true },
+    opts.preview === true ? { query: PREVIEW } : {},
+  ));
 
   // Filet tardif, conservé : il couvre les chemins qui rappelleraient ces
   // fonctions PLUS TARD (boucle de rafraîchissement du fil, retour en ligne).

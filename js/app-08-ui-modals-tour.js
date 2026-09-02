@@ -2117,6 +2117,13 @@ async function boot() {
   if (lp) lp.src = LOGO_SRC;
 
   state = loadState();
+  // 🔑 Intention de reconnexion posée par `doLogout` (app-02). Lue et EFFACÉE
+  // ici, tout au début : consommée une seule fois, quel que soit le chemin de
+  // démarrage emprunté ensuite (et périmée au-delà de son TTL). La laisser en
+  // place ferait rouvrir l'écran de
+  // connexion à chaque rechargement suivant.
+  let _authIntent = null;
+  try { _authIntent = consommerIntentionAuth(); } catch (e) {}
   // 🪦 Filet de démarrage : un état local écrit par une version antérieure au
   // correctif du 2026-09-01 peut encore contenir, dans `userPosts`, des
   // publications que l'utilisateur a supprimées et qui étaient revenues. On les
@@ -2158,13 +2165,54 @@ async function boot() {
   // Vérifie si l'utilisateur est déjà connecté via Supabase Auth
   try {
     const { data: { session } } = await supa.auth.getSession();
-    if (session?.user) {
-      // ⚠️ AVANT `MY_UID` ET AVANT `passio_uid` (le discriminant est
-      // l'identifiant PRÉCÉDEMMENT connu de cet appareil, cf. app-02). Ce
-      // chemin-ci couvre les entrées qui ne passent PAS par `onbDoAuth` :
-      // retour de `signInWithOAuth`, lien de confirmation d'e-mail qui ouvre
-      // directement une session. Sans lui, l'état d'une exploration anonyme
-      // serait poussé dans `user_state` du compte à la première sauvegarde.
+    // ⚠️ SESSION SURVIVANTE + RECONNEXION DEMANDÉE = DÉCONNEXION INACHEVÉE.
+    // `supa.auth.signOut()` est sous un `try` avale-tout et `ACCOUNT_SCOPED_KEYS`
+    // ne touche pas le jeton `sb-…-auth-token` : hors ligne, la session peut
+    // survivre à un `doLogout` dont la purge locale, elle, a bien eu lieu.
+    // Entrer ici remettrait la personne EN SILENCE dans le compte qu'elle vient
+    // de quitter, avec un état local déjà vidé. On termine donc le travail —
+    // ET ON RECHARGE, exactement comme `doLogout`.
+    //
+    // ⚠️ LE RECHARGEMENT N'EST PAS UN DÉTAIL DE CONFORT, c'est ce qui ferme une
+    // FUITE INTER-COMPTES. `purgeAccountScopedData` vide `localStorage` et
+    // IndexedDB, mais pas la MÉMOIRE : `conversationsState` (app-04) porte
+    // encore les messages privés du compte quitté, et ni `saveConversations` ni
+    // `saveConversationsNow` ne consultent le verrou `_accountPurged` — la
+    // première écriture venue les réinstallerait sur l'appareil, à la
+    // disposition du compte suivant. Même famille que la fuite corrigée le
+    // 2026-08-12. Poursuivre `boot()` sans recharger, c'est la rouvrir.
+    //
+    // ⚠️ ET IL NE PEUT PAS BOUCLER : `purgerJetonAuthLocal()` retire le jeton
+    // que le SDK relit au démarrage, donc le prochain `getSession()` ne trouve
+    // plus rien et cette branche n'est pas réatteignable. L'intention est
+    // re-posée pour que ce prochain démarrage aboutisse bien à l'écran demandé.
+    if (session?.user && _authIntent) {
+      // On lit `{ error }` : le SDK ne LÈVE PAS sur un refus, et une
+      // déconnexion qui échoue en silence est précisément ce qui nous a amenés ici.
+      try {
+        const _so = await supa.auth.signOut();
+        if (_so && _so.error) console.warn("signOut refusé :", _so.error.message || _so.error);
+      } catch (e) { console.warn("signOut indisponible :", e); }
+      try { purgerJetonAuthLocal(); } catch (e) {}
+      try { await purgeAccountScopedData(); } catch (e) {}
+      try { poserIntentionAuth(_authIntent); } catch (e) {}
+      setTimeout(function () { try { location.reload(); } catch (e) {} }, 0);
+      return;
+    }
+    if (session?.user && !_authIntent) {
+      // ⚠️ AVANT `MY_UID` ET AVANT `passio_uid` : le discriminant est l'INSTANTANÉ
+      // pris au chargement (`_uidProprietaireEtat`, app-02). Ce chemin-ci couvre
+      // les entrées qui ne passent PAS par `onbDoAuth` : retour de
+      // `signInWithOAuth`, lien de confirmation d'e-mail qui ouvre directement
+      // une session. Sans lui, l'état d'une exploration anonyme serait poussé
+      // dans `user_state` du compte à la première sauvegarde.
+      //
+      // ⚠️ IL VIENT APRÈS LA BRANCHE « DÉCONNEXION INACHEVÉE » DE #250, ET C'EST
+      // L'ORDRE QUI CONVIENT : celle-ci termine une déconnexion et RECHARGE, donc
+      // il n'y a rien à adopter tant qu'elle n'a pas rendu la main. Adopter avant
+      // aurait purgé puis rechargé à sa place, en perdant l'intention d'auth
+      // qu'elle repose — la personne serait retombée dans le fil invité au lieu
+      // de l'écran de connexion qu'elle a demandé.
       if (!_recuperationEnCours
           && typeof adopterCompteConnecte === "function"
           && await adopterCompteConnecte(session.user.id)) { window.location.reload(); return; }
@@ -2429,9 +2477,37 @@ async function boot() {
   // existe déjà sur cet appareil — le parcours historique reprend alors la main,
   // à l'octet près. Elle est appelée ICI, après la tentative de session : un
   // compte connecté a déjà quitté `boot()` par le `return` plus haut.
+  //
+  // ⚠️ L'ENTRÉE INVITÉE D'ABORD, L'ÉCRAN DE CONNEXION PAR-DESSUS — l'ordre est
+  // le correctif. `entreeDirecte()` est ce qui CONSTRUIT le mode invité : classe
+  // racine `passio-first-run` (sans elle, `.fr-only` masque « Mes passions » et
+  // « Revoir les repères » dans les Paramètres), contenu public chargé, carte de
+  // bienvenue planifiée, aides au geste armées. La sauter pour ouvrir le
+  // formulaire tout de suite laissait derrière lui un fil à MOITIÉ CONSTRUIT :
+  // la personne qui clique « ← Continuer à explorer » y tombait, sans une seule
+  // erreur en console. Et `entreeDirecte()` retire `#onboarding.active` : elle
+  // doit donc passer AVANT `openAuthScreen`, jamais après.
+  let _entreeInvite = false;
   try {
-    if (window.PassioFirstRun && PassioFirstRun.entreeDirecte()) return;
+    _entreeInvite = !!(window.PassioFirstRun && PassioFirstRun.entreeDirecte());
   } catch (e) { console.warn("first-run:", e); }
+
+  // ── Reconnexion demandée (déconnexion volontaire, « changer de compte ») ──
+  // La déconnexion a effacé `STATE_KEY` et `passio_uid` : l'appareil n'a plus de
+  // compte aux yeux du parcours de première visite, qui l'enverrait dans le fil
+  // invité — sans jamais montrer le formulaire que la personne vient justement
+  // de demander.
+  //
+  // ⚠️ SEULEMENT QUAND L'ENTRÉE INVITÉE A EU LIEU. Drapeau coupé, la landing
+  // historique reprend la main et porte DÉJÀ « Se connecter » : lui voler
+  // l'écran romprait la promesse de la coupure (« le parcours historique, à
+  // l'octet près »), et priverait au passage la personne du seul retour vers le
+  // pitch. Il n'y a pas de piège à défaire dans ce cas-là.
+  if (_authIntent && _entreeInvite) {
+    try { openAuthScreen(_authIntent); } catch (e) { console.warn("auth intent:", e); }
+  }
+
+  if (_entreeInvite) return;
 
   showLanding();
 }

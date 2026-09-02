@@ -37,6 +37,58 @@ function onboardedState(n = 1) {
 // précis (une passion du référentiel plat, par exemple) : le recopier dans le
 // test ferait diverger deux fixtures, le passer ici n'en garde qu'une.
 async function bootOnboarded(page, errors, nProfiles = 1, opts = {}) {
+  // ══════════════════════════════════════════════════════════════════════════
+  // ISOLATION DES PUBLICATIONS DISTANTES — PAR DÉFAUT, ET C'EST LE POINT
+  // ──────────────────────────────────────────────────────────────────────────
+  // `sansPublicationsDistantes` (plus bas) existait depuis le 2026-09-01, mais
+  // il fallait y PENSER : 3 suites sur 91 l'appelaient. Les 88 autres laissaient
+  // les vraies publications de production entrer dans leur fil, et leur verdict
+  // dépendait donc du contenu de la base — d'où « des échecs qui frappent des PR
+  // au hasard, sans rapport avec leur diff ». Le 2026-09-02, ce défaut a coûté
+  // une mise en ligne : `pastille-mood.spec.js` a échoué sur `main` (run 2413),
+  // et le job « Déploiement production », qui en dépend, a été SAUTÉ.
+  //
+  // Un remède qu'il faut se rappeler d'appliquer n'est pas un remède. Il est
+  // donc posé ICI, une fois, pour tout le monde — et il faut désormais une
+  // DEMANDE EXPLICITE pour s'en passer.
+  //
+  // ⚠️ AVANT `addInitScript` ET `goto`, ET C'EST LA SEULE POSITION CORRECTE :
+  // `bootOnboarded` fait lui-même la navigation, donc une route posée par
+  // l'appelant APRÈS lui ne protège que les chargements suivants, jamais le
+  // premier — celui qui rapporte la production.
+  //
+  // ⚠️ LA PORTÉE EST L'APPEL, PAS LE FICHIER. Une suite qui boote aussi par un
+  // helper maison (son propre `goto`) garde ce chemin-là exposé : il doit poser
+  // `sansPublicationsDistantes` lui-même. C'est le cas de `bootLegacy`
+  // (adr-009), `bootVierge` (feed-premier-rendu) et du `boot` d'aides-contextuelles,
+  // tous trois corrigés le même jour.
+  //
+  // ⚠️ CE QUE CETTE ROUTE NE COUVRE PAS, et qu'il ne faut pas croire couvert :
+  //   · le REALTIME. `app-08` s'abonne à `postgres_changes` INSERT sur `posts`
+  //     et injecte toute publication d'un autre auteur dans le fil
+  //     (`feedAddRealtimePost`). C'est du WebSocket, pas `/rest/v1/` : une vraie
+  //     publication tombant pendant un test passe malgré tout. Non coupé ici,
+  //     délibérément — `feed-realtime-course.spec.js` exerce ce canal.
+  //   · l'ÉTAT DÉJÀ PERSISTÉ. `_leanState` ne retire pas `supabasePosts` du blob
+  //     `localStorage`, et l'`addInitScript` ci-dessous n'écrase PAS un état
+  //     existant (c'est voulu, cf. plus bas). Un test qui naviguerait AVANT son
+  //     `bootOnboarded` ferait donc entrer les vraies publications par le
+  //     stockage, où aucune route ne peut plus rien. Aucun test ne le fait
+  //     aujourd'hui ; la chausse-trappe est réelle.
+  //   · les AUTRES TABLES lues au boot — `stories` (qui REMPLACE
+  //     `state.seed.stories`), `events` (qui fusionne et rappelle `renderIRL`),
+  //     `profiles`, `notifications`. Même maladie, même remède à venir : c'est
+  //     un chantier à part, non traité ici.
+  //
+  // ⚠️ `opts.sansIsolationDesPublications` est pour l'appelant qui gère le
+  // réseau LUI-MÊME. Playwright évalue les routes dans l'ORDRE INVERSE de leur
+  // enregistrement : sans cette porte, la route posée ici écraserait une
+  // barrière plus stricte posée avant l'appel. Cas réel : `ui-v3-passerelle`
+  // coupe TOUT `*.supabase.co` par `route.abort()` — sa requête `posts` serait
+  // devenue un `fulfill []`, donc une simulation différente de celle qu'elle
+  // mesure.
+  if (!opts.sansIsolationDesPublications) await sansPublicationsDistantes(page);
+
   if (errors) {
     page.on("pageerror", (e) => errors.js.push("pageerror: " + e.message));
     page.on("console", (m) => {

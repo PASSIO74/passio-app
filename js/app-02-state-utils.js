@@ -1752,7 +1752,37 @@ window.addEventListener("popstate", (e) => {
 });
 
 function toggleDevPanel() {
-  $("#devPanel").classList.toggle("active");
+  var panel = $("#devPanel");
+  if (!panel) return;
+  panel.classList.toggle("active");
+  if (panel.classList.contains("active")) { try { majSectionCompte(); } catch (e) {} }
+}
+
+/* Le panneau Paramètres est du balisage STATIQUE : ses deux entrées de compte
+   n'ont de sens qu'au regard de l'état de connexion, qui n'est connu qu'à
+   l'ouverture. Sans cette mise à jour, un visiteur du parcours de première
+   visite lisait « Se déconnecter » — sans effet utile pour lui, puisqu'il n'a
+   pas de compte — et ne trouvait NULLE PART comment se connecter à un compte
+   déjà créé. Défaut vécu le 2026-09-02 : « je n'arrive plus à me connecter
+   avec le compte qui était déjà créé avant ». */
+function majSectionCompte() {
+  var visiteur = false;
+  try { visiteur = !!(window.PassioFirstRun && PassioFirstRun.estVisiteur()); } catch (e) {}
+  var bascule = document.getElementById("settingsAuthSwitch");
+  if (bascule) {
+    bascule.textContent = visiteur
+      ? "🔑 J'ai déjà un compte — me connecter"
+      : "🔄 Se connecter avec un autre compte";
+  }
+  // ⚠️ ET TOUT CE QUI SUPPOSE UN COMPTE PART AVEC, pas seulement l'entrée qui a
+  // motivé ce correctif : « Se déconnecter » n'a rien à déconnecter, « Changer
+  // mon mot de passe » appelle `supa.auth.updateUser` sans session, et
+  // « Supprimer mon compte » propose d'effacer ce qui n'existe pas. Même classe
+  // de défaut que celui qu'on vient de corriger, au même endroit.
+  ["settingsLogout", "settingsChangePassword", "settingsDeleteAccount"].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el) el.style.display = visiteur ? "none" : "";
+  });
 }
 
 function toggleSettingsSection(el) {
@@ -2059,10 +2089,144 @@ function openLogoutConfirm() {
     <p style="font-size:13px;color:var(--muted);margin-bottom:16px;">Tu garderas ton compte et ton contenu. Tu pourras te reconnecter à tout moment.</p>\
     <div style="display:flex;gap:8px;">\
       <button class="btn ghost" onclick="closeModal()" style="flex:1;">Annuler</button>\
-      <button class="btn primary" onclick="closeModal();doLogout();" style="flex:1;background:#ef4444;">Se déconnecter</button>\
+      <button class="btn primary" onclick="closeModal();doLogout(\'signin\');" style="flex:1;background:#ef4444;">Se déconnecter</button>\
     </div>\
   ');
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   🔑 SE CONNECTER À UN COMPTE EXISTANT / CHANGER DE COMPTE  (2026-09-02)
+   ───────────────────────────────────────────────────────────────────────────
+   Le parcours de première visite (`js/first-run.js`, actif par défaut) fait
+   entrer un appareil SANS compte directement dans le fil : plus de landing,
+   donc plus de formulaire de connexion à l'écran. Le seul chemin vers ce
+   formulaire était le gate d'action engageante (« J'ai déjà un compte »), qu'il
+   faut déclencher par un like ou un commentaire — introuvable pour qui veut
+   simplement retrouver SON compte.
+
+   ⚠️ ET LA DÉCONNEXION NE SERT PAS DE SORTIE DE SECOURS, elle aggrave le
+   piège : `purgeAccountScopedData` efface `STATE_KEY` et `passio_uid`, donc au
+   rechargement `compteExistant()` rend `false` et l'appareil retombe dans le
+   parcours invité — sans jamais montrer l'écran de connexion. D'où l'INTENTION
+   ci-dessous, posée APRÈS la purge (elle survit donc au nettoyage) sur une clé
+   d'APPAREIL délibérément absente d'`ACCOUNT_SCOPED_KEYS`, et consommée une
+   seule fois par `boot()`.
+   ═══════════════════════════════════════════════════════════════════════════ */
+var AUTH_INTENT_KEY = "passio_auth_intent_v1";
+// ⚠️ HORODATÉE, ET C'EST INDISPENSABLE. Entre `setItem` et le rechargement il
+// s'écoule 1,2 s : une application fermée, un onglet tué ou un plantage dans
+// cette fenêtre laisserait la clé sur l'appareil POUR TOUJOURS, et le prochain
+// démarrage — le lendemain, ou pour quelqu'un d'autre sur un appareil partagé —
+// s'ouvrirait sur un mur de connexion au lieu du fil de découverte. Ce serait
+// exactement le contraire de « l'application est elle-même le pitch ».
+var AUTH_INTENT_TTL_MS = 10 * 60 * 1000;
+
+function poserIntentionAuth(mode) {
+  try { localStorage.setItem(AUTH_INTENT_KEY, JSON.stringify({ mode: mode || "signin", t: Date.now() })); } catch (e) {}
+}
+
+// Lit l'intention, l'EFFACE toujours, et ne rend son mode que si elle est
+// encore fraîche : une clé périmée doit disparaître, pas s'appliquer.
+function consommerIntentionAuth() {
+  var brut = null;
+  try { brut = localStorage.getItem(AUTH_INTENT_KEY); } catch (e) {}
+  if (!brut) return null;
+  try { localStorage.removeItem(AUTH_INTENT_KEY); } catch (e) {}
+  var o = null;
+  try { o = JSON.parse(brut); } catch (e) { o = null; }
+  if (!o || typeof o !== "object" || typeof o.t !== "number") return null;
+  if (Date.now() - o.t > AUTH_INTENT_TTL_MS) return null;
+  return o.mode === "signup" ? "signup" : "signin";
+}
+window.poserIntentionAuth = poserIntentionAuth;
+window.consommerIntentionAuth = consommerIntentionAuth;
+
+/* Ouvre le formulaire d'authentification, où qu'on se trouve dans l'app.
+   Renvoie `false` si le balisage d'onboarding est absent — l'appelant garde
+   alors la main plutôt que de laisser l'écran dans un état intermédiaire. */
+function openAuthScreen(mode) {
+  var onb = document.getElementById("onboarding");
+  if (!onb) return false;
+  try { closeModal(); } catch (e) {}
+  var panel = document.getElementById("devPanel");
+  if (panel) panel.classList.remove("active");
+  var landing = document.getElementById("landing");
+  if (landing) landing.classList.remove("active");
+
+  // ⚠️ UN SEUL MOTEUR D'OUVERTURE. `ouvrirAuth` (first-run.js) connaît déjà
+  // l'étape « splash », la remise à zéro d'`onbStepIdx` et la porte de sortie :
+  // le jour où le formulaire déménage, il n'y a qu'UN endroit à corriger. Le
+  // repli ci-dessous ne sert que si le module n'est pas chargé.
+  try {
+    if (window.PassioFirstRun) {
+      if (mode === "signup" && PassioFirstRun.allerInscription) PassioFirstRun.allerInscription("");
+      else if (PassioFirstRun.allerConnexion) PassioFirstRun.allerConnexion("deja_compte");
+      if (onb.classList.contains("active")) return true;
+    }
+  } catch (e) { if (typeof diagLog === "function") diagLog("openAuthScreen (module) : " + e); }
+
+  onb.classList.add("active");
+  // ⚠️ LE FORMULAIRE VIT SUR L'ÉTAPE « splash », PAS SUR « auth » : cette
+  // dernière existe encore dans le balisage mais porte `display:none!important`
+  // — l'ouvrir afficherait un écran VIDE, sans la moindre erreur. Et
+  // `onbStepIdx` doit repartir de 0, sinon le `onbNext()` d'une inscription
+  // réussie sauterait l'âge ou le prénom.
+  onbStepIdx = 0;
+  // ⚠️ CATCH QUI RAPPORTE, ET QUI RENONCE. Avaler l'erreur en rendant `true`
+  // laisserait `#onboarding` actif SANS aucune `.onb-step.active` : un écran
+  // vide, sans message en console, et l'application inatteignable. On rend
+  // `false` pour que l'appelant (`boot()`) reprenne son chemin normal.
+  try {
+    showOnbStep("splash");
+  } catch (e) {
+    if (typeof diagLog === "function") diagLog("openAuthScreen : showOnbStep a échoué — " + e);
+    onb.classList.remove("active");
+    return false;
+  }
+  try { switchAuthTab(mode === "signup" ? "signup" : "signin"); }
+  catch (e) { if (typeof diagLog === "function") diagLog("openAuthScreen : switchAuthTab — " + e); }
+  // Porte de sortie : l'onboarding est un écran plein SANS retour. En mode
+  // invité, first-run.js sait poser son « ← Continuer à explorer » ; sans elle,
+  // quelqu'un qui change d'avis est enfermé dans le formulaire.
+  try {
+    if (window.PassioFirstRun && PassioFirstRun.actif() && PassioFirstRun.poserSortieExploration) {
+      PassioFirstRun.poserSortieExploration();
+    }
+  } catch (e) {}
+  return true;
+}
+window.openAuthScreen = openAuthScreen;
+
+/* Entrée « Compte » du panneau Paramètres. Deux situations, un seul bouton :
+   • visiteur sans compte  → rien à déconnecter, on ouvre la connexion ;
+   • compte connecté       → confirmation, puis déconnexion AVEC intention de
+                             reconnexion (l'écran de connexion s'ouvre après le
+                             rechargement). */
+function openAccountSwitch() {
+  // ⚠️ Fermé ICI, pas seulement par le `onclick` du bouton : tout appel
+  // programmatique laisserait sinon le panneau Paramètres par-dessus l'écran
+  // d'authentification.
+  var panneau = document.getElementById("devPanel");
+  if (panneau) panneau.classList.remove("active");
+  var visiteur = false;
+  try { visiteur = !!(window.PassioFirstRun && PassioFirstRun.estVisiteur()); } catch (e) {}
+  if (visiteur) {
+    // Aucun compte sur cet appareil : rien à déconnecter, on ouvre le
+    // formulaire EXISTANT (aucun second système d'auth).
+    openAuthScreen("signin");
+    return;
+  }
+  openModal('\
+    <div class="modal-handle"></div>\
+    <div class="modal-title">🔄 Se connecter avec un autre compte</div>\
+    <p style="font-size:13px;color:var(--muted);margin-bottom:16px;">Tu vas être déconnecté de ce compte, puis l\'écran de connexion s\'ouvrira. Ce compte et tout son contenu restent intacts — tu pourras y revenir quand tu veux.</p>\
+    <div style="display:flex;gap:8px;">\
+      <button class="btn ghost" onclick="closeModal()" style="flex:1;">Annuler</button>\
+      <button class="btn primary" onclick="closeModal();doLogout(\'signin\');" style="flex:1;">Continuer</button>\
+    </div>\
+  ');
+}
+window.openAccountSwitch = openAccountSwitch;
 
 // Caches persistants LIÉS AU COMPTE (jamais au device). Ils DOIVENT être purgés
 // à la déconnexion, sinon le compte suivant connecté DANS LE MÊME NAVIGATEUR
@@ -2093,6 +2257,10 @@ var ACCOUNT_SCOPED_KEYS = [
   //     un contournement en un clic.
   //   passio_device_id, passio_telemetry, passio_pwa_*, passio_logo_variant,
   //     passio_debug — propres à l'appareil, sans lien avec un compte.
+  //   passio_auth_intent_v1 — l'intention de reconnexion, posée APRÈS cette
+  //     purge par `doLogout` et consommée par `boot()`. L'ajouter ici
+  //     refermerait le piège qu'elle ouvre : la déconnexion redeviendrait un
+  //     aller simple vers le fil invité, sans écran de connexion.
 ];
 
 // Efface TOUTE trace du compte courant côté device (localStorage + IndexedDB).
@@ -2276,17 +2444,65 @@ function attribuerEtatLocalAuCompte(uidCompte) {
 }
 window.attribuerEtatLocalAuCompte = attribuerEtatLocalAuCompte;
 
-async function doLogout() {
+/* Ferme la session CÔTÉ APPAREIL en retirant le jeton que le SDK relit au
+   démarrage. À n'appeler qu'en DERNIER RECOURS, quand `supa.auth.signOut()` n'a
+   pas abouti (hors ligne, jeton non révocable) : pour supabase-js, ce jeton EST
+   la session, donc le laisser en place fait rouvrir le compte quitté au
+   prochain démarrage — et `ACCOUNT_SCOPED_KEYS` ne le connaît pas, puisqu'il
+   appartient au SDK et non à l'application.
+
+   ⚠️ La clé est nommée d'après la RÉFÉRENCE du projet Supabase
+   (`sb-<ref>-auth-token`) : on la retrouve par motif plutôt qu'en la recopiant
+   en dur, pour qu'un changement de projet ne laisse pas ici une clé fantôme
+   qui ne correspondrait plus à rien. Ne détruit rien côté serveur : le compte
+   reste intact, seule sa session locale est fermée. */
+function purgerJetonAuthLocal() {
+  try {
+    var aPurger = [];
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (k && /^sb-.+-auth-token$/.test(k)) aPurger.push(k);
+    }
+    aPurger.forEach(function (k) { localStorage.removeItem(k); });
+    return aPurger.length;
+  } catch (e) { return 0; }
+}
+window.purgerJetonAuthLocal = purgerJetonAuthLocal;
+
+async function doLogout(intention) {
   // Flush immédiat : pousse les changements en attente (debounce 2500ms non encore
   // déclenché) vers Supabase AVANT la déconnexion. Sans ça, toute modification faite
   // dans les 2,5 s précédant le logout est perdue à la reconnexion.
   try { if (typeof supaSaveUserState === "function") await supaSaveUserState(); } catch(e) {}
-  try { await supa.auth.signOut(); } catch(e) {}
+  // ⚠️ LE SDK NE LÈVE PAS SUR UN REFUS : sans lire `{ error }`, une déconnexion
+  // qui ÉCHOUE (hors ligne, jeton non révocable) passait pour réussie — la
+  // session survivait au rechargement et la personne se retrouvait dans le
+  // compte qu'elle venait de quitter, alors que tout son cache local, lui,
+  // avait bien été purgé. On ferme alors la session côté appareil.
+  var echecSignOut = false;
+  try {
+    var so = await supa.auth.signOut();
+    if (so && so.error) echecSignOut = true;
+  } catch(e) { echecSignOut = true; }
+  if (echecSignOut) { try { purgerJetonAuthLocal(); } catch (e) {} }
   discardPendingStateSave();
   // ⚠️ Isolation inter-comptes : purge complète des caches liés au compte, y compris
   // les conversations en IndexedDB (sinon fuite de messages privés vers le compte suivant).
   try { await purgeAccountScopedData(); } catch(e) {}
-  toast("👋 Déconnecté — à bientôt !");
+  // ⚠️ APRÈS la purge, JAMAIS avant : `purgeAccountScopedData` ne connaît que les
+  // clés de compte, mais un `removeItem` posé avant celle-ci serait de toute façon
+  // suivi d'une écriture perdue. L'intention est une clé d'APPAREIL (absente
+  // d'`ACCOUNT_SCOPED_KEYS`), consommée une seule fois par `boot()`.
+  //
+  // ⚠️ L'INTENTION SUIT LE PARAMÈTRE, elle n'est pas posée d'office. Une
+  // déconnexion VOLONTAIRE (les deux boutons des Paramètres) demande l'écran de
+  // connexion : sans ça, le rechargement repart sur un appareil « sans compte »
+  // et le parcours de première visite le renvoie dans le fil invité, sans le
+  // moindre formulaire. Mais tout appelant FUTUR — une suppression de compte,
+  // une expiration de session — hériterait de cet écran sans l'avoir demandé :
+  // `doLogout()` sans argument reste donc l'ancien comportement, à l'octet près.
+  if (intention === "signin") poserIntentionAuth("signin");
+  toast(intention === "signin" ? "🔄 Déconnecté — connecte-toi avec ton autre compte" : "👋 Déconnecté — à bientôt !");
   setTimeout(() => location.reload(), 1200);
 }
 
