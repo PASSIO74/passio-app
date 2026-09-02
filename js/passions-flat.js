@@ -215,6 +215,15 @@
     return { schema: 1, version: "repli", passions: lignes, related: [], canoniques: [] };
   }
 
+  // ⚠️ UN ÉCHEC NE SE MÉMOÏSE PAS (2026-09-02, revue adversariale). Tant que
+  // `charger()` ne partait qu'au geste explicite d'ouverture du sélecteur, un
+  // fetch raté ne coûtait qu'un repli hors ligne à ce geste-là. Depuis qu'il part
+  // TOUT SEUL au démarrage, un réseau coupé au mauvais moment — typiquement juste
+  // après un déploiement, quand le service worker vient de vider son cache et que
+  // `data/passions-v1.json` n'y est pas pré-caché — verrouillait le repli pour
+  // TOUTE la session : la promesse résolue restait en cache, et même ouvrir le
+  // sélecteur ne retentait rien. On relâche donc la mémoïsation quand le repli a
+  // servi, pour qu'un appel ultérieur reparte sur le réseau.
   function charger() {
     if (promesse) return promesse;
     promesse = new Promise(function (resoudre) {
@@ -225,6 +234,7 @@
         fini = true;
         try { DONNEES = construireIndex(paquet); DONNEES.horsLigne = !!horsLigne; }
         catch (e) { journal("index", e); DONNEES = construireIndex(repliHorsLigne()); DONNEES.horsLigne = true; }
+        if (DONNEES && DONNEES.horsLigne) promesse = null;   // retentable
         resoudre(DONNEES);
       }
       try {
@@ -676,6 +686,21 @@
 
   // Les identifiants que l'application VA rendre : ceux du fil et ceux des
   // profils-passion, archivés compris (le rail du Profil les montre).
+  // ⚠️ « CE QUI EST À L'ÉCRAN » N'EST PAS « CE QUI EST À MOI » (revue du
+  // 2026-09-02). La première version ne regardait que MES passions — sélection du
+  // fil et profils. Or une carte du fil nomme la passion de SON AUTEUR : suivre
+  // quelqu'un qui publie dans une passion du référentiel suffisait à voir
+  // « ✨ Passion » sur sa carte, sans que rien ne déclenche jamais le
+  // chargement. On regarde donc aussi les publications que le fil va rendre.
+  //
+  // ⚠️ ET SYMÉTRIQUEMENT, ON EXCLUT LES PASSIONS ARCHIVÉES : rangées par le lot
+  // UI-8, elles ne sont peintes par aucune surface par défaut. Les compter
+  // faisait télécharger 160 Ko à chaque démarrage pour un nom que personne ne lit.
+  //
+  // ⚠️ Borné à 40 publications : c'est au-delà de ce que `renderFeed` peint tout
+  // de suite (20 cartes), et cette fonction est appelée au plus quelques fois.
+  var POSTS_INSPECTES = 40;
+
   function idsAAfficher() {
     var s = etatApp();
     if (!s) return [];
@@ -685,7 +710,17 @@
     } catch (e) {}
     try {
       var profils = (s.user && Array.isArray(s.user.profiles)) ? s.user.profiles : [];
-      profils.forEach(function (pr) { if (pr && pr.passion) ids.push(pr.passion); });
+      profils.forEach(function (pr) {
+        if (pr && pr.passion && !pr.archived) ids.push(pr.passion);
+      });
+    } catch (e) {}
+    try {
+      if (typeof allFeedPosts === "function") {
+        var posts = allFeedPosts() || [];
+        for (var i = 0; i < posts.length && i < POSTS_INSPECTES; i++) {
+          if (posts[i] && posts[i].passion) ids.push(posts[i].passion);
+        }
+      }
     } catch (e) {}
     return ids;
   }
@@ -706,9 +741,23 @@
       if (_essaisRepeint++ < ESSAIS_REPEINT) setTimeout(repeindreLesRails, 400);
       return;
     }
+    // ⚠️ TROIS CACHES, PAS UN. Chaque surface a son propre garde de non-régression,
+    // et en oublier un laisse ses bulles génériques pour toute la session, avec un
+    // référentiel pourtant chargé :
+    //   • `#profileStrip._lastHtml`      — le rail du Fil (app-06) ;
+    //   • `window._feedDomSig`           — le guard no-op de `renderFeed` ;
+    //   • `#v9ProfilePassions[data-v9-sig]` — le rail du Profil (app-06:1705),
+    //     dont la signature est calculée sur les IDENTIFIANTS et ignore donc
+    //     complètement les libellés : sans cette ligne, `renderProfilePassionRail`
+    //     sortait en `return` anticipé et gardait ses « ✨ Passion » (constat
+    //     majeur de la revue du 2026-09-02).
     try {
       var rail = document.getElementById("profileStrip");
       if (rail) rail._lastHtml = null;
+    } catch (e) {}
+    try {
+      var rail9 = document.getElementById("v9ProfilePassions");
+      if (rail9) rail9.removeAttribute("data-v9-sig");
     } catch (e) {}
     try { window._feedDomSig = null; } catch (e) {}
     try { if (typeof renderProfileStrip === "function") renderProfileStrip(); } catch (e) { journal("repeint_fil", e); }
@@ -718,26 +767,59 @@
 
   var ESSAIS_VERDICT = 20;          // 20 × 500 ms = 10 s
   var _essaisVerdict = 0;
-  var _besoinEvalue = false;
+  var _chargementLance = false;
+  var _chaineArmee = false;
+
+  // ⚠️ « RIEN NE MANQUE » N'EST PAS UNE RÉPONSE DÉFINITIVE (revue du 2026-09-02).
+  // La première version figeait le verdict au premier passage. Or l'ordre réel de
+  // `boot()` le rend prématuré : sur un appareil neuf, réinstallé, ou qui vient
+  // d'être purgé par `adopterCompteConnecte` — donc précisément le parcours de ce
+  // lot — `supaLoadUserState` sort par sa branche « pas de ligne » et son
+  // `finally` pose `_etatCompteCharge` ALORS QUE `state.user.profiles` est encore
+  // vide ; `boot()` ne reconstruit les profils qu'APRÈS. La question était donc
+  // posée sur un compte sans passions, répondait « rien ne manque », et se figeait
+  // pour la session : les bulles restaient génériques jusqu'au rechargement.
+  //
+  // Seule la décision de CHARGER est définitive (`_chargementLance`) ; un « rien
+  // ne manque » est réexaminé, à cadence décroissante et borné. Le coût est nul
+  // quand il n'y a rien à charger : on ne fait que relire deux tableaux.
+  var RELECTURES = [800, 1600, 3000, 6000];
+  var _relecture = 0;
 
   function evaluerBesoinDeNoms() {
-    if (_besoinEvalue || !actif() || pret()) return;
+    _chaineArmee = false;
+    if (_chargementLance || !actif() || pret()) return;
     var s = etatApp();
     // On attend l'application ET le verdict d'hydratation. L'attente est bornée
     // des deux côtés : son épuisement fait trancher sur ce qu'on a, jamais
     // renoncer en silence.
     if ((!s || window._etatCompteCharge !== true) && _essaisVerdict < ESSAIS_VERDICT) {
       _essaisVerdict++;
-      setTimeout(evaluerBesoinDeNoms, 500);
+      planifier(500);
       return;
     }
     if (!s) return;               // l'application n'est jamais venue : rien à nommer
-    _besoinEvalue = true;
-    if (!ilManqueUnNom()) return; // tout est nommé par le socle : on ne charge RIEN
+    if (!ilManqueUnNom()) {
+      // Rien à nommer POUR L'INSTANT — on repassera, sans insister.
+      if (_relecture < RELECTURES.length) planifier(RELECTURES[_relecture++]);
+      return;
+    }
+    _chargementLance = true;
     try {
       charger().then(function () { _essaisRepeint = 0; repeindreLesRails(); })
                .catch(function (e) { journal("noms_manquants", e); });
     } catch (e) { journal("noms_manquants_sync", e); }
+  }
+
+  // ⚠️ UNE SEULE CHAÎNE EN VOL. En production, `passions-flat.js` est inliné et
+  // s'exécute pendant l'analyse du document : le listener `DOMContentLoaded` ET
+  // celui de `passio:app-ready` appellent tous deux `amorcer()`. Sans ce verrou,
+  // deux chaînes de `setTimeout` partageaient le même compteur et le budget de
+  // 10 s n'en valait plus que 5.
+  function planifier(delai) {
+    if (_chaineArmee) return;
+    _chaineArmee = true;
+    setTimeout(evaluerBesoinDeNoms, delai);
   }
 
   function amorcer() {

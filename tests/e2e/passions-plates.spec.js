@@ -17,7 +17,7 @@
 // d'aperçu invisible du 2026-08-28 se produisent.
 // ══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
-const { bootOnboarded } = require("./app-helper");
+const { bootOnboarded, sansPublicationsDistantes } = require("./app-helper");
 const referentiel = require("../../scripts/referentiel-passions.js");
 
 const APERCU = "?passio_preview=flat-passions-v1";
@@ -528,16 +528,81 @@ test.describe("le modèle et les garde-fous", () => {
     // (musique/sport/cuisine). Rien à nommer ⇒ rien à charger, et l'invariant
     // des 160 Ko tient — y compris après l'hydratation, qui est le moment où la
     // question se pose.
+    // ⚠️ LE FIL DOIT ÊTRE À NOUS, SINON CE TEST NE MESURE PAS CE QU'IL CROIT.
+    // Depuis que la détection regarde aussi les publications que le fil va
+    // peindre (et c'est nécessaire : une carte nomme la passion de SON auteur),
+    // une seule publication de production portant une passion du référentiel
+    // déclencherait le chargement — légitimement. Le test deviendrait alors
+    // rouge au gré du CONTENU DE LA PROD, exactement la maladie que #249 et
+    // #252 ont soignée. On coupe donc la lecture réseau des publications.
+    await sansPublicationsDistantes(page);
     await bootOnboarded(page, null, 3);
     // ⚠️ ON ATTEND QUE LE VERDICT SOIT RENDU, sinon on mesurerait un « pas
     // encore chargé » qui ne prouve rien. `boot()` pose `_etatCompteCharge`
     // même sans session — c'est ce qui rend l'attente courte et déterministe.
     await page.waitForFunction(() => window._etatCompteCharge === true, null, { timeout: 20000 });
-    await page.waitForTimeout(2500);   // le module tranche dans les 500 ms qui suivent
+    // Le module réexamine « rien ne manque » à cadence décroissante
+    // (800/1600/3000/6000 ms) : on couvre toute la série avant de conclure.
+    await page.waitForTimeout(12000);
     const etat = await page.evaluate(() => window.PassioPassions._etat());
     expect(etat.actif).toBe(true);
     expect(etat.pret, "le référentiel a été chargé alors que rien ne manquait").toBe(false);
     expect(etat.taille).toBe(0);
+  });
+
+  // ⚠️ CONSTAT MAJEUR DE LA REVUE : la détection ne regardait QUE mes passions.
+  // Une carte du fil nomme la passion de SON AUTEUR — suivre quelqu'un qui
+  // publie dans une passion du référentiel suffisait à voir « ✨ Passion » sur
+  // sa carte, sans que rien ne déclenche jamais le chargement.
+  test("⑰ quinquies — la passion d'AUTRUI dans le fil déclenche le chargement et s'affiche nommée", async ({ page }) => {
+    await sansPublicationsDistantes(page);
+    await bootOnboarded(page, null, 1);          // mes passions : socle uniquement
+    await page.evaluate(() => {
+      // Le fil est à nous : les QUATRE tableaux sont vidés avant le semis.
+      state.seed.posts = [{
+        id: "p_escalade_autrui", authorId: "u_lea", passion: "sport-escalade",
+        mood: "all", text: "Voie ouverte ce matin.", createdAt: Date.now() - 3600000,
+        likes: 0, comments: [],
+      }];
+      state.userPosts = []; state.supabasePosts = [];
+      window._feedExtraPosts = [];
+      setFeedPassions(["sport-escalade"]);
+      saveState(); goTo("feed"); renderFeed();
+    });
+    // Le nom arrive sans le moindre geste : c'est tout l'objet du correctif.
+    await page.waitForFunction(
+      () => (document.getElementById("feedList") || {}).textContent?.includes("Escalade"),
+      null, { timeout: 25000 }
+    );
+    const fil = await page.locator("#feedList").innerText();
+    expect(fil).toContain("Escalade");
+  });
+
+  // ⚠️ SECOND CONSTAT MAJEUR : le rail du Profil a son PROPRE garde,
+  // `data-v9-sig`, calculé sur les identifiants et aveugle aux libellés. Sans
+  // l'invalider, `renderProfilePassionRail` sortait en `return` anticipé et
+  // gardait ses bulles génériques pour toute la session.
+  test("⑰ sexies — le rail du PROFIL est repeint lui aussi, malgré sa signature", async ({ page }) => {
+    const etat = {
+      onboarded: true, landingSeen: true, tourSeen: true,
+      user: {
+        name: "Audit QA", birthYear: 1995, isMinor: false, currentProfileId: "pp_0",
+        profiles: [{ id: "pp_0", name: "Audit QA", passion: "sport-escalade", emoji: "🧗", bio: "", color: "#7c3aed", createdAt: 1 }],
+        drafts: [], likedPosts: [], joinedEvents: [], seenStories: [], customPassions: [],
+        following: [], general: { username: "Audit QA" },
+      },
+      userPosts: [], userEvents: [], notifications: [],
+      currentMood: "all", selectedFeedPassions: ["sport-escalade"],
+    };
+    await sansPublicationsDistantes(page);
+    await bootOnboarded(page, null, 1, { state: etat });
+    await page.evaluate(() => goTo("profiles"));
+    await page.waitForFunction(
+      () => (document.getElementById("v9ProfilePassions") || {}).textContent?.includes("Escalade"),
+      null, { timeout: 25000 }
+    );
+    const rail = await page.locator("#v9ProfilePassions").innerText();
+    expect(rail).toContain("Escalade");
   });
 
   test("⑱ le pliage du navigateur est celui du référentiel construit", async ({ page }) => {
