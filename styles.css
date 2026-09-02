@@ -10901,3 +10901,161 @@ html:not(.passio-first-run) .fr-only { display: none !important; }
 @media (max-width: 359px) {
   :root.passio-ui-4a5 #v4a5Passions .msg-filter-tiles { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   UI-4A5 — LE PANNEAU FILTRES TIENT SUR UN ÉCRAN (2026-09-02)
+   Demande de Benjamin après essai réel : « repositionne les onglets dans la
+   page filtre de Rencontrer, les onglets sont trop gros, mal ordonnés ; je
+   voudrais que tout tienne sur la page sans descendre. »
+
+   Mesuré AVANT, à 390 × 844 : le panneau faisait 1 018 px pour 714 px de zone
+   visible — il fallait descendre pour atteindre « Voir les activités », donc
+   pour valider ses choix. Trois causes, dans cet ordre d'importance :
+     ① le volet Date était OUVERT d'office (337 px à lui seul, calendrier +
+        résumé) alors que Distance et Horaire, eux, étaient repliés ;
+     ② les onglets Date / Distance / Horaire faisaient 92 px de haut, deux fois
+        la hauteur des cases voisines (56 px) — d'où le « mal ordonné » ;
+     ③ « Autour de moi » et « Mes événements » formaient DEUX sous-sections
+        titrées, l'une avec une case, l'autre avec deux : trois cases sur trois
+        lignes de gabarits différents.
+
+   Ce que ce bloc change, et rien d'autre : des TAILLES et une GRILLE. Aucune
+   case ne disparaît, aucun moteur n'est touché, et la coupure
+   `passio_ui_4a5="0"` rend l'écran d'avant à la lettre (tout est ancré à
+   `:root.passio-ui-4a5`).
+
+   ⚠️ Le repli des volets Date / Distance / Horaire est fait en JS
+   (`js/ui-v4a5-filtres.js`, `window._irlFilterTab = "aucun"`), pas ici : les
+   volets sont montrés par une CLASSE que `_syncIrlFilterTabs()` repose à
+   chaque `renderIRL()`. Les masquer en CSS aurait laissé le moteur croire
+   qu'un volet est ouvert, et la pastille d'onglet aurait menti.
+
+   ⚠️ Ce bloc doit rester le DERNIER du fichier : il réécrit des règles du bloc
+   UI-4A5 ci-dessus à spécificité égale, et ne gagne que par la position.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── ① Une seule hauteur de case, pour toutes ──────────────────────────────
+   56 → 44 px. C'est la cible tactile minimale, et c'est ce qui rend le panneau
+   régulier : intentions, ville, mes activités et bulles de passion partagent
+   désormais la MÊME boîte. Les volets Date/Distance/Horaire gardent leur peau
+   d'origine (demande du 2026-08-31 : « sauf Date, Distance, Horaire, laisse
+   comme ça ») — seule leur TAILLE suit la règle commune. */
+:root.passio-ui-4a5 .v4a5-intents .v4a0-chip,
+:root.passio-ui-4a5 #v4a5Outils .ctx-item,
+:root.passio-ui-4a5 #v4a5Passions .msg-tile {
+  min-height: 44px;
+  padding: 6px 8px;
+  border-radius: 12px;
+  font-size: 12.5px;
+}
+:root.passio-ui-4a5 .v4a5-intents .v4a0-chip .v4a0-chip-label,
+:root.passio-ui-4a5 #v4a5Outils .ctx-item .ctx-item-label,
+:root.passio-ui-4a5 #v4a5Passions .msg-tile .msg-tile-label {
+  font-size: 12.5px;
+  line-height: 1.15;
+}
+/* À trois colonnes, un libellé long ne doit pas POUSSER sa case : il revient à
+   la ligne, au plus deux fois. ⚠️ Pas d'ellipse ici : mesuré à 390 px, elle
+   sortait « Choisir une … », « Mes évène… » et « Mes inscript… » — trois cases
+   dont plus aucune ne dit ce qu'elle fait. Deux lignes de 12 px tiennent dans
+   les 44 px de la case. `min-width: 0` sur le corps, sans quoi la boîte flex
+   refuse de rétrécir sous la largeur de son texte. */
+:root.passio-ui-4a5 #v4a5Outils .ctx-item .ctx-item-label,
+:root.passio-ui-4a5 #v4a5Passions .msg-tile .msg-tile-label {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+/* ── ② Les bulles de passion passent à trois colonnes ─────────────────────
+   Quatre tuiles (trois passions + « Autres ») tenaient sur deux lignes de deux ;
+   elles tiennent sur deux lignes de trois, et la seconde ligne ne réapparaît
+   qu'au-delà de trois passions. */
+:root.passio-ui-4a5 #v4a5Passions .msg-filter-tiles {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+:root.passio-ui-4a5 #v4a5Passions .msg-tile .msg-tile-badge {
+  top: 4px;
+  right: 4px;
+}
+
+/* ── ③ Ville et « mes activités » : une seule rangée de trois ──────────────
+   `display: contents` fait tomber les deux sous-sections et leurs conteneurs
+   d'items : les trois cases deviennent les enfants directs de la grille de
+   `#v4a5Outils`, donc trois colonnes d'égale largeur alignées sur les bulles
+   du dessus. Les titres des sous-sections sont MASQUÉS (jamais retirés : le
+   kill switch les rend) — chaque case porte déjà son libellé en toutes
+   lettres, les répéter coûtait deux lignes pour rien.
+   ⚠️ Borné à `#v4a5Outils` : `.ctx-section` est le composant commun des outils
+   contextuels, servi dans le dialogue des autres écrans. */
+:root.passio-ui-4a5 #v4a5Outils {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+:root.passio-ui-4a5 #v4a5Outils > .ctx-section,
+:root.passio-ui-4a5 #v4a5Outils .ctx-section-items {
+  display: contents;
+}
+:root.passio-ui-4a5 #v4a5Outils .ctx-section-title { display: none; }
+
+/* ── ④ Les trois onglets de volet redeviennent des cases comme les autres ──
+   92 px et une icône de 26 px empilée au-dessus du mot : c'était la pièce la
+   plus grosse du panneau, pour trois boutons qui ne font qu'ouvrir un volet.
+   Ils passent à 44 px, icône À CÔTÉ du mot. Leurs couleurs ne changent pas. */
+:root.passio-ui-4a5 #v4a5Avance .irl-ftabs {
+  grid-auto-rows: 44px;
+  margin-bottom: 0;
+}
+:root.passio-ui-4a5 #v4a5Avance .irl-ftab {
+  flex-direction: row;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 12px;
+  border-width: 1px;
+  font-size: 12.5px;
+}
+:root.passio-ui-4a5 #v4a5Avance .irl-ftab svg { width: 17px; height: 17px; }
+:root.passio-ui-4a5 #v4a5Avance .irl-ftab-dot { top: 6px; right: 6px; }
+/* Un volet OUVERT se décolle de ses onglets, et rend sa marge basse. */
+:root.passio-ui-4a5 #v4a5Avance .irl-fpane.on { margin-top: 12px; }
+
+/* Le calendrier reste ouvrable d'un tap : compacté pour qu'ouvert, il tienne
+   encore. 40 → 34 px par ligne, soit six lignes de moins de hauteur. */
+:root.passio-ui-4a5 #v4a5Avance .irl-cal { padding: 8px 8px 10px; border-radius: 14px; }
+:root.passio-ui-4a5 #v4a5Avance .irl-cal-grid { grid-auto-rows: 34px; }
+:root.passio-ui-4a5 #v4a5Avance .irl-cal-head { margin-bottom: 6px; }
+:root.passio-ui-4a5 #v4a5Avance .irl-cal-nav { width: 28px; height: 28px; font-size: 16px; }
+:root.passio-ui-4a5 #v4a5Avance .irl-fsum { margin-top: 8px; padding: 7px 10px; }
+
+/* ── ⑤ Les respirations ────────────────────────────────────────────────────
+   Les titres de section et les écarts entre sections étaient calibrés pour un
+   dialogue qu'on faisait défiler ; ici chaque ligne gagnée est une ligne qu'on
+   n'a pas à descendre. */
+:root.passio-ui-4a5 .v4a5-panneau .ctx-section-title { margin-bottom: 6px; }
+:root.passio-ui-4a5 .v4a5-panneau > .ctx-section,
+:root.passio-ui-4a5 .v4a5-panneau > .v4a5-outils { margin-top: 12px; }
+:root.passio-ui-4a5 .v4a5-panneau > .v4a5-section:first-child,
+:root.passio-ui-4a5 .v4a5-panneau > .v4a5-outils:first-child { margin-top: 0; }
+:root.passio-ui-4a5 .v4a5-pied { margin: 12px 0 4px; }
+:root.passio-ui-4a5 .v4a5-pied .btn { min-height: 44px; padding-block: 0; }
+
+/* Sous 360 px, les trois colonnes redeviennent deux : à ~100 px de large, un
+   libellé de passion n'est plus qu'une ellipse. Les intentions, elles, passent
+   déjà à une colonne par la règle du bloc ci-dessus. */
+@media (max-width: 359px) {
+  :root.passio-ui-4a5 #v4a5Passions .msg-filter-tiles,
+  :root.passio-ui-4a5 #v4a5Outils { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* Le libellé d'une case « outils » est le plus long du panneau (« Mes
+   inscriptions ») : il lui faut la largeur ENTIÈRE de sa case pour que
+   l'ellipse ait un point d'appui — un `text-overflow` sur une boîte flex qui
+   se dimensionne sur son contenu ne coupe jamais rien. */
+:root.passio-ui-4a5 #v4a5Outils .ctx-item .ctx-item-body { width: 100%; }
+:root.passio-ui-4a5 #v4a5Outils .ctx-item .ctx-item-label { font-size: 12px; }
