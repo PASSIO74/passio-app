@@ -1944,7 +1944,12 @@
     /* Popover du menu ⋯ (créé en JS, ancré au bouton) */
     .profile-dots-menu {
       position: fixed;
-      z-index: 1200;
+      /* ⚠️ 10002 et non 1200 : depuis le 2026-09-02 ce menu s'ouvre aussi
+         depuis une MODALE (les ⋯ du profil visité), et `.modal-backdrop` est à
+         10001 — à 1200 il était dans le DOM et INVISIBLE, derrière la modale.
+         Il est appendu à `document.body` et se referme au premier clic ou
+         défilement : rien ne reste au-dessus de l'écran. */
+      z-index: 10002;
       min-width: 210px;
       background: var(--bg-card);
       border: 1px solid var(--border);
@@ -5745,7 +5750,13 @@
       display: flex; flex-direction: column;
       transform: translateX(100%);
       transition: transform 280ms cubic-bezier(0.4,0,0.2,1);
-      will-change: transform;
+      /* ⚠️ PAS de `will-change: transform` ici. Il promeut la couche en
+         PERMANENCE alors que le panneau passe l'essentiel du temps hors champ,
+         découpé par l'`overflow:hidden` de `.app-shell` : sur Android, les tuiles
+         de la couche revenaient blanches à l'entrée et n'étaient re-rasterisées
+         qu'au premier toucher (« les messages ne s'affichent qu'après avoir
+         retapé sur l'écran »). La transition promeut déjà la couche le temps de
+         l'animation, ce qui est exactement la durée où c'est utile. */
       overflow: hidden;
       max-height: 100vh;
       max-height: var(--app-vh, 100svh);

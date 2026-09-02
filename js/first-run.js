@@ -7,24 +7,29 @@
    comprend la valeur du produit en s'en servant, et ne crée un compte qu'au
    moment où il tente une action engageante.
 
-   ── DRAPEAU ────────────────────────────────────────────────────────────────
-       ?passio_preview=first-run-v1                → active (et persiste, cf. ①)
-       localStorage.passio_first_run_experience_v1 = "1"  → active
+   ── DRAPEAU : ACTIF PAR DÉFAUT depuis le 2026-09-01 ────────────────────────
+       (rien)                                            → ACTIF
        localStorage.passio_first_run_experience_v1 = "0"  → coupure prioritaire
        window.PASSIO_FIRST_RUN_V1 = false                → coupure en mémoire
 
-   Défaut : COUPÉ. Drapeau à false ⇒ landing + onboarding + tour historiques,
-   à l'octet près : ce module n'écrit alors rien, n'observe rien, et
-   `entreeDirecte()` rend `false` pour que `boot()` appelle `showLanding()`.
+   Le drapeau ne sait plus qu'ENLEVER — même patron qu'UI-3A et les lots UI-4 :
+   aucune valeur positive n'active, et rien n'est écrit dans `localStorage`.
+   Coupé ⇒ landing + onboarding + tour historiques, à l'octet près : ce module
+   n'écrit alors rien, n'observe rien, et `entreeDirecte()` rend `false` pour
+   que `boot()` appelle `showLanding()`.
 
-   ① ⚠️ POURQUOI L'APERÇU EST PERSISTÉ, contrairement aux lots UI-3→UI-8.
-   Ces lots-là sont ACTIFS par défaut et leur drapeau ne sait qu'ENLEVER : rien
-   à persister. Ici c'est l'inverse — le parcours est coupé par défaut, et il
-   traverse une inscription. La confirmation d'e-mail (SMTP Brevo, 2026-08-30)
-   ramène la personne par un LIEN NEUF, donc sans le paramètre d'aperçu : sans
-   persistance, elle terminerait son inscription hors du parcours qu'elle
-   testait. La coupure explicite "0" reste prioritaire tant qu'on ne repasse
-   pas le paramètre.
+   ⚠️ UN COMPTE EXISTANT N'ENTRE JAMAIS DANS CE PARCOURS, drapeau actif compris :
+   `entreeDirecte()` sort sur sa garde `compteExistant()`. Le basculement ne
+   change donc RIEN pour qui possède déjà un compte — il ne change la porte
+   d'entrée que pour un appareil qui n'en a aucun.
+
+   ⚠️ LE PARAMÈTRE `?passio_preview=first-run-v1` NE DÉCIDE PLUS RIEN, et sa
+   persistance a été RETIRÉE avec lui. Elle existait pour une raison précise,
+   qui a disparu avec le basculement : le parcours traverse une inscription, et
+   la confirmation d'e-mail (SMTP Brevo, 2026-08-30) ramène la personne par un
+   LIEN NEUF, donc sans le paramètre — sans persistance, elle aurait terminé son
+   inscription hors du parcours qu'elle testait. Le défaut étant désormais
+   « actif », ce lien neuf tombe sur le parcours de toute façon.
 
    ── CE QUE CE MODULE NE FAIT JAMAIS ────────────────────────────────────────
    • aucune écriture Supabase en mode invité — ni `signInAnonymously` (le
@@ -52,38 +57,34 @@
   var CLE_PREFS     = "passio_first_run_v1";
   var VERSION_PREFS = 1;
   var CLASSE_RACINE = "passio-first-run";
-  var APERCUS       = { "first-run-v1": 1, "first-run-experience-v1": 1 };
 
   // ══════════════════════════════════════════════════════════════════════════
   // 1. DRAPEAU
   // ══════════════════════════════════════════════════════════════════════════
 
-  var _apercuVu = null; // mémorisé : `location.search` peut être nettoyée après coup
-
-  function paramApercu() {
-    if (_apercuVu !== null) return _apercuVu;
-    _apercuVu = false;
-    try {
-      var p = new URLSearchParams(window.location.search).get("passio_preview");
-      if (p && APERCUS[p]) _apercuVu = true;
-    } catch (e) {}
-    return _apercuVu;
-  }
-
+  // ⚠️ ACTIF PAR DÉFAUT depuis le 2026-09-01, sur ordre de Benjamin (« allume »).
+  // Le drapeau ne sait plus qu'ENLEVER — même patron qu'UI-3A et les lots UI-4 :
+  // aucune valeur positive n'active, et RIEN n'est écrit dans `localStorage`.
+  // Coupures, prioritaires sur tout : `window.PASSIO_FIRST_RUN_V1 = false` et
+  // `localStorage.passio_first_run_experience_v1 = "0"`.
+  //
+  // ⚠️ La persistance de l'aperçu N'A PLUS LIEU D'ÊTRE, et c'est ce qui permet
+  // de la retirer sans rouvrir le défaut qu'elle fermait. Elle existait pour une
+  // raison précise : le parcours traverse une inscription, et la confirmation
+  // d'e-mail ramène par un lien NEUF, donc sans `?passio_preview=…` — la
+  // personne aurait terminé son inscription hors du parcours qu'elle testait.
+  // Le défaut étant désormais « actif », ce lien neuf tombe sur le parcours de
+  // toute façon. Le paramètre d'aperçu reste TOLÉRÉ mais ne décide plus rien.
+  //
+  // ⚠️ Le `"1"` d'un appareil qui a testé l'aperçu reste lu, et c'est voulu :
+  // on cesse d'en écrire, on ne le renie pas. La coupure `"0"` est testée AVANT
+  // lui, donc un kill switch posé sur un tel appareil gagne quand même.
   function actif() {
-    if (typeof window.PASSIO_FIRST_RUN_V1 === "boolean") return window.PASSIO_FIRST_RUN_V1;
+    if (window.PASSIO_FIRST_RUN_V1 === false) return false;
     var stocke = null;
     try { stocke = localStorage.getItem(CLE_DRAPEAU); } catch (e) {}
-    if (paramApercu()) {
-      // Persiste l'aperçu pour qu'il survive au retour de confirmation d'e-mail
-      // (cf. ① en tête de fichier). Best-effort : un stockage refusé (mode privé)
-      // ne doit pas empêcher le parcours de tourner pour cette page.
-      if (stocke !== "1") { try { localStorage.setItem(CLE_DRAPEAU, "1"); } catch (e) {} }
-      return true;
-    }
     if (stocke === "0") return false;
-    if (stocke === "1") return true;
-    return false; // défaut sûr : parcours historique
+    return true;
   }
 
   // ══════════════════════════════════════════════════════════════════════════

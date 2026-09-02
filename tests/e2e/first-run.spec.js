@@ -827,15 +827,42 @@ test.describe("Kill switch", () => {
     expect(await page.evaluate(() => document.querySelectorAll("#frBackToExplore").length)).toBe(0);
   });
 
-  test("le paramètre d'aperçu active le parcours et survit à un rechargement", async ({ page }) => {
-    await bootVisiteur(page, { flag: "off", query: "?passio_preview=first-run-v1" });
+  test("l'URL NORMALE suffit désormais, et le lot n'écrit toujours rien pour activer", async ({ page }) => {
+    // ⚠️ CE CAS A ÉTÉ RETOURNÉ, pas supprimé. Il exigeait auparavant que
+    // `?passio_preview=first-run-v1` active le parcours ET persiste un "1" —
+    // la persistance servait à survivre au lien NEUF de la confirmation
+    // d'e-mail. Depuis le basculement du 2026-09-01 le défaut est « actif » :
+    // ce lien neuf tombe sur le parcours de toute façon, la persistance n'a plus
+    // d'objet, et écrire une valeur positive masquerait une régression du
+    // défaut. On mesure donc exactement l'inverse — actif SANS rien écrire.
+    await bootVisiteur(page); // aucun paramètre, aucun drapeau posé
     expect(await page.evaluate(() => PassioFirstRun.actif())).toBe(true);
     expect(await page.evaluate(feedActif)).toBe(true);
-    // Persisté : la confirmation d'e-mail ramène par un lien NEUF, sans le paramètre.
-    expect(await page.evaluate(() => localStorage.getItem("passio_first_run_experience_v1"))).toBe("1");
+    expect(await page.evaluate(() => localStorage.getItem("passio_first_run_experience_v1"))).toBeNull();
+
+    // Et il survit à un rechargement sans qu'on ait rien persisté.
     await page.goto("/index.html");
     await page.waitForTimeout(3200);
     expect(await page.evaluate(() => PassioFirstRun.actif())).toBe(true);
+    expect(await page.evaluate(() => localStorage.getItem("passio_first_run_experience_v1"))).toBeNull();
+  });
+
+  test("un ancien appareil d'aperçu (« 1 » persisté) reste coupable par le kill switch", async ({ page }) => {
+    // ⚠️ On cesse d'ÉCRIRE le "1", on ne le renie pas : des appareils qui ont
+    // testé l'aperçu en portent un. La coupure "0" est lue AVANT lui, donc un
+    // kill switch posé sur un tel appareil gagne quand même. Sans cet ordre,
+    // ces appareils-là seraient les seuls à ne plus pouvoir couper le lot.
+    await bootVisiteur(page, { flag: "off" });
+    await page.evaluate(() => localStorage.setItem("passio_first_run_experience_v1", "0"));
+    expect(await page.evaluate(() => {
+      const avant = localStorage.getItem("passio_first_run_experience_v1");
+      localStorage.setItem("passio_first_run_experience_v1", "1");
+      const avecUn = PassioFirstRun.actif();
+      localStorage.setItem("passio_first_run_experience_v1", "0");
+      const avecZero = PassioFirstRun.actif();
+      localStorage.setItem("passio_first_run_experience_v1", avant);
+      return { avecUn, avecZero };
+    })).toEqual({ avecUn: true, avecZero: false });
   });
 });
 

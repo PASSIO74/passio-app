@@ -159,6 +159,7 @@ Ces règles transverses valent pour TOUTE modification. Le subagent `audit-passi
 - **Guards de rendu** : écrire dans `#feedList`/`#storiesRowFeed`/`#profileStrip` sans invalider `_feedDomSig`/`_lastHtml` fait sauter le prochain render.
 - **Build** : exactement 9 fichiers app-*.js entre les marqueurs BUILD:APP. Prod = app.js + styles.css externalisés (hash de contenu).
 - **openModal n’empile pas** : ouvrir une modale depuis une autre la REMPLACE (mémoriser d’où l’on vient) ; `openModal` injecte déjà un `×`.
+- **Panneau animé : le contenu AVANT la révélation.** Ne jamais poser la classe qui fait entrer un panneau glissant (`#conv-fullpage.active`…) avant d’y avoir injecté son contenu, et ne jamais laisser un `will-change: transform` PERMANENT sur un panneau qui passe l’essentiel du temps hors champ, découpé par l’`overflow:hidden` de `.app-shell` : la couche composée est demandée vide, et sur Android ses tuiles reviennent blanches jusqu’à la prochaine invalidation — soit le premier toucher. Défaut vécu le 2026-09-02 sur la messagerie (« j’ouvre une conversation, les messages déjà envoyés ne s’affichent qu’après avoir retapé sur l’écran »). La transition promeut déjà la couche le temps de l’animation. Verrou : `tests/e2e/conv-ouverture-fil.spec.js` (4).
 
 ## Hooks & permissions (`.claude/settings.json`)
 
@@ -553,14 +554,40 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
   du référentiel — **un test qui dépend d'un état de la base se retourne le jour
   où la base change.**
 
-## 🚪 PREMIÈRE VISITE — « l'application est elle-même le pitch » (drapeau `first_run_experience_v1`, COUPÉ par défaut)
+## 🚪 PREMIÈRE VISITE — « l'application est elle-même le pitch » (`first_run_experience_v1`, ACTIF PAR DÉFAUT depuis le 2026-09-01)
 
 `js/first-run.js` (IIFE `window.PassioFirstRun`) + bloc « PASSIO — PREMIÈRE VISITE » dans
-`styles.css`, tests `tests/e2e/first-run.spec.js` (37) et helper
-`tests/e2e/first-run-helper.js`. Activation : `?passio_preview=first-run-v1` ou
-`localStorage.passio_first_run_experience_v1="1"` ; coupure prioritaire `"0"` ou
-`window.PASSIO_FIRST_RUN_V1=false`. **Drapeau coupé = landing + onboarding + tour
-historiques, à l'octet près.**
+`styles.css`, tests `tests/e2e/first-run.spec.js` (38) et helper
+`tests/e2e/first-run-helper.js`. **Coupures, seules valeurs qui décident :**
+`localStorage.passio_first_run_experience_v1="0"` et `window.PASSIO_FIRST_RUN_V1=false`.
+Le drapeau ne sait plus qu'ENLEVER — même patron qu'UI-3A et les lots UI-4 : aucune
+valeur positive n'active, rien n'est écrit dans `localStorage`, et l'ancien
+`?passio_preview=first-run-v1` ne décide plus rien (`paramApercu` et sa persistance ont
+été RETIRÉS avec le basculement, pas laissés en code mort). **Coupé = landing +
+onboarding + tour historiques, à l'octet près.**
+
+⚠️ **UN COMPTE EXISTANT N'ENTRE JAMAIS DANS CE PARCOURS**, drapeau actif compris :
+`entreeDirecte()` sort sur sa garde `compteExistant()`. Le basculement n'a donc changé la
+porte d'entrée que pour un appareil qui ne possède AUCUN compte.
+
+⚠️ **LE BASCULEMENT A CASSÉ 23 CAS DE TEST, ET C'ÉTAIT ATTENDU.** Différentiel mesuré
+(mêmes 25 suites, `origin/main` sans le lot : 122 réussis / 3 échecs ; avec : 102 / 26) —
+les 3 échecs communs réclament `SUPABASE_SERVICE_ROLE_KEY` et préexistent. Les 23 autres
+sont tous la même famille : une suite qui démarre d'un appareil VIERGE et attend la
+landing historique. Convention appliquée, la même qu'aux mises en ligne d'UI-3A et des
+lots UI-4 : **la suite pose la coupure au boot et garde TOUTES ses assertions.** Outil
+durable plutôt que rustine recopiée : `poserGateSansPremiereVisite(page)`
+(`tests/e2e/gate-helper.js`), qui pose le jeton du gate ET la coupure, avec l'explication
+écrite une seule fois. Suites réalignées : `access-gate`, `confirmation-email`,
+`dist-build`, `latence-percue`, `monitoring-bruit`, `onboarding-acceptation`, `perf-ios`,
+`smoke`, `telemetrie-preauth`.
+⚠️ Deux pièges de ce réalignement. ① **Un test qui TAPE le code d'accès n'a aucun script
+d'injection à remplacer** : le cas « saisie du code → landing » de `dist-build` a survécu
+au remplacement automatique du démarrage commun, et lui seul restait rouge. La coupure se
+pose donc par SUITE, pas par cas — un test ajouté plus tard hériterait sinon du piège en
+silence. ② **`access-gate` ne pose pas de jeton** (elle teste le gate), d'où un
+`beforeEach` dédié ; la coupure vit dans `localStorage` et le jeton du gate dans
+`sessionStorage`, les deux ne se croisent pas.
 
 Un visiteur sans compte entre DIRECTEMENT dans le fil (aucune landing, aucun carrousel,
 aucun formulaire, aucun GPS, aucune notification), voit une carte de bienvenue non
@@ -1739,6 +1766,36 @@ personne.
   droite — le décalage exact qu'ADR-011 a dû corriger sur les onglets du profil.
   La grille répond au NOMBRE d'entrées, pas au style.
 
+  **PROFIL VISITÉ — PARTAGER / SIGNALER / BLOQUER PASSENT DANS LE ⋯ (2026-09-02),
+  ACTIF, SANS DRAPEAU.** Demande de Benjamin : « quand j'arrive sur le profil de
+  quelqu'un, déplace les 3 onglets partager / signaler / bloquer, ils sont trop
+  visibles et prennent trop de place ; mets plutôt trois petits points discrets en
+  haut à droite du profil et tu les mets dedans. » La rangée de trois boutons
+  posée sous la carte d'identité est RETIRÉE ; `openVisitedProfileMenu(ev, id,
+  nom)` (app-04) ouvre le même menu que mon profil. Verrou :
+  `tests/e2e/profil-visite-options.spec.js` (4).
+  ⚠️ **Aucun moteur n'est dupliqué** : le popover est `_profileDotsOpen` (app-06),
+  celui des ⋯ de mon profil et des cartes passion, et les trois entrées appellent
+  toujours `shareUserProfile` / `reportUser` / `blockUser` — donc aucune règle de
+  modération n'est redéfinie, seule la surface change. L'état bloqué garde sa
+  bascule « Débloquer ».
+  ⚠️ **`.profile-dots-menu` A DÛ PASSER DE 1200 À 10002.** C'est la première fois
+  que ce composant sert depuis une MODALE, et `.modal-backdrop` est à 10001 : à
+  1200 le menu était bien dans le DOM et INVISIBLE, derrière la fenêtre. Un test
+  d'existence serait resté vert dessus — le cas ③ mesure donc le point CENTRAL du
+  menu avec `elementFromPoint`, et rougit quand on remet 1200.
+  ⚠️ **LE ⋯ EST À `right: 56px`, PAS DANS LE COIN** : dans une modale, le × occupe
+  déjà le haut droite (top/right 12 px, 34 px de côté). Il est `position:
+  absolute` et son ancêtre positionné est `.modal` (`position: relative`), PAS la
+  carte — inutile donc de positionner celle-ci, qui est en `overflow: hidden` et
+  clipperait un menu qu'on y placerait.
+  ⚠️ **IL Y A DEUX × dans cette modale** : `openModal` en injecte un, et le
+  balisage porte déjà le sien. Le test de non-recouvrement les mesure TOUS — viser
+  le premier venu laisserait passer un chevauchement avec l'autre.
+  ⚠️ **`reportUser` ENVOIE puis FERME** (`supaReport` + `closeModal` + toast) : ce
+  n'est pas un formulaire, et `closeModal` masque la fenêtre sans retirer le nœud —
+  un test doit mesurer la VISIBILITÉ, pas la présence dans le DOM.
+
   **Lot UI-8 — « une personne, plusieurs passions » (2026-08-29), ACTIF PAR DÉFAUT.**
   Coupure unique : `localStorage.passio_ui_8="0"` ou `window.PASSIO_UI_8=false`. Le drapeau
   ne sait qu'ENLEVER — aucune valeur positive n'active, rien n'est écrit dans `localStorage`.
@@ -2060,7 +2117,7 @@ personne.
 - **`.passio/adr/ADR-011-refonte-multi-passion.md` — la refonte du 2026-08-31** : fil additif (OU inclusif), profil à deux onglets, identité centralisée, Studio seul point de choix, retrait du Carnet de voyage. Elle complète ADR-010 et en amende l'interface.
 - `docs/PASSIONS_REFERENTIEL_PLAT_2026-09-01.md` — le référentiel PLAT (2026-09-01) : modèle, données, recherche, migration, RLS, pièges.
 
-- **Première visite** : `js/first-run.js` (drapeau `first_run_experience_v1`, coupé par défaut), tests `tests/e2e/first-run.spec.js`, captures `docs/captures/first-run/`.
+- **Première visite** : `js/first-run.js` (`first_run_experience_v1`, **actif par défaut** depuis le 2026-09-01 ; coupure `"0"` ou `window.PASSIO_FIRST_RUN_V1=false`), tests `tests/e2e/first-run.spec.js`, captures `docs/captures/first-run/`.
 - `docs/PIEGES_CONNUS.md` — les 59 fiches détaillées (extrait de ce fichier le 2026-08-07, recompté le 2026-08-29).
 - `docs/HISTORIQUE_PROJET.md` — état 2026-06-11, backlog terminé, logs d’optimisation.
 - `docs/ARCHITECTURE.md`, `docs/CONTROLE_16_MISSIONS.md`, `docs/CHECKLIST_COMMERCIALISATION.md`.

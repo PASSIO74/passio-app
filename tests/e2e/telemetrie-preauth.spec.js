@@ -18,7 +18,7 @@
 // envoie effectivement un user_id fabriqué (le cas qu'on veut interdire).
 // ═══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
-const { GATE_TOKEN, GATE_KEY } = require("./gate-helper");
+const { GATE_TOKEN, GATE_KEY, poserGateSansPremiereVisite } = require("./gate-helper");
 
 test.describe("Télémétrie — fenêtre pré-authentification", () => {
   test("aucun événement ne part sous une identité fabriquée", async ({ browser }) => {
@@ -51,7 +51,7 @@ test.describe("Télémétrie — fenêtre pré-authentification", () => {
       }
     });
 
-    await page.addInitScript(([k, t]) => sessionStorage.setItem(k, t), [GATE_KEY, GATE_TOKEN]);
+    await poserGateSansPremiereVisite(page);
     // `?telemetry=1` force la capture complète : sans ça, l'échantillonnage
     // pourrait masquer le phénomène et rendre le test non concluant.
     await page.goto("/index.html?telemetry=1");
@@ -114,7 +114,7 @@ test.describe("Télémétrie — fenêtre pré-authentification", () => {
       }
     });
 
-    await page.addInitScript(([k, t]) => sessionStorage.setItem(k, t), [GATE_KEY, GATE_TOKEN]);
+    await poserGateSansPremiereVisite(page);
     await page.goto("/index.html");            // ← pas de ?telemetry=1
     await page.waitForSelector("#landing.active", { timeout: 30000 });
     await page.waitForTimeout(8000);           // laisser passer les flushs éventuels
