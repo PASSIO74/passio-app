@@ -485,8 +485,15 @@ test("le tap ouvre « Trouver une expérience » avec exactement trois actions",
   const sheet = page.locator("#v3PassioSheet");
   await expect(sheet).toBeVisible();
   await expect(sheet.locator("#v3SheetTitle")).toHaveText("Trouver une expérience");
+  // ⚠️ « Voir la page de la passion » remplace « Découvrir des personnes » depuis
+  // le 2026-09-02 (« rajoute un onglet : voir la page de la passion, ce qui
+  // permet aux utilisateurs qui scrollent d'aller voir rapidement les pages en
+  // question »). L'entrée ouvrait DÉJÀ `openPassionExplorer` : seul son libellé
+  // le taisait. En ajouter une quatrième aurait donné deux portes pour une
+  // destination. La CLÉ reste `people` — c'est la valeur `choice` de la
+  // télémétrie et le nom du moteur exporté, appelé aussi par le lot UI-5.
   expect(await sheet.locator("[data-v3-choice] .v2-sheet-item-title").allTextContents()).toEqual([
-    "Voir les activités", "Découvrir des personnes", "Proposer une sortie",
+    "Voir les activités", "Voir la page de la passion", "Proposer une sortie",
   ]);
 
   // Rôle de dialogue, état exposé au lecteur d'écran, focus entré dans la feuille.
@@ -527,7 +534,7 @@ test("la feuille porte l'habillage du (+) : lavis violet, icône, aucun texte ex
   // Et rien ne les a remplacés par du texte ailleurs dans la case : chaque
   // entrée ne dit QUE son libellé.
   expect((await sheet.locator("[data-v3-choice]").allInnerTexts()).map((t) => t.trim()))
-    .toEqual(["Voir les activités", "Découvrir des personnes", "Proposer une sortie"]);
+    .toEqual(["Voir les activités", "Voir la page de la passion", "Proposer une sortie"]);
 
   // ② Une icône SVG par entrée, dans la pastille du (+) — pas un caractère.
   await expect(sheet.locator("[data-v3-choice] .v2-sheet-icon svg")).toHaveCount(3);
@@ -665,7 +672,7 @@ test("UI-4A0 coupé : le marqueur d'UI-3A reste à USAGE UNIQUE", async ({ page 
     "le geste suivant SUR l'écran IRL redemande la position, normalement").toBe(1);
 });
 
-test("« Découvrir des personnes » ouvre le parcours Passion, sans contact automatique", async ({ page }) => {
+test("« Voir la page de la passion » ouvre le parcours Passion, sans contact automatique", async ({ page }) => {
   await boot(page);
   await seedFeed(page, POSTS);
 

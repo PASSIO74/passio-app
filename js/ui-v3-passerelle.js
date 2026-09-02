@@ -10,7 +10,7 @@
 //   une feuille basse du même nom, qui propose exactement trois suites, toutes
 //   servies par des moteurs QUI EXISTENT DÉJÀ :
 //     ① Voir les activités      → irlPassionFilters + goTo("irl")/renderIRL
-//     ② Découvrir des personnes → openPassionExplorer(passion)
+//     ② Voir la page de la passion → openPassionExplorer(passion)
 //     ③ Proposer une sortie     → openCreateEvent() + feedIrlBridgePrefill()
 //
 // Lot UI-3B (ajouté le 2026-08-27, même module) : les publications DÉJÀ reliées
@@ -467,10 +467,13 @@
     // ① Un repère de carte : les sorties déjà posées quelque part.
     activities: SVG_OPEN + '<path d="M12 21.2c3.8-4 5.8-7 5.8-9.6a5.8 5.8 0 0 0-11.6 0c0 2.6 2 5.6 5.8 9.6z"/>'
       + '<circle cx="12" cy="11.2" r="2.3"/></svg>',
-    // ② Deux personnes : le même tracé que l'entrée « Activité » de la feuille
-    //    « Créer », parce qu'il désigne la même idée — des gens, pas un objet.
-    people: SVG_OPEN + '<circle cx="9.2" cy="8.4" r="3.2"/><path d="M3.2 19c0-3 2.7-4.7 6-4.7s6 1.7 6 4.7"/>'
-      + '<path d="M16.2 5.6a3.2 3.2 0 0 1 0 5.6"/><path d="M18.2 14.8c1.9.7 2.9 2.2 2.9 4.2"/></svg>',
+    // ② Deux étincelles : le signe de la Passio dans toute l'application (la
+    //    ligne d'identité d'un profil s'ouvre sur ✨). L'ancien tracé « deux
+    //    personnes » désignait des gens ; l'entrée mène en réalité à la PAGE de
+    //    la Passio — ses créateurs ET ses publications — et son icône le dit
+    //    maintenant.
+    passion: SVG_OPEN + '<path d="M11.4 3.3 13.2 8l4.7 1.8-4.7 1.8-1.8 4.7-1.8-4.7L4.9 9.8 9.6 8z"/>'
+      + '<path d="M18.1 14.4l.8 2.1 2.1.8-2.1.8-.8 2.1-.8-2.1-2.1-.8 2.1-.8z"/></svg>',
     // ③ Un calendrier avec un « + » : on propose une date, on ne la subit pas.
     propose: SVG_OPEN + '<rect x="3.4" y="5" width="17.2" height="15.6" rx="3.6"/><path d="M3.4 10h17.2"/>'
       + '<path d="M8 3.4v3.2"/><path d="M16 3.4v3.2"/><path d="M12 13.2v4.4"/><path d="M9.8 15.4h4.4"/></svg>',
@@ -489,9 +492,20 @@
       run: function (passion) { voirActivites(passion); },
     },
     {
+      // ⚠️ LA CLÉ RESTE `people`, et le libellé seul a changé (demande de
+      // Benjamin du 2026-09-02 : « rajoute un onglet : voir la page de la
+      // passion, ce qui permet aux utilisateurs qui scrollent d'aller voir
+      // rapidement les pages en question »). Cette entrée ouvrait DÉJÀ la page
+      // de la Passio — `openPassionExplorer`, créateurs puis publications — mais
+      // son libellé ne le disait pas : la porte existait sans être lisible. En
+      // AJOUTER une quatrième aurait donné deux portes pour une destination,
+      // c'est-à-dire le doublon que ce lot passe son temps à éviter.
+      // La clé, elle, ne bouge pas : elle est la valeur `choice` de la
+      // télémétrie (comparabilité de l'historique) et le nom du moteur exporté
+      // (`discoverPeople`), que le lot UI-5 appelle depuis les bobines.
       key: "people",
-      icon: ICONS.people,
-      titre: "Découvrir des personnes",
+      icon: ICONS.passion,
+      titre: "Voir la page de la passion",
       run: function (passion) { decouvrirPersonnes(passion); },
     },
     {
@@ -816,9 +830,11 @@
     track("ui_v3_open_irl", { v: VERSION, has_psn: !!pose });
   }
 
-  // ② Découvrir des personnes : la fiche Passion EXISTANTE (créateurs + posts de
-  // cette Passio). Aucun contact n'est établi — l'utilisateur choisit d'ouvrir
-  // un profil, ou pas (direction §A17).
+  // ② Voir la page de la passion : la fiche Passion EXISTANTE (créateurs + posts
+  // de cette Passio). Aucun contact n'est établi — l'utilisateur choisit d'ouvrir
+  // un profil, ou pas (direction §A17). Le nom de la fonction et celui du moteur
+  // exporté (`discoverPeople`) datent du libellé d'origine, « Découvrir des
+  // personnes » : ils désignent le même geste et sont appelés ailleurs (UI-5).
   function decouvrirPersonnes(passion) {
     if (!passion || typeof openPassionExplorer !== "function") {
       notify("Cette Passio n'a pas encore d'espace dédié.");

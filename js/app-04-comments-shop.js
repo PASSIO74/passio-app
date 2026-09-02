@@ -2783,9 +2783,11 @@ async function openUserProfile(authorId, source) {
   // ⚠️ MÊME COMPOSANT QUE LE FIL ET QUE MON PROFIL (refonte multi-passion, §1).
   // Ces pastilles étaient d'abord de grandes `.profile-card` — indiscernables
   // d'une liste de comptes — puis des puces `.v10-vfilter` propres à cet écran.
-  // Elles deviennent les BULLES `passionTileHTML` (app-02) : un seul rendu, donc
-  // les mêmes dimensions et les mêmes états partout où une passion se choisit.
-  // Le choix reste UNIQUE ici, comme sur mon profil.
+  // Elles deviennent les PASTILLES `passionChipHTML` (app-02) : un seul rendu,
+  // donc les mêmes dimensions et les mêmes états que sur mon profil, où le rail
+  // a quitté les bulles le 2026-09-02 (« trop gros trop visible »). Laisser des
+  // bulles ici aurait donné deux réponses visuelles à la même question, selon le
+  // profil ouvert. Le choix reste UNIQUE ici, comme sur mon profil.
   //
   // ⚠️ `p.emoji` et `p.label` viennent du jsonb `profiles.passions` d'un AUTRE
   // compte, colonne que toute session authentifiée écrit librement sur SA ligne :
@@ -2793,7 +2795,7 @@ async function openUserProfile(authorId, source) {
   // `passionTileHTML` échappe (texte + `safeUrlAttr` pour la photo) ; ne jamais
   // contourner ce chemin.
   const passionsHTML = userPassions.length > 0
-    ? '<div id="visitedPassions" class="profile-strip v9-profile-strip" role="group" aria-label="Filtrer ses publications par passion">'
+    ? '<div id="visitedPassions" class="v9-profile-strip" role="group" aria-label="Filtrer ses publications par passion">'
       + userPassions.map(p => {
           const pas = passionById(p.id);
           // ⚠️ L'ORDRE compte. `passionById` ne rend JAMAIS null : sur un id
@@ -2805,13 +2807,10 @@ async function openUserProfile(authorId, source) {
           const _catalogue = (pas && pas.label) || "";
           const label = (_catalogue && _catalogue !== "Passion" ? _catalogue : "")
             || p.label || _catalogue || "Passion";
-          return passionTileHTML({
+          return passionChipHTML({
             emoji: p.emoji || "\u2728",
             label: label,
-            photoUrl: passionPhotoUrl(pas),
-            fallbackUrl: passionPhotoFallback(p.id),
             selected: false,
-            dimmed: false,
             action: "visitedPassion", arg: p.id,
             title: label,
             tileKey: p.id,
@@ -2819,6 +2818,12 @@ async function openUserProfile(authorId, source) {
         }).join("")
       + '</div>'
     : '';
+
+  // ⚠️ AUCUNE LIGNE DE PASSIONS SOUS LE PSEUDO, comme sur mon profil depuis le
+  // 2026-09-02 (« supprime les titres de passion dans le profil sous le pseudo et
+  // garde seulement les bulles dessous »). Ses passions sont dans
+  // `#visitedPassions`, plus bas : elles s'y nomment une fois, et le tap y FILTRE
+  // ses publications au lieu de quitter son profil.
 
   // 🔗 Réseaux sociaux — mêmes pastilles que sur mon profil.
   var RS_ICONS = { instagram:"📸", facebook:"👤", tiktok:"🎵", youtube:"▶️", twitter:"𝕏", linkedin:"💼", snapchat:"👻", autre:"🔗" };
@@ -2943,7 +2948,6 @@ async function openUserProfile(authorId, source) {
           <div class="main-profile-avatar" style="background:' + avatarBg(user) + ';background-size:cover;background-position:center;cursor:default;">' + avatarInner(user) + '</div>\
         </div>\
         <div class="main-profile-username">' + escapeHtml(user.name || "Passionné") + (user.isPrivate ? ' <span title="Compte privé" style="font-size:13px;">🔒</span>' : '') + '</div>\
-        ' + identitePassionsLiensHTML({ id: authorId, passions: userPassions, passion: user.passion }, { retourUserId: authorId }) + '\
         ' + (user.bio ? '<div class="main-profile-bio">' + escapeHtml(user.bio) + '</div>' : '') + '\
         ' + (rsLinks.length ? '<div class="main-profile-rs">' + rsLinks.map(function(l) { return '<a class="main-profile-rs-link" href="' + safeUrlAttr(l.url || "") + '" target="_blank" rel="noopener">' + (RS_ICONS[l.platform] || "🔗") + ' ' + escapeHtml(l.platform || "lien") + '</a>'; }).join("") + '</div>' : '') + '\
         <div class="main-profile-stats">\
@@ -3137,7 +3141,6 @@ function switchVisitedTab(tab) {
 // renderProfilesScreen) et les onglets (classe active + aria-pressed).
 function _syncVisitedUI() {
   var v = window._visited; if (!v) return;
-  var _unFiltre = v.passionSel.size > 0;
   document.querySelectorAll("#visitedPassions [data-passion-tile]").forEach(function(c) {
     var id = c.getAttribute("data-passion-tile") || "";
     // Plus de bulle « Toutes » : rien de coché DIT déjà « toutes ». Chaque bulle
@@ -3145,12 +3148,12 @@ function _syncVisitedUI() {
     var on = !!id && v.passionSel.has(id);
     c.classList.toggle("active", on);
     c.setAttribute("aria-pressed", on ? "true" : "false");
-    // Mêmes états visuels que le Fil et que mon profil : l'opacité et l'échelle
-    // sont posées en style inline par `passionTileHTML`, on les tient à jour.
-    c.style.opacity = on ? "1" : (_unFiltre ? "0.3" : "1");
-    c.style.transform = on ? "scale(1.07)" : "scale(1)";
-    var lbl = c.querySelector(".profile-tile-label");
-    if (lbl) { lbl.style.fontWeight = on ? "800" : "600"; lbl.style.color = on ? "var(--accent)" : ""; }
+    // ⚠️ PLUS AUCUN STYLE INLINE À TENIR À JOUR depuis le 2026-09-02. La bulle
+    // posait son opacité, son échelle et le poids de son libellé en inline :
+    // il fallait les réécrire ici à chaque changement. La pastille de texte
+    // n'exprime son état que par la classe `active` (remplissage, couleur) et
+    // par `aria-pressed` — un seul endroit à corriger, et le CSS reprend la
+    // main quand le rendu change.
   });
   document.querySelectorAll("#visitedTabs .profile-tab").forEach(function(b) {
     var on = v.tabSel.has(b.getAttribute("data-vtab"));
@@ -3183,7 +3186,10 @@ function _renderVisitedContent() {
   try {
     var _noms = [];
     v.passionSel.forEach(function (id) {
-      var t = document.querySelector('#visitedPassions [data-passion-tile="' + CSS.escape(id) + '"] .profile-tile-label');
+      // ⚠️ `.v9-chip-nom` et non plus `.profile-tile-label` : la pastille a
+      // remplacé la bulle. Un sélecteur qui survit à sa cible rend ici un état
+      // vide MUET (« aucune publication » au lieu de « rien en Moto »).
+      var t = document.querySelector('#visitedPassions [data-passion-tile="' + CSS.escape(id) + '"] .v9-chip-nom');
       if (t && t.textContent) _noms.push(t.textContent);
     });
     _nomFiltre = _noms.join(" · ");
