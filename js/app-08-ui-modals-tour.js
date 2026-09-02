@@ -2145,6 +2145,14 @@ async function boot() {
   try {
     const { data: { session } } = await supa.auth.getSession();
     if (session?.user) {
+      // ⚠️ AVANT `MY_UID` ET AVANT `passio_uid` (le discriminant est
+      // l'identifiant PRÉCÉDEMMENT connu de cet appareil, cf. app-02). Ce
+      // chemin-ci couvre les entrées qui ne passent PAS par `onbDoAuth` :
+      // retour de `signInWithOAuth`, lien de confirmation d'e-mail qui ouvre
+      // directement une session. Sans lui, l'état d'une exploration anonyme
+      // serait poussé dans `user_state` du compte à la première sauvegarde.
+      if (typeof adopterCompteConnecte === "function"
+          && await adopterCompteConnecte(session.user.id)) { window.location.reload(); return; }
       MY_UID = session.user.id;
       localStorage.setItem("passio_uid", MY_UID);
       if (localStorage.getItem("passio_oauth_pending")) localStorage.removeItem("passio_oauth_pending");
@@ -2254,6 +2262,16 @@ async function boot() {
       }
     }
   } catch(e) { /* pas de session */ }
+
+  // ⚠️ AUCUNE SESSION ⇒ LE VERDICT D'HYDRATATION EST RENDU, ET IL EST « RIEN ».
+  // `supaLoadUserState` pose `window._etatCompteCharge` à chacune de ses
+  // sorties, mais elle n'est appelée QUE sur la branche « session retrouvée »
+  // ci-dessus (qui se termine par un `return`). Arriver ici, c'est donc savoir
+  // qu'aucun état de compte n'arrivera : sans cette ligne, tout module qui
+  // attend le verdict (`first-run.js` pour la migration, `passions-flat.js`
+  // pour les noms manquants) brûlerait son budget d'attente à chaque démarrage
+  // hors ligne ou sans compte, pour finir par trancher sur les mêmes données.
+  try { window._etatCompteCharge = true; } catch (e) {}
 
   // Écouter les changements d'état auth (connexion depuis un autre appareil, confirmation email, etc.)
   try {

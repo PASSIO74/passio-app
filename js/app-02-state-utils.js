@@ -782,6 +782,16 @@ function restaurerPassionActiveApresFusion(localCurrentId) {
   }
 }
 
+// ⚠️ « L'ÉTAT DU COMPTE EST-IL ARRIVÉ ? » — LE SEUL MOYEN DE LE SAVOIR.
+// `passio:app-ready` part au CHARGEMENT du script d'application, donc AVANT que
+// `boot()` ait fini d'attendre le réseau : tout module qui décide quelque chose
+// sur le contenu du compte à ce moment-là décide sur un état VIDE. C'est ce qui
+// laissait `migrerPreferences` (js/first-run.js) prendre un vrai compte pour un
+// compte neuf. Le drapeau est posé à CHAQUE sortie de `supaLoadUserState`, y
+// compris les sorties précoces (pas de session, pas de SDK) : « le verdict est
+// rendu » n'est pas « le serveur a répondu ».
+window._etatCompteCharge = false;
+
 async function supaLoadUserState() {
   try {
     if (typeof supa === "undefined" || !supa || !window._supaReal) return false;
@@ -790,9 +800,24 @@ async function supaLoadUserState() {
     if (error) { console.warn("supaLoadUserState:", error.message); return false; }
     if (!data) {
       // Aucune sauvegarde serveur → on pousse l'état local (création de la ligne).
+      // Aucune ligne = compte qui n'a encore RIEN à lui : le verdict est « non ».
+      window._comptePassionsServeur = false;
       await supaSaveUserState();
       return false;
     }
+    // ⚠️ VERDICT LU SUR LE BLOB SERVEUR, PAS SUR `state`. « Ce compte a-t-il ses
+    // propres passions ? » ne peut pas se lire dans l'état local d'un appareil
+    // qui vient d'explorer : il y trouverait les passions de l'EXPLORATION et
+    // conclurait que le compte les possède. Seul ce que le serveur renvoie
+    // appartient au compte. Consommé par `migrerPreferences` (js/first-run.js),
+    // qui n'adopte les choix d'un visiteur que dans un compte qui n'en a aucun.
+    try {
+      const _blob = data.data || {};
+      const _sel = Array.isArray(_blob.selectedFeedPassions) ? _blob.selectedFeedPassions : [];
+      const _prof = (_blob.user && Array.isArray(_blob.user.profiles)) ? _blob.user.profiles : [];
+      window._comptePassionsServeur = !!(_sel.length
+        || _prof.some(function (pr) { return pr && pr.passion && !pr.archived; }));
+    } catch (_e) {}
     const serverTs = data.updated_at ? new Date(data.updated_at).getTime() : 0;
     const localTs = state._stateSyncedAt ? new Date(state._stateSyncedAt).getTime() : 0;
     // Appareil vierge (pas onboardé) OU serveur plus récent → on restaure.
@@ -866,6 +891,7 @@ async function supaLoadUserState() {
     await supaSaveUserState();
     return false;
   } catch (e) { console.warn("supaLoadUserState:", e && e.message); return false; }
+  finally { window._etatCompteCharge = true; }
 }
 
 // Miniature CDN : transforme une URL Supabase Storage publique en version
@@ -2030,6 +2056,83 @@ function purgeAccountScopedData() {
 }
 window.purgeAccountScopedData = purgeAccountScopedData;
 
+// ══════════════════════════════════════════════════════════════════════════
+// L'ÉTAT LOCAL APPARTIENT À UN COMPTE, JAMAIS À L'APPAREIL  (2026-09-02)
+// ──────────────────────────────────────────────────────────────────────────
+// Demande de Benjamin, après essai réel : « j'étais dans l'app sans compte
+// pour découvrir, j'ai mis plein de passions pour voir, ensuite je me suis
+// connecté à mon vrai compte et tu as mélangé les infos de la page de
+// découverte avec mon compte… les infos enregistrées dans un compte doivent
+// être enregistrées au compte. »
+//
+// ⚠️ CE N'ÉTAIT PAS UNE FUSION D'AFFICHAGE : L'EXPLORATION ÉCRASAIT LE SERVEUR.
+// Le chemin, mesuré dans le code, tenait en quatre lignes de `onbDoAuth` :
+//     MY_UID = data.session.user.id;      // ① l'identité devient celle du compte
+//     state.onboarded = true;             // ② l'état ANONYME devient « onboardé »
+//     saveState();                        // ③ _stateDirty = true
+//     window.location.reload();           // ④ pagehide → supaSaveUserStateBeacon
+// Le beacon voit une identité de compte, un état onboardé et un drapeau sale :
+// ses trois gardes passent, et il POSTe `_syncableState()` — c'est-à-dire l'état
+// de l'EXPLORATION ANONYME — dans `user_state` du vrai compte, en
+// `resolution=merge-duplicates`, donc en REMPLAÇANT la ligne. Les passions
+// cochées « pour voir » devenaient celles du compte, sur tous ses appareils, et
+// le rechargement les restituait ensuite comme si elles en venaient.
+//
+// La règle est donc antérieure à tout affichage : un état local ne part JAMAIS
+// sous une identité qui n'est pas la sienne. Quand l'appareil adopte un compte
+// dont l'état local ne provient pas, cet état est purgé AVANT que quoi que ce
+// soit puisse l'attribuer au compte — le serveur le restituera, lui seul fait foi.
+//
+// ⚠️ LE DISCRIMINANT EST `passio_uid`, ET IL DOIT ÊTRE LU AVANT D'ÊTRE RÉÉCRIT.
+// Les deux points d'entrée (`onbDoAuth` et `boot`) écrivaient l'identifiant du
+// compte dans `localStorage` AVANT tout le reste : lu après, il aurait toujours
+// dit « c'est déjà le sien ». `getMyUserId` fabrique par ailleurs un placeholder
+// local `u_xxxxxxxx` pour tout le monde — un appareil qui explore en porte donc
+// un, et il ne prouve aucun compte (même piège que `MY_UID`, cf. first-run.js).
+// Seul un uuid Supabase compte.
+//
+// ⚠️ ELLE NE TOURNE PAS EN BOUCLE. `purgeAccountScopedData` retire `passio_uid`
+// de la liste des clés purgées : on le RÉÉCRIT donc aussitôt avec l'identifiant
+// du compte adopté. Sans cette ligne, le rechargement retrouverait un appareil
+// « sans compte connu », re-purgerait, rechargerait — indéfiniment.
+//
+// ⚠️ ELLE NE PURGE PAS UN RETOUR SUR SON PROPRE COMPTE : même identifiant ⇒
+// rien à faire. Un utilisateur dont la session a expiré et qui se reconnecte
+// garde ses écritures locales pas encore synchronisées.
+//
+// L'appelant RECHARGE la page : `_accountPurged` reste levé (il fige le beacon,
+// la file et la synchronisation débouncée), donc plus aucune écriture ne peut
+// partir sous la nouvelle identité avec l'ancien état.
+const RE_UID_COMPTE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+async function adopterCompteConnecte(uidCompte) {
+  if (typeof uidCompte !== "string" || !RE_UID_COMPTE.test(uidCompte)) return false;
+  let precedent = null;
+  try { precedent = localStorage.getItem("passio_uid"); } catch (e) {}
+  if (precedent === uidCompte) return false;   // l'état local est DÉJÀ le sien
+  // ⚠️ ON NE PURGE QUE SI L'ON PEUT MÉMORISER LE COMPTE ADOPTÉ. Sans
+  // `localStorage` utilisable (navigation privée stricte, stockage refusé),
+  // l'écriture ci-dessous échouerait en silence, `passio_uid` resterait vide,
+  // et le démarrage suivant re-purgerait puis rechargerait — une boucle de
+  // rechargement infinie, très au-dessus du défaut qu'on corrige. On l'écrit
+  // donc D'ABORD, on la RELIT, et on n'engage la purge que si elle a pris.
+  // (Rien de durable à protéger dans ce cas : l'état local n'y survit pas non
+  // plus d'un chargement à l'autre.)
+  let memorise = false;
+  try {
+    localStorage.setItem("passio_uid", uidCompte);
+    memorise = (localStorage.getItem("passio_uid") === uidCompte);
+  } catch (e) {}
+  if (!memorise) return false;
+  try { if (typeof diagLog === "function") diagLog("adoption_compte purge_etat_anonyme"); } catch (e) {}
+  try { await purgeAccountScopedData(); } catch (e) {}
+  // ⚠️ RÉÉCRIT APRÈS LA PURGE, qui retire `passio_uid` : c'est ce qui ferme
+  // la boucle purge → rechargement → purge.
+  try { localStorage.setItem("passio_uid", uidCompte); } catch (e) {}
+  return true;
+}
+window.adopterCompteConnecte = adopterCompteConnecte;
+
 async function doLogout() {
   // Flush immédiat : pousse les changements en attente (debounce 2500ms non encore
   // déclenché) vers Supabase AVANT la déconnexion. Sans ça, toute modification faite
@@ -2520,7 +2623,25 @@ async function onbDoAuth() {
       }
     }
     if (data?.session?.user) {
-      MY_UID = data.session.user.id;
+      const uidCompte = data.session.user.id;
+      // ⚠️ AVANT `MY_UID` ET AVANT `passio_uid` : `adopterCompteConnecte` se
+      // décide sur l'identifiant PRÉCÉDEMMENT connu de cet appareil, et les
+      // deux lignes suivantes l'effaçaient. Un état d'exploration anonyme (ou
+      // celui d'un AUTRE compte) est purgé ici, donc avant que `saveState` +
+      // le beacon de `pagehide` aient la moindre chance de le poster dans
+      // `user_state` sous cette identité. Le rechargement repart d'un appareil
+      // propre : `supaLoadUserState` restitue l'état du compte, qui fait foi.
+      //
+      // ⚠️ SUR LA SEULE BRANCHE `signin`, ET C'EST DÉLIBÉRÉ. Elle est la seule à
+      // recharger : une inscription, elle, CONTINUE l'onboarding (âge, prénom)
+      // dans l'état en cours, et purger+recharger ici jetterait ce que la
+      // personne vient de saisir. Le compte neuf est couvert autrement — sa
+      // première session complète repasse par `boot`, qui porte la même garde.
+      if (_authMode === "signin" && await adopterCompteConnecte(uidCompte)) {
+        window.location.reload();
+        return;
+      }
+      MY_UID = uidCompte;
       localStorage.setItem("passio_uid", MY_UID);
       if (_authMode === "signin") {
         // Compte existant → marque onboardé et recharge : boot() lance l'app directement

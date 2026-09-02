@@ -609,16 +609,141 @@
 
   // ══════════════════════════════════════════════════════════════════════════
   // AMORÇAGE
-  // ⚠️ Le module ne charge RIEN au démarrage : le référentiel n'arrive qu'au
-  // premier `charger()`, déclenché par l'ouverture du sélecteur. Le seul travail
-  // fait ici est de poser la classe racine (pour le CSS du lot) — et de la
-  // reposer sur `passio:app-ready`, puisqu'en production le bloc app n'existe
-  // pas encore au moment où ce fichier s'exécute (piège ②).
+  // Deux gestes : poser la classe racine (pour le CSS du lot), et n'AMENER LE
+  // RÉFÉRENTIEL QUE S'IL MANQUE À L'ÉCRAN — les deux reposés sur
+  // `passio:app-ready`, puisqu'en production le bloc app n'existe pas encore au
+  // moment où ce fichier s'exécute (piège ②).
+  //
+  // ⚠️ LE RÉFÉRENTIEL NE SE CHARGE TOUJOURS PAS « AU DÉMARRAGE », et c'est un
+  // invariant protégé par un test (`passions-plates.spec.js` ⑤ et ⑰ bis) :
+  // 160 Ko sur le chemin critique pour une donnée dont la plupart des sessions
+  // n'ont jamais besoin. Un compte qui ne vit que sur les 19 passions du socle
+  // embarqué ne télécharge donc RIEN de plus qu'avant ce correctif.
+  //
+  // ⚠️ MAIS « JAMAIS AVANT LE SÉLECTEUR » ÉTAIT UN DÉFAUT VISIBLE. `passionById`
+  // (app-02) résout d'abord le socle, puis interroge ce module — et rend
+  // « ✨ Passion » quand il ne sait pas. Tant que `charger()` n'avait pas
+  // tourné, `parId` rendait `null` pour les 1 908 passions du référentiel : une
+  // passion venue de la recherche s'affichait en bulle GÉNÉRIQUE (« ✨ Passion »,
+  // sans son nom) dans le rail du Fil, celui du Profil et le Studio, jusqu'à ce
+  // que quelqu'un rouvre le sélecteur. Mesuré à l'écran par Benjamin le
+  // 2026-09-02 : trois bulles « Passion » au milieu de passions bien nommées.
+  //
+  // La conciliation tient en une question, posée une seule fois : « l'écran
+  // porte-t-il un identifiant que le socle ne sait pas nommer ? ». Non ⇒ on ne
+  // charge rien, l'invariant tient. Oui ⇒ la seule alternative est d'afficher
+  // « ✨ Passion » à la place d'un nom, et le référentiel vaut son poids.
+  //
+  // ⚠️ LA QUESTION SE POSE APRÈS L'HYDRATATION, PAS À `app-ready`. Les passions
+  // d'un compte arrivent par `supaLoadUserState` (app-02), donc APRÈS le
+  // chargement du script : posée trop tôt, la question porterait sur un état
+  // vide et répondrait toujours « non ». On attend `window._etatCompteCharge`,
+  // borné — hors ligne, le verdict ne vient jamais et on tranche sur ce qu'on a.
+  //
+  // ⚠️ CHARGER NE SUFFIT PAS, IL FAUT REPEINDRE. Les rails sont rendus bien
+  // avant que le `fetch` aboutisse, et `renderProfileStrip` porte un cache
+  // `_lastHtml` : sans invalidation, le rail garderait ses bulles génériques
+  // pour toute la session, référentiel pourtant chargé. On invalide donc les
+  // deux caches connus (`_lastHtml` du rail, `_feedDomSig` du fil) avant de
+  // redemander le rendu.
   // ══════════════════════════════════════════════════════════════════════════
   function poserClasse() {
     try {
       document.documentElement.classList.toggle("passio-flat-passions", actif());
     } catch (e) { journal("classe", e); }
+  }
+
+  // ⚠️ `state` vaut `null` — pas `undefined` — jusqu'à `state = loadState()` :
+  // on teste la VALEUR, sous `try` (piège ① de l'en-tête).
+  function etatApp() {
+    try { return (typeof state !== "undefined" && state) ? state : null; } catch (e) { return null; }
+  }
+
+  // Le socle embarqué sait-il nommer cet identifiant ? C'est exactement la
+  // première question que se pose `passionById` (app-02) — on ne duplique pas
+  // sa table, on appelle la sienne.
+  function nommeParLeSocle(id) {
+    try {
+      if (typeof allPassions === "function") {
+        var l = allPassions();
+        if (Array.isArray(l)) {
+          for (var i = 0; i < l.length; i++) if (l[i] && l[i].id === id) return true;
+        }
+      }
+    } catch (e) {}
+    return false;
+  }
+
+  // Les identifiants que l'application VA rendre : ceux du fil et ceux des
+  // profils-passion, archivés compris (le rail du Profil les montre).
+  function idsAAfficher() {
+    var s = etatApp();
+    if (!s) return [];
+    var ids = [];
+    try {
+      if (Array.isArray(s.selectedFeedPassions)) ids = ids.concat(s.selectedFeedPassions);
+    } catch (e) {}
+    try {
+      var profils = (s.user && Array.isArray(s.user.profiles)) ? s.user.profiles : [];
+      profils.forEach(function (pr) { if (pr && pr.passion) ids.push(pr.passion); });
+    } catch (e) {}
+    return ids;
+  }
+
+  function ilManqueUnNom() {
+    var ids = idsAAfficher();
+    for (var i = 0; i < ids.length; i++) {
+      if (typeof ids[i] === "string" && ids[i] && !nommeParLeSocle(ids[i])) return true;
+    }
+    return false;
+  }
+
+  var ESSAIS_REPEINT = 15;          // 15 × 400 ms = 6 s
+  var _essaisRepeint = 0;
+
+  function repeindreLesRails() {
+    if (!etatApp()) {
+      if (_essaisRepeint++ < ESSAIS_REPEINT) setTimeout(repeindreLesRails, 400);
+      return;
+    }
+    try {
+      var rail = document.getElementById("profileStrip");
+      if (rail) rail._lastHtml = null;
+    } catch (e) {}
+    try { window._feedDomSig = null; } catch (e) {}
+    try { if (typeof renderProfileStrip === "function") renderProfileStrip(); } catch (e) { journal("repeint_fil", e); }
+    try { if (typeof renderProfilePassionRail === "function") renderProfilePassionRail(); } catch (e) { journal("repeint_profil", e); }
+    try { if (typeof renderFeed === "function") renderFeed(); } catch (e) { journal("repeint_feed", e); }
+  }
+
+  var ESSAIS_VERDICT = 20;          // 20 × 500 ms = 10 s
+  var _essaisVerdict = 0;
+  var _besoinEvalue = false;
+
+  function evaluerBesoinDeNoms() {
+    if (_besoinEvalue || !actif() || pret()) return;
+    var s = etatApp();
+    // On attend l'application ET le verdict d'hydratation. L'attente est bornée
+    // des deux côtés : son épuisement fait trancher sur ce qu'on a, jamais
+    // renoncer en silence.
+    if ((!s || window._etatCompteCharge !== true) && _essaisVerdict < ESSAIS_VERDICT) {
+      _essaisVerdict++;
+      setTimeout(evaluerBesoinDeNoms, 500);
+      return;
+    }
+    if (!s) return;               // l'application n'est jamais venue : rien à nommer
+    _besoinEvalue = true;
+    if (!ilManqueUnNom()) return; // tout est nommé par le socle : on ne charge RIEN
+    try {
+      charger().then(function () { _essaisRepeint = 0; repeindreLesRails(); })
+               .catch(function (e) { journal("noms_manquants", e); });
+    } catch (e) { journal("noms_manquants_sync", e); }
+  }
+
+  function amorcer() {
+    poserClasse();
+    _essaisVerdict = 0;
+    evaluerBesoinDeNoms();
   }
 
   function couper() {
@@ -628,9 +753,11 @@
 
   poserClasse();
   try {
-    window.addEventListener("passio:app-ready", poserClasse);
+    window.addEventListener("passio:app-ready", amorcer);
     if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", poserClasse, { once: true });
+      document.addEventListener("DOMContentLoaded", amorcer, { once: true });
+    } else {
+      amorcer();
     }
   } catch (e) { journal("amorce", e); }
 

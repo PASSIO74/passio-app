@@ -482,6 +482,64 @@ test.describe("le modèle et les garde-fous", () => {
     expect(await page.locator('#v9ProfilePassions [data-passion-tile="__ajouter__"]').count()).toBe(1);
   });
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // « ✨ Passion » SANS SON NOM — le référentiel arrivait trop tard (2026-09-02)
+  //
+  // ⚠️ CES DEUX CAS SONT INDISSOCIABLES : le premier exige que le nom apparaisse,
+  // le second que rien ne soit téléchargé quand il n'y a rien à nommer. Corriger
+  // l'un en cassant l'autre est précisément ce qui a failli arriver — la
+  // première rédaction préchargeait le référentiel pour tout le monde et faisait
+  // rougir ⑤ et ⑰ bis, qui protègent 160 Ko sur le chemin critique.
+  // ══════════════════════════════════════════════════════════════════════════
+  test("⑰ ter — une passion du référentiel s'affiche AVEC SON NOM, sans ouvrir le sélecteur", async ({ page }) => {
+    // ⚠️ MESURÉ À L'ÉCRAN PAR BENJAMIN : trois bulles « ✨ Passion » au milieu de
+    // passions bien nommées. `passionById` (app-02) résout le socle embarqué,
+    // interroge ensuite `PassioPassions`, et rend le générique quand il ne sait
+    // pas — or `charger()` n'était déclenché QUE par l'ouverture du sélecteur.
+    const etatAvecPassionPlate = {
+      onboarded: true, landingSeen: true, tourSeen: true,
+      user: {
+        name: "Audit QA", birthYear: 1995, isMinor: false,
+        currentProfileId: "pp_0",
+        profiles: [{ id: "pp_0", name: "Audit QA", passion: "sport-escalade", emoji: "🧗", bio: "", color: "#7c3aed", createdAt: 1 }],
+        drafts: [], likedPosts: [], joinedEvents: [], seenStories: [], customPassions: [],
+        following: [], general: { username: "Audit QA" },
+      },
+      userPosts: [], userEvents: [], notifications: [],
+      currentMood: "all", selectedFeedPassions: ["sport-escalade"],
+    };
+    await bootOnboarded(page, null, 1, { state: etatAvecPassionPlate });
+
+    // Le nom arrive sans le moindre geste : c'est tout l'objet du correctif.
+    await page.waitForFunction(
+      () => (document.getElementById("profileStrip") || {}).textContent?.includes("Escalade"),
+      null, { timeout: 20000 }
+    );
+    const rail = await page.locator("#profileStrip").innerText();
+    expect(rail).toContain("Escalade");
+    // ⚠️ Et le générique a bien DISPARU : le repeint invalide `_lastHtml`, sans
+    // quoi le rail garderait ses bulles génériques pour toute la session, un
+    // référentiel pourtant chargé.
+    expect(rail).not.toMatch(/(^|\n)\s*Passion\s*(\n|$)/);
+  });
+
+  test("⑰ quater — un compte qui ne vit que sur le socle ne télécharge RIEN de plus", async ({ page }) => {
+    // Le pendant du cas précédent : `bootOnboarded` pose des passions du socle
+    // (musique/sport/cuisine). Rien à nommer ⇒ rien à charger, et l'invariant
+    // des 160 Ko tient — y compris après l'hydratation, qui est le moment où la
+    // question se pose.
+    await bootOnboarded(page, null, 3);
+    // ⚠️ ON ATTEND QUE LE VERDICT SOIT RENDU, sinon on mesurerait un « pas
+    // encore chargé » qui ne prouve rien. `boot()` pose `_etatCompteCharge`
+    // même sans session — c'est ce qui rend l'attente courte et déterministe.
+    await page.waitForFunction(() => window._etatCompteCharge === true, null, { timeout: 20000 });
+    await page.waitForTimeout(2500);   // le module tranche dans les 500 ms qui suivent
+    const etat = await page.evaluate(() => window.PassioPassions._etat());
+    expect(etat.actif).toBe(true);
+    expect(etat.pret, "le référentiel a été chargé alors que rien ne manquait").toBe(false);
+    expect(etat.taille).toBe(0);
+  });
+
   test("⑱ le pliage du navigateur est celui du référentiel construit", async ({ page }) => {
     // ⚠️ Trois pliages différents (navigateur, générateur, base), c'est
     // « moto cross » qui trouve « Motocross » d'un côté et pas de l'autre.

@@ -1328,8 +1328,10 @@
   //  ① elle ne tourne qu'une fois utile — le drapeau `migre` est posé APRÈS
   //    l'écriture, donc une coupure réseau au milieu la laisse à refaire, et la
   //    refaire ne produit aucun doublon (fusion par ensemble) ;
-  //  ② elle N'ÉCRASE PAS les choix déjà présents sur un compte existant : les
-  //    passions du compte viennent D'ABORD, celles du visiteur s'ajoutent ;
+  //  ② elle NE TOUCHE PAS à un compte qui a déjà ses passions : elle les lui
+  //    abandonne entièrement (2026-09-02 — voir `comptePossedeSesPassions`).
+  //    L'ancienne rédaction disait « n'écrase pas, ajoute en queue » : ajouter
+  //    EST une modification du compte, et c'est le défaut qui a été corrigé ;
   //  ③ elle fusionne et dédoublonne ;
   //  ④ elle nettoie les identifiants archivés ou inconnus — un filtre qui
   //    désigne une passion disparue vide l'écran sans explication ;
@@ -1364,6 +1366,55 @@
     return out;
   }
 
+  // ── LE COMPTE A-T-IL DÉJÀ SES PROPRES PASSIONS ? ─────────────────────────
+  //
+  // ⚠️ LA QUESTION NE SE POSE PAS À `state`, ET C'EST TOUT LE PIÈGE. Sur un
+  // appareil qui vient d'explorer, `state.selectedFeedPassions` contient les
+  // passions de l'EXPLORATION (`appliquerPrefs` les y a mises pour personnaliser
+  // le fil du visiteur) : les lire reviendrait à demander au visiteur si le
+  // compte lui ressemble, et il répondrait toujours oui.
+  //
+  // La seule autorité est le serveur : `supaLoadUserState` (app-02) pose
+  // `window._comptePassionsServeur` d'après le blob `user_state` RÉELLEMENT
+  // renvoyé pour ce compte — `false` quand la ligne n'existe pas encore (compte
+  // neuf), `true` dès qu'il porte une passion vivante ou une sélection de fil.
+  //
+  // Repli quand le verdict n'a pas pu être rendu (hors ligne, SDK absent,
+  // test) : on ne retient QUE ce qui ne peut pas venir de l'exploration — un
+  // profil-passion vivant (le visiteur n'en crée aucun) ou une passion
+  // sélectionnée que le visiteur n'a PAS choisie.
+  function comptePossedeSesPassions() {
+    if (window._comptePassionsServeur === true) return true;
+    if (window._comptePassionsServeur === false) return false;
+    var s = etat();
+    if (!s) return false;
+    try {
+      var profils = (s.user && Array.isArray(s.user.profiles)) ? s.user.profiles : [];
+      for (var i = 0; i < profils.length; i++) {
+        if (profils[i] && profils[i].passion && !profils[i].archived) return true;
+      }
+    } catch (e) {}
+    try {
+      var duVisiteur = {};
+      prefs().passions.forEach(function (id) { duVisiteur[id] = 1; });
+      var sel = Array.isArray(s.selectedFeedPassions) ? s.selectedFeedPassions : [];
+      for (var j = 0; j < sel.length; j++) if (sel[j] && !duVisiteur[sel[j]]) return true;
+    } catch (e) {}
+    return false;
+  }
+
+  // Les préférences d'exploration ont fini leur vie : elles ne doivent plus
+  // jamais être proposées à un compte. On les vide plutôt que de seulement
+  // poser `migre`, pour qu'aucun chemin futur ne puisse les relire.
+  function abandonnerPrefsVisiteur() {
+    var p = prefs();
+    p.passions = [];
+    p.specialites = [];
+    p.intents = [];
+    p.migre = true;
+    sauverPrefs();
+  }
+
   function migrerPreferences() {
     var s = etat();
     if (!s) return false;
@@ -1371,9 +1422,32 @@
     var rien = !p.passions.length && !p.specialites.length && !p.intents.length;
     if (p.migre || rien) return false;
 
-    // ② Les choix du compte d'abord, ceux du visiteur ensuite : l'ordre porte
-    // le sens (le premier choisi est le primaire, cf. `setFeedPassions`), donc
-    // ajouter en QUEUE est ce qui « n'écrase pas ».
+    // ⚠️ UN COMPTE QUI A SES PASSIONS NE REÇOIT PAS CELLES D'UNE EXPLORATION.
+    // Demande de Benjamin le 2026-09-02, après essai réel : « j'étais dans l'app
+    // sans compte pour découvrir, j'ai mis plein de passions pour voir, ensuite
+    // je me suis connecté à mon vrai compte et tu as mélangé les infos de la
+    // page de découverte avec mon compte… les infos enregistrées dans un compte
+    // doivent être enregistrées au compte. »
+    //
+    // La version précédente FUSIONNAIT (les passions du compte d'abord, celles
+    // du visiteur en queue) en se croyant prudente parce qu'elle n'écrasait
+    // rien. Mais « ne rien écraser » n'est pas « ne rien ajouter » : douze
+    // passions cochées « pour voir » se retrouvaient dans le fil d'un compte
+    // qui n'en avait jamais voulu — et repartaient au serveur avec le reste.
+    //
+    // L'adoption ne vaut donc que pour un compte SANS passion : celui qu'on
+    // vient de créer au bout de l'exploration, et qui n'a rien à défendre.
+    if (comptePossedeSesPassions()) {
+      var nAbandonnees = p.passions.length;   // mesuré AVANT le vidage
+      abandonnerPrefsVisiteur();
+      tel("guest_preferences_discarded", { n: nAbandonnees });
+      return false;
+    }
+
+    // ② Le compte n'a rien à lui (garde ci-dessus) : ce qui reste dans
+    // `selectedFeedPassions` ne peut venir que de l'exploration elle-même. On
+    // le concatène quand même — la fusion par ensemble reste ce qui rend la
+    // fonction relançable sans produire de doublon.
     var duCompte = Array.isArray(s.selectedFeedPassions) ? s.selectedFeedPassions : [];
     var fusion = idsRetenus(duCompte.concat(p.passions));
     if (fusion.length) {
@@ -1716,6 +1790,9 @@
     apresAuthentification: apresAuthentification,
     retourExploration: retourExploration,
     migrerPreferences: migrerPreferences,
+    // Exposée pour que le verrou interroge la RÈGLE réelle plutôt qu'une copie
+    // recopiée dans le test — une copie ne prouverait que sa propre cohérence.
+    comptePossedeSesPassions: comptePossedeSesPassions,
     prefiller: prefiller,
     // Crochets moteurs
     surNavigation: surNavigation,
@@ -1744,20 +1821,52 @@
   // Compteurs remis à zéro sur `passio:app-ready` : sans ça, un module inliné
   // brûle son budget de reprise PENDANT la saisie du code d'accès, quand
   // l'application n'existe pas encore (piège ③ du 2026-08-28).
+  // ⚠️ ON N'ADOPTE RIEN AVANT QUE LE COMPTE AIT PARLÉ. `passio:app-ready` part
+  // au CHARGEMENT du script d'application, donc AVANT que `boot()` ait fini
+  // d'attendre `supaLoadUserState` : à 1 200 ms, un vrai compte peut encore
+  // ressembler à un compte neuf, et `migrerPreferences` lui verserait alors les
+  // passions de l'exploration en croyant bien faire. On attend donc le verdict
+  // `window._etatCompteCharge` (app-02), posé à CHAQUE sortie de la fonction
+  // d'hydratation, y compris les sorties précoces.
+  //
+  // ⚠️ L'ATTENTE EST BORNÉE, et son épuisement n'annule pas le travail : hors
+  // ligne, l'hydratation ne rend jamais son verdict, et ne rien faire du tout
+  // ferait perdre au visiteur les passions qu'il vient de choisir. Au bout des
+  // essais, `comptePossedeSesPassions` retombe sur son repli local, qui ne
+  // retient que ce qui ne peut PAS venir de l'exploration.
+  var ESSAIS_HYDRATATION = 12;      // 12 × 600 ms ≈ 7 s
+  var _essaisHydratation = 0;
+
+  function migrerQuandLeCompteAParle() {
+    try {
+      if (!appPrete() || !compteExistant()) return;
+      var p = prefs();
+      var aFaire = (!p.migre && (p.passions.length || p.specialites.length || p.intents.length)) || !!p.retour;
+      if (!aFaire) return;
+      if (window._etatCompteCharge !== true && _essaisHydratation < ESSAIS_HYDRATATION) {
+        _essaisHydratation++;
+        setTimeout(migrerQuandLeCompteAParle, 600);
+        return;
+      }
+      apresAuthentification();
+      try { if (typeof renderFeed === "function" && ecranActif() === "feed") renderFeed(); } catch (e) {}
+    } catch (e) {
+      // Corps entier sous `try` qui REPLANIFIE au lieu de conclure : une
+      // exception venue d'un `setTimeout` n'est rattrapée par personne.
+      journal("reprise", e);
+      if (_essaisHydratation < ESSAIS_HYDRATATION) {
+        _essaisHydratation++;
+        setTimeout(migrerQuandLeCompteAParle, 600);
+      }
+    }
+  }
+
   function reprise() {
     _essaisAccueil = 0;
+    _essaisHydratation = 0;
     // Compte retrouvé (session, ou onboarding terminé) + préférences d'invité en
     // attente ⇒ migration. Indépendante du drapeau, et sans effet si rien à faire.
-    setTimeout(function () {
-      try {
-        if (!appPrete() || !compteExistant()) return;
-        var p = prefs();
-        var aFaire = (!p.migre && (p.passions.length || p.specialites.length || p.intents.length)) || !!p.retour;
-        if (!aFaire) return;
-        apresAuthentification();
-        try { if (typeof renderFeed === "function" && ecranActif() === "feed") renderFeed(); } catch (e) {}
-      } catch (e) { journal("reprise", e); }
-    }, 1200);
+    setTimeout(migrerQuandLeCompteAParle, 1200);
   }
 
   window.addEventListener("passio:app-ready", reprise);

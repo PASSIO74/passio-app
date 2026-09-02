@@ -32,6 +32,10 @@ function onboardedState(n = 1) {
 // `opts.query` (optionnel) = chaîne ajoutée à l'URL. Depuis le déploiement validé
 // du 2026-08-26, UI-1 + UI-2 sont actives sur l'URL normale ; les tests de
 // secours posent explicitement le kill switch avant le boot.
+// `opts.state` (optionnel) = état local COMPLET à injecter à la place de
+// `onboardedState(nProfiles)`. Ajouté pour les cas qui ont besoin d'un compte
+// précis (une passion du référentiel plat, par exemple) : le recopier dans le
+// test ferait diverger deux fixtures, le passer ici n'en garde qu'une.
 async function bootOnboarded(page, errors, nProfiles = 1, opts = {}) {
   if (errors) {
     page.on("pageerror", (e) => errors.js.push("pageerror: " + e.message));
@@ -51,7 +55,7 @@ async function bootOnboarded(page, errors, nProfiles = 1, opts = {}) {
     if (!localStorage.getItem("passio_mvp_state_v1")) {
       localStorage.setItem("passio_mvp_state_v1", JSON.stringify(st));
     }
-  }, [GATE_KEY, GATE_TOKEN, onboardedState(nProfiles)]);
+  }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
   await page.goto("/index.html" + (opts.query || ""));
   await page.waitForFunction(() => {
     const el = document.getElementById("screen-feed");
