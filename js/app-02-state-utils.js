@@ -3163,6 +3163,55 @@ function passionTileHTML(o) {
     + '</div>';
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// LA PASTILLE DE PASSION DU PROFIL — la même question, en beaucoup plus discret
+// ──────────────────────────────────────────────────────────────────────────
+// Demande de Benjamin du 2026-09-02, après essai réel : « sur la page profil
+// enlève les onglets ronds violets sous le pseudo des passions, c'est trop gros
+// trop visible ; tu mets juste les passions en question, fin élégant. »
+//
+// La bulle du Fil (`passionTileHTML`) empile une vignette photo de 46 px, une
+// pastille d'emoji, un compteur et un libellé : sur le Fil c'est le sujet même
+// de l'écran, sur le Profil cela faisait un second bloc massif juste sous la
+// carte d'identité. Le PROFIL passe donc à une pastille de texte — emoji,
+// libellé, décompte — pendant que le FIL garde ses bulles à l'identique (« remets
+// les profils du fil comme avant, en bulle », 2026-08-29 : cette demande-là n'est
+// pas annulée, elle ne portait pas sur le même écran).
+//
+// ⚠️ CE N'EST PAS UN DOUBLON DE LA LIGNE D'IDENTITÉ. Les deux rangées nomment
+// les mêmes passions mais ne posent pas la même question : celle de la carte dit
+// QUI EST CE COMPTE et chaque pastille y ouvre la page de la passion
+// (`identitePassionsLiensHTML`) ; celle-ci FILTRE ce qui est affiché dessous et
+// porte pour cela un décompte, un état coché et `aria-pressed`. Les deux se
+// distinguent aussi à l'oeil : l'identité est une pilule pleine `--accent-wash`,
+// le filtre un contour qui ne se remplit qu'une fois coché.
+//
+// ⚠️ MÊME RÈGLE DE GESTIONNAIRE que la bulle : `_passionTileOnclick` écrit
+// l'appel en toutes lettres, seul `arg` circule et il passe par `escapeJsArg`.
+// ⚠️ ET TOUJOURS PAS D'ACTIVATION CLAVIER ICI : le délégué unique d'app-08
+// active tout `[role="button"]` non natif. En ajouter un second produirait deux
+// basculements pour une touche, qui s'annulent (défaut mesuré le 2026-08-31).
+//
+// Champs : { emoji, label, count, selected, action, arg, title, tileKey }
+function passionChipHTML(o) {
+  o = o || {};
+  var emoji = String(o.emoji || "✨");
+  var label = String(o.label || "Passion");
+  var selected = !!o.selected;
+  var nb = Number(o.count) > 0
+    ? '<span class="v9-chip-nb">' + Number(o.count) + '</span>'
+    : '';
+  return '<div class="v9-passion-chip' + (selected ? " active" : "") + '"'
+    + ' onclick="' + _passionTileOnclick(o.action, o.arg) + '"'
+    + ' title="' + escapeHtml(o.title || label) + '"'
+    + (o.tileKey === undefined ? "" : ' data-passion-tile="' + escapeHtml(String(o.tileKey)) + '"')
+    + ' role="button" tabindex="0" aria-pressed="' + (selected ? "true" : "false") + '">'
+    + '<span class="v9-chip-emoji" aria-hidden="true">' + escapeHtml(emoji) + '</span>'
+    + '<span class="v9-chip-nom">' + escapeHtml(label) + '</span>'
+    + nb
+    + '</div>';
+}
+
 // L'URL de la photo d'illustration d'une passion du catalogue (identifiant
 // Unsplash), et son repli. Le Fil et le Profil en avaient deux copies.
 function passionPhotoUrl(passionMeta) {
@@ -5442,10 +5491,10 @@ function renderPostHTML(p) {
   const _cuAuthor = userById(p.authorId) || {};
   const author = {
     // ⚠️ `id`, `passions` et `passion` DOIVENT être recopiés ici. Cet objet est
-    // reconstruit de zéro à partir de quatre champs d'affichage : sans eux,
-    // `identitePassionsHTML` ne sait pas de qui il parle et rend "" — la ligne
-    // d'identité (§2) disparaissait alors de TOUTES les cartes du fil, sans
-    // erreur ni test rouge ailleurs.
+    // reconstruit de zéro à partir de quatre champs d'affichage, et il est passé
+    // tel quel à des lecteurs qui ont besoin de savoir DE QUI ils parlent
+    // (`userById`, `avatarBg`, la passion de repli). Sans eux, ces lecteurs
+    // rendent "" sans erreur ni test rouge ailleurs.
     id: p.authorId,
     passions: _cuAuthor.passions,
     passion: _cuAuthor.passion || p.passion,
@@ -5575,12 +5624,25 @@ function renderPostHTML(p) {
   // Le HTML historique reste littéralement identique quand le flag est OFF.
   const FEED_POST_OPEN_FN = feedIntentsEnabled() ? "openFeedPost" : "openPost";
 
+  // ⚠️ L'en-tête de la carte NE PORTE PAS la ligne d'identité
+  // (identitePassionsHTML), et c'est une décision de Benjamin du 2026-09-02,
+  // sur essai réel : « sur un post dans le fil tu écris deux fois la passion
+  // concernée, je veux qu'il n'y en ait qu'une, celle avec l'heure du post. »
+  // Les deux lignes se suivaient — « Moto · Podcast · Tech », puis « Moto ·
+  // il y a 2 h » — et sur un compte mono-passion elles répétaient littéralement
+  // le même mot. Seule reste post-author-meta, qui nomme la passion DE LA
+  // PUBLICATION : la bonne question sur une carte, alors que la ligne
+  // d'identité répondait « quelles sont les passions du compte ? ».
+  // L'identité complète reste centralisée (ADR-011 §3) : elle vit sur les DEUX
+  // en-têtes de profil, où elle est cliquable, et sur les surfaces denses
+  // (commentaires, listes, inbox) — aucune de celles-là n'affiche de passion à
+  // côté, donc aucune n'y fait doublon. Même retrait dans openPost, qui
+  // affichait exactement la même paire.
   return `<article class="post" data-postid="${escapeHtml(p.id)}">
     <div class="post-header">
       <div class="avatar" style="background:${avatarBg(author)};cursor:pointer;" onclick="openUserProfile('${escapeJsArg(p.authorId)}','${escapeJsArg(p._source)}')">${avatarInner(author)}</div>
       <div class="post-author" style="cursor:pointer;" onclick="openUserProfile('${escapeJsArg(p.authorId)}','${escapeJsArg(p._source)}')">
         <div class="post-author-name">${escapeHtml(author.name || "Moi")}</div>
-        ${identitePassionsHTML(author)}
         <div class="post-author-meta">
           ${passion.emoji} ${passion.label} · ${fmtTime(p.createdAt)}
           ${p._source === "me" && p.syncStatus ? `
@@ -5635,8 +5697,8 @@ async function openPost(id) {
   // lag. On rend TOUT DE SUITE avec les commentaires locaux puis on rafraîchit en
   // arrière-plan (_loadPostDetailComments, en bas de la fonction).
   // ⚠️ MÊME PIÈGE QUE `renderPostHTML` : ces objets sont reconstruits à partir de
-  // champs d'affichage. Sans `id` ni `passions`, `identitePassionsHTML` ne sait
-  // pas de qui il parle et la ligne d'identité (§2) disparaît du post ouvert.
+  // champs d'affichage. Sans `id` ni `passions`, les lecteurs qui remontent au
+  // compte (`userById`, passion de repli) ne savent pas de qui ils parlent.
   const author = (post._source === "me" || (typeof MY_UID !== "undefined" && post.authorId === MY_UID))
     ? { id: (typeof MY_UID !== "undefined" && MY_UID) || "me", name: currentProfile()?.name || state.user.name, profileEmoji: currentProfile()?.emoji || "✨", avatar: currentProfile()?.color || "#8b5cf6", photoUrl: (state.user.general || {}).avatarPhoto || null }
     : (function(){ const cu = userById(post.authorId) || {}; return post.authorName ? { id: post.authorId, passions: cu.passions, passion: cu.passion || post.passion, name: post.authorName, profileEmoji: post.authorEmoji || "✨", avatar: post.authorColor || "#8b5cf6", photoUrl: cu.photoUrl || post.authorAvatar || null } : cu; })();
@@ -5673,7 +5735,6 @@ async function openPost(id) {
         <div class="avatar" style="background:${avatarBg(author)};cursor:pointer;" onclick="openUserProfile('${escapeJsArg(post.authorId)}','${escapeJsArg(post._source || "seed")}')">${avatarInner(author)}</div>
         <div class="post-author" style="cursor:pointer;" onclick="openUserProfile('${escapeJsArg(post.authorId)}','${escapeJsArg(post._source || "seed")}')">
           <div class="post-author-name">${escapeHtml(author.name || "Utilisateur")}</div>
-          ${identitePassionsHTML(author)}
           <div class="post-author-meta">${passion.emoji} ${passion.label} · ${fmtTime(post.createdAt)}</div>
         </div>
         ${(state.userPosts || []).some(function(up){ return up.id === id; }) ? `<button class="post-menu-btn" onclick="event.stopPropagation();openPostOptions('${escapeJsArg(id)}')" aria-label="Options du post" title="Options">

@@ -292,11 +292,18 @@ test("③ octies — ouverte depuis un ÉCRAN, la page de passion n'invente pas 
 // LES SURFACES DENSES NE BOUGENT PAS
 // ══════════════════════════════════════════════════════════════════════════
 
-test("les cartes de publication gardent une identité en TEXTE inerte", async ({ page }) => {
-  // ⚠️ PÉRIMÈTRE VERROUILLÉ. Une carte de publication a déjà son geste (ouvrir
-  // la publication, ouvrir l'auteur) : un bouton imbriqué y donnerait deux
-  // destinations pour un tap, et la ligne y mesure 10,5 px — très loin des
-  // 44 px de cible tactile. Elle reste `identitePassionsHTML`.
+test("une carte de publication ne nomme la passion QU'UNE FOIS", async ({ page }) => {
+  // ⚠️ ASSERTION RETOURNÉE LE 2026-09-02, jamais vidée. Ce test exigeait la
+  // ligne d'identité sur la carte, en TEXTE inerte ; Benjamin l'a fait retirer
+  // après essai réel : « sur un post dans le fil tu écris deux fois la passion
+  // concernée, je veux qu'il n'y en ait qu'une, celle avec l'heure du post. »
+  // Les deux lignes se suivaient et, sur un compte mono-passion, répétaient
+  // littéralement le même mot.
+  //
+  // Ce qui reste garanti, et c'est le vrai périmètre : la carte nomme la passion
+  // DE LA PUBLICATION, une seule fois, à côté de l'heure — et aucune pastille
+  // cliquable n'y apparaît (une carte a déjà son geste ; un bouton imbriqué y
+  // donnerait deux destinations pour un tap).
   await poser(page);
   const vu = await page.evaluate(() => {
     const box = document.createElement("div");
@@ -304,12 +311,14 @@ test("les cartes de publication gardent une identité en TEXTE inerte", async ({
       id: "p_x", authorId: "me", passion: "moto", type: "text", text: "Coucou",
       mood: "all", createdAt: Date.now(), likes: 0, comments: [], _source: "me",
     });
-    const ligne = box.querySelector(".ident-passions");
+    const meta = box.querySelector(".post-author-meta");
     return {
-      texte: ligne ? ligne.textContent.trim() : "",
+      lignesIdentite: box.querySelectorAll(".ident-passions").length,
+      meta: meta ? meta.textContent.trim() : "",
       boutons: box.querySelectorAll(".ident-passion-lien").length,
     };
   });
-  expect(vu.texte).toContain("Moto");
+  expect(vu.lignesIdentite, "plus de ligne d'identité sur une carte du fil").toBe(0);
+  expect(vu.meta, "la seule mention de la passion est celle de la publication").toContain("Moto");
   expect(vu.boutons, "aucune pastille cliquable dans une carte de publication").toBe(0);
 });
