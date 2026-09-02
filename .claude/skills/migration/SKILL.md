@@ -1,6 +1,6 @@
 ---
 name: migration
-description: Crée et applique une migration SQL Supabase en prod pour PASSIO, en respectant les invariants du projet (schéma prod ≠ migrations repo, RLS par propriétaire, publication realtime, timestamptz). À utiliser quand Benjamin demande une nouvelle table/colonne/policy Supabase, ou dit "migration", "ajoute une colonne", "nouvelle table".
+description: "Crée et applique une migration SQL Supabase en prod : nouvelle table, colonne, policy RLS, realtime, timestamptz."
 ---
 
 # /migration — Migration Supabase PASSIO

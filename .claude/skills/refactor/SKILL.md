@@ -1,6 +1,6 @@
 ---
 name: refactor
-description: Refactorise du code PASSIO en toute sûreté (factorisation, simplification, cohérence) sans changer le comportement, en respectant l'architecture vanilla/hoisting. À utiliser quand Benjamin veut nettoyer, factoriser, simplifier, réduire la duplication, ou dit "refacto", "nettoie", "factorise", "c'est le bazar".
+description: Refacto sûre sans changer le comportement : vanilla, hoisting, globals. Dire : refacto, nettoie, factorise, c'est le bazar.
 ---
 
 # /refactor — Refacto sûre PASSIO

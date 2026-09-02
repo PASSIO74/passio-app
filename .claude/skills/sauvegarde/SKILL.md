@@ -1,6 +1,6 @@
 ---
 name: sauvegarde
-description: Sauvegarder la production PASSIO (données, comptes, médias) ou préparer une restauration. À utiliser avant une migration risquée, avant une purge, pour un export ponctuel, ou quand Benjamin dit "sauvegarde", "backup", "on peut revenir en arrière ?", "restaurer".
+description: "Sauvegarde et restauration de la prod : données, comptes, médias. Dire : backup, revenir en arrière, restaurer."
 ---
 
 # /sauvegarde — Sauvegarder et restaurer PASSIO

@@ -1,6 +1,6 @@
 ---
 name: notifications-strategy
-description: Conçoit/audite la stratégie de notifications de PASSIO (ré-engagement, push, cadence, anti-spam) au niveau FB/IG. À utiliser quand Benjamin veut ramener les utilisateurs, régler les notifs, éviter d'être intrusif, ou dit "notifications", "push", "ré-engagement", "relancer les gens".
+description: "Stratégie de notifications : push, cadence, anti-spam, ré-engagement. Dire : notifications, push, relancer les gens."
 ---
 
 # /notifications-strategy — Stratégie de notifications PASSIO

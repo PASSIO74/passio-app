@@ -1,6 +1,6 @@
 ---
 name: schema
-description: Inspecte et documente le schéma Supabase RÉEL de prod PASSIO (tables, colonnes, FK, index, policies, publication realtime) — le repo n'est pas la source de vérité. À utiliser avant de coder une requête, pour comprendre une table, diagnostiquer un 400, ou quand Benjamin dit "montre le schéma", "quelles colonnes", "structure de la table".
+description: "Schéma Supabase réel de prod : quelles colonnes a la table, types, FK, index, policies, realtime. Diagnostiquer un 400."
 ---
 
 # /schema — Schéma prod réel PASSIO

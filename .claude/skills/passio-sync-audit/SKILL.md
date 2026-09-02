@@ -1,6 +1,6 @@
 ---
 name: passio-sync-audit
-description: Audite la synchronisation de PASSIO — multi-appareils, Supabase Realtime, outbox, idempotence, hors-ligne, concurrence, convergence, et l'autorité de l'horloge. À utiliser quand une donnée n'arrive pas sur l'autre appareil, qu'un changement se perd, qu'un état diverge entre deux sessions, ou avant de toucher à `user_state`, aux outbox ou aux canaux realtime.
+description: "Audite la synchronisation : multi-appareils, realtime, outbox, idempotence, hors-ligne, convergence, user_state."
 ---
 
 # /passio-sync-audit — Prouver la convergence, pas la supposer

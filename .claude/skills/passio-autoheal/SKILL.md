@@ -1,6 +1,6 @@
 ---
 name: passio-autoheal
-description: Conduit un incident PASSIO du signal brut à la preuve de réparation — détection, corrélation, empreinte, classification, impact, reproduction, cause racine, correctif, RÉINJECTION du défaut, vérification, non-régression, rapport. À utiliser dès qu'un défaut est soupçonné ou signalé (erreur prod, alerte Sentinelle, plainte utilisateur, test rouge), et pour toute réparation qui doit être PROUVÉE et pas seulement plausible.
+description: "Incident du signal à la preuve : cause racine, correctif, réinjection du défaut, non-régression. Dire : répare, incident."
 ---
 
 # /passio-autoheal — Un incident n'est clos que par une preuve

@@ -1,6 +1,6 @@
 ---
 name: test
-description: Lance la suite de tests complète PASSIO + les audits (globals, handlers) et rapporte les résultats. À utiliser pour valider avant commit, vérifier une non-régression, ou quand Benjamin dit "lance les tests", "vérifie que rien n'est cassé", "test".
+description: "Suite Playwright complète + audits globals et handlers. Dire : lance les tests, vérifie que rien n'est cassé."
 ---
 
 # /test — Suite de tests PASSIO

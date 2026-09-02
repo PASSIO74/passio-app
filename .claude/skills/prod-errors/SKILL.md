@@ -1,6 +1,6 @@
 ---
 name: prod-errors
-description: Lit et synthétise l'état de santé de la prod PASSIO — erreurs client (client_errors), signalements de modération (reports), comptes de test à purger. À utiliser pour un point santé, une revue matinale, ou quand Benjamin dit "y a des erreurs en prod ?", "check la prod", "modération".
+description: Santé de la prod : erreurs client_errors, signalements, comptes de test à purger. Dire : erreurs en prod, check la prod.
 ---
 
 # /prod-errors — Santé prod PASSIO

@@ -1,6 +1,6 @@
 ---
 name: dashboard-widget
-description: Ajoute un panneau/widget au centre de pilotage PASSIO (dashboard/ — SPA vanilla + serveur Express modulaire + SSE). À utiliser quand Benjamin veut visualiser une nouvelle donnée, ajouter un panneau au dashboard, un graphe, une file, ou dit "ajoute au dashboard", "nouveau panneau", "widget", "affiche X dans le pilotage".
+description: "Ajoute un panneau au dashboard (SPA vanilla, Express, SSE) : graphe, file, nouvelle donnée. Dire : nouveau panneau, widget."
 ---
 
 # /dashboard-widget — Nouveau panneau du centre de pilotage

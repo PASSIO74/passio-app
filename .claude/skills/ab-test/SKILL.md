@@ -1,6 +1,6 @@
 ---
 name: ab-test
-description: Met en place et analyse une expérimentation / feature flag sur PASSIO (A/B test, rollout progressif) pour décider par la donnée comme FB/IG. À utiliser quand Benjamin veut tester une variante, activer une feature pour une fraction d'utilisateurs, mesurer un impact, ou dit "A/B test", "expérimentation", "feature flag", "tester une variante".
+description: "Expérimentation PASSIO : feature flag, variante, rollout progressif, mesure par télémétrie. Dire : A/B test, feature flag."
 ---
 
 # /ab-test — Expérimentation PASSIO

@@ -1,6 +1,6 @@
 ---
 name: passio-chaos-testing
-description: Injecte des pannes contrôlées dans PASSIO (réseau coupé, WebSocket tué, erreurs backend, latence, événement perdu/dupliqué/réordonné, session expirée, quota plein, corruption d'état) et vérifie que l'application dégrade proprement puis se rétablit. À utiliser pour éprouver la robustesse avant un jalon, pour valider un mécanisme de reprise, ou quand Benjamin dit « et si ça tombe ? », « chaos », « injection de pannes ».
+description: "Injecte des pannes contrôlées (réseau coupé, WebSocket tué, latence, quota), éprouve la reprise. Dire : chaos, et si ça tombe ?"
 ---
 
 # /passio-chaos-testing — Casser exprès, sous contrôle

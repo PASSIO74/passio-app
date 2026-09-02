@@ -1,6 +1,6 @@
 ---
 name: feed-tuning
-description: Règle et améliore l'algorithme de classement du fil PASSIO (rankFeedPosts — fraîcheur, affinité, engagement) au niveau du News Feed FB/IG. À utiliser quand Benjamin veut améliorer la pertinence du fil, l'ordre des posts, l'algo, ou dit "fil", "feed", "classement", "algorithme", "quel post en premier".
+description: "Règle le classement du fil (rankFeedPosts : fraîcheur, affinité, engagement). Dire : fil, feed, ordre des posts, algorithme."
 ---
 
 # /feed-tuning — Réglage de l'algo de fil PASSIO

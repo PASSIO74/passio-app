@@ -1,6 +1,6 @@
 ---
 name: passio-orchestrator
-description: Cerveau de routage du PASSIO AI Engineering OS. À utiliser face à une demande de dev non triviale ou transverse (« construis X », « améliore Y », « pourquoi Z est lent/cassé ») pour classifier le domaine + le risque, charger le bon contexte .passio/, router vers les skills/subagents existants, séquencer, et déclencher les revues (council pour décision à fort impact, red team pour feature majeure). Ne réimplémente rien : il orchestre les 35 skills déjà en place.
+description: "Cerveau de routage : classe le domaine et le risque, charge le contexte .passio/, séquence les spécialistes et les revues."
 ---
 
 # /passio-orchestrator — Cerveau de routage

@@ -1,6 +1,6 @@
 ---
 name: passio-multi-session
-description: Protège le travail quand plusieurs sessions Claude Code tournent en parallèle sur le même dépôt PASSIO — périmètre de fichiers déclaré, commit borné par pathspec, ports et prod non partagés. À utiliser en OUVERTURE de toute session lancée pendant qu'une autre travaille, avant de committer si l'index contient du travail étranger, ou quand Benjamin dit « je bosse en parallèle », « ne mélange pas », « deux sessions ».
+description: "Sessions Claude Code en parallèle sur le dépôt : périmètre déclaré, commit borné. Dire : je bosse en parallèle, ne mélange pas."
 ---
 
 # /passio-multi-session — Une session, un périmètre, un commit

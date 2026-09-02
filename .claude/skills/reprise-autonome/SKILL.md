@@ -1,6 +1,6 @@
 ---
 name: reprise-autonome
-description: Reprend le travail PASSIO tout seul après une interruption (crédits épuisés, session fermée, machine laissée tourner la nuit), sans attendre Benjamin ni demander d'autorisation. À utiliser au démarrage d'une session qui fait suite à une autre, ou quand Benjamin dit "continue sans t'arrêter", "reprends", "travaille toute la nuit", "ne m'attends pas".
+description: Reprend le travail seul après une interruption, sans rien demander. Dire : reprends, continue, travaille toute la nuit.
 ---
 
 # /reprise-autonome — Travail continu sans supervision

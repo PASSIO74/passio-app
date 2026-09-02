@@ -1,6 +1,6 @@
 ---
 name: zero-autorisation
-description: Interdit de demander une autorisation, une confirmation ou un arbitrage à Benjamin — dans cette session comme dans toutes les autres. Décider, appliquer, aller au bout, puis rapporter le résultat fait. À charger au démarrage de toute session PASSIO, et dès que l'envie de poser une question surgit.
+description: "Interdit de demander une autorisation, une confirmation ou un arbitrage : décider, faire, rapporter. Charger au démarrage."
 ---
 
 # /zero-autorisation — On décide, on fait, on rapporte

@@ -1,6 +1,6 @@
 ---
 name: passio-load-testing
-description: Conçoit et exécute les tests de charge, de stress et d'endurance de PASSIO (100 utilisateurs concurrents et au-delà), mesure P50/P95/P99, identifie la saturation et vérifie la convergence sous charge. À utiliser avant une ouverture de beta, pour dimensionner, pour chercher une fuite mémoire ou un abonnement oublié, ou quand Benjamin dit « et si 100 personnes se connectent ? ».
+description: "Tests de charge, stress, endurance : 100 utilisateurs concurrents, P50/P95/P99, saturation, fuite mémoire, dimensionnement."
 ---
 
 # /passio-load-testing — Ce qui ne tient pas à 100

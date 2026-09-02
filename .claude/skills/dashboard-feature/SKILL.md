@@ -1,6 +1,6 @@
 ---
 name: dashboard-feature
-description: Développe une nouvelle fonctionnalité serveur du centre de pilotage PASSIO (route API, surveillance de table, alerte, intégration) au-delà d'un simple panneau. À utiliser quand Benjamin veut une capacité backend du dashboard (alertes auto, surveillance, ingestion, action Claude), ou dit "le dashboard doit faire X", "surveille automatiquement", "alerte quand".
+description: "Capacité backend du pilotage : route API, surveillance de table, alerte. Dire : surveille automatiquement, alerte quand."
 ---
 
 # /dashboard-feature — Fonctionnalité serveur du pilotage

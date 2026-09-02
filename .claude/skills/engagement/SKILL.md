@@ -1,6 +1,6 @@
 ---
 name: engagement
-description: Audite et enrichit les mécaniques d'engagement de PASSIO (réactions, commentaires, partages, likes, stories, micro-interactions) au niveau FB/IG. À utiliser quand Benjamin veut plus d'interactions, rendre l'app plus addictive/vivante, ou dit "engagement", "interactions", "rendre vivant", "faire réagir".
+description: "Enrichit les mécaniques d'engagement : réactions, commentaires, likes, partages, stories, interactions."
 ---
 
 # /engagement — Mécaniques d'engagement PASSIO

@@ -1,6 +1,6 @@
 ---
 name: design
-description: Retravaille/polit un écran PASSIO en respectant la charte visuelle maison (thème violet, variables CSS, PAS de mode sombre, fil compact, icônes SVG). À utiliser quand Benjamin veut refondre, embellir ou harmoniser un écran (feed/profil/IRL/CDV/messages/wallet/explore/studio), ou dit "design", "refais l'écran", "c'est moche", "polish".
+description: "Refonte visuelle d'un écran selon la charte maison (violet, pas de mode sombre). Dire : refais l'écran, c'est moche, polish."
 ---
 
 # /design — Refonte visuelle d'un écran PASSIO

@@ -1,6 +1,6 @@
 ---
 name: ship
-description: Séquence complète de mise en production PASSIO — vérifie la syntaxe, lance la suite de tests + audits, build le dist, commit et pousse sur main (ce qui déclenche le déploiement Netlify). À utiliser dès que Benjamin dit "ship", "déploie", "envoie en prod", "pousse", ou après avoir terminé une fonctionnalité.
+description: "Mise en prod : tests, audits, build dist, push main (déploiement Netlify). Dire : ship, déploie, envoie en prod, pousse."
 ---
 
 # /ship — Mise en production PASSIO

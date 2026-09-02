@@ -1,6 +1,6 @@
 ---
 name: pilot-report
-description: Génère un rapport de supervision temps réel de PASSIO depuis le centre de pilotage (activité, KPI, erreurs, signalements, tests, santé) — la vue "salle de contrôle". À utiliser quand Benjamin veut un point de situation global, un état des lieux de la beta, ou dit "rapport de pilotage", "état de la beta", "point de situation", "comment va l'app".
+description: "Point de situation de la beta depuis le centre de pilotage : activité, KPI, erreurs, signalements, santé, tests."
 ---
 
 # /pilot-report — Rapport de supervision PASSIO

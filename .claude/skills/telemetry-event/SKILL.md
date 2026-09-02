@@ -1,6 +1,6 @@
 ---
 name: telemetry-event
-description: Ajoute proprement un nouvel événement/marqueur de télémétrie à PASSIO en passant par le filtre PII, pour le remonter au centre de pilotage. À utiliser quand Benjamin veut mesurer une action, instrumenter une feature, tracker un comportement, ou dit "mesure ça", "track", "instrumente", "ajoute un événement télémétrie".
+description: "Ajoute un événement de télémétrie (filtre PII) remonté au pilotage. Dire : mesure cette action, track, instrumente."
 ---
 
 # /telemetry-event — Nouvel événement de télémétrie PASSIO

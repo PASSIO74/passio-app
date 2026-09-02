@@ -1,6 +1,6 @@
 ---
 name: review
-description: Revue de code pré-commit du diff en cours sur PASSIO, en déléguant au subagent audit-passio + audits automatiques, avant de livrer. À utiliser avant un commit/ship, pour relire un changement, ou quand Benjamin dit "relis", "review", "vérifie mon code", "avant de pousser".
+description: Revue du diff avant commit : subagent audit-passio, audits mécaniques. Dire : relis mon code, review, avant de pousser.
 ---
 
 # /review — Revue pré-commit PASSIO

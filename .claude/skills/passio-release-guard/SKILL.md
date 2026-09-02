@@ -1,6 +1,6 @@
 ---
 name: passio-release-guard
-description: Contrôle la mise en production de PASSIO — vérifications avant déploiement, feature flags, observation après déploiement, comparaison avant/après et retour arrière. À utiliser avant tout `git push origin main` (qui déploie), après un déploiement pour vérifier qu'il n'a rien dégradé, ou quand il faut revenir en arrière.
+description: "Contrôle de mise en production : barrière avant push sur main, feature flag, observation après coup, retour arrière."
 ---
 
 # /passio-release-guard — Sur ce dépôt, pousser c'est déployer

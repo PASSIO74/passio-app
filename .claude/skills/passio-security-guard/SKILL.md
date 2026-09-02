@@ -1,6 +1,6 @@
 ---
 name: passio-security-guard
-description: Garde-fou de sécurité de PASSIO — RLS, auth, isolation entre comptes, PII, secrets, contrôles côté serveur — et REFUSE les correctifs qui affaibliraient une frontière de confiance. À consulter avant toute modification touchant l'auth, une policy, la visibilité d'un contenu, la télémétrie ou un secret, et avant d'appliquer tout correctif proposé par une IA.
+description: "Garde-fou sécurité : RLS, auth, isolation des comptes, PII, secrets — et REFUSE tout correctif qui ouvre une porte."
 ---
 
 # /passio-security-guard — Le droit de dire non

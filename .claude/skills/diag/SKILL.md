@@ -1,6 +1,6 @@
 ---
 name: diag
-description: Diagnostique un bug PASSIO de bout en bout — lit les erreurs prod (client_errors), reproduit dans le preview, isole la cause racine. À utiliser quand Benjamin signale un bug, un comportement bizarre, un truc qui "marche pas", "plante", "s'affiche pas", ou dit "debug", "diagnostique".
+description: "Diagnostique un bug de bout en bout : client_errors, repro dans le preview, cause racine. Dire : debug, plante, s'affiche pas."
 ---
 
 # /diag — Diagnostic de bug PASSIO

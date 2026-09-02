@@ -1,6 +1,6 @@
 ---
 name: chatgpt
-description: Canal de collaboration avec ChatGPT (`scripts/chatgpt.js`) — question, challenge d'un raisonnement, envoi d'un dossier, fils persistants. À utiliser quand Benjamin dit « demande à ChatGPT », « second avis », « fais challenger », ou pour confronter un raisonnement à un autre modèle.
+description: "Canal ChatGPT (scripts/chatgpt.js) : question, challenge, dossier, fils persistants. Dire : demande à ChatGPT, second avis."
 ---
 
 # /chatgpt — Travailler avec ChatGPT au quotidien
