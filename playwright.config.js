@@ -2,6 +2,49 @@
 // Lance un serveur statique local puis teste l'app comme un vrai navigateur.
 const { defineConfig } = require("@playwright/test");
 
+// ───────────────────────────────────────────────────────────────────────────
+// DEUX PROJETS, ET C'EST CE QUI DÉBLOQUE LA CHAÎNE (2026-09-02).
+//
+// CE QUI COÛTAIT CHER. Le job `test` de `.github/workflows/deploy.yml` portait
+// `concurrency: passio-e2e-prod`, un verrou GLOBAL au dépôt : un run de PR et un
+// run de `main` ne pouvaient plus se chevaucher, ils faisaient la queue. Le motif
+// est réel — trois suites créent de VRAIS comptes sur la prod Supabase et
+// `global-teardown` purge TOUS les comptes `%@passio-e2e.test`, donc deux suites
+// simultanées s'effacent mutuellement leurs comptes (incident du 2026-09-01).
+//
+// Mais ce verrou était posé sur les 120 suites alors que 7 seulement touchent la
+// base — et en CI, où `PASSIO_E2E_MULTI` n'est jamais défini, 3 seulement
+// (`authz-critical`, `blocage-acces`, `user-state-horodatage`). Les 113 autres
+// sont du navigateur pur sur un serveur statique local : elles n'ont aucune
+// raison d'attendre. Mesuré sur le run 2400 : 28 min 07 s de Playwright sur
+// 30 min 37 s de chaîne, le tout rejoué à l'identique sur la PR puis sur `main`.
+//
+// LA SÉPARATION. Le projet `prod` isole les suites qui écrivent en base : lui
+// seul garde le verrou et la clé `service_role`. Le projet `local` prend tout le
+// reste, sans verrou et shardable — c'est ce qui permet au workflow de le
+// découper en 4 jobs parallèles.
+//
+// ⚠️ LES DEUX LISTES SONT DISJOINTES PAR CONSTRUCTION : `local` exclut exactement
+// ce que `prod` inclut. Un fichier ne peut donc pas tourner deux fois, et aucun
+// ne peut être oublié — `npx playwright test` sans `--project` reste rigoureusement
+// équivalent à ce que la CI exécutait avant ce changement.
+//
+// ⚠️ AJOUTER UNE SUITE QUI CRÉE UN COMPTE OBLIGE À L'INSCRIRE ICI. Oubliée, elle
+// partirait dans `local`, donc hors verrou, donc en concurrence avec le job prod :
+// c'est exactement l'incident du 2026-09-01. Le critère est `creerCompteE2E`
+// (`tests/e2e/compte-e2e.js`) ou `qa-helper.js`, directement ou non.
+// Verrou : `tests/e2e/projets-playwright.spec.js`.
+const SUITES_PROD = [
+  "authz-critical.spec.js",      // crée des comptes — barrière RLS du déploiement
+  "blocage-acces.spec.js",       // crée des comptes
+  "user-state-horodatage.spec.js", // crée des comptes
+  "multi-comptes.spec.js",       // crée des comptes sous PASSIO_E2E_MULTI
+  "confidentialite.spec.js",     // sous PASSIO_E2E_MULTI
+  "qa-campaign.spec.js",         // sous PASSIO_E2E_MULTI (via qa-helper.js)
+  "suppression-compte.spec.js",  // sous PASSIO_E2E_MULTI
+];
+const MOTIFS_PROD = SUITES_PROD.map((f) => "**/" + f);
+
 module.exports = defineConfig({
   testDir: "./tests/e2e",
   timeout: 45000,
@@ -24,6 +67,12 @@ module.exports = defineConfig({
     locale: "fr-FR",
     actionTimeout: 15000, // un clic qui ne trouve pas son élément doit échouer vite et dire lequel, pas geler le test
   },
+  // `prod` et `local` : voir le commentaire SUITES_PROD en tête de fichier.
+  // Sans `--project`, Playwright exécute les deux — donc toutes les suites.
+  projects: [
+    { name: "prod", testMatch: MOTIFS_PROD },
+    { name: "local", testIgnore: MOTIFS_PROD },
+  ],
   // Mesure de couverture fonctionnelle (PASSIO_COUVERTURE=1) : le serveur
   // statique est remplacé par un serveur qui sert les MÊMES octets plus un
   // enregistreur d'appels. Aucun test n'est modifié, aucune assertion déplacée.

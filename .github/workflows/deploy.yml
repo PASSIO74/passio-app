@@ -138,42 +138,53 @@ jobs:
 
           echo "- Contre-revue indépendante : présente sur ${head_sha}" >> "${GITHUB_STEP_SUMMARY}"
 
-  test:
-    name: Tests smoke (Playwright)
+  # ════════════════════════════════════════════════════════════════════════════
+  # LA SUITE EST DÉCOUPÉE EN QUATRE JOBS PARALLÈLES (2026-09-02).
+  #
+  # CE QUI COÛTAIT UNE HEURE PAR RETOUCHE. Un job `test` unique portait tout, et
+  # portait surtout `concurrency: passio-e2e-prod` — un verrou GLOBAL au dépôt.
+  # Mesuré sur le run 2400 (retouche « Profil visité ») : 28 min 07 s de Playwright
+  # sur 30 min 37 s de chaîne, tout le reste (audits, bancs PostgreSQL, dashboard,
+  # build, minification, Netlify) tenant en 2 minutes. Et il faut le payer DEUX
+  # fois — une sur la PR, une sur `main` après fusion — plus l'attente du verrou,
+  # qui met un run de `main` derrière un run de PR. Une modification purement
+  # esthétique mettait ainsi 60 à 100 minutes à atteindre la production.
+  #
+  # POURQUOI LE VERROU EXISTE, ET POURQUOI IL ÉTAIT AU MAUVAIS ÉTAGE. Trois suites
+  # créent de VRAIS comptes sur la prod Supabase (`authz-critical`, `blocage-acces`,
+  # `user-state-horodatage` ; quatre autres s'y ajoutent sous `PASSIO_E2E_MULTI`,
+  # jamais défini en CI), et `global-teardown` purge TOUS les comptes
+  # `%@passio-e2e.test` : deux suites simultanées s'effacent mutuellement leurs
+  # comptes — l'incident du 2026-09-01, `main` rouge et déploiement sauté. Le motif
+  # est donc réel. Mais il ne concerne que 7 fichiers sur 120 : les 113 autres sont
+  # du navigateur pur sur un serveur statique local, et attendaient pour rien.
+  #
+  # LE DÉCOUPAGE. `playwright.config.js` déclare deux projets DISJOINTS, `prod` et
+  # `local` (15 tests contre 897 — vérifié : la somme fait exactement le total
+  # d'avant, aucun test perdu ni dupliqué). Seul `test-prod` garde le verrou et la
+  # clé `service_role` ; `test-local` se découpe en quatre shards sans verrou, qui
+  # peuvent tourner pendant qu'une autre branche occupe la base.
+  #
+  # ⚠️ LA PURGE EST DEVENUE LE PIÈGE PRINCIPAL, et il est fermé dans
+  # `tests/e2e/global-teardown.js` : sa garde testait `process.env.CI`, donc CHAQUE
+  # shard aurait purgé la prod pendant que `test-prod` y travaillait — l'incident du
+  # 2026-09-01 réintroduit par la porte de derrière, et en pire (quatre purges
+  # concurrentes au lieu de deux). Elle exige désormais `PASSIO_E2E_PROD=1`, que
+  # seul le job détenteur du verrou pose. NE JAMAIS poser ce marqueur ailleurs.
+  #
+  # ⚠️ LE GATE AUTHZ N'A PLUS D'ÉTAPE À LUI, et ce n'est pas un affaiblissement :
+  # il tournait à part pour qu'un rouge soit lisible « sans le chercher dans 150
+  # résultats ». Il est maintenant dans un job de 15 tests qui porte son nom — la
+  # raison a disparu. Il reste bloquant (le job est dans les `needs` du déploiement)
+  # et il consomme désormais UN jeu de comptes au lieu de deux, ce qui soulage le
+  # quota d'inscriptions horaire, cause de l'incident du 2026-08-30.
+  # ════════════════════════════════════════════════════════════════════════════
+
+  audits:
+    name: Audits statiques et bancs serveur
     runs-on: ubuntu-latest
-    # ⚠️ LE VERROU DE LA PROD SUPABASE, ET IL EST GLOBAL AU DÉPÔT (2026-09-01).
-    # Ce job — et lui seul — crée de vrais comptes sur la prod, et son
-    # `global-teardown` purge TOUS les comptes `%@passio-e2e.test`. Deux
-    # exécutions simultanées s'effacent donc mutuellement leurs comptes, quelle
-    # que soit la branche : c'est ce qui a laissé `main` rouge et le déploiement
-    # sauté le 2026-09-01 (voir la note du bloc `concurrency` en tête de fichier).
-    #
-    # Le groupe est CONSTANT — ni la branche, ni le déclencheur n'y entrent : c'est
-    # exactement ce qui fait qu'un run de PR et un run de `main` ne peuvent plus se
-    # chevaucher. C'est aussi ce qui borne le quota d'inscriptions horaire du projet
-    # Supabase, la raison d'être du plafond posé le 2026-08-30.
-    #
-    # `cancel-in-progress: false` : une suite en cours a déjà créé des comptes que
-    # son teardown doit nettoyer. L'interrompre les laisserait derrière elle.
-    concurrency:
-      group: passio-e2e-prod
-      cancel-in-progress: false
-    # Les suites qui ecrivent en base (authz-critical, blocage-acces,
-    # user-state-horodatage) creent des comptes jetables. Depuis l'activation de
-    # « Confirm email » (SMTP Brevo, 2026-08-30), signUp ne rend plus de session :
-    # ces comptes doivent etre crees PRE-CONFIRMES par l'API d'administration,
-    # donc avec la cle service_role. Sans ce secret, tests/e2e/compte-e2e.js
-    # echoue en nommant la cause plutot que de se mettre en veille silencieuse
-    # sur une barriere de securite.
-    #
-    # ⚠️ LE SECRET EST PORTÉ PAR LES DEUX SEULES ÉTAPES QUI S'EN SERVENT, JAMAIS
-    # PAR LE JOB. Corrigé le 2026-08-30 (audit de la PR #222) : posé au niveau du
-    # job, il était dans l'environnement de TOUTES les étapes, dont trois qui
-    # exécutent du code de tiers non épinglé (`npm install` du dashboard, `npm
-    # install --no-save @playwright/test`, `npx playwright install`). Un seul
-    # `postinstall` d'une dépendance transitive compromise suffisait alors à lire
-    # `process.env.SUPABASE_SERVICE_ROLE_KEY` et à l'exfiltrer, job vert et sans
-    # trace — or cette clé contourne INTÉGRALEMENT la RLS de la prod.
+    # Aucun secret, aucun accès à la prod, aucun navigateur : ~40 s. Ce job n'a
+    # aucune raison d'attendre quoi que ce soit, ni d'être attendu par les tests.
     steps:
       - uses: actions/checkout@v5
 
@@ -273,21 +284,54 @@ jobs:
           npm ci
           npm test
 
+  test-prod:
+    name: Suites production (comptes réels)
+    runs-on: ubuntu-latest
+    # ⚠️ LE VERROU DE LA PROD SUPABASE, ET IL EST GLOBAL AU DÉPÔT.
+    # Ce job — et lui seul — crée de vrais comptes sur la prod, et son
+    # `global-teardown` purge TOUS les comptes `%@passio-e2e.test`. Deux
+    # exécutions simultanées s'effacent donc mutuellement leurs comptes, quelle
+    # que soit la branche : c'est ce qui a laissé `main` rouge et le déploiement
+    # sauté le 2026-09-01.
+    #
+    # Le groupe est CONSTANT — ni la branche, ni le déclencheur n'y entrent : c'est
+    # exactement ce qui fait qu'un run de PR et un run de `main` ne peuvent pas se
+    # chevaucher. C'est aussi ce qui borne le quota d'inscriptions horaire du projet
+    # Supabase, la raison d'être du plafond posé le 2026-08-30.
+    #
+    # `cancel-in-progress: false` : une suite en cours a déjà créé des comptes que
+    # son teardown doit nettoyer. L'interrompre les laisserait derrière elle.
+    concurrency:
+      group: passio-e2e-prod
+      cancel-in-progress: false
+    env:
+      # Autorise la purge du teardown. À NE POSER QUE sur le job qui tient le
+      # verrou : ailleurs, elle effacerait les comptes de celui-ci en plein vol.
+      PASSIO_E2E_PROD: "1"
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
       - name: Installer Playwright
         run: |
           npm install --no-save @playwright/test
           npx playwright install --with-deps chromium
 
-      # Gate d'autorisation (incident CI-GATE-001) : lancé EN PREMIER et à part,
-      # pour que la séparation entre comptes soit prouvée avant tout le reste et
-      # qu'un rouge ici soit lisible immédiatement, sans le chercher dans 150
-      # résultats. ⚠️ Nécessite désormais le secret SUPABASE_SERVICE_ROLE_KEY
-      # (env du job) : la clé anon ne suffit plus depuis que la confirmation
-      # d'e-mail est active.
-      - name: Gate d'autorisation (AUTHZ-CRITICAL)
+      # ⚠️ LE SECRET EST PORTÉ PAR LES SEULES ÉTAPES QUI S'EN SERVENT, JAMAIS PAR
+      # LE JOB. Corrigé le 2026-08-30 (audit de la PR #222) : posé au niveau du
+      # job, il était dans l'environnement de TOUTES les étapes, dont celles qui
+      # exécutent du code de tiers non épinglé (`npm install --no-save
+      # @playwright/test`, `npx playwright install`). Un seul `postinstall` d'une
+      # dépendance transitive compromise suffisait alors à lire
+      # `process.env.SUPABASE_SERVICE_ROLE_KEY` et à l'exfiltrer, job vert et sans
+      # trace — or cette clé contourne INTÉGRALEMENT la RLS de la prod.
+      - name: Suites production (RLS, comptes, blocage)
         env:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: npx playwright test tests/e2e/authz-critical.spec.js
+        run: npx playwright test --project=prod
 
       # Mesure de la dette de classement des passions. LECTURE SEULE (requêtes
       # HEAD de comptage), sortie strictement agrégée : aucun identifiant de
@@ -300,16 +344,53 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: node scripts/mesure-passions.js
 
-      - name: Lancer les tests
-        env:
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: npx playwright test
+  test-local:
+    name: Suites navigateur (${{ matrix.shard }}/4)
+    runs-on: ubuntu-latest
+    # AUCUN verrou, AUCUN secret, AUCUNE écriture en base : ces suites servent un
+    # serveur statique local et pilotent un navigateur. C'est tout l'intérêt du
+    # découpage — elles n'attendent plus la prod, et elles se répartissent.
+    strategy:
+      # Un shard rouge ne doit pas annuler les trois autres : on veut la liste
+      # COMPLÈTE des échecs en une passe, pas le premier trouvé.
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v5
 
-      # Le déploiement sert dist/, pas les fichiers de développement. Cette passe
-      # reconstruit donc l'artefact réel et prouve que HTML, release.json, SW et
-      # gardes navigateur portent la même identité de release. Elle vérifie aussi
-      # le drain télémétrique et le contexte passionnel future-only réellement
-      # concaténé dans le bundle de production.
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Installer Playwright
+        run: |
+          npm install --no-save @playwright/test
+          npx playwright install --with-deps chromium
+
+      - name: Lancer les tests
+        run: npx playwright test --project=local --shard=${{ matrix.shard }}/4
+
+  gates-artefact:
+    name: Gates artefact production (dist)
+    runs-on: ubuntu-latest
+    # Le déploiement sert dist/, pas les fichiers de développement. Cette passe
+    # reconstruit donc l'artefact réel et prouve que HTML, release.json, SW et
+    # gardes navigateur portent la même identité de release. Elle vérifie aussi
+    # le drain télémétrique et le contexte passionnel future-only réellement
+    # concaténé dans le bundle de production.
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Installer Playwright
+        run: |
+          npm install --no-save @playwright/test
+          npx playwright install --with-deps chromium
+
       - name: Gates artefact production
         env:
           PASSIO_CIBLE: dist
@@ -320,7 +401,7 @@ jobs:
   deploy:
     name: Déploiement production
     if: github.event_name == 'push'
-    needs: [test, governance]
+    needs: [governance, audits, test-prod, test-local, gates-artefact]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -373,7 +454,7 @@ jobs:
   preview:
     name: Déploiement preview (PR)
     if: github.event_name == 'pull_request'
-    needs: [test, governance]
+    needs: [governance, audits, test-prod, test-local, gates-artefact]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
