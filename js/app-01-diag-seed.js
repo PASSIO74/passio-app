@@ -195,7 +195,7 @@ function buildSeed() {
     { id: "p9",  authorId: "u_sofia", passion: "litterature", mood: "chill", type: "text", cover: "book",
       text: "Relecture de « L'Usage du monde » de Nicolas Bouvier. À 25 ans je l'ai détesté. À 38, il me parle différemment. Les livres attendent.",
       createdAt: days(2), likes: 41, liked: false, comments: [] },
-    { id: "p10", authorId: "u_emma", passion: "yoga", mood: "chill", type: "text", cover: "nature",
+    { id: "p10", authorId: "u_emma", passion: "yoga", mood: "learn", type: "text", cover: "nature",
       text: "Routine du matin (7 min) : 3 respirations profondes → chien tête en bas → guerrier I → enfant. Pas besoin de plus pour commencer.",
       createdAt: days(2), likes: 120, liked: false, comments: [] },
     { id: "p11", authorId: "u_zoe", passion: "mode", mood: "creation", type: "text", cover: "neon",
@@ -231,9 +231,9 @@ function buildSeed() {
         { id: "c8", authorId: "u_emma", text: "Merci pour ça. J'en avais besoin 🌿", createdAt: hours(10), likes: 12, likedBy: [], emojis: [], replies: [] },
       ]},
     { id: "p18", authorId: "u_tom", passion: "jeuxvideo", mood: "chill", type: "text", cover: "neon",
-      text: "Nouveau record perso sur Ocarina of Time any% : 16:54. La communauté speedrun FR devient ouf, on échange chaque semaine.",
+      text: "Manette posée, chrono éteint, et j'ai relancé Ocarina juste pour traîner à Cocorico. Deux heures à pêcher, parler aux poules et écouter la musique du village.\nJe connais ce jeu à la seconde près pour le speedrun, et je n'avais pas regardé un seul coucher de soleil dedans depuis quatre ans.",
       createdAt: hours(14), likes: 64, liked: false, comments: [] },
-    { id: "p19", authorId: "u_raph", passion: "tech", mood: "creation", type: "text", cover: "tech",
+    { id: "p19", authorId: "u_raph", passion: "tech", mood: "actu", type: "text", cover: "tech",
       text: "Hot take : l'IA va pas tuer le design, elle va tuer le design pressé. Les 10 minutes qu'on passait à faire un mockup moche deviennent 10 secondes. Reste le goût.",
       createdAt: hours(16), likes: 183, liked: false, comments: [
         { id: "c9", authorId: "u_yanis", text: "100% d'accord. La barre monte, elle disparaît pas.", createdAt: hours(15), likes: 8, likedBy: [], emojis: [], replies: [] },
@@ -249,13 +249,13 @@ function buildSeed() {
       createdAt: days(1), likes: 238, liked: false, comments: [
         { id: "c10", authorId: "u_sofia", text: "Le poème doit rester brut. Ne touche à rien. 💫", createdAt: hours(22), likes: 14, likedBy: [], emojis: [], replies: [] },
       ]},
-    { id: "p23", authorId: "u_hugo", passion: "cuisine", mood: "chill", type: "text", cover: "kitchen",
+    { id: "p23", authorId: "u_hugo", passion: "cuisine", mood: "creation", type: "text", cover: "kitchen",
       text: "Tarte citron sans œufs ni beurre. J'ai mis 4 essais, mais cette version elle est propre. Si ça intéresse je mets la recette.",
       createdAt: days(2), likes: 102, liked: false, comments: [] },
     { id: "p24", authorId: "u_rita", passion: "mode", mood: "irl", type: "text", cover: "neon",
       text: "Dakar Fashion Week se prépare. Je cherche 3 bénévoles créatifs pour l'équipe com' mi-mai. Billets pris en charge si on bloque un projet ensemble.",
       createdAt: days(2), likes: 78, liked: false, comments: [] },
-    { id: "p25", authorId: "u_lou", passion: "art", mood: "chill", type: "text", cover: "workshop",
+    { id: "p25", authorId: "u_lou", passion: "art", mood: "irl", type: "text", cover: "workshop",
       text: "Mon atelier céramique est ouvert samedi après-midi. 3 tours dispo, thé, pas de perf, juste la terre. 4 places. Uzès.",
       createdAt: days(3), likes: 54, liked: false, comments: [] },
 
@@ -289,12 +289,12 @@ function buildSeed() {
       createdAt: days(2), likes: 141, liked: false, comments: [] },
 
     // ==== MUSIQUE, 3 posts ====
-    { id: "p40", authorId: "u_lea", passion: "musique", mood: "chill", type: "text", cover: "stage",
+    { id: "p40", authorId: "u_lea", passion: "musique", mood: "learn", type: "text", cover: "stage",
       text: "Première fois sur scène cette semaine. 40 personnes dans la salle, ça tremblait dans les jambes. J'ai raté la deuxième intro, rigolé, repris. Personne n'a tiqué.\n\nLeçon : le public ne veut pas un·e robot, il veut quelqu'un d'incarné.",
       createdAt: hours(9), likes: 156, liked: false, comments: [
         { id: "c40a", authorId: "u_oussa", text: "On passe tous par là 🔥", createdAt: hours(7), likes: 3, likedBy: [], emojis: [], replies: [] },
       ]},
-    { id: "p41", authorId: "u_oussa", passion: "musique", mood: "creation", type: "text", cover: "studio",
+    { id: "p41", authorId: "u_oussa", passion: "musique", mood: "learn", type: "text", cover: "studio",
       text: "Mon setup home studio en 2026 : un bureau IKEA, un SM7B, un Apollo Twin, et surtout 4 m² traités avec des panneaux DIY. Pas besoin de 20 k€ pour sonner pro.\n\nJe poste la liste complète en commentaire si ça intéresse.",
       createdAt: hours(14), likes: 203, liked: false, comments: [
         { id: "c41a", authorId: "u_liam", text: "Liste stp 🙏", createdAt: hours(13), likes: 8, likedBy: [], emojis: [], replies: [] },
@@ -353,7 +353,7 @@ function buildSeed() {
     { id: "p53", authorId: "u_jona", passion: "sport", mood: "learn", type: "text", cover: "nature",
       text: "L'escalade m'a appris ça : la peur n'est pas un obstacle, c'est une donnée. Tu l'écoutes, tu la mesures, tu décides.\n\nC'est vrai sur la paroi. C'est vrai dans la vie.",
       createdAt: hours(18), likes: 147, liked: false, comments: [] },
-    { id: "p54", authorId: "u_mehdi", passion: "sport", mood: "chill", type: "text", cover: "sunrise",
+    { id: "p54", authorId: "u_mehdi", passion: "sport", mood: "learn", type: "text", cover: "sunrise",
       text: "Repos actif aujourd'hui : rando 12 km avec mon chien. Le corps récupère, la tête aussi. Les semaines sans jour off sont les semaines où je me blesse.\n\nRetenez ça, surtout les débutants.",
       createdAt: days(2), likes: 89, liked: false, comments: [] },
 
@@ -369,7 +369,7 @@ function buildSeed() {
 
     // ==== TECH, 3 posts ====
     { id: "p57", authorId: "u_yanis", passion: "tech", mood: "chill", type: "text", cover: "neon",
-      text: "Observation 2026 : tous les SaaS qui survivent ont en commun un truc, ils ont arrêté de copier ChatGPT comme interface. Le vrai chantier c'est les workflows, pas le chat.\n\nLe chat c'est la réponse facile. Pas la bonne.",
+      text: "Samedi, aucune deadline, et j'ai passé l'après-midi à refaire mon terminal. Couleurs, police, un raccourci que j'utiliserai trois fois.\nZéro ligne de code utile, zéro ticket fermé. C'est le seul moment où je touche un clavier sans que ça doive servir à quelque chose.",
       createdAt: hours(4), likes: 289, liked: false, comments: [
         { id: "c57a", authorId: "u_raph", text: "+1000. Le chat est une excuse pour ne pas designer.", createdAt: hours(3) },
       ]},
@@ -418,7 +418,7 @@ function buildSeed() {
     { id: "p68", authorId: "u_tom", passion: "jeuxvideo", mood: "creation", type: "text", cover: "dark_matter",
       text: "Nouveau record personnel sur Ocarina of Time Any% : 17:41. 3 mois d'optim sur le skip du Deku Tree.\n\nQuand je dis à mes potes non-gamers que je m'entraîne à battre 15 secondes, ils me regardent comme si j'étais fou. Ils ont raison. C'est le principe.",
       createdAt: hours(19), likes: 163, liked: false, comments: [] },
-    { id: "p69", authorId: "u_tom", passion: "jeuxvideo", mood: "chill", type: "text", cover: "neon",
+    { id: "p69", authorId: "u_tom", passion: "jeuxvideo", mood: "irl", type: "text", cover: "neon",
       text: "Soirée rétro ce vendredi à Rennes. On branche un CRT, des manettes N64, et on joue à Goldeneye jusqu'à 3h. BYOB, pizza offerte, 8 places.\n\nDM pour l'adresse.",
       createdAt: days(2), likes: 72, liked: false, comments: [] },
 
@@ -622,7 +622,7 @@ function buildSeed() {
       createdAt: days(3), likes: 187, liked: false, comments: [] },
 
     // ==== VOYAGE — posts supplémentaires ====
-    { id: "pv1", authorId: "u_nina", passion: "voyage", mood: "chill", type: "text", cover: "horizon",
+    { id: "pv1", authorId: "u_nina", passion: "voyage", mood: "learn", type: "text", cover: "horizon",
       text: "Règle n°1 du voyage en solo : ne jamais réserver plus de 2 nuits à l'avance. Ça paraît stressant, c'est en fait libérateur.\n\nJ'ai changé de destination complètement 4 fois en 6 mois. Aucun regret.",
       createdAt: hours(4), likes: 521, liked: false, comments: [
         { id: "cpv1a", authorId: "u_clara", text: "On voyage pareil 🙌", createdAt: hours(3) },
@@ -1331,6 +1331,189 @@ function buildSeed() {
     { id: "p344", authorId: "u_lea", passion: "musique", mood: "chill", type: "text", cover: "stage",
       text: "Trente personnes dans un bar de la Croix-Rousse, pas de scène, pas de retour, juste un ampli posé sur une chaise. J'ai joué une heure sans setlist.\nÀ un moment quelqu'un a demandé un morceau écrit il y a six ans, que je ne joue plus jamais. Je l'ai massacré et la salle s'en fichait complètement. Ce sont ces soirs-là qui me font continuer.",
       createdAt: hours(187), likes: 87, liked: false, comments: []},
+    // ==== EXEMPLES D'ENVIE — LA DIFFÉRENCE DOIT SE VOIR (2026-09-02) ====
+    // Remarque d'un testeur, essai réel : « le contenu du fil n'est pas assez
+    // explicite par rapport à la passion et au mood ». Les publications
+    // existantes étaient justes mais AMBIGUËS : une anecdote pouvait aussi bien
+    // porter « Chill » que « Idées », et rien ne permettait de deviner laquelle.
+    //
+    // Ces publications-ci sont écrites comme des EXEMPLES TYPES, une forme par
+    // envie, tenue d'un bout à l'autre du bloc :
+    //   💡 Idées      → on FABRIQUE : un état d'avancement, une version, un reste à faire
+    //   📚 Apprendre  → on TRANSMET : une règle ou des étapes numérotées, réutilisables
+    //   🤝 Rencontrer → on SE DONNE RENDEZ-VOUS : 📍 lieu, 📅 date, places, « qui vient ? »
+    //   😌 Chill      → on RACONTE UN MOMENT : aucune leçon, aucune invitation, rien à faire
+    //   🌍 Actu       → on RAPPORTE UN FAIT DATÉ : un chiffre, une source, ce que ça change
+    //
+    // Les quinze premières forment trois séries complètes (Musique, Photo,
+    // Cuisine) : cinq envies sur UNE passion, pour qu'un testeur qui coche une
+    // seule passion voie les cinq couleurs se suivre dans son fil. Les
+    // suivantes comblent les cases vides du tableau passion × envie — chaque
+    // passion du catalogue a désormais au moins un exemple de chaque envie.
+    //
+    // ⚠️ Ajoutées EN FIN de tableau : trois suites prennent `state.seed.posts[0]`
+    // sans le choisir, insérer en tête changerait leur sujet en silence.
+
+    // ── Série MUSIQUE : les cinq envies sur une seule passion ────────────────
+    { id: "p401", authorId: "u_lea", passion: "musique", mood: "creation", type: "text", cover: "studio",
+      text: "Chantier de la semaine : je réécris le refrain de « Après l'orage » à la basse au lieu de la guitare. Version 12, et c'est la première qui tient debout sans que je force la voix.\nIl reste la batterie, que je vais programmer avant d'oser demander à quelqu'un de la jouer. Je poste la maquette dès qu'elle ne me fait plus honte.",
+      createdAt: hours(0.2), likes: 41, liked: false, comments: [
+        { id: "cp401_0", authorId: "u_oussa", text: "La basse qui porte le refrain, c'est presque toujours la bonne réponse. Envoie la maquette même moche.", createdAt: hours(0.1), likes: 5, likedBy: [], emojis: [], replies: [] },
+      ]},
+    { id: "p402", authorId: "u_lea", passion: "musique", mood: "learn", type: "text", cover: "studio",
+      text: "Le barré, en trois points, parce que personne ne me l'a expliqué comme ça :\n1. L'index à plat CONTRE la barrette, jamais au milieu de la case\n2. Tire le manche vers toi avec le coude — ce n'est pas le pouce qui serre\n3. Tant que ça frise, joue corde par corde, pas l'accord entier\nSix mois seule à m'abîmer la main, deux semaines avec ces trois points.",
+      createdAt: hours(0.7), likes: 186, liked: false, comments: [
+        { id: "cp402_0", authorId: "u_amira", text: "Le coup du coude, je viens d'essayer, ça change tout. Merci.", createdAt: hours(0.4), likes: 12, likedBy: [], emojis: [], replies: [] },
+      ]},
+    { id: "p403", authorId: "u_lea", passion: "musique", mood: "irl", type: "text", cover: "stage",
+      text: "📍 Lyon, café Chopine (Croix-Rousse) — 📅 jeudi 19h30\nScène ouverte : 8 passages de 10 minutes, il en reste 3. Ampli, deux micros et un piano droit sur place, tu viens avec ton instrument et c'est tout.\nDébutant·es franchement bienvenu·es, la moitié de la salle joue devant du monde pour la première fois. Dis-moi en commentaire si tu prends un créneau.",
+      createdAt: hours(1.2), likes: 74, liked: false, comments: [
+        { id: "cp403_0", authorId: "u_oussa", text: "Je prends le dernier créneau si personne ne le veut. Je viens avec le clavier.", createdAt: hours(0.9), likes: 7, likedBy: [], emojis: [], replies: [] },
+        { id: "cp403_1", authorId: "u_mila", text: "Je passe écouter, je ne joue de rien mais j'adore ces soirs-là.", createdAt: hours(0.6), likes: 4, likedBy: [], emojis: [], replies: [] },
+      ]},
+    { id: "p404", authorId: "u_lea", passion: "musique", mood: "chill", type: "text", cover: "neon",
+      text: "Dimanche, volets à moitié fermés, la guitare sur les genoux et rien à finir. J'ai joué les quatre mêmes accords pendant une heure en regardant la pluie sur la verrière.\nRien d'enregistré, aucune idée gardée. C'était juste bien.",
+      createdAt: hours(1.7), likes: 58, liked: false, comments: []},
+    { id: "p405", authorId: "u_oussa", passion: "musique", mood: "actu", type: "text", cover: "stage",
+      text: "Le bilan annuel des salles est sorti ce matin : les lieux de moins de 300 places ont perdu 12 % de dates en un an, pendant que les festivals de plus de 20 000 personnes en gagnent 9 %.\nConcrètement, pour nous : ce sont les premières scènes qui disparaissent en premier. Le tableau est page 34 si vous voulez vérifier vous-mêmes.",
+      createdAt: hours(1.9), likes: 231, liked: false, comments: [
+        { id: "cp405_0", authorId: "u_lea", text: "C'est exactement ce qu'on sent depuis deux ans. Merci d'avoir sorti le chiffre.", createdAt: hours(1.5), likes: 19, likedBy: [], emojis: [], replies: [] },
+      ]},
+
+    // ── Série PHOTO ─────────────────────────────────────────────────────────
+    { id: "p406", authorId: "u_karim", passion: "photo", mood: "creation", type: "text", cover: "street",
+      text: "Nouvelle série commencée hier : « Les rideaux de fer ». Toutes les devantures fermées d'une seule rue de Belleville, prises au même endroit, au même 35 mm, entre 6h et 6h30.\n11 sur 40. Le jour où j'aurai la rue entière, ça devient un accordéon de trois mètres tiré en une seule bande.",
+      createdAt: hours(1.95), likes: 67, liked: false, comments: []},
+    { id: "p407", authorId: "u_karim", passion: "photo", mood: "learn", type: "text", cover: "street",
+      text: "Arrêter de cramer les ciels, en trois gestes :\n1. Mesure la lumière sur la zone la plus CLAIRE que tu veux garder, pas sur le visage\n2. Sous-expose d'un tiers : les ombres se rattrapent, les hautes lumières jamais\n3. Fie-toi à l'histogramme, pas à l'écran — l'écran ment dès qu'il y a du soleil dessus\nÇa marche sur n'importe quel boîtier, et sur un téléphone en mode pro aussi.",
+      createdAt: hours(0.3), likes: 274, liked: false, comments: [
+        { id: "cp407_0", authorId: "u_noa", text: "Le point 3 vaut pour la vidéo aussi. On se fait avoir dix fois avant de comprendre.", createdAt: hours(0.15), likes: 21, likedBy: [], emojis: [], replies: [] },
+      ]},
+    { id: "p408", authorId: "u_karim", passion: "photo", mood: "irl", type: "text", cover: "sunrise",
+      text: "📍 Paris, sortie de métro Jaurès — 📅 samedi 6h15 (oui, 6h15)\nBalade photo de rue jusqu'à Stalingrad : deux heures, on s'arrête là où la lumière nous arrête. 6 personnes maximum pour que ça reste une balade et pas une visite guidée.\nAucun niveau requis, un téléphone suffit. Il reste 2 places — commentez et je vous envoie le point de rendez-vous exact.",
+      createdAt: hours(0.8), likes: 92, liked: false, comments: [
+        { id: "cp408_0", authorId: "u_inès", text: "Je prends une place ! Je viens avec un argentique, ça ira ?", createdAt: hours(0.5), likes: 6, likedBy: [], emojis: [], replies: [] },
+      ]},
+    { id: "p409", authorId: "u_karim", passion: "photo", mood: "chill", type: "text", cover: "street",
+      text: "Rien fait de la journée. L'appareil est resté dans le sac. J'ai bu trois cafés au même comptoir en regardant la buée revenir sur la vitre à chaque fois que quelqu'un poussait la porte.\nJe me suis dit dix fois que c'était une image. Je ne l'ai pas prise, et ça ne me manque pas.",
+      createdAt: hours(1.3), likes: 49, liked: false, comments: []},
+    { id: "p410", authorId: "u_karim", passion: "photo", mood: "actu", type: "text", cover: "news",
+      text: "Le règlement du prix de photojournalisme a tranché cette année : plus aucune image générée ou recomposée par IA, y compris en catégorie ouverte, avec vérification des fichiers bruts à l'appui.\nCe n'est pas un débat esthétique, c'est un débat de preuve. Pour qui vend du reportage, la valeur du RAW change du jour au lendemain.",
+      createdAt: hours(1.8), likes: 318, liked: false, comments: [
+        { id: "cp410_0", authorId: "u_sami", text: "On va tous devoir archiver nos bruts proprement. Bonne nouvelle, franchement.", createdAt: hours(1.1), likes: 27, likedBy: [], emojis: [], replies: [] },
+      ]},
+
+    // ── Série CUISINE ───────────────────────────────────────────────────────
+    { id: "p411", authorId: "u_theo", passion: "cuisine", mood: "creation", type: "text", cover: "kitchen",
+      text: "Je monte le menu de printemps, version 3. J'ai jeté le plat de veau : trop lourd derrière l'entrée aux petits pois.\nÀ la place j'essaie un maquereau juste raidi, jus de cresson, pomme de terre écrasée à l'huile de noisette. Testé deux fois, la troisième sera la bonne. Le dessert, lui, n'existe toujours pas.",
+      createdAt: hours(1.9), likes: 78, liked: false, comments: []},
+    { id: "p412", authorId: "u_hugo", passion: "cuisine", mood: "learn", type: "text", cover: "kitchen",
+      text: "La pâte sablée qui ne se rétracte pas à la cuisson, trois règles :\n1. Beurre POMMADE, jamais fondu — le fondu donne une pâte qui casse\n2. Arrête de la travailler dès qu'elle est homogène : chaque tour de plus la rend élastique\n3. Repos au froid 2 h minimum, DÉJÀ étalée à sa forme finale, pas en boule\nJe l'ai ratée pendant des années à cause du point 3, et uniquement de lui.",
+      createdAt: hours(1.98), likes: 341, liked: false, comments: [
+        { id: "cp412_0", authorId: "u_theo", text: "Étalée avant le repos, c'est LE truc que les livres ne disent pas. Confirmé en cuisine pro.", createdAt: hours(1.6), likes: 34, likedBy: [], emojis: [], replies: [] },
+      ]},
+    { id: "p413", authorId: "u_theo", passion: "cuisine", mood: "irl", type: "text", cover: "kitchen",
+      text: "📍 Marseille, chez moi (Notre-Dame du Mont) — 📅 samedi 20h\nTable d'hôtes « retour du marché » : 8 couverts, 5 services, 30 € par personne pour couvrir les produits. Je cuisine devant vous, et vous mettez la main au dessert.\nIl reste 3 places. Version végétarienne possible si vous me le dites avant vendredi.",
+      createdAt: hours(0.4), likes: 121, liked: false, comments: [
+        { id: "cp413_0", authorId: "u_emma", text: "Je prends deux places. On amène le vin ?", createdAt: hours(0.2), likes: 9, likedBy: [], emojis: [], replies: [] },
+      ]},
+    { id: "p414", authorId: "u_hugo", passion: "cuisine", mood: "chill", type: "text", cover: "kitchen",
+      text: "23h, plaque éteinte depuis une heure, et je mange debout un fond de riz au lait tiède directement dans la casserole.\nC'est le seul truc que je fais sans le goûter trois fois pour vérifier l'assaisonnement.",
+      createdAt: hours(0.9), likes: 63, liked: false, comments: []},
+    { id: "p415", authorId: "u_theo", passion: "cuisine", mood: "actu", type: "text", cover: "kitchen",
+      text: "L'extension de l'AOP à quatre communes du plateau a été validée hier : une trentaine de producteurs entrent dans l'appellation.\nÀ court terme le prix va monter. À moyen terme c'est le cahier des charges qui compte, et ils ont gardé l'obligation de lait cru. C'était la seule ligne qui m'intéressait.",
+      createdAt: hours(1.4), likes: 152, liked: false, comments: []},
+
+    // ── Cases vides du tableau passion × envie ──────────────────────────────
+    { id: "p416", authorId: "u_sami", passion: "actu", mood: "creation", type: "text", cover: "news_europe",
+      text: "Je monte un format long depuis six semaines : cinq entretiens d'une heure avec des livreurs bruxellois, ramenés à un seul récit de 40 minutes.\nCe qui me bloque : personne ne raconte les mêmes horaires, et j'ai promis de ne rien lisser. Je crois que je vais laisser les contradictions dedans, telles quelles.",
+      createdAt: hours(9), likes: 96, liked: false, comments: []},
+    { id: "p417", authorId: "u_val", passion: "actu", mood: "irl", type: "text", cover: "news_europe",
+      text: "📍 Bruxelles, Maison de la presse — 📅 mardi 18h30\nAtelier ouvert « lire une dépêche » : on prend trois dépêches du jour, on remonte à la source, on regarde ce qui a été coupé en chemin. 20 places, gratuit, inscription en commentaire.\nCe n'est pas un cours de journalisme, c'est un cours de lecture. Venez avec votre téléphone, ça suffit.",
+      createdAt: hours(22), likes: 143, liked: false, comments: [
+        { id: "cp417_0", authorId: "u_yanis", text: "Je note. C'est le genre d'atelier qu'il faudrait faire au lycée.", createdAt: hours(18), likes: 15, likedBy: [], emojis: [], replies: [] },
+      ]},
+    { id: "p418", authorId: "u_val", passion: "actu", mood: "learn", type: "text", cover: "news",
+      text: "Vérifier une info en trois minutes, sans être journaliste :\n1. Remonte au document cité, pas à l'article qui le cite — le lien y est presque toujours\n2. Cherche la DATE du document, pas celle de l'article : un rapport de 2019 ressort chaque hiver\n3. Regarde qui l'a financé, c'est en dernière page et personne ne la lit\nSi l'un des trois manque, ce n'est pas faux pour autant — c'est invérifiable, et ça se dit comme ça.",
+      createdAt: days(1), likes: 402, liked: false, comments: [
+        { id: "cp418_0", authorId: "u_sofia", text: "Je garde ça. Le point 2 m'a déjà eue deux fois cette année.", createdAt: hours(20), likes: 38, likedBy: [], emojis: [], replies: [] },
+      ]},
+    { id: "p419", authorId: "u_maya", passion: "animaux", mood: "creation", type: "text", cover: "nature",
+      text: "Je construis un parcours de flair pour Java dans le jardin : six caches, trois hauteurs, une seule odeur (girofle) et rien d'autre.\nÉtape du jour, les caches en hauteur, qu'elle refuse d'explorer pour l'instant. Je redescends à 40 cm et je remonte de 10 cm par semaine. Le plan du montage est dans les photos.",
+      createdAt: hours(6), likes: 88, liked: false, comments: []},
+    { id: "p420", authorId: "u_maya", passion: "animaux", mood: "actu", type: "text", cover: "nature",
+      text: "Le certificat d'engagement est désormais opposable partout : toute cession d'un chien ou d'un chat, même gratuite, se signe 7 jours avant l'adoption.\nCe délai de réflexion est la seule mesure qui fasse vraiment baisser les abandons de septembre, d'après les refuges avec qui je travaille. Le texte tient en deux pages, lisez-le avant d'adopter.",
+      createdAt: hours(27), likes: 264, liked: false, comments: [
+        { id: "cp420_0", authorId: "u_lucie", text: "Sept jours pour réfléchir, ça devrait exister pour beaucoup d'autres choses.", createdAt: hours(24), likes: 22, likedBy: [], emojis: [], replies: [] },
+      ]},
+    { id: "p421", authorId: "u_inès", passion: "art", mood: "chill", type: "text", cover: "workshop",
+      text: "Carnet ouvert sur la table, un feutre presque sec, et j'ai passé la soirée à remplir une page entière de petites croix sans raison. Ce n'est pas un dessin, ce n'est pas un exercice.\nQuand je n'y arrive plus, je fais ça. Ça ne débloque rien, mais ça m'évite de refermer le carnet pour trois semaines.",
+      createdAt: hours(35), likes: 71, liked: false, comments: []},
+    { id: "p422", authorId: "u_noa", passion: "cinema", mood: "creation", type: "text", cover: "stage",
+      text: "Je monte mon premier court à moi, pas une commande. 7 minutes prévues, deux personnages, un couloir.\nL'ours est fini : il dure 11 minutes et il est mou au milieu. Je sais déjà quel plan doit sauter, c'est mon préféré, et c'est exactement pour ça qu'il doit sauter.",
+      createdAt: hours(12), likes: 134, liked: false, comments: []},
+    { id: "p423", authorId: "u_mila", passion: "danse", mood: "learn", type: "text", cover: "dance",
+      text: "Apprendre une choré vite, la méthode que je donne à mes élèves :\n1. Compte à voix haute AVANT de bouger, sur la phrase entière\n2. Apprends les bras séparément des jambes — jamais les deux d'un coup au début\n3. Filme-toi au ralenti sur le passage qui coince, pas sur celui que tu réussis\nCe n'est pas de la mémoire, c'est du découpage. Tout le monde sait faire ça.",
+      createdAt: hours(17), likes: 228, liked: false, comments: [
+        { id: "cp423_0", authorId: "u_amira", text: "Le point 1, mes élèves le sautent tous et c'est toujours là que ça casse.", createdAt: hours(15), likes: 18, likedBy: [], emojis: [], replies: [] },
+      ]},
+    { id: "p424", authorId: "u_lucie", passion: "jardinage", mood: "learn", type: "text", cover: "nature",
+      text: "Le semis de tomates, sans serre et sans lampe :\n1. Sème 6 semaines avant les dernières gelées DE TA COMMUNE, pas celles du magazine\n2. Dès que ça a levé, sors les godets au-dessus de 12 °C, même une heure par jour\n3. Rempote une fois en enterrant la tige jusqu'aux premières feuilles : elle fait des racines partout\nUn plant trapu qui a eu froid battra toujours un plant filé qui a eu chaud.",
+      createdAt: hours(21), likes: 196, liked: false, comments: []},
+    { id: "p425", authorId: "u_lucie", passion: "jardinage", mood: "irl", type: "text", cover: "nature",
+      text: "📍 Angers, jardin partagé des Hauts-de-Saint-Aubin — 📅 dimanche 10h\nTroc de plants et de graines : vous venez avec ce que vous avez en trop, vous repartez avec ce qui vous manque. Rien à vendre, rien à acheter, pas d'inscription.\nJ'apporte 40 plants de tomates (5 variétés) et des courges. On finit autour d'un café vers midi — venez même les mains vides.",
+      createdAt: hours(29), likes: 117, liked: false, comments: [
+        { id: "cp425_0", authorId: "u_maya", text: "J'arrive avec des boutures de romarin et le chien, si c'est permis.", createdAt: hours(25), likes: 11, likedBy: [], emojis: [], replies: [] },
+      ]},
+    { id: "p426", authorId: "u_tom", passion: "jeuxvideo", mood: "learn", type: "text", cover: "neon",
+      text: "Se mettre au speedrun dans le bon ordre, parce que tout le monde s'y prend à l'envers :\n1. Finis le jeu normalement une fois, sans chrono — sinon tu optimises un jeu que tu ne connais pas\n2. Apprends UN segment, celui du début, jusqu'à le faire sans réfléchir\n3. Chronomètre par segment, jamais la run entière, pendant tout le premier mois\nLes gens arrêtent parce qu'ils comparent leur run complète à un record mondial. Compare des segments.",
+      createdAt: hours(19), likes: 287, liked: false, comments: []},
+    { id: "p427", authorId: "u_sofia", passion: "litterature", mood: "learn", type: "text", cover: "book",
+      text: "Finir un livre qui résiste, ce qui marche vraiment :\n1. Donne-lui 50 pages, pas une de plus, avant de décider\n2. Si tu continues : 20 minutes au MÊME moment chaque jour — l'heure compte plus que la durée\n3. Aucune note pendant la première lecture, ça casse le rythme\nEt si tu abandonnes, note la page et la raison. Relu trois ans après, c'est souvent devenu le bon moment.",
+      createdAt: days(1), likes: 313, liked: false, comments: [
+        { id: "cp427_0", authorId: "u_anaïs", text: "« Note la page et la raison » : je n'avais jamais pensé à ça et ça vaut de l'or.", createdAt: hours(21), likes: 29, likedBy: [], emojis: [], replies: [] },
+      ]},
+    { id: "p428", authorId: "u_paul", passion: "metier", mood: "chill", type: "text", cover: "workshop",
+      text: "Atelier fermé, aspirateur éteint, il reste l'odeur des copeaux de chêne et une lampe au-dessus de l'établi.\nJe balaie toujours à la main le dernier quart d'heure, alors que j'ai une soufflette. C'est le seul moment de la journée où je regarde ce que j'ai fait sans penser à ce qu'il reste à faire.",
+      createdAt: hours(38), likes: 145, liked: false, comments: []},
+    { id: "p429", authorId: "u_paul", passion: "metier", mood: "irl", type: "text", cover: "workshop",
+      text: "📍 Tours, mon atelier rue Bernard-Palissy — 📅 samedi 14h-18h\nPortes ouvertes : je monte un tiroir à queues d'aronde en direct, et vous en tracez une sur une chute de hêtre. 10 personnes par créneau d'une heure, gratuit, à partir de 12 ans.\nRien à apporter, tout est sur place. Dites-moi juste l'heure qui vous arrange en commentaire.",
+      createdAt: hours(24), likes: 168, liked: false, comments: [
+        { id: "cp429_0", authorId: "u_lou", text: "Créneau de 15h pour moi et mon fils. On n'a jamais tenu un ciseau à bois.", createdAt: hours(20), likes: 13, likedBy: [], emojis: [], replies: [] },
+      ]},
+    { id: "p430", authorId: "u_zoe", passion: "mode", mood: "chill", type: "text", cover: "neon",
+      text: "Fin de journée, machine à l'arrêt, et je trie des boutons dans une boîte à biscuits depuis quarante minutes.\nAucun projet derrière, aucune commande. Je les range par couleur, je referme la boîte, et je recommencerai dans six mois.",
+      createdAt: hours(43), likes: 92, liked: false, comments: []},
+    { id: "p431", authorId: "u_rita", passion: "mode", mood: "learn", type: "text", cover: "neon",
+      text: "Reconnaître un vêtement qui tiendra dix ans, en 30 secondes dans le magasin :\n1. Retourne-le : les coutures intérieures doivent être surjetées ou anglaises, jamais coupées net\n2. Tire doucement la couture d'épaule — si tu vois le fil au travers, c'est cousu trop lâche\n3. Regarde le motif au niveau de la couture : s'il tombe juste, l'atelier a pris le temps\nLe prix ne dit rien du tout. Ces trois gestes disent presque tout.",
+      createdAt: hours(15), likes: 356, liked: false, comments: [
+        { id: "cp431_0", authorId: "u_zoe", text: "Le motif raccord, c'est le test le plus rapide et le plus impitoyable. 👏", createdAt: hours(12), likes: 41, likedBy: [], emojis: [], replies: [] },
+      ]},
+    { id: "p432", authorId: "u_greg", passion: "moto", mood: "creation", type: "text", cover: "workshop",
+      text: "Je refais le faisceau électrique de la vieille routière au complet. L'ancien portait quatre réparations au scotch, dont deux qui n'étaient pas de moi.\nÉtape du week-end : le cheminement derrière le phare, cosses serties et gaine tressée. Je photographie chaque connecteur avant de le couper, parce que je sais très bien comment ça finit sinon.",
+      createdAt: hours(31), likes: 109, liked: false, comments: []},
+    { id: "p433", authorId: "u_greg", passion: "moto", mood: "learn", type: "text", cover: "sunrise",
+      text: "Rouler sous la pluie sans serrer les dents, trois points :\n1. Regarde LOIN — plus il pleut, plus tu dois lever les yeux, c'est contre-intuitif et ça change tout\n2. Freine avant le virage, jamais dedans, et surtout pas sur les bandes blanches ni les plaques d'égout\n3. Les vingt premières minutes de pluie sont les pires, le gasoil remonte ; après, ça lave\nLa pluie ne rend pas la route dangereuse. La vitesse d'avant la pluie, si.",
+      createdAt: hours(23), likes: 298, liked: false, comments: [
+        { id: "cp433_0", authorId: "u_mehdi", text: "Le point 3, on me l'avait jamais dit clairement. Merci.", createdAt: hours(19), likes: 24, likedBy: [], emojis: [], replies: [] },
+      ]},
+    { id: "p434", authorId: "u_greg", passion: "moto", mood: "actu", type: "text", cover: "nature",
+      text: "Deuxième vague du contrôle technique moto : les machines immatriculées avant 2017 y passent à leur tour, et le point qui recale le plus n'est ni le bruit ni la pollution — ce sont les pneus.\nLa date dépend de votre année de première immatriculation, le tableau est en ligne. Vérifiez la vôtre avant de la découvrir au bord de la route.",
+      createdAt: hours(40), likes: 187, liked: false, comments: []},
+    { id: "p435", authorId: "u_liam", passion: "podcast", mood: "chill", type: "text", cover: "studio",
+      text: "Studio rangé, micro sous sa housse, et je réécoute un épisode de 2022 en faisant la vaisselle. Je n'aime toujours pas ma voix.\nCe que j'aime, c'est d'entendre l'invité rire à un moment où je n'avais rien fait pour. C'est resté au montage, et c'est la seule chose que je garderais de cet épisode.",
+      createdAt: hours(47), likes: 84, liked: false, comments: []},
+    { id: "p436", authorId: "u_mehdi", passion: "sport", mood: "chill", type: "text", cover: "trail",
+      text: "Sortie sans montre ce matin. Ni cardio, ni allure, ni distance : j'ai couru jusqu'à ce que j'aie envie de rentrer, et je suis rentré par le chemin le plus long.\nJe ne saurai jamais combien ça faisait. C'est la première fois depuis deux ans.",
+      createdAt: hours(28), likes: 176, liked: false, comments: []},
+    { id: "p437", authorId: "u_clara", passion: "voyage", mood: "creation", type: "text", cover: "horizon",
+      text: "Je fabrique mes sacoches de guidon depuis trois semaines. Toile enduite récupérée sur une bâche de chantier, sangles de récup, fermeture roulée comme sur les sacs étanches.\nLe proto 2 prend l'eau par la couture du bas. Le proto 3 aura la couture soudée, pas cousue. Si ça tient jusqu'aux Alpes, je publie le patron.",
+      createdAt: hours(18), likes: 203, liked: false, comments: [
+        { id: "cp437_0", authorId: "u_nina", text: "Le patron m'intéresse énormément. Tiens bon jusqu'aux Alpes 🚴", createdAt: hours(14), likes: 16, likedBy: [], emojis: [], replies: [] },
+      ]},
+    { id: "p438", authorId: "u_emma", passion: "yoga", mood: "creation", type: "text", cover: "nature",
+      text: "Je construis une séquence de 20 minutes pour les gens qui n'ont jamais fait de yoga et qui ont peur du sol : tout est debout ou sur une chaise.\nVersion 4 : j'ai retiré la respiration guidée du début, elle mettait tout le monde mal à l'aise. Elle revient à la fin, quand le corps a déjà lâché. Je la teste jeudi avec trois volontaires.",
+      createdAt: hours(25), likes: 158, liked: false, comments: []},
   ];
 
   // Helpers pour créer des dates précises

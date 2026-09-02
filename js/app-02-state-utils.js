@@ -3828,9 +3828,15 @@ function _firstRunDemoTag(p) {
 // retombent sur `mood: "all"`, donc TOUS en portaient une.
 // ⚠️ C'est bien le neutre qui ne doit porter aucun badge (cf. la note de
 // `PASSIO_MOOD_LABELS`) — l'intention était juste, seul le rendu la trahissait.
+// ⚠️ `data-mood` porte la COULEUR de la pastille (une teinte par envie, cf. le
+// bloc « PASTILLE DE MOOD » de styles.css). Il n'est posé que sur la branche où
+// `moodTagLabel` a rendu un libellé : le mood y est donc forcément une CLÉ de
+// `PASSIO_MOOD_LABELS`, jamais une valeur libre venue de la base. L'échappement
+// reste là par principe — cette table peut grandir, la garde ne doit pas
+// dépendre de sa forme actuelle.
 function _moodTagHTML(mood) {
   var t = moodTagLabel(mood);
-  return t ? '<span class="post-mood-tag">' + t + '</span>' : "";
+  return t ? '<span class="post-mood-tag" data-mood="' + escapeHtml(String(mood)) + '">' + t + '</span>' : "";
 }
 
 function feedIntentMeta(intent) {
@@ -5566,6 +5572,13 @@ function renderPostHTML(p) {
   // le même mot. Seule reste post-author-meta, qui nomme la passion DE LA
   // PUBLICATION : la bonne question sur une carte, alors que la ligne
   // d'identité répondait « quelles sont les passions du compte ? ».
+  //
+  // ⚠️ `post-passion-tag` n'AJOUTE PAS une seconde mention : il enrobe celle qui
+  // existait déjà, pour la rendre lisible (accent + graisse) au lieu du gris
+  // `--muted` à 11 px qu'elle partageait avec l'heure. Retour de testeur du
+  // 2026-09-02 : « on ne voit pas assez à quelle passion appartient un post ».
+  // Le `textContent` de `.post-author-meta` est INCHANGÉ à l'octet près —
+  // deux suites l'assertent (`profil-entete-passions`, `refonte-multi-passion`).
   // L'identité complète reste centralisée (ADR-011 §3) : elle vit sur les DEUX
   // en-têtes de profil, où elle est cliquable, et sur les surfaces denses
   // (commentaires, listes, inbox) — aucune de celles-là n'affiche de passion à
@@ -5577,7 +5590,7 @@ function renderPostHTML(p) {
       <div class="post-author" style="cursor:pointer;" onclick="openUserProfile('${escapeJsArg(p.authorId)}','${escapeJsArg(p._source)}')">
         <div class="post-author-name">${escapeHtml(author.name || "Moi")}</div>
         <div class="post-author-meta">
-          ${passion.emoji} ${passion.label} · ${fmtTime(p.createdAt)}
+          <span class="post-passion-tag">${passion.emoji} ${passion.label}</span> · ${fmtTime(p.createdAt)}
           ${p._source === "me" && p.syncStatus ? `
             ${p.syncStatus === "syncing" ? '<span style="margin-left:8px;font-size:10px;color:var(--muted);">⏳ Sync...</span>' : ""}
             ${p.syncStatus === "synced" ? '<span style="margin-left:8px;font-size:10px;color:#22c55e;">📡 En ligne</span>' : ""}
@@ -5668,7 +5681,7 @@ async function openPost(id) {
         <div class="avatar" style="background:${avatarBg(author)};cursor:pointer;" onclick="openUserProfile('${escapeJsArg(post.authorId)}','${escapeJsArg(post._source || "seed")}')">${avatarInner(author)}</div>
         <div class="post-author" style="cursor:pointer;" onclick="openUserProfile('${escapeJsArg(post.authorId)}','${escapeJsArg(post._source || "seed")}')">
           <div class="post-author-name">${escapeHtml(author.name || "Utilisateur")}</div>
-          <div class="post-author-meta">${passion.emoji} ${passion.label} · ${fmtTime(post.createdAt)}</div>
+          <div class="post-author-meta"><span class="post-passion-tag">${passion.emoji} ${passion.label}</span> · ${fmtTime(post.createdAt)}</div>
         </div>
         ${(state.userPosts || []).some(function(up){ return up.id === id; }) ? `<button class="post-menu-btn" onclick="event.stopPropagation();openPostOptions('${escapeJsArg(id)}')" aria-label="Options du post" title="Options">
           <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
