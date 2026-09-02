@@ -771,14 +771,8 @@ function shareMyProfile() {
   // Lien de profil suivi (?plk) : apparie le partage à une ouverture confirmée.
   var _lk = (window.tel && tel.linkCreate) ? tel.linkCreate("profile", (window.MY_UID || name)) : "";
   var url = (_lk && tel.tagUrl) ? tel.tagUrl(window.location.href, _lk) : window.location.href;
-  if (navigator.share) {
-    _telLinkShare(url, "native");
-    navigator.share({title:name+" sur PASSIO",text:"Découvre mon profil sur PASSIO !",url:url});
-  } else {
-    if (navigator.clipboard) navigator.clipboard.writeText(url);
-    _telLinkShare(url, "clipboard");
-    toast("📤 Lien copié !");
-  }
+  _telLinkShare(url, navigator.share ? "native" : "clipboard");
+  partagerOuCopier({ title: name + " sur PASSIO", text: "Découvre mon profil sur PASSIO !", url: url }, "📤 Lien copié !");
 }
 
 // Upload une photo de profil/couverture vers Supabase Storage puis pousse l'URL

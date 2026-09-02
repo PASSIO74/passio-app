@@ -3337,13 +3337,7 @@ function shareUserProfile(userId, name) {
   const rawUrl = location.origin + location.pathname + "#user-" + userId;
   const url = (window.tel && tel.shareLink) ? tel.shareLink(rawUrl, "profile", userId, navigator.share ? "native" : "clipboard") : rawUrl;
   const data = { title: name || "Profil PASSIO", text: "Découvre " + (name || "ce profil") + " sur PASSIO", url };
-  if (navigator.share) {
-    navigator.share(data).catch(() => {});
-  } else if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(url).then(() => toast("🔗 Lien du profil copié"), () => toast("Lien : " + url));
-  } else {
-    toast("Lien : " + url);
-  }
+  partagerOuCopier(data, "🔗 Lien du profil copié");
 }
 
 function renderMessages() {

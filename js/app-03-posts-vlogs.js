@@ -34,13 +34,7 @@ function sharePost(id) {
             ? tel.shareLink(location.origin + location.pathname + "#carnet-" + id, "carnet", id, navigator.share ? "native" : "clipboard")
             : (location.origin + location.pathname + "#carnet-" + id))
         : "https://passio-app.netlify.app";
-      if (navigator.share) {
-        navigator.share({ title: "PASSIO", text: txt, url: shareUrl }).catch(() => {});
-      } else {
-        navigator.clipboard?.writeText(txt + "\n\n" + shareUrl)
-          .then(() => toast("✅ Lien copié"))
-          .catch(() => toast("Copie impossible"));
-      }
+      partagerOuCopier({ title: "PASSIO", text: txt, url: shareUrl }, "✅ Lien copié");
     });
   }, 0);
 }

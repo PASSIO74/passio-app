@@ -4023,7 +4023,7 @@ function _vliveShare() {
   const url = (window.tel && tel.shareLink) ? tel.shareLink(rawUrl, "live", id, navigator.share ? "native" : "clipboard") : rawUrl;
   const txt = "🔴 " + (who ? who + " est en direct" : "En direct") + (title ? " : " + title : "") + " sur PASSIO";
   try {
-    if (navigator.share) { navigator.share({ title: "PASSIO — Live", text: txt, url: url }).catch(() => {}); return; }
+    partagerOuCopier({ title: "PASSIO — Live", text: txt, url: url }, "🔗 Lien du live copié"); return;
   } catch (e) {}
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(txt + "\n" + url).then(() => toast("🔗 Lien du live copié"), () => toast("Lien : " + url));

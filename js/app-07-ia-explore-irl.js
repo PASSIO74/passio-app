@@ -3981,16 +3981,7 @@ function shareEvent(id) {
     const btn = document.getElementById("_shareEvOutBtn");
     if (!btn) return;
     btn.addEventListener("click", function () {
-      if (navigator.share) {
-        navigator.share({ title: ev.title, text, url }).catch(() => {});
-      } else if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(url + "\n" + text).then(
-          () => toast("🔗 Lien de l'événement copié"),
-          () => toast("Copie impossible")
-        );
-      } else {
-        toast("🔗 " + url);
-      }
+      partagerOuCopier({ title: ev.title, text, url }, "🔗 Lien de l'événement copié");
     });
   }, 0);
 }

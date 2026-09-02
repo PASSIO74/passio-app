@@ -1596,11 +1596,13 @@ function pushOverlayHistory(kind, hash) {
   // l'entrée précédente est encore PROGRAMMÉE — on l'annule et on RÉUTILISE
   // l'entrée courante au lieu d'en empiler une seconde. Sans cela, remplacer
   // une modale laissait une entrée orpheline, donc un appui « retour » mort.
-  if (_releasePending) {
-    _releasePending = false;
-    clearTimeout(_releaseTimer); _releaseTimer = null;
+  // ⚠️ `_navOverlayDepth > 0` est indispensable : sans lui, une reprise armée
+  // puis rendue caduque par une navigation ferait RÉÉCRIRE l'entrée d'écran.
+  if (_releasePending && _navOverlayDepth > 0) {
+    cancelOverlayRelease();
     if (replaceHistorySafe({ overlay: kind, passioOverlay: true }, url)) return;
   }
+  cancelOverlayRelease();
   if (pushHistorySafe({ overlay: kind, passioOverlay: true }, url)) _navOverlayDepth++;
 }
 
@@ -1608,6 +1610,15 @@ function pushOverlayHistory(kind, hash) {
 // qu'il avait posée, sinon elle reste morte sur la pile et avale un retour.
 // Différée d'un tour de boucle pour laisser le cas « remplacement » ci-dessus
 // s'exprimer — l'utilisateur ne peut pas appuyer sur retour entre-temps.
+// Abandonne une reprise programmée SANS reculer : appelée quand les entrées
+// d'overlay ne sont de toute façon plus au sommet de la pile (une navigation
+// vient de pousser par-dessus). Reculer alors ferait quitter l'écran.
+function cancelOverlayRelease() {
+  _releasePending = false;
+  clearTimeout(_releaseTimer);
+  _releaseTimer = null;
+}
+
 function releaseOverlayHistory() {
   // Fermeture DÉCLENCHÉE par un popstate : l'entrée vient déjà d'être retirée
   // par le navigateur, la reprendre ferait reculer d'un cran de trop.
@@ -1631,7 +1642,12 @@ function _flushOverlayRelease() {
   if (!st || !st.passioOverlay) { _navOverlayDepth = 0; return; }
   _navOverlayDepth--;
   _navExpectingBack++;
-  try { window.history.back(); } catch (e) { _navExpectingBack--; }
+  try {
+    window.history.back();
+    // Filet : si aucun popstate n'arrive, on relâche le compteur plutôt que de
+    // laisser un retour coincé pour le reste de la session.
+    setTimeout(function () { if (_navExpectingBack > 0) _navExpectingBack--; }, 400);
+  } catch (e) { _navExpectingBack--; }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1659,6 +1675,56 @@ function unlockBodyScroll(owner) {
   _scrollLockOwners.delete(owner || "anon");
   if (_scrollLockOwners.size === 0) {
     try { document.body.style.overflow = ""; } catch (e) {}
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PARTAGE — UN ÉCHEC NE DOIT PAS ÊTRE SILENCIEUX (correctif iPhone 2026-09-02)
+// ---------------------------------------------------------------------------
+// Les six points de partage appelaient `navigator.share(...).catch(() => {})`
+// — et l'un d'eux (partage du profil, app-06) n'avait AUCUN `catch`. Deux
+// défauts, tous deux bien plus fréquents sur iPhone que sur Android :
+//   · `navigator.share` EXISTE sur iOS mais peut refuser — activation
+//     utilisateur consommée, feuille de partage déjà ouverte, contexte non
+//     sécurisé. Le `catch` vide transformait ce refus en « je tape sur Partager
+//     et il ne se passe rien », sans repli et sans message ;
+//   · sans `catch` du tout, une simple ANNULATION par l'utilisateur (geste très
+//     courant) produisait une promesse rejetée non gérée, remontée dans la
+//     table `client_errors` par le moniteur de platform.js — du bruit qui
+//     enterre les vraies erreurs.
+// Ici : l'annulation est silencieuse (c'est un choix de l'utilisateur, pas une
+// panne), tout autre échec retombe sur la copie du lien, et l'absence des DEUX
+// mécanismes se dit à l'écran plutôt que de ne rien faire.
+//
+// ⚠️ À appeler SYNCHRONEMENT depuis le gestionnaire de clic : sur iOS, un
+// `await` avant `navigator.share` consomme l'activation utilisateur et l'appel
+// est alors refusé.
+// ═══════════════════════════════════════════════════════════════════════════
+function partagerOuCopier(data, msgCopie) {
+  const url = (data && data.url) || "";
+  const texteCopie = data && data.text ? (data.text + "\n" + url) : url;
+  const copier = function () {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(texteCopie).then(
+        function () { toast(msgCopie || "🔗 Lien copié"); },
+        function () { toast("Lien : " + url); }
+      );
+    } else {
+      toast("Lien : " + url);
+    }
+  };
+  if (!navigator.share) { copier(); return; }
+  try {
+    const p = navigator.share(data);
+    if (p && typeof p.catch === "function") {
+      p.catch(function (e) {
+        // Annulation volontaire : rien à dire, rien à remonter.
+        if (e && (e.name === "AbortError" || e.name === "NotAllowedError" && /abort/i.test(e.message || ""))) return;
+        copier();
+      });
+    }
+  } catch (e) {
+    copier();   // `share` a levé de façon synchrone (contexte non sécurisé…)
   }
 }
 
@@ -1698,8 +1764,12 @@ function goTo(screen) {
     pushHistorySafe({ screen }, "#" + screen);
     // On change d'écran : les entrées d'overlay encore comptées sont derrière
     // nous, plus au sommet. Les oublier évite qu'une fermeture ultérieure ne
-    // fasse reculer hors de l'écran courant.
+    // fasse reculer hors de l'écran courant. ⚠️ Et il faut aussi DÉSARMER une
+    // reprise déjà programmée : sans cela, une modale ouverte dans la foulée
+    // (`goTo(...); openModal(...)`, cas des liens profonds) la prendrait pour
+    // un remplacement et ÉCRASERAIT l'entrée d'écran qu'on vient de poser.
     _navOverlayDepth = 0;
+    cancelOverlayRelease();
   }
 
   $$(".nav-item").forEach(n => {
