@@ -183,6 +183,13 @@ test.describe("Lien partagé #reel=<id>", () => {
     const info = await page.evaluate(() => {
       state.seed.posts = (state.seed.posts || []).filter((p) => !p.isReel);
       state.supabasePosts = [];
+      // QUATRIÈME tableau : `window._feedExtraPosts` est fait pour SURVIVRE aux
+      // écrasements de `supabasePosts` (il protège un post arrivé pendant qu'une
+      // requête était en vol). Le vider n'est donc pas une redondance : sans cela,
+      // une publication RÉELLE de production ramenée par un rafraîchissement
+      // asynchrone se réinvite dans le fil APRÈS le semis, et le test mesure autre
+      // chose que son fixture. Défaut mesuré le 2026-09-02 sur `main` (run 2409).
+      window._feedExtraPosts = [];
       openReels();
       return {
         taille: (reelsState.items || []).length,

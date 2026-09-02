@@ -59,6 +59,13 @@ async function poser(page, opts = {}) {
       { id: "p_double", authorId: "u_suivi", userId: "u_suivi", passion: "musique", type: "text", text: "POST_DOUBLE", mood: "all", createdAt: t - 3000, likes: 0, comments: [] },
     ];
     state.supabasePosts = [];
+    // QUATRIÈME tableau : `window._feedExtraPosts` est fait pour SURVIVRE aux
+    // écrasements de `supabasePosts` (il protège un post arrivé pendant qu'une
+    // requête était en vol). Le vider n'est donc pas une redondance : sans cela,
+    // une publication RÉELLE de production ramenée par un rafraîchissement
+    // asynchrone se réinvite dans le fil APRÈS le semis, et le test mesure autre
+    // chose que son fixture. Défaut mesuré le 2026-09-02 sur `main` (run 2409).
+    window._feedExtraPosts = [];
     state.userPosts = [];
     state.user.following = o.following === undefined ? ["u_suivi"] : o.following;
     state.user.profiles = [{ id: "pp_0", name: "Audit QA", passion: "musique", emoji: "🎵", color: "#7c3aed" }];
@@ -388,6 +395,13 @@ test("⑫ résultat vide et erreur Supabase ne cassent pas le fil", async ({ pag
   // Aucune source : état vide propre, sans exception.
   await page.evaluate(() => {
     state.seed.posts = []; state.supabasePosts = []; state.userPosts = [];
+    // QUATRIÈME tableau : `window._feedExtraPosts` est fait pour SURVIVRE aux
+    // écrasements de `supabasePosts` (il protège un post arrivé pendant qu'une
+    // requête était en vol). Le vider n'est donc pas une redondance : sans cela,
+    // une publication RÉELLE de production ramenée par un rafraîchissement
+    // asynchrone se réinvite dans le fil APRÈS le semis, et le test mesure autre
+    // chose que son fixture. Défaut mesuré le 2026-09-02 sur `main` (run 2409).
+    window._feedExtraPosts = [];
     window._feedDomSig = null;
     renderFeed();
   });
