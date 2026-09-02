@@ -209,22 +209,27 @@ test.describe("UI-8 — un profil personnel, plusieurs passions", () => {
     // Publications ET Activité, et il filtre pour de vrai.
     const rangee = page.locator("#v9ProfilePassions");
     await expect(rangee).toBeVisible();
-    await expect(rangee.locator(".profile-tile")).toHaveCount(3); // 3 passions, plus de « Toutes »
+    // ⚠️ `.v9-passion-chip` et non plus `.profile-tile` depuis le 2026-09-02 :
+    // le rail du profil rend des PASTILLES DE TEXTE, pas les bulles du Fil
+    // (« trop gros trop visible »). Le geste, l'état et le filtrage sont
+    // inchangés — c'est le rendu, et lui seul, qui a changé.
+    await expect(rangee.locator(".v9-passion-chip")).toHaveCount(3); // 3 passions, plus de « Toutes »
+    await expect(rangee.locator(".profile-tile"), "plus aucune bulle du Fil sur le profil").toHaveCount(0);
     await expect(rangee.locator('[data-passion-tile=""]')).toHaveCount(0);
     // Neutre au départ : aucune cochée, tout est là.
-    await expect(rangee.locator(".profile-tile.active")).toHaveCount(0);
+    await expect(rangee.locator(".v9-passion-chip.active")).toHaveCount(0);
     await expect(page.locator("#myPosts .post")).toHaveCount(3);
 
     await rangee.locator('[data-passion-tile="v8_pod"]').click();
     await page.waitForTimeout(300);
     await expect(page.locator("#myPosts .post")).toHaveCount(1);
     await expect(page.locator("#myPosts")).toContainText("Episode 12");
-    await expect(rangee.locator(".profile-tile.active")).toHaveCount(1);
+    await expect(rangee.locator(".v9-passion-chip.active")).toHaveCount(1);
 
     // Un second choix S'AJOUTE au premier — c'est toute la différence.
     await rangee.locator('[data-passion-tile="v8_yoga"]').click();
     await page.waitForTimeout(300);
-    await expect(rangee.locator(".profile-tile.active")).toHaveCount(2);
+    await expect(rangee.locator(".v9-passion-chip.active")).toHaveCount(2);
     await expect(page.locator("#myPosts .post")).toHaveCount(2);
     await expect(page.locator("#myPosts")).toContainText("Salutation au soleil");
     await expect(page.locator("#myPosts")).toContainText("Episode 12");
@@ -234,7 +239,7 @@ test.describe("UI-8 — un profil personnel, plusieurs passions", () => {
     await rangee.locator('[data-passion-tile="v8_pod"]').click();
     await rangee.locator('[data-passion-tile="v8_yoga"]').click();
     await page.waitForTimeout(300);
-    await expect(rangee.locator(".profile-tile.active")).toHaveCount(0);
+    await expect(rangee.locator(".v9-passion-chip.active")).toHaveCount(0);
     await expect(page.locator("#myPosts .post")).toHaveCount(3);
     expect(await page.evaluate(() => state.user.profilePassionIds)).toEqual([]);
     expect(await page.evaluate(() => state.user.profilePostFilterId)).toBeFalsy();

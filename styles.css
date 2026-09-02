@@ -7730,6 +7730,59 @@ body.ctx-locked #appMain { overflow: hidden; }
   outline-offset: 2px;
 }
 
+/* ── « Créer » : SIX entrées, donc une grille de deux colonnes ─────────────
+   Demande de Benjamin du 2026-09-02, après essai réel : « dans Créer, je trouve
+   que les onglets sont trop grands ; mets-les plus petits et bien ordonnés pour
+   que tout tienne sur un écran sans descendre. » Six lignes pleine largeur de
+   52 px empilées, plus le titre et la poignée, dépassaient les 78vh de la
+   feuille sur un écran court : les deux dernières entrées — dont « Audio /
+   podcast » — n'existaient qu'après un défilement que rien n'annonçait.
+
+   ⚠️ CES RÈGLES SONT BORNÉES À `#v2CreateSheet`, PAS PARTAGÉES avec
+   `#v3PassioSheet`. Les deux feuilles gardent la même PEAU (lavis violet,
+   écriture violet foncé, pastille blanche : c'est le bloc ci-dessus, partagé) et
+   c'est bien ce que Benjamin a demandé le 2026-09-01. Mais « Trouver une
+   expérience » ne porte que trois entrées : elles tiennent sans effort en
+   colonne, et une grille les étalerait en 2 + 1, avec une case vide à droite —
+   le décalage exact qu'ADR-011 a dû corriger sur les onglets du profil. La
+   grille est une réponse au NOMBRE d'entrées, pas un style.
+
+   ⚠️ La cible tactile reste très au-dessus des 44 px de référence : c'est
+   `min-height`, et la ligne « Publication » s'agrandit d'elle-même pour son
+   sous-titre — la grille étire alors toute sa rangée, jamais une case seule. */
+#v2CreateSheet .v2-sheet-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+#v2CreateSheet .v2-sheet-item {
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  min-height: 76px;
+  padding: 10px 8px;
+}
+#v2CreateSheet .v2-sheet-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+}
+#v2CreateSheet .v2-sheet-icon svg { width: 19px; height: 19px; }
+/* En colonne, l'icône est AU-DESSUS du texte : la marge droite qui compensait
+   l'icône de gauche n'a plus rien à compenser, et décalerait le libellé. */
+#v2CreateSheet .v2-sheet-text {
+  flex: 0 0 auto;
+  width: 100%;
+  margin-right: 0;
+}
+#v2CreateSheet .v2-sheet-item-title { font-size: 13.5px; }
+#v2CreateSheet .v2-sheet-item-hint { font-size: 11px; }
+
+@media (max-width: 359px) {
+  #v2CreateSheet .v2-sheet-item { min-height: 72px; padding: 8px 6px; }
+  #v2CreateSheet .v2-sheet-item-title { font-size: 12.5px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .v2-sheet-backdrop,
   .v2-sheet { transition: none; }
@@ -9709,7 +9762,9 @@ body.ctx-locked #appMain { overflow: hidden; }
    ⚠️ ADR-011 a retiré d'ici trois familles devenues inatteignables : la ligne
    « Passion active » (`.v8-active-*`), que §1 supprime du profil, et la rangée
    de pastilles de filtre (`.v8-filter-row`, `.v8-chip`), remplacée par le rail
-   de bulles du Fil — c'est `.v9-profile-strip` qui l'habille désormais. Ce qui
+   unique du profil — c'est `.v9-profile-strip` qui l'habille désormais, en
+   pastilles de texte depuis le 2026-09-02 (il a porté les bulles du Fil entre
+   les deux). Ce qui
    reste ici ne concerne plus que la GESTION des passions (`#passionManager`).
    ══════════════════════════════════════════════════════════════════════════ */
 
@@ -9912,117 +9967,24 @@ body.ctx-locked #appMain { overflow: hidden; }
 
 .ident-passions[hidden] { display: none !important; }
 
-/* Sur mon profil et sur un profil visité, la ligne est centrée sous le pseudo,
-   comme la bio qui la suit. */
-.main-profile-body .ident-passions {
-  text-align: center;
-  margin: 2px auto 0;
-  max-width: 90%;
-}
+/* ⚠️ Le sélecteur `.main-profile-body .ident-passions` a été RETIRÉ le
+   2026-09-02 avec la ligne qu'il centrait : aucun en-tête de profil ne rend plus
+   de passions sous le pseudo. */
 
-/* ──────────────────────────────────────────────────────────────────────────
-   LES PASSIONS D'UN PROFIL SONT DES PORTES (2026-09-01)
-   Demande de Benjamin : « je voudrais que les passions soient cliquables et que
-   ça renvoie vers la page de cette passion, pour que les utilisateurs puissent
-   aller découvrir les passions directement. » La ligne d'identité du profil —
-   la mienne comme celle d'un profil visité — cesse d'être un libellé et devient
-   une rangée de pastilles, chacune ouvrant `openPassionExplorer`.
+/* ⚠️ LES RÈGLES DE L'IDENTITÉ CLIQUABLE ONT ÉTÉ RETIRÉES ICI LE 2026-09-02
+   (`.ident-passions.ident-passions-links`, `.ident-passion-lien` et son
+   `::before`, `.ident-passion-nom`, `.ident-passion-emoji`,
+   `.ident-passion-plus`). Elles habillaient la rangée de pastilles-portes posée
+   sous le pseudo par le lot du 2026-09-01 ; Benjamin l'a fait retirer des deux
+   en-têtes de profil le lendemain — « supprime les titres de passion dans le
+   profil sous le pseudo et garde seulement les bulles dessous » — parce que le
+   rail `.v9-profile-strip`, devenu lui aussi une rangée de pastilles, nommait
+   les mêmes passions 5 px plus bas. Plus aucun émetteur : les règles partent
+   avec lui plutôt que de survivre à leur cible.
 
-   ⚠️ CE MODIFICATEUR DÉFAIT LA TRONCATURE, ET C'EST BORNÉ À CE CONTEXTE.
-   `.ident-passions` est `nowrap` + `ellipsis` pour une raison écrite plus haut :
-   sur les surfaces denses (commentaires, listes de personnes, messages) une
-   identité longue pousse hors de l'écran l'action posée À CÔTÉ d'elle
-   (« Message → », « Voir → »). Ici la ligne occupe sa propre rangée, sans rien
-   à sa droite : elle peut passer à la ligne sans rien bousculer. Le rendu reste
-   borné côté JS (`identitePassionsChipsHTML`, 6 + « +N ») — un
-   `flex-wrap` n'est pas une autorisation à afficher une liste non bornée venue
-   du jsonb `profiles.passions` d'un autre compte.
-
-   ⚠️ La double classe (`.ident-passions.ident-passions-links`) n'est pas une
-   coquetterie : elle gagne sur `.ident-passions` par la SPÉCIFICITÉ, donc sans
-   dépendre de la position de ce bloc dans la feuille — et le bloc UI-4A5 doit
-   rester le dernier. */
-.ident-passions.ident-passions-links {
-  display: flex;
-  flex-wrap: wrap;
-  /* ⚠️ ALIGNÉES À GAUCHE, comme le pseudo et la bio. `.main-profile-body
-     .ident-passions` centrait cette ligne alors que tout le corps du profil est
-     ferré à gauche — un décalage discret tant qu'il s'agissait d'un libellé gris,
-     franchement visible dès qu'il devient une rangée de pastilles. Cette règle a
-     la même spécificité (0,2,0) et vient APRÈS : c'est elle qui l'emporte. */
-  justify-content: flex-start;
-  align-items: center;
-  gap: 14px 6px;
-  white-space: normal;
-  overflow: visible;
-  text-overflow: clip;
-  max-width: 100%;
-  margin: 10px 0 0;
-}
-
-/* ⚠️ LA CIBLE TACTILE FAIT 44 px, LA PASTILLE VISIBLE 30 px — même patron que
-   `.v3-tempt` (UI-3A) et que le crayon d'UI-6B. La cible se mesure sur la BOÎTE
-   du bouton, qu'un simple débord en pseudo-élément ne satisferait pas : la boîte
-   garde donc ses 44 px et c'est le `::before` (en `inset: 7px 0`, z-index
-   négatif) qui PEINT la pilule. Les marges négatives rendent au corps du profil
-   les 14 px que cette boîte ajoute, et le `row-gap` de 14 px garantit que deux
-   rangées de pastilles ne se CHEVAUCHENT pas : 30 + 14 = 44, soit exactement la
-   hauteur d'une boîte. Sans lui, un tap entre deux lignes atteindrait la
-   pastille du dessous.
-
-   ⚠️ Le fond ne peut PAS être `var(--bg-card)` : ces pastilles vivent DANS
-   `.main-profile-card`, qui est déjà `--bg-card` (#fff), et la bordure du thème
-   est à 7 % d'opacité. Une pastille blanche sur carte blanche est invisible —
-   d'où le lavis violet `--accent-wash`, le jeton d'« état actif discret » du
-   thème, déjà utilisé partout ailleurs pour ça. */
-.ident-passion-lien {
-  position: relative;
-  z-index: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  max-width: 100%;
-  min-height: 44px;
-  margin: -7px 0;
-  padding: 0 12px;
-  border: 0;
-  background: none;
-  color: var(--accent);
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1.2;
-  cursor: pointer;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  transition: color 0.15s ease;
-}
-.ident-passion-lien::before {
-  content: "";
-  position: absolute;
-  inset: 7px 0;
-  z-index: -1;
-  border-radius: 999px;
-  background: var(--accent-wash);
-  border: 1px solid var(--accent-wash);
-  transition: background 0.15s ease, border-color 0.15s ease;
-}
-.ident-passion-lien:hover::before,
-.ident-passion-lien:focus-visible::before {
-  background: rgba(124, 58, 237, 0.16);
-  border-color: var(--accent);
-}
-.ident-passion-nom { overflow: hidden; text-overflow: ellipsis; }
-.ident-passion-emoji { font-size: 13px; line-height: 1; flex-shrink: 0; }
-
-/* Le reliquat « +N » n'ouvre rien : il DIT qu'il y en a d'autres, il ne prétend
-   pas être une porte. Un faux bouton est pire qu'une information. */
-.ident-passion-plus {
-  font-size: 11.5px;
-  font-weight: 700;
-  color: var(--muted);
-  padding: 5px 4px;
-}
+   ⚠️ `.ident-passions` (la ligne de TEXTE INERTE des surfaces denses) reste, et
+   c'est une autre famille : commentaires, listes de personnes, recherche, inbox,
+   notifications. Ne pas la retirer en croyant finir ce nettoyage. */
 
 /* Le retour vers le profil d'où l'on vient, en tête de la page d'une passion
    (`openPassionExplorer(pid, retourUserId)`). Posé au-dessus du titre, là où on
@@ -10037,7 +9999,6 @@ body.ctx-locked #appMain { overflow: hidden; }
 @media (max-width: 359px) {
   .ident-passions { font-size: 11px; }
   .ident-passions-sm { font-size: 10px; }
-  .ident-passion-lien { font-size: 11.5px; padding: 0 10px; }
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -10052,9 +10013,106 @@ body.ctx-locked #appMain { overflow: hidden; }
    gagnent par la position) : celui-ci est donc posé JUSTE AVANT lui.
    ══════════════════════════════════════════════════════════════════════════ */
 
-#v9ProfilePassions.v9-profile-strip { margin: 12px 0 2px; }
+/* ⚠️ CE RAIL A PORTÉ LES BULLES DU FIL JUSQU'AU 2026-09-02 — vignette photo de
+   46 px, pastille d'emoji, compteur, libellé. « Enlève les onglets ronds violets
+   sous le pseudo des passions, c'est trop gros trop visible ; tu mets juste les
+   passions en question, fin élégant » (Benjamin, après essai réel) : il rend
+   désormais des PASTILLES DE TEXTE (`passionChipHTML`, app-02), et il ne porte
+   plus la classe `.profile-strip` — laquelle apportait le défilement horizontal,
+   les colonnes égales et la désaturation des bulles non cochées.
+   ⚠️ LE FIL N'EST PAS TOUCHÉ : « remets les profils du fil comme avant, en
+   bulle » (2026-08-29) tient toujours, cette demande-là ne portait pas sur cet
+   écran. Les deux surfaces partagent leur GESTE, plus leur rendu. */
+/* ⚠️ La règle porte la CLASSE, pas l'identifiant : le rail de mon profil
+   (`#v9ProfilePassions`) et celui d'un profil visité (`#visitedPassions`)
+   partagent ce composant depuis le 2026-09-02. Ancrée sur un id, elle aurait
+   laissé le second sans mise en page — et, comme il n'a plus la classe
+   `.profile-strip` non plus, sans aucune. */
+.v9-profile-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  /* 14 px de row-gap : voir la note de cible tactile ci-dessous. */
+  gap: 14px 6px;
+  margin: 4px 0 2px;
+}
 
-#v9ProfilePassions .v9-strip-empty {
+/* ⚠️ LA CIBLE TACTILE FAIT 44 px, LA PASTILLE VISIBLE 30 px — même patron que
+   `.v3-tempt` (UI-3A) et le crayon d'UI-6B : une cible se
+   mesure sur la BOÎTE, qu'un débord en pseudo-élément ne satisferait pas. La
+   boîte garde donc ses 44 px et c'est le `::before` (en `inset: 7px 0`, z-index
+   négatif) qui PEINT la pilule. Les marges négatives rendent au profil les 14 px
+   que la boîte ajoute, et le `row-gap` de 14 px empêche deux rangées de boîtes
+   de se CHEVAUCHER : 30 + 14 = 44, la hauteur exacte d'une boîte. Sans lui, un
+   tap entre deux lignes atteindrait la pastille du dessous.
+
+   ⚠️ CONTOUR VIDE / CONTOUR REMPLI, et surtout PAS un jeu d'opacité. Les bulles
+   distinguaient le coché du décoché par `opacity: 0.3` ; sur une pastille de
+   texte cela ferait tomber le libellé sous le seuil AA (même piège que les cases
+   du panneau Filtres, éclaircies le 2026-09-01). L'état se lit ici au
+   remplissage, à la couleur du texte et à `aria-pressed`. */
+.v9-passion-chip {
+  position: relative;
+  z-index: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  min-height: 44px;
+  margin: -7px 0;
+  padding: 0 12px;
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.v9-passion-chip::before {
+  content: "";
+  position: absolute;
+  inset: 7px 0;
+  z-index: -1;
+  border-radius: 999px;
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.v9-passion-chip.active { color: var(--accent-2); }
+.v9-passion-chip.active::before {
+  background: var(--accent-tile);
+  border-color: var(--accent-tile-line);
+}
+.v9-passion-chip:hover::before { border-color: var(--accent); }
+/* L'anneau de focus épouse la PILULE, pas la boîte de 44 px : posé sur la
+   boîte, il flotterait à 7 px au-dessus et au-dessous du dessin. */
+.v9-passion-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: -7px; }
+
+.v9-chip-emoji { font-size: 13px; line-height: 1; flex-shrink: 0; }
+.v9-chip-nom { overflow: hidden; text-overflow: ellipsis; }
+/* Le décompte est ce qui dit « ceci est un filtre » et non une seconde ligne
+   d'identité : la rangée de la carte, elle, n'en porte aucun. */
+.v9-chip-nb { font-size: 10.5px; font-weight: 800; color: var(--muted); }
+.v9-passion-chip.active .v9-chip-nb { color: var(--accent); }
+
+/* La porte d'ajout : même pastille, contour en pointillés — elle ne se coche
+   pas, elle ouvre. */
+.v9-chip-ajout { color: var(--accent); }
+.v9-chip-ajout::before { border-style: dashed; border-color: var(--accent); }
+.v9-chip-ajout .v9-chip-emoji { font-size: 15px; font-weight: 400; }
+
+@media (max-width: 359px) {
+  .v9-passion-chip { font-size: 11.5px; padding: 0 10px; }
+}
+
+.v9-profile-strip .v9-strip-empty {
   padding: 12px 14px;
   font-size: 12.5px;
   color: var(--muted);
@@ -10217,18 +10275,13 @@ body.ctx-locked #appMain { overflow: hidden; }
 }
 
 
-/* ── La bulle « Ajouter » du Fil et du Profil, et la tuile « Chercher » de
-      Rencontrer. Elles réutilisent les classes existantes (`.profile-tile`,
-      `.msg-tile`) : mêmes dimensions, mêmes espacements, même rythme que leurs
-      voisines. Seul le contenu du rond change. ─────────────────────────────── */
-.psel-tile-plus .profile-tile-avatar {
-  display: flex; align-items: center; justify-content: center;
-  font-size: 24px; font-weight: 300; line-height: 1;
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
-  border: 1.5px dashed var(--accent);
-}
-.psel-tile-plus .profile-tile-label { color: var(--accent); font-weight: 700; }
+/* ── La tuile « Chercher » de Rencontrer : elle réutilise `.msg-tile`, donc
+      mêmes dimensions et même rythme que ses voisines. Seule l'icône change.
+      ⚠️ Les deux règles `.psel-tile-plus` qui vivaient ici ont été RETIRÉES le
+      2026-09-02 avec leur unique cible : la bulle « Ajouter » du profil est
+      devenue une pastille de texte (`.v9-chip-ajout`). Une règle qui survit à sa
+      cible est un piège que ce dépôt a déjà payé (audit du 2026-08-29, défaut
+      ⑤). ────────────────────────────────────────────────────────────────────── */
 .psel-tile-chercher .msg-tile-icon { color: var(--accent); }
 
 /* ═══════════════════════════════════════════════════════════════════════════
