@@ -1,6 +1,6 @@
 ---
 name: feature
-description: Développe une nouvelle fonctionnalité PASSIO de A à Z en respectant l'architecture (app-01..09, hoisting, globals) et le pattern complet local + Supabase + realtime + cross-compte. À utiliser quand Benjamin demande une nouvelle feature, écran, ou dit "ajoute", "crée la fonctionnalité", "développe".
+description: "Développe une nouvelle fonctionnalité ou un écran de A à Z : archi app-01..09, local + Supabase + realtime + tests."
 ---
 
 # /feature — Nouvelle fonctionnalité PASSIO

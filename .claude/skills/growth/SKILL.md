@@ -1,6 +1,6 @@
 ---
 name: growth
-description: Audite et renforce les boucles de croissance/viralité de PASSIO (invitations, preuve sociale, partage, parrainage, notifications de ré-engagement) au niveau des standards Facebook/Instagram. À utiliser quand Benjamin veut faire grandir la base, augmenter la viralité, le partage, ou dit "croissance", "growth", "faire venir des gens", "viralité", "parrainage".
+description: "Boucles de croissance et viralité : invitations, preuve sociale, partage, parrainage, faire venir des gens."
 ---
 
 # /growth — Boucles de croissance PASSIO

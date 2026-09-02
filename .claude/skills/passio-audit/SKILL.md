@@ -1,6 +1,6 @@
 ---
 name: passio-audit
-description: Audit transverse du dépôt PASSIO sur un ou plusieurs domaines (sécurité, DB/RLS, archi, perf, tests, dette, dépendances, cohérence design), avec findings priorisés P0→P4 écrits dans .passio/reports/. À utiliser pour un état des lieux, une revue avant jalon, ou quand Benjamin dit « audite », « fais le point technique », « où en est la dette ». Réutilise les skills/subagents d'audit existants.
+description: "Audit transverse du dépôt (sécurité, RLS, archi, perf, tests, dette), findings P0→P4. Dire : audite."
 ---
 
 # /passio-audit — Audit priorisé du dépôt

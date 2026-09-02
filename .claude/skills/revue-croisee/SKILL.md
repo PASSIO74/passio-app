@@ -1,6 +1,6 @@
 ---
 name: revue-croisee
-description: Protocole d'AUDIT croisé avec ChatGPT — dossier factuel, challenge adversarial, VÉRIFICATION de chaque hypothèse dans le dépôt, livrable daté. Pour un audit à double regard, une décision d'architecture, une revue avant jalon. Une simple question relève de `/chatgpt`.
+description: "Audit croisé avec ChatGPT : dossier factuel, challenge, vérification. Analyse croisée, double regard, jalon."
 ---
 
 # /revue-croisee — Analyse croisée Claude Code ↔ ChatGPT

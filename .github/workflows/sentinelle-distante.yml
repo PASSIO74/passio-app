@@ -22,6 +22,22 @@ env:
 
 jobs:
   health:
+    # ⚠️ CE JOB CRÉE DE VRAIS COMPTES EN PRODUCTION (canari d'autorisation), il
+    # tient donc le MÊME verrou que le job `test-prod` de `deploy.yml`.
+    #
+    # Posé le 2026-09-02, avec le marqueur `PASSIO_E2E_PROD` de l'étape du canari.
+    # Les deux vont ENSEMBLE, jamais l'un sans l'autre : le marqueur autorise la
+    # purge de `global-teardown`, et cette purge supprime les comptes PAR MOTIF —
+    # sans le verrou, elle effacerait en plein vol les comptes du job `test-prod`
+    # d'une PR en cours, ce qui est l'incident du 2026-09-01.
+    #
+    # Contrepartie assumée : la sentinelle et un `test-prod` peuvent désormais
+    # s'attendre. C'est voulu — ils touchent la même base. Le coût est faible
+    # (`test-prod` détient le verrou ~3 min, la sentinelle passe une fois par
+    # heure) et ce job est déjà `continue-on-error` sur son canari.
+    concurrency:
+      group: passio-e2e-prod
+      cancel-in-progress: false
     name: Santé distante PASSIO
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -90,7 +106,15 @@ jobs:
         continue-on-error: true
         env:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: npx playwright test tests/e2e/authz-critical.spec.js --reporter=line
+          # ⚠️ SANS CE MARQUEUR, LES COMPTES DU CANARI NE SONT PLUS PURGÉS.
+          # `global-teardown` se contentait de tester la présence de `CI` ; depuis
+          # le découpage en projets (2026-09-02) il exige `PASSIO_E2E_PROD`, que
+          # seul un job détenant le verrou `passio-e2e-prod` a le droit de poser.
+          # Oublié ici, le canari abandonnait 2 comptes par heure — 48 par jour —
+          # et prélevait autant sur le quota d'inscriptions horaire, la cause de
+          # l'incident du 2026-08-30. Trouvé par revue adversariale le 2026-09-02.
+          PASSIO_E2E_PROD: "1"
+        run: npx playwright test tests/e2e/authz-critical.spec.js --project=prod --reporter=line
 
       - name: Publier le verdict
         if: always() && steps.gate.outputs.active == 'true'

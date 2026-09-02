@@ -1,6 +1,6 @@
 ---
 name: new-test
-description: Crée un nouveau test Playwright e2e pour PASSIO en suivant les conventions maison (gate-helper, pièges de rédaction connus). À utiliser quand Benjamin veut couvrir une fonctionnalité, ajouter une non-régression, ou dit "écris un test", "couvre ça", "ajoute un test".
+description: "Crée un test Playwright e2e (conventions maison, gate-helper, pièges connus). Dire : écris un test, couvrir ça."
 ---
 
 # /new-test — Nouveau test e2e PASSIO

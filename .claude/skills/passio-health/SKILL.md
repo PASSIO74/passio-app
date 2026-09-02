@@ -1,6 +1,6 @@
 ---
 name: passio-health
-description: Tableau de bord santé technique de PASSIO à partir de PREUVES réelles (build, syntaxe, tests e2e, audits statiques, migrations, dépendances, erreurs prod). À utiliser pour un check rapide « est-ce livrable / tout est vert ? », une revue matinale technique, ou avant un jalon. Ne jamais inventer un statut : exécuter et rapporter.
+description: "Santé technique sur preuves exécutées : build, syntaxe, e2e, audits, migrations. Dire : tout est vert ?, c'est livrable ?"
 ---
 
 # /passio-health — Santé technique (preuves réelles)

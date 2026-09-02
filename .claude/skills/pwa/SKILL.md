@@ -1,6 +1,6 @@
 ---
 name: pwa
-description: Audite l'expérience PWA de PASSIO (installabilité, service worker, offline, cache, partage natif, push, cadrage mobile) — le socle mobile d'un réseau social. À utiliser pour un problème d'installation/offline/SW/mise à jour, ou quand Benjamin dit "PWA", "installation", "hors-ligne", "service worker", "ça se met pas à jour".
+description: Audit PWA : installation, service worker, hors-ligne, cache, push, cadrage mobile. Dire : ça se met pas à jour.
 ---
 
 # /pwa — Audit PWA PASSIO

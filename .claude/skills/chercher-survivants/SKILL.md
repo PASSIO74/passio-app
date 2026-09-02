@@ -1,6 +1,6 @@
 ---
 name: chercher-survivants
-description: Cherche les endroits où un correctif connu N'A PAS été appliqué — les « survivants » d'une correction partielle. Heuristique la plus productive de la session du 2026-08-16 : quatre défauts réels trouvés là où relire du code au hasard n'en trouvait aucun. À utiliser pour un audit, une chasse au bug sans piste, ou quand Benjamin dit « cherche s'il y en a d'autres », « audit », « qu'est-ce qui traîne encore ».
+description: "Traque les survivants d'un correctif partiel, là où il n'est jamais allé. Dire : cherche s'il y en a d'autres."
 ---
 
 # /chercher-survivants — Là où le correctif n'est pas allé

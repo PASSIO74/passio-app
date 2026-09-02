@@ -1,6 +1,6 @@
 ---
 name: e2e-multi
-description: Lance la suite de tests end-to-end multi-comptes PASSIO (la seule preuve possible des policies RLS et de la livraison realtime cross-compte, invisibles des tests mono-compte). À utiliser quand Benjamin veut valider du cross-compte, une policy RLS, du realtime, ou dit "test multi-comptes", "e2e réel", "vérifie en base".
+description: "Tests end-to-end multi-comptes en base réelle : policies RLS, livraison realtime cross-compte, e2e réel."
 ---
 
 # /e2e-multi — Tests multi-comptes réels
