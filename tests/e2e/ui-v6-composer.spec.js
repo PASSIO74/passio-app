@@ -33,6 +33,14 @@ async function boot(page, opts = {}) {
   // garde TOUTES ses assertions. Les nouveaux mots sont prouvés à part, dans
   // `ui-v8-passions.spec.js`, avec leur restitution sous coupure.
   await page.addInitScript(() => localStorage.setItem("passio_ui_8", "0"));
+  // ⚠️ CONVENTION DE TEST — la même qu'aux mises en ligne d'UI-3A, UI-4 et UI-8.
+  // Le lot `flat_passions_v1` (actif par défaut depuis le 2026-09-01) recouvre
+  // la surface qu'observe cette suite. Elle pose donc le kill switch du lot qui
+  // la recouvre et GARDE TOUTES SES ASSERTIONS — jamais de suppression : c'est
+  // ce qui rendrait visible une extinction accidentelle du comportement
+  // historique. Le comportement NEUF est prouvé à part, dans
+  // `tests/e2e/passions-plates.spec.js`.
+  await page.addInitScript(() => localStorage.setItem("flat_passions_v1", "0"));
   await bootOnboarded(page, opts.errors || null, 1, {});
   await page.evaluate(() => {
     window.supaLoadPosts = async () => [];

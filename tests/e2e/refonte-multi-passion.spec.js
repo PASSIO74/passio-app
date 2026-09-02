@@ -27,6 +27,14 @@ const { bootOnboarded } = require("./app-helper");
 // Benjamin possède Moto, Podcast et Voyage. Alice est suivie, sans passion
 // commune. Un inconnu publie en Moto.
 async function poser(page, opts = {}) {
+  // ⚠️ CONVENTION DE TEST — la même qu'aux mises en ligne d'UI-3A, UI-4 et UI-8.
+  // Le lot `flat_passions_v1` (actif par défaut depuis le 2026-09-01) ajoute la
+  // bulle « + » en fin du rail de passions du Profil : cette suite compte les
+  // tuiles du rail et la verrait comme une passion de plus. Elle pose donc le
+  // kill switch du lot qui la recouvre et GARDE TOUTES SES ASSERTIONS — jamais
+  // de suppression, sinon une extinction accidentelle du lot deviendrait
+  // invisible. La bulle est prouvée à part, dans `passions-plates.spec.js`.
+  await page.addInitScript(() => localStorage.setItem("flat_passions_v1", "0"));
   await bootOnboarded(page, null, 1, {});
   await page.evaluate((o) => {
     window.supaLoadPosts = async () => [];

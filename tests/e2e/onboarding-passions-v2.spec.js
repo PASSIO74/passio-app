@@ -18,9 +18,17 @@ const { test, expect } = require("@playwright/test");
 const { GATE_TOKEN, GATE_KEY } = require("./gate-helper");
 
 async function bootEcranPassions(page, { v2 = true } = {}) {
+  // ⚠️ CONVENTION DE TEST — la même qu'aux mises en ligne d'UI-3A, UI-4 et UI-8.
+  // Le lot `flat_passions_v1` (actif par défaut depuis le 2026-09-01) REMPLACE
+  // la grille de 19 tuiles par une recherche, et change la copie de l'écran en
+  // « Recherche et choisis directement ce que tu aimes. » — ce que le cahier des
+  // charges demandait explicitement. Cette suite observe l'écran d'AVANT : elle
+  // pose donc le kill switch du lot qui la recouvre et GARDE TOUTES SES
+  // ASSERTIONS. La copie NEUVE est prouvée à part, dans `passions-plates.spec.js`.
   await page.addInitScript(([k, t, flag]) => {
     sessionStorage.setItem(k, t);
     sessionStorage.setItem("passio_pwa_dismissed", "1");
+    localStorage.setItem("flat_passions_v1", "0");
     window.PASSIO_ONBOARDING_V2 = flag;
   }, [GATE_KEY, GATE_TOKEN, v2]);
   await page.goto("/index.html");
