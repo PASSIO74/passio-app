@@ -1,6 +1,6 @@
 ---
 name: test
-description: "Suite Playwright complète + audits globals et handlers. Dire : lance les tests, vérifie que rien n'est cassé."
+description: "Suite Playwright complète + les 7 gates statiques (npm run verif). Dire : lance les tests, vérifie que rien n est cassé."
 ---
 
 # /test — Suite de tests PASSIO
