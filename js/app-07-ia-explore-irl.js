@@ -1338,7 +1338,7 @@ function updateIrlMapMarkers() {
           ← Ma position actuelle
         </button>
         <div style="margin-bottom:10px;">
-          <input type="text" id="irlAddressInput" placeholder="Chercher une adresse..." style="width:100%;padding:8px;border-radius:6px;border:1px solid #ddd;font-size:12px;box-sizing:border-box;"/>
+          <input type="text" id="irlAddressInput" placeholder="Chercher une adresse..." style="width:100%;padding:8px;border-radius:6px;border:1px solid #ddd;font-size:16px;box-sizing:border-box;"/>
           <div id="irlAddressSuggestions" style="margin-top:6px;max-height:200px;overflow-y:auto;border:1px solid #eee;border-radius:6px;background:#fff;display:none;"></div>
         </div>
         <button onclick="geocodeIrlAddress()" style="width:100%;padding:8px;border-radius:6px;border:none;background:#7c3aed;color:#fff;font-size:12px;font-weight:600;cursor:pointer;">
@@ -3522,7 +3522,7 @@ function openEventDetails(id) {
       <div style="font-size:12px;color:var(--muted);">Chargement…</div>
     </div>
     <div style="display:flex;gap:6px;align-items:center;">
-      <input type="text" class="input" id="eventCommentInput" placeholder="Écris un commentaire…" maxlength="500" style="flex:1;font-size:13px;padding:10px 12px;" onkeypress="if(event.key==='Enter')addEventComment('${escapeJsArg(ev.id)}')"/>
+      <input type="text" class="input" id="eventCommentInput" placeholder="Écris un commentaire…" maxlength="500" style="flex:1;font-size:16px;padding:10px 12px;" onkeypress="if(event.key==='Enter')addEventComment('${escapeJsArg(ev.id)}')"/>
       ${_cmtComposerToolsHtml("eventCommentInput", "addEventComment", ev.id)}
       <button class="btn primary" onclick="addEventComment('${escapeJsArg(ev.id)}')" style="font-size:13px;padding:10px 14px;">Envoyer</button>
     </div>

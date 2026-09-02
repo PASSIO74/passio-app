@@ -4191,7 +4191,18 @@ function applyMsgContentData(m, raw) {
     if (d.fileType && d.fileType.indexOf("video/") === 0) m.video = d.url;
     else m.img = d.url;
   } else if (d.type === "audio" && !m.voiceData && !m.fileUrl) {
-    var isVoice = d.fileType === "audio/webm" || /^Message vocal/.test(d.filename || "");
+    // ⚠️ Le conteneur d'un vocal DÉPEND de l'appareil qui l'a enregistré :
+    // Safari/iOS produit de l'`audio/mp4`, Chrome/Android du webm. Tester
+    // l'égalité stricte avec "audio/webm" faisait passer tout vocal iPhone pour
+    // une pièce jointe quelconque — lecteur intégré perdu, durée perdue, y
+    // compris à la réception sur Android. Le NOM est le discriminant sûr : tout
+    // vocal part de `_sendVoiceMessage` avec « Message vocal (Xs) », quel que
+    // soit le conteneur. `audio/webm` reste accepté pour les messages DÉJÀ en
+    // base, envoyés avant que le conteneur réel soit transmis. On ne l'élargit
+    // PAS à tout `audio/*` : une vraie pièce jointe audio doit rester
+    // téléchargeable, pas être avalée par le lecteur de vocaux.
+    var _ft = (d.fileType || "").toLowerCase();
+    var isVoice = /^Message vocal/.test(d.filename || "") || _ft === "audio/webm";
     if (isVoice) {
       m.voiceData = d.url;
       var dm = (d.filename || "").match(/\((\d+)\s*s\)/);
@@ -4249,7 +4260,23 @@ function _playVoiceById(aid) {
         dur.textContent = Math.floor(r/60) + ':' + String(r%60).padStart(2,'0');
       }
     }, 150);
-  }).catch(function() { if (pb) pb.textContent = '▶'; });
+  }).catch(function (err) {
+    if (pb) pb.textContent = '▶';
+    // ⚠️ Un `catch` MUET ici laissait l'utilisateur taper sur ▶ sans que rien
+    // n'arrive et sans la moindre explication. Cas réel sur iPhone : Safari ne
+    // décode PAS le conteneur WebM, dans lequel étaient enregistrés tous les
+    // vocaux envoyés depuis Android (et, avant le correctif de
+    // `_sendVoiceMessage`, ceux envoyés depuis un iPhone aussi, mal étiquetés).
+    // Les nouveaux vocaux partent désormais dans le conteneur réellement
+    // encodé ; ceux DÉJÀ en base restent illisibles sur iPhone — on le DIT,
+    // plutôt que de laisser croire à un bouton cassé.
+    var code = (audio.error && audio.error.code) || 0;
+    var illisible = code === 3 || code === 4;   // DECODE / SRC_NOT_SUPPORTED
+    try {
+      if (illisible) toast("🎧 Ce vocal a été enregistré dans un format que cet appareil ne sait pas lire.");
+      else console.warn("[voice] lecture impossible:", err);
+    } catch (e) {}
+  });
 }
 
 // Vitesse de lecture des messages vocaux : cycle 1× → 1,5× → 2×.

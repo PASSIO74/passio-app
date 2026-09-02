@@ -271,7 +271,7 @@
 
         <label class="field">
           <span>Adresse e-mail</span>
-          <input type="email" class="input" id="authEmail" placeholder="toi@exemple.com" autocomplete="email" style="font-size:15px;"/>
+          <input type="email" class="input" id="authEmail" placeholder="toi@exemple.com" autocomplete="email" style="font-size:16px;"/>
         </label>
         <label class="field" id="authPhoneWrap" style="display:none;">
           <span>Numéro de téléphone</span>
@@ -279,11 +279,11 @@
         </label>
         <label class="field">
           <span>Mot de passe</span>
-          <div style="position:relative;"><input type="password" class="input" id="authPassword" placeholder="••••••••" autocomplete="current-password" minlength="6" style="font-size:15px;padding-right:44px;"/><button type="button" onclick="togglePwd('authPassword',this)" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:18px;color:var(--muted);padding:0;">👁</button></div>
+          <div style="position:relative;"><input type="password" class="input" id="authPassword" placeholder="••••••••" autocomplete="current-password" minlength="6" style="font-size:16px;padding-right:44px;"/><button type="button" onclick="togglePwd('authPassword',this)" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:18px;color:var(--muted);padding:0;">👁</button></div>
         </label>
         <label class="field" id="authPasswordConfirmWrap" style="display:none;">
           <span>Confirmer le mot de passe</span>
-          <div style="position:relative;"><input type="password" class="input" id="authPasswordConfirm" placeholder="••••••••" autocomplete="new-password" style="font-size:15px;padding-right:44px;"/><button type="button" onclick="togglePwd('authPasswordConfirm',this)" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:18px;color:var(--muted);padding:0;">👁</button></div>
+          <div style="position:relative;"><input type="password" class="input" id="authPasswordConfirm" placeholder="••••••••" autocomplete="new-password" style="font-size:16px;padding-right:44px;"/><button type="button" onclick="togglePwd('authPasswordConfirm',this)" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:18px;color:var(--muted);padding:0;">👁</button></div>
         </label>
 
         <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px;">
@@ -750,7 +750,7 @@
           <div style="position:relative;">
             <div style="display:flex;align-items:center;gap:8px;background:var(--bg-card);border:1.5px solid var(--border);border-radius:14px;padding:10px 14px;">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" style="width:15px;height:15px;color:var(--muted);flex-shrink:0;"><circle cx="11" cy="11" r="7"/><path d="M20 20 L16.4 16.4"/></svg>
-              <input type="text" id="explorerSearch" placeholder="Passion, utilisateur…" oninput="filterExplore()" onkeypress="if(event.key==='Enter')filterExplore()" autocomplete="off" style="flex:1;border:none;background:transparent;font-size:14px;color:var(--text);outline:none;"/>
+              <input type="text" id="explorerSearch" placeholder="Passion, utilisateur…" oninput="filterExplore()" onkeypress="if(event.key==='Enter')filterExplore()" autocomplete="off" style="flex:1;border:none;background:transparent;font-size:16px;color:var(--text);outline:none;"/>
               <button onclick="filterExplore()" style="background:var(--accent);color:#fff;border:none;border-radius:10px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;">OK</button>
             </div>
             <div id="exploreSearchResults" style="display:none;position:absolute;top:calc(100% + 6px);left:0;right:0;background:var(--bg-card);border:1.5px solid var(--border);border-radius:14px;box-shadow:0 18px 48px rgba(30,27,54,0.22);z-index:100;overflow:hidden;max-height:360px;overflow-y:auto;"></div>
@@ -1073,7 +1073,7 @@
       <div id="irlSearchRow" style="display:flex;align-items:center;gap:8px;padding:4px 0 8px;">
   <div style="display:flex;align-items:center;gap:6px;flex:1;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:8px 12px;">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" style="width:14px;height:14px;color:var(--muted);flex-shrink:0;"><circle cx="11" cy="11" r="7"/><path d="M20 20 L16.4 16.4"/></svg>
-    <input id="irlCitySearch" type="text" placeholder="Rechercher une ville, un événement…" oninput="filterIrlByCity()" style="border:none;background:transparent;font-size:13px;color:var(--text);outline:none;flex:1;"/>
+    <input id="irlCitySearch" type="text" placeholder="Rechercher une ville, un événement…" oninput="filterIrlByCity()" style="border:none;background:transparent;font-size:16px;color:var(--text);outline:none;flex:1;"/>
   </div>
 </div>
 <div id="irlSearchEmpty" style="display:none;text-align:center;padding:24px;color:var(--muted);font-size:13px;">Aucun événement trouvé pour cette recherche.</div>
@@ -1563,7 +1563,7 @@
   <div id="emojiTabContent" style="display:flex;flex-direction:column;flex:1;overflow:hidden;">
     <!-- Barre de recherche -->
     <div style="padding:8px;flex-shrink:0;border-bottom:1px solid var(--border);">
-      <input type="text" id="emojiSearchInput" placeholder="Chercher…" oninput="window._onEmojiSearch(this.value)" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:20px;font-size:13px;box-sizing:border-box;">
+      <input type="text" id="emojiSearchInput" placeholder="Chercher…" oninput="window._onEmojiSearch(this.value)" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:20px;font-size:16px;box-sizing:border-box;">
     </div>
 
     <!-- Catégories d'emojis (icônes en haut) -->
@@ -1579,7 +1579,7 @@
   <div id="gifTabContent" style="display:none;flex-direction:column;flex:1;overflow:hidden;">
     <!-- Barre de recherche -->
     <div style="padding:8px;flex-shrink:0;border-bottom:1px solid var(--border);">
-      <input type="text" id="gifSearchInput" placeholder="Rechercher GIF…" oninput="window._onGifSearch(this.value)" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:20px;font-size:13px;box-sizing:border-box;">
+      <input type="text" id="gifSearchInput" placeholder="Rechercher GIF…" oninput="window._onGifSearch(this.value)" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:20px;font-size:16px;box-sizing:border-box;">
     </div>
 
     <!-- Grille GIF -->

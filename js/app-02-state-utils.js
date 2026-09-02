@@ -1509,11 +1509,164 @@ function toast(msg, type = "info", onClick = null) {
 let navigationHistory = ["feed"];
 let isNavigatingBack = false;
 
+// ═══════════════════════════════════════════════════════════════════════════
+// HISTORIQUE : écriture SÛRE et BORNÉE (correctif iPhone, 2026-09-02)
+// ---------------------------------------------------------------------------
+// Deux défauts distincts, tous deux invisibles sur Android, tous deux vécus par
+// le testeur iPhone (« les écrans se figent », « les retours ne marchent pas ») :
+//
+// ① WebKit PLAFONNE les écritures d'historique — environ 100 `pushState` /
+//    `replaceState` par tranche de 30 s — et, au-delà, il LÈVE une
+//    `SecurityError`. Chrome, lui, se contente d'ignorer. Or `goTo()` écrivait
+//    l'historique en TÊTE de fonction, sans `try` : passé le plafond, l'appel
+//    levait et TOUT le reste de `goTo` était sauté — bascule d'écran, classes
+//    `.nav-item`, remise à zéro du défilement, rendu. L'écran restait donc
+//    figé sur son contenu précédent, et chaque tap suivant levait à son tour.
+//    C'est exactement le symptôme « l'écran se fige » — et il n'existe QUE sur
+//    iPhone. On enveloppe donc toute écriture, et on s'arrête AVANT le plafond
+//    (l'entrée d'historique est un confort ; `navigationHistory` reste, lui, la
+//    vraie mémoire de navigation de l'application).
+//
+// ② Chaque overlay (modale, bobines, story, panneau d'outils) POUSSAIT une
+//    entrée à l'ouverture, mais AUCUN ne la retirait à la fermeture au doigt
+//    (× , fond, Échap). Ouvrir puis fermer cinq modales laissait cinq entrées
+//    mortes : il fallait cinq retours pour que quoi que ce soit bouge. Sur
+//    iPhone le geste de retour depuis le bord est le chemin principal, d'où
+//    « les retours de page ne fonctionnent pas ». `releaseOverlayHistory()`
+//    consomme l'entrée quand l'overlay est fermé autrement que par un retour.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Horodatages des écritures d'historique récentes (fenêtre glissante de 30 s).
+let _histWrites = [];
+const _HIST_MAX = 90;              // marge sous le plafond WebKit (~100 / 30 s)
+
+function _histQuotaOk() {
+  const now = Date.now();
+  // Purge tout ce qui est sorti de la fenêtre de 30 s.
+  while (_histWrites.length && now - _histWrites[0] > 30000) _histWrites.shift();
+  return _histWrites.length < _HIST_MAX;
+}
+
+// Écrit une entrée d'historique. Renvoie true si elle a VRAIMENT été posée —
+// l'appelant peut ainsi tenir une comptabilité juste des entrées à reprendre.
+// Ne lève JAMAIS : une écriture d'historique refusée ne doit pas pouvoir
+// interrompre la fonction qui l'appelle (c'est tout le défaut ① ci-dessus).
+function pushHistorySafe(stateObj, hash) {
+  if (!_histQuotaOk()) return false;
+  try {
+    window.history.pushState(stateObj, "", hash);
+    _histWrites.push(Date.now());
+    return true;
+  } catch (e) {
+    // Plafond atteint malgré la marge, ou navigation en cours : on note l'essai
+    // pour se calmer, et on continue sans historique plutôt que de tout casser.
+    _histWrites.push(Date.now());
+    try { console.warn("[nav] pushState refusé:", e && e.message); } catch (e2) {}
+    return false;
+  }
+}
+
+// Même précaution pour `replaceState`, soumis au MÊME plafond WebKit que
+// `pushState` (les deux partagent le compteur de WebKit) et qui lève donc dans
+// les mêmes conditions.
+function replaceHistorySafe(stateObj, hash) {
+  if (!_histQuotaOk()) return false;
+  try {
+    window.history.replaceState(stateObj, "", hash);
+    _histWrites.push(Date.now());
+    return true;
+  } catch (e) {
+    _histWrites.push(Date.now());
+    return false;
+  }
+}
+
+// ─── Entrées d'historique posées par les overlays ──────────────────────────
+let _navOverlayDepth = 0;       // combien d'entrées d'overlay sont à nous
+let _navClosingFromPop = false; // vrai pendant le traitement d'un popstate
+let _navExpectingBack = 0;      // retours que NOUS avons déclenchés
+let _releasePending = false;    // une reprise d'entrée est programmée
+let _releaseTimer = null;
+
+// Ouverture d'un overlay : une entrée, marquée comme nôtre.
+function pushOverlayHistory(kind, hash) {
+  const url = hash || ("#" + kind);
+  // ⚠️ Cas « une modale en remplace une autre » (openModal n'empile pas, cf.
+  // CLAUDE.md) : le code fait `closeModal(); openModal(...)`. La reprise de
+  // l'entrée précédente est encore PROGRAMMÉE — on l'annule et on RÉUTILISE
+  // l'entrée courante au lieu d'en empiler une seconde. Sans cela, remplacer
+  // une modale laissait une entrée orpheline, donc un appui « retour » mort.
+  if (_releasePending) {
+    _releasePending = false;
+    clearTimeout(_releaseTimer); _releaseTimer = null;
+    if (replaceHistorySafe({ overlay: kind, passioOverlay: true }, url)) return;
+  }
+  if (pushHistorySafe({ overlay: kind, passioOverlay: true }, url)) _navOverlayDepth++;
+}
+
+// Fermeture d'un overlay AUTREMENT que par un retour : on consomme l'entrée
+// qu'il avait posée, sinon elle reste morte sur la pile et avale un retour.
+// Différée d'un tour de boucle pour laisser le cas « remplacement » ci-dessus
+// s'exprimer — l'utilisateur ne peut pas appuyer sur retour entre-temps.
+function releaseOverlayHistory() {
+  // Fermeture DÉCLENCHÉE par un popstate : l'entrée vient déjà d'être retirée
+  // par le navigateur, la reprendre ferait reculer d'un cran de trop.
+  if (_navClosingFromPop) return;
+  if (_navOverlayDepth <= 0) return;
+  _releasePending = true;
+  clearTimeout(_releaseTimer);
+  _releaseTimer = setTimeout(_flushOverlayRelease, 0);
+}
+
+function _flushOverlayRelease() {
+  _releaseTimer = null;
+  if (!_releasePending) return;
+  _releasePending = false;
+  if (_navOverlayDepth <= 0) return;
+  // L'entrée n'est à reprendre que si elle est encore AU SOMMET. Si autre chose
+  // a poussé par-dessus entre-temps (une navigation, un autre overlay), reculer
+  // ferait quitter l'écran courant : on abandonne la comptabilité, sans risque.
+  let st = null;
+  try { st = window.history.state; } catch (e) {}
+  if (!st || !st.passioOverlay) { _navOverlayDepth = 0; return; }
+  _navOverlayDepth--;
+  _navExpectingBack++;
+  try { window.history.back(); } catch (e) { _navExpectingBack--; }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// VERROU DE DÉFILEMENT — COMPTÉ PAR PROPRIÉTAIRE (correctif iPhone 2026-09-02)
+// ---------------------------------------------------------------------------
+// `document.body.style.overflow` est une ressource UNIQUE que plusieurs
+// overlays se disputaient : chacun posait `"hidden"` à l'ouverture et écrivait
+// `""` à la fermeture. Deux conséquences, toutes deux vécues comme « l'écran
+// est figé » :
+//   · l'overlay du DESSUS, en se fermant, DÉVERROUILLAIT le défilement alors
+//     que celui du dessous était encore affiché ;
+//   · à l'inverse, une exception avant la ligne de libération (ou un chemin de
+//     fermeture qui l'oubliait) laissait le verrou posé POUR TOUJOURS — plus
+//     rien ne défilait, et aucune erreur n'apparaissait à l'écran.
+// On compte donc les propriétaires : le défilement ne revient qu'au dernier
+// parti. Un même propriétaire ne peut pas verrouiller deux fois (idempotent),
+// sinon un double appel d'ouverture rendrait la libération impossible.
+const _scrollLockOwners = new Set();
+
+function lockBodyScroll(owner) {
+  _scrollLockOwners.add(owner || "anon");
+  try { document.body.style.overflow = "hidden"; } catch (e) {}
+}
+function unlockBodyScroll(owner) {
+  _scrollLockOwners.delete(owner || "anon");
+  if (_scrollLockOwners.size === 0) {
+    try { document.body.style.overflow = ""; } catch (e) {}
+  }
+}
+
 // Ajouter un overlay/modal à l'historique de navigation
 function pushOverlayToHistory(overlayType, overlayId = "") {
-  const state = { overlay: overlayType, id: overlayId };
+  const state = { overlay: overlayType, id: overlayId, passioOverlay: true };
   const hash = overlayId ? `#${overlayType}-${overlayId}` : `#${overlayType}`;
-  window.history.pushState(state, "", hash);
+  if (pushHistorySafe(state, hash)) _navOverlayDepth++;
 }
 
 function goTo(screen) {
@@ -1538,8 +1691,15 @@ function goTo(screen) {
         navigationHistory.shift();
       }
     }
-    // Utiliser l'History API pour le bouton back
-    window.history.pushState({ screen }, "", "#" + screen);
+    // Utiliser l'History API pour le bouton back.
+    // ⚠️ JAMAIS d'appel nu ici : sur iPhone, passé le plafond WebKit, `pushState`
+    // LÈVE — et tout ce qui suit (bascule d'écran, rendu) était sauté, laissant
+    // l'écran figé. `pushHistorySafe` absorbe le refus et laisse `goTo` finir.
+    pushHistorySafe({ screen }, "#" + screen);
+    // On change d'écran : les entrées d'overlay encore comptées sont derrière
+    // nous, plus au sommet. Les oublier évite qu'une fermeture ultérieure ne
+    // fasse reculer hors de l'écran courant.
+    _navOverlayDepth = 0;
   }
 
   $$(".nav-item").forEach(n => {
@@ -1629,19 +1789,53 @@ function closeCurrentOverlay() {
   return false;
 }
 
-// Gérer le bouton back du téléphone
+// Écrans réels vers lesquels un hash peut légitimement ramener.
+const NAV_SCREENS = ["feed", "profiles", "studio", "explore", "irl", "messages"];
+
+// Gérer le bouton back du téléphone (et le geste de retour depuis le bord, qui
+// est LE chemin de retour sur iPhone).
 window.addEventListener("popstate", (e) => {
-  // D'abord, essayer de fermer un overlay ouvert
-  if (closeCurrentOverlay()) {
+  // ① Retour que NOUS avons déclenché en refermant un overlay au doigt : son
+  //    entrée vient d'être consommée, il n'y a plus rien à faire. Sans ce
+  //    garde, on enchaînerait sur un `goTo` inutile qui re-rendrait l'écran.
+  if (_navExpectingBack > 0) { _navExpectingBack--; return; }
+
+  // ② D'abord, essayer de fermer un overlay ouvert.
+  _navClosingFromPop = true;
+  let ferme = false;
+  try {
+    ferme = closeCurrentOverlay();
+  } catch (err) {
+    // Un overlay qui lève en se fermant ne doit pas rendre le bouton retour
+    // inerte pour le reste de la session.
+    try { console.warn("[nav] fermeture d'overlay:", err); } catch (e2) {}
+  } finally {
+    _navClosingFromPop = false;
+  }
+  if (ferme) {
+    if (_navOverlayDepth > 0) _navOverlayDepth--;
     return;
   }
 
-  // Sinon, naviguer vers l'écran précédent
+  // ③ Sinon, naviguer vers l'écran précédent.
   if (e.state && e.state.screen) {
     isNavigatingBack = true;
-    goTo(e.state.screen);
-    isNavigatingBack = false;
+    try { goTo(e.state.screen); } finally { isNavigatingBack = false; }
+    return;
   }
+
+  // ④ Repli : entrée SANS état — le chargement initial de la page, ou un lien
+  //    profond partagé. Sans lui, ce retour ne faisait RIEN : le premier écran
+  //    visité était un cul-de-sac, un appui mort de plus. On suit le hash quand
+  //    il nomme un écran réel, sinon on ramène au Fil, qui est l'accueil.
+  //    ⚠️ Aucune entrée n'est poussée (isNavigatingBack) : la position dans
+  //    l'historique reste donc l'entrée initiale, et un retour de plus quitte
+  //    bien l'application — c'est le comportement attendu.
+  let h = "";
+  try { h = (location.hash || "").replace(/^#/, ""); } catch (e2) {}
+  const cible = NAV_SCREENS.indexOf(h) >= 0 ? h : "feed";
+  isNavigatingBack = true;
+  try { goTo(cible); } finally { isNavigatingBack = false; }
 });
 
 function toggleDevPanel() {
@@ -1688,7 +1882,7 @@ function openPrivacySettings() {
     <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">🟢 Afficher en ligne</span><input type="checkbox" id="privOnline" ' + (priv.showOnline ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
     <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">📊 Afficher mon activité</span><input type="checkbox" id="privActivity" ' + (priv.showActivity ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
     <div style="padding:12px 0;"><span style="font-size:13px;">💬 Qui peut m\'écrire ?</span>\
-      <select id="privMessages" style="display:block;width:100%;margin-top:6px;padding:10px;border-radius:10px;border:1.5px solid var(--border);font-size:13px;">\
+      <select id="privMessages" style="display:block;width:100%;margin-top:6px;padding:10px;border-radius:10px;border:1.5px solid var(--border);font-size:16px;">\
         <option value="everyone" ' + (priv.allowMessages === "everyone" ? "selected" : "") + '>Tout le monde</option>\
         <option value="followers" ' + (priv.allowMessages === "followers" ? "selected" : "") + '>Mes abonnés</option>\
         <option value="nobody" ' + (priv.allowMessages === "nobody" ? "selected" : "") + '>Personne</option>\
@@ -1712,7 +1906,7 @@ function openContentSettings() {
     <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">📡 Mode économie de données</span><input type="checkbox" id="contentDataEco" ' + (content.dataEco ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
     <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">⚠️ Afficher contenu sensible</span><input type="checkbox" id="contentSensitive" ' + (content.showSensitive ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
     <div style="padding:12px 0;"><span style="font-size:13px;">🌍 Langue</span>\
-      <select id="contentLang" style="display:block;width:100%;margin-top:6px;padding:10px;border-radius:10px;border:1.5px solid var(--border);font-size:13px;">\
+      <select id="contentLang" style="display:block;width:100%;margin-top:6px;padding:10px;border-radius:10px;border:1.5px solid var(--border);font-size:16px;">\
         <option value="fr" ' + (content.language === "fr" ? "selected" : "") + '>Français</option>\
         <option value="en" ' + (content.language === "en" ? "selected" : "") + '>English</option>\
         <option value="es" ' + (content.language === "es" ? "selected" : "") + '>Español</option>\
@@ -2396,7 +2590,7 @@ function _showPasswordRecoveryUI() {
     '<div style="background:var(--bg-card,#fff);border-radius:18px;padding:24px;max-width:360px;width:100%;box-shadow:0 12px 48px rgba(0,0,0,0.3);">' +
       '<div style="font-size:18px;font-weight:800;margin-bottom:6px;">Nouveau mot de passe</div>' +
       '<div style="font-size:13px;color:var(--muted);margin-bottom:16px;">Choisis un nouveau mot de passe pour ton compte.</div>' +
-      '<input type="password" id="pwdRecoveryInput" placeholder="••••••••" minlength="6" autocomplete="new-password" class="input" style="width:100%;box-sizing:border-box;font-size:15px;margin-bottom:8px;"/>' +
+      '<input type="password" id="pwdRecoveryInput" placeholder="••••••••" minlength="6" autocomplete="new-password" class="input" style="width:100%;box-sizing:border-box;font-size:16px;margin-bottom:8px;"/>' +
       '<div id="pwdRecoveryMsg" style="font-size:12px;min-height:16px;margin-bottom:10px;"></div>' +
       '<button id="pwdRecoveryBtn" class="btn primary block" style="padding:13px;font-weight:800;">Valider</button>' +
     '</div>';

@@ -3189,6 +3189,24 @@ let audioChunks = [];
 let recStartTs = 0;
 let recTimer = null;
 
+// Conteneur audio réellement encodable par CET appareil, mp4 d'abord (le seul
+// que Safari/iOS sache produire ET relire). Renvoie "" si rien n'est négociable
+// — MediaRecorder choisit alors son défaut, et c'est le type des morceaux
+// produits qui fera foi.
+function _passioBestAudioMime() {
+  if (!window.MediaRecorder || !MediaRecorder.isTypeSupported) return "";
+  var prefs = [
+    "audio/mp4;codecs=mp4a.40.2",
+    "audio/mp4",
+    "audio/webm;codecs=opus",
+    "audio/webm",
+  ];
+  for (var i = 0; i < prefs.length; i++) {
+    try { if (MediaRecorder.isTypeSupported(prefs[i])) return prefs[i]; } catch (e) {}
+  }
+  return "";
+}
+
 async function toggleRecording() {
   if (mediaRecorder && mediaRecorder.state === "recording") {
     mediaRecorder.stop();
@@ -3204,10 +3222,25 @@ async function toggleRecording() {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     audioChunks = [];
-    mediaRecorder = new MediaRecorder(stream);
+    // ⚠️ NE PAS forcer webm ici. Safari/iOS n'encode PAS en webm : son
+    // MediaRecorder produit de l'`audio/mp4`. L'ancien code créait le Blob avec
+    // `type: "audio/webm"` en dur, quel que soit l'appareil — sur iPhone la
+    // data-URL annonçait donc un conteneur que le fichier n'était pas, et le
+    // vocal était injouable PARTOUT (y compris pour le destinataire Android).
+    // Même famille que la vidéo, corrigée dans app-08 (_passioBestVideoMime).
+    const _audioMime = _passioBestAudioMime();
+    try {
+      mediaRecorder = _audioMime ? new MediaRecorder(stream, { mimeType: _audioMime })
+                                 : new MediaRecorder(stream);
+    } catch (e) {
+      mediaRecorder = new MediaRecorder(stream);   // repli : réglages par défaut
+    }
     mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data); };
     mediaRecorder.onstop = () => {
-      const blob = new Blob(audioChunks, { type: "audio/webm" });
+      // Le type RÉEL est celui des morceaux produits par l'encodeur — jamais
+      // une valeur devinée. On retombe sur celui négocié, puis sur webm.
+      const _reel = (audioChunks[0] && audioChunks[0].type) || _audioMime || "audio/webm";
+      const blob = new Blob(audioChunks, { type: _reel.split(";")[0] });
       const reader = new FileReader();
       reader.onload = () => {
         audioDataUrl = reader.result;
@@ -3241,9 +3274,12 @@ async function toggleRecording() {
   } catch (e) {
     console.warn(e);
     toast("Micro refusé, active l'autorisation navigateur");
-    // Simulate fallback
-    audioDataUrl = "data:audio/webm;base64,";
-    $("#recStatus").textContent = "Enregistrement simulé (micro non accessible)";
+    // ⚠️ PAS de fausse piste audio ici. L'ancien repli posait
+    // `data:audio/webm;base64,` — une URL de données VIDE et mal typée : le
+    // Studio basculait alors sur « audio prêt à publier » et laissait publier un
+    // post sonore sans le moindre son. Micro refusé = rien à publier.
+    audioDataUrl = null;
+    $("#recStatus").textContent = "Micro non accessible — enregistrement impossible";
   }
 }
 

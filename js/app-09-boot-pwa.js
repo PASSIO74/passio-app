@@ -1577,11 +1577,19 @@ function _sendVoiceMessage(dataUrl, duration) {
       var byteString = atob(dataUrl.split(",")[1]);
       var ia = new Uint8Array(byteString.length);
       for (var i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
-      var blob = new Blob([ia.buffer], { type: "audio/webm" });
-      var storagePath = "attachments/" + convId + "/" + Date.now() + "_voice.webm";
-      supa.storage.from("attachments").upload(storagePath, blob, { cacheControl: "3600", upsert: false }).then(function (res) {
+      // ⚠️ NE PAS coder le conteneur en dur. `startVoiceRecord` négocie déjà le
+      // meilleur encodeur de l'appareil : webm/opus sur Android, `audio/mp4` sur
+      // Safari/iOS (qui ne sait PAS produire de webm). Écrire « audio/webm » ici
+      // envoyait donc un fichier mp4 nommé `.webm` et servi par Storage avec un
+      // Content-Type mensonger : injouable pour TOUT LE MONDE, y compris pour le
+      // destinataire Android. Le type réel est porté par la data-URL elle-même.
+      var _vt = (dataUrl.match(/^data:([^;,]+)/) || [])[1] || "audio/webm";
+      var _vext = _vt.indexOf("mp4") >= 0 ? "m4a" : (_vt.indexOf("ogg") >= 0 ? "ogg" : "webm");
+      var blob = new Blob([ia.buffer], { type: _vt });
+      var storagePath = "attachments/" + convId + "/" + Date.now() + "_voice." + _vext;
+      supa.storage.from("attachments").upload(storagePath, blob, { cacheControl: "3600", upsert: false, contentType: _vt }).then(function (res) {
         var url = res.error ? dataUrl : supa.storage.from("attachments").getPublicUrl(storagePath).data.publicUrl;
-        sendMessageToSupabase(msgId, convId, url, "audio/webm", "Message vocal (" + duration + "s)", "audio");
+        sendMessageToSupabase(msgId, convId, url, _vt, "Message vocal (" + duration + "s)", "audio");
       }).catch(function () {
         sendMessageToSupabase(msgId, convId, dataUrl, "audio/webm", "Message vocal", "audio");
       });

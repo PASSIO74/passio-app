@@ -344,11 +344,39 @@ function renderNavOrderList() {
       }
     });
     item.addEventListener("dragend", function() { this.style.opacity = "1"; });
-    var ty = 0;
-    item.addEventListener("touchstart", function(e) { dragSrc = this; ty = e.touches[0].clientY; this.style.opacity = "0.6"; });
-    item.addEventListener("touchmove", function(e) { e.preventDefault(); });
+    // ⚠️ Réordonner au doigt SANS confisquer le défilement (correctif 2026-09-02).
+    // L'ancien code appelait `e.preventDefault()` à CHAQUE `touchmove` sur ces
+    // lignes, sans condition et sans `{ passive: false }` explicite : poser le
+    // doigt sur une ligne suffisait à empêcher la page de défiler. Sur iPhone,
+    // où le pouce tombe naturellement au milieu de la liste, cela se vit comme
+    // « l'écran est figé » — aucune erreur, juste une page qui refuse de bouger.
+    // On arme donc le déplacement par un APPUI LONG (même geste que le fil de
+    // commentaires, app-04), et on ne confisque le défilement qu'une fois armé.
+    var ty = 0, dragArme = false, dragTimer = null;
+    item.addEventListener("touchstart", function(e) {
+      dragSrc = this; ty = e.touches[0].clientY; dragArme = false;
+      var self = this;
+      clearTimeout(dragTimer);
+      dragTimer = setTimeout(function() {
+        dragArme = true;
+        self.style.opacity = "0.6";     // retour visuel : le déplacement est armé
+      }, 300);
+    }, { passive: true });
+    item.addEventListener("touchmove", function(e) {
+      if (!dragArme) {
+        // Pas encore armé : un vrai défilement annule l'appui long, et le
+        // navigateur garde la main sur le geste.
+        if (Math.abs(e.touches[0].clientY - ty) > 8) clearTimeout(dragTimer);
+        return;
+      }
+      e.preventDefault();
+    }, { passive: false });
     item.addEventListener("touchend", function(e) {
-      this.style.opacity = "1"; var d = e.changedTouches[0].clientY - ty;
+      clearTimeout(dragTimer);
+      this.style.opacity = "1";
+      if (!dragArme) return;            // simple tap ou défilement : on ne réordonne pas
+      dragArme = false;
+      var d = e.changedTouches[0].clientY - ty;
       var newOrd = getNavOrder(); var idx = newOrd.indexOf(this.dataset.navId);
       if (d < -30 && idx > 0) { var m = newOrd.splice(idx,1)[0]; newOrd.splice(idx-1,0,m); setConfig("navOrder",newOrd); applyNavOrder(); }
       else if (d > 30 && idx < newOrd.length-1) { var m = newOrd.splice(idx,1)[0]; newOrd.splice(idx+1,0,m); setConfig("navOrder",newOrd); applyNavOrder(); }
@@ -2163,8 +2191,10 @@ function renderReelHTML(post, idx) {
 }
 
 function openReels(pinnedId) {
-  // Ajouter à l'historique pour que le bouton back fonctionne
-  window.history.pushState({ overlay: "reels" }, "", "#reels");
+  // Ajouter à l'historique pour que le bouton back fonctionne. L'entrée est
+  // marquée comme nôtre et sera REPRISE par closeReels() si l'utilisateur ferme
+  // au doigt plutôt qu'avec le retour (sinon elle reste morte sur la pile).
+  pushOverlayHistory("reels", "#reels");
 
   // `pinnedId` n'est passé que par openReelById : il garantit que la bobine
   // demandée EST dans la liste, même si elle est sortie des 30 plus récentes.
@@ -2180,7 +2210,7 @@ function openReels(pinnedId) {
         <div class="reels-empty-text">Crée ta première bobine : ➕ → Studio → onglet <b>Bobine</b>.</div>
         <button class="btn primary" style="margin-top:14px;" onclick="startBobineCreation()">🎬 Créer une bobine</button>
       </div>`;
-    document.body.style.overflow = "hidden";
+    lockBodyScroll("reels");
     reelsState.open = true;
     return;
   }
@@ -2195,7 +2225,7 @@ function openReels(pinnedId) {
   const v = document.getElementById("reelsViewer");
   v.classList.add("open");
   v.setAttribute("aria-hidden", "false");
-  document.body.style.overflow = "hidden";
+  lockBodyScroll("reels");
   document.body.classList.add("reels-open");
   reelsState.open = true;
   updateReelsCounter();
@@ -2255,17 +2285,22 @@ function openReelById(id) {
 }
 
 function closeReels() {
+  const etaitOuvert = !!(reelsState && reelsState.open);
+  // ⚠️ Gardes systématiques : cette fonction est appelée par le gestionnaire de
+  // `popstate`. Une exception ici (nœud absent) rendait le bouton retour inerte
+  // pour toute la suite de la session, ET laissait le verrou de défilement posé
+  // — c'est-à-dire un écran qui ne défile plus, sans la moindre erreur visible.
   const v = document.getElementById("reelsViewer");
-  v.classList.remove("open");
-  v.setAttribute("aria-hidden", "true");
-  document.body.style.overflow = "";
+  if (v) { v.classList.remove("open"); v.setAttribute("aria-hidden", "true"); }
+  unlockBodyScroll("reels");
   document.body.classList.remove("reels-open");
-  reelsState.open = false;
-  document.getElementById("reelsPause").classList.remove("show");
+  if (reelsState) reelsState.open = false;
+  const pause = document.getElementById("reelsPause");
+  if (pause) pause.classList.remove("show");
   // Pause toutes les vidéos
   document.querySelectorAll("#reelsList video").forEach(vid => { try { vid.pause(); } catch(e){} });
-  if (reelsState.observer) { try { reelsState.observer.disconnect(); } catch(e){} reelsState.observer = null; }
-
+  if (reelsState && reelsState.observer) { try { reelsState.observer.disconnect(); } catch(e){} reelsState.observer = null; }
+  if (etaitOuvert) releaseOverlayHistory();
 }
 
 function resumeReels() {

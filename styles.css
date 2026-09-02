@@ -221,6 +221,7 @@
       align-items: center;
       justify-content: space-between;
       gap: 8px;
+      -webkit-backdrop-filter: blur(20px) saturate(140%);
       backdrop-filter: blur(20px) saturate(140%);
       -webkit-backdrop-filter: blur(20px) saturate(140%);
       background: rgba(255, 255, 255, 0.82);
@@ -372,6 +373,7 @@
       align-items: stretch;
       background: rgba(255, 255, 255, 0.92);
       border-top: 1px solid var(--border);
+      -webkit-backdrop-filter: blur(20px) saturate(140%);
       backdrop-filter: blur(20px) saturate(140%);
       -webkit-backdrop-filter: blur(20px) saturate(140%);
       flex-shrink: 0;
@@ -915,6 +917,7 @@
       background: rgba(255, 255, 255, 0.20);
       border: 1px solid rgba(255, 255, 255, 0.30);
       border-radius: 999px;
+      -webkit-backdrop-filter: blur(10px);
       backdrop-filter: blur(10px);
       margin-bottom: 6px;
     }
@@ -963,6 +966,7 @@
       background: rgba(255, 255, 255, 0.20);
       border: 1px solid rgba(255, 255, 255, 0.30);
       border-radius: 999px;
+      -webkit-backdrop-filter: blur(10px);
       backdrop-filter: blur(10px);
       margin-bottom: 6px;
     }
@@ -1076,6 +1080,7 @@
       position: relative;
       z-index: 2;
       background: rgba(2, 6, 23, 0.72);
+      -webkit-backdrop-filter: blur(10px);
       backdrop-filter: blur(10px);
       -webkit-backdrop-filter: blur(10px);
       color: #ffffff;
@@ -1366,6 +1371,7 @@
       position: fixed;
       inset: 0;
       background: rgba(24, 18, 48, 0.55);
+      -webkit-backdrop-filter: blur(10px) saturate(130%);
       backdrop-filter: blur(10px) saturate(130%);
       -webkit-backdrop-filter: blur(10px) saturate(130%);
       display: none;
@@ -1652,6 +1658,7 @@
       border-radius: 18px;
       border: 1px solid var(--border);
       background: rgba(250, 248, 255, 0.72);
+      -webkit-backdrop-filter: blur(10px);
       backdrop-filter: blur(10px);
       -webkit-backdrop-filter: blur(10px);
       display: flex;
@@ -1936,6 +1943,7 @@
       right: 10px;
       color: #fff;
       background: rgba(0,0,0,0.28);
+      -webkit-backdrop-filter: blur(4px);
       backdrop-filter: blur(4px);
       -webkit-backdrop-filter: blur(4px);
       opacity: 0.9;
@@ -2315,6 +2323,7 @@
       font-weight: 700;
       padding: 7px 14px;
       cursor: pointer;
+      -webkit-backdrop-filter: blur(12px);
       backdrop-filter: blur(12px);
       -webkit-backdrop-filter: blur(12px);
     }
@@ -2338,6 +2347,7 @@
       font-size: 11px; font-weight: 700; color: #fff;
       background: rgba(139,92,246,0.7); border-radius: 20px;
       padding: 3px 9px;
+      -webkit-backdrop-filter: blur(6px);
       backdrop-filter: blur(6px);
     }
     /* Body */
@@ -2520,6 +2530,7 @@
       border: 1px solid var(--border);
       text-align: center;
       margin-bottom: 12px;
+      -webkit-backdrop-filter: blur(14px);
       backdrop-filter: blur(14px);
       -webkit-backdrop-filter: blur(14px);
     }
@@ -2899,6 +2910,7 @@
       z-index: 50000;
       display: none;
       box-shadow: 0 18px 40px rgba(30, 27, 54, 0.18), 0 2px 8px rgba(30, 27, 54, 0.08);
+      -webkit-backdrop-filter: blur(18px);
       backdrop-filter: blur(18px);
       -webkit-backdrop-filter: blur(18px);
       scrollbar-width: none;
@@ -2965,6 +2977,7 @@
       align-items: center;
       justify-content: center;
       background: rgba(250, 248, 255, 0.78);
+      -webkit-backdrop-filter: blur(12px);
       backdrop-filter: blur(12px);
       -webkit-backdrop-filter: blur(12px);
       border: 1px solid var(--border);
@@ -2978,6 +2991,7 @@
       position: fixed;
       inset: 0;
       background: rgba(2, 6, 23, 0.7);
+      -webkit-backdrop-filter: blur(4px);
       backdrop-filter: blur(4px);
       z-index: 99999;
       display: none;
@@ -3430,6 +3444,7 @@
       color: #fff;
       background: rgba(15, 23, 42, 0.78);
       border-radius: 10px;
+      -webkit-backdrop-filter: blur(10px);
       backdrop-filter: blur(10px);
       -webkit-backdrop-filter: blur(10px);
       pointer-events: none;
@@ -3541,6 +3556,7 @@
       margin-bottom: 14px;
       cursor: pointer;
       transition: all 180ms ease;
+      -webkit-backdrop-filter: blur(12px);
       backdrop-filter: blur(12px);
       -webkit-backdrop-filter: blur(12px);
     }
@@ -3871,6 +3887,7 @@
       width: 40px; height: 40px; border-radius: 999px; border: none;
       background: rgba(255,255,255,0.14); color: #fff; font-size: 18px;
       cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+      -webkit-backdrop-filter: blur(8px);
       transition: background 160ms ease, transform 140ms ease; backdrop-filter: blur(8px);
     }
     .me-icon-btn:active { transform: scale(0.92); background: rgba(255,255,255,0.26); }
@@ -3907,6 +3924,7 @@
       position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
       z-index: 6; width: 72px; height: 72px; border-radius: 50%;
       border: none; cursor: pointer; font-size: 30px; color: #fff;
+      -webkit-backdrop-filter: blur(6px);
       background: rgba(0,0,0,0.55); backdrop-filter: blur(6px);
       display: flex; align-items: center; justify-content: center; padding-left: 6px;
     }
@@ -3927,6 +3945,7 @@
       position: absolute; top: calc(env(safe-area-inset-top) + 64px); left: 50%; transform: translateX(-50%); z-index: 5;
       display: none; align-items: center; gap: 7px;
       background: rgba(0,0,0,0.55); color: #fff; font-weight: 800; font-size: 13px;
+      -webkit-backdrop-filter: blur(8px);
       padding: 5px 12px; border-radius: 999px; backdrop-filter: blur(8px);
     }
     .media-editor.me-recording .me-rec-badge { display: inline-flex; }
@@ -4690,6 +4709,7 @@
       background: rgba(0, 0, 0, 0.45); color: #fff;
       font-size: 17px; cursor: pointer;
       display: flex; align-items: center; justify-content: center;
+      -webkit-backdrop-filter: blur(6px);
       backdrop-filter: blur(6px);
     }
     .reel-sound-btn:active { transform: scale(0.92); }
@@ -4702,6 +4722,7 @@
       background: rgba(0, 0, 0, 0.45); color: #fff;
       font-size: 17px; cursor: pointer;
       display: flex; align-items: center; justify-content: center;
+      -webkit-backdrop-filter: blur(6px);
       backdrop-filter: blur(6px);
     }
     .story-sound-btn:active { transform: scale(0.92); }
@@ -4713,6 +4734,7 @@
       padding: 5px 12px;
       border-radius: 999px;
       background: rgba(255, 255, 255, 0.16);
+      -webkit-backdrop-filter: blur(10px);
       backdrop-filter: blur(10px);
       -webkit-backdrop-filter: blur(10px);
       font-size: 11px;
@@ -4776,6 +4798,7 @@
       width: 46px; height: 46px;
       border-radius: 50%;
       background: rgba(255, 255, 255, 0.14);
+      -webkit-backdrop-filter: blur(12px);
       backdrop-filter: blur(12px);
       -webkit-backdrop-filter: blur(12px);
       display: inline-flex; align-items: center; justify-content: center;
@@ -4819,6 +4842,7 @@
       border-radius: 999px;
       background: rgba(255, 255, 255, 0.18);
       border: 1px solid rgba(255, 255, 255, 0.2);
+      -webkit-backdrop-filter: blur(10px);
       backdrop-filter: blur(10px);
       -webkit-backdrop-filter: blur(10px);
       font-weight: 700;
@@ -4843,6 +4867,7 @@
       justify-content: center;
       z-index: 20;
       padding: 30px;
+      -webkit-backdrop-filter: blur(8px);
       backdrop-filter: blur(8px);
       -webkit-backdrop-filter: blur(8px);
     }
@@ -4897,6 +4922,7 @@
       height: 46px;
       border-radius: 50%;
       background: rgba(255, 255, 255, 0.16);
+      -webkit-backdrop-filter: blur(14px);
       backdrop-filter: blur(14px);
       -webkit-backdrop-filter: blur(14px);
       border: 1px solid rgba(255, 255, 255, 0.28);
@@ -4931,6 +4957,7 @@
       letter-spacing: 0.02em;
       color: #fff;
       z-index: 12;
+      -webkit-backdrop-filter: blur(10px);
       backdrop-filter: blur(10px);
       -webkit-backdrop-filter: blur(10px);
       animation: reelsHintFade 5s ease-in-out forwards;
@@ -6149,6 +6176,7 @@
     #pwa-overlay {
       position: fixed; inset: 0; z-index: 99999;
       background: rgba(10,0,30,0.72);
+      -webkit-backdrop-filter: blur(6px);
       backdrop-filter: blur(6px);
       -webkit-backdrop-filter: blur(6px);
       display: flex; align-items: center; justify-content: center;
@@ -6228,6 +6256,7 @@
     /* ============================================================
        OPTIMISATIONS PERFORMANCE / FLUIDITÉ (2026-06-29)
        ------------------------------------------------------------
+       -webkit-backdrop-filter: blur() sur des badges RÉPÉTÉS à l'intérieur;
        1) backdrop-filter: blur() sur des badges RÉPÉTÉS à l'intérieur
           des listes scrollables = re-flou GPU à CHAQUE frame de scroll
           (le contenu sous le badge bouge) → jank de scroll sur mobile.
@@ -6349,6 +6378,7 @@
       display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
       background: rgba(0,0,0,0.72);
       color: #fff; font-size: 46px;
+      -webkit-backdrop-filter: blur(4px);
       backdrop-filter: blur(4px);
     }
     .vlive-paused span { font-size: 15px; font-weight: 700; letter-spacing: 0.02em; }
@@ -7481,6 +7511,7 @@ body.ctx-locked #appMain { overflow: hidden; }
   align-items: stretch;
   background: rgba(255, 255, 255, 0.94);
   border-top: 1px solid var(--border);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
   backdrop-filter: blur(20px) saturate(140%);
   -webkit-backdrop-filter: blur(20px) saturate(140%);
   flex-shrink: 0;
@@ -9455,6 +9486,7 @@ body.ctx-locked #appMain { overflow: hidden; }
   inset: 7px;
   border-radius: 50%;
   background: rgba(0, 0, 0, 0.28);
+  -webkit-backdrop-filter: blur(4px);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
   z-index: -1;
@@ -10508,6 +10540,43 @@ html:not(.passio-first-run) .fr-only { display: none !important; }
 }
 @supports (padding: env(safe-area-inset-bottom)) {
   .fr-tip { margin-bottom: env(safe-area-inset-bottom); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   iPHONE — AUCUN CHAMP DE SAISIE SOUS 16 px  (correctif 2026-09-02)
+   ---------------------------------------------------------------------------
+   Défaut vécu par le testeur iPhone, INVISIBLE sur Android : « les écrans se
+   figent ». Ce n'était pas un blocage JavaScript.
+
+   Safari iOS ZOOME automatiquement la page dès qu'on met le doigt dans un champ
+   dont la taille de police calculée est INFÉRIEURE à 16 px, et n'annule pas ce
+   zoom à la sortie du champ. Or `html` est en `overflow: hidden` et `.app-shell`
+   est borné à `--app-vh` : une fois la page zoomée, plus rien ne peut la faire
+   revenir — ni défilement, ni redimensionnement. L'utilisateur se retrouve
+   devant une application agrandie, tronquée à droite, dont la barre d'onglets
+   est hors champ. Vu du testeur : c'est figé.
+
+   Chrome/Android ne zoome JAMAIS au focus : d'où « pourtant sur Android ça
+   marche bien ». Le champ e-mail de la connexion était à 15 px — le défaut se
+   déclenchait donc dès le PREMIER écran touché.
+
+   Remède : les douze champs fautifs sont remis à 16 px à la source (index.html
+   et gabarits JS) ; cette règle est le FILET, pour tout champ ajouté plus tard
+   ou dont la taille vient d'ailleurs. Bornée aux pointeurs grossiers (tactile),
+   la vue bureau garde ses tailles.
+
+   ⚠️ Ne PAS « corriger » cela par `maximum-scale=1` ou `user-scalable=no` dans
+   le <meta viewport> : cela bloquerait aussi le zoom VOLONTAIRE, dont dépendent
+   les personnes malvoyantes (WCAG 1.4.4). 16 px est le seul remède honnête.
+   ═══════════════════════════════════════════════════════════════════════════ */
+@media (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="submit"]):not([type="button"]),
+  textarea,
+  select,
+  [contenteditable="true"],
+  [contenteditable=""] {
+    font-size: 16px !important;
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

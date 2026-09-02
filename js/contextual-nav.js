@@ -208,8 +208,11 @@
     document.addEventListener("keydown", onKeydown, true);
 
     // Entrée history : le bouton retour ferme le panneau (comme openModal).
+    // Elle est marquée comme nôtre et REPRISE par close() — sans quoi chaque
+    // ouverture-fermeture au doigt laissait un appui « retour » sans effet.
     if (!isOpen) {
-      try { window.history.pushState({ overlay: "ctxtools" }, "", "#outils"); } catch (_) {}
+      if (typeof window.pushOverlayHistory === "function") window.pushOverlayHistory("ctxtools", "#outils");
+      else { try { window.history.pushState({ overlay: "ctxtools", passioOverlay: true }, "", "#outils"); } catch (_) {} }
     }
     isOpen = true;
 
@@ -236,6 +239,7 @@
       try { lastTrigger.focus(); } catch (_) {}
     }
     lastTrigger = null;
+    if (typeof window.releaseOverlayHistory === "function") window.releaseOverlayHistory();
   }
 
   // Re-rend le contenu si le panneau est ouvert sur cet écran (état changé
