@@ -156,19 +156,20 @@ jobs:
   # jamais défini en CI), et `global-teardown` purge TOUS les comptes
   # `%@passio-e2e.test` : deux suites simultanées s'effacent mutuellement leurs
   # comptes — l'incident du 2026-09-01, `main` rouge et déploiement sauté. Le motif
-  # est donc réel. Mais il ne concerne que 7 fichiers sur 120 : les 113 autres sont
+  # est donc réel. Mais il ne concerne que 7 fichiers sur 121 : les 114 autres sont
   # du navigateur pur sur un serveur statique local, et attendaient pour rien.
   #
   # LE DÉCOUPAGE. `playwright.config.js` déclare deux projets DISJOINTS, `prod` et
-  # `local` (15 tests contre 897 — vérifié : la somme fait exactement le total
-  # d'avant, aucun test perdu ni dupliqué). Seul `test-prod` garde le verrou et la
-  # clé `service_role` ; `test-local` se découpe en quatre shards sans verrou, qui
+  # `local` (15 tests contre 903 — vérifié en rejouant la config d'avant : les
+  # deux côtés donnent 918 tests sur 121 fichiers, aucun perdu ni dupliqué). Seul
+  # `test-prod` garde le verrou et la
+  # clé `service_role` ; `test-local` se découpe en six shards sans verrou, qui
   # peuvent tourner pendant qu'une autre branche occupe la base.
   #
   # ⚠️ LA PURGE EST DEVENUE LE PIÈGE PRINCIPAL, et il est fermé dans
   # `tests/e2e/global-teardown.js` : sa garde testait `process.env.CI`, donc CHAQUE
   # shard aurait purgé la prod pendant que `test-prod` y travaillait — l'incident du
-  # 2026-09-01 réintroduit par la porte de derrière, et en pire (quatre purges
+  # 2026-09-01 réintroduit par la porte de derrière, et en pire (six purges
   # concurrentes au lieu de deux). Elle exige désormais `PASSIO_E2E_PROD=1`, que
   # seul le job détenteur du verrou pose. NE JAMAIS poser ce marqueur ailleurs.
   #
@@ -406,6 +407,59 @@ jobs:
           PASSIO_PORT: 8091
           COMMIT_REF: ${{ github.sha }}
         run: npx playwright test tests/e2e/release-integrity.spec.js tests/e2e/passion-context.spec.js
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # ⚠️ CE JOB NE FAIT RIEN, ET IL EST INDISPENSABLE. NE PAS LE RENOMMER.
+  #
+  # La protection de branche de `main` exige le contexte de vérification
+  # « Tests smoke (Playwright) » — c'était le NOM de l'ancien job unique. Le
+  # découpage en quatre jobs l'aurait donc fait disparaître, et un contexte requis
+  # que plus aucun workflow ne rapporte reste « Expected — Waiting for status to
+  # be reported » POUR TOUJOURS : plus aucune PR du dépôt n'aurait pu être
+  # fusionnée, la présente comprise. Le dépôt a déjà payé ce défaut une fois
+  # (`.passio/reports/2026-08-29-nuit-audit-correctifs.md`, § gouvernance).
+  #
+  # Ce job réémet donc ce contexte, et lui seul a le droit de porter ce nom. Il
+  # agrège les quatre jobs réels et échoue si l'un d'eux n'est pas vert.
+  #
+  # POURQUOI UN AGRÉGAT PLUTÔT QUE D'INSCRIRE LES JOBS EN REQUIS. Parce que la
+  # matrice produit SIX contextes « Suites navigateur (n/6) » : les inscrire
+  # figerait le nombre de shards, et passer un jour de 6 à 8 rebloquerait tout
+  # le dépôt en silence. Ici le nombre de shards peut changer librement.
+  #
+  # `if: always()` est obligatoire : sans lui, un `needs` en échec ferait SAUTER
+  # ce job, et un contexte requis sauté n'est jamais rapporté — on retomberait
+  # exactement dans l'attente infinie qu'il existe pour empêcher.
+  # ════════════════════════════════════════════════════════════════════════════
+  smoke:
+    name: Tests smoke (Playwright)
+    if: always()
+    needs: [audits, test-prod, test-local, gates-artefact]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Agréger le verdict des quatre jobs
+        env:
+          R_AUDITS: ${{ needs.audits.result }}
+          R_PROD: ${{ needs.test-prod.result }}
+          R_LOCAL: ${{ needs.test-local.result }}
+          R_ARTEFACT: ${{ needs.gates-artefact.result }}
+        run: |
+          set -u
+          echo "audits         : ${R_AUDITS}"
+          echo "test-prod      : ${R_PROD}"
+          echo "test-local     : ${R_LOCAL}"
+          echo "gates-artefact : ${R_ARTEFACT}"
+          rouge=0
+          for r in "${R_AUDITS}" "${R_PROD}" "${R_LOCAL}" "${R_ARTEFACT}"; do
+            # `skipped` est un échec ici : un job de test qui ne s'exécute pas ne
+            # prouve rien, et le laisser passer rendrait ce contexte complaisant.
+            [ "${r}" = "success" ] || rouge=1
+          done
+          if [ "${rouge}" -ne 0 ]; then
+            echo "::error title=Suite non verte::Au moins un des quatre jobs de test n'est pas en succès."
+            exit 1
+          fi
+          echo "Les quatre jobs de test sont verts."
 
   deploy:
     name: Déploiement production

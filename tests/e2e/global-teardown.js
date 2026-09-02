@@ -39,12 +39,13 @@ module.exports = async () => {
   // elle supprime les comptes PAR MOTIF, donc une purge lancée pendant qu'une
   // AUTRE suite tourne sur le même poste effacerait ses comptes en plein vol
   // (le risque documenté dans `/passio-multi-session`). En CI ce risque
-  // n'existe plus : le verrou de concurrence `passio-e2e-prod` posé sur le job
-  // `test` garantit qu'une seule suite touche la base à la fois.
+  // n'existe plus : le verrou de concurrence `passio-e2e-prod`, posé sur le job
+  // `test-prod` de `deploy.yml` ET sur le job `health` de `sentinelle-distante.yml`,
+  // garantit qu'une seule suite touche la base à la fois.
   // ⚠️ EN CI, LA PURGE EST RÉSERVÉE AU JOB QUI DÉTIENT LE VERROU (2026-09-02).
   // Depuis le découpage en projets `prod` / `local` (voir `playwright.config.js`),
   // la CI lance PLUSIEURS invocations Playwright EN PARALLÈLE : le job `test-prod`
-  // (verrou `passio-e2e-prod`) et quatre shards `test-local` sans verrou. Or cette
+  // (verrou `passio-e2e-prod`) et six shards `test-local` sans verrou. Or cette
   // purge supprime les comptes PAR MOTIF : un shard local qui la déclencherait
   // effacerait les comptes du job prod EN PLEIN VOL — très exactement l'incident du
   // 2026-09-01 que le verrou existe pour empêcher, réintroduit par la porte de

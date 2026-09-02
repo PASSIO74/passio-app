@@ -12,7 +12,7 @@ const { defineConfig } = require("@playwright/test");
 // `global-teardown` purge TOUS les comptes `%@passio-e2e.test`, donc deux suites
 // simultanées s'effacent mutuellement leurs comptes (incident du 2026-09-01).
 //
-// Mais ce verrou était posé sur les 120 suites alors que 7 seulement touchent la
+// Mais ce verrou était posé sur les 121 suites alors que 7 seulement touchent la
 // base — et en CI, où `PASSIO_E2E_MULTI` n'est jamais défini, 3 seulement
 // (`authz-critical`, `blocage-acces`, `user-state-horodatage`). Les 113 autres
 // sont du navigateur pur sur un serveur statique local : elles n'ont aucune
@@ -22,7 +22,7 @@ const { defineConfig } = require("@playwright/test");
 // LA SÉPARATION. Le projet `prod` isole les suites qui écrivent en base : lui
 // seul garde le verrou et la clé `service_role`. Le projet `local` prend tout le
 // reste, sans verrou et shardable — c'est ce qui permet au workflow de le
-// découper en 4 jobs parallèles.
+// découper en SIX jobs parallèles.
 //
 // ⚠️ LES DEUX LISTES SONT DISJOINTES PAR CONSTRUCTION : `local` exclut exactement
 // ce que `prod` inclut. Un fichier ne peut donc pas tourner deux fois, et aucun
@@ -40,7 +40,7 @@ const SUITES_PROD = [
   "user-state-horodatage.spec.js", // crée des comptes
   "multi-comptes.spec.js",       // crée des comptes sous PASSIO_E2E_MULTI
   "confidentialite.spec.js",     // sous PASSIO_E2E_MULTI
-  "qa-campaign.spec.js",         // sous PASSIO_E2E_MULTI (via qa-helper.js)
+  "qa-campaign.spec.js",         // sous PASSIO_QA_CAMPAIGN (via qa-helper.js)
   "suppression-compte.spec.js",  // sous PASSIO_E2E_MULTI
 ];
 const MOTIFS_PROD = SUITES_PROD.map((f) => "**/" + f);

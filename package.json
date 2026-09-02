@@ -6,7 +6,7 @@
     "test:all": "playwright test",
     "verif": "node scripts/audit-globals.js && node scripts/audit-handlers.js && node scripts/audit-echappement.js --ci && node scripts/audit-tests-creux.js --ci && node scripts/audit-supa-stub.js && node scripts/audit-telemetry-keys.js && npm run passions:verifier",
     "test:local": "playwright test --project=local",
-    "test:prod": "playwright test --project=prod",
+    "test:prod": "node scripts/test-prod.js",
     "audit:handlers": "node scripts/audit-handlers.js",
     "audit:globals": "node scripts/audit-globals.js",
     "audit:echappement": "node scripts/audit-echappement.js --ci",
