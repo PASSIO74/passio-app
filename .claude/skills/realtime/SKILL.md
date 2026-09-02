@@ -1,6 +1,6 @@
 ---
 name: realtime
-description: Temps réel Supabase : canaux, broadcast, presence, livraison cross-compte. Dire : realtime, les messages n'arrivent pas en direct.
+description: "Temps réel Supabase : canaux, broadcast, presence, cross-compte. Dire : realtime, n'arrivent pas en direct."
 ---
 
 # /realtime — Temps réel PASSIO

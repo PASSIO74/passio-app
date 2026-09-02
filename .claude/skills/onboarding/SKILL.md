@@ -1,6 +1,6 @@
 ---
 name: onboarding
-description: "Tunnel d'inscription et d'activation : première expérience, abandon, time-to-value. Dire : onboarding, les nouveaux partent."
+description: "Tunnel d'inscription et d'activation : abandon, time-to-value. Dire : onboarding, les nouveaux partent."
 ---
 
 # /onboarding — Tunnel d'activation PASSIO

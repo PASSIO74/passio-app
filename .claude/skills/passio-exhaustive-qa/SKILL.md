@@ -1,6 +1,6 @@
 ---
 name: passio-exhaustive-qa
-description: "Inventorie la surface fonctionnelle, la matrice de couverture, ce qui n'est PAS testé. Dire : qu'est-ce qui n'est pas couvert ?"
+description: "Surface fonctionnelle, matrice de couverture, ce qui n'est PAS testé. Dire : qu'est-ce qui n'est pas couvert ?"
 ---
 
 # /passio-exhaustive-qa — Ce qui n'est pas mesuré n'est pas couvert

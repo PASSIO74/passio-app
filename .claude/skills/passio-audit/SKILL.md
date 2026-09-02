@@ -1,6 +1,6 @@
 ---
 name: passio-audit
-description: "Audit transverse du dépôt (sécurité, RLS, archi, perf, tests, dette) en findings priorisés P0→P4. Dire : audite, fais le point."
+description: "Audit transverse du dépôt (sécurité, RLS, archi, perf, tests, dette), findings P0→P4. Dire : audite."
 ---
 
 # /passio-audit — Audit priorisé du dépôt

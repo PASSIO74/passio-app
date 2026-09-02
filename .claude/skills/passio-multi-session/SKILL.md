@@ -1,6 +1,6 @@
 ---
 name: passio-multi-session
-description: "Sessions Claude Code en parallèle sur le dépôt : périmètre déclaré, commit borné. Dire : je bosse en parallèle, ne mélange pas."
+description: "Sessions Claude Code en parallèle : périmètre déclaré, commit borné. Dire : je bosse en parallèle."
 ---
 
 # /passio-multi-session — Une session, un périmètre, un commit

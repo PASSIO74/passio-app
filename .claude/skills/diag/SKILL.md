@@ -1,6 +1,6 @@
 ---
 name: diag
-description: "Diagnostique un bug de bout en bout : client_errors, repro dans le preview, cause racine. Dire : debug, plante, s'affiche pas."
+description: "Bug de bout en bout : client_errors, repro dans le preview, cause racine. Dire : debug, plante, s'affiche pas."
 ---
 
 # /diag — Diagnostic de bug PASSIO

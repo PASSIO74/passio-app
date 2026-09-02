@@ -1,6 +1,6 @@
 ---
 name: revue-croisee
-description: Audit croisé avec ChatGPT : dossier factuel, challenge, vérification dans le dépôt. Analyse croisée, double regard, avant jalon.
+description: "Audit croisé avec ChatGPT : dossier factuel, challenge, vérification. Analyse croisée, double regard, jalon."
 ---
 
 # /revue-croisee — Analyse croisée Claude Code ↔ ChatGPT

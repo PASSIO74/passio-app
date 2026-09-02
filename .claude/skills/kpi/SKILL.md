@@ -1,6 +1,6 @@
 ---
 name: kpi
-description: "KPI et métriques produit via la télémétrie : DAU/WAU/MAU, rétention, K-factor. Dire : combien d'utilisateurs actifs, chiffres."
+description: "KPI et métriques via la télémétrie : DAU/WAU/MAU, rétention, K-factor. Dire : combien d'utilisateurs actifs."
 ---
 
 # /kpi — KPI réseau social PASSIO

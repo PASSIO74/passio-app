@@ -1,6 +1,6 @@
 ---
 name: chatgpt
-description: "Canal ChatGPT (scripts/chatgpt.js) : question, challenge, dossier, fils persistants. Dire : demande à ChatGPT, second avis."
+description: "Canal ChatGPT (scripts/chatgpt.js) : question, challenge, dossier. Dire : demande à ChatGPT, second avis."
 ---
 
 # /chatgpt — Travailler avec ChatGPT au quotidien

@@ -1,6 +1,6 @@
 ---
 name: feed-tuning
-description: "Règle le classement du fil (rankFeedPosts : fraîcheur, affinité, engagement). Dire : fil, feed, ordre des posts, algorithme."
+description: "Classement du fil (rankFeedPosts : fraîcheur, affinité, engagement). Dire : fil, ordre des posts, algorithme."
 ---
 
 # /feed-tuning — Réglage de l'algo de fil PASSIO

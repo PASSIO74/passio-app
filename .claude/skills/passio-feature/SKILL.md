@@ -1,6 +1,6 @@
 ---
 name: passio-feature
-description: "Feature transverse ou sensible de bout en bout : produit, archi, DB/RLS, UX, tests, télémétrie. Dire : construis, développe X."
+description: "Feature transverse ou sensible : produit, archi, DB/RLS, UX, tests, télémétrie. Dire : construis, développe X."
 ---
 
 # /passio-feature — Feature de A à Z

@@ -1,6 +1,6 @@
 ---
 name: chercher-survivants
-description: "Traque les survivants d'un correctif partiel : là où la correction n'est jamais allée. Dire : cherche s'il y en a d'autres."
+description: "Traque les survivants d'un correctif partiel, là où il n'est jamais allé. Dire : cherche s'il y en a d'autres."
 ---
 
 # /chercher-survivants — Là où le correctif n'est pas allé

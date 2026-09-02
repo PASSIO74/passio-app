@@ -1,6 +1,6 @@
 ---
 name: design
-description: "Refonte visuelle d'un écran selon la charte maison (violet, pas de mode sombre). Dire : refais l'écran, c'est moche, polish."
+description: "Refonte visuelle d'un écran selon la charte maison (violet). Dire : refais le design, c'est moche, polish."
 ---
 
 # /design — Refonte visuelle d'un écran PASSIO

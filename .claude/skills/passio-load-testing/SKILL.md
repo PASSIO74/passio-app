@@ -1,6 +1,6 @@
 ---
 name: passio-load-testing
-description: "Tests de charge, stress, endurance : 100 utilisateurs concurrents, P50/P95/P99, saturation, fuite mémoire, dimensionnement."
+description: "Charge, stress, endurance : 100 utilisateurs concurrents, P50/P95/P99, saturation, fuite mémoire."
 ---
 
 # /passio-load-testing — Ce qui ne tient pas à 100

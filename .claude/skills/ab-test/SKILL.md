@@ -1,6 +1,6 @@
 ---
 name: ab-test
-description: "Expérimentation PASSIO : feature flag, variante, rollout progressif, mesure par télémétrie. Dire : A/B test, feature flag."
+description: "Expérimentation : feature flag, variante, rollout progressif, mesure. Dire : A/B test, feature flag."
 ---
 
 # /ab-test — Expérimentation PASSIO

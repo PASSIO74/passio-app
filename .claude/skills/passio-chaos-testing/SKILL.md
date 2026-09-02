@@ -1,6 +1,6 @@
 ---
 name: passio-chaos-testing
-description: "Injecte des pannes contrôlées (réseau coupé, WebSocket tué, latence, quota), éprouve la reprise. Dire : chaos, et si ça tombe ?"
+description: "Injecte des pannes contrôlées (réseau, WebSocket, latence, quota) et éprouve la reprise. Dire : chaos."
 ---
 
 # /passio-chaos-testing — Casser exprès, sous contrôle

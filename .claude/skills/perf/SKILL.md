@@ -1,6 +1,6 @@
 ---
 name: perf
-description: "Performance de l'app : poids des bundles, jank de rendu, pollings, requêtes Supabase. Dire : c'est lent, ça rame, optimise."
+description: "Performance : poids des bundles, jank de rendu, pollings, requêtes Supabase. Dire : c'est lent, ça rame."
 ---
 
 # /perf — Audit & optimisation performance PASSIO
