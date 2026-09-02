@@ -43,10 +43,20 @@ async function preparer(page, reponse) {
   }, reponse);
 }
 
+// ⚠️ LA SONDE COMPTE TOUTES LES INSERTIONS, PAS SEULEMENT CELLES DU MÉDIA :
+// `preparer()` remplace `supa` EN ENTIER, donc n'importe quel autre chemin de
+// l'application qui ferait `supa.from(X).insert(Y)` pendant la fenêtre de mesure
+// gonfle le compteur. On rend donc les lignes elles-mêmes : un écart doit dire
+// QUI a inséré, sinon le rouge envoie chercher au mauvais endroit — et en CI,
+// où le vrai client Supabase existe (il n'existe pas en local), c'est
+// exactement ce qui s'est produit le 2026-09-02.
 const etat = (page) => page.evaluate(() => ({
   statut: (getConversations().find((c) => c.id === "conv_media").messages[0] || {}).status,
   outbox: _outboxLoad().map((x) => x.msgId),
   inserts: window.__inserts.length,
+  lignes: window.__inserts.map(function (r) {
+    try { return JSON.stringify(r).slice(0, 160); } catch (e) { return String(r); }
+  }),
 }));
 
 test.describe("Média en message — verdict de l'écriture", () => {
@@ -62,7 +72,7 @@ test.describe("Média en message — verdict de l'écriture", () => {
 
     const r = await etat(page);
     // Deux tentatives : avec from_id, puis le repli sans from_id.
-    expect(r.inserts).toBe(2);
+    expect(r.inserts, "insertions observées : " + JSON.stringify(r.lignes)).toBe(2);
     expect(r.statut, "le média doit être marqué en échec").toBe("failed");
     expect(r.outbox, "et mis en file de renvoi").toContain("m_media");
   });
@@ -78,7 +88,7 @@ test.describe("Média en message — verdict de l'écriture", () => {
     });
 
     const r = await etat(page);
-    expect(r.inserts).toBe(1);
+    expect(r.inserts, "insertions observées : " + JSON.stringify(r.lignes)).toBe(1);
     expect(r.statut).toBe("sent");
     expect(r.outbox).not.toContain("m_media");
   });
@@ -111,7 +121,7 @@ test.describe("Média en message — verdict de l'écriture", () => {
     });
 
     const r = await etat(page);
-    expect(r.inserts).toBe(2);
+    expect(r.inserts, "insertions observées : " + JSON.stringify(r.lignes)).toBe(2);
     expect(r.statut).toBe("sent");
     expect(r.outbox).not.toContain("m_media");
   });
