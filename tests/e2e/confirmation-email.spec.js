@@ -28,6 +28,11 @@ async function ouvrirAuth(page, doubles = {}) {
   await page.addInitScript(([k, t]) => {
     sessionStorage.setItem(k, t);
     sessionStorage.setItem("passio_pwa_dismissed", "1");
+    // ⚠️ Coupure de la « première visite », ACTIVE par défaut depuis le
+    // 2026-09-01 : sans elle, un appareil vierge entre directement dans le Fil
+    // et cette suite mesurerait le NOUVEAU parcours en croyant mesurer l'ancien.
+    // Convention du projet : on pose la coupure, on ne retire aucune assertion.
+    localStorage.setItem("passio_first_run_experience_v1", "0");
   }, [GATE_KEY, GATE_TOKEN]);
   await page.goto("/index.html");
   await page.waitForSelector("#landing.active", { timeout: 25000 });

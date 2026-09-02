@@ -18,7 +18,7 @@
 // plus ne se consulte plus.
 // ═══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
-const { GATE_TOKEN, GATE_KEY } = require("./gate-helper");
+const { GATE_TOKEN, GATE_KEY, poserGateSansPremiereVisite } = require("./gate-helper");
 
 /** Compte les POST vers client_errors, et les empêche d'aboutir. */
 async function compteurRemontees(page) {
@@ -72,7 +72,7 @@ test.describe("Monitoring — bruit de test", () => {
     const page = await ctx.newPage();
     const envois = await compteurRemontees(page);
 
-    await page.addInitScript(([k, t]) => sessionStorage.setItem(k, t), [GATE_KEY, GATE_TOKEN]);
+    await poserGateSansPremiereVisite(page);
     await page.goto("/index.html");
     await page.waitForSelector("#landing.active", { timeout: 30000 });
     await attendreClientReel(page);
@@ -89,7 +89,7 @@ test.describe("Monitoring — bruit de test", () => {
     const page = await ctx.newPage();
     const envois = await compteurRemontees(page);
 
-    await page.addInitScript(([k, t]) => sessionStorage.setItem(k, t), [GATE_KEY, GATE_TOKEN]);
+    await poserGateSansPremiereVisite(page);
     await page.goto("/index.html?monitoring=1");
     await page.waitForSelector("#landing.active", { timeout: 30000 });
     await attendreClientReel(page);

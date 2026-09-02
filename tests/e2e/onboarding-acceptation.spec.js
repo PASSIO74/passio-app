@@ -18,6 +18,11 @@ async function boot(page, { etat = null, espionnerGeoloc = false } = {}) {
     sessionStorage.setItem(k, t);
     sessionStorage.setItem("passio_pwa_dismissed", "1");
     window.PASSIO_ONBOARDING_V2 = true;
+    // ⚠️ Coupure de la « première visite », ACTIVE par défaut depuis le
+    // 2026-09-01 : sans elle, un appareil vierge entre directement dans le Fil
+    // et cette suite mesurerait le NOUVEAU parcours en croyant mesurer l'ancien.
+    // Convention du projet : on pose la coupure, on ne retire aucune assertion.
+    localStorage.setItem("passio_first_run_experience_v1", "0");
     // addInitScript se rejoue à chaque navigation : sans ce jeton, un reload
     // réécrirait l'état par-dessus ce que l'app vient d'enregistrer.
     if (st && !sessionStorage.getItem("__etat_injecte")) {
