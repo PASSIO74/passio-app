@@ -2186,7 +2186,24 @@ async function boot() {
     // que le SDK relit au démarrage, donc le prochain `getSession()` ne trouve
     // plus rien et cette branche n'est pas réatteignable. L'intention est
     // re-posée pour que ce prochain démarrage aboutisse bien à l'écran demandé.
-    if (session?.user && _authIntent) {
+    // ⚠️ `!_recuperationEnCours` AJOUTÉ À LA FUSION (2026-09-02). Cette branche
+    // de #250 s'exécute AVANT la garde d'adoption, qui porte déjà cette
+    // exception — la sienne était donc contournée par le haut. Une intention de
+    // reconnexion encore posée (déconnexion dont le rechargement n'a pas eu lieu :
+    // application suspendue, onglet tué) faisait révoquer la session de
+    // récupération et RECHARGER pendant que le formulaire « Nouveau mot de
+    // passe » était à l'écran. Or le fragment `type=recovery` est déjà consommé
+    // par le SDK et le lien reçu par e-mail est à USAGE UNIQUE : la personne se
+    // retrouvait sans aucun moyen de terminer sa réinitialisation.
+    //
+    // On s'abstient donc, et on REPOSE l'intention juste après : la déconnexion
+    // inachevée sera terminée au rechargement que `_showPasswordRecoveryUI`
+    // déclenche lui-même une fois le mot de passe changé, où plus rien n'est en
+    // jeu — et l'écran de connexion demandé n'est pas perdu pour autant.
+    if (session?.user && _authIntent && _recuperationEnCours) {
+      try { poserIntentionAuth(_authIntent); } catch (e) {}
+    }
+    if (session?.user && _authIntent && !_recuperationEnCours) {
       // On lit `{ error }` : le SDK ne LÈVE PAS sur un refus, et une
       // déconnexion qui échoue en silence est précisément ce qui nous a amenés ici.
       try {
@@ -2199,7 +2216,7 @@ async function boot() {
       setTimeout(function () { try { location.reload(); } catch (e) {} }, 0);
       return;
     }
-    if (session?.user && !_authIntent) {
+    if (session?.user && (!_authIntent || _recuperationEnCours)) {
       // ⚠️ AVANT `MY_UID` ET AVANT `passio_uid` : le discriminant est l'INSTANTANÉ
       // pris au chargement (`_uidProprietaireEtat`, app-02). Ce chemin-ci couvre
       // les entrées qui ne passent PAS par `onbDoAuth` : retour de

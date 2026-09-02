@@ -885,13 +885,21 @@ async function supaLoadUserState() {
       const _blob = data.data || {};
       const _sel = Array.isArray(_blob.selectedFeedPassions) ? _blob.selectedFeedPassions : [];
       const _prof = (_blob.user && Array.isArray(_blob.user.profiles)) ? _blob.user.profiles : [];
-      // ⚠️ `_parDefaut` EST EXCLU : c'est le profil de remplissage fabriqué par
-      // `boot()` quand le serveur ne rend rien (« Musique »), pas un choix. Sans
-      // cette exclusion, un compte NEUF dont le lien de confirmation a été ouvert
-      // dans un autre navigateur — cas ordinaire sur mobile — passait pour un
-      // compte qui a déjà ses passions, et le visiteur perdait les siennes.
-      window._comptePassionsServeur = !!(_sel.length
-        || _prof.some(function (pr) { return pr && pr.passion && !pr.archived && !pr._parDefaut; }));
+      // ⚠️ `_parDefaut` EST EXCLU DES DEUX CÔTÉS, ET C'EST NÉCESSAIRE. C'est le
+      // profil de remplissage fabriqué par `boot()` quand le serveur ne rend rien
+      // (« Musique »), pas un choix. L'exclure des seuls PROFILS ne suffisait
+      // pas : un client antérieur à ce correctif a pu recopier son identifiant
+      // dans `selectedFeedPassions`, où le marqueur ne survit pas — seul
+      // l'IDENTIFIANT voyage. Un compte NEUF dont le lien de confirmation a été
+      // ouvert dans un autre navigateur (cas ordinaire sur mobile) passait alors
+      // pour un compte qui a déjà ses passions, et le visiteur perdait les
+      // siennes. On soustrait donc de `_sel` ce que seul le remplissage porte.
+      const _remplissage = Object.create(null);
+      _prof.forEach(function (pr) { if (pr && pr.passion && pr._parDefaut) _remplissage[pr.passion] = 1; });
+      const _choisies = _prof.filter(function (pr) { return pr && pr.passion && !pr.archived && !pr._parDefaut; });
+      _choisies.forEach(function (pr) { delete _remplissage[pr.passion]; });
+      const _selReel = _sel.filter(function (id) { return id && !_remplissage[id]; });
+      window._comptePassionsServeur = !!(_selReel.length || _choisies.length);
     } catch (_e) {}
     const serverTs = data.updated_at ? new Date(data.updated_at).getTime() : 0;
     const localTs = state._stateSyncedAt ? new Date(state._stateSyncedAt).getTime() : 0;
@@ -3791,7 +3799,17 @@ function restoreFeedPassions() {
 
   var profils = [];
   try { profils = (state.user && Array.isArray(state.user.profiles)) ? state.user.profiles : []; } catch (e) {}
-  var depuisProfils = profils.map(function (p) { return p && p.passion; })
+  // ⚠️ LE PROFIL DE REMPLISSAGE N'AMORCE RIEN. `boot()` en fabrique un
+  // (`allPassions()[0]` = « Musique ») pour tout compte dont le serveur ne rend
+  // aucun profil, et le marque `_parDefaut`. L'amorcer ici recopiait son
+  // identifiant dans `selectedFeedPassions` — où le marqueur ne survit pas,
+  // puisque seul l'IDENTIFIANT voyage — et de là dans `user_state`. Le verdict
+  // `_comptePassionsServeur` y voyait ensuite « ce compte a ses passions », et
+  // les choix du visiteur étaient jetés : le défaut exact que `_parDefaut` ferme
+  // sur les profils, rouvert par le seul chemin qui transporte le remplissage
+  // d'un champ à l'autre (constat majeur de la revue du 2026-09-02).
+  var depuisProfils = profils.filter(function (p) { return p && !p._parDefaut; })
+                             .map(function (p) { return p && p.passion; })
                              .filter(function (x) { return typeof x === "string" && x; });
   if (!depuisProfils.length) { _activeFeedPassions = new Set(); return []; }
 

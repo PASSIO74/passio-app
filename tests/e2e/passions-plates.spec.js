@@ -558,24 +558,37 @@ test.describe("le modèle et les garde-fous", () => {
     await sansPublicationsDistantes(page);
     await bootOnboarded(page, null, 1);          // mes passions : socle uniquement
     await page.evaluate(() => {
-      // Le fil est à nous : les QUATRE tableaux sont vidés avant le semis.
-      state.seed.posts = [{
+      // ⚠️ LE SEED N'EST PAS VIDÉ, ET C'EST TOUT L'INTÉRÊT. La première rédaction
+      // écrivait `state.seed.posts = [un seul post]`, plaçant la publication
+      // d'autrui à l'indice 0 : le test restait vert même si la détection ne
+      // regardait qu'UNE publication. Or `buildSeed()` en fabrique 265, toutes
+      // plus récentes que ce que le réseau rapporte, et c'est précisément ce qui
+      // rendait le correctif inopérant en production (constat bloquant du
+      // 2026-09-02). On sème donc la publication d'autrui là où elle vit
+      // vraiment — `supabasePosts` — DERRIÈRE les 265 publications de seed.
+      state.supabasePosts = [{
         id: "p_escalade_autrui", authorId: "u_lea", passion: "sport-escalade",
-        mood: "all", text: "Voie ouverte ce matin.", createdAt: Date.now() - 3600000,
+        mood: "all", text: "Voie ouverte ce matin.", createdAt: Date.now() - 86400000 * 30,
         likes: 0, comments: [],
       }];
-      state.userPosts = []; state.supabasePosts = [];
-      window._feedExtraPosts = [];
       setFeedPassions(["sport-escalade"]);
       saveState(); goTo("feed"); renderFeed();
     });
-    // Le nom arrive sans le moindre geste : c'est tout l'objet du correctif.
+    // Prémisse VÉRIFIÉE : le seed est bien peuplé, donc la publication d'autrui
+    // est loin dans la liste triée — sinon ce cas ne prouverait rien.
+    expect(await page.evaluate(() => (state.seed.posts || []).length))
+      .toBeGreaterThan(100);
+    // Le référentiel est chargé sans le moindre geste, et le nom est résolu :
+    // c'est tout l'objet du correctif. On interroge la fonction de PRODUCTION
+    // (`passionById`), pas le fil peint — la publication d'autrui est
+    // volontairement ancienne, donc hors des vingt cartes rendues d'emblée.
     await page.waitForFunction(
-      () => (document.getElementById("feedList") || {}).textContent?.includes("Escalade"),
+      () => window.PassioPassions && window.PassioPassions.pret(),
       null, { timeout: 25000 }
     );
-    const fil = await page.locator("#feedList").innerText();
-    expect(fil).toContain("Escalade");
+    const nom = await page.evaluate(() => passionById("sport-escalade").label);
+    expect(nom).toBe("Escalade");
+    expect(nom).not.toBe("Passion");
   });
 
   // ⚠️ SECOND CONSTAT MAJEUR : le rail du Profil a son PROPRE garde,

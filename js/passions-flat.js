@@ -672,16 +672,18 @@
   // Le socle embarqué sait-il nommer cet identifiant ? C'est exactement la
   // première question que se pose `passionById` (app-02) — on ne duplique pas
   // sa table, on appelle la sienne.
-  function nommeParLeSocle(id) {
+  // L'ensemble des identifiants que le socle sait nommer, construit UNE fois par
+  // question posée. `allPassions()` alloue `[...PASSIONS, ...custom]` à chaque
+  // appel : l'interroger par identifiant coûtait une allocation PAR publication.
+  function socleConnu() {
+    var vus = Object.create(null);
     try {
       if (typeof allPassions === "function") {
         var l = allPassions();
-        if (Array.isArray(l)) {
-          for (var i = 0; i < l.length; i++) if (l[i] && l[i].id === id) return true;
-        }
+        if (Array.isArray(l)) l.forEach(function (p) { if (p && p.id) vus[p.id] = 1; });
       }
     } catch (e) {}
-    return false;
+    return vus;
   }
 
   // Les identifiants que l'application VA rendre : ceux du fil et ceux des
@@ -697,10 +699,20 @@
   // UI-8, elles ne sont peintes par aucune surface par défaut. Les compter
   // faisait télécharger 160 Ko à chaque démarrage pour un nom que personne ne lit.
   //
-  // ⚠️ Borné à 40 publications : c'est au-delà de ce que `renderFeed` peint tout
-  // de suite (20 cartes), et cette fonction est appelée au plus quelques fois.
-  var POSTS_INSPECTES = 40;
-
+  // ⚠️ NE JAMAIS BORNER PAR LE HAUT D'UNE LISTE TRIÉE PAR DATE. La première
+  // rédaction s'arrêtait aux 40 publications les plus récentes — et ne voyait
+  // donc JAMAIS une publication réseau (constat bloquant du 2026-09-02) :
+  // `buildSeed()` fabrique 265 publications horodatées à la CONSTRUCTION du seed,
+  // si bien que sur un appareil dont le seed vient d'être bâti — première
+  // installation, ou le démarrage qui suit la purge d'`adopterCompteConnecte`,
+  // c'est-à-dire le parcours même de ce lot — les 40 plus récentes sont toutes
+  // des publications de seed. Le correctif « la passion d'autrui s'affiche
+  // nommée » ne s'appliquait donc à personne, et son test restait vert parce
+  // qu'il vidait `state.seed.posts`.
+  //
+  // On parcourt désormais TOUT, sans borne : le test est une simple appartenance
+  // à un ensemble de 19 entrées, construit UNE fois (et non par `allPassions()`
+  // à chaque identifiant, ce qui allouait un tableau par publication).
   function idsAAfficher() {
     var s = etatApp();
     if (!s) return [];
@@ -717,7 +729,7 @@
     try {
       if (typeof allFeedPosts === "function") {
         var posts = allFeedPosts() || [];
-        for (var i = 0; i < posts.length && i < POSTS_INSPECTES; i++) {
+        for (var i = 0; i < posts.length; i++) {
           if (posts[i] && posts[i].passion) ids.push(posts[i].passion);
         }
       }
@@ -727,8 +739,10 @@
 
   function ilManqueUnNom() {
     var ids = idsAAfficher();
+    if (!ids.length) return false;
+    var socle = socleConnu();
     for (var i = 0; i < ids.length; i++) {
-      if (typeof ids[i] === "string" && ids[i] && !nommeParLeSocle(ids[i])) return true;
+      if (typeof ids[i] === "string" && ids[i] && !socle[ids[i]]) return true;
     }
     return false;
   }
@@ -786,8 +800,16 @@
   var RELECTURES = [800, 1600, 3000, 6000];
   var _relecture = 0;
 
-  function evaluerBesoinDeNoms() {
-    _chaineArmee = false;
+  // ⚠️ `_chaineArmee` N'EST RELÂCHÉ QUE PAR LA CHAÎNE ELLE-MÊME. La première
+  // rédaction le remettait à faux en TÊTE de cette fonction — donc aussi quand
+  // `amorcer()` l'appelait directement, alors qu'un `setTimeout` était encore en
+  // vol. Le verrou ne verrouillait rien : deux chaînes partaient, partageaient
+  // `_essaisVerdict` et `_relecture`, et le budget d'attente annoncé valait la
+  // moitié. Le cas est le plus courant qui soit — visiteur revenant, jeton de
+  // gate déjà posé, `passio:app-ready` part avant que le timer de
+  // `DOMContentLoaded` n'ait tiré (constats mineurs de la revue du 2026-09-02).
+  function evaluerBesoinDeNoms(parLaChaine) {
+    if (parLaChaine) _chaineArmee = false;
     if (_chargementLance || !actif() || pret()) return;
     var s = etatApp();
     // On attend l'application ET le verdict d'hydratation. L'attente est bornée
@@ -819,13 +841,18 @@
   function planifier(delai) {
     if (_chaineArmee) return;
     _chaineArmee = true;
-    setTimeout(evaluerBesoinDeNoms, delai);
+    setTimeout(function () { evaluerBesoinDeNoms(true); }, delai);
   }
 
+  // ⚠️ `amorcer()` N'ENTRE JAMAIS DANS L'ÉVALUATION DIRECTEMENT : il passe par la
+  // chaîne, qui sait dire non. Il est enregistré DEUX fois (`DOMContentLoaded` et
+  // `passio:app-ready`) et l'appel direct était précisément ce qui dédoublait les
+  // chaînes. `_essaisVerdict` repart à zéro seulement si aucune chaîne ne court —
+  // sinon on écraserait le budget d'une attente déjà entamée.
   function amorcer() {
     poserClasse();
-    _essaisVerdict = 0;
-    evaluerBesoinDeNoms();
+    if (!_chaineArmee) _essaisVerdict = 0;
+    planifier(0);
   }
 
   function couper() {

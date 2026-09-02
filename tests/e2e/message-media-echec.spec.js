@@ -35,9 +35,26 @@ async function preparer(page, reponse) {
     }];
     saveConversationsNow();
     MY_UID = "u_moi"; window.MY_UID = "u_moi";
+    // ⚠️ LA SONDE NE COMPTE QUE LA TABLE MESURÉE. Elle comptait TOUTES les
+    // insertions, alors que le sujet du test est le chemin média : n'importe
+    // quel autre chemin de l'application faisait dériver le compteur. Rouge en
+    // CI le 2026-09-02 (3 insertions attendues 2), sur les trois essais, et
+    // IRREPRODUCTIBLE en local — le vrai client Supabase n'y existe pas, donc
+    // les chemins qui écrivent vraiment ne s'exécutent jamais. Le test mesurait
+    // « personne d'autre n'écrit dans aucune table », ce qu'il n'a jamais voulu
+    // affirmer et ne peut pas garantir.
+    //
+    // Ce qui vient d'ailleurs n'est pas ignoré pour autant : il est journalisé,
+    // pour que le prochain écart reste diagnosticable sans faire échouer un
+    // test dont ce n'est pas le sujet.
     window.__inserts = [];
-    supa = { from: function () { return {
-      insert: function (row) { window.__inserts.push(row); return Promise.resolve(rep); },
+    window.__insertsAutres = [];
+    supa = { from: function (table) { return {
+      insert: function (row) {
+        if (table === "conv_messages") window.__inserts.push(row);
+        else window.__insertsAutres.push({ table: table, row: row });
+        return Promise.resolve(rep);
+      },
     }; } };
     try { localStorage.removeItem("passio_msg_outbox_v1"); } catch (e) {}
   }, reponse);
@@ -57,6 +74,7 @@ const etat = (page) => page.evaluate(() => ({
   lignes: window.__inserts.map(function (r) {
     try { return JSON.stringify(r).slice(0, 160); } catch (e) { return String(r); }
   }),
+  autres: (window.__insertsAutres || []).map(function (x) { return x.table; }),
 }));
 
 test.describe("Média en message — verdict de l'écriture", () => {
@@ -71,6 +89,7 @@ test.describe("Média en message — verdict de l'écriture", () => {
     });
 
     const r = await etat(page);
+    if (r.autres.length) console.log("[media] écritures d'autres tables pendant la mesure :", r.autres.join(", "));
     // Deux tentatives : avec from_id, puis le repli sans from_id.
     expect(r.inserts, "insertions observées : " + JSON.stringify(r.lignes)).toBe(2);
     expect(r.statut, "le média doit être marqué en échec").toBe("failed");

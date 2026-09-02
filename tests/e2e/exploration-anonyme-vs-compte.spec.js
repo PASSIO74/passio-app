@@ -369,6 +369,113 @@ test.describe("Exploration anonyme puis connexion à un vrai compte", () => {
     expect(r.posts).toEqual([]);
   });
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // LE CÂBLAGE, PAS SEULEMENT LA FONCTION  (2026-09-02)
+  //
+  // ⚠️ CONSTAT BLOQUANT DE LA REVUE, ET IL EXPLIQUE COMMENT LE PREMIER DÉFAUT
+  // AVAIT SURVÉCU : les douze cas ci-dessus appellent `adopterCompteConnecte`
+  // DIRECTEMENT. Aucun ne fait passer un parcours par `onbDoAuth` — or c'est
+  // exactement le chemin rapporté (« J'ai déjà un compte » → `ouvrirAuth("signin")`
+  // → `onbDoAuth`). Mutation mesurée par la revue : supprimer le bloc
+  // `if (_authMode === "signin" && await adopterCompteConnecte(...))` laissait
+  // `npm run verif` ET les 897 suites locales VERTES, avec le défaut d'origine
+  // intact. Un correctif dont on peut retirer le branchement sans un seul rouge
+  // n'est pas verrouillé.
+  //
+  // On double donc `signInWithPassword` et `location.reload`, et on pilote le
+  // VRAI `onbDoAuth`.
+  // ══════════════════════════════════════════════════════════════════════════
+  test("onbDoAuth branche `signin` : le câblage purge et recharge pour de vrai", async ({ page }) => {
+    // ⚠️ ON NE DOUBLE PAS `location.reload`, ON LE LAISSE FAIRE. Chromium refuse
+    // de le redéfinir (`Execution context was destroyed`), et surtout le
+    // rechargement EST le chemin réel : c'est lui qui déclenche `pagehide`, donc
+    // le beacon, donc le défaut d'origine. On observe depuis l'EXTÉRIEUR de la
+    // page — la sonde réseau de Playwright survit à la navigation, contrairement
+    // à une sonde posée sur `window.fetch`.
+    const envois = [];
+    page.on("request", (req) => {
+      if (req.url().indexOf("/rest/v1/user_state") !== -1 && req.method() === "POST") {
+        envois.push(req.postData() || "");
+      }
+    });
+
+    await bootVisiteur(page, { prefs: prefsInvite });
+
+    const avait = await page.evaluate(() => {
+      setFeedPassions(["moto", "photo", "cuisine"]);
+      saveStateNow();
+      return (localStorage.getItem("passio_mvp_state_v1") || "").indexOf("moto") !== -1;
+    });
+    expect(avait).toBe(true);          // prémisse vérifiée, jamais supposée
+
+    // Le formulaire tel que `ouvrirAuth("signin")` le laisse, puis le VRAI
+    // `onbDoAuth`. La navigation détruit le contexte au milieu de l'appel : on
+    // l'attend au lieu de la subir.
+    await page.evaluate(() => {
+      document.getElementById("authEmail").value = "compte@exemple.test";
+      document.getElementById("authPassword").value = "motdepasse";
+      _authMode = "signin";
+      // ⚠️ Le handler `onAuthStateChange` écrit `passio_uid` PENDANT cet appel
+      // dans la vraie vie — supabase-js notifie ses abonnés avant de résoudre.
+      // On reproduit la course : c'est elle qui avait désarmé la garde.
+      supa.auth.signInWithPassword = async function () {
+        localStorage.setItem("passio_uid", "11111111-2222-4333-8444-555555555555");
+        return { data: { session: { user: { id: "11111111-2222-4333-8444-555555555555" } } }, error: null };
+      };
+    });
+    await Promise.all([
+      page.waitForLoadState("load"),
+      page.evaluate(() => { onbDoAuth(); }).catch(() => {}),
+    ]);
+    await page.waitForTimeout(1500);
+
+    const r = await page.evaluate(() => ({
+      etat: localStorage.getItem("passio_mvp_state_v1"),
+      uid: localStorage.getItem("passio_uid"),
+      exigence: localStorage.getItem("passio_restauration_requise"),
+    }));
+
+    // ⚠️ LE POINT CENTRAL : l'état de l'exploration a disparu de l'appareil, et
+    // RIEN n'est parti sous l'identité du compte — beacon de `pagehide` compris.
+    expect(r.etat === null || r.etat.indexOf("moto") === -1).toBe(true);
+    expect(r.uid).toBe(UID_COMPTE);
+    expect(r.exigence).toBe(UID_COMPTE);   // écriture interdite jusqu'à relecture
+    expect(envois.filter((b) => b && b.indexOf("moto") !== -1)).toEqual([]);
+  });
+
+  // La contrepartie sur le même câblage : une INSCRIPTION qui rend une session
+  // ne purge pas — elle DÉCLARE la propriété, sinon l'onboarding en cours
+  // (âge, prénom) serait jeté au milieu de la saisie.
+  test("onbDoAuth branche `signup` : le câblage déclare la propriété sans purger", async ({ page }) => {
+    await bootVisiteur(page);
+    const r = await page.evaluate(async () => {
+      state.user.name = "Prénom saisi pendant l'onboarding";
+      saveStateNow();
+      document.getElementById("authEmail").value = "neuf@exemple.test";
+      document.getElementById("authPassword").value = "motdepasse";
+      const c = document.getElementById("authPasswordConfirm");
+      if (c) c.value = "motdepasse";
+      const t = document.getElementById("authPhone");
+      if (t) t.value = "0612345678";
+      _authMode = "signup";
+
+      window.__marqueurAvantAuth = "vivant";   // disparaîtrait à un rechargement
+      supa.auth.signUp = async function () {
+        return { data: { user: { identities: [{}] }, session: { user: { id: "11111111-2222-4333-8444-555555555555" } } }, error: null };
+      };
+
+      await onbDoAuth();
+      await new Promise((r2) => setTimeout(r2, 300));
+      const brut = localStorage.getItem("passio_mvp_state_v1") || "";
+      return { vivant: window.__marqueurAvantAuth === "vivant",
+               garde: brut.indexOf("pendant l'onboarding") !== -1,
+               uid: localStorage.getItem("passio_uid") };
+    });
+    expect(r.vivant).toBe(true);      // l'inscription CONTINUE, elle ne recharge pas
+    expect(r.garde).toBe(true);       // et ce que la personne vient de saisir survit
+    expect(r.uid).toBe(UID_COMPTE);
+  });
+
   test("un identifiant qui n'est pas un uuid ne déclenche jamais de purge", async ({ page }) => {
     await bootVisiteur(page);
     const r = await page.evaluate(async () => {
