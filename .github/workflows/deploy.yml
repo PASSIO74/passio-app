@@ -484,7 +484,17 @@ jobs:
     # inline fantôme, l'échappement manquant. Sans lui on publierait un aperçu
     # sur du code qui ne démarre pas — un aperçu blanc coûte plus de temps qu'il
     # n'en fait gagner, puisqu'il faut alors chercher pourquoi.
-    needs: [audits]
+    #
+    # ⚠️ `governance` EST GARDÉ AUSSI, et l'oublier était un vrai affaiblissement
+    # (trouvé par la CI sur la PR #246, pas à la relecture). Sa garde ne se
+    # contente pas de conditionner la fusion : son propre message d'erreur dit
+    # que la contre-revue est obligatoire « avant preview OU production ». Une
+    # PR de périmètre critique — `.github/*`, `migrations/*`, les chemins de
+    # contrôle du dashboard — ne doit donc pas obtenir d'URL publique tant
+    # qu'un humain de confiance ne l'a pas relue. Le coût est nul quand il n'y
+    # a rien à vérifier : sur un changement NON critique, ce job sort en 5
+    # secondes, et l'aperçu part comme prévu vers 2 minutes.
+    needs: [governance, audits]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
