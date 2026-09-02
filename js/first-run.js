@@ -1004,6 +1004,13 @@
     var l = document.getElementById("landing");
     if (l) l.classList.remove("active");
     try { document.body.classList.add("screen-feed-active"); } catch (e) {}
+    // ⚠️ AUCUN RÉARMEMENT DE L'ACCUEIL ICI, ET C'EST DÉLIBÉRÉ. Le budget de
+    // `planifierAccueil` se consomme bien pendant que le formulaire occupe
+    // l'écran (`ecranOccupe()` rend `true` tant que `#onboarding.active` est
+    // là), mais `goTo("feed")` ci-dessus appelle `surNavigation("feed")`, qui
+    // remet DÉJÀ `_essaisAccueil` à zéro et replanifie. Une seconde remise à
+    // zéro ici serait un second moteur pour un travail déjà fait — mesuré :
+    // le retirer ne change rien au comportement observé.
     try { if (typeof goTo === "function") goTo("feed"); } catch (e) { journal("retour exploration", e); }
   }
 

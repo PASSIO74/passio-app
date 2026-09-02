@@ -270,12 +270,24 @@ se pose par-dessus, et `entreeDirecte()` retirant `#onboarding.active`, l'ordre
 inverse est le seul qui marche. Éprouvé par mutation.
 
 ⓶ **UNE SESSION SURVIVANTE + UNE INTENTION EN ATTENTE = DÉCONNEXION INACHEVÉE.**
-`supa.auth.signOut()` est sous un `try` avale-tout et `ACCOUNT_SCOPED_KEYS` ne
+`supa.auth.signOut()` était sous un `try` avale-tout et `ACCOUNT_SCOPED_KEYS` ne
 touche pas le jeton `sb-…-auth-token` : hors ligne, la session peut survivre à
 un `doLogout` dont la purge locale, elle, a bien eu lieu. `boot()` remettait
 alors la personne EN SILENCE dans le compte qu'elle venait de quitter, avec un
-état local déjà vidé. Cette branche termine le travail (signOut + purge) puis
-ouvre l'écran demandé.
+état local déjà vidé. Trois choses en découlent, et les trois sont dans le code :
+
+- **on lit `{ error }`** — le SDK ne LÈVE PAS sur un refus, donc sans cette
+  lecture une déconnexion qui échoue passe pour réussie (règle générale du
+  projet : « les écritures qui échouent en silence ») ;
+- **`purgerJetonAuthLocal()`** ferme alors la session CÔTÉ APPAREIL, sans
+  réseau : pour supabase-js, le jeton `sb-<ref>-auth-token` EST la session. Il
+  est retrouvé par MOTIF, jamais recopié en dur, et rien n'est détruit côté
+  serveur. `doLogout` l'appelle aussi — c'est le chemin le plus fréquent ;
+- **la branche de `boot()` ne sort PAS par un `return`** : elle recharge
+  `state` (la purge vide `localStorage`, pas l'objet déjà en mémoire, que
+  `compteExistant()` lirait encore) puis laisse la fin de `boot()` faire
+  `entreeDirecte()` **puis** `openAuthScreen()`. Ouvrir le formulaire sur place
+  rejouerait, dans cette branche, exactement le piège ⓵.
 
 ⓷ **L'INTENTION EST HORODATÉE (TTL 10 min).** Entre `setItem` et le rechargement
 il s'écoule 1,2 s : une application fermée dans cette fenêtre laisserait la clé
@@ -310,7 +322,18 @@ jour où le formulaire déménage — le piège que ce fichier décrit déjà.
 `ouvrirAuth`, seul point de passage. Sans elle, les trois portes seraient
 indiscernables de portes cassées.
 
-Verrou : `tests/e2e/connexion-compte-existant.spec.js` (12 cas — les trois
+⚠️ **CE QUI A ÉTÉ ESSAYÉ PUIS RETIRÉ.** Une revue a signalé que le budget de
+`planifierAccueil` (40 essais × 600 ms) se consomme pendant que le formulaire
+occupe l'écran — `ecranOccupe()` rend `true` tant que `#onboarding.active` est
+là — et que la carte de bienvenue, qui porte la porte ①, pourrait être
+abandonnée pour la vie de la page. Le constat est juste, mais le réarmement
+existe DÉJÀ : `retourExploration()` appelle `goTo("feed")`, donc
+`surNavigation("feed")`, qui remet `_essaisAccueil` à zéro et replanifie. Le
+correctif ajouté au premier jet était un second moteur pour un travail déjà
+fait, et son test restait vert avec ET sans lui : les deux ont été retirés.
+
+Verrou : `tests/e2e/connexion-compte-existant.spec.js` (14 cas — les trois
 portes, la survie de l'intention à la purge, sa consommation unique, sa
-péremption, le retour à un fil invité COMPLET, le drapeau coupé, et
-`doLogout()` sans argument).
+péremption, le retour à un fil invité COMPLET, le drapeau coupé,
+`doLogout()` sans argument, un `signOut` qui échoue, et le périmètre exact de
+`purgerJetonAuthLocal`).

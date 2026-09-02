@@ -2198,12 +2198,47 @@ function purgeAccountScopedData() {
 }
 window.purgeAccountScopedData = purgeAccountScopedData;
 
+/* Ferme la session CÔTÉ APPAREIL en retirant le jeton que le SDK relit au
+   démarrage. À n'appeler qu'en DERNIER RECOURS, quand `supa.auth.signOut()` n'a
+   pas abouti (hors ligne, jeton non révocable) : pour supabase-js, ce jeton EST
+   la session, donc le laisser en place fait rouvrir le compte quitté au
+   prochain démarrage — et `ACCOUNT_SCOPED_KEYS` ne le connaît pas, puisqu'il
+   appartient au SDK et non à l'application.
+
+   ⚠️ La clé est nommée d'après la RÉFÉRENCE du projet Supabase
+   (`sb-<ref>-auth-token`) : on la retrouve par motif plutôt qu'en la recopiant
+   en dur, pour qu'un changement de projet ne laisse pas ici une clé fantôme
+   qui ne correspondrait plus à rien. Ne détruit rien côté serveur : le compte
+   reste intact, seule sa session locale est fermée. */
+function purgerJetonAuthLocal() {
+  try {
+    var aPurger = [];
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (k && /^sb-.+-auth-token$/.test(k)) aPurger.push(k);
+    }
+    aPurger.forEach(function (k) { localStorage.removeItem(k); });
+    return aPurger.length;
+  } catch (e) { return 0; }
+}
+window.purgerJetonAuthLocal = purgerJetonAuthLocal;
+
 async function doLogout(intention) {
   // Flush immédiat : pousse les changements en attente (debounce 2500ms non encore
   // déclenché) vers Supabase AVANT la déconnexion. Sans ça, toute modification faite
   // dans les 2,5 s précédant le logout est perdue à la reconnexion.
   try { if (typeof supaSaveUserState === "function") await supaSaveUserState(); } catch(e) {}
-  try { await supa.auth.signOut(); } catch(e) {}
+  // ⚠️ LE SDK NE LÈVE PAS SUR UN REFUS : sans lire `{ error }`, une déconnexion
+  // qui ÉCHOUE (hors ligne, jeton non révocable) passait pour réussie — la
+  // session survivait au rechargement et la personne se retrouvait dans le
+  // compte qu'elle venait de quitter, alors que tout son cache local, lui,
+  // avait bien été purgé. On ferme alors la session côté appareil.
+  var echecSignOut = false;
+  try {
+    var so = await supa.auth.signOut();
+    if (so && so.error) echecSignOut = true;
+  } catch(e) { echecSignOut = true; }
+  if (echecSignOut) { try { purgerJetonAuthLocal(); } catch (e) {} }
   discardPendingStateSave();
   // ⚠️ Isolation inter-comptes : purge complète des caches liés au compte, y compris
   // les conversations en IndexedDB (sinon fuite de messages privés vers le compte suivant).

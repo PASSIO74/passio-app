@@ -105,6 +105,15 @@ test.describe("Paramètres → Compte", () => {
 
   test("un compte connecté y lit « Se connecter avec un autre compte »", async ({ page }) => {
     await bootCompteExistant(page);
+    // ⚠️ ON EMPOISONNE LE PANNEAU AVANT DE L'OUVRIR, sinon ce cas ne mesure
+    // RIEN : le libellé attendu pour un compte connecté est exactement celui du
+    // balisage statique d'`index.html`, donc l'assertion resterait verte avec
+    // `majSectionCompte` neutralisée. En partant d'un libellé faux et d'une
+    // sortie masquée, seule l'exécution réelle de la fonction peut les rétablir.
+    await page.evaluate(() => {
+      document.getElementById("settingsAuthSwitch").textContent = "…";
+      document.getElementById("settingsLogout").style.display = "none";
+    });
     await ouvrirSectionCompte(page);
 
     await expect(page.locator("#settingsAuthSwitch")).toHaveText("🔄 Se connecter avec un autre compte");
@@ -253,6 +262,43 @@ test.describe("Déconnexion", () => {
       return localStorage.getItem("passio_auth_intent_v1");
     });
     expect(intention).toBeNull();
+  });
+
+  test("un signOut qui ÉCHOUE ne laisse pas la session ouverte pour autant", async ({ page }) => {
+    await bootCompteExistant(page);
+    // ⚠️ LE SDK NE LÈVE PAS SUR UN REFUS : il rend `{ error }`. Une déconnexion
+    // hors ligne passait donc pour réussie, le jeton restait sur l'appareil, et
+    // le démarrage suivant rouvrait le compte quitté — cache local déjà purgé.
+    const apres = await page.evaluate(async () => {
+      localStorage.setItem("sb-njkiyoklssvefstljemx-auth-token", JSON.stringify({ access_token: "faux" }));
+      window.supa.auth.signOut = async () => ({ error: { message: "offline" } });
+      await window.doLogout("signin");
+      return Object.keys(localStorage).filter((k) => /^sb-.+-auth-token$/.test(k));
+    });
+    expect(apres).toEqual([]);
+  });
+
+  test("purgerJetonAuthLocal ne touche QUE les jetons du SDK", async ({ page }) => {
+    await bootCompteExistant(page);
+    const bilan = await page.evaluate(() => {
+      localStorage.setItem("sb-projetA-auth-token", "1");
+      localStorage.setItem("sb-projetB-auth-token", "2");
+      localStorage.setItem("passio_device_id", "garde-moi");
+      localStorage.setItem("passio_parental_code", "garde-moi-aussi");
+      const n = window.purgerJetonAuthLocal();
+      return {
+        n,
+        jetons: Object.keys(localStorage).filter((k) => /^sb-.+-auth-token$/.test(k)),
+        device: localStorage.getItem("passio_device_id"),
+        parental: localStorage.getItem("passio_parental_code"),
+      };
+    });
+    expect(bilan.n).toBeGreaterThanOrEqual(2);
+    expect(bilan.jetons).toEqual([]);
+    // Les clés d'APPAREIL ne sont pas des sessions : le contrôle parental posé
+    // par un parent ne doit jamais partir avec une déconnexion.
+    expect(bilan.device).toBe("garde-moi");
+    expect(bilan.parental).toBe("garde-moi-aussi");
   });
 
   test("le bouton « Se déconnecter » des Paramètres passe bien par la confirmation", async ({ page }) => {
