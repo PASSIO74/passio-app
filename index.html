@@ -881,7 +881,7 @@
 
     <!-- Post detail full-screen overlay -->
     <div id="postDetailPage" style="display:none;position:fixed;inset:0;z-index:200;background:#ede9fe;flex-direction:column;overflow-y:auto;-webkit-overflow-scrolling:touch;animation:fadeIn 200ms ease-out;">
-      <div style="position:sticky;top:0;z-index:2;background:#ede9fe;border-bottom:1px solid var(--border);padding:12px 16px;display:flex;align-items:center;gap:10px;">
+      <div style="position:sticky;top:0;z-index:2;background:#ede9fe;border-bottom:1px solid var(--border);padding:calc(12px + env(safe-area-inset-top)) 16px 12px;display:flex;align-items:center;gap:10px;">
         <button onclick="closePost()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text);padding:0;line-height:1;">←</button>
         <span style="font-size:15px;font-weight:800;">Post</span>
       </div>

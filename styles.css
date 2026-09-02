@@ -2313,7 +2313,7 @@
     }
     .event-detail-back {
       position: absolute;
-      top: 14px; left: 14px;
+      top: calc(14px + env(safe-area-inset-top)); left: 14px;
       z-index: 2;
       background: rgba(0,0,0,0.45);
       border: none;
@@ -3430,6 +3430,10 @@
     }
     .irl-map-expand:hover { background: #fff; transform: scale(1.05); }
     .irl-map-expand svg { width: 18px; height: 18px; }
+    /* Plein écran : le bouton de sortie échappe à `.app-shell`, donc au retrait
+       d'encoche. Sans ceci il se retrouve sous la barre d'état de l'iPhone —
+       et c'est la SEULE sortie de la carte. */
+    .irl-map-wrap.fullscreen .irl-map-expand { top: calc(10px + env(safe-area-inset-top)); }
     .irl-map-wrap.fullscreen .irl-map-expand svg path:nth-child(1) { d: path("M9 4 H4 V9"); }
     .irl-map-wrap.fullscreen .irl-map-expand svg path:nth-child(2) { d: path("M15 4 H20 V9"); }
     .irl-map-wrap.fullscreen .irl-map-expand svg path:nth-child(3) { d: path("M9 20 H4 V15"); }
@@ -4126,7 +4130,7 @@
     .story-viewer.active { display: flex; animation: fadeIn 220ms ease; }
     .story-progress-row {
       position: absolute;
-      top: 10px; left: 10px; right: 10px;
+      top: calc(10px + env(safe-area-inset-top)); left: 10px; right: 10px;
       display: flex;
       gap: 4px;
       z-index: 3;
@@ -4147,7 +4151,7 @@
     .story-progress.done .story-progress-bar { width: 100%; }
     .story-viewer-header {
       position: absolute;
-      top: 24px; left: 14px; right: 14px;
+      top: calc(24px + env(safe-area-inset-top)); left: 14px; right: 14px;
       display: flex;
       align-items: center;
       gap: 10px;
@@ -4703,7 +4707,7 @@
        média/overlay. Un état global pour tout le viewer (toggleReelsSound). */
     .reel-sound-btn {
       position: absolute;
-      top: 64px; right: 14px; z-index: 5;
+      top: calc(64px + env(safe-area-inset-top)); right: 14px; z-index: 5;
       width: 42px; height: 42px; border-radius: 50%;
       border: 1px solid rgba(255, 255, 255, 0.2);
       background: rgba(0, 0, 0, 0.45); color: #fff;
@@ -4716,7 +4720,7 @@
     /* Bouton son (story vidéo) : au-dessus des zones de tap prev/next (z-index 2). */
     .story-sound-btn {
       position: absolute;
-      bottom: 16px; right: 14px; z-index: 5;
+      bottom: calc(16px + env(safe-area-inset-bottom)); right: 14px; z-index: 5;
       width: 42px; height: 42px; border-radius: 50%;
       border: 1px solid rgba(255, 255, 255, 0.2);
       background: rgba(0, 0, 0, 0.45); color: #fff;
@@ -4729,7 +4733,7 @@
 
     .reel-tag-mood {
       position: absolute;
-      top: 64px;
+      top: calc(64px + env(safe-area-inset-top));
       left: 14px;
       padding: 5px 12px;
       border-radius: 999px;
@@ -4748,7 +4752,7 @@
       position: absolute;
       left: 14px;
       right: 86px;
-      bottom: 28px;
+      bottom: calc(28px + env(safe-area-inset-bottom));
       z-index: 5;
       pointer-events: auto;
     }
@@ -4778,7 +4782,7 @@
     .reel-actions {
       position: absolute;
       right: 12px;
-      bottom: 36px;
+      bottom: calc(36px + env(safe-area-inset-bottom));
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -4824,7 +4828,7 @@
     .reels-header {
       position: absolute;
       top: 0; left: 0; right: 0;
-      padding: 14px 14px 28px;
+      padding: calc(14px + env(safe-area-inset-top)) 14px 28px;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -4939,14 +4943,14 @@
     .reels-nav:active { transform: translateX(-50%) scale(0.94); }
     .reels-nav.disabled { opacity: 0.32; pointer-events: none; }
     .reels-nav svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
-    .reels-nav.prev { top: 70px; }
-    .reels-nav.next { bottom: 18px; }
+    .reels-nav.prev { top: calc(70px + env(safe-area-inset-top)); }
+    .reels-nav.next { bottom: calc(18px + env(safe-area-inset-bottom)); }
 
     /* Hint d'aide au 1er lancement */
     .reels-hint {
       position: absolute;
       left: 50%;
-      bottom: 100px;
+      bottom: calc(100px + env(safe-area-inset-bottom));
       transform: translateX(-50%);
       padding: 10px 16px;
       background: rgba(0, 0, 0, 0.62);
@@ -4974,9 +4978,9 @@
     @media (max-width: 480px) {
       .reels-nav { width: 42px; height: 42px; }
       .reels-nav svg { width: 20px; height: 20px; }
-      .reels-nav.prev { top: 62px; }
-      .reels-nav.next { bottom: 14px; }
-      .reels-hint { bottom: 88px; font-size: 11px; padding: 8px 14px; }
+      .reels-nav.prev { top: calc(62px + env(safe-area-inset-top)); }
+      .reels-nav.next { bottom: calc(14px + env(safe-area-inset-bottom)); }
+      .reels-hint { bottom: calc(88px + env(safe-area-inset-bottom)); font-size: 11px; padding: 8px 14px; }
     }
 
     @media (max-width: 480px) {
@@ -4984,9 +4988,9 @@
       .bobines-cta-icon { width: 34px; height: 34px; }
       .bobines-cta-title { font-size: 13px; }
       .bobines-cta-sub { font-size: 10px; }
-      .reel-actions { right: 10px; bottom: 30px; gap: 18px; }
+      .reel-actions { right: 10px; bottom: calc(30px + env(safe-area-inset-bottom)); gap: 18px; }
       .reel-action-icon { width: 42px; height: 42px; }
-      .reel-info { left: 12px; right: 78px; bottom: 22px; }
+      .reel-info { left: 12px; right: 78px; bottom: calc(22px + env(safe-area-inset-bottom)); }
     }
 
     /* ============ REEL COMMENTS PANEL (STYLE INSTAGRAM) ============ */
@@ -5005,6 +5009,7 @@
       z-index: 15;
       border-radius: 16px 16px 0 0;
       top: auto;
+      padding-bottom: env(safe-area-inset-bottom);
     }
     .reel-comments-panel.open {
       height: 70vh;
@@ -8996,7 +9001,7 @@ body.ctx-locked #appMain { overflow: hidden; }
    bobines non décorées — une bobine que le lot n'a pas su enrichir garde
    exactement sa mise en page d'avant.
    ══════════════════════════════════════════════════════════════════════════ */
-:root.passio-ui-5 .reel-item[data-v5] .reel-info { bottom: 76px; }
+:root.passio-ui-5 .reel-item[data-v5] .reel-info { bottom: calc(76px + env(safe-area-inset-bottom)); }
 
 :root.passio-ui-5 .v5-actions {
   display: flex;
