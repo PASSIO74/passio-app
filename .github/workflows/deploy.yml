@@ -345,17 +345,26 @@ jobs:
         run: node scripts/mesure-passions.js
 
   test-local:
-    name: Suites navigateur (${{ matrix.shard }}/4)
+    name: Suites navigateur (${{ matrix.shard }}/6)
     runs-on: ubuntu-latest
     # AUCUN verrou, AUCUN secret, AUCUNE écriture en base : ces suites servent un
     # serveur statique local et pilotent un navigateur. C'est tout l'intérêt du
     # découpage — elles n'attendent plus la prod, et elles se répartissent.
     strategy:
-      # Un shard rouge ne doit pas annuler les trois autres : on veut la liste
+      # Un shard rouge ne doit pas annuler les cinq autres : on veut la liste
       # COMPLÈTE des échecs en une passe, pas le premier trouvé.
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        # SIX shards, et le nombre vient d'un calcul, pas d'un chiffre rond. Le coût
+        # fixe d'un shard (checkout, Node, `playwright install`) est d'environ 70 s,
+        # mesuré sur le run 2400 ; le temps de test total est de ~28 min. Le temps de
+        # mur d'un shard vaut donc 70 s + 1680 s / N :
+        #     N=4 → 8,2 min · N=6 → 5,8 min · N=8 → 4,7 min · N=10 → 4,0 min
+        # Au-delà de 6 le coût fixe domine et chaque machine supplémentaire rapporte
+        # moins d'une minute, tout en multipliant les lectures concurrentes de la
+        # prod — car ces suites LISENT la base au démarrage même si elles n'y
+        # écrivent pas (piège documenté dans CLAUDE.md à propos d'interactions.spec).
+        shard: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/checkout@v5
 
@@ -369,7 +378,7 @@ jobs:
           npx playwright install --with-deps chromium
 
       - name: Lancer les tests
-        run: npx playwright test --project=local --shard=${{ matrix.shard }}/4
+        run: npx playwright test --project=local --shard=${{ matrix.shard }}/6
 
   gates-artefact:
     name: Gates artefact production (dist)
