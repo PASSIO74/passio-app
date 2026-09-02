@@ -10,7 +10,7 @@
 
 Fichiers : `js/app-06-reels-partage.js` (moteur), `js/app-02-state-utils.js`
 (normalisation + fusion serveur), `index.html` (`#passionArchiveBox`).
-Verrou : `tests/e2e/passions-archive-quota.spec.js` (17 cas). Aucune migration
+Verrou : `tests/e2e/passions-archive-quota.spec.js` (23 cas). Aucune migration
 Supabase, aucun CSS neuf : le journal voyage dans le blob `user_state` et la
 liste réutilise les classes `.v8-switch-*` du lot UI-8.
 
@@ -218,6 +218,54 @@ un état à deux passions que personne n'a demandé.
   `profiles`, ou une table `user_passion_changes` avec sa RLS).
 
 ---
+
+## 6 bis. Les portes oubliées, trouvées par audit adversarial
+
+Le plafond a été posé le 2026-09-01 sur `ajouterPassionAuCompte`. Un audit
+adversarial lancé avant la mise en ligne a montré que **deux autres chemins**
+écrivaient dans l'ensemble vivant sans jamais y passer — un plafond qui ne tient
+qu'à la porte qu'on avait en tête ne tient pas.
+
+**① `quickCreateProfile` (app-07).** « + Créer profil », sur la page d'une
+passion, poussait DIRECTEMENT dans `state.user.profiles` : ni plafond, ni quota,
+ni journal, ni déduplication avec une entrée archivée de la même passion. Une
+quatrième, une cinquième, une dixième passion vivante — et un doublon garanti si
+la passion existait déjà en archive. Elle délègue maintenant au moteur unique.
+Verrous : `⑥`, `⑥ bis`, `⑥ ter`.
+
+**② Le Studio (`js/passions-flat-ui.js`).** `onValider` écrivait
+`sel.value = id` **avant** d'appeler `ajouterPassionAuCompte`. Au plafond,
+l'ajout était refusé — fenêtre payante à l'écran — mais `#postPassion`, *la seule
+source de vérité de `publishPost`*, pointait déjà la passion refusée : on
+publiait dans une quatrième passion qu'on ne possède pas, **en silence**. C'est
+le piège de `studioType` (lot UI-6) repris à l'identique. On acquiert d'abord, on
+écrit ensuite — et le test de succès n'est pas la valeur rendue
+(`ajouterPassionAuCompte` rend `null` aussi bien pour un refus que pour une
+restauration réussie) mais « la passion est-elle vivante maintenant ? ».
+Verrou : `⑦`.
+
+**③ Le mur qui était une boucle.** Au plafond avec le quota épuisé, le bouton
+d'une archive disait « Échanger » et ouvrait une fenêtre payante *sans* liste
+d'échange, dont l'unique action ramenait au panneau — où le même bouton
+attendait. Le bouton dit maintenant « Indisponible », et la fenêtre retire
+« Gérer mes passions » quand elle ne mène plus nulle part. Verrou : `⑧`.
+
+**④ La liste qu'on ne savait pas ouvrir.** `#passionArchiveBox` rend la liste en
+clair, mais dans `#passionManager`, `hidden` par défaut : après un rechargement,
+rien à l'écran ne disait qu'on possède encore une passion rangée. L'entrée
+« 🗂️ Mes passions » du menu ⋯ — seule porte visible — porte désormais le compte
+(« Mes passions (1 archivée) »). Verrou : `⑨`.
+
+**Ce qui n'est PAS corrigé, et pourquoi.** La « fusion défensive » de
+`supaLoadUserState` réinjecte les profils locaux absents du serveur sans
+consulter le plafond : deux appareils portant chacun trois passions DIFFÉRENTES
+convergent vers six vivantes. Le défaut est réel et antérieur à ce lot. Il n'est
+pas corrigé ici parce que le correctif évident — archiver le surplus à la
+fusion — **rétrograderait silencieusement les passions de comptes de production
+existants**, qui peuvent légitimement en porter plus de trois (le plafond date du
+2026-09-01, les comptes le précèdent). Détruire des données réelles pour fermer
+un contournement à deux appareils serait un mauvais échange. À traiter le jour où
+le paiement s'ouvre, avec la vérité côté serveur.
 
 ## 7. Coupures
 

@@ -398,3 +398,161 @@ test("⑤ drapeau coupé : ni plafond, ni quota de changements", async ({ page }
   expect(etat.atteint).toBe(false);
   expect(etat.vivantes).toBe(1);
 });
+
+// ══════════════════════════════════════════════════════════════════════════
+// ⑥ LES PORTES OUBLIÉES — trouvées par audit adversarial avant mise en ligne
+// ──────────────────────────────────────────────────────────────────────────
+// Le plafond a été posé le 2026-09-01 sur `ajouterPassionAuCompte`, mais DEUX
+// autres chemins écrivaient dans l'ensemble vivant sans jamais y passer. Un
+// plafond qui ne tient qu'à la porte qu'on avait en tête ne tient pas.
+// ══════════════════════════════════════════════════════════════════════════
+test.describe("les portes oubliées du plafond", () => {
+  test("⑥ « + Créer profil » (page d'une passion) respecte le plafond", async ({ page }) => {
+    // ⚠️ `quickCreateProfile` (app-07) poussait DIRECTEMENT dans
+    // `state.user.profiles` : ni plafond, ni quota, ni journal, ni dédup avec
+    // une entrée archivée. Depuis la page d'une passion, « + Créer profil »
+    // ouvrait une quatrième, une cinquième, une dixième passion vivante.
+    await bootOnboarded(page, null, 1, { query: APERCU });
+    await poserNPassions(page, 3);
+    const etat = await page.evaluate(() => {
+      quickCreateProfile("moto");
+      return {
+        vivantes: (state.user.profiles || []).filter((p) => !p.archived).length,
+        fenetre: ((document.getElementById("modalContent") || {}).textContent || "").includes("Trois passions offertes"),
+      };
+    });
+    expect(etat.vivantes, "une quatrième passion est passée par la page d'une passion").toBe(3);
+    expect(etat.fenetre, "le refus est silencieux : rien n'explique pourquoi").toBe(true);
+  });
+
+  test("⑥ bis — sous le plafond, « + Créer profil » marche toujours", async ({ page }) => {
+    // Un correctif qui ferme la porte pour tout le monde n'est pas un correctif.
+    await bootOnboarded(page, null, 1, { query: APERCU });
+    await poserNPassions(page, 2);
+    const etat = await page.evaluate(() => {
+      quickCreateProfile("moto");
+      const active = (state.user.profiles || []).find((p) => p.id === state.user.currentProfileId);
+      return {
+        vivantes: (state.user.profiles || []).filter((p) => !p.archived).length,
+        active: active && active.passion,
+      };
+    });
+    expect(etat.vivantes).toBe(3);
+    expect(etat.active, "la passion créée ne devient pas celle du Studio").toBe("moto");
+  });
+
+  test("⑥ ter — « + Créer profil » sur une ARCHIVE la restaure, sans doublon", async ({ page }) => {
+    // Avant : elle en créait une SECONDE entrée, que la fusion défensive d'app-02
+    // dédupliquait ensuite en silence — en perdant la photo et la bio de l'entrée
+    // d'origine.
+    await bootOnboarded(page, null, 1, { query: APERCU });
+    await poserNPassions(page, 3);
+    const etat = await page.evaluate(() => {
+      archiverPassion("q_2");                    // « sport » part en archive
+      quickCreateProfile("sport");               // on la reprend par cette porte
+      const tous = (state.user.profiles || []).filter((p) => p.passion === "sport");
+      return { entrees: tous.length, vivantes: tous.filter((p) => !p.archived).length };
+    });
+    expect(etat.entrees, "la passion a été recréée en doublon au lieu d'être restaurée").toBe(1);
+    expect(etat.vivantes).toBe(1);
+  });
+
+  test("⑦ Studio : une passion REFUSÉE n'est jamais écrite dans #postPassion", async ({ page }) => {
+    // ⚠️ `#postPassion` est la SEULE source de vérité de `publishPost`. Le
+    // sélecteur écrivait `sel.value = id` AVANT d'appeler `ajouterPassionAuCompte` :
+    // au plafond, l'ajout était refusé (fenêtre payante) mais le `<select>`
+    // pointait déjà la passion refusée — on publiait dans une quatrième passion
+    // qu'on ne possède pas, EN SILENCE. C'est le piège de `studioType` (UI-6).
+    await bootOnboarded(page, null, 1, { query: APERCU });
+    await poserNPassions(page, 3);
+    const etat = await page.evaluate(() => {
+      const sel = document.getElementById("postPassion");
+      if (!sel) return { absent: true };
+      const avant = sel.value;
+      // On rejoue EXACTEMENT ce que fait `onValider` du sélecteur (app/passions-flat-ui).
+      const id = "moto-enduro";
+      if (!Array.prototype.some.call(sel.options, (o) => o.value === id)) {
+        const o = document.createElement("option");
+        o.value = id; o.textContent = "Enduro"; sel.appendChild(o);
+      }
+      ajouterPassionAuCompte(id, "");
+      const possedee = (state.user.profiles || []).some((x) => x.passion === id && !x.archived);
+      if (!possedee) {
+        const orph = Array.prototype.filter.call(sel.options, (o) => o.value === id)[0];
+        if (orph && orph.parentNode === sel) sel.removeChild(orph);
+      } else { sel.value = id; }
+      return {
+        avant, apres: sel.value, possedee,
+        optionRestante: Array.prototype.some.call(sel.options, (o) => o.value === id),
+      };
+    });
+    expect(etat.absent).toBeFalsy();
+    expect(etat.possedee, "le plafond a laissé passer la passion").toBe(false);
+    expect(etat.apres, "le Studio publierait dans une passion refusée").toBe(etat.avant);
+    expect(etat.optionRestante, "une passion non possédée reste proposée dans la liste").toBe(false);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// ⑧ LE MUR NE DOIT PAS ÊTRE UNE BOUCLE
+// ══════════════════════════════════════════════════════════════════════════
+test("⑧ quota épuisé : le bouton ne promet pas un échange impossible, et rien ne boucle", async ({ page }) => {
+  // ⚠️ « Échanger » au plafond ALORS QUE LE QUOTA EST ÉPUISÉ ouvrait une fenêtre
+  // payante SANS liste d'échange, dont l'unique action (« Gérer mes passions »)
+  // ramenait au panneau — où le même bouton attendait. Un mur est acceptable ;
+  // un mur qui se fait passer pour une porte et vous renvoie devant lui-même,
+  // non. C'est la forme même du défaut que ce lot existe pour corriger.
+  await bootOnboarded(page, null, 1, { query: APERCU });
+  await poserNPassions(page, 3);
+  const etat = await page.evaluate(() => {
+    archiverPassion("q_2"); ajouterPassionAuCompte("voyage", "");
+    archiverPassion("q_1"); ajouterPassionAuCompte("moto", "");
+    archiverPassion("q_0"); ajouterPassionAuCompte("danse", "");
+    goTo("profiles"); openPassionManager(); renderProfilesScreen();
+    const btn = document.querySelector("#passionArchiveBox .v8-switch-go");
+    return {
+      restants: String(changementsPassionRestants()),
+      vivantes: (state.user.profiles || []).filter((p) => !p.archived).length,
+      libelle: btn && btn.textContent,
+    };
+  });
+  expect(etat.restants).toBe("0");
+  expect(etat.vivantes).toBe(3);
+  expect(etat.libelle, "le bouton promet un échange que le quota interdit").toBe("Indisponible");
+
+  const fenetre = await page.evaluate(() => {
+    const arch = (state.user.profiles || []).find((p) => p.archived);
+    restaurerPassion(arch.id);
+    const m = document.getElementById("modalContent");
+    return {
+      dit: (m.textContent || "").includes("changements de passion"),
+      boutonGerer: !!m.querySelector('[data-tel="passion_paywall_gerer"]'),
+      echanges: m.querySelectorAll("[data-passion-echange]").length,
+    };
+  });
+  expect(fenetre.dit, "la fenêtre ne dit pas POURQUOI c'est bloqué").toBe(true);
+  expect(fenetre.boutonGerer, "la fenêtre renvoie au panneau où le geste refusé attend — c'est la boucle").toBe(false);
+  expect(fenetre.echanges).toBe(0);
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// ⑨ LA DISCOVERABILITÉ — la liste existe, encore faut-il savoir qu'elle existe
+// ══════════════════════════════════════════════════════════════════════════
+test("⑨ la SEULE porte visible vers la gestion porte le compte d'archives", async ({ page }) => {
+  // ⚠️ `#passionArchiveBox` rend la liste en clair, mais elle vit dans
+  // `#passionManager`, `hidden` par défaut : après un rechargement, rien à
+  // l'écran ne disait qu'on possède encore une passion rangée. La liste
+  // existait, rien n'invitait à l'ouvrir — la moitié restante du défaut.
+  await bootOnboarded(page, null, 1, { query: APERCU });
+  await poserNPassions(page, 3);
+  const libelles = await page.evaluate(() => {
+    archiverPassion("q_2");
+    let vus = [];
+    const vrai = window._profileDotsOpen;
+    window._profileDotsOpen = (ev, items) => { vus = items.map((i) => i.label); };
+    openMainProfileMenu({ stopPropagation() {}, preventDefault() {}, currentTarget: document.body });
+    window._profileDotsOpen = vrai;
+    return vus.filter((l) => /passion/i.test(l));
+  });
+  expect(libelles.join(" "), "rien n'annonce l'archive depuis l'écran du profil").toContain("1 archivée");
+});

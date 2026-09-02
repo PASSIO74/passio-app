@@ -1129,7 +1129,18 @@ function openMainProfileMenu(ev) {
     // Retirer un onglet ne doit jamais emporter la seule commande d'une
     // fonction — ajouter, renommer, illustrer ou archiver une passion passe
     // désormais par ici.
-    { icon: "🗂️", label: "Mes passions", run: function() { if (typeof openPassionManager === "function") openPassionManager(); } },
+    // ⚠️ LE COMPTE D'ARCHIVES EST ÉCRIT ICI, sur la SEULE porte visible vers la
+    // gestion des passions. `#passionArchiveBox` rend la liste en clair, mais
+    // elle vit dans `#passionManager`, `hidden` par défaut : après un
+    // rechargement, rien à l'écran ne disait qu'on possède encore une passion
+    // rangée. C'est la moitié restante du défaut rapporté le 2026-09-02 — la
+    // liste existait, mais rien n'invitait à l'ouvrir.
+    { icon: "🗂️", label: "Mes passions" + (function () {
+        try {
+          var n = (typeof passionsArchivees === "function") ? passionsArchivees().length : 0;
+          return n ? " (" + n + " archivée" + (n > 1 ? "s" : "") + ")" : "";
+        } catch (e) { return ""; }
+      })(), run: function() { if (typeof openPassionManager === "function") openPassionManager(); } },
     { icon: "🎨", label: "Apparence & thème",   run: function() { if (typeof openConfigurator === "function") openConfigurator(); } }
   ]);
 }
@@ -2085,6 +2096,14 @@ function renderPassionArchiveBox() {
 // c'est la liste qui dit à l'utilisateur ce qu'il possède encore.
 function _lignesArchiveesHTML(archivees) {
   var plein = plafondPassionsAtteint();
+  // ⚠️ TROIS ÉTATS, TROIS LIBELLÉS. « Échanger » au plafond ALORS QUE LE QUOTA
+  // EST ÉPUISÉ était un mensonge doublé d'une boucle : le bouton ouvrait une
+  // fenêtre payante SANS liste d'échange (il n'y a plus de changement à
+  // dépenser), dont l'unique action ramenait au panneau — où le même bouton
+  // attendait. Un mur est acceptable ; un mur qui se fait passer pour une porte
+  // et vous renvoie devant lui-même ne l'est pas.
+  var bloque = plein && quotaChangementsAtteint();
+  var libelle = bloque ? "Indisponible" : (plein ? "Échanger" : "Restaurer");
   return archivees.map(function (pr) {
     var et = _passionEtiquette(pr);
     var quand = _dateCourtePassion(pr.archivedAt);
@@ -2099,7 +2118,7 @@ function _lignesArchiveesHTML(archivees) {
       + "</span>"
       + '<button type="button" class="v8-switch-go" data-v8-restaurer="' + escapeHtml(String(pr.id)) + '"'
       + ' onclick="restaurerPassion(\'' + escapeJsArg(String(pr.id)) + '\')">'
-      + (plein ? "Échanger" : "Restaurer") + "</button>"
+      + libelle + "</button>"
       + "</div>";
   }).join("");
 }
@@ -2907,6 +2926,13 @@ function passionsRestantesOffertes() {
 
 function plafondPassionsAtteint() { return passionsRestantesOffertes() <= 0; }
 
+// ⚠️ « GÉRER MES PASSIONS » DISPARAÎT QUAND LE QUOTA EST ÉPUISÉ. C'est la seule
+// action réelle TANT QU'IL RESTE UN CHANGEMENT — réorganiser ses trois passions.
+// Une fois les trois consommés, elle ne mène plus nulle part : elle ramène au
+// panneau où le bouton refusé attend, et l'utilisateur tourne en rond entre deux
+// écrans qui se renvoient l'un à l'autre. Mur légible plutôt que boucle :
+// « J'ai compris » devient alors l'action principale.
+//
 // ⚠️ AUCUN BOUTON « PAYER ». Le paiement n'est pas ouvert : un bouton qui ne
 // mène nulle part est un clic mort, et ce dépôt en a déjà payé le prix (l'aide
 // « bobines » d'UI-4A4, ancrée sur une cible inexistante). La fenêtre dit ce
@@ -2989,10 +3015,10 @@ function openPassionPaywall(opts) {
     </div>
     <div style="font-size:12.5px;color:var(--muted);line-height:1.6;margin-bottom:14px;">${suite}</div>
     ${echange}
-    <button type="button" class="btn primary block" data-tel="passion_paywall_gerer"
-      onclick="ouvrirGestionPassionsDepuisPaywall()">Gérer mes passions</button>
-    <button type="button" class="btn block" style="margin-top:8px;" data-tel="passion_paywall_compris"
-      onclick="closeModal()">J'ai compris</button>
+    ${quotaEpuise ? "" : `<button type="button" class="btn primary block" data-tel="passion_paywall_gerer"
+      onclick="ouvrirGestionPassionsDepuisPaywall()">Gérer mes passions</button>`}
+    <button type="button" class="btn ${quotaEpuise ? "primary" : ""} block" style="${quotaEpuise ? "" : "margin-top:8px;"}"
+      data-tel="passion_paywall_compris" onclick="closeModal()">J'ai compris</button>
   `);
 }
 
