@@ -5,8 +5,15 @@
   par rapport à la passion et au mood ; il faut que les testeurs comprennent
   bien la différence visuellement. »
 
-  Une seule remarque, deux causes indépendantes — et c'est ce qui compte ici,
-  parce que ne corriger que l'une des deux laissait le défaut entier.
+  Puis, en relisant le premier jet : « attention il n'y a plus les mood chill
+  etc., il reste que explorer / apprendre / idée / rencontrer », « du coup
+  recrée du contenu en lien avec les nouveaux mood », et « mets plus de contenu
+  (rencontre) avec le lien en bas voir l'activité ».
+
+  Une seule remarque au départ, **trois** causes indépendantes à l'arrivée — et
+  c'est ce qui compte ici, parce que n'en corriger qu'une laissait le défaut
+  entier. La deuxième correction de Benjamin a d'ailleurs invalidé une partie du
+  premier jet : j'avais donné deux belles couleurs à un vocabulaire mort.
 
   ---
 
@@ -27,8 +34,19 @@
   | 💡 Idées      | `creation` | `--mood-create-*` | `#5b21b6` sur `#f1eafe` — 7,7:1 |
   | 📚 Apprendre  | `learn`    | `--mood-learn-*`  | `#1d4ed8` sur `#e7f0fe` — 5,8:1 |
   | 🤝 Rencontrer | `irl`      | `--mood-meet-*`   | `#a83218` sur `#ffede9` — 5,9:1 |
-  | 😌 Chill      | `chill`    | `--mood-chill-*`  | `#15683f` sur `#e8f6ee` — 6,1:1 |
-  | 🌍 Actu       | `actu`     | `--mood-news-*`   | `#92500a` sur `#fff3dc` — 5,7:1 |
+  | *(neutre)*    | `all`      | —                 | aucune pastille |
+
+  ⚠️ **TROIS pastilles, et c'est le PRODUIT qui les compte.** Le Studio ne
+  propose que 💡 Idées · 📚 Apprendre · 🤝 Rencontrer · ✨ Tous depuis le
+  2026-08-29. La quatrième intention du rail, **« Explorer », n'aura jamais de
+  pastille** : elle se calcule côté LECTEUR (auteur non suivi, passion non
+  cochée) et ne regarde jamais le mood — lui en donner une la rendrait
+  décorative, donc mensongère.
+
+  ⚠️ **Un repli est posé sur le sélecteur générique `[data-mood]`.** Il attrape
+  TOUTE valeur, alors que trois seulement ont une couleur : sans lui, une
+  quatrième envie sortirait plus grosse et plus grasse dans l'ANCIENNE capsule
+  grise translucide — un état intermédiaire que personne n'aurait dessiné.
 
   ⚠️ **`data-mood` n'est posé que sur la branche où `moodTagLabel` a rendu un
   libellé.** Le neutre (`all` — c'est-à-dire TOUS les posts venus de Supabase),
@@ -80,6 +98,68 @@
 
   ---
 
+  ## ① ter. La cause qu'on n'avait pas vue : deux envies étaient MORTES
+
+  Le premier jet a donné une couleur à **cinq** envies. Benjamin a corrigé :
+  « il n'y a plus les mood chill etc., il reste que explorer / apprendre / idée
+  / rencontrer ». Vérification faite, il avait raison depuis le 2026-08-29 :
+  `studio-moods.spec.js` ② affirme déjà que « chill » et « actu » **ne sont plus
+  proposés** au composer. Ils gardaient pourtant un libellé, donc une pastille.
+  Le fil remettait sous les yeux du testeur deux mots introuvables ailleurs dans
+  le produit — et j'avais aggravé le défaut en les rendant plus visibles.
+
+  ### AFFICHER et ADMETTRE sont deux choses
+
+  C'est le piège du lot, et il ne se voit pas d'une relecture.
+  `PASSIO_MOOD_LABELS` servait à **deux usages sans rapport** :
+
+  1. **nommer** une envie sur une carte (`moodTagLabel`, `moodShortLabel`) ;
+  2. **admettre** une valeur de `posts.mood` dans le repli d'exploration
+     (`moodsAffichables`, app-02).
+
+  Retirer « chill » et « actu » de cette table unique aurait donc fait
+  **disparaître du fil des milliers de publications RÉELLES** déjà en base — un
+  changement de vocabulaire qui efface du contenu. Les deux usages sont scindés :
+
+  ```js
+  var PASSIO_MOOD_LABELS = { creation, learn, irl };          // ce qui s'AFFICHE
+  var PASSIO_MOODS_ADMIS = { …labels, chill: 1, actu: 1 };     // ce qui a le DROIT d'exister
+  ```
+
+  Conséquence voulue : une publication « chill » se comporte **exactement comme
+  le neutre `all`** — elle entre dans le fil, elle entre dans l'exploration, et
+  elle ne porte aucune pastille.
+
+  ⚠️ **`legacyMoodToFeedIntent` n'a PAS été touchée** : elle rendait déjà
+  « generic » pour ces deux valeurs. Elles ne satisfaisaient donc **aucune** des
+  envies du rail bien avant ce lot — le produit avait tranché avant l'affichage.
+
+  ⚠️ **NE PAS confondre le MOOD « actu », mort, et la PASSION « actu »**
+  (Actualité 🌍), l'une des 19 du catalogue, parfaitement vivante.
+
+  ### Les survivants du vocabulaire mort
+
+  - `js/app-05-config-profil.js` : `mood: reel.mood || "chill"`. **Repartager
+    une bobine écrivait une valeur morte dans `posts.mood`, en production, à
+    chaque partage.** Corrigé en `all`.
+  - **Sept publications reliées à une activité** (elles portent donc
+    « Voir l'activité ») étaient étiquetées « Chill », « Idées » ou
+    « Apprendre » : `p_ev_yoga`, `p_ev_ceramique`, `p_ev_ia`, `p_ev_danse`,
+    `p_ev_livre`, `reel_seed_sport_skate_1`, `reel_seed_musique_1`. Une carte
+    qui ouvre un rendez-vous doit dire qu'elle invite — récrites en
+    « Rencontrer », lieu et jour en première ligne.
+  - **Quatre publications désignaient des personas SANS ACCENT** (`u_ines`,
+    `u_anais`, `u_chloe`) qui n'existent pas : `userById` rendait null et la
+    carte sortait avec « ? » comme auteur. Défaut **préexistant**, visible en
+    production, trouvé en vérifiant l'intégrité du socle.
+  - Le **rail historique masqué** `#moodSelector` (index.html) propose encore
+    Chill et Actu. Il est **volontairement laissé tel quel** : c'est la roue de
+    secours du kill switch `passio_feed_intents_v1="0"`, que la fiche 07 exige
+    gelée à l'octet près. À rouvrir si le kill switch doit suivre les quatre
+    envies.
+
+  ---
+
   ## ② La cause éditoriale : l'étiquette disait autre chose que le texte
 
   Neuf publications du socle portaient une envie que leur texte contredisait —
@@ -108,37 +188,73 @@
 
   ---
 
-  ## ③ Trente-huit publications neuves, écrites comme des EXEMPLES TYPES
+  ## ③ Le corpus est REFAIT sur les envies vivantes
 
-  Le bloc « EXEMPLES D'ENVIE » de `js/app-01-diag-seed.js` (p401 → p438) tient
-  **une forme par envie**, d'un bout à l'autre :
+  « Du coup recrée du contenu en lien avec les nouveaux mood. » Il ne s'agissait
+  plus de compléter, mais de **reprendre les 116 publications** qui portaient une
+  envie morte. Elles ont été **réécrites**, pas ré-étiquetées : le texte change,
+  parce qu'une anecdote tranquille ne devient pas une invitation en changeant
+  d'étiquette — c'est précisément le mensonge que le testeur avait vu.
 
-  - 💡 **Idées** → on FABRIQUE : un état d'avancement, un numéro de version, un
-    reste à faire (« Version 12 », « le proto 3 aura la couture soudée »).
-  - 📚 **Apprendre** → on TRANSMET : une règle ou trois étapes numérotées,
-    réutilisables telles quelles par qui lit.
-  - 🤝 **Rencontrer** → on SE DONNE RENDEZ-VOUS : 📍 lieu, 📅 date, nombre de
-    places, et une question qui appelle une réponse.
-  - 😌 **Chill** → on RACONTE UN MOMENT : aucune leçon, aucune invitation, rien
-    à faire après l'avoir lu.
-  - 🌍 **Actu** → on RAPPORTE UN FAIT DATÉ : un chiffre, une source, et ce que
-    ça change pour la passion.
+  Le travail a été mené par un workflow de 40 agents : **écriture** par lots de
+  huit, puis **contestation adversariale** de chaque lot par un sceptique chargé
+  de refuser (et de corriger lui-même) tout texte dont la forme ne prouve pas
+  l'envie. Répartition obtenue après contestation : **50 Rencontrer, 30
+  Apprendre, 22 Idées, 14 neutres**.
 
-  Les quinze premières forment **trois séries complètes** — Musique
-  (`p401`→`p405`), Photo (`p406`→`p410`), Cuisine (`p411`→`p415`) : les cinq
-  envies sur UNE passion. Les vingt-trois suivantes comblent les cases vides du
-  tableau passion × envie.
+  La forme tenue, une par envie — c'est elle qui permet au testeur de
+  reconnaître l'envie **avant** de regarder la pastille :
 
-  **Résultat mesuré : 323 publications, et plus AUCUNE case vide** sur les 19
-  passions × 5 envies. Avant le lot il en manquait huit (yoga/creation,
-  actu/creation, actu/irl, animaux/creation, animaux/actu, mode/chill,
-  podcast/chill, moto/actu) : un compte qui cochait l'une de ces paires tombait
-  sur un fil vide et concluait que l'application était cassée.
+  - 💡 **Idées** → on FABRIQUE : un numéro de version, une contrainte
+    matérielle, un reste-à-faire (« Onzième version de l'écran d'accueil »,
+    « six images gardées sur trois pellicules »).
+  - 📚 **Apprendre** → on TRANSMET : une règle nommée puis des étapes
+    numérotées, applicables demain (« Ma règle des 20 minutes, celle que je
+    répète en cabinet »).
+  - 🤝 **Rencontrer** → on SE DONNE RENDEZ-VOUS : ligne
+    « 📍 lieu — 📅 jour heure », ce qui se passe, les places, un appel à réponse.
+  - *(neutre)* → un moment : aucune leçon, aucune invitation, rien à faire
+    après l'avoir lu.
 
-  ⚠️ **Ajoutées EN FIN de tableau.** Trois suites prennent `state.seed.posts[0]`
-  sans le choisir ; insérer en tête aurait changé leur sujet en silence.
+  **Zéro publication porte encore une envie morte**, et aucune case du tableau
+  passion × envie n'est vide sur les trois envies vivantes.
 
   ---
+
+  ## ③ bis. « Voir l'activité » : 105 cartes au lieu de 9
+
+  « Mets plus de contenu (rencontre) avec le lien en bas voir l'activité. »
+
+  Ce lien n'est pas décoratif et ne se pose pas à la main : c'est **`eventId`**,
+  et lui seul, qui le déclenche. `refEvenement` (`js/ui-v3-passerelle.js`) le
+  lit, puis `decorerActivite` ne pose le lien **que si `trouverEvenement`
+  retrouve la fiche**. Une publication sans `eventId` reçoit le CTA générique
+  « Trouver une activité » ; une publication reliée reçoit « Voir l'activité »,
+  qui ouvre la fiche existante.
+
+  ⚠️ **Un identifiant fantaisiste ne casse rien — il ne peint simplement
+  RIEN.** C'est le pire cas pour du contenu de démonstration : le lien manque
+  sans que personne ne le sache. D'où le verrou ② quater.
+
+  **66 publications neuves**, deux par activité pour les 36 activités du socle,
+  et jamais le même auteur sur la paire : celle qui **organise** et annonce, puis
+  celle qui **y va** et donne envie autrement. Avec les sept cartes recousues,
+  le socle passe de 9 à **105 publications reliées**, couvrant les 36 activités.
+
+  Le socle compte désormais **389 publications** (contre 323).
+
+  ⚠️ **Prix payé, assumé et mesuré** : « Rencontrer » pèse maintenant **50 % du
+  socle** (196 sur 389), et jusqu'à 70 % sur `sport`. C'est la conséquence
+  arithmétique d'un étiquetage honnête — un texte qui annonce un lieu, un jour et
+  des places EST une invitation — combinée au quota de réécriture demandé aux
+  agents. Le dégradé de tête (§④) reste la contre-mesure : quelle que soit la
+  passion cochée, les quatre premières cartes montrent quatre envies différentes.
+  Si le fil devait paraître monotone, le levier est le quota de réécriture, pas
+  le ré-étiquetage — remettre un mensonge sur une carte serait revenir au défaut
+  d'origine.
+
+  ⚠️ **Ajoutées EN FIN de tableau** : trois suites prennent
+  `state.seed.posts[0]` sans le choisir.
 
   ## ④ Le piège qui a demandé un second tour : le classement ignore le mood
 
@@ -152,13 +268,21 @@
   et engagement égaux, **c'est la fraîcheur seule qui décide**. Or les
   publications récentes de chaque passion étaient majoritairement des « Idées ».
 
-  Correctif : les trois séries **roulent les cinq envies dans le temps**, avec
-  une phase décalée d'une série à l'autre — `hours(0.2)` → `hours(1.98)`, en
-  fractions d'heure. Ordre réel obtenu, vérifié au navigateur :
+  Correctif : les trois séries **roulent les envies dans le temps** —
+  `hours(0.2)` → `hours(1.98)`, en fractions d'heure. Chaque série tient la même
+  partition, qui est celle du produit après le passage à quatre intentions :
 
-      musique seule  → 💡 Idées · 📚 Apprendre · 🤝 Rencontrer · 😌 Chill · 🌍 Actu
-      photo seule    → 📚 Apprendre · 🤝 Rencontrer · 😌 Chill · 🌍 Actu · 💡 Idées
-      cuisine seule  → 🤝 Rencontrer · 😌 Chill · 🌍 Actu · 💡 Idées · 📚 Apprendre
+      💡 Idées · 📚 Apprendre · 🤝 Rencontrer · 🤝 Rencontrer (reliée) · neutre
+
+  La quatrième carte porte un `eventId` réel : c'est elle qui montre
+  « Voir l'activité » au testeur, dès le premier écran. Ordre réel obtenu,
+  vérifié au navigateur avec la seule passion « musique » cochée :
+
+      1. 💡 Idées        ⟶ Trouver une activité
+      2. 📚 Apprendre    ⟶ Trouver une activité
+      3. 🤝 Rencontrer   ⟶ Trouver une activité
+      4. 🤝 Rencontrer   ⟶ Voir l'activité        (jam de Léa, e1)
+      5. (aucune pastille — le neutre)
 
   ⚠️ **Les séries doivent rester sous les 2 h.** Au-delà, les publications
   existantes — beaucoup datées de `hours(2)` et `hours(3)` — se glissent au
@@ -177,14 +301,62 @@
 
   ## Verrous
 
-  `tests/e2e/contenu-passion-mood.spec.js` (5 cas) :
-  ① les cinq envies ont cinq fonds ET cinq encres **différents deux à deux** —
+  `tests/e2e/contenu-passion-mood.spec.js` (8 cas) :
+  ① les trois envies ont trois fonds ET trois encres **différents deux à deux** —
   un jeton recopié par erreur rendrait deux envies identiques sans rien casser
-  d'autre ; ② chacune tient l'AA (4,5:1) mesurée sur son fond opaque effectif ;
-  ③ aucune case vide du tableau passion × envie, calculé sur `PASSIONS` et
-  `state.seed.posts` ; ④ les trois séries existent, sur une seule passion
-  chacune, avec cinq envies distinctes ; ⑤ les exemples « Rencontrer »
-  annoncent bien un lieu (📍) et un jour.
+  d'autre ; ① bis chacune tient l'AA (4,5:1) mesurée sur son fond opaque
+  effectif ; ① ter la **passion** est lisible, nommée **une seule fois**, et son
+  texte rendu est inchangé ; ② aucune case vide du tableau passion × envie sur
+  les trois envies vivantes ; ② bis les trois séries tiennent la partition
+  `creation · learn · irl · irl · all`, avec **exactement une** carte reliée ;
+  ② quater **chaque publication reliée pointe vers une activité réellement
+  présente** et porte bien « Rencontrer » ; ② ter les exemples « Rencontrer »
+  annoncent un lieu et un jour ; ③ les valeurs léguées ne dessinent **aucune**
+  pastille.
+
+  `tests/e2e/studio-moods.spec.js` — assertion **retournée** (`chill` et `actu`
+  rendent `""`), plus un cas neuf : « perdre son libellé ne fait pas perdre son
+  droit d'exister » (les deux tables, comparées).
+
+  `tests/e2e/exploration-moods.spec.js` — renommé et **renforcé** : les valeurs
+  léguées entrent toujours dans le repli, et n'y portent aucune pastille.
 
   `tests/e2e/pastille-mood.spec.js` (3 cas, inchangé) tient l'autre bord : le
   neutre et le mood inconnu ne dessinent aucune pastille.
+
+  ---
+
+  ## ⑤ Trois défauts trouvés par l'audit adversarial, dont un en production
+
+  Le lot a été relu par un auditeur indépendant qui a **rejoué les suites en A/B
+  isolé** (avant / après). Trois trouvailles méritent d'être retenues, parce
+  qu'aucune ne se voyait à la relecture.
+
+  ① **Un compteur faux qui survit — défaut PRODUIT, pas de fixture.**
+  `renderFeed` peint 12 cartes puis complète le reste en `requestIdleCallback`,
+  **depuis `visible`, un instantané figé** dont les posts sont des copies
+  (`allFeedPosts` fait `{...p}`). Un like optimiste **annulé** par un refus
+  serveur laissait donc « 🤍 5 » : le cœur relu en direct, le nombre figé à sa
+  valeur optimiste. Les cartes du premier lot sont rattrapées par la retouche en
+  place ; **celles au-delà de la douzième n'existaient pas encore**, donc rien ne
+  pouvait les corriger — et le faux compteur survivait jusqu'au rendu suivant.
+  Mon contenu n'a pas créé ce défaut, il l'a rendu **atteignable** en poussant le
+  fixture du test de la 9ᵉ à la 14ᵉ place. Correctif : `_feedCompteursFrais`
+  relit les compteurs volatils sur l'objet canonique (`findPostAnywhere`) sans
+  toucher au classement — re-classer ferait sauter les cartes sous le doigt.
+
+  ② **Deux tests reposaient sur un ACCIDENT du socle.** Trois cas de
+  `feed-premier-rendu.spec.js` tenaient parce que la case « yoga × creation »
+  était vide — ce n'était écrit nulle part. Le jour où le socle l'a comblée
+  (délibérément : un compte qui cochait yoga + Idées tombait sur un fil vide),
+  les trois sont devenus rouges **sans qu'aucun comportement ne change**. La
+  prémisse appartient au fixture : `viderPassionEnvie(page, "yoga", "creation")`
+  la pose désormais explicitement.
+
+  ③ **Un fixture que la production disputait.** `feed-malformed-post.spec.js`
+  ne vidait pas `state.seed.posts` avant de semer : `renderFeed` ne peignant que
+  20 cartes, cinq publications neuves et très aimées ont suffi à pousser
+  `valid2` hors du lot peint. C'est le piège de la fiche 06, à la lettre.
+
+  ⚠️ **La leçon commune aux trois : un test vert peut l'être pour une raison
+  qui n'est pas la sienne.** Aucun de ces trois-là ne mesurait ce qu'il croyait.
