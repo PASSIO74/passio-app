@@ -444,8 +444,12 @@ test("⑫ résultat vide et erreur Supabase ne cassent pas le fil", async ({ pag
 // COCHÉES. Le `poser` de cette suite ne pose qu'UN profil (« musique ») : lui
 // passer dix passions à afficher n'aurait rendu que deux bulles (elle + « Suivis »),
 // et la mesure aurait été verte sans jamais reproduire le cas de Benjamin.
+// ⚠️ DES IDENTIFIANTS QUI EXISTENT VRAIMENT AU CATALOGUE (`PASSIONS`, app-01).
+// « lecture » et « peinture » n'y sont pas : `passionById` retombe alors sur
+// `{ emoji: "✨", label: "Passion" }` et deux bulles s'appelaient « Passion »
+// — un fixture qui ne dit pas ce qu'il croit dire.
 const DIX = ["musique", "cuisine", "moto", "voyage", "photo",
-             "lecture", "sport", "jardinage", "peinture", "podcast"];
+             "litterature", "sport", "jardinage", "danse", "podcast"];
 async function poserDixPassions(page) {
   await poser(page, { passions: DIX });
   await page.evaluate((noms) => {
@@ -475,7 +479,10 @@ test("⑬ dix passions : le rail du fil coulisse, les bulles ne se chevauchent p
     return {
       nb: rects.length,
       chevauche,
-      lignes: new Set(rects.map((r) => Math.round(r.top))).size,
+      // ⚠️ `offsetTop`, PAS `rect.top` : une bulle cochée porte
+      // `transform: translateY(-2px)`, que le rectangle inclut — une sélection
+      // MIXTE compterait deux « lignes » là où il n'y en a qu'une.
+      lignes: new Set(tuiles.map((t) => t.offsetTop)).size,
       largeurMin: Math.min(...rects.map((r) => r.width)),
       largeurMax: Math.max(...rects.map((r) => r.width)),
       // La vignette doit tenir DANS sa bulle : c'est ce débordement-là qui
@@ -484,11 +491,15 @@ test("⑬ dix passions : le rail du fil coulisse, les bulles ne se chevauchent p
         const a = t.querySelector(".profile-tile-avatar");
         return a && a.getBoundingClientRect().width > t.getBoundingClientRect().width + 1;
       }),
-      // Un libellé qui n'a plus la place d'afficher un seul caractère.
-      libellesVides: tuiles.filter((t) => {
+      // ⚠️ PAS DE SEUIL EN PIXELS SUR LE LIBELLÉ : il dépend des métriques de
+      // police et bascule entre le CI et un poste local. Ce qui prouve la
+      // lisibilité, c'est la LARGEUR DE LA BULLE, mesurée juste au-dessus ; ici
+      // on vérifie que chaque bulle nomme bien sa passion — ce qui attrape au
+      // passage un identifiant de fixture absent du catalogue.
+      libelles: tuiles.map((t) => {
         const l = t.querySelector(".profile-tile-label");
-        return !l || l.getBoundingClientRect().width < 24;
-      }).length,
+        return l ? l.textContent.trim() : null;
+      }),
       coulisse: rail.scrollWidth > rail.clientWidth + 1,
     };
   });
@@ -498,7 +509,9 @@ test("⑬ dix passions : le rail du fil coulisse, les bulles ne se chevauchent p
   expect(vu.lignes, "une seule rangée").toBe(1);
   expect(vu.largeurMin, "une bulle garde la largeur de son libellé").toBeGreaterThanOrEqual(50);
   expect(vu.largeurMax - vu.largeurMin, "toutes les bulles ont la MÊME largeur").toBeLessThanOrEqual(1);
-  expect(vu.libellesVides, "aucun nom de passion rogné jusqu'à l'invisible").toBe(0);
+  expect(vu.libelles, "chaque bulle nomme sa passion").toEqual(
+    ["Suivis", "Musique", "Cuisine", "Moto", "Voyage", "Photo",
+     "Littérature", "Sport", "Jardinage", "Danse", "Podcast"]);
   expect(vu.coulisse, "la rangée déborde du rail : on la fait défiler gauche/droite").toBe(true);
 });
 

@@ -206,6 +206,14 @@ test("③ bis — toucher une bulle FILTRE, elle ne quitte plus le profil", asyn
   expect(vu.modaleOuverte, "on reste sur le profil").toBe(false);
 });
 
+// ⚠️ DES IDENTIFIANTS QUI EXISTENT VRAIMENT AU CATALOGUE (`PASSIONS`, app-01).
+// « lecture » et « peinture » n'y sont pas : `passionById` retombe alors sur
+// `{ emoji: "✨", label: "Passion" }`, et la mesure portait sur deux bulles
+// homonymes au lieu des passions annoncées — un fixture qui ne dit pas ce qu'il
+// croit dire.
+const DIX_REELLES = ["moto", "podcast", "voyage", "cuisine", "musique",
+                     "sport", "photo", "litterature", "jardinage", "danse"];
+
 // Géométrie du rail de passions — partagée par les trois mesures ci-dessous.
 // Évaluée DANS la page (elle est sérialisée par `page.evaluate`).
 function mesurerRail() {
@@ -220,19 +228,38 @@ function mesurerRail() {
     }
   }
   const railRect = rail.getBoundingClientRect();
+  const plus = rail.querySelector('[data-passion-tile="__ajouter__"]');
   return {
     chevauche,
-    lignes: new Set(rects.map((r) => Math.round(r.top))).size,
+    // ⚠️ `offsetTop`, PAS `getBoundingClientRect().top` : une bulle cochée porte
+    // `transform: translateY(-2px)`, que le rectangle inclut. Sur une sélection
+    // MIXTE (des cochées et des non cochées) on compterait deux « lignes » là où
+    // il n'y en a qu'une. Les suites actuelles ont des rails tout cochés ou tout
+    // décochés — elles seraient passées par chance.
+    lignes: new Set(tuiles.map((c) => c.offsetTop)).size,
     nb: rects.length,
     largeurMin: Math.min(...rects.map((r) => r.width)),
     largeurMax: Math.max(...rects.map((r) => r.width)),
-    // Un libellé qui n'a plus la place d'afficher un seul caractère.
-    libellesVides: tuiles.filter((c) => {
+    // ⚠️ PAS DE SEUIL EN PIXELS SUR LE LIBELLÉ. Un « au moins N px de large »
+    // dépend des métriques de police et bascule entre le CI et un poste local
+    // (« Moto » mesure ~23-25 px selon la fonte). Ce qui prouve vraiment la
+    // lisibilité, c'est la LARGEUR DE LA BULLE, mesurée juste au-dessus ; ici on
+    // vérifie seulement que chaque bulle nomme bien la passion attendue — ce qui
+    // attrape au passage un identifiant de fixture absent du catalogue, que
+    // `passionById` rendrait « Passion » pour toutes.
+    libelles: tuiles.map((c) => {
       const l = c.querySelector(".profile-tile-label");
-      return !l || l.getBoundingClientRect().width < 24;
-    }).length,
+      return l ? l.textContent.trim() : null;
+    }),
     coulisse: rail.scrollWidth > rail.clientWidth + 1,
     railDansEcran: railRect.right <= window.innerWidth + 1 && railRect.left >= -1,
+    // La porte d'ajout est-elle ENTIÈREMENT dans le champ visible du rail ?
+    // Un test de présence ne le dirait pas : hors du scrollport, le nœud reste
+    // « visible » pour Playwright et `.click()` fait défiler tout seul.
+    plusDansLeChamp: !plus ? null : (function () {
+      const pr = plus.getBoundingClientRect();
+      return pr.left >= railRect.left - 1 && pr.right <= railRect.right + 1;
+    })(),
     hauteur: Math.round(railRect.height),
   };
 }
@@ -284,9 +311,8 @@ test("③ quater — six passions : la rangée COULISSE, elle ne se comprime pas
 // 30 : seule la longueur de la rangée change.
 test("③ quater bis — DIX passions : les bulles gardent leur taille et leur nom", async ({ page }) => {
   await poser(page, {
-    profiles: ["moto", "podcast", "voyage", "cuisine", "musique", "sport",
-               "photo", "lecture", "jardinage", "peinture"].map((p, i) => ({
-      id: "pp_" + p, name: "Benjamin", passion: p, emoji: "✨", color: "#7c3aed", createdAt: i + 1,
+    profiles: DIX_REELLES.map((p, i) => ({
+      id: "pp_" + i, name: "Benjamin", passion: p, emoji: "✨", color: "#7c3aed", createdAt: i + 1,
     })),
   });
   const vu = await page.evaluate(mesurerRail);
@@ -295,10 +321,46 @@ test("③ quater bis — DIX passions : les bulles gardent leur taille et leur n
   expect(vu.lignes, "toujours une seule rangée").toBe(1);
   expect(vu.largeurMin, "à dix, une bulle fait la même largeur qu'à trois").toBeGreaterThanOrEqual(60);
   expect(vu.largeurMax - vu.largeurMin, "toutes les bulles ont la MÊME largeur").toBeLessThanOrEqual(1);
-  expect(vu.libellesVides, "aucun libellé rogné jusqu'à l'invisible").toBe(0);
+  expect(vu.libelles, "chaque bulle nomme sa passion").toEqual(
+    ["Ajouter", "Moto", "Podcast", "Voyage", "Cuisine", "Musique",
+     "Sport", "Photo", "Littérature", "Jardinage", "Danse"]);
   expect(vu.coulisse, "la rangée se fait défiler à gauche et à droite").toBe(true);
   expect(vu.hauteur, "et elle reste une rangée").toBeLessThan(120);
 });
+
+// ══════════════════════════════════════════════════════════════════════════
+// LA PORTE D'AJOUT RESTE DANS LE CHAMP — le prix caché du rail coulissant
+// ──────────────────────────────────────────────────────────────────────────
+// Tant que les bulles se PARTAGEAIENT la largeur, la bulle « + » posée en
+// dernier restait visible quel qu'en soit le nombre. Le rail coulissant l'a
+// poussée hors du scrollport : mesuré à 320 px avec 3 passions — le plafond
+// gratuit (`PASSIONS_OFFERTES`) — elle commençait à x=326 alors que le rail
+// s'arrêtait à 304, donc ENTIÈREMENT hors écran, pas même un liseré. Et c'est
+// la seule porte VISIBLE : l'autre vit dans `#passionManager`, `hidden` par
+// défaut, derrière le menu options. Elle est désormais en TÊTE du rail.
+//
+// ⚠️ CE DÉFAUT EST INVISIBLE À UN TEST D'EXISTENCE, et c'est tout l'intérêt de
+// celui-ci : pour Playwright, un nœud poussé hors du scrollport d'un conteneur
+// `overflow-x: auto` reste « visible » (sa boîte n'est pas vide), et `.click()`
+// fait défiler tout seul avant de cliquer. `passions-plates.spec.js` serait
+// resté VERT pendant que la porte était introuvable à l'écran. Seule une
+// mesure de rectangles l'attrape.
+// ══════════════════════════════════════════════════════════════════════════
+for (const [largeur, nb] of [[320, 3], [320, 10], [390, 10]]) {
+  test("③ nonies — " + largeur + " px, " + nb + " passions : la porte « + » reste dans le champ", async ({ page }) => {
+    await page.setViewportSize({ width: largeur, height: 844 });
+    await poser(page, {
+      profiles: DIX_REELLES.slice(0, nb).map((p, i) => ({
+        id: "pp_" + i, name: "Benjamin", passion: p, emoji: "✨", color: "#7c3aed", createdAt: i + 1,
+      })),
+    });
+    const vu = await page.evaluate(mesurerRail);
+    expect(vu.nb, nb + " passions plus la porte d'ajout").toBe(nb + 1);
+    expect(vu.plusDansLeChamp,
+      "la porte d'ajout est ENTIÈREMENT visible sans avoir à faire défiler").toBe(true);
+    expect(vu.chevauche, "et rien ne se recouvre").toBe(false);
+  });
+}
 
 // Le geste lui-même : on pousse le rail vers la gauche, il défile, et la
 // position SURVIT à la reconstruction que provoque le choix d'une passion
@@ -306,9 +368,8 @@ test("③ quater bis — DIX passions : les bulles gardent leur taille et leur n
 // tout à droite repartait hors de vue à l'instant où elle s'allumait.
 test("③ quater ter — le rail défile, et sa position survit au choix d'une passion", async ({ page }) => {
   await poser(page, {
-    profiles: ["moto", "podcast", "voyage", "cuisine", "musique", "sport",
-               "photo", "lecture", "jardinage", "peinture"].map((p, i) => ({
-      id: "pp_" + p, name: "Benjamin", passion: p, emoji: "✨", color: "#7c3aed", createdAt: i + 1,
+    profiles: DIX_REELLES.map((p, i) => ({
+      id: "pp_" + i, name: "Benjamin", passion: p, emoji: "✨", color: "#7c3aed", createdAt: i + 1,
     })),
   });
   const vu = await page.evaluate(() => {
@@ -317,14 +378,14 @@ test("③ quater ter — le rail défile, et sa position survit au choix d'une p
     const apresDefilement = Math.round(rail.scrollLeft);
     const htmlAvant = rail.innerHTML;
     // Une passion visible seulement après avoir fait défiler.
-    setProfilePassion("pp_peinture");
+    setProfilePassion("pp_9");
     return {
       apresDefilement,
       apresChoix: Math.round(rail.scrollLeft),
       // Sans reconstruction, la position tiendrait toute seule : le test serait
       // vert sans rien prouver.
       reconstruit: rail.innerHTML !== htmlAvant,
-      cochee: !!rail.querySelector('.profile-tile.active[data-passion-tile="pp_peinture"]'),
+      cochee: !!rail.querySelector('.profile-tile.active[data-passion-tile="pp_9"]'),
     };
   });
   expect(vu.apresDefilement, "le rail accepte réellement un défilement horizontal").toBeGreaterThan(0);
