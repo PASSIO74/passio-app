@@ -7,12 +7,11 @@ description: "Suite Playwright complète + audits globals et handlers. Dire : la
 
 ## Lancer (dans l'ordre, tout doit être vert)
 ```
-npm run audit:globals
-npm run audit:handlers
-npm run test:all
+npm run verif        # les 7 gates statiques de la CI, ~2 s
+npm run test:all     # la suite Playwright complète
 ```
-- `audit:globals` : collisions de globals (17 scripts partagent window) — aussi dans le CI, AVANT Playwright.
-- `audit:handlers` : onclick référençant des fonctions fantômes.
+- `verif` : les SEPT gates statiques que la CI exige, en ~2 s — collisions de globals (17 scripts partagent `window`), onclick fantômes, échappement contextuel, tests creux, stub Supabase hors ligne, clés de télémétrie contre le filtre PII, miroirs du référentiel des passions. **Toujours les lancer AVANT Playwright** : un rouge ici se trouve en 2 s au lieu d'un cycle CI de ~30 min.
+- `test:local` / `test:prod` : la suite sans écriture en base (897 tests) ou les 7 suites à comptes réels.
 - `test:all` : suite Playwright complète (smoke, access-gate, cadrage, feed-ranking, irl, cdv, dist-build…).
 
 Première fois : `npx playwright install chromium`.

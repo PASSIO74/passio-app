@@ -15,11 +15,10 @@ Objectif : aller au bout de la chaîne coder → tester → committer → pousse
 
 3. **Audits + tests** (bloquants) :
    ```
-   npm run audit:globals
-   npm run audit:handlers
+   npm run verif
    npm test
    ```
-   `audit:globals` détecte les collisions de globals (17 scripts classiques partagent `window`), `audit:handlers` les onclick fantômes. Si un test échoue, **corriger la cause**, ne pas contourner.
+   `npm run verif` = les SEPT gates statiques que la CI exige, en 2 s : collisions de globals (17 scripts partagent `window`), onclick fantômes, échappement contextuel, tests creux, stub Supabase hors ligne, clés de télémétrie contre le filtre PII, référentiel des passions. ⚠️ Ne pas se contenter de `audit:globals` + `audit:handlers` : les cinq autres sont bloquants en CI et se découvraient après un cycle complet. Si un test échoue, **corriger la cause**, ne pas contourner.
 
 4. **Build prod** (si un fichier `js/app-*.js`, `emoji-misc.js`, `index.html` ou `styles.css` a changé) :
    ```

@@ -52,7 +52,13 @@ module.exports = defineConfig({
   // (tous les cœurs) le serveur statique partagé sature et provoque de faux
   // rouges. On borne les workers (moins de contention) et on remonte les retries
   // à 2 (un flake ponctuel repasse en « flaky », jamais en « failed »).
-  retries: 2,
+  // ⚠️ 2 essais EN CI SEULEMENT (2026-09-02). `retries: 2` était inconditionnel :
+  // en local, tout test rouge était donc rejoué trois fois — précisément au moment
+  // où l'on itère et où l'attente coûte le plus. Mesuré : 15 exécutions pour 5 tests
+  // en échec. En CI les essais gardent tout leur sens (un flake ponctuel repasse en
+  // « flaky », jamais en « failed »). `PASSIO_RETRIES=2` les rétablit localement pour
+  // diagnostiquer un test instable.
+  retries: process.env.CI ? 2 : Number(process.env.PASSIO_RETRIES || 0),
   workers: process.env.CI ? 2 : "50%",
   // Après une suite multi-comptes (PASSIO_E2E_MULTI=1) : purge des comptes
   // jetables %@passio-e2e.test en prod (best-effort, no-op sinon).

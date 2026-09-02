@@ -12,8 +12,7 @@ Filet de sécurité avant `/ship`. Combine l'œil expert (subagent) et les audit
 2. **Subagent `audit-passio`** : le lancer sur le diff — il connaît les pièges transverses (findPostAnywhere, supaTs, 3 helpers d'échappement, collisions globals, catch large, RLS 0-ligne, guards de rendu).
 3. **Audits mécaniques** :
    ```
-   npm run audit:globals
-   npm run audit:handlers
+   npm run verif
    ```
    + `node --check` sur chaque `.js` modifié.
 4. **Fiches de pièges** : lire la fiche `docs/PIEGES_CONNUS.md` du/des domaines touchés — il y a presque toujours un invariant local.
@@ -21,7 +20,7 @@ Filet de sécurité avant `/ship`. Combine l'œil expert (subagent) et les audit
 6. **Tests** : la couverture existe-t-elle ? Sinon proposer/écrire (skill `/new-test`), et faire tourner `/test`.
 
 ## Sortie
-Liste priorisée (bloquant / à corriger / suggestion) : fichier:ligne, problème, conséquence concrète, correctif. Si tout est propre, le dire et enchaîner sur `/ship`. Ne jamais valider un diff sans avoir lancé au moins `audit:globals` + `audit:handlers`.
+Liste priorisée (bloquant / à corriger / suggestion) : fichier:ligne, problème, conséquence concrète, correctif. Si tout est propre, le dire et enchaîner sur `/ship`. Ne jamais valider un diff sans avoir lancé `npm run verif` — les sept gates statiques de la CI, en 2 s.
 
 ## Rappel
 Sur PASSIO, un bug se cache souvent dans un `catch` large (invisible dans `client_errors`) ou une mutation RLS à 0 ligne — insister sur ces deux points.
