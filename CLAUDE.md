@@ -159,6 +159,7 @@ Ces règles transverses valent pour TOUTE modification. Le subagent `audit-passi
 - **Guards de rendu** : écrire dans `#feedList`/`#storiesRowFeed`/`#profileStrip` sans invalider `_feedDomSig`/`_lastHtml` fait sauter le prochain render.
 - **Build** : exactement 9 fichiers app-*.js entre les marqueurs BUILD:APP. Prod = app.js + styles.css externalisés (hash de contenu).
 - **openModal n’empile pas** : ouvrir une modale depuis une autre la REMPLACE (mémoriser d’où l’on vient) ; `openModal` injecte déjà un `×`.
+- **Panneau animé : le contenu AVANT la révélation.** Ne jamais poser la classe qui fait entrer un panneau glissant (`#conv-fullpage.active`…) avant d’y avoir injecté son contenu, et ne jamais laisser un `will-change: transform` PERMANENT sur un panneau qui passe l’essentiel du temps hors champ, découpé par l’`overflow:hidden` de `.app-shell` : la couche composée est demandée vide, et sur Android ses tuiles reviennent blanches jusqu’à la prochaine invalidation — soit le premier toucher. Défaut vécu le 2026-09-02 sur la messagerie (« j’ouvre une conversation, les messages déjà envoyés ne s’affichent qu’après avoir retapé sur l’écran »). La transition promeut déjà la couche le temps de l’animation. Verrou : `tests/e2e/conv-ouverture-fil.spec.js` (4).
 
 ## Hooks & permissions (`.claude/settings.json`)
 
