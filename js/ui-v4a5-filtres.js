@@ -84,6 +84,38 @@
   var DONE_ID = "v4a5Done";
   var RESET_ID = "v4a5Reset";
 
+  // ⚠️ VOLETS REPLIÉS À L'OUVERTURE (2026-09-02, demande de Benjamin : « je
+  // voudrais que tout tienne sur la page sans descendre »). Le volet Date
+  // s'ouvrait d'office et pesait 337 px à lui seul — le tiers du panneau —
+  // alors que Distance et Horaire, eux, étaient repliés : « Voir les
+  // activités » se trouvait hors de l'écran, donc valider ses choix
+  // demandait de descendre.
+  //
+  // `_syncIrlFilterTabs()` lit `window._irlFilterTab || "date"` et pose la
+  // classe `on` sur le volet correspondant, À CHAQUE `renderIRL()`. Une
+  // valeur qui ne désigne AUCUN onglet laisse donc les trois volets repliés,
+  // sans toucher au moteur ni masquer quoi que ce soit en CSS — ce qui aurait
+  // fait mentir la pastille « ce filtre est actif » des onglets.
+  //
+  // ⚠️ Elle doit être NON VIDE : `""` est faux, et le moteur retomberait sur
+  // « date ». Et elle est rendue à "date" quand la vue se ferme ou que le
+  // drapeau tombe, sinon la feuille historique (`openIrlFiltersPanel`, qui ne
+  // repose la valeur que si elle est absente) s'ouvrirait sans aucun volet.
+  var TAB_AUCUN = "aucun";
+
+  function replierVolets() {
+    try {
+      window._irlFilterTab = TAB_AUCUN;
+      if (typeof _syncIrlFilterTabs === "function") _syncIrlFilterTabs();
+    } catch (e) { fail("replier_volets", e); }
+  }
+
+  function rendreVoletParDefaut() {
+    try {
+      if (window._irlFilterTab === TAB_AUCUN) window._irlFilterTab = "date";
+    } catch (e) {}
+  }
+
   var vueFiltres = false;
   var enPanne = false;
   var observateur = null;
@@ -428,7 +460,9 @@
     // (`openIrlFiltersPanel`), que ce lot ne passe plus jamais. Sans cet appel,
     // le volet Date s'ouvre VIDE — un échec parfaitement muet.
     try { if (typeof _renderIrlInlineCal === "function") _renderIrlInlineCal(); } catch (e) { fail("calendrier", e); }
-    try { if (typeof _syncIrlFilterTabs === "function") _syncIrlFilterTabs(); } catch (e) {}
+    // Les trois volets repartent repliés : c'est ce qui fait tenir le panneau
+    // sur un écran. Un tap sur Date, Distance ou Horaire ouvre le sien.
+    replierVolets();
     try { if (typeof _syncIrlDistanceUI === "function") _syncIrlDistanceUI(); } catch (e) {}
     try { if (typeof _syncIrlTimeUI === "function") _syncIrlTimeUI(); } catch (e) {}
     syncOnglets();
@@ -445,6 +479,7 @@
     if (!vueFiltres) return;
     vueFiltres = false;
     document.documentElement.removeAttribute(ATTR_VUE);
+    rendreVoletParDefaut();
     syncOnglets();
     track("ui_v4a5_ferme", { v: VERSION, r: String(raison || "onglet") });
   }
@@ -469,6 +504,20 @@
       basculer();
       return;
     }
+    // ⚠️ Un onglet de volet DÉJÀ ouvert se referme au second tap. Sans ça, le
+    // panneau n'aurait plus qu'un sens : on peut déplier Date, jamais le
+    // replier — et on retombe sur le panneau qui dépasse de l'écran. Le
+    // `onclick` inline `setIrlFilterTab('date')` n'a pas de bascule : on
+    // l'arrête en CAPTURE, exactement comme celui de `#irlToolsBtn`, et il
+    // reste intact pour la coupure.
+    var ftab = vueFiltres && t.closest(".irl-ftab");
+    if (ftab && ftab.closest("#" + AVANCE_ID) && ftab.classList.contains("sel")) {
+      e.preventDefault();
+      e.stopPropagation();
+      replierVolets();
+      return;
+    }
+
     // Un clic sur Liste ou Carte rend la main à UI-4A3 : la vue Filtres se
     // referme, et l'événement suit son cours normal.
     if (vueFiltres && t.closest("[data-v4a3-onglet]")) fermer("vue");
@@ -522,6 +571,7 @@
       racine.removeAttribute(ATTR_VUE);
       // Restituer AVANT de retirer le panneau : les nœuds déplacés vivent
       // dedans, le supprimer les emporterait.
+      rendreVoletParDefaut();
       rendrePassions();
       rendreAvance();
       rendreRoleOnglet();
