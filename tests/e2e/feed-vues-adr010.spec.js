@@ -422,3 +422,121 @@ test("⑫ résultat vide et erreur Supabase ne cassent pas le fil", async ({ pag
   expect(etat.quelqueChose).toBe(true);
   expect(erreurs).toEqual([]);
 });
+
+// ══════════════════════════════════════════════════════════════════════════
+// LE RAIL DE PASSIONS DU FIL EST COULISSANT (2026-09-02)
+// ──────────────────────────────────────────────────────────────────────────
+// Défaut vécu par Benjamin avec dix passions : « l'affichage des bulles sur le
+// fil en haut ça chevauche les unes derrière les autres et on ne voit plus
+// écrit les noms ». `.profile-tile` portait `flex: 1 1 0` — les bulles se
+// partageaient la largeur du rail, donc à onze (dix passions + « Suivis »)
+// chacune tombait sous 26 px : la vignette de 34 px débordait de sa case et le
+// libellé était rogné jusqu'à l'invisible. Réponse : « met plutôt un système
+// coulissant, je switch gauche ou droite pour faire défiler les passions ».
+//
+// ⚠️ CE PALIER-CI EST DISTINCT DE CELUI DU PROFIL. Le Fil est habillé par le
+// lot UI-7 (`:root.passio-ui-7 #screen-feed .profile-tile`), qui redéfinit ses
+// dimensions et gagne par spécificité : `profil-entete-passions.spec.js` ne
+// couvre donc PAS cette règle-là. Oublier ce test remettrait le défaut en
+// production sur la seule surface où il a été vu.
+// ══════════════════════════════════════════════════════════════════════════
+// ⚠️ LE RAIL SE CONSTRUIT DEPUIS `state.user.profiles`, PAS depuis les passions
+// COCHÉES. Le `poser` de cette suite ne pose qu'UN profil (« musique ») : lui
+// passer dix passions à afficher n'aurait rendu que deux bulles (elle + « Suivis »),
+// et la mesure aurait été verte sans jamais reproduire le cas de Benjamin.
+// ⚠️ DES IDENTIFIANTS QUI EXISTENT VRAIMENT AU CATALOGUE (`PASSIONS`, app-01).
+// « lecture » et « peinture » n'y sont pas : `passionById` retombe alors sur
+// `{ emoji: "✨", label: "Passion" }` et deux bulles s'appelaient « Passion »
+// — un fixture qui ne dit pas ce qu'il croit dire.
+const DIX = ["musique", "cuisine", "moto", "voyage", "photo",
+             "litterature", "sport", "jardinage", "danse", "podcast"];
+async function poserDixPassions(page) {
+  await poser(page, { passions: DIX });
+  await page.evaluate((noms) => {
+    state.user.profiles = noms.map((p, i) => ({
+      id: "pp_" + i, name: "Audit QA", passion: p, emoji: "🎵", color: "#7c3aed", createdAt: i + 1,
+    }));
+    state.user.currentProfileId = "pp_0";
+    window._feedDomSig = null;
+    renderFeed();
+  }, DIX);
+  await page.waitForTimeout(300);
+}
+
+test("⑬ dix passions : le rail du fil coulisse, les bulles ne se chevauchent plus", async ({ page }) => {
+  await poserDixPassions(page);
+  const vu = await page.evaluate(() => {
+    const rail = document.getElementById("profileStrip");
+    const tuiles = [...rail.querySelectorAll(".profile-tile")];
+    const rects = tuiles.map((t) => t.getBoundingClientRect());
+    let chevauche = false;
+    for (let i = 0; i < rects.length; i++) {
+      for (let j = i + 1; j < rects.length; j++) {
+        const a = rects[i], b = rects[j];
+        if (a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom) chevauche = true;
+      }
+    }
+    return {
+      nb: rects.length,
+      chevauche,
+      // ⚠️ `offsetTop`, PAS `rect.top` : une bulle cochée porte
+      // `transform: translateY(-2px)`, que le rectangle inclut — une sélection
+      // MIXTE compterait deux « lignes » là où il n'y en a qu'une.
+      lignes: new Set(tuiles.map((t) => t.offsetTop)).size,
+      largeurMin: Math.min(...rects.map((r) => r.width)),
+      largeurMax: Math.max(...rects.map((r) => r.width)),
+      // La vignette doit tenir DANS sa bulle : c'est ce débordement-là qui
+      // faisait se recouvrir les ronds, avant même que les cases se touchent.
+      vignetteDeborde: tuiles.some((t) => {
+        const a = t.querySelector(".profile-tile-avatar");
+        return a && a.getBoundingClientRect().width > t.getBoundingClientRect().width + 1;
+      }),
+      // ⚠️ PAS DE SEUIL EN PIXELS SUR LE LIBELLÉ : il dépend des métriques de
+      // police et bascule entre le CI et un poste local. Ce qui prouve la
+      // lisibilité, c'est la LARGEUR DE LA BULLE, mesurée juste au-dessus ; ici
+      // on vérifie que chaque bulle nomme bien sa passion — ce qui attrape au
+      // passage un identifiant de fixture absent du catalogue.
+      libelles: tuiles.map((t) => {
+        const l = t.querySelector(".profile-tile-label");
+        return l ? l.textContent.trim() : null;
+      }),
+      coulisse: rail.scrollWidth > rail.clientWidth + 1,
+    };
+  });
+  expect(vu.nb, "dix passions plus la bulle « Suivis »").toBe(11);
+  expect(vu.chevauche, "AUCUNE bulle n'en recouvre une autre").toBe(false);
+  expect(vu.vignetteDeborde, "aucune vignette ne déborde de sa bulle").toBe(false);
+  expect(vu.lignes, "une seule rangée").toBe(1);
+  expect(vu.largeurMin, "une bulle garde la largeur de son libellé").toBeGreaterThanOrEqual(50);
+  expect(vu.largeurMax - vu.largeurMin, "toutes les bulles ont la MÊME largeur").toBeLessThanOrEqual(1);
+  expect(vu.libelles, "chaque bulle nomme sa passion").toEqual(
+    ["Suivis", "Musique", "Cuisine", "Moto", "Voyage", "Photo",
+     "Littérature", "Sport", "Jardinage", "Danse", "Podcast"]);
+  expect(vu.coulisse, "la rangée déborde du rail : on la fait défiler gauche/droite").toBe(true);
+});
+
+// Le geste, et sa conséquence la moins évidente : cocher une passion reconstruit
+// le rail, donc `innerHTML` renverrait la rangée tout à gauche — et ferait
+// sortir de l'écran la bulle qu'on vient de toucher. `ecrireRailCoulissant`
+// (app-02) repose la position ; sans elle le rail « saute » à chaque tap.
+test("⑬ bis — le défilement du rail survit au cochage d'une passion", async ({ page }) => {
+  await poserDixPassions(page);
+  const vu = await page.evaluate(() => {
+    const rail = document.getElementById("profileStrip");
+    rail.scrollLeft = 150;
+    const avant = Math.round(rail.scrollLeft);
+    // Une passion atteignable seulement après avoir fait défiler.
+    const htmlAvant = rail.innerHTML;
+    toggleProfileFilter("podcast");
+    return {
+      avant,
+      apres: Math.round(rail.scrollLeft),
+      // Sans reconstruction, la position se conserverait toute seule et le test
+      // serait vert sans rien prouver.
+      reconstruit: rail.innerHTML !== htmlAvant,
+    };
+  });
+  expect(vu.avant, "le rail accepte réellement un défilement horizontal").toBeGreaterThan(0);
+  expect(vu.reconstruit, "cocher une passion RECONSTRUIT bien le rail").toBe(true);
+  expect(vu.apres, "et il ne repart pas tout à gauche quand on coche").toBe(vu.avant);
+});

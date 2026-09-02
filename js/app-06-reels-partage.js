@@ -1670,8 +1670,14 @@ function renderProfilePassionRail() {
     rail.setAttribute("role", "group");
     rail.setAttribute("aria-label", "Filtrer ce profil par passion");
   }
+  // ⚠️ DÉPLACER UN NŒUD REMET SON `scrollLeft` À ZÉRO, tout comme réécrire son
+  // `innerHTML`. Et ce chemin-ci échappe à `ecrireRailCoulissant` : la sortie
+  // anticipée sur `data-v9-sig` (plus bas) rend le rail sans jamais réécrire son
+  // contenu, donc sans jamais repasser par lui. On repose la position ici même.
   if (rail.nextSibling !== ancre || rail.parentNode !== ancre.parentNode) {
+    var _xRail = rail.scrollLeft || 0;
     ancre.parentNode.insertBefore(rail, ancre);
+    if (_xRail > 0) { try { rail.scrollLeft = _xRail; } catch (e) {} }
   }
 
   var vivantes = passionsVivantes();
@@ -1686,7 +1692,7 @@ function renderProfilePassionRail() {
       + '<span class="link" onclick="openCreateProfile()">Ajouter une passion</span></div>';
     if (rail.getAttribute("data-v9-sig") !== "vide") {
       rail.setAttribute("data-v9-sig", "vide");
-      rail.innerHTML = vide;
+      ecrireRailCoulissant(rail, vide);
     }
     rail.classList.toggle("has-filter", false);
     return rail;
@@ -1705,7 +1711,37 @@ function renderProfilePassionRail() {
   // produisent le même état. En garder une aurait laissé deux commandes pour un
   // seul résultat — et la question « laquelle est active ? » quand on coche une
   // passion alors que « Toutes » l'est déjà.
-  var html = vivantes.map(function (pr) {
+  // ⚠️ LA PORTE D'AJOUT EST EN TÊTE DU RAIL, ET C'EST UNE CONSÉQUENCE DIRECTE
+  // DU RAIL COULISSANT (2026-09-02). Tant que les bulles se partageaient la
+  // largeur, la bulle « + » posée EN DERNIER restait visible quel qu'en soit le
+  // nombre. Depuis qu'elles ont une largeur fixe et que la rangée déborde, elle
+  // sortait du champ : mesuré à 320 px avec 3 passions — le plafond gratuit
+  // (`PASSIONS_OFFERTES`) — elle commence à x=326 alors que le rail s'arrête à
+  // 304, donc ENTIÈREMENT hors écran, pas même un liseré qui inviterait à
+  // faire défiler. Et c'est la seule porte VISIBLE : l'autre vit dans
+  // `#passionManager`, `hidden` par défaut, derrière le menu options.
+  //
+  // La tête plutôt qu'un `position: sticky` : le fond du rail est transparent
+  // jusqu'à `.app-shell`, qui peint un dégradé radial sur #f6f5fa. Une bulle
+  // collante devrait donc repeindre ce fond sous les bulles qui glissent
+  // dessous, et tout raccord de couleur se verrait. En tête, elle est visible
+  // par construction, sans une seule couleur à deviner.
+  //
+  // ⚠️ Un test d'existence ne voit PAS ce défaut : pour Playwright, un nœud
+  // poussé hors du scrollport d'un conteneur `overflow-x: auto` reste
+  // « visible » (sa boîte n'est pas vide), et `.click()` fait défiler tout seul.
+  // Seule une mesure de rectangles l'attrape — `③ nonies` s'en charge.
+  var portePlus = "";
+  if (typeof PassioFlatUI !== "undefined" && PassioFlatUI.actif()) {
+    portePlus = '<div class="profile-tile psel-tile-plus" role="button" tabindex="0"'
+      + ' data-passion-tile="__ajouter__" title="Ajouter une passion"'
+      + ' aria-label="Ajouter une passion" onclick="ouvrirRecherchePassionsCompte()">'
+      + '<div class="profile-tile-avatar" style="position:relative;">+</div>'
+      + '<div class="profile-tile-label">Ajouter</div>'
+      + "</div>";
+  }
+
+  var html = portePlus + vivantes.map(function (pr) {
     var et = _passionEtiquette(pr);
     var meta = {};
     try { meta = passionById(pr.passion) || {}; } catch (e) {}
@@ -1724,17 +1760,9 @@ function renderProfilePassionRail() {
     });
   }).join("");
 
-  // Lot flat_passions_v1 : la même porte qu'au Fil, au même endroit visuel.
-  if (typeof PassioFlatUI !== "undefined" && PassioFlatUI.actif()) {
-    html += '<div class="profile-tile psel-tile-plus" role="button" tabindex="0"'
-      + ' data-passion-tile="__ajouter__" title="Ajouter une passion"'
-      + ' aria-label="Ajouter une passion" onclick="ouvrirRecherchePassionsCompte()">'
-      + '<div class="profile-tile-avatar" style="position:relative;">+</div>'
-      + '<div class="profile-tile-label">Ajouter</div>'
-      + "</div>";
-  }
-
-  rail.innerHTML = html;
+  // Même raison qu'au Fil : le rail coulisse, sa position doit survivre
+  // à la reconstruction déclenchée par le choix d'une passion (`ecrireRailCoulissant`).
+  ecrireRailCoulissant(rail, html);
   return rail;
 }
 
@@ -2453,7 +2481,10 @@ function renderProfileStrip() {
 
   // Perf : appelé à chaque renderFeed — pas de rebuild si rien n'a changé
   // (les tuiles portent des photos Unsplash : re-set innerHTML = re-décodage/flash).
-  if (box._lastHtml !== tilesHTML) { box.innerHTML = tilesHTML; box._lastHtml = tilesHTML; }
+  // ⚠️ `ecrireRailCoulissant` (app-02), pas `innerHTML` : le rail défile
+  // horizontalement, et une réécriture brute renverrait la rangée tout à gauche
+  // — donc hors de vue la bulle qu'on vient de cocher, si elle était à droite.
+  if (box._lastHtml !== tilesHTML) { ecrireRailCoulissant(box, tilesHTML); box._lastHtml = tilesHTML; }
 }
 
 // ⚠️ FONCTION GLOBALE, et c'est nécessaire : `audit:handlers` exige qu'un
