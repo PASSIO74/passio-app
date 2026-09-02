@@ -1944,7 +1944,12 @@
     /* Popover du menu ⋯ (créé en JS, ancré au bouton) */
     .profile-dots-menu {
       position: fixed;
-      z-index: 1200;
+      /* ⚠️ 10002 et non 1200 : depuis le 2026-09-02 ce menu s'ouvre aussi
+         depuis une MODALE (les ⋯ du profil visité), et `.modal-backdrop` est à
+         10001 — à 1200 il était dans le DOM et INVISIBLE, derrière la modale.
+         Il est appendu à `document.body` et se referme au premier clic ou
+         défilement : rien ne reste au-dessus de l'écran. */
+      z-index: 10002;
       min-width: 210px;
       background: var(--bg-card);
       border: 1px solid var(--border);
