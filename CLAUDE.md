@@ -1678,49 +1678,32 @@ personne.
   changent (l'icône « deux personnes » cède à deux étincelles, le signe de la
   Passio dans le reste de l'application).
 
-  ③ **LE RAIL DE PASSIONS DU PROFIL PASSE DES BULLES AUX PASTILLES DE TEXTE.**
-  « Enlève les onglets ronds violets sous le pseudo des passions, c'est trop gros
-  trop visible ; tu mets juste les passions en question, fin élégant. »
-  `passionChipHTML` (app-02) rend emoji + libellé + décompte ; le rail perd la
-  classe `.profile-strip` (défilement horizontal, colonnes égales, désaturation)
-  et vit sous `.v9-profile-strip`. Appliqué aux DEUX profils — le mien
-  (`#v9ProfilePassions`, app-06) et celui d'un compte visité (`#visitedPassions`,
-  app-04) : deux réponses visuelles à la même question selon le profil ouvert
-  auraient été pires que l'ancienne.
-  ⚠️ **LE FIL N'EST PAS TOUCHÉ.** « Remets les profils du fil comme avant, en
-  bulle » (2026-08-29) tient toujours : cette demande-là ne portait pas sur cet
-  écran. Les deux surfaces partagent désormais leur GESTE
-  (`_passionTileOnclick`) et leur état, plus leur rendu — c'est le geste qui
-  divergeait vraiment quand chacune avait sa copie.
-  ⚠️ **CIBLE TACTILE 44 px, PASTILLE VISIBLE 30 px** — patron déjà établi
-  (`.ident-passion-lien`, `.v3-tempt`, crayon d'UI-6B) : la boîte garde ses
-  44 px, un `::before` en `inset: 7px 0` PEINT la pilule, les marges négatives
-  rendent les 14 px au profil et le `row-gap` de 14 px empêche deux rangées de
-  se chevaucher.
-  ⚠️ **L'ÉTAT SE LIT AU REMPLISSAGE, JAMAIS À L'OPACITÉ.** La bulle distinguait
-  coché de décoché par `opacity: 0.3` ; sur une pastille de texte cela ferait
-  tomber le libellé sous le seuil AA — même piège que les cases du panneau
-  Filtres, éclaircies le 2026-09-01. Corollaire : `_syncVisitedUI` (app-04)
-  n'écrit plus AUCUN style inline, elle ne bascule que la classe et
-  `aria-pressed`.
-  ⚠️ **DEUX SÉLECTEURS QUI SURVIVAIENT À LEUR CIBLE ont été corrigés avec** :
-  l'état vide du profil visité lisait le nom du filtre dans `.profile-tile-label`
-  (il aurait affiché « aucune publication » au lieu de « rien en Moto »), et les
-  deux règles `.psel-tile-plus` de `styles.css` n'avaient plus d'émetteur — la
-  bulle « + » est devenue `.v9-chip-ajout`.
-  ⚠️ **LE RAIL EST LA SEULE RANGÉE DE PASSIONS DU PROFIL — la ligne d'identité
-  sous le pseudo a été RETIRÉE le même jour**, sur arbitrage de Benjamin : « on
-  va supprimer les titres de passion dans le profil sous le pseudo et garder
-  seulement les bulles dessous. » Les deux rangées nommaient les mêmes passions
-  à 5 px d'écart : le doublon de la carte du fil (défaut ①), transposé au
-  profil. Retrait appliqué aux DEUX en-têtes — le mien (`renderMainProfile`,
-  app-06, qui créait `#mainProfileIdent`) et celui d'un compte visité (app-04).
+  ③ **LA LIGNE DE TITRES DE PASSION QUITTE LES DEUX EN-TÊTES DE PROFIL — ET LES
+  BULLES DU RAIL, ELLES, NE BOUGENT PAS.** C'est le point qui a demandé deux
+  tours, et la leçon vaut plus que le résultat.
+  Demande du matin : « enlève les onglets ronds violets sous le pseudo des
+  passions, c'est trop gros trop visible ; tu mets juste les passions en
+  question, fin élégant. » Lue comme une consigne sur les BULLES du rail
+  (`#v9ProfilePassions`), elle a produit une rangée de pastilles de texte
+  (`passionChipHTML`) — et un profil qui nommait ses passions DEUX fois, à 5 px
+  d'écart : le doublon du fil, transposé au profil. Arbitrage du soir, en deux
+  messages : « supprime les titres de passion dans le profil sous le pseudo et
+  garde seulement les bulles dessous », puis « sur le profil remets les bulles
+  rondes comme avant, pas de rangée de passions ovale ».
+  ⚠️ **CE QUI VAUT, ET QU'IL NE FAUT PLUS RELIRE DE TRAVERS** : « les onglets
+  ronds violets sous le pseudo » désignait la LIGNE DE TITRES posée par le lot
+  du 2026-09-01, pas le rail. Elle est retirée de `renderMainProfile` (app-06,
+  qui créait `#mainProfileIdent`) et de l'en-tête du profil visité (app-04). Le
+  rail rend les BULLES `passionTileHTML`, exactement comme avant — même
+  composant que le Fil, exigence de la refonte multi-passion (§1 et §7).
+  `passionChipHTML` et ses règles `.v9-passion-chip` n'auront vécu que quelques
+  heures : elles sont parties avec leur seul appelant.
   ⚠️ **CELA DÉFAIT LE LOT DU 2026-09-01** (« les passions cliquables renvoient
   vers la page de cette passion »), qui n'aura vécu qu'un jour : la page d'une
   passion ne s'ouvre plus depuis un profil. Elle reste atteignable depuis le Fil
   (« Voir la page de la passion », retouche ② ci-dessus, bien plus visible),
   depuis Explorer, les tuiles de tendance et l'IA. Sur un profil, le tap sur une
-  passion FILTRE ce qu'on est en train de regarder — et une pastille ne peut pas
+  passion FILTRE ce qu'on est en train de regarder — et une bulle ne peut pas
   avoir deux destinations.
   ⚠️ **CODE MORT RETIRÉ AVEC** : `identitePassionsChipsHTML`,
   `identitePassionsLiensHTML`, `_identPassionOnclick`, `IDENT_PASSIONS_MAX_PROFIL`
@@ -1736,6 +1719,10 @@ personne.
   passion réapparaît dans une modale, l'oublier ferait perdre la personne par
   qui on l'a découverte. Le test ③ septies l'appelle DIRECTEMENT, puisqu'aucune
   surface ne le passe plus ; il ne peut rien peindre tant que c'est le cas.
+  ⚠️ **VERROU CONTRE UN TROISIÈME TOUR** : le test ③ de
+  `profil-entete-passions.spec.js` exige la présence de `.profile-tile-avatar`
+  dans le rail, sur mon profil comme sur un profil visité. Une rangée « ovale »
+  le fait rougir.
 
   ④ **LA FEUILLE « CRÉER » EST UNE GRILLE DE DEUX COLONNES.** « Je trouve que les
   onglets sont trop grands, mets-les plus petits et bien ordonnés pour que tout

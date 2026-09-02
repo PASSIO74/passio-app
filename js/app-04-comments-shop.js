@@ -2783,11 +2783,9 @@ async function openUserProfile(authorId, source) {
   // ⚠️ MÊME COMPOSANT QUE LE FIL ET QUE MON PROFIL (refonte multi-passion, §1).
   // Ces pastilles étaient d'abord de grandes `.profile-card` — indiscernables
   // d'une liste de comptes — puis des puces `.v10-vfilter` propres à cet écran.
-  // Elles deviennent les PASTILLES `passionChipHTML` (app-02) : un seul rendu,
-  // donc les mêmes dimensions et les mêmes états que sur mon profil, où le rail
-  // a quitté les bulles le 2026-09-02 (« trop gros trop visible »). Laisser des
-  // bulles ici aurait donné deux réponses visuelles à la même question, selon le
-  // profil ouvert. Le choix reste UNIQUE ici, comme sur mon profil.
+  // Elles deviennent les BULLES `passionTileHTML` (app-02) : un seul rendu, donc
+  // les mêmes dimensions et les mêmes états partout où une passion se choisit.
+  // Le choix reste UNIQUE ici, comme sur mon profil.
   //
   // ⚠️ `p.emoji` et `p.label` viennent du jsonb `profiles.passions` d'un AUTRE
   // compte, colonne que toute session authentifiée écrit librement sur SA ligne :
@@ -2795,7 +2793,7 @@ async function openUserProfile(authorId, source) {
   // `passionTileHTML` échappe (texte + `safeUrlAttr` pour la photo) ; ne jamais
   // contourner ce chemin.
   const passionsHTML = userPassions.length > 0
-    ? '<div id="visitedPassions" class="v9-profile-strip" role="group" aria-label="Filtrer ses publications par passion">'
+    ? '<div id="visitedPassions" class="profile-strip v9-profile-strip" role="group" aria-label="Filtrer ses publications par passion">'
       + userPassions.map(p => {
           const pas = passionById(p.id);
           // ⚠️ L'ORDRE compte. `passionById` ne rend JAMAIS null : sur un id
@@ -2807,10 +2805,13 @@ async function openUserProfile(authorId, source) {
           const _catalogue = (pas && pas.label) || "";
           const label = (_catalogue && _catalogue !== "Passion" ? _catalogue : "")
             || p.label || _catalogue || "Passion";
-          return passionChipHTML({
+          return passionTileHTML({
             emoji: p.emoji || "\u2728",
             label: label,
+            photoUrl: passionPhotoUrl(pas),
+            fallbackUrl: passionPhotoFallback(p.id),
             selected: false,
+            dimmed: false,
             action: "visitedPassion", arg: p.id,
             title: label,
             tileKey: p.id,
@@ -3120,6 +3121,7 @@ function switchVisitedTab(tab) {
 // renderProfilesScreen) et les onglets (classe active + aria-pressed).
 function _syncVisitedUI() {
   var v = window._visited; if (!v) return;
+  var _unFiltre = v.passionSel.size > 0;
   document.querySelectorAll("#visitedPassions [data-passion-tile]").forEach(function(c) {
     var id = c.getAttribute("data-passion-tile") || "";
     // Plus de bulle « Toutes » : rien de coché DIT déjà « toutes ». Chaque bulle
@@ -3127,12 +3129,12 @@ function _syncVisitedUI() {
     var on = !!id && v.passionSel.has(id);
     c.classList.toggle("active", on);
     c.setAttribute("aria-pressed", on ? "true" : "false");
-    // ⚠️ PLUS AUCUN STYLE INLINE À TENIR À JOUR depuis le 2026-09-02. La bulle
-    // posait son opacité, son échelle et le poids de son libellé en inline :
-    // il fallait les réécrire ici à chaque changement. La pastille de texte
-    // n'exprime son état que par la classe `active` (remplissage, couleur) et
-    // par `aria-pressed` — un seul endroit à corriger, et le CSS reprend la
-    // main quand le rendu change.
+    // Mêmes états visuels que le Fil et que mon profil : l'opacité et l'échelle
+    // sont posées en style inline par `passionTileHTML`, on les tient à jour.
+    c.style.opacity = on ? "1" : (_unFiltre ? "0.3" : "1");
+    c.style.transform = on ? "scale(1.07)" : "scale(1)";
+    var lbl = c.querySelector(".profile-tile-label");
+    if (lbl) { lbl.style.fontWeight = on ? "800" : "600"; lbl.style.color = on ? "var(--accent)" : ""; }
   });
   document.querySelectorAll("#visitedTabs .profile-tab").forEach(function(b) {
     var on = v.tabSel.has(b.getAttribute("data-vtab"));
@@ -3165,10 +3167,7 @@ function _renderVisitedContent() {
   try {
     var _noms = [];
     v.passionSel.forEach(function (id) {
-      // ⚠️ `.v9-chip-nom` et non plus `.profile-tile-label` : la pastille a
-      // remplacé la bulle. Un sélecteur qui survit à sa cible rend ici un état
-      // vide MUET (« aucune publication » au lieu de « rien en Moto »).
-      var t = document.querySelector('#visitedPassions [data-passion-tile="' + CSS.escape(id) + '"] .v9-chip-nom');
+      var t = document.querySelector('#visitedPassions [data-passion-tile="' + CSS.escape(id) + '"] .profile-tile-label');
       if (t && t.textContent) _noms.push(t.textContent);
     });
     _nomFiltre = _noms.join(" · ");

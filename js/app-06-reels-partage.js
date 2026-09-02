@@ -1578,19 +1578,18 @@ function setEventPassionFilter(profileId) { return setProfilePassion(profileId);
 // ══════════════════════════════════════════════════════════════════════════
 // LE RAIL DE PASSIONS DU PROFIL (refonte multi-passion, §1)
 // ──────────────────────────────────────────────────────────────────────────
-// Les passions se présentent en haut du profil, en PASTILLES DE TEXTE
-// (`passionChipHTML`, app-02) depuis le 2026-09-02.
+// Les passions se présentent en haut du profil, dans le MÊME composant que le
+// Fil — `passionTileHTML` (app-02), donc mêmes classes, mêmes dimensions, mêmes
+// espacements, mêmes états.
 //
-// ⚠️ CE RAIL A PORTÉ LES BULLES DU FIL JUSQU'AU 2026-09-02, et ce n'est plus le
-// cas : « enlève les onglets ronds violets sous le pseudo des passions, c'est
-// trop gros trop visible ; tu mets juste les passions en question, fin élégant »
-// (Benjamin, après essai réel). Les vignettes de 46 px, leur pastille d'emoji et
-// leur libellé formaient un second bloc massif juste sous la carte d'identité.
-// Le FIL, lui, garde ses bulles à l'octet près : la demande du 2026-08-29
-// (« remets les profils du fil comme avant, en bulle ») tient toujours, elle ne
-// portait pas sur cet écran. Les deux surfaces ne partagent donc plus leur
-// rendu — mais elles partagent toujours leur GESTE (`_passionTileOnclick`) et
-// leur état, qui sont ce qui divergeait vraiment quand chacune avait sa copie.
+// ⚠️ ELLES SONT PASSÉES PAR DES PASTILLES DE TEXTE PENDANT UNE JOURNÉE, LE
+// 2026-09-02, ET C'ÉTAIT UNE ERREUR DE LECTURE — ne pas la refaire. Benjamin
+// avait dit « enlève les onglets ronds violets sous le pseudo des passions,
+// c'est trop gros trop visible ; tu mets juste les passions en question, fin
+// élégant » : c'était la LIGNE DE TITRES de la carte d'identité qu'il visait,
+// celle qui répétait les mêmes mots 5 px plus haut, pas les bulles. Il a
+// tranché le soir même : « sur le profil remets les bulles rondes comme avant,
+// pas de rangée de passions ovale. » La ligne de titres, elle, reste retirée.
 //
 // Deux différences assumées avec le Fil, et une seule est visuelle :
 //
@@ -1667,11 +1666,7 @@ function renderProfilePassionRail() {
   if (!rail) {
     rail = document.createElement("div");
     rail.id = "v9ProfilePassions";
-    // ⚠️ PLUS `profile-strip` : cette classe apporte le défilement horizontal,
-    // les colonnes égales (`flex: 1 1 0`) et la désaturation des bulles non
-    // cochées du Fil — trois comportements qui n'ont aucun sens pour une rangée
-    // de pastilles de texte, qui passe à la ligne.
-    rail.className = "v9-profile-strip";
+    rail.className = "profile-strip v9-profile-strip";
     rail.setAttribute("role", "group");
     rail.setAttribute("aria-label", "Filtrer ce profil par passion");
   }
@@ -1715,15 +1710,14 @@ function renderProfilePassionRail() {
     var meta = {};
     try { meta = passionById(pr.passion) || {}; } catch (e) {}
     var on = !!selIds[pr.id];
-    // ⚠️ Ni `photoUrl` ni `dimmed` : la pastille n'a pas de vignette à illustrer,
-    // et l'estompage des non-cochées n'a plus lieu d'être — un contour vide se
-    // distingue déjà d'un contour rempli, alors que deux vignettes photo ne se
-    // distinguaient QUE par l'opacité.
-    return passionChipHTML({
+    return passionTileHTML({
       emoji: et.emoji,
       label: et.label,
+      photoUrl: pr.photoUrl || pr.photo || passionPhotoUrl(meta),
+      fallbackUrl: passionPhotoFallback(pr.passion),
       count: posts.filter(function (x) { return _postDeLaPassion(x, pr); }).length,
       selected: on,
+      dimmed: !on && nbSel > 0,
       action: "profilePassion", arg: String(pr.id),
       title: et.label,
       tileKey: pr.id,
@@ -1732,11 +1726,11 @@ function renderProfilePassionRail() {
 
   // Lot flat_passions_v1 : la même porte qu'au Fil, au même endroit visuel.
   if (typeof PassioFlatUI !== "undefined" && PassioFlatUI.actif()) {
-    html += '<div class="v9-passion-chip v9-chip-ajout" role="button" tabindex="0"'
+    html += '<div class="profile-tile psel-tile-plus" role="button" tabindex="0"'
       + ' data-passion-tile="__ajouter__" title="Ajouter une passion"'
       + ' aria-label="Ajouter une passion" onclick="ouvrirRecherchePassionsCompte()">'
-      + '<span class="v9-chip-emoji" aria-hidden="true">+</span>'
-      + '<span class="v9-chip-nom">Ajouter</span>'
+      + '<div class="profile-tile-avatar" style="position:relative;">+</div>'
+      + '<div class="profile-tile-label">Ajouter</div>'
       + "</div>";
   }
 

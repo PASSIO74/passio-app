@@ -35,16 +35,15 @@ test("① le libellé d'une passion personnalisée est celui publié par son aut
   });
   await page.evaluate(() => openUserProfile("u_tricot"));
   await page.waitForTimeout(1200);
-  // ⚠️ DEUX DÉMÉNAGEMENTS SUCCESSIFS, ET C'EST LE SECOND QUI VAUT. ADR-011 a
-  // fait des pastilles `[data-vpid]` les BULLES du Fil ; le 2026-09-02 elles
-  // sont devenues des PASTILLES DE TEXTE (« trop gros trop visible »). La clé
-  // reste `data-passion-tile`, le libellé vit maintenant dans `.v9-chip-nom`.
-  // On lit le libellé et non le `textContent` de la pastille, qui porterait
-  // aussi l'emoji. Ce que ce test garantit ne bouge pas : le libellé publié par
-  // l'auteur gagne sur le repli générique de `passionById`.
+  // ⚠️ ADR-011 : les pastilles `[data-vpid]` sont devenues les BULLES du Fil
+  // (`passionTileHTML`, §1 « exactement le composant du fil »). La clé est
+  // `data-passion-tile` et le libellé vit dans `.profile-tile-label` — lire le
+  // `textContent` de la bulle rendrait « 🧶🧶Tricot », l'emoji étant peint deux
+  // fois (avatar + glyphe décoratif `aria-hidden`). Ce que ce test garantit ne
+  // bouge pas : le libellé publié par l'auteur gagne sur le repli générique.
   const libelles = await page.evaluate(() =>
     Array.from(document.querySelectorAll("#visitedPassions [data-passion-tile]")).map((b) => {
-      const lbl = b.querySelector(".v9-chip-nom");
+      const lbl = b.querySelector(".profile-tile-label");
       return lbl ? lbl.textContent.trim() : "";
     }));
   // Sans ce garde, les deux assertions ci-dessous passeraient sur une liste VIDE.
@@ -70,16 +69,15 @@ test("① bis — une passion du catalogue garde son libellé de catalogue", asy
   });
   await page.evaluate(() => openUserProfile("u_cat"));
   await page.waitForTimeout(1200);
-  // ⚠️ DEUX DÉMÉNAGEMENTS SUCCESSIFS, ET C'EST LE SECOND QUI VAUT. ADR-011 a
-  // fait des pastilles `[data-vpid]` les BULLES du Fil ; le 2026-09-02 elles
-  // sont devenues des PASTILLES DE TEXTE (« trop gros trop visible »). La clé
-  // reste `data-passion-tile`, le libellé vit maintenant dans `.v9-chip-nom`.
-  // On lit le libellé et non le `textContent` de la pastille, qui porterait
-  // aussi l'emoji. Ce que ce test garantit ne bouge pas : le libellé publié par
-  // l'auteur gagne sur le repli générique de `passionById`.
+  // ⚠️ ADR-011 : les pastilles `[data-vpid]` sont devenues les BULLES du Fil
+  // (`passionTileHTML`, §1 « exactement le composant du fil »). La clé est
+  // `data-passion-tile` et le libellé vit dans `.profile-tile-label` — lire le
+  // `textContent` de la bulle rendrait « 🧶🧶Tricot », l'emoji étant peint deux
+  // fois (avatar + glyphe décoratif `aria-hidden`). Ce que ce test garantit ne
+  // bouge pas : le libellé publié par l'auteur gagne sur le repli générique.
   const libelles = await page.evaluate(() =>
     Array.from(document.querySelectorAll("#visitedPassions [data-passion-tile]")).map((b) => {
-      const lbl = b.querySelector(".v9-chip-nom");
+      const lbl = b.querySelector(".profile-tile-label");
       return lbl ? lbl.textContent.trim() : "";
     }));
   // Sans ce garde, les deux assertions ci-dessous passeraient sur une liste VIDE.

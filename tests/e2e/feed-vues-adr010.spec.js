@@ -321,13 +321,13 @@ test("⑪ le profil d'autrui : une identité, et des filtres de passion", async 
     return {
       html: c ? c.innerText : "",
       // Une seule identité : un seul pseudo en tête, pas une carte par passion.
-      // ⚠️ On lit le LIBELLÉ (`.v9-chip-nom`, `.profile-tile-label` avant le
-      // 2026-09-02), pas le `textContent` de la pastille, qui porte aussi
-      // l'emoji — mesurer le tout rendrait « ✨Toutes », une prémisse fausse et
-      // non un défaut de rendu.
+      // ⚠️ On lit `.profile-tile-label`, pas le `textContent` de la bulle : la
+      // bulle porte l'emoji DEUX fois (le contenu de l'avatar et le glyphe
+      // compact `.profile-tile-glyph`, masqué en CSS). Mesurer le tout rendrait
+      // « ✨✨Toutes » — une prémisse fausse, pas un défaut de rendu.
       filtres: Array.from(document.querySelectorAll("#visitedPassions [data-passion-tile]"))
         .map(b => ({ id: b.getAttribute("data-passion-tile"),
-                     texte: (b.querySelector(".v9-chip-nom") || {}).textContent.trim(),
+                     texte: (b.querySelector(".profile-tile-label") || {}).textContent.trim(),
                      actif: b.classList.contains("active") })),
       cartesIdentite: document.querySelectorAll("#visitedPassions .profile-card").length,
     };
