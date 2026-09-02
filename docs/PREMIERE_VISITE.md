@@ -119,10 +119,75 @@ clé versionnée : uniquement des identifiants du catalogue et une route de reto
 
 **Catalogue.** `PASSIONS` (app-01) + le référentiel serveur restent la SEULE source de
 vérité des passions ; `SPECIALITES` et `SYNONYMES` sont une couche ADDITIVE indexée par
-identifiant existant, lue par `specialitesDe()` et `chercher()` seulement. Le jour où un
-vrai catalogue hiérarchique arrive, il remplace ces deux tables et rien d'autre ne bouge.
-Une spécialité n'est jamais publiée comme une passion (elle n'est pas canonique) : la
-choisir SÉLECTIONNE sa passion parente.
+identifiant existant, lue par `specialitesDe()` et `chercher()` seulement. Le jour où le
+référentiel plat entier prendra leur place (ses 1 908 entrées et leur champ `broader`),
+il n'y aura que ces deux fonctions à toucher. Une spécialité n'est jamais publiée comme
+une passion — `estPassionCanonique` (app-02) reste la seule autorité de publication, et
+la clé étrangère de `posts.passion_id` la dernière barrière.
+
+**⑭ UNE SPÉCIALITÉ CHOISIE DOIT SE VOIR DANS LE FIL (corrigé le 2026-09-02).** Benjamin,
+après essai : « je sélectionne Sport, en dessous tu proposes d'autres sports, exemple Vélo ;
+j'ai sélectionné Vélo et validé, mais sur le fil tu affiches que Sport. » Les identifiants
+de spécialité étaient FABRIQUÉS ici (`"sport:velo"`) : ils ne désignaient aucune passion
+que le reste de l'application sache lire, donc ils ne pouvaient pas entrer dans
+`_activeFeedPassions`, et seule la passion PARENTE survivait. Le choix précis était
+enregistré dans `passio_first_run_v1`, migré vers `state.user.passionSpecialites`… et sans
+le moindre effet nulle part. Une donnée qu'on collecte et qui ne commande rien est pire
+qu'une donnée absente : elle fait croire que le geste a été pris en compte.
+
+Chaque ligne de `SPECIALITES` porte désormais l'identifiant CANONIQUE du référentiel plat
+et son libellé, recopié de la même source (`["cyclisme","Vélo et cyclisme"]`). Trois
+conséquences, et il faut les trois :
+
+- `interetsDuVisiteur()` construit les intérêts du fil comme **parente puis spécialités**,
+  jamais l'une à la place de l'autre. Ne garder que la parente, c'était le défaut ; ne
+  garder que la spécialité serait son symétrique — on retirerait un critère jamais décoché
+  et le fil perdrait tout ce que la passion large apportait. Les critères du fil sont un
+  **OU inclusif** (ADR-011) : ajouter n'enlève rien.
+- `migrerPreferences()` lit `interetsDuVisiteur()` et non `p.passions` : oublier les
+  spécialités là referait perdre le choix précis au moment où le visiteur crée son compte,
+  c'est-à-dire au moment où il devient durable.
+- `assurerReferentiel(ids)` demande `PassioPassions.charger()` puis repeint le rail. Le
+  référentiel plat n'est chargé par PERSONNE au démarrage — seul le sélecteur de passions
+  le demande, à son ouverture — et sans lui `passionById` retombe sur « ✨ Passion » : la
+  bulle du fil existerait sans nommer le choix qu'on vient de faire. **Il n'est demandé
+  que s'il sert** : `appliquerPrefs` tourne à CHAQUE entrée directe, donc l'appeler sans
+  condition aurait remis 160 Ko sur le chemin critique du démarrage pour tout visiteur qui
+  repasse — la décision d'architecture que tient `passions-plates.spec.js` ⑤, et que ce
+  test-là n'aurait PAS vue (il démarre sur un compte, hors de ce parcours).
+
+⚠️ **Deux pièges de démarrage, trouvés par le test et non par relecture.** ① `js/passions-flat.js`
+est chargé APRÈS le bloc `BUILD:APP` et `app-09` lance `boot()` dans une microtâche :
+quand `entreeDirecte()` applique les préférences, `window.PassioPassions` est encore
+`undefined`. Rendre la main là, c'était laisser « ✨ Passion » sur le seul chemin qui
+compte — celui du visiteur qui REVIENT. ② Le rattrapage ne peut PAS être un simple
+écouteur `passio:app-ready` : cet événement n'est émis que par la production
+(`scripts/build.js` l'injecte après le bundle inliné) et ne part JAMAIS en développement,
+c'est-à-dire là où tourne la suite e2e. La reprise est donc un réessai BORNÉ (12 tours,
+~3,6 s) : un module absent après trois secondes ne viendra pas, et une boucle sans fin
+coûterait la batterie de quelqu'un dont le référentiel est simplement coupé.
+
+⚠️ `specialiteValide()` n'interroge PAS `metaPassion()` sur la spécialité elle-même.
+`metaPassion` passe par `estPassionCanonique`, qui ne connaît hors ligne que les 19 du socle
+embarqué et n'apprend les 1 908 autres qu'après une réponse de la table `passions` :
+attendre cette réponse ferait retomber le choix précis sur sa parente, en silence et de
+façon INTERMITTENTE. Un intérêt de LECTURE n'a besoin d'aucune autorisation serveur — le
+filtre du fil est 100 % local. La garantie que l'identifiant existe est posée ailleurs, en
+CI : `npm run passions:verifier` lit le bloc `SPECIALITES` de `js/first-run.js`, refuse un
+identifiant absent de `data/passions/` et signale un libellé qui aurait divergé du sien.
+
+⚠️ Les préférences déjà posées sur un appareil portent l'ancienne forme `"<passion>:<spé>"`.
+`specialiteValide` les refuse — elles ne désignent rien — mais `passionDeSpecialite` sait
+encore en lire la passion parente, qui est ce qui doit survivre à la mise à jour.
+
+Verrous : `tests/e2e/first-run.spec.js` › « une spécialité choisie arrive dans le fil, et sa
+bulle la NOMME » — elle mesure les TROIS étages (identifiant canonique dans la puce, entrée
+dans `_activeFeedPassions` sans perdre `sport`, bulle du rail qui affiche « Vélo ») ; vérifiée
+par mutation, rétablir `p.passions` seul rend `["sport"]`, exactement le défaut rapporté.
+Puis les deux cas du démarrage — « le référentiel plat n'est demandé au démarrage QUE si une
+spécialité l'exige » et « … et il l'est quand une spécialité déjà choisie doit être nommée ».
+Il faut LES DEUX : sans le premier, la dépense est libre ; sans le second, on peut
+« économiser » jusqu'à ne plus rien nommer.
 
 **Ce qui n'est jamais rejoué après inscription** : aucune publication, aucun message,
 aucune inscription à une activité. `apresAuthentification()` restaure l'écran, la position

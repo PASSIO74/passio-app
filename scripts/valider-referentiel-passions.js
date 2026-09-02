@@ -106,7 +106,50 @@ passions.forEach(function (p) {
   if (p.color && !/^#[0-9a-fA-F]{6}$/.test(p.color)) err("couleur non conforme « " + p.color + " » (" + p.id + ")");
 });
 
-// ── 7. Décomptes ───────────────────────────────────────────────────────────
+// ── 7. Spécialités de la première visite ───────────────────────────────────
+// `js/first-run.js` propose, sous chaque passion choisie, quelques passions
+// PRÉCISES du référentiel (« Sport » → « Vélo et cyclisme »). Depuis le
+// 2026-09-02 leurs identifiants sont canoniques : ils entrent dans les intérêts
+// du fil, exactement comme une passion choisie à la main.
+//
+// ⚠️ SANS CE CONTRÔLE, UNE FAUTE DE FRAPPE EST INVISIBLE. Un identifiant mort
+// ne lève rien : `passionById` retombe sur « ✨ Passion », la bulle du fil
+// s'affiche, et elle ne montre simplement jamais aucune publication. C'est un
+// défaut qui ne se voit que sur un appareil réel, avec du contenu réel — donc
+// après la mise en ligne. Il se voit ici, en deux secondes.
+const nbSpecs = (function () {
+  const fs = require("fs");
+  const path = require("path");
+  const fichier = path.join(__dirname, "..", "js", "first-run.js");
+  let src = "";
+  try { src = fs.readFileSync(fichier, "utf8"); } catch (e) { err("js/first-run.js illisible : " + e.message); return 0; }
+  const debut = src.indexOf("var SPECIALITES = {");
+  if (debut < 0) { err("js/first-run.js : bloc `SPECIALITES` introuvable"); return 0; }
+  const fin = src.indexOf("\n  };", debut);
+  if (fin < 0) { err("js/first-run.js : bloc `SPECIALITES` non refermé"); return 0; }
+  const bloc = src.slice(debut, fin);
+  let n = 0;
+  // Les lignes valent `parente: [["id","Libellé"], …]`.
+  bloc.split("\n").forEach(function (ligne) {
+    const m = /^\s*([a-z0-9_]+)\s*:\s*\[/.exec(ligne);
+    if (!m) return;
+    const parente = m[1];
+    if (!parId[parente]) err("first-run · passion parente inconnue : « " + parente + " »");
+    const paires = ligne.match(/\["([^"]+)"\s*,\s*"((?:[^"\\]|\\.)*)"\]/g) || [];
+    paires.forEach(function (paire) {
+      const q = /\["([^"]+)"\s*,\s*"((?:[^"\\]|\\.)*)"\]/.exec(paire);
+      const id = q[1], label = q[2].replace(/\\(.)/g, "$1");
+      n++;
+      const p = parId[id];
+      if (!p) return err("first-run · spécialité « " + id + " » (sous « " + parente + " ») n'existe PAS dans le référentiel");
+      if (p.label !== label) warn("first-run · « " + id + " » est affichée « " + label + " » alors que le référentiel dit « " + p.label + " »");
+    });
+  });
+  if (!n) err("js/first-run.js : aucune spécialité lue — le format du bloc a changé, ce contrôle ne contrôle plus rien");
+  return n;
+})();
+
+// ── 8. Décomptes ───────────────────────────────────────────────────────────
 const nbAlias = passions.reduce((a, p) => a + p.aliases.length, 0);
 const nbPop = passions.filter(p => p.popular).length;
 const nbBroad = passions.filter(p => p.is_broad).length;
@@ -121,6 +164,7 @@ console.log("  proposées au repos  : " + nbPop);
 console.log("  termes généraux     : " + nbBroad);
 console.log("  identifiants légués : " + CANONIQUES.filter(id => parId[id]).length + "/" + CANONIQUES.length);
 console.log("  fichiers sources    : " + new Set(passions.map(p => p._fichier)).size);
+console.log("  spécialités 1re visite : " + nbSpecs);
 
 if (alertes.length) {
   console.log("\n⚠️  " + alertes.length + " alerte(s) :");

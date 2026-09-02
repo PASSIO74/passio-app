@@ -217,48 +217,92 @@
   // par identifiant de passion existant, qui n'apporte que ce que le catalogue
   // n'a pas encore : des spécialités et des synonymes de recherche.
   //
-  // Le jour où un vrai catalogue hiérarchique arrive (passion → spécialités,
-  // avec synonymes), il remplace `SPECIALITES` et `SYNONYMES` ici, et rien
-  // d'autre ne bouge : `specialitesDe()` et `chercher()` sont les deux seuls
-  // points de lecture. Une spécialité n'est jamais publiée comme une passion —
-  // elle n'est pas canonique — elle SÉLECTIONNE sa passion parente.
+  // `specialitesDe()` et `chercher()` restent les deux SEULS points de lecture
+  // de cette couche : la remplacer un jour par le référentiel plat en entier
+  // (ses 1 908 entrées et leur champ `broader`) ne demandera de toucher qu'eux.
+  //
+  // ⚠️ CE QU'UNE SPÉCIALITÉ FAIT : elle sélectionne sa passion parente ET
+  // s'ajoute elle-même aux intérêts du fil. Ce qu'elle ne fait pas : rendre
+  // quoi que ce soit publiable — `estPassionCanonique` (app-02) reste la seule
+  // autorité de publication, et la clé étrangère de `posts.passion_id` la
+  // dernière barrière.
+  //
+  // ⚠️ CHAQUE SPÉCIALITÉ EST UNE VRAIE PASSION DU RÉFÉRENTIEL, ET C'EST TOUT
+  // L'INTÉRÊT (corrigé le 2026-09-02). Les identifiants étaient auparavant
+  // fabriqués ici (« sport:velo ») : ils ne désignaient rien que le reste de
+  // l'application sache lire, donc ils ne pouvaient PAS entrer dans
+  // `_activeFeedPassions` — le fil ne retenait que la passion PARENTE. Quelqu'un
+  // qui choisissait « Sport » puis « Vélo » validait, arrivait sur le fil, et n'y
+  // voyait que « Sport » : son choix précis était enregistré et sans le moindre
+  // effet. Mesuré à l'écran par Benjamin.
+  //
+  // Chaque ligne porte donc l'identifiant CANONIQUE du référentiel plat
+  // (`data/passions/*.js`, 1 908 passions) et son libellé, recopié de la même
+  // source. `tests/e2e/first-run.spec.js` et `npm run passions:verifier`
+  // refusent un identifiant qui n'y existerait pas : une faute de frappe ne peut
+  // pas survivre à la CI.
+  //
+  // Format : passion parente → [[identifiant canonique, libellé], …]
   var SPECIALITES = {
-    musique:     [["guitare","Guitare"],["piano","Piano"],["chant","Chant"],["mao","Beatmaking / MAO"],["batterie","Batterie"]],
-    photo:       [["argentique","Argentique"],["portrait","Portrait"],["rue","Photo de rue"],["nature","Nature"],["retouche","Retouche"]],
-    voyage:      [["randonnee","Randonnée"],["roadtrip","Road trip"],["backpack","Sac à dos"],["vanlife","Van life"],["citytrip","City trip"]],
-    cuisine:     [["patisserie","Pâtisserie"],["vegan","Cuisine végétale"],["boulange","Boulange"],["bbq","Barbecue"],["fermentation","Fermentation"]],
-    sport:       [["course","Course à pied"],["escalade","Escalade"],["velo","Vélo"],["muscu","Musculation"],["natation","Natation"]],
-    litterature: [["romans","Romans"],["poesie","Poésie"],["bd","BD & manga"],["ecriture","Écriture"],["clubs","Clubs de lecture"]],
-    cinema:      [["courtmetrage","Court-métrage"],["montage","Montage"],["cinephilie","Ciné-club"],["docu","Documentaire"]],
-    tech:        [["dev","Développement"],["ia","Intelligence artificielle"],["hardware","Hardware / DIY"],["design","Design produit"],["domotique","Domotique"]],
-    art:         [["dessin","Dessin"],["peinture","Peinture"],["ceramique","Céramique"],["illustration","Illustration"],["street","Street art"]],
-    jardinage:   [["potager","Potager"],["permaculture","Permaculture"],["plantes","Plantes d'intérieur"],["bonsai","Bonsaï"]],
-    metier:      [["bois","Travail du bois"],["couture","Couture"],["cuir","Maroquinerie"],["metal","Métal & forge"],["bijoux","Bijoux"]],
-    jeuxvideo:   [["inde","Jeux indés"],["retro","Rétrogaming"],["esport","Esport"],["creation","Création de jeux"],["jdr","Jeux de rôle"]],
-    yoga:        [["hatha","Hatha"],["vinyasa","Vinyasa"],["meditation","Méditation"],["respiration","Respiration"],["naturo","Naturopathie"]],
-    mode:        [["upcycling","Upcycling"],["vintage","Vintage"],["stylisme","Stylisme"],["sneakers","Sneakers"]],
-    danse:       [["hiphop","Hip-hop"],["contemporain","Contemporain"],["salsa","Salsa"],["classique","Classique"],["afro","Afro"]],
-    podcast:     [["interview","Interview"],["fiction","Fiction sonore"],["montageson","Montage son"],["radio","Radio libre"]],
-    moto:        [["roadster","Roadster"],["trail","Trail / Adventure"],["mecanique","Mécanique"],["balade","Balades"],["custom","Custom"]],
-    animaux:     [["chiens","Chiens"],["chats","Chats"],["equitation","Équitation"],["aquario","Aquariophilie"],["ornitho","Ornithologie"]],
-    actu:        [["geopolitique","Géopolitique"],["sciences","Sciences"],["climat","Climat"],["medias","Médias"]]
+    musique:     [["musique-guitare","Guitare"],["musique-piano","Piano"],["musique-chant","Chant"],["musique-beatmaking","Beatmaking"],["musique-batterie","Batterie"]],
+    photo:       [["photo-argentique","Argentique"],["photo-portrait","Portrait"],["photo-street-photo","Street photo"],["photo-paysage","Paysage"],["photo-retouche","Retouche"]],
+    voyage:      [["voyage-randonnee-voyage","Voyage en randonnée"],["voyage-road-trip","Road trip"],["voyage-backpacking","Backpacking"],["voyage-vanlife","Vanlife"],["voyage-city-break","City break"]],
+    cuisine:     [["cuisine-patisserie","Pâtisserie"],["cuisine-vegan","Vegan"],["cuisine-boulangerie","Boulangerie"],["cuisine-barbecue","Barbecue"],["cuisine-fermentation","Fermentation"]],
+    sport:       [["running","Course à pied"],["sport-escalade","Escalade"],["cyclisme","Vélo et cyclisme"],["fitness-musculation","Musculation"],["nautisme-nage","Natation"]],
+    litterature: [["litterature-romans","Romans"],["litterature-poesie","Poésie"],["litterature-manga","Manga"],["litterature-ecriture","Écriture"],["litterature-club-lecture","Club de lecture"]],
+    cinema:      [["cinema-courts-metrages","Courts-métrages"],["cinema-realisation","Réalisation"],["cinema-cineclub","Ciné-club"],["cinema-documentaires","Documentaires"]],
+    tech:        [["dev","Développement et code"],["ia","Intelligence artificielle"],["tech-hardware","Hardware"],["design-design-produit","Design produit"],["tech-domotique","Domotique"]],
+    art:         [["art-dessin","Dessin"],["art-peinture","Peinture"],["art-ceramique","Céramique"],["art-illustration","Illustration"],["art-street-art","Street art"]],
+    jardinage:   [["jardinage-potager","Potager"],["jardinage-permaculture","Permaculture"],["jardinage-plantes-interieur","Plantes d'intérieur"],["jardinage-bonsai","Bonsaï"]],
+    metier:      [["metier-menuiserie","Menuiserie"],["mode-couture","Couture"],["metier-maroquinerie","Maroquinerie"],["metier-forge","Forge"],["metier-bijouterie","Bijouterie"]],
+    jeuxvideo:   [["jeuxvideo-indie","Jeux indés"],["jeuxvideo-retrogaming","Rétrogaming"],["jeuxvideo-esport","Esport"],["jeuxvideo-game-design","Game design"],["jeux-jeux-de-role","Jeux de rôle"]],
+    yoga:        [["yoga-hatha","Hatha yoga"],["yoga-vinyasa","Vinyasa"],["yoga-meditation","Méditation"],["yoga-respiration","Respiration"],["yoga-sophrologie","Sophrologie"]],
+    mode:        [["mode-upcycling","Upcycling"],["mode-vintage","Vintage"],["mode-stylisme","Stylisme"],["mode-sneakers","Sneakers"]],
+    danse:       [["danse-hip-hop","Hip-hop"],["danse-contemporaine","Danse contemporaine"],["danse-salsa","Salsa"],["danse-classique-danse","Danse classique"],["danse-afro","Danse afro"]],
+    podcast:     [["podcast-interviews","Interviews"],["podcast-fiction-audio","Fiction audio"],["podcast-montage-audio","Montage audio"],["podcast-radio","Radio"]],
+    moto:        [["moto-roadster","Roadster"],["moto-trail-moto","Moto trail"],["moto-mecanique","Mécanique"],["moto-balade","Balade"],["moto-custom","Custom"]],
+    animaux:     [["animaux-chiens","Chiens"],["animaux-chats","Chats"],["sport-equitation","Équitation"],["animaux-aquariophilie","Aquariophilie"],["animaux-ornithologie","Ornithologie"]],
+    actu:        [["actu-geopolitique","Géopolitique"],["sciences","Sciences"],["nature-climat","Climat"],["actu-medias","Médias"]]
   };
+
+  // Index inverse spécialité → passion parente, construit une fois. Le premier
+  // parent déclaré gagne : une même passion ne se rattache qu'à un seul bloc de
+  // chips, sinon la décocher depuis un bloc la laisserait cochée dans l'autre.
+  var _PARENT_SPEC = null;
+  function parentSpec() {
+    if (_PARENT_SPEC) return _PARENT_SPEC;
+    _PARENT_SPEC = Object.create(null);
+    Object.keys(SPECIALITES).forEach(function (pid) {
+      SPECIALITES[pid].forEach(function (s) {
+        if (!_PARENT_SPEC[s[0]]) _PARENT_SPEC[s[0]] = pid;
+      });
+    });
+    return _PARENT_SPEC;
+  }
 
   // Synonymes de RECHERCHE des passions. Le libellé du catalogue est toujours
   // cherché en plus — ceci ne fait qu'ajouter des portes d'entrée.
+  //
+  // ⚠️ LES PORTES QU'UN LIBELLÉ PERD, CETTE TABLE LES REPREND. Aligner les
+  // spécialités sur le référentiel (2026-09-02) a changé quelques libellés :
+  // « Travail du bois » est devenu « Menuiserie », « Sac à dos » « Backpacking »,
+  // « Photo de rue » « Street photo », « BD & manga » « Manga »… La recherche
+  // lisait ces mots-là dans le libellé et ne les lit plus. Un correctif qui
+  // retire des portes d'entrée est un correctif qui coûte quelque chose : les
+  // mots perdus sont donc réinscrits ici, où ils n'ont aucun effet de bord.
   var SYNONYMES = {
     musique: ["zik","concert","instrument","son"],
-    photo: ["appareil","photographie","argentique","objectif"],
-    voyage: ["vacances","aventure","monde","trip"],
-    cuisine: ["food","recette","chef","gastronomie"],
-    sport: ["fitness","running","entrainement","muscu"],
-    litterature: ["livre","lecture","bouquin","roman"],
-    cinema: ["film","serie","realisation","video"],
+    photo: ["appareil","photographie","argentique","objectif","photo de rue","paysage"],
+    voyage: ["vacances","aventure","monde","trip","sac a dos","sac à dos","van life"],
+    cuisine: ["food","recette","chef","gastronomie","vegetale","végétale","boulange"],
+    sport: ["fitness","running","entrainement","muscu","velo","vélo"],
+    litterature: ["livre","lecture","bouquin","roman","bd","bande dessinee","bande dessinée"],
+    cinema: ["film","serie","realisation","video","court metrage","court-métrage"],
     tech: ["informatique","code","ia","numerique","geek"],
     art: ["dessin","peinture","creation","artiste"],
     jardinage: ["plantes","potager","jardin","nature"],
-    metier: ["artisanat","bricolage","diy","fait main","artisan"],
-    jeuxvideo: ["gaming","jeu","console","gamer"],
+    metier: ["artisanat","bricolage","diy","fait main","artisan","bois","travail du bois","metal","métal"],
+    jeuxvideo: ["gaming","jeu","console","gamer","creation de jeux","création de jeux"],
     yoga: ["bien-etre","meditation","zen","relaxation","sophrologie"],
     mode: ["style","vetement","fringues","couture"],
     danse: ["danser","choregraphie","bal"],
@@ -315,27 +359,39 @@
   function specialitesDe(passionId) {
     var brut = SPECIALITES[passionId];
     if (!Array.isArray(brut)) return [];
-    return brut.map(function (s) { return { id: passionId + ":" + s[0], label: s[1], passion: passionId }; });
+    return brut.map(function (s) { return { id: s[0], label: s[1], passion: passionId }; });
   }
 
   // Une spécialité n'existe que rattachée à une passion VIVANTE du catalogue :
   // c'est ce qui garantit qu'un identifiant retenu par la migration désigne
-  // toujours quelque chose. Format `"<passion>:<specialite>"`.
+  // toujours quelque chose.
+  //
+  // ⚠️ ON N'INTERROGE PAS `metaPassion(id)` SUR LA SPÉCIALITÉ ELLE-MÊME, et
+  // c'est délibéré. `metaPassion` passe par `estPassionCanonique`, qui ne
+  // connaît hors ligne que les 19 du socle embarqué et n'apprend les 1 908
+  // autres qu'après une réponse de la table `passions` — attendre cette réponse
+  // ferait retomber le choix précis sur sa passion parente, EN SILENCE et de
+  // façon intermittente. C'est exactement le défaut qu'on corrige. La table
+  // ci-dessus est vérifiée contre `data/passions/` par la CI : elle est déjà la
+  // preuve que l'identifiant existe. Un intérêt de LECTURE n'a de toute façon
+  // besoin d'aucune autorisation serveur — le filtre du fil est local.
   function specialiteValide(id) {
-    if (typeof id !== "string") return false;
-    var i = id.indexOf(":");
-    if (i <= 0) return false;
-    var p = id.slice(0, i), s = id.slice(i + 1);
-    if (!metaPassion(p)) return false;
-    var l = SPECIALITES[p];
-    if (!Array.isArray(l)) return false;
-    for (var k = 0; k < l.length; k++) if (l[k][0] === s) return true;
-    return false;
+    if (typeof id !== "string" || !id) return false;
+    var parent = parentSpec()[id];
+    return !!(parent && metaPassion(parent));
   }
 
   function passionDeSpecialite(id) {
-    var i = String(id || "").indexOf(":");
-    return i > 0 ? String(id).slice(0, i) : "";
+    if (typeof id !== "string" || !id) return "";
+    var parent = parentSpec()[id];
+    if (parent) return parent;
+    // ⚠️ COMPATIBILITÉ AVEC LES PRÉFÉRENCES DÉJÀ POSÉES SUR UN APPAREIL. Avant
+    // le 2026-09-02 une spécialité s'écrivait « <passion>:<spécialité> ». Ces
+    // identifiants-là ne désignent aucune passion réelle — `specialiteValide`
+    // les refuse donc — mais on sait encore lire la passion parente qu'ils
+    // portaient, et c'est elle qui doit survivre à la mise à jour.
+    var i = id.indexOf(":");
+    return i > 0 ? id.slice(0, i) : "";
   }
 
   // Normalisation de recherche : minuscules, accents retirés. `normalize` est
@@ -628,6 +684,7 @@
     _panneauTout = false;
     _panneauQuery = "";
     if (_panneauOrigine === "bienvenue") tel("welcome_personalize_clicked", {});
+    assurerReferentiel();   // les libellés des spécialités viennent du référentiel plat
     try { openModal(panneauHTML()); } catch (e) { journal("ouverture du panneau", e); return; }
     setTimeout(function () {
       var champ = document.getElementById("frSearch");
@@ -663,10 +720,24 @@
       + '</div>';
   }
 
-  function libelleValidation() {
+  // ⚠️ LE COMPTE ANNONCE CE QUI VA RÉELLEMENT ENTRER DANS LE FIL — passions ET
+  // spécialités. Il ne comptait que les passions : quelqu'un qui cochait
+  // « Sport » puis « Vélo et cyclisme » lisait « Voir mon fil (1) », le même
+  // chiffre que s'il n'avait rien affiné. Le bouton disait déjà, en petit, ce
+  // que le fil faisait en grand — oublier le choix précis.
+  //
+  // Le bouton reste commandé par les PASSIONS seules (`nbSelection`) : une
+  // spécialité sélectionne toujours sa parente, donc zéro passion veut bien
+  // dire zéro choix.
+  function nbInterets() {
     var n = nbSelection();
-    if (!n) return "Choisis au moins une passion";
-    return "Voir mon fil (" + n + ")";
+    Object.keys(_selSpecialites || {}).forEach(function (sid) { if (specialiteValide(sid)) n++; });
+    return n;
+  }
+
+  function libelleValidation() {
+    if (!nbSelection()) return "Choisis au moins une passion";
+    return "Voir mon fil (" + nbInterets() + ")";
   }
 
   // Grille : les 12 populaires par défaut, le catalogue entier une fois déplié
@@ -817,12 +888,108 @@
     var s = etat();
     if (!s) return;
     var p = prefs();
-    var valides = p.passions.filter(function (id) { return !!metaPassion(id); });
+    var valides = interetsDuVisiteur(p);
     if (!valides.length) return;
     try { if (typeof setFeedPassions === "function") setFeedPassions(valides); } catch (e) { journal("setFeedPassions", e); }
     if (p.intents && p.intents.length) {
       try { if (typeof setFeedIntents === "function") setFeedIntents(p.intents); } catch (e) { journal("setFeedIntents", e); }
     }
+    assurerReferentiel(valides);
+  }
+
+  // Les intérêts du fil = les passions choisies ET les spécialités cochées
+  // dessous, dans cet ordre : la parente d'abord (c'est elle qui a été choisie
+  // en premier, et `setFeedPassions` fait du premier le primaire), puis ses
+  // spécialités, chacune juste derrière la sienne.
+  //
+  // ⚠️ LES DEUX, JAMAIS L'UNE À LA PLACE DE L'AUTRE. Ne garder que la parente,
+  // c'était le défaut corrigé le 2026-09-02 : « Vélo » disparaissait au profit
+  // de « Sport ». Ne garder que la spécialité serait le défaut symétrique — on
+  // retirerait un critère que la personne n'a jamais décoché, et le fil se
+  // viderait de tout ce que la passion large apportait. Les critères du fil
+  // sont un OU inclusif (ADR-011) : ajouter n'enlève rien.
+  function interetsDuVisiteur(p) {
+    var vus = Object.create(null);
+    var out = [];
+    function pousser(id) { if (id && !vus[id]) { vus[id] = 1; out.push(id); } }
+    (p.passions || []).forEach(function (pid) {
+      if (!metaPassion(pid)) return;
+      pousser(pid);
+      (p.specialites || []).forEach(function (sid) {
+        if (specialiteValide(sid) && passionDeSpecialite(sid) === pid) pousser(sid);
+      });
+    });
+    return out;
+  }
+
+  // Le référentiel plat porte le LIBELLÉ et l'EMOJI des spécialités : sans lui,
+  // `passionById` (app-02) retombe sur « ✨ Passion » et la bulle du fil
+  // n'annonce plus le choix qu'on vient de faire. Personne ne le charge au
+  // démarrage — seul le sélecteur de passions le demande, à son ouverture.
+  //
+  // ⚠️ ON NE LE DEMANDE QUE SI ON EN A BESOIN, et `ids` sert exactement à ça.
+  // « 160 Ko de référentiel sur le chemin critique du démarrage, pour une donnée
+  // dont la plupart des sessions n'ont jamais besoin » est une décision
+  // d'architecture tenue par un test (`passions-plates.spec.js` ⑤). Or
+  // `appliquerPrefs` tourne à CHAQUE entrée directe : appeler sans condition
+  // l'aurait retournée pour tout visiteur qui repasse. Les 19 du socle embarqué
+  // s'affichent sans lui ; seule une passion qu'`allPassions()` ne connaît pas —
+  // donc une spécialité — a besoin qu'il arrive. Sans `ids`, on le demande (cas
+  // du panneau, où l'on sait déjà que des spécialités vont s'afficher).
+  //
+  // Il n'est jamais attendu : le fil s'affiche tout de suite, et se repeint quand
+  // les libellés arrivent.
+  // ⚠️ LE MOTEUR N'EXISTE PAS ENCORE AU DÉMARRAGE, ET C'EST LE PIÈGE MAISON.
+  // `js/passions-flat.js` est chargé APRÈS le bloc `BUILD:APP` dans `index.html`,
+  // et `app-09` lance `boot()` dans une microtâche : à l'instant où
+  // `entreeDirecte()` applique les préférences, `window.PassioPassions` est
+  // encore `undefined`. La première version rendait la main là, en silence — la
+  // bulle restait « ✨ Passion », exactement le symptôme qu'on corrige, et sur le
+  // seul chemin qui compte pour un visiteur qui REVIENT. Trouvé par le test, pas
+  // par relecture.
+  var _refEssais = 0;
+  var REF_ESSAIS_MAX = 12;      // ~3,6 s : au-delà, le module n'arrivera pas
+  var REF_DELAI_MS = 300;
+  function assurerReferentiel(ids) {
+    try {
+      var m = window.PassioPassions;
+      if (!m) return reessayerReferentiel(ids);
+      if (!m.actif() || m.pret()) return;
+      if (ids && !ids.some(function (id) { return !metaLocale(id); })) return;
+      m.charger().then(function () {
+        try { if (typeof renderProfileStrip === "function") renderProfileStrip(); } catch (e) {}
+        try { if (typeof renderFeed === "function") renderFeed(); } catch (e) {}
+      }).catch(function (e) { journal("referentiel", e); });
+    } catch (e) { journal("referentiel", e); }
+  }
+
+  // ⚠️ UNE REPRISE BORNÉE, ET SURTOUT PAS UN ÉCOUTEUR `passio:app-ready` SEUL.
+  // Cet événement n'est émis QUE par la production : `scripts/build.js` l'injecte
+  // après le bundle inliné, et en développement — les quinze fichiers chargés
+  // séparément — il ne part JAMAIS. S'y fier aurait donné un correctif vert en
+  // production et mort en local, c'est-à-dire invérifiable par la suite e2e, qui
+  // tourne sur les fichiers séparés. On réessaie donc au tour de boucle, un
+  // nombre BORNÉ de fois : un module qui n'est pas là après trois secondes ne
+  // viendra pas, et une boucle sans fin coûterait la batterie du téléphone à
+  // quelqu'un dont le référentiel a simplement été coupé.
+  function reessayerReferentiel(ids) {
+    if (_refEssais >= REF_ESSAIS_MAX) return;
+    _refEssais++;
+    var copie = ids ? ids.slice() : null;
+    setTimeout(function () {
+      if (!window.PassioPassions) return reessayerReferentiel(copie);
+      _refEssais = 0;
+      assurerReferentiel(copie);
+    }, _refEssais === 1 ? 0 : REF_DELAI_MS);
+  }
+
+  // L'identifiant s'affiche-t-il DÉJÀ, sans le référentiel plat ? La source est
+  // celle qu'`allPassions()` (app-02) rend — socle embarqué et passions
+  // personnelles du compte — la seule que `passionById` sache lire hors ligne.
+  function metaLocale(id) {
+    var l = catalogue();
+    for (var i = 0; i < l.length; i++) if (l[i] && l[i].id === id) return l[i];
+    return null;
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -1357,7 +1524,9 @@
     (liste || []).forEach(function (id) {
       if (typeof id !== "string" || !id) return;
       if (vus[id]) return;                 // ③ dédoublonnage
-      if (!metaPassion(id)) return;        // ④ identifiant inconnu du catalogue
+      // ④ identifiant inconnu : ni une passion du catalogue, ni une spécialité
+      // du panneau (qui est elle aussi une passion réelle du référentiel plat).
+      if (!metaPassion(id) && !specialiteValide(id)) return;
       if (passionArchivee(id)) return;     // ④ passion rangée par ce compte
       vus[id] = 1; out.push(id);
     });
@@ -1375,7 +1544,11 @@
     // le sens (le premier choisi est le primaire, cf. `setFeedPassions`), donc
     // ajouter en QUEUE est ce qui « n'écrase pas ».
     var duCompte = Array.isArray(s.selectedFeedPassions) ? s.selectedFeedPassions : [];
-    var fusion = idsRetenus(duCompte.concat(p.passions));
+    // ⚠️ `interetsDuVisiteur` et non `p.passions` : les spécialités cochées sont
+    // des intérêts à part entière depuis le 2026-09-02, et les oublier ici
+    // referait perdre le choix précis au moment MÊME où le visiteur crée son
+    // compte — le pire endroit, puisque c'est là qu'il devient durable.
+    var fusion = idsRetenus(duCompte.concat(interetsDuVisiteur(p)));
     if (fusion.length) {
       try { if (typeof setFeedPassions === "function") setFeedPassions(fusion); } catch (e) { journal("migration passions", e); return false; }
     }
@@ -1392,8 +1565,10 @@
       } catch (e) { journal("migration envies", e); }
     }
 
-    // Spécialités : conservées telles quelles sur le compte, débarrassées de
-    // celles dont la passion parente n'a pas survécu au filtre ci-dessus.
+    // Spécialités : conservées telles quelles sur le compte (elles disent ce que
+    // la personne a précisément coché, pas seulement ce que le fil filtre),
+    // débarrassées de celles dont la passion parente n'a pas survécu au filtre
+    // ci-dessus.
     var gardees = {};
     fusion.forEach(function (id) { gardees[id] = 1; });
     var specs = p.specialites.filter(function (sid) {
