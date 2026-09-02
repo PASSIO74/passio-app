@@ -4367,11 +4367,18 @@
       margin-top: 8px;
     }
 
-    /* ===== Profile strip (quick switch on feed, HERO version) ===== */
+    /* ===== RAIL COULISSANT DE PASSIONS (2026-09-02) =====================
+       Les bulles ne se partagent PLUS la largeur : elles ont une taille fixe,
+       la rangée déborde, et on la fait défiler du doigt vers la gauche ou la
+       droite. Voir le commentaire de `.profile-tile` ci-dessous pour le défaut
+       que cela corrige (10 passions = bulles superposées, libellés illisibles).
+       `overscroll-behavior-x: contain` empêche le balayage horizontal de partir
+       en geste « page précédente » du navigateur une fois le rail au bout. */
     .profile-strip {
       display: flex;
       gap: 14px;
       overflow-x: auto;
+      overscroll-behavior-x: contain;
       padding: 12px 16px 8px;
       scrollbar-width: none;
       -webkit-overflow-scrolling: touch;
@@ -4379,8 +4386,34 @@
     }
     .profile-strip::-webkit-scrollbar { display: none; }
 
+    /* ⚠️ NE JAMAIS REMETTRE `flex: 1 1 0` ICI (défaut vécu le 2026-09-02).
+       Les bulles se partageaient la largeur du rail : à 10 passions + « Suivis »
+       chacune tombait sous 26 px, la vignette de 34/46 px débordait de sa case —
+       les bulles se recouvraient les unes les autres — et le libellé était rogné
+       jusqu'à disparaître. La largeur est donc FIXE (= la largeur maximale du
+       libellé + les marges internes, à chaque palier) : la rangée déborde, et
+       c'est l'`overflow-x: auto` du rail qui la rend coulissante. Trois surfaces
+       en dépendent : le Fil (#profileStrip), mon Profil (#v9ProfilePassions) et
+       le profil visité (#visitedPassions).
+
+       ⚠️ NE PAS RÉGLER CETTE LARGEUR DANS LES `@media` DU HAUT DE LA FEUILLE.
+       Les blocs `max-width: 480px` / `380px` y déclarent déjà des `.profile-tile*`
+       de même spécificité, mais ils sont ÉCRITS AVANT cette règle-ci, qui les
+       écrase donc tous (mesuré à 390 px de large : la bulle du Profil fait bien
+       84 px, et non les 70 px que le bloc mobile demande ; le rail garde ses
+       16 px de marge et non 12). Les deux paliers réellement en vigueur sont
+       celui-ci et, pour le Fil seul, `:root.passio-ui-7 #screen-feed .profile-tile`
+       (62 px), qui gagne par spécificité. */
     .profile-tile {
-      flex: 1 1 0;
+      flex: 0 0 auto;
+      width: 84px;
+      /* `min-width: 0` est conservé, et il est INERTE aujourd'hui : un flex
+         item retombe sinon sur `min-width: auto` (sa taille min-content), mais
+         `.profile-tile-label` porte `overflow: hidden`, ce qui ramène ce
+         min-content à zéro — mesuré, un libellé de 36 caractères ne pousse pas
+         la bulle d'un pixel. Il reste là pour que la largeur déclarée demeure
+         la vérité si un enfant cessait un jour de rogner son texte. Ce n'est
+         PAS lui qui causait le chevauchement : c'était `flex: 1 1 0`. */
       min-width: 0;
       display: flex;
       flex-direction: column;
@@ -9580,6 +9613,7 @@ body.ctx-locked #appMain { overflow: hidden; }
 }
 :root.passio-ui-7 #screen-feed .profile-tile {
   gap: 5px;
+  width: 62px;
   padding: 2px 2px 4px;
 }
 /* 46 -> 34 px : la bulle reste une bulle (photo + pastille emoji), la rangée

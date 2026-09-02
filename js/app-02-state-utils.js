@@ -3127,6 +3127,24 @@ function passionTileHTML(o) {
 // de libellés de mood, puis les deux écrans de profil, ont divergé parce que
 // chacun portait sa copie du rendu.
 
+// ── LE RAIL DE PASSIONS EST COULISSANT — GARDER SA POSITION ───────────────
+// Depuis le 2026-09-02 les bulles ont une largeur FIXE : la rangée déborde et
+// se fait défiler au doigt (`.profile-strip { overflow-x: auto }`). Réécrire
+// `innerHTML` remet alors `scrollLeft` à ZÉRO — et la bulle qu'on venait de
+// toucher tout à droite sortait de l'écran à l'instant même où elle s'allumait,
+// puisque cocher une passion change le HTML du rail et le fait reconstruire.
+//
+// Tout point qui réécrit un `.profile-strip` passe donc par ici plutôt que
+// d'écrire `innerHTML` directement. La position est reposée SYNCHRONEMENT :
+// le navigateur calcule la mise en page à la demande sur l'affectation, donc
+// rien ne clignote, et une rangée devenue plus courte se borne d'elle-même.
+function ecrireRailCoulissant(rail, html) {
+  if (!rail) return;
+  var x = rail.scrollLeft || 0;
+  rail.innerHTML = html;
+  if (x > 0) { try { rail.scrollLeft = x; } catch (e) {} }
+}
+
 // L'URL de la photo d'illustration d'une passion du catalogue (identifiant
 // Unsplash), et son repli. Le Fil et le Profil en avaient deux copies.
 function passionPhotoUrl(passionMeta) {

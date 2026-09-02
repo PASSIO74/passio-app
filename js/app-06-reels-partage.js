@@ -1734,7 +1734,9 @@ function renderProfilePassionRail() {
       + "</div>";
   }
 
-  rail.innerHTML = html;
+  // Même raison qu'au Fil : le rail coulisse, sa position doit survivre
+  // à la reconstruction déclenchée par le choix d'une passion (`ecrireRailCoulissant`).
+  ecrireRailCoulissant(rail, html);
   return rail;
 }
 
@@ -2453,7 +2455,10 @@ function renderProfileStrip() {
 
   // Perf : appelé à chaque renderFeed — pas de rebuild si rien n'a changé
   // (les tuiles portent des photos Unsplash : re-set innerHTML = re-décodage/flash).
-  if (box._lastHtml !== tilesHTML) { box.innerHTML = tilesHTML; box._lastHtml = tilesHTML; }
+  // ⚠️ `ecrireRailCoulissant` (app-02), pas `innerHTML` : le rail défile
+  // horizontalement, et une réécriture brute renverrait la rangée tout à gauche
+  // — donc hors de vue la bulle qu'on vient de cocher, si elle était à droite.
+  if (box._lastHtml !== tilesHTML) { ecrireRailCoulissant(box, tilesHTML); box._lastHtml = tilesHTML; }
 }
 
 // ⚠️ FONCTION GLOBALE, et c'est nécessaire : `audit:handlers` exige qu'un
