@@ -1435,7 +1435,7 @@ function openFullImg(src) {
   if (old) old.remove();
   var v = document.createElement("div");
   v.id = "fullImgViewer";
-  v.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(10,6,30,0.92);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px);animation:fadeIn .2s ease;overflow:hidden;touch-action:none;";
+  v.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(10,6,30,0.92);display:flex;align-items:center;justify-content:center;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);animation:fadeIn .2s ease;overflow:hidden;touch-action:none;";
   // ⚠️ `src` vient d'un média de conversation, donc d'un AUTRE compte. N'échapper
   // que les guillemets laissait passer le schéma : le bouton « Télécharger » pose
   // `src` en href et clique dessus — un `javascript:` s'y exécuterait. On refuse
@@ -1489,13 +1489,21 @@ async function startVoiceRecord() {
       channelCount: { ideal: 1 }, sampleRate: 48000,
     } });
     _voiceChunks = []; _voiceCancelled = false;
-    // Opus 128 kbps EXPLICITE : le débit par défaut de MediaRecorder est bas et
-    // variable selon les navigateurs (voix étouffée). audio/mp4 = repli Safari.
-    var mime = "";
-    if (MediaRecorder.isTypeSupported) {
+    // Débit 128 kbps EXPLICITE : le défaut de MediaRecorder est bas et variable
+    // selon les navigateurs (voix étouffée).
+    //
+    // ⚠️ L'ORDRE DE PRÉFÉRENCE EST LE SUJET. Ce code demandait le WebM EN
+    // PREMIER et ne gardait l'audio/mp4 que comme « repli Safari ». Conséquence
+    // mesurée : Android, qui sait faire les deux, produisait TOUJOURS du WebM —
+    // un conteneur que Safari ne décode PAS. Tout vocal envoyé depuis un Android
+    // était donc muet sur iPhone, et le destinataire ne voyait qu'un bouton ▶
+    // sans effet. Le repli n'était pas en cause : c'était la préférence.
+    // On demande donc d'abord le conteneur que LES DEUX plateformes savent lire.
+    // Là où mp4 n'est pas encodable, le WebM reste pris — comportement inchangé.
+    var mime = (typeof _passioBestAudioMime === "function") ? _passioBestAudioMime() : "";
+    if (!mime && MediaRecorder.isTypeSupported) {
       if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) mime = "audio/webm;codecs=opus";
       else if (MediaRecorder.isTypeSupported("audio/webm")) mime = "audio/webm";
-      else if (MediaRecorder.isTypeSupported("audio/mp4")) mime = "audio/mp4";
     }
     var vrOpts = { audioBitsPerSecond: 128000 };
     if (mime) vrOpts.mimeType = mime;

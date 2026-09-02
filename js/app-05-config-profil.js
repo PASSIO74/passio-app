@@ -327,7 +327,7 @@ function renderNavOrderList() {
   if (!list) return;
   var order = getNavOrder();
   list.innerHTML = order.map(function(id, i) {
-    return '<div class="nav-order-item" draggable="true" data-nav-id="' + escapeHtml(id) + '" style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg-card);border:1.5px solid var(--border);border-radius:12px;cursor:grab;user-select:none;touch-action:none;"><span style="font-size:14px;color:var(--muted);font-weight:800;width:20px;text-align:center;">' + (i+1) + '</span><span style="flex:1;font-weight:700;font-size:13px;">' + (NAV_LABELS[id]||id) + '</span><span style="font-size:16px;color:var(--muted);cursor:grab;">☰</span></div>';
+    return '<div class="nav-order-item" draggable="true" data-nav-id="' + escapeHtml(id) + '" style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg-card);border:1.5px solid var(--border);border-radius:12px;cursor:grab;user-select:none;"><span style="font-size:14px;color:var(--muted);font-weight:800;width:20px;text-align:center;">' + (i+1) + '</span><span style="flex:1;font-weight:700;font-size:13px;">' + (NAV_LABELS[id]||id) + '</span><span class="nav-order-grip" style="font-size:16px;color:var(--muted);cursor:grab;touch-action:none;padding:0 4px;">☰</span></div>';
   }).join("");
   var dragSrc = null;
   list.querySelectorAll(".nav-order-item").forEach(function(item) {
@@ -344,43 +344,35 @@ function renderNavOrderList() {
       }
     });
     item.addEventListener("dragend", function() { this.style.opacity = "1"; });
-    // ⚠️ Réordonner au doigt SANS confisquer le défilement (correctif 2026-09-02).
-    // L'ancien code appelait `e.preventDefault()` à CHAQUE `touchmove` sur ces
-    // lignes, sans condition et sans `{ passive: false }` explicite : poser le
-    // doigt sur une ligne suffisait à empêcher la page de défiler. Sur iPhone,
-    // où le pouce tombe naturellement au milieu de la liste, cela se vit comme
-    // « l'écran est figé » — aucune erreur, juste une page qui refuse de bouger.
-    // On arme donc le déplacement par un APPUI LONG (même geste que le fil de
-    // commentaires, app-04), et on ne confisque le défilement qu'une fois armé.
-    var ty = 0, dragArme = false, dragTimer = null;
-    item.addEventListener("touchstart", function(e) {
-      dragSrc = this; ty = e.touches[0].clientY; dragArme = false;
-      var self = this;
-      clearTimeout(dragTimer);
-      dragTimer = setTimeout(function() {
-        dragArme = true;
-        self.style.opacity = "0.6";     // retour visuel : le déplacement est armé
-      }, 300);
-    }, { passive: true });
-    item.addEventListener("touchmove", function(e) {
-      if (!dragArme) {
-        // Pas encore armé : un vrai défilement annule l'appui long, et le
-        // navigateur garde la main sur le geste.
-        if (Math.abs(e.touches[0].clientY - ty) > 8) clearTimeout(dragTimer);
-        return;
-      }
-      e.preventDefault();
-    }, { passive: false });
-    item.addEventListener("touchend", function(e) {
-      clearTimeout(dragTimer);
-      this.style.opacity = "1";
-      if (!dragArme) return;            // simple tap ou défilement : on ne réordonne pas
-      dragArme = false;
-      var d = e.changedTouches[0].clientY - ty;
-      var newOrd = getNavOrder(); var idx = newOrd.indexOf(this.dataset.navId);
-      if (d < -30 && idx > 0) { var m = newOrd.splice(idx,1)[0]; newOrd.splice(idx-1,0,m); setConfig("navOrder",newOrd); applyNavOrder(); }
-      else if (d > 30 && idx < newOrd.length-1) { var m = newOrd.splice(idx,1)[0]; newOrd.splice(idx+1,0,m); setConfig("navOrder",newOrd); applyNavOrder(); }
-    });
+    // ⚠️ Réordonner au doigt SANS confisquer le défilement (2026-09-02, corrigé
+    // en deux temps). Le code d'origine appelait `e.preventDefault()` à CHAQUE
+    // `touchmove` sur la LIGNE ENTIÈRE : poser le doigt dessus empêchait la page
+    // de défiler — vécu sur iPhone comme « l'écran est figé », sans la moindre
+    // erreur. Une première passe n'a rendu ce preventDefault que conditionnel,
+    // ce qui NE SUFFISAIT PAS : la ligne portait aussi `touch-action: none` en
+    // style en ligne, et c'est une instruction au NAVIGATEUR que le JS ne peut
+    // pas contredire. Le défilement restait confisqué.
+    // Remède : le geste appartient à la POIGNÉE ☰ — elle seule garde
+    // `touch-action: none`, elle seule porte les écouteurs. La ligne redevient
+    // une zone de défilement ordinaire. C'est ce que la poignée promet déjà
+    // visuellement, et ce que fait le `draggable` du bureau.
+    var poignee = item.querySelector(".nav-order-grip");
+    if (poignee) {
+      var ty = 0;
+      poignee.addEventListener("touchstart", function(e) {
+        dragSrc = item; ty = e.touches[0].clientY; item.style.opacity = "0.6";
+      }, { passive: true });
+      // `{ passive: false }` EXPLICITE : sans lui, un navigateur peut traiter
+      // l'écouteur comme passif et ignorer le preventDefault en silence.
+      poignee.addEventListener("touchmove", function(e) { e.preventDefault(); }, { passive: false });
+      poignee.addEventListener("touchend", function(e) {
+        item.style.opacity = "1";
+        var d = e.changedTouches[0].clientY - ty;
+        var newOrd = getNavOrder(); var idx = newOrd.indexOf(item.dataset.navId);
+        if (d < -30 && idx > 0) { var m = newOrd.splice(idx,1)[0]; newOrd.splice(idx-1,0,m); setConfig("navOrder",newOrd); applyNavOrder(); }
+        else if (d > 30 && idx < newOrd.length-1) { var m2 = newOrd.splice(idx,1)[0]; newOrd.splice(idx+1,0,m2); setConfig("navOrder",newOrd); applyNavOrder(); }
+      });
+    }
   });
 }
 

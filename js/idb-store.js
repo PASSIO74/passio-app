@@ -10,34 +10,73 @@
   var DB_NAME = "passio_store", STORE = "kv", VERSION = 1;
   var _dbPromise = null;
 
+  // ⚠️ DEUX PIÈGES SAFARI, TOUS DEUX SILENCIEUX (corrigés le 2026-09-02).
+  //
+  // ① `indexedDB.open()` peut n'émettre NI `onsuccess` NI `onerror` sur WebKit —
+  //    défaut connu, surtout au tout premier chargement d'une PWA installée et au
+  //    retour depuis le cache de page. La promesse ne se règle alors JAMAIS.
+  // ② Comme elle était mémorisée pour toute la session, cette promesse morte
+  //    était rendue à CHAQUE appel suivant : plus une seule lecture, plus une
+  //    seule écriture du store durable jusqu'au rechargement. Les conversations
+  //    ne vivaient plus que dans localStorage — c'est-à-dire jusqu'au premier
+  //    dépassement de quota, ou jusqu'à la purge ITP au bout de sept jours.
+  //
+  // Remède : un délai maximal, et surtout on NE MÉMORISE PAS un échec — la
+  // tentative suivante rouvre. Une panne transitoire ne condamne plus la session.
+  var OPEN_TIMEOUT_MS = 3000;
+
   function openDB() {
     if (_dbPromise) return _dbPromise;
-    _dbPromise = new Promise(function (resolve, reject) {
+    var p = new Promise(function (resolve, reject) {
+      var fini = false;
+      var minuteur = setTimeout(function () {
+        if (fini) return;
+        fini = true;
+        reject(new Error("idb-open-timeout"));
+      }, OPEN_TIMEOUT_MS);
+      function ok(v) { if (fini) return; fini = true; clearTimeout(minuteur); resolve(v); }
+      function ko(e) { if (fini) return; fini = true; clearTimeout(minuteur); reject(e); }
       try {
-        if (typeof indexedDB === "undefined" || !indexedDB) { reject(new Error("no-idb")); return; }
+        if (typeof indexedDB === "undefined" || !indexedDB) { ko(new Error("no-idb")); return; }
         var rq = indexedDB.open(DB_NAME, VERSION);
         rq.onupgradeneeded = function () {
           var db = rq.result;
           if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
         };
-        rq.onsuccess = function () { resolve(rq.result); };
-        rq.onerror = function () { reject(rq.error || new Error("idb-open-error")); };
-      } catch (e) { reject(e); }
+        rq.onsuccess = function () { ok(rq.result); };
+        rq.onerror = function () { ko(rq.error || new Error("idb-open-error")); };
+        // `onblocked` : une autre page tient une version antérieure. Sans ce
+        // gestionnaire l'ouverture reste en attente indéfiniment.
+        rq.onblocked = function () { ko(new Error("idb-blocked")); };
+      } catch (e) { ko(e); }
     });
-    return _dbPromise;
+    _dbPromise = p;
+    p.catch(function () { if (_dbPromise === p) _dbPromise = null; });
+    return p;
   }
 
-  // Lit une valeur (objet structuré, pas de JSON.parse nécessaire). → Promise<val|null>
+  // Lit une valeur (objet structuré, pas de JSON.parse nécessaire).
+  // → Promise<val>            valeur trouvée
+  // → Promise<null>           la clé n'existe pas — le store est VRAIMENT vide
+  // → Promise<undefined>      LECTURE IMPOSSIBLE (base fermée, erreur, délai)
+  //
+  // ⚠️ La distinction entre les deux derniers cas est le sujet. Avant, un échec
+  // de lecture rendait `null`, exactement comme un store vide — et l'appelant
+  // (hydrateConvsFromIDB) en concluait « première fois » puis ÉCRASAIT le store
+  // durable avec ce qu'il avait sous la main. Sur iPhone, où localStorage peut
+  // avoir été purgé par l'ITP au bout de sept jours pendant qu'IndexedDB, lui,
+  // survivait, une simple erreur passagère effaçait donc l'historique complet
+  // des conversations. Un échec doit se dire, jamais se confondre avec un vide.
   function idbGet(key) {
     return openDB().then(function (db) {
       return new Promise(function (resolve) {
         try {
           var rq = db.transaction(STORE, "readonly").objectStore(STORE).get(key);
           rq.onsuccess = function () { resolve(rq.result == null ? null : rq.result); };
-          rq.onerror = function () { resolve(null); };
-        } catch (e) { resolve(null); }
+          rq.onerror = function () { resolve(undefined); };
+        } catch (e) { resolve(undefined); }
       });
-    }).catch(function () { return null; });
+    }).catch(function () { return undefined; });
   }
 
   // Écrit une valeur (structured clone, sans sérialisation manuelle). → Promise<bool>

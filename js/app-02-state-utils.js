@@ -4275,9 +4275,16 @@ function setupMoodButtons() {
   document.addEventListener("touchstart", function(e) {
     var feedEl = document.getElementById("screen-feed");
     if (!feedEl || !feedEl.classList.contains("active")) return;
-    var list = document.getElementById("feedList");
+    // ⚠️ LE CONTENEUR QUI DÉFILE EST `#appMain`, PAS `#feedList`.
+    // `.app-main` porte `overflow-y: auto` ; `#feedList` n'a aucun overflow et
+    // grandit avec son contenu. Son `scrollTop` vaut donc TOUJOURS 0, et le
+    // garde « ne déclenche qu'en haut du fil » ne gardait rien : n'importe quel
+    // balayage vers le bas — c'est-à-dire le geste NORMAL pour remonter dans le
+    // fil — armait le rafraîchissement, à n'importe quelle hauteur. Sur iPhone
+    // le rebond élastique de WebKit rend le faux départ encore plus visible.
+    var list = document.getElementById("appMain");
     if (!list) return;
-    // Déclenche seulement si on est en haut du scroll
+    // Déclenche seulement si on est réellement en haut du défilement.
     if (list.scrollTop > 10) return;
     _touchStartY = e.touches[0].clientY;
     _pullActive = true;

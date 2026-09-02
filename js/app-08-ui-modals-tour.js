@@ -3323,7 +3323,17 @@ async function supaUploadMedia(postId, folder, base64Data, mediaType) {
     // Extension fidèle au conteneur réel : un webm renommé .mp4 trompe les
     // heuristiques de lecture (iOS surtout, qui se fie aussi à l'URL).
     if (mediaType === "video") ext = (base64Data.indexOf("data:video/webm") === 0) ? ".webm" : ".mp4";
-    else if (mediaType === "audio") ext = ".mp3";
+    // ⚠️ Même exigence que pour la vidéo, juste au-dessus — elle n'avait pas été
+    // appliquée ici. `.mp3` était écrit EN DUR alors que MediaRecorder n'en
+    // produit JAMAIS : le Studio enregistre en `audio/webm` (Android) ou
+    // `audio/mp4` (iPhone). Le fichier arrivait donc dans Storage avec une
+    // extension qui mentait sur son contenu, et iOS — qui se fie aussi à l'URL —
+    // refusait de le lire. On dérive l'extension du conteneur RÉEL.
+    else if (mediaType === "audio") {
+      ext = (base64Data.indexOf("data:audio/webm") === 0) ? ".webm"
+          : (base64Data.indexOf("data:audio/ogg") === 0) ? ".ogg"
+          : ".m4a";                                  // audio/mp4 → .m4a
+    }
     else if (base64Data.indexOf("data:image/webp") === 0) ext = ".webp";
     else if (base64Data.indexOf("data:image/png") === 0) ext = ".png";
     else if (base64Data.indexOf("data:image/gif") === 0) ext = ".gif";

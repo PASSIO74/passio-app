@@ -2296,6 +2296,13 @@ function hydrateConvsFromIDB() {
   if (_idbConvHydrated || !window.idbConvLoad) return Promise.resolve();
   _idbConvHydrated = true;
   return window.idbConvLoad().then(function(idbConvs) {
+    // ⚠️ `undefined` = LECTURE IMPOSSIBLE, pas « store vide » (cf. idbGet).
+    // Confondre les deux faisait écraser le store durable par l'état local :
+    // sur iPhone, où l'ITP peut avoir purgé localStorage au bout de sept jours
+    // pendant qu'IndexedDB survivait, une erreur passagère effaçait TOUT
+    // l'historique des conversations. En cas de doute on ne touche à rien : on
+    // réessaiera au prochain démarrage.
+    if (idbConvs === undefined) { _idbConvHydrated = false; return; }
     if (!idbConvs || !idbConvs.length) {
       // Migration initiale : pousser l'état actuel dans IDB.
       if (window.idbConvSave) window.idbConvSave(getConversations());
@@ -3820,7 +3827,15 @@ function renderConvFpThread(c, displayName) {
       content = '<img src="' + safeUrlAttr(m.gif) + '" style="max-width:200px;max-height:160px;border-radius:12px;display:block;" loading="lazy"/>';
     } else if (m.video) {
       isMedia = true;
-      content = '<video src="' + safeUrlAttr(m.video) + '" style="max-width:200px;max-height:200px;border-radius:12px;display:block;cursor:pointer;" controls preload="none"/>';
+      // ⚠️ `playsinline` est OBLIGATOIRE : sans lui, iOS confisque la lecture et
+      // bascule en lecteur plein écran natif dès le premier tap — on quitte la
+      // conversation, on perd le fil, et il faut ressortir à la main. Android
+      // lit en place. C'était le SEUL <video> du dépôt à ne pas le porter.
+      // Et la balise était AUTO-FERMÉE (`/>`), ce qui n'existe pas en HTML pour
+      // un élément à contenu : l'analyseur ouvre l'élément et avale ce qui suit.
+      // Sans conséquence tant que rien ne suit dans la bulle — c'est un piège
+      // posé pour le prochain qui ajoutera quelque chose derrière.
+      content = '<video src="' + safeUrlAttr(m.video) + '" style="max-width:200px;max-height:200px;border-radius:12px;display:block;cursor:pointer;" controls playsinline preload="none"></video>';
     } else if (m.img) {
       isMedia = true;
       content = '<img loading="lazy" decoding="async" src="' + safeUrlAttr(m.img) + '" style="max-width:200px;max-height:200px;border-radius:12px;display:block;cursor:pointer;" onclick="openFullImg(this.src)"/>';
