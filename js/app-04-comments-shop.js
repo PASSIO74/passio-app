@@ -2819,6 +2819,12 @@ async function openUserProfile(authorId, source) {
       + '</div>'
     : '';
 
+  // ⚠️ AUCUNE LIGNE DE PASSIONS SOUS LE PSEUDO, comme sur mon profil depuis le
+  // 2026-09-02 (« supprime les titres de passion dans le profil sous le pseudo et
+  // garde seulement les bulles dessous »). Ses passions sont dans
+  // `#visitedPassions`, plus bas : elles s'y nomment une fois, et le tap y FILTRE
+  // ses publications au lieu de quitter son profil.
+
   // 🔗 Réseaux sociaux — mêmes pastilles que sur mon profil.
   var RS_ICONS = { instagram:"📸", facebook:"👤", tiktok:"🎵", youtube:"▶️", twitter:"𝕏", linkedin:"💼", snapchat:"👻", autre:"🔗" };
   var rsLinks = Array.isArray(user.rsLinks) ? user.rsLinks : [];
@@ -2939,7 +2945,6 @@ async function openUserProfile(authorId, source) {
           <div class="main-profile-avatar" style="background:' + avatarBg(user) + ';background-size:cover;background-position:center;cursor:default;">' + avatarInner(user) + '</div>\
         </div>\
         <div class="main-profile-username">' + escapeHtml(user.name || "Passionné") + (user.isPrivate ? ' <span title="Compte privé" style="font-size:13px;">🔒</span>' : '') + '</div>\
-        ' + identitePassionsLiensHTML({ id: authorId, passions: userPassions, passion: user.passion }, { retourUserId: authorId }) + '\
         ' + (user.bio ? '<div class="main-profile-bio">' + escapeHtml(user.bio) + '</div>' : '') + '\
         ' + (rsLinks.length ? '<div class="main-profile-rs">' + rsLinks.map(function(l) { return '<a class="main-profile-rs-link" href="' + safeUrlAttr(l.url || "") + '" target="_blank" rel="noopener">' + (RS_ICONS[l.platform] || "🔗") + ' ' + escapeHtml(l.platform || "lien") + '</a>'; }).join("") + '</div>' : '') + '\
         <div class="main-profile-stats">\

@@ -1708,14 +1708,34 @@ personne.
   (il aurait affiché « aucune publication » au lieu de « rien en Moto »), et les
   deux règles `.psel-tile-plus` de `styles.css` n'avaient plus d'émetteur — la
   bulle « + » est devenue `.v9-chip-ajout`.
-  ⚠️ **LA LIGNE D'IDENTITÉ DE LA CARTE EST CONSERVÉE**, elle : c'est la demande
-  du 2026-09-01 (« les passions cliquables renvoient vers la page de cette
-  passion »). Les deux rangées nomment donc les mêmes passions, mais ne posent
-  pas la même question — l'identité OUVRE la page de la passion, le rail FILTRE
-  et porte le décompte — et ne se ressemblent pas (pilule pleine `--accent-wash`
-  contre contour qui ne se remplit qu'une fois coché). Point à trancher si
-  Benjamin trouve la répétition gênante sur son profil : supprimer l'une des
-  deux, jamais fusionner (un tap, deux destinations).
+  ⚠️ **LE RAIL EST LA SEULE RANGÉE DE PASSIONS DU PROFIL — la ligne d'identité
+  sous le pseudo a été RETIRÉE le même jour**, sur arbitrage de Benjamin : « on
+  va supprimer les titres de passion dans le profil sous le pseudo et garder
+  seulement les bulles dessous. » Les deux rangées nommaient les mêmes passions
+  à 5 px d'écart : le doublon de la carte du fil (défaut ①), transposé au
+  profil. Retrait appliqué aux DEUX en-têtes — le mien (`renderMainProfile`,
+  app-06, qui créait `#mainProfileIdent`) et celui d'un compte visité (app-04).
+  ⚠️ **CELA DÉFAIT LE LOT DU 2026-09-01** (« les passions cliquables renvoient
+  vers la page de cette passion »), qui n'aura vécu qu'un jour : la page d'une
+  passion ne s'ouvre plus depuis un profil. Elle reste atteignable depuis le Fil
+  (« Voir la page de la passion », retouche ② ci-dessus, bien plus visible),
+  depuis Explorer, les tuiles de tendance et l'IA. Sur un profil, le tap sur une
+  passion FILTRE ce qu'on est en train de regarder — et une pastille ne peut pas
+  avoir deux destinations.
+  ⚠️ **CODE MORT RETIRÉ AVEC** : `identitePassionsChipsHTML`,
+  `identitePassionsLiensHTML`, `_identPassionOnclick`, `IDENT_PASSIONS_MAX_PROFIL`
+  (app-02) et leurs règles CSS (`.ident-passions-links`, `.ident-passion-lien`
+  et son `::before`, `-nom`, `-emoji`, `-plus`, `.main-profile-body
+  .ident-passions`, la déclinaison 359 px). ⚠️ **`identitePassionsHTML` /
+  `identitePassionsTexte` RESTENT** : elles rendent la ligne de TEXTE INERTE des
+  surfaces denses (commentaires, listes de personnes, recherche, inbox,
+  notifications), qui n'affichent aucune passion à côté — ADR-011 §3 tient.
+  ⚠️ **UN SEUL CHEMIN EST GARDÉ SANS APPELANT, ET C'EST DÉLIBÉRÉ** : le second
+  argument d'`openPassionExplorer(pid, retourUserId)` et son lien « ← Retour au
+  profil ». `openModal` n'empile pas — le jour où une porte vers une page de
+  passion réapparaît dans une modale, l'oublier ferait perdre la personne par
+  qui on l'a découverte. Le test ③ septies l'appelle DIRECTEMENT, puisqu'aucune
+  surface ne le passe plus ; il ne peut rien peindre tant que c'est le cas.
 
   ④ **LA FEUILLE « CRÉER » EST UNE GRILLE DE DEUX COLONNES.** « Je trouve que les
   onglets sont trop grands, mets-les plus petits et bien ordonnés pour que tout

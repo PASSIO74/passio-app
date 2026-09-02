@@ -9,6 +9,15 @@
 //      page de cette passion, pour que les utilisateurs puissent aller découvrir
 //      les passions directement ».
 //
+// ⚠️ LE POINT ③ A ÉTÉ DÉFAIT LE LENDEMAIN, ET LA SECTION QUI LE COUVRAIT A ÉTÉ
+// RETOURNÉE PLUTÔT QUE SUPPRIMÉE. Le 2026-09-02 le rail de passions du profil
+// est devenu lui aussi une rangée de pastilles : les mêmes passions étaient
+// nommées deux fois, à 5 px d'écart. « On va supprimer les titres de passion
+// dans le profil sous le pseudo et garder seulement les bulles dessous. » Les
+// tests vérifient désormais que la ligne NE REVIENT PAS, et ce que ③ avait
+// acquis (44 px de cible, pas de chevauchement, aucune fuite d'archive) est
+// mesuré sur le rail, où les passions vivent.
+//
 // ⚠️ ① ET ② SONT LIÉS, ET C'EST LE CŒUR DE LA SUITE. Ce qui rend la place à la
 // photo n'est pas un plafond plus haut — c'est l'avatar, qui passe ENTIÈREMENT
 // sur la couverture au lieu d'y déborder de moitié. Les trois nombres du CSS
@@ -122,62 +131,81 @@ test("① ter — la carte d'identité reste sous les deux tiers de l'écran", a
 // ③ LES PASSIONS SONT DES PORTES
 // ══════════════════════════════════════════════════════════════════════════
 
-test("③ mes passions sont des pastilles cliquables sous mon pseudo", async ({ page }) => {
+// ══════════════════════════════════════════════════════════════════════════
+// ③ LES PASSIONS DU PROFIL — UNE SEULE RANGÉE, CELLE DU RAIL
+// ──────────────────────────────────────────────────────────────────────────
+// ⚠️ ASSERTIONS RETOURNÉES LE 2026-09-02, JAMAIS VIDÉES. Cette section exigeait
+// une rangée de pastilles-portes sous le pseudo (demande du 2026-09-01). Le
+// lendemain, le rail de passions du profil est devenu lui aussi une rangée de
+// pastilles de texte : le profil nommait les mêmes passions DEUX fois, à 5 px
+// d'écart. Arbitrage de Benjamin : « on va supprimer les titres de passion dans
+// le profil sous le pseudo et garder seulement les bulles dessous. »
+//
+// Ce que ces tests garantissent maintenant : la ligne NE REVIENT PAS, et tout ce
+// que le lot du 2026-09-01 avait acquis (cible tactile de 44 px, deux rangées qui
+// ne se chevauchent pas, une passion archivée qui ne fuite pas) est vérifié là où
+// les passions vivent désormais — le rail `#v9ProfilePassions`.
+// ══════════════════════════════════════════════════════════════════════════
+
+test("③ aucune ligne de passions sous le pseudo — le rail en dessous les porte", async ({ page }) => {
   await poser(page);
   const vu = await page.evaluate(() => {
-    const chips = [...document.querySelectorAll("#mainProfileIdent .ident-passion-lien")];
-    return chips.map((c) => ({
-      id: c.getAttribute("data-ident-passion"),
-      onclick: c.getAttribute("onclick"),
-      texte: c.textContent.trim(),
-    }));
+    const carte = document.querySelector("#screen-profiles .main-profile-card");
+    const rail = document.getElementById("v9ProfilePassions");
+    return {
+      ligneIdent: !!document.getElementById("mainProfileIdent"),
+      dansLaCarte: carte ? carte.querySelectorAll(".ident-passions, .ident-passion-lien").length : -1,
+      pastilles: rail
+        ? [...rail.querySelectorAll(".v9-passion-chip[data-passion-tile]")]
+            .map((c) => c.getAttribute("data-passion-tile"))
+        : [],
+    };
   });
-  expect(vu.map((c) => c.id)).toEqual(["moto", "podcast", "voyage"]);
-  // ⚠️ Le gestionnaire est écrit EN TOUTES LETTRES (`_identPassionOnclick`) :
-  // c'est ce que le test lit. Une chaîne composée par l'appelant serait refusée
-  // par `audit:echappement`, et à raison.
-  expect(vu[0].onclick).toBe("openPassionExplorer('moto')");
-  expect(vu[2].texte).toContain("Voyage");
+  expect(vu.ligneIdent, "la ligne sous le pseudo ne doit pas revenir").toBe(false);
+  expect(vu.dansLaCarte, "aucune passion nommée dans la carte d'identité").toBe(0);
+  // Elles sont bien quelque part : le rail, avec la porte d'ajout au bout.
+  expect(vu.pastilles).toEqual(["pp_moto", "pp_pod", "pp_voy", "__ajouter__"]);
 });
 
-test("③ bis — toucher une passion OUVRE sa page", async ({ page }) => {
+test("③ bis — toucher une passion du rail FILTRE, elle ne quitte plus le profil", async ({ page }) => {
+  // ⚠️ RETOURNEMENT ASSUMÉ. Ce test exigeait qu'un tap OUVRE la page de la
+  // passion ; la seule rangée qui reste est le rail, dont le geste est le
+  // filtre. Un tap qui ferait les deux est exclu par construction : une
+  // pastille, une destination.
   await poser(page);
   await page.evaluate(() => {
     window.__ouvert = [];
     const vrai = window.openPassionExplorer;
-    window.openPassionExplorer = function (pid, retour) {
-      window.__ouvert.push([pid, retour === undefined ? null : retour]);
-      return vrai.apply(this, arguments);
-    };
+    window.openPassionExplorer = function () { window.__ouvert.push([...arguments]); return vrai.apply(this, arguments); };
   });
-  await page.click('#mainProfileIdent .ident-passion-lien[data-ident-passion="podcast"]');
+  await page.click('#v9ProfilePassions [data-passion-tile="pp_pod"]');
   await page.waitForTimeout(500);
   const vu = await page.evaluate(() => ({
     appels: window.__ouvert,
-    // La page de la passion est bien celle qui s'ouvre, pas un toast.
-    modale: (document.querySelector(".modal") || {}).innerText || "",
+    filtre: state.user.profilePassionIds,
+    modaleOuverte: !!document.querySelector("#modalBackdrop.active"),
   }));
-  expect(vu.appels).toEqual([["podcast", null]]);
-  expect(vu.modale).toContain("Créateurs");
+  expect(vu.filtre, "le tap coche la passion").toEqual(["pp_pod"]);
+  expect(vu.appels, "et n'ouvre aucune page de passion").toEqual([]);
+  expect(vu.modaleOuverte, "on reste sur le profil").toBe(false);
 });
 
 test("③ ter — la cible tactile fait 44 px, la pastille visible reste discrète", async ({ page }) => {
   await poser(page);
   const m = await page.evaluate(() => {
-    const chips = [...document.querySelectorAll("#mainProfileIdent .ident-passion-lien")];
-    // La cible se mesure sur la BOÎTE du bouton ; la pilule est peinte par un
-    // ::before, qui ne satisferait pas la mesure s'il portait seul la hauteur.
+    const chips = [...document.querySelectorAll("#v9ProfilePassions .v9-passion-chip")];
+    // La cible se mesure sur la BOÎTE ; la pilule est peinte par un ::before,
+    // qui ne satisferait pas la mesure s'il portait seul la hauteur.
     const boites = chips.map((c) => c.getBoundingClientRect().height);
-    const peint = chips.map((c) => {
-      const st = getComputedStyle(c, "::before");
-      return { haut: st.getPropertyValue("inset-block-start"), fond: st.backgroundColor };
-    });
-    return { min: Math.min(...boites), peint: peint[0] };
+    const st = getComputedStyle(chips[0], "::before");
+    return { min: Math.min(...boites), peinte: st.getPropertyValue("inset-block-start"),
+             bord: st.borderTopWidth };
   });
   expect(m.min, "cible tactile d'une passion").toBeGreaterThanOrEqual(44);
-  // Le fond peint existe : sans lui, la pastille serait invisible sur la carte
-  // blanche (le thème borde à 7 % d'opacité).
-  expect(m.peint.fond).not.toBe("rgba(0, 0, 0, 0)");
+  // La pilule est peinte à 7 px des bords de la boîte : 44 - 2 × 7 = 30 px visibles.
+  expect(m.peinte).toBe("7px");
+  // Et elle se voit : un contour, sans quoi la pastille décochée n'existerait pas.
+  expect(parseFloat(m.bord)).toBeGreaterThan(0);
 });
 
 test("③ quater — deux rangées de pastilles ne se chevauchent PAS", async ({ page }) => {
@@ -189,40 +217,48 @@ test("③ quater — deux rangées de pastilles ne se chevauchent PAS", async ({
       id: "pp_" + p, name: "Benjamin", passion: p, emoji: "✨", color: "#7c3aed", createdAt: i + 1,
     })),
   });
-  const chevauche = await page.evaluate(() => {
-    const chips = [...document.querySelectorAll("#mainProfileIdent .ident-passion-lien")];
+  const vu = await page.evaluate(() => {
+    const chips = [...document.querySelectorAll("#v9ProfilePassions .v9-passion-chip")];
     const rects = chips.map((c) => c.getBoundingClientRect());
+    let chevauche = false;
     for (let i = 0; i < rects.length; i++) {
       for (let j = i + 1; j < rects.length; j++) {
         const a = rects[i], b = rects[j];
-        const seCroisent = a.left < b.right && b.left < a.right
-          && a.top < b.bottom && b.top < a.bottom;
-        if (seCroisent) return true;
+        if (a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom) chevauche = true;
       }
     }
-    return false;
+    // Le test ne vaut que si la rangée est réellement passée à la ligne.
+    const lignes = new Set(rects.map((r) => Math.round(r.top))).size;
+    return { chevauche, lignes };
   });
-  expect(chevauche, "aucune paire de pastilles ne se recouvre").toBe(false);
+  expect(vu.lignes, "six passions doivent tenir sur au moins deux rangées").toBeGreaterThan(1);
+  expect(vu.chevauche, "aucune paire de pastilles ne se recouvre").toBe(false);
 });
 
-test("③ quinquies — une passion ARCHIVÉE n'ouvre aucune porte", async ({ page }) => {
-  // ⚠️ PORTE DÉROBÉE DÉJÀ FERMÉE UNE FOIS (lot UI-8, ②). Le rendu passe par
-  // `passionsAffichables`, donc par `passionsPubliques` : ranger une passion la
-  // retire de l'identité. Transformer cette ligne en boutons ne doit pas
-  // rouvrir ce chemin — une passion rangée deviendrait une porte publique.
+test("③ quinquies — une passion ARCHIVÉE ne réapparaît pas dans le rail", async ({ page }) => {
+  // ⚠️ PORTE DÉROBÉE DÉJÀ FERMÉE UNE FOIS (lot UI-8, ②). Le jsonb
+  // `profiles.passions` garde les passions archivées — c'est voulu, la colonne
+  // sert de sauvegarde. Aucune surface ne doit les rendre : ranger une passion
+  // la ferait sinon réapparaître chez tout le monde.
   await poser(page);
-  const ids = await page.evaluate(() => {
+  const vu = await page.evaluate(() => {
     archiverPassion("pp_pod");
     renderMainProfile();
-    return [...document.querySelectorAll("#mainProfileIdent .ident-passion-lien")]
-      .map((c) => c.getAttribute("data-ident-passion"));
+    renderProfilePassionRail();
+    return {
+      rail: [...document.querySelectorAll("#v9ProfilePassions .v9-passion-chip[data-passion-tile]")]
+        .map((c) => c.getAttribute("data-passion-tile")),
+      // Et l'identité TEXTE des surfaces denses ne la laisse pas fuir non plus.
+      texte: identitePassionsTexte({ id: MY_UID, passions: state.user.profiles }),
+    };
   });
-  expect(ids).not.toContain("podcast");
-  expect(ids).toContain("moto");
+  expect(vu.rail).not.toContain("pp_pod");
+  expect(vu.rail).toContain("pp_moto");
+  expect(vu.texte, "une passion archivée ne s'affiche chez personne").not.toContain("Podcast");
 });
 
 // ══════════════════════════════════════════════════════════════════════════
-// ③ SUR LE PROFIL D'UN AUTRE — la découverte, et le chemin du retour
+// ③ SUR LE PROFIL D'UN AUTRE — la même règle, et le retour resté disponible
 // ══════════════════════════════════════════════════════════════════════════
 
 async function ouvrirProfilVisite(page) {
@@ -239,29 +275,32 @@ async function ouvrirProfilVisite(page) {
   await page.waitForTimeout(900);
 }
 
-test("③ sexies — les passions d'un AUTRE profil mènent à leur page", async ({ page }) => {
+test("③ sexies — un profil visité suit la même règle : une seule rangée", async ({ page }) => {
   await poser(page);
   await ouvrirProfilVisite(page);
   // ⚠️ La requête est bornée à la MODALE : mon propre profil est toujours dans
-  // le document derrière elle, avec ses propres pastilles. Un sélecteur global
-  // ramasserait les deux profils et ferait passer ce test pour la mauvaise
-  // raison — ou le ferait échouer sans dire lequel des deux a bougé.
-  const vu = await page.evaluate(() =>
-    [...document.querySelectorAll(".modal .main-profile-body .ident-passion-lien")].map((c) => ({
-      id: c.getAttribute("data-ident-passion"),
-      onclick: c.getAttribute("onclick"),
-    })));
-  expect(vu.map((c) => c.id)).toEqual(["cuisine", "jardinage"]);
-  // ⚠️ LE SECOND ARGUMENT N'EST PAS DÉCORATIF : `openModal` N'EMPILE PAS. Sans
-  // lui, découvrir une passion depuis un profil ferait perdre la personne par
-  // qui on l'a découverte — la fermeture rendrait le fil, pas le profil.
-  expect(vu[0].onclick).toBe("openPassionExplorer('cuisine','u_lea2')");
+  // le document derrière elle. Un sélecteur global ramasserait les deux et
+  // ferait passer ce test pour la mauvaise raison.
+  const vu = await page.evaluate(() => ({
+    sousLePseudo: document.querySelectorAll(".modal .main-profile-body .ident-passions").length,
+    rail: [...document.querySelectorAll(".modal #visitedPassions .v9-passion-chip")]
+      .map((c) => c.getAttribute("data-passion-tile")),
+  }));
+  expect(vu.sousLePseudo, "aucune ligne de passions sous son pseudo").toBe(0);
+  expect(vu.rail, "ses passions sont dans le rail, une seule fois").toEqual(["cuisine", "jardinage"]);
 });
 
-test("③ septies — depuis un profil visité, la page de passion offre le RETOUR", async ({ page }) => {
+test("③ septies — le RETOUR de la page de passion reste servi (chemin dormant)", async ({ page }) => {
+  // ⚠️ CE TEST GARDE UN CHEMIN SANS APPELANT, ET C'EST DÉLIBÉRÉ. Le second
+  // argument d'`openPassionExplorer` peint « ← Retour au profil » ; plus aucune
+  // surface ne le passe depuis le retrait des pastilles-portes (2026-09-02). Il
+  // est conservé parce que `openModal` N'EMPILE PAS : le jour où une porte vers
+  // une page de passion réapparaît dans une modale, l'oublier ferait perdre la
+  // personne par qui on l'a découverte, sans aucun chemin de retour. On
+  // l'appelle donc directement, au lieu de compter sur une porte disparue.
   await poser(page);
   await ouvrirProfilVisite(page);
-  await page.click('.modal .main-profile-body .ident-passion-lien[data-ident-passion="cuisine"]');
+  await page.evaluate(() => openPassionExplorer("cuisine", "u_lea2"));
   await page.waitForTimeout(500);
   const surLaPassion = await page.evaluate(() => ({
     retour: !!document.querySelector(".passion-explorer-retour"),
@@ -278,8 +317,8 @@ test("③ septies — depuis un profil visité, la page de passion offre le RETO
 });
 
 test("③ octies — ouverte depuis un ÉCRAN, la page de passion n'invente pas de retour", async ({ page }) => {
-  // Les huit appels historiques (Explorer, tuiles de tendance, IA, passerelle
-  // UI-3) ne passent pas de second argument : ils viennent d'un écran, pas d'une
+  // Les appels historiques (Explorer, tuiles de tendance, IA, passerelle UI-3)
+  // ne passent pas de second argument : ils viennent d'un écran, pas d'une
   // modale, et n'ont rien à restituer. Un lien « Retour au profil » y mentirait.
   await poser(page);
   await page.evaluate(() => openPassionExplorer("voyage"));

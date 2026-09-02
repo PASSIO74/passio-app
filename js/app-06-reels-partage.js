@@ -333,48 +333,19 @@ function renderMainProfile() {
   }
 
   usernameEl.textContent = g.username || state.user.name || "Mon profil";
-  // §2 : mes passions sous mon pseudo, comme sur toutes les autres surfaces.
-  // Nœud créé une fois, tenu à jour ensuite — pas de `innerHTML` sur la carte,
-  // qui emporterait l'input de photo qu'elle héberge.
+  // ⚠️ PLUS DE LIGNE DE PASSIONS SOUS LE PSEUDO, et c'est un choix de Benjamin du
+  // 2026-09-02 : « on va supprimer les titres de passion dans le profil sous le
+  // pseudo et garder seulement les bulles dessous. » Le profil les nommait DEUX
+  // fois à 5 px d'écart — ici en pastilles-portes (§2 + lot du 2026-09-01), puis
+  // dans le rail `#v9ProfilePassions` juste dessous, qui filtre et compte. Deux
+  // rangées disant les mêmes mots : c'est le doublon de la carte du fil, sur le
+  // profil. Le rail reste, la ligne part.
   //
-  // ⚠️ 2026-09-01 : ce n'est plus une ligne de texte mais une rangée de PORTES
-  // (`identitePassionsChipsHTML`, app-02) — chaque passion ouvre sa page. Le
-  // nœud reste le même et garde sa classe : seule sa nature change.
-  try {
-    var identEl = document.getElementById("mainProfileIdent");
-    var moi = { id: (typeof MY_UID !== "undefined" && MY_UID) || "me" };
-    var identChips = (typeof identitePassionsChipsHTML === "function")
-      ? identitePassionsChipsHTML(moi) : "";
-    // La signature évite de repeindre à chaque `renderMainProfile` (rappelée à
-    // chaque publication, chaque commentaire, chaque RSVP) : réécrire l'HTML
-    // sans raison relancerait la transition des pastilles à chaque geste.
-    // ⚠️ Elle porte sur ce que la pastille MONTRE — id, emoji ET libellé — et pas
-    // sur la seule ligne de texte : changer l'emoji d'une passion sans changer son
-    // nom laisserait sinon l'ancien à l'écran jusqu'au prochain rechargement.
-    var identSig = "";
-    try {
-      identSig = passionsAffichables(moi).map(function (p) {
-        return p.id + ":" + p.emoji + ":" + p.label;
-      }).join("|");
-    } catch (e) {}
-    if (!identEl && identChips) {
-      identEl = document.createElement("div");
-      identEl.id = "mainProfileIdent";
-      identEl.className = "ident-passions ident-passions-links";
-      identEl.setAttribute("role", "group");
-      identEl.setAttribute("aria-label", "Mes passions — toucher pour les découvrir");
-      usernameEl.parentNode.insertBefore(identEl, usernameEl.nextSibling);
-    }
-    if (identEl) {
-      if (identEl.getAttribute("data-ident-sig") !== identSig) {
-        identEl.setAttribute("data-ident-sig", identSig);
-        identEl.innerHTML = identChips;
-      }
-      // Une rangée vide ne doit rien peindre : une ligne vide sous un pseudo se
-      // lit comme un chargement qui n'arrive jamais.
-      identEl.hidden = !identChips;
-    }
-  } catch (e) { _v8Echec("ident_passions", e); }
+  // ⚠️ NE PAS RECRÉER `#mainProfileIdent` ICI SANS RELIRE CE QUI SUIT. Le nœud
+  // était créé par ce renderer, rappelé à CHAQUE publication, commentaire et
+  // RSVP : le remettre ferait revenir la rangée partout, sans qu'aucun test de
+  // rendu ne s'en émeuve. L'identité complète reste centralisée (ADR-011 §3) et
+  // s'affiche sur les surfaces denses, où rien ne la double.
   // Bio : afficher seulement si renseignée (sinon rien, pas de placeholder)
   bioEl.textContent = g.bio || "";
   bioEl.style.display = g.bio ? "" : "none";

@@ -9967,117 +9967,24 @@ body.ctx-locked #appMain { overflow: hidden; }
 
 .ident-passions[hidden] { display: none !important; }
 
-/* Sur mon profil et sur un profil visité, la ligne est centrée sous le pseudo,
-   comme la bio qui la suit. */
-.main-profile-body .ident-passions {
-  text-align: center;
-  margin: 2px auto 0;
-  max-width: 90%;
-}
+/* ⚠️ Le sélecteur `.main-profile-body .ident-passions` a été RETIRÉ le
+   2026-09-02 avec la ligne qu'il centrait : aucun en-tête de profil ne rend plus
+   de passions sous le pseudo. */
 
-/* ──────────────────────────────────────────────────────────────────────────
-   LES PASSIONS D'UN PROFIL SONT DES PORTES (2026-09-01)
-   Demande de Benjamin : « je voudrais que les passions soient cliquables et que
-   ça renvoie vers la page de cette passion, pour que les utilisateurs puissent
-   aller découvrir les passions directement. » La ligne d'identité du profil —
-   la mienne comme celle d'un profil visité — cesse d'être un libellé et devient
-   une rangée de pastilles, chacune ouvrant `openPassionExplorer`.
+/* ⚠️ LES RÈGLES DE L'IDENTITÉ CLIQUABLE ONT ÉTÉ RETIRÉES ICI LE 2026-09-02
+   (`.ident-passions.ident-passions-links`, `.ident-passion-lien` et son
+   `::before`, `.ident-passion-nom`, `.ident-passion-emoji`,
+   `.ident-passion-plus`). Elles habillaient la rangée de pastilles-portes posée
+   sous le pseudo par le lot du 2026-09-01 ; Benjamin l'a fait retirer des deux
+   en-têtes de profil le lendemain — « supprime les titres de passion dans le
+   profil sous le pseudo et garde seulement les bulles dessous » — parce que le
+   rail `.v9-profile-strip`, devenu lui aussi une rangée de pastilles, nommait
+   les mêmes passions 5 px plus bas. Plus aucun émetteur : les règles partent
+   avec lui plutôt que de survivre à leur cible.
 
-   ⚠️ CE MODIFICATEUR DÉFAIT LA TRONCATURE, ET C'EST BORNÉ À CE CONTEXTE.
-   `.ident-passions` est `nowrap` + `ellipsis` pour une raison écrite plus haut :
-   sur les surfaces denses (commentaires, listes de personnes, messages) une
-   identité longue pousse hors de l'écran l'action posée À CÔTÉ d'elle
-   (« Message → », « Voir → »). Ici la ligne occupe sa propre rangée, sans rien
-   à sa droite : elle peut passer à la ligne sans rien bousculer. Le rendu reste
-   borné côté JS (`identitePassionsChipsHTML`, 6 + « +N ») — un
-   `flex-wrap` n'est pas une autorisation à afficher une liste non bornée venue
-   du jsonb `profiles.passions` d'un autre compte.
-
-   ⚠️ La double classe (`.ident-passions.ident-passions-links`) n'est pas une
-   coquetterie : elle gagne sur `.ident-passions` par la SPÉCIFICITÉ, donc sans
-   dépendre de la position de ce bloc dans la feuille — et le bloc UI-4A5 doit
-   rester le dernier. */
-.ident-passions.ident-passions-links {
-  display: flex;
-  flex-wrap: wrap;
-  /* ⚠️ ALIGNÉES À GAUCHE, comme le pseudo et la bio. `.main-profile-body
-     .ident-passions` centrait cette ligne alors que tout le corps du profil est
-     ferré à gauche — un décalage discret tant qu'il s'agissait d'un libellé gris,
-     franchement visible dès qu'il devient une rangée de pastilles. Cette règle a
-     la même spécificité (0,2,0) et vient APRÈS : c'est elle qui l'emporte. */
-  justify-content: flex-start;
-  align-items: center;
-  gap: 14px 6px;
-  white-space: normal;
-  overflow: visible;
-  text-overflow: clip;
-  max-width: 100%;
-  margin: 10px 0 0;
-}
-
-/* ⚠️ LA CIBLE TACTILE FAIT 44 px, LA PASTILLE VISIBLE 30 px — même patron que
-   `.v3-tempt` (UI-3A) et que le crayon d'UI-6B. La cible se mesure sur la BOÎTE
-   du bouton, qu'un simple débord en pseudo-élément ne satisferait pas : la boîte
-   garde donc ses 44 px et c'est le `::before` (en `inset: 7px 0`, z-index
-   négatif) qui PEINT la pilule. Les marges négatives rendent au corps du profil
-   les 14 px que cette boîte ajoute, et le `row-gap` de 14 px garantit que deux
-   rangées de pastilles ne se CHEVAUCHENT pas : 30 + 14 = 44, soit exactement la
-   hauteur d'une boîte. Sans lui, un tap entre deux lignes atteindrait la
-   pastille du dessous.
-
-   ⚠️ Le fond ne peut PAS être `var(--bg-card)` : ces pastilles vivent DANS
-   `.main-profile-card`, qui est déjà `--bg-card` (#fff), et la bordure du thème
-   est à 7 % d'opacité. Une pastille blanche sur carte blanche est invisible —
-   d'où le lavis violet `--accent-wash`, le jeton d'« état actif discret » du
-   thème, déjà utilisé partout ailleurs pour ça. */
-.ident-passion-lien {
-  position: relative;
-  z-index: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  max-width: 100%;
-  min-height: 44px;
-  margin: -7px 0;
-  padding: 0 12px;
-  border: 0;
-  background: none;
-  color: var(--accent);
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1.2;
-  cursor: pointer;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  transition: color 0.15s ease;
-}
-.ident-passion-lien::before {
-  content: "";
-  position: absolute;
-  inset: 7px 0;
-  z-index: -1;
-  border-radius: 999px;
-  background: var(--accent-wash);
-  border: 1px solid var(--accent-wash);
-  transition: background 0.15s ease, border-color 0.15s ease;
-}
-.ident-passion-lien:hover::before,
-.ident-passion-lien:focus-visible::before {
-  background: rgba(124, 58, 237, 0.16);
-  border-color: var(--accent);
-}
-.ident-passion-nom { overflow: hidden; text-overflow: ellipsis; }
-.ident-passion-emoji { font-size: 13px; line-height: 1; flex-shrink: 0; }
-
-/* Le reliquat « +N » n'ouvre rien : il DIT qu'il y en a d'autres, il ne prétend
-   pas être une porte. Un faux bouton est pire qu'une information. */
-.ident-passion-plus {
-  font-size: 11.5px;
-  font-weight: 700;
-  color: var(--muted);
-  padding: 5px 4px;
-}
+   ⚠️ `.ident-passions` (la ligne de TEXTE INERTE des surfaces denses) reste, et
+   c'est une autre famille : commentaires, listes de personnes, recherche, inbox,
+   notifications. Ne pas la retirer en croyant finir ce nettoyage. */
 
 /* Le retour vers le profil d'où l'on vient, en tête de la page d'une passion
    (`openPassionExplorer(pid, retourUserId)`). Posé au-dessus du titre, là où on
@@ -10092,7 +9999,6 @@ body.ctx-locked #appMain { overflow: hidden; }
 @media (max-width: 359px) {
   .ident-passions { font-size: 11px; }
   .ident-passions-sm { font-size: 10px; }
-  .ident-passion-lien { font-size: 11.5px; padding: 0 10px; }
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -10133,7 +10039,7 @@ body.ctx-locked #appMain { overflow: hidden; }
 }
 
 /* ⚠️ LA CIBLE TACTILE FAIT 44 px, LA PASTILLE VISIBLE 30 px — même patron que
-   `.ident-passion-lien`, `.v3-tempt` (UI-3A) et le crayon d'UI-6B : une cible se
+   `.v3-tempt` (UI-3A) et le crayon d'UI-6B : une cible se
    mesure sur la BOÎTE, qu'un débord en pseudo-élément ne satisferait pas. La
    boîte garde donc ses 44 px et c'est le `::before` (en `inset: 7px 0`, z-index
    négatif) qui PEINT la pilule. Les marges négatives rendent au profil les 14 px

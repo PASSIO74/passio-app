@@ -1311,86 +1311,34 @@ function identitePassionsHTML(u, cls) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// L'IDENTITÉ CLIQUABLE — chaque passion d'un profil est une PORTE (2026-09-01)
+// L'IDENTITÉ CLIQUABLE A ÉTÉ RETIRÉE DES DEUX EN-TÊTES DE PROFIL (2026-09-02)
 // ──────────────────────────────────────────────────────────────────────────
-// Demande de Benjamin, après essai réel : « je voudrais que les passions soient
-// cliquables et que ça renvoie vers la page de cette passion, pour que les
-// utilisateurs puissent aller découvrir les passions directement. »
+// `identitePassionsChipsHTML`, `identitePassionsLiensHTML`, `_identPassionOnclick`
+// et `IDENT_PASSIONS_MAX_PROFIL` vivaient ici. Elles rendaient, sous le pseudo,
+// une rangée de pastilles ouvrant chacune `openPassionExplorer` — demande de
+// Benjamin du 2026-09-01.
 //
-// Sur un profil, les passions ne sont pas une étiquette : ce sont les seuls
-// endroits de l'écran qui nomment un univers de contenu que le visiteur ne
-// connaît pas encore. Elles ouvrent donc `openPassionExplorer(pid)`, la page qui
-// existe déjà pour ça (créateurs + publications de la passion), et qui était
-// jusqu'ici atteignable seulement depuis Explorer.
+// Le 2026-09-02, le rail de passions du profil est devenu lui aussi une rangée
+// de pastilles de texte (« les onglets ronds violets, c'est trop gros trop
+// visible ») : le profil nommait alors les mêmes passions DEUX fois, à 5 px
+// d'écart. Arbitrage de Benjamin, même jour : « on va supprimer les titres de
+// passion dans le profil sous le pseudo et garder seulement les bulles
+// dessous. » Les quatre fonctions n'avaient plus d'appelant : elles sont
+// parties avec leurs règles CSS (`.ident-passions-links`, `.ident-passion-*`),
+// plutôt que de survivre à leur cible — le piège le plus fréquent de ce dépôt.
 //
-// ⚠️ PÉRIMÈTRE : LES DEUX EN-TÊTES DE PROFIL, ET RIEN D'AUTRE. Les surfaces
-// denses (`ident-passions-sm` : cartes de publication, commentaires et réponses,
-// listes d'abonnés, recherche, inbox) gardent `identitePassionsHTML`, en texte
-// inerte. Deux raisons, aucune décorative : ① ces lignes vivent DANS une rangée
-// qui a déjà son geste (ouvrir le profil de la personne, ouvrir la publication)
-// — un second bouton imbriqué y produirait deux destinations pour un tap ;
-// ② elles mesurent 10,5 px, très en dessous des 44 px de cible tactile.
+// ⚠️ CE QUI RESTE, ET QU'IL NE FAUT PAS CONFONDRE : `identitePassionsHTML` /
+// `identitePassionsTexte` (ci-dessus) rendent la ligne de TEXTE INERTE des
+// surfaces denses — cartes de commentaire, listes de personnes, recherche,
+// inbox, notifications. Elles sont toujours vivantes, et ADR-011 §3 avec elles.
 //
-// ⚠️ LE GESTIONNAIRE N'EST PAS UNE CHAÎNE LIBRE — même règle que
-// `_passionTileOnclick` : chaque branche écrit son appel EN TOUTES LETTRES, seul
-// l'argument circule, et il passe par `escapeJsArg`. Un `onclick` doit se relire
-// à l'œil sans remonter la provenance de la chaîne (`audit:echappement`).
-//
-// ⚠️ AUCUNE ACTIVATION CLAVIER ICI, et c'est délibéré : `app-08` porte le
-// délégué unique qui active tout `[role="button"]` non natif à Entrée/Espace.
-// En ajouter un second produirait DEUX activations pour une touche.
-function _identPassionOnclick(passionId, retourUserId) {
-  var pid = escapeJsArg(String(passionId == null ? "" : passionId));
-  // Ouverte depuis un profil VISITÉ, la page de passion REMPLACE la modale de ce
-  // profil (`openModal` n'empile pas) : sans ce second argument, découvrir une
-  // passion faisait perdre la personne par qui on l'avait découverte, sans
-  // aucun chemin de retour. Le retour est une donnée, pas une chaîne d'appel.
-  if (retourUserId) {
-    return "openPassionExplorer('" + pid + "','" + escapeJsArg(String(retourUserId)) + "')";
-  }
-  return "openPassionExplorer('" + pid + "')";
-}
-
-// Combien de pastilles avant le reliquat « +N ». Plus large que la ligne de
-// texte (3) : sur un en-tête de profil la rangée occupe sa propre ligne, sans
-// rien à sa droite, donc elle peut passer à la ligne sans pousser aucune action
-// hors de l'écran. Elle reste BORNÉE — la liste vient du jsonb
-// `profiles.passions` d'un autre compte, que rien ne limite côté produit. Le
-// « +N » n'est PAS une porte : un faux bouton est pire qu'une information.
-var IDENT_PASSIONS_MAX_PROFIL = 6;
-
-// Les pastilles seules, sans conteneur : `renderMainProfile` tient un nœud
-// persistant (`#mainProfileIdent`) et n'y écrit que le contenu.
-function identitePassionsChipsHTML(u, opts) {
-  opts = opts || {};
-  var liste = passionsAffichables(u);
-  if (!liste.length) return "";
-  var max = opts.max || IDENT_PASSIONS_MAX_PROFIL;
-  var visibles = liste.slice(0, max);
-  var reste = liste.length - visibles.length;
-  var html = visibles.map(function (p) {
-    var court = _passionCourteIdent(p.label);
-    return '<span class="ident-passion-lien" role="button" tabindex="0"'
-      + ' data-ident-passion="' + escapeHtml(String(p.id)) + '"'
-      + ' onclick="' + _identPassionOnclick(p.id, opts.retourUserId) + '"'
-      + ' title="Découvrir ' + escapeHtml(court) + '">'
-      + '<span class="ident-passion-emoji" aria-hidden="true">' + escapeHtml(p.emoji) + '</span>'
-      + '<span class="ident-passion-nom">' + escapeHtml(court) + '</span></span>';
-  }).join("");
-  if (reste > 0) html += '<span class="ident-passion-plus">+' + Number(reste) + '</span>';
-  return html;
-}
-
-// La rangée complète, conteneur compris — pour les surfaces qui composent une
-// chaîne HTML d'un bloc (le profil visité).
-function identitePassionsLiensHTML(u, opts) {
-  var chips = identitePassionsChipsHTML(u, opts);
-  if (!chips) return "";
-  var cls = (opts && opts.cls) ? " " + escapeHtml(opts.cls) : "";
-  return '<div class="ident-passions ident-passions-links' + cls + '"'
-    + ' role="group" aria-label="Ses passions — toucher pour les découvrir">'
-    + chips + '</div>';
-}
+// ⚠️ `openPassionExplorer(pid, retourUserId)` (app-07) garde son second argument
+// et son lien « ← Retour au profil » alors qu'AUCUN appelant ne le passe plus.
+// C'est délibéré : le jour où une porte vers la page d'une passion réapparaît
+// dans une modale, l'oublier rendrait la personne introuvable (`openModal`
+// n'empile pas). Le chemin est couvert par un test qui l'appelle directement,
+// et il ne peut rien peindre tant que personne ne passe l'argument.
+// ══════════════════════════════════════════════════════════════════════════
 
 function userById(id) {
   if (id === "me" || (typeof MY_UID !== "undefined" && MY_UID && id === MY_UID)) {
@@ -3178,13 +3126,13 @@ function passionTileHTML(o) {
 // les profils du fil comme avant, en bulle », 2026-08-29 : cette demande-là n'est
 // pas annulée, elle ne portait pas sur le même écran).
 //
-// ⚠️ CE N'EST PAS UN DOUBLON DE LA LIGNE D'IDENTITÉ. Les deux rangées nomment
-// les mêmes passions mais ne posent pas la même question : celle de la carte dit
-// QUI EST CE COMPTE et chaque pastille y ouvre la page de la passion
-// (`identitePassionsLiensHTML`) ; celle-ci FILTRE ce qui est affiché dessous et
-// porte pour cela un décompte, un état coché et `aria-pressed`. Les deux se
-// distinguent aussi à l'oeil : l'identité est une pilule pleine `--accent-wash`,
-// le filtre un contour qui ne se remplit qu'une fois coché.
+// ⚠️ C'EST DÉSORMAIS LA SEULE RANGÉE DE PASSIONS DU PROFIL. La carte d'identité
+// en portait une seconde, juste au-dessus, où chaque pastille ouvrait la page de
+// la passion ; les deux nommaient les mêmes mots à 5 px d'écart. Benjamin a
+// tranché le 2026-09-02 : « supprime les titres de passion dans le profil sous
+// le pseudo et garde seulement les bulles dessous. » Ne pas la remettre sans
+// retirer celle-ci — deux rangées, ou une rangée à deux destinations, sont les
+// deux façons de rouvrir le défaut.
 //
 // ⚠️ MÊME RÈGLE DE GESTIONNAIRE que la bulle : `_passionTileOnclick` écrit
 // l'appel en toutes lettres, seul `arg` circule et il passe par `escapeJsArg`.
