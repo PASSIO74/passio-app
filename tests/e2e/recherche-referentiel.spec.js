@@ -392,4 +392,42 @@ test.describe("la page Rechercher connaît tout le référentiel", () => {
     expect(vu.profil, "la signature du rail du Profil est retirée").not.toBe("sentinelle");
     expect(vu.signature, "le guard no-op de renderFeed est invalidé").not.toBe("sentinelle");
   });
+
+  for (const largeur of [320, 390, 430]) {
+    test(`⑬ ${largeur} px : la grille ne déborde pas de l'écran`, async ({ page }) => {
+      // ⚠️ RÉGRESSION INTRODUITE PAR CE LOT, VUE À L'ÉCRAN ET PAS PAR UN TEST.
+      // `.passion-grid` est en `repeat(3, 1fr)`, et une piste `1fr` a un
+      // `min-width: auto` : elle refuse de descendre sous la largeur de son
+      // contenu le plus large. Tant que la grille ne servait que les DIX-NEUF
+      // libellés du socle (« Photo », « Sport »…) rien ne débordait ; dès
+      // qu'elle a rendu le référentiel plat, « Astrophotographie » et « Guitare
+      // électrique » ont poussé la troisième colonne HORS de l'écran.
+      //
+      // La leçon est plus large que la règle CSS : CHANGER LES DONNÉES D'UNE
+      // MISE EN PAGE, C'EST CHANGER LA MISE EN PAGE. Aucun des douze cas
+      // précédents ne pouvait le voir — ils comptaient des tuiles et lisaient
+      // des libellés, jamais une largeur.
+      await page.setViewportSize({ width: largeur, height: 844 });
+      await bootOnboarded(page, null, 1);
+      await ouvrirRecherche(page);
+      await page.waitForFunction(
+        () => document.querySelectorAll("#allPassions .passion-tile").length > 19,
+        null, { timeout: 15000 },
+      );
+      const vu = await page.evaluate(() => {
+        const g = document.getElementById("allPassions");
+        const ec = document.getElementById("screen-explore");
+        return {
+          grille: g.scrollWidth - g.clientWidth,
+          ecran: ec.scrollWidth - ec.clientWidth,
+          // Le libellé le plus long doit RESTER dans sa tuile.
+          pire: Array.from(document.querySelectorAll("#allPassions .passion-tile"))
+            .reduce((m, t) => Math.max(m, t.scrollWidth - t.clientWidth), 0),
+        };
+      });
+      expect(vu.grille, "la grille tient dans sa colonne").toBeLessThanOrEqual(1);
+      expect(vu.ecran, "et l'écran ne défile pas latéralement").toBeLessThanOrEqual(1);
+      expect(vu.pire, "aucun libellé ne déborde de sa tuile").toBeLessThanOrEqual(1);
+    });
+  }
 });

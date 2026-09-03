@@ -89,7 +89,7 @@ est plus que le repli.
   `PassioPassions.horsLigne()`, second chemin de rendu ajouté à l'API publique :
   hors ligne, la grille garde le socle **et le compteur se tait**.
 
-## Six défauts trouvés en chemin — trois en production, trois introduits par ce lot et pris en relecture
+## Huit défauts trouvés en chemin — quatre en production, quatre introduits par ce lot
 
 ### ① La recherche n'avait ni anti-rebond ni annulation
 
@@ -160,6 +160,33 @@ vide six jours). Tous logguent maintenant. Et `_exSearchLancer` n'avait pas de
 `.catch` : le panneau, mis à « Recherche… » de façon synchrone, pouvait y rester
 **pour toujours** sans un message ni une trace.
 
+### ⑦ La grille débordait de l'écran — vu à l'œil, pas par un test
+
+`.passion-grid` est en `repeat(3, 1fr)`, et une piste `1fr` a un
+`min-width: auto` : elle refuse de descendre sous la largeur de son contenu le
+plus large. Tant que la grille ne servait que les **dix-neuf** libellés courts du
+socle (« Photo », « Sport »…), rien ne débordait. Dès qu'elle a rendu le
+référentiel plat, « Astrophotographie » et « Guitare électrique » ont poussé la
+troisième colonne **hors de l'écran** — 17 px à 390 px.
+
+> ⚠️ **CHANGER LES DONNÉES D'UNE MISE EN PAGE, C'EST CHANGER LA MISE EN PAGE.**
+> Aucun des douze verrous précédents ne pouvait le voir : ils comptaient des
+> tuiles et lisaient des libellés, **jamais une largeur**. Il a fallu regarder
+> l'écran.
+
+Correctif : `minmax(0, 1fr)` sur la grille, et sur le libellé `hyphens: auto`
+(le document est en `lang="fr"`, donc la coupure est « Astrophoto-graphie » et
+non au hasard) avec `overflow-wrap: anywhere` en filet.
+
+### ⑧ Le bouton « OK » sortait de l'écran à 320 px — défaut ANTÉRIEUR
+
+Mesuré **identique avec l'ancien libellé d'invite** : ce n'est pas ce lot qui l'a
+causé. Un élément flex a un `min-width: auto`, et un `<input>` a une largeur
+intrinsèque d'environ vingt caractères (204 px) : il refusait de rétrécir et
+poussait le bouton dehors. `min-width: 0` sur le champ le règle (input à 146 px,
+débordement à zéro). Personne ne l'avait vu parce qu'**aucune suite ne mesurait
+la largeur de cet écran** — c'est désormais le cas (⑬, à 320 / 390 / 430 px).
+
 ## Ce que ce lot NE fait PAS
 
 - **Les créateurs d'une fiche de passion se cherchent sur `passion_id`**, la
@@ -175,7 +202,7 @@ vide six jours). Tous logguent maintenant. Et `_exSearchLancer` n'avait pas de
 
 ## Verrou
 
-`tests/e2e/recherche-referentiel.spec.js` (12 cas). Le cas ① est une **prémisse** :
+`tests/e2e/recherche-referentiel.spec.js` (15 cas). Le cas ① est une **prémisse** :
 il établit que `moto-enduro` est absent du socle, sans quoi les suivants
 pourraient être verts avec le code d'avant.
 
