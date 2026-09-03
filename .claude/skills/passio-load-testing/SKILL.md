@@ -26,13 +26,14 @@ Donc : **le test de charge complet exige une base cible non-prod** — second pr
 
 Latences de production dépouillées ainsi :
 
-```bash
-supabase db query --linked "select meta->>'endpoint' ep, count(*) n,
+```
+execute_sql  (connecteur supabase-passio-readonly)
+select meta->>'endpoint' ep, count(*) n,
   percentile_disc(0.5) within group (order by (meta->>'ms')::numeric) p50,
   percentile_disc(0.95) within group (order by (meta->>'ms')::numeric) p95,
   max((meta->>'ms')::numeric) max
 from telemetry_events where env='production' and type='fetch' and meta ? 'ms'
-  and created_at > now() - interval '7 days' group by 1 having count(*) > 20 order by p95 desc limit 15;"
+  and created_at > now() - interval '7 days' group by 1 having count(*) > 20 order by p95 desc limit 15;
 ```
 
 C'est cette requête qui a désigné `SYNC-B64-005` : `user_state` à p95 = 2 844 ms, max 43 199 ms.

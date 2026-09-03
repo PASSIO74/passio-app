@@ -17,16 +17,20 @@ description: "KPI et métriques via la télémétrie : DAU/WAU/MAU, rétention, 
 7. **Santé** : erreurs (`client_errors`), signalements (`reports`), latence API (télémétrie `api`).
 
 ## Requêtes de base
+Lecture seule : canal ① d'ADR-012, outil `execute_sql` du connecteur `supabase-passio-readonly`.
 ```
-supabase db query --linked "SELECT date_trunc('day', created_at) d, count(DISTINCT device_id) actifs FROM telemetry_events WHERE type='action' AND created_at > now() - interval '30 days' GROUP BY d ORDER BY d"
+execute_sql  (connecteur supabase-passio-readonly)
+SELECT date_trunc('day', created_at) d, count(DISTINCT device_id) actifs FROM telemetry_events WHERE type='action' AND created_at > now() - interval '30 days' GROUP BY d ORDER BY d
 ```
 Nouveaux comptes :
 ```
-supabase db query --linked "SELECT date_trunc('day', created_at) d, count(*) FROM profiles GROUP BY d ORDER BY d DESC LIMIT 30"
+execute_sql  (connecteur supabase-passio-readonly)
+SELECT date_trunc('day', created_at) d, count(*) FROM profiles GROUP BY d ORDER BY d DESC LIMIT 30
 ```
 Actions par type :
 ```
-supabase db query --linked "SELECT action, count(*) FROM telemetry_events WHERE type='action' AND created_at > now()-interval '7 days' GROUP BY action ORDER BY count DESC"
+execute_sql  (connecteur supabase-passio-readonly)
+SELECT action, count(*) FROM telemetry_events WHERE type='action' AND created_at > now()-interval '7 days' GROUP BY action ORDER BY count DESC
 ```
 
 ## Livrer

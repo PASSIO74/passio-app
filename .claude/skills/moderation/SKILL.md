@@ -13,7 +13,8 @@ Un réseau qui grandit attire les abus. La modération protège les utilisateurs
 
 ## Traiter la file de signalements
 ```
-supabase db query --linked "SELECT r.created_at, r.kind, r.target_id, r.reason, r.reporter_id FROM reports r ORDER BY r.created_at DESC LIMIT 50"
+execute_sql  (connecteur supabase-passio-readonly)
+SELECT r.created_at, r.kind, r.target_id, r.reason, r.reporter_id FROM reports r ORDER BY r.created_at DESC LIMIT 50
 ```
 Pour chaque signalement : identifier le contenu/compte (`kind` = user/post/event/cdv_live…), évaluer la gravité, décider (ignorer / masquer / supprimer / bannir). Il n'y a pas encore d'outil admin de suppression cross-compte → documenter le geste SQL nécessaire (avec prudence, lecture d'abord).
 

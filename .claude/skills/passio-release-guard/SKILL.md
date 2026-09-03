@@ -50,7 +50,11 @@ Pour un changement risqué et réversible, **ajouter un interrupteur avant de d�
 
 ```bash
 curl -sI https://passio-app.netlify.app | head -5
-supabase db query --linked "select message, count(*) n from client_errors where created_at > now() - interval '30 minutes' group by 1 order by n desc limit 10;"
+```
+
+```
+execute_sql  (connecteur supabase-passio-readonly)
+select message, count(*) n from client_errors where created_at > now() - interval '30 minutes' group by 1 order by n desc limit 10;
 ```
 
 Comparer **au même intervalle avant** le déploiement — un décompte d'erreurs sans référence ne dit rien.

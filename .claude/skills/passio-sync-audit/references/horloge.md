@@ -19,6 +19,7 @@ Aucune dérive positive observée (toutes les lignes `user_state` ont un `update
 
 Vérifier la dérive :
 
-```bash
-supabase db query --linked "select count(*) filter (where updated_at > now() + interval '60 seconds') as horloges_en_avance, max(updated_at - now()) as derive_max from user_state;"
+```
+execute_sql  (connecteur supabase-passio-readonly)
+select count(*) filter (where updated_at > now() + interval '60 seconds') as horloges_en_avance, max(updated_at - now()) as derive_max from user_state;
 ```

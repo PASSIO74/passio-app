@@ -13,7 +13,8 @@
 --   • `user_id` peut être anonymisé côté client ;
 --   • rétention configurable via la fonction de purge ci-dessous.
 --
--- Application : supabase db query --linked --file migrations/migration_telemetry.sql
+-- Application (canal ③ d'ADR-012) : psql "$DATABASE_URL" -f migrations/migration_telemetry.sql
+--                              ou le SQL Editor du tableau de bord.
 -- ═══════════════════════════════════════════════════════════════════════════
 
 CREATE TABLE IF NOT EXISTS telemetry_events (

@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "supabase-passio-readonly": {
-      "type": "http",
-      "url": "https://mcp.supabase.com/mcp?project_ref=njkiyoklssvefstljemx&read_only=true&features=database,debugging,docs"
-    }
-  }
-}

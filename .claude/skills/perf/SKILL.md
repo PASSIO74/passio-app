@@ -19,7 +19,8 @@ description: "Performance : poids des bundles, jank de rendu, pollings, requête
 2. Chercher les régressions : `JSON.stringify` synchrones répétés, re-render complet sur une micro-interaction (cf. « ne pas rebuild tout le fil »), boucles qui décodent des images, requêtes Supabase N+1 (préférer `.in(...)`).
 3. Vérifier les index prod si une requête est lente :
    ```
-   supabase db query --linked "SELECT indexname, indexdef FROM pg_indexes WHERE tablename='<t>'"
+   execute_sql  (connecteur supabase-passio-readonly)
+   SELECT indexname, indexdef FROM pg_indexes WHERE tablename='<t>'
    ```
 4. Implémenter, rebuild, re-mesurer, prouver le gain chiffré.
 

@@ -9,8 +9,10 @@ Délègue de préférence au subagent `migration-checker` pour l'inventaire, pui
 
 ## Inventaire (prod réelle, lecture seule)
 ```
-supabase db query --linked "SELECT tablename, policyname, cmd, qual, with_check FROM pg_policies WHERE tablename IN ('posts','post_comments','post_likes','comment_interactions','events','event_attendees','event_reactions','cdv_lives','cdv_live_steps','profiles','conv_messages') ORDER BY tablename, cmd"
+execute_sql  (connecteur supabase-passio-readonly)
+SELECT tablename, policyname, cmd, qual, with_check FROM pg_policies WHERE tablename IN ('posts','post_comments','post_likes','comment_interactions','events','event_attendees','event_reactions','cdv_lives','cdv_live_steps','profiles','conv_messages') ORDER BY tablename, cmd
 ```
+Un audit RLS se **lit** par ce canal ; il ne s'y corrige jamais. Créer ou modifier une policy est une écriture de structure → migration (ADR-012, canal ③ ; skill `/migration`).
 
 ## Points de contrôle
 - **Mutation muette** : chaque table modifiable doit avoir une policy UPDATE et/ou DELETE. Une absente = mutation qui touche **0 ligne en silence** (l'app dit « mis à jour » mais rien ne bouge). Cas passés : `cdv_live_steps` (pas de UPDATE), `cdv_live_reactions` (pas de DELETE → toggle bloqué), events co-organisateurs.
@@ -20,6 +22,8 @@ supabase db query --linked "SELECT tablename, policyname, cmd, qual, with_check 
 
 ## Simuler les rôles
 Rejouer une requête sous différents rôles via `SET LOCAL role` + `request.jwt.claims` (étranger / abonné / auteur / anon) et vérifier : étranger ne voit ni post privé ni ses cmt/like/réactions, abonné oui, auteur oui, anon voit les publics + orphelins.
+
+⚠️ **Le `SET LOCAL` et le `SELECT` doivent partir dans le MÊME appel `execute_sql`.** Chaque appel du connecteur est sa propre transaction : envoyés séparément, le `SET LOCAL` ne survit pas et le `SELECT` s'exécute sous le rôle par défaut — **sans erreur**. La simulation rend alors « la policy laisse passer » alors qu'elle n'a rien mesuré. Un contrôle de confidentialité doit échouer fermé, pas rendre un faux vert.
 
 ## Validation ultime
 Les policies cross-compte ne sont réellement prouvées que par `/e2e-multi` en base réelle. Un test mono-compte ne voit jamais un UPDATE à 0 ligne.

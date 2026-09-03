@@ -8,7 +8,8 @@ description: "Bug de bout en bout : client_errors, repro dans le preview, cause 
 ## 1. Récolter les indices
 - **Erreurs prod loggées** :
   ```
-  supabase db query --linked "SELECT created_at, message, stack, url FROM client_errors ORDER BY created_at DESC LIMIT 30"
+  execute_sql  (connecteur supabase-passio-readonly)
+  SELECT created_at, message, stack, url FROM client_errors ORDER BY created_at DESC LIMIT 30
   ```
   ⚠️ Rappel : un `catch(e){ return []; }` large **n'apparaît PAS** dans client_errors (exceptions avalées) — cf. bug diagLog (fil vide 6 j). Si un chemin critique renvoie vide sans erreur, suspecter un catch large.
 - **Signalements utilisateurs** (modération) : table `reports`.
