@@ -14,6 +14,8 @@ Décisions structurantes déjà prises. Détail dans `../adr/`.
 | [ADR-008](../adr/ADR-008-suppression-conversations-tombstones.md) | Suppression de conversations par tombstones | Accepté |
 | [ADR-009](../adr/ADR-009-core-feed-irl-sans-wallet.md) | Cœur Feed → relation → IRL, **sans Wallet/Passia/points** | Accepté |
 | [ADR-010](../adr/ADR-010-identite-publique-unique-passions-classification.md) | **Une identité publique par compte** ; les passions classent, elles n'identifient pas | Accepté |
+| [ADR-011](../adr/ADR-011-refonte-multi-passion.md) | Fil **additif** (OU inclusif), profil à deux onglets, retrait du Carnet de voyage | Accepté |
+| [ADR-012](../adr/ADR-012-canal-acces-base-de-donnees.md) | **Un canal de lecture** (connecteur claude.ai, `read_only`), **un canal d'écriture** ; `supabase db query --linked` retiré | **Proposé** |
 
 ## Décisions notables hors ADR (mémoire)
 - Seed JSON externalisé : **rejeté sciemment** (2026-07-15).
