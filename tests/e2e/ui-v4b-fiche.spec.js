@@ -295,7 +295,7 @@ test("complet : le libellé annonce la liste d'attente, le moteur l'applique", a
 
   await go.click();
   await expect(page.locator('#eventDetailCta [data-v4b-rsvp-etat="waitlist"]')).toBeVisible();
-  await expect(page.locator("#eventDetailCta [data-v4b-rsvp-etat]")).toHaveText("⏳ Sur liste d'attente");
+  await expect(page.locator("#eventDetailCta [data-v4b-rsvp-etat]")).toHaveText("Sur liste d'attente");
   expect(await page.evaluate(() => myRsvp("ev_full"))).toBe("waitlist");
   expect(await page.evaluate(() => (_findCanonicalEvent("ev_full").attendees || []).length)).toBe(2);
 });

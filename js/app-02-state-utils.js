@@ -1237,8 +1237,8 @@ function publicationRefuseeFautePassion(passion) {
 
 function messageEchecPassion() {
   var c = window._passioEchecPublication;
-  if (c === "passion_absente") return "⚠️ Choisis une passion avant de publier.";
-  if (c === "passion_inconnue") return "⚠️ Cette passion n'existe que chez toi : elle range ton fil, mais on ne peut pas encore y publier. Choisis une passion du catalogue.";
+  if (c === "passion_absente") return "Choisis une passion avant de publier.";
+  if (c === "passion_inconnue") return "Cette passion n'existe que chez toi : elle range ton fil, mais on ne peut pas encore y publier. Choisis une passion du catalogue.";
   return null;
 }
 
@@ -1508,7 +1508,7 @@ function _withSenderMeta(content) {
 // c'est ce qui laissait passer « 12.5 € » et « NaN € ».
 function fmtEventPrice(price) {
   const n = Number(price);
-  if (price === null || price === undefined || price === "" || !isFinite(n) || n <= 0) return "Gratuit 🎉";
+  if (price === null || price === undefined || price === "" || !isFinite(n) || n <= 0) return "Gratuit";
   const txt = Number.isInteger(n) ? String(n) : n.toFixed(2).replace(".", ",");
   return txt + "\u00a0€";
 }

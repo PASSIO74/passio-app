@@ -935,7 +935,7 @@
            que le kill switch passio_ui_4a0="0" le restitue. -->
       <div class="irl-actionbar">
         <button class="irl-chip irl-chip-create" onclick="openCreateEvent()">
-          <span aria-hidden="true">📍</span><span class="irl-chip-label">Créer un événement</span>
+          <span class="irl-chip-label">Créer un événement</span>
         </button>
         <button type="button" class="ctx-trigger" id="irlToolsBtn"
           onclick="ContextualTools.open('irl', this)" aria-haspopup="dialog"
@@ -965,7 +965,7 @@
             <path d="M20 15 V20 H15"/>
           </svg>
         </button>
-        <div class="irl-map-hint">🗺 Carte interactive, pince ou molette pour zoomer, glisse pour naviguer</div>
+        <div class="irl-map-hint">Carte interactive, pince ou molette pour zoomer, glisse pour naviguer</div>
       </div>
 
       <!-- Niveau 1 : passions (grandes tuiles) -->
@@ -976,7 +976,7 @@
         <div onclick="closeIrlFiltersPanel()" style="position:absolute;inset:0;background:rgba(0,0,0,.65);"></div>
         <div style="position:absolute;bottom:0;left:0;right:0;background:#fff;color:#1a1a1a;border-radius:20px 20px 0 0;padding:20px 16px 36px;max-height:85vh;overflow-y:auto;box-shadow:0 -8px 40px rgba(0,0,0,.18);">
           <div style="width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 18px;"></div>
-          <div style="font-size:17px;font-weight:800;color:var(--text);margin-bottom:18px;text-align:center;">🎯 Filtres</div>
+          <div style="font-size:17px;font-weight:800;color:var(--text);margin-bottom:18px;text-align:center;">Filtres</div>
 
           <!-- Date / Distance / Horaire : 3 onglets carrés. Un seul volet ouvert à
                la fois — les trois réglages empilés (bouton + select + bouton)
@@ -1045,9 +1045,9 @@
               <span id="irlDisplayEnd">23:00</span>
             </div>
             <div class="irl-time-quick">
-              <button type="button" class="pill" data-irltime="6-12" onclick="irlSetQuick(6,12)">🌅 06h → 12h</button>
-              <button type="button" class="pill" data-irltime="12-18" onclick="irlSetQuick(12,18)">☀️ 12h → 18h</button>
-              <button type="button" class="pill" data-irltime="18-23" onclick="irlSetQuick(18,23)">🌙 18h → 23h</button>
+              <button type="button" class="pill" data-irltime="6-12" onclick="irlSetQuick(6,12)">06h → 12h</button>
+              <button type="button" class="pill" data-irltime="12-18" onclick="irlSetQuick(12,18)">12h → 18h</button>
+              <button type="button" class="pill" data-irltime="18-23" onclick="irlSetQuick(18,23)">18h → 23h</button>
               <button type="button" class="pill" data-irltime="" onclick="clearIrlTimeFilter()">Toute la journée</button>
             </div>
             <div class="irl-time-selects">

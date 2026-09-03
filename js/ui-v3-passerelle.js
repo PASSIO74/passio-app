@@ -75,7 +75,7 @@
   var LIBELLE_VOIR = "Voir l'activité";
   var LIBELLE_RSVP = "Je participe";
   var LIBELLE_RSVP_FAIT = "✓ Je participe";
-  var LIBELLE_RSVP_ATTENTE = "⏳ Sur liste d'attente";
+  var LIBELLE_RSVP_ATTENTE = "Sur liste d'attente";
   var LIBELLE_RSVP_RETIRER = "Retirer ma participation";
 
   // Aperçu de validation VISUELLE : une carte liée, uniquement en mémoire,

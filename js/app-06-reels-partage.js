@@ -3862,10 +3862,10 @@ async function publishPost() {
       // l'utilisateur réessayait une opération qui ne pouvait jamais aboutir
       // (docs/PASSION_PERSONNALISEE_FK_2026-08-30.md §3).
       var _msgP = (typeof messageEchecPassion === "function") ? messageEchecPassion() : null;
-      toast(_msgP || "⏱️ Post en local (connexion lente)", "warning");
+      toast(_msgP || "Post en local (connexion lente)", "warning");
     }
   } catch (e) {
-    toast("⏱️ Post en local (erreur réseau)", "warning");
+    toast("Post en local (erreur réseau)", "warning");
   } finally {
     _publishInProgress = false; // libère le verrou quoi qu'il arrive
   }

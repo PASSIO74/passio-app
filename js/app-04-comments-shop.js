@@ -1540,7 +1540,14 @@ function openCommentSheet(threadId, title) {
   var initial = thread.comments.length ? _renderCommentsList(thread.comments, threadId) : empty;
   openModal(
     '<div class="modal-handle"></div>'
-    + '<div class="modal-title">' + (title || "💬 Commentaires") + '</div>'
+    // ⚠️ `title` VIENT D'UN AUTRE COMPTE (c'est le titre d'une activité, posé par
+    //    la carte de « Rencontrer »), et il atterrissait BRUT dans un innerHTML.
+    //    `escapeJsArg` à l'appel ne suffit pas : il ferme la chaîne JS, pas le
+    //    HTML — le parseur décode l'attribut AVANT que JS ne reçoive l'argument,
+    //    si bien qu'un titre `<img src=x onerror=…>` s'exécutait à l'ouverture de
+    //    la feuille, chez tous ceux qui touchent la pastille de commentaires.
+    //    C'est le contexte d'escapeHtml, et il se pose ICI, à l'affichage.
+    + '<div class="modal-title">' + escapeHtml(title || "Commentaires") + '</div>'
     + '<div class="modal-subtitle">Réponds à cette publication.</div>'
     + '<div id="cmtThreadList" data-thread="' + escapeHtml(threadId) + '" style="max-height:52vh;overflow-y:auto;margin-bottom:12px;">' + initial + '</div>'
     + '<div style="display:flex;gap:6px;align-items:center;">'

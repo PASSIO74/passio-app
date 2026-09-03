@@ -1382,9 +1382,9 @@ function _publishReelWithFeedback(post) {
     // Échec de CLASSEMENT : réessayer est inutile, et le dire franchement vaut
     // mieux que huit tentatives silencieuses espacées de 45 s.
     var _msgP = (typeof messageEchecPassion === "function") ? messageEchecPassion() : null;
-    if (_msgP) { post._pendingSync = false; try { saveState(); } catch (e) {} toast(_msgP); return; }
+    if (_msgP) { post._pendingSync = false; try { saveState(); } catch (e) {} toast(_msgP, "warning"); return; }
     post._pendingSync = true;
-    toast("⚠️ Vidéo pas encore envoyée — nouvel essai automatique. Garde l'app ouverte.");
+    toast("Vidéo pas encore envoyée — nouvel essai automatique. Garde l'app ouverte.", "warning");
     _scheduleReelRetry();
   }).catch(function() { post._pendingSync = true; _scheduleReelRetry(); });
 }
