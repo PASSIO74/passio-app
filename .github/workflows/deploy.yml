@@ -225,6 +225,18 @@ jobs:
       - name: Audits statiques (cles de telemetrie vs filtre PII)
         run: node scripts/audit-telemetry-keys.js
 
+      # Une suite e2e qui navigue elle-meme (son propre `page.goto`) doit poser
+      # son isolation des donnees distantes. `bootOnboarded` la pose par defaut,
+      # mais sa portee est L'APPEL, pas le fichier : un helper maison garde son
+      # chemin expose, et le verdict du test depend alors du CONTENU DE LA
+      # PRODUCTION. Six correctifs manuels en quatre jours (#247, #249, #252,
+      # #255, #258, #259) ont CHACUN rendu `main` rouge puis fait SAUTER ce
+      # deploiement, pour tout le monde. La regle est donc mecanique ici, et non
+      # plus une chose a se rappeler. Expositions VOULUES, avec leur raison
+      # ecrite : scripts/tests-isolation-socle.json.
+      - name: Audits statiques (isolation des suites e2e)
+        run: node scripts/audit-tests-isolation.js --ci
+
       # Referentiel plat des passions (lot flat_passions_v1).
       # Deux controles, et le second est le plus important : le JSON servi au
       # navigateur et la migration SQL sont GENERES depuis data/passions/*.js.
