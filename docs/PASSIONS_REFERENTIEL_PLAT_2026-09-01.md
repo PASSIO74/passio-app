@@ -253,8 +253,8 @@ l'application se comporte **exactement** comme avant.
 | surface | ce qui change | où |
 |---|---|---|
 | Première visite / onboarding | la grille de 19 tuiles devient une recherche **en ligne** | `renderPassionGrid` (app-02) |
-| Profil | une bulle « **+** » en fin de rail, à côté des passions qu'on possède | `renderProfilePassionRail` (app-06) |
-| Mes passions | la modale de catalogue devient le sélecteur | `openCreateProfile` (app-06) |
+| Profil | une bulle « **+** », **dans le panneau « Gérer mes passions »** depuis le 2026-09-03 (en fin de rail au 2026-09-01, en tête au 2026-09-02) | balisage statique `#nouveauProfilLien` (`index.html`) — plus `renderProfilePassionRail` |
+| Gérer mes passions | la modale de catalogue devient le sélecteur | `openCreateProfile` (app-06) |
 | Studio | un bouton de recherche remplace le `<select>` | `renderStudio` (app-06) + `index.html` |
 | Rencontrer | une tuile « 🔍 Chercher » en tête des passions | `renderIrlPassionTiles` (app-07) |
 
@@ -276,6 +276,17 @@ le plafond (§9 bis) — elles appelaient `ajouterPassionAuCompte` pour chaque
 passion cochée, donc au plafond elles auraient coché dans `_activeFeedPassions`
 des passions que le compte ne possède pas, des bulles qu'un décochage aurait
 fait disparaître sans retour.
+
+⚠️ **ET LE PROFIL NON PLUS, DEPUIS LE 2026-09-03.** Le paragraphe ci-dessus se
+lirait autrement sans son jumeau : il donne le raisonnement, et ce raisonnement
+a été appliqué une seconde fois. « Enlever la bulle + sur le profil passion et le
+mettre dans (gérer mes passions) » — les **deux** rails sont désormais des
+commandes de lecture, et la porte d'acquisition vit dans `#passionManager`.
+`ouvrirRecherchePassionsCompte` a été retirée à son tour, sans appelant comme sa
+jumelle du Fil. Une différence à noter : la porte du panneau appelle
+`openCreateProfile`, qui garde le plafond **et** rend encore la modale de choix
+historique sous `flat_passions_v1="0"` — l'ancienne rendait un tap mort sous
+cette coupure. Détail : `docs/lots-ui/18-GERER-MES-PASSIONS-2026-09-03.md`.
 
 ## 9 bis. Trois passions offertes, la suite sera payante
 
@@ -331,8 +342,9 @@ aujourd'hui — c'est à venir, rien n'est débité, le tarif sera annoncé au
 lancement — et n'offre que l'action qui existe réellement : réorganiser ses
 trois passions.
 
-⚠️ **`ouvrirGestionPassionsDepuisPaywall` est une fonction à part**, pas trois
-instructions dans l'`onclick`. Le panneau `#passionManager` vit **dans**
+⚠️ **`ouvrirGestionPassions` est une fonction à part**, pas trois
+instructions dans l'`onclick` (nommée `ouvrirGestionPassionsDepuisPaywall`
+jusqu'au 2026-09-03 : elle sert désormais aussi le repli du fil vide). Le panneau `#passionManager` vit **dans**
 `#screen-profiles` : ouvert depuis le Fil sans changer d'écran, il serait déplié
 mais invisible — le défaut exact des aides d'UI-7 posées sur une ancre sans
 `offsetParent`.

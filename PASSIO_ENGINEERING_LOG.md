@@ -643,7 +643,7 @@ La CI de la PR #187 était rouge sur `ui-v7-parcours.spec.js` ⑦. **L'attributi
 
 ### Autres pièges payés (détail dans `CLAUDE.md`)
 - **Un titre n'est pas un identifiant d'écran** : `ui-v4a4-outils.js` détectait l'écran IRL en cherchant « IRL » dans `#ctxToolsTitle`. Renommer ce titre en « Filtres » a fait disparaître toute une section, **sans erreur ni exception**. `ContextualTools` publie désormais `pageType()` et `data-ctx-page`.
-- **`montrerHint` refuse une ancre sans `offsetParent`** : déplacer « Mes passions » dans un onglet masqué éteignait l'aide contextuelle en silence.
+- **`montrerHint` refuse une ancre sans `offsetParent`** : déplacer « Mes passions » dans un onglet masqué éteignait l'aide contextuelle en silence. **Reservi en plus fort le 2026-09-03** : la porte d'ajout descendue dans `#passionManager` (replié) rend l'ancre de rang 1 structurellement injoignable au moment où l'aide se déclenche, d'où une cascade de QUATRE ancres testées sur `offsetParent` — et non sur l'existence, qui retenait un nœud masqué puis se faisait refuser sans atteindre le repli suivant. Corollaire : le LIBELLÉ de l'aide doit nommer le chemin, `hintsVus` étant marqué à l'affichage et non au clic — un seul tir, jamais rejoué.
 - **`styles.css` est en CRLF** : une réécriture en mode texte Python le convertit en LF et produit un diff de 10 800 lignes. N'y écrire qu'en binaire.
 
 ### Mesures

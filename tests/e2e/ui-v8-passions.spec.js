@@ -149,8 +149,10 @@ test.describe("UI-8 — un profil personnel, plusieurs passions", () => {
         .filter((c) => (c.getAttribute("onclick") || "").includes("toggleProfileSelect")).length)).toBe(0);
     await expect(page.locator("#profileList .profile-card.selected")).toHaveCount(0);
     await expect(page.locator("#profilesQuotaSub")).not.toContainText("Réinitialiser");
-    // « + Ajouter une passion » reste.
+    // La porte d'ajout reste — devenue la BULLE « + » du panneau le 2026-09-03,
+    // mais toujours sous le même id, et toujours à l'écran.
     await expect(page.locator("#nouveauProfilLien")).toBeVisible();
+    await expect(page.locator("#nouveauProfilLien")).toHaveAttribute("aria-label", "Ajouter une passion");
 
     // Chaque carte porte son décompte, et INDIQUE la passion que le Studio
     // présélectionnera. ⚠️ Elle ne l'OFFRE plus comme un choix : « Publier dans

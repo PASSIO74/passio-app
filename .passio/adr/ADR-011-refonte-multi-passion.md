@@ -104,6 +104,13 @@ gestion des passions (ajouter, illustrer, archiver). Elle vit désormais dans
 du profil. Sans cette porte, ajouter une passion serait devenu inatteignable —
 c'est exactement le défaut du Studio après un carnet (2026-08-29).
 
+> **Amendement du 2026-09-03** (un ADR ne se réécrit pas). L'entrée des options
+> s'appelle désormais « **Gérer mes passions** », et ce panneau porte AUSSI la
+> bulle « + » descendue du rail du profil : il est devenu le seul point
+> d'acquisition d'une passion, et non plus seulement d'administration. Le rail
+> reste une commande de lecture, comme celui du Fil. Détail et pièges :
+> `docs/lots-ui/18-GERER-MES-PASSIONS-2026-09-03.md`.
+
 ### 3. L'identité affichée est centralisée
 
 `identitePassionsHTML(u)` / `identitePassionsTexte(u)` (app-02) rendent, sous le

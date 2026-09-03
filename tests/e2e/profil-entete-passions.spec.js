@@ -179,12 +179,183 @@ test("③ aucune ligne de passions sous le pseudo — les bulles du rail les por
   });
   expect(vu.ligneIdent, "la ligne sous le pseudo ne doit pas revenir").toBe(false);
   expect(vu.dansLaCarte, "aucune passion nommée dans la carte d'identité").toBe(0);
-  // ⚠️ LA PORTE D'AJOUT EST EN TÊTE DEPUIS LE 2026-09-02, et cet ordre-ci est le
-  // contrat : en queue d'un rail devenu coulissant, elle sortait du scrollport
-  // (mesuré à 320 px avec 3 passions : elle commençait à x=326 pour un rail qui
-  // s'arrête à 304). Voir `③ nonies`, qui mesure sa visibilité réelle.
-  expect(vu.bulles).toEqual(["__ajouter__", "pp_moto", "pp_pod", "pp_voy"]);
-  expect(vu.vignettes, "des bulles rondes, pas une rangée ovale").toBe(4);
+  // ⚠️ LA PORTE D'AJOUT A QUITTÉ CE RAIL LE 2026-09-03 (demande de Benjamin :
+  // « enlever la bulle + sur le profil passion et la mettre dans Gérer mes
+  // passions »). Elle était en tête depuis le 2026-09-02 ; elle vit désormais
+  // dans `#passionManager`. Ce rail ne contient plus QUE des passions possédées
+  // — une commande de lecture, comme celui du Fil.
+  expect(vu.bulles).toEqual(["pp_moto", "pp_pod", "pp_voy"]);
+  expect(vu.vignettes, "des bulles rondes, pas une rangée ovale").toBe(3);
+});
+
+// ⚠️ LE VERROU DU DÉMÉNAGEMENT, DANS LES DEUX SENS. Vérifier seulement l'absence
+// laisserait passer le pire des deux résultats : une porte retirée du rail et
+// jamais reposée ailleurs. C'est exactement ce qui est arrivé à la gestion des
+// passions quand l'onglet « À propos » a disparu. On exige donc les deux moitiés
+// dans le même cas.
+test("③ bis bis — la porte d'ajout a quitté le rail pour « Gérer mes passions »", async ({ page }) => {
+  await poser(page);
+  const avant = await page.evaluate(() => ({
+    dansLeRail: document.querySelectorAll('#v9ProfilePassions [data-passion-tile="__ajouter__"]').length,
+    dansLeFil: document.querySelectorAll('#profileStrip [data-passion-tile="__ajouter__"]').length,
+    // Elle EXISTE dans le panneau, mais celui-ci est replié : invisible tant
+    // qu'on ne l'ouvre pas, ce qui est le comportement voulu.
+    dansLePanneau: document.querySelectorAll('#passionManager [data-passion-tile="__ajouter__"]').length,
+    panneauReplie: !!document.getElementById("passionManager").hidden,
+  }));
+  expect(avant.dansLeRail, "plus aucune bulle « + » dans le rail du profil").toBe(0);
+  expect(avant.dansLeFil, "ni dans le Fil, qui ne l'a jamais reprise").toBe(0);
+  expect(avant.dansLePanneau, "mais elle existe dans le panneau de gestion").toBe(1);
+  expect(avant.panneauReplie).toBe(true);
+
+  // Et la porte du menu ⋯ l'amène bien à l'écran, sous son nouveau nom.
+  await page.evaluate(() => { openPassionManager(); });
+  await page.waitForTimeout(400);
+  const apres = await page.evaluate(() => {
+    const b = document.querySelector('#passionManager [data-passion-tile="__ajouter__"]');
+    const r = b.getBoundingClientRect();
+    return {
+      visible: r.width > 0 && r.height > 0,
+      titre: (document.getElementById("passionManagerTitre").textContent || "").trim(),
+      // C'est la MÊME porte : l'id que vise l'aide contextuelle est conservé.
+      memeId: b.id,
+      onclick: b.getAttribute("onclick"),
+      invite: (function () {
+        const m = document.querySelector("#passionManager .passion-manager-porte-mot");
+        return m ? (m.textContent || "").trim() : "";
+      })(),
+      inviteCliquable: !!document.querySelector(
+        "#passionManager .passion-manager-porte-mot[onclick]"),
+    };
+  });
+  expect(apres.visible, "la bulle est réellement peinte une fois le panneau ouvert").toBe(true);
+  expect(apres.titre).toContain("Gérer mes passions");
+  // ⚠️ LA LIGNE D'INVITE EST UN VERROU, PAS UNE DÉCORATION. Dans le rail, la
+  // bulle se lisait par contraste avec les passions qui l'entouraient ; seule
+  // dans le panneau, « Ajouter » n'annonce plus QUOI. Cette ligne est le libellé
+  // que le contexte lui donnait — la perdre rendrait la porte muette sans qu'un
+  // test de présence ne bronche.
+  expect(apres.invite, "la porte dit ce qu'elle ajoute").toContain("passion");
+  expect(apres.inviteCliquable, "une seule cible pour un seul geste").toBe(false);
+  expect(apres.memeId, "l'ancre de l'aide « second_profil » survit").toBe("nouveauProfilLien");
+  expect(apres.onclick, "et elle passe par la porte qui garde le plafond").toContain("openCreateProfile");
+});
+
+// ⚠️ LE CÂBLAGE, PAS LA FONCTION. `③ bis bis` ouvre le panneau par
+// `page.evaluate(() => openPassionManager())` — comme les onze autres cas du
+// dépôt qui touchent ce panneau. Aucun d'eux ne clique la porte qui y mène :
+// supprimez l'entrée « 🗂️ Gérer mes passions » du menu ⋯ (app-06,
+// `openMainProfileMenu`) — la SEULE porte vers la seule porte d'ajout — et la
+// suite complète reste VERTE. C'est mot pour mot la leçon d'`adopterCompteConnecte`
+// inscrite dans CLAUDE.md : « tester la fonction ne suffit pas ; le câblage, non
+// couvert, pouvait être supprimé sans un seul rouge ».
+//
+// Ce cas-ci ne fait donc que des GESTES, du profil jusqu'à la bulle.
+test("③ bis ter — la chaîne complète : crayon → « Gérer mes passions » → la bulle", async ({ page }) => {
+  // ⚠️ DEUX passions, pas trois. `PASSIONS_OFFERTES = 3` : au plafond, la bulle
+  // ouvre la fenêtre payante et non la recherche — c'est le comportement voulu
+  // (cas suivant), mais il ne prouverait pas que le chemin d'AJOUT s'ouvre.
+  await poser(page, {
+    profiles: [
+      { id: "pp_moto", name: "Benjamin", passion: "moto", emoji: "🏍", color: "#7c3aed", createdAt: 1 },
+      { id: "pp_pod", name: "Benjamin", passion: "podcast", emoji: "🎙", color: "#7c3aed", createdAt: 2 },
+    ],
+  });
+  // UI-6B est actif par défaut : le « ⋯ » de la couverture est masqué et
+  // remplacé par le crayon. Les deux ouvrent le MÊME menu.
+  await page.locator("#v6bModifier").click();
+  await page.waitForTimeout(400);
+  const menu = page.locator("#profileDotsMenu .profile-dots-item", { hasText: "Gérer mes passions" });
+  await expect(menu, "l'entrée du menu nomme la gestion des passions").toHaveCount(1);
+  await menu.click();
+  await page.waitForTimeout(600);
+  const vu = await page.evaluate(() => {
+    const porte = document.getElementById("nouveauProfilLien");
+    const r = porte ? porte.getBoundingClientRect() : null;
+    return {
+      panneauOuvert: !document.getElementById("passionManager").hidden,
+      portePeinte: !!(r && r.width > 0 && r.height > 0),
+    };
+  });
+  expect(vu.panneauOuvert, "le tap déplie le panneau").toBe(true);
+  expect(vu.portePeinte, "et la bulle « + » est réellement à l'écran").toBe(true);
+
+  // Le geste suivant : la bulle ouvre bien la porte d'ajout.
+  await page.locator("#nouveauProfilLien").click();
+  await page.waitForTimeout(800);
+  const ouvert = await page.evaluate(() => ({
+    recherche: document.querySelectorAll(".psel-input").length,
+    grille: document.querySelectorAll("#newProfileGrid").length,
+  }));
+  expect(ouvert.recherche + ouvert.grille,
+    "un des deux chemins d'ajout s'est ouvert — jamais un tap mort").toBeGreaterThan(0);
+});
+
+// ⚠️ « MUR → PANNEAU → MUR », LA BOUCLE QUE LE DÉMÉNAGEMENT A ROUVERTE.
+// L'invariant existait pour le quota épuisé : une fenêtre qui ne mène nulle part
+// ne doit pas offrir « Gérer mes passions ». Tant que la porte d'ajout vivait
+// dans le RAIL, ce bouton déplaçait vraiment. Depuis qu'elle est DANS le
+// panneau, le chemin le plus fréquent au plafond est « je suis dans le panneau,
+// je tape la bulle, le mur s'ouvre » — et le bouton m'y renvoyait, devant la
+// même bulle qui vient de refuser. Un clic mort sur le seul chemin qui compte.
+test("③ bis quinquies — au plafond, la fenêtre ne renvoie pas au panneau d'où l'on vient", async ({ page }) => {
+  await poser(page);                       // trois passions = le plafond
+  await page.evaluate(() => { openPassionManager(); });
+  await page.waitForTimeout(500);
+  await page.locator("#nouveauProfilLien").click();
+  await page.waitForTimeout(700);
+  const vu = await page.evaluate(() => {
+    const m = document.getElementById("modalContent");
+    return {
+      murOuvert: !!(m && (m.textContent || "").includes("Trois passions offertes")),
+      renvoiPanneau: !!(m && m.querySelector('[data-tel="passion_paywall_gerer"]')),
+      // La sortie restante prend le style primaire : une fenêtre à une seule
+      // issue ne laisse pas deviner laquelle.
+      sortie: !!(m && m.querySelector('[data-tel="passion_paywall_compris"].primary')),
+    };
+  });
+  expect(vu.murOuvert, "au plafond la bulle annonce l'offre").toBe(true);
+  expect(vu.renvoiPanneau, "et ne propose pas de retourner là où l'on est déjà").toBe(false);
+  expect(vu.sortie, "la seule sortie est mise en avant").toBe(true);
+
+  // ⚠️ ET LE BOUTON REVIENT QUAND IL SERT VRAIMENT : depuis le Fil, panneau
+  // replié, il déplace réellement. Le retirer partout aurait fermé une porte
+  // utile en corrigeant celle qui bouclait.
+  await page.evaluate(() => { closeModal(); closePassionManager(); goTo("feed"); });
+  await page.waitForTimeout(400);
+  await page.evaluate(() => openPassionPaywall());
+  await page.waitForTimeout(500);
+  const depuisLeFil = await page.evaluate(() =>
+    !!document.querySelector('#modalContent [data-tel="passion_paywall_gerer"]'));
+  expect(depuisLeFil, "hors du panneau, la fenêtre garde sa porte vers la gestion").toBe(true);
+});
+
+// ⚠️ CONTRAT DE FRATRIE. `renderProfilesScreen` réécrit `#profileList.innerHTML`
+// EN ENTIER (deux branches), plus `#profilesQuotaSub` et `#passionArchiveBox`.
+// La porte d'ajout est posée en SŒUR de `#profileList` pour y survivre — mais
+// rien ne le prouvait. Deux rendus successifs suffisent à attraper une future
+// version qui la rendrait depuis cette fonction.
+test("③ bis quater — la porte survit à deux rendus du panneau", async ({ page }) => {
+  await poser(page);
+  const vu = await page.evaluate(() => {
+    openPassionManager();
+    renderProfilesScreen();
+    renderProfilesScreen();
+    const porte = document.getElementById("nouveauProfilLien");
+    const r = porte ? porte.getBoundingClientRect() : null;
+    return {
+      combien: document.querySelectorAll('#passionManager [data-passion-tile="__ajouter__"]').length,
+      peinte: !!(r && r.width > 0 && r.height > 0),
+      // Ses DEUX enfants sont intacts : un `textContent =` posé par un futur
+      // décorateur les remplacerait par un mot nu, porte toujours cliquable.
+      rond: !!(porte && porte.querySelector(".profile-tile-avatar")),
+      libelle: porte ? (porte.querySelector(".profile-tile-label") || {}).textContent : null,
+    };
+  });
+  expect(vu.combien, "une seule porte, jamais dupliquée par un rendu").toBe(1);
+  expect(vu.peinte).toBe(true);
+  expect(vu.rond, "le rond pointillé est toujours là").toBe(true);
+  expect(vu.libelle).toBe("Ajouter");
 });
 
 test("③ bis — toucher une bulle FILTRE, elle ne quitte plus le profil", async ({ page }) => {
@@ -232,7 +403,11 @@ function mesurerRail() {
     }
   }
   const railRect = rail.getBoundingClientRect();
-  const plus = rail.querySelector('[data-passion-tile="__ajouter__"]');
+  // ⚠️ `plus` / `plusDansLeChamp` ONT ÉTÉ RETIRÉS ICI (2026-09-03) avec la bulle
+  // « + » qu'ils mesuraient. Les garder aurait rendu `null` sans échouer : une
+  // sonde qui survit à la disparition de sa cible ne mesure plus rien et le dit
+  // en vert. La mesure de visibilité réelle de la porte n'est pas perdue pour
+  // autant — elle est reprise par `③ nonies`, sur le panneau de gestion.
   return {
     chevauche,
     // ⚠️ `offsetTop`, PAS `getBoundingClientRect().top` : une bulle cochée porte
@@ -257,14 +432,30 @@ function mesurerRail() {
     }),
     coulisse: rail.scrollWidth > rail.clientWidth + 1,
     railDansEcran: railRect.right <= window.innerWidth + 1 && railRect.left >= -1,
-    // La porte d'ajout est-elle ENTIÈREMENT dans le champ visible du rail ?
-    // Un test de présence ne le dirait pas : hors du scrollport, le nœud reste
-    // « visible » pour Playwright et `.click()` fait défiler tout seul.
-    plusDansLeChamp: !plus ? null : (function () {
-      const pr = plus.getBoundingClientRect();
-      return pr.left >= railRect.left - 1 && pr.right <= railRect.right + 1;
-    })(),
     hauteur: Math.round(railRect.height),
+  };
+}
+
+// Géométrie de la PORTE D'AJOUT, là où elle vit depuis le 2026-09-03 : dans
+// `#passionManager`. Évaluée DANS la page, comme `mesurerRail`.
+function mesurerPorteAjout() {
+  const panneau = document.getElementById("passionManager");
+  const porte = document.getElementById("nouveauProfilLien");
+  if (!panneau || !porte) return { existe: false };
+  const pr = porte.getBoundingClientRect();
+  return {
+    existe: true,
+    panneauReplie: !!panneau.hidden,
+    largeur: Math.round(pr.width),
+    hauteur: Math.round(pr.height),
+    // ⚠️ ENTIÈREMENT dans la fenêtre, sur les DEUX axes. La bulle ne vit plus
+    // dans un conteneur `overflow-x: auto`, donc elle ne peut plus sortir d'un
+    // scrollport — mais elle peut encore déborder de l'écran à 320 px, ou être
+    // poussée sous la ligne de flottaison par les passions au-dessus d'elle.
+    dansLaFenetre: pr.left >= -1 && pr.right <= window.innerWidth + 1,
+    // Le panneau se déroule dans le flux de la page : la porte est atteignable
+    // au défilement, ce qui est vrai dès que sa boîte n'est pas vide.
+    peinte: pr.width > 0 && pr.height > 0,
   };
 }
 
@@ -300,7 +491,7 @@ test("③ quater — six passions : la rangée COULISSE, elle ne se comprime pas
     })),
   });
   const vu = await page.evaluate(mesurerRail);
-  expect(vu.nb, "six passions plus la porte d'ajout").toBe(7);
+  expect(vu.nb, "six passions, et plus aucune porte d'ajout dans le rail").toBe(6);
   expect(vu.chevauche, "aucune paire de bulles ne se recouvre").toBe(false);
   expect(vu.lignes, "une seule rangée : elles coulissent, elles ne s'empilent pas").toBe(1);
   expect(vu.largeurMin, "une bulle garde la largeur de son libellé").toBeGreaterThanOrEqual(60);
@@ -320,49 +511,69 @@ test("③ quater bis — DIX passions : les bulles gardent leur taille et leur n
     })),
   });
   const vu = await page.evaluate(mesurerRail);
-  expect(vu.nb, "dix passions plus la porte d'ajout").toBe(11);
+  expect(vu.nb, "dix passions, et plus aucune porte d'ajout dans le rail").toBe(10);
   expect(vu.chevauche, "AUCUNE bulle n'en recouvre une autre — le défaut d'origine").toBe(false);
   expect(vu.lignes, "toujours une seule rangée").toBe(1);
   expect(vu.largeurMin, "à dix, une bulle fait la même largeur qu'à trois").toBeGreaterThanOrEqual(60);
   expect(vu.largeurMax - vu.largeurMin, "toutes les bulles ont la MÊME largeur").toBeLessThanOrEqual(1);
   expect(vu.libelles, "chaque bulle nomme sa passion").toEqual(
-    ["Ajouter", "Moto", "Podcast", "Voyage", "Cuisine", "Musique",
+    ["Moto", "Podcast", "Voyage", "Cuisine", "Musique",
      "Sport", "Photo", "Littérature", "Jardinage", "Danse"]);
   expect(vu.coulisse, "la rangée se fait défiler à gauche et à droite").toBe(true);
   expect(vu.hauteur, "et elle reste une rangée").toBeLessThan(120);
 });
 
 // ══════════════════════════════════════════════════════════════════════════
-// LA PORTE D'AJOUT RESTE DANS LE CHAMP — le prix caché du rail coulissant
+// LA PORTE D'AJOUT EST RÉELLEMENT PEINTE — la question survit au déménagement
 // ──────────────────────────────────────────────────────────────────────────
-// Tant que les bulles se PARTAGEAIENT la largeur, la bulle « + » posée en
-// dernier restait visible quel qu'en soit le nombre. Le rail coulissant l'a
-// poussée hors du scrollport : mesuré à 320 px avec 3 passions — le plafond
-// gratuit (`PASSIONS_OFFERTES`) — elle commençait à x=326 alors que le rail
-// s'arrêtait à 304, donc ENTIÈREMENT hors écran, pas même un liseré. Et c'est
-// la seule porte VISIBLE : l'autre vit dans `#passionManager`, `hidden` par
-// défaut, derrière le menu options. Elle est désormais en TÊTE du rail.
+// HISTOIRE DE CE CAS, parce qu'elle explique sa forme. Tant que les bulles se
+// PARTAGEAIENT la largeur, la bulle « + » posée en dernier dans le rail restait
+// visible quel qu'en soit le nombre. Le rail coulissant (2026-09-02) l'a poussée
+// hors du scrollport : mesuré à 320 px avec 3 passions — le plafond gratuit
+// (`PASSIONS_OFFERTES`) — elle commençait à x=326 alors que le rail s'arrêtait à
+// 304, donc ENTIÈREMENT hors écran, pas même un liseré. Elle est alors passée en
+// tête du rail, et ce cas mesurait qu'elle y restait dans le champ.
 //
-// ⚠️ CE DÉFAUT EST INVISIBLE À UN TEST D'EXISTENCE, et c'est tout l'intérêt de
-// celui-ci : pour Playwright, un nœud poussé hors du scrollport d'un conteneur
-// `overflow-x: auto` reste « visible » (sa boîte n'est pas vide), et `.click()`
-// fait défiler tout seul avant de cliquer. `passions-plates.spec.js` serait
-// resté VERT pendant que la porte était introuvable à l'écran. Seule une
-// mesure de rectangles l'attrape.
+// Le 2026-09-03, Benjamin l'a fait descendre du rail vers « Gérer mes passions ».
+// LE CAS N'EST PAS SUPPRIMÉ POUR AUTANT, il change de surface : la question
+// « la porte est-elle réellement à l'écran, ou seulement dans le DOM ? » vaut
+// pour toute porte, où qu'elle vive. Supprimer le cas avec la bulle aurait rendu
+// le déménagement gratuit — et c'est précisément le genre de trou par lequel une
+// porte redevient introuvable.
+//
+// ⚠️ CE DÉFAUT EST INVISIBLE À UN TEST D'EXISTENCE : pour Playwright un nœud
+// hors champ reste « visible » (sa boîte n'est pas vide) et `.click()` fait
+// défiler tout seul avant de cliquer. Seule une mesure de rectangles l'attrape.
 // ══════════════════════════════════════════════════════════════════════════
 for (const [largeur, nb] of [[320, 3], [320, 10], [390, 10]]) {
-  test("③ nonies — " + largeur + " px, " + nb + " passions : la porte « + » reste dans le champ", async ({ page }) => {
+  test("③ nonies — " + largeur + " px, " + nb + " passions : la porte d'ajout est peinte dans « Gérer mes passions »", async ({ page }) => {
     await page.setViewportSize({ width: largeur, height: 844 });
     await poser(page, {
       profiles: DIX_REELLES.slice(0, nb).map((p, i) => ({
         id: "pp_" + i, name: "Benjamin", passion: p, emoji: "✨", color: "#7c3aed", createdAt: i + 1,
       })),
     });
-    const vu = await page.evaluate(mesurerRail);
-    expect(vu.nb, nb + " passions plus la porte d'ajout").toBe(nb + 1);
-    expect(vu.plusDansLeChamp,
-      "la porte d'ajout est ENTIÈREMENT visible sans avoir à faire défiler").toBe(true);
-    expect(vu.chevauche, "et rien ne se recouvre").toBe(false);
+    // Le rail, lui, ne porte plus que les passions possédées.
+    const rail = await page.evaluate(mesurerRail);
+    expect(rail.nb, nb + " passions, et rien d'autre, dans le rail").toBe(nb);
+    expect(rail.chevauche, "et rien ne se recouvre").toBe(false);
+
+    // Repliée, la porte existe mais n'est pas peinte : c'est le comportement
+    // voulu, et le mesurer évite qu'un test se croie concluant sur un panneau
+    // qu'il n'a jamais ouvert.
+    const repliee = await page.evaluate(mesurerPorteAjout);
+    expect(repliee.existe, "la porte existe dans le DOM même repliée").toBe(true);
+    expect(repliee.panneauReplie).toBe(true);
+    expect(repliee.peinte, "un panneau `hidden` ne peint rien").toBe(false);
+
+    await page.evaluate(() => { openPassionManager(); });
+    await page.waitForTimeout(400);
+    const vu = await page.evaluate(mesurerPorteAjout);
+    expect(vu.panneauReplie, "le panneau s'est bien ouvert").toBe(false);
+    expect(vu.peinte, "la porte d'ajout a une boîte non vide").toBe(true);
+    expect(vu.dansLaFenetre, "et elle ne déborde pas de l'écran en " + largeur + " px").toBe(true);
+    // Cible tactile : la même exigence que pour une bulle du rail.
+    expect(vu.hauteur, "cible tactile de la porte d'ajout").toBeGreaterThanOrEqual(44);
   });
 }
 

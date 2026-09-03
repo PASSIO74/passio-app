@@ -122,10 +122,15 @@ test.describe("UI-6B — Profil et multi-profils", () => {
     await expect(page.locator("#screen-profiles .main-profile-stat").nth(1)).toBeVisible();
     expect(await page.evaluate(() => typeof openMyPostsTab === "function")).toBe(true);
 
-    // Le titre du §11.
-    await expect(page.locator("#nouveauProfilLien")).toHaveText("+ Ajouter une passion");
+    // Le titre du §11. ⚠️ Le renommage que faisait UI-6B a été RETIRÉ le
+    // 2026-09-03 : le markup dit « Gérer mes passions » de lui-même, et
+    // `#nouveauProfilLien` est devenu la BULLE « + » descendue du rail. Une
+    // réécriture par `textContent` aurait détruit ses deux enfants ; ce cas
+    // vérifie donc le résultat À L'ÉCRAN, qui est ce qu'il a toujours voulu dire.
+    await expect(page.locator("#nouveauProfilLien")).toHaveAttribute("aria-label", "Ajouter une passion");
+    await expect(page.locator("#nouveauProfilLien .profile-tile-label")).toHaveText("Ajouter");
     expect(await page.evaluate(() =>
-      document.getElementById("nouveauProfilLien").parentNode.textContent)).toContain("Mes passions");
+      document.getElementById("passionManagerTitre").textContent)).toContain("Gérer mes passions");
 
     expect(errors.js, "exceptions JS").toEqual([]);
   });
@@ -217,9 +222,13 @@ test.describe("UI-6B — Profil et multi-profils", () => {
     await expect(page.locator("#v6bModifier")).toHaveCount(0);
     await expect(page.locator(".v6b-ident")).toHaveCount(0);
     await expect(page.locator("#screen-profiles .main-profile-stat").first()).toBeVisible();
-    // ADR-010 : le markup d'origine dit « + Ajouter » (le vocabulaire n'est
-    // sous aucun kill switch, il change donc aussi sur le chemin historique).
-    await expect(page.locator("#nouveauProfilLien")).toHaveText("+ Ajouter");
+    // ⚠️ LE VOCABULAIRE N'EST SOUS AUCUN KILL SWITCH, et c'est ce que ce cas
+    // vérifie : coupé, UI-6B ne doit PAS restituer un « + Ajouter » ni un titre
+    // « Mes passions ». Le markup d'origine porte désormais « Gérer mes
+    // passions » et la bulle, et il les garde drapeau éteint.
+    await expect(page.locator("#nouveauProfilLien .profile-tile-label")).toHaveText("Ajouter");
+    expect(await page.evaluate(() =>
+      document.getElementById("passionManagerTitre").textContent)).toContain("Gérer mes passions");
     // Le point d'édition historique reprend sa place.
     await expect(page.locator("#screen-profiles .profile-dots-btn.on-cover")).toBeVisible();
 
@@ -238,11 +247,13 @@ test.describe("UI-6B — Profil et multi-profils", () => {
     await expect(page.locator("#v6bModifier")).toHaveCount(0);
     await expect(page.locator(".v6b-ident")).toHaveCount(0);
     await expect(page.locator("#screen-profiles .profile-dots-btn.on-cover")).toBeVisible();
-    // ADR-010 : le markup d'origine dit « + Ajouter » (le vocabulaire n'est
-    // sous aucun kill switch, il change donc aussi sur le chemin historique).
-    await expect(page.locator("#nouveauProfilLien")).toHaveText("+ Ajouter");
+    // ⚠️ MÊME EXIGENCE QUE CI-DESSUS, PAR LA COUPURE MÉMOIRE. `toutRendre()` ne
+    // restitue plus aucun mot du panneau depuis le 2026-09-03 : restituer
+    // « Mes passions » aurait écrasé le titre du markup, et « + Ajouter » aurait
+    // remplacé la bulle par un mot nu.
+    await expect(page.locator("#nouveauProfilLien .profile-tile-label")).toHaveText("Ajouter");
     expect(await page.evaluate(() =>
-      document.getElementById("nouveauProfilLien").parentNode.textContent)).toContain("Mes passions");
+      document.getElementById("passionManagerTitre").textContent)).toContain("Gérer mes passions");
     await expect(page.locator("#screen-profiles .main-profile-stat").first()).toBeVisible();
   });
 

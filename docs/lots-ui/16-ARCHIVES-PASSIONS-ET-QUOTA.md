@@ -45,7 +45,8 @@ idVivante)` fait les deux gestes d'un coup. C'est la sortie qui manquait.
 
 La seule trace d'une passion rangée était un **lien** (`🗄️ Passions archivées
 (1)`) dans `#profilesQuotaSub`, lui-même dans `#passionManager`, un panneau
-`hidden` qui ne s'ouvre que depuis le menu ⋯ du profil → « Mes passions ».
+`hidden` qui ne s'ouvre que depuis le menu ⋯ du profil → « Gérer mes passions »
+(« Mes passions » jusqu'au 2026-09-03, voir la fiche 18).
 Trois portes fermées devant une passion qu'on venait de ranger. Du point de vue
 de l'utilisateur, elle avait disparu — et il avait raison de le dire.
 
@@ -250,11 +251,24 @@ d'échange, dont l'unique action ramenait au panneau — où le même bouton
 attendait. Le bouton dit maintenant « Indisponible », et la fenêtre retire
 « Gérer mes passions » quand elle ne mène plus nulle part. Verrou : `⑧`.
 
+⚠️ **Ce trou s'est ROUVERT le 2026-09-03**, par un chemin que ce lot ne pouvait
+pas prévoir : la bulle « + » est descendue du rail DANS `#passionManager`. Le
+chemin le plus fréquent au plafond commence donc maintenant dans le panneau — on
+tape la bulle, le mur s'ouvre — et « Gérer mes passions » y renvoyait, devant la
+même bulle. `_paywallCacheGerer()` (app-06) retire désormais le bouton dans les
+DEUX cas : quota épuisé, **ou** panneau déjà ouvert et à l'écran (`offsetParent`,
+pas `.hidden` : déplié sur un écran inactif, il n'est pas « déjà là »). La
+seconde sortie reprend alors le style primaire. Verrous : `③ bis quinquies`
+(`profil-entete-passions.spec.js`) et `㉒` (`passions-plates.spec.js`).
+
 **④ La liste qu'on ne savait pas ouvrir.** `#passionArchiveBox` rend la liste en
 clair, mais dans `#passionManager`, `hidden` par défaut : après un rechargement,
 rien à l'écran ne disait qu'on possède encore une passion rangée. L'entrée
-« 🗂️ Mes passions » du menu ⋯ — seule porte visible — porte désormais le compte
-(« Mes passions (1 archivée) »). Verrou : `⑨`.
+« 🗂️ Gérer mes passions » du menu ⋯ — seule porte visible — porte désormais le
+compte (« Gérer mes passions (1 archivée) »). Verrou : `⑨`.
+⚠️ Le libellé disait « Mes passions » jusqu'au 2026-09-03 ; c'est aussi ce jour-là
+que la bulle « + » du rail est descendue dans ce panneau, dont l'entrée devient
+donc la seule porte vers l'AJOUT autant que vers les archives. Fiche 18.
 
 ## 6 ter. La fusion multi-appareils — dette assumée, puis refermée (2026-09-03)
 
