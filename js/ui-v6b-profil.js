@@ -121,28 +121,24 @@
     hote.appendChild(b);
   }
 
-  // ── ② « Mes Passio » ─────────────────────────────────────────────────────
-  // Le titre et le lien sont RÉÉCRITS EN TEXTE, jamais reconstruits : le lien
-  // porte `onclick="openCreateProfile()"` et l'id `#nouveauProfilLien`, que
-  // l'aide contextuelle « second_profil » cible par sélecteur.
-  function renommerSection() {
-    try {
-      var lien = el("nouveauProfilLien");
-      if (!lien) return;
-      var titre = lien.parentNode;
-      if (!titre || titre.getAttribute("data-v6b-titre") === "1") return;
-      // Le premier nœud de texte du titre, celui d'avant le lien.
-      for (var i = 0; i < titre.childNodes.length; i++) {
-        var n = titre.childNodes[i];
-        if (n.nodeType === 3 && (n.nodeValue || "").trim()) {
-          n.nodeValue = "Mes passions ";
-          break;
-        }
-      }
-      lien.textContent = "+ Ajouter une passion";
-      titre.setAttribute("data-v6b-titre", "1");
-    } catch (e) { fail("titre", e); }
-  }
+  // ── ② « Mes Passio » — RETIRÉ LE 2026-09-03 ──────────────────────────────
+  // `renommerSection()` réécrivait deux textes du panneau de gestion : le titre
+  // (« Mes Passio » → « Mes passions ») et le libellé de `#nouveauProfilLien`
+  // (« + Ajouter » → « + Ajouter une passion »). Les deux cibles ont disparu :
+  //   • le markup dit maintenant « Gérer mes passions » de lui-même, sans
+  //     personne pour le corriger après coup ;
+  //   • `#nouveauProfilLien` n'est plus un lien de texte mais la BULLE « + »
+  //     descendue du rail du profil, avec un rond et un libellé en enfants.
+  //
+  // ⚠️ C'EST LA RAISON DU RETRAIT, PAS UN NETTOYAGE OPPORTUN. `lien.textContent`
+  // = "…" AURAIT DÉTRUIT la bulle : les deux `<div>` enfants seraient remplacés
+  // par un nœud de texte, et il ne serait resté qu'un mot nu à la place du rond
+  // pointillé. Une décoration qui survit à la disparition de sa cible est le
+  // piège récurrent nº1 de ce dépôt — ici il ne se serait même pas vu comme une
+  // erreur : la porte aurait toujours été cliquable, simplement méconnaissable.
+  //
+  // Le lot UI-6B garde tout le reste (identité, crayon, cartes) ; seul ce
+  // renommage part, avec sa restitution dans `toutRendre()`.
 
   function idDeCarte(carte) {
     try {
@@ -240,24 +236,11 @@
       }
       var cartes = document.querySelectorAll("[data-v6b]");
       for (var j = 0; j < cartes.length; j++) cartes[j].removeAttribute("data-v6b");
-      // Le titre reprend ses mots d'origine.
-      var lien = el("nouveauProfilLien");
-      if (lien) {
-        var titre = lien.parentNode;
-        if (titre && titre.getAttribute("data-v6b-titre") === "1") {
-          for (var k = 0; k < titre.childNodes.length; k++) {
-            var n = titre.childNodes[k];
-            if (n.nodeType === 3 && (n.nodeValue || "").trim()) {
-              // Le markup d'origine dit « Mes passions » depuis ADR-010 : restituer
-              // « Mes profils passion » réintroduirait le vocabulaire retiré.
-              n.nodeValue = "Mes passions ";
-              break;
-            }
-          }
-          lien.textContent = "+ Ajouter";
-          titre.removeAttribute("data-v6b-titre");
-        }
-      }
+      // ⚠️ PLUS RIEN À RESTITUER SUR LE TITRE (2026-09-03) : `renommerSection`
+      // a été retirée, donc `data-v6b-titre` n'est plus jamais posé. Restituer
+      // « Mes passions » et « + Ajouter » ici aurait été pire qu'inutile — cela
+      // aurait écrasé le titre « Gérer mes passions » du markup et remplacé la
+      // bulle « + » par un mot, à la première coupure du lot.
     } catch (e) { fail("restitution", e); }
   }
 
@@ -269,7 +252,6 @@
     if (!ecran()) return;
     try {
       poserModifier();
-      renommerSection();
       decorerCartes();
     } catch (e) {
       enPanne = true;

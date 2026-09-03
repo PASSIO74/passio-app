@@ -38,7 +38,11 @@
     dessous, Passio devant l'aperçu. `js/ui-v6a-messages.js`. ⚠️ `renderMessages()` repart de
     zéro (`innerHTML`) à chaque envoi, réception et frappe, et **sort tôt** quand l'écran
     n'est pas actif : la décoration passe par un MutationObserver + signature par carte.
-  - **UI-6B (§11)** — profil : le point d'édition, « Mes Passio », et surtout **Actif / Activer**.
+  - **UI-6B (§11)** — profil : le point d'édition et surtout **Actif / Activer**.
+    ⚠️ Son renommage « Mes Passio » → « Mes passions » (`renommerSection`) a été **SUPPRIMÉ le
+    2026-09-03** : le markup dit « Gérer mes passions » de lui-même, et `#nouveauProfilLien`
+    étant devenu une BULLE, le `lien.textContent =` du lot en aurait détruit les enfants.
+    UI-6B ne renomme plus rien (fiche 18).
     `js/ui-v6b-profil.js`. ⚠️ Ce lot répare un défaut réel : `switchToProfile()` — la seule
     fonction qui change l'identité active — était **définie et appelée par personne**, un clic
     sur une carte de profil n'agissant que sur le filtre d'affichage (`toggleProfileSelect`).
@@ -68,7 +72,8 @@
   `js/ui-v7-lot.js` + bloc « PASSIO UI V7 » en fin de `styles.css`, tests
   `tests/e2e/ui-v7-lot.spec.js` et `tests/e2e/ui-v7-bobine-camera.spec.js`.
   Coupure unique : `localStorage.passio_ui_7="0"` ou `window.PASSIO_UI_7=false`.
-  Périmètre : ① **vocabulaire visible** (« Mes passions », « Ajouter une passion »,
+  Périmètre : ① **vocabulaire visible** (« Mes passions » — devenu « Gérer mes
+  passions » sur le profil le 2026-09-03, fiche 18 —, « Ajouter une passion »,
   « Passion : X », « Filtres » à la place d'« Outils » sur Rencontrer, « Mes inscriptions »,
   « Options », « Changer de profil ») — les **identifiants** (`data-intent`, `data-tab`,
   `data-irlfilter`) ne bougent pas ; ② **Rencontrer** : « Détails », « Je viens » →
@@ -120,7 +125,10 @@
   `ContextualTools.pageType()` et `#ctxToolsRoot[data-ctx-page]`. Même famille de
   piège pour l'aide contextuelle : `montrerHint` refuse une cible sans
   `offsetParent`, donc déplacer une ancre dans un panneau masqué éteint l'aide en
-  silence — l'ancre de « second_profil » retombe sur l'onglet « À propos ».
+  silence. ⚠️ Cette phrase citait « l'onglet « À propos » » comme repli : cet onglet
+  n'existe plus (ADR-011), et depuis le 2026-09-03 la cascade compte QUATRE ancres testées
+  sur `offsetParent` — `#nouveauProfilLien`, `#v6bModifier`, `.profile-dots-btn`, puis le
+  rail en dernier ressort (fiche 18, piège ③).
 
   **Lot UI-4A5 — « Filtres » est une VUE de Rencontrer (2026-08-29), ACTIF PAR DÉFAUT.**
   `js/ui-v4a5-filtres.js` + bloc « PASSIO UI V4 — lot UI-4A5 » en fin de `styles.css`,

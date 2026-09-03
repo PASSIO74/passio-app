@@ -211,6 +211,41 @@ test("§8 — avec un seul profil, l'aide « second profil » s'affiche", async 
   await expect(bulles(page)).toHaveAttribute("data-hint", "second_profil");
 });
 
+// ⚠️ LA CASCADE D'ANCRES A QUATRE CRANS, ET UN SEUL ÉTAIT EXERCÉ (2026-09-03).
+// Depuis que la porte d'ajout vit dans `#passionManager` (replié), l'ancre de
+// rang 1 (`#nouveauProfilLien`) n'a pas d'`offsetParent` au moment où l'aide se
+// déclenche : c'est le rang 2, le crayon d'UI-6B, qui gagne — et c'est le seul
+// état que le cas ci-dessus mesure. Couper UI-6B fait disparaître le crayon ;
+// il ne reste alors que le « ⋯ » de la couverture, puis le rail. Sans ce cas
+// jumeau, retirer les deux derniers crans ne ferait rougir personne, et l'aide
+// s'éteindrait EN SILENCE pour tous les comptes sous kill switch —
+// `montrerHint` refuse une cible sans `offsetParent` sans rien signaler.
+test("§8 — sans UI-6B, l'aide « second profil » trouve encore une ancre", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("passio_ui_6b", "0"));
+  await boot(page, {
+    onboarded: true, landingSeen: true, tourSeen: true,
+    selectedFeedPassions: ["musique"], feedInterestsMigrated: true,
+    hintsVus: { feed_auteur: true },
+    userPosts: [],
+    user: {
+      name: "Seul", birthYear: 1990,
+      profiles: [{ id: "p1", name: "Seul", passion: "musique", emoji: "🎸" }],
+      currentProfileId: "p1",
+    },
+  });
+  await page.evaluate(() => goTo("profiles"));
+  await page.waitForTimeout(900);
+  const vu = await page.evaluate(() => ({
+    crayon: !!document.getElementById("v6bModifier"),
+    bulles: document.querySelectorAll(".passio-hint").length,
+    hint: (document.querySelector(".passio-hint") || {}).getAttribute
+      ? document.querySelector(".passio-hint").getAttribute("data-hint") : null,
+  }));
+  expect(vu.crayon, "prémisse : le kill switch retire bien le crayon").toBe(false);
+  expect(vu.bulles, "l'aide trouve un cran plus bas dans la cascade").toBe(1);
+  expect(vu.hint).toBe("second_profil");
+});
+
 test("§8 — le texte affiché est celui de HINTS, sans contenu utilisateur", async ({ page }) => {
   await boot(page);
   await inscrire(page, "musique");

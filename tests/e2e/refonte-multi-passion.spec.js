@@ -28,12 +28,17 @@ const { bootOnboarded } = require("./app-helper");
 // commune. Un inconnu publie en Moto.
 async function poser(page, opts = {}) {
   // ⚠️ CONVENTION DE TEST — la même qu'aux mises en ligne d'UI-3A, UI-4 et UI-8.
-  // Le lot `flat_passions_v1` (actif par défaut depuis le 2026-09-01) ajoute la
-  // bulle « + » en fin du rail de passions du Profil : cette suite compte les
-  // tuiles du rail et la verrait comme une passion de plus. Elle pose donc le
-  // kill switch du lot qui la recouvre et GARDE TOUTES SES ASSERTIONS — jamais
-  // de suppression, sinon une extinction accidentelle du lot deviendrait
-  // invisible. La bulle est prouvée à part, dans `passions-plates.spec.js`.
+  // Cette suite pose le kill switch du lot qui la recouvre et GARDE TOUTES SES
+  // ASSERTIONS — jamais de suppression, sinon une extinction accidentelle du lot
+  // deviendrait invisible.
+  //
+  // ⚠️ LE MOTIF D'ORIGINE EST MORT, LA COUPURE RESTE. Elle avait été posée parce
+  // que `flat_passions_v1` ajoutait la bulle « + » dans le rail du Profil, que
+  // cette suite compte : elle l'aurait vue comme une passion de plus. La bulle a
+  // quitté le rail le 2026-09-03 (elle vit dans `#passionManager`), donc ce
+  // motif-là ne vaut plus — mais le lot recouvre d'autres surfaces de cette
+  // suite, et LEVER la coupure ferait mesurer un autre programme que celui
+  // annoncé. On réécrit la raison, on ne touche pas au geste.
   await page.addInitScript(() => localStorage.setItem("flat_passions_v1", "0"));
   await bootOnboarded(page, null, 1, {});
   await page.evaluate((o) => {
@@ -145,6 +150,11 @@ test("① le profil porte le rail de passions du Fil, au-dessus des onglets", as
         && rail.querySelectorAll(".profile-tile .profile-tile-avatar").length > 0,
       cles: Array.from(rail.querySelectorAll("[data-passion-tile]"))
         .map(t => t.getAttribute("data-passion-tile")),
+      // ⚠️ LE RAIL EST UNE COMMANDE DE LECTURE, ET C'EST LE SEUL CAS DE CETTE
+      // SUITE QUI PEUT LE DIRE INDÉPENDAMMENT DU DRAPEAU. `cles` passe désormais
+      // par construction (la porte a quitté le rail le 2026-09-03) ; sans cette
+      // ligne, remettre la bulle dans le rail ne ferait rougir personne ici.
+      porteDansLeRail: rail.querySelectorAll('[data-passion-tile="__ajouter__"]').length,
       // Au-DESSUS des onglets : le rail précède la barre dans le document.
       avantLesOnglets: !!barre &&
         (rail.compareDocumentPosition(barre) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
@@ -157,6 +167,8 @@ test("① le profil porte le rail de passions du Fil, au-dessus des onglets", as
   // donc la bulle offrait une seconde commande pour un état déjà atteignable.
   expect(vu.cles, "une bulle par passion, et rien d'autre")
     .toEqual(["pp_moto", "pp_pod", "pp_voy"]);
+  expect(vu.porteDansLeRail,
+    "aucune porte d'ACQUISITION dans une commande de lecture (2026-09-03)").toBe(0);
   expect(vu.avantLesOnglets, "le sélecteur se pose AU-DESSUS des onglets").toBe(true);
 });
 
@@ -602,14 +614,22 @@ test("⑥ bis — la gestion des passions reste ATTEIGNABLE (retirer un onglet n
   await poser(page);
   await page.evaluate(() => { goTo("profiles"); openPassionManager(); });
   await page.waitForTimeout(500);
-  const vu = await page.evaluate(() => ({
-    ouvert: !document.getElementById("passionManager").hidden,
-    cartes: document.querySelectorAll("#profileList .profile-card").length,
-    ajouter: !!document.getElementById("nouveauProfilLien"),
-  }));
+  // ⚠️ ON MESURE LA BOÎTE, PLUS L'EXISTENCE (2026-09-03). `#nouveauProfilLien`
+  // est devenu du balisage STATIQUE : il existe même panneau replié, donc un
+  // `!!getElementById(...)` était devenu vrai par construction — ce cas
+  // prétendait prouver « la gestion reste ATTEIGNABLE » et ne prouvait plus rien.
+  const vu = await page.evaluate(() => {
+    const porte = document.getElementById("nouveauProfilLien");
+    const r = porte ? porte.getBoundingClientRect() : null;
+    return {
+      ouvert: !document.getElementById("passionManager").hidden,
+      cartes: document.querySelectorAll("#profileList .profile-card").length,
+      ajouter: !!(r && r.width > 0 && r.height > 0),
+    };
+  });
   expect(vu.ouvert).toBe(true);
   expect(vu.cartes).toBe(3);
-  expect(vu.ajouter).toBe(true);
+  expect(vu.ajouter, "la porte d'ajout est PEINTE, pas seulement présente").toBe(true);
 });
 
 test("⑥ ter — le Carnet de voyage a disparu : écran, navigation, route", async ({ page }) => {

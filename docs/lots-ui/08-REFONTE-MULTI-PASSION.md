@@ -58,9 +58,12 @@
   des comptes existants, en silence.
   ⚠️ **RETIRER UN ONGLET PEUT FERMER UNE FONCTION.** « À propos » portait la
   gestion des passions (ajouter, illustrer, archiver). Elle vit maintenant dans
-  `#passionManager`, panneau replié qu'ouvre l'entrée « Mes passions » du menu
-  d'options du profil (`openPassionManager`). Sans cette porte, ajouter une passion
-  devenait inatteignable — le défaut exact du Studio après un carnet (2026-08-29).
+  `#passionManager`, panneau replié qu'ouvre l'entrée « Gérer mes passions » du
+  menu d'options du profil (`openPassionManager` ; libellé « Mes passions »
+  jusqu'au 2026-09-03). Sans cette porte, ajouter une passion devenait
+  inatteignable — le défaut exact du Studio après un carnet (2026-08-29).
+  ⚠️ Depuis le 2026-09-03 ce panneau porte AUSSI la bulle « + », descendue du rail
+  du profil : il est devenu le seul point d'acquisition d'une passion. Fiche 18.
   ⚠️ `archiverPassion` **rebascule elle-même** `currentProfileId` sur une passion
   vivante : elle exigeait auparavant « choisis d'abord une autre passion active »,
   un geste qui n'existe plus. Le nettoyage vit au point d'ÉCRITURE, jamais à

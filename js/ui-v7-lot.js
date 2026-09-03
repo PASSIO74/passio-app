@@ -236,12 +236,19 @@
     // Retiré sur demande de Benjamin — la barre du bas porte déjà « Rencontrer »,
     // qui mène au même écran, et le doublon alourdissait la section.
 
-    // ⚠️ PLUS DE PANNEAU « À propos ». Ce qu'il contenait — le titre « Mes
-    // passions », la phrase du modèle, le lien des passions archivées et la
-    // liste `#profileList` — vit maintenant dans `#passionManager`, un panneau
-    // masqué que les options du profil ouvrent à la demande (app-06). Ces nœuds
-    // ne sont donc PAS déplacés ici : ils restent dans leur conteneur, qui est
-    // `hidden` tant qu'on ne le demande pas.
+    // ⚠️ PLUS DE PANNEAU « À propos ». Ce qu'il contenait — le titre (« Mes
+    // passions » à l'époque, « Gérer mes passions » depuis le 2026-09-03), la
+    // phrase du modèle, le lien des passions archivées et la liste
+    // `#profileList` — vit maintenant dans `#passionManager`, un panneau masqué
+    // que les options du profil ouvrent à la demande (app-06). Ces nœuds ne sont
+    // donc PAS déplacés ici : ils restent dans leur conteneur, qui est `hidden`
+    // tant qu'on ne le demande pas.
+    //
+    // ⚠️ ET LE « LIEN » D'AJOUT N'EN EST PLUS UN : `#nouveauProfilLien` est la
+    // BULLE « + » descendue du rail le 2026-09-03. Ce détail compte ICI parce
+    // que `titreContenant(ec, motif)` (plus haut) cible des titres par leur
+    // TEXTE : un futur `titreContenant(ec, "Mes passions")` écrit d'après ce
+    // commentaire ne matcherait plus rien, en silence.
     //
     // ⚠️ Le lien secondaire « Carnets de voyage » a été retiré avec la
     // fonctionnalité elle-même (§6).

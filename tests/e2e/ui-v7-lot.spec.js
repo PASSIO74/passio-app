@@ -90,17 +90,19 @@ test.describe("UI-7 §1 — vocabulaire visible", () => {
     expect(await page.evaluate(() =>
       document.getElementById("screen-studio").textContent.includes("Changer de profil"))).toBe(false);
 
-    // Profil : « Mes passions », « + Ajouter une passion ».
-    // ⚠️ ANCRE DÉPLACÉE, ASSERTION CONSERVÉE. La refonte multi-passion (ADR-011)
-    // retire l'onglet « À propos » ; le titre et son lien vivent maintenant dans
-    // le panneau `#passionManager`, qu'ouvre `openPassionManager`. Le lot UI-7
-    // les renomme toujours, et c'est ce que ce cas vérifie.
+    // Profil : « Gérer mes passions », et sa porte d'ajout.
+    // ⚠️ ANCRE DÉPLACÉE DEUX FOIS, ASSERTION CONSERVÉE. La refonte multi-passion
+    // (ADR-011) avait retiré l'onglet « À propos » et rangé le titre et son lien
+    // dans `#passionManager`. Le 2026-09-03, le titre devient « Gérer mes
+    // passions » et le lien devient la BULLE « + » descendue du rail : on lit
+    // donc son `aria-label` et son libellé, non plus un texte de lien.
     await page.evaluate(() => { goTo("profiles"); openPassionManager(); });
     await page.waitForTimeout(600);
-    await expect(page.locator("#nouveauProfilLien")).toHaveText("+ Ajouter une passion");
+    await expect(page.locator("#nouveauProfilLien")).toHaveAttribute("aria-label", "Ajouter une passion");
+    await expect(page.locator("#nouveauProfilLien .profile-tile-label")).toHaveText("Ajouter");
     expect(await page.evaluate(() =>
-      document.getElementById("nouveauProfilLien").parentNode.textContent))
-      .toContain("Mes passions");
+      document.getElementById("passionManagerTitre").textContent))
+      .toContain("Gérer mes passions");
 
     // La marque n'est JAMAIS touchée.
     await expect(page.locator(".app-topbar .brand-name")).toHaveText("PASSIO");
