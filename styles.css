@@ -9366,29 +9366,35 @@ body.ctx-locked #appMain { overflow: hidden; }
 :root.passio-ui-6 #fieldPassion { display: none; }
 :root.passio-ui-6 #fieldPassion.v6-ouvert { display: block; }
 
-/* « Affiner » : le mood, facultatif, replié par défaut. */
-:root.passio-ui-6 .v6-affiner {
-  border: 1px solid var(--border);
+/* Le mood, À DÉCOUVERT sous le choix de passion (2026-09-03).
+   ⚠️ Le repli « Options » (`.v6-affiner`, un `<details>`) est RETIRÉ avec
+   tout ce qui l'habillait : une règle qui survit à la disparition de sa cible
+   est un piège maison connu. Le champ prend désormais la même peau calme que
+   la ligne « Passion : … » juste au-dessus, pour qu'ils se lisent comme UN
+   seul bloc de destination. */
+:root.passio-ui-6 #fieldMood {
+  display: block;
+  margin: 0;
+  padding: 10px 12px 2px;
   border-radius: 12px;
-  padding: 4px 12px;
-  background: var(--bg-card);
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
 }
-:root.passio-ui-6 .v6-affiner > summary {
-  cursor: pointer;
-  padding: 10px 0;
+:root.passio-ui-6 #fieldMood > span {
+  display: block;
+  margin-bottom: 8px;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--text-dim);
-  list-style: none;
 }
-:root.passio-ui-6 .v6-affiner > summary::-webkit-details-marker { display: none; }
-:root.passio-ui-6 .v6-affiner > summary::after {
-  content: "▾";
-  float: right;
-  transition: transform 160ms ease;
+/* Les pastilles remplissent la largeur : à 320 px les quatre tiennent sur deux
+   rangs sans qu'aucune ne déborde, et chacune garde sa cible tactile. */
+:root.passio-ui-6 #fieldMood .pill-row {
+  gap: 6px;
+  justify-content: flex-start;
+  margin-bottom: 8px;
 }
-:root.passio-ui-6 .v6-affiner[open] > summary::after { transform: rotate(180deg); }
-:root.passio-ui-6 .v6-affiner #fieldMood { margin-bottom: 10px; }
+:root.passio-ui-6 #fieldMood .pill-row .pill { min-height: 40px; }
 
 /* Le bouton de publication est le nœud HISTORIQUE, déplacé tel quel : il porte
    la hauteur de `.btn` (39 px), sous la cible tactile de 44 px du projet. On la

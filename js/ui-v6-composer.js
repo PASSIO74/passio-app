@@ -8,8 +8,11 @@
 //   [Écris quelque chose…]
 //   [Ajouter photo ou vidéo]
 //   Passio : [préremplie]                   Modifier
-//   Affiner                                 ▾
+//   Mood    [Idées] [Apprendre] [Rencontrer] [Tous]
 //   [Publier]
+//
+// ⚠️ Le mood n'est PLUS une option repliée (2026-09-03) : il se lit et se
+// choisit directement sous la passion. Voir ⑤.
 //
 // Le module RÉORGANISE ce que l'écran rend déjà : il déplace des nœuds, il n'en
 // régénère aucun. Régénérer tuerait les `onclick` inline et les nœuds que les
@@ -226,17 +229,17 @@
     hote.appendChild(resume);
     if (champPassion) deplacer(champPassion, hote);
 
-    // ⑤ « Affiner » : le mood, replié. Il reste facultatif et garde son défaut
-    // (il pilote le classement du fil, pas une quête : celles-ci ont disparu
-    // avec l'ADR-009).
-    var affiner = document.createElement("details");
-    affiner.className = "v6-affiner";
-    var somm = document.createElement("summary");
-    somm.textContent = "Options";
-    affiner.appendChild(somm);
-    hote.appendChild(affiner);
+    // ⑤ Le mood, À DÉCOUVERT, juste sous le choix de passion (2026-09-03).
+    // ⚠️ IL ÉTAIT REPLIÉ DERRIÈRE UN `<details>` « Options » : personne ne
+    // l'ouvrait, donc TOUTE publication partait avec le défaut « Idées », et
+    // c'est ce mood qui décide de l'intention sous laquelle le fil la classe
+    // (`legacyMoodToFeedIntent`). Un choix qui pilote le classement n'est pas
+    // une option : il est montré, et il se choisit d'un seul geste.
+    // Le repli est retiré AVEC sa cible — ni `<details>`, ni son CSS, ni le
+    // libellé « Options » : une règle qui survit à la disparition de ce qu'elle
+    // habillait est un piège maison connu.
     var champMood = el("fieldMood");
-    if (champMood) deplacer(champMood, affiner);
+    if (champMood) deplacer(champMood, hote);
 
     // ⑥ Le bouton de publication, sans sa récompense.
     var barre = null;

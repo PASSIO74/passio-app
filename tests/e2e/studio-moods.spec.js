@@ -34,12 +34,12 @@ const PASTILLES = [
 async function ouvrirStudio(page) {
   await page.evaluate(() => goTo("studio"));
   await expect(page.locator("#screen-studio")).toHaveClass(/active/);
-  // Sous UI-6 le champ vit dans le repli « Options » : l'ouvrir sinon les
-  // pastilles sont dans le DOM mais pas cliquables.
-  await page.evaluate(() => {
-    const d = document.querySelector(".v6-affiner");
-    if (d) d.open = true;
-  });
+  // ⚠️ Ce helper DÉPLIAIT le repli « Options » d'UI-6, où le champ vivait.
+  // Le repli a été retiré le 2026-09-03 : le mood est à découvert sous la
+  // passion. On EXIGE désormais ce qu'on obtenait avant par un geste — sans
+  // cette assertion, un retour du repli rendrait la suite verte sur des
+  // pastilles présentes dans le DOM mais invisibles.
+  await expect(page.locator("#postMoodRow .pill").first()).toBeVisible();
 }
 
 test.describe("Studio — moods alignés sur les intentions du Fil", () => {

@@ -71,7 +71,9 @@ test.describe("UI-6 — composer de publication", () => {
     const hote = page.locator("#v6Composer");
     await expect(hote).toBeVisible();
 
-    // L'ordre du §9 : texte, média, Passion, Options, Publier.
+    // L'ordre du §9 : texte, média, Passion, Mood, Publier.
+    // ⚠️ « Options » (le `<details>` `.v6-affiner`) a été RETIRÉ le 2026-09-03 :
+    // le mood se lit et se choisit directement sous la passion.
     // ⚠️ ASSERTION RETOURNÉE, JAMAIS VIDÉE (2026-09-01). La ligne d'identité
     // « Publier en tant que … » ouvrait cette liste ; elle a été retirée sur
     // demande de Benjamin — le multi-profil n'existe plus, l'expéditeur n'est
@@ -86,20 +88,33 @@ test.describe("UI-6 — composer de publication", () => {
         if (c.id === "studioPhoto" || c.id === "studioVideo") return "apercu";
         if (c.classList.contains("v6-passio")) return "passio";
         if (c.id === "fieldPassion") return "select";
-        if (c.classList.contains("v6-affiner")) return "affiner";
+        if (c.id === "fieldMood") return "mood";
         if (c.querySelector && c.querySelector("[data-v6-publier]")) return "publier";
         return "?";
       });
     })).toEqual([
-      "texte", "media", "apercu", "apercu", "passio", "select", "affiner", "publier",
+      "texte", "media", "apercu", "apercu", "passio", "select", "mood", "publier",
     ]);
 
     // Une seule zone média, deux portes.
     await expect(hote.locator("[data-v6-media]")).toHaveCount(2);
-    // Le mood est replié, jamais supprimé — publishPost lit toujours son défaut.
-    await expect(page.locator(".v6-affiner #fieldMood")).toHaveCount(1);
+    // Le mood est À DÉCOUVERT : visible, cliquable, sans un geste de plus — et
+    // le repli qui le cachait n'existe plus nulle part, ni sa classe ni son mot.
+    await expect(page.locator(".v6-affiner")).toHaveCount(0);
+    await expect(page.locator("#v6Composer > #fieldMood")).toHaveCount(1);
+    await expect(page.locator("#postMoodRow .pill").first()).toBeVisible();
     expect(await page.evaluate(() =>
-      document.querySelector(".v6-affiner").hasAttribute("open"))).toBe(false);
+      document.getElementById("screen-studio").textContent.includes("Options"))).toBe(false);
+    // Il suit la passion, jamais l'inverse : le bloc de destination se lit d'un
+    // trait (où je publie, puis sous quelle envie).
+    expect(await page.evaluate(() => {
+      const ids = Array.from(document.getElementById("v6Composer").children);
+      return ids.indexOf(document.getElementById("fieldMood"))
+           > ids.indexOf(document.getElementById("fieldPassion"));
+    })).toBe(true);
+    // Et il reste CLIQUABLE d'un seul geste, sans rien déplier.
+    await page.locator('#postMoodRow .pill[data-postmood="irl"]').click();
+    await expect(page.locator('#postMoodRow .pill[data-postmood="irl"]')).toHaveClass(/active/);
 
     expect(errors.js, "exceptions JS").toEqual([]);
   });

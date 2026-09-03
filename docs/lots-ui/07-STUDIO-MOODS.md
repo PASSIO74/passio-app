@@ -9,7 +9,7 @@
   Le composer proposait encore les quatre moods d'origine — Création · Apprentissage ·
   Chill · Actu — alors que le Fil lit désormais Tous · Explorer · Apprendre · Idées ·
   Rencontrer : on publiait dans un vocabulaire, on lisait dans un autre. La rangée
-  `#postMoodRow` (repli « Options » du composer UI-6) porte maintenant **Idées ·
+  `#postMoodRow` (composer UI-6) porte maintenant **Idées ·
   Apprendre · Rencontrer · Tous**. Les emojis qui précédaient ces quatre libellés
   ont été retirés le 2026-09-03 avec toute la décoration d'interface : la table
   `PASSIO_MOOD_LABELS` ne porte plus que le mot, et `moodTagLabel` le rend seul. Tests : `tests/e2e/studio-moods.spec.js` (8).
@@ -43,4 +43,33 @@
   `normalizeStudioMood` (app-06) : sans elle, `loadDraft` rendait une rangée SANS pastille
   active — état muet, republié en silence.
 
+## Le mood sort du repli « Options » (2026-09-03)
 
+Demande de Benjamin : « dans Créer, ne mets pas en option le choix de mood ;
+affiche-le directement sélectionnable sous le choix de passion. »
+
+`js/ui-v6-composer.js` ⑤ rangeait `#fieldMood` dans un `<details class="v6-affiner">`
+intitulé « Options », replié par défaut. Conséquence mesurable : personne ne
+l'ouvrait, donc **toute publication partait avec le défaut `creation`** — et c'est
+ce mood qui décide de l'intention sous laquelle le fil classe la publication
+(`legacyMoodToFeedIntent`). Un choix qui pilote le classement n'est pas une option.
+
+Le champ est désormais déplacé **directement dans `#v6Composer`, juste après
+`#fieldPassion`** : où je publie, puis sous quelle envie, d'un seul trait. Le
+`<details>` est retiré AVEC tout ce qui le visait — le nœud, sa classe
+`.v6-affiner`, ses cinq règles CSS et le mot « Options » (piège maison : *une règle
+qui survit à la disparition de sa cible*). `#fieldMood` reprend sous
+`:root.passio-ui-6` la peau calme de la ligne « Publier dans : … » au-dessus.
+
+⚠️ **Rien du moteur ne bouge** : `studioMood`, `PASSIO_MOOD_LABELS`, les quatre
+valeurs publiées et le défaut `creation` sont inchangés. Le kill switch UI-6 rend
+toujours le champ à sa place d'origine dans `#screen-studio`.
+
+⚠️ **Trois suites s'appuyaient sur le repli** et ont été retournées, jamais vidées :
+`ui-v6-composer.spec.js` (l'ordre des enfants attend `mood` à la place d'`affiner`,
+et exige `.v6-affiner` à 0, le mood VISIBLE, cliquable sans un geste préalable, et
+placé après la passion), `studio-moods.spec.js` (son helper `ouvrirStudio`
+dépliait le `<details>` ; il EXIGE maintenant la visibilité de la première
+pastille — sans quoi un retour du repli laisserait la suite verte sur des pastilles
+présentes dans le DOM mais invisibles), et `ui-v7-lot.spec.js` (le mot « Options »
+n'existe plus dans le vocabulaire gouverné par UI-7).

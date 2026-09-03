@@ -76,11 +76,13 @@ test.describe("UI-7 §1 — vocabulaire visible", () => {
       (b) => b.map((x) => x.getAttribute("data-intent"))))
       .toEqual(["discover", "learn", "create", "meet"]);
 
-    // Studio : « Passion : … », « Options ».
+    // Studio : « Passion : … ». « Options » n'existe plus — le repli qui portait
+    // ce mot a été retiré le 2026-09-03 avec le mood qu'il cachait ; UI-7 ne
+    // gouvernait que du VOCABULAIRE, et il n'y a plus de mot à y vérifier.
     await page.evaluate(() => goTo("studio"));
     await page.waitForTimeout(600);
     await expect(page.locator("[data-v6-passio]")).toContainText("Passion : ");
-    await expect(page.locator(".v6-affiner summary")).toHaveText("Options");
+    await expect(page.locator(".v6-affiner")).toHaveCount(0);
     // ⚠️ ASSERTION RETOURNÉE, JAMAIS VIDÉE (2026-09-01). Ce cas exigeait
     // « Changer de profil » dans `.v6-identite` : c'était le libellé que ce lot
     // rendait sous le kill switch d'UI-8. La ligne d'identité a été RETIRÉE
