@@ -17,7 +17,7 @@ function openModal(html) {
   // Si un modal est déjà ouvert, on remplace son contenu sans empiler une nouvelle entrée history.
   // Sinon on pousse une seule entrée pour que le bouton back ferme le modal.
   if (backdrop && !backdrop.classList.contains("active")) {
-    window.history.pushState({ overlay: "modal" }, "", "#modal");
+    pushOverlayHistory("modal", "#modal");
   }
 
   // Injecte un bouton × de fermeture en haut à droite de tous les modals
@@ -30,7 +30,13 @@ function closeModal() {
   // retiré avec la fonctionnalité (§6). `cdvLiveRefreshInterval` et
   // `removeCdvLiveViewer` n'existent plus — les garder ici aurait levé un
   // ReferenceError à CHAQUE fermeture de modale, c'est-à-dire partout.
-  $("#modalBackdrop").classList.remove("active");
+  const bd = $("#modalBackdrop");
+  // L'entrée d'historique n'est à reprendre que si une modale était RÉELLEMENT
+  // ouverte : `closeModal()` est appelée par précaution en plusieurs endroits,
+  // et reculer sur une modale déjà fermée ferait quitter l'écran.
+  const etaitOuverte = !!(bd && bd.classList.contains("active"));
+  if (bd) bd.classList.remove("active");
+  if (etaitOuverte) releaseOverlayHistory();
 }
 function closeModalOnBackdrop(e) {
   if (e.target.id === "modalBackdrop") closeModal();
@@ -606,9 +612,13 @@ function meOpen(mode) {
   document.getElementById("mePublishBtn").textContent = isBob ? "Publier ma bobine" : "Publier ma story";
   // Phase capture par défaut (le loader caméra s'affiche le temps de l'init).
   ed.classList.remove("phase-edit", "me-recording", "me-cam-on", "me-no-cam");
+  // Entrée d'historique : ce panneau recouvre tout, CAMÉRA ALLUMÉE. Sans elle,
+  // le geste de retour ne le fermait pas — l'écran changeait dessous et
+  // l'objectif restait actif.
+  if (!ed.classList.contains("open")) pushOverlayHistory("media", "#media");
   ed.classList.add("open", "phase-capture");
   ed.setAttribute("aria-hidden", "false");
-  document.body.style.overflow = "hidden";
+  lockBodyScroll("mediaEditor");
   _meBindShutter();
   meStartCamera();
 }
@@ -616,8 +626,10 @@ function meClose() {
   var ed = document.getElementById("mediaEditor");
   meStopRecording(true);
   meStopCamera();
+  const _meEtaitOuvert = !!(ed && ed.classList.contains("open"));
   if (ed) { ed.classList.remove("open", "phase-edit", "phase-capture", "me-recording", "me-cam-on"); ed.setAttribute("aria-hidden", "true"); }
-  document.body.style.overflow = "";
+  unlockBodyScroll("mediaEditor");
+  if (_meEtaitOuvert && typeof releaseOverlayHistory === "function") releaseOverlayHistory();
   try { var v = document.querySelector("#meMedia video"); if (v) v.pause(); } catch(e) {}
   _meRemoveVideoControls();
   _meRevokePreviewUrl();
@@ -1438,7 +1450,7 @@ function openStoryViewerAt(groupIdx, itemIdx) {
   if (!storyGroups.length) storyGroups = buildStoryGroups();
   if (!storyGroups.length) return;
   // Ajouter à l'historique pour que le bouton back fonctionne
-  window.history.pushState({ overlay: "story" }, "", "#story");
+  pushOverlayHistory("story", "#story");
   storyGroupIdx = Math.max(0, Math.min(groupIdx, storyGroups.length - 1));
   storyItemIdx = itemIdx || 0;
   $("#storyViewer").classList.add("active");
@@ -1634,9 +1646,13 @@ function storyPrev() {
 
 function closeStoryViewer() {
   clearInterval(storyTimer);
-  $("#storyViewer").classList.remove("active");
+  const sv = $("#storyViewer");
+  const etaitOuvert = !!(sv && sv.classList.contains("active"));
+  if (sv) sv.classList.remove("active");
   renderStories();
-
+  // Reprend l'entrée posée à l'ouverture (cf. releaseOverlayHistory, app-02) :
+  // sans cela, chaque story consultée mangeait un appui sur « retour ».
+  if (etaitOuvert) releaseOverlayHistory();
 }
 
 // ======== NOTIFICATIONS ========
@@ -2144,7 +2160,21 @@ async function boot() {
 
   // Retour depuis un lien « mot de passe oublié » : l'URL contient type=recovery.
   // On affiche l'UI de nouveau mot de passe par-dessus l'écran courant.
-  if ((window.location.hash || "").indexOf("type=recovery") !== -1) {
+  //
+  // ⚠️ CE PARCOURS NE DOIT JAMAIS ÊTRE RECHARGÉ EN COURS DE ROUTE (2026-09-02,
+  // revue adversariale). Le lien de récupération ouvre une session, donc la
+  // garde d'adoption plus bas la voyait arriver sur un appareil qui ne connaît
+  // pas ce compte, purgeait, et RECHARGEAIT — ce qui détruisait le formulaire de
+  // nouveau mot de passe qu'on vient d'afficher, alors que le fragment
+  // `type=recovery` a DÉJÀ été consommé par le SDK. La personne se retrouvait
+  // devant une application ordinaire, sans aucun moyen de finir sa
+  // réinitialisation : le lien reçu par e-mail est à usage unique.
+  //
+  // L'adoption n'est donc pas annulée, elle est DÉPLACÉE au seul moment sûr :
+  // juste avant le rechargement que `_showPasswordRecoveryUI` déclenche
+  // lui-même, une fois le mot de passe changé (app-02).
+  const _recuperationEnCours = (window.location.hash || "").indexOf("type=recovery") !== -1;
+  if (_recuperationEnCours) {
     try { if (typeof _showPasswordRecoveryUI === "function") _showPasswordRecoveryUI(); } catch(e) {}
   }
 
@@ -2172,7 +2202,24 @@ async function boot() {
     // que le SDK relit au démarrage, donc le prochain `getSession()` ne trouve
     // plus rien et cette branche n'est pas réatteignable. L'intention est
     // re-posée pour que ce prochain démarrage aboutisse bien à l'écran demandé.
-    if (session?.user && _authIntent) {
+    // ⚠️ `!_recuperationEnCours` AJOUTÉ À LA FUSION (2026-09-02). Cette branche
+    // de #250 s'exécute AVANT la garde d'adoption, qui porte déjà cette
+    // exception — la sienne était donc contournée par le haut. Une intention de
+    // reconnexion encore posée (déconnexion dont le rechargement n'a pas eu lieu :
+    // application suspendue, onglet tué) faisait révoquer la session de
+    // récupération et RECHARGER pendant que le formulaire « Nouveau mot de
+    // passe » était à l'écran. Or le fragment `type=recovery` est déjà consommé
+    // par le SDK et le lien reçu par e-mail est à USAGE UNIQUE : la personne se
+    // retrouvait sans aucun moyen de terminer sa réinitialisation.
+    //
+    // On s'abstient donc, et on REPOSE l'intention juste après : la déconnexion
+    // inachevée sera terminée au rechargement que `_showPasswordRecoveryUI`
+    // déclenche lui-même une fois le mot de passe changé, où plus rien n'est en
+    // jeu — et l'écran de connexion demandé n'est pas perdu pour autant.
+    if (session?.user && _authIntent && _recuperationEnCours) {
+      try { poserIntentionAuth(_authIntent); } catch (e) {}
+    }
+    if (session?.user && _authIntent && !_recuperationEnCours) {
       // On lit `{ error }` : le SDK ne LÈVE PAS sur un refus, et une
       // déconnexion qui échoue en silence est précisément ce qui nous a amenés ici.
       try {
@@ -2185,9 +2232,42 @@ async function boot() {
       setTimeout(function () { try { location.reload(); } catch (e) {} }, 0);
       return;
     }
-    if (session?.user && !_authIntent) {
+    if (session?.user && (!_authIntent || _recuperationEnCours)) {
+      // ⚠️ AVANT `MY_UID` ET AVANT `passio_uid` : le discriminant est l'INSTANTANÉ
+      // pris au chargement (`_uidProprietaireEtat`, app-02). Ce chemin-ci couvre
+      // les entrées qui ne passent PAS par `onbDoAuth` : retour de
+      // `signInWithOAuth`, lien de confirmation d'e-mail qui ouvre directement
+      // une session. Sans lui, l'état d'une exploration anonyme serait poussé
+      // dans `user_state` du compte à la première sauvegarde.
+      //
+      // ⚠️ IL VIENT APRÈS LA BRANCHE « DÉCONNEXION INACHEVÉE » DE #250, ET C'EST
+      // L'ORDRE QUI CONVIENT : celle-ci termine une déconnexion et RECHARGE, donc
+      // il n'y a rien à adopter tant qu'elle n'a pas rendu la main. Adopter avant
+      // aurait purgé puis rechargé à sa place, en perdant l'intention d'auth
+      // qu'elle repose — la personne serait retombée dans le fil invité au lieu
+      // de l'écran de connexion qu'elle a demandé.
+      if (!_recuperationEnCours
+          && typeof adopterCompteConnecte === "function"
+          && await adopterCompteConnecte(session.user.id)) { window.location.reload(); return; }
+      // ⚠️ RÉCUPÉRATION EN COURS : l'adoption est différée, donc l'état local
+      // appartient encore à quelqu'un d'autre — ou à personne. Sans cette
+      // ligne, `supaLoadUserState` pourrait juger le local plus récent et
+      // POUSSER l'état du propriétaire précédent dans le compte qu'on est en
+      // train de récupérer : le défaut d'origine, par une autre porte (constat
+      // majeur de la revue du 2026-09-02). On interdit donc toute écriture
+      // d'état jusqu'à l'adoption, qui aura lieu au changement effectif du mot
+      // de passe (`_showPasswordRecoveryUI`, app-02).
+      if (_recuperationEnCours) {
+        try { _exigerRestaurationAvantEcriture(session.user.id); } catch (e) {}
+      }
       MY_UID = session.user.id;
-      localStorage.setItem("passio_uid", MY_UID);
+      // ⚠️ PENDANT UNE RÉCUPÉRATION, ON N'ÉCRIT PAS `passio_uid` (constat majeur
+      // de la seconde passe). L'adoption est différée ; écrire la clé ferait
+      // croire au démarrage SUIVANT que cet appareil possède déjà l'état du
+      // compte — et si la personne abandonne le formulaire, la garde reste
+      // désarmée POUR TOUJOURS, avec l'état de l'exploration attribué au compte.
+      // La clé sera écrite par l'adoption, au changement effectif du mot de passe.
+      if (!_recuperationEnCours) localStorage.setItem("passio_uid", MY_UID);
       if (localStorage.getItem("passio_oauth_pending")) localStorage.removeItem("passio_oauth_pending");
       // 🔑 Une session Supabase valide = compte réel connecté → on entre dans l'app,
       // même si le flag d'onboarding local est absent (nouvel appareil, réinstallation,
@@ -2257,6 +2337,22 @@ async function boot() {
             });
           } else {
             // Fallback : 1 seul profil avec la passion principale
+            //
+            // ⚠️ CE PROFIL N'EST PAS UN CHOIX, ET IL DOIT LE DIRE (2026-09-02).
+            // Quand le serveur ne rend RIEN, `defPassion` vaut `allPassions()[0]`,
+            // c'est-à-dire « Musique » — une valeur de remplissage que personne
+            // n'a demandée. Trois défauts en découlaient, tous mesurés :
+            //   • `comptePossedeSesPassions` (first-run) y voyait une passion
+            //     vivante et JETAIT les passions du visiteur ;
+            //   • le verdict serveur `_comptePassionsServeur` passait à vrai dès
+            //     que ce profil avait été poussé dans `user_state` — donc pour un
+            //     compte neuf dont le lien de confirmation a été ouvert ailleurs ;
+            //   • `migrerPreferences` le concaténait EN TÊTE, et « Musique »
+            //     devenait la passion primaire de quelqu'un qui avait choisi
+            //     Cuisine, Photo et Randonnée.
+            // Le marqueur ne change RIEN à l'affichage : il dit seulement « ceci
+            // est un remplissage », pour que personne ne le prenne pour un choix.
+            const _sansProfilServeur = !(srvProf && srvProf.passion_id);
             state.user.profiles = [{
               id: uid(),
               name: _name,
@@ -2265,6 +2361,7 @@ async function boot() {
               color: (srvProf && srvProf.color) || defPassion.color,
               bio: (srvProf && srvProf.bio) || "",
               createdAt: Date.now(),
+              ...(_sansProfilServeur ? { _parDefaut: true } : {}),
             }];
           }
           // La passion active ne doit JAMAIS être archivée (invariant du lot UI-8) :
@@ -2296,6 +2393,16 @@ async function boot() {
     }
   } catch(e) { /* pas de session */ }
 
+  // ⚠️ AUCUNE SESSION ⇒ LE VERDICT D'HYDRATATION EST RENDU, ET IL EST « RIEN ».
+  // `supaLoadUserState` pose `window._etatCompteCharge` à chacune de ses
+  // sorties, mais elle n'est appelée QUE sur la branche « session retrouvée »
+  // ci-dessus (qui se termine par un `return`). Arriver ici, c'est donc savoir
+  // qu'aucun état de compte n'arrivera : sans cette ligne, tout module qui
+  // attend le verdict (`first-run.js` pour la migration, `passions-flat.js`
+  // pour les noms manquants) brûlerait son budget d'attente à chaque démarrage
+  // hors ligne ou sans compte, pour finir par trancher sur les mêmes données.
+  try { window._etatCompteCharge = true; } catch (e) {}
+
   // Écouter les changements d'état auth (connexion depuis un autre appareil, confirmation email, etc.)
   try {
     supa.auth.onAuthStateChange((event, session) => {
@@ -2305,15 +2412,79 @@ async function boot() {
         return;
       }
       if (session?.user) {
-        MY_UID = session.user.id;
+        // ⚠️⚠️ TROISIÈME POINT D'ENTRÉE, ET LE PLUS PIÉGEUX (2026-09-02, revue
+        // adversariale). Ce handler n'est enregistré que lorsque `boot()` n'a
+        // trouvé AUCUNE session — donc précisément pour un visiteur en première
+        // visite — et il refaisait ici le défaut d'origine mot pour mot :
+        // `MY_UID` + `passio_uid` + `onboarded` + `saveState()` + `reload()`,
+        // c'est-à-dire les quatre gestes qui lèvent les trois gardes du beacon
+        // et poussent l'état ANONYME dans `user_state` du compte.
+        //
+        // Pire : en écrivant `passio_uid` ici, il DÉSARMAIT la garde de
+        // `onbDoAuth`, qui relisait cette clé juste après. supabase-js notifie
+        // ses abonnés PENDANT `signInWithPassword`, avant d'en résoudre la
+        // promesse — l'ordre réel est donc ② ce handler, puis ④ la garde. C'est
+        // pourquoi le discriminant est désormais un INSTANTANÉ pris au
+        // chargement (`_uidProprietaireEtat`, app-02) : l'écriture ci-dessous ne
+        // peut plus lui mentir, quel que soit l'ordre.
+        //
+        // ⚠️ L'ADOPTION EST DIFFÉRÉE PAR `setTimeout(…, 0)`, comme tout le reste
+        // de ce handler : le client tient un verrou auth pendant l'émission, et
+        // ce qui part d'ici doit sortir du callback avant d'agir.
+        const _uidSession = session.user.id;
+        const _oauthEnAttente = !!localStorage.getItem("passio_oauth_pending");
+        MY_UID = _uidSession;
         localStorage.setItem("passio_uid", MY_UID);
         // Retour OAuth (Google) arrivé après le boot : finaliser + recharger dans l'app.
-        if (event === "SIGNED_IN" && localStorage.getItem("passio_oauth_pending")) {
+        if (event === "SIGNED_IN" && _oauthEnAttente) {
           localStorage.removeItem("passio_oauth_pending");
-          if (typeof state !== "undefined") { state.onboarded = true; try { saveState(); } catch(e) {} }
-          setTimeout(() => { try { window.location.reload(); } catch(e) {} }, 0);
+          setTimeout(async () => {
+            try {
+              // Adopter AVANT `state.onboarded = true` + `saveState()` : c'est
+              // cette paire qui arme le beacon de `pagehide` déclenché par le
+              // rechargement. Si l'adoption purge, elle a déjà levé
+              // `_accountPurged` et plus rien ne peut partir.
+              if (typeof adopterCompteConnecte === "function"
+                  && await adopterCompteConnecte(_uidSession)) {
+                try { window.location.reload(); } catch(e) {}
+                return;
+              }
+            } catch (e) { console.warn("adoption OAuth:", e); }
+            if (typeof state !== "undefined") { state.onboarded = true; try { saveState(); } catch(e) {} }
+            try { window.location.reload(); } catch(e) {}
+          }, 0);
           return;
         }
+        // Toute autre arrivée de session sur une page ouverte SANS compte
+        // (connexion faite dans un autre onglet, confirmation d'e-mail,
+        // rafraîchissement de jeton après un changement d'identité) : l'état
+        // local de cette page-ci n'appartient pas au compte qui vient
+        // d'arriver, et cette page continuerait à le sauvegarder sous sa
+        // nouvelle identité. On adopte, donc on purge et on recharge.
+        // ⚠️ ON PROTÈGE, ON NE PURGE PAS, ET SURTOUT ON NE RECHARGE PAS. La
+        // première rédaction de ce garde adoptait ici comme ailleurs — et c'était
+        // un défaut à elle seule (constat bloquant de la seconde passe de revue) :
+        // ce handler reçoit SIGNED_IN pour toute session ouverte sur une page qui
+        // n'en avait pas, y compris une connexion faite par le SDK sans passer par
+        // `onbDoAuth`. Il aurait donc rechargé la page sous les pieds des suites
+        // e2e à comptes réels (`authz-critical`, `blocage-acces`,
+        // `user-state-horodatage`, `multi-comptes`), qui ouvrent l'app sans
+        // session puis se connectent — CI rouge, déploiement sauté.
+        //
+        // Or purger n'est pas nécessaire ici : le seul dommage possible est une
+        // ÉCRITURE de l'état local sous la nouvelle identité. Il suffit donc de
+        // l'interdire jusqu'à ce que l'appareil ait vu le compte. L'adoption, elle,
+        // aura lieu au prochain démarrage, où `adopterCompteConnecte` dispose de
+        // l'instantané et où un rechargement ne coûte rien à personne.
+        //
+        // Aucune exception à faire pour `type=recovery` : on n'ouvre plus rien, on
+        // ne fait que fermer une porte.
+        try {
+          if (typeof _exigerRestaurationAvantEcriture === "function"
+              && _uidProprietaireEtat !== _uidSession) {
+            _exigerRestaurationAvantEcriture(_uidSession);
+          }
+        } catch (e) { console.warn("protection auth-change:", e); }
         // ✅ FIX CRITIQUE : déclencher supaInit() dès qu'une session est établie
         // Sans ça, les posts Supabase ne chargent jamais sur un nouvel appareil
         if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
@@ -3382,7 +3553,17 @@ async function supaUploadMedia(postId, folder, base64Data, mediaType) {
     // Extension fidèle au conteneur réel : un webm renommé .mp4 trompe les
     // heuristiques de lecture (iOS surtout, qui se fie aussi à l'URL).
     if (mediaType === "video") ext = (base64Data.indexOf("data:video/webm") === 0) ? ".webm" : ".mp4";
-    else if (mediaType === "audio") ext = ".mp3";
+    // ⚠️ Même exigence que pour la vidéo, juste au-dessus — elle n'avait pas été
+    // appliquée ici. `.mp3` était écrit EN DUR alors que MediaRecorder n'en
+    // produit JAMAIS : le Studio enregistre en `audio/webm` (Android) ou
+    // `audio/mp4` (iPhone). Le fichier arrivait donc dans Storage avec une
+    // extension qui mentait sur son contenu, et iOS — qui se fie aussi à l'URL —
+    // refusait de le lire. On dérive l'extension du conteneur RÉEL.
+    else if (mediaType === "audio") {
+      ext = (base64Data.indexOf("data:audio/webm") === 0) ? ".webm"
+          : (base64Data.indexOf("data:audio/ogg") === 0) ? ".ogg"
+          : ".m4a";                                  // audio/mp4 → .m4a
+    }
     else if (base64Data.indexOf("data:image/webp") === 0) ext = ".webp";
     else if (base64Data.indexOf("data:image/png") === 0) ext = ".png";
     else if (base64Data.indexOf("data:image/gif") === 0) ext = ".gif";

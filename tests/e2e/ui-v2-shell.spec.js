@@ -11,7 +11,7 @@
 // Supabase créé) et neutralise les écritures réseau, comme le helper partagé.
 const { test, expect } = require("@playwright/test");
 const { GATE_TOKEN, GATE_KEY } = require("./gate-helper");
-const { onboardedState } = require("./app-helper");
+const { onboardedState, sansDonneesDistantes } = require("./app-helper");
 
 const PREVIEW = "?passio_preview=passio-ui-v2";
 
@@ -42,6 +42,13 @@ async function boot(page, { preview = false, legacy = false, errors = null } = {
       localStorage.setItem("passio_mvp_state_v1", JSON.stringify(st));
     }
   }, [GATE_KEY, GATE_TOKEN, onboardedState(1), legacy]);
+  // ⚠️ ISOLATION DES DONNÉES DISTANTES — POSÉE ICI PARCE QUE CETTE SUITE
+  // NAVIGUE ELLE-MÊME. `bootOnboarded` la pose par défaut, mais sa portée est
+  // L'APPEL, pas le fichier : un `page.goto` maison garde son chemin exposé, et
+  // le verdict du test dépend alors du CONTENU DE LA PRODUCTION. C'est ce qui a
+  // rendu `main` rouge six fois en quatre jours et fait sauter autant de
+  // déploiements. Verrou mécanique : `scripts/audit-tests-isolation.js`.
+  await sansDonneesDistantes(page);
   await page.goto("/index.html" + (preview ? PREVIEW : ""));
   await page.waitForFunction(() => {
     const el = document.getElementById("screen-feed");
@@ -348,6 +355,7 @@ test("aperçu : aucun réglage durable écrit, profil actif inchangé", async ({
 
   // Le kill switch persistant restaure l'interface historique au rechargement.
   await page.evaluate(() => localStorage.setItem("passio_ui_v2", "0"));
+  await sansDonneesDistantes(page);
   await page.goto("/index.html");
   await page.waitForFunction(() => {
     const el = document.getElementById("screen-feed");

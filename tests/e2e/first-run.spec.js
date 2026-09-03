@@ -3,6 +3,7 @@
 // Drapeau `first_run_experience_v1`. Couvre les 16 points de vérification du lot.
 // ══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
+const { sansDonneesDistantes } = require("./app-helper");
 const { bootVisiteur, couperReseauSupabase, etatOnboarde, GATE_TOKEN, GATE_KEY } = require("./first-run-helper");
 
 const feedActif = () => {
@@ -100,6 +101,13 @@ test.describe("Entrée", () => {
       },
       [GATE_KEY, GATE_TOKEN, etatOnboarde()]
     );
+    // ⚠️ ISOLATION DES DONNÉES DISTANTES — POSÉE ICI PARCE QUE CETTE SUITE
+    // NAVIGUE ELLE-MÊME. `bootOnboarded` la pose par défaut, mais sa portée est
+    // L'APPEL, pas le fichier : un `page.goto` maison garde son chemin exposé, et
+    // le verdict du test dépend alors du CONTENU DE LA PRODUCTION. C'est ce qui a
+    // rendu `main` rouge six fois en quatre jours et fait sauter autant de
+    // déploiements. Verrou mécanique : `scripts/audit-tests-isolation.js`.
+    await sansDonneesDistantes(page);
     await page.goto("/index.html");
     await page.waitForTimeout(3200);
 
@@ -708,11 +716,110 @@ test.describe("Transfert du mode invité", () => {
     intents: [], tour: { decouvrir: true }, bienvenue: "vue", retour: null, migre: false, debut: 1,
   };
 
-  test("elle fusionne sans écraser, dédoublonne, nettoie, et ne tourne qu'une fois", async ({ page }) => {
+  // ⚠️ LE VERROU DU DÉFAUT DU 2026-09-02 : « j'étais dans l'app sans compte pour
+  // découvrir, j'ai mis plein de passions pour voir, ensuite je me suis connecté
+  // à mon vrai compte et tu as mélangé les infos de la page de découverte avec
+  // mon compte ». La version précédente FUSIONNAIT en se croyant prudente parce
+  // qu'elle n'écrasait rien — mais « ne rien écraser » n'est pas « ne rien
+  // ajouter ».
+  test("un compte qui a DÉJÀ ses passions n'en reçoit AUCUNE de l'exploration", async ({ page }) => {
+    await bootVisiteur(page, { prefs: prefsInvite });
+    const r = await page.evaluate(() => {
+      // Le compte, tel que le serveur le rend : ses passions à lui, et rien du
+      // visiteur. C'est `window._comptePassionsServeur` que pose
+      // `supaLoadUserState` (app-02) d'après le blob `user_state` reçu.
+      window._comptePassionsServeur = true;
+      state.selectedFeedPassions = ["musique"];
+      state.user.profiles = [{ id: "pp_0", name: "Moi", passion: "musique", emoji: "🎸", createdAt: 1 }];
+      state.onboarded = true;
+      const migre = PassioFirstRun.migrerPreferences();
+      return { migre, passions: state.selectedFeedPassions.slice(),
+               specs: state.user.passionSpecialites || [],
+               prefsApres: PassioFirstRun.prefs() };
+    });
+
+    expect(r.migre).toBe(false);
+    // Le compte est INTACT : ni ajout en queue, ni réordonnancement.
+    expect(r.passions).toEqual(["musique"]);
+    expect(r.passions).not.toContain("moto");
+    expect(r.passions).not.toContain("photo");
+    expect(r.specs).not.toContain("moto:balade");
+    // Et les préférences d'exploration sont abandonnées pour de bon : aucun
+    // chemin futur (rechargement, second boot) ne peut les reproposer.
+    expect(r.prefsApres.migre).toBe(true);
+    expect(r.prefsApres.passions).toEqual([]);
+    expect(r.prefsApres.specialites).toEqual([]);
+  });
+
+  // Même prémisse, mais SANS verdict serveur (hors ligne, SDK coupé) : le repli
+  // local ne retient que ce qui ne peut PAS venir de l'exploration.
+  test("hors ligne, le repli protège quand même le compte qui a ses passions", async ({ page }) => {
+    await bootVisiteur(page, { prefs: prefsInvite });
+    const r = await page.evaluate(() => {
+      delete window._comptePassionsServeur;         // aucun verdict rendu
+      state.selectedFeedPassions = ["musique"];      // « musique » n'est pas du visiteur
+      state.user.profiles = [];
+      state.onboarded = true;
+      return { possede: PassioFirstRun.comptePossedeSesPassions(),
+               migre: PassioFirstRun.migrerPreferences(),
+               passions: state.selectedFeedPassions.slice() };
+    });
+    expect(r.possede).toBe(true);
+    expect(r.migre).toBe(false);
+    expect(r.passions).toEqual(["musique"]);
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // LE PROFIL « MUSIQUE » FABRIQUÉ PAR boot() N'EST PAS UN CHOIX (2026-09-02)
+  //
+  // ⚠️ TROIS DÉFAUTS EN DÉCOULAIENT, tous trouvés par la revue adversariale.
+  // Quand le serveur ne rend aucun profil, `boot()` (app-08) en fabrique un avec
+  // `allPassions()[0]` — « Musique ». Le compter comme une passion du compte
+  // faisait JETER les passions que le visiteur venait de choisir, et le
+  // concaténer en tête en faisait sa passion PRIMAIRE.
+  // ══════════════════════════════════════════════════════════════════════════
+  test("le profil de remplissage de boot() ne fait pas passer un compte neuf pour un compte garni", async ({ page }) => {
+    await bootVisiteur(page, { prefs: prefsInvite });
+    const r = await page.evaluate(() => {
+      delete window._comptePassionsServeur;      // pas de verdict : on éprouve le repli local
+      state.selectedFeedPassions = [];
+      // Exactement ce que fabrique `boot()` quand le serveur ne rend rien.
+      state.user.profiles = [{ id: "pp_0", name: "Moi", passion: "musique", emoji: "🎸", createdAt: 1, _parDefaut: true }];
+      state.onboarded = true;
+      const possede = PassioFirstRun.comptePossedeSesPassions();
+      const migre = PassioFirstRun.migrerPreferences();
+      return { possede, migre, passions: state.selectedFeedPassions.slice() };
+    });
+    expect(r.possede).toBe(false);          // ⚠️ valait `true` avant le correctif
+    expect(r.migre).toBe(true);
+    expect(r.passions).toContain("moto");
+    expect(r.passions).toContain("photo");
+  });
+
+  test("les choix du visiteur passent en TÊTE : le remplissage ne devient pas la passion primaire", async ({ page }) => {
+    await bootVisiteur(page, { prefs: prefsInvite });
+    const r = await page.evaluate(() => {
+      window._comptePassionsServeur = false;   // compte neuf, verdict serveur net
+      // `restoreFeedPassions` a amorcé la sélection depuis le profil fabriqué.
+      state.selectedFeedPassions = ["musique"];
+      state.user.profiles = [{ id: "pp_0", name: "Moi", passion: "musique", emoji: "🎸", createdAt: 1, _parDefaut: true }];
+      state.onboarded = true;
+      PassioFirstRun.migrerPreferences();
+      return state.selectedFeedPassions.slice();
+    });
+    // La passion PRIMAIRE est celle que la personne a réellement choisie.
+    expect(r[0]).toBe("moto");
+    expect(r).not.toEqual(["musique", "moto", "photo"]);
+    expect(r).toContain("photo");
+  });
+
+  test("un compte NEUF adopte les choix du visiteur : dédoublonnés, nettoyés, une seule fois", async ({ page }) => {
     await bootVisiteur(page, { prefs: prefsInvite });
     const resultat = await page.evaluate(() => {
-      // Un compte qui a DÉJÀ des choix : ils doivent survivre et rester premiers.
-      state.selectedFeedPassions = ["musique"];
+      // Le compte qu'on vient de créer au bout de l'exploration : le serveur
+      // n'a aucune passion pour lui, il n'a rien à défendre.
+      window._comptePassionsServeur = false;
+      state.user.profiles = [];
       state.onboarded = true;                       // le compte existe désormais
       const premier = PassioFirstRun.migrerPreferences();
       const apres1 = state.selectedFeedPassions.slice();
@@ -723,7 +830,6 @@ test.describe("Transfert du mode invité", () => {
 
     expect(resultat.premier).toBe(true);
     expect(resultat.second).toBe(false);              // ne tourne qu'une fois
-    expect(resultat.apres1[0]).toBe("musique");       // le choix du compte reste PREMIER
     expect(resultat.apres1).toContain("moto");
     expect(resultat.apres1).toContain("photo");
     expect(resultat.apres1).not.toContain("passion_qui_n_existe_pas"); // identifiant inconnu nettoyé
@@ -739,6 +845,8 @@ test.describe("Transfert du mode invité", () => {
   test("une interruption laisse la migration à refaire, et la refaire aboutit", async ({ page }) => {
     await bootVisiteur(page, { prefs: prefsInvite });
     const r = await page.evaluate(() => {
+      window._comptePassionsServeur = false;   // compte neuf : rien à défendre
+      state.user.profiles = [];
       state.onboarded = true;
       // Panne au moment d'écrire : `setFeedPassions` lève.
       const vrai = window.setFeedPassions;
@@ -765,6 +873,8 @@ test.describe("Transfert du mode invité", () => {
       requireAuthentication("rejoindre");
       closeModal();
       // …puis le compte est créé (chemin réel : la fin d'`onbFinish`).
+      window._comptePassionsServeur = false;   // compte neuf : rien à défendre
+      state.user.profiles = [];
       state.onboarded = true;
       PassioFirstRun.apresAuthentification();
       await new Promise((r2) => setTimeout(r2, 900));
@@ -841,6 +951,7 @@ test.describe("Kill switch", () => {
     expect(await page.evaluate(() => localStorage.getItem("passio_first_run_experience_v1"))).toBeNull();
 
     // Et il survit à un rechargement sans qu'on ait rien persisté.
+    await sansDonneesDistantes(page);
     await page.goto("/index.html");
     await page.waitForTimeout(3200);
     expect(await page.evaluate(() => PassioFirstRun.actif())).toBe(true);

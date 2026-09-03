@@ -18,6 +18,16 @@ test.describe("Fil — post malformé n'efface pas tout le fil", () => {
       state.user.profiles = [{ id: "p1", passion: "musique", name: "Moi" }];
       _activeFeedPassions = new Set(["musique"]);
       selectedMoods = new Set(["creation"]);
+      // ⚠️ ISOLER LE FIXTURE (2026-09-02). `renderFeed` ne peint que
+      // `sortedPosts.slice(0, 20)` : tant que le socle de démonstration
+      // concourait, les trois publications ci-dessous disputaient leur place aux
+      // publications de « musique » — et le jour où le socle en a gagné cinq,
+      // fraîches et très aimées, `valid2` est sorti du lot peint. Le test est
+      // devenu rouge sans qu'aucun comportement ne change, exactement le piège
+      // documenté par la fiche 06 : « un test qui laisse une requête de
+      // production remplir son état ne mesure pas ce qu'il croit ».
+      // Les QUATRE tableaux, parce que `_feedExtraPosts` survit aux écrasements.
+      state.seed.posts = []; state.supabasePosts = []; window._feedExtraPosts = [];
       state.userPosts = [
         {
           id: "valid1", createdAt: now, passion: "musique", mood: "creation",

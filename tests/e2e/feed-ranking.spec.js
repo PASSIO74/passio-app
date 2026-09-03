@@ -12,7 +12,9 @@
 //   · le classement ne PERD ni n'AJOUTE aucun post (même ensemble d'ids) ;
 //   · la soupape localStorage.passio_feed_rank="0" rétablit le tri chronologique ;
 //   · l'ordre est STABLE entre deux appels rapprochés (bucket 5 min → pas de
-//     repaint parasite du guard _feedDomSig).
+//     repaint parasite du guard _feedDomSig) ;
+//   · MA publication toute neuve passe devant tout le reste, et le bonus
+//     s'éteint passé la fenêtre (2026-09-02).
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
 
@@ -30,6 +32,64 @@ function rankIds(page, posts) {
 }
 
 test.describe("Fil — classement par pertinence", () => {
+  // ══════════════════════════════════════════════════════════════════════════
+  // « JE VIENS DE PUBLIER » — ET JE DOIS LE VOIR (2026-09-02)
+  // ──────────────────────────────────────────────────────────────────────────
+  // Une publication neuve a la fraîcheur maximale et un engagement NUL, quand
+  // n'importe quelle publication établie plafonne l'engagement dès ~20 j'aime.
+  // Sans terme dédié, elle ne peut donc PAS mener : mesurée 25e sur 40 sur un
+  // compte « musique », alors que `renderFeed` ne peint que 20 cartes. On
+  // publiait, et on ne voyait rien.
+  //
+  // ⚠️ Ce défaut a été révélé par un enrichissement du contenu de démonstration,
+  // mais il ne venait pas de lui : avant, la publication neuve sortait 20e,
+  // c'est-à-dire à la toute dernière place peinte. Elle tenait à une carte près.
+  // Corriger le contenu sans corriger le barème aurait rendu les tests verts en
+  // laissant le produit à une publication du même défaut — le genre de vert qui
+  // ne prouve rien.
+  // ══════════════════════════════════════════════════════════════════════════
+  test("ma publication toute neuve passe devant, même sans aucun j'aime", async ({ page }) => {
+    await bootOnboarded(page);
+    await setupSignals(page);
+    const now = Date.now();
+
+    const ids = await page.evaluate((maintenant) => {
+      // Le concurrent le plus fort possible : frais, ma passion, auteur suivi,
+      // et engagement au plafond. C'est le plafond réel du barème.
+      const rival = { id: "rival", createdAt: maintenant, passion: "music",
+        authorId: "followed", likes: 500, comments: [{ id: "c" }, { id: "c2" }] };
+      // La mienne : fraîche, et rien d'autre.
+      const mienne = { id: "mienne", createdAt: maintenant, passion: "music",
+        authorId: "moi", likes: 0, comments: [] };
+      // `_estMonPost` reconnaît la propriété par `state.userPosts` ou MY_UID.
+      state.userPosts = [mienne];
+      return rankFeedPosts([rival, mienne]).map((p) => p.id);
+    }, now);
+
+    expect(ids[0], "ma publication doit être la première carte du fil").toBe("mienne");
+  });
+
+  // Le pendant indispensable : le bonus est BORNÉ. Sans cette borne, mes vieilles
+  // publications squatteraient mon fil indéfiniment — ce n'est pas un fil, c'est
+  // un miroir.
+  test("…mais le coup de pouce s'éteint : une vieille publication à moi ne squatte pas", async ({ page }) => {
+    await bootOnboarded(page);
+    await setupSignals(page);
+    const now = Date.now();
+
+    const ids = await page.evaluate((maintenant) => {
+      const H = 3600000;
+      const vieille = { id: "vieille_a_moi", createdAt: maintenant - 12 * H, passion: "music",
+        authorId: "moi", likes: 0, comments: [] };
+      const fraiche = { id: "fraiche_autrui", createdAt: maintenant, passion: "music",
+        authorId: "x", likes: 0, comments: [] };
+      state.userPosts = [vieille];
+      return rankFeedPosts([vieille, fraiche]).map((p) => p.id);
+    }, now);
+
+    expect(ids[0], "passé la fenêtre, la fraîcheur reprend la main").toBe("fraiche_autrui");
+  });
+
   test("à fraîcheur égale, l'affinité (passion pratiquée + auteur suivi) remonte", async ({ page }) => {
     await bootOnboarded(page);
     await setupSignals(page);

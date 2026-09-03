@@ -90,6 +90,24 @@ const ARTEFACTS = new Set([
   // 2026-09-01 — une purge devenue partielle en silence, qui a laissé les
   // comptes de test s'accumuler en production jusqu'à mettre `main` au rouge.
   "purge-rest-parite.spec.js",
+
+  // Zones sûres iPhone (encoche, barre d'accueil) des panneaux plein écran.
+  //
+  // ⚠️ Ce spec ne pilote pas l'UI — et c'est la seule façon de mesurer ce qu'il
+  // mesure. `env(safe-area-inset-*)` vaut 0 dans un navigateur de bureau, et
+  // AUCUNE API de Playwright ne permet de le simuler : `getComputedStyle`
+  // rendrait « 14px » exactement pareil avant et après le correctif. Le symptôme
+  // — une commande passée sous la barre d'état de l'iPhone — n'est donc pas
+  // observable en CI. Ce qui l'est, c'est le CONTRAT DE SOURCE : toute commande
+  // ancrée en bord d'écran d'un panneau qui échappe à `.app-shell` doit
+  // référencer l'inset correspondant. Le spec relit donc styles.css et
+  // index.html, c'est-à-dire les octets réellement servis.
+  //
+  // Ce qu'il garde : en PWA installée sur iPhone il n'y a NI barre d'adresse NI
+  // bouton retour. Une croix de fermeture sous l'encoche enferme le visiteur
+  // dans le panneau — ce que le testeur du 2026-09-02 décrivait comme « l'écran
+  // se fige ». Éprouvé par mutation.
+  "ios-zones-sures.spec.js",
 ]);
 
 // ── 2. Ce que chaque spec touche réellement ─────────────────────────────────

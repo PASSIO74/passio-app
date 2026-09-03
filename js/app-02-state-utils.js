@@ -394,6 +394,63 @@ function _writeVerdict(res, opts) {
   return { ok: true, error: null, rows: rows };
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// UN APPAREIL VIDÉ N'ÉCRASE JAMAIS LE COMPTE QU'IL VIENT D'ADOPTER
+// ──────────────────────────────────────────────────────────────────────────
+// ⚠️ DÉFAUT CRÉÉ PAR LA PURGE ELLE-MÊME (2026-09-02, revue adversariale, second
+// constat bloquant). La séquence, entièrement plausible :
+//   ① `adopterCompteConnecte` purge l'état local et recharge ;
+//   ② au démarrage, `supaLoadUserState` tente de lire `user_state`… et échoue
+//      (réseau coupé, 5xx, jeton pas encore rafraîchi). Elle `console.warn` et
+//      rend `false` — l'état du compte n'est PAS restauré ;
+//   ③ `boot()` continue, pose `state.onboarded = true` ;
+//   ④ la première `saveState()` venue arme la synchronisation, qui POSTe l'état
+//      VIDE dans `user_state` — et le compte est effacé, sur tous ses appareils.
+// Avant la purge, ce chemin n'existait pas : l'état local n'était jamais vide.
+// C'est donc à la purge d'apporter sa propre garde.
+//
+// Deux conditions, chacune suffisante pour interdire toute écriture d'état :
+//
+//  ① LA RESTAURATION N'EST PAS CONFIRMÉE. Le drapeau est posé par l'adoption,
+//     PERSISTÉ (il doit survivre au rechargement qu'elle déclenche), et levé par
+//     `supaLoadUserState` au premier verdict RÉUSSI — y compris « ce compte n'a
+//     pas encore de ligne », qui est une réponse, pas un échec.
+//
+//  ② L'ÉTAT LOCAL N'APPARTIENT PAS AU COMPTE CONNECTÉ. `_uidProprietaireEtat`
+//     est l'identité que l'état portait à l'ouverture de la page ; tant qu'elle
+//     diffère de `MY_UID`, pousser reviendrait à donner au compte l'état de
+//     quelqu'un d'autre. C'est ce qui protège le parcours « mot de passe
+//     oublié », où l'adoption est volontairement différée jusqu'au changement
+//     effectif du mot de passe (`_showPasswordRecoveryUI`).
+//
+// ⚠️ ELLE NE BLOQUE QUE L'ÉCRITURE D'ÉTAT. Les lectures, le rendu et toutes les
+// autres tables continuent normalement — refuser de pousser n'est pas se figer.
+const CLE_RESTAURATION_REQUISE = "passio_restauration_requise";
+
+function _exigerRestaurationAvantEcriture(uidCompte) {
+  try { localStorage.setItem(CLE_RESTAURATION_REQUISE, uidCompte); } catch (e) {}
+}
+
+function _restaurationConfirmee() {
+  try { localStorage.removeItem(CLE_RESTAURATION_REQUISE); } catch (e) {}
+}
+
+function _peutPousserEtat() {
+  // ① restauration en attente pour CE compte
+  try {
+    const attendu = localStorage.getItem(CLE_RESTAURATION_REQUISE);
+    if (attendu && typeof MY_UID !== "undefined" && attendu === MY_UID) return false;
+  } catch (e) {}
+  // ② l'état local appartient à quelqu'un d'autre
+  try {
+    if (typeof MY_UID !== "undefined" && MY_UID && RE_UID_COMPTE.test(MY_UID)
+        && _uidProprietaireEtat && _uidProprietaireEtat !== MY_UID) return false;
+  } catch (e) {}
+  return true;
+}
+window._peutPousserEtat = _peutPousserEtat;
+window._exigerRestaurationAvantEcriture = _exigerRestaurationAvantEcriture;
+
 let _stateSyncTimer = null;
 // Drapeau « l'état a changé depuis la dernière sauvegarde aboutie ». saveState() est
 // l'entonnoir unique des mutations (il appelle _scheduleStateSync), donc c'est ici
@@ -501,6 +558,11 @@ async function _supaSaveUserStateOnce() {
   try {
     if (typeof supa === "undefined" || !supa || !window._supaReal) return;
     if (typeof MY_UID === "undefined" || !MY_UID) return;
+    // ⚠️ Un appareil vidé par l'adoption, ou porteur de l'état d'un autre, ne
+    // pousse RIEN tant qu'il n'a pas vu l'état du compte (cf. le bloc
+    // `_peutPousserEtat` ci-dessus). Sans cette ligne, une seule lecture
+    // `user_state` en échec suffisait à effacer le compte.
+    if (!_peutPousserEtat()) return;
     // Le beacon de passage en arrière-plan a pu envoyer cette même génération d'état
     // juste avant que le timer de debounce n'arrive à échéance : sans cette garde, le
     // retour du bfcache déclenchait un SECOND upsert du MÊME état, mais horodaté
@@ -575,6 +637,9 @@ function supaSaveUserStateBeacon() {
     if (!cfg || !cfg.url || !cfg.anon) return;
     if (typeof MY_UID === "undefined" || !MY_UID) return;
     if (typeof state === "undefined" || !state || !state.onboarded) return;
+    // Même garde que `supaSaveUserState` : le beacon est un chemin d'écriture à
+    // part entière, et c'est même LUI qui portait le défaut d'origine.
+    if (!_peutPousserEtat()) return;
     // Rien n'a bougé depuis la dernière sauvegarde aboutie → rien à envoyer. Cette
     // garde sert aussi de dédoublonnage : pagehide ET visibilitychange(hidden) tirent
     // tous les deux à la fermeture, le second trouve le drapeau déjà retombé.
@@ -770,6 +835,71 @@ function _applyUserState(data) {
 //
 // Fonction NOMMÉE et non bloc en ligne, pour qu'un test puisse exercer le code
 // réel plutôt qu'une copie — une copie ne prouverait que sa propre cohérence.
+// ══════════════════════════════════════════════════════════════════════════
+// RÉINJECTION BORNÉE PAR LE PLAFOND  (2026-09-03)
+// ──────────────────────────────────────────────────────────────────────────
+// La fusion défensive de `supaLoadUserState` ré-injecte les profils locaux
+// absents du serveur — ce qui est juste : ils ont pu être créés entre la
+// dernière synchronisation et la fermeture. Mais elle ne consultait AUCUN
+// plafond.
+//
+// Mesuré le 2026-09-03, sur le code livré la veille : deux appareils portant
+// chacun TROIS passions DIFFÉRENTES convergeaient vers SIX vivantes. Le
+// plafond annonçait « 0 place restante » pendant que le compte en possédait
+// six. L'offre payante était contournée sans que personne n'ait rien fait de
+// volontaire — il suffisait d'un second téléphone.
+//
+// ⚠️ ON N'ARCHIVE QUE LES RÉINJECTÉES, JAMAIS CE QUE LE SERVEUR AVAIT DÉJÀ.
+// C'est ce qui rendait le correctif « évident » inacceptable, et pourquoi le
+// défaut avait été livré tel quel avec sa dette écrite : archiver « le
+// surplus » aurait rétrogradé les passions de comptes de production qui en
+// portent légitimement plus de trois — le plafond date du 2026-09-01, les
+// comptes le précèdent. Ici l'état SERVEUR fait foi et n'est jamais touché ;
+// seules les entrées que cette fusion ajoute peuvent être rangées.
+//
+// ⚠️ RIEN N'EST SUPPRIMÉ, RIEN N'EST FACTURÉ. Les surnuméraires arrivent
+// `archived: true` : elles sont donc dans la liste des archives, d'où
+// l'utilisateur les reprend quand il veut (échange). Aucune entrée n'est
+// inscrite au journal des changements — le compte n'a rien demandé.
+//
+// ⚠️ FONCTION NOMMÉE, et c'est délibéré : un test doit exercer le code RÉEL.
+// Une copie de ces règles dans un spec ne prouverait que sa propre cohérence —
+// le dépôt a déjà payé ce défaut (`audit-tests-creux.js` existe pour ça), et
+// `restaurerPassionActiveApresFusion` juste en dessous a été extraite pour la
+// même raison.
+//
+// ⚠️ AUCUNE HORLOGE ICI. `archivedAt` reste à 0 : la fusion n'est pas un geste
+// d'utilisateur, et une date inventée mentirait dans la liste des archives.
+function reinjecterProfilsLocauxBornes(profilsServeur, aReinjecter) {
+  const serveur = Array.isArray(profilsServeur) ? profilsServeur : [];
+  const ajouts = Array.isArray(aReinjecter) ? aReinjecter : [];
+  if (!ajouts.length) return serveur;
+
+  const vivantesServeur = serveur.filter(function (p) { return p && !p.archived; }).length;
+
+  // Le plafond vit dans app-06 (`PASSIONS_OFFERTES`), chargé APRÈS ce fichier :
+  // on le lit paresseusement. Son absence — comme un kill switch — vaut « pas
+  // de plafond » : un drapeau coupé ne doit jamais ranger une passion.
+  let places = Infinity;
+  try {
+    if (typeof plafondPassionsActif === "function" && plafondPassionsActif()
+        && typeof PASSIONS_OFFERTES !== "undefined") {
+      places = Math.max(0, PASSIONS_OFFERTES - vivantesServeur);
+    }
+  } catch (e) { places = Infinity; }
+
+  let reprises = 0;
+  const bornees = ajouts.map(function (p) {
+    if (!p || p.archived) return p;              // déjà rangée : rien à décider
+    if (reprises < places) { reprises++; return p; }
+    const c = Object.assign({}, p);
+    c.archived = true;
+    if (!c.archivedAt) c.archivedAt = 0;
+    return c;
+  });
+  return serveur.concat(bornees);
+}
+
 function restaurerPassionActiveApresFusion(localCurrentId) {
   if (!state || !state.user) return;
   var profils = Array.isArray(state.user.profiles) ? state.user.profiles : [];
@@ -790,6 +920,16 @@ function restaurerPassionActiveApresFusion(localCurrentId) {
   }
 }
 
+// ⚠️ « L'ÉTAT DU COMPTE EST-IL ARRIVÉ ? » — LE SEUL MOYEN DE LE SAVOIR.
+// `passio:app-ready` part au CHARGEMENT du script d'application, donc AVANT que
+// `boot()` ait fini d'attendre le réseau : tout module qui décide quelque chose
+// sur le contenu du compte à ce moment-là décide sur un état VIDE. C'est ce qui
+// laissait `migrerPreferences` (js/first-run.js) prendre un vrai compte pour un
+// compte neuf. Le drapeau est posé à CHAQUE sortie de `supaLoadUserState`, y
+// compris les sorties précoces (pas de session, pas de SDK) : « le verdict est
+// rendu » n'est pas « le serveur a répondu ».
+window._etatCompteCharge = false;
+
 async function supaLoadUserState() {
   try {
     if (typeof supa === "undefined" || !supa || !window._supaReal) return false;
@@ -798,9 +938,42 @@ async function supaLoadUserState() {
     if (error) { console.warn("supaLoadUserState:", error.message); return false; }
     if (!data) {
       // Aucune sauvegarde serveur → on pousse l'état local (création de la ligne).
+      // Aucune ligne = compte qui n'a encore RIEN à lui : le verdict est « non ».
+      window._comptePassionsServeur = false;
+      // ⚠️ « PAS DE LIGNE » EST UNE RÉPONSE, PAS UN ÉCHEC. La lecture a abouti :
+      // il n'y a rien à restaurer, donc rien à protéger, et la création de la
+      // ligne ci-dessous doit pouvoir passer. Ne pas lever ici laisserait un
+      // compte neuf incapable d'écrire son état, pour toujours.
+      _restaurationConfirmee();
       await supaSaveUserState();
       return false;
     }
+    // ⚠️ VERDICT LU SUR LE BLOB SERVEUR, PAS SUR `state`. « Ce compte a-t-il ses
+    // propres passions ? » ne peut pas se lire dans l'état local d'un appareil
+    // qui vient d'explorer : il y trouverait les passions de l'EXPLORATION et
+    // conclurait que le compte les possède. Seul ce que le serveur renvoie
+    // appartient au compte. Consommé par `migrerPreferences` (js/first-run.js),
+    // qui n'adopte les choix d'un visiteur que dans un compte qui n'en a aucun.
+    try {
+      const _blob = data.data || {};
+      const _sel = Array.isArray(_blob.selectedFeedPassions) ? _blob.selectedFeedPassions : [];
+      const _prof = (_blob.user && Array.isArray(_blob.user.profiles)) ? _blob.user.profiles : [];
+      // ⚠️ `_parDefaut` EST EXCLU DES DEUX CÔTÉS, ET C'EST NÉCESSAIRE. C'est le
+      // profil de remplissage fabriqué par `boot()` quand le serveur ne rend rien
+      // (« Musique »), pas un choix. L'exclure des seuls PROFILS ne suffisait
+      // pas : un client antérieur à ce correctif a pu recopier son identifiant
+      // dans `selectedFeedPassions`, où le marqueur ne survit pas — seul
+      // l'IDENTIFIANT voyage. Un compte NEUF dont le lien de confirmation a été
+      // ouvert dans un autre navigateur (cas ordinaire sur mobile) passait alors
+      // pour un compte qui a déjà ses passions, et le visiteur perdait les
+      // siennes. On soustrait donc de `_sel` ce que seul le remplissage porte.
+      const _remplissage = Object.create(null);
+      _prof.forEach(function (pr) { if (pr && pr.passion && pr._parDefaut) _remplissage[pr.passion] = 1; });
+      const _choisies = _prof.filter(function (pr) { return pr && pr.passion && !pr.archived && !pr._parDefaut; });
+      _choisies.forEach(function (pr) { delete _remplissage[pr.passion]; });
+      const _selReel = _sel.filter(function (id) { return id && !_remplissage[id]; });
+      window._comptePassionsServeur = !!(_selReel.length || _choisies.length);
+    } catch (_e) {}
     const serverTs = data.updated_at ? new Date(data.updated_at).getTime() : 0;
     const localTs = state._stateSyncedAt ? new Date(state._stateSyncedAt).getTime() : 0;
     // Appareil vierge (pas onboardé) OU serveur plus récent → on restaure.
@@ -813,6 +986,8 @@ async function supaLoadUserState() {
       const localProfiles = (state.user && Array.isArray(state.user.profiles)) ? state.user.profiles : [];
       if (incomingProfiles.length === 0 && localProfiles.length > 0) {
         state.onboarded = true; // session active = compte onboardé
+        // La lecture a abouti : l'appareil a vu le compte, il peut écrire.
+        _restaurationConfirmee();
         await supaSaveUserState();
         return false;
       }
@@ -853,7 +1028,7 @@ async function supaLoadUserState() {
         const serverPassions = new Set((state.user.profiles || []).map(p => p.passion).filter(Boolean));
         const missing = localProfiles.filter(p => p.passion && !serverPassions.has(p.passion));
         if (missing.length > 0) {
-          state.user.profiles = (state.user.profiles || []).concat(missing);
+          state.user.profiles = reinjecterProfilsLocauxBornes(state.user.profiles || [], missing);
         }
         // Pour les profils présents des deux côtés : si la version locale porte une
         // photo (base64 ou URL Storage) absente côté serveur, on la réinjecte.
@@ -887,6 +1062,8 @@ async function supaLoadUserState() {
       // Restaure le profil actif local, et garantit qu'il est VIVANT.
       restaurerPassionActiveApresFusion(localCurrentId);
       state._stateSyncedAt = data.updated_at;
+      // ⚠️ L'état du compte est là : l'appareil peut de nouveau écrire.
+      _restaurationConfirmee();
       // supaLoadUserState n'est appelée qu'avec une session active → l'utilisateur
       // est connecté, donc onboardé (évite de retomber sur la landing).
       state.onboarded = true;
@@ -894,10 +1071,13 @@ async function supaLoadUserState() {
       try { saveState(); } finally { window._hydratingState = false; }
       return true;
     }
-    // Local plus récent → on pousse vers le serveur.
+    // Local plus récent → on pousse vers le serveur. La lecture a abouti et son
+    // contenu a été comparé : l'appareil a bien VU le compte.
+    _restaurationConfirmee();
     await supaSaveUserState();
     return false;
   } catch (e) { console.warn("supaLoadUserState:", e && e.message); return false; }
+  finally { window._etatCompteCharge = true; }
 }
 
 // Miniature CDN : transforme une URL Supabase Storage publique en version
@@ -1541,11 +1721,230 @@ function toast(msg, type = "info", onClick = null) {
 let navigationHistory = ["feed"];
 let isNavigatingBack = false;
 
+// ═══════════════════════════════════════════════════════════════════════════
+// HISTORIQUE : écriture SÛRE et BORNÉE (correctif iPhone, 2026-09-02)
+// ---------------------------------------------------------------------------
+// Deux défauts distincts, tous deux invisibles sur Android, tous deux vécus par
+// le testeur iPhone (« les écrans se figent », « les retours ne marchent pas ») :
+//
+// ① WebKit PLAFONNE les écritures d'historique — environ 100 `pushState` /
+//    `replaceState` par tranche de 30 s — et, au-delà, il LÈVE une
+//    `SecurityError`. Chrome, lui, se contente d'ignorer. Or `goTo()` écrivait
+//    l'historique en TÊTE de fonction, sans `try` : passé le plafond, l'appel
+//    levait et TOUT le reste de `goTo` était sauté — bascule d'écran, classes
+//    `.nav-item`, remise à zéro du défilement, rendu. L'écran restait donc
+//    figé sur son contenu précédent, et chaque tap suivant levait à son tour.
+//    C'est exactement le symptôme « l'écran se fige » — et il n'existe QUE sur
+//    iPhone. On enveloppe donc toute écriture, et on s'arrête AVANT le plafond
+//    (l'entrée d'historique est un confort ; `navigationHistory` reste, lui, la
+//    vraie mémoire de navigation de l'application).
+//
+// ② Chaque overlay (modale, bobines, story, panneau d'outils) POUSSAIT une
+//    entrée à l'ouverture, mais AUCUN ne la retirait à la fermeture au doigt
+//    (× , fond, Échap). Ouvrir puis fermer cinq modales laissait cinq entrées
+//    mortes : il fallait cinq retours pour que quoi que ce soit bouge. Sur
+//    iPhone le geste de retour depuis le bord est le chemin principal, d'où
+//    « les retours de page ne fonctionnent pas ». `releaseOverlayHistory()`
+//    consomme l'entrée quand l'overlay est fermé autrement que par un retour.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Horodatages des écritures d'historique récentes (fenêtre glissante de 30 s).
+let _histWrites = [];
+const _HIST_MAX = 90;              // marge sous le plafond WebKit (~100 / 30 s)
+
+function _histQuotaOk() {
+  const now = Date.now();
+  // Purge tout ce qui est sorti de la fenêtre de 30 s.
+  while (_histWrites.length && now - _histWrites[0] > 30000) _histWrites.shift();
+  return _histWrites.length < _HIST_MAX;
+}
+
+// Écrit une entrée d'historique. Renvoie true si elle a VRAIMENT été posée —
+// l'appelant peut ainsi tenir une comptabilité juste des entrées à reprendre.
+// Ne lève JAMAIS : une écriture d'historique refusée ne doit pas pouvoir
+// interrompre la fonction qui l'appelle (c'est tout le défaut ① ci-dessus).
+function pushHistorySafe(stateObj, hash) {
+  if (!_histQuotaOk()) return false;
+  try {
+    window.history.pushState(stateObj, "", hash);
+    _histWrites.push(Date.now());
+    return true;
+  } catch (e) {
+    // Plafond atteint malgré la marge, ou navigation en cours : on note l'essai
+    // pour se calmer, et on continue sans historique plutôt que de tout casser.
+    _histWrites.push(Date.now());
+    try { console.warn("[nav] pushState refusé:", e && e.message); } catch (e2) {}
+    return false;
+  }
+}
+
+// Même précaution pour `replaceState`, soumis au MÊME plafond WebKit que
+// `pushState` (les deux partagent le compteur de WebKit) et qui lève donc dans
+// les mêmes conditions.
+function replaceHistorySafe(stateObj, hash) {
+  if (!_histQuotaOk()) return false;
+  try {
+    window.history.replaceState(stateObj, "", hash);
+    _histWrites.push(Date.now());
+    return true;
+  } catch (e) {
+    _histWrites.push(Date.now());
+    return false;
+  }
+}
+
+// ─── Entrées d'historique posées par les overlays ──────────────────────────
+let _navOverlayDepth = 0;       // combien d'entrées d'overlay sont à nous
+let _navClosingFromPop = false; // vrai pendant le traitement d'un popstate
+let _navExpectingBack = 0;      // retours que NOUS avons déclenchés
+let _releasePending = false;    // une reprise d'entrée est programmée
+let _releaseTimer = null;
+
+// Ouverture d'un overlay : une entrée, marquée comme nôtre.
+function pushOverlayHistory(kind, hash) {
+  const url = hash || ("#" + kind);
+  // ⚠️ Cas « une modale en remplace une autre » (openModal n'empile pas, cf.
+  // CLAUDE.md) : le code fait `closeModal(); openModal(...)`. La reprise de
+  // l'entrée précédente est encore PROGRAMMÉE — on l'annule et on RÉUTILISE
+  // l'entrée courante au lieu d'en empiler une seconde. Sans cela, remplacer
+  // une modale laissait une entrée orpheline, donc un appui « retour » mort.
+  // ⚠️ `_navOverlayDepth > 0` est indispensable : sans lui, une reprise armée
+  // puis rendue caduque par une navigation ferait RÉÉCRIRE l'entrée d'écran.
+  if (_releasePending && _navOverlayDepth > 0) {
+    cancelOverlayRelease();
+    if (replaceHistorySafe({ overlay: kind, passioOverlay: true }, url)) return;
+  }
+  cancelOverlayRelease();
+  if (pushHistorySafe({ overlay: kind, passioOverlay: true }, url)) _navOverlayDepth++;
+}
+
+// Fermeture d'un overlay AUTREMENT que par un retour : on consomme l'entrée
+// qu'il avait posée, sinon elle reste morte sur la pile et avale un retour.
+// Différée d'un tour de boucle pour laisser le cas « remplacement » ci-dessus
+// s'exprimer — l'utilisateur ne peut pas appuyer sur retour entre-temps.
+// Abandonne une reprise programmée SANS reculer : appelée quand les entrées
+// d'overlay ne sont de toute façon plus au sommet de la pile (une navigation
+// vient de pousser par-dessus). Reculer alors ferait quitter l'écran.
+function cancelOverlayRelease() {
+  _releasePending = false;
+  clearTimeout(_releaseTimer);
+  _releaseTimer = null;
+}
+
+function releaseOverlayHistory() {
+  // Fermeture DÉCLENCHÉE par un popstate : l'entrée vient déjà d'être retirée
+  // par le navigateur, la reprendre ferait reculer d'un cran de trop.
+  if (_navClosingFromPop) return;
+  if (_navOverlayDepth <= 0) return;
+  _releasePending = true;
+  clearTimeout(_releaseTimer);
+  _releaseTimer = setTimeout(_flushOverlayRelease, 0);
+}
+
+function _flushOverlayRelease() {
+  _releaseTimer = null;
+  if (!_releasePending) return;
+  _releasePending = false;
+  if (_navOverlayDepth <= 0) return;
+  // L'entrée n'est à reprendre que si elle est encore AU SOMMET. Si autre chose
+  // a poussé par-dessus entre-temps (une navigation, un autre overlay), reculer
+  // ferait quitter l'écran courant : on abandonne la comptabilité, sans risque.
+  let st = null;
+  try { st = window.history.state; } catch (e) {}
+  if (!st || !st.passioOverlay) { _navOverlayDepth = 0; return; }
+  _navOverlayDepth--;
+  _navExpectingBack++;
+  try {
+    window.history.back();
+    // Filet : si aucun popstate n'arrive, on relâche le compteur plutôt que de
+    // laisser un retour coincé pour le reste de la session.
+    setTimeout(function () { if (_navExpectingBack > 0) _navExpectingBack--; }, 400);
+  } catch (e) { _navExpectingBack--; }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// VERROU DE DÉFILEMENT — COMPTÉ PAR PROPRIÉTAIRE (correctif iPhone 2026-09-02)
+// ---------------------------------------------------------------------------
+// `document.body.style.overflow` est une ressource UNIQUE que plusieurs
+// overlays se disputaient : chacun posait `"hidden"` à l'ouverture et écrivait
+// `""` à la fermeture. Deux conséquences, toutes deux vécues comme « l'écran
+// est figé » :
+//   · l'overlay du DESSUS, en se fermant, DÉVERROUILLAIT le défilement alors
+//     que celui du dessous était encore affiché ;
+//   · à l'inverse, une exception avant la ligne de libération (ou un chemin de
+//     fermeture qui l'oubliait) laissait le verrou posé POUR TOUJOURS — plus
+//     rien ne défilait, et aucune erreur n'apparaissait à l'écran.
+// On compte donc les propriétaires : le défilement ne revient qu'au dernier
+// parti. Un même propriétaire ne peut pas verrouiller deux fois (idempotent),
+// sinon un double appel d'ouverture rendrait la libération impossible.
+const _scrollLockOwners = new Set();
+
+function lockBodyScroll(owner) {
+  _scrollLockOwners.add(owner || "anon");
+  try { document.body.style.overflow = "hidden"; } catch (e) {}
+}
+function unlockBodyScroll(owner) {
+  _scrollLockOwners.delete(owner || "anon");
+  if (_scrollLockOwners.size === 0) {
+    try { document.body.style.overflow = ""; } catch (e) {}
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PARTAGE — UN ÉCHEC NE DOIT PAS ÊTRE SILENCIEUX (correctif iPhone 2026-09-02)
+// ---------------------------------------------------------------------------
+// Les six points de partage appelaient `navigator.share(...).catch(() => {})`
+// — et l'un d'eux (partage du profil, app-06) n'avait AUCUN `catch`. Deux
+// défauts, tous deux bien plus fréquents sur iPhone que sur Android :
+//   · `navigator.share` EXISTE sur iOS mais peut refuser — activation
+//     utilisateur consommée, feuille de partage déjà ouverte, contexte non
+//     sécurisé. Le `catch` vide transformait ce refus en « je tape sur Partager
+//     et il ne se passe rien », sans repli et sans message ;
+//   · sans `catch` du tout, une simple ANNULATION par l'utilisateur (geste très
+//     courant) produisait une promesse rejetée non gérée, remontée dans la
+//     table `client_errors` par le moniteur de platform.js — du bruit qui
+//     enterre les vraies erreurs.
+// Ici : l'annulation est silencieuse (c'est un choix de l'utilisateur, pas une
+// panne), tout autre échec retombe sur la copie du lien, et l'absence des DEUX
+// mécanismes se dit à l'écran plutôt que de ne rien faire.
+//
+// ⚠️ À appeler SYNCHRONEMENT depuis le gestionnaire de clic : sur iOS, un
+// `await` avant `navigator.share` consomme l'activation utilisateur et l'appel
+// est alors refusé.
+// ═══════════════════════════════════════════════════════════════════════════
+function partagerOuCopier(data, msgCopie) {
+  const url = (data && data.url) || "";
+  const texteCopie = data && data.text ? (data.text + "\n" + url) : url;
+  const copier = function () {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(texteCopie).then(
+        function () { toast(msgCopie || "Lien copié"); },
+        function () { toast("Lien : " + url); }
+      );
+    } else {
+      toast("Lien : " + url);
+    }
+  };
+  if (!navigator.share) { copier(); return; }
+  try {
+    const p = navigator.share(data);
+    if (p && typeof p.catch === "function") {
+      p.catch(function (e) {
+        // Annulation volontaire : rien à dire, rien à remonter.
+        if (e && (e.name === "AbortError" || e.name === "NotAllowedError" && /abort/i.test(e.message || ""))) return;
+        copier();
+      });
+    }
+  } catch (e) {
+    copier();   // `share` a levé de façon synchrone (contexte non sécurisé…)
+  }
+}
+
 // Ajouter un overlay/modal à l'historique de navigation
 function pushOverlayToHistory(overlayType, overlayId = "") {
-  const state = { overlay: overlayType, id: overlayId };
+  const state = { overlay: overlayType, id: overlayId, passioOverlay: true };
   const hash = overlayId ? `#${overlayType}-${overlayId}` : `#${overlayType}`;
-  window.history.pushState(state, "", hash);
+  if (pushHistorySafe(state, hash)) _navOverlayDepth++;
 }
 
 function goTo(screen) {
@@ -1570,8 +1969,19 @@ function goTo(screen) {
         navigationHistory.shift();
       }
     }
-    // Utiliser l'History API pour le bouton back
-    window.history.pushState({ screen }, "", "#" + screen);
+    // Utiliser l'History API pour le bouton back.
+    // ⚠️ JAMAIS d'appel nu ici : sur iPhone, passé le plafond WebKit, `pushState`
+    // LÈVE — et tout ce qui suit (bascule d'écran, rendu) était sauté, laissant
+    // l'écran figé. `pushHistorySafe` absorbe le refus et laisse `goTo` finir.
+    pushHistorySafe({ screen }, "#" + screen);
+    // On change d'écran : les entrées d'overlay encore comptées sont derrière
+    // nous, plus au sommet. Les oublier évite qu'une fermeture ultérieure ne
+    // fasse reculer hors de l'écran courant. ⚠️ Et il faut aussi DÉSARMER une
+    // reprise déjà programmée : sans cela, une modale ouverte dans la foulée
+    // (`goTo(...); openModal(...)`, cas des liens profonds) la prendrait pour
+    // un remplacement et ÉCRASERAIT l'entrée d'écran qu'on vient de poser.
+    _navOverlayDepth = 0;
+    cancelOverlayRelease();
   }
 
   $$(".nav-item").forEach(n => {
@@ -1645,35 +2055,128 @@ function closeCurrentOverlay() {
     return true;
   }
 
-  // Vérifier d'autres overlays spécifiques
-  const detailModal = document.getElementById("eventDetail") || document.getElementById("postDetail") || document.getElementById("profileDetail");
-  if (detailModal && detailModal.style.display !== "none") {
-    detailModal.style.display = "none";
+  // ⚠️ LES QUATRE GRANDS PANNEAUX PLEIN ÉCRAN (corrigé le 2026-09-02).
+  // Ce qu'il y avait ici interrogeait `eventDetail`, `postDetail`,
+  // `profileDetail` et `commentsPanel` : AUCUN de ces identifiants n'existe
+  // dans index.html. La branche était morte et n'a jamais rien fermé — le
+  // bouton retour et le geste de retour depuis le bord tombaient donc dans le
+  // `goTo(écran)` qui suit, et l'écran changeait SOUS un panneau
+  // `position:fixed; inset:0` resté affiché. Vu de l'utilisateur : le panneau
+  // est figé, et un second retour quitte l'application. Sur iPhone c'est le
+  // chemin principal, et en PWA installée aucun bouton du navigateur ne
+  // rattrape le coup.
+  //
+  // L'ordre suit le z-index DÉCROISSANT : on ferme toujours ce qui est
+  // au-dessus. mediaEditor (4000) · conv-fullpage (1200) · eventDetailPage et
+  // postDetailPage (200). Les couches supérieures (modale 10001, bobines 9999,
+  // stories, panneau d'outils) sont déjà traitées plus haut.
+  // ⚠️ L'APPEL EN COURS EST UN CAS À PART. Il recouvre tout (z-index 100000).
+  // Sans entrée d'historique, un geste de retour QUITTAIT l'application en plein
+  // appel. Mais raccrocher sur un balayage accidentel serait pire encore : on
+  // CONSOMME donc le retour sans rien démonter, en reposant une entrée. C'est le
+  // comportement des applications d'appel natives — on ne « revient pas en
+  // arrière » depuis un appel, et on ne le coupe pas non plus par mégarde.
+  // Raccrocher reste un geste explicite (le bouton 📵).
+  const appel = document.getElementById("callOverlay");
+  if (appel && appel.classList.contains("active")) {
+    if (typeof pushHistorySafe === "function") pushHistorySafe({ overlay: "call", passioOverlay: true }, "#appel");
     return true;
   }
 
-  const commentsPanel = document.getElementById("commentsPanel");
-  if (commentsPanel && commentsPanel.style.display !== "none") {
-    commentsPanel.style.display = "none";
+  // Carte plein écran de « Rencontrer » : `position: fixed; inset: 0` (z 9000).
+  const carte = document.getElementById("irlMapWrap");
+  if (carte && carte.classList.contains("fullscreen")) {
+    if (typeof toggleIrlMapFullscreen === "function") toggleIrlMapFullscreen();
+    else carte.classList.remove("fullscreen");
+    return true;
+  }
+
+  // Panneau de filtres historique de « Rencontrer », plein écran lui aussi.
+  const filtres = document.getElementById("irlFiltersPanel");
+  if (filtres && filtres.style.display === "block") {
+    if (typeof closeIrlFiltersPanel === "function") closeIrlFiltersPanel();
+    else filtres.style.display = "none";
+    return true;
+  }
+
+  const editeurMedia = document.getElementById("mediaEditor");
+  if (editeurMedia && editeurMedia.classList.contains("open")) {
+    // meClose() coupe aussi la caméra et l'enregistrement en cours : sortir de
+    // ce panneau sans lui laisserait l'objectif actif en arrière-plan.
+    if (typeof meClose === "function") meClose(); else editeurMedia.classList.remove("open");
+    return true;
+  }
+
+  const convPleinePage = document.getElementById("conv-fullpage");
+  if (convPleinePage && convPleinePage.classList.contains("active")) {
+    if (typeof closeConversation === "function") closeConversation();
+    else convPleinePage.classList.remove("active");
+    return true;
+  }
+
+  const ficheActivite = document.getElementById("eventDetailPage");
+  if (ficheActivite && ficheActivite.style.display !== "none" && ficheActivite.style.display !== "") {
+    if (typeof closeEventDetail === "function") closeEventDetail();
+    else ficheActivite.style.display = "none";
+    return true;
+  }
+
+  const pagePost = document.getElementById("postDetailPage");
+  if (pagePost && pagePost.style.display !== "none" && pagePost.style.display !== "") {
+    if (typeof closePost === "function") closePost(); else pagePost.style.display = "none";
     return true;
   }
 
   return false;
 }
 
-// Gérer le bouton back du téléphone
+// Écrans réels vers lesquels un hash peut légitimement ramener.
+const NAV_SCREENS = ["feed", "profiles", "studio", "explore", "irl", "messages"];
+
+// Gérer le bouton back du téléphone (et le geste de retour depuis le bord, qui
+// est LE chemin de retour sur iPhone).
 window.addEventListener("popstate", (e) => {
-  // D'abord, essayer de fermer un overlay ouvert
-  if (closeCurrentOverlay()) {
+  // ① Retour que NOUS avons déclenché en refermant un overlay au doigt : son
+  //    entrée vient d'être consommée, il n'y a plus rien à faire. Sans ce
+  //    garde, on enchaînerait sur un `goTo` inutile qui re-rendrait l'écran.
+  if (_navExpectingBack > 0) { _navExpectingBack--; return; }
+
+  // ② D'abord, essayer de fermer un overlay ouvert.
+  _navClosingFromPop = true;
+  let ferme = false;
+  try {
+    ferme = closeCurrentOverlay();
+  } catch (err) {
+    // Un overlay qui lève en se fermant ne doit pas rendre le bouton retour
+    // inerte pour le reste de la session.
+    try { console.warn("[nav] fermeture d'overlay:", err); } catch (e2) {}
+  } finally {
+    _navClosingFromPop = false;
+  }
+  if (ferme) {
+    if (_navOverlayDepth > 0) _navOverlayDepth--;
     return;
   }
 
-  // Sinon, naviguer vers l'écran précédent
+  // ③ Sinon, naviguer vers l'écran précédent.
   if (e.state && e.state.screen) {
     isNavigatingBack = true;
-    goTo(e.state.screen);
-    isNavigatingBack = false;
+    try { goTo(e.state.screen); } finally { isNavigatingBack = false; }
+    return;
   }
+
+  // ④ Repli : entrée SANS état — le chargement initial de la page, ou un lien
+  //    profond partagé. Sans lui, ce retour ne faisait RIEN : le premier écran
+  //    visité était un cul-de-sac, un appui mort de plus. On suit le hash quand
+  //    il nomme un écran réel, sinon on ramène au Fil, qui est l'accueil.
+  //    ⚠️ Aucune entrée n'est poussée (isNavigatingBack) : la position dans
+  //    l'historique reste donc l'entrée initiale, et un retour de plus quitte
+  //    bien l'application — c'est le comportement attendu.
+  let h = "";
+  try { h = (location.hash || "").replace(/^#/, ""); } catch (e2) {}
+  const cible = NAV_SCREENS.indexOf(h) >= 0 ? h : "feed";
+  isNavigatingBack = true;
+  try { goTo(cible); } finally { isNavigatingBack = false; }
 });
 
 function toggleDevPanel() {
@@ -1750,7 +2253,7 @@ function openPrivacySettings() {
     <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">Afficher en ligne</span><input type="checkbox" id="privOnline" ' + (priv.showOnline ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
     <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">Afficher mon activité</span><input type="checkbox" id="privActivity" ' + (priv.showActivity ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
     <div style="padding:12px 0;"><span style="font-size:13px;">Qui peut m\'écrire ?</span>\
-      <select id="privMessages" style="display:block;width:100%;margin-top:6px;padding:10px;border-radius:10px;border:1.5px solid var(--border);font-size:13px;">\
+      <select id="privMessages" style="display:block;width:100%;margin-top:6px;padding:10px;border-radius:10px;border:1.5px solid var(--border);font-size:16px;">\
         <option value="everyone" ' + (priv.allowMessages === "everyone" ? "selected" : "") + '>Tout le monde</option>\
         <option value="followers" ' + (priv.allowMessages === "followers" ? "selected" : "") + '>Mes abonnés</option>\
         <option value="nobody" ' + (priv.allowMessages === "nobody" ? "selected" : "") + '>Personne</option>\
@@ -1774,7 +2277,7 @@ function openContentSettings() {
     <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">Mode économie de données</span><input type="checkbox" id="contentDataEco" ' + (content.dataEco ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
     <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">Afficher contenu sensible</span><input type="checkbox" id="contentSensitive" ' + (content.showSensitive ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
     <div style="padding:12px 0;"><span style="font-size:13px;">Langue</span>\
-      <select id="contentLang" style="display:block;width:100%;margin-top:6px;padding:10px;border-radius:10px;border:1.5px solid var(--border);font-size:13px;">\
+      <select id="contentLang" style="display:block;width:100%;margin-top:6px;padding:10px;border-radius:10px;border:1.5px solid var(--border);font-size:16px;">\
         <option value="fr" ' + (content.language === "fr" ? "selected" : "") + '>Français</option>\
         <option value="en" ' + (content.language === "en" ? "selected" : "") + '>English</option>\
         <option value="es" ' + (content.language === "es" ? "selected" : "") + '>Español</option>\
@@ -2230,6 +2733,145 @@ function purgeAccountScopedData() {
 }
 window.purgeAccountScopedData = purgeAccountScopedData;
 
+// ══════════════════════════════════════════════════════════════════════════
+// L'ÉTAT LOCAL APPARTIENT À UN COMPTE, JAMAIS À L'APPAREIL  (2026-09-02)
+// ──────────────────────────────────────────────────────────────────────────
+// Demande de Benjamin, après essai réel : « j'étais dans l'app sans compte
+// pour découvrir, j'ai mis plein de passions pour voir, ensuite je me suis
+// connecté à mon vrai compte et tu as mélangé les infos de la page de
+// découverte avec mon compte… les infos enregistrées dans un compte doivent
+// être enregistrées au compte. »
+//
+// ⚠️ CE N'ÉTAIT PAS UNE FUSION D'AFFICHAGE : L'EXPLORATION ÉCRASAIT LE SERVEUR.
+// Le chemin, mesuré dans le code, tenait en quatre lignes de `onbDoAuth` :
+//     MY_UID = data.session.user.id;      // ① l'identité devient celle du compte
+//     state.onboarded = true;             // ② l'état ANONYME devient « onboardé »
+//     saveState();                        // ③ _stateDirty = true
+//     window.location.reload();           // ④ pagehide → supaSaveUserStateBeacon
+// Le beacon voit une identité de compte, un état onboardé et un drapeau sale :
+// ses trois gardes passent, et il POSTe `_syncableState()` — c'est-à-dire l'état
+// de l'EXPLORATION ANONYME — dans `user_state` du vrai compte, en
+// `resolution=merge-duplicates`, donc en REMPLAÇANT la ligne. Les passions
+// cochées « pour voir » devenaient celles du compte, sur tous ses appareils, et
+// le rechargement les restituait ensuite comme si elles en venaient.
+//
+// La règle est donc antérieure à tout affichage : un état local ne part JAMAIS
+// sous une identité qui n'est pas la sienne. Quand l'appareil adopte un compte
+// dont l'état local ne provient pas, cet état est purgé AVANT que quoi que ce
+// soit puisse l'attribuer au compte — le serveur le restituera, lui seul fait foi.
+//
+// ⚠️ LE DISCRIMINANT EST `passio_uid`, ET IL DOIT ÊTRE LU AVANT D'ÊTRE RÉÉCRIT.
+// Les deux points d'entrée (`onbDoAuth` et `boot`) écrivaient l'identifiant du
+// compte dans `localStorage` AVANT tout le reste : lu après, il aurait toujours
+// dit « c'est déjà le sien ». `getMyUserId` fabrique par ailleurs un placeholder
+// local `u_xxxxxxxx` pour tout le monde — un appareil qui explore en porte donc
+// un, et il ne prouve aucun compte (même piège que `MY_UID`, cf. first-run.js).
+// Seul un uuid Supabase compte.
+//
+// ⚠️ ELLE NE TOURNE PAS EN BOUCLE. `purgeAccountScopedData` retire `passio_uid`
+// de la liste des clés purgées : on le RÉÉCRIT donc aussitôt avec l'identifiant
+// du compte adopté. Sans cette ligne, le rechargement retrouverait un appareil
+// « sans compte connu », re-purgerait, rechargerait — indéfiniment.
+//
+// ⚠️ ELLE NE PURGE PAS UN RETOUR SUR SON PROPRE COMPTE : même identifiant ⇒
+// rien à faire. Un utilisateur dont la session a expiré et qui se reconnecte
+// garde ses écritures locales pas encore synchronisées.
+//
+// L'appelant RECHARGE la page : `_accountPurged` reste levé (il fige le beacon,
+// la file et la synchronisation débouncée), donc plus aucune écriture ne peut
+// partir sous la nouvelle identité avec l'ancien état.
+const RE_UID_COMPTE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// ⚠️⚠️ LE DISCRIMINANT EST UN INSTANTANÉ PRIS AU CHARGEMENT, PAS UNE RELECTURE.
+// C'est LA correction du 2026-09-02 (revue adversariale, constat bloquant), et
+// sans elle tout ce qui précède ne sert à rien sur le chemin le plus courant.
+//
+// Trois points du code écrivent `localStorage.passio_uid` : `getMyUserId`
+// (placeholder au chargement), `onbDoAuth`, et le handler `onAuthStateChange`
+// (app-08). Or supabase-js NOTIFIE SES ABONNÉS PENDANT `signInWithPassword`,
+// avant d'en résoudre la promesse — le dépôt le documente lui-même (« le client
+// tient un verrou auth pendant l'émission de l'événement »). Donc, sur le
+// parcours réel « j'explore sans compte → J'ai déjà un compte » :
+//     ① le visiteur se connecte ;
+//     ② `onAuthStateChange` reçoit SIGNED_IN et écrit `passio_uid = <uuid>` ;
+//     ③ la promesse de `signInWithPassword` résout ENFIN ;
+//     ④ `adopterCompteConnecte` relit `passio_uid`… et y trouve l'uuid.
+// La garde concluait « l'état local est déjà le sien », ne purgeait RIEN, et le
+// beacon de `pagehide` repartait avec l'état anonyme : le défaut d'origine,
+// intact, sur le chemin exact qui l'avait fait remonter.
+//
+// L'instantané est pris à l'ÉVALUATION de ce fichier — avant `getMyUserId`
+// (app-08, chargé après), donc avant tout événement d'auth, donc hors d'atteinte
+// des trois écrivains. Il répond à la seule question qui compte : « à quelle
+// identité appartenait l'état local quand cette page s'est ouverte ? »
+let _uidProprietaireEtat = null;
+try { _uidProprietaireEtat = localStorage.getItem("passio_uid"); } catch (e) {}
+
+async function adopterCompteConnecte(uidCompte) {
+  if (typeof uidCompte !== "string" || !RE_UID_COMPTE.test(uidCompte)) return false;
+  if (_uidProprietaireEtat === uidCompte) return false;   // l'état local est DÉJÀ le sien
+  // ⚠️ ON NE PURGE QUE SI L'ON PEUT MÉMORISER LE COMPTE ADOPTÉ. Sans
+  // `localStorage` utilisable (navigation privée stricte, stockage refusé),
+  // l'écriture finale échouerait en silence, `passio_uid` resterait vide, et le
+  // démarrage suivant re-purgerait puis rechargerait — une boucle de
+  // rechargement infinie, très au-dessus du défaut qu'on corrige.
+  //
+  // ⚠️ LA SONDE D'ÉCRITURE EST UNE CLÉ JETABLE, PAS `passio_uid` (constat majeur
+  // de la même revue). Sonder avec la clé qu'on garde ouvrait une fenêtre —
+  // entre la sonde et la purge — où l'appareil « connaissait » le compte tout en
+  // portant encore l'état anonyme : l'exact contraire de l'invariant. Une
+  // interruption là (onglet fermé, plantage) laissait la garde désarmée À VIE,
+  // puisque le démarrage suivant lisait `passio_uid` = compte. La clé jetable
+  // prouve la même chose sans jamais mentir sur la propriété de l'état.
+  let memorise = false;
+  try {
+    const sonde = "passio_probe_ecriture";
+    localStorage.setItem(sonde, "1");
+    memorise = (localStorage.getItem(sonde) === "1");
+    localStorage.removeItem(sonde);
+  } catch (e) {}
+  if (!memorise) return false;
+  try { if (typeof diagLog === "function") diagLog("adoption_compte purge_etat_anonyme"); } catch (e) {}
+  // ⚠️ ARMÉ AVANT LA PURGE, et volontairement : à partir de l'instant où l'état
+  // local peut être vide, plus rien ne doit pouvoir le pousser dans `user_state`
+  // tant que le compte n'a pas été RELU. `purgeAccountScopedData` ne touche pas
+  // cette clé (elle n'est pas dans `ACCOUNT_SCOPED_KEYS`), et c'est nécessaire :
+  // elle doit survivre au rechargement que l'appelant déclenche.
+  _exigerRestaurationAvantEcriture(uidCompte);
+  try { await purgeAccountScopedData(); } catch (e) {}
+  // ⚠️ ÉCRIT UNE SEULE FOIS, ET APRÈS LA PURGE (qui retire `passio_uid`) : c'est
+  // ce qui ferme la boucle purge → rechargement → purge, sans jamais laisser
+  // l'appareil affirmer qu'il possède un état qu'il n'a pas encore purgé.
+  _uidProprietaireEtat = uidCompte;   // l'instantané suit, sinon un second appel dans la même page re-purgerait
+  try { localStorage.setItem("passio_uid", uidCompte); } catch (e) {}
+  return true;
+}
+window.adopterCompteConnecte = adopterCompteConnecte;
+
+// L'ÉTAT LOCAL DEVIENT DÉLIBÉRÉMENT CELUI DE CE COMPTE — sans rien purger.
+//
+// ⚠️ LA CONTREPARTIE INDISPENSABLE D'`adopterCompteConnecte`. Il existe des
+// chemins où l'état local DOIT suivre l'identité qui vient d'être créée : une
+// inscription qui rend une session, et `onbSkipAuth` (session anonyme). Là,
+// l'état local porte l'onboarding qu'on vient de saisir — âge, prénom,
+// passions — et il appartient bel et bien au compte qui naît. Le purger serait
+// jeter le travail de la personne au milieu de son inscription.
+//
+// Sans cette fonction, le handler `onAuthStateChange` (app-08), qui adopte
+// désormais toute session arrivant sur une page qui n'en avait pas, purgerait
+// exactement ces deux chemins : `signInAnonymously` rend un VRAI uuid, donc
+// différent de l'instantané, donc « un autre compte » pour la garde.
+//
+// Elle ne fait qu'une chose : déclarer le propriétaire. Aucune purge, aucun
+// rechargement, aucune écriture serveur.
+function attribuerEtatLocalAuCompte(uidCompte) {
+  if (typeof uidCompte !== "string" || !RE_UID_COMPTE.test(uidCompte)) return false;
+  _uidProprietaireEtat = uidCompte;
+  try { localStorage.setItem("passio_uid", uidCompte); } catch (e) {}
+  return true;
+}
+window.attribuerEtatLocalAuCompte = attribuerEtatLocalAuCompte;
+
 /* Ferme la session CÔTÉ APPAREIL en retirant le jeton que le SDK relit au
    démarrage. À n'appeler qu'en DERNIER RECOURS, quand `supa.auth.signOut()` n'a
    pas abouti (hors ligne, jeton non révocable) : pour supabase-js, ce jeton EST
@@ -2644,7 +3286,7 @@ function _showPasswordRecoveryUI() {
     '<div style="background:var(--bg-card,#fff);border-radius:18px;padding:24px;max-width:360px;width:100%;box-shadow:0 12px 48px rgba(0,0,0,0.3);">' +
       '<div style="font-size:18px;font-weight:800;margin-bottom:6px;">Nouveau mot de passe</div>' +
       '<div style="font-size:13px;color:var(--muted);margin-bottom:16px;">Choisis un nouveau mot de passe pour ton compte.</div>' +
-      '<input type="password" id="pwdRecoveryInput" placeholder="••••••••" minlength="6" autocomplete="new-password" class="input" style="width:100%;box-sizing:border-box;font-size:15px;margin-bottom:8px;"/>' +
+      '<input type="password" id="pwdRecoveryInput" placeholder="••••••••" minlength="6" autocomplete="new-password" class="input" style="width:100%;box-sizing:border-box;font-size:16px;margin-bottom:8px;"/>' +
       '<div id="pwdRecoveryMsg" style="font-size:12px;min-height:16px;margin-bottom:10px;"></div>' +
       '<button id="pwdRecoveryBtn" class="btn primary block" style="padding:13px;font-weight:800;">Valider</button>' +
     '</div>';
@@ -2661,8 +3303,20 @@ function _showPasswordRecoveryUI() {
       const { error } = await supa.auth.updateUser({ password: pwd });
       if (error) { msg.style.color = "#e11d48"; msg.textContent = error.message; btn.disabled = false; btn.textContent = "Valider"; return; }
       msg.style.color = "#16a34a"; msg.textContent = "Mot de passe mis à jour.";
-      if (typeof state !== "undefined") { state.onboarded = true; try { saveState(); } catch (e) {} }
-      setTimeout(function () { window.location.reload(); }, 900);
+      // ⚠️ L'ADOPTION SE FAIT ICI, ET NULLE PART AILLEURS SUR CE PARCOURS.
+      // `boot()` et le handler `onAuthStateChange` s'abstiennent tant que le
+      // fragment `type=recovery` est là : recharger pendant que ce formulaire
+      // est affiché condamnerait un lien à usage unique. Ce point-ci est le
+      // seul moment sûr — le mot de passe est changé, et on recharge de toute
+      // façon. L'ordre compte : adopter AVANT `state.onboarded = true` +
+      // `saveState()`, la paire qui arme le beacon de `pagehide`.
+      (async function () {
+        try {
+          if (typeof adopterCompteConnecte === "function") await adopterCompteConnecte(MY_UID);
+        } catch (e) { console.warn("adoption récupération:", e); }
+        if (typeof state !== "undefined") { state.onboarded = true; try { saveState(); } catch (e) {} }
+        setTimeout(function () { window.location.reload(); }, 900);
+      })();
     } catch (e) {
       msg.style.color = "#e11d48"; msg.textContent = "Erreur réseau."; btn.disabled = false; btn.textContent = "Valider";
     }
@@ -2768,7 +3422,31 @@ async function onbDoAuth() {
       }
     }
     if (data?.session?.user) {
-      MY_UID = data.session.user.id;
+      const uidCompte = data.session.user.id;
+      // ⚠️ AVANT `MY_UID` ET AVANT `passio_uid` : `adopterCompteConnecte` se
+      // décide sur l'identifiant PRÉCÉDEMMENT connu de cet appareil, et les
+      // deux lignes suivantes l'effaçaient. Un état d'exploration anonyme (ou
+      // celui d'un AUTRE compte) est purgé ici, donc avant que `saveState` +
+      // le beacon de `pagehide` aient la moindre chance de le poster dans
+      // `user_state` sous cette identité. Le rechargement repart d'un appareil
+      // propre : `supaLoadUserState` restitue l'état du compte, qui fait foi.
+      //
+      // ⚠️ SUR LA SEULE BRANCHE `signin`, ET C'EST DÉLIBÉRÉ. Elle est la seule à
+      // recharger : une inscription, elle, CONTINUE l'onboarding (âge, prénom)
+      // dans l'état en cours, et purger+recharger ici jetterait ce que la
+      // personne vient de saisir. Le compte neuf est couvert autrement — sa
+      // première session complète repasse par `boot`, qui porte la même garde.
+      if (_authMode === "signin" && await adopterCompteConnecte(uidCompte)) {
+        window.location.reload();
+        return;
+      }
+      // ⚠️ INSCRIPTION QUI REND UNE SESSION : l'état local (âge, prénom, passions
+      // en cours de saisie) appartient à ce compte qui naît — on DÉCLARE la
+      // propriété au lieu de l'adopter, sinon le handler `onAuthStateChange`
+      // (app-08), qui adopte toute session arrivant sur une page qui n'en avait
+      // pas, purgerait l'onboarding en cours.
+      if (_authMode !== "signin") { try { attribuerEtatLocalAuCompte(uidCompte); } catch (e) {} }
+      MY_UID = uidCompte;
       localStorage.setItem("passio_uid", MY_UID);
       if (_authMode === "signin") {
         // Compte existant → marque onboardé et recharge : boot() lance l'app directement
@@ -2808,6 +3486,12 @@ async function onbSkipAuth() {
       if (!error && data && data.session) {
         MY_UID = data.session.user.id;
         window.MY_UID = MY_UID;
+        // ⚠️ DÉCLARER LA PROPRIÉTÉ, PAS ADOPTER. `signInAnonymously` rend un
+        // VRAI uuid : sans cette ligne, le handler `onAuthStateChange` (app-08)
+        // verrait « un autre compte » que l'instantané pris au chargement, et
+        // purgerait l'onboarding que la personne est en train de saisir. Cet
+        // état-là appartient bien à la session qui vient de naître.
+        try { attribuerEtatLocalAuCompte(MY_UID); } catch (e) {}
         try { localStorage.setItem("passio_uid", MY_UID); } catch(e) {}
         console.log("Session anonyme créée");
       } else if (error) {
@@ -3535,7 +4219,17 @@ function restoreFeedPassions() {
 
   var profils = [];
   try { profils = (state.user && Array.isArray(state.user.profiles)) ? state.user.profiles : []; } catch (e) {}
-  var depuisProfils = profils.map(function (p) { return p && p.passion; })
+  // ⚠️ LE PROFIL DE REMPLISSAGE N'AMORCE RIEN. `boot()` en fabrique un
+  // (`allPassions()[0]` = « Musique ») pour tout compte dont le serveur ne rend
+  // aucun profil, et le marque `_parDefaut`. L'amorcer ici recopiait son
+  // identifiant dans `selectedFeedPassions` — où le marqueur ne survit pas,
+  // puisque seul l'IDENTIFIANT voyage — et de là dans `user_state`. Le verdict
+  // `_comptePassionsServeur` y voyait ensuite « ce compte a ses passions », et
+  // les choix du visiteur étaient jetés : le défaut exact que `_parDefaut` ferme
+  // sur les profils, rouvert par le seul chemin qui transporte le remplissage
+  // d'un champ à l'autre (constat majeur de la revue du 2026-09-02).
+  var depuisProfils = profils.filter(function (p) { return p && !p._parDefaut; })
+                             .map(function (p) { return p && p.passion; })
                              .filter(function (x) { return typeof x === "string" && x; });
   if (!depuisProfils.length) { _activeFeedPassions = new Set(); return []; }
 
@@ -4020,11 +4714,18 @@ function legacyMoodToFeedIntent(mood) {
 // (`moodMap[p.mood] || ""`), et un post « irl » sortait « IRL » ici et « Tout »
 // là-bas.
 //
-// Les LIBELLÉS suivent le rail d'intentions du Fil (lot UI-7 : Tous · Explorer ·
-// Apprendre · Idées · Rencontrer) : ce qu'on choisit en publiant porte le même
-// mot que ce qu'on choisit en lisant. Les VALEURS, elles, ne bougent pas — elles
-// sont écrites en base (`posts.mood`), relues par `legacyMoodToFeedIntent`, et
+// Les LIBELLÉS suivent le rail d'intentions du Fil (Explorer · Apprendre ·
+// Idées · Rencontrer) : ce qu'on choisit en publiant porte le même mot que ce
+// qu'on choisit en lisant. Les VALEURS, elles, ne bougent pas — elles sont
+// écrites en base (`posts.mood`), relues par `legacyMoodToFeedIntent`, et
 // portées par des milliers de publications existantes.
+//
+// ⚠️ TROIS entrées, et c'est le produit qui les compte, pas cette table :
+// le Studio ne propose que 💡 Idées · 📚 Apprendre · 🤝 Rencontrer · ✨ Tous.
+// « Explorer » n'est PAS ici et ne peut pas y être : c'est une question posée au
+// LECTEUR (auteur non suivi, passion non cochée), jamais une étiquette posée par
+// l'auteur — lui donner une pastille la rendrait décorative, donc mensongère.
+// « chill » et « actu » n'y sont plus : voir la scission juste en dessous.
 //
 // ⚠️ « all » n'est PAS dans la table, et c'est délibéré : le neutre ne porte
 // aucune étiquette sur la carte (`moodTagLabel` rend ""). L'ajouter collerait un
@@ -4035,9 +4736,48 @@ var PASSIO_MOOD_LABELS = {
   creation: { label: "Idées" },
   learn:    { label: "Apprendre" },
   irl:      { label: "Rencontrer" },
-  chill:    { label: "Chill" },
-  actu:     { label: "Actu" },
 };
+
+// ── AFFICHER ET ADMETTRE SONT DEUX CHOSES (2026-09-02) ───────────────────────
+//
+// `PASSIO_MOOD_LABELS` portait CINQ entrées et servait à DEUX usages qui n'ont
+// rien à voir — c'est en retirant « chill » et « actu » du produit qu'on s'en
+// est aperçu :
+//
+//   ① NOMMER une envie sur une carte (`moodTagLabel`, `moodShortLabel`) ;
+//   ② ADMETTRE une valeur de `posts.mood` dans le repli d'exploration
+//      (`moodsAffichables`, plus bas dans ce fichier).
+//
+// Les deux listes viennent de DIVERGER, et devaient diverger : le Studio ne
+// propose plus que Idées · Apprendre · Rencontrer · Tous — « chill » et « actu »
+// ne sont plus publiables depuis le 2026-08-29 — donc plus rien ne doit les
+// NOMMER. Mais la base de production porte des milliers de publications qui les
+// portent encore, et les retirer de la liste d'ADMISSION les ferait disparaître
+// du fil de tout le monde. Un retrait de vocabulaire ne doit pas effacer du
+// contenu réel.
+//
+// D'où la scission. `PASSIO_MOOD_LABELS` ne garde que ce qui s'affiche ;
+// `PASSIO_MOODS_ADMIS` garde tout ce qui a le droit d'exister en base.
+//
+// ⚠️ Conséquence VOULUE : une publication « chill » ou « actu » se comporte
+// désormais exactement comme le neutre `all` — elle entre dans le fil, elle
+// entre dans l'exploration, et elle ne porte AUCUNE pastille. C'est ce que
+// `moodTagLabel` fait déjà de toute valeur qu'elle ne connaît pas.
+//
+// ⚠️ `legacyMoodToFeedIntent` n'est PAS touchée : elle rendait déjà « generic »
+// pour « chill » et « actu ». Ces publications ne satisfaisaient donc déjà
+// aucune des envies du rail — le produit avait tranché avant l'affichage.
+//
+// ⚠️ NE PAS confondre le MOOD « actu », mort, et la PASSION « actu »
+// (Actualité 🌍), qui est l'une des 19 du catalogue et reste vivante.
+var PASSIO_MOODS_ADMIS = (function () {
+  var admis = {};
+  Object.keys(PASSIO_MOOD_LABELS).forEach(function (m) { admis[m] = 1; });
+  // Valeurs LÉGUÉES : plus publiables, plus affichables, toujours admises.
+  admis.chill = 1;
+  admis.actu = 1;
+  return admis;
+})();
 
 // Étiquette de la carte (fil, post ouvert) : le libellé seul, ou "" pour le
 // neutre et pour toute valeur inconnue venue de la base.
@@ -4076,9 +4816,15 @@ function _firstRunDemoTag(p) {
 // retombent sur `mood: "all"`, donc TOUS en portaient une.
 // ⚠️ C'est bien le neutre qui ne doit porter aucun badge (cf. la note de
 // `PASSIO_MOOD_LABELS`) — l'intention était juste, seul le rendu la trahissait.
+// ⚠️ `data-mood` porte la COULEUR de la pastille (une teinte par envie, cf. le
+// bloc « PASTILLE DE MOOD » de styles.css). Il n'est posé que sur la branche où
+// `moodTagLabel` a rendu un libellé : le mood y est donc forcément une CLÉ de
+// `PASSIO_MOOD_LABELS`, jamais une valeur libre venue de la base. L'échappement
+// reste là par principe — cette table peut grandir, la garde ne doit pas
+// dépendre de sa forme actuelle.
 function _moodTagHTML(mood) {
   var t = moodTagLabel(mood);
-  return t ? '<span class="post-mood-tag">' + t + '</span>' : "";
+  return t ? '<span class="post-mood-tag" data-mood="' + escapeHtml(String(mood)) + '">' + t + '</span>' : "";
 }
 
 function feedIntentMeta(intent) {
@@ -4259,9 +5005,16 @@ function setupMoodButtons() {
   document.addEventListener("touchstart", function(e) {
     var feedEl = document.getElementById("screen-feed");
     if (!feedEl || !feedEl.classList.contains("active")) return;
-    var list = document.getElementById("feedList");
+    // ⚠️ LE CONTENEUR QUI DÉFILE EST `#appMain`, PAS `#feedList`.
+    // `.app-main` porte `overflow-y: auto` ; `#feedList` n'a aucun overflow et
+    // grandit avec son contenu. Son `scrollTop` vaut donc TOUJOURS 0, et le
+    // garde « ne déclenche qu'en haut du fil » ne gardait rien : n'importe quel
+    // balayage vers le bas — c'est-à-dire le geste NORMAL pour remonter dans le
+    // fil — armait le rafraîchissement, à n'importe quelle hauteur. Sur iPhone
+    // le rebond élastique de WebKit rend le faux départ encore plus visible.
+    var list = document.getElementById("appMain");
     if (!list) return;
-    // Déclenche seulement si on est en haut du scroll
+    // Déclenche seulement si on est réellement en haut du défilement.
     if (list.scrollTop > 10) return;
     _touchStartY = e.touches[0].clientY;
     _pullActive = true;
@@ -4335,6 +5088,15 @@ function _passionSignalSet() {
   } catch (e) {}
   return s;
 }
+// Fenêtre et poids du terme « je viens de publier » (cf. `feedPostScore`).
+// Le bonus doit dépasser le MEILLEUR score atteignable par une autre
+// publication : fraîcheur 1,0 + affinité maximale (passion + auteur suivi +
+// curiosité = 2,6 × 0,35 = 0,91) + engagement plafonné (3 × 0,12 = 0,36), soit
+// 2,27. Une publication à moi vaut au pire 1,0 + 0,35 + 0 + 1,20 = 2,55 : elle
+// passe devant, toujours, pendant la fenêtre.
+var FEED_MA_PUBLI_HEURES = 2;
+var FEED_MA_PUBLI_BONUS = 1.2;
+
 function feedPostScore(p, nowBucket, myPassions, followingSet, signalSet) {
   // Fraîcheur : âge en heures via buckets 5 min (12/h), décroissance exp τ=48 h.
   var postB = Math.floor((p.createdAt || 0) / 300000);
@@ -4360,7 +5122,34 @@ function feedPostScore(p, nowBucket, myPassions, followingSet, signalSet) {
   var reactions = Array.isArray(p.reactions) ? p.reactions.length : 0;
   var engagement = Math.min(3, Math.log(1 + likes + 2 * comments + reactions));
 
-  return recency * 1.0 + affinity * 0.35 + engagement * 0.12;
+  // ── « JE VIENS DE PUBLIER » : GARANTIE DE VISIBILITÉ, BORNÉE ───────────────
+  //
+  // Sans ce terme, une publication toute neuve ne peut PAS gagner : elle a la
+  // fraîcheur maximale mais un engagement NUL, quand n'importe quelle
+  // publication un peu établie plafonne l'engagement dès ~20 j'aime. Mesuré le
+  // 2026-09-02 avec un compte « musique » : la publication de l'utilisateur
+  // sortait 25e sur 40, et `renderFeed` n'en peint que 20 — donc INVISIBLE.
+  // L'utilisateur publie, et ne voit rien.
+  //
+  // ⚠️ Le défaut ne vient PAS du contenu de démonstration, il vient du barème.
+  // Le socle l'a seulement rendu ATTEIGNABLE en ajoutant des publications
+  // fraîches et engageantes : avant, la publication neuve sortait 20e, soit la
+  // toute dernière carte peinte. Elle tenait à une place. Corriger le socle
+  // sans corriger le barème aurait rendu les tests verts en laissant le
+  // produit à une publication du même défaut.
+  //
+  // ⚠️ BORNÉ DANS LE TEMPS, et c'est ce qui le rend acceptable : passé le
+  // délai, le bonus disparaît entièrement et le fil redevient exactement
+  // celui d'avant. Il ne s'agit pas de promouvoir mes publications, il s'agit
+  // de me montrer ce que je viens de faire. Au-delà, mes propres publications
+  // sont classées comme les autres — la fraîcheur s'en charge.
+  //
+  // ⚠️ La propriété se teste par `_estMonPost` (l'AUTEUR), jamais par `_source` :
+  // c'est la règle du projet, et elle écarte d'office le contenu de
+  // démonstration, qui n'appartient à personne.
+  var mienneEtFraiche = (ageHours < FEED_MA_PUBLI_HEURES && _estMonPost(p)) ? FEED_MA_PUBLI_BONUS : 0;
+
+  return recency * 1.0 + affinity * 0.35 + engagement * 0.12 + mienneEtFraiche;
 }
 function rankFeedPosts(posts) {
   var arr = (posts || []).slice();
@@ -4519,10 +5308,15 @@ function renderFeedExplorationFallback(list) {
   //    l'exploration — invisible pour exactement les gens qu'elle cherche.
   //    « Rencontrer » est devenu publiable le 2026-08-29 (#194) ; le défaut
   //    n'existait pas avant, faute de moyen de produire un tel post.
-  // La table canonique `PASSIO_MOOD_LABELS` fait foi. Elle reste une liste
+  // La table canonique `PASSIO_MOODS_ADMIS` fait foi. Elle reste une liste
   // BLANCHE : un mood inconnu venu de la base n'entre toujours pas.
+  // ⚠️ C'est bien `PASSIO_MOODS_ADMIS` et NON `PASSIO_MOOD_LABELS` : depuis la
+  // scission du 2026-09-02, la seconde ne contient plus que ce qui s'AFFICHE
+  // (trois envies). Lire les libellés ici ferait disparaître du fil toutes les
+  // publications de production portant « chill » ou « actu » — c'est-à-dire du
+  // contenu réel effacé par un changement de vocabulaire.
   try {
-    Object.keys(PASSIO_MOOD_LABELS).forEach(function(m) { moodsAffichables[m] = 1; });
+    Object.keys(PASSIO_MOODS_ADMIS).forEach(function(m) { moodsAffichables[m] = 1; });
   } catch (e) {}
 
   var candidats = [];
@@ -5475,9 +6269,22 @@ function renderFeed() {
     const _fill = function() {
       if (window._feedRenderToken !== _token) return;          // rendu obsolète
       if (!document.body.contains(list)) return;
+      // ⚠️ `visible` est un INSTANTANÉ pris avant l'attente idle, et ses posts
+      // sont des copies (`allFeedPosts` fait `{...p}`). Ses compteurs ont pu
+      // bouger depuis — c'est exactement ce qui arrive à un like optimiste
+      // ANNULÉ par un refus serveur : la carte sortait « 🤍 5 », le cœur relu en
+      // direct (`state.user.likedPosts`) mais le nombre figé à sa valeur
+      // optimiste, et ce faux compteur survivait jusqu'au prochain rendu
+      // complet. Les cartes du premier lot, elles, sont rattrapées par la
+      // retouche en place ; celles-ci n'existaient pas encore, donc rien ne
+      // pouvait les corriger. Défaut mesuré le 2026-09-02, atteignable dès
+      // qu'une carte dépasse la douzième position.
+      // On ne re-CLASSE rien : l'ordre reste celui de l'instantané, sinon les
+      // cartes sauteraient sous le doigt pendant le défilement.
+      const frais = visible.map(_feedCompteursFrais);
       list.insertAdjacentHTML("beforeend",
-        visible.slice(FAST).map(_renderPostHTMLSafe).join("") + feedWindowTailHtml(hasMore, moreBtnHtml));
-      if (feedWindowEnabled()) list._fwSigs = visible.map(_feedWindowCardSig);
+        frais.slice(FAST).map(_renderPostHTMLSafe).join("") + feedWindowTailHtml(hasMore, moreBtnHtml));
+      if (feedWindowEnabled()) list._fwSigs = frais.map(_feedWindowCardSig);
       feedWindowSync(list);
     };
     (window.requestIdleCallback || function(f){ return setTimeout(f, 50); })(_fill, { timeout: 300 });
@@ -5650,6 +6457,36 @@ function _renderPostHTMLSafe(p) {
   try { return renderPostHTML(p); }
   catch (e) { try { if (typeof diagLog === "function") diagLog("renderPostHTML fail", (p && p.id) || "?", e && e.message); } catch (_) {} return ""; }
 }
+// Compteurs volatils relus sur l'objet CANONIQUE, sans toucher au classement.
+//
+// Un post rendu dans le fil est une COPIE (`allFeedPosts` fait `{...p}`), figée
+// à l'instant du classement. Tout ce qui bouge après — un like optimiste, son
+// annulation sur refus serveur, un commentaire arrivé en realtime — ne bouge que
+// sur l'original. Peindre la copie plus tard affiche donc un nombre périmé.
+//
+// ⚠️ La propriété du post se retrouve par `findPostAnywhere`, jamais par
+// `seed.posts.find || userPosts.find` : un post vit dans QUATRE tableaux.
+// ⚠️ On ne recopie QUE les compteurs. Reprendre l'objet canonique entier
+// perdrait les champs d'affichage que `allFeedPosts` a posés sur la copie
+// (`_source`, `authorName`, `authorEmoji`…), et la carte sortirait anonyme.
+// ⚠️ Retour tel quel quand rien n'a bougé : pas de copie inutile par carte.
+function _feedCompteursFrais(p) {
+  try {
+    if (!p || !p.id || typeof findPostAnywhere !== "function") return p;
+    var vrai = findPostAnywhere(p.id);
+    if (!vrai) return p;
+    var nbC = (vrai.comments || []).length, nbCp = (p.comments || []).length;
+    var nbR = Array.isArray(vrai.reactions) ? vrai.reactions.length : -1;
+    var nbRp = Array.isArray(p.reactions) ? p.reactions.length : -1;
+    if ((vrai.likes || 0) === (p.likes || 0) && nbC === nbCp && nbR === nbRp) return p;
+    var copie = Object.assign({}, p);
+    copie.likes = vrai.likes;
+    if (vrai.comments) copie.comments = vrai.comments;
+    if (Array.isArray(vrai.reactions)) copie.reactions = vrai.reactions;
+    return copie;
+  } catch (e) { return p; }
+}
+
 function renderPostHTML(p) {
   // ✅ AFFICHER TOUJOURS LE VRAI NOM DU PROFIL!
   let authorName = p.authorName;
@@ -5814,6 +6651,21 @@ function renderPostHTML(p) {
   // le même mot. Seule reste post-author-meta, qui nomme la passion DE LA
   // PUBLICATION : la bonne question sur une carte, alors que la ligne
   // d'identité répondait « quelles sont les passions du compte ? ».
+  //
+  // ⚠️ `post-passion-tag` n'AJOUTE PAS une seconde mention : il enrobe celle qui
+  // existait déjà, pour la rendre lisible (accent + graisse) au lieu du gris
+  // `--muted` à 11 px qu'elle partageait avec l'heure. Retour de testeur du
+  // 2026-09-02 : « on ne voit pas assez à quelle passion appartient un post ».
+  // Le `textContent` de `.post-author-meta` est INCHANGÉ à l'octet près —
+  // deux suites l'assertent (`profil-entete-passions`, `refonte-multi-passion`).
+  //
+  // ⚠️ `passion.label` PASSE PAR `escapeHtml`, et ce n'est pas décoratif :
+  // `passionById` peut rendre une entrée de `state.user.customPassions`, dont le
+  // libellé est de la saisie libre (`label: name`). La portée est le compte
+  // lui-même — aucun libellé d'un TIERS n'atteint cette ligne — mais la
+  // convention maison ne souffre pas d'exception, et la ligne d'origine ne
+  // l'échappait déjà pas. Corrigé en même temps que l'enrobage plutôt que laissé
+  // pour plus tard.
   // L'identité complète reste centralisée (ADR-011 §3) : elle vit sur les DEUX
   // en-têtes de profil, où elle est cliquable, et sur les surfaces denses
   // (commentaires, listes, inbox) — aucune de celles-là n'affiche de passion à
@@ -5825,7 +6677,7 @@ function renderPostHTML(p) {
       <div class="post-author" style="cursor:pointer;" onclick="openUserProfile('${escapeJsArg(p.authorId)}','${escapeJsArg(p._source)}')">
         <div class="post-author-name">${escapeHtml(author.name || "Moi")}</div>
         <div class="post-author-meta">
-          ${passion.emoji} ${passion.label} · ${fmtTime(p.createdAt)}
+          <span class="post-passion-tag">${escapeHtml(passion.emoji)} ${escapeHtml(passion.label)}</span> · ${fmtTime(p.createdAt)}
           ${p._source === "me" && p.syncStatus ? `
             ${p.syncStatus === "syncing" ? '<span style="margin-left:8px;font-size:10px;color:var(--muted);">Sync…</span>' : ""}
             ${p.syncStatus === "synced" ? '<span style="margin-left:8px;font-size:10px;color:#22c55e;">En ligne</span>' : ""}
@@ -5916,7 +6768,7 @@ async function openPost(id) {
         <div class="avatar" style="background:${avatarBg(author)};cursor:pointer;" onclick="openUserProfile('${escapeJsArg(post.authorId)}','${escapeJsArg(post._source || "seed")}')">${avatarInner(author)}</div>
         <div class="post-author" style="cursor:pointer;" onclick="openUserProfile('${escapeJsArg(post.authorId)}','${escapeJsArg(post._source || "seed")}')">
           <div class="post-author-name">${escapeHtml(author.name || "Utilisateur")}</div>
-          <div class="post-author-meta">${passion.emoji} ${passion.label} · ${fmtTime(post.createdAt)}</div>
+          <div class="post-author-meta"><span class="post-passion-tag">${escapeHtml(passion.emoji)} ${escapeHtml(passion.label)}</span> · ${fmtTime(post.createdAt)}</div>
         </div>
         ${(state.userPosts || []).some(function(up){ return up.id === id; }) ? `<button class="post-menu-btn" onclick="event.stopPropagation();openPostOptions('${escapeJsArg(id)}')" aria-label="Options du post" title="Options">
           <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
@@ -5944,6 +6796,10 @@ async function openPost(id) {
     <div style="height:20px;"></div>
   `;
 
+  // Une entrée d'historique, pour que le geste de retour ferme la page au lieu
+  // de changer d'écran DERRIÈRE elle. Seulement à l'OUVERTURE : rouvrir une
+  // autre publication alors que la page est déjà à l'écran ne doit pas empiler.
+  if (page.style.display === "none" || !page.style.display) pushOverlayHistory("post", "#post");
   page.style.display = "flex";
   page.scrollTop = 0;
 

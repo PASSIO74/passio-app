@@ -13,7 +13,7 @@
 // canonique et refuse d'écraser un état existant. On écrit donc nous-mêmes le
 // `localStorage` d'un ancien client AVANT la navigation.
 const { test, expect } = require("@playwright/test");
-const { bootOnboarded, sansPublicationsDistantes } = require("./app-helper");
+const { bootOnboarded, sansDonneesDistantes } = require("./app-helper");
 const { GATE_KEY, GATE_TOKEN } = require("./gate-helper");
 
 // État tel que l'écrivait un client d'AVANT le retrait : score, solde Passia,
@@ -50,7 +50,7 @@ async function bootLegacy(page, errors) {
   // par APPEL, pas par fichier. Cette suite emploie les deux — sans cette ligne,
   // elle compterait comme « protégée » alors que ses tests legacy resteraient
   // exposés aux vraies publications de production.
-  await sansPublicationsDistantes(page);
+  await sansDonneesDistantes(page);
   if (errors) {
     page.on("pageerror", (e) => errors.js.push("pageerror: " + e.message));
     page.on("console", (m) => { if (m.type() === "error") errors.console.push(m.text()); });

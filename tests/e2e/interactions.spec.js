@@ -16,7 +16,7 @@
 //
 // Aucune écriture Supabase : les fonctions de sync sont neutralisées après boot.
 const { test, expect } = require("@playwright/test");
-const { bootOnboarded, sansPublicationsDistantes } = require("./app-helper");
+const { bootOnboarded, sansDonneesDistantes } = require("./app-helper");
 
 // Neutralise, POUR CETTE SUITE SEULEMENT, l'optimisation de peinture
 // `.post { content-visibility: auto; contain-intrinsic-size: auto 320px }`
@@ -61,7 +61,7 @@ async function bootInteractions(page) {
   // publications de production. Elles disputent alors sa place au post semé dans
   // les 20 que `renderFeed` peint, et ce fichier échoue sur des PR qui ne le
   // touchent pas. Détail mesuré dans `app-helper.js`.
-  await sansPublicationsDistantes(page);
+  await sansDonneesDistantes(page);
   await bootOnboarded(page);
   await page.evaluate(() => {
     // ⚠️ supaSetPostLike est stubbé à part : il doit répondre { ok:true }, pas
@@ -289,6 +289,20 @@ async function seedServerPost(page, { writeResult = { ok: true, error: null }, m
     // Idempotent : le seed peut être rejoué (cf. seedServerPostStable), et deux
     // exemplaires du même post fausseraient tous les compteurs.
     state.supabasePosts = [];
+    // ⚠️ ET LE SOCLE DE DÉMONSTRATION AVEC, pour la même raison exactement
+    // (2026-09-02). Le raisonnement ci-dessus visait les publications de
+    // PRODUCTION, alors le dernier concurrent restant était le socle local — et
+    // il a fini par gagner : à 389 publications, le fixture (4 j'aime, donc
+    // sous le plafond d'engagement) est repassé au-delà du 20e rang, et la
+    // suite est retombée sur le MÊME message, `dansEtat: true` compris.
+    // Un fil que le test prétend mesurer, il doit le posséder — quelle que soit
+    // la provenance de ce qui le remplit.
+    // ⚠️ APRÈS le calcul de `passion` ci-dessus, qui lit justement ce socle.
+    // ⚠️ Les QUATRE tableaux : `_feedExtraPosts` survit aux écrasements de
+    // `supabasePosts`, c'est précisément son rôle.
+    state.seed.posts = [];
+    state.userPosts = [];
+    window._feedExtraPosts = [];
     state.supabasePosts.unshift({
       id: "p_srv_test", authorId: "u_autre", authorName: "Autre", authorEmoji: "✨",
       passion, mood: "all", type: "text", text: "post serveur", createdAt: Date.now(),
@@ -339,7 +353,7 @@ async function seedServerPost(page, { writeResult = { ok: true, error: null }, m
  * il a perdu le classement face aux vraies publications, `renderFeed` ne peignant
  * que les 20 premières. Mesuré le 2026-09-01 : à 34 publications de production
  * engageantes, le post semé tombe 43e. C'est cette seconde branche que
- * `sansPublicationsDistantes` ferme, en interdisant le chargement AVANT la
+ * `sansDonneesDistantes` ferme, en interdisant le chargement AVANT la
  * navigation — le seul moment où il est encore interceptable.
  *
  * Rien de tout cela ne masque un défaut produit : injecter un post à la main

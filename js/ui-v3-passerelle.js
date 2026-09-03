@@ -117,7 +117,17 @@
       type: "text",
       text: "Une activité est liée à cette publication — démonstration non enregistrée.",
       createdAt: Date.now(),
-      likes: 0,
+      // ⚠️ CE COMPTEUR N'EST PAS DÉCORATIF, il rend la carte ATTEIGNABLE.
+      // `renderFeed` ne peint que les 20 premières cartes du classement, et le
+      // barème plafonne l'engagement dès ~20 j'aime : une publication à zéro
+      // j'aime, même parfaitement fraîche, est mécaniquement dépassée par toute
+      // publication établie. Avec `likes: 0`, l'aperçu sortait au-delà du 20e
+      // rang dès que le socle de démonstration a grossi — la carte était dans le
+      // fil, et invisible. Au plafond d'engagement, sa fraîcheur maximale
+      // (créée à l'instant) la place devant toutes les autres.
+      // C'est un FIXTURE d'aperçu, jamais du contenu réel : son texte le dit,
+      // et il est retiré du seed à la fin du rendu synchrone.
+      likes: 25,
       comments: [],
       eventId: DEMO_EVENT_ID,
     };
@@ -284,6 +294,24 @@
     demoRendering = true;
     try {
       renderFeed();
+      // ⚠️ GARANTIE DE DERNIER RECOURS. Le compteur ci-dessus place la carte en
+      // tête dans le barème d'aujourd'hui ; il ne dit rien de celui de demain.
+      // Or un aperçu qui ne s'affiche pas ne se signale PAS : il rend un fil
+      // normal, et rien ne distingue « la carte manque » de « l'aperçu n'a pas
+      // été demandé ». On vérifie donc qu'elle est bien peinte, et sinon on
+      // élargit la fenêtre de rendu le temps d'un second passage. La limite est
+      // restaurée dans tous les cas — c'est une variable globale lue à chaque
+      // rendu, la laisser ouverte peindrait tout le fil pour de bon.
+      if (!list.querySelector('article.post[data-postid="' + DEMO_POST_ID + '"]')) {
+        var limiteAvant = window._feedRenderLimit;
+        try {
+          window._feedRenderLimit = 400;
+          renderFeed();
+        } finally {
+          if (limiteAvant === undefined) delete window._feedRenderLimit;
+          else window._feedRenderLimit = limiteAvant;
+        }
+      }
       // L'aide de première visite est positionnée au-dessus du Feed et peut
       // intercepter le tap sur la carte de démonstration. Cette URL sert à une
       // validation directe : on la ferme sans modifier son état persistant.

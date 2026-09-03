@@ -1,5 +1,5 @@
 // Suite « Moods du Studio » — alignement du vocabulaire de publication sur le
-// rail d'intentions du Fil (Tous · Explorer · Apprendre · Idées · Rencontrer).
+// rail d'intentions du Fil (Explorer · Apprendre · Idées · Rencontrer).
 //
 // Ce que la suite protège, dans l'ordre où ça s'est cassé pendant l'écriture :
 //
@@ -149,13 +149,40 @@ test.describe("Studio — moods alignés sur les intentions du Fil", () => {
     expect(dits).toEqual([
       { m: "creation", tag: "Idées", court: "Idées" },
       { m: "learn", tag: "Apprendre", court: "Apprendre" },
-      // Le fil ignorait « actu » (étiquette vide) et les bobines ignoraient
-      // « irl » (« Tout ») : les deux trous sont fermés par la même table.
+      // Les bobines ignoraient « irl » (« Tout ») : le trou est fermé par la
+      // même table qui sert au fil.
       { m: "irl", tag: "Rencontrer", court: "Rencontrer" },
-      { m: "chill", tag: "Chill", court: "Chill" },
-      { m: "actu", tag: "Actu", court: "Actu" },
+      // ⚠️ ASSERTION RETOURNÉE LE 2026-09-02, ET C'EST LE POINT DU LOT.
+      // « chill » et « actu » n'étaient déjà plus publiables (test ② de ce
+      // fichier) ; ils gardaient pourtant un libellé, donc une pastille sur la
+      // carte. Le produit n'a plus que quatre intentions — Explorer · Apprendre
+      // · Idées · Rencontrer — et deux d'entre elles nommaient des mots que
+      // l'utilisateur ne pouvait plus choisir nulle part. Ils rendent désormais
+      // exactement ce que rend le neutre.
+      { m: "chill", tag: "", court: "Tout" },
+      { m: "actu", tag: "", court: "Tout" },
       { m: "all", tag: "", court: "Tout" },
       { m: "valeur_inconnue", tag: "", court: "Tout" },
     ]);
+  });
+
+  // ⚠️ LE PENDANT INDISPENSABLE DE L'ASSERTION CI-DESSUS. Retirer un libellé ne
+  // doit pas retirer la VALEUR : la base de production porte des milliers de
+  // publications en « chill » / « actu », et la liste blanche qui décide de leur
+  // entrée dans le fil lisait justement la table des libellés. Les deux usages
+  // ont été scindés (`PASSIO_MOODS_ADMIS`) — sans quoi ce lot de vocabulaire
+  // aurait effacé du contenu réel.
+  test("perdre son libellé ne fait pas perdre son droit d'exister", async ({ page }) => {
+    await bootOnboarded(page, null, 1);
+
+    const admis = await page.evaluate(() => ({
+      libelles: Object.keys(PASSIO_MOOD_LABELS).sort(),
+      admis: Object.keys(PASSIO_MOODS_ADMIS).sort(),
+    }));
+
+    expect(admis.libelles, "seules les trois envies vivantes portent un mot")
+      .toEqual(["creation", "irl", "learn"]);
+    expect(admis.admis, "les valeurs léguées restent admises, sans être nommées")
+      .toEqual(["actu", "chill", "creation", "irl", "learn"]);
   });
 });

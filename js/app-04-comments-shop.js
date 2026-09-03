@@ -997,8 +997,10 @@ function openPostReactors(postId, event) {
 // intactes.
 
 async function openComments(postId) {
-  // Ajouter à l'historique pour que le bouton back fonctionne
-  pushOverlayToHistory("comments", postId);
+  // ⚠️ PAS d'entrée d'historique ici : le fil s'affiche dans une modale, et
+  // `openModal` en pose déjà une (que `closeModal` reprend). En poser une
+  // seconde laissait une entrée orpheline — un appui « retour » mort par fil
+  // de commentaires ouvert.
   window._openCommentsPostId = postId; // suivi pour le temps réel des interactions
 
   let post = findPostAnywhere(postId);
@@ -1533,7 +1535,8 @@ function reportCommentEntry(threadId, commentId) {
 function openCommentSheet(threadId, title) {
   var thread = _findCommentThread(threadId);
   if (!thread) { toast("Commentaires indisponibles"); return; }
-  if (typeof pushOverlayToHistory === "function") { try { pushOverlayToHistory("comments", threadId); } catch(e) {} }
+  // ⚠️ PAS d'entrée d'historique ici non plus : `openModal`, appelé juste en
+  // dessous, en pose déjà une. Cf. openComments.
   window._openCommentsPostId = null; // ce n'est pas la modale post
   var empty = '<div class="empty"><div class="empty-icon">💭</div><div class="empty-title">Sois le premier à réagir</div></div>';
   var initial = thread.comments.length ? _renderCommentsList(thread.comments, threadId) : empty;
@@ -2302,6 +2305,13 @@ function hydrateConvsFromIDB() {
   if (_idbConvHydrated || !window.idbConvLoad) return Promise.resolve();
   _idbConvHydrated = true;
   return window.idbConvLoad().then(function(idbConvs) {
+    // ⚠️ `undefined` = LECTURE IMPOSSIBLE, pas « store vide » (cf. idbGet).
+    // Confondre les deux faisait écraser le store durable par l'état local :
+    // sur iPhone, où l'ITP peut avoir purgé localStorage au bout de sept jours
+    // pendant qu'IndexedDB survivait, une erreur passagère effaçait TOUT
+    // l'historique des conversations. En cas de doute on ne touche à rien : on
+    // réessaiera au prochain démarrage.
+    if (idbConvs === undefined) { _idbConvHydrated = false; return; }
     if (!idbConvs || !idbConvs.length) {
       // Migration initiale : pousser l'état actuel dans IDB.
       if (window.idbConvSave) window.idbConvSave(getConversations());
@@ -2660,8 +2670,8 @@ async function openUserProfile(authorId, source) {
   // Première visite : trace l'OUVERTURE d'un contenu par un visiteur — un
   // compteur, jamais un identifiant ni un libellé. Inerte hors mode invité.
   try { if (window.PassioFirstRun) PassioFirstRun.contenuOuvert("profil"); } catch (e) {}
-  // Ajouter à l'historique pour que le bouton back fonctionne
-  pushOverlayToHistory("profile", authorId);
+  // ⚠️ PAS d'entrée d'historique ici : le profil visité s'affiche dans une
+  // modale, et `openModal` en pose déjà une. Cf. openComments.
 
   console.log("[openUserProfile] authorId:", authorId, "source:", source);
 
@@ -2967,8 +2977,8 @@ async function openUserProfile(authorId, source) {
     \
     <!-- BOUTONS -->\
     <div id="visitedProfileActions" style="display:flex;gap:8px;justify-content:center;margin:14px 0 4px;">\
-      <button class="btn primary" onclick="closeModal();startDirectMessage(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "Passionné") + '\',\'' + escapeJsArg(user.profileEmoji || "✨") + '\',\'' + escapeJsArg(user.avatar || "#8b5cf6") + '\',\'' + escapeJsArg(user.photoUrl || "") + '\')" style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;">💬 Message</button>\
-      <button class="btn ghost" id="followBtn_' + authorId + '" onclick="toggleFollowUser(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\')" style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;' + (isFollowing ? 'background:var(--accent);color:#fff;border-color:var(--accent);' : '') + '">' + (isFollowing ? '✓ Suivi' : '➕ Suivre') + '</button>\
+      <button class="btn primary" onclick="closeModal();startDirectMessage(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "Passionné") + '\',\'' + escapeJsArg(user.profileEmoji || "✨") + '\',\'' + escapeJsArg(user.avatar || "#8b5cf6") + '\',\'' + escapeJsArg(user.photoUrl || "") + '\')" style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;">Message</button>\
+      <button class="btn ghost" id="followBtn_' + authorId + '" onclick="toggleFollowUser(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\')" style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;' + (isFollowing ? 'background:var(--accent);color:#fff;border-color:var(--accent);' : '') + '">' + (isFollowing ? '✓ Suivi' : 'Suivre') + '</button>\
     </div>\
     </div>\
     \
@@ -3259,7 +3269,7 @@ function toggleFollowUser(userId, userName) {
     supaFollowUser(userId);
   } else {
     state.user.following = state.user.following.filter(id => id !== userId);
-    btn.innerHTML = "➕ Suivre";
+    btn.innerHTML = "Suivre";
     btn.style.background = "";
     btn.style.color = "";
     btn.style.borderColor = "";
@@ -3343,13 +3353,7 @@ function shareUserProfile(userId, name) {
   const rawUrl = location.origin + location.pathname + "#user-" + userId;
   const url = (window.tel && tel.shareLink) ? tel.shareLink(rawUrl, "profile", userId, navigator.share ? "native" : "clipboard") : rawUrl;
   const data = { title: name || "Profil PASSIO", text: "Découvre " + (name || "ce profil") + " sur PASSIO", url };
-  if (navigator.share) {
-    navigator.share(data).catch(() => {});
-  } else if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(url).then(() => toast("Lien du profil copié"), () => toast("Lien : " + url));
-  } else {
-    toast("Lien : " + url);
-  }
+  partagerOuCopier(data, "Lien du profil copié");
 }
 
 function renderMessages() {
@@ -3531,6 +3535,15 @@ function _toggleArchiveConv(convId) {
   toast(c.archived ? "Conversation archivée" : "Conversation désarchivée");
 }
 
+// Pointeur fin = souris/trackpad (poste de travail), par opposition au doigt.
+// `matchMedia` peut manquer sur de très vieux moteurs : sans lui on considère
+// l'appareil comme tactile, le choix qui ne peut pas ouvrir un clavier de force.
+function _pointeurFin() {
+  try {
+    return !!(window.matchMedia && window.matchMedia("(pointer: fine)").matches);
+  } catch (e) { return false; }
+}
+
 async function openConversation(convId) {
   const sp = document.getElementById("convSettingsPanel");
   if (sp) { sp.classList.remove("open"); sp.style.transform = "translateX(100%)"; sp.style.display = "none"; sp.style.pointerEvents = "none"; }
@@ -3640,6 +3653,10 @@ async function openConversation(convId) {
   if (fp) {
     fp.setAttribute("data-conv-id", convId);
     fp.setAttribute("data-display-name", displayName);
+    // Entrée d'historique : sans elle, le geste de retour depuis le bord de
+    // l'écran ne fermait PAS la conversation — il changeait d'écran derrière
+    // elle, puis quittait l'application au coup suivant.
+    if (!fp.classList.contains("active")) pushOverlayHistory("conv", "#conv");
     fp.classList.add("active");
   }
 
@@ -3669,7 +3686,26 @@ async function openConversation(convId) {
   try { if (typeof supaMarkRead === "function") supaMarkRead(convId); } catch(e) {}
   try { if (typeof supaLoadOtherRead === "function") supaLoadOtherRead(convId); } catch(e) {}
 
-  if (inp) inp.focus();
+  // ⚠️ NE PAS DONNER LE FOCUS AU CHAMP SUR UN APPAREIL TACTILE.
+  // Défaut vécu, mesuré le 2026-09-02 : `inp.focus()` s'exécutait DANS le geste
+  // de tap qui ouvre la conversation, donc Android ouvrait le clavier virtuel.
+  // Ce qui suit est mesuré, pas déduit (390 × 844, conversation de 40 messages,
+  // viewport visible ramené à 500 px comme le fait le clavier) :
+  //   · `syncAppViewportHeight` (app-09) REFUSE de rétrécir `--app-vh` pendant
+  //     la frappe — garde `typing && h < prev * 0.75`, posée pour ne pas figer
+  //     une hauteur amputée. `--app-vh` reste donc à 844 px ;
+  //   · `.app-shell` garde ses 844 px alors que 500 seulement sont visibles ;
+  //   · le fil va de y=60 à y=782 et, scrollé en bas, place le message le plus
+  //     récent à y=699..761 — soit ENTIÈREMENT sous le clavier (mesure :
+  //     `VISIBLE: false`). Le champ de saisie, à y≈782..844, l'est aussi.
+  // À l'écran : on ouvre la conversation, on voit le HAUT du fil (les vieux
+  // messages, ou du vide), et il faut taper ailleurs pour fermer le clavier —
+  // « je suis obligé de recliquer sur l'écran pour faire tout apparaître ».
+  // Aucune messagerie n'ouvre le clavier à l'ouverture d'un fil (WhatsApp,
+  // Messenger, iMessage) : on le fait en touchant le champ. Le focus n'est donc
+  // gardé que là où il est utile et sans effet de bord — pointeur fin, c'est-à-dire
+  // souris et clavier physique.
+  if (inp && _pointeurFin()) inp.focus();
   try { renderMessages(); } catch(e) {}
 
   // Charger TOUS les messages depuis Supabase (pas de limite, tous les anciens inclus)
@@ -3832,7 +3868,15 @@ function renderConvFpThread(c, displayName) {
       content = '<img src="' + safeUrlAttr(m.gif) + '" style="max-width:200px;max-height:160px;border-radius:12px;display:block;" loading="lazy"/>';
     } else if (m.video) {
       isMedia = true;
-      content = '<video src="' + safeUrlAttr(m.video) + '" style="max-width:200px;max-height:200px;border-radius:12px;display:block;cursor:pointer;" controls preload="none"/>';
+      // ⚠️ `playsinline` est OBLIGATOIRE : sans lui, iOS confisque la lecture et
+      // bascule en lecteur plein écran natif dès le premier tap — on quitte la
+      // conversation, on perd le fil, et il faut ressortir à la main. Android
+      // lit en place. C'était le SEUL <video> du dépôt à ne pas le porter.
+      // Et la balise était AUTO-FERMÉE (`/>`), ce qui n'existe pas en HTML pour
+      // un élément à contenu : l'analyseur ouvre l'élément et avale ce qui suit.
+      // Sans conséquence tant que rien ne suit dans la bulle — c'est un piège
+      // posé pour le prochain qui ajoutera quelque chose derrière.
+      content = '<video src="' + safeUrlAttr(m.video) + '" style="max-width:200px;max-height:200px;border-radius:12px;display:block;cursor:pointer;" controls playsinline preload="none"></video>';
     } else if (m.img) {
       isMedia = true;
       content = '<img loading="lazy" decoding="async" src="' + safeUrlAttr(m.img) + '" style="max-width:200px;max-height:200px;border-radius:12px;display:block;cursor:pointer;" onclick="openFullImg(this.src)"/>';
@@ -3950,6 +3994,32 @@ function renderConvFpThread(c, displayName) {
   _wireConvScroll(thread, c.id);
 }
 
+// Ré-épingle le bas du fil ouvert quand la GÉOMÉTRIE change (rotation, barre
+// d'URL qui se replie, clavier fermé par un autre champ). Mesuré le 2026-09-02 :
+// `scrollTop` est posé pour une hauteur de fil donnée ; quand `--app-vh` change,
+// `.conv-fp-thread` (flex:1) change de hauteur et le dernier message peut sortir
+// de l'écran sans qu'aucun événement de défilement ne survienne. On ne re-cale
+// QUE si l'on était déjà en bas — sinon on arracherait la lecture de quelqu'un
+// remonté dans l'historique.
+function _convFpRepinBottom() {
+  if (!window._openedConvId) return;
+  var t = document.getElementById("convFpThread");
+  if (!t || t._loadingOlder || t._loadingMore) return;
+  if (t._auBas === false) return; // relecture en cours d'un historique : on ne touche à rien
+  t.scrollTop = t.scrollHeight;
+}
+
+(function _wireConvFpGeometry() {
+  if (typeof window === "undefined" || window._convFpGeomWired) return;
+  window._convFpGeomWired = true;
+  // Deux temps : tout de suite, puis après stabilisation des barres du navigateur
+  // (même raison que les re-mesures différées de `--app-vh` dans app-09).
+  var relancer = function() { _convFpRepinBottom(); setTimeout(_convFpRepinBottom, 250); };
+  window.addEventListener("resize", relancer);
+  window.addEventListener("orientationchange", function() { setTimeout(relancer, 220); });
+  if (window.visualViewport) window.visualViewport.addEventListener("resize", relancer);
+})();
+
 // Scroll infini : charge une page de messages plus anciens quand on approche du
 // haut du fil, en préservant la position visuelle.
 function _wireConvScroll(thread, convId) {
@@ -3958,6 +4028,9 @@ function _wireConvScroll(thread, convId) {
   if (thread._scrollWired) return;
   thread._scrollWired = true;
   thread.addEventListener("scroll", function() {
+    // Mémorise si l'on est collé au bas : c'est la seule information que la
+    // géométrie d'APRÈS un redimensionnement ne permet plus de retrouver.
+    thread._auBas = (thread.scrollTop + thread.clientHeight >= thread.scrollHeight - 80);
     if (thread.scrollTop > 60 || thread._loadingMore) return;
     var c = getConversations().find(function(x){ return x.id === thread._curConvId; });
     if (!c || !c.messages) return;
@@ -4216,7 +4289,18 @@ function applyMsgContentData(m, raw) {
     if (d.fileType && d.fileType.indexOf("video/") === 0) m.video = d.url;
     else m.img = d.url;
   } else if (d.type === "audio" && !m.voiceData && !m.fileUrl) {
-    var isVoice = d.fileType === "audio/webm" || /^Message vocal/.test(d.filename || "");
+    // ⚠️ Le conteneur d'un vocal DÉPEND de l'appareil qui l'a enregistré :
+    // Safari/iOS produit de l'`audio/mp4`, Chrome/Android du webm. Tester
+    // l'égalité stricte avec "audio/webm" faisait passer tout vocal iPhone pour
+    // une pièce jointe quelconque — lecteur intégré perdu, durée perdue, y
+    // compris à la réception sur Android. Le NOM est le discriminant sûr : tout
+    // vocal part de `_sendVoiceMessage` avec « Message vocal (Xs) », quel que
+    // soit le conteneur. `audio/webm` reste accepté pour les messages DÉJÀ en
+    // base, envoyés avant que le conteneur réel soit transmis. On ne l'élargit
+    // PAS à tout `audio/*` : une vraie pièce jointe audio doit rester
+    // téléchargeable, pas être avalée par le lecteur de vocaux.
+    var _ft = (d.fileType || "").toLowerCase();
+    var isVoice = /^Message vocal/.test(d.filename || "") || _ft === "audio/webm";
     if (isVoice) {
       m.voiceData = d.url;
       var dm = (d.filename || "").match(/\((\d+)\s*s\)/);
@@ -4274,7 +4358,23 @@ function _playVoiceById(aid) {
         dur.textContent = Math.floor(r/60) + ':' + String(r%60).padStart(2,'0');
       }
     }, 150);
-  }).catch(function() { if (pb) pb.textContent = '▶'; });
+  }).catch(function (err) {
+    if (pb) pb.textContent = '▶';
+    // ⚠️ Un `catch` MUET ici laissait l'utilisateur taper sur ▶ sans que rien
+    // n'arrive et sans la moindre explication. Cas réel sur iPhone : Safari ne
+    // décode PAS le conteneur WebM, dans lequel étaient enregistrés tous les
+    // vocaux envoyés depuis Android (et, avant le correctif de
+    // `_sendVoiceMessage`, ceux envoyés depuis un iPhone aussi, mal étiquetés).
+    // Les nouveaux vocaux partent désormais dans le conteneur réellement
+    // encodé ; ceux DÉJÀ en base restent illisibles sur iPhone — on le DIT,
+    // plutôt que de laisser croire à un bouton cassé.
+    var code = (audio.error && audio.error.code) || 0;
+    var illisible = code === 3 || code === 4;   // DECODE / SRC_NOT_SUPPORTED
+    try {
+      if (illisible) toast("🎧 Ce vocal a été enregistré dans un format que cet appareil ne sait pas lire.");
+      else console.warn("[voice] lecture impossible:", err);
+    } catch (e) {}
+  });
 }
 
 // Vitesse de lecture des messages vocaux : cycle 1× → 1,5× → 2×.
@@ -4686,7 +4786,9 @@ function closeConversation() {
   const bar = document.getElementById("convTypingBar");
   if (bar) bar.style.display = "none";
   const fp = document.getElementById("conv-fullpage");
+  const etaitOuverte = !!(fp && fp.classList.contains("active"));
   if (fp) fp.classList.remove("active");
+  if (etaitOuverte && typeof releaseOverlayHistory === "function") releaseOverlayHistory();
   // Refermer les panneaux glissants pour ne pas les retrouver ouverts dans la prochaine conversation
   document.getElementById("convSettingsPanel")?.classList.remove("open");
   document.getElementById("convFilesPanel")?.classList.remove("open");
