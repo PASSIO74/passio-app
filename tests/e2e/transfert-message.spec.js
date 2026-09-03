@@ -38,12 +38,33 @@ async function preparer(page, reponse) {
     window._forwardSrc = { convId: "conv_src", msgId: "m_src" };
     MY_UID = "u_moi"; window.MY_UID = "u_moi";
     window.__inserts = [];
-    supa = { from: function () { return {
+    // ⚠️ LE STUB RETIENT LA TABLE, ET C'EST INDISPENSABLE (2026-09-03).
+    // Il l'ignorait : `from()` ne regardait pas son argument, donc `__inserts`
+    // comptait les insertions de TOUTES les tables — ce test remplace le `supa`
+    // GLOBAL, pas un client local. Tant que le shard ne réveillait rien d'autre
+    // dans la fenêtre de 300 ms, le compte tombait juste par chance.
+    //
+    // Mesuré sur `main` le 2026-09-03 (run 2431, shard 5/6, rouge aux TROIS
+    // essais donc pas un flake) : « Expected 1, Received 2 ». En CI le réseau
+    // existe, la télémétrie part vraiment — le shard voisin `tel-preauth` le
+    // montre dans le même log — et une seconde insertion tombait dans la
+    // fenêtre. Le verdict dépendait donc du DÉCOUPAGE DES SHARDS, que la fusion
+    // de deux PR venait de changer : vert sur la PR, rouge sur main, à code
+    // identique. En isolation le fichier passe toujours, ce qui rendait le
+    // défaut invisible à qui relance le seul spec.
+    //
+    // On compte désormais ce que ce test PRÉTEND mesurer : les insertions du
+    // chemin de transfert, c'est-à-dire `conv_messages` (app-04, `_forwardTo`).
+    supa = { from: function (table) { return {
       insert: function (row) {
-        window.__inserts.push(row);
+        window.__inserts.push({ table: table, row: row });
         return Promise.resolve(rep);   // { error: … } ou { error: null }
       },
     }; } };
+    // Les insertions du chemin de transfert, et elles seules.
+    window.__insertsConv = function () {
+      return (window.__inserts || []).filter(function (i) { return i.table === "conv_messages"; });
+    };
     try { localStorage.removeItem("passio_msg_outbox_v1"); } catch (e) {}
     // ⚠️ LE RENVOI AUTOMATIQUE N'EST PAS LE SUJET DE CE TEST, ET IL FAUSSAIT SON
     // COMPTEUR. `supaInit()` planifie `setTimeout(_flushOutbox, 1500)`
@@ -78,7 +99,10 @@ test.describe("Transfert de message — verdict de l'écriture", () => {
       const cible = (getConversations() || []).find((c) => c.id === "conv_cible");
       const msg = (cible && cible.messages || [])[0];
       return {
-        inserts: window.__inserts.length,
+        inserts: window.__insertsConv().length,
+        // Diagnostic : si une autre table s'invite, le message d'échec le dira
+        // au lieu de laisser chercher.
+        tables: (window.__inserts || []).map(function (i) { return i.table; }),
         statut: msg && msg.status,
         enFile: (_outboxLoad() || []).some((x) => x.msgId === (msg && msg.id)),
       };
@@ -97,7 +121,7 @@ test.describe("Transfert de message — verdict de l'écriture", () => {
     });
     expect(apresRenvoi, "le renvoi automatique ne doit plus polluer le compteur").toBe(r.inserts);
 
-    expect(r.inserts, "l'insertion a bien été tentée").toBe(1);
+    expect(r.inserts, "l'insertion du transfert a bien été tentée — tables vues : " + JSON.stringify(r.tables)).toBe(1);
     expect(r.statut, "un transfert refusé doit être marqué en échec").toBe("failed");
     expect(r.enFile, "et mis en file de renvoi, sinon il est perdu en silence").toBe(true);
   });
