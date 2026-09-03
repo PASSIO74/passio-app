@@ -4403,6 +4403,32 @@
     }
     .profile-strip::-webkit-scrollbar { display: none; }
 
+    /*   CENTRER LA RANGÉE QUAND ELLE TIENT  DEUX MARGES AUTO, RIEN D'AUTRE.
+       Mesuré à 390 px avec trois passions : la rangée occupe 280 px dans une
+       colonne de contenu de 358 px, et un conteneur flex aligne au DÉBUT  les
+       78 px de libre s'entassaient donc TOUS à droite. Le rail se lisait collé
+       à gauche, décalé sous une carte d'identité, elle, centrée.
+
+         NE JAMAIS METTRE `justify-content: center` À LA PLACE. Dans un
+       conteneur `overflow-x: auto` il centre AUSSI la rangée qui DÉBORDE : le
+       trop-plein part alors des deux côtés, et la portion sortie à gauche
+       devient INATTEIGNABLE au défilement  `scrollLeft` ne descend pas sous
+       zéro, donc les premières bulles ne reviennent JAMAIS. Les marges auto ne
+       distribuent que du libre POSITIF : dès que la rangée déborde il n'y en a
+       plus, elles valent 0, et le rail coulisse depuis son vrai début.
+
+         NI `flex: 1 1 0` (défaut du 2026-09-02, raconté sous `.profile-tile`) :
+       la largeur des bulles reste FIXE. On ne déplace que la rangée entière.
+
+         BORNÉ À `#v9ProfilePassions`. `.profile-strip` est partagée par le Fil
+       (`#profileStrip`) et le profil visité (`#visitedPassions`), qui gardent
+       leur alignement au début. Une passion seule est à la fois `:first-child`
+       et `:last-child` : elle reçoit les deux marges, et se centre. L'état vide
+       ne porte pas `.profile-tile` (c'est `.v9-strip-empty`) : il n'est pas
+       visé, et c'est voulu  une phrase n'est pas une rangée de bulles. */
+    #v9ProfilePassions.v9-profile-strip > .profile-tile:first-child { margin-left: auto; }
+    #v9ProfilePassions.v9-profile-strip > .profile-tile:last-child { margin-right: auto; }
+
     /* âš ï¸ NE JAMAIS REMETTRE `flex: 1 1 0` ICI (dÃ©faut vÃ©cu le 2026-09-02).
        Les bulles se partageaient la largeur du rail : Ã  10 passions + Â« Suivis Â»
        chacune tombait sous 26 px, la vignette de 34/46 px dÃ©bordait de sa case â€”

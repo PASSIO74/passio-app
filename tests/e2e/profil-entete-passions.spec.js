@@ -609,6 +609,154 @@ test("③ quater ter — le rail défile, et sa position survit au choix d'une p
   expect(vu.apresChoix, "et le rail n'est pas reparti tout à gauche").toBe(vu.apresDefilement);
 });
 
+
+// ══════════════════════════════════════════════════════════════════════════
+// ③ decies — LA RANGÉE EST CENTRÉE QUAND ELLE TIENT, ET SEULEMENT ALORS
+// ══════════════════════════════════════════════════════════════════════════
+// Défaut mesuré le 2026-09-03, à 390 px avec trois passions : les bulles
+// occupaient 51 → 293 dans une colonne de contenu qui va de 16 à 374. Trente-
+// cinq pixels de vide à gauche, quatre-vingt-un à droite — le rail se lisait
+// décalé, sous une carte d'identité qui, elle, est centrée. La cause n'est pas
+// un décalage : un conteneur flex aligne au DÉBUT, donc tout le libre s'entasse
+// du même côté.
+//
+// ⚠️ CE QUE CES QUATRE CAS GARDENT ENSEMBLE EST UN ÉQUILIBRE CONDITIONNEL, PAS
+// UN CENTRAGE. Le correctif évident — `justify-content: center` — centrerait
+// AUSSI la rangée qui déborde : le trop-plein partirait des deux côtés et les
+// premières bulles deviendraient INATTEIGNABLES, `scrollLeft` ne descendant pas
+// sous zéro. `③ decies bis` existe précisément pour ça : il tombe au rouge sur
+// `justify-content: center` là où `③ decies` resterait vert. Les deux ensemble,
+// jamais l'un sans l'autre.
+
+// Écarts de la rangée aux deux bords INTÉRIEURS du rail (le `padding` du rail
+// n'est pas du vide décalé : c'est la marge voulue de la colonne).
+// Évaluée DANS la page, comme `mesurerRail`.
+function mesurerEquilibreRail(sel) {
+  const rail = document.querySelector(sel);
+  if (!rail) return { existe: false };
+  const tuiles = [...rail.querySelectorAll(".profile-tile")];
+  if (!tuiles.length) return { existe: false };
+  const st = getComputedStyle(rail);
+  const r = rail.getBoundingClientRect();
+  const debut = r.left + parseFloat(st.paddingLeft);
+  const fin = r.right - parseFloat(st.paddingRight);
+  const premiere = tuiles[0].getBoundingClientRect();
+  const derniere = tuiles[tuiles.length - 1].getBoundingClientRect();
+  return {
+    existe: true,
+    nb: tuiles.length,
+    deborde: rail.scrollWidth > rail.clientWidth + 1,
+    // ⚠️ Mesuré à `scrollLeft` remis à zéro par l'appelant : un rail déjà défilé
+    // décalerait les deux écarts d'autant, et l'équilibre ne voudrait plus rien
+    // dire.
+    videGauche: Math.round(premiere.left - debut),
+    videDroite: Math.round(fin - derniere.right),
+    // La preuve d'atteignabilité, et le seul point qui distingue les marges auto
+    // de `justify-content: center` : au tout début du défilement, la première
+    // bulle est-elle ENTIÈREMENT dans le scrollport ?
+    premiereEntiere: premiere.left >= r.left - 1 && premiere.right <= r.right + 1,
+  };
+}
+
+async function equilibreRail(page, sel) {
+  await page.evaluate((s) => {
+    const r = document.querySelector(s);
+    if (r) r.scrollLeft = 0;
+  }, sel);
+  return page.evaluate(mesurerEquilibreRail, sel);
+}
+
+test("③ decies — trois passions : la rangée est CENTRÉE, elle ne colle plus à gauche", async ({ page }) => {
+  await poser(page);
+  const vu = await equilibreRail(page, "#v9ProfilePassions");
+  expect(vu.existe, "le rail du profil porte bien ses trois bulles").toBe(true);
+  expect(vu.nb, "trois passions").toBe(3);
+  expect(vu.deborde, "à trois passions la rangée TIENT dans la largeur").toBe(false);
+  expect(Math.abs(vu.videGauche - vu.videDroite),
+    "le vide est réparti à égalité des deux côtés").toBeLessThanOrEqual(1);
+  // ⚠️ SANS CETTE LIGNE, LE TEST SERAIT VERT SUR UNE RANGÉE QUI REMPLIT TOUT.
+  // Un `0 === 0` prouverait l'équilibre sans prouver qu'il reste du vide à
+  // répartir — donc sans distinguer le correctif de son absence.
+  expect(vu.videGauche, "et il reste bien du vide à répartir").toBeGreaterThan(0);
+});
+
+test("③ decies bis — DIX passions : la rangée déborde, et la PREMIÈRE bulle reste atteignable", async ({ page }) => {
+  // ⚠️ LE VERROU ANTI-`justify-content: center`. Ce cas-ci est le seul qui
+  // sépare les deux écritures : à trois passions elles rendent EXACTEMENT la
+  // même image. Ici, `justify-content: center` sortirait la rangée de ~90 px à
+  // gauche du scrollport — définitivement, `scrollLeft` étant borné à zéro.
+  await poser(page, {
+    profiles: DIX_REELLES.map((p, i) => ({
+      id: "pp_" + i, name: "Benjamin", passion: p, emoji: "✨", color: "#7c3aed", createdAt: i + 1,
+    })),
+  });
+  const vu = await equilibreRail(page, "#v9ProfilePassions");
+  expect(vu.nb, "dix passions").toBe(10);
+  expect(vu.deborde, "à dix passions la rangée DÉBORDE : c'est le cas coulissant").toBe(true);
+  expect(vu.videGauche,
+    "au débordement les marges auto retombent à 0 : la rangée part du vrai début").toBe(0);
+  expect(vu.premiereEntiere,
+    "et la première bulle est entièrement dans le champ dès le début du défilement").toBe(true);
+});
+
+test("③ decies ter — une SEULE passion se centre aussi", async ({ page }) => {
+  // La même bulle est `:first-child` ET `:last-child` : elle reçoit les deux
+  // marges. Ce cas est le démarrage à froid de tout compte — il ne peut pas être
+  // celui qu'on oublie.
+  await poser(page, {
+    profiles: [{ id: "pp_moto", name: "Benjamin", passion: "moto", emoji: "🏍", color: "#7c3aed", createdAt: 1 }],
+  });
+  const vu = await equilibreRail(page, "#v9ProfilePassions");
+  expect(vu.nb, "une passion").toBe(1);
+  expect(Math.abs(vu.videGauche - vu.videDroite),
+    "la bulle unique est au milieu, pas dans le coin").toBeLessThanOrEqual(1);
+  expect(vu.videGauche, "et largement entourée").toBeGreaterThan(50);
+});
+
+test("③ decies quater — le bornage : le Fil et le profil visité gardent leur alignement", async ({ page }) => {
+  // ⚠️ `.profile-strip` EST PARTAGÉE PAR TROIS SURFACES. Une règle posée sur la
+  // classe seule aurait recentré les deux autres sans que rien ne le dise — le
+  // genre de débordement de périmètre qu'on ne voit qu'en production. La règle
+  // est ancrée à `#v9ProfilePassions`, et ce test le mesure sur les deux
+  // surfaces voisines plutôt que de relire le sélecteur.
+  //
+  // ⚠️ UNE SEULE PASSION, ET C'EST LA CONDITION DE VALIDITÉ DU CAS. Avec les
+  // trois du socle, le rail du Fil porte CINQ bulles (« Suivis » et les envies
+  // s'y ajoutent) et DÉBORDE — or une rangée qui déborde n'a plus de libre à
+  // répartir : marges auto ou non, elle reste collée au début. Le test aurait
+  // été vert sans rien distinguer, exactement le genre de vert par accident que
+  // le socle a déjà produit ailleurs. Il faut une rangée qui TIENT pour que le
+  // centrage, s'il fuitait jusqu'ici, se voie.
+  await poser(page, {
+    profiles: [{ id: "pp_moto", name: "Benjamin", passion: "moto", emoji: "🏍", color: "#7c3aed", createdAt: 1 }],
+  });
+
+  await page.evaluate(() => goTo("feed"));
+  await page.waitForTimeout(600);
+  const fil = await equilibreRail(page, "#profileStrip");
+  expect(fil.existe, "le rail du Fil est bien peint").toBe(true);
+  expect(fil.deborde, "la rangée du Fil TIENT : le cas est donc discriminant").toBe(false);
+  // ⚠️ TOLÉRANCE DE QUELQUES PIXELS, ET ELLE EST MOTIVÉE. Une bulle porte des
+  // décorations qui déplacent son RECTANGLE sans déplacer sa boîte de mise en
+  // page : `transform: scale(0.95)` sur les non-cochées quand un filtre est
+  // actif, `translateY(-2px)` sur la cochée. Mesuré à -2 px sur le Fil. Ce qui
+  // est prouvé ici n'est donc pas « exactement zéro » mais « au début, et pas au
+  // milieu » — d'où l'écart exigé juste en dessous, qui est le vrai discriminant.
+  expect(Math.abs(fil.videGauche), "le Fil part bien de son début").toBeLessThanOrEqual(5);
+  expect(fil.videDroite - fil.videGauche,
+    "tout le libre reste du même côté : le Fil n'est PAS centré").toBeGreaterThan(60);
+
+  // Le profil visité : Léa a deux passions, elles tiennent dans la largeur.
+  await page.evaluate(() => goTo("profiles"));
+  await page.waitForTimeout(400);
+  await ouvrirProfilVisite(page);
+  const visite = await equilibreRail(page, ".modal #visitedPassions");
+  expect(visite.existe, "le rail du profil visité est bien peint").toBe(true);
+  expect(visite.deborde, "les deux passions de Léa tiennent : cas discriminant lui aussi").toBe(false);
+  expect(Math.abs(visite.videGauche), "le profil visité part bien de son début").toBeLessThanOrEqual(5);
+  expect(visite.videDroite - visite.videGauche,
+    "tout le libre reste du même côté : le profil visité n'est PAS centré").toBeGreaterThan(60);
+});
 test("③ quinquies — une passion ARCHIVÉE ne réapparaît pas dans le rail", async ({ page }) => {
   // ⚠️ PORTE DÉROBÉE DÉJÀ FERMÉE UNE FOIS (lot UI-8, ②). Le jsonb
   // `profiles.passions` garde les passions archivées — c'est voulu, la colonne
