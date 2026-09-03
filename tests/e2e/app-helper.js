@@ -70,11 +70,8 @@ async function bootOnboarded(page, errors, nProfiles = 1, opts = {}) {
   // tous trois corrigés le même jour.
   //
   // ⚠️ CE QUE CETTE ROUTE NE COUVRE PAS, et qu'il ne faut pas croire couvert :
-  //   · le REALTIME. `app-08` s'abonne à `postgres_changes` INSERT sur `posts`
-  //     et injecte toute publication d'un autre auteur dans le fil
-  //     (`feedAddRealtimePost`). C'est du WebSocket, pas `/rest/v1/` : une vraie
-  //     publication tombant pendant un test passe malgré tout. Non coupé ici,
-  //     délibérément — `feed-realtime-course.spec.js` exerce ce canal.
+  //   (le REALTIME, lui, EST couvert depuis le 2026-09-03 : `sansDonneesDistantes`
+  //   intercepte aussi le WebSocket `realtime/v1/websocket`. Voir son commentaire.)
   //   · l'ÉTAT DÉJÀ PERSISTÉ. `_leanState` ne retire pas `supabasePosts` du blob
   //     `localStorage`, et l'`addInitScript` ci-dessous n'écrase PAS un état
   //     existant (c'est voulu, cf. plus bas). Un test qui naviguerait AVANT son
@@ -209,6 +206,30 @@ async function sansDonneesDistantes(page) {
     if (route.request().method() !== "GET") return route.continue();
     return route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
   });
+
+  // ── LE CANAL TEMPS RÉEL, QUE LA ROUTE REST NE POUVAIT PAS ATTEINDRE ────────
+  // `app-08` ouvre un canal `realtime:db` et s'y abonne aux `postgres_changes`
+  // INSERT sur `posts` : toute publication d'un AUTRE auteur y est injectée dans
+  // le fil par `feedAddRealtimePost`, puis `scheduleFeedRender()`. C'est du
+  // WebSocket, donc `page.route` — qui ne voit que HTTP — le laissait passer :
+  // une vraie publication tombant pendant la fenêtre d'un test s'invitait dans
+  // `#feedList` malgré toute l'isolation REST.
+  //
+  // On intercepte sans jamais appeler `ws.connectToServer()` : la page croit
+  // parler à un serveur, aucun octet de production n'arrive.
+  //
+  // ⚠️ AUCUNE SUITE NE PERD RIEN. Les cinq qui exercent le temps réel appellent
+  // `feedAddRealtimePost({...})` DIRECTEMENT en JS (feed-realtime-course,
+  // feed-window, interactions, suppression-durable, qa-campaign) — aucune
+  // n'attend un message venu du vrai canal. Et `dbChan.subscribe()` est appelé
+  // SANS callback de statut : l'application ne journalise donc rien quand
+  // l'abonnement n'aboutit pas, il n'y a pas de bruit console à craindre.
+  //
+  // ⚠️ Ce canal porte AUSSI les messages et les accusés de lecture. Le couper
+  // en test ne retire rien qu'une suite locale observe (elles simulent toutes
+  // par appel direct), mais une future suite qui voudrait exercer le VRAI canal
+  // devra passer `opts.sansIsolationDesDonnees`.
+  await page.routeWebSocket(/\/realtime\/v1\/websocket/, () => {});
 }
 
 module.exports = { onboardedState, bootOnboarded, sansDonneesDistantes, PASSIONS };
