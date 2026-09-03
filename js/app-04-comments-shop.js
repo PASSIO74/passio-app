@@ -997,8 +997,10 @@ function openPostReactors(postId, event) {
 // intactes.
 
 async function openComments(postId) {
-  // Ajouter à l'historique pour que le bouton back fonctionne
-  pushOverlayToHistory("comments", postId);
+  // ⚠️ PAS d'entrée d'historique ici : le fil s'affiche dans une modale, et
+  // `openModal` en pose déjà une (que `closeModal` reprend). En poser une
+  // seconde laissait une entrée orpheline — un appui « retour » mort par fil
+  // de commentaires ouvert.
   window._openCommentsPostId = postId; // suivi pour le temps réel des interactions
 
   let post = findPostAnywhere(postId);
@@ -1534,7 +1536,8 @@ function reportCommentEntry(threadId, commentId) {
 function openCommentSheet(threadId, title) {
   var thread = _findCommentThread(threadId);
   if (!thread) { toast("Commentaires indisponibles"); return; }
-  if (typeof pushOverlayToHistory === "function") { try { pushOverlayToHistory("comments", threadId); } catch(e) {} }
+  // ⚠️ PAS d'entrée d'historique ici non plus : `openModal`, appelé juste en
+  // dessous, en pose déjà une. Cf. openComments.
   window._openCommentsPostId = null; // ce n'est pas la modale post
   var empty = '<div class="empty"><div class="empty-icon">💭</div><div class="empty-title">Sois le premier à réagir</div></div>';
   var initial = thread.comments.length ? _renderCommentsList(thread.comments, threadId) : empty;
@@ -2296,6 +2299,13 @@ function hydrateConvsFromIDB() {
   if (_idbConvHydrated || !window.idbConvLoad) return Promise.resolve();
   _idbConvHydrated = true;
   return window.idbConvLoad().then(function(idbConvs) {
+    // ⚠️ `undefined` = LECTURE IMPOSSIBLE, pas « store vide » (cf. idbGet).
+    // Confondre les deux faisait écraser le store durable par l'état local :
+    // sur iPhone, où l'ITP peut avoir purgé localStorage au bout de sept jours
+    // pendant qu'IndexedDB survivait, une erreur passagère effaçait TOUT
+    // l'historique des conversations. En cas de doute on ne touche à rien : on
+    // réessaiera au prochain démarrage.
+    if (idbConvs === undefined) { _idbConvHydrated = false; return; }
     if (!idbConvs || !idbConvs.length) {
       // Migration initiale : pousser l'état actuel dans IDB.
       if (window.idbConvSave) window.idbConvSave(getConversations());
@@ -2654,8 +2664,8 @@ async function openUserProfile(authorId, source) {
   // Première visite : trace l'OUVERTURE d'un contenu par un visiteur — un
   // compteur, jamais un identifiant ni un libellé. Inerte hors mode invité.
   try { if (window.PassioFirstRun) PassioFirstRun.contenuOuvert("profil"); } catch (e) {}
-  // Ajouter à l'historique pour que le bouton back fonctionne
-  pushOverlayToHistory("profile", authorId);
+  // ⚠️ PAS d'entrée d'historique ici : le profil visité s'affiche dans une
+  // modale, et `openModal` en pose déjà une. Cf. openComments.
 
   console.log("[openUserProfile] authorId:", authorId, "source:", source);
 
@@ -3337,13 +3347,7 @@ function shareUserProfile(userId, name) {
   const rawUrl = location.origin + location.pathname + "#user-" + userId;
   const url = (window.tel && tel.shareLink) ? tel.shareLink(rawUrl, "profile", userId, navigator.share ? "native" : "clipboard") : rawUrl;
   const data = { title: name || "Profil PASSIO", text: "Découvre " + (name || "ce profil") + " sur PASSIO", url };
-  if (navigator.share) {
-    navigator.share(data).catch(() => {});
-  } else if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(url).then(() => toast("🔗 Lien du profil copié"), () => toast("Lien : " + url));
-  } else {
-    toast("Lien : " + url);
-  }
+  partagerOuCopier(data, "🔗 Lien du profil copié");
 }
 
 function renderMessages() {
@@ -3643,6 +3647,10 @@ async function openConversation(convId) {
   if (fp) {
     fp.setAttribute("data-conv-id", convId);
     fp.setAttribute("data-display-name", displayName);
+    // Entrée d'historique : sans elle, le geste de retour depuis le bord de
+    // l'écran ne fermait PAS la conversation — il changeait d'écran derrière
+    // elle, puis quittait l'application au coup suivant.
+    if (!fp.classList.contains("active")) pushOverlayHistory("conv", "#conv");
     fp.classList.add("active");
   }
 
@@ -3854,7 +3862,15 @@ function renderConvFpThread(c, displayName) {
       content = '<img src="' + safeUrlAttr(m.gif) + '" style="max-width:200px;max-height:160px;border-radius:12px;display:block;" loading="lazy"/>';
     } else if (m.video) {
       isMedia = true;
-      content = '<video src="' + safeUrlAttr(m.video) + '" style="max-width:200px;max-height:200px;border-radius:12px;display:block;cursor:pointer;" controls preload="none"/>';
+      // ⚠️ `playsinline` est OBLIGATOIRE : sans lui, iOS confisque la lecture et
+      // bascule en lecteur plein écran natif dès le premier tap — on quitte la
+      // conversation, on perd le fil, et il faut ressortir à la main. Android
+      // lit en place. C'était le SEUL <video> du dépôt à ne pas le porter.
+      // Et la balise était AUTO-FERMÉE (`/>`), ce qui n'existe pas en HTML pour
+      // un élément à contenu : l'analyseur ouvre l'élément et avale ce qui suit.
+      // Sans conséquence tant que rien ne suit dans la bulle — c'est un piège
+      // posé pour le prochain qui ajoutera quelque chose derrière.
+      content = '<video src="' + safeUrlAttr(m.video) + '" style="max-width:200px;max-height:200px;border-radius:12px;display:block;cursor:pointer;" controls playsinline preload="none"></video>';
     } else if (m.img) {
       isMedia = true;
       content = '<img loading="lazy" decoding="async" src="' + safeUrlAttr(m.img) + '" style="max-width:200px;max-height:200px;border-radius:12px;display:block;cursor:pointer;" onclick="openFullImg(this.src)"/>';
@@ -4248,7 +4264,18 @@ function applyMsgContentData(m, raw) {
     if (d.fileType && d.fileType.indexOf("video/") === 0) m.video = d.url;
     else m.img = d.url;
   } else if (d.type === "audio" && !m.voiceData && !m.fileUrl) {
-    var isVoice = d.fileType === "audio/webm" || /^Message vocal/.test(d.filename || "");
+    // ⚠️ Le conteneur d'un vocal DÉPEND de l'appareil qui l'a enregistré :
+    // Safari/iOS produit de l'`audio/mp4`, Chrome/Android du webm. Tester
+    // l'égalité stricte avec "audio/webm" faisait passer tout vocal iPhone pour
+    // une pièce jointe quelconque — lecteur intégré perdu, durée perdue, y
+    // compris à la réception sur Android. Le NOM est le discriminant sûr : tout
+    // vocal part de `_sendVoiceMessage` avec « Message vocal (Xs) », quel que
+    // soit le conteneur. `audio/webm` reste accepté pour les messages DÉJÀ en
+    // base, envoyés avant que le conteneur réel soit transmis. On ne l'élargit
+    // PAS à tout `audio/*` : une vraie pièce jointe audio doit rester
+    // téléchargeable, pas être avalée par le lecteur de vocaux.
+    var _ft = (d.fileType || "").toLowerCase();
+    var isVoice = /^Message vocal/.test(d.filename || "") || _ft === "audio/webm";
     if (isVoice) {
       m.voiceData = d.url;
       var dm = (d.filename || "").match(/\((\d+)\s*s\)/);
@@ -4306,7 +4333,23 @@ function _playVoiceById(aid) {
         dur.textContent = Math.floor(r/60) + ':' + String(r%60).padStart(2,'0');
       }
     }, 150);
-  }).catch(function() { if (pb) pb.textContent = '▶'; });
+  }).catch(function (err) {
+    if (pb) pb.textContent = '▶';
+    // ⚠️ Un `catch` MUET ici laissait l'utilisateur taper sur ▶ sans que rien
+    // n'arrive et sans la moindre explication. Cas réel sur iPhone : Safari ne
+    // décode PAS le conteneur WebM, dans lequel étaient enregistrés tous les
+    // vocaux envoyés depuis Android (et, avant le correctif de
+    // `_sendVoiceMessage`, ceux envoyés depuis un iPhone aussi, mal étiquetés).
+    // Les nouveaux vocaux partent désormais dans le conteneur réellement
+    // encodé ; ceux DÉJÀ en base restent illisibles sur iPhone — on le DIT,
+    // plutôt que de laisser croire à un bouton cassé.
+    var code = (audio.error && audio.error.code) || 0;
+    var illisible = code === 3 || code === 4;   // DECODE / SRC_NOT_SUPPORTED
+    try {
+      if (illisible) toast("🎧 Ce vocal a été enregistré dans un format que cet appareil ne sait pas lire.");
+      else console.warn("[voice] lecture impossible:", err);
+    } catch (e) {}
+  });
 }
 
 // Vitesse de lecture des messages vocaux : cycle 1× → 1,5× → 2×.
@@ -4718,7 +4761,9 @@ function closeConversation() {
   const bar = document.getElementById("convTypingBar");
   if (bar) bar.style.display = "none";
   const fp = document.getElementById("conv-fullpage");
+  const etaitOuverte = !!(fp && fp.classList.contains("active"));
   if (fp) fp.classList.remove("active");
+  if (etaitOuverte && typeof releaseOverlayHistory === "function") releaseOverlayHistory();
   // Refermer les panneaux glissants pour ne pas les retrouver ouverts dans la prochaine conversation
   document.getElementById("convSettingsPanel")?.classList.remove("open");
   document.getElementById("convFilesPanel")?.classList.remove("open");
