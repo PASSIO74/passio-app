@@ -15,9 +15,10 @@ Le serveur `scripts/serve-couverture.js` sert l'application **octet pour octet**
 ```bash
 grep -o 'id="screen-[a-z]*"' index.html | sort -u          # 8 écrans
 node scripts/audit-handlers.js                             # handlers inline → fonctions
-supabase db query --linked "select count(*) from information_schema.tables where table_schema='public';"
 ls tests/e2e/*.spec.js | wc -l
 ```
+
+Côté base, l'inventaire des tables du schéma `public` passe par l'outil `list_tables` du connecteur `supabase-passio-readonly` (ADR-012, canal ①) — il rend la **liste** des tables, là où l'ancienne requête `count(*)` sur `information_schema.tables` rendait un nombre.
 
 Répartition mesurée des 435 interactions : `app-03` 89 · `app-07` 76 · `app-05` 55 · `app-04` 53 · `app-06` 45 · `app-02` 40 · `app-08` 35 · `app-09` 27 · `emoji-misc` 10 · autres 2 · non localisées 13.
 

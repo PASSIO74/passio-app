@@ -4551,7 +4551,8 @@
 
     /* ⚠️ `.profile-tile-new` A ÉTÉ RETIRÉE ICI (2026-09-02) : plus aucun émetteur
        (`grep -rn "profile-tile-new" js/ index.html` ne rend rien) — la porte
-       d'ajout du rail est `.psel-tile-plus`. La règle était déjà morte, et son
+       d'ajout est `.psel-tile-plus` (dans le rail jusqu'au 2026-09-03, dans
+       le panneau `#passionManager` depuis). La règle était déjà morte, et son
        `min-width: 72px` aurait battu le `width: 62px` du palier UI-7 si on
        l'avait ressuscitée : la bulle « + » aurait fait 72 px au milieu de bulles
        de 62. Une règle sans émetteur ne se garde pas « au cas où ». */
@@ -10292,7 +10293,15 @@ body.ctx-locked #appMain { overflow: hidden; }
 /* ── La bulle « Ajouter » du Profil, et la tuile « Chercher » de Rencontrer.
       Elles réutilisent les classes existantes (`.profile-tile`, `.msg-tile`) :
       mêmes dimensions, mêmes espacements, même rythme que leurs voisines. Seul
-      le contenu du rond change. ─────────────────────────────────────────────── */
+      le contenu du rond change.
+
+      ⚠️ LA BULLE « Ajouter » A CHANGÉ DE SURFACE LE 2026-09-03, PAS DE PEAU.
+      Elle vivait en tête du rail `#v9ProfilePassions` ; elle est descendue dans
+      le panneau « Gérer mes passions » (`#passionManager`, index.html), où elle
+      est du balisage STATIQUE. Ces règles-ci n'étaient ancrées à aucun rail :
+      c'est ce qui a permis au déménagement de ne coûter aucune ligne de CSS.
+      Ne les ancrez pas à une surface — la tuile « Chercher » de Rencontrer les
+      partage. ────────────────────────────────────────────────────── */
 .psel-tile-plus .profile-tile-avatar {
   display: flex; align-items: center; justify-content: center;
   font-size: 24px; font-weight: 300; line-height: 1;

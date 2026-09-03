@@ -13,7 +13,7 @@ Entièrement atteignable depuis l'interface de production, en quatre gestes :
 |---|---|---|---|
 | ① | « Créer une passion » | `openCreateCustomPassion` (app-02) | crée `{ id: "custom_<slug>_<4 car.>", custom: true }` dans `state.user.customPassions` — **local uniquement** |
 | ② | — | `allPassions()` = `PASSIONS` + `customPassions` | la passion entre dans le catalogue du client |
-| ③ | « + Ajouter » puis la tuile | `openCreateProfile` → `confirmCreateProfile` | la grille est bâtie sur `allPassions()` ; la tuile porte même une classe `passion-custom` et un badge « Perso » — sa présence est **voulue** |
+| ③ | la bulle « **+** » de « Gérer mes passions » puis la tuile (« + Ajouter » du titre jusqu'au 2026-09-03) | `openCreateProfile` → `confirmCreateProfile` | la grille est bâtie sur `allPassions()` ; la tuile porte même une classe `passion-custom` et un badge « Perso » — sa présence est **voulue** |
 | ④ | Studio → Publier | `renderStudio` → `#postPassion` → `publishPost` | `post.passion = "custom_…"` |
 
 **Vérifié par test** : `tests/e2e/passion-personnalisee-fk.spec.js`.

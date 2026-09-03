@@ -4,7 +4,8 @@
 -- Modèle (calqué sur cdv_live_comments) : commentaire écrit par n'importe quel
 -- compte connecté, lisible par tous. Pas de FK profiles (résolution côté client
 -- via _resolveProfilesByIds, comme post_comments/notifications — voir CLAUDE.md).
--- À appliquer en prod via `supabase db query --linked --file ...`.
+-- À appliquer en prod par le canal ③ d'ADR-012 : `psql "$DATABASE_URL" -f migrations/migration_event_comments.sql`,
+-- ou le SQL Editor du tableau de bord. Voir docs/APPLIQUER_MIGRATION_PASSIONS.md.
 -- ════════════════════════════════════════════════════════════════════════
 
 CREATE TABLE IF NOT EXISTS event_comments (

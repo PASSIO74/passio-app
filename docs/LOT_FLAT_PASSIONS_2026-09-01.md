@@ -60,6 +60,13 @@
   **retirées** — sans appelant, et fausses sous le plafond (elles appelaient
   `ajouterPassionAuCompte` par passion cochée, donc au plafond elles auraient
   coché dans `_activeFeedPassions` des passions que le compte ne possède pas).
+  ⚠️ **MISE À JOUR DU 2026-09-03 — la même règle a été appliquée au rail du
+  PROFIL.** « Enlever la bulle + sur le profil passion et le mettre dans gérer
+  mes passions » : les DEUX rails sont désormais des commandes de lecture pure,
+  et la porte d'acquisition vit dans `#passionManager`. `ouvrirRecherchePassionsCompte`
+  a été retirée à son tour, pour la même raison que sa jumelle du Fil ; la porte
+  du panneau appelle `openCreateProfile`, qui garde le plafond ET survit à la
+  coupure `flat_passions_v1="0"`. Détail et pièges : `docs/lots-ui/18-GERER-MES-PASSIONS-2026-09-03.md`.
   ② `PASSIONS_OFFERTES = 3` (app-06) + `openPassionPaywall()`. **AUCUN MONTANT
   N'EST AFFICHÉ**, aucun bouton « Payer » (le paiement n'est pas ouvert : un
   bouton qui ne mène nulle part est un clic mort). ⚠️ **Ce n'est pas un retour
@@ -75,9 +82,13 @@
   bouts — portes (`openCreateProfile`, `ouvrirAjoutPassions`, le `max` du
   sélecteur) ET points d'écriture (`ajouterPassionAuCompte`,
   `restaurerPassion`) : mesuré, neutraliser l'un laisse l'autre vert.
-  ⚠️ `ouvrirGestionPassionsDepuisPaywall` change d'écran AVANT d'ouvrir
-  `#passionManager`, qui vit dans `#screen-profiles` — déplié depuis le Fil il
-  serait invisible.
+  ⚠️ `ouvrirGestionPassions` (nommée `ouvrirGestionPassionsDepuisPaywall` jusqu'au
+  2026-09-03) change d'écran AVANT d'ouvrir `#passionManager`, qui vit dans
+  `#screen-profiles` — déplié depuis le Fil il serait invisible.
+  ⚠️ **Le paywall ne l'offre plus quand le panneau est DÉJÀ ouvert** (2026-09-03,
+  `_paywallCacheGerer`) : depuis que la porte d'ajout vit DANS ce panneau, le
+  chemin le plus fréquent au plafond y commence, et le bouton y renvoyait — la
+  boucle « mur → panneau → mur » que l'invariant du quota épuisé fermait déjà.
   ⚠️ **LA MIGRATION EST APPLIQUÉE EN PRODUCTION depuis le 2026-09-01**, vérifiée
   par Benjamin depuis la CLI Supabase liée : **1 908 passions actives · 3 830
   relations · 19 identifiants historiques · 0 publication orpheline**. Les 1 908

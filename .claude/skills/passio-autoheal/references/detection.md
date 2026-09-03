@@ -4,9 +4,10 @@ Détail des étapes 1 à 3 du pipeline `/passio-autoheal`.
 
 ## 1. DÉTECTER — partir d'un fait, pas d'une impression
 
-```bash
+```
 # erreurs client de production
-supabase db query --linked "select message, count(*) n, max(created_at) dernier from client_errors where created_at > now() - interval '7 days' group by 1 order by n desc limit 20;"
+execute_sql  (connecteur supabase-passio-readonly)
+select message, count(*) n, max(created_at) dernier from client_errors where created_at > now() - interval '7 days' group by 1 order by n desc limit 20;
 ```
 
 Sources : `client_errors`, `telemetry_events` (type `error`), onglet Sentinelle, `/api/diagnose`.

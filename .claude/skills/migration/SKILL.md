@@ -9,11 +9,12 @@ description: "Crée et applique une migration SQL Supabase en prod : nouvelle ta
 
 ## Étapes
 
-1. **Inspecter l'existant en prod** avant toute écriture :
+1. **Inspecter l'existant en prod** avant toute écriture — lecture, donc canal ① d'ADR-012 :
    ```
-   supabase db query --linked "SELECT column_name, data_type FROM information_schema.columns WHERE table_name='<table>'"
+   execute_sql  (connecteur supabase-passio-readonly)
+   SELECT column_name, data_type FROM information_schema.columns WHERE table_name='<table>'
    ```
-   Pour une nouvelle table, vérifier qu'elle n'existe pas déjà.
+   Pour une nouvelle table, vérifier qu'elle n'existe pas déjà (outil dédié `list_tables`). Migrations déjà appliquées : `list_migrations`.
 
 2. **Écrire le fichier** `migrations/migration_<nom>.sql`. Checklist des invariants PASSIO :
    - **RLS activée** + policies. Défaut = propriété : `USING (auth.uid()::text = <owner_col>)`. Insert cross-user autorisé seulement si justifié (ex. notifications : `WITH CHECK (true)`).
@@ -23,15 +24,16 @@ description: "Crée et applique une migration SQL Supabase en prod : nouvelle ta
      `ALTER PUBLICATION supabase_realtime ADD TABLE <table>;`
    - **Fonctions de visibilité** : si ça touche du contenu privé, réutiliser `post_is_visible` / `can_edit_post` (SECURITY DEFINER) plutôt que de dupliquer la logique.
 
-3. **Appliquer en prod** :
-   ```
-   supabase db query --linked --file migrations/migration_<nom>.sql
-   ```
-   (ou `supabase db query --linked "<SQL>"` pour un one-shot).
+3. **Appliquer en prod** — DDL, donc **ni le canal ① (lecture seule, il refuserait) ni le canal ②** : canal ③ d'ADR-012, chemins A et B de `docs/APPLIQUER_MIGRATION_PASSIONS.md`.
+   - **Chemin A**, depuis un poste :
+     ```
+     psql "$DATABASE_URL" -f migrations/migration_<nom>.sql
+     ```
+   - **Chemin B**, tableau de bord Supabase : *Project → SQL Editor → New query*, coller le fichier, **Run** (y compris pour un one-shot).
 
-4. **Vérifier** que c'est bien passé — re-query `information_schema` / `pg_policies` / `pg_publication_tables`.
+4. **Vérifier** que c'est bien passé — re-query `information_schema` / `pg_policies` / `pg_publication_tables` par le canal ① (`execute_sql`).
 
-5. **Simuler les rôles** si c'est une policy de lecture sensible (étranger / abonné / auteur / anon) via `SET LOCAL role` + `request.jwt.claims`, comme documenté dans CLAUDE.md pour les migrations de confidentialité.
+5. **Simuler les rôles** si c'est une policy de lecture sensible (étranger / abonné / auteur / anon) via `SET LOCAL role` + `request.jwt.claims`, comme documenté dans CLAUDE.md pour les migrations de confidentialité. ⚠️ Par le canal ①, le `SET LOCAL` et le `SELECT` doivent partir dans le **même** appel `execute_sql` : chaque appel étant sa propre transaction, séparés, le rôle retombe au défaut **sans erreur** et la simulation rend un faux vert.
 
 6. **Documenter** : ajouter dans CLAUDE.md « migration `migration_<nom>.sql` (**appliquée en prod** le <date>) » avec la description de ce qu'elle fait et les pièges.
 

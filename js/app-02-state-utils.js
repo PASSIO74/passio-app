@@ -5352,7 +5352,14 @@ function renderFeedExplorationFallback(list) {
     +   '</div>'
     + '</div>'
     + '<div class="feed-repli-actions" style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;padding:6px 16px 16px;">'
-    +   '<button class="btn ghost" onclick="goTo(\'profiles\')" style="flex:1 1 auto;">Ajouter une passion</button>'
+    // ⚠️ `ouvrirGestionPassions()`, PAS `goTo('profiles')` (2026-09-03). Ce bouton
+    // NOMME un geste : il doit le livrer. `goTo('profiles')` était juste tant que
+    // la bulle « + » était en tête du rail du profil ; depuis qu'elle est
+    // descendue dans `#passionManager`, replié par défaut, il déposait
+    // l'utilisateur devant un écran où plus rien n'annonçait l'ajout — trois taps
+    // à deviner. Une cible qui déménage emporte tout ce qui la visait, y compris
+    // ce qui ne la nommait pas.
+    +   '<button class="btn ghost" onclick="ouvrirGestionPassions()" style="flex:1 1 auto;">Ajouter une passion</button>'
     +   '<button class="btn ghost" onclick="goTo(\'explore\')" style="flex:1 1 auto;">Découvrir des personnes</button>'
     +   '<button class="btn primary" onclick="goTo(\'studio\')" style="flex:1 1 100%;">Publier le premier contenu</button>'
     + '</div>';
@@ -5413,7 +5420,14 @@ var HINTS = {
   // ⚠️ La CLÉ reste `second_profil` — `hintsVus`, les tests et les ancres en
   // dépendent. Seul le LIBELLÉ suit ADR-011 : on n'ajoute plus un « profil »,
   // on ajoute une PASSION à son profil unique (2026-09-01).
-  second_profil: "Tu peux ajouter une autre passion à ton profil",
+  // ⚠️ LE LIBELLÉ DIT LE CHEMIN DEPUIS LE 2026-09-03. « Tu peux ajouter une autre
+  // passion à ton profil » était juste tant que l'aide pouvait se poser SUR la
+  // porte (la bulle « + » du rail). Elle se pose désormais, le plus souvent, sur
+  // le crayon ou le « ⋯ » — dont les libellés disent « Modifier le profil » et
+  // « Options ». Une aide qui montre une porte sans la nommer ne s'affiche
+  // qu'UNE fois (`hintsVus` est marqué à l'AFFICHAGE, pas au clic) : elle n'a
+  // pas de second essai pour se faire comprendre.
+  second_profil: "Ajoute une autre passion depuis « Gérer mes passions »",
   conversation_irl: "Quand vous êtes prêts, propose un moment IRL autour de votre passion",
 };
 
@@ -6157,7 +6171,11 @@ function renderFeed() {
         if (emptyText) emptyText.textContent = "Sélectionne un mood pour filtrer le contenu.";
       } else if (_activeFeedPassions.size === 0 && suitQuelquun) {
         if (emptyTitle) emptyTitle.textContent = "Rien de neuf pour l'instant";
-        if (emptyText) emptyText.textContent = "Les personnes que tu suis n'ont rien publié. Ajoute une passion ci-dessus pour découvrir d'autres contenus.";
+        // ⚠️ PLUS DE « CI-DESSUS » (2026-09-03). Le rail du Fil n'a plus de porte
+        // d'ajout depuis le 2026-09-01, ni celui du Profil depuis le 2026-09-03 :
+        // la phrase désignait une bulle disparue, et ce genre de mot survit
+        // d'autant mieux qu'aucun test ne le lit.
+        if (emptyText) emptyText.textContent = "Les personnes que tu suis n'ont rien publié. Ajoute une passion depuis « Gérer mes passions », sur ton profil, pour découvrir d'autres contenus.";
       } else if (_activeFeedPassions.size > 0) {
         if (emptyTitle) emptyTitle.textContent = "Aucun post pour cette sélection";
         if (emptyText) emptyText.textContent = intentsEnabled

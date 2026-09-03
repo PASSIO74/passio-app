@@ -5,24 +5,24 @@ description: "Schéma Supabase réel de prod : quelles colonnes a la table, type
 
 # /schema — Schéma prod réel PASSIO
 
-⚠️ **Le schéma prod diverge des fichiers `migrations/`.** Toujours interroger la base réelle (CLI liée, lecture seule).
+⚠️ **Le schéma prod diverge des fichiers `migrations/`.** Toujours interroger la base réelle via le connecteur `supabase-passio-readonly` (ADR-012, canal ① — lecture seule).
 
 ## Requêtes
 - Colonnes :
   ```
-  supabase db query --linked "SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_name='<t>' ORDER BY ordinal_position"
+  execute_sql  (connecteur supabase-passio-readonly)
+  SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_name='<t>' ORDER BY ordinal_position
   ```
-- Toutes les tables publiques :
-  ```
-  supabase db query --linked "SELECT table_name FROM information_schema.tables WHERE table_schema='public' ORDER BY table_name"
-  ```
+- Toutes les tables publiques : outil dédié `list_tables` (`schemas=["public"]`), pas de requête brute. `verbose=true` rend aussi colonnes, clés primaires et FK.
 - FK :
   ```
-  supabase db query --linked "SELECT tc.table_name, kcu.column_name, ccu.table_name AS ref FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_name=kcu.constraint_name JOIN information_schema.constraint_column_usage ccu ON tc.constraint_name=ccu.constraint_name WHERE tc.constraint_type='FOREIGN KEY' AND tc.table_name='<t>'"
+  execute_sql  (connecteur supabase-passio-readonly)
+  SELECT tc.table_name, kcu.column_name, ccu.table_name AS ref FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_name=kcu.constraint_name JOIN information_schema.constraint_column_usage ccu ON tc.constraint_name=ccu.constraint_name WHERE tc.constraint_type='FOREIGN KEY' AND tc.table_name='<t>'
   ```
 - Index :
   ```
-  supabase db query --linked "SELECT indexname, indexdef FROM pg_indexes WHERE tablename='<t>'"
+  execute_sql  (connecteur supabase-passio-readonly)
+  SELECT indexname, indexdef FROM pg_indexes WHERE tablename='<t>'
   ```
 - Policies : `SELECT policyname, cmd, qual, with_check FROM pg_policies WHERE tablename='<t>'`
 - Realtime : `SELECT tablename FROM pg_publication_tables WHERE pubname='supabase_realtime'`

@@ -63,8 +63,9 @@ fonctionne (auth, git, tests, UI) mais aucun événement Passio n'est reçu.
 
 1. **Appliquer la migration** (une fois) :
    ```bash
-   supabase db query --linked --file ../migrations/migration_telemetry.sql
+   psql "$DATABASE_URL" -f ../migrations/migration_telemetry.sql
    ```
+   C'est du DDL, donc le canal ③ d'[ADR-012](../.passio/adr/ADR-012-canal-acces-base-de-donnees.md) : `psql` depuis un poste, ou le SQL Editor du tableau de bord. Le connecteur de lecture le refuserait.
 2. **Instrumentation** : déjà en place — `js/telemetry.js` est chargé dans
    `index.html` et branché sur la navigation, les clics, les appels API, les
    erreurs et quelques actions clés (publication, message, like, commentaire, RSVP).

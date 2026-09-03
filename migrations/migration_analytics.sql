@@ -29,6 +29,7 @@ CREATE POLICY "analytics_insert_own"
 -- Lecture : aucun utilisateur ne peut lire les analytics des autres
 -- (pas de SELECT policy → seul service_role peut requêter).
 
--- Pour requêter en admin :
--- supabase db query --linked "SELECT event, COUNT(*) as n FROM analytics_events GROUP BY event ORDER BY n DESC LIMIT 20;"
--- supabase db query --linked "SELECT COUNT(DISTINCT user_id) as dau FROM analytics_events WHERE created_at > now() - interval '24 hours';"
+-- Pour requêter en admin — ce sont des LECTURES, donc le canal ① d'ADR-012 :
+-- l'outil `execute_sql` du connecteur `supabase-passio-readonly`.
+--   SELECT event, COUNT(*) as n FROM analytics_events GROUP BY event ORDER BY n DESC LIMIT 20;
+--   SELECT COUNT(DISTINCT user_id) as dau FROM analytics_events WHERE created_at > now() - interval '24 hours';

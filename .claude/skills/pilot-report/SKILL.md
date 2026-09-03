@@ -10,7 +10,8 @@ La vue « salle de contrôle » : agrège tout ce qui dit si la beta va bien, en
 ## Sources à agréger
 1. **Activité live** (télémétrie) : actifs du jour, actions récentes par type, écrans chauds :
    ```
-   supabase db query --linked "SELECT type, action, count(*) FROM telemetry_events WHERE created_at > now()-interval '24 hours' GROUP BY type, action ORDER BY count DESC LIMIT 30"
+   execute_sql  (connecteur supabase-passio-readonly)
+   SELECT type, action, count(*) FROM telemetry_events WHERE created_at > now()-interval '24 hours' GROUP BY type, action ORDER BY count DESC LIMIT 30
    ```
 2. **KPI** (skill `/kpi`) : DAU/WAU, nouveaux comptes, rétention, engagement — avec tendance vs veille/semaine passée.
 3. **Santé technique** (skill `/prod-errors`) : erreurs `client_errors`, latence API, signalements `reports`.

@@ -227,7 +227,40 @@ test("§7 repli — une passion sans contenu propose l'exploration, étiquetée 
   expect(r.cartesHorsMoto).toBe(r.cartes);
   expect(r.videAffiche).toBe("none");
   // Les trois issues de la spec (§7 : personnes, ajouter une passion, publier).
-  expect(r.handlers).toEqual(["goTo('profiles')", "goTo('explore')", "goTo('studio')"]);
+  // ⚠️ LA PREMIÈRE A CHANGÉ LE 2026-09-03, ET CE TEST VALIDAIT UN CUL-DE-SAC.
+  // Elle disait `goTo('profiles')` — juste tant que la bulle « + » était en tête
+  // du rail du profil. Depuis que la porte d'ajout vit dans `#passionManager`,
+  // replié par défaut, y déposer quelqu'un qui vient de taper « ➕ Ajouter une
+  // passion » laisse trois taps à deviner. `ouvrirGestionPassions()` ouvre
+  // l'écran ET le panneau.
+  expect(r.handlers).toEqual(["ouvrirGestionPassions()", "goTo('explore')", "goTo('studio')"]);
+});
+
+// ⚠️ LE HANDLER NE SUFFIT PAS À PROUVER LA PROMESSE. Le cas ci-dessus lit une
+// chaîne de caractères : il resterait VERT si `ouvrirGestionPassions` cessait
+// d'ouvrir le panneau. Celui-ci exerce le bouton pour de vrai et exige de voir
+// la porte d'ajout — c'est la leçon d'`adopterCompteConnecte` (« tester la
+// fonction ne suffit pas : le câblage, non couvert, pouvait être supprimé sans
+// un seul rouge »).
+test("§7 repli — « ➕ Ajouter une passion » LIVRE la porte d'ajout", async ({ page }) => {
+  await bootVierge(page);
+  await viderPassion(page, "moto");
+  await terminerOnboarding(page, "moto");
+  await page.locator("#feedList .feed-repli-actions button", { hasText: "Ajouter une passion" }).click();
+  await page.waitForTimeout(700);
+  const vu = await page.evaluate(() => {
+    const porte = document.getElementById("nouveauProfilLien");
+    const r = porte ? porte.getBoundingClientRect() : null;
+    return {
+      ecran: !!(document.getElementById("screen-profiles") || {}).classList
+        && document.getElementById("screen-profiles").classList.contains("active"),
+      panneauOuvert: !document.getElementById("passionManager").hidden,
+      portePeinte: !!(r && r.width > 0 && r.height > 0),
+    };
+  });
+  expect(vu.ecran, "le bouton amène bien sur le profil").toBe(true);
+  expect(vu.panneauOuvert, "et il déplie « Gérer mes passions »").toBe(true);
+  expect(vu.portePeinte, "la porte d'ajout est à l'écran, pas seulement dans le DOM").toBe(true);
 });
 
 test("§7 repli — les onclick pointent vers des fonctions globales existantes", async ({ page }) => {
