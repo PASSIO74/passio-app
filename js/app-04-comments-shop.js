@@ -3529,6 +3529,15 @@ function _toggleArchiveConv(convId) {
   toast(c.archived ? "📥 Conversation archivée" : "📤 Conversation désarchivée");
 }
 
+// Pointeur fin = souris/trackpad (poste de travail), par opposition au doigt.
+// `matchMedia` peut manquer sur de très vieux moteurs : sans lui on considère
+// l'appareil comme tactile, le choix qui ne peut pas ouvrir un clavier de force.
+function _pointeurFin() {
+  try {
+    return !!(window.matchMedia && window.matchMedia("(pointer: fine)").matches);
+  } catch (e) { return false; }
+}
+
 async function openConversation(convId) {
   const sp = document.getElementById("convSettingsPanel");
   if (sp) { sp.classList.remove("open"); sp.style.transform = "translateX(100%)"; sp.style.display = "none"; sp.style.pointerEvents = "none"; }
@@ -3671,7 +3680,26 @@ async function openConversation(convId) {
   try { if (typeof supaMarkRead === "function") supaMarkRead(convId); } catch(e) {}
   try { if (typeof supaLoadOtherRead === "function") supaLoadOtherRead(convId); } catch(e) {}
 
-  if (inp) inp.focus();
+  // ⚠️ NE PAS DONNER LE FOCUS AU CHAMP SUR UN APPAREIL TACTILE.
+  // Défaut vécu, mesuré le 2026-09-02 : `inp.focus()` s'exécutait DANS le geste
+  // de tap qui ouvre la conversation, donc Android ouvrait le clavier virtuel.
+  // Ce qui suit est mesuré, pas déduit (390 × 844, conversation de 40 messages,
+  // viewport visible ramené à 500 px comme le fait le clavier) :
+  //   · `syncAppViewportHeight` (app-09) REFUSE de rétrécir `--app-vh` pendant
+  //     la frappe — garde `typing && h < prev * 0.75`, posée pour ne pas figer
+  //     une hauteur amputée. `--app-vh` reste donc à 844 px ;
+  //   · `.app-shell` garde ses 844 px alors que 500 seulement sont visibles ;
+  //   · le fil va de y=60 à y=782 et, scrollé en bas, place le message le plus
+  //     récent à y=699..761 — soit ENTIÈREMENT sous le clavier (mesure :
+  //     `VISIBLE: false`). Le champ de saisie, à y≈782..844, l'est aussi.
+  // À l'écran : on ouvre la conversation, on voit le HAUT du fil (les vieux
+  // messages, ou du vide), et il faut taper ailleurs pour fermer le clavier —
+  // « je suis obligé de recliquer sur l'écran pour faire tout apparaître ».
+  // Aucune messagerie n'ouvre le clavier à l'ouverture d'un fil (WhatsApp,
+  // Messenger, iMessage) : on le fait en touchant le champ. Le focus n'est donc
+  // gardé que là où il est utile et sans effet de bord — pointeur fin, c'est-à-dire
+  // souris et clavier physique.
+  if (inp && _pointeurFin()) inp.focus();
   try { renderMessages(); } catch(e) {}
 
   // Charger TOUS les messages depuis Supabase (pas de limite, tous les anciens inclus)
@@ -3960,6 +3988,32 @@ function renderConvFpThread(c, displayName) {
   _wireConvScroll(thread, c.id);
 }
 
+// Ré-épingle le bas du fil ouvert quand la GÉOMÉTRIE change (rotation, barre
+// d'URL qui se replie, clavier fermé par un autre champ). Mesuré le 2026-09-02 :
+// `scrollTop` est posé pour une hauteur de fil donnée ; quand `--app-vh` change,
+// `.conv-fp-thread` (flex:1) change de hauteur et le dernier message peut sortir
+// de l'écran sans qu'aucun événement de défilement ne survienne. On ne re-cale
+// QUE si l'on était déjà en bas — sinon on arracherait la lecture de quelqu'un
+// remonté dans l'historique.
+function _convFpRepinBottom() {
+  if (!window._openedConvId) return;
+  var t = document.getElementById("convFpThread");
+  if (!t || t._loadingOlder || t._loadingMore) return;
+  if (t._auBas === false) return; // relecture en cours d'un historique : on ne touche à rien
+  t.scrollTop = t.scrollHeight;
+}
+
+(function _wireConvFpGeometry() {
+  if (typeof window === "undefined" || window._convFpGeomWired) return;
+  window._convFpGeomWired = true;
+  // Deux temps : tout de suite, puis après stabilisation des barres du navigateur
+  // (même raison que les re-mesures différées de `--app-vh` dans app-09).
+  var relancer = function() { _convFpRepinBottom(); setTimeout(_convFpRepinBottom, 250); };
+  window.addEventListener("resize", relancer);
+  window.addEventListener("orientationchange", function() { setTimeout(relancer, 220); });
+  if (window.visualViewport) window.visualViewport.addEventListener("resize", relancer);
+})();
+
 // Scroll infini : charge une page de messages plus anciens quand on approche du
 // haut du fil, en préservant la position visuelle.
 function _wireConvScroll(thread, convId) {
@@ -3968,6 +4022,9 @@ function _wireConvScroll(thread, convId) {
   if (thread._scrollWired) return;
   thread._scrollWired = true;
   thread.addEventListener("scroll", function() {
+    // Mémorise si l'on est collé au bas : c'est la seule information que la
+    // géométrie d'APRÈS un redimensionnement ne permet plus de retrouver.
+    thread._auBas = (thread.scrollTop + thread.clientHeight >= thread.scrollHeight - 80);
     if (thread.scrollTop > 60 || thread._loadingMore) return;
     var c = getConversations().find(function(x){ return x.id === thread._curConvId; });
     if (!c || !c.messages) return;

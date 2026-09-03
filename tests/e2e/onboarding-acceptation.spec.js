@@ -11,6 +11,7 @@
 //   · ONB-09 (Google OAuth) — exige un fournisseur réel.
 // ONB-04 (reload) est déjà couvert par onboarding-v2.spec.js.
 const { test, expect } = require("@playwright/test");
+const { sansDonneesDistantes } = require("./app-helper");
 const { GATE_TOKEN, GATE_KEY } = require("./gate-helper");
 
 async function boot(page, { etat = null, espionnerGeoloc = false } = {}) {
@@ -42,6 +43,13 @@ async function boot(page, { etat = null, espionnerGeoloc = false } = {}) {
       }
     }
   }, [GATE_KEY, GATE_TOKEN, etat, espionnerGeoloc]);
+  // ⚠️ ISOLATION DES DONNÉES DISTANTES — POSÉE ICI PARCE QUE CETTE SUITE
+  // NAVIGUE ELLE-MÊME. `bootOnboarded` la pose par défaut, mais sa portée est
+  // L'APPEL, pas le fichier : un `page.goto` maison garde son chemin exposé, et
+  // le verdict du test dépend alors du CONTENU DE LA PRODUCTION. C'est ce qui a
+  // rendu `main` rouge six fois en quatre jours et fait sauter autant de
+  // déploiements. Verrou mécanique : `scripts/audit-tests-isolation.js`.
+  await sansDonneesDistantes(page);
   await page.goto("/index.html");
   await page.waitForFunction(() => typeof onbFinish === "function", null, { timeout: 20000 });
   await page.evaluate(() => {

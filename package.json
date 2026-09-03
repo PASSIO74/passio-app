@@ -4,7 +4,7 @@
   "scripts": {
     "test": "playwright test",
     "test:all": "playwright test",
-    "verif": "node scripts/audit-css-structure.js && node scripts/audit-globals.js && node scripts/audit-handlers.js && node scripts/audit-echappement.js --ci && node scripts/audit-tests-creux.js --ci && node scripts/audit-supa-stub.js && node scripts/audit-telemetry-keys.js && npm run passions:verifier",
+    "verif": "node scripts/audit-css-structure.js && node scripts/audit-globals.js && node scripts/audit-handlers.js && node scripts/audit-echappement.js --ci && node scripts/audit-tests-creux.js --ci && node scripts/audit-supa-stub.js && node scripts/audit-telemetry-keys.js && node scripts/audit-tests-isolation.js --ci && npm run passions:verifier",
     "test:local": "playwright test --project=local",
     "test:prod": "node scripts/test-prod.js",
     "audit:handlers": "node scripts/audit-handlers.js",

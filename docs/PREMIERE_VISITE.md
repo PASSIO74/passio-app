@@ -344,3 +344,227 @@ portes, la survie de l'intention à la purge, sa consommation unique, sa
 péremption, le retour à un fil invité COMPLET, le drapeau coupé,
 `doLogout()` sans argument, un `signOut` qui échoue, et le périmètre exact de
 `purgerJetonAuthLocal`).
+## 🔐 L'ÉTAT LOCAL APPARTIENT À UN COMPTE, JAMAIS À L'APPAREIL (2026-09-02)
+
+Défaut rapporté par Benjamin après essai réel :
+
+> « j'étais dans l'app sans compte pour découvrir, j'ai mis plein de passions
+> pour voir, ensuite je me suis connecté à mon vrai compte et tu as mélangé les
+> infos de la page de découverte avec mon compte… les infos enregistrées dans un
+> compte doivent être enregistrées au compte. »
+
+### Ce n'était pas une fusion d'affichage : l'exploration ÉCRASAIT le serveur
+
+Le chemin tenait en quatre lignes de `onbDoAuth` (app-02) :
+
+```js
+MY_UID = data.session.user.id;   // ① l'identité devient celle du compte
+state.onboarded = true;          // ② l'état ANONYME devient « onboardé »
+saveState();                     // ③ _stateDirty = true
+window.location.reload();        // ④ pagehide → supaSaveUserStateBeacon
+```
+
+`supaSaveUserStateBeacon` a trois gardes — une identité (`MY_UID`), un état
+onboardé, un drapeau sale — et **les quatre lignes ci-dessus les lèvent toutes
+les trois**. Le beacon POSTe donc `_syncableState()`, c'est-à-dire l'état de
+l'EXPLORATION ANONYME, dans `user_state` du vrai compte, en
+`resolution=merge-duplicates` : la ligne est **remplacée**. Les passions cochées
+« pour voir » devenaient celles du compte, sur tous ses appareils, et le
+rechargement les restituait ensuite comme si elles en venaient — ce qui donnait
+au défaut son apparence de « fusion ».
+
+### La règle, et son point d'application
+
+Un état local ne part **jamais** sous une identité qui n'est pas la sienne.
+`adopterCompteConnecte(uid)` (app-02) est le seul point qui tranche : quand
+l'appareil adopte un compte dont l'état local ne provient pas, cet état est purgé
+(`purgeAccountScopedData`) **avant** que quoi que ce soit puisse l'attribuer au
+compte. Le serveur le restituera — lui seul fait foi.
+
+Elle est appelée aux **TROIS** entrées, et à chaque fois **AVANT** `MY_UID` et
+`localStorage.passio_uid` :
+
+- `onbDoAuth`, branche `signin` (app-02) — la connexion explicite ;
+- `boot()`, branche « session retrouvée » (app-08) — retour de
+  `signInWithOAuth`, lien de confirmation d'e-mail qui ouvre directement une
+  session ;
+- `onAuthStateChange` (app-08) — **la troisième, et la plus piégeuse**. Ce
+  handler n'est enregistré que lorsque `boot()` n'a trouvé AUCUNE session, donc
+  précisément pour un visiteur en première visite, et il refaisait le défaut
+  d'origine mot pour mot : `MY_UID` + `passio_uid` + `onboarded` + `saveState()`
+  + `reload()`. Il **protège** désormais sans purger ni recharger : une adoption
+  avec rechargement y aurait cassé les quatre suites e2e à comptes réels
+  (`authz-critical`, `blocage-acces`, `user-state-horodatage`, `multi-comptes`),
+  qui ouvrent l'app sans session puis se connectent — CI rouge, déploiement
+  sauté. Fermer la porte suffit ; l'adoption a lieu au démarrage suivant.
+
+⚠️ **LE DISCRIMINANT EST UN INSTANTANÉ PRIS AU CHARGEMENT, PAS UNE RELECTURE.**
+C'est la correction la plus importante du lot, et sans elle tout le reste ne
+servait à rien sur le chemin le plus courant. **Trois** points écrivent
+`localStorage.passio_uid`, et **supabase-js notifie ses abonnés PENDANT
+`signInWithPassword`, avant d'en résoudre la promesse** — le dépôt le documente
+lui-même (« le client tient un verrou auth pendant l'émission de l'événement »).
+Sur le parcours réel « j'explore sans compte → J'ai déjà un compte » :
+
+1. le visiteur se connecte ;
+2. `onAuthStateChange` reçoit `SIGNED_IN` et écrit `passio_uid = <uuid>` ;
+3. la promesse de `signInWithPassword` résout enfin ;
+4. `adopterCompteConnecte` relisait `passio_uid`… et y trouvait l'uuid.
+
+La garde concluait « l'état local est déjà le sien », ne purgeait **rien**, et le
+beacon repartait avec l'état anonyme : le défaut d'origine, intact, sur le chemin
+exact qui l'avait fait remonter. `_uidProprietaireEtat` est donc capturé à
+l'ÉVALUATION d'app-02 — avant `getMyUserId`, avant tout événement d'auth, hors
+d'atteinte des trois écrivains.
+
+`getMyUserId` fabrique par ailleurs un placeholder `u_xxxxxxxx` pour tout le
+monde — un appareil qui explore en porte un, et **il ne prouve aucun compte**
+(même piège que `MY_UID`). Seul un uuid Supabase compte.
+
+⚠️ **La sonde d'écriture est une clé JETABLE, jamais `passio_uid`.** Sonder avec
+la clé qu'on garde ouvrait une fenêtre — entre la sonde et la purge — où
+l'appareil « connaissait » le compte tout en portant encore l'état anonyme. Une
+interruption là (onglet fermé, plantage) désarmait la garde **à vie**.
+
+⚠️ **UN APPAREIL VIDÉ N'ÉCRASE JAMAIS LE COMPTE QU'IL VIENT D'ADOPTER.** Défaut
+créé par la purge elle-même : si `supaLoadUserState` échoue après elle (réseau,
+5xx, jeton pas frais), l'état local reste VIDE et la première sauvegarde le POSTe
+dans `user_state` — le compte est effacé sur tous ses appareils. Avant la purge,
+ce chemin n'existait pas. `_peutPousserEtat()` interdit toute écriture d'état
+tant que (a) la restauration n'est pas confirmée — drapeau
+`passio_restauration_requise` posé par l'adoption, **persisté** car il doit
+survivre au rechargement, levé par `supaLoadUserState` à son premier verdict
+RÉUSSI, « ce compte n'a pas de ligne » compris — ou (b) l'état local appartient à
+un autre compte. Gardé sur les **deux** chemins d'écriture, `supaSaveUserState`
+et le beacon.
+
+⚠️ **`attribuerEtatLocalAuCompte` est la contrepartie indispensable.** Certains
+chemins exigent que l'état local SUIVE l'identité qui naît : une inscription qui
+rend une session, et `onbSkipAuth` (`signInAnonymously`, qui rend un VRAI uuid).
+Là, l'état porte l'onboarding qu'on vient de saisir — âge, prénom, passions. Le
+purger serait jeter le travail de la personne au milieu de son inscription. Cette
+fonction ne fait que **déclarer le propriétaire**.
+
+⚠️ **LE PROFIL « MUSIQUE » FABRIQUÉ PAR `boot()` N'EST PAS UN CHOIX.** Quand le
+serveur ne rend aucun profil, `boot()` en fabrique un avec `allPassions()[0]` et
+le marque `_parDefaut`. Le compter faisait passer un compte NEUF pour un compte
+garni, et les passions du visiteur étaient **jetées**. L'exclusion vaut aux DEUX
+bouts : `restoreFeedPassions` ne l'amorce plus dans `selectedFeedPassions` (où le
+marqueur ne survit pas — seul l'IDENTIFIANT voyage), et le verdict serveur
+soustrait de `selectedFeedPassions` ce que seul le remplissage porte, pour les
+clients antérieurs qui l'y ont déjà recopié.
+
+⚠️ **LE PARCOURS « MOT DE PASSE OUBLIÉ » NE SE RECHARGE JAMAIS EN COURS DE
+ROUTE.** Le lien ouvre une session, donc la garde d'adoption la voyait arriver
+sur un appareil qui ne connaît pas ce compte, purgeait et RECHARGEAIT — ce qui
+détruisait le formulaire de nouveau mot de passe, alors que le fragment
+`type=recovery` a déjà été consommé par le SDK et que le lien est à **usage
+unique**. L'adoption est déplacée au seul moment sûr : le changement effectif du
+mot de passe (`_showPasswordRecoveryUI`). Pendant la récupération, `passio_uid`
+n'est pas écrit (sinon abandonner le formulaire désarmerait la garde
+définitivement) et l'exigence de restauration est armée, sinon
+`supaLoadUserState` pousserait l'état du propriétaire précédent dans le compte
+récupéré. ⚠️ **La branche « déconnexion inachevée » de #250 porte la même
+exception** : elle s'exécute AVANT la garde d'adoption, donc la sienne était
+contournée par le haut.
+
+⚠️ **Pas de boucle de purge.** `purgeAccountScopedData` retire `passio_uid` de
+l'appareil : on le RÉÉCRIT aussitôt avec l'identifiant adopté. Sans cette ligne,
+le rechargement retrouverait un appareil « sans compte connu », re-purgerait,
+rechargerait — indéfiniment.
+
+⚠️ **Un retour sur SON PROPRE compte ne purge rien** (même identifiant ⇒ sortie
+immédiate) : une session expirée puis rétablie garde les écritures locales pas
+encore synchronisées. La purge de `onbDoAuth` est bornée à la branche `signin`,
+la seule qui recharge : une inscription CONTINUE l'onboarding (âge, prénom) dans
+l'état en cours, et purger là jetterait ce que la personne vient de saisir.
+
+### La migration des préférences ne fusionne plus, elle abandonne
+
+`migrerPreferences` disait « je n'écrase pas : les passions du compte d'abord,
+celles du visiteur en queue ». Mais **« ne rien écraser » n'est pas « ne rien
+ajouter »** : douze passions cochées pour voir se retrouvaient dans le fil d'un
+compte qui n'en avait jamais voulu. Désormais, un compte qui a déjà ses passions
+n'en reçoit **aucune** — les préférences d'exploration sont VIDÉES, pas seulement
+marquées `migre`, pour qu'aucun chemin futur ne puisse les relire. Seul un compte
+SANS passion (celui qu'on vient de créer au bout de l'exploration) les adopte.
+
+⚠️ **La question ne se pose pas à `state`.** Sur un appareil qui vient
+d'explorer, `state.selectedFeedPassions` contient les passions de l'EXPLORATION
+(`appliquerPrefs` les y a mises) : les lire reviendrait à demander au visiteur si
+le compte lui ressemble, et il répondrait toujours oui. L'autorité est
+`window._comptePassionsServeur`, posé par `supaLoadUserState` d'après le blob
+`user_state` **réellement renvoyé** pour ce compte. Le repli hors ligne ne retient
+que ce qui ne peut PAS venir de l'exploration : un profil-passion vivant (le
+visiteur n'en crée aucun) ou une passion sélectionnée que le visiteur n'a pas
+choisie.
+
+⚠️ **Les choix du visiteur passent en TÊTE de la fusion**, et l'ordre porte le
+sens : le premier identifiant est la passion PRIMAIRE (`setFeedPassions`).
+L'ordre inverse faisait de « Musique » — le remplissage — la passion primaire de
+quelqu'un qui avait choisi Cuisine, Photo et Randonnée.
+
+⚠️ **On n'adopte rien avant que le compte ait parlé.** `passio:app-ready` part au
+CHARGEMENT du script d'application, donc AVANT que `boot()` ait fini d'attendre
+`supaLoadUserState` : à 1 200 ms, un vrai compte ressemble encore à un compte
+neuf. `reprise()` attend `window._etatCompteCharge` (posé à CHAQUE sortie de
+l'hydratation, sorties précoces comprises), borné à ~7 s — hors ligne, le verdict
+ne vient jamais et il vaut mieux trancher sur le repli que perdre les choix du
+visiteur.
+
+### Verrous
+
+`tests/e2e/exploration-anonyme-vs-compte.spec.js` (16). Le premier cas
+**REPRODUIT le défaut** — sans la garde, le POST vers `user_state` porte bien les
+passions de l'exploration — de sorte que le second prouve quelque chose.
+`tests/e2e/first-run.spec.js` couvre les deux sens de la migration (compte qui a
+ses passions / compte neuf), le repli hors ligne et le profil de remplissage.
+
+⚠️ **TESTER LA FONCTION NE SUFFIT PAS, IL FAUT TESTER LE CÂBLAGE.** Les douze
+premiers cas appelaient `adopterCompteConnecte` DIRECTEMENT ; aucun ne passait
+par `onbDoAuth`, qui est pourtant le chemin rapporté. Mesuré par mutation :
+supprimer le branchement laissait `npm run verif` et les 897 suites VERTES, avec
+le défaut d'origine intact — c'est ainsi que le premier bloquant avait survécu à
+la première ronde. Deux cas pilotent désormais le VRAI `onbDoAuth` (branches
+`signin` et `signup`), en reproduisant la course où `onAuthStateChange` réécrit
+`passio_uid`. Le rechargement n'y est PAS doublé — Chromium refuse de redéfinir
+`location.reload`, et c'est lui qui déclenche `pagehide`, donc le beacon, donc le
+défaut : on observe depuis l'EXTÉRIEUR, par la sonde réseau de Playwright, qui
+survit à la navigation.
+
+⚠️ **ET IL FAUT TESTER SUR LE CHEMIN RÉEL.** `bootVisiteur` impose
+`_supaReal === false` — prémisse saine — mais `_supaSaveUserStateOnce` sort sur
+CETTE garde-là, à sa première ligne, bien AVANT `_peutPousserEtat()`. Les cas
+« rien ne part » prouvaient donc surtout que le SDK était coupé. Deux cas posent
+un vrai client factice et exercent le chemin d'écriture jusqu'au bout, ainsi que
+le calcul de `_comptePassionsServeur` — règle écrite deux fois (verdict serveur
+et repli local), dont une seule copie était couverte.
+
+---
+
+## ✨ « Passion » SANS SON NOM — le référentiel arrivait trop tard (2026-09-02)
+
+Trois bulles génériques « ✨ Passion » au milieu de passions correctement
+nommées, sur la capture du même essai. Cause : `passionById` (app-02) résout
+d'abord les 19 passions du socle embarqué, interroge ensuite `PassioPassions`, et
+rend `{ emoji: "✨", label: "Passion" }` quand il ne sait pas — or le référentiel
+plat (1 908 passions) n'était chargé qu'à **l'ouverture du sélecteur**. Toute
+passion venue de la recherche s'affichait donc sans son nom, dans le rail du Fil,
+celui du Profil et le Studio, jusqu'à ce que quelqu'un rouvre le sélecteur.
+
+⚠️ **La correction ne charge PAS le référentiel au démarrage**, et c'est délibéré :
+160 Ko sur le chemin critique pour une donnée dont la plupart des sessions n'ont
+jamais besoin — invariant protégé par `passions-plates.spec.js` ⑤ et ⑰ bis. La
+conciliation tient en une question, posée une seule fois : « l'écran porte-t-il
+un identifiant que le socle ne sait pas nommer ? ». Non ⇒ rien n'est chargé. Oui
+⇒ la seule alternative est d'afficher « ✨ Passion » à la place d'un nom.
+
+⚠️ **La question se pose APRÈS l'hydratation**, jamais à `app-ready` : les
+passions d'un compte arrivent par `supaLoadUserState`, donc après le chargement
+du script. Posée trop tôt, elle porterait sur un état vide et répondrait toujours
+« non ».
+
+⚠️ **Charger ne suffit pas, il faut repeindre.** `renderProfileStrip` porte un
+cache `_lastHtml` et `renderFeed` un guard `_feedDomSig` : sans les invalider, le
+rail garderait ses bulles génériques pour toute la session, référentiel pourtant
+chargé.
