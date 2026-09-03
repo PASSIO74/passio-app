@@ -10,7 +10,8 @@ La croissance sans rétention est un seau percé. Objectif : transformer une vis
 ## Sources de données
 - **Télémétrie** `telemetry_events` (types `nav`/`action`/`click`/`heartbeat`) :
   ```
-  supabase db query --linked "SELECT type, action, count(*) FROM telemetry_events WHERE created_at > now() - interval '7 days' GROUP BY type, action ORDER BY count DESC LIMIT 40"
+  execute_sql  (connecteur supabase-passio-readonly)
+  SELECT type, action, count(*) FROM telemetry_events WHERE created_at > now() - interval '7 days' GROUP BY type, action ORDER BY count DESC LIMIT 40
   ```
 - **DAU / cohortes** (approx via `device_id`/session) et **rétention J1/J7** : croiser première vs dernière activité.
 - Écrans les plus/moins visités (nav wrap de `goTo`), actions par utilisateur.

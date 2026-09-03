@@ -29,7 +29,7 @@ Purge (supprimer d'abord conv_members/conv_messages/profiles à cause des FK) �
 node scripts/purge-e2e-rest.js            # applique
 node scripts/purge-e2e-rest.js --simuler  # compte, n'efface rien
 ```
-SQL de référence, inchangé : `scripts/purge_e2e_accounts.sql` (`DELETE FROM auth.users WHERE email LIKE '%@passio-e2e.test'`).
+Le SQL fait foi pour l'ordre enfants→parents : `scripts/purge_e2e_accounts.sql`, dont ce script est le portage REST. Geste d'origine de cette fiche : `DELETE FROM auth.users WHERE email LIKE '%@passio-e2e.test'`.
 
 ## Télémétrie (centre de pilotage)
 Table `telemetry_events` (opt-out, PII masqué). Dashboard : `cd dashboard && npm start` → http://localhost:4610 (clé service_role dans `dashboard/.env`).

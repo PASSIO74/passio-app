@@ -18,7 +18,8 @@ description: "Audit Supabase Storage : médias, downscale, orphelins, URLs sign�
 ## Requêtes de diagnostic
 - Posts médias sans URL (orphelins DB) :
   ```
-  supabase db query --linked "SELECT id, media_type, created_at FROM posts WHERE media_type IS NOT NULL AND (media_url IS NULL OR media_url='') ORDER BY created_at DESC LIMIT 20"
+  execute_sql  (connecteur supabase-passio-readonly)
+  SELECT id, media_type, created_at FROM posts WHERE media_type IS NOT NULL AND (media_url IS NULL OR media_url='') ORDER BY created_at DESC LIMIT 20
   ```
 - Lister via CLI Storage / API si besoin de repérer les fichiers orphelins (Storage sans ligne).
 
@@ -26,4 +27,4 @@ description: "Audit Supabase Storage : médias, downscale, orphelins, URLs sign�
 Les médias sont des **URLs publiques** → le durcissement confidentialité (contenu de comptes privés) passe par des **URLs signées** (refacto plus lourde, notée dans la roadmap). Un compte privé protège la DB via RLS mais pas l'URL Storage devinée.
 
 ## Rapport
-Orphelins DB/Storage, uploads en échec récents (`client_errors`), et état de la robustesse (timeouts, garde hadMedia). Réparer les données prod avec prudence (UPDATE ciblé, lecture d'abord).
+Orphelins DB/Storage, uploads en échec récents (`client_errors`), et état de la robustesse (timeouts, garde hadMedia). Réparer les données prod avec prudence (UPDATE ciblé, lecture d'abord) : une écriture ne passe **jamais** par le canal ① (lecture seule, elle serait refusée) — PostgREST via `configAdmin()` (ADR-012, canal ②).

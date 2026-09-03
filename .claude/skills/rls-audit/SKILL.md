@@ -9,8 +9,10 @@ Délègue de préférence au subagent `migration-checker` pour l'inventaire, pui
 
 ## Inventaire (prod réelle, lecture seule)
 ```
-supabase db query --linked "SELECT tablename, policyname, cmd, qual, with_check FROM pg_policies WHERE tablename IN ('posts','post_comments','post_likes','comment_interactions','events','event_attendees','event_reactions','cdv_lives','cdv_live_steps','profiles','conv_messages') ORDER BY tablename, cmd"
+execute_sql  (connecteur supabase-passio-readonly)
+SELECT tablename, policyname, cmd, qual, with_check FROM pg_policies WHERE tablename IN ('posts','post_comments','post_likes','comment_interactions','events','event_attendees','event_reactions','cdv_lives','cdv_live_steps','profiles','conv_messages') ORDER BY tablename, cmd
 ```
+Un audit RLS se **lit** par ce canal ; il ne s'y corrige jamais. Créer ou modifier une policy est une écriture de structure → migration (ADR-012, canal ③ ; skill `/migration`).
 
 ## Points de contrôle
 - **Mutation muette** : chaque table modifiable doit avoir une policy UPDATE et/ou DELETE. Une absente = mutation qui touche **0 ligne en silence** (l'app dit « mis à jour » mais rien ne bouge). Cas passés : `cdv_live_steps` (pas de UPDATE), `cdv_live_reactions` (pas de DELETE → toggle bloqué), events co-organisateurs.

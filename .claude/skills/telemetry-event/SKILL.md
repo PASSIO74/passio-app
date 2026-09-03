@@ -29,7 +29,8 @@ Navigation (wrap `goTo`), clics (délégation), fetch (endpoint sans query), err
 1. `npm run audit:globals` (vert).
 2. Dans le preview, déclencher l'action → vérifier l'insert dans `telemetry_events` (aucun PII) :
    ```
-   supabase db query --linked "SELECT type, action, meta FROM telemetry_events ORDER BY created_at DESC LIMIT 10"
+   execute_sql  (connecteur supabase-passio-readonly)
+   SELECT type, action, meta FROM telemetry_events ORDER BY created_at DESC LIMIT 10
    ```
 3. Vérifier que le dashboard le reçoit (skill `/pilot-report`) et l'exploiter dans un KPI si pertinent.
 
