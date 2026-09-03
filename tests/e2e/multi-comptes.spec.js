@@ -812,7 +812,12 @@ test.describe("messagerie entre 2 comptes réels", () => {
         const post = { id, authorId: MY_UID, type: "vlog", text: "Carnet co-écrit [test auto]",
           destination: "Carnet co-écrit", dateStart: null, dateEnd: null, cover: null,
           budget: "500", transport: "train", lodging: "auberge", season: "été",
-          tip: "conseil", createdAt: Date.now(), passion: null, mood: "chill",
+          // ⚠️ `mood` était "chill" — une valeur MORTE depuis le 2026-09-02, et
+          // cette suite tourne sur des COMPTES RÉELS (`npm run test:prod`) :
+          // `supaPublishPostWithRetry` écrivait donc du vocabulaire retiré dans
+          // la base de production à chaque exécution. Seule occurrence du dépôt
+          // dans ce cas. Le neutre est la valeur juste.
+          tip: "conseil", createdAt: Date.now(), passion: null, mood: "all",
           steps: [{ place: "Cusco", text: "arrivée", tip: "", photo: null, lat: -13.53, lng: -71.97 }] };
         const ok = await supaPublishPostWithRetry(post);
         return ok ? id : null;

@@ -1,6 +1,6 @@
 ---
 name: realtime
-description: Audite/débogue le temps réel de PASSIO (canaux Supabase Realtime, broadcast, presence, livraison cross-compte) pour messages, notifs, likes, lives, appels. À utiliser quand quelque chose n'arrive pas en direct, pour vérifier la livraison instantanée, ou quand Benjamin dit "realtime", "temps réel", "ça n'arrive pas en direct", "les messages ne se reçoivent pas".
+description: "Temps réel Supabase : canaux, broadcast, presence, cross-compte. Dire : realtime, n'arrivent pas en direct."
 ---
 
 # /realtime — Temps réel PASSIO

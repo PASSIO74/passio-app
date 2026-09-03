@@ -1,6 +1,6 @@
 ---
 name: dashboard
-description: Lance et travaille sur le Centre de pilotage PASSIO (télémétrie temps réel, dashboard/ Node+SPA). À utiliser quand Benjamin veut superviser la beta en direct, bosser sur le dashboard, ou dit "pilotage", "télémétrie", "dashboard", "supervision".
+description: "Lance et fait évoluer le Centre de pilotage PASSIO (Node+SPA). Dire : pilotage, télémétrie, supervision de la beta."
 ---
 
 # /dashboard — Centre de pilotage PASSIO

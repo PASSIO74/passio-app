@@ -1129,7 +1129,18 @@ function openMainProfileMenu(ev) {
     // Retirer un onglet ne doit jamais emporter la seule commande d'une
     // fonction — ajouter, renommer, illustrer ou archiver une passion passe
     // désormais par ici.
-    { icon: "🗂️", label: "Mes passions", run: function() { if (typeof openPassionManager === "function") openPassionManager(); } },
+    // ⚠️ LE COMPTE D'ARCHIVES EST ÉCRIT ICI, sur la SEULE porte visible vers la
+    // gestion des passions. `#passionArchiveBox` rend la liste en clair, mais
+    // elle vit dans `#passionManager`, `hidden` par défaut : après un
+    // rechargement, rien à l'écran ne disait qu'on possède encore une passion
+    // rangée. C'est la moitié restante du défaut rapporté le 2026-09-02 — la
+    // liste existait, mais rien n'invitait à l'ouvrir.
+    { icon: "🗂️", label: "Mes passions" + (function () {
+        try {
+          var n = (typeof passionsArchivees === "function") ? passionsArchivees().length : 0;
+          return n ? " (" + n + " archivée" + (n > 1 ? "s" : "") + ")" : "";
+        } catch (e) { return ""; }
+      })(), run: function() { if (typeof openPassionManager === "function") openPassionManager(); } },
     { icon: "🎨", label: "Apparence & thème",   run: function() { if (typeof openConfigurator === "function") openConfigurator(); } }
   ]);
 }
@@ -1578,19 +1589,18 @@ function setEventPassionFilter(profileId) { return setProfilePassion(profileId);
 // ══════════════════════════════════════════════════════════════════════════
 // LE RAIL DE PASSIONS DU PROFIL (refonte multi-passion, §1)
 // ──────────────────────────────────────────────────────────────────────────
-// Les passions se présentent en haut du profil, en PASTILLES DE TEXTE
-// (`passionChipHTML`, app-02) depuis le 2026-09-02.
+// Les passions se présentent en haut du profil, dans le MÊME composant que le
+// Fil — `passionTileHTML` (app-02), donc mêmes classes, mêmes dimensions, mêmes
+// espacements, mêmes états.
 //
-// ⚠️ CE RAIL A PORTÉ LES BULLES DU FIL JUSQU'AU 2026-09-02, et ce n'est plus le
-// cas : « enlève les onglets ronds violets sous le pseudo des passions, c'est
-// trop gros trop visible ; tu mets juste les passions en question, fin élégant »
-// (Benjamin, après essai réel). Les vignettes de 46 px, leur pastille d'emoji et
-// leur libellé formaient un second bloc massif juste sous la carte d'identité.
-// Le FIL, lui, garde ses bulles à l'octet près : la demande du 2026-08-29
-// (« remets les profils du fil comme avant, en bulle ») tient toujours, elle ne
-// portait pas sur cet écran. Les deux surfaces ne partagent donc plus leur
-// rendu — mais elles partagent toujours leur GESTE (`_passionTileOnclick`) et
-// leur état, qui sont ce qui divergeait vraiment quand chacune avait sa copie.
+// ⚠️ ELLES SONT PASSÉES PAR DES PASTILLES DE TEXTE PENDANT UNE JOURNÉE, LE
+// 2026-09-02, ET C'ÉTAIT UNE ERREUR DE LECTURE — ne pas la refaire. Benjamin
+// avait dit « enlève les onglets ronds violets sous le pseudo des passions,
+// c'est trop gros trop visible ; tu mets juste les passions en question, fin
+// élégant » : c'était la LIGNE DE TITRES de la carte d'identité qu'il visait,
+// celle qui répétait les mêmes mots 5 px plus haut, pas les bulles. Il a
+// tranché le soir même : « sur le profil remets les bulles rondes comme avant,
+// pas de rangée de passions ovale. » La ligne de titres, elle, reste retirée.
 //
 // Deux différences assumées avec le Fil, et une seule est visuelle :
 //
@@ -1667,16 +1677,18 @@ function renderProfilePassionRail() {
   if (!rail) {
     rail = document.createElement("div");
     rail.id = "v9ProfilePassions";
-    // ⚠️ PLUS `profile-strip` : cette classe apporte le défilement horizontal,
-    // les colonnes égales (`flex: 1 1 0`) et la désaturation des bulles non
-    // cochées du Fil — trois comportements qui n'ont aucun sens pour une rangée
-    // de pastilles de texte, qui passe à la ligne.
-    rail.className = "v9-profile-strip";
+    rail.className = "profile-strip v9-profile-strip";
     rail.setAttribute("role", "group");
     rail.setAttribute("aria-label", "Filtrer ce profil par passion");
   }
+  // ⚠️ DÉPLACER UN NŒUD REMET SON `scrollLeft` À ZÉRO, tout comme réécrire son
+  // `innerHTML`. Et ce chemin-ci échappe à `ecrireRailCoulissant` : la sortie
+  // anticipée sur `data-v9-sig` (plus bas) rend le rail sans jamais réécrire son
+  // contenu, donc sans jamais repasser par lui. On repose la position ici même.
   if (rail.nextSibling !== ancre || rail.parentNode !== ancre.parentNode) {
+    var _xRail = rail.scrollLeft || 0;
     ancre.parentNode.insertBefore(rail, ancre);
+    if (_xRail > 0) { try { rail.scrollLeft = _xRail; } catch (e) {} }
   }
 
   var vivantes = passionsVivantes();
@@ -1691,7 +1703,7 @@ function renderProfilePassionRail() {
       + '<span class="link" onclick="openCreateProfile()">Ajouter une passion</span></div>';
     if (rail.getAttribute("data-v9-sig") !== "vide") {
       rail.setAttribute("data-v9-sig", "vide");
-      rail.innerHTML = vide;
+      ecrireRailCoulissant(rail, vide);
     }
     rail.classList.toggle("has-filter", false);
     return rail;
@@ -1710,37 +1722,58 @@ function renderProfilePassionRail() {
   // produisent le même état. En garder une aurait laissé deux commandes pour un
   // seul résultat — et la question « laquelle est active ? » quand on coche une
   // passion alors que « Toutes » l'est déjà.
-  var html = vivantes.map(function (pr) {
+  // ⚠️ LA PORTE D'AJOUT EST EN TÊTE DU RAIL, ET C'EST UNE CONSÉQUENCE DIRECTE
+  // DU RAIL COULISSANT (2026-09-02). Tant que les bulles se partageaient la
+  // largeur, la bulle « + » posée EN DERNIER restait visible quel qu'en soit le
+  // nombre. Depuis qu'elles ont une largeur fixe et que la rangée déborde, elle
+  // sortait du champ : mesuré à 320 px avec 3 passions — le plafond gratuit
+  // (`PASSIONS_OFFERTES`) — elle commence à x=326 alors que le rail s'arrête à
+  // 304, donc ENTIÈREMENT hors écran, pas même un liseré qui inviterait à
+  // faire défiler. Et c'est la seule porte VISIBLE : l'autre vit dans
+  // `#passionManager`, `hidden` par défaut, derrière le menu options.
+  //
+  // La tête plutôt qu'un `position: sticky` : le fond du rail est transparent
+  // jusqu'à `.app-shell`, qui peint un dégradé radial sur #f6f5fa. Une bulle
+  // collante devrait donc repeindre ce fond sous les bulles qui glissent
+  // dessous, et tout raccord de couleur se verrait. En tête, elle est visible
+  // par construction, sans une seule couleur à deviner.
+  //
+  // ⚠️ Un test d'existence ne voit PAS ce défaut : pour Playwright, un nœud
+  // poussé hors du scrollport d'un conteneur `overflow-x: auto` reste
+  // « visible » (sa boîte n'est pas vide), et `.click()` fait défiler tout seul.
+  // Seule une mesure de rectangles l'attrape — `③ nonies` s'en charge.
+  var portePlus = "";
+  if (typeof PassioFlatUI !== "undefined" && PassioFlatUI.actif()) {
+    portePlus = '<div class="profile-tile psel-tile-plus" role="button" tabindex="0"'
+      + ' data-passion-tile="__ajouter__" title="Ajouter une passion"'
+      + ' aria-label="Ajouter une passion" onclick="ouvrirRecherchePassionsCompte()">'
+      + '<div class="profile-tile-avatar" style="position:relative;">+</div>'
+      + '<div class="profile-tile-label">Ajouter</div>'
+      + "</div>";
+  }
+
+  var html = portePlus + vivantes.map(function (pr) {
     var et = _passionEtiquette(pr);
     var meta = {};
     try { meta = passionById(pr.passion) || {}; } catch (e) {}
     var on = !!selIds[pr.id];
-    // ⚠️ Ni `photoUrl` ni `dimmed` : la pastille n'a pas de vignette à illustrer,
-    // et l'estompage des non-cochées n'a plus lieu d'être — un contour vide se
-    // distingue déjà d'un contour rempli, alors que deux vignettes photo ne se
-    // distinguaient QUE par l'opacité.
-    return passionChipHTML({
+    return passionTileHTML({
       emoji: et.emoji,
       label: et.label,
+      photoUrl: pr.photoUrl || pr.photo || passionPhotoUrl(meta),
+      fallbackUrl: passionPhotoFallback(pr.passion),
       count: posts.filter(function (x) { return _postDeLaPassion(x, pr); }).length,
       selected: on,
+      dimmed: !on && nbSel > 0,
       action: "profilePassion", arg: String(pr.id),
       title: et.label,
       tileKey: pr.id,
     });
   }).join("");
 
-  // Lot flat_passions_v1 : la même porte qu'au Fil, au même endroit visuel.
-  if (typeof PassioFlatUI !== "undefined" && PassioFlatUI.actif()) {
-    html += '<div class="v9-passion-chip v9-chip-ajout" role="button" tabindex="0"'
-      + ' data-passion-tile="__ajouter__" title="Ajouter une passion"'
-      + ' aria-label="Ajouter une passion" onclick="ouvrirRecherchePassionsCompte()">'
-      + '<span class="v9-chip-emoji" aria-hidden="true">+</span>'
-      + '<span class="v9-chip-nom">Ajouter</span>'
-      + "</div>";
-  }
-
-  rail.innerHTML = html;
+  // Même raison qu'au Fil : le rail coulisse, sa position doit survivre
+  // à la reconstruction déclenchée par le choix d'une passion (`ecrireRailCoulissant`).
+  ecrireRailCoulissant(rail, html);
   return rail;
 }
 
@@ -1783,10 +1816,28 @@ function confirmArchivePassion(profileId) {
     toast("Tu dois garder au moins une passion active");
     return;
   }
+  // ⚠️ LA PORTE DU QUOTA, avant d'ouvrir la confirmation. Laisser l'utilisateur
+  // lire, comprendre et valider un archivage qu'on refusera ensuite au point
+  // d'écriture, c'est la moitié de la leçon de `meOpen` — garder la fonction qui
+  // ÉCRIT ne suffit pas, il faut garder celle qui OUVRE LA PORTE.
+  if (quotaChangementsAtteint()) { openPassionPaywall(); return; }
+  var _restants = changementsPassionRestants();
+
   // ⚠️ On n'exige plus de « choisir d'abord une autre passion active » : la
   // refonte multi-passion retire cette notion de l'interface (§1), donc exiger
   // un geste qui n'existe plus serait un cul-de-sac. `archiverPassion` bascule
   // lui-même sur une autre passion vivante.
+  //
+  // ⚠️ LE COÛT EST ANNONCÉ AVANT LE GESTE. Un compteur qu'on découvre une fois
+  // épuisé donne le sentiment d'avoir été piégé ; il est donc écrit dans la
+  // confirmation, à chaque fois. Illimité (démo sans compte, ou kill switch) →
+  // pas une ligne à l'écran : on ne montre pas un compteur qui ne compte rien.
+  var _coutHTML = (_restants === Infinity) ? ""
+    : '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;'
+      + 'padding:10px 12px;font-size:12.5px;color:var(--muted);line-height:1.5;margin-bottom:12px;" '
+      + 'data-passion-cout="1">Ce changement en consommera <b>1</b> sur tes '
+      + CHANGEMENTS_PASSION_OFFERTS + '. Il t\'en restera alors <b>' + Math.max(0, _restants - 1) + '</b>.</div>';
+
   openModal(
     '<div class="modal-handle"></div>'
     + '<div style="text-align:center;margin-bottom:16px;">'
@@ -1796,6 +1847,7 @@ function confirmArchivePassion(profileId) {
     + escapeHtml(et.emoji + " " + et.label) + ' quitte tes passions actives.<br/>'
     + '<b>Rien n\'est supprimé</b> : tes publications, activités, bobines et médias restent visibles dans « Toutes », et tu peux la restaurer quand tu veux.'
     + "</div></div>"
+    + _coutHTML
     + '<div style="display:flex;gap:8px;">'
     + '<button class="btn ghost" onclick="closeModal()" style="flex:1;">Annuler</button>'
     + '<button class="btn primary" data-v8-archiver="' + escapeHtml(String(profileId)) + '" onclick="archiverPassion(\'' + escapeJsArg(String(profileId)) + '\')" style="flex:1;">Archiver</button>'
@@ -1817,11 +1869,25 @@ function _retirerPassionDesFiltres(profileId) {
   } catch (e) {}
 }
 
-function archiverPassion(profileId) {
+// `silencieux` : l'échange (`echangerPassion`) archive puis restaure d'un seul
+// geste. Il ne veut ni le toast intermédiaire, ni le re-rendu intermédiaire —
+// l'écran afficherait une seconde l'état à deux passions, que l'utilisateur
+// n'a jamais demandé. Rend `true` si l'archivage a bien eu lieu.
+function archiverPassion(profileId, silencieux) {
   var pr = (state.user.profiles || []).find(function (p) { return p.id === profileId; });
-  if (!pr) { closeModal(); return; }
+  if (!pr) { closeModal(); return false; }
+  if (pr.archived) { closeModal(); return false; }   // déjà rangée : rien à consommer
   var vivantes = (state.user.profiles || []).filter(function (p) { return !p.archived; });
-  if (vivantes.length <= 1) { toast("Tu dois garder au moins une passion active"); closeModal(); return; }
+  if (vivantes.length <= 1) { toast("Tu dois garder au moins une passion active"); closeModal(); return false; }
+  // ⚠️ LE POINT D'ÉCRITURE, répété après la porte. Tout appelant futur passe
+  // ici : `echangerPassion`, un test, un deep link, une main future. Le journal
+  // refuse d'inscrire un quatrième archivage, et sans inscription on n'écrit
+  // RIEN — le compteur ne peut donc pas diverger de l'état.
+  if (!_inscrireChangementPassion(pr, "archive")) {
+    closeModal();
+    openPassionPaywall();
+    return false;
+  }
   // ⚠️ La passion de publication ne doit JAMAIS pointer une passion archivée :
   // `currentProfile()` rend `null` dans ce cas et tout le modèle suppose cet
   // état impossible. On rebascule ici, au POINT D'ÉCRITURE — pas à l'affichage,
@@ -1855,26 +1921,40 @@ function archiverPassion(profileId) {
   // Passions seules : ni pseudo, ni bio, ni avatar, ni confidentialité.
   if (typeof supaSavePassionState === "function") { try { supaSavePassionState(); } catch (e) {} }
   if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch (e) {} }
+  if (silencieux) return true;
   closeModal();
   renderProfilesScreen();
   if (typeof renderProfileStrip === "function") { try { renderProfileStrip(); } catch (e) {} }
   var et = _passionEtiquette(pr);
-  toast("🗄️ " + et.label + " archivée — rien n'a été supprimé");
+  var _reste = changementsPassionRestants();
+  toast("🗄️ " + et.label + " archivée — rien n'a été supprimé"
+    + (_reste === Infinity ? "" : " · " + _reste + " changement" + (_reste > 1 ? "s" : "") + " restant" + (_reste > 1 ? "s" : "")));
+  return true;
 }
 
-function restaurerPassion(profileId) {
+// `silencieux` : voir `archiverPassion`. Rend `true` si la passion est revenue.
+function restaurerPassion(profileId, silencieux) {
   var pr = (state.user.profiles || []).find(function (p) { return p.id === profileId; });
-  if (!pr) return;
+  if (!pr) return false;
   // ⚠️ LA LISTE DES ARCHIVÉES EST UNE PORTE D'ACQUISITION, ELLE AUSSI. Sans ce
   // garde, un compte au plafond en archivait une, en restaurait deux, et se
   // retrouvait à quatre vivantes : le plafond n'aurait tenu que sur le chemin
   // qu'on avait pensé à garder.
+  //
+  // ⚠️ MAIS UNE PORTE FERMÉE DOIT DIRE PAR OÙ PASSER. Avant le 2026-09-02 ce
+  // chemin ouvrait une fenêtre payante muette : la passion archivée refusait de
+  // revenir, la liste des archives se faisait remplacer par la fenêtre, et il
+  // n'y avait plus rien à cliquer. C'est le défaut rapporté après essai réel
+  // — « je n'ai plus jamais pu revenir à la passion que j'avais archivée ».
+  // On passe donc l'id de la CIBLE : la fenêtre propose l'échange, qui est la
+  // sortie réelle.
   if (pr.archived && plafondPassionsAtteint()) {
-    try { openPassionPaywall(); } catch (e) {}
-    return;
+    try { openPassionPaywall({ restaurer: pr.id }); } catch (e) {}
+    return false;
   }
   pr.archived = false;
   delete pr.archivedAt;
+  try { _inscrireChangementPassion(pr, "restore"); } catch (e) {}
   // Symétrique d'`archiverPassion`, qui l'avait retirée du Fil : sans ça, un
   // aller-retour archiver→restaurer perdait le réglage, en silence.
   ajouterPassionAuFil(pr.passion);
@@ -1882,33 +1962,165 @@ function restaurerPassion(profileId) {
   // Passions seules : ni pseudo, ni bio, ni avatar, ni confidentialité.
   if (typeof supaSavePassionState === "function") { try { supaSavePassionState(); } catch (e) {} }
   if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch (e) {} }
+  if (silencieux) return true;
   closeModal();
   renderProfilesScreen();
   if (typeof renderProfileStrip === "function") { try { renderProfileStrip(); } catch (e) {} }
   toast("✅ " + _passionEtiquette(pr).label + " est de retour dans tes passions");
   // Restaurer deux passions ne doit pas obliger à rouvrir la liste à la main.
   if (passionsArchivees().length) setTimeout(openArchivedPassions, 350);
+  return true;
+}
+
+// ── L'ÉCHANGE : ranger l'une pour reprendre l'autre, d'un seul geste ───────
+// C'est la SORTIE que le compte au plafond n'avait pas. Elle ne contourne rien :
+// elle enchaîne les deux gestes existants, dans l'ordre qui garde l'invariant
+// (on libère AVANT de reprendre — l'inverse buterait sur le plafond), et elle
+// consomme exactement UN changement, celui de l'archivage.
+//
+// ⚠️ AUCUNE COPIE DE LOGIQUE. Elle appelle `archiverPassion` et
+// `restaurerPassion`, les deux seuls points d'écriture. Deux façons de ranger
+// une passion auraient divergé au premier correctif — c'est très exactement ce
+// qui est arrivé à `sharePostInFeed` / `shareReelInFeed` dans ce dépôt.
+//
+// ⚠️ ET SI LA RESTAURATION ÉCHOUE, ON REMET LA RANGÉE EN PLACE. Sans cette
+// reprise, un échec laisserait le compte avec DEUX passions et un changement
+// consommé pour rien : il aurait payé un échange qui n'a pas eu lieu.
+function echangerPassion(idArchivee, idVivante) {
+  var cible = (state.user.profiles || []).find(function (p) { return p.id === idArchivee && p.archived; });
+  var sortante = (state.user.profiles || []).find(function (p) { return p.id === idVivante && !p.archived; });
+  if (!cible || !sortante) { toast("Cette passion n'est plus disponible"); return false; }
+  if (cible.id === sortante.id) return false;
+
+  if (!archiverPassion(sortante.id, true)) return false;   // quota refusé, ou dernière vivante
+  if (!restaurerPassion(cible.id, true)) {
+    // Reprise : la place libérée n'a servi à rien, on la rend.
+    try {
+      sortante.archived = false;
+      delete sortante.archivedAt;
+      var j = journalPassions();
+      // On retire l'inscription qu'on vient de poser : le changement n'a pas eu lieu.
+      for (var i = j.entries.length - 1; i >= 0; i--) {
+        if (j.entries[i] && j.entries[i].type === "archive" && j.entries[i].passion === sortante.passion) {
+          // (l'entrée la plus récente pour cette passion : c'est la nôtre)
+          j.entries.splice(i, 1);
+          break;
+        }
+      }
+      if (typeof ajouterPassionAuFil === "function") ajouterPassionAuFil(sortante.passion);
+      saveState();
+    } catch (e) {
+      if (typeof diagLog === "function") diagLog("echange_passion_reprise " + (e && e.message));
+      else if (window.console && console.error) console.error("[passions] reprise d'échange :", e);
+    }
+    toast("L'échange n'a pas abouti — rien n'a changé");
+    return false;
+  }
+
+  closeModal();
+  renderProfilesScreen();
+  if (typeof renderProfileStrip === "function") { try { renderProfileStrip(); } catch (e) {} }
+  if (typeof renderFeed === "function") { try { renderFeed(); } catch (e) {} }
+  var _reste = changementsPassionRestants();
+  toast("🔄 " + _passionEtiquette(sortante).label + " rangée · " + _passionEtiquette(cible).label + " de retour"
+    + (_reste === Infinity ? "" : " · " + _reste + " changement" + (_reste > 1 ? "s" : "") + " restant" + (_reste > 1 ? "s" : "")));
+  return true;
 }
 
 function openArchivedPassions() {
-  var archivees = passionsArchivees();
+  var archivees = passionsArchivees().slice().sort(function (a, b) {
+    return (Number(b.archivedAt) || 0) - (Number(a.archivedAt) || 0);
+  });
   var lignes = archivees.length
-    ? archivees.map(function (pr) {
-        var et = _passionEtiquette(pr);
-        return '<div class="v8-switch-row" data-v8-archived="' + escapeHtml(String(pr.id)) + '">'
-          + '<span class="v8-switch-emoji" aria-hidden="true">' + escapeHtml(et.emoji) + "</span>"
-          + '<span class="v8-switch-name">' + escapeHtml(et.label) + "</span>"
-          + '<button type="button" class="v8-switch-go" data-v8-restaurer="' + escapeHtml(String(pr.id)) + '"'
-          + ' onclick="restaurerPassion(\'' + escapeJsArg(String(pr.id)) + '\')">Restaurer</button>'
-          + "</div>";
-      }).join("")
+    ? _lignesArchiveesHTML(archivees)
     : '<div style="font-size:12px;color:var(--muted);padding:10px;">Aucune passion archivée.</div>';
+  var restants = changementsPassionRestants();
   openModal(
     '<div class="modal-handle"></div>'
     + '<div class="modal-title">Passions archivées</div>'
-    + '<p class="section-subtitle" style="margin-top:-6px;">Leurs publications et activités n\'ont pas bougé : elles restent visibles dans « Toutes ».</p>'
+    + '<p class="section-subtitle" style="margin-top:-6px;">Elles sont enregistrées : leurs publications et activités n\'ont pas bougé, elles restent visibles dans « Toutes ».</p>'
     + '<div class="v8-switch-list">' + lignes + "</div>"
+    + (restants === Infinity ? ""
+       : '<p class="section-subtitle" data-passion-compteur="1" style="margin-top:12px;">Il te reste <b>'
+         + restants + "</b> changement" + (restants > 1 ? "s" : "") + " de passion sur "
+         + CHANGEMENTS_PASSION_OFFERTS + ".</p>")
   );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// LA LISTE DES PASSIONS ARCHIVÉES  (2026-09-02)
+// ──────────────────────────────────────────────────────────────────────────
+// « Il faut les enregistrer et en faire une liste. » Avant, la seule trace
+// d'une passion rangée était un LIEN, dans `#profilesQuotaSub`, à l'intérieur
+// de `#passionManager` — un panneau `hidden` qu'on n'ouvre que depuis le menu
+// ⋯ du profil. Trois portes fermées devant une passion qu'on venait de ranger :
+// du point de vue de l'utilisateur, elle avait disparu.
+//
+// Elle est maintenant écrite EN CLAIR, sous les cartes, avec sa date et son
+// issue. La modale `openArchivedPassions` reste — elle sert au retour depuis la
+// fenêtre payante — mais elle n'est plus le seul chemin.
+//
+// ⚠️ AUCUN NOUVEAU MAGASIN. Les archives sont les entrées `archived:true` de
+// `state.user.profiles`, comme depuis le lot UI-8 : une seconde liste tenue en
+// parallèle aurait divergé de la première au premier correctif, et c'est
+// justement ce que la colonne jsonb `profiles.passions` a déjà coûté.
+// ⚠️ FRÈRE de `#profileList`, jamais son enfant : `renderProfilesScreen`
+// réécrit `#profileList.innerHTML` en entier à chaque rendu.
+// ══════════════════════════════════════════════════════════════════════════
+function _dateCourtePassion(ts) {
+  var n = Number(ts);
+  if (!n || !isFinite(n)) return "";
+  try {
+    return new Date(n).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" });
+  } catch (e) { return ""; }
+}
+
+function renderPassionArchiveBox() {
+  var box = document.getElementById("passionArchiveBox");
+  if (!box) return;
+  if (!passionsUnifieesActives()) { box.hidden = true; box.innerHTML = ""; return; }
+
+  var archivees = passionsArchivees().slice().sort(function (a, b) {
+    return (Number(b.archivedAt) || 0) - (Number(a.archivedAt) || 0);
+  });
+  if (!archivees.length) { box.hidden = true; box.innerHTML = ""; return; }
+
+  box.innerHTML = '<div class="section-title" style="margin-top:16px;">🗄️ Passions archivées</div>'
+    + '<p class="section-subtitle">Elles sont enregistrées, rien n\'a été supprimé : publications, activités, bobines et médias restent visibles dans « Toutes ». Tu peux en reprendre une quand tu veux.</p>'
+    + '<div class="v8-switch-list">' + _lignesArchiveesHTML(archivees) + "</div>";
+  box.hidden = false;
+}
+
+// ⚠️ UN SEUL CONSTRUCTEUR DE LIGNE, partagé par le panneau et par la modale.
+// Deux rendus de la même liste auraient divergé au premier ajustement — et
+// c'est la liste qui dit à l'utilisateur ce qu'il possède encore.
+function _lignesArchiveesHTML(archivees) {
+  var plein = plafondPassionsAtteint();
+  // ⚠️ TROIS ÉTATS, TROIS LIBELLÉS. « Échanger » au plafond ALORS QUE LE QUOTA
+  // EST ÉPUISÉ était un mensonge doublé d'une boucle : le bouton ouvrait une
+  // fenêtre payante SANS liste d'échange (il n'y a plus de changement à
+  // dépenser), dont l'unique action ramenait au panneau — où le même bouton
+  // attendait. Un mur est acceptable ; un mur qui se fait passer pour une porte
+  // et vous renvoie devant lui-même ne l'est pas.
+  var bloque = plein && quotaChangementsAtteint();
+  var libelle = bloque ? "Indisponible" : (plein ? "Échanger" : "Restaurer");
+  return archivees.map(function (pr) {
+    var et = _passionEtiquette(pr);
+    var quand = _dateCourtePassion(pr.archivedAt);
+    // ⚠️ Le libellé du bouton dit ce qui VA se passer. « Restaurer » sur un
+    // compte au plafond ouvrait une fenêtre payante : le bouton mentait sur son
+    // propre effet. Au plafond, il annonce l'échange, qui est ce qu'il fera.
+    return '<div class="v8-switch-row" data-v8-archived="' + escapeHtml(String(pr.id)) + '">'
+      + '<span class="v8-switch-emoji" aria-hidden="true">' + escapeHtml(et.emoji) + "</span>"
+      + '<span class="v8-switch-name">' + escapeHtml(et.label)
+      + (quand ? '<span style="display:block;font-weight:400;font-size:11px;color:var(--muted);">Archivée le '
+                 + escapeHtml(quand) + "</span>" : "")
+      + "</span>"
+      + '<button type="button" class="v8-switch-go" data-v8-restaurer="' + escapeHtml(String(pr.id)) + '"'
+      + ' onclick="restaurerPassion(\'' + escapeJsArg(String(pr.id)) + '\')">'
+      + libelle + "</button>"
+      + "</div>";
+  }).join("");
 }
 
 function renderProfilesScreen() {
@@ -1943,10 +2155,22 @@ function renderProfilesScreen() {
     var _mesEvs = _myProfileEvents(9999);
     var _courant = state.user.currentProfileId;
 
+    // ── Le compteur, dit AVANT le geste et non découvert après ──────────────
     if (sub) {
       var _arch = passionsArchivees();
+      var _restants = changementsPassionRestants();
+      var _bouts = [];
+      if (_restants !== Infinity) {
+        _bouts.push('<span data-passion-compteur="1">' + nbPassionsVivantes() + "/" + PASSIONS_OFFERTES
+          + " passion" + (nbPassionsVivantes() > 1 ? "s" : "") + " · <b>" + _restants + "</b> changement"
+          + (_restants > 1 ? "s" : "") + " restant" + (_restants > 1 ? "s" : "") + "</span>");
+      }
       if (_arch.length) {
-        sub.innerHTML = '<span class="link" data-v8-archivees="1" onclick="openArchivedPassions()">🗄️ Passions archivées (' + _arch.length + ')</span>';
+        _bouts.push('<span class="link" data-v8-archivees="1" onclick="openArchivedPassions()">🗄️ Passions archivées ('
+          + _arch.length + ")</span>");
+      }
+      if (_bouts.length) {
+        sub.innerHTML = _bouts.join(" — ");
         sub.style.display = "";
       } else {
         sub.innerHTML = "";
@@ -2045,6 +2269,11 @@ function renderProfilesScreen() {
       </div>`;
     }).join("");
   }
+
+  // La liste des archives, HORS des deux branches : sous kill switch elle doit
+  // être RETIRÉE, pas laissée avec le contenu du rendu précédent. Une cible
+  // supprimée emporte tout ce qui la vise.
+  try { renderPassionArchiveBox(); } catch (e) { _v8Echec("archive_box", e); }
 
   // Contenu en dessous : filtré par l'onglet actif ET la multi-sélection
   renderProfileContent();
@@ -2459,7 +2688,10 @@ function renderProfileStrip() {
 
   // Perf : appelé à chaque renderFeed — pas de rebuild si rien n'a changé
   // (les tuiles portent des photos Unsplash : re-set innerHTML = re-décodage/flash).
-  if (box._lastHtml !== tilesHTML) { box.innerHTML = tilesHTML; box._lastHtml = tilesHTML; }
+  // ⚠️ `ecrireRailCoulissant` (app-02), pas `innerHTML` : le rail défile
+  // horizontalement, et une réécriture brute renverrait la rangée tout à gauche
+  // — donc hors de vue la bulle qu'on vient de cocher, si elle était à droite.
+  if (box._lastHtml !== tilesHTML) { ecrireRailCoulissant(box, tilesHTML); box._lastHtml = tilesHTML; }
 }
 
 // ⚠️ FONCTION GLOBALE, et c'est nécessaire : `audit:handlers` exige qu'un
@@ -2508,9 +2740,173 @@ function ouvrirRecherchePassionsCompte() {
 // ══════════════════════════════════════════════════════════════════════════
 const PASSIONS_OFFERTES = 3;
 
+// ══════════════════════════════════════════════════════════════════════════
+// LE QUOTA DE CHANGEMENTS  (2026-09-02, après essai réel de Benjamin)
+// ──────────────────────────────────────────────────────────────────────────
+// « Sinon les utilisateurs archivent autant de passions qu'ils veulent et
+//   changent quand ils veulent, et la fonction payante n'est plus utile. »
+//
+// Le plafond de TROIS PASSIONS VIVANTES, seul, ne borne rien : archiver libère
+// une place, donc un compte pouvait posséder l'intégralité du référentiel en
+// faisant tourner ses trois emplacements, gratuitement et indéfiniment. Ce que
+// l'offre payante vend, ce n'est pas « trois passions » — c'est la LIBERTÉ D'EN
+// CHANGER. C'est donc le CHANGEMENT qui est compté.
+//
+// ① LE GESTE COMPTÉ EST L'ARCHIVAGE D'UNE PASSION VIVANTE, et lui seul.
+//    C'est le seul geste qui libère une place : sans lui on ne dépasse jamais
+//    trois passions, avec lui on en obtient une de plus. Compter aussi la
+//    restauration ferait payer DEUX FOIS le même échange ; compter les trois
+//    premiers ajouts ferait payer la dotation initiale.
+//
+// ② REPRENDRE UNE PASSION QU'ON POSSÈDE DÉJÀ RESTE GRATUIT sous le plafond.
+//    C'est la porte dérobée ④ du lot UI-8, refermée le 2026-09-01 : réclamer de
+//    l'argent pour reprendre ce qu'on avait déjà rangé. Elle le reste — le
+//    compteur ne s'incrémente pas à la restauration.
+//
+// ③ LA DÉMO SANS COMPTE EST ILLIMITÉE. Exigence explicite : un visiteur qui
+//    essaie l'application ne rencontre AUCUN plafond et AUCUN compteur. Le
+//    quota — le plafond de trois comme le compteur de changements — ne
+//    s'applique qu'à un COMPTE. `comptePassioReel()` en décide, et une seule
+//    fois : deux définitions divergentes du mot « compte » seraient exactement
+//    l'écart qui se voit chez l'utilisateur avant de se voir dans le code.
+//
+// ④ LE JOURNAL EST LA LISTE, et la liste est le journal. Benjamin demande
+//    qu'on « enregistre les passions archivées et qu'on en fasse une liste » :
+//    les passions archivées restent dans `state.user.profiles` (source unique,
+//    jamais dupliquée dans un second magasin qui divergerait), et chaque
+//    mouvement est inscrit dans `state.user.passionChanges.entries`. Le
+//    compteur se LIT donc dans le journal — il n'est pas un nombre à part qui
+//    pourrait mentir sur son propre historique.
+// ══════════════════════════════════════════════════════════════════════════
+const CHANGEMENTS_PASSION_OFFERTS = 3;
+
+// ⚠️ `MY_UID` N'EST PAS UNE PREUVE DE COMPTE (leçon du lot « première visite ») :
+// `getMyUserId()` fabrique un identifiant local `u_xxxxxxxx` pour TOUT LE MONDE
+// au chargement du script. Seul un uuid Supabase prouve un compte.
+var _RE_UUID_PASSION = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Un compte existe-t-il sur cet appareil ? Deux preuves, chacune suffisante —
+// exactement celles de `PassioFirstRun.compteExistant()`, dont c'est le miroir :
+// l'onboarding local mené à son terme, ou un uuid Supabase connu. On NE délègue
+// PAS à `PassioFirstRun` : ce module a sa propre coupure (`first_run_experience_v1`),
+// et un quota qui s'éteindrait avec le drapeau d'un AUTRE lot serait une porte
+// dérobée par kill switch.
+//
+// ⚠️ `state` vaut `null` — pas `undefined` — avant `loadState()`.
+function comptePassioReel() {
+  try {
+    var s = (typeof state !== "undefined") ? state : null;
+    if (s && s.onboarded) return true;
+    var v = null;
+    try { if (typeof MY_UID !== "undefined" && MY_UID) v = MY_UID; } catch (e) {}
+    if (!v) { try { v = localStorage.getItem("passio_uid"); } catch (e) {} }
+    return !!(typeof v === "string" && _RE_UUID_PASSION.test(v));
+  } catch (e) { return false; }
+}
+
+// ⚠️ LE PLAFOND EST UNIVERSEL, LE QUOTA DE CHANGEMENTS NE L'EST PAS.
+// Ces deux règles ont été confondues une première fois, et le trou était réel :
+// mesuré le 2026-09-02, un visiteur atteignait `#screen-profiles`, y trouvait
+// « Ajouter une passion » (la porte d'ajout n'est PAS gardée par
+// `requireAuthentication` — le lot « première visite » la laisse ouverte
+// délibérément), en ajoutait HUIT, puis créait son compte : `state.onboarded`
+// basculait et il gardait ses huit passions vivantes, définitivement au-dessus
+// du plafond. Le miroir exact de la dette de démo — un CRÉDIT de démo — et il
+// défaisait l'offre payante aussi sûrement que la rotation illimitée.
+//
+// La demande est « dans la démo sans compte, illimité ; sur un compte créé,
+// limiter à trois CHANGEMENTS » : c'est le CHANGEMENT qui est exempté en démo,
+// pas le nombre de passions. Le plafond de trois vivantes reste donc ce qu'il
+// était avant ce lot — universel — et le visiteur qui s'inscrit arrive dans son
+// dû, sans qu'on ait rien à lui reprendre au passage.
 function plafondPassionsActif() {
   try { return typeof PassioFlatUI !== "undefined" && PassioFlatUI.actif(); }
   catch (e) { return false; }
+}
+
+// Le quota de CHANGEMENTS, lui, ne s'applique qu'à un compte : essayer
+// l'application, c'est ranger et reprendre autant qu'on veut.
+function quotaChangementsActif() {
+  return plafondPassionsActif() && comptePassioReel();
+}
+
+// ── Le journal des changements ────────────────────────────────────────────
+// Normalisé À LA LECTURE et jamais supposé bien formé : il traverse le blob
+// `user_state`, donc un état antérieur au lot, un état tronqué ou un tableau
+// là où on attend un objet sont des entrées NORMALES, pas des anomalies.
+// Écrit dans `state.user` → porté par `_syncableState`, donc synchronisé et
+// restauré sur un appareil neuf sans aucune migration Supabase.
+function journalPassions() {
+  try {
+    if (!state || !state.user) return { entries: [] };
+    var j = state.user.passionChanges;
+    if (!j || typeof j !== "object" || Array.isArray(j)) j = {};
+    if (!Array.isArray(j.entries)) j.entries = [];
+    state.user.passionChanges = j;
+    return j;
+  } catch (e) { return { entries: [] }; }
+}
+
+// ⚠️ ON COMPTE LES ENTRÉES « archive », PAS UN COMPTEUR SÉPARÉ. Un nombre tenu
+// à côté de son historique finit toujours par le contredire — et c'est
+// l'historique qu'on montre à l'utilisateur.
+function changementsPassionUtilises() {
+  try {
+    return journalPassions().entries.filter(_estChangementFacturable).length;
+  } catch (e) { return 0; }
+}
+
+// ⚠️ UN MOUVEMENT FAIT EN DÉMO NE SE FACTURE JAMAIS, MÊME APRÈS INSCRIPTION.
+// Sans ce marqueur, un visiteur qui a essayé l'application — c'est-à-dire
+// exactement ce que la démo illimitée l'invite à faire — arrivait sur son
+// compte tout neuf avec ses trois changements DÉJÀ consommés : la démo illimitée
+// facturait, avec un jour de retard. `state.onboarded` bascule à la création du
+// compte, donc la seule protection possible se pose à l'ÉCRITURE, au moment où
+// l'on sait encore que c'était une démo.
+//
+// Une entrée SANS marqueur vient d'un client antérieur à ce lot : elle compte
+// (c'est le cas d'un compte réel, le seul qui écrivait alors).
+function _estChangementFacturable(e) {
+  return !!(e && e.type === "archive" && e.compte !== false);
+}
+
+// `Infinity` quand le quota ne s'applique pas : la valeur est comparée telle
+// quelle, et `Infinity` ne barre jamais rien.
+function changementsPassionRestants() {
+  if (!quotaChangementsActif()) return Infinity;
+  return Math.max(0, CHANGEMENTS_PASSION_OFFERTS - changementsPassionUtilises());
+}
+
+function quotaChangementsAtteint() { return changementsPassionRestants() <= 0; }
+
+// Inscrit un mouvement. Rend `false` si le quota refuse le geste — l'appelant
+// NE DOIT alors rien écrire. C'est le point de convergence : les portes le
+// répètent pour ne pas laisser l'utilisateur aller au bout d'un geste qu'on
+// refusera (leçon de `meOpen`, prise dans les deux sens).
+function _inscrireChangementPassion(pr, type) {
+  try {
+    var j = journalPassions();
+    if (type === "archive" && quotaChangementsAtteint()) return false;
+    var et = {};
+    try { et = _passionEtiquette(pr); } catch (e) { et = { emoji: "✨", label: "Passion" }; }
+    j.entries.push({
+      type: type,
+      passion: (pr && pr.passion) || null,
+      label: et.label,
+      emoji: et.emoji,
+      at: Date.now(),
+      // Le mouvement compte-t-il dans le quota ? Décidé ICI, à l'écriture, et
+      // figé : la démo est illimitée pour de bon, pas jusqu'à l'inscription.
+      compte: quotaChangementsActif(),
+    });
+    // Journal BORNÉ : il voyage dans le blob `user_state`, envoyé à chaque
+    // sauvegarde. Les cent derniers mouvements suffisent largement à afficher
+    // une liste, et le compteur d'archives n'est jamais tronqué en dessous de
+    // ce qu'il a déjà atteint — on ne garde que les cent DERNIERS, et le quota
+    // est de trois.
+    if (j.entries.length > 100) j.entries = j.entries.slice(-100);
+    return true;
+  } catch (e) { return type !== "archive"; }
 }
 
 function nbPassionsVivantes() {
@@ -2530,35 +2926,99 @@ function passionsRestantesOffertes() {
 
 function plafondPassionsAtteint() { return passionsRestantesOffertes() <= 0; }
 
+// ⚠️ « GÉRER MES PASSIONS » DISPARAÎT QUAND LE QUOTA EST ÉPUISÉ. C'est la seule
+// action réelle TANT QU'IL RESTE UN CHANGEMENT — réorganiser ses trois passions.
+// Une fois les trois consommés, elle ne mène plus nulle part : elle ramène au
+// panneau où le bouton refusé attend, et l'utilisateur tourne en rond entre deux
+// écrans qui se renvoient l'un à l'autre. Mur légible plutôt que boucle :
+// « J'ai compris » devient alors l'action principale.
+//
 // ⚠️ AUCUN BOUTON « PAYER ». Le paiement n'est pas ouvert : un bouton qui ne
 // mène nulle part est un clic mort, et ce dépôt en a déjà payé le prix (l'aide
 // « bobines » d'UI-4A4, ancrée sur une cible inexistante). La fenêtre dit ce
 // qui est vrai aujourd'hui — c'est à venir, rien n'est débité — et offre la
 // seule action qui existe réellement : réorganiser ses trois passions.
-function openPassionPaywall() {
+// ⚠️ DEUX MOTIFS, UNE SEULE FENÊTRE. Le compte peut buter sur le plafond
+// (« trois passions à la fois ») OU sur le quota de changements (« tu as déjà
+// échangé trois fois »). Deux fenêtres auraient divergé au premier ajustement ;
+// une seule fenêtre muette sur le motif laisserait l'utilisateur devant une
+// porte fermée sans savoir laquelle. Le motif change le PARAGRAPHE et l'ISSUE,
+// jamais le titre — c'est la même offre.
+//
+// `opts.restaurer` = l'id d'une passion ARCHIVÉE que l'utilisateur essaie de
+// reprendre. La fenêtre propose alors l'ÉCHANGE, seule sortie réelle : sans
+// elle, le compte au plafond voyait sa passion archivée refuser de revenir et
+// n'avait rien à cliquer — le défaut rapporté après essai réel le 2026-09-02
+// (« j'ai archivé une passion, je suis passé à une autre, et je n'ai plus
+// jamais pu revenir à la première »).
+function openPassionPaywall(opts) {
+  opts = opts || {};
   const archivees = (typeof passionsArchivees === "function") ? passionsArchivees().length : 0;
+  const restants = (typeof changementsPassionRestants === "function") ? changementsPassionRestants() : Infinity;
+  const quotaEpuise = restants <= 0;
+
+  // La cible à reprendre, si le geste refusé était une restauration.
+  let cible = null;
+  if (opts.restaurer) {
+    try { cible = (state.user.profiles || []).find(function (p) { return p.id === opts.restaurer && p.archived; }) || null; }
+    catch (e) { cible = null; }
+  }
+
+  // L'échange n'a de sens que si le quota le permet ENCORE : proposer de ranger
+  // une passion à un compte qui n'a plus de changement serait lui ouvrir une
+  // porte qui se refermerait sur lui au clic suivant.
+  let echange = "";
+  if (cible && !quotaEpuise) {
+    const etC = _passionEtiquette(cible);
+    const vivantes = (state.user.profiles || []).filter(function (p) { return !p.archived; });
+    echange = '<div style="font-weight:800;font-size:13px;color:var(--text);margin:2px 0 8px;">'
+      + "Ou échange : range une passion pour reprendre " + escapeHtml(etC.emoji + " " + etC.label)
+      + "</div>"
+      + '<div class="v8-switch-list" style="margin-bottom:14px;">'
+      + vivantes.map(function (p) {
+          const et = _passionEtiquette(p);
+          return '<div class="v8-switch-row" data-passion-echange="' + escapeHtml(String(p.id)) + '">'
+            + '<span class="v8-switch-emoji" aria-hidden="true">' + escapeHtml(et.emoji) + "</span>"
+            + '<span class="v8-switch-name">' + escapeHtml(et.label) + "</span>"
+            + '<button type="button" class="v8-switch-go" onclick="echangerPassion(\''
+            + escapeJsArg(String(cible.id)) + "', '" + escapeJsArg(String(p.id)) + '\')">Ranger</button>'
+            + "</div>";
+        }).join("")
+      + "</div>";
+  }
+
+  // ⚠️ AUCUN TARIF, AUCUN BOUTON « PAYER » : ordre explicite de Benjamin, et
+  // verrou de `passions-plates.spec.js` (㉒). Un bouton qui ne mène nulle part
+  // est un clic mort — ce dépôt en a déjà payé le prix.
+  const corps = quotaEpuise
+    ? `Tu as utilisé tes <strong>${CHANGEMENTS_PASSION_OFFERTS} changements de passion</strong>.
+       En changer davantage fera partie d'une formule <strong>payante</strong>.`
+    : `Tu suis déjà ${PASSIONS_OFFERTES} passions. Au-delà, les passions
+       supplémentaires feront partie d'une formule <strong>payante</strong>.`;
+
+  const suite = quotaEpuise
+    ? `Tes passions actuelles ne bougent pas : tu continues à publier, commenter et
+       participer dans les ${PASSIONS_OFFERTES} que tu as.${archivees ? ` Tes ${archivees} passion${archivees > 1 ? "s" : ""} archivée${archivees > 1 ? "s" : ""} reste${archivees > 1 ? "nt" : ""} enregistrée${archivees > 1 ? "s" : ""} — rien n'est supprimé.` : ""}`
+    : `En attendant, il te reste <strong>${restants === Infinity ? "des" : restants} changement${restants > 1 ? "s" : ""}</strong> :
+       archives-en une pour en activer une autre.${archivees ? ` Tu en as ${archivees} en archive.` : ""}`;
+
   openModal(`
     <div class="modal-handle"></div>
     <div style="text-align:center;margin-bottom:16px;">
       <div style="font-size:30px;margin-bottom:8px;">🔒</div>
       <div style="font-weight:800;font-size:18px;color:var(--text);margin-bottom:6px;">Trois passions offertes</div>
-      <div style="font-size:13px;color:var(--muted);line-height:1.6;">
-        Tu suis déjà ${PASSIONS_OFFERTES} passions. Au-delà, les passions
-        supplémentaires feront partie d'une formule <strong>payante</strong>.
-      </div>
+      <div style="font-size:13px;color:var(--muted);line-height:1.6;">${corps}</div>
     </div>
     <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:12px 14px;font-size:12.5px;color:var(--muted);line-height:1.6;margin-bottom:14px;">
       Cette formule <strong>n'est pas encore ouverte</strong> : aucun paiement n'est
       possible aujourd'hui et rien ne t'est débité. Le tarif sera annoncé au lancement.
     </div>
-    <div style="font-size:12.5px;color:var(--muted);line-height:1.6;margin-bottom:14px;">
-      En attendant, tu peux <strong>changer de passion quand tu veux</strong> :
-      archives-en une pour en activer une autre.${archivees ? ` Tu en as ${archivees} en archive.` : ""}
-    </div>
-    <button type="button" class="btn primary block" data-tel="passion_paywall_gerer"
-      onclick="ouvrirGestionPassionsDepuisPaywall()">Gérer mes passions</button>
-    <button type="button" class="btn block" style="margin-top:8px;" data-tel="passion_paywall_compris"
-      onclick="closeModal()">J'ai compris</button>
+    <div style="font-size:12.5px;color:var(--muted);line-height:1.6;margin-bottom:14px;">${suite}</div>
+    ${echange}
+    ${quotaEpuise ? "" : `<button type="button" class="btn primary block" data-tel="passion_paywall_gerer"
+      onclick="ouvrirGestionPassionsDepuisPaywall()">Gérer mes passions</button>`}
+    <button type="button" class="btn ${quotaEpuise ? "primary" : ""} block" style="${quotaEpuise ? "" : "margin-top:8px;"}"
+      data-tel="passion_paywall_compris" onclick="closeModal()">J'ai compris</button>
   `);
 }
 
@@ -2761,19 +3221,22 @@ function ajouterPassionAuCompte(pid, bio) {
   // Placé AVANT la restauration : restaurer une quatrième passion vivante
   // dépasserait le plafond aussi sûrement qu'en créer une. Sous le plafond,
   // la restauration reste gratuite (voir la note d'`openPassionPaywall`).
-  if (plafondPassionsAtteint()) {
-    try { openPassionPaywall(); } catch (e) {}
-    return null;
-  }
-
   // ⚠️ Lot UI-8 : cette passion existe peut-être déjà, ARCHIVÉE. La recréer
   // ferait un doublon (deux entrées pour la même passion, que la fusion
   // défensive d'app-02 dédupliquerait ensuite en silence). On la restaure, sans
-  // rien effacer.
-  if (passionsUnifieesActives()) {
-    const _arch = (state.user.profiles || []).find(function (x) { return x.archived && x.passion === pid; });
-    if (_arch) { restaurerPassion(_arch.id); return null; }
+  // rien effacer. La LECTURE se fait avant le plafond — pas l'écriture : au
+  // plafond, la fenêtre doit pouvoir proposer l'ÉCHANGE de cette passion-là,
+  // et elle a besoin de son id pour ça.
+  const _arch = passionsUnifieesActives()
+    ? (state.user.profiles || []).find(function (x) { return x.archived && x.passion === pid; })
+    : null;
+
+  if (plafondPassionsAtteint()) {
+    try { openPassionPaywall(_arch ? { restaurer: _arch.id } : {}); } catch (e) {}
+    return null;
   }
+
+  if (_arch) { restaurerPassion(_arch.id); return null; }
 
   // Identité centralisée : on réutilise toujours le nom principal du compte.
   const name = (state.user.general && state.user.general.username) || state.user.name || "Passionné";

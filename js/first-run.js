@@ -568,6 +568,13 @@
       +     '<button type="button" class="btn primary fr-welcome-cta" onclick="PassioFirstRun.ouvrirPersonnalisation(\'bienvenue\')">' + escapeHtml(principal) + '</button>'
       +     '<button type="button" class="btn ghost fr-welcome-alt" onclick="PassioFirstRun.fermerBienvenue()">' + escapeHtml(secondaire) + '</button>'
       +   '</div>'
+      // ⚠️ TROISIÈME LIGNE, ET PAS UN TROISIÈME BOUTON DANS LA RANGÉE : les
+      // deux actions ci-dessus partagent une rangée en `flex: 1 1 auto`, un
+      // troisième bouton y écraserait les libellés. Ce lien est la seule porte
+      // VISIBLE, sans geste préalable, vers le compte déjà créé : le gate
+      // « J'ai déjà un compte » demande, lui, d'avoir tenté un like ou un
+      // commentaire (défaut vécu le 2026-09-02).
+      +   '<button type="button" class="fr-welcome-signin" onclick="PassioFirstRun.allerConnexion(\'deja_compte\')">J\'ai déjà un compte — me connecter</button>'
       + '</section>';
   }
 
@@ -964,6 +971,11 @@
     } catch (e) {}
     poserSortieExploration();
     if (mode === "signup") tel("guest_signup_started", { ctx: ctx || "" });
+    // Sans cette mesure, les trois portes vers un compte EXISTANT (carte de
+    // bienvenue, Paramètres, déconnexion) seraient indiscernables de portes
+    // cassées : rien ne comptait les connexions, `guest_signup_started` étant
+    // réservé à la création. `ctx` reste une liste fermée de mots-clés.
+    else tel("guest_signin_started", { ctx: ctx || "" });
   }
 
   // ⚠️ SANS CETTE PORTE, LE PARCOURS SE REFERME. L'onboarding est un écran plein
@@ -992,6 +1004,13 @@
     var l = document.getElementById("landing");
     if (l) l.classList.remove("active");
     try { document.body.classList.add("screen-feed-active"); } catch (e) {}
+    // ⚠️ AUCUN RÉARMEMENT DE L'ACCUEIL ICI, ET C'EST DÉLIBÉRÉ. Le budget de
+    // `planifierAccueil` se consomme bien pendant que le formulaire occupe
+    // l'écran (`ecranOccupe()` rend `true` tant que `#onboarding.active` est
+    // là), mais `goTo("feed")` ci-dessus appelle `surNavigation("feed")`, qui
+    // remet DÉJÀ `_essaisAccueil` à zéro et replanifie. Une seconde remise à
+    // zéro ici serait un second moteur pour un travail déjà fait — mesuré :
+    // le retirer ne change rien au comportement observé.
     try { if (typeof goTo === "function") goTo("feed"); } catch (e) { journal("retour exploration", e); }
   }
 
@@ -1713,6 +1732,11 @@
     requireAuthentication: requireAuthentication,
     allerInscription: allerInscription,
     allerConnexion: allerConnexion,
+    // Exposée pour `openAuthScreen` (app-02) : quand l'écran de connexion est
+    // ouvert depuis les Paramètres ou après une déconnexion, la porte
+    // « ← Continuer à explorer » doit exister là aussi — sinon l'onboarding
+    // reste un écran plein sans retour pour qui change d'avis.
+    poserSortieExploration: poserSortieExploration,
     apresAuthentification: apresAuthentification,
     retourExploration: retourExploration,
     migrerPreferences: migrerPreferences,

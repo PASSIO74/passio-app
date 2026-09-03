@@ -15,7 +15,27 @@
 // pour un mood qui en a une.
 // ============================================================================
 const { test, expect } = require("@playwright/test");
-const { bootOnboarded } = require("./app-helper");
+const { bootOnboarded, sansDonneesDistantes } = require("./app-helper");
+
+// ⚠️ CE FICHIER MESURE UN FIL, IL DOIT DONC LE POSSÉDER ENTIÈREMENT.
+// Il vidait déjà les QUATRE tableaux de posts, mais pas la seule frontière que
+// le code de l'application ne peut pas reprendre : le RÉSEAU. `bootOnboarded`
+// fait lui-même le `goto`, donc la requête `posts` du boot est DÉJÀ PARTIE
+// quand le fixture s'exécute — en CI (avec réseau) elle rapporte les vraies
+// publications, qui portent leurs propres moods. La requête
+// `#feedList .post-mood-tag` en trouvait alors une, et le test échouait en
+// annonçant « le neutre porte une pastille » alors que la pastille venait d'un
+// AUTRE post. Le verdict dépendait du contenu de la production, pas du code.
+//
+// Mesuré sur `main` le 2026-09-02 (run 2413, shard 4/6) : rouge trois fois de
+// suite, retries compris, sur une PR qui ne touchait ni les moods ni les cartes
+// du fil — exactement le symptôme décrit dans `app-helper.js`. Le déploiement
+// production, qui dépend de ce job, a été sauté.
+//
+// `sansDonneesDistantes` est le remède maison, et il se pose AVANT
+// `bootOnboarded` : posé après, il ne protège que les chargements suivants,
+// jamais le premier. Sans réseau (conteneur de dev) la route ne se déclenche
+// pas et le comportement local est inchangé — c'est la CI qui en fait foi.
 
 async function poser(page, mood) {
   await page.evaluate((m) => {
@@ -25,6 +45,13 @@ async function poser(page, mood) {
       likes: 0, comments: [],
     }];
     state.userPosts = []; state.supabasePosts = [];
+    // QUATRIÈME tableau : `window._feedExtraPosts` est fait pour SURVIVRE aux
+    // écrasements de `supabasePosts` (il protège un post arrivé pendant qu'une
+    // requête était en vol). Le vider n'est donc pas une redondance : sans cela,
+    // une publication RÉELLE de production ramenée par un rafraîchissement
+    // asynchrone se réinvite dans le fil APRÈS le semis, et le test mesure autre
+    // chose que son fixture. Défaut mesuré le 2026-09-02 sur `main` (run 2409).
+    window._feedExtraPosts = [];
     saveState(); goTo("feed"); renderFeed();
   }, mood);
   await page.waitForTimeout(700);
@@ -39,11 +66,13 @@ async function poser(page, mood) {
 test.describe("la pastille de mood", () => {
   // Le cas majoritaire en production : tout post venu de Supabase porte "all".
   test("un post neutre n'a AUCUNE pastille, pas même une capsule vide", async ({ page }) => {
+    await sansDonneesDistantes(page);
     await bootOnboarded(page);
     expect((await poser(page, "all")).present).toBe(false);
   });
 
   test("un mood inconnu ou absent n'en dessine pas non plus", async ({ page }) => {
+    await sansDonneesDistantes(page);
     await bootOnboarded(page);
     expect((await poser(page, "mood_qui_nexiste_pas")).present).toBe(false);
     expect((await poser(page, null)).present).toBe(false);
@@ -58,6 +87,7 @@ test.describe("la pastille de mood", () => {
   // `exploration-moods.spec.js`). Un test qui se trompe de cause est pire qu'un
   // test absent.
   test("un mood connu porte bien sa pastille, avec son libellé", async ({ page }) => {
+    await sansDonneesDistantes(page);
     await bootOnboarded(page);
     const m = await poser(page, "creation");
     expect(m.present).toBe(true);

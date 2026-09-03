@@ -1,6 +1,6 @@
 ---
 name: a11y
-description: Audite l'accessibilité de PASSIO (contraste AA, cibles tactiles 44px, champs 16px anti-zoom iOS, aria, navigation clavier). À utiliser quand Benjamin dit "accessibilité", "a11y", "contraste", "lisibilité", ou après une refonte visuelle.
+description: "Audit accessibilité : contraste AA, lisibilité, cibles 44px, champs 16px iOS, aria, clavier. Dire : accessibilité, a11y."
 ---
 
 # /a11y — Audit accessibilité PASSIO

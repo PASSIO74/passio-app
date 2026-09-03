@@ -1,6 +1,6 @@
 ---
 name: retention
-description: Analyse et améliore la rétention/engagement de PASSIO via la télémétrie (DAU/WAU, cohortes, points de décrochage, habitudes) au niveau FB/IG. À utiliser quand Benjamin veut garder les utilisateurs actifs, réduire le churn, créer de l'habitude, ou dit "rétention", "engagement", "les gens reviennent pas", "churn", "habitude".
+description: Rétention via la télémétrie : DAU/WAU, cohortes, décrochage, habitude. Dire : churn, les gens reviennent pas, engagement.
 ---
 
 # /retention — Rétention & engagement PASSIO

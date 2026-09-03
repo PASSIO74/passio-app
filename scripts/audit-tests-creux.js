@@ -60,6 +60,15 @@ const BOOT = /\b(bootOnboarded|bootInteractions|signupAnonymous)\s*\(/;
 //     plus pour la tester depuis l'extérieur.
 const ARTEFACTS = new Set([
   "version-skew.spec.js",
+  // Partition `prod` / `local` de playwright.config.js (2026-09-02). Il relit la
+  // CONFIGURATION et le dossier des specs pour prouver qu'aucune suite créant un
+  // compte en production n'a échappé à SUITES_PROD. Il ne pilote pas l'UI et ne
+  // le peut pas : ce qu'il garde n'existe que dans un fichier de configuration
+  // et dans le workflow de CI. Une suite oubliée là tournerait hors du verrou
+  // `passio-e2e-prod` et effacerait les comptes du job prod en plein vol —
+  // l'incident du 2026-09-01. Éprouvé par mutation : retirer une entrée de
+  // SUITES_PROD le fait rougir en nommant le fichier manquant.
+  "projets-playwright.spec.js",
   "user-state-horodatage.spec.js",   // trigger trg_user_state_horodatage (SYNC-CLOCK-012)
   "suppression-compte.spec.js",      // Edge Function delete-account (compte + médias)
   // Garde-fou de VOCABULAIRE (ADR-010) : il télécharge les SOURCES réellement

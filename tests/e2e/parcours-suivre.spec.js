@@ -50,6 +50,13 @@ async function poser(page) {
       },
     ];
     state.supabasePosts = [];
+    // QUATRIÈME tableau : `window._feedExtraPosts` est fait pour SURVIVRE aux
+    // écrasements de `supabasePosts` (il protège un post arrivé pendant qu'une
+    // requête était en vol). Le vider n'est donc pas une redondance : sans cela,
+    // une publication RÉELLE de production ramenée par un rafraîchissement
+    // asynchrone se réinvite dans le fil APRÈS le semis, et le test mesure autre
+    // chose que son fixture. Défaut mesuré le 2026-09-02 sur `main` (run 2409).
+    window._feedExtraPosts = [];
     state.userPosts = [];
     state.user.following = [];
     state.user.profiles = [{ id: "pp_0", name: "Audit QA", passion: "musique", emoji: "🎵", color: "#7c3aed" }];
@@ -139,6 +146,13 @@ test("le parcours complet : suivre → voir → recharger → toujours voir → 
       },
     ];
     state.supabasePosts = [];
+    // QUATRIÈME tableau : `window._feedExtraPosts` est fait pour SURVIVRE aux
+    // écrasements de `supabasePosts` (il protège un post arrivé pendant qu'une
+    // requête était en vol). Le vider n'est donc pas une redondance : sans cela,
+    // une publication RÉELLE de production ramenée par un rafraîchissement
+    // asynchrone se réinvite dans le fil APRÈS le semis, et le test mesure autre
+    // chose que son fixture. Défaut mesuré le 2026-09-02 sur `main` (run 2409).
+    window._feedExtraPosts = [];
     selectedMoods = new Set(["all", "creation", "learn", "chill", "actu"]);
     state.feedMoodsTouched = true;
     window._feedDomSig = null;

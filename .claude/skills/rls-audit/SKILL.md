@@ -1,6 +1,6 @@
 ---
 name: rls-audit
-description: Audite les policies RLS Supabase de PASSIO (confidentialité, mutations qui touchent 0 ligne en silence, comptes privés) et simule les rôles. À utiliser avant/après une migration touchant à la visibilité, ou quand Benjamin dit "vérifie les droits", "RLS", "confidentialité", "qui peut voir quoi".
+description: "Audit des policies RLS Supabase : confidentialité, comptes privés, mutation à 0 ligne. Dire : droits, qui peut voir quoi."
 ---
 
 # /rls-audit — Audit RLS PASSIO

@@ -1,6 +1,6 @@
 ---
 name: skill-optimizer
-description: Capitalise un acquis de session en amélioration durable de l'environnement Claude Code — créer/améliorer/fusionner un skill, sortir une procédure en script, poser une règle ou un hook, nettoyer la bibliothèque. À utiliser quand une procédure vient de se révéler réutilisable, quand Benjamin répète une instruction déjà donnée, quand un skill donne de mauvais résultats, ou quand il dit "capitalise", "fais-en un skill", "range les skills", "audite mes skills".
+description: "Capitalise un acquis en skill, script, règle ou hook durable. Dire : capitalise, range les skills, audite ma bibliothèque."
 ---
 
 # /skill-optimizer — Transformer un acquis en outil durable

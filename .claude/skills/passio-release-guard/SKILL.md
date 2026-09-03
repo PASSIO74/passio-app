@@ -1,6 +1,6 @@
 ---
 name: passio-release-guard
-description: Contrôle la mise en production de PASSIO — vérifications avant déploiement, feature flags, observation après déploiement, comparaison avant/après et retour arrière. À utiliser avant tout `git push origin main` (qui déploie), après un déploiement pour vérifier qu'il n'a rien dégradé, ou quand il faut revenir en arrière.
+description: "Contrôle de mise en production : barrière avant push sur main, feature flag, observation après coup, retour arrière."
 ---
 
 # /passio-release-guard — Sur ce dépôt, pousser c'est déployer
@@ -38,7 +38,11 @@ Conséquence pratique : **un changement cross-compte doit être testé en local 
 
 ## Feature flags
 
-Il n'existe pas de système de flags généralisé. Ce qui existe : des interrupteurs d'environnement (`window.PASSIO_TELEMETRY_DEFAULT_ON`, `DASH_SENTINEL_DEEP`, `PASSIO_E2E_MULTI`, `PASSIO_COUVERTURE`).
+⚠️ **Rectifié le 2026-09-02 : le système de drapeaux EXISTE, et c'est le patron le plus répété du dépôt.** Cette section affirmait le contraire ; mesuré : 34 `window.PASSIO_*`, 43 coupures `localStorage`, 15 modules `js/ui-v*.js`. Chaque lot suit la MÊME double coupure — `localStorage.passio_<lot>="0"` ET `window.PASSIO_<LOT>=false`, prioritaires sur tout. Procédure complète : skill `/lot-drapeau`.
+
+⚠️ **Le drapeau d'un lot en ligne ne sait plus qu'ENLEVER** : aucune valeur positive n'active, rien n'est écrit dans `localStorage`. Un kill switch qui laisserait les libellés du nouveau lot n'est pas un kill switch — la coupure doit rendre les MOTS aussi.
+
+À part, et à ne pas confondre : les interrupteurs d'ENVIRONNEMENT (`window.PASSIO_TELEMETRY_DEFAULT_ON`, `DASH_SENTINEL_DEEP`, `PASSIO_E2E_MULTI`, `PASSIO_COUVERTURE`), et le système de flags du dashboard (`dashboard/server/checklist.js`, route `GET /api/flags`, capacité `flags`) — **orphelin : rien dans `js/` ne le lit**.
 
 Pour un changement risqué et réversible, **ajouter un interrupteur avant de déployer** vaut mieux que compter sur un retour arrière : couper un drapeau est instantané, un rollback exige un cycle de déploiement complet.
 

@@ -1,6 +1,6 @@
 ---
 name: kpi
-description: Définit, calcule et suit les KPI d'un réseau social pour PASSIO (DAU/WAU/MAU, rétention, K-factor, engagement, création de contenu) via la télémétrie. À utiliser quand Benjamin veut mesurer la santé produit, définir des métriques, un tableau de bord chiffré, ou dit "KPI", "métriques", "chiffres", "combien d'utilisateurs actifs".
+description: "KPI et métriques via la télémétrie : DAU/WAU/MAU, rétention, K-factor. Dire : combien d'utilisateurs actifs."
 ---
 
 # /kpi — KPI réseau social PASSIO

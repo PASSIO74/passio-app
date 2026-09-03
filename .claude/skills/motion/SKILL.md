@@ -1,6 +1,6 @@
 ---
 name: motion
-description: Ajoute des micro-interactions et animations "juice" à PASSIO (transitions, feedback tactile, animations de like/réaction) pour le polish niveau Instagram/TikTok. À utiliser quand Benjamin veut rendre l'app plus vivante/premium, des animations, des transitions, ou dit "animations", "micro-interactions", "plus fluide", "effet", "juice".
+description: "Micro-interactions et animations juice : transitions, feedback tactile, effets de like. Dire : animations, plus fluide."
 ---
 
 # /motion — Micro-interactions PASSIO

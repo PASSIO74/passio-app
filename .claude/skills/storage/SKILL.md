@@ -1,6 +1,6 @@
 ---
 name: storage
-description: Audite le Supabase Storage de PASSIO (médias uploadés, downscale, fichiers orphelins, URLs publiques vs signées, hygiène base64) et la robustesse des uploads. À utiliser pour un problème de média (photo/vidéo/vocal qui ne s'affiche pas, upload qui échoue), un audit stockage, ou quand Benjamin dit "storage", "médias", "upload", "vidéo invisible".
+description: "Audit Supabase Storage : médias, downscale, orphelins, URLs signées. Dire : la vidéo uploadée ne s'affiche pas, upload."
 ---
 
 # /storage — Audit Supabase Storage PASSIO

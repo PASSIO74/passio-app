@@ -1,6 +1,6 @@
 ---
 name: onboarding
-description: Optimise le tunnel d'inscription/onboarding de PASSIO (première expérience, time-to-value, activation) au niveau FB/IG. À utiliser quand Benjamin veut réduire l'abandon à l'inscription, accélérer la première valeur, ou dit "onboarding", "inscription", "première expérience", "activation", "les nouveaux partent".
+description: "Tunnel d'inscription et d'activation : abandon, time-to-value. Dire : onboarding, les nouveaux partent."
 ---
 
 # /onboarding — Tunnel d'activation PASSIO

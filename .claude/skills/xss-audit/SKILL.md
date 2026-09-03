@@ -1,6 +1,6 @@
 ---
 name: xss-audit
-description: Audite PASSIO pour les failles XSS stockées et l'usage correct des 3 helpers d'échappement (escapeHtml/escapeJsArg/safeUrlAttr). À utiliser après avoir ajouté de l'affichage de contenu utilisateur, ou quand Benjamin dit "sécurité", "XSS", "vérifie l'échappement", "injection".
+description: "Audit XSS stockées et des 3 helpers escapeHtml/escapeJsArg/safeUrlAttr. Dire : sécurité, injection, échappement."
 ---
 
 # /xss-audit — Audit XSS PASSIO

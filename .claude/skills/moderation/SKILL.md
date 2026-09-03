@@ -1,6 +1,6 @@
 ---
 name: moderation
-description: Gère la modération / Trust & Safety de PASSIO (signalements, blocages, contenu abusif) au niveau FB/IG. À utiliser quand Benjamin veut traiter les signalements, gérer les abus, renforcer la sécurité des utilisateurs, ou dit "modération", "signalements", "reports", "blocage", "contenu abusif".
+description: "Modération et Trust & Safety : traiter les signalements (reports), blocage, contenu abusif, abus."
 ---
 
 # /moderation — Trust & Safety PASSIO

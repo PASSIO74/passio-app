@@ -1,6 +1,6 @@
 ---
 name: preview
-description: Lance le serveur de dev PASSIO et vérifie visuellement/fonctionnellement un changement dans le navigateur (console, réseau, screenshot, interactions). À utiliser après une modif UI pour prouver que ça marche, ou quand Benjamin dit "montre-moi", "teste dans le navigateur", "vérifie que ça marche".
+description: Serveur de dev et vérification dans le navigateur : console, réseau, screenshot, gate 2125. Dire : montre-moi, ça marche.
 ---
 
 # /preview — Vérification navigateur PASSIO

@@ -1,6 +1,6 @@
 ---
 name: passio-incident-report
-description: Produit le rapport normalisé d'un incident PASSIO ou d'une auto-réparation, et l'inscrit dans le registre machine. À utiliser à la clôture de tout incident, après une réparation, ou quand Benjamin demande « écris le rapport », « où en est cet incident ? ».
+description: "Rapport normalisé d'un incident ou d'une réparation, inscrit au registre machine. Dire : écris le rapport, incident clos."
 ---
 
 # /passio-incident-report — Le format qui empêche de tricher

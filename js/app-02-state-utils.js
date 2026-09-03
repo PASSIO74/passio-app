@@ -166,6 +166,14 @@ function loadState() {
     if (!Array.isArray(parsed.user.seenNotifIds)) parsed.user.seenNotifIds = [];
     if (!parsed.user.passionSignals || typeof parsed.user.passionSignals !== "object"
         || Array.isArray(parsed.user.passionSignals)) parsed.user.passionSignals = {};
+    // Journal des changements de passion (quota, 2026-09-02). Normalisé ICI en
+    // plus de `journalPassions()` (app-06) : un état antérieur au lot, un blob
+    // `user_state` tronqué ou un tableau là où on attend un objet sont des
+    // entrées NORMALES. Un objet vide vaut « aucun changement consommé » — un
+    // compte existant ne se voit donc pas facturer un quota rétroactif.
+    if (!parsed.user.passionChanges || typeof parsed.user.passionChanges !== "object"
+        || Array.isArray(parsed.user.passionChanges)) parsed.user.passionChanges = { entries: [] };
+    if (!Array.isArray(parsed.user.passionChanges.entries)) parsed.user.passionChanges.entries = [];
     if (!Array.isArray(parsed.selectedFeedPassions)) parsed.selectedFeedPassions = [];
     // Vue du Fil (ADR-010). Toute valeur inconnue — et tout état antérieur, qui
     // n'a pas cette clé — retombe sur « accueil » : c'est la vue par défaut, et
@@ -762,6 +770,71 @@ function _applyUserState(data) {
 //
 // Fonction NOMMÉE et non bloc en ligne, pour qu'un test puisse exercer le code
 // réel plutôt qu'une copie — une copie ne prouverait que sa propre cohérence.
+// ══════════════════════════════════════════════════════════════════════════
+// RÉINJECTION BORNÉE PAR LE PLAFOND  (2026-09-03)
+// ──────────────────────────────────────────────────────────────────────────
+// La fusion défensive de `supaLoadUserState` ré-injecte les profils locaux
+// absents du serveur — ce qui est juste : ils ont pu être créés entre la
+// dernière synchronisation et la fermeture. Mais elle ne consultait AUCUN
+// plafond.
+//
+// Mesuré le 2026-09-03, sur le code livré la veille : deux appareils portant
+// chacun TROIS passions DIFFÉRENTES convergeaient vers SIX vivantes. Le
+// plafond annonçait « 0 place restante » pendant que le compte en possédait
+// six. L'offre payante était contournée sans que personne n'ait rien fait de
+// volontaire — il suffisait d'un second téléphone.
+//
+// ⚠️ ON N'ARCHIVE QUE LES RÉINJECTÉES, JAMAIS CE QUE LE SERVEUR AVAIT DÉJÀ.
+// C'est ce qui rendait le correctif « évident » inacceptable, et pourquoi le
+// défaut avait été livré tel quel avec sa dette écrite : archiver « le
+// surplus » aurait rétrogradé les passions de comptes de production qui en
+// portent légitimement plus de trois — le plafond date du 2026-09-01, les
+// comptes le précèdent. Ici l'état SERVEUR fait foi et n'est jamais touché ;
+// seules les entrées que cette fusion ajoute peuvent être rangées.
+//
+// ⚠️ RIEN N'EST SUPPRIMÉ, RIEN N'EST FACTURÉ. Les surnuméraires arrivent
+// `archived: true` : elles sont donc dans la liste des archives, d'où
+// l'utilisateur les reprend quand il veut (échange). Aucune entrée n'est
+// inscrite au journal des changements — le compte n'a rien demandé.
+//
+// ⚠️ FONCTION NOMMÉE, et c'est délibéré : un test doit exercer le code RÉEL.
+// Une copie de ces règles dans un spec ne prouverait que sa propre cohérence —
+// le dépôt a déjà payé ce défaut (`audit-tests-creux.js` existe pour ça), et
+// `restaurerPassionActiveApresFusion` juste en dessous a été extraite pour la
+// même raison.
+//
+// ⚠️ AUCUNE HORLOGE ICI. `archivedAt` reste à 0 : la fusion n'est pas un geste
+// d'utilisateur, et une date inventée mentirait dans la liste des archives.
+function reinjecterProfilsLocauxBornes(profilsServeur, aReinjecter) {
+  const serveur = Array.isArray(profilsServeur) ? profilsServeur : [];
+  const ajouts = Array.isArray(aReinjecter) ? aReinjecter : [];
+  if (!ajouts.length) return serveur;
+
+  const vivantesServeur = serveur.filter(function (p) { return p && !p.archived; }).length;
+
+  // Le plafond vit dans app-06 (`PASSIONS_OFFERTES`), chargé APRÈS ce fichier :
+  // on le lit paresseusement. Son absence — comme un kill switch — vaut « pas
+  // de plafond » : un drapeau coupé ne doit jamais ranger une passion.
+  let places = Infinity;
+  try {
+    if (typeof plafondPassionsActif === "function" && plafondPassionsActif()
+        && typeof PASSIONS_OFFERTES !== "undefined") {
+      places = Math.max(0, PASSIONS_OFFERTES - vivantesServeur);
+    }
+  } catch (e) { places = Infinity; }
+
+  let reprises = 0;
+  const bornees = ajouts.map(function (p) {
+    if (!p || p.archived) return p;              // déjà rangée : rien à décider
+    if (reprises < places) { reprises++; return p; }
+    const c = Object.assign({}, p);
+    c.archived = true;
+    if (!c.archivedAt) c.archivedAt = 0;
+    return c;
+  });
+  return serveur.concat(bornees);
+}
+
 function restaurerPassionActiveApresFusion(localCurrentId) {
   if (!state || !state.user) return;
   var profils = Array.isArray(state.user.profiles) ? state.user.profiles : [];
@@ -810,7 +883,31 @@ async function supaLoadUserState() {
       }
       // Mémorise le currentProfileId local AVANT l'écrasement (pour le restaurer si valide).
       const localCurrentId = state.user && state.user.currentProfileId;
+      // ⚠️ ET LE JOURNAL DES CHANGEMENTS DE PASSION. Il porte un QUOTA : la
+      // règle de fusion « le serveur plus récent gagne » y serait une porte
+      // dérobée — vider `localStorage`, ou arriver avec un blob serveur écrit
+      // avant les derniers archivages, rendrait des changements déjà consommés.
+      // On garde donc le journal QUI EN COMPTE LE PLUS, jamais le plus récent.
+      const localJournal = (state.user && state.user.passionChanges
+        && Array.isArray(state.user.passionChanges.entries))
+        ? state.user.passionChanges.entries : [];
       _applyUserState(data.data);
+      try {
+        const _nbArchives = function (l) {
+          // Même prédicat qu'`_estChangementFacturable` (app-06) : une entrée
+          // faite en démo (`compte: false`) ne compte NULLE PART, fusion incluse.
+          return (Array.isArray(l) ? l : [])
+            .filter(function (e) { return e && e.type === "archive" && e.compte !== false; }).length;
+        };
+        const srvJournal = (state.user && state.user.passionChanges
+          && Array.isArray(state.user.passionChanges.entries))
+          ? state.user.passionChanges.entries : [];
+        if (_nbArchives(localJournal) > _nbArchives(srvJournal)) {
+          state.user.passionChanges = { entries: localJournal };
+        } else {
+          state.user.passionChanges = { entries: srvJournal };
+        }
+      } catch (e) { console.warn("passionChanges (fusion) :", e && e.message); }
       // Fusion défensive : ré-injecte les profils locaux ABSENTS du serveur (créés
       // entre la dernière sync et la fermeture) ET les versions locales des profils
       // MODIFIÉS (contenu plus récent — photo, bio, photoUrl…).
@@ -821,7 +918,7 @@ async function supaLoadUserState() {
         const serverPassions = new Set((state.user.profiles || []).map(p => p.passion).filter(Boolean));
         const missing = localProfiles.filter(p => p.passion && !serverPassions.has(p.passion));
         if (missing.length > 0) {
-          state.user.profiles = (state.user.profiles || []).concat(missing);
+          state.user.profiles = reinjecterProfilsLocauxBornes(state.user.profiles || [], missing);
         }
         // Pour les profils présents des deux côtés : si la version locale porte une
         // photo (base64 ou URL Storage) absente côté serveur, on la réinjecte.
@@ -1645,7 +1742,37 @@ window.addEventListener("popstate", (e) => {
 });
 
 function toggleDevPanel() {
-  $("#devPanel").classList.toggle("active");
+  var panel = $("#devPanel");
+  if (!panel) return;
+  panel.classList.toggle("active");
+  if (panel.classList.contains("active")) { try { majSectionCompte(); } catch (e) {} }
+}
+
+/* Le panneau Paramètres est du balisage STATIQUE : ses deux entrées de compte
+   n'ont de sens qu'au regard de l'état de connexion, qui n'est connu qu'à
+   l'ouverture. Sans cette mise à jour, un visiteur du parcours de première
+   visite lisait « Se déconnecter » — sans effet utile pour lui, puisqu'il n'a
+   pas de compte — et ne trouvait NULLE PART comment se connecter à un compte
+   déjà créé. Défaut vécu le 2026-09-02 : « je n'arrive plus à me connecter
+   avec le compte qui était déjà créé avant ». */
+function majSectionCompte() {
+  var visiteur = false;
+  try { visiteur = !!(window.PassioFirstRun && PassioFirstRun.estVisiteur()); } catch (e) {}
+  var bascule = document.getElementById("settingsAuthSwitch");
+  if (bascule) {
+    bascule.textContent = visiteur
+      ? "🔑 J'ai déjà un compte — me connecter"
+      : "🔄 Se connecter avec un autre compte";
+  }
+  // ⚠️ ET TOUT CE QUI SUPPOSE UN COMPTE PART AVEC, pas seulement l'entrée qui a
+  // motivé ce correctif : « Se déconnecter » n'a rien à déconnecter, « Changer
+  // mon mot de passe » appelle `supa.auth.updateUser` sans session, et
+  // « Supprimer mon compte » propose d'effacer ce qui n'existe pas. Même classe
+  // de défaut que celui qu'on vient de corriger, au même endroit.
+  ["settingsLogout", "settingsChangePassword", "settingsDeleteAccount"].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el) el.style.display = visiteur ? "none" : "";
+  });
 }
 
 function toggleSettingsSection(el) {
@@ -1952,10 +2079,144 @@ function openLogoutConfirm() {
     <p style="font-size:13px;color:var(--muted);margin-bottom:16px;">Tu garderas ton compte et ton contenu. Tu pourras te reconnecter à tout moment.</p>\
     <div style="display:flex;gap:8px;">\
       <button class="btn ghost" onclick="closeModal()" style="flex:1;">Annuler</button>\
-      <button class="btn primary" onclick="closeModal();doLogout();" style="flex:1;background:#ef4444;">Se déconnecter</button>\
+      <button class="btn primary" onclick="closeModal();doLogout(\'signin\');" style="flex:1;background:#ef4444;">Se déconnecter</button>\
     </div>\
   ');
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   🔑 SE CONNECTER À UN COMPTE EXISTANT / CHANGER DE COMPTE  (2026-09-02)
+   ───────────────────────────────────────────────────────────────────────────
+   Le parcours de première visite (`js/first-run.js`, actif par défaut) fait
+   entrer un appareil SANS compte directement dans le fil : plus de landing,
+   donc plus de formulaire de connexion à l'écran. Le seul chemin vers ce
+   formulaire était le gate d'action engageante (« J'ai déjà un compte »), qu'il
+   faut déclencher par un like ou un commentaire — introuvable pour qui veut
+   simplement retrouver SON compte.
+
+   ⚠️ ET LA DÉCONNEXION NE SERT PAS DE SORTIE DE SECOURS, elle aggrave le
+   piège : `purgeAccountScopedData` efface `STATE_KEY` et `passio_uid`, donc au
+   rechargement `compteExistant()` rend `false` et l'appareil retombe dans le
+   parcours invité — sans jamais montrer l'écran de connexion. D'où l'INTENTION
+   ci-dessous, posée APRÈS la purge (elle survit donc au nettoyage) sur une clé
+   d'APPAREIL délibérément absente d'`ACCOUNT_SCOPED_KEYS`, et consommée une
+   seule fois par `boot()`.
+   ═══════════════════════════════════════════════════════════════════════════ */
+var AUTH_INTENT_KEY = "passio_auth_intent_v1";
+// ⚠️ HORODATÉE, ET C'EST INDISPENSABLE. Entre `setItem` et le rechargement il
+// s'écoule 1,2 s : une application fermée, un onglet tué ou un plantage dans
+// cette fenêtre laisserait la clé sur l'appareil POUR TOUJOURS, et le prochain
+// démarrage — le lendemain, ou pour quelqu'un d'autre sur un appareil partagé —
+// s'ouvrirait sur un mur de connexion au lieu du fil de découverte. Ce serait
+// exactement le contraire de « l'application est elle-même le pitch ».
+var AUTH_INTENT_TTL_MS = 10 * 60 * 1000;
+
+function poserIntentionAuth(mode) {
+  try { localStorage.setItem(AUTH_INTENT_KEY, JSON.stringify({ mode: mode || "signin", t: Date.now() })); } catch (e) {}
+}
+
+// Lit l'intention, l'EFFACE toujours, et ne rend son mode que si elle est
+// encore fraîche : une clé périmée doit disparaître, pas s'appliquer.
+function consommerIntentionAuth() {
+  var brut = null;
+  try { brut = localStorage.getItem(AUTH_INTENT_KEY); } catch (e) {}
+  if (!brut) return null;
+  try { localStorage.removeItem(AUTH_INTENT_KEY); } catch (e) {}
+  var o = null;
+  try { o = JSON.parse(brut); } catch (e) { o = null; }
+  if (!o || typeof o !== "object" || typeof o.t !== "number") return null;
+  if (Date.now() - o.t > AUTH_INTENT_TTL_MS) return null;
+  return o.mode === "signup" ? "signup" : "signin";
+}
+window.poserIntentionAuth = poserIntentionAuth;
+window.consommerIntentionAuth = consommerIntentionAuth;
+
+/* Ouvre le formulaire d'authentification, où qu'on se trouve dans l'app.
+   Renvoie `false` si le balisage d'onboarding est absent — l'appelant garde
+   alors la main plutôt que de laisser l'écran dans un état intermédiaire. */
+function openAuthScreen(mode) {
+  var onb = document.getElementById("onboarding");
+  if (!onb) return false;
+  try { closeModal(); } catch (e) {}
+  var panel = document.getElementById("devPanel");
+  if (panel) panel.classList.remove("active");
+  var landing = document.getElementById("landing");
+  if (landing) landing.classList.remove("active");
+
+  // ⚠️ UN SEUL MOTEUR D'OUVERTURE. `ouvrirAuth` (first-run.js) connaît déjà
+  // l'étape « splash », la remise à zéro d'`onbStepIdx` et la porte de sortie :
+  // le jour où le formulaire déménage, il n'y a qu'UN endroit à corriger. Le
+  // repli ci-dessous ne sert que si le module n'est pas chargé.
+  try {
+    if (window.PassioFirstRun) {
+      if (mode === "signup" && PassioFirstRun.allerInscription) PassioFirstRun.allerInscription("");
+      else if (PassioFirstRun.allerConnexion) PassioFirstRun.allerConnexion("deja_compte");
+      if (onb.classList.contains("active")) return true;
+    }
+  } catch (e) { if (typeof diagLog === "function") diagLog("openAuthScreen (module) : " + e); }
+
+  onb.classList.add("active");
+  // ⚠️ LE FORMULAIRE VIT SUR L'ÉTAPE « splash », PAS SUR « auth » : cette
+  // dernière existe encore dans le balisage mais porte `display:none!important`
+  // — l'ouvrir afficherait un écran VIDE, sans la moindre erreur. Et
+  // `onbStepIdx` doit repartir de 0, sinon le `onbNext()` d'une inscription
+  // réussie sauterait l'âge ou le prénom.
+  onbStepIdx = 0;
+  // ⚠️ CATCH QUI RAPPORTE, ET QUI RENONCE. Avaler l'erreur en rendant `true`
+  // laisserait `#onboarding` actif SANS aucune `.onb-step.active` : un écran
+  // vide, sans message en console, et l'application inatteignable. On rend
+  // `false` pour que l'appelant (`boot()`) reprenne son chemin normal.
+  try {
+    showOnbStep("splash");
+  } catch (e) {
+    if (typeof diagLog === "function") diagLog("openAuthScreen : showOnbStep a échoué — " + e);
+    onb.classList.remove("active");
+    return false;
+  }
+  try { switchAuthTab(mode === "signup" ? "signup" : "signin"); }
+  catch (e) { if (typeof diagLog === "function") diagLog("openAuthScreen : switchAuthTab — " + e); }
+  // Porte de sortie : l'onboarding est un écran plein SANS retour. En mode
+  // invité, first-run.js sait poser son « ← Continuer à explorer » ; sans elle,
+  // quelqu'un qui change d'avis est enfermé dans le formulaire.
+  try {
+    if (window.PassioFirstRun && PassioFirstRun.actif() && PassioFirstRun.poserSortieExploration) {
+      PassioFirstRun.poserSortieExploration();
+    }
+  } catch (e) {}
+  return true;
+}
+window.openAuthScreen = openAuthScreen;
+
+/* Entrée « Compte » du panneau Paramètres. Deux situations, un seul bouton :
+   • visiteur sans compte  → rien à déconnecter, on ouvre la connexion ;
+   • compte connecté       → confirmation, puis déconnexion AVEC intention de
+                             reconnexion (l'écran de connexion s'ouvre après le
+                             rechargement). */
+function openAccountSwitch() {
+  // ⚠️ Fermé ICI, pas seulement par le `onclick` du bouton : tout appel
+  // programmatique laisserait sinon le panneau Paramètres par-dessus l'écran
+  // d'authentification.
+  var panneau = document.getElementById("devPanel");
+  if (panneau) panneau.classList.remove("active");
+  var visiteur = false;
+  try { visiteur = !!(window.PassioFirstRun && PassioFirstRun.estVisiteur()); } catch (e) {}
+  if (visiteur) {
+    // Aucun compte sur cet appareil : rien à déconnecter, on ouvre le
+    // formulaire EXISTANT (aucun second système d'auth).
+    openAuthScreen("signin");
+    return;
+  }
+  openModal('\
+    <div class="modal-handle"></div>\
+    <div class="modal-title">🔄 Se connecter avec un autre compte</div>\
+    <p style="font-size:13px;color:var(--muted);margin-bottom:16px;">Tu vas être déconnecté de ce compte, puis l\'écran de connexion s\'ouvrira. Ce compte et tout son contenu restent intacts — tu pourras y revenir quand tu veux.</p>\
+    <div style="display:flex;gap:8px;">\
+      <button class="btn ghost" onclick="closeModal()" style="flex:1;">Annuler</button>\
+      <button class="btn primary" onclick="closeModal();doLogout(\'signin\');" style="flex:1;">Continuer</button>\
+    </div>\
+  ');
+}
+window.openAccountSwitch = openAccountSwitch;
 
 // Caches persistants LIÉS AU COMPTE (jamais au device). Ils DOIVENT être purgés
 // à la déconnexion, sinon le compte suivant connecté DANS LE MÊME NAVIGATEUR
@@ -1986,6 +2247,10 @@ var ACCOUNT_SCOPED_KEYS = [
   //     un contournement en un clic.
   //   passio_device_id, passio_telemetry, passio_pwa_*, passio_logo_variant,
   //     passio_debug — propres à l'appareil, sans lien avec un compte.
+  //   passio_auth_intent_v1 — l'intention de reconnexion, posée APRÈS cette
+  //     purge par `doLogout` et consommée par `boot()`. L'ajouter ici
+  //     refermerait le piège qu'elle ouvre : la déconnexion redeviendrait un
+  //     aller simple vers le fil invité, sans écran de connexion.
 ];
 
 // Efface TOUTE trace du compte courant côté device (localStorage + IndexedDB).
@@ -2030,17 +2295,65 @@ function purgeAccountScopedData() {
 }
 window.purgeAccountScopedData = purgeAccountScopedData;
 
-async function doLogout() {
+/* Ferme la session CÔTÉ APPAREIL en retirant le jeton que le SDK relit au
+   démarrage. À n'appeler qu'en DERNIER RECOURS, quand `supa.auth.signOut()` n'a
+   pas abouti (hors ligne, jeton non révocable) : pour supabase-js, ce jeton EST
+   la session, donc le laisser en place fait rouvrir le compte quitté au
+   prochain démarrage — et `ACCOUNT_SCOPED_KEYS` ne le connaît pas, puisqu'il
+   appartient au SDK et non à l'application.
+
+   ⚠️ La clé est nommée d'après la RÉFÉRENCE du projet Supabase
+   (`sb-<ref>-auth-token`) : on la retrouve par motif plutôt qu'en la recopiant
+   en dur, pour qu'un changement de projet ne laisse pas ici une clé fantôme
+   qui ne correspondrait plus à rien. Ne détruit rien côté serveur : le compte
+   reste intact, seule sa session locale est fermée. */
+function purgerJetonAuthLocal() {
+  try {
+    var aPurger = [];
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (k && /^sb-.+-auth-token$/.test(k)) aPurger.push(k);
+    }
+    aPurger.forEach(function (k) { localStorage.removeItem(k); });
+    return aPurger.length;
+  } catch (e) { return 0; }
+}
+window.purgerJetonAuthLocal = purgerJetonAuthLocal;
+
+async function doLogout(intention) {
   // Flush immédiat : pousse les changements en attente (debounce 2500ms non encore
   // déclenché) vers Supabase AVANT la déconnexion. Sans ça, toute modification faite
   // dans les 2,5 s précédant le logout est perdue à la reconnexion.
   try { if (typeof supaSaveUserState === "function") await supaSaveUserState(); } catch(e) {}
-  try { await supa.auth.signOut(); } catch(e) {}
+  // ⚠️ LE SDK NE LÈVE PAS SUR UN REFUS : sans lire `{ error }`, une déconnexion
+  // qui ÉCHOUE (hors ligne, jeton non révocable) passait pour réussie — la
+  // session survivait au rechargement et la personne se retrouvait dans le
+  // compte qu'elle venait de quitter, alors que tout son cache local, lui,
+  // avait bien été purgé. On ferme alors la session côté appareil.
+  var echecSignOut = false;
+  try {
+    var so = await supa.auth.signOut();
+    if (so && so.error) echecSignOut = true;
+  } catch(e) { echecSignOut = true; }
+  if (echecSignOut) { try { purgerJetonAuthLocal(); } catch (e) {} }
   discardPendingStateSave();
   // ⚠️ Isolation inter-comptes : purge complète des caches liés au compte, y compris
   // les conversations en IndexedDB (sinon fuite de messages privés vers le compte suivant).
   try { await purgeAccountScopedData(); } catch(e) {}
-  toast("👋 Déconnecté — à bientôt !");
+  // ⚠️ APRÈS la purge, JAMAIS avant : `purgeAccountScopedData` ne connaît que les
+  // clés de compte, mais un `removeItem` posé avant celle-ci serait de toute façon
+  // suivi d'une écriture perdue. L'intention est une clé d'APPAREIL (absente
+  // d'`ACCOUNT_SCOPED_KEYS`), consommée une seule fois par `boot()`.
+  //
+  // ⚠️ L'INTENTION SUIT LE PARAMÈTRE, elle n'est pas posée d'office. Une
+  // déconnexion VOLONTAIRE (les deux boutons des Paramètres) demande l'écran de
+  // connexion : sans ça, le rechargement repart sur un appareil « sans compte »
+  // et le parcours de première visite le renvoie dans le fil invité, sans le
+  // moindre formulaire. Mais tout appelant FUTUR — une suppression de compte,
+  // une expiration de session — hériterait de cet écran sans l'avoir demandé :
+  // `doLogout()` sans argument reste donc l'ancien comportement, à l'octet près.
+  if (intention === "signin") poserIntentionAuth("signin");
+  toast(intention === "signin" ? "🔄 Déconnecté — connecte-toi avec ton autre compte" : "👋 Déconnecté — à bientôt !");
   setTimeout(() => location.reload(), 1200);
 }
 
@@ -3111,53 +3424,38 @@ function passionTileHTML(o) {
     + '</div>';
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// LA PASTILLE DE PASSION DU PROFIL — la même question, en beaucoup plus discret
-// ──────────────────────────────────────────────────────────────────────────
-// Demande de Benjamin du 2026-09-02, après essai réel : « sur la page profil
-// enlève les onglets ronds violets sous le pseudo des passions, c'est trop gros
-// trop visible ; tu mets juste les passions en question, fin élégant. »
+// ⚠️ `passionChipHTML` A VÉCU ICI LE 2026-09-02, ET SEULEMENT CE JOUR-LÀ. Elle
+// rendait le rail du profil en pastilles de texte (emoji · libellé · décompte),
+// sur une lecture trop littérale de « enlève les onglets ronds violets sous le
+// pseudo des passions, c'est trop gros trop visible ; tu mets juste les passions
+// en question, fin élégant » : Benjamin visait la LIGNE DE TITRES de la carte
+// d'identité, qui répétait les mêmes mots 5 px plus haut. Verdict le soir même :
+// « sur le profil remets les bulles rondes comme avant, pas de rangée de
+// passions ovale. » La ligne de titres reste retirée, la bulle revient, et la
+// fonction part avec ses règles CSS plutôt que de survivre sans appelant.
 //
-// La bulle du Fil (`passionTileHTML`) empile une vignette photo de 46 px, une
-// pastille d'emoji, un compteur et un libellé : sur le Fil c'est le sujet même
-// de l'écran, sur le Profil cela faisait un second bloc massif juste sous la
-// carte d'identité. Le PROFIL passe donc à une pastille de texte — emoji,
-// libellé, décompte — pendant que le FIL garde ses bulles à l'identique (« remets
-// les profils du fil comme avant, en bulle », 2026-08-29 : cette demande-là n'est
-// pas annulée, elle ne portait pas sur le même écran).
+// Ce qu'il faut en retenir avant de refaire une pastille : le Fil et le Profil
+// affichent la MÊME bulle (`passionTileHTML` ci-dessus), c'est une exigence de
+// la refonte multi-passion (§1 et §7) et une leçon de ce dépôt — les deux tables
+// de libellés de mood, puis les deux écrans de profil, ont divergé parce que
+// chacun portait sa copie du rendu.
+
+// ── LE RAIL DE PASSIONS EST COULISSANT — GARDER SA POSITION ───────────────
+// Depuis le 2026-09-02 les bulles ont une largeur FIXE : la rangée déborde et
+// se fait défiler au doigt (`.profile-strip { overflow-x: auto }`). Réécrire
+// `innerHTML` remet alors `scrollLeft` à ZÉRO — et la bulle qu'on venait de
+// toucher tout à droite sortait de l'écran à l'instant même où elle s'allumait,
+// puisque cocher une passion change le HTML du rail et le fait reconstruire.
 //
-// ⚠️ C'EST DÉSORMAIS LA SEULE RANGÉE DE PASSIONS DU PROFIL. La carte d'identité
-// en portait une seconde, juste au-dessus, où chaque pastille ouvrait la page de
-// la passion ; les deux nommaient les mêmes mots à 5 px d'écart. Benjamin a
-// tranché le 2026-09-02 : « supprime les titres de passion dans le profil sous
-// le pseudo et garde seulement les bulles dessous. » Ne pas la remettre sans
-// retirer celle-ci — deux rangées, ou une rangée à deux destinations, sont les
-// deux façons de rouvrir le défaut.
-//
-// ⚠️ MÊME RÈGLE DE GESTIONNAIRE que la bulle : `_passionTileOnclick` écrit
-// l'appel en toutes lettres, seul `arg` circule et il passe par `escapeJsArg`.
-// ⚠️ ET TOUJOURS PAS D'ACTIVATION CLAVIER ICI : le délégué unique d'app-08
-// active tout `[role="button"]` non natif. En ajouter un second produirait deux
-// basculements pour une touche, qui s'annulent (défaut mesuré le 2026-08-31).
-//
-// Champs : { emoji, label, count, selected, action, arg, title, tileKey }
-function passionChipHTML(o) {
-  o = o || {};
-  var emoji = String(o.emoji || "✨");
-  var label = String(o.label || "Passion");
-  var selected = !!o.selected;
-  var nb = Number(o.count) > 0
-    ? '<span class="v9-chip-nb">' + Number(o.count) + '</span>'
-    : '';
-  return '<div class="v9-passion-chip' + (selected ? " active" : "") + '"'
-    + ' onclick="' + _passionTileOnclick(o.action, o.arg) + '"'
-    + ' title="' + escapeHtml(o.title || label) + '"'
-    + (o.tileKey === undefined ? "" : ' data-passion-tile="' + escapeHtml(String(o.tileKey)) + '"')
-    + ' role="button" tabindex="0" aria-pressed="' + (selected ? "true" : "false") + '">'
-    + '<span class="v9-chip-emoji" aria-hidden="true">' + escapeHtml(emoji) + '</span>'
-    + '<span class="v9-chip-nom">' + escapeHtml(label) + '</span>'
-    + nb
-    + '</div>';
+// Tout point qui réécrit un `.profile-strip` passe donc par ici plutôt que
+// d'écrire `innerHTML` directement. La position est reposée SYNCHRONEMENT :
+// le navigateur calcule la mise en page à la demande sur l'affectation, donc
+// rien ne clignote, et une rangée devenue plus courte se borne d'elle-même.
+function ecrireRailCoulissant(rail, html) {
+  if (!rail) return;
+  var x = rail.scrollLeft || 0;
+  rail.innerHTML = html;
+  if (x > 0) { try { rail.scrollLeft = x; } catch (e) {} }
 }
 
 // L'URL de la photo d'illustration d'une passion du catalogue (identifiant
@@ -3787,11 +4085,18 @@ function legacyMoodToFeedIntent(mood) {
 // (`moodMap[p.mood] || ""`), et un post « irl » sortait « IRL » ici et « Tout »
 // là-bas.
 //
-// Les LIBELLÉS suivent le rail d'intentions du Fil (lot UI-7 : Tous · Explorer ·
-// Apprendre · Idées · Rencontrer) : ce qu'on choisit en publiant porte le même
-// mot que ce qu'on choisit en lisant. Les VALEURS, elles, ne bougent pas — elles
-// sont écrites en base (`posts.mood`), relues par `legacyMoodToFeedIntent`, et
+// Les LIBELLÉS suivent le rail d'intentions du Fil (Explorer · Apprendre ·
+// Idées · Rencontrer) : ce qu'on choisit en publiant porte le même mot que ce
+// qu'on choisit en lisant. Les VALEURS, elles, ne bougent pas — elles sont
+// écrites en base (`posts.mood`), relues par `legacyMoodToFeedIntent`, et
 // portées par des milliers de publications existantes.
+//
+// ⚠️ TROIS entrées, et c'est le produit qui les compte, pas cette table :
+// le Studio ne propose que 💡 Idées · 📚 Apprendre · 🤝 Rencontrer · ✨ Tous.
+// « Explorer » n'est PAS ici et ne peut pas y être : c'est une question posée au
+// LECTEUR (auteur non suivi, passion non cochée), jamais une étiquette posée par
+// l'auteur — lui donner une pastille la rendrait décorative, donc mensongère.
+// « chill » et « actu » n'y sont plus : voir la scission juste en dessous.
 //
 // ⚠️ « all » n'est PAS dans la table, et c'est délibéré : le neutre ne porte
 // aucune étiquette sur la carte (`moodTagLabel` rend ""). L'ajouter collerait un
@@ -3802,9 +4107,48 @@ var PASSIO_MOOD_LABELS = {
   creation: { emoji: "💡", label: "Idées" },
   learn:    { emoji: "📚", label: "Apprendre" },
   irl:      { emoji: "🤝", label: "Rencontrer" },
-  chill:    { emoji: "😌", label: "Chill" },
-  actu:     { emoji: "🌍", label: "Actu" },
 };
+
+// ── AFFICHER ET ADMETTRE SONT DEUX CHOSES (2026-09-02) ───────────────────────
+//
+// `PASSIO_MOOD_LABELS` portait CINQ entrées et servait à DEUX usages qui n'ont
+// rien à voir — c'est en retirant « chill » et « actu » du produit qu'on s'en
+// est aperçu :
+//
+//   ① NOMMER une envie sur une carte (`moodTagLabel`, `moodShortLabel`) ;
+//   ② ADMETTRE une valeur de `posts.mood` dans le repli d'exploration
+//      (`moodsAffichables`, plus bas dans ce fichier).
+//
+// Les deux listes viennent de DIVERGER, et devaient diverger : le Studio ne
+// propose plus que Idées · Apprendre · Rencontrer · Tous — « chill » et « actu »
+// ne sont plus publiables depuis le 2026-08-29 — donc plus rien ne doit les
+// NOMMER. Mais la base de production porte des milliers de publications qui les
+// portent encore, et les retirer de la liste d'ADMISSION les ferait disparaître
+// du fil de tout le monde. Un retrait de vocabulaire ne doit pas effacer du
+// contenu réel.
+//
+// D'où la scission. `PASSIO_MOOD_LABELS` ne garde que ce qui s'affiche ;
+// `PASSIO_MOODS_ADMIS` garde tout ce qui a le droit d'exister en base.
+//
+// ⚠️ Conséquence VOULUE : une publication « chill » ou « actu » se comporte
+// désormais exactement comme le neutre `all` — elle entre dans le fil, elle
+// entre dans l'exploration, et elle ne porte AUCUNE pastille. C'est ce que
+// `moodTagLabel` fait déjà de toute valeur qu'elle ne connaît pas.
+//
+// ⚠️ `legacyMoodToFeedIntent` n'est PAS touchée : elle rendait déjà « generic »
+// pour « chill » et « actu ». Ces publications ne satisfaisaient donc déjà
+// aucune des envies du rail — le produit avait tranché avant l'affichage.
+//
+// ⚠️ NE PAS confondre le MOOD « actu », mort, et la PASSION « actu »
+// (Actualité 🌍), qui est l'une des 19 du catalogue et reste vivante.
+var PASSIO_MOODS_ADMIS = (function () {
+  var admis = {};
+  Object.keys(PASSIO_MOOD_LABELS).forEach(function (m) { admis[m] = 1; });
+  // Valeurs LÉGUÉES : plus publiables, plus affichables, toujours admises.
+  admis.chill = 1;
+  admis.actu = 1;
+  return admis;
+})();
 
 // Étiquette de la carte (fil, post ouvert) : emoji + libellé, ou "" pour le
 // neutre et pour toute valeur inconnue venue de la base.
@@ -3843,9 +4187,15 @@ function _firstRunDemoTag(p) {
 // retombent sur `mood: "all"`, donc TOUS en portaient une.
 // ⚠️ C'est bien le neutre qui ne doit porter aucun badge (cf. la note de
 // `PASSIO_MOOD_LABELS`) — l'intention était juste, seul le rendu la trahissait.
+// ⚠️ `data-mood` porte la COULEUR de la pastille (une teinte par envie, cf. le
+// bloc « PASTILLE DE MOOD » de styles.css). Il n'est posé que sur la branche où
+// `moodTagLabel` a rendu un libellé : le mood y est donc forcément une CLÉ de
+// `PASSIO_MOOD_LABELS`, jamais une valeur libre venue de la base. L'échappement
+// reste là par principe — cette table peut grandir, la garde ne doit pas
+// dépendre de sa forme actuelle.
 function _moodTagHTML(mood) {
   var t = moodTagLabel(mood);
-  return t ? '<span class="post-mood-tag">' + t + '</span>' : "";
+  return t ? '<span class="post-mood-tag" data-mood="' + escapeHtml(String(mood)) + '">' + t + '</span>' : "";
 }
 
 function feedIntentMeta(intent) {
@@ -4102,6 +4452,15 @@ function _passionSignalSet() {
   } catch (e) {}
   return s;
 }
+// Fenêtre et poids du terme « je viens de publier » (cf. `feedPostScore`).
+// Le bonus doit dépasser le MEILLEUR score atteignable par une autre
+// publication : fraîcheur 1,0 + affinité maximale (passion + auteur suivi +
+// curiosité = 2,6 × 0,35 = 0,91) + engagement plafonné (3 × 0,12 = 0,36), soit
+// 2,27. Une publication à moi vaut au pire 1,0 + 0,35 + 0 + 1,20 = 2,55 : elle
+// passe devant, toujours, pendant la fenêtre.
+var FEED_MA_PUBLI_HEURES = 2;
+var FEED_MA_PUBLI_BONUS = 1.2;
+
 function feedPostScore(p, nowBucket, myPassions, followingSet, signalSet) {
   // Fraîcheur : âge en heures via buckets 5 min (12/h), décroissance exp τ=48 h.
   var postB = Math.floor((p.createdAt || 0) / 300000);
@@ -4127,7 +4486,34 @@ function feedPostScore(p, nowBucket, myPassions, followingSet, signalSet) {
   var reactions = Array.isArray(p.reactions) ? p.reactions.length : 0;
   var engagement = Math.min(3, Math.log(1 + likes + 2 * comments + reactions));
 
-  return recency * 1.0 + affinity * 0.35 + engagement * 0.12;
+  // ── « JE VIENS DE PUBLIER » : GARANTIE DE VISIBILITÉ, BORNÉE ───────────────
+  //
+  // Sans ce terme, une publication toute neuve ne peut PAS gagner : elle a la
+  // fraîcheur maximale mais un engagement NUL, quand n'importe quelle
+  // publication un peu établie plafonne l'engagement dès ~20 j'aime. Mesuré le
+  // 2026-09-02 avec un compte « musique » : la publication de l'utilisateur
+  // sortait 25e sur 40, et `renderFeed` n'en peint que 20 — donc INVISIBLE.
+  // L'utilisateur publie, et ne voit rien.
+  //
+  // ⚠️ Le défaut ne vient PAS du contenu de démonstration, il vient du barème.
+  // Le socle l'a seulement rendu ATTEIGNABLE en ajoutant des publications
+  // fraîches et engageantes : avant, la publication neuve sortait 20e, soit la
+  // toute dernière carte peinte. Elle tenait à une place. Corriger le socle
+  // sans corriger le barème aurait rendu les tests verts en laissant le
+  // produit à une publication du même défaut.
+  //
+  // ⚠️ BORNÉ DANS LE TEMPS, et c'est ce qui le rend acceptable : passé le
+  // délai, le bonus disparaît entièrement et le fil redevient exactement
+  // celui d'avant. Il ne s'agit pas de promouvoir mes publications, il s'agit
+  // de me montrer ce que je viens de faire. Au-delà, mes propres publications
+  // sont classées comme les autres — la fraîcheur s'en charge.
+  //
+  // ⚠️ La propriété se teste par `_estMonPost` (l'AUTEUR), jamais par `_source` :
+  // c'est la règle du projet, et elle écarte d'office le contenu de
+  // démonstration, qui n'appartient à personne.
+  var mienneEtFraiche = (ageHours < FEED_MA_PUBLI_HEURES && _estMonPost(p)) ? FEED_MA_PUBLI_BONUS : 0;
+
+  return recency * 1.0 + affinity * 0.35 + engagement * 0.12 + mienneEtFraiche;
 }
 function rankFeedPosts(posts) {
   var arr = (posts || []).slice();
@@ -4286,10 +4672,15 @@ function renderFeedExplorationFallback(list) {
   //    l'exploration — invisible pour exactement les gens qu'elle cherche.
   //    « Rencontrer » est devenu publiable le 2026-08-29 (#194) ; le défaut
   //    n'existait pas avant, faute de moyen de produire un tel post.
-  // La table canonique `PASSIO_MOOD_LABELS` fait foi. Elle reste une liste
+  // La table canonique `PASSIO_MOODS_ADMIS` fait foi. Elle reste une liste
   // BLANCHE : un mood inconnu venu de la base n'entre toujours pas.
+  // ⚠️ C'est bien `PASSIO_MOODS_ADMIS` et NON `PASSIO_MOOD_LABELS` : depuis la
+  // scission du 2026-09-02, la seconde ne contient plus que ce qui s'AFFICHE
+  // (trois envies). Lire les libellés ici ferait disparaître du fil toutes les
+  // publications de production portant « chill » ou « actu » — c'est-à-dire du
+  // contenu réel effacé par un changement de vocabulaire.
   try {
-    Object.keys(PASSIO_MOOD_LABELS).forEach(function(m) { moodsAffichables[m] = 1; });
+    Object.keys(PASSIO_MOODS_ADMIS).forEach(function(m) { moodsAffichables[m] = 1; });
   } catch (e) {}
 
   var candidats = [];
@@ -5242,9 +5633,22 @@ function renderFeed() {
     const _fill = function() {
       if (window._feedRenderToken !== _token) return;          // rendu obsolète
       if (!document.body.contains(list)) return;
+      // ⚠️ `visible` est un INSTANTANÉ pris avant l'attente idle, et ses posts
+      // sont des copies (`allFeedPosts` fait `{...p}`). Ses compteurs ont pu
+      // bouger depuis — c'est exactement ce qui arrive à un like optimiste
+      // ANNULÉ par un refus serveur : la carte sortait « 🤍 5 », le cœur relu en
+      // direct (`state.user.likedPosts`) mais le nombre figé à sa valeur
+      // optimiste, et ce faux compteur survivait jusqu'au prochain rendu
+      // complet. Les cartes du premier lot, elles, sont rattrapées par la
+      // retouche en place ; celles-ci n'existaient pas encore, donc rien ne
+      // pouvait les corriger. Défaut mesuré le 2026-09-02, atteignable dès
+      // qu'une carte dépasse la douzième position.
+      // On ne re-CLASSE rien : l'ordre reste celui de l'instantané, sinon les
+      // cartes sauteraient sous le doigt pendant le défilement.
+      const frais = visible.map(_feedCompteursFrais);
       list.insertAdjacentHTML("beforeend",
-        visible.slice(FAST).map(_renderPostHTMLSafe).join("") + feedWindowTailHtml(hasMore, moreBtnHtml));
-      if (feedWindowEnabled()) list._fwSigs = visible.map(_feedWindowCardSig);
+        frais.slice(FAST).map(_renderPostHTMLSafe).join("") + feedWindowTailHtml(hasMore, moreBtnHtml));
+      if (feedWindowEnabled()) list._fwSigs = frais.map(_feedWindowCardSig);
       feedWindowSync(list);
     };
     (window.requestIdleCallback || function(f){ return setTimeout(f, 50); })(_fill, { timeout: 300 });
@@ -5417,6 +5821,36 @@ function _renderPostHTMLSafe(p) {
   try { return renderPostHTML(p); }
   catch (e) { try { if (typeof diagLog === "function") diagLog("renderPostHTML fail", (p && p.id) || "?", e && e.message); } catch (_) {} return ""; }
 }
+// Compteurs volatils relus sur l'objet CANONIQUE, sans toucher au classement.
+//
+// Un post rendu dans le fil est une COPIE (`allFeedPosts` fait `{...p}`), figée
+// à l'instant du classement. Tout ce qui bouge après — un like optimiste, son
+// annulation sur refus serveur, un commentaire arrivé en realtime — ne bouge que
+// sur l'original. Peindre la copie plus tard affiche donc un nombre périmé.
+//
+// ⚠️ La propriété du post se retrouve par `findPostAnywhere`, jamais par
+// `seed.posts.find || userPosts.find` : un post vit dans QUATRE tableaux.
+// ⚠️ On ne recopie QUE les compteurs. Reprendre l'objet canonique entier
+// perdrait les champs d'affichage que `allFeedPosts` a posés sur la copie
+// (`_source`, `authorName`, `authorEmoji`…), et la carte sortirait anonyme.
+// ⚠️ Retour tel quel quand rien n'a bougé : pas de copie inutile par carte.
+function _feedCompteursFrais(p) {
+  try {
+    if (!p || !p.id || typeof findPostAnywhere !== "function") return p;
+    var vrai = findPostAnywhere(p.id);
+    if (!vrai) return p;
+    var nbC = (vrai.comments || []).length, nbCp = (p.comments || []).length;
+    var nbR = Array.isArray(vrai.reactions) ? vrai.reactions.length : -1;
+    var nbRp = Array.isArray(p.reactions) ? p.reactions.length : -1;
+    if ((vrai.likes || 0) === (p.likes || 0) && nbC === nbCp && nbR === nbRp) return p;
+    var copie = Object.assign({}, p);
+    copie.likes = vrai.likes;
+    if (vrai.comments) copie.comments = vrai.comments;
+    if (Array.isArray(vrai.reactions)) copie.reactions = vrai.reactions;
+    return copie;
+  } catch (e) { return p; }
+}
+
 function renderPostHTML(p) {
   // ✅ AFFICHER TOUJOURS LE VRAI NOM DU PROFIL!
   let authorName = p.authorName;
@@ -5581,6 +6015,21 @@ function renderPostHTML(p) {
   // le même mot. Seule reste post-author-meta, qui nomme la passion DE LA
   // PUBLICATION : la bonne question sur une carte, alors que la ligne
   // d'identité répondait « quelles sont les passions du compte ? ».
+  //
+  // ⚠️ `post-passion-tag` n'AJOUTE PAS une seconde mention : il enrobe celle qui
+  // existait déjà, pour la rendre lisible (accent + graisse) au lieu du gris
+  // `--muted` à 11 px qu'elle partageait avec l'heure. Retour de testeur du
+  // 2026-09-02 : « on ne voit pas assez à quelle passion appartient un post ».
+  // Le `textContent` de `.post-author-meta` est INCHANGÉ à l'octet près —
+  // deux suites l'assertent (`profil-entete-passions`, `refonte-multi-passion`).
+  //
+  // ⚠️ `passion.label` PASSE PAR `escapeHtml`, et ce n'est pas décoratif :
+  // `passionById` peut rendre une entrée de `state.user.customPassions`, dont le
+  // libellé est de la saisie libre (`label: name`). La portée est le compte
+  // lui-même — aucun libellé d'un TIERS n'atteint cette ligne — mais la
+  // convention maison ne souffre pas d'exception, et la ligne d'origine ne
+  // l'échappait déjà pas. Corrigé en même temps que l'enrobage plutôt que laissé
+  // pour plus tard.
   // L'identité complète reste centralisée (ADR-011 §3) : elle vit sur les DEUX
   // en-têtes de profil, où elle est cliquable, et sur les surfaces denses
   // (commentaires, listes, inbox) — aucune de celles-là n'affiche de passion à
@@ -5592,7 +6041,7 @@ function renderPostHTML(p) {
       <div class="post-author" style="cursor:pointer;" onclick="openUserProfile('${escapeJsArg(p.authorId)}','${escapeJsArg(p._source)}')">
         <div class="post-author-name">${escapeHtml(author.name || "Moi")}</div>
         <div class="post-author-meta">
-          ${passion.emoji} ${passion.label} · ${fmtTime(p.createdAt)}
+          <span class="post-passion-tag">${escapeHtml(passion.emoji)} ${escapeHtml(passion.label)}</span> · ${fmtTime(p.createdAt)}
           ${p._source === "me" && p.syncStatus ? `
             ${p.syncStatus === "syncing" ? '<span style="margin-left:8px;font-size:10px;color:var(--muted);">⏳ Sync...</span>' : ""}
             ${p.syncStatus === "synced" ? '<span style="margin-left:8px;font-size:10px;color:#22c55e;">📡 En ligne</span>' : ""}
@@ -5683,7 +6132,7 @@ async function openPost(id) {
         <div class="avatar" style="background:${avatarBg(author)};cursor:pointer;" onclick="openUserProfile('${escapeJsArg(post.authorId)}','${escapeJsArg(post._source || "seed")}')">${avatarInner(author)}</div>
         <div class="post-author" style="cursor:pointer;" onclick="openUserProfile('${escapeJsArg(post.authorId)}','${escapeJsArg(post._source || "seed")}')">
           <div class="post-author-name">${escapeHtml(author.name || "Utilisateur")}</div>
-          <div class="post-author-meta">${passion.emoji} ${passion.label} · ${fmtTime(post.createdAt)}</div>
+          <div class="post-author-meta"><span class="post-passion-tag">${escapeHtml(passion.emoji)} ${escapeHtml(passion.label)}</span> · ${fmtTime(post.createdAt)}</div>
         </div>
         ${(state.userPosts || []).some(function(up){ return up.id === id; }) ? `<button class="post-menu-btn" onclick="event.stopPropagation();openPostOptions('${escapeJsArg(id)}')" aria-label="Options du post" title="Options">
           <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>

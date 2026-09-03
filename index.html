@@ -401,7 +401,13 @@
       <div class="settings-section-body">
         <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();goTo('profiles')">Mon profil</button>
         <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();openEditMainProfile()">Modifier le profil</button>
-        <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();openChangePassword()">🔑 Changer mon mot de passe</button>
+        <button class="btn ghost" id="settingsChangePassword" onclick="event.stopPropagation();toggleDevPanel();openChangePassword()">🔑 Changer mon mot de passe</button>
+        <!-- Le libellé de ce bouton est réécrit à CHAQUE ouverture du panneau
+             par majSectionCompte() (app-02) : « J'ai déjà un compte — me
+             connecter » pour un visiteur sans compte, « Se connecter avec un
+             autre compte » pour un compte connecté. Sans lui, le parcours de
+             première visite n'offrait AUCUN chemin vers un compte existant. -->
+        <button class="btn ghost" id="settingsAuthSwitch" onclick="event.stopPropagation();toggleDevPanel();openAccountSwitch()">🔄 Se connecter avec un autre compte</button>
         <button class="btn ghost" onclick="event.stopPropagation();resetOnboarding()" style="font-size:12px;">🔄 Voir l'onboarding</button>
       </div>
     </div>
@@ -468,10 +474,10 @@
 
     <!-- DANGER ZONE -->
     <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px;">
-      <button class="btn ghost" onclick="toggleDevPanel();openLogoutConfirm()" style="color:#ef4444;border-color:rgba(239,68,68,0.3);font-size:11px;">🚪 Se déconnecter</button>
+      <button class="btn ghost" id="settingsLogout" onclick="toggleDevPanel();openLogoutConfirm()" style="color:#ef4444;border-color:rgba(239,68,68,0.3);font-size:11px;">🚪 Se déconnecter</button>
       <!-- 🛡 RGPD 2026-06-10 : vraie suppression (données serveur + locales),
            avant ce bouton ne vidait que le localStorage -->
-      <button class="btn ghost" onclick="toggleDevPanel();openDeleteAccountConfirm()" style="color:#ef4444;border-color:rgba(239,68,68,0.3);font-size:11px;">🗑 Supprimer mon compte</button>
+      <button class="btn ghost" id="settingsDeleteAccount" onclick="toggleDevPanel();openDeleteAccountConfirm()" style="color:#ef4444;border-color:rgba(239,68,68,0.3);font-size:11px;">🗑 Supprimer mon compte</button>
     </div>
   </div>
 
@@ -604,6 +610,13 @@
              rendu. Le renderer gère ensuite son affichage. -->
         <p class="section-subtitle" id="profilesQuotaSub" style="display:none;"></p>
         <div id="profileList"></div>
+        <!-- LA LISTE DES PASSIONS ARCHIVÉES, rendue EN CLAIR et non plus derrière
+             un lien vers une modale. Une passion rangée dont la seule trace était
+             un lien dans un panneau lui-même masqué était, du point de vue de
+             l'utilisateur, une passion perdue — le défaut rapporté après essai
+             réel le 2026-09-02. Frère de #profileList, jamais son enfant :
+             renderProfilesScreen réécrit `#profileList.innerHTML` en entier. -->
+        <div id="passionArchiveBox" hidden></div>
       </div>
 
       <!-- ONGLETS CONTENU -->

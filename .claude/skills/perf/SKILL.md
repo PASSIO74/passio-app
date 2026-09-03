@@ -1,6 +1,6 @@
 ---
 name: perf
-description: Audite et améliore la performance/rapidité de PASSIO (taille des bundles, jank de rendu, pollings, requêtes Supabase, images). À utiliser quand Benjamin veut accélérer l'app, réduire le poids, corriger un lag, ou dit "perf", "c'est lent", "optimise la vitesse", "ça rame".
+description: "Performance : poids des bundles, jank de rendu, pollings, requêtes Supabase. Dire : c'est lent, ça rame."
 ---
 
 # /perf — Audit & optimisation performance PASSIO

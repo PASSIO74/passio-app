@@ -1,6 +1,6 @@
 ---
 name: passio-feature
-description: Workflow complet de construction d'une feature PASSIO de bout en bout (produit → archi → DB/RLS → sécurité/privacy → UX → implémentation → tests → télémétrie → perf → red team → doc). À utiliser quand Benjamin dit « construis/ajoute/développe X » et que la feature est transverse ou sensible. Enchaîne les skills existantes plutôt que de tout refaire.
+description: "Feature transverse ou sensible : produit, archi, DB/RLS, UX, tests, télémétrie. Dire : construis, développe X."
 ---
 
 # /passio-feature — Feature de A à Z

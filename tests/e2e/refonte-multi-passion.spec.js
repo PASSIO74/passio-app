@@ -71,6 +71,13 @@ async function poser(page, opts = {}) {
         text: "TRIPLE_SOURCE", mood: "creation", createdAt: t - 6000, likes: 0, comments: [] },
     ];
     state.supabasePosts = [];
+    // QUATRIÈME tableau : `window._feedExtraPosts` est fait pour SURVIVRE aux
+    // écrasements de `supabasePosts` (il protège un post arrivé pendant qu'une
+    // requête était en vol). Le vider n'est donc pas une redondance : sans cela,
+    // une publication RÉELLE de production ramenée par un rafraîchissement
+    // asynchrone se réinvite dans le fil APRÈS le semis, et le test mesure autre
+    // chose que son fixture. Défaut mesuré le 2026-09-02 sur `main` (run 2409).
+    window._feedExtraPosts = [];
     state.user.following = o.following === undefined ? ["u_alice"] : o.following;
     state.user.general = { username: "Benjamin" };
     state.user.name = "Benjamin";
@@ -129,15 +136,13 @@ test("① le profil porte le rail de passions du Fil, au-dessus des onglets", as
     if (!rail) return { rail: false };
     return {
       rail: true,
-      // ⚠️ ASSERTION RETOURNÉE LE 2026-09-02, jamais vidée. Ce rail portait le
-      // composant du Fil (`.profile-strip` + `.profile-tile` + vignette photo) ;
-      // Benjamin l'a jugé « trop gros trop visible » sur le profil et demandé
-      // « juste les passions, fin élégant ». Il rend donc des pastilles de
-      // texte, et le test garantit maintenant que la bulle NE REVIENT PAS —
-      // ce que « plus de vignette » seul ne dirait pas.
-      pastilles: rail.querySelectorAll(".v9-passion-chip").length,
-      plusDeBulle: !rail.classList.contains("profile-strip")
-        && rail.querySelectorAll(".profile-tile, .profile-tile-avatar").length === 0,
+      // MÊME composant que le Fil : mêmes classes, donc mêmes dimensions.
+      // ⚠️ Ce test a été retourné le 2026-09-02, puis REMIS DANS SON SENS
+      // D'ORIGINE le soir même : « sur le profil remets les bulles rondes comme
+      // avant, pas de rangée de passions ovale ». Ce qui a changé ce jour-là et
+      // qui reste, c'est la LIGNE DE TITRES de la carte d'identité, retirée.
+      memeComposant: rail.classList.contains("profile-strip")
+        && rail.querySelectorAll(".profile-tile .profile-tile-avatar").length > 0,
       cles: Array.from(rail.querySelectorAll("[data-passion-tile]"))
         .map(t => t.getAttribute("data-passion-tile")),
       // Au-DESSUS des onglets : le rail précède la barre dans le document.
@@ -146,8 +151,7 @@ test("① le profil porte le rail de passions du Fil, au-dessus des onglets", as
     };
   });
   expect(vu.rail, "le rail de passions doit exister sur le profil").toBe(true);
-  expect(vu.pastilles, "une pastille de texte par passion").toBe(3);
-  expect(vu.plusDeBulle, "le profil ne porte plus les bulles du Fil").toBe(true);
+  expect(vu.memeComposant, "il réutilise le composant .profile-tile du Fil").toBe(true);
   // ⚠️ PLUS DE BULLE « Toutes » (demande de Benjamin, 2026-08-31). Le rail est
   // passé en MULTISÉLECTION comme celui du Fil : ne rien cocher DIT « toutes »,
   // donc la bulle offrait une seconde commande pour un état déjà atteignable.
@@ -334,7 +338,7 @@ test("① quater — un profil sans passion affiche un état propre, pas une ran
   await page.waitForTimeout(600);
   const vu = await page.evaluate(() => {
     const rail = document.getElementById("v9ProfilePassions");
-    return { txt: rail ? rail.innerText : "", bulles: rail ? rail.querySelectorAll(".v9-passion-chip").length : -1 };
+    return { txt: rail ? rail.innerText : "", bulles: rail ? rail.querySelectorAll(".profile-tile").length : -1 };
   });
   expect(vu.bulles, "aucune bulle, mais pas une rangée muette").toBe(0);
   expect(vu.txt).toContain("Aucune passion");

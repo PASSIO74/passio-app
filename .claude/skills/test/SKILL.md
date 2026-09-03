@@ -1,18 +1,17 @@
 ---
 name: test
-description: Lance la suite de tests complète PASSIO + les audits (globals, handlers) et rapporte les résultats. À utiliser pour valider avant commit, vérifier une non-régression, ou quand Benjamin dit "lance les tests", "vérifie que rien n'est cassé", "test".
+description: "Suite Playwright complète + les 7 gates statiques (npm run verif). Dire : lance les tests, vérifie que rien n est cassé."
 ---
 
 # /test — Suite de tests PASSIO
 
 ## Lancer (dans l'ordre, tout doit être vert)
 ```
-npm run audit:globals
-npm run audit:handlers
-npm run test:all
+npm run verif        # les 7 gates statiques de la CI, ~2 s
+npm run test:all     # la suite Playwright complète
 ```
-- `audit:globals` : collisions de globals (17 scripts partagent window) — aussi dans le CI, AVANT Playwright.
-- `audit:handlers` : onclick référençant des fonctions fantômes.
+- `verif` : les SEPT gates statiques que la CI exige, en ~2 s — collisions de globals (17 scripts partagent `window`), onclick fantômes, échappement contextuel, tests creux, stub Supabase hors ligne, clés de télémétrie contre le filtre PII, miroirs du référentiel des passions. **Toujours les lancer AVANT Playwright** : un rouge ici se trouve en 2 s au lieu d'un cycle CI de ~30 min.
+- `test:local` / `test:prod` : la suite sans écriture en base (897 tests) ou les 7 suites à comptes réels.
 - `test:all` : suite Playwright complète (smoke, access-gate, cadrage, feed-ranking, irl, cdv, dist-build…).
 
 Première fois : `npx playwright install chromium`.
