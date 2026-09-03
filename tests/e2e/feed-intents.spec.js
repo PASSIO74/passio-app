@@ -15,7 +15,7 @@
 // depuis validation du 2026-08-26. Les valeurs positives héritées restent
 // inertes ; seules les coupures explicites peuvent retirer la V2.
 const { test, expect } = require("@playwright/test");
-const { bootOnboarded } = require("./app-helper");
+const { bootOnboarded, sansDonneesDistantes } = require("./app-helper");
 
 const PREVIEW = "?passio_preview=passio-ui-v2";
 
@@ -99,6 +99,13 @@ test.describe("Fil — Envie du moment (UI-2 active par défaut)", () => {
     await expect(page.locator("#feedIntentSelector")).toBeHidden();
 
     await page.evaluate(() => localStorage.removeItem("passio_feed_intents_v1"));
+    // ⚠️ ISOLATION DES DONNÉES DISTANTES — POSÉE ICI PARCE QUE CETTE SUITE
+    // NAVIGUE ELLE-MÊME. `bootOnboarded` la pose par défaut, mais sa portée est
+    // L'APPEL, pas le fichier : un `page.goto` maison garde son chemin exposé, et
+    // le verdict du test dépend alors du CONTENU DE LA PRODUCTION. C'est ce qui a
+    // rendu `main` rouge six fois en quatre jours et fait sauter autant de
+    // déploiements. Verrou mécanique : `scripts/audit-tests-isolation.js`.
+    await sansDonneesDistantes(page);
     await page.goto("/index.html");
     await expect(page.locator("#moodSelector")).toBeHidden({ timeout: 20000 });
     await expect(page.locator("#feedIntentSelector")).toBeVisible();

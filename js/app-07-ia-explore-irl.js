@@ -1343,7 +1343,7 @@ function updateIrlMapMarkers() {
           ← Ma position actuelle
         </button>
         <div style="margin-bottom:10px;">
-          <input type="text" id="irlAddressInput" placeholder="Chercher une adresse..." style="width:100%;padding:8px;border-radius:6px;border:1px solid #ddd;font-size:12px;box-sizing:border-box;"/>
+          <input type="text" id="irlAddressInput" placeholder="Chercher une adresse..." style="width:100%;padding:8px;border-radius:6px;border:1px solid #ddd;font-size:16px;box-sizing:border-box;"/>
           <div id="irlAddressSuggestions" style="margin-top:6px;max-height:200px;overflow-y:auto;border:1px solid #eee;border-radius:6px;background:#fff;display:none;"></div>
         </div>
         <button onclick="geocodeIrlAddress()" style="width:100%;padding:8px;border-radius:6px;border:none;background:#7c3aed;color:#fff;font-size:12px;font-weight:600;cursor:pointer;">
@@ -1437,7 +1437,16 @@ function updateIrlMapMarkers() {
 function toggleIrlMapFullscreen() {
   const wrap = document.getElementById("irlMapWrap");
   if (!wrap) return;
+  const passeEnPleinEcran = !wrap.classList.contains("fullscreen");
   wrap.classList.toggle("fullscreen");
+  // En plein écran la carte est `position: fixed; inset: 0; z-index: 9000` :
+  // elle recouvre TOUT. Sans entrée d'historique, le geste de retour de l'iPhone
+  // ne la refermait pas — il quittait l'application, carte encore à l'écran.
+  if (passeEnPleinEcran) {
+    if (typeof pushOverlayHistory === "function") pushOverlayHistory("map", "#carte");
+  } else if (typeof releaseOverlayHistory === "function") {
+    releaseOverlayHistory();
+  }
   // Laisse Leaflet s'adapter à la nouvelle taille
   setTimeout(() => { if (irlMap) irlMap.invalidateSize(); }, 320);
 }
@@ -2204,6 +2213,11 @@ function clearAllIrlFilters() {
 
 function openIrlFiltersPanel() {
   var panel = document.getElementById("irlFiltersPanel");
+  // Entrée d'historique : ce panneau est plein écran. Sans elle, le geste de
+  // retour le traversait et changeait d'écran derrière lui.
+  if (panel && panel.style.display !== "block" && typeof pushOverlayHistory === "function") {
+    pushOverlayHistory("filtres", "#filtres");
+  }
   if (panel) panel.style.display = "block";
   // Le calendrier n'est peint qu'à l'ouverture (et à chaque changement) : inutile
   // de reconstruire 42 cellules à chaque renderIRL alors que le panneau est fermé.
@@ -2217,8 +2231,10 @@ function openIrlFiltersPanel() {
 
 function closeIrlFiltersPanel() {
   var panel = document.getElementById("irlFiltersPanel");
+  var etaitOuvert = !!(panel && panel.style.display === "block");
   if (panel) panel.style.display = "none";
   renderIRL();
+  if (etaitOuvert && typeof releaseOverlayHistory === "function") releaseOverlayHistory();
 }
 
 function _updateIrlFiltersBtn() {
@@ -3527,7 +3543,7 @@ function openEventDetails(id) {
       <div style="font-size:12px;color:var(--muted);">Chargement…</div>
     </div>
     <div style="display:flex;gap:6px;align-items:center;">
-      <input type="text" class="input" id="eventCommentInput" placeholder="Écris un commentaire…" maxlength="500" style="flex:1;font-size:13px;padding:10px 12px;" onkeypress="if(event.key==='Enter')addEventComment('${escapeJsArg(ev.id)}')"/>
+      <input type="text" class="input" id="eventCommentInput" placeholder="Écris un commentaire…" maxlength="500" style="flex:1;font-size:16px;padding:10px 12px;" onkeypress="if(event.key==='Enter')addEventComment('${escapeJsArg(ev.id)}')"/>
       ${_cmtComposerToolsHtml("eventCommentInput", "addEventComment", ev.id)}
       <button class="btn primary" onclick="addEventComment('${escapeJsArg(ev.id)}')" style="font-size:13px;padding:10px 14px;">Envoyer</button>
     </div>
@@ -3686,8 +3702,12 @@ function toggleJoinEventDetail(id) {
 
 function closeEventDetail() {
   const page = document.getElementById("eventDetailPage");
+  const etaitOuverte = !!(page && page.style.display && page.style.display !== "none");
   if (page) page.style.display = "none";
   window._openEventDetailId = null;
+  // `openEventDetails` posait bien une entrée — mais rien ne la reprenait à la
+  // fermeture au doigt : chaque fiche consultée coûtait un appui « retour ».
+  if (etaitOuverte && typeof releaseOverlayHistory === "function") releaseOverlayHistory();
 }
 
 // Cadence de rappels des événements rejoints — J-7 / J-1 / H-2 (2026-07-21).
@@ -3986,16 +4006,7 @@ function shareEvent(id) {
     const btn = document.getElementById("_shareEvOutBtn");
     if (!btn) return;
     btn.addEventListener("click", function () {
-      if (navigator.share) {
-        navigator.share({ title: ev.title, text, url }).catch(() => {});
-      } else if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(url + "\n" + text).then(
-          () => toast("🔗 Lien de l'événement copié"),
-          () => toast("Copie impossible")
-        );
-      } else {
-        toast("🔗 " + url);
-      }
+      partagerOuCopier({ title: ev.title, text, url }, "🔗 Lien de l'événement copié");
     });
   }, 0);
 }

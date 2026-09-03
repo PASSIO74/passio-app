@@ -915,6 +915,7 @@
       background: rgba(255, 255, 255, 0.20);
       border: 1px solid rgba(255, 255, 255, 0.30);
       border-radius: 999px;
+      -webkit-backdrop-filter: blur(10px);
       backdrop-filter: blur(10px);
       margin-bottom: 6px;
     }
@@ -963,6 +964,7 @@
       background: rgba(255, 255, 255, 0.20);
       border: 1px solid rgba(255, 255, 255, 0.30);
       border-radius: 999px;
+      -webkit-backdrop-filter: blur(10px);
       backdrop-filter: blur(10px);
       margin-bottom: 6px;
     }
@@ -1383,7 +1385,7 @@
       background: #ffffff;
       border-top: 1px solid var(--border);
       border-radius: 28px 28px 0 0;
-      padding: 18px 18px 24px;
+      padding: 18px 18px max(24px, calc(12px + env(safe-area-inset-bottom, 0px)));
       overflow-y: auto;
       animation: slideUp 320ms cubic-bezier(0.16, 1, 0.3, 1);
       box-shadow: 0 -12px 40px rgba(24, 18, 48, 0.22);
@@ -1460,7 +1462,13 @@
       position: absolute;
       left: 0;
       right: 0;
-      bottom: 90px;
+      /* ⚠️ L'écart se compte DEPUIS le haut de la barre d'onglets, dont la
+         hauteur vaut `62px + env(safe-area-inset-bottom)`. Une constante de
+         90 px suffisait sur Android (inset nul) et laissait le toast SOUS la
+         barre sur un iPhone à barre d'accueil : toute confirmation d'action
+         (« Lien copié », « Publié », « Message envoyé ») devenait invisible, et
+         l'utilisateur ne savait pas si son geste avait abouti. */
+      bottom: calc(90px + env(safe-area-inset-bottom, 0px));
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -2305,7 +2313,7 @@
     }
     .event-detail-back {
       position: absolute;
-      top: 14px; left: 14px;
+      top: calc(14px + env(safe-area-inset-top)); left: 14px;
       z-index: 2;
       background: rgba(0,0,0,0.45);
       border: none;
@@ -2338,6 +2346,7 @@
       font-size: 11px; font-weight: 700; color: #fff;
       background: rgba(139,92,246,0.7); border-radius: 20px;
       padding: 3px 9px;
+      -webkit-backdrop-filter: blur(6px);
       backdrop-filter: blur(6px);
     }
     /* Body */
@@ -2978,6 +2987,7 @@
       position: fixed;
       inset: 0;
       background: rgba(2, 6, 23, 0.7);
+      -webkit-backdrop-filter: blur(4px);
       backdrop-filter: blur(4px);
       z-index: 99999;
       display: none;
@@ -3416,6 +3426,10 @@
     }
     .irl-map-expand:hover { background: #fff; transform: scale(1.05); }
     .irl-map-expand svg { width: 18px; height: 18px; }
+    /* Plein écran : le bouton de sortie échappe à `.app-shell`, donc au retrait
+       d'encoche. Sans ceci il se retrouve sous la barre d'état de l'iPhone —
+       et c'est la SEULE sortie de la carte. */
+    .irl-map-wrap.fullscreen .irl-map-expand { top: calc(10px + env(safe-area-inset-top)); }
     .irl-map-wrap.fullscreen .irl-map-expand svg path:nth-child(1) { d: path("M9 4 H4 V9"); }
     .irl-map-wrap.fullscreen .irl-map-expand svg path:nth-child(2) { d: path("M15 4 H20 V9"); }
     .irl-map-wrap.fullscreen .irl-map-expand svg path:nth-child(3) { d: path("M9 20 H4 V15"); }
@@ -3871,6 +3885,7 @@
       width: 40px; height: 40px; border-radius: 999px; border: none;
       background: rgba(255,255,255,0.14); color: #fff; font-size: 18px;
       cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+      -webkit-backdrop-filter: blur(8px);
       transition: background 160ms ease, transform 140ms ease; backdrop-filter: blur(8px);
     }
     .me-icon-btn:active { transform: scale(0.92); background: rgba(255,255,255,0.26); }
@@ -3907,6 +3922,7 @@
       position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
       z-index: 6; width: 72px; height: 72px; border-radius: 50%;
       border: none; cursor: pointer; font-size: 30px; color: #fff;
+      -webkit-backdrop-filter: blur(6px);
       background: rgba(0,0,0,0.55); backdrop-filter: blur(6px);
       display: flex; align-items: center; justify-content: center; padding-left: 6px;
     }
@@ -3927,6 +3943,7 @@
       position: absolute; top: calc(env(safe-area-inset-top) + 64px); left: 50%; transform: translateX(-50%); z-index: 5;
       display: none; align-items: center; gap: 7px;
       background: rgba(0,0,0,0.55); color: #fff; font-weight: 800; font-size: 13px;
+      -webkit-backdrop-filter: blur(8px);
       padding: 5px 12px; border-radius: 999px; backdrop-filter: blur(8px);
     }
     .media-editor.me-recording .me-rec-badge { display: inline-flex; }
@@ -4107,7 +4124,7 @@
     .story-viewer.active { display: flex; animation: fadeIn 220ms ease; }
     .story-progress-row {
       position: absolute;
-      top: 10px; left: 10px; right: 10px;
+      top: calc(10px + env(safe-area-inset-top)); left: 10px; right: 10px;
       display: flex;
       gap: 4px;
       z-index: 3;
@@ -4128,7 +4145,7 @@
     .story-progress.done .story-progress-bar { width: 100%; }
     .story-viewer-header {
       position: absolute;
-      top: 24px; left: 14px; right: 14px;
+      top: calc(24px + env(safe-area-inset-top)); left: 14px; right: 14px;
       display: flex;
       align-items: center;
       gap: 10px;
@@ -4684,31 +4701,33 @@
        média/overlay. Un état global pour tout le viewer (toggleReelsSound). */
     .reel-sound-btn {
       position: absolute;
-      top: 64px; right: 14px; z-index: 5;
+      top: calc(64px + env(safe-area-inset-top)); right: 14px; z-index: 5;
       width: 42px; height: 42px; border-radius: 50%;
       border: 1px solid rgba(255, 255, 255, 0.2);
       background: rgba(0, 0, 0, 0.45); color: #fff;
       font-size: 17px; cursor: pointer;
       display: flex; align-items: center; justify-content: center;
+      -webkit-backdrop-filter: blur(6px);
       backdrop-filter: blur(6px);
     }
     .reel-sound-btn:active { transform: scale(0.92); }
     /* Bouton son (story vidéo) : au-dessus des zones de tap prev/next (z-index 2). */
     .story-sound-btn {
       position: absolute;
-      bottom: 16px; right: 14px; z-index: 5;
+      bottom: calc(16px + env(safe-area-inset-bottom)); right: 14px; z-index: 5;
       width: 42px; height: 42px; border-radius: 50%;
       border: 1px solid rgba(255, 255, 255, 0.2);
       background: rgba(0, 0, 0, 0.45); color: #fff;
       font-size: 17px; cursor: pointer;
       display: flex; align-items: center; justify-content: center;
+      -webkit-backdrop-filter: blur(6px);
       backdrop-filter: blur(6px);
     }
     .story-sound-btn:active { transform: scale(0.92); }
 
     .reel-tag-mood {
       position: absolute;
-      top: 64px;
+      top: calc(64px + env(safe-area-inset-top));
       left: 14px;
       padding: 5px 12px;
       border-radius: 999px;
@@ -4726,7 +4745,7 @@
       position: absolute;
       left: 14px;
       right: 86px;
-      bottom: 28px;
+      bottom: calc(28px + env(safe-area-inset-bottom));
       z-index: 5;
       pointer-events: auto;
     }
@@ -4756,7 +4775,7 @@
     .reel-actions {
       position: absolute;
       right: 12px;
-      bottom: 36px;
+      bottom: calc(36px + env(safe-area-inset-bottom));
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -4801,7 +4820,7 @@
     .reels-header {
       position: absolute;
       top: 0; left: 0; right: 0;
-      padding: 14px 14px 28px;
+      padding: calc(14px + env(safe-area-inset-top)) 14px 28px;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -4913,14 +4932,14 @@
     .reels-nav:active { transform: translateX(-50%) scale(0.94); }
     .reels-nav.disabled { opacity: 0.32; pointer-events: none; }
     .reels-nav svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
-    .reels-nav.prev { top: 70px; }
-    .reels-nav.next { bottom: 18px; }
+    .reels-nav.prev { top: calc(70px + env(safe-area-inset-top)); }
+    .reels-nav.next { bottom: calc(18px + env(safe-area-inset-bottom)); }
 
     /* Hint d'aide au 1er lancement */
     .reels-hint {
       position: absolute;
       left: 50%;
-      bottom: 100px;
+      bottom: calc(100px + env(safe-area-inset-bottom));
       transform: translateX(-50%);
       padding: 10px 16px;
       background: rgba(0, 0, 0, 0.62);
@@ -4947,9 +4966,9 @@
     @media (max-width: 480px) {
       .reels-nav { width: 42px; height: 42px; }
       .reels-nav svg { width: 20px; height: 20px; }
-      .reels-nav.prev { top: 62px; }
-      .reels-nav.next { bottom: 14px; }
-      .reels-hint { bottom: 88px; font-size: 11px; padding: 8px 14px; }
+      .reels-nav.prev { top: calc(62px + env(safe-area-inset-top)); }
+      .reels-nav.next { bottom: calc(14px + env(safe-area-inset-bottom)); }
+      .reels-hint { bottom: calc(88px + env(safe-area-inset-bottom)); font-size: 11px; padding: 8px 14px; }
     }
 
     @media (max-width: 480px) {
@@ -4957,9 +4976,9 @@
       .bobines-cta-icon { width: 34px; height: 34px; }
       .bobines-cta-title { font-size: 13px; }
       .bobines-cta-sub { font-size: 10px; }
-      .reel-actions { right: 10px; bottom: 30px; gap: 18px; }
+      .reel-actions { right: 10px; bottom: calc(30px + env(safe-area-inset-bottom)); gap: 18px; }
       .reel-action-icon { width: 42px; height: 42px; }
-      .reel-info { left: 12px; right: 78px; bottom: 22px; }
+      .reel-info { left: 12px; right: 78px; bottom: calc(22px + env(safe-area-inset-bottom)); }
     }
 
     /* ============ REEL COMMENTS PANEL (STYLE INSTAGRAM) ============ */
@@ -4978,6 +4997,7 @@
       z-index: 15;
       border-radius: 16px 16px 0 0;
       top: auto;
+      padding-bottom: env(safe-area-inset-bottom);
     }
     .reel-comments-panel.open {
       height: 70vh;
@@ -5871,6 +5891,12 @@
       word-wrap:break-word; word-break:break-word; white-space:pre-wrap;
       max-width:100%; width:fit-content;
     }
+    /* iPhone : neutralise le menu natif d'appui long (loupe, « Enregistrer
+       l'image »), qui se superposait au menu d'actions maison ouvert au bout de
+       480 ms — et le recouvrait. Android en était protégé par le handler
+       `contextmenu`, qu'iOS n'émet pas sur du texte. La SÉLECTION reste
+       possible : seul le menu contextuel natif est écarté. */
+    .conv-bubble-wrap { -webkit-touch-callout: none; }
     .conv-fp-thread .conv-bubble { margin-bottom:0; }
     .conv-bubble.them {
       background: var(--bg-card);
@@ -5945,7 +5971,11 @@
     #convEmojiPanel {
       display: none !important;
       position: fixed !important;
-      bottom: 60px !important;
+      /* La barre d'outils au-dessus de laquelle ce panneau se pose grandit de
+         `env(safe-area-inset-bottom)` : sans ce report, le panneau la recouvre
+         sur un iPhone à barre d'accueil — le bouton d'envoi devient
+         inatteignable tant que le panneau est ouvert. */
+      bottom: calc(60px + env(safe-area-inset-bottom, 0px)) !important;
       left: 0 !important;
       right: 0 !important;
       width: 100% !important;
@@ -6228,6 +6258,7 @@
     /* ============================================================
        OPTIMISATIONS PERFORMANCE / FLUIDITÉ (2026-06-29)
        ------------------------------------------------------------
+       -webkit-backdrop-filter: blur() sur des badges RÉPÉTÉS à l'intérieur;
        1) backdrop-filter: blur() sur des badges RÉPÉTÉS à l'intérieur
           des listes scrollables = re-flou GPU à CHAQUE frame de scroll
           (le contenu sous le badge bouge) → jank de scroll sur mobile.
@@ -6349,6 +6380,7 @@
       display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
       background: rgba(0,0,0,0.72);
       color: #fff; font-size: 46px;
+      -webkit-backdrop-filter: blur(4px);
       backdrop-filter: blur(4px);
     }
     .vlive-paused span { font-size: 15px; font-weight: 700; letter-spacing: 0.02em; }
@@ -8965,7 +8997,7 @@ body.ctx-locked #appMain { overflow: hidden; }
    bobines non décorées — une bobine que le lot n'a pas su enrichir garde
    exactement sa mise en page d'avant.
    ══════════════════════════════════════════════════════════════════════════ */
-:root.passio-ui-5 .reel-item[data-v5] .reel-info { bottom: 76px; }
+:root.passio-ui-5 .reel-item[data-v5] .reel-info { bottom: calc(76px + env(safe-area-inset-bottom)); }
 
 :root.passio-ui-5 .v5-actions {
   display: flex;
@@ -10527,6 +10559,67 @@ html:not(.passio-first-run) .fr-only { display: none !important; }
 }
 @supports (padding: env(safe-area-inset-bottom)) {
   .fr-tip { margin-bottom: env(safe-area-inset-bottom); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   iPHONE — PAS DE ZOOM ACCIDENTEL AU DOUBLE-TAP  (correctif 2026-09-02)
+   ---------------------------------------------------------------------------
+   Deuxième porte du même piège que les champs sous 16 px. Sur iPhone, deux taps
+   rapprochés sur n'importe quelle commande zooment la page ; le zoom n'est pas
+   annulé, et comme `html` est en `overflow: hidden` et `.app-shell` borné à
+   `--app-vh`, plus rien ne peut la ramener. Un double « J'aime » un peu vif, un
+   tap répété sur un onglet qui tarde, et l'application reste agrandie et
+   tronquée — ce que le testeur décrit comme « l'écran se fige ».
+   Chrome/Android n'a pas ce comportement.
+
+   `touch-action: manipulation` retire le double-tap-zoom SUR CES ÉLÉMENTS (et
+   supprime au passage le délai de 300 ms avant le clic).
+
+   ⚠️ Le pincement pour zoomer reste INTACT : `manipulation` continue d'autoriser
+   le défilement et le pincement. C'est bien le double-tap seul qui part, jamais
+   le zoom volontaire dont dépendent les personnes malvoyantes (WCAG 1.4.4) —
+   même exigence que pour le <meta viewport>, qui garde `user-scalable`.
+   ═══════════════════════════════════════════════════════════════════════════ */
+button, a, label, select, summary,
+[role="button"], [onclick] {
+  touch-action: manipulation;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   iPHONE — AUCUN CHAMP DE SAISIE SOUS 16 px  (correctif 2026-09-02)
+   ---------------------------------------------------------------------------
+   Défaut vécu par le testeur iPhone, INVISIBLE sur Android : « les écrans se
+   figent ». Ce n'était pas un blocage JavaScript.
+
+   Safari iOS ZOOME automatiquement la page dès qu'on met le doigt dans un champ
+   dont la taille de police calculée est INFÉRIEURE à 16 px, et n'annule pas ce
+   zoom à la sortie du champ. Or `html` est en `overflow: hidden` et `.app-shell`
+   est borné à `--app-vh` : une fois la page zoomée, plus rien ne peut la faire
+   revenir — ni défilement, ni redimensionnement. L'utilisateur se retrouve
+   devant une application agrandie, tronquée à droite, dont la barre d'onglets
+   est hors champ. Vu du testeur : c'est figé.
+
+   Chrome/Android ne zoome JAMAIS au focus : d'où « pourtant sur Android ça
+   marche bien ». Le champ e-mail de la connexion était à 15 px — le défaut se
+   déclenchait donc dès le PREMIER écran touché.
+
+   Remède : les douze champs fautifs sont remis à 16 px à la source (index.html
+   et gabarits JS) ; cette règle est le FILET, pour tout champ ajouté plus tard
+   ou dont la taille vient d'ailleurs. Bornée aux pointeurs grossiers (tactile),
+   la vue bureau garde ses tailles.
+
+   ⚠️ Ne PAS « corriger » cela par `maximum-scale=1` ou `user-scalable=no` dans
+   le <meta viewport> : cela bloquerait aussi le zoom VOLONTAIRE, dont dépendent
+   les personnes malvoyantes (WCAG 1.4.4). 16 px est le seul remède honnête.
+   ═══════════════════════════════════════════════════════════════════════════ */
+@media (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="submit"]):not([type="button"]),
+  textarea,
+  select,
+  [contenteditable="true"],
+  [contenteditable=""] {
+    font-size: 16px !important;
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

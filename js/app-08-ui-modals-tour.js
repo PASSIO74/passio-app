@@ -17,7 +17,7 @@ function openModal(html) {
   // Si un modal est déjà ouvert, on remplace son contenu sans empiler une nouvelle entrée history.
   // Sinon on pousse une seule entrée pour que le bouton back ferme le modal.
   if (backdrop && !backdrop.classList.contains("active")) {
-    window.history.pushState({ overlay: "modal" }, "", "#modal");
+    pushOverlayHistory("modal", "#modal");
   }
 
   // Injecte un bouton × de fermeture en haut à droite de tous les modals
@@ -30,7 +30,13 @@ function closeModal() {
   // retiré avec la fonctionnalité (§6). `cdvLiveRefreshInterval` et
   // `removeCdvLiveViewer` n'existent plus — les garder ici aurait levé un
   // ReferenceError à CHAQUE fermeture de modale, c'est-à-dire partout.
-  $("#modalBackdrop").classList.remove("active");
+  const bd = $("#modalBackdrop");
+  // L'entrée d'historique n'est à reprendre que si une modale était RÉELLEMENT
+  // ouverte : `closeModal()` est appelée par précaution en plusieurs endroits,
+  // et reculer sur une modale déjà fermée ferait quitter l'écran.
+  const etaitOuverte = !!(bd && bd.classList.contains("active"));
+  if (bd) bd.classList.remove("active");
+  if (etaitOuverte) releaseOverlayHistory();
 }
 function closeModalOnBackdrop(e) {
   if (e.target.id === "modalBackdrop") closeModal();
@@ -606,9 +612,13 @@ function meOpen(mode) {
   document.getElementById("mePublishBtn").textContent = isBob ? "Publier ma bobine" : "Publier ma story";
   // Phase capture par défaut (le loader caméra s'affiche le temps de l'init).
   ed.classList.remove("phase-edit", "me-recording", "me-cam-on", "me-no-cam");
+  // Entrée d'historique : ce panneau recouvre tout, CAMÉRA ALLUMÉE. Sans elle,
+  // le geste de retour ne le fermait pas — l'écran changeait dessous et
+  // l'objectif restait actif.
+  if (!ed.classList.contains("open")) pushOverlayHistory("media", "#media");
   ed.classList.add("open", "phase-capture");
   ed.setAttribute("aria-hidden", "false");
-  document.body.style.overflow = "hidden";
+  lockBodyScroll("mediaEditor");
   _meBindShutter();
   meStartCamera();
 }
@@ -616,8 +626,10 @@ function meClose() {
   var ed = document.getElementById("mediaEditor");
   meStopRecording(true);
   meStopCamera();
+  const _meEtaitOuvert = !!(ed && ed.classList.contains("open"));
   if (ed) { ed.classList.remove("open", "phase-edit", "phase-capture", "me-recording", "me-cam-on"); ed.setAttribute("aria-hidden", "true"); }
-  document.body.style.overflow = "";
+  unlockBodyScroll("mediaEditor");
+  if (_meEtaitOuvert && typeof releaseOverlayHistory === "function") releaseOverlayHistory();
   try { var v = document.querySelector("#meMedia video"); if (v) v.pause(); } catch(e) {}
   _meRemoveVideoControls();
   _meRevokePreviewUrl();
@@ -1438,7 +1450,7 @@ function openStoryViewerAt(groupIdx, itemIdx) {
   if (!storyGroups.length) storyGroups = buildStoryGroups();
   if (!storyGroups.length) return;
   // Ajouter à l'historique pour que le bouton back fonctionne
-  window.history.pushState({ overlay: "story" }, "", "#story");
+  pushOverlayHistory("story", "#story");
   storyGroupIdx = Math.max(0, Math.min(groupIdx, storyGroups.length - 1));
   storyItemIdx = itemIdx || 0;
   $("#storyViewer").classList.add("active");
@@ -1634,9 +1646,13 @@ function storyPrev() {
 
 function closeStoryViewer() {
   clearInterval(storyTimer);
-  $("#storyViewer").classList.remove("active");
+  const sv = $("#storyViewer");
+  const etaitOuvert = !!(sv && sv.classList.contains("active"));
+  if (sv) sv.classList.remove("active");
   renderStories();
-
+  // Reprend l'entrée posée à l'ouverture (cf. releaseOverlayHistory, app-02) :
+  // sans cela, chaque story consultée mangeait un appui sur « retour ».
+  if (etaitOuvert) releaseOverlayHistory();
 }
 
 // ======== NOTIFICATIONS ========
@@ -3537,7 +3553,17 @@ async function supaUploadMedia(postId, folder, base64Data, mediaType) {
     // Extension fidèle au conteneur réel : un webm renommé .mp4 trompe les
     // heuristiques de lecture (iOS surtout, qui se fie aussi à l'URL).
     if (mediaType === "video") ext = (base64Data.indexOf("data:video/webm") === 0) ? ".webm" : ".mp4";
-    else if (mediaType === "audio") ext = ".mp3";
+    // ⚠️ Même exigence que pour la vidéo, juste au-dessus — elle n'avait pas été
+    // appliquée ici. `.mp3` était écrit EN DUR alors que MediaRecorder n'en
+    // produit JAMAIS : le Studio enregistre en `audio/webm` (Android) ou
+    // `audio/mp4` (iPhone). Le fichier arrivait donc dans Storage avec une
+    // extension qui mentait sur son contenu, et iOS — qui se fie aussi à l'URL —
+    // refusait de le lire. On dérive l'extension du conteneur RÉEL.
+    else if (mediaType === "audio") {
+      ext = (base64Data.indexOf("data:audio/webm") === 0) ? ".webm"
+          : (base64Data.indexOf("data:audio/ogg") === 0) ? ".ogg"
+          : ".m4a";                                  // audio/mp4 → .m4a
+    }
     else if (base64Data.indexOf("data:image/webp") === 0) ext = ".webp";
     else if (base64Data.indexOf("data:image/png") === 0) ext = ".png";
     else if (base64Data.indexOf("data:image/gif") === 0) ext = ".gif";

@@ -3,6 +3,7 @@
 // Drapeau `first_run_experience_v1`. Couvre les 16 points de vérification du lot.
 // ══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
+const { sansDonneesDistantes } = require("./app-helper");
 const { bootVisiteur, couperReseauSupabase, etatOnboarde, GATE_TOKEN, GATE_KEY } = require("./first-run-helper");
 
 const feedActif = () => {
@@ -100,6 +101,13 @@ test.describe("Entrée", () => {
       },
       [GATE_KEY, GATE_TOKEN, etatOnboarde()]
     );
+    // ⚠️ ISOLATION DES DONNÉES DISTANTES — POSÉE ICI PARCE QUE CETTE SUITE
+    // NAVIGUE ELLE-MÊME. `bootOnboarded` la pose par défaut, mais sa portée est
+    // L'APPEL, pas le fichier : un `page.goto` maison garde son chemin exposé, et
+    // le verdict du test dépend alors du CONTENU DE LA PRODUCTION. C'est ce qui a
+    // rendu `main` rouge six fois en quatre jours et fait sauter autant de
+    // déploiements. Verrou mécanique : `scripts/audit-tests-isolation.js`.
+    await sansDonneesDistantes(page);
     await page.goto("/index.html");
     await page.waitForTimeout(3200);
 
@@ -943,6 +951,7 @@ test.describe("Kill switch", () => {
     expect(await page.evaluate(() => localStorage.getItem("passio_first_run_experience_v1"))).toBeNull();
 
     // Et il survit à un rechargement sans qu'on ait rien persisté.
+    await sansDonneesDistantes(page);
     await page.goto("/index.html");
     await page.waitForTimeout(3200);
     expect(await page.evaluate(() => PassioFirstRun.actif())).toBe(true);

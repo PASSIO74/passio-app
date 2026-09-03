@@ -1,6 +1,10 @@
 function closePost() {
   const page = document.getElementById("postDetailPage");
+  const etaitOuverte = !!(page && page.style.display && page.style.display !== "none");
   if (page) page.style.display = "none";
+  // Reprend l'entrée posée par openPost — sinon elle reste morte sur la pile et
+  // avale un appui « retour ». Inerte quand la fermeture VIENT d'un retour.
+  if (etaitOuverte && typeof releaseOverlayHistory === "function") releaseOverlayHistory();
 }
 
 function sharePost(id) {
@@ -29,18 +33,11 @@ function sharePost(id) {
     if (!btn) return;
     btn.addEventListener("click", function() {
       // Un carnet partagé doit OUVRIR le carnet, pas la page d'accueil.
-      const shareUrl = post.type === "vlog"
-        ? ((window.tel && tel.shareLink)
-            ? tel.shareLink(location.origin + location.pathname + "#carnet-" + id, "carnet", id, navigator.share ? "native" : "clipboard")
-            : (location.origin + location.pathname + "#carnet-" + id))
-        : "https://passio-app.netlify.app";
-      if (navigator.share) {
-        navigator.share({ title: "PASSIO", text: txt, url: shareUrl }).catch(() => {});
-      } else {
-        navigator.clipboard?.writeText(txt + "\n\n" + shareUrl)
-          .then(() => toast("✅ Lien copié"))
-          .catch(() => toast("Copie impossible"));
-      }
+      // ⚠️ Plus de lien profond `#carnet-<id>` : le Carnet de voyage a été retiré
+      // (ADR-011 §6) et plus AUCUN routeur ne l'attrape. Le lien promettait
+      // d'ouvrir un carnet et déposait le destinataire sur le fil, sans un mot.
+      const shareUrl = "https://passio-app.netlify.app";
+      partagerOuCopier({ title: "PASSIO", text: txt, url: shareUrl }, "✅ Lien copié");
     });
   }, 0);
 }
