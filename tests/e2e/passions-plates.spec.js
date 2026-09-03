@@ -819,15 +819,27 @@ test.describe("la porte d'ajout et son plafond", () => {
     await expect(page.locator(".psel-input")).toBeVisible({ timeout: 10000 });
   });
 
-  test("㉒ à trois passions, la porte annonce que la suite sera payante", async ({ page }) => {
+  test("㉒ à trois passions, la porte refuse en disant pourquoi, et l'offre reste annoncée", async ({ page }) => {
     await bootOnboarded(page, null, 1, { query: APERCU });
     await poserNPassions(page, 3);
     await page.evaluate(() => { goTo("profiles"); openPassionManager(); });
     await page.waitForTimeout(600);
-    await page.locator('#passionManager [data-passion-tile="__ajouter__"]').click();
-    await page.waitForTimeout(500);
 
+    // ⚠️ 2026-09-03 : LA PORTE EST DÉSARMÉE AU PLAFOND, elle n'ouvre plus la
+    // fenêtre. Ce cas la cliquait ; le refus est désormais écrit DANS la porte
+    // (« Limite de N atteinte »), ce qui est ce que l'utilisateur doit lire sans
+    // avoir à toucher quoi que ce soit. On mesure donc le refus là où il est, et
+    // on ouvre ensuite la fenêtre par le chemin qui reste pour vérifier ce
+    // qu'elle promet — et ce qu'elle ne promet pas.
+    const porte = page.locator('#passionManager [data-passion-tile="__ajouter__"]');
+    await expect(porte).toHaveAttribute("aria-disabled", "true");
+    await expect(porte).toHaveAttribute("data-passion-porte", "fermee");
+    await expect(page.locator("#nouveauProfilSous")).toContainText("Limite de");
     // Pas de feuille de recherche : on n'ouvre pas ce qui ne peut rien conclure.
+    expect(await page.locator(".psel-input").count()).toBe(0);
+
+    await page.evaluate(() => openPassionPaywall());
+    await page.waitForTimeout(500);
     expect(await page.locator(".psel-input").count()).toBe(0);
     const modale = page.locator("#modalContent");
     await expect(modale).toContainText("Trois passions offertes");
@@ -851,9 +863,9 @@ test.describe("la porte d'ajout et son plafond", () => {
       .not.toMatch(/💎|Passia|Pass Passion|points?\b|étoiles?|solde|rang/i);
     // ⚠️ ASSERTION RETOURNÉE LE 2026-09-03, ET RENFORCÉE. Elle exigeait
     // « Gérer mes passions » comme seule action réelle — vrai tant que la porte
-    // d'ajout vivait dans le RAIL : le bouton déplaçait alors vraiment. Ici on
-    // vient du PANNEAU (le geste ci-dessus l'ouvre), donc il renverrait devant
-    // la bulle qui vient de refuser. Ce que la fenêtre doit garantir n'a pas
+    // d'ajout vivait dans le RAIL : le bouton déplaçait alors vraiment. Ici la
+    // page « Mes passions » est OUVERTE ET À L'ÉCRAN, donc il renverrait devant
+    // la porte qui vient de refuser. Ce que la fenêtre doit garantir n'a pas
     // changé : une sortie, une seule, et jamais un renvoi là où l'on est déjà.
     await expect(page.locator('[data-tel="passion_paywall_gerer"]')).toHaveCount(0);
     await expect(page.locator('[data-tel="passion_paywall_compris"]')).toBeVisible();

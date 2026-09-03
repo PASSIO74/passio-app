@@ -129,17 +129,32 @@ test.describe("revenir à une passion archivée", () => {
     await expect(boite.locator('[data-v8-restaurer="q_2"]')).toBeVisible();
   });
 
-  test("② bis — au plafond, le bouton annonce l'ÉCHANGE, pas « Restaurer »", async ({ page }) => {
-    // Un bouton « Restaurer » qui ouvre une fenêtre payante ment sur son effet.
+  test("② bis — le bouton dit « Réactiver » dans les deux cas, et il AGIT", async ({ page }) => {
+    // ⚠️ RÉÉCRIT LE 2026-09-03. Le bouton portait trois libellés selon l'état
+    // (« Restaurer » / « Échanger » / « Indisponible ») : il faisait porter au
+    // MOT l'explication de la règle de quota, que l'utilisateur devait
+    // reconstituer en voyant le libellé changer sous ses yeux. Un seul libellé
+    // désormais — « Réactiver », le geste — et la règle écrite en toutes lettres
+    // sous la liste quand elle bloque. Ce que ce cas garde de sa version d'avant :
+    // le bouton ne ment jamais sur son effet, donc il n'est ACTIF que quand il
+    // agit vraiment.
     await bootOnboarded(page, null, 1, { query: APERCU });
     await poserNPassions(page, 3);
     await page.evaluate(() => { goTo("profiles"); openPassionManager(); archiverPassion("q_2"); });
     await page.waitForTimeout(400);
-    await expect(page.locator('#passionArchiveBox [data-v8-restaurer="q_2"]')).toHaveText("Restaurer");
+    const sousLePlafond = page.locator('#passionArchiveBox [data-v8-restaurer="q_2"]');
+    await expect(sousLePlafond).toHaveText("Réactiver");
+    await expect(sousLePlafond).toHaveAttribute("data-v8-reactivation", "ouverte");
+    await expect(sousLePlafond).toBeEnabled();
 
+    // Au plafond avec un changement en réserve : même mot, et il agit encore —
+    // `restaurerPassion` propose alors l'échange.
     await page.evaluate(() => { ajouterPassionAuCompte("voyage", ""); renderProfilesScreen(); });
     await page.waitForTimeout(400);
-    await expect(page.locator('#passionArchiveBox [data-v8-restaurer="q_2"]')).toHaveText("Échanger");
+    const auPlafond = page.locator('#passionArchiveBox [data-v8-restaurer="q_2"]');
+    await expect(auPlafond).toHaveText("Réactiver");
+    await expect(auPlafond).toHaveAttribute("data-v8-reactivation", "ouverte");
+    await expect(auPlafond).toBeEnabled();
   });
 
   test("② ter — la liste survit à un rechargement (elle est ENREGISTRÉE)", async ({ page }) => {
@@ -200,12 +215,21 @@ test.describe("le quota de changements", () => {
     await expect(cout).toContainText("3");
   });
 
-  test("③ ter — le compteur est affiché sur l'écran de gestion", async ({ page }) => {
+  test("③ ter — le compteur est affiché sur la page « Mes passions »", async ({ page }) => {
     await bootOnboarded(page, null, 1, { query: APERCU });
     await poserNPassions(page, 3);
     await page.evaluate(() => { goTo("profiles"); openPassionManager(); });
     await page.waitForTimeout(400);
-    await expect(page.locator("#profilesQuotaSub [data-passion-compteur]")).toContainText("3 changements restants");
+    // ⚠️ LES MOTS ONT CHANGÉ LE 2026-09-03, PAS LA SOURCE. Le nœud reste
+    // `#profilesQuotaSub` et le nombre vient toujours de
+    // `changementsPassionRestants()` ; il se lit désormais « N changements de
+    // passion disponibles sur 3 », et bascule en ALERTE quand il tombe à zéro.
+    const ligne = page.locator("#profilesQuotaSub [data-passion-compteur]");
+    await expect(ligne).toContainText("3 changements de passion disponibles");
+    await expect(page.locator("#profilesQuotaSub")).toHaveAttribute("data-passion-quota", "disponible");
+    // Tant qu'un changement reste, AUCUNE alerte : une alerte permanente
+    // n'alerte plus de rien.
+    await expect(page.locator("#profilesQuotaSub.est-alerte")).toHaveCount(0);
   });
 
   test("③ quater — RESTAURER ne consomme rien : un échange se paie UNE fois", async ({ page }) => {
@@ -517,15 +541,25 @@ test("⑧ quota épuisé : le bouton ne promet pas un échange impossible, et ri
     archiverPassion("q_0"); ajouterPassionAuCompte("danse", "");
     goTo("profiles"); openPassionManager(); renderProfilesScreen();
     const btn = document.querySelector("#passionArchiveBox .v8-switch-go");
+    const motif = document.querySelector("#passionArchiveBox [data-passion-reactivation]");
     return {
       restants: String(changementsPassionRestants()),
       vivantes: (state.user.profiles || []).filter((p) => !p.archived).length,
       libelle: btn && btn.textContent,
+      desarme: !!(btn && btn.disabled),
+      motif: motif ? motif.textContent : "",
     };
   });
   expect(etat.restants).toBe("0");
   expect(etat.vivantes).toBe(3);
-  expect(etat.libelle, "le bouton promet un échange que le quota interdit").toBe("Indisponible");
+  // ⚠️ 2026-09-03 : le mot ne porte plus l'explication, l'ÉTAT du bouton la
+  // porte. « Réactiver » désarmé (`disabled`, donc son `onclick` ne part pas)
+  // plus le motif écrit sous la liste — au lieu d'un libellé « Indisponible »
+  // qu'il fallait interpréter.
+  expect(etat.libelle, "le bouton ne dit plus son geste").toBe("Réactiver");
+  expect(etat.desarme, "le bouton promet un échange que le quota interdit").toBe(true);
+  expect(etat.motif, "rien ne dit POURQUOI la réactivation est impossible")
+    .toContain("Réactivation possible lorsqu'un changement sera disponible");
 
   const fenetre = await page.evaluate(() => {
     const arch = (state.user.profiles || []).find((p) => p.archived);

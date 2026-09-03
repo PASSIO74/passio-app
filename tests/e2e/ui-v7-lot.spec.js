@@ -92,19 +92,21 @@ test.describe("UI-7 §1 — vocabulaire visible", () => {
     expect(await page.evaluate(() =>
       document.getElementById("screen-studio").textContent.includes("Changer de profil"))).toBe(false);
 
-    // Profil : « Gérer mes passions », et sa porte d'ajout.
-    // ⚠️ ANCRE DÉPLACÉE DEUX FOIS, ASSERTION CONSERVÉE. La refonte multi-passion
+    // Profil : la page « Mes passions », et sa porte d'ajout.
+    // ⚠️ ANCRE DÉPLACÉE TROIS FOIS, ASSERTION CONSERVÉE. La refonte multi-passion
     // (ADR-011) avait retiré l'onglet « À propos » et rangé le titre et son lien
-    // dans `#passionManager`. Le 2026-09-03, le titre devient « Gérer mes
-    // passions » et le lien devient la BULLE « + » descendue du rail : on lit
-    // donc son `aria-label` et son libellé, non plus un texte de lien.
+    // dans `#passionManager` ; le 2026-09-03 au matin le titre devenait « Gérer
+    // mes passions » et le lien une bulle « + » ; le même jour le panneau devient
+    // une PAGE dédiée, titrée « Mes passions », et la porte une rangée entière.
+    // L'entrée du menu ⋯ garde, elle, son verbe : une commande nomme un geste,
+    // une page nomme un lieu.
     await page.evaluate(() => { goTo("profiles"); openPassionManager(); });
     await page.waitForTimeout(600);
     await expect(page.locator("#nouveauProfilLien")).toHaveAttribute("aria-label", "Ajouter une passion");
-    await expect(page.locator("#nouveauProfilLien .profile-tile-label")).toHaveText("Ajouter");
+    await expect(page.locator("#nouveauProfilLien .passion-manager-porte-titre")).toHaveText("Ajouter une passion");
     expect(await page.evaluate(() =>
-      document.getElementById("passionManagerTitre").textContent))
-      .toContain("Gérer mes passions");
+      document.getElementById("passionManagerTitre").textContent.trim()))
+      .toBe("Mes passions");
 
     // La marque n'est JAMAIS touchée.
     await expect(page.locator(".app-topbar .brand-name")).toHaveText("PASSIO");
