@@ -380,3 +380,69 @@
 
   ⚠️ **La leçon commune aux trois : un test vert peut l'être pour une raison
   qui n'est pas la sienne.** Aucun de ces trois-là ne mesurait ce qu'il croyait.
+
+  ---
+
+  ## ⑥ Le défaut le plus grave du lot : on publiait, et on ne voyait rien
+
+  Trouvé en rejouant la suite complète : **dix tests rouges**, dont six qui
+  vérifiaient tous la même chose — *une publication que l'on vient d'écrire est
+  visible dans le fil*. Elle ne l'était plus.
+
+  **Le barème, pas le contenu.** `feedPostScore` vaut
+  `fraîcheur + affinité × 0,35 + engagement × 0,12`. L'engagement **plafonne dès
+  ~20 j'aime**, et la fraîcheur décroît lentement (τ = 48 h) : dans les premières
+  heures, c'est donc l'engagement qui tranche, pas l'âge. Une publication neuve
+  a la fraîcheur maximale et un engagement **nul** — elle ne peut pas gagner.
+  Mesuré sur un compte « musique » : **25ᵉ sur 40**, alors que `renderFeed` n'en
+  peint que 20. Invisible.
+
+  ⚠️ **Le contenu n'a pas créé ce défaut, il l'a rendu ATTEIGNABLE.** Avant ce
+  lot, la publication neuve sortait **20ᵉ** — la toute dernière carte peinte.
+  Elle tenait à une place. Corriger le socle sans corriger le barème aurait
+  rendu les tests verts en laissant le produit à une publication du même défaut.
+
+  Correctif : un terme `FEED_MA_PUBLI_BONUS` (1,20) appliqué à mes propres
+  publications de moins de `FEED_MA_PUBLI_HEURES` (2 h). Le bonus dépasse le
+  meilleur score atteignable par une autre publication (2,27), donc la garantie
+  est absolue pendant la fenêtre.
+
+  ⚠️ **Borné, et c'est ce qui le rend acceptable.** Passé le délai le bonus
+  disparaît entièrement : il ne s'agit pas de promouvoir mes publications, il
+  s'agit de me montrer ce que je viens de faire. Un fil qui remonterait mes
+  vieilles publications ne serait plus un fil, ce serait un miroir. Verrous :
+  `feed-ranking.spec.js`, deux cas — la garantie ET son extinction.
+
+  ⚠️ La propriété se teste par `_estMonPost` (l'AUTEUR), jamais par `_source` :
+  règle du projet, et elle écarte d'office le contenu de démonstration.
+
+  ### Le même défaut, une surface plus loin
+
+  L'aperçu UI-3B (`?passio_preview=ui-3b`) injectait sa carte de démonstration
+  avec `likes: 0` puis appelait `renderFeed()` — donc **il dépendait du
+  classement pour être peint**. Il est sorti au-delà du 20ᵉ rang dès que le socle
+  a grossi : la carte était dans le fil, et invisible. Or *un aperçu qui ne
+  s'affiche pas ne se signale pas* — il rend un fil normal, et rien ne distingue
+  « la carte manque » de « l'aperçu n'a pas été demandé ».
+
+  Deux correctifs, volontairement redondants : la carte porte désormais un
+  engagement au plafond (elle mène par sa fraîcheur maximale), **et** la fonction
+  vérifie qu'elle est bien peinte, quitte à élargir `_feedRenderLimit` le temps
+  d'un second passage. Le premier la place en tête dans le barème
+  d'aujourd'hui ; le second la garantit quel que soit celui de demain.
+
+  ### Ce que la fraîcheur exige du contenu de démonstration
+
+  Corollaire mesuré : **tout est au plafond d'engagement, donc c'est la
+  fraîcheur seule qui ordonne**. Pour que les trois séries vitrines mènent leur
+  passion, il faut qu'aucune publication du socle ne soit plus fraîche qu'elles.
+  Les séries sont donc placées à **3-7 h avec 24 à 35 j'aime** — crédible, et au
+  plafond — et neuf publications préexistantes massées à 2-6 h ont été
+  vieillies. Leur horodatage est arbitraire : le décaler ne retire aucune
+  information.
+
+  ⚠️ Première tentative, écartée : gonfler les compteurs des séries. Elles
+  affichaient **341 j'aime à douze minutes** — invraisemblable à lire, et c'est
+  précisément ce qui écrasait la publication de l'utilisateur. Un contenu de
+  démonstration qui ment sur son engagement finit par mentir sur le produit.
+

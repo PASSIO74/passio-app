@@ -4355,6 +4355,15 @@ function _passionSignalSet() {
   } catch (e) {}
   return s;
 }
+// Fenêtre et poids du terme « je viens de publier » (cf. `feedPostScore`).
+// Le bonus doit dépasser le MEILLEUR score atteignable par une autre
+// publication : fraîcheur 1,0 + affinité maximale (passion + auteur suivi +
+// curiosité = 2,6 × 0,35 = 0,91) + engagement plafonné (3 × 0,12 = 0,36), soit
+// 2,27. Une publication à moi vaut au pire 1,0 + 0,35 + 0 + 1,20 = 2,55 : elle
+// passe devant, toujours, pendant la fenêtre.
+var FEED_MA_PUBLI_HEURES = 2;
+var FEED_MA_PUBLI_BONUS = 1.2;
+
 function feedPostScore(p, nowBucket, myPassions, followingSet, signalSet) {
   // Fraîcheur : âge en heures via buckets 5 min (12/h), décroissance exp τ=48 h.
   var postB = Math.floor((p.createdAt || 0) / 300000);
@@ -4380,7 +4389,34 @@ function feedPostScore(p, nowBucket, myPassions, followingSet, signalSet) {
   var reactions = Array.isArray(p.reactions) ? p.reactions.length : 0;
   var engagement = Math.min(3, Math.log(1 + likes + 2 * comments + reactions));
 
-  return recency * 1.0 + affinity * 0.35 + engagement * 0.12;
+  // ── « JE VIENS DE PUBLIER » : GARANTIE DE VISIBILITÉ, BORNÉE ───────────────
+  //
+  // Sans ce terme, une publication toute neuve ne peut PAS gagner : elle a la
+  // fraîcheur maximale mais un engagement NUL, quand n'importe quelle
+  // publication un peu établie plafonne l'engagement dès ~20 j'aime. Mesuré le
+  // 2026-09-02 avec un compte « musique » : la publication de l'utilisateur
+  // sortait 25e sur 40, et `renderFeed` n'en peint que 20 — donc INVISIBLE.
+  // L'utilisateur publie, et ne voit rien.
+  //
+  // ⚠️ Le défaut ne vient PAS du contenu de démonstration, il vient du barème.
+  // Le socle l'a seulement rendu ATTEIGNABLE en ajoutant des publications
+  // fraîches et engageantes : avant, la publication neuve sortait 20e, soit la
+  // toute dernière carte peinte. Elle tenait à une place. Corriger le socle
+  // sans corriger le barème aurait rendu les tests verts en laissant le
+  // produit à une publication du même défaut.
+  //
+  // ⚠️ BORNÉ DANS LE TEMPS, et c'est ce qui le rend acceptable : passé le
+  // délai, le bonus disparaît entièrement et le fil redevient exactement
+  // celui d'avant. Il ne s'agit pas de promouvoir mes publications, il s'agit
+  // de me montrer ce que je viens de faire. Au-delà, mes propres publications
+  // sont classées comme les autres — la fraîcheur s'en charge.
+  //
+  // ⚠️ La propriété se teste par `_estMonPost` (l'AUTEUR), jamais par `_source` :
+  // c'est la règle du projet, et elle écarte d'office le contenu de
+  // démonstration, qui n'appartient à personne.
+  var mienneEtFraiche = (ageHours < FEED_MA_PUBLI_HEURES && _estMonPost(p)) ? FEED_MA_PUBLI_BONUS : 0;
+
+  return recency * 1.0 + affinity * 0.35 + engagement * 0.12 + mienneEtFraiche;
 }
 function rankFeedPosts(posts) {
   var arr = (posts || []).slice();

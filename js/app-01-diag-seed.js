@@ -165,7 +165,7 @@ function buildSeed() {
     // carrousel du Fil, tous deux supprimés.
     { id: "p1",  authorId: "u_lea",   passion: "musique", mood: "creation", type: "text", cover: "studio",
       text: "Je viens de finir la démo d'un morceau que je porte depuis 3 ans. Pas parfait, mais honnête. 🎶\n\nMontrer le processus, pas la façade, c'est tout l'esprit PASSIO pour moi.",
-      createdAt: hours(2), likes: 34, liked: false, comments: [
+      createdAt: hours(14), likes: 34, liked: false, comments: [
         { id: "c1", authorId: "u_karim", text: "Ça sonne super brut, j'adore.", createdAt: hours(1), likes: 2, likedBy: [], emojis: [], replies: [] },
         { id: "c2", authorId: "u_amira", text: "Le courage de poster une démo 👏", createdAt: hours(1), likes: 6, likedBy: [], emojis: [], replies: [] },
       ]},
@@ -215,7 +215,7 @@ function buildSeed() {
     { id: "p14", authorId: "u_oussa", passion: "musique", mood: "learn", type: "audio",
       text: "Mon process : je pars toujours de l'erreur. Un sample mal calé, un bug de synthé. Explications en 90 secondes.",
       audio: null,
-      createdAt: hours(4), likes: 126, liked: false, comments: [] },
+      createdAt: hours(29), likes: 126, liked: false, comments: [] },
     { id: "p15", authorId: "u_clara", passion: "voyage", mood: "irl", type: "text", cover: "sunrise",
       text: "J-12 avant le départ Copenhague → Rome à vélo. 1850 km. Solo. Terrifiée. Préparée.\n\nSi quelqu'un veut suivre le journal quotidien sur PASSIO, je poste chaque soir.",
       createdAt: hours(6), likes: 212, liked: false, comments: [
@@ -333,7 +333,7 @@ function buildSeed() {
     // ==== CUISINE, 3 posts ====
     { id: "p49", authorId: "u_theo", passion: "cuisine", mood: "creation", type: "text", cover: "kitchen",
       text: "Expérimentation du mois : bouillon dashi au poireau grillé + panais. Umami végétal fou. Ça va entrer au menu de la semaine chez moi.\n\nJe vous partage la recette complète si ça vous botte.",
-      createdAt: hours(6), likes: 167, liked: false, comments: [
+      createdAt: hours(23), likes: 167, liked: false, comments: [
         { id: "c49a", authorId: "u_hugo", text: "La recette, vite 🙏", createdAt: hours(5) },
         { id: "c49b", authorId: "u_emma", text: "J'adore l'idée panais + dashi", createdAt: hours(4) },
       ]},
@@ -580,7 +580,7 @@ function buildSeed() {
     // ==== MUSIQUE — posts supplémentaires ====
     { id: "pm1", authorId: "u_oussa", passion: "musique", mood: "creation", type: "text", cover: "studio",
       text: "J'ai passé 6 heures sur une basse ligne hier. 6 heures pour 4 mesures. C'est ça la production : pas le talent, la patience.\n\nQuand ça clique enfin, c'est la meilleure drogue qui soit.",
-      createdAt: hours(2), likes: 312, liked: false, comments: [
+      createdAt: hours(21), likes: 312, liked: false, comments: [
         { id: "cpm1a", authorId: "u_lea", text: "Ces 4 mesures valent 6 heures 🔥", createdAt: hours(1) },
       ]},
     { id: "pm2", authorId: "u_lea", passion: "musique", mood: "learn", type: "text", cover: "neon",
@@ -601,7 +601,7 @@ function buildSeed() {
     // ==== PHOTO — posts supplémentaires ====
     { id: "pp1", authorId: "u_karim", passion: "photo", mood: "creation", type: "photo", cover: "street",
       text: "Portrait volé dans le métro. Lumière de fenêtre, regard perdu dans le lointain. Ce type ne saura jamais que sa mélancolie est sur ma carte SD.\n\nC'est éthique ou pas ? Je me pose la question à chaque fois.",
-      createdAt: hours(3), likes: 445, liked: false, comments: [
+      createdAt: hours(15), likes: 445, liked: false, comments: [
         { id: "cpp1a", authorId: "u_nina", text: "La question fait partie de l'œuvre.", createdAt: hours(2) },
       ]},
     { id: "pp2", authorId: "u_karim", passion: "photo", mood: "learn", type: "text", cover: "studio",
@@ -819,7 +819,7 @@ function buildSeed() {
     // sujet en silence.
     { id: "p201", authorId: "u_lea", passion: "musique", mood: "creation", type: "text", cover: "studio",
       text: "Trois jours que je bloque sur le pont de ce morceau. Hier soir j'ai lâché l'accord de sol majeur pour un mi mineur 7, et tout s'est débloqué d'un coup. Enregistré en une prise à 23h, micro à 30 cm de la rosace, la voisine n'a rien dit. 🎸\nIl reste le solo à écrire, mais la chanson existe.",
-      createdAt: hours(3), likes: 47, liked: false, comments: [
+      createdAt: hours(25), likes: 47, liked: false, comments: [
         { id: "cp201_0", authorId: "u_oussa", text: "Le mi mineur 7 sauve à peu près tout, je confirme. Tu joues en accordage standard ou en drop D ?", createdAt: hours(2), likes: 6, likedBy: [], emojis: [], replies: [] },
         { id: "cp201_1", authorId: "u_amira", text: "Une prise à 23h, respect. J'ai hâte d'entendre le solo.", createdAt: hours(1), likes: 4, likedBy: [], emojis: [], replies: [] },
       ]},
@@ -846,7 +846,7 @@ function buildSeed() {
       ]},
     { id: "p207", authorId: "u_karim", passion: "photo", mood: "creation", type: "photo", cover: "street",
       text: "Boulevard de Belleville, 7h10. La buée d'un camion de livraison coupait la lumière rasante en deux. J'ai attendu vingt minutes qu'un passant traverse le faisceau : trois sont passés trop vite, le quatrième s'est arrêté pour allumer une cigarette.\n35 mm, f/2.8, 1/250. Une seule image gardée sur soixante.",
-      createdAt: hours(5), likes: 174, liked: false, comments: [
+      createdAt: hours(19), likes: 174, liked: false, comments: [
         { id: "cp207_0", authorId: "u_noa", text: "Le type qui s'arrête pour sa clope, tu ne pouvais pas rêver mieux.", createdAt: hours(4), likes: 9, likedBy: [], emojis: [], replies: [] },
         { id: "cp207_1", authorId: "u_zoe", text: "Une sur soixante, ça me rassure beaucoup en fait.", createdAt: hours(2), likes: 7, likedBy: [], emojis: [], replies: [] },
       ]},
@@ -898,7 +898,7 @@ function buildSeed() {
       ]},
     { id: "p219", authorId: "u_theo", passion: "cuisine", mood: "creation", type: "photo", cover: "kitchen",
       text: "Menu de mardi pour six couverts chez un client : sardines marinées, épaule d'agneau confite sept heures, glace au laurier testée pour la première fois en vrai service. Le laurier, il en faut trois fois moins qu'on ne croit — première infusion beaucoup trop amère, jetée. La seconde, huit feuilles pour un litre, était juste.\nAssiettes revenues vides.",
-      createdAt: hours(4), likes: 134, liked: false, comments: [
+      createdAt: hours(16), likes: 134, liked: false, comments: [
         { id: "cp219_0", authorId: "u_hugo", text: "La glace au laurier j'y pense depuis des mois sans oser. Tu infuses à froid ou à chaud ?", createdAt: hours(3), likes: 10, likedBy: [], emojis: [], replies: [] },
         { id: "cp219_1", authorId: "u_lucie", text: "Mon laurier déborde au jardin, je t'en mets de côté.", createdAt: hours(2), likes: 6, likedBy: [], emojis: [], replies: [] },
       ]},
@@ -1246,7 +1246,7 @@ function buildSeed() {
       createdAt: hours(12), likes: 64, liked: false, comments: []},
     { id: "p324", authorId: "u_lea", passion: "musique", mood: "creation", type: "photo", cover: "studio",
       text: "Trois heures sur huit mesures. Le pont ne tenait pas, je l'ai réenregistré onze fois avec le micro à 30 cm de la rosace, et c'est la prise où je rate une liaison qui sonne le mieux.\nJ'ai gardé la faute. On l'entend à 1:12 si on la cherche, et c'est exactement pour ça que je la garde 🙂",
-      createdAt: hours(2), likes: 176, liked: false, comments: [
+      createdAt: hours(17), likes: 176, liked: false, comments: [
         { id: "cp324_0", authorId: "u_oussa", text: "La prise ratée qui passe devant les propres, c'est la loi. T'as enregistré dans quelle pièce ?", createdAt: hours(1), likes: 11, likedBy: [], emojis: [], replies: [] },
         { id: "cp324_1", authorId: "u_noa", text: "Écouté trois fois à 1:12, j'entends rien du tout. C'est plutôt bon signe non ?", createdAt: hours(1), likes: 7, likedBy: [], emojis: [], replies: [] },
       ]},
@@ -1363,73 +1363,73 @@ function buildSeed() {
     // ── Série MUSIQUE : la partition complète sur une seule passion ─────────
     { id: "p401", authorId: "u_lea", passion: "musique", mood: "creation", type: "text", cover: "studio",
       text: "Chantier de la semaine : je réécris le refrain de « Après l'orage » à la basse au lieu de la guitare. Version 12, et c'est la première qui tient debout sans que je force la voix.\nIl reste la batterie, que je vais programmer avant d'oser demander à quelqu'un de la jouer. Je poste la maquette dès qu'elle ne me fait plus honte.",
-      createdAt: hours(0.2), likes: 41, liked: false, comments: [
-        { id: "cp401_0", authorId: "u_oussa", text: "La basse qui porte le refrain, c'est presque toujours la bonne réponse. Envoie la maquette même moche.", createdAt: hours(0.1), likes: 5, likedBy: [], emojis: [], replies: [] },
+      createdAt: hours(3.0), likes: 31, liked: false, comments: [
+        { id: "cp401_0", authorId: "u_oussa", text: "La basse qui porte le refrain, c'est presque toujours la bonne réponse. Envoie la maquette même moche.", createdAt: hours(2.4), likes: 3, likedBy: [], emojis: [], replies: [] },
       ]},
     { id: "p402", authorId: "u_lea", passion: "musique", mood: "learn", type: "text", cover: "studio",
       text: "Le barré, en trois points, parce que personne ne me l'a expliqué comme ça :\n1. L'index à plat CONTRE la barrette, jamais au milieu de la case\n2. Tire le manche vers toi avec le coude — ce n'est pas le pouce qui serre\n3. Tant que ça frise, joue corde par corde, pas l'accord entier\nSix mois seule à m'abîmer la main, deux semaines avec ces trois points.",
-      createdAt: hours(0.7), likes: 186, liked: false, comments: [
-        { id: "cp402_0", authorId: "u_amira", text: "Le coup du coude, je viens d'essayer, ça change tout. Merci.", createdAt: hours(0.4), likes: 12, likedBy: [], emojis: [], replies: [] },
+      createdAt: hours(3.8), likes: 29, liked: false, comments: [
+        { id: "cp402_0", authorId: "u_amira", text: "Le coup du coude, je viens d'essayer, ça change tout. Merci.", createdAt: hours(3.2), likes: 3, likedBy: [], emojis: [], replies: [] },
       ]},
     { id: "p403", authorId: "u_lea", passion: "musique", mood: "irl", type: "text", cover: "stage",
       text: "📍 Lyon, café Chopine (Croix-Rousse) — 📅 jeudi 19h30\nScène ouverte : 8 passages de 10 minutes, il en reste 3. Ampli, deux micros et un piano droit sur place, tu viens avec ton instrument et c'est tout.\nDébutant·es franchement bienvenu·es, la moitié de la salle joue devant du monde pour la première fois. Dis-moi en commentaire si tu prends un créneau.",
-      createdAt: hours(1.2), likes: 74, liked: false, comments: [
-        { id: "cp403_0", authorId: "u_oussa", text: "Je prends le dernier créneau si personne ne le veut. Je viens avec le clavier.", createdAt: hours(0.9), likes: 7, likedBy: [], emojis: [], replies: [] },
-        { id: "cp403_1", authorId: "u_mila", text: "Je passe écouter, je ne joue de rien mais j'adore ces soirs-là.", createdAt: hours(0.6), likes: 4, likedBy: [], emojis: [], replies: [] },
+      createdAt: hours(4.6), likes: 34, liked: false, comments: [
+        { id: "cp403_0", authorId: "u_oussa", text: "Je prends le dernier créneau si personne ne le veut. Je viens avec le clavier.", createdAt: hours(4.0), likes: 3, likedBy: [], emojis: [], replies: [] },
+        { id: "cp403_1", authorId: "u_mila", text: "Je passe écouter, je ne joue de rien mais j'adore ces soirs-là.", createdAt: hours(4.2), likes: 4, likedBy: [], emojis: [], replies: [] },
       ]},
     { id: "p404", authorId: "u_lea", passion: "musique", mood: "irl", type: "text", cover: "stage",  eventId: "e1",
       text: "📍 Lyon, Café des Arts — 📅 jeudi 18h30\nJam guitaristes débutants, et « débutants » n'est pas une politesse : la moitié de la salle n'a jamais joué devant quelqu'un. Trois accords suffisent, on tourne sur des grilles que tout le monde connaît.\nIl reste 4 places. Ampli et deux guitares sur place si tu n'as pas la tienne — dis-le moi en commentaire, je les apporte.",
-      createdAt: hours(1.6), likes: 164, liked: false, comments: [
+      createdAt: hours(5.4), likes: 27, liked: false, comments: [
         { id: "cp404_0", authorId: "u_oussa", text: "Je viens avec le clavier pour tenir la basse à la main gauche. Ça dépanne à chaque fois.", createdAt: hours(1.2), likes: 6, likedBy: [], emojis: [], replies: [] },
         { id: "cp404_1", authorId: "u_amira", text: "Jamais joué de ma vie, j'ose venir écouter ?", createdAt: hours(0.9), likes: 11, likedBy: [], emojis: [], replies: [] },
       ]},
     { id: "p405", authorId: "u_oussa", passion: "musique", mood: "all", type: "text", cover: "neon",
       text: "Trois heures de fouille dans les bacs à 2 € aux Puces. Reparti avec une compile de variété turque des années 70, pochette mangée par l'humidité mais vinyle nickel.\nIl y a dessus une intro de batterie de six secondes, un peu à côté du tempo, que je vais boucler tout l'hiver.",
-      createdAt: hours(1.9), likes: 71, liked: false, comments: []},
+      createdAt: hours(6.2), likes: 25, liked: false, comments: []},
     { id: "p406", authorId: "u_karim", passion: "photo", mood: "creation", type: "text", cover: "street",
       text: "Nouvelle série commencée hier : « Les rideaux de fer ». Toutes les devantures fermées d'une seule rue de Belleville, prises au même endroit, au même 35 mm, entre 6h et 6h30.\n11 sur 40. Le jour où j'aurai la rue entière, ça devient un accordéon de trois mètres tiré en une seule bande.",
-      createdAt: hours(1.95), likes: 67, liked: false, comments: []},
+      createdAt: hours(6.4), likes: 24, liked: false, comments: []},
     { id: "p407", authorId: "u_karim", passion: "photo", mood: "learn", type: "text", cover: "street",
       text: "Arrêter de cramer les ciels, en trois gestes :\n1. Mesure la lumière sur la zone la plus CLAIRE que tu veux garder, pas sur le visage\n2. Sous-expose d'un tiers : les ombres se rattrapent, les hautes lumières jamais\n3. Fie-toi à l'histogramme, pas à l'écran — l'écran ment dès qu'il y a du soleil dessus\nÇa marche sur n'importe quel boîtier, et sur un téléphone en mode pro aussi.",
-      createdAt: hours(0.3), likes: 274, liked: false, comments: [
-        { id: "cp407_0", authorId: "u_noa", text: "Le point 3 vaut pour la vidéo aussi. On se fait avoir dix fois avant de comprendre.", createdAt: hours(0.15), likes: 21, likedBy: [], emojis: [], replies: [] },
+      createdAt: hours(3.2), likes: 33, liked: false, comments: [
+        { id: "cp407_0", authorId: "u_noa", text: "Le point 3 vaut pour la vidéo aussi. On se fait avoir dix fois avant de comprendre.", createdAt: hours(2.6), likes: 3, likedBy: [], emojis: [], replies: [] },
       ]},
     { id: "p408", authorId: "u_karim", passion: "photo", mood: "irl", type: "text", cover: "sunrise",
       text: "📍 Paris, sortie de métro Jaurès — 📅 samedi 6h15 (oui, 6h15)\nBalade photo de rue jusqu'à Stalingrad : deux heures, on s'arrête là où la lumière nous arrête. 6 personnes maximum pour que ça reste une balade et pas une visite guidée.\nAucun niveau requis, un téléphone suffit. Il reste 2 places — commentez et je vous envoie le point de rendez-vous exact.",
-      createdAt: hours(0.8), likes: 92, liked: false, comments: [
-        { id: "cp408_0", authorId: "u_inès", text: "Je prends une place ! Je viens avec un argentique, ça ira ?", createdAt: hours(0.5), likes: 6, likedBy: [], emojis: [], replies: [] },
+      createdAt: hours(4.0), likes: 28, liked: false, comments: [
+        { id: "cp408_0", authorId: "u_inès", text: "Je prends une place ! Je viens avec un argentique, ça ira ?", createdAt: hours(3.4), likes: 3, likedBy: [], emojis: [], replies: [] },
       ]},
     { id: "p409", authorId: "u_karim", passion: "photo", mood: "irl", type: "text", cover: "street",  eventId: "e31",
       text: "📍 Marseille, Vieux Port — 📅 samedi 10h\nAtelier photo de rue : deux heures à marcher, on s'arrête là où la lumière nous arrête, puis on relit ensemble ce que chacun a rapporté. Pas de théorie, on regarde des images.\nSix personnes maximum, il reste 2 places. Un téléphone suffit — commentez et je vous envoie le point de rendez-vous exact.",
-      createdAt: hours(1.7), likes: 138, liked: false, comments: [
+      createdAt: hours(4.8), likes: 26, liked: false, comments: [
         { id: "cp409_0", authorId: "u_inès", text: "Je prends une place. Je viens avec un argentique, ça ira ?", createdAt: hours(1.3), likes: 6, likedBy: [], emojis: [], replies: [] },
         { id: "cp409_1", authorId: "u_noa", text: "Le format « on relit ensemble » vaut tous les tutos. J'en suis.", createdAt: hours(1.0), likes: 11, likedBy: [], emojis: [], replies: [] },
       ]},
     { id: "p410", authorId: "u_karim", passion: "photo", mood: "all", type: "text", cover: "street",
       text: "Rien fait de la journée. L'appareil est resté dans le sac. J'ai bu trois cafés au même comptoir en regardant la buée revenir sur la vitre à chaque fois que quelqu'un poussait la porte.\nJe me suis dit dix fois que c'était une image. Je ne l'ai pas prise, et ça ne me manque pas.",
-      createdAt: hours(1.95), likes: 54, liked: false, comments: []},
+      createdAt: hours(5.6), likes: 30, liked: false, comments: []},
     { id: "p411", authorId: "u_theo", passion: "cuisine", mood: "creation", type: "text", cover: "kitchen",
       text: "Je monte le menu de printemps, version 3. J'ai jeté le plat de veau : trop lourd derrière l'entrée aux petits pois.\nÀ la place j'essaie un maquereau juste raidi, jus de cresson, pomme de terre écrasée à l'huile de noisette. Testé deux fois, la troisième sera la bonne. Le dessert, lui, n'existe toujours pas.",
-      createdAt: hours(1.9), likes: 78, liked: false, comments: []},
+      createdAt: hours(5.8), likes: 29, liked: false, comments: []},
     { id: "p412", authorId: "u_hugo", passion: "cuisine", mood: "learn", type: "text", cover: "kitchen",
       text: "La pâte sablée qui ne se rétracte pas à la cuisson, trois règles :\n1. Beurre POMMADE, jamais fondu — le fondu donne une pâte qui casse\n2. Arrête de la travailler dès qu'elle est homogène : chaque tour de plus la rend élastique\n3. Repos au froid 2 h minimum, DÉJÀ étalée à sa forme finale, pas en boule\nJe l'ai ratée pendant des années à cause du point 3, et uniquement de lui.",
-      createdAt: hours(1.98), likes: 341, liked: false, comments: [
-        { id: "cp412_0", authorId: "u_theo", text: "Étalée avant le repos, c'est LE truc que les livres ne disent pas. Confirmé en cuisine pro.", createdAt: hours(1.6), likes: 34, likedBy: [], emojis: [], replies: [] },
+      createdAt: hours(6.6), likes: 26, liked: false, comments: [
+        { id: "cp412_0", authorId: "u_theo", text: "Étalée avant le repos, c'est LE truc que les livres ne disent pas. Confirmé en cuisine pro.", createdAt: hours(6.0), likes: 3, likedBy: [], emojis: [], replies: [] },
       ]},
     { id: "p413", authorId: "u_theo", passion: "cuisine", mood: "irl", type: "text", cover: "kitchen",
       text: "📍 Marseille, chez moi (Notre-Dame du Mont) — 📅 samedi 20h\nTable d'hôtes « retour du marché » : 8 couverts, 5 services, 30 € par personne pour couvrir les produits. Je cuisine devant vous, et vous mettez la main au dessert.\nIl reste 3 places. Version végétarienne possible si vous me le dites avant vendredi.",
-      createdAt: hours(0.4), likes: 121, liked: false, comments: [
-        { id: "cp413_0", authorId: "u_emma", text: "Je prends deux places. On amène le vin ?", createdAt: hours(0.2), likes: 9, likedBy: [], emojis: [], replies: [] },
+      createdAt: hours(3.4), likes: 35, liked: false, comments: [
+        { id: "cp413_0", authorId: "u_emma", text: "Je prends deux places. On amène le vin ?", createdAt: hours(2.8), likes: 3, likedBy: [], emojis: [], replies: [] },
       ]},
     { id: "p414", authorId: "u_theo", passion: "cuisine", mood: "irl", type: "text", cover: "kitchen",  eventId: "e3",
       text: "📍 Marseille, chez moi (Notre-Dame du Mont) — 📅 samedi 19h30\nDîner entre passionnés : 8 couverts, 5 services, 30 € par personne pour couvrir les produits. Je cuisine devant vous et vous mettez la main au dessert, c'est la règle de la maison.\nIl reste 3 places. Version végétarienne possible si vous me le dites avant vendredi.",
-      createdAt: hours(1.8), likes: 176, liked: false, comments: [
+      createdAt: hours(4.2), likes: 32, liked: false, comments: [
         { id: "cp414_0", authorId: "u_emma", text: "Je prends deux places. On amène le vin ?", createdAt: hours(1.4), likes: 6, likedBy: [], emojis: [], replies: [] },
         { id: "cp414_1", authorId: "u_hugo", text: "Le coup du dessert fait par la table, c'est ce qui casse la glace le plus vite.", createdAt: hours(1.1), likes: 11, likedBy: [], emojis: [], replies: [] },
       ]},
     { id: "p415", authorId: "u_hugo", passion: "cuisine", mood: "all", type: "text", cover: "kitchen",
       text: "23h, plaque éteinte depuis une heure, et je mange debout un fond de riz au lait tiède directement dans la casserole.\nC'est le seul truc que je fais sans le goûter trois fois pour vérifier l'assaisonnement.",
-      createdAt: hours(1.98), likes: 66, liked: false, comments: []},
+      createdAt: hours(5.0), likes: 27, liked: false, comments: []},
     { id: "p416", authorId: "u_sami", passion: "actu", mood: "creation", type: "text", cover: "news_europe",
       text: "Je monte un format long depuis six semaines : cinq entretiens d'une heure avec des livreurs bruxellois, ramenés à un seul récit de 40 minutes.\nCe qui me bloque : personne ne raconte les mêmes horaires, et j'ai promis de ne rien lisser. Je crois que je vais laisser les contradictions dedans, telles quelles.",
       createdAt: hours(9), likes: 96, liked: false, comments: []},
