@@ -56,6 +56,14 @@ const etat = (page) => page.evaluate(() => ({
   statut: (getConversations().find((c) => c.id === "conv_media").messages[0] || {}).status,
   outbox: _outboxLoad().map((x) => x.msgId),
   inserts: (window.__inserts || []).filter(function (i) { return i.table === "conv_messages"; }).length,
+  // ⚠️ L'INVARIANT EST LE REPLI, PAS LE COMPTE (2026-09-03). `toBe(2)` voulait
+  // dire « la première tentative porte `from_id`, la seconde ne le porte pas » —
+  // mais il l'exprimait par un NOMBRE, donc il interdisait aussi le renvoi de la
+  // file (`setTimeout(_flushOutbox, 1500)` armé par `supaInit`, qui rejoue quand
+  // le réseau existe : en CI, jamais hors ligne). On observe désormais les DEUX
+  // FORMES, ce qu'aucun renvoi ne peut fausser.
+  avecFromId: (window.__inserts || []).some(function (i) { return i.table === "conv_messages" && i.row && i.row.from_id; }),
+  sansFromId: (window.__inserts || []).some(function (i) { return i.table === "conv_messages" && i.row && !i.row.from_id; }),
   // Diagnostic : si une autre table s'invite, le message d'échec la nomme au
   // lieu de laisser chercher.
   tables: (window.__inserts || []).map(function (i) { return i.table; }),
@@ -73,8 +81,10 @@ test.describe("Média en message — verdict de l'écriture", () => {
     });
 
     const r = await etat(page);
-    // Deux tentatives : avec from_id, puis le repli sans from_id.
-    expect(r.inserts, "tables vues : " + JSON.stringify(r.tables)).toBe(2);
+    // Deux tentatives : avec from_id, puis le repli sans from_id — observées par
+    // leur FORME, que le renvoi de la file ne peut pas fausser.
+    expect(r.avecFromId, "la première tentative (avec from_id) n'a pas eu lieu").toBe(true);
+    expect(r.sansFromId, "le repli sans from_id n'a pas eu lieu").toBe(true);
     expect(r.statut, "le média doit être marqué en échec").toBe("failed");
     expect(r.outbox, "et mis en file de renvoi").toContain("m_media");
   });
@@ -90,7 +100,8 @@ test.describe("Média en message — verdict de l'écriture", () => {
     });
 
     const r = await etat(page);
-    expect(r.inserts, "tables vues : " + JSON.stringify(r.tables)).toBe(1);
+    expect(r.inserts, "l'insertion n'a pas eu lieu — tables vues : " + JSON.stringify(r.tables))
+      .toBeGreaterThanOrEqual(1);
     expect(r.statut).toBe("sent");
     expect(r.outbox).not.toContain("m_media");
   });
@@ -125,7 +136,8 @@ test.describe("Média en message — verdict de l'écriture", () => {
     });
 
     const r = await etat(page);
-    expect(r.inserts, "tables vues : " + JSON.stringify(r.tables)).toBe(2);
+    expect(r.avecFromId, "la première tentative (avec from_id) n'a pas eu lieu").toBe(true);
+    expect(r.sansFromId, "le repli sans from_id n'a pas eu lieu").toBe(true);
     expect(r.statut).toBe("sent");
     expect(r.outbox).not.toContain("m_media");
   });

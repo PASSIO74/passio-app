@@ -91,7 +91,20 @@ test.describe("Transfert de message — verdict de l'écriture", () => {
       };
     });
 
-    expect(r.inserts, "l'insertion du transfert a bien été tentée — tables vues : " + JSON.stringify(r.tables)).toBe(1);
+    // ⚠️ « AU MOINS UNE », ET SÛREMENT PAS « EXACTEMENT UNE » (2026-09-03).
+    // `toBe(1)` interdisait un renvoi que le produit doit faire : `supaInit`
+    // arme `setTimeout(_flushOutbox, 1500)` (app-08), et quand le réseau existe
+    // — donc en CI, jamais dans un bac à sable hors ligne — la file rejoue le
+    // message refusé DANS la fenêtre de mesure. La seconde insertion n'était pas
+    // un défaut : c'était le renvoi, c'est-à-dire exactement le comportement que
+    // les deux assertions suivantes exigent. Le test se contredisait lui-même,
+    // et ne le montrait qu'au gré du découpage des shards.
+    //
+    // Ce que ce spec garde vraiment (cf. son en-tête) : l'échec d'écriture est
+    // VU. Donc : la tentative a eu lieu, le message est marqué en échec, et il
+    // est en file. Le NOMBRE de tentatives n'a jamais été l'invariant.
+    expect(r.inserts, "l'insertion du transfert n'a pas eu lieu — tables vues : " + JSON.stringify(r.tables))
+      .toBeGreaterThanOrEqual(1);
     expect(r.statut, "un transfert refusé doit être marqué en échec").toBe("failed");
     expect(r.enFile, "et mis en file de renvoi, sinon il est perdu en silence").toBe(true);
   });
