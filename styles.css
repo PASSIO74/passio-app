@@ -4437,14 +4437,31 @@
          NI `flex: 1 1 0` (défaut du 2026-09-02, raconté sous `.profile-tile`) :
        la largeur des bulles reste FIXE. On ne déplace que la rangée entière.
 
-         BORNÉ À `#v9ProfilePassions`. `.profile-strip` est partagée par le Fil
-       (`#profileStrip`) et le profil visité (`#visitedPassions`), qui gardent
-       leur alignement au début. Une passion seule est à la fois `:first-child`
+         BORNÉ À DEUX RAILS NOMMÉS : mon Profil (`#v9ProfilePassions`) et le
+       FIL (`#profileStrip`, depuis le 2026-09-03, sur demande de Benjamin :
+       “ aligne sur la largeur les bulles de passion sur le fil ”). La
+       configuration de départ en compte QUATRE  « Suivis » + trois passions
+       offertes  et cette rangée-là TIENT dans la largeur : mesurée à 390 px
+       sous UI-7 elle occupe 4×62 + 3×10 + 20 = 298 px pour 390 de large, et
+       les 92 px de libre s'entassaient tous à droite. Elle se centre donc,
+       exactement comme celle du Profil.
+
+        Au-delà de quatre bulles (passions supplémentaires à venir), la
+       rangée déborde : il n'y a plus de libre POSITIF, les marges auto
+       retombent à 0, et le rail redevient coulissant depuis son vrai début,
+       sans une seule bulle inatteignable. C'est tout l'intérêt de la marge
+       auto face à `justify-content: center`, proscrit ci-dessus.
+
+       Le profil VISITÉ (`#visitedPassions`) garde, lui, son alignement au
+       début : il n'a pas de configuration de départ à quatre bulles, et rien
+       n'a été demandé pour lui. Une passion seule est à la fois `:first-child`
        et `:last-child` : elle reçoit les deux marges, et se centre. L'état vide
        ne porte pas `.profile-tile` (c'est `.v9-strip-empty`) : il n'est pas
        visé, et c'est voulu  une phrase n'est pas une rangée de bulles. */
-    #v9ProfilePassions.v9-profile-strip > .profile-tile:first-child { margin-left: auto; }
-    #v9ProfilePassions.v9-profile-strip > .profile-tile:last-child { margin-right: auto; }
+    #v9ProfilePassions.v9-profile-strip > .profile-tile:first-child,
+    #profileStrip.profile-strip > .profile-tile:first-child { margin-left: auto; }
+    #v9ProfilePassions.v9-profile-strip > .profile-tile:last-child,
+    #profileStrip.profile-strip > .profile-tile:last-child { margin-right: auto; }
 
     /* âš ï¸ NE JAMAIS REMETTRE `flex: 1 1 0` ICI (dÃ©faut vÃ©cu le 2026-09-02).
        Les bulles se partageaient la largeur du rail : Ã  10 passions + Â« Suivis Â»

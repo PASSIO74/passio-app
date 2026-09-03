@@ -307,8 +307,10 @@ ses enfants au DÉBUT, donc les 78 px de libre s'entassaient tous du même côt�
 ### Le correctif, et pourquoi ce n'est pas `justify-content: center`
 
 ```css
-#v9ProfilePassions.v9-profile-strip > .profile-tile:first-child { margin-left: auto; }
-#v9ProfilePassions.v9-profile-strip > .profile-tile:last-child  { margin-right: auto; }
+#v9ProfilePassions.v9-profile-strip > .profile-tile:first-child,
+#profileStrip.profile-strip        > .profile-tile:first-child { margin-left: auto; }
+#v9ProfilePassions.v9-profile-strip > .profile-tile:last-child,
+#profileStrip.profile-strip        > .profile-tile:last-child  { margin-right: auto; }
 ```
 
 Une marge `auto` ne distribue que du libre **positif**. Tant que la rangée tient,
@@ -327,12 +329,42 @@ exactement la même image, et seul le cas qui déborde les sépare.
 `flex: 1 1 0` est exclu pour la raison déjà racontée sous `.profile-tile` : il
 comprimait les bulles au lieu de déplacer la rangée (défaut du 2026-09-02).
 
+### Le Fil reçoit la même règle le soir même (2026-09-03)
+
+« Aligne sur la largeur les bulles de passion sur le fil : la configuration de
+base des utilisateurs est de 4 bulles, 1 pour Suivis et trois passions ; ensuite
+les autres seront payantes donc ils switcheront sur le côté pour les voir, mais
+je veux que la configuration à 4 bulles soit équilibrée dans la largeur,
+centrée. » (Benjamin.)
+
+La demande décrit **exactement** le comportement des marges auto, et c'est
+pourquoi elle ne coûte qu'un sélecteur de plus. La configuration de départ est
+une rangée qui **tient** :
+
+| à 390 px, sous UI-7 | calcul | résultat |
+| --- | --- | --- |
+| 4 bulles (Suivis + 3 passions) | `4×62 + 3×10 + 2×10` | **298 px** pour 390 → centrée, 40 px de vide de chaque côté (mesuré en `offsetLeft`, à l'unité près) |
+| 11 bulles (Suivis + 10) | déborde | marges à **0**, le rail part de son vrai début, première bulle entière dans le champ |
+
+Le jour où les passions payantes feront dépasser la rangée, le centrage
+disparaît **de lui-même** : c'est la seconde moitié de la demande, et elle est
+obtenue sans aucune condition en JS.
+
+⚠️ La mesure en `getBoundingClientRect()` donne 37,8 / 40 au lieu de 40 / 40 :
+`.profile-strip.has-filter .profile-tile:not(.active)` porte
+`transform: scale(0.95)`, qui déplace le **rectangle** sans déplacer la boîte de
+mise en page. La rangée est bien symétrique ; c'est la décoration qui ne l'est
+pas. Les tests tolèrent donc quelques pixels — ce qu'ils prouvent est « au
+milieu, et pas dans le coin », l'ancien état laissant plus de 60 px d'écart.
+
 ### ⚠️ Le bornage, et le test qui a failli être vert par accident
 
-La règle est ancrée à `#v9ProfilePassions` parce que `.profile-strip` est
-**partagée par trois surfaces** : le Fil (`#profileStrip`), mon profil et le
-profil visité (`#visitedPassions`). Les deux autres gardent leur alignement au
-début.
+La règle est ancrée à des **identifiants**, jamais à `.profile-strip` seule, qui
+est **partagée par trois surfaces** : le Fil (`#profileStrip`), mon profil
+(`#v9ProfilePassions`) et le profil visité (`#visitedPassions`). Les deux
+premières sont centrées ; **le profil visité garde son alignement au début** —
+il n'a pas de configuration de départ à quatre bulles, et rien n'a été demandé
+pour lui.
 
 Le verrou de bornage (`③ decies quater`) a d'abord été écrit avec les **trois**
 passions du socle. Sur le Fil, ce fixture peint **cinq** bulles (« Suivis » et
@@ -350,7 +382,21 @@ L'état vide (`.v9-strip-empty`) n'est pas visé : ce n'est pas un
 centrée, et il reste du vide à répartir), `③ decies bis` (dix passions : la
 rangée déborde et la première bulle reste atteignable), `③ decies ter` (une
 passion seule est à la fois `:first-child` et `:last-child`), `③ decies quater`
-(le Fil et le profil visité ne bougent pas).
+(le Fil se centre AUSSI, le profil visité garde son alignement),
+`③ decies quinquies` (le Fil dans sa configuration de départ : quatre bulles,
+centrées) et `③ decies sexies` (onze bulles : le Fil déborde, sa première bulle
+reste atteignable).
+
+Éprouvés par **réinjection**, eux aussi : sans la règle posée sur
+`#profileStrip`, `③ decies quater` et `③ decies quinquies` tombent et
+`③ decies sexies` reste vert ; avec `justify-content: center` à la place, c'est
+l'inverse — `③ decies sexies` tombe, la rangée démarrant à **−224 px** du bord
+intérieur du rail.
+
+⚠️ Les deux derniers **vident `_activeFeedPassions`** avant de mesurer : le rail
+du Fil complète les passions possédées par les « envies » actives sans profil
+(`_interet_…`), et avec le socle il peint cinq bulles — donc il déborde, donc le
+cas ne mesurerait plus rien. Poser la prémisse, jamais espérer la trouver.
 
 Éprouvés par **réinjection** : sans le correctif, `③ decies` et `③ decies ter`
 tombent ; avec `justify-content: center`, `③ decies bis` tombe et les autres
