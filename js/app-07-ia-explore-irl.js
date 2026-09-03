@@ -288,30 +288,35 @@ function openPassionExplorer(pid, retourUserId) {
   openModal(html);
 }
 
+// ⚠️ CETTE FONCTION ÉTAIT UN SECOND MOTEUR D'AJOUT, ET SANS AUCUNE GARDE.
+// Elle poussait directement dans `state.user.profiles` : ni plafond
+// (`PASSIONS_OFFERTES`), ni quota de changements, ni journal, ni déduplication
+// avec une entrée ARCHIVÉE de la même passion. Depuis la page d'une passion,
+// « + Créer profil » ouvrait donc une quatrième, une cinquième, une dixième
+// passion vivante — le plafond payant contourné par une porte que personne
+// n'avait rattachée quand il a été posé (2026-09-01), et un doublon garanti si
+// la passion existait déjà en archive.
+//
+// Elle DÉLÈGUE maintenant à `ajouterPassionAuCompte` (app-06), le moteur
+// unique : c'est lui qui garde le plafond, restaure une archive au lieu de la
+// dupliquer, et synchronise. Deux moteurs pour un même geste divergent toujours
+// au premier correctif — la leçon de `sharePostInFeed` / `shareReelInFeed`.
 function quickCreateProfile(pid) {
+  if (typeof ajouterPassionAuCompte !== "function") return;
   const p = passionById(pid);
-  const np = {
-    id: uid(),
-    name: state.user.name,
-    passion: pid,
-    emoji: p.emoji,
-    bio: `Profil ${p.label}`,
-    color: p.color,
-    createdAt: Date.now(),
-  };
-  state.user.profiles.push(np);
-  state.user.currentProfileId = np.id;
-  // Même règle que `confirmCreateProfile` : une passion neuve entre dans le Fil.
-  if (typeof ajouterPassionAuFil === "function") ajouterPassionAuFil(pid);
+  const np = ajouterPassionAuCompte(pid, "");
+  // `null` = refusé par le plafond (la fenêtre est déjà ouverte), OU restauré
+  // depuis les archives (qui rend la main après avoir rendu l'écran). On ne
+  // conclut donc pas sur la valeur rendue : on regarde si la passion est
+  // VIVANTE, seule question qui décide de la suite.
+  const vivante = (state.user.profiles || []).find(function (x) { return x.passion === pid && !x.archived; });
+  if (!vivante) return;
+  state.user.currentProfileId = vivante.id;
   saveState();
-  // Re-synchronise le profil public (pseudo unique + liste de passions à jour).
-  // Passions seules : ni pseudo, ni bio, ni avatar, ni confidentialité.
-  if (typeof supaSavePassionState === "function") { try { supaSavePassionState(); } catch (e) {} }
-  // Flush immédiat de user_state sans attendre le debounce.
-  if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch(e) {} }
   closeModal();
   renderTopbar();
   goTo("profiles");
+  if (np) toast("✨ " + ((p && p.label) || "Passion") + " ajoutée à tes passions", "success");
 }
 
 // ======== IRL ========

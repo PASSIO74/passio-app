@@ -32,8 +32,17 @@
 // historique, et le repli exploration explicitement étiqueté.
 const { test, expect } = require("@playwright/test");
 const { GATE_TOKEN, GATE_KEY } = require("./gate-helper");
+const { sansPublicationsDistantes } = require("./app-helper");
 
 async function bootVierge(page, { v2 = true, uiV2 = true, etat = null } = {}) {
+  // ⚠️ CE HELPER FAIT SON PROPRE `goto`, donc l'isolation posée par défaut dans
+  // `bootOnboarded` (2026-09-02) ne le couvre pas : la portée est l'APPEL, pas
+  // le fichier. Sans cette ligne, la requête `posts` du boot rapporte les vraies
+  // publications, et `supaLoadPosts` fait `state.supabasePosts = initPosts` puis
+  // `renderFeed()` — ce qui RE-REMPLIT la passion que `viderPassion()` vient de
+  // vider, alors que l'écran vide est tout le sujet de cette suite. Neutraliser
+  // `supaInit` après le boot arrive trop tard : la requête est déjà partie.
+  await sansPublicationsDistantes(page);
   await page.addInitScript(([k, t, st, flag, shellV2]) => {
     sessionStorage.setItem(k, t);
     sessionStorage.setItem("passio_pwa_dismissed", "1");
