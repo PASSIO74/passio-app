@@ -244,7 +244,7 @@ test("③ bis bis — la porte d'ajout a quitté le rail pour « Gérer mes pass
 // ⚠️ LE CÂBLAGE, PAS LA FONCTION. `③ bis bis` ouvre le panneau par
 // `page.evaluate(() => openPassionManager())` — comme les onze autres cas du
 // dépôt qui touchent ce panneau. Aucun d'eux ne clique la porte qui y mène :
-// supprimez l'entrée « 🗂️ Gérer mes passions » du menu ⋯ (app-06,
+// supprimez l'entrée « Gérer mes passions » du menu ⋯ (app-06,
 // `openMainProfileMenu`) — la SEULE porte vers la seule porte d'ajout — et la
 // suite complète reste VERTE. C'est mot pour mot la leçon d'`adopterCompteConnecte`
 // inscrite dans CLAUDE.md : « tester la fonction ne suffit pas ; le câblage, non
