@@ -21,7 +21,7 @@
 const fs = require("fs");
 const path = require("path");
 const { test, expect } = require("@playwright/test");
-const { bootOnboarded } = require("./app-helper");
+const { bootOnboarded, sansDonneesDistantes } = require("./app-helper");
 
 // Position d'appareil de référence : Annecy, loin du repli Paris (48.8566,
 // 2.3522) pour qu'aucun test ne puisse passer par coïncidence avec le fallback.
@@ -103,6 +103,13 @@ test.describe("Trust & Safety — garde de la proposition IRL", () => {
   test("le lien canari active l'aperçu sans persister le drapeau", async ({ page }) => {
     await bootOnboarded(page);
     await page.evaluate(() => localStorage.removeItem("passio_irl_proposal_v1"));
+    // ⚠️ ISOLATION DES DONNÉES DISTANTES — POSÉE ICI PARCE QUE CETTE SUITE
+    // NAVIGUE ELLE-MÊME. `bootOnboarded` la pose par défaut, mais sa portée est
+    // L'APPEL, pas le fichier : un `page.goto` maison garde son chemin exposé, et
+    // le verdict du test dépend alors du CONTENU DE LA PRODUCTION. C'est ce qui a
+    // rendu `main` rouge six fois en quatre jours et fait sauter autant de
+    // déploiements. Verrou mécanique : `scripts/audit-tests-isolation.js`.
+    await sansDonneesDistantes(page);
     await page.goto("/index.html?passio_preview=irl-proposal-v1");
     await page.waitForFunction(() => typeof irlProposalEnabled === "function", null, { timeout: 20000 });
     expect(await page.evaluate(() => irlProposalEnabled())).toBe(true);
