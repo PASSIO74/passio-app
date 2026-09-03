@@ -15,8 +15,10 @@
 // Le défaut n'était pas atteignable avant le 2026-08-29 : « Rencontrer » n'était
 // choisissable nulle part dans le composer (#194 l'a ajouté le matin même).
 //
-// La source de vérité est désormais `PASSIO_MOOD_LABELS`. Elle reste une liste
-// BLANCHE : un mood inconnu venu de la base n'entre toujours pas.
+// La source de vérité est désormais `PASSIO_MOODS_ADMIS` (c'était
+// `PASSIO_MOOD_LABELS` jusqu'au 2026-09-02, date où afficher et admettre ont été
+// scindés). Elle reste une liste BLANCHE : un mood inconnu venu de la base
+// n'entre toujours pas.
 // ============================================================================
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
@@ -58,12 +60,27 @@ test.describe("le repli d'exploration", () => {
     expect(await compte(page)).toBeGreaterThan(0);
   });
 
-  test("propose aussi les moods qui ne sont plus publiables mais restent affichables", async ({ page }) => {
+  // ⚠️ RENOMMÉ ET RENFORCÉ LE 2026-09-02. Ces deux valeurs ne sont plus
+  // « affichables » : elles ont perdu leur libellé avec le passage à quatre
+  // intentions (Explorer · Apprendre · Idées · Rencontrer). Elles restent
+  // ADMISES, ce qui n'est pas la même chose — et c'est précisément la
+  // distinction que la scission `PASSIO_MOOD_LABELS` / `PASSIO_MOODS_ADMIS`
+  // protège. La liste blanche de ce repli lisait la table des LIBELLÉS : la
+  // vider de ces deux valeurs aurait fait disparaître du fil des milliers de
+  // publications RÉELLES déjà en base. Un changement de vocabulaire ne doit
+  // jamais effacer du contenu.
+  //
+  // Le test tient donc les DEUX bords à la fois : la publication entre, et elle
+  // n'affiche aucune pastille.
+  test("les valeurs léguées entrent toujours, mais sans pastille", async ({ page }) => {
     await bootOnboarded(page);
     for (const m of ["chill", "actu"]) {
       await explorer(page, m);
       await page.waitForTimeout(800);
-      expect(await compte(page), m).toBeGreaterThan(0);
+      expect(await compte(page), `${m} : la publication doit rester atteignable`).toBeGreaterThan(0);
+      const pastilles = await page.evaluate(() =>
+        document.querySelectorAll("#feedList .post-mood-tag").length);
+      expect(pastilles, `${m} : plus aucun libellé, comme le neutre`).toBe(0);
     }
   });
 

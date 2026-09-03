@@ -10530,6 +10530,129 @@ html:not(.passio-first-run) .fr-only { display: none !important; }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   PASTILLE DE MOOD — UNE COULEUR PAR ENVIE (2026-09-02)
+
+   Remarque d'un testeur, essai réel : « le contenu du fil n'est pas assez
+   explicite par rapport à la passion et au mood, il faut qu'on comprenne la
+   différence visuellement ». Les envies portaient bien leur libellé, mais
+   toutes dans la MÊME capsule grisée : deux cartes côte à côte se distinguaient
+   au mot près, jamais au coup d'œil. Une couleur par envie suffit à rendre le
+   fil lisible en diagonale, ce que fait exactement un testeur.
+
+   ⚠️ TROIS pastilles, et pas une de plus. Le Studio ne propose que 💡 Idées ·
+   📚 Apprendre · 🤝 Rencontrer · ✨ Tous ; « chill » et « actu » ne sont plus
+   publiables et ont perdu leur libellé le 2026-09-02, donc leur couleur avec.
+   Une publication qui les porte encore se peint désormais comme le neutre :
+   aucune pastille. Et « Explorer » n'en aura jamais — c'est une question posée
+   au lecteur, pas une étiquette d'auteur.
+
+   ⚠️ Le discriminant est l'attribut `data-mood`, posé par `_moodTagHTML`
+   (app-02) et UNIQUEMENT sur la branche où `moodTagLabel` a rendu un libellé.
+   Le neutre (`all`), le mood absent et le mood inconnu ne dessinent toujours
+   AUCUNE pastille : ces règles ne peuvent donc pas ressusciter la capsule
+   creuse corrigée le 2026-08-29 (`tests/e2e/pastille-mood.spec.js`).
+
+   ⚠️ Les fonds sont OPAQUES, jamais des `rgba` : le contrôle de contraste du
+   projet remonte au premier fond opaque et prendrait une teinte translucide
+   pour une couleur pleine, alpha ignoré. Rapports mesurés de l'encre sur son
+   propre fond — Idées 7,7:1 · Apprendre 5,8:1 · Rencontrer 5,9:1 — tous
+   au-dessus des 4,5:1 de l'AA.
+
+   ⚠️ Le ton chaud de « Rencontrer » est un cousin du corail #FF6B57, et c'est
+   la SEULE raison qui l'autorise ici : §5 de la direction réserve la couleur
+   chaude au passage au réel, ce qu'est précisément cette envie. Il reste hors
+   de tout jeton d'accent général, et n'est pas `var(--v2-coral)` — ce jeton
+   n'existe que sous `.passio-ui-v2`, la pastille doit tenir dans les deux
+   palettes.
+
+   ⚠️ Ces jetons ne sont déclarés QUE sur `:root`, contrairement à
+   `--accent-tile` : ce sont des teintes sémantiques (bleu = apprendre, vert =
+   chill…), étrangères à la famille violette que `.passio-ui-v2` remappe. Rien
+   à redéclarer, donc, et surtout rien qui doive diverger entre les deux
+   chartes.
+
+   ⚠️ Ce bloc est posé AVANT celui du lot UI-4A5, qui doit rester le DERNIER de
+   la feuille.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* 💡 Idées — la famille violette, l'identité du produit */
+  --mood-create-bg:   #f1eafe;
+  --mood-create-ink:  #5b21b6;
+  --mood-create-line: #ddcefa;
+  /* 📚 Apprendre — bleu d'encre, la couleur du cahier */
+  --mood-learn-bg:    #e7f0fe;
+  --mood-learn-ink:   #1d4ed8;
+  --mood-learn-line:  #c7dbfb;
+  /* 🤝 Rencontrer — le ton chaud du passage au réel (§5) */
+  --mood-meet-bg:     #ffede9;
+  --mood-meet-ink:    #a83218;
+  --mood-meet-line:   #ffd2c8;
+}
+
+/* La passion de la PUBLICATION : la seule mention de la carte (fiche 11), donc
+   celle qui doit se lire. Elle partageait le gris `--muted` à 11 px avec
+   l'heure, ce qui la rendait invisible — le testeur voyait une pastille d'envie
+   colorée à droite et rien pour la passion à gauche.
+   ⚠️ C'est un ENROBAGE, pas une seconde mention : `renderPostHTML` et `openPost`
+   rendent exactement le même texte qu'avant.
+   ⚠️ Couleur uniforme `--accent`, jamais `passion.color` : le catalogue contient
+   du #a78bfa, qui ne donne que 2,6:1 sur blanc. L'accent, lui, tient l'AA dans
+   les DEUX chartes — 6,15:1 sous `.passio-ui-v2` (#6D32F4) et 5,70:1 sous la
+   palette historique (#7c3aed), que le kill switch `passio_ui_v2="0"` restitue.
+   Ne citer qu'un seul de ces deux chiffres laisserait croire que la mesure vaut
+   partout. */
+.post-author-meta .post-passion-tag {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* La pastille colorée. Un cran plus lisible que la capsule d'origine (11 px au
+   lieu de 10, graisse 700) : c'est le seul repère d'envie de la carte, il doit
+   se lire sans qu'on s'arrête dessus. `flex-shrink: 0` parce qu'elle partage la
+   ligne avec `.post-author` (flex: 1) et, en première visite, avec l'étiquette
+   « Exemple PASSIO » : sans cela un pseudo long l'écrase jusqu'à l'ellipse. */
+.post-mood-tag[data-mood] {
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.5;
+  white-space: nowrap;
+  flex-shrink: 0;
+  /* ⚠️ REPLI OBLIGATOIRE. Ce sélecteur attrape TOUT `data-mood`, alors que les
+     règles colorées ci-dessous n'en nomment que trois. La note de
+     `PASSIO_MOOD_LABELS` prévoit explicitement que la table grandisse : sans ce
+     repli, une quatrième envie sortirait plus grosse et plus grasse DANS
+     L'ANCIENNE capsule grise translucide — un état intermédiaire que personne
+     n'aurait dessiné. Le violet de la famille est le défaut le moins surprenant.
+     Contraste du repli : 7,7:1, le même que « Idées ». */
+  background: var(--mood-create-bg);
+  color: var(--mood-create-ink);
+  border-color: var(--mood-create-line);
+}
+.post-mood-tag[data-mood="creation"] {
+  background: var(--mood-create-bg);
+  color: var(--mood-create-ink);
+  border-color: var(--mood-create-line);
+}
+.post-mood-tag[data-mood="learn"] {
+  background: var(--mood-learn-bg);
+  color: var(--mood-learn-ink);
+  border-color: var(--mood-learn-line);
+}
+.post-mood-tag[data-mood="irl"] {
+  background: var(--mood-meet-bg);
+  color: var(--mood-meet-ink);
+  border-color: var(--mood-meet-line);
+}
+
+/* Écran étroit : on garde la couleur ET le libellé entier, on rend le padding.
+   Retirer le mot laisserait un emoji seul, illisible sans sa légende — or c'est
+   précisément le mot que le testeur doit rapprocher du rail d'envies. */
+@media (max-width: 360px) {
+  .post-mood-tag[data-mood] { font-size: 10px; padding: 3px 7px; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
    PASSIO UI V4 — lot UI-4A5 : « Filtres » est une VUE, et les bulles de passion
    vivent dedans.  ACTIF PAR DÉFAUT.
    (coupures : localStorage.passio_ui_4a5 = "0" · window.PASSIO_UI_4A5 = false)
