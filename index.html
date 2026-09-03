@@ -610,6 +610,13 @@
              rendu. Le renderer gère ensuite son affichage. -->
         <p class="section-subtitle" id="profilesQuotaSub" style="display:none;"></p>
         <div id="profileList"></div>
+        <!-- LA LISTE DES PASSIONS ARCHIVÉES, rendue EN CLAIR et non plus derrière
+             un lien vers une modale. Une passion rangée dont la seule trace était
+             un lien dans un panneau lui-même masqué était, du point de vue de
+             l'utilisateur, une passion perdue — le défaut rapporté après essai
+             réel le 2026-09-02. Frère de #profileList, jamais son enfant :
+             renderProfilesScreen réécrit `#profileList.innerHTML` en entier. -->
+        <div id="passionArchiveBox" hidden></div>
       </div>
 
       <!-- ONGLETS CONTENU -->
