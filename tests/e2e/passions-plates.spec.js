@@ -17,7 +17,7 @@
 // d'aperçu invisible du 2026-08-28 se produisent.
 // ══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
-const { bootOnboarded, sansPublicationsDistantes } = require("./app-helper");
+const { bootOnboarded, sansDonneesDistantes } = require("./app-helper");
 const referentiel = require("../../scripts/referentiel-passions.js");
 
 const APERCU = "?passio_preview=flat-passions-v1";
@@ -534,8 +534,10 @@ test.describe("le modèle et les garde-fous", () => {
     // une seule publication de production portant une passion du référentiel
     // déclencherait le chargement — légitimement. Le test deviendrait alors
     // rouge au gré du CONTENU DE LA PROD, exactement la maladie que #249 et
-    // #252 ont soignée. On coupe donc la lecture réseau des publications.
-    await sansPublicationsDistantes(page);
+    // #252 ont soignée — et que #255 a étendue aux stories, événements et
+    // notifications, en renommant le helper `sansDonneesDistantes`. On coupe
+    // donc la lecture réseau de ces tables.
+    await sansDonneesDistantes(page);
     await bootOnboarded(page, null, 3);
     // ⚠️ ON ATTEND QUE LE VERDICT SOIT RENDU, sinon on mesurerait un « pas
     // encore chargé » qui ne prouve rien. `boot()` pose `_etatCompteCharge`
@@ -555,7 +557,7 @@ test.describe("le modèle et les garde-fous", () => {
   // publie dans une passion du référentiel suffisait à voir « ✨ Passion » sur
   // sa carte, sans que rien ne déclenche jamais le chargement.
   test("⑰ quinquies — la passion d'AUTRUI dans le fil déclenche le chargement et s'affiche nommée", async ({ page }) => {
-    await sansPublicationsDistantes(page);
+    await sansDonneesDistantes(page);
     await bootOnboarded(page, null, 1);          // mes passions : socle uniquement
     await page.evaluate(() => {
       // ⚠️ LE SEED N'EST PAS VIDÉ, ET C'EST TOUT L'INTÉRÊT. La première rédaction
@@ -607,7 +609,7 @@ test.describe("le modèle et les garde-fous", () => {
       userPosts: [], userEvents: [], notifications: [],
       currentMood: "all", selectedFeedPassions: ["sport-escalade"],
     };
-    await sansPublicationsDistantes(page);
+    await sansDonneesDistantes(page);
     await bootOnboarded(page, null, 1, { state: etat });
     await page.evaluate(() => goTo("profiles"));
     await page.waitForFunction(
