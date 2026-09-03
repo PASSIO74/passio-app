@@ -402,6 +402,11 @@ test.describe("UI-8 — un profil personnel, plusieurs passions", () => {
       state.user.profiles.find((p) => p.id === "v8_yoga").archived)).toBe(true);
 
     // Et ses publications restent visibles dans « Toutes ».
+    // ⚠️ ON REFERME LA PAGE D'ABORD (2026-09-03) : « Mes passions » est une page
+    // qui masque le reste du profil, onglets UI-7 compris. Cliquer un onglet
+    // pendant qu'elle est ouverte attendait un nœud qui ne sera jamais peint.
+    await page.evaluate(() => closePassionManager());
+    await page.waitForTimeout(250);
     await page.locator('[data-v7-tab="publications"]').click();
     await page.waitForTimeout(300);
     await expect(page.locator("#myPosts")).toContainText("Salutation au soleil");
@@ -683,16 +688,25 @@ test.describe("UI-8 — un profil personnel, plusieurs passions", () => {
       // ayant rejoint le Studio (§3). L'intention du test est conservée sur les
       // deux surfaces qui les remplacent : la bulle du rail de passions (le
       // geste de filtrage, §1) et la carte entière (le geste d'édition).
-      const h = await page.evaluate(() => {
-        const b = document.querySelector("[data-v8-card]");
+      // ⚠️ DEUX MESURES, DEUX SURFACES — depuis le 2026-09-03 elles ne sont
+      // jamais peintes en même temps. La boucle ci-dessus finit sur « apropos »,
+      // donc sur la page « Mes passions » ouverte : elle masque le rail du
+      // profil, et la bulle rendait une hauteur de 0. On referme pour mesurer le
+      // rail, on rouvre pour mesurer la carte.
+      await page.evaluate(() => closePassionManager());
+      await page.waitForTimeout(250);
+      const bulle = await page.evaluate(() => {
         const c = document.querySelector("#v9ProfilePassions [data-passion-tile]");
-        return {
-          carte: b ? Math.round(b.getBoundingClientRect().height) : 0,
-          bulle: c ? Math.round(c.getBoundingClientRect().height) : 0,
-        };
+        return c ? Math.round(c.getBoundingClientRect().height) : 0;
       });
-      expect(h.carte).toBeGreaterThanOrEqual(40);
-      expect(h.bulle).toBeGreaterThanOrEqual(40);
+      await page.evaluate(() => openPassionManager());
+      await page.waitForTimeout(250);
+      const carte = await page.evaluate(() => {
+        const b = document.querySelector("[data-v8-card]");
+        return b ? Math.round(b.getBoundingClientRect().height) : 0;
+      });
+      expect(carte, "cible tactile d'une carte de passion").toBeGreaterThanOrEqual(40);
+      expect(bulle, "cible tactile d'une bulle du rail").toBeGreaterThanOrEqual(40);
       expect(errors.js, "exceptions JS").toEqual([]);
     });
   }
