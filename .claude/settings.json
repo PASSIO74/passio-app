@@ -42,6 +42,13 @@
             "command": "node \".claude/scripts/compact-permissions.js\" --quiet",
             "timeout": 15,
             "statusMessage": "Compactage des permissions"
+          },
+          {
+            "type": "command",
+            "shell": "bash",
+            "command": "node \".claude/scripts/pont-playwright.js\"",
+            "timeout": 15,
+            "statusMessage": "Pont de révision Playwright"
           }
         ]
       }
