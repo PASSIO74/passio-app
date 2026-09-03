@@ -3340,7 +3340,7 @@ function openEventDetails(id) {
   const joined = (state.user.joinedEvents || []).includes(id);
   const daysLeft = Math.max(0, Math.ceil((ev.date - Date.now()) / 86400000));
   const urgencyClass = daysLeft === 0 ? "today" : daysLeft <= 3 ? "soon" : "normal";
-  const urgencyText = daysLeft === 0 ? "🔴 Aujourd'hui !" : daysLeft === 1 ? "🟠 Demain" : daysLeft <= 7 ? `🟢 Dans ${daysLeft} jours` : `📅 Dans ${daysLeft} jours`;
+  const urgencyText = daysLeft === 0 ? "Aujourd'hui !" : daysLeft === 1 ? "Demain" : `Dans ${daysLeft} jours`;
 
   // --- Hero ---
   const coverEl = document.getElementById("eventDetailCover");
@@ -3369,9 +3369,8 @@ function openEventDetails(id) {
   }
 
   // --- Info helpers ---
-  const infoRow = (icon, label, value, extra) => `
+  const infoRow = (label, value, extra) => `
     <div class="event-detail-info-row">
-      <div class="event-detail-info-icon">${icon}</div>
       <div style="flex:1;min-width:0;">
         <div class="event-detail-info-label">${label}</div>
         <div class="event-detail-info-value">${value}</div>
@@ -3387,7 +3386,7 @@ function openEventDetails(id) {
   const maxStr = ev.maxAttendees ? ` / ${ev.maxAttendees} max` : "";
   const spotsLeft = ev.maxAttendees ? ev.maxAttendees - atts.length : null;
   const spotsHtml = spotsLeft !== null
-    ? `<span style="font-size:11px;color:${spotsLeft <= 3 ? "#ef4444" : "var(--muted)"};">${spotsLeft <= 0 ? "⚠️ Complet" : spotsLeft <= 3 ? `⚡ Plus que ${spotsLeft} place${spotsLeft > 1 ? "s" : ""}` : `${spotsLeft} places disponibles`}</span>`
+    ? `<span style="font-size:11px;color:${spotsLeft <= 3 ? "#ef4444" : "var(--muted)"};">${spotsLeft <= 0 ? "Complet" : spotsLeft <= 3 ? `Plus que ${spotsLeft} place${spotsLeft > 1 ? "s" : ""}` : `${spotsLeft} places disponibles`}</span>`
     : "";
 
   // Trombinoscope réutilisable (venants / peut-être / liste d'attente). Une pastille
@@ -3404,19 +3403,19 @@ function openEventDetails(id) {
   const participantsHtml = _faces(atts, 12);
 
   const addressFull = [ev.address, ev.postalCode, ev.city].filter(Boolean).join(", ");
-  const mapsLink = addressFull ? `<a href="https://maps.google.com/?q=${encodeURIComponent(addressFull)}" target="_blank" class="event-detail-info-link">📍 Voir sur Google Maps →</a>` : "";
+  const mapsLink = addressFull ? `<a href="https://maps.google.com/?q=${encodeURIComponent(addressFull)}" target="_blank" class="event-detail-info-link">Voir sur Google Maps →</a>` : "";
   const priceStr = fmtEventPrice(ev.price);
 
   // Build info rows (only show filled fields)
   const infoRows = [
-    infoRow("📅", "Date & heure", `${dateStr} à ${timeStr}`),
-    addressFull ? infoRow("📍", "Adresse", escapeHtml(addressFull), mapsLink) : (ev.city ? infoRow("🏙️", "Ville", escapeHtml(ev.city)) : ""),
-    ev.venue ? infoRow("🏠", "Lieu", escapeHtml(ev.venue)) : "",
-    infoRow("💶", "Prix", priceStr),
-    ev.contact ? infoRow("📞", "Contact", `<a href="tel:${escapeHtml(ev.contact)}" style="color:var(--accent);font-weight:700;">${escapeHtml(ev.contact)}</a>`) : "",
+    infoRow("Date & heure", `${dateStr} à ${timeStr}`),
+    addressFull ? infoRow("Adresse", escapeHtml(addressFull), mapsLink) : (ev.city ? infoRow("Ville", escapeHtml(ev.city)) : ""),
+    ev.venue ? infoRow("Lieu", escapeHtml(ev.venue)) : "",
+    infoRow("Prix", priceStr),
+    ev.contact ? infoRow("Contact", `<a href="tel:${escapeHtml(ev.contact)}" style="color:var(--accent);font-weight:700;">${escapeHtml(ev.contact)}</a>`) : "",
     // ⚠️ `externalLink` vient de l'événement d'un AUTRE compte. escapeHtml ferme
     // l'attribut mais PAS le schéma : un `javascript:` restait cliquable ici.
-    ev.externalLink ? infoRow("🔗", "Plus d'infos", `<a href="${safeUrlAttr(ev.externalLink)}" target="_blank" rel="noopener noreferrer" class="event-detail-info-link">${escapeHtml(String(ev.externalLink).replace(/^https?:\/\//, "").slice(0, 45))}</a>`) : "",
+    ev.externalLink ? infoRow("Plus d'infos", `<a href="${safeUrlAttr(ev.externalLink)}" target="_blank" rel="noopener noreferrer" class="event-detail-info-link">${escapeHtml(String(ev.externalLink).replace(/^https?:\/\//, "").slice(0, 45))}</a>`) : "",
   ].filter(Boolean).join("");
 
   const cancelled = _eventIsCancelled(ev);
@@ -3425,23 +3424,23 @@ function openEventDetails(id) {
   const mine = _isMyEvent(ev);
 
   document.getElementById("eventDetailContent").innerHTML = `
-    ${cancelled ? '<div class="event-detail-urgency cancelled">🚫 Cet événement a été annulé par l\'organisateur</div>'
-      : live ? '<div class="event-detail-urgency live">🟣 C\'est maintenant — bon moment !</div>'
-      : over ? '<div class="event-detail-urgency past">🕰 Événement terminé</div>'
+    ${cancelled ? '<div class="event-detail-urgency cancelled">Cet événement a été annulé par l\'organisateur</div>'
+      : live ? '<div class="event-detail-urgency live">C\'est maintenant — bon moment !</div>'
+      : over ? '<div class="event-detail-urgency past">Événement terminé</div>'
       : `<div class="event-detail-urgency ${urgencyClass}">${urgencyText}</div>`}
 
     <div style="display:flex;gap:8px;margin:10px 0;flex-wrap:wrap;">
-      ${over ? "" : `<button class="btn ghost block" onclick="downloadEventIcs('${escapeJsArg(ev.id)}')" style="font-size:12px;">📅 Ajouter au calendrier</button>`}
+      ${over ? "" : `<button class="btn ghost block" onclick="downloadEventIcs('${escapeJsArg(ev.id)}')" style="font-size:12px;">Ajouter au calendrier</button>`}
       <button class="btn ghost block" onclick="shareEvent('${escapeJsArg(ev.id)}')" style="font-size:12px;">${shareIconSvg(14)} Partager</button>
-      ${over ? "" : `<button class="btn ghost block" onclick="openEventInvite('${escapeJsArg(ev.id)}')" style="font-size:12px;">💌 Inviter</button>`}
-      ${mine ? `<button class="btn ghost block" onclick="openEventManage('${escapeJsArg(ev.id)}')" style="font-size:12px;">⚙️ Gérer</button>` : ""}
+      ${over ? "" : `<button class="btn ghost block" onclick="openEventInvite('${escapeJsArg(ev.id)}')" style="font-size:12px;">Inviter</button>`}
+      ${mine ? `<button class="btn ghost block" onclick="openEventManage('${escapeJsArg(ev.id)}')" style="font-size:12px;">Gérer</button>` : ""}
     </div>
     ${_eventSocialProofHtml(ev)}
 
     <!-- Discussion de groupe : le vrai moteur de participation (Meetup / FB Events). -->
     ${cancelled ? "" : `
       <button class="btn ghost block" style="font-size:12px;margin-bottom:8px;" onclick="openEventChat('${escapeJsArg(ev.id)}')">
-        💬 Discussion des participants${myRsvp(ev.id) || mine ? "" : " · réservée aux inscrits"}
+        Discussion des participants${myRsvp(ev.id) || mine ? "" : " · réservée aux inscrits"}
       </button>`}
 
     <!-- Le bouton « Raconter ce moment en carnet de voyage » a été retiré avec
@@ -3452,15 +3451,15 @@ function openEventDetails(id) {
     ${_canCheckIn(ev) ? `
       <button class="btn ${_hasCheckedIn(ev) ? "ghost" : "primary"} block" style="font-size:12px;margin-bottom:8px;"
         ${_hasCheckedIn(ev) ? "disabled" : ""} onclick="checkInEvent('${escapeJsArg(ev.id)}')">
-        ${_hasCheckedIn(ev) ? "✅ Arrivée confirmée" : "📍 Je suis sur place"}
+        ${_hasCheckedIn(ev) ? "Arrivée confirmée" : "Je suis sur place"}
       </button>
-      ${_hasCheckedIn(ev) ? "" : `<button class="btn ghost block" style="font-size:12px;margin-bottom:8px;" onclick="openCheckinCodeEntry('${escapeJsArg(ev.id)}')">📲 J'ai un code d'accueil</button>`}` : ""}
+      ${_hasCheckedIn(ev) ? "" : `<button class="btn ghost block" style="font-size:12px;margin-bottom:8px;" onclick="openCheckinCodeEntry('${escapeJsArg(ev.id)}')">J'ai un code d'accueil</button>`}` : ""}
 
     <!-- Côté organisateur : le QR à montrer à l'entrée. Disponible dès le jour J
          (et pas seulement pendant la fenêtre de pointage) pour préparer l'accueil. -->
     ${_canManageEvent(ev) && !over && !cancelled ? `
       <button class="btn ghost block" style="font-size:12px;margin-bottom:8px;" onclick="openEventCheckinQr('${escapeJsArg(ev.id)}')">
-        📲 QR d'accueil des participants
+        QR d'accueil des participants
       </button>` : ""}
 
     <!-- Retour d'expérience : invite à noter (ou rappel de ma note) une fois
@@ -3468,11 +3467,11 @@ function openEventDetails(id) {
     ${_eventFeedbackPromptHtml(ev)}
     <div data-evrating="${escapeHtml(ev.id)}">${_eventRatingSummaryHtml(ev)}</div>
 
-    ${ev.recurrence && ev.recurrence !== "none" ? `<div class="event-detail-recurrence">🔁 Événement récurrent — ${escapeHtml(RECURRENCE_LABELS[ev.recurrence] || ev.recurrence)}</div>` : ""}
+    ${ev.recurrence && ev.recurrence !== "none" ? `<div class="event-detail-recurrence">Événement récurrent — ${escapeHtml(RECURRENCE_LABELS[ev.recurrence] || ev.recurrence)}</div>` : ""}
 
     ${over && !cancelled ? `
       <div class="event-recap-cta">
-        <div class="event-recap-title">📸 Tu y étais ?</div>
+        <div class="event-recap-title">Tu y étais ?</div>
         <div class="event-recap-text">Partage tes photos et ton ressenti — ça fait vivre l'événement après coup.</div>
         <button class="btn primary block" style="margin-top:8px;font-size:12px;" onclick="shareEventExperience('${escapeJsArg(ev.id)}')">Partager mon expérience</button>
       </div>` : ""}
@@ -3495,20 +3494,20 @@ function openEventDetails(id) {
     <div class="event-detail-participants">${participantsHtml || "<span style='font-size:13px;color:var(--muted);'>Aucun inscrit pour l'instant — sois le premier !</span>"}</div>
 
     ${(ev.maybes || []).length ? `
-      <div class="event-detail-section-title">🤔 Peut-être (${ev.maybes.length})</div>
+      <div class="event-detail-section-title">Peut-être (${ev.maybes.length})</div>
       <div class="event-detail-participants">${_faces(ev.maybes, 8)}</div>` : ""}
 
     ${(ev.waitlist || []).length ? `
-      <div class="event-detail-section-title">⏳ Liste d'attente (${ev.waitlist.length})</div>
+      <div class="event-detail-section-title">Liste d'attente (${ev.waitlist.length})</div>
       <div class="event-detail-participants">${_faces(ev.waitlist, 8)}</div>
       ${mine ? `<div style="font-size:11px;color:var(--muted);margin-top:4px;">Ils seront inscrits automatiquement dès qu'une place se libère.</div>` : ""}` : ""}
 
     ${(ev.coOrganizers || []).length ? `
-      <div class="event-detail-section-title">🤝 Co-organisateurs</div>
+      <div class="event-detail-section-title">Co-organisateurs</div>
       <div class="event-detail-participants">${_faces(ev.coOrganizers, 8)}</div>` : ""}
 
     <!-- Album de l'événement : les publications faites après coup. -->
-    <div class="event-detail-section-title">📸 Album de l'événement</div>
+    <div class="event-detail-section-title">Album de l'événement</div>
     <div id="eventAlbum" class="event-album"><div class="event-album-empty">Chargement…</div></div>
 
     <!-- Barre d'engagement : la fiche n'avait NI like NI réaction emoji (alors que
@@ -3522,7 +3521,7 @@ function openEventDetails(id) {
       <span class="event-react-chip-holder" data-evchipholder="${escapeHtml(ev.id)}" style="margin-left:auto;">${_evReactChipHtml(ev.id)}</span>
     </div>
 
-    <div class="event-detail-section-title">💬 Commentaires</div>
+    <div class="event-detail-section-title">Commentaires</div>
     <div id="eventCommentsList" style="display:flex;flex-direction:column;gap:10px;margin-bottom:10px;">
       <div style="font-size:12px;color:var(--muted);">Chargement…</div>
     </div>
@@ -3532,7 +3531,7 @@ function openEventDetails(id) {
       <button class="btn primary" onclick="addEventComment('${escapeJsArg(ev.id)}')" style="font-size:13px;padding:10px 14px;">Envoyer</button>
     </div>
 
-    ${mine ? "" : `<button class="btn ghost block" style="margin-top:18px;font-size:12px;color:var(--muted);" onclick="reportEvent('${escapeJsArg(ev.id)}')">⚠️ Signaler cet événement</button>`}
+    ${mine ? "" : `<button class="btn ghost block" style="margin-top:18px;font-size:12px;color:var(--muted);" onclick="reportEvent('${escapeJsArg(ev.id)}')">Signaler cet événement</button>`}
   `;
 
   _loadEventComments(ev.id);
@@ -3555,18 +3554,18 @@ function _refreshEventDetailCta(ev, joined) {
   const cta = document.getElementById("eventDetailCta");
   if (!cta) return;
   if (_eventIsCancelled(ev)) {
-    cta.innerHTML = `<button class="btn ghost block" disabled>🚫 Événement annulé</button>`;
+    cta.innerHTML = `<button class="btn ghost block" disabled>Événement annulé</button>`;
     return;
   }
   if (_eventIsOver(ev)) {
-    cta.innerHTML = `<button class="btn primary block" onclick="shareEventExperience('${escapeJsArg(ev.id)}')">📸 Partager mon expérience</button>`;
+    cta.innerHTML = `<button class="btn primary block" onclick="shareEventExperience('${escapeJsArg(ev.id)}')">Partager mon expérience</button>`;
     return;
   }
   const spotsLeft = ev.maxAttendees ? ev.maxAttendees - (ev.attendees || []).length : null;
   const isFull = spotsLeft !== null && spotsLeft <= 0 && !joined;
   cta.innerHTML = `
     <button class="btn ${joined ? "ghost" : "primary"} block" ${isFull ? "disabled" : ""} onclick="toggleJoinEventDetail('${escapeJsArg(ev.id)}')">
-      ${joined ? "✓ Inscrit — Se désinscrire" : isFull ? "⚠️ Complet" : "+ Rejoindre"}
+      ${joined ? "Inscrit — Se désinscrire" : isFull ? "Complet" : "Rejoindre"}
     </button>
   `;
 }
@@ -5843,7 +5842,7 @@ function _eventFeedbackPromptHtml(ev) {
   }
   return '<div class="event-feedback-prompt">'
     + '<div style="flex:1;min-width:0;font-size:12px;font-weight:600;">C\'était comment ?</div>'
-    + '<button class="btn small primary" onclick="openEventFeedback(\'' + escapeJsArg(ev.id) + '\')">⭐ Noter</button>'
+    + '<button class="btn small primary" onclick="openEventFeedback(\'' + escapeJsArg(ev.id) + '\')">Noter</button>'
     + '</div>';
 }
 

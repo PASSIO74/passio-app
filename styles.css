@@ -2370,12 +2370,6 @@
     .event-detail-info-row + .event-detail-info-row {
       border-top: 1px solid var(--border);
     }
-    .event-detail-info-icon {
-      font-size: 20px;
-      width: 28px; text-align: center;
-      flex-shrink: 0;
-      opacity: 0.85;
-    }
     .event-detail-info-label {
       font-size: 10px; font-weight: 700; text-transform: uppercase;
       letter-spacing: 0.08em; color: var(--muted); margin-bottom: 2px;

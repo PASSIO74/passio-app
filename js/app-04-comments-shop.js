@@ -3326,7 +3326,7 @@ function renderBlockedList() {
 function openBlockedList() {
   openModal(`
     <div class="modal-handle"></div>
-    <div class="modal-title">🚫 Comptes bloqués</div>
+    <div class="modal-title">Comptes bloqués</div>
     <div class="modal-subtitle">Leurs posts, commentaires et messages sont masqués.</div>
     <div id="blockedListBox" style="max-height:320px;overflow-y:auto;margin-top:8px;">${_blockedListHtml()}</div>
     <button class="btn primary block" style="margin-top:12px;" onclick="closeModal()">OK</button>

@@ -1696,8 +1696,8 @@ function majSectionCompte() {
   var bascule = document.getElementById("settingsAuthSwitch");
   if (bascule) {
     bascule.textContent = visiteur
-      ? "🔑 J'ai déjà un compte — me connecter"
-      : "🔄 Se connecter avec un autre compte";
+      ? "J'ai déjà un compte — me connecter"
+      : "Se connecter avec un autre compte";
   }
   // ⚠️ ET TOUT CE QUI SUPPOSE UN COMPTE PART AVEC, pas seulement l'entrée qui a
   // motivé ce correctif : « Se déconnecter » n'a rien à déconnecter, « Changer
@@ -1724,20 +1724,20 @@ function openNotifSettings() {
   var notifs = cfg.notifs || { posts: true, messages: true, likes: true, events: true, system: true };
   openModal('\
     <div class="modal-handle"></div>\
-    <div class="modal-title">🔔 Notifications</div>\
+    <div class="modal-title">Notifications</div>\
     <p style="font-size:12px;color:var(--muted);margin-bottom:14px;">Choisis ce qui te notifie</p>\
-    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">📝 Nouveaux posts</span><input type="checkbox" id="notifPosts" ' + (notifs.posts ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
-    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">💬 Messages</span><input type="checkbox" id="notifMessages" ' + (notifs.messages ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
-    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">❤️ Likes & commentaires</span><input type="checkbox" id="notifLikes" ' + (notifs.likes ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
-    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">🤝 Événements IRL</span><input type="checkbox" id="notifEvents" ' + (notifs.events ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
-    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;"><span style="font-size:13px;">🔧 Système</span><input type="checkbox" id="notifSystem" ' + (notifs.system ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
+    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">Nouveaux posts</span><input type="checkbox" id="notifPosts" ' + (notifs.posts ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
+    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">Messages</span><input type="checkbox" id="notifMessages" ' + (notifs.messages ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
+    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">Likes & commentaires</span><input type="checkbox" id="notifLikes" ' + (notifs.likes ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
+    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">Événements IRL</span><input type="checkbox" id="notifEvents" ' + (notifs.events ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
+    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;"><span style="font-size:13px;">Système</span><input type="checkbox" id="notifSystem" ' + (notifs.system ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
     <button class="btn primary block" onclick="saveNotifSettings()" style="margin-top:14px;">Sauvegarder</button>\
   ');
 }
 function saveNotifSettings() {
   var cfg = getCurrentConfig();
   cfg.notifs = { posts: document.getElementById("notifPosts").checked, messages: document.getElementById("notifMessages").checked, likes: document.getElementById("notifLikes").checked, events: document.getElementById("notifEvents").checked, system: document.getElementById("notifSystem").checked };
-  saveConfig(cfg); closeModal(); toast("🔔 Notifications mises à jour");
+  saveConfig(cfg); closeModal(); toast("Notifications mises à jour");
 }
 
 function openPrivacySettings() {
@@ -1745,11 +1745,11 @@ function openPrivacySettings() {
   var priv = cfg.privacy || { profilePublic: true, showOnline: true, allowMessages: "everyone", showActivity: true };
   openModal('\
     <div class="modal-handle"></div>\
-    <div class="modal-title">🔒 Confidentialité</div>\
-    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">👁 Profil public</span><input type="checkbox" id="privPublic" ' + (priv.profilePublic ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
-    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">🟢 Afficher en ligne</span><input type="checkbox" id="privOnline" ' + (priv.showOnline ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
-    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">📊 Afficher mon activité</span><input type="checkbox" id="privActivity" ' + (priv.showActivity ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
-    <div style="padding:12px 0;"><span style="font-size:13px;">💬 Qui peut m\'écrire ?</span>\
+    <div class="modal-title">Confidentialité</div>\
+    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">Profil public</span><input type="checkbox" id="privPublic" ' + (priv.profilePublic ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
+    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">Afficher en ligne</span><input type="checkbox" id="privOnline" ' + (priv.showOnline ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
+    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">Afficher mon activité</span><input type="checkbox" id="privActivity" ' + (priv.showActivity ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
+    <div style="padding:12px 0;"><span style="font-size:13px;">Qui peut m\'écrire ?</span>\
       <select id="privMessages" style="display:block;width:100%;margin-top:6px;padding:10px;border-radius:10px;border:1.5px solid var(--border);font-size:13px;">\
         <option value="everyone" ' + (priv.allowMessages === "everyone" ? "selected" : "") + '>Tout le monde</option>\
         <option value="followers" ' + (priv.allowMessages === "followers" ? "selected" : "") + '>Mes abonnés</option>\
@@ -1761,7 +1761,7 @@ function openPrivacySettings() {
 function savePrivacySettings() {
   var cfg = getCurrentConfig();
   cfg.privacy = { profilePublic: document.getElementById("privPublic").checked, showOnline: document.getElementById("privOnline").checked, showActivity: document.getElementById("privActivity").checked, allowMessages: document.getElementById("privMessages").value };
-  saveConfig(cfg); closeModal(); toast("🔒 Confidentialité mise à jour");
+  saveConfig(cfg); closeModal(); toast("Confidentialité mise à jour");
 }
 
 function openContentSettings() {
@@ -1769,11 +1769,11 @@ function openContentSettings() {
   var content = cfg.content || { autoplay: true, dataEco: false, showSensitive: false, language: "fr" };
   openModal('\
     <div class="modal-handle"></div>\
-    <div class="modal-title">📱 Contenu & feed</div>\
-    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">▶️ Lecture auto des vidéos</span><input type="checkbox" id="contentAutoplay" ' + (content.autoplay ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
-    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">📡 Mode économie de données</span><input type="checkbox" id="contentDataEco" ' + (content.dataEco ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
-    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">⚠️ Afficher contenu sensible</span><input type="checkbox" id="contentSensitive" ' + (content.showSensitive ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
-    <div style="padding:12px 0;"><span style="font-size:13px;">🌍 Langue</span>\
+    <div class="modal-title">Contenu & feed</div>\
+    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">Lecture auto des vidéos</span><input type="checkbox" id="contentAutoplay" ' + (content.autoplay ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
+    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">Mode économie de données</span><input type="checkbox" id="contentDataEco" ' + (content.dataEco ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
+    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">Afficher contenu sensible</span><input type="checkbox" id="contentSensitive" ' + (content.showSensitive ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
+    <div style="padding:12px 0;"><span style="font-size:13px;">Langue</span>\
       <select id="contentLang" style="display:block;width:100%;margin-top:6px;padding:10px;border-radius:10px;border:1.5px solid var(--border);font-size:13px;">\
         <option value="fr" ' + (content.language === "fr" ? "selected" : "") + '>Français</option>\
         <option value="en" ' + (content.language === "en" ? "selected" : "") + '>English</option>\
@@ -1785,7 +1785,7 @@ function openContentSettings() {
 function saveContentSettings() {
   var cfg = getCurrentConfig();
   cfg.content = { autoplay: document.getElementById("contentAutoplay").checked, dataEco: document.getElementById("contentDataEco").checked, showSensitive: document.getElementById("contentSensitive").checked, language: document.getElementById("contentLang").value };
-  saveConfig(cfg); closeModal(); toast("📱 Préférences de contenu mises à jour");
+  saveConfig(cfg); closeModal(); toast("Préférences de contenu mises à jour");
 }
 
 function openScreenTime() {
@@ -1800,7 +1800,7 @@ function openScreenTime() {
 
   openModal('\
     <div class="modal-handle"></div>\
-    <div class="modal-title">⏱ Temps d\'écran</div>\
+    <div class="modal-title">Temps d\'écran</div>\
     \
     <div style="text-align:center;margin:16px 0;">\
       <div style="font-size:42px;font-weight:900;color:var(--accent);">' + uH + 'h ' + (uM < 10 ? '0' : '') + uM + 'min</div>\
@@ -1808,7 +1808,7 @@ function openScreenTime() {
     </div>\
     \
     <div style="background:var(--bg-deep);border-radius:14px;padding:16px;margin-bottom:14px;">\
-      <div style="font-size:13px;font-weight:800;margin-bottom:10px;">⏳ Limite journalière</div>\
+      <div style="font-size:13px;font-weight:800;margin-bottom:10px;">Limite journalière</div>\
       <div style="display:flex;gap:8px;align-items:center;justify-content:center;margin-bottom:12px;">\
         <div style="text-align:center;">\
           <input type="number" id="limitH" value="' + escapeHtml(lH) + '" min="0" max="23" style="width:56px;padding:10px 4px;text-align:center;font-size:22px;font-weight:900;border:2px solid var(--border);border-radius:12px;background:var(--bg-card);color:var(--text);"/>\
@@ -1836,15 +1836,15 @@ function openScreenTime() {
     </div>\
     \
     <div style="background:var(--bg-deep);border-radius:14px;padding:16px;margin-bottom:14px;">\
-      <div style="font-size:13px;font-weight:800;margin-bottom:8px;">🔐 Contrôle parental</div>\
+      <div style="font-size:13px;font-weight:800;margin-bottom:8px;">Contrôle parental</div>\
       <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Un code à 4 chiffres sera demandé pour modifier ou désactiver la limite.</div>\
       ' + (hasCode
-        ? '<div style="display:flex;align-items:center;gap:8px;"><span style="font-size:12px;color:var(--accent);font-weight:700;">✅ Code actif</span><button onclick="removeParentalCode()" class="btn ghost" style="font-size:11px;padding:6px 10px;color:#ef4444;border-color:rgba(239,68,68,0.3);">Supprimer</button></div>'
-        : '<button onclick="setupParentalCode()" class="btn ghost" style="font-size:12px;width:100%;">🔒 Définir un code parental</button>'
+        ? '<div style="display:flex;align-items:center;gap:8px;"><span style="font-size:12px;color:var(--accent);font-weight:700;">Code actif</span><button onclick="removeParentalCode()" class="btn ghost" style="font-size:11px;padding:6px 10px;color:#ef4444;border-color:rgba(239,68,68,0.3);">Supprimer</button></div>'
+        : '<button onclick="setupParentalCode()" class="btn ghost" style="font-size:12px;width:100%;">Définir un code parental</button>'
       ) + '\
     </div>\
     \
-    <button class="btn primary block" onclick="saveScreenTimeLimit()">💾 Sauvegarder la limite</button>\
+    <button class="btn primary block" onclick="saveScreenTimeLimit()">Sauvegarder la limite</button>\
   ');
 }
 
@@ -1874,16 +1874,16 @@ function doSaveScreenTimeLimit() {
   localStorage.setItem("passio_limit_sec", total.toString());
   closeModal();
   if (total === 0) {
-    toast("⏱ Limite désactivée — temps illimité");
+    toast("Limite désactivée — temps illimité");
   } else {
-    toast("⏱ Limite : " + h + "h " + (m < 10 ? "0" : "") + m + "min " + (s < 10 ? "0" : "") + s + "s");
+    toast("Limite : " + h + "h " + (m < 10 ? "0" : "") + m + "min " + (s < 10 ? "0" : "") + s + "s");
   }
 }
 
 function setupParentalCode() {
   openModal('\
     <div class="modal-handle"></div>\
-    <div class="modal-title">🔐 Définir le code parental</div>\
+    <div class="modal-title">Définir le code parental</div>\
     <p style="font-size:12px;color:var(--muted);margin-bottom:14px;">Ce code à 4 chiffres sera demandé pour modifier la limite de temps. Note-le bien !</p>\
     <div style="display:flex;gap:8px;justify-content:center;margin-bottom:14px;">\
       <input type="password" id="parentCode1" maxlength="1" inputmode="numeric" style="width:50px;height:56px;text-align:center;font-size:26px;font-weight:900;border:2px solid var(--border);border-radius:14px;background:var(--bg-card);color:var(--text);" oninput="if(this.value.length===1)document.getElementById(\'parentCode2\').focus()"/>\
@@ -1891,7 +1891,7 @@ function setupParentalCode() {
       <input type="password" id="parentCode3" maxlength="1" inputmode="numeric" style="width:50px;height:56px;text-align:center;font-size:26px;font-weight:900;border:2px solid var(--border);border-radius:14px;background:var(--bg-card);color:var(--text);" oninput="if(this.value.length===1)document.getElementById(\'parentCode4\').focus()"/>\
       <input type="password" id="parentCode4" maxlength="1" inputmode="numeric" style="width:50px;height:56px;text-align:center;font-size:26px;font-weight:900;border:2px solid var(--border);border-radius:14px;background:var(--bg-card);color:var(--text);" oninput="if(this.value.length===1)confirmParentalCode()"/>\
     </div>\
-    <button class="btn primary block" onclick="confirmParentalCode()">✅ Confirmer le code</button>\
+    <button class="btn primary block" onclick="confirmParentalCode()">Confirmer le code</button>\
     <button class="btn ghost block" onclick="closeModal();openScreenTime();" style="margin-top:6px;">Annuler</button>\
   ');
   setTimeout(function() { var el = document.getElementById("parentCode1"); if (el) el.focus(); }, 100);
@@ -1914,14 +1914,14 @@ async function confirmParentalCode() {
   const hash = await _hashPin(code);
   localStorage.setItem("passio_parental_code", hash);
   closeModal();
-  toast("🔐 Code parental activé !");
+  toast("Code parental activé !");
   openScreenTime();
 }
 
 function removeParentalCode() {
   askParentalCode(function() {
     localStorage.removeItem("passio_parental_code");
-    toast("🔓 Code parental supprimé");
+    toast("Code parental supprimé");
     openScreenTime();
   });
 }
@@ -1929,7 +1929,7 @@ function removeParentalCode() {
 function askParentalCode(onSuccess) {
   openModal('\
     <div class="modal-handle"></div>\
-    <div class="modal-title">🔐 Entrer le code parental</div>\
+    <div class="modal-title">Entrer le code parental</div>\
     <p style="font-size:12px;color:var(--muted);margin-bottom:14px;">Saisis ton code à 4 chiffres pour continuer.</p>\
     <div style="display:flex;gap:8px;justify-content:center;margin-bottom:14px;">\
       <input type="password" id="askCode1" maxlength="1" inputmode="numeric" style="width:50px;height:56px;text-align:center;font-size:26px;font-weight:900;border:2px solid var(--border);border-radius:14px;background:var(--bg-card);color:var(--text);" oninput="if(this.value.length===1)document.getElementById(\'askCode2\').focus()"/>\
@@ -1937,7 +1937,7 @@ function askParentalCode(onSuccess) {
       <input type="password" id="askCode3" maxlength="1" inputmode="numeric" style="width:50px;height:56px;text-align:center;font-size:26px;font-weight:900;border:2px solid var(--border);border-radius:14px;background:var(--bg-card);color:var(--text);" oninput="if(this.value.length===1)document.getElementById(\'askCode4\').focus()"/>\
       <input type="password" id="askCode4" maxlength="1" inputmode="numeric" style="width:50px;height:56px;text-align:center;font-size:26px;font-weight:900;border:2px solid var(--border);border-radius:14px;background:var(--bg-card);color:var(--text);"/>\
     </div>\
-    <button class="btn primary block" id="askCodeBtn">✅ Valider</button>\
+    <button class="btn primary block" id="askCodeBtn">Valider</button>\
     <button class="btn ghost block" onclick="closeModal()" style="margin-top:6px;">Annuler</button>\
   ');
   setTimeout(function() {
@@ -1954,7 +1954,7 @@ function askParentalCode(onSuccess) {
           closeModal();
           if (onSuccess) onSuccess();
         } else {
-          toast("❌ Code incorrect", "error");
+          toast("Code incorrect", "error");
           ["askCode1","askCode2","askCode3","askCode4"].forEach(function(id) { var e = document.getElementById(id); if(e) e.value=""; });
           var el = document.getElementById("askCode1"); if (el) el.focus();
         }
@@ -1965,27 +1965,27 @@ function askParentalCode(onSuccess) {
 
 function setTimeLimit(min) {
   localStorage.setItem("passio_limit_sec", (min * 60).toString());
-  toast("⏱ Limite : " + (min > 0 ? min + " min/jour" : "illimitée"));
+  toast("Limite : " + (min > 0 ? min + " min/jour" : "illimitée"));
   openScreenTime();
 }
 
 function openPauseMode() {
   openModal('\
     <div class="modal-handle"></div>\
-    <div class="modal-title">🧘 Mode pause</div>\
+    <div class="modal-title">Mode pause</div>\
     <p style="font-size:12px;color:var(--muted);margin-bottom:16px;">Prends une pause. PASSIO sera là quand tu reviens.</p>\
     <div style="display:flex;flex-direction:column;gap:8px;">\
-      <button class="btn ghost" onclick="activatePause(30)" style="text-align:left;padding:14px;">😌 Pause 30 minutes</button>\
-      <button class="btn ghost" onclick="activatePause(60)" style="text-align:left;padding:14px;">🍃 Pause 1 heure</button>\
-      <button class="btn ghost" onclick="activatePause(1440)" style="text-align:left;padding:14px;">🌙 Pause jusqu\'à demain</button>\
-      <button class="btn ghost" onclick="activatePause(10080)" style="text-align:left;padding:14px;">🏖 Pause 1 semaine</button>\
+      <button class="btn ghost" onclick="activatePause(30)" style="text-align:left;padding:14px;">Pause 30 minutes</button>\
+      <button class="btn ghost" onclick="activatePause(60)" style="text-align:left;padding:14px;">Pause 1 heure</button>\
+      <button class="btn ghost" onclick="activatePause(1440)" style="text-align:left;padding:14px;">Pause jusqu\'à demain</button>\
+      <button class="btn ghost" onclick="activatePause(10080)" style="text-align:left;padding:14px;">Pause 1 semaine</button>\
     </div>\
     <button class="btn primary block" onclick="closeModal()" style="margin-top:14px;">Annuler</button>\
   ');
 }
 function activatePause(min) {
   closeModal();
-  toast("🧘 Mode pause activé — " + (min < 60 ? min + " min" : min < 1440 ? Math.round(min/60) + "h" : Math.round(min/1440) + " jour(s)"));
+  toast("Mode pause activé — " + (min < 60 ? min + " min" : min < 1440 ? Math.round(min/60) + "h" : Math.round(min/1440) + " jour(s)"));
 }
 
 function openAbout() {
@@ -1998,9 +1998,9 @@ function openAbout() {
     </div>\
     <div style="font-size:13px;color:var(--text);line-height:1.6;margin-bottom:14px;">Le premier réseau social pensé pour tes passions. Crée, partage, rencontre — autour de ce qui t\'anime vraiment.</div>\
     <div style="font-size:11px;color:var(--muted);line-height:1.5;">\
-      🏢 PASSIO SAS · France<br>\
-      📧 contact@passio.app<br>\
-      🌐 passio.app<br><br>\
+      PASSIO SAS · France<br>\
+      contact@passio.app<br>\
+      passio.app<br><br>\
       Fondé avec ❤️ par des passionnés.\
     </div>\
     <button class="btn primary block" onclick="closeModal()" style="margin-top:14px;">Fermer</button>\
@@ -2010,7 +2010,7 @@ function openAbout() {
 function openLogoutConfirm() {
   openModal('\
     <div class="modal-handle"></div>\
-    <div class="modal-title">🚪 Se déconnecter ?</div>\
+    <div class="modal-title">Se déconnecter ?</div>\
     <p style="font-size:13px;color:var(--muted);margin-bottom:16px;">Tu garderas ton compte et ton contenu. Tu pourras te reconnecter à tout moment.</p>\
     <div style="display:flex;gap:8px;">\
       <button class="btn ghost" onclick="closeModal()" style="flex:1;">Annuler</button>\
@@ -2143,7 +2143,7 @@ function openAccountSwitch() {
   }
   openModal('\
     <div class="modal-handle"></div>\
-    <div class="modal-title">🔄 Se connecter avec un autre compte</div>\
+    <div class="modal-title">Se connecter avec un autre compte</div>\
     <p style="font-size:13px;color:var(--muted);margin-bottom:16px;">Tu vas être déconnecté de ce compte, puis l\'écran de connexion s\'ouvrira. Ce compte et tout son contenu restent intacts — tu pourras y revenir quand tu veux.</p>\
     <div style="display:flex;gap:8px;">\
       <button class="btn ghost" onclick="closeModal()" style="flex:1;">Annuler</button>\
@@ -2300,7 +2300,7 @@ async function doLogout(intention) {
 function openChangePassword() {
   openModal('\
     <div class="modal-handle"></div>\
-    <div class="modal-title">🔑 Changer mon mot de passe</div>\
+    <div class="modal-title">Changer mon mot de passe</div>\
     <p style="font-size:13px;color:var(--muted);margin-bottom:14px;">Choisis un nouveau mot de passe (6 caractères minimum). Tu resteras connecté.</p>\
     <label class="field"><span>Nouveau mot de passe</span>\
       <input type="password" class="input" id="cpNew" autocomplete="new-password" minlength="6" placeholder="••••••••"/></label>\
@@ -2367,7 +2367,7 @@ window.doChangePassword = doChangePassword;
 function openDeleteAccountConfirm() {
   openModal('\
     <div class="modal-handle"></div>\
-    <div class="modal-title" style="color:#ef4444;">🗑 Supprimer mon compte</div>\
+    <div class="modal-title" style="color:#ef4444;">Supprimer mon compte</div>\
     <p style="font-size:13px;color:var(--muted);margin-bottom:10px;">Cette action est <strong>définitive</strong>. Seront supprimés :</p>\
     <ul style="font-size:13px;color:var(--muted);margin:0 0 12px 18px;line-height:1.7;">\
       <li>ton profil et tes passions ;</li>\
@@ -2392,7 +2392,7 @@ async function doDeleteAccount() {
     return;
   }
   closeModal();
-  toast("🗑 Suppression en cours…");
+  toast("Suppression en cours…");
   // Suppression best-effort des données serveur, table par table.
   // Les policies RLS limitent de toute façon chaque DELETE au propriétaire.
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
@@ -2447,7 +2447,7 @@ async function doDeleteAccount() {
 function openPrivacyPolicy() {
   openModal('\
     <div class="modal-handle"></div>\
-    <div class="modal-title">🛡 Politique de confidentialité</div>\
+    <div class="modal-title">Politique de confidentialité</div>\
     <div style="font-size:12.5px;color:var(--muted);line-height:1.65;max-height:55vh;overflow-y:auto;padding-right:4px;">\
       <p style="margin:0 0 10px;"><strong style="color:var(--text);">Dernière mise à jour : juin 2026 — PASSIO (beta privée)</strong></p>\
       <p style="margin:0 0 10px;"><strong style="color:var(--text);">1. Données collectées.</strong> Lors de l\'inscription : adresse e-mail et nom d\'utilisateur. Lors de l\'utilisation : passions, publications (textes, photos, vidéos, audio), carnets, messages, commentaires, likes, abonnements, participation aux événements, et préférences locales (thème, filtres).</p>\

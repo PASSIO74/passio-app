@@ -390,54 +390,54 @@
 
   <!-- Dev / demo panel -->
   <div id="devPanel" class="dev-panel">
-    <div style="font-weight:800;font-size:14px;color:var(--text);margin-bottom:12px;text-align:center;">⚙️ Paramètres</div>
+    <div style="font-weight:800;font-size:14px;color:var(--text);margin-bottom:12px;text-align:center;">Paramètres</div>
 
     <!-- COMPTE -->
     <div class="settings-section" onclick="toggleSettingsSection(this)">
       <div class="settings-section-header">
-        <span>👤 Compte</span>
+        <span>Compte</span>
         <span class="settings-arrow">›</span>
       </div>
       <div class="settings-section-body">
         <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();goTo('profiles')">Mon profil</button>
         <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();openEditMainProfile()">Modifier le profil</button>
-        <button class="btn ghost" id="settingsChangePassword" onclick="event.stopPropagation();toggleDevPanel();openChangePassword()">🔑 Changer mon mot de passe</button>
+        <button class="btn ghost" id="settingsChangePassword" onclick="event.stopPropagation();toggleDevPanel();openChangePassword()">Changer mon mot de passe</button>
         <!-- Le libellé de ce bouton est réécrit à CHAQUE ouverture du panneau
              par majSectionCompte() (app-02) : « J'ai déjà un compte — me
              connecter » pour un visiteur sans compte, « Se connecter avec un
              autre compte » pour un compte connecté. Sans lui, le parcours de
              première visite n'offrait AUCUN chemin vers un compte existant. -->
-        <button class="btn ghost" id="settingsAuthSwitch" onclick="event.stopPropagation();toggleDevPanel();openAccountSwitch()">🔄 Se connecter avec un autre compte</button>
-        <button class="btn ghost" onclick="event.stopPropagation();resetOnboarding()" style="font-size:12px;">🔄 Voir l'onboarding</button>
+        <button class="btn ghost" id="settingsAuthSwitch" onclick="event.stopPropagation();toggleDevPanel();openAccountSwitch()">Se connecter avec un autre compte</button>
+        <button class="btn ghost" onclick="event.stopPropagation();resetOnboarding()" style="font-size:12px;">Voir l'onboarding</button>
       </div>
     </div>
 
     <!-- PERSONNALISATION -->
     <div class="settings-section" onclick="toggleSettingsSection(this)">
       <div class="settings-section-header">
-        <span>🎨 Personnalisation</span>
+        <span>Personnalisation</span>
         <span class="settings-arrow">›</span>
       </div>
       <div class="settings-section-body">
         <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();openConfigurator()">Apparence & thème</button>
         <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();openNotifSettings()">Notifications</button>
         <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();openPrivacySettings()">Confidentialité</button>
-        <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();openBlockedList()">🚫 Comptes bloqués</button>
+        <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();openBlockedList()">Comptes bloqués</button>
         <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();openContentSettings()">Contenu & feed</button>
         <!-- Première visite : le panneau de passions et les trois repères
              contextuels restent atteignables depuis les options (exigence
              « relançable depuis l'aide ou les options »). `.fr-only` les masque
              tant que `html.passio-first-run` n'est pas posée — donc pour tout
              compte existant, et dès que le drapeau est coupé. -->
-        <button class="btn ghost fr-only" onclick="event.stopPropagation();toggleDevPanel();PassioFirstRun.ouvrirPersonnalisation('options')">✨ Mes passions</button>
-        <button class="btn ghost fr-only" onclick="event.stopPropagation();toggleDevPanel();PassioFirstRun.relancerTour()">🧭 Revoir les repères</button>
+        <button class="btn ghost fr-only" onclick="event.stopPropagation();toggleDevPanel();PassioFirstRun.ouvrirPersonnalisation('options')">Mes passions</button>
+        <button class="btn ghost fr-only" onclick="event.stopPropagation();toggleDevPanel();PassioFirstRun.relancerTour()">Revoir les repères</button>
       </div>
     </div>
 
     <!-- BIEN-ÊTRE -->
     <div class="settings-section" onclick="toggleSettingsSection(this)">
       <div class="settings-section-header">
-        <span>🧘 Bien-être digital</span>
+        <span>Bien-être digital</span>
         <span class="settings-arrow">›</span>
       </div>
       <div class="settings-section-body">
@@ -449,12 +449,12 @@
     <!-- SUPPORT -->
     <div class="settings-section" onclick="toggleSettingsSection(this)">
       <div class="settings-section-header">
-        <span>💬 Support</span>
+        <span>Support</span>
         <span class="settings-arrow">›</span>
       </div>
       <div class="settings-section-body">
         <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();feedbackModal()">Feedback & aide</button>
-        <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();openPrivacyPolicy()">🛡 Politique de confidentialité</button>
+        <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();openPrivacyPolicy()">Politique de confidentialité</button>
         <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();openAbout()">À propos de PASSIO</button>
         <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();shareBeta()">Inviter des amis</button>
       </div>
@@ -463,7 +463,7 @@
     <!-- DÉMO -->
     <div class="settings-section" onclick="toggleSettingsSection(this)">
       <div class="settings-section-header">
-        <span>🎬 Démo</span>
+        <span>Démo</span>
         <span class="settings-arrow">›</span>
       </div>
       <div class="settings-section-body">
@@ -474,10 +474,10 @@
 
     <!-- DANGER ZONE -->
     <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px;">
-      <button class="btn ghost" id="settingsLogout" onclick="toggleDevPanel();openLogoutConfirm()" style="color:#ef4444;border-color:rgba(239,68,68,0.3);font-size:11px;">🚪 Se déconnecter</button>
+      <button class="btn ghost" id="settingsLogout" onclick="toggleDevPanel();openLogoutConfirm()" style="color:#ef4444;border-color:rgba(239,68,68,0.3);font-size:11px;">Se déconnecter</button>
       <!-- 🛡 RGPD 2026-06-10 : vraie suppression (données serveur + locales),
            avant ce bouton ne vidait que le localStorage -->
-      <button class="btn ghost" id="settingsDeleteAccount" onclick="toggleDevPanel();openDeleteAccountConfirm()" style="color:#ef4444;border-color:rgba(239,68,68,0.3);font-size:11px;">🗑 Supprimer mon compte</button>
+      <button class="btn ghost" id="settingsDeleteAccount" onclick="toggleDevPanel();openDeleteAccountConfirm()" style="color:#ef4444;border-color:rgba(239,68,68,0.3);font-size:11px;">Supprimer mon compte</button>
     </div>
   </div>
 
@@ -907,7 +907,7 @@
       <div class="event-detail-hero" id="eventDetailHero">
         <div id="eventDetailCover"></div>
         <button class="event-detail-back" onclick="closeEventDetail()">← Retour</button>
-        <button class="event-detail-back" id="eventDetailShareBtn" style="left:auto;right:12px;" aria-label="Partager">🔗 Partager</button>
+        <button class="event-detail-back" id="eventDetailShareBtn" style="left:auto;right:12px;" aria-label="Partager">Partager</button>
         <div class="event-detail-hero-title" id="eventDetailHeroTitle"></div>
       </div>
       <!-- Scrollable body -->

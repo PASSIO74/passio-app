@@ -191,7 +191,7 @@ function openConfigurator() {
   var radiusNow = cfg.radius || "round";
 
   var accentHTML = ACCENT_COLORS.map(function(c) {
-    return '<div onclick="setConfig(\'accent\',\'' + escapeJsArg(c.id) + '\')" style="cursor:pointer;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;border:2px solid ' + (c.id === accentNow ? c.accent : 'transparent') + ';background:' + (c.id === accentNow ? c.bgDeep : 'var(--bg-card)') + ';margin-bottom:6px;transition:all 0.15s;"><div style="width:36px;height:36px;border-radius:10px;background:' + c.grad1 + ';flex-shrink:0;"></div><div style="font-weight:700;font-size:13px;">' + c.emoji + ' ' + c.name + '</div>' + (c.id === accentNow ? '<div style="margin-left:auto;font-size:16px;">✓</div>' : '') + '</div>';
+    return '<div onclick="setConfig(\'accent\',\'' + escapeJsArg(c.id) + '\')" style="cursor:pointer;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;border:2px solid ' + (c.id === accentNow ? c.accent : 'transparent') + ';background:' + (c.id === accentNow ? c.bgDeep : 'var(--bg-card)') + ';margin-bottom:6px;transition:all 0.15s;"><div style="width:36px;height:36px;border-radius:10px;background:' + c.grad1 + ';flex-shrink:0;"></div><div style="font-weight:700;font-size:13px;">' + c.name + '</div>' + (c.id === accentNow ? '<div style="margin-left:auto;font-size:16px;">✓</div>' : '') + '</div>';
   }).join("");
 
   var currentFF = FONT_FAMILIES.find(function(f) { return f.id === fontFamilyNow; }) || FONT_FAMILIES[0];
@@ -216,23 +216,22 @@ function openConfigurator() {
     <div class="modal-handle"></div>\
     <span class="modal-close" onclick="closeModal()">×</span>\
     <div style="text-align:center;margin-bottom:16px;">\
-      <div style="font-size:32px;margin-bottom:6px;">🎨</div>\
       <div style="font-weight:800;font-size:18px;color:var(--text);">Configurateur</div>\
       <div style="font-size:12px;color:var(--muted);">Personnalise PASSIO à ton image</div>\
     </div>\
-    <div style="font-weight:700;font-size:13px;color:var(--text);margin-bottom:10px;">🎨 Thème de couleur</div>\
+    <div style="font-weight:700;font-size:13px;color:var(--text);margin-bottom:10px;">Thème de couleur</div>\
     <div style="margin-bottom:16px;">' + accentHTML + '</div>\
-    <div style="font-weight:700;font-size:13px;color:var(--text);margin-bottom:10px;">✍️ Police d\'écriture <span style="font-size:10px;color:var(--muted);font-weight:400;">glisse pour voir</span></div>\
+    <div style="font-weight:700;font-size:13px;color:var(--text);margin-bottom:10px;">Police d\'écriture <span style="font-size:10px;color:var(--muted);font-weight:400;">glisse pour voir</span></div>\
     ' + fontFamilyHTML + '\
-    <div style="font-weight:700;font-size:13px;color:var(--text);margin-bottom:10px;">🔤 Taille du texte</div>\
+    <div style="font-weight:700;font-size:13px;color:var(--text);margin-bottom:10px;">Taille du texte</div>\
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px;">' + fontSizeHTML + '</div>\
-    <div style="font-weight:700;font-size:13px;color:var(--text);margin-bottom:10px;">⬜ Style des coins</div>\
+    <div style="font-weight:700;font-size:13px;color:var(--text);margin-bottom:10px;">Style des coins</div>\
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px;">' + radiusHTML + '</div>\
-    <div style="font-weight:700;font-size:13px;color:var(--text);margin-bottom:10px;">📱 Disposition des onglets</div>\
+    <div style="font-weight:700;font-size:13px;color:var(--text);margin-bottom:10px;">Disposition des onglets</div>\
     <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Maintiens et glisse pour réorganiser</div>\
     <div id="navOrderList" style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px;"></div>\
-    <button class="btn primary block" onclick="closeModal();toast(\'✨ Configuration appliquée !\');" style="margin-top:10px;">Appliquer</button>\
-    <button class="btn ghost block" onclick="resetConfig()" style="margin-top:6px;font-size:12px;">🔄 Réinitialiser tout</button>\
+    <button class="btn primary block" onclick="closeModal();toast(\'Configuration appliquée !\');" style="margin-top:10px;">Appliquer</button>\
+    <button class="btn ghost block" onclick="resetConfig()" style="margin-top:6px;font-size:12px;">Réinitialiser tout</button>\
   ';
   openModal(html);
   setTimeout(renderNavOrderList, 50);

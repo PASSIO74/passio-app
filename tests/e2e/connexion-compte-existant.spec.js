@@ -97,7 +97,7 @@ test.describe("Paramètres → Compte", () => {
     await bootVisiteur(page, { sansBienvenue: true });
     await ouvrirSectionCompte(page);
 
-    await expect(page.locator("#settingsAuthSwitch")).toHaveText("🔑 J'ai déjà un compte — me connecter");
+    await expect(page.locator("#settingsAuthSwitch")).toHaveText("J'ai déjà un compte — me connecter");
     // Rien à déconnecter : proposer la sortie enverrait sur une purge sans effet.
     // Et tout ce qui suppose un compte part avec — sinon « Changer mon mot de
     // passe » appellerait `supa.auth.updateUser` sans session, et « Supprimer
@@ -126,7 +126,7 @@ test.describe("Paramètres → Compte", () => {
     });
     await ouvrirSectionCompte(page);
 
-    await expect(page.locator("#settingsAuthSwitch")).toHaveText("🔄 Se connecter avec un autre compte");
+    await expect(page.locator("#settingsAuthSwitch")).toHaveText("Se connecter avec un autre compte");
     await expect(page.locator("#settingsLogout")).toBeVisible();
 
     await page.locator("#settingsAuthSwitch").click();

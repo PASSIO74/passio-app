@@ -221,7 +221,7 @@ function shareBeta() {
     <div class="modal-subtitle">Envoie ce lien à tes bêta-testeurs. Leurs données restent sur leur appareil.</div>
     <div class="share-box">${escapeHtml(link)}</div>
     <div style="display:flex;gap:8px;">
-      <button class="btn primary block" onclick="navigator.clipboard && navigator.clipboard.writeText('${escapeJsArg(link)}');window.tel&&tel.linkFromUrl&&tel.linkShare(tel.linkFromUrl('${escapeJsArg(link)}'),'clipboard');toast('Lien copié');closeModal();">📋 Copier le lien</button>
+      <button class="btn primary block" onclick="navigator.clipboard && navigator.clipboard.writeText('${escapeJsArg(link)}');window.tel&&tel.linkFromUrl&&tel.linkShare(tel.linkFromUrl('${escapeJsArg(link)}'),'clipboard');toast('Lien copié');closeModal();">Copier le lien</button>
     </div>
     <div class="section-title" style="margin-top:14px;">Message prêt-à-envoyer</div>
     <textarea class="textarea" readonly style="min-height:120px;">Salut ! Je te partage la beta de PASSIO, le réseau social basé sur les passions que je prépare. 5 min de test, je veux tes retours honnêtes. 👉 ${link}</textarea>
