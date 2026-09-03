@@ -2002,6 +2002,13 @@ function goTo(screen) {
     try { feedWindowRememberScroll(); feedWindowTeardown(); } catch (e) {}
   }
 
+  // La page « Mes passions » est une page, pas un état persistant de l'écran :
+  // on la referme en changeant d'écran, sinon l'onglet « Profil » de la barre du
+  // bas ramenait sur elle au lieu du profil. ⚠️ AVANT la bascule d'écran, et
+  // c'est sans danger pour `ouvrirGestionPassions`, qui fait `goTo` PUIS
+  // `openPassionManager` — dans cet ordre.
+  try { if (typeof closePassionManager === "function") closePassionManager(); } catch (e) {}
+
   $$(".screen").forEach(s => s.classList.remove("active"));
   const el = document.getElementById("screen-" + screen);
   if (el) el.classList.add("active");
@@ -2124,6 +2131,19 @@ function closeCurrentOverlay() {
   const pagePost = document.getElementById("postDetailPage");
   if (pagePost && pagePost.style.display !== "none" && pagePost.style.display !== "") {
     if (typeof closePost === "function") closePost(); else pagePost.style.display = "none";
+    return true;
+  }
+
+  // La page « Mes passions » (2026-09-03). Elle n'est PAS `position: fixed` :
+  // elle vit dans `#screen-profiles` et masque ses frères par une classe. Un
+  // geste de retour doit malgré tout la refermer AVANT de changer d'écran —
+  // sinon il quitte le profil depuis une page dont on n'est jamais « revenu »,
+  // exactement la faute des quatre grands panneaux corrigée le 2026-09-02.
+  // Elle est en DERNIER : c'est la couche la plus basse de la pile.
+  const pagePassions = document.getElementById("passionManager");
+  if (pagePassions && !pagePassions.hidden) {
+    if (typeof closePassionManager === "function") closePassionManager();
+    else pagePassions.hidden = true;
     return true;
   }
 

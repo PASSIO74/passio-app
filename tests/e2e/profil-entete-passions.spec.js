@@ -217,6 +217,9 @@ test("③ bis bis — la porte d'ajout a quitté le rail pour « Gérer mes pass
     return {
       visible: r.width > 0 && r.height > 0,
       titre: (document.getElementById("passionManagerTitre").textContent || "").trim(),
+      offertes: (typeof PASSIONS_OFFERTES === "number") ? PASSIONS_OFFERTES : -1,
+      desarmee: !b.hasAttribute("role") && !b.hasAttribute("tabindex")
+                && b.getAttribute("aria-disabled") === "true",
       // C'est la MÊME porte : l'id que vise l'aide contextuelle est conservé.
       memeId: b.id,
       onclick: b.getAttribute("onclick"),
@@ -228,17 +231,53 @@ test("③ bis bis — la porte d'ajout a quitté le rail pour « Gérer mes pass
         "#passionManager .passion-manager-porte-mot[onclick]"),
     };
   });
-  expect(apres.visible, "la bulle est réellement peinte une fois le panneau ouvert").toBe(true);
-  expect(apres.titre).toContain("Gérer mes passions");
+  expect(apres.visible, "la porte est réellement peinte une fois la page ouverte").toBe(true);
+  expect(apres.titre, "la page dit où l'on est").toBe("Mes passions");
   // ⚠️ LA LIGNE D'INVITE EST UN VERROU, PAS UNE DÉCORATION. Dans le rail, la
   // bulle se lisait par contraste avec les passions qui l'entouraient ; seule
-  // dans le panneau, « Ajouter » n'annonce plus QUOI. Cette ligne est le libellé
-  // que le contexte lui donnait — la perdre rendrait la porte muette sans qu'un
-  // test de présence ne bronche.
-  expect(apres.invite, "la porte dit ce qu'elle ajoute").toContain("passion");
+  // dans le panneau, « Ajouter » n'annonce plus QUOI. Cette ligne porte donc,
+  // selon l'état, l'invitation ou LE MOTIF DU REFUS. Ici le socle pose trois
+  // passions, donc le plafond : elle doit dire pourquoi, avec le nombre lu dans
+  // `PASSIONS_OFFERTES` et jamais écrit en dur.
+  expect(apres.invite, "au plafond, la porte dit pourquoi elle refuse")
+    .toBe("Limite de " + apres.offertes + " atteinte");
   expect(apres.inviteCliquable, "une seule cible pour un seul geste").toBe(false);
   expect(apres.memeId, "l'ancre de l'aide « second_profil » survit").toBe("nouveauProfilLien");
   expect(apres.onclick, "et elle passe par la porte qui garde le plafond").toContain("openCreateProfile");
+  // ⚠️ AU PLAFOND ELLE EST DÉSARMÉE, PAS SEULEMENT GRISÉE : sans `role` ni
+  // `tabindex`, l'écouteur délégué d'app-08 (Entrée/Espace sur tout
+  // `[role=button]` non natif) n'a plus de prise. Une cible grisée qui répond
+  // encore promet un refus et fait quand même le geste.
+  expect(apres.desarmee, "la porte refusée reste activable au clavier").toBe(true);
+});
+
+// L'AUTRE MOITIÉ DU MÊME VERROU : sous le plafond, la porte INVITE et elle est
+// armée. Sans ce cas, un rendu qui refuserait TOUJOURS resterait vert.
+test("③ bis bis bis — sous le plafond, la porte d'ajout invite et reste armée", async ({ page }) => {
+  await poser(page, {
+    profiles: [
+      { id: "pp_moto", name: "Benjamin", passion: "moto", emoji: "🏍", color: "#7c3aed", createdAt: 1 },
+      { id: "pp_pod", name: "Benjamin", passion: "podcast", emoji: "🎙", color: "#7c3aed", createdAt: 2 },
+    ],
+  });
+  await page.evaluate(() => { openPassionManager(); });
+  await page.waitForTimeout(400);
+  const vu = await page.evaluate(() => {
+    const b = document.getElementById("nouveauProfilLien");
+    const m = document.getElementById("nouveauProfilSous");
+    return {
+      invite: (m.textContent || "").trim(),
+      role: b.getAttribute("role"),
+      tabindex: b.getAttribute("tabindex"),
+      desactivee: b.getAttribute("aria-disabled"),
+      etat: b.getAttribute("data-passion-porte"),
+    };
+  });
+  expect(vu.invite, "la porte dit ce qu'elle ajoute").toContain("passion");
+  expect(vu.role).toBe("button");
+  expect(vu.tabindex).toBe("0");
+  expect(vu.desactivee, "une porte ouverte ne se déclare pas désactivée").toBeNull();
+  expect(vu.etat).toBe("ouverte");
 });
 
 // ⚠️ LE CÂBLAGE, PAS LA FONCTION. `③ bis bis` ouvre le panneau par
@@ -302,8 +341,29 @@ test("③ bis quinquies — au plafond, la fenêtre ne renvoie pas au panneau d'
   await poser(page);                       // trois passions = le plafond
   await page.evaluate(() => { openPassionManager(); });
   await page.waitForTimeout(500);
-  await page.locator("#nouveauProfilLien").click();
-  await page.waitForTimeout(700);
+
+  // ⚠️ LA PORTE NE S'OUVRE PLUS DU TOUT AU PLAFOND (2026-09-03). Ce cas la
+  // CLIQUAIT pour faire apparaître le mur ; la page désarme désormais la porte
+  // et écrit le motif dedans (« Limite de N atteinte »), donc le clic ne part
+  // plus. On vérifie d'abord ce désarmement — c'est ce que l'utilisateur voit —
+  // puis on ouvre la fenêtre par le chemin qui reste (`restaurerPassion` au
+  // plafond y mène) pour mesurer l'invariant de boucle, qui n'a pas changé.
+  const porte = await page.evaluate(() => {
+    const b = document.getElementById("nouveauProfilLien");
+    return {
+      desactivee: b.getAttribute("aria-disabled"),
+      pointeur: getComputedStyle(b).pointerEvents,
+      motif: (document.getElementById("nouveauProfilSous").textContent || "").trim(),
+      modaleOuverte: !!document.querySelector("#modalBackdrop.active"),
+    };
+  });
+  expect(porte.desactivee, "au plafond la porte se déclare désactivée").toBe("true");
+  expect(porte.pointeur, "et le pointeur ne l'atteint plus").toBe("none");
+  expect(porte.motif, "elle dit pourquoi").toContain("Limite de");
+  expect(porte.modaleOuverte, "aucune fenêtre ne s'ouvre toute seule").toBe(false);
+
+  await page.evaluate(() => openPassionPaywall());
+  await page.waitForTimeout(500);
   const vu = await page.evaluate(() => {
     const m = document.getElementById("modalContent");
     return {
@@ -314,7 +374,7 @@ test("③ bis quinquies — au plafond, la fenêtre ne renvoie pas au panneau d'
       sortie: !!(m && m.querySelector('[data-tel="passion_paywall_compris"].primary')),
     };
   });
-  expect(vu.murOuvert, "au plafond la bulle annonce l'offre").toBe(true);
+  expect(vu.murOuvert, "au plafond la fenêtre annonce l'offre").toBe(true);
   expect(vu.renvoiPanneau, "et ne propose pas de retourner là où l'on est déjà").toBe(false);
   expect(vu.sortie, "la seule sortie est mise en avant").toBe(true);
 
@@ -346,16 +406,20 @@ test("③ bis quater — la porte survit à deux rendus du panneau", async ({ pa
     return {
       combien: document.querySelectorAll('#passionManager [data-passion-tile="__ajouter__"]').length,
       peinte: !!(r && r.width > 0 && r.height > 0),
-      // Ses DEUX enfants sont intacts : un `textContent =` posé par un futur
+      // Ses enfants sont intacts : un `textContent =` posé par un futur
       // décorateur les remplacerait par un mot nu, porte toujours cliquable.
-      rond: !!(porte && porte.querySelector(".profile-tile-avatar")),
-      libelle: porte ? (porte.querySelector(".profile-tile-label") || {}).textContent : null,
+      rond: !!(porte && porte.querySelector(".passion-manager-porte-plus")),
+      libelle: porte ? (porte.querySelector(".passion-manager-porte-titre") || {}).textContent : null,
+      // La ligne d'état est réécrite à chaque rendu : elle doit être là après
+      // deux, pas seulement après le premier.
+      etat: porte ? porte.getAttribute("data-passion-porte") : null,
     };
   });
   expect(vu.combien, "une seule porte, jamais dupliquée par un rendu").toBe(1);
   expect(vu.peinte).toBe(true);
   expect(vu.rond, "le rond pointillé est toujours là").toBe(true);
-  expect(vu.libelle).toBe("Ajouter");
+  expect(vu.libelle).toBe("Ajouter une passion");
+  expect(vu.etat, "trois passions : la porte est au plafond").toBe("fermee");
 });
 
 test("③ bis — toucher une bulle FILTRE, elle ne quitte plus le profil", async ({ page }) => {

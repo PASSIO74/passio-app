@@ -259,7 +259,7 @@ test("§7 repli — « ➕ Ajouter une passion » LIVRE la porte d'ajout", async
     };
   });
   expect(vu.ecran, "le bouton amène bien sur le profil").toBe(true);
-  expect(vu.panneauOuvert, "et il déplie « Gérer mes passions »").toBe(true);
+  expect(vu.panneauOuvert, "et il ouvre la page « Mes passions »").toBe(true);
   expect(vu.portePeinte, "la porte d'ajout est à l'écran, pas seulement dans le DOM").toBe(true);
 });
 

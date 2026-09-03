@@ -590,99 +590,136 @@
         </div>
       </div>
 
-      <!-- ── GESTION DES PASSIONS ────────────────────────────────────────────
-           ⚠️ Ce bloc n'est PLUS une section de la page. La refonte multi-passion
-           (§1) retire l'onglet et la section « À propos », où le lot UI-7 avait
-           déplacé cette liste : les passions se présentent désormais en haut du
-           profil, dans le MÊME rail de bulles que le Fil, et ce panneau ne sert
-           plus qu'à les GÉRER (photo, couverture, bio, archivage, ajout).
-           Il s'ouvre depuis les options du profil (`openPassionManager`), et
-           reste `hidden` sinon — rien n'est supprimé du DOM, `renderProfilesScreen`
-           continue d'écrire dans `#profileList` comme avant. -->
-      <div id="passionManager" hidden>
-        <!-- ⚠️ « GÉRER MES PASSIONS », pas « Mes passions » (demande de Benjamin,
-             2026-09-03). Le rail de bulles en haut du profil DIT déjà « mes
-             passions » — il les montre. Ce panneau-ci ne les montre pas : il les
-             ADMINISTRE (ajouter, illustrer, décrire, archiver, restaurer). Deux
-             surfaces qui portaient le même titre pour deux gestes différents,
-             c'était une invitation à chercher l'ajout dans le rail. -->
-        <div class="section-title" id="passionManagerTitre" style="margin-top:14px;">Gérer mes passions
-          <span class="link" id="fermerPassionManager" onclick="closePassionManager()" style="margin-left:10px;">Fermer</span>
-        </div>
-        <p class="section-subtitle" id="profilesModeleSub">Un seul profil, plusieurs passions. Publie dans la passion qui correspond ; ton fil réunit les passions que tu choisis et les personnes que tu suis.</p>
-        <!-- Porte le lien « Passions archivées (N) », posé par renderProfilesScreen.
-             Masqué au départ : vide, il laisserait une gouttière avant le premier
-             rendu. Le renderer gère ensuite son affichage. -->
-        <p class="section-subtitle" id="profilesQuotaSub" style="display:none;"></p>
-        <!-- ── LA PORTE D'AJOUT ────────────────────────────────────────────────
-             ⚠️ LA BULLE « + » A ÉTÉ DÉPLACÉE ICI DEPUIS LE RAIL DU PROFIL
-             (demande de Benjamin, 2026-09-03). Elle vivait en TÊTE de
-             `#v9ProfilePassions`, devant les passions possédées : le rail
-             mélangeait alors deux gestes de nature différente — FILTRER ce
-             qu'on regarde (cocher une bulle) et ACQUÉRIR une passion (une
-             porte vers une offre plafonnée). Le rail redevient une commande
-             de lecture ; l'acquisition vit dans le panneau qui l'administre.
+      <!-- ══════════════════════════════════════════════════════════════════
+           « MES PASSIONS » — UNE PAGE DÉDIÉE (2026-09-03)
+           ──────────────────────────────────────────────────────────────────
+           Ce panneau était une SECTION du profil : on l'ouvrait, et le contenu
+           du profil restait au-dessus (l'état vide « Créer un post », déplacé
+           là par le lot UI-7) comme en dessous. On y gérait ses passions au
+           milieu d'autre chose.
 
+           Il devient une PAGE : `openPassionManager` pose la classe
+           `passions-page-open` sur `#screen-profiles`, qui masque tous les
+           frères de ce bloc — carte d'identité, rail, onglets UI-7, Studio.
+           ⚠️ MASQUER, JAMAIS RETIRER (invariant du dépôt) : `renderProfilesScreen`
+           continue d'écrire dans `#myPosts`, `#profileEvents` et le rail comme
+           avant, et refermer la page les rend intacts.
+
+           ⚠️ AUCUNE PASSION PRINCIPALE, FAVORITE OU PRIORITAIRE. Les cartes sont
+           IDENTIQUES : aucune ne porte « Passion du Studio ✓ » ni de liseré
+           d'élection. La passion d'une publication se choisit AU STUDIO, au
+           moment de publier (ADR-011 §3) — `currentProfileId` reste la source
+           de vérité de l'identité d'écriture, elle n'est simplement plus
+           exposée ici comme un rang.
+           ══════════════════════════════════════════════════════════════════ -->
+      <div id="passionManager" class="passions-page" hidden>
+
+        <!-- L'en-tête de page : retour, titre, aide. Le « ← » remplace le lien
+             « Fermer » et GARDE son id (`fermerPassionManager`) : c'est la même
+             commande, seule sa forme change. -->
+        <div class="passions-page-head">
+          <button type="button" class="passions-page-back" id="fermerPassionManager"
+                  onclick="closePassionManager()" title="Retour au profil" aria-label="Retour au profil">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
+          </button>
+          <!-- ⚠️ « Mes passions », le titre de la PAGE. L'entrée du menu ⋯ garde
+               son verbe (« Gérer mes passions ») : une commande nomme un geste,
+               une page nomme un lieu. -->
+          <h2 class="passions-page-title" id="passionManagerTitre">Mes passions</h2>
+          <button type="button" class="passions-page-help" id="aidePassionManager"
+                  onclick="openPassionsAide()" title="Comment fonctionnent les passions"
+                  aria-label="Comment fonctionnent les passions">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9.2"/><path d="M9.6 9.3a2.5 2.5 0 1 1 3.3 2.4c-.6.2-.9.7-.9 1.3v.5"/><path d="M12 16.7h.01"/></svg>
+          </button>
+        </div>
+
+        <!-- La promesse d'ADR-010, affichée de façon permanente (verrou
+             `adr-010-vocabulaire.spec.js`). Elle tient en une ligne discrète
+             sous le titre : c'est le modèle du produit, pas une consigne. -->
+        <p class="section-subtitle passions-page-modele" id="profilesModeleSub">Un seul profil, plusieurs passions. Publie dans la passion qui correspond ; ton fil réunit les passions que tu choisis et les personnes que tu suis.</p>
+
+        <!-- ── LE RÉSUMÉ : « X passions actives sur N » ──────────────────────
+             Écrit par `renderProfilesScreen`, JAMAIS en dur : `X` est
+             `nbPassionsVivantes()` et `N` est `PASSIONS_OFFERTES`. Le « sur N »
+             disparaît de lui-même quand le plafond ne s'applique pas
+             (`plafondPassionsActif()` faux sous la coupure du sélecteur plat) —
+             annoncer une limite qui ne borne rien serait un mensonge. -->
+        <div class="passions-resume" id="passionsResume" hidden></div>
+
+        <!-- ── LE QUOTA DE CHANGEMENTS ───────────────────────────────────────
+             MÊME NŒUD QU'AVANT (`#profilesQuotaSub`), deux visages :
+               · quota épuisé  → l'ALERTE « Aucun changement disponible pour le
+                 moment. » (`data-passion-quota="epuise"`) ;
+               · changement disponible → une ligne d'information discrète
+                 (`data-passion-quota="disponible"`).
+             L'alerte ne s'affiche QUE dans le premier cas : une alerte permanente
+             n'alerte plus de rien. Quand le quota ne s'applique pas
+             (`Infinity` — visiteur, démo, kill switch), le nœud reste masqué.
+             ⚠️ Le lien « Passions archivées (N) » qui vivait ici est parti avec
+             sa raison d'être : les archives ont leur propre section repliable,
+             en clair, plus bas. -->
+        <p class="section-subtitle passions-quota" id="profilesQuotaSub" style="display:none;"></p>
+
+        <div class="section-title passions-section-titre" id="passionsActivesTitre">Passions actives</div>
+        <div id="profileList"></div>
+
+        <!-- ── LA PORTE D'AJOUT ────────────────────────────────────────────────
              ⚠️ ELLE GARDE L'ID `nouveauProfilLien`, ET C'EST VOLONTAIRE : c'est
-             la MÊME porte, seule sa forme change. L'aide contextuelle
-             « second_profil » (app-06, `renderProfilesScreen`) la vise par cet
-             id, et cinq suites e2e aussi. Changer l'id aurait fait disparaître
-             l'aide sans qu'aucun test n'échoue — `montrerHint` refuse une cible
-             absente EN SILENCE.
+             la MÊME porte depuis qu'elle a quitté le rail du profil
+             (2026-09-03), seule sa forme change. L'aide contextuelle
+             « second_profil » (app-02, `HINTS`) la vise par cet id, et cinq
+             suites e2e aussi. Changer l'id aurait fait disparaître l'aide sans
+             qu'aucun test n'échoue — `montrerHint` refuse une cible absente EN
+             SILENCE.
 
              ⚠️ Elle appelle `openCreateProfile()`, PAS
              `ouvrirRecherchePassionsCompte()` (retirée avec la bulle du rail).
-             LA DIFFÉRENCE N'EST PAS LE PLAFOND — les deux le gardent, l'une par
-             `plafondPassionsAtteint()`, l'autre par le `placesRestantes() <= 0`
-             de `PassioFlatUI.ouvrirAjoutPassions`, et toutes deux finissent sur
-             `openPassionPaywall`. La différence est le REPLI : sous la coupure
-             `flat_passions_v1="0"`, `ouvrirAjoutPassions` rend `false` et le tap
-             est MORT, sans un message ; `openCreateProfile` rend alors sa modale
-             de choix historique. Une porte de dernier recours ne peut pas
-             dépendre d'un lot qu'un kill switch éteint.
+             LA DIFFÉRENCE N'EST PAS LE PLAFOND — les deux le gardaient — mais le
+             REPLI : sous la coupure `flat_passions_v1="0"`,
+             `PassioFlatUI.ouvrirAjoutPassions` rend `false` et le tap est MORT,
+             sans un message ; `openCreateProfile` rend alors sa modale de choix
+             historique. Une porte de dernier recours ne peut pas dépendre d'un
+             lot qu'un kill switch éteint.
 
              ⚠️ AUCUN `onkeydown` ICI, ET C'EST VOLONTAIRE. `app-08` porte un
              écouteur DÉLÉGUÉ qui active à Entrée/Espace tout `[role="button"]`
              non natif. En ajouter un second produirait DEUX activations pour une
-             seule touche — donc deux ouvertures, ou une ouverture suivie d'une
-             fermeture. Le `role`/`tabindex` suffisent.
+             seule touche.
+
+             ⚠️ AU PLAFOND, LA PORTE EST RÉELLEMENT DÉSACTIVÉE, pas seulement
+             grisée : `renderProfilesScreen` retire `role` et `tabindex` (donc
+             l'activation clavier déléguée d'app-08) et pose `aria-disabled`,
+             que le CSS double d'un `pointer-events: none`. Griser sans désarmer
+             aurait laissé une cible qui répond à un geste qu'elle annonce
+             refuser. Le motif du refus est écrit DANS la porte
+             (« Limite de N atteinte »), jamais deviné.
 
              Elle est SŒUR de `#profileList`, jamais son enfant :
              `renderProfilesScreen` réécrit `#profileList.innerHTML` en entier. -->
-        <div class="passion-manager-porte" style="display:flex;align-items:flex-start;gap:10px;margin:6px 0 2px;">
-          <div class="profile-tile psel-tile-plus" id="nouveauProfilLien" role="button" tabindex="0"
-               data-passion-tile="__ajouter__" title="Ajouter une passion"
-               aria-label="Ajouter une passion" onclick="openCreateProfile()">
-            <div class="profile-tile-avatar" style="position:relative;">+</div>
-            <div class="profile-tile-label">Ajouter</div>
-          </div>
-          <!-- ⚠️ LA BULLE SEULE EST MUETTE. Dans le rail, elle était entourée de
-               passions : le geste se lisait par contraste. Ici elle est seule sous
-               deux paragraphes gris, et « Ajouter » tout court n'annonce pas QUOI.
-               Cette ligne est le libellé que le rail lui donnait par le contexte.
-               Elle est INERTE (aucun `onclick`) : deux cibles pour un seul geste
-               feraient la même faute que l'ancienne bulle « Toutes ».
-               ⚠️ AUCUN CHIFFRE ICI. Quand il y en a un, il vit dans
-               `#profilesQuotaSub`, juste au-dessus, écrit par `renderProfilesScreen` :
-               une seconde source dirait faux dès le premier ajout.
-               ⚠️ « Quand il y en a un » — et pas toujours : pour un VISITEUR sans
-               compte `changementsPassionRestants()` rend `Infinity`, donc ce
-               paragraphe reste `display:none` ; sous `passio_ui_8="0"` la branche
-               historique n'y écrit pas non plus le décompte. Ne pas déduire de ce
-               commentaire que le chiffre est garanti à l'écran. -->
-          <div class="passion-manager-porte-mot"
-               style="flex:1 1 auto;min-width:0;padding-top:8px;font-size:12.5px;line-height:1.45;color:var(--muted);">
-            Ajoute une passion à ton profil : elle apparaît dans ton rail, et son
-            contenu entre dans ton fil.
+        <div class="passion-manager-porte" id="nouveauProfilLien" role="button" tabindex="0"
+             data-passion-tile="__ajouter__" title="Ajouter une passion"
+             aria-label="Ajouter une passion" onclick="openCreateProfile()">
+          <div class="passion-manager-porte-plus" aria-hidden="true">+</div>
+          <div class="passion-manager-porte-corps">
+            <div class="passion-manager-porte-titre" id="nouveauProfilTitre">Ajouter une passion</div>
+            <!-- ⚠️ LA LIGNE D'INVITE N'EST PAS UNE DÉCORATION. Elle porte, selon
+                 l'état, l'invitation ou le MOTIF DU REFUS (« Limite de N
+                 atteinte »). Elle est INERTE (aucun `onclick`) : deux cibles
+                 pour un seul geste feraient la faute de l'ancienne bulle
+                 « Toutes ». Son texte est écrit par `renderProfilesScreen`, à
+                 partir des mêmes fonctions que le résumé du haut — une seconde
+                 source dirait faux dès le premier ajout. -->
+            <div class="passion-manager-porte-mot" id="nouveauProfilSous">Ajoute une passion à ton profil et à ton fil.</div>
           </div>
         </div>
-        <div id="profileList"></div>
+
         <!-- LA LISTE DES PASSIONS ARCHIVÉES, rendue EN CLAIR et non plus derrière
-             un lien vers une modale. Une passion rangée dont la seule trace était
-             un lien dans un panneau lui-même masqué était, du point de vue de
-             l'utilisateur, une passion perdue — le défaut rapporté après essai
-             réel le 2026-09-02. Frère de #profileList, jamais son enfant :
-             renderProfilesScreen réécrit `#profileList.innerHTML` en entier. -->
+             un lien vers une modale, et REPLIABLE depuis le 2026-09-03. Une
+             passion rangée dont la seule trace était un lien dans un panneau
+             lui-même masqué était, du point de vue de l'utilisateur, une passion
+             perdue — le défaut rapporté après essai réel le 2026-09-02.
+             Frère de #profileList, jamais son enfant : renderProfilesScreen
+             réécrit `#profileList.innerHTML` en entier. -->
         <div id="passionArchiveBox" hidden></div>
       </div>
 

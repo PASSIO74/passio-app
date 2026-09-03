@@ -123,14 +123,14 @@ test.describe("UI-6B — Profil et multi-profils", () => {
     expect(await page.evaluate(() => typeof openMyPostsTab === "function")).toBe(true);
 
     // Le titre du §11. ⚠️ Le renommage que faisait UI-6B a été RETIRÉ le
-    // 2026-09-03 : le markup dit « Gérer mes passions » de lui-même, et
-    // `#nouveauProfilLien` est devenu la BULLE « + » descendue du rail. Une
-    // réécriture par `textContent` aurait détruit ses deux enfants ; ce cas
+    // 2026-09-03 : le markup titre la page « Mes passions » de lui-même, et
+    // `#nouveauProfilLien` est devenu la RANGÉE d'ajout de cette page. Une
+    // réécriture par `textContent` aurait détruit ses enfants ; ce cas
     // vérifie donc le résultat À L'ÉCRAN, qui est ce qu'il a toujours voulu dire.
     await expect(page.locator("#nouveauProfilLien")).toHaveAttribute("aria-label", "Ajouter une passion");
-    await expect(page.locator("#nouveauProfilLien .profile-tile-label")).toHaveText("Ajouter");
+    await expect(page.locator("#nouveauProfilLien .passion-manager-porte-titre")).toHaveText("Ajouter une passion");
     expect(await page.evaluate(() =>
-      document.getElementById("passionManagerTitre").textContent)).toContain("Gérer mes passions");
+      document.getElementById("passionManagerTitre").textContent.trim())).toBe("Mes passions");
 
     expect(errors.js, "exceptions JS").toEqual([]);
   });
@@ -223,12 +223,15 @@ test.describe("UI-6B — Profil et multi-profils", () => {
     await expect(page.locator(".v6b-ident")).toHaveCount(0);
     await expect(page.locator("#screen-profiles .main-profile-stat").first()).toBeVisible();
     // ⚠️ LE VOCABULAIRE N'EST SOUS AUCUN KILL SWITCH, et c'est ce que ce cas
-    // vérifie : coupé, UI-6B ne doit PAS restituer un « + Ajouter » ni un titre
-    // « Mes passions ». Le markup d'origine porte désormais « Gérer mes
-    // passions » et la bulle, et il les garde drapeau éteint.
-    await expect(page.locator("#nouveauProfilLien .profile-tile-label")).toHaveText("Ajouter");
+    // vérifie : coupé, UI-6B ne doit RIEN réécrire du panneau — ni le titre, ni
+    // la porte d'ajout. Le markup porte lui-même la page « Mes passions » et sa
+    // rangée d'ajout, et il les garde drapeau éteint. (Avant le retrait de
+    // `renommerSection()`, le lot posait « Mes passions » et « + Ajouter » par
+    // `textContent` : le mot final est le même, mais il vient désormais du
+    // markup — d'où l'assertion sur le RÉSULTAT et pas sur le lot.)
+    await expect(page.locator("#nouveauProfilLien .passion-manager-porte-titre")).toHaveText("Ajouter une passion");
     expect(await page.evaluate(() =>
-      document.getElementById("passionManagerTitre").textContent)).toContain("Gérer mes passions");
+      document.getElementById("passionManagerTitre").textContent.trim())).toBe("Mes passions");
     // Le point d'édition historique reprend sa place.
     await expect(page.locator("#screen-profiles .profile-dots-btn.on-cover")).toBeVisible();
 
@@ -248,12 +251,12 @@ test.describe("UI-6B — Profil et multi-profils", () => {
     await expect(page.locator(".v6b-ident")).toHaveCount(0);
     await expect(page.locator("#screen-profiles .profile-dots-btn.on-cover")).toBeVisible();
     // ⚠️ MÊME EXIGENCE QUE CI-DESSUS, PAR LA COUPURE MÉMOIRE. `toutRendre()` ne
-    // restitue plus aucun mot du panneau depuis le 2026-09-03 : restituer
-    // « Mes passions » aurait écrasé le titre du markup, et « + Ajouter » aurait
-    // remplacé la bulle par un mot nu.
-    await expect(page.locator("#nouveauProfilLien .profile-tile-label")).toHaveText("Ajouter");
+    // restitue plus aucun mot du panneau depuis le 2026-09-03 : une restitution
+    // par `textContent` aurait écrasé le titre du markup et remplacé la rangée
+    // d'ajout par un mot nu.
+    await expect(page.locator("#nouveauProfilLien .passion-manager-porte-titre")).toHaveText("Ajouter une passion");
     expect(await page.evaluate(() =>
-      document.getElementById("passionManagerTitre").textContent)).toContain("Gérer mes passions");
+      document.getElementById("passionManagerTitre").textContent.trim())).toBe("Mes passions");
     await expect(page.locator("#screen-profiles .main-profile-stat").first()).toBeVisible();
   });
 
