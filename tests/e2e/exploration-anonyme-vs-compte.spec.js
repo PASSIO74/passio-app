@@ -476,6 +476,94 @@ test.describe("Exploration anonyme puis connexion à un vrai compte", () => {
     expect(r.uid).toBe(UID_COMPTE);
   });
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // LES GARDES SUR LEUR CHEMIN RÉEL, PAS SUR UN RACCOURCI  (2026-09-02)
+  //
+  // ⚠️ CONSTATS MAJEURS DE LA REVUE. `bootVisiteur` impose `_supaReal === false`
+  // — c'est sa prémisse, et elle est saine : rien ne doit pouvoir atteindre la
+  // production. Mais `_supaSaveUserStateOnce` sort sur CETTE garde-là, à sa
+  // première ligne, bien AVANT `_peutPousserEtat()`. Les cas qui vérifient
+  // « rien ne part » prouvaient donc surtout que le SDK était coupé, et le
+  // cas « après une purge » passait par `_accountPurged`, pas par la garde
+  // qu'il prétend mesurer. Ici on pose un vrai client factice et on exerce le
+  // chemin d'écriture jusqu'au bout.
+  // ══════════════════════════════════════════════════════════════════════════
+  test("chemin SDK réel : l'exigence de restauration bloque l'upsert, et le relâche ensuite", async ({ page }) => {
+    await bootVisiteur(page, { prefs: prefsInvite });
+
+    const r = await page.evaluate(async () => {
+      // Un client factice qui COMPTE les upserts sur `user_state`. Aucune
+      // requête ne part : `upsert` rend directement une réponse.
+      window.__upserts = [];
+      window._supaReal = true;
+      supa = { from: function (table) { return {
+        upsert: function (row) {
+          window.__upserts.push(table);
+          return { select: function () { return { maybeSingle: function () {
+            return Promise.resolve({ data: { updated_at: new Date().toISOString() }, error: null });
+          } }; } };
+        },
+      }; } };
+      MY_UID = "11111111-2222-4333-8444-555555555555";
+      window.MY_UID = MY_UID;
+      // L'état local est déclaré sien : la SECONDE condition ne joue pas, on
+      // isole bien la PREMIÈRE (restauration non confirmée).
+      attribuerEtatLocalAuCompte(MY_UID);
+      state.onboarded = true;
+
+      _exigerRestaurationAvantEcriture(MY_UID);
+      saveState();
+      await supaSaveUserState();
+      const bloques = window.__upserts.length;
+
+      // Ce que fait `supaLoadUserState` dès qu'un verdict serveur est rendu.
+      localStorage.removeItem("passio_restauration_requise");
+      saveState();
+      await supaSaveUserState();
+      return { bloques, apres: window.__upserts.length, peut: _peutPousserEtat() };
+    });
+
+    expect(r.bloques).toBe(0);           // ⚠️ le compte n'est pas écrasé
+    expect(r.peut).toBe(true);
+    expect(r.apres).toBeGreaterThan(0);  // et l'appareil réécrit normalement ensuite
+  });
+
+  // ⚠️ La règle `_parDefaut` est écrite DEUX fois — dans le verdict serveur
+  // (app-02) et dans le repli local (first-run) — et une seule copie était
+  // couverte. C'est le motif exact qui a fait diverger deux tables de libellés
+  // et deux écrans de profil dans ce dépôt.
+  test("le verdict serveur ignore le profil de remplissage, et lui seul", async ({ page }) => {
+    await bootVisiteur(page, { prefs: prefsInvite });
+
+    const lire = async (blob) => page.evaluate(async (b) => {
+      window._supaReal = true;
+      MY_UID = "11111111-2222-4333-8444-555555555555";
+      window.MY_UID = MY_UID;
+      delete window._comptePassionsServeur;
+      supa = { from: function () { return { select: function () { return { eq: function () { return {
+        maybeSingle: function () {
+          return Promise.resolve({ data: { updated_at: new Date().toISOString(), data: b }, error: null });
+        },
+      }; } }; } }; } };
+      await supaLoadUserState();
+      return window._comptePassionsServeur;
+    }, blob);
+
+    // Le remplissage fabriqué par `boot()` : ce n'est pas un choix.
+    expect(await lire({ user: { profiles: [{ passion: "musique", _parDefaut: true }] } })).toBe(false);
+    // Même chose quand son identifiant a fuité dans `selectedFeedPassions` —
+    // le marqueur n'y survit pas, seul l'IDENTIFIANT voyage.
+    expect(await lire({
+      selectedFeedPassions: ["musique"],
+      user: { profiles: [{ passion: "musique", _parDefaut: true }] },
+    })).toBe(false);
+    // Une vraie passion, elle, compte.
+    expect(await lire({ user: { profiles: [{ passion: "cuisine" }] } })).toBe(true);
+    expect(await lire({ selectedFeedPassions: ["cuisine"], user: { profiles: [] } })).toBe(true);
+    // Une passion archivée ne compte pas.
+    expect(await lire({ user: { profiles: [{ passion: "cuisine", archived: true }] } })).toBe(false);
+  });
+
   test("un identifiant qui n'est pas un uuid ne déclenche jamais de purge", async ({ page }) => {
     await bootVisiteur(page);
     const r = await page.evaluate(async () => {
