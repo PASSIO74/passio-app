@@ -556,3 +556,135 @@ test("⑨ la SEULE porte visible vers la gestion porte le compte d'archives", as
   });
   expect(libelles.join(" "), "rien n'annonce l'archive depuis l'écran du profil").toContain("1 archivée");
 });
+
+// ══════════════════════════════════════════════════════════════════════════
+// ⑩ LA FUSION MULTI-APPAREILS — la dette assumée à la livraison, refermée
+// ──────────────────────────────────────────────────────────────────────────
+// Livré le 2026-09-02 avec sa dette écrite noir sur blanc : « la fusion
+// défensive de `supaLoadUserState` réinjecte les profils locaux absents du
+// serveur sans consulter le plafond ». Mesuré le lendemain sur le code en
+// production : deux appareils portant chacun TROIS passions DIFFÉRENTES
+// convergeaient vers SIX vivantes, le plafond annonçant « 0 place restante »
+// pendant que le compte en possédait six. Aucun geste volontaire n'était
+// requis — un second téléphone suffisait.
+//
+// ⚠️ CES TESTS APPELLENT LA FONCTION RÉELLE `reinjecterProfilsLocauxBornes`
+// (app-02), pas une copie de ses règles. Une copie ne prouverait que sa propre
+// cohérence — c'est exactement ce que `audit-tests-creux.js` traque, et la
+// raison pour laquelle `restaurerPassionActiveApresFusion` avait déjà été
+// extraite en fonction nommée.
+// ══════════════════════════════════════════════════════════════════════════
+test.describe("la fusion multi-appareils", () => {
+  // Fabrique des profils sans dépendre de l'état de la page.
+  const PROFILS = (ids, archivees) => ids.map((pid, i) => ({
+    id: (archivees ? "a_" : "x_") + pid, name: "QA", passion: pid,
+    emoji: "✨", bio: "", color: "#8b5cf6", createdAt: i, archived: !!archivees,
+  }));
+
+  test("⑩ deux appareils, trois passions différentes chacun : le plafond tient", async ({ page }) => {
+    await bootOnboarded(page, null, 1, { query: APERCU });
+    const r = await page.evaluate((f) => {
+      const mk = eval(f);
+      const fusion = reinjecterProfilsLocauxBornes(
+        mk(["cuisine", "voyage", "moto"]),      // ce que le serveur porte
+        mk(["musique", "photo", "sport"])       // ce que cet appareil ajoute
+      );
+      return {
+        vivantes: fusion.filter((p) => !p.archived).map((p) => p.passion),
+        archivees: fusion.filter((p) => p.archived).map((p) => p.passion),
+        total: fusion.length,
+      };
+    }, PROFILS.toString());
+    expect(r.vivantes.length, "la fusion a dépassé le plafond").toBe(3);
+    // L'état SERVEUR fait foi : c'est lui qui reste vivant.
+    expect(r.vivantes.sort()).toEqual(["cuisine", "moto", "voyage"]);
+    // ⚠️ RIEN N'EST SUPPRIMÉ : les six entrées sont là, trois rangées.
+    expect(r.total, "des passions ont été perdues dans la fusion").toBe(6);
+    expect(r.archivees.sort()).toEqual(["musique", "photo", "sport"]);
+  });
+
+  test("⑩ bis — UN COMPTE QUI PORTE DÉJÀ PLUS DE TROIS PASSIONS N'EST PAS RÉTROGRADÉ", async ({ page }) => {
+    // ⚠️ LE TEST QUI JUSTIFIE TOUTE LA FORME DU CORRECTIF. Le plafond date du
+    // 2026-09-01 ; des comptes de production le précèdent et portent
+    // légitimement plus de trois passions. Archiver « le surplus » les aurait
+    // rétrogradés en silence, à leur prochaine synchronisation — c'est
+    // précisément pourquoi le défaut avait été livré non corrigé plutôt que
+    // corrigé de travers. Seules les entrées que la fusion AJOUTE sont bornées.
+    await bootOnboarded(page, null, 1, { query: APERCU });
+    const r = await page.evaluate((f) => {
+      const mk = eval(f);
+      const fusion = reinjecterProfilsLocauxBornes(
+        mk(["musique", "photo", "sport", "cuisine", "voyage"]),   // 5 vivantes côté serveur
+        mk(["moto"])                                              // une réinjection locale
+      );
+      return {
+        serveurIntact: fusion.filter((p) => !p.archived).length,
+        motoArchivee: fusion.some((p) => p.passion === "moto" && p.archived),
+      };
+    }, PROFILS.toString());
+    expect(r.serveurIntact, "un compte antérieur au plafond a été rétrogradé").toBe(5);
+    expect(r.motoArchivee, "la réinjection n'a pas été bornée").toBe(true);
+  });
+
+  test("⑩ ter — sous le plafond, la réinjection passe entière", async ({ page }) => {
+    // Un correctif qui borne tout le monde n'est pas un correctif : la fusion
+    // défensive existe pour une bonne raison (des passions créées entre la
+    // dernière synchronisation et la fermeture).
+    await bootOnboarded(page, null, 1, { query: APERCU });
+    const r = await page.evaluate((f) => {
+      const mk = eval(f);
+      const fusion = reinjecterProfilsLocauxBornes(mk(["cuisine"]), mk(["musique", "photo"]));
+      return { vivantes: fusion.filter((p) => !p.archived).length, archivees: fusion.filter((p) => p.archived).length };
+    }, PROFILS.toString());
+    expect(r.vivantes).toBe(3);
+    expect(r.archivees, "une passion a été rangée alors qu'il restait de la place").toBe(0);
+  });
+
+  test("⑩ quater — une locale DÉJÀ archivée le reste, et ne consomme pas de place", async ({ page }) => {
+    await bootOnboarded(page, null, 1, { query: APERCU });
+    const r = await page.evaluate((f) => {
+      const mk = eval(f);
+      const fusion = reinjecterProfilsLocauxBornes(
+        mk(["cuisine"]),
+        mk(["musique"]).concat(mk(["photo"], true))   // « photo » arrive déjà rangée
+      );
+      return {
+        vivantes: fusion.filter((p) => !p.archived).map((p) => p.passion).sort(),
+        archivees: fusion.filter((p) => p.archived).map((p) => p.passion),
+      };
+    }, PROFILS.toString());
+    expect(r.vivantes).toEqual(["cuisine", "musique"]);
+    expect(r.archivees, "une archive a consommé une place ou a été réveillée").toEqual(["photo"]);
+  });
+
+  test("⑩ quinquies — la fusion ne FACTURE rien : le compte n'a rien demandé", async ({ page }) => {
+    // ⚠️ Ranger une passion à la fusion n'est pas un geste d'utilisateur. Si
+    // c'était inscrit au journal, un simple changement de téléphone débiterait
+    // des changements — et le compte perdrait son quota sans avoir rien fait.
+    await bootOnboarded(page, null, 1, { query: APERCU });
+    await poserNPassions(page, 3);
+    const r = await page.evaluate((f) => {
+      const mk = eval(f);
+      const avant = String(changementsPassionRestants());
+      reinjecterProfilsLocauxBornes(mk(["cuisine", "voyage", "moto"]), mk(["musique", "photo", "sport"]));
+      return { avant, apres: String(changementsPassionRestants()),
+               journal: ((state.user.passionChanges || {}).entries || []).length };
+    }, PROFILS.toString());
+    expect(r.avant).toBe("3");
+    expect(r.apres, "la fusion a débité des changements").toBe("3");
+    expect(r.journal, "la fusion a écrit au journal").toBe(0);
+  });
+
+  test("⑩ sexies — kill switch : drapeau coupé, la fusion ne range plus rien", async ({ page }) => {
+    // Un drapeau coupé ne doit JAMAIS ranger une passion : il ne sait qu'enlever.
+    await page.addInitScript(() => { localStorage.setItem("flat_passions_v1", "0"); });
+    await bootOnboarded(page, null, 1, { query: APERCU });
+    const r = await page.evaluate((f) => {
+      const mk = eval(f);
+      const fusion = reinjecterProfilsLocauxBornes(mk(["cuisine", "voyage", "moto"]), mk(["musique", "photo", "sport"]));
+      return { vivantes: fusion.filter((p) => !p.archived).length, archivees: fusion.filter((p) => p.archived).length };
+    }, PROFILS.toString());
+    expect(r.vivantes).toBe(6);
+    expect(r.archivees, "le kill switch n'a pas désarmé le bornage").toBe(0);
+  });
+});
