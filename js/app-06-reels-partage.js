@@ -166,7 +166,7 @@ function copyReelLink(postId, encodedUrl) {
   if (navigator.clipboard) {
     navigator.clipboard.writeText(url).then(() => {
       _telLinkShare(url, "clipboard");
-      toast("🔗 Lien copié!");
+      toast("Lien copié");
       closeModal();
     });
   } else {
@@ -224,7 +224,7 @@ function shareReelEmail(postId, encodedText, encodedUrl) {
   _telLinkShare(url, "email");
   const mailtoLink = `mailto:?subject=${subject}&body=${body}`;
   window.location.href = mailtoLink;
-  toast("📧 Ouverture de ton client email...");
+  toast("Ouverture de ton client email…");
   closeModal();
 }
 
@@ -238,7 +238,7 @@ function shareReelSMS(postId, encodedUrl) {
   _telLinkShare(url, "sms");
   const smsLink = `sms:?body=${smsBody}`;
   window.location.href = smsLink;
-  toast("📱 Ouverture SMS...");
+  toast("Ouverture SMS…");
   closeModal();
 }
 
@@ -721,7 +721,7 @@ function renderProfileContent() {
       + '<div class="empty-icon">'+emoji+'</div>'
       + '<div class="empty-title">'+title+'</div>'
       + '<div class="empty-text">'+text+'</div>'
-      + '<button class="btn primary" onclick="goTo(\'studio\')">✨ Créer un post</button>'
+      + '<button class="btn primary" onclick="goTo(\'studio\')">Créer un post</button>'
       + '</div>';
   }
 
@@ -772,7 +772,7 @@ function shareMyProfile() {
   var _lk = (window.tel && tel.linkCreate) ? tel.linkCreate("profile", (window.MY_UID || name)) : "";
   var url = (_lk && tel.tagUrl) ? tel.tagUrl(window.location.href, _lk) : window.location.href;
   _telLinkShare(url, navigator.share ? "native" : "clipboard");
-  partagerOuCopier({ title: name + " sur PASSIO", text: "Découvre mon profil sur PASSIO !", url: url }, "📤 Lien copié !");
+  partagerOuCopier({ title: name + " sur PASSIO", text: "Découvre mon profil sur PASSIO !", url: url }, "Lien copié");
 }
 
 // Upload une photo de profil/couverture vers Supabase Storage puis pousse l'URL
@@ -952,7 +952,7 @@ function changeCoverPhoto(event) {
   _readAndCrop(file, { aspect: 3 / 2, outW: 1080, outH: 720, round: false, title: "Recadre ta photo de couverture" })
     .then(function(dataUrl) {
       _syncProfilePhoto("coverPhoto", "covers", dataUrl);
-      toast("📷 Photo de couverture mise à jour !");
+      toast("Photo de couverture mise à jour", "success");
       _reopenEditProfileAfterCover();
     })
     .catch(function() { _reopenEditProfileAfterCover(); });
@@ -973,7 +973,7 @@ function changeAvatarPhoto(event) {
   _readAndCrop(file, { aspect: 1, outW: 480, outH: 480, round: true, title: "Recadre ta photo de profil" })
     .then(function(dataUrl) {
       _syncProfilePhoto("avatarPhoto", "avatars", dataUrl);
-      toast("📷 Photo de profil mise à jour !");
+      toast("Photo de profil mise à jour", "success");
     })
     .catch(function() {});
 }
@@ -989,7 +989,7 @@ function changePassionPhoto(event, profileId) {
     prof.photo = base64; // cache local immédiat pour l'affichage
     saveState();
     renderProfilesScreen();
-    toast("📷 Photo de la passion mise à jour !");
+    toast("Photo de la passion mise à jour", "success");
     _reopenEditPassionAfterPhoto();
     // Tente un upload vers Storage → stocke l'URL (sync cross-appareil sans base64)
     if (typeof supaUploadMedia === "function" && window._supaReal) {
@@ -1030,7 +1030,7 @@ function changePassionCoverPhoto(event, profileId) {
       prof.coverPhoto = base64; // cache local immédiat
       saveState();
       renderProfilesScreen();
-      toast("📷 Photo de fond mise à jour !");
+      toast("Photo de fond mise à jour", "success");
       _reopenEditPassionAfterPhoto();
       if (typeof supaUploadMedia === "function" && window._supaReal) {
         try {
@@ -1197,7 +1197,7 @@ function openEditMainProfile() {
 
   const html = `
     <div class="modal-handle"></div>
-    <div class="modal-title">✏️ Mon profil principal</div>
+    <div class="modal-title">Mon profil principal</div>
 
     <!-- Photo de couverture : unique point d'entrée (le bouton « Changer » a été
          retiré de la carte profil pour ne garder QU'UN seul onglet d'édition). -->
@@ -1205,7 +1205,7 @@ function openEditMainProfile() {
       <span>Photo de couverture</span>
       <div style="display:flex;gap:8px;align-items:center;">
         <div id="editCoverPreview" style="flex:1;height:64px;border-radius:12px;border:1px solid var(--border);background:${g.coverPhoto ? "url(" + safeUrlAttr(g.coverPhoto) + ") center/cover" : "linear-gradient(135deg,#8b5cf6,#6d28d9)"};"></div>
-        <button class="btn ghost" style="white-space:nowrap;" onclick="editCoverFromModal()">📷 Changer</button>
+        <button class="btn ghost" style="white-space:nowrap;" onclick="editCoverFromModal()">Changer</button>
       </div>
     </div>
 
@@ -1227,13 +1227,13 @@ function openEditMainProfile() {
       <label style="display:flex;align-items:flex-start;gap:10px;padding:12px;border:1px solid var(--border);border-radius:12px;cursor:pointer;">
         <input type="checkbox" id="editIsPrivate" ${g.isPrivate ? "checked" : ""} onchange="marquerConfidentialiteTouchee()" style="width:20px;height:20px;flex-shrink:0;margin-top:1px;accent-color:var(--accent);"/>
         <span style="flex:1;">
-          <span style="display:block;font-weight:700;font-size:13px;color:var(--text);">🔒 Compte privé</span>
+          <span style="display:block;font-weight:700;font-size:13px;color:var(--text);">Compte privé</span>
           <span style="display:block;font-size:11px;color:var(--muted);line-height:1.45;margin-top:3px;">Seuls tes abonnés peuvent voir tes publications, photos, bobines et carnets. Ton pseudo, ton avatar et tes passions restent visibles pour que l'on puisse te trouver.</span>
         </span>
       </label>
     </div>
 
-    <div style="font-weight:700;font-size:13px;color:var(--text);margin:14px 0 10px;">🔗 Mes réseaux sociaux</div>
+    <div style="font-weight:700;font-size:13px;color:var(--text);margin:14px 0 10px;">Mes réseaux sociaux</div>
     <div style="display:flex;flex-direction:column;gap:8px;">
       ${RS_LIST.map(platform => {
         const icons = { instagram:"📸", tiktok:"🎵", facebook:"👤", youtube:"▶️", twitter:"𝕏", linkedin:"💼", snapchat:"👻", autre:"🔗" };
@@ -1249,12 +1249,12 @@ function openEditMainProfile() {
     </div>
 
     <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">
-      <button class="btn ghost" onclick="closeModal();setTimeout(openConfigurator,200);" style="width:100%;font-size:13px;padding:12px;">🎨 Apparence & thème</button>
+      <button class="btn ghost" onclick="closeModal();setTimeout(openConfigurator,200);" style="width:100%;font-size:13px;padding:12px;">Apparence &amp; thème</button>
     </div>
 
     <div style="display:flex;gap:8px;margin-top:12px;">
       <button class="btn ghost" onclick="closeModal()">Annuler</button>
-      <button class="btn primary" style="flex:1;" onclick="saveMainProfile()">💾 Sauvegarder</button>
+      <button class="btn primary" style="flex:1;" onclick="saveMainProfile()">Sauvegarder</button>
     </div>`;
 
   openModal(html);
@@ -1363,7 +1363,7 @@ async function saveMainProfile() {
   if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch(e) {} }
   closeModal();
   renderMainProfile();
-  toast("✅ Profil mis à jour !");
+  toast("Profil mis à jour", "success");
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -2100,7 +2100,7 @@ function renderPassionArchiveBox() {
   });
   if (!archivees.length) { box.hidden = true; box.innerHTML = ""; return; }
 
-  box.innerHTML = '<div class="section-title" style="margin-top:16px;">🗄️ Passions archivées</div>'
+  box.innerHTML = '<div class="section-title" style="margin-top:16px;">Passions archivées</div>'
     + '<p class="section-subtitle">Elles sont enregistrées, rien n\'a été supprimé : publications, activités, bobines et médias restent visibles dans « Toutes ». Tu peux en reprendre une quand tu veux.</p>'
     + '<div class="v8-switch-list">' + _lignesArchiveesHTML(archivees) + "</div>";
   box.hidden = false;
@@ -2181,7 +2181,7 @@ function renderProfilesScreen() {
           + (_restants > 1 ? "s" : "") + " restant" + (_restants > 1 ? "s" : "") + "</span>");
       }
       if (_arch.length) {
-        _bouts.push('<span class="link" data-v8-archivees="1" onclick="openArchivedPassions()">🗄️ Passions archivées ('
+        _bouts.push('<span class="link" data-v8-archivees="1" onclick="openArchivedPassions()">Passions archivées ('
           + _arch.length + ")</span>");
       }
       if (_bouts.length) {
@@ -2391,7 +2391,7 @@ function switchToProfile(id) {
   if (passionsUnifieesActives()) {
     try {
       var _et = _passionEtiquette(p || {});
-      toast("✨ Tu crées maintenant dans " + _et.label);
+      toast("Tu crées maintenant dans " + _et.label);
     } catch (e) {}
   }
   // Le profil actif = identité publique (1 ligne profiles par compte) → on la
@@ -2440,7 +2440,7 @@ function openEditPassionProfile(profileId) {
       <span>Photo de la passion</span>
       <div style="display:flex;gap:10px;align-items:center;">
         <div style="width:56px;height:56px;border-radius:50%;flex-shrink:0;${photo ? "background:url(" + safeUrlAttr(photo) + ") center/cover;" : "background:" + escapeHtml(p.color || "var(--accent)") + ";display:flex;align-items:center;justify-content:center;font-size:24px;"}">${photo ? "" : escapeHtml(p.emoji || "")}</div>
-        <button class="btn ghost" onclick="_editPassionPhotoFromModal('${escapeJsArg(p.id)}')">📷 Changer</button>
+        <button class="btn ghost" onclick="_editPassionPhotoFromModal('${escapeJsArg(p.id)}')">Changer</button>
       </div>
     </div>
 
@@ -2448,7 +2448,7 @@ function openEditPassionProfile(profileId) {
       <span>Photo de fond</span>
       <div style="display:flex;gap:10px;align-items:center;">
         <div style="flex:1;height:60px;border-radius:12px;border:1px solid var(--border);${cover ? "background:url(" + safeUrlAttr(cover) + ") center/cover;" : "background:var(--bg-deep);"}"></div>
-        <button class="btn ghost" style="white-space:nowrap;" onclick="_editPassionCoverFromModal('${escapeJsArg(p.id)}')">📷 Changer</button>
+        <button class="btn ghost" style="white-space:nowrap;" onclick="_editPassionCoverFromModal('${escapeJsArg(p.id)}')">Changer</button>
       </div>
       ${cover ? `<button class="btn ghost" style="margin-top:6px;font-size:12px;padding:8px;color:var(--muted);" onclick="removePassionCover('${escapeJsArg(p.id)}')">Retirer la photo de fond</button>` : ""}
     </div>
@@ -2460,12 +2460,12 @@ function openEditPassionProfile(profileId) {
 
     <div style="display:flex;gap:8px;margin-top:12px;">
       <button class="btn ghost" onclick="closeModal()">Annuler</button>
-      <button class="btn primary" style="flex:1;" onclick="savePassionProfile('${escapeJsArg(p.id)}')">💾 Sauvegarder</button>
+      <button class="btn primary" style="flex:1;" onclick="savePassionProfile('${escapeJsArg(p.id)}')">Sauvegarder</button>
     </div>
 
     <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">
-      ${_v8 ? `<button class="btn ghost" data-v8-archiver-lien="1" onclick="closeModal();setTimeout(function(){confirmArchivePassion('${escapeJsArg(p.id)}');},200);" style="width:100%;font-size:13px;padding:12px;">🗄️ Archiver cette passion</button>`
-            : `<button class="btn ghost" onclick="closeModal();setTimeout(function(){confirmDeleteProfile('${escapeJsArg(p.id)}','${escapeJsArg(passion.label)}');},200);" style="width:100%;font-size:13px;padding:12px;color:#ef4444;">🗑 Supprimer ce profil</button>`}
+      ${_v8 ? `<button class="btn ghost" data-v8-archiver-lien="1" onclick="closeModal();setTimeout(function(){confirmArchivePassion('${escapeJsArg(p.id)}');},200);" style="width:100%;font-size:13px;padding:12px;">Archiver cette passion</button>`
+            : `<button class="btn ghost" onclick="closeModal();setTimeout(function(){confirmDeleteProfile('${escapeJsArg(p.id)}','${escapeJsArg(passion.label)}');},200);" style="width:100%;font-size:13px;padding:12px;color:#ef4444;">Supprimer ce profil</button>`}
     </div>`);
 
   const ta = document.getElementById("editPassionBio");
@@ -2536,7 +2536,7 @@ function savePassionProfile(profileId) {
   if (typeof supaSavePassionState === "function") { try { supaSavePassionState(); } catch(e) {} }
   closeModal();
   renderProfilesScreen();
-  toast("✅ Passion mise à jour !");
+  toast("Passion mise à jour", "success");
 }
 
 function confirmDeleteProfile(profileId, passionLabel) {
@@ -3634,7 +3634,7 @@ $("#videoInput").addEventListener("change", (e) => {
     return;
   }
 
-  toast("⏳ Chargement vidéo...");
+  toast("Chargement vidéo…");
 
   const reader = new FileReader();
   reader.onerror = () => toast("Erreur lors de la lecture de la vidéo.");
@@ -3651,7 +3651,7 @@ $("#videoInput").addEventListener("change", (e) => {
       $("#studioAudio").style.display = "none";
 
       renderVideoPreview();
-      toast("✅ Vidéo chargée !");
+      toast("Vidéo chargée", "success");
     } catch (err) {
       toast("Erreur lors du traitement de la vidéo.");
     }
@@ -3696,9 +3696,9 @@ $("#audioInput").addEventListener("change", (e) => {
     $("#studioVideo").style.display = "none";
     $("#studioPhoto").style.display = "none";
     // Afficher l'audio en lecture
-    $("#recStatus").textContent = "✅ Audio chargé et prêt à publier";
+    $("#recStatus").textContent = "Audio chargé et prêt à publier";
     $("#recPlayback").innerHTML = `<audio controls src="${escapeHtml(audioDataUrl)}" style="width:100%;margin-top:6px;"></audio>`;
-    toast("✅ Audio chargé!");
+    toast("Audio chargé", "success");
   };
   reader.readAsDataURL(f);
 });
@@ -3775,7 +3775,7 @@ async function toggleRecording() {
         $("#studioAudio").style.display = "block";
         $("#recStatus").textContent = "Enregistrement prêt à publier";
         $("#recPlayback").innerHTML = `<audio controls src="${escapeHtml(audioDataUrl)}" style="width:100%;margin-top:6px;"></audio>
-          <button class="btn small ghost" style="margin-top:6px;" onclick="clearAudio()">🗑 Supprimer</button>`;
+          <button class="btn small ghost" style="margin-top:6px;" onclick="clearAudio()">Supprimer</button>`;
       };
       reader.readAsDataURL(blob);
       stream.getTracks().forEach(t => t.stop());
@@ -3783,7 +3783,7 @@ async function toggleRecording() {
     mediaRecorder.start();
     recStartTs = Date.now();
     $("#recBtn").classList.add("recording");
-    $("#recStatus").textContent = "🔴 Enregistrement en cours, tap pour stopper";
+    $("#recStatus").textContent = "Enregistrement en cours, tap pour stopper";
     recTimer = setInterval(() => {
       const s = Math.floor((Date.now() - recStartTs) / 1000);
       const mm = String(Math.floor(s / 60)).padStart(2, "0");
@@ -3867,7 +3867,7 @@ async function publishPost() {
     return;
   }
 
-  toast("⏳ Publication en cours...", "loading");
+  toast("Publication en cours…", "loading");
 
   // ✅ Afficher directement le nom du profil courant!
   const prof = currentProfile();
@@ -3973,17 +3973,17 @@ async function publishPost() {
     syncSuccess = await Promise.race([syncPromise, timeoutPromise]);
 
     if (syncSuccess) {
-      toast("✅ Post publié !", "success");
+      toast("Post publié", "success");
       try { supaTrack("publish_post", { type: post.type, passion: post.passion, is_reel: !!post.isReel }); } catch(_) {}
     } else {
       // ⚠️ « connexion lente » accusait le RÉSEAU pour une erreur de DONNÉES :
       // l'utilisateur réessayait une opération qui ne pouvait jamais aboutir
       // (docs/PASSION_PERSONNALISEE_FK_2026-08-30.md §3).
       var _msgP = (typeof messageEchecPassion === "function") ? messageEchecPassion() : null;
-      toast(_msgP || "⏱️ Post en local (connexion lente)", "warning");
+      toast(_msgP || "Post en local (connexion lente)", "warning");
     }
   } catch (e) {
-    toast("⏱️ Post en local (erreur réseau)", "warning");
+    toast("Post en local (erreur réseau)", "warning");
   } finally {
     _publishInProgress = false; // libère le verrou quoi qu'il arrive
   }
@@ -4034,7 +4034,7 @@ async function publishPost() {
     }
 
     goTo("feed");
-    pushNotification(`✨ Ton post est ${syncSuccess ? "en ligne" : "en attente"}`, "✨");
+    pushNotification(`Ton post est ${syncSuccess ? "en ligne" : "en attente"}`, "✨");
   }
 }
 
@@ -4125,7 +4125,7 @@ function renderExplorer() {
     <div class="trending-tile" onclick="openPassionExplorer('${escapeJsArg(p.id)}')">
       <div class="trending-emoji">${escapeHtml(p.emoji)}</div>
       <div class="trending-name">${escapeHtml(p.label)}</div>
-      <div class="trending-stat">${p.count} post${p.count>1?"s":""} · 🔥</div>
+      <div class="trending-stat">${p.count} post${p.count>1?"s":""}</div>
     </div>
   `).join("");
 

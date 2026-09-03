@@ -455,7 +455,7 @@ function _cmtRelevance(c) {
 // synchronisation Supabase est mise dans une file persistante (localStorage) ;
 // en cas d'échec (offline / erreur / backend pas prêt) on réessaie : à
 // l'événement `online`, au boot, et périodiquement tant qu'il reste des envois.
-// L'UI affiche « ⏳ Envoi… » puis « ⚠️ Non envoyé · Réessayer » (clic = retry).
+// L'UI affiche « ⏳ Envoi… » puis « Non envoyé · Réessayer » (clic = retry).
 // ════════════════════════════════════════════════════════════════════════
 // ⚠️ Préfixe _cmtOb* OBLIGATOIRE : `_outboxLoad`/`_outboxSave` existent déjà pour
 // la file d'attente des MESSAGES (OUTBOX_KEY, plus bas) → collision de noms.
@@ -523,8 +523,8 @@ function _retryComment(threadId, nodeId) {
 // Statut d'envoi affiché dans la méta d'un commentaire/réponse.
 function _cmtStatusHtml(threadId, node) {
   if (!node) return "";
-  if (node._failed) return ' · <span class="cmt-status failed" onclick="event.stopPropagation();return _retryComment(\'' + escapeJsArg(threadId) + '\',\'' + escapeJsArg(node.id) + '\')">⚠️ Non envoyé · Réessayer</span>';
-  if (node._pending) return ' · <span class="cmt-status pending">⏳ Envoi…</span>';
+  if (node._failed) return ' · <span class="cmt-status failed" onclick="event.stopPropagation();return _retryComment(\'' + escapeJsArg(threadId) + '\',\'' + escapeJsArg(node.id) + '\')">Non envoyé · Réessayer</span>';
+  if (node._pending) return ' · <span class="cmt-status pending">Envoi…</span>';
   return "";
 }
 if (!window._cmtObWired) {
@@ -634,7 +634,7 @@ function _renderCommentsList(allComments, postId) {
       <div class="avatar sm" style="background:${avatarBg(_cAv)};cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(authorId)}','${escapeJsArg(cSrc)}')">${avatarInner(_cAv)}</div>
       <button class="comment-menu-btn" title="Options" onclick="event.stopPropagation();return openCommentOptions('${escapeJsArg(postId)}','${escapeJsArg(c.id)}',${cMine ? 1 : 0}, event);"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></button>
       <div class="comment-body">
-        ${c.pinned ? '<div class="cmt-pinned-badge">📌 Épinglé</div>' : ""}
+        ${c.pinned ? '<div class="cmt-pinned-badge">Épinglé</div>' : ""}
         <div class="comment-author" style="cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(authorId)}','${escapeJsArg(cSrc)}')">${escapeHtml(name)}</div>
         ${identitePassionsHTML(_cAv, "ident-passions-sm")}
         <div class="comment-text">${_commentBodyHtml(c.text || c.content || "")}</div>
@@ -1416,13 +1416,13 @@ function _cmtAct(kind) {
   else if (kind === "react") { try { showEmojiPickerForComment(ctx.threadId, ctx.commentId, null); } catch(e){} }
   else if (kind === "gif") { try { showGifPickerForComment(ctx.threadId, ctx.commentId, null); } catch(e){} }
   else if (kind === "copy") {
-    try { navigator.clipboard.writeText(ctx.text); toast("📋 Texte copié"); }
+    try { navigator.clipboard.writeText(ctx.text); toast("Texte copié"); }
     catch(e) { toast("Copie impossible"); }
   }
   else if (kind === "edit") { editCommentEntry(ctx.threadId, ctx.commentId); }
   else if (kind === "pin") { togglePinComment(ctx.threadId, ctx.commentId); }
   else if (kind === "delete") { deleteCommentEntry(ctx.threadId, ctx.commentId); }
-  else if (kind === "hide") { deleteCommentEntry(ctx.threadId, ctx.commentId, true); toast("🔕 Commentaire masqué"); }
+  else if (kind === "hide") { deleteCommentEntry(ctx.threadId, ctx.commentId, true); toast("Commentaire masqué"); }
   else if (kind === "block") { if (typeof blockUser === "function") blockUser(ctx.authorId); }
   else if (kind === "report") { reportCommentEntry(ctx.threadId, ctx.commentId); }
 }
@@ -1441,8 +1441,7 @@ function deleteCommentEntry(threadId, commentId, localOnly) {
   _refreshCommentThreadUI(threadId);
   if (!localOnly) {
     _supaDeleteCommentRow(commentId);
-    if (thread.kind === "post") toast("🗑 Commentaire supprimé");
-    else toast("🗑 Commentaire supprimé");
+    toast("Commentaire supprimé");
   }
 }
 async function _supaDeleteCommentRow(commentId) {
@@ -1496,7 +1495,7 @@ function editCommentEntry(threadId, commentId) {
     if (found.thread && typeof found.thread.save === "function") found.thread.save(); else { try { saveState(); } catch (e) {} }
     _supaUpdateCommentRow(commentId, v);
     _refreshCommentThreadUINow(threadId);
-    toast("✏️ Commentaire modifié");
+    toast("Commentaire modifié");
   };
 }
 async function _supaUpdateCommentRow(commentId, text) {
@@ -1520,13 +1519,13 @@ function togglePinComment(threadId, commentId) {
   if (typeof thread.save === "function") thread.save();
   if (typeof supaCommentInteract === "function") { try { supaCommentInteract(commentId, threadId, "pin", willPin ? "1" : "0"); } catch (e) {} }
   _refreshCommentThreadUINow(threadId);
-  toast(willPin ? "📌 Commentaire épinglé" : "Épingle retirée");
+  toast(willPin ? "Commentaire épinglé" : "Épingle retirée");
 }
 
 // Signale un commentaire (modération) → table reports via supaReport.
 function reportCommentEntry(threadId, commentId) {
   if (typeof supaReport === "function") supaReport("comment", commentId, "");
-  toast("⚠️ Commentaire signalé. Merci, on s'en occupe.");
+  toast("Commentaire signalé. Merci, on s'en occupe.");
 }
 
 // ───────── Feuille de commentaires inline (IRL / CDV sans ouvrir le détail) ─────────
@@ -1543,7 +1542,14 @@ function openCommentSheet(threadId, title) {
   var initial = thread.comments.length ? _renderCommentsList(thread.comments, threadId) : empty;
   openModal(
     '<div class="modal-handle"></div>'
-    + '<div class="modal-title">' + (title || "💬 Commentaires") + '</div>'
+    // ⚠️ `title` VIENT D'UN AUTRE COMPTE (c'est le titre d'une activité, posé par
+    //    la carte de « Rencontrer »), et il atterrissait BRUT dans un innerHTML.
+    //    `escapeJsArg` à l'appel ne suffit pas : il ferme la chaîne JS, pas le
+    //    HTML — le parseur décode l'attribut AVANT que JS ne reçoive l'argument,
+    //    si bien qu'un titre `<img src=x onerror=…>` s'exécutait à l'ouverture de
+    //    la feuille, chez tous ceux qui touchent la pastille de commentaires.
+    //    C'est le contexte d'escapeHtml, et il se pose ICI, à l'affichage.
+    + '<div class="modal-title">' + escapeHtml(title || "Commentaires") + '</div>'
     + '<div class="modal-subtitle">Réponds à cette publication.</div>'
     + '<div id="cmtThreadList" data-thread="' + escapeHtml(threadId) + '" style="max-height:52vh;overflow-y:auto;margin-bottom:12px;">' + initial + '</div>'
     + '<div style="display:flex;gap:6px;align-items:center;">'
@@ -1644,7 +1650,7 @@ function cmtComposerEmoji(inputId, event, submitFn, submitArg, startTab) {
   // feuille de réponse .cmt-sheet-ov (10001) d'où ce panel peut être ouvert.
   panel.style.cssText = "position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:10px;z-index:100002;box-shadow:0 6px 24px rgba(0,0,0,0.28);width:288px;box-sizing:border-box;";
 
-  // ── Onglets segmentés (😊 Emoji | 🎬 GIF) ──
+  // ── Onglets segmentés (Emoji | GIF) ──
   var seg = document.createElement("div");
   seg.style.cssText = "display:flex;gap:4px;background:var(--bg-deep);border-radius:999px;padding:3px;margin-bottom:8px;";
   var tabEmoji = document.createElement("button");
@@ -1653,8 +1659,8 @@ function cmtComposerEmoji(inputId, event, submitFn, submitArg, startTab) {
     b.style.cssText = "flex:1;border:none;border-radius:999px;font-size:12.5px;font-weight:700;padding:7px 10px;cursor:pointer;transition:all .15s;"
       + (active ? "background:var(--accent);color:#fff;box-shadow:0 1px 4px rgba(124,58,237,0.35);" : "background:transparent;color:var(--muted);");
   }
-  tabEmoji.type = "button"; tabEmoji.innerHTML = "😊 Emoji";
-  tabGif.type = "button"; tabGif.innerHTML = "🎬 GIF";
+  tabEmoji.type = "button"; tabEmoji.textContent = "Emoji";
+  tabGif.type = "button"; tabGif.textContent = "GIF";
   seg.appendChild(tabEmoji); seg.appendChild(tabGif);
   panel.appendChild(seg);
 
@@ -1977,8 +1983,8 @@ function emojiReactPanel(event, onEmoji, onGif) {
       b.style.cssText = "flex:1;border:none;border-radius:999px;font-size:12.5px;font-weight:700;padding:7px 10px;cursor:pointer;transition:all .15s;"
         + (active ? "background:var(--accent);color:#fff;box-shadow:0 1px 4px rgba(124,58,237,0.35);" : "background:transparent;color:var(--muted);");
     };
-    tabEmoji.type = "button"; tabEmoji.innerHTML = "😊 Emoji";
-    tabGif.type = "button"; tabGif.innerHTML = "🎬 GIF";
+    tabEmoji.type = "button"; tabEmoji.textContent = "Emoji";
+    tabGif.type = "button"; tabGif.textContent = "GIF";
     seg.appendChild(tabEmoji); seg.appendChild(tabGif);
     panel.appendChild(seg);
     panel.appendChild(content);
@@ -2389,7 +2395,7 @@ function renderMessageFilters() {
 function openNewMessage() {
   var html = `
     <span class="modal-close" onclick="closeModal()">×</span>
-    <div style="font-weight:800;font-size:16px;margin-bottom:14px;">✉️ Nouveau message</div>
+    <div style="font-weight:800;font-size:16px;margin-bottom:14px;">Nouveau message</div>
     <div style="position:relative;">
       <input id="_nmSearch" type="text" class="input" placeholder="Chercher un utilisateur…" autocomplete="off"
         style="width:100%;box-sizing:border-box;padding-right:40px;"
@@ -2586,7 +2592,7 @@ async function startDirectMessage(userId, userName, userEmoji, userAvatar, userP
   // amont. Seul ce sens est décidable ici — `blocks` est en `blocks_select_own`,
   // donc « on m'a bloqué » exige une fonction serveur (#134, constats 2 et 3).
   if (userId && typeof isBlocked === "function" && isBlocked(userId)) {
-    toast("🚫 Compte bloqué — débloque-le pour lui écrire");
+    toast("Compte bloqué — débloque-le pour lui écrire", "warning");
     return;
   }
   // Photo : argument explicite, sinon profil déjà connu en cache
@@ -2971,8 +2977,8 @@ async function openUserProfile(authorId, source) {
     \
     <!-- BOUTONS -->\
     <div id="visitedProfileActions" style="display:flex;gap:8px;justify-content:center;margin:14px 0 4px;">\
-      <button class="btn primary" onclick="closeModal();startDirectMessage(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "Passionné") + '\',\'' + escapeJsArg(user.profileEmoji || "✨") + '\',\'' + escapeJsArg(user.avatar || "#8b5cf6") + '\',\'' + escapeJsArg(user.photoUrl || "") + '\')" style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;">💬 Message</button>\
-      <button class="btn ghost" id="followBtn_' + authorId + '" onclick="toggleFollowUser(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\')" style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;' + (isFollowing ? 'background:var(--accent);color:#fff;border-color:var(--accent);' : '') + '">' + (isFollowing ? '✓ Suivi' : '➕ Suivre') + '</button>\
+      <button class="btn primary" onclick="closeModal();startDirectMessage(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "Passionné") + '\',\'' + escapeJsArg(user.profileEmoji || "✨") + '\',\'' + escapeJsArg(user.avatar || "#8b5cf6") + '\',\'' + escapeJsArg(user.photoUrl || "") + '\')" style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;">Message</button>\
+      <button class="btn ghost" id="followBtn_' + authorId + '" onclick="toggleFollowUser(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\')" style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;' + (isFollowing ? 'background:var(--accent);color:#fff;border-color:var(--accent);' : '') + '">' + (isFollowing ? '✓ Suivi' : 'Suivre') + '</button>\
     </div>\
     </div>\
     \
@@ -3263,7 +3269,7 @@ function toggleFollowUser(userId, userName) {
     supaFollowUser(userId);
   } else {
     state.user.following = state.user.following.filter(id => id !== userId);
-    btn.innerHTML = "➕ Suivre";
+    btn.innerHTML = "Suivre";
     btn.style.background = "";
     btn.style.color = "";
     btn.style.borderColor = "";
@@ -3310,7 +3316,7 @@ function reportUser(userId, name) {
 function reportPost(postId) {
   if (!postId) return;
   if (typeof supaReport === "function") supaReport("post", postId, "");
-  toast("🚩 Post signalé. Merci, on s'en occupe.");
+  toast("Post signalé. Merci, on s'en occupe.");
 }
 
 function _blockedListHtml() {
@@ -3336,7 +3342,7 @@ function renderBlockedList() {
 function openBlockedList() {
   openModal(`
     <div class="modal-handle"></div>
-    <div class="modal-title">🚫 Comptes bloqués</div>
+    <div class="modal-title">Comptes bloqués</div>
     <div class="modal-subtitle">Leurs posts, commentaires et messages sont masqués.</div>
     <div id="blockedListBox" style="max-height:320px;overflow-y:auto;margin-top:8px;">${_blockedListHtml()}</div>
     <button class="btn primary block" style="margin-top:12px;" onclick="closeModal()">OK</button>
@@ -3347,7 +3353,7 @@ function shareUserProfile(userId, name) {
   const rawUrl = location.origin + location.pathname + "#user-" + userId;
   const url = (window.tel && tel.shareLink) ? tel.shareLink(rawUrl, "profile", userId, navigator.share ? "native" : "clipboard") : rawUrl;
   const data = { title: name || "Profil PASSIO", text: "Découvre " + (name || "ce profil") + " sur PASSIO", url };
-  partagerOuCopier(data, "🔗 Lien du profil copié");
+  partagerOuCopier(data, "Lien du profil copié");
 }
 
 function renderMessages() {
@@ -3379,7 +3385,7 @@ function renderMessages() {
   if (archRow) {
     if (_q) archRow.innerHTML = "";
     else if (_showArch) archRow.innerHTML = `<button class="btn ghost block" onclick="_toggleArchivedView()" style="font-size:13px;">← Retour aux conversations</button>`;
-    else if (archivedCount) archRow.innerHTML = `<button class="btn ghost block" onclick="_toggleArchivedView()" style="font-size:13px;">📥 Archivées (${archivedCount})</button>`;
+    else if (archivedCount) archRow.innerHTML = `<button class="btn ghost block" onclick="_toggleArchivedView()" style="font-size:13px;">Archivées (${archivedCount})</button>`;
     else archRow.innerHTML = "";
   }
 
@@ -3449,10 +3455,10 @@ function renderMessages() {
     const u = seedUsersArr.find(x => x.id === c.userId) || { name: "Inconnu", avatar: "#7c3aed", profileEmoji: "🙂" };
     const lastMsg = c.messages && c.messages.length ? c.messages[c.messages.length - 1] : null;
     const _previewContent = lastMsg
-      ? (lastMsg.gif ? "🎞 GIF" : lastMsg.voiceData ? "🎙 Message vocal" : lastMsg.video ? "🎬 Vidéo" : lastMsg.img ? "📷 Photo" : lastMsg.docData ? "📄 " + (lastMsg.fileName || "Fichier") : lastMsg.text || "")
+      ? (lastMsg.gif ? "GIF" : lastMsg.voiceData ? "Message vocal" : lastMsg.video ? "Vidéo" : lastMsg.img ? "Photo" : lastMsg.docData ? "Document · " + (lastMsg.fileName || "Fichier") : _sansEmojiEnveloppe(lastMsg.text) || "")
       : "";
     const previewText = (c.draft && c.id !== window._openedConvId)
-      ? "✏️ Brouillon : " + c.draft
+      ? "Brouillon : " + c.draft
       : (lastMsg
           ? (lastMsg.from === "me" ? "Toi : " : "") + _previewContent
           : "Démarrer la conversation…");
@@ -3526,7 +3532,7 @@ function _toggleArchiveConv(convId) {
   if (typeof closeConvSettings === "function") closeConvSettings();
   try { if (typeof closeConversation === "function") closeConversation(); } catch(e) {}
   try { renderMessages(); } catch(e) {}
-  toast(c.archived ? "📥 Conversation archivée" : "📤 Conversation désarchivée");
+  toast(c.archived ? "Conversation archivée" : "Conversation désarchivée");
 }
 
 // Pointeur fin = souris/trackpad (poste de travail), par opposition au doigt.
@@ -3888,13 +3894,13 @@ function renderConvFpThread(c, displayName) {
         '<div style="display:flex;align-items:center;gap:10px;padding:8px;cursor:pointer;">' +
         '<div style="width:36px;height:36px;border-radius:10px;background:' + docBg + ';border:1px solid ' + docBorder + ';display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">' + fileIcon + '</div>' +
         '<div><div style="font-size:13px;font-weight:700;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + fname + '</div>' +
-        '<div style="font-size:10px;opacity:0.6;">📥 Télécharger</div></div></div></a>';
+        '<div style="font-size:10px;opacity:0.6;">Télécharger</div></div></div></a>';
     } else if (m.location) {
       isMedia = true;
       content = '<a href="' + safeUrlAttr(m.location.url || 'https://maps.google.com') + '" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;">' +
         '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;">' +
         '<div style="font-size:20px;">📍</div>' +
-        '<div><div style="font-size:13px;">📍 Position</div><div style="font-size:11px;opacity:0.7;">' + escapeHtml(m.location.lat + ', ' + m.location.lng) + '</div></div></div></a>';
+        '<div><div style="font-size:13px;">Position</div><div style="font-size:11px;opacity:0.7;">' + escapeHtml(m.location.lat + ', ' + m.location.lng) + '</div></div></div></a>';
     } else if (m.voiceData && !m.isFile) {
       isMedia = true;
       var vDur = m.voiceDuration || 0;
@@ -3953,7 +3959,7 @@ function renderConvFpThread(c, displayName) {
     if (m.replyTo && (m.replyTo.t || m.replyTo.n)) {
       replyHtml = '<div class="conv-reply-quote" onclick="_jumpToMsg(\'' + escapeJsArg((m.replyTo.id||'')) + '\')">' +
         '<span class="conv-reply-name">' + escapeHtml(m.replyTo.n || '') + '</span>' +
-        '<span class="conv-reply-text">' + escapeHtml((m.replyTo.t || '📎 Pièce jointe').slice(0,80)) + '</span></div>';
+        '<span class="conv-reply-text">' + escapeHtml((m.replyTo.t || 'Pièce jointe').slice(0,80)) + '</span></div>';
     }
 
     // Réactions sous la bulle
@@ -4082,12 +4088,31 @@ function _msgById(convId, msgId) {
   if (!c) return null;
   return { c: c, m: (c.messages || []).find(function(x){ return x.id === msgId; }) };
 }
+// Libellés que les enveloppes réseau posent dans `content.text` (app-09, et le
+// transfert plus bas). La clé est le texte tel qu'il arrive, la valeur ce qu'on
+// affiche. Tout ce qui n'y figure pas est rendu tel quel.
+var _LIBELLES_ENVELOPPE = {
+  "🎞 GIF": "GIF",
+  "📷 Photo": "Photo",
+  "🎬 Vidéo": "Vidéo",
+  "🎙 Message vocal": "Message vocal",
+  "📍 Position": "Position",
+  "🗑 Message supprimé": "Message supprimé",
+};
+function _sansEmojiEnveloppe(t) {
+  if (!t) return t;
+  if (_LIBELLES_ENVELOPPE[t]) return _LIBELLES_ENVELOPPE[t];
+  if (t.indexOf("📄 ") === 0) return "Document · " + t.slice(2);
+  if (t.indexOf("📎 ") === 0) return t.slice(2);
+  return t;
+}
+
 function _msgPreviewText(m) {
   if (!m) return "";
-  if (m.text && !/^\{/.test(m.text)) return m.text;
-  if (m.gif) return "🎞 GIF"; if (m.img) return "📷 Photo"; if (m.video) return "🎬 Vidéo";
-  if (m.voiceData) return "🎙 Message vocal"; if (m.fileUrl || m.docData) return "📄 " + (m.fileName || "Fichier");
-  if (m.location) return "📍 Position"; return m.text || "Message";
+  if (m.text && !/^\{/.test(m.text)) return _sansEmojiEnveloppe(m.text);
+  if (m.gif) return "GIF"; if (m.img) return "Photo"; if (m.video) return "Vidéo";
+  if (m.voiceData) return "Message vocal"; if (m.fileUrl || m.docData) return "Document · " + (m.fileName || "Fichier");
+  if (m.location) return "Position"; return m.text || "Message";
 }
 
 function _openMsgActions(convId, msgId) {
@@ -4116,7 +4141,7 @@ function _reactAndClose(convId, msgId, emoji) { closeModal(); _toggleReaction(co
 function _copyMsg(convId, msgId) {
   var r = _msgById(convId, msgId); if (!r || !r.m) return;
   var t = r.m.text || "";
-  try { navigator.clipboard.writeText(t); toast("📋 Copié"); } catch(e) { toast("Copie impossible"); }
+  try { navigator.clipboard.writeText(t); toast("Copié"); } catch(e) { toast("Copie impossible"); }
   closeModal();
 }
 
@@ -4138,7 +4163,7 @@ function _renderReplyBar() {
   if (!toolbar) return;
   if (!bar) { bar = document.createElement("div"); bar.id = "convReplyBar"; toolbar.parentNode.insertBefore(bar, toolbar); }
   bar.innerHTML = '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--bg-soft);border-left:3px solid var(--accent);border-radius:8px;margin:0 8px 6px;">' +
-    '<div style="flex:1;min-width:0;"><div style="font-size:11px;font-weight:800;color:var(--accent);">↩️ Réponse à ' + escapeHtml(rt.n) + '</div>' +
+    '<div style="flex:1;min-width:0;"><div style="font-size:11px;font-weight:800;color:var(--accent);">Réponse à ' + escapeHtml(rt.n) + '</div>' +
     '<div style="font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(rt.t) + '</div></div>' +
     '<span onclick="_cancelReply()" style="font-size:18px;cursor:pointer;color:var(--muted);padding:0 4px;">✕</span></div>';
 }
@@ -4188,7 +4213,7 @@ function _forwardPick(convId, msgId) {
     return '<div class="csetting-item" onclick="_forwardTo(\'' + escapeJsArg(c.id) + '\')"><div class="csetting-icon">' + (c.isGroup?'👥':'💬') + '</div>' +
       '<div class="csetting-label">' + escapeHtml(name) + '</div></div>';
   }).join("");
-  openModal('<div class="modal-handle"></div><div class="modal-title">↪️ Transférer vers…</div>' +
+  openModal('<div class="modal-handle"></div><div class="modal-title">Transférer vers…</div>' +
     '<div style="max-height:340px;overflow-y:auto;margin-top:8px;">' + (rows || '<div style="padding:20px;text-align:center;color:var(--muted);">Aucune conversation</div>') + '</div>');
 }
 
@@ -4234,7 +4259,7 @@ function _forwardTo(targetConvId) {
     }
   }
   try { renderMessages(); } catch(e) {}
-  toast("↪️ Transféré");
+  toast("Transféré");
 }
 
 // Décode le content JSON des messages média Supabase (type gif/media/audio/doc/location,
@@ -4534,7 +4559,7 @@ function _outboxRemove(msgId) { _outboxSave(_outboxLoad().filter(function(x){ re
 // HTML de l'indicateur d'envoi (🕓 en cours / ⚠️ échec cliquable / rien si envoyé).
 function _msgStatusIndHtml(convId, msgId, status) {
   if (status === "sending") return ' <span style="opacity:0.55;">🕓</span>';
-  if (status === "failed") return ' <span style="color:#ef4444;cursor:pointer;font-weight:700;" onclick="_retryMsg(\'' + escapeJsArg(convId) + '\',\'' + escapeJsArg(msgId) + '\')">⚠️ réessayer</span>';
+  if (status === "failed") return ' <span style="color:#ef4444;cursor:pointer;font-weight:700;" onclick="_retryMsg(\'' + escapeJsArg(convId) + '\',\'' + escapeJsArg(msgId) + '\')">réessayer</span>';
   return '';
 }
 

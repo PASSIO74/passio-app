@@ -96,9 +96,9 @@ function sendAIQuery(forceQuery) {
     var cur = document.querySelector("#aiResultContent .ai-result-query");
     if (cur && cur.textContent !== '"' + query + '"') return;
     if (remote) {
-      _aiRenderResult(query, _aiTextToHtml(remote), "✨ Assistant PASSIO");
+      _aiRenderResult(query, _aiTextToHtml(remote), "Assistant PASSIO");
     } else {
-      _aiRenderResult(query, aiGenerateResponse(query), "💡 Suggestions PASSIO");
+      _aiRenderResult(query, aiGenerateResponse(query), "Suggestions PASSIO");
     }
   });
 }
@@ -182,7 +182,7 @@ function filterExplore() {
 
     // Passions
     if (fp.length) {
-      html += "<div style='padding:8px 14px 4px;font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;'>🔥 Passions</div>";
+      html += "<div style='padding:8px 14px 4px;font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;'>Passions</div>";
       fp.forEach(function(p) {
         html += "<div onclick=\"openPassionExplorer('" + escapeJsArg(p.id) + "');document.getElementById('exploreSearchResults').style.display='none';\" style='display:flex;align-items:center;gap:12px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);'>" +
           "<div style='width:38px;height:38px;border-radius:12px;background:#ede9fe;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;'>" + escapeHtml(p.emoji) + "</div>" +
@@ -194,7 +194,7 @@ function filterExplore() {
 
     // Utilisateurs
     if (fu.length) {
-      html += "<div style='padding:8px 14px 4px;font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;'>👤 Utilisateurs</div>";
+      html += "<div style='padding:8px 14px 4px;font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;'>Utilisateurs</div>";
       fu.forEach(function(u) {
         // §2 : la MÊME ligne d'identité que partout ailleurs. Deux écrans de
         // recherche portaient chacun leur variante de pastilles ; ils
@@ -359,10 +359,10 @@ function _eventEndAt(ev) {
 // sans être sûrs. Trois états honnêtes (going / maybe / declined) + une file
 // d'attente quand c'est complet (cf. Partiful, Luma, Eventbrite).
 const RSVP_LABELS = {
-  going:    { label: "Je viens",       short: "✓ Je viens",   emoji: "✅" },
-  maybe:    { label: "Peut-être",      short: "🤔 Peut-être", emoji: "🤔" },
-  declined: { label: "Je ne peux pas", short: "Je ne peux pas", emoji: "🙁" },
-  waitlist: { label: "Liste d'attente", short: "⏳ En attente", emoji: "⏳" },
+  going:    { label: "Je viens",        short: "✓ Je viens" },
+  maybe:    { label: "Peut-être",       short: "Peut-être" },
+  declined: { label: "Je ne peux pas",  short: "Je ne peux pas" },
+  waitlist: { label: "Liste d'attente", short: "En attente" },
 };
 
 // Mon état pour un événement. `state.user.eventRsvp` est la mémoire locale ;
@@ -1040,7 +1040,7 @@ function openIrlCitySelector() {
 
   let html = `
     <div class="modal-handle"></div>
-    <div class="modal-title">🔍 Chercher une ville</div>
+    <div class="modal-title">Chercher une ville</div>
     <input type="text" class="input" id="irlCitySearchInput" placeholder="Tape le nom d'une ville..." style="margin-bottom:12px;" />
     <div id="irlCitiesGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;max-height:300px;overflow-y:auto;margin-bottom:12px;">
   `;
@@ -1056,7 +1056,7 @@ function openIrlCitySelector() {
     </div>
     <div style="display:flex;gap:8px;">
       <button class="btn secondary block" onclick="closeModal()">Annuler</button>
-      <button class="btn primary block" onclick="useMyPositionForIrl()">📍 Utiliser ma position</button>
+      <button class="btn primary block" onclick="useMyPositionForIrl()">Utiliser ma position</button>
     </div>
   `;
 
@@ -1110,7 +1110,7 @@ function selectIrlGeoCity(name, lat, lng) {
   updateIrlCityTitle();
   closeModal();
   renderIRL();
-  toast("📍 " + name);
+  toast("Autour de " + name);
 }
 
 // Sélectionner une ville spécifique
@@ -1171,7 +1171,7 @@ function initIrlMap() {
       // carte ne peut pas s'afficher — la LISTE reste parfaitement utilisable,
       // il faut juste le dire au lieu de laisser un cadre vide.
       .catch(function(){
-        el.innerHTML = '<div class="irl-map-fallback">🗺 La carte n\'est pas disponible sur cet appareil.<br/>'
+        el.innerHTML = '<div class="irl-map-fallback">La carte n\'est pas disponible sur cet appareil.<br/>'
           + 'La liste des événements ci-dessous fonctionne normalement.</div>';
       });
     return;
@@ -1197,7 +1197,7 @@ function resetToUserLocation() {
   updateIrlCityTitle();
   if (irlMap) irlMap.closePopup();
   renderIRL();
-  toast("📍 Position actuelle");
+  toast("Position actuelle");
 }
 
 // Rechercher les suggestions d'adresses en temps réel
@@ -1264,7 +1264,7 @@ function selectIrlAddressSuggestion(name, lat, lng) {
   // Re-render
   renderIRL();
 
-  toast(`📍 ${name}`);
+  toast("Autour de " + name);
 }
 
 // Géocoder une adresse et mettre à jour la position
@@ -1294,7 +1294,7 @@ async function geocodeIrlAddress() {
 
   if (irlMap) irlMap.closePopup();
   renderIRL();
-  toast(`📍 ${irlSelectedCity.name}`);
+  toast("Autour de " + irlSelectedCity.name);
 }
 
 function updateIrlMapMarkers() {
@@ -1337,7 +1337,6 @@ function updateIrlMapMarkers() {
     const userMarker = L.marker([refLoc.lat, refLoc.lng], { icon: userIcon }).addTo(irlMarkersLayer);
     userMarker.bindPopup(`
       <div style="min-width:240px;padding:10px;">
-        <div style="font-size:20px;text-align:center;margin-bottom:8px;">📍</div>
         <div style="font-weight:600;text-align:center;margin-bottom:8px;font-size:13px;line-height:1.4;">${locLabel}</div>
         <button onclick="resetToUserLocation()" style="width:100%;padding:4px 8px;border:none;background:transparent;color:#7c3aed;font-size:11px;text-decoration:underline;cursor:pointer;margin-bottom:12px;">
           ← Ma position actuelle
@@ -1347,7 +1346,7 @@ function updateIrlMapMarkers() {
           <div id="irlAddressSuggestions" style="margin-top:6px;max-height:200px;overflow-y:auto;border:1px solid #eee;border-radius:6px;background:#fff;display:none;"></div>
         </div>
         <button onclick="geocodeIrlAddress()" style="width:100%;padding:8px;border-radius:6px;border:none;background:#7c3aed;color:#fff;font-size:12px;font-weight:600;cursor:pointer;">
-          🔍 Chercher
+          Chercher
         </button>
       </div>
     `);
@@ -1912,7 +1911,7 @@ function _irlReferenceLabel() {
 function openIrlCalendar() {
   openModal('\
     <div class="modal-handle"></div>\
-    <div class="modal-title">🗓 Choisir une date</div>\
+    <div class="modal-title">Choisir une date</div>\
     <label class="field"><span>Date de début</span>\
       <input type="date" class="input" id="irlCalStart" value="' + new Date().toISOString().split("T")[0] + '"/>\
     </label>\
@@ -1926,7 +1925,7 @@ function openIrlCalendar() {
 function applyIrlCalendar() {
   var start = document.getElementById("irlCalStart")?.value;
   var end = document.getElementById("irlCalEnd")?.value;
-  if (!start) { toast("Choisis une date"); return; }
+  if (!start) { toast("Choisis une date", "error"); return; }
 
   // Ajouter "custom" aux filtres de date
   if (!irlDateFilters) irlDateFilters = new Set();
@@ -2204,7 +2203,7 @@ function clearAllIrlFilters() {
   var searchEl = document.getElementById("irlCitySearch");
   if (searchEl) searchEl.value = "";
   var timeBtn = document.getElementById("irlTimeFilterBtn");
-  if (timeBtn) timeBtn.textContent = "🕐 Horaire";
+  if (timeBtn) timeBtn.textContent = "Horaire";
   _syncIrlDistanceUI();
   _syncIrlTimeUI();
   renderIRL();
@@ -2270,6 +2269,9 @@ function irlToolsSections() {
   var hasMine = !!(typeof irlFilters !== "undefined" && irlFilters && irlFilters.has("mine"));
   var hasJoined = !!(typeof irlFilters !== "undefined" && irlFilters && irlFilters.has("joined"));
   var funnel = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8v6l-4-2v-4z"/></svg>';
+  var pin = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.6"/></svg>';
+  var pers = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>';
+  var coche = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M8.4 12.3l2.6 2.6 4.6-5"/></svg>';
   // ⚠️ Chaque section porte un `id` STABLE. C'est un contrat, pas un ornement :
   // le lot UI-4A5 affiche ces mêmes sections en ligne sous les onglets de
   // « Rencontrer » et doit en RETIRER une (« affiner »), dont il rend les
@@ -2281,7 +2283,7 @@ function irlToolsSections() {
     title: "Filtres",
     sections: [
       { id: "ville", title: "Autour de moi", items: [
-        { icon: "🌍", label: "Choisir une ville", sub: city, onClick: "closeCtxTools();openIrlCitySelector()" }
+        { icon: pin, label: "Choisir une ville", sub: city, onClick: "closeCtxTools();openIrlCitySelector()" }
       ] },
       // ⚠️ Le panneau s'intitule désormais « Filtres » (§1 du lot UI-7) : une
       // section qui porterait le même mot ne dirait plus rien. Elle nomme donc
@@ -2292,8 +2294,8 @@ function irlToolsSections() {
           badge: advCount || "", onClick: "closeCtxTools();openIrlFiltersPanel()" }
       ] },
       { id: "miens", title: "Mes événements", items: [
-        { icon: "👤", label: "Mes événements", data: { irlfilter: "mine" }, active: hasMine },
-        { icon: "✅", label: "Mes inscriptions", data: { irlfilter: "joined" }, active: hasJoined }
+        { icon: pers, label: "Mes événements", data: { irlfilter: "mine" }, active: hasMine },
+        { icon: coche, label: "Mes inscriptions", data: { irlfilter: "joined" }, active: hasJoined }
       ] }
     ]
   };
@@ -2467,8 +2469,8 @@ function renderIRL() {
     const over = _eventIsOver(e);
     const live = _eventIsLive(e);
     const daysLeft = Math.max(0, Math.ceil((e.date - Date.now()) / 86400000));
-    const urgency = cancelled ? "" : live ? "🟣 En cours" : over ? "" :
-      daysLeft === 0 ? "🔴 Aujourd'hui" : daysLeft === 1 ? "🟠 Demain" : daysLeft <= 7 ? "🟢 Dans " + daysLeft + "j" : "";
+    const urgency = cancelled ? "" : live ? "En cours" : over ? "" :
+      daysLeft === 0 ? "Aujourd'hui" : daysLeft === 1 ? "Demain" : daysLeft <= 7 ? "Dans " + daysLeft + "j" : "";
     const atts = (e.attendees || []).slice(0, 4);
     const attAvatars = atts.map(aid => {
       const u = userById(aid) || { avatar: "#64748b", profileEmoji: "?" };
@@ -2489,7 +2491,7 @@ function renderIRL() {
     const myState = myRsvp(e.id);
     const spotsTag = e.maxAttendees
       ? (isFull
-          ? `<span class="pill" style="padding:2px 7px;font-size:10px;color:#ef4444;border-color:rgba(239,68,68,0.4);">⚠️ Complet${waitCount ? " · " + waitCount + " en attente" : ""}</span>`
+          ? `<span class="pill" style="padding:2px 7px;font-size:10px;color:#ef4444;border-color:rgba(239,68,68,0.4);">Complet${waitCount ? " · " + waitCount + " en attente" : ""}</span>`
           : `<span style="font-size:10px;color:var(--muted);">${attCount}/${e.maxAttendees} places</span>`)
       : "";
     // Le CTA raconte l'état réel : annulé > terminé > mon RSVP > complet > rejoindre.
@@ -2499,13 +2501,13 @@ function renderIRL() {
         ? `<button class="btn small ghost" onclick="event.stopPropagation();openEventDetails('${escapeJsArg(e.id)}')">Revoir</button>`
         : myState
           ? `<button class="btn small ghost" onclick="event.stopPropagation();openEventRsvpSheet('${escapeJsArg(e.id)}')">${RSVP_LABELS[myState].short}</button>`
-          : `<button class="btn small primary" onclick="event.stopPropagation();openEventRsvpSheet('${escapeJsArg(e.id)}')">${isFull ? "⏳ Liste d'attente" : "+ Rejoindre"}</button>`;
+          : `<button class="btn small primary" onclick="event.stopPropagation();openEventRsvpSheet('${escapeJsArg(e.id)}')">${isFull ? "Liste d'attente" : "+ Rejoindre"}</button>`;
     return `<div class="event-card${cancelled ? " is-cancelled" : ""}${over ? " is-past" : ""}" role="button" tabindex="0"
       data-evid="${escapeHtml(e.id)}"
       data-city="${escapeHtml((e.city||'').toLowerCase())}" data-title="${escapeHtml((e.title||'').toLowerCase())}"
       onclick="openEventDetails('${escapeJsArg(e.id)}')"
       onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openEventDetails('${escapeJsArg(e.id)}');}">
-      ${cancelled ? '<div class="event-card-banner cancelled">🚫 Événement annulé par l\'organisateur</div>' : live ? '<div class="event-card-banner live">🟣 C\'est maintenant</div>' : ""}
+      ${cancelled ? '<div class="event-card-banner cancelled">Événement annulé par l\'organisateur</div>' : live ? '<div class="event-card-banner live">C\'est maintenant</div>' : ""}
       <div style="display:flex;gap:10px;">
         <div class="event-date-block">
           <div class="event-date-day">${d.day}</div>
@@ -2514,7 +2516,7 @@ function renderIRL() {
         </div>
         <div style="flex:1;min-width:0;">
           <div class="event-title">${escapeHtml(e.title)}</div>
-          <div class="event-meta">${passion.emoji} ${escapeHtml(passion.label)} · 📍 ${escapeHtml(e.city || "")}${venueStr}${distStr}${urgency ? ' · <span style="font-weight:700;">' + urgency + '</span>' : ""}</div>
+          <div class="event-meta">${passion.emoji} ${escapeHtml(passion.label)} · ${escapeHtml(e.city || "")}${venueStr}${distStr}${urgency ? ' · <span style="font-weight:700;">' + urgency + '</span>' : ""}</div>
           <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;">${priceTag}${typeTag}${spotsTag}</div>
         </div>
         ${_isMyEvent(e) ? '<span class="pill active" style="height:fit-content;flex-shrink:0;">Organisé</span>' : ""}
@@ -2522,12 +2524,12 @@ function renderIRL() {
       <div style="font-size:12px;color:var(--text-dim);margin-top:8px;line-height:1.5;">${escapeHtml((e.desc || "").slice(0, 120))}${(e.desc||"").length > 120 ? "…" : ""}</div>
       ${_eventSocialProofHtml(e)}
       <div class="event-footer">
-        <div class="attendees">${attAvatars}<span class="pill" style="margin-left:6px;padding:3px 8px;">${attCount} inscrit${attCount > 1 ? "s" : ""}${maybeCount ? " · " + maybeCount + " 🤔" : ""}</span></div>
+        <div class="attendees">${attAvatars}<span class="pill" style="margin-left:6px;padding:3px 8px;">${attCount} inscrit${attCount > 1 ? "s" : ""}${maybeCount ? " · " + maybeCount + " peut-être" : ""}</span></div>
         ${cta}
       </div>
       <div class="post-actions" onclick="event.stopPropagation()">
         <span class="post-action ${evLiked ? "liked" : ""}" data-evlike="${escapeHtml(e.id)}" onclick="event.stopPropagation();toggleEventLike('${escapeJsArg(e.id)}', this)">${evLiked ? "❤️" : "🤍"} ${evLikeCount}</span>
-        <span class="post-action" data-evc="${escapeHtml(e.id)}" onclick="event.stopPropagation();openCommentSheet('${escapeJsArg(e.id)}','💬 ${escapeJsArg(String(e.title||'').slice(0,40))}')">💬 ${_eventCmtBadge(e.id)}</span>
+        <span class="post-action" data-evc="${escapeHtml(e.id)}" onclick="event.stopPropagation();openCommentSheet('${escapeJsArg(e.id)}','${escapeJsArg(String(e.title||'').slice(0,40))}')">💬 ${_eventCmtBadge(e.id)}</span>
         <span class="post-action" onclick="return showEmojiPickerForEvent('${escapeJsArg(e.id)}', event);" title="Réagir">😊</span>
         <span class="post-action" onclick="event.stopPropagation();shareEvent('${escapeJsArg(e.id)}')" title="Partager" aria-label="Partager">${shareIconSvg(18)}</span>
         <span class="event-react-chip-holder" data-evchipholder="${escapeHtml(e.id)}" style="margin-left:auto;">${_evReactChipHtml(e.id)}</span>
@@ -2828,7 +2830,7 @@ function _evCommentsInlineHtml(eventId) {
   if (!arr.length) return "";
   window._evCommentsHidden = window._evCommentsHidden || {};
   if (window._evCommentsHidden[eventId]) {
-    return '<span class="ev-cmt-toggle" onclick="event.stopPropagation();return toggleEventComments(\'' + escapeJsArg(eventId) + '\');">💬 Afficher les ' + arr.length + ' commentaire' + (arr.length > 1 ? "s" : "") + '</span>';
+    return '<span class="ev-cmt-toggle" onclick="event.stopPropagation();return toggleEventComments(\'' + escapeJsArg(eventId) + '\');">Afficher les ' + arr.length + ' commentaire' + (arr.length > 1 ? "s" : "") + '</span>';
   }
   var sorted = arr.slice().sort(function(a, b){ return (b.at || b.createdAt || 0) - (a.at || a.createdAt || 0); });
   window._evCommentsExpanded = window._evCommentsExpanded || {};
@@ -2937,7 +2939,7 @@ async function setEventRsvp(id, rsvp) {
   try {
     if (window.PassioFirstRun && !PassioFirstRun.participationPossible(ev)) return;
   } catch (e) {}
-  if (_eventIsCancelled(ev) && rsvp) { toast("Cet événement a été annulé"); return; }
+  if (_eventIsCancelled(ev) && rsvp) { toast("Cet événement a été annulé", "warning"); return; }
   const meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
   const prev = myRsvp(id);
   if (prev === rsvp) return;
@@ -2945,7 +2947,7 @@ async function setEventRsvp(id, rsvp) {
   // Complet : on ne peut pas passer « je viens » de force, on entre en file.
   if (rsvp === "going" && _eventIsFull(ev) && prev !== "going") {
     rsvp = "waitlist";
-    toast("⏳ C'est complet — tu es sur liste d'attente");
+    toast("C'est complet — tu es sur liste d'attente");
   }
 
   const strip = (arr) => (arr || []).filter(x => x !== meId && x !== "me");
@@ -2971,9 +2973,9 @@ async function setEventRsvp(id, rsvp) {
   }
 
   if (rsvp === "going" && prev !== "going") {
-    pushNotification(`🤝 Tu rejoins <b>${escapeHtml(ev.title)}</b>`, "🤝");
+    pushNotification(`Tu rejoins <b>${escapeHtml(ev.title)}</b>`, "🤝");
   } else {
-    toast(RSVP_LABELS[rsvp] ? RSVP_LABELS[rsvp].emoji + " " + RSVP_LABELS[rsvp].label : "Enregistré");
+    toast(RSVP_LABELS[rsvp] ? RSVP_LABELS[rsvp].label : "Enregistré");
   }
 
   // Point d'AUTORITÉ de la participation : c'est le verdict de cette écriture
@@ -3087,8 +3089,8 @@ async function openEventChat(id) {
 function checkInEvent(id) {
   const ev = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
   if (!ev) return;
-  if (_hasCheckedIn(ev)) { toast("✅ Tu as déjà pointé ton arrivée"); return; }
-  if (!_canCheckIn(ev)) { toast("⏰ Le pointage ouvre 1 h avant le début"); return; }
+  if (_hasCheckedIn(ev)) { toast("Tu as déjà pointé ton arrivée"); return; }
+  if (!_canCheckIn(ev)) { toast("Le pointage ouvre 1 h avant le début", "warning"); return; }
   const loc = eventLatLng(ev);
   const done = () => {
     state.user.checkedInEvents = state.user.checkedInEvents || [];
@@ -3096,14 +3098,14 @@ function checkInEvent(id) {
     if (myRsvp(id) !== "going") _setMyRsvpLocal(id, "going");
     saveState();
     if (window._supaReal && typeof supaCheckInEvent === "function") supaCheckInEvent(id);
-    toast("🎉 Arrivée confirmée — bon moment !");
+    toast("Arrivée confirmée — bon moment !", "success");
     _refreshEventDetailIfOpen(id);
     // Pointer son arrivée est l'action qui débloque le plus de badges (sorties,
     // fiabilité, villes) : c'est le bon moment pour les annoncer.
     if (typeof _announceNewBadges === "function") _announceNewBadges();
   };
   if (!loc || !navigator.geolocation) { done(); return; }
-  toast("📍 Vérification de ta position…");
+  toast("Vérification de ta position…");
   navigator.geolocation.getCurrentPosition(
     (pos) => {
       const dKm = calculateDistance(pos.coords.latitude, pos.coords.longitude, loc[0], loc[1]);
@@ -3132,20 +3134,20 @@ function _refreshEventDetailIfOpen(id) {
 function openEventRsvpSheet(id) {
   const ev = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
   if (!ev) return;
-  if (_eventIsCancelled(ev)) { toast("Cet événement a été annulé"); return; }
+  if (_eventIsCancelled(ev)) { toast("Cet événement a été annulé", "warning"); return; }
   const cur = myRsvp(id);
   const full = _eventIsFull(ev);
   const spots = _eventSpotsLeft(ev);
   const opt = (key, desc) => `
     <button class="btn ${cur === key ? "primary" : "ghost"} block" style="margin-bottom:8px;text-align:left;"
       onclick="closeModal();setEventRsvp('${escapeJsArg(id)}', '${escapeJsArg(key)}')">
-      ${RSVP_LABELS[key].emoji} <b>${RSVP_LABELS[key].label}</b>
+      <b>${RSVP_LABELS[key].label}</b>
       <span style="display:block;font-size:11px;opacity:.75;font-weight:500;">${desc}</span>
     </button>`;
   openModal(`
     <div class="modal-handle"></div>
     <div class="modal-title">${escapeHtml(ev.title || "Événement")}</div>
-    <div class="modal-subtitle">${spots === null ? "Places illimitées" : full ? "⚠️ Complet — file d'attente ouverte" : spots + " place" + (spots > 1 ? "s" : "") + " restante" + (spots > 1 ? "s" : "")}</div>
+    <div class="modal-subtitle">${spots === null ? "Places illimitées" : full ? "Complet — file d'attente ouverte" : spots + " place" + (spots > 1 ? "s" : "") + " restante" + (spots > 1 ? "s" : "")}</div>
     <div style="margin-top:14px;">
       ${full && cur !== "going"
         ? opt("waitlist", "Tu seras inscrit·e automatiquement si une place se libère")
@@ -3174,8 +3176,8 @@ function _patchEventCardJoin(id) {
   footer.innerHTML = `<div class="attendees">${atts.slice(0, 4).map(aid => {
       const u = userById(aid) || { avatar: "#64748b", profileEmoji: "?" };
       return `<div class="avatar sm" style="background:${avatarBg(u)};cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${escapeJsArg(aid)}')">${avatarInner(u)}</div>`;
-    }).join("")}<span class="pill" style="margin-left:6px;padding:3px 8px;">${atts.length} inscrit${atts.length > 1 ? "s" : ""}${maybeCount ? " · " + maybeCount + " 🤔" : ""}</span></div>
-    <button class="btn small ${myState ? "ghost" : "primary"}" onclick="event.stopPropagation();openEventRsvpSheet('${escapeJsArg(id)}')">${myState ? RSVP_LABELS[myState].short : full ? "⏳ Liste d'attente" : "+ Rejoindre"}</button>`;
+    }).join("")}<span class="pill" style="margin-left:6px;padding:3px 8px;">${atts.length} inscrit${atts.length > 1 ? "s" : ""}${maybeCount ? " · " + maybeCount + " peut-être" : ""}</span></div>
+    <button class="btn small ${myState ? "ghost" : "primary"}" onclick="event.stopPropagation();openEventRsvpSheet('${escapeJsArg(id)}')">${myState ? RSVP_LABELS[myState].short : full ? "Liste d'attente" : "+ Rejoindre"}</button>`;
 }
 
 // Le <select> à 10 options a été remplacé par le curseur `#irlDistanceRange`
@@ -3274,7 +3276,7 @@ function applyIrlTimeRange(silent) {
   const endSelect = document.getElementById("irlEndHour");
 
   if (!startSelect || !endSelect) {
-    if (!silent) toast("❌ Erreur: sélects non trouvés");
+    if (!silent) toast("Erreur: sélects non trouvés", "error");
     return;
   }
 
@@ -3291,7 +3293,7 @@ function applyIrlTimeRange(silent) {
 
   // Mettre à jour le bouton
   const btn = document.getElementById("irlTimeFilterBtn");
-  if (btn) btn.textContent = "🕐 " + irlTimeFilter;
+  if (btn) btn.textContent = irlTimeFilter;
 
   if (!silent) toast("✓ Filtre appliqué: " + irlTimeFilter);
 
@@ -3306,7 +3308,7 @@ function applyIrlTimeRange(silent) {
 function clearIrlTimeFilter() {
   irlTimeFilter = "";
   const btn = document.getElementById("irlTimeFilterBtn");
-  if (btn) btn.textContent = "🕐 Heure";
+  if (btn) btn.textContent = "Heure";
   renderIRL();
   _syncIrlTimeUI();
 }
@@ -3356,7 +3358,7 @@ function openEventDetails(id) {
   const joined = (state.user.joinedEvents || []).includes(id);
   const daysLeft = Math.max(0, Math.ceil((ev.date - Date.now()) / 86400000));
   const urgencyClass = daysLeft === 0 ? "today" : daysLeft <= 3 ? "soon" : "normal";
-  const urgencyText = daysLeft === 0 ? "🔴 Aujourd'hui !" : daysLeft === 1 ? "🟠 Demain" : daysLeft <= 7 ? `🟢 Dans ${daysLeft} jours` : `📅 Dans ${daysLeft} jours`;
+  const urgencyText = daysLeft === 0 ? "Aujourd'hui !" : daysLeft === 1 ? "Demain" : `Dans ${daysLeft} jours`;
 
   // --- Hero ---
   const coverEl = document.getElementById("eventDetailCover");
@@ -3385,9 +3387,8 @@ function openEventDetails(id) {
   }
 
   // --- Info helpers ---
-  const infoRow = (icon, label, value, extra) => `
+  const infoRow = (label, value, extra) => `
     <div class="event-detail-info-row">
-      <div class="event-detail-info-icon">${icon}</div>
       <div style="flex:1;min-width:0;">
         <div class="event-detail-info-label">${label}</div>
         <div class="event-detail-info-value">${value}</div>
@@ -3403,7 +3404,7 @@ function openEventDetails(id) {
   const maxStr = ev.maxAttendees ? ` / ${ev.maxAttendees} max` : "";
   const spotsLeft = ev.maxAttendees ? ev.maxAttendees - atts.length : null;
   const spotsHtml = spotsLeft !== null
-    ? `<span style="font-size:11px;color:${spotsLeft <= 3 ? "#ef4444" : "var(--muted)"};">${spotsLeft <= 0 ? "⚠️ Complet" : spotsLeft <= 3 ? `⚡ Plus que ${spotsLeft} place${spotsLeft > 1 ? "s" : ""}` : `${spotsLeft} places disponibles`}</span>`
+    ? `<span style="font-size:11px;color:${spotsLeft <= 3 ? "#ef4444" : "var(--muted)"};">${spotsLeft <= 0 ? "Complet" : spotsLeft <= 3 ? `Plus que ${spotsLeft} place${spotsLeft > 1 ? "s" : ""}` : `${spotsLeft} places disponibles`}</span>`
     : "";
 
   // Trombinoscope réutilisable (venants / peut-être / liste d'attente). Une pastille
@@ -3420,19 +3421,19 @@ function openEventDetails(id) {
   const participantsHtml = _faces(atts, 12);
 
   const addressFull = [ev.address, ev.postalCode, ev.city].filter(Boolean).join(", ");
-  const mapsLink = addressFull ? `<a href="https://maps.google.com/?q=${encodeURIComponent(addressFull)}" target="_blank" class="event-detail-info-link">📍 Voir sur Google Maps →</a>` : "";
+  const mapsLink = addressFull ? `<a href="https://maps.google.com/?q=${encodeURIComponent(addressFull)}" target="_blank" class="event-detail-info-link">Voir sur Google Maps →</a>` : "";
   const priceStr = fmtEventPrice(ev.price);
 
   // Build info rows (only show filled fields)
   const infoRows = [
-    infoRow("📅", "Date & heure", `${dateStr} à ${timeStr}`),
-    addressFull ? infoRow("📍", "Adresse", escapeHtml(addressFull), mapsLink) : (ev.city ? infoRow("🏙️", "Ville", escapeHtml(ev.city)) : ""),
-    ev.venue ? infoRow("🏠", "Lieu", escapeHtml(ev.venue)) : "",
-    infoRow("💶", "Prix", priceStr),
-    ev.contact ? infoRow("📞", "Contact", `<a href="tel:${escapeHtml(ev.contact)}" style="color:var(--accent);font-weight:700;">${escapeHtml(ev.contact)}</a>`) : "",
+    infoRow("Date & heure", `${dateStr} à ${timeStr}`),
+    addressFull ? infoRow("Adresse", escapeHtml(addressFull), mapsLink) : (ev.city ? infoRow("Ville", escapeHtml(ev.city)) : ""),
+    ev.venue ? infoRow("Lieu", escapeHtml(ev.venue)) : "",
+    infoRow("Prix", priceStr),
+    ev.contact ? infoRow("Contact", `<a href="tel:${escapeHtml(ev.contact)}" style="color:var(--accent);font-weight:700;">${escapeHtml(ev.contact)}</a>`) : "",
     // ⚠️ `externalLink` vient de l'événement d'un AUTRE compte. escapeHtml ferme
     // l'attribut mais PAS le schéma : un `javascript:` restait cliquable ici.
-    ev.externalLink ? infoRow("🔗", "Plus d'infos", `<a href="${safeUrlAttr(ev.externalLink)}" target="_blank" rel="noopener noreferrer" class="event-detail-info-link">${escapeHtml(String(ev.externalLink).replace(/^https?:\/\//, "").slice(0, 45))}</a>`) : "",
+    ev.externalLink ? infoRow("Plus d'infos", `<a href="${safeUrlAttr(ev.externalLink)}" target="_blank" rel="noopener noreferrer" class="event-detail-info-link">${escapeHtml(String(ev.externalLink).replace(/^https?:\/\//, "").slice(0, 45))}</a>`) : "",
   ].filter(Boolean).join("");
 
   const cancelled = _eventIsCancelled(ev);
@@ -3441,23 +3442,23 @@ function openEventDetails(id) {
   const mine = _isMyEvent(ev);
 
   document.getElementById("eventDetailContent").innerHTML = `
-    ${cancelled ? '<div class="event-detail-urgency cancelled">🚫 Cet événement a été annulé par l\'organisateur</div>'
-      : live ? '<div class="event-detail-urgency live">🟣 C\'est maintenant — bon moment !</div>'
-      : over ? '<div class="event-detail-urgency past">🕰 Événement terminé</div>'
+    ${cancelled ? '<div class="event-detail-urgency cancelled">Cet événement a été annulé par l\'organisateur</div>'
+      : live ? '<div class="event-detail-urgency live">C\'est maintenant — bon moment !</div>'
+      : over ? '<div class="event-detail-urgency past">Événement terminé</div>'
       : `<div class="event-detail-urgency ${urgencyClass}">${urgencyText}</div>`}
 
     <div style="display:flex;gap:8px;margin:10px 0;flex-wrap:wrap;">
-      ${over ? "" : `<button class="btn ghost block" onclick="downloadEventIcs('${escapeJsArg(ev.id)}')" style="font-size:12px;">📅 Ajouter au calendrier</button>`}
+      ${over ? "" : `<button class="btn ghost block" onclick="downloadEventIcs('${escapeJsArg(ev.id)}')" style="font-size:12px;">Ajouter au calendrier</button>`}
       <button class="btn ghost block" onclick="shareEvent('${escapeJsArg(ev.id)}')" style="font-size:12px;">${shareIconSvg(14)} Partager</button>
-      ${over ? "" : `<button class="btn ghost block" onclick="openEventInvite('${escapeJsArg(ev.id)}')" style="font-size:12px;">💌 Inviter</button>`}
-      ${mine ? `<button class="btn ghost block" onclick="openEventManage('${escapeJsArg(ev.id)}')" style="font-size:12px;">⚙️ Gérer</button>` : ""}
+      ${over ? "" : `<button class="btn ghost block" onclick="openEventInvite('${escapeJsArg(ev.id)}')" style="font-size:12px;">Inviter</button>`}
+      ${mine ? `<button class="btn ghost block" onclick="openEventManage('${escapeJsArg(ev.id)}')" style="font-size:12px;">Gérer</button>` : ""}
     </div>
     ${_eventSocialProofHtml(ev)}
 
     <!-- Discussion de groupe : le vrai moteur de participation (Meetup / FB Events). -->
     ${cancelled ? "" : `
       <button class="btn ghost block" style="font-size:12px;margin-bottom:8px;" onclick="openEventChat('${escapeJsArg(ev.id)}')">
-        💬 Discussion des participants${myRsvp(ev.id) || mine ? "" : " · réservée aux inscrits"}
+        Discussion des participants${myRsvp(ev.id) || mine ? "" : " · réservée aux inscrits"}
       </button>`}
 
     <!-- Le bouton « Raconter ce moment en carnet de voyage » a été retiré avec
@@ -3468,15 +3469,15 @@ function openEventDetails(id) {
     ${_canCheckIn(ev) ? `
       <button class="btn ${_hasCheckedIn(ev) ? "ghost" : "primary"} block" style="font-size:12px;margin-bottom:8px;"
         ${_hasCheckedIn(ev) ? "disabled" : ""} onclick="checkInEvent('${escapeJsArg(ev.id)}')">
-        ${_hasCheckedIn(ev) ? "✅ Arrivée confirmée" : "📍 Je suis sur place"}
+        ${_hasCheckedIn(ev) ? "Arrivée confirmée" : "Je suis sur place"}
       </button>
-      ${_hasCheckedIn(ev) ? "" : `<button class="btn ghost block" style="font-size:12px;margin-bottom:8px;" onclick="openCheckinCodeEntry('${escapeJsArg(ev.id)}')">📲 J'ai un code d'accueil</button>`}` : ""}
+      ${_hasCheckedIn(ev) ? "" : `<button class="btn ghost block" style="font-size:12px;margin-bottom:8px;" onclick="openCheckinCodeEntry('${escapeJsArg(ev.id)}')">J'ai un code d'accueil</button>`}` : ""}
 
     <!-- Côté organisateur : le QR à montrer à l'entrée. Disponible dès le jour J
          (et pas seulement pendant la fenêtre de pointage) pour préparer l'accueil. -->
     ${_canManageEvent(ev) && !over && !cancelled ? `
       <button class="btn ghost block" style="font-size:12px;margin-bottom:8px;" onclick="openEventCheckinQr('${escapeJsArg(ev.id)}')">
-        📲 QR d'accueil des participants
+        QR d'accueil des participants
       </button>` : ""}
 
     <!-- Retour d'expérience : invite à noter (ou rappel de ma note) une fois
@@ -3484,11 +3485,11 @@ function openEventDetails(id) {
     ${_eventFeedbackPromptHtml(ev)}
     <div data-evrating="${escapeHtml(ev.id)}">${_eventRatingSummaryHtml(ev)}</div>
 
-    ${ev.recurrence && ev.recurrence !== "none" ? `<div class="event-detail-recurrence">🔁 Événement récurrent — ${escapeHtml(RECURRENCE_LABELS[ev.recurrence] || ev.recurrence)}</div>` : ""}
+    ${ev.recurrence && ev.recurrence !== "none" ? `<div class="event-detail-recurrence">Événement récurrent — ${escapeHtml(RECURRENCE_LABELS[ev.recurrence] || ev.recurrence)}</div>` : ""}
 
     ${over && !cancelled ? `
       <div class="event-recap-cta">
-        <div class="event-recap-title">📸 Tu y étais ?</div>
+        <div class="event-recap-title">Tu y étais ?</div>
         <div class="event-recap-text">Partage tes photos et ton ressenti — ça fait vivre l'événement après coup.</div>
         <button class="btn primary block" style="margin-top:8px;font-size:12px;" onclick="shareEventExperience('${escapeJsArg(ev.id)}')">Partager mon expérience</button>
       </div>` : ""}
@@ -3511,20 +3512,20 @@ function openEventDetails(id) {
     <div class="event-detail-participants">${participantsHtml || "<span style='font-size:13px;color:var(--muted);'>Aucun inscrit pour l'instant — sois le premier !</span>"}</div>
 
     ${(ev.maybes || []).length ? `
-      <div class="event-detail-section-title">🤔 Peut-être (${ev.maybes.length})</div>
+      <div class="event-detail-section-title">Peut-être (${ev.maybes.length})</div>
       <div class="event-detail-participants">${_faces(ev.maybes, 8)}</div>` : ""}
 
     ${(ev.waitlist || []).length ? `
-      <div class="event-detail-section-title">⏳ Liste d'attente (${ev.waitlist.length})</div>
+      <div class="event-detail-section-title">Liste d'attente (${ev.waitlist.length})</div>
       <div class="event-detail-participants">${_faces(ev.waitlist, 8)}</div>
       ${mine ? `<div style="font-size:11px;color:var(--muted);margin-top:4px;">Ils seront inscrits automatiquement dès qu'une place se libère.</div>` : ""}` : ""}
 
     ${(ev.coOrganizers || []).length ? `
-      <div class="event-detail-section-title">🤝 Co-organisateurs</div>
+      <div class="event-detail-section-title">Co-organisateurs</div>
       <div class="event-detail-participants">${_faces(ev.coOrganizers, 8)}</div>` : ""}
 
     <!-- Album de l'événement : les publications faites après coup. -->
-    <div class="event-detail-section-title">📸 Album de l'événement</div>
+    <div class="event-detail-section-title">Album de l'événement</div>
     <div id="eventAlbum" class="event-album"><div class="event-album-empty">Chargement…</div></div>
 
     <!-- Barre d'engagement : la fiche n'avait NI like NI réaction emoji (alors que
@@ -3538,7 +3539,7 @@ function openEventDetails(id) {
       <span class="event-react-chip-holder" data-evchipholder="${escapeHtml(ev.id)}" style="margin-left:auto;">${_evReactChipHtml(ev.id)}</span>
     </div>
 
-    <div class="event-detail-section-title">💬 Commentaires</div>
+    <div class="event-detail-section-title">Commentaires</div>
     <div id="eventCommentsList" style="display:flex;flex-direction:column;gap:10px;margin-bottom:10px;">
       <div style="font-size:12px;color:var(--muted);">Chargement…</div>
     </div>
@@ -3548,7 +3549,7 @@ function openEventDetails(id) {
       <button class="btn primary" onclick="addEventComment('${escapeJsArg(ev.id)}')" style="font-size:13px;padding:10px 14px;">Envoyer</button>
     </div>
 
-    ${mine ? "" : `<button class="btn ghost block" style="margin-top:18px;font-size:12px;color:var(--muted);" onclick="reportEvent('${escapeJsArg(ev.id)}')">⚠️ Signaler cet événement</button>`}
+    ${mine ? "" : `<button class="btn ghost block" style="margin-top:18px;font-size:12px;color:var(--muted);" onclick="reportEvent('${escapeJsArg(ev.id)}')">Signaler cet événement</button>`}
   `;
 
   _loadEventComments(ev.id);
@@ -3571,18 +3572,18 @@ function _refreshEventDetailCta(ev, joined) {
   const cta = document.getElementById("eventDetailCta");
   if (!cta) return;
   if (_eventIsCancelled(ev)) {
-    cta.innerHTML = `<button class="btn ghost block" disabled>🚫 Événement annulé</button>`;
+    cta.innerHTML = `<button class="btn ghost block" disabled>Événement annulé</button>`;
     return;
   }
   if (_eventIsOver(ev)) {
-    cta.innerHTML = `<button class="btn primary block" onclick="shareEventExperience('${escapeJsArg(ev.id)}')">📸 Partager mon expérience</button>`;
+    cta.innerHTML = `<button class="btn primary block" onclick="shareEventExperience('${escapeJsArg(ev.id)}')">Partager mon expérience</button>`;
     return;
   }
   const spotsLeft = ev.maxAttendees ? ev.maxAttendees - (ev.attendees || []).length : null;
   const isFull = spotsLeft !== null && spotsLeft <= 0 && !joined;
   cta.innerHTML = `
     <button class="btn ${joined ? "ghost" : "primary"} block" ${isFull ? "disabled" : ""} onclick="toggleJoinEventDetail('${escapeJsArg(ev.id)}')">
-      ${joined ? "✓ Inscrit — Se désinscrire" : isFull ? "⚠️ Complet" : "+ Rejoindre"}
+      ${joined ? "✓ Inscrit — Se désinscrire" : isFull ? "Complet" : "+ Rejoindre"}
     </button>
   `;
 }
@@ -3623,7 +3624,7 @@ function shareEventExperience(id) {
       sel.value = ev.passion;
       if (sel.value !== ev.passion) sel.value = avant;
     }
-    toast("📸 Ajoute tes photos et raconte !");
+    toast("Ajoute tes photos et raconte !");
   }, 250);
 }
 
@@ -3754,7 +3755,7 @@ function _checkEventReminders() {
         ? (diff <= 12 * 3600000 ? "aujourd'hui" : "demain")
         : tier.label;
       if (typeof pushNotification === "function") {
-        pushNotification("⏰ Rappel : <b>" + escapeHtml(e.title) + "</b> " + when
+        pushNotification("Rappel : <b>" + escapeHtml(e.title) + "</b> " + when
           + " à " + _eventTimeLabel(e)
           + (e.city ? " · " + escapeHtml(e.city) : ""), "⏰");
       }
@@ -3819,7 +3820,7 @@ function _irlWeeklyDigest() {
     const top = soon[0];
     const city = irlSelectedCity ? irlSelectedCity.name
       : (irlUserLocation ? getClosestCity(irlUserLocation.lat, irlUserLocation.lng) : "près de toi");
-    const text = `📍 <b>${soon.length} événement${soon.length > 1 ? "s" : ""}</b> cette semaine ${escapeHtml(city === "près de toi" ? city : "à " + city)} — à commencer par <b>${escapeHtml(top.title || "")}</b>`;
+    const text = `<b>${soon.length} événement${soon.length > 1 ? "s" : ""}</b> cette semaine ${escapeHtml(city === "près de toi" ? city : "à " + city)} — à commencer par <b>${escapeHtml(top.title || "")}</b>`;
     if (typeof pushNotification === "function") pushNotification(text, "📍");
 
     // Notification système : uniquement si l'utilisateur l'a DÉJÀ acceptée.
@@ -3867,7 +3868,7 @@ function downloadEventIcs(id) {
     a.download = (ev.title || "evenement").replace(/[^a-z0-9]+/gi, "-").toLowerCase().slice(0, 40) + ".ics";
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 2000);
-    toast("📅 Événement ajouté à ton calendrier (rappel J-1 inclus)");
+    toast("Événement ajouté à ton calendrier (rappel J-1 inclus)");
   } catch (e) { toast("Export calendrier impossible"); }
 }
 
@@ -3991,10 +3992,10 @@ function shareEvent(id) {
   const html = `
     <div class="modal-title">${shareIconSvg(20)} Partager cet événement</div>
     <div style="background:var(--bg-soft);border-radius:14px;padding:12px 14px;margin-bottom:16px;font-size:13px;color:var(--text-dim);line-height:1.5;">
-      📍 ${escapeHtml(ev.title || "Événement")}${ev.city ? " · " + escapeHtml(ev.city) : ""}<br>${escapeHtml(d.day + " " + d.month)}
+      ${escapeHtml(ev.title || "Événement")}${ev.city ? " · " + escapeHtml(ev.city) : ""}<br>${escapeHtml(d.day + " " + d.month)}
     </div>
     <button class="btn primary block" id="_shareEvInFeedBtn" onclick="shareEventInFeed('${escapeJsArg(id)}')" style="margin-bottom:10px;">
-      ➕ Partager dans mon feed
+      Partager dans mon feed
     </button>
     <button class="btn secondary block" id="_shareEvOutBtn">
       ${shareIconSvg(16)} Partager en dehors
@@ -4006,7 +4007,7 @@ function shareEvent(id) {
     const btn = document.getElementById("_shareEvOutBtn");
     if (!btn) return;
     btn.addEventListener("click", function () {
-      partagerOuCopier({ title: ev.title, text, url }, "🔗 Lien de l'événement copié");
+      partagerOuCopier({ title: ev.title, text, url }, "Lien de l'événement copié");
     });
   }, 0);
 }
@@ -4085,7 +4086,7 @@ async function shareEventInFeed(id) {
 
   closeModal();
   setTimeout(() => { goTo("feed"); setTimeout(() => renderFeed(), 100); }, 100);
-  toast("✅ Événement partagé dans ton feed.");
+  toast("Événement partagé dans ton feed.");
 
   if (typeof supa !== "undefined" && supa) {
     try {
@@ -4857,14 +4858,13 @@ function openCreateEvent(editId) {
 
   openModal(`
     <div class="modal-handle"></div>
-    <div class="modal-title">${editId ? "✏️ Modifier l'événement" : "✨ Créer un événement IRL"}</div>
+    <div class="modal-title">${editId ? "Modifier l'événement" : "Créer un événement IRL"}</div>
     <div class="modal-subtitle">${editId ? "Les inscrits seront prévenus de tes changements." : "Rejoins ou crée des moments réels avec ta communauté."}</div>
 
-    <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;color:var(--accent);margin:14px 0 8px;">🖼 Photo de couverture</div>
+    <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;color:var(--accent);margin:14px 0 8px;">Photo de couverture</div>
     <div id="evCoverPreviewWrap" style="width:100%;height:140px;border-radius:14px;overflow:hidden;background:linear-gradient(135deg,#4c1d95,#7c3aed);display:flex;align-items:center;justify-content:center;margin-bottom:10px;position:relative;cursor:pointer;" onclick="document.getElementById('evCoverFile').click()">
       <img loading="lazy" decoding="async" id="evCoverPreviewImg" src="" alt="" style="display:none;width:100%;height:100%;object-fit:cover;position:absolute;inset:0;"/>
       <div id="evCoverPreviewPlaceholder" style="text-align:center;color:rgba(255,255,255,0.85);">
-        <div style="font-size:32px;margin-bottom:6px;">📷</div>
         <div style="font-size:12px;font-weight:700;">Appuie pour choisir une photo</div>
         <div style="font-size:10px;opacity:0.7;margin-top:2px;">JPG, PNG — recommandé 1200×400</div>
       </div>
@@ -4873,7 +4873,7 @@ function openCreateEvent(editId) {
     </div>
     <input type="hidden" id="evCoverData"/>
 
-    <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;color:var(--accent);margin:14px 0 8px;">📝 Infos principales</div>
+    <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;color:var(--accent);margin:14px 0 8px;">Infos principales</div>
     <label class="field"><span>Titre *</span>
       <input type="text" class="input" id="evTitle" placeholder="Ex : Jam session guitare débutants" maxlength="80" value="${v("title")}"/>
     </label>
@@ -4902,7 +4902,7 @@ function openCreateEvent(editId) {
          sans ça il fallait recréer l'événement à la main à chaque fois. -->
     ${editId ? "" : `
       <div style="display:grid;grid-template-columns:2fr 1fr;gap:10px;">
-        <label class="field"><span>🔁 Se répète</span>
+        <label class="field"><span>Se répète</span>
           <select class="input" id="evRecurrence" onchange="_evSyncRecurrenceUi()">
             ${Object.keys(RECURRENCE_LABELS).map(k => `<option value="${escapeHtml(k)}">${RECURRENCE_LABELS[k]}</option>`).join("")}
           </select>
@@ -4912,7 +4912,7 @@ function openCreateEvent(editId) {
         </label>
       </div>`}
 
-    <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;color:var(--accent);margin:14px 0 8px;">📍 Lieu</div>
+    <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;color:var(--accent);margin:14px 0 8px;">Lieu</div>
     <!-- Autocomplétion : sans elle, la ville était saisie à la main puis
          géocodée « au mieux » — un lieu mal orthographié n'apparaissait jamais
          sur la carte, et l'événement devenait invisible en filtre distance. -->
@@ -4920,7 +4920,7 @@ function openCreateEvent(editId) {
       <input type="text" class="input" id="evPlaceSearch" autocomplete="off" placeholder="Tape une adresse, un bar, une salle…" oninput="_evPlaceSuggest(this.value)"/>
     </label>
     <div id="evPlaceSuggestions" class="irl-suggest" style="display:none;"></div>
-    <div id="evPlacePicked" style="display:${ed && ed.lat ? "flex" : "none"};align-items:center;gap:6px;font-size:12px;color:#16a34a;font-weight:700;margin:-4px 0 10px;">📍 <span>Position précise enregistrée</span></div>
+    <div id="evPlacePicked" style="display:${ed && ed.lat ? "flex" : "none"};align-items:center;gap:6px;font-size:12px;color:#16a34a;font-weight:700;margin:-4px 0 10px;"><span>Position précise enregistrée</span></div>
 
     <label class="field"><span>Nom du lieu</span>
       <input type="text" class="input" id="evVenue" placeholder="Café du Coin, Parc, Studio…" maxlength="80" value="${v("venue")}"/>
@@ -4937,7 +4937,7 @@ function openCreateEvent(editId) {
       </label>
     </div>
 
-    <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;color:var(--accent);margin:14px 0 8px;">ℹ️ Détails</div>
+    <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;color:var(--accent);margin:14px 0 8px;">Détails</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
       <label class="field"><span>Prix indicatif en € (0 = gratuit)</span>
         <input type="number" class="input" id="evPrice" inputmode="decimal" step="0.01" placeholder="0" min="0" max="99999" value="${v("price", 0)}"/>
@@ -4956,7 +4956,7 @@ function openCreateEvent(editId) {
       <textarea class="textarea" id="evDesc" placeholder="Programme, ambiance, quoi apporter…" maxlength="800" style="min-height:90px;">${v("desc")}</textarea>
     </label>
 
-    <button class="btn primary block" style="margin-top:8px;" onclick="submitEvent(${editId ? "'" + escapeJsArg(editId) + "'" : ""})">${editId ? "💾 Enregistrer les modifications" : "🎉 Publier"}</button>
+    <button class="btn primary block" style="margin-top:8px;" onclick="submitEvent(${editId ? "'" + escapeJsArg(editId) + "'" : ""})">${editId ? "Enregistrer les modifications" : "Publier"}</button>
   `);
 
   setTimeout(() => {
@@ -5025,7 +5025,7 @@ function _evPlacePick(i) {
   if (box) box.style.display = "none";
   const ok = document.getElementById("evPlacePicked");
   if (ok) ok.style.display = "flex";
-  toast("📍 " + head);
+  toast("Lieu enregistré : " + head);
 }
 
 // ===== Gestion d'un événement par son organisateur =====
@@ -5039,15 +5039,15 @@ function openEventManage(id) {
   const checked = (ev.checkedIn || []).length;
   openModal(`
     <div class="modal-handle"></div>
-    <div class="modal-title">⚙️ Gérer l'événement</div>
+    <div class="modal-title">Gérer l'événement</div>
     <div class="modal-subtitle">${escapeHtml(ev.title || "")} · ${n} inscrit${n > 1 ? "s" : ""}${checked ? " · " + checked + " sur place" : ""}</div>
-    <button class="btn ghost block" style="margin-top:12px;" onclick="closeModal();openCreateEvent('${escapeJsArg(id)}')">✏️ Modifier les informations</button>
-    <button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();_messageEventAttendees('${escapeJsArg(id)}')">📣 Prévenir les inscrits</button>
-    <button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();openEventCoOrganizers('${escapeJsArg(id)}')">🤝 Co-organisateurs (${(ev.coOrganizers || []).length})</button>
-    ${(ev.waitlist || []).length ? `<button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();openEventWaitlist('${escapeJsArg(id)}')">⏳ Liste d'attente (${ev.waitlist.length})</button>` : ""}
-    <button class="btn ghost block" style="margin-top:8px;" onclick="toggleCancelEvent('${escapeJsArg(id)}')">${cancelled ? "↩️ Réactiver l'événement" : "🚫 Annuler l'événement"}</button>
-    ${seriesCount > 1 ? `<button class="btn ghost block" style="margin-top:8px;" onclick="cancelEventSeries('${escapeJsArg(id)}')">🔁 Annuler toute la série (${seriesCount} dates)</button>` : ""}
-    <button class="btn ghost block" style="margin-top:8px;color:#ef4444;border-color:rgba(239,68,68,.35);" onclick="deleteEventConfirm('${escapeJsArg(id)}')">🗑 Supprimer définitivement</button>
+    <button class="btn ghost block" style="margin-top:12px;" onclick="closeModal();openCreateEvent('${escapeJsArg(id)}')">Modifier les informations</button>
+    <button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();_messageEventAttendees('${escapeJsArg(id)}')">Prévenir les inscrits</button>
+    <button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();openEventCoOrganizers('${escapeJsArg(id)}')">Co-organisateurs (${(ev.coOrganizers || []).length})</button>
+    ${(ev.waitlist || []).length ? `<button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();openEventWaitlist('${escapeJsArg(id)}')">Liste d'attente (${ev.waitlist.length})</button>` : ""}
+    <button class="btn ghost block" style="margin-top:8px;" onclick="toggleCancelEvent('${escapeJsArg(id)}')">${cancelled ? "Réactiver l'événement" : "Annuler l'événement"}</button>
+    ${seriesCount > 1 ? `<button class="btn ghost block" style="margin-top:8px;" onclick="cancelEventSeries('${escapeJsArg(id)}')">Annuler toute la série (${seriesCount} dates)</button>` : ""}
+    <button class="btn ghost block" style="margin-top:8px;color:#ef4444;border-color:rgba(239,68,68,.35);" onclick="deleteEventConfirm('${escapeJsArg(id)}')">Supprimer définitivement</button>
     <button class="btn secondary block" style="margin-top:12px;" onclick="closeModal()">Fermer</button>
   `);
 }
@@ -5074,7 +5074,7 @@ function openEventCoOrganizers(id) {
   };
   openModal(`
     <div class="modal-handle"></div>
-    <div class="modal-title">🤝 Co-organisateurs</div>
+    <div class="modal-title">Co-organisateurs</div>
     <div class="modal-subtitle">Ils pourront modifier l'événement et prévenir les inscrits.</div>
     <div style="margin-top:12px;max-height:320px;overflow-y:auto;">
       ${[...new Set(co.concat(candidates))].map(row).join("")
@@ -5095,7 +5095,7 @@ async function toggleEventCoOrganizer(id, userId) {
   if (!isCo && typeof supaInsertNotif === "function") {
     supaInsertNotif(userId, "event_update", id, "t'a nommé·e co-organisateur·ice");
   }
-  toast(isCo ? "Co-organisateur retiré" : "🤝 Co-organisateur ajouté");
+  toast(isCo ? "Co-organisateur retiré" : "Co-organisateur ajouté");
   openEventCoOrganizers(id);
 }
 
@@ -5106,7 +5106,7 @@ function openEventWaitlist(id) {
   const wl = ev.waitlist || [];
   openModal(`
     <div class="modal-handle"></div>
-    <div class="modal-title">⏳ Liste d'attente</div>
+    <div class="modal-title">Liste d'attente</div>
     <div class="modal-subtitle">Dans l'ordre d'arrivée. Ils sont promus automatiquement dès qu'une place se libère.</div>
     <div style="margin-top:12px;max-height:320px;overflow-y:auto;">
       ${wl.map((u, i) => {
@@ -5131,7 +5131,7 @@ async function promoteWaitlisted(id, userId) {
   saveState();
   if (window._supaReal && typeof supaPromoteFromWaitlist === "function") await supaPromoteFromWaitlist(id, userId);
   if (typeof supaInsertNotif === "function") supaInsertNotif(userId, "event_update", id, "t'a inscrit·e depuis la liste d'attente !");
-  toast("✅ Participant inscrit");
+  toast("Participant inscrit");
   openEventWaitlist(id);
 }
 
@@ -5152,7 +5152,7 @@ async function cancelEventSeries(id) {
   saveState();
   window._irlMapSig = null;
   renderIRL();
-  toast("🚫 Série annulée — inscrits prévenus");
+  toast("Série annulée — inscrits prévenus");
 }
 
 // Annulation « douce » : l'événement reste visible et barré pour les inscrits,
@@ -5169,10 +5169,10 @@ async function toggleCancelEvent(id) {
   renderIRL();
   if (window._supaReal && typeof supaCancelEvent === "function") {
     const ok = await supaCancelEvent(id, cancel);
-    if (!ok) { toast("⚠️ Changement non synchronisé"); return; }
+    if (!ok) { toast("Changement non synchronisé", "warning"); return; }
   }
   if (cancel) _notifyEventAttendees(ev, "a annulé un événement auquel tu participais");
-  toast(cancel ? "🚫 Événement annulé — inscrits prévenus" : "✅ Événement réactivé");
+  toast(cancel ? "Événement annulé — inscrits prévenus" : "Événement réactivé");
 }
 
 async function deleteEventConfirm(id) {
@@ -5188,7 +5188,7 @@ async function deleteEventConfirm(id) {
   closeEventDetail();
   window._irlMapSig = null; // la carte doit perdre son marqueur
   renderIRL();
-  toast("🗑 Événement supprimé");
+  toast("Événement supprimé");
 }
 
 // Message groupé aux inscrits (annonce de dernière minute, changement de lieu…).
@@ -5197,7 +5197,7 @@ function _messageEventAttendees(id) {
   if (!ev) return;
   openModal(`
     <div class="modal-handle"></div>
-    <div class="modal-title">📣 Prévenir les inscrits</div>
+    <div class="modal-title">Prévenir les inscrits</div>
     <div class="modal-subtitle">${(ev.attendees || []).length} personne(s) recevront une notification.</div>
     <label class="field"><span>Message</span>
       <textarea class="textarea" id="evBroadcast" maxlength="200" placeholder="Ex : on se retrouve finalement devant l'entrée nord !"></textarea>
@@ -5212,13 +5212,13 @@ function _sendEventBroadcast(id) {
   if (!ev || !txt) { toast("Écris un message"); return; }
   _notifyEventAttendees(ev, escapeHtml(txt.slice(0, 200)));
   closeModal();
-  toast("📣 Message envoyé aux inscrits");
+  toast("Message envoyé aux inscrits");
 }
 
 // Signalement d'un événement (parité avec posts / profils / lives CDV).
 function reportEvent(id) {
   if (typeof supaReport === "function") supaReport("event", id, "");
-  toast("⚠️ Signalement envoyé — merci");
+  toast("Signalement envoyé — merci");
 }
 
 async function submitEvent(editId) {
@@ -5245,23 +5245,23 @@ async function submitEvent(editId) {
 
   const durationH = parseFloat(g("evDuration")?.value || "2") || 2;
 
-  if (title.length < 3) { toast("Titre trop court (3 caractères min)"); return; }
-  if (!city) { toast("Indique une ville"); return; }
-  if (!date) { toast("Choisis une date"); return; }
-  if (!passion) { toast("Sélectionne une passion"); return; }
+  if (title.length < 3) { toast("Titre trop court (3 caractères min)", "error"); return; }
+  if (!city) { toast("Indique une ville", "error"); return; }
+  if (!date) { toast("Choisis une date", "error"); return; }
+  if (!passion) { toast("Sélectionne une passion", "error"); return; }
   // Politique OBLIGATOIRE (ADR-010). Le `<select>` ne propose plus que des
   // passions publiables, donc ce garde ne se déclenche que sur un état bâti
   // autrement (brouillon ancien, édition d'un événement d'avant le correctif).
   if (!estPassionCanonique(passion)) {
-    toast("⚠️ Cette passion n'existe que chez toi : choisis-en une du catalogue pour créer une activité.");
+    toast("Cette passion n'existe que chez toi : choisis-en une du catalogue pour créer une activité.", "error");
     return;
   }
 
   const ts = new Date(date + "T" + time).getTime();
-  if (isNaN(ts)) { toast("Date invalide"); return; }
+  if (isNaN(ts)) { toast("Date invalide", "error"); return; }
   // Créer un événement DANS LE PASSÉ n'avait aucun garde-fou : il partait en base
   // puis était filtré à l'affichage → l'organisateur ne le retrouvait jamais.
-  if (!editId && ts < Date.now() - 3600000) { toast("⏰ Cette date est déjà passée"); return; }
+  if (!editId && ts < Date.now() - 3600000) { toast("Cette date est déjà passée", "error"); return; }
 
   const recurrence = editId ? null : (g("evRecurrence")?.value || "none");
   const occurrences = parseInt(g("evOccurrences")?.value || "6") || 6;
@@ -5314,7 +5314,7 @@ async function submitEvent(editId) {
   const fromFeed = feedIrlBridgeConsumeOrigin();
 
   closeModal();
-  toast(editId ? "💾 Enregistrement…" : "📤 Publication en cours…");
+  toast(editId ? "Enregistrement…" : "Publication en cours…");
 
   // Photo de couverture : upload sur Storage AVANT l'insert. Avant, le data URL
   // base64 partait tel quel dans events.cover_url → des centaines de Ko de base64
@@ -5373,10 +5373,15 @@ async function submitEvent(editId) {
   // Une ÉDITION n'est pas une création et n'entre pas dans le funnel.
   if (!editId) irlFunnelTrackCreate(ev.id, backend ? ok : null, fromFeed);
   renderIRL();
+  // ⚠️ LE TYPE EST CONDITIONNEL, ET C'EST LE POINT. Le message d'échec a perdu son
+  // « ⚠️ » de tête : sans un type distinct, il serait peint exactement comme la
+  // confirmation juste au-dessus, et « pas encore envoyé » se lirait comme
+  // « publié ». Passer "warning" en dur teindrait au contraire le succès en alerte.
   toast(ok
-    ? (editId ? "✅ Événement mis à jour"
-      : extraOccurrences.length ? `🎉 ${extraOccurrences.length + 1} dates publiées !` : "🎉 Événement publié !")
-    : "⚠️ Enregistré ici, mais pas encore envoyé — réessaie quand tu auras du réseau");
+    ? (editId ? "Événement mis à jour"
+      : extraOccurrences.length ? `${extraOccurrences.length + 1} dates publiées !` : "Événement publié !")
+    : "Enregistré ici, mais pas encore envoyé — réessaie quand tu auras du réseau",
+    ok ? "success" : "warning");
 }
 
 // Notifie tous les inscrits (hors moi) d'un changement sur l'événement.
@@ -5551,7 +5556,7 @@ function openEventInvite(eventId) {
   if (!ev) { toast("Événement introuvable"); return; }
   window._inviteEventId = eventId;
   openModal('<span class="modal-close" onclick="closeModal()">×</span>'
-    + '<div class="modal-title">💌 Inviter des amis</div>'
+    + '<div class="modal-title">Inviter des amis</div>'
     + '<div style="font-size:12px;color:var(--muted);margin-bottom:12px;">'
     + escapeHtml(ev.title || "") + '</div>'
     + '<input type="text" class="input" id="eventInviteSearch" placeholder="Rechercher parmi tes abonnements…" '
@@ -5578,7 +5583,7 @@ function _renderEventInviteList() {
     var sent = _eventInvitesSent(eventId).length;
     box.innerHTML = '<div style="text-align:center;padding:24px;color:var(--muted);font-size:12px;">'
       + (q ? "Aucun résultat pour « " + escapeHtml(q) + " »"
-           : sent ? "Tu as invité tout le monde 🎉"
+           : sent ? "Tu as invité tout le monde"
                   : "Abonne-toi à des passionnés pour pouvoir les inviter ici.")
       + '</div>';
     return;
@@ -5608,7 +5613,7 @@ function inviteToEvent(eventId, userId, btn) {
     supaInsertNotif(userId, "event_invite", eventId,
       "t'invite à <b>" + escapeHtml((ev.title || "un événement").slice(0, 60)) + "</b>");
   }
-  toast("Invitation envoyée 💌");
+  toast("Invitation envoyée");
 }
 
 // Invite d'un coup tous ceux que je suis et qui ne se sont pas encore prononcés.
@@ -5618,7 +5623,7 @@ function inviteAllFollowingToEvent(eventId) {
   var ids = _eventInvitables(ev);
   if (!ids.length) { toast("Personne de nouveau à inviter"); return; }
   ids.slice(0, 30).forEach(function (id) { inviteToEvent(eventId, id, null); });
-  toast(ids.length + " invitation" + (ids.length > 1 ? "s envoyées" : " envoyée") + " 💌");
+  toast(ids.length + " invitation" + (ids.length > 1 ? "s envoyées" : " envoyée"));
   _renderEventInviteList();
 }
 
@@ -5787,7 +5792,7 @@ function openEventFeedback(eventId) {
   window._ratingDraft = mine.rating || 0;
 
   openModal('<span class="modal-close" onclick="closeModal()">×</span>'
-    + '<div class="modal-title">⭐ Ton retour</div>'
+    + '<div class="modal-title">Ton retour</div>'
     + '<div style="font-size:12px;color:var(--muted);margin-bottom:14px;">'
     + escapeHtml(ev.title || "") + '</div>'
     + '<div id="evRatingStars" style="display:flex;gap:6px;justify-content:center;margin-bottom:14px;">'
@@ -5820,14 +5825,14 @@ function setEventRatingDraft(n) {
 
 function submitEventFeedback(eventId) {
   var n = window._ratingDraft || 0;
-  if (!n) { toast("Choisis une note d'abord ⭐"); return; }
+  if (!n) { toast("Choisis une note d'abord"); return; }
   var txt = ((document.getElementById("evFeedbackText") || {}).value || "").trim().slice(0, 500);
 
   state.user.eventRatings = state.user.eventRatings || {};
   state.user.eventRatings[eventId] = { rating: n, feedback: txt, at: Date.now() };
   saveState();
   closeModal();
-  toast("Merci pour ton retour ⭐");
+  toast("Merci pour ton retour");
 
   if (window._supaReal && typeof supaRateEvent === "function") supaRateEvent(eventId, n, txt);
 
@@ -5854,7 +5859,7 @@ function _eventFeedbackPromptHtml(ev) {
   }
   return '<div class="event-feedback-prompt">'
     + '<div style="flex:1;min-width:0;font-size:12px;font-weight:600;">C\'était comment ?</div>'
-    + '<button class="btn small primary" onclick="openEventFeedback(\'' + escapeJsArg(ev.id) + '\')">⭐ Noter</button>'
+    + '<button class="btn small primary" onclick="openEventFeedback(\'' + escapeJsArg(ev.id) + '\')">Noter</button>'
     + '</div>';
 }
 
@@ -6176,7 +6181,7 @@ function openEventCheckinQr(eventId) {
   }
 
   openModal('<span class="modal-close" onclick="closeModal()">×</span>'
-    + '<div class="modal-title">📲 Accueil des participants</div>'
+    + '<div class="modal-title">Accueil des participants</div>'
     + '<div style="font-size:12px;color:var(--muted);margin-bottom:14px;">'
     + escapeHtml(ev.title || "") + '</div>'
     + '<div class="checkin-qr-frame">' + svg + '</div>'
@@ -6188,7 +6193,7 @@ function openEventCheckinQr(eventId) {
     + 'Montre cet écran à l\'entrée : chacun le scanne avec son appareil photo et '
     + 'son arrivée est pointée automatiquement.</div>'
     + '<button class="btn ghost block" style="margin-top:12px;" '
-    + 'onclick="_copyCheckinLink(\'' + escapeJsArg(eventId) + '\')">🔗 Copier le lien de pointage</button>');
+    + 'onclick="_copyCheckinLink(\'' + escapeJsArg(eventId) + '\')">Copier le lien de pointage</button>');
 }
 
 function _copyCheckinLink(eventId) {
@@ -6197,9 +6202,9 @@ function _copyCheckinLink(eventId) {
   var url = _eventCheckinUrl(ev);
   if (window.tel && tel.shareLink) url = tel.shareLink(url, "checkin", ev.id, "clipboard");
   if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(url).then(function () { toast("Lien copié 🔗"); },
-      function () { toast(url); });
-  } else { toast(url); }
+    navigator.clipboard.writeText(url).then(function () { toast("Lien copié"); },
+      function () { toast("Lien : " + url); });
+  } else { toast("Lien : " + url); }
 }
 
 // Vue PARTICIPANT : saisie manuelle du code affiché à l'accueil (repli quand on
@@ -6208,7 +6213,7 @@ function openCheckinCodeEntry(eventId) {
   var ev = _findCanonicalEvent(eventId) || allEvents().find(function (e) { return e.id === eventId; });
   if (!ev) return;
   openModal('<span class="modal-close" onclick="closeModal()">×</span>'
-    + '<div class="modal-title">📲 Pointer mon arrivée</div>'
+    + '<div class="modal-title">Pointer mon arrivée</div>'
     + '<div style="font-size:12px;color:var(--muted);margin-bottom:14px;">'
     + 'Saisis le code affiché à l\'accueil de « ' + escapeHtml(ev.title || "") + ' ».</div>'
     + '<input type="text" class="input" id="checkinCodeInput" maxlength="6" autocomplete="off" '
@@ -6236,14 +6241,14 @@ function submitCheckinCode(eventId) {
 // devant le QR de l'accueil EST la preuve de présence, et c'en est une meilleure
 // qu'une position à 500 m près).
 function _checkInViaCode(ev) {
-  if (_hasCheckedIn(ev)) { toast("✅ Tu as déjà pointé ton arrivée"); return; }
-  if (!_canCheckIn(ev)) { toast("⏰ Le pointage ouvre 1 h avant le début"); return; }
+  if (_hasCheckedIn(ev)) { toast("Tu as déjà pointé ton arrivée"); return; }
+  if (!_canCheckIn(ev)) { toast("Le pointage ouvre 1 h avant le début", "warning"); return; }
   state.user.checkedInEvents = state.user.checkedInEvents || [];
   if (state.user.checkedInEvents.indexOf(ev.id) === -1) state.user.checkedInEvents.push(ev.id);
   if (myRsvp(ev.id) !== "going") _setMyRsvpLocal(ev.id, "going");
   saveState();
   if (window._supaReal && typeof supaCheckInEvent === "function") supaCheckInEvent(ev.id);
-  toast("🎉 Arrivée confirmée — bon moment !");
+  toast("Arrivée confirmée — bon moment !", "success");
   _refreshEventDetailIfOpen(ev.id);
   if (typeof _announceNewBadges === "function") _announceNewBadges();
 }

@@ -1496,6 +1496,32 @@
       color: #ffffff;
     }
 
+    /* Un toast d'ALERTE doit se distinguer d'une confirmation SANS emoji.
+       Jusqu'ici il n'y avait aucune règle pour `error` / `warning` / `success` :
+       `toast(msg, "error")` était peint exactement comme un succès, et c'était
+       le ⚠️ ou le ❌ en tête de message qui portait seul la nature de l'alerte.
+       Retirer ces emojis sans donner leur rôle à la couleur aurait fait lire un
+       ÉCHEC comme une réussite (« Changement non synchronisé » sur le même fond
+       violet que « Événement publié »).
+       Les quatre fonds sont OPAQUES et tiennent le contraste AA sur du blanc
+       (8,9:1 · 7,3:1 · 8,0:1), donc l'information ne repose pas sur la seule
+       teinte : le liseré clair la double. */
+    .toast.error {
+      background: #8f1d18;
+      color: #ffffff;
+      box-shadow: 0 10px 28px rgba(143, 29, 24, 0.34), inset 0 0 0 1px rgba(255, 255, 255, 0.22);
+    }
+    .toast.warning {
+      background: #7a4c05;
+      color: #ffffff;
+      box-shadow: 0 10px 28px rgba(122, 76, 5, 0.32), inset 0 0 0 1px rgba(255, 255, 255, 0.22);
+    }
+    .toast.success {
+      background: #0f5c3d;
+      color: #ffffff;
+      box-shadow: 0 10px 28px rgba(15, 92, 61, 0.32), inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+    }
+
     /* Toast cliquable (notification) : reçoit les clics, reste plus longtemps,
        et affiche un chevron pour signaler qu'on peut l'ouvrir. */
     .toast.clickable {
@@ -2378,12 +2404,6 @@
     }
     .event-detail-info-row + .event-detail-info-row {
       border-top: 1px solid var(--border);
-    }
-    .event-detail-info-icon {
-      font-size: 20px;
-      width: 28px; text-align: center;
-      flex-shrink: 0;
-      opacity: 0.85;
     }
     .event-detail-info-label {
       font-size: 10px; font-weight: 700; text-transform: uppercase;
@@ -3313,9 +3333,6 @@
     }
     .irl-chip-create:hover { border-color: transparent; }
     .irl-chip-create .irl-chip-label { font-weight: 700; }
-    /* Icône (emoji) calée sur .cdv-entry-ico (18px) plutôt que sur les 13px
-       hérités de .irl-chip. */
-    .irl-chip-create span[aria-hidden="true"] { font-size: 18px; line-height: 1; }
     .irl-chip-create:active { transform: scale(0.97); }
     /* La ville est plafonnée : un nom long doit rogner ICI, pas sur le CTA */
     .irl-chip.irl-locbar { flex: 0 1 auto; max-width: 30%; }
@@ -5969,6 +5986,7 @@
     }
     /* Zone tactile ≥ 44px (taille visuelle inchangée) */
     .conv-tool-btn::before { content:''; position:absolute; inset:-4px; border-radius:50%; }
+    .conv-tool-btn svg { width:21px; height:21px; display:block; }
     .conv-tool-btn:hover, .conv-tool-btn.active { color:var(--accent); background:rgba(139,92,246,0.10); }
     .conv-tool-btn.record-active { color:#ef4444; background:rgba(239,68,68,0.12); animation:pulse-rec 1s infinite; }
     @keyframes pulse-rec { 0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,0.4)} 50%{box-shadow:0 0 0 8px rgba(239,68,68,0)} }
@@ -6152,6 +6170,23 @@
     .attach-item { display:flex; align-items:center; gap:12px; padding:10px 12px; border-radius:12px; cursor:pointer; }
     .attach-item:hover { background:rgba(139,92,246,0.08); }
     .attach-icon { width:40px; height:40px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0; }
+    .attach-icon svg { width:21px; height:21px; display:block; }
+    /* Les six pastilles du menu « pièce jointe » portent chacune SA teinte —
+       c'est elle qui distingue les types d'un coup d'œil. Depuis que leur
+       contenu est un trait et non plus un emoji couleur, cette teinte doit
+       tenir sur les DEUX fonds : le thème d'accent « Sombre » repeint
+       `--bg-card` en rgba(30,27,75,.92), et un violet 600 y tombait à 2,4:1.
+       Les nuances ci-dessous sont donc remplacées par leurs 400 dans ce thème
+       (`applyConfig`, app-05, sous `if (c.dark)`), ce qui les tient au-dessus
+       de 5:1 des deux côtés. */
+    :root {
+      --att-photo: #7c3aed;
+      --att-doc: #0284c7;
+      --att-audio: #059669;
+      --att-lieu: #b45309;
+      --att-fichiers: #dc2626;
+      --att-irl: #6d28d9;
+    }
     .attach-label { font-size:13px; font-weight:600; color:var(--text); }
     /* Audio message bubble */
     .msg-audio-bubble { display:flex; align-items:center; gap:8px; min-width:180px; }

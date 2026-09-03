@@ -1417,8 +1417,8 @@ function publicationRefuseeFautePassion(passion) {
 
 function messageEchecPassion() {
   var c = window._passioEchecPublication;
-  if (c === "passion_absente") return "⚠️ Choisis une passion avant de publier.";
-  if (c === "passion_inconnue") return "⚠️ Cette passion n'existe que chez toi : elle range ton fil, mais on ne peut pas encore y publier. Choisis une passion du catalogue.";
+  if (c === "passion_absente") return "Choisis une passion avant de publier.";
+  if (c === "passion_inconnue") return "Cette passion n'existe que chez toi : elle range ton fil, mais on ne peut pas encore y publier. Choisis une passion du catalogue.";
   return null;
 }
 
@@ -1688,7 +1688,7 @@ function _withSenderMeta(content) {
 // c'est ce qui laissait passer « 12.5 € » et « NaN € ».
 function fmtEventPrice(price) {
   const n = Number(price);
-  if (price === null || price === undefined || price === "" || !isFinite(n) || n <= 0) return "Gratuit 🎉";
+  if (price === null || price === undefined || price === "" || !isFinite(n) || n <= 0) return "Gratuit";
   const txt = Number.isInteger(n) ? String(n) : n.toFixed(2).replace(".", ",");
   return txt + "\u00a0€";
 }
@@ -1918,7 +1918,7 @@ function partagerOuCopier(data, msgCopie) {
   const copier = function () {
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(texteCopie).then(
-        function () { toast(msgCopie || "🔗 Lien copié"); },
+        function () { toast(msgCopie || "Lien copié"); },
         function () { toast("Lien : " + url); }
       );
     } else {
@@ -2199,8 +2199,8 @@ function majSectionCompte() {
   var bascule = document.getElementById("settingsAuthSwitch");
   if (bascule) {
     bascule.textContent = visiteur
-      ? "🔑 J'ai déjà un compte — me connecter"
-      : "🔄 Se connecter avec un autre compte";
+      ? "J'ai déjà un compte — me connecter"
+      : "Se connecter avec un autre compte";
   }
   // ⚠️ ET TOUT CE QUI SUPPOSE UN COMPTE PART AVEC, pas seulement l'entrée qui a
   // motivé ce correctif : « Se déconnecter » n'a rien à déconnecter, « Changer
@@ -2227,20 +2227,20 @@ function openNotifSettings() {
   var notifs = cfg.notifs || { posts: true, messages: true, likes: true, events: true, system: true };
   openModal('\
     <div class="modal-handle"></div>\
-    <div class="modal-title">🔔 Notifications</div>\
+    <div class="modal-title">Notifications</div>\
     <p style="font-size:12px;color:var(--muted);margin-bottom:14px;">Choisis ce qui te notifie</p>\
-    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">📝 Nouveaux posts</span><input type="checkbox" id="notifPosts" ' + (notifs.posts ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
-    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">💬 Messages</span><input type="checkbox" id="notifMessages" ' + (notifs.messages ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
-    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">❤️ Likes & commentaires</span><input type="checkbox" id="notifLikes" ' + (notifs.likes ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
-    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">🤝 Événements IRL</span><input type="checkbox" id="notifEvents" ' + (notifs.events ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
-    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;"><span style="font-size:13px;">🔧 Système</span><input type="checkbox" id="notifSystem" ' + (notifs.system ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
+    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">Nouveaux posts</span><input type="checkbox" id="notifPosts" ' + (notifs.posts ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
+    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">Messages</span><input type="checkbox" id="notifMessages" ' + (notifs.messages ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
+    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">Likes & commentaires</span><input type="checkbox" id="notifLikes" ' + (notifs.likes ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
+    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">Événements IRL</span><input type="checkbox" id="notifEvents" ' + (notifs.events ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
+    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;"><span style="font-size:13px;">Système</span><input type="checkbox" id="notifSystem" ' + (notifs.system ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
     <button class="btn primary block" onclick="saveNotifSettings()" style="margin-top:14px;">Sauvegarder</button>\
   ');
 }
 function saveNotifSettings() {
   var cfg = getCurrentConfig();
   cfg.notifs = { posts: document.getElementById("notifPosts").checked, messages: document.getElementById("notifMessages").checked, likes: document.getElementById("notifLikes").checked, events: document.getElementById("notifEvents").checked, system: document.getElementById("notifSystem").checked };
-  saveConfig(cfg); closeModal(); toast("🔔 Notifications mises à jour");
+  saveConfig(cfg); closeModal(); toast("Notifications mises à jour");
 }
 
 function openPrivacySettings() {
@@ -2248,11 +2248,11 @@ function openPrivacySettings() {
   var priv = cfg.privacy || { profilePublic: true, showOnline: true, allowMessages: "everyone", showActivity: true };
   openModal('\
     <div class="modal-handle"></div>\
-    <div class="modal-title">🔒 Confidentialité</div>\
-    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">👁 Profil public</span><input type="checkbox" id="privPublic" ' + (priv.profilePublic ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
-    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">🟢 Afficher en ligne</span><input type="checkbox" id="privOnline" ' + (priv.showOnline ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
-    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">📊 Afficher mon activité</span><input type="checkbox" id="privActivity" ' + (priv.showActivity ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
-    <div style="padding:12px 0;"><span style="font-size:13px;">💬 Qui peut m\'écrire ?</span>\
+    <div class="modal-title">Confidentialité</div>\
+    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">Profil public</span><input type="checkbox" id="privPublic" ' + (priv.profilePublic ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
+    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">Afficher en ligne</span><input type="checkbox" id="privOnline" ' + (priv.showOnline ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
+    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">Afficher mon activité</span><input type="checkbox" id="privActivity" ' + (priv.showActivity ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
+    <div style="padding:12px 0;"><span style="font-size:13px;">Qui peut m\'écrire ?</span>\
       <select id="privMessages" style="display:block;width:100%;margin-top:6px;padding:10px;border-radius:10px;border:1.5px solid var(--border);font-size:16px;">\
         <option value="everyone" ' + (priv.allowMessages === "everyone" ? "selected" : "") + '>Tout le monde</option>\
         <option value="followers" ' + (priv.allowMessages === "followers" ? "selected" : "") + '>Mes abonnés</option>\
@@ -2264,7 +2264,7 @@ function openPrivacySettings() {
 function savePrivacySettings() {
   var cfg = getCurrentConfig();
   cfg.privacy = { profilePublic: document.getElementById("privPublic").checked, showOnline: document.getElementById("privOnline").checked, showActivity: document.getElementById("privActivity").checked, allowMessages: document.getElementById("privMessages").value };
-  saveConfig(cfg); closeModal(); toast("🔒 Confidentialité mise à jour");
+  saveConfig(cfg); closeModal(); toast("Confidentialité mise à jour");
 }
 
 function openContentSettings() {
@@ -2272,11 +2272,11 @@ function openContentSettings() {
   var content = cfg.content || { autoplay: true, dataEco: false, showSensitive: false, language: "fr" };
   openModal('\
     <div class="modal-handle"></div>\
-    <div class="modal-title">📱 Contenu & feed</div>\
-    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">▶️ Lecture auto des vidéos</span><input type="checkbox" id="contentAutoplay" ' + (content.autoplay ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
-    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">📡 Mode économie de données</span><input type="checkbox" id="contentDataEco" ' + (content.dataEco ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
-    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">⚠️ Afficher contenu sensible</span><input type="checkbox" id="contentSensitive" ' + (content.showSensitive ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
-    <div style="padding:12px 0;"><span style="font-size:13px;">🌍 Langue</span>\
+    <div class="modal-title">Contenu & feed</div>\
+    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">Lecture auto des vidéos</span><input type="checkbox" id="contentAutoplay" ' + (content.autoplay ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
+    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">Mode économie de données</span><input type="checkbox" id="contentDataEco" ' + (content.dataEco ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
+    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">Afficher contenu sensible</span><input type="checkbox" id="contentSensitive" ' + (content.showSensitive ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
+    <div style="padding:12px 0;"><span style="font-size:13px;">Langue</span>\
       <select id="contentLang" style="display:block;width:100%;margin-top:6px;padding:10px;border-radius:10px;border:1.5px solid var(--border);font-size:16px;">\
         <option value="fr" ' + (content.language === "fr" ? "selected" : "") + '>Français</option>\
         <option value="en" ' + (content.language === "en" ? "selected" : "") + '>English</option>\
@@ -2288,7 +2288,7 @@ function openContentSettings() {
 function saveContentSettings() {
   var cfg = getCurrentConfig();
   cfg.content = { autoplay: document.getElementById("contentAutoplay").checked, dataEco: document.getElementById("contentDataEco").checked, showSensitive: document.getElementById("contentSensitive").checked, language: document.getElementById("contentLang").value };
-  saveConfig(cfg); closeModal(); toast("📱 Préférences de contenu mises à jour");
+  saveConfig(cfg); closeModal(); toast("Préférences de contenu mises à jour");
 }
 
 function openScreenTime() {
@@ -2303,7 +2303,7 @@ function openScreenTime() {
 
   openModal('\
     <div class="modal-handle"></div>\
-    <div class="modal-title">⏱ Temps d\'écran</div>\
+    <div class="modal-title">Temps d\'écran</div>\
     \
     <div style="text-align:center;margin:16px 0;">\
       <div style="font-size:42px;font-weight:900;color:var(--accent);">' + uH + 'h ' + (uM < 10 ? '0' : '') + uM + 'min</div>\
@@ -2311,7 +2311,7 @@ function openScreenTime() {
     </div>\
     \
     <div style="background:var(--bg-deep);border-radius:14px;padding:16px;margin-bottom:14px;">\
-      <div style="font-size:13px;font-weight:800;margin-bottom:10px;">⏳ Limite journalière</div>\
+      <div style="font-size:13px;font-weight:800;margin-bottom:10px;">Limite journalière</div>\
       <div style="display:flex;gap:8px;align-items:center;justify-content:center;margin-bottom:12px;">\
         <div style="text-align:center;">\
           <input type="number" id="limitH" value="' + escapeHtml(lH) + '" min="0" max="23" style="width:56px;padding:10px 4px;text-align:center;font-size:22px;font-weight:900;border:2px solid var(--border);border-radius:12px;background:var(--bg-card);color:var(--text);"/>\
@@ -2339,15 +2339,15 @@ function openScreenTime() {
     </div>\
     \
     <div style="background:var(--bg-deep);border-radius:14px;padding:16px;margin-bottom:14px;">\
-      <div style="font-size:13px;font-weight:800;margin-bottom:8px;">🔐 Contrôle parental</div>\
+      <div style="font-size:13px;font-weight:800;margin-bottom:8px;">Contrôle parental</div>\
       <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Un code à 4 chiffres sera demandé pour modifier ou désactiver la limite.</div>\
       ' + (hasCode
-        ? '<div style="display:flex;align-items:center;gap:8px;"><span style="font-size:12px;color:var(--accent);font-weight:700;">✅ Code actif</span><button onclick="removeParentalCode()" class="btn ghost" style="font-size:11px;padding:6px 10px;color:#ef4444;border-color:rgba(239,68,68,0.3);">Supprimer</button></div>'
-        : '<button onclick="setupParentalCode()" class="btn ghost" style="font-size:12px;width:100%;">🔒 Définir un code parental</button>'
+        ? '<div style="display:flex;align-items:center;gap:8px;"><span style="font-size:12px;color:var(--accent);font-weight:700;">Code actif</span><button onclick="removeParentalCode()" class="btn ghost" style="font-size:11px;padding:6px 10px;color:#ef4444;border-color:rgba(239,68,68,0.3);">Supprimer</button></div>'
+        : '<button onclick="setupParentalCode()" class="btn ghost" style="font-size:12px;width:100%;">Définir un code parental</button>'
       ) + '\
     </div>\
     \
-    <button class="btn primary block" onclick="saveScreenTimeLimit()">💾 Sauvegarder la limite</button>\
+    <button class="btn primary block" onclick="saveScreenTimeLimit()">Sauvegarder la limite</button>\
   ');
 }
 
@@ -2377,16 +2377,16 @@ function doSaveScreenTimeLimit() {
   localStorage.setItem("passio_limit_sec", total.toString());
   closeModal();
   if (total === 0) {
-    toast("⏱ Limite désactivée — temps illimité");
+    toast("Limite désactivée — temps illimité");
   } else {
-    toast("⏱ Limite : " + h + "h " + (m < 10 ? "0" : "") + m + "min " + (s < 10 ? "0" : "") + s + "s");
+    toast("Limite : " + h + "h " + (m < 10 ? "0" : "") + m + "min " + (s < 10 ? "0" : "") + s + "s");
   }
 }
 
 function setupParentalCode() {
   openModal('\
     <div class="modal-handle"></div>\
-    <div class="modal-title">🔐 Définir le code parental</div>\
+    <div class="modal-title">Définir le code parental</div>\
     <p style="font-size:12px;color:var(--muted);margin-bottom:14px;">Ce code à 4 chiffres sera demandé pour modifier la limite de temps. Note-le bien !</p>\
     <div style="display:flex;gap:8px;justify-content:center;margin-bottom:14px;">\
       <input type="password" id="parentCode1" maxlength="1" inputmode="numeric" style="width:50px;height:56px;text-align:center;font-size:26px;font-weight:900;border:2px solid var(--border);border-radius:14px;background:var(--bg-card);color:var(--text);" oninput="if(this.value.length===1)document.getElementById(\'parentCode2\').focus()"/>\
@@ -2394,7 +2394,7 @@ function setupParentalCode() {
       <input type="password" id="parentCode3" maxlength="1" inputmode="numeric" style="width:50px;height:56px;text-align:center;font-size:26px;font-weight:900;border:2px solid var(--border);border-radius:14px;background:var(--bg-card);color:var(--text);" oninput="if(this.value.length===1)document.getElementById(\'parentCode4\').focus()"/>\
       <input type="password" id="parentCode4" maxlength="1" inputmode="numeric" style="width:50px;height:56px;text-align:center;font-size:26px;font-weight:900;border:2px solid var(--border);border-radius:14px;background:var(--bg-card);color:var(--text);" oninput="if(this.value.length===1)confirmParentalCode()"/>\
     </div>\
-    <button class="btn primary block" onclick="confirmParentalCode()">✅ Confirmer le code</button>\
+    <button class="btn primary block" onclick="confirmParentalCode()">Confirmer le code</button>\
     <button class="btn ghost block" onclick="closeModal();openScreenTime();" style="margin-top:6px;">Annuler</button>\
   ');
   setTimeout(function() { var el = document.getElementById("parentCode1"); if (el) el.focus(); }, 100);
@@ -2417,14 +2417,14 @@ async function confirmParentalCode() {
   const hash = await _hashPin(code);
   localStorage.setItem("passio_parental_code", hash);
   closeModal();
-  toast("🔐 Code parental activé !");
+  toast("Code parental activé !");
   openScreenTime();
 }
 
 function removeParentalCode() {
   askParentalCode(function() {
     localStorage.removeItem("passio_parental_code");
-    toast("🔓 Code parental supprimé");
+    toast("Code parental supprimé");
     openScreenTime();
   });
 }
@@ -2432,7 +2432,7 @@ function removeParentalCode() {
 function askParentalCode(onSuccess) {
   openModal('\
     <div class="modal-handle"></div>\
-    <div class="modal-title">🔐 Entrer le code parental</div>\
+    <div class="modal-title">Entrer le code parental</div>\
     <p style="font-size:12px;color:var(--muted);margin-bottom:14px;">Saisis ton code à 4 chiffres pour continuer.</p>\
     <div style="display:flex;gap:8px;justify-content:center;margin-bottom:14px;">\
       <input type="password" id="askCode1" maxlength="1" inputmode="numeric" style="width:50px;height:56px;text-align:center;font-size:26px;font-weight:900;border:2px solid var(--border);border-radius:14px;background:var(--bg-card);color:var(--text);" oninput="if(this.value.length===1)document.getElementById(\'askCode2\').focus()"/>\
@@ -2440,7 +2440,7 @@ function askParentalCode(onSuccess) {
       <input type="password" id="askCode3" maxlength="1" inputmode="numeric" style="width:50px;height:56px;text-align:center;font-size:26px;font-weight:900;border:2px solid var(--border);border-radius:14px;background:var(--bg-card);color:var(--text);" oninput="if(this.value.length===1)document.getElementById(\'askCode4\').focus()"/>\
       <input type="password" id="askCode4" maxlength="1" inputmode="numeric" style="width:50px;height:56px;text-align:center;font-size:26px;font-weight:900;border:2px solid var(--border);border-radius:14px;background:var(--bg-card);color:var(--text);"/>\
     </div>\
-    <button class="btn primary block" id="askCodeBtn">✅ Valider</button>\
+    <button class="btn primary block" id="askCodeBtn">Valider</button>\
     <button class="btn ghost block" onclick="closeModal()" style="margin-top:6px;">Annuler</button>\
   ');
   setTimeout(function() {
@@ -2457,7 +2457,7 @@ function askParentalCode(onSuccess) {
           closeModal();
           if (onSuccess) onSuccess();
         } else {
-          toast("❌ Code incorrect", "error");
+          toast("Code incorrect", "error");
           ["askCode1","askCode2","askCode3","askCode4"].forEach(function(id) { var e = document.getElementById(id); if(e) e.value=""; });
           var el = document.getElementById("askCode1"); if (el) el.focus();
         }
@@ -2468,27 +2468,27 @@ function askParentalCode(onSuccess) {
 
 function setTimeLimit(min) {
   localStorage.setItem("passio_limit_sec", (min * 60).toString());
-  toast("⏱ Limite : " + (min > 0 ? min + " min/jour" : "illimitée"));
+  toast("Limite : " + (min > 0 ? min + " min/jour" : "illimitée"));
   openScreenTime();
 }
 
 function openPauseMode() {
   openModal('\
     <div class="modal-handle"></div>\
-    <div class="modal-title">🧘 Mode pause</div>\
+    <div class="modal-title">Mode pause</div>\
     <p style="font-size:12px;color:var(--muted);margin-bottom:16px;">Prends une pause. PASSIO sera là quand tu reviens.</p>\
     <div style="display:flex;flex-direction:column;gap:8px;">\
-      <button class="btn ghost" onclick="activatePause(30)" style="text-align:left;padding:14px;">😌 Pause 30 minutes</button>\
-      <button class="btn ghost" onclick="activatePause(60)" style="text-align:left;padding:14px;">🍃 Pause 1 heure</button>\
-      <button class="btn ghost" onclick="activatePause(1440)" style="text-align:left;padding:14px;">🌙 Pause jusqu\'à demain</button>\
-      <button class="btn ghost" onclick="activatePause(10080)" style="text-align:left;padding:14px;">🏖 Pause 1 semaine</button>\
+      <button class="btn ghost" onclick="activatePause(30)" style="text-align:left;padding:14px;">Pause 30 minutes</button>\
+      <button class="btn ghost" onclick="activatePause(60)" style="text-align:left;padding:14px;">Pause 1 heure</button>\
+      <button class="btn ghost" onclick="activatePause(1440)" style="text-align:left;padding:14px;">Pause jusqu\'à demain</button>\
+      <button class="btn ghost" onclick="activatePause(10080)" style="text-align:left;padding:14px;">Pause 1 semaine</button>\
     </div>\
     <button class="btn primary block" onclick="closeModal()" style="margin-top:14px;">Annuler</button>\
   ');
 }
 function activatePause(min) {
   closeModal();
-  toast("🧘 Mode pause activé — " + (min < 60 ? min + " min" : min < 1440 ? Math.round(min/60) + "h" : Math.round(min/1440) + " jour(s)"));
+  toast("Mode pause activé — " + (min < 60 ? min + " min" : min < 1440 ? Math.round(min/60) + "h" : Math.round(min/1440) + " jour(s)"));
 }
 
 function openAbout() {
@@ -2501,9 +2501,9 @@ function openAbout() {
     </div>\
     <div style="font-size:13px;color:var(--text);line-height:1.6;margin-bottom:14px;">Le premier réseau social pensé pour tes passions. Crée, partage, rencontre — autour de ce qui t\'anime vraiment.</div>\
     <div style="font-size:11px;color:var(--muted);line-height:1.5;">\
-      🏢 PASSIO SAS · France<br>\
-      📧 contact@passio.app<br>\
-      🌐 passio.app<br><br>\
+      PASSIO SAS · France<br>\
+      contact@passio.app<br>\
+      passio.app<br><br>\
       Fondé avec ❤️ par des passionnés.\
     </div>\
     <button class="btn primary block" onclick="closeModal()" style="margin-top:14px;">Fermer</button>\
@@ -2513,7 +2513,7 @@ function openAbout() {
 function openLogoutConfirm() {
   openModal('\
     <div class="modal-handle"></div>\
-    <div class="modal-title">🚪 Se déconnecter ?</div>\
+    <div class="modal-title">Se déconnecter ?</div>\
     <p style="font-size:13px;color:var(--muted);margin-bottom:16px;">Tu garderas ton compte et ton contenu. Tu pourras te reconnecter à tout moment.</p>\
     <div style="display:flex;gap:8px;">\
       <button class="btn ghost" onclick="closeModal()" style="flex:1;">Annuler</button>\
@@ -2646,7 +2646,7 @@ function openAccountSwitch() {
   }
   openModal('\
     <div class="modal-handle"></div>\
-    <div class="modal-title">🔄 Se connecter avec un autre compte</div>\
+    <div class="modal-title">Se connecter avec un autre compte</div>\
     <p style="font-size:13px;color:var(--muted);margin-bottom:16px;">Tu vas être déconnecté de ce compte, puis l\'écran de connexion s\'ouvrira. Ce compte et tout son contenu restent intacts — tu pourras y revenir quand tu veux.</p>\
     <div style="display:flex;gap:8px;">\
       <button class="btn ghost" onclick="closeModal()" style="flex:1;">Annuler</button>\
@@ -2930,7 +2930,7 @@ async function doLogout(intention) {
   // une expiration de session — hériterait de cet écran sans l'avoir demandé :
   // `doLogout()` sans argument reste donc l'ancien comportement, à l'octet près.
   if (intention === "signin") poserIntentionAuth("signin");
-  toast(intention === "signin" ? "🔄 Déconnecté — connecte-toi avec ton autre compte" : "👋 Déconnecté — à bientôt !");
+  toast(intention === "signin" ? "Déconnecté — connecte-toi avec ton autre compte" : "Déconnecté — à bientôt !");
   setTimeout(() => location.reload(), 1200);
 }
 
@@ -2942,7 +2942,7 @@ async function doLogout(intention) {
 function openChangePassword() {
   openModal('\
     <div class="modal-handle"></div>\
-    <div class="modal-title">🔑 Changer mon mot de passe</div>\
+    <div class="modal-title">Changer mon mot de passe</div>\
     <p style="font-size:13px;color:var(--muted);margin-bottom:14px;">Choisis un nouveau mot de passe (6 caractères minimum). Tu resteras connecté.</p>\
     <label class="field"><span>Nouveau mot de passe</span>\
       <input type="password" class="input" id="cpNew" autocomplete="new-password" minlength="6" placeholder="••••••••"/></label>\
@@ -2991,7 +2991,7 @@ async function doChangePassword() {
       return;
     }
     closeModal();
-    toast("✅ Mot de passe mis à jour");
+    toast("Mot de passe mis à jour", "success");
   } catch (e) {
     err("Erreur réseau. Réessaie.");
     if (btn) { btn.disabled = false; btn.textContent = "Valider"; }
@@ -3009,7 +3009,7 @@ window.doChangePassword = doChangePassword;
 function openDeleteAccountConfirm() {
   openModal('\
     <div class="modal-handle"></div>\
-    <div class="modal-title" style="color:#ef4444;">🗑 Supprimer mon compte</div>\
+    <div class="modal-title" style="color:#ef4444;">Supprimer mon compte</div>\
     <p style="font-size:13px;color:var(--muted);margin-bottom:10px;">Cette action est <strong>définitive</strong>. Seront supprimés :</p>\
     <ul style="font-size:13px;color:var(--muted);margin:0 0 12px 18px;line-height:1.7;">\
       <li>ton profil et tes passions ;</li>\
@@ -3034,7 +3034,7 @@ async function doDeleteAccount() {
     return;
   }
   closeModal();
-  toast("🗑 Suppression en cours…");
+  toast("Suppression en cours…");
   // Suppression best-effort des données serveur, table par table.
   // Les policies RLS limitent de toute façon chaque DELETE au propriétaire.
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
@@ -3082,14 +3082,14 @@ async function doDeleteAccount() {
   // Conversations durables en IndexedDB : non couvertes par le nettoyage localStorage.
   try { if (typeof idbConvClear === "function") await Promise.resolve(idbConvClear()).catch(function () {}); } catch (e) {}
   try { sessionStorage.clear(); } catch (e) {}
-  toast("✅ Compte supprimé. Au revoir 💜");
+  toast("Compte supprimé. Au revoir");
   setTimeout(function () { location.reload(); }, 1500);
 }
 
 function openPrivacyPolicy() {
   openModal('\
     <div class="modal-handle"></div>\
-    <div class="modal-title">🛡 Politique de confidentialité</div>\
+    <div class="modal-title">Politique de confidentialité</div>\
     <div style="font-size:12.5px;color:var(--muted);line-height:1.65;max-height:55vh;overflow-y:auto;padding-right:4px;">\
       <p style="margin:0 0 10px;"><strong style="color:var(--text);">Dernière mise à jour : juin 2026 — PASSIO (beta privée)</strong></p>\
       <p style="margin:0 0 10px;"><strong style="color:var(--text);">1. Données collectées.</strong> Lors de l\'inscription : adresse e-mail et nom d\'utilisateur. Lors de l\'utilisation : passions, publications (textes, photos, vidéos, audio), carnets, messages, commentaires, likes, abonnements, participation aux événements, et préférences locales (thème, filtres).</p>\
@@ -3302,7 +3302,7 @@ function _showPasswordRecoveryUI() {
     try {
       const { error } = await supa.auth.updateUser({ password: pwd });
       if (error) { msg.style.color = "#e11d48"; msg.textContent = error.message; btn.disabled = false; btn.textContent = "Valider"; return; }
-      msg.style.color = "#16a34a"; msg.textContent = "✅ Mot de passe mis à jour.";
+      msg.style.color = "#16a34a"; msg.textContent = "Mot de passe mis à jour.";
       // ⚠️ L'ADOPTION SE FAIT ICI, ET NULLE PART AILLEURS SUR CE PARCOURS.
       // `boot()` et le handler `onAuthStateChange` s'abstiennent tant que le
       // fragment `type=recovery` est là : recharger pendant que ce formulaire
@@ -3704,7 +3704,7 @@ function openCreateCustomPassion() {
   if (passionsPersoSuspendues()) {
     openModal('\
       <div class="modal-handle"></div>\
-      <div class="modal-title">🌟 Créer ta passion</div>\
+      <div class="modal-title">Créer ta passion</div>\
       <div style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:16px;">\
         La création de passions personnalisées est <b>momentanément indisponible</b>.\
         Une passion à toi ne peut pas encore recevoir de contenu : tu te retrouverais\
@@ -3735,10 +3735,10 @@ function openCreateCustomPassion() {
 
   // Voir les demandes en attente
   var pending = JSON.parse(localStorage.getItem("passio_passion_requests") || "[]");
-  var pendingHTML = pending.length ? '<div style="margin-bottom:14px;"><div style="font-weight:700;font-size:12px;color:var(--text);margin-bottom:6px;">📋 Mes demandes en cours</div>' +
+  var pendingHTML = pending.length ? '<div style="margin-bottom:14px;"><div style="font-weight:700;font-size:12px;color:var(--text);margin-bottom:6px;">Mes demandes en cours</div>' +
     pending.map(function(r) {
       var statusColor = r.status === "approved" ? "#10b981" : r.status === "rejected" ? "#ef4444" : "#f59e0b";
-      var statusLabel = r.status === "approved" ? "✅ Approuvée" : r.status === "rejected" ? "❌ Refusée" : "⏳ En attente";
+      var statusLabel = r.status === "approved" ? "Approuvée" : r.status === "rejected" ? "Refusée" : "En attente";
       return '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;margin-bottom:4px;">' +
         '<span style="font-size:18px;">' + r.emoji + '</span>' +
         '<div style="flex:1;"><div style="font-weight:700;font-size:12px;">' + escapeHtml(r.name) + '</div><div style="font-size:10px;color:var(--muted);">' + escapeHtml(r.reason || "") + '</div></div>' +
@@ -3748,7 +3748,7 @@ function openCreateCustomPassion() {
 
   openModal(`
     <div class="modal-handle"></div>
-    <div class="modal-title">🌟 Créer ta passion</div>
+    <div class="modal-title">Créer ta passion</div>
     <div style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.5;">Ta passion est ajoutée tout de suite, rien que pour toi : elle sert à choisir ce que tu vois dans ton fil. Elle n'entre pas dans le catalogue commun, et on ne peut pas encore publier dedans.</div>
 
     ${pendingHTML}
@@ -3766,7 +3766,7 @@ function openCreateCustomPassion() {
     <label class="field">
       <span>Es-tu créateur/influenceur dans ce domaine ?</span>
       <div style="display:flex;gap:8px;margin-top:4px;">
-        <button class="pill" id="creatorYes" onclick="document.getElementById('creatorYes').classList.add('active');document.getElementById('creatorNo').classList.remove('active');">✅ Oui</button>
+        <button class="pill" id="creatorYes" onclick="document.getElementById('creatorYes').classList.add('active');document.getElementById('creatorNo').classList.remove('active');">Oui</button>
         <button class="pill" id="creatorNo" onclick="document.getElementById('creatorNo').classList.add('active');document.getElementById('creatorYes').classList.remove('active');">Non</button>
       </div>
     </label>
@@ -3797,7 +3797,7 @@ function openCreateCustomPassion() {
 
     <div style="background:rgba(139,92,246,0.06);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:14px;">
       <div style="font-size:11px;color:var(--text);line-height:1.5;">
-        <b>📌 Critères d'approbation :</b><br>
+        <b>Critères d'approbation :</b><br>
         · La passion n'existe pas déjà dans PASSIO<br>
         · Elle concerne un centre d'intérêt réel et partagé<br>
         · Elle respecte les règles de la communauté<br>
@@ -3805,7 +3805,7 @@ function openCreateCustomPassion() {
       </div>
     </div>
 
-    <button class="btn primary block" onclick="submitPassionRequest()">📩 Envoyer ma demande</button>
+    <button class="btn primary block" onclick="submitPassionRequest()">Envoyer ma demande</button>
   `);
   setTimeout(() => {
     const input = document.getElementById("customPassionName");
@@ -3879,7 +3879,7 @@ function submitPassionRequest() {
   // 48h ». Aucune revue n'a jamais existé : le code auto-approuvait après cinq
   // secondes. Une promesse de modération humaine qu'aucun humain ne tient n'est
   // pas un détail de formulation — on dit ce que le produit fait.
-  toast("✨ Passion ajoutée à tes passions", "success");
+  toast("Passion ajoutée à tes passions", "success");
 
   // Ajout IMMÉDIAT. C'était un `setTimeout(…, 5000)` commenté « Simuler une
   // approbation après 5 secondes pour la démo » : la passion n'existait donc pas
@@ -4733,9 +4733,9 @@ function legacyMoodToFeedIntent(mood) {
 // Le Studio, lui, a bien une pastille « ✨ Tous » : y choisir le neutre est un
 // geste, ne rien afficher ensuite en est la conséquence voulue.
 var PASSIO_MOOD_LABELS = {
-  creation: { emoji: "💡", label: "Idées" },
-  learn:    { emoji: "📚", label: "Apprendre" },
-  irl:      { emoji: "🤝", label: "Rencontrer" },
+  creation: { label: "Idées" },
+  learn:    { label: "Apprendre" },
+  irl:      { label: "Rencontrer" },
 };
 
 // ── AFFICHER ET ADMETTRE SONT DEUX CHOSES (2026-09-02) ───────────────────────
@@ -4779,11 +4779,11 @@ var PASSIO_MOODS_ADMIS = (function () {
   return admis;
 })();
 
-// Étiquette de la carte (fil, post ouvert) : emoji + libellé, ou "" pour le
+// Étiquette de la carte (fil, post ouvert) : le libellé seul, ou "" pour le
 // neutre et pour toute valeur inconnue venue de la base.
 function moodTagLabel(mood) {
   var m = PASSIO_MOOD_LABELS[mood];
-  return m ? m.emoji + " " + m.label : "";
+  return m ? m.label : "";
 }
 
 // Libellé nu (bobines), où le neutre s'écrit « Tout » depuis toujours.
@@ -5359,9 +5359,9 @@ function renderFeedExplorationFallback(list) {
     // l'utilisateur devant un écran où plus rien n'annonçait l'ajout — trois taps
     // à deviner. Une cible qui déménage emporte tout ce qui la visait, y compris
     // ce qui ne la nommait pas.
-    +   '<button class="btn ghost" onclick="ouvrirGestionPassions()" style="flex:1 1 auto;">➕ Ajouter une passion</button>'
-    +   '<button class="btn ghost" onclick="goTo(\'explore\')" style="flex:1 1 auto;">👥 Découvrir des personnes</button>'
-    +   '<button class="btn primary" onclick="goTo(\'studio\')" style="flex:1 1 100%;">✍️ Publier le premier contenu</button>'
+    +   '<button class="btn ghost" onclick="ouvrirGestionPassions()" style="flex:1 1 auto;">Ajouter une passion</button>'
+    +   '<button class="btn ghost" onclick="goTo(\'explore\')" style="flex:1 1 auto;">Découvrir des personnes</button>'
+    +   '<button class="btn primary" onclick="goTo(\'studio\')" style="flex:1 1 100%;">Publier le premier contenu</button>'
     + '</div>';
 
   if (aExplorer.length) {
@@ -6465,7 +6465,7 @@ function commentSortBarHtml(current, onpick) {
     var active = current === mode;
     return '<button onclick="' + onpick + '(\'' + escapeJsArg(mode) + '\')" style="background:' + (active ? "var(--accent)" : "var(--bg-deep)") + ';color:' + (active ? "#fff" : "var(--muted)") + ';border:none;border-radius:999px;font-size:11px;font-weight:700;padding:4px 10px;cursor:pointer;">' + label + '</button>';
   }
-  return '<div style="display:flex;gap:6px;margin-bottom:8px;">' + pill("recent", "🕐 Récents") + pill("liked", "❤️ Aimés") + '</div>';
+  return '<div style="display:flex;gap:6px;margin-bottom:8px;">' + pill("recent", "Récents") + pill("liked", "Aimés") + '</div>';
 }
 
 // Rend UNE carte de post sans jamais faire echouer tout le fil : un post
@@ -6562,7 +6562,7 @@ function renderPostHTML(p) {
           <div class="event-date-month">${sd ? escapeHtml(sd.month) : ""}</div>
         </div>
         <div style="flex:1;min-width:0;">
-          <span class="cdv-feed-tag" style="display:inline-block;margin-bottom:4px;">📍 ÉVÉNEMENT IRL</span>
+          <span class="cdv-feed-tag" style="display:inline-block;margin-bottom:4px;">ÉVÉNEMENT IRL</span>
           <div style="font-weight:800;font-size:15px;line-height:1.25;">${escapeHtml(se.title || "Événement")}</div>
           <div style="font-size:12px;color:var(--muted);margin-top:3px;">${sp.emoji} ${escapeHtml(sp.label)}${se.city ? " · 📍 " + escapeHtml(se.city) : ""}</div>
         </div>
@@ -6697,9 +6697,9 @@ function renderPostHTML(p) {
         <div class="post-author-meta">
           <span class="post-passion-tag">${escapeHtml(passion.emoji)} ${escapeHtml(passion.label)}</span> · ${fmtTime(p.createdAt)}
           ${p._source === "me" && p.syncStatus ? `
-            ${p.syncStatus === "syncing" ? '<span style="margin-left:8px;font-size:10px;color:var(--muted);">⏳ Sync...</span>' : ""}
-            ${p.syncStatus === "synced" ? '<span style="margin-left:8px;font-size:10px;color:#22c55e;">📡 En ligne</span>' : ""}
-            ${p.syncStatus === "offline" ? '<span style="margin-left:8px;font-size:10px;color:#f59e0b;">📴 Local</span>' : ""}
+            ${p.syncStatus === "syncing" ? '<span style="margin-left:8px;font-size:10px;color:var(--muted);">Sync…</span>' : ""}
+            ${p.syncStatus === "synced" ? '<span style="margin-left:8px;font-size:10px;color:#22c55e;">En ligne</span>' : ""}
+            ${p.syncStatus === "offline" ? '<span style="margin-left:8px;font-size:10px;color:#f59e0b;">Local</span>' : ""}
           ` : ""}
         </div>
       </div>

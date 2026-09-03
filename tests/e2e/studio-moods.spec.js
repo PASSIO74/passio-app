@@ -25,10 +25,10 @@ const { bootOnboarded } = require("./app-helper");
 
 // Rangée de pastilles attendue : libellé visible → valeur publiée.
 const PASTILLES = [
-  { label: "💡 Idées", value: "creation" },
-  { label: "📚 Apprendre", value: "learn" },
-  { label: "🤝 Rencontrer", value: "irl" },
-  { label: "✨ Tous", value: "all" },
+  { label: "Idées", value: "creation" },
+  { label: "Apprendre", value: "learn" },
+  { label: "Rencontrer", value: "irl" },
+  { label: "Tous", value: "all" },
 ];
 
 async function ouvrirStudio(page) {
@@ -100,7 +100,7 @@ test.describe("Studio — moods alignés sur les intentions du Fil", () => {
     });
     expect(publie.mood).toBe("irl");
     expect(publie.intent).toBe("meet");
-    expect(publie.tag).toBe("🤝 Rencontrer");
+    expect(publie.tag).toBe("Rencontrer");
   });
 
   test("« Tous » publie le neutre, qui ne porte aucune étiquette", async ({ page }) => {
@@ -147,11 +147,11 @@ test.describe("Studio — moods alignés sur les intentions du Fil", () => {
       })));
 
     expect(dits).toEqual([
-      { m: "creation", tag: "💡 Idées", court: "Idées" },
-      { m: "learn", tag: "📚 Apprendre", court: "Apprendre" },
+      { m: "creation", tag: "Idées", court: "Idées" },
+      { m: "learn", tag: "Apprendre", court: "Apprendre" },
       // Les bobines ignoraient « irl » (« Tout ») : le trou est fermé par la
       // même table qui sert au fil.
-      { m: "irl", tag: "🤝 Rencontrer", court: "Rencontrer" },
+      { m: "irl", tag: "Rencontrer", court: "Rencontrer" },
       // ⚠️ ASSERTION RETOURNÉE LE 2026-09-02, ET C'EST LE POINT DU LOT.
       // « chill » et « actu » n'étaient déjà plus publiables (test ② de ce
       // fichier) ; ils gardaient pourtant un libellé, donc une pastille sur la

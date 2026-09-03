@@ -29,8 +29,9 @@ const NOTIFS_ANCIENNES = [
   { id: "n_rang", kind: "local", text: "🎉 Nouveau rang : <b>Explorateur</b>", createdAt: Date.now() - 7 * 3600000, unread: false, emoji: "🏆" },
   { id: "n_vraie", kind: "comment", fromId: "u_lea", text: "<b>Léa Moreau</b> a réagi à ton post : « participation +4 pts, joli signal 💎 »", createdAt: Date.now() - 3600000, unread: true, emoji: "💬" },
   // Écrite PAR L'APP (fromId "me") mais citant un titre d'activité d'autrui :
-  // c'est exactement ce que produit `pushNotification("🤝 Tu rejoins <b>…</b>")`.
-  { id: "n_rejoint", kind: "local", fromId: "me", text: "🤝 Tu rejoins <b>Atelier 💎 Bijoux</b>", createdAt: Date.now() - 2 * 3600000, unread: true, emoji: "🤝" },
+  // c'est exactement ce que produit `pushNotification("Tu rejoins <b>…</b>", "🤝")` :
+  // le TEXTE n'a plus d'emoji de tête, la PASTILLE (2e argument) le garde.
+  { id: "n_rejoint", kind: "local", fromId: "me", text: "Tu rejoins <b>Atelier 💎 Bijoux</b>", createdAt: Date.now() - 2 * 3600000, unread: true, emoji: "🤝" },
 ];
 
 async function bootAvecAncienEtat(page) {

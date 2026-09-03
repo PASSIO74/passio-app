@@ -227,7 +227,7 @@ function shareBeta() {
     <div class="modal-subtitle">Envoie ce lien à tes bêta-testeurs. Leurs données restent sur leur appareil.</div>
     <div class="share-box">${escapeHtml(link)}</div>
     <div style="display:flex;gap:8px;">
-      <button class="btn primary block" onclick="navigator.clipboard && navigator.clipboard.writeText('${escapeJsArg(link)}');window.tel&&tel.linkFromUrl&&tel.linkShare(tel.linkFromUrl('${escapeJsArg(link)}'),'clipboard');toast('Lien copié');closeModal();">📋 Copier le lien</button>
+      <button class="btn primary block" onclick="navigator.clipboard && navigator.clipboard.writeText('${escapeJsArg(link)}');window.tel&&tel.linkFromUrl&&tel.linkShare(tel.linkFromUrl('${escapeJsArg(link)}'),'clipboard');toast('Lien copié');closeModal();">Copier le lien</button>
     </div>
     <div class="section-title" style="margin-top:14px;">Message prêt-à-envoyer</div>
     <textarea class="textarea" readonly style="min-height:120px;">Salut ! Je te partage la beta de PASSIO, le réseau social basé sur les passions que je prépare. 5 min de test, je veux tes retours honnêtes. 👉 ${link}</textarea>
@@ -511,7 +511,7 @@ function openStoryComposer() {
   ).join("");
   openModal(`
     <div class="modal-handle"></div>
-    <div class="modal-title">✨ Créer une story</div>
+    <div class="modal-title">Créer une story</div>
     <div class="modal-subtitle">Visible 24 h par ta communauté.</div>
     <div class="story-compose-preview" id="storyPreview" style="background:${_storyBg};">
       <div id="storyPreviewText">Ton texte ici…</div>
@@ -565,7 +565,7 @@ function publishStoryFromComposer() {
   if (typeof supa !== "undefined" && supa && typeof supaPublishStory === "function") supaPublishStory(story);
   closeModal();
   try { renderStories(); } catch(e) {}
-  toast("✨ Story publiée !");
+  toast("Story publiée", "success");
 }
 
 // Conservé pour compat : redirige vers l'éditeur média.
@@ -1336,7 +1336,7 @@ async function mePublish() {
     saveState();
     if (typeof supaPublishStory === "function") supaPublishStory(story);
     try { renderStories(); } catch(e) {}
-    toast("✨ Story publiée !");
+    toast("Story publiée", "success");
   } else {
     // ── Finition de bobine (lot UI-7 §8) ────────────────────────────────────
     // `meState.details` est renseigné par la feuille légère qui suit l'aperçu
@@ -1375,7 +1375,7 @@ async function mePublish() {
     _publishReelWithFeedback(post);
     try { renderFeed(); } catch(e) {}
     setTimeout(function() { try { if (typeof openReels === "function") openReels(); } catch(e) {} }, 80);
-    toast("🎬 Bobine en cours de publication…");
+    toast("Bobine en cours de publication…");
   }
 }
 
@@ -1388,15 +1388,15 @@ function _publishReelWithFeedback(post) {
     if (ok) {
       post._pendingSync = false;
       try { saveState(); } catch (e) {}
-      toast("✅ Bobine publiée !");
+      toast("Bobine publiée", "success");
       return;
     }
     // Échec de CLASSEMENT : réessayer est inutile, et le dire franchement vaut
     // mieux que huit tentatives silencieuses espacées de 45 s.
     var _msgP = (typeof messageEchecPassion === "function") ? messageEchecPassion() : null;
-    if (_msgP) { post._pendingSync = false; try { saveState(); } catch (e) {} toast(_msgP); return; }
+    if (_msgP) { post._pendingSync = false; try { saveState(); } catch (e) {} toast(_msgP, "warning"); return; }
     post._pendingSync = true;
-    toast("⚠️ Vidéo pas encore envoyée — nouvel essai automatique. Garde l'app ouverte.");
+    toast("Vidéo pas encore envoyée — nouvel essai automatique. Garde l'app ouverte.", "warning");
     _scheduleReelRetry();
   }).catch(function() { post._pendingSync = true; _scheduleReelRetry(); });
 }
@@ -1890,7 +1890,7 @@ function openNotifications() {
   const notifs = state.notifications || [];
   const html = `
     <div class="modal-handle"></div>
-    <div class="modal-title">🔔 Notifications</div>
+    <div class="modal-title">Notifications</div>
     <div class="modal-subtitle">Ce qui s'est passé pendant que tu vivais ta vraie vie.</div>
     <div class="notif-list">
       ${_notifListHtml(notifs)}
@@ -4958,8 +4958,8 @@ async function _handleIncomingConvMessage(r) {
       // BRUT (innerHTML) comme texte. escapeHtml : pseudo contrôlé par l'expéditeur.
       var _msgSender = (prof && prof.username) ? prof.username : (conv.userName || "Quelqu'un");
       var _msgText = conv.isGroup
-        ? "💬 Nouveau message de <b>" + escapeHtml(_msgSender) + "</b> dans <b>" + escapeHtml(conv.groupName || "le groupe") + "</b>"
-        : "✉️ <b>" + escapeHtml(_msgSender) + "</b> t'a envoyé un message";
+        ? "Nouveau message de <b>" + escapeHtml(_msgSender) + "</b> dans <b>" + escapeHtml(conv.groupName || "le groupe") + "</b>"
+        : "<b>" + escapeHtml(_msgSender) + "</b> t'a envoyé un message";
       pushNotification(_msgText, "✉️", r.from_id);
     } catch(e) {}
     try { renderMessages(); } catch(e) {}
@@ -6069,7 +6069,7 @@ function renderAiHistory() {
   box.innerHTML = "";
   var title = document.createElement("div");
   title.style.cssText = "font-size:11px;font-weight:800;color:var(--muted);margin-bottom:8px;text-transform:uppercase;";
-  title.textContent = "🕐 Recherches récentes";
+  title.textContent = "Recherches récentes";
   box.appendChild(title);
   var row = document.createElement("div");
   row.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;";

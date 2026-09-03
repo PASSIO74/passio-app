@@ -20,7 +20,7 @@ function sharePost(id) {
       ${escapeHtml(txt)}${txt.length >= 100 ? "…" : ""}
     </div>
     <button class="btn primary block" id="_shareInFeedBtn" onclick="sharePostInFeed('${escapeJsArg(id)}')" style="margin-bottom:10px;">
-      ➕ Partager dans mon feed
+      Partager dans mon feed
     </button>
     <button class="btn secondary block" id="_shareOutBtn">
       ${shareIconSvg(16)} Partager en dehors
@@ -37,7 +37,7 @@ function sharePost(id) {
       // (ADR-011 §6) et plus AUCUN routeur ne l'attrape. Le lien promettait
       // d'ouvrir un carnet et déposait le destinataire sur le fil, sans un mot.
       const shareUrl = "https://passio-app.netlify.app";
-      partagerOuCopier({ title: "PASSIO", text: txt, url: shareUrl }, "✅ Lien copié");
+      partagerOuCopier({ title: "PASSIO", text: txt, url: shareUrl }, "Lien copié");
     });
   }, 0);
 }
@@ -115,7 +115,7 @@ async function sharePostInFeed(id) {
 
   closeModal();
   setTimeout(() => { goTo("feed"); setTimeout(() => renderFeed(), 100); }, 100);
-  toast("✅ Publication partagée avec succès.");
+  toast("Publication partagée avec succès.", "success");
 
   if (typeof supa !== "undefined" && supa) {
     try {

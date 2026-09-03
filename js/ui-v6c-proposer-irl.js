@@ -148,7 +148,15 @@
     var ico = document.createElement("div");
     ico.className = "attach-icon";
     ico.style.background = "rgba(124,58,237,0.12)";
-    ico.textContent = "🤝";
+    ico.style.color = "var(--att-irl)";
+    // Pictogramme dessiné, comme les cinq pastilles voisines du même menu :
+    // l'emoji était TOUT le contenu de la pastille, le vider l'aurait laissée
+    // ronde et vide au milieu des autres.
+    ico.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"'
+      + ' stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+      + '<path d="M7.5 12.5 4 9l3-3 2.6 2.2h4.8L17 6l3 3-3.5 3.5"/>'
+      + '<path d="M9.6 8.2 7.4 10.6a1.6 1.6 0 0 0 2.2 2.3l1.4-1.2 3.4 3a1.5 1.5 0 0 1-2 2.2"/>'
+      + '<path d="M12.4 16.9a1.5 1.5 0 0 1-2 2.2l-1-.9"/></svg>';
     item.appendChild(ico);
 
     var lab = document.createElement("div");
