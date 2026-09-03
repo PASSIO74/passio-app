@@ -393,7 +393,14 @@ test.describe("UI-8 — un profil personnel, plusieurs passions", () => {
     await page.waitForTimeout(300);
     await page.locator("[data-v8-archivees]").click();
     await page.waitForTimeout(300);
-    await page.locator('[data-v8-restaurer="v8_yoga"]').click();
+    // ⚠️ SÉLECTEUR BORNÉ À LA MODALE depuis le 2026-09-02 : la liste des
+    // archives est aussi écrite EN CLAIR dans `#passionArchiveBox` (le lien
+    // seul, dans un panneau masqué, faisait passer une passion rangée pour une
+    // passion perdue). Les deux surfaces partagent le même constructeur de
+    // ligne, donc le même `data-v8-restaurer` — ce test-ci exerce le chemin de
+    // la MODALE, il le dit maintenant. Le chemin du panneau a son propre verrou
+    // dans `passions-archive-quota.spec.js`.
+    await page.locator('#modalContent [data-v8-restaurer="v8_yoga"]').click();
     await page.waitForTimeout(500);
     await expect(page.locator("#profileList .v8-passion-card")).toHaveCount(3);
     expect(await page.evaluate(() =>

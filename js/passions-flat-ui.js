@@ -176,8 +176,36 @@
             opt.textContent = (p.emoji || "✨") + " " + p.label;
             sel.appendChild(opt);
           }
-          sel.value = id;
+          // ⚠️ ON ACQUIERT D'ABORD, ON ÉCRIT ENSUITE. L'ordre inverse écrivait
+          // `#postPassion` — la SEULE source de vérité de `publishPost` — avant
+          // de savoir si le compte a le droit d'avoir cette passion. Au plafond,
+          // l'ajout était refusé (fenêtre payante) mais le `<select>` pointait
+          // déjà la passion refusée : on publiait dans une quatrième passion
+          // qu'on ne possède pas, EN SILENCE. C'est le piège de `studioType`
+          // (lot UI-6) repris à l'identique.
+          //
+          // On ne conclut pas sur la valeur rendue : `ajouterPassionAuCompte`
+          // rend `null` aussi bien pour un REFUS que pour une RESTAURATION
+          // réussie. La seule question qui décide, c'est « la passion est-elle
+          // vivante maintenant ? ».
           if (typeof ajouterPassionAuCompte === "function") ajouterPassionAuCompte(id, "");
+          var possedee = false;
+          try {
+            possedee = ((state && state.user && state.user.profiles) || [])
+              .some(function (x) { return x && x.passion === id && !x.archived; });
+          } catch (e) { possedee = false; }
+          if (!possedee) {
+            // Refusé : on laisse `#postPassion` sur son ancienne valeur, et on
+            // retire l'option qu'on venait d'ajouter pour ne pas laisser dans la
+            // liste une passion que le compte n'a pas.
+            try {
+              var orpheline = Array.prototype.filter.call(sel.options, function (o) { return o.value === id; })[0];
+              if (orpheline && orpheline.parentNode === sel) sel.removeChild(orpheline);
+            } catch (e) {}
+            rafraichirBoutonStudio();
+            return;
+          }
+          sel.value = id;
           if (typeof onStudioPassionChange === "function") onStudioPassionChange();
           rafraichirBoutonStudio();
           // ⚠️ Le composer UI-6 affiche « Publier dans : X » dans un résumé
