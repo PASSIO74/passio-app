@@ -24,7 +24,7 @@
 // reste couverte par lecture de code, pas par exécution.
 // ══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
-const { bootOnboarded } = require("./app-helper");
+const { bootOnboarded, sansDonneesDistantes } = require("./app-helper");
 const { GATE_KEY, GATE_TOKEN } = require("./gate-helper");
 
 const APERCU = "?passio_preview=flat-passions-v1";
@@ -277,6 +277,13 @@ test.describe("la démo sans compte", () => {
       sessionStorage.setItem(k, t);
       sessionStorage.setItem("passio_pwa_dismissed", "1");
     }, [GATE_KEY, GATE_TOKEN]);
+    // ⚠️ ISOLATION DES DONNÉES DISTANTES — POSÉE ICI PARCE QUE CETTE SUITE
+    // NAVIGUE ELLE-MÊME. `bootOnboarded` la pose par défaut, mais sa portée est
+    // L'APPEL, pas le fichier : un `page.goto` maison garde son chemin exposé, et
+    // le verdict du test dépend alors du CONTENU DE LA PRODUCTION. C'est ce qui a
+    // rendu `main` rouge six fois en quatre jours et fait sauter autant de
+    // déploiements. Verrou mécanique : `scripts/audit-tests-isolation.js`.
+    await sansDonneesDistantes(page);
     await page.goto("/index.html" + APERCU);
     // ⚠️ `state` est un `let` de portée script — PAS une propriété de `window`.
     await page.waitForFunction(() => typeof state !== "undefined" && state && state.user, null, { timeout: 20000 });
