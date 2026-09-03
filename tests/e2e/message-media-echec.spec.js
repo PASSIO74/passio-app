@@ -35,46 +35,30 @@ async function preparer(page, reponse) {
     }];
     saveConversationsNow();
     MY_UID = "u_moi"; window.MY_UID = "u_moi";
-    // ⚠️ LA SONDE NE COMPTE QUE LA TABLE MESURÉE. Elle comptait TOUTES les
-    // insertions, alors que le sujet du test est le chemin média : n'importe
-    // quel autre chemin de l'application faisait dériver le compteur. Rouge en
-    // CI le 2026-09-02 (3 insertions attendues 2), sur les trois essais, et
-    // IRREPRODUCTIBLE en local — le vrai client Supabase n'y existe pas, donc
-    // les chemins qui écrivent vraiment ne s'exécutent jamais. Le test mesurait
-    // « personne d'autre n'écrit dans aucune table », ce qu'il n'a jamais voulu
-    // affirmer et ne peut pas garantir.
-    //
-    // Ce qui vient d'ailleurs n'est pas ignoré pour autant : il est journalisé,
-    // pour que le prochain écart reste diagnosticable sans faire échouer un
-    // test dont ce n'est pas le sujet.
     window.__inserts = [];
-    window.__insertsAutres = [];
+    // ⚠️ LE STUB RETIENT LA TABLE — même défaut, et même correctif, que
+    // `transfert-message.spec.js` (2026-09-03). Il remplace le `supa` GLOBAL et
+    // `from()` ignorait son argument : le compte incluait les insertions de
+    // TOUTES les tables. En CI le réseau existe, la télémétrie et les
+    // notifications partent vraiment, et une écriture étrangère tombant dans la
+    // fenêtre de 400 ms faussait le verdict — de façon intermittente, au gré du
+    // DÉCOUPAGE DES SHARDS, et jamais reproductible en isolation.
+    // `sendMessageToSupabase` (app-09) écrit dans `conv_messages` : on ne compte
+    // que celle-là.
     supa = { from: function (table) { return {
-      insert: function (row) {
-        if (table === "conv_messages") window.__inserts.push(row);
-        else window.__insertsAutres.push({ table: table, row: row });
-        return Promise.resolve(rep);
-      },
+      insert: function (row) { window.__inserts.push({ table: table, row: row }); return Promise.resolve(rep); },
     }; } };
     try { localStorage.removeItem("passio_msg_outbox_v1"); } catch (e) {}
   }, reponse);
 }
 
-// ⚠️ LA SONDE COMPTE TOUTES LES INSERTIONS, PAS SEULEMENT CELLES DU MÉDIA :
-// `preparer()` remplace `supa` EN ENTIER, donc n'importe quel autre chemin de
-// l'application qui ferait `supa.from(X).insert(Y)` pendant la fenêtre de mesure
-// gonfle le compteur. On rend donc les lignes elles-mêmes : un écart doit dire
-// QUI a inséré, sinon le rouge envoie chercher au mauvais endroit — et en CI,
-// où le vrai client Supabase existe (il n'existe pas en local), c'est
-// exactement ce qui s'est produit le 2026-09-02.
 const etat = (page) => page.evaluate(() => ({
   statut: (getConversations().find((c) => c.id === "conv_media").messages[0] || {}).status,
   outbox: _outboxLoad().map((x) => x.msgId),
-  inserts: window.__inserts.length,
-  lignes: window.__inserts.map(function (r) {
-    try { return JSON.stringify(r).slice(0, 160); } catch (e) { return String(r); }
-  }),
-  autres: (window.__insertsAutres || []).map(function (x) { return x.table; }),
+  inserts: (window.__inserts || []).filter(function (i) { return i.table === "conv_messages"; }).length,
+  // Diagnostic : si une autre table s'invite, le message d'échec la nomme au
+  // lieu de laisser chercher.
+  tables: (window.__inserts || []).map(function (i) { return i.table; }),
 }));
 
 test.describe("Média en message — verdict de l'écriture", () => {
@@ -89,9 +73,8 @@ test.describe("Média en message — verdict de l'écriture", () => {
     });
 
     const r = await etat(page);
-    if (r.autres.length) console.log("[media] écritures d'autres tables pendant la mesure :", r.autres.join(", "));
     // Deux tentatives : avec from_id, puis le repli sans from_id.
-    expect(r.inserts, "insertions observées : " + JSON.stringify(r.lignes)).toBe(2);
+    expect(r.inserts, "tables vues : " + JSON.stringify(r.tables)).toBe(2);
     expect(r.statut, "le média doit être marqué en échec").toBe("failed");
     expect(r.outbox, "et mis en file de renvoi").toContain("m_media");
   });
@@ -107,7 +90,7 @@ test.describe("Média en message — verdict de l'écriture", () => {
     });
 
     const r = await etat(page);
-    expect(r.inserts, "insertions observées : " + JSON.stringify(r.lignes)).toBe(1);
+    expect(r.inserts, "tables vues : " + JSON.stringify(r.tables)).toBe(1);
     expect(r.statut).toBe("sent");
     expect(r.outbox).not.toContain("m_media");
   });
@@ -124,9 +107,11 @@ test.describe("Média en message — verdict de l'écriture", () => {
       saveConversationsNow();
       MY_UID = "u_moi"; window.MY_UID = "u_moi";
       window.__inserts = [];
-      supa = { from: function () { return {
+      // Même correctif que ci-dessus : la table est retenue, et seule
+      // `conv_messages` est comptée.
+      supa = { from: function (table) { return {
         insert: function (row) {
-          window.__inserts.push(row);
+          window.__inserts.push({ table: table, row: row });
           // Première tentative (avec from_id) refusée, repli accepté.
           return Promise.resolve(row.from_id ? { error: { message: "colonne inconnue" } } : { error: null });
         },
@@ -140,7 +125,7 @@ test.describe("Média en message — verdict de l'écriture", () => {
     });
 
     const r = await etat(page);
-    expect(r.inserts, "insertions observées : " + JSON.stringify(r.lignes)).toBe(2);
+    expect(r.inserts, "tables vues : " + JSON.stringify(r.tables)).toBe(2);
     expect(r.statut).toBe("sent");
     expect(r.outbox).not.toContain("m_media");
   });
