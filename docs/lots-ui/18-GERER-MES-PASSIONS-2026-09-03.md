@@ -292,3 +292,66 @@ crayon n'existe pas — couvre les suivants.
 * **Deux portes de production** ouvrent le panneau : l'entrée du menu ⋯ et le
   bouton « Gérer mes passions » du paywall (`ouvrirGestionPassions`,
   retiré quand le quota est épuisé — sinon mur → panneau → mur).
+
+## 7. Le rail était décalé, et le correctif évident l'aurait cassé (2026-09-03)
+
+Une fois la bulle « + » partie, le rail du profil ne portait plus que des
+passions — et le décalage est devenu visible. Mesuré à 390 px avec trois
+passions : les bulles occupaient **51 → 293** dans une colonne de contenu qui va
+de **16 à 374**. Trente-cinq pixels de vide à gauche, **quatre-vingt-un** à
+droite. Sous une carte d'identité centrée, le rail se lisait de travers.
+
+La cause n'est pas un décalage mais un **alignement** : un conteneur flex range
+ses enfants au DÉBUT, donc les 78 px de libre s'entassaient tous du même côté.
+
+### Le correctif, et pourquoi ce n'est pas `justify-content: center`
+
+```css
+#v9ProfilePassions.v9-profile-strip > .profile-tile:first-child { margin-left: auto; }
+#v9ProfilePassions.v9-profile-strip > .profile-tile:last-child  { margin-right: auto; }
+```
+
+Une marge `auto` ne distribue que du libre **positif**. Tant que la rangée tient,
+les deux marges se partagent le vide et la rangée se centre ; dès qu'elle
+déborde, il n'y a plus de libre, elles retombent à **0**, et le rail coulisse
+depuis son vrai début.
+
+`justify-content: center` fait la même chose dans le premier cas et **casse le
+second** : il centre aussi la rangée qui déborde, le trop-plein part des deux
+côtés, et la portion sortie à gauche devient **inatteignable** — `scrollLeft` ne
+descend pas sous zéro. Mesuré par réinjection sur dix passions : la première
+bulle partait à **−320 px**, définitivement hors du champ. C'est la raison pour
+laquelle `③ decies bis` existe : à trois passions les deux écritures rendent
+exactement la même image, et seul le cas qui déborde les sépare.
+
+`flex: 1 1 0` est exclu pour la raison déjà racontée sous `.profile-tile` : il
+comprimait les bulles au lieu de déplacer la rangée (défaut du 2026-09-02).
+
+### ⚠️ Le bornage, et le test qui a failli être vert par accident
+
+La règle est ancrée à `#v9ProfilePassions` parce que `.profile-strip` est
+**partagée par trois surfaces** : le Fil (`#profileStrip`), mon profil et le
+profil visité (`#visitedPassions`). Les deux autres gardent leur alignement au
+début.
+
+Le verrou de bornage (`③ decies quater`) a d'abord été écrit avec les **trois**
+passions du socle. Sur le Fil, ce fixture peint **cinq** bulles (« Suivis » et
+les envies s'y ajoutent) : la rangée **déborde**, donc elle est collée au début
+*quoi qu'il arrive* — marges auto ou non. Le test était vert **sans rien
+distinguer**. Il pose désormais **une seule** passion, pour que la rangée du Fil
+tienne et que le centrage, s'il fuitait jusque-là, se voie.
+
+L'état vide (`.v9-strip-empty`) n'est pas visé : ce n'est pas un
+`.profile-tile`, et une phrase n'est pas une rangée de bulles.
+
+### Verrous
+
+`tests/e2e/profil-entete-passions.spec.js` — `③ decies` (trois passions :
+centrée, et il reste du vide à répartir), `③ decies bis` (dix passions : la
+rangée déborde et la première bulle reste atteignable), `③ decies ter` (une
+passion seule est à la fois `:first-child` et `:last-child`), `③ decies quater`
+(le Fil et le profil visité ne bougent pas).
+
+Éprouvés par **réinjection** : sans le correctif, `③ decies` et `③ decies ter`
+tombent ; avec `justify-content: center`, `③ decies bis` tombe et les autres
+restent verts.
