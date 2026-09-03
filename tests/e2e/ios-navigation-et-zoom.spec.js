@@ -164,6 +164,79 @@ test.describe("iPhone — navigation, historique et saisie", () => {
     expect(sommet, "l'entrée de la modale est restée sur la pile").toBeFalsy();
   });
 
+  // ─── ②bis LES QUATRE GRANDS PANNEAUX PLEIN ÉCRAN ────────────────────────
+  // `closeCurrentOverlay()` — l'unique filet du bouton retour — interrogeait
+  // `eventDetail`, `postDetail`, `profileDetail` et `commentsPanel`. AUCUN de
+  // ces identifiants n'existe dans index.html : les vrais sont
+  // `eventDetailPage`, `postDetailPage`, `conv-fullpage` et `mediaEditor`. La
+  // branche entière était morte et n'a jamais rien fermé.
+  //
+  // Conséquence : on ouvre une publication, une conversation ou l'éditeur média
+  // (caméra allumée), on fait le geste de retour — rien n'est trouvé, le code
+  // enchaîne sur `goTo(écran)`, et l'écran change SOUS un panneau
+  // `position:fixed; inset:0` toujours affiché. Le panneau paraît figé, et le
+  // retour suivant quitte l'application. Sur iPhone c'est le chemin principal
+  // (geste depuis le bord) et, en PWA installée, il n'existe aucun bouton
+  // retour du navigateur pour rattraper.
+  const PANNEAUX = [
+    ["#mediaEditor",     "editeur média",   (p) => p.evaluate(() => document.getElementById("mediaEditor").classList.add("open"))],
+    ["#conv-fullpage",   "conversation",    (p) => p.evaluate(() => document.getElementById("conv-fullpage").classList.add("active"))],
+    ["#eventDetailPage", "fiche activité",  (p) => p.evaluate(() => { document.getElementById("eventDetailPage").style.display = "flex"; })],
+    ["#postDetailPage",  "page publication",(p) => p.evaluate(() => { document.getElementById("postDetailPage").style.display = "flex"; })],
+  ];
+
+  for (const [sel, nom, ouvrir] of PANNEAUX) {
+    test(`closeCurrentOverlay ferme ${nom} (${sel})`, async ({ page }) => {
+      await bootOnboarded(page);
+      await ouvrir(page);
+
+      // Le filet doit RECONNAÎTRE le panneau — c'est très exactement ce que la
+      // branche morte ne faisait pas.
+      const ferme = await page.evaluate(() => closeCurrentOverlay());
+      expect(ferme, `closeCurrentOverlay n'a pas reconnu ${sel}`).toBe(true);
+
+      const encoreVisible = await page.evaluate((s) => {
+        const el = document.querySelector(s);
+        if (!el) return false;
+        // ⚠️ `!!` obligatoire : `el.style.display` vaut la chaîne VIDE quand la
+        // propriété n'est pas posée, et l'expression rendrait `""` au lieu de
+        // `false` — un faux échec sur un panneau pourtant bien refermé.
+        return !!(el.classList.contains("open") || el.classList.contains("active") ||
+                  (el.style.display && el.style.display !== "none"));
+      }, sel);
+      expect(encoreVisible, `${sel} est resté à l'écran après le retour`).toBe(false);
+    });
+  }
+
+  // Le chemin RÉEL, de bout en bout : ouvrir une publication puis faire le
+  // geste de retour doit refermer la page — pas changer d'écran derrière elle.
+  test("le retour referme la page publication au lieu de changer d'écran", async ({ page }) => {
+    await bootOnboarded(page);
+    await page.evaluate(() => goTo("feed"));
+
+    const ouverte = await page.evaluate(async () => {
+      const p = (state.seed.posts || [])[0];
+      if (!p) return false;
+      await openPost(p.id);
+      const el = document.getElementById("postDetailPage");
+      return !!(el && el.style.display && el.style.display !== "none");
+    });
+    expect(ouverte, "aucune publication de départ pour ce cas").toBe(true);
+
+    await page.goBack();
+    await page.waitForTimeout(150);
+
+    const etat = await page.evaluate(() => ({
+      pageOuverte: (function () {
+        const el = document.getElementById("postDetailPage");
+        return !!(el && el.style.display && el.style.display !== "none");
+      })(),
+      filActif: document.getElementById("screen-feed").classList.contains("active"),
+    }));
+    expect(etat.pageOuverte, "la page publication est restée par-dessus l'écran").toBe(false);
+    expect(etat.filActif, "on ne doit pas avoir quitté le fil pendant ce temps").toBe(true);
+  });
+
   // ─── ③ « L'ÉCRAN SE FIGE » (le vrai coupable) ────────────────────────────
   // Safari iOS ZOOME la page au focus d'un champ dont la police calculée est
   // sous 16 px, et n'annule pas ce zoom en sortant. Comme `html` est en

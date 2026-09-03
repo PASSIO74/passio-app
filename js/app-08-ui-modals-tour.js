@@ -612,6 +612,10 @@ function meOpen(mode) {
   document.getElementById("mePublishBtn").textContent = isBob ? "Publier ma bobine" : "Publier ma story";
   // Phase capture par défaut (le loader caméra s'affiche le temps de l'init).
   ed.classList.remove("phase-edit", "me-recording", "me-cam-on", "me-no-cam");
+  // Entrée d'historique : ce panneau recouvre tout, CAMÉRA ALLUMÉE. Sans elle,
+  // le geste de retour ne le fermait pas — l'écran changeait dessous et
+  // l'objectif restait actif.
+  if (!ed.classList.contains("open")) pushOverlayHistory("media", "#media");
   ed.classList.add("open", "phase-capture");
   ed.setAttribute("aria-hidden", "false");
   lockBodyScroll("mediaEditor");
@@ -622,8 +626,10 @@ function meClose() {
   var ed = document.getElementById("mediaEditor");
   meStopRecording(true);
   meStopCamera();
+  const _meEtaitOuvert = !!(ed && ed.classList.contains("open"));
   if (ed) { ed.classList.remove("open", "phase-edit", "phase-capture", "me-recording", "me-cam-on"); ed.setAttribute("aria-hidden", "true"); }
   unlockBodyScroll("mediaEditor");
+  if (_meEtaitOuvert && typeof releaseOverlayHistory === "function") releaseOverlayHistory();
   try { var v = document.querySelector("#meMedia video"); if (v) v.pause(); } catch(e) {}
   _meRemoveVideoControls();
   _meRevokePreviewUrl();

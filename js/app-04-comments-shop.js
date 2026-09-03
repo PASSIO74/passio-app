@@ -997,8 +997,10 @@ function openPostReactors(postId, event) {
 // intactes.
 
 async function openComments(postId) {
-  // Ajouter à l'historique pour que le bouton back fonctionne
-  pushOverlayToHistory("comments", postId);
+  // ⚠️ PAS d'entrée d'historique ici : le fil s'affiche dans une modale, et
+  // `openModal` en pose déjà une (que `closeModal` reprend). En poser une
+  // seconde laissait une entrée orpheline — un appui « retour » mort par fil
+  // de commentaires ouvert.
   window._openCommentsPostId = postId; // suivi pour le temps réel des interactions
 
   let post = findPostAnywhere(postId);
@@ -1534,7 +1536,8 @@ function reportCommentEntry(threadId, commentId) {
 function openCommentSheet(threadId, title) {
   var thread = _findCommentThread(threadId);
   if (!thread) { toast("Commentaires indisponibles"); return; }
-  if (typeof pushOverlayToHistory === "function") { try { pushOverlayToHistory("comments", threadId); } catch(e) {} }
+  // ⚠️ PAS d'entrée d'historique ici non plus : `openModal`, appelé juste en
+  // dessous, en pose déjà une. Cf. openComments.
   window._openCommentsPostId = null; // ce n'est pas la modale post
   var empty = '<div class="empty"><div class="empty-icon">💭</div><div class="empty-title">Sois le premier à réagir</div></div>';
   var initial = thread.comments.length ? _renderCommentsList(thread.comments, threadId) : empty;
@@ -2661,8 +2664,8 @@ async function openUserProfile(authorId, source) {
   // Première visite : trace l'OUVERTURE d'un contenu par un visiteur — un
   // compteur, jamais un identifiant ni un libellé. Inerte hors mode invité.
   try { if (window.PassioFirstRun) PassioFirstRun.contenuOuvert("profil"); } catch (e) {}
-  // Ajouter à l'historique pour que le bouton back fonctionne
-  pushOverlayToHistory("profile", authorId);
+  // ⚠️ PAS d'entrée d'historique ici : le profil visité s'affiche dans une
+  // modale, et `openModal` en pose déjà une. Cf. openComments.
 
   console.log("[openUserProfile] authorId:", authorId, "source:", source);
 
@@ -3635,6 +3638,10 @@ async function openConversation(convId) {
   if (fp) {
     fp.setAttribute("data-conv-id", convId);
     fp.setAttribute("data-display-name", displayName);
+    // Entrée d'historique : sans elle, le geste de retour depuis le bord de
+    // l'écran ne fermait PAS la conversation — il changeait d'écran derrière
+    // elle, puis quittait l'application au coup suivant.
+    if (!fp.classList.contains("active")) pushOverlayHistory("conv", "#conv");
     fp.classList.add("active");
   }
 
@@ -4697,7 +4704,9 @@ function closeConversation() {
   const bar = document.getElementById("convTypingBar");
   if (bar) bar.style.display = "none";
   const fp = document.getElementById("conv-fullpage");
+  const etaitOuverte = !!(fp && fp.classList.contains("active"));
   if (fp) fp.classList.remove("active");
+  if (etaitOuverte && typeof releaseOverlayHistory === "function") releaseOverlayHistory();
   // Refermer les panneaux glissants pour ne pas les retrouver ouverts dans la prochaine conversation
   document.getElementById("convSettingsPanel")?.classList.remove("open");
   document.getElementById("convFilesPanel")?.classList.remove("open");

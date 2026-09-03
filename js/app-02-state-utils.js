@@ -1843,16 +1843,46 @@ function closeCurrentOverlay() {
     return true;
   }
 
-  // Vérifier d'autres overlays spécifiques
-  const detailModal = document.getElementById("eventDetail") || document.getElementById("postDetail") || document.getElementById("profileDetail");
-  if (detailModal && detailModal.style.display !== "none") {
-    detailModal.style.display = "none";
+  // ⚠️ LES QUATRE GRANDS PANNEAUX PLEIN ÉCRAN (corrigé le 2026-09-02).
+  // Ce qu'il y avait ici interrogeait `eventDetail`, `postDetail`,
+  // `profileDetail` et `commentsPanel` : AUCUN de ces identifiants n'existe
+  // dans index.html. La branche était morte et n'a jamais rien fermé — le
+  // bouton retour et le geste de retour depuis le bord tombaient donc dans le
+  // `goTo(écran)` qui suit, et l'écran changeait SOUS un panneau
+  // `position:fixed; inset:0` resté affiché. Vu de l'utilisateur : le panneau
+  // est figé, et un second retour quitte l'application. Sur iPhone c'est le
+  // chemin principal, et en PWA installée aucun bouton du navigateur ne
+  // rattrape le coup.
+  //
+  // L'ordre suit le z-index DÉCROISSANT : on ferme toujours ce qui est
+  // au-dessus. mediaEditor (4000) · conv-fullpage (1200) · eventDetailPage et
+  // postDetailPage (200). Les couches supérieures (modale 10001, bobines 9999,
+  // stories, panneau d'outils) sont déjà traitées plus haut.
+  const editeurMedia = document.getElementById("mediaEditor");
+  if (editeurMedia && editeurMedia.classList.contains("open")) {
+    // meClose() coupe aussi la caméra et l'enregistrement en cours : sortir de
+    // ce panneau sans lui laisserait l'objectif actif en arrière-plan.
+    if (typeof meClose === "function") meClose(); else editeurMedia.classList.remove("open");
     return true;
   }
 
-  const commentsPanel = document.getElementById("commentsPanel");
-  if (commentsPanel && commentsPanel.style.display !== "none") {
-    commentsPanel.style.display = "none";
+  const convPleinePage = document.getElementById("conv-fullpage");
+  if (convPleinePage && convPleinePage.classList.contains("active")) {
+    if (typeof closeConversation === "function") closeConversation();
+    else convPleinePage.classList.remove("active");
+    return true;
+  }
+
+  const ficheActivite = document.getElementById("eventDetailPage");
+  if (ficheActivite && ficheActivite.style.display !== "none" && ficheActivite.style.display !== "") {
+    if (typeof closeEventDetail === "function") closeEventDetail();
+    else ficheActivite.style.display = "none";
+    return true;
+  }
+
+  const pagePost = document.getElementById("postDetailPage");
+  if (pagePost && pagePost.style.display !== "none" && pagePost.style.display !== "") {
+    if (typeof closePost === "function") closePost(); else pagePost.style.display = "none";
     return true;
   }
 
@@ -5967,6 +5997,10 @@ async function openPost(id) {
     <div style="height:20px;"></div>
   `;
 
+  // Une entrée d'historique, pour que le geste de retour ferme la page au lieu
+  // de changer d'écran DERRIÈRE elle. Seulement à l'OUVERTURE : rouvrir une
+  // autre publication alors que la page est déjà à l'écran ne doit pas empiler.
+  if (page.style.display === "none" || !page.style.display) pushOverlayHistory("post", "#post");
   page.style.display = "flex";
   page.scrollTop = 0;
 

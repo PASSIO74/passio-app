@@ -3681,8 +3681,12 @@ function toggleJoinEventDetail(id) {
 
 function closeEventDetail() {
   const page = document.getElementById("eventDetailPage");
+  const etaitOuverte = !!(page && page.style.display && page.style.display !== "none");
   if (page) page.style.display = "none";
   window._openEventDetailId = null;
+  // `openEventDetails` posait bien une entrée — mais rien ne la reprenait à la
+  // fermeture au doigt : chaque fiche consultée coûtait un appui « retour ».
+  if (etaitOuverte && typeof releaseOverlayHistory === "function") releaseOverlayHistory();
 }
 
 // Cadence de rappels des événements rejoints — J-7 / J-1 / H-2 (2026-07-21).
