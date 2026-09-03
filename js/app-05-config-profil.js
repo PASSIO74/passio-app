@@ -1663,12 +1663,17 @@ const SEED_REEL_VIDEOS = [
   },
   {
     id: "reel_seed_sport_skate_1",
-    eventId: "e11",  // lot UI-5 : la bobine EST le skate jam des Chartrons
+    // lot UI-5 : la bobine EST le skate jam des Chartrons. ⚠️ `eventId` fait
+    // apparaître « Voir l'activité » en bas de la carte (`refEvenement`,
+    // js/ui-v3-passerelle.js) : l'envie DOIT donc être « irl », sinon la carte
+    // ouvre un rendez-vous sous une étiquette qui n'en annonce aucun. Verrou :
+    // `contenu-passion-mood.spec.js` ② quater.
+    eventId: "e11",
     video: "https://videos.pexels.com/video-files/5765270/5765270-sd_640_360_24fps.mp4",
     poster: "https://images.unsplash.com/photo-1543364195-077a52659557?w=720&h=1280&fit=crop&auto=format&q=80",
     fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
-    userId: "u_theo", passion: "sport", mood: "actu",
-    text: "Session skate dimanche matin. Kickflip en cours depuis trois mois. Aujourd'hui ça commence à venir. 🛹",
+    userId: "u_theo", passion: "sport", mood: "irl",
+    text: "📍 Bordeaux, skatepark des Chartrons — 📅 dimanche 14h\nSkate jam ouvert : on tourne, on filme, personne ne note personne. Je bosse mon kickflip depuis trois mois et aujourd'hui ça commence à venir, donc venez rire.\nPas de niveau, prêt de planche possible. Dis-moi en commentaire si tu passes.",
     createdAt: Date.now() - 4 * 3600000,
   },
   {
@@ -1677,8 +1682,8 @@ const SEED_REEL_VIDEOS = [
     video: "https://videos.pexels.com/video-files/5765163/5765163-sd_640_360_24fps.mp4",
     poster: "https://images.unsplash.com/photo-1510915361894-db8b60106cb1?w=720&h=1280&fit=crop&auto=format&q=80",
     fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4",
-    userId: "u_lea", passion: "musique", mood: "creation",
-    text: "Impro guitare ce matin. En bricolant on trouve les meilleurs accords. 🎸",
+    userId: "u_lea", passion: "musique", mood: "irl",
+    text: "📍 Lyon, Café des Arts — 📅 jeudi 18h30\nCe que vous entendez, c'est l'impro de ce matin — c'est exactement ce qu'on fera jeudi à la jam, en moins seul.\nGuitaristes débutants bienvenus, il reste 4 places. Instrument sur place si tu n'as pas le tien.",
     createdAt: Date.now() - 6 * 3600000,
   },
   {
@@ -1686,8 +1691,8 @@ const SEED_REEL_VIDEOS = [
     video: "https://videos.pexels.com/video-files/3571264/3571264-sd_640_360_30fps.mp4",
     poster: "https://images.unsplash.com/photo-1530841377377-3ff06c0ca713?w=720&h=1280&fit=crop&auto=format&q=80",
     fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
-    userId: "u_nina", passion: "voyage", mood: "chill",
-    text: "Lever de soleil sur la côte. Trois jours sans téléphone, juste un carnet. 🌅",
+    userId: "u_nina", passion: "voyage", mood: "all",
+    text: "Réveil à 6 h 10 sur la côte, sans alarme, juste le volet en tôle qui claque.\nTrois jours que le téléphone dort éteint au fond du sac. J'ai posé la caméra sur le muret, je l'ai laissée tourner les douze minutes que le soleil a mis à passer la pointe, et je n'y ai plus touché.\nQuatre lignes dans le carnet, puis je suis retournée me coucher.",
     createdAt: Date.now() - 8 * 3600000,
   },
   {
@@ -1713,8 +1718,8 @@ const SEED_REEL_VIDEOS = [
     video: "https://videos.pexels.com/video-files/6981411/6981411-sd_640_360_25fps.mp4",
     poster: "https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?w=720&h=1280&fit=crop&auto=format&q=80",
     fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
-    userId: "u_sofia", passion: "litterature", mood: "chill",
-    text: "Lecture du dimanche. Thé, fenêtre ouverte, Annie Ernaux. 📚",
+    userId: "u_sofia", passion: "litterature", mood: "irl",
+    text: "📍 Bordeaux, café de la place Saint-Michel, table du fond — 📅 dimanche 15 h\nOn lit Les Années d'Annie Ernaux. Chacun vient avec son exemplaire et une page cornée, on parle une heure et demie de ce qui nous a arrêtés dans la lecture, et personne n'est obligé de parler.\nDouze places, la table ne tient pas plus.\nSi vous venez, dites-moi la page que vous voulez lire à voix haute, je fais la liste avant dimanche.",
     createdAt: Date.now() - 14 * 3600000,
   },
   {
@@ -1722,8 +1727,8 @@ const SEED_REEL_VIDEOS = [
     video: "https://videos.pexels.com/video-files/4488162/4488162-sd_640_360_24fps.mp4",
     poster: "https://images.unsplash.com/photo-1514320291840-2e0a9bf2a9ae?w=720&h=1280&fit=crop&auto=format&q=80",
     fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
-    userId: "u_lea", passion: "musique", mood: "actu",
-    text: "Concert dans une cave de la Croix-Rousse. 30 personnes, lumière tamisée. 🎶",
+    userId: "u_lea", passion: "musique", mood: "irl",
+    text: "📍 Lyon, une cave voûtée de la Croix-Rousse — 📅 vendredi 20 h 30\nTrois guitares et une voix, deux lampes posées au sol, rien d'amplifié : la pièce fait sept mètres sur quatre, ça porte tout seul.\nTrente personnes assises par terre, pas une de plus, sinon on n'entend plus les cordes frotter.\nLaissez-moi un mot si vous voulez une place, j'envoie l'adresse exacte et le code de la porte la veille.",
     createdAt: Date.now() - 16 * 3600000,
   },
   {
@@ -1731,8 +1736,8 @@ const SEED_REEL_VIDEOS = [
     video: "https://videos.pexels.com/video-files/1721294/1721294-sd_640_360_24fps.mp4",
     poster: "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=720&h=1280&fit=crop&auto=format&q=80",
     fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackOnStreetAndDirt.mp4",
-    userId: "u_nina", passion: "voyage", mood: "chill",
-    text: "Marrakech, ruelles du souk au lever du jour. 🇲🇦",
+    userId: "u_nina", passion: "voyage", mood: "irl",
+    text: "📍 Marrakech, place des Ferblantiers — 📅 samedi 7h15\nOn traverse le souk avant l'ouverture des boutiques : à cette heure il n'y a que les livreurs, les chats et l'odeur du bois mouillé. Deux heures de marche lente, on s'arrête autant qu'on veut pour photographier, et on termine autour d'un thé.\nSix places, pas plus : les ruelles sont étroites et je ne veux gêner personne. Dites-moi si vous venez, je donne le point de rendez-vous exact la veille.",
     createdAt: Date.now() - 18 * 3600000,
   },
   {
@@ -1758,8 +1763,8 @@ const SEED_REEL_VIDEOS = [
     video: "https://videos.pexels.com/video-files/4253586/4253586-sd_640_360_25fps.mp4",
     poster: "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=720&h=1280&fit=crop&auto=format&q=80",
     fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/VolkswagenGTIReview.mp4",
-    userId: "u_theo", passion: "cuisine", mood: "chill",
-    text: "Café du matin, mug en grès fait main. Les petits rituels. ☕",
+    userId: "u_theo", passion: "cuisine", mood: "irl",
+    text: "📍 Marseille, cours Julien, devant le kiosque — 📅 dimanche 9h\nJ'apporte ma cafetière à piston, six mugs en grès d'un potier de la Belle de Mai, du pain de la veille grillé au beurre demi-sel et un pot de confiture d'abricot faite mardi. On tient une heure et demie, pas plus : j'enchaîne sur une prestation à midi.\nSix mugs, donc six places, je bois dans mon thermos. Dites-moi avant samedi soir si vous en prenez une.",
     createdAt: Date.now() - 25 * 3600000,
   },
 
@@ -1795,8 +1800,8 @@ const SEED_REEL_VIDEOS = [
     video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
     poster: "https://images.unsplash.com/photo-1416879595882-3373a0480b5b?w=720&h=1280&fit=crop&auto=format&q=80",
     fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
-    userId: "u_lucie", passion: "jardinage", mood: "chill",
-    text: "Le compost de mars est prêt. Six mois, aucun retournement, juste de la patience et des feuilles mortes. 🌱",
+    userId: "u_lucie", passion: "jardinage", mood: "learn",
+    text: "Le compost sans retournement, en trois étapes, tel que je le monte depuis quatre ans à Angers.\n1. Dix centimètres de branchages grossiers au fond, pour que l'air passe par-dessous.\n2. Un seau de déchets de cuisine pour trois seaux de feuilles mortes ou de carton brun : c'est ce ratio qui évite l'odeur.\n3. On couvre d'un vieux tapis et on n'y touche plus pendant six mois.\nCelui que j'ai monté en mars est prêt ce matin, tamisé à la main en vingt minutes.",
     createdAt: Date.now() - 36 * 3600000,
   },
   {
@@ -1831,8 +1836,8 @@ const SEED_REEL_VIDEOS = [
     video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4",
     poster: "https://images.unsplash.com/photo-1521587760476-6c12a4b040da?w=720&h=1280&fit=crop&auto=format&q=80",
     fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
-    userId: "u_anaïs", passion: "litterature", mood: "chill",
-    text: "Lecture à voix haute d'un texte écrit hier soir. Je ne sais jamais si un poème tient tant que je ne l'ai pas dit. 📝",
+    userId: "u_anaïs", passion: "litterature", mood: "creation",
+    text: "Neuvième version du même poème, treize vers, et je bute toujours au même endroit : le passage du huitième au neuvième vers.\nJe l'ai lu à voix haute six fois hier soir, minuté à 1 min 40 — chaque fois ma voix accélère juste là, signe que le vers ne tient pas.\nCe soir j'essaie de couper les deux vers de liaison pour voir si le trou se referme tout seul. Si ça ne marche pas, je repars de la version 6.",
     createdAt: Date.now() - 48 * 3600000,
   },
 ];
@@ -2998,7 +3003,13 @@ async function shareReelInFeed(postId) {
     likes: 0,
     comments: [],
     passion: passionDeRepartage(reel.passion),   // cf. `sharePostInFeed` (app-03)
-    mood: reel.mood || "chill",
+    // ⚠️ Le repli était `"chill"` — une valeur que le Studio ne propose plus
+    // depuis le 2026-08-29 et qui n'a plus de libellé depuis le 2026-09-02.
+    // Repartager une bobine sans mood ÉCRIVAIT donc du vocabulaire mort dans
+    // `posts.mood`, en production, à chaque partage. Le neutre `all` est la
+    // valeur juste : c'est déjà celle de toute publication venue de Supabase,
+    // et c'est ce que rend `normalizeStudioMood` pour un mood inconnu.
+    mood: reel.mood || "all",
     sharedReel: postId,
     sharedReelData: {
       id: reel.id,

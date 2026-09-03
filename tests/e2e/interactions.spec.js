@@ -289,6 +289,20 @@ async function seedServerPost(page, { writeResult = { ok: true, error: null }, m
     // Idempotent : le seed peut être rejoué (cf. seedServerPostStable), et deux
     // exemplaires du même post fausseraient tous les compteurs.
     state.supabasePosts = [];
+    // ⚠️ ET LE SOCLE DE DÉMONSTRATION AVEC, pour la même raison exactement
+    // (2026-09-02). Le raisonnement ci-dessus visait les publications de
+    // PRODUCTION, alors le dernier concurrent restant était le socle local — et
+    // il a fini par gagner : à 389 publications, le fixture (4 j'aime, donc
+    // sous le plafond d'engagement) est repassé au-delà du 20e rang, et la
+    // suite est retombée sur le MÊME message, `dansEtat: true` compris.
+    // Un fil que le test prétend mesurer, il doit le posséder — quelle que soit
+    // la provenance de ce qui le remplit.
+    // ⚠️ APRÈS le calcul de `passion` ci-dessus, qui lit justement ce socle.
+    // ⚠️ Les QUATRE tableaux : `_feedExtraPosts` survit aux écrasements de
+    // `supabasePosts`, c'est précisément son rôle.
+    state.seed.posts = [];
+    state.userPosts = [];
+    window._feedExtraPosts = [];
     state.supabasePosts.unshift({
       id: "p_srv_test", authorId: "u_autre", authorName: "Autre", authorEmoji: "✨",
       passion, mood: "all", type: "text", text: "post serveur", createdAt: Date.now(),
