@@ -713,12 +713,14 @@ test("③ decies ter — une SEULE passion se centre aussi", async ({ page }) =>
   expect(vu.videGauche, "et largement entourée").toBeGreaterThan(50);
 });
 
-test("③ decies quater — le bornage : le Fil et le profil visité gardent leur alignement", async ({ page }) => {
-  // ⚠️ `.profile-strip` EST PARTAGÉE PAR TROIS SURFACES. Une règle posée sur la
-  // classe seule aurait recentré les deux autres sans que rien ne le dise — le
-  // genre de débordement de périmètre qu'on ne voit qu'en production. La règle
-  // est ancrée à `#v9ProfilePassions`, et ce test le mesure sur les deux
-  // surfaces voisines plutôt que de relire le sélecteur.
+test("③ decies quater — le Fil se centre AUSSI, le profil visité garde son alignement", async ({ page }) => {
+  // ⚠️ `.profile-strip` EST PARTAGÉE PAR TROIS SURFACES, ET DEUX SEULEMENT SONT
+  // CENTRÉES. Le 2026-09-03, Benjamin étend la demande au Fil : « aligne sur la
+  // largeur les bulles de passion sur le fil ». Le rail du Fil (`#profileStrip`)
+  // reçoit donc les mêmes marges auto que celui du Profil — mais la règle reste
+  // ancrée à des IDENTIFIANTS, jamais à `.profile-strip` seule : le profil
+  // visité (`#visitedPassions`) n'a rien demandé et garde son alignement au
+  // début. Ce test mesure les deux surfaces plutôt que de relire le sélecteur.
   //
   // ⚠️ UNE SEULE PASSION, ET C'EST LA CONDITION DE VALIDITÉ DU CAS. Avec les
   // trois du socle, le rail du Fil porte CINQ bulles (« Suivis » et les envies
@@ -739,12 +741,17 @@ test("③ decies quater — le bornage : le Fil et le profil visité gardent leu
   // ⚠️ TOLÉRANCE DE QUELQUES PIXELS, ET ELLE EST MOTIVÉE. Une bulle porte des
   // décorations qui déplacent son RECTANGLE sans déplacer sa boîte de mise en
   // page : `transform: scale(0.95)` sur les non-cochées quand un filtre est
-  // actif, `translateY(-2px)` sur la cochée. Mesuré à -2 px sur le Fil. Ce qui
-  // est prouvé ici n'est donc pas « exactement zéro » mais « au début, et pas au
-  // milieu » — d'où l'écart exigé juste en dessous, qui est le vrai discriminant.
-  expect(Math.abs(fil.videGauche), "le Fil part bien de son début").toBeLessThanOrEqual(5);
-  expect(fil.videDroite - fil.videGauche,
-    "tout le libre reste du même côté : le Fil n'est PAS centré").toBeGreaterThan(60);
+  // actif, `translateY(-2px)` sur la cochée. Mesuré à 2,2 px d'écart sur le Fil
+  // pour une mise en page, elle, parfaitement symétrique (40 px / 40 px en
+  // `offsetLeft`). Ce qui est prouvé ici n'est donc pas « exactement égal » mais
+  // « au milieu, et pas dans le coin » — l'ancien état laissait 60 px de plus
+  // d'un côté que de l'autre.
+  expect(Math.abs(fil.videGauche - fil.videDroite),
+    "le Fil aussi répartit le vide à égalité des deux côtés").toBeLessThanOrEqual(5);
+  // ⚠️ SANS CETTE LIGNE, LE TEST SERAIT VERT SUR UNE RANGÉE QUI REMPLIT TOUT :
+  // un `0 === 0` prouverait l'équilibre sans prouver qu'il reste du vide à
+  // répartir — donc sans distinguer le correctif de son absence.
+  expect(fil.videGauche, "et il reste bien du vide à répartir").toBeGreaterThan(0);
 
   // Le profil visité : Léa a deux passions, elles tiennent dans la largeur.
   await page.evaluate(() => goTo("profiles"));
@@ -757,6 +764,68 @@ test("③ decies quater — le bornage : le Fil et le profil visité gardent leu
   expect(visite.videDroite - visite.videGauche,
     "tout le libre reste du même côté : le profil visité n'est PAS centré").toBeGreaterThan(60);
 });
+// ══════════════════════════════════════════════════════════════════════════
+// ③ decies quinquies — LE FIL DANS SA CONFIGURATION DE DÉPART : QUATRE BULLES
+// ══════════════════════════════════════════════════════════════════════════
+// C'est le cas que Benjamin décrit le 2026-09-03 : « la configuration de base
+// des utilisateurs est de 4 bulles, 1 pour Suivis et trois passions ; ensuite
+// les autres seront payantes donc ils switcheront sur le côté pour les voir,
+// mais je veux que la configuration à 4 bulles soit équilibrée dans la largeur,
+// centrée. » Les deux moitiés de la phrase sont mesurées ici, dans cet ordre —
+// centrée tant qu'elle TIENT, coulissante depuis son vrai début dès qu'elle
+// déborde, sans jamais perdre une bulle à gauche.
+//
+// ⚠️ `_activeFeedPassions` EST VIDÉ EXPRÈS. Le rail du Fil complète les passions
+// possédées par les « envies » actives sans profil (`_interet_…`) : avec le
+// socle, il peint CINQ bulles et déborde — le cas ne mesurerait plus rien. On
+// pose donc la prémisse (quatre bulles) plutôt que d'espérer la trouver.
+async function poserFil(page, passions) {
+  await poser(page, {
+    profiles: passions.map((nom, i) => ({
+      id: "pf_" + i, name: "Benjamin", passion: nom, emoji: "✨", color: "#7c3aed", createdAt: i + 1,
+    })),
+  });
+  await page.evaluate(() => {
+    _activeFeedPassions.clear();
+    const rail = document.getElementById("profileStrip");
+    if (rail) rail._lastHtml = null;
+    goTo("feed");
+    renderProfileStrip();
+  });
+  await page.waitForTimeout(500);
+}
+
+test("③ decies quinquies — QUATRE bulles (Suivis + 3 passions) : la rangée est centrée", async ({ page }) => {
+  await poserFil(page, ["moto", "podcast", "voyage"]);
+  const fil = await equilibreRail(page, "#profileStrip");
+  expect(fil.nb, "« Suivis » plus les trois passions offertes").toBe(4);
+  expect(fil.deborde, "à quatre bulles la rangée TIENT dans la largeur").toBe(false);
+  expect(Math.abs(fil.videGauche - fil.videDroite),
+    "le vide est réparti à égalité des deux côtés").toBeLessThanOrEqual(5);
+  expect(fil.videGauche, "et il reste bien du vide à répartir").toBeGreaterThan(10);
+});
+
+test("③ decies sexies — au-delà, le Fil déborde et sa PREMIÈRE bulle reste atteignable", async ({ page }) => {
+  // ⚠️ LE VERROU ANTI-`justify-content: center` CÔTÉ FIL, jumeau de
+  // `③ decies bis`. Quand les passions payantes arriveront, la rangée dépassera
+  // la largeur : le centrage doit alors DISPARAÎTRE de lui-même, sans quoi les
+  // premières bulles sortiraient du scrollport pour de bon (`scrollLeft` ne
+  // descend pas sous zéro). Les marges auto ne distribuent que du libre POSITIF.
+  //
+  // Mesuré par réinjection : avec `justify-content: center` sur `#profileStrip`,
+  // la rangée démarre à **−224 px** du bord intérieur du rail, et ce cas-ci est
+  // le SEUL des six à le voir — `③ decies quinquies` reste vert, les deux
+  // écritures rendant exactement la même image quand la rangée tient.
+  await poserFil(page, DIX_REELLES);
+  const fil = await equilibreRail(page, "#profileStrip");
+  expect(fil.nb, "« Suivis » plus dix passions").toBe(11);
+  expect(fil.deborde, "à onze bulles la rangée DÉBORDE : c'est le cas coulissant").toBe(true);
+  expect(Math.abs(fil.videGauche),
+    "au débordement les marges auto retombent à 0 : la rangée part du vrai début").toBeLessThanOrEqual(5);
+  expect(fil.premiereEntiere,
+    "et la première bulle est entièrement dans le champ dès le début du défilement").toBe(true);
+});
+
 test("③ quinquies — une passion ARCHIVÉE ne réapparaît pas dans le rail", async ({ page }) => {
   // ⚠️ PORTE DÉROBÉE DÉJÀ FERMÉE UNE FOIS (lot UI-8, ②). Le jsonb
   // `profiles.passions` garde les passions archivées — c'est voulu, la colonne
