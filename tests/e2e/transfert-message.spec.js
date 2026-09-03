@@ -83,6 +83,31 @@ async function preparer(page, reponse) {
     // `function` de haut niveau, donc une propriété de `window`, et
     // `_flushOutbox` l'appelle par ce nom.
     window._sendTextToSupa = function () {};
+
+    // ⚠️ ET LE STATUT, PAS SEULEMENT LE COMPTEUR — deuxième moitié du même
+    // défaut, mesurée en CI le 2026-09-03 (run 2452, shard 3/6) : `statut`
+    // valait « sending » au lieu de « failed ».
+    // `_flushOutbox` (app-04:4549) fait DEUX choses par message :
+    // `_setMsgStatus(..., "sending")` PUIS `_sendTextToSupa(...)`. Neutraliser
+    // le second a corrigé le compteur d'insertions ; le premier, lui, continuait
+    // de repasser le message en « sending » dès que le minuteur de 1,5 s tombait
+    // AVANT la mesure — ce qui dépend du temps de démarrage, donc du hasard.
+    //
+    // ⚠️ LE MINUTEUR NE PEUT PAS ÊTRE DÉSARMÉ EN REMPLAÇANT `_flushOutbox` :
+    // `supaInit` le planifie par RÉFÉRENCE (`setTimeout(_flushOutbox, 1500)`),
+    // donc réassigner `window._flushOutbox` n'atteint pas la fonction déjà
+    // capturée. On neutralise la seule transition qui gêne, à l'endroit où
+    // `_flushOutbox` l'appelle PAR SON NOM.
+    //
+    // ⚠️ GELER « sending » NE FAUSSE RIEN : le chemin d'échec écrit « failed »
+    // DIRECTEMENT (app-04:4217, 4518, 4521, 4526, 4529), sans transition
+    // intermédiaire. L'état final mesuré reste donc celui que le produit pose.
+    window.__gelerPassageEnEnvoi = true;
+    var _vraiSetMsgStatus = window._setMsgStatus;
+    window._setMsgStatus = function (convId, msgId, statut) {
+      if (statut === "sending" && window.__gelerPassageEnEnvoi) return;
+      return _vraiSetMsgStatus.apply(this, arguments);
+    };
     return true;
   }, reponse);
 }
