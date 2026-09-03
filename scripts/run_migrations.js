@@ -1,28 +1,39 @@
 #!/usr/bin/env node
 
 /**
- * Script to run Supabase migrations directly
- * No need for dashboard or psql, just Node.js
+ * Pointeur — ce script n'applique AUCUNE migration, et n'en a jamais appliqué.
+ *
+ * Sa version d'origine annonçait « No need for dashboard or psql, just Node.js »,
+ * puis constatait qu'elle tenait la clé ANON — laquelle ne peut ni ALTER TABLE ni
+ * CREATE POLICY — et sortait en 1. Elle promettait donc exactement ce qu'elle ne
+ * faisait pas : un leurre coûteux, puisqu'on ne découvrait l'impasse qu'après
+ * l'avoir lancée, au moment précis où l'on cherchait à appliquer une migration.
+ *
+ * Le DDL ne passe pas par le SDK. ADR-012 fixe les canaux : la lecture par le
+ * connecteur claude.ai (`read_only=true`), l'écriture de DONNÉES par PostgREST
+ * via `configAdmin()`, et l'écriture de STRUCTURE — les migrations — par psql ou
+ * par le SQL Editor. Ce fichier ne fait que renvoyer vers les deux derniers.
+ *
+ * Voir .passio/adr/ADR-012-canal-acces-base-de-donnees.md
+ *      docs/APPLIQUER_MIGRATION_PASSIONS.md (chemins A et B)
  */
 
-const { createClient } = require('@supabase/supabase-js');
+const fichier = process.argv[2];
 
-const SUPABASE_URL = "https://njkiyoklssvefstljemx.supabase.co";
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5qa2l5b2tsc3N2ZWZzdGxqZW14Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTc3MDQsImV4cCI6MjA5NDI3MzcwNH0.wbFAexVW75vlXZ7mRRxeZ28zKevOAYYe0lda0F22dTM";
+console.error("Ce script n'applique aucune migration : le DDL ne passe pas par le SDK Supabase.");
+console.error("");
+console.error("  Chemin A — depuis un ordinateur (recommandé)");
+console.error(`      psql "$DATABASE_URL" -f migrations/${fichier || "<migration>.sql"}`);
+console.error("");
+console.error("  Chemin B — depuis un téléphone");
+console.error("      Tableau de bord Supabase → Project → SQL Editor → New query,");
+console.error("      coller le contenu du fichier, puis Run.");
+console.error("");
+console.error("  Chemin C — un secret SUPABASE_DB_URL en CI : REFUSÉ délibérément.");
+console.error("      Il donnerait à la CI le pouvoir d'écrire la structure de la production.");
+console.error("");
+console.error("Détail et retour arrière : docs/APPLIQUER_MIGRATION_PASSIONS.md");
+console.error("Décision et interdits    : .passio/adr/ADR-012-canal-acces-base-de-donnees.md");
 
-// IMPORTANT: This script uses the ANON key which won't work for DDL (ALTER TABLE)
-// We need the service_role key for migrations
-console.log("❌ ERROR: Cannot run migrations with ANON key");
-console.log("Supabase client initialized, but migrations require SERVICE_ROLE key for DDL operations");
-console.log("");
-console.log("❌ The ANON key has limited permissions:");
-console.log("   ✅ Can SELECT from public tables");
-console.log("   ❌ Cannot ALTER TABLE");
-console.log("   ❌ Cannot CREATE POLICY");
-console.log("");
-console.log("To fix: We need one of these:");
-console.log("  1. Service Role Secret key from Supabase dashboard");
-console.log("  2. Database connection string with password");
-console.log("  3. Direct PostgreSQL access");
-console.log("");
+// Sortie non nulle : rien ne doit prendre ce pointeur pour une migration appliquée.
 process.exit(1);
