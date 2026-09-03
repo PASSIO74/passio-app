@@ -27,7 +27,7 @@ js/telemetry.js (IIFE dans l'app)  ──insert──▶  Supabase.telemetry_eve
 venir de six endroits ; les distinguer coûte trois commandes.
 
 1. L'événement est-il **émis** ? (`js/telemetry.js` : opt-out, échantillonnage, filtre PII)
-2. Est-il **en base** ? (`supabase db query --linked "select … from telemetry_events …"`)
+2. Est-il **en base** ? (outil `execute_sql` du connecteur `supabase-passio-readonly` : `select … from telemetry_events …`)
 3. Est-il **ingéré** ? (`ingest.js` → `store.add`, filtres d'environnement)
 4. Le **calcul** est-il juste ? (kpi/traces/reconcile/retention…)
 5. La **route** répond-elle ? (auth, rôle, capacité)
@@ -122,8 +122,8 @@ venir de six endroits ; les distinguer coûte trois commandes.
 2. **Lire le module concerné en entier** (`server/*.js` fait 20 à 640 lignes,
    c'est lisible) plutôt que de deviner sur des `grep`.
 3. **Confronter à la base réelle** en lecture seule quand le doute porte sur les
-   données (`supabase db query --linked "…"`). Le schéma de prod fait foi, pas
-   `migrations/`.
+   données (outil `execute_sql` du connecteur `supabase-passio-readonly`,
+   ADR-012 canal ①). Le schéma de prod fait foi, pas `migrations/`.
 4. **Distinguer le défaut du filtre volontaire.** Beaucoup de « bugs » du
    pilotage sont des garde-fous qui font exactement leur travail (env de
    production, résidus datés, contenu de démo, capacité `db`, mutations

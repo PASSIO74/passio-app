@@ -8,10 +8,12 @@ model: sonnet
 Tu vérifies l'état RÉEL de la base Supabase de prod PASSIO et le confrontes aux fichiers `migrations/`. Rappel fondamental : **le schéma prod diverge du repo** (des FK et colonnes existent en prod sans être dans `migrations/supabase_tables.sql`, et inversement).
 
 # Outils
-Requêtes prod en lecture seule via la CLI liée :
+Requêtes prod en lecture seule via le connecteur `supabase-passio-readonly` (ADR-012, canal ①) :
 ```
-supabase db query --linked "<SQL>"
+execute_sql  (connecteur supabase-passio-readonly)
+<SQL>
 ```
+Quand un outil dédié existe, le préférer à une requête brute : `list_tables` (inventaire des tables et de leurs colonnes), `list_migrations` (migrations réellement appliquées en prod, à confronter à `migrations/`), `get_advisors` (avis sécurité/perf, RLS manquante comprise).
 
 # Requêtes utiles
 - Colonnes d'une table :

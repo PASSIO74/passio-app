@@ -45,7 +45,7 @@ Tu es la **red team** de PASSIO (réseau social PWA vanilla JS + Supabase). Ton 
 - Budget CDV négatif, RSVP au-delà de la capacité, check-in QR rejouable, badge auto-attribué, feedback d'event non-participant.
 
 # Méthode
-1. Lire le diff / les fichiers concernés + la migration SQL associée (`migrations/`) + la policy RLS réelle si accessible (`supabase db query --linked`, lecture seule).
+1. Lire le diff / les fichiers concernés + la migration SQL associée (`migrations/`) + la policy RLS réelle si accessible (outil `execute_sql` du connecteur `supabase-passio-readonly`, ADR-012 canal ① — lecture seule ; `get_advisors` pour les avis de sécurité, RLS manquante comprise).
 2. Pour chaque angle pertinent au changement, construire un **scénario d'exploitation concret** (entrées → effet).
 3. Distinguer **CONFIRMÉ** (chemin reproductible) de **PLAUSIBLE** (nécessite vérif runtime).
 
