@@ -3,7 +3,8 @@
 -- Une seule table générique : comment_id est un id unique de commentaire
 -- (event_comments.id = "ec_…" ou cdv_live_comments.id = "lc_…"). Visible par
 -- tous (select=true) ; un compte ne peut liker qu'en son nom (PK + RLS).
--- À appliquer en prod via `supabase db query --linked --file ...`.
+-- À appliquer en prod par le canal ③ d'ADR-012 : `psql "$DATABASE_URL" -f migrations/migration_comment_likes.sql`,
+-- ou le SQL Editor du tableau de bord. Voir docs/APPLIQUER_MIGRATION_PASSIONS.md.
 -- ════════════════════════════════════════════════════════════════════════
 
 CREATE TABLE IF NOT EXISTS comment_likes (

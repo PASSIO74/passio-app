@@ -20,7 +20,8 @@
 --
 -- Côté client : supaCommentInteract tronque payload à 500 (sinon une réponse
 -- longue serait rejetée silencieusement — les erreurs y sont avalées).
--- Appliquer : supabase db query --linked --file migrations/migration_anti_flood_interactions.sql
+-- Appliquer (canal ③ d'ADR-012) : psql "$DATABASE_URL" -f migrations/migration_anti_flood_interactions.sql
+--                            ou le SQL Editor du tableau de bord.
 -- ════════════════════════════════════════════════════════════════════════
 
 -- ── 1. Contraintes CHECK ──────────────────────────────────────────────────

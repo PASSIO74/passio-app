@@ -97,8 +97,12 @@ if (out) {
       cwd: path.resolve(__dirname, ".."), stdio: "inherit", timeout: 240000,
     });
   } catch (e) {
-    console.warn("[purge:e2e] ⚠️ repli REST en échec — purge manuelle : " +
-      "supabase db query --linked --file scripts/purge_e2e_accounts.sql depuis le repo principal.");
+    console.warn("[purge:e2e] ⚠️ repli REST en échec. Vérifier d'abord " +
+      "SUPABASE_SERVICE_ROLE_KEY (dashboard/.env en local, secret GitHub en CI) : " +
+      "sans elle, configAdmin() rend null et le canal ② ne peut pas s'ouvrir. " +
+      "En dernier recours, appliquer scripts/purge_e2e_accounts.sql par le canal ③ " +
+      "d'ADR-012 (psql ou le SQL Editor) — surtout pas par la CLI liée, dont " +
+      "l'échec silencieux est le post-mortem du 2026-09-01.");
     process.exitCode = 1;
   }
 }

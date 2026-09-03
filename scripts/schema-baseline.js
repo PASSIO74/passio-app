@@ -31,17 +31,38 @@ function requete(sql) {
   // ⚠️ Windows : `supabase` est un `.cmd`, et Node refuse de lancer un `.cmd`
   // directement (EINVAL) — il faut passer par l'interpréteur. Sur les autres
   // plateformes l'exécutable se lance tel quel.
-  const brut = process.platform === "win32"
-    ? execFileSync(process.env.ComSpec || "cmd.exe",
-        // Chemin SANS guillemets : `supabase` est ici une enveloppe `.cmd` npm,
-        // qui ne les ôte pas — ils arrivaient littéralement à la CLI (« open
-        // "C:\…" : syntaxe incorrecte »). D'où le fichier temporaire placé dans
-        // un répertoire sans espace, condition de cette simplification.
-        ["/d", "/c", `supabase db query --linked -o json -f ${TMP}`],
-        { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 })
-    : execFileSync("supabase",
-        ["db", "query", "--linked", "-o", "json", "-f", TMP],
-        { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  let brut;
+  try {
+    brut = process.platform === "win32"
+      ? execFileSync(process.env.ComSpec || "cmd.exe",
+          // Chemin SANS guillemets : `supabase` est ici une enveloppe `.cmd` npm,
+          // qui ne les ôte pas — ils arrivaient littéralement à la CLI (« open
+          // "C:\…" : syntaxe incorrecte »). D'où le fichier temporaire placé dans
+          // un répertoire sans espace, condition de cette simplification.
+          ["/d", "/c", `supabase db query --linked -o json -f ${TMP}`],
+          { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 })
+      : execFileSync("supabase",
+          ["db", "query", "--linked", "-o", "json", "-f", TMP],
+          { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  } catch (e) {
+    // La CLI absente est le cas le PLUS fréquent hors du poste de Benjamin, et
+    // un ENOENT brut ne le dit pas. Le script entier existe parce qu'un échec
+    // silencieux sur une photographie de schéma est inacceptable : on nomme la
+    // cause plutôt que de laisser remonter « spawn supabase ENOENT ».
+    if (e && (e.code === "ENOENT" || /not found|introuvable|n'est pas reconnu/i.test(String(e.stderr || e.message)))) {
+      throw new Error(
+        "La CLI Supabase est introuvable. Ce script l'exige : il est fait pour tourner " +
+        "sur un poste où elle est installée ET liée au projet.\n" +
+        "  · Pour LIRE le schéma sans elle : outil `execute_sql` du connecteur " +
+        "`supabase-passio-readonly` (ADR-012, canal ①).\n" +
+        "  · Pour répondre hors ligne : migrations/SCHEMA_PROD_REFERENCE.sql, " +
+        "que ce script a justement produit.\n" +
+        "Ne pas régénérer la référence depuis un environnement sans CLI : une " +
+        "photographie partielle est pire que pas de photographie."
+      );
+    }
+    throw e;
+  }
   // La CLI préfixe « Initialising login role... » et suffixe des avis de mise à
   // jour : on isole l'objet JSON, sinon JSON.parse casse sur du bruit humain.
   const debut = brut.indexOf("{");
@@ -154,12 +175,14 @@ const morceaux = [
 ];
 
 let echecs = 0;
+let premiereCause = "";
 for (const b of BLOCS) {
   process.stderr.write(`… ${b.titre}\n`);
   try {
     morceaux.push(section(b.titre, b.format(requete(b.sql))));
   } catch (e) {
     echecs++;
+    if (!premiereCause) premiereCause = String(e.message);
     // Un bloc en échec est ÉCRIT comme échec. Le silence produirait une
     // photographie incomplète qu'on croirait complète — exactement le défaut
     // du `db dump` de 0 octet.
@@ -169,7 +192,25 @@ for (const b of BLOCS) {
 }
 
 try { fs.unlinkSync(TMP); } catch (_) {}
+
+// ⚠️ AUCUN bloc récupéré = on n'a rien photographié. Écrire quand même
+// REMPLACERAIT la référence par neuf constats d'échec — c'est-à-dire détruire
+// `SCHEMA_PROD_REFERENCE.sql`, le substitut hors ligne sur lequel ADR-012 fait
+// reposer toute réponse « quelles colonnes existent vraiment ? ». Mesuré le
+// 2026-09-03 : un seul lancement sans CLI a ramené le fichier de 50 685 à
+// 6 817 octets. Une sauvegarde qui s'écrase elle-même quand la source est
+// injoignable est pire que pas de sauvegarde.
+if (echecs === BLOCS.length) {
+  console.error(`Aucun bloc récupéré : ${SORTIE} est laissé INTACT.`);
+  if (premiereCause) console.error(`\nCause :\n${premiereCause}`);
+  process.exit(1);
+}
+
 fs.mkdirSync(path.dirname(SORTIE), { recursive: true });
 fs.writeFileSync(SORTIE, morceaux.join("\n"), "utf8");
 console.log(`${SORTIE} — ${BLOCS.length - echecs}/${BLOCS.length} blocs récupérés`);
-if (echecs) { console.error(`${echecs} bloc(s) en échec : la photographie est INCOMPLÈTE.`); process.exit(1); }
+if (echecs) {
+  console.error(`${echecs} bloc(s) en échec : la photographie est INCOMPLÈTE.`);
+  if (premiereCause) console.error(`\nPremière cause :\n${premiereCause}`);
+  process.exit(1);
+}

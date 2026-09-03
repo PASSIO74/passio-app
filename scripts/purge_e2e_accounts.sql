@@ -1,7 +1,13 @@
 -- Purge des comptes e2e jetables (%@passio-e2e.test) créés par la suite
 -- multi-comptes (PASSIO_E2E_MULTI=1). Enfants d'abord (FK vers profiles/auth).
--- Usage : npm run purge:e2e  (ou : supabase db query --linked --file scripts/purge_e2e_accounts.sql)
--- ⚠️ Nécessite la CLI Supabase LIÉE au projet (répertoire principal du repo).
+-- Usage : npm run purge:e2e:rest — c'est le canal ② d'ADR-012 (PostgREST via
+-- `configAdmin()`), le seul qui fonctionne partout, CI comprise.
+-- ⚠️ `npm run purge:e2e` reste branché sur la CLI Supabase LIÉE, absente de la
+--    plupart des environnements. C'est SON échec silencieux qui a causé
+--    l'incident du 2026-09-01 (comptes de test accumulés, `main` au rouge,
+--    déploiement sauté sans cause désignée) : ne pas en faire le chemin par
+--    défaut. Ce fichier .sql reste la référence de l'ORDRE des suppressions
+--    (enfants → parents, FK vers profiles/auth).
 create temporary table _e2e_uids as
   select id::text as tid, id as uid from auth.users where email like '%@passio-e2e.test';
 
