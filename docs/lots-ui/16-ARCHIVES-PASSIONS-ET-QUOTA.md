@@ -264,7 +264,7 @@ seconde sortie reprend alors le style primaire. Verrous : `③ bis quinquies`
 **④ La liste qu'on ne savait pas ouvrir.** `#passionArchiveBox` rend la liste en
 clair, mais dans `#passionManager`, `hidden` par défaut : après un rechargement,
 rien à l'écran ne disait qu'on possède encore une passion rangée. L'entrée
-« 🗂️ Gérer mes passions » du menu ⋯ — seule porte visible — porte désormais le
+« Gérer mes passions » du menu ⋯ — seule porte visible — porte désormais le
 compte (« Gérer mes passions (1 archivée) »). Verrou : `⑨`.
 ⚠️ Le libellé disait « Mes passions » jusqu'au 2026-09-03 ; c'est aussi ce jour-là
 que la bulle « + » du rail est descendue dans ce panneau, dont l'entrée devient

@@ -1078,7 +1078,14 @@ function _profileDotsOpen(ev, items) {
     const b = document.createElement("button");
     b.className = "profile-dots-item" + (it.danger ? " danger" : "");
     b.setAttribute("role", "menuitem");
-    b.innerHTML = '<span class="profile-dots-ico">' + escapeHtml(it.icon || "") + "</span>" + escapeHtml(it.label || "");
+    // ⚠️ L'icône est OPTIONNELLE depuis le retrait des emojis décoratifs
+    // (2026-09-03) : sans cette garde, un `icon` vide rendait quand même le
+    // `<span class="profile-dots-ico">` — 20 px de largeur PLUS les 10 px de
+    // `gap` de `.profile-dots-item` — et toutes les entrées restaient
+    // décalées de 30 px derrière une colonne vide, invisible à la lecture du
+    // code comme aux tests de libellé.
+    var ico = it.icon ? '<span class="profile-dots-ico">' + escapeHtml(it.icon) + "</span>" : "";
+    b.innerHTML = ico + escapeHtml(it.label || "");
     b.onclick = function(e) {
       e.stopPropagation();
       _profileDotsClose();
@@ -1115,9 +1122,9 @@ function _profileDotsOpen(ev, items) {
 // Menu du PROFIL PRINCIPAL (⋯ en haut à droite de la couverture).
 function openMainProfileMenu(ev) {
   _profileDotsOpen(ev, [
-    { icon: "✏️", label: "Modifier le profil", run: function() { openEditMainProfile(); } },
-    { icon: "🖼️", label: "Photo de profil",    run: function() { const i = document.getElementById("avatarPhotoInput"); if (i) i.click(); } },
-    { icon: "🌄", label: "Photo de couverture", run: function() { const i = document.getElementById("coverPhotoInput"); if (i) i.click(); }, sep: true },
+    { label: "Modifier le profil", run: function() { openEditMainProfile(); } },
+    { label: "Photo de profil", run: function() { const i = document.getElementById("avatarPhotoInput"); if (i) i.click(); } },
+    { label: "Photo de couverture", run: function() { const i = document.getElementById("coverPhotoInput"); if (i) i.click(); }, sep: true },
     // ⚠️ LA SEULE PORTE VERS LA GESTION DES PASSIONS depuis la refonte
     // multi-passion : l'onglet « À propos » qui la portait a disparu (§1).
     // Retirer un onglet ne doit jamais emporter la seule commande d'une
@@ -1134,13 +1141,13 @@ function openMainProfileMenu(ev) {
     // n'ouvre pas une vue, elle ouvre l'ADMINISTRATION — et c'est désormais le
     // seul endroit d'où l'on ajoute une passion, la bulle « + » ayant quitté le
     // rail pour le panneau. Le verbe est ce qui distingue les deux surfaces.
-    { icon: "🗂️", label: "Gérer mes passions" + (function () {
+    { label: "Gérer mes passions" + (function () {
         try {
           var n = (typeof passionsArchivees === "function") ? passionsArchivees().length : 0;
           return n ? " (" + n + " archivée" + (n > 1 ? "s" : "") + ")" : "";
         } catch (e) { return ""; }
       })(), run: function() { if (typeof openPassionManager === "function") openPassionManager(); } },
-    { icon: "🎨", label: "Apparence & thème",   run: function() { if (typeof openConfigurator === "function") openConfigurator(); } }
+    { label: "Apparence & thème", run: function() { if (typeof openConfigurator === "function") openConfigurator(); } }
   ]);
 }
 
@@ -1154,12 +1161,12 @@ function openPassionProfileMenu(ev, profileId) {
   // suppression reste le comportement rendu par le kill switch.
   var v8 = passionsUnifieesActives();
   var dernier = v8
-    ? { icon: "🗄️", label: "Archiver cette passion", run: function() { confirmArchivePassion(profileId); } }
-    : { icon: "🗑", label: "Supprimer ce profil", danger: true, run: function() { confirmDeleteProfile(profileId, (passion && passion.label) || ""); } };
+    ? { label: "Archiver cette passion", run: function() { confirmArchivePassion(profileId); } }
+    : { label: "Supprimer ce profil", danger: true, run: function() { confirmDeleteProfile(profileId, (passion && passion.label) || ""); } };
   _profileDotsOpen(ev, [
-    { icon: "✏️", label: v8 ? "Modifier cette passion" : "Modifier ce profil", run: function() { openEditPassionProfile(profileId); } },
-    { icon: "🖼️", label: v8 ? "Photo de la passion" : "Photo du profil",    run: function() { const i = document.getElementById("passionPhoto_" + profileId); if (i) i.click(); } },
-    { icon: "🌄", label: "Photo de fond",      run: function() { const i = document.getElementById("passionCover_" + profileId); if (i) i.click(); }, sep: true },
+    { label: v8 ? "Modifier cette passion" : "Modifier ce profil", run: function() { openEditPassionProfile(profileId); } },
+    { label: v8 ? "Photo de la passion" : "Photo du profil", run: function() { const i = document.getElementById("passionPhoto_" + profileId); if (i) i.click(); } },
+    { label: "Photo de fond", run: function() { const i = document.getElementById("passionCover_" + profileId); if (i) i.click(); }, sep: true },
     dernier
   ]);
 }
