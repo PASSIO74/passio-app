@@ -15,7 +15,7 @@
 // pour un mood qui en a une.
 // ============================================================================
 const { test, expect } = require("@playwright/test");
-const { bootOnboarded, sansPublicationsDistantes } = require("./app-helper");
+const { bootOnboarded, sansDonneesDistantes } = require("./app-helper");
 
 // ⚠️ CE FICHIER MESURE UN FIL, IL DOIT DONC LE POSSÉDER ENTIÈREMENT.
 // Il vidait déjà les QUATRE tableaux de posts, mais pas la seule frontière que
@@ -32,7 +32,7 @@ const { bootOnboarded, sansPublicationsDistantes } = require("./app-helper");
 // du fil — exactement le symptôme décrit dans `app-helper.js`. Le déploiement
 // production, qui dépend de ce job, a été sauté.
 //
-// `sansPublicationsDistantes` est le remède maison, et il se pose AVANT
+// `sansDonneesDistantes` est le remède maison, et il se pose AVANT
 // `bootOnboarded` : posé après, il ne protège que les chargements suivants,
 // jamais le premier. Sans réseau (conteneur de dev) la route ne se déclenche
 // pas et le comportement local est inchangé — c'est la CI qui en fait foi.
@@ -66,13 +66,13 @@ async function poser(page, mood) {
 test.describe("la pastille de mood", () => {
   // Le cas majoritaire en production : tout post venu de Supabase porte "all".
   test("un post neutre n'a AUCUNE pastille, pas même une capsule vide", async ({ page }) => {
-    await sansPublicationsDistantes(page);
+    await sansDonneesDistantes(page);
     await bootOnboarded(page);
     expect((await poser(page, "all")).present).toBe(false);
   });
 
   test("un mood inconnu ou absent n'en dessine pas non plus", async ({ page }) => {
-    await sansPublicationsDistantes(page);
+    await sansDonneesDistantes(page);
     await bootOnboarded(page);
     expect((await poser(page, "mood_qui_nexiste_pas")).present).toBe(false);
     expect((await poser(page, null)).present).toBe(false);
@@ -87,7 +87,7 @@ test.describe("la pastille de mood", () => {
   // `exploration-moods.spec.js`). Un test qui se trompe de cause est pire qu'un
   // test absent.
   test("un mood connu porte bien sa pastille, avec son libellé", async ({ page }) => {
-    await sansPublicationsDistantes(page);
+    await sansDonneesDistantes(page);
     await bootOnboarded(page);
     const m = await poser(page, "creation");
     expect(m.present).toBe(true);
