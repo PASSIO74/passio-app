@@ -49,6 +49,23 @@ async function preparer(page, reponse) {
       insert: function (row) { window.__inserts.push({ table: table, row: row }); return Promise.resolve(rep); },
     }; } };
     try { localStorage.removeItem("passio_msg_outbox_v1"); } catch (e) {}
+    // ⚠️ LE RENVOI AUTOMATIQUE N'EST PAS LE SUJET DE CE TEST, ET IL FAUSSAIT SON
+    // COMPTEUR. `supaInit()` planifie `setTimeout(_flushOutbox, 1500)`
+    // (app-08) : 1,5 s après le démarrage, la file d'attente est vidée et
+    // `_sendTextToSupa` RÉINSÈRE le message que ce test vient de mettre en
+    // échec. En local le défaut est invisible — `_supaReal` y vaut faux, donc
+    // `_sendTextToSupa` sort sans insérer — mais en CI, où le vrai client
+    // existe, l'insertion part et le compteur dérive de +1. Rouge sur `main`
+    // au run 2437 (transfert), et sur la PR #251 (média) après fusion.
+    //
+    // Le PRODUIT a raison : un message en échec doit être rejoué, et le renvoi
+    // réutilise le MÊME identifiant, donc la clé primaire interdit tout
+    // doublon. C'est le test qui mesurait son chemin PLUS un minuteur qu'il ne
+    // possède pas — même maladie que #249, #252 et #255, sur une autre
+    // frontière. On neutralise donc le renvoi : `_sendTextToSupa` est une
+    // `function` de haut niveau, donc une propriété de `window`, et
+    // `_flushOutbox` l'appelle par ce nom.
+    window._sendTextToSupa = function () {};
   }, reponse);
 }
 
@@ -56,14 +73,6 @@ const etat = (page) => page.evaluate(() => ({
   statut: (getConversations().find((c) => c.id === "conv_media").messages[0] || {}).status,
   outbox: _outboxLoad().map((x) => x.msgId),
   inserts: (window.__inserts || []).filter(function (i) { return i.table === "conv_messages"; }).length,
-  // ⚠️ L'INVARIANT EST LE REPLI, PAS LE COMPTE (2026-09-03). `toBe(2)` voulait
-  // dire « la première tentative porte `from_id`, la seconde ne le porte pas » —
-  // mais il l'exprimait par un NOMBRE, donc il interdisait aussi le renvoi de la
-  // file (`setTimeout(_flushOutbox, 1500)` armé par `supaInit`, qui rejoue quand
-  // le réseau existe : en CI, jamais hors ligne). On observe désormais les DEUX
-  // FORMES, ce qu'aucun renvoi ne peut fausser.
-  avecFromId: (window.__inserts || []).some(function (i) { return i.table === "conv_messages" && i.row && i.row.from_id; }),
-  sansFromId: (window.__inserts || []).some(function (i) { return i.table === "conv_messages" && i.row && !i.row.from_id; }),
   // Diagnostic : si une autre table s'invite, le message d'échec la nomme au
   // lieu de laisser chercher.
   tables: (window.__inserts || []).map(function (i) { return i.table; }),
@@ -81,10 +90,21 @@ test.describe("Média en message — verdict de l'écriture", () => {
     });
 
     const r = await etat(page);
-    // Deux tentatives : avec from_id, puis le repli sans from_id — observées par
-    // leur FORME, que le renvoi de la file ne peut pas fausser.
-    expect(r.avecFromId, "la première tentative (avec from_id) n'a pas eu lieu").toBe(true);
-    expect(r.sansFromId, "le repli sans from_id n'a pas eu lieu").toBe(true);
+    // ⚠️ L'ISOLATION EST VÉRIFIÉE, PAS SEULEMENT POSÉE — et APRÈS la mesure, car
+    // `_flushOutbox` repasse les messages en « sending » avant de les renvoyer :
+    // le déclencher avant fausserait l'assertion de statut. C'est ce que fait la
+    // CI à 1,5 s (`supaInit` → `setTimeout(_flushOutbox, 1500)`), et sans la
+    // neutralisation posée dans `preparer()` le compteur passait à 3.
+    const apresRenvoi = await page.evaluate(async () => {
+      window._supaReal = true;
+      try { _flushOutbox(); } catch (e) {}
+      await new Promise((r) => setTimeout(r, 250));
+      return window.__inserts.length;
+    });
+    expect(apresRenvoi, "le renvoi automatique ne doit plus polluer le compteur").toBe(r.inserts);
+
+    // Deux tentatives : avec from_id, puis le repli sans from_id.
+    expect(r.inserts, "tables vues : " + JSON.stringify(r.tables)).toBe(2);
     expect(r.statut, "le média doit être marqué en échec").toBe("failed");
     expect(r.outbox, "et mis en file de renvoi").toContain("m_media");
   });
@@ -100,8 +120,7 @@ test.describe("Média en message — verdict de l'écriture", () => {
     });
 
     const r = await etat(page);
-    expect(r.inserts, "l'insertion n'a pas eu lieu — tables vues : " + JSON.stringify(r.tables))
-      .toBeGreaterThanOrEqual(1);
+    expect(r.inserts, "tables vues : " + JSON.stringify(r.tables)).toBe(1);
     expect(r.statut).toBe("sent");
     expect(r.outbox).not.toContain("m_media");
   });
@@ -136,8 +155,7 @@ test.describe("Média en message — verdict de l'écriture", () => {
     });
 
     const r = await etat(page);
-    expect(r.avecFromId, "la première tentative (avec from_id) n'a pas eu lieu").toBe(true);
-    expect(r.sansFromId, "le repli sans from_id n'a pas eu lieu").toBe(true);
+    expect(r.inserts, "tables vues : " + JSON.stringify(r.tables)).toBe(2);
     expect(r.statut).toBe("sent");
     expect(r.outbox).not.toContain("m_media");
   });

@@ -66,6 +66,23 @@ async function preparer(page, reponse) {
       return (window.__inserts || []).filter(function (i) { return i.table === "conv_messages"; });
     };
     try { localStorage.removeItem("passio_msg_outbox_v1"); } catch (e) {}
+    // ⚠️ LE RENVOI AUTOMATIQUE N'EST PAS LE SUJET DE CE TEST, ET IL FAUSSAIT SON
+    // COMPTEUR. `supaInit()` planifie `setTimeout(_flushOutbox, 1500)`
+    // (app-08) : 1,5 s après le démarrage, la file d'attente est vidée et
+    // `_sendTextToSupa` RÉINSÈRE le message que ce test vient de mettre en
+    // échec. En local le défaut est invisible — `_supaReal` y vaut faux, donc
+    // `_sendTextToSupa` sort sans insérer — mais en CI, où le vrai client
+    // existe, l'insertion part et le compteur dérive de +1. Rouge sur `main`
+    // au run 2437 (transfert), et sur la PR #251 (média) après fusion.
+    //
+    // Le PRODUIT a raison : un message en échec doit être rejoué, et le renvoi
+    // réutilise le MÊME identifiant, donc la clé primaire interdit tout
+    // doublon. C'est le test qui mesurait son chemin PLUS un minuteur qu'il ne
+    // possède pas — même maladie que #249, #252 et #255, sur une autre
+    // frontière. On neutralise donc le renvoi : `_sendTextToSupa` est une
+    // `function` de haut niveau, donc une propriété de `window`, et
+    // `_flushOutbox` l'appelle par ce nom.
+    window._sendTextToSupa = function () {};
     return true;
   }, reponse);
 }
@@ -91,20 +108,20 @@ test.describe("Transfert de message — verdict de l'écriture", () => {
       };
     });
 
-    // ⚠️ « AU MOINS UNE », ET SÛREMENT PAS « EXACTEMENT UNE » (2026-09-03).
-    // `toBe(1)` interdisait un renvoi que le produit doit faire : `supaInit`
-    // arme `setTimeout(_flushOutbox, 1500)` (app-08), et quand le réseau existe
-    // — donc en CI, jamais dans un bac à sable hors ligne — la file rejoue le
-    // message refusé DANS la fenêtre de mesure. La seconde insertion n'était pas
-    // un défaut : c'était le renvoi, c'est-à-dire exactement le comportement que
-    // les deux assertions suivantes exigent. Le test se contredisait lui-même,
-    // et ne le montrait qu'au gré du découpage des shards.
-    //
-    // Ce que ce spec garde vraiment (cf. son en-tête) : l'échec d'écriture est
-    // VU. Donc : la tentative a eu lieu, le message est marqué en échec, et il
-    // est en file. Le NOMBRE de tentatives n'a jamais été l'invariant.
-    expect(r.inserts, "l'insertion du transfert n'a pas eu lieu — tables vues : " + JSON.stringify(r.tables))
-      .toBeGreaterThanOrEqual(1);
+    // ⚠️ L'ISOLATION EST VÉRIFIÉE, PAS SEULEMENT POSÉE — et APRÈS la mesure, car
+    // `_flushOutbox` repasse les messages en « sending » avant de les renvoyer :
+    // le déclencher avant fausserait l'assertion de statut. C'est ce que fait la
+    // CI à 1,5 s (`supaInit` → `setTimeout(_flushOutbox, 1500)`), et sans la
+    // neutralisation de `preparer()` le compteur passait à 2.
+    const apresRenvoi = await page.evaluate(async () => {
+      window._supaReal = true;
+      try { _flushOutbox(); } catch (e) {}
+      await new Promise((r) => setTimeout(r, 250));
+      return window.__inserts.length;
+    });
+    expect(apresRenvoi, "le renvoi automatique ne doit plus polluer le compteur").toBe(r.inserts);
+
+    expect(r.inserts, "l'insertion du transfert a bien été tentée — tables vues : " + JSON.stringify(r.tables)).toBe(1);
     expect(r.statut, "un transfert refusé doit être marqué en échec").toBe("failed");
     expect(r.enFile, "et mis en file de renvoi, sinon il est perdu en silence").toBe(true);
   });
