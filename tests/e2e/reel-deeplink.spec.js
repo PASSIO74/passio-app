@@ -11,7 +11,7 @@
 //   ④ un lien collé en cours de session est routé lui aussi (hashchange) ;
 //   ⑤ l'ouverture normale des Bobines n'est pas modifiée par l'épinglage.
 const { test, expect } = require("@playwright/test");
-const { bootOnboarded, onboardedState, sansPublicationsDistantes } = require("./app-helper");
+const { bootOnboarded, onboardedState, sansDonneesDistantes } = require("./app-helper");
 
 const PIXEL = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 
@@ -43,7 +43,7 @@ async function bootAvecLien(page, hash, opts = {}) {
   // cette suite vise, et le test conclut à un lien mal routé alors que le
   // routage est correct — il montrait simplement une VRAIE bobine. Ce fichier
   // échouait ainsi sur des PR sans rapport avec lui. Détail dans `app-helper.js`.
-  await sansPublicationsDistantes(page);
+  await sansDonneesDistantes(page);
   if (opts.userPosts) {
     const st = onboardedState(1);
     st.userPosts = opts.userPosts;

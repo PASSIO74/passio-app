@@ -15,7 +15,7 @@
 // pourrait se casser sans qu'on le voie.
 const { test, expect } = require("@playwright/test");
 const { GATE_TOKEN, GATE_KEY } = require("./gate-helper");
-const { sansPublicationsDistantes } = require("./app-helper");
+const { sansDonneesDistantes } = require("./app-helper");
 
 async function boot(page, etat) {
   // ⚠️ Helper maison avec son propre `goto` : l'isolation par défaut de
@@ -23,7 +23,7 @@ async function boot(page, etat) {
   // `#feedList .post .post-author`, c'est-à-dire la PREMIÈRE carte du fil —
   // exactement la forme de l'incident du 2026-09-02 (run 2413), où une vraie
   // publication de production tenait la place attendue.
-  await sansPublicationsDistantes(page);
+  await sansDonneesDistantes(page);
   await page.addInitScript(([k, t, st]) => {
     sessionStorage.setItem(k, t);
     sessionStorage.setItem("passio_pwa_dismissed", "1");
