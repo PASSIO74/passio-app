@@ -135,7 +135,7 @@
       for (var i = 0; i < titre.childNodes.length; i++) {
         var n = titre.childNodes[i];
         if (n.nodeType === 3 && (n.nodeValue || "").trim()) {
-          n.nodeValue = "Mes passions ";
+          n.nodeValue = "Gérer mes passions ";
           break;
         }
       }
@@ -248,9 +248,11 @@
           for (var k = 0; k < titre.childNodes.length; k++) {
             var n = titre.childNodes[k];
             if (n.nodeType === 3 && (n.nodeValue || "").trim()) {
-              // Le markup d'origine dit « Mes passions » depuis ADR-010 : restituer
-              // « Mes profils passion » réintroduirait le vocabulaire retiré.
-              n.nodeValue = "Mes passions ";
+              // Le markup d'origine dit « Gérer mes passions » depuis le
+              // 2026-09-03 (avant : « Mes passions », et « Mes profils passion »
+              // avant ADR-010) : restituer un libellé plus ancien réintroduirait
+              // un vocabulaire retiré.
+              n.nodeValue = "Gérer mes passions ";
               break;
             }
           }

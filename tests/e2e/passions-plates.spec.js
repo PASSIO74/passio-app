@@ -22,15 +22,22 @@ const referentiel = require("../../scripts/referentiel-passions.js");
 
 const APERCU = "?passio_preview=flat-passions-v1";
 
-// Ouvre la feuille de recherche depuis la bulle « + » du rail du PROFIL.
-// ⚠️ ELLE ÉTAIT DANS LE FIL JUSQU'AU 2026-09-01. Benjamin l'a fait déménager :
-// « la bulle de rajout de passion doit être sur le profil, pas dans le fil ».
-// Le helper passe donc par l'écran Profil — et les tests qui observent ENSUITE
-// le Fil doivent y revenir explicitement.
+// Ouvre la feuille de recherche depuis le bouton « Ajouter une passion » du
+// panneau « Gérer mes passions ».
+//
+// ⚠️ LA PORTE A DÉMÉNAGÉ DEUX FOIS, ET C'EST LA SECONDE QUI COMPTE. Elle était
+// dans le FIL jusqu'au 2026-09-01 (« la bulle de rajout de passion doit être
+// sur le profil, pas dans le fil »), puis dans le rail de bulles du PROFIL
+// jusqu'au 2026-09-03 — retirée ce jour-là : « enlève sur la page de profil
+// dans les bulles la bulle +, elle fait tache et en trop […] tu mets la
+// possibilité de rajouter des passions dans les paramètres gérer mes passions ».
+// Le helper passe donc par l'écran Profil PUIS par le panneau, qui est `hidden`
+// tant qu'on ne l'ouvre pas — et les tests qui observent ENSUITE le Fil doivent
+// y revenir explicitement.
 async function ouvrirRecherche(page) {
-  await page.evaluate(() => goTo("profiles"));
+  await page.evaluate(() => { goTo("profiles"); openPassionManager(); });
   await page.waitForTimeout(500);
-  await page.locator('#v9ProfilePassions [data-passion-tile="__ajouter__"]').click();
+  await page.locator("#passionAddBtn").click();
   await expect(page.locator(".psel-input")).toBeVisible({ timeout: 10000 });
   // Le référentiel arrive par `fetch` : on attend qu'il soit là, sinon on
   // mesurerait le repli hors ligne en croyant mesurer le référentiel complet.
@@ -440,14 +447,26 @@ test.describe("le modèle et les garde-fous", () => {
     await bootOnboarded(page, null, 1, { query: APERCU });
     const etat = await page.evaluate(() => window.PassioPassions._etat());
     expect(etat.actif, "le kill switch local n'a pas priorité sur l'aperçu").toBe(false);
-    // Aucune trace du lot : ni bulle « + » au Profil, ni bouton de Studio actif.
-    // ⚠️ ON LA CHERCHE OÙ ELLE VIT (rail du Profil). La chercher dans le Fil
-    // rendrait ce test vert quoi qu'il arrive depuis son déménagement — une
-    // règle qui survit à la disparition de sa cible, la famille de défauts la
-    // plus fréquente de ce dépôt.
-    await page.evaluate(() => goTo("profiles"));
+    // Aucune trace du lot : la porte d'ajout du Profil rend la GRILLE
+    // historique, et le bouton de Studio reste éteint.
+    //
+    // ⚠️ ASSERTION REFORMULÉE LE 2026-09-03, ET C'EST UNE CORRECTION DE FOND.
+    // Elle exigeait l'absence de la bulle « + » du rail — une bulle qui a
+    // depuis été retirée POUR TOUT LE MONDE, drapeau ou pas. Elle serait donc
+    // devenue verte sans plus rien prouver : exactement la règle qui survit à
+    // la disparition de sa cible, la famille de défauts la plus fréquente de ce
+    // dépôt. Ce que le kill switch change vraiment, c'est CE QUI S'OUVRE quand
+    // on pousse la porte : la grille de 19 tuiles, jamais la feuille de
+    // recherche. On le mesure donc là.
+    await page.evaluate(() => { goTo("profiles"); openPassionManager(); });
     await page.waitForTimeout(500);
-    expect(await page.locator('#v9ProfilePassions [data-passion-tile="__ajouter__"]').count()).toBe(0);
+    await page.locator("#passionAddBtn").click();
+    await page.waitForTimeout(500);
+    await expect(page.locator("#newProfileGrid")).toBeVisible();
+    expect(await page.locator(".psel-input").count(),
+      "la feuille de recherche s'ouvre alors que le lot est coupé").toBe(0);
+    await page.evaluate(() => closeModal());
+    await page.waitForTimeout(300);
     await page.evaluate(() => goTo("studio"));
     await page.waitForTimeout(900);
     await expect(page.locator("#studioPassionBtn")).toBeHidden();
@@ -477,9 +496,14 @@ test.describe("le modèle et les garde-fous", () => {
     // l'invariant qui protège le temps de démarrage : 160 Ko ne partent qu'au
     // premier usage RÉEL de la recherche, jamais au boot.
     expect(etat.pret, "le référentiel est téléchargé au démarrage").toBe(false);
-    await page.evaluate(() => goTo("profiles"));
+    await page.evaluate(() => { goTo("profiles"); openPassionManager(); });
     await page.waitForTimeout(500);
-    expect(await page.locator('#v9ProfilePassions [data-passion-tile="__ajouter__"]').count()).toBe(1);
+    // Miroir exact de ⑰ : même porte, autre issue. Le lot actif ouvre la
+    // recherche, jamais la grille.
+    await page.locator("#passionAddBtn").click();
+    await expect(page.locator(".psel-input")).toBeVisible({ timeout: 10000 });
+    expect(await page.locator("#newProfileGrid").count(),
+      "la grille historique s'ouvre alors que le lot est actif").toBe(0);
   });
 
   test("⑱ le pliage du navigateur est celui du référentiel construit", async ({ page }) => {
@@ -627,27 +651,47 @@ test.describe("la porte d'ajout et son plafond", () => {
     }, n);
   }
 
-  test("㉑ la bulle « + » est sur le Profil, et nulle part dans le Fil", async ({ page }) => {
+  test("㉑ la porte d'ajout est dans « Gérer mes passions », et dans AUCUN rail", async ({ page }) => {
+    // ⚠️ TITRE ET ASSERTIONS RETOURNÉS LE 2026-09-03, JAMAIS VIDÉS. Ce cas
+    // garantissait que la bulle « + » vivait sur le Profil et nulle part dans
+    // le Fil. Benjamin a fait retirer la bulle elle-même (« elle fait tache et
+    // en trop ») et déplacer l'ajout dans le panneau « Gérer mes passions ».
+    // Ce que le cas protège reste le même : UNE porte, à UN endroit, et qui
+    // ouvre bien la recherche.
     await bootOnboarded(page, null, 1, { query: APERCU });
     await page.waitForTimeout(800);
-    // Le Fil n'en porte plus : c'est une commande de lecture.
+    // Aucun rail ne porte plus de commande d'écriture — ni le Fil, ni le Profil.
     expect(await page.locator('#profileStrip [data-passion-tile="__ajouter__"]').count()).toBe(0);
     await page.evaluate(() => goTo("profiles"));
     await page.waitForTimeout(600);
-    const bulle = page.locator('#v9ProfilePassions [data-passion-tile="__ajouter__"]');
-    await expect(bulle).toHaveCount(1);
-    await expect(bulle).toBeVisible();
+    expect(await page.locator('#v9ProfilePassions [data-passion-tile="__ajouter__"]').count()).toBe(0);
+    // ⚠️ ET LE PANNEAU EST FERMÉ AU DÉPART : la porte n'est donc pas « quelque
+    // part dans la page », elle est derrière un geste connu — le menu ⋯ du
+    // profil, dont l'entrée s'appelle « Gérer mes passions ».
+    //
+    // ⚠️ ON MESURE LA VISIBILITÉ, PAS LA PRÉSENCE. `renderProfilesScreen` écrit
+    // le bouton à chaque rendu du profil, panneau ouvert ou non : il est donc
+    // DANS le DOM, replié sous `#passionManager[hidden]`. Un `count()` à zéro
+    // aurait exigé le contraire de ce que fait le code — et c'est bien la
+    // visibilité qui décide de ce que l'utilisateur trouve.
+    await expect(page.locator("#passionAddBtn")).toBeHidden();
+    await page.evaluate(() => openPassionManager());
+    await page.waitForTimeout(400);
+    const porte = page.locator("#passionAddBtn");
+    await expect(porte).toHaveCount(1);
+    await expect(porte).toBeVisible();
+    await expect(porte).toContainText("Ajouter une passion");
     // Et elle ouvre bien la recherche.
-    await bulle.click();
+    await porte.click();
     await expect(page.locator(".psel-input")).toBeVisible({ timeout: 10000 });
   });
 
   test("㉒ à trois passions, la porte annonce que la suite sera payante", async ({ page }) => {
     await bootOnboarded(page, null, 1, { query: APERCU });
     await poserNPassions(page, 3);
-    await page.evaluate(() => goTo("profiles"));
+    await page.evaluate(() => { goTo("profiles"); openPassionManager(); });
     await page.waitForTimeout(600);
-    await page.locator('#v9ProfilePassions [data-passion-tile="__ajouter__"]').click();
+    await page.locator("#passionAddBtn").click();
     await page.waitForTimeout(500);
 
     // Pas de feuille de recherche : on n'ouvre pas ce qui ne peut rien conclure.
@@ -749,9 +793,9 @@ test.describe("la porte d'ajout et son plafond", () => {
     // est donc éteint chez lui. L'éteindre SANS reprendre la garantie ici,
     // c'eût été désarmer un verrou de sécurité au motif que la surface a changé.
     //
-    // On l'exerce ici par le geste RÉEL — la bulle « + » du Profil — et non en
-    // appelant `restaurerPassion` directement (ce que fait déjà ㉓) : ce que le
-    // verrou protège, c'est la PORTE.
+    // On l'exerce ici par le geste RÉEL — le bouton « Ajouter une passion » de
+    // « Gérer mes passions » — et non en appelant `restaurerPassion` directement
+    // (ce que fait déjà ㉓) : ce que le verrou protège, c'est la PORTE.
     await bootOnboarded(page, null, 1, { query: APERCU });
     await poserNPassions(page, 3);
     // On archive : 3 vivantes → 2. Une place se libère, la passion reste
@@ -759,9 +803,9 @@ test.describe("la porte d'ajout et son plafond", () => {
     await page.evaluate(() => archiverPassion(state.user.profiles[2].id));
     await page.waitForTimeout(300);
 
-    await page.evaluate(() => goTo("profiles"));
+    await page.evaluate(() => { goTo("profiles"); openPassionManager(); });
     await page.waitForTimeout(600);
-    await page.locator('#v9ProfilePassions [data-passion-tile="__ajouter__"]').click();
+    await page.locator("#passionAddBtn").click();
     // Aucune fenêtre payante : on est sous le plafond.
     await expect(page.locator(".psel-input")).toBeVisible({ timeout: 10000 });
     expect(await page.locator("#modalContent").textContent() || "").not.toContain("Trois passions offertes");

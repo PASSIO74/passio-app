@@ -6,7 +6,9 @@
 //      `openMainProfileMenu`, remplace le « ⋯ » qui occupait ce coin, et la
 //      statistique « posts » a quitté le premier niveau sans que rien soit
 //      perdu ;
-//   ② « Mes passions » : chaque identité porte « Actif » ou « Activer » ;
+//   ② « Gérer mes passions » (« Mes passions » jusqu'au 2026-09-03, renommé
+//      avec le déménagement de la porte d'ajout) : chaque identité porte
+//      « Actif » ou « Activer » ;
 //   ③ LE contrôle central : « Activer » change RÉELLEMENT l'identité active
 //      (`state.user.currentProfileId`) et le confirme visiblement — c'est le
 //      chaînon qui manquait, `switchToProfile()` n'étant appelée par personne ;
@@ -125,7 +127,7 @@ test.describe("UI-6B — Profil et multi-profils", () => {
     // Le titre du §11.
     await expect(page.locator("#nouveauProfilLien")).toHaveText("+ Ajouter une passion");
     expect(await page.evaluate(() =>
-      document.getElementById("nouveauProfilLien").parentNode.textContent)).toContain("Mes passions");
+      document.getElementById("nouveauProfilLien").parentNode.textContent)).toContain("Gérer mes passions");
 
     expect(errors.js, "exceptions JS").toEqual([]);
   });
@@ -242,7 +244,7 @@ test.describe("UI-6B — Profil et multi-profils", () => {
     // sous aucun kill switch, il change donc aussi sur le chemin historique).
     await expect(page.locator("#nouveauProfilLien")).toHaveText("+ Ajouter");
     expect(await page.evaluate(() =>
-      document.getElementById("nouveauProfilLien").parentNode.textContent)).toContain("Mes passions");
+      document.getElementById("nouveauProfilLien").parentNode.textContent)).toContain("Gérer mes passions");
     await expect(page.locator("#screen-profiles .main-profile-stat").first()).toBeVisible();
   });
 

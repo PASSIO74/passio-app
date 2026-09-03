@@ -175,16 +175,25 @@ test("③ aucune ligne de passions sous le pseudo — les bulles du rail les por
             .map((c) => c.getAttribute("data-passion-tile"))
         : [],
       vignettes: rail ? rail.querySelectorAll(".profile-tile .profile-tile-avatar").length : 0,
+      // La porte d'ajout vit maintenant dans « Gérer mes passions », pas ici.
+      porteAjout: rail
+        ? rail.querySelectorAll('[data-passion-tile="__ajouter__"], .psel-tile-plus').length
+        : -1,
     };
   });
   expect(vu.ligneIdent, "la ligne sous le pseudo ne doit pas revenir").toBe(false);
   expect(vu.dansLaCarte, "aucune passion nommée dans la carte d'identité").toBe(0);
-  // ⚠️ LA PORTE D'AJOUT EST EN TÊTE DEPUIS LE 2026-09-02, et cet ordre-ci est le
-  // contrat : en queue d'un rail devenu coulissant, elle sortait du scrollport
-  // (mesuré à 320 px avec 3 passions : elle commençait à x=326 pour un rail qui
-  // s'arrête à 304). Voir `③ nonies`, qui mesure sa visibilité réelle.
-  expect(vu.bulles).toEqual(["__ajouter__", "pp_moto", "pp_pod", "pp_voy"]);
-  expect(vu.vignettes, "des bulles rondes, pas une rangée ovale").toBe(4);
+  // ⚠️ ASSERTION RETOURNÉE LE 2026-09-03, PAS SUPPRIMÉE. La porte d'ajout a
+  // occupé la tête du rail pendant une journée — posée là parce qu'en queue
+  // d'un rail devenu coulissant elle sortait du scrollport. Benjamin l'a fait
+  // retirer le lendemain : « enlève sur la page de profil dans les bulles la
+  // bulle +, elle fait tache et en trop ». Le rail redevient une commande de
+  // LECTURE pure : QUE des passions possédées, aucune commande d'écriture au
+  // milieu. On exige donc son ABSENCE, plutôt que de vider le test — sinon un
+  // retour accidentel de la bulle passerait inaperçu.
+  expect(vu.bulles).toEqual(["pp_moto", "pp_pod", "pp_voy"]);
+  expect(vu.vignettes, "des bulles rondes, pas une rangée ovale").toBe(3);
+  expect(vu.porteAjout, "la bulle « + » ne doit pas revenir dans le rail").toBe(0);
 });
 
 test("③ bis — toucher une bulle FILTRE, elle ne quitte plus le profil", async ({ page }) => {
@@ -232,8 +241,19 @@ function mesurerRail() {
     }
   }
   const railRect = rail.getBoundingClientRect();
-  const plus = rail.querySelector('[data-passion-tile="__ajouter__"]');
+  // ⚠️ COMBIEN DE BULLES TIENNENT ENTIÈREMENT DANS LE CHAMP, sans faire défiler.
+  // C'est la mesure de la consigne du 2026-09-03 (« 3 bulles visibles, ensuite
+  // on glisse sur le côté »), et aucun test d'existence ne la voit : hors du
+  // scrollport d'un conteneur `overflow-x: auto`, un nœud reste « visible »
+  // pour Playwright et `.click()` fait défiler tout seul.
+  const entieres = rects.filter(
+    (r) => r.left >= railRect.left - 1 && r.right <= railRect.right + 1).length;
+  // Et de combien la SUIVANTE affleure : c'est la seule chose qui dise à l'oeil
+  // qu'il y a une suite. Zéro, et la rangée a l'air de s'arrêter à trois.
+  const suivante = rects[entieres];
   return {
+    entieres,
+    affleure: suivante ? Math.round(Math.max(0, railRect.right - suivante.left)) : 0,
     chevauche,
     // ⚠️ `offsetTop`, PAS `getBoundingClientRect().top` : une bulle cochée porte
     // `transform: translateY(-2px)`, que le rectangle inclut. Sur une sélection
@@ -257,13 +277,6 @@ function mesurerRail() {
     }),
     coulisse: rail.scrollWidth > rail.clientWidth + 1,
     railDansEcran: railRect.right <= window.innerWidth + 1 && railRect.left >= -1,
-    // La porte d'ajout est-elle ENTIÈREMENT dans le champ visible du rail ?
-    // Un test de présence ne le dirait pas : hors du scrollport, le nœud reste
-    // « visible » pour Playwright et `.click()` fait défiler tout seul.
-    plusDansLeChamp: !plus ? null : (function () {
-      const pr = plus.getBoundingClientRect();
-      return pr.left >= railRect.left - 1 && pr.right <= railRect.right + 1;
-    })(),
     hauteur: Math.round(railRect.height),
   };
 }
@@ -300,7 +313,7 @@ test("③ quater — six passions : la rangée COULISSE, elle ne se comprime pas
     })),
   });
   const vu = await page.evaluate(mesurerRail);
-  expect(vu.nb, "six passions plus la porte d'ajout").toBe(7);
+  expect(vu.nb, "six passions, et rien d'autre dans le rail").toBe(6);
   expect(vu.chevauche, "aucune paire de bulles ne se recouvre").toBe(false);
   expect(vu.lignes, "une seule rangée : elles coulissent, elles ne s'empilent pas").toBe(1);
   expect(vu.largeurMin, "une bulle garde la largeur de son libellé").toBeGreaterThanOrEqual(60);
@@ -320,38 +333,46 @@ test("③ quater bis — DIX passions : les bulles gardent leur taille et leur n
     })),
   });
   const vu = await page.evaluate(mesurerRail);
-  expect(vu.nb, "dix passions plus la porte d'ajout").toBe(11);
+  expect(vu.nb, "dix passions, et rien d'autre dans le rail").toBe(10);
   expect(vu.chevauche, "AUCUNE bulle n'en recouvre une autre — le défaut d'origine").toBe(false);
   expect(vu.lignes, "toujours une seule rangée").toBe(1);
   expect(vu.largeurMin, "à dix, une bulle fait la même largeur qu'à trois").toBeGreaterThanOrEqual(60);
   expect(vu.largeurMax - vu.largeurMin, "toutes les bulles ont la MÊME largeur").toBeLessThanOrEqual(1);
   expect(vu.libelles, "chaque bulle nomme sa passion").toEqual(
-    ["Ajouter", "Moto", "Podcast", "Voyage", "Cuisine", "Musique",
+    ["Moto", "Podcast", "Voyage", "Cuisine", "Musique",
      "Sport", "Photo", "Littérature", "Jardinage", "Danse"]);
   expect(vu.coulisse, "la rangée se fait défiler à gauche et à droite").toBe(true);
   expect(vu.hauteur, "et elle reste une rangée").toBeLessThan(120);
 });
 
 // ══════════════════════════════════════════════════════════════════════════
-// LA PORTE D'AJOUT RESTE DANS LE CHAMP — le prix caché du rail coulissant
+// TROIS BULLES DANS LE CHAMP, ET LA QUATRIÈME QUI AFFLEURE  (2026-09-03)
 // ──────────────────────────────────────────────────────────────────────────
-// Tant que les bulles se PARTAGEAIENT la largeur, la bulle « + » posée en
-// dernier restait visible quel qu'en soit le nombre. Le rail coulissant l'a
-// poussée hors du scrollport : mesuré à 320 px avec 3 passions — le plafond
-// gratuit (`PASSIONS_OFFERTES`) — elle commençait à x=326 alors que le rail
-// s'arrêtait à 304, donc ENTIÈREMENT hors écran, pas même un liseré. Et c'est
-// la seule porte VISIBLE : l'autre vit dans `#passionManager`, `hidden` par
-// défaut, derrière le menu options. Elle est désormais en TÊTE du rail.
+// ⚠️ CETTE SECTION MESURAIT LA PORTE « + », QUI N'EXISTE PLUS. Elle vérifiait
+// qu'en tête du rail coulissant la bulle d'ajout restait entièrement visible —
+// un vrai défaut, mesuré : en queue, à 320 px avec 3 passions, elle commençait
+// à x=326 pour un rail qui s'arrêtait à 304. Benjamin a fait retirer la bulle
+// le 2026-09-03 (« elle fait tache et en trop »), et l'ajout a déménagé dans
+// « Gérer mes passions ». La section est donc REPRISE, pas supprimée : la
+// méthode qu'elle avait acquise — mesurer des RECTANGLES, jamais l'existence —
+// sert maintenant à verrouiller la consigne qui l'a remplacée.
 //
-// ⚠️ CE DÉFAUT EST INVISIBLE À UN TEST D'EXISTENCE, et c'est tout l'intérêt de
-// celui-ci : pour Playwright, un nœud poussé hors du scrollport d'un conteneur
-// `overflow-x: auto` reste « visible » (sa boîte n'est pas vide), et `.click()`
-// fait défiler tout seul avant de cliquer. `passions-plates.spec.js` serait
-// resté VERT pendant que la porte était introuvable à l'écran. Seule une
-// mesure de rectangles l'attrape.
+// « Réaligne les bulles de passion : l'objectif est 3 bulles de passion
+// principales visibles, ensuite on glisse sur le côté pour voir les autres. »
+// Deux choses à garantir, et la seconde est la plus fragile :
+//   ① TROIS bulles entières dans le champ, ni deux ni trois et demie ;
+//   ② la QUATRIÈME AFFLEURE. Sans cet affleurement, une rangée de dix passions
+//      est indiscernable d'une rangée de trois — rien à l'écran ne dit qu'on
+//      peut glisser, et le contenu au-delà est perdu pour qui ne tente pas le
+//      geste.
+//
+// ⚠️ ET UN TEST D'EXISTENCE NE VOIT NI L'UN NI L'AUTRE : hors du scrollport
+// d'un conteneur `overflow-x: auto`, un nœud reste « visible » pour Playwright.
+// C'est très exactement ce qui avait laissé `passions-plates.spec.js` au vert
+// pendant que la porte d'ajout était introuvable à l'écran.
 // ══════════════════════════════════════════════════════════════════════════
-for (const [largeur, nb] of [[320, 3], [320, 10], [390, 10]]) {
-  test("③ nonies — " + largeur + " px, " + nb + " passions : la porte « + » reste dans le champ", async ({ page }) => {
+for (const [largeur, nb] of [[320, 3], [320, 10], [390, 10], [430, 6]]) {
+  test("③ nonies — " + largeur + " px, " + nb + " passions : trois bulles dans le champ", async ({ page }) => {
     await page.setViewportSize({ width: largeur, height: 844 });
     await poser(page, {
       profiles: DIX_REELLES.slice(0, nb).map((p, i) => ({
@@ -359,10 +380,20 @@ for (const [largeur, nb] of [[320, 3], [320, 10], [390, 10]]) {
       })),
     });
     const vu = await page.evaluate(mesurerRail);
-    expect(vu.nb, nb + " passions plus la porte d'ajout").toBe(nb + 1);
-    expect(vu.plusDansLeChamp,
-      "la porte d'ajout est ENTIÈREMENT visible sans avoir à faire défiler").toBe(true);
+    expect(vu.nb, nb + " passions dans le rail, et rien d'autre").toBe(nb);
+    expect(vu.entieres, "exactement trois bulles entières dans le champ").toBe(3);
     expect(vu.chevauche, "et rien ne se recouvre").toBe(false);
+    if (nb > 3) {
+      // Assez pour se lire « ça continue », trop peu pour se lire comme une
+      // quatrième colonne : c'est la réserve de 40 px du `calc()` (styles.css).
+      expect(vu.affleure, "la quatrième bulle affleure — sinon rien ne dit qu'on peut glisser")
+        .toBeGreaterThanOrEqual(20);
+      expect(vu.affleure, "mais elle ne se lit pas comme une quatrième colonne")
+        .toBeLessThan(60);
+      expect(vu.coulisse, "et le rail défile réellement").toBe(true);
+    } else {
+      expect(vu.affleure, "à trois passions il n'y a rien à faire affleurer").toBe(0);
+    }
   });
 }
 

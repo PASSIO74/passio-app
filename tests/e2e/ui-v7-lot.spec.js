@@ -90,7 +90,11 @@ test.describe("UI-7 §1 — vocabulaire visible", () => {
     expect(await page.evaluate(() =>
       document.getElementById("screen-studio").textContent.includes("Changer de profil"))).toBe(false);
 
-    // Profil : « Mes passions », « + Ajouter une passion ».
+    // Profil : « Gérer mes passions », « + Ajouter une passion ».
+    // ⚠️ LE TITRE A ÉTÉ RENOMMÉ LE 2026-09-03 (« Mes passions » → « Gérer mes
+    // passions »), en même temps que la porte d'ajout descendait de la bulle
+    // « + » du rail vers ce panneau. Le lot UI-7 le réécrit toujours : c'est
+    // le NOUVEAU libellé qu'il doit poser, pas l'ancien.
     // ⚠️ ANCRE DÉPLACÉE, ASSERTION CONSERVÉE. La refonte multi-passion (ADR-011)
     // retire l'onglet « À propos » ; le titre et son lien vivent maintenant dans
     // le panneau `#passionManager`, qu'ouvre `openPassionManager`. Le lot UI-7
@@ -100,7 +104,7 @@ test.describe("UI-7 §1 — vocabulaire visible", () => {
     await expect(page.locator("#nouveauProfilLien")).toHaveText("+ Ajouter une passion");
     expect(await page.evaluate(() =>
       document.getElementById("nouveauProfilLien").parentNode.textContent))
-      .toContain("Mes passions");
+      .toContain("Gérer mes passions");
 
     // La marque n'est JAMAIS touchée.
     await expect(page.locator(".app-topbar .brand-name")).toHaveText("PASSIO");

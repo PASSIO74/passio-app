@@ -9867,6 +9867,23 @@ body.ctx-locked #appMain { overflow: hidden; }
    emprunterait la photo et deviendrait illisible selon le cliché. */
 .v8-passion-card.has-cover .v8-state:not(.on) { background: var(--bg-card); }
 
+/* ⚠️ ET DEPUIS LE 2026-09-03, C'EST UNE PASTILLE, PLUS UNE BARRE. ADR-011 §3 a
+   fait de cet état une INFORMATION (« Passion du Studio ✓ ») : le choix de la
+   passion d'écriture a rejoint le Studio, la carte ne le commande plus. Il
+   gardait pourtant le gabarit d'un bouton principal — pleine largeur, fond
+   d'accent, 40 px de haut — sous lequel viennent maintenant s'aligner les deux
+   VRAIS boutons de la carte. La chose la plus cliquable de la carte était donc
+   la seule à ne rien faire. Elle reprend la taille de ce qu'elle est. */
+.v8-passion-card .v8-state {
+  flex: 0 0 auto;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: default;
+}
+
 /* ── Le sélecteur de passion active, et la liste des archivées ─────────────── */
 .v8-switch-list { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
 .v8-switch-row {
@@ -10071,6 +10088,162 @@ body.ctx-locked #appMain { overflow: hidden; }
 /* Le panneau de gestion des passions, ouvert depuis les options du profil. */
 #passionManager[hidden] { display: none !important; }
 
+/* ── TROIS BULLES DANS LE CHAMP, PUIS ON GLISSE (2026-09-03) ───────────────
+   « Réaligne les bulles de passion : l'objectif est 3 bulles de passion
+   principales visibles, ensuite on glisse sur le côté pour voir les autres »
+   (Benjamin). La largeur d'une bulle du PROFIL n'est donc plus la constante de
+   84 px du composant commun : elle se DÉDUIT de la largeur du rail, pour que
+   trois bulles et leurs deux gouttières tiennent exactement dans le champ.
+
+   ⚠️ CE N'EST PAS UN RETOUR DE `flex: 1 1 0` — c'est son contraire. La règle
+   interdite (voir `.profile-tile`, ~ligne 4411) faisait PARTAGER la largeur
+   entre TOUTES les bulles : à dix passions chacune tombait sous 26 px, la
+   vignette débordait de sa case et les bulles se recouvraient. Ici la base est
+   un nombre FIXE une fois calculé — la même à trois passions qu'à trente — donc
+   la rangée déborde dès la quatrième et c'est l'`overflow-x: auto` du rail qui
+   la fait coulisser, exactement comme avant.
+
+   DEUX LARGEURS, ET UNE SEULE RAISON DE LES DISTINGUER. Par défaut les trois
+   bulles remplissent EXACTEMENT la largeur du rail (28 px retirés = les deux
+   gouttières de 14 px) : à trois passions ou moins, la rangée se termine sur la
+   marge de droite, symétrique de celle de gauche.
+
+   Dès la QUATRIÈME passion, `renderProfilePassionRail` pose `.v9-strip-defile`
+   et la bulle se resserre pour libérer 40 px de RÉSERVE : la bulle suivante
+   affleure alors de 42 px. Sans ce liseré, une rangée de dix est indiscernable
+   d'une rangée de trois — rien à l'écran ne dit qu'on peut glisser, et le
+   contenu au-delà est perdu pour qui ne tente pas le geste. Mais imposer cette
+   réserve à un compte de trois passions ne ferait qu'ouvrir un trou de 40 px à
+   droite, et la rangée se lirait comme mal alignée : c'est le défaut même que
+   la consigne demandait de corriger.
+
+   Mesuré à 390 px de large (rail : 326 px de contenu) : 99,3 px la bulle sans
+   la classe, 86 px avec, pour 42 px d'affleurement.
+
+   ⚠️ LE FIL ET LE PROFIL VISITÉ NE SONT PAS CONCERNÉS : la consigne visait la
+   page de profil, et le Fil garde son propre palier (`:root.passio-ui-7
+   #screen-feed .profile-tile`, 62 px). D'où l'ancrage sur `#v9ProfilePassions`
+   et non sur `.profile-strip`. */
+#v9ProfilePassions .profile-tile {
+  flex: 0 0 calc((100% - 28px) / 3);
+}
+#v9ProfilePassions.v9-strip-defile .profile-tile {
+  flex-basis: calc((100% - 68px) / 3);
+}
+/* Le libellé profite de la place gagnée : il était borné à 76 px pour une bulle
+   de 84 ; la bulle en fait maintenant ~97. Un nom long (« Littérature »,
+   « Photographie ») se lit au lieu de s'abréger. Il garde son `overflow:
+   hidden`, donc il ne pousse jamais la bulle. */
+#v9ProfilePassions .profile-tile-label { max-width: 100%; }
+
+/* ── « GÉRER MES PASSIONS » : LA PORTE D'AJOUT ET LES GESTES DE CHAQUE CARTE ──
+   Écrit par `renderPassionManagerActions` et `renderProfilesScreen` (app-06).
+   Le panneau porte trois gestes — ajouter, modifier, archiver — et jusqu'au
+   2026-09-03 ils avaient trois poids visuels sans rapport avec leur usage : un
+   lien de 11 px pour ajouter, un menu « ⋯ » pour archiver. Ils sont remis à
+   l'échelle de ce qu'ils font. */
+#passionManagerActions[hidden] { display: none !important; }
+
+/* ── L'EN-TÊTE DU PANNEAU TIENT SANS SE COUPER LES MOTS ────────────────────
+   `.section-title` est un flex SANS retour à la ligne, et sa règle générique
+   pose `margin-left: auto` sur CHAQUE `.link` : les deux liens se partageaient
+   donc l'espace libre, et « Gérer mes passions » (26 px sous UI-V2 — c'est le
+   niveau « titre d'écran ») se coupait en deux lignes pour leur faire de la
+   place. On autorise le retour, et un seul auto — celui du premier lien — les
+   groupe à droite. Titre sur une ligne, commandes discrètes sur la suivante. */
+#passionManager > .section-title { flex-wrap: wrap; row-gap: 4px; }
+#passionManager > .section-title > .link { margin-left: 0; white-space: nowrap; }
+#passionManager > .section-title > #nouveauProfilLien { margin-left: auto; }
+
+/* ⚠️ DEUX NIVEAUX DE TITRE DANS UN MÊME PANNEAU, ET UN SEUL PEUT ÊTRE LE
+   PREMIER. Sous UI-V2, `.section-title` vaut 26 px : c'est le « titre d'un
+   écran ». Le panneau en portait TROIS à cette taille — « Gérer mes passions »,
+   « Mes passions actives », « Passions archivées » — donc plus aucune hiérarchie
+   et un panneau qui se lisait comme trois écrans empilés. Les deux titres
+   INTÉRIEURS repassent au niveau 2 (17 px), la valeur qu'UI-V2 donne déjà aux
+   titres de bloc (`.v2-sheet-title`, `.modal-title`). L'en-tête, lui, garde son
+   niveau 1 : c'est bien le titre du panneau. */
+#passionManagerActions .v9-mgr-titre,
+#passionArchiveBox .section-title {
+  font-size: 17px;
+  line-height: 1.25;
+}
+.v9-mgr-add {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  font-size: 14.5px;
+}
+.v9-mgr-add-plus {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 1;
+}
+/* Au plafond le bouton passe en `ghost` : le rond blanc translucide y serait
+   invisible, il reprend donc l'accent sur un lavis OPAQUE — le contrôle de
+   contraste remonte au premier fond opaque et ignore l'alpha. */
+.btn.ghost .v9-mgr-add-plus {
+  background: var(--accent-tile, var(--bg-tint));
+  color: var(--accent);
+}
+.v9-mgr-aide {
+  margin: 8px 2px 0;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.v9-mgr-titre { margin-top: 18px; }
+
+/* Les deux gestes de la carte, sur toute la largeur, sous l'état — même
+   gabarit que `.v8-state`, qui occupe déjà cette ligne quand la passion est
+   celle du Studio. 44 px de haut : c'est une cible tactile, pas une légende. */
+.v9-card-actions {
+  flex: 1 0 100%;
+  display: flex;
+  gap: 8px;
+}
+.v9-card-act {
+  appearance: none;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 10px;
+  border-radius: 12px;
+  border: 1.5px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 800;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.v9-card-act:active { transform: scale(0.97); }
+/* La dernière passion vivante ne s'archive pas : le bouton le DIT avant le
+   geste plutôt que de le refuser après (le `title` porte la raison). */
+.v9-card-act.is-off { opacity: 0.45; cursor: not-allowed; }
+.v9-card-act:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Sur une couverture, fond OPAQUE : posé en translucide, le bouton emprunterait
+   la photo et deviendrait illisible selon le cliché (même règle que `.v8-state`). */
+.v8-passion-card.has-cover .v9-card-act { background: var(--bg-card); }
+
+@media (prefers-reduced-motion: reduce) {
+  .v9-card-act:active { transform: none; }
+}
+
 
 /* ═══════════════════════════════════════════════════════════════════════════
    PASSIO — RÉFÉRENTIEL PLAT DES PASSIONS (lot flat_passions_v1)
@@ -10222,18 +10395,16 @@ body.ctx-locked #appMain { overflow: hidden; }
 }
 
 
-/* ── La bulle « Ajouter » du Profil, et la tuile « Chercher » de Rencontrer.
-      Elles réutilisent les classes existantes (`.profile-tile`, `.msg-tile`) :
-      mêmes dimensions, mêmes espacements, même rythme que leurs voisines. Seul
-      le contenu du rond change. ─────────────────────────────────────────────── */
-.psel-tile-plus .profile-tile-avatar {
-  display: flex; align-items: center; justify-content: center;
-  font-size: 24px; font-weight: 300; line-height: 1;
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
-  border: 1.5px dashed var(--accent);
-}
-.psel-tile-plus .profile-tile-label { color: var(--accent); font-weight: 700; }
+/* ── La tuile « Chercher » de Rencontrer. Elle réutilise `.msg-tile` : mêmes
+      dimensions, mêmes espacements, même rythme que ses voisines. Seul le
+      contenu du rond change.
+
+      ⚠️ `.psel-tile-plus` A ÉTÉ RETIRÉE ICI LE 2026-09-03, avec son unique
+      émetteur : la bulle « + » du rail du Profil, que Benjamin a fait enlever
+      (« elle fait tache et en trop »). `grep -rn "psel-tile-plus" js/ index.html`
+      ne rend plus rien — une règle sans émetteur ne se garde pas « au cas où »,
+      c'est la famille de défauts la plus fréquente de ce dépôt. La porte d'ajout
+      vit maintenant dans « Gérer mes passions » (`.v9-mgr-add`, plus haut). ── */
 .psel-tile-chercher .msg-tile-icon { color: var(--accent); }
 
 /* ═══════════════════════════════════════════════════════════════════════════

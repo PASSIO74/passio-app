@@ -1135,7 +1135,13 @@ function openMainProfileMenu(ev) {
     // rechargement, rien à l'écran ne disait qu'on possède encore une passion
     // rangée. C'est la moitié restante du défaut rapporté le 2026-09-02 — la
     // liste existait, mais rien n'invitait à l'ouvrir.
-    { icon: "🗂️", label: "Mes passions" + (function () {
+    // ⚠️ LE LIBELLÉ DIT LE GESTE, PAS LE CONTENU (demande de Benjamin,
+    // 2026-09-03). « Mes passions » nommait la même chose que le rail de bulles
+    // du profil, qui est juste au-dessus : deux entrées pour deux fonctions
+    // différentes — filtrer d'un côté, GÉRER de l'autre — portaient le même
+    // nom. Et c'est désormais la SEULE porte d'ajout : la bulle « + » a quitté
+    // le rail, elle vit dans ce panneau (`#passionManagerActions`).
+    { icon: "🗂️", label: "Gérer mes passions" + (function () {
         try {
           var n = (typeof passionsArchivees === "function") ? passionsArchivees().length : 0;
           return n ? " (" + n + " archivée" + (n > 1 ? "s" : "") + ")" : "";
@@ -1706,6 +1712,7 @@ function renderProfilePassionRail() {
       ecrireRailCoulissant(rail, vide);
     }
     rail.classList.toggle("has-filter", false);
+    rail.classList.toggle("v9-strip-defile", false);
     return rail;
   }
 
@@ -1716,43 +1723,47 @@ function renderProfilePassionRail() {
   if (rail.getAttribute("data-v9-sig") === sig) return rail;
   rail.setAttribute("data-v9-sig", sig);
   rail.classList.toggle("has-filter", nbSel > 0);
+  // ⚠️ LA RÉSERVE D'AFFLEUREMENT NE SE PAIE QUE S'IL Y A UNE SUITE (2026-09-03).
+  // « L'objectif est 3 bulles de passion principales visibles, ensuite on glisse
+  // sur le côté pour voir les autres » : les deux moitiés de la phrase ne
+  // demandent pas la même largeur de bulle. Au-delà de trois passions, il faut
+  // laisser affleurer la quatrième — sans ce liseré, une rangée de dix est
+  // indiscernable d'une rangée de trois et personne ne tente le geste. À trois
+  // ou moins, il n'y a RIEN à faire affleurer : la même réserve ne serait plus
+  // qu'un trou de 40 px à droite, et la rangée se lirait comme mal alignée —
+  // très exactement le défaut que Benjamin demandait de corriger.
+  //
+  // La classe ne fait donc que CHOISIR entre deux largeurs, toutes deux fixes.
+  // Ce n'est pas un partage de largeur : à quatre passions comme à trente, la
+  // bulle mesure la même chose et la rangée déborde (cf. `.profile-tile`, où
+  // `flex: 1 1 0` reste interdit).
+  rail.classList.toggle("v9-strip-defile", vivantes.length > 3);
 
   // ⚠️ PLUS DE BULLE « TOUTES » (demande de Benjamin, 2026-08-31). En
   // multisélection elle faisait double emploi : tout décocher et la cocher
   // produisent le même état. En garder une aurait laissé deux commandes pour un
   // seul résultat — et la question « laquelle est active ? » quand on coche une
   // passion alors que « Toutes » l'est déjà.
-  // ⚠️ LA PORTE D'AJOUT EST EN TÊTE DU RAIL, ET C'EST UNE CONSÉQUENCE DIRECTE
-  // DU RAIL COULISSANT (2026-09-02). Tant que les bulles se partageaient la
-  // largeur, la bulle « + » posée EN DERNIER restait visible quel qu'en soit le
-  // nombre. Depuis qu'elles ont une largeur fixe et que la rangée déborde, elle
-  // sortait du champ : mesuré à 320 px avec 3 passions — le plafond gratuit
-  // (`PASSIONS_OFFERTES`) — elle commence à x=326 alors que le rail s'arrête à
-  // 304, donc ENTIÈREMENT hors écran, pas même un liseré qui inviterait à
-  // faire défiler. Et c'est la seule porte VISIBLE : l'autre vit dans
-  // `#passionManager`, `hidden` par défaut, derrière le menu options.
   //
-  // La tête plutôt qu'un `position: sticky` : le fond du rail est transparent
-  // jusqu'à `.app-shell`, qui peint un dégradé radial sur #f6f5fa. Une bulle
-  // collante devrait donc repeindre ce fond sous les bulles qui glissent
-  // dessous, et tout raccord de couleur se verrait. En tête, elle est visible
-  // par construction, sans une seule couleur à deviner.
+  // ⚠️ ET PLUS DE BULLE « + » NON PLUS (2026-09-03). Elle a vécu un jour en tête
+  // du rail — posée là le 2026-09-02 parce qu'en queue d'un rail devenu
+  // coulissant elle sortait du scrollport. Benjamin l'a fait retirer le
+  // lendemain : « enlève sur la page de profil dans les bulles la bulle +, elle
+  // fait tache et en trop ». Elle faisait tache pour une raison de fond : le
+  // rail est une commande de LECTURE (je coche ce que je veux voir), la bulle
+  // « + » était la seule commande d'ÉCRITURE au milieu, avec un rond en
+  // pointillés qui ne ressemblait à aucune de ses voisines.
   //
-  // ⚠️ Un test d'existence ne voit PAS ce défaut : pour Playwright, un nœud
-  // poussé hors du scrollport d'un conteneur `overflow-x: auto` reste
-  // « visible » (sa boîte n'est pas vide), et `.click()` fait défiler tout seul.
-  // Seule une mesure de rectangles l'attrape — `③ nonies` s'en charge.
-  var portePlus = "";
-  if (typeof PassioFlatUI !== "undefined" && PassioFlatUI.actif()) {
-    portePlus = '<div class="profile-tile psel-tile-plus" role="button" tabindex="0"'
-      + ' data-passion-tile="__ajouter__" title="Ajouter une passion"'
-      + ' aria-label="Ajouter une passion" onclick="ouvrirRecherchePassionsCompte()">'
-      + '<div class="profile-tile-avatar" style="position:relative;">+</div>'
-      + '<div class="profile-tile-label">Ajouter</div>'
-      + "</div>";
-  }
-
-  var html = portePlus + vivantes.map(function (pr) {
+  // ⚠️ RETIRER UNE PORTE OBLIGE À EN OUVRIR UNE AUTRE, ET À LA RENDRE VISIBLE.
+  // C'est la leçon de `meOpen` prise à l'endroit : la porte d'ajout vit
+  // maintenant dans `#passionManager`, en BOUTON PRINCIPAL et non plus en lien
+  // discret (`renderPassionManagerActions`), et le menu ⋯ du profil qui l'ouvre
+  // s'appelle désormais « Gérer mes passions ». Sans ce déplacement, retirer la
+  // bulle aurait rendu l'ajout d'une passion inatteignable pour qui ne connaît
+  // pas le menu — le défaut exact du Studio après le retrait d'un carnet
+  // (2026-08-29). L'état « aucune passion » du rail garde, lui, son lien : un
+  // profil vide ne doit pas exiger de connaître le menu options.
+  var html = vivantes.map(function (pr) {
     var et = _passionEtiquette(pr);
     var meta = {};
     try { meta = passionById(pr.passion) || {}; } catch (e) {}
@@ -2123,6 +2134,67 @@ function _lignesArchiveesHTML(archivees) {
   }).join("");
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// « GÉRER MES PASSIONS » — LA PORTE D'AJOUT, ET L'ÉTAT DU COMPTE (2026-09-03)
+// ──────────────────────────────────────────────────────────────────────────
+// « Tu mets la possibilité de rajouter des passions dans les paramètres gérer
+// mes passions […] il faut que ça soit simple à utiliser et gérer : je crée des
+// passions, j'en cherche des nouvelles, j'archive, je change de passion
+// archivée » (Benjamin).
+//
+// Ce panneau portait déjà tout cela, mais réparti entre trois surfaces qui ne se
+// ressemblaient pas : un LIEN de 11 px dans le titre pour ajouter, un menu « ⋯ »
+// par carte pour archiver, et une liste en bas pour reprendre. La porte la plus
+// utilisée était donc la plus discrète — et la vraie porte d'ajout, la bulle
+// « + » du rail, vient d'être retirée sur demande. On remonte donc l'ajout en
+// BOUTON PRINCIPAL, en tête du panneau.
+//
+// ⚠️ UN SEUL MOTEUR D'AJOUT : `openCreateProfile()`. Il connaît déjà les deux
+// mondes — sélecteur de recherche sous `flat_passions_v1`, grille historique
+// sous le kill switch — et il garde le plafond (`plafondPassionsAtteint` →
+// `openPassionPaywall`). Appeler `ouvrirRecherchePassionsCompte()` directement
+// aurait court-circuité la branche du kill switch : le bouton n'aurait alors
+// RIEN fait, en silence, drapeau coupé.
+//
+// ⚠️ LE LIEN « + Ajouter » DU TITRE RESTE. Il vise la même fonction, il est
+// ciblé par l'aide contextuelle (`#nouveauProfilLien`) et réécrit par le lot
+// UI-6B : le retirer casserait les deux. Deux commandes pour un geste, c'est
+// tolérable ici — elles appellent la MÊME fonction, il n'y a pas deux états
+// possibles à départager (la leçon de la bulle « Toutes » ne s'applique pas).
+// ══════════════════════════════════════════════════════════════════════════
+function renderPassionManagerActions() {
+  var box = document.getElementById("passionManagerActions");
+  if (!box) return;
+  // Kill switch du lot UI-8 : sans le modèle « une personne, plusieurs
+  // passions », ce panneau redevient la liste de profils d'avant, et cette
+  // barre n'a plus de sens. Une cible supprimée emporte ce qui la vise.
+  if (!passionsUnifieesActives()) { box.hidden = true; box.innerHTML = ""; return; }
+
+  var plein = plafondPassionsAtteint();
+  var reste = passionsRestantesOffertes();
+  var nbArch = passionsArchivees().length;
+
+  // Le bouton dit ce qu'il FAIT, l'aide dit ce qui DÉBLOQUE. Au plafond il
+  // ouvre la fenêtre qui explique la formule à venir : on ne le retire pas —
+  // une porte invisible ne s'explique pas — mais il cesse d'être l'action
+  // principale, puisque l'action réelle (archiver) est juste en dessous.
+  var aide = plein
+    ? "Tes " + PASSIONS_OFFERTES + " emplacements sont pris. Archive une passion ci-dessous pour libérer une place — rien n'est supprimé."
+    : (reste === Infinity
+        ? "Cherche une passion dans le catalogue et ajoute-la à ton profil."
+        : "Il te reste " + reste + " emplacement" + (reste > 1 ? "s" : "")
+          + ". Cherche une passion dans le catalogue et ajoute-la à ton profil.")
+      + (nbArch ? " Reprendre une passion archivée est gratuit." : "");
+
+  box.innerHTML = '<button type="button" class="btn ' + (plein ? "ghost" : "primary")
+      + ' block v9-mgr-add" id="passionAddBtn" data-passion-ajout="1"'
+      + ' onclick="openCreateProfile()">'
+      + '<span class="v9-mgr-add-plus" aria-hidden="true">+</span> Ajouter une passion</button>'
+    + '<p class="v9-mgr-aide">' + escapeHtml(aide) + "</p>"
+    + '<div class="section-title v9-mgr-titre">Mes passions actives</div>';
+  box.hidden = false;
+}
+
 function renderProfilesScreen() {
   renderMainProfile();
   // Le rail de passions se remonte à chaque rendu : le lot UI-7 reconstruit sa
@@ -2154,6 +2226,10 @@ function renderProfilesScreen() {
     // Comptages : une seule lecture d'`allEvents()` pour toutes les cartes.
     var _mesEvs = _myProfileEvents(9999);
     var _courant = state.user.currentProfileId;
+    // Compté UNE fois, hors de la boucle : c'est lui qui décide si le bouton
+    // « Archiver » de chaque carte est actionnable (la dernière passion vivante
+    // ne s'archive pas).
+    var vivantesRendues = passionsVivantes().length;
 
     // ── Le compteur, dit AVANT le geste et non découvert après ──────────────
     if (sub) {
@@ -2204,6 +2280,35 @@ function renderProfilesScreen() {
         ? '<span class="v8-state on" data-v8-active="' + escapeHtml(String(p.id)) + '">Passion du Studio ✓</span>'
         : "";
 
+      // ── LES DEUX GESTES DE LA CARTE, ÉCRITS EN TOUTES LETTRES (2026-09-03) ──
+      // Archiver vivait dans le menu « ⋯ » de la carte : trois pixels d'icône,
+      // un menu à ouvrir, un libellé à lire. C'est pourtant LE geste de ce
+      // panneau — celui qui libère une place et rend l'ajout possible. Il passe
+      // donc en bouton visible, à côté de « Modifier ». Le « ⋯ » reste : il
+      // porte encore la photo et la couverture, et le retirer emporterait la
+      // seule commande de ces deux-là.
+      //
+      // ⚠️ AUCUNE COPIE DE LOGIQUE : les deux boutons appellent exactement les
+      // fonctions du menu (`openEditPassionProfile`, `confirmArchivePassion`),
+      // qui gardent le quota, le plafond et la règle « au moins une passion
+      // vivante ». Deux chemins pour un geste auraient divergé au premier
+      // correctif — c'est l'histoire de `sharePostInFeed`/`shareReelInFeed`.
+      //
+      // ⚠️ LA DERNIÈRE PASSION NE S'ARCHIVE PAS, et le bouton le DIT au lieu de
+      // le découvrir après coup : `confirmArchivePassion` refuse déjà par un
+      // toast, mais un bouton qui échoue toujours est un bouton qui ment.
+      var _peutArchiver = vivantesRendues > 1;
+      var actions = '<div class="v9-card-actions">'
+        + '<button type="button" class="v9-card-act" data-v9-modifier="' + escapeHtml(String(p.id)) + '"'
+        + ' onclick="event.stopPropagation();openEditPassionProfile(\'' + escapeJsArg(String(p.id)) + '\')">✏️ Modifier</button>'
+        + '<button type="button" class="v9-card-act' + (_peutArchiver ? "" : " is-off") + '"'
+        + ' data-v9-archiver="' + escapeHtml(String(p.id)) + '"'
+        + (_peutArchiver
+            ? ' onclick="event.stopPropagation();confirmArchivePassion(\'' + escapeJsArg(String(p.id)) + '\')"'
+            : ' disabled aria-disabled="true" title="Tu dois garder au moins une passion active"')
+        + ">🗄️ Archiver</button>"
+        + "</div>";
+
       return '<div class="profile-card v8-passion-card' + (estActive ? " is-active" : "") + (_pCover ? " has-cover" : "") + '"'
         + ' data-v8-card="' + escapeHtml(String(p.id)) + '" style="' + coverStyle + '"'
         + ' onclick="openEditPassionProfile(\'' + escapeJsArg(String(p.id)) + '\')">'
@@ -2219,6 +2324,7 @@ function renderProfilesScreen() {
         + '</div>'
         + '<button class="profile-dots-btn" onclick="openPassionProfileMenu(event,\'' + escapeJsArg(String(p.id)) + '\')" title="Options" aria-label="Options de la passion" aria-haspopup="menu">⋯</button>'
         + etat
+        + actions
         + '</div>';
     }).join("");
   } else {
@@ -2270,9 +2376,10 @@ function renderProfilesScreen() {
     }).join("");
   }
 
-  // La liste des archives, HORS des deux branches : sous kill switch elle doit
-  // être RETIRÉE, pas laissée avec le contenu du rendu précédent. Une cible
-  // supprimée emporte tout ce qui la vise.
+  // La barre d'actions et la liste des archives, HORS des deux branches : sous
+  // kill switch elles doivent être RETIRÉES, pas laissées avec le contenu du
+  // rendu précédent. Une cible supprimée emporte tout ce qui la vise.
+  try { renderPassionManagerActions(); } catch (e) { _v8Echec("mgr_actions", e); }
   try { renderPassionArchiveBox(); } catch (e) { _v8Echec("archive_box", e); }
 
   // Contenu en dessous : filtré par l'onglet actif ET la multi-sélection
@@ -2694,17 +2801,17 @@ function renderProfileStrip() {
   if (box._lastHtml !== tilesHTML) { ecrireRailCoulissant(box, tilesHTML); box._lastHtml = tilesHTML; }
 }
 
-// ⚠️ FONCTION GLOBALE, et c'est nécessaire : `audit:handlers` exige qu'un
-// `onclick` inline désigne une fonction globale EXISTANTE. Elle ne fait que
-// déléguer — aucun moteur ici.
+// ⚠️ DEUX DÉLÉGUÉES SONT PARTIES AVEC LEUR BULLE, ET POUR LA MÊME RAISON.
+// `ouvrirRecherchePassionsFil` a été retirée avec la bulle « + » du Fil
+// (2026-09-01) ; `ouvrirRecherchePassionsCompte` avec celle du Profil
+// (2026-09-03). Ni l'une ni l'autre n'avait plus d'appelant — et une fonction
+// globale sans appelant est exactement ce que l'audit du 2026-06-10 a trouvé
+// sept fois. Une cible supprimée emporte tout ce qui la vise, y compris ses
+// délégués : ils ne se gardent pas « au cas où ».
 //
-// ⚠️ `ouvrirRecherchePassionsFil` A ÉTÉ RETIRÉE avec la bulle du Fil
-// (2026-09-01). Elle n'avait plus aucun appelant, et une fonction globale sans
-// appelant est exactement ce que l'audit du 2026-06-10 a trouvé sept fois.
-function ouvrirRecherchePassionsCompte() {
-  try { if (typeof PassioFlatUI !== "undefined") PassioFlatUI.ouvrirAjoutPassions(); }
-  catch (e) { if (typeof diagLog === "function") diagLog("compte_recherche_passion " + (e && e.message)); }
-}
+// La porte d'ajout passe désormais par `openCreateProfile()`, le SEUL moteur —
+// il connaît les deux mondes (recherche plate, grille historique) et garde le
+// plafond. Voir `renderPassionManagerActions` plus haut.
 
 // ══════════════════════════════════════════════════════════════════════════
 // TROIS PASSIONS OFFERTES, LES SUIVANTES SERONT PAYANTES (2026-09-01)

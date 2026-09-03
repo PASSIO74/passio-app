@@ -600,7 +600,7 @@
            reste `hidden` sinon — rien n'est supprimé du DOM, `renderProfilesScreen`
            continue d'écrire dans `#profileList` comme avant. -->
       <div id="passionManager" hidden>
-        <div class="section-title" style="margin-top:14px;">Mes passions
+        <div class="section-title" style="margin-top:14px;">Gérer mes passions
           <span class="link" id="nouveauProfilLien" onclick="openCreateProfile()">+ Ajouter</span>
           <span class="link" id="fermerPassionManager" onclick="closePassionManager()" style="margin-left:10px;">Fermer</span>
         </div>
@@ -609,6 +609,15 @@
              Masqué au départ : vide, il laisserait une gouttière avant le premier
              rendu. Le renderer gère ensuite son affichage. -->
         <p class="section-subtitle" id="profilesQuotaSub" style="display:none;"></p>
+        <!-- LA PORTE D'AJOUT, ET ELLE EST LA SEULE VISIBLE DEPUIS LE 2026-09-03.
+             La bulle « + » a quitté le rail de bulles du profil (« elle fait
+             tache et en trop ») : ajouter une passion se fait ICI, en bouton
+             principal. `renderPassionManagerActions` (app-06) l'écrit, avec
+             l'aide qui dit ce qui débloque quand les trois emplacements sont
+             pris, et le titre « Mes passions actives » qui coiffe la liste.
+             Vide au repos : le renderer gère son affichage et son retrait sous
+             kill switch. -->
+        <div id="passionManagerActions" hidden></div>
         <div id="profileList"></div>
         <!-- LA LISTE DES PASSIONS ARCHIVÉES, rendue EN CLAIR et non plus derrière
              un lien vers une modale. Une passion rangée dont la seule trace était
