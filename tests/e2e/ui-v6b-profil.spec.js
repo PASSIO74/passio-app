@@ -150,6 +150,41 @@ test.describe("UI-6B — Profil et multi-profils", () => {
     await expect(menu).toContainText("Apparence");
   });
 
+  // ⚠️ RETRAIT DES EMOJIS DÉCORATIFS DU MENU ⋯ (Benjamin, 2026-09-03) : « garde
+  // seulement les textes ». Le verrou mesure les DEUX moitiés du défaut
+  // possible, parce qu'elles se rattrapent l'une l'autre :
+  //   ① plus aucun caractère hors du latin/ponctuation dans les libellés — un
+  //      `icon: "✏️"` réintroduit tomberait ici ;
+  //   ② plus aucun `<span class="profile-dots-ico">` — car `_profileDotsOpen`
+  //      rendait la colonne d'icônes MÊME VIDE : 20 px de largeur plus les
+  //      10 px de `gap` de `.profile-dots-item`, et les entrées restaient
+  //      décalées de 30 px derrière du blanc. Le seul contrôle ① serait resté
+  //      vert sur cette moitié-là.
+  test("le menu ⋯ ne porte plus d'emoji : le texte seul, sans colonne d'icônes", async ({ page }) => {
+    await boot(page);
+    await poserDeuxProfils(page);
+    await ouvrirProfil(page);
+
+    await page.locator("#v6bModifier").click();
+    await expect(page.locator(".profile-dots-menu")).toBeVisible();
+
+    const vu = await page.evaluate(() => {
+      const items = Array.from(document.querySelectorAll("#profileDotsMenu .profile-dots-item"));
+      return {
+        nb: items.length,
+        icones: document.querySelectorAll("#profileDotsMenu .profile-dots-ico").length,
+        // Ce qui n'est ni lettre latine, ni chiffre, ni ponctuation courante.
+        exotiques: items
+          .map((b) => (b.textContent || "").replace(/[\p{Script=Latin}\p{Nd}\s'’«».,:;!?()\[\]&+\-—–…/]/gu, ""))
+          .filter((reste) => reste.length > 0),
+      };
+    });
+
+    expect(vu.nb, "les cinq entrées sont toujours là").toBe(5);
+    expect(vu.exotiques, "aucun emoji dans les libellés du menu").toEqual([]);
+    expect(vu.icones, "et aucune colonne d'icônes, même vide").toBe(0);
+  });
+
   test("« Mes passions » : une identité Actif, l'autre Activer", async ({ page }) => {
     await boot(page);
     await poserDeuxProfils(page);
