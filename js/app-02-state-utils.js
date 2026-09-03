@@ -1858,6 +1858,35 @@ function closeCurrentOverlay() {
   // au-dessus. mediaEditor (4000) · conv-fullpage (1200) · eventDetailPage et
   // postDetailPage (200). Les couches supérieures (modale 10001, bobines 9999,
   // stories, panneau d'outils) sont déjà traitées plus haut.
+  // ⚠️ L'APPEL EN COURS EST UN CAS À PART. Il recouvre tout (z-index 100000).
+  // Sans entrée d'historique, un geste de retour QUITTAIT l'application en plein
+  // appel. Mais raccrocher sur un balayage accidentel serait pire encore : on
+  // CONSOMME donc le retour sans rien démonter, en reposant une entrée. C'est le
+  // comportement des applications d'appel natives — on ne « revient pas en
+  // arrière » depuis un appel, et on ne le coupe pas non plus par mégarde.
+  // Raccrocher reste un geste explicite (le bouton 📵).
+  const appel = document.getElementById("callOverlay");
+  if (appel && appel.classList.contains("active")) {
+    if (typeof pushHistorySafe === "function") pushHistorySafe({ overlay: "call", passioOverlay: true }, "#appel");
+    return true;
+  }
+
+  // Carte plein écran de « Rencontrer » : `position: fixed; inset: 0` (z 9000).
+  const carte = document.getElementById("irlMapWrap");
+  if (carte && carte.classList.contains("fullscreen")) {
+    if (typeof toggleIrlMapFullscreen === "function") toggleIrlMapFullscreen();
+    else carte.classList.remove("fullscreen");
+    return true;
+  }
+
+  // Panneau de filtres historique de « Rencontrer », plein écran lui aussi.
+  const filtres = document.getElementById("irlFiltersPanel");
+  if (filtres && filtres.style.display === "block") {
+    if (typeof closeIrlFiltersPanel === "function") closeIrlFiltersPanel();
+    else filtres.style.display = "none";
+    return true;
+  }
+
   const editeurMedia = document.getElementById("mediaEditor");
   if (editeurMedia && editeurMedia.classList.contains("open")) {
     // meClose() coupe aussi la caméra et l'enregistrement en cours : sortir de

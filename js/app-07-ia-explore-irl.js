@@ -1432,7 +1432,16 @@ function updateIrlMapMarkers() {
 function toggleIrlMapFullscreen() {
   const wrap = document.getElementById("irlMapWrap");
   if (!wrap) return;
+  const passeEnPleinEcran = !wrap.classList.contains("fullscreen");
   wrap.classList.toggle("fullscreen");
+  // En plein écran la carte est `position: fixed; inset: 0; z-index: 9000` :
+  // elle recouvre TOUT. Sans entrée d'historique, le geste de retour de l'iPhone
+  // ne la refermait pas — il quittait l'application, carte encore à l'écran.
+  if (passeEnPleinEcran) {
+    if (typeof pushOverlayHistory === "function") pushOverlayHistory("map", "#carte");
+  } else if (typeof releaseOverlayHistory === "function") {
+    releaseOverlayHistory();
+  }
   // Laisse Leaflet s'adapter à la nouvelle taille
   setTimeout(() => { if (irlMap) irlMap.invalidateSize(); }, 320);
 }
@@ -2199,6 +2208,11 @@ function clearAllIrlFilters() {
 
 function openIrlFiltersPanel() {
   var panel = document.getElementById("irlFiltersPanel");
+  // Entrée d'historique : ce panneau est plein écran. Sans elle, le geste de
+  // retour le traversait et changeait d'écran derrière lui.
+  if (panel && panel.style.display !== "block" && typeof pushOverlayHistory === "function") {
+    pushOverlayHistory("filtres", "#filtres");
+  }
   if (panel) panel.style.display = "block";
   // Le calendrier n'est peint qu'à l'ouverture (et à chaque changement) : inutile
   // de reconstruire 42 cellules à chaque renderIRL alors que le panneau est fermé.
@@ -2212,8 +2226,10 @@ function openIrlFiltersPanel() {
 
 function closeIrlFiltersPanel() {
   var panel = document.getElementById("irlFiltersPanel");
+  var etaitOuvert = !!(panel && panel.style.display === "block");
   if (panel) panel.style.display = "none";
   renderIRL();
+  if (etaitOuvert && typeof releaseOverlayHistory === "function") releaseOverlayHistory();
 }
 
 function _updateIrlFiltersBtn() {

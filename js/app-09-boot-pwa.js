@@ -1599,7 +1599,12 @@ function _sendVoiceMessage(dataUrl, duration) {
         var url = res.error ? dataUrl : supa.storage.from("attachments").getPublicUrl(storagePath).data.publicUrl;
         sendMessageToSupabase(msgId, convId, url, _vt, "Message vocal (" + duration + "s)", "audio");
       }).catch(function () {
-        sendMessageToSupabase(msgId, convId, dataUrl, "audio/webm", "Message vocal", "audio");
+        // ⚠️ `_vt`, PAS « audio/webm » en dur : ce chemin d'échec sert quand
+        // l'envoi vers Storage n'a pas abouti et que le vocal part en base64.
+        // Y réannoncer webm rendait de nouveau injouable un enregistrement
+        // iPhone (mp4) — le défaut corrigé sur le chemin de succès, survivant
+        // sur celui de l'échec.
+        sendMessageToSupabase(msgId, convId, dataUrl, _vt, "Message vocal (" + duration + "s)", "audio");
       });
     } catch (e) { console.warn("_sendVoiceMessage sync:", e); }
   } catch (e) { console.error("_sendVoiceMessage:", e); }

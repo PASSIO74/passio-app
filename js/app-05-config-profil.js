@@ -1046,6 +1046,12 @@ function _callRenderIncomingUI(inv) {
         '<button class="call-control-btn accept" onclick="acceptIncomingCall()" title="Répondre">✅</button>' +
       '</div>' +
     '</div>';
+  // Entrée d'historique : sans elle, un geste de retour pendant la sonnerie
+  // quittait l'application. Le filet du bouton retour (closeCurrentOverlay,
+  // app-02) la consomme sans raccrocher — cf. le commentaire là-bas.
+  if (!el.classList.contains("active") && typeof pushOverlayHistory === "function") {
+    pushOverlayHistory("call", "#appel");
+  }
   el.classList.add("active");
 }
 
