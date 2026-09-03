@@ -2178,16 +2178,24 @@ function renderPassionManagerActions() {
   // ouvre la fenêtre qui explique la formule à venir : on ne le retire pas —
   // une porte invisible ne s'explique pas — mais il cesse d'être l'action
   // principale, puisque l'action réelle (archiver) est juste en dessous.
+  //
+  // ⚠️ L'AIDE NE PROMET PAS UNE RECHERCHE. `openCreateProfile()` n'ouvre le
+  // sélecteur de recherche que sous `flat_passions_v1` ; le drapeau coupé, il
+  // rend la grille historique de 19 tuiles — un chemin que
+  // `passions-plates.spec.js` (⑰) exerce explicitement. Une copie qui dirait
+  // « cherche dans le catalogue » serait donc fausse là-bas, et une copie
+  // BRANCHÉE sur le drapeau serait une condition dupliquée à tenir en phase
+  // avec `openCreateProfile`. Le verbe neutre est vrai dans les deux mondes.
   var aide = plein
     ? "Tes " + PASSIONS_OFFERTES + " emplacements sont pris. Archive une passion ci-dessous pour libérer une place — rien n'est supprimé."
     : (reste === Infinity
-        ? "Cherche une passion dans le catalogue et ajoute-la à ton profil."
+        ? "Choisis une passion et ajoute-la à ton profil."
         : "Il te reste " + reste + " emplacement" + (reste > 1 ? "s" : "")
-          + ". Cherche une passion dans le catalogue et ajoute-la à ton profil.")
+          + ". Choisis une passion et ajoute-la à ton profil.")
       + (nbArch ? " Reprendre une passion archivée est gratuit." : "");
 
   box.innerHTML = '<button type="button" class="btn ' + (plein ? "ghost" : "primary")
-      + ' block v9-mgr-add" id="passionAddBtn" data-passion-ajout="1"'
+      + ' block v9-mgr-add" id="passionAddBtn"'
       + ' onclick="openCreateProfile()">'
       + '<span class="v9-mgr-add-plus" aria-hidden="true">+</span> Ajouter une passion</button>'
     + '<p class="v9-mgr-aide">' + escapeHtml(aide) + "</p>"
@@ -2276,17 +2284,32 @@ function renderProfilesScreen() {
       // ne fait plus qu'INDIQUER laquelle le Studio présélectionnera — c'est une
       // information, plus une commande, et `switchToProfile` n'est plus appelée
       // depuis cet écran.
+      // ⚠️ LA PASTILLE VIT DANS SA PROPRE LIGNE, ET C'EST LE PORTEUR QUI LE
+      // GARANTIT. Devenue compacte (`flex: 0 0 auto`, elle n'est plus un faux
+      // bouton pleine largeur), elle se retrouvait sinon à concourir sur la
+      // PREMIÈRE ligne de la carte, à droite du « ⋯ » : son passage à la ligne
+      // ne dépendait plus que de la largeur restante après le nom et la bio.
+      // Vrai à 390 px, faux sur une coquille large (`.app-shell` monte à
+      // 540 px) — et là le « ⋯ » quittait le bord droit de la carte. Le
+      // porteur `flex: 1 0 100%` rend le résultat indépendant de la largeur.
       var etat = estActive
-        ? '<span class="v8-state on" data-v8-active="' + escapeHtml(String(p.id)) + '">Passion du Studio ✓</span>'
+        ? '<div class="v9-card-etat"><span class="v8-state on" data-v8-active="'
+          + escapeHtml(String(p.id)) + '">Passion du Studio ✓</span></div>'
         : "";
 
       // ── LES DEUX GESTES DE LA CARTE, ÉCRITS EN TOUTES LETTRES (2026-09-03) ──
-      // Archiver vivait dans le menu « ⋯ » de la carte : trois pixels d'icône,
-      // un menu à ouvrir, un libellé à lire. C'est pourtant LE geste de ce
-      // panneau — celui qui libère une place et rend l'ajout possible. Il passe
-      // donc en bouton visible, à côté de « Modifier ». Le « ⋯ » reste : il
-      // porte encore la photo et la couverture, et le retirer emporterait la
-      // seule commande de ces deux-là.
+      // Archiver n'était atteignable que par le menu « ⋯ » de la carte : trois
+      // pixels d'icône, un menu à ouvrir, un libellé à lire. C'est pourtant LE
+      // geste de ce panneau — celui qui libère une place et rend l'ajout
+      // possible. Il passe donc en bouton visible, à côté de « Modifier ».
+      //
+      // ⚠️ C'est une PROMOTION, pas un déménagement : le menu « ⋯ » garde ses
+      // quatre entrées (modifier, photo, couverture, archiver — ou supprimer
+      // sous le kill switch UI-8, qu'il est le seul à rendre), et l'édition en
+      // porte une troisième. Trois portes pour un geste ne se valent que parce
+      // qu'AUCUNE ne porte de logique : toutes appellent `confirmArchivePassion`
+      // et `openEditPassionProfile`. Trimer le menu casserait le chemin du kill
+      // switch et emporterait la seule commande de la photo et de la couverture.
       //
       // ⚠️ AUCUNE COPIE DE LOGIQUE : les deux boutons appellent exactement les
       // fonctions du menu (`openEditPassionProfile`, `confirmArchivePassion`),

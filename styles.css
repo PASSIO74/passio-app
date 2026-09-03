@@ -9883,6 +9883,16 @@ body.ctx-locked #appMain { overflow: hidden; }
   font-weight: 800;
   cursor: default;
 }
+/* ⚠️ ET C'EST LE PORTEUR QUI LUI GARANTIT SA LIGNE, PAS LA CHANCE. Compacte,
+   la pastille concourait sur la PREMIÈRE ligne de la carte, à droite du « ⋯ » :
+   son passage à la ligne ne dépendait plus que de la largeur restante après le
+   nom et la bio. Vrai à 390 px, faux sur une coquille large (`.app-shell` monte
+   à 540 px) — et là le « ⋯ » quittait le bord droit de la carte. Ce porteur
+   rend le résultat indépendant de la largeur. */
+.v9-card-etat {
+  flex: 1 0 100%;
+  display: flex;
+}
 
 /* ── Le sélecteur de passion active, et la liste des archivées ─────────────── */
 .v8-switch-list { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
@@ -10167,6 +10177,15 @@ body.ctx-locked #appMain { overflow: hidden; }
 #passionArchiveBox .section-title {
   font-size: 17px;
   line-height: 1.25;
+}
+/* ⚠️ ET LA HIÉRARCHIE DOIT TENIR SOUS LE KILL SWITCH UI-V2, sinon elle n'existe
+   que dans un seul monde. Drapeau coupé, `.section-title` retombe à 17 px : les
+   deux titres intérieurs vaudraient alors EXACTEMENT l'en-tête, et le panneau
+   redeviendrait trois blocs de même rang. On les descend d'un cran là aussi —
+   le rapport est ce qui compte, pas la constante. */
+:root:not(.passio-ui-v2) #passionManagerActions .v9-mgr-titre,
+:root:not(.passio-ui-v2) #passionArchiveBox .section-title {
+  font-size: 14.5px;
 }
 .v9-mgr-add {
   margin-top: 10px;

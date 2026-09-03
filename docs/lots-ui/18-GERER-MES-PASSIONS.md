@@ -15,7 +15,7 @@ Elles ne sont pas cinq changements indépendants : ② retire la seule porte d'a
 VISIBLE, et ③ est ce qui l'empêche de devenir un cul-de-sac. La bonne lecture est
 donc **un déménagement**, pas un retrait.
 
-Verrou : `tests/e2e/gerer-mes-passions.spec.js` (9 cas).
+Verrou : `tests/e2e/gerer-mes-passions.spec.js` (11 cas).
 
 ---
 
@@ -28,7 +28,7 @@ Verrou : `tests/e2e/gerer-mes-passions.spec.js` (9 cas).
 | Largeur d'une bulle du profil | 84 px fixes | 1/3 du rail — 4 passions ou plus : 1/3 moins la réserve d'affleurement |
 | Panneau `#passionManager` | titre + lien « + Ajouter » de 11 px | titre + **bouton principal** « ＋ Ajouter une passion » + aide |
 | Carte d'une passion | archiver caché dans son menu « ⋯ » | boutons **✏️ Modifier** et **🗄️ Archiver** en clair |
-| « Passion du Studio ✓ » | barre pleine largeur, fond d'accent | pastille compacte |
+| « Passion du Studio ✓ » | barre pleine largeur, fond d'accent | pastille compacte, dans un porteur `flex: 1 0 100%` |
 | Titres du panneau | trois `.section-title` à 26 px | un titre d'écran, deux titres de bloc (17 px) |
 
 Aucune règle métier n'est touchée : plafond (`PASSIONS_OFFERTES = 3`), quota
@@ -144,9 +144,16 @@ Ordre de lecture, de haut en bas :
 
 | État | Bouton | Aide |
 |---|---|---|
-| sous le plafond | `btn primary` | « Il te reste N emplacement(s)… » |
+| sous le plafond | `btn primary` | « Il te reste N emplacement(s). Choisis une passion… » |
 | plafond atteint | `btn ghost` | « Tes 3 emplacements sont pris. **Archive** une passion ci-dessous… » |
-| plafond inactif (démo, kill switch) | `btn primary` | « Cherche une passion dans le catalogue… » |
+| plafond inactif (démo, kill switch) | `btn primary` | « Choisis une passion et ajoute-la à ton profil. » |
+
+**⚠️ L'AIDE NE PROMET PAS UNE RECHERCHE.** `openCreateProfile()` n'ouvre le sélecteur de
+recherche que sous `flat_passions_v1` ; le drapeau coupé, il rend la grille historique de
+19 tuiles — un chemin que `passions-plates.spec.js` (⑰) exerce explicitement. Une copie
+disant « cherche dans le catalogue » y serait fausse, et une copie **branchée** sur le
+drapeau serait une condition dupliquée à tenir en phase avec `openCreateProfile`. Le verbe
+neutre est vrai dans les deux mondes.
 
 **Le bouton dit ce qu'il FAIT, l'aide dit ce qui DÉBLOQUE.** Au plafond il ouvre la
 fenêtre qui explique la formule à venir : on ne le retire pas — une porte invisible ne
@@ -165,8 +172,12 @@ menu (`openEditPassionProfile`, `confirmArchivePassion`), qui gardent le quota, 
 et la règle « au moins une passion vivante ». Deux chemins pour un geste auraient divergé
 au premier correctif — c'est l'histoire de `sharePostInFeed` / `shareReelInFeed`.
 
-**⚠️ LE « ⋯ » RESTE** : il porte encore la photo de la passion et sa photo de fond. Le
-retirer emporterait la seule commande de ces deux-là.
+**⚠️ C'EST UNE PROMOTION, PAS UN DÉMÉNAGEMENT.** Le menu « ⋯ » garde ses quatre entrées
+(modifier, photo, couverture, archiver — ou « supprimer ce profil » sous le kill switch
+UI-8, qu'il est le seul à rendre), et `openEditPassionProfile` en porte une troisième
+(`data-v8-archiver-lien`). Trois portes pour un geste ne se valent que parce qu'aucune ne
+porte de logique : toutes appellent `confirmArchivePassion`. Trimer le menu casserait le
+chemin du kill switch et emporterait la seule commande de la photo et de la couverture.
 
 **⚠️ LA DERNIÈRE PASSION NE S'ARCHIVE PAS, ET LE BOUTON LE DIT.** `confirmArchivePassion`
 refuse déjà par un toast, mais un bouton qui échoue toujours est un bouton qui ment :
@@ -180,6 +191,13 @@ en portait TROIS à cette taille — `Gérer mes passions`, `Mes passions active
 trois écrans empilés. Les deux titres **intérieurs** repassent au niveau 2 (17 px), la
 valeur qu'UI-V2 donne déjà à `.v2-sheet-title` et `.modal-title`. L'en-tête garde son
 niveau 1 : c'est bien le titre du panneau.
+
+**⚠️ ET LA HIÉRARCHIE DOIT TENIR SOUS LE KILL SWITCH UI-V2**, sinon elle n'existe que dans
+un seul monde. Drapeau coupé, `.section-title` retombe à 17 px — la valeur exacte à
+laquelle on venait d'épingler les titres intérieurs : les trois blocs auraient repris le
+même rang. Une seconde règle, sous `:root:not(.passio-ui-v2)`, les descend à 14,5 px.
+C'est le **rapport** qui porte la hiérarchie, jamais la constante — et le cas ⑥ de la
+suite l'exprime en comparant les tailles entre elles, pas à un nombre.
 
 **⚠️ ET SON EN-TÊTE SE COUPAIT LES MOTS.** `.section-title` est un flex **sans** retour à
 la ligne, et sa règle générique pose `margin-left: auto` sur **chaque** `.link` : les deux
@@ -195,6 +213,16 @@ principal — pleine largeur, fond d'accent, 40 px de haut — sous lequel vienn
 maintenant s'aligner les deux VRAIS boutons de la carte. La chose la plus cliquable de la
 carte était donc la seule à ne rien faire. Elle reprend la taille de ce qu'elle est.
 `data-v8-active` et les classes `.v8-state.on` sont conservés : deux suites les ciblent.
+
+**⚠️ MAIS C'EST UN PORTEUR QUI LUI GARANTIT SA LIGNE, PAS LA CHANCE.** Devenue compacte,
+elle a cessé d'occuper sa ligne *par construction* et s'est mise à concourir sur la
+première ligne de la carte, à droite du « ⋯ » : son passage à la ligne ne dépendait plus
+que de la largeur restante après le nom et la bio. Vrai à 390 px, faux sur une coquille
+large (`.app-shell` monte à 540 px) — et là le « ⋯ » quittait le bord droit de la carte.
+Un `.v9-card-etat { flex: 1 0 100% }` rend le résultat indépendant de la largeur. Les
+deux seules assertions existantes sur cette pastille étaient **textuelles** : elles
+seraient restées vertes. Le cas ④ ter mesure donc les rectangles aux deux bornes de la
+coquille (390 et 540 px).
 
 ---
 
@@ -249,7 +277,7 @@ que fait le code — et c'est bien la visibilité qui décide de ce que l'utilis
 | `js/app-06-reels-partage.js` | libellé du menu, retrait de `portePlus`, `.v9-strip-defile`, `renderPassionManagerActions()`, boutons de carte |
 | `js/ui-v6b-profil.js` | le lot réécrit « Gérer mes passions » (aller ET retour du kill switch) |
 | `styles.css` | largeurs du rail, styles du panneau et des boutons, pastille d'état, hiérarchie des titres, retrait de `.psel-tile-plus` |
-| `tests/e2e/gerer-mes-passions.spec.js` | **nouveau** — 9 cas |
+| `tests/e2e/gerer-mes-passions.spec.js` | **nouveau** — 11 cas |
 | `tests/e2e/profil-entete-passions.spec.js` | ③, ③ quater, ③ quater bis, ③ nonies retournés |
 | `tests/e2e/passions-plates.spec.js` | helper `ouvrirRecherche`, ⑰, ⑰ bis, ㉑, ㉒, ㉓ ter |
 | `tests/e2e/ui-v6b-profil.spec.js`, `tests/e2e/ui-v7-lot.spec.js` | le titre attendu |

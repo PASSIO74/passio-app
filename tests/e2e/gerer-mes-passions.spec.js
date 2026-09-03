@@ -65,10 +65,14 @@ test("① le menu ⋯ du profil dit « Gérer mes passions », et ouvre le panne
   // au-dessus : deux fonctions différentes — filtrer d'un côté, GÉRER de
   // l'autre — sous le même nom.
   await poser(page, 2);
-  await page.evaluate(() => {
-    const b = document.querySelector("#screen-profiles .profile-dots-btn");
-    if (b) b.click();
-  });
+  // ⚠️ ON CLIQUE LA PORTE QUE L'UTILISATEUR A, PAS CELLE DU MARKUP. Sous le lot
+  // UI-6B — actif par défaut — `.profile-dots-btn.on-cover` est en
+  // `display: none` (styles.css) et c'est le crayon `#v6bModifier`, posé par
+  // `poserModifier()`, qui ouvre `openMainProfileMenu`. Un `.click()`
+  // programmatique se déclenche sur un nœud masqué : viser l'ancien bouton
+  // aurait rendu ce cas VERT alors même que le crayon aurait cessé d'appeler le
+  // menu — le test nommé « le menu ⋯ » n'aurait plus rien mesuré du chemin réel.
+  await page.locator("#v6bModifier").click();
   await page.waitForTimeout(400);
 
   const menu = await page.evaluate(() => {
@@ -206,6 +210,47 @@ test("④ bis — la DERNIÈRE passion vivante ne s'archive pas, et le bouton le
   await expect(b).toHaveAttribute("title", /au moins une passion active/);
 });
 
+// ⚠️ LA PASTILLE D'ÉTAT A UNE GÉOMÉTRIE, ET ELLE N'AVAIT AUCUNE MESURE.
+// « Passion du Studio ✓ » est passée d'une barre pleine largeur à une pastille
+// compacte : elle a donc cessé d'occuper sa ligne PAR CONSTRUCTION et s'est mise
+// à concourir sur la première ligne de la carte, à droite du « ⋯ ». Son passage
+// à la ligne ne dépendait plus que de la largeur restante après le nom et la
+// bio — vrai à 390 px, faux sur une coquille large (`.app-shell` monte à
+// 540 px), et là le « ⋯ » quittait le bord droit. Les deux seules assertions
+// existantes sur cette pastille sont TEXTUELLES (`ui-v8-passions`) : elles
+// seraient restées vertes. On mesure donc aux deux bornes de la coquille.
+for (const largeur of [390, 540]) {
+  test("④ ter — " + largeur + " px : la pastille garde sa ligne, le « ⋯ » garde son coin", async ({ page }) => {
+    await page.setViewportSize({ width: largeur, height: 844 });
+    await poser(page, 2);
+    await page.evaluate(() => openPassionManager());
+    await page.waitForTimeout(600);
+    const vu = await page.evaluate(() => {
+      const carte = document.querySelector('[data-v8-card="g_0"]');
+      const r = (sel) => {
+        const e = carte.querySelector(sel);
+        return e ? e.getBoundingClientRect() : null;
+      };
+      const c = carte.getBoundingClientRect();
+      const pastille = r("[data-v8-active]");
+      const dots = r(".profile-dots-btn");
+      const actions = r(".v9-card-actions");
+      return {
+        // La pastille commence SOUS le bouton d'options : elle est bien passée
+        // à la ligne, elle ne s'est pas glissée à côté de lui.
+        souslesDots: Math.round(pastille.top - dots.bottom),
+        // Et le « ⋯ » reste dans le coin de la carte.
+        margeDroite: Math.round(c.right - dots.right),
+        // Les actions, elles, restent sous la pastille.
+        actionsSousPastille: Math.round(actions.top - pastille.bottom),
+      };
+    });
+    expect(vu.souslesDots, "la pastille s'est glissée à côté du « ⋯ »").toBeGreaterThanOrEqual(0);
+    expect(vu.margeDroite, "le « ⋯ » a quitté le coin de la carte").toBeLessThanOrEqual(16);
+    expect(vu.actionsSousPastille, "les boutons ne sont plus sous la pastille").toBeGreaterThanOrEqual(0);
+  });
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 // ⑤ REPRENDRE UNE PASSION ARCHIVÉE — « je change de passion archivée »
 // ══════════════════════════════════════════════════════════════════════════
@@ -273,19 +318,39 @@ test("⑥ le panneau a UN titre d'écran, et ses blocs sont au niveau en dessous
 // ══════════════════════════════════════════════════════════════════════════
 
 test("⑦ kill switch UI-8 : la barre d'actions est RETIRÉE, pas laissée derrière", async ({ page }) => {
-  // ⚠️ Une cible supprimée emporte tout ce qui la vise : sous le kill switch,
-  // `#passionManagerActions` doit être vidé, jamais laissé avec le contenu du
-  // rendu précédent.
-  await page.addInitScript(() => { localStorage.setItem("passio_ui_8", "0"); });
+  // ⚠️ CE CAS A DÛ ÊTRE RÉÉCRIT : POSER LE DRAPEAU AVANT LE BOOT NE PROUVAIT
+  // RIEN. `index.html` livre `<div id="passionManagerActions" hidden></div>` :
+  // vide et masqué, c'est l'état INITIAL du markup. Un test qui coupe le lot
+  // avant le premier rendu mesurait donc le DOM de départ — vider entièrement
+  // le corps de `renderPassionManagerActions` l'aurait laissé vert.
+  //
+  // Ce que le lot doit garantir est un RETRAIT : la barre est d'abord POSÉE,
+  // lot actif, puis le drapeau tombe et un nouveau rendu doit la reprendre.
+  // « Une cible supprimée emporte tout ce qui la vise » ne se vérifie qu'après
+  // avoir vu la cible exister.
   await poser(page, 2);
   await page.evaluate(() => openPassionManager());
   await page.waitForTimeout(600);
-  const vu = await page.evaluate(() => ({
+  const avant = await page.evaluate(() => ({
     barre: (document.getElementById("passionManagerActions") || {}).innerHTML || "",
     cache: !!(document.getElementById("passionManagerActions") || {}).hidden,
     actions: document.querySelectorAll("#profileList [data-v9-archiver]").length,
   }));
-  expect(vu.barre, "la barre d'actions survit au kill switch").toBe("");
-  expect(vu.cache).toBe(true);
-  expect(vu.actions, "les boutons de carte survivent au kill switch").toBe(0);
+  expect(avant.barre, "le lot actif n'a rien posé — le test ne prouverait rien").toContain("passionAddBtn");
+  expect(avant.cache).toBe(false);
+  expect(avant.actions, "le lot actif n'a posé aucun bouton de carte").toBe(2);
+
+  await page.evaluate(() => {
+    localStorage.setItem("passio_ui_8", "0");
+    renderProfilesScreen();
+  });
+  await page.waitForTimeout(500);
+  const apres = await page.evaluate(() => ({
+    barre: (document.getElementById("passionManagerActions") || {}).innerHTML || "",
+    cache: !!(document.getElementById("passionManagerActions") || {}).hidden,
+    actions: document.querySelectorAll("#profileList [data-v9-archiver]").length,
+  }));
+  expect(apres.barre, "la barre d'actions survit au kill switch").toBe("");
+  expect(apres.cache).toBe(true);
+  expect(apres.actions, "les boutons de carte survivent au kill switch").toBe(0);
 });
