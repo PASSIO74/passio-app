@@ -34,9 +34,17 @@ async function ouvrirRecherche(page) {
   );
 }
 
+// ⚠️ ON ATTEND LA RÉPONSE, PAS UNE DURÉE. Un `waitForTimeout` supposerait que
+// l'anti-rebond (160 ms) plus l'aller-retour `rechercher_passions` tiennent dans
+// un budget fixe — faux sur un runner chargé, et le test lirait le panneau
+// pendant qu'une réponse est encore en vol. C'est la leçon de `passions-plates`
+// ⑥ bis : le pire rouge est celui qui envoie chercher au mauvais endroit.
 async function taper(page, texte) {
   await page.locator("#explorerSearch").fill(texte);
-  await page.waitForTimeout(900);   // anti-rebond 160 ms + aller-retour
+  await page.waitForFunction(() => {
+    const el = document.getElementById("exploreSearchResults");
+    return el && el.style.display !== "none" && el.innerText.indexOf("Recherche…") < 0;
+  }, null, { timeout: 20000 });
   return page.locator("#exploreSearchResults").innerText();
 }
 
@@ -94,6 +102,13 @@ test.describe("la page Rechercher connaît tout le référentiel", () => {
     expect(libelles.length).toBeGreaterThan(19);
     expect(libelles.filter((l) => l.trim() === "Passion"),
       "aucune tuile ne doit rester au libellé générique").toEqual([]);
+
+    // ⚠️ ET LES TENDANCES AUSSI. Elles nomment des passions par les MÊMES ids,
+    // qui sont DISTINCTS : la déduplication ne les fusionne pas, donc un
+    // référentiel absent y produirait jusqu'à six tuiles « Passion » côte à côte.
+    const tendances = await page.locator("#trendingGrid .trending-name").allTextContents();
+    expect(tendances.filter((l) => l.trim() === "Passion"),
+      "aucune tuile de tendance au libellé générique").toEqual([]);
   });
 
   test("⑤ une passion tendance peut venir de HORS socle", async ({ page }) => {
@@ -242,5 +257,139 @@ test.describe("la page Rechercher connaît tout le référentiel", () => {
     await page.waitForTimeout(600);
     const proches = await page.locator("#pexLiees").innerText();
     expect(proches.trim().length, "la fiche propose des passions proches").toBeGreaterThan(0);
+  });
+
+  test("⑩ dans la fiche d'une passion, c'est le bouton SOUS LE DOIGT qui bouge", async ({ page }) => {
+    // ⚠️ DÉFAUT INTRODUIT PAR CE LOT, TROUVÉ EN RELECTURE. Trois surfaces
+    // émettaient `followBtn_<uid>` pour la même personne — profil visité,
+    // « Créateurs à suivre » et la fiche d'une passion — et
+    // `document.getElementById` rend le PREMIER dans l'ordre du document.
+    // L'écran précède la modale dans `index.html` : suivre quelqu'un DEPUIS LA
+    // MODALE écrivait l'état mais retournait le bouton CACHÉ derrière. Celui
+    // sous le doigt restait « Suivre », on retapait — et on se désabonnait en
+    // silence.
+    await bootOnboarded(page, null, 1);
+    await ouvrirRecherche(page);
+    const vu = await page.evaluate(() => {
+      window.supaFollowUser = async () => true;
+      window.supaUnfollowUser = async () => true;
+      state.user.following = [];
+      // Une personne présente DANS LES DEUX surfaces à la fois.
+      const u = (state.seed.users || [])[0];
+      renderExplorer();
+      openPassionExplorer(u.passion);
+      const dansEcran = document.querySelector('#suggestedCreators [data-follow-uid="' + u.id + '"]');
+      const dansFiche = document.querySelector('#pexCreators [data-follow-uid="' + u.id + '"]');
+      if (!dansEcran || !dansFiche) return { premisse: false };
+      dansFiche.click();
+      return {
+        premisse: true,
+        uid: u.id,
+        fiche: dansFiche.textContent.trim(),
+        ecran: dansEcran.textContent.trim(),
+        suivis: (state.user.following || []).slice(),
+        // Aucune des deux surfaces ne doit émettre deux fois le même id.
+        idsEnDouble: Array.from(document.querySelectorAll('[id="followBtn_' + u.id + '"]')).length,
+      };
+    });
+    expect(vu.premisse, "la même personne figure bien dans l'écran ET dans la fiche").toBe(true);
+    expect(vu.suivis, "l'état est écrit").toContain(vu.uid);
+    expect(vu.fiche, "le bouton SOUS LE DOIGT change").toContain("Suivi");
+    expect(vu.ecran, "et celui de l'écran derrière suit").toContain("Suivi");
+    expect(vu.idsEnDouble, "un identifiant, un seul nœud").toBeLessThanOrEqual(1);
+  });
+
+  test("⑪ hors ligne, la grille ne rétrécit pas et le compteur SE TAIT", async ({ page }) => {
+    // ⚠️ LE REPLI N'EST PAS UN RÉFÉRENTIEL. `repliHorsLigne()` fabrique une
+    // vingtaine de lignes à `popularity: 0` ; `suggestions()` filtre sur
+    // `popularity >= 1000` et n'en rend alors qu'une poignée — NON VIDE, donc le
+    // repli sur le socle ne se déclenchait pas : la grille tombait de 19 tuiles
+    // à deux, et le compteur annonçait « un aperçu parmi 21 passions », un
+    // nombre inventé présenté comme mesuré.
+    // ⚠️ ON COUPE PAR `fetch`, PAS PAR `page.route`. Mesuré à la sonde : la
+    // requête part bien vers `/data/passions-v1.json`, mais le gestionnaire de
+    // route ne se déclenche JAMAIS — elle transite par le service worker, que
+    // `page.route` ne voit pas. Un test bâti dessus serait vert en ne coupant
+    // rien, et c'est exactement ce qu'il a fait au premier passage : la prémisse
+    // a rougi (`horsLigne` faux), ce qui l'a révélé.
+    await page.addInitScript(() => {
+      const vrai = window.fetch;
+      window.fetch = function (u) {
+        try {
+          if (String((u && u.url) || u).indexOf("passions-v1.json") >= 0) {
+            return Promise.reject(new Error("hors ligne (test)"));
+          }
+        } catch (e) {}
+        return vrai.apply(this, arguments);
+      };
+      // ⚠️ LA PRÉMISSE, SANS LAQUELLE CE TEST EST VERT PAR ACCIDENT — mesuré par
+      // RÉINJECTION du défaut, qui passait. Sur un appareil neuf `recentes()`
+      // est vide, `suggestions()` rend alors [] et le repli sur le socle se
+      // déclenche quand même : le défaut est INVISIBLE. Il n'apparaît que si
+      // `suggestions()` peut rendre une poignée d'entrées — donc si quelqu'un
+      // a déjà utilisé la recherche, ce qui est le cas courant.
+      localStorage.setItem("passio_passions_recentes", JSON.stringify([
+        { id: "musique", label: "Musique", emoji: "🎵" },
+        { id: "cuisine", label: "Cuisine", emoji: "🍳" },
+      ]));
+    });
+    await bootOnboarded(page, null, 1);
+    await page.evaluate(() => goTo("explore"));
+    await page.waitForFunction(() => {
+      const el = document.getElementById("screen-explore");
+      return el && el.classList.contains("active");
+    }, null, { timeout: 10000 });
+    await page.waitForFunction(
+      () => window.PassioPassions && window.PassioPassions.pret(),
+      null, { timeout: 20000 },
+    );
+    const vu = await page.evaluate(() => ({
+      horsLigne: window.PassioPassions.horsLigne(),
+      tuiles: document.querySelectorAll("#allPassions .passion-tile").length,
+      socle: PASSIONS.length,
+      compteur: (document.getElementById("explorePassionsCount") || {}).textContent || "",
+    }));
+    expect(vu.horsLigne, "prémisse : on mesure bien le repli hors ligne").toBe(true);
+    expect(vu.tuiles, "la grille garde au moins tout le socle").toBeGreaterThanOrEqual(vu.socle);
+    expect(vu.compteur.trim(), "et le compteur se tait plutôt que d'inventer").toBe("");
+  });
+
+  test("⑫ `charger()` invalide les TROIS caches de rendu, quel que soit son appelant", async ({ page }) => {
+    // ⚠️ LE DÉFAUT LE PLUS GRAVE DE CE LOT, TROUVÉ EN RELECTURE, ET IL SE JOUE
+    // AILLEURS QUE SUR LA PAGE RECHERCHER. `repeindreLesRails()` — seul point qui
+    // remet `#profileStrip._lastHtml`, `#v9ProfilePassions[data-v9-sig]` et
+    // `window._feedDomSig` à zéro — n'était appelé que par la chaîne
+    // d'auto-détection, qui sort en tête sur `pret()`. Dès qu'un AUTRE chargeur
+    // gagnait la course (ouvrir la loupe pendant que l'hydratation traîne, ce
+    // qui peut durer 10 s), elle ne repeignait plus JAMAIS : les rails du Fil et
+    // du Profil gardaient leurs « ✨ Passion » pour toute la session, référentiel
+    // pourtant chargé.
+    //
+    // On mesure donc le CONTRAT de `charger()`, pas le chemin d'un appelant :
+    // c'est ce qui protège aussi les chargeurs qui n'existent pas encore.
+    await bootOnboarded(page, null, 1);
+    const vu = await page.evaluate(async () => {
+      if (window.PassioPassions.pret()) return { premisse: false };
+      // Trois sentinelles, une par cache. `repeindreLesRails` doit toutes les
+      // effacer — en oublier une laisse sa surface générique (constat majeur de
+      // la revue du 2026-09-02).
+      const rail = document.getElementById("profileStrip");
+      const rail9 = document.getElementById("v9ProfilePassions");
+      if (rail) rail._lastHtml = "sentinelle";
+      if (rail9) rail9.setAttribute("data-v9-sig", "sentinelle");
+      window._feedDomSig = "sentinelle";
+      await window.PassioPassions.charger();
+      await new Promise((r) => setTimeout(r, 400));
+      return {
+        premisse: true,
+        fil: rail ? rail._lastHtml : null,
+        profil: rail9 ? rail9.getAttribute("data-v9-sig") : null,
+        signature: window._feedDomSig,
+      };
+    });
+    expect(vu.premisse, "prémisse : le référentiel n'était pas déjà chargé").toBe(true);
+    expect(vu.fil, "le cache du rail du Fil est invalidé").not.toBe("sentinelle");
+    expect(vu.profil, "la signature du rail du Profil est retirée").not.toBe("sentinelle");
+    expect(vu.signature, "le guard no-op de renderFeed est invalidé").not.toBe("sentinelle");
   });
 });

@@ -4181,12 +4181,24 @@ function renderExplorer() {
     var cible = document.getElementById("allPassions");
     if (!cible) return;
 
+    // ⚠️ LE REPLI HORS LIGNE N'EST PAS UN RÉFÉRENTIEL, et le croire RÉTRÉCIT la
+    // page au lieu de l'élargir. Quand le `fetch` échoue — cas que
+    // `passions-flat.js` documente : service worker vidé juste après un
+    // déploiement —, `repliHorsLigne()` fabrique une vingtaine de lignes toutes
+    // à `popularity: 0`. `suggestions()` filtre sur `popularity >= 1000` : elle
+    // ne rend alors que les récentes, une à trois entrées — NON VIDE, donc le
+    // repli sur le socle ne se déclenchait pas et la grille tombait de 19 tuiles
+    // à deux. On pose donc la question franchement.
+    var complet = false;
+    try { complet = !!(moteur && moteur.pret() && !moteur.horsLigne()); } catch (e) { complet = false; }
+
     var base = [];
-    if (moteur) {
+    if (complet) {
       // `suggestions()` alterne un terme PRÉCIS et une grande famille : c'est ce
       // qui dit sans un mot que tout est au même niveau, et que la recherche
       // n'oblige à traverser aucune catégorie.
-      try { base = moteur.suggestions(24, null) || []; } catch (e) { base = []; }
+      try { base = moteur.suggestions(24, null) || []; }
+      catch (e) { base = []; try { diagLog("explorer suggestions " + (e && e.message)); } catch (_) {} }
     }
     if (!base.length) base = PASSIONS.slice();
 
@@ -4224,10 +4236,15 @@ function renderExplorer() {
     // ⚠️ LE NOMBRE VIENT DU RÉFÉRENTIEL, JAMAIS D'UNE CONSTANTE. Tant qu'il n'a
     // pas répondu, on se tait : annoncer un ordre de grandeur inventé est
     // exactement le défaut qu'on répare ici.
+    // ⚠️ ET IL NE S'ANNONCE QUE SI LE RÉFÉRENTIEL EST COMPLET. Sur le repli,
+    // `taille()` rend la taille du REPLI (socle + profils + récentes) : la page
+    // aurait dit « un aperçu parmi 21 passions », un nombre inventé présenté
+    // comme mesuré — le défaut même qu'on répare. Se taire est la seule réponse
+    // juste quand on ne sait pas.
     var compteur = document.getElementById("explorePassionsCount");
     if (compteur) {
       var n = 0;
-      try { n = (moteur && typeof moteur.taille === "function") ? moteur.taille() : 0; } catch (e) { n = 0; }
+      try { n = complet ? moteur.taille() : 0; } catch (e) { n = 0; }
       compteur.textContent = n > liste.length
         ? "Un aperçu parmi " + n.toLocaleString("fr-FR") + " passions — cherche la tienne juste au-dessus."
         : "";
@@ -4244,8 +4261,14 @@ function renderExplorer() {
         // du référentiel resterait « ✨ Passion » jusqu'au prochain rendu.
         peindreTendances();
         peindreGrille();
-      }).catch(function () {});
-    } catch (e) {}
+      }).catch(function (e) {
+        // ⚠️ SANS CE LOG, LA PANNE EST INDISCERNABLE DU COMPORTEMENT D'AVANT LE
+        // LOT : la page rend les 19 du socle, et personne ne peut dire si le
+        // référentiel a échoué ou s'il n'avait rien à proposer. C'est le motif
+        // du bug `diagLog` (fil vide six jours).
+        try { diagLog("explorer charger " + (e && e.message ? e.message : e)); } catch (_) {}
+      });
+    } catch (e) { try { diagLog("explorer charger_sync " + (e && e.message)); } catch (_) {} }
   }
 
   // ── CRÉATEURS À SUIVRE ───────────────────────────────────────────────────
@@ -4263,7 +4286,7 @@ function renderExplorer() {
       +   '<div class="list-row-title">' + escapeHtml(u.name || "Passionné") + '</div>'
       +   '<div class="list-row-meta">' + escapeHtml(u.meta || "") + '</div>'
       + '</div>'
-      + '<button class="btn small" id="followBtn_' + escapeHtml(u.id) + '"'
+      + '<button class="btn small" id="followBtn_' + escapeHtml(u.id) + '" data-follow-uid="' + escapeHtml(u.id) + '"'
       +   ' onclick="event.stopPropagation();toggleFollowUser(\'' + escapeJsArg(u.id) + '\',\'' + escapeJsArg(u.name || "") + '\')">'
       +   (suivi ? "✓ Suivi" : "Suivre") + '</button>'
       + '</div>';

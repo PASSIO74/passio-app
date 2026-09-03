@@ -236,6 +236,15 @@
         catch (e) { journal("index", e); DONNEES = construireIndex(repliHorsLigne()); DONNEES.horsLigne = true; }
         if (DONNEES && DONNEES.horsLigne) promesse = null;   // retentable
         resoudre(DONNEES);
+        // ⚠️ LE REPEINT APPARTIENT À `charger()`, PAS À SES APPELANTS.
+        // `evaluerBesoinDeNoms` sort en tête sur `pret()` : dès qu'un AUTRE
+        // chargeur a gagné la course — la page « Rechercher » ouverte pendant
+        // que l'hydratation traîne, par exemple —, la chaîne d'auto-détection
+        // ne repeint plus JAMAIS, et le rail du Fil comme celui du Profil
+        // gardent leurs « ✨ Passion » pour toute la session, référentiel
+        // pourtant chargé. Porté ici, tout chargeur présent ou futur l'obtient.
+        // Idempotent : les trois invalidations de cache sont des mises à null.
+        try { _essaisRepeint = 0; repeindreLesRails(); } catch (e) { journal("repeint_apres_charge", e); }
       }
       try {
         fetch(url, { credentials: "omit" })
@@ -530,6 +539,16 @@
   // TAIRE, jamais inventer un ordre de grandeur : c'est faute de l'avoir dit que
   // « on est censé avoir 5 000 passions » a pu tenir sans démenti.
   function taille() { return DONNEES ? DONNEES.liste.length : 0; }
+
+  // Le référentiel servi est-il le REPLI hors ligne ?
+  // ⚠️ CHEMIN DE RENDU, comme `taille()` — et pour la même raison : `_etat()`
+  // est réservé aux tests. Une surface qui annonce un NOMBRE ou qui propose une
+  // SÉLECTION doit pouvoir distinguer les 1 908 passions du repli, qui n'en
+  // porte qu'une vingtaine (socle + profils + récentes, toutes à `popularity: 0`,
+  // donc invisibles pour `suggestions()`). Sans cette question, la page
+  // « Rechercher » annonçait « un aperçu parmi 21 passions » — un nombre
+  // inventé présenté comme mesuré, très exactement le défaut qu'elle répare.
+  function horsLigne() { return !!(DONNEES && DONNEES.horsLigne); }
 
   function recentes() {
     try {
@@ -891,6 +910,7 @@
     parId: parId,
     existe: existe,
     taille: taille,
+    horsLigne: horsLigne,
     liees: liees,
     recentes: recentes,
     noterUtilisation: noterUtilisation,

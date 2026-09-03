@@ -33,7 +33,8 @@ est plus que le repli.
    plus le repli serveur pour ce que l'index local par préfixe ne rattrape pas.
 2. **La grille** montre `suggestions(24)` (qui **alterne** un terme précis et une
    grande famille), plus les passions perso, plus le **nombre réel** écrit à
-   côté depuis `PassioPassions.taille()`.
+   côté depuis `PassioPassions.taille()` — et **rien** quand le référentiel n'a
+   pas répondu ou n'est que son repli hors ligne.
 3. **Les tendances** partent des passions **réellement publiées** (`seed` +
    `userPosts` + `supabasePosts`), le socle ne servant plus qu'à compléter une
    section qui serait autrement creuse.
@@ -53,20 +54,42 @@ est plus que le repli.
 - **On n'affiche jamais 1 908 tuiles.** La spécification du lot plat l'interdit
   (« il n'affiche JAMAIS les 1 900 passions d'un coup ») : la grille est un
   aperçu, la RECHERCHE est le chemin vers le reste.
-- **L'invariant « 160 Ko jamais au démarrage » tient** (`passions-plates` ⑤ et
-  ⑰ bis). Le référentiel part à l'**ouverture de la page**, ce qui est très
-  exactement l'usage réel que l'invariant réserve : `boot()` n'appelle pas
-  `renderExplorer`. Le premier rendu est **synchrone** avec ce qu'on a sous la
-  main (socle + perso) ; le référentiel **repeint** quand il arrive — les deux
-  sections nomment des passions, sans ce repeint elles resteraient « ✨ Passion ».
+- **L'invariant « 160 Ko jamais au démarrage » tient** (`passions-plates` ⑤,
+  ⑰ bis et ⑰ quater, verts). Le référentiel part à l'**ouverture de la page**
+  — et aussi à l'ouverture d'une **fiche de passion** (`openPassionExplorer`,
+  joignable depuis les bulles du Fil, l'IA et la passerelle UI-3) : dans les deux
+  cas c'est un **geste utilisateur**, très exactement l'usage réel que
+  l'invariant réserve. `boot()` n'appelle ni l'un ni l'autre. Le premier rendu
+  est **synchrone** avec ce qu'on a sous la main (socle + perso) ; le référentiel
+  **repeint** quand il arrive.
+- **⚠️ LE REPEINT APPARTIENT À `charger()`, PAS À SES APPELANTS.**
+  `evaluerBesoinDeNoms` — la chaîne d'auto-détection, seule à appeler
+  `repeindreLesRails()` et donc seule à invalider les **trois** caches
+  (`#profileStrip._lastHtml`, `#v9ProfilePassions[data-v9-sig]`,
+  `window._feedDomSig`) — sort en tête sur `pret()`. Dès qu'un **autre** chargeur
+  gagne la course (la page « Rechercher » ouverte pendant que l'hydratation
+  traîne, ce qui peut durer 10 s), elle ne repeignait plus **jamais** : le rail du
+  Fil et celui du Profil gardaient leurs « ✨ Passion » **pour toute la session**,
+  référentiel pourtant chargé — le défaut du 2026-09-02 rouvert par la porte de
+  côté. `charger()` repeint donc lui-même, de sorte que **tout** chargeur présent
+  ou futur l'obtienne.
 - **Les passions PERSO restent partout.** Elles ne se créent plus
   (`passionsPersoSuspendues`), mais elles vivent sur des profils : les retirer de
   la grille **ou des résultats** les rendrait introuvables depuis l'écran même
   qui sert à les retrouver. `_exChercherPassions` les rajoute donc après le
   référentiel, qui ne les connaît pas.
 - **`.passion-tile-create` reste fermée** (`publication-optimiste-refusee`).
+- **⚠️ LE REPLI HORS LIGNE N'EST PAS UN RÉFÉRENTIEL, et le croire RÉTRÉCIT la
+  page.** `repliHorsLigne()` fabrique une vingtaine de lignes toutes à
+  `popularity: 0` ; `suggestions()` filtre sur `popularity >= 1000` et n'en rend
+  alors qu'une poignée — **non vide**, donc le repli sur le socle ne se
+  déclenchait pas et la grille tombait de 19 tuiles à deux. Pire, `taille()`
+  rendait la taille du **repli** : la page annonçait « un aperçu parmi 21
+  passions », un nombre inventé présenté comme mesuré. D'où
+  `PassioPassions.horsLigne()`, second chemin de rendu ajouté à l'API publique :
+  hors ligne, la grille garde le socle **et le compteur se tait**.
 
-## Trois défauts trouvés en chemin, tous en production
+## Six défauts trouvés en chemin — trois en production, trois introduits par ce lot et pris en relecture
 
 ### ① La recherche n'avait ni anti-rebond ni annulation
 
@@ -102,6 +125,41 @@ balisage de la modale. Le libellé d'une passion perso est tapé par la personne
 C'est de l'auto-injection, pas une XSS stockée — mais l'échappement était présent
 partout ailleurs, et cet endroit-là seul y échappait.
 
+### ④ Trois surfaces, un seul identifiant de bouton — et le mauvais qui bougeait
+
+`document.getElementById("followBtn_<uid>")` rend le **premier dans l'ordre du
+document**. Trois surfaces l'émettaient pour la même personne : le profil visité
+(app-04), « Créateurs à suivre » (`#suggestedCreators`, dans `#screen-explore`) et
+la fiche d'une passion (`#pexCreators`, dans la modale — **après** l'écran dans
+`index.html`). Suivre quelqu'un **depuis la modale** écrivait bien l'état, mais
+retournait le bouton **caché derrière** : celui sous le doigt restait « Suivre »,
+on retapait, et on se **désabonnait en silence**.
+
+Les surfaces marquent désormais leurs boutons d'un `data-follow-uid` et
+`toggleFollowUser` les retourne **tous** (l'identifiant historique reste pris en
+compte pour les surfaces qui ne l'ont pas encore). Verrou : cas ⑩.
+
+### ⑤ Une passion trouvée par le SERVEUR seul ouvrait une fiche « Passion »
+
+`fusionner` (`passions-flat.js`) garde volontairement les résultats serveur
+absents du référentiel local : ils sont **réels**, la base fait foi, ils sont
+seulement plus récents que l'instantané JSON — c'est tout l'apport de la
+recherche serveur. Mais `openPassionExplorer` **re-résolvait** par `passionById`,
+qui ne les connaît ni par le socle ni par `parId` : la ligne de résultat
+s'affichait « Astrophotographie » et la fiche s'ouvrait sur « ✨ Passion ».
+L'appelant passe désormais le libellé qu'il vient d'afficher
+(`openPassionExplorer(pid, retour, libelleConnu)`). C'est de l'**affichage**, et
+rien d'autre : `estPassionCanonique` reste seule juge de ce qui est publiable.
+
+### ⑥ Cinq catch larges sans log, et un panneau qui pouvait rester figé
+
+Le mode de défaillance de tous ces `catch` était **le comportement d'avant le
+lot** — la page rend les 19 du socle, et personne ne peut dire si le référentiel
+a échoué ou s'il n'avait rien à proposer. C'est le motif du bug `diagLog` (fil
+vide six jours). Tous logguent maintenant. Et `_exSearchLancer` n'avait pas de
+`.catch` : le panneau, mis à « Recherche… » de façon synchrone, pouvait y rester
+**pour toujours** sans un message ni une trace.
+
 ## Ce que ce lot NE fait PAS
 
 - **Les créateurs d'une fiche de passion se cherchent sur `passion_id`**, la
@@ -117,6 +175,20 @@ partout ailleurs, et cet endroit-là seul y échappait.
 
 ## Verrou
 
-`tests/e2e/recherche-referentiel.spec.js` (9 cas). Le cas ① est une **prémisse** :
+`tests/e2e/recherche-referentiel.spec.js` (12 cas). Le cas ① est une **prémisse** :
 il établit que `moto-enduro` est absent du socle, sans quoi les suivants
 pourraient être verts avec le code d'avant.
+
+**Les trois verrous des défauts introduits (⑩, ⑪, ⑫) ont été éprouvés par
+RÉINJECTION**, et le procédé a payé : au premier jet, ⑪ passait **avec le défaut
+remis en place**. Sur un appareil neuf `recentes()` est vide, `suggestions()`
+rend alors `[]`, et le repli sur le socle se déclenche quand même — le défaut est
+invisible. Il n'apparaît que si quelqu'un a déjà utilisé la recherche. Le test
+pose donc cette prémisse (`passio_passions_recentes` semé avant le boot), et la
+grille tombe alors bien à **deux tuiles** sans le correctif.
+
+> ⚠️ **`page.route` NE VOIT PAS la requête du référentiel** — mesuré à la sonde :
+> elle part bien vers `/data/passions-v1.json`, mais transite par le **service
+> worker**. Le cas ⑪ coupe donc par `window.fetch` dans un `addInitScript`. Un
+> test bâti sur `page.route` serait vert **en ne coupant rien** ; c'est sa
+> prémisse qui l'a révélé.

@@ -191,7 +191,14 @@ function _exChercherPassions(q) {
           });
           return (r || []).concat(perso).slice(0, 6);
         })
-        .catch(function () { return repliSocle(); });
+        .catch(function (e) {
+          // ⚠️ ON LOGUE AVANT DE REPLIER. Le repli, c'est le comportement
+          // d'AVANT le lot : 19 libellés. Sans log, une `ReferenceError` dans le
+          // `.then` ci-dessus est indiscernable d'un référentiel qui n'a rien à
+          // proposer, et personne ne la voit jamais.
+          try { diagLog("explorer chercher " + (e && e.message ? e.message : e)); } catch (_) {}
+          return repliSocle();
+        });
     }
   } catch (e) {}
   return Promise.resolve(repliSocle());
@@ -253,7 +260,7 @@ function _exSearchLancer(query) {
     if (fp.length) {
       html += "<div style='padding:8px 14px 4px;font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;'>Passions</div>";
       fp.forEach(function(p) {
-        html += "<div onclick=\"openPassionExplorer('" + escapeJsArg(p.id) + "');document.getElementById('exploreSearchResults').style.display='none';\" style='display:flex;align-items:center;gap:12px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);'>" +
+        html += "<div onclick=\"openPassionExplorer('" + escapeJsArg(p.id) + "','',\'" + escapeJsArg(p.label || p.id) + "\');document.getElementById('exploreSearchResults').style.display='none';\" style='display:flex;align-items:center;gap:12px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);'>" +
           "<div style='width:38px;height:38px;border-radius:12px;background:#ede9fe;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;'>" + escapeHtml(p.emoji || "✨") + "</div>" +
           "<div style='flex:1;'><div style='font-weight:700;font-size:13px;color:var(--text);'>" + escapeHtml(p.label || p.id) + "</div></div>" +
           "<div style='font-size:11px;font-weight:700;color:var(--accent);'>Explorer →</div>" +
@@ -290,6 +297,14 @@ function _exSearchLancer(query) {
     }
 
     cible.innerHTML = html;
+  }).catch(function (e) {
+    // ⚠️ LE PANNEAU EST MIS À « Recherche… » DE FAÇON SYNCHRONE et n'est réécrit
+    // que dans le `.then` : un rejet non traité le laissait figé POUR TOUJOURS,
+    // sans message ni log. Une recherche qui échoue doit le DIRE.
+    try { diagLog("explorer recherche " + (e && e.message ? e.message : e)); } catch (_) {}
+    if (jeton !== _exSearchJeton) return;
+    var c = document.getElementById("exploreSearchResults");
+    if (c) c.innerHTML = "<div style='padding:14px 16px;color:var(--muted);font-size:13px;text-align:center;'>La recherche n'a pas abouti. Réessaie.</div>";
   });
 }
 
@@ -300,8 +315,26 @@ function _exSearchLancer(query) {
 // fil, pas le profil. Le paramètre est facultatif, et les huit appels
 // historiques (Explorer, tuiles de tendance, IA, passerelle UI-3) le laissent
 // vide — ils viennent d'un écran, pas d'une modale, et n'ont rien à restituer.
-function openPassionExplorer(pid, retourUserId) {
+function openPassionExplorer(pid, retourUserId, libelleConnu) {
+  // ⚠️ `libelleConnu` (2026-09-03) — LA RECHERCHE SERVEUR PEUT RENDRE UNE PASSION
+  // QUE LE RÉFÉRENTIEL EMBARQUÉ NE CONNAÎT PAS ENCORE. `fusionner`
+  // (`passions-flat.js`) les garde volontairement : elles sont RÉELLES, la base
+  // fait foi, elles sont seulement plus récentes que l'instantané JSON — c'est
+  // même tout l'apport de la recherche serveur. Mais `passionById` ne les résout
+  // ni par le socle ni par `parId`, et rendait donc son générique : la ligne de
+  // résultat s'affichait « Astrophotographie » et la fiche s'ouvrait sur
+  // « ✨ Passion ». L'appelant qui a le libellé sous la main le passe.
+  //
+  // ⚠️ C'EST DE L'AFFICHAGE, ET RIEN D'AUTRE. `estPassionCanonique` reste seule
+  // juge de ce qui est publiable : aucune passion ne le devient parce qu'elle
+  // sait s'afficher.
   var p = passionById(pid);
+  if (libelleConnu && (!p || p.label === "Passion")) {
+    p = { id: pid, emoji: (p && p.emoji) || "✨", label: String(libelleConnu), color: (p && p.color) || "#8b5cf6" };
+  }
+  // `passionById` rend TOUJOURS un objet (son générique en dernier recours) :
+  // ce garde ne se déclenche que si quelqu'un la remplace un jour par une
+  // fonction qui peut échouer. On le garde, il ne coûte rien.
   if (!p) { toast("Passion non trouvée"); return; }
   var posts = allFeedPosts().filter(function(x) { return x.passion === pid; });
   var hasProfile = (state.user.profiles || []).find(function(up) { return up.passion === pid; });
@@ -325,7 +358,10 @@ function openPassionExplorer(pid, retourUserId) {
         '<div class="list-row-title">' + escapeHtml(u.name || "Passionné") + '</div>' +
         '<div class="list-row-meta">' + escapeHtml(u.bio || "") + '</div>' +
       '</div>' +
-      '<button class="btn small" id="followBtn_' + escapeHtml(u.id) + '"' +
+      // ⚠️ `data-follow-uid` ET PAS `id` : l'écran « Rechercher » émet déjà
+      // `followBtn_<uid>` pour les mêmes comptes, et il PRÉCÈDE la modale dans le
+      // document — `getElementById` retournait donc le bouton caché derrière.
+      '<button class="btn small" data-follow-uid="' + escapeHtml(u.id) + '"' +
         ' onclick="event.stopPropagation();toggleFollowUser(\'' + escapeJsArg(u.id) + '\',\'' + escapeJsArg(u.name || "") + '\')">' +
         (suivi ? "✓ Suivi" : "Suivre") + '</button>' +
     '</div>';
@@ -425,7 +461,7 @@ function _pexChargerCreateurs(pid, creatorsSeed) {
             '<div class="list-row-title">' + escapeHtml(nom) + '</div>' +
             '<div class="list-row-meta">' + escapeHtml(String(u.bio || "").slice(0, 60)) + '</div>' +
           '</div>' +
-          '<button class="btn small" id="followBtn_' + escapeHtml(u.id) + '"' +
+          '<button class="btn small" data-follow-uid="' + escapeHtml(u.id) + '"' +
             ' onclick="event.stopPropagation();toggleFollowUser(\'' + escapeJsArg(u.id) + '\',\'' + escapeJsArg(nom) + '\')">' +
             (suivi ? "✓ Suivi" : "Suivre") + '</button>' +
         '</div>';
@@ -435,7 +471,9 @@ function _pexChargerCreateurs(pid, creatorsSeed) {
       if (repli.indexOf("class=\"empty\"") >= 0) repli = "";
       cible.innerHTML = html + repli;
     })
-    .catch(function () {});
+    .catch(function (e) {
+      try { diagLog("explorer createurs " + (e && e.message ? e.message : e)); } catch (_) {}
+    });
 }
 
 // « Passions proches » — SUGGÉRER, jamais filtrer, et rien ne nomme la relation
@@ -464,8 +502,10 @@ function _pexPeindreLiees(pid) {
   try {
     if (!window.PassioPassions || !PassioPassions.actif()) return;
     if (PassioPassions.pret()) { peindre(); return; }
-    PassioPassions.charger().then(peindre).catch(function () {});
-  } catch (e) {}
+    PassioPassions.charger().then(peindre).catch(function (e) {
+      try { diagLog("explorer liees " + (e && e.message ? e.message : e)); } catch (_) {}
+    });
+  } catch (e) { try { diagLog("explorer liees_sync " + (e && e.message)); } catch (_) {} }
 }
 
 // ⚠️ CETTE FONCTION ÉTAIT UN SECOND MOTEUR D'AJOUT, ET SANS AUCUNE GARDE.
