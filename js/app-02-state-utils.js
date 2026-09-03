@@ -770,6 +770,71 @@ function _applyUserState(data) {
 //
 // Fonction NOMMÉE et non bloc en ligne, pour qu'un test puisse exercer le code
 // réel plutôt qu'une copie — une copie ne prouverait que sa propre cohérence.
+// ══════════════════════════════════════════════════════════════════════════
+// RÉINJECTION BORNÉE PAR LE PLAFOND  (2026-09-03)
+// ──────────────────────────────────────────────────────────────────────────
+// La fusion défensive de `supaLoadUserState` ré-injecte les profils locaux
+// absents du serveur — ce qui est juste : ils ont pu être créés entre la
+// dernière synchronisation et la fermeture. Mais elle ne consultait AUCUN
+// plafond.
+//
+// Mesuré le 2026-09-03, sur le code livré la veille : deux appareils portant
+// chacun TROIS passions DIFFÉRENTES convergeaient vers SIX vivantes. Le
+// plafond annonçait « 0 place restante » pendant que le compte en possédait
+// six. L'offre payante était contournée sans que personne n'ait rien fait de
+// volontaire — il suffisait d'un second téléphone.
+//
+// ⚠️ ON N'ARCHIVE QUE LES RÉINJECTÉES, JAMAIS CE QUE LE SERVEUR AVAIT DÉJÀ.
+// C'est ce qui rendait le correctif « évident » inacceptable, et pourquoi le
+// défaut avait été livré tel quel avec sa dette écrite : archiver « le
+// surplus » aurait rétrogradé les passions de comptes de production qui en
+// portent légitimement plus de trois — le plafond date du 2026-09-01, les
+// comptes le précèdent. Ici l'état SERVEUR fait foi et n'est jamais touché ;
+// seules les entrées que cette fusion ajoute peuvent être rangées.
+//
+// ⚠️ RIEN N'EST SUPPRIMÉ, RIEN N'EST FACTURÉ. Les surnuméraires arrivent
+// `archived: true` : elles sont donc dans la liste des archives, d'où
+// l'utilisateur les reprend quand il veut (échange). Aucune entrée n'est
+// inscrite au journal des changements — le compte n'a rien demandé.
+//
+// ⚠️ FONCTION NOMMÉE, et c'est délibéré : un test doit exercer le code RÉEL.
+// Une copie de ces règles dans un spec ne prouverait que sa propre cohérence —
+// le dépôt a déjà payé ce défaut (`audit-tests-creux.js` existe pour ça), et
+// `restaurerPassionActiveApresFusion` juste en dessous a été extraite pour la
+// même raison.
+//
+// ⚠️ AUCUNE HORLOGE ICI. `archivedAt` reste à 0 : la fusion n'est pas un geste
+// d'utilisateur, et une date inventée mentirait dans la liste des archives.
+function reinjecterProfilsLocauxBornes(profilsServeur, aReinjecter) {
+  const serveur = Array.isArray(profilsServeur) ? profilsServeur : [];
+  const ajouts = Array.isArray(aReinjecter) ? aReinjecter : [];
+  if (!ajouts.length) return serveur;
+
+  const vivantesServeur = serveur.filter(function (p) { return p && !p.archived; }).length;
+
+  // Le plafond vit dans app-06 (`PASSIONS_OFFERTES`), chargé APRÈS ce fichier :
+  // on le lit paresseusement. Son absence — comme un kill switch — vaut « pas
+  // de plafond » : un drapeau coupé ne doit jamais ranger une passion.
+  let places = Infinity;
+  try {
+    if (typeof plafondPassionsActif === "function" && plafondPassionsActif()
+        && typeof PASSIONS_OFFERTES !== "undefined") {
+      places = Math.max(0, PASSIONS_OFFERTES - vivantesServeur);
+    }
+  } catch (e) { places = Infinity; }
+
+  let reprises = 0;
+  const bornees = ajouts.map(function (p) {
+    if (!p || p.archived) return p;              // déjà rangée : rien à décider
+    if (reprises < places) { reprises++; return p; }
+    const c = Object.assign({}, p);
+    c.archived = true;
+    if (!c.archivedAt) c.archivedAt = 0;
+    return c;
+  });
+  return serveur.concat(bornees);
+}
+
 function restaurerPassionActiveApresFusion(localCurrentId) {
   if (!state || !state.user) return;
   var profils = Array.isArray(state.user.profiles) ? state.user.profiles : [];
@@ -853,7 +918,7 @@ async function supaLoadUserState() {
         const serverPassions = new Set((state.user.profiles || []).map(p => p.passion).filter(Boolean));
         const missing = localProfiles.filter(p => p.passion && !serverPassions.has(p.passion));
         if (missing.length > 0) {
-          state.user.profiles = (state.user.profiles || []).concat(missing);
+          state.user.profiles = reinjecterProfilsLocauxBornes(state.user.profiles || [], missing);
         }
         // Pour les profils présents des deux côtés : si la version locale porte une
         // photo (base64 ou URL Storage) absente côté serveur, on la réinjecte.

@@ -10,7 +10,7 @@
 
 Fichiers : `js/app-06-reels-partage.js` (moteur), `js/app-02-state-utils.js`
 (normalisation + fusion serveur), `index.html` (`#passionArchiveBox`).
-Verrou : `tests/e2e/passions-archive-quota.spec.js` (23 cas). Aucune migration
+Verrou : `tests/e2e/passions-archive-quota.spec.js` (29 cas). Aucune migration
 Supabase, aucun CSS neuf : le journal voyage dans le blob `user_state` et la
 liste réutilise les classes `.v8-switch-*` du lot UI-8.
 
@@ -256,16 +256,49 @@ rien à l'écran ne disait qu'on possède encore une passion rangée. L'entrée
 « 🗂️ Mes passions » du menu ⋯ — seule porte visible — porte désormais le compte
 (« Mes passions (1 archivée) »). Verrou : `⑨`.
 
-**Ce qui n'est PAS corrigé, et pourquoi.** La « fusion défensive » de
-`supaLoadUserState` réinjecte les profils locaux absents du serveur sans
-consulter le plafond : deux appareils portant chacun trois passions DIFFÉRENTES
-convergent vers six vivantes. Le défaut est réel et antérieur à ce lot. Il n'est
-pas corrigé ici parce que le correctif évident — archiver le surplus à la
-fusion — **rétrograderait silencieusement les passions de comptes de production
-existants**, qui peuvent légitimement en porter plus de trois (le plafond date du
-2026-09-01, les comptes le précèdent). Détruire des données réelles pour fermer
-un contournement à deux appareils serait un mauvais échange. À traiter le jour où
-le paiement s'ouvre, avec la vérité côté serveur.
+## 6 ter. La fusion multi-appareils — dette assumée, puis refermée (2026-09-03)
+
+Ce lot a été livré le 2026-09-02 avec **une dette écrite noir sur blanc** : la
+« fusion défensive » de `supaLoadUserState` réinjecte les profils locaux absents
+du serveur sans consulter le plafond. Mesuré le lendemain sur le code en
+production : deux appareils portant chacun trois passions **différentes**
+convergeaient vers **six vivantes**, le plafond annonçant « 0 place restante »
+pendant que le compte en possédait six. Aucun geste volontaire n'était requis —
+un second téléphone suffisait, et l'offre payante tombait.
+
+Le défaut n'avait pas été corrigé le jour même pour une raison qui tenait : le
+correctif évident — archiver « le surplus » — **aurait rétrogradé
+silencieusement les passions de comptes de production** qui en portent
+légitimement plus de trois (le plafond date du 2026-09-01, les comptes le
+précèdent). Détruire de la donnée réelle pour fermer un contournement à deux
+appareils aurait été un mauvais échange.
+
+**La forme qui rend le correctif acceptable** : `reinjecterProfilsLocauxBornes`
+(app-02) ne borne QUE ce que la fusion **ajoute**. L'état serveur fait foi et
+n'est jamais touché — un compte à cinq passions vivantes en garde cinq. Seules
+les entrées réinjectées au-delà de la place restante arrivent `archived: true` :
+elles sont donc dans la liste des archives, d'où l'utilisateur les reprend quand
+il veut, par l'échange.
+
+> ⚠️ **Rien n'est supprimé, rien n'est facturé.** Les six entrées survivent à la
+> fusion, trois rangées. Aucune n'est inscrite au journal des changements :
+> ranger une passion à la fusion n'est pas un geste d'utilisateur, et l'inscrire
+> ferait qu'un simple changement de téléphone débiterait le quota.
+
+> ⚠️ **Fonction NOMMÉE, exercée telle quelle par les tests.** Une copie de ces
+> règles dans un spec ne prouverait que sa propre cohérence — c'est ce que
+> `audit-tests-creux.js` traque, et la raison pour laquelle
+> `restaurerPassionActiveApresFusion` avait déjà été extraite.
+
+> ⚠️ **Le plafond est lu paresseusement** (`PASSIONS_OFFERTES` vit dans app-06,
+> chargé après app-02) et son absence vaut « pas de plafond » : un kill switch ne
+> doit jamais ranger une passion. Verrou : `⑩ sexies`.
+
+Verrous : `⑩` à `⑩ sexies` de `tests/e2e/passions-archive-quota.spec.js`.
+
+**Ce qui reste ouvert.** Le quota est toujours **côté client**, donc
+contournable en éditant son `localStorage`. Choix assumé tant que le paiement
+n'est pas ouvert ; le jour où il le sera, la vérité devra passer côté serveur.
 
 ## 7. Coupures
 
