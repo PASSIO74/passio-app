@@ -10,6 +10,8 @@ Benjamin travaille en autonomie totale (`bypassPermissions` posé aux 3 niveaux 
 
 À la place : choisir la meilleure option, l'appliquer, aller au bout (coder → tester → committer → pousser), puis rapporter le résultat fait. Un ordre = une exécution complète, sans interruption. Rappelé fermement le 2026-07-21 et le 2026-07-22.
 
+**Et « au bout » veut dire EN LIGNE** (Benjamin, 2026-09-03 : « quand je te demande des modif, mets-les à jour en ligne direct »). Toute modification demandée va jusqu'au déploiement de production — tests, `npm run verif`, build `dist/`, fusion et push sur `main` — sans attendre un second ordre, et sans demander. Une branche de travail poussée n'est PAS une livraison : tant que le job « Déploiement production » n'est pas vert, rien n'a changé pour l'utilisateur. Ne jamais annoncer « c'est en ligne » sans en avoir la preuve (job vert, ou le fichier servi par https://passio-app.netlify.app qui porte le changement).
+
 ---
 
 ## 🤝 Modèle multi-IA et contrat de déclenchement
