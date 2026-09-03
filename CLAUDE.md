@@ -123,6 +123,7 @@ Verrou : `tests/e2e/suppression-durable.spec.js` (8 cas). Les quatre causes du d
 - **Cartes / géocodage** : MapLibre+OpenFreeMap, BAN+Photon (Nominatim retiré de la CSP).
 - **Supabase / realtime** : SDK paresseux, embeds sans FK, notifications cross-compte, tests multi-comptes par e-mail.
 - **Suppression de contenu** : pierres tombales `deletedPostIds`, file de suppression serveur, quatre tableaux à purger.
+- **Profil / biographie** : la bio est MULTILIGNE (`white-space: pre-line` sur `.main-profile-bio`, `normaliserTexteMultiligne` aux points d’enregistrement) — un test qui lit `state.user.general.bio` reste vert sur le défaut, il faut mesurer la hauteur rendue.
 - **Divers** : diagLog, monitoring client_errors, multi-profil centralisé, système d’étoiles, double-like.
 
 ## 🔍 Revue indépendante par un second modèle (2026-08-13)

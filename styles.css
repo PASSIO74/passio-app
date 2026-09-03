@@ -2069,6 +2069,17 @@
       color: var(--muted);
       line-height: 1.5;
       margin-bottom: 10px;
+      /* ⚠️ LA BIOGRAPHIE EST MULTILIGNE. Le champ d'édition est un <textarea> :
+         ce qu'on y écrit sur trois lignes doit s'afficher sur trois lignes. Sans
+         cette déclaration, le moteur replie tous les \n en espaces et la bio
+         revenait sur UNE ligne (défaut signalé le 2026-09-03, capture à l'appui).
+         `pre-line` (et non `pre`) : les sauts de ligne sont préservés, mais les
+         lignes longues continuent de se replier dans la largeur de la carte.
+         Vaut pour les DEUX surfaces qui portent cette classe : son propre profil
+         (#mainProfileBio, écrit en textContent) et le profil VISITÉ (app-04,
+         injecté en HTML échappé) — une bio d'autrui reste donc échappée. */
+      white-space: pre-line;
+      overflow-wrap: anywhere;
       /* Elle ouvre l'éditeur : le curseur doit le dire. */
       cursor: pointer;
     }

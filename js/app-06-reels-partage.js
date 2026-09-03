@@ -1297,7 +1297,11 @@ function editCoverFromModal() {
 
 async function saveMainProfile() {
   const username = document.getElementById("editUsername")?.value.trim() || "";
-  const bio      = document.getElementById("editBio")?.value.trim() || "";
+  // ⚠️ PAS de `.trim()` seul : il écrase les espaces aux bouts mais laisse passer
+  // les \r d'un collage Windows, et n'a jamais borné les lignes vides. La bio est
+  // MULTILIGNE (rendue en `white-space: pre-line`), donc elle passe par le
+  // normaliseur commun, qui préserve les sauts de ligne écrits.
+  const bio      = normaliserTexteMultiligne(document.getElementById("editBio")?.value || "");
   const rsInputs = document.querySelectorAll(".rs-link-input");
   const rsLinks  = [];
   rsInputs.forEach(inp => { if (inp.value.trim()) rsLinks.push({ platform: inp.dataset.platform, url: inp.value.trim() }); });
@@ -2492,7 +2496,7 @@ function removePassionCover(profileId) {
   if (!p) return;
   const bio = document.getElementById("editPassionBio")?.value || "";
   delete p.coverPhoto; delete p.coverUrl;
-  p.bio = bio.trim();
+  p.bio = normaliserTexteMultiligne(bio);
   saveState();
   if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch(e) {} }
   if (typeof supaSavePassionState === "function") { try { supaSavePassionState(); } catch(e) {} }
@@ -2516,7 +2520,7 @@ function _reopenEditPassionAfterPhoto() {
 function savePassionProfile(profileId) {
   const p = (state.user.profiles || []).find(x => x.id === profileId);
   if (!p) { closeModal(); return; }
-  p.bio = (document.getElementById("editPassionBio")?.value || "").trim();
+  p.bio = normaliserTexteMultiligne(document.getElementById("editPassionBio")?.value || "");
   saveState();
   if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch(e) {} }
   // ⚠️ La carte de passion telle qu'un VISITEUR la voit est servie par la colonne
