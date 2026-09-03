@@ -121,10 +121,6 @@ test.describe("Transfert de message — verdict de l'écriture", () => {
     });
     expect(apresRenvoi, "le renvoi automatique ne doit plus polluer le compteur").toBe(r.inserts);
 
-    // ⚠️ Le message d'assertion enrichi vient de #257 (déjà dans `main`) : il
-    // NOMME les tables vues, ce qui a permis de diagnostiquer ce défaut-ci sans
-    // rouvrir le journal. Les deux apports sont conservés — celui de `main` et
-    // la vérification du renvoi ci-dessus.
     expect(r.inserts, "l'insertion du transfert a bien été tentée — tables vues : " + JSON.stringify(r.tables)).toBe(1);
     expect(r.statut, "un transfert refusé doit être marqué en échec").toBe("failed");
     expect(r.enFile, "et mis en file de renvoi, sinon il est perdu en silence").toBe(true);
