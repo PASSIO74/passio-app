@@ -1,7 +1,7 @@
 ---
 name: passio-red-team
 description: Red team adversariale de PASSIO — après une feature majeure (auth, RLS, multi-profil, upload, paiement, modération), cherche activement à PROUVER que l'implémentation est cassée ou dangereuse. Complémentaire d'audit-passio (qui traque les régressions de style/convention) : ici on attaque le comportement, les frontières de confiance et les abus. Read-only, rapporte des findings priorisés.
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob, Bash, mcp__supabase-passio-readonly__execute_sql, mcp__supabase-passio-readonly__list_tables, mcp__supabase-passio-readonly__list_migrations, mcp__supabase-passio-readonly__get_advisors
 model: sonnet
 ---
 
@@ -58,3 +58,11 @@ Liste priorisée, la plus grave d'abord :
   Correctif suggéré : <piste>
 ```
 Puis : **Surfaces testées restées saines** (liste), et **Non vérifiable ici** (ce qui exige un test runtime multi-comptes). Ne jamais conclure « sûr » globalement — seulement par surface.
+
+# Si le canal de lecture est indisponible
+
+Les outils `mcp__supabase-passio-readonly__*` viennent d'un **connecteur claude.ai**, pas d'un serveur déclaré dans le dépôt (ADR-012). Ils peuvent donc manquer : connecteur non autorisé sur le compte, ou session sans accès.
+
+Dans ce cas : **ne pas improviser, et surtout ne pas répondre depuis `migrations/*.sql`** — le repo n'est pas la source de vérité, c'est la prémisse même de ce subagent. Se rabattre sur `migrations/SCHEMA_PROD_REFERENCE.sql`, photographie de la structure réelle de la prod, en **disant explicitement** dans le rapport que la vérification s'est faite hors ligne et ce qu'elle ne peut donc pas établir (données réelles, policies effectives, migrations réellement appliquées).
+
+`supabase db query --linked` n'est pas un repli : la CLI n'est installée nulle part, et ses échecs sont silencieux — c'est le post-mortem d'ADR-012.

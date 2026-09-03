@@ -37,9 +37,10 @@ Messagerie texte + vocal, notifications + réactions cross-compte, événement I
 - Un UPDATE qui touche **0 ligne en silence** (RLS) est LE bug que seuls ces tests attrapent.
 
 ## Après coup
-- Les comptes jetables restent dans `auth.users`. Purge périodique :
+- Les comptes jetables restent dans `auth.users`. Purge périodique — c'est une **écriture de données**, donc le canal ② d'ADR-012 (PostgREST via `configAdmin()`), jamais le connecteur de lecture, qui la refuserait :
   ```
-  supabase db query --linked "DELETE FROM auth.users WHERE email LIKE '%@passio-e2e.test'"
+  npm run purge:e2e:rest
   ```
+  Il porte l'équivalent de `DELETE FROM auth.users WHERE email LIKE '%@passio-e2e.test'` — écrit ici en prose, et non dans le bloc : une ligne de SQL nu sous une commande copiable se copie avec elle.
   (supprimer d'abord conv_members / conv_messages / profiles qui ont une FK).
 - Rapporter le nombre de tests verts / rouges et, si rouge, la cause racine (pas juste « ça a planté »).

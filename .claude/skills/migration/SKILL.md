@@ -33,7 +33,7 @@ description: "Crée et applique une migration SQL Supabase en prod : nouvelle ta
 
 4. **Vérifier** que c'est bien passé — re-query `information_schema` / `pg_policies` / `pg_publication_tables` par le canal ① (`execute_sql`).
 
-5. **Simuler les rôles** si c'est une policy de lecture sensible (étranger / abonné / auteur / anon) via `SET LOCAL role` + `request.jwt.claims`, comme documenté dans CLAUDE.md pour les migrations de confidentialité.
+5. **Simuler les rôles** si c'est une policy de lecture sensible (étranger / abonné / auteur / anon) via `SET LOCAL role` + `request.jwt.claims`, comme documenté dans CLAUDE.md pour les migrations de confidentialité. ⚠️ Par le canal ①, le `SET LOCAL` et le `SELECT` doivent partir dans le **même** appel `execute_sql` : chaque appel étant sa propre transaction, séparés, le rôle retombe au défaut **sans erreur** et la simulation rend un faux vert.
 
 6. **Documenter** : ajouter dans CLAUDE.md « migration `migration_<nom>.sql` (**appliquée en prod** le <date>) » avec la description de ce qu'elle fait et les pièges.
 

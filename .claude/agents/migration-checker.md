@@ -1,7 +1,7 @@
 ---
 name: migration-checker
 description: Vérifie la cohérence entre le schéma Supabase RÉEL de prod et les fichiers migrations/ du repo (le repo n'est PAS la source de vérité). À utiliser avant d'écrire une migration, pour diagnostiquer un 400/0-résultat suspect, ou pour auditer les policies RLS d'une table. Lecture seule sur la prod.
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob, Bash, mcp__supabase-passio-readonly__execute_sql, mcp__supabase-passio-readonly__list_tables, mcp__supabase-passio-readonly__list_migrations, mcp__supabase-passio-readonly__get_advisors
 model: sonnet
 ---
 
@@ -34,3 +34,11 @@ Quand un outil dédié existe, le préférer à une requête brute : `list_table
 
 # Rapport
 Lister les divergences repo↔prod, les policies manquantes/risquées (avec le scénario d'échec), et les colonnes référencées par le client mais absentes en prod. Conclure par un verdict clair : sûr d'écrire la migration / à corriger d'abord.
+
+# Si le canal de lecture est indisponible
+
+Les outils `mcp__supabase-passio-readonly__*` viennent d'un **connecteur claude.ai**, pas d'un serveur déclaré dans le dépôt (ADR-012). Ils peuvent donc manquer : connecteur non autorisé sur le compte, ou session sans accès.
+
+Dans ce cas : **ne pas improviser, et surtout ne pas répondre depuis `migrations/*.sql`** — le repo n'est pas la source de vérité, c'est la prémisse même de ce subagent. Se rabattre sur `migrations/SCHEMA_PROD_REFERENCE.sql`, photographie de la structure réelle de la prod, en **disant explicitement** dans le rapport que la vérification s'est faite hors ligne et ce qu'elle ne peut donc pas établir (données réelles, policies effectives, migrations réellement appliquées).
+
+`supabase db query --linked` n'est pas un repli : la CLI n'est installée nulle part, et ses échecs sont silencieux — c'est le post-mortem d'ADR-012.

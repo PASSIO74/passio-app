@@ -2,8 +2,9 @@
 
 ## RLS — 34 tables, toutes activées
 
-```bash
-supabase db query --linked "select c.relname, count(p.polname) n from pg_class c left join pg_policy p on p.polrelid=c.oid join pg_namespace ns on ns.oid=c.relnamespace where ns.nspname='public' and c.relkind='r' group by 1 having not bool_or(c.relrowsecurity) or count(p.polname)=0;"
+```
+execute_sql  (connecteur supabase-passio-readonly)
+select c.relname, count(p.polname) n from pg_class c left join pg_policy p on p.polrelid=c.oid join pg_namespace ns on ns.oid=c.relnamespace where ns.nspname='public' and c.relkind='r' group by 1 having not bool_or(c.relrowsecurity) or count(p.polname)=0;
 ```
 
 Doit renvoyer **0 ligne**. Toute table sans RLS ou sans policy est un incident critique.

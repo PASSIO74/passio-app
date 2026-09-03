@@ -19,7 +19,13 @@
 6. **Migration** = additive par défaut, jamais destructive sans stratégie + rollback (playbook `database-migration`).
 
 ## Accès prod (opérateur)
-CLI liée : `supabase db query --linked "SQL"` (lecture/monitoring `client_errors`, `reports` ; purge comptes de test). Migrations réelles : voir skill `migration`.
+Trois canaux disjoints, fixés par [ADR-012](../adr/ADR-012-canal-acces-base-de-donnees.md) — la CLI liée (`supabase db query --linked`) est **retirée** : elle n'est installée nulle part, et ses échecs étaient silencieux.
+
+- **① Lire** : outil `execute_sql` du connecteur `supabase-passio-readonly` (monitoring `client_errors`, `reports`, télémétrie…). Le canal est en **lecture seule** (`transaction_read_only = on`) : une écriture y échoue, elle ne passe pas « au cas où ». Outils dédiés à préférer quand ils existent : `list_tables`, `list_migrations`, `get_advisors`, `query_logs`.
+- **② Écrire des données** (purge des comptes de test, mesures, sauvegardes) : PostgREST via `configAdmin()` (`tests/e2e/compte-e2e.js`) — `npm run purge:e2e:rest`. En CI, GitHub Actions, seul à détenir les secrets.
+- **③ Écrire de la structure** (DDL) : `psql` depuis un poste, ou le SQL Editor du tableau de bord. Migrations réelles : voir skill `migration`.
+
+Hors ligne, sans aucun canal : `../../migrations/SCHEMA_PROD_REFERENCE.sql` est la photographie de la structure **réelle** de la prod, faite pour répondre à « quelles colonnes existent vraiment ? ». Ne jamais répondre depuis les `migrations/*.sql` seuls — le repo n'est pas la source de vérité.
 
 ## Détail & pièges
 `../../docs/PIEGES_CONNUS.md` (Supabase/realtime), `../../migrations/`, `../../docs/SCALE_RUNBOOK.md` (index & scale).
