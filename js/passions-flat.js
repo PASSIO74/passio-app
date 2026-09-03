@@ -523,6 +523,14 @@
   function parId(id) { return (DONNEES && DONNEES.parId[id]) || null; }
   function existe(id) { return !!parId(id); }
 
+  // Combien de passions le référentiel connaît-il RÉELLEMENT.
+  // ⚠️ C'est un chemin de RENDU : la page « Rechercher » annonce ce nombre, et
+  // elle ne peut pas passer par `_etat()`, réservé aux tests et au diagnostic.
+  // Rend 0 tant que le référentiel n'est pas chargé — l'appelant doit alors se
+  // TAIRE, jamais inventer un ordre de grandeur : c'est faute de l'avoir dit que
+  // « on est censé avoir 5 000 passions » a pu tenir sans démenti.
+  function taille() { return DONNEES ? DONNEES.liste.length : 0; }
+
   function recentes() {
     try {
       var v = JSON.parse(localStorage.getItem(CLE_RECENTES) || "[]");
@@ -882,6 +890,7 @@
     suggestions: suggestions,
     parId: parId,
     existe: existe,
+    taille: taille,
     liees: liees,
     recentes: recentes,
     noterUtilisation: noterUtilisation,
