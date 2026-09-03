@@ -25,10 +25,10 @@ const { bootOnboarded } = require("./app-helper");
 
 // Rangée de pastilles attendue : libellé visible → valeur publiée.
 const PASTILLES = [
-  { label: "💡 Idées", value: "creation" },
-  { label: "📚 Apprendre", value: "learn" },
-  { label: "🤝 Rencontrer", value: "irl" },
-  { label: "✨ Tous", value: "all" },
+  { label: "Idées", value: "creation" },
+  { label: "Apprendre", value: "learn" },
+  { label: "Rencontrer", value: "irl" },
+  { label: "Tous", value: "all" },
 ];
 
 async function ouvrirStudio(page) {
@@ -100,7 +100,7 @@ test.describe("Studio — moods alignés sur les intentions du Fil", () => {
     });
     expect(publie.mood).toBe("irl");
     expect(publie.intent).toBe("meet");
-    expect(publie.tag).toBe("🤝 Rencontrer");
+    expect(publie.tag).toBe("Rencontrer");
   });
 
   test("« Tous » publie le neutre, qui ne porte aucune étiquette", async ({ page }) => {
@@ -147,13 +147,13 @@ test.describe("Studio — moods alignés sur les intentions du Fil", () => {
       })));
 
     expect(dits).toEqual([
-      { m: "creation", tag: "💡 Idées", court: "Idées" },
-      { m: "learn", tag: "📚 Apprendre", court: "Apprendre" },
+      { m: "creation", tag: "Idées", court: "Idées" },
+      { m: "learn", tag: "Apprendre", court: "Apprendre" },
       // Le fil ignorait « actu » (étiquette vide) et les bobines ignoraient
       // « irl » (« Tout ») : les deux trous sont fermés par la même table.
-      { m: "irl", tag: "🤝 Rencontrer", court: "Rencontrer" },
-      { m: "chill", tag: "😌 Chill", court: "Chill" },
-      { m: "actu", tag: "🌍 Actu", court: "Actu" },
+      { m: "irl", tag: "Rencontrer", court: "Rencontrer" },
+      { m: "chill", tag: "Chill", court: "Chill" },
+      { m: "actu", tag: "Actu", court: "Actu" },
       { m: "all", tag: "", court: "Tout" },
       { m: "valeur_inconnue", tag: "", court: "Tout" },
     ]);

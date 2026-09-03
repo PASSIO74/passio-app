@@ -2288,7 +2288,7 @@ async function doLogout(intention) {
   // une expiration de session — hériterait de cet écran sans l'avoir demandé :
   // `doLogout()` sans argument reste donc l'ancien comportement, à l'octet près.
   if (intention === "signin") poserIntentionAuth("signin");
-  toast(intention === "signin" ? "🔄 Déconnecté — connecte-toi avec ton autre compte" : "👋 Déconnecté — à bientôt !");
+  toast(intention === "signin" ? "Déconnecté — connecte-toi avec ton autre compte" : "Déconnecté — à bientôt !");
   setTimeout(() => location.reload(), 1200);
 }
 
@@ -2349,7 +2349,7 @@ async function doChangePassword() {
       return;
     }
     closeModal();
-    toast("✅ Mot de passe mis à jour");
+    toast("Mot de passe mis à jour", "success");
   } catch (e) {
     err("Erreur réseau. Réessaie.");
     if (btn) { btn.disabled = false; btn.textContent = "Valider"; }
@@ -2440,7 +2440,7 @@ async function doDeleteAccount() {
   // Conversations durables en IndexedDB : non couvertes par le nettoyage localStorage.
   try { if (typeof idbConvClear === "function") await Promise.resolve(idbConvClear()).catch(function () {}); } catch (e) {}
   try { sessionStorage.clear(); } catch (e) {}
-  toast("✅ Compte supprimé. Au revoir 💜");
+  toast("Compte supprimé. Au revoir");
   setTimeout(function () { location.reload(); }, 1500);
 }
 
@@ -2660,7 +2660,7 @@ function _showPasswordRecoveryUI() {
     try {
       const { error } = await supa.auth.updateUser({ password: pwd });
       if (error) { msg.style.color = "#e11d48"; msg.textContent = error.message; btn.disabled = false; btn.textContent = "Valider"; return; }
-      msg.style.color = "#16a34a"; msg.textContent = "✅ Mot de passe mis à jour.";
+      msg.style.color = "#16a34a"; msg.textContent = "Mot de passe mis à jour.";
       if (typeof state !== "undefined") { state.onboarded = true; try { saveState(); } catch (e) {} }
       setTimeout(function () { window.location.reload(); }, 900);
     } catch (e) {
@@ -3020,7 +3020,7 @@ function openCreateCustomPassion() {
   if (passionsPersoSuspendues()) {
     openModal('\
       <div class="modal-handle"></div>\
-      <div class="modal-title">🌟 Créer ta passion</div>\
+      <div class="modal-title">Créer ta passion</div>\
       <div style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:16px;">\
         La création de passions personnalisées est <b>momentanément indisponible</b>.\
         Une passion à toi ne peut pas encore recevoir de contenu : tu te retrouverais\
@@ -3051,10 +3051,10 @@ function openCreateCustomPassion() {
 
   // Voir les demandes en attente
   var pending = JSON.parse(localStorage.getItem("passio_passion_requests") || "[]");
-  var pendingHTML = pending.length ? '<div style="margin-bottom:14px;"><div style="font-weight:700;font-size:12px;color:var(--text);margin-bottom:6px;">📋 Mes demandes en cours</div>' +
+  var pendingHTML = pending.length ? '<div style="margin-bottom:14px;"><div style="font-weight:700;font-size:12px;color:var(--text);margin-bottom:6px;">Mes demandes en cours</div>' +
     pending.map(function(r) {
       var statusColor = r.status === "approved" ? "#10b981" : r.status === "rejected" ? "#ef4444" : "#f59e0b";
-      var statusLabel = r.status === "approved" ? "✅ Approuvée" : r.status === "rejected" ? "❌ Refusée" : "⏳ En attente";
+      var statusLabel = r.status === "approved" ? "Approuvée" : r.status === "rejected" ? "Refusée" : "En attente";
       return '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;margin-bottom:4px;">' +
         '<span style="font-size:18px;">' + r.emoji + '</span>' +
         '<div style="flex:1;"><div style="font-weight:700;font-size:12px;">' + escapeHtml(r.name) + '</div><div style="font-size:10px;color:var(--muted);">' + escapeHtml(r.reason || "") + '</div></div>' +
@@ -3064,7 +3064,7 @@ function openCreateCustomPassion() {
 
   openModal(`
     <div class="modal-handle"></div>
-    <div class="modal-title">🌟 Créer ta passion</div>
+    <div class="modal-title">Créer ta passion</div>
     <div style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.5;">Ta passion est ajoutée tout de suite, rien que pour toi : elle sert à choisir ce que tu vois dans ton fil. Elle n'entre pas dans le catalogue commun, et on ne peut pas encore publier dedans.</div>
 
     ${pendingHTML}
@@ -3082,7 +3082,7 @@ function openCreateCustomPassion() {
     <label class="field">
       <span>Es-tu créateur/influenceur dans ce domaine ?</span>
       <div style="display:flex;gap:8px;margin-top:4px;">
-        <button class="pill" id="creatorYes" onclick="document.getElementById('creatorYes').classList.add('active');document.getElementById('creatorNo').classList.remove('active');">✅ Oui</button>
+        <button class="pill" id="creatorYes" onclick="document.getElementById('creatorYes').classList.add('active');document.getElementById('creatorNo').classList.remove('active');">Oui</button>
         <button class="pill" id="creatorNo" onclick="document.getElementById('creatorNo').classList.add('active');document.getElementById('creatorYes').classList.remove('active');">Non</button>
       </div>
     </label>
@@ -3113,7 +3113,7 @@ function openCreateCustomPassion() {
 
     <div style="background:rgba(139,92,246,0.06);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:14px;">
       <div style="font-size:11px;color:var(--text);line-height:1.5;">
-        <b>📌 Critères d'approbation :</b><br>
+        <b>Critères d'approbation :</b><br>
         · La passion n'existe pas déjà dans PASSIO<br>
         · Elle concerne un centre d'intérêt réel et partagé<br>
         · Elle respecte les règles de la communauté<br>
@@ -3121,7 +3121,7 @@ function openCreateCustomPassion() {
       </div>
     </div>
 
-    <button class="btn primary block" onclick="submitPassionRequest()">📩 Envoyer ma demande</button>
+    <button class="btn primary block" onclick="submitPassionRequest()">Envoyer ma demande</button>
   `);
   setTimeout(() => {
     const input = document.getElementById("customPassionName");
@@ -3195,7 +3195,7 @@ function submitPassionRequest() {
   // 48h ». Aucune revue n'a jamais existé : le code auto-approuvait après cinq
   // secondes. Une promesse de modération humaine qu'aucun humain ne tient n'est
   // pas un détail de formulation — on dit ce que le produit fait.
-  toast("✨ Passion ajoutée à tes passions", "success");
+  toast("Passion ajoutée à tes passions", "success");
 
   // Ajout IMMÉDIAT. C'était un `setTimeout(…, 5000)` commenté « Simuler une
   // approbation après 5 secondes pour la démo » : la passion n'existait donc pas
@@ -4032,18 +4032,18 @@ function legacyMoodToFeedIntent(mood) {
 // Le Studio, lui, a bien une pastille « ✨ Tous » : y choisir le neutre est un
 // geste, ne rien afficher ensuite en est la conséquence voulue.
 var PASSIO_MOOD_LABELS = {
-  creation: { emoji: "💡", label: "Idées" },
-  learn:    { emoji: "📚", label: "Apprendre" },
-  irl:      { emoji: "🤝", label: "Rencontrer" },
-  chill:    { emoji: "😌", label: "Chill" },
-  actu:     { emoji: "🌍", label: "Actu" },
+  creation: { label: "Idées" },
+  learn:    { label: "Apprendre" },
+  irl:      { label: "Rencontrer" },
+  chill:    { label: "Chill" },
+  actu:     { label: "Actu" },
 };
 
-// Étiquette de la carte (fil, post ouvert) : emoji + libellé, ou "" pour le
+// Étiquette de la carte (fil, post ouvert) : le libellé seul, ou "" pour le
 // neutre et pour toute valeur inconnue venue de la base.
 function moodTagLabel(mood) {
   var m = PASSIO_MOOD_LABELS[mood];
-  return m ? m.emoji + " " + m.label : "";
+  return m ? m.label : "";
 }
 
 // Libellé nu (bobines), où le neutre s'écrit « Tout » depuis toujours.
@@ -4558,9 +4558,9 @@ function renderFeedExplorationFallback(list) {
     +   '</div>'
     + '</div>'
     + '<div class="feed-repli-actions" style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;padding:6px 16px 16px;">'
-    +   '<button class="btn ghost" onclick="goTo(\'profiles\')" style="flex:1 1 auto;">➕ Ajouter une passion</button>'
-    +   '<button class="btn ghost" onclick="goTo(\'explore\')" style="flex:1 1 auto;">👥 Découvrir des personnes</button>'
-    +   '<button class="btn primary" onclick="goTo(\'studio\')" style="flex:1 1 100%;">✍️ Publier le premier contenu</button>'
+    +   '<button class="btn ghost" onclick="goTo(\'profiles\')" style="flex:1 1 auto;">Ajouter une passion</button>'
+    +   '<button class="btn ghost" onclick="goTo(\'explore\')" style="flex:1 1 auto;">Découvrir des personnes</button>'
+    +   '<button class="btn primary" onclick="goTo(\'studio\')" style="flex:1 1 100%;">Publier le premier contenu</button>'
     + '</div>';
 
   if (aExplorer.length) {
@@ -5640,7 +5640,7 @@ function commentSortBarHtml(current, onpick) {
     var active = current === mode;
     return '<button onclick="' + onpick + '(\'' + escapeJsArg(mode) + '\')" style="background:' + (active ? "var(--accent)" : "var(--bg-deep)") + ';color:' + (active ? "#fff" : "var(--muted)") + ';border:none;border-radius:999px;font-size:11px;font-weight:700;padding:4px 10px;cursor:pointer;">' + label + '</button>';
   }
-  return '<div style="display:flex;gap:6px;margin-bottom:8px;">' + pill("recent", "🕐 Récents") + pill("liked", "❤️ Aimés") + '</div>';
+  return '<div style="display:flex;gap:6px;margin-bottom:8px;">' + pill("recent", "Récents") + pill("liked", "Aimés") + '</div>';
 }
 
 // Rend UNE carte de post sans jamais faire echouer tout le fil : un post
@@ -5707,7 +5707,7 @@ function renderPostHTML(p) {
           <div class="event-date-month">${sd ? escapeHtml(sd.month) : ""}</div>
         </div>
         <div style="flex:1;min-width:0;">
-          <span class="cdv-feed-tag" style="display:inline-block;margin-bottom:4px;">📍 ÉVÉNEMENT IRL</span>
+          <span class="cdv-feed-tag" style="display:inline-block;margin-bottom:4px;">ÉVÉNEMENT IRL</span>
           <div style="font-weight:800;font-size:15px;line-height:1.25;">${escapeHtml(se.title || "Événement")}</div>
           <div style="font-size:12px;color:var(--muted);margin-top:3px;">${sp.emoji} ${escapeHtml(sp.label)}${se.city ? " · 📍 " + escapeHtml(se.city) : ""}</div>
         </div>
@@ -5827,9 +5827,9 @@ function renderPostHTML(p) {
         <div class="post-author-meta">
           ${passion.emoji} ${passion.label} · ${fmtTime(p.createdAt)}
           ${p._source === "me" && p.syncStatus ? `
-            ${p.syncStatus === "syncing" ? '<span style="margin-left:8px;font-size:10px;color:var(--muted);">⏳ Sync...</span>' : ""}
-            ${p.syncStatus === "synced" ? '<span style="margin-left:8px;font-size:10px;color:#22c55e;">📡 En ligne</span>' : ""}
-            ${p.syncStatus === "offline" ? '<span style="margin-left:8px;font-size:10px;color:#f59e0b;">📴 Local</span>' : ""}
+            ${p.syncStatus === "syncing" ? '<span style="margin-left:8px;font-size:10px;color:var(--muted);">Sync…</span>' : ""}
+            ${p.syncStatus === "synced" ? '<span style="margin-left:8px;font-size:10px;color:#22c55e;">En ligne</span>' : ""}
+            ${p.syncStatus === "offline" ? '<span style="margin-left:8px;font-size:10px;color:#f59e0b;">Local</span>' : ""}
           ` : ""}
         </div>
       </div>

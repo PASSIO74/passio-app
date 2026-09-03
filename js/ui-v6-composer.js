@@ -173,7 +173,7 @@
     bPhoto.type = "button";
     bPhoto.className = "v6-media-btn";
     bPhoto.setAttribute("data-v6-media", "photo");
-    bPhoto.textContent = "📷  Ajouter une photo";
+    bPhoto.textContent = "Ajouter une photo";
     bPhoto.addEventListener("click", function () {
       var i = el("photoInput");
       if (i) i.click(); else fail("media", "photoInput absent");
@@ -182,7 +182,7 @@
     bVideo.type = "button";
     bVideo.className = "v6-media-btn";
     bVideo.setAttribute("data-v6-media", "video");
-    bVideo.textContent = "🎬  Ajouter une vidéo";
+    bVideo.textContent = "Ajouter une vidéo";
     bVideo.addEventListener("click", function () {
       var i = el("videoInput");
       if (i) i.click(); else fail("media", "videoInput absent");

@@ -9,7 +9,7 @@ const BORDER_RADIUS = [
 // avait personnalisé sa barre garde son réglage en base ; l'entrée n'ayant plus
 // ni écran ni libellé, elle est simplement ignorée au rendu.
 const DEFAULT_NAV_ORDER = ["feed","bobines","explore","studio","messages","irl"];
-const NAV_LABELS = { feed:"🏠 Fil", bobines:"🎬 Bobines", explore:"🔍 Explorer", studio:"➕ Créer", messages:"💬 Messages", irl:"🤝 IRL" };
+const NAV_LABELS = { feed:"Fil", bobines:"Bobines", explore:"Explorer", studio:"Créer", messages:"Messages", irl:"IRL" };
 
 function getCurrentConfig() {
   try { return JSON.parse(localStorage.getItem("passio_config") || "{}"); } catch(e) { return {}; }
@@ -82,6 +82,15 @@ function applyConfig() {
         root.style.setProperty("--muted", "#94a3b8");
         root.style.setProperty("--muted-2", "#64748b");
         root.style.setProperty("--bg-card", "rgba(30,27,75,0.92)");
+        // Les pictogrammes du menu « pièce jointe » sont des TRAITS depuis le
+        // retrait des emojis : sur ce fond de carte, leurs teintes 600 tombaient
+        // sous 3:1. On les remonte d'un cran — même rôle, même code couleur.
+        root.style.setProperty("--att-photo", "#a78bfa");
+        root.style.setProperty("--att-doc", "#38bdf8");
+        root.style.setProperty("--att-audio", "#34d399");
+        root.style.setProperty("--att-lieu", "#fbbf24");
+        root.style.setProperty("--att-fichiers", "#f87171");
+        root.style.setProperty("--att-irl", "#a78bfa");
         document.body.style.background = c.bgSoft;
       } else {
         root.style.removeProperty("--text");
@@ -89,6 +98,9 @@ function applyConfig() {
         root.style.removeProperty("--muted");
         root.style.removeProperty("--muted-2");
         root.style.removeProperty("--bg-card");
+        ["photo", "doc", "audio", "lieu", "fichiers", "irl"].forEach(function (k) {
+          root.style.removeProperty("--att-" + k);
+        });
         document.body.style.background = "";
       }
       // Logo dynamique
@@ -1019,7 +1031,7 @@ function _callRenderIncomingUI(inv) {
     '<div class="call-card">' +
       '<div class="call-avatar" style="background:#7c3aed;">' + (inv.emoji || "🙂") + '</div>' +
       '<div class="call-name">' + escapeHtml(inv.name || "Contact") + '</div>' +
-      '<div class="call-status">' + (isVideo ? "📹 Appel vidéo entrant…" : "📞 Appel entrant…") + '</div>' +
+      '<div class="call-status">' + (isVideo ? "Appel vidéo entrant…" : "Appel entrant…") + '</div>' +
       '<div class="call-controls">' +
         '<button class="call-control-btn hangup" onclick="declineIncomingCall()" title="Refuser">📵</button>' +
         '<button class="call-control-btn accept" onclick="acceptIncomingCall()" title="Répondre">✅</button>' +
@@ -1118,7 +1130,7 @@ async function requestCallNotifications() {
     if (window._callNotifAsked) return;
     window._callNotifAsked = true;
     const perm = await Notification.requestPermission();
-    if (perm === "granted") { toast("🔔 Tu recevras les appels même app fermée"); await ensureCallPushSubscription(); }
+    if (perm === "granted") { toast("Tu recevras les appels même app fermée"); await ensureCallPushSubscription(); }
   } catch (e) {}
 }
 window.requestCallNotifications = requestCallNotifications;
@@ -1305,7 +1317,7 @@ async function confirmCreateGroup() {
 
   closeModal();
   renderMessages();
-  toast(`✨ Groupe « ${name} » créé`);
+  toast(`Groupe « ${name} » créé`);
 }
 
 function showGroupMembers(convId) {
@@ -1385,7 +1397,7 @@ function _renderGroupMembersModal(convId) {
     '<div class="modal-title" style="margin-top:0;">👥 ' + escapeHtml(c.groupName || "Groupe") + '</div>' +
     '<div style="font-size:12px;color:var(--muted);margin-bottom:10px;">' + (memberIds.length + 1) + ' membre' + (memberIds.length + 1 > 1 ? 's' : '') + '</div>' +
     '<div onclick="editGroupDescription(\'' + escapeJsArg(convId) + '\')" style="cursor:pointer;font-size:13px;color:' + (c.groupDesc ? 'var(--text)' : 'var(--muted)') + ';background:var(--bg-deep);border-radius:10px;padding:9px 12px;margin-bottom:10px;">' +
-      (c.groupDesc ? escapeHtml(c.groupDesc) : '📝 Ajouter une description…') + '</div>' +
+      (c.groupDesc ? escapeHtml(c.groupDesc) : 'Ajouter une description…') + '</div>' +
     '<div style="margin-bottom:12px;">' + passionsHTML + '</div>' +
     // Onglets
     '<div style="display:flex;gap:0;margin-bottom:14px;border-bottom:2px solid var(--border);">' +
@@ -1434,7 +1446,7 @@ function pickGroupPhoto(convId) {
       if (!c) return;
       c.groupPhoto = ev.target.result;
       saveConversations();
-      toast("✅ Photo du groupe mise à jour");
+      toast("Photo du groupe mise à jour", "success");
       // Mettre à jour l'avatar dans le header sans recharger la conversation
       var avatarStyle = "background:url(" + ev.target.result + ") center/cover;width:40px;height:40px;font-size:0;flex-shrink:0;";
       var avatarEl = document.querySelector("#convFpHead .msg-avatar");
@@ -1571,7 +1583,7 @@ function leaveGroup(convId) {
   closeModal();
   try { if (typeof closeConversation === "function") closeConversation(); } catch(e) {}
   try { renderMessages(); } catch(e) {}
-  toast("🚪 Tu as quitté le groupe");
+  toast("Tu as quitté le groupe");
 }
 
 // Édite la description du groupe (locale + colonne conversations.description).
@@ -1586,7 +1598,7 @@ function editGroupDescription(convId) {
     try { supa.from("conversations").update({ description: c.groupDesc }).eq("id", convId).then(function(){}, function(){}); } catch(e) {}
   }
   _renderGroupMembersModal(convId);
-  toast("📝 Description mise à jour");
+  toast("Description mise à jour", "success");
 }
 
 function sendMessage(convId) {
@@ -2177,7 +2189,7 @@ function openReels(pinnedId) {
         <div class="reels-empty-emoji">🎬</div>
         <div class="reels-empty-title">Pas encore de bobines</div>
         <div class="reels-empty-text">Crée ta première bobine : ➕ → Studio → onglet <b>Bobine</b>.</div>
-        <button class="btn primary" style="margin-top:14px;" onclick="startBobineCreation()">🎬 Créer une bobine</button>
+        <button class="btn primary" style="margin-top:14px;" onclick="startBobineCreation()">Créer une bobine</button>
       </div>`;
     document.body.style.overflow = "hidden";
     reelsState.open = true;
@@ -2610,7 +2622,7 @@ function submitReelComment() {
           text: text,
         });
       }
-      toast("✅ Réponse postée!");
+      toast("Réponse postée", "success");
     }
   } else {
     // Sinon, créer un nouveau commentaire
@@ -2631,7 +2643,7 @@ function submitReelComment() {
       nodeId: newComment.id,
       text: text,
     });
-    toast("✅ Commentaire posté!");
+    toast("Commentaire posté", "success");
   }
 
   saveState();
@@ -2833,7 +2845,7 @@ function addGifReactionToReelComment(postId, commentIdx, gifUrl) {
   saveState();
   closeModal();
   loadReelComments(postId);
-  toast("🎬 GIF ajouté!");
+  toast("GIF ajouté");
 }
 
 function reactToReel(emoji) {
@@ -2879,31 +2891,31 @@ function openReelShareModal(postId) {
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
       <button class="btn secondary" onclick="shareReelVia('whatsapp', '${escapeJsArg(postId)}', '${escapeJsArg(encodedUrl)}', '${escapeJsArg(encodedText)}')" style="font-size:13px;">
-        💬 WhatsApp
+        WhatsApp
       </button>
       <button class="btn secondary" onclick="shareReelVia('telegram', '${escapeJsArg(postId)}', '${escapeJsArg(encodedUrl)}', '${escapeJsArg(encodedText)}')" style="font-size:13px;">
-        ✈️ Telegram
+        Telegram
       </button>
       <button class="btn secondary" onclick="shareReelVia('twitter', '${escapeJsArg(postId)}', '${escapeJsArg(encodedUrl)}', '${escapeJsArg(encodedText)}')" style="font-size:13px;">
         𝕏 Twitter
       </button>
       <button class="btn secondary" onclick="shareReelVia('facebook', '${escapeJsArg(postId)}', '${escapeJsArg(encodedUrl)}', '${escapeJsArg(encodedText)}')" style="font-size:13px;">
-        📘 Facebook
+        Facebook
       </button>
       <button class="btn secondary" onclick="shareReelEmail('${escapeJsArg(postId)}', '${escapeJsArg(encodedText)}', '${escapeJsArg(encodedUrl)}')" style="font-size:13px;">
-        📧 Email
+        Email
       </button>
       <button class="btn secondary" onclick="shareReelSMS('${escapeJsArg(postId)}', '${escapeJsArg(encodedUrl)}')" style="font-size:13px;">
-        📱 SMS
+        SMS
       </button>
     </div>
 
     <button class="btn primary block" onclick="shareReelInFeed('${escapeJsArg(postId)}')" style="margin-bottom:8px;">
-      ➕ Partager dans le Feed
+      Partager dans le Feed
     </button>
 
     <button class="btn secondary block" onclick="copyReelLink('${escapeJsArg(postId)}', '${escapeJsArg(encodedUrl)}')">
-      📋 Copier le lien
+      Copier le lien
     </button>
   `;
 
@@ -2989,7 +3001,7 @@ async function shareReelInFeed(postId) {
     setTimeout(() => renderFeed(), 100);
   }, 100);
 
-  toast("✅ Bobine partagée dans ton feed!");
+  toast("Bobine partagée dans ton feed", "success");
 
   // 🔄 SYNC with Supabase (shared posts must be persisted!)
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
@@ -3120,12 +3132,12 @@ function _vlivePromptTitle() {
     ov.className = "vlive-pretitle";
     ov.innerHTML =
       '<div class="vlive-pretitle-card">' +
-        '<div class="vlive-pretitle-h">🔴 Passer en direct</div>' +
+        '<div class="vlive-pretitle-h">Passer en direct</div>' +
         '<div class="vlive-pretitle-sub">Donne un titre à ton live (optionnel)</div>' +
         '<input id="vlivePretitleInput" maxlength="80" autocomplete="off" placeholder="Ex : Session guitare du soir 🎸" />' +
         '<div class="vlive-pretitle-row">' +
           '<button class="btn ghost" id="vlivePretitleCancel">Annuler</button>' +
-          '<button class="btn primary" id="vlivePretitleGo">🔴 Lancer</button>' +
+          '<button class="btn primary" id="vlivePretitleGo">Lancer</button>' +
         '</div>' +
       '</div>';
     document.body.appendChild(ov);
@@ -3193,7 +3205,7 @@ async function startVideoLive() {
 
   _vliveStartTimer(Date.now());
   _vliveNotifyFollowers(id, title);
-  toast("🔴 Tu es en direct !");
+  toast("Tu es en direct !");
 }
 window.startVideoLive = startVideoLive;
 

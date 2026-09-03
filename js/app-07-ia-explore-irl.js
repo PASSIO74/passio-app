@@ -96,9 +96,9 @@ function sendAIQuery(forceQuery) {
     var cur = document.querySelector("#aiResultContent .ai-result-query");
     if (cur && cur.textContent !== '"' + query + '"') return;
     if (remote) {
-      _aiRenderResult(query, _aiTextToHtml(remote), "✨ Assistant PASSIO");
+      _aiRenderResult(query, _aiTextToHtml(remote), "Assistant PASSIO");
     } else {
-      _aiRenderResult(query, aiGenerateResponse(query), "💡 Suggestions PASSIO");
+      _aiRenderResult(query, aiGenerateResponse(query), "Suggestions PASSIO");
     }
   });
 }
@@ -182,7 +182,7 @@ function filterExplore() {
 
     // Passions
     if (fp.length) {
-      html += "<div style='padding:8px 14px 4px;font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;'>🔥 Passions</div>";
+      html += "<div style='padding:8px 14px 4px;font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;'>Passions</div>";
       fp.forEach(function(p) {
         html += "<div onclick=\"openPassionExplorer('" + escapeJsArg(p.id) + "');document.getElementById('exploreSearchResults').style.display='none';\" style='display:flex;align-items:center;gap:12px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);'>" +
           "<div style='width:38px;height:38px;border-radius:12px;background:#ede9fe;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;'>" + escapeHtml(p.emoji) + "</div>" +
@@ -194,7 +194,7 @@ function filterExplore() {
 
     // Utilisateurs
     if (fu.length) {
-      html += "<div style='padding:8px 14px 4px;font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;'>👤 Utilisateurs</div>";
+      html += "<div style='padding:8px 14px 4px;font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;'>Utilisateurs</div>";
       fu.forEach(function(u) {
         // §2 : la MÊME ligne d'identité que partout ailleurs. Deux écrans de
         // recherche portaient chacun leur variante de pastilles ; ils

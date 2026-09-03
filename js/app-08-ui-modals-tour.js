@@ -505,7 +505,7 @@ function openStoryComposer() {
   ).join("");
   openModal(`
     <div class="modal-handle"></div>
-    <div class="modal-title">✨ Créer une story</div>
+    <div class="modal-title">Créer une story</div>
     <div class="modal-subtitle">Visible 24 h par ta communauté.</div>
     <div class="story-compose-preview" id="storyPreview" style="background:${_storyBg};">
       <div id="storyPreviewText">Ton texte ici…</div>
@@ -559,7 +559,7 @@ function publishStoryFromComposer() {
   if (typeof supa !== "undefined" && supa && typeof supaPublishStory === "function") supaPublishStory(story);
   closeModal();
   try { renderStories(); } catch(e) {}
-  toast("✨ Story publiée !");
+  toast("Story publiée", "success");
 }
 
 // Conservé pour compat : redirige vers l'éditeur média.
@@ -1324,7 +1324,7 @@ async function mePublish() {
     saveState();
     if (typeof supaPublishStory === "function") supaPublishStory(story);
     try { renderStories(); } catch(e) {}
-    toast("✨ Story publiée !");
+    toast("Story publiée", "success");
   } else {
     // ── Finition de bobine (lot UI-7 §8) ────────────────────────────────────
     // `meState.details` est renseigné par la feuille légère qui suit l'aperçu
@@ -1363,7 +1363,7 @@ async function mePublish() {
     _publishReelWithFeedback(post);
     try { renderFeed(); } catch(e) {}
     setTimeout(function() { try { if (typeof openReels === "function") openReels(); } catch(e) {} }, 80);
-    toast("🎬 Bobine en cours de publication…");
+    toast("Bobine en cours de publication…");
   }
 }
 
@@ -1376,7 +1376,7 @@ function _publishReelWithFeedback(post) {
     if (ok) {
       post._pendingSync = false;
       try { saveState(); } catch (e) {}
-      toast("✅ Bobine publiée !");
+      toast("Bobine publiée", "success");
       return;
     }
     // Échec de CLASSEMENT : réessayer est inutile, et le dire franchement vaut
@@ -1874,7 +1874,7 @@ function openNotifications() {
   const notifs = state.notifications || [];
   const html = `
     <div class="modal-handle"></div>
-    <div class="modal-title">🔔 Notifications</div>
+    <div class="modal-title">Notifications</div>
     <div class="modal-subtitle">Ce qui s'est passé pendant que tu vivais ta vraie vie.</div>
     <div class="notif-list">
       ${_notifListHtml(notifs)}
@@ -4777,8 +4777,8 @@ async function _handleIncomingConvMessage(r) {
       // BRUT (innerHTML) comme texte. escapeHtml : pseudo contrôlé par l'expéditeur.
       var _msgSender = (prof && prof.username) ? prof.username : (conv.userName || "Quelqu'un");
       var _msgText = conv.isGroup
-        ? "💬 Nouveau message de <b>" + escapeHtml(_msgSender) + "</b> dans <b>" + escapeHtml(conv.groupName || "le groupe") + "</b>"
-        : "✉️ <b>" + escapeHtml(_msgSender) + "</b> t'a envoyé un message";
+        ? "Nouveau message de <b>" + escapeHtml(_msgSender) + "</b> dans <b>" + escapeHtml(conv.groupName || "le groupe") + "</b>"
+        : "<b>" + escapeHtml(_msgSender) + "</b> t'a envoyé un message";
       pushNotification(_msgText, "✉️", r.from_id);
     } catch(e) {}
     try { renderMessages(); } catch(e) {}
@@ -5888,7 +5888,7 @@ function renderAiHistory() {
   box.innerHTML = "";
   var title = document.createElement("div");
   title.style.cssText = "font-size:11px;font-weight:800;color:var(--muted);margin-bottom:8px;text-transform:uppercase;";
-  title.textContent = "🕐 Recherches récentes";
+  title.textContent = "Recherches récentes";
   box.appendChild(title);
   var row = document.createElement("div");
   row.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;";
