@@ -9,8 +9,10 @@
   Le composer proposait encore les quatre moods d'origine — Création · Apprentissage ·
   Chill · Actu — alors que le Fil lit désormais Tous · Explorer · Apprendre · Idées ·
   Rencontrer : on publiait dans un vocabulaire, on lisait dans un autre. La rangée
-  `#postMoodRow` (repli « Options » du composer UI-6) porte maintenant **💡 Idées ·
-  📚 Apprendre · 🤝 Rencontrer · ✨ Tous**. Tests : `tests/e2e/studio-moods.spec.js` (8).
+  `#postMoodRow` (repli « Options » du composer UI-6) porte maintenant **Idées ·
+  Apprendre · Rencontrer · Tous**. Les emojis qui précédaient ces quatre libellés
+  ont été retirés le 2026-09-03 avec toute la décoration d'interface : la table
+  `PASSIO_MOOD_LABELS` ne porte plus que le mot, et `moodTagLabel` le rend seul. Tests : `tests/e2e/studio-moods.spec.js` (8).
   ⚠️ **Les LIBELLÉS changent, les VALEURS non** : `creation`, `learn`, `irl`, `all` sont
   écrites dans `posts.mood` et relues par `legacyMoodToFeedIntent` — renommer une valeur
   ferait perdre son classement à toute publication existante, et `publishPost` n'appelle
