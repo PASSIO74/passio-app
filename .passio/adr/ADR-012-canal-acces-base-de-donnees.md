@@ -1,7 +1,8 @@
 # ADR-012 — Un seul canal de lecture de la base, un seul canal d'écriture, et rien d'autre
 
-- **Statut** : Proposé
+- **Statut** : Accepté
 - **Date** : 2026-09-03
+- **Vérifié le** : 2026-09-03 (voir « Vérification » en fin de document)
 - **Complète** : [ADR-003](ADR-003-supabase-rls-trust-boundary.md) (les RLS restent l'unique frontière de sûreté ; cet ADR ne parle que du *chemin d'accès*, jamais des droits).
 
 ## Contexte
@@ -141,15 +142,47 @@ connecteur vert, jamais avant.
 **Un secret `SUPABASE_DB_URL` en CI (chemin C).** Reste refusé, pour la raison
 déjà écrite dans `docs/APPLIQUER_MIGRATION_PASSIONS.md`.
 
+## Vérification (2026-09-03)
+
+Le connecteur a été enregistré et le canal ① mesuré depuis une session distante,
+c'est-à-dire dans les conditions mêmes où le montage précédent échouait :
+
+- **Le formulaire accepte l'URL à paramètres.** C'était l'unique inconnue.
+  `claude.ai/customize/connectors` → *Ajouter un connecteur personnalisé* a
+  conservé `project_ref`, `read_only` et `features` à l'enregistrement.
+- **Le bridage est réel, pas déclaratif** : `SHOW transaction_read_only` rend
+  **`on`**. C'est Postgres qui refuse l'écriture, pas l'interface qui la
+  décourage. Corollaire mesuré : `apply_migration` **n'est pas exposé**, bien que
+  les instructions du serveur le mentionnent — `read_only=true` l'a retiré.
+- **Le cadrage projet tient** : 7 outils, correspondant exactement à
+  `features=database,debugging,docs`, et aucun outil de niveau compte.
+- **Le trafic échappe bien à la politique de sortie** : `mcp.supabase.com` reste
+  refusé en 403 au CONNECT depuis cette session, et le connecteur fonctionne
+  malgré tout. C'est la propriété qui fonde le choix ① et qu'un serveur de portée
+  projet n'a pas.
+- **Recoupement** : la table `passions` porte 1 908 lignes, identique à
+  l'empreinte du référentiel local (`npm run verif`, `0bd8e78e33dfd1cc`). Les 39
+  tables ont toutes leurs RLS activées.
+
+Premier usage du canal, le jour même : `get_advisors` rend **0 ERROR, 18 WARN**
+— aucune table sans RLS, mais quatre fonctions `SECURITY DEFINER`
+(`post_is_visible`, `comment_target_visible`, `can_edit_post`, `is_conv_member`)
+sont appelables par le rôle `anon` via `/rest/v1/rpc/…`. Ce sont des aides
+internes aux policies : exposées sans authentification, elles répondent oui/non
+à des questions d'appartenance et de visibilité. À traiter par le canal ③.
+
 ## Trigger de réexamen
 
-Cet ADR passe à **Accepté** quand le canal ① est vérifié **à l'écran** : le
-connecteur enregistré avec ses paramètres, et `/mcp` vert dans une session
-neuve. Le point non vérifié est précis — *le formulaire de
-`claude.ai/customize/connectors` accepte-t-il une URL portant des paramètres de
-requête ?* Si la réponse est non, **l'ADR est à rouvrir, pas à contourner** :
-se rabattre sur l'URL nue est explicitement interdit ci-dessus, et le repli est
-alors GitHub Actions (canal ②), seul à détenir secrets et réseau non filtré.
+Rouvrent la décision : la disparition du serveur MCP hébergé de Supabase,
+l'apparition d'une allowlist au niveau organisation, ou un besoin d'écriture
+depuis une session distante — qui devrait alors être arbitré, pas improvisé.
+
+⚠️ Rouvre également la décision **toute perte des paramètres d'URL du
+connecteur** : le jour où `read_only=true` ou `project_ref` disparaîtrait de son
+enregistrement, le canal ① cesserait d'être un canal de lecture et deviendrait un
+accès en écriture à l'échelle du compte, sans que rien ne le signale. Le
+contrôle qui le détecte tient en une requête : `SHOW transaction_read_only` doit
+rendre `on`.
 
 Rouvrent également la décision : la disparition du serveur MCP hébergé de
 Supabase, l'apparition d'une allowlist au niveau organisation, ou un besoin
