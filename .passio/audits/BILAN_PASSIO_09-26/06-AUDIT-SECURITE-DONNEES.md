@@ -534,214 +534,409 @@ LIMITES DE L'AUDIT : Chromium/Playwright non utilisés (aucune mesure navigateur
 
 ## Domaine « auth-rgpd »
 
-> ⚠️ **Domaine reconstitué par l'orchestrateur.** Les trois sous-agents Fable 5.1 affectés à ce domaine ont été interrompus par l'épuisement des crédits de session avant de rendre leur sortie structurée. L'orchestrateur (Fable 5.1 également) a reconstitué contrôles et problèmes à partir des preuves qu'ils avaient déposées (scripts, captures, journaux, requêtes) et de vérifications ciblées dans le code du SHA audité. **Aucune relecture adversariale n'a pu être faite sur ces problèmes** : ils sont marqués « NON VÉRIFIÉ (pas de relecture) » et sont prioritaires pour la contre-revue GPT-6 Astra.
+Domaine auth-rgpd audité en lecture seule sur le SHA c8cb8e99 (la branche d'audit n'ajoute que des fichiers d'audit ; `git status --short` vide à la fin). Méthode : lecture intégrale de js/access-gate.js, js/telemetry.js, supabase/functions/delete-account/index.ts, des fonctions d'auth/session d'app-02 (onbDoAuth, onbForgotPassword, onbResendConfirmation, doLogout, purgeAccountScopedData, purgerJetonAuthLocal, adopterCompteConnecte, _peutPousserEtat, doDeleteAccount, openPrivacyPolicy, openAbout) et d'app-08 (boot, onAuthStateChange, createClient), du formulaire d'auth et du panneau Paramètres d'index.html, des docs CONFIRMATION_EMAIL / SETUP_SMTP_AUTH / SECURITE_CODE_ACCES / EDGE_FUNCTION_DELETE_ACCOUNT ; croisement avec le dump des 125 policies (preuves/supabase-isolation/policies.json) pour établir, table par table, ce que la suppression de compte n'atteint pas. Exécution des 8 suites e2e demandées : 58/58 vertes en 16,6 min (workers=1, port 8107). Trois attaques émulées en Chromium, toutes les requêtes *.supabase.co interceptées (rien n'a atteint la production) : contournement du gate par sessionStorage (réussi), rejeu au démarrage de la file de messages d'un compte A sous l'identité du compte B (réussi : POST conv_messages avec from_id = B), télémétrie d'un visiteur sans compte (10 événements avec device_id persistant, sans un mot de consentement). Force brute hors ligne du hash du gate : 6 ms. Dépôt GitHub PUBLIC avec le code d'accès en clair dans 19 fichiers. Verdict du domaine : l'authentification (confirmation d'e-mail, anti-énumération, déconnexion complète, isolation de l'état d'exploration) est solide et prouvée par tests ; en revanche le volet juridique/RGPD est INSUFFISANT POUR UN LANCEMENT PUBLIC : aucune CGU, aucune mention légale, politique de confidentialité incomplète et périmée, aucun recueil d'acceptation, télémétrie sans consentement, vérification d'âge morte sur le chemin nominal, suppression de compte qui laisse des résidus dans ~18 tables et un bucket, et deux défauts d'isolation inter-comptes côté appareil.
 
-Domaine authentification / e-mail / récupération / sessions / suppression / RGPD reconstitué par l'orchestrateur à partir des preuves de trois sous-agents Fable 5.1 interrompus (émulation Chromium des parcours d'inscription et de suppression, brute force du gate, 58 tests e2e d'auth exécutés et verts) et de lectures ciblées du code sur le SHA audité. Le socle technique est solide : confirmation d'e-mail active, anti-énumération, propriété de l'état local par compte (garde d'adoption), déconnexion réelle, réinitialisation de mot de passe, Edge Function `delete-account` qui supprime le compte auth. Les manques sont JURIDIQUES et de PÉRIMÈTRE : aucune CGU ni consentement à l'inscription, politique de confidentialité périmée et contradictoire, allégation fausse de « contrôle d'âge IA », effacement incomplet (25 tables et 5 dossiers Storage non purgés), aucun export des données, gate d'accès cassé en 6 ms (documenté comme non-frontière), aucun captcha. Aucune relecture adversariale (crédits épuisés).
-
-### Contrôles (14)
+### Contrôles (44)
 
 | Id | Contrôle | Statut | Méthode | Preuve |
 |---|---|---|---|---|
-| AUT-C01 | Inscription avec confirmation d'e-mail : pas de session avant confirmation, message honnête | **PROUVÉ** | émulation | preuves/auth-rgpd/emul-auth-resultat.json : message « ✅ Compte créé ! Vérifie tes e-mails… », ongletActif=signin, étape splash ; tests confirmation-email.spec.js (7) verts en CI |
-| AUT-C02 | Connexion à un compte existant, déconnexion réelle, intention TTL 10 min, adoption d'un compte (purge de l'état local) | **PROUVÉ** | test exécuté | preuves/auth-rgpd/e2e-auth-rgpd.log : connexion-compte-existant (15), exploration-anonyme-vs-compte (16), gate-sans-app (3), telemetrie-preauth (2), user-passions-miroir (5) → 58 verts (17,4 min) |
-| AUT-C03 | Récupération de mot de passe | **CONFORME PAR INSPECTION** | inspection code | app-02:3245 resetPasswordForEmail(redirectTo origin) ; app-02:3348 updateUser({password}) ; adoption déplacée au changement effectif (CLAUDE.md) ; test exploration-anonyme ⑪ vert |
-| AUT-C04 | Sessions : persistance, rafraîchissement, déconnexion de tous les appareils | **PROBABLE** | inspection code | supabase-js v2 par défaut (persistSession, autoRefreshToken) ; `signOut()` sans scope (app-08:2226, app-02:2957) = global par défaut ; aucune liste des sessions ni « déconnecter partout » dans l'app — non exercé |
-| AUT-C05 | Suppression du compte : compte auth supprimé, données purgées | **DÉFAILLANT** | inspection code | supabase/functions/delete-account/index.ts : 14 tables purgées + Storage photos/videos/audios ; NON purgés : comment_interactions, comment_likes, event_comments, event_reactions, blocks, reports, user_state, user_safety, user_passions, analytics_events, telemetry_events, video_lives, cdv_* (6), conv_reads, step_interactions, passion_requests, post_collaborators ; Storage covers/avatars/passion_photos/passion_covers/cdv_steps/attachments (preuves/supabase-isolation/fonctions_realtime_storage_staging.md §Storage) |
-| AUT-C06 | Consentement et CGU à l'inscription | **DÉFAILLANT** | émulation | emul-auth-resultat.json : cguCheckbox=0, lienPolitiqueDansAuth=false ; grep « CGU\|conditions générales\|J'accepte » dans index.html, app-02, first-run.js : 0 |
-| AUT-C07 | Politique de confidentialité à jour et cohérente | **DÉFAILLANT** | émulation | politiqueTexte : « Dernière mise à jour : juin 2026 », cite les « carnets » (retirés ADR-011), contact contact@ladamemetallerie.com ; « À propos » : « PASSIO SAS · France · contact@passio.app » ; promesse « e-mail sous 30 jours » alors que delete-account supprime immédiatement |
-| AUT-C08 | Contrôle d'âge | **DÉFAILLANT** | émulation | index.html:311 « PASSIO protège les mineurs avec un contrôle d'âge IA » ; réalité : année auto-déclarée (app-02:3179-3193), < 13 refusé côté client seulement ; preuves/exploitation-continuite/emul-support-juridique-resultat.json : birthYearAccepted 2013 → isMinor=true, ageBypass=1995 accepté |
-| AUT-C09 | Export / portabilité des données | **DÉFAILLANT** | inspection code | grep « Exporter mes données\|exportUserData\|télécharger mes données » : 0 ; la politique promet la portabilité « directement dans l'app » |
-| AUT-C10 | Gate d'accès (code 2125) comme protection de la beta privée | **DÉFAILLANT** | test exécuté | preuves/auth-rgpd/gate-bruteforce-resultat.json : espace 10 000, code retrouvé en 2 126 essais / 6 ms côté client ; docs/SECURITE_CODE_ACCES.md:48 reconnaît une protection côté client ; le hash du jeton est dans js/access-gate.js d'un dépôt PUBLIC |
-| AUT-C11 | Anti-abus à l'inscription et à la connexion (captcha, verrouillage) | **DÉFAILLANT** | inspection code | grep captcha\|turnstile\|hcaptcha dans js/, index.html, supabase/ : 0 ; seuls les limites Auth par défaut de Supabase s'appliquent (non lisibles ici) |
-| AUT-C12 | Localisation : consentement et non-persistance | **PROUVÉ** | inspection code | irlUserLocation en mémoire seulement (app-07:547, 1129-1137), jamais dans localStorage ni en base ; verrou irl-trust-safety.spec.js ⑥-⑨ |
-| AUT-C13 | Données locales sur l'appareil (messages privés, vocaux base64) en clair dans localStorage/IndexedDB | **CONFORME PAR INSPECTION** | inspection code | clesLocalStorage : passio_conversations_v1, passio_mvp_state_v1 ; purge par `purgeAccountScopedData` à la déconnexion (tests ⑤-⑦ verts) |
-| AUT-C14 | Télémétrie et PII : filtre DENY_KEY, aucune identité fabriquée avant auth | **PROUVÉ** | test exécuté | telemetrie-preauth.spec.js (2) verts ; js/telemetry.js filtre PII (CLAUDE.md) |
+| AUTH-C01 | Inscription : confirmation d'e-mail obligatoire (signUp sans session, compte inutilisable avant confirmation) | **PROUVÉ** | test exécuté | PASSIO_PORT=8107 npx playwright test --project=local tests/e2e/confirmation-email.spec.js … --workers=1 → 7/7 passed (preuves/auth-rgpd/playwright-bilan.txt) ; app-02-state-utils.js:3468-3477 (branche « pas de session → confirme ») |
+| AUTH-C02 | Renvoi du lien de confirmation et anti-énumération (identities vides, message de succès neutre, délai anti-abus traduit) | **PROUVÉ** | test exécuté | confirmation-email.spec.js 7/7 ; app-02:3255-3302 (onbResendConfirmation, message « Si ce compte attend une confirmation… ») ; app-02:3455-3466 (identities.length===0 → « déjà utilisé » sans distinguer) |
+| AUTH-C03 | Connexion : message d'erreur générique (« E-mail ou mot de passe incorrect »), pas de fuite d'existence du compte | **CONFORME PAR INSPECTION** | inspection code | app-02-state-utils.js:3431-3432 ; Supabase rend « Invalid login credentials » indistinct pour e-mail inconnu / mauvais mot de passe |
+| AUTH-C04 | Mot de passe oublié : flux hash type=recovery, lien à usage unique, adoption différée au changement effectif, pas de rechargement en cours de route | **CONFORME PAR INSPECTION** | inspection code | app-02:3238-3251 (resetPasswordForEmail, redirectTo origin) ; app-02:3325-3371 (_showPasswordRecoveryUI, min 6 car., adoption puis reload) ; app-08:2176-2178, 2235-2262 (_recuperationEnCours, _exigerRestaurationAvantEcriture) |
+| AUTH-C05 | Sessions : jeton sb-<ref>-auth-token en localStorage, persistSession/autoRefreshToken (défauts SDK), durée du JWT et du refresh token | **BLOQUÉ** | inspection code | app-08:2688 createClient(SUPABASE_URL, SUPABASE_KEY) sans option → défauts du SDK (persistSession=true, autoRefreshToken=true, storage localStorage). La durée du JWT (défaut 3600 s) et la rotation du refresh token sont des réglages du Dashboard Supabase (Authentication → Sessions), non lisibles ici. Il faudrait une capture du Dashboard ou `get_project_config`. |
+| AUTH-C06 | Déconnexion complète : lecture de {error} de signOut, purge du jeton SDK en repli, purge des clés de compte + IndexedDB, rechargement | **PROUVÉ** | test exécuté | connexion-compte-existant.spec.js 16/16 passed ; app-02:2945-2985 (doLogout), 2932-2943 (purgerJetonAuthLocal par motif /^sb-.+-auth-token$/), 2741-2779 (purgeAccountScopedData, idbConvClear), idb-store.js:107 |
+| AUTH-C07 | Connexion sur appareil neuf / après déconnexion : intention passio_auth_intent_v1 horodatée (TTL 10 min), posée APRÈS la purge, consommée par boot() | **PROUVÉ** | test exécuté | connexion-compte-existant.spec.js 16/16 ; app-02:2588-2602 (AUTH_INTENT_KEY, AUTH_INTENT_TTL_MS = 600 000) ; app-08:2228-2233 (branche déconnexion inachevée : signOut → purgerJetonAuthLocal → purge → intention → reload) |
+| AUTH-C08 | Gate 2125 : robustesse du hash (4 chiffres, sel public), contournement, code en clair, anti-brute-force | **DÉFAILLANT** | émulation | preuves/auth-rgpd/gate-bruteforce.txt : 2 126 essais, 6 ms, code retrouvé ; émulation A (emul-auth-resultats.json) : sessionStorage.setItem('passio_gate_v1', <hash public>) → gate absent, app rendue (A-gate-contourne.png) ; access-gate.js:24-27 (GATE_SALT/GATE_HASH embarqués, aucun compteur d'essais) ; code en clair dans CLAUDE.md:31,38, docs/SECURITE_CODE_ACCES.md:44, tests/e2e/gate-helper.js:34 (19 fichiers) ; dépôt PASSIO74/passio-app visibility=public (list_repos) |
+| AUTH-C09 | Tests du gate (access-gate, gate-sans-app) | **PROUVÉ** | test exécuté | access-gate.spec.js 6/6, gate-sans-app.spec.js 3/3 passed (playwright-bilan.txt) — ils prouvent que le gate s'affiche et bloque boot(), pas qu'il résiste (il ne résiste pas, cf. AUTH-C08) |
+| AUTH-C10 | Protection contre les mots de passe compromis (HaveIBeenPwned) | **DÉFAILLANT** | requête base | Fait établi par l'orchestrateur (get_advisors) : « protection contre les mots de passe compromis DÉSACTIVÉE » ; docs/SETUP_SMTP_AUTH.md §5 le liste comme durcissement « restant » depuis le 2026-08-30 ; .passio/context/KNOWN_RISKS.md:24 le laisse « volontairement » |
+| AUTH-C11 | Force du mot de passe (longueur minimale, complexité) | **DÉFAILLANT** | inspection code | app-02:3401 (pwd.length < 6), app-02:2977 (« 6 caractères minimum »), app-02:3345 (récupération : < 6), index.html:282 minlength=6 ; aucune règle de complexité ; réglage serveur non lisible ici |
+| AUTH-C12 | MFA utilisateur | **DÉFAILLANT** | inspection code | grep -i '\.mfa\.\|enroll\|totp' js/*.js → 0 résultat : aucune MFA proposée (acceptable pour un réseau social grand public à ce stade, à documenter) |
+| AUTH-C13 | Verrouillage / rate-limit des tentatives de connexion (GoTrue) | **BLOQUÉ** | non réalisé | Aucun compteur côté client (onbDoAuth). Les limites GoTrue (Authentication → Rate Limits) ne sont pas lisibles ici et un test de charge contre la prod est interdit. Il faudrait la capture du Dashboard « Rate Limits ». |
+| AUTH-C14 | OAuth social (Google) : présence, activation du provider, couverture de test | **BLOQUÉ** | inspection code | index.html:294-297 bouton « Continuer avec Google » visible ; app-02:3305-3322 signInWithOAuth ; grep tests/e2e → aucune suite ; activation du provider = Dashboard Supabase, non vérifiable ici |
+| AUTH-C15 | Numéro de téléphone à l'inscription : obligatoire, vérifié ?, où stocké, déclaré ? | **DÉFAILLANT** | inspection code | app-02:3400-3406 (8-15 chiffres obligatoires en signup, aucune vérification OTP), 3418 (user_metadata.phone), 3421-3424 (state.user.general.phone → blob user_state via _syncableState) ; dashboard/server/accounts.js:35-38 le lit ; politique §1 (app-02:3137) ne le mentionne pas |
+| AUTH-C16 | Vérification d'âge (13+) : atteinte sur le chemin d'inscription nominal ? exactitude des promesses | **DÉFAILLANT** | inspection code | onbValidateAge app-02:3179-3193 n'est appelée que par l'étape « age » atteinte via onbNext() après une inscription QUI REND UNE SESSION (app-02:3553) — impossible depuis « Confirm email » (2026-08-30) ; chemin réel : signup → app-02:3468-3477 (retour onglet signin) → lien de confirmation → app-08:2278 `state.onboarded = true` OU signin → app-02:3506-3511 `onboarded=true; reload` ; index.html:311 « contrôle d'âge IA » ; politique §6 (app-02:3145) « l'inscription demande l'âge » |
+| AUTH-C17 | Suppression in-app : parcours (confirmation SUPPRIMER, tables purgées côté client sous RLS, purge locale, IDB, reload) | **CONFORME PAR INSPECTION** | inspection code | app-02:3053-3072 (modale, saisie SUPPRIMER), 3075-3132 (13 tables + follows×2 + blocks×2, invoke delete-account, signOut, purge localStorage 'passio*' + jeton, idbConvClear, sessionStorage.clear, reload) |
+| AUTH-C18 | Edge Function delete-account : périmètre EXACT des tables purgées vs 39 tables de prod | **DÉFAILLANT** | inspection code | index.ts:45-61 : 15 jobs sur 14 tables (posts, post_likes, post_comments, stories, events, event_attendees, conv_messages, conv_members, notifications[user_id], story_views, push_subscriptions, client_errors[uid], follows×2, profiles) + index.ts:66-75 bucket content/{photos,videos,audios}/<uid> + deleteUser. JAMAIS purgées par personne : analytics_events (3 855 l., aucune policy DELETE), telemetry_events (user_id + user_label=pseudo, aucune DELETE), comment_interactions, comment_likes, conv_reads (aucune DELETE), event_comments (author_name), event_reactions, reports (reporter_id, aucune DELETE), user_safety (année de naissance, SELECT seule), user_passions, passion_requests (aucune DELETE), video_lives (author_name/author_photo), post_collaborators, step_interactions, cdv_* (6 tables), notifications.from_id (le `content` chez les autres porte le pseudo), bucket attachments ; user_state et blocks : purgés côté CLIENT seulement (RLS) — cf. policies.json |
+| AUTH-C19 | Edge Function : gestion d'erreur (le SDK ne lève pas ; try/catch inopérant) | **DÉFAILLANT** | inspection code | index.ts:62-65 `try { await admin.from(table).delete().eq(col, uid); } catch (_e) {}` — `{ error }` jamais lu, aucun journal, réponse `{ok:true}` même si 14 DELETE ont échoué ; même défaut côté client app-02:3100-3117 |
+| AUTH-C20 | Edge Function déployée et identique au dépôt ; suite suppression-compte en CI | **BLOQUÉ** | inspection code | docs/EDGE_FUNCTION_DELETE_ACCOUNT.md:3 « déployée le 2026-06-11 via le Dashboard » ; le fichier du dépôt date du 2026-08-31 (git log 43b8ffa) ; tests/e2e/suppression-compte.spec.js:28 `test.skip(!process.env.PASSIO_E2E_MULTI)` et PASSIO_E2E_MULTI n'est posé dans AUCUN workflow (grep .github/workflows → seulement un commentaire deploy.yml:155) → le job « Suites production » vert du run 33861671142 NE prouve PAS la fonction. Il faudrait un run manuel PASSIO_E2E_MULTI=1 ou les logs Edge Functions du Dashboard. |
+| AUTH-C21 | Bucket attachments (pièces jointes et vocaux de conversations) purgé à la suppression ? | **DÉFAILLANT** | inspection code | app-09:867 et 1597 : chemins attachments/<convId>/… (sans uid) ; index.ts ne touche que le bucket content ; docs/EDGE_FUNCTION_DELETE_ACCOUNT.md:50-52 l'assume ; buckets public=true (fait établi) |
+| AUTH-C22 | Résidus après suppression (anciens rapports : 76 user_state, 54 notifications, 19 médias) | **DÉFAILLANT** | requête base | Fait établi (orchestrateur) : 84 lignes user_state et 188 notifications pour 5 comptes auth → au moins 79 user_state orphelines (blob d'état complet, 10 Mo) ; PASSIO_PRODUCTION_READINESS.md:19 les attribue à des suppressions administratives sans les avoir purgées |
+| AUTH-C23 | Délai, confirmation et message de suppression | **CONFORME PAR INSPECTION** | inspection code | app-02:3062 « e-mail retiré sous 30 jours » alors que deleteUser est immédiat (sur-promesse prudente, acceptable) ; saisie SUPPRIMER exigée |
+| AUTH-C24 | Politique de confidentialité in-app : existence, exhaustivité, exactitude | **DÉFAILLANT** | inspection code | app-02:3133-3150 (modale, « Dernière mise à jour : juin 2026 ») : absents = base légale, téléphone, télémétrie/device_id, géolocalisation, sous-traitants (Netlify, Brevo, OpenFreeMap, Photon/komoot, BAN, Tenor, Giphy, Google Fonts, jsdelivr/unpkg, STUN Google, TURN openrelay.metered.ca — netlify.toml:19), durée de conservation de la télémétrie, DPO, transferts (« UE/US » sans précision) ; périmés = « carnets » (retirés ADR-011), « l'inscription demande l'âge » (faux, C16), « accès protégé par code » (contournable, C08) ; contact = adresse d'une autre entreprise |
+| AUTH-C25 | CGU / conditions d'utilisation (contrat, licence sur les contenus, règles de modération, résiliation) | **DÉFAILLANT** | inspection code | grep -i 'CGU\|conditions générales\|conditions d.utilisation' index.html js/*.js → 0 ; aucune page, aucune modale, aucun lien |
+| AUTH-C26 | Mentions légales (LCEN art. 6-III : éditeur, adresse, SIREN, directeur de publication, hébergeur) | **DÉFAILLANT** | inspection code | grep -i 'siren\|siret\|siège social\|directeur de la publication\|hébergeur' → 0 ; openAbout app-02:2539-2555 affiche « PASSIO SAS · France · contact@passio.app » sans SIREN ni adresse, contredit par la politique (autre adresse de contact) ; existence de la société non vérifiable |
+| AUTH-C27 | Recueil de l'acceptation (CGU/politique) à l'inscription | **DÉFAILLANT** | inspection code | index.html:255-300 : formulaire e-mail / téléphone / mot de passe / Google, aucune case, aucun lien vers la politique ; grep openPrivacyPolicy index.html → uniquement Paramètres → Support (l.457) |
+| AUTH-C28 | Télémétrie : base de licéité, consentement ePrivacy, interrupteur, données envoyées | **DÉFAILLANT** | émulation | émulation C (emul-auth-resultats.json) : visiteur sans compte, 10 événements captés, champs device_id (23 car., localStorage passio_device_id persistant), user_id/user_label (pseudo quand connecté, telemetry.js:238-249), platform/browser/screen_size ; C_consentement_demande=false ; telemetry.js:71 défaut ON en prod ; opt-out ?telemetry=0 (l.53) sans aucun interrupteur dans Paramètres (grep setEnabled → 0 appelant UI) ; telemetrie-preauth.spec.js 3/3 verts confirment l'envoi pré-auth |
+| AUTH-C29 | Durée de conservation (télémétrie, analytics, client_errors) | **DÉFAILLANT** | requête base | Fait établi : 1 seul cron `purge_client_errors` ; telemetry_events = 111 828 lignes (54 Mo) ; migration_telemetry.sql:85-97 définit purge_telemetry(keep_days) jamais planifiée ; analytics_events 3 855 lignes sans purge ni DELETE |
+| AUTH-C30 | Localisation : déclenchement, précision, stockage, tiers, désactivable | **CONFORME PAR INSPECTION** | inspection code | app-07:2758-2762 (position demandée seulement si écran IRL visible et sans marqueur UI-4A0), 1120-1150 (irlUserLocation en MÉMOIRE, coordonnées exactes envoyées à photon.komoot.io / api-adresse pour le nom de ville), 3451-3460 (check-in : distance calculée localement, GPS refusé toléré), app-09:993-1010 (partage de position à 5 décimales dans un message, geste explicite) ; first-run.js:35 aucune permission en mode visiteur. Manque : mention dans la politique (C24) |
+| AUTH-C31 | Export des données / portabilité (art. 20) | **DÉFAILLANT** | inspection code | Seul export : app-09:1245-1259 `_exportConv` (une conversation en .txt) ; aucun export de compte (profil, posts, événements, messages) ; politique §5 promet la portabilité « dans l'app » |
+| AUTH-C32 | Droits d'accès / rectification / effacement : chemin et interlocuteur | **PROBABLE** | inspection code | Effacement : in-app (C17). Accès/rectification : par e-mail vers l'adresse d'une autre société (app-02:3144) ; aucun formulaire, aucun délai annoncé, aucun DPO |
+| AUTH-C33 | Transferts hors UE et sous-traitants | **BLOQUÉ** | inspection code | Région Supabase : aucun indice dans le dépôt (grep region/eu-west/frankfurt → 0), non vérifiable sans Dashboard ; Netlify (CDN mondial), Tenor (Google, US), Giphy (US), Google Fonts (fonts.googleapis.com, index.html), TURN openrelay.metered.ca (relais des flux WebRTC), Photon komoot (DE) — netlify.toml:19 ; aucun DPA ni liste dans le dépôt |
+| AUTH-C34 | Registre des traitements, DPO, analyse d'impact | **BLOQUÉ** | inspection code | grep -ri 'registre des traitements\|DPO\|délégué à la protection\|AIPD\|DPIA' docs/ .passio/ → 0 ; documents hors dépôt possibles, non fournis |
+| AUTH-C35 | Mineurs : âge minimum, vérification, statut isMinor | **DÉFAILLANT** | inspection code | cf. C16 ; state.user.isMinor (app-02:3192) n'est posé que par l'étape morte ; app-07:4962 l'utilise pour l'IRL ; declare_birth_year (app-07:5017-5034) seulement à la proposition d'un événement → user_safety (2 lignes) |
+| AUTH-C36 | Propriété intellectuelle des contenus (licence accordée à PASSIO) | **DÉFAILLANT** | inspection code | Aucune CGU (C25) → aucune licence, aucune clause de retrait, aucune règle sur le contenu d'autrui |
+| AUTH-C37 | LCEN / DSA : signalement de contenu illicite, point de contact, accusé de réception | **DÉFAILLANT** | inspection code | Signalement in-app : app-04:3340-3350 (reportUser/reportPost) → app-08:5385 insert reports (policy INSERT seule, 2 lignes en prod) ; aucun point de contact publié, aucune procédure de notification, aucun retour au signalant, aucune conservation motivée |
+| AUTH-C38 | Séparation des comptes : ACCOUNT_SCOPED_KEYS vs clés réellement écrites | **DÉFAILLANT** | émulation | Inventaire `localStorage.setItem` (js/*.js) : non purgées = passio_outbox_v1 (messages, app-04:4580), passio_cmt_outbox_v1 (commentaires, app-04:462), passio_post_delete_outbox_v1 (app-04:64), passio_event_comments_v1 (app-07:4458), passio_geo_cache_v1 (app-07:958 — la liste purge « passio_cdv_geo_v1 », clé morte), passio_first_run_v1 ; émulation B (B-outbox-rejouee-sous-identite-B.json) : au boot, POST /rest/v1/conv_messages {id: msg_prive_de_A, conv_id: conv_A_B, from_id: <uid B>, content: « message privé écrit par A »} sans aucune action de B (app-08:5956 setTimeout(_flushOutbox,1500) ; app-04:4644-4649 ; app-04:4616-4620 from_id: MY_UID) |
+| AUTH-C39 | IndexedDB des conversations purgée à la déconnexion et à la suppression | **CONFORME PAR INSPECTION** | inspection code | idb-store.js:107 window.idbConvClear ; app-02:2775 (purgeAccountScopedData), app-02:3128 (doDeleteAccount) ; un seul store IDB (conversations_v1) |
+| AUTH-C40 | Beacon pagehide et état d'exploration anonyme : jamais poussés sous une autre identité | **PROUVÉ** | test exécuté | exploration-anonyme-vs-compte.spec.js 16/16 passed ; app-02:438-451 (_peutPousserEtat), 630-648 (beacon : _accountPurged, MY_UID, onboarded, _peutPousserEtat, _stateDirty), 2855-2893 (adopterCompteConnecte) |
+| AUTH-C41 | Service worker : ne met pas en cache les réponses Supabase (pas de données personnelles dans Cache Storage) | **CONFORME PAR INSPECTION** | inspection code | sw.js:127-133 : GET seulement, `url.hostname !== self.location.hostname → return` |
+| AUTH-C42 | Suites e2e demandées (confirmation-email, connexion-compte-existant, exploration-anonyme-vs-compte, access-gate, gate-sans-app, audit-identite-emoji, telemetrie-preauth, user-passions-miroir) | **PROUVÉ** | test exécuté | PASSIO_PORT=8107 npx playwright test --project=local <8 specs> --workers=1 --reporter=line → « 58 passed (16.6m) », EXIT=0 (preuves/auth-rgpd/playwright-suites-auth.log, playwright-bilan.txt : 6+4+7+16+16+3+3+5 = 60 lignes de progression dont 2 reprises, 58 tests) |
+| AUTH-C43 | Suites à comptes réels (suppression-compte, user-state-horodatage) | **BLOQUÉ** | non réalisé | Interdites ici (écriture en base réelle, SUPABASE_SERVICE_ROLE_KEY). user-state-horodatage : dans le projet prod, job « Suites production (comptes réels) » vert au run 33861671142. suppression-compte : SKIPPÉE même en CI (C20). |
+| AUTH-C44 | Exposition du dépôt public (documentation interne, code d'accès, adresse de contact) | **DÉFAILLANT** | inspection code | list_repos → PASSIO74/passio-app visibility=public ; CLAUDE.md, docs/SECURITE_CODE_ACCES.md:44 (code et hash), tests/e2e/gate-helper.js:34, adresse e-mail de contact en clair dans app-02:3062 et 3144 |
 
-### Problèmes (7)
+### Problèmes (13)
 
 | Id | Priorité retenue | Relecture | Titre |
 |---|---|---|---|
-| AUT-01 | **P1** | NON VÉRIFIÉ (pas de relecture) | Aucune CGU, aucun consentement ni lien vers la politique à l'inscription |
-| AUT-02 | **P1** | NON VÉRIFIÉ (pas de relecture) | Effacement du compte incomplet : 25 tables et 5 dossiers Storage ne sont pas purgés |
-| AUT-03 | **P1** | NON VÉRIFIÉ (pas de relecture) | Allégation fausse « contrôle d'âge IA » et vérification d'âge purement déclarative côté client |
-| AUT-04 | **P2** | NON VÉRIFIÉ (pas de relecture) | Politique de confidentialité périmée et contradictoire (carnets retirés, deux contacts différents, délai d'effacement faux, éditeur « PASSIO SAS » non vérifié) |
-| AUT-05 | **P2** | NON VÉRIFIÉ (pas de relecture) | Aucun export des données (portabilité) alors que la politique le promet « dans l'app » |
-| AUT-06 | **P2** | NON VÉRIFIÉ (pas de relecture) | Le code d'accès de la beta privée ne protège rien : brute force en 6 ms côté client, hash public |
-| AUT-07 | **P2** | NON VÉRIFIÉ (pas de relecture) | Aucun captcha ni anti-automatisation à l'inscription et à la connexion |
+| AUTH-01 | **P1** | NON VÉRIFIÉ (pas de relecture) | Le gate « bêta privée » (2125) n'a aucune valeur : force brute en 6 ms, contournement par sessionStorage, code en clair dans un dépôt GitHub public |
+| AUTH-02 | **P1** | NON VÉRIFIÉ (pas de relecture) | La vérification d'âge n'est jamais atteinte sur le chemin d'inscription nominal, et l'écran promet un « contrôle d'âge IA » inexistant |
+| AUTH-03 | **P1** | NON VÉRIFIÉ (pas de relecture) | Aucune CGU, aucune mention légale, aucun recueil d'acceptation ; politique de confidentialité incomplète et périmée |
+| AUTH-04 | **P1** | NON VÉRIFIÉ (pas de relecture) | Télémétrie active par défaut sans consentement, sans interrupteur in-app, avec identifiant d'appareil persistant, pseudo et identifiant de compte, conservée sans limite |
+| AUTH-05 | **P1** | NON VÉRIFIÉ (pas de relecture) | La suppression du compte laisse des données personnelles dans ~18 tables et un bucket, et ignore toutes ses erreurs |
+| AUTH-06 | **P1** | NON VÉRIFIÉ (pas de relecture) | Files locales non purgées à la déconnexion : un message privé du compte A est rejoué et envoyé sous l'identité du compte B au démarrage suivant |
+| AUTH-07 | **P2** | NON VÉRIFIÉ (pas de relecture) | Numéro de téléphone obligatoire à l'inscription, non vérifié, sans finalité déclarée, dupliqué dans le blob user_state |
+| AUTH-08 | **P2** | NON VÉRIFIÉ (pas de relecture) | Mot de passe : 6 caractères sans complexité, protection contre les mots de passe compromis désactivée, aucune MFA |
+| AUTH-09 | **P2** | NON VÉRIFIÉ (pas de relecture) | Aucun export de données de compte (portabilité art. 20) ; accès/rectification par e-mail seulement, vers l'adresse d'une autre société |
+| AUTH-10 | **P2** | NON VÉRIFIÉ (pas de relecture) | Sous-traitants et transferts hors UE non maîtrisés ni documentés (Google Fonts, Tenor/Giphy, TURN tiers, Photon, région Supabase inconnue) |
+| AUTH-11 | **P2** | NON VÉRIFIÉ (pas de relecture) | LCEN / DSA : signalement in-app sans point de contact, sans accusé de réception ni procédure de retrait |
+| AUTH-12 | **P3** | NON VÉRIFIÉ (pas de relecture) | Le déploiement et la conformité de l'Edge Function delete-account ne sont prouvés par aucun test automatisé (suite skippée en CI) |
+| AUTH-13 | **P3** | NON VÉRIFIÉ (pas de relecture) | Bouton « Continuer avec Google » sans preuve d'activation du provider ni test ; erreur brute en anglais en cas d'échec |
 
-### AUT-01 — Aucune CGU, aucun consentement ni lien vers la politique à l'inscription
+### AUTH-01 — Le gate « bêta privée » (2125) n'a aucune valeur : force brute en 6 ms, contournement par sessionStorage, code en clair dans un dépôt GitHub public
 
 | Champ | Valeur |
 |---|---|
-| Identifiant | AUT-01 |
+| Identifiant | AUTH-01 |
 | Priorité retenue | **P1** (proposée par l'auditeur : P1) |
 | Relecture adversariale | NON VÉRIFIÉ (pas de relecture) |
 | Confiance de l'auditeur | CONFIRMÉ |
-| Fonctionnalité | Inscription (onboarding, carte de bienvenue, première visite) |
-| Résultat attendu | Case « J'accepte les CGU et la politique de confidentialité » (ou équivalent) avec liens, avant la création du compte ; CGU existantes (règles de contenu, propriété intellectuelle, résiliation, âge). |
-| Résultat observé | Aucune CGU dans l'application ni dans le dépôt ; le formulaire d'inscription n'a ni case ni lien (cguCheckbox=0, lienPolitiqueDansAuth=false). La politique n'est accessible que depuis Paramètres. |
-| Reproduction | Ouvrir l'écran d'inscription (carte de bienvenue → « Créer un compte ») : aucun consentement demandé. |
-| Preuve | preuves/auth-rgpd/emul-auth-resultat.json ; preuves/auth-rgpd/capture-inscription.png ; grep CGU dans le dépôt : 0 |
-| Impact utilisateur et commercial | Aucune base contractuelle pour modérer, suspendre, exploiter les contenus (licence) ni pour prouver le consentement RGPD (art. 13). Bloquant pour un lancement public (risque juridique, DSA). |
-| Visibilité dans le Centre de pilotage | Sans objet. |
-| Détection par la Sentinelle | Sans objet. |
-| Proposition de correction | Rédiger CGU + mentions légales (éditeur réel, SIREN, hébergeur, contact), les afficher à l'inscription avec case obligatoire, horodater l'acceptation (colonne `terms_accepted_at`). |
-| Risque de régression | Faible (écran d'auth). |
-| Effort estimé | 1 jour de code + rédaction juridique. |
+| Fonctionnalité | Verrouillage pré-lancement js/access-gate.js |
+| Résultat attendu | Un accès réellement restreint (vérification serveur, compteur d'essais, code non retrouvable) ou l'abandon assumé du gate — et une politique de confidentialité qui ne promet pas une protection inexistante |
+| Résultat observé | Code à 4 chiffres haché SHA-256 avec un sel public embarqué (access-gate.js:24-25) : 10 000 candidats, retrouvé en 2 126 essais / 6 ms hors ligne ; aucun compteur d'essais dans l'UI ; `sessionStorage.setItem('passio_gate_v1', <hash public>)` fait disparaître le gate (émulation A) ; le code figure en clair dans 19 fichiers du dépôt PUBLIC (CLAUDE.md:31, docs/SECURITE_CODE_ACCES.md:44, tests/e2e/gate-helper.js:34) ; docs/SECURITE_CODE_ACCES.md:47 affirme « le hash empêche seulement de retrouver le code », ce qui est faux ; la politique §7 (app-02:3146) affirme « l'accès est protégé par code » |
+| Reproduction | node -e "…sha256('passio-gate-v1::'+code) sur 0000-9999…" (preuves/auth-rgpd/gate-bruteforce.txt) ; ou dans la console : sessionStorage.setItem('passio_gate_v1','67a2ba44…390f') puis recharger |
+| Preuve | preuves/auth-rgpd/gate-bruteforce.txt ; preuves/auth-rgpd/emul-auth-resultats.json (A_gate_absent_apres_setItem=true) ; preuves/auth-rgpd/A-gate-contourne.png ; list_repos visibility=public |
+| Impact utilisateur et commercial | Toute personne peut entrer dans la « bêta privée » : les contenus publics (profils, posts, événements, lieux) sont exposés à des tiers non invités ; la promesse faite aux testeurs est fausse ; en cas de contrôle, une mesure de sécurité annoncée mais inopérante est un aggravant. Commercialement : le gate ne peut pas servir de mécanisme d'invitation payante ou de rareté. |
+| Visibilité dans le Centre de pilotage | non — le gate n'émet aucun événement, un accès non autorisé est indiscernable d'un testeur |
+| Détection par la Sentinelle | non — aucune tentative n'est journalisée (la vérification est purement locale) |
+| Proposition de correction | Soit retirer le gate et cesser de le promettre (la RLS est la vraie frontière), soit le remplacer par la migration déjà prévue dans docs/SECURITE_CODE_ACCES.md (Edge Function verify-access avec limite d'essais, ou liste blanche d'e-mails, ou codes d'invitation à usage unique en table `invites`) ; dans tous les cas retirer le code du dépôt, changer le code, passer le dépôt en privé ou déplacer CLAUDE.md/docs sensibles |
+| Risque de régression | Faible : verifyCode() est le seul point à remplacer ; 9 tests (access-gate, gate-sans-app) et gate-helper.js à adapter |
+| Effort estimé | 0,5 j (retrait) à 1,5 j (Edge Function + invitations) |
 
-### AUT-02 — Effacement du compte incomplet : 25 tables et 5 dossiers Storage ne sont pas purgés
+### AUTH-02 — La vérification d'âge n'est jamais atteinte sur le chemin d'inscription nominal, et l'écran promet un « contrôle d'âge IA » inexistant
 
 | Champ | Valeur |
 |---|---|
-| Identifiant | AUT-02 |
+| Identifiant | AUTH-02 |
 | Priorité retenue | **P1** (proposée par l'auditeur : P1) |
 | Relecture adversariale | NON VÉRIFIÉ (pas de relecture) |
 | Confiance de l'auditeur | CONFIRMÉ |
-| Fonctionnalité | Paramètres → Supprimer mon compte (Edge Function delete-account) |
-| Résultat attendu | Toutes les données rattachées à l'utilisateur (ou identifiantes) sont effacées ou anonymisées ; les médias aussi. |
-| Résultat observé | delete-account purge 14 tables et `content/photos\|videos\|audios/<uid>`. Restent : comment_interactions (payloads texte), comment_likes, event_comments (nom affiché), event_reactions, blocks, reports, user_state (blob complet de l'état : nom, bio, passions, notifications), user_safety (année de naissance), user_passions, analytics_events, telemetry_events (user_id, device_id, session_id), video_lives, cdv_* (6 tables), conv_reads, step_interactions, passion_requests, post_collaborators ; Storage covers, avatars, passion_photos, passion_covers, cdv_steps et TOUTES les pièces jointes de messagerie (bucket attachments, public). |
-| Reproduction | Lecture de la liste `jobs` (index.ts:44-60) et des dossiers (76-84) contre la liste des 39 tables (preuves/supabase-isolation/ref_cols.txt). |
-| Preuve | supabase/functions/delete-account/index.ts ; preuves/supabase-isolation/fonctions_realtime_storage_staging.md §Storage ; docs/EDGE_FUNCTION_DELETE_ACCOUNT.md |
-| Impact utilisateur et commercial | Non-conformité au droit à l'effacement (RGPD art. 17) ; données de profil (`user_state`) et année de naissance conservées ; photos et vocaux publics conservés indéfiniment. |
-| Visibilité dans le Centre de pilotage | Aucune. |
-| Détection par la Sentinelle | Non. |
-| Proposition de correction | Découvrir les tables à colonne `user_id\|author_id\|from_id\|reporter_id\|blocker_id\|blocked_id` dynamiquement (comme scripts/sauvegarde-donnees.js le fait) ; purger tous les préfixes Storage `<dossier>/<uid>` et les attachments des conversations dont l'utilisateur est le seul membre ; anonymiser `reports`/`telemetry_events` plutôt que les supprimer si besoin légal. |
-| Risque de régression | Faible (fonction isolée) ; tester sur un compte jetable. |
-| Effort estimé | 1 jour. |
+| Fonctionnalité | Onboarding / inscription (étape data-onb-step="age") |
+| Résultat attendu | Tout nouveau compte déclare son année de naissance avant d'entrer dans l'app (13+), la mention est exacte, la donnée sert la protection des mineurs (isMinor, user_safety) |
+| Résultat observé | onbValidateAge (app-02:3179-3193) n'est appelée que par l'étape « age », atteinte via onbNext() à app-02:3553 seulement si signUp RENVOIE UNE SESSION — impossible depuis « Confirm email » (2026-08-30) : signup → app-02:3468-3477 revient sur l'onglet connexion ; lien de confirmation → app-08:2278 pose `state.onboarded = true` et entre dans l'app ; connexion → app-02:3506-3511 `onboarded=true; reload`. Résultat : birthYear reste null, isMinor false. index.html:311 : « PASSIO protège les mineurs avec un contrôle d'âge IA » ; politique §6 : « l'inscription demande l'âge à l'onboarding » |
+| Reproduction | Créer un compte (e-mail à confirmer), cliquer le lien de confirmation ou se connecter : l'app s'ouvre sur le fil sans jamais afficher « Vérification d'âge » ; `state.user.birthYear` = null |
+| Preuve | app-02-state-utils.js:3468-3477, 3506-3511, 3553 ; app-08-ui-modals-tour.js:2278-2280 ; index.html:308-316 ; app-02:3145 |
+| Impact utilisateur et commercial | Des enfants de moins de 13 ans peuvent s'inscrire et rencontrer des adultes IRL ; la politique et l'écran mentent (pratique commerciale trompeuse) ; obligations DSA art. 28 / CNIL sur les mineurs non tenues |
+| Visibilité dans le Centre de pilotage | non — aucun événement « âge déclaré » ; le dashboard ne montre pas le taux de comptes sans année de naissance |
+| Détection par la Sentinelle | non |
+| Proposition de correction | Dans boot() (branche session, app-08:2278) et après signin : si `!state.user.birthYear` afficher l'étape « age » AVANT d'entrer ; écrire l'année via declare_birth_year (user_safety, non avançable) ; retirer « IA » du texte ; ajouter un test qui suit le chemin réel (compte pré-confirmé via compte-e2e.js) |
+| Risque de régression | Moyen : touche boot() et les 16 cas de connexion-compte-existant (à rejouer) |
+| Effort estimé | 1 j |
 
-### AUT-03 — Allégation fausse « contrôle d'âge IA » et vérification d'âge purement déclarative côté client
+### AUTH-03 — Aucune CGU, aucune mention légale, aucun recueil d'acceptation ; politique de confidentialité incomplète et périmée
 
 | Champ | Valeur |
 |---|---|
-| Identifiant | AUT-03 |
+| Identifiant | AUTH-03 |
 | Priorité retenue | **P1** (proposée par l'auditeur : P1) |
 | Relecture adversariale | NON VÉRIFIÉ (pas de relecture) |
 | Confiance de l'auditeur | CONFIRMÉ |
-| Fonctionnalité | Onboarding (écran âge), protection des mineurs |
-| Résultat attendu | Ne promettre que ce qui existe ; règle d'âge appliquée au moins côté serveur (`declare_birth_year`) ; 13-17 ans protégés sur les fonctions sensibles (IRL, messagerie avec inconnus). |
-| Résultat observé | index.html:311 promet un contrôle d'âge IA ; la réalité est `onbValidateAge` (année saisie, < 13 refusé en JS, isMinor en localStorage). Année 2013 → isMinor=true accepté ; un rechargement avec 1995 passe. `declare_birth_year` n'est appelé que sous un drapeau éteint (voir IRL-02). |
-| Reproduction | Onboarding → écran âge : lire le texte ; saisir 2013 puis continuer. |
-| Preuve | index.html:311 ; js/app-02-state-utils.js:3179-3193 ; preuves/exploitation-continuite/emul-support-juridique-resultat.json (age, ageBypass) |
-| Impact utilisateur et commercial | Pratique commerciale trompeuse + absence de protection réelle des mineurs (13-17) ; responsabilité de l'éditeur. |
-| Visibilité dans le Centre de pilotage | Sans objet. |
-| Détection par la Sentinelle | Sans objet. |
-| Proposition de correction | Retirer l'allégation ; appeler `declare_birth_year` à l'onboarding ; définir les restrictions mineurs (IRL, DM) et les faire porter par la RLS. |
-| Risque de régression | Faible. |
-| Effort estimé | 0,5 jour (texte + appel RPC) ; règles mineurs : voir IRL-02. |
+| Fonctionnalité | Documents juridiques in-app (Paramètres → Support → Politique de confidentialité ; À propos ; formulaire d'inscription) |
+| Résultat attendu | CGU (contrat, licence sur les contenus, modération, résiliation), mentions légales LCEN (éditeur, adresse, SIREN, directeur de publication, hébergeur), politique RGPD art. 13 complète (base légale, finalités, destinataires/sous-traitants, transferts, durées, droits, DPO/contact, mineurs), acceptation horodatée à l'inscription |
+| Résultat observé | Politique (app-02:3133-3150, « juin 2026 ») : ne nomme pas le téléphone collecté, la télémétrie (device_id, pseudo), la géolocalisation, aucun sous-traitant hors Supabase (« UE/US ») alors que la CSP autorise Netlify, Brevo, OpenFreeMap, Photon/komoot (DE), BAN, Tenor et Giphy (US), Google Fonts (US), jsdelivr/unpkg, STUN Google, TURN openrelay.metered.ca ; cite les « carnets » retirés ; affirme un contrôle d'âge et un accès par code qui ne tiennent pas ; contact = adresse d'une autre société. CGU : 0 occurrence. Mentions légales : « PASSIO SAS · France · contact@passio.app » (app-02:2545-2547) sans SIREN ni adresse ni hébergeur, contredisant l'adresse de la politique. Formulaire (index.html:255-300) : aucune case ni lien d'acceptation |
+| Reproduction | Paramètres → Support → Politique de confidentialité ; Paramètres → Support → À propos ; Créer un compte |
+| Preuve | app-02-state-utils.js:3133-3150, 2539-2555 ; index.html:255-300, 457 ; grep CGU/SIREN/hébergeur → 0 ; netlify.toml:19 |
+| Impact utilisateur et commercial | Bloquant juridiquement pour un lancement public : sans CGU, PASSIO n'a aucune licence sur les contenus publiés, aucune base contractuelle pour modérer ou résilier ; sans mentions légales, infraction LCEN (jusqu'à 75 000 € pour une personne physique) ; information RGPD incomplète = manquement art. 13/14 sanctionnable par la CNIL ; un investisseur ou un store le relèvera immédiatement |
+| Visibilité dans le Centre de pilotage | non applicable |
+| Détection par la Sentinelle | non |
+| Proposition de correction | Rédiger (avec validation juridique) CGU + mentions légales + politique v2 ; les servir comme pages statiques versionnées (docs légales dans le dépôt, date de version) ; case « J'accepte les CGU et la politique » obligatoire à l'inscription, horodatage écrit dans user_metadata (terms_version, terms_accepted_at) ; lien permanent dans Paramètres ; unifier l'adresse de contact ; ajouter la liste des sous-traitants et la région d'hébergement |
+| Risque de régression | Faible (contenu) ; le test confirmation-email et first-run.spec devront cocher la case |
+| Effort estimé | 2-3 j de rédaction technique + relecture juridique externe |
 
-### AUT-04 — Politique de confidentialité périmée et contradictoire (carnets retirés, deux contacts différents, délai d'effacement faux, éditeur « PASSIO SAS » non vérifié)
-
-| Champ | Valeur |
-|---|---|
-| Identifiant | AUT-04 |
-| Priorité retenue | **P2** (proposée par l'auditeur : P2) |
-| Relecture adversariale | NON VÉRIFIÉ (pas de relecture) |
-| Confiance de l'auditeur | CONFIRMÉ |
-| Fonctionnalité | Paramètres → Politique de confidentialité, À propos |
-| Résultat attendu | Politique datée, exacte sur les traitements réels (télémétrie, Storage public, hébergement UE), un seul contact, identité de l'éditeur réelle. |
-| Résultat observé | « Dernière mise à jour : juin 2026 » ; cite les carnets (retirés le 2026-08-31) ; ne mentionne ni la télémétrie (`telemetry_events`, device_id) ni le caractère public des médias ; contact `contact@ladamemetallerie.com` dans la politique contre `contact@passio.app` dans À propos ; « e-mail supprimé sous 30 jours » alors que la suppression est immédiate ; « PASSIO SAS » sans SIREN. |
-| Reproduction | Paramètres → Politique de confidentialité ; Paramètres → À propos. |
-| Preuve | preuves/auth-rgpd/emul-auth-resultat.json (politiqueTexte, aProposTexte) ; js/app-02-state-utils.js:3144 |
-| Impact utilisateur et commercial | Information RGPD inexacte (art. 13), confusion du support. |
-| Visibilité dans le Centre de pilotage | Sans objet. |
-| Détection par la Sentinelle | Sans objet. |
-| Proposition de correction | Réécrire la politique (traitements réels, sous-traitants : Supabase, Netlify, Brevo, Tenor/Giphy, OpenFreeMap, BAN/Photon), un seul contact, mentions légales. |
-| Risque de régression | Nul. |
-| Effort estimé | 0,5 jour + relecture juridique. |
-
-### AUT-05 — Aucun export des données (portabilité) alors que la politique le promet « dans l'app »
+### AUTH-04 — Télémétrie active par défaut sans consentement, sans interrupteur in-app, avec identifiant d'appareil persistant, pseudo et identifiant de compte, conservée sans limite
 
 | Champ | Valeur |
 |---|---|
-| Identifiant | AUT-05 |
-| Priorité retenue | **P2** (proposée par l'auditeur : P2) |
+| Identifiant | AUTH-04 |
+| Priorité retenue | **P1** (proposée par l'auditeur : P1) |
 | Relecture adversariale | NON VÉRIFIÉ (pas de relecture) |
 | Confiance de l'auditeur | CONFIRMÉ |
-| Fonctionnalité | Paramètres |
-| Résultat attendu | Bouton « Télécharger mes données » (JSON) ou procédure documentée. |
-| Résultat observé | Aucune fonction d'export ; seule la suppression existe. |
-| Reproduction | Paramètres → aucune entrée d'export. |
-| Preuve | grep dans js/ et index.html : 0 résultat |
-| Impact utilisateur et commercial | RGPD art. 20 non couvert ; demandes à traiter à la main. |
-| Visibilité dans le Centre de pilotage | Sans objet. |
-| Détection par la Sentinelle | Sans objet. |
-| Proposition de correction | Edge Function `export-account` (JSON des tables où l'utilisateur est propriétaire + liste des médias). |
-| Risque de régression | Nul. |
-| Effort estimé | 1 jour. |
+| Fonctionnalité | js/telemetry.js → table telemetry_events → Centre de pilotage |
+| Résultat attendu | Soit un consentement préalable (bandeau) avec refus aussi simple que l'acceptation et un réglage dans Paramètres, soit une télémétrie strictement anonyme relevant de l'exemption CNIL « mesure d'audience » (pas d'identifiant de compte, durée de vie du traceur ≤ 13 mois, données ≤ 25 mois) ; durée de conservation définie et appliquée |
+| Résultat observé | telemetry.js:71 : ON par défaut en production ; :36-37 device_id persistant en localStorage ; :491-498 chaque événement porte user_id (uuid) et user_label (pseudo) une fois connecté, platform, browser, screen_size, connection ; :53 opt-out uniquement par ?telemetry=0, aucun bouton dans Paramètres (Telemetry.setEnabled sans appelant UI) ; la politique ne la mentionne pas ; émulation C : un VISITEUR sans compte émet 10 événements avec device_id de 23 caractères et aucun texte de consentement à l'écran ; 111 828 lignes (54 Mo) et purge_telemetry() jamais planifiée (1 seul cron : purge_client_errors) |
+| Reproduction | Ouvrir https://passio-app.netlify.app sur un appareil vierge (ou localhost ?telemetry=1) et observer les POST /rest/v1/telemetry_events ; preuves/auth-rgpd/emul-auth.js scénario C |
+| Preuve | preuves/auth-rgpd/emul-auth-resultats.json (C_*) ; telemetry.js:15, 36-37, 52-71, 238-249, 491-498 ; migration_telemetry.sql:85-97 ; fait établi « 1 job cron purge_client_errors » |
+| Impact utilisateur et commercial | Traceur non strictement nécessaire déposé sans consentement (art. 82 loi Informatique et Libertés / ePrivacy) : sanction CNIL possible dès le premier contrôle ; profil comportemental nominatif (pseudo + uuid + écran par écran) conservé indéfiniment ; coût de stockage croissant (54 Mo pour 5 comptes) |
+| Visibilité dans le Centre de pilotage | partiel — le dashboard consomme cette télémétrie mais n'affiche ni le statut de consentement ni la rétention |
+| Détection par la Sentinelle | non |
+| Proposition de correction | Option 1 (rapide) : anonymiser — retirer user_id/user_label des événements (garder session_id éphémère), device_id renouvelé tous les 13 mois, finalité limitée, et déclarer l'exemption ; Option 2 : bandeau de consentement avant le premier envoi + interrupteur « Télémétrie » dans Paramètres → Confidentialité (Telemetry.setEnabled existe déjà, telemetry.js:665). Dans les deux cas : cron `SELECT cron.schedule('purge_telemetry','0 4 * * *',$$SELECT purge_telemetry(90)$$)` et purge d'analytics_events ; mettre la politique à jour |
+| Risque de régression | Moyen : le Centre de pilotage relie des événements par user_id (traçage bout-en-bout, Sentinelle) — à rebrancher sur session_id ; telemetrie-preauth.spec.js à adapter |
+| Effort estimé | 1-2 j |
 
-### AUT-06 — Le code d'accès de la beta privée ne protège rien : brute force en 6 ms côté client, hash public
+### AUTH-05 — La suppression du compte laisse des données personnelles dans ~18 tables et un bucket, et ignore toutes ses erreurs
 
 | Champ | Valeur |
 |---|---|
-| Identifiant | AUT-06 |
-| Priorité retenue | **P2** (proposée par l'auditeur : P2) |
+| Identifiant | AUTH-05 |
+| Priorité retenue | **P1** (proposée par l'auditeur : P1) |
 | Relecture adversariale | NON VÉRIFIÉ (pas de relecture) |
 | Confiance de l'auditeur | CONFIRMÉ |
-| Fonctionnalité | Gate d'accès (js/access-gate.js) |
-| Résultat attendu | Soit une vraie barrière (côté serveur), soit ne pas présenter la beta comme « protégée ». |
-| Résultat observé | 10 000 combinaisons, code retrouvé en 2 126 essais / 6 ms dans le navigateur ; le hash du jeton et l'algorithme sont dans un dépôt public. docs/SECURITE_CODE_ACCES.md le documente comme une protection côté client. |
-| Reproduction | preuves/auth-rgpd/gate-bruteforce.js sur le serveur local. |
-| Preuve | preuves/auth-rgpd/gate-bruteforce-resultat.json |
-| Impact utilisateur et commercial | Faible en soi (les données sont derrière RLS), mais la « beta privée » et la promesse de la politique (§7) sont illusoires ; tout scraper anonyme lit le fil, les événements et les participants (IRL-01/03). |
-| Visibilité dans le Centre de pilotage | Sans objet. |
-| Détection par la Sentinelle | Sans objet. |
-| Proposition de correction | Supprimer le gate au lancement public, ou le remplacer par une allowlist d'e-mails côté Auth (hook « before signup »). |
-| Risque de régression | Faible. |
-| Effort estimé | 0,25 jour. |
+| Fonctionnalité | Paramètres → Supprimer mon compte → doDeleteAccount (app-02) + Edge Function delete-account |
+| Résultat attendu | Effacement complet (art. 17) de tout ce qui identifie la personne dans les 39 tables et les 2 buckets, avec journal des échecs ; la modale promet « tes messages, conversations et notifications… tous tes posts, photos, vidéos… supprimés » |
+| Résultat observé | Edge Function (index.ts:45-61) : 14 tables + bucket content/{photos,videos,audios}/<uid>. Jamais purgés par personne (aucune policy DELETE côté client non plus, policies.json) : analytics_events (user_id, 3 855 l.), telemetry_events (user_id + pseudo), comment_interactions, comment_likes, conv_reads, event_comments (author_name), event_reactions, reports, user_safety (année de naissance), user_passions, passion_requests, video_lives (author_name, author_photo), post_collaborators, step_interactions, cdv_* (6 tables), notifications.from_id (chez les destinataires, `content` porte le pseudo), bucket attachments/<convId>/… (photos, fichiers et vocaux de conversations privées, bucket public). user_state et blocks : purgés côté client seulement (RLS) — si l'appareil est hors ligne à cet instant ils restent (84 user_state pour 5 comptes en prod). index.ts:62-65 et app-02:3100-3117 : `{ error }` jamais lu, `catch` inopérant (le SDK ne lève pas), réponse `{ok:true}` quoi qu'il arrive |
+| Reproduction | Après suppression d'un compte, `SELECT count(*) FROM analytics_events WHERE user_id = '<uid>'` (idem telemetry_events, comment_interactions, user_safety…) ; `SELECT name FROM storage.objects WHERE bucket_id='attachments'` — requêtes à faire exécuter par l'orchestrateur (notes) |
+| Preuve | supabase/functions/delete-account/index.ts:45-75 ; app-02-state-utils.js:3084-3104 ; preuves/supabase-isolation/policies.json (tables sans DELETE : analytics_events, conv_reads, conversations, passion_requests, reports, telemetry_events, user_safety) ; ref_cols.txt (colonnes author_name/author_photo/user_label) ; fait établi 84 user_state / 5 comptes |
+| Impact utilisateur et commercial | Droit à l'effacement non honoré ; médias privés de conversations restent servis publiquement après suppression (R2 aggravé) ; promesse contractuelle fausse ; résidus nominatifs (pseudo dans telemetry_events et notifications) exploitables |
+| Visibilité dans le Centre de pilotage | partiel — le dashboard liste les comptes (accounts.js) mais aucun panneau « résidus après suppression » |
+| Détection par la Sentinelle | non — l'Edge Function ne journalise rien et répond toujours ok |
+| Proposition de correction | Étendre `jobs` dans index.ts (+ user_state, blocks×2, analytics_events, telemetry_events, comment_interactions, comment_likes, conv_reads, event_comments, event_reactions, user_safety, user_passions, passion_requests, video_lives, post_collaborators, step_interactions, cdv_* si conservées, notifications WHERE from_id) ; anonymiser plutôt que supprimer ce qui doit rester (reports → reporter_id NULL) ; purger attachments des conversations dont l'utilisateur était membre (lister conv_members AVANT de supprimer) ; lire `{ error }` de chaque DELETE, journaliser et renvoyer `{ok, echecs:[…]}` ; job hebdomadaire d'orphelins (lignes dont user_id n'existe plus dans auth.users) ; poser PASSIO_E2E_MULTI=1 sur le job prod pour que suppression-compte.spec.js tourne enfin |
+| Risque de régression | Faible côté app ; la fonction se redéploie hors CI (à documenter comme changement critique, AGENTS.md) |
+| Effort estimé | 1 j + 0,5 j de test en réel |
 
-### AUT-07 — Aucun captcha ni anti-automatisation à l'inscription et à la connexion
+### AUTH-06 — Files locales non purgées à la déconnexion : un message privé du compte A est rejoué et envoyé sous l'identité du compte B au démarrage suivant
 
 | Champ | Valeur |
 |---|---|
-| Identifiant | AUT-07 |
+| Identifiant | AUTH-06 |
+| Priorité retenue | **P1** (proposée par l'auditeur : P1) |
+| Relecture adversariale | NON VÉRIFIÉ (pas de relecture) |
+| Confiance de l'auditeur | CONFIRMÉ |
+| Fonctionnalité | Isolation inter-comptes côté appareil (ACCOUNT_SCOPED_KEYS, files hors-ligne) |
+| Résultat attendu | Après déconnexion, aucune donnée du compte A ne reste lisible ni rejouable ; une entrée de file porte l'identité de son auteur et n'est jamais envoyée sous une autre |
+| Résultat observé | passio_outbox_v1 (messages, app-04:4580), passio_cmt_outbox_v1 (commentaires, app-04:462), passio_post_delete_outbox_v1, passio_event_comments_v1, passio_geo_cache_v1 (la liste purge « passio_cdv_geo_v1 », clé qui n'est plus écrite) et passio_first_run_v1 sont absents d'ACCOUNT_SCOPED_KEYS (app-02:2711-2739). _sendTextToSupa insère `from_id: MY_UID` au moment du flush (app-04:4620) et _flushOutbox est lancé 1,5 s après le boot (app-08:5956). Émulation B : A laisse un message en file (hors ligne), se déconnecte ; B se connecte sur le même navigateur → au boot, sans aucune action, POST /rest/v1/conv_messages {id: msg_prive_de_A, conv_id: conv_A_B, from_id: <uid B>, content: « message privé écrit par A »}. Si B est membre de la conversation (cas typique d'un appareil partagé entre proches), la RLS accepte : B « envoie » le message privé de A. Même mécanisme pour les commentaires (author_id: MY_UID, app-08:3820) au prochain enqueue |
+| Reproduction | preuves/auth-rgpd/emul-outbox-B.js (SDK stub, requêtes interceptées) : inserts_captes_au_boot = 1 avec from_id = uid B |
+| Preuve | preuves/auth-rgpd/B-outbox-rejouee-sous-identite-B.json ; app-02-state-utils.js:2711-2739 ; app-04-comments-shop.js:4580-4649 ; app-08-ui-modals-tour.js:5956 |
+| Impact utilisateur et commercial | Fuite de messages privés vers le compte suivant (lisibles dans localStorage) et usurpation d'auteur ; sur appareil partagé/familial, un message envoyé « par » la mauvaise personne dans la mauvaise conversation ; contredit l'engagement d'isolation corrigé le 2026-08-12 |
+| Visibilité dans le Centre de pilotage | non — le message paraît légitime (from_id valide, RLS satisfaite) |
+| Détection par la Sentinelle | non |
+| Proposition de correction | Ajouter les six clés à ACCOUNT_SCOPED_KEYS ; figer `from_id`/`author_id` dans l'entrée de file à l'enqueue et, au flush, ignorer (et purger) toute entrée dont l'identité ≠ MY_UID ; test e2e : file laissée par A, boot en B, aucune requête conv_messages |
+| Risque de régression | Faible : messagerie hors-ligne (messages-offline specs) à rejouer |
+| Effort estimé | 0,5 j |
+
+### AUTH-07 — Numéro de téléphone obligatoire à l'inscription, non vérifié, sans finalité déclarée, dupliqué dans le blob user_state
+
+| Champ | Valeur |
+|---|---|
+| Identifiant | AUTH-07 |
 | Priorité retenue | **P2** (proposée par l'auditeur : P2) |
 | Relecture adversariale | NON VÉRIFIÉ (pas de relecture) |
 | Confiance de l'auditeur | CONFIRMÉ |
-| Fonctionnalité | Auth |
-| Résultat attendu | Captcha (Turnstile/hCaptcha, supporté nativement par Supabase Auth) et limites de tentatives visibles. |
-| Résultat observé | Aucune intégration ; limites Auth Supabase par défaut non lisibles ici. |
-| Reproduction | Inspection du code et du projet. |
-| Preuve | grep captcha : 0 |
-| Impact utilisateur et commercial | Création massive de comptes (spam, faux comptes, contournement de l'anti-flood par compte — voir CONT-08, MOD-*). |
-| Visibilité dans le Centre de pilotage | Aucune. |
-| Détection par la Sentinelle | Non. |
-| Proposition de correction | Activer Turnstile dans Supabase Auth + `captchaToken` au signUp/signIn. |
-| Risque de régression | Faible (tests e2e à comptes réels : prévoir la clé de test). |
-| Effort estimé | 0,5 jour. |
+| Fonctionnalité | Formulaire « Créer un compte » (index.html:276-279, onbDoAuth) |
+| Résultat attendu | Minimisation (art. 5-1-c) : ne collecter le téléphone que s'il sert une finalité déclarée (et alors le vérifier), l'annoncer dans la politique |
+| Résultat observé | app-02:3403-3406 exige 8-15 chiffres ; :3418 l'écrit dans auth.users.user_metadata ; :3421-3424 dans state.user.general.phone → blob user_state synchronisé ; lu par le dashboard (accounts.js:35-38) ; aucun usage produit (grep general.phone → 1 écriture, 0 lecture applicative) ; aucune vérification OTP ; absent de la politique (§1 « e-mail et nom d'utilisateur ») |
+| Reproduction | Créer un compte sans numéro → « Numéro de téléphone invalide » |
+| Preuve | index.html:276-279 ; app-02-state-utils.js:3400-3424 ; dashboard/server/accounts.js:4-9, 35-38 ; app-02:3137 |
+| Impact utilisateur et commercial | Donnée de contact sensible collectée sans base ni finalité, exposée à toute fuite du blob user_state ; frein à l'inscription |
+| Visibilité dans le Centre de pilotage | oui — panneau comptes (accounts.js) affiche le numéro |
+| Détection par la Sentinelle | non |
+| Proposition de correction | Rendre le champ facultatif ou le retirer ; sinon déclarer la finalité (récupération de compte / anti-abus), vérifier par OTP (Supabase phone auth) et ne pas le recopier dans user_state |
+| Risque de régression | Faible ; confirmation-email.spec.js et first-run.spec.js remplissent le champ |
+| Effort estimé | 0,5 j |
+
+### AUTH-08 — Mot de passe : 6 caractères sans complexité, protection contre les mots de passe compromis désactivée, aucune MFA
+
+| Champ | Valeur |
+|---|---|
+| Identifiant | AUTH-08 |
+| Priorité retenue | **P2** (proposée par l'auditeur : P2) |
+| Relecture adversariale | NON VÉRIFIÉ (pas de relecture) |
+| Confiance de l'auditeur | CONFIRMÉ |
+| Fonctionnalité | Inscription, changement et récupération de mot de passe |
+| Résultat attendu | Recommandation CNIL 2022 : ≥ 12 caractères, ou ≥ 8 avec complexité et limitation des tentatives ; vérification HIBP activée ; MFA au moins proposée |
+| Résultat observé | Minimum 6 dans les trois formulaires (app-02:3401, 2977-2979, 3345 ; index.html:282 minlength=6) ; advisor Supabase « leaked password protection » désactivé (fait établi ; SETUP_SMTP_AUTH.md §5 le liste comme restant) ; grep mfa/totp/enroll → 0 |
+| Reproduction | Créer un compte avec « 123456 » |
+| Preuve | app-02-state-utils.js:3401, 2977, 3345 ; index.html:282 ; docs/SETUP_SMTP_AUTH.md:78-86 ; KNOWN_RISKS.md:24 |
+| Impact utilisateur et commercial | Comptes facilement compromis (credential stuffing) ; messages privés et position partagée exposés |
+| Visibilité dans le Centre de pilotage | non |
+| Détection par la Sentinelle | non |
+| Proposition de correction | Activer HIBP dans le Dashboard, régler le minimum serveur à 10 avec lettres+chiffres, aligner les trois contrôles client (doc §5 prévient du désalignement) ; MFA TOTP en option ultérieure |
+| Risque de régression | Faible ; tests créant des comptes via compte-e2e.js (service_role, non soumis à la règle) |
+| Effort estimé | 0,25 j |
+
+### AUTH-09 — Aucun export de données de compte (portabilité art. 20) ; accès/rectification par e-mail seulement, vers l'adresse d'une autre société
+
+| Champ | Valeur |
+|---|---|
+| Identifiant | AUTH-09 |
+| Priorité retenue | **P2** (proposée par l'auditeur : P2) |
+| Relecture adversariale | NON VÉRIFIÉ (pas de relecture) |
+| Confiance de l'auditeur | CONFIRMÉ |
+| Fonctionnalité | Exercice des droits RGPD |
+| Résultat attendu | Un bouton « Exporter mes données » (profil, passions, posts, commentaires, événements, messages) en format structuré, un canal d'accès/rectification identifié, un délai d'un mois annoncé |
+| Résultat observé | Seul export : une conversation en .txt (app-09:1245-1259) ; la politique §5 promet la portabilité « directement dans l'app » ; contact = adresse d'une métallerie (app-02:3144), différente de celle de l'écran À propos |
+| Reproduction | Paramètres → aucune entrée d'export ; Messages → ⋯ → Exporter la conversation (texte) |
+| Preuve | app-09-boot-pwa.js:1245-1259 ; app-02-state-utils.js:3144, 2546 |
+| Impact utilisateur et commercial | Demande de portabilité impossible à satisfaire sans intervention manuelle ; promesse fausse dans la politique |
+| Visibilité dans le Centre de pilotage | non |
+| Détection par la Sentinelle | non |
+| Proposition de correction | Edge Function export-account (service_role, JWT de l'appelant) renvoyant un JSON zippé de toutes les tables + liens Storage ; bouton dans Paramètres → Compte ; adresse privacy@ dédiée |
+| Risque de régression | Nul (ajout) |
+| Effort estimé | 1 j |
+
+### AUTH-10 — Sous-traitants et transferts hors UE non maîtrisés ni documentés (Google Fonts, Tenor/Giphy, TURN tiers, Photon, région Supabase inconnue)
+
+| Champ | Valeur |
+|---|---|
+| Identifiant | AUTH-10 |
+| Priorité retenue | **P2** (proposée par l'auditeur : P2) |
+| Relecture adversariale | NON VÉRIFIÉ (pas de relecture) |
+| Confiance de l'auditeur | CONFIRMÉ |
+| Fonctionnalité | Chaîne d'hébergement et services tiers (netlify.toml CSP) |
+| Résultat attendu | Liste des sous-traitants avec DPA, hébergement UE identifié, aucun appel tiers non nécessaire transmettant l'IP sans consentement |
+| Résultat observé | CSP netlify.toml:19 : fonts.googleapis.com/gstatic (IP transmise à Google à chaque chargement — jurisprudence Munich 2022), tenor.googleapis.com et api.giphy.com (US), turn:openrelay.metered.ca (les flux audio/vidéo WebRTC peuvent transiter par un relais tiers gratuit sans DPA), photon.komoot.io (DE, reçoit les coordonnées GPS exactes), tiles.openfreemap.org ; région du projet Supabase non lisible dans le dépôt ; politique : « hébergement UE/US » |
+| Reproduction | Ouvrir l'app, onglet Réseau : requêtes fonts.googleapis.com dès le chargement |
+| Preuve | netlify.toml:19 ; index.html (18 références fonts.googleapis.com) ; app-07:1120-1150 (_resolveUserCityName) ; grep région → 0 |
+| Impact utilisateur et commercial | Transferts non encadrés (art. 44-46), IP transmise à Google sans base ; relais TURN tiers = point de fuite des appels |
+| Visibilité dans le Centre de pilotage | non |
+| Détection par la Sentinelle | non |
+| Proposition de correction | Auto-héberger les polices (fonts locales, CSP sans Google) ; TURN propre (coturn) ou service sous DPA ; documenter la région Supabase (Dashboard → Settings → General) et signer les DPA Supabase/Netlify/Brevo ; lister le tout dans la politique |
+| Risque de régression | Faible (polices) ; TURN : à tester sur réseaux NAT stricts |
+| Effort estimé | 1 j |
+
+### AUTH-11 — LCEN / DSA : signalement in-app sans point de contact, sans accusé de réception ni procédure de retrait
+
+| Champ | Valeur |
+|---|---|
+| Identifiant | AUTH-11 |
+| Priorité retenue | **P2** (proposée par l'auditeur : P2) |
+| Relecture adversariale | NON VÉRIFIÉ (pas de relecture) |
+| Confiance de l'auditeur | CONFIRMÉ |
+| Fonctionnalité | Modération / signalement (reportUser, reportPost → table reports) |
+| Résultat attendu | Point de contact unique publié (DSA art. 11-12), mécanisme de notification de contenu illicite accessible sans compte, accusé de réception et information de la décision (art. 16-17), conservation motivée des signalements |
+| Résultat observé | Signalement possible seulement connecté (app-04:3340-3350 → app-08:5385 insert reports, policy INSERT seule, 2 lignes en prod) ; aucune page « signaler un contenu illicite », aucun e-mail dédié, aucun retour au signalant, aucune durée de conservation, reporter_id jamais anonymisé |
+| Reproduction | Sans compte : aucun moyen de signaler ; connecté : ⋯ → Signaler → toast, rien d'autre |
+| Preuve | app-04-comments-shop.js:3340-3350 ; app-08-ui-modals-tour.js:5385 ; policies.json reports (INSERT) ; grep contact/notification → 0 |
+| Impact utilisateur et commercial | Non-conformité DSA (obligations de base des hébergeurs) ; responsabilité engagée si un contenu illicite notifié n'est pas retiré promptement |
+| Visibilité dans le Centre de pilotage | partiel — le dashboard liste les reports |
+| Détection par la Sentinelle | non |
+| Proposition de correction | Page « Signaler un contenu illicite » (formulaire public + e-mail), accusé de réception automatique, statut du signalement dans reports (traité/rejeté, date), mention dans les CGU, désignation du point de contact |
+| Risque de régression | Nul (ajout) |
+| Effort estimé | 0,5 j technique + process |
+
+### AUTH-12 — Le déploiement et la conformité de l'Edge Function delete-account ne sont prouvés par aucun test automatisé (suite skippée en CI)
+
+| Champ | Valeur |
+|---|---|
+| Identifiant | AUTH-12 |
+| Priorité retenue | **P3** (proposée par l'auditeur : P3) |
+| Relecture adversariale | NON VÉRIFIÉ (pas de relecture) |
+| Confiance de l'auditeur | CONFIRMÉ |
+| Fonctionnalité | CI deploy.yml → « Suites production » |
+| Résultat attendu | Le rapport de production readiness affirme « couvert par suppression-compte.spec.js » : la suite doit tourner à chaque déploiement |
+| Résultat observé | tests/e2e/suppression-compte.spec.js:28 `test.skip(!process.env.PASSIO_E2E_MULTI)` ; PASSIO_E2E_MULTI n'apparaît dans aucun workflow (seul un commentaire deploy.yml:155) ; la doc dit « déployée le 2026-06-11 » alors que le fichier du dépôt (purge Storage) est du 2026-08-31 : l'adéquation code déployé / dépôt repose sur une vérification manuelle du 2026-08-17 |
+| Reproduction | Lire le log du job « Suites production » du run 33861671142 : suppression-compte apparaît en skipped |
+| Preuve | tests/e2e/suppression-compte.spec.js:18-28 ; .github/workflows/deploy.yml:155, 344-348 ; docs/EDGE_FUNCTION_DELETE_ACCOUNT.md:3 ; git log 43b8ffa |
+| Impact utilisateur et commercial | Une régression ou un redéploiement raté de la fonction passerait inaperçu ; le rapport d'août sur-affirme |
+| Visibilité dans le Centre de pilotage | non |
+| Détection par la Sentinelle | non |
+| Proposition de correction | Poser PASSIO_E2E_MULTI=1 sur le job prod (compte jetable via service_role, déjà prévu) ou un canari hebdomadaire ; versionner la fonction (en-tête de version renvoyé dans la réponse) |
+| Risque de régression | Nul |
+| Effort estimé | 0,25 j |
+
+### AUTH-13 — Bouton « Continuer avec Google » sans preuve d'activation du provider ni test ; erreur brute en anglais en cas d'échec
+
+| Champ | Valeur |
+|---|---|
+| Identifiant | AUTH-13 |
+| Priorité retenue | **P3** (proposée par l'auditeur : P3) |
+| Relecture adversariale | NON VÉRIFIÉ (pas de relecture) |
+| Confiance de l'auditeur | PLAUSIBLE |
+| Fonctionnalité | OAuth Google (onbGoogleAuth) |
+| Résultat attendu | Le bouton n'est affiché que si le provider est configuré ; un test couvre le retour OAuth (passio_oauth_pending) |
+| Résultat observé | index.html:294 bouton toujours visible ; app-02:3305-3322 affiche error.message brut ; aucune suite e2e ; activation non vérifiable ici |
+| Reproduction | Cliquer « Continuer avec Google » en production (non réalisé ici : netlify.app inaccessible) |
+| Preuve | index.html:294-297 ; app-02-state-utils.js:3305-3322 ; grep tests/e2e signInWithOAuth → 0 |
+| Impact utilisateur et commercial | Si le provider n'est pas activé, un bouton mort sur l'écran d'inscription ; si activé, un chemin d'auth non testé |
+| Visibilité dans le Centre de pilotage | non |
+| Détection par la Sentinelle | non |
+| Proposition de correction | Vérifier le provider dans le Dashboard ; masquer le bouton derrière un drapeau ; ajouter un test de retour OAuth avec session simulée |
+| Risque de régression | Nul |
+| Effort estimé | 0,25 j |
 
 ### Surfaces saines
 
-- Confirmation d'e-mail active : aucune session avant confirmation, message anti-énumération.
-- Propriété de l'état local par compte : purge à l'adoption, garde `_peutPousserEtat`, beacon bloqué (16 tests verts).
-- Déconnexion réelle même si signOut échoue (purge du jeton SDK + rechargement).
-- Position GPS jamais persistée.
-- Télémétrie sans identité fabriquée avant auth ; localhost n'écrit pas en prod.
-- Edge Function delete-account : vérifie le JWT, supprime bien `auth.users` (l'e-mail part immédiatement).
+- Confirmation d'e-mail obligatoire : signUp sans session, compte inutilisable avant confirmation, renvoi du lien disponible, messages neutres — 7/7 tests verts (confirmation-email.spec.js)
+- Anti-énumération : identities vides traitées, message de renvoi qui n'affirme rien, erreur de connexion générique (app-02:3431-3466)
+- Déconnexion complète : {error} de signOut lu, purge du jeton SDK par motif, purge des clés de compte, IndexedDB vidé, rechargement forcé, intention de reconnexion horodatée (TTL 10 min) — 16/16 tests verts (connexion-compte-existant.spec.js)
+- Isolation de l'état d'exploration anonyme : adopterCompteConnecte aux trois entrées, _peutPousserEtat sur les deux chemins d'écriture, beacon gardé — 16/16 tests verts (exploration-anonyme-vs-compte.spec.js)
+- Mot de passe oublié : fragment type=recovery jamais rechargé en cours de route, adoption différée au changement effectif, écriture d'état interdite pendant la récupération (app-08:2176-2262, app-02:3325-3371)
+- Localisation : demandée uniquement sur geste explicite (UI-4A0), jamais en mode visiteur, gardée en mémoire seulement, jamais écrite dans un événement (irl-trust-safety), partage de position = action volontaire
+- Service worker : n'intercepte jamais les hôtes externes, aucune réponse Supabase en Cache Storage (sw.js:127-133)
+- Téléphone et e-mail : jamais dans la table profiles (lecture publique) — user_metadata et user_state (RLS propriétaire) seulement
+- Télémétrie : filtre PII par liste noire + primitives seules, e-mails/JWT expurgés, backlog d'un autre compte neutralisé (telemetry.js:139-160, 338-341), opt-in explicite en local — 3/3 tests verts
+- Suppression in-app : confirmation textuelle SUPPRIMER, purge locale complète (localStorage passio*, jeton SDK, IndexedDB, sessionStorage), Edge Function avec JWT de l'appelant et service_role côté serveur uniquement, CORS assumé
 
 ### Non vérifié (BLOQUÉ) et ce qu'il faudrait
 
-- Paramètres Auth du projet Supabase (longueur minimale du mot de passe, limites de tentatives, durée de session, MFA) : non lisibles par le connecteur — BLOQUÉ.
-- Parcours réel d'e-mail (réception Brevo, lien de confirmation, expiration) : non exercé (aucun compte créé).
-- Suppression de compte réseau coupé (script attaque-auth.js écrit, non exécuté avant l'interruption).
-- Relecture adversariale des 7 problèmes : NON FAITE.
+- Durée du JWT / rotation du refresh token / expiration d'inactivité (BLOQUÉ : réglages Dashboard Supabase → Authentication → Sessions ; il faudrait une capture ou l'API de configuration du projet)
+- Limites de tentatives de connexion et d'envoi d'e-mails GoTrue (BLOQUÉ : Dashboard → Rate Limits ; test de charge contre la prod interdit)
+- Activation réelle du provider Google OAuth (BLOQUÉ : Dashboard → Providers)
+- Déploiement effectif et version de l'Edge Function delete-account, et purge réelle des médias (BLOQUÉ : suppression-compte.spec.js skippée en CI, comptes réels interdits ici ; il faudrait un run manuel PASSIO_E2E_MULTI=1 ou les logs Edge Functions)
+- Région d'hébergement du projet Supabase et existence des DPA Supabase/Netlify/Brevo (BLOQUÉ : hors dépôt)
+- Registre des traitements, DPO, AIPD (BLOQUÉ : documents hors dépôt, aucune trace dans docs/)
+- Contenu réel servi par https://passio-app.netlify.app (BLOQUÉ : proxy 403, fait établi par l'orchestrateur)
+- Décomptes de résidus par table après suppression et âge du plus ancien événement de télémétrie (BLOQUÉ : connecteur Supabase interdit à ce sous-agent — requêtes fournies dans notes)
+- Suites prod user-state-horodatage / authz-critical (BLOQUÉ : comptes réels ; job « Suites production » vert au run 33861671142)
+- Comportement sur WebKit/Firefox/Samsung (NON RÉALISÉ : Chromium seul)
 
 ### Affirmations des anciens rapports confrontées au code actuel
 
-- docs/CONFIRMATION_EMAIL.md et docs/SETUP_SMTP_AUTH.md : cohérents avec le code (signUp sans session).
-- docs/EDGE_FUNCTION_DELETE_ACCOUNT.md « purge des 12 tables via RLS » : le périmètre réel est 14 tables sur 39 (AUT-02).
+- PASSIO_PRODUCTION_READINESS.md:19 « Suppression de compte PROUVÉ… complet… couvert par suppression-compte.spec.js » → PARTIELLEMENT FAUSSE : la suite est test.skip sans PASSIO_E2E_MULTI, jamais posé en CI (deploy.yml) ; le parcours ne purge ni analytics_events, telemetry_events, comment_interactions, comment_likes, conv_reads, event_comments, event_reactions, user_safety, user_passions, video_lives, cdv_*, ni le bucket attachments (index.ts:45-75, policies.json)
+- PASSIO_PRODUCTION_READINESS.md:19 « résidu (76 user_state, 54 notifications, 19 médias) = suppressions administratives » → NON VÉRIFIABLE ici ; le fait établi (84 user_state pour 5 comptes) montre que le résidu n'a pas été purgé depuis
+- docs/CHECKLIST_COMMERCIALISATION.md:40 « Gate code 2125 (hash, jamais en clair, deep links protégés) » → FAUSSE : code en clair dans 19 fichiers d'un dépôt public, hash brute-forcé en 6 ms, contournement par sessionStorage (preuves/auth-rgpd/gate-bruteforce.txt, emul-auth-resultats.json)
+- docs/SECURITE_CODE_ACCES.md:47 « le hash empêche seulement de retrouver le code » → FAUSSE (4 chiffres + sel public = 10 000 candidats)
+- docs/CHECKLIST_COMMERCIALISATION.md:45 « RGPD : suppression de compte réelle + Edge Function déployée » → PARTIELLEMENT VRAIE (auth.users et 14 tables) mais incomplète (AUTH-05) ; déploiement non prouvé par la CI
+- docs/CHECKLIST_COMMERCIALISATION.md:46 « Politique de confidentialité in-app » → TOUJOURS VRAIE (app-02:3133) mais incomplète et périmée (AUTH-03)
+- docs/EDGE_FUNCTION_DELETE_ACCOUNT.md:11 « efface les données des 12 tables via RLS » → TOUJOURS VRAIE pour 13 tables (+follows/blocks) mais 8 tables n'ont aucune policy DELETE (analytics_events, conv_reads, conversations, passion_requests, reports, telemetry_events, user_safety…)
+- docs/EDGE_FUNCTION_DELETE_ACCOUNT.md:50 « les fichiers Storage (bucket attachments) ne sont pas purgés » → TOUJOURS VRAIE (index.ts ne touche que content)
+- docs/CONFIRMATION_EMAIL.md ① ② (switchAuthTab d'abord, renvoi du lien) → TOUJOURS VRAIES (app-02:3255-3302, 3455-3477 ; 7/7 tests verts)
+- docs/SETUP_SMTP_AUTH.md §5 « HIBP OFF, minimum 6 côté app » → TOUJOURS VRAIE (advisor + app-02:3401)
+- KNOWN_RISKS.md R11 (DKIM/DMARC absents) → NON VÉRIFIABLE ici (DNS) ; toujours listé ouvert
+- CLAUDE.md « Première visite : aucune demande de permission (GPS…) » → TOUJOURS VRAIE (first-run.js:35, app-07:2758-2762)
+- CLAUDE.md « purgeAccountScopedData efface toute trace du compte » → FAUSSE pour six clés (AUTH-06 : passio_outbox_v1, passio_cmt_outbox_v1, passio_post_delete_outbox_v1, passio_event_comments_v1, passio_geo_cache_v1, passio_first_run_v1)
+- Politique in-app §6 « l'inscription demande l'âge à l'onboarding » et index.html:311 « contrôle d'âge IA » → FAUSSES sur le chemin nominal (AUTH-02)
+- telemetry.js en-tête « opt-in strict » / index.html:51 « opt-in via ?telemetry=1, sans PII » → FAUSSE en production : ON par défaut (telemetry.js:71), device_id persistant, user_id + pseudo
 
 ### Fichiers de preuve
 
+- `preuves/auth-rgpd/playwright-suites-auth.log`
+- `preuves/auth-rgpd/playwright-bilan.txt`
+- `preuves/auth-rgpd/gate-bruteforce.txt`
 - `preuves/auth-rgpd/emul-auth.js`
-- `preuves/auth-rgpd/emul-auth-resultat.json`
-- `preuves/auth-rgpd/gate-bruteforce.js`
-- `preuves/auth-rgpd/gate-bruteforce-resultat.json`
-- `preuves/auth-rgpd/e2e-auth-rgpd.log`
-- `preuves/auth-rgpd/capture-inscription.png`
-- `preuves/auth-rgpd/capture-politique.png`
-- `preuves/auth-rgpd/capture-a-propos.png`
-- `preuves/auth-rgpd/capture-suppression.png`
+- `preuves/auth-rgpd/emul-auth-resultats.json`
+- `preuves/auth-rgpd/A-gate-contourne.png`
+- `preuves/auth-rgpd/emul-outbox-B.js`
+- `preuves/auth-rgpd/stub-supabase.js`
+- `preuves/auth-rgpd/B-outbox-rejouee-sous-identite-B.json`
+- `preuves/auth-rgpd/http-8107.log`
 
 ### Notes de l'auditeur
 
-Reconstitué par l'orchestrateur le 2026-09-04 (sous-agents wf_49c0dbab, wf_9ad7c9d4, wf_dde7d72b interrompus). Le premier lot de tests (tests-e2e-auth.txt, 38 rouges) date de l'incompatibilité Chromium 1194/1223, corrigée ensuite : le second lot (e2e-auth-rgpd.log) est entièrement vert.
+VERDICT DU DOMAINE — Authentification : solide (confirmation d'e-mail, anti-énumération, déconnexion, isolation de l'état d'exploration : 58/58 tests verts). Juridique/RGPD : NON PRÊT pour un lancement public — six P1 (gate factice, âge jamais demandé, aucun document contractuel/légal ni acceptation, télémétrie sans consentement, effacement incomplet, rejeu de messages sous une autre identité).
+
+DOCUMENTS JURIDIQUES — Présents : politique de confidentialité (modale app-02:3133-3150, juin 2026, incomplète), écran « À propos » (app-02:2539, sans mentions légales complètes), modale de suppression avec référence à l'art. 17. Absents : CGU/conditions d'utilisation, mentions légales LCEN (éditeur, SIREN, adresse, directeur de publication, hébergeur), bandeau/consentement traceurs, page de signalement DSA / point de contact, registre des traitements, DPO, DPA sous-traitants, information sur la géolocalisation, liste des sous-traitants, politique de conservation.
+
+RECOMMANDATIONS — Conserver : le socle d'auth (onbDoAuth, doLogout, adopterCompteConnecte, _peutPousserEtat), l'Edge Function comme point unique de suppression (à étendre), telemetry.js (à anonymiser ou à consentir). Supprimer : le gate 2125 tel quel (ou le remplacer par verify-access), le texte « contrôle d'âge IA », la mention « carnets » de la politique, la clé morte passio_cdv_geo_v1 dans ACCOUNT_SCOPED_KEYS. Refactoriser : étape âge au premier boot de session (AUTH-02), files hors-ligne avec identité figée (AUTH-06), Edge Function lisant {error} et couvrant les 39 tables + attachments (AUTH-05). À soumettre à Benjamin : (1) passer le dépôt en privé ou retirer CLAUDE.md/docs internes/code du gate ; (2) choix télémétrie : anonymisation (exemption CNIL) vs bandeau de consentement ; (3) rédaction CGU + mentions légales + politique v2 avec un juriste, et unification de l'adresse de contact (deux adresses contradictoires aujourd'hui) ; (4) rendre le numéro de téléphone facultatif ; (5) activer HIBP + minimum 10 caractères dans le Dashboard ; (6) poser PASSIO_E2E_MULTI=1 sur le job prod pour prouver enfin delete-account ; (7) planifier purge_telemetry(90) en cron.
+
+CAPACITÉ/COÛTS — telemetry_events croît sans purge (111 828 lignes / 54 Mo pour 5 comptes : ~10 Mo par compte actif et par mois d'usage intensif) ; user_state orphelines 10 Mo. Aucune mesure de capacité auth (non prouvée).
+
+REQUÊTES À EXÉCUTER PAR L'ORCHESTRATEUR (lecture seule) —
+1. Résidus par table : SELECT 'user_state' t, count(*) FROM user_state u WHERE NOT EXISTS (SELECT 1 FROM auth.users a WHERE a.id::text = u.user_id) UNION ALL SELECT 'notifications', count(*) FROM notifications n WHERE NOT EXISTS (SELECT 1 FROM auth.users a WHERE a.id::text = n.user_id) UNION ALL SELECT 'telemetry_events', count(*) FROM telemetry_events e WHERE e.user_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM auth.users a WHERE a.id::text = e.user_id) UNION ALL SELECT 'analytics_events', count(*) FROM analytics_events e WHERE NOT EXISTS (SELECT 1 FROM auth.users a WHERE a.id::text = e.user_id) UNION ALL SELECT 'comment_interactions', count(*) FROM comment_interactions c WHERE NOT EXISTS (SELECT 1 FROM auth.users a WHERE a.id::text = c.user_id) UNION ALL SELECT 'user_safety', count(*) FROM user_safety s WHERE NOT EXISTS (SELECT 1 FROM auth.users a WHERE a.id::text = s.user_id);
+2. Ancienneté télémétrie : SELECT min(received_at), max(received_at), count(*) FROM telemetry_events;
+3. Médias orphelins : SELECT bucket_id, count(*) FROM storage.objects GROUP BY 1; et SELECT count(*) FROM storage.objects WHERE bucket_id='attachments';
+4. Crons : SELECT jobname, schedule, command FROM cron.job;
+5. Téléphones collectés : SELECT count(*) FILTER (WHERE raw_user_meta_data ? 'phone') AS avec_tel, count(*) FROM auth.users;
+
+FICHIERS PRÉEXISTANTS dans preuves/auth-rgpd (déposés par une exécution antérieure interrompue de ce domaine, non produits ni vérifiés par moi : attaque-auth.js, capture-*.png, e2e-auth-rgpd.log, tests-e2e-auth.txt, gate-bruteforce.js/.json, emul-auth-resultat.json, http-server-8107.log) — à ne pas confondre avec les fichiers listés dans preuves_fichiers.
+
+HYGIÈNE — Aucun fichier suivi par git modifié (`git status --short` vide en fin de mission) ; serveur http-server du port 8107 arrêté ; aucune requête n'a atteint Supabase pendant les émulations (toutes interceptées par page.route, SDK remplacé par un stub local car cdn.jsdelivr.net est bloqué par le proxy — CONNECT 403) ; le connecteur Supabase n'a pas été utilisé.

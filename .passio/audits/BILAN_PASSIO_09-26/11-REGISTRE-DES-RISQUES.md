@@ -7,20 +7,20 @@
 | Priorité | Définition | Nombre retenu |
 |---|---|---|
 | **P0** | bloque la commercialisation | **8** |
-| **P1** | à corriger avant tout lancement public | **54** |
-| **P2** | amélioration importante | **65** |
-| **P3** | optimisation future | **56** |
+| **P1** | à corriger avant tout lancement public | **57** |
+| **P2** | amélioration importante | **66** |
+| **P3** | optimisation future | **58** |
 | Réfutés par la relecture | conservés pour mémoire | 3 |
-| **Total rapporté** | | **186** |
+| **Total rapporté** | | **192** |
 
-Relecture adversariale : 104 confirmés · 4 incertains · 3 réfutés · **75 non relus** (crédits de session épuisés : domaines irl, profils-passions, auth-rgpd, robustesse-pannes, perf-capacite-couts, appareils-a11y, exploitation-continuite et tests-ci). Les problèmes non relus sont à traiter en priorité par la contre-revue GPT-6 Astra.
+Relecture adversariale : 104 confirmés · 4 incertains · 3 réfutés · **81 non relus** (crédits de session épuisés : domaines appareils-a11y, auth-rgpd, exploitation-continuite, irl, perf-capacite-couts, profils-passions, robustesse-pannes, tests-ci). Les problèmes non relus sont à traiter en priorité par la contre-revue GPT-6 Astra.
 
 ## 2. Par domaine
 
 | Domaine | Rapport | P0 | P1 | P2 | P3 | Réfutés | Relecture |
 |---|---|---|---|---|---|---|---|
 | appareils-a11y | 09 | 0 | 0 | 2 | 3 | 0 | NON (crédits) |
-| auth-rgpd | 06 | 0 | 3 | 4 | 0 | 0 | NON (crédits) |
+| auth-rgpd | 06 | 0 | 6 | 5 | 2 | 0 | NON (crédits) |
 | carto | 02 | 0 | 0 | 1 | 7 | 1 | oui |
 | code-nettoyage | 05 | 0 | 1 | 3 | 11 | 1 | oui |
 | contenu | 04 | 1 | 4 | 7 | 1 | 1 | oui |
@@ -53,13 +53,16 @@ Colonnes : priorité retenue (initiale de l'auditeur entre parenthèses si diff�
 | **SUP-01** | supabase-isolation | 06 | Confirmé | Pièces jointes vocales de conversations privées dans un bucket public, listables avec la seule clé anon (R2 « P0 » ouvert depuis le 2026-08-08) | 1 à 2 jours (migration + client + test authz) | Passer attachments en public=false ; lecture par createSignedUrl (TTL court) côté client au rendu du message, ou policy SELECT storage.objects sur attachments = is_conv_member(dossier[2], auth.uid()) ; remplacer getPubli |
 | **SUP-04** | supabase-isolation | 06 | Confirmé | Un seul projet Supabase pour le dev, les previews de PR, les tests CI à comptes réels et la production (staging séparé : NON) | 3 à 5 jours (création, schéma, CI, CSP, docs) | Créer un second projet Supabase (staging) alimenté par SCHEMA_PROD_REFERENCE régénéré + migrations rejouées ; router previews et suites prod dessus (SUPABASE_URL/ANON par environnement, injectés au build) ; garder en pro |
 
-### P1 — 54 retenus
+### P1 — 57 retenus
 
 | Id | Domaine | Rapport | Relecture | Titre | Effort | Correction (résumé) |
 |---|---|---|---|---|---|---|
-| **AUT-01** | auth-rgpd | 06 | Non relu | Aucune CGU, aucun consentement ni lien vers la politique à l'inscription | 1 jour de code + rédaction juridique. | Rédiger CGU + mentions légales (éditeur réel, SIREN, hébergeur, contact), les afficher à l'inscription avec case obligatoire, horodater l'acceptation (colonne `terms_accepted_at`). |
-| **AUT-02** | auth-rgpd | 06 | Non relu | Effacement du compte incomplet : 25 tables et 5 dossiers Storage ne sont pas purgés | 1 jour. | Découvrir les tables à colonne `user_id\|author_id\|from_id\|reporter_id\|blocker_id\|blocked_id` dynamiquement (comme scripts/sauvegarde-donnees.js le fait) ; purger tous les préfixes Storage `<dossier>/<uid>` et les at |
-| **AUT-03** | auth-rgpd | 06 | Non relu | Allégation fausse « contrôle d'âge IA » et vérification d'âge purement déclarative côté client | 0,5 jour (texte + appel RPC) ; règles mineurs : voir IRL-02. | Retirer l'allégation ; appeler `declare_birth_year` à l'onboarding ; définir les restrictions mineurs (IRL, DM) et les faire porter par la RLS. |
+| **AUTH-01** | auth-rgpd | 06 | Non relu | Le gate « bêta privée » (2125) n'a aucune valeur : force brute en 6 ms, contournement par sessionStorage, code en clair dans un dépôt GitHub public | 0,5 j (retrait) à 1,5 j (Edge Function + invitations) | Soit retirer le gate et cesser de le promettre (la RLS est la vraie frontière), soit le remplacer par la migration déjà prévue dans docs/SECURITE_CODE_ACCES.md (Edge Function verify-access avec limite d'essais, ou liste  |
+| **AUTH-02** | auth-rgpd | 06 | Non relu | La vérification d'âge n'est jamais atteinte sur le chemin d'inscription nominal, et l'écran promet un « contrôle d'âge IA » inexistant | 1 j | Dans boot() (branche session, app-08:2278) et après signin : si `!state.user.birthYear` afficher l'étape « age » AVANT d'entrer ; écrire l'année via declare_birth_year (user_safety, non avançable) ; retirer « IA » du tex |
+| **AUTH-03** | auth-rgpd | 06 | Non relu | Aucune CGU, aucune mention légale, aucun recueil d'acceptation ; politique de confidentialité incomplète et périmée | 2-3 j de rédaction technique + relecture juridique externe | Rédiger (avec validation juridique) CGU + mentions légales + politique v2 ; les servir comme pages statiques versionnées (docs légales dans le dépôt, date de version) ; case « J'accepte les CGU et la politique » obligato |
+| **AUTH-04** | auth-rgpd | 06 | Non relu | Télémétrie active par défaut sans consentement, sans interrupteur in-app, avec identifiant d'appareil persistant, pseudo et identifiant de compte, conservée sans limite | 1-2 j | Option 1 (rapide) : anonymiser — retirer user_id/user_label des événements (garder session_id éphémère), device_id renouvelé tous les 13 mois, finalité limitée, et déclarer l'exemption ; Option 2 : bandeau de consentemen |
+| **AUTH-05** | auth-rgpd | 06 | Non relu | La suppression du compte laisse des données personnelles dans ~18 tables et un bucket, et ignore toutes ses erreurs | 1 j + 0,5 j de test en réel | Étendre `jobs` dans index.ts (+ user_state, blocks×2, analytics_events, telemetry_events, comment_interactions, comment_likes, conv_reads, event_comments, event_reactions, user_safety, user_passions, passion_requests, vi |
+| **AUTH-06** | auth-rgpd | 06 | Non relu | Files locales non purgées à la déconnexion : un message privé du compte A est rejoué et envoyé sous l'identité du compte B au démarrage suivant | 0,5 j | Ajouter les six clés à ACCOUNT_SCOPED_KEYS ; figer `from_id`/`author_id` dans l'entrée de file à l'enqueue et, au flush, ignorer (et purger) toute entrée dont l'identité ≠ MY_UID ; test e2e : file laissée par A, boot en  |
 | **NET-07** | code-nettoyage | 05 | Confirmé | Migrations : 64 fichiers, 4 enregistrées, aucun ordre ni journal d'application, baseline périmée de 4 tables | 0,5 j initial + 10 min par migration | 1) `npm run schema:baseline` régénéré et committé après chaque migration (gate CI qui compare la baseline à `list_tables` en lecture seule, hebdo) ; 2) migrations/README.md : tableau fichier → date d'application → auteur |
 | **CONT-02** | contenu | 04 | Confirmé | Un post du Studio non envoyé n'est jamais retenté : il reste « Sync… » à vie sans file de reprise | 1 jour | Créer une file `passio_post_outbox_v1` sur le modèle de `_delOb*` : mise en file à l'échec, flush sur `online`/timer, insert idempotent (23505 = succès), mise à jour de `syncStatus` |
 | **CONT-04** | contenu | 04 | Confirmé | Le lien de partage d'un profil (#user-<id>) n'est routé par personne | 0,5 jour | Ajouter un routeur `#user-<id>` sur le modèle de `_openReelDeepLink` (attente app prête, openUserProfile(id,'seed'), hash nettoyé au succès) et aligner RE_LIEN_PROFOND |
@@ -112,16 +115,17 @@ Colonnes : priorité retenue (initiale de l'auditeur entre parenthèses si diff�
 | **UXO-03** | ux-onboarding | 03 | Incertain | Messagerie de démonstration non étiquetée : 5 conversations fictives et une pastille « 3 » non lus servies au visiteur ET à un compte connecté | 1 j (code + tests) | Ne charger SEED_CONVERSATIONS que pour le visiteur (PassioFirstRun.estVisiteur()) avec étiquette « Exemple PASSIO » et réponse désactivée, ou les retirer ; exclure les conversations seed de renderMsgBadge ; purger les se |
 | **UXO-07** | ux-onboarding | 03 | Confirmé | L'étape « Vérification d'âge » affirme un « contrôle d'âge IA » qui n'existe pas | 0,1 j | Remplacer par une formulation exacte (« Indique ton année de naissance — PASSIO est réservé aux 13 ans et plus ») ; aligner max de l'input ; le jour où un vrai contrôle existe, le documenter |
 
-### P2 — 65 retenus
+### P2 — 66 retenus
 
 | Id | Domaine | Rapport | Relecture | Titre | Effort | Correction (résumé) |
 |---|---|---|---|---|---|---|
 | **DEV-01** | appareils-a11y | 09 | Non relu | Cibles tactiles sous 44 px sur toutes les barres (cloche, menu, pièce jointe, retour) et actions de commentaire de 12 px | 0,5 jour. | Padding/min-size 44 px sur les boutons de barre et du composer ; zone de tap élargie sur `.comment-action` (padding, pas seulement l'icône). |
 | **DEV-02** | appareils-a11y | 09 | Non relu | Environ 95 gabarits `<div onclick>` sans `tabindex` ni rôle : cartes du fil, événements et conversations inaccessibles au clavier | 1 jour. | Ajouter `role="button" tabindex="0"` aux gabarits (l'activation existe déjà), ou convertir en `<button>` ; audit `npm run audit:handlers` étendu. |
-| **AUT-04** | auth-rgpd | 06 | Non relu | Politique de confidentialité périmée et contradictoire (carnets retirés, deux contacts différents, délai d'effacement faux, éditeur « PASSIO SAS » non vérifié) | 0,5 jour + relecture juridique. | Réécrire la politique (traitements réels, sous-traitants : Supabase, Netlify, Brevo, Tenor/Giphy, OpenFreeMap, BAN/Photon), un seul contact, mentions légales. |
-| **AUT-05** | auth-rgpd | 06 | Non relu | Aucun export des données (portabilité) alors que la politique le promet « dans l'app » | 1 jour. | Edge Function `export-account` (JSON des tables où l'utilisateur est propriétaire + liste des médias). |
-| **AUT-06** | auth-rgpd | 06 | Non relu | Le code d'accès de la beta privée ne protège rien : brute force en 6 ms côté client, hash public | 0,25 jour. | Supprimer le gate au lancement public, ou le remplacer par une allowlist d'e-mails côté Auth (hook « before signup »). |
-| **AUT-07** | auth-rgpd | 06 | Non relu | Aucun captcha ni anti-automatisation à l'inscription et à la connexion | 0,5 jour. | Activer Turnstile dans Supabase Auth + `captchaToken` au signUp/signIn. |
+| **AUTH-07** | auth-rgpd | 06 | Non relu | Numéro de téléphone obligatoire à l'inscription, non vérifié, sans finalité déclarée, dupliqué dans le blob user_state | 0,5 j | Rendre le champ facultatif ou le retirer ; sinon déclarer la finalité (récupération de compte / anti-abus), vérifier par OTP (Supabase phone auth) et ne pas le recopier dans user_state |
+| **AUTH-08** | auth-rgpd | 06 | Non relu | Mot de passe : 6 caractères sans complexité, protection contre les mots de passe compromis désactivée, aucune MFA | 0,25 j | Activer HIBP dans le Dashboard, régler le minimum serveur à 10 avec lettres+chiffres, aligner les trois contrôles client (doc §5 prévient du désalignement) ; MFA TOTP en option ultérieure |
+| **AUTH-09** | auth-rgpd | 06 | Non relu | Aucun export de données de compte (portabilité art. 20) ; accès/rectification par e-mail seulement, vers l'adresse d'une autre société | 1 j | Edge Function export-account (service_role, JWT de l'appelant) renvoyant un JSON zippé de toutes les tables + liens Storage ; bouton dans Paramètres → Compte ; adresse privacy@ dédiée |
+| **AUTH-10** | auth-rgpd | 06 | Non relu | Sous-traitants et transferts hors UE non maîtrisés ni documentés (Google Fonts, Tenor/Giphy, TURN tiers, Photon, région Supabase inconnue) | 1 j | Auto-héberger les polices (fonts locales, CSP sans Google) ; TURN propre (coturn) ou service sous DPA ; documenter la région Supabase (Dashboard → Settings → General) et signer les DPA Supabase/Netlify/Brevo ; lister le  |
+| **AUTH-11** | auth-rgpd | 06 | Non relu | LCEN / DSA : signalement in-app sans point de contact, sans accusé de réception ni procédure de retrait | 0,5 j technique + process | Page « Signaler un contenu illicite » (formulaire public + e-mail), accusé de réception automatique, statut du signalement dans reports (traité/rejeté, date), mention dans les CGU, désignation du point de contact |
 | **CARTO-09** | carto | 02 | Confirmé | 32 gardes d'authentification manuelles (MY_UID) contre 19 requireAuthentication : deux définitions du mot « connecté » | 1 j | Inventorier les 32 gardes et les faire passer par requireAuthentication(ctx) quand l'action est engageante (hors périmètre carto : à instruire par le domaine UX/onboarding) |
 | **NET-01** | code-nettoyage | 05 | Confirmé | L'assistant IA local propose encore le Carnet de voyage / CDV Live retiré par ADR-011 | 2 h | Retirer l'intention 'cdv' d'aiDetectIntent et sa branche dans aiGenerateResponse ; supprimer les gardes typeof app-08:5870-5873, le sélecteur #cdvLiveComment, le mapping cdv_live_comments (ou le garder en lecture seule d |
 | **NET-04** | code-nettoyage | 05 | Confirmé | Écritures Supabase dont { error } n'est jamais lu : l'action paraît réussie et disparaît au rechargement | 1 j (10 chemins) + 0,5 j pour le gate | Lire `const { error } = await …`, journaliser via diagLog + tel.error, annuler l'optimisme (réinsérer le commentaire, rétablir le badge) ; règle mécanique : étendre scripts/audit-supa-stub.js ou un nouveau gate « écritur |
@@ -182,13 +186,15 @@ Colonnes : priorité retenue (initiale de l'auditeur entre parenthèses si diff�
 | **UXO-09** | ux-onboarding | 03 | Confirmé | L'aide au geste « stories » se pose PAR-DESSUS la visionneuse de story ouverte | 0,25 j | Ajouter #storyViewer.active et #mediaEditor.open à ecranOccupe() ; poser l'aide à la FERMETURE de la visionneuse ou la retirer (même raisonnement que l'aide « bobines » retirée) ; verrou e2e « aucune bulle pendant qu'une |
 | **UXO-10** | ux-onboarding | 03 | Confirmé | Portes de création incohérentes pour un visiteur : « Live vidéo » refuse par un toast sans porte, « Publication » et « Audio » ouvrent le Studio sans gate | 0,25 j | startVideoLive : appeler requireAuthentication('bobine'\|'publier') avant le toast ; décider si le Studio est une porte (gate à l'entrée, avec la mémorisation de retour) ou une vitrine (bandeau « pour publier, crée ton c |
 
-### P3 — 56 retenus
+### P3 — 58 retenus
 
 | Id | Domaine | Rapport | Relecture | Titre | Effort | Correction (résumé) |
 |---|---|---|---|---|---|---|
 | **DEV-03** | appareils-a11y | 09 | Non relu | Contrastes sous 4,5:1 sur la porte « Ajouter une passion » (4,4:1 à 12 px) et le bouton « Compris » des aides (4,11:1) | 0,25 jour. | Assombrir `--muted` sur lavis (ex. #5b5680) et le violet du bouton d'aide. |
 | **DEV-04** | appareils-a11y | 09 | Non relu | Commandes iconiques sans nom accessible (pastille photo 📷 ×28, avatars cliquables ×17) | 0,25 jour. | `aria-label="Changer la photo de la passion"`, `aria-label="Profil de <nom>"`. |
 | **DEV-05** | appareils-a11y | 09 | Non relu | Détection du mode PWA installé : `PassioPlatform` absent dans le parcours hors-ligne | 0,25 jour. | Vérifier le chargement de js/platform.js dans le cache du SW (absent de la liste des entrées : index, CSS, icônes, manifest — app.js n'y est pas non plus mais est servi par le réseau ou le cache dynamique). |
+| **AUTH-12** | auth-rgpd | 06 | Non relu | Le déploiement et la conformité de l'Edge Function delete-account ne sont prouvés par aucun test automatisé (suite skippée en CI) | 0,25 j | Poser PASSIO_E2E_MULTI=1 sur le job prod (compte jetable via service_role, déjà prévu) ou un canari hebdomadaire ; versionner la fonction (en-tête de version renvoyé dans la réponse) |
+| **AUTH-13** | auth-rgpd | 06 | Non relu | Bouton « Continuer avec Google » sans preuve d'activation du provider ni test ; erreur brute en anglais en cas d'échec | 0,25 j | Vérifier le provider dans le Dashboard ; masquer le bouton derrière un drapeau ; ajouter un test de retour OAuth avec session simulée |
 | **CARTO-01** | carto | 02 | Confirmé | PASSIO_FUNCTIONAL_MAP.md est périmé sur tous ses chiffres et décrit deux écrans retirés | 2 h | Régénérer les sections 1, 2 et 4 depuis les scripts (couverture-interactions.js, inventaire.js) et dater ; marquer les tableaux comme générés |
 | **CARTO-02** | carto | 02 | Confirmé | Trois modules de garde ne tournent qu'en production : identity-transition.js, release-guard.js, passion-context.js sont absents d'index.html | 0,5 j | Charger les trois fichiers dans index.html à la place que le build leur donne (release-guard peut se contenter d'un PASSIO_RELEASE absent) et faire du build une simple inline ; ou documenter explicitement dans CLAUDE.md  |
 | **CARTO-03** | carto | 02 | Confirmé | Deux barres de navigation dans le DOM : #appNav (legacy, masquée) et #appNavV2 ; « Bobines » n'a plus d'entrée de navigation | 0,5 j | Sous drapeau UI-1 actif par défaut depuis le 2026-08-26 : décider de retirer le balisage legacy (avec le kill switch) ou de l'y confiner, et arbitrer une entrée Bobines (produit) |
@@ -251,19 +257,21 @@ Colonnes : priorité retenue (initiale de l'auditeur entre parenthèses si diff�
 Plusieurs domaines ont rapporté le même fait sous des angles différents. Ils sont conservés séparément (chacun porte sa preuve et sa reproduction), mais comptent pour UN chantier :
 
 - **Pièces jointes et médias publics, listables par anon** : SUP-01, MSG-03, CONT-11 (P0) — un seul chantier (bucket `attachments` privé + URL signées, retrait du listing anon).
-- **Staging inexistant** : SUP-04 (P0), EXP-11, EXP-04 (reconstitution), TCI-04 (P1).
-- **Restauration jamais prouvée** : EXP-01 (P0), TCI-03, EXP-02, NET-07, SUP-08.
+- **Staging inexistant** : SUP-04 (P0), EXP-11, TCI-04 (P1).
+- **Restauration jamais prouvée** : EXP-01 (P0), TCI-03, EXP-02, EXP-04, NET-07, SUP-08.
 - **conv_reads public** : SUP-02, MSG-05 (P1), SUP-15 (P3).
 - **Aucun rate-limit sur posts/commentaires/messages/notifications** : CONT-08, MOD-06, SUP-07, MSG-04 (P1), MSG-12 (P3).
-- **Suppression de compte incomplète** : SUP-10, AUT-02 (P1).
-- **Âge / mineurs / allégation « contrôle d'âge IA »** : UXO-07, AUT-03, MOD-08, IRL-02 (P1), EXP-14 (P2).
-- **CGU, mentions légales, DSA, support** : MOD-09, AUT-01, EXP-07, EXP-08, EXP-09, EXP-02/03 (reconstitution).
+- **Suppression de compte incomplète** : SUP-10, AUTH-05 (P1), AUTH-12 (P3).
+- **Âge / mineurs / allégation « contrôle d'âge IA »** : UXO-07, AUTH-02, MOD-08, IRL-02 (P1), EXP-14 (P2).
+- **CGU, mentions légales, DSA, support, RGPD** : MOD-09, AUTH-03, AUTH-09, AUTH-11, EXP-07, EXP-08, EXP-09 (P1) ; AUTH-10 (P2).
+- **Gate 2125 sans valeur, code en clair dans un dépôt public** : AUTH-01 (P1), EXP-10 (P1).
+- **Télémétrie sans consentement, non bornée, jamais purgée** : PIL-03, AUTH-04 (P1), PERF-04, EXP-15 (P2).
 - **UPDATE sans WITH CHECK (events, post_comments, conv_messages)** : SUP-03 (P1), SUP-09, IRL-08 (P2).
 - **Publication non renvoyée (« Sync… » à vie)** : CONT-02 (P1), ROB-01 (P2), CONT-03.
-- **Télémétrie non bornée et jamais purgée** : PIL-03 (P1), PERF-04, EXP-15 (P2).
 - **Canaux Realtime broadcast publics** : SUP-06 (P1), MSG-01 (P0, XSS par ce canal), MSG-15.
 - **Identité affichée choisie par le client** : PRO-02 (P1), MSG-15 (indicateur de frappe).
-- **Migrations non reconstructibles** : NET-07 (P1), SUP-08 (P2), EXP-04.
+- **Isolation inter-comptes sur l'appareil** : AUTH-06 (file de messages rejouée sous l'identité du compte suivant, P1), MSG-14 (base64 conservé).
+- **Migrations non reconstructibles** : NET-07 (P1), SUP-08 (P2), EXP-04 (P1).
 - **Landing / pitch / docs périmés (carnets, économie)** : UXO-06, NET-01, NET-11, CARTO-01, CARTO-07, TCI-13.
 
 ## 5. Lecture croisée avec les critères d'interdiction du GO grande échelle
@@ -271,8 +279,8 @@ Plusieurs domaines ont rapporté le même fait sous des angles différents. Ils 
 | Critère | État | Problèmes |
 |---|---|---|
 | Un P0 ouvert | **8 P0 ouverts** | CONT-11, EXP-01, MSG-01, MSG-03, MOD-01, PERF-01, SUP-01, SUP-04 |
-| Isolation des comptes non prouvée | Isolation par RLS **conforme par inspection** (128 policies relues, toutes par propriétaire) mais **non prouvée sous rôle** (SET ROLE refusé, REST bloqué) ; fuites transverses prouvées sur conv_reads, event_attendees, Storage | SUP-02, MSG-05, IRL-03, SUP-01/MSG-03/CONT-11 |
-| Restauration non prouvée | **Jamais exécutée** | EXP-01, TCI-03 |
+| Isolation des comptes non prouvée | Isolation par RLS **conforme par inspection** (128 policies relues, toutes par propriétaire) mais **non prouvée sous rôle** (SET ROLE refusé, REST bloqué) ; fuites transverses prouvées sur conv_reads, event_attendees, Storage, et sur l'appareil (file de messages rejouée sous un autre compte) | SUP-02, MSG-05, IRL-03, SUP-01/MSG-03/CONT-11, AUTH-06 |
+| Restauration non prouvée | **Jamais exécutée** | EXP-01, EXP-02, TCI-03 |
 | Capacité non mesurée | **Aucune mesure** | PERF-01 |
 | Fonction critique invisible du Pilotage ET de la Sentinelle | Confirmation e-mail, push, suppression de compte, Storage, modération, sauvegardes : **invisibles** | PIL-04, PIL-10, MOD-11, PIL-01 |
 | Sécurité IRL ou modération insuffisante | **Insuffisantes** | MOD-01, MOD-02, IRL-01, IRL-02, IRL-03 |

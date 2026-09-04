@@ -12,7 +12,7 @@
 | 4 | **Fichier réellement servi en production** = SHA c8cb8e99 | `netlify.app` refusé par le proxy (403) | `curl -sI https://passio-app.netlify.app/release.json` et comparaison du hash d'app.js | N'importe quel poste |
 | 5 | **Plans et quotas** Supabase (compute, connexions, Realtime, sauvegardes, PITR), Netlify (bande passante), Brevo (e-mails/jour) | Non lisibles par le connecteur en lecture seule | Captures d'écran des pages Billing / Backups / Auth Rate limits / Attack protection | Benjamin |
 | 6 | **Appareils et navigateurs réels** (iPhone Safari, Android Chrome, Samsung Internet, iPad, PWA installée, Firefox, Edge) | Chromium seul dans l'environnement | Session de recette sur 1 iPhone + 1 Android + 1 tablette avec la grille du rapport 09 | Benjamin ou testeur |
-| 7 | **Réglages Auth** (captcha, limites de tentatives, longueur de mot de passe, provider anonyme, HIBP, MFA) | Non exposés en SQL | Captures Dashboard → Authentication → Providers / Rate limits / Attack protection | Benjamin |
+| 7 | **Réglages Auth** (captcha, limites de tentatives, longueur de mot de passe, provider anonyme et Google, HIBP, MFA, durée de session) | Non exposés en SQL | Captures Dashboard → Authentication → Providers / Rate limits / Attack protection / Sessions | Benjamin |
 
 ## 2. Tous les contrôles BLOQUÉS ou non réalisés, par domaine
 
@@ -25,6 +25,18 @@
 | DEV-C06 | Navigateurs : Safari/WebKit, Firefox, Edge, Samsung Internet, PWA installée iOS/Android | BLOQUÉ / non réalisé | Seul Chromium 1223 (Playwright) est disponible ; aucune installation possible |
 | DEV-C13 | Focus à l'ouverture/fermeture des modales (2.4.3), animations réduites (prefers-reduced-motion) | BLOQUÉ / non réalisé | Lecture d'`openModal`/`closeModal` commencée par le sous-agent, conclusion non déposée |
 | DEV-C14 | Lecteur d'écran (VoiceOver, TalkBack) | BLOQUÉ / non réalisé | Aucun appareil réel |
+
+### auth-rgpd
+
+| Id | Contrôle | Statut / méthode | Raison et ce qu'il faudrait |
+|---|---|---|---|
+| AUTH-C05 | Sessions : jeton sb-<ref>-auth-token en localStorage, persistSession/autoRefreshToken (défauts SDK), durée du JWT et du refresh token | BLOQUÉ / inspection code | app-08:2688 createClient(SUPABASE_URL, SUPABASE_KEY) sans option → défauts du SDK (persistSession=true, autoRefreshToken=true, storage localStorage). La durée du JWT (défaut 3600 s) et la rotation du refresh token sont des réglages du Dashboard Supabase (Authentication → Sessions), non lisibles ici. Il faudrait une capture du Dashboard ou `get_project_config`. |
+| AUTH-C13 | Verrouillage / rate-limit des tentatives de connexion (GoTrue) | BLOQUÉ / non réalisé | Aucun compteur côté client (onbDoAuth). Les limites GoTrue (Authentication → Rate Limits) ne sont pas lisibles ici et un test de charge contre la prod est interdit. Il faudrait la capture du Dashboard « Rate Limits ». |
+| AUTH-C14 | OAuth social (Google) : présence, activation du provider, couverture de test | BLOQUÉ / inspection code | index.html:294-297 bouton « Continuer avec Google » visible ; app-02:3305-3322 signInWithOAuth ; grep tests/e2e → aucune suite ; activation du provider = Dashboard Supabase, non vérifiable ici |
+| AUTH-C20 | Edge Function déployée et identique au dépôt ; suite suppression-compte en CI | BLOQUÉ / inspection code | docs/EDGE_FUNCTION_DELETE_ACCOUNT.md:3 « déployée le 2026-06-11 via le Dashboard » ; le fichier du dépôt date du 2026-08-31 (git log 43b8ffa) ; tests/e2e/suppression-compte.spec.js:28 `test.skip(!process.env.PASSIO_E2E_MULTI)` et PASSIO_E2E_MULTI n'est posé dans AUCUN workflow (grep .github/workflows → seulement un commentaire deploy.yml:155) → le job « Suites production » vert du run 33861671142 NE prouve PAS la fonction. Il faudrait un run manuel PASSIO_E2E_MULTI=1 ou les logs Edge Functions du Dashboard. |
+| AUTH-C33 | Transferts hors UE et sous-traitants | BLOQUÉ / inspection code | Région Supabase : aucun indice dans le dépôt (grep region/eu-west/frankfurt → 0), non vérifiable sans Dashboard ; Netlify (CDN mondial), Tenor (Google, US), Giphy (US), Google Fonts (fonts.googleapis.com, index.html), TURN openrelay.metered.ca (relais des flux WebRTC), Photon komoot (DE) — netlify.toml:19 ; aucun DPA ni liste dans le dépôt |
+| AUTH-C34 | Registre des traitements, DPO, analyse d'impact | BLOQUÉ / inspection code | grep -ri 'registre des traitements\|DPO\|délégué à la protection\|AIPD\|DPIA' docs/ .passio/ → 0 ; documents hors dépôt possibles, non fournis |
+| AUTH-C43 | Suites à comptes réels (suppression-compte, user-state-horodatage) | BLOQUÉ / non réalisé | Interdites ici (écriture en base réelle, SUPABASE_SERVICE_ROLE_KEY). user-state-horodatage : dans le projet prod, job « Suites production (comptes réels) » vert au run 33861671142. suppression-compte : SKIPPÉE même en CI (C20). |
 
 ### carto
 
@@ -128,10 +140,16 @@
 
 ### auth-rgpd
 
-- Paramètres Auth du projet Supabase (longueur minimale du mot de passe, limites de tentatives, durée de session, MFA) : non lisibles par le connecteur — BLOQUÉ.
-- Parcours réel d'e-mail (réception Brevo, lien de confirmation, expiration) : non exercé (aucun compte créé).
-- Suppression de compte réseau coupé (script attaque-auth.js écrit, non exécuté avant l'interruption).
-- Relecture adversariale des 7 problèmes : NON FAITE.
+- Durée du JWT / rotation du refresh token / expiration d'inactivité (BLOQUÉ : réglages Dashboard Supabase → Authentication → Sessions ; il faudrait une capture ou l'API de configuration du projet)
+- Limites de tentatives de connexion et d'envoi d'e-mails GoTrue (BLOQUÉ : Dashboard → Rate Limits ; test de charge contre la prod interdit)
+- Activation réelle du provider Google OAuth (BLOQUÉ : Dashboard → Providers)
+- Déploiement effectif et version de l'Edge Function delete-account, et purge réelle des médias (BLOQUÉ : suppression-compte.spec.js skippée en CI, comptes réels interdits ici ; il faudrait un run manuel PASSIO_E2E_MULTI=1 ou les logs Edge Functions)
+- Région d'hébergement du projet Supabase et existence des DPA Supabase/Netlify/Brevo (BLOQUÉ : hors dépôt)
+- Registre des traitements, DPO, AIPD (BLOQUÉ : documents hors dépôt, aucune trace dans docs/)
+- Contenu réel servi par https://passio-app.netlify.app (BLOQUÉ : proxy 403, fait établi par l'orchestrateur)
+- Décomptes de résidus par table après suppression et âge du plus ancien événement de télémétrie (BLOQUÉ : connecteur Supabase interdit à ce sous-agent — requêtes fournies dans notes)
+- Suites prod user-state-horodatage / authz-critical (BLOQUÉ : comptes réels ; job « Suites production » vert au run 33861671142)
+- Comportement sur WebKit/Firefox/Samsung (NON RÉALISÉ : Chromium seul)
 
 ### carto
 
@@ -275,7 +293,7 @@
 
 ## 4. Interruptions de l'audit lui-même
 
-- Les crédits de session ont été épuisés trois fois (limites à 14:40 UTC et 19:40 UTC, puis « out of usage credits » vers 19:55 UTC). Les sous-agents des domaines irl, profils-passions, auth-rgpd, robustesse-pannes, perf-capacite-couts et appareils-a11y ont été interrompus à chaque tentative (trois par domaine) avant de rendre leur sortie structurée ; leurs preuves déposées ont été reprises par l'orchestrateur (rapports 04, 06, 07, 09 : encadrés « Domaine reconstitué par l'orchestrateur »). Le domaine exploitation-continuite a fini à la troisième tentative.
-- La relecture adversariale n'a pas pu couvrir les problèmes de ces domaines ni ceux de tests-ci (75 problèmes « non relus » sur 186).
+- Les crédits de session ont été épuisés trois fois (limites à 14:40 UTC et 19:40 UTC, puis « out of usage credits » vers 19:55 UTC). Les sous-agents des domaines irl, profils-passions, robustesse-pannes, perf-capacite-couts et appareils-a11y ont été interrompus à chaque tentative (trois par domaine) avant de rendre leur sortie structurée ; leurs preuves déposées ont été reprises par l'orchestrateur (rapports 04, 07, 09 : encadrés « Domaine reconstitué par l'orchestrateur »). Les domaines exploitation-continuite (20:33 UTC) et auth-rgpd (20:41 UTC) ont fini à la troisième tentative ; les reconstitutions provisoires de l'orchestrateur pour ces deux domaines sont conservées dans `donnees/resultats-orchestrateur-*.json` pour comparaison, mais ne comptent pas.
+- La relecture adversariale n'a pas pu couvrir les problèmes de ces domaines ni ceux de tests-ci (81 problèmes « non relus » sur 192).
 - Le plugin GitHub (`plugin:github:github`) n'a jamais pu se connecter (hôte `api.githubcopilot.com` hors liste blanche) ; les outils GitHub de la plateforme ont servi à la place. Les journaux de jobs GitHub Actions sont restés inaccessibles (403).
 - Chromium : l'environnement ne portait que la révision 1194 alors que `@playwright/test` 1.60 attend la 1223 ; jusqu'à 14:50 UTC les sous-agents ont utilisé une configuration d'enveloppe (`executablePath`), ensuite un pont a rendu `npx playwright test` utilisable sans surcharge. Quelques mesures faites pendant la saturation CPU de l'environnement ont planté (perf, seconde passe) et sont écartées.

@@ -16,10 +16,10 @@
 | 10 | Messagerie, pièces jointes, notifications | messagerie-notifs | 04 | OUI | Push et appels WebRTC sur deux appareils réels ; listing Storage réel (proxy) |
 | 11 | IRL : création, modification, annulation, recherche, filtres, liste, carte, inscription, désinscription, adresse, participants | irl | 04 | OUI (reconstitué) | Carte (tuiles bloquées) ; relecture adversariale |
 | 12 | Signalements, blocages, faux comptes, spam, harcèlement, outils de modération | moderation | 10 | OUI | Réglages captcha / rate limits Auth (non lisibles) |
-| 13 | Authentification, confirmation e-mail, récupération, sessions, suppression du compte | auth-rgpd | 06 | OUI (reconstitué) | Réglages Auth du projet ; parcours e-mail réel ; relecture |
+| 13 | Authentification, confirmation e-mail, récupération, sessions, suppression du compte | auth-rgpd | 06 | OUI | Réglages Auth du projet (sessions, rate limits, Google) ; parcours e-mail réel ; relecture adversariale |
 | 14 | Supabase : tables, RLS, Storage, Realtime, fonctions, clés, permissions, séparation | supabase-isolation | 06 | OUI | Plan/limites Realtime ; REST anon direct (proxy) |
 | 15 | Plusieurs comptes : jamais accès aux données d'un autre | supabase-isolation, messagerie, moderation | 06, 04, 10 | PARTIEL | Preuve sous rôle (SET ROLE refusé) ; suites prod à comptes réels non relancées (vertes en CI) ; fuites transverses PROUVÉES (conv_reads, event_attendees, Storage) |
-| 16 | Données personnelles, consentement, localisation, export, suppression, RGPD | auth-rgpd, exploitation | 06, 10 | OUI (reconstitué + agent) | — |
+| 16 | Données personnelles, consentement, localisation, export, suppression, RGPD | auth-rgpd, exploitation | 06, 10 | OUI | Relecture adversariale |
 | 17 | Code mort, doublons, anciennes interfaces, fonctions inutilisées, docs obsolètes | code-nettoyage, carto | 05, 02 | OUI | Confirmation une à une des 114 classes CSS candidates |
 | 18 | Dépendances, secrets, erreurs silencieuses, collisions, migrations, SW, cache, flags, kill switches | code-nettoyage, supabase-isolation, tests-ci | 05, 06, 04 | OUI | Scan de secrets GitHub natif (droits admin) |
 | 19 | Conserver / supprimer / nettoyer / refactoriser / soumettre | code-nettoyage | 05 | OUI | — |
@@ -49,8 +49,8 @@
 
 | Couverture | Points |
 |---|---|
-| OUI | 26 (dont 5 reconstitués par l'orchestrateur à partir des preuves de sous-agents interrompus) |
+| OUI | 26 (dont 4 reconstitués par l'orchestrateur à partir des preuves de sous-agents interrompus : points 7, 11, 22 et 31 en partie) |
 | PARTIEL | 11 |
 | NON | 2 (23 capacité, 28 navigateurs) |
 
-Le critique de complétude automatisé (`outillage/wf-completude.js`) n'a pas été lancé, faute de crédits ; cette matrice a été établie à la main par l'orchestrateur à partir des 407 contrôles rendus (132 PROUVÉ · 73 CONFORME PAR INSPECTION · 21 PROBABLE · 144 DÉFAILLANT · 33 BLOQUÉ · 4 NON APPLICABLE).
+Le critique de complétude automatisé (`outillage/wf-completude.js`) n'a pas été lancé, faute de crédits ; cette matrice a été établie à la main par l'orchestrateur à partir des 462 contrôles rendus (135 PROUVÉ · 79 CONFORME PAR INSPECTION · 22 PROBABLE · 181 DÉFAILLANT · 41 BLOQUÉ · 4 NON APPLICABLE).

@@ -15,7 +15,7 @@ L'ordre de mission interdit le GO grande échelle si l'un des sept critères sui
 | Critère d'interdiction | Constat | Preuve principale |
 |---|---|---|
 | Un P0 ouvert | **8 P0 ouverts** | Rapport 11 §1 |
-| Isolation des comptes non prouvée | La RLS par propriétaire est **conforme par inspection** sur les 128 policies, et le job CI « Suites production » (authz-critical) est vert sur ce SHA ; mais la preuve **sous rôle** n'a pas pu être faite ici (SET ROLE refusé, REST bloqué), et trois fuites transverses sont **prouvées** : accusés de lecture de toutes les conversations privées lisibles par anon (SUP-02/MSG-05), participants aux rencontres lisibles par anon (IRL-03), pièces jointes vocales privées listables et lisibles sans compte (SUP-01/MSG-03/CONT-11) | Rapports 06, 04 |
+| Isolation des comptes non prouvée | La RLS par propriétaire est **conforme par inspection** sur les 128 policies, et le job CI « Suites production » (authz-critical) est vert sur ce SHA ; mais la preuve **sous rôle** n'a pas pu être faite ici (SET ROLE refusé, REST bloqué), et trois fuites transverses sont **prouvées** : accusés de lecture de toutes les conversations privées lisibles par anon (SUP-02/MSG-05), participants aux rencontres lisibles par anon (IRL-03), pièces jointes vocales privées listables et lisibles sans compte (SUP-01/MSG-03/CONT-11), et sur l'appareil, file de messages du compte A rejouée sous l'identité du compte B (AUTH-06) | Rapports 06, 04 |
 | Restauration non prouvée | **Jamais exécutée** (docs/RECUPERATION.md le dit lui-même) ; sauvegarde manuelle, locale, non chiffrée, dernière connue le 2026-08-16, sans les mots de passe ; schéma non reconstructible (4 migrations enregistrées sur 64) | EXP-01, EXP-02, EXP-04, TCI-03 — rapport 10 |
 | Capacité non mesurée | **Aucune mesure** ; aucun staging pour la faire ; plafonds connus (60 connexions PostgreSQL, 78 policies non optimisées, Realtime diffusé à tous) | PERF-01 — rapport 07 |
 | Fonction critique invisible du Pilotage ET de la Sentinelle | Confirmation d'e-mail (SMTP), push, suppression de compte, refus Storage, signalements, sauvegardes, coûts : **aucun signal** ; et aucune alerte ne sort du dashboard s'il n'est pas ouvert | PIL-01, PIL-04, PIL-10, MOD-11 — rapport 08 |
@@ -38,8 +38,8 @@ L'ordre de mission interdit le GO grande échelle si l'un des sept critères sui
 Un LANCEMENT LIMITÉ (quelques centaines de personnes, invitation, une ville, une passion) deviendrait défendable quand, et seulement quand :
 
 1. Les 8 P0 sont fermés et re-vérifiés (bucket `attachments` privé + URL signées + listing anon retiré ; échappement de l'invitation d'appel et canaux Realtime autorisés ; chaîne de signalement avec retrait de contenu et journal ; staging séparé ; restauration exercée et documentée ; capacité mesurée au moins à 1 000 comptes / 200 simultanés).
-2. Les P1 de **sécurité IRL et de modération** sont fermés : adresse/téléphone/participants réservés aux inscrits (IRL-01/03), garde de majorité appliquée (IRL-02, AUT-03, MOD-08), contenus signalables (MOD-02), rate-limits serveur (CONT-08, MOD-06, SUP-07), blocage effectif côté serveur (MOD-04/05, MSG-10).
-3. Les P1 **juridiques** sont fermés : CGU + mentions légales + consentement à l'inscription (AUT-01, MOD-09, EXP-09), politique de confidentialité exacte (AUT-04, EXP-08), effacement complet (AUT-02, SUP-10), point de contact réel (EXP-07), allégation « contrôle d'âge IA » retirée (UXO-07).
+2. Les P1 de **sécurité IRL et de modération** sont fermés : adresse/téléphone/participants réservés aux inscrits (IRL-01/03), garde de majorité appliquée (IRL-02, AUTH-02, MOD-08), contenus signalables (MOD-02), rate-limits serveur (CONT-08, MOD-06, SUP-07), blocage effectif côté serveur (MOD-04/05, MSG-10).
+3. Les P1 **juridiques** sont fermés : CGU + mentions légales + consentement à l'inscription (AUTH-03, MOD-09, EXP-09), politique de confidentialité exacte (EXP-08, AUTH-10), télémétrie avec consentement et interrupteur (AUTH-04), effacement complet (AUTH-05, SUP-10), point de contact réel (EXP-07, AUTH-11), allégation « contrôle d'âge IA » retirée (UXO-07, AUTH-02).
 4. Le **Centre de pilotage** notifie hors page (PIL-01) et voit la confirmation d'e-mail, la suppression de compte et les signalements (PIL-04, PIL-10, MOD-11) ; la console d'administration exige un mot de passe fort et un second facteur (PIL-02).
 5. Le dépôt cesse d'exposer publiquement le dossier investisseur, les finances et les documents internes (EXP-10), ou devient privé.
 
@@ -56,12 +56,12 @@ Un GO COMMERCIAL À GRANDE ÉCHELLE exigerait en plus : tous les P1 fermés, la 
 
 | | P0 | P1 | P2 | P3 | Réfutés | Total rapporté |
 |---|---|---|---|---|---|---|
-| Retenus | **8** | **54** | **65** | **56** | 3 | 186 |
+| Retenus | **8** | **57** | **66** | **58** | 3 | 192 |
 
-Relecture adversariale : 104 confirmés, 4 incertains, 3 réfutés, 75 non relus (crédits épuisés — à confier en priorité à la contre-revue).
+Relecture adversariale : 104 confirmés, 4 incertains, 3 réfutés, 81 non relus (crédits épuisés — à confier en priorité à la contre-revue).
 
 ## 7. Réserves de l'auditeur
 
-- Sept domaines ont été reconstitués ou complétés par l'orchestrateur après interruption des sous-agents ; leurs problèmes n'ont pas été attaqués par des relecteurs indépendants. Ils peuvent être surestimés ou sous-estimés, jamais inventés : chacun cite une preuve déposée dans `preuves/`.
+- Cinq domaines (irl, profils-passions, robustesse-pannes, perf-capacite-couts, appareils-a11y) ont été reconstitués par l'orchestrateur après interruption des sous-agents, et trois autres (auth-rgpd, exploitation-continuite, tests-ci) n'ont pas été relus ; leurs problèmes n'ont pas été attaqués par des relecteurs indépendants. Ils peuvent être surestimés ou sous-estimés, jamais inventés : chacun cite une preuve déposée dans `preuves/`.
 - Aucune mesure n'a été faite sur la production ni sur un appareil réel. Tout ce qui est écrit « émulation » vaut pour Chromium 141 headless.
-- Le verdict ne changerait pas si les 75 problèmes non relus étaient tous réfutés : les huit P0 et les sept critères d'interdiction reposent sur des problèmes CONFIRMÉS par la relecture (SUP-01, MSG-01, MSG-03, MOD-01, SUP-04, CONT-11) ou sur des faits documentés par le dépôt lui-même (restauration jamais exécutée, aucune mesure de charge).
+- Le verdict ne changerait pas si les 81 problèmes non relus étaient tous réfutés : les huit P0 et les sept critères d'interdiction reposent sur des problèmes CONFIRMÉS par la relecture (SUP-01, MSG-01, MSG-03, MOD-01, SUP-04, CONT-11) ou sur des faits documentés par le dépôt lui-même (restauration jamais exécutée, aucune mesure de charge).

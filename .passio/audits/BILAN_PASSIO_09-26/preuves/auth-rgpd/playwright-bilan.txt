@@ -1,0 +1,12 @@
+  Slow test file: [local] › tests/e2e/connexion-compte-existant.spec.js (5.3m)
+  Consider running tests from slow files in parallel. See: https://playwright.dev/docs/test-parallel
+  58 passed (16.6m)
+EXIT=0
+      6 [local] › tests/e2e/access-gate.spec.js
+      4 [local] › tests/e2e/audit-identite-emoji.spec.js
+      7 [local] › tests/e2e/confirmation-email.spec.js
+     16 [local] › tests/e2e/connexion-compte-existant.spec.js
+     16 [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js
+      3 [local] › tests/e2e/gate-sans-app.spec.js
+      3 [local] › tests/e2e/telemetrie-preauth.spec.js
+      5 [local] › tests/e2e/user-passions-miroir.spec.js

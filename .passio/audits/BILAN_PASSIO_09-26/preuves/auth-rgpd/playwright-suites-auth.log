@@ -42,3 +42,76 @@ Running 58 tests using 1 worker
 [1A[2K[36/58] [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js:136:3 › Exploration anonyme puis connexion à un vrai compte › un retour sur SON PROPRE compte ne purge rien
 [1A[2K[37/58] [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js:179:3 › Exploration anonyme puis connexion à un vrai compte › la garde purge même si `passio_uid` a déjà été réécrit par le handler d'auth
 [1A[2K[38/58] [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js:219:3 › Exploration anonyme puis connexion à un vrai compte › une identité DÉCLARÉE délibérément ne purge rien (inscription, session anonyme)
+[1A[2K[39/58] [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js:242:3 › Exploration anonyme puis connexion à un vrai compte › un refus ne laisse aucune trace : ni `passio_uid` touché, ni clé de sonde abandonnée
+[1A[2K[40/58] [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js:268:3 › Exploration anonyme puis connexion à un vrai compte › après une purge, aucune écriture ne part tant que le compte n'a pas été relu
+[1A[2K[41/58] [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js:302:3 › Exploration anonyme puis connexion à un vrai compte › une fois le compte relu, l'appareil réécrit normalement
+[1A[2K[42/58] [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js:322:3 › Exploration anonyme puis connexion à un vrai compte › état d'un AUTRE compte : rien ne part, même sans purge
+[1A[2K[43/58] [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js:350:3 › Exploration anonyme puis connexion à un vrai compte › récupération de mot de passe : l'exigence armée par boot() bloque toute écriture
+[1A[2K[44/58] [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js:388:3 › Exploration anonyme puis connexion à un vrai compte › onbDoAuth branche `signin` : le câblage purge et recharge pour de vrai
+[1A[2K[45/58] [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js:449:3 › Exploration anonyme puis connexion à un vrai compte › onbDoAuth branche `signup` : le câblage déclare la propriété sans purger
+[1A[2K[46/58] [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js:491:3 › Exploration anonyme puis connexion à un vrai compte › chemin SDK réel : l'exigence de restauration bloque l'upsert, et le relâche ensuite
+[1A[2K[47/58] [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js:535:3 › Exploration anonyme puis connexion à un vrai compte › le verdict serveur ignore le profil de remplissage, et lui seul
+[1A[2K[48/58] [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js:567:3 › Exploration anonyme puis connexion à un vrai compte › un identifiant qui n'est pas un uuid ne déclenche jamais de purge
+[1A[2K[49/58] [local] › tests/e2e/gate-sans-app.spec.js:19:1 › gate affiché, application absente : aucune erreur JS, aucun module ne s'emballe
+[1A[2K[50/58] [local] › tests/e2e/gate-sans-app.spec.js:47:1 › la query survit à la fenêtre du gate (piège platform.js du 2026-08-28)
+[1A[2K[51/58] [local] › tests/e2e/gate-sans-app.spec.js:57:1 › après déverrouillage, l'application démarre et le fil s'affiche
+[1A[2K[52/58] [local] › tests/e2e/telemetrie-preauth.spec.js:24:3 › Télémétrie — fenêtre pré-authentification › aucun événement ne part sous une identité fabriquée
+[1A[2K[local] › tests/e2e/telemetrie-preauth.spec.js:24:3 › Télémétrie — fenêtre pré-authentification › aucun événement ne part sous une identité fabriquée
+[tel-preauth] landing affichée, aucune session
+
+[1A[2K[tel-preauth] MY_UID lexical    : u_i25pcx29
+
+[1A[2K[tel-preauth] window.MY_UID     : u_i25pcx29
+
+[1A[2K[tel-preauth] passio_uid stocké : u_i25pcx29
+
+[1A[2K[tel-preauth] session Supabase  : non
+
+[1A[2K[tel-preauth] envois observés   : 18 — statuts : aucun
+
+[1A[2K[tel-preauth]   lot de 7 · user_id=[null] · types=session/action · jwt=session
+
+[1A[2K[tel-preauth]   lot de 9 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 9 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 10 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 10 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 10 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 10 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 10 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 10 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 10 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 11 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 11 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 11 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 11 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 11 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 11 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 11 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 12 · user_id=[null] · types=session/action/perf/connectivity/lifecycle · jwt=session
+
+[1A[2K[53/58] [local] › tests/e2e/telemetrie-preauth.spec.js:97:3 › Télémétrie — fenêtre pré-authentification › sans forçage, localhost n'écrit RIEN dans la table de production
+[1A[2K[54/58] [local] › tests/e2e/user-passions-miroir.spec.js:82:3 › miroir user_passions › la table absente désarme le miroir, une seule fois, sans bruit
+[1A[2K[55/58] [local] › tests/e2e/user-passions-miroir.spec.js:104:3 › miroir user_passions › un identifiant hors référentiel serveur n'est jamais envoyé
+[1A[2K[56/58] [local] › tests/e2e/user-passions-miroir.spec.js:124:3 › miroir user_passions › l'archivage voyage, et la position aussi
+[1A[2K[57/58] [local] › tests/e2e/user-passions-miroir.spec.js:145:3 › miroir user_passions › ce qui a disparu localement est retiré du miroir
+[1A[2K[58/58] [local] › tests/e2e/user-passions-miroir.spec.js:167:3 › miroir user_passions › aucune écriture ne part sans compte authentifié
+[1A[2K  Slow test file: [local] › tests/e2e/connexion-compte-existant.spec.js (5.3m)
+  Consider running tests from slow files in parallel. See: https://playwright.dev/docs/test-parallel
+  58 passed (16.6m)
+EXIT=0
