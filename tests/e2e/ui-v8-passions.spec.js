@@ -100,8 +100,13 @@ test.describe("UI-8 — un profil personnel, plusieurs passions", () => {
     await ouvrirProfil(page);
 
     await expect(page.locator("#mainProfileUsername")).toBeVisible();
-    await expect(page.locator("#screen-profiles .main-profile-stat").nth(1)).toBeVisible(); // abonnés
-    await expect(page.locator("#screen-profiles .main-profile-stat").nth(2)).toBeVisible(); // abonnements
+    // ⚠️ 2026-09-04 : la rangée compte QUATRE statistiques depuis l'ajout du
+    // compteur « passions », posé ENTRE abonnés et abonnements. On vise les
+    // libellés plutôt que des rangs, qu'un futur ajout décalerait en silence.
+    const stats = page.locator("#screen-profiles .main-profile-stat");
+    await expect(stats.filter({ hasText: "abonnés" })).toBeVisible();
+    await expect(stats.filter({ hasText: "passions" })).toBeVisible();
+    await expect(stats.filter({ hasText: "abonnements" })).toBeVisible();
     await expect(page.locator("#v6bModifier")).toBeVisible();
 
     // ⚠️ La ligne « Passion active : X · Changer » a été RETIRÉE (ADR-011 §2) :
