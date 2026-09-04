@@ -1,0 +1,78 @@
+{
+  "currentProfile": {
+    "id": "pp_0",
+    "passion": "musique",
+    "name": "Audit QA"
+  },
+  "retStory": true,
+  "retEvent": false,
+  "appels": [
+    {
+      "table": "comment_interactions",
+      "op": "insert",
+      "cles": [
+        "id",
+        "comment_id",
+        "post_id",
+        "user_id",
+        "kind",
+        "payload",
+        "created_at"
+      ],
+      "author": "u_oqvw4adf"
+    },
+    {
+      "table": "event_attendees",
+      "op": "update",
+      "cles": [
+        "rsvp"
+      ]
+    },
+    {
+      "table": "event_attendees",
+      "op": "update",
+      "cles": []
+    },
+    {
+      "table": "conv_messages",
+      "op": "insert",
+      "cles": [
+        "id",
+        "conv_id",
+        "from_id",
+        "content",
+        "created_at"
+      ],
+      "author": "u_oqvw4adf",
+      "contenu": "{\"type\":\"text\",\"text\":\"salut\",\"sp\":{\"n\":\"Audit QA\",\"e\":\"🎵\",\"c\":\"#7c3aed\",\"pid\":\"pp_0\",\"ph\":null}}"
+    },
+    {
+      "table": "follows",
+      "op": "insert",
+      "cles": [
+        "follower_id",
+        "following_id"
+      ],
+      "author": "u_oqvw4adf"
+    },
+    {
+      "table": "stories",
+      "op": "insert",
+      "cles": [
+        "id",
+        "author_id",
+        "passion_id",
+        "content",
+        "emoji",
+        "media_url",
+        "media_type",
+        "overlays",
+        "created_at"
+      ],
+      "passion_id": "musique",
+      "author": "u_oqvw4adf",
+      "contenu": "s"
+    }
+  ],
+  "MY_UID": "u_oqvw4adf"
+}

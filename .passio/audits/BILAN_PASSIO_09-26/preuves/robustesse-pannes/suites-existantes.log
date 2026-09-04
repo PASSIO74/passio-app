@@ -1,0 +1,35 @@
+[1A[2K[2m[WebServer] [22m(node:2331) [DEP0066] DeprecationWarning: OutgoingMessage.prototype._headers is deprecated
+[2m[WebServer] [22m(Use `node --trace-deprecation ...` to show where the warning was created)
+
+
+Running 23 tests using 1 worker
+
+[1A[2K[1/23] [local] › tests/e2e/feed-malformed-post.spec.js:12:3 › Fil — post malformé n'efface pas tout le fil › un post malformé est sauté, les posts valides restent affichés
+[1A[2K[2/23] [local] › tests/e2e/feed-realtime-course.spec.js:25:3 › Fil — course entre requête en vol et temps réel › un post arrivé en temps réel survit à la réponse d'une requête plus ancienne
+[1A[2K[3/23] [local] › tests/e2e/feed-realtime-course.spec.js:71:3 › Fil — course entre requête en vol et temps réel › une fois l'instantané serveur à jour, le post n'est pas dupliqué
+[1A[2K[4/23] [local] › tests/e2e/monitoring-bruit.spec.js:69:3 › Monitoring — bruit de test › une erreur survenue en local ne part PAS dans la table de production
+[1A[2K[5/23] [local] › tests/e2e/monitoring-bruit.spec.js:86:3 › Monitoring — bruit de test › l'indicateur explicite ?monitoring=1 réactive la remontée
+[1A[2K[6/23] [local] › tests/e2e/monitoring-file-boot.spec.js:49:3 › Monitoring — file d'erreurs de boot › une erreur levée AVANT le vrai client est mise en file, puis remontée
+[1A[2K[7/23] [local] › tests/e2e/monitoring-file-boot.spec.js:78:3 › Monitoring — file d'erreurs de boot › le stub noop n'avale pas la file : rien ne part tant que _supaReal est faux
+[1A[2K[8/23] [local] › tests/e2e/publication-optimiste-refusee.spec.js:66:1 › prémisse : ce compte n'a AUCUNE passion publiable
+[1A[2K[9/23] [local] › tests/e2e/publication-optimiste-refusee.spec.js:78:1 › bobine : aucun post local orphelin n'est créé
+[1A[2K[10/23] [local] › tests/e2e/publication-optimiste-refusee.spec.js:101:1 › partage de bobine : aucun post local orphelin
+[1A[2K[11/23] [local] › tests/e2e/publication-optimiste-refusee.spec.js:113:1 › partage de post : aucun post local orphelin
+[1A[2K[12/23] [local] › tests/e2e/publication-optimiste-refusee.spec.js:125:1 › partage d'événement : aucun post local orphelin
+[1A[2K[13/23] [local] › tests/e2e/publication-optimiste-refusee.spec.js:137:1 › avec une passion publiable, les quatre producteurs fonctionnent
+[1A[2K[14/23] [local] › tests/e2e/publication-optimiste-refusee.spec.js:154:1 › passions personnalisées : la création est fermée, les existantes intactes
+[1A[2K[15/23] [local] › tests/e2e/supa-hors-ligne.spec.js:34:3 › Stub Supabase — dégradation hors ligne › CDN injoignable : le stub encaisse le tour des écrans sans TypeError
+[1A[2K[16/23] [local] › tests/e2e/supa-hors-ligne.spec.js:73:3 › Stub Supabase — dégradation hors ligne › CDN injoignable : la surface Supabase appelée par l'app répond toute
+[1A[2K[17/23] [local] › tests/e2e/transfert-message.spec.js:116:3 › Transfert de message — verdict de l'écriture › une insertion refusée marque le message en échec et le met en file de renvoi
+[1A[2K[18/23] [local] › tests/e2e/transfert-message.spec.js:154:3 › Transfert de message — verdict de l'écriture › une insertion acceptée marque le message envoyé et ne laisse rien en file
+[1A[2K[19/23] [local] › tests/e2e/version-skew.spec.js:37:3 › Version skew — cohérence des versions servies › le hash de chaque asset vient RÉELLEMENT de son contenu
+[1A[2K[local] › tests/e2e/version-skew.spec.js:37:3 › Version skew — cohérence des versions servies › le hash de chaque asset vient RÉELLEMENT de son contenu
+
+
+[1A[2K[20/23] [local] › tests/e2e/version-skew.spec.js:57:3 › Version skew — cohérence des versions servies › deux contenus différents produisent deux URL différentes
+[1A[2K[21/23] [local] › tests/e2e/version-skew.spec.js:67:3 › Version skew — cohérence des versions servies › index.html n'est jamais mis en cache, les assets hachés le sont
+[1A[2K[22/23] [local] › tests/e2e/version-skew.spec.js:85:3 › Version skew — cohérence des versions servies › le service worker sert index.html par le RÉSEAU d'abord
+[1A[2K[23/23] [local] › tests/e2e/version-skew.spec.js:94:3 › Version skew — cohérence des versions servies › le cache du service worker change à chaque build
+[1A[2K  2 skipped
+  21 passed (5.6m)
+EXIT=0

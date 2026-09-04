@@ -1,0 +1,56 @@
+[1A[2K[2m[WebServer] [22m(node:11809) [DEP0066] DeprecationWarning: OutgoingMessage.prototype._headers is deprecated
+[2m[WebServer] [22m(Use `node --trace-deprecation ...` to show where the warning was created)
+
+
+Running 48 tests using 1 worker
+
+[1A[2K[1/48] [local] › tests/e2e/badge-messages.spec.js:34:3 › Badge des messages non lus › trois messages non lus : la pastille est sur la barre du bas, et elle le dit
+[1A[2K[2/48] [local] › tests/e2e/badge-messages.spec.js:45:3 › Badge des messages non lus › aucun message non lu : aucune pastille, et le libellé redevient neutre
+[1A[2K[3/48] [local] › tests/e2e/badge-messages.spec.js:56:3 › Badge des messages non lus › au-delà de neuf, la pastille plafonne à « 9+ »
+[1A[2K[4/48] [local] › tests/e2e/badge-messages.spec.js:62:3 › Badge des messages non lus › kill switch UI-1 : Messages reste ATTEIGNABLE, et son compteur visible
+[1A[2K[5/48] [local] › tests/e2e/badge-messages.spec.js:81:3 › Badge des messages non lus › URL normale : l'icône Messages du bandeau est masquée, jamais retirée
+[1A[2K[6/48] [local] › tests/e2e/badge-messages.spec.js:88:3 › Badge des messages non lus › la pastille historique du bandeau supérieur continue d'être écrite
+[1A[2K[7/48] [local] › tests/e2e/conv-clavier-ouverture.spec.js:49:3 › Ouverture d'une conversation — clavier et géométrie › ouvrir une conversation ne donne PAS le focus au champ (pas de clavier)
+[1A[2K[8/48] [local] › tests/e2e/conv-clavier-ouverture.spec.js:60:3 › Ouverture d'une conversation — clavier et géométrie › le champ garde le focus quand on le touche : écrire reste possible
+[1A[2K[9/48] [local] › tests/e2e/conv-clavier-ouverture.spec.js:71:3 › Ouverture d'une conversation — clavier et géométrie › clavier simulé : `--app-vh` suit, et le message le plus récent reste visible
+[1A[2K[10/48] [local] › tests/e2e/conv-clavier-ouverture.spec.js:100:3 › Ouverture d'une conversation — clavier et géométrie › remonté dans l'historique, un changement de géométrie ne ramène pas en bas
+[1A[2K[11/48] [local] › tests/e2e/conv-ouverture-fil.spec.js:76:3 › Ouverture d'une conversation › le fil porte déjà ses messages quand le panneau entre à l'écran
+[1A[2K[12/48] [local] › tests/e2e/conv-ouverture-fil.spec.js:90:3 › Ouverture d'une conversation › ouvrir une seconde conversation ne montre jamais le fil de la première
+[1A[2K[13/48] [local] › tests/e2e/conv-ouverture-fil.spec.js:110:3 › Ouverture d'une conversation › le fil est ouvert en bas, et le reste après la transition
+[1A[2K[14/48] [local] › tests/e2e/conv-ouverture-fil.spec.js:135:3 › Ouverture d'une conversation › le panneau ne garde pas de couche composée permanente (will-change)
+[1A[2K[15/48] [local] › tests/e2e/conv-suppression.spec.js:33:3 › Suppression de conversation / message (ADR-008) › une suppression non parvenue à IndexedDB ne ressuscite PAS au redémarrage
+[1A[2K[16/48] [local] › tests/e2e/conv-suppression.spec.js:74:3 › Suppression de conversation / message (ADR-008) › ce qui n'a PAS été supprimé continue d'être récupéré depuis IndexedDB
+[1A[2K[17/48] [local] › tests/e2e/conv-suppression.spec.js:99:3 › Suppression de conversation / message (ADR-008) › le journal est borné : TTL de 30 jours et plafond d'entrées
+[1A[2K[18/48] [local] › tests/e2e/etat-sync-base64.spec.js:26:3 › Synchronisation d'état — hygiène base64 › les photos base64 sont expurgées de l'état envoyé, les URL Storage conservées
+[1A[2K[19/48] [local] › tests/e2e/message-media-echec.spec.js:107:3 › Média en message — verdict de l'écriture › une insertion refusée marque le média en échec et le met en file de renvoi
+[1A[2K[20/48] [local] › tests/e2e/message-media-echec.spec.js:137:3 › Média en message — verdict de l'écriture › une insertion acceptée marque le média envoyé et ne laisse rien en file
+[1A[2K[21/48] [local] › tests/e2e/message-media-echec.spec.js:153:3 › Média en message — verdict de l'écriture › le repli sans from_id compte comme un succès, pas comme un échec
+[1A[2K[22/48] [local] › tests/e2e/notifications-echappement.spec.js:45:3 › le texte d'une notification › venu de Supabase est ÉCHAPPÉ : aucune balise, aucun script
+[1A[2K[23/48] [local] › tests/e2e/notifications-echappement.spec.js:66:3 › le texte d'une notification › passée par mergeSupaNotifs, elle n'est pas désinfectée deux fois
+[1A[2K[24/48] [local] › tests/e2e/notifications-echappement.spec.js:95:3 › le texte d'une notification › d'une notification LOCALE garde son gras voulu
+[1A[2K[25/48] [local] › tests/e2e/notifications-echappement.spec.js:111:3 › le texte d'une notification › d'une notification locale ANCIENNE, sans le drapeau, garde son gras
+[1A[2K[26/48] [local] › tests/e2e/notifications-echappement.spec.js:124:3 › le texte d'une notification › d'une source inconnue, non déclarée, est échappé
+[1A[2K[27/48] [local] › tests/e2e/transfert-message.spec.js:116:3 › Transfert de message — verdict de l'écriture › une insertion refusée marque le message en échec et le met en file de renvoi
+[1A[2K[28/48] [local] › tests/e2e/transfert-message.spec.js:154:3 › Transfert de message — verdict de l'écriture › une insertion acceptée marque le message envoyé et ne laisse rien en file
+[1A[2K[29/48] [local] › tests/e2e/ui-v6a-boucle.spec.js:23:3 › UI-6A — pas de boucle de repeinte › écran Messages ouvert : la tête cesse d'être réécrite
+[1A[2K[30/48] [local] › tests/e2e/ui-v6a-boucle.spec.js:43:3 › UI-6A — pas de boucle de repeinte › plus de ligne d'identité en tête de l'inbox
+[1A[2K[31/48] [local] › tests/e2e/ui-v6a-boucle.spec.js:55:3 › UI-6A — pas de boucle de repeinte › l'inbox reste décorée : la tête et les Passio des cartes sont là
+[1A[2K[32/48] [local] › tests/e2e/ui-v6a-messages.spec.js:69:3 › UI-6A — inbox Messages › URL normale : « Messages », un « + », la recherche dessous
+[1A[2K[33/48] [local] › tests/e2e/ui-v6a-messages.spec.js:96:3 › UI-6A — inbox Messages › le « + » regroupe les deux gestes et appelle les moteurs existants
+[1A[2K[34/48] [local] › tests/e2e/ui-v6a-messages.spec.js:121:3 › UI-6A — inbox Messages › le menu se ferme à Escape et au clic extérieur
+[1A[2K[35/48] [local] › tests/e2e/ui-v6a-messages.spec.js:138:3 › UI-6A — inbox Messages › « Passio · aperçu » sur une conversation 1:1, rien sur un groupe
+[1A[2K[36/48] [local] › tests/e2e/ui-v6a-messages.spec.js:151:3 › UI-6A — inbox Messages › LE contrôle : la ligne de Passio survit à un nouveau rendu
+[1A[2K[37/48] [local] › tests/e2e/ui-v6a-messages.spec.js:170:3 › UI-6A — inbox Messages › la recherche déplacée alimente toujours le même moteur
+[1A[2K[38/48] [local] › tests/e2e/ui-v6a-messages.spec.js:183:3 › UI-6A — inbox Messages › kill switch local au boot : inbox historique strictement rendue
+[1A[2K[39/48] [local] › tests/e2e/ui-v6a-messages.spec.js:200:3 › UI-6A — inbox Messages › kill switch mémoire : la recherche retrouve sa place, rien ne subsiste
+[1A[2K[40/48] [local] › tests/e2e/ui-v6a-messages.spec.js:221:5 › UI-6A — inbox Messages › mobile 320 px : aucun débordement, cibles ≥ 44 px
+[1A[2K[41/48] [local] › tests/e2e/ui-v6a-messages.spec.js:221:5 › UI-6A — inbox Messages › mobile 390 px : aucun débordement, cibles ≥ 44 px
+[1A[2K[42/48] [local] › tests/e2e/ui-v6a-messages.spec.js:221:5 › UI-6A — inbox Messages › mobile 430 px : aucun débordement, cibles ≥ 44 px
+[1A[2K[43/48] [local] › tests/e2e/xss-notifs-messages.spec.js:45:3 › XSS stockée — notifications distantes › le texte d'une notification distante ne s'exécute pas, et reste lisible
+[1A[2K[44/48] [local] › tests/e2e/xss-notifs-messages.spec.js:69:3 › XSS stockée — notifications distantes › un nom déjà échappé par l'émetteur n'est pas ré-échappé à l'affichage
+[1A[2K[45/48] [local] › tests/e2e/xss-notifs-messages.spec.js:88:3 › XSS stockée — notifications distantes › une notification LOCALE garde son gras : le rendu HTML voulu n'est pas cassé
+[1A[2K[46/48] [local] › tests/e2e/xss-notifs-messages.spec.js:118:3 › XSS stockée — fil de conversation › la clé d'une réaction de message ne s'exécute pas
+[1A[2K[47/48] [local] › tests/e2e/xss-notifs-messages.spec.js:131:3 › XSS stockée — fil de conversation › un message « position » ne peut pas porter un lien javascript:
+[1A[2K[48/48] [local] › tests/e2e/xss-notifs-messages.spec.js:147:3 › XSS stockée — fil de conversation › une position légitime reste un vrai lien cliquable
+[1A[2K  48 passed (12.7m)
+EXIT=0

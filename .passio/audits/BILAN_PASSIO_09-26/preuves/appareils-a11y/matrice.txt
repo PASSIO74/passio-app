@@ -1,0 +1,9 @@
+viewport | écran | débord.H | nav visible | CTA nav | cibles<44 (<24) / cliquables | champs<16 | img sans alt | contrastes KO | icônes sans nom | capture
+390x844 | feed | non | NON {"top":0,"bottom":0,"h":0} | false | 6 (0) / 28 | 0/0 | 0/11 | 0/20 | 0 | 390x844-feed.jpg (29 Ko)
+390x844 | profiles | non | NON {"top":0,"bottom":0,"h":0} | false | 7 (0) / 24 | 0/0 | 0/4 | 0/12 | 0 | 390x844-profiles.jpg (21 Ko)
+390x844 | irl | non | NON {"top":0,"bottom":0,"h":0} | false | 4 (0) / 19 | 0/1 | 0/1 | 0/7 | 0 | 390x844-irl.jpg (29 Ko)
+390x844 | messages | non | NON {"top":0,"bottom":0,"h":0} | false | 4 (0) / 15 | 0/1 | 0/1 | 2/17 | 0 | 390x844-messages.jpg (23 Ko)
+390x844 | explore | non | NON {"top":0,"bottom":0,"h":0} | false | 7 (0) / 18 | 0/1 | 0/1 | 0/7 | 0 | 390x844-explore.jpg (26 Ko)
+390x844 | studio | non | NON {"top":0,"bottom":0,"h":0} | false | 8 (0) / 17 | 0/1 | 0/1 | 0/10 | 0 | 390x844-studio.jpg (17 Ko)
+390x844 | mespassions | non | NON {"top":0,"bottom":0,"h":0} | false | 7 (3) / 21 | 0/0 | 0/1 | 0/6 | 0 | 390x844-mespassions.jpg (24 Ko)
+390x844 | filtre | non | NON {"top":0,"bottom":0,"h":0} | false | 4 (0) / 26 | 0/1 | 0/1 | 0/5 | 0 | 390x844-filtre.jpg (25 Ko)

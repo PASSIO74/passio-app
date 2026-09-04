@@ -1,0 +1,80 @@
+sans_bridage run 1 ok 311s FCP 124 LCP 124 appReady 175 1re carte 853
+sans_bridage run 2 ok 11s FCP 88 LCP 88 appReady 134.3 1re carte 793
+sans_bridage run 3 ok 11s FCP 140 LCP 140 appReady 154.5 1re carte 811
+slow3g_cpu4 run 1 ok 21s FCP 2524 LCP 2524 appReady 8189.5 1re carte 9094
+slow3g_cpu4 run 2 ok 21s FCP 2524 LCP 2524 appReady 8208 1re carte 9104
+slow3g_cpu4 run 3 ok 21s FCP 2532 LCP 2532 appReady 8199 1re carte 9059
+{
+  "sans_bridage": {
+    "n": 3,
+    "fcp_ms": 124,
+    "lcp_ms": 124,
+    "appReady_ms": 154.5,
+    "domContentLoaded_ms": 79.8,
+    "load_ms": 187.4,
+    "screenFeedActive_wall_ms": 154,
+    "firstFeedCard_wall_ms": 811,
+    "boot_longtasks_n": 0,
+    "boot_longtasks_max_ms": 0,
+    "boot_longtasks_total_ms": 0,
+    "boot_domNodes": 3018,
+    "boot_heapMB": 9.5,
+    "nav": {
+      "profiles": 25.6,
+      "irl": 39.5,
+      "messages": 26.6,
+      "explore": 58.1,
+      "feed": 18.6
+    },
+    "conv_open_500msg_ms": 32.9,
+    "conv_panel_nodes": 252,
+    "passions_charger_ms": 0,
+    "passions_chercher_ms": 0.3,
+    "map_ensureLeaflet_ms": 0.1,
+    "map_status": "échec: [object Event]",
+    "feed500_render20_sync_ms": 5.3,
+    "feed500_render500_sync_ms": 5.1,
+    "feed500_render500_to_frame_ms": 14.1,
+    "feed500_cards": 500,
+    "feed500_domNodes": 14789,
+    "feed500_heapAfterMB": 9.5,
+    "transfer_bytes_total": 363561,
+    "transfer_requests": 3
+  },
+  "slow3g_cpu4": {
+    "n": 3,
+    "fcp_ms": 2524,
+    "lcp_ms": 2524,
+    "appReady_ms": 8199,
+    "domContentLoaded_ms": 2590.2,
+    "load_ms": 8346.8,
+    "screenFeedActive_wall_ms": 2447,
+    "firstFeedCard_wall_ms": 9094,
+    "boot_longtasks_n": 5,
+    "boot_longtasks_max_ms": 173,
+    "boot_longtasks_total_ms": 531,
+    "boot_domNodes": 3018,
+    "boot_heapMB": 9.5,
+    "nav": {
+      "profiles": 95.7,
+      "irl": 187.7,
+      "messages": 68.4,
+      "explore": 75.9,
+      "feed": 75.4
+    },
+    "conv_open_500msg_ms": 100.6,
+    "conv_panel_nodes": 252,
+    "passions_charger_ms": 0,
+    "passions_chercher_ms": 1.4,
+    "map_ensureLeaflet_ms": 0.2,
+    "map_status": "échec: [object Event]",
+    "feed500_render20_sync_ms": 26.8,
+    "feed500_render500_sync_ms": 18.7,
+    "feed500_render500_to_frame_ms": 55.3,
+    "feed500_cards": 500,
+    "feed500_domNodes": 14789,
+    "feed500_heapAfterMB": 9.5,
+    "transfer_bytes_total": 363699,
+    "transfer_requests": 4
+  }
+}

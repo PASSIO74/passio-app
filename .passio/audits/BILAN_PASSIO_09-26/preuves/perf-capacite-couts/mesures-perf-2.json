@@ -1,0 +1,89 @@
+{
+  "date": "2026-09-04T19:54:08.170Z",
+  "sha": "c8cb8e99",
+  "methode": "émulation Chromium headless (Playwright 1.60), 390×844 DPR2 isMobile ; tas JS via CDP Performance.getMetrics (précis, non quantifié) ; GC forcé via HeapProfiler.collectGarbage ; dist minifié servi en brotli sur 127.0.0.1:8110 ; requêtes externes abandonnées (SDK supabase-js, MapLibre, fonts exclus)",
+  "runs": [
+    {
+      "cpu": 1,
+      "run": 1,
+      "error": "page.waitForTimeout: Target page, context or browser has been closed"
+    },
+    {
+      "cpu": 1,
+      "run": 2,
+      "error": "browser.newContext: Protocol error (Target.createBrowserContext): Failed to create browser context."
+    },
+    {
+      "cpu": 1,
+      "run": 3,
+      "error": "browser.newContext: Target page, context or browser has been closed\nBrowser logs:\n\n<launching> /opt/pw-browsers/chromium_headless_shell-1223/chrome-headless-shell-linux64/chrome-headless-shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disabl"
+    },
+    {
+      "cpu": 4,
+      "run": 1,
+      "error": "browser.newContext: Target page, context or browser has been closed"
+    },
+    {
+      "cpu": 4,
+      "run": 2,
+      "error": "browser.newContext: Target page, context or browser has been closed"
+    },
+    {
+      "cpu": 4,
+      "run": 3,
+      "error": "browser.newContext: Target page, context or browser has been closed"
+    }
+  ],
+  "medianes": {
+    "cpu_x1": {
+      "n": 0,
+      "appReady_ms": null,
+      "boot_heapUsedMB": null,
+      "boot_nodes": null,
+      "boot_listeners": null,
+      "passions_fetch_ms": null,
+      "passions_parse_ms": null,
+      "passions_transfer_bytes": null,
+      "passions_chercher_guitare_ms": null,
+      "passions_chercher_aquascaping_ms": null,
+      "passions_taille": null,
+      "conv_open_ms": null,
+      "conv_bulles_rendues": null,
+      "conv_page2_ms": null,
+      "conv_all_ms": null,
+      "conv_bulles_all": null,
+      "conv_thread_nodes_all": null,
+      "feed500_render_to_frame_ms": null,
+      "feed500_cards": null,
+      "feed500_heapUsedMB": null,
+      "feed500_heap_apres_gc_MB": null,
+      "feed500_nodes": null,
+      "feed500_listeners": null
+    },
+    "cpu_x4": {
+      "n": 0,
+      "appReady_ms": null,
+      "boot_heapUsedMB": null,
+      "boot_nodes": null,
+      "boot_listeners": null,
+      "passions_fetch_ms": null,
+      "passions_parse_ms": null,
+      "passions_transfer_bytes": null,
+      "passions_chercher_guitare_ms": null,
+      "passions_chercher_aquascaping_ms": null,
+      "passions_taille": null,
+      "conv_open_ms": null,
+      "conv_bulles_rendues": null,
+      "conv_page2_ms": null,
+      "conv_all_ms": null,
+      "conv_bulles_all": null,
+      "conv_thread_nodes_all": null,
+      "feed500_render_to_frame_ms": null,
+      "feed500_cards": null,
+      "feed500_heapUsedMB": null,
+      "feed500_heap_apres_gc_MB": null,
+      "feed500_nodes": null,
+      "feed500_listeners": null
+    }
+  }
+}

@@ -1,0 +1,15 @@
+# Requêtes exécutées via mcp__supabase-passio-readonly__execute_sql (lecture seule), 2026-09-04 ~12:45 UTC
+[cron.job] 1 seul job : purge_client_errors, "0 3 * * *", DELETE FROM public.client_errors WHERE created_at < now() - interval '30 days' (active). AUCUN job pour purge_telemetry.
+[pg_proc] purge_telemetry(keep_days integer DEFAULT 30) existe, SECURITY DEFINER, jamais planifiée.
+[pg_policies telemetry_events] 1 policy : telemetry_insert_own INSERT roles={public} with_check ((user_id IS NULL) OR (user_id = auth.uid()::text)). Aucune policy SELECT/UPDATE/DELETE.
+[pg_policies client_errors] "Insert erreurs" INSERT with_check true. analytics_events : analytics_insert_own (user_id = auth.uid()).
+[pg_trigger telemetry_events/client_errors] aucun trigger (pas de rate limit serveur). [pg_constraint] seule PRIMARY KEY (id) : aucune borne de longueur serveur.
+[volumes] total 111 829 lignes / 54 MB ; first 2026-08-05 20:33 ; last 2026-09-04 12:43 ; 24h 5 911 ; 7j 69 041 ; >30j 0 ; canaris 446 (dernier 12:43:38) ; client_errors 16 (dernier 2026-08-31 15:32).
+[env/type] production api 42 541, perf 20 058 ; preview perf 11 696 ; development action 6 276 ... production error 22, preview error 3.
+[meta keys] 97 clés distinctes ; aucune clé de la DENY_KEY ; canary_id/synthetic/exclude_* 446.
+[PII scan] msg_email 0, msg_jwt 0, stack_email 0, meta_email 0, meta_jwt 0, meta_datauri 0 ; anon_rows 27 678 ; distinct_users 4 ; distinct_devices 1 210 ; max_msg_len 200 ; max_stack_len 262 ; max_meta_len 230.
+[index] 8 index (pkey, received_at DESC, type, severity, session, user, device, correlation).
+[10 derniers jours] 2026-08-28 : 19 006 lignes (13 435 prod, 6.9 MB) ; 09-02 : 11 301 (10 333 prod) ...
+[prod 7 j hors canari] 55 260 lignes, 3 appareils, 3 utilisateurs, 15 appareil-jours, 3 684 lignes/appareil/jour, 349 o/ligne moyen (≈1,29 MB/appareil/jour).
+[prod 7 j par type] api 23 724, perf 16 615, action 5 132, click 3 806, lifecycle 2 786, nav 2 092, session 644, context 486, connectivity 176, rt_recv 159, flow 57, link 14, release 9, error 6.
+[signaux prod] connectivity/send_failed warn 85 + error 50 ; recovered 58 ; error/unhandled_rejection 19 (dernier 2026-09-03 08:34) ; version_skew 11 ; link_open 1 ; server_reject 9.

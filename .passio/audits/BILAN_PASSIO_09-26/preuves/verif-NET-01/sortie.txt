@@ -1,0 +1,3 @@
+DIRECT {"intentVoyage":"cdv","intentLive":"cdv","html":"<div><div class=\"ai-section-label\">📔 Carnets de Voyage</div><div style=\"font-size:12px;color:var(--muted);\">Aucun carnet public pour l'instant.</div><div style=\"margin-top:10px;font-size:12px;color:var(--muted);\">Lance ton propre CDV Live depuis l'onglet <b>Carnets</b> → bouton 📡 CDV Live.</div></div>"}
+UI_TEXT "\"je pars en voyage\"\n‹ Retour\nSuggestions PASSIO\n📔 CARNETS DE VOYAGE\nAucun carnet public pour l'instant.\nLance ton propre CDV Live depuis l'onglet Carnets → bouton 📡 CDV Live.\nRECHERCHES LIÉES\nEvents IRL cette semaine\nCréateurs à suivre\nRencontrer des passionnés"
+MATCH_CDV true

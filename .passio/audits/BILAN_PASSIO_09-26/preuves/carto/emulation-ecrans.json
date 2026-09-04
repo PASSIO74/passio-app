@@ -1,0 +1,313 @@
+{
+  "sha": "c8cb8e99",
+  "port": "8100",
+  "ecrans": {
+    "feed": {
+      "actifId": "screen-feed",
+      "attendu": "screen-feed",
+      "ok": true,
+      "commandesVisibles": 311,
+      "champsVisibles": 0,
+      "fonctionsOnclick": [
+        "event.stopPropagation",
+        "likeComment",
+        "likePost",
+        "loadMoreFeedPosts",
+        "meOpen",
+        "openComments",
+        "openFeedPost",
+        "openPost",
+        "openStoryGroup",
+        "openUserProfile",
+        "replyToComment",
+        "sharePost",
+        "showEmojiPickerForComment",
+        "showEmojiPickerForPost",
+        "toggleFeedFollowing",
+        "toggleProfileFilter"
+      ],
+      "noeudsTotal": 953,
+      "ctxPage": null
+    },
+    "profiles": {
+      "actifId": "screen-profiles",
+      "attendu": "screen-profiles",
+      "ok": true,
+      "commandesVisibles": 16,
+      "champsVisibles": 0,
+      "fonctionsOnclick": [
+        "click",
+        "document.getElementById",
+        "goTo",
+        "openFollowersList",
+        "openFollowingList",
+        "ouvrirGestionPassions",
+        "setProfilePassion",
+        "switchProfileTab"
+      ],
+      "noeudsTotal": 159,
+      "ctxPage": null
+    },
+    "studio": {
+      "actifId": "screen-studio",
+      "attendu": "screen-studio",
+      "ok": true,
+      "commandesVisibles": 8,
+      "champsVisibles": 1,
+      "fonctionsOnclick": [
+        "publishPost"
+      ],
+      "noeudsTotal": 94,
+      "ctxPage": null
+    },
+    "explore": {
+      "actifId": "screen-explore",
+      "attendu": "screen-explore",
+      "ok": true,
+      "commandesVisibles": 41,
+      "champsVisibles": 1,
+      "fonctionsOnclick": [
+        "event.stopPropagation",
+        "filterExplore",
+        "openPassionExplorer",
+        "openUserProfile",
+        "switchExploreTab",
+        "toggleFollowUser"
+      ],
+      "noeudsTotal": 214,
+      "ctxPage": null
+    },
+    "irl": {
+      "actifId": "screen-irl",
+      "attendu": "screen-irl",
+      "ok": true,
+      "commandesVisibles": 42,
+      "champsVisibles": 1,
+      "fonctionsOnclick": [
+        "ContextualTools.open",
+        "_showMoreIrlEvents",
+        "openEventDetails",
+        "toggleIrlMapFullscreen",
+        "toggleIrlMapPeek"
+      ],
+      "noeudsTotal": 888,
+      "ctxPage": null
+    },
+    "messages": {
+      "actifId": "screen-messages",
+      "attendu": "screen-messages",
+      "ok": true,
+      "commandesVisibles": 6,
+      "champsVisibles": 1,
+      "fonctionsOnclick": [
+        "openConversation"
+      ],
+      "noeudsTotal": 60,
+      "ctxPage": null
+    }
+  },
+  "nav": [
+    {
+      "nav": "appNav",
+      "screen": "feed",
+      "action": null,
+      "label": "Fil",
+      "visible": false
+    },
+    {
+      "nav": "appNav",
+      "screen": "bobines",
+      "action": null,
+      "label": "Bobines",
+      "visible": false
+    },
+    {
+      "nav": "appNav",
+      "screen": "studio",
+      "action": null,
+      "label": "Créer",
+      "visible": false
+    },
+    {
+      "nav": "appNav",
+      "screen": "irl",
+      "action": null,
+      "label": "IRL",
+      "visible": false
+    },
+    {
+      "nav": "appNavV2",
+      "screen": "feed",
+      "action": null,
+      "label": "Découvrir",
+      "visible": true
+    },
+    {
+      "nav": "appNavV2",
+      "screen": "irl",
+      "action": null,
+      "label": "Rencontrer",
+      "visible": true
+    },
+    {
+      "nav": "appNavV2",
+      "action": "create",
+      "label": "Créer",
+      "visible": true
+    },
+    {
+      "nav": "appNavV2",
+      "screen": "messages",
+      "action": null,
+      "label": "Messages3",
+      "visible": true
+    },
+    {
+      "nav": "appNavV2",
+      "screen": "profiles",
+      "action": null,
+      "label": "Profil",
+      "visible": true
+    }
+  ],
+  "overlays": {
+    "bobines": {
+      "present": true,
+      "classe": "reels-viewer open",
+      "ariaHidden": "false",
+      "visible": false,
+      "zIndex": "9999",
+      "cartes": 0,
+      "navItem": {
+        "present": true,
+        "visible": false,
+        "display": "flex"
+      }
+    },
+    "passionManager": {
+      "visible": true,
+      "classeEcran": "screen active passions-page-open",
+      "freresMasques": 5,
+      "freresTotal": 5,
+      "portes": [
+        "fermerPassionManager→closePassionManager()",
+        "aidePassionManager→openPassionsAide()",
+        "profile-card→openEditPassionProfile('pp_0')",
+        "passion-photo-badge→event.stopPropagation();document.getElementById('passionPhot",
+        "profile-dots-btn→openPassionProfileMenu(event,'pp_0')",
+        "profile-card→openEditPassionProfile('pp_1')",
+        "passion-photo-badge→event.stopPropagation();document.getElementById('passionPhot",
+        "profile-dots-btn→openPassionProfileMenu(event,'pp_1')",
+        "profile-card→openEditPassionProfile('pp_2')",
+        "passion-photo-badge→event.stopPropagation();document.getElementById('passionPhot",
+        "profile-dots-btn→openPassionProfileMenu(event,'pp_2')",
+        "nouveauProfilLien→openCreateProfile()"
+      ]
+    },
+    "dynamiques": [
+      "v2CreateSheet:ABSENT",
+      "v3PassioSheet:ABSENT",
+      "modalBackdrop:présent-masqué",
+      "conv-fullpage:visible",
+      "irlFiltersPanel:présent-masqué",
+      "reelCommentsPanel:présent-masqué",
+      "tourOverlay:présent-masqué",
+      "devPanel:présent-masqué",
+      "convEmojiPanel:présent-masqué",
+      "vliveOverlay:ABSENT",
+      "profileDotsMenu:ABSENT",
+      "ctxToolsRoot:ABSENT",
+      "postDetailPage:présent-masqué",
+      "storyViewer:présent-masqué",
+      "notifPanel:ABSENT"
+    ],
+    "creer": {
+      "feuilleVisible": false,
+      "studioActif": false,
+      "items": [
+        "×",
+        "PublicationPhoto / vidéo",
+        "Bobine",
+        "Activité",
+        "Story",
+        "Live vidéo",
+        "Audio / podcast"
+      ]
+    }
+  },
+  "tour": {
+    "ouvert": true,
+    "mapEnfants": 0,
+    "L": "undefined",
+    "mapShim": false,
+    "erreur": null,
+    "erreursJsPendantTour": []
+  },
+  "globals": {
+    "fonctionsWindow": 1338,
+    "clesWindowTotal": 1746,
+    "passioNamespaces": [
+      "PASSIO_DEBUG",
+      "PassioTelemetry",
+      "tel",
+      "PassioPerf",
+      "PassioFirstRun",
+      "PASSIO_MOOD_LABELS",
+      "PASSIO_MOODS_ADMIS",
+      "PASSIONS_PAGE_CLASSE",
+      "PASSION_REACTIVATION_MOTIF",
+      "PASSIO_BADGES",
+      "PASSIO_SUPABASE",
+      "PASSIO_REALTIME_V2",
+      "PASSIO_REALTIME_V3",
+      "ContextualTools",
+      "PassioUIV2",
+      "PassioUIV3",
+      "PassioUIV4B",
+      "PassioUIV4A0",
+      "PassioUIV4A1",
+      "PassioUIV4A2",
+      "PassioUIV4A3",
+      "PassioUIV5",
+      "PassioUIV4A4",
+      "PassioUIV4A5",
+      "PassioUIV6",
+      "PassioUIV6A",
+      "PassioUIV6B",
+      "PassioUIV6C",
+      "PassioUIV7",
+      "PassioPassions",
+      "PassionSearchSelector",
+      "PassioFlatUI",
+      "PASSIO_DEFAULT_GIFS",
+      "PASSIO_GIF_API"
+    ]
+  },
+  "storage": {
+    "localStorage": [
+      "passio_conversations_v1",
+      "passio_device_id",
+      "passio_irl_digest_week",
+      "passio_mvp_state_v1",
+      "passio_post_delete_outbox_v1",
+      "passio_uid"
+    ],
+    "sessionStorage": [
+      "passio_gate_v1",
+      "passio_pwa_dismissed"
+    ]
+  },
+  "erreurs": {
+    "js": [],
+    "console": [],
+    "networkCount": 111,
+    "networkSample": [
+      "Failed to load resource: net::ERR_CONNECTION_RESET",
+      "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+      "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+      "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+      "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED"
+    ]
+  },
+  "topbar": []
+}

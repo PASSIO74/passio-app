@@ -1,0 +1,16 @@
+[etape] goto 13:07:38
+[etape] goto ok 13:07:50
+[etape] feed actif 13:07:53
+[etape] fonctions prêtes 13:07:53
+[etape] stubs posés 13:07:53
+[etape] conv ouverte (suite 2) 13:07:54
+S4_message_100ko_et_rafale {"maxlength_attr":null,"insert_100ko_len":102493,"inserts_rafale":50,"ms_rafale":4,"rendu_neutralise_pendant_mesure":true,"_restore":true}
+S5_double_envoi {"inserts":1}
+S5b_message_vide {"inserts":0}
+S6_gif_echec_silencieux {"gif_local":true,"status":"(aucun)","outbox":0,"inserts":2,"second_insert_sans_from_id":true}
+S7_media_hostile_realtime {"pwn":0,"img_src":"#","inline_handlers":0,"sender_html_neutralise":true}
+S8_supprimer_pour_moi_resurrection {"present_apres_suppression":false,"tombstone_pose":true,"present_apres_reouverture":true}
+S9_mention_xss_pseudo_guillemet {"box_present":true,"attribut_onmouseover_injecte":true,"pwn":9,"extrait_html":"<div onclick=\"_pickMention('x\" onmouseover=\"window.__pwn=9\" data-x=\"')\" style=\"display:flex;align-items:center;gap:8px;padding:9px 12px;cursor:pointer;border-bo"}
+S10_badge_idb {"badge":"3","aria":"Messages, 3 non lus","idb_convs":2,"ls_bytes":108195}
+S11_invite_appel_forgee_xss {"overlay_affiche":true,"pwn":7,"img_onerror_present":1,"nom_affiche":"Banque <b>Officielle</b>"}
+rc=0

@@ -1,0 +1,293 @@
+[1A[2K[2m[WebServer] [22m(node:15491) [DEP0066] DeprecationWarning: OutgoingMessage.prototype._headers is deprecated
+[2m[WebServer] [22m(Use `node --trace-deprecation ...` to show where the warning was created)
+
+
+Running 67 tests using 1 worker
+
+[1A[2K[1/67] [local] › tests/e2e/commentaires-bobine.spec.js:63:3 › commentaires d'une bobine › un commentaire posté part vers Supabase
+[1A[2K[2/67] [local] › tests/e2e/commentaires-bobine.spec.js:89:3 › commentaires d'une bobine › une réponse à un commentaire part elle aussi
+[1A[2K[3/67] [local] › tests/e2e/commentaires-bobine.spec.js:119:3 › commentaires d'une bobine › un commentaire ancien n'est plus daté « Maintenant »
+[1A[2K[4/67] [local] › tests/e2e/commentaires-bobine.spec.js:136:3 › commentaires d'une bobine › un commentaire à l'instant reste daté « à l'instant »
+[1A[2K[5/67] [local] › tests/e2e/echappement-ids-reactions.spec.js:51:3 › Pastille de réactions — identifiant hostile › un post dont l'identifiant est une charge ne l'exécute pas
+[1A[2K[6/67] [local] › tests/e2e/echappement-ids-reactions.spec.js:81:3 › Pastille de réactions — identifiant hostile › un identifiant normal reste cliquable — l'échappement ne casse pas le handler
+[1A[2K[7/67] [local] › tests/e2e/echappement.spec.js:101:3 › Échappement contextuel — contenu d'un autre compte › les trois helpers ne sont pas interchangeables (contrat des helpers)
+[1A[2K[8/67] [local] › tests/e2e/echappement.spec.js:134:3 › Échappement contextuel — contenu d'un autre compte › superposition de story : position et couleur ne peuvent pas sortir de l'attribut style
+[1A[2K[9/67] [local] › tests/e2e/echappement.spec.js:157:3 › Échappement contextuel — contenu d'un autre compte › réaction média d'un commentaire : un guillemet ne sort pas de l'attribut src
+[1A[2K[10/67] [local] › tests/e2e/fuite-blob-bobines.spec.js:36:3 › Bobine locale — cycle de vie de l'URL objet › le Blob est révoqué dès que la bobine est téléversée
+[1A[2K[11/67] [local] › tests/e2e/fuite-blob-bobines.spec.js:68:3 › Bobine locale — cycle de vie de l'URL objet › tant que la bobine n'est PAS téléversée, le Blob est conservé et réutilisé
+[1A[2K[12/67] [local] › tests/e2e/fuite-blob-bobines.spec.js:86:3 › Bobine locale — cycle de vie de l'URL objet › une bobine déjà distante ne crée aucune URL objet
+[1A[2K[13/67] [local] › tests/e2e/interactions.spec.js:405:3 › Interactions — like d'un post › fil : le bouton ❤️ bascule dans les deux sens et persiste au re-rendu
+[1A[2K[14/67] [local] › tests/e2e/interactions.spec.js:421:3 › Interactions — like d'un post › écriture serveur refusée : le ❤️ optimiste est ANNULÉ (bouton + état)
+[1A[2K[15/67] [local] › tests/e2e/interactions.spec.js:435:3 › Interactions — like d'un post › fil reconstruit pendant l'attente : l'annulation touche le bouton VISIBLE
+[1A[2K[16/67] [local] › tests/e2e/interactions.spec.js:451:3 › Interactions — like d'un post › l'écriture serveur reçoit l'INTENTION de l'utilisateur, jamais son inverse
+[1A[2K[17/67] [local] › tests/e2e/interactions.spec.js:520:3 › Interactions — like d'un post › contenu de démo : aucune écriture serveur (elle partirait en orphelin)
+[1A[2K[18/67] [local] › tests/e2e/interactions.spec.js:559:3 › Interactions — like d'un commentaire › le bouton VISIBLE se met à jour même quand le commentaire est rendu deux fois
+[1A[2K[19/67] [local] › tests/e2e/interactions.spec.js:594:3 › Interactions — like d'un commentaire › aperçu du fil : liker un commentaire met à jour le bouton visible
+[1A[2K[20/67] [local] › tests/e2e/interactions.spec.js:618:3 › Interactions — like d'un commentaire › répondre depuis la modale ouvre le champ dans la copie visible
+[1A[2K[21/67] [local] › tests/e2e/interactions.spec.js:639:3 › Interactions — événement IRL › la fiche événement expose un like ET une réaction emoji
+[1A[2K[22/67] [local] › tests/e2e/interactions.spec.js:650:3 › Interactions — événement IRL › le compteur de like reste synchronisé entre la carte et la fiche
+[1A[2K[23/67] [local] › tests/e2e/interactions.spec.js:664:3 › Interactions — événement IRL › une réaction emoji remplace la précédente puis se retire au second tap
+[1A[2K[24/67] [local] › tests/e2e/interactions.spec.js:681:3 › Interactions — événement IRL › ma réaction emoji survit à un rechargement (événement de démo)
+[1A[2K[25/67] [local] › tests/e2e/interactions.spec.js:707:3 › Interactions — bobine › le like d'une bobine est un VRAI like : compteur, persistance et parité avec le fil
+[1A[2K[26/67] [local] › tests/e2e/parcours-suivre.spec.js:79:1 › le parcours complet : suivre → voir → recharger → toujours voir → se désabonner → ne plus voir
+[1A[2K[27/67] [local] › tests/e2e/parcours-suivre.spec.js:193:1 › suivre n'ajoute JAMAIS la passion de l'autre à mes préférences de lecture
+[1A[2K[28/67] [local] › tests/e2e/partage-bobine.spec.js:65:3 › partage d'une bobine dans le Fil › le post partagé est daté, et il atteint Supabase
+[1A[2K[29/67] [local] › tests/e2e/partage-bobine.spec.js:95:3 › partage d'une bobine dans le Fil › le texte du partage n'est pas échappé deux fois
+[1A[2K[30/67] [local] › tests/e2e/partage-bobine.spec.js:154:3 › partage d'une bobine dans le Fil › le partage d'un POST ordinaire n'est pas échappé deux fois non plus
+[1A[2K[31/67] [local] › tests/e2e/partage-experience-passion.spec.js:70:3 › partage d'expérience — la passion ne se vide jamais › passion possédée : elle est bien reprise depuis l'activité
+[1A[2K[32/67] [local] › tests/e2e/partage-experience-passion.spec.js:80:3 › partage d'expérience — la passion ne se vide jamais › passion NON possédée : le champ garde l'identité active au lieu de se vider
+[1A[2K[33/67] [local] › tests/e2e/partage-experience-passion.spec.js:93:3 › partage d'expérience — la passion ne se vide jamais › le souvenir publié reste visible dans le fil de son auteur
+[1A[2K[34/67] [local] › tests/e2e/publication-optimiste-refusee.spec.js:66:1 › prémisse : ce compte n'a AUCUNE passion publiable
+[1A[2K[35/67] [local] › tests/e2e/publication-optimiste-refusee.spec.js:78:1 › bobine : aucun post local orphelin n'est créé
+[1A[2K[36/67] [local] › tests/e2e/publication-optimiste-refusee.spec.js:101:1 › partage de bobine : aucun post local orphelin
+[1A[2K[37/67] [local] › tests/e2e/publication-optimiste-refusee.spec.js:113:1 › partage de post : aucun post local orphelin
+[1A[2K[38/67] [local] › tests/e2e/publication-optimiste-refusee.spec.js:125:1 › partage d'événement : aucun post local orphelin
+[1A[2K[39/67] [local] › tests/e2e/publication-optimiste-refusee.spec.js:137:1 › avec une passion publiable, les quatre producteurs fonctionnent
+[1A[2K[40/67] [local] › tests/e2e/publication-optimiste-refusee.spec.js:154:1 › passions personnalisées : la création est fermée, les existantes intactes
+[1A[2K[41/67] [local] › tests/e2e/reaction-cle-entree.spec.js:20:3 › Clé de réaction — filtre d'entrée › le validateur accepte les vrais emojis, y compris composés, et rejette le balisage
+[1A[2K[42/67] [local] › tests/e2e/reaction-cle-entree.spec.js:45:3 › Clé de réaction — filtre d'entrée › temps réel : une clé hostile n'entre pas dans l'état, une vraie y entre
+[1A[2K[43/67] [local] › tests/e2e/reaction-cle-entree.spec.js:60:3 › Clé de réaction — filtre d'entrée › le retrait d'une réaction hostile ne crée pas la clé au passage
+[1A[2K[44/67] [local] › tests/e2e/reaction-cle-entree.spec.js:73:3 › Clé de réaction — filtre d'entrée › rien n'est persisté : la conversation sauvegardée ne porte aucune clé hostile
+[1A[2K[45/67] [local] › tests/e2e/suppression-durable.spec.js:65:3 › Suppression durable d'une publication › supprimer retire la publication des QUATRE tableaux, pas seulement de userPosts
+[1A[2K[46/67] [local] › tests/e2e/suppression-durable.spec.js:86:3 › Suppression durable d'une publication › une page serveur qui renvoie la publication supprimée ne la fait pas revenir
+[1A[2K[47/67] [local] › tests/e2e/suppression-durable.spec.js:99:3 › Suppression durable d'une publication › le temps réel ne réinjecte pas une publication supprimée
+[1A[2K[48/67] [local] › tests/e2e/suppression-durable.spec.js:116:3 › Suppression durable d'une publication › publier ne déverse plus la page serveur dans le contenu de démonstration
+[1A[2K[49/67] [local] › tests/e2e/suppression-durable.spec.js:149:3 › Suppression durable d'une publication › un blob de synchronisation antérieur à la suppression ne ressuscite rien
+[1A[2K[50/67] [local] › tests/e2e/suppression-durable.spec.js:173:3 › Suppression durable d'une publication › la suppression survit à un rechargement complet de l'application
+[1A[2K[51/67] [local] › tests/e2e/suppression-durable.spec.js:192:3 › Suppression durable d'une publication › une suppression serveur qui ne peut pas aboutir est mise en file, pas perdue
+[1A[2K[52/67] [local] › tests/e2e/suppression-durable.spec.js:205:3 › Suppression durable d'une publication › le menu d'options reste sur MA publication quand c'est la copie serveur qui s'affiche
+[1A[2K[53/67] [local] › tests/e2e/ui-v5-bobines.spec.js:92:3 › UI-5 — Bobines connectées au réel › URL normale : les quatre actions de la direction, dans l'ordre
+[1A[2K[54/67] [local] › tests/e2e/ui-v5-bobines.spec.js:121:3 › UI-5 — Bobines connectées au réel › bobine reliée à une activité : le seul lien « Voir l'activité »
+[1A[2K[55/67] [local] › tests/e2e/ui-v5-bobines.spec.js:138:3 › UI-5 — Bobines connectées au réel › une bobine sans Passio reconnue garde sa mise en page d'avant
+[1A[2K[56/67] [local] › tests/e2e/ui-v5-bobines.spec.js:165:3 › UI-5 — Bobines connectées au réel › « Ça m'intéresse » : signal réel, persisté, réversible, et il pèse
+[1A[2K[57/67] [local] › tests/e2e/ui-v5-bobines.spec.js:197:3 › UI-5 — Bobines connectées au réel › le signal survit à un rechargement
+[1A[2K[58/67] [local] › tests/e2e/ui-v5-bobines.spec.js:208:3 › UI-5 — Bobines connectées au réel › les trois sorties appellent les moteurs d'UI-3A, viewer fermé d'abord
+[1A[2K[59/67] [local] › tests/e2e/ui-v5-bobines.spec.js:244:3 › UI-5 — Bobines connectées au réel › « Voir l'activité » passe par openActivity d'UI-3B, viewer fermé
+[1A[2K  1) [local] › tests/e2e/ui-v5-bobines.spec.js:244:3 › UI-5 — Bobines connectées au réel › « Voir l'activité » passe par openActivity d'UI-3B, viewer fermé 
+
+    Error: page.waitForTimeout: Target page, context or browser has been closed
+
+       at app-helper.js:126
+
+      124 |     return el && el.classList.contains("active");
+      125 |   }, null, { timeout: 20000 });
+    > 126 |   await page.waitForTimeout(2500); // initApp (emoji-misc) + boot async
+          |              ^
+      127 |   // Fermer la landing (affichée sans session Supabase en test offline ; en prod
+      128 |   // un utilisateur onboardé a une session anonyme persistante → pas de landing).
+      129 |   // Et neutraliser les écritures Supabase pour garder la prod propre.
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:126:14)
+        at boot (/home/user/passio-app/tests/e2e/ui-v5-bobines.spec.js:60:3)
+        at /home/user/passio-app/tests/e2e/ui-v5-bobines.spec.js:245:5
+
+    Error: browserContext.close: Target page, context or browser has been closed
+
+    Error Context: test-results/ui-v5-bobines-UI-5-—-Bobin-fc860-tivity-d-UI-3B-viewer-fermé-local/error-context.md
+
+
+[1A[2K[60/67] [local] › tests/e2e/ui-v5-bobines.spec.js:261:3 › UI-5 — Bobines connectées au réel › « À vivre près de moi » ne demande jamais la position
+[1A[2K  2) [local] › tests/e2e/ui-v5-bobines.spec.js:261:3 › UI-5 — Bobines connectées au réel › « À vivre près de moi » ne demande jamais la position 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8102/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8102/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/ui-v5-bobines.spec.js:60:3)
+        at /home/user/passio-app/tests/e2e/ui-v5-bobines.spec.js:262:5
+
+    Error Context: test-results/ui-v5-bobines-UI-5-—-Bobin-8d0d4--demande-jamais-la-position-local/error-context.md
+
+
+[1A[2K[61/67] [local] › tests/e2e/ui-v5-bobines.spec.js:275:3 › UI-5 — Bobines connectées au réel › kill switch local au boot : viewer historique, rien du lot
+[1A[2K  3) [local] › tests/e2e/ui-v5-bobines.spec.js:275:3 › UI-5 — Bobines connectées au réel › kill switch local au boot : viewer historique, rien du lot 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8102/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8102/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/ui-v5-bobines.spec.js:60:3)
+        at /home/user/passio-app/tests/e2e/ui-v5-bobines.spec.js:277:5
+
+    Error Context: test-results/ui-v5-bobines-UI-5-—-Bobin-bafd3-ewer-historique-rien-du-lot-local/error-context.md
+
+
+[1A[2K[62/67] [local] › tests/e2e/ui-v5-bobines.spec.js:303:3 › UI-5 — Bobines connectées au réel › kill switch mémoire en cours de session : retour sans rechargement
+[1A[2K  4) [local] › tests/e2e/ui-v5-bobines.spec.js:303:3 › UI-5 — Bobines connectées au réel › kill switch mémoire en cours de session : retour sans rechargement 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8102/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8102/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/ui-v5-bobines.spec.js:60:3)
+        at /home/user/passio-app/tests/e2e/ui-v5-bobines.spec.js:304:5
+
+    Error Context: test-results/ui-v5-bobines-UI-5-—-Bobin-9f93b-on-retour-sans-rechargement-local/error-context.md
+
+
+[1A[2K[63/67] [local] › tests/e2e/ui-v5-bobines.spec.js:319:3 › UI-5 — Bobines connectées au réel › la décoration survit à une réouverture du viewer
+[1A[2K  5) [local] › tests/e2e/ui-v5-bobines.spec.js:319:3 › UI-5 — Bobines connectées au réel › la décoration survit à une réouverture du viewer 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8102/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8102/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/ui-v5-bobines.spec.js:60:3)
+        at /home/user/passio-app/tests/e2e/ui-v5-bobines.spec.js:320:5
+
+    Error Context: test-results/ui-v5-bobines-UI-5-—-Bobin-b7ae9-à-une-réouverture-du-viewer-local/error-context.md
+
+
+[1A[2K[64/67] [local] › tests/e2e/ui-v5-bobines.spec.js:329:3 › UI-5 — Bobines connectées au réel › contenu de démonstration : des bobines sont reliées à une activité
+[1A[2K  6) [local] › tests/e2e/ui-v5-bobines.spec.js:329:3 › UI-5 — Bobines connectées au réel › contenu de démonstration : des bobines sont reliées à une activité 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8102/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8102/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/ui-v5-bobines.spec.js:60:3)
+        at /home/user/passio-app/tests/e2e/ui-v5-bobines.spec.js:330:5
+
+    Error Context: test-results/ui-v5-bobines-UI-5-—-Bobin-07ccf-sont-reliées-à-une-activité-local/error-context.md
+
+
+[1A[2K[65/67] [local] › tests/e2e/ui-v5-bobines.spec.js:358:5 › UI-5 — Bobines connectées au réel › mobile 320 px : aucun débordement, cibles ≥ 44 px
+[1A[2K  7) [local] › tests/e2e/ui-v5-bobines.spec.js:358:5 › UI-5 — Bobines connectées au réel › mobile 320 px : aucun débordement, cibles ≥ 44 px 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8102/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8102/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/ui-v5-bobines.spec.js:60:3)
+        at /home/user/passio-app/tests/e2e/ui-v5-bobines.spec.js:360:7
+
+    Error Context: test-results/ui-v5-bobines-UI-5-—-Bobin-3c20e--débordement-cibles-≥-44-px-local/error-context.md
+
+
+[1A[2K[66/67] [local] › tests/e2e/ui-v5-bobines.spec.js:358:5 › UI-5 — Bobines connectées au réel › mobile 390 px : aucun débordement, cibles ≥ 44 px
+[1A[2K  8) [local] › tests/e2e/ui-v5-bobines.spec.js:358:5 › UI-5 — Bobines connectées au réel › mobile 390 px : aucun débordement, cibles ≥ 44 px 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8102/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8102/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/ui-v5-bobines.spec.js:60:3)
+        at /home/user/passio-app/tests/e2e/ui-v5-bobines.spec.js:360:7
+
+    Error: browserContext.close: Target page, context or browser has been closed
+
+    Error Context: test-results/ui-v5-bobines-UI-5-—-Bobin-d429b--débordement-cibles-≥-44-px-local/error-context.md
+
+
+[1A[2K[67/67] [local] › tests/e2e/ui-v5-bobines.spec.js:358:5 › UI-5 — Bobines connectées au réel › mobile 430 px : aucun débordement, cibles ≥ 44 px
+[1A[2K  9) [local] › tests/e2e/ui-v5-bobines.spec.js:358:5 › UI-5 — Bobines connectées au réel › mobile 430 px : aucun débordement, cibles ≥ 44 px 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8102/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8102/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/ui-v5-bobines.spec.js:60:3)
+        at /home/user/passio-app/tests/e2e/ui-v5-bobines.spec.js:360:7
+
+    Error Context: test-results/ui-v5-bobines-UI-5-—-Bobin-9e413--débordement-cibles-≥-44-px-local/error-context.md
+
+
+[1A[2K  9 failed
+    [local] › tests/e2e/ui-v5-bobines.spec.js:244:3 › UI-5 — Bobines connectées au réel › « Voir l'activité » passe par openActivity d'UI-3B, viewer fermé 
+    [local] › tests/e2e/ui-v5-bobines.spec.js:261:3 › UI-5 — Bobines connectées au réel › « À vivre près de moi » ne demande jamais la position 
+    [local] › tests/e2e/ui-v5-bobines.spec.js:275:3 › UI-5 — Bobines connectées au réel › kill switch local au boot : viewer historique, rien du lot 
+    [local] › tests/e2e/ui-v5-bobines.spec.js:303:3 › UI-5 — Bobines connectées au réel › kill switch mémoire en cours de session : retour sans rechargement 
+    [local] › tests/e2e/ui-v5-bobines.spec.js:319:3 › UI-5 — Bobines connectées au réel › la décoration survit à une réouverture du viewer 
+    [local] › tests/e2e/ui-v5-bobines.spec.js:329:3 › UI-5 — Bobines connectées au réel › contenu de démonstration : des bobines sont reliées à une activité 
+    [local] › tests/e2e/ui-v5-bobines.spec.js:358:5 › UI-5 — Bobines connectées au réel › mobile 320 px : aucun débordement, cibles ≥ 44 px 
+    [local] › tests/e2e/ui-v5-bobines.spec.js:358:5 › UI-5 — Bobines connectées au réel › mobile 390 px : aucun débordement, cibles ≥ 44 px 
+    [local] › tests/e2e/ui-v5-bobines.spec.js:358:5 › UI-5 — Bobines connectées au réel › mobile 430 px : aucun débordement, cibles ≥ 44 px 
+  58 passed (16.9m)
+EXIT=1

@@ -1,0 +1,56 @@
+{
+  "S1_texte_en_ligne": {
+    "status": "sent",
+    "outbox": 0,
+    "inserts": 1,
+    "content_preview": "{\"type\":\"text\",\"text\":\"Message d'audit n°1\",\"sp\":{\"n\":\"Audit",
+    "bulles": 2
+  },
+  "S2_piece_jointe_upload_ok": {
+    "local_img_is_dataurl": true,
+    "status": "sent",
+    "upload": {
+      "bucket": "attachments",
+      "path": "attachments/c_x/1788527092258_nquvrcj6c_fixture-1px.jpg",
+      "size": 761,
+      "type": "image/jpeg"
+    },
+    "db_url": "https://storage.example/object/public/attachments/attachments/c_x/1788527092258_nquvrcj6c_fixture-1px.jpg",
+    "db_type": "media",
+    "db_has_base64": false,
+    "img_src_rendu": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BST0ZJTEUAAQEAAAHIAAAAAAQwAABtbnRyUkdCIFhZWiAH4AABAAEAAAAAAABhY3NwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAA9tYAAQAAAADTLQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAlkZXNjAAAA8AAAACRyWFlaAAABFAAAABRnWFlaAAABKAAAABRiWFlaAAABPAAAABR3dHB0AAABUAAAABRyVFJDAAABZAAAAChnVFJDAAABZAAAAChiVFJDAAABZAAAAChjcHJ0AAABjAAAADxtbHVjAAAAAAAAAAEAAAAMZW5VUwAAAAgAAAAcAHMAUgBHAEJYWVogAAAAAAAAb6IAADj1AAADkFhZWiAAAAAAAABimQAAt4UAABjaWFlaIAAAAAAAACSgAAAPhAAAts9YWVogAAAAAAAA9tYAAQAAAADTLXBhcmEAAAAAAAQAAAACZmYAAPKnAAANWQAAE9AAAApbAAAAAAAAAABtbHVjAAAAAAAAAAEAAAAMZW5VUwAAACAAAAAcAEcAbwBvAGcAbABlACAASQBuAGMALgAgADIAMAAxADb/2wBDAAkGBwgHBgkIBwgKCgkLDRYPDQwMDRsUFRAWIB0iIiAdHx8kKDQsJCYxJx8fLT0tMTU3Ojo6Iys/RD84QzQ5Ojf/2wBDAQoKCg0MDRoPDxo3JR8lNzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzf/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAABAb/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCNALId/9k="
+  },
+  "S2b_piece_jointe_upload_ko": {
+    "db_url": "",
+    "db_expired": true,
+    "db_text": "📎 fixture-1px.jpg (non synchronisé)",
+    "db_has_base64": false,
+    "content_len": 207
+  },
+  "S3_hors_ligne_puis_retour": {
+    "off": {
+      "onLine": false,
+      "status": "failed",
+      "outbox": [
+        "msg_x8p5ve25mmtmyuq39"
+      ],
+      "retry_btn": true,
+      "inserts_avant": 3
+    },
+    "on": {
+      "onLine": true,
+      "status": "sent",
+      "outbox": 0,
+      "inserts_apres": 4
+    }
+  },
+  "S3b_refus_permanent_outbox_sans_borne": {
+    "outbox": [
+      {
+        "msgId": "msg_xmiit3aoimtmyur2b",
+        "at_age_ms": 506
+      }
+    ],
+    "inserts_supplementaires_apres_3_flush": 3
+  }
+}

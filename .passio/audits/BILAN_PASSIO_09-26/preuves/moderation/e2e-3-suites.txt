@@ -1,0 +1,19 @@
+[1A[2K[2m[WebServer] [22m(node:14631) [DEP0066] DeprecationWarning: OutgoingMessage.prototype._headers is deprecated
+[2m[WebServer] [22m(Use `node --trace-deprecation ...` to show where the warning was created)
+
+
+Running 11 tests using 1 worker
+
+[1A[2K[1/11] [local] › tests/e2e/profil-confidentialite-interface.spec.js:80:1 › le parcours complet : ligne créée privée → l'écran le reflète → un seul décochage → public en base
+[1A[2K[2/11] [local] › tests/e2e/profil-confidentialite-interface.spec.js:135:1 › complémentaire : la bio seule est modifiée, le contrôle n'est pas touché → reste privé
+[1A[2K[3/11] [local] › tests/e2e/profil-confidentialite-interface.spec.js:168:1 › la preuve vient du GESTE, pas de la valeur finale
+[1A[2K[4/11] [local] › tests/e2e/profil-visite-options.spec.js:28:3 › Profil visité — options dans le menu ⋯ › ① aucune rangée Partager / Signaler / Bloquer sur la surface
+[1A[2K[5/11] [local] › tests/e2e/profil-visite-options.spec.js:37:3 › Profil visité — options dans le menu ⋯ › ② le ⋯ est sur la couverture et ne recouvre pas la croix
+[1A[2K[6/11] [local] › tests/e2e/profil-visite-options.spec.js:61:3 › Profil visité — options dans le menu ⋯ › ③ le menu s'ouvre AU-DESSUS de la modale, avec les trois entrées
+[1A[2K[7/11] [local] › tests/e2e/profil-visite-options.spec.js:80:3 › Profil visité — options dans le menu ⋯ › ④ « Signaler » depuis le menu ouvre bien le signalement
+[1A[2K[8/11] [local] › tests/e2e/stories-blocage.spec.js:41:3 › Stories et blocage › un compte bloqué disparaît des groupes de stories
+[1A[2K[9/11] [local] › tests/e2e/stories-blocage.spec.js:50:3 › Stories et blocage › sa bulle quitte le rail du fil
+[1A[2K[10/11] [local] › tests/e2e/stories-blocage.spec.js:59:3 › Stories et blocage › ouvrir ses stories n'ouvre RIEN — et surtout pas celles de quelqu'un d'autre
+[1A[2K[11/11] [local] › tests/e2e/stories-blocage.spec.js:72:3 › Stories et blocage › sans blocage, la bulle est là et le visionneur s'ouvre sur le bon auteur
+[1A[2K  11 passed (3.0m)
+exit=0

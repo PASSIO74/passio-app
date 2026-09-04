@@ -1,0 +1,145 @@
+{
+  "publish_double_clic": {
+    "userPosts": 1,
+    "pubCalls": 1,
+    "toasts": [
+      "Publication en cours…",
+      "Publication en cours, attends un moment...",
+      "Post publié"
+    ],
+    "post": {
+      "id": "x80de6ssgmtmyhfhr",
+      "type": "photo",
+      "image": "data:image/jpeg;base64,/9j/4AA",
+      "syncStatus": "syncing",
+      "passion": "musique",
+      "createdAt": 1788526473903
+    }
+  },
+  "feed_rendu": {
+    "present": true,
+    "img": true,
+    "meta": "🎸 Musique · à l'instant Sync…"
+  },
+  "like_double_clic": {
+    "liked": true,
+    "likes": 1,
+    "likeCalls": 1,
+    "btn": "❤️ 1"
+  },
+  "commentaire": {
+    "vide": {
+      "n": 0,
+      "toasts": [
+        "Trop court"
+      ]
+    },
+    "n": 1,
+    "xss": 0,
+    "xss2": 0,
+    "imgInjectees": 0,
+    "html": [
+      "&lt;img src=x onerror=\"window.__xss=1\"&gt; &lt;a href=\"javascript:alert(1)\"&gt;x&lt;/a&gt; <a href=\"https://media.giphy.com/media/abc/giphy.gif?x=&quot;onload=&quot;window.__xss2=1\" target=\"_blank\" rel=\"noopener noreferrer nofollow\" class=\"cmt-link\">https://me"
+    ]
+  },
+  "commentaire_supprime": 0,
+  "partage_modal": {
+    "btns": [
+      "×",
+      "Partager dans mon feed",
+      "Partager en dehors"
+    ]
+  },
+  "partage_profil_url": "http://127.0.0.1:8103/index.html?plk=lk_mtmyhiii-zi36v3kjrz3khpu9#user-u_theo",
+  "deep_link_user_route": {
+    "hash": "#user-u_theo",
+    "modalOuverte": false,
+    "visitedOpen": false,
+    "ecran": "screen-feed"
+  },
+  "suppression": {
+    "dansUserPosts": false,
+    "tombstone": true,
+    "dom": false,
+    "outbox": 1
+  },
+  "image_0_octet": {
+    "photoDataUrl": false,
+    "toasts": [
+      "Post supprimé.",
+      "Impossible de lire cette image."
+    ]
+  },
+  "video_mime_menteur": {
+    "studioType": "video",
+    "videoDataUrl": "data:text/plain;base64,Y2VjaSBuJ2VzdCBwY",
+    "toasts": [
+      "Chargement vidéo…",
+      "Vidéo chargée"
+    ]
+  },
+  "video_0_octet": {
+    "studioType": "video",
+    "videoDataUrl": "data:video/mp4;base64,"
+  },
+  "video_0_octet_publiee": {
+    "userPosts": 1,
+    "dernier": {
+      "type": "video",
+      "video": "data:video/mp4;base64,"
+    },
+    "pubCalls": 2
+  },
+  "audio_mime_menteur": {
+    "studioType": "audio",
+    "audioDataUrl": "data:application/pdf;base64,JVBERi0xLjQg",
+    "recStatus": "Audio chargé et prêt à publier"
+  },
+  "publication_hors_ligne": {
+    "syncStatus": "syncing",
+    "toasts": [
+      "Audio chargé",
+      "Publication en cours…",
+      "Post en local (connexion lente)"
+    ],
+    "label": "Sync…",
+    "outboxPosts": [
+      "passio_cmt_outbox_v1",
+      "passio_post_delete_outbox_v1"
+    ]
+  },
+  "reprise_apres_online": {
+    "pubCalls": 0,
+    "syncStatus": "syncing"
+  },
+  "post_local_apres_reload": {
+    "present": true,
+    "syncStatus": "syncing",
+    "meta": "🎸 Musique · à l'instant Sync…"
+  },
+  "switch_profil": {
+    "avant": {
+      "passion": "musique",
+      "cur": "pp_0"
+    },
+    "apres": {
+      "passion": "sport",
+      "cur": "pp_1",
+      "text": "brouillon en cours",
+      "photo": true,
+      "studioType": "photo",
+      "ecran": "screen-studio"
+    }
+  },
+  "story_echec_serveur": {
+    "avant": 7,
+    "apres": 8,
+    "toasts": [],
+    "deleteStoryFn": "undefined"
+  },
+  "follow_refus_serveur": {
+    "following": true,
+    "btn": "✓ Suivi"
+  },
+  "erreurs_js": []
+}

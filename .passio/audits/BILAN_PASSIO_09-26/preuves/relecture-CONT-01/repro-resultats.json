@@ -1,0 +1,57 @@
+{
+ "video_mime_menteur": {
+  "studioType": "video",
+  "videoDataUrl": "data:text/plain;base64,Y2VjaSB",
+  "toasts": [
+   "Chargement vidéo…",
+   "Vidéo chargée"
+  ]
+ },
+ "video_mime_menteur_publiee": {
+  "uploads": [],
+  "inserts": [],
+  "toasts": [
+   "Publication en cours…",
+   "Post en local (connexion lente)"
+  ],
+  "post": {
+   "type": "video",
+   "video": "data:text/plain;base64,Y2VjaSBuJ2VzdCBwYXMgdW5lIHZpZGVv",
+   "sync": "syncing"
+  }
+ },
+ "video_0_octet": {
+  "studioType": "video",
+  "videoDataUrl": "data:video/mp4;base64,",
+  "toasts": [
+   "Chargement vidéo…",
+   "Vidéo chargée"
+  ]
+ },
+ "video_0_octet_publiee": {
+  "uploads": [],
+  "inserts": [],
+  "toasts": [
+   "Publication en cours…",
+   "Post en local (connexion lente)"
+  ]
+ },
+ "audio_mime_menteur": {
+  "studioType": "audio",
+  "audioDataUrl": "data:application/pdf;base64,JV",
+  "recStatus": "Audio chargé et prêt à publier",
+  "toasts": [
+   "Post en local (connexion lente)",
+   "Audio chargé"
+  ]
+ },
+ "audio_mime_menteur_publie": {
+  "uploads": [],
+  "inserts": [],
+  "toasts": [
+   "Publication en cours…",
+   "Post en local (connexion lente)"
+  ]
+ },
+ "erreurs_js": []
+}

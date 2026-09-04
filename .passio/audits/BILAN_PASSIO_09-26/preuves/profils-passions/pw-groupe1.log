@@ -1,0 +1,1806 @@
+[1A[2K[2m[WebServer] [22m(node:797) [DEP0066] DeprecationWarning: OutgoingMessage.prototype._headers is deprecated
+[2m[WebServer] [22m(Use `node --trace-deprecation ...` to show where the warning was created)
+
+
+Running 98 tests using 1 worker
+
+[1A[2K[1/98] [local] › tests/e2e/passions-plates.spec.js:67:3 › le référentiel › ① les 19 identifiants historiques sont conservés
+[1A[2K[2/98] [local] › tests/e2e/passions-plates.spec.js:78:3 › le référentiel › ② aucun doublon après normalisation, ni entre libellés ni avec les alias
+[1A[2K[3/98] [local] › tests/e2e/passions-plates.spec.js:96:3 › le référentiel › ③ aucun univers, aucune spécialité : un seul niveau
+[1A[2K[4/98] [local] › tests/e2e/passions-plates.spec.js:108:3 › le référentiel › ④ chaque relation pointe vers une passion qui existe
+[1A[2K[5/98] [local] › tests/e2e/passions-plates.spec.js:121:3 › la recherche › ⑤ le référentiel n'est PAS chargé au démarrage
+[1A[2K[6/98] [local] › tests/e2e/passions-plates.spec.js:137:3 › la recherche › ⑥ bis — le classement ne dépend PAS de la réponse du serveur
+[1A[2K[7/98] [local] › tests/e2e/passions-plates.spec.js:161:3 › la recherche › ⑥ correspondance exacte, alias, sans accent, approximative
+[1A[2K[8/98] [local] › tests/e2e/passions-plates.spec.js:181:3 › la recherche › ⑦ les résultats sont plafonnés, et une frappe absurde ne rend rien
+[1A[2K[9/98] [local] › tests/e2e/passions-plates.spec.js:192:3 › la recherche › ⑧ « Enduro » se choisit SANS passer par « Moto »
+[1A[2K[10/98] [local] › tests/e2e/passions-plates.spec.js:207:3 › la recherche › ⑨ multi-sélection dans « Mes passions », et le fil la reçoit
+[1A[2K[11/98] [local] › tests/e2e/passions-plates.spec.js:228:3 › la recherche › ⑩ le Studio est en choix UNIQUE, et il écrit dans #postPassion
+[1A[2K[12/98] [local] › tests/e2e/passions-plates.spec.js:264:3 › la recherche › ⑩ bis — la bulle du Fil porte le NOM de la passion, jamais « Passion »
+[1A[2K[13/98] [local] › tests/e2e/passions-plates.spec.js:293:3 › la recherche › ⑪ la sélection survit à un rechargement
+[1A[2K[14/98] [local] › tests/e2e/passions-plates.spec.js:314:3 › la recherche › ⑫ les publications existantes restent visibles
+[1A[2K[15/98] [local] › tests/e2e/passions-plates.spec.js:328:3 › le modèle et les garde-fous › ⑬ aucune passion ne crée de profil : une identité, plusieurs passions
+[1A[2K[16/98] [local] › tests/e2e/passions-plates.spec.js:345:3 › le modèle et les garde-fous › ⑭ une passion inexistante ouvre une DEMANDE, pas une passion
+[1A[2K[17/98] [local] › tests/e2e/passions-plates.spec.js:366:3 › le modèle et les garde-fous › ⑭ bis — un terme qui existe déjà ne crée pas de demande
+[1A[2K[18/98] [local] › tests/e2e/passions-plates.spec.js:375:3 › le modèle et les garde-fous › ⑮ publier sous une passion absente du serveur est REFUSÉ, et dit pourquoi
+[1A[2K[19/98] [local] › tests/e2e/passions-plates.spec.js:429:3 › le modèle et les garde-fous › ⑯ le client ne peut pas écrire dans le référentiel
+[1A[2K[20/98] [local] › tests/e2e/passions-plates.spec.js:442:3 › le modèle et les garde-fous › ⑰ kill switch : le drapeau coupé rend l'écran historique
+[1A[2K[21/98] [local] › tests/e2e/passions-plates.spec.js:487:3 › le modèle et les garde-fous › ⑰ bis — sans aperçu, le lot est ACTIF : c'est le défaut depuis le 2026-09-01
+[1A[2K[22/98] [local] › tests/e2e/passions-plates.spec.js:522:3 › le modèle et les garde-fous › ⑰ ter — une passion du référentiel s'affiche AVEC SON NOM, sans ouvrir le sélecteur
+[1A[2K[23/98] [local] › tests/e2e/passions-plates.spec.js:554:3 › le modèle et les garde-fous › ⑰ quater — un compte qui ne vit que sur le socle ne télécharge RIEN de plus
+[1A[2K[24/98] [local] › tests/e2e/passions-plates.spec.js:587:3 › le modèle et les garde-fous › ⑰ quinquies — la passion d'AUTRUI dans le fil déclenche le chargement et s'affiche nommée
+[1A[2K[25/98] [local] › tests/e2e/passions-plates.spec.js:628:3 › le modèle et les garde-fous › ⑰ sexies — le rail du PROFIL est repeint lui aussi, malgré sa signature
+[1A[2K[26/98] [local] › tests/e2e/passions-plates.spec.js:651:3 › le modèle et les garde-fous › ⑱ le pliage du navigateur est celui du référentiel construit
+[1A[2K[27/98] [local] › tests/e2e/passions-plates.spec.js:666:5 › mobile › ⑲ 320 px : la recherche est utilisable, sans débordement
+[1A[2K[28/98] [local] › tests/e2e/passions-plates.spec.js:666:5 › mobile › ⑲ 390 px : la recherche est utilisable, sans débordement
+[1A[2K  1) [local] › tests/e2e/passions-plates.spec.js:666:5 › mobile › ⑲ 390 px : la recherche est utilisable, sans débordement 
+
+    Error: page.goto: Target page, context or browser has been closed
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html?passio_preview=flat-passions-v1", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/passions-plates.spec.js:668:7
+
+    Error: browserContext.close: Target page, context or browser has been closed
+
+    Error Context: test-results/passions-plates-mobile-⑲-3-48778-utilisable-sans-débordement-local/error-context.md
+
+
+[1A[2K[29/98] [local] › tests/e2e/passions-plates.spec.js:666:5 › mobile › ⑲ 430 px : la recherche est utilisable, sans débordement
+[1A[2K  2) [local] › tests/e2e/passions-plates.spec.js:666:5 › mobile › ⑲ 430 px : la recherche est utilisable, sans débordement 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html?passio_preview=flat-passions-v1
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html?passio_preview=flat-passions-v1", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/passions-plates.spec.js:668:7
+
+    Error Context: test-results/passions-plates-mobile-⑲-4-4836c-utilisable-sans-débordement-local/error-context.md
+
+
+[1A[2K[30/98] [local] › tests/e2e/passions-plates.spec.js:720:3 › l'onboarding sous le lot › ㉖ la grille de 19 tuiles est remplacée par une recherche, et la copie le dit
+[1A[2K  3) [local] › tests/e2e/passions-plates.spec.js:720:3 › l'onboarding sous le lot › ㉖ la grille de 19 tuiles est remplacée par une recherche, et la copie le dit 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+      724 |       window.PASSIO_ONBOARDING_V2 = true;
+      725 |     }, [GATE_KEY, GATE_TOKEN]);
+    > 726 |     await page.goto("/index.html");
+          |                ^
+      727 |     await page.waitForFunction(() => typeof renderPassionGrid === "function", null, { timeout: 20000 });
+      728 |     await page.evaluate(() => {
+      729 |       window.supaSaveUserState = async () => {};
+        at /home/user/passio-app/tests/e2e/passions-plates.spec.js:726:16
+
+    Error Context: test-results/passions-plates-l-onboardi-57d52-echerche-et-la-copie-le-dit-local/error-context.md
+
+
+[1A[2K[31/98] [local] › tests/e2e/passions-plates.spec.js:796:3 › la porte d'ajout et son plafond › ㉑ la bulle « + » est dans « Gérer mes passions », ni dans le Fil ni dans le rail du Profil
+[1A[2K  4) [local] › tests/e2e/passions-plates.spec.js:796:3 › la porte d'ajout et son plafond › ㉑ la bulle « + » est dans « Gérer mes passions », ni dans le Fil ni dans le rail du Profil 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html?passio_preview=flat-passions-v1
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html?passio_preview=flat-passions-v1", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/passions-plates.spec.js:802:5
+
+    Error Context: test-results/passions-plates-la-porte-d-3018d-l-ni-dans-le-rail-du-Profil-local/error-context.md
+
+
+[1A[2K[32/98] [local] › tests/e2e/passions-plates.spec.js:822:3 › la porte d'ajout et son plafond › ㉒ à trois passions, la porte refuse en disant pourquoi, et l'offre reste annoncée
+[1A[2K  5) [local] › tests/e2e/passions-plates.spec.js:822:3 › la porte d'ajout et son plafond › ㉒ à trois passions, la porte refuse en disant pourquoi, et l'offre reste annoncée 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html?passio_preview=flat-passions-v1
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html?passio_preview=flat-passions-v1", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/passions-plates.spec.js:823:5
+
+    Error Context: test-results/passions-plates-la-porte-d-16efd-i-et-l-offre-reste-annoncée-local/error-context.md
+
+
+[1A[2K[33/98] [local] › tests/e2e/passions-plates.spec.js:883:3 › la porte d'ajout et son plafond › ㉒ bis — le plafond tient au POINT D'ÉCRITURE, pas seulement à la porte
+[1A[2K  6) [local] › tests/e2e/passions-plates.spec.js:883:3 › la porte d'ajout et son plafond › ㉒ bis — le plafond tient au POINT D'ÉCRITURE, pas seulement à la porte 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html?passio_preview=flat-passions-v1
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html?passio_preview=flat-passions-v1", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/passions-plates.spec.js:886:5
+
+    Error Context: test-results/passions-plates-la-porte-d-766ec-RE-pas-seulement-à-la-porte-local/error-context.md
+
+
+[1A[2K[34/98] [local] › tests/e2e/passions-plates.spec.js:900:3 › la porte d'ajout et son plafond › ㉓ archiver libère une place, et restaurer reste gratuit sous le plafond
+[1A[2K  7) [local] › tests/e2e/passions-plates.spec.js:900:3 › la porte d'ajout et son plafond › ㉓ archiver libère une place, et restaurer reste gratuit sous le plafond 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html?passio_preview=flat-passions-v1
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html?passio_preview=flat-passions-v1", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/passions-plates.spec.js:905:5
+
+    Error Context: test-results/passions-plates-la-porte-d-76ade-ste-gratuit-sous-le-plafond-local/error-context.md
+
+
+[1A[2K[35/98] [local] › tests/e2e/passions-plates.spec.js:926:3 › la porte d'ajout et son plafond › ㉓ bis — restaurer une QUATRIÈME passion vivante est barré
+[1A[2K  8) [local] › tests/e2e/passions-plates.spec.js:926:3 › la porte d'ajout et son plafond › ㉓ bis — restaurer une QUATRIÈME passion vivante est barré 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html?passio_preview=flat-passions-v1
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html?passio_preview=flat-passions-v1", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/passions-plates.spec.js:927:5
+
+    Error Context: test-results/passions-plates-la-porte-d-bc40c-E-passion-vivante-est-barré-local/error-context.md
+
+
+[1A[2K[36/98] [local] › tests/e2e/passions-plates.spec.js:947:3 › la porte d'ajout et son plafond › ㉓ ter — depuis la PORTE réelle, reprendre une passion archivée est gratuit
+[1A[2K  9) [local] › tests/e2e/passions-plates.spec.js:947:3 › la porte d'ajout et son plafond › ㉓ ter — depuis la PORTE réelle, reprendre une passion archivée est gratuit 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html?passio_preview=flat-passions-v1
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html?passio_preview=flat-passions-v1", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/passions-plates.spec.js:959:5
+
+    Error: browserContext.close: Target page, context or browser has been closed
+
+    Error Context: test-results/passions-plates-la-porte-d-4f815-assion-archivée-est-gratuit-local/error-context.md
+
+
+[1A[2K[37/98] [local] › tests/e2e/passions-plates.spec.js:990:3 › la porte d'ajout et son plafond › ㉔ kill switch : drapeau coupé, aucun plafond
+[1A[2K  10) [local] › tests/e2e/passions-plates.spec.js:990:3 › la porte d'ajout et son plafond › ㉔ kill switch : drapeau coupé, aucun plafond 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html?passio_preview=flat-passions-v1
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html?passio_preview=flat-passions-v1", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/passions-plates.spec.js:994:5
+
+    Error Context: test-results/passions-plates-la-porte-d-7d838-drapeau-coupé-aucun-plafond-local/error-context.md
+
+
+[1A[2K[38/98] [local] › tests/e2e/passions-plates.spec.js:1008:3 › la porte d'ajout et son plafond › ㉕ à deux passions, la recherche s'ouvre et ne laisse en prendre qu'une
+[1A[2K  11) [local] › tests/e2e/passions-plates.spec.js:1008:3 › la porte d'ajout et son plafond › ㉕ à deux passions, la recherche s'ouvre et ne laisse en prendre qu'une 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html?passio_preview=flat-passions-v1
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html?passio_preview=flat-passions-v1", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/passions-plates.spec.js:1009:5
+
+    Error Context: test-results/passions-plates-la-porte-d-d577d-ne-laisse-en-prendre-qu-une-local/error-context.md
+
+
+[1A[2K[39/98] [local] › tests/e2e/profil-entete-passions.spec.js:86:1 › ① la couverture s'arrête juste AU-DESSUS du pseudo
+[1A[2K  12) [local] › tests/e2e/profil-entete-passions.spec.js:86:1 › ① la couverture s'arrête juste AU-DESSUS du pseudo 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:87:3
+
+    Error Context: test-results/profil-entete-passions-①-l-0eb94-e-juste-AU-DESSUS-du-pseudo-local/error-context.md
+
+
+[1A[2K[40/98] [local] › tests/e2e/profil-entete-passions.spec.js:97:1 › ① bis — l'avatar tient ENTIÈREMENT sur la couverture
+[1A[2K  13) [local] › tests/e2e/profil-entete-passions.spec.js:97:1 › ① bis — l'avatar tient ENTIÈREMENT sur la couverture 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:98:3
+
+    Error: browserContext.close: Protocol error (Target.disposeBrowserContext): Failed to find context with id 64B57E726119551B315FD0D78C3EBBCB
+
+    Error Context: test-results/profil-entete-passions-①-b-7da4a-TIÈREMENT-sur-la-couverture-local/error-context.md
+
+
+[1A[2K[41/98] [local] › tests/e2e/profil-entete-passions.spec.js:112:1 › ② la photo de profil est nettement plus grande qu'avant (90 px)
+[1A[2K  14) [local] › tests/e2e/profil-entete-passions.spec.js:112:1 › ② la photo de profil est nettement plus grande qu'avant (90 px) 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:113:3
+
+    Error Context: test-results/profil-entete-passions-②-l-3b2b5-plus-grande-qu-avant-90-px--local/error-context.md
+
+
+[1A[2K[42/98] [local] › tests/e2e/profil-entete-passions.spec.js:120:1 › ① ter — la carte d'identité reste sous les deux tiers de l'écran
+[1A[2K  15) [local] › tests/e2e/profil-entete-passions.spec.js:120:1 › ① ter — la carte d'identité reste sous les deux tiers de l'écran 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:121:3
+
+    Error Context: test-results/profil-entete-passions-①-t-fdb1c-s-les-deux-tiers-de-l-écran-local/error-context.md
+
+
+[1A[2K[43/98] [local] › tests/e2e/profil-entete-passions.spec.js:162:1 › ③ aucune ligne de passions sous le pseudo — les bulles du rail les portent
+[1A[2K  16) [local] › tests/e2e/profil-entete-passions.spec.js:162:1 › ③ aucune ligne de passions sous le pseudo — les bulles du rail les portent 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:163:3
+
+    Error Context: test-results/profil-entete-passions-③-a-04255--bulles-du-rail-les-portent-local/error-context.md
+
+
+[1A[2K[44/98] [local] › tests/e2e/profil-entete-passions.spec.js:196:1 › ③ bis bis — la porte d'ajout a quitté le rail pour « Gérer mes passions »
+[1A[2K  17) [local] › tests/e2e/profil-entete-passions.spec.js:196:1 › ③ bis bis — la porte d'ajout a quitté le rail pour « Gérer mes passions » 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:197:3
+
+    Error Context: test-results/profil-entete-passions-③-b-694a9-pour-«-Gérer-mes-passions-»-local/error-context.md
+
+
+[1A[2K[45/98] [local] › tests/e2e/profil-entete-passions.spec.js:262:1 › ③ bis bis bis — sous le plafond, la porte d'ajout invite et reste armée
+[1A[2K  18) [local] › tests/e2e/profil-entete-passions.spec.js:262:1 › ③ bis bis bis — sous le plafond, la porte d'ajout invite et reste armée 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:263:3
+
+    Error Context: test-results/profil-entete-passions-③-b-8ce7e-ajout-invite-et-reste-armée-local/error-context.md
+
+
+[1A[2K[46/98] [local] › tests/e2e/profil-entete-passions.spec.js:299:1 › ③ bis ter — la chaîne complète : crayon → « Gérer mes passions » → la bulle
+[1A[2K  19) [local] › tests/e2e/profil-entete-passions.spec.js:299:1 › ③ bis ter — la chaîne complète : crayon → « Gérer mes passions » → la bulle 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:303:3
+
+    Error Context: test-results/profil-entete-passions-③-b-52d76-r-mes-passions-»-→-la-bulle-local/error-context.md
+
+
+[1A[2K[47/98] [local] › tests/e2e/profil-entete-passions.spec.js:346:1 › ③ bis quinquies — au plafond, la fenêtre ne renvoie pas au panneau d'où l'on vient
+[1A[2K  20) [local] › tests/e2e/profil-entete-passions.spec.js:346:1 › ③ bis quinquies — au plafond, la fenêtre ne renvoie pas au panneau d'où l'on vient 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:347:3
+
+    Error: browserContext.close: Target page, context or browser has been closed
+
+    Error Context: test-results/profil-entete-passions-③-b-a4c19--au-panneau-d-où-l-on-vient-local/error-context.md
+
+
+[1A[2K[48/98] [local] › tests/e2e/profil-entete-passions.spec.js:405:1 › ③ bis quater — la porte survit à deux rendus du panneau
+[1A[2K  21) [local] › tests/e2e/profil-entete-passions.spec.js:405:1 › ③ bis quater — la porte survit à deux rendus du panneau 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:406:3
+
+    Error Context: test-results/profil-entete-passions-③-b-4fc53-it-à-deux-rendus-du-panneau-local/error-context.md
+
+
+[1A[2K[49/98] [local] › tests/e2e/profil-entete-passions.spec.js:432:1 › ③ bis — toucher une bulle FILTRE, elle ne quitte plus le profil
+[1A[2K  22) [local] › tests/e2e/profil-entete-passions.spec.js:432:1 › ③ bis — toucher une bulle FILTRE, elle ne quitte plus le profil 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:437:3
+
+    Error Context: test-results/profil-entete-passions-③-b-db5cd-le-ne-quitte-plus-le-profil-local/error-context.md
+
+
+[1A[2K[50/98] [local] › tests/e2e/profil-entete-passions.spec.js:533:1 › ③ ter — une bulle reste une cible tactile confortable
+[1A[2K  23) [local] › tests/e2e/profil-entete-passions.spec.js:533:1 › ③ ter — une bulle reste une cible tactile confortable 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:534:3
+
+    Error Context: test-results/profil-entete-passions-③-t-37dda-e-cible-tactile-confortable-local/error-context.md
+
+
+[1A[2K[51/98] [local] › tests/e2e/profil-entete-passions.spec.js:542:1 › ③ quater — six passions : la rangée COULISSE, elle ne se comprime pas
+[1A[2K  24) [local] › tests/e2e/profil-entete-passions.spec.js:542:1 › ③ quater — six passions : la rangée COULISSE, elle ne se comprime pas 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:559:3
+
+    Error Context: test-results/profil-entete-passions-③-q-54c99-SSE-elle-ne-se-comprime-pas-local/error-context.md
+
+
+[1A[2K[52/98] [local] › tests/e2e/profil-entete-passions.spec.js:578:1 › ③ quater bis — DIX passions : les bulles gardent leur taille et leur nom
+[1A[2K  25) [local] › tests/e2e/profil-entete-passions.spec.js:578:1 › ③ quater bis — DIX passions : les bulles gardent leur taille et leur nom 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:579:3
+
+    Error Context: test-results/profil-entete-passions-③-q-0f91f-ent-leur-taille-et-leur-nom-local/error-context.md
+
+
+[1A[2K[53/98] [local] › tests/e2e/profil-entete-passions.spec.js:620:3 › ③ nonies — 320 px, 3 passions : la porte d'ajout est peinte dans « Gérer mes passions »
+[1A[2K  26) [local] › tests/e2e/profil-entete-passions.spec.js:620:3 › ③ nonies — 320 px, 3 passions : la porte d'ajout est peinte dans « Gérer mes passions » 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:622:5
+
+    Error Context: test-results/profil-entete-passions-③-n-45697-dans-«-Gérer-mes-passions-»-local/error-context.md
+
+
+[1A[2K[54/98] [local] › tests/e2e/profil-entete-passions.spec.js:620:3 › ③ nonies — 320 px, 10 passions : la porte d'ajout est peinte dans « Gérer mes passions »
+[1A[2K  27) [local] › tests/e2e/profil-entete-passions.spec.js:620:3 › ③ nonies — 320 px, 10 passions : la porte d'ajout est peinte dans « Gérer mes passions » 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:622:5
+
+    Error Context: test-results/profil-entete-passions-③-n-8c409-dans-«-Gérer-mes-passions-»-local/error-context.md
+
+
+[1A[2K[55/98] [local] › tests/e2e/profil-entete-passions.spec.js:620:3 › ③ nonies — 390 px, 10 passions : la porte d'ajout est peinte dans « Gérer mes passions »
+[1A[2K  28) [local] › tests/e2e/profil-entete-passions.spec.js:620:3 › ③ nonies — 390 px, 10 passions : la porte d'ajout est peinte dans « Gérer mes passions » 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:622:5
+
+    Error Context: test-results/profil-entete-passions-③-n-c345c-dans-«-Gérer-mes-passions-»-local/error-context.md
+
+
+[1A[2K[56/98] [local] › tests/e2e/profil-entete-passions.spec.js:655:1 › ③ quater ter — le rail défile, et sa position survit au choix d'une passion
+[1A[2K  29) [local] › tests/e2e/profil-entete-passions.spec.js:655:1 › ③ quater ter — le rail défile, et sa position survit au choix d'une passion 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:656:3
+
+    Error Context: test-results/profil-entete-passions-③-q-bdc9c-rvit-au-choix-d-une-passion-local/error-context.md
+
+
+[1A[2K[57/98] [local] › tests/e2e/profil-entete-passions.spec.js:740:1 › ③ decies — trois passions : la rangée est CENTRÉE, elle ne colle plus à gauche
+[1A[2K  30) [local] › tests/e2e/profil-entete-passions.spec.js:740:1 › ③ decies — trois passions : la rangée est CENTRÉE, elle ne colle plus à gauche 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:741:3
+
+    Error Context: test-results/profil-entete-passions-③-d-ee957-elle-ne-colle-plus-à-gauche-local/error-context.md
+
+
+[1A[2K[58/98] [local] › tests/e2e/profil-entete-passions.spec.js:754:1 › ③ decies bis — DIX passions : la rangée déborde, et la PREMIÈRE bulle reste atteignable
+[1A[2K  31) [local] › tests/e2e/profil-entete-passions.spec.js:754:1 › ③ decies bis — DIX passions : la rangée déborde, et la PREMIÈRE bulle reste atteignable 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:759:3
+
+    Error Context: test-results/profil-entete-passions-③-d-6fb0e-ÈRE-bulle-reste-atteignable-local/error-context.md
+
+
+[1A[2K[59/98] [local] › tests/e2e/profil-entete-passions.spec.js:773:1 › ③ decies ter — une SEULE passion se centre aussi
+[1A[2K  32) [local] › tests/e2e/profil-entete-passions.spec.js:773:1 › ③ decies ter — une SEULE passion se centre aussi 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:777:3
+
+    Error Context: test-results/profil-entete-passions-③-d-d9cff-ULE-passion-se-centre-aussi-local/error-context.md
+
+
+[1A[2K[60/98] [local] › tests/e2e/profil-entete-passions.spec.js:787:1 › ③ decies quater — le Fil se centre AUSSI, le profil visité garde son alignement
+[1A[2K  33) [local] › tests/e2e/profil-entete-passions.spec.js:787:1 › ③ decies quater — le Fil se centre AUSSI, le profil visité garde son alignement 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:803:3
+
+    Error Context: test-results/profil-entete-passions-③-d-d1fd9-visité-garde-son-alignement-local/error-context.md
+
+
+[1A[2K[61/98] [local] › tests/e2e/profil-entete-passions.spec.js:869:1 › ③ decies quinquies — QUATRE bulles (Suivis + 3 passions) : la rangée est centrée
+[1A[2K  34) [local] › tests/e2e/profil-entete-passions.spec.js:869:1 › ③ decies quinquies — QUATRE bulles (Suivis + 3 passions) : la rangée est centrée 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:43:3)
+        at poserFil (/home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:854:3)
+        at /home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:870:3
+
+    Error Context: test-results/profil-entete-passions-③-d-1f1b6-sions-la-rangée-est-centrée-local/error-context.md
+
+
+[1A[2K[62/98] [local] › tests/e2e/profil-entete-passions.spec.js:879:1 › ③ decies sexies — au-delà, le Fil déborde et sa PREMIÈRE bulle reste atteignable
+[1A[2K  35) [local] › tests/e2e/profil-entete-passions.spec.js:879:1 › ③ decies sexies — au-delà, le Fil déborde et sa PREMIÈRE bulle reste atteignable 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:43:3)
+        at poserFil (/home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:854:3)
+        at /home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:890:3
+
+    Error Context: test-results/profil-entete-passions-③-d-da099-ÈRE-bulle-reste-atteignable-local/error-context.md
+
+
+[1A[2K[63/98] [local] › tests/e2e/profil-entete-passions.spec.js:900:1 › ③ quinquies — une passion ARCHIVÉE ne réapparaît pas dans le rail
+[1A[2K  36) [local] › tests/e2e/profil-entete-passions.spec.js:900:1 › ③ quinquies — une passion ARCHIVÉE ne réapparaît pas dans le rail 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:905:3
+
+    Error Context: test-results/profil-entete-passions-③-q-8f64d-réapparaît-pas-dans-le-rail-local/error-context.md
+
+
+[1A[2K[64/98] [local] › tests/e2e/profil-entete-passions.spec.js:940:1 › ③ sexies — un profil visité suit la même règle : une seule rangée, en bulles
+[1A[2K  37) [local] › tests/e2e/profil-entete-passions.spec.js:940:1 › ③ sexies — un profil visité suit la même règle : une seule rangée, en bulles 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:941:3
+
+    Error Context: test-results/profil-entete-passions-③-s-07c74--une-seule-rangée-en-bulles-local/error-context.md
+
+
+[1A[2K[65/98] [local] › tests/e2e/profil-entete-passions.spec.js:957:1 › ③ septies — le RETOUR de la page de passion reste servi (chemin dormant)
+[1A[2K  38) [local] › tests/e2e/profil-entete-passions.spec.js:957:1 › ③ septies — le RETOUR de la page de passion reste servi (chemin dormant) 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:965:3
+
+    Error Context: test-results/profil-entete-passions-③-s-c4fa1-reste-servi-chemin-dormant--local/error-context.md
+
+
+[1A[2K[66/98] [local] › tests/e2e/profil-entete-passions.spec.js:983:1 › ③ octies — ouverte depuis un ÉCRAN, la page de passion n'invente pas de retour
+[1A[2K  39) [local] › tests/e2e/profil-entete-passions.spec.js:983:1 › ③ octies — ouverte depuis un ÉCRAN, la page de passion n'invente pas de retour 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:987:3
+
+    Error Context: test-results/profil-entete-passions-③-o-8fada-ion-n-invente-pas-de-retour-local/error-context.md
+
+
+[1A[2K[67/98] [local] › tests/e2e/profil-entete-passions.spec.js:998:1 › une carte de publication ne nomme la passion QU'UNE FOIS
+[1A[2K  40) [local] › tests/e2e/profil-entete-passions.spec.js:998:1 › une carte de publication ne nomme la passion QU'UNE FOIS 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:1010:3
+
+    Error Context: test-results/profil-entete-passions-une-39bef-omme-la-passion-QU-UNE-FOIS-local/error-context.md
+
+
+[1A[2K[68/98] [local] › tests/e2e/profil-entete-passions.spec.js:1041:1 › ④ — le compteur « passions » compte les vivantes ET les archivées
+[1A[2K  41) [local] › tests/e2e/profil-entete-passions.spec.js:1041:1 › ④ — le compteur « passions » compte les vivantes ET les archivées 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:1042:3
+
+    Error Context: test-results/profil-entete-passions-④-—-d71ad-s-vivantes-ET-les-archivées-local/error-context.md
+
+
+[1A[2K[69/98] [local] › tests/e2e/profil-entete-passions.spec.js:1064:1 › ④ bis — le profil de remplissage n'est compté nulle part
+[1A[2K  42) [local] › tests/e2e/profil-entete-passions.spec.js:1064:1 › ④ bis — le profil de remplissage n'est compté nulle part 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:1068:3
+
+    Error Context: test-results/profil-entete-passions-④-b-83265-age-n-est-compté-nulle-part-local/error-context.md
+
+
+[1A[2K[70/98] [local] › tests/e2e/profil-entete-passions.spec.js:1081:1 › ④ ter — il est ENTRE « abonnés » et « abonnements », et il ouvre la page
+[1A[2K  43) [local] › tests/e2e/profil-entete-passions.spec.js:1081:1 › ④ ter — il est ENTRE « abonnés » et « abonnements », et il ouvre la page 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/profil-entete-passions.spec.js:1084:3
+
+    Error Context: test-results/profil-entete-passions-④-t-932dd-ments-»-et-il-ouvre-la-page-local/error-context.md
+
+
+[1A[2K[71/98] [local] › tests/e2e/ui-v8-passions.spec.js:96:3 › UI-8 — un profil personnel, plusieurs passions › le profil personnel garde tout
+[1A[2K  44) [local] › tests/e2e/ui-v8-passions.spec.js:96:3 › UI-8 — un profil personnel, plusieurs passions › le profil personnel garde tout 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:44:3)
+        at /home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:98:5
+
+    Error Context: test-results/ui-v8-passions-UI-8-—-un-p-3197a-profil-personnel-garde-tout-local/error-context.md
+
+
+[1A[2K[72/98] [local] › tests/e2e/ui-v8-passions.spec.js:123:3 › UI-8 — un profil personnel, plusieurs passions › le choix de la passion d'écriture vit dans le STUDIO, et il persiste
+[1A[2K  45) [local] › tests/e2e/ui-v8-passions.spec.js:123:3 › UI-8 — un profil personnel, plusieurs passions › le choix de la passion d'écriture vit dans le STUDIO, et il persiste 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:44:3)
+        at /home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:128:5
+
+    Error Context: test-results/ui-v8-passions-UI-8-—-un-p-1a525-ns-le-STUDIO-et-il-persiste-local/error-context.md
+
+
+[1A[2K[73/98] [local] › tests/e2e/ui-v8-passions.spec.js:144:3 › UI-8 — un profil personnel, plusieurs passions › les cartes ne portent plus la multisélection ni « Réinitialiser »
+[1A[2K  46) [local] › tests/e2e/ui-v8-passions.spec.js:144:3 › UI-8 — un profil personnel, plusieurs passions › les cartes ne portent plus la multisélection ni « Réinitialiser » 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:44:3)
+        at /home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:145:5
+
+    Error Context: test-results/ui-v8-passions-UI-8-—-un-p-73cd3-ection-ni-«-Réinitialiser-»-local/error-context.md
+
+
+[1A[2K[74/98] [local] › tests/e2e/ui-v8-passions.spec.js:183:3 › UI-8 — un profil personnel, plusieurs passions › changer de passion dans le Studio ne distingue AUCUNE carte
+[1A[2K  47) [local] › tests/e2e/ui-v8-passions.spec.js:183:3 › UI-8 — un profil personnel, plusieurs passions › changer de passion dans le Studio ne distingue AUCUNE carte 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:44:3)
+        at /home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:184:5
+
+    Error Context: test-results/ui-v8-passions-UI-8-—-un-p-64b26-o-ne-distingue-AUCUNE-carte-local/error-context.md
+
+
+[1A[2K[75/98] [local] › tests/e2e/ui-v8-passions.spec.js:209:3 › UI-8 — un profil personnel, plusieurs passions › le reste de la carte ouvre l'édition existante de la passion
+[1A[2K  48) [local] › tests/e2e/ui-v8-passions.spec.js:209:3 › UI-8 — un profil personnel, plusieurs passions › le reste de la carte ouvre l'édition existante de la passion 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:44:3)
+        at /home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:210:5
+
+    Error Context: test-results/ui-v8-passions-UI-8-—-un-p-1f8bc-ion-existante-de-la-passion-local/error-context.md
+
+
+[1A[2K[76/98] [local] › tests/e2e/ui-v8-passions.spec.js:222:3 › UI-8 — un profil personnel, plusieurs passions › « Publications » : filtre MULTI-SÉLECTION, rien de coché = tout
+[1A[2K  49) [local] › tests/e2e/ui-v8-passions.spec.js:222:3 › UI-8 — un profil personnel, plusieurs passions › « Publications » : filtre MULTI-SÉLECTION, rien de coché = tout 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:44:3)
+        at /home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:223:5
+
+    Error Context: test-results/ui-v8-passions-UI-8-—-un-p-50861-ÉLECTION-rien-de-coché-tout-local/error-context.md
+
+
+[1A[2K[77/98] [local] › tests/e2e/ui-v8-passions.spec.js:268:3 › UI-8 — un profil personnel, plusieurs passions › une publication qui n'a QU'un profileId reste atteignable
+[1A[2K  50) [local] › tests/e2e/ui-v8-passions.spec.js:268:3 › UI-8 — un profil personnel, plusieurs passions › une publication qui n'a QU'un profileId reste atteignable 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:44:3)
+        at /home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:269:5
+
+    Error Context: test-results/ui-v8-passions-UI-8-—-un-p-df52f-profileId-reste-atteignable-local/error-context.md
+
+
+[1A[2K[78/98] [local] › tests/e2e/ui-v8-passions.spec.js:285:3 › UI-8 — un profil personnel, plusieurs passions › migration : une seule ancienne valeur valide est reprise
+[1A[2K  51) [local] › tests/e2e/ui-v8-passions.spec.js:285:3 › UI-8 — un profil personnel, plusieurs passions › migration : une seule ancienne valeur valide est reprise 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:44:3)
+        at /home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:286:5
+
+    Error Context: test-results/ui-v8-passions-UI-8-—-un-p-5d799-e-valeur-valide-est-reprise-local/error-context.md
+
+
+[1A[2K[79/98] [local] › tests/e2e/ui-v8-passions.spec.js:300:3 › UI-8 — un profil personnel, plusieurs passions › migration : zéro ou plusieurs anciennes valeurs → « Toutes »
+[1A[2K  52) [local] › tests/e2e/ui-v8-passions.spec.js:300:3 › UI-8 — un profil personnel, plusieurs passions › migration : zéro ou plusieurs anciennes valeurs → « Toutes » 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:44:3)
+        at /home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:301:5
+
+    Error Context: test-results/ui-v8-passions-UI-8-—-un-p-d0ee3-iennes-valeurs-→-«-Toutes-»-local/error-context.md
+
+
+[1A[2K[80/98] [local] › tests/e2e/ui-v8-passions.spec.js:316:3 › UI-8 — un profil personnel, plusieurs passions › « Activités » porte le même filtre, servi par les événements existants
+[1A[2K  53) [local] › tests/e2e/ui-v8-passions.spec.js:316:3 › UI-8 — un profil personnel, plusieurs passions › « Activités » porte le même filtre, servi par les événements existants 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:44:3)
+        at /home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:317:5
+
+    Error Context: test-results/ui-v8-passions-UI-8-—-un-p-a952d-ar-les-événements-existants-local/error-context.md
+
+
+[1A[2K[81/98] [local] › tests/e2e/ui-v8-passions.spec.js:344:3 › UI-8 — un profil personnel, plusieurs passions › le Studio annonce la passion de publication et prend l'active par défaut
+[1A[2K  54) [local] › tests/e2e/ui-v8-passions.spec.js:344:3 › UI-8 — un profil personnel, plusieurs passions › le Studio annonce la passion de publication et prend l'active par défaut 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:44:3)
+        at /home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:345:5
+
+    Error Context: test-results/ui-v8-passions-UI-8-—-un-p-5edc5-t-prend-l-active-par-défaut-local/error-context.md
+
+
+[1A[2K[82/98] [local] › tests/e2e/ui-v8-passions.spec.js:377:3 › UI-8 — un profil personnel, plusieurs passions › le Studio ne propose pas de publier dans une passion archivée
+[1A[2K  55) [local] › tests/e2e/ui-v8-passions.spec.js:377:3 › UI-8 — un profil personnel, plusieurs passions › le Studio ne propose pas de publier dans une passion archivée 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:44:3)
+        at /home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:378:5
+
+    Error Context: test-results/ui-v8-passions-UI-8-—-un-p-d4ac2-r-dans-une-passion-archivée-local/error-context.md
+
+
+[1A[2K[83/98] [local] › tests/e2e/ui-v8-passions.spec.js:391:3 › UI-8 — un profil personnel, plusieurs passions › archiver ne supprime AUCUN contenu, et la restauration remet tout
+[1A[2K  56) [local] › tests/e2e/ui-v8-passions.spec.js:391:3 › UI-8 — un profil personnel, plusieurs passions › archiver ne supprime AUCUN contenu, et la restauration remet tout 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:44:3)
+        at /home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:392:5
+
+    Error Context: test-results/ui-v8-passions-UI-8-—-un-p-96451--la-restauration-remet-tout-local/error-context.md
+
+
+[1A[2K[84/98] [local] › tests/e2e/ui-v8-passions.spec.js:437:3 › UI-8 — un profil personnel, plusieurs passions › archiver la passion du Studio est possible : elle bascule d'elle-même
+[1A[2K  57) [local] › tests/e2e/ui-v8-passions.spec.js:437:3 › UI-8 — un profil personnel, plusieurs passions › archiver la passion du Studio est possible : elle bascule d'elle-même 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:44:3)
+        at /home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:444:5
+
+    Error Context: test-results/ui-v8-passions-UI-8-—-un-p-07c46-le-elle-bascule-d-elle-même-local/error-context.md
+
+
+[1A[2K[85/98] [local] › tests/e2e/ui-v8-passions.spec.js:458:3 › UI-8 — un profil personnel, plusieurs passions › archiver la DERNIÈRE passion est refusé
+[1A[2K  58) [local] › tests/e2e/ui-v8-passions.spec.js:458:3 › UI-8 — un profil personnel, plusieurs passions › archiver la DERNIÈRE passion est refusé 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:44:3)
+        at /home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:459:5
+
+    Error Context: test-results/ui-v8-passions-UI-8-—-un-p-d54e5-DERNIÈRE-passion-est-refusé-local/error-context.md
+
+
+[1A[2K[86/98] [local] › tests/e2e/ui-v8-passions.spec.js:478:3 › UI-8 — un profil personnel, plusieurs passions › le menu d'une passion propose l'archivage, plus la suppression
+[1A[2K  59) [local] › tests/e2e/ui-v8-passions.spec.js:478:3 › UI-8 — un profil personnel, plusieurs passions › le menu d'une passion propose l'archivage, plus la suppression 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:44:3)
+        at /home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:479:5
+
+    Error Context: test-results/ui-v8-passions-UI-8-—-un-p-8d1ac-chivage-plus-la-suppression-local/error-context.md
+
+
+[1A[2K[87/98] [local] › tests/e2e/ui-v8-passions.spec.js:494:3 › UI-8 — un profil personnel, plusieurs passions › la modale d'édition ne propose plus la suppression destructrice
+[1A[2K  60) [local] › tests/e2e/ui-v8-passions.spec.js:494:3 › UI-8 — un profil personnel, plusieurs passions › la modale d'édition ne propose plus la suppression destructrice 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:44:3)
+        at /home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:495:5
+
+    Error Context: test-results/ui-v8-passions-UI-8-—-un-p-3e82a-la-suppression-destructrice-local/error-context.md
+
+
+[1A[2K[88/98] [local] › tests/e2e/ui-v8-passions.spec.js:508:3 › UI-8 — un profil personnel, plusieurs passions › archiver décroche le filtre du Fil, qui serait resté sans commande
+[1A[2K  61) [local] › tests/e2e/ui-v8-passions.spec.js:508:3 › UI-8 — un profil personnel, plusieurs passions › archiver décroche le filtre du Fil, qui serait resté sans commande 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:44:3)
+        at /home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:509:5
+
+    Error Context: test-results/ui-v8-passions-UI-8-—-un-p-f3300--serait-resté-sans-commande-local/error-context.md
+
+
+[1A[2K[89/98] [local] › tests/e2e/ui-v8-passions.spec.js:536:3 › UI-8 — un profil personnel, plusieurs passions › une passion archivée est publiée MARQUÉE, et retirée à l'affichage
+[1A[2K  62) [local] › tests/e2e/ui-v8-passions.spec.js:536:3 › UI-8 — un profil personnel, plusieurs passions › une passion archivée est publiée MARQUÉE, et retirée à l'affichage 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:44:3)
+        at /home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:537:5
+
+    Error Context: test-results/ui-v8-passions-UI-8-—-un-p-f6739-ÉE-et-retirée-à-l-affichage-local/error-context.md
+
+
+[1A[2K[90/98] [local] › tests/e2e/ui-v8-passions.spec.js:564:3 › UI-8 — un profil personnel, plusieurs passions › recréer une passion archivée la RESTAURE au lieu d'en faire un doublon
+[1A[2K  63) [local] › tests/e2e/ui-v8-passions.spec.js:564:3 › UI-8 — un profil personnel, plusieurs passions › recréer une passion archivée la RESTAURE au lieu d'en faire un doublon 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:44:3)
+        at /home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:565:5
+
+    Error Context: test-results/ui-v8-passions-UI-8-—-un-p-7c204--lieu-d-en-faire-un-doublon-local/error-context.md
+
+
+[1A[2K[91/98] [local] › tests/e2e/ui-v8-passions.spec.js:595:3 › UI-8 — un profil personnel, plusieurs passions › un message garde le pseudo principal comme identité
+[1A[2K  64) [local] › tests/e2e/ui-v8-passions.spec.js:595:3 › UI-8 — un profil personnel, plusieurs passions › un message garde le pseudo principal comme identité 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:44:3)
+        at /home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:596:5
+
+    Error Context: test-results/ui-v8-passions-UI-8-—-un-p-4782a-do-principal-comme-identité-local/error-context.md
+
+
+[1A[2K[92/98] [local] › tests/e2e/ui-v8-passions.spec.js:616:3 › UI-8 — un profil personnel, plusieurs passions › kill switch : l'écran historique revient, multisélection comprise
+[1A[2K  65) [local] › tests/e2e/ui-v8-passions.spec.js:616:3 › UI-8 — un profil personnel, plusieurs passions › kill switch : l'écran historique revient, multisélection comprise 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:44:3)
+        at /home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:617:5
+
+    Error Context: test-results/ui-v8-passions-UI-8-—-un-p-71cd8-ent-multisélection-comprise-local/error-context.md
+
+
+[1A[2K[93/98] [local] › tests/e2e/ui-v8-passions.spec.js:632:3 › UI-8 — un profil personnel, plusieurs passions › kill switch : le composer et les Messages retrouvent leurs mots
+[1A[2K  66) [local] › tests/e2e/ui-v8-passions.spec.js:632:3 › UI-8 — un profil personnel, plusieurs passions › kill switch : le composer et les Messages retrouvent leurs mots 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:44:3)
+        at /home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:633:5
+
+    Error Context: test-results/ui-v8-passions-UI-8-—-un-p-126f7-sages-retrouvent-leurs-mots-local/error-context.md
+
+
+[1A[2K[94/98] [local] › tests/e2e/ui-v8-passions.spec.js:652:3 › UI-8 — un profil personnel, plusieurs passions › quota : archiver puis restaurer ne réclame jamais de paiement
+[1A[2K  67) [local] › tests/e2e/ui-v8-passions.spec.js:652:3 › UI-8 — un profil personnel, plusieurs passions › quota : archiver puis restaurer ne réclame jamais de paiement 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:44:3)
+        at /home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:653:5
+
+    Error Context: test-results/ui-v8-passions-UI-8-—-un-p-0129e--réclame-jamais-de-paiement-local/error-context.md
+
+
+[1A[2K[95/98] [local] › tests/e2e/ui-v8-passions.spec.js:666:3 › UI-8 — un profil personnel, plusieurs passions › kill switch par window : le menu redonne la suppression
+[1A[2K  68) [local] › tests/e2e/ui-v8-passions.spec.js:666:3 › UI-8 — un profil personnel, plusieurs passions › kill switch par window : le menu redonne la suppression 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:44:3)
+        at /home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:667:5
+
+    Error Context: test-results/ui-v8-passions-UI-8-—-un-p-ab674-menu-redonne-la-suppression-local/error-context.md
+
+
+[1A[2K[96/98] [local] › tests/e2e/ui-v8-passions.spec.js:678:5 › UI-8 — un profil personnel, plusieurs passions › 320 px : aucun débordement horizontal
+[1A[2K  69) [local] › tests/e2e/ui-v8-passions.spec.js:678:5 › UI-8 — un profil personnel, plusieurs passions › 320 px : aucun débordement horizontal 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:44:3)
+        at /home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:681:7
+
+    Error Context: test-results/ui-v8-passions-UI-8-—-un-p-2cccd-ucun-débordement-horizontal-local/error-context.md
+
+
+[1A[2K[97/98] [local] › tests/e2e/ui-v8-passions.spec.js:678:5 › UI-8 — un profil personnel, plusieurs passions › 390 px : aucun débordement horizontal
+[1A[2K  70) [local] › tests/e2e/ui-v8-passions.spec.js:678:5 › UI-8 — un profil personnel, plusieurs passions › 390 px : aucun débordement horizontal 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:44:3)
+        at /home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:681:7
+
+    Error Context: test-results/ui-v8-passions-UI-8-—-un-p-f2b73-ucun-débordement-horizontal-local/error-context.md
+
+
+[1A[2K[98/98] [local] › tests/e2e/ui-v8-passions.spec.js:678:5 › UI-8 — un profil personnel, plusieurs passions › 430 px : aucun débordement horizontal
+[1A[2K  71) [local] › tests/e2e/ui-v8-passions.spec.js:678:5 › UI-8 — un profil personnel, plusieurs passions › 430 px : aucun débordement horizontal 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8109/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8109/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:44:3)
+        at /home/user/passio-app/tests/e2e/ui-v8-passions.spec.js:681:7
+
+    Error Context: test-results/ui-v8-passions-UI-8-—-un-p-b842c-ucun-débordement-horizontal-local/error-context.md
+
+
+[1A[2K  71 failed
+    [local] › tests/e2e/passions-plates.spec.js:666:5 › mobile › ⑲ 390 px : la recherche est utilisable, sans débordement 
+    [local] › tests/e2e/passions-plates.spec.js:666:5 › mobile › ⑲ 430 px : la recherche est utilisable, sans débordement 
+    [local] › tests/e2e/passions-plates.spec.js:720:3 › l'onboarding sous le lot › ㉖ la grille de 19 tuiles est remplacée par une recherche, et la copie le dit 
+    [local] › tests/e2e/passions-plates.spec.js:796:3 › la porte d'ajout et son plafond › ㉑ la bulle « + » est dans « Gérer mes passions », ni dans le Fil ni dans le rail du Profil 
+    [local] › tests/e2e/passions-plates.spec.js:822:3 › la porte d'ajout et son plafond › ㉒ à trois passions, la porte refuse en disant pourquoi, et l'offre reste annoncée 
+    [local] › tests/e2e/passions-plates.spec.js:883:3 › la porte d'ajout et son plafond › ㉒ bis — le plafond tient au POINT D'ÉCRITURE, pas seulement à la porte 
+    [local] › tests/e2e/passions-plates.spec.js:900:3 › la porte d'ajout et son plafond › ㉓ archiver libère une place, et restaurer reste gratuit sous le plafond 
+    [local] › tests/e2e/passions-plates.spec.js:926:3 › la porte d'ajout et son plafond › ㉓ bis — restaurer une QUATRIÈME passion vivante est barré 
+    [local] › tests/e2e/passions-plates.spec.js:947:3 › la porte d'ajout et son plafond › ㉓ ter — depuis la PORTE réelle, reprendre une passion archivée est gratuit 
+    [local] › tests/e2e/passions-plates.spec.js:990:3 › la porte d'ajout et son plafond › ㉔ kill switch : drapeau coupé, aucun plafond 
+    [local] › tests/e2e/passions-plates.spec.js:1008:3 › la porte d'ajout et son plafond › ㉕ à deux passions, la recherche s'ouvre et ne laisse en prendre qu'une 
+    [local] › tests/e2e/profil-entete-passions.spec.js:86:1 › ① la couverture s'arrête juste AU-DESSUS du pseudo 
+    [local] › tests/e2e/profil-entete-passions.spec.js:97:1 › ① bis — l'avatar tient ENTIÈREMENT sur la couverture 
+    [local] › tests/e2e/profil-entete-passions.spec.js:112:1 › ② la photo de profil est nettement plus grande qu'avant (90 px) 
+    [local] › tests/e2e/profil-entete-passions.spec.js:120:1 › ① ter — la carte d'identité reste sous les deux tiers de l'écran 
+    [local] › tests/e2e/profil-entete-passions.spec.js:162:1 › ③ aucune ligne de passions sous le pseudo — les bulles du rail les portent 
+    [local] › tests/e2e/profil-entete-passions.spec.js:196:1 › ③ bis bis — la porte d'ajout a quitté le rail pour « Gérer mes passions » 
+    [local] › tests/e2e/profil-entete-passions.spec.js:262:1 › ③ bis bis bis — sous le plafond, la porte d'ajout invite et reste armée 
+    [local] › tests/e2e/profil-entete-passions.spec.js:299:1 › ③ bis ter — la chaîne complète : crayon → « Gérer mes passions » → la bulle 
+    [local] › tests/e2e/profil-entete-passions.spec.js:346:1 › ③ bis quinquies — au plafond, la fenêtre ne renvoie pas au panneau d'où l'on vient 
+    [local] › tests/e2e/profil-entete-passions.spec.js:405:1 › ③ bis quater — la porte survit à deux rendus du panneau 
+    [local] › tests/e2e/profil-entete-passions.spec.js:432:1 › ③ bis — toucher une bulle FILTRE, elle ne quitte plus le profil 
+    [local] › tests/e2e/profil-entete-passions.spec.js:533:1 › ③ ter — une bulle reste une cible tactile confortable 
+    [local] › tests/e2e/profil-entete-passions.spec.js:542:1 › ③ quater — six passions : la rangée COULISSE, elle ne se comprime pas 
+    [local] › tests/e2e/profil-entete-passions.spec.js:578:1 › ③ quater bis — DIX passions : les bulles gardent leur taille et leur nom 
+    [local] › tests/e2e/profil-entete-passions.spec.js:620:3 › ③ nonies — 320 px, 3 passions : la porte d'ajout est peinte dans « Gérer mes passions » 
+    [local] › tests/e2e/profil-entete-passions.spec.js:620:3 › ③ nonies — 320 px, 10 passions : la porte d'ajout est peinte dans « Gérer mes passions » 
+    [local] › tests/e2e/profil-entete-passions.spec.js:620:3 › ③ nonies — 390 px, 10 passions : la porte d'ajout est peinte dans « Gérer mes passions » 
+    [local] › tests/e2e/profil-entete-passions.spec.js:655:1 › ③ quater ter — le rail défile, et sa position survit au choix d'une passion 
+    [local] › tests/e2e/profil-entete-passions.spec.js:740:1 › ③ decies — trois passions : la rangée est CENTRÉE, elle ne colle plus à gauche 
+    [local] › tests/e2e/profil-entete-passions.spec.js:754:1 › ③ decies bis — DIX passions : la rangée déborde, et la PREMIÈRE bulle reste atteignable 
+    [local] › tests/e2e/profil-entete-passions.spec.js:773:1 › ③ decies ter — une SEULE passion se centre aussi 
+    [local] › tests/e2e/profil-entete-passions.spec.js:787:1 › ③ decies quater — le Fil se centre AUSSI, le profil visité garde son alignement 
+    [local] › tests/e2e/profil-entete-passions.spec.js:869:1 › ③ decies quinquies — QUATRE bulles (Suivis + 3 passions) : la rangée est centrée 
+    [local] › tests/e2e/profil-entete-passions.spec.js:879:1 › ③ decies sexies — au-delà, le Fil déborde et sa PREMIÈRE bulle reste atteignable 
+    [local] › tests/e2e/profil-entete-passions.spec.js:900:1 › ③ quinquies — une passion ARCHIVÉE ne réapparaît pas dans le rail 
+    [local] › tests/e2e/profil-entete-passions.spec.js:940:1 › ③ sexies — un profil visité suit la même règle : une seule rangée, en bulles 
+    [local] › tests/e2e/profil-entete-passions.spec.js:957:1 › ③ septies — le RETOUR de la page de passion reste servi (chemin dormant) 
+    [local] › tests/e2e/profil-entete-passions.spec.js:983:1 › ③ octies — ouverte depuis un ÉCRAN, la page de passion n'invente pas de retour 
+    [local] › tests/e2e/profil-entete-passions.spec.js:998:1 › une carte de publication ne nomme la passion QU'UNE FOIS 
+    [local] › tests/e2e/profil-entete-passions.spec.js:1041:1 › ④ — le compteur « passions » compte les vivantes ET les archivées 
+    [local] › tests/e2e/profil-entete-passions.spec.js:1064:1 › ④ bis — le profil de remplissage n'est compté nulle part 
+    [local] › tests/e2e/profil-entete-passions.spec.js:1081:1 › ④ ter — il est ENTRE « abonnés » et « abonnements », et il ouvre la page 
+    [local] › tests/e2e/ui-v8-passions.spec.js:96:3 › UI-8 — un profil personnel, plusieurs passions › le profil personnel garde tout 
+    [local] › tests/e2e/ui-v8-passions.spec.js:123:3 › UI-8 — un profil personnel, plusieurs passions › le choix de la passion d'écriture vit dans le STUDIO, et il persiste 
+    [local] › tests/e2e/ui-v8-passions.spec.js:144:3 › UI-8 — un profil personnel, plusieurs passions › les cartes ne portent plus la multisélection ni « Réinitialiser » 
+    [local] › tests/e2e/ui-v8-passions.spec.js:183:3 › UI-8 — un profil personnel, plusieurs passions › changer de passion dans le Studio ne distingue AUCUNE carte 
+    [local] › tests/e2e/ui-v8-passions.spec.js:209:3 › UI-8 — un profil personnel, plusieurs passions › le reste de la carte ouvre l'édition existante de la passion 
+    [local] › tests/e2e/ui-v8-passions.spec.js:222:3 › UI-8 — un profil personnel, plusieurs passions › « Publications » : filtre MULTI-SÉLECTION, rien de coché = tout 
+    [local] › tests/e2e/ui-v8-passions.spec.js:268:3 › UI-8 — un profil personnel, plusieurs passions › une publication qui n'a QU'un profileId reste atteignable 
+    [local] › tests/e2e/ui-v8-passions.spec.js:285:3 › UI-8 — un profil personnel, plusieurs passions › migration : une seule ancienne valeur valide est reprise 
+    [local] › tests/e2e/ui-v8-passions.spec.js:300:3 › UI-8 — un profil personnel, plusieurs passions › migration : zéro ou plusieurs anciennes valeurs → « Toutes » 
+    [local] › tests/e2e/ui-v8-passions.spec.js:316:3 › UI-8 — un profil personnel, plusieurs passions › « Activités » porte le même filtre, servi par les événements existants 
+    [local] › tests/e2e/ui-v8-passions.spec.js:344:3 › UI-8 — un profil personnel, plusieurs passions › le Studio annonce la passion de publication et prend l'active par défaut 
+    [local] › tests/e2e/ui-v8-passions.spec.js:377:3 › UI-8 — un profil personnel, plusieurs passions › le Studio ne propose pas de publier dans une passion archivée 
+    [local] › tests/e2e/ui-v8-passions.spec.js:391:3 › UI-8 — un profil personnel, plusieurs passions › archiver ne supprime AUCUN contenu, et la restauration remet tout 
+    [local] › tests/e2e/ui-v8-passions.spec.js:437:3 › UI-8 — un profil personnel, plusieurs passions › archiver la passion du Studio est possible : elle bascule d'elle-même 
+    [local] › tests/e2e/ui-v8-passions.spec.js:458:3 › UI-8 — un profil personnel, plusieurs passions › archiver la DERNIÈRE passion est refusé 
+    [local] › tests/e2e/ui-v8-passions.spec.js:478:3 › UI-8 — un profil personnel, plusieurs passions › le menu d'une passion propose l'archivage, plus la suppression 
+    [local] › tests/e2e/ui-v8-passions.spec.js:494:3 › UI-8 — un profil personnel, plusieurs passions › la modale d'édition ne propose plus la suppression destructrice 
+    [local] › tests/e2e/ui-v8-passions.spec.js:508:3 › UI-8 — un profil personnel, plusieurs passions › archiver décroche le filtre du Fil, qui serait resté sans commande 
+    [local] › tests/e2e/ui-v8-passions.spec.js:536:3 › UI-8 — un profil personnel, plusieurs passions › une passion archivée est publiée MARQUÉE, et retirée à l'affichage 
+    [local] › tests/e2e/ui-v8-passions.spec.js:564:3 › UI-8 — un profil personnel, plusieurs passions › recréer une passion archivée la RESTAURE au lieu d'en faire un doublon 
+    [local] › tests/e2e/ui-v8-passions.spec.js:595:3 › UI-8 — un profil personnel, plusieurs passions › un message garde le pseudo principal comme identité 
+    [local] › tests/e2e/ui-v8-passions.spec.js:616:3 › UI-8 — un profil personnel, plusieurs passions › kill switch : l'écran historique revient, multisélection comprise 
+    [local] › tests/e2e/ui-v8-passions.spec.js:632:3 › UI-8 — un profil personnel, plusieurs passions › kill switch : le composer et les Messages retrouvent leurs mots 
+    [local] › tests/e2e/ui-v8-passions.spec.js:652:3 › UI-8 — un profil personnel, plusieurs passions › quota : archiver puis restaurer ne réclame jamais de paiement 
+    [local] › tests/e2e/ui-v8-passions.spec.js:666:3 › UI-8 — un profil personnel, plusieurs passions › kill switch par window : le menu redonne la suppression 
+    [local] › tests/e2e/ui-v8-passions.spec.js:678:5 › UI-8 — un profil personnel, plusieurs passions › 320 px : aucun débordement horizontal 
+    [local] › tests/e2e/ui-v8-passions.spec.js:678:5 › UI-8 — un profil personnel, plusieurs passions › 390 px : aucun débordement horizontal 
+    [local] › tests/e2e/ui-v8-passions.spec.js:678:5 › UI-8 — un profil personnel, plusieurs passions › 430 px : aucun débordement horizontal 
+  27 passed (9.5m)

@@ -1,0 +1,108 @@
+# Inventaire modération — relevés code (SHA c8cb8e99, 2026-09-04)
+## Définitions
+js/app-02-state-utils.js:3179:function onbValidateAge() {
+js/app-02-state-utils.js:4567:function isBlocked(id) {
+js/app-04-comments-shop.js:1526:function reportCommentEntry(threadId, commentId) {
+js/app-04-comments-shop.js:3023:function openVisitedProfileMenu(ev, authorId, name) {
+js/app-04-comments-shop.js:3314:function blockUser(userId, name) {
+js/app-04-comments-shop.js:3330:function unblockUser(userId, name) {
+js/app-04-comments-shop.js:3340:function reportUser(userId, name) {
+js/app-04-comments-shop.js:3347:function reportPost(postId) {
+js/app-04-comments-shop.js:3373:function openBlockedList() {
+js/app-07-ia-explore-irl.js:4960:function irlProposerEstMineur() {
+js/app-07-ia-explore-irl.js:5041:async function irlProposalServerVerdict(targetUserId) {
+js/app-07-ia-explore-irl.js:5563:function reportEvent(id) {
+js/app-08-ui-modals-tour.js:5336:async function supaBlockUser(targetId) {
+js/app-08-ui-modals-tour.js:5367:async function supaUnblockUser(targetId) {
+js/app-08-ui-modals-tour.js:5374:async function supaLoadBlocks() {
+js/app-08-ui-modals-tour.js:5383:async function supaReport(targetType, targetId, reason) {
+
+## Appelants de reportPost( (hors définition)
+(aucun)
+
+## Appelants de reportUser/reportEvent/reportCommentEntry
+js/app-04-comments-shop.js:1427:  else if (kind === "report") { reportCommentEntry(ctx.threadId, ctx.commentId); }
+js/app-04-comments-shop.js:3027:    { label: "Signaler", run: function () { reportUser(authorId, name); } },
+js/app-07-ia-explore-irl.js:3896:    ${mine ? "" : `<button class="btn ghost block" style="margin-top:18px;font-size:12px;color:var(--muted);" onclick="reportEvent('${escapeJsArg(ev.id)}')">Signaler cet événement</button>`}
+js/app-09-boot-pwa.js:1205:        '<div class="csetting-item" onclick="closeConvSettings();reportUser(\'' + escapeJsArg(uid) + '\',\'' + escapeJsArg(uname) + '\')">' +
+
+## Valeur de retour de supaReport ignorée (lignes d'appel)
+function reportUser(userId, name) {
+  if (!userId) return;
+  if (typeof supaReport === "function") supaReport("user", userId, "");
+  closeModal();
+  toast("🚩 Signalement envoyé. Notre équipe va vérifier.");
+}
+
+function reportPost(postId) {
+  if (!postId) return;
+  if (typeof supaReport === "function") supaReport("post", postId, "");
+  toast("Post signalé. Merci, on s'en occupe.");
+}
+function reportCommentEntry(threadId, commentId) {
+  if (typeof supaReport === "function") supaReport("comment", commentId, "");
+  toast("Commentaire signalé. Merci, on s'en occupe.");
+}
+function reportEvent(id) {
+  if (typeof supaReport === "function") supaReport("event", id, "");
+  toast("Signalement envoyé — merci");
+}
+
+## isBlocked : 16 sites d'appel
+js/app-04-comments-shop.js:347:    if (typeof isBlocked === "function" && isBlocked(u.id)) return;
+js/app-04-comments-shop.js:554:  var _visible = (allComments || []).filter(c => !(typeof isBlocked === "function" && isBlocked(c.authorId)));
+js/app-04-comments-shop.js:1164:    if (typeof isBlocked === "function" && isBlocked(r.user_id)) return;
+js/app-04-comments-shop.js:2594:  if (userId && typeof isBlocked === "function" && isBlocked(userId)) {
+js/app-04-comments-shop.js:3024:  var bloque = (typeof isBlocked === "function") && isBlocked(authorId);
+js/app-04-comments-shop.js:3411:  let filtered = convs.filter(c => !(typeof isBlocked === "function" && isBlocked(c.userId)));
+js/app-05-config-profil.js:832:  if (typeof isBlocked === "function" && isBlocked(payload.from)) return; // modération
+js/app-05-config-profil.js:3128:  const next = rows.filter(r => !(typeof isBlocked === "function" && isBlocked(r.author_id)));
+js/app-05-config-profil.js:3779:  if (typeof isBlocked === "function" && isBlocked(d.from)) return;
+js/app-07-ia-explore-irl.js:4983:    if (typeof isBlocked === "function" && isBlocked(id)) return { ok: false, reason: "blocked" };
+js/app-07-ia-explore-irl.js:5879:    return id && id !== me && already.indexOf(id) === -1 && !(typeof isBlocked === "function" && isBlocked(id));
+js/app-08-ui-modals-tour.js:376:    !(typeof isBlocked === "function" && isBlocked(s.authorId)));
+js/app-08-ui-modals-tour.js:1869:  if (typeof isBlocked === "function") ns = ns.filter(n => !isBlocked(n.fromId));
+js/app-08-ui-modals-tour.js:4849:  if (typeof isBlocked === "function" && isBlocked(r.from_id)) return; // expéditeur bloqué (modération)
+js/app-08-ui-modals-tour.js:5095:        if (otherId && typeof isBlocked === "function" && isBlocked(otherId)) return;
+js/app-09-boot-pwa.js:1163:    var blocked = isDM && typeof isBlocked === "function" && isBlocked(c.userId);
+
+## Sites isBlocked dans app-07 (événements) : aucun filtrage de la liste d'événements
+4977:  // comparaison d'identité ou dans `isBlocked` rend `guard_error`, jamais `ok`.
+4983:    if (typeof isBlocked === "function" && isBlocked(id)) return { ok: false, reason: "blocked" };
+5879:    return id && id !== me && already.indexOf(id) === -1 && !(typeof isBlocked === "function" && isBlocked(id));
+
+## Colonnes reports/blocks (ref_cols.txt du domaine supabase-isolation)
+2:blocks | blocker_id:text, blocked_id:text, created_at:timestamp with time zone
+31:reports | id:text, reporter_id:text, target_type:text, target_id:text, reason:text, created_at:timestamp with time zone
+
+## Dashboard : aucune lecture de la table reports
+(aucun fichier)
+
+## Dashboard : contrats de trace (traces.js:76) — block_user existe, aucun contrat report
+76:  block_user:    { label: "Blocage", feature: "moderation", steps: [S_HANDLER, { key: "saved", label: "Blocage enregistré", role: "confirm" }] },
+
+## Captcha : aucune occurrence dans le dépôt
+0
+
+## Rate limits serveur (migration_anti_flood_interactions.sql:129-139)
+DROP TRIGGER IF EXISTS trg_rate_limit ON public.comment_interactions;
+CREATE TRIGGER trg_rate_limit BEFORE INSERT ON public.comment_interactions
+  FOR EACH ROW EXECUTE FUNCTION public.rate_limit_insert('user_id', '60');
+
+DROP TRIGGER IF EXISTS trg_rate_limit ON public.event_reactions;
+CREATE TRIGGER trg_rate_limit BEFORE INSERT ON public.event_reactions
+  FOR EACH ROW EXECUTE FUNCTION public.rate_limit_insert('user_id', '30');
+
+DROP TRIGGER IF EXISTS trg_rate_limit ON public.reports;
+CREATE TRIGGER trg_rate_limit BEFORE INSERT ON public.reports
+  FOR EACH ROW EXECUTE FUNCTION public.rate_limit_insert('reporter_id', '10');
+
+## birthYear défaut 1995 (skipToApp)
+function skipToApp() {
+  state.user.name = state.user.name || "Benjamin";
+  state.user.birthYear = state.user.birthYear || 1995;
+  state.landingSeen = true;
+
+## Politique de confidentialité : contact e-mail (app-02:3144), aucune CGU / charte / point de contact DSA
+js/app-02-state-utils.js:0
+index.html:0

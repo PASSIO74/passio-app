@@ -1,0 +1,26 @@
+# SCHEMA_PROD_REFERENCE.sql (photographie du 2026-08-17) vs information_schema PROD (2026-09-04) — md5 de la liste col:type par table
+ABSENTE DE LA RÉFÉRENCE : passion_relations
+ABSENTE DE LA RÉFÉRENCE : passion_requests
+COLONNES DIFFÉRENTES : passions
+ABSENTE DE LA RÉFÉRENCE : user_passions
+ABSENTE DE LA RÉFÉRENCE : user_safety
+COLONNES DIFFÉRENTES : video_lives
+identiques=36 différentes=2 seulement_prod=4 seulement_référence=0
+policies: prod=125 référence=116
+SEULEMENT EN PROD (absentes de la référence) :
+  + DELETE|public.user_passions|user_passions_delete_own
+  + INSERT|public.conv_messages|conv_messages_insert_member
+  + INSERT|public.conversations|conversations_insert_creator
+  + INSERT|public.passion_requests|passion_requests_insert_own
+  + INSERT|public.user_passions|user_passions_insert_own
+  + SELECT|public.passion_relations|passion_relations_select_all
+  + SELECT|public.passion_requests|passion_requests_select_own
+  + SELECT|public.user_passions|user_passions_select_all
+  + SELECT|public.user_safety|user_safety_select_own
+  + SELECT|realtime.messages|Utilisateur recoit ses messages
+  + SELECT|realtime.messages|Utilisateur reçoit ses messages
+  + UPDATE|public.user_passions|user_passions_update_own
+SEULEMENT DANS LA RÉFÉRENCE (disparues de la prod) :
+  - INSERT|public.conv_messages|Ecriture propre
+  - INSERT|public.conversations|Ecriture propre
+  - INSERT|public.conversations|Insert conversations

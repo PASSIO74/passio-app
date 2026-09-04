@@ -1,0 +1,708 @@
+{
+  "date": "2026-09-04T15:04:42.124Z",
+  "sha": "c8cb8e99",
+  "methode": "émulation Chromium headless (Playwright), viewport 390×844 DPR2 isMobile, CDP Emulation.setCPUThrottlingRate + Network.emulateNetworkConditions ; cible dist minifié (terser/html-minifier-terser/clean-css) servi en brotli par http-server -b -g ; requêtes hors 127.0.0.1 abandonnées (SDK supabase-js, MapLibre, fonts, Supabase EXCLUS de la mesure) ; état onboardé injecté ; médiane de 3",
+  "runs": [
+    {
+      "scenario": "sans_bridage",
+      "run": 1,
+      "screenFeedActive_wall_ms": 154,
+      "firstFeedCard_wall_ms": 853,
+      "fcp_ms": 124,
+      "lcp_ms": 124,
+      "appReady_ms": 175,
+      "domContentLoaded_ms": 95.19999999995343,
+      "load_ms": 210.29999999981374,
+      "responseStart_ms": 11.5,
+      "boot": {
+        "label": "apres_boot",
+        "domNodes": 3018,
+        "heapMB": 9.5,
+        "longtasks_n": 1,
+        "longtasks_total_ms": 53,
+        "longtasks_max_ms": 53
+      },
+      "transfer": {
+        "requests": 3,
+        "bytes_total": 363561,
+        "files": [
+          "/index.html 200 br 69863",
+          "/styles.css 200 br 31601",
+          "/app.js 200 br 262097"
+        ],
+        "aborted_external": [
+          "fonts.googleapis.com",
+          "cdn.jsdelivr.net",
+          "images.unsplash.com",
+          "picsum.photos",
+          "unpkg.com",
+          "loremflickr.com"
+        ]
+      },
+      "nav": {
+        "profiles": 32.3,
+        "irl": 56,
+        "messages": 26.6,
+        "explore": 28.8,
+        "feed": 17.2
+      },
+      "conv": {
+        "open_ms": 38.2,
+        "messages_in_conv": 504,
+        "panel_nodes": 252,
+        "bubbles_found": 0,
+        "heapMB": 9.5
+      },
+      "passions": {
+        "charger_ms": 0.09999999986030161,
+        "chercher_guitare_ms": 0.2,
+        "resultats": 5,
+        "chercher_2_ms": 0.1,
+        "resultats_2": 2,
+        "taille": 1908,
+        "err": null
+      },
+      "map": {
+        "ensureLeaflet_ms": 0,
+        "status": "échec: [object Event]",
+        "maplibre": "undefined"
+      },
+      "feed500": {
+        "heapBefore": 9.5,
+        "render20_sync_ms": 5.3,
+        "cards_after_20": 20,
+        "render500_sync_ms": 5.1,
+        "render500_to_frame_ms": 14.1,
+        "cards_after_500": 500,
+        "domNodes": 14789,
+        "feedList_nodes": 12337,
+        "heapAfter": 9.5,
+        "allFeedPosts_n": 869
+      },
+      "after_all": {
+        "label": "fin_de_run",
+        "domNodes": 14789,
+        "heapMB": 9.5,
+        "longtasks_n": 2,
+        "longtasks_total_ms": 118,
+        "longtasks_max_ms": 65
+      },
+      "pageErrors": [],
+      "soak": {
+        "samples": [
+          {
+            "label": "t+0s",
+            "domNodes": 14789,
+            "heapMB": 9.5,
+            "longtasks_n": 2,
+            "longtasks_total_ms": 118,
+            "longtasks_max_ms": 65
+          },
+          {
+            "label": "t+1s",
+            "domNodes": 14789,
+            "heapMB": 9.5,
+            "longtasks_n": 2,
+            "longtasks_total_ms": 118,
+            "longtasks_max_ms": 65
+          },
+          {
+            "label": "t+32s",
+            "domNodes": 14789,
+            "heapMB": 9.5,
+            "longtasks_n": 3,
+            "longtasks_total_ms": 186,
+            "longtasks_max_ms": 68
+          },
+          {
+            "label": "t+62s",
+            "domNodes": 14789,
+            "heapMB": 9.5,
+            "longtasks_n": 3,
+            "longtasks_total_ms": 186,
+            "longtasks_max_ms": 68
+          },
+          {
+            "label": "t+93s",
+            "domNodes": 14789,
+            "heapMB": 9.5,
+            "longtasks_n": 3,
+            "longtasks_total_ms": 186,
+            "longtasks_max_ms": 68
+          },
+          {
+            "label": "t+123s",
+            "domNodes": 14789,
+            "heapMB": 9.5,
+            "longtasks_n": 3,
+            "longtasks_total_ms": 186,
+            "longtasks_max_ms": 68
+          },
+          {
+            "label": "t+154s",
+            "domNodes": 14789,
+            "heapMB": 9.5,
+            "longtasks_n": 3,
+            "longtasks_total_ms": 186,
+            "longtasks_max_ms": 68
+          },
+          {
+            "label": "t+185s",
+            "domNodes": 14789,
+            "heapMB": 9.5,
+            "longtasks_n": 3,
+            "longtasks_total_ms": 186,
+            "longtasks_max_ms": 68
+          },
+          {
+            "label": "t+215s",
+            "domNodes": 14789,
+            "heapMB": 9.5,
+            "longtasks_n": 3,
+            "longtasks_total_ms": 186,
+            "longtasks_max_ms": 68
+          },
+          {
+            "label": "t+245s",
+            "domNodes": 14789,
+            "heapMB": 9.5,
+            "longtasks_n": 3,
+            "longtasks_total_ms": 186,
+            "longtasks_max_ms": 68
+          },
+          {
+            "label": "t+276s",
+            "domNodes": 14789,
+            "heapMB": 9.5,
+            "longtasks_n": 3,
+            "longtasks_total_ms": 186,
+            "longtasks_max_ms": 68
+          },
+          {
+            "label": "t+300s_fin",
+            "domNodes": 14789,
+            "heapMB": 9.5,
+            "longtasks_n": 3,
+            "longtasks_total_ms": 186,
+            "longtasks_max_ms": 68
+          }
+        ],
+        "duration_ms": 300000,
+        "navigations": 344
+      },
+      "wall_ms": 311436
+    },
+    {
+      "scenario": "sans_bridage",
+      "run": 2,
+      "screenFeedActive_wall_ms": 94,
+      "firstFeedCard_wall_ms": 793,
+      "fcp_ms": 88,
+      "lcp_ms": 88,
+      "appReady_ms": 134.30000000004657,
+      "domContentLoaded_ms": 79.80000000004657,
+      "load_ms": 151.5999999998603,
+      "responseStart_ms": 6.199999999953434,
+      "boot": {
+        "label": "apres_boot",
+        "domNodes": 3018,
+        "heapMB": 9.5,
+        "longtasks_n": 0,
+        "longtasks_total_ms": 0,
+        "longtasks_max_ms": 0
+      },
+      "transfer": {
+        "requests": 3,
+        "bytes_total": 363561,
+        "files": [
+          "/index.html 200 br 69863",
+          "/styles.css 200 br 31601",
+          "/app.js 200 br 262097"
+        ],
+        "aborted_external": [
+          "fonts.googleapis.com",
+          "cdn.jsdelivr.net",
+          "images.unsplash.com",
+          "picsum.photos",
+          "loremflickr.com",
+          "unpkg.com"
+        ]
+      },
+      "nav": {
+        "profiles": 25.6,
+        "irl": 39.5,
+        "messages": 28,
+        "explore": 59.7,
+        "feed": 21.8
+      },
+      "conv": {
+        "open_ms": 32.3,
+        "messages_in_conv": 504,
+        "panel_nodes": 252,
+        "bubbles_found": 0,
+        "heapMB": 9.5
+      },
+      "passions": {
+        "charger_ms": 0,
+        "chercher_guitare_ms": 0.5,
+        "resultats": 5,
+        "chercher_2_ms": 0,
+        "resultats_2": 2,
+        "taille": 1908,
+        "err": null
+      },
+      "map": {
+        "ensureLeaflet_ms": 0.1,
+        "status": "échec: [object Event]",
+        "maplibre": "undefined"
+      },
+      "feed500": {
+        "heapBefore": 9.5,
+        "render20_sync_ms": 6.9,
+        "cards_after_20": 20,
+        "render500_sync_ms": 4.7,
+        "render500_to_frame_ms": 12.1,
+        "cards_after_500": 500,
+        "domNodes": 14789,
+        "feedList_nodes": 12337,
+        "heapAfter": 9.5,
+        "allFeedPosts_n": 869
+      },
+      "after_all": {
+        "label": "fin_de_run",
+        "domNodes": 14789,
+        "heapMB": 9.5,
+        "longtasks_n": 1,
+        "longtasks_total_ms": 62,
+        "longtasks_max_ms": 62
+      },
+      "pageErrors": [],
+      "wall_ms": 10725
+    },
+    {
+      "scenario": "sans_bridage",
+      "run": 3,
+      "screenFeedActive_wall_ms": 163,
+      "firstFeedCard_wall_ms": 811,
+      "fcp_ms": 140,
+      "lcp_ms": 140,
+      "appReady_ms": 154.5,
+      "domContentLoaded_ms": 66.70000000018626,
+      "load_ms": 187.4000000001397,
+      "responseStart_ms": 13.300000000046566,
+      "boot": {
+        "label": "apres_boot",
+        "domNodes": 3018,
+        "heapMB": 9.5,
+        "longtasks_n": 0,
+        "longtasks_total_ms": 0,
+        "longtasks_max_ms": 0
+      },
+      "transfer": {
+        "requests": 3,
+        "bytes_total": 363561,
+        "files": [
+          "/index.html 200 br 69863",
+          "/styles.css 200 br 31601",
+          "/app.js 200 br 262097"
+        ],
+        "aborted_external": [
+          "fonts.googleapis.com",
+          "cdn.jsdelivr.net",
+          "images.unsplash.com",
+          "picsum.photos",
+          "unpkg.com",
+          "loremflickr.com"
+        ]
+      },
+      "nav": {
+        "profiles": 23.8,
+        "irl": 34.9,
+        "messages": 26.3,
+        "explore": 58.1,
+        "feed": 18.6
+      },
+      "conv": {
+        "open_ms": 32.9,
+        "messages_in_conv": 504,
+        "panel_nodes": 252,
+        "bubbles_found": 0,
+        "heapMB": 9.5
+      },
+      "passions": {
+        "charger_ms": 0,
+        "chercher_guitare_ms": 0.3,
+        "resultats": 5,
+        "chercher_2_ms": 0,
+        "resultats_2": 2,
+        "taille": 1908,
+        "err": null
+      },
+      "map": {
+        "ensureLeaflet_ms": 0.1,
+        "status": "échec: [object Event]",
+        "maplibre": "undefined"
+      },
+      "feed500": {
+        "heapBefore": 9.5,
+        "render20_sync_ms": 5.2,
+        "cards_after_20": 20,
+        "render500_sync_ms": 6.2,
+        "render500_to_frame_ms": 16.6,
+        "cards_after_500": 500,
+        "domNodes": 14789,
+        "feedList_nodes": 12337,
+        "heapAfter": 9.5,
+        "allFeedPosts_n": 869
+      },
+      "after_all": {
+        "label": "fin_de_run",
+        "domNodes": 14789,
+        "heapMB": 9.5,
+        "longtasks_n": 1,
+        "longtasks_total_ms": 74,
+        "longtasks_max_ms": 74
+      },
+      "pageErrors": [],
+      "wall_ms": 10730
+    },
+    {
+      "scenario": "slow3g_cpu4",
+      "run": 1,
+      "screenFeedActive_wall_ms": 2444,
+      "firstFeedCard_wall_ms": 9094,
+      "fcp_ms": 2524,
+      "lcp_ms": 2524,
+      "appReady_ms": 8189.5,
+      "domContentLoaded_ms": 2553.8000000000466,
+      "load_ms": 8346.800000000047,
+      "responseStart_ms": 7.300000000046566,
+      "boot": {
+        "label": "apres_boot",
+        "domNodes": 3018,
+        "heapMB": 9.5,
+        "longtasks_n": 5,
+        "longtasks_total_ms": 538,
+        "longtasks_max_ms": 168
+      },
+      "transfer": {
+        "requests": 4,
+        "bytes_total": 363699,
+        "files": [
+          "/index.html 200 br 69863",
+          "/styles.css 200 br 31601",
+          "/release.json 200  138",
+          "/app.js 200 br 262097"
+        ],
+        "aborted_external": [
+          "fonts.googleapis.com",
+          "cdn.jsdelivr.net",
+          "images.unsplash.com",
+          "picsum.photos",
+          "loremflickr.com",
+          "unpkg.com"
+        ]
+      },
+      "nav": {
+        "profiles": 91.9,
+        "irl": 187.7,
+        "messages": 68.4,
+        "explore": 75.9,
+        "feed": 85.4
+      },
+      "conv": {
+        "open_ms": 100.6,
+        "messages_in_conv": 504,
+        "panel_nodes": 252,
+        "bubbles_found": 0,
+        "heapMB": 9.5
+      },
+      "passions": {
+        "charger_ms": 0,
+        "chercher_guitare_ms": 1.4,
+        "resultats": 5,
+        "chercher_2_ms": 0.9,
+        "resultats_2": 2,
+        "taille": 1908,
+        "err": null
+      },
+      "map": {
+        "ensureLeaflet_ms": 3.4,
+        "status": "échec: [object Event]",
+        "maplibre": "undefined"
+      },
+      "feed500": {
+        "heapBefore": 9.5,
+        "render20_sync_ms": 26.8,
+        "cards_after_20": 20,
+        "render500_sync_ms": 17,
+        "render500_to_frame_ms": 37.8,
+        "cards_after_500": 500,
+        "domNodes": 14789,
+        "feedList_nodes": 12337,
+        "heapAfter": 9.5,
+        "allFeedPosts_n": 869
+      },
+      "after_all": {
+        "label": "fin_de_run",
+        "domNodes": 14789,
+        "heapMB": 9.5,
+        "longtasks_n": 16,
+        "longtasks_total_ms": 1455,
+        "longtasks_max_ms": 221
+      },
+      "pageErrors": [],
+      "wall_ms": 21311
+    },
+    {
+      "scenario": "slow3g_cpu4",
+      "run": 2,
+      "screenFeedActive_wall_ms": 2447,
+      "firstFeedCard_wall_ms": 9104,
+      "fcp_ms": 2524,
+      "lcp_ms": 2524,
+      "appReady_ms": 8208,
+      "domContentLoaded_ms": 2606.8000000000466,
+      "load_ms": 8341.399999999907,
+      "responseStart_ms": 5.199999999953434,
+      "boot": {
+        "label": "apres_boot",
+        "domNodes": 3018,
+        "heapMB": 9.5,
+        "longtasks_n": 4,
+        "longtasks_total_ms": 498,
+        "longtasks_max_ms": 184
+      },
+      "transfer": {
+        "requests": 4,
+        "bytes_total": 363699,
+        "files": [
+          "/index.html 200 br 69863",
+          "/styles.css 200 br 31601",
+          "/release.json 200  138",
+          "/app.js 200 br 262097"
+        ],
+        "aborted_external": [
+          "fonts.googleapis.com",
+          "cdn.jsdelivr.net",
+          "images.unsplash.com",
+          "picsum.photos",
+          "loremflickr.com",
+          "unpkg.com"
+        ]
+      },
+      "nav": {
+        "profiles": 98.5,
+        "irl": 208,
+        "messages": 58.1,
+        "explore": 89.8,
+        "feed": 75.4
+      },
+      "conv": {
+        "open_ms": 101.1,
+        "messages_in_conv": 504,
+        "panel_nodes": 252,
+        "bubbles_found": 0,
+        "heapMB": 9.5
+      },
+      "passions": {
+        "charger_ms": 0,
+        "chercher_guitare_ms": 1.7,
+        "resultats": 5,
+        "chercher_2_ms": 1,
+        "resultats_2": 2,
+        "taille": 1908,
+        "err": null
+      },
+      "map": {
+        "ensureLeaflet_ms": 0.2,
+        "status": "échec: [object Event]",
+        "maplibre": "undefined"
+      },
+      "feed500": {
+        "heapBefore": 9.5,
+        "render20_sync_ms": 25.9,
+        "cards_after_20": 20,
+        "render500_sync_ms": 21.8,
+        "render500_to_frame_ms": 55.3,
+        "cards_after_500": 500,
+        "domNodes": 14789,
+        "feedList_nodes": 12337,
+        "heapAfter": 9.5,
+        "allFeedPosts_n": 869
+      },
+      "after_all": {
+        "label": "fin_de_run",
+        "domNodes": 14789,
+        "heapMB": 9.5,
+        "longtasks_n": 12,
+        "longtasks_total_ms": 1399,
+        "longtasks_max_ms": 287
+      },
+      "pageErrors": [],
+      "wall_ms": 21410
+    },
+    {
+      "scenario": "slow3g_cpu4",
+      "run": 3,
+      "screenFeedActive_wall_ms": 2458,
+      "firstFeedCard_wall_ms": 9059,
+      "fcp_ms": 2532,
+      "lcp_ms": 2532,
+      "appReady_ms": 8199,
+      "domContentLoaded_ms": 2590.1999999999534,
+      "load_ms": 8347,
+      "responseStart_ms": 5.699999999953434,
+      "boot": {
+        "label": "apres_boot",
+        "domNodes": 3018,
+        "heapMB": 9.5,
+        "longtasks_n": 5,
+        "longtasks_total_ms": 531,
+        "longtasks_max_ms": 173
+      },
+      "transfer": {
+        "requests": 4,
+        "bytes_total": 363699,
+        "files": [
+          "/index.html 200 br 69863",
+          "/styles.css 200 br 31601",
+          "/release.json 200  138",
+          "/app.js 200 br 262097"
+        ],
+        "aborted_external": [
+          "fonts.googleapis.com",
+          "cdn.jsdelivr.net",
+          "images.unsplash.com",
+          "picsum.photos",
+          "loremflickr.com",
+          "unpkg.com"
+        ]
+      },
+      "nav": {
+        "profiles": 95.7,
+        "irl": 178.4,
+        "messages": 73,
+        "explore": 68.9,
+        "feed": 70.4
+      },
+      "conv": {
+        "open_ms": 83.6,
+        "messages_in_conv": 504,
+        "panel_nodes": 252,
+        "bubbles_found": 0,
+        "heapMB": 9.5
+      },
+      "passions": {
+        "charger_ms": 0,
+        "chercher_guitare_ms": 0.3,
+        "resultats": 5,
+        "chercher_2_ms": 3.2,
+        "resultats_2": 2,
+        "taille": 1908,
+        "err": null
+      },
+      "map": {
+        "ensureLeaflet_ms": 0.1,
+        "status": "échec: [object Event]",
+        "maplibre": "undefined"
+      },
+      "feed500": {
+        "heapBefore": 9.5,
+        "render20_sync_ms": 36.6,
+        "cards_after_20": 20,
+        "render500_sync_ms": 18.7,
+        "render500_to_frame_ms": 59.4,
+        "cards_after_500": 500,
+        "domNodes": 14789,
+        "feedList_nodes": 12337,
+        "heapAfter": 9.5,
+        "allFeedPosts_n": 869
+      },
+      "after_all": {
+        "label": "fin_de_run",
+        "domNodes": 14789,
+        "heapMB": 9.5,
+        "longtasks_n": 12,
+        "longtasks_total_ms": 1176,
+        "longtasks_max_ms": 249
+      },
+      "pageErrors": [],
+      "wall_ms": 21166
+    }
+  ],
+  "medianes": {
+    "sans_bridage": {
+      "n": 3,
+      "fcp_ms": 124,
+      "lcp_ms": 124,
+      "appReady_ms": 154.5,
+      "domContentLoaded_ms": 79.8,
+      "load_ms": 187.4,
+      "screenFeedActive_wall_ms": 154,
+      "firstFeedCard_wall_ms": 811,
+      "boot_longtasks_n": 0,
+      "boot_longtasks_max_ms": 0,
+      "boot_longtasks_total_ms": 0,
+      "boot_domNodes": 3018,
+      "boot_heapMB": 9.5,
+      "nav": {
+        "profiles": 25.6,
+        "irl": 39.5,
+        "messages": 26.6,
+        "explore": 58.1,
+        "feed": 18.6
+      },
+      "conv_open_500msg_ms": 32.9,
+      "conv_panel_nodes": 252,
+      "passions_charger_ms": 0,
+      "passions_chercher_ms": 0.3,
+      "map_ensureLeaflet_ms": 0.1,
+      "map_status": "échec: [object Event]",
+      "feed500_render20_sync_ms": 5.3,
+      "feed500_render500_sync_ms": 5.1,
+      "feed500_render500_to_frame_ms": 14.1,
+      "feed500_cards": 500,
+      "feed500_domNodes": 14789,
+      "feed500_heapAfterMB": 9.5,
+      "transfer_bytes_total": 363561,
+      "transfer_requests": 3
+    },
+    "slow3g_cpu4": {
+      "n": 3,
+      "fcp_ms": 2524,
+      "lcp_ms": 2524,
+      "appReady_ms": 8199,
+      "domContentLoaded_ms": 2590.2,
+      "load_ms": 8346.8,
+      "screenFeedActive_wall_ms": 2447,
+      "firstFeedCard_wall_ms": 9094,
+      "boot_longtasks_n": 5,
+      "boot_longtasks_max_ms": 173,
+      "boot_longtasks_total_ms": 531,
+      "boot_domNodes": 3018,
+      "boot_heapMB": 9.5,
+      "nav": {
+        "profiles": 95.7,
+        "irl": 187.7,
+        "messages": 68.4,
+        "explore": 75.9,
+        "feed": 75.4
+      },
+      "conv_open_500msg_ms": 100.6,
+      "conv_panel_nodes": 252,
+      "passions_charger_ms": 0,
+      "passions_chercher_ms": 1.4,
+      "map_ensureLeaflet_ms": 0.2,
+      "map_status": "échec: [object Event]",
+      "feed500_render20_sync_ms": 26.8,
+      "feed500_render500_sync_ms": 18.7,
+      "feed500_render500_to_frame_ms": 55.3,
+      "feed500_cards": 500,
+      "feed500_domNodes": 14789,
+      "feed500_heapAfterMB": 9.5,
+      "transfer_bytes_total": 363699,
+      "transfer_requests": 4
+    }
+  }
+}

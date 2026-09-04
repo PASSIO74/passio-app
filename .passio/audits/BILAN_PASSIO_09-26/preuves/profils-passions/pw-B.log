@@ -1,0 +1,54 @@
+
+Running 47 tests using 1 worker
+
+[1A[2K[1/47] [local] › tests/e2e/mes-passions-page.spec.js:91:1 › ① ouverte, la page remplace le profil : plus de « Créer un post » au-dessus
+[1A[2K[2/47] [local] › tests/e2e/mes-passions-page.spec.js:152:1 › ① bis — le geste de retour referme la page avant de changer d'écran
+[1A[2K[3/47] [local] › tests/e2e/mes-passions-page.spec.js:170:1 › ① ter — naviguer ailleurs referme la page
+[1A[2K[4/47] [local] › tests/e2e/mes-passions-page.spec.js:188:1 › ② aucune passion n'est principale : les cartes sont identiques
+[1A[2K[5/47] [local] › tests/e2e/mes-passions-page.spec.js:226:1 › ② bis — le menu « … » d'une carte ne propose aucune passion principale
+[1A[2K[6/47] [local] › tests/e2e/mes-passions-page.spec.js:243:1 › ③ le résumé compte les passions actives, et il suit
+[1A[2K[7/47] [local] › tests/e2e/mes-passions-page.spec.js:270:1 › ④ place disponible : la porte d'ajout invite et elle est armée
+[1A[2K[8/47] [local] › tests/e2e/mes-passions-page.spec.js:307:1 › ⑤ limite atteinte : la porte dit « Limite de N atteinte » — et elle répond
+[1A[2K[9/47] [local] › tests/e2e/mes-passions-page.spec.js:353:1 › ⑥ changement disponible : une information, PAS une alerte
+[1A[2K[10/47] [local] › tests/e2e/mes-passions-page.spec.js:369:1 › ⑦ aucun changement disponible : l'alerte, et elle seule
+[1A[2K[11/47] [local] › tests/e2e/mes-passions-page.spec.js:387:1 › ⑦ bis — quota sans objet : ni ligne, ni alerte
+[1A[2K[12/47] [local] › tests/e2e/mes-passions-page.spec.js:405:1 › ⑧ une carte ouvre l'espace de sa passion
+[1A[2K[13/47] [local] › tests/e2e/mes-passions-page.spec.js:419:1 › ⑨ « Passions archivées (X) » est repliable et compte juste
+[1A[2K[14/47] [local] › tests/e2e/mes-passions-page.spec.js:445:1 › ⑨ bis — sans archive, la section n'existe pas (pas de gouttière vide)
+[1A[2K[15/47] [local] › tests/e2e/mes-passions-page.spec.js:454:1 › ⑩ « Réactiver » agit quand c'est possible
+[1A[2K[16/47] [local] › tests/e2e/mes-passions-page.spec.js:481:1 › ⑩ bis — impossible : le bouton refuse, il RÉPOND, et il dit pourquoi
+[1A[2K[17/47] [local] › tests/e2e/mes-passions-page.spec.js:536:1 › ⑪ la page ne dit plus « Choisis jusqu'à N passions… »
+[1A[2K[18/47] [local] › tests/e2e/mes-passions-page.spec.js:550:1 › ⑫ le « ? » explique qu'aucune passion n'est principale
+[1A[2K[19/47] [local] › tests/e2e/mes-passions-page.spec.js:570:1 › ⑬ l'ouverture de la page est remontée au Centre de pilotage
+[1A[2K[20/47] [local] › tests/e2e/mes-passions-page.spec.js:603:1 › ⑬ bis — un rendu qui casse remonte en erreur, pas en écran vide
+[1A[2K[21/47] [local] › tests/e2e/mes-passions-page.spec.js:625:3 › ⑭ 320 px : aucun débordement, cibles ≥ 44 px
+[1A[2K[22/47] [local] › tests/e2e/mes-passions-page.spec.js:625:3 › ⑭ 360 px : aucun débordement, cibles ≥ 44 px
+[1A[2K[23/47] [local] › tests/e2e/mes-passions-page.spec.js:625:3 › ⑭ 390 px : aucun débordement, cibles ≥ 44 px
+[1A[2K[24/47] [local] › tests/e2e/mes-passions-page.spec.js:625:3 › ⑭ 430 px : aucun débordement, cibles ≥ 44 px
+[1A[2K[25/47] [local] › tests/e2e/mes-passions-page.spec.js:681:1 › ⑭ par défaut, l'illimité est ÉTEINT — le plafond et le quota s'appliquent
+[1A[2K[26/47] [local] › tests/e2e/mes-passions-page.spec.js:700:1 › ⑭ bis — allumé, il lève les DEUX limites, et l'écran cesse de les annoncer
+[1A[2K[27/47] [local] › tests/e2e/mes-passions-page.spec.js:736:1 › ⑭ ter — allumé, les gestes ABOUTISSENT au-delà du plafond et du quota
+[1A[2K[28/47] [local] › tests/e2e/mes-passions-page.spec.js:774:1 › ⑭ quater — la bascule des Paramètres allume, éteint, et dit son ÉTAT
+[1A[2K[29/47] [local] › tests/e2e/multi-passion-audit-restant.spec.js:24:1 › ① le libellé d'une passion personnalisée est celui publié par son auteur
+[1A[2K[30/47] [local] › tests/e2e/multi-passion-audit-restant.spec.js:59:1 › ① bis — une passion du catalogue garde son libellé de catalogue
+[1A[2K[31/47] [local] › tests/e2e/multi-passion-audit-restant.spec.js:91:1 › ② le formulaire ne promet plus de modération humaine
+[1A[2K[32/47] [local] › tests/e2e/multi-passion-audit-restant.spec.js:113:1 › ③ une passion qui filtre le fil a toujours sa bulle
+[1A[2K[33/47] [local] › tests/e2e/multi-passion-audit-restant.spec.js:135:1 › ③ bis — une bulle d'intérêt est décochable, et ne crée aucun profil
+[1A[2K[34/47] [local] › tests/e2e/multi-passion-integrite.spec.js:58:1 › ① l'identité publique publiée est celle du COMPTE, pas de la passion active
+[1A[2K[35/47] [local] › tests/e2e/multi-passion-integrite.spec.js:96:1 › ① bis — enregistrer son profil n'aligne plus l'emoji du compte sur la passion active
+[1A[2K[36/47] [local] › tests/e2e/multi-passion-integrite.spec.js:113:1 › ② le filtre de passion du profil ne laisse passer que la passion choisie
+[1A[2K[37/47] [local] › tests/e2e/multi-passion-integrite.spec.js:132:1 › ③ renommer le pseudo renomme TOUTES les passions
+[1A[2K[38/47] [local] › tests/e2e/multi-passion-integrite.spec.js:146:1 › ④ éditer la bio d'une passion republie le profil public
+[1A[2K[39/47] [local] › tests/e2e/multi-passion-integrite.spec.js:171:1 › ⑤ une passion archivée est publiée MARQUÉE, et retirée à l'affichage
+[1A[2K[40/47] [local] › tests/e2e/multi-passion-integrite.spec.js:191:1 › ⑥ créer une passion la rend visible dans le Fil
+[1A[2K[41/47] [local] › tests/e2e/multi-passion-integrite.spec.js:212:1 › ⑦ restaurer une passion la remet dans le Fil
+[1A[2K[42/47] [local] › tests/e2e/multi-passion-integrite.spec.js:232:1 › ⑧ éditer une passion PUBLIE vraiment : aucun chemin ne retombe sur `ensure`
+[1A[2K[43/47] [local] › tests/e2e/multi-passion-integrite.spec.js:262:1 › ⑨ la passion principale se CHOISIT, elle ne se normalise pas
+[1A[2K[44/47] [local] › tests/e2e/multi-passion-integrite.spec.js:311:1 › ⑩ aucun fichier de production n'appelle `supaUpsertProfile`
+[1A[2K[45/47] [local] › tests/e2e/sync-passion-active.spec.js:56:3 › après une synchronisation, la passion active › n'est pas la passion locale si elle a été archivée ailleurs
+[1A[2K[46/47] [local] › tests/e2e/sync-passion-active.spec.js:65:3 › après une synchronisation, la passion active › n'est pas non plus une passion archivée reçue du serveur
+[1A[2K[47/47] [local] › tests/e2e/sync-passion-active.spec.js:76:3 › après une synchronisation, la passion active › reste la passion locale quand celle-ci est bien vivante
+[1A[2K  Slow test file: [local] › tests/e2e/mes-passions-page.spec.js (7.8m)
+  Consider running tests from slow files in parallel. See: https://playwright.dev/docs/test-parallel
+  47 passed (12.5m)
+EXIT=0

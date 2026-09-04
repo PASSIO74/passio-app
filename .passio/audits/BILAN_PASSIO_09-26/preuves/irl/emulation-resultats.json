@@ -1,0 +1,388 @@
+{
+  "etapes": [
+    {
+      "etape": "liste initiale",
+      "cartes": [
+        "evE",
+        "evC",
+        "evB",
+        "evD"
+      ],
+      "evenementDuBloqueVisible": true
+    },
+    {
+      "etape": "fiche evA (non inscrit)",
+      "xss": null,
+      "badge": "🎸 Musique · <img src=x onerror=window.__xss=1>",
+      "adresseVisible": true,
+      "contactVisible": true,
+      "inscrit": false,
+      "conseilsSecurite": false,
+      "lienMaps": true,
+      "boutonSignaler": true
+    },
+    {
+      "etape": "RSVP going par un compte isMinor=true",
+      "rsvp": "going",
+      "attendees": [
+        "u_q7lmyvf1"
+      ],
+      "appels": [
+        [
+          "supaSetEventRsvp",
+          "evA",
+          "going"
+        ]
+      ]
+    },
+    {
+      "etape": "double appel setEventRsvp going (déjà going)",
+      "attendees": [
+        "u_q7lmyvf1"
+      ],
+      "appels": []
+    },
+    {
+      "etape": "rejoindre un événement complet",
+      "rsvp": "waitlist",
+      "waitlist": [
+        "user_attente",
+        "u_q7lmyvf1"
+      ],
+      "appels": [
+        [
+          "supaSetEventRsvp",
+          "evD",
+          "waitlist"
+        ]
+      ]
+    },
+    {
+      "etape": "désinscription → promotion file (serveur refuse : stub false)",
+      "attendees": [
+        "user_attente"
+      ],
+      "waitlist": [],
+      "appels": [
+        [
+          "supaLeaveEvent",
+          "evD"
+        ],
+        [
+          "supaFirstWaitlisted",
+          "evD"
+        ],
+        [
+          "supaPromoteFromWaitlist",
+          "evD",
+          "user_attente"
+        ],
+        [
+          "supaInsertNotif",
+          "user_attente",
+          "event_update",
+          "evD",
+          "une place s'est libérée, tu es inscrit·e !"
+        ]
+      ]
+    },
+    {
+      "etape": "désinscription evA",
+      "rsvp": null,
+      "attendees": [],
+      "appels": [
+        [
+          "supaLoadEventCommentCounts",
+          "[\"evD\"]"
+        ],
+        [
+          "supaLoadEventReactions",
+          "[\"evD\"]"
+        ],
+        [
+          "supaLoadEventComments",
+          "evA"
+        ],
+        [
+          "supaLoadEventPosts",
+          "evA"
+        ],
+        [
+          "supaLeaveEvent",
+          "evA"
+        ]
+      ]
+    },
+    {
+      "etape": "check-in par code (sans inscription préalable), 2 fois",
+      "codeCalculeDepuisId": "EBGAAW",
+      "url": "http://127.0.0.1:8204/index.html#irl-checkin-evE-EBGAAW",
+      "checkedIn": [
+        "evE"
+      ],
+      "appels": [
+        [
+          "supaCheckInEvent",
+          "evE"
+        ]
+      ],
+      "rsvpApres": "going"
+    },
+    {
+      "etape": "formulaire de création",
+      "champs": [
+        [
+          "evTitle",
+          true
+        ],
+        [
+          "evPassion",
+          true
+        ],
+        [
+          "evCity",
+          true
+        ],
+        [
+          "evDate",
+          true
+        ],
+        [
+          "evTime",
+          true
+        ],
+        [
+          "evAddress",
+          true
+        ],
+        [
+          "evPrice",
+          true
+        ],
+        [
+          "evMax",
+          true
+        ],
+        [
+          "evContact",
+          true
+        ],
+        [
+          "evType",
+          true
+        ],
+        [
+          "evDuration",
+          true
+        ]
+      ]
+    },
+    {
+      "etape": "création avec date passée",
+      "toasts": [
+        "C'est complet — tu es sur liste d'attente",
+        "Liste d'attente",
+        "Désinscrit",
+        "Désinscrit",
+        "Arrivée confirmée — bon moment !",
+        "Tu as déjà pointé ton arrivée",
+        "Cette date est déjà passée"
+      ],
+      "nbUserEvents": 0
+    },
+    {
+      "etape": "création valide (prix -5, max -3)",
+      "ev": {
+        "id": "x9v8xd5e2mtn2v6d6",
+        "price": -5,
+        "maxAttendees": -3,
+        "spots": 0,
+        "full": true,
+        "attendees": [
+          "u_q7lmyvf1"
+        ],
+        "lat": 48.8566,
+        "address": "1 place Test"
+      },
+      "prixAffiche": "Gratuit",
+      "appels": [
+        [
+          "supaLoadEventCommentCounts",
+          "[\"evD\"]"
+        ],
+        [
+          "supaLoadEventReactions",
+          "[\"evD\"]"
+        ],
+        [
+          "supaPublishEvent",
+          "x9v8xd5e2mtn2v6d6"
+        ],
+        [
+          "supaLoadEventCommentCounts",
+          "[\"evD\"]"
+        ],
+        [
+          "supaLoadEventReactions",
+          "[\"evD\"]"
+        ]
+      ],
+      "cartes": 5
+    },
+    {
+      "etape": "édition avec date passée",
+      "dateDansLePasse": false,
+      "over": false,
+      "appels": [],
+      "toasts": [
+        "C'est complet — tu es sur liste d'attente",
+        "Liste d'attente",
+        "Désinscrit",
+        "Désinscrit",
+        "Arrivée confirmée — bon moment !",
+        "Tu as déjà pointé ton arrivée",
+        "Cette date est déjà passée",
+        "Publication en cours…",
+        "Enregistré ici, mais pas encore envoyé — réessaie quand tu auras du réseau",
+        "Cette date est déjà passée"
+      ]
+    },
+    {
+      "etape": "suppression refusée par la base",
+      "encoreLocal": false,
+      "appels": [
+        [
+          "supaDeleteEvent",
+          "x9v8xd5e2mtn2v6d6"
+        ],
+        [
+          "supaLoadEventCommentCounts",
+          "[\"evD\"]"
+        ],
+        [
+          "supaLoadEventReactions",
+          "[\"evD\"]"
+        ]
+      ],
+      "toasts": [
+        "C'est complet — tu es sur liste d'attente",
+        "Liste d'attente",
+        "Désinscrit",
+        "Désinscrit",
+        "Arrivée confirmée — bon moment !",
+        "Tu as déjà pointé ton arrivée",
+        "Cette date est déjà passée",
+        "Publication en cours…",
+        "Enregistré ici, mais pas encore envoyé — réessaie quand tu auras du réseau",
+        "Cette date est déjà passée",
+        "Événement supprimé"
+      ]
+    },
+    {
+      "etape": "annulation (supaCancelEvent stub null → ok=false ?)",
+      "status": "cancelled",
+      "appels": [
+        [
+          "supaLoadEventCommentCounts",
+          "[\"evD\"]"
+        ],
+        [
+          "supaLoadEventReactions",
+          "[\"evD\"]"
+        ],
+        [
+          "supaCancelEvent",
+          "evMine2",
+          true
+        ]
+      ]
+    },
+    {
+      "etape": "signalement d'événement",
+      "appels": [
+        [
+          "supaReport",
+          "event",
+          "evA",
+          ""
+        ]
+      ],
+      "toasts": [
+        "C'est complet — tu es sur liste d'attente",
+        "Liste d'attente",
+        "Désinscrit",
+        "Désinscrit",
+        "Arrivée confirmée — bon moment !",
+        "Tu as déjà pointé ton arrivée",
+        "Cette date est déjà passée",
+        "Publication en cours…",
+        "Enregistré ici, mais pas encore envoyé — réessaie quand tu auras du réseau",
+        "Cette date est déjà passée",
+        "Événement supprimé",
+        "Changement non synchronisé",
+        "Signalement envoyé — merci"
+      ]
+    },
+    {
+      "etape": "page Filtre (UI-4A5) + Ce week-end",
+      "actif": true,
+      "vue": "filtres",
+      "sections": [
+        "Explorer par passion",
+        "Le rendez-vous",
+        "Infos pratiques",
+        "Échanges",
+        "Autres actions",
+        "Quand ?",
+        "Où ?",
+        "Quelles passions ?",
+        "Horaire"
+      ],
+      "caseWeekend": false,
+      "filtresDate": [],
+      "resultats": 5,
+      "cartesWeekend": [
+        "evE",
+        "evMine2",
+        "evC",
+        "evB",
+        "evD"
+      ],
+      "piedTexte": "Afficher 5 résultats"
+    },
+    {
+      "etape": "carte",
+      "v4a3": true,
+      "supported": true,
+      "L": "undefined",
+      "maplibre": "undefined",
+      "leafletReel": false,
+      "fallback": "La carte n'est pas disponible sur cet appareil.La liste des événements ci-dessous fonctionne normalement.",
+      "wrapParent": "screen-irl",
+      "canvas": false
+    }
+  ],
+  "reseau": [
+    {
+      "url": "http://127.0.0.1:8204/js/supabase-loader.js",
+      "status": 200
+    },
+    {
+      "url": "https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&display=swap",
+      "echec": "net::ERR_CONNECTION_RESET"
+    },
+    {
+      "url": "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2",
+      "echec": "net::ERR_TUNNEL_CONNECTION_FAILED"
+    },
+    {
+      "url": "https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css",
+      "echec": "net::ERR_TUNNEL_CONNECTION_FAILED"
+    },
+    {
+      "url": "https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js",
+      "echec": "net::ERR_TUNNEL_CONNECTION_FAILED"
+    }
+  ],
+  "erreursJs": []
+}

@@ -1,0 +1,26 @@
+{
+  "total_referentiel": 1908,
+  "canoniques_vues_par_le_client": 1008,
+  "refusees_a_la_publication": 900,
+  "exemples_refusees": [
+    "dev-revue-code",
+    "dev-hackathon",
+    "dev-katas",
+    "dev-embarque",
+    "dev-jeux-code",
+    "sciences-cosmologie",
+    "sciences-quantique",
+    "sciences-relativite"
+  ],
+  "sante_sport_sante_canonique": false,
+  "studio_options": [
+    "musique"
+  ],
+  "studio_propose_sante_sport_sante": false,
+  "studio_note": "Tes passions personnelles rangent ton fil, mais on ne peut pas encore y publier.",
+  "verdict_evenement": {
+    "ok": false,
+    "motif": "non_canonique"
+  },
+  "story_passion_normalisee": null
+}

@@ -1,0 +1,21 @@
+{
+ "etapesVues": [
+  "splash"
+ ],
+ "cguCheckbox": 0,
+ "lienPolitiqueDansAuth": false,
+ "messageApresSignup": "✅ Compte créé ! Vérifie tes e-mails (et les spams) pour confirmer, puis reviens te connecter.",
+ "ongletActif": "authTabSignin",
+ "etapeActive": "splash",
+ "birthYearEtat": null,
+ "phoneDansEtatLocal": true,
+ "politiqueTexte": "×\nPolitique de confidentialité\n\nDernière mise à jour : juin 2026 — PASSIO (beta privée)\n\n1. Données collectées. Lors de l'inscription : adresse e-mail et nom d'utilisateur. Lors de l'utilisation : passions, publications (textes, photos, vidéos, audio), carnets, messages, commentaires, likes, abonnements, participation aux événements, et préférences locales (thème, filtres).\n\n2. Où sont stockées tes données. Sur les serveurs de notre prestataire Supabase (hébergement UE/US, chiffrement en transit), et en partie sur ton appareil (localStorage) pour le fonctionnement hors-ligne. Les accès en base sont restreints par des règles de sécurité par propriétaire (RLS).\n\n3. Ce que nous ne faisons pas. Pas de revente de données, pas de publicité ciblée, pas de traqueurs tiers. C'est l'engagement fondateur de PASSIO.\n\n4. Durée de conservation. Tes données sont conservées tant que ton compte est actif. La suppression du compte efface tes contenus immédiatement et ton e-mail sous 30 jours.\n\n5. Tes droits (RGPD). Accès, rectification, effacement, portabilité, opposition. Exerce-les directement dans l'app (Paramètres → Supprimer mon compte) ou par e-mail : contact@ladamemetallerie.com. Tu peux aussi saisir la CNIL (cnil.fr).\n\n6. Mineurs. PASSIO est réservé aux 13 ans et plus ; l'inscription demande l'âge à l'onboarding.\n\n7. Beta privée. Pendant la phase de test, l'accès est protégé par code et les fonctionnalités peuvent évoluer ; tes retours peuvent être utilisés pour améliorer le produit.\n\nJ'ai compris",
+ "aProposTexte": "PASSIO SAS · France\ncontact@passio.app\npassio.app",
+ "clesLocalStorage": [
+  "passio_first_run_experience_v1",
+  "passio_uid",
+  "passio_mvp_state_v1",
+  "passio_conversations_v1",
+  "passio_device_id"
+ ]
+}

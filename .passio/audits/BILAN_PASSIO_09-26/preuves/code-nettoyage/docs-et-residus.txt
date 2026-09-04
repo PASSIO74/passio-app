@@ -1,0 +1,148 @@
+### docs/ : fichiers dont le SUJET est du code retiré (titre/nom ou >10 mentions)
+  56 docs/PASSIO_WALLET_PASSIA_DB_STATE_AUDIT_2026-08-20.md (407l, dernier commit 2026-08-31)
+  53 docs/PASSIO_WALLET_PASSIA_REMOVAL_MAP_2026-08-20.md (174l, dernier commit 2026-08-31)
+  49 docs/PASSIO_MASTER_IMPLEMENTATION_ROADMAP_2026-08-20.md (1934l, dernier commit 2026-08-31)
+  48 docs/PASSIO_CDV_EXTRACTION_MAP_2026-08-20.md (249l, dernier commit 2026-08-31)
+  34 docs/PASSIO_RELEASE_EXECUTION_BOARD_J0_J6_2026-08-20.md (1993l, dernier commit 2026-08-31)
+  32 docs/PIEGES_CONNUS.md (94l, dernier commit 2026-09-04)
+  28 docs/CLAUDE_CODE_FRIDAY_START_PACKET_2026-08-21.md (622l, dernier commit 2026-08-31)
+  23 docs/PASSIO_ACCEPTANCE_TEST_MATRIX_2026-08-20.md (512l, dernier commit 2026-08-31)
+  22 docs/CLAUDE_CODE_REPRISE_PRODUCT_2026-08-20.md (388l, dernier commit 2026-08-31)
+  21 docs/PASSIO_PRODUCT_AUDIT_V2_2026-08-20.md (340l, dernier commit 2026-08-31)
+  19 docs/PASSIO_MVP_BETA_GUIDE.md (255l, dernier commit 2026-08-31)
+  18 docs/PASSIO_PROFILE_MULTIPROFILE_V2_2026-08-20.md (1225l, dernier commit 2026-08-31)
+  16 docs/PASSIO_NAV_V2_IMPLEMENTATION_LOT_2026-08-20.md (186l, dernier commit 2026-08-31)
+  15 docs/ADR-009_RETRAIT_ECONOMIE.md (83l, dernier commit 2026-09-02)
+  14 docs/PASSIO_prompts_video.md (292l, dernier commit 2026-08-31)
+  13 docs/PASSIO_NOTIFICATIONS_V2_HEALTHY_REENGAGEMENT_2026-08-20.md (1614l, dernier commit 2026-08-31)
+  12 docs/PASSIO_FEED_V2_CORE_EXPERIENCE_2026-08-20.md (836l, dernier commit 2026-08-31)
+  12 docs/CDV_MULTISELECT_SUMMARY.md (117l, dernier commit 2026-08-31)
+  11 docs/PASSIO_UI_V2_DIRECTION_2026-08-25.md (1038l, dernier commit 2026-08-31)
+  11 docs/PASSIO_IRL_V2_PRODUCT_EXPERIENCE_2026-08-20.md (1756l, dernier commit 2026-08-31)
+
+### docs/ non modifiés depuis > 30 j (avant 2026-08-05)
+0
+
+### PASSIO_*.md racine : dernier commit, lignes, mentions retirées
+2026-08-31   106 l  legacy=  1  PASSIO_CONTROL_CENTER_AUDIT.md
+2026-08-31    77 l  legacy=  0  PASSIO_CONTROL_CENTER_ROADMAP.md
+2026-09-03   735 l  legacy=  6  PASSIO_ENGINEERING_LOG.md
+2026-08-31    92 l  legacy=  2  PASSIO_FUNCTIONAL_MAP.md
+2026-08-31   122 l  legacy=  2  PASSIO_INITIAL_JOINT_AUDIT.md
+2026-08-31   220 l  legacy=  1  PASSIO_MASTER_CONTROL.md
+2026-08-31    60 l  legacy=  0  PASSIO_PRODUCTION_READINESS.md
+2026-08-31    69 l  legacy=  2  PASSIO_REPOSITORY_AUDIT.md
+2026-08-31   131 l  legacy=  0  PASSIO_SENTINELLE_JOINT_AUDIT.md
+2026-08-31    51 l  legacy=  0  PASSIO_SENTINEL_2.md
+2026-08-31    42 l  legacy=  0  PASSIO_SKILLS_MAP.md
+2026-08-31    44 l  legacy=  3  PASSIO_SYSTEM_MODEL.md
+2026-08-31    38 l  legacy=  0  PASSIO_TECHNICAL_ROADMAP.md
+2026-08-31    26 l  legacy=  0  PASSIO_TECHNICAL_VISION.md
+2026-08-31   158 l  legacy= 14  RAPPORT_MISE_A_JOUR_DOCUMENTATION_PASSIO.md
+
+### doublons racine vs .passio/ ou docs/
+AGENTS_REGISTRY.md
+INTEGRATIONS_REGISTRY.md
+METRICS_REGISTRY.md
+README.md
+REGISTRE-REVUES.md
+SENTINEL_AUTOPILOT_ACTIVATION_PROTOCOL.md
+SKILLS_REGISTRY.md
+adr
+audits
+context
+couverture
+handoff
+orchestrator.json
+playbooks
+reports
+reviews
+surveillance
+AGENT_MODEL.md
+CURRENT_PRIORITIES.md
+DATABASE_MODEL.md
+DECISIONS.md
+ENGINEERING_PRINCIPLES.md
+GLOSSARY.md
+KNOWN_RISKS.md
+MULTI_PROFILE.md
+PASSIO_CONTEXT.md
+PRODUCT_PRINCIPLES.md
+
+### tests/*.html et scripts manuels : dernier commit, référencés ?
+2026-08-31   8747 o  refs=0  tests/test-debug.html
+2026-08-31   8008 o  refs=0  tests/test-emoji-simple.html
+2026-08-31  12217 o  refs=0  tests/test-emoji.html
+2026-08-31   7408 o  refs=0  tests/test-final-verification.html
+2026-08-31  15028 o  refs=0  tests/test-messagerie-complet.html
+2026-08-31  11222 o  refs=0  tests/test-panel-iso.html
+2026-08-31   4075 o  refs=0  tests/test-quick-check.html
+2026-08-31   1000 o  refs=0  tests/test-simple.html
+2026-08-31   2445 o  refs=0  tests/test-irl.js
+2026-08-31   2680 o  refs=0  tests/test-time-filter.js
+2026-08-31   1124 o  refs=0  tests/TEST_MULTISELECT.md
+2026-08-31   2805 o  refs=1  tests/TEST_PUBLICATION_MULTIAPPAREILS.md
+2026-08-31   1561 o  refs=2  tests/qa-report.md
+2026-08-31   5088 o  refs=1  scripts/create-buckets-auto.html
+2026-08-31   3594 o  refs=0  scripts/setup-storage.html
+
+### tests/sql, tests/ci référencés ?
+.github/workflows/claude-code.yml:305:          # tests/ci/frontiere-confiance.sh échoue si cette valeur dérive.
+.github/workflows/claude-code.yml:364:               `package.json`, `scripts/`, `tests/ci/` ni `migrations/` : ce
+.github/workflows/claude-code.yml:756:              .github/*|.claude/*|package.json|package-lock.json|scripts/*|tests/ci/*|migrations/*)
+.github/workflows/deploy.yml:262:        run: bash tests/ci/frontiere-confiance.sh
+.github/workflows/deploy.yml:275:      # ecrit mais lance nulle part ne protege rien (cf. frontiere-confiance.sh
+
+### livrables_investisseurs / montage-video / cloudflare : contenu et références
+livrables_investisseurs/02_Documents_mis_a_jour/passio_etat_projet_MAJ_2026-08.pdf
+livrables_investisseurs/02_Documents_mis_a_jour/passio_business_plan_MAJ_2026-08.pdf
+livrables_investisseurs/00_LISEZ_MOI.md
+livrables_investisseurs/03_Visuels/irl-desktop.png
+livrables_investisseurs/03_Visuels/messages-desktop.png
+livrables_investisseurs/03_Visuels/profiles-mobile.png
+livrables_investisseurs/03_Visuels/GUIDE_COPIER_COLLER_VEO.md
+livrables_investisseurs/03_Visuels/irl-mobile.png
+livrables_investisseurs/03_Visuels/cdv-desktop.png
+livrables_investisseurs/03_Visuels/wallet-mobile.png
+livrables_investisseurs/03_Visuels/STORYBOARD_VIDEO_INVESTISSEURS.md
+livrables_investisseurs/03_Visuels/studio-desktop.png
+livrables_investisseurs/03_Visuels/cdv-mobile.png
+livrables_investisseurs/03_Visuels/wallet-desktop.png
+livrables_investisseurs/03_Visuels/feed-desktop.png
+livrables_investisseurs/03_Visuels/explore-mobile.png
+livrables_investisseurs/03_Visuels/profile-rich-mobile.png
+livrables_investisseurs/03_Visuels/passio-logo-512.png
+livrables_investisseurs/03_Visuels/profiles-desktop.png
+livrables_investisseurs/03_Visuels/messages-mobile.png
+livrables_investisseurs/03_Visuels/explore-desktop.png
+livrables_investisseurs/03_Visuels/ecrans-HD/ecran-profil-riche-HD.png
+livrables_investisseurs/03_Visuels/ecrans-HD/ecran-studio-HD.png
+livrables_investisseurs/03_Visuels/ecrans-HD/ecran-feed-HD.png
+livrables_investisseurs/03_Visuels/ecrans-HD/ecran-cdv-HD.png
+livrables_investisseurs/03_Visuels/ecrans-HD/ecran-wallet-HD.png
+livrables_investisseurs/03_Visuels/ecrans-HD/ecran-irl-HD.png
+livrables_investisseurs/03_Visuels/ecrans-HD/ecran-explore-HD.png
+livrables_investisseurs/03_Visuels/ecrans-HD/ecran-messages-HD.png
+livrables_investisseurs/03_Visuels/ecrans-HD/ecran-profil-HD.png
+14M	livrables_investisseurs
+19M	montage-video
+js/app-08-ui-modals-tour.js:2564:const PASSIO_CDN_BASE = "";
+js/app-08-ui-modals-tour.js:2566:  if (!PASSIO_CDN_BASE || typeof url !== "string" || url.indexOf("data:") === 0) return url;
+js/app-08-ui-modals-tour.js:2570:  return PASSIO_CDN_BASE + "/" + url.slice(i + marker.length);
+docs/CDN_CLOUDFLARE.md:15:- Helper `cdnUrl()` + constante `PASSIO_CDN_BASE` dans `js/app-08-ui-modals-tour.js`.
+docs/CDN_CLOUDFLARE.md:16:  Tant que `PASSIO_CDN_BASE` est **vide**, l'app sert les URLs Supabase directes
+docs/CDN_CLOUDFLARE.md:19:- Worker prêt à déployer : `cloudflare/passio-cdn-worker.js`.
+docs/CDN_CLOUDFLARE.md:26:1. Crée un compte gratuit sur https://dash.cloudflare.com
+docs/CDN_CLOUDFLARE.md:30:   `cloudflare/passio-cdn-worker.js` → **Deploy**.
+
+### mp4 racine : référencés quelque part ?
+Cinematic_aerial_drone_sh.mp4 -> 
+Cinematic_shot_at_dusk_in.mp4 -> 
+Cinematic_vertical_montag.mp4 -> 
+Cinematic_vertical_shot (1).mp4 -> 
+Cinematic_vertical_shot.mp4 -> 
+met_la_vrai_capture_d_ecran_re.mp4 -> 
+presentation video 8 secondes.mp4 -> 
+
+### mp4 dans dist (build) ?
+scripts/build.js:142:    fs.copyFileSync(path.join(dataDir, f), path.join(cible, f));

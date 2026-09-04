@@ -1,0 +1,18 @@
+{
+  "dbRead": {
+    "at": "2026-09-04T13:04:47.607Z",
+    "ok": false,
+    "configured": false,
+    "error": "Supabase non configuré"
+  },
+  "canary": {
+    "configured": false,
+    "lastError": "SUPABASE_ANON_KEY manquante"
+  },
+  "sse": {
+    "lastSentAt": null,
+    "lastAckAt": null,
+    "lastId": null,
+    "clients": 0
+  }
+}

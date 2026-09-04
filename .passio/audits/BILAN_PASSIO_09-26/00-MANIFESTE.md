@@ -34,10 +34,10 @@
 | Élément | Valeur |
 |---|---|
 | Machine | Conteneur cloud isolé (Anthropic), Linux 6.18, **4 CPU**, 15 Go RAM, 30 Go libres |
-| Navigateur | Chromium 1194 (Playwright 1.60.0) — **seul navigateur disponible**. WebKit/Safari, Firefox, Edge, Samsung Internet : non installables. Toute mesure navigateur est une **émulation** ; aucun appareil réel. |
+| Navigateur | Chromium (Playwright 1.60.0) — **seul navigateur disponible**. Jusqu'à 14:50 UTC seule la révision 1194 était présente (la 1223 attendue par `@playwright/test` 1.60 manquait : les sous-agents ont utilisé une configuration d'enveloppe avec `executablePath`) ; un pont posé à la reprise de session a ensuite rendu `npx playwright test` utilisable sans surcharge (`chromium_headless_shell-1223`, Chromium 141). WebKit/Safari, Firefox, Edge, Samsung Internet : non installables. Toute mesure navigateur est une **émulation** ; aucun appareil réel. |
 | Réseau sortant | Proxy avec liste d'autorisation : GitHub, Supabase (via connecteur), registres npm OK ; **netlify.app bloqué** ; tuiles de carte et géocodage probablement bloqués (voir rapports 04 et 07). |
 | Accès base | Connecteur `supabase-passio-readonly` (lecture seule, `transaction_read_only`). Aucune écriture, aucune migration, aucun compte créé. |
-| Accès GitHub | MCP GitHub, compte `PASSIO74` (admin). Utilisé pour lire, créer l'issue, la branche et la PR brouillon — rien d'autre. |
+| Accès GitHub | Outils GitHub de la plateforme, compte `PASSIO74` (admin). Utilisés pour lire, créer l'issue, la branche et la PR brouillon — rien d'autre. Le plugin `plugin:github:github` n'a jamais pu se connecter (hôte `api.githubcopilot.com` hors liste blanche du proxy) ; les journaux de jobs Actions sont restés inaccessibles (403). |
 | Dépendances | `npm ci` (56 paquets), `npm run verif` vert (1,2 s), `dashboard/npm ci` par le sous-agent pilotage. |
 
 ## 4. Artefacts de l'audit
@@ -46,7 +46,7 @@
 |---|---|
 | Issue | https://github.com/PASSIO74/passio-app/issues/279 — « [AUDIT] BILAN PASSIO 09/26 » (créée par cet audit : aucune issue homonyme n'existait) |
 | Branche | `audit/bilan-passio-09-26-fable51` (créée : n'existait pas ; 238 branches distantes examinées, aucune branche d'audit homonyme) |
-| PR brouillon | renseignée dans `01-SYNTHESE-BENJAMIN.md` et dans l'issue au moment de l'ouverture |
+| PR brouillon | https://github.com/PASSIO74/passio-app/pull/280 — rapports et preuves uniquement, commits `[skip ci]` (une CI sur cette branche déploierait une preview Netlify et créerait des comptes de test en production, ce que l'ordre interdit) |
 | Dossier | `.passio/audits/BILAN_PASSIO_09-26/` (ce dossier) + `preuves/` |
 | Index des audits | `.passio/audits/README.md` (entrée ajoutée) |
 
@@ -66,10 +66,10 @@ Note sur la branche : la session a été ouverte par la plateforme sur `claude/b
 ## 6. Méthode
 
 1. Reconnaissance : état GitHub (issues, branches, PR, runs), état Supabase (tables, policies, advisors, volumes), `npm run verif`.
-2. Audit en éventail : 16 domaines confiés à 16 sous-agents Fable 5.1 en lecture seule (cartographie ; UX/onboarding ; contenu ; messagerie/notifications ; IRL ; profils/passions ; modération ; auth/RGPD ; Supabase/isolation ; code/nettoyage ; performance/capacité/coûts ; Centre de pilotage/Sentinelle ; appareils/accessibilité ; robustesse/pannes ; exploitation/continuité ; tests/CI), chacun rendant des contrôles statués et des problèmes au format complet.
-3. Relecture adversariale : chaque problème est attaqué par 2 à 3 relecteurs indépendants (angles reproduction, impact/priorité, contexte/doublons). Un problème réfuté par la majorité est conservé dans le rapport avec son verdict, jamais effacé.
-4. Tests : suites Playwright **ciblées** par domaine pendant l'audit ; **une seule suite complète** locale à la fin (rapport 04 §tests-ci et `01-SYNTHESE-BENJAMIN.md`).
-5. Rédaction : rapports 01 à 13, registre des risques, verdict.
+2. Audit en éventail : 16 domaines confiés à 16 sous-agents Fable 5.1 en lecture seule (chaque domaine relancé jusqu'à trois fois après épuisement des crédits de session ; sept domaines — irl, profils-passions, auth-rgpd, robustesse-pannes, perf-capacite-couts, appareils-a11y et, avant que sa troisième tentative n'aboutisse, exploitation-continuite — ont été reconstitués par l'orchestrateur à partir des preuves déposées par leurs sous-agents, ce que chaque rapport concerné signale en tête de domaine) (cartographie ; UX/onboarding ; contenu ; messagerie/notifications ; IRL ; profils/passions ; modération ; auth/RGPD ; Supabase/isolation ; code/nettoyage ; performance/capacité/coûts ; Centre de pilotage/Sentinelle ; appareils/accessibilité ; robustesse/pannes ; exploitation/continuité ; tests/CI), chacun rendant des contrôles statués et des problèmes au format complet.
+3. Relecture adversariale : chaque problème est attaqué par des relecteurs indépendants (angles reproduction et impact/priorité pour les P0/P1 ; reproduction pour les P2/P3 ; l'angle contexte/doublons a été appliqué aux premiers domaines puis retiré pour économiser les crédits). 111 problèmes relus, 75 non relus (crédits épuisés). Un problème réfuté par la majorité est conservé dans le rapport avec son verdict, jamais effacé.
+4. Tests : `npm run verif` vert ; suites Playwright **ciblées** par domaine pendant l'audit (~650 tests) ; **une seule suite complète** locale à la fin (`npx playwright test --project=local --workers=3`, 1 103 tests — résultat dans `01-SYNTHESE-BENJAMIN.md` §Suite complète et `preuves/suite-complete/`).
+5. Rédaction : rapports 01 à 14 (01 synthèse · 02 cartographie · 03 UX/onboarding · 04 fonctionnel · 05 code · 06 sécurité/données · 07 performance/capacité/coûts · 08 pilotage/Sentinelle · 09 appareils/accessibilité · 10 modération/IRL/support/exploitation · 11 registre des risques · 12 verdict · 13 preuves nécessaires · 14 couverture du mandat), `donnees/` (sorties structurées des 16 domaines, votes des relecteurs, registre JSON), `outillage/` (scripts d'orchestration).
 
 Vocabulaire des statuts : PROUVÉ · CONFORME PAR INSPECTION · PROBABLE · DÉFAILLANT · BLOQUÉ · NON APPLICABLE. Priorités : P0 bloque la commercialisation · P1 avant lancement public · P2 amélioration importante · P3 optimisation future. Méthode de chaque contrôle : appareil réel (jamais ici) · émulation · inspection code · requête base · test exécuté · non réalisé.
 
@@ -79,4 +79,14 @@ Vocabulaire des statuts : PROUVÉ · CONFORME PAR INSPECTION · PROBABLE · DÉF
 
 ## 8. Audit différentiel — changements de l'application pendant le bilan
 
-Renseigné en fin d'audit (`git fetch origin main` et comparaison avec le SHA audité). Voir la section « Audit différentiel » de `01-SYNTHESE-BENJAMIN.md`.
+`git fetch origin main` à 20:32 UTC : `git rev-list --count c8cb8e9..origin/main` = **0**. Aucun commit, aucune PR fusionnée, aucune branche nouvelle de Benjamin pendant le bilan (dernière branche de travail antérieure au gel : `claude/consolidate-close-sessions-shbepm`, 09:51 UTC). **Aucun audit différentiel n'est nécessaire** ; la contre-revue peut se faire sur `c8cb8e995b88159a1e9d4c2f7dc196ad93a133bf` sans réserve.
+
+## 9. Déroulement et interruptions
+
+- 12:29 UTC : gel du SHA, manifeste, issue #279, branche, PR #280.
+- 12:44 → 14:40 : première vague de 16 sous-agents ; limite de session atteinte (reprise à 14:40).
+- 14:40 → 19:40 : deuxième vague et relectures ; limite atteinte de nouveau (reprise à 19:40).
+- 19:40 → 19:55 : troisième vague pour les 7 domaines manquants et 24 relectures ; « out of usage credits » à 19:55 — six domaines interrompus définitivement, un (exploitation-continuite) achevé à 20:33.
+- 20:00 → fin : reconstitution des six domaines par l'orchestrateur, rapports, suite complète, commit et restitution.
+
+Aucune donnée n'a été inventée pour combler une interruption : chaque contrôle et chaque problème d'un domaine reconstitué cite un fichier de `preuves/` ou une ligne du code au SHA audité, et le rapport le dit.

@@ -1,0 +1,470 @@
+{
+ "domaine": "moderation",
+ "resume": "Audit en lecture seule du volet modération (signalements, blocages, faux comptes/spam, harcèlement, outillage) sur le SHA c8cb8e99 (branche audit/… = même code source, +2 commits de documentation d'audit uniquement). Méthode : inspection ligne à ligne de js/app-02/04/07/08/09, first-run.js, migrations (migration_anti_flood_interactions.sql, migration_ts_serveur_age_blocage.sql), Edge Functions, dashboard/ (grep exhaustif), skill .claude/skills/moderation/SKILL.md, docs/PASSIO_IRL_TRUST_SAFETY_AUDIT_2026-08-20.md ; confrontation au dump des 125 policies de production et aux triggers relevés par le domaine supabase-isolation (connecteur Supabase non utilisé, conformément à la consigne) ; exécution des 3 suites Playwright demandées (11/11 vertes, 3,2 min, PASSIO_PORT=8106, émulation Chromium) ; blocage-acces.spec.js BLOQUÉ (comptes réels — vert au run CI 33861671142).\nCe qui existe : signalement de profil, d'événement et de commentaire (INSERT authentifié et non falsifiable, 10/min), blocage persisté côté bloqueur avec retrait d'abonné (efficace sur compte privé), masquage client des contenus bloqués (16 sites isBlocked : fil, stories, commentaires, notifications, messages, appels), refus serveur d'une NOUVELLE conversation avec un compte bloqué, auto-déclaration d'âge non reculable.\nCe qui manque, avec preuve : aucune chaîne de traitement des signalements (table sans statut, sans policy SELECT, aucune vue dashboard, aucun rôle modérateur, retrait d'un contenu illicite = SQL manuel service_role) ; publication, story, message et bobine non signalables (reportPost sans appelant) ; signalement sans motif et « envoyé » même quand l'INSERT est refusé ; blocage contournable par re-follow sur compte privé (invisible pour la victime) ; blocage asymétrique et client-only en lecture (le bloqué voit tout, peut RSVP et commenter les événements du bloqueur, continuer d'écrire dans un DM existant) ; aucun rate-limit serveur ni client sur posts, messages, follows, likes, commentaires, stories, événements ; n'importe quel compte peut ouvrir un DM avec n'importe qui ; captcha non vérifiable ici ; aucune modération automatique ; aucune CGU, ni point de contact, ni notice & action, ni information au signalant/auteur (DSA).\nVerdict du domaine : MODÉRATION INSUFFISANTE POUR UN LANCEMENT PUBLIC. Les briques de base (signaler, bloquer) tiennent pour une beta privée à 5 comptes ; il n'existe aucun moyen opérationnel de traiter un signalement ni de retirer un contenu, et plusieurs frontières de blocage/anti-spam sont ouvertes côté serveur.",
+ "controles": [
+  {
+   "id": "MOD-C01",
+   "controle": "Signalement — cibles signalables (profil, post, commentaire, message, événement, story, bobine)",
+   "statut": "DÉFAILLANT",
+   "methode": "inspection code",
+   "preuve": "Signalables : profil (reportUser app-04:3340, appelé app-04:3027 menu ⋯ et app-09:1205 réglages de conversation), événement (reportEvent app-07:5563, bouton app-07:3896), commentaire (reportCommentEntry app-04:1526, feuille app-04:1396/1427). NON signalables : publication (reportPost app-04:3347 n'a AUCUN appelant — grep 'reportPost(' index.html js/*.js = définition seule ; openPostOptions app-04:9-27 ne propose que « Supprimer le post »), story (aucune occurrence de signalement dans le viewer app-08), message individuel (seul l'utilisateur est signalable), bobine. Fichier preuve : preuves/moderation/inventaire-code-moderation.txt"
+  },
+  {
+   "id": "MOD-C02",
+   "controle": "Signalement — motifs proposés au signalant",
+   "statut": "DÉFAILLANT",
+   "methode": "inspection code",
+   "preuve": "reason toujours vide : supaReport(\"user\", userId, \"\") app-04:3342 ; supaReport(\"post\", postId, \"\") app-04:3349 ; supaReport(\"comment\", commentId, \"\") app-04:1527 ; supaReport(\"event\", id, \"\") app-07:5565. Aucune feuille de motif, aucun texte libre. Colonne reports.reason existe (ref_cols.txt:31) mais n'est jamais renseignée."
+  },
+  {
+   "id": "MOD-C03",
+   "controle": "Signalement — anti-spam serveur (rate_limit_insert)",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": "migrations/migration_anti_flood_interactions.sql:98-121 : trigger BEFORE INSERT SECURITY DEFINER, force NEW.created_at = now() (anti-antidatage), compte les lignes du même utilisateur sur 1 minute, RAISE P0001 au-delà ; posé sur reports('reporter_id','10') l.137-139, comment_interactions 60/min l.129-131, event_reactions 30/min l.133-135. Présence en prod relevée par le domaine supabase-isolation (fonctions_realtime_storage_staging.md:17,20 : rate_limit sur comment_interactions/event_reactions/reports, EXECUTE révoqué). Le prosrc prod lui-même n'a pas été relu ici (connecteur interdit) : requête proposée dans notes."
+  },
+  {
+   "id": "MOD-C04",
+   "controle": "Signalement — qui LIT les signalements (policies SELECT reports, dashboard)",
+   "statut": "DÉFAILLANT",
+   "methode": "requête base",
+   "preuve": "policies.json (dump prod 2026-09-04) : table reports = UNE seule policy, reports_insert INSERT CHECK reporter_id = auth.uid()::text ; aucune SELECT/UPDATE/DELETE → seul service_role lit (preuves/moderation/policies-moderation-extrait.txt l.1). Dashboard : grep -rn \"from(\\\"reports\\\")|FROM reports\" dashboard/ (hors node_modules) = 0 fichier ; les seules occurrences de « report » sont qaReport/session report (dashboard/server/index.js:159,197). Le skill .claude/skills/moderation/SKILL.md:16-19 documente une lecture MANUELLE par execute_sql."
+  },
+  {
+   "id": "MOD-C05",
+   "controle": "Signalement — flux de traitement, file, SLA, journal des décisions",
+   "statut": "DÉFAILLANT",
+   "methode": "inspection code",
+   "preuve": "reports = id, reporter_id, target_type, target_id, reason, created_at (ref_cols.txt:31) : aucune colonne status/handled_by/decision/resolved_at ; aucune table moderation_actions ; aucune policy nommée admin/moderat (balayage des 125 policies) ; SKILL.md:19 « Il n'y a pas encore d'outil admin de suppression cross-compte → documenter le geste SQL nécessaire ». Aucun script scripts/*.js ni workflow ne lit reports."
+  },
+  {
+   "id": "MOD-C06",
+   "controle": "Signalement — notification au signalant et verdict d'écriture",
+   "statut": "DÉFAILLANT",
+   "methode": "inspection code",
+   "preuve": "supaReport (app-08:5383-5392) rend un booléen via _writeVerdict, mais les 4 appelants l'ignorent : reportUser app-04:3342-3344 toast « Signalement envoyé » inconditionnel ; reportPost 3349-3350 ; reportCommentEntry 1527-1528 ; reportEvent app-07:5565-5566. Visiteur sans compte (MY_UID null → reporter_id null → policy reporter_id = auth.uid() refuse) ou réseau coupé : même toast. Aucune notification ultérieure (aucune écriture dans notifications avec kind report)."
+  },
+  {
+   "id": "MOD-C07",
+   "controle": "Action sur le contenu signalé — rôle modérateur, masquage, suppression administrative",
+   "statut": "DÉFAILLANT",
+   "methode": "requête base",
+   "preuve": "Policies DELETE/UPDATE de posts, post_comments, stories, events, conv_messages, profiles = propriétaire uniquement (policies-moderation-extrait.txt : « Suppression propre », can_edit_post, « Update organisateurs »). Aucune fonction SQL de modération parmi les 20 fonctions maison (fonctions_realtime_storage_staging.md). Retrait d'un contenu = service_role (SQL Editor/psql) hors de toute application."
+  },
+  {
+   "id": "MOD-C08",
+   "controle": "Blocage — révoque l'accès à un compte privé (retrait d'abonné)",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": "supaBlockUser app-08:5340-5361 : INSERT blocks puis DELETE follows where following_id = MY_UID and follower_id = target, autorisé par la policy « Suppression cote suivi » (following_id = auth.uid()). post_is_visible/policy posts SELECT accorde l'accès via follows → l'accès tombe. Verrou réel blocage-acces.spec.js (1 cas) : BLOQUÉ ici (comptes réels), job « Suites production » vert au run CI 33861671142."
+  },
+  {
+   "id": "MOD-C09",
+   "controle": "Blocage — masquage fil / stories / commentaires / messages / notifications / appels",
+   "statut": "PROUVÉ",
+   "methode": "test exécuté",
+   "preuve": "PASSIO_PORT=8106 npx playwright test --project=local tests/e2e/stories-blocage.spec.js … --workers=1 → 4/4 verts (groupes de stories, bulle du rail, viewer n'ouvre rien, contrôle sans blocage) ; sortie preuves/moderation/tests-e2e-moderation.txt (11 passed, 3.2m, EXIT=0). Fil : allFeedPosts app-02:4590-4599 exclut par id entier ; commentaires app-04:554 ; conversations app-04:3411 ; réception realtime app-08:4849 ; chargement messages app-05:3128 ; notifications app-08:1869 ; appel entrant app-05:832 — 16 sites isBlocked (inventaire-code-moderation.txt). Masquage CLIENT uniquement (voir C12)."
+  },
+  {
+   "id": "MOD-C10",
+   "controle": "Blocage — IRL : événements d'un bloqué, RSVP commun, groupe d'événement",
+   "statut": "DÉFAILLANT",
+   "methode": "inspection code",
+   "preuve": "Aucun isBlocked dans le rendu/filtrage des événements : app-07 n'en contient que deux (4983 verdict de proposition IRL, 5879 suggestions de personnes) ; _filterIrlEvents ne consulte pas state.user.blocked. Policies : event_attendees INSERT CHECK user_id = auth.uid() seul ; event_comments INSERT author_id = auth.uid() seul ; events SELECT true → un bloqué peut RSVP, commenter et voir l'adresse des événements du bloqueur. Seul le groupe de conversation d'événement est protégé (can_join_event_conversation … AND NOT is_blocked_with(e.author_id), migration_ts_serveur_age_blocage.sql:229)."
+  },
+  {
+   "id": "MOD-C11",
+   "controle": "Blocage — DM : nouvelle conversation refusée, conversation existante",
+   "statut": "DÉFAILLANT",
+   "methode": "requête base",
+   "preuve": "Nouvelle conversation : conv_members INSERT « Ecriture propre » CHECK (is_conversation_creator(conv_id) OR …) AND NOT is_blocked_with(user_id) → ajouter un bloqué comme membre est refusé (conforme). Conversation EXISTANTE : conv_messages_insert_member CHECK from_id = auth.uid() AND is_conv_member(conv_id, auth.uid()) — aucune référence à blocks → le bloqué continue d'écrire ; masqué chez le bloqueur côté client seulement (app-08:4849, app-05:3128) et les lignes restent en base."
+  },
+  {
+   "id": "MOD-C12",
+   "controle": "Blocage — symétrie (le bloqué ne voit plus le bloqueur)",
+   "statut": "DÉFAILLANT",
+   "methode": "requête base",
+   "preuve": "blocks_select_own USING blocker_id = auth.uid() : le bloqué ne peut pas savoir qu'il l'est ; supaLoadBlocks app-08:5376 ne charge que mes blocages. Aucune policy SELECT de posts, stories, post_comments, events, event_attendees, event_comments, profiles ne référence blocks/is_blocked_with (balayage policies.json : seuls blocks_* et conv_members « Ecriture propre » les citent). Le bloqué voit donc tout le contenu public du bloqueur — comportement asymétrique, différent d'Instagram/Facebook."
+  },
+  {
+   "id": "MOD-C13",
+   "controle": "Blocage — déblocage (UI et verdict serveur)",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": "unblockUser app-04:3330-3338 ; supaUnblockUser app-08:5367-5373 lit le verdict (_writeVerdict avec select) ; entrées : menu ⋯ du profil visité (app-04:3029, vérifié par profil-visite-options ③ vert), réglages de conversation app-09:1200, liste « Comptes bloqués » index.html:425 → openBlockedList app-04:3372. Policy blocks_delete_own USING blocker_id = auth.uid()."
+  },
+  {
+   "id": "MOD-C14",
+   "controle": "Policies exactes de blocks",
+   "statut": "PROUVÉ",
+   "methode": "requête base",
+   "preuve": "Dump prod policies.json (domaine supabase-isolation, 2026-09-04) : blocks_insert_own INSERT CHECK blocker_id = auth.uid()::text ; blocks_select_own SELECT USING blocker_id = (SELECT auth.uid())::text ; blocks_delete_own DELETE USING blocker_id = auth.uid()::text ; rôle {public}. Fonctions is_blocked_with/irl_interaction_allowed SECURITY DEFINER, EXECUTE authenticated seul (migration_ts_serveur_age_blocage.sql:110-154 ; fonctions_realtime_storage_staging.md:10-11)."
+  },
+  {
+   "id": "MOD-C15",
+   "controle": "Blocage — contournement par re-follow sur compte privé",
+   "statut": "DÉFAILLANT",
+   "methode": "inspection code",
+   "preuve": "follows « Ecriture propre » INSERT CHECK follower_id = auth.uid()::text (aucune consultation de blocks) ; aucun mécanisme d'approbation d'abonnement (grep approve/followPending : seules les demandes de PASSION app-02:3785-3948) ; toggleFollowUser app-04:3284-3298 → supaFollowUser app-08:5301 insert direct ; la policy posts SELECT réaccorde l'accès dès qu'une ligne follows existe. La notification de suivi est masquée chez le bloqueur (app-08:1869 filtre isBlocked(n.fromId)). blocage-acces.spec.js (1 seul cas, l.30) n'éprouve pas le re-follow."
+  },
+  {
+   "id": "MOD-C16",
+   "controle": "Faux comptes — confirmation e-mail obligatoire",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": "CLAUDE.md § confirmation d'e-mail active depuis 2026-08-30, docs/CONFIRMATION_EMAIL.md, verrou tests/e2e/confirmation-email.spec.js (7) ; fait établi : 5 comptes auth, 5 confirmés. Non ré-exécuté ici."
+  },
+  {
+   "id": "MOD-C17",
+   "controle": "Faux comptes — captcha Supabase Auth (hCaptcha/Turnstile)",
+   "statut": "BLOQUÉ",
+   "methode": "non réalisé",
+   "preuve": "grep -rni captcha|turnstile js index.html supabase docs .github = 0 occurrence : aucun jeton captcha n'est passé à signUp/signInWithPassword (app-08), donc s'il était activé côté Supabase, l'inscription échouerait — indice fort qu'il est DÉSACTIVÉ. Vérification : Supabase Dashboard → Authentication → Attack Protection (Bot and Abuse Protection / Enable Captcha) — non lisible via execute_sql."
+  },
+  {
+   "id": "MOD-C18",
+   "controle": "Faux comptes — limite d'inscriptions par heure / rate limits Auth",
+   "statut": "BLOQUÉ",
+   "methode": "non réalisé",
+   "preuve": "Aucun paramètre Auth dans le dépôt (pas de supabase/config.toml, dossier supabase/ = functions seulement). Aucune gestion du code over_email_send_rate_limit / 429 côté client (grep vide dans app-08, first-run.js, docs SMTP). À lire : Supabase Dashboard → Authentication → Rate Limits (sign-ups, email sent per hour, token refresh). Le plafond Auth « 10 connexions absolues » (advisor) est une limite de pool, pas d'inscriptions."
+  },
+  {
+   "id": "MOD-C19",
+   "controle": "Spam — rate-limit serveur sur posts / conv_messages / follows / post_likes / post_comments / stories / events / notifications",
+   "statut": "DÉFAILLANT",
+   "methode": "requête base",
+   "preuve": "Triggers prod (fonctions_realtime_storage_staging.md:20) : rate_limit uniquement sur comment_interactions, event_reactions, reports ; « Aucun rate-limit sur notifications, conv_messages, posts, telemetry_events, client_errors ». migration_anti_flood_interactions.sql:129-139 confirme les 3 seules tables. Policies INSERT de posts/conv_messages/follows/post_likes/post_comments/stories/events = propriété seule, sans quota."
+  },
+  {
+   "id": "MOD-C20",
+   "controle": "Spam — détection de flood côté client",
+   "statut": "DÉFAILLANT",
+   "methode": "inspection code",
+   "preuve": "grep -n cooldown|antiflood|throttle|_lastSend|trop vite js/app-03*.js app-04 app-06 app-09 = 0 occurrence. Aucune temporisation entre deux envois de message, deux publications, deux follows."
+  },
+  {
+   "id": "MOD-C21",
+   "controle": "Comptes multiples par appareil",
+   "statut": "NON APPLICABLE",
+   "methode": "inspection code",
+   "preuve": "Aucune contrainte appareil↔compte n'existe ni n'est attendue (l'état local appartient au compte, CLAUDE.md 2026-09-02 ; doLogout/adopterCompteConnecte). Rien n'empêche N comptes par appareil : c'est un choix produit, pas un défaut ; l'anti-abus doit venir de C17/C18."
+  },
+  {
+   "id": "MOD-C22",
+   "controle": "Harcèlement — outils pour la victime (bloquer, signaler, restreindre, masquer, mots-clés, sourdine)",
+   "statut": "DÉFAILLANT",
+   "methode": "inspection code",
+   "preuve": "Existants : bloquer/débloquer, signaler profil/commentaire/événement, masquer un commentaire d'autrui en LOCAL seulement (_cmtAct 'hide' → deleteCommentEntry localOnly app-04:1425), archiver/supprimer une conversation (app-09:1190-1210). Absents : « restreindre », sourdine de conversation (grep mute/sourdine = 0), filtre de mots-clés, masquage de messages entrants, liste des bloqués accessible seulement via Paramètres (index.html:425)."
+  },
+  {
+   "id": "MOD-C23",
+   "controle": "Harcèlement — qui peut m'écrire, demandes de message",
+   "statut": "DÉFAILLANT",
+   "methode": "requête base",
+   "preuve": "conversations_insert_creator CHECK created_by = auth.uid() ; conv_members « Ecriture propre » : le créateur ajoute n'importe quel membre (is_conversation_creator) sauf blocage ; supaCreateConversation app-08:4500-4513 insère MY_UID puis withUserId sans autre condition. Aucun réglage « qui peut m'écrire », aucune boîte « demandes de message » (grep = 0). Tout compte confirmé peut ouvrir un DM avec tout autre compte, y compris un compte privé qu'il ne suit pas."
+  },
+  {
+   "id": "MOD-C24",
+   "controle": "Contenu sensible — modération automatique (nudité, violence, mots interdits)",
+   "statut": "DÉFAILLANT",
+   "methode": "inspection code",
+   "preuve": "grep badword|profan|nsfw|nudit|motsInterdits js/*.js = 0. Seul filtre automatique : Tenor contentfilter=medium sur les GIF (js/emoji-misc.js:49-50). Buckets Storage public=true sans filtre MIME (fait établi) : tout média d'un compte authentifié est servi publiquement sans contrôle."
+  },
+  {
+   "id": "MOD-C25",
+   "controle": "Âge — user_safety, majorité, mineurs",
+   "statut": "DÉFAILLANT",
+   "methode": "inspection code",
+   "preuve": "Auto-déclaration : onbValidateAge app-02:3179-3194 refuse <13 et pose isMinor (<18) CÔTÉ CLIENT ; skipToApp app-08:320 pose birthYear 1995 par défaut (compte « majeur » sans déclaration) ; declare_birth_year accepte librement la première valeur (fonctions_realtime_storage_staging.md:13) ; user_safety n'est consulté que par irl_interaction_allowed (migration_ts_serveur_age_blocage.sql:130-151), appelé uniquement par la proposition IRL (app-07:5050), lot sous drapeau passio_irl_proposal_v1 (irlProposalEnabled app-07:4937, « OFF par défaut » selon l'en-tête d'irl-trust-safety.spec.js). Aucune autre surface (DM, RSVP, adresse d'événement) ne distingue un mineur. first-run.js ne demande aucun âge (grep birth|naissance = 0) : l'entrée directe sans onboarding classique peut ne jamais passer par onbValidateAge (PLAUSIBLE, non tracé jusqu'au bout)."
+  },
+  {
+   "id": "MOD-C26",
+   "controle": "Outils de modération — inventaire réel (dashboard, scripts, SQL)",
+   "statut": "DÉFAILLANT",
+   "methode": "inspection code",
+   "preuve": "Réel : (a) skill /moderation = requête SELECT manuelle sur reports via connecteur + « documenter le geste SQL » ; (b) télémétrie block_user tracée (dashboard/server/traces.js:76) ; (c) corrélation de fichiers « moderation » (dashboard/server/correlate.js:30). Absent : file de modération, décisions, appel, bannissement (aucune colonne banned/suspended dans profiles, ref_cols.txt), suppression administrative, journal, purge des médias d'un contenu retiré."
+  },
+  {
+   "id": "MOD-C27",
+   "controle": "Obligations DSA / légales (point de contact, notice & action, information des parties, CGU)",
+   "statut": "DÉFAILLANT",
+   "methode": "inspection code",
+   "preuve": "Aucune CGU / charte / conditions dans index.html ni app-02 (grep 'conditions générales|CGU|charte' = 0) ; seule la politique de confidentialité (openPrivacyPolicy app-02, contact e-mail RGPD l.3144, mention CNIL). Aucun mécanisme de notification hors compte (un non-inscrit ne peut rien signaler : policy reporter_id = auth.uid()), aucune information au signalant ni à l'auteur d'un contenu retiré, aucun canal d'appel, aucun rapport de transparence. docs/ ne contient aucun document CGU/mentions légales (ls docs | grep -i cgu|legal|mention|dsa = vide)."
+  },
+  {
+   "id": "MOD-C28",
+   "controle": "Exécution des suites stories-blocage, profil-visite-options, profil-confidentialite-interface",
+   "statut": "PROUVÉ",
+   "methode": "test exécuté",
+   "preuve": "PASSIO_PORT=8106 npx playwright test --project=local tests/e2e/stories-blocage.spec.js tests/e2e/profil-visite-options.spec.js tests/e2e/profil-confidentialite-interface.spec.js --workers=1 --reporter=line → « 11 passed (3.2m) », EXIT=0 (preuves/moderation/tests-e2e-moderation.txt). Émulation Chromium, aucune écriture en base. Limite : profil-visite-options ④ ne mesure que le toast « Signalement envoyé », jamais l'écriture (cf. MOD-03)."
+  },
+  {
+   "id": "MOD-C29",
+   "controle": "Suite blocage-acces.spec.js (comptes réels)",
+   "statut": "BLOQUÉ",
+   "methode": "non réalisé",
+   "preuve": "Projet prod, exige SUPABASE_SERVICE_ROLE_KEY et écrit en base de production : interdit ici. Vert au run CI 33861671142 (job « Suites production (comptes réels) »). Un seul cas (l.30 « bloquer un abonné lui retire l'accès à un compte privé ») — le re-follow (MOD-04) n'est pas couvert."
+  },
+  {
+   "id": "MOD-C30",
+   "controle": "Suite irl-trust-safety.spec.js (garde IRL, blocage DM)",
+   "statut": "BLOQUÉ",
+   "methode": "non réalisé",
+   "preuve": "Hors de la liste demandée ; non exécutée pour rester dans le périmètre (suite locale, exécutable par l'orchestrateur : PASSIO_PORT=8106 npx playwright test --project=local tests/e2e/irl-trust-safety.spec.js --workers=1). Son en-tête précise que le lot est sous drapeau OFF par défaut."
+  },
+  {
+   "id": "MOD-C31",
+   "controle": "Suppression de compte — sort des blocages et signalements",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": "Client app-02:3104-3105 supprime blocks des deux côtés avant l'Edge delete-account ; l'Edge ne touche ni reports ni blocks (supabase/functions/delete-account/index.ts n'accède qu'au Storage content et au compte auth). Les signalements émis ou reçus par un compte supprimé subsistent (souhaitable pour la traçabilité, mais reporter_id devient orphelin — aucune FK)."
+  }
+ ],
+ "findings": [
+  {
+   "id": "MOD-01",
+   "priorite": "P0",
+   "titre": "Aucune chaîne de traitement des signalements ni moyen applicatif de retirer un contenu illicite",
+   "fonctionnalite": "Signalements / modération",
+   "attendu": "Un signalement est lu par une personne habilitée, tracé (statut, décision, date, auteur de la décision), et un contenu illicite peut être masqué ou supprimé par un modérateur, sans SQL manuel.",
+   "observe": "Table reports = 6 colonnes sans statut ; seule policy = INSERT ; aucune vue ni endpoint dans dashboard/ ; aucun rôle modérateur ; les DELETE/UPDATE de posts, commentaires, stories, événements, messages et profils sont réservés au propriétaire. Le skill /moderation prescrit une lecture manuelle par execute_sql et « documenter le geste SQL ». 2 signalements en base à ce jour, personne n'est notifié de leur arrivée.",
+   "reproduction": "1) Ouvrir le dashboard : aucun panneau Signalements (grep dashboard/ 'from(\"reports\")' = 0). 2) Lire policies.json : reports → reports_insert uniquement. 3) Chercher une fonction SQL de modération parmi les 20 fonctions maison : aucune.",
+   "preuve": "preuves/moderation/policies-moderation-extrait.txt l.1 ; supabase-isolation/ref_cols.txt:31 ; .claude/skills/moderation/SKILL.md:16-19 ; dashboard/server/index.js (aucune route reports) ; fonctions_realtime_storage_staging.md (20 fonctions, aucune de modération)",
+   "impact": "Utilisateur : un contenu abusif reste en ligne indéfiniment, la victime n'a aucun retour. Commercial : impossible de respecter un délai de retrait (DSA art. 16 notice & action, LCEN), responsabilité de l'hébergeur engagée dès la première notification non traitée ; bloquant pour tout lancement public.",
+   "visibilite_pilotage": "non — aucune vue ni métrique reports dans le Centre de pilotage ; seul block_user est un contrat de trace (traces.js:76)",
+   "detection_sentinelle": "non — la Sentinelle ne lit ni reports ni blocks (grep dashboard/server = 0)",
+   "correction": "(1) Migration : reports.status ('open','reviewing','actioned','dismissed'), handled_by, decision, resolved_at, + table moderation_actions (journal) ; (2) route serveur service_role dans dashboard/ (lecture SEULE côté SSE + actions signées par le propriétaire) : file par gravité, masquer/supprimer post-commentaire-story-événement-message, suspendre un compte (colonne profiles.suspended_until relue par les policies SELECT) ; (3) purge du média Storage associé ; (4) alerte Sentinelle « signalement > 24 h sans décision ».",
+   "risque_regression": "Moyen : nouvelles policies sur des tables très exposées (posts, profiles) → passer par authz-critical et une revue indépendante (AGENTS.md règle 9).",
+   "effort": "4 à 6 jours",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "MOD-02",
+   "priorite": "P1",
+   "titre": "Une publication, une story, une bobine ou un message ne peuvent pas être signalés",
+   "fonctionnalite": "Signalements — surfaces",
+   "attendu": "Tout contenu visible par un tiers (post, story, bobine, message, commentaire, événement, profil) porte une entrée « Signaler ».",
+   "observe": "reportPost (app-04:3347) n'a aucun appelant ; le menu ⋯ d'un post (openPostOptions app-04:9-27) ne propose que « Supprimer le post » ; aucun signalement dans le viewer de stories/bobines ; dans une conversation seul l'utilisateur est signalable (app-09:1205), pas le message.",
+   "reproduction": "grep -n 'reportPost(' index.html js/*.js → uniquement la définition. Ouvrir le fil, ⋯ sur un post d'autrui : pas de « Signaler ».",
+   "preuve": "preuves/moderation/inventaire-code-moderation.txt (§ Appelants de reportPost = aucun) ; js/app-04-comments-shop.js:9-27",
+   "impact": "Utilisateur : un post illicite (photo, texte) ne peut pas être remonté depuis l'endroit où il est vu. Commercial : le DSA exige un mécanisme de notification facile d'accès pour tout contenu ; les tests d'acceptation d'un store (Apple 1.2 UGC) exigent un signalement sur chaque contenu.",
+   "visibilite_pilotage": "non",
+   "detection_sentinelle": "non",
+   "correction": "Ajouter « Signaler » (avec motif) dans openPostOptions pour les posts d'autrui, dans le viewer de stories/bobines et sur l'appui long d'un message (target_type 'message' avec conv_id) ; brancher reportPost.",
+   "risque_regression": "Faible (UI additive) ; vérifier audit:handlers.",
+   "effort": "1 jour",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "MOD-03",
+   "priorite": "P1",
+   "titre": "Signalement sans motif, et « Signalement envoyé » affiché même quand rien n'est écrit",
+   "fonctionnalite": "Signalements — formulaire et verdict",
+   "attendu": "Le signalant choisit un motif (harcèlement, nudité, spam, haine, mineur…), peut ajouter un texte, et n'est confirmé que si l'INSERT a réussi ; sinon un message d'échec et une nouvelle tentative.",
+   "observe": "reason est toujours \"\" aux 4 appels ; supaReport rend un booléen ignoré par reportUser/reportPost/reportEvent/reportCommentEntry ; le toast de succès est inconditionnel. Cas concrets : visiteur sans compte (reporter_id null → policy refuse), réseau coupé, quota 10/min dépassé (P0001) → « Signalement envoyé » à l'écran, rien en base.",
+   "reproduction": "1) Mode invité (première visite) : ouvrir un profil, ⋯ → Signaler → toast « Signalement envoyé » alors que MY_UID est null. 2) Couper le réseau puis signaler : même toast. 3) Lire les 2 signalements existants : reason vide (requête dans notes).",
+   "preuve": "js/app-04-comments-shop.js:3340-3345, 3347-3350, 1526-1528 ; js/app-07-ia-explore-irl.js:5563-5566 ; js/app-08-ui-modals-tour.js:5383-5392 (retour booléen) ; tests/e2e/profil-visite-options.spec.js:80-92 ne mesure que le toast",
+   "impact": "Utilisateur : croit avoir alerté, personne ne reçoit rien ; sans motif, un modérateur ne peut pas prioriser. Commercial : notification DSA incomplète (le motif et l'explication sont requis), perte de confiance à la première plainte non suivie.",
+   "visibilite_pilotage": "non — supaReport n'appelle pas tel.flowStart, aucun contrat 'report' dans traces.js",
+   "detection_sentinelle": "non",
+   "correction": "Feuille de motifs (liste fermée + texte ≤ 500), garde requireAuthentication('signaler') en mode invité, lecture du verdict : toast d'échec + file locale de réessai, tel.flowStart('report_content') avec contrat dédié.",
+   "risque_regression": "Faible.",
+   "effort": "0,5 à 1 jour",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "MOD-04",
+   "priorite": "P1",
+   "titre": "Un bloqué peut se réabonner à un compte privé et retrouver l'accès aux publications — sans que la victime le voie",
+   "fonctionnalite": "Blocage — compte privé",
+   "attendu": "Après blocage, le bloqué ne peut plus s'abonner ; s'il le tente, l'INSERT follows est refusé et le bloqueur ne redevient jamais visible.",
+   "observe": "follows INSERT CHECK follower_id = auth.uid() seulement (aucune consultation de blocks) ; pas d'approbation d'abonnement ; le bloqué ignore qu'il l'est (blocks_select_own) et voit un bouton « Suivre » normal ; l'insert réussit et la policy posts SELECT réaccorde l'accès ; la notification « X te suit » est filtrée chez le bloqueur (app-08:1869), qui ne peut donc pas re-bloquer.",
+   "reproduction": "Comptes réels A (privé) et B : A bloque B (follows supprimé, accès perdu — cas couvert par blocage-acces.spec.js). Puis B ouvre le profil de A → « Suivre » → INSERT follows accepté → B relit les posts de A. Requête de contrôle : select * from follows where follower_id = B and following_id = A.",
+   "preuve": "policies-moderation-extrait.txt (follows « Ecriture propre » ; posts « Lecture respectant les comptes prives ») ; js/app-04-comments-shop.js:3284-3298 ; js/app-08-ui-modals-tour.js:5293-5305 ; js/app-08-ui-modals-tour.js:1869 ; tests/e2e/blocage-acces.spec.js:30 (un seul cas, re-follow non éprouvé)",
+   "impact": "Utilisateur : la protection la plus attendue d'un blocage (compte privé) est contournable en un tap, silencieusement. Commercial : promesse de sécurité fausse, scénario de harcèlement typique (ex-partenaire), risque réputationnel majeur au premier cas public.",
+   "visibilite_pilotage": "partiel — follow_user est tracé (traces.js:74) mais rien ne le corrèle à un blocage",
+   "detection_sentinelle": "non",
+   "correction": "Policy follows INSERT : AND NOT is_blocked_with(following_id) ; côté client, masquer « Suivre » quand is_blocked_with (RPC) ; ajouter un cas « re-follow refusé après blocage » à blocage-acces.spec.js ; envisager l'approbation d'abonnement pour les comptes privés (follow_requests).",
+   "risque_regression": "Faible à moyen (policy INSERT follows, exercée par parcours-suivre et multi-comptes) ; revue indépendante requise (RLS).",
+   "effort": "0,5 jour (policy + test) ; 2 à 3 jours avec demandes d'abonnement",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "MOD-05",
+   "priorite": "P2",
+   "titre": "Blocage asymétrique et client-only en lecture : le bloqué voit tout, RSVP et commente les événements du bloqueur, continue d'écrire dans un DM existant",
+   "fonctionnalite": "Blocage — frontière serveur",
+   "attendu": "Le blocage est une frontière serveur bidirectionnelle : contenu, événements, participants, commentaires et messages masqués dans les deux sens ; écriture refusée dans les DM existants ; RSVP impossible à l'événement de l'autre.",
+   "observe": "Aucune policy SELECT de posts/stories/post_comments/events/event_attendees/event_comments/profiles ne consulte blocks ; conv_messages INSERT ne vérifie pas is_blocked_with ; event_attendees et event_comments INSERT = propriété seule ; la liste des événements de Rencontrer n'est pas filtrée par isBlocked. Seules frontières serveur : conv_members INSERT et can_join_event_conversation.",
+   "reproduction": "A bloque B. B : ouvre Rencontrer → événement de A visible avec adresse → RSVP « J'y vais » accepté → apparaît dans la liste publique des participants de A ; B écrit dans l'ancienne conversation A–B → INSERT accepté (A ne le voit pas, la ligne existe). A : Rencontrer affiche toujours les événements de B.",
+   "preuve": "policies-moderation-extrait.txt (conv_messages_insert_member ; event_attendees « Ecriture propre » ; events « Lecture publique ») ; js/app-07-ia-explore-irl.js (isBlocked uniquement l.4983 et 5879) ; docs/PASSIO_IRL_TRUST_SAFETY_AUDIT_2026-08-20.md §5 (écart déjà identifié le 2026-08-20, toujours ouvert)",
+   "impact": "Utilisateur : une personne bloquée peut se présenter physiquement à l'activité de celui qui l'a bloquée (adresse publique). Commercial : risque de sécurité IRL, contradictoire avec la promesse « Rencontrer » ; l'audit T&S du 2026-08-20 en avait fait un P0 conditionnant l'IRL grand public.",
+   "visibilite_pilotage": "non",
+   "detection_sentinelle": "non",
+   "correction": "Étendre is_blocked_with aux policies : posts/stories/post_comments/event_comments SELECT (AND NOT is_blocked_with(author_id)), events SELECT, event_attendees INSERT (NOT is_blocked_with(organisateur)), conv_messages INSERT (aucun membre bloqué dans la conv) ; côté client filtrer les événements par isBlocked et masquer l'adresse.",
+   "risque_regression": "Moyen à élevé : 78 policies déjà en auth_rls_initplan, l'ajout d'un EXISTS sur blocks à chaque ligne pèse sur les SELECT publics (index blocks(blocker_id,blocked_id) obligatoire) ; suites prod à rejouer.",
+   "effort": "2 à 3 jours",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "MOD-06",
+   "priorite": "P1",
+   "titre": "Aucun rate-limit serveur ni client sur posts, messages, abonnements, likes, commentaires, stories, événements ; DM ouvert à tout compte vers tout compte",
+   "fonctionnalite": "Anti-spam / anti-flood",
+   "attendu": "Quotas serveur par utilisateur (ex. 20 posts/h, 60 messages/min, 100 follows/h, 30 conversations nouvelles/jour), réglage « qui peut m'écrire » (tout le monde / abonnements / personne) et boîte « demandes de message » pour les inconnus.",
+   "observe": "Triggers rate_limit posés sur 3 tables seulement (comment_interactions, event_reactions, reports) ; aucun garde client ; conversations_insert_creator + conv_members « Ecriture propre » permettent à tout compte confirmé d'ouvrir un DM avec n'importe qui ; aucun réglage de réception.",
+   "reproduction": "Compte confirmé + clé anon : boucle de 1 000 INSERT posts ou conv_messages via PostgREST → tous acceptés (non exécuté : interdit sur la prod). Vérifier par lecture : select tgname, tgrelid::regclass from pg_trigger where tgname='trg_rate_limit' → 3 lignes.",
+   "preuve": "migrations/migration_anti_flood_interactions.sql:129-139 ; fonctions_realtime_storage_staging.md:20 ; policies-moderation-extrait.txt (conversations_insert_creator, conv_members Ecriture propre) ; js/app-08-ui-modals-tour.js:4500-4513 ; grep flood client = 0",
+   "impact": "Utilisateur : un seul compte spam peut inonder le fil, les notifications et les boîtes de réception de tous les inscrits en quelques secondes. Commercial : coût Supabase (realtime broadcast par membre, notifications), désinstallation massive au premier raid, pas de levier immédiat hors SQL.",
+   "visibilite_pilotage": "partiel — le volume de posts/messages apparaît dans l'activité du pilotage, sans seuil ni alerte anti-spam",
+   "detection_sentinelle": "non — aucune règle de volume par utilisateur",
+   "correction": "Étendre trg_rate_limit (déjà générique) à posts, conv_messages, follows, post_likes, post_comments, stories, events, notifications, conversations avec quotas ; index (user, created_at) sur chacune ; côté client, temporisation et lecture de l'erreur P0001 (toast « Trop rapide ») ; réglage profiles.dm_policy relu par conv_members INSERT + boîte « demandes ».",
+   "risque_regression": "Moyen : les suites prod (multi-comptes, qa-campaign) écrivent en rafale — calibrer les quotas au-dessus de leur rythme ; created_at forcé à now() par le trigger (comportement voulu, mais posts/conv_messages sont en timestamp sans fuseau → vérifier supaTs).",
+   "effort": "1 à 2 jours (quotas) + 2 à 3 jours (qui peut m'écrire)",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "MOD-07",
+   "priorite": "P1",
+   "titre": "Protection contre les faux comptes non prouvée : captcha et limites d'inscription invérifiables ici, aucune trace dans le code",
+   "fonctionnalite": "Inscription — anti-bot",
+   "attendu": "Captcha (hCaptcha/Turnstile) activé sur signUp et signInWithPassword, limites d'inscriptions/heure et d'e-mails/heure connues et documentées, protection contre les mots de passe compromis activée.",
+   "observe": "Aucun jeton captcha transmis dans le code (grep = 0) — si le captcha était activé côté Supabase, l'inscription échouerait : il est donc très probablement désactivé ; aucune gestion du 429 / over_email_send_rate_limit côté client ; advisor : protection mots de passe compromis DÉSACTIVÉE (fait établi).",
+   "reproduction": "Supabase Dashboard → Authentication → Attack Protection et Rate Limits (lecture humaine). Côté code : grep -rni captcha js index.html = 0.",
+   "preuve": "inventaire-code-moderation.txt § Captcha ; CONTEXTE_AUDIT.md (advisor mots de passe compromis) ; absence de supabase/config.toml",
+   "impact": "Utilisateur : comptes de spam/bots créés en masse (l'e-mail de confirmation seul ne bloque pas un bot avec boîtes jetables). Commercial : quota SMTP Brevo consommé par des inscriptions frauduleuses, pollution du réseau dès l'ouverture.",
+   "visibilite_pilotage": "partiel — le nombre d'inscriptions est visible, sans détection de rafale",
+   "detection_sentinelle": "non",
+   "correction": "Activer Turnstile/hCaptcha dans Supabase Auth et passer captchaToken à signUp/signInWithPassword/resetPasswordForEmail (app-08) ; activer la protection mots de passe compromis ; documenter les rate limits Auth dans docs/SETUP_SMTP_AUTH.md ; gérer 429 côté client.",
+   "risque_regression": "Moyen : les comptes de test (compte-e2e.js via service_role) ne passent pas par signUp — OK ; mais confirmation-email.spec.js et first-run.spec.js exercent le formulaire → prévoir la clé de test Turnstile.",
+   "effort": "0,5 à 1 jour",
+   "confiance": "PLAUSIBLE"
+  },
+  {
+   "id": "MOD-08",
+   "priorite": "P2",
+   "titre": "Âge : auto-déclaration client, 1995 par défaut dans skipToApp, garde serveur limitée à un lot sous drapeau OFF",
+   "fonctionnalite": "Protection des mineurs",
+   "attendu": "Année de naissance obligatoire à l'inscription, refus <13 côté serveur, mineur (13-17) identifié partout où la rencontre réelle est proposée (DM avec inconnu, RSVP, adresse), aucun défaut « majeur ».",
+   "observe": "onbValidateAge refuse <13 et pose isMinor côté client uniquement ; skipToApp (app-08:320) pose birthYear 1995 si absent ; declare_birth_year accepte n'importe quelle première valeur ; user_safety n'est consulté que par irl_interaction_allowed, appelé par la proposition IRL, lot sous drapeau passio_irl_proposal_v1 (OFF par défaut) ; RSVP, adresse d'événement, DM ne regardent pas la minorité ; first-run.js ne demande aucun âge.",
+   "reproduction": "1) Console : skipToApp() → state.user.birthYear === 1995 sans saisie. 2) Compte créé via first-run : vérifier si onbValidateAge est atteint (à tracer). 3) RSVP à un événement avec isMinor=true : accepté (aucune garde dans submit RSVP).",
+   "preuve": "js/app-02-state-utils.js:3179-3194 ; js/app-08-ui-modals-tour.js:320 ; js/app-07-ia-explore-irl.js:4937-4967, 5015-5035, 5048-5050 ; migration_ts_serveur_age_blocage.sql:130-151 ; docs/PASSIO_IRL_TRUST_SAFETY_AUDIT_2026-08-20.md §8 (P0 T&S-5)",
+   "impact": "Utilisateur : un mineur peut être invité à une rencontre réelle par un inconnu via DM/RSVP sans aucune barrière. Commercial : exposition juridique majeure (protection des mineurs), condition explicite de l'audit T&S du 2026-08-20 non remplie.",
+   "visibilite_pilotage": "non (irl_proposal_guard tracé seulement quand le lot est actif)",
+   "detection_sentinelle": "non",
+   "correction": "Rendre l'année de naissance obligatoire dans le parcours first-run et à onbDoAuth (serveur : declare_birth_year à l'inscription, colonne user_safety NOT NULL pour les nouveaux comptes) ; supprimer le défaut 1995 hors démo ; appliquer irl_interaction_allowed aux DM avec inconnu et au RSVP ; masquer l'adresse aux mineurs.",
+   "risque_regression": "Moyen : onboarding et suites first-run (38), connexion-compte-existant (15).",
+   "effort": "2 à 3 jours",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "MOD-09",
+   "priorite": "P1",
+   "titre": "Obligations légales d'une plateforme UE non couvertes : aucune CGU, aucun point de contact, aucune notice & action, aucune information des parties",
+   "fonctionnalite": "Conformité DSA / LCEN",
+   "attendu": "CGU et règles de contenu acceptées à l'inscription ; point de contact unique publié ; mécanisme de notification accessible SANS compte ; accusé de réception, décision motivée et voie de recours pour le signalant et l'auteur ; conservation d'un journal.",
+   "observe": "Seule la politique de confidentialité existe (e-mail RGPD, CNIL) ; aucune CGU/charte dans index.html, app-02 ni docs/ ; signalement réservé aux comptes authentifiés ; aucune notification de décision ; aucune colonne de décision.",
+   "reproduction": "grep -rn -i 'conditions générales|CGU|charte' index.html js/app-02-state-utils.js → 0 ; ls docs | grep -i 'cgu|legal|mention|dsa' → vide.",
+   "preuve": "js/app-02-state-utils.js:3144 (seul contact) ; index.html:457 (seul lien légal) ; inventaire-code-moderation.txt dernière section",
+   "impact": "Commercial : impossibilité d'ouvrir au public dans l'UE en conformité (DSA art. 11-12, 16-17, 20 ; LCEN art. 6) ; blocage probable des stores (Apple 1.2 : CGU + signalement + blocage + contact) ; aucune base contractuelle pour suspendre un compte abusif.",
+   "visibilite_pilotage": "non",
+   "detection_sentinelle": "non",
+   "correction": "Rédiger CGU + règles de contenu (acceptation horodatée à l'inscription, colonne profiles.tos_accepted_at), page « Signaler un contenu » publique (Edge Function avec captcha écrivant dans reports avec reporter_id null autorisé pour ce canal), e-mails d'accusé de réception et de décision, journal moderation_actions, page point de contact.",
+   "risque_regression": "Faible (contenu et surfaces additives).",
+   "effort": "3 à 5 jours (hors rédaction juridique)",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "MOD-10",
+   "priorite": "P2",
+   "titre": "Aucune modération automatique du contenu ; médias publics sans filtre",
+   "fonctionnalite": "Contenu sensible",
+   "attendu": "Filtre de mots (haine, spam, coordonnées), classification nudité/violence sur les images et vidéos à l'upload, quarantaine avant publication pour les comptes neufs, seuil « N signalements → masquage automatique en attente ».",
+   "observe": "Aucun filtre textuel, aucune analyse média ; seul Tenor contentfilter=medium sur les GIF ; buckets content/attachments public=true sans filtre MIME (tout fichier ≤ 50 Mo est servi publiquement par URL).",
+   "reproduction": "Publier un post au texte injurieux ou une image quelconque : publié immédiatement, servi publiquement, aucun marquage.",
+   "preuve": "grep badword|nsfw|nudit js/*.js = 0 ; js/emoji-misc.js:49-50 ; CONTEXTE_AUDIT.md (buckets publics, aucun filtre MIME)",
+   "impact": "Utilisateur : exposition à des contenus choquants sans délai ; Commercial : stores et régulateur attendent au minimum une réponse « proactive et raisonnable » ; coût de modération humaine intégral.",
+   "visibilite_pilotage": "non",
+   "detection_sentinelle": "non",
+   "correction": "Liste de mots bloquants/alertants côté client + trigger serveur simple ; seuil de masquage automatique (3 signalements distincts → post.hidden relu par la policy SELECT) ; classification image via Edge Function (service tiers) pour les comptes < 7 jours ; filtre MIME sur les buckets.",
+   "risque_regression": "Faible à moyen (faux positifs du filtre de mots).",
+   "effort": "2 à 4 jours",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "MOD-11",
+   "priorite": "P2",
+   "titre": "Les signalements sont invisibles du Centre de pilotage et de la Sentinelle",
+   "fonctionnalite": "Pilotage — modération",
+   "attendu": "Compteur de signalements ouverts, âge du plus ancien, alerte au-delà d'un seuil, motif dominant, corrélation avec les blocages.",
+   "observe": "Aucun contrat de trace 'report' (seul block_user, traces.js:76) ; supaReport n'émet aucun événement de télémétrie ; aucune lecture de reports/blocks côté serveur dashboard ni Sentinelle.",
+   "reproduction": "grep -n 'report' dashboard/server/traces.js → seulement flow.reported (dédup) ; grep -rln 'blocks|user_safety' dashboard/server = vide.",
+   "preuve": "dashboard/server/traces.js:60-83 ; js/app-08-ui-modals-tour.js:5383-5392 (aucun tel.flowStart)",
+   "impact": "Le propriétaire ne saura pas qu'un signalement est arrivé ; aucune mesure du taux de signalement (KPI T&S §15 de l'audit du 2026-08-20).",
+   "visibilite_pilotage": "non",
+   "detection_sentinelle": "non",
+   "correction": "Contrat de trace report_content ; panneau « Signalements » (skill /dashboard-widget) alimenté par service_role en lecture ; règle Sentinelle « ≥ 1 signalement ouvert > 24 h » et « ≥ 3 signalements sur la même cible ».",
+   "risque_regression": "Faible.",
+   "effort": "1 jour",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "MOD-12",
+   "priorite": "P3",
+   "titre": "Outils de la victime limités : pas de restriction, de sourdine, de filtre de mots, masquage de commentaire local seulement",
+   "fonctionnalite": "Harcèlement — outils",
+   "attendu": "Restreindre (ses commentaires visibles de lui seul), mettre une conversation en sourdine, masquer des mots-clés dans commentaires et DM, liste des bloqués accessible depuis le profil.",
+   "observe": "« Masquer » un commentaire d'autrui = suppression locale (deleteCommentEntry localOnly, app-04:1425) qui revient à la prochaine hydratation ; aucune sourdine ; aucun filtre de mots ; « Comptes bloqués » uniquement dans le panneau Paramètres (index.html:425).",
+   "reproduction": "Fil → commentaire d'autrui → ⋯ → Masquer → recharger : le commentaire revient.",
+   "preuve": "js/app-04-comments-shop.js:1425 ; js/app-09-boot-pwa.js:1190-1210 ; index.html:425",
+   "impact": "Utilisateur : seule réponse au harcèlement léger = blocage total ; Commercial : écart avec les standards IG/FB attendus par les testeurs.",
+   "visibilite_pilotage": "non",
+   "detection_sentinelle": "non",
+   "correction": "Persister les masquages (table hidden_content), ajouter sourdine de conversation et filtre de mots-clés côté client.",
+   "risque_regression": "Faible.",
+   "effort": "2 jours",
+   "confiance": "CONFIRMÉ"
+  }
+ ],
+ "surfaces_saines": [
+  "Signalement de profil, d'événement et de commentaire : INSERT authentifié, non falsifiable (reporter_id = auth.uid()), horodatage serveur forcé, 10/min par signalant (reports_insert + trg_rate_limit) — surface mesurée par inspection et par le test profil-visite-options ④ (11/11 verts).",
+  "Blocage côté bloqueur : persisté cross-appareil (blocks_* owner-only), retrait d'abonné effectif sur compte privé (supaBlockUser app-08:5340-5361, policy « Suppression cote suivi »), doublon traité comme succès, déblocage avec verdict d'écriture ; verrou réel blocage-acces.spec.js vert au run CI 33861671142.",
+  "Masquage client des contenus bloqués sur 16 surfaces (fil par id entier, stories, commentaires, conversations, réception realtime, notifications, appels entrants) — stories-blocage.spec.js 4/4 verts ici.",
+  "Nouvelle conversation avec un compte bloqué refusée côté serveur (conv_members « Ecriture propre » … AND NOT is_blocked_with(user_id)) ; groupe d'événement refusé au bloqué (can_join_event_conversation) ; conv_messages INSERT exige l'appartenance (is_conv_member) — les écarts 5 et 6 de l'audit T&S du 2026-08-20 sont fermés.",
+  "is_blocked_with / irl_interaction_allowed : signature à un argument (auth.uid() implicite), SECURITY DEFINER, EXECUTE authenticated seul, aucun oracle entre tiers ; declare_birth_year non reculable (trigger user_safety_majorite_non_avancable).",
+  "Fonctions de modération non exposables : EXECUTE sur rate_limit_insert révoqué à PUBLIC/anon/authenticated (migration_security_hardening.sql:20).",
+  "Menu ⋯ du profil visité (Partager / Signaler / Bloquer-Débloquer) rendu au-dessus de la modale, entrées vérifiées par test (profil-visite-options ①-④ verts) ; confidentialité du profil (privé/public) exercée par profil-confidentialite-interface (3/3 verts)."
+ ],
+ "non_verifie": [
+  "Captcha Supabase Auth et rate limits d'inscription/e-mail : non lisibles par SQL ; il faut ouvrir Supabase Dashboard → Authentication → Attack Protection et Rate Limits (BLOQUÉ, MOD-C17/C18).",
+  "Contenu réel des 2 signalements en base (target_type, reason vide ?) et présence effective des 3 triggers trg_rate_limit / du prosrc prod de rate_limit_insert : connecteur interdit dans cette consigne — requêtes fournies dans notes pour l'orchestrateur.",
+  "blocage-acces.spec.js (comptes réels, projet prod) : non exécutée (règle 7) ; vert au run CI 33861671142 ; ne couvre pas le re-follow (MOD-04).",
+  "irl-trust-safety.spec.js : non exécutée (hors liste) ; commande fournie (MOD-C30).",
+  "Reproduction en base des contournements MOD-04/05/06 (re-follow, RSVP d'un bloqué, flood) : exigerait des écritures sur la production → interdit ; conclusions fondées sur les policies exactes et le code (CONFIRMÉ par lecture).",
+  "Parcours first-run → inscription sans étape d'âge : câblage non tracé jusqu'au bout (PLAUSIBLE dans MOD-08) ; à éprouver par un test local qui crée un compte via la première visite et lit state.user.birthYear.",
+  "Aucun appareil réel, aucun autre navigateur que Chromium (émulation)."
+ ],
+ "anciens_rapports": [
+  ".claude/skills/moderation/SKILL.md:11 « reports (insert ouvert, lecture admin) » → partiellement fausse : l'INSERT est authentifié (reporter_id = auth.uid()) et il n'existe AUCUNE lecture « admin » (aucune policy SELECT, aucun rôle) — seul service_role.",
+  ".claude/skills/moderation/SKILL.md:12 « UI : blockUser/unblockUser/reportUser/reportPost/reportEvent/reportCdvLive, openBlockedList() » → partiellement fausse : reportCdvLive n'existe plus (retrait CDV, ADR-011) et reportPost n'a aucun appelant (grep) ; les autres existent.",
+  ".claude/skills/moderation/SKILL.md:12 « Supprimé au delete-account (RGPD) » → vraie pour blocks (client app-02:3104-3105), fausse pour reports (ni client ni Edge ne les purgent — souhaitable pour la traçabilité).",
+  ".claude/skills/moderation/SKILL.md:25 « anti-flood déjà en place côté serveur — vérifier qu'il couvre posts/commentaires/messages » → vérifié : il ne couvre NI posts, NI post_comments, NI conv_messages (3 tables seulement).",
+  "docs/PASSIO_IRL_TRUST_SAFETY_AUDIT_2026-08-20.md §1 écart 4 « le blocage n'est pas encore une barrière serveur générale » → toujours vraie sauf conv_members INSERT et groupe d'événement (MOD-05).",
+  "docs/PASSIO_IRL_TRUST_SAFETY_AUDIT_2026-08-20.md §1 écart 5 « conv_messages vérifie l'auteur mais pas l'appartenance » → désormais fausse : conv_messages_insert_member exige is_conv_member (policies.json).",
+  "docs/PASSIO_IRL_TRUST_SAFETY_AUDIT_2026-08-20.md §1 écart 6 « conversations possède des policies INSERT permissives check true » → désormais fausse : conversations_insert_creator CHECK created_by = auth.uid().",
+  "docs/PASSIO_IRL_TRUST_SAFETY_AUDIT_2026-08-20.md §1 écarts 1-2 « events et event_attendees publiquement lisibles avec adresse, identités, RSVP » → toujours vraies (events « Lecture publique »/« Read events » USING true ; event_attendees « Lecture publique » USING true).",
+  "docs/PASSIO_IRL_TRUST_SAFETY_AUDIT_2026-08-20.md §1 écart 8 « aucun garde IRL serveur 13-17 ans » → partiellement fausse : irl_interaction_allowed exige la majorité des deux comptes, mais n'est appelée que par la proposition IRL sous drapeau OFF ; RSVP/DM/adresse restent sans garde (MOD-08).",
+  "docs/PASSIO_IRL_TRUST_SAFETY_AUDIT_2026-08-20.md §2.4 « reports_insert impose reporter_id = auth.uid() » → toujours vraie (policies.json).",
+  "PASSIO_FUNCTIONAL_MAP.md:54 « Bloquer retire l'accès (compte privé) — blocage-acces.spec.js cross-compte, mutation-testé » → vraie (CI verte), mais le verrou n'a qu'un cas et le re-follow le contourne (MOD-04).",
+  "CLAUDE.md « Un UPDATE/DELETE qui touche 0 ligne = RLS manquante ; toujours lire { error } » → appliqué à supaUnblockUser et supaReport (verdict), mais le verdict de supaReport est ignoré par ses 4 appelants (MOD-03).",
+  "docs/CHECKLIST_COMMERCIALISATION.md : aucune case relative à la modération, aux signalements, au captcha ou au DSA (grep = 0) → la checklist ne couvre pas ce domaine ; à compléter."
+ ],
+ "preuves_fichiers": [
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/moderation/tests-e2e-moderation.txt",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/moderation/policies-moderation-extrait.txt",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/moderation/inventaire-code-moderation.txt",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/moderation/e2e-3-suites.txt",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/moderation/test-results/"
+ ],
+ "notes": "VERDICT : modération INSUFFISANTE pour un lancement public. Suffisante pour la beta privée actuelle (5 comptes, code d'accès) à condition que le propriétaire relève la table reports à la main chaque jour.\n\nOrdre de traitement recommandé : MOD-01 (file + retrait administratif) → MOD-04 (policy follows, 0,5 j, gain immédiat) → MOD-06 (quotas via le trigger générique existant) → MOD-03 + MOD-02 (motifs, verdict, signaler un post) → MOD-09 (CGU, contact, notice & action) → MOD-07 (captcha) → MOD-05 (blocage serveur bidirectionnel, coûteux en RLS) → MOD-08 (âge) → MOD-10/11/12.\n\nConserver : trg_rate_limit générique (réutilisable tel quel), is_blocked_with (déjà la bonne primitive, il suffit de l'appeler depuis plus de policies), _writeVerdict, le composant _profileDotsOpen, blocage-acces.spec.js.\nRefactoriser : les 4 appelants de supaReport (motif + verdict + télémétrie) ; isBlocked reste un cache client, ne jamais y voir une garde.\nÀ soumettre à Benjamin : (a) politique « qui peut m'écrire » (par défaut : tout le monde ? abonnements réciproques ?) ; (b) mineurs : accès IRL 13-17 (l'audit T&S recommandait « pas de CTA IRL pour un mineur au premier lancement ») ; (c) budget de modération humaine (qui traite les signalements, sous quel délai — un SLA 24 h est le minimum attendu) ; (d) rédaction juridique CGU/DSA (point de contact, rapport de transparence annuel si > seuils).\n\nÉcart de SHA : HEAD de la branche d'audit = f501fb78 (c8cb8e99 + 2 commits ne touchant que .passio/audits/) ; le code audité est strictement celui de c8cb8e99 (git diff --stat : 3 fichiers de documentation d'audit).\nCapacité non prouvée : tenue de reports et de blocks sous charge (aucune mesure, index idx_rep_user_created présent selon la migration).\ngit status --short à la fin : vide (aucun fichier suivi modifié).\n\nRequêtes à exécuter par l'orchestrateur (lecture seule, même appel pour SET LOCAL si utilisé) :\n1) select proname, prosecdef, prosrc from pg_proc where proname in ('rate_limit_insert','is_blocked_with','irl_interaction_allowed','can_join_event_conversation') and pronamespace='public'::regnamespace;\n2) select tgname, tgrelid::regclass, tgargs from pg_trigger where tgname='trg_rate_limit' and not tgisinternal;  -- attendu : 3 lignes\n3) select target_type, count(*), sum((coalesce(reason,'')='')::int) as sans_motif, min(created_at), max(created_at) from reports group by 1;  -- ne pas recopier reporter_id/target_id\n4) select count(*) as majeurs from user_safety where majority_at <= current_date; select count(*) from user_safety;\n5) select count(*) from blocks;  -- attendu 0\n6) select policyname, cmd from pg_policies where tablename='follows';  -- attendu : aucune référence à blocks\nHors SQL : Supabase Dashboard → Authentication → Attack Protection (captcha, leaked password) et Rate Limits (sign-ups/hour, emails/hour) — capturer et joindre."
+}
