@@ -3023,11 +3023,11 @@ async function openUserProfile(authorId, source) {
 function openVisitedProfileMenu(ev, authorId, name) {
   var bloque = (typeof isBlocked === "function") && isBlocked(authorId);
   _profileDotsOpen(ev, [
-    { icon: "🔗", label: "Partager le profil", run: function () { shareUserProfile(authorId, name); }, sep: true },
-    { icon: "🚩", label: "Signaler", run: function () { reportUser(authorId, name); } },
+    { label: "Partager le profil", run: function () { shareUserProfile(authorId, name); }, sep: true },
+    { label: "Signaler", run: function () { reportUser(authorId, name); } },
     bloque
-      ? { icon: "✅", label: "Débloquer", run: function () { unblockUser(authorId, name); closeModal(); } }
-      : { icon: "🚫", label: "Bloquer", danger: true, run: function () { blockUser(authorId, name); } }
+      ? { label: "Débloquer", run: function () { unblockUser(authorId, name); closeModal(); } }
+      : { label: "Bloquer", danger: true, run: function () { blockUser(authorId, name); } }
   ]);
 }
 

@@ -100,8 +100,13 @@ test.describe("UI-8 — un profil personnel, plusieurs passions", () => {
     await ouvrirProfil(page);
 
     await expect(page.locator("#mainProfileUsername")).toBeVisible();
-    await expect(page.locator("#screen-profiles .main-profile-stat").nth(1)).toBeVisible(); // abonnés
-    await expect(page.locator("#screen-profiles .main-profile-stat").nth(2)).toBeVisible(); // abonnements
+    // ⚠️ 2026-09-04 : la rangée compte QUATRE statistiques depuis l'ajout du
+    // compteur « passions », posé ENTRE abonnés et abonnements. On vise les
+    // libellés plutôt que des rangs, qu'un futur ajout décalerait en silence.
+    const stats = page.locator("#screen-profiles .main-profile-stat");
+    await expect(stats.filter({ hasText: "abonnés" })).toBeVisible();
+    await expect(stats.filter({ hasText: "passions" })).toBeVisible();
+    await expect(stats.filter({ hasText: "abonnements" })).toBeVisible();
     await expect(page.locator("#v6bModifier")).toBeVisible();
 
     // ⚠️ La ligne « Passion active : X · Changer » a été RETIRÉE (ADR-011 §2) :
@@ -154,19 +159,28 @@ test.describe("UI-8 — un profil personnel, plusieurs passions", () => {
     await expect(page.locator("#nouveauProfilLien")).toBeVisible();
     await expect(page.locator("#nouveauProfilLien")).toHaveAttribute("aria-label", "Ajouter une passion");
 
-    // Chaque carte porte son décompte, et INDIQUE la passion que le Studio
-    // présélectionnera. ⚠️ Elle ne l'OFFRE plus comme un choix : « Publier dans
-    // celle-ci » a été retiré (ADR-011 §4), le Studio est le seul point de choix.
-    await expect(page.locator('[data-v8-active="v8_moto"]')).toHaveText(/Passion du Studio/);
+    // Chaque carte porte son décompte — et RIEN D'AUTRE ne les distingue.
+    // ⚠️ 2026-09-03 : plus aucune carte n'INDIQUE la passion que le Studio
+    // présélectionnera. Il n'existe aucune passion principale, favorite ou
+    // prioritaire ; la passion d'une publication se choisit AU STUDIO, au
+    // moment de publier. La pastille « Passion du Studio ✓ » (`.v8-state`) et
+    // le liseré d'élection (`.is-active`) sont partis avec cette règle.
+    await expect(page.locator("#profileList .v8-state")).toHaveCount(0);
+    await expect(page.locator("#profileList [data-v8-active]")).toHaveCount(0);
+    await expect(page.locator("#profileList .v8-passion-card.is-active")).toHaveCount(0);
     await expect(page.locator('[data-v8-utiliser="v8_pod"]')).toHaveCount(0);
     await expect(page.locator('[data-v8-card="v8_moto"] .v8-card-meta')).toContainText("1 publication");
   });
 
-  // ── ③ Le choix d'écriture, depuis le Studio, se reflète sur les cartes ────
-  test("changer de passion dans le Studio déplace le marqueur des cartes", async ({ page }) => {
-    // ⚠️ RÉÉCRIT SUR LE NOUVEAU CHEMIN. Le bouton « Publier dans celle-ci » a
-    // été retiré des cartes ; ce que ce cas prouvait — que l'identité d'écriture
-    // change réellement et que l'affichage suit — reste vérifié.
+  // ── ③ Le choix d'écriture vit au Studio, et NE MARQUE AUCUNE CARTE ────────
+  // ⚠️ RÉÉCRIT DEUX FOIS, ET C'EST LE MÊME MOUVEMENT. Le bouton « Publier dans
+  // celle-ci » a d'abord quitté les cartes (ADR-011 §4) en y laissant une
+  // pastille d'INFORMATION, « Passion du Studio ✓ ». Le 2026-09-03 la pastille
+  // part à son tour : elle donnait à une passion l'allure d'une principale sur
+  // une page dont la règle produit est que toutes ont exactement la même
+  // importance. Ce que ce cas prouve n'a pas changé — l'identité d'écriture
+  // change réellement au Studio — mais la page, elle, ne le raconte plus.
+  test("changer de passion dans le Studio ne distingue AUCUNE carte", async ({ page }) => {
     await boot(page);
     await poserTroisPassions(page);
     await page.evaluate(() => goTo("studio"));
@@ -179,8 +193,17 @@ test.describe("UI-8 — un profil personnel, plusieurs passions", () => {
     await page.waitForFunction(() => state.user.currentProfileId === "v8_yoga", null, { timeout: 5000 });
 
     await ouvrirProfil(page, "apropos");
-    await expect(page.locator('[data-v8-active="v8_yoga"]')).toHaveCount(1);
-    await expect(page.locator('[data-v8-active="v8_moto"]')).toHaveCount(0);
+    // Le moteur a bien basculé…
+    expect(await page.evaluate(() => state.user.currentProfileId)).toBe("v8_yoga");
+    // … et l'écran n'en dit rien : trois cartes, la même forme pour les trois.
+    const formes = await page.evaluate(() =>
+      [...document.querySelectorAll("#profileList .v8-passion-card")].map((c) => ({
+        classes: c.className,
+        blocs: [...c.children].map((n) => n.className || n.tagName.toLowerCase()).join("|"),
+      })));
+    expect(formes.length).toBe(3);
+    expect(new Set(formes.map((f) => f.classes)).size, "une carte se distingue par sa classe").toBe(1);
+    expect(new Set(formes.map((f) => f.blocs)).size, "une carte porte un bloc que les autres n'ont pas").toBe(1);
   });
 
   test("le reste de la carte ouvre l'édition existante de la passion", async ({ page }) => {
@@ -384,6 +407,11 @@ test.describe("UI-8 — un profil personnel, plusieurs passions", () => {
       state.user.profiles.find((p) => p.id === "v8_yoga").archived)).toBe(true);
 
     // Et ses publications restent visibles dans « Toutes ».
+    // ⚠️ ON REFERME LA PAGE D'ABORD (2026-09-03) : « Mes passions » est une page
+    // qui masque le reste du profil, onglets UI-7 compris. Cliquer un onglet
+    // pendant qu'elle est ouverte attendait un nœud qui ne sera jamais peint.
+    await page.evaluate(() => closePassionManager());
+    await page.waitForTimeout(250);
     await page.locator('[data-v7-tab="publications"]').click();
     await page.waitForTimeout(300);
     await expect(page.locator("#myPosts")).toContainText("Salutation au soleil");
@@ -391,18 +419,15 @@ test.describe("UI-8 — un profil personnel, plusieurs passions", () => {
     await expect(page.locator('#v9ProfilePassions [data-passion-tile="v8_yoga"]')).toHaveCount(0);
 
     // Restauration.
+    // ⚠️ LE CHEMIN A CHANGÉ LE 2026-09-03, ET IL N'EN RESTE QU'UN. Ce cas
+    // passait par le lien « Passions archivées (N) » de `#profilesQuotaSub`,
+    // qui ouvrait une MODALE. La page « Mes passions » remplace ce lien par une
+    // section repliable, en clair, sous les cartes — et `openArchivedPassions`
+    // a été retirée avec sa dernière porte. On clique donc la ligne là où elle
+    // vit vraiment.
     await page.evaluate(() => openPassionManager());
     await page.waitForTimeout(300);
-    await page.locator("[data-v8-archivees]").click();
-    await page.waitForTimeout(300);
-    // ⚠️ SÉLECTEUR BORNÉ À LA MODALE depuis le 2026-09-02 : la liste des
-    // archives est aussi écrite EN CLAIR dans `#passionArchiveBox` (le lien
-    // seul, dans un panneau masqué, faisait passer une passion rangée pour une
-    // passion perdue). Les deux surfaces partagent le même constructeur de
-    // ligne, donc le même `data-v8-restaurer` — ce test-ci exerce le chemin de
-    // la MODALE, il le dit maintenant. Le chemin du panneau a son propre verrou
-    // dans `passions-archive-quota.spec.js`.
-    await page.locator('#modalContent [data-v8-restaurer="v8_yoga"]').click();
+    await page.locator('#passionArchiveBox [data-v8-restaurer="v8_yoga"]').click();
     await page.waitForTimeout(500);
     await expect(page.locator("#profileList .v8-passion-card")).toHaveCount(3);
     expect(await page.evaluate(() =>
@@ -668,16 +693,25 @@ test.describe("UI-8 — un profil personnel, plusieurs passions", () => {
       // ayant rejoint le Studio (§3). L'intention du test est conservée sur les
       // deux surfaces qui les remplacent : la bulle du rail de passions (le
       // geste de filtrage, §1) et la carte entière (le geste d'édition).
-      const h = await page.evaluate(() => {
-        const b = document.querySelector("[data-v8-card]");
+      // ⚠️ DEUX MESURES, DEUX SURFACES — depuis le 2026-09-03 elles ne sont
+      // jamais peintes en même temps. La boucle ci-dessus finit sur « apropos »,
+      // donc sur la page « Mes passions » ouverte : elle masque le rail du
+      // profil, et la bulle rendait une hauteur de 0. On referme pour mesurer le
+      // rail, on rouvre pour mesurer la carte.
+      await page.evaluate(() => closePassionManager());
+      await page.waitForTimeout(250);
+      const bulle = await page.evaluate(() => {
         const c = document.querySelector("#v9ProfilePassions [data-passion-tile]");
-        return {
-          carte: b ? Math.round(b.getBoundingClientRect().height) : 0,
-          bulle: c ? Math.round(c.getBoundingClientRect().height) : 0,
-        };
+        return c ? Math.round(c.getBoundingClientRect().height) : 0;
       });
-      expect(h.carte).toBeGreaterThanOrEqual(40);
-      expect(h.bulle).toBeGreaterThanOrEqual(40);
+      await page.evaluate(() => openPassionManager());
+      await page.waitForTimeout(250);
+      const carte = await page.evaluate(() => {
+        const b = document.querySelector("[data-v8-card]");
+        return b ? Math.round(b.getBoundingClientRect().height) : 0;
+      });
+      expect(carte, "cible tactile d'une carte de passion").toBeGreaterThanOrEqual(40);
+      expect(bulle, "cible tactile d'une bulle du rail").toBeGreaterThanOrEqual(40);
       expect(errors.js, "exceptions JS").toEqual([]);
     });
   }

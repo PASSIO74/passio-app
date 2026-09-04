@@ -62,12 +62,23 @@ async function ouvrirProfil(page) {
   });
   await page.evaluate(() => renderProfilesScreen());
   await page.waitForTimeout(250);
-  // ⚠️ LA PORTE CHANGE, LES ASSERTIONS NON — pour la deuxième fois. Le lot UI-7
-  // avait déplacé les cartes de passion dans l'onglet « À propos » ; la refonte
-  // multi-passion (ADR-011 §2) retire cet onglet et range ces cartes dans le
-  // panneau `#passionManager`, ouvert à la demande. On ouvre ce panneau plutôt
-  // que de retirer des attentes. `openPassionManager` existe quel que soit
-  // l'état du drapeau UI-8, donc ce chemin vaut aussi sous kill switch.
+}
+
+// ⚠️ LA PORTE CHANGE, LES ASSERTIONS NON — pour la TROISIÈME fois, et cette
+// fois le helper a dû se scinder. Le lot UI-7 avait déplacé les cartes de
+// passion dans l'onglet « À propos » ; la refonte multi-passion (ADR-011 §2)
+// retire cet onglet et range ces cartes dans `#passionManager` — que
+// `ouvrirProfil` ouvrait donc au passage, pour tout le monde.
+//
+// Depuis le 2026-09-03 `#passionManager` est une PAGE : l'ouvrir MASQUE le
+// reste du profil (carte d'identité, crayon UI-6B, onglets UI-7, rail). Un
+// helper qui l'ouvrait pour tous rendait invisibles les nœuds que la moitié de
+// ce fichier mesure — sept cas au rouge, tous sur `#v6bModifier`. Les deux
+// gestes sont désormais distincts : on regarde le PROFIL, ou on ouvre la PAGE.
+// `openPassionManager` existe quel que soit l'état du drapeau UI-8, donc ce
+// chemin vaut aussi sous kill switch.
+async function ouvrirPagePassions(page) {
+  await ouvrirProfil(page);
   await page.evaluate(() => {
     if (typeof openPassionManager === "function") openPassionManager();
   });
@@ -123,14 +134,18 @@ test.describe("UI-6B — Profil et multi-profils", () => {
     expect(await page.evaluate(() => typeof openMyPostsTab === "function")).toBe(true);
 
     // Le titre du §11. ⚠️ Le renommage que faisait UI-6B a été RETIRÉ le
-    // 2026-09-03 : le markup dit « Gérer mes passions » de lui-même, et
-    // `#nouveauProfilLien` est devenu la BULLE « + » descendue du rail. Une
-    // réécriture par `textContent` aurait détruit ses deux enfants ; ce cas
+    // 2026-09-03 : le markup titre la page « Mes passions » de lui-même, et
+    // `#nouveauProfilLien` est devenu la RANGÉE d'ajout de cette page. Une
+    // réécriture par `textContent` aurait détruit ses enfants ; ce cas
     // vérifie donc le résultat À L'ÉCRAN, qui est ce qu'il a toujours voulu dire.
+    // ⚠️ ET IL FAUT L'OUVRIR POUR LE LIRE : la page masque le reste du profil,
+    // donc tout ce qui précède se mesure AVANT, et elle passe en dernier.
+    await page.evaluate(() => openPassionManager());
+    await page.waitForTimeout(250);
     await expect(page.locator("#nouveauProfilLien")).toHaveAttribute("aria-label", "Ajouter une passion");
-    await expect(page.locator("#nouveauProfilLien .profile-tile-label")).toHaveText("Ajouter");
+    await expect(page.locator("#nouveauProfilLien .passion-manager-porte-titre")).toHaveText("Ajouter une passion");
     expect(await page.evaluate(() =>
-      document.getElementById("passionManagerTitre").textContent)).toContain("Gérer mes passions");
+      document.getElementById("passionManagerTitre").textContent.trim())).toBe("Mes passions");
 
     expect(errors.js, "exceptions JS").toEqual([]);
   });
@@ -150,10 +165,45 @@ test.describe("UI-6B — Profil et multi-profils", () => {
     await expect(menu).toContainText("Apparence");
   });
 
-  test("« Mes passions » : une identité Actif, l'autre Activer", async ({ page }) => {
+  // ⚠️ RETRAIT DES EMOJIS DÉCORATIFS DU MENU ⋯ (Benjamin, 2026-09-03) : « garde
+  // seulement les textes ». Le verrou mesure les DEUX moitiés du défaut
+  // possible, parce qu'elles se rattrapent l'une l'autre :
+  //   ① plus aucun caractère hors du latin/ponctuation dans les libellés — un
+  //      `icon: "✏️"` réintroduit tomberait ici ;
+  //   ② plus aucun `<span class="profile-dots-ico">` — car `_profileDotsOpen`
+  //      rendait la colonne d'icônes MÊME VIDE : 20 px de largeur plus les
+  //      10 px de `gap` de `.profile-dots-item`, et les entrées restaient
+  //      décalées de 30 px derrière du blanc. Le seul contrôle ① serait resté
+  //      vert sur cette moitié-là.
+  test("le menu ⋯ ne porte plus d'emoji : le texte seul, sans colonne d'icônes", async ({ page }) => {
     await boot(page);
     await poserDeuxProfils(page);
     await ouvrirProfil(page);
+
+    await page.locator("#v6bModifier").click();
+    await expect(page.locator(".profile-dots-menu")).toBeVisible();
+
+    const vu = await page.evaluate(() => {
+      const items = Array.from(document.querySelectorAll("#profileDotsMenu .profile-dots-item"));
+      return {
+        nb: items.length,
+        icones: document.querySelectorAll("#profileDotsMenu .profile-dots-ico").length,
+        // Ce qui n'est ni lettre latine, ni chiffre, ni ponctuation courante.
+        exotiques: items
+          .map((b) => (b.textContent || "").replace(/[\p{Script=Latin}\p{Nd}\s'’«».,:;!?()\[\]&+\-—–…/]/gu, ""))
+          .filter((reste) => reste.length > 0),
+      };
+    });
+
+    expect(vu.nb, "les cinq entrées sont toujours là").toBe(5);
+    expect(vu.exotiques, "aucun emoji dans les libellés du menu").toEqual([]);
+    expect(vu.icones, "et aucune colonne d'icônes, même vide").toBe(0);
+  });
+
+  test("« Mes passions » : une identité Actif, l'autre Activer", async ({ page }) => {
+    await boot(page);
+    await poserDeuxProfils(page);
+    await ouvrirPagePassions(page);
 
     await expect(page.locator("#profileList .profile-card")).toHaveCount(2);
     await expect(page.locator("#profileList .v6b-actif")).toHaveCount(1);
@@ -164,7 +214,7 @@ test.describe("UI-6B — Profil et multi-profils", () => {
   test("LE contrôle : « Activer » change l'identité active, et le confirme", async ({ page }) => {
     await boot(page);
     await poserDeuxProfils(page);
-    await ouvrirProfil(page);
+    await ouvrirPagePassions(page);
 
     const avant = await page.evaluate(() => state.user.currentProfileId);
     expect(avant).not.toBe("v6b_p2");
@@ -185,7 +235,7 @@ test.describe("UI-6B — Profil et multi-profils", () => {
   test("activer ne bascule PAS le filtre de contenu de la carte", async ({ page }) => {
     await boot(page);
     await poserDeuxProfils(page);
-    await ouvrirProfil(page);
+    await ouvrirPagePassions(page);
 
     const avant = await page.evaluate(() => [...(window.profilesFilterSelection || [])]);
     await page.locator('[data-v6b-activer="v6b_p2"]').click();
@@ -197,7 +247,7 @@ test.describe("UI-6B — Profil et multi-profils", () => {
   test("les boutons survivent au rendu déclenché par leur propre clic", async ({ page }) => {
     await boot(page);
     await poserDeuxProfils(page);
-    await ouvrirProfil(page);
+    await ouvrirPagePassions(page);
 
     // `switchToProfile` rappelle `renderProfilesScreen`, qui réécrit
     // #profileList EN ENTIER : un bouton posé une seule fois disparaîtrait.
@@ -223,14 +273,20 @@ test.describe("UI-6B — Profil et multi-profils", () => {
     await expect(page.locator(".v6b-ident")).toHaveCount(0);
     await expect(page.locator("#screen-profiles .main-profile-stat").first()).toBeVisible();
     // ⚠️ LE VOCABULAIRE N'EST SOUS AUCUN KILL SWITCH, et c'est ce que ce cas
-    // vérifie : coupé, UI-6B ne doit PAS restituer un « + Ajouter » ni un titre
-    // « Mes passions ». Le markup d'origine porte désormais « Gérer mes
-    // passions » et la bulle, et il les garde drapeau éteint.
-    await expect(page.locator("#nouveauProfilLien .profile-tile-label")).toHaveText("Ajouter");
-    expect(await page.evaluate(() =>
-      document.getElementById("passionManagerTitre").textContent)).toContain("Gérer mes passions");
-    // Le point d'édition historique reprend sa place.
+    // vérifie : coupé, UI-6B ne doit RIEN réécrire du panneau — ni le titre, ni
+    // la porte d'ajout. Le markup porte lui-même la page « Mes passions » et sa
+    // rangée d'ajout, et il les garde drapeau éteint. (Avant le retrait de
+    // `renommerSection()`, le lot posait « Mes passions » et « + Ajouter » par
+    // `textContent` : le mot final est le même, mais il vient désormais du
+    // markup — d'où l'assertion sur le RÉSULTAT et pas sur le lot.)
+    // Le point d'édition historique reprend sa place. ⚠️ MESURÉ AVANT
+    // d'ouvrir la page : elle masque le reste du profil.
     await expect(page.locator("#screen-profiles .profile-dots-btn.on-cover")).toBeVisible();
+    await page.evaluate(() => openPassionManager());
+    await page.waitForTimeout(250);
+    await expect(page.locator("#nouveauProfilLien .passion-manager-porte-titre")).toHaveText("Ajouter une passion");
+    expect(await page.evaluate(() =>
+      document.getElementById("passionManagerTitre").textContent.trim())).toBe("Mes passions");
 
     expect(errors.js, "exceptions JS avec le kill switch").toEqual([]);
   });
@@ -248,13 +304,16 @@ test.describe("UI-6B — Profil et multi-profils", () => {
     await expect(page.locator(".v6b-ident")).toHaveCount(0);
     await expect(page.locator("#screen-profiles .profile-dots-btn.on-cover")).toBeVisible();
     // ⚠️ MÊME EXIGENCE QUE CI-DESSUS, PAR LA COUPURE MÉMOIRE. `toutRendre()` ne
-    // restitue plus aucun mot du panneau depuis le 2026-09-03 : restituer
-    // « Mes passions » aurait écrasé le titre du markup, et « + Ajouter » aurait
-    // remplacé la bulle par un mot nu.
-    await expect(page.locator("#nouveauProfilLien .profile-tile-label")).toHaveText("Ajouter");
-    expect(await page.evaluate(() =>
-      document.getElementById("passionManagerTitre").textContent)).toContain("Gérer mes passions");
+    // restitue plus aucun mot du panneau depuis le 2026-09-03 : une restitution
+    // par `textContent` aurait écrasé le titre du markup et remplacé la rangée
+    // d'ajout par un mot nu.
     await expect(page.locator("#screen-profiles .main-profile-stat").first()).toBeVisible();
+    // ⚠️ EN DERNIER : ouvrir la page « Mes passions » masque le reste du profil.
+    await page.evaluate(() => openPassionManager());
+    await page.waitForTimeout(250);
+    await expect(page.locator("#nouveauProfilLien .passion-manager-porte-titre")).toHaveText("Ajouter une passion");
+    expect(await page.evaluate(() =>
+      document.getElementById("passionManagerTitre").textContent.trim())).toBe("Mes passions");
   });
 
   for (const largeur of [320, 390, 430]) {
@@ -264,11 +323,27 @@ test.describe("UI-6B — Profil et multi-profils", () => {
       await poserDeuxProfils(page);
       await ouvrirProfil(page);
 
+      // ⚠️ DEUX PASSES DEPUIS LE 2026-09-03, ET C'EST LA MESURE QUI L'IMPOSE.
+      // Le crayon vit sur la carte d'identité, les cartes de passion dans la
+      // page « Mes passions » — et ouvrir la page masque la carte d'identité.
+      // Une seule passe mesurait donc forcément une hauteur nulle d'un côté ou
+      // de l'autre. On mesure chaque surface là où elle est peinte.
+      const profil = await page.evaluate(() => {
+        const doc = document.documentElement;
+        const crayon = document.getElementById("v6bModifier");
+        return {
+          deborde: doc.scrollWidth > doc.clientWidth + 1,
+          crayon: crayon ? crayon.getBoundingClientRect().height : 0,
+        };
+      });
+      expect(profil.deborde, "le profil déborde horizontalement").toBe(false);
+      expect(profil.crayon, "cible tactile du crayon").toBeGreaterThanOrEqual(44);
+
+      await page.evaluate(() => openPassionManager());
+      await page.waitForTimeout(250);
       const m = await page.evaluate(() => {
         const doc = document.documentElement;
-        const cibles = [document.getElementById("v6bModifier")]
-          .concat(Array.from(document.querySelectorAll(".v6b-activer")))
-          .filter(Boolean);
+        const cibles = Array.from(document.querySelectorAll(".v6b-activer"));
         const carte = document.querySelector("#profileList .profile-card");
         return {
           deborde: doc.scrollWidth > doc.clientWidth + 1,

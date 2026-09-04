@@ -250,7 +250,7 @@ depuis le panneau, **présent** depuis le Fil.
 
 Les douze cas du dépôt qui touchent `#passionManager` l'ouvrent tous par
 `page.evaluate(() => openPassionManager())`. Aucun ne clique la porte qui y mène.
-Supprimez l'entrée « 🗂️ Gérer mes passions » du menu ⋯ — la seule porte vers la
+Supprimez l'entrée « Gérer mes passions » du menu ⋯ — la seule porte vers la
 seule porte d'ajout — et la suite complète reste **verte**. C'est mot pour mot la
 leçon d'`adopterCompteConnecte` inscrite dans CLAUDE.md.
 
@@ -401,3 +401,58 @@ cas ne mesurerait plus rien. Poser la prémisse, jamais espérer la trouver.
 Éprouvés par **réinjection** : sans le correctif, `③ decies` et `③ decies ter`
 tombent ; avec `justify-content: center`, `③ decies bis` tombe et les autres
 restent verts.
+
+---
+
+## Le menu ⋯ perd ses emojis (2026-09-03, même soir)
+
+> « supprime les emojis dans l'onglet de réglage sur la page profil : modifier
+> le profil / photo de profil etc… garde seulement les textes. »
+
+Le popover `_profileDotsOpen` (app-06) est le composant partagé des **trois**
+menus ⋯ de la zone profil : mon profil principal (`openMainProfileMenu`), une
+carte de passion (`openPassionProfileMenu`) et un profil visité
+(`openVisitedProfileMenu`, app-04). Les onze entrées portaient une icône
+décorative — ✏️ 🖼️ 🌄 🗂️ 🎨 🗄️ 🗑 🔗 🚩 🚫 ✅. Elles sont retirées : le
+libellé porte déjà toute l'information, et laisser une seule des trois surfaces
+illustrée aurait fait diverger un composant unique au premier retouchage.
+
+### Le piège : la colonne d'icônes survit à ses icônes
+
+`b.innerHTML` posait le `<span class="profile-dots-ico">` **inconditionnellement**
+— `escapeHtml(it.icon || "")`. Retirer les `icon:` sans toucher au rendu laissait
+donc une colonne **vide mais mesurée** : `width: 20px` sur `.profile-dots-ico`
+PLUS les `gap: 10px` de `.profile-dots-item`, soit 30 px de décalage devant du
+blanc, sur chaque entrée des trois menus. Le rendu ne devient donc conditionnel
+qu'ici : `it.icon ? <span…> : ""`.
+
+C'est la moitié du défaut qu'un contrôle de libellé **ne voit pas** — le texte
+est correct dans les deux cas. D'où un verrou à deux mesures.
+
+### Ce qui n'a pas bougé
+
+- **Les libellés, à la lettre.** Cinq suites e2e visent ces entrées par leur
+  texte (`ui-v6b-profil`, `ui-v8-passions`, `profil-entete-passions`,
+  `profil-visite-options`, `carte-passion-photo`) : aucune n'a été retouchée, et
+  les 62 cas passent tels quels.
+- **Le suffixe « (n archivée·s) »** de « Gérer mes passions », calculé à
+  l'ouverture, et la bascule `danger` de « Bloquer » / « Supprimer ce profil ».
+- **`styles.css`** : le `gap` de `.profile-dots-item` ne s'applique qu'ENTRE des
+  enfants présents, il disparaît avec le span. `.profile-dots-ico` reste
+  déclarée — le champ `icon` demeure servi par le composant, pour un menu futur
+  qui en aurait un vrai besoin (un avatar, une pastille d'état) ; ce qui est
+  retiré, ce sont les emojis DÉCORATIFS, pas la capacité.
+- **Les icônes des réseaux sociaux** de la modale « Modifier le profil »
+  (📸 🎵 👤 ▶️ 𝕏 💼 👻 🔗) : elles IDENTIFIENT une plateforme à la place de son
+  nom, elles ne décorent pas un libellé qui se suffit.
+
+### Verrou
+
+`tests/e2e/ui-v6b-profil.spec.js` — « le menu ⋯ ne porte plus d'emoji : le texte
+seul, sans colonne d'icônes ». Il mesure les DEUX moitiés : ① aucun caractère
+hors latin/chiffres/ponctuation dans le `textContent` des cinq entrées, ② zéro
+`.profile-dots-ico` dans le menu.
+
+Éprouvé par **réinjection**, chaque moitié séparément : rendre le span
+inconditionnel fait tomber ② seul (① reste vert, le texte n'ayant pas changé) ;
+remettre `icon: "✏️"` sur « Modifier le profil » fait tomber ① seul.

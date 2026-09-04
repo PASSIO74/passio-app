@@ -9936,13 +9936,16 @@ body.ctx-locked #appMain { overflow: hidden; }
    reste ici ne concerne plus que la GESTION des passions (`#passionManager`).
    ══════════════════════════════════════════════════════════════════════════ */
 
-/* ── La carte d'une passion ────────────────────────────────────────────────
+
+/* ── La carte d'une passion ─────────────────────────
    Plus compacte que la carte historique (trois passions doivent se parcourir
-   d'un coup d'oeil sur mobile), et son état passe à la ligne : le libellé est
-   long, le comprimer sur la même ligne que le nom couperait l'un ou l'autre à
-   320 px. ⚠️ Depuis ADR-011 §3 cet état n'est plus qu'une INFORMATION
-   (« Passion du Studio ✓ ») : le choix de la passion d'écriture a rejoint le
-   Studio, la carte ne le commande plus. */
+   d'un coup d'oeil sur mobile). ⚠️ TOUTES LES CARTES SONT IDENTIQUES
+   (2026-09-03) : ni pastille d'état, ni liseré d'élection, ni bio. Il n'existe
+   AUCUNE passion principale — la passion d'une publication se choisit au
+   Studio, au moment de publier. Les règles `.v8-state*` et
+   `.v8-passion-card.is-active` sont parties avec leur émetteur : une règle CSS
+   qui survit à la disparition de sa cible est l'un des défauts que ce dépôt
+   traque. */
 .v8-passion-card {
   flex-wrap: wrap;
   align-items: center;
@@ -9953,50 +9956,9 @@ body.ctx-locked #appMain { overflow: hidden; }
 .v8-passion-card .avatar.lg { width: 42px; height: 42px; font-size: 20px; flex: 0 0 42px; }
 .v8-passion-card .profile-card-body { flex: 1 1 auto; min-width: 0; }
 .v8-passion-card .profile-card-name { font-size: 14.5px; }
-.v8-passion-card .profile-card-bio {
-  display: -webkit-box;
-  -webkit-line-clamp: 1;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
 .v8-card-meta { font-size: 11px; color: var(--muted); margin-top: 3px; }
 .v8-passion-card.has-cover .v8-card-meta { color: rgba(255, 255, 255, 0.85); text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5); }
 .v8-passion-card .profile-dots-btn { flex: 0 0 auto; }
-
-/* La passion active se repère à son liseré plein — pas à un bouton discret
-   posé sur une couverture (§9). */
-.v8-passion-card.is-active {
-  border-color: var(--accent);
-  box-shadow: 0 6px 18px rgba(139, 92, 246, 0.18);
-}
-
-/* L'état, sur toute la largeur, en bas de la carte. */
-.v8-state {
-  flex: 1 0 100%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 40px;
-  padding: 0 14px;
-  border-radius: 12px;
-  font-family: inherit;
-  font-size: 12.5px;
-  font-weight: 800;
-  border: 1.5px solid var(--border);
-  background: var(--bg-card);
-  color: var(--text);
-  cursor: pointer;
-}
-.v8-state.on {
-  border-color: transparent;
-  background: var(--accent);
-  color: #fff;
-  cursor: default;
-}
-.v8-state:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-/* Sur une couverture, le bouton garde un fond OPAQUE : posé en translucide il
-   emprunterait la photo et deviendrait illisible selon le cliché. */
-.v8-passion-card.has-cover .v8-state:not(.on) { background: var(--bg-card); }
 
 /* ── Le sélecteur de passion active, et la liste des archivées ─────────────── */
 .v8-switch-list { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
@@ -10850,6 +10812,256 @@ button, a, label, select, summary,
    précisément le mot que le testeur doit rapprocher du rail d'envies. */
 @media (max-width: 360px) {
   .post-mood-tag[data-mood] { font-size: 10px; padding: 3px 7px; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   « MES PASSIONS » — LA PAGE DÉDIÉE  (2026-09-03)
+
+   La gestion des passions était une SECTION du profil, prise entre l'état vide
+   « Créer un post » (déplacé là par UI-7) et le Studio. Elle devient une PAGE :
+   `openPassionManager` pose `passions-page-open` sur `#screen-profiles`, et tous
+   les frères de `#passionManager` disparaissent le temps de la visite.
+
+   ⚠️ MASQUER, JAMAIS RETIRER. `renderProfilesScreen` continue d'écrire dans
+   `#myPosts`, `#profileEvents`, le rail et les panneaux UI-7 ; refermer la page
+   les rend intacts, sans le moindre re-rendu.
+
+   ⚠️ AUCUNE CLASSE RACINE DE LOT ICI, ET C'EST VOLONTAIRE. Ce n'est pas un lot
+   sous drapeau : c'est la forme de l'écran. La coupure `passio_ui_8="0"` rend
+   la liste historique DANS la même page — `_effacerPagePassionsEntete()` (app-06)
+   vide alors le résumé et rouvre la porte, pour qu'aucun texte du rendu UI-8 ne
+   survive à un écran qui ne le connaît pas.
+
+   ⚠️ Ce bloc est posé AVANT celui du lot UI-4A5, qui doit rester le DERNIER de
+   cette feuille (ses sélecteurs gagnent par la position).
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* La page occupe l'écran : tout le reste du profil s'efface. `!important` parce
+   que plusieurs frères portent un `style="display:…"` en ligne (le Studio, les
+   blocs média) qu'une règle de classe ne battrait pas. */
+#screen-profiles.passions-page-open > *:not(#passionManager) { display: none !important; }
+
+.passions-page { padding-bottom: 24px; }
+
+/* ── L'en-tête : retour, titre, aide ─────────────────────────────────────── */
+.passions-page-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0 2px;
+  min-height: 48px;
+}
+.passions-page-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Deux cibles tactiles pleines (44 px), et pas un chevron de 20 px : c'est la
+   seule sortie de la page sur mobile. */
+.passions-page-back,
+.passions-page-help {
+  appearance: none;
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  padding: 0;
+}
+.passions-page-help { color: var(--muted); }
+.passions-page-back svg,
+.passions-page-help svg { width: 22px; height: 22px; }
+.passions-page-back:active,
+.passions-page-help:active { background: var(--bg-tint); }
+.passions-page-back:focus-visible,
+.passions-page-help:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.passions-page-modele {
+  margin: 0 0 10px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+/* ── Le résumé « X passions actives sur N » ──────────────────────────────── */
+.passions-resume {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 10px 14px;
+  border: 1.5px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-card);
+  font-size: 14px;
+  color: var(--text);
+}
+.passions-resume-icone { width: 22px; height: 22px; flex: 0 0 22px; color: var(--accent); }
+.passions-resume-mot { min-width: 0; }
+.passions-resume-mot b { font-weight: 900; }
+
+/* ── Le quota : une ligne d'information, ou une ALERTE ───────────────────── */
+.passions-quota {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0 0;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.passions-quota-icone { width: 20px; height: 20px; flex: 0 0 20px; }
+/* ⚠️ FOND OPAQUE, jamais un `rgba` : le contrôle de contraste remonte au premier
+   fond opaque et ignore l'alpha (invariant des pastilles de mood). */
+.passions-quota.est-alerte {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #efe8ff;
+  color: #4c1d95;
+  font-weight: 700;
+}
+.passions-quota.est-alerte .passions-quota-icone { color: #6d28d9; }
+
+.passions-section-titre { margin-top: 18px; }
+
+/* ── La porte d'ajout ────────────────────────────────────────────────────── */
+.passion-manager-porte {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  padding: 10px 14px;
+  margin-top: 2px;
+  border-radius: 16px;
+  background: var(--bg-tint);
+  cursor: pointer;
+}
+.passion-manager-porte-plus {
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  border: 1.5px dashed var(--accent);
+  color: var(--accent);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1;
+}
+.passion-manager-porte-corps { flex: 1 1 auto; min-width: 0; }
+.passion-manager-porte-titre { font-size: 14.5px; font-weight: 800; color: var(--text); }
+.passion-manager-porte-mot { font-size: 12px; line-height: 1.4; color: var(--muted); margin-top: 2px; }
+.passion-manager-porte:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Au plafond : la porte change d'ASPECT, elle ne devient pas inerte.
+   ⚠️ `pointer-events: none` A ÉTÉ RETIRÉ LE 2026-09-04, avec l'`aria-disabled`
+   que posait `_rendrePagePassionsEntete`. Un compte à trois passions — donc un
+   compte NORMAL — tapait ici et n'obtenait RIEN : ni toast, ni fenêtre, ni mot.
+   Un refus qui ne se prononce pas est indiscernable d'une panne, et c'est le
+   défaut rapporté (« ajouter une passion ne fonctionne pas »). La porte reste
+   donc cliquable et ouvre la fenêtre qui NOMME la limite et sa sortie — comme
+   toutes les autres portes d'acquisition. Le motif du refus reste LISIBLE :
+   c'est lui qui remplace l'invitation, il ne peut pas passer sous le seuil AA. */
+.passion-manager-porte.is-plein {
+  background: var(--bg-tint);
+}
+.passion-manager-porte.is-plein .passion-manager-porte-plus {
+  border-color: var(--border);
+  color: var(--muted);
+}
+.passion-manager-porte.is-plein .passion-manager-porte-titre { color: var(--muted); }
+
+/* Le menu « … » d'une carte est une CIBLE TACTILE, pas une décoration : la
+   règle historique le laissait à 34 px de haut, sous le seuil de 44 px que ce
+   dépôt s'impose. Borné aux cartes de cette page pour ne rien déplacer
+   ailleurs. */
+#profileList .v8-passion-card .profile-dots-btn {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+/* ── Les archives, repliables ────────────────────────────────────────────── */
+#passionArchiveBox { margin-top: 18px; border-top: 1px solid var(--border); padding-top: 6px; }
+/* ⚠️ `[hidden]` NE SUFFIT PAS ICI. `.v8-switch-list` pose `display: flex`, qui
+   bat la règle d'agent utilisateur `[hidden] { display: none }` (même
+   spécificité, mais la feuille de l'auteur gagne). Sans cette ligne, replier la
+   section posait bien l'attribut et l'`aria-expanded`… et la liste restait à
+   l'écran : un repli qui ne replie rien, invisible à tout test d'attribut. */
+#passionArchiveList[hidden] { display: none !important; }
+.passions-arch-head {
+  appearance: none;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 900;
+  text-align: left;
+  cursor: pointer;
+}
+.passions-arch-titre { flex: 1 1 auto; min-width: 0; }
+.passions-arch-chevron {
+  flex: 0 0 auto;
+  display: inline-flex;
+  color: var(--muted);
+  transition: transform 0.18s ease;
+}
+.passions-arch-chevron svg { width: 22px; height: 22px; }
+.passions-arch-chevron.est-ouvert { transform: rotate(180deg); }
+.passions-arch-head:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.passions-arch-motif { font-size: 12px; line-height: 1.45; color: var(--muted); margin: 10px 2px 0; }
+
+/* Le bouton « Réactiver » quand la réactivation est impossible : gris plein,
+   pas un violet translucide — un bouton d'accent estompé se lit encore comme
+   une action possible.
+   ⚠️ L'ATTRIBUT `disabled` A ÉTÉ RETIRÉ LE 2026-09-04, et la règle est ancrée
+   à `.est-bloquee` à la place. Un `<button disabled>` n'envoie pas son `onclick` :
+   le tap ne produisait RIEN, et l'utilisateur lisait une panne là où il y avait
+   un refus. Le bouton garde son aspect gris et son motif, mais il RÉPOND —
+   `restaurerPassion` ouvre la fenêtre qui dit pourquoi. `[disabled]` reste dans
+   le sélecteur pour tout autre usage de `.v8-switch-go`. */
+.v8-switch-go[disabled],
+.v8-switch-go.est-bloquee {
+  background: var(--bg-tint);
+  color: var(--muted);
+  cursor: not-allowed;
+  border: 1.5px solid var(--border);
+}
+
+/* L'aide du « ? » : du texte, rien d'autre. */
+.passions-aide { font-size: 13px; line-height: 1.6; color: var(--text); margin-bottom: 14px; }
+.passions-aide p { margin: 0 0 10px; }
+.passions-aide p:last-child { margin-bottom: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .passions-arch-chevron { transition: none; }
+}
+
+/* iPhone SE / Android 320 px : le titre garde sa place entre deux cibles de
+   44 px, et les cartes ne se compriment pas au point de couper les compteurs. */
+@media (max-width: 360px) {
+  .passions-page-title { font-size: 19px; }
+  .passions-resume { padding: 10px 12px; font-size: 13.5px; }
+  .passion-manager-porte { padding: 10px 12px; gap: 10px; }
+  .passion-manager-porte-titre { font-size: 14px; }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
