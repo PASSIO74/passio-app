@@ -121,36 +121,112 @@ function aiGetRelated(query) {
   return ["Events IRL cette semaine", "Créateurs à suivre", "Rencontrer des passionnés"];
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// LA RECHERCHE DE LA PAGE « RECHERCHER » — 2026-09-03
+// ──────────────────────────────────────────────────────────────────────────
+// ⚠️ ELLE NE CHERCHAIT QUE DANS LE SOCLE EMBARQUÉ. `PASSIONS.filter(label
+// contient la frappe)` : 19 libellés, une comparaison littérale, aucun alias,
+// aucun pluriel, aucun accent replié. Taper « enduro », « astrophoto » ou
+// « guitares » ne rendait RIEN — alors que « Moto enduro », « Astrophotographie »
+// et « Guitare » sont publiables en production depuis le 2026-09-01.
+//
+// Elle passe désormais par `PassioPassions.chercherAsync` : le référentiel plat
+// entier (1 908 passions), le même barème que le sélecteur des sept surfaces —
+// exact, alias, préfixe, milieu de libellé, repli au singulier, mots dans le
+// désordre — et le repli serveur pour ce que l'index local par préfixe ne
+// rattrape pas. Le socle reste le repli quand le lot est coupé.
+//
+// ⚠️ DEUX DÉFAUTS DE FLUX RÉPARÉS AU PASSAGE, tous deux invisibles à trois
+// comptes de beta et coûteux au-delà :
+//   ① AUCUN ANTI-REBOND. Chaque frappe partait en requête `profiles` : taper
+//      « guitare » lançait sept recherches réseau. 160 ms d'attente, comme le
+//      sélecteur.
+//   ② AUCUNE ANNULATION. Les réponses s'écrivaient dans l'ordre d'ARRIVÉE :
+//      une requête lente partie sur « gui » écrasait le résultat de « guitare ».
+//      Un jeton monotone jette toute réponse devenue obsolète.
+// ══════════════════════════════════════════════════════════════════════════
+var _exSearchJeton = 0;      // annulation des recherches dépassées
+var _exSearchTimer = null;   // anti-rebond
+var EX_SEARCH_DEBOUNCE = 160;
+
 function filterExplore() {
   var inp = document.getElementById("explorerSearch");
   var results = document.getElementById("exploreSearchResults");
   if (!results) return;
   var query = inp ? inp.value : "";
+
+  if (_exSearchTimer) { clearTimeout(_exSearchTimer); _exSearchTimer = null; }
+
   if (!query || query.trim().length < 1) {
+    _exSearchJeton++;                       // toute réponse en vol devient caduque
     results.style.display = "none";
     results.innerHTML = "";
     return;
   }
-  var q = query.trim().toLowerCase();
 
-  // Afficher "Recherche en cours..."
   results.style.display = "block";
   results.innerHTML = "<div style='padding:14px;text-align:center;color:var(--muted);font-size:13px;'>Recherche…</div>";
+  _exSearchTimer = setTimeout(function () { _exSearchLancer(query.trim()); }, EX_SEARCH_DEBOUNCE);
+}
 
-  // Passions locales (instantané)
-  var allList = PASSIONS.concat(state.user.customPassions || []);
-  var fp = allList.filter(function(p) { return p.label.toLowerCase().includes(q); }).slice(0, 5);
+// Passions correspondant à la frappe. Rend une PROMESSE : le référentiel plat
+// n'est chargé qu'au premier usage réel de la recherche, et c'en est un.
+function _exChercherPassions(q) {
+  var repliSocle = function () {
+    var ql = q.toLowerCase();
+    return PASSIONS.concat(state.user.customPassions || []).filter(function (p) {
+      return p && p.label && p.label.toLowerCase().indexOf(ql) >= 0;
+    }).slice(0, 6);
+  };
+  try {
+    if (window.PassioPassions && PassioPassions.actif()) {
+      return PassioPassions.chercherAsync(q, { limite: 6, serveur: true })
+        .then(function (r) {
+          // ⚠️ Une passion PERSO n'est pas dans le référentiel : elle vit sur le
+          // profil de cette personne. La jeter la rendrait introuvable depuis
+          // l'écran même qui sert à retrouver ses passions.
+          var ql = q.toLowerCase();
+          var perso = (state.user.customPassions || []).filter(function (p) {
+            return p && p.label && p.label.toLowerCase().indexOf(ql) >= 0;
+          });
+          return (r || []).concat(perso).slice(0, 6);
+        })
+        .catch(function (e) {
+          // ⚠️ ON LOGUE AVANT DE REPLIER. Le repli, c'est le comportement
+          // d'AVANT le lot : 19 libellés. Sans log, une `ReferenceError` dans le
+          // `.then` ci-dessus est indiscernable d'un référentiel qui n'a rien à
+          // proposer, et personne ne la voit jamais.
+          try { diagLog("explorer chercher " + (e && e.message ? e.message : e)); } catch (_) {}
+          return repliSocle();
+        });
+    }
+  } catch (e) {}
+  return Promise.resolve(repliSocle());
+}
 
-  // Utilisateurs Supabase (réseau réel) + seed local
-  var supaPromise = (supa && typeof supaSearchUsers === 'function')
-    ? supaSearchUsers(query.trim())
+function _exSearchLancer(query) {
+  var results = document.getElementById("exploreSearchResults");
+  if (!results) return;
+  var q = query.toLowerCase();
+  var jeton = ++_exSearchJeton;
+
+  var pPassions = _exChercherPassions(query);
+  var pUsers = (typeof supa !== "undefined" && supa && typeof supaSearchUsers === "function")
+    ? supaSearchUsers(query).catch(function () { return []; })
     : Promise.resolve([]);
 
-  supaPromise.then(function(supaUsers) {
-    // Supabase en priorité — les IDs déjà trouvés ne sont pas ajoutés depuis le seed
-    var supaIds = new Set((supaUsers || []).map(function(u) { return u.id; }));
+  Promise.all([pPassions, pUsers]).then(function (paires) {
+    // ⚠️ LA RÉPONSE D'UNE FRAPPE DÉPASSÉE NE PEINT RIEN. Sans ce garde, « gui »
+    // arrivé en retard réécrivait l'écran de « guitare ».
+    if (jeton !== _exSearchJeton) return;
+    var cible = document.getElementById("exploreSearchResults");
+    if (!cible) return;
 
-    var supaFormatted = (supaUsers || []).map(function(u) {
+    var fp = paires[0] || [];
+    var supaUsers = paires[1] || [];
+
+    var supaIds = new Set(supaUsers.map(function (u) { return u.id; }));
+    var supaFormatted = supaUsers.map(function (u) {
       return {
         id: u.id,
         name: u.username || "Passionné",
@@ -163,18 +239,18 @@ function filterExplore() {
     });
 
     // Seed : on exclut les IDs déjà dans Supabase pour éviter les doublons
-    var seedUsers = (state.seed.users || []).filter(function(u) {
+    var seedUsers = (state.seed.users || []).filter(function (u) {
       if (supaIds.has(u.id)) return false;
       var pw = passionById(u.passion);
-      return (u.name||"").toLowerCase().includes(q)
-        || (u.bio||"").toLowerCase().includes(q)
+      return (u.name || "").toLowerCase().includes(q)
+        || (u.bio || "").toLowerCase().includes(q)
         || (pw && pw.label.toLowerCase().includes(q));
     }).slice(0, 5);
 
     var fu = supaFormatted.concat(seedUsers).slice(0, 8);
 
     if (fp.length === 0 && fu.length === 0) {
-      results.innerHTML = "<div style='padding:14px 16px;color:var(--muted);font-size:13px;text-align:center;'>Aucun résultat pour « " + escapeHtml(query.trim()) + " »</div>";
+      cible.innerHTML = "<div style='padding:14px 16px;color:var(--muted);font-size:13px;text-align:center;'>Aucun résultat pour « " + escapeHtml(query) + " »</div>";
       return;
     }
 
@@ -184,9 +260,9 @@ function filterExplore() {
     if (fp.length) {
       html += "<div style='padding:8px 14px 4px;font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;'>Passions</div>";
       fp.forEach(function(p) {
-        html += "<div onclick=\"openPassionExplorer('" + escapeJsArg(p.id) + "');document.getElementById('exploreSearchResults').style.display='none';\" style='display:flex;align-items:center;gap:12px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);'>" +
-          "<div style='width:38px;height:38px;border-radius:12px;background:#ede9fe;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;'>" + escapeHtml(p.emoji) + "</div>" +
-          "<div style='flex:1;'><div style='font-weight:700;font-size:13px;color:var(--text);'>" + escapeHtml(p.label) + "</div></div>" +
+        html += "<div onclick=\"openPassionExplorer('" + escapeJsArg(p.id) + "','',\'" + escapeJsArg(p.label || p.id) + "\');document.getElementById('exploreSearchResults').style.display='none';\" style='display:flex;align-items:center;gap:12px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);'>" +
+          "<div style='width:38px;height:38px;border-radius:12px;background:#ede9fe;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;'>" + escapeHtml(p.emoji || "✨") + "</div>" +
+          "<div style='flex:1;'><div style='font-weight:700;font-size:13px;color:var(--text);'>" + escapeHtml(p.label || p.id) + "</div></div>" +
           "<div style='font-size:11px;font-weight:700;color:var(--accent);'>Explorer →</div>" +
           "</div>";
       });
@@ -220,7 +296,15 @@ function filterExplore() {
       });
     }
 
-    results.innerHTML = html;
+    cible.innerHTML = html;
+  }).catch(function (e) {
+    // ⚠️ LE PANNEAU EST MIS À « Recherche… » DE FAÇON SYNCHRONE et n'est réécrit
+    // que dans le `.then` : un rejet non traité le laissait figé POUR TOUJOURS,
+    // sans message ni log. Une recherche qui échoue doit le DIRE.
+    try { diagLog("explorer recherche " + (e && e.message ? e.message : e)); } catch (_) {}
+    if (jeton !== _exSearchJeton) return;
+    var c = document.getElementById("exploreSearchResults");
+    if (c) c.innerHTML = "<div style='padding:14px 16px;color:var(--muted);font-size:13px;text-align:center;'>La recherche n'a pas abouti. Réessaie.</div>";
   });
 }
 
@@ -231,23 +315,60 @@ function filterExplore() {
 // fil, pas le profil. Le paramètre est facultatif, et les huit appels
 // historiques (Explorer, tuiles de tendance, IA, passerelle UI-3) le laissent
 // vide — ils viennent d'un écran, pas d'une modale, et n'ont rien à restituer.
-function openPassionExplorer(pid, retourUserId) {
+function openPassionExplorer(pid, retourUserId, libelleConnu) {
+  // ⚠️ `libelleConnu` (2026-09-03) — LA RECHERCHE SERVEUR PEUT RENDRE UNE PASSION
+  // QUE LE RÉFÉRENTIEL EMBARQUÉ NE CONNAÎT PAS ENCORE. `fusionner`
+  // (`passions-flat.js`) les garde volontairement : elles sont RÉELLES, la base
+  // fait foi, elles sont seulement plus récentes que l'instantané JSON — c'est
+  // même tout l'apport de la recherche serveur. Mais `passionById` ne les résout
+  // ni par le socle ni par `parId`, et rendait donc son générique : la ligne de
+  // résultat s'affichait « Astrophotographie » et la fiche s'ouvrait sur
+  // « ✨ Passion ». L'appelant qui a le libellé sous la main le passe.
+  //
+  // ⚠️ C'EST DE L'AFFICHAGE, ET RIEN D'AUTRE. `estPassionCanonique` reste seule
+  // juge de ce qui est publiable : aucune passion ne le devient parce qu'elle
+  // sait s'afficher.
   var p = passionById(pid);
+  if (libelleConnu && (!p || p.label === "Passion")) {
+    p = { id: pid, emoji: (p && p.emoji) || "✨", label: String(libelleConnu), color: (p && p.color) || "#8b5cf6" };
+  }
+  // `passionById` rend TOUJOURS un objet (son générique en dernier recours) :
+  // ce garde ne se déclenche que si quelqu'un la remplace un jour par une
+  // fonction qui peut échouer. On le garde, il ne coûte rien.
   if (!p) { toast("Passion non trouvée"); return; }
   var posts = allFeedPosts().filter(function(x) { return x.passion === pid; });
-  var creators = (state.seed.users || []).filter(function(u) { return u.passion === pid; });
   var hasProfile = (state.user.profiles || []).find(function(up) { return up.passion === pid; });
 
-  var creatorsHTML = creators.length ? creators.map(function(u) {
-    return '<div class="list-row">' +
+  // ⚠️ LES CRÉATEURS NE SORTAIENT QUE DU SEED. Toute passion du référentiel plat
+  // — c'est-à-dire tout ce que la recherche sait désormais trouver — affichait
+  // donc « Pas encore de créateurs », y compris quand de vrais comptes la
+  // portent. Le seed reste le repli de démonstration ; les comptes RÉELS sont
+  // chargés juste après et se posent EN TÊTE.
+  var creators = (state.seed.users || []).filter(function(u) { return u.passion === pid; });
+
+  // Un seul constructeur de ligne, et le moteur de suivi UNIQUE
+  // (`toggleFollowUser`, app-04) : il garde `requireAuthentication`, sait
+  // désuivre, et met le bouton à jour. Le `toast('Suivi·e')` d'avant ne suivait
+  // personne — un bouton qui ment est pire qu'un bouton absent.
+  function ligne(u) {
+    var suivi = ((state.user.following || []).indexOf(u.id) >= 0);
+    return '<div class="list-row" onclick="openUserProfile(\'' + escapeJsArg(u.id) + '\')">' +
       '<div class="avatar" style="background:' + avatarBg(u) + ';">' + avatarInner(u) + '</div>' +
       '<div class="list-row-body">' +
-        '<div class="list-row-title">' + escapeHtml(u.name) + '</div>' +
+        '<div class="list-row-title">' + escapeHtml(u.name || "Passionné") + '</div>' +
         '<div class="list-row-meta">' + escapeHtml(u.bio || "") + '</div>' +
       '</div>' +
-      '<button class="btn small" onclick="toast(\'Suivi·e\')">Suivre</button>' +
+      // ⚠️ `data-follow-uid` ET PAS `id` : l'écran « Rechercher » émet déjà
+      // `followBtn_<uid>` pour les mêmes comptes, et il PRÉCÈDE la modale dans le
+      // document — `getElementById` retournait donc le bouton caché derrière.
+      '<button class="btn small" data-follow-uid="' + escapeHtml(u.id) + '"' +
+        ' onclick="event.stopPropagation();toggleFollowUser(\'' + escapeJsArg(u.id) + '\',\'' + escapeJsArg(u.name || "") + '\')">' +
+        (suivi ? "✓ Suivi" : "Suivre") + '</button>' +
     '</div>';
-  }).join("") : '<div class="empty"><div class="empty-text">Pas encore de créateurs</div></div>';
+  }
+
+  var vide = '<div class="empty"><div class="empty-text">Pas encore de créateurs</div></div>';
+  var creatorsHTML = creators.length ? creators.map(ligne).join("") : vide;
 
   var postsHTML = posts.length ? posts.slice(0,6).map(renderPostHTML).join("") : '<div class="empty"><div class="empty-icon">✏️</div><div class="empty-text">Aucun post pour l\'instant</div></div>';
 
@@ -266,26 +387,125 @@ function openPassionExplorer(pid, retourUserId) {
   // fermer ne ramène pas au profil. Le libellé nomme la destination.
   var retourHTML = retourUserId
     ? '<div class="passion-explorer-retour"><span class="link" role="button" tabindex="0"'
-      + ' onclick="openUserProfile(\'' + escapeJsArg(String(retourUserId)) + '\')">\u2190 Retour au profil</span></div>'
+      + ' onclick="openUserProfile(\'' + escapeJsArg(String(retourUserId)) + '\')">← Retour au profil</span></div>'
     : '';
 
-  var html = '\
-    <div class="modal-handle"></div>\
-    ' + retourHTML + '\
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">\
-      <div style="font-size:42px;">' + p.emoji + '</div>\
-      <div>\
-        <div class="modal-title" style="margin:0;">' + p.label + '</div>\
-        <div style="font-size:12px;color:var(--muted);">' + posts.length + ' post' + (posts.length>1?"s":"") + ' · ' + creators.length + ' créateur' + (creators.length>1?"s":"") + '</div>\
-      </div>\
-      <div style="margin-left:auto;">' + profileBtn + '</div>\
-    </div>\
-    <div class="section-title" style="margin-top:6px;">Créateurs</div>\
-    ' + creatorsHTML + '\
-    <div class="section-title" style="margin-top:14px;">Posts</div>\
-    ' + postsHTML;
+  // ⚠️ `p.emoji` ET `p.label` SONT ÉCHAPPÉS. Ils l'étaient partout ailleurs et
+  // pas ici : une passion PERSO porte un libellé tapé par la personne, et il
+  // arrivait tel quel dans le balisage de la modale.
+  var html = ''
+    + '<div class="modal-handle"></div>'
+    + retourHTML
+    + '<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">'
+    +   '<div style="font-size:42px;">' + escapeHtml(p.emoji || "✨") + '</div>'
+    +   '<div>'
+    +     '<div class="modal-title" style="margin:0;">' + escapeHtml(p.label || pid) + '</div>'
+    +     '<div style="font-size:12px;color:var(--muted);">'
+    +       posts.length + ' post' + (posts.length > 1 ? "s" : "")
+    +     '</div>'
+    +   '</div>'
+    +   '<div style="margin-left:auto;">' + profileBtn + '</div>'
+    + '</div>'
+    + '<div class="section-title" style="margin-top:6px;">Créateurs</div>'
+    + '<div id="pexCreators">' + creatorsHTML + '</div>'
+    + '<div id="pexLiees"></div>'
+    + '<div class="section-title" style="margin-top:14px;">Posts</div>'
+    + postsHTML;
 
   openModal(html);
+
+  _pexChargerCreateurs(pid, creators);
+  _pexPeindreLiees(pid);
+}
+
+// Les comptes RÉELS qui portent cette passion. Bornée, tolérante à l'échec, et
+// elle ne peint que si la modale est TOUJOURS celle-ci — `openModal` n'empile
+// pas, une réponse tardive écrirait sinon dans la modale suivante.
+function _pexChargerCreateurs(pid, creatorsSeed) {
+  var hote = document.getElementById("pexCreators");
+  if (!hote || typeof supa === "undefined" || !supa) return;
+  hote.setAttribute("data-pex-pid", pid);
+  supa.from("profiles")
+    .select("id, username, emoji, color, bio, avatar_url")
+    // ⚠️ SUR `passion_id`, la colonne INDEXÉE (idx_profiles_passion), et pas sur
+    // un `contains` de la colonne jsonb `passions` : celle-ci n'a AUCUN index en
+    // production, la filtrer ferait un balayage complet à chaque ouverture de
+    // fiche. On rate donc les comptes qui portent la passion en SECONDE — c'est
+    // le compromis assumé tant qu'aucun index GIN n'existe.
+    .eq("passion_id", pid)
+    .not("username", "is", null)
+    .limit(8)
+    .then(function (r) {
+      var cible = document.getElementById("pexCreators");
+      // ⚠️ `openModal` N'EMPILE PAS : ouvrir une autre passion REMPLACE celle-ci,
+      // et une réponse tardive écrirait alors les créateurs d'une passion dans
+      // la fiche d'une autre. On vérifie que la fiche à l'écran est toujours la
+      // nôtre — l'existence du nœud ne le prouve pas, il est recréé à l'identique.
+      if (!cible || cible.getAttribute("data-pex-pid") !== pid) return;
+      if ((r && r.error) || !r || !r.data || !r.data.length) return;
+      var vus = Object.create(null);
+      (creatorsSeed || []).forEach(function (u) { vus[u.id] = 1; });
+      var reels = r.data.filter(function (u) {
+        if (!u || !u.id || u.id === MY_UID || vus[u.id]) return false;
+        vus[u.id] = 1;
+        return true;
+      });
+      if (!reels.length) return;
+      var html = reels.map(function (u) {
+        var suivi = ((state.user.following || []).indexOf(u.id) >= 0);
+        var _av = { avatar: u.color || "#8b5cf6", profileEmoji: u.emoji || "✨", photoUrl: u.avatar_url || null };
+        var nom = u.username || "Passionné";
+        return '<div class="list-row" onclick="openUserProfile(\'' + escapeJsArg(u.id) + '\')">' +
+          '<div class="avatar" style="background:' + avatarBg(_av) + ';">' + avatarInner(_av) + '</div>' +
+          '<div class="list-row-body">' +
+            '<div class="list-row-title">' + escapeHtml(nom) + '</div>' +
+            '<div class="list-row-meta">' + escapeHtml(String(u.bio || "").slice(0, 60)) + '</div>' +
+          '</div>' +
+          '<button class="btn small" data-follow-uid="' + escapeHtml(u.id) + '"' +
+            ' onclick="event.stopPropagation();toggleFollowUser(\'' + escapeJsArg(u.id) + '\',\'' + escapeJsArg(nom) + '\')">' +
+            (suivi ? "✓ Suivi" : "Suivre") + '</button>' +
+        '</div>';
+      }).join("");
+      // Les vrais comptes d'abord ; le seed derrière, et seulement s'il en reste.
+      var repli = (creatorsSeed && creatorsSeed.length) ? cible.innerHTML : "";
+      if (repli.indexOf("class=\"empty\"") >= 0) repli = "";
+      cible.innerHTML = html + repli;
+    })
+    .catch(function (e) {
+      try { diagLog("explorer createurs " + (e && e.message ? e.message : e)); } catch (_) {}
+    });
+}
+
+// « Passions proches » — SUGGÉRER, jamais filtrer, et rien ne nomme la relation
+// (contrainte du référentiel plat : aucune arborescence à l'écran). C'est ce qui
+// remplace utilement la hiérarchie qu'on a retirée : depuis « Moto enduro » on
+// atteint « Motocross » sans jamais traverser une catégorie « Sports mécaniques ».
+function _pexPeindreLiees(pid) {
+  var hote = document.getElementById("pexLiees");
+  if (!hote) return;
+  hote.setAttribute("data-pex-pid", pid);
+  function peindre() {
+    var cible = document.getElementById("pexLiees");
+    if (!cible || cible.getAttribute("data-pex-pid") !== pid) return;
+    var l = [];
+    try { l = PassioPassions.liees(pid, 6) || []; } catch (e) { l = []; }
+    if (!l.length) { cible.innerHTML = ""; return; }
+    cible.innerHTML = '<div class="section-title" style="margin-top:14px;">Passions proches</div>'
+      + '<div style="display:flex;flex-wrap:wrap;gap:8px;">'
+      + l.map(function (x) {
+          return '<span class="pill" role="button" tabindex="0" style="cursor:pointer;"'
+            + ' onclick="openPassionExplorer(\'' + escapeJsArg(x.id) + '\')">'
+            + escapeHtml(x.emoji || "✨") + ' ' + escapeHtml(x.label || x.id) + '</span>';
+        }).join("")
+      + '</div>';
+  }
+  try {
+    if (!window.PassioPassions || !PassioPassions.actif()) return;
+    if (PassioPassions.pret()) { peindre(); return; }
+    PassioPassions.charger().then(peindre).catch(function (e) {
+      try { diagLog("explorer liees " + (e && e.message ? e.message : e)); } catch (_) {}
+    });
+  } catch (e) { try { diagLog("explorer liees_sync " + (e && e.message)); } catch (_) {} }
 }
 
 // ⚠️ CETTE FONCTION ÉTAIT UN SECOND MOTEUR D'AJOUT, ET SANS AUCUNE GARDE.
