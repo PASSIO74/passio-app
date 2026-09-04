@@ -375,6 +375,8 @@ function renderMainProfile() {
   var foEl = document.getElementById("mainStatFollowing"); if (foEl) foEl.textContent = (state.user.following || []).length;
   // Abonnés : vrai compte Supabase (async). Affiche le cache en attendant.
   var fEl = document.getElementById("mainStatFollowers"); if (fEl) fEl.textContent = (typeof window._followersCount === "number" ? window._followersCount : 0);
+  // Passions : vivantes + archivées (une archive se réactive, elle reste possédée).
+  var pEl = document.getElementById("mainStatPassions"); if (pEl) pEl.textContent = nbPassionsTotales();
   loadFollowersCount();
 
   // Activités — ORGANISÉES et REJOINTES (§6 du lot UI-7).
@@ -3195,6 +3197,20 @@ function nbPassionsVivantes() {
   try {
     return ((state && state.user && state.user.profiles) || [])
       .filter(function (p) { return p && !p.archived; }).length;
+  } catch (e) { return 0; }
+}
+
+// Le compteur « passions » de l'en-tête du profil : les VIVANTES **et** les
+// ARCHIVÉES (demande du 2026-09-04). Une passion archivée reste une passion
+// possédée — elle se réactive — donc elle compte ici, contrairement au
+// plafond, qui ne borne que les vivantes (`nbPassionsVivantes`).
+// ⚠️ Le profil de remplissage fabriqué par `boot()` (`_parDefaut`) n'est
+// compté NULLE PART ailleurs : il ne l'est pas davantage ici, sinon un
+// visiteur qui n'a rien choisi verrait « 1 passion ».
+function nbPassionsTotales() {
+  try {
+    return ((state && state.user && state.user.profiles) || [])
+      .filter(function (p) { return p && p.id && !p._parDefaut; }).length;
   } catch (e) { return 0; }
 }
 

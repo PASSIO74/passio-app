@@ -1018,3 +1018,75 @@ test("une carte de publication ne nomme la passion QU'UNE FOIS", async ({ page }
   expect(vu.meta, "la seule mention de la passion est celle de la publication").toContain("Moto");
   expect(vu.boutons, "aucune pastille cliquable dans une carte de publication").toBe(0);
 });
+
+// ══════════════════════════════════════════════════════════════════════════
+// ④ LE COMPTEUR « PASSIONS » DE L'EN-TÊTE (2026-09-04)
+// ══════════════════════════════════════════════════════════════════════════
+// « Sur le profil rajoute le nombre de passions entre abonnés et abonnements
+// (passion active + archivée). »
+//
+// ⚠️ Ce compteur ne dit PAS la même chose que le plafond. Le plafond
+// (`PASSIONS_OFFERTES`) ne borne que les passions VIVANTES ; ici on annonce ce
+// que la personne POSSÈDE, archives comprises — une archive se réactive, elle
+// n'a pas disparu. Confondre les deux ferait afficher « 3 » à quelqu'un qui a
+// trois passions vivantes et quatre archives.
+
+test("④ — le compteur « passions » compte les vivantes ET les archivées", async ({ page }) => {
+  await poser(page, {
+    profiles: [
+      { id: "pp_moto", name: "Benjamin", passion: "moto", emoji: "🏍", color: "#7c3aed", createdAt: 1 },
+      { id: "pp_pod", name: "Benjamin", passion: "podcast", emoji: "🎙", color: "#7c3aed", createdAt: 2 },
+      { id: "pp_old", name: "Benjamin", passion: "voyage", emoji: "✈️", color: "#7c3aed", createdAt: 3, archived: true },
+      { id: "pp_old2", name: "Benjamin", passion: "yoga", emoji: "🧘", color: "#7c3aed", createdAt: 4, archived: true },
+    ],
+  });
+  const vu = await page.evaluate(() => {
+    renderMainProfile();
+    const el = document.getElementById("mainStatPassions");
+    return {
+      texte: el ? el.textContent.trim() : null,
+      vivantes: nbPassionsVivantes(),
+      total: nbPassionsTotales(),
+    };
+  });
+  expect(vu.vivantes, "deux passions vivantes").toBe(2);
+  expect(vu.texte, "2 vivantes + 2 archivées = 4").toBe("4");
+  expect(vu.total).toBe(4);
+});
+
+test("④ bis — le profil de remplissage n'est compté nulle part", async ({ page }) => {
+  // Le profil fabriqué par `boot()` porte `_parDefaut` et n'entre dans aucun
+  // décompte du projet : il n'entre pas davantage dans celui-ci, sinon un
+  // visiteur qui n'a rien choisi lirait « 1 passion ».
+  await poser(page, {
+    profiles: [
+      { id: "pp_def", name: "Benjamin", passion: "musique", emoji: "🎵", color: "#7c3aed", createdAt: 1, _parDefaut: true },
+      { id: "pp_moto", name: "Benjamin", passion: "moto", emoji: "🏍", color: "#7c3aed", createdAt: 2 },
+    ],
+  });
+  const texte = await page.evaluate(() => {
+    renderMainProfile();
+    return (document.getElementById("mainStatPassions") || {}).textContent;
+  });
+  expect(String(texte).trim()).toBe("1");
+});
+
+test("④ ter — il est ENTRE « abonnés » et « abonnements », et il ouvre la page", async ({ page }) => {
+  // L'ordre est la demande elle-même. On le mesure sur l'ordre du DOM des
+  // statistiques, pas sur un rectangle : la ligne se réordonne au responsive.
+  await poser(page);
+  const ordre = await page.evaluate(() =>
+    Array.from(document.querySelectorAll("#screen-profiles .main-profile-stats .main-profile-stat"))
+      .map((d) => (d.querySelector("span:last-child") || {}).textContent));
+  expect(ordre).toEqual(["posts", "abonnés", "passions", "abonnements"]);
+
+  await page.evaluate(() => {
+    document.querySelector("#mainStatPassions").closest(".main-profile-stat").click();
+  });
+  await page.waitForTimeout(500);
+  const ouvert = await page.evaluate(() => {
+    const box = document.getElementById("passionManager");
+    return !!box && !box.hidden && !!box.offsetParent;
+  });
+  expect(ouvert, "un tap sur le compteur ouvre « Mes passions »").toBe(true);
+});

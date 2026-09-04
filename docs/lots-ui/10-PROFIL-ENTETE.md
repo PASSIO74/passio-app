@@ -94,3 +94,37 @@
   activation clavier ici** : `app-08` porte le délégué unique des `[role="button"]`
   non natifs — un second écouteur produirait deux activations pour une touche.
 
+
+---
+
+## Le compteur « passions » de la rangée de statistiques (2026-09-04)
+
+« Sur le profil rajoute le nombre de passions entre abonnés et abonnements
+(passion active + archivée). »
+
+La rangée `.main-profile-stats` passe de trois à quatre entrées, dans cet ordre
+exact : **posts · abonnés · passions · abonnements**. Le nouveau nœud est
+`#mainStatPassions`, écrit par `renderMainProfile()` (app-06) à partir de
+`nbPassionsTotales()`.
+
+⚠️ **Ce compteur ne dit PAS ce que dit le plafond.** `nbPassionsVivantes()`
+sert le plafond (`PASSIONS_OFFERTES`), qui ne borne que les passions VIVANTES ;
+`nbPassionsTotales()` annonce ce que la personne POSSÈDE — une archive se
+réactive, elle n'a pas disparu. Réutiliser l'un pour l'autre afficherait « 3 »
+à quelqu'un qui a trois passions vivantes et quatre archives, ou ferait croire
+que le plafond est atteint alors qu'il ne l'est pas.
+
+⚠️ **Le profil de remplissage (`_parDefaut`) reste hors du décompte.** Celui que
+`boot()` fabrique (`allPassions()[0]`, « Musique ») n'est compté nulle part
+ailleurs dans le projet ; le compter ici ferait lire « 1 passion » à un visiteur
+qui n'a rien choisi.
+
+⚠️ **La statistique est une PORTE, comme ses voisines** : un tap appelle
+`ouvrirGestionPassions()` (`goTo("profiles")` puis `openPassionManager()`), la
+même destination que l'entrée du menu ⋯ — aucun second moteur n'est créé. Le
+masquage UI-6B reste ancré à `:first-child` (le compteur de publications) et
+n'est donc pas affecté par l'insertion au milieu de la rangée.
+
+Verrou : `tests/e2e/profil-entete-passions.spec.js` (④, ④ bis, ④ ter) — le
+④ ter mesure l'ORDRE du DOM, pas un rectangle, et exige que la porte ouvre bien
+la page « Mes passions ».
