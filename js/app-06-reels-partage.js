@@ -375,6 +375,8 @@ function renderMainProfile() {
   var foEl = document.getElementById("mainStatFollowing"); if (foEl) foEl.textContent = (state.user.following || []).length;
   // Abonnés : vrai compte Supabase (async). Affiche le cache en attendant.
   var fEl = document.getElementById("mainStatFollowers"); if (fEl) fEl.textContent = (typeof window._followersCount === "number" ? window._followersCount : 0);
+  // Passions : vivantes + archivées (une archive se réactive, elle reste possédée).
+  var pEl = document.getElementById("mainStatPassions"); if (pEl) pEl.textContent = nbPassionsTotales();
   loadFollowersCount();
 
   // Activités — ORGANISÉES et REJOINTES (§6 du lot UI-7).
@@ -1078,7 +1080,14 @@ function _profileDotsOpen(ev, items) {
     const b = document.createElement("button");
     b.className = "profile-dots-item" + (it.danger ? " danger" : "");
     b.setAttribute("role", "menuitem");
-    b.innerHTML = '<span class="profile-dots-ico">' + escapeHtml(it.icon || "") + "</span>" + escapeHtml(it.label || "");
+    // ⚠️ L'icône est OPTIONNELLE depuis le retrait des emojis décoratifs
+    // (2026-09-03) : sans cette garde, un `icon` vide rendait quand même le
+    // `<span class="profile-dots-ico">` — 20 px de largeur PLUS les 10 px de
+    // `gap` de `.profile-dots-item` — et toutes les entrées restaient
+    // décalées de 30 px derrière une colonne vide, invisible à la lecture du
+    // code comme aux tests de libellé.
+    var ico = it.icon ? '<span class="profile-dots-ico">' + escapeHtml(it.icon) + "</span>" : "";
+    b.innerHTML = ico + escapeHtml(it.label || "");
     b.onclick = function(e) {
       e.stopPropagation();
       _profileDotsClose();
@@ -1115,9 +1124,9 @@ function _profileDotsOpen(ev, items) {
 // Menu du PROFIL PRINCIPAL (⋯ en haut à droite de la couverture).
 function openMainProfileMenu(ev) {
   _profileDotsOpen(ev, [
-    { icon: "✏️", label: "Modifier le profil", run: function() { openEditMainProfile(); } },
-    { icon: "🖼️", label: "Photo de profil",    run: function() { const i = document.getElementById("avatarPhotoInput"); if (i) i.click(); } },
-    { icon: "🌄", label: "Photo de couverture", run: function() { const i = document.getElementById("coverPhotoInput"); if (i) i.click(); }, sep: true },
+    { label: "Modifier le profil", run: function() { openEditMainProfile(); } },
+    { label: "Photo de profil", run: function() { const i = document.getElementById("avatarPhotoInput"); if (i) i.click(); } },
+    { label: "Photo de couverture", run: function() { const i = document.getElementById("coverPhotoInput"); if (i) i.click(); }, sep: true },
     // ⚠️ LA SEULE PORTE VERS LA GESTION DES PASSIONS depuis la refonte
     // multi-passion : l'onglet « À propos » qui la portait a disparu (§1).
     // Retirer un onglet ne doit jamais emporter la seule commande d'une
@@ -1134,13 +1143,13 @@ function openMainProfileMenu(ev) {
     // n'ouvre pas une vue, elle ouvre l'ADMINISTRATION — et c'est désormais le
     // seul endroit d'où l'on ajoute une passion, la bulle « + » ayant quitté le
     // rail pour le panneau. Le verbe est ce qui distingue les deux surfaces.
-    { icon: "🗂️", label: "Gérer mes passions" + (function () {
+    { label: "Gérer mes passions" + (function () {
         try {
           var n = (typeof passionsArchivees === "function") ? passionsArchivees().length : 0;
           return n ? " (" + n + " archivée" + (n > 1 ? "s" : "") + ")" : "";
         } catch (e) { return ""; }
       })(), run: function() { if (typeof openPassionManager === "function") openPassionManager(); } },
-    { icon: "🎨", label: "Apparence & thème",   run: function() { if (typeof openConfigurator === "function") openConfigurator(); } }
+    { label: "Apparence & thème", run: function() { if (typeof openConfigurator === "function") openConfigurator(); } }
   ]);
 }
 
@@ -1154,12 +1163,12 @@ function openPassionProfileMenu(ev, profileId) {
   // suppression reste le comportement rendu par le kill switch.
   var v8 = passionsUnifieesActives();
   var dernier = v8
-    ? { icon: "🗄️", label: "Archiver cette passion", run: function() { confirmArchivePassion(profileId); } }
-    : { icon: "🗑", label: "Supprimer ce profil", danger: true, run: function() { confirmDeleteProfile(profileId, (passion && passion.label) || ""); } };
+    ? { label: "Archiver cette passion", run: function() { confirmArchivePassion(profileId); } }
+    : { label: "Supprimer ce profil", danger: true, run: function() { confirmDeleteProfile(profileId, (passion && passion.label) || ""); } };
   _profileDotsOpen(ev, [
-    { icon: "✏️", label: v8 ? "Modifier cette passion" : "Modifier ce profil", run: function() { openEditPassionProfile(profileId); } },
-    { icon: "🖼️", label: v8 ? "Photo de la passion" : "Photo du profil",    run: function() { const i = document.getElementById("passionPhoto_" + profileId); if (i) i.click(); } },
-    { icon: "🌄", label: "Photo de fond",      run: function() { const i = document.getElementById("passionCover_" + profileId); if (i) i.click(); }, sep: true },
+    { label: v8 ? "Modifier cette passion" : "Modifier ce profil", run: function() { openEditPassionProfile(profileId); } },
+    { label: v8 ? "Photo de la passion" : "Photo du profil", run: function() { const i = document.getElementById("passionPhoto_" + profileId); if (i) i.click(); } },
+    { label: "Photo de fond", run: function() { const i = document.getElementById("passionCover_" + profileId); if (i) i.click(); }, sep: true },
     dernier
   ]);
 }
@@ -1803,18 +1812,108 @@ function renderProfilePassionRail() {
 // Sans cette porte, ajouter une passion, changer sa photo ou en archiver une
 // deviendrait inatteignable — un retrait d'onglet ne doit jamais emporter la
 // seule commande d'une fonction (leçon du Studio après un carnet, 2026-08-29).
+// ⚠️ TÉLÉMÉTRIE ET SENTINELLE. Deux canaux, deux rôles :
+//   · `_passionsPageTel` → `tel.action`, la piste d'usage du Centre de pilotage
+//     (ouvertures, refus au plafond, refus de quota, repli des archives) ;
+//   · `_passionsPageEchec` → `tel.error` ET `diagLog`, pour qu'un rendu qui casse
+//     remonte comme une ERREUR et non comme un écran vide silencieux — c'est ce
+//     que la Sentinelle lit.
+// ⚠️ AUCUNE CLÉ DE `meta` NE DOIT PERCUTER LE FILTRE PII de `js/telemetry.js`
+// (liste NOIRE `DENY_KEY`, qui contient entre autres « pass », « name »,
+// « label » et « tel ») : une clé filtrée disparaît EN SILENCE. D'où `actives`,
+// `plafond`, `restants`, `archivees`, `bloque` — et jamais « passions ».
+// `npm run audit:telemetry-keys` (gate de `npm run verif`) le vérifie.
+function _passionsPageTel(nom, meta) {
+  try { if (window.tel && typeof tel.action === "function") tel.action(nom, meta || {}); } catch (e) {}
+}
+
+function _passionsPageEchec(etape, e) {
+  try {
+    if (window.tel && typeof tel.error === "function") {
+      tel.error(e, { action: "passions_page_" + etape, screen: "profiles", severity: "error" });
+    }
+  } catch (x) {}
+  _v8Echec(etape, e);
+}
+
+// La classe de PAGE. Elle vit sur `#screen-profiles` et masque tous les frères
+// de `#passionManager` : carte d'identité, rail de bulles, onglets UI-7 (donc
+// l'état vide « Créer un post ») et Studio. MASQUER, jamais RETIRER : les
+// rendus continuent d'écrire dedans, et refermer la page les rend intacts.
+var PASSIONS_PAGE_CLASSE = "passions-page-open";
+
+function _ecranProfilsNoeud() { return document.getElementById("screen-profiles"); }
+
+function passionsPageOuverte() {
+  try {
+    var box = document.getElementById("passionManager");
+    return !!(box && !box.hidden);
+  } catch (e) { return false; }
+}
+
 function openPassionManager() {
   var box = document.getElementById("passionManager");
   if (!box) return;
   try { closeModal(); } catch (e) {}
   box.hidden = false;
-  try { renderProfilesScreen(); } catch (e) {}
-  if (box.scrollIntoView) box.scrollIntoView({ behavior: "smooth", block: "start" });
+  var ec = _ecranProfilsNoeud();
+  if (ec) ec.classList.add(PASSIONS_PAGE_CLASSE);
+  try { renderProfilesScreen(); } catch (e) { _passionsPageEchec("ouverture", e); }
+  // ⚠️ ON REMONTE LE CONTENEUR DÉFILANT, PAS LE BLOC. `scrollIntoView` sur un
+  // bloc devenu le SEUL contenu visible de l'écran ne fait plus rien d'utile :
+  // c'est `#appMain` qui défile (cf. `goTo`), et une page dédiée commence à son
+  // en-tête.
+  try { var m = document.getElementById("appMain"); if (m) m.scrollTop = 0; } catch (e) {}
+  _passionsPageTel("passions_page_ouverte", {
+    actives: nbPassionsVivantes(),
+    archivees: passionsArchivees().length,
+    plafond: plafondPassionsAtteint(),
+  });
 }
 
 function closePassionManager() {
   var box = document.getElementById("passionManager");
   if (box) box.hidden = true;
+  var ec = _ecranProfilsNoeud();
+  if (ec) ec.classList.remove(PASSIONS_PAGE_CLASSE);
+  try { var m = document.getElementById("appMain"); if (m) m.scrollTop = 0; } catch (e) {}
+}
+
+// ── L'AIDE DE LA PAGE (le « ? » de l'en-tête) ──────────────────────────────
+// ⚠️ ELLE DIT CE QUE LA PAGE NE DIT PLUS, et surtout ce qu'elle NE DIT PAS :
+// il n'existe AUCUNE passion principale, favorite ou prioritaire. C'est la
+// question que l'ancienne pastille « Passion du Studio ✓ » posait à chaque
+// ouverture, et à laquelle la page répondait de travers.
+function openPassionsAide() {
+  var plafondActif = false;
+  try { plafondActif = plafondPassionsActif(); } catch (e) {}
+  var restants = changementsPassionRestants();
+  openModal(
+    '<div class="modal-handle"></div>'
+    + '<div class="modal-title">Comment marchent tes passions</div>'
+    + '<div class="passions-aide">'
+    + "<p><b>Aucune passion n'est principale.</b> Elles ont toutes exactement la "
+    + "même importance : aucune n'est mise en avant, aucune ne sert de passion "
+    + "par défaut.</p>"
+    + "<p><b>La passion se choisit au moment de publier.</b> Quand tu crées une "
+    + "publication ou une activité, le Studio te demande dans quelle passion "
+    + "elle part — et rien d'autre ne le décide à ta place.</p>"
+    + (plafondActif
+        ? "<p><b>Tu peux suivre " + PASSIONS_OFFERTES + " passions à la fois.</b> "
+          + "Au-delà, il faut en archiver une pour en reprendre une autre.</p>"
+        : "")
+    + "<p><b>Archiver ne supprime rien.</b> Publications, activités, bobines et "
+    + "médias d'une passion archivée restent enregistrés ; tu peux la réactiver "
+    + "quand une place et un changement sont disponibles.</p>"
+    + (restants === Infinity ? ""
+        : "<p><b>Réorganiser coûte un changement.</b> Il t'en reste <b>" + restants
+          + "</b> sur " + CHANGEMENTS_PASSION_OFFERTS + ". Seul l'archivage d'une "
+          + "passion active en consomme un — réactiver est gratuit.</p>")
+    + "</div>"
+    + '<button type="button" class="btn primary block" data-tel="passions_aide_compris"'
+    + ' onclick="closeModal()">J\'ai compris</button>'
+  );
+  _passionsPageTel("passions_aide_ouverte", { actives: nbPassionsVivantes() });
 }
 
 // ⚠️ `renderActivePassionLine` (la ligne « Publier dans : X · Changer », UI-8)
@@ -1986,8 +2085,9 @@ function restaurerPassion(profileId, silencieux) {
   renderProfilesScreen();
   if (typeof renderProfileStrip === "function") { try { renderProfileStrip(); } catch (e) {} }
   toast("✅ " + _passionEtiquette(pr).label + " est de retour dans tes passions");
-  // Restaurer deux passions ne doit pas obliger à rouvrir la liste à la main.
-  if (passionsArchivees().length) setTimeout(openArchivedPassions, 350);
+  // ⚠️ PLUS RIEN À ROUVRIR ICI. La liste des archivées vit dans la page, sous les
+  // cartes : `renderProfilesScreen()` (ci-dessus) vient de la repeindre avec une
+  // ligne de moins. La modale qu'on rouvrait à sa place n'existe plus.
   return true;
 }
 
@@ -2046,25 +2146,14 @@ function echangerPassion(idArchivee, idVivante) {
   return true;
 }
 
-function openArchivedPassions() {
-  var archivees = passionsArchivees().slice().sort(function (a, b) {
-    return (Number(b.archivedAt) || 0) - (Number(a.archivedAt) || 0);
-  });
-  var lignes = archivees.length
-    ? _lignesArchiveesHTML(archivees)
-    : '<div style="font-size:12px;color:var(--muted);padding:10px;">Aucune passion archivée.</div>';
-  var restants = changementsPassionRestants();
-  openModal(
-    '<div class="modal-handle"></div>'
-    + '<div class="modal-title">Passions archivées</div>'
-    + '<p class="section-subtitle" style="margin-top:-6px;">Elles sont enregistrées : leurs publications et activités n\'ont pas bougé, elles restent visibles dans « Toutes ».</p>'
-    + '<div class="v8-switch-list">' + lignes + "</div>"
-    + (restants === Infinity ? ""
-       : '<p class="section-subtitle" data-passion-compteur="1" style="margin-top:12px;">Il te reste <b>'
-         + restants + "</b> changement" + (restants > 1 ? "s" : "") + " de passion sur "
-         + CHANGEMENTS_PASSION_OFFERTS + ".</p>")
-  );
-}
+// ⚠️ `openArchivedPassions` A ÉTÉ RETIRÉE avec sa dernière porte (2026-09-03).
+// Elle rendait la liste des archivées dans une MODALE, ouverte par le lien
+// « Passions archivées (N) » de `#profilesQuotaSub` — un lien que la page
+// « Mes passions » remplace par une section repliable, en clair, sous les
+// cartes. Une cible supprimée emporte tout ce qui la vise : gardée, cette
+// fonction serait devenue une huitième fonction globale sans appelant, du genre
+// que l'audit du 2026-06-10 a trouvé sept fois. Son unique constructeur de
+// lignes (`_lignesArchiveesHTML`) est resté, lui, et sert la page.
 
 // ══════════════════════════════════════════════════════════════════════════
 // LA LISTE DES PASSIONS ARCHIVÉES  (2026-09-02)
@@ -2076,8 +2165,8 @@ function openArchivedPassions() {
 // du point de vue de l'utilisateur, elle avait disparu.
 //
 // Elle est maintenant écrite EN CLAIR, sous les cartes, avec sa date et son
-// issue. La modale `openArchivedPassions` reste — elle sert au retour depuis la
-// fenêtre payante — mais elle n'est plus le seul chemin.
+// issue — et REPLIABLE depuis le 2026-09-03. La modale `openArchivedPassions`
+// a été retirée le même jour : elle n'avait plus de porte.
 //
 // ⚠️ AUCUN NOUVEAU MAGASIN. Les archives sont les entrées `archived:true` de
 // `state.user.profiles`, comme depuis le lot UI-8 : une seconde liste tenue en
@@ -2094,6 +2183,23 @@ function _dateCourtePassion(ts) {
   } catch (e) { return ""; }
 }
 
+// ⚠️ REPLIABLE, ET L'ÉTAT DU REPLI VIT EN MÉMOIRE — pas dans le DOM. Le
+// conteneur est réécrit en entier à chaque rendu (`renderProfilesScreen` est
+// rappelée par toute archive, toute réactivation, tout retour sur l'écran) :
+// lire l'état sur le nœud qu'on s'apprête à détruire l'aurait perdu à chaque
+// geste. Il démarre OUVERT — une passion rangée doit rester visible sans un
+// geste de plus, c'est tout le défaut corrigé le 2026-09-02.
+var _passionArchiveDeplie = true;
+
+function togglePassionArchive() {
+  _passionArchiveDeplie = !_passionArchiveDeplie;
+  try { renderPassionArchiveBox(); } catch (e) { _passionsPageEchec("archive_repli", e); }
+  _passionsPageTel("passions_archives_repli", {
+    ouvert: _passionArchiveDeplie,
+    archivees: passionsArchivees().length,
+  });
+}
+
 function renderPassionArchiveBox() {
   var box = document.getElementById("passionArchiveBox");
   if (!box) return;
@@ -2104,42 +2210,240 @@ function renderPassionArchiveBox() {
   });
   if (!archivees.length) { box.hidden = true; box.innerHTML = ""; return; }
 
-  box.innerHTML = '<div class="section-title" style="margin-top:16px;">Passions archivées</div>'
-    + '<p class="section-subtitle">Elles sont enregistrées, rien n\'a été supprimé : publications, activités, bobines et médias restent visibles dans « Toutes ». Tu peux en reprendre une quand tu veux.</p>'
-    + '<div class="v8-switch-list">' + _lignesArchiveesHTML(archivees) + "</div>";
+  var ouvert = !!_passionArchiveDeplie;
+  // ⚠️ PLUS DE PHRASE « leur contenu est conservé ». Elle disait une chose vraie
+  // au mauvais endroit : une liste qu'on doit rassurer en trois lignes à chaque
+  // ouverture. La garantie est passée dans l'aide (« ? » de l'en-tête), où on
+  // va la chercher une fois, et la liste ne porte plus que ce qui change.
+  box.innerHTML = '<button type="button" class="passions-arch-head" id="passionArchiveToggle"'
+    + ' aria-expanded="' + (ouvert ? "true" : "false") + '" aria-controls="passionArchiveList"'
+    + ' onclick="togglePassionArchive()">'
+    + '<span class="passions-arch-titre">Passions archivées (' + archivees.length + ")</span>"
+    + '<span class="passions-arch-chevron' + (ouvert ? " est-ouvert" : "") + '" aria-hidden="true">'
+    + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>'
+    + "</span></button>"
+    + '<div class="v8-switch-list" id="passionArchiveList"' + (ouvert ? "" : " hidden") + ">"
+    + _lignesArchiveesHTML(archivees) + "</div>"
+    // Le motif du refus est écrit UNE fois, sous la liste, et seulement quand il
+    // s'applique : répété sur chaque ligne il serait devenu du décor.
+    + (ouvert && _passionReactivationBloquee()
+        ? '<p class="passions-arch-motif" data-passion-reactivation="bloquee">'
+          + escapeHtml(PASSION_REACTIVATION_MOTIF) + "</p>"
+        : "");
   box.hidden = false;
 }
 
 // ⚠️ UN SEUL CONSTRUCTEUR DE LIGNE, partagé par le panneau et par la modale.
 // Deux rendus de la même liste auraient divergé au premier ajustement — et
 // c'est la liste qui dit à l'utilisateur ce qu'il possède encore.
+// ⚠️ LA RÉACTIVATION EST IMPOSSIBLE QUAND LE PLAFOND EST ATTEINT **ET** LE QUOTA
+// ÉPUISÉ, ET DANS CE SEUL CAS. Reprendre une passion demande alors d'en archiver
+// une autre — ce qui coûte le changement qu'on n'a plus. Les deux autres états
+// AGISSENT : sous le plafond la réactivation est directe et gratuite ; au
+// plafond avec un changement en réserve, `restaurerPassion` propose l'échange.
+//
+// ⚠️ UN SEUL LIBELLÉ, « Réactiver », dans les trois états. Les trois libellés
+// d'avant (« Restaurer » / « Échanger » / « Indisponible ») faisaient porter au
+// BOUTON l'explication du quota : l'utilisateur devait deviner la règle en
+// lisant un mot qui changeait sous ses yeux. La règle est désormais écrite en
+// toutes lettres, sous la liste, et le bouton ne dit plus que son geste.
+//
+// ⚠️ IL N'EST PLUS `disabled` DEPUIS LE 2026-09-04, ET C'EST UN REVIREMENT
+// ASSUMÉ. Il l'était « pas seulement grisé », pour qu'aucun chemin ne puisse
+// atteindre `restaurerPassion` alors que l'écran annonce refuser. Le résultat
+// mesuré chez Benjamin : un `<button disabled>` n'envoie pas son `onclick`,
+// donc le tap ne produisait RIEN — et son verdict n'a pas été « c'est bloqué »
+// mais « réactiver ne fonctionne pas ». Un refus qui ne se prononce pas est
+// indiscernable d'une panne. Le bouton garde son aspect gris (`.est-bloquee`),
+// son `aria-disabled`, son `title` et le motif écrit sous la liste, mais il
+// RÉPOND : `restaurerPassion` ouvre `openPassionPaywall({restaurer})`, qui dit
+// que les changements sont épuisés. C'est la règle de la fiche 16 — une porte
+// fermée doit dire par où passer — appliquée jusqu'au bout.
+// ⚠️ ET LA GARDE N'A PAS BOUGÉ D'UN POUCE : elle vit dans `restaurerPassion`,
+// point d'écriture, exactement comme le plafond. Retirer `disabled` ne
+// réactive AUCUNE passion — le verrou « appelée directement, elle ne ramène pas
+// la passion en douce » de `mes-passions-page.spec.js` ⑩ bis le mesure déjà.
+function _passionReactivationBloquee() {
+  try { return plafondPassionsAtteint() && quotaChangementsAtteint(); }
+  catch (e) { return false; }
+}
+
+var PASSION_REACTIVATION_MOTIF = "Réactivation possible lorsqu'un changement sera disponible.";
+
 function _lignesArchiveesHTML(archivees) {
-  var plein = plafondPassionsAtteint();
-  // ⚠️ TROIS ÉTATS, TROIS LIBELLÉS. « Échanger » au plafond ALORS QUE LE QUOTA
-  // EST ÉPUISÉ était un mensonge doublé d'une boucle : le bouton ouvrait une
-  // fenêtre payante SANS liste d'échange (il n'y a plus de changement à
-  // dépenser), dont l'unique action ramenait au panneau — où le même bouton
-  // attendait. Un mur est acceptable ; un mur qui se fait passer pour une porte
-  // et vous renvoie devant lui-même ne l'est pas.
-  var bloque = plein && quotaChangementsAtteint();
-  var libelle = bloque ? "Indisponible" : (plein ? "Échanger" : "Restaurer");
+  var bloque = _passionReactivationBloquee();
   return archivees.map(function (pr) {
     var et = _passionEtiquette(pr);
     var quand = _dateCourtePassion(pr.archivedAt);
-    // ⚠️ Le libellé du bouton dit ce qui VA se passer. « Restaurer » sur un
-    // compte au plafond ouvrait une fenêtre payante : le bouton mentait sur son
-    // propre effet. Au plafond, il annonce l'échange, qui est ce qu'il fera.
     return '<div class="v8-switch-row" data-v8-archived="' + escapeHtml(String(pr.id)) + '">'
       + '<span class="v8-switch-emoji" aria-hidden="true">' + escapeHtml(et.emoji) + "</span>"
       + '<span class="v8-switch-name">' + escapeHtml(et.label)
       + (quand ? '<span style="display:block;font-weight:400;font-size:11px;color:var(--muted);">Archivée le '
                  + escapeHtml(quand) + "</span>" : "")
       + "</span>"
-      + '<button type="button" class="v8-switch-go" data-v8-restaurer="' + escapeHtml(String(pr.id)) + '"'
+      // ⚠️ NI `disabled` NI `aria-disabled` (2026-09-04). Les deux DÉSARMENT :
+      // le premier n'envoie pas l'`onclick`, le second retire la commande aux
+      // lecteurs d'écran et à toute automatisation — Playwright refuse de
+      // cliquer un `aria-disabled="true"` avec « element is not enabled », ce
+      // qui a d'ailleurs révélé le défaut. Poser l'un ou l'autre sur un bouton
+      // qui RÉPOND serait mentir ; ne rien dire de l'état serait pire. L'état
+      // vit donc dans le NOM ACCESSIBLE (`aria-label`), dans l'aspect
+      // (`.est-bloquee`), dans le `title` et dans le motif écrit sous la liste.
+      + '<button type="button" class="v8-switch-go' + (bloque ? " est-bloquee" : "") + '"'
+      + ' data-v8-restaurer="' + escapeHtml(String(pr.id)) + '"'
+      + (bloque ? ' data-v8-reactivation="bloquee" title="' + escapeHtml(PASSION_REACTIVATION_MOTIF) + '"'
+                  + ' aria-label="Réactiver ' + escapeHtml(et.label)
+                  + ' — indisponible pour le moment, appuie pour savoir pourquoi"'
+                : ' data-v8-reactivation="ouverte"')
       + ' onclick="restaurerPassion(\'' + escapeJsArg(String(pr.id)) + '\')">'
-      + libelle + "</button>"
+      + "Réactiver</button>"
       + "</div>";
   }).join("");
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// L'EN-TÊTE DE LA PAGE « MES PASSIONS »  (2026-09-03)
+// ──────────────────────────────────────────────────────────────────────────
+// Trois nœuds, une seule source de vérité pour chacun :
+//   ① `#passionsResume`     « X passions actives sur N »
+//   ② `#profilesQuotaSub`   l'alerte de quota, ou la ligne d'information
+//   ③ `#nouveauProfilLien`  la porte d'ajout, ouverte ou réellement désarmée
+//
+// ⚠️ AUCUN NOMBRE ÉCRIT EN DUR. `X` est `nbPassionsVivantes()`, `N` est
+// `PASSIONS_OFFERTES`, le quota vient de `changementsPassionRestants()`. Les
+// trois nœuds lisent les MÊMES fonctions : une seconde source dirait faux dès
+// le premier ajout, et c'est exactement ce que le compteur tenu à côté du
+// journal des changements avait déjà coûté.
+//
+// ⚠️ LE PLAFOND PEUT NE PAS S'APPLIQUER. `passionsRestantesOffertes()` rend
+// `Infinity` sous la coupure du sélecteur plat, et `changementsPassionRestants()`
+// rend `Infinity` pour un visiteur sans compte ou en démo. Dans ces cas on
+// n'écrit NI « sur N » NI d'alerte : annoncer une limite qui ne borne rien est
+// un mensonge, et une alerte permanente n'alerte plus de rien.
+// ══════════════════════════════════════════════════════════════════════════
+function _rendrePagePassionsEntete() {
+  var vivantes = nbPassionsVivantes();
+  var plafondActif = false;
+  try { plafondActif = plafondPassionsActif(); } catch (e) {}
+  var restants = changementsPassionRestants();
+  var plein = plafondPassionsAtteint();
+
+  // ① Le résumé.
+  var resume = document.getElementById("passionsResume");
+  if (resume) {
+    resume.innerHTML = '<svg class="passions-resume-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor"'
+      + ' stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+      + '<path d="M16 19v-1.5a3.5 3.5 0 0 0-3.5-3.5h-5A3.5 3.5 0 0 0 4 17.5V19"/>'
+      + '<circle cx="10" cy="8" r="3.2"/><path d="M20 19v-1.4a3.5 3.5 0 0 0-2.6-3.4"/>'
+      + '<path d="M15.4 5.2a3.2 3.2 0 0 1 0 5.6"/></svg>'
+      + '<span class="passions-resume-mot" data-passion-resume="1"><b>' + vivantes + "</b> passion"
+      + (vivantes > 1 ? "s" : "") + " active" + (vivantes > 1 ? "s" : "")
+      + (plafondActif ? " sur " + PASSIONS_OFFERTES : "") + "</span>";
+    resume.hidden = false;
+  }
+
+  // ② Le quota. L'ALERTE ne paraît que si le quota est RÉELLEMENT épuisé.
+  var sub = document.getElementById("profilesQuotaSub");
+  if (sub) {
+    if (restants === Infinity) {
+      sub.innerHTML = "";
+      sub.className = "section-subtitle passions-quota";
+      sub.removeAttribute("data-passion-quota");
+      sub.removeAttribute("role");
+      sub.style.display = "none";
+    } else if (restants <= 0) {
+      sub.className = "section-subtitle passions-quota est-alerte";
+      sub.setAttribute("data-passion-quota", "epuise");
+      // `role="status"` et non `alert` : l'information est une contrainte de
+      // l'écran, pas un incident — un lecteur d'écran ne doit pas être coupé.
+      sub.setAttribute("role", "status");
+      sub.innerHTML = '<svg class="passions-quota-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor"'
+        + ' stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+        + '<circle cx="12" cy="12" r="9.2"/><path d="M12 11v5.2"/><path d="M12 7.6h.01"/></svg>'
+        + '<span data-passion-compteur="1">Aucun changement disponible pour le moment.</span>';
+      sub.style.display = "";
+    } else {
+      sub.className = "section-subtitle passions-quota";
+      sub.setAttribute("data-passion-quota", "disponible");
+      sub.removeAttribute("role");
+      sub.innerHTML = '<span data-passion-compteur="1"><b>' + restants + "</b> changement"
+        + (restants > 1 ? "s" : "") + " de passion disponible" + (restants > 1 ? "s" : "")
+        + " sur " + CHANGEMENTS_PASSION_OFFERTS + ".</span>";
+      sub.style.display = "";
+    }
+  }
+
+  // ③ La porte d'ajout.
+  var porte = document.getElementById("nouveauProfilLien");
+  var mot = document.getElementById("nouveauProfilSous");
+  if (porte) {
+    var ferme = plafondActif && plein;
+    porte.classList.toggle("is-plein", ferme);
+    // ══════════════════════════════════════════════════════════════════════
+    // ⚠️ ELLE RESTE ARMÉE, MÊME AU PLAFOND (2026-09-04). REVIREMENT ASSUMÉ.
+    // ──────────────────────────────────────────────────────────────────────
+    // La fiche 19 la DÉSARMAIT (`aria-disabled`, `role` et `tabindex` retirés,
+    // `pointer-events: none`), au motif qu'une cible qui répond à un geste
+    // qu'elle annonce refuser est une promesse trompeuse. Le raisonnement était
+    // juste sur le papier ; à l'usage il produit exactement l'inverse.
+    //
+    // Mesuré sur l'appareil de Benjamin le 2026-09-04, et reproduit au
+    // navigateur : un compte à trois passions — c'est-à-dire un compte NORMAL,
+    // arrivé au bout de sa dotation — tape la porte et **rien ne se passe**.
+    // Pas un toast, pas une fenêtre, pas un mot. Le verdict de l'utilisateur
+    // n'est pas « c'est plein », c'est « c'est cassé » : « ajouter une passion
+    // ne fonctionne pas ». Un refus qui ne se prononce pas est indiscernable
+    // d'une panne — et ce dépôt a déjà écrit la règle qui tranche (fiche 16) :
+    // UNE PORTE FERMÉE DOIT DIRE PAR OÙ PASSER.
+    //
+    // Elle mène donc toujours à `openCreateProfile`, qui au plafond ouvre
+    // `openPassionPaywall()` : la fenêtre nomme la limite, dit qu'aucun
+    // paiement n'est ouvert, et donne la sortie réelle (« archives-en une pour
+    // en activer une autre »). C'est le comportement de TOUTES les autres
+    // portes d'acquisition — le Studio, `quickCreateProfile`,
+    // `ajouterPassionAuCompte` — dont celle-ci était devenue la seule
+    // exception muette. Et la boucle « mur → panneau → mur » reste fermée par
+    // `_paywallCacheGerer()`, qui retire « Gérer mes passions » quand on tape
+    // depuis le panneau déjà ouvert.
+    //
+    // ⚠️ DONC PAS D'`aria-disabled` NON PLUS. Le poser sur une cible qui répond
+    // mentirait aux lecteurs d'écran, et `pointer-events` a quitté le CSS avec
+    // lui : l'état « plein » est désormais VISUEL et TEXTUEL, jamais inerte.
+    // `data-passion-porte` garde ses deux valeurs — c'est le marqueur d'état,
+    // pas un marqueur d'inertie.
+    // ══════════════════════════════════════════════════════════════════════
+    porte.removeAttribute("aria-disabled");
+    porte.setAttribute("role", "button");
+    porte.setAttribute("tabindex", "0");
+    porte.setAttribute("title", ferme
+      ? "Limite de " + PASSIONS_OFFERTES + " atteinte — voir comment changer de passion"
+      : "Ajouter une passion");
+    porte.setAttribute("data-passion-porte", ferme ? "fermee" : "ouverte");
+  }
+  if (mot) {
+    // Le motif du refus ET la sortie, dans la même ligne : « c'est plein » seul
+    // laissait l'utilisateur devant un constat sans geste.
+    mot.textContent = (plafondActif && plein)
+      ? "Limite de " + PASSIONS_OFFERTES + " atteinte — appuie pour voir comment en changer"
+      : "Ajoute une passion à ton profil et à ton fil.";
+  }
+}
+
+// Sous la coupure `passio_ui_8="0"`, l'écran d'avant revient — et ce qui n'existe
+// que pour la page « Mes passions » doit partir AVEC lui. Une cible supprimée
+// emporte tout ce qui la vise : laissés en place, ces trois nœuds auraient gardé
+// le texte du dernier rendu UI-8, dans un écran qui ne les connaît pas.
+function _effacerPagePassionsEntete() {
+  var resume = document.getElementById("passionsResume");
+  if (resume) { resume.innerHTML = ""; resume.hidden = true; }
+  var porte = document.getElementById("nouveauProfilLien");
+  if (porte) {
+    porte.classList.remove("is-plein");
+    porte.removeAttribute("aria-disabled");
+    porte.setAttribute("role", "button");
+    porte.setAttribute("tabindex", "0");
+    porte.removeAttribute("data-passion-porte");
+  }
 }
 
 function renderProfilesScreen() {
@@ -2172,34 +2476,12 @@ function renderProfilesScreen() {
 
     // Comptages : une seule lecture d'`allEvents()` pour toutes les cartes.
     var _mesEvs = _myProfileEvents(9999);
-    var _courant = state.user.currentProfileId;
 
-    // ── Le compteur, dit AVANT le geste et non découvert après ──────────────
-    if (sub) {
-      var _arch = passionsArchivees();
-      var _restants = changementsPassionRestants();
-      var _bouts = [];
-      if (_restants !== Infinity) {
-        _bouts.push('<span data-passion-compteur="1">' + nbPassionsVivantes() + "/" + PASSIONS_OFFERTES
-          + " passion" + (nbPassionsVivantes() > 1 ? "s" : "") + " · <b>" + _restants + "</b> changement"
-          + (_restants > 1 ? "s" : "") + " restant" + (_restants > 1 ? "s" : "") + "</span>");
-      }
-      if (_arch.length) {
-        _bouts.push('<span class="link" data-v8-archivees="1" onclick="openArchivedPassions()">Passions archivées ('
-          + _arch.length + ")</span>");
-      }
-      if (_bouts.length) {
-        sub.innerHTML = _bouts.join(" — ");
-        sub.style.display = "";
-      } else {
-        sub.innerHTML = "";
-        sub.style.display = "none";
-      }
-    }
+    // ── L'en-tête de la page : le résumé, le quota, l'état de la porte ──────
+    try { _rendrePagePassionsEntete(); } catch (e) { _passionsPageEchec("entete", e); }
 
     list.innerHTML = passionsVivantes().map(function (p) {
       var et = _passionEtiquette(p);
-      var estActive = (p.id === _courant);
       var _pPhoto = p.photoUrl || p.photo || null;
       var avatarStyle = _pPhoto
         ? "background:url(" + safeUrlAttr(_pPhoto) + ") center/cover;"
@@ -2214,16 +2496,15 @@ function renderProfilesScreen() {
       var nbEvs = _mesEvs.filter(function (e) { return e && e.passion === p.passion; }).length;
       var compte = nbPosts + " publication" + (nbPosts > 1 ? "s" : "") + " · " + nbEvs + " activité" + (nbEvs > 1 ? "s" : "");
 
-      // ⚠️ PLUS DE SÉLECTEUR DE PASSION D'ÉCRITURE ICI (refonte §3) : le Studio
-      // est le seul endroit où l'on choisit la passion de destination. La carte
-      // ne fait plus qu'INDIQUER laquelle le Studio présélectionnera — c'est une
-      // information, plus une commande, et `switchToProfile` n'est plus appelée
-      // depuis cet écran.
-      var etat = estActive
-        ? '<span class="v8-state on" data-v8-active="' + escapeHtml(String(p.id)) + '">Passion du Studio ✓</span>'
-        : "";
-
-      return '<div class="profile-card v8-passion-card' + (estActive ? " is-active" : "") + (_pCover ? " has-cover" : "") + '"'
+      // ⚠️ TOUTES LES CARTES SONT IDENTIQUES, ET C'EST UNE RÈGLE PRODUIT.
+      // Il n'existe AUCUNE passion principale, favorite ou prioritaire : plus de
+      // pastille « Passion du Studio ✓ », plus de liseré d'élection (`is-active`),
+      // plus de bio qui allongeait une carte sur deux. La passion d'une
+      // publication se choisit AU STUDIO, au moment de publier (ADR-011 §3).
+      // `currentProfileId` reste la source de vérité de l'identité d'écriture et
+      // `switchToProfile` son seul point d'écriture — cet écran ne l'expose plus
+      // comme un rang, parce qu'il n'en est pas un.
+      return '<div class="profile-card v8-passion-card' + (_pCover ? " has-cover" : "") + '"'
         + ' data-v8-card="' + escapeHtml(String(p.id)) + '" style="' + coverStyle + '"'
         + ' onclick="openEditPassionProfile(\'' + escapeJsArg(String(p.id)) + '\')">'
         + '<div class="avatar lg" style="' + avatarStyle + 'position:relative;">' + avatarContent
@@ -2233,15 +2514,14 @@ function renderProfilesScreen() {
         + '</div>'
         + '<div class="profile-card-body">'
         + '<div class="profile-card-name">' + escapeHtml(et.emoji) + " " + escapeHtml(et.label) + '</div>'
-        + (p.bio ? '<div class="profile-card-bio">' + escapeHtml(p.bio) + '</div>' : "")
         + '<div class="v8-card-meta">' + escapeHtml(compte) + '</div>'
         + '</div>'
         + '<button class="profile-dots-btn" onclick="openPassionProfileMenu(event,\'' + escapeJsArg(String(p.id)) + '\')" title="Options" aria-label="Options de la passion" aria-haspopup="menu">⋯</button>'
-        + etat
         + '</div>';
     }).join("");
   } else {
 
+    _effacerPagePassionsEntete();
 
     if (sub) {
       // Plus de décompte verbeux : on garde uniquement la fonction Réinitialiser
@@ -2292,7 +2572,11 @@ function renderProfilesScreen() {
   // La liste des archives, HORS des deux branches : sous kill switch elle doit
   // être RETIRÉE, pas laissée avec le contenu du rendu précédent. Une cible
   // supprimée emporte tout ce qui la vise.
-  try { renderPassionArchiveBox(); } catch (e) { _v8Echec("archive_box", e); }
+  // ⚠️ `_passionsPageEchec` et non `_v8Echec` : la liste des archives est le seul
+  // endroit où l'on retrouve une passion rangée. Une panne y donne un écran
+  // amputé sans une erreur — précisément ce que la Sentinelle ne peut pas voir
+  // si on ne le lui dit pas.
+  try { renderPassionArchiveBox(); } catch (e) { _passionsPageEchec("archive_box", e); }
 
   // Contenu en dessous : filtré par l'onglet actif ET la multi-sélection
   renderProfileContent();
@@ -2870,15 +3154,98 @@ function comptePassioReel() {
 // pas le nombre de passions. Le plafond de trois vivantes reste donc ce qu'il
 // était avant ce lot — universel — et le visiteur qui s'inscrit arrive dans son
 // dû, sans qu'on ait rien à lui reprendre au passage.
+// ══════════════════════════════════════════════════════════════════════════
+// LE MODE « PASSIONS ILLIMITÉES »  (2026-09-04, demande de Benjamin)
+// ──────────────────────────────────────────────────────────────────────────
+// « Mets mon compte test en illimité avec les passions pour les tests. »
+//
+// ⚠️ CE N'EST PAS UNE COUPURE DE LOT, C'EST UNE ADHÉSION. Toutes les autres
+// bascules de ce dépôt (`flat_passions_v1`, `passio_ui_8`, `passio_ui_4a5`…)
+// ne savent qu'ENLEVER : seule la valeur « 0 » décide, rien n'est jamais écrit
+// pour activer. Celle-ci fait l'inverse — elle n'existe que si on l'ALLUME,
+// explicitement, sur cet appareil. Le défaut du produit reste donc le produit :
+// trois passions, trois changements.
+//
+// ⚠️ ELLE EST LUE À UN SEUL ENDROIT, ET C'EST CE QUI LA REND SÛRE. Les deux
+// interrupteurs de tout le système de quota sont `plafondPassionsActif()` et
+// `quotaChangementsActif()` : TOUT le reste en découle par lecture —
+// `passionsRestantesOffertes` → Infinity, donc `plafondPassionsAtteint` → faux,
+// donc les gardes d'`ajouterPassionAuCompte`, de `restaurerPassion`, du Studio
+// et de `PassioFlatUI.placesRestantes` s'ouvrent ; `changementsPassionRestants`
+// → Infinity, donc `quotaChangementsAtteint` → faux, donc
+// `_inscrireChangementPassion` n'échoue plus, `confirmArchivePassion` n'ouvre
+// plus la fenêtre payante et `_passionReactivationBloquee` rend faux. Poser le
+// drapeau à chaque porte aurait laissé la prochaine porte l'oublier — la faute
+// exacte que `quickCreateProfile` et le Studio ont déjà commise sur le plafond.
+//
+// ⚠️ ET L'ÉCRAN NE MENT PAS. `_rendrePagePassionsEntete` n'écrit « sur N » que
+// si `plafondPassionsActif()`, et n'affiche l'alerte de quota que si
+// `changementsPassionRestants()` est un nombre fini : les deux mentions
+// disparaissent d'elles-mêmes, sans une ligne de plus. Annoncer une limite qui
+// ne borne rien est un mensonge (règle de la fiche 19).
+//
+// ⚠️ AUCUNE PORTE DÉROBÉE OUVERTE. C'est du client vanilla : n'importe qui peut
+// déjà écrire `state.user.profiles` depuis la console de son navigateur, et
+// c'est le SERVEUR qui décidera d'un jour facturer. Ce drapeau ne desserre
+// aucune RLS et n'écrit rien en base que la console ne puisse écrire seule.
+// ══════════════════════════════════════════════════════════════════════════
+var CLE_PASSIONS_ILLIMITEES = "passio_passions_illimitees_v1";
+
+function passionsIllimitees() {
+  try { if (window.PASSIO_PASSIONS_ILLIMITEES === true) return true; } catch (e) {}
+  try { if (window.PASSIO_PASSIONS_ILLIMITEES === false) return false; } catch (e) {}
+  try { return localStorage.getItem(CLE_PASSIONS_ILLIMITEES) === "1"; } catch (e) { return false; }
+}
+
 function plafondPassionsActif() {
+  if (passionsIllimitees()) return false;
   try { return typeof PassioFlatUI !== "undefined" && PassioFlatUI.actif(); }
   catch (e) { return false; }
 }
 
 // Le quota de CHANGEMENTS, lui, ne s'applique qu'à un compte : essayer
 // l'application, c'est ranger et reprendre autant qu'on veut.
+// ⚠️ La garde d'illimité est répétée ici et n'est PAS redondante : elle survit
+// à toute évolution qui rendrait ces deux fonctions indépendantes.
 function quotaChangementsActif() {
+  if (passionsIllimitees()) return false;
   return plafondPassionsActif() && comptePassioReel();
+}
+
+// La bascule, appelée depuis les Paramètres → Démo. Elle DIT ce qu'elle fait et
+// repeint tout de suite ce qui en dépend : la page « Mes passions » affiche ou
+// retire « sur N », l'alerte de quota, l'état de la porte et celui des boutons
+// « Réactiver ». Sans ce re-rendu, l'écran garderait l'état d'avant la bascule
+// et on croirait le drapeau sans effet.
+function basculerPassionsIllimitees() {
+  var actif = !passionsIllimitees();
+  try { localStorage.setItem(CLE_PASSIONS_ILLIMITEES, actif ? "1" : "0"); } catch (e) {}
+  // Une bascule en mémoire prendrait le pas sur le stockage à la lecture
+  // suivante : on l'aligne, sinon un `window.PASSIO_PASSIONS_ILLIMITEES` posé
+  // par un test ou une console figerait le bouton.
+  try { window.PASSIO_PASSIONS_ILLIMITEES = actif; } catch (e) {}
+  try { majBoutonPassionsIllimitees(); } catch (e) {}
+  try { if (typeof renderProfilesScreen === "function") renderProfilesScreen(); } catch (e) {}
+  try { if (typeof renderProfileStrip === "function") renderProfileStrip(); } catch (e) {}
+  _passionsPageTel("passions_illimitees_bascule", {
+    ouvert: actif,
+    actives: nbPassionsVivantes(),
+  });
+  toast(actif
+    ? "♾️ Passions illimitées — plafond et quota levés sur cet appareil"
+    : "Passions illimitées désactivées — retour à " + PASSIONS_OFFERTES + " passions");
+}
+
+// Le bouton des Paramètres doit dire l'état COURANT, pas le geste supposé : il
+// est du balisage statique, relu à chaque ouverture du panneau (comme
+// `majSectionCompte`), sinon il annonce l'état de la dernière fois.
+function majBoutonPassionsIllimitees() {
+  var b = document.getElementById("settingsPassionsIllimitees");
+  if (!b) return;
+  var on = passionsIllimitees();
+  b.textContent = on ? "Passions illimitées : ACTIVÉ" : "Passions illimitées (test)";
+  b.setAttribute("aria-pressed", on ? "true" : "false");
+  b.setAttribute("data-passions-illimitees", on ? "1" : "0");
 }
 
 // ── Le journal des changements ────────────────────────────────────────────
@@ -2964,6 +3331,20 @@ function nbPassionsVivantes() {
   try {
     return ((state && state.user && state.user.profiles) || [])
       .filter(function (p) { return p && !p.archived; }).length;
+  } catch (e) { return 0; }
+}
+
+// Le compteur « passions » de l'en-tête du profil : les VIVANTES **et** les
+// ARCHIVÉES (demande du 2026-09-04). Une passion archivée reste une passion
+// possédée — elle se réactive — donc elle compte ici, contrairement au
+// plafond, qui ne borne que les vivantes (`nbPassionsVivantes`).
+// ⚠️ Le profil de remplissage fabriqué par `boot()` (`_parDefaut`) n'est
+// compté NULLE PART ailleurs : il ne l'est pas davantage ici, sinon un
+// visiteur qui n'a rien choisi verrait « 1 passion ».
+function nbPassionsTotales() {
+  try {
+    return ((state && state.user && state.user.profiles) || [])
+      .filter(function (p) { return p && p.id && !p._parDefaut; }).length;
   } catch (e) { return 0; }
 }
 
