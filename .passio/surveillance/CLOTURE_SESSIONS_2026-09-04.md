@@ -20,18 +20,16 @@ compte « en avance ».
 - Déploiement de #274 en cours à 08:44 UTC (gates dist, audits,
   gouvernance, suites production : verts ; six shards navigateur en cours).
 
-## Travail EN COURS trouvé (trois sessions vivantes)
+## Travail EN COURS trouvé (trois sessions vivantes) — TOUT ATTERRI
 
-| Session | Branche | État à 08:55 UTC |
+| Session | Branche | Issue |
 |---|---|---|
-| Interface Filtre onglet Rencontrer | `claude/filtre-rencontrer-interface-xkqtnd` | RUNNING — « merging to main after permission granted » ; 1 commit, 11 fichiers |
-| Optimisation page recherche | `claude/search-page-optimization-l3byug` | 3 commits ; « 9 suites en cours, push sur main si vert » |
-| Respect des sauts de ligne en biographie | `claude/biography-line-breaks-n5he02` | 1 commit ; « 138 tests en cours sur la branche fusionnée, merge & deploy si vert » |
+| Optimisation page recherche | `claude/search-page-optimization-l3byug` | fusionnée par sa session : **#275** (09:17 UTC) |
+| Respect des sauts de ligne en biographie | `claude/biography-line-breaks-n5he02` | CI verte, fusionnée par la consolidation : **#277** (09:25 UTC) |
+| Interface Filtre onglet Rencontrer | `claude/filtre-rencontrer-interface-xkqtnd` | rouge par verrou de concurrence, puis conflit `CLAUDE.md` avec #275/#277 ; fusion de `main` résolue (les deux fiches 20 gardées), 52 tests verts, CI verte, fusionnée par la consolidation : **#276** (09:50 UTC) |
 
-Ces trois sessions pilotent elles-mêmes leur mise en ligne. La session de
-consolidation ne les double pas (deux écrivains sur `styles.css`,
-`app-06`, `app-07` = conflits garantis) : elle attend leur atterrissage et
-reprend la main si l'une s'arrête sans avoir poussé.
+Les trois sessions sont archivées. Plus aucune PR ouverte, plus aucune
+session vivante en dehors de celle-ci.
 
 ## Travail ORPHELIN repris ici
 
@@ -60,8 +58,9 @@ reprend la main si l'une s'arrête sans avoir poussé.
 Test avec Fable 5.1 · Onglets passion profil dysfonctionnels (#273) ·
 Suppression des emojis dans les onglets (#266) · Fable 5.1 compatibility ·
 Centraliser les sessions actives · Surveillance des sessions ·
-Gestion des passions du profil · Passions sport affichage sélections.
-Les trois sessions vivantes seront archivées après leur atterrissage.
+Gestion des passions du profil · Passions sport affichage sélections ·
+Respect des sauts de ligne en biographie (#277) · Optimisation page
+recherche (#275) · Interface Filtre onglet Rencontrer (#276).
 
 ## Issues
 
