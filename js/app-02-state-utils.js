@@ -1176,6 +1176,25 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]));
 }
 
+// Normalise un texte MULTILIGNE saisi dans un <textarea> (biographie…) — il est
+// rendu avec `white-space: pre-line`, donc chaque saut de ligne écrit est un saut
+// de ligne affiché. On respecte STRICTEMENT ce que la personne a tapé, à trois
+// détails près, invisibles à l'écriture :
+//   • CRLF/CR (claviers Windows, collage) → LF, sinon un \r traîne dans la base ;
+//   • les espaces en FIN de ligne (invisibles, hérités d'un collage) sont retirés ;
+//   • trois sauts de ligne ou plus d'affilée sont ramenés à deux (une ligne vide
+//     max) : sans cela, une bio de 200 retours à la ligne étirerait la carte
+//     profil — la sienne comme celle qu'on visite — sur des dizaines d'écrans.
+// Les lignes vides isolées, elles, sont CONSERVÉES : c'est de la mise en forme.
+function normaliserTexteMultiligne(s) {
+  return String(s == null ? "" : s)
+    .replace(/\r\n?/g, "\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/^\s+|\s+$/g, "");
+}
+window.normaliserTexteMultiligne = normaliserTexteMultiligne;
+
 // Tronque une chaîne à `max` unités UTF-16 SANS couper une paire de substitution.
 // slice(0,max) brut peut laisser un demi-surrogate (high sans low) quand la coupe
 // tombe au milieu d'un emoji (😍 = 2 unités, 👨‍👩‍👧 = plusieurs) → caractère « ￿ ».
