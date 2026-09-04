@@ -3250,29 +3250,60 @@ function _renderVisitedContent() {
 // sociaux, mode privé). Partagé par les 3 requêtes d'openUserProfile.
 var VISITED_PROFILE_COLS = "id,username,emoji,color,passion_id,passions,bio,avatar_url,cover_url,is_private,rs_links";
 
+// ⚠️ TOUS LES BOUTONS DE CE COMPTE, PAS « LE » BOUTON (2026-09-03).
+// `document.getElementById("followBtn_" + userId)` rend le PREMIER dans l'ordre
+// du document. Or trois surfaces émettent cet identifiant pour la même personne :
+// le profil visité (ci-dessus), « Créateurs à suivre » de la page Rechercher
+// (`#suggestedCreators`, app-06) et la fiche d'une passion (`#pexCreators`,
+// app-07). L'écran précède la modale dans `index.html` : suivre quelqu'un DEPUIS
+// LA MODALE écrivait bien l'état, mais retournait le bouton CACHÉ derrière —
+// celui sous le doigt restait « Suivre », on retapait, et on se désabonnait en
+// silence. Les surfaces marquent donc leurs boutons d'un `data-follow-uid` et on
+// les retourne TOUS ; l'identifiant historique reste pris en compte pour les
+// surfaces qui ne l'ont pas encore.
+function _boutonsSuivi(userId) {
+  var out = [];
+  try {
+    var parId = document.getElementById("followBtn_" + userId);
+    if (parId) out.push(parId);
+  } catch (e) {}
+  try {
+    // Comparaison d'ATTRIBUT plutôt que sélecteur construit : un identifiant de
+    // compte n'a pas à être échappé pour entrer dans une chaîne CSS.
+    Array.prototype.forEach.call(document.querySelectorAll("[data-follow-uid]"), function (b) {
+      if (b.getAttribute("data-follow-uid") === String(userId) && out.indexOf(b) < 0) out.push(b);
+    });
+  } catch (e) {}
+  return out;
+}
+
 function toggleFollowUser(userId, userName) {
   // Mode invité (première visite) : cette action engage le compte. Le gate
   // EXPLIQUE l'action puis propose la création de compte ; il ne rejoue jamais
   // l'action après coup. Rend `true` — donc inerte — hors mode invité.
   if (window.requireAuthentication && !requireAuthentication("suivre")) return;
-  var btn = document.getElementById("followBtn_" + userId);
-  if (!btn) return;
+  var btns = _boutonsSuivi(userId);
+  if (!btns.length) return;
   state.user.following = state.user.following || [];
   const isFollowing = state.user.following.includes(userId);
   if (!isFollowing) {
     state.user.following.push(userId);
-    btn.innerHTML = "✓ Suivi";
-    btn.style.background = "var(--accent)";
-    btn.style.color = "#fff";
-    btn.style.borderColor = "var(--accent)";
+    btns.forEach(function (btn) {
+      btn.innerHTML = "✓ Suivi";
+      btn.style.background = "var(--accent)";
+      btn.style.color = "#fff";
+      btn.style.borderColor = "var(--accent)";
+    });
     toast("Tu suis " + (userName || "cet utilisateur") + " !");
     supaFollowUser(userId);
   } else {
     state.user.following = state.user.following.filter(id => id !== userId);
-    btn.innerHTML = "Suivre";
-    btn.style.background = "";
-    btn.style.color = "";
-    btn.style.borderColor = "";
+    btns.forEach(function (btn) {
+      btn.innerHTML = "Suivre";
+      btn.style.background = "";
+      btn.style.color = "";
+      btn.style.borderColor = "";
+    });
     toast("Tu ne suis plus " + (userName || "cet utilisateur"));
     supaUnfollowUser(userId);
   }

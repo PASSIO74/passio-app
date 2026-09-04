@@ -1643,7 +1643,15 @@
     /* Passion grid */
     .passion-grid {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      /* ⚠️ minmax(0, 1fr) ET PAS 1fr. Une piste de grille `1fr` a un
+         `min-width: auto` : elle refuse de descendre sous la largeur de son
+         contenu le plus large. Tant que la grille ne servait que les DIX-NEUF
+         libellés du socle (« Photo », « Sport »…) rien ne débordait ; depuis
+         qu'elle rend le référentiel plat, « Astrophotographie » et « Guitare
+         électrique » poussaient la troisième colonne HORS de l'écran — mesuré
+         à 390 px. Changer les DONNÉES d'une mise en page, c'est changer la
+         mise en page. */
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 8px;
       margin-bottom: 12px;
     }
@@ -1708,7 +1716,13 @@
     }
 
     .passion-tile-emoji { font-size: 28px; }
-    .passion-tile-label { font-size: 11px; font-weight: 600; text-align: center; color: var(--text-dim); }
+    /* Le libellé se casse plutôt que de déborder : `minmax(0, 1fr)` autorise la
+       colonne à rétrécir, encore faut-il que le texte accepte d'y tenir. */
+    /* `hyphens: auto` AVANT `overflow-wrap` dans l'intention : le document est en
+       `lang="fr"`, le navigateur coupe donc « Astrophoto-graphie » plutôt qu'au
+       hasard. `overflow-wrap` reste le filet pour ce que la césure ne sait pas
+       traiter — sans lui, un seul mot long redéborde de sa colonne. */
+    .passion-tile-label { font-size: 11px; font-weight: 600; text-align: center; color: var(--text-dim); max-width: 100%; line-height: 1.25; -webkit-hyphens: auto; hyphens: auto; overflow-wrap: anywhere; }
     .passion-tile.selected .passion-tile-label { color: #fff; }
 
     /* ===== Custom passion: create tile + existing badge ===== */
@@ -2069,6 +2083,17 @@
       color: var(--muted);
       line-height: 1.5;
       margin-bottom: 10px;
+      /* ⚠️ LA BIOGRAPHIE EST MULTILIGNE. Le champ d'édition est un <textarea> :
+         ce qu'on y écrit sur trois lignes doit s'afficher sur trois lignes. Sans
+         cette déclaration, le moteur replie tous les \n en espaces et la bio
+         revenait sur UNE ligne (défaut signalé le 2026-09-03, capture à l'appui).
+         `pre-line` (et non `pre`) : les sauts de ligne sont préservés, mais les
+         lignes longues continuent de se replier dans la largeur de la carte.
+         Vaut pour les DEUX surfaces qui portent cette classe : son propre profil
+         (#mainProfileBio, écrit en textContent) et le profil VISITÉ (app-04,
+         injecté en HTML échappé) — une bio d'autrui reste donc échappée. */
+      white-space: pre-line;
+      overflow-wrap: anywhere;
       /* Elle ouvre l'éditeur : le curseur doit le dire. */
       cursor: pointer;
     }

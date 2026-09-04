@@ -1306,7 +1306,11 @@ function editCoverFromModal() {
 
 async function saveMainProfile() {
   const username = document.getElementById("editUsername")?.value.trim() || "";
-  const bio      = document.getElementById("editBio")?.value.trim() || "";
+  // ⚠️ PAS de `.trim()` seul : il écrase les espaces aux bouts mais laisse passer
+  // les \r d'un collage Windows, et n'a jamais borné les lignes vides. La bio est
+  // MULTILIGNE (rendue en `white-space: pre-line`), donc elle passe par le
+  // normaliseur commun, qui préserve les sauts de ligne écrits.
+  const bio      = normaliserTexteMultiligne(document.getElementById("editBio")?.value || "");
   const rsInputs = document.querySelectorAll(".rs-link-input");
   const rsLinks  = [];
   rsInputs.forEach(inp => { if (inp.value.trim()) rsLinks.push({ platform: inp.dataset.platform, url: inp.value.trim() }); });
@@ -2776,7 +2780,7 @@ function removePassionCover(profileId) {
   if (!p) return;
   const bio = document.getElementById("editPassionBio")?.value || "";
   delete p.coverPhoto; delete p.coverUrl;
-  p.bio = bio.trim();
+  p.bio = normaliserTexteMultiligne(bio);
   saveState();
   if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch(e) {} }
   if (typeof supaSavePassionState === "function") { try { supaSavePassionState(); } catch(e) {} }
@@ -2800,7 +2804,7 @@ function _reopenEditPassionAfterPhoto() {
 function savePassionProfile(profileId) {
   const p = (state.user.profiles || []).find(x => x.id === profileId);
   if (!p) { closeModal(); return; }
-  p.bio = (document.getElementById("editPassionBio")?.value || "").trim();
+  p.bio = normaliserTexteMultiligne(document.getElementById("editPassionBio")?.value || "");
   saveState();
   if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch(e) {} }
   // ⚠️ La carte de passion telle qu'un VISITEUR la voit est servie par la colonne
@@ -4490,128 +4494,243 @@ function deleteDraft(id) {
 }
 
 // ======== EXPLORER ========
+// ══════════════════════════════════════════════════════════════════════════
+// LA PAGE « RECHERCHER » (la loupe du bandeau) — 2026-09-03
+// ──────────────────────────────────────────────────────────────────────────
+// ⚠️ ELLE A VÉCU TROIS LOTS EN RETARD. Tout ce qu'elle classait, comptait et
+// proposait sortait de `PASSIONS` — les 19 entrées du socle embarqué d'app-01,
+// un repli d'affichage — alors que le référentiel PLAT publie 1 908 passions
+// en production depuis le 2026-09-01. Conséquences mesurées :
+//   • « Toutes les passions » en annonçait 19, et le pitch parlait de milliers ;
+//   • « Passions tendance » ne pouvait faire monter QUE ces 19 : une passion du
+//     réseau portant dix publications n'avait aucun chemin vers la section ;
+//   • la recherche ne trouvait pas « Enduro », qui existe pourtant et se publie.
+//
+// Le référentiel est désormais la SEULE autorité de cette page, et le socle son
+// SEUL repli — jamais l'inverse.
+//
+// ⚠️ INVARIANT « 160 Ko JAMAIS AU DÉMARRAGE » (passions-plates ⑤ et ⑰ bis).
+// Le chargement part à l'OUVERTURE de cette page, ce qui est très exactement
+// l'usage réel de la recherche que l'invariant réserve : `boot()` n'appelle pas
+// `renderExplorer`. Le premier rendu est SYNCHRONE avec ce qu'on a sous la main
+// (socle + passions perso) ; le référentiel repeint quand il arrive.
+//
+// ⚠️ ON N'AFFICHE JAMAIS 1 908 TUILES. La grille montre une sélection
+// (`suggestions()`, qui alterne précis et grandes familles) ; le nombre réel est
+// écrit à côté, et c'est la RECHERCHE qui donne accès au reste.
+// ══════════════════════════════════════════════════════════════════════════
 function renderExplorer() {
   // Stories (déplacées du Fil vers Explorer)
   if (typeof renderStories === "function") renderStories();
 
-  // Trending : inclut seed + userPosts + supabasePosts (vrais posts réseau)
-  const counts = {};
-  [...state.seed.posts, ...state.userPosts, ...(state.supabasePosts || [])].forEach(p => {
-    if (p.passion) counts[p.passion] = (counts[p.passion] || 0) + 1;
-  });
-  const ranked = PASSIONS.map(p => ({ ...p, count: counts[p.id] || 0 }))
-    .sort((a, b) => b.count - a.count).slice(0, 6);
+  var moteur = null;
+  try { if (window.PassioPassions && PassioPassions.actif()) moteur = PassioPassions; } catch (e) {}
+  var pret = false;
+  try { pret = !!(moteur && moteur.pret()); } catch (e) {}
 
-  $("#trendingGrid").innerHTML = ranked.map(p => `
-    <div class="trending-tile" onclick="openPassionExplorer('${escapeJsArg(p.id)}')">
-      <div class="trending-emoji">${escapeHtml(p.emoji)}</div>
-      <div class="trending-name">${escapeHtml(p.label)}</div>
-      <div class="trending-stat">${p.count} post${p.count>1?"s":""}</div>
-    </div>
-  `).join("");
+  // ── PASSIONS TENDANCE ────────────────────────────────────────────────────
+  // Le classement part des passions RÉELLEMENT publiées (seed + userPosts +
+  // supabasePosts), et le socle ne sert plus qu'à compléter une section qui
+  // serait autrement creuse sur un réseau encore vide.
+  function peindreTendances() {
+    var cible = document.getElementById("trendingGrid");
+    if (!cible) return;
+    var counts = {};
+    [].concat(state.seed.posts, state.userPosts, (state.supabasePosts || [])).forEach(function (p) {
+      if (p && p.passion) counts[p.passion] = (counts[p.passion] || 0) + 1;
+    });
+    var vus = Object.create(null);
+    var ids = Object.keys(counts).concat(PASSIONS.map(function (p) { return p.id; }));
+    var ranked = ids
+      .filter(function (id) { return vus[id] ? false : (vus[id] = true); })
+      .map(function (id) {
+        var p = passionById(id);
+        return { id: id, emoji: p.emoji, label: p.label, count: counts[id] || 0 };
+      })
+      .sort(function (a, b) {
+        if (b.count !== a.count) return b.count - a.count;
+        return String(a.label).localeCompare(String(b.label), "fr");
+      })
+      .slice(0, 6);
+    cible.innerHTML = ranked.map(function (p) {
+      return '<div class="trending-tile" onclick="openPassionExplorer(\'' + escapeJsArg(p.id) + '\')">'
+        + '<div class="trending-emoji">' + escapeHtml(p.emoji) + '</div>'
+        + '<div class="trending-name">' + escapeHtml(p.label) + '</div>'
+        + '<div class="trending-stat">' + p.count + ' post' + (p.count > 1 ? "s" : "") + '</div>'
+        + '</div>';
+    }).join("");
+  }
 
-  // All passions + CTA « Créer une passion » à la fin
-  const customs = (state.user.customPassions || []);
-  const allList = [...PASSIONS, ...customs];
-  // ⛔ Tuile masquée tant que `passionsPersoSuspendues()` — arbitrage du
-  // 2026-08-31 : une passion non canonique ne peut alimenter aucun contenu
-  // serveur, donc l'offrir comme centre d'intérêt créerait un filtre sans
-  // contenu. Les passions DÉJÀ créées restent affichées dans la grille
-  // ci-dessous (`customs`), avec leur badge « Perso » : rien n'est supprimé.
-  const createCta = (typeof passionsPersoSuspendues === "function" && passionsPersoSuspendues()) ? "" : `
-    <div class="passion-tile passion-tile-create" onclick="openCreateCustomPassionFromExplorer()">
-      <div class="passion-tile-emoji">＋</div>
-      <div class="passion-tile-label">Créer une passion</div>
-    </div>
-  `;
-  $("#allPassions").innerHTML = allList.map(p => `
-    <div class="passion-tile ${p.custom ? 'passion-custom' : ''}" onclick="openPassionExplorer('${escapeJsArg(p.id)}')">
-      <div class="passion-tile-emoji">${escapeHtml(p.emoji)}</div>
-      <div class="passion-tile-label">${escapeHtml(p.label)}</div>
-      ${p.custom ? '<div class="passion-custom-badge">Perso</div>' : ''}
-    </div>
-  `).join("") + createCta;
+  // ── TOUTES LES PASSIONS ──────────────────────────────────────────────────
+  function peindreGrille() {
+    var cible = document.getElementById("allPassions");
+    if (!cible) return;
 
-  // Suggested creators : seed en premier, puis vrais utilisateurs Supabase chargés async
-  const seedHtml = state.seed.users.slice(0, 4).map(u => {
-    const p = passionById(u.passion);
-    return `<div class="list-row" onclick="openUserProfile('${escapeJsArg(u.id)}')">
-      <div class="avatar" style="background:${avatarBg(u)};">${avatarInner(u)}</div>
-      <div class="list-row-body">
-        <div class="list-row-title">${escapeHtml(u.name)}</div>
-        <div class="list-row-meta">${p.emoji} ${p.label} · ${escapeHtml(u.bio || "")}</div>
-      </div>
-      <button class="btn small" onclick="event.stopPropagation();toast('+ ${escapeJsArg(u.name)} suivi·e')">Suivre</button>
-    </div>`;
-  }).join("");
-  $("#suggestedCreators").innerHTML = seedHtml;
+    // ⚠️ LE REPLI HORS LIGNE N'EST PAS UN RÉFÉRENTIEL, et le croire RÉTRÉCIT la
+    // page au lieu de l'élargir. Quand le `fetch` échoue — cas que
+    // `passions-flat.js` documente : service worker vidé juste après un
+    // déploiement —, `repliHorsLigne()` fabrique une vingtaine de lignes toutes
+    // à `popularity: 0`. `suggestions()` filtre sur `popularity >= 1000` : elle
+    // ne rend alors que les récentes, une à trois entrées — NON VIDE, donc le
+    // repli sur le socle ne se déclenchait pas et la grille tombait de 19 tuiles
+    // à deux. On pose donc la question franchement.
+    var complet = false;
+    try { complet = !!(moteur && moteur.pret() && !moteur.horsLigne()); } catch (e) { complet = false; }
 
-  // Charger les vrais profils Supabase en async et les ajouter
+    var base = [];
+    if (complet) {
+      // `suggestions()` alterne un terme PRÉCIS et une grande famille : c'est ce
+      // qui dit sans un mot que tout est au même niveau, et que la recherche
+      // n'oblige à traverser aucune catégorie.
+      try { base = moteur.suggestions(24, null) || []; }
+      catch (e) { base = []; try { diagLog("explorer suggestions " + (e && e.message)); } catch (_) {} }
+    }
+    if (!base.length) base = PASSIONS.slice();
+
+    // ⚠️ LES PASSIONS PERSO RESTENT TOUJOURS AFFICHÉES. Elles ne se créent plus
+    // (`passionsPersoSuspendues`), mais celles qui existent sont sur des profils :
+    // les faire disparaître de la grille les rendrait introuvables.
+    var customs = (state.user.customPassions || []);
+    var vus = Object.create(null);
+    var liste = base.concat(customs).filter(function (p) {
+      if (!p || !p.id || vus[p.id]) return false;
+      vus[p.id] = true;
+      return true;
+    });
+
+    // ⛔ Tuile masquée tant que `passionsPersoSuspendues()` — arbitrage du
+    // 2026-08-31 : une passion non canonique ne peut alimenter aucun contenu
+    // serveur, donc l'offrir comme centre d'intérêt créerait un filtre sans
+    // contenu. Les passions DÉJÀ créées restent affichées ci-dessus : rien
+    // n'est supprimé.
+    var createCta = (typeof passionsPersoSuspendues === "function" && passionsPersoSuspendues()) ? "" : ''
+      + '<div class="passion-tile passion-tile-create" onclick="openCreateCustomPassionFromExplorer()">'
+      +   '<div class="passion-tile-emoji">＋</div>'
+      +   '<div class="passion-tile-label">Créer une passion</div>'
+      + '</div>';
+
+    cible.innerHTML = liste.map(function (p) {
+      return '<div class="passion-tile ' + (p.custom ? "passion-custom" : "") + '"'
+        + ' onclick="openPassionExplorer(\'' + escapeJsArg(p.id) + '\')">'
+        + '<div class="passion-tile-emoji">' + escapeHtml(p.emoji || "✨") + '</div>'
+        + '<div class="passion-tile-label">' + escapeHtml(p.label || p.id) + '</div>'
+        + (p.custom ? '<div class="passion-custom-badge">Perso</div>' : '')
+        + '</div>';
+    }).join("") + createCta;
+
+    // ⚠️ LE NOMBRE VIENT DU RÉFÉRENTIEL, JAMAIS D'UNE CONSTANTE. Tant qu'il n'a
+    // pas répondu, on se tait : annoncer un ordre de grandeur inventé est
+    // exactement le défaut qu'on répare ici.
+    // ⚠️ ET IL NE S'ANNONCE QUE SI LE RÉFÉRENTIEL EST COMPLET. Sur le repli,
+    // `taille()` rend la taille du REPLI (socle + profils + récentes) : la page
+    // aurait dit « un aperçu parmi 21 passions », un nombre inventé présenté
+    // comme mesuré — le défaut même qu'on répare. Se taire est la seule réponse
+    // juste quand on ne sait pas.
+    var compteur = document.getElementById("explorePassionsCount");
+    if (compteur) {
+      var n = 0;
+      try { n = complet ? moteur.taille() : 0; } catch (e) { n = 0; }
+      compteur.textContent = n > liste.length
+        ? "Un aperçu parmi " + n.toLocaleString("fr-FR") + " passions — cherche la tienne juste au-dessus."
+        : "";
+    }
+  }
+
+  peindreTendances();
+  peindreGrille();
+
+  if (moteur && !pret) {
+    try {
+      moteur.charger().then(function () {
+        // Les deux sections nomment des passions : sans ce repeint, une passion
+        // du référentiel resterait « ✨ Passion » jusqu'au prochain rendu.
+        peindreTendances();
+        peindreGrille();
+      }).catch(function (e) {
+        // ⚠️ SANS CE LOG, LA PANNE EST INDISCERNABLE DU COMPORTEMENT D'AVANT LE
+        // LOT : la page rend les 19 du socle, et personne ne peut dire si le
+        // référentiel a échoué ou s'il n'avait rien à proposer. C'est le motif
+        // du bug `diagLog` (fil vide six jours).
+        try { diagLog("explorer charger " + (e && e.message ? e.message : e)); } catch (_) {}
+      });
+    } catch (e) { try { diagLog("explorer charger_sync " + (e && e.message)); } catch (_) {} }
+  }
+
+  // ── CRÉATEURS À SUIVRE ───────────────────────────────────────────────────
+  // ⚠️ UN SEUL CONSTRUCTEUR DE LIGNE, ET UN SEUL MOTEUR DE SUIVI. Cette section
+  // en portait deux : le seed rendait un `toast('+ X suivi·e')` — un bouton qui
+  // ne suivait personne — et les profils réels un second moteur d'écriture SANS
+  // garde d'authentification, si bien qu'un visiteur sans compte écrivait un
+  // suivi. Tout passe désormais par `toggleFollowUser` (app-04), qui garde
+  // `requireAuthentication`, sait DÉSUIVRE, et synchronise.
+  function ligneCreateur(u) {
+    var suivi = ((state.user.following || []).indexOf(u.id) >= 0);
+    return '<div class="list-row" onclick="openUserProfile(\'' + escapeJsArg(u.id) + '\')">'
+      + '<div class="avatar" style="background:' + avatarBg(u) + ';">' + avatarInner(u) + '</div>'
+      + '<div class="list-row-body">'
+      +   '<div class="list-row-title">' + escapeHtml(u.name || "Passionné") + '</div>'
+      +   '<div class="list-row-meta">' + escapeHtml(u.meta || "") + '</div>'
+      + '</div>'
+      + '<button class="btn small" id="followBtn_' + escapeHtml(u.id) + '" data-follow-uid="' + escapeHtml(u.id) + '"'
+      +   ' onclick="event.stopPropagation();toggleFollowUser(\'' + escapeJsArg(u.id) + '\',\'' + escapeJsArg(u.name || "") + '\')">'
+      +   (suivi ? "✓ Suivi" : "Suivre") + '</button>'
+      + '</div>';
+  }
+
+  function createursSeed() {
+    return (state.seed.users || []).slice(0, 4).map(function (u) {
+      var p = passionById(u.passion);
+      return ligneCreateur({
+        id: u.id, name: u.name, avatar: u.avatar, profileEmoji: u.profileEmoji,
+        photoUrl: u.photoUrl, emoji: u.emoji, color: u.color,
+        meta: p.emoji + " " + p.label + (u.bio ? " · " + u.bio : ""),
+      });
+    }).join("");
+  }
+
+  var boite = document.getElementById("suggestedCreators");
+  if (boite) boite.innerHTML = createursSeed();
+
+  // Charger les vrais profils Supabase en async et les mettre EN TÊTE
   if (typeof supa !== "undefined" && supa) {
     supa.from("profiles")
       .select("id, username, emoji, color, passion_id, bio, avatar_url")
       .not("username", "is", null)
       .limit(12)
-      .then(({ data, error }) => {
-        if (error || !data || !data.length) return;
-        const el = document.getElementById("suggestedCreators");
+      .then(function (r) {
+        var data = r && r.data;
+        if ((r && r.error) || !data || !data.length) return;
+        var el = document.getElementById("suggestedCreators");
         if (!el) return;
-        // Exclure mon propre profil
-        const others = data.filter(u => u.id !== MY_UID && u.username);
+        var others = data.filter(function (u) { return u.id !== MY_UID && u.username; });
         if (!others.length) return;
-        const supaHtml = others.map(u => {
-          const p = passionById(u.passion_id) || { emoji: "✨", label: u.passion_id || "" };
-          const name = escapeHtml(u.username || "Passionné");
-          const bio = escapeHtml(u.bio || "");
-          const avatarColor = u.color || "#8b5cf6";
-          const emoji = u.emoji || "✨";
-          const _av = { avatar: avatarColor, profileEmoji: emoji, photoUrl: u.avatar_url || null };
-          return `<div class="list-row" onclick="openUserProfile('${escapeJsArg(u.id)}')">
-            <div class="avatar" style="background:${avatarBg(_av)};">${avatarInner(_av)}</div>
-            <div class="list-row-body">
-              <div class="list-row-title">${name}</div>
-              <div class="list-row-meta">${p.emoji} ${p.label}${bio ? " · " + bio.slice(0, 40) : ""}</div>
-            </div>
-            <button class="btn small" onclick="event.stopPropagation();followUserFromExplorer('${escapeJsArg(u.id)}','${escapeJsArg(name)}')">Suivre</button>
-          </div>`;
+        var supaHtml = others.map(function (u) {
+          var p = passionById(u.passion_id);
+          var bio = String(u.bio || "");
+          return ligneCreateur({
+            id: u.id,
+            name: u.username || "Passionné",
+            avatar: u.color || "#8b5cf6",
+            profileEmoji: u.emoji || "✨",
+            photoUrl: u.avatar_url || null,
+            meta: p.emoji + " " + p.label + (bio ? " · " + bio.slice(0, 40) : ""),
+          });
         }).join("");
-        // Remplacer la section avec seed (4) + vrais users (jusqu'à 8)
-        const seedSlice = state.seed.users.slice(0, 4).map(u => {
-          const p = passionById(u.passion);
-          return `<div class="list-row" onclick="openUserProfile('${escapeJsArg(u.id)}')">
-            <div class="avatar" style="background:${avatarBg(u)};">${avatarInner(u)}</div>
-            <div class="list-row-body">
-              <div class="list-row-title">${escapeHtml(u.name)}</div>
-              <div class="list-row-meta">${p.emoji} ${p.label} · ${escapeHtml(u.bio || "")}</div>
-            </div>
-            <button class="btn small" onclick="event.stopPropagation();toast('+ ${escapeJsArg(u.name)} suivi·e')">Suivre</button>
-          </div>`;
-        }).join("");
-        el.innerHTML = supaHtml + seedSlice;
+        el.innerHTML = supaHtml + createursSeed();
       })
-      .catch(() => {});
+      .catch(function () {});
   }
 
   // La recherche est gérée par filterExplore() (oninput sur l'input HTML)
 }
 
-function followUserFromExplorer(userId, userName) {
-  if (!state.user.following) state.user.following = [];
-  if (state.user.following.includes(userId)) {
-    toast("Tu suis déjà " + userName);
-    return;
-  }
-  state.user.following.push(userId);
-  saveState();
-  toast("✅ " + userName + " suivi·e !");
-  // Passer par le chemin CANONIQUE (supaFollowUser) : il garantit la FK
-  // (supaUpsertProfile avant l'insert) ET notifie la personne suivie — le raw
-  // insert précédent écrivait le follow mais la cible n'en était jamais avertie.
-  if (typeof supaFollowUser === "function") { try { supaFollowUser(userId); } catch (e) {} }
-  else if (typeof supa !== "undefined" && supa && MY_UID) {
-    supa.from("follows").insert({ follower_id: MY_UID, following_id: userId }).catch(() => {});
-  }
-}
+// ⚠️ `followUserFromExplorer` A ÉTÉ RETIRÉE avec son dernier appelant (2026-09-03).
+// C'était un SECOND moteur de suivi : sans garde `requireAuthentication` (un
+// visiteur sans compte écrivait donc un suivi), sans chemin de retour (elle ne
+// savait que suivre, jamais désuivre) et sans mise à jour du bouton. Les lignes
+// de « Créateurs à suivre » passent par `toggleFollowUser` (app-04), le moteur
+// unique — deux moteurs pour un même geste divergent toujours au premier
+// correctif.
 
 function openCreateCustomPassionFromExplorer() {
   window._returnToExplorer = true;
