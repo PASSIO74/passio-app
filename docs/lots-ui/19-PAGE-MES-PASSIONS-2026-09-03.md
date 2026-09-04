@@ -125,29 +125,68 @@ branche UI-8 de `renderProfilesScreen`.
 > contrôle de contraste remonte au premier fond opaque et **ignore l'alpha**
 > (invariant des pastilles de mood, fiche 17).
 
-### La porte d'ajout : désarmée, pas seulement grisée
+### La porte d'ajout : elle refuse, mais elle répond
+
+> ## 🔁 REVIREMENT DU 2026-09-04 — LA VERSION CI-DESSOUS EST CELLE QUI VAUT
+>
+> La première version de ce lot **DÉSARMAIT** la porte au plafond :
+> `aria-disabled="true"`, `role` et `tabindex` retirés, `pointer-events: none`.
+> Le raisonnement était qu'une cible grisée qui répond encore promet un refus et
+> fait quand même le geste.
+>
+> **À l'usage, elle ne faisait aucun geste ET n'en promettait aucun.** Un compte
+> à trois passions — c'est-à-dire un compte **normal**, arrivé au bout de sa
+> dotation — tapait la porte et n'obtenait **rien** : ni toast, ni fenêtre, ni
+> mot. Rapporté par Benjamin le 2026-09-04 (« ajouter une passion / réactiver ne
+> fonctionnent pas ») et **reproduit au navigateur** : à trois passions le clic
+> échoue en `pointer-events: none`, et à trois changements consommés le bouton
+> « Réactiver » est `disabled` — **les deux gestes de la page sont morts en même
+> temps**, ce qui est exactement le symptôme décrit.
+>
+> Un refus qui ne se prononce pas est **indiscernable d'une panne**. La règle de
+> la fiche 16 tranche, et elle est plus ancienne que ce lot : **une porte fermée
+> doit dire par où passer**.
 
 Au plafond, `_rendrePagePassionsEntete` :
 
-- écrit le motif **dans** la porte : « Limite de N atteinte » ;
-- pose `aria-disabled="true"` et `data-passion-porte="fermee"` ;
-- **retire `role` et `tabindex`** ;
-- le CSS ajoute `pointer-events: none` via `.is-plein`.
+- écrit le motif **et la sortie** dans la porte : « Limite de N atteinte —
+  appuie pour voir comment en changer » ;
+- pose `data-passion-porte="fermee"` (l'**aspect**, jamais l'inertie) et la
+  classe `.is-plein` ;
+- **garde `role="button"` et `tabindex="0"`**, et ne pose **pas**
+  `aria-disabled`.
 
-> ⚠️ **RETIRER `role` EST LE POINT CRITIQUE.** `app-08` porte un écouteur
-> **délégué** qui active à Entrée/Espace tout `[role="button"]` non natif. Griser
-> sans retirer le rôle aurait laissé une cible qui **répond au clavier à un geste
-> qu'elle annonce refuser** — et `pointer-events` ne couvre pas le clavier.
+> ⚠️ **NI `aria-disabled` NI `pointer-events: none`.** Les deux désarment : le
+> second coupe le pointeur, le premier retire la commande aux lecteurs d'écran
+> **et à toute automatisation** (Playwright refuse de cliquer un
+> `aria-disabled="true"` avec « element is not enabled » — c'est d'ailleurs son
+> journal qui a mis le doigt dessus). Les poser sur une cible qui **répond**
+> serait mentir.
 >
-> ⚠️ **ELLE RESTE PEINTE.** Désarmer n'est pas cacher : une porte qui disparaît
-> ne dit pas pourquoi elle a disparu. Le motif du refus est écrit, jamais deviné.
+> ⚠️ **ELLE RESTE PEINTE.** Refuser n'est pas disparaître : une porte qui
+> disparaît ne dit pas pourquoi. Le motif du refus est écrit, jamais deviné.
 >
-> ⚠️ **CONSÉQUENCE ASSUMÉE : au plafond, la porte n'ouvre plus la fenêtre
-> payante.** Deux suites la cliquaient pour la faire apparaître
-> (`profil-entete-passions` ③ bis quinquies, `passions-plates` ㉒) ; elles
-> mesurent désormais le refus **là où il est** — dans la porte — puis ouvrent la
-> fenêtre par `openPassionPaywall()` pour vérifier l'invariant de boucle, qui n'a
-> pas changé. `restaurerPassion` au plafond y mène toujours pour de vrai.
+> ⚠️ **ELLE MÈNE TOUJOURS À `openCreateProfile`,** qui au plafond ouvre
+> `openPassionPaywall()` : la fenêtre nomme la limite, dit qu'aucun paiement
+> n'est ouvert, et donne la sortie réelle. C'est le comportement de **toutes**
+> les autres portes d'acquisition — le Studio, `quickCreateProfile`,
+> `ajouterPassionAuCompte` — dont celle-ci était devenue la **seule exception
+> muette**.
+>
+> ⚠️ **LA BOUCLE « mur → panneau → mur » RESTE FERMÉE** par `_paywallCacheGerer()`,
+> qui retire « Gérer mes passions » quand on tape depuis le panneau déjà ouvert.
+> Rien de cet invariant n'a bougé.
+>
+> ⚠️ **ET LE PLAFOND N'EST PAS DESSERRÉ D'UN POUCE.** Il est gardé aux **points
+> d'écriture** (`ajouterPassionAuCompte`, `restaurerPassion`), pas par l'inertie
+> d'un bouton. Un bouton inerte n'a jamais été une garde — c'était un affichage.
+>
+> ⚠️ **CE QUE LES SUITES MESURENT MAINTENANT.** `mes-passions-page` ⑤,
+> `profil-entete-passions` (③ bis quinquies) et `passions-plates` (㉒)
+> **recliquent la porte** et exigent qu'elle réponde. Elles avaient été réécrites
+> le 2026-09-03 pour ne plus la cliquer — donc plus rien ne mesurait qu'un tap
+> mène quelque part, et le tap ne menait effectivement plus nulle part. **Un
+> verrou qui cesse d'exercer le geste cesse de protéger le geste.**
 
 ---
 
@@ -197,16 +236,32 @@ Désormais : « **Réactiver** » toujours, et l'état du bouton porte le reste.
 bloqué  ⟺  plafondPassionsAtteint() && quotaChangementsAtteint()
 ```
 
-et dans ce cas seulement : `disabled`, `aria-disabled`,
-`data-v8-reactivation="bloquee"`, `title`, plus **une** ligne sous la liste —
-« Réactivation possible lorsqu'un changement sera disponible. » (répétée sur
-chaque ligne, elle serait devenue du décor).
+et dans ce cas seulement : la classe `.est-bloquee` (l'aspect gris),
+`data-v8-reactivation="bloquee"`, un `title`, un `aria-label` qui porte l'état
+(« … — indisponible pour le moment, appuie pour savoir pourquoi »), plus **une**
+ligne sous la liste — « Réactivation possible lorsqu'un changement sera
+disponible. » (répétée sur chaque ligne, elle serait devenue du décor).
 
-> ⚠️ **`disabled` VRAI, pas grisé** : un `<button disabled>` n'envoie pas son
-> `onclick`, donc `restaurerPassion` n'est pas atteignable par un chemin que
-> l'écran annonce refuser. **La garde reste AUSSI dans `restaurerPassion`** —
-> deux bouts, comme le plafond ; le verrou ⑩ bis l'appelle directement pour le
-> prouver.
+> ## 🔁 REVIREMENT DU 2026-09-04 — NI `disabled`, NI `aria-disabled`
+>
+> La première version posait `disabled` **vrai**, « pas seulement grisé », pour
+> qu'aucun chemin ne puisse atteindre `restaurerPassion` alors que l'écran
+> annonce refuser. Résultat mesuré : un `<button disabled>` n'envoie pas son
+> `onclick`, donc **le tap ne produisait rien** — et le verdict de l'utilisateur
+> n'a pas été « c'est bloqué » mais « **réactiver ne fonctionne pas** ». Même
+> famille de défaut que la porte d'ajout ci-dessus, le même jour, sur la même
+> page : les deux seuls gestes de « Mes passions » étaient inertes ensemble.
+>
+> `aria-disabled` ne remplace pas `disabled` : il désarme aussi, pour qui n'a
+> pas la vue **et** pour toute automatisation. L'état vit donc dans le **nom
+> accessible**, l'**aspect** et le **motif**, jamais dans l'inertie.
+>
+> ⚠️ **LA GARDE N'A PAS BOUGÉ D'UN POUCE.** Elle vit dans `restaurerPassion`,
+> **point d'écriture**, exactement comme le plafond — et le verrou ⑩ bis
+> l'appelle toujours directement pour le prouver. Retirer `disabled` ne réactive
+> **aucune** passion : le tap ouvre `openPassionPaywall({restaurer})`, qui dit
+> que les changements sont épuisés. **Un attribut d'affichage n'a jamais été une
+> garde.**
 
 ---
 
@@ -280,12 +335,72 @@ Deux canaux, deux rôles (app-06) :
 
 ## 9. Verrous
 
-- **`tests/e2e/mes-passions-page.spec.js` (24 cas)** — la page dédiée, les quatre
+- **`tests/e2e/mes-passions-page.spec.js` (28 cas)** — la page dédiée, les quatre
   états croisés (place disponible / limite atteinte × changement disponible /
   aucun), l'absence de passion principale, les archives repliables, la
   réactivation, la télémétrie, la Sentinelle, et le rendu de 320 à 430 px.
 - Suites **adaptées** au même endroit : `ui-v8-passions` (le marqueur d'écriture
   ne distingue plus aucune carte, restauration par la page), `passions-archive-quota`
-  (« Réactiver » et son désarmement, le compteur), `profil-entete-passions`
-  (porte armée / désarmée, fratrie), `passions-plates` (㉒), `ui-v7-lot`,
+  (« Réactiver », son aspect bloqué et le compteur), `profil-entete-passions`
+  (la porte répond au plafond, fratrie), `passions-plates` (㉒), `ui-v7-lot`,
   `ui-v6b-profil` (titre de page), `feed-premier-rendu`.
+
+---
+
+## 10. Le mode « passions illimitées » (2026-09-04)
+
+> « Mets mon compte test en illimité avec les passions pour les tests. »
+
+Un drapeau d'appareil : `localStorage["passio_passions_illimitees_v1"] = "1"`,
+ou `window.PASSIO_PASSIONS_ILLIMITEES = true` (qui a la priorité, dans les deux
+sens). Porte sans console : **Paramètres → Démo → « Passions illimitées (test) »**
+(`#settingsPassionsIllimitees`).
+
+> ⚠️ **CE N'EST PAS UNE COUPURE DE LOT, C'EST UNE ADHÉSION.** Toutes les autres
+> bascules du dépôt (`flat_passions_v1`, `passio_ui_8`, `passio_ui_4a5`…) ne
+> savent qu'**enlever** : seule la valeur « 0 » décide, rien n'est jamais écrit
+> pour activer. Celle-ci fait l'inverse — elle n'existe que si on l'**allume**.
+> Le défaut du produit reste donc le produit : trois passions, trois
+> changements. Le verrou ⑭ le mesure en premier.
+
+**Lu à un seul endroit, et c'est ce qui le rend sûr** :
+`plafondPassionsActif()` et `quotaChangementsActif()` — les deux interrupteurs
+dont **tout** le reste découle par lecture. `passionsRestantesOffertes` →
+`Infinity`, donc `plafondPassionsAtteint` → faux, donc les gardes
+d'`ajouterPassionAuCompte`, de `restaurerPassion`, du Studio et de
+`PassioFlatUI.placesRestantes` s'ouvrent ; `changementsPassionRestants` →
+`Infinity`, donc `quotaChangementsAtteint` → faux, donc
+`_inscrireChangementPassion` n'échoue plus, `confirmArchivePassion` n'ouvre plus
+la fenêtre payante et `_passionReactivationBloquee` rend faux.
+
+> ⚠️ **POSER LE DRAPEAU À CHAQUE PORTE AURAIT LAISSÉ LA PROCHAINE PORTE
+> L'OUBLIER** — la faute exacte que `quickCreateProfile` et le Studio ont déjà
+> commise sur le plafond (fiche 16).
+>
+> ⚠️ **ET L'ÉCRAN NE MENT PAS**, sans une ligne de plus :
+> `_rendrePagePassionsEntete` n'écrit « sur N » que si `plafondPassionsActif()`,
+> et n'affiche l'alerte de quota que si `changementsPassionRestants()` est un
+> nombre **fini**. Les deux mentions, le motif « Limite de N atteinte » et le
+> motif de réactivation disparaissent d'eux-mêmes. Annoncer une limite qui ne
+> borne rien est un mensonge (§ ci-dessus).
+>
+> ⚠️ **LE BOUTON DES PARAMÈTRES DIT L'ÉTAT, PAS LE GESTE**, et il est réécrit à
+> chaque ouverture du panneau par `majBoutonPassionsIllimitees()` — comme
+> l'entrée « Compte » que réécrit `majSectionCompte`, et pour la même raison :
+> ce panneau est du balisage **statique**, il annoncerait sinon l'état de la
+> dernière fois. Le verrou ⑭ quater **part du drapeau déjà posé** pour l'exiger ;
+> démarrer à zéro l'aurait laissé vert sur la valeur écrite en dur dans
+> `index.html`, même si la fonction n'était jamais appelée.
+>
+> ⚠️ **ÉTEINDRE ÉCRIT « 0 », n'efface pas la clé** : un `removeItem` laisserait
+> un `window.PASSIO_PASSIONS_ILLIMITEES` posé entre-temps décider à sa place.
+>
+> ⚠️ **AUCUNE PORTE DÉROBÉE OUVERTE.** C'est du client vanilla : n'importe qui
+> peut déjà écrire `state.user.profiles` depuis la console. Ce drapeau ne
+> desserre **aucune RLS** et n'écrit rien en base que la console ne puisse
+> écrire seule. Le jour où la formule payante s'ouvrira, c'est le **serveur** qui
+> décidera — pas un `localStorage`.
+
+Verrou : `tests/e2e/mes-passions-page.spec.js` ⑭ (4 cas) — éteint par défaut,
+les deux limites levées, les gestes qui **aboutissent** au-delà du plafond et du
+quota, et la bascule des Paramètres.

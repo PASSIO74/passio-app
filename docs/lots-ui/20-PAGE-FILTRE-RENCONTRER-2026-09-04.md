@@ -215,6 +215,6 @@ filtrée disparaîtrait **en silence**. Les clés retenues sont `v`, `quand`,
 | `js/app-07-ia-explore-irl.js` | `_irlWeekendRange`, `weekend` dans `_filterIrlEvents`, `irlDateFilterActif`, `irlDistanceValue`, `setIrlDistanceKm`, `irlTimePresetKey`, `setIrlTimePreset`, `irlPassionsMode`, `setIrlPassionsToutes`, `setIrlPassionsMiennes`, `irlLieuReference`, `irlDateResumeTexte`, `window._irlResultCount`, titre au singulier |
 | `index.html` | « Filtres » → « Filtre » sur le commutateur et la feuille de repli |
 | `styles.css` | bloc UI-4A5 réécrit (toujours le **dernier** du fichier) |
-| `tests/e2e/ui-v4a5-filtres.spec.js` | 24 cas |
+| `tests/e2e/ui-v4a5-filtres.spec.js` | 25 cas |
 | `tests/e2e/cases-violet-leger.spec.js` | mesure les nouvelles familles de cases, aux deux états |
 | `tests/e2e/ui-v7-lot.spec.js`, `tests/e2e/contextual-nav.spec.js` | libellé au singulier |

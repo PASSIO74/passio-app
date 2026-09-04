@@ -10951,11 +10951,16 @@ button, a, label, select, summary,
 .passion-manager-porte-mot { font-size: 12px; line-height: 1.4; color: var(--muted); margin-top: 2px; }
 .passion-manager-porte:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-/* Au plafond : la porte est désarmée en JS (ni `role` ni `tabindex`), le CSS
-   coupe le pointeur et retire l'appel visuel. Le motif du refus reste LISIBLE —
+/* Au plafond : la porte change d'ASPECT, elle ne devient pas inerte.
+   ⚠️ `pointer-events: none` A ÉTÉ RETIRÉ LE 2026-09-04, avec l'`aria-disabled`
+   que posait `_rendrePagePassionsEntete`. Un compte à trois passions — donc un
+   compte NORMAL — tapait ici et n'obtenait RIEN : ni toast, ni fenêtre, ni mot.
+   Un refus qui ne se prononce pas est indiscernable d'une panne, et c'est le
+   défaut rapporté (« ajouter une passion ne fonctionne pas »). La porte reste
+   donc cliquable et ouvre la fenêtre qui NOMME la limite et sa sortie — comme
+   toutes les autres portes d'acquisition. Le motif du refus reste LISIBLE :
    c'est lui qui remplace l'invitation, il ne peut pas passer sous le seuil AA. */
 .passion-manager-porte.is-plein {
-  pointer-events: none;
   background: var(--bg-tint);
 }
 .passion-manager-porte.is-plein .passion-manager-porte-plus {
@@ -11012,8 +11017,15 @@ button, a, label, select, summary,
 
 /* Le bouton « Réactiver » quand la réactivation est impossible : gris plein,
    pas un violet translucide — un bouton d'accent estompé se lit encore comme
-   une action possible. */
-.v8-switch-go[disabled] {
+   une action possible.
+   ⚠️ L'ATTRIBUT `disabled` A ÉTÉ RETIRÉ LE 2026-09-04, et la règle est ancrée
+   à `.est-bloquee` à la place. Un `<button disabled>` n'envoie pas son `onclick` :
+   le tap ne produisait RIEN, et l'utilisateur lisait une panne là où il y avait
+   un refus. Le bouton garde son aspect gris et son motif, mais il RÉPOND —
+   `restaurerPassion` ouvre la fenêtre qui dit pourquoi. `[disabled]` reste dans
+   le sélecteur pour tout autre usage de `.v8-switch-go`. */
+.v8-switch-go[disabled],
+.v8-switch-go.est-bloquee {
   background: var(--bg-tint);
   color: var(--muted);
   cursor: not-allowed;

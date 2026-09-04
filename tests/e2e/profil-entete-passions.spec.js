@@ -218,8 +218,10 @@ test("③ bis bis — la porte d'ajout a quitté le rail pour « Gérer mes pass
       visible: r.width > 0 && r.height > 0,
       titre: (document.getElementById("passionManagerTitre").textContent || "").trim(),
       offertes: (typeof PASSIONS_OFFERTES === "number") ? PASSIONS_OFFERTES : -1,
-      desarmee: !b.hasAttribute("role") && !b.hasAttribute("tabindex")
-                && b.getAttribute("aria-disabled") === "true",
+      // ⚠️ 2026-09-04 : ON MESURE L'INVERSE. La porte au plafond reste ARMÉE
+      // (voir plus bas) : elle refuse en s'expliquant, elle ne se tait plus.
+      armee: b.getAttribute("role") === "button" && b.getAttribute("tabindex") === "0"
+             && !b.hasAttribute("aria-disabled"),
       // C'est la MÊME porte : l'id que vise l'aide contextuelle est conservé.
       memeId: b.id,
       onclick: b.getAttribute("onclick"),
@@ -240,15 +242,19 @@ test("③ bis bis — la porte d'ajout a quitté le rail pour « Gérer mes pass
   // passions, donc le plafond : elle doit dire pourquoi, avec le nombre lu dans
   // `PASSIONS_OFFERTES` et jamais écrit en dur.
   expect(apres.invite, "au plafond, la porte dit pourquoi elle refuse")
-    .toBe("Limite de " + apres.offertes + " atteinte");
+    .toBe("Limite de " + apres.offertes + " atteinte — appuie pour voir comment en changer");
   expect(apres.inviteCliquable, "une seule cible pour un seul geste").toBe(false);
   expect(apres.memeId, "l'ancre de l'aide « second_profil » survit").toBe("nouveauProfilLien");
   expect(apres.onclick, "et elle passe par la porte qui garde le plafond").toContain("openCreateProfile");
-  // ⚠️ AU PLAFOND ELLE EST DÉSARMÉE, PAS SEULEMENT GRISÉE : sans `role` ni
-  // `tabindex`, l'écouteur délégué d'app-08 (Entrée/Espace sur tout
-  // `[role=button]` non natif) n'a plus de prise. Une cible grisée qui répond
-  // encore promet un refus et fait quand même le geste.
-  expect(apres.desarmee, "la porte refusée reste activable au clavier").toBe(true);
+  // ⚠️ AU PLAFOND ELLE REFUSE, MAIS ELLE RESTE ARMÉE (2026-09-04). Ce cas
+  // exigeait le contraire — `role` et `tabindex` retirés, `aria-disabled` posé
+  // — au motif qu'une cible grisée qui répond promet un refus et fait quand
+  // même le geste. À l'usage, elle ne faisait aucun geste ET n'en promettait
+  // aucun : le tap ne produisait RIEN, et Benjamin l'a rapporté comme une
+  // panne. Elle reste donc activable, à la souris comme au clavier, et le tap
+  // ouvre la fenêtre qui NOMME la limite — le plafond, lui, est gardé au point
+  // d'écriture, pas par l'inertie d'un bouton.
+  expect(apres.armee, "la porte refusée s'est retaisée : le tap ne mène plus nulle part").toBe(true);
 });
 
 // L'AUTRE MOITIÉ DU MÊME VERROU : sous le plafond, la porte INVITE et elle est
@@ -342,12 +348,13 @@ test("③ bis quinquies — au plafond, la fenêtre ne renvoie pas au panneau d'
   await page.evaluate(() => { openPassionManager(); });
   await page.waitForTimeout(500);
 
-  // ⚠️ LA PORTE NE S'OUVRE PLUS DU TOUT AU PLAFOND (2026-09-03). Ce cas la
-  // CLIQUAIT pour faire apparaître le mur ; la page désarme désormais la porte
-  // et écrit le motif dedans (« Limite de N atteinte »), donc le clic ne part
-  // plus. On vérifie d'abord ce désarmement — c'est ce que l'utilisateur voit —
-  // puis on ouvre la fenêtre par le chemin qui reste (`restaurerPassion` au
-  // plafond y mène) pour mesurer l'invariant de boucle, qui n'a pas changé.
+  // ⚠️ LA PORTE REFUSE EN S'EXPLIQUANT (2026-09-04). Elle avait été DÉSARMÉE le
+  // 2026-09-03 — plus de `role`, plus de `tabindex`, `pointer-events: none` — et
+  // le tap ne produisait alors plus rien du tout. C'est la panne rapportée par
+  // Benjamin. Elle est de nouveau activable : le motif reste écrit dedans
+  // (« Limite de N atteinte »), ET le clic ouvre le mur. Ce qui suit mesure
+  // l'invariant de boucle par le chemin RÉEL, celui du doigt, au lieu d'appeler
+  // `openPassionPaywall()` à la main.
   const porte = await page.evaluate(() => {
     const b = document.getElementById("nouveauProfilLien");
     return {
@@ -357,12 +364,12 @@ test("③ bis quinquies — au plafond, la fenêtre ne renvoie pas au panneau d'
       modaleOuverte: !!document.querySelector("#modalBackdrop.active"),
     };
   });
-  expect(porte.desactivee, "au plafond la porte se déclare désactivée").toBe("true");
-  expect(porte.pointeur, "et le pointeur ne l'atteint plus").toBe("none");
+  expect(porte.desactivee, "une porte qui répond ne se déclare pas désactivée").toBeNull();
+  expect(porte.pointeur, "et le pointeur doit l'atteindre").not.toBe("none");
   expect(porte.motif, "elle dit pourquoi").toContain("Limite de");
   expect(porte.modaleOuverte, "aucune fenêtre ne s'ouvre toute seule").toBe(false);
 
-  await page.evaluate(() => openPassionPaywall());
+  await page.locator("#nouveauProfilLien").click();
   await page.waitForTimeout(500);
   const vu = await page.evaluate(() => {
     const m = document.getElementById("modalContent");
@@ -1017,4 +1024,76 @@ test("une carte de publication ne nomme la passion QU'UNE FOIS", async ({ page }
   expect(vu.lignesIdentite, "plus de ligne d'identité sur une carte du fil").toBe(0);
   expect(vu.meta, "la seule mention de la passion est celle de la publication").toContain("Moto");
   expect(vu.boutons, "aucune pastille cliquable dans une carte de publication").toBe(0);
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// ④ LE COMPTEUR « PASSIONS » DE L'EN-TÊTE (2026-09-04)
+// ══════════════════════════════════════════════════════════════════════════
+// « Sur le profil rajoute le nombre de passions entre abonnés et abonnements
+// (passion active + archivée). »
+//
+// ⚠️ Ce compteur ne dit PAS la même chose que le plafond. Le plafond
+// (`PASSIONS_OFFERTES`) ne borne que les passions VIVANTES ; ici on annonce ce
+// que la personne POSSÈDE, archives comprises — une archive se réactive, elle
+// n'a pas disparu. Confondre les deux ferait afficher « 3 » à quelqu'un qui a
+// trois passions vivantes et quatre archives.
+
+test("④ — le compteur « passions » compte les vivantes ET les archivées", async ({ page }) => {
+  await poser(page, {
+    profiles: [
+      { id: "pp_moto", name: "Benjamin", passion: "moto", emoji: "🏍", color: "#7c3aed", createdAt: 1 },
+      { id: "pp_pod", name: "Benjamin", passion: "podcast", emoji: "🎙", color: "#7c3aed", createdAt: 2 },
+      { id: "pp_old", name: "Benjamin", passion: "voyage", emoji: "✈️", color: "#7c3aed", createdAt: 3, archived: true },
+      { id: "pp_old2", name: "Benjamin", passion: "yoga", emoji: "🧘", color: "#7c3aed", createdAt: 4, archived: true },
+    ],
+  });
+  const vu = await page.evaluate(() => {
+    renderMainProfile();
+    const el = document.getElementById("mainStatPassions");
+    return {
+      texte: el ? el.textContent.trim() : null,
+      vivantes: nbPassionsVivantes(),
+      total: nbPassionsTotales(),
+    };
+  });
+  expect(vu.vivantes, "deux passions vivantes").toBe(2);
+  expect(vu.texte, "2 vivantes + 2 archivées = 4").toBe("4");
+  expect(vu.total).toBe(4);
+});
+
+test("④ bis — le profil de remplissage n'est compté nulle part", async ({ page }) => {
+  // Le profil fabriqué par `boot()` porte `_parDefaut` et n'entre dans aucun
+  // décompte du projet : il n'entre pas davantage dans celui-ci, sinon un
+  // visiteur qui n'a rien choisi lirait « 1 passion ».
+  await poser(page, {
+    profiles: [
+      { id: "pp_def", name: "Benjamin", passion: "musique", emoji: "🎵", color: "#7c3aed", createdAt: 1, _parDefaut: true },
+      { id: "pp_moto", name: "Benjamin", passion: "moto", emoji: "🏍", color: "#7c3aed", createdAt: 2 },
+    ],
+  });
+  const texte = await page.evaluate(() => {
+    renderMainProfile();
+    return (document.getElementById("mainStatPassions") || {}).textContent;
+  });
+  expect(String(texte).trim()).toBe("1");
+});
+
+test("④ ter — il est ENTRE « abonnés » et « abonnements », et il ouvre la page", async ({ page }) => {
+  // L'ordre est la demande elle-même. On le mesure sur l'ordre du DOM des
+  // statistiques, pas sur un rectangle : la ligne se réordonne au responsive.
+  await poser(page);
+  const ordre = await page.evaluate(() =>
+    Array.from(document.querySelectorAll("#screen-profiles .main-profile-stats .main-profile-stat"))
+      .map((d) => (d.querySelector("span:last-child") || {}).textContent));
+  expect(ordre).toEqual(["posts", "abonnés", "passions", "abonnements"]);
+
+  await page.evaluate(() => {
+    document.querySelector("#mainStatPassions").closest(".main-profile-stat").click();
+  });
+  await page.waitForTimeout(500);
+  const ouvert = await page.evaluate(() => {
+    const box = document.getElementById("passionManager");
+    return !!box && !box.hidden && !!box.offsetParent;
+  });
+  expect(ouvert, "un tap sur le compteur ouvre « Mes passions »").toBe(true);
 });

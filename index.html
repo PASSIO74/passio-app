@@ -469,6 +469,20 @@
       <div class="settings-section-body">
         <button class="btn ghost" onclick="event.stopPropagation();showPitchLanding()">Afficher le pitch</button>
         <button class="btn ghost" onclick="event.stopPropagation();startTour()">Tour démo</button>
+        <!-- ── PASSIONS ILLIMITÉES (2026-09-04) ─────────────────────────────
+             La seule porte, sans console, vers le drapeau
+             `passio_passions_illimitees_v1` : elle lève le plafond de trois
+             passions ET le quota de trois changements, sur cet appareil.
+             ⚠️ SON LIBELLÉ DIT L'ÉTAT, PAS LE GESTE, et il est réécrit à chaque
+             ouverture du panneau par `majBoutonPassionsIllimitees()` — comme
+             l'entrée « Compte », et pour la même raison : ce panneau est du
+             balisage STATIQUE, il annoncerait sinon l'état de la dernière fois.
+             Rangée dans « Démo » parce que c'en est une : le produit reste à
+             trois passions pour tout le monde, ce drapeau n'existe que si on
+             l'allume. -->
+        <button class="btn ghost" id="settingsPassionsIllimitees" aria-pressed="false"
+                data-passions-illimitees="0"
+                onclick="event.stopPropagation();basculerPassionsIllimitees()">Passions illimitées (test)</button>
       </div>
     </div>
 
@@ -585,6 +599,7 @@
           <div class="main-profile-stats">
             <div class="main-profile-stat" onclick="openMyPostsTab()" style="cursor:pointer;"><span id="mainStatPosts">0</span><span>posts</span></div>
             <div class="main-profile-stat" onclick="openFollowersList()" style="cursor:pointer;"><span id="mainStatFollowers">0</span><span>abonnés</span></div>
+            <div class="main-profile-stat" onclick="ouvrirGestionPassions()" style="cursor:pointer;"><span id="mainStatPassions">0</span><span>passions</span></div>
             <div class="main-profile-stat" onclick="openFollowingList()" style="cursor:pointer;"><span id="mainStatFollowing">0</span><span>abonnements</span></div>
           </div>
         </div>
