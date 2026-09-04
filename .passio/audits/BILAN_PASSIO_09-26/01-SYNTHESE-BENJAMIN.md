@@ -61,4 +61,13 @@ Rapport 13. En résumé : ce que sert réellement la production (réseau bloqué
 
 ## Suite complète locale (une seule exécution, à la fin)
 
-_Section renseignée à la fin de l'exécution — voir ci-dessous._
+| Élément | Valeur |
+|---|---|
+| Commande | `PASSIO_PORT=8090 PASSIO_RETRIES=1 npx playwright test --project=local --workers=3` sur le SHA audité, serveur statique local (fichiers de développement), Chromium 141 headless (émulation) |
+| Début / durée | 2026-09-04 20:16 UTC, 1 h 38 min |
+| Résultat | **1 094 réussis · 1 échec · 8 ignorés · 0 instable** (1 103 tests) |
+| Échec | `tests/e2e/irl.spec.js:354` « IRL — participation › inscription et like ne recadrent PAS la carte » — deux essais, même erreur : `page.waitForFunction: TypeError: Cannot read properties of null (reading 'getZoom')`. Cause environnementale : la bibliothèque MapLibre et les tuiles OpenFreeMap sont injoignables derrière le proxy de l'environnement d'audit (aucune carte n'existe, le test l'attend). Le même test est **vert en CI** sur ce SHA (run 33861671142, suites navigateur 1/6 → 6/6) et le sous-agent IRL avait obtenu le même échec pour la même raison (`preuves/irl/tests-irl-run.txt`). Ce n'est pas un défaut de l'application. |
+| Ignorés | 8 tests conditionnels (`test.skip`) — liste dans `preuves/suite-complete/resume.json` |
+| Preuves | `preuves/suite-complete/suite.log` (sortie complète) et `preuves/suite-complete/resume.json` (statistiques, échec, ignorés) |
+
+Lecture : hors la carte (bloquée par le réseau), la suite locale du dépôt est verte sur le SHA audité, dans un environnement à 4 CPU avec 3 workers. Cela confirme ce que la CI dit de ce commit ; cela ne prouve rien de plus que ce que ces tests mesurent (voir rapport 04, domaine tests-ci : ce que la suite ne couvre pas).

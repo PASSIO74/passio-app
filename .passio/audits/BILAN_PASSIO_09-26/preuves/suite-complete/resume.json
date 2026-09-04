@@ -1,0 +1,69 @@
+{
+ "commande": "PASSIO_PORT=8090 PASSIO_RETRIES=1 npx playwright test --project=local --workers=3 --reporter=line,json",
+ "sha": "c8cb8e995b88159a1e9d4c2f7dc196ad93a133bf",
+ "navigateur": "chromium_headless_shell-1223 (Chromium 141), émulation",
+ "debut": "2026-09-04T20:16:23.276Z",
+ "duree_s": 5891,
+ "stats": {
+  "startTime": "2026-09-04T20:16:23.276Z",
+  "duration": 5891101.672,
+  "expected": 1094,
+  "skipped": 8,
+  "unexpected": 1,
+  "flaky": 0
+ },
+ "echecs": [
+  {
+   "fichier": "irl.spec.js",
+   "titre": "inscription et like ne recadrent PAS la carte",
+   "ligne": 354,
+   "resultats": [
+    "failed",
+    "failed"
+   ],
+   "erreur": "Error: page.waitForFunction: TypeError: Cannot read properties of null (reading 'getZoom')\n    at eval (eval at predicate (eval at evaluate (:302:30)), <anonymous>:2:37)\n    at predicate (eval at evaluate (:302:30), <anonymous>:7:27)\n    at next (eval at evaluate (:302:30), <anonymous>:29:33)\n    at eval (eval at evaluate (:302:30), <anonymous>:42:13)\n    at UtilityScript.evaluate (<anonymous>:304"
+  }
+ ],
+ "ignores": [
+  {
+   "fichier": "monitoring-bruit.spec.js",
+   "titre": "une erreur survenue en local ne part PAS dans la table de production",
+   "ligne": 69
+  },
+  {
+   "fichier": "monitoring-bruit.spec.js",
+   "titre": "l'indicateur explicite ?monitoring=1 réactive la remontée",
+   "ligne": 86
+  },
+  {
+   "fichier": "passion-context.spec.js",
+   "titre": "le changement de profil émet uniquement la passion métier, jamais l'id local",
+   "ligne": 7
+  },
+  {
+   "fichier": "passion-context.spec.js",
+   "titre": "un refresh sans changement n'émet pas de doublon",
+   "ligne": 47
+  },
+  {
+   "fichier": "release-integrity.spec.js",
+   "titre": "release.json, HTML et service worker désignent exactement le même build",
+   "ligne": 9
+  },
+  {
+   "fichier": "release-integrity.spec.js",
+   "titre": "le bundle différé redirige un ancien lien Carnets de voyage",
+   "ligne": 33
+  },
+  {
+   "fichier": "release-integrity.spec.js",
+   "titre": "le drain attend les POST telemetry_events avant de rendre la main",
+   "ligne": 85
+  },
+  {
+   "fichier": "release-integrity.spec.js",
+   "titre": "un onglet N détecte N+1 sans forcer le rechargement",
+   "ligne": 60
+  }
+ ]
+}

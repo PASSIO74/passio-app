@@ -2263,3 +2263,16 @@ CAPACITÉ / COÛTS : run 2494 = 13 jobs, ≈ 100 min de runner pour 37 min de mu
 CONSERVER : partition prod/local, audit-tests-isolation (idée), authz-critical, gates artefact dist, telemetry localhost off, purge par suffixe exact. REFACTORISER : deploy job (build → test artefact → deploy), audit-tests-creux, TESTING_STRATEGY.md (réécrire depuis les commandes). SUPPRIMER : tests/test-*.html et compagnons, les deux tests CDV de multi-comptes. SOUMETTRE À BENJAMIN : création d'un projet Supabase staging (coût 0 € sur le palier gratuit, mais dérive de schéma à gérer) ; passage de la Sentinelle distante en lecture seule.
 
 Requêtes à exécuter par l'orchestrateur (aucune requête base n'a été lancée par ce domaine) : `PASSIO_COUVERTURE=1 npx playwright test --project=local` puis `npm run couverture` (re-mesure) ; lecture des logs des shards 2/6 et 6/6 du run 33861671142 pour compter les « flaky ». Hygiène : aucun fichier suivi modifié (git status --short vide en fin de travail) ; dist/ régénéré par dist-build/servir-dist (ignoré par git) ; le lien symbolique de la copie du gate en scratchpad a été retiré.
+
+## Suite complète locale — exécutée par l'orchestrateur (une seule exécution, à la fin)
+
+| Élément | Valeur |
+|---|---|
+| Commande | `PASSIO_PORT=8090 PASSIO_RETRIES=1 npx playwright test --project=local --workers=3` sur le SHA audité, serveur statique local (fichiers de développement), Chromium 141 headless (émulation) |
+| Début / durée | 2026-09-04 20:16 UTC, 1 h 38 min |
+| Résultat | **1 094 réussis · 1 échec · 8 ignorés · 0 instable** (1 103 tests) |
+| Échec | `tests/e2e/irl.spec.js:354` « IRL — participation › inscription et like ne recadrent PAS la carte » — deux essais, même erreur : `page.waitForFunction: TypeError: Cannot read properties of null (reading 'getZoom')`. Cause environnementale : la bibliothèque MapLibre et les tuiles OpenFreeMap sont injoignables derrière le proxy de l'environnement d'audit (aucune carte n'existe, le test l'attend). Le même test est **vert en CI** sur ce SHA (run 33861671142, suites navigateur 1/6 → 6/6) et le sous-agent IRL avait obtenu le même échec pour la même raison (`preuves/irl/tests-irl-run.txt`). Ce n'est pas un défaut de l'application. |
+| Ignorés | 8 tests conditionnels (`test.skip`) — liste dans `preuves/suite-complete/resume.json` |
+| Preuves | `preuves/suite-complete/suite.log` (sortie complète) et `preuves/suite-complete/resume.json` (statistiques, échec, ignorés) |
+
+Lecture : hors la carte (bloquée par le réseau), la suite locale du dépôt est verte sur le SHA audité, dans un environnement à 4 CPU avec 3 workers. Cela confirme ce que la CI dit de ce commit ; cela ne prouve rien de plus que ce que ces tests mesurent (voir rapport 04, domaine tests-ci : ce que la suite ne couvre pas).

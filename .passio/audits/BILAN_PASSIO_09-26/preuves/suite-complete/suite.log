@@ -1,0 +1,1235 @@
+[1A[2K[2m[WebServer] [22m(node:25580) [DEP0066] DeprecationWarning: OutgoingMessage.prototype._headers is deprecated
+[2m[WebServer] [22m(Use `node --trace-deprecation ...` to show where the warning was created)
+
+
+Running 1103 tests using 3 workers
+
+[1A[2K[1/1103] [local] › tests/e2e/adr-009-retrait-economie.spec.js:78:3 › ADR-009 — retrait de l'économie interne › aucune destination Wallet, aucun solde, aucun score public
+[1A[2K[2/1103] [local] › tests/e2e/access-gate.spec.js:19:1 › au premier lancement, l'écran de code bloque toute l'app
+[1A[2K[3/1103] [local] › tests/e2e/adr-010-vocabulaire.spec.js:64:1 › aucune formulation contraire à ADR-010 n'est servie au navigateur
+[1A[2K[4/1103] [local] › tests/e2e/adr-010-vocabulaire.spec.js:77:1 › le tour d'accueil enseigne le bon modèle
+[1A[2K[5/1103] [local] › tests/e2e/adr-010-vocabulaire.spec.js:87:1 › la promesse produit est affichée, et de façon permanente
+[1A[2K[6/1103] [local] › tests/e2e/aides-contextuelles.spec.js:58:1 › §8 — la première carte du Fil explique comment ouvrir une Passio
+[1A[2K[7/1103] [local] › tests/e2e/access-gate.spec.js:27:1 › un mauvais code est rejeté avec un message d'erreur
+[1A[2K[8/1103] [local] › tests/e2e/aides-contextuelles.spec.js:66:1 › §8 — une aide est dismissible, et ne revient jamais
+[1A[2K[9/1103] [local] › tests/e2e/adr-009-retrait-economie.spec.js:94:3 › ADR-009 — retrait de l'économie interne › un ancien deep link #wallet ne laisse jamais l'app sans écran actif
+[1A[2K[10/1103] [local] › tests/e2e/access-gate.spec.js:39:1 › le bon code déverrouille l'app et pose le jeton de session
+[1A[2K[11/1103] [local] › tests/e2e/adr-009-retrait-economie.spec.js:106:3 › ADR-009 — retrait de l'économie interne › le moteur de récompenses n'existe plus, sous aucun de ses noms
+[1A[2K[12/1103] [local] › tests/e2e/access-gate.spec.js:48:1 › un jeton falsifié ne déverrouille pas l'app
+[1A[2K[13/1103] [local] › tests/e2e/aides-contextuelles.spec.js:86:1 › §8 — jamais deux aides à l'écran
+[1A[2K[14/1103] [local] › tests/e2e/adr-009-retrait-economie.spec.js:117:3 › ADR-009 — retrait de l'économie interne › publier, commenter et aimer fonctionnent sans récompense ni erreur
+[1A[2K[15/1103] [local] › tests/e2e/access-gate.spec.js:55:1 › une fois déverrouillé, le rechargement dans le même onglet ne redemande pas le code
+[1A[2K[16/1103] [local] › tests/e2e/aides-contextuelles.spec.js:116:1 › §8 — montrerHint refuse lui-même une aide déjà vue
+[1A[2K[17/1103] [local] › tests/e2e/adr-009-retrait-economie.spec.js:140:3 › ADR-009 — retrait de l'économie interne › créer un 4ᵉ profil est libre : aucun paywall, aucun coût
+[1A[2K[18/1103] [local] › tests/e2e/aides-contextuelles.spec.js:137:1 › §8 — une aide ne bloque rien : pas de modale, pas de voile
+[1A[2K[19/1103] [local] › tests/e2e/adr-009-retrait-economie.spec.js:186:3 › ADR-009 — retrait de l'économie interne › un état d'avant le retrait charge sans lever et sans rien réafficher
+[1A[2K[20/1103] [local] › tests/e2e/access-gate.spec.js:65:1 › les deep links / URL internes sont aussi protégés
+[1A[2K[21/1103] [local] › tests/e2e/aides-contextuelles.spec.js:167:1 › §8 — changer d'écran retire l'aide au lieu de la laisser flotter
+[1A[2K[22/1103] [local] › tests/e2e/audit-identite-emoji.spec.js:35:3 › Audit identité / isolation / emoji (2026-08-12) › emoji dans une réponse : saisi → stocké → rendu, sans mutation
+[1A[2K[23/1103] [local] › tests/e2e/adr-009-retrait-economie.spec.js:219:3 › ADR-009 — retrait de l'économie interne › la synchronisation ne re-propage pas les clés d'un ancien client
+[1A[2K[24/1103] [local] › tests/e2e/aides-contextuelles.spec.js:175:1 › §8 — l'aide « second profil » ne s'affiche que si l'utilisateur n'en a qu'un
+[1A[2K[25/1103] [local] › tests/e2e/audit-identite-emoji.spec.js:68:3 › Audit identité / isolation / emoji (2026-08-12) › troncature Unicode-sûre : jamais de demi-emoji orphelin à la borne
+[1A[2K[26/1103] [local] › tests/e2e/avatar-public-stable.spec.js:57:1 › l'avatar public ne change pas quand on bascule de passion
+[1A[2K[27/1103] [local] › tests/e2e/aides-contextuelles.spec.js:196:1 › §8 — avec un seul profil, l'aide « second profil » s'affiche
+[1A[2K[28/1103] [local] › tests/e2e/audit-identite-emoji.spec.js:89:3 › Audit identité / isolation / emoji (2026-08-12) › isolation inter-comptes : la déconnexion purge conversations (localStorage + IndexedDB)
+[1A[2K[29/1103] [local] › tests/e2e/aides-contextuelles.spec.js:223:1 › §8 — sans UI-6B, l'aide « second profil » trouve encore une ancre
+[1A[2K[30/1103] [local] › tests/e2e/avatar-public-stable.spec.js:89:1 › un second compte voit le même avatar avant et après la bascule
+[1A[2K[31/1103] [local] › tests/e2e/aides-contextuelles.spec.js:249:1 › §8 — le texte affiché est celui de HINTS, sans contenu utilisateur
+[1A[2K[32/1103] [local] › tests/e2e/audit-identite-emoji.spec.js:113:3 › Audit identité / isolation / emoji (2026-08-12) › isolation inter-comptes : AUCUNE clé de compte ne survit, y compris celles ajoutées plus tard
+[1A[2K[33/1103] [local] › tests/e2e/avatar-public-stable.spec.js:115:1 › la passion de PUBLICATION, elle, suit bien la bascule
+[1A[2K[34/1103] [local] › tests/e2e/badge-messages.spec.js:34:3 › Badge des messages non lus › trois messages non lus : la pastille est sur la barre du bas, et elle le dit
+[1A[2K[35/1103] [local] › tests/e2e/biographie-multiligne.spec.js:76:1 › ① une bio de trois lignes occupe bien trois lignes à l'écran
+[1A[2K[36/1103] [local] › tests/e2e/cadrage.spec.js:20:3 › iPhone SE : la barre d'onglets tient entièrement dans le viewport
+[1A[2K[37/1103] [local] › tests/e2e/badge-messages.spec.js:45:3 › Badge des messages non lus › aucun message non lu : aucune pastille, et le libellé redevient neutre
+[1A[2K[38/1103] [local] › tests/e2e/biographie-multiligne.spec.js:90:1 › ① bis — la même bio écrite d'un trait tient sur UNE ligne
+[1A[2K[39/1103] [local] › tests/e2e/cadrage.spec.js:20:3 › Android compact : la barre d'onglets tient entièrement dans le viewport
+[1A[2K[40/1103] [local] › tests/e2e/badge-messages.spec.js:56:3 › Badge des messages non lus › au-delà de neuf, la pastille plafonne à « 9+ »
+[1A[2K[41/1103] [local] › tests/e2e/biographie-multiligne.spec.js:100:1 › ② le style calculé préserve les sauts de ligne
+[1A[2K[42/1103] [local] › tests/e2e/cadrage.spec.js:20:3 › grand mobile : la barre d'onglets tient entièrement dans le viewport
+[1A[2K[43/1103] [local] › tests/e2e/badge-messages.spec.js:62:3 › Badge des messages non lus › kill switch UI-1 : Messages reste ATTEIGNABLE, et son compteur visible
+[1A[2K[44/1103] [local] › tests/e2e/biographie-multiligne.spec.js:113:1 › ③ la bio d'un profil visité respecte aussi les lignes, et reste échappée
+[1A[2K[45/1103] [local] › tests/e2e/cadrage.spec.js:50:1 › un viewport qui rétrécit après le chargement est rattrapé
+[1A[2K[46/1103] [local] › tests/e2e/badge-messages.spec.js:81:3 › Badge des messages non lus › URL normale : l'icône Messages du bandeau est masquée, jamais retirée
+[1A[2K[47/1103] [local] › tests/e2e/biographie-multiligne.spec.js:147:1 › ④ enregistrer depuis la modale conserve les trois lignes
+[1A[2K[48/1103] [local] › tests/e2e/cadrage.spec.js:68:1 › la safe-area du bas s'AJOUTE à la barre au lieu de rogner les icônes
+[1A[2K[49/1103] [local] › tests/e2e/badge-messages.spec.js:88:3 › Badge des messages non lus › la pastille historique du bandeau supérieur continue d'être écrite
+[1A[2K[50/1103] [local] › tests/e2e/biographie-multiligne.spec.js:164:1 › ④ bis — rouvrir l'éditeur rend le champ tel qu'il a été écrit
+[1A[2K[51/1103] [local] › tests/e2e/carte-passion-photo.spec.js:71:3 › la pastille photo d'une carte de passion › sous UI-8 : ouvre le sélecteur, sans ouvrir la modale d'édition
+[1A[2K[52/1103] [local] › tests/e2e/cases-violet-leger.spec.js:33:3 › Cases violet léger — Créer et Filtre parlent la même langue › feuille « Créer » : lavis violet, écriture violet foncé
+[1A[2K[53/1103] [local] › tests/e2e/biographie-multiligne.spec.js:187:1 › ⑤ le normaliseur garde la mise en forme et borne les abus
+[1A[2K[54/1103] [local] › tests/e2e/carte-passion-photo.spec.js:84:3 › la pastille photo d'une carte de passion › sous le kill switch UI-8 : ne bascule pas non plus le filtre de contenu
+[1A[2K[55/1103] [local] › tests/e2e/cases-violet-leger.spec.js:63:3 › Cases violet léger — Créer et Filtre parlent la même langue › page Filtre de Rencontrer : lavis au repos, violet plein une fois coché
+[1A[2K[56/1103] [local] › tests/e2e/biographie-multiligne.spec.js:207:1 › ⑤ bis — une ligne longue se replie encore (pre-line, pas pre)
+[1A[2K[57/1103] [local] › tests/e2e/commentaires-bobine.spec.js:63:3 › commentaires d'une bobine › un commentaire posté part vers Supabase
+[1A[2K[58/1103] [local] › tests/e2e/confirmation-email.spec.js:67:1 › compte créé sans session : le message de confirmation reste affiché
+[1A[2K[59/1103] [local] › tests/e2e/biographie-multiligne.spec.js:224:1 › ⑥ sans bio, rien ne s'affiche (le correctif n'ajoute pas de vide)
+[1A[2K[60/1103] [local] › tests/e2e/commentaires-bobine.spec.js:89:3 › commentaires d'une bobine › une réponse à un commentaire part elle aussi
+[1A[2K[61/1103] [local] › tests/e2e/confirmation-email.spec.js:83:1 › e-mail déjà utilisé : l'explication survit au changement d'onglet
+[1A[2K[62/1103] [local] › tests/e2e/connexion-compte-existant.spec.js:69:3 › Carte de bienvenue › propose une connexion au compte déjà créé, sans geste préalable
+[1A[2K[63/1103] [local] › tests/e2e/commentaires-bobine.spec.js:119:3 › commentaires d'une bobine › un commentaire ancien n'est plus daté « Maintenant »
+[1A[2K[64/1103] [local] › tests/e2e/confirmation-email.spec.js:97:1 › après une inscription à confirmer, le renvoi est proposé et envoie le bon type
+[1A[2K[65/1103] [local] › tests/e2e/connexion-compte-existant.spec.js:88:3 › Carte de bienvenue › « Continuer à explorer » ramène au fil, sans compte créé
+[1A[2K[66/1103] [local] › tests/e2e/commentaires-bobine.spec.js:136:3 › commentaires d'une bobine › un commentaire à l'instant reste daté « à l'instant »
+[1A[2K[67/1103] [local] › tests/e2e/confirmation-email.spec.js:114:1 › connexion refusée faute de confirmation : le renvoi devient la sortie
+[1A[2K[68/1103] [local] › tests/e2e/connexion-compte-existant.spec.js:104:3 › Paramètres → Compte › un visiteur y lit « J'ai déjà un compte » — et pas « Se déconnecter »
+[1A[2K[69/1103] [local] › tests/e2e/confirmation-email.spec.js:132:1 › le délai anti-abus de Supabase est traduit, pas recraché en anglais
+[1A[2K[70/1103] [local] › tests/e2e/contenu-passion-mood.spec.js:72:3 › le fil dit sa passion et son envie › chaque envie porte une couleur qui n'appartient qu'à elle
+[1A[2K[71/1103] [local] › tests/e2e/confirmation-email.spec.js:145:1 › le lien de renvoi ne survit pas à un changement d'onglet manuel
+[1A[2K[72/1103] [local] › tests/e2e/connexion-compte-existant.spec.js:124:3 › Paramètres → Compte › un compte connecté y lit « Se connecter avec un autre compte »
+[1A[2K[73/1103] [local] › tests/e2e/contenu-passion-mood.spec.js:98:3 › le fil dit sa passion et son envie › chaque pastille tient le contraste AA (4,5:1) sur son propre fond
+[1A[2K[74/1103] [local] › tests/e2e/confirmation-email.spec.js:157:1 › un compte confirmé entre dans l'app : le chemin nominal est intact
+[1A[2K[75/1103] [local] › tests/e2e/connexion-compte-existant.spec.js:156:3 › Déconnexion › l'intention de reconnexion SURVIT à la purge des clés de compte
+[1A[2K[76/1103] [local] › tests/e2e/contenu-passion-mood.spec.js:146:3 › le fil dit sa passion et son envie › la passion de la publication est lisible, et nommée une seule fois
+[1A[2K[77/1103] [local] › tests/e2e/contextual-nav.spec.js:21:3 › ContextualTools — ouverture / fermeture › IRL : le déclencheur ouvre le panneau ; ✕, backdrop, Escape et retour le ferment
+[1A[2K[78/1103] [local] › tests/e2e/connexion-compte-existant.spec.js:180:3 › Déconnexion › après la déconnexion, l'écran de connexion s'ouvre — pas le fil invité
+[1A[2K[79/1103] [local] › tests/e2e/contenu-passion-mood.spec.js:188:3 › le fil dit sa passion et son envie › les valeurs léguées ne dessinent plus aucune pastille
+[1A[2K[80/1103] [local] › tests/e2e/contextual-nav.spec.js:53:3 › ContextualTools — ouverture / fermeture › changer d'écran ferme le panneau ouvert
+[1A[2K[81/1103] [local] › tests/e2e/contenu-passion-mood.spec.js:203:3 › le fil dit sa passion et son envie › chaque passion du catalogue a du contenu dans les trois envies
+[1A[2K[82/1103] [local] › tests/e2e/contextual-nav.spec.js:63:3 › ContextualTools — aucune fonctionnalité perdue › IRL : ville, filtres et mine/inscrit restent accessibles via le panneau
+[1A[2K[83/1103] [local] › tests/e2e/connexion-compte-existant.spec.js:195:3 › Déconnexion › l'intention consommée ne rouvre pas la connexion au rechargement suivant
+[1A[2K[84/1103] [local] › tests/e2e/contenu-passion-mood.spec.js:233:3 › le fil dit sa passion et son envie › les trois séries de démonstration tiennent la partition des envies
+[1A[2K[85/1103] [local] › tests/e2e/contextual-nav.spec.js:93:3 › ContextualTools — responsive › mobile 375 : bottom-sheet ancré en bas, coins arrondis en haut
+[1A[2K[86/1103] [local] › tests/e2e/contenu-passion-mood.spec.js:264:3 › le fil dit sa passion et son envie › chaque publication reliée pointe vers une activité réellement présente
+[1A[2K[87/1103] [local] › tests/e2e/contextual-nav.spec.js:107:3 › ContextualTools — responsive › desktop 1280 : rail latéral droit plein hauteur
+[1A[2K[88/1103] [local] › tests/e2e/contenu-passion-mood.spec.js:287:3 › le fil dit sa passion et son envie › les exemples « Rencontrer » annoncent un lieu et une date
+[1A[2K[89/1103] [local] › tests/e2e/contextual-nav.spec.js:124:3 › ContextualTools — accessibilité › rôle dialog, aria-modal, focus au panneau et fermeture clavier
+[1A[2K[90/1103] [local] › tests/e2e/connexion-compte-existant.spec.js:210:3 › Déconnexion › « Continuer à explorer » depuis cet écran rend un fil INVITÉ complet
+[1A[2K[91/1103] [local] › tests/e2e/conv-clavier-ouverture.spec.js:49:3 › Ouverture d'une conversation — clavier et géométrie › ouvrir une conversation ne donne PAS le focus au champ (pas de clavier)
+[1A[2K[92/1103] [local] › tests/e2e/conv-ouverture-fil.spec.js:76:3 › Ouverture d'une conversation › le fil porte déjà ses messages quand le panneau entre à l'écran
+[1A[2K[93/1103] [local] › tests/e2e/conv-clavier-ouverture.spec.js:60:3 › Ouverture d'une conversation — clavier et géométrie › le champ garde le focus quand on le touche : écrire reste possible
+[1A[2K[94/1103] [local] › tests/e2e/conv-ouverture-fil.spec.js:90:3 › Ouverture d'une conversation › ouvrir une seconde conversation ne montre jamais le fil de la première
+[1A[2K[95/1103] [local] › tests/e2e/connexion-compte-existant.spec.js:233:3 › Déconnexion › drapeau coupé : la landing historique reprend la main, pas l'écran d'auth
+[1A[2K[96/1103] [local] › tests/e2e/conv-clavier-ouverture.spec.js:71:3 › Ouverture d'une conversation — clavier et géométrie › clavier simulé : `--app-vh` suit, et le message le plus récent reste visible
+[1A[2K[97/1103] [local] › tests/e2e/conv-ouverture-fil.spec.js:110:3 › Ouverture d'une conversation › le fil est ouvert en bas, et le reste après la transition
+[1A[2K[98/1103] [local] › tests/e2e/connexion-compte-existant.spec.js:260:3 › Déconnexion › une intention PÉRIMÉE est ignorée : le fil invité, pas un mur de connexion
+[1A[2K[99/1103] [local] › tests/e2e/conv-clavier-ouverture.spec.js:100:3 › Ouverture d'une conversation — clavier et géométrie › remonté dans l'historique, un changement de géométrie ne ramène pas en bas
+[1A[2K[100/1103] [local] › tests/e2e/conv-ouverture-fil.spec.js:135:3 › Ouverture d'une conversation › le panneau ne garde pas de couche composée permanente (will-change)
+[1A[2K[101/1103] [local] › tests/e2e/conv-suppression.spec.js:33:3 › Suppression de conversation / message (ADR-008) › une suppression non parvenue à IndexedDB ne ressuscite PAS au redémarrage
+[1A[2K[102/1103] [local] › tests/e2e/dist-build.spec.js:29:3 › build prod (dist) — app.js externalisé derrière le gate › page verrouillée : gate peint, aucun JS applicatif exécuté
+[1A[2K[local] › tests/e2e/dist-build.spec.js:29:3 › build prod (dist) — app.js externalisé derrière le gate › page verrouillée : gate peint, aucun JS applicatif exécuté
+
+
+[1A[2K[103/1103] [local] › tests/e2e/connexion-compte-existant.spec.js:275:3 › Déconnexion › doLogout() SANS argument ne pose aucune intention
+[1A[2K[104/1103] [local] › tests/e2e/conv-suppression.spec.js:74:3 › Suppression de conversation / message (ADR-008) › ce qui n'a PAS été supprimé continue d'être récupéré depuis IndexedDB
+[1A[2K[105/1103] [local] › tests/e2e/dist-build.spec.js:36:3 › build prod (dist) — app.js externalisé derrière le gate › saisie du code → app.js injecté → landing
+[1A[2K[106/1103] [local] › tests/e2e/connexion-compte-existant.spec.js:286:3 › Déconnexion › un signOut qui ÉCHOUE ne laisse pas la session ouverte pour autant
+[1A[2K[107/1103] [local] › tests/e2e/conv-suppression.spec.js:99:3 › Suppression de conversation / message (ADR-008) › le journal est borné : TTL de 30 jours et plafond d'entrées
+[1A[2K[108/1103] [local] › tests/e2e/dist-build.spec.js:44:3 › build prod (dist) — app.js externalisé derrière le gate › session déjà déverrouillée (jeton) : boot direct sans étape gate
+[1A[2K[109/1103] [local] › tests/e2e/connexion-compte-existant.spec.js:300:3 › Déconnexion › purgerJetonAuthLocal ne touche QUE les jetons du SDK
+[1A[2K[110/1103] [local] › tests/e2e/echappement-ids-reactions.spec.js:51:3 › Pastille de réactions — identifiant hostile › un post dont l'identifiant est une charge ne l'exécute pas
+[1A[2K[111/1103] [local] › tests/e2e/echappement-type-et-duree.spec.js:30:3 › échappement du type d'activité et de la durée › le type d'activité de la fiche est du texte, pas du balisage
+[1A[2K[112/1103] [local] › tests/e2e/connexion-compte-existant.spec.js:323:3 › Déconnexion › le bouton « Se déconnecter » des Paramètres passe bien par la confirmation
+[1A[2K[113/1103] [local] › tests/e2e/echappement.spec.js:101:3 › Échappement contextuel — contenu d'un autre compte › les trois helpers ne sont pas interchangeables (contrat des helpers)
+[1A[2K[114/1103] [local] › tests/e2e/echappement-ids-reactions.spec.js:81:3 › Pastille de réactions — identifiant hostile › un identifiant normal reste cliquable — l'échappement ne casse pas le handler
+[1A[2K[115/1103] [local] › tests/e2e/connexion-compte-existant.spec.js:346:3 › Déconnexion › « Changer de compte » va lui aussi jusqu'à doLogout('signin')
+[1A[2K[116/1103] [local] › tests/e2e/echappement.spec.js:134:3 › Échappement contextuel — contenu d'un autre compte › superposition de story : position et couleur ne peuvent pas sortir de l'attribut style
+[1A[2K[117/1103] [local] › tests/e2e/edition-activite-echappement.spec.js:45:3 › édition d'une activité › les apostrophes et les esperluettes reviennent telles quelles
+[1A[2K[118/1103] [local] › tests/e2e/entete-fil-permanent.spec.js:70:1 › descendre puis remonter laisse les passions, les moods et les stories affichés
+[1A[2K[119/1103] [local] › tests/e2e/echappement.spec.js:157:3 › Échappement contextuel — contenu d'un autre compte › réaction média d'un commentaire : un guillemet ne sort pas de l'attribut src
+[1A[2K[120/1103] [local] › tests/e2e/edition-activite-echappement.spec.js:71:3 › édition d'une activité › une tentative de sortie d'attribut reste neutralisée
+[1A[2K[121/1103] [local] › tests/e2e/etat-sync-base64.spec.js:26:3 › Synchronisation d'état — hygiène base64 › les photos base64 sont expurgées de l'état envoyé, les URL Storage conservées
+[1A[2K[122/1103] [local] › tests/e2e/entete-fil-permanent.spec.js:102:1 › aucune classe ni transition de repli, même sur une machine lente
+[1A[2K[123/1103] [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js:58:3 › Exploration anonyme puis connexion à un vrai compte › SANS la garde, le beacon posterait l'état de l'exploration sous l'identité du compte
+[1A[2K[124/1103] [local] › tests/e2e/exploration-moods.spec.js:55:3 › le repli d'exploration › propose une publication « Rencontrer » d'une passion non suivie
+[1A[2K[125/1103] [local] › tests/e2e/feed-activite-relue.spec.js:67:3 › Publication reliée à une activité — relue depuis le réseau › ① `event_id` revient du réseau et devient `eventId`, reconnu par UI-3B
+[1A[2K[126/1103] [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js:83:3 › Exploration anonyme puis connexion à un vrai compte › AVEC la garde, plus rien ne part — l'état de l'exploration est purgé
+[1A[2K[127/1103] [local] › tests/e2e/exploration-moods.spec.js:75:3 › le repli d'exploration › les valeurs léguées entrent toujours, mais sans pastille
+[1A[2K[128/1103] [local] › tests/e2e/feed-activite-relue.spec.js:89:3 › Publication reliée à une activité — relue depuis le réseau › ② base sans la migration : le fil est rendu quand même
+[1A[2K[129/1103] [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js:120:3 › Exploration anonyme puis connexion à un vrai compte › l'identifiant du compte est réécrit aussitôt : pas de boucle de purge
+[1A[2K[130/1103] [local] › tests/e2e/exploration-moods.spec.js:87:3 › le repli d'exploration › reste une liste BLANCHE : un mood inconnu n'entre pas
+[1A[2K[131/1103] [local] › tests/e2e/feed-intents.spec.js:83:3 › Fil — Envie du moment (UI-2 active par défaut) › l'URL normale active le rail sans rien rendre persistant
+[1A[2K[132/1103] [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js:136:3 › Exploration anonyme puis connexion à un vrai compte › un retour sur SON PROPRE compte ne purge rien
+[1A[2K[133/1103] [local] › tests/e2e/exploration-moods.spec.js:94:3 › le repli d'exploration › ne dépend plus du DOM : masquer le rail hérité ne change rien
+[1A[2K[134/1103] [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js:179:3 › Exploration anonyme puis connexion à un vrai compte › la garde purge même si `passio_uid` a déjà été réécrit par le handler d'auth
+[1A[2K[135/1103] [local] › tests/e2e/feed-intents.spec.js:115:3 › Fil — Envie du moment (UI-2 active par défaut) › URL normale : un passio_feed_intents_v1 « 1 » hérité est sans effet
+[1A[2K[136/1103] [local] › tests/e2e/feed-interets-migration.spec.js:68:1 › §12 — retirer sa dernière passion tient au rechargement
+[1A[2K[137/1103] [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js:219:3 › Exploration anonyme puis connexion à un vrai compte › une identité DÉCLARÉE délibérément ne purge rien (inscription, session anonyme)
+[1A[2K[138/1103] [local] › tests/e2e/feed-intents.spec.js:126:3 › Fil — Envie du moment (UI-2 active par défaut) › URL normale : window.PASSIO_FEED_INTENTS_V1 = true reste sans effet
+[1A[2K[139/1103] [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js:242:3 › Exploration anonyme puis connexion à un vrai compte › un refus ne laisse aucune trace : ni `passio_uid` touché, ni clé de sonde abandonnée
+[1A[2K[140/1103] [local] › tests/e2e/feed-interets-migration.spec.js:91:1 › §12 — un compte ANTÉRIEUR au modèle est bien migré depuis ses profils
+[1A[2K[141/1103] [local] › tests/e2e/feed-intents.spec.js:135:3 › Fil — Envie du moment (UI-2 active par défaut) › URL normale : window.PASSIO_UI_V2 = true ne change pas le défaut actif
+[1A[2K[142/1103] [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js:268:3 › Exploration anonyme puis connexion à un vrai compte › après une purge, aucune écriture ne part tant que le compte n'a pas été relu
+[1A[2K[143/1103] [local] › tests/e2e/feed-interets-migration.spec.js:111:1 › §12 — la migration émet sa télémétrie, avec des clés qui survivent au filtre PII
+[1A[2K[144/1103] [local] › tests/e2e/feed-intents.spec.js:147:3 › Fil — Envie du moment (UI-2 active par défaut) › URL normale : un passio_ui_v2 « 1 » hérité reste sans effet
+[1A[2K[145/1103] [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js:302:3 › Exploration anonyme puis connexion à un vrai compte › une fois le compte relu, l'appareil réécrit normalement
+[1A[2K[146/1103] [local] › tests/e2e/feed-interets-migration.spec.js:141:1 › §12 — la migration ne se rejoue jamais deux fois
+[1A[2K[147/1103] [local] › tests/e2e/feed-intents.spec.js:156:3 › Fil — Envie du moment (UI-2 active par défaut) › l'ancien paramètre feed-intents-v1 ne crée aucun mode séparé
+[1A[2K[148/1103] [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js:322:3 › Exploration anonyme puis connexion à un vrai compte › état d'un AUTRE compte : rien ne part, même sans purge
+[1A[2K[149/1103] [local] › tests/e2e/feed-intents.spec.js:165:3 › Fil — Envie du moment (UI-2 active par défaut) › le kill switch du shell coupe aussi le rail
+[1A[2K[150/1103] [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js:350:3 › Exploration anonyme puis connexion à un vrai compte › récupération de mot de passe : l'exigence armée par boot() bloque toute écriture
+[1A[2K[151/1103] [local] › tests/e2e/feed-interets-migration.spec.js:166:1 › §12 — aucun profil, aucun intérêt : rien à migrer, et rien n'est inventé
+[1A[2K[152/1103] [local] › tests/e2e/feed-intents.spec.js:182:3 › Fil — Envie du moment (UI-2 active par défaut) › kill switch du rail : ancien sélecteur visible et ancien filtre mood inchangé
+[1A[2K[153/1103] [local] › tests/e2e/feed-irl-bridge.spec.js:84:3 › Pont Fil → IRL (feed_irl_bridge_v1) › drapeau OFF (défaut) : aucun CTA sur la carte
+[1A[2K[154/1103] [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js:388:3 › Exploration anonyme puis connexion à un vrai compte › onbDoAuth branche `signin` : le câblage purge et recharge pour de vrai
+[1A[2K[155/1103] [local] › tests/e2e/feed-intents.spec.js:194:3 › Fil — Envie du moment (UI-2 active par défaut) › ON : quatre intentions accessibles, aucune cochée, aucun hard filter
+[1A[2K[156/1103] [local] › tests/e2e/feed-irl-bridge.spec.js:96:3 › Pont Fil → IRL (feed_irl_bridge_v1) › drapeau explicitement à 0 : le kill switch coupe le CTA sans rechargement
+[1A[2K[157/1103] [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js:449:3 › Exploration anonyme puis connexion à un vrai compte › onbDoAuth branche `signup` : le câblage déclare la propriété sans purger
+[1A[2K[158/1103] [local] › tests/e2e/feed-intents.spec.js:219:3 › Fil — Envie du moment (UI-2 active par défaut) › une passion cochée garde tout le set, quelle que soit l'envie — seul l'ordre bouge
+[1A[2K[159/1103] [local] › tests/e2e/feed-irl-bridge.spec.js:107:3 › Pont Fil → IRL (feed_irl_bridge_v1) › drapeau ON + post éligible : le CTA est visible et accessible
+[1A[2K[160/1103] [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js:491:3 › Exploration anonyme puis connexion à un vrai compte › chemin SDK réel : l'exigence de restauration bloque l'upsert, et le relâche ensuite
+[1A[2K[161/1103] [local] › tests/e2e/feed-intents.spec.js:245:3 › Fil — Envie du moment (UI-2 active par défaut) › une envie SEULE fait entrer du contenu qu'aucune passion cochée n'amenait
+[1A[2K[162/1103] [local] › tests/e2e/feed-irl-bridge.spec.js:130:3 › Pont Fil → IRL (feed_irl_bridge_v1) › clic : le parcours IRL existant s'ouvre avec passion et référence sûres
+[1A[2K[163/1103] [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js:535:3 › Exploration anonyme puis connexion à un vrai compte › le verdict serveur ignore le profil de remplissage, et lui seul
+[1A[2K[164/1103] [local] › tests/e2e/feed-intents.spec.js:272:3 › Fil — Envie du moment (UI-2 active par défaut) › retaper l'intention active revient immédiatement au neutre
+[1A[2K[165/1103] [local] › tests/e2e/feed-irl-bridge.spec.js:152:3 › Pont Fil → IRL (feed_irl_bridge_v1) › passion inconnue : formulaire IRL standard, sans préremplissage ni erreur
+[1A[2K[166/1103] [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js:567:3 › Exploration anonyme puis connexion à un vrai compte › un identifiant qui n'est pas un uuid ne déclenche jamais de purge
+[1A[2K[167/1103] [local] › tests/e2e/feed-intents.spec.js:288:3 › Fil — Envie du moment (UI-2 active par défaut) › le retour au neutre est enregistré comme un retour, pas une sélection
+[1A[2K[168/1103] [local] › tests/e2e/feed-irl-bridge.spec.js:171:3 › Pont Fil → IRL (feed_irl_bridge_v1) › post source introuvable : parcours IRL standard, sans référence
+[1A[2K[169/1103] [local] › tests/e2e/feed-malformed-post.spec.js:12:3 › Fil — post malformé n'efface pas tout le fil › un post malformé est sauté, les posts valides restent affichés
+[1A[2K[170/1103] [local] › tests/e2e/feed-intents.spec.js:304:3 › Fil — Envie du moment (UI-2 active par défaut) › mapping legacy exact : creation/learn/irl seulement, le reste générique
+[1A[2K[171/1103] [local] › tests/e2e/feed-irl-bridge.spec.js:190:3 › Pont Fil → IRL (feed_irl_bridge_v1) › télémétrie : trois événements, bornés aux métadonnées autorisées
+[1A[2K[172/1103] [local] › tests/e2e/feed-premier-rendu.spec.js:129:1 › §7 règle absolue — une passion sans post « création » affiche quand même son contenu
+[1A[2K[173/1103] [local] › tests/e2e/feed-intents.spec.js:312:3 › Fil — Envie du moment (UI-2 active par défaut) › Créer remonte le contenu correspondant sans perdre ni ajouter de post
+[1A[2K[174/1103] [local] › tests/e2e/feed-irl-bridge.spec.js:222:3 › Pont Fil → IRL (feed_irl_bridge_v1) › 390×844 : le CTA ne déborde pas de la carte et n'ajoute pas de scroll horizontal
+[1A[2K[175/1103] [local] › tests/e2e/feed-premier-rendu.spec.js:159:1 › §7 — le filtre mood réglé par l'utilisateur est respecté, même s'il vide le fil
+[1A[2K[176/1103] [local] › tests/e2e/feed-intents.spec.js:321:3 › Fil — Envie du moment (UI-2 active par défaut) › Découvrir sans signal fiable restitue exactement le classement Tous
+[1A[2K[177/1103] [local] › tests/e2e/feed-premier-rendu.spec.js:186:1 › §7 — l'intention mood survit au rechargement (selectedMoods, lui, repart à zéro)
+[1A[2K[178/1103] [local] › tests/e2e/feed-ranking.spec.js:51:3 › Fil — classement par pertinence › ma publication toute neuve passe devant, même sans aucun j'aime
+[1A[2K[179/1103] [local] › tests/e2e/feed-intents.spec.js:334:3 › Fil — Envie du moment (UI-2 active par défaut) › télémétrie sélection/reset/clic contenu : seulement version, flag et intention
+[1A[2K[180/1103] [local] › tests/e2e/feed-ranking.spec.js:75:3 › Fil — classement par pertinence › …mais le coup de pouce s'éteint : une vieille publication à moi ne squatte pas
+[1A[2K[181/1103] [local] › tests/e2e/feed-intents.spec.js:362:3 › Fil — Envie du moment (UI-2 active par défaut) › Rencontrer sous kill switch UI-3A → CTA IRL existant, sans activer une proposition
+[1A[2K[182/1103] [local] › tests/e2e/feed-premier-rendu.spec.js:202:1 › §7 repli — une passion sans contenu propose l'exploration, étiquetée comme telle
+[1A[2K[183/1103] [local] › tests/e2e/feed-ranking.spec.js:93:3 › Fil — classement par pertinence › à fraîcheur égale, l'affinité (passion pratiquée + auteur suivi) remonte
+[1A[2K[184/1103] [local] › tests/e2e/feed-premier-rendu.spec.js:245:1 › §7 repli — « ➕ Ajouter une passion » LIVRE la porte d'ajout
+[1A[2K[185/1103] [local] › tests/e2e/feed-intents.spec.js:377:3 › Fil — Envie du moment (UI-2 active par défaut) › Rencontrer, UI-3A active : « Trouver une activité », sans proposition automatique
+[1A[2K[186/1103] [local] › tests/e2e/feed-ranking.spec.js:110:3 › Fil — classement par pertinence › la fraîcheur reste dominante : un post récent neutre bat un vieux post affinitaire
+[1A[2K[187/1103] [local] › tests/e2e/feed-premier-rendu.spec.js:266:1 › §7 repli — les onclick pointent vers des fonctions globales existantes
+[1A[2K[188/1103] [local] › tests/e2e/feed-intents.spec.js:403:3 › Fil — Envie du moment (UI-2 active par défaut) › kill switch à 0 : retour immédiat au rail et au filtre historiques
+[1A[2K[189/1103] [local] › tests/e2e/feed-ranking.spec.js:124:3 › Fil — classement par pertinence › le classement conserve exactement le même ensemble de posts
+[1A[2K[190/1103] [local] › tests/e2e/feed-premier-rendu.spec.js:288:1 › §7 repli — un aller-retour ne laisse pas le repli collé à l'écran
+[1A[2K[191/1103] [local] › tests/e2e/feed-intents.spec.js:420:3 › Fil — Envie du moment (UI-2 active par défaut) › la signature DOM varie avec l'intention active
+[1A[2K[192/1103] [local] › tests/e2e/feed-ranking.spec.js:141:3 › Fil — classement par pertinence › la soupape passio_feed_rank=0 rétablit le tri chronologique strict
+[1A[2K[193/1103] [local] › tests/e2e/feed-premier-rendu.spec.js:314:1 › §7 — la télémétrie émise survit au filtre PII de js/telemetry.js
+[1A[2K[194/1103] [local] › tests/e2e/feed-intents.spec.js:434:3 › Fil — Envie du moment (UI-2 active par défaut) › 360/375/390/430 px : aucun libellé tronqué, page sans débordement
+[1A[2K[195/1103] [local] › tests/e2e/feed-premier-rendu.spec.js:345:1 › §7 — kill switch UI V2 : ancien comportement strictement rétabli
+[1A[2K[196/1103] [local] › tests/e2e/feed-ranking.spec.js:156:3 › Fil — classement par pertinence › l'ordre est stable entre deux appels rapprochés (fenêtre du guard)
+[1A[2K[197/1103] [local] › tests/e2e/feed-intents.spec.js:468:3 › Fil — Envie du moment (UI-2 active par défaut) › le rail tient sans défilement horizontal, et le kill switch rend la bande défilante
+[1A[2K[198/1103] [local] › tests/e2e/feed-realtime-course.spec.js:25:3 › Fil — course entre requête en vol et temps réel › un post arrivé en temps réel survit à la réponse d'une requête plus ancienne
+[1A[2K[199/1103] [local] › tests/e2e/feed-vues-adr010.spec.js:88:1 › ① une passion cochée fait entrer son contenu
+[1A[2K[200/1103] [local] › tests/e2e/feed-window.spec.js:98:3 › Fil fenêtré — drapeau OFF : rien ne change › aucune trace du fenêtrage quand le drapeau est coupé
+[1A[2K[201/1103] [local] › tests/e2e/feed-realtime-course.spec.js:71:3 › Fil — course entre requête en vol et temps réel › une fois l'instantané serveur à jour, le post n'est pas dupliqué
+[1A[2K[202/1103] [local] › tests/e2e/feed-vues-adr010.spec.js:93:1 › ② « Suivis » fait entrer un compte suivi même sans passion commune
+[1A[2K[203/1103] [local] › tests/e2e/feed-window.spec.js:120:3 › Fil fenêtré — drapeau OFF : rien ne change › le drapeau ne change NI l'ordre NI le contenu affiché
+[1A[2K[204/1103] [local] › tests/e2e/first-run.spec.js:18:3 › Entrée › un nouveau visiteur arrive directement dans Découvrir
+[1A[2K[205/1103] [local] › tests/e2e/feed-vues-adr010.spec.js:100:1 › ③ une publication de plusieurs sources n'apparaît qu'une fois
+[1A[2K[206/1103] [local] › tests/e2e/feed-window.spec.js:132:3 › Fil fenêtré — drapeau OFF : rien ne change › kill switch : couper le drapeau remonte tout, sans rechargement
+[1A[2K[207/1103] [local] › tests/e2e/first-run.spec.js:32:3 › Entrée › aucune demande de géolocalisation ni de notification n'est déclenchée
+[1A[2K[208/1103] [local] › tests/e2e/feed-vues-adr010.spec.js:107:1 › ④ sans passion cochée, les comptes suivis restent visibles
+[1A[2K[209/1103] [local] › tests/e2e/feed-window.spec.js:154:3 › Fil fenêtré — cartes montées bornées et lots progressifs › toutes les cartes sont dans le flux, seule une fraction est montée
+[1A[2K[210/1103] [local] › tests/e2e/first-run.spec.js:64:3 › Entrée › aucune écriture Supabase en mode invité — et pas de compte anonyme
+[1A[2K[211/1103] [local] › tests/e2e/feed-vues-adr010.spec.js:116:1 › ⑤ sans aucun critère : un état vide explicatif
+[1A[2K[212/1103] [local] › tests/e2e/feed-window.spec.js:166:3 › Fil fenêtré — cartes montées bornées et lots progressifs › le premier lot puis les suivants arrivent en scrollant, sans doublon
+[1A[2K[213/1103] [local] › tests/e2e/feed-vues-adr010.spec.js:131:1 › ⑥ « Suivis » SEUL ne montre que les comptes suivis
+[1A[2K[214/1103] [local] › tests/e2e/first-run.spec.js:93:3 › Entrée › un utilisateur existant n'est jamais renvoyé dans le nouveau parcours
+[1A[2K[215/1103] [local] › tests/e2e/feed-window.spec.js:188:3 › Fil fenêtré — cartes montées bornées et lots progressifs › le chargement progressif n'écrase pas les cartes déjà montées
+[1A[2K[216/1103] [local] › tests/e2e/feed-vues-adr010.spec.js:149:1 › ⑥ ter — la tuile « Suivis » est une bascule, et son état persiste
+[1A[2K[217/1103] [local] › tests/e2e/first-run.spec.js:123:3 › Entrée › un lien profond garde sa destination, le tour est différé
+[1A[2K[218/1103] [local] › tests/e2e/feed-window.spec.js:211:5 › Fil fenêtré — ancre de scroll sous 2 px › aller-retour Fil → IRL → Fil : ancre stable à 320 px
+[1A[2K[219/1103] [local] › tests/e2e/first-run.spec.js:148:3 › Carte de bienvenue › elle s'affiche, ne masque pas l'écran, et se ferme sans revenir
+[1A[2K[220/1103] [local] › tests/e2e/feed-window.spec.js:211:5 › Fil fenêtré — ancre de scroll sous 2 px › aller-retour Fil → IRL → Fil : ancre stable à 390 px
+[1A[2K[221/1103] [local] › tests/e2e/feed-vues-adr010.spec.js:186:1 › ⑥ quater — cocher une passion N'ÉTEINT PAS « Suivis » (le cœur de §4)
+[1A[2K[222/1103] [local] › tests/e2e/first-run.spec.js:175:3 › Carte de bienvenue › tant qu'aucun compte n'existe, elle REVIENT à la visite suivante
+[1A[2K[223/1103] [local] › tests/e2e/feed-vues-adr010.spec.js:212:1 › ⑥ bis — « Suivis » sans aucun abonnement : message dédié, pas de contenu d'inconnus
+[1A[2K[224/1103] [local] › tests/e2e/feed-window.spec.js:211:5 › Fil fenêtré — ancre de scroll sous 2 px › aller-retour Fil → IRL → Fil : ancre stable à 430 px
+[1A[2K[225/1103] [local] › tests/e2e/feed-vues-adr010.spec.js:223:1 › ⑥ quinquies — sans aucune passion, « Suivis » reste atteignable
+[1A[2K[226/1103] [local] › tests/e2e/feed-window.spec.js:251:3 › Fil fenêtré — ancre de scroll sous 2 px › descendre dans le fil ne fait pas battre l'en-tête
+[1A[2K[227/1103] [local] › tests/e2e/feed-vues-adr010.spec.js:263:1 › ⑦ le choix survit à un rechargement
+[1A[2K[228/1103] [local] › tests/e2e/feed-window.spec.js:276:3 › Fil fenêtré — ancre de scroll sous 2 px › l'ancre tient sur cinq allers-retours consécutifs
+[1A[2K[229/1103] [local] › tests/e2e/first-run.spec.js:214:3 › Carte de bienvenue › quand des passions sont déjà choisies, la carte le DIT au lieu de répéter « Bienvenue »
+[1A[2K[230/1103] [local] › tests/e2e/first-run.spec.js:234:3 › Personnalisation › le panneau propose les populaires, la recherche, tout le catalogue et les spécialités
+[1A[2K[231/1103] [local] › tests/e2e/feed-window.spec.js:316:5 › Fil fenêtré — ancre de scroll sous 2 px › l'ancre tient sans l'ancrage natif, malgré une mise en page tardive à 80 ms
+[1A[2K[232/1103] [local] › tests/e2e/feed-vues-adr010.spec.js:277:1 › ⑧ se désabonner retire la source correspondante
+[1A[2K[233/1103] [local] › tests/e2e/first-run.spec.js:259:3 › Personnalisation › choisir une spécialité sélectionne automatiquement sa passion principale
+[1A[2K[234/1103] [local] › tests/e2e/feed-window.spec.js:316:5 › Fil fenêtré — ancre de scroll sous 2 px › l'ancre tient sans l'ancrage natif, malgré une mise en page tardive à 300 ms
+[1A[2K[235/1103] [local] › tests/e2e/feed-vues-adr010.spec.js:293:1 › ⑨ changer « Publier dans » ne modifie pas « Passions à afficher »
+[1A[2K[236/1103] [local] › tests/e2e/first-run.spec.js:274:3 › Personnalisation › après validation, le Fil se personnalise IMMÉDIATEMENT, sans rechargement
+[1A[2K[237/1103] [local] › tests/e2e/feed-vues-adr010.spec.js:309:1 › ⑩ changer « Passions à afficher » ne modifie pas « Publier dans »
+[1A[2K[238/1103] [local] › tests/e2e/feed-window.spec.js:316:5 › Fil fenêtré — ancre de scroll sous 2 px › l'ancre tient sans l'ancrage natif, malgré une mise en page tardive à 700 ms
+[1A[2K[239/1103] [local] › tests/e2e/first-run.spec.js:312:3 › Personnalisation › une spécialité choisie arrive dans le fil, et sa bulle la NOMME
+[1A[2K[240/1103] [local] › tests/e2e/feed-vues-adr010.spec.js:322:1 › ⑪ le profil d'autrui : une identité, et des filtres de passion
+[1A[2K[241/1103] [local] › tests/e2e/feed-window.spec.js:365:3 › Fil fenêtré — ancre de scroll sous 2 px › un geste de l'utilisateur interrompt la veille d'ancre
+[1A[2K[242/1103] [local] › tests/e2e/first-run.spec.js:346:3 › Personnalisation › le référentiel plat n'est demandé au démarrage QUE si une spécialité l'exige
+[1A[2K[243/1103] [local] › tests/e2e/feed-vues-adr010.spec.js:381:1 › ⑫ résultat vide et erreur Supabase ne cassent pas le fil
+[1A[2K[244/1103] [local] › tests/e2e/feed-window.spec.js:386:3 › Fil fenêtré — mises à jour ciblées, jamais globales › un like ne déclenche AUCUN renderFeed global
+[1A[2K[245/1103] [local] › tests/e2e/first-run.spec.js:358:3 › Personnalisation › … et il l'est quand une spécialité déjà choisie doit être nommée
+[1A[2K[246/1103] [local] › tests/e2e/feed-vues-adr010.spec.js:466:1 › ⑬ dix passions : le rail du fil coulisse, les bulles ne se chevauchent plus
+[1A[2K[247/1103] [local] › tests/e2e/feed-window.spec.js:407:3 › Fil fenêtré — mises à jour ciblées, jamais globales › un commentaire ne déclenche AUCUN renderFeed global
+[1A[2K[248/1103] [local] › tests/e2e/first-run.spec.js:374:3 › Tour contextuel › trois indications au maximum, non bloquantes, mémorisées, relançables
+[1A[2K[249/1103] [local] › tests/e2e/feed-vues-adr010.spec.js:522:1 › ⑬ bis — le défilement du rail survit au cochage d'une passion
+[1A[2K[250/1103] [local] › tests/e2e/feed-window.spec.js:430:3 › Fil fenêtré — mises à jour ciblées, jamais globales › un like reçu pendant que la carte est démontée est visible à la remontée
+[1A[2K[251/1103] [local] › tests/e2e/first-run.spec.js:405:3 › Tour contextuel › l'étape « Rencontrer » apparaît à la première ouverture de l'écran IRL
+[1A[2K[252/1103] [local] › tests/e2e/fuite-blob-bobines.spec.js:36:3 › Bobine locale — cycle de vie de l'URL objet › le Blob est révoqué dès que la bobine est téléversée
+[1A[2K[253/1103] [local] › tests/e2e/feed-window.spec.js:459:3 › Fil fenêtré — mises à jour ciblées, jamais globales › une rafale temps réel n'introduit ni doublon ni observateur de plus
+[1A[2K[254/1103] [local] › tests/e2e/first-run.spec.js:415:3 › Tour contextuel › navigation clavier : Entrée active une seule fois, Échap ferme
+[1A[2K[255/1103] [local] › tests/e2e/fuite-blob-bobines.spec.js:68:3 › Bobine locale — cycle de vie de l'URL objet › tant que la bobine n'est PAS téléversée, le Blob est conservé et réutilisé
+[1A[2K[256/1103] [local] › tests/e2e/feed-window.spec.js:487:3 › Fil fenêtré — pas de fuite, et le parcours reste entier › dix navigations n'empilent ni observateur ni écouteur de redimensionnement
+[1A[2K[257/1103] [local] › tests/e2e/fuite-blob-bobines.spec.js:86:3 › Bobine locale — cycle de vie de l'URL objet › une bobine déjà distante ne crée aucune URL objet
+[1A[2K[258/1103] [local] › tests/e2e/first-run.spec.js:446:3 › Tour contextuel › le premier tour s'arrête à trois étapes ; Profil, Messages et Studio ont la leur, à part
+[1A[2K[259/1103] [local] › tests/e2e/feed-window.spec.js:505:3 › Fil fenêtré — pas de fuite, et le parcours reste entier › quitter le fil ne laisse aucun observateur derrière
+[1A[2K[260/1103] [local] › tests/e2e/gate-sans-app.spec.js:19:1 › gate affiché, application absente : aucune erreur JS, aucun module ne s'emballe
+[1A[2K[261/1103] [local] › tests/e2e/first-run.spec.js:509:5 › Aides au geste › toucher passions explique passions, une seule fois
+[1A[2K[262/1103] [local] › tests/e2e/feed-window.spec.js:514:3 › Fil fenêtré — pas de fuite, et le parcours reste entier › le pont Fil → IRL reste actionnable avec le fenêtrage actif
+[1A[2K[263/1103] [local] › tests/e2e/gate-sans-app.spec.js:47:1 › la query survit à la fenêtre du gate (piège platform.js du 2026-08-28)
+[1A[2K[264/1103] [local] › tests/e2e/first-run.spec.js:509:5 › Aides au geste › toucher envies explique envies, une seule fois
+[1A[2K[265/1103] [local] › tests/e2e/feed-window.spec.js:542:3 › Fil fenêtré — pas de fuite, et le parcours reste entier › le fenêtrage ne prive jamais une carte de sa porte vers l'IRL (UI-3)
+[1A[2K[266/1103] [local] › tests/e2e/gate-sans-app.spec.js:57:1 › après déverrouillage, l'application démarre et le fil s'affiche
+[1A[2K[267/1103] [local] › tests/e2e/feed-window.spec.js:600:3 › Fil fenêtré — pas de fuite, et le parcours reste entier › session longue : le fil reste sain après un long va-et-vient de scroll
+[1A[2K[268/1103] [local] › tests/e2e/first-run.spec.js:509:5 › Aides au geste › toucher stories explique stories, une seule fois
+[1A[2K[269/1103] [local] › tests/e2e/hotfix-profil-passion-custom.spec.js:121:1 › compte custom-only : la ligne profiles est CRÉÉE, avec passion_id null
+[1A[2K[270/1103] [local] › tests/e2e/hotfix-profil-passion-custom.spec.js:136:1 › AUCUN profil résoluble : la ligne est créée quand même
+[1A[2K[271/1103] [local] › tests/e2e/interactions.spec.js:405:3 › Interactions — like d'un post › fil : le bouton ❤️ bascule dans les deux sens et persiste au re-rendu
+[1A[2K[272/1103] [local] › tests/e2e/first-run.spec.js:544:3 › Aides au geste › le geste n'est jamais empêché : la commande touchée agit quand même
+[1A[2K[273/1103] [local] › tests/e2e/hotfix-profil-passion-custom.spec.js:162:1 › le username explicite du compte est CONSERVÉ
+[1A[2K[274/1103] [local] › tests/e2e/interactions.spec.js:421:3 › Interactions — like d'un post › écriture serveur refusée : le ❤️ optimiste est ANNULÉ (bouton + état)
+[1A[2K[275/1103] [local] › tests/e2e/first-run.spec.js:570:3 › Aides au geste › toute aide déclarée a une ancre RÉELLEMENT atteignable
+[1A[2K[276/1103] [local] › tests/e2e/hotfix-profil-passion-custom.spec.js:169:1 › sans username résoluble : la ligne est créée avec « Profil »
+[1A[2K[277/1103] [local] › tests/e2e/interactions.spec.js:435:3 › Interactions — like d'un post › fil reconstruit pendant l'attente : l'annulation touche le bouton VISIBLE
+[1A[2K[278/1103] [local] › tests/e2e/first-run.spec.js:613:3 › Aides au geste › jamais deux bulles à l'écran en même temps
+[1A[2K[279/1103] [local] › tests/e2e/hotfix-profil-passion-custom.spec.js:179:1 › aucune donnée d'authentification privée n'est utilisée
+[1A[2K[280/1103] [local] › tests/e2e/interactions.spec.js:451:3 › Interactions — like d'un post › l'écriture serveur reçoit l'INTENTION de l'utilisateur, jamais son inverse
+[1A[2K[281/1103] [local] › tests/e2e/first-run.spec.js:627:3 › Gate d'authentification › le gate EXPLIQUE l'action demandée, et propose trois issues
+[1A[2K[282/1103] [local] › tests/e2e/hotfix-profil-passion-custom.spec.js:197:1 › une passion CANONIQUE reste publiée telle quelle
+[1A[2K[283/1103] [local] › tests/e2e/interactions.spec.js:520:3 › Interactions — like d'un post › contenu de démo : aucune écriture serveur (elle partirait en orphelin)
+[1A[2K[284/1103] [local] › tests/e2e/first-run.spec.js:650:3 › Gate d'authentification › un like de visiteur est ARRÊTÉ : ni état local modifié, ni écriture
+[1A[2K[285/1103] [local] › tests/e2e/hotfix-profil-passion-custom.spec.js:209:1 › passion canonique + passion perso : la canonique est choisie, rien n'est perdu
+[1A[2K[286/1103] [local] › tests/e2e/interactions.spec.js:559:3 › Interactions — like d'un commentaire › le bouton VISIBLE se met à jour même quand le commentaire est rendu deux fois
+[1A[2K[287/1103] [local] › tests/e2e/first-run.spec.js:663:3 › Gate d'authentification › une activité de DÉMONSTRATION refuse la participation, sans promettre un compte
+[1A[2K[288/1103] [local] › tests/e2e/hotfix-profil-passion-custom.spec.js:242:1 › `ensure` ne réécrit AUCUN champ d'une ligne existante
+[1A[2K[289/1103] [local] › tests/e2e/interactions.spec.js:594:3 › Interactions — like d'un commentaire › aperçu du fil : liker un commentaire met à jour le bouton visible
+[1A[2K[290/1103] [local] › tests/e2e/first-run.spec.js:683:3 › Gate d'authentification › TOUTES les portes d'écriture sont gardées, y compris celles des bobines
+[1A[2K[291/1103] [local] › tests/e2e/hotfix-profil-passion-custom.spec.js:267:1 › sans profil résoluble : les replis NEUTRES, jamais une passion
+[1A[2K[292/1103] [local] › tests/e2e/interactions.spec.js:618:3 › Interactions — like d'un commentaire › répondre depuis la modale ouvre le champ dans la copie visible
+[1A[2K[293/1103] [local] › tests/e2e/first-run.spec.js:724:3 › Gate d'authentification › « Ta story » n'ouvre PAS la caméra à un visiteur
+[1A[2K[294/1103] [local] › tests/e2e/hotfix-profil-passion-custom.spec.js:281:1 › changer de passion ne réécrit AUCUN champ d'identité publique
+[1A[2K[295/1103] [local] › tests/e2e/interactions.spec.js:639:3 › Interactions — événement IRL › la fiche événement expose un like ET une réaction emoji
+[1A[2K[296/1103] [local] › tests/e2e/first-run.spec.js:747:3 › Gate d'authentification › le contenu de démonstration est étiqueté « Exemple PASSIO »
+[1A[2K[297/1103] [local] › tests/e2e/hotfix-profil-passion-custom.spec.js:326:1 › aucune passion locale n'est supprimée ni transformée par le hotfix
+[1A[2K[298/1103] [local] › tests/e2e/interactions.spec.js:650:3 › Interactions — événement IRL › le compteur de like reste synchronisé entre la carte et la fiche
+[1A[2K[299/1103] [local] › tests/e2e/hotfix-profil-passion-custom.spec.js:335:1 › la création de passion personnalisée est indisponible, et le dit
+[1A[2K[300/1103] [local] › tests/e2e/first-run.spec.js:753:3 › Gate d'authentification › une activité de démonstration n'invente ni proximité ni participants
+[1A[2K[301/1103] [local] › tests/e2e/interactions.spec.js:664:3 › Interactions — événement IRL › une réaction emoji remplace la précédente puis se retire au second tap
+[1A[2K[302/1103] [local] › tests/e2e/hotfix-profil-passion-custom.spec.js:350:1 › l'outil de diagnostic utilise une passion canonique
+[1A[2K[303/1103] [local] › tests/e2e/first-run.spec.js:793:3 › Transfert du mode invité › un compte qui a DÉJÀ ses passions n'en reçoit AUCUNE de l'exploration
+[1A[2K[304/1103] [local] › tests/e2e/interactions.spec.js:681:3 › Interactions — événement IRL › ma réaction emoji survit à un rechargement (événement de démo)
+[1A[2K[305/1103] [local] › tests/e2e/ios-navigation-et-zoom.spec.js:34:3 › iPhone — navigation, historique et saisie › un pushState qui LÈVE n'empêche pas le changement d'écran
+[1A[2K[306/1103] [local] › tests/e2e/first-run.spec.js:824:3 › Transfert du mode invité › hors ligne, le repli protège quand même le compte qui a ses passions
+[1A[2K[307/1103] [local] › tests/e2e/ios-navigation-et-zoom.spec.js:63:3 › iPhone — navigation, historique et saisie › les écritures d'historique sont bornées sous le plafond WebKit
+[1A[2K[308/1103] [local] › tests/e2e/first-run.spec.js:849:3 › Transfert du mode invité › le profil de remplissage de boot() ne fait pas passer un compte neuf pour un compte garni
+[1A[2K[309/1103] [local] › tests/e2e/interactions.spec.js:707:3 › Interactions — bobine › le like d'une bobine est un VRAI like : compteur, persistance et parité avec le fil
+[1A[2K[310/1103] [local] › tests/e2e/ios-navigation-et-zoom.spec.js:93:3 › iPhone — navigation, historique et saisie › quatre modales ouvertes et refermées au doigt ne coûtent AUCUN retour
+[1A[2K[311/1103] [local] › tests/e2e/ios-zones-sures.spec.js:70:5 › iPhone — zones sûres des panneaux plein écran › .event-detail-back évite l'encoche (« ← Retour » et « Partager » d'une activité)
+[1A[2K[312/1103] [local] › tests/e2e/ios-zones-sures.spec.js:70:5 › iPhone — zones sûres des panneaux plein écran › .story-progress-row évite l'encoche (barre de progression des stories)
+[1A[2K[313/1103] [local] › tests/e2e/ios-zones-sures.spec.js:70:5 › iPhone — zones sûres des panneaux plein écran › .story-viewer-header évite l'encoche (la croix qui ferme une story)
+[1A[2K[314/1103] [local] › tests/e2e/ios-zones-sures.spec.js:70:5 › iPhone — zones sûres des panneaux plein écran › .reels-header évite l'encoche (la croix qui ferme le viewer Bobines)
+[1A[2K[315/1103] [local] › tests/e2e/ios-zones-sures.spec.js:70:5 › iPhone — zones sûres des panneaux plein écran › .reel-sound-btn évite l'encoche (coupure du son d'une bobine)
+[1A[2K[316/1103] [local] › tests/e2e/ios-zones-sures.spec.js:70:5 › iPhone — zones sûres des panneaux plein écran › .reel-tag-mood évite l'encoche (étiquette d'humeur d'une bobine)
+[1A[2K[317/1103] [local] › tests/e2e/ios-zones-sures.spec.js:77:5 › iPhone — zones sûres des panneaux plein écran › .story-sound-btn évite la barre d'accueil (son d'une story)
+[1A[2K[318/1103] [local] › tests/e2e/ios-zones-sures.spec.js:77:5 › iPhone — zones sûres des panneaux plein écran › .reel-info évite la barre d'accueil (auteur et légende d'une bobine)
+[1A[2K[319/1103] [local] › tests/e2e/ios-zones-sures.spec.js:77:5 › iPhone — zones sûres des panneaux plein écran › .reel-actions évite la barre d'accueil (J'aime / Commenter / Partager d'une bobine)
+[1A[2K[320/1103] [local] › tests/e2e/ios-zones-sures.spec.js:77:5 › iPhone — zones sûres des panneaux plein écran › .reels-hint évite la barre d'accueil (indice de défilement des Bobines)
+[1A[2K[321/1103] [local] › tests/e2e/ios-zones-sures.spec.js:77:5 › iPhone — zones sûres des panneaux plein écran › .reel-comments-panel évite la barre d'accueil (saisie des commentaires d'une bobine)
+[1A[2K[322/1103] [local] › tests/e2e/ios-zones-sures.spec.js:87:3 › iPhone — zones sûres des panneaux plein écran › .irl-map-expand n'ajoute l'inset QUE en plein écran
+[1A[2K[323/1103] [local] › tests/e2e/ios-zones-sures.spec.js:96:3 › iPhone — zones sûres des panneaux plein écran › l'en-tête de #postDetailPage évite l'encoche
+[1A[2K[324/1103] [local] › tests/e2e/ios-zones-sures.spec.js:107:3 › iPhone — zones sûres des panneaux plein écran › .app-shell garde ses retraits de zone sûre
+[1A[2K[325/1103] [local] › tests/e2e/ios-zones-sures.spec.js:118:3 › iPhone — zones sûres des panneaux plein écran › aucun panneau plein écran n'a été ajouté sans arbitrage
+[1A[2K[326/1103] [local] › tests/e2e/irl-changement-ville.spec.js:62:3 › « Ma ville » après un changement de ville › le filtre suit la ville choisie, il ne reste pas sur la précédente
+[1A[2K[327/1103] [local] › tests/e2e/first-run.spec.js:867:3 › Transfert du mode invité › les choix du visiteur passent en TÊTE : le remplissage ne devient pas la passion primaire
+[1A[2K[328/1103] [local] › tests/e2e/ios-navigation-et-zoom.spec.js:116:3 › iPhone — navigation, historique et saisie › le retour matériel ferme la modale, puis ramène à l'écran précédent
+[1A[2K[329/1103] [local] › tests/e2e/first-run.spec.js:884:3 › Transfert du mode invité › un compte NEUF adopte les choix du visiteur : dédoublonnés, nettoyés, une seule fois
+[1A[2K[330/1103] [local] › tests/e2e/irl-changement-ville.spec.js:112:3 › « Ma ville » après un changement de ville › sans « Ma ville », changer de ville ne pose aucun filtre
+[1A[2K[331/1103] [local] › tests/e2e/ios-navigation-et-zoom.spec.js:138:3 › iPhone — navigation, historique et saisie › remplacer une modale par une autre n'empile pas d'entrée
+[1A[2K[332/1103] [local] › tests/e2e/first-run.spec.js:921:3 › Transfert du mode invité › une interruption laisse la migration à refaire, et la refaire aboutit
+[1A[2K[333/1103] [local] › tests/e2e/irl-deeplink-etat-null.spec.js:57:3 › Liens profonds IRL et fenêtre « application pas encore prête » › #irl-event-<id> posé avant que state existe ouvre quand même la fiche
+[1A[2K[334/1103] [local] › tests/e2e/ios-navigation-et-zoom.spec.js:189:5 › iPhone — navigation, historique et saisie › closeCurrentOverlay ferme editeur média (#mediaEditor)
+[1A[2K[335/1103] [local] › tests/e2e/first-run.spec.js:942:3 › Transfert du mode invité › après authentification : retour à la destination, et AUCUNE action rejouée
+[1A[2K[336/1103] [local] › tests/e2e/irl-deeplink-etat-null.spec.js:69:3 › Liens profonds IRL et fenêtre « application pas encore prête » › #irl-checkin-<id>-<code> posé avant que state existe ouvre quand même la fiche
+[1A[2K[337/1103] [local] › tests/e2e/ios-navigation-et-zoom.spec.js:189:5 › iPhone — navigation, historique et saisie › closeCurrentOverlay ferme conversation (#conv-fullpage)
+[1A[2K[338/1103] [local] › tests/e2e/first-run.spec.js:968:3 › Transfert du mode invité › une destination disparue ramène proprement dans Découvrir
+[1A[2K[339/1103] [local] › tests/e2e/irl-deeplink-etat-null.spec.js:88:3 › Liens profonds IRL et fenêtre « application pas encore prête » › après ouverture, un hashchange sans rapport ne rouvre PAS la fiche
+[1A[2K[340/1103] [local] › tests/e2e/ios-navigation-et-zoom.spec.js:189:5 › iPhone — navigation, historique et saisie › closeCurrentOverlay ferme fiche activité (#eventDetailPage)
+[1A[2K[341/1103] [local] › tests/e2e/first-run.spec.js:987:3 › Kill switch › drapeau COUPÉ : l'ancien parcours est restitué, sans aucune trace du lot
+[1A[2K[342/1103] [local] › tests/e2e/irl-deeplink-etat-null.spec.js:111:3 › Liens profonds IRL et fenêtre « application pas encore prête » › le chemin nominal, application prête, est inchangé
+[1A[2K[343/1103] [local] › tests/e2e/ios-navigation-et-zoom.spec.js:189:5 › iPhone — navigation, historique et saisie › closeCurrentOverlay ferme page publication (#postDetailPage)
+[1A[2K[344/1103] [local] › tests/e2e/first-run.spec.js:1016:3 › Kill switch › l'URL NORMALE suffit désormais, et le lot n'écrit toujours rien pour activer
+[1A[2K[345/1103] [local] › tests/e2e/irl-funnel.spec.js:98:3 › Funnel IRL — création › écriture confirmée : un seul irl_create_success, métadonnées bornées
+[1A[2K[346/1103] [local] › tests/e2e/ios-navigation-et-zoom.spec.js:213:3 › iPhone — navigation, historique et saisie › le retour referme la page publication au lieu de changer d'écran
+[1A[2K[347/1103] [local] › tests/e2e/irl-funnel.spec.js:114:3 › Funnel IRL — création › écriture refusée : irl_create_failed(write_failed) alors que l'écran montre l'événement
+[1A[2K[348/1103] [local] › tests/e2e/ios-navigation-et-zoom.spec.js:246:3 › iPhone — navigation, historique et saisie › aucun champ de saisie n'est sous 16 px
+[1A[2K[349/1103] [local] › tests/e2e/first-run.spec.js:1037:3 › Kill switch › un ancien appareil d'aperçu (« 1 » persisté) reste coupable par le kill switch
+[1A[2K[350/1103] [local] › tests/e2e/irl-funnel.spec.js:127:3 › Funnel IRL — création › aucune écriture tentée : irl_create_failed(offline), jamais un succès
+[1A[2K[351/1103] [local] › tests/e2e/ios-navigation-et-zoom.spec.js:267:3 › iPhone — navigation, historique et saisie › les champs de connexion sont à 16 px au moins
+[1A[2K[352/1103] [local] › tests/e2e/irl-funnel.spec.js:137:3 › Funnel IRL — création › une édition n'entre pas dans le funnel de création
+[1A[2K[353/1103] [local] › tests/e2e/first-run.spec.js:1061:5 › Cadrage mobile › à 320 px : aucun débordement horizontal, cibles ≥ 44 px
+[1A[2K[354/1103] [local] › tests/e2e/ios-navigation-et-zoom.spec.js:278:3 › iPhone — navigation, historique et saisie › le zoom volontaire reste autorisé
+[1A[2K[355/1103] [local] › tests/e2e/irl-funnel.spec.js:155:3 › Funnel IRL — création › origine Fil : marquée quand le pont a ouvert le brouillon, jamais héritée ensuite
+[1A[2K[356/1103] [local] › tests/e2e/first-run.spec.js:1061:5 › Cadrage mobile › à 390 px : aucun débordement horizontal, cibles ≥ 44 px
+[1A[2K[357/1103] [local] › tests/e2e/ios-navigation-et-zoom.spec.js:292:3 › iPhone — navigation, historique et saisie › le défilement ne revient qu'au dernier overlay fermé
+[1A[2K[358/1103] [local] › tests/e2e/irl-funnel.spec.js:182:3 › Funnel IRL — création › brouillon du pont abandonné : la création suivante n'est pas attribuée au Fil
+[1A[2K[359/1103] [local] › tests/e2e/first-run.spec.js:1061:5 › Cadrage mobile › à 430 px : aucun débordement horizontal, cibles ≥ 44 px
+[1A[2K[360/1103] [local] › tests/e2e/irl-passion-archivee.spec.js:54:3 › une passion archivée, sur Rencontrer › n'est plus comptée parmi « mes passions », comme sur le Fil
+[1A[2K[361/1103] [local] › tests/e2e/irl-funnel.spec.js:204:3 › Funnel IRL — participation › RSVP confirmé : irl_join_success sans origine devinée
+[1A[2K[362/1103] [local] › tests/e2e/irl-trust-safety.spec.js:79:3 › Trust & Safety — garde de la proposition IRL › drapeau absent = OFF : aucune proposition n'est autorisée
+[1A[2K[363/1103] [local] › tests/e2e/irl-passion-archivee.spec.js:69:3 › une passion archivée, sur Rencontrer › reste affichée et décochable si elle était ENCORE filtrée
+[1A[2K[364/1103] [local] › tests/e2e/irl-funnel.spec.js:216:3 › Funnel IRL — participation › RSVP refusé par la base : irl_join_failed(write_failed) malgré l'état local à jour
+[1A[2K[365/1103] [local] › tests/e2e/irl-trust-safety.spec.js:90:3 › Trust & Safety — garde de la proposition IRL › kill switch mémoire : PASSIO_IRL_PROPOSAL_V1=false coupe un drapeau posé à 1
+[1A[2K[366/1103] [local] › tests/e2e/irl-passion-archivee.spec.js:89:3 › une passion archivée, sur Rencontrer › sous le kill switch UI-8, toutes les passions redeviennent « miennes »
+[1A[2K[367/1103] [local] › tests/e2e/irl-funnel.spec.js:229:3 › Funnel IRL — participation › aucun backend : irl_join_failed(offline)
+[1A[2K[368/1103] [local] › tests/e2e/irl-trust-safety.spec.js:103:3 › Trust & Safety — garde de la proposition IRL › le lien canari active l'aperçu sans persister le drapeau
+[1A[2K[369/1103] [local] › tests/e2e/irl.spec.js:110:3 › IRL — découverte et filtres › aucun filtre par défaut : TOUS les événements sont visibles
+[1A[2K[370/1103] [local] › tests/e2e/irl-funnel.spec.js:240:3 › Funnel IRL — participation › « peut-être » et liste d'attente comptent ; « declined » et le retrait non
+[1A[2K[371/1103] [local] › tests/e2e/irl.spec.js:123:3 › IRL — découverte et filtres › la barre affiche MES passions ; les autres s'ajoutent depuis le panneau
+[1A[2K[372/1103] [local] › tests/e2e/irl-funnel.spec.js:255:3 › Funnel IRL — participation › dédoublonnage : deux résultats identiques rapprochés = un seul événement
+[1A[2K[373/1103] [local] › tests/e2e/irl-trust-safety.spec.js:123:3 › Trust & Safety — garde de la proposition IRL › verdicts : cible valide, cible vide, soi-même, mineur, compte bloqué
+[1A[2K[374/1103] [local] › tests/e2e/irl.spec.js:143:3 › IRL — découverte et filtres › décocher une passion ajoutée retire aussi son filtre
+[1A[2K[375/1103] [local] › tests/e2e/irl-trust-safety.spec.js:158:3 › Trust & Safety — garde de la proposition IRL › isMinor n'était relu nulle part : la garde est le premier lecteur
+[1A[2K[376/1103] [local] › tests/e2e/irl-funnel.spec.js:275:3 › Funnel IRL — confidentialité et robustesse › aucune donnée personnelle ni identifiant dans les métadonnées
+[1A[2K[377/1103] [local] › tests/e2e/irl.spec.js:156:3 › IRL — découverte et filtres › filtrer par passion réduit la liste et la pastille de filtres le dit
+[1A[2K[378/1103] [local] › tests/e2e/irl-trust-safety.spec.js:176:3 › Trust & Safety — garde de la proposition IRL › un lieu choisi à quelques centaines de mètres du GPS reste EXACT
+[1A[2K[379/1103] [local] › tests/e2e/irl-funnel.spec.js:303:3 › Funnel IRL — confidentialité et robustesse › télémétrie indisponible : création et participation fonctionnent quand même
+[1A[2K[380/1103] [local] › tests/e2e/irl.spec.js:169:3 › IRL — découverte et filtres › la recherche filtre sur le lieu et la description, pas seulement le titre
+[1A[2K[381/1103] [local] › tests/e2e/irl-trust-safety.spec.js:201:3 › Trust & Safety — garde de la proposition IRL › le lieu part intact même quand il EST exactement la position de l'appareil
+[1A[2K[382/1103] [local] › tests/e2e/latence-percue.spec.js:52:3 › Latence perçue › chaque clic transporte son délai jusqu'à la première image peinte
+[1A[2K[383/1103] [local] › tests/e2e/irl.spec.js:183:3 › IRL — découverte et filtres › état vide : « rien avec ces filtres » ≠ « aucun événement »
+[1A[2K[384/1103] [local] › tests/e2e/irl-trust-safety.spec.js:216:3 › Trust & Safety — garde de la proposition IRL › un événement sans coordonnées ne récupère jamais celles de l'appareil
+[1A[2K[385/1103] [local] › tests/e2e/irl.spec.js:192:3 › IRL — découverte et filtres › le séparateur ville · lieu ne se dédouble pas
+[1A[2K[local] › tests/e2e/latence-percue.spec.js:52:3 › Latence perçue › chaque clic transporte son délai jusqu'à la première image peinte
+[latence] 9 ligne(s) envoyée(s), dont 1 clic(s)
+
+[1A[2K[latence] Se connecter → 25 ms
+
+[1A[2K[386/1103] [local] › tests/e2e/latence-percue.spec.js:92:3 › Latence perçue › un clic reste transmis quand aucune image n'est jamais peinte
+[1A[2K[387/1103] [local] › tests/e2e/irl-trust-safety.spec.js:228:3 › Trust & Safety — garde de la proposition IRL › aucun code ne recopie irlUserLocation dans un payload d'événement
+[1A[2K[388/1103] [local] › tests/e2e/irl-trust-safety.spec.js:248:3 › Trust & Safety — garde de la proposition IRL › le drapeau est documenté comme n'étant PAS une frontière de sécurité
+[1A[2K[389/1103] [local] › tests/e2e/irl-trust-safety.spec.js:261:3 › Trust & Safety — garde de la proposition IRL › serveur true : CTA accessible de 44 px et quatrième aide, sans PII télémétrique
+[1A[2K[390/1103] [local] › tests/e2e/irl.spec.js:200:3 › IRL — découverte et filtres › la liste est paginée et la pagination repart à zéro quand un filtre change
+[1A[2K[local] › tests/e2e/latence-percue.spec.js:92:3 › Latence perçue › un clic reste transmis quand aucune image n'est jamais peinte
+[latence] sans peinture : 1 clic(s) transmis
+
+[1A[2K[391/1103] [local] › tests/e2e/irl-trust-safety.spec.js:290:5 › Trust & Safety — garde de la proposition IRL › serveur false : aucun CTA ni aide n'est révélé
+[1A[2K[392/1103] [local] › tests/e2e/mes-passions-page.spec.js:91:1 › ① ouverte, la page remplace le profil : plus de « Créer un post » au-dessus
+[1A[2K[393/1103] [local] › tests/e2e/irl.spec.js:212:3 › IRL — découverte et filtres › le tri « les plus proches » classe par distance croissante
+[1A[2K[394/1103] [local] › tests/e2e/irl-trust-safety.spec.js:290:5 › Trust & Safety — garde de la proposition IRL › serveur null : aucun CTA ni aide n'est révélé
+[1A[2K[395/1103] [local] › tests/e2e/mes-passions-page.spec.js:152:1 › ① bis — le geste de retour referme la page avant de changer d'écran
+[1A[2K[396/1103] [local] › tests/e2e/irl.spec.js:227:3 › IRL — cycle de vie d'un événement › un événement EN COURS reste visible (il ne disparaît plus à son début)
+[1A[2K[397/1103] [local] › tests/e2e/irl-trust-safety.spec.js:290:5 › Trust & Safety — garde de la proposition IRL › serveur error : aucun CTA ni aide n'est révélé
+[1A[2K[398/1103] [local] › tests/e2e/mes-passions-page.spec.js:170:1 › ① ter — naviguer ailleurs referme la page
+[1A[2K[399/1103] [local] › tests/e2e/irl.spec.js:237:3 › IRL — cycle de vie d'un événement › un événement TERMINÉ sort de « à venir » et reste joignable en mode passé
+[1A[2K[400/1103] [local] › tests/e2e/irl-trust-safety.spec.js:301:3 › Trust & Safety — garde de la proposition IRL › OFF par défaut et conversation de groupe : aucun RPC d'éligibilité
+[1A[2K[401/1103] [local] › tests/e2e/mes-passions-page.spec.js:188:1 › ② aucune passion n'est principale : les cartes sont identiques
+[1A[2K[402/1103] [local] › tests/e2e/irl.spec.js:251:3 › IRL — cycle de vie d'un événement › un événement ANNULÉ reste visible, barré, et ne peut plus être rejoint
+[1A[2K[403/1103] [local] › tests/e2e/irl-trust-safety.spec.js:323:3 › Trust & Safety — garde de la proposition IRL › le clic revalide : un refus tardif retire le CTA sans ouvrir le formulaire
+[1A[2K[404/1103] [local] › tests/e2e/mes-passions-page.spec.js:226:1 › ② bis — le menu « … » d'une carte ne propose aucune passion principale
+[1A[2K[405/1103] [local] › tests/e2e/irl.spec.js:261:3 › IRL — cycle de vie d'un événement › l'organisateur peut modifier son événement, les inscrits sont prévenus
+[1A[2K[406/1103] [local] › tests/e2e/irl-trust-safety.spec.js:340:3 › Trust & Safety — garde de la proposition IRL › le clic autorisé ouvre le formulaire IRL existant et reste sans identifiant dans les traces
+[1A[2K[407/1103] [local] › tests/e2e/mes-passions-page.spec.js:243:1 › ③ le résumé compte les passions actives, et il suit
+[1A[2K[408/1103] [local] › tests/e2e/irl.spec.js:288:3 › IRL — cycle de vie d'un événement › le lien partagé #irl-event-<id> ouvre bien la fiche
+[1A[2K[409/1103] [local] › tests/e2e/irl-trust-safety.spec.js:363:3 › Trust & Safety — garde de la proposition IRL › ouvrir un DM avec un compte bloqué est refusé, aucune conversation créée
+[1A[2K[410/1103] [local] › tests/e2e/mes-passions-page.spec.js:270:1 › ④ place disponible : la porte d'ajout invite et elle est armée
+[1A[2K[411/1103] [local] › tests/e2e/irl.spec.js:298:3 › IRL — participation (RSVP, liste d'attente, check-in) › le RSVP a 3 états et seuls les « je viens » occupent une place
+[1A[2K[412/1103] [local] › tests/e2e/irl-trust-safety.spec.js:376:3 › Trust & Safety — garde de la proposition IRL › ouvrir un DM avec un compte NON bloqué reste possible (la garde ne déborde pas)
+[1A[2K[413/1103] [local] › tests/e2e/mes-passions-page.spec.js:307:1 › ⑤ limite atteinte : la porte dit « Limite de N atteinte » — et elle répond
+[1A[2K[414/1103] [local] › tests/e2e/irl.spec.js:317:3 › IRL — participation (RSVP, liste d'attente, check-in) › rejoindre un événement COMPLET bascule en liste d'attente
+[1A[2K[415/1103] [local] › tests/e2e/irl-trust-safety.spec.js:395:3 › Trust & Safety — garde de la proposition IRL › isBlocked qui lève → verdict refusé (guard_error), jamais autorisé
+[1A[2K[416/1103] [local] › tests/e2e/irl.spec.js:326:3 › IRL — participation (RSVP, liste d'attente, check-in) › une place libérée promeut le premier de la liste d'attente
+[1A[2K[417/1103] [local] › tests/e2e/mes-passions-page.spec.js:353:1 › ⑥ changement disponible : une information, PAS une alerte
+[1A[2K[418/1103] [local] › tests/e2e/irl-trust-safety.spec.js:413:3 › Trust & Safety — garde de la proposition IRL › état illisible → traité comme mineur (retenu), jamais comme majeur
+[1A[2K[419/1103] [local] › tests/e2e/irl.spec.js:342:3 › IRL — participation (RSVP, liste d'attente, check-in) › le check-in n'ouvre qu'à l'approche de l'événement
+[1A[2K[420/1103] [local] › tests/e2e/mes-passions-page.spec.js:369:1 › ⑦ aucun changement disponible : l'alerte, et elle seule
+[1A[2K[421/1103] [local] › tests/e2e/irl-trust-safety.spec.js:431:3 › Trust & Safety — garde de la proposition IRL › les clés de télémétrie de la garde survivent au filtre PII
+[1A[2K[422/1103] [local] › tests/e2e/irl.spec.js:354:3 › IRL — participation (RSVP, liste d'attente, check-in) › inscription et like ne recadrent PAS la carte
+[1A[2K[423/1103] [local] › tests/e2e/mes-passions-page.spec.js:387:1 › ⑦ bis — quota sans objet : ni ligne, ni alerte
+[1A[2K[424/1103] [local] › tests/e2e/irl-trust-safety.spec.js:447:3 › Trust & Safety — garde de la proposition IRL › la trace du verdict ne porte ni identifiant de compte ni texte
+[1A[2K[425/1103] (retries) [local] › tests/e2e/irl.spec.js:354:3 › IRL — participation (RSVP, liste d'attente, check-in) › inscription et like ne recadrent PAS la carte (retry #1)
+[1A[2K[426/1103] [local] › tests/e2e/mes-passions-page.spec.js:405:1 › ⑧ une carte ouvre l'espace de sa passion
+[1A[2K[427/1103] [local] › tests/e2e/message-media-echec.spec.js:107:3 › Média en message — verdict de l'écriture › une insertion refusée marque le média en échec et le met en file de renvoi
+[1A[2K  1) [local] › tests/e2e/irl.spec.js:354:3 › IRL — participation (RSVP, liste d'attente, check-in) › inscription et like ne recadrent PAS la carte 
+
+    Error: page.waitForFunction: TypeError: Cannot read properties of null (reading 'getZoom')
+        at eval (eval at predicate (eval at evaluate (:302:30)), <anonymous>:2:37)
+        at predicate (eval at evaluate (:302:30), <anonymous>:7:27)
+        at next (eval at evaluate (:302:30), <anonymous>:29:33)
+        at eval (eval at evaluate (:302:30), <anonymous>:42:13)
+        at UtilityScript.evaluate (<anonymous>:304:16)
+        at UtilityScript.<anonymous> (<anonymous>:1:44)
+        at eval (eval at predicate (eval at evaluate (:302:30)), <anonymous>:2:37)
+        at predicate (eval at evaluate (:302:30), <anonymous>:7:27)
+        at next (eval at evaluate (:302:30), <anonymous>:29:33)
+        at eval (eval at evaluate (:302:30), <anonymous>:42:13)
+        at UtilityScript.evaluate (<anonymous>:304:16)
+        at UtilityScript.<anonymous> (<anonymous>:1:44)
+        at /home/user/passio-app/tests/e2e/irl.spec.js:363:16
+
+    Error Context: test-results/irl-IRL-—-participation-RS-d98d0-e-ne-recadrent-PAS-la-carte-local/error-context.md
+
+    Retry #1 ───────────────────────────────────────────────────────────────────────────────────────
+
+    Error: page.waitForFunction: TypeError: Cannot read properties of null (reading 'getZoom')
+        at eval (eval at predicate (eval at evaluate (:302:30)), <anonymous>:2:37)
+        at predicate (eval at evaluate (:302:30), <anonymous>:7:27)
+        at next (eval at evaluate (:302:30), <anonymous>:29:33)
+        at eval (eval at evaluate (:302:30), <anonymous>:42:13)
+        at UtilityScript.evaluate (<anonymous>:304:16)
+        at UtilityScript.<anonymous> (<anonymous>:1:44)
+        at eval (eval at predicate (eval at evaluate (:302:30)), <anonymous>:2:37)
+        at predicate (eval at evaluate (:302:30), <anonymous>:7:27)
+        at next (eval at evaluate (:302:30), <anonymous>:29:33)
+        at eval (eval at evaluate (:302:30), <anonymous>:42:13)
+        at UtilityScript.evaluate (<anonymous>:304:16)
+        at UtilityScript.<anonymous> (<anonymous>:1:44)
+        at /home/user/passio-app/tests/e2e/irl.spec.js:363:16
+
+    Error Context: test-results/irl-IRL-—-participation-RS-d98d0-e-ne-recadrent-PAS-la-carte-local-retry1/error-context.md
+
+
+[1A[2K[428/1103] [local] › tests/e2e/irl.spec.js:381:3 › IRL — création, récurrence et vues › créer un événement m'inscrit dessus et refuse une date passée
+[1A[2K[429/1103] [local] › tests/e2e/mes-passions-page.spec.js:419:1 › ⑨ « Passions archivées (X) » est repliable et compte juste
+[1A[2K[430/1103] [local] › tests/e2e/message-media-echec.spec.js:137:3 › Média en message — verdict de l'écriture › une insertion acceptée marque le média envoyé et ne laisse rien en file
+[1A[2K[431/1103] [local] › tests/e2e/irl.spec.js:407:3 › IRL — création, récurrence et vues › un événement récurrent crée de VRAIS événements partageant une série
+[1A[2K[432/1103] [local] › tests/e2e/mes-passions-page.spec.js:445:1 › ⑨ bis — sans archive, la section n'existe pas (pas de gouttière vide)
+[1A[2K[433/1103] [local] › tests/e2e/message-media-echec.spec.js:153:3 › Média en message — verdict de l'écriture › le repli sans from_id compte comme un succès, pas comme un échec
+[1A[2K[434/1103] [local] › tests/e2e/irl.spec.js:433:3 › IRL — création, récurrence et vues › le volet Date est un calendrier en ligne : 1 tap = un jour
+[1A[2K[435/1103] [local] › tests/e2e/mes-passions-page.spec.js:454:1 › ⑩ « Réactiver » agit quand c'est possible
+[1A[2K[436/1103] [local] › tests/e2e/monitoring-bruit.spec.js:69:3 › Monitoring — bruit de test › une erreur survenue en local ne part PAS dans la table de production
+[1A[2K[437/1103] [local] › tests/e2e/irl.spec.js:477:3 › IRL — création, récurrence et vues › le volet Distance est un curseur et affiche « entre 0 et X km »
+[1A[2K[438/1103] [local] › tests/e2e/mes-passions-page.spec.js:481:1 › ⑩ bis — impossible : le bouton refuse, il RÉPOND, et il dit pourquoi
+[1A[2K[439/1103] [local] › tests/e2e/irl.spec.js:503:3 › IRL — création, récurrence et vues › le volet Horaire règle la plage SUR PLACE (pas de modale par-dessus)
+[1A[2K[440/1103] [local] › tests/e2e/monitoring-bruit.spec.js:86:3 › Monitoring — bruit de test › l'indicateur explicite ?monitoring=1 réactive la remontée
+[1A[2K[441/1103] [local] › tests/e2e/mes-passions-page.spec.js:536:1 › ⑪ la page ne dit plus « Choisis jusqu'à N passions… »
+[1A[2K[442/1103] [local] › tests/e2e/irl.spec.js:529:3 › IRL — création, récurrence et vues › le filtre horaire porte sur l'heure AFFICHÉE sur la carte
+[1A[2K[443/1103] [local] › tests/e2e/mes-passions-page.spec.js:550:1 › ⑫ le « ? » explique qu'aucune passion n'est principale
+[1A[2K[444/1103] [local] › tests/e2e/irl.spec.js:551:3 › IRL — création, récurrence et vues › le calendrier interdit les jours passés et le pied annonce le résultat
+[1A[2K[445/1103] [local] › tests/e2e/monitoring-file-boot.spec.js:49:3 › Monitoring — file d'erreurs de boot › une erreur levée AVANT le vrai client est mise en file, puis remontée
+[1A[2K[446/1103] [local] › tests/e2e/mes-passions-page.spec.js:570:1 › ⑬ l'ouverture de la page est remontée au Centre de pilotage
+[1A[2K[447/1103] [local] › tests/e2e/irl.spec.js:579:3 › IRL — création, récurrence et vues › le digest hebdo ne se déclenche qu'une fois par semaine
+[1A[2K[448/1103] [local] › tests/e2e/monitoring-file-boot.spec.js:78:3 › Monitoring — file d'erreurs de boot › le stub noop n'avale pas la file : rien ne part tant que _supaReal est faux
+[1A[2K[449/1103] [local] › tests/e2e/mes-passions-page.spec.js:603:1 › ⑬ bis — un rendu qui casse remonte en erreur, pas en écran vide
+[1A[2K[450/1103] [local] › tests/e2e/irl.spec.js:599:3 › IRL — carte repliable (peek, content-first) › la carte démarre repliée ; le bouton la déplie/replie et l'état est mémorisé
+[1A[2K[451/1103] [local] › tests/e2e/multi-passion-audit-restant.spec.js:24:1 › ① le libellé d'une passion personnalisée est celui publié par son auteur
+[1A[2K[452/1103] [local] › tests/e2e/mes-passions-page.spec.js:625:3 › ⑭ 320 px : aucun débordement, cibles ≥ 44 px
+[1A[2K[453/1103] [local] › tests/e2e/irl.spec.js:624:3 › IRL — carte repliable (peek, content-first) › le filtre « Mes events / Inscrit » ne vit plus que dans le panneau d'outils
+[1A[2K[454/1103] [local] › tests/e2e/multi-passion-audit-restant.spec.js:59:1 › ① bis — une passion du catalogue garde son libellé de catalogue
+[1A[2K[455/1103] [local] › tests/e2e/mes-passions-page.spec.js:625:3 › ⑭ 360 px : aucun débordement, cibles ≥ 44 px
+[1A[2K[456/1103] [local] › tests/e2e/multi-passion-integrite.spec.js:58:1 › ① l'identité publique publiée est celle du COMPTE, pas de la passion active
+[1A[2K[457/1103] [local] › tests/e2e/mes-passions-page.spec.js:625:3 › ⑭ 390 px : aucun débordement, cibles ≥ 44 px
+[1A[2K[458/1103] [local] › tests/e2e/multi-passion-audit-restant.spec.js:91:1 › ② le formulaire ne promet plus de modération humaine
+[1A[2K[459/1103] [local] › tests/e2e/multi-passion-integrite.spec.js:96:1 › ① bis — enregistrer son profil n'aligne plus l'emoji du compte sur la passion active
+[1A[2K[460/1103] [local] › tests/e2e/multi-passion-audit-restant.spec.js:113:1 › ③ une passion qui filtre le fil a toujours sa bulle
+[1A[2K[461/1103] [local] › tests/e2e/mes-passions-page.spec.js:625:3 › ⑭ 430 px : aucun débordement, cibles ≥ 44 px
+[1A[2K[462/1103] [local] › tests/e2e/multi-passion-integrite.spec.js:113:1 › ② le filtre de passion du profil ne laisse passer que la passion choisie
+[1A[2K[463/1103] [local] › tests/e2e/multi-passion-audit-restant.spec.js:135:1 › ③ bis — une bulle d'intérêt est décochable, et ne crée aucun profil
+[1A[2K[464/1103] [local] › tests/e2e/mes-passions-page.spec.js:681:1 › ⑭ par défaut, l'illimité est ÉTEINT — le plafond et le quota s'appliquent
+[1A[2K[465/1103] [local] › tests/e2e/multi-passion-integrite.spec.js:132:1 › ③ renommer le pseudo renomme TOUTES les passions
+[1A[2K[466/1103] [local] › tests/e2e/navigation.spec.js:17:1 › tour des 6 écrans : zéro erreur JS, chaque écran devient actif
+[1A[2K[467/1103] [local] › tests/e2e/multi-passion-integrite.spec.js:146:1 › ④ éditer la bio d'une passion republie le profil public
+[1A[2K[468/1103] [local] › tests/e2e/mes-passions-page.spec.js:700:1 › ⑭ bis — allumé, il lève les DEUX limites, et l'écran cesse de les annoncer
+[1A[2K[469/1103] [local] › tests/e2e/multi-passion-integrite.spec.js:171:1 › ⑤ une passion archivée est publiée MARQUÉE, et retirée à l'affichage
+[1A[2K[470/1103] [local] › tests/e2e/mes-passions-page.spec.js:736:1 › ⑭ ter — allumé, les gestes ABOUTISSENT au-delà du plafond et du quota
+[1A[2K[local] › tests/e2e/navigation.spec.js:17:1 › tour des 6 écrans : zéro erreur JS, chaque écran devient actif
+Timings navigation — médiane sur 3 (ms): {"feed":8,"profiles":5,"studio":3,"explore":4,"irl":9,"messages":4}
+
+[1A[2KDétail des mesures (ms): {"feed":[9,7,8],"profiles":[5,6,5],"studio":[3,3,4],"explore":[7,4,4],"irl":[14,9,9],"messages":[4,6,4]}
+
+[1A[2K(info) erreurs réseau ignorées: [33m108[39m
+
+[1A[2K[471/1103] [local] › tests/e2e/navigation.spec.js:85:1 › bottom-nav : CDV retiré, et son ancien lien redirigé
+[1A[2K[472/1103] [local] › tests/e2e/multi-passion-integrite.spec.js:191:1 › ⑥ créer une passion la rend visible dans le Fil
+[1A[2K[473/1103] [local] › tests/e2e/mes-passions-page.spec.js:774:1 › ⑭ quater — la bascule des Paramètres allume, éteint, et dit son ÉTAT
+[1A[2K[474/1103] [local] › tests/e2e/notifications-echappement.spec.js:45:3 › le texte d'une notification › venu de Supabase est ÉCHAPPÉ : aucune balise, aucun script
+[1A[2K[475/1103] [local] › tests/e2e/multi-passion-integrite.spec.js:212:1 › ⑦ restaurer une passion la remet dans le Fil
+[1A[2K[476/1103] [local] › tests/e2e/notifications-echappement.spec.js:66:3 › le texte d'une notification › passée par mergeSupaNotifs, elle n'est pas désinfectée deux fois
+[1A[2K[477/1103] [local] › tests/e2e/notifications-economie-retiree.spec.js:45:3 › ADR-009 — notifications héritées de l'économie retirée › au chargement, les promesses de points et de Passia disparaissent
+[1A[2K[478/1103] [local] › tests/e2e/multi-passion-integrite.spec.js:232:1 › ⑧ éditer une passion PUBLIE vraiment : aucun chemin ne retombe sur `ensure`
+[1A[2K[479/1103] [local] › tests/e2e/notifications-echappement.spec.js:95:3 › le texte d'une notification › d'une notification LOCALE garde son gras voulu
+[1A[2K[480/1103] [local] › tests/e2e/notifications-economie-retiree.spec.js:60:3 › ADR-009 — notifications héritées de l'économie retirée › la notification d'un AUTRE compte est conservée, même si elle cite « pts » ou « 💎 »
+[1A[2K[481/1103] [local] › tests/e2e/multi-passion-integrite.spec.js:262:1 › ⑨ la passion principale se CHOISIT, elle ne se normalise pas
+[1A[2K[482/1103] [local] › tests/e2e/notifications-echappement.spec.js:111:3 › le texte d'une notification › d'une notification locale ANCIENNE, sans le drapeau, garde son gras
+[1A[2K[483/1103] [local] › tests/e2e/notifications-economie-retiree.spec.js:72:3 › ADR-009 — notifications héritées de l'économie retirée › une notification de l'app qui cite un titre avec 💎 est conservée
+[1A[2K[484/1103] [local] › tests/e2e/multi-passion-integrite.spec.js:311:1 › ⑩ aucun fichier de production n'appelle `supaUpsertProfile`
+[1A[2K[485/1103] [local] › tests/e2e/onboarding-acceptation.spec.js:88:1 › ONB-01 — un compte neuf avec une passion arrive sur un Fil peuplé
+[1A[2K[486/1103] [local] › tests/e2e/notifications-economie-retiree.spec.js:86:3 › ADR-009 — notifications héritées de l'économie retirée › rien n'est renvoyé au serveur, et rien n'en revient
+[1A[2K[487/1103] [local] › tests/e2e/notifications-echappement.spec.js:124:3 › le texte d'une notification › d'une source inconnue, non déclarée, est échappé
+[1A[2K[488/1103] [local] › tests/e2e/onboarding-acceptation.spec.js:100:1 › ONB-02 — trois passions : trois intérêts, UN profil, primaire identifié
+[1A[2K[489/1103] [local] › tests/e2e/onboarding-passions-v2.spec.js:63:1 › §5 — jusqu'à 7 passions, la 8e est refusée
+[1A[2K[490/1103] [local] › tests/e2e/onboarding-v2.spec.js:53:1 › setFeedPassions écrit les deux sources, déduplique et garde l'ordre
+[1A[2K[491/1103] [local] › tests/e2e/onboarding-acceptation.spec.js:109:1 › ONB-03 — sept passions possibles sans créer sept profils
+[1A[2K[492/1103] [local] › tests/e2e/onboarding-passions-v2.spec.js:74:1 › §5 — une seule passion suffit pour entrer
+[1A[2K[493/1103] [local] › tests/e2e/onboarding-v2.spec.js:71:1 › onbFinish V2 : un seul profil de départ, mais toutes les passions dans le fil
+[1A[2K[494/1103] [local] › tests/e2e/onboarding-acceptation.spec.js:119:1 › ONB-06 — un compte historique à trois profils les garde tous
+[1A[2K[495/1103] [local] › tests/e2e/onboarding-passions-v2.spec.js:92:1 › §5 — la copie ne promet plus un profil par passion
+[1A[2K[496/1103] [local] › tests/e2e/onboarding-v2.spec.js:105:1 › les intérêts choisis survivent à un rechargement complet
+[1A[2K[497/1103] [local] › tests/e2e/onboarding-acceptation.spec.js:149:1 › ONB-07 — moins de 13 ans : refus propre, avant d'entrer dans l'app
+[1A[2K[498/1103] [local] › tests/e2e/onboarding-passions-v2.spec.js:106:1 › §5 — le profil de départ est énoncé, et modifiable d'un tap
+[1A[2K[499/1103] [local] › tests/e2e/onboarding-acceptation.spec.js:172:1 › ONB-08 — 13 à 17 ans : compte marqué mineur ; 18 et plus : non
+[1A[2K[500/1103] [local] › tests/e2e/onboarding-passions-v2.spec.js:153:1 › §5 — la recherche filtre sans jamais masquer une passion déjà cochée
+[1A[2K[501/1103] [local] › tests/e2e/onboarding-v2.spec.js:124:1 › un compte antérieur est migré depuis ses profils, sans qu'aucun soit supprimé
+[1A[2K[502/1103] [local] › tests/e2e/onboarding-acceptation.spec.js:197:1 › ONB-10 — un compte existant ne rejoue pas l'onboarding et retrouve ses intérêts
+[1A[2K[503/1103] [local] › tests/e2e/onboarding-passions-v2.spec.js:176:1 › §5 — la pastille ★ est ancrée dans SA tuile, pas ailleurs
+[1A[2K[504/1103] [local] › tests/e2e/onboarding-v2.spec.js:158:1 › la télémétrie d'activation part avec des clés qui survivent au filtre PII
+[1A[2K[505/1103] [local] › tests/e2e/onboarding-acceptation.spec.js:229:1 › ONB-11 — aucune permission de localisation demandée pendant l'onboarding
+[1A[2K[506/1103] [local] › tests/e2e/onboarding-passions-v2.spec.js:194:1 › §5 — drapeau V2 à false : écran d'origine strictement rétabli
+[1A[2K[507/1103] [local] › tests/e2e/onboarding-v2.spec.js:189:1 › drapeau à false : l'ancien comportement est strictement rétabli
+[1A[2K[508/1103] [local] › tests/e2e/parcours-suivre.spec.js:79:1 › le parcours complet : suivre → voir → recharger → toujours voir → se désabonner → ne plus voir
+[1A[2K[509/1103] [local] › tests/e2e/onboarding-passions-v2.spec.js:227:1 › §8 — aucun tour forcé après l'inscription, ni à l'entrée ni au rechargement
+[1A[2K[510/1103] [local] › tests/e2e/partage-bobine.spec.js:65:3 › partage d'une bobine dans le Fil › le post partagé est daté, et il atteint Supabase
+[1A[2K[511/1103] [local] › tests/e2e/partage-bobine.spec.js:95:3 › partage d'une bobine dans le Fil › le texte du partage n'est pas échappé deux fois
+[1A[2K[512/1103] [local] › tests/e2e/parcours-suivre.spec.js:193:1 › suivre n'ajoute JAMAIS la passion de l'autre à mes préférences de lecture
+[1A[2K[513/1103] [local] › tests/e2e/onboarding-passions-v2.spec.js:254:1 › §8 — drapeau V2 à false : le tour d'origine est bien relancé
+[1A[2K[514/1103] [local] › tests/e2e/partage-bobine.spec.js:154:3 › partage d'une bobine dans le Fil › le partage d'un POST ordinaire n'est pas échappé deux fois non plus
+[1A[2K[515/1103] [local] › tests/e2e/partage-experience-passion.spec.js:70:3 › partage d'expérience — la passion ne se vide jamais › passion possédée : elle est bien reprise depuis l'activité
+[1A[2K[516/1103] [local] › tests/e2e/passion-context.spec.js:7:1 › le changement de profil émet uniquement la passion métier, jamais l'id local
+[1A[2K[517/1103] [local] › tests/e2e/passion-context.spec.js:47:1 › un refresh sans changement n'émet pas de doublon
+[1A[2K[518/1103] [local] › tests/e2e/passion-personnalisee-fk.spec.js:73:1 › ① ② ③ intacts (rien n'est supprimé), ④ coupé : le Studio ne la propose plus
+[1A[2K[519/1103] [local] › tests/e2e/passion-politiques-ecriture.spec.js:84:1 › posts ① une passion hors référentiel ne part JAMAIS — refus avant la requête
+[1A[2K[520/1103] [local] › tests/e2e/partage-experience-passion.spec.js:80:3 › partage d'expérience — la passion ne se vide jamais › passion NON possédée : le champ garde l'identité active au lieu de se vider
+[1A[2K[521/1103] [local] › tests/e2e/passion-personnalisee-fk.spec.js:107:1 › ⑤ coupé : la publication ne PART PLUS, et rien n'est écrit en local
+[1A[2K[522/1103] [local] › tests/e2e/passion-politiques-ecriture.spec.js:103:1 › posts ② une passion absente est refusée elle aussi, avec une cause distincte
+[1A[2K[523/1103] [local] › tests/e2e/partage-experience-passion.spec.js:93:3 › partage d'expérience — la passion ne se vide jamais › le souvenir publié reste visible dans le fil de son auteur
+[1A[2K[524/1103] [local] › tests/e2e/passion-personnalisee-fk.spec.js:134:1 › le message dit la VRAIE cause, et oriente vers le catalogue
+[1A[2K[525/1103] [local] › tests/e2e/passion-politiques-ecriture.spec.js:118:1 › posts ③ une passion canonique part telle quelle, sans repli ni réécriture
+[1A[2K[526/1103] [local] › tests/e2e/passion-referentiel.spec.js:68:1 › ① le référentiel serveur AJOUTE ; une réponse partielle ne bloque rien
+[1A[2K[527/1103] [local] › tests/e2e/passion-politiques-ecriture.spec.js:132:1 › posts ④ appareil neuf : le drapeau `custom` a disparu, la passion reste refusée
+[1A[2K[528/1103] [local] › tests/e2e/passion-referentiel.spec.js:101:1 › ① bis — un référentiel partiel n'interdit PAS de publier (le cas réel)
+[1A[2K[529/1103] [local] › tests/e2e/passion-personnalisee-fk.spec.js:169:1 › le profil PUBLIC part quand même : la passion invalide est normalisée en null
+[1A[2K[530/1103] [local] › tests/e2e/passion-politiques-ecriture.spec.js:175:1 › events ⑤ création et édition refusent une passion hors référentiel
+[1A[2K[531/1103] [local] › tests/e2e/passion-referentiel.spec.js:131:1 › ② Supabase indisponible : les 19 passions locales restent utilisables
+[1A[2K[532/1103] [local] › tests/e2e/passions-archive-quota.spec.js:58:3 › revenir à une passion archivée › ① archiver, prendre une autre passion, puis revenir : la passion REVIENT
+[1A[2K[533/1103] [local] › tests/e2e/passion-politiques-ecriture.spec.js:201:1 › profiles ⑥ une passion personnelle n'empêche plus le profil public de partir
+[1A[2K[534/1103] [local] › tests/e2e/passion-referentiel.spec.js:148:1 › ③ passion absente de PASSIONS mais présente en base : canonique, sans être proposée
+[1A[2K[535/1103] [local] › tests/e2e/passions-archive-quota.spec.js:90:3 › revenir à une passion archivée › ① bis — sous le plafond, reprendre une archive est direct et gratuit
+[1A[2K[536/1103] [local] › tests/e2e/passion-politiques-ecriture.spec.js:238:1 › stories ⑦ et conversations ⑧ : normalisées en `null`, jamais refusées
+[1A[2K[537/1103] [local] › tests/e2e/passion-referentiel.spec.js:165:1 › les trois classements, et les deux politiques
+[1A[2K[538/1103] [local] › tests/e2e/passions-archive-quota.spec.js:109:3 › revenir à une passion archivée › ② la liste des archives est écrite EN CLAIR, plus derrière un lien
+[1A[2K[539/1103] [local] › tests/e2e/passion-politiques-ecriture.spec.js:265:1 › sortie A ⑨ la grille « Nouvelle passion » n'offre que des passions publiables
+[1A[2K[540/1103] [local] › tests/e2e/passions-plates.spec.js:67:3 › le référentiel › ① les 19 identifiants historiques sont conservés
+[1A[2K[541/1103] [local] › tests/e2e/passions-plates.spec.js:78:3 › le référentiel › ② aucun doublon après normalisation, ni entre libellés ni avec les alias
+[1A[2K[542/1103] [local] › tests/e2e/passions-archive-quota.spec.js:132:3 › revenir à une passion archivée › ② bis — le bouton dit « Réactiver » dans les deux cas, et il AGIT
+[1A[2K[543/1103] [local] › tests/e2e/passions-plates.spec.js:96:3 › le référentiel › ③ aucun univers, aucune spécialité : un seul niveau
+[1A[2K[544/1103] [local] › tests/e2e/passions-plates.spec.js:108:3 › le référentiel › ④ chaque relation pointe vers une passion qui existe
+[1A[2K[545/1103] [local] › tests/e2e/passions-plates.spec.js:121:3 › la recherche › ⑤ le référentiel n'est PAS chargé au démarrage
+[1A[2K[546/1103] [local] › tests/e2e/passion-politiques-ecriture.spec.js:289:1 › sortie A ⑩ le Studio n'offre pas de publier dans une passion personnelle, et le dit
+[1A[2K[547/1103] [local] › tests/e2e/passions-archive-quota.spec.js:160:3 › revenir à une passion archivée › ② ter — la liste survit à un rechargement (elle est ENREGISTRÉE)
+[1A[2K[548/1103] [local] › tests/e2e/passions-plates.spec.js:137:3 › la recherche › ⑥ bis — le classement ne dépend PAS de la réponse du serveur
+[1A[2K[549/1103] [local] › tests/e2e/passion-politiques-ecriture.spec.js:313:1 › sortie A ⑪ rien n'est écarté : aucune ligne d'explication inutile
+[1A[2K[550/1103] [local] › tests/e2e/passions-plates.spec.js:161:3 › la recherche › ⑥ correspondance exacte, alias, sans accent, approximative
+[1A[2K[551/1103] [local] › tests/e2e/passion-politiques-ecriture.spec.js:335:1 › repartage ⑫ hérite du classement de la source, ou du mien s'il ne peut pas partir
+[1A[2K[552/1103] [local] › tests/e2e/passions-archive-quota.spec.js:181:3 › le quota de changements › ③ trois changements offerts, le quatrième est barré
+[1A[2K[553/1103] [local] › tests/e2e/passion-politiques-ecriture.spec.js:356:1 › repartage ⑬ un compte sans aucune passion publiable renonce, il n'invente pas
+[1A[2K[554/1103] [local] › tests/e2e/passions-plates.spec.js:181:3 › la recherche › ⑦ les résultats sont plafonnés, et une frappe absurde ne rend rien
+[1A[2K[555/1103] [local] › tests/e2e/passions-archive-quota.spec.js:207:3 › le quota de changements › ③ bis — le coût est ANNONCÉ avant le geste, pas découvert après
+[1A[2K[556/1103] [local] › tests/e2e/passion-politiques-ecriture.spec.js:392:1 › impasse ⑭ aucune passion publiable : AUCUN post local orphelin n'est créé
+[1A[2K[557/1103] [local] › tests/e2e/passions-plates.spec.js:192:3 › la recherche › ⑧ « Enduro » se choisit SANS passer par « Moto »
+[1A[2K[558/1103] [local] › tests/e2e/passions-archive-quota.spec.js:218:3 › le quota de changements › ③ ter — le compteur est affiché sur la page « Mes passions »
+[1A[2K[559/1103] [local] › tests/e2e/passion-politiques-ecriture.spec.js:421:1 › impasse ⑮ le Studio nomme la sortie, et propose la porte
+[1A[2K[560/1103] [local] › tests/e2e/passions-plates.spec.js:207:3 › la recherche › ⑨ multi-sélection dans « Mes passions », et le fil la reçoit
+[1A[2K[561/1103] [local] › tests/e2e/passions-archive-quota.spec.js:235:3 › le quota de changements › ③ quater — RESTAURER ne consomme rien : un échange se paie UNE fois
+[1A[2K[562/1103] [local] › tests/e2e/passion-politiques-ecriture.spec.js:435:1 › impasse ⑯ une passion publiable existe : le message reste l'information, pas l'alerte
+[1A[2K[563/1103] [local] › tests/e2e/passions-plates.spec.js:228:3 › la recherche › ⑩ le Studio est en choix UNIQUE, et il écrit dans #postPassion
+[1A[2K[564/1103] [local] › tests/e2e/passions-archive-quota.spec.js:248:3 › le quota de changements › ③ quinquies — l'échange consomme exactement UN changement
+[1A[2K[565/1103] [local] › tests/e2e/pastille-mood.spec.js:68:3 › la pastille de mood › un post neutre n'a AUCUNE pastille, pas même une capsule vide
+[1A[2K[566/1103] [local] › tests/e2e/passions-archive-quota.spec.js:263:3 › le quota de changements › ③ sexies — archiver la DERNIÈRE passion reste refusé, et ne consomme rien
+[1A[2K[567/1103] [local] › tests/e2e/passions-plates.spec.js:264:3 › la recherche › ⑩ bis — la bulle du Fil porte le NOM de la passion, jamais « Passion »
+[1A[2K[568/1103] [local] › tests/e2e/pastille-mood.spec.js:74:3 › la pastille de mood › un mood inconnu ou absent n'en dessine pas non plus
+[1A[2K[569/1103] [local] › tests/e2e/passions-archive-quota.spec.js:279:3 › le quota de changements › ③ septies — archiver DEUX FOIS la même passion ne débite qu'une fois
+[1A[2K[570/1103] [local] › tests/e2e/passions-plates.spec.js:293:3 › la recherche › ⑪ la sélection survit à un rechargement
+[1A[2K[571/1103] [local] › tests/e2e/pastille-mood.spec.js:89:3 › la pastille de mood › un mood connu porte bien sa pastille, avec son libellé
+[1A[2K[572/1103] [local] › tests/e2e/passions-archive-quota.spec.js:317:3 › la démo sans compte › ④ changements ILLIMITÉS sans compte — mais le plafond de trois tient
+[1A[2K[573/1103] [local] › tests/e2e/perf-ios.spec.js:42:3 › PERF-IOS — instrumentation phase 1 › le module se charge, sans erreur JS et sans global parasite
+[1A[2K[574/1103] [local] › tests/e2e/passions-archive-quota.spec.js:336:3 › la démo sans compte › ④ quater — AUCUN CRÉDIT DE DÉMO : le visiteur ne dépasse pas le plafond
+[1A[2K[575/1103] [local] › tests/e2e/passions-plates.spec.js:314:3 › la recherche › ⑫ les publications existantes restent visibles
+[1A[2K[576/1103] [local] › tests/e2e/perf-ios.spec.js:69:3 › PERF-IOS — instrumentation phase 1 › les percentiles sont exacts (p50/p95/p99 sur une série connue)
+[1A[2K[577/1103] [local] › tests/e2e/passions-archive-quota.spec.js:365:3 › la démo sans compte › ④ bis — un visiteur archive autant qu'il veut
+[1A[2K[578/1103] [local] › tests/e2e/passions-plates.spec.js:328:3 › le modèle et les garde-fous › ⑬ aucune passion ne crée de profil : une identité, plusieurs passions
+[1A[2K[579/1103] [local] › tests/e2e/perf-ios.spec.js:96:3 › PERF-IOS — instrumentation phase 1 › le rapport déclare ce que l'appareil ne sait pas mesurer
+[1A[2K[580/1103] [local] › tests/e2e/passions-archive-quota.spec.js:383:3 › la démo sans compte › ④ ter — LA DÉMO NE LAISSE AUCUNE DETTE au compte créé ensuite
+[1A[2K[581/1103] [local] › tests/e2e/passions-plates.spec.js:345:3 › le modèle et les garde-fous › ⑭ une passion inexistante ouvre une DEMANDE, pas une passion
+[1A[2K[local] › tests/e2e/perf-ios.spec.js:96:3 › PERF-IOS — instrumentation phase 1 › le rapport déclare ce que l'appareil ne sait pas mesurer
+[perf-ios] support = {"longtask":true,"event_timing":true,"mark":true,"memory":true,"idle":true} contexte = {"dom_nodes":1403,"feed_posts":0,"medias":5,"heap_mb":10,"net":"4g","dev_mem":8,"cpu":4}
+
+[1A[2K[582/1103] [local] › tests/e2e/perf-ios.spec.js:114:3 › PERF-IOS — instrumentation phase 1 › la baseline atteint le centre de pilotage avec ses percentiles
+[1A[2K[583/1103] [local] › tests/e2e/passions-archive-quota.spec.js:411:1 › ⑤ drapeau coupé : ni plafond, ni quota de changements
+[1A[2K[584/1103] [local] › tests/e2e/passions-plates.spec.js:366:3 › le modèle et les garde-fous › ⑭ bis — un terme qui existe déjà ne crée pas de demande
+[1A[2K[local] › tests/e2e/perf-ios.spec.js:114:3 › PERF-IOS — instrumentation phase 1 › la baseline atteint le centre de pilotage avec ses percentiles
+[perf-ios] 13 ligne(s), dont 5 événement(s) perf ios_
+
+[1A[2K[585/1103] [local] › tests/e2e/perf-ios.spec.js:150:3 › PERF-IOS — instrumentation phase 1 › sans télémétrie, la mesure locale continue et rien n'est envoyé
+[1A[2K[586/1103] [local] › tests/e2e/passions-archive-quota.spec.js:441:3 › les portes oubliées du plafond › ⑥ « + Créer profil » (page d'une passion) respecte le plafond
+[1A[2K[587/1103] [local] › tests/e2e/passions-plates.spec.js:375:3 › le modèle et les garde-fous › ⑮ publier sous une passion absente du serveur est REFUSÉ, et dit pourquoi
+[1A[2K[588/1103] [local] › tests/e2e/prix-euros.spec.js:39:3 › le prix d'une activité est en euros › le formulaire demande des euros, et accepte les centimes
+[1A[2K[589/1103] [local] › tests/e2e/passions-archive-quota.spec.js:459:3 › les portes oubliées du plafond › ⑥ bis — sous le plafond, « + Créer profil » marche toujours
+[1A[2K[590/1103] [local] › tests/e2e/passions-plates.spec.js:429:3 › le modèle et les garde-fous › ⑯ le client ne peut pas écrire dans le référentiel
+[1A[2K[591/1103] [local] › tests/e2e/prix-euros.spec.js:62:3 › le prix d'une activité est en euros › le formateur couvre gratuit, entier et décimal
+[1A[2K[592/1103] [local] › tests/e2e/passions-archive-quota.spec.js:475:3 › les portes oubliées du plafond › ⑥ ter — « + Créer profil » sur une ARCHIVE la restaure, sans doublon
+[1A[2K[593/1103] [local] › tests/e2e/passions-plates.spec.js:442:3 › le modèle et les garde-fous › ⑰ kill switch : le drapeau coupé rend l'écran historique
+[1A[2K[594/1103] [local] › tests/e2e/prix-euros.spec.js:90:3 › le prix d'une activité est en euros › la carte de la liste et la fiche affichent le même prix, en euros
+[1A[2K[595/1103] [local] › tests/e2e/passions-archive-quota.spec.js:491:3 › les portes oubliées du plafond › ⑦ Studio : une passion REFUSÉE n'est jamais écrite dans #postPassion
+[1A[2K[596/1103] [local] › tests/e2e/prix-euros.spec.js:107:3 › le prix d'une activité est en euros › une activité gratuite le dit, et ne montre aucun montant
+[1A[2K[597/1103] [local] › tests/e2e/passions-plates.spec.js:487:3 › le modèle et les garde-fous › ⑰ bis — sans aperçu, le lot est ACTIF : c'est le défaut depuis le 2026-09-01
+[1A[2K[598/1103] [local] › tests/e2e/passions-archive-quota.spec.js:530:1 › ⑧ quota épuisé : le bouton ne promet pas un échange impossible, et rien ne boucle
+[1A[2K[599/1103] [local] › tests/e2e/profil-badges-visibles.spec.js:41:3 › plus de pastille de points sur le profil › même avec un badge gagné, aucune médaille ni rangée de pastilles
+[1A[2K[600/1103] [local] › tests/e2e/passions-plates.spec.js:522:3 › le modèle et les garde-fous › ⑰ ter — une passion du référentiel s'affiche AVEC SON NOM, sans ouvrir le sélecteur
+[1A[2K[601/1103] [local] › tests/e2e/passions-archive-quota.spec.js:591:1 › ⑨ la SEULE porte visible vers la gestion porte le compte d'archives
+[1A[2K[602/1103] [local] › tests/e2e/profil-badges-visibles.spec.js:58:3 › plus de pastille de points sur le profil › la visionneuse de badges n'a plus de porte d'entrée — ni fonction orpheline
+[1A[2K[603/1103] [local] › tests/e2e/passions-plates.spec.js:554:3 › le modèle et les garde-fous › ⑰ quater — un compte qui ne vit que sur le socle ne télécharge RIEN de plus
+[1A[2K[604/1103] [local] › tests/e2e/passions-archive-quota.spec.js:634:3 › la fusion multi-appareils › ⑩ deux appareils, trois passions différentes chacun : le plafond tient
+[1A[2K[605/1103] [local] › tests/e2e/profil-badges-visibles.spec.js:71:3 › plus de pastille de points sur le profil › aucune exception de rendu après le retrait
+[1A[2K[606/1103] [local] › tests/e2e/passions-archive-quota.spec.js:656:3 › la fusion multi-appareils › ⑩ bis — UN COMPTE QUI PORTE DÉJÀ PLUS DE TROIS PASSIONS N'EST PAS RÉTROGRADÉ
+[1A[2K[607/1103] [local] › tests/e2e/passions-plates.spec.js:587:3 › le modèle et les garde-fous › ⑰ quinquies — la passion d'AUTRUI dans le fil déclenche le chargement et s'affiche nommée
+[1A[2K[608/1103] [local] › tests/e2e/profil-confidentialite-interface.spec.js:80:1 › le parcours complet : ligne créée privée → l'écran le reflète → un seul décochage → public en base
+[1A[2K[609/1103] [local] › tests/e2e/passions-archive-quota.spec.js:679:3 › la fusion multi-appareils › ⑩ ter — sous le plafond, la réinjection passe entière
+[1A[2K[610/1103] [local] › tests/e2e/passions-plates.spec.js:628:3 › le modèle et les garde-fous › ⑰ sexies — le rail du PROFIL est repeint lui aussi, malgré sa signature
+[1A[2K[611/1103] [local] › tests/e2e/profil-confidentialite-interface.spec.js:135:1 › complémentaire : la bio seule est modifiée, le contrôle n'est pas touché → reste privé
+[1A[2K[612/1103] [local] › tests/e2e/passions-archive-quota.spec.js:693:3 › la fusion multi-appareils › ⑩ quater — une locale DÉJÀ archivée le reste, et ne consomme pas de place
+[1A[2K[613/1103] [local] › tests/e2e/passions-plates.spec.js:651:3 › le modèle et les garde-fous › ⑱ le pliage du navigateur est celui du référentiel construit
+[1A[2K[614/1103] [local] › tests/e2e/profil-confidentialite-interface.spec.js:168:1 › la preuve vient du GESTE, pas de la valeur finale
+[1A[2K[615/1103] [local] › tests/e2e/passions-archive-quota.spec.js:710:3 › la fusion multi-appareils › ⑩ quinquies — la fusion ne FACTURE rien : le compte n'a rien demandé
+[1A[2K[616/1103] [local] › tests/e2e/passions-plates.spec.js:666:5 › mobile › ⑲ 320 px : la recherche est utilisable, sans débordement
+[1A[2K[617/1103] [local] › tests/e2e/passions-archive-quota.spec.js:728:3 › la fusion multi-appareils › ⑩ sexies — kill switch : drapeau coupé, la fusion ne range plus rien
+[1A[2K[618/1103] [local] › tests/e2e/profil-entete-passions.spec.js:86:1 › ① la couverture s'arrête juste AU-DESSUS du pseudo
+[1A[2K[619/1103] [local] › tests/e2e/passions-plates.spec.js:666:5 › mobile › ⑲ 390 px : la recherche est utilisable, sans débordement
+[1A[2K[620/1103] [local] › tests/e2e/profil-identite-serveur-autoritaire.spec.js:117:1 › ① ligne absente + état local vide : la ligne est créée, et PRIVÉE
+[1A[2K[621/1103] [local] › tests/e2e/profil-entete-passions.spec.js:97:1 › ① bis — l'avatar tient ENTIÈREMENT sur la couverture
+[1A[2K[622/1103] [local] › tests/e2e/passions-plates.spec.js:666:5 › mobile › ⑲ 430 px : la recherche est utilisable, sans débordement
+[1A[2K[623/1103] [local] › tests/e2e/profil-identite-serveur-autoritaire.spec.js:132:1 › ② ligne existante + état local vide : le username n'est PAS écrasé
+[1A[2K[624/1103] [local] › tests/e2e/profil-entete-passions.spec.js:112:1 › ② la photo de profil est nettement plus grande qu'avant (90 px)
+[1A[2K[625/1103] [local] › tests/e2e/passions-plates.spec.js:720:3 › l'onboarding sous le lot › ㉖ la grille de 19 tuiles est remplacée par une recherche, et la copie le dit
+[1A[2K[626/1103] [local] › tests/e2e/profil-identite-serveur-autoritaire.spec.js:148:1 › ③ ligne existante PRIVÉE + état local vide : elle reste privée
+[1A[2K[627/1103] [local] › tests/e2e/profil-entete-passions.spec.js:120:1 › ① ter — la carte d'identité reste sous les deux tiers de l'écran
+[1A[2K[628/1103] [local] › tests/e2e/passions-plates.spec.js:796:3 › la porte d'ajout et son plafond › ㉑ la bulle « + » est dans « Gérer mes passions », ni dans le Fil ni dans le rail du Profil
+[1A[2K[629/1103] [local] › tests/e2e/profil-identite-serveur-autoritaire.spec.js:159:1 › ④ ligne existante PUBLIQUE + état local vide : elle reste publique
+[1A[2K[630/1103] [local] › tests/e2e/profil-entete-passions.spec.js:162:1 › ③ aucune ligne de passions sous le pseudo — les bulles du rail les portent
+[1A[2K[631/1103] [local] › tests/e2e/passions-plates.spec.js:822:3 › la porte d'ajout et son plafond › ㉒ à trois passions, la porte refuse en disant pourquoi, et l'offre reste annoncée
+[1A[2K[632/1103] [local] › tests/e2e/profil-identite-serveur-autoritaire.spec.js:173:1 › ⑤ écriture concurrente : la ligne arrivée entre-temps n'est pas écrasée
+[1A[2K[633/1103] [local] › tests/e2e/profil-entete-passions.spec.js:196:1 › ③ bis bis — la porte d'ajout a quitté le rail pour « Gérer mes passions »
+[1A[2K[634/1103] [local] › tests/e2e/passions-plates.spec.js:883:3 › la porte d'ajout et son plafond › ㉒ bis — le plafond tient au POINT D'ÉCRITURE, pas seulement à la porte
+[1A[2K[635/1103] [local] › tests/e2e/profil-identite-serveur-autoritaire.spec.js:204:1 › ⑥ choix public explicitement PROUVÉ + ligne absente : créée publique
+[1A[2K[636/1103] [local] › tests/e2e/profil-entete-passions.spec.js:262:1 › ③ bis bis bis — sous le plafond, la porte d'ajout invite et reste armée
+[1A[2K[637/1103] [local] › tests/e2e/passions-plates.spec.js:900:3 › la porte d'ajout et son plafond › ㉓ archiver libère une place, et restaurer reste gratuit sous le plafond
+[1A[2K[638/1103] [local] › tests/e2e/profil-identite-serveur-autoritaire.spec.js:215:1 › ⑦ simple `false` local, SANS preuve de choix : créée PRIVÉE
+[1A[2K[639/1103] [local] › tests/e2e/profil-entete-passions.spec.js:299:1 › ③ bis ter — la chaîne complète : crayon → « Gérer mes passions » → la bulle
+[1A[2K[640/1103] [local] › tests/e2e/passions-plates.spec.js:926:3 › la porte d'ajout et son plafond › ㉓ bis — restaurer une QUATRIÈME passion vivante est barré
+[1A[2K[641/1103] [local] › tests/e2e/profil-identite-serveur-autoritaire.spec.js:226:1 › ⑦ bis — `undefined` ne doit jamais devenir `false` en silence
+[1A[2K[642/1103] [local] › tests/e2e/profil-entete-passions.spec.js:346:1 › ③ bis quinquies — au plafond, la fenêtre ne renvoie pas au panneau d'où l'on vient
+[1A[2K[643/1103] [local] › tests/e2e/passions-plates.spec.js:947:3 › la porte d'ajout et son plafond › ㉓ ter — depuis la PORTE réelle, reprendre une passion archivée est gratuit
+[1A[2K[644/1103] [local] › tests/e2e/profil-identite-serveur-autoritaire.spec.js:240:1 › ⑧ profil local perso résoluble : chemin NORMAL, passion normalisée en null
+[1A[2K[645/1103] [local] › tests/e2e/profil-entete-passions.spec.js:405:1 › ③ bis quater — la porte survit à deux rendus du panneau
+[1A[2K[646/1103] [local] › tests/e2e/profil-identite-serveur-autoritaire.spec.js:265:1 › ⑨ un 23505 sur une AUTRE contrainte n'est PAS « la ligne existe »
+[1A[2K[647/1103] [local] › tests/e2e/passions-plates.spec.js:990:3 › la porte d'ajout et son plafond › ㉔ kill switch : drapeau coupé, aucun plafond
+[1A[2K[648/1103] [local] › tests/e2e/profil-entete-passions.spec.js:432:1 › ③ bis — toucher une bulle FILTRE, elle ne quitte plus le profil
+[1A[2K[649/1103] [local] › tests/e2e/profil-trois-autorites.spec.js:85:1 › ① dix envois dans la même session : UN SEUL ensure réseau
+[1A[2K[650/1103] [local] › tests/e2e/passions-plates.spec.js:1008:3 › la porte d'ajout et son plafond › ㉕ à deux passions, la recherche s'ouvre et ne laisse en prendre qu'une
+[1A[2K[651/1103] [local] › tests/e2e/profil-entete-passions.spec.js:533:1 › ③ ter — une bulle reste une cible tactile confortable
+[1A[2K[652/1103] [local] › tests/e2e/profil-trois-autorites.spec.js:97:1 › ② deux ensure SIMULTANÉS : un seul insert
+[1A[2K[653/1103] [local] › tests/e2e/profil-visite-options.spec.js:28:3 › Profil visité — options dans le menu ⋯ › ① aucune rangée Partager / Signaler / Bloquer sur la surface
+[1A[2K[654/1103] [local] › tests/e2e/profil-entete-passions.spec.js:542:1 › ③ quater — six passions : la rangée COULISSE, elle ne se comprime pas
+[1A[2K[655/1103] [local] › tests/e2e/profil-trois-autorites.spec.js:109:1 › ③ premier ensure en erreur RÉSEAU : le second réessaie
+[1A[2K[656/1103] [local] › tests/e2e/profil-visite-options.spec.js:37:3 › Profil visité — options dans le menu ⋯ › ② le ⋯ est sur la couverture et ne recouvre pas la croix
+[1A[2K[657/1103] [local] › tests/e2e/profil-trois-autorites.spec.js:125:1 › ④ changement d'UID : un nouvel ensure part
+[1A[2K[658/1103] [local] › tests/e2e/profil-entete-passions.spec.js:578:1 › ③ quater bis — DIX passions : les bulles gardent leur taille et leur nom
+[1A[2K[659/1103] [local] › tests/e2e/profil-visite-options.spec.js:61:3 › Profil visité — options dans le menu ⋯ › ③ le menu s'ouvre AU-DESSUS de la modale, avec les trois entrées
+[1A[2K[660/1103] [local] › tests/e2e/profil-trois-autorites.spec.js:144:1 › ⑤ onboarding SANS contrôle de confidentialité : le profil reste privé
+[1A[2K[661/1103] [local] › tests/e2e/profil-entete-passions.spec.js:620:3 › ③ nonies — 320 px, 3 passions : la porte d'ajout est peinte dans « Gérer mes passions »
+[1A[2K[662/1103] [local] › tests/e2e/profil-visite-options.spec.js:80:3 › Profil visité — options dans le menu ⋯ › ④ « Signaler » depuis le menu ouvre bien le signalement
+[1A[2K[663/1103] [local] › tests/e2e/profil-trois-autorites.spec.js:160:1 › ⑤ bis — `is_private` soumis SANS preuve de choix est refusé
+[1A[2K[664/1103] [local] › tests/e2e/profil-entete-passions.spec.js:620:3 › ③ nonies — 320 px, 10 passions : la porte d'ajout est peinte dans « Gérer mes passions »
+[1A[2K[665/1103] [local] › tests/e2e/profils-types.spec.js:10:3 › profils types — parcours simulés › créateur : publie un post texte, visible dans le fil ET persistant après reload
+[1A[2K[666/1103] [local] › tests/e2e/profil-trois-autorites.spec.js:175:1 › ⑤ ter — avec la preuve, le choix public est respecté
+[1A[2K[667/1103] [local] › tests/e2e/profil-entete-passions.spec.js:620:3 › ③ nonies — 390 px, 10 passions : la porte d'ajout est peinte dans « Gérer mes passions »
+[1A[2K[668/1103] [local] › tests/e2e/profil-trois-autorites.spec.js:186:1 › ⑥ sauvegarde de la bio seule : la confidentialité ne bouge pas
+[1A[2K[669/1103] [local] › tests/e2e/profils-types.spec.js:62:3 › profils types — parcours simulés › créateur média : publie photo et vidéo
+[1A[2K[670/1103] [local] › tests/e2e/profil-entete-passions.spec.js:655:1 › ③ quater ter — le rail défile, et sa position survit au choix d'une passion
+[1A[2K[671/1103] [local] › tests/e2e/profil-trois-autorites.spec.js:199:1 › ⑦ changement de photo : seul `avatar_url` change
+[1A[2K[672/1103] [local] › tests/e2e/profils-types.spec.js:112:3 › profils types — parcours simulés › upload trop volumineux : rejet propre (toast, pas de crash, pas de post)
+[1A[2K[673/1103] [local] › tests/e2e/profil-entete-passions.spec.js:740:1 › ③ decies — trois passions : la rangée est CENTRÉE, elle ne colle plus à gauche
+[1A[2K[674/1103] [local] › tests/e2e/profil-trois-autorites.spec.js:212:1 › ⑧ changement de passion : AUCUN champ d'identité ne change
+[1A[2K[675/1103] [local] › tests/e2e/profils-types.spec.js:141:3 › profils types — parcours simulés › utilisateur actif : like + commentaire sur un post du fil
+[1A[2K[676/1103] [local] › tests/e2e/profil-entete-passions.spec.js:754:1 › ③ decies bis — DIX passions : la rangée déborde, et la PREMIÈRE bulle reste atteignable
+[1A[2K[677/1103] [local] › tests/e2e/profil-trois-autorites.spec.js:234:1 › ⑨ LE CAS CRITIQUE — profil serveur privé + passions locales + `general` incomplet
+[1A[2K[678/1103] [local] › tests/e2e/profils-types.spec.js:169:3 › profils types — parcours simulés › visiteur : consulte le fil et l'explorer sans rien publier
+[1A[2K[679/1103] [local] › tests/e2e/profil-entete-passions.spec.js:773:1 › ③ decies ter — une SEULE passion se centre aussi
+[1A[2K[680/1103] [local] › tests/e2e/profil-trois-autorites.spec.js:255:1 › ⑩ liste blanche : un champ inconnu n'est jamais écrit
+[1A[2K[681/1103] [local] › tests/e2e/profils-types.spec.js:183:3 › profils types — parcours simulés › visiteur de profils : ouvre le profil d'un auteur depuis le fil
+[1A[2K[682/1103] [local] › tests/e2e/profil-entete-passions.spec.js:787:1 › ③ decies quater — le Fil se centre AUSSI, le profil visité garde son alignement
+[1A[2K[683/1103] [local] › tests/e2e/projets-playwright.spec.js:85:1 › la partition prod/local est déclarée dans playwright.config.js
+[1A[2K[684/1103] [local] › tests/e2e/projets-playwright.spec.js:93:1 › toute suite qui écrit en production est déclarée dans SUITES_PROD
+[1A[2K[685/1103] [local] › tests/e2e/projets-playwright.spec.js:115:1 › aucune suite déclarée prod n'a disparu du dossier
+[1A[2K[686/1103] [local] › tests/e2e/publication-optimiste-refusee.spec.js:66:1 › prémisse : ce compte n'a AUCUNE passion publiable
+[1A[2K[687/1103] [local] › tests/e2e/profils-types.spec.js:200:3 › profils types — parcours simulés › partageur : la feuille de partage d'un post s'ouvre
+[1A[2K[688/1103] [local] › tests/e2e/profil-entete-passions.spec.js:869:1 › ③ decies quinquies — QUATRE bulles (Suivis + 3 passions) : la rangée est centrée
+[1A[2K[689/1103] [local] › tests/e2e/publication-optimiste-refusee.spec.js:78:1 › bobine : aucun post local orphelin n'est créé
+[1A[2K[690/1103] [local] › tests/e2e/profils-types.spec.js:215:3 › profils types — parcours simulés › multi-passions : 3 profils, bascule fonctionnelle
+[1A[2K[691/1103] [local] › tests/e2e/profil-entete-passions.spec.js:879:1 › ③ decies sexies — au-delà, le Fil déborde et sa PREMIÈRE bulle reste atteignable
+[1A[2K[692/1103] [local] › tests/e2e/publication-optimiste-refusee.spec.js:101:1 › partage de bobine : aucun post local orphelin
+[1A[2K[693/1103] [local] › tests/e2e/purge-rest-parite.spec.js:39:3 › purge e2e : les deux chemins doivent rester jumeaux › aucune table du SQL n'est oubliée par le portage REST
+[1A[2K[694/1103] [local] › tests/e2e/purge-rest-parite.spec.js:45:3 › purge e2e : les deux chemins doivent rester jumeaux › le portage REST n'invente aucune table absente du SQL
+[1A[2K[695/1103] [local] › tests/e2e/purge-rest-parite.spec.js:52:3 › purge e2e : les deux chemins doivent rester jumeaux › l'ordre de suppression est identique — les clés étrangères l'exigent
+[1A[2K[696/1103] [local] › tests/e2e/purge-rest-parite.spec.js:60:3 › purge e2e : les deux chemins doivent rester jumeaux › le portage exige le suffixe exact du domaine de test
+[1A[2K[697/1103] [local] › tests/e2e/reaction-cle-entree.spec.js:20:3 › Clé de réaction — filtre d'entrée › le validateur accepte les vrais emojis, y compris composés, et rejette le balisage
+[1A[2K[698/1103] [local] › tests/e2e/profil-entete-passions.spec.js:900:1 › ③ quinquies — une passion ARCHIVÉE ne réapparaît pas dans le rail
+[1A[2K[699/1103] [local] › tests/e2e/publication-optimiste-refusee.spec.js:113:1 › partage de post : aucun post local orphelin
+[1A[2K[700/1103] [local] › tests/e2e/reaction-cle-entree.spec.js:45:3 › Clé de réaction — filtre d'entrée › temps réel : une clé hostile n'entre pas dans l'état, une vraie y entre
+[1A[2K[701/1103] [local] › tests/e2e/profil-entete-passions.spec.js:940:1 › ③ sexies — un profil visité suit la même règle : une seule rangée, en bulles
+[1A[2K[702/1103] [local] › tests/e2e/publication-optimiste-refusee.spec.js:125:1 › partage d'événement : aucun post local orphelin
+[1A[2K[703/1103] [local] › tests/e2e/reaction-cle-entree.spec.js:60:3 › Clé de réaction — filtre d'entrée › le retrait d'une réaction hostile ne crée pas la clé au passage
+[1A[2K[704/1103] [local] › tests/e2e/profil-entete-passions.spec.js:957:1 › ③ septies — le RETOUR de la page de passion reste servi (chemin dormant)
+[1A[2K[705/1103] [local] › tests/e2e/publication-optimiste-refusee.spec.js:137:1 › avec une passion publiable, les quatre producteurs fonctionnent
+[1A[2K[706/1103] [local] › tests/e2e/reaction-cle-entree.spec.js:73:3 › Clé de réaction — filtre d'entrée › rien n'est persisté : la conversation sauvegardée ne porte aucune clé hostile
+[1A[2K[707/1103] [local] › tests/e2e/profil-entete-passions.spec.js:983:1 › ③ octies — ouverte depuis un ÉCRAN, la page de passion n'invente pas de retour
+[1A[2K[708/1103] [local] › tests/e2e/publication-optimiste-refusee.spec.js:154:1 › passions personnalisées : la création est fermée, les existantes intactes
+[1A[2K[709/1103] [local] › tests/e2e/recherche-comptes.spec.js:18:3 › Recherche de comptes › la requête serveur est bornée
+[1A[2K[710/1103] [local] › tests/e2e/profil-entete-passions.spec.js:998:1 › une carte de publication ne nomme la passion QU'UNE FOIS
+[1A[2K[711/1103] [local] › tests/e2e/recherche-referentiel.spec.js:53:3 › la page Rechercher connaît tout le référentiel › ① prémisse : l'identifiant visé est ABSENT du socle embarqué
+[1A[2K[712/1103] [local] › tests/e2e/recherche-comptes.spec.js:44:3 › Recherche de comptes › une réponse périmée n'écrase pas les résultats de la frappe en cours
+[1A[2K[713/1103] [local] › tests/e2e/profil-entete-passions.spec.js:1041:1 › ④ — le compteur « passions » compte les vivantes ET les archivées
+[1A[2K[714/1103] [local] › tests/e2e/recherche-referentiel.spec.js:66:3 › la page Rechercher connaît tout le référentiel › ② la recherche trouve une passion hors socle
+[1A[2K[715/1103] [local] › tests/e2e/reel-deeplink.spec.js:72:3 › Lien partagé #reel=<id> › au démarrage, le lien ouvre la bobine qu'il désigne
+[1A[2K[716/1103] [local] › tests/e2e/recherche-referentiel.spec.js:73:3 › la page Rechercher connaît tout le référentiel › ③ le nombre annoncé vient du référentiel, jamais d'une constante
+[1A[2K[717/1103] [local] › tests/e2e/profil-entete-passions.spec.js:1064:1 › ④ bis — le profil de remplissage n'est compté nulle part
+[1A[2K[718/1103] [local] › tests/e2e/reel-deeplink.spec.js:85:3 › Lien partagé #reel=<id> › une bobine hors des 30 plus récentes est épinglée, pas remplacée
+[1A[2K[719/1103] [local] › tests/e2e/recherche-referentiel.spec.js:91:3 › la page Rechercher connaît tout le référentiel › ④ la grille dépasse le socle et NOMME chaque tuile
+[1A[2K[720/1103] [local] › tests/e2e/profil-entete-passions.spec.js:1081:1 › ④ ter — il est ENTRE « abonnés » et « abonnements », et il ouvre la page
+[1A[2K[721/1103] [local] › tests/e2e/reel-deeplink.spec.js:125:3 › Lien partagé #reel=<id> › cible dans les 30 mais pas la plus récente : elle est à l'écran TOUT DE SUITE
+[1A[2K[722/1103] [local] › tests/e2e/recherche-referentiel.spec.js:114:3 › la page Rechercher connaît tout le référentiel › ⑤ une passion tendance peut venir de HORS socle
+[1A[2K[723/1103] [local] › tests/e2e/reel-deeplink.spec.js:151:3 › Lien partagé #reel=<id> › un identifiant inconnu le dit, et n'ouvre aucune autre bobine
+[1A[2K[724/1103] [local] › tests/e2e/refonte-multi-passion.spec.js:133:1 › ① le profil porte le rail de passions du Fil, au-dessus des onglets
+[1A[2K[725/1103] [local] › tests/e2e/recherche-referentiel.spec.js:141:3 › la page Rechercher connaît tout le référentiel › ⑥ les passions PERSO restent trouvables et affichées
+[1A[2K[726/1103] [local] › tests/e2e/refonte-multi-passion.spec.js:175:1 › ① bis bis — une bulle s'active au CLAVIER, comme le rôle qu'elle annonce
+[1A[2K[727/1103] [local] › tests/e2e/reel-deeplink.spec.js:165:3 › Lien partagé #reel=<id> › un lien collé en cours de session est routé aussi
+[1A[2K[728/1103] [local] › tests/e2e/recherche-referentiel.spec.js:161:3 › la page Rechercher connaît tout le référentiel › ⑦ une réponse de frappe DÉPASSÉE ne peint plus rien
+[1A[2K[729/1103] [local] › tests/e2e/refonte-multi-passion.spec.js:223:1 › ① bis — le profil n'a plus que deux onglets : Publications et Activité
+[1A[2K[730/1103] [local] › tests/e2e/reel-deeplink.spec.js:173:3 › Lien partagé #reel=<id> › sans lien, l'ouverture des Bobines est inchangée
+[1A[2K[731/1103] [local] › tests/e2e/recherche-referentiel.spec.js:199:3 › la page Rechercher connaît tout le référentiel › ⑧ « Suivre » suit vraiment, et sait désuivre
+[1A[2K[732/1103] [local] › tests/e2e/refonte-multi-passion.spec.js:241:1 › ① ter bis — les onglets du profil et les envies du Fil sont CENTRÉS
+[1A[2K[733/1103] [local] › tests/e2e/reel-deeplink.spec.js:207:3 › Lien partagé #reel=<id> › auteur bloqué : rien ne s'ouvre, surtout pas la bobine de quelqu'un d'autre
+[1A[2K[734/1103] [local] › tests/e2e/recherche-referentiel.spec.js:231:3 › la page Rechercher connaît tout le référentiel › ⑨ la fiche d'une passion échappe son libellé et propose les proches
+[1A[2K[735/1103] [local] › tests/e2e/refonte-multi-passion.spec.js:281:1 › ① ter — choisir une passion filtre Publications ET Activité d'un seul geste
+[1A[2K[736/1103] [local] › tests/e2e/recherche-referentiel.spec.js:262:3 › la page Rechercher connaît tout le référentiel › ⑩ dans la fiche d'une passion, c'est le bouton SOUS LE DOIGT qui bouge
+[1A[2K[737/1103] [local] › tests/e2e/reel-deeplink.spec.js:226:3 › Lien partagé #reel=<id> › openReelById rend false ET referme, pour un contenu qui n'est pas une bobine
+[1A[2K[738/1103] [local] › tests/e2e/refonte-multi-passion.spec.js:341:1 › ① quater — un profil sans passion affiche un état propre, pas une rangée vide
+[1A[2K[739/1103] [local] › tests/e2e/recherche-referentiel.spec.js:302:3 › la page Rechercher connaît tout le référentiel › ⑪ hors ligne, la grille ne rétrécit pas et le compteur SE TAIT
+[1A[2K[740/1103] [local] › tests/e2e/reel-deeplink.spec.js:238:3 › Lien partagé #reel=<id> › le hash « #reels » du viewer n'est jamais pris pour un lien
+[1A[2K[741/1103] [local] › tests/e2e/refonte-multi-passion.spec.js:360:1 › ① quinquies — une passion sans publication et sans activité le DIT
+[1A[2K[742/1103] [local] › tests/e2e/recherche-referentiel.spec.js:357:3 › la page Rechercher connaît tout le référentiel › ⑫ `charger()` invalide les TROIS caches de rendu, quel que soit son appelant
+[1A[2K[743/1103] [local] › tests/e2e/reel-deeplink.spec.js:246:3 › Lien partagé #reel=<id> › écran occupé (landing) : le lien attend au lieu de recouvrir
+[1A[2K[744/1103] [local] › tests/e2e/refonte-multi-passion.spec.js:378:1 › ② une publication Moto affiche Benjamin, et la seule passion du post
+[1A[2K[745/1103] [local] › tests/e2e/recherche-referentiel.spec.js:397:5 › la page Rechercher connaît tout le référentiel › ⑬ 320 px : la grille ne déborde pas de l'écran
+[1A[2K[746/1103] [local] › tests/e2e/reel-deeplink.spec.js:263:3 › Lien partagé #reel=<id> › échec : le hash reste, donc un rechargement peut retenter
+[1A[2K[747/1103] [local] › tests/e2e/refonte-multi-passion.spec.js:409:1 › ② bis — les passions ARCHIVÉES ne fuient pas dans l'identité affichée
+[1A[2K[748/1103] [local] › tests/e2e/recherche-referentiel.spec.js:397:5 › la page Rechercher connaît tout le référentiel › ⑬ 390 px : la grille ne déborde pas de l'écran
+[1A[2K[749/1103] [local] › tests/e2e/refonte-multi-passion.spec.js:426:1 › ② ter — l'identité est bornée et échappée (contenu d'un autre compte)
+[1A[2K[750/1103] [local] › tests/e2e/release-integrity.spec.js:9:3 › RELEASE-INTEGRITY — contrat de release et transition d'identité › release.json, HTML et service worker désignent exactement le même build
+[1A[2K[751/1103] [local] › tests/e2e/release-integrity.spec.js:33:3 › RELEASE-INTEGRITY — contrat de release et transition d'identité › le bundle différé redirige un ancien lien Carnets de voyage
+[1A[2K[752/1103] [local] › tests/e2e/release-integrity.spec.js:60:5 › RELEASE-INTEGRITY — contrat de release et transition d'identité › sans service worker › un onglet N détecte N+1 sans forcer le rechargement
+[1A[2K[753/1103] [local] › tests/e2e/release-integrity.spec.js:85:3 › RELEASE-INTEGRITY — contrat de release et transition d'identité › le drain attend les POST telemetry_events avant de rendre la main
+[1A[2K[754/1103] [local] › tests/e2e/smoke.spec.js:26:1 › la page charge avec le bon titre
+[1A[2K[755/1103] [local] › tests/e2e/recherche-referentiel.spec.js:397:5 › la page Rechercher connaît tout le référentiel › ⑬ 430 px : la grille ne déborde pas de l'écran
+[1A[2K[756/1103] [local] › tests/e2e/refonte-multi-passion.spec.js:460:1 › ③ je suis Alice sans passion commune : TOUT son contenu est admissible
+[1A[2K[757/1103] [local] › tests/e2e/smoke.spec.js:31:1 › la landing s'affiche (logo, badge beta, CTA)
+[1A[2K[758/1103] [local] › tests/e2e/stories-blocage.spec.js:41:3 › Stories et blocage › un compte bloqué disparaît des groupes de stories
+[1A[2K[759/1103] [local] › tests/e2e/smoke.spec.js:38:1 › le bouton Se connecter ouvre le formulaire d'authentification
+[1A[2K[760/1103] [local] › tests/e2e/refonte-multi-passion.spec.js:468:1 › ④ Suivis + Moto + Voyage + une envie : tout arrive dans UNE liste
+[1A[2K[761/1103] [local] › tests/e2e/stories-blocage.spec.js:50:3 › Stories et blocage › sa bulle quitte le rail du fil
+[1A[2K[762/1103] [local] › tests/e2e/smoke.spec.js:45:1 › aucune erreur JavaScript fatale au démarrage
+[1A[2K[763/1103] [local] › tests/e2e/refonte-multi-passion.spec.js:489:1 › ④ bis — DÉDUPLICATION : trois critères satisfaits, une seule carte
+[1A[2K[764/1103] [local] › tests/e2e/stories-blocage.spec.js:59:3 › Stories et blocage › ouvrir ses stories n'ouvre RIEN — et surtout pas celles de quelqu'un d'autre
+[1A[2K[765/1103] [local] › tests/e2e/smoke.spec.js:54:1 › le manifest PWA et le service worker sont servis
+[1A[2K[766/1103] [local] › tests/e2e/studio-moods.spec.js:46:3 › Studio — moods alignés sur les intentions du Fil › la rangée porte les quatre nouvelles pastilles, dans l'ordre
+[1A[2K[767/1103] [local] › tests/e2e/refonte-multi-passion.spec.js:496:1 › ④ ter — une envie se coche et se décoche sans toucher aux autres critères
+[1A[2K[768/1103] [local] › tests/e2e/stories-blocage.spec.js:72:3 › Stories et blocage › sans blocage, la bulle est là et le visionneur s'ouvre sur le bon auteur
+[1A[2K[769/1103] [local] › tests/e2e/studio-moods.spec.js:58:3 › Studio — moods alignés sur les intentions du Fil › les anciens moods « chill » et « actu » ne sont plus proposés
+[1A[2K[770/1103] [local] › tests/e2e/refonte-multi-passion.spec.js:530:1 › ④ quater — le classement du fil est conservé (aucun tri inventé)
+[1A[2K[771/1103] [local] › tests/e2e/supa-hors-ligne.spec.js:34:3 › Stub Supabase — dégradation hors ligne › CDN injoignable : le stub encaisse le tour des écrans sans TypeError
+[1A[2K[772/1103] [local] › tests/e2e/studio-moods.spec.js:66:3 › Studio — moods alignés sur les intentions du Fil › aucune pastille « Explorer » : l'intention ne lit pas le mood
+[1A[2K[773/1103] [local] › tests/e2e/refonte-multi-passion.spec.js:550:1 › ⑤ le Studio propose les passions du compte et enregistre l'association
+[1A[2K[774/1103] [local] › tests/e2e/supa-hors-ligne.spec.js:73:3 › Stub Supabase — dégradation hors ligne › CDN injoignable : la surface Supabase appelée par l'app répond toute
+[1A[2K[775/1103] [local] › tests/e2e/studio-moods.spec.js:77:3 › Studio — moods alignés sur les intentions du Fil › le défaut reste « creation » — sinon bumpQuest("publish") s'arrête
+[1A[2K[776/1103] [local] › tests/e2e/refonte-multi-passion.spec.js:572:1 › ⑤ bis — aucun sélecteur de passion hors du Studio
+[1A[2K[777/1103] [local] › tests/e2e/suppression-durable.spec.js:65:3 › Suppression durable d'une publication › supprimer retire la publication des QUATRE tableaux, pas seulement de userPosts
+[1A[2K[778/1103] [local] › tests/e2e/studio-moods.spec.js:85:3 › Studio — moods alignés sur les intentions du Fil › « Rencontrer » publie bien la valeur irl, que le Fil traduit en meet
+[1A[2K[779/1103] [local] › tests/e2e/refonte-multi-passion.spec.js:594:1 › ⑥ « À propos » n'est plus un onglet ni une section
+[1A[2K[780/1103] [local] › tests/e2e/suppression-durable.spec.js:86:3 › Suppression durable d'une publication › une page serveur qui renvoie la publication supprimée ne la fait pas revenir
+[1A[2K[781/1103] [local] › tests/e2e/studio-moods.spec.js:106:3 › Studio — moods alignés sur les intentions du Fil › « Tous » publie le neutre, qui ne porte aucune étiquette
+[1A[2K[782/1103] [local] › tests/e2e/refonte-multi-passion.spec.js:610:1 › ⑥ bis — la gestion des passions reste ATTEIGNABLE (retirer un onglet ne doit pas fermer une fonction)
+[1A[2K[783/1103] [local] › tests/e2e/suppression-durable.spec.js:99:3 › Suppression durable d'une publication › le temps réel ne réinjecte pas une publication supprimée
+[1A[2K[784/1103] [local] › tests/e2e/studio-moods.spec.js:124:3 › Studio — moods alignés sur les intentions du Fil › un brouillon portant un mood retiré revient sur le neutre, pas sur une rangée muette
+[1A[2K[785/1103] [local] › tests/e2e/refonte-multi-passion.spec.js:635:1 › ⑥ ter — le Carnet de voyage a disparu : écran, navigation, route
+[1A[2K[786/1103] [local] › tests/e2e/suppression-durable.spec.js:116:3 › Suppression durable d'une publication › publier ne déverse plus la page serveur dans le contenu de démonstration
+[1A[2K[787/1103] [local] › tests/e2e/studio-moods.spec.js:141:3 › Studio — moods alignés sur les intentions du Fil › la table de libellés est unique : fil et bobines disent le même mot
+[1A[2K[788/1103] [local] › tests/e2e/refonte-multi-passion.spec.js:655:1 › ⑥ quater — un ancien lien #cdv ne laisse pas l'application sans écran
+[1A[2K[789/1103] [local] › tests/e2e/suppression-durable.spec.js:149:3 › Suppression durable d'une publication › un blob de synchronisation antérieur à la suppression ne ressuscite rien
+[1A[2K[790/1103] [local] › tests/e2e/studio-moods.spec.js:175:3 › Studio — moods alignés sur les intentions du Fil › perdre son libellé ne fait pas perdre son droit d'exister
+[1A[2K[791/1103] [local] › tests/e2e/refonte-multi-passion.spec.js:670:1 › ⑥ quinquies — aucune donnée de carnet n'est détruite
+[1A[2K[792/1103] [local] › tests/e2e/suppression-durable.spec.js:173:3 › Suppression durable d'une publication › la suppression survit à un rechargement complet de l'application
+[1A[2K[793/1103] [local] › tests/e2e/sync-passion-active.spec.js:56:3 › après une synchronisation, la passion active › n'est pas la passion locale si elle a été archivée ailleurs
+[1A[2K[794/1103] [local] › tests/e2e/telemetrie-preauth.spec.js:24:3 › Télémétrie — fenêtre pré-authentification › aucun événement ne part sous une identité fabriquée
+[1A[2K[795/1103] [local] › tests/e2e/sync-passion-active.spec.js:65:3 › après une synchronisation, la passion active › n'est pas non plus une passion archivée reçue du serveur
+[1A[2K[local] › tests/e2e/telemetrie-preauth.spec.js:24:3 › Télémétrie — fenêtre pré-authentification › aucun événement ne part sous une identité fabriquée
+[tel-preauth] landing affichée, aucune session
+
+[1A[2K[796/1103] [local] › tests/e2e/suppression-durable.spec.js:192:3 › Suppression durable d'une publication › une suppression serveur qui ne peut pas aboutir est mise en file, pas perdue
+[1A[2K[797/1103] [local] › tests/e2e/sync-passion-active.spec.js:76:3 › après une synchronisation, la passion active › reste la passion locale quand celle-ci est bien vivante
+[1A[2K[tel-preauth] MY_UID lexical    : u_ofzkxn0s
+
+[1A[2K[tel-preauth] window.MY_UID     : u_ofzkxn0s
+
+[1A[2K[tel-preauth] passio_uid stocké : u_ofzkxn0s
+
+[1A[2K[tel-preauth] session Supabase  : non
+
+[1A[2K[tel-preauth] envois observés   : 18 — statuts : aucun
+
+[1A[2K[tel-preauth]   lot de 8 · user_id=[null] · types=session/action/perf · jwt=session
+
+[1A[2K[tel-preauth]   lot de 9 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 9 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 10 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 10 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 10 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 10 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 10 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 10 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 10 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 11 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 11 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 11 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 11 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 11 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 11 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 11 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 12 · user_id=[null] · types=session/action/perf/connectivity/lifecycle · jwt=session
+
+[1A[2K[798/1103] [local] › tests/e2e/telemetrie-preauth.spec.js:97:3 › Télémétrie — fenêtre pré-authentification › sans forçage, localhost n'écrit RIEN dans la table de production
+[1A[2K[799/1103] [local] › tests/e2e/suppression-durable.spec.js:205:3 › Suppression durable d'une publication › le menu d'options reste sur MA publication quand c'est la copie serveur qui s'affiche
+[1A[2K[800/1103] [local] › tests/e2e/transfert-message.spec.js:116:3 › Transfert de message — verdict de l'écriture › une insertion refusée marque le message en échec et le met en file de renvoi
+[1A[2K[801/1103] [local] › tests/e2e/ui-v2-feed.spec.js:102:1 › kill switch : aucun module UI-2, aucune Bobine injectée, moods intacts
+[1A[2K[802/1103] [local] › tests/e2e/ui-v2-shell.spec.js:74:1 › kill switch : navigation historique intacte, aucun nœud V2 créé
+[1A[2K[803/1103] [local] › tests/e2e/transfert-message.spec.js:154:3 › Transfert de message — verdict de l'écriture › une insertion acceptée marque le message envoyé et ne laisse rien en file
+[1A[2K[804/1103] [local] › tests/e2e/ui-v2-feed.spec.js:128:1 › URL normale : barre du bas UI-1 et les intentions UI-2 simultanément
+[1A[2K[805/1103] [local] › tests/e2e/ui-v2-shell.spec.js:103:1 › URL normale : cinq entrées libellées, chacune menant à sa route existante
+[1A[2K[806/1103] [local] › tests/e2e/ui-v3-passerelle.spec.js:359:1 › URL normale : la passerelle est là, et rien n'est écrit pour autant
+[1A[2K[807/1103] [local] › tests/e2e/ui-v2-feed.spec.js:152:1 › URL normale : une rangée de bobines dans le fil, jamais en tête, sans lecture auto
+[1A[2K[808/1103] [local] › tests/e2e/ui-v2-shell.spec.js:140:1 › aperçu : « Créer » ouvre le sélecteur et non l'écran Studio
+[1A[2K[809/1103] [local] › tests/e2e/ui-v3-passerelle.spec.js:384:1 › lien d'aperçu : toujours valide, et toujours sans écriture d'activation
+[1A[2K[810/1103] [local] › tests/e2e/ui-v2-feed.spec.js:196:1 › URL normale : aucune bobine éligible → aucune rangée
+[1A[2K[811/1103] [local] › tests/e2e/ui-v2-shell.spec.js:201:1 › aperçu : chaque choix « Créer » rebranche un éditeur existant
+[1A[2K[812/1103] [local] › tests/e2e/ui-v3-passerelle.spec.js:396:1 › kill switch localStorage : coupe sur l'URL normale ET malgré le lien d'aperçu
+[1A[2K[813/1103] [local] › tests/e2e/ui-v2-feed.spec.js:204:1 › URL normale : un tap sur une vignette ouvre le viewer EXISTANT sur CETTE bobine
+[1A[2K[814/1103] [local] › tests/e2e/ui-v2-shell.spec.js:267:1 › barre des stories : plus de bulle de création Live, mais les vrais directs restent
+[1A[2K[815/1103] [local] › tests/e2e/ui-v3-passerelle.spec.js:409:1 › kill switch localStorage : le lien d'aperçu ne le court-circuite pas
+[1A[2K[816/1103] [local] › tests/e2e/ui-v2-feed.spec.js:241:1 › aperçu : « Passionnés » après les premiers contenus, 3 max, exclusions respectées
+[1A[2K[817/1103] [local] › tests/e2e/ui-v2-shell.spec.js:292:1 › aperçu : Bobines sort de la barre mais reste atteignable
+[1A[2K[818/1103] [local] › tests/e2e/ui-v3-passerelle.spec.js:417:1 › kill switch mémoire : window.PASSIO_UI_3 = false coupe l'aperçu
+[1A[2K[819/1103] [local] › tests/e2e/ui-v2-feed.spec.js:270:1 › aperçu : le module exclut mon propre compte
+[1A[2K[820/1103] [local] › tests/e2e/ui-v2-shell.spec.js:325:1 › aperçu : aucun réglage durable écrit, profil actif inchangé
+[1A[2K[821/1103] [local] › tests/e2e/ui-v3-passerelle.spec.js:433:1 › le lien n'apparaît que sur les publications éligibles, et SEUL
+[1A[2K[822/1103] [local] › tests/e2e/ui-v2-feed.spec.js:285:1 › aperçu : moins de deux candidats → aucun module affiché
+[1A[2K[823/1103] [local] › tests/e2e/ui-v3-passerelle.spec.js:469:1 › la passerelle survit à un aller-retour entre écrans
+[1A[2K[824/1103] [local] › tests/e2e/ui-v2-feed.spec.js:299:1 › aperçu : une tuile « Passionnés » ouvre le profil existant, et rien d'autre
+[1A[2K[825/1103] [local] › tests/e2e/ui-v2-shell.spec.js:369:1 › URL normale : un passio_ui_v2 « 1 » hérité ne change pas le défaut V2
+[1A[2K[826/1103] [local] › tests/e2e/ui-v2-feed.spec.js:321:1 › aperçu : l'état vide se termine par une action
+[1A[2K[827/1103] [local] › tests/e2e/ui-v3-passerelle.spec.js:491:1 › le tap ouvre « Trouver une expérience » avec exactement trois actions
+[1A[2K[828/1103] [local] › tests/e2e/ui-v2-shell.spec.js:398:1 › aperçu : « Créer » ferme l'aide contextuelle qui la recouvrirait
+[1A[2K[829/1103] [local] › tests/e2e/ui-v2-feed.spec.js:339:1 › aperçu : sans contenu de mes suivis, l'action proposée est de publier
+[1A[2K[830/1103] [local] › tests/e2e/ui-v3-passerelle.spec.js:533:1 › la feuille porte l'habillage du (+) : lavis violet, icône, aucun texte explicatif
+[1A[2K[831/1103] [local] › tests/e2e/ui-v2-shell.spec.js:442:1 › aperçu : ancien navOrder normalisé sans effacer les autres réglages
+[1A[2K[832/1103] [local] › tests/e2e/ui-v2-feed.spec.js:359:1 › kill switch : l'état vide historique est strictement inchangé
+[1A[2K[833/1103] [local] › tests/e2e/ui-v2-shell.spec.js:462:1 › aperçu 390 × 844 : libellés entiers, cibles tactiles suffisantes
+[1A[2K[834/1103] [local] › tests/e2e/ui-v3-passerelle.spec.js:571:1 › Escape ferme le panneau et rien n'a été créé
+[1A[2K[835/1103] [local] › tests/e2e/ui-v2-feed.spec.js:377:1 › aperçu 390 × 844 : modules dans le cadre, cibles tactiles suffisantes
+[1A[2K[836/1103] [local] › tests/e2e/ui-v3b-activite.spec.js:144:1 › aperçu UI-3B : la carte est là même quand AUCUNE passion n'est cochée
+[1A[2K[837/1103] [local] › tests/e2e/ui-v3-passerelle.spec.js:608:1 › « Voir les activités » ouvre l'IRL filtré sur la Passio, sans GPS demandé
+[1A[2K[838/1103] [local] › tests/e2e/ui-v2-feed.spec.js:414:1 › 390 × 844 : la rangée de bobines défile sans faire déborder la page
+[1A[2K[839/1103] [local] › tests/e2e/ui-v3b-activite.spec.js:167:1 › aperçu UI-3B : une publication liée est visible sans donnée persistée
+[1A[2K[840/1103] [local] › tests/e2e/ui-v3-passerelle.spec.js:662:1 › UI-4A0 coupé : le marqueur d'UI-3A reste à USAGE UNIQUE
+[1A[2K[841/1103] [local] › tests/e2e/ui-v4a0-tete.spec.js:118:3 › UI-4A0 — tête de Rencontrer › kill switch local au boot : rien du lot, écran IRL historique intact
+[1A[2K[842/1103] [local] › tests/e2e/ui-v3b-activite.spec.js:220:1 › publication reliée : un seul CTA « Voir l'activité », et rien d'autre
+[1A[2K[843/1103] [local] › tests/e2e/ui-v3-passerelle.spec.js:686:1 › « Voir la page de la passion » ouvre le parcours Passion, sans contact automatique
+[1A[2K[844/1103] [local] › tests/e2e/ui-v4a0-tete.spec.js:144:3 › UI-4A0 — tête de Rencontrer › URL normale : hiérarchie de tête et écran historique conservé dessous
+[1A[2K[845/1103] [local] › tests/e2e/ui-v3b-activite.spec.js:280:1 › « Voir l'activité » ouvre la fiche attendue, sans aucun RSVP
+[1A[2K[846/1103] [local] › tests/e2e/ui-v3-passerelle.spec.js:706:1 › « Proposer une sortie » préremplit le formulaire IRL existant sans rien créer
+[1A[2K[847/1103] [local] › tests/e2e/ui-v4a0-tete.spec.js:189:3 › UI-4A0 — tête de Rencontrer › le « + » central sert toujours la création d'activité
+[1A[2K[848/1103] [local] › tests/e2e/ui-v3b-activite.spec.js:326:1 › « Je participe » n'écrit qu'au geste explicite, via le moteur historique
+[1A[2K[849/1103] [local] › tests/e2e/ui-v3-passerelle.spec.js:724:1 › fermer le panneau restitue la position du Feed et l'identité active
+[1A[2K[850/1103] [local] › tests/e2e/ui-v4a0-tete.spec.js:204:3 › UI-4A0 — tête de Rencontrer › aucune demande GPS à l'ouverture sur l'URL normale
+[1A[2K[851/1103] [local] › tests/e2e/ui-v3b-activite.spec.js:366:1 › retour : même publication, même position, même identité active
+[1A[2K[852/1103] [local] › tests/e2e/ui-v3-passerelle.spec.js:769:1 › l'ancien CTA « Organiser un IRL » ne coexiste jamais avec la passerelle
+[1A[2K[853/1103] [local] › tests/e2e/ui-v4a0-tete.spec.js:221:3 › UI-4A0 — tête de Rencontrer › recherche de tête : même champ, même état, aucun second moteur
+[1A[2K[854/1103] [local] › tests/e2e/ui-v3b-activite.spec.js:408:1 › kill switch local : ni lien sur la carte, ni action V2 dans la fiche
+[1A[2K[855/1103] [local] › tests/e2e/ui-v3-passerelle.spec.js:788:1 › couper UI-3A restitue le CTA historique, sans repeindre le fil
+[1A[2K[856/1103] [local] › tests/e2e/ui-v4a0-tete.spec.js:248:3 › UI-4A0 — tête de Rencontrer › intentions : multisélection, Tous neutre, aria-pressed
+[1A[2K[857/1103] [local] › tests/e2e/ui-v3b-activite.spec.js:428:1 › coupure en cours de session : la fiche redevient historique
+[1A[2K[858/1103] [local] › tests/e2e/ui-v3-passerelle.spec.js:809:1 › une carte non décorée garde son CTA historique, passerelle active
+[1A[2K[859/1103] [local] › tests/e2e/ui-v4a0-tete.spec.js:289:3 › UI-4A0 — tête de Rencontrer › kill switch mémoire au boot : écran historique rendu intégralement
+[1A[2K[860/1103] [local] › tests/e2e/ui-v3b-activite.spec.js:449:1 › l'action « Je participe » respecte le contraste AA (4,5:1)
+[1A[2K[861/1103] [local] › tests/e2e/ui-v3-passerelle.spec.js:836:1 › une aide contextuelle VISIBLE n'empêche pas la passerelle
+[1A[2K[862/1103] [local] › tests/e2e/ui-v4a0-tete.spec.js:300:3 › UI-4A0 — tête de Rencontrer › kill switch mémoire en cours de session : retour sans rechargement
+[1A[2K[863/1103] [local] › tests/e2e/ui-v3b-activite.spec.js:468:1 › clavier : le lien et l'action sont atteignables et actionnables
+[1A[2K[864/1103] [local] › tests/e2e/ui-v3-passerelle.spec.js:866:1 › la pastille « Trouver une activité » respecte le contraste AA (4,5:1)
+[1A[2K[865/1103] [local] › tests/e2e/ui-v4a0-tete.spec.js:319:5 › UI-4A0 — tête de Rencontrer › mobile 320 px : aucun débordement, cibles ≥ 44 px
+[1A[2K[866/1103] [local] › tests/e2e/ui-v3b-activite.spec.js:483:3 › aucun débordement et cibles ≥ 44 px en 320 px
+[1A[2K[867/1103] [local] › tests/e2e/ui-v3-passerelle.spec.js:909:1 › aucune animation quand l'utilisateur demande moins de mouvement
+[1A[2K[868/1103] [local] › tests/e2e/ui-v4a0-tete.spec.js:319:5 › UI-4A0 — tête de Rencontrer › mobile 390 px : aucun débordement, cibles ≥ 44 px
+[1A[2K[869/1103] [local] › tests/e2e/ui-v3b-activite.spec.js:483:3 › aucun débordement et cibles ≥ 44 px en 390 px
+[1A[2K[870/1103] [local] › tests/e2e/ui-v3-passerelle.spec.js:941:1 › la transition d'ouverture existe par défaut
+[1A[2K[871/1103] [local] › tests/e2e/ui-v4a0-tete.spec.js:319:5 › UI-4A0 — tête de Rencontrer › mobile 430 px : aucun débordement, cibles ≥ 44 px
+[1A[2K[872/1103] [local] › tests/e2e/ui-v3b-activite.spec.js:483:3 › aucun débordement et cibles ≥ 44 px en 430 px
+[1A[2K[873/1103] [local] › tests/e2e/ui-v3-passerelle.spec.js:957:3 › aperçu : aucun débordement et cible tactile ≥ 44 px en 320 px
+[1A[2K[874/1103] [local] › tests/e2e/ui-v4a1-intentions.spec.js:124:3 › UI-4A1 — raccord des intentions › URL normale : raccord actif par défaut, et neutre tant qu'aucune intention n'est choisie
+[1A[2K[875/1103] [local] › tests/e2e/ui-v3b-activite.spec.js:532:1 › cohabitation : le lien reste à UI-3B, l'action de la fiche revient à UI-4B
+[1A[2K[876/1103] [local] › tests/e2e/ui-v3-passerelle.spec.js:957:3 › aperçu : aucun débordement et cible tactile ≥ 44 px en 390 px
+[1A[2K[877/1103] [local] › tests/e2e/ui-v4a1-intentions.spec.js:155:3 › UI-4A1 — raccord des intentions › aperçu : la tête UI-4A0 validée est posée telle quelle
+[1A[2K[878/1103] [local] › tests/e2e/ui-v4a2-cartes.spec.js:99:3 › UI-4A2 — carte d'activité V2 › URL normale : le lot est en place et recouvre la carte historique
+[1A[2K[879/1103] [local] › tests/e2e/ui-v3-passerelle.spec.js:957:3 › aperçu : aucun débordement et cible tactile ≥ 44 px en 430 px
+[1A[2K[880/1103] [local] › tests/e2e/ui-v4a1-intentions.spec.js:172:3 › UI-4A1 — raccord des intentions › Cette semaine : pilote la seule valeur "week"
+[1A[2K[881/1103] [local] › tests/e2e/ui-v4a2-cartes.spec.js:119:3 › UI-4A2 — carte d'activité V2 › la carte porte les six informations de décision
+[1A[2K[882/1103] [local] › tests/e2e/ui-v4a3-vue.spec.js:66:3 › UI-4A3 — commutateur Liste / Carte › URL normale : commutateur présent, vue Liste, écran historique intact
+[1A[2K[883/1103] [local] › tests/e2e/ui-v4a1-intentions.spec.js:198:3 › UI-4A1 — raccord des intentions › Mes passions : ajoute mes passions, rend le choix antérieur
+[1A[2K[884/1103] [local] › tests/e2e/ui-v4a2-cartes.spec.js:175:3 › UI-4A2 — carte d'activité V2 › rien n'est retiré : les nœuds historiques sont masqués, pas supprimés
+[1A[2K[885/1103] [local] › tests/e2e/ui-v4a3-vue.spec.js:102:3 › UI-4A3 — commutateur Liste / Carte › vue Carte : la carte se déplie, la liste passe la main sans quitter le DOM
+[1A[2K[886/1103] [local] › tests/e2e/ui-v4a1-intentions.spec.js:220:3 › UI-4A1 — raccord des intentions › Ma ville : sélecteur historique, zéro GPS, active après le choix
+[1A[2K[887/1103] [local] › tests/e2e/ui-v4a2-cartes.spec.js:192:3 › UI-4A2 — carte d'activité V2 › masquage borné : une carte non décorée garde toutes ses portes
+[1A[2K[888/1103] [local] › tests/e2e/ui-v4a3-vue.spec.js:140:3 › UI-4A3 — commutateur Liste / Carte › la carte s'affiche SOUS les onglets, exactement comme la liste
+[1A[2K[889/1103] [local] › tests/e2e/ui-v4a1-intentions.spec.js:261:3 › UI-4A1 — raccord des intentions › combinaisons : ET entre familles, ordre des clics indifférent
+[1A[2K[890/1103] [local] › tests/e2e/ui-v4a2-cartes.spec.js:231:3 › UI-4A2 — carte d'activité V2 › vie privée : ni lieu exact, ni adresse, ni contact, ni visages
+[1A[2K[891/1103] [local] › tests/e2e/ui-v4a3-vue.spec.js:192:3 › UI-4A3 — commutateur Liste / Carte › retour à Liste : la carte se replie et la liste revient
+[1A[2K[892/1103] [local] › tests/e2e/ui-v4a2-cartes.spec.js:253:3 › UI-4A2 — carte d'activité V2 › « Je viens » : aucune écriture avant le geste, puis setEventRsvp
+[1A[2K[893/1103] [local] › tests/e2e/ui-v4a1-intentions.spec.js:301:3 › UI-4A1 — raccord des intentions › clearAllIrlFilters : nouveau neutre, page 1, rien ne ressuscite
+[1A[2K[894/1103] [local] › tests/e2e/ui-v4a3-vue.spec.js:208:3 › UI-4A3 — commutateur Liste / Carte › aucun second moteur : seule toggleIrlMapPeek est appelée, et seulement au besoin
+[1A[2K[895/1103] [local] › tests/e2e/ui-v4a2-cartes.spec.js:295:3 › UI-4A2 — carte d'activité V2 › annulé et terminé ne sont jamais recouverts
+[1A[2K[896/1103] [local] › tests/e2e/ui-v4a1-intentions.spec.js:334:3 › UI-4A1 — raccord des intentions › kill switch UI-4A1 : effets défaits, choix détaillé préservé
+[1A[2K[897/1103] [local] › tests/e2e/ui-v4a3-vue.spec.js:232:3 › UI-4A3 — commutateur Liste / Carte › la vue ne persiste pas : on revient toujours sur Liste
+[1A[2K[898/1103] [local] › tests/e2e/ui-v4a2-cartes.spec.js:341:3 › UI-4A2 — carte d'activité V2 › URL normale : la tête UI-4A0 et le raccord UI-4A1 sont là eux aussi
+[1A[2K[899/1103] [local] › tests/e2e/ui-v4a1-intentions.spec.js:375:3 › UI-4A1 — raccord des intentions › kill switch UI-4A0 : coupe aussi le raccord et rend l'écran historique
+[1A[2K[900/1103] [local] › tests/e2e/ui-v4a2-cartes.spec.js:370:3 › UI-4A2 — carte d'activité V2 › coupures indépendantes : couper UI-4A1 laisse la tête et les cartes V2
+[1A[2K[901/1103] [local] › tests/e2e/ui-v4a1-intentions.spec.js:401:3 › UI-4A1 — raccord des intentions › kill switch local UI-4A1 : aucun raccord, la tête UI-4A0 demeure
+[1A[2K[902/1103] [local] › tests/e2e/ui-v4a3-vue.spec.js:256:3 › UI-4A3 — commutateur Liste / Carte › kill switch local : aucun commutateur, écran historique
+[1A[2K[903/1103] [local] › tests/e2e/ui-v4a2-cartes.spec.js:379:3 › UI-4A2 — carte d'activité V2 › kill switch local : carte historique rendue intégralement
+[1A[2K[904/1103] [local] › tests/e2e/ui-v4a1-intentions.spec.js:424:3 › UI-4A1 — raccord des intentions › clavier : les intentions s'activent au clavier et exposent leur état
+[1A[2K[905/1103] [local] › tests/e2e/ui-v4a3-vue.spec.js:271:3 › UI-4A3 — commutateur Liste / Carte › kill switch mémoire en cours de session : retour sans rechargement
+[1A[2K[906/1103] [local] › tests/e2e/ui-v4a2-cartes.spec.js:401:3 › UI-4A2 — carte d'activité V2 › kill switch mémoire en cours de session : retour sans rechargement
+[1A[2K[907/1103] [local] › tests/e2e/ui-v4a1-intentions.spec.js:436:5 › UI-4A1 — raccord des intentions › mobile 320 px : aucun débordement, cibles ≥ 44 px
+[1A[2K[908/1103] [local] › tests/e2e/ui-v4a3-vue.spec.js:299:3 › UI-4A3 — commutateur Liste / Carte › clavier : le commutateur s'actionne et expose son état
+[1A[2K[909/1103] [local] › tests/e2e/ui-v4a2-cartes.spec.js:424:5 › UI-4A2 — carte d'activité V2 › mobile 320 px : aucun débordement, cibles ≥ 44 px
+[1A[2K[910/1103] [local] › tests/e2e/ui-v4a1-intentions.spec.js:436:5 › UI-4A1 — raccord des intentions › mobile 390 px : aucun débordement, cibles ≥ 44 px
+[1A[2K[911/1103] [local] › tests/e2e/ui-v4a3-vue.spec.js:315:5 › UI-4A3 — commutateur Liste / Carte › mobile 320 px : aucun débordement, cibles ≥ 44 px
+[1A[2K[912/1103] [local] › tests/e2e/ui-v4a2-cartes.spec.js:424:5 › UI-4A2 — carte d'activité V2 › mobile 390 px : aucun débordement, cibles ≥ 44 px
+[1A[2K[913/1103] [local] › tests/e2e/ui-v4a1-intentions.spec.js:436:5 › UI-4A1 — raccord des intentions › mobile 430 px : aucun débordement, cibles ≥ 44 px
+[1A[2K[914/1103] [local] › tests/e2e/ui-v4a3-vue.spec.js:315:5 › UI-4A3 — commutateur Liste / Carte › mobile 390 px : aucun débordement, cibles ≥ 44 px
+[1A[2K[915/1103] [local] › tests/e2e/ui-v4a2-cartes.spec.js:424:5 › UI-4A2 — carte d'activité V2 › mobile 430 px : aucun débordement, cibles ≥ 44 px
+[1A[2K[916/1103] [local] › tests/e2e/ui-v4a4-outils.spec.js:68:3 › UI-4A4 — Outils, troisième case de Rencontrer › URL normale : trois cases côte à côte, dont Outils qui n'est pas un onglet
+[1A[2K[917/1103] [local] › tests/e2e/ui-v4a3-vue.spec.js:315:5 › UI-4A3 — commutateur Liste / Carte › mobile 430 px : aucun débordement, cibles ≥ 44 px
+[1A[2K[918/1103] [local] › tests/e2e/ui-v4a5-filtres.spec.js:64:3 › UI-4A5 — « Filtre », troisième vue de Rencontrer › le clic sur Filtre n'ouvre plus de dialogue : les choix s'affichent dessous
+[1A[2K[919/1103] [local] › tests/e2e/ui-v4a4-outils.spec.js:98:3 › UI-4A4 — Outils, troisième case de Rencontrer › les quatre intentions ont quitté la tête pour le panneau
+[1A[2K[920/1103] [local] › tests/e2e/ui-v4b-fiche.spec.js:117:1 › URL normale : le lot est actif par défaut, action primaire unique
+[1A[2K[921/1103] [local] › tests/e2e/ui-v4a5-filtres.spec.js:100:3 › UI-4A5 — « Filtre », troisième vue de Rencontrer › quatre sections nommées, dans l'ordre, sans pictogramme de titre
+[1A[2K[922/1103] [local] › tests/e2e/ui-v4a4-outils.spec.js:118:3 › UI-4A4 — Outils, troisième case de Rencontrer › une intention survit à son propre clic et pilote le même état
+[1A[2K[923/1103] [local] › tests/e2e/ui-v4b-fiche.spec.js:141:1 › URL normale + coupure locale : aucune trace du lot, fiche historique intacte
+[1A[2K[924/1103] [local] › tests/e2e/ui-v4a5-filtres.spec.js:148:3 › UI-4A5 — « Filtre », troisième vue de Rencontrer › « Filtre » au singulier, partout sur l'écran
+[1A[2K[925/1103] [local] › tests/e2e/ui-v4a4-outils.spec.js:143:3 › UI-4A4 — Outils, troisième case de Rencontrer › « Tous » remet le neutre depuis le panneau
+[1A[2K[926/1103] [local] › tests/e2e/ui-v4b-fiche.spec.js:157:1 › l'ancien lien d'aperçu est toléré et ne décide plus rien
+[1A[2K[927/1103] [local] › tests/e2e/ui-v4a5-filtres.spec.js:168:3 › UI-4A5 — « Filtre », troisième vue de Rencontrer › « Quand ? » écrit dans irlDateFilters, et « Ce week-end » filtre vraiment
+[1A[2K[928/1103] [local] › tests/e2e/ui-v4a4-outils.spec.js:159:3 › UI-4A4 — Outils, troisième case de Rencontrer › la pastille de filtres reste alimentée par le moteur historique
+[1A[2K[929/1103] [local] › tests/e2e/ui-v4b-fiche.spec.js:169:1 › URL normale : la hiérarchie cible, sans rien perdre de la fiche historique
+[1A[2K[930/1103] [local] › tests/e2e/ui-v4a5-filtres.spec.js:214:3 › UI-4A5 — « Filtre », troisième vue de Rencontrer › « Où ? » : la distance écrit irlDistanceFilter, « Modifier » ouvre le sélecteur de ville
+[1A[2K[931/1103] [local] › tests/e2e/ui-v4a4-outils.spec.js:178:3 › UI-4A4 — Outils, troisième case de Rencontrer › aucune demande de position n'est provoquée par le panneau
+[1A[2K[932/1103] [local] › tests/e2e/ui-v4b-fiche.spec.js:236:1 › une seule action primaire, et aucune écriture avant le geste
+[1A[2K[933/1103] [local] › tests/e2e/ui-v4a5-filtres.spec.js:239:3 › UI-4A5 — « Filtre », troisième vue de Rencontrer › « Quelles passions ? » : Toutes / Mes passions, et les bulles restent le moteur
+[1A[2K[934/1103] [local] › tests/e2e/ui-v4a4-outils.spec.js:188:3 › UI-4A4 — Outils, troisième case de Rencontrer › kill switch local au boot : deux cases, écran d'avant rendu
+[1A[2K[935/1103] [local] › tests/e2e/ui-v4b-fiche.spec.js:286:1 › complet : le libellé annonce la liste d'attente, le moteur l'applique
+[1A[2K[936/1103] [local] › tests/e2e/ui-v4a5-filtres.spec.js:287:3 › UI-4A5 — « Filtre », troisième vue de Rencontrer › « Horaire » : Matin / Après-midi / Soir écrivent la plage du moteur
+[1A[2K[937/1103] [local] › tests/e2e/ui-v4a4-outils.spec.js:207:3 › UI-4A4 — Outils, troisième case de Rencontrer › kill switch mémoire en cours de session : retour sans rechargement
+[1A[2K[938/1103] [local] › tests/e2e/ui-v4b-fiche.spec.js:304:1 › annulé et terminé : aucun CTA trompeur
+[1A[2K[939/1103] [local] › tests/e2e/ui-v4a5-filtres.spec.js:310:3 › UI-4A5 — « Filtre », troisième vue de Rencontrer › les filtres se COMBINENT, et le nombre annoncé suit à chaque geste
+[1A[2K[940/1103] [local] › tests/e2e/ui-v4a4-outils.spec.js:224:5 › UI-4A4 — Outils, troisième case de Rencontrer › mobile 320 px : aucun débordement, cibles ≥ 44 px
+[1A[2K[941/1103] [local] › tests/e2e/ui-v4b-fiche.spec.js:320:1 › démonstration : une activité en mémoire, zéro donnée persistée
+[1A[2K[942/1103] [local] › tests/e2e/ui-v4a5-filtres.spec.js:338:3 › UI-4A5 — « Filtre », troisième vue de Rencontrer › « Mes événements » et « Mes rencontres » pilotent irlFilters
+[1A[2K[943/1103] [local] › tests/e2e/ui-v4a4-outils.spec.js:224:5 › UI-4A4 — Outils, troisième case de Rencontrer › mobile 390 px : aucun débordement, cibles ≥ 44 px
+[1A[2K[944/1103] [local] › tests/e2e/ui-v4b-fiche.spec.js:366:1 › depuis le Feed : « Voir l'activité » mène à la fiche V2, et le retour rend le Feed
+[1A[2K[945/1103] [local] › tests/e2e/ui-v4a4-outils.spec.js:224:5 › UI-4A4 — Outils, troisième case de Rencontrer › mobile 430 px : aucun débordement, cibles ≥ 44 px
+[1A[2K[946/1103] [local] › tests/e2e/ui-v4a5-filtres.spec.js:366:3 › UI-4A5 — « Filtre », troisième vue de Rencontrer › « Choisir une date » déplie le vrai calendrier, et le referme au second tap
+[1A[2K[947/1103] [local] › tests/e2e/ui-v4b-fiche.spec.js:448:1 › kill switch local : la fiche historique, même sous l'ancien lien d'aperçu
+[1A[2K[948/1103] [local] › tests/e2e/ui-v5-bobines.spec.js:92:3 › UI-5 — Bobines connectées au réel › URL normale : les quatre actions de la direction, dans l'ordre
+[1A[2K[949/1103] [local] › tests/e2e/ui-v4b-fiche.spec.js:458:1 › coupure en cours de session : retour intégral à la fiche historique
+[1A[2K[950/1103] [local] › tests/e2e/ui-v4a5-filtres.spec.js:407:3 › UI-4A5 — « Filtre », troisième vue de Rencontrer › cocher une case de « Quand ? » n'écrit rien sur la ligne du calendrier
+[1A[2K[951/1103] [local] › tests/e2e/ui-v5-bobines.spec.js:121:3 › UI-5 — Bobines connectées au réel › bobine reliée à une activité : le seul lien « Voir l'activité »
+[1A[2K[952/1103] [local] › tests/e2e/ui-v4b-fiche.spec.js:476:1 › clavier : l'action est atteignable, Escape ferme la fiche
+[1A[2K[953/1103] [local] › tests/e2e/ui-v4a5-filtres.spec.js:428:3 › UI-4A5 — « Filtre », troisième vue de Rencontrer › le bouton violet reste au-dessus de la barre d'onglets, page en haut comme en bas
+[1A[2K[954/1103] [local] › tests/e2e/ui-v5-bobines.spec.js:138:3 › UI-5 — Bobines connectées au réel › une bobine sans Passio reconnue garde sa mise en page d'avant
+[1A[2K[955/1103] [local] › tests/e2e/ui-v4b-fiche.spec.js:488:1 › l'action « Je participe » respecte le contraste AA (4,5:1)
+[1A[2K[956/1103] [local] › tests/e2e/ui-v4a5-filtres.spec.js:494:3 › UI-4A5 — « Filtre », troisième vue de Rencontrer › le pied ramène au résultat, et « Tout effacer » remet à zéro
+[1A[2K[957/1103] [local] › tests/e2e/ui-v5-bobines.spec.js:165:3 › UI-5 — Bobines connectées au réel › « Ça m'intéresse » : signal réel, persisté, réversible, et il pèse
+[1A[2K[958/1103] [local] › tests/e2e/ui-v4b-fiche.spec.js:507:3 › aucun débordement et cibles ≥ 44 px en 320 px
+[1A[2K[959/1103] [local] › tests/e2e/ui-v4a5-filtres.spec.js:520:3 › UI-4A5 — « Filtre », troisième vue de Rencontrer › l'état sélectionné est restauré en revenant sur la page
+[1A[2K[960/1103] [local] › tests/e2e/ui-v5-bobines.spec.js:197:3 › UI-5 — Bobines connectées au réel › le signal survit à un rechargement
+[1A[2K[961/1103] [local] › tests/e2e/ui-v4b-fiche.spec.js:507:3 › aucun débordement et cibles ≥ 44 px en 390 px
+[1A[2K[962/1103] [local] › tests/e2e/ui-v4a5-filtres.spec.js:543:3 › UI-4A5 — « Filtre », troisième vue de Rencontrer › trois cases exclusives : une seule sélectionnée à la fois
+[1A[2K[963/1103] [local] › tests/e2e/ui-v4b-fiche.spec.js:507:3 › aucun débordement et cibles ≥ 44 px en 430 px
+[1A[2K[964/1103] [local] › tests/e2e/ui-v4a5-filtres.spec.js:584:3 › UI-4A5 — « Filtre », troisième vue de Rencontrer › toutes les cibles tactiles de la page font au moins 44 px
+[1A[2K[965/1103] [local] › tests/e2e/ui-v5-bobines.spec.js:208:3 › UI-5 — Bobines connectées au réel › les trois sorties appellent les moteurs d'UI-3A, viewer fermé d'abord
+[1A[2K[966/1103] [local] › tests/e2e/ui-v6-composer.spec.js:61:3 › UI-6 — composer de publication › URL normale : plus d'onglets de format, et l'ordre du §9
+[1A[2K[967/1103] [local] › tests/e2e/ui-v4a5-filtres.spec.js:596:3 › UI-4A5 — « Filtre », troisième vue de Rencontrer › depuis la vue Carte, Filtre reprend l'écran (la carte s'efface)
+[1A[2K[968/1103] [local] › tests/e2e/ui-v5-bobines.spec.js:244:3 › UI-5 — Bobines connectées au réel › « Voir l'activité » passe par openActivity d'UI-3B, viewer fermé
+[1A[2K[969/1103] [local] › tests/e2e/ui-v6-composer.spec.js:122:3 › UI-6 — composer de publication › « Publier en tant que … » a disparu, moteur d'expéditeur intact
+[1A[2K[970/1103] [local] › tests/e2e/ui-v4a5-filtres.spec.js:610:3 › UI-4A5 — « Filtre », troisième vue de Rencontrer › quitter l'écran referme la vue : on revient sur la liste
+[1A[2K[971/1103] [local] › tests/e2e/ui-v5-bobines.spec.js:261:3 › UI-5 — Bobines connectées au réel › « À vivre près de moi » ne demande jamais la position
+[1A[2K[972/1103] [local] › tests/e2e/ui-v6-composer.spec.js:151:3 › UI-6 — composer de publication › le libellé ne promet plus de points
+[1A[2K[973/1103] [local] › tests/e2e/ui-v5-bobines.spec.js:275:3 › UI-5 — Bobines connectées au réel › kill switch local au boot : viewer historique, rien du lot
+[1A[2K[974/1103] [local] › tests/e2e/ui-v4a5-filtres.spec.js:628:3 › UI-4A5 — « Filtre », troisième vue de Rencontrer › kill switch local : l'écran d'avant, à la lettre
+[1A[2K[975/1103] [local] › tests/e2e/ui-v6-composer.spec.js:159:3 › UI-6 — composer de publication › publication TEXTE : elle part, et elle arrive dans le fil
+[1A[2K[976/1103] [local] › tests/e2e/ui-v5-bobines.spec.js:303:3 › UI-5 — Bobines connectées au réel › kill switch mémoire en cours de session : retour sans rechargement
+[1A[2K[977/1103] [local] › tests/e2e/ui-v4a5-filtres.spec.js:659:3 › UI-4A5 — « Filtre », troisième vue de Rencontrer › cohabitation avec la vue Carte : chacun son ancrage, aucun va-et-vient
+[1A[2K[978/1103] [local] › tests/e2e/ui-v6-composer.spec.js:174:3 › UI-6 — composer de publication › publication PHOTO : la photo n'est JAMAIS perdue en silence
+[1A[2K[979/1103] [local] › tests/e2e/ui-v5-bobines.spec.js:319:3 › UI-5 — Bobines connectées au réel › la décoration survit à une réouverture du viewer
+[1A[2K[980/1103] [local] › tests/e2e/ui-v4a5-filtres.spec.js:710:3 › UI-4A5 — « Filtre », troisième vue de Rencontrer › coupure à chaud : tout est rendu, sans rechargement
+[1A[2K[981/1103] [local] › tests/e2e/ui-v6-composer.spec.js:208:3 › UI-6 — composer de publication › « Modifier » révèle le choix de Passio, qui reste la source lue
+[1A[2K[982/1103] [local] › tests/e2e/ui-v5-bobines.spec.js:329:3 › UI-5 — Bobines connectées au réel › contenu de démonstration : des bobines sont reliées à une activité
+[1A[2K[983/1103] [local] › tests/e2e/ui-v4a5-filtres.spec.js:734:3 › UI-4A5 — « Filtre », troisième vue de Rencontrer › coupure : la feuille historique retrouve son volet Date ouvert
+[1A[2K[984/1103] [local] › tests/e2e/ui-v6-composer.spec.js:228:3 › UI-6 — composer de publication › §11 : les mécaniques économiques ont quitté le cœur, moteur compris
+[1A[2K[985/1103] [local] › tests/e2e/ui-v5-bobines.spec.js:358:5 › UI-5 — Bobines connectées au réel › mobile 320 px : aucun débordement, cibles ≥ 44 px
+[1A[2K[986/1103] [local] › tests/e2e/ui-v6-composer.spec.js:246:3 › UI-6 — composer de publication › kill switch local au boot : Studio historique strictement rendu
+[1A[2K[987/1103] [local] › tests/e2e/ui-v4a5-filtres.spec.js:752:5 › UI-4A5 — « Filtre », troisième vue de Rencontrer › mobile 320 px : aucun débordement horizontal, bouton accessible
+[1A[2K[988/1103] [local] › tests/e2e/ui-v5-bobines.spec.js:358:5 › UI-5 — Bobines connectées au réel › mobile 390 px : aucun débordement, cibles ≥ 44 px
+[1A[2K[989/1103] [local] › tests/e2e/ui-v6-composer.spec.js:279:3 › UI-6 — composer de publication › kill switch mémoire : les nœuds retrouvent leur place d'origine
+[1A[2K[990/1103] [local] › tests/e2e/ui-v4a5-filtres.spec.js:752:5 › UI-4A5 — « Filtre », troisième vue de Rencontrer › mobile 390 px : aucun débordement horizontal, bouton accessible
+[1A[2K[991/1103] [local] › tests/e2e/ui-v5-bobines.spec.js:358:5 › UI-5 — Bobines connectées au réel › mobile 430 px : aucun débordement, cibles ≥ 44 px
+[1A[2K[992/1103] [local] › tests/e2e/ui-v6-composer.spec.js:298:5 › UI-6 — composer de publication › mobile 320 px : aucun débordement, cibles ≥ 44 px
+[1A[2K[993/1103] [local] › tests/e2e/ui-v4a5-filtres.spec.js:752:5 › UI-4A5 — « Filtre », troisième vue de Rencontrer › mobile 430 px : aucun débordement horizontal, bouton accessible
+[1A[2K[994/1103] [local] › tests/e2e/ui-v6a-boucle.spec.js:23:3 › UI-6A — pas de boucle de repeinte › écran Messages ouvert : la tête cesse d'être réécrite
+[1A[2K[995/1103] [local] › tests/e2e/ui-v6-composer.spec.js:298:5 › UI-6 — composer de publication › mobile 390 px : aucun débordement, cibles ≥ 44 px
+[1A[2K[996/1103] [local] › tests/e2e/ui-v6a-messages.spec.js:69:3 › UI-6A — inbox Messages › URL normale : « Messages », un « + », la recherche dessous
+[1A[2K[997/1103] [local] › tests/e2e/ui-v6a-boucle.spec.js:43:3 › UI-6A — pas de boucle de repeinte › plus de ligne d'identité en tête de l'inbox
+[1A[2K[998/1103] [local] › tests/e2e/ui-v6-composer.spec.js:298:5 › UI-6 — composer de publication › mobile 430 px : aucun débordement, cibles ≥ 44 px
+[1A[2K[999/1103] [local] › tests/e2e/ui-v6a-messages.spec.js:96:3 › UI-6A — inbox Messages › le « + » regroupe les deux gestes et appelle les moteurs existants
+[1A[2K[1000/1103] [local] › tests/e2e/ui-v6a-boucle.spec.js:55:3 › UI-6A — pas de boucle de repeinte › l'inbox reste décorée : la tête et les Passio des cartes sont là
+[1A[2K[1001/1103] [local] › tests/e2e/ui-v6b-profil.spec.js:89:3 › UI-6B — Profil et multi-profils › URL normale : le crayon au coin haut droit, « posts » hors du premier niveau
+[1A[2K[1002/1103] [local] › tests/e2e/ui-v6a-messages.spec.js:121:3 › UI-6A — inbox Messages › le menu se ferme à Escape et au clic extérieur
+[1A[2K[1003/1103] [local] › tests/e2e/ui-v6c-proposer-irl.spec.js:69:3 › UI-6C — Proposer un IRL depuis une conversation › 1:1 : l'entrée est en tête du menu du composer
+[1A[2K[1004/1103] [local] › tests/e2e/ui-v6b-profil.spec.js:153:3 › UI-6B — Profil et multi-profils › le crayon ouvre le même menu d'édition (rien n'est perdu)
+[1A[2K[1005/1103] [local] › tests/e2e/ui-v6a-messages.spec.js:138:3 › UI-6A — inbox Messages › « Passio · aperçu » sur une conversation 1:1, rien sur un groupe
+[1A[2K[1006/1103] [local] › tests/e2e/ui-v6c-proposer-irl.spec.js:86:3 › UI-6C — Proposer un IRL depuis une conversation › groupe : aucune entrée — proposer un IRL n'y a pas le même sens
+[1A[2K[1007/1103] [local] › tests/e2e/ui-v6b-profil.spec.js:178:3 › UI-6B — Profil et multi-profils › le menu ⋯ ne porte plus d'emoji : le texte seul, sans colonne d'icônes
+[1A[2K[1008/1103] [local] › tests/e2e/ui-v6a-messages.spec.js:151:3 › UI-6A — inbox Messages › LE contrôle : la ligne de Passio survit à un nouveau rendu
+[1A[2K[1009/1103] [local] › tests/e2e/ui-v6c-proposer-irl.spec.js:95:3 › UI-6C — Proposer un IRL depuis une conversation › elle ouvre le formulaire existant, Passio et titre suggérés
+[1A[2K[1010/1103] [local] › tests/e2e/ui-v6b-profil.spec.js:203:3 › UI-6B — Profil et multi-profils › « Mes passions » : une identité Actif, l'autre Activer
+[1A[2K[1011/1103] [local] › tests/e2e/ui-v6a-messages.spec.js:170:3 › UI-6A — inbox Messages › la recherche déplacée alimente toujours le même moteur
+[1A[2K[1012/1103] [local] › tests/e2e/ui-v6c-proposer-irl.spec.js:108:3 › UI-6C — Proposer un IRL depuis une conversation › §10 mot pour mot : rien n'est fait dans le dos de l'utilisateur
+[1A[2K[1013/1103] [local] › tests/e2e/ui-v6b-profil.spec.js:214:3 › UI-6B — Profil et multi-profils › LE contrôle : « Activer » change l'identité active, et le confirme
+[1A[2K[1014/1103] [local] › tests/e2e/ui-v6a-messages.spec.js:183:3 › UI-6A — inbox Messages › kill switch local au boot : inbox historique strictement rendue
+[1A[2K[1015/1103] [local] › tests/e2e/ui-v6c-proposer-irl.spec.js:136:3 › UI-6C — Proposer un IRL depuis une conversation › le titre suggéré ne nomme personne
+[1A[2K[1016/1103] [local] › tests/e2e/ui-v6b-profil.spec.js:235:3 › UI-6B — Profil et multi-profils › activer ne bascule PAS le filtre de contenu de la carte
+[1A[2K[1017/1103] [local] › tests/e2e/ui-v6a-messages.spec.js:200:3 › UI-6A — inbox Messages › kill switch mémoire : la recherche retrouve sa place, rien ne subsiste
+[1A[2K[1018/1103] [local] › tests/e2e/ui-v6c-proposer-irl.spec.js:151:3 › UI-6C — Proposer un IRL depuis une conversation › un titre déjà saisi n'est jamais écrasé
+[1A[2K[1019/1103] [local] › tests/e2e/ui-v6b-profil.spec.js:247:3 › UI-6B — Profil et multi-profils › les boutons survivent au rendu déclenché par leur propre clic
+[1A[2K[1020/1103] [local] › tests/e2e/ui-v6a-messages.spec.js:221:5 › UI-6A — inbox Messages › mobile 320 px : aucun débordement, cibles ≥ 44 px
+[1A[2K[1021/1103] [local] › tests/e2e/ui-v6c-proposer-irl.spec.js:164:3 › UI-6C — Proposer un IRL depuis une conversation › kill switch local au boot : menu historique, à six entrées près
+[1A[2K[1022/1103] [local] › tests/e2e/ui-v6a-messages.spec.js:221:5 › UI-6A — inbox Messages › mobile 390 px : aucun débordement, cibles ≥ 44 px
+[1A[2K[1023/1103] [local] › tests/e2e/ui-v6b-profil.spec.js:264:3 › UI-6B — Profil et multi-profils › kill switch local au boot : profil historique strictement rendu
+[1A[2K[1024/1103] [local] › tests/e2e/ui-v6c-proposer-irl.spec.js:177:3 › UI-6C — Proposer un IRL depuis une conversation › kill switch mémoire : l'entrée disparaît, le menu reste entier
+[1A[2K[1025/1103] [local] › tests/e2e/ui-v6a-messages.spec.js:221:5 › UI-6A — inbox Messages › mobile 430 px : aucun débordement, cibles ≥ 44 px
+[1A[2K[1026/1103] [local] › tests/e2e/ui-v6b-profil.spec.js:294:3 › UI-6B — Profil et multi-profils › kill switch mémoire : tout est retiré, le titre reprend ses mots
+[1A[2K[1027/1103] [local] › tests/e2e/ui-v7-lot.spec.js:63:3 › UI-7 §1 — vocabulaire visible › les libellés changent, les identifiants ne bougent pas
+[1A[2K[1028/1103] [local] › tests/e2e/ui-v7-parcours.spec.js:60:3 › UI-7 — le parcours complet › ① onboarding → Feed : le premier écran n'est jamais vide
+[1A[2K[1029/1103] [local] › tests/e2e/ui-v6b-profil.spec.js:320:5 › UI-6B — Profil et multi-profils › mobile 320 px : aucun débordement, cibles ≥ 44 px
+[1A[2K[1030/1103] [local] › tests/e2e/ui-v7-lot.spec.js:117:3 › UI-7 §1 — vocabulaire visible › Rencontrer : « Filtre », « Choisir une ville », « Mes inscriptions »
+[1A[2K[1031/1103] [local] › tests/e2e/ui-v7-parcours.spec.js:87:3 › UI-7 — le parcours complet › ② Feed → profil → message : la relation est atteignable
+[1A[2K[1032/1103] [local] › tests/e2e/ui-v6b-profil.spec.js:320:5 › UI-6B — Profil et multi-profils › mobile 390 px : aucun débordement, cibles ≥ 44 px
+[1A[2K[1033/1103] [local] › tests/e2e/ui-v7-lot.spec.js:152:3 › UI-7 §2 — la carte d'activité dit ce qu'il faut › « Filtre » n'a pas l'allure des deux onglets
+[1A[2K[1034/1103] [local] › tests/e2e/ui-v7-parcours.spec.js:110:3 › UI-7 — le parcours complet › ③ Feed → IRL : la passerelle mène à une expérience
+[1A[2K[1035/1103] [local] › tests/e2e/ui-v6b-profil.spec.js:320:5 › UI-6B — Profil et multi-profils › mobile 430 px : aucun débordement, cibles ≥ 44 px
+[1A[2K[1036/1103] [local] › tests/e2e/ui-v7-lot.spec.js:176:3 › UI-7 §2 — la carte d'activité dit ce qu'il faut › participants et places sont calculés, la passion est abrégée sans être modifiée
+[1A[2K[1037/1103] [local] › tests/e2e/ui-v8-passions.spec.js:96:3 › UI-8 — un profil personnel, plusieurs passions › le profil personnel garde tout
+[1A[2K[1038/1103] [local] › tests/e2e/ui-v7-parcours.spec.js:141:3 › UI-7 — le parcours complet › ④ Bobine → IRL : les sorties ferment le lecteur d'abord
+[1A[2K[1039/1103] [local] › tests/e2e/ui-v7-lot.spec.js:206:3 › UI-7 §2 — la carte d'activité dit ce qu'il faut › « Détails », puis « Je viens » → « Inscrit ✓ »
+[1A[2K[1040/1103] [local] › tests/e2e/ui-v8-passions.spec.js:123:3 › UI-8 — un profil personnel, plusieurs passions › le choix de la passion d'écriture vit dans le STUDIO, et il persiste
+[1A[2K[1041/1103] [local] › tests/e2e/ui-v7-parcours.spec.js:162:3 › UI-7 — le parcours complet › ⑤ conversation → IRL : l'entrée est là, et elle ne fait rien d'autre
+[1A[2K[1042/1103] [local] › tests/e2e/ui-v7-lot.spec.js:227:3 › UI-7 §2 — la carte d'activité dit ce qu'il faut › ouvrir Rencontrer ne demande JAMAIS la position
+[1A[2K[1043/1103] [local] › tests/e2e/ui-v8-passions.spec.js:144:3 › UI-8 — un profil personnel, plusieurs passions › les cartes ne portent plus la multisélection ni « Réinitialiser »
+[1A[2K[1044/1103] [local] › tests/e2e/ui-v7-parcours.spec.js:188:3 › UI-7 — le parcours complet › ⑥ RSVP → discussion : participer ouvre un lieu où parler
+[1A[2K[1045/1103] [local] › tests/e2e/ui-v7-lot.spec.js:245:5 › UI-7 §3 — le haut du Fil est compact › 320 px : aucun débordement horizontal, aucune intention tronquée
+[1A[2K[1046/1103] [local] › tests/e2e/ui-v8-passions.spec.js:183:3 › UI-8 — un profil personnel, plusieurs passions › changer de passion dans le Studio ne distingue AUCUNE carte
+[1A[2K[1047/1103] [local] › tests/e2e/ui-v7-parcours.spec.js:211:3 › UI-7 — le parcours complet › ⑦ IRL → souvenir → Feed : l'expérience revient dans le fil
+[1A[2K[1048/1103] [local] › tests/e2e/ui-v7-lot.spec.js:245:5 › UI-7 §3 — le haut du Fil est compact › 390 px : aucun débordement horizontal, aucune intention tronquée
+[1A[2K[1049/1103] [local] › tests/e2e/ui-v8-passions.spec.js:209:3 › UI-8 — un profil personnel, plusieurs passions › le reste de la carte ouvre l'édition existante de la passion
+[1A[2K[1050/1103] [local] › tests/e2e/ui-v7-parcours.spec.js:242:3 › UI-7 — le parcours complet › finition : les états vides disent quoi faire, jamais rien
+[1A[2K[1051/1103] [local] › tests/e2e/ui-v7-lot.spec.js:245:5 › UI-7 §3 — le haut du Fil est compact › 430 px : aucun débordement horizontal, aucune intention tronquée
+[1A[2K[1052/1103] [local] › tests/e2e/ui-v8-passions.spec.js:222:3 › UI-8 — un profil personnel, plusieurs passions › « Publications » : filtre MULTI-SÉLECTION, rien de coché = tout
+[1A[2K[1053/1103] [local] › tests/e2e/ui-v7-parcours.spec.js:259:5 › UI-7 — le parcours complet › revue mobile 320 px : les cinq destinations tiennent dans le cadre
+[1A[2K[1054/1103] [local] › tests/e2e/ui-v7-lot.spec.js:271:3 › UI-7 §3 — le haut du Fil est compact › les passions restent des bulles, plus petites que les stories d'origine
+[1A[2K[1055/1103] [local] › tests/e2e/ui-v8-passions.spec.js:268:3 › UI-8 — un profil personnel, plusieurs passions › une publication qui n'a QU'un profileId reste atteignable
+[1A[2K[1056/1103] [local] › tests/e2e/ui-v7-parcours.spec.js:259:5 › UI-7 — le parcours complet › revue mobile 390 px : les cinq destinations tiennent dans le cadre
+[1A[2K[1057/1103] [local] › tests/e2e/ui-v7-lot.spec.js:303:3 › UI-7 §3 — le haut du Fil est compact › couper le lot rend aux bulles leur taille d'origine
+[1A[2K[1058/1103] [local] › tests/e2e/ui-v8-passions.spec.js:285:3 › UI-8 — un profil personnel, plusieurs passions › migration : une seule ancienne valeur valide est reprise
+[1A[2K[1059/1103] [local] › tests/e2e/ui-v7-parcours.spec.js:259:5 › UI-7 — le parcours complet › revue mobile 430 px : les cinq destinations tiennent dans le cadre
+[1A[2K[1060/1103] [local] › tests/e2e/ui-v7-lot.spec.js:324:3 › UI-7 §3 — le haut du Fil est compact › les passions restent affichées quand on descend dans le fil
+[1A[2K[1061/1103] [local] › tests/e2e/ui-v8-passions.spec.js:300:3 › UI-8 — un profil personnel, plusieurs passions › migration : zéro ou plusieurs anciennes valeurs → « Toutes »
+[1A[2K[1062/1103] [local] › tests/e2e/user-passions-miroir.spec.js:82:3 › miroir user_passions › la table absente désarme le miroir, une seule fois, sans bruit
+[1A[2K[1063/1103] [local] › tests/e2e/ui-v7-lot.spec.js:358:3 › UI-7 §4 — Messages quitte le bandeau supérieur › plus d'icône Messages VISIBLE en haut, mais Messages reste atteignable
+[1A[2K[1064/1103] [local] › tests/e2e/ui-v8-passions.spec.js:316:3 › UI-8 — un profil personnel, plusieurs passions › « Activités » porte le même filtre, servi par les événements existants
+[1A[2K[1065/1103] [local] › tests/e2e/user-passions-miroir.spec.js:104:3 › miroir user_passions › un identifiant hors référentiel serveur n'est jamais envoyé
+[1A[2K[1066/1103] [local] › tests/e2e/ui-v7-lot.spec.js:416:3 › UI-7 §6 — les onglets nommés au Profil › Publications · Activité, et rien n'est perdu
+[1A[2K[1067/1103] [local] › tests/e2e/ui-v8-passions.spec.js:344:3 › UI-8 — un profil personnel, plusieurs passions › le Studio annonce la passion de publication et prend l'active par défaut
+[1A[2K[1068/1103] [local] › tests/e2e/user-passions-miroir.spec.js:124:3 › miroir user_passions › l'archivage voyage, et la position aussi
+[1A[2K[1069/1103] [local] › tests/e2e/ui-v7-lot.spec.js:488:3 › UI-7 §6 — les onglets nommés au Profil › l'état vide de Publications reste compact et guidé
+[1A[2K[1070/1103] [local] › tests/e2e/user-passions-miroir.spec.js:145:3 › miroir user_passions › ce qui a disparu localement est retiré du miroir
+[1A[2K[1071/1103] [local] › tests/e2e/ui-v8-passions.spec.js:377:3 › UI-8 — un profil personnel, plusieurs passions › le Studio ne propose pas de publier dans une passion archivée
+[1A[2K[1072/1103] [local] › tests/e2e/ui-v7-lot.spec.js:517:3 › UI-7 §6 — les onglets nommés au Profil › « Activités » montre ce que j'organise et ce que j'ai rejoint
+[1A[2K[1073/1103] [local] › tests/e2e/user-passions-miroir.spec.js:167:3 › miroir user_passions › aucune écriture ne part sans compte authentifié
+[1A[2K[1074/1103] [local] › tests/e2e/ui-v8-passions.spec.js:391:3 › UI-8 — un profil personnel, plusieurs passions › archiver ne supprime AUCUN contenu, et la restauration remet tout
+[1A[2K[1075/1103] [local] › tests/e2e/ui-v7-lot.spec.js:551:3 › UI-7 §8 — après l'enregistrement d'une bobine › aperçu, « Recommencer » et « Continuer », puis publication
+[1A[2K[1076/1103] [local] › tests/e2e/version-skew.spec.js:37:3 › Version skew — cohérence des versions servies › le hash de chaque asset vient RÉELLEMENT de son contenu
+[1A[2K[local] › tests/e2e/version-skew.spec.js:37:3 › Version skew — cohérence des versions servies › le hash de chaque asset vient RÉELLEMENT de son contenu
+
+
+[1A[2K[1077/1103] [local] › tests/e2e/version-skew.spec.js:57:3 › Version skew — cohérence des versions servies › deux contenus différents produisent deux URL différentes
+[1A[2K[1078/1103] [local] › tests/e2e/version-skew.spec.js:67:3 › Version skew — cohérence des versions servies › index.html n'est jamais mis en cache, les assets hachés le sont
+[1A[2K[1079/1103] [local] › tests/e2e/version-skew.spec.js:85:3 › Version skew — cohérence des versions servies › le service worker sert index.html par le RÉSEAU d'abord
+[1A[2K[1080/1103] [local] › tests/e2e/version-skew.spec.js:94:3 › Version skew — cohérence des versions servies › le cache du service worker change à chaque build
+[1A[2K[1081/1103] [local] › tests/e2e/xss-notifs-messages.spec.js:45:3 › XSS stockée — notifications distantes › le texte d'une notification distante ne s'exécute pas, et reste lisible
+[1A[2K[1082/1103] [local] › tests/e2e/ui-v8-passions.spec.js:437:3 › UI-8 — un profil personnel, plusieurs passions › archiver la passion du Studio est possible : elle bascule d'elle-même
+[1A[2K[1083/1103] [local] › tests/e2e/ui-v7-lot.spec.js:612:3 › UI-7 §8 — après l'enregistrement d'une bobine › aucune activité liée = aucun eventId inventé
+[1A[2K[1084/1103] [local] › tests/e2e/xss-notifs-messages.spec.js:69:3 › XSS stockée — notifications distantes › un nom déjà échappé par l'émetteur n'est pas ré-échappé à l'affichage
+[1A[2K[1085/1103] [local] › tests/e2e/ui-v8-passions.spec.js:458:3 › UI-8 — un profil personnel, plusieurs passions › archiver la DERNIÈRE passion est refusé
+[1A[2K[1086/1103] [local] › tests/e2e/ui-v7-lot.spec.js:630:3 › UI-7 — le kill switch rend l'interface d'avant › localStorage.passio_ui_7 = « 0 » : tout est restitué, sans rechargement
+[1A[2K[1087/1103] [local] › tests/e2e/xss-notifs-messages.spec.js:88:3 › XSS stockée — notifications distantes › une notification LOCALE garde son gras : le rendu HTML voulu n'est pas cassé
+[1A[2K[1088/1103] [local] › tests/e2e/ui-v8-passions.spec.js:478:3 › UI-8 — un profil personnel, plusieurs passions › le menu d'une passion propose l'archivage, plus la suppression
+[1A[2K[1089/1103] [local] › tests/e2e/ui-v7-bobine-camera.spec.js:22:1 › maintenir puis relâcher mène à l'aperçu et à ses deux issues
+[1A[2K[1090/1103] [local] › tests/e2e/xss-notifs-messages.spec.js:118:3 › XSS stockée — fil de conversation › la clé d'une réaction de message ne s'exécute pas
+[1A[2K[1091/1103] [local] › tests/e2e/ui-v8-passions.spec.js:494:3 › UI-8 — un profil personnel, plusieurs passions › la modale d'édition ne propose plus la suppression destructrice
+[1A[2K[1092/1103] [local] › tests/e2e/xss-notifs-messages.spec.js:131:3 › XSS stockée — fil de conversation › un message « position » ne peut pas porter un lien javascript:
+[1A[2K[1093/1103] [local] › tests/e2e/ui-v8-passions.spec.js:508:3 › UI-8 — un profil personnel, plusieurs passions › archiver décroche le filtre du Fil, qui serait resté sans commande
+[1A[2K[1094/1103] [local] › tests/e2e/xss-notifs-messages.spec.js:147:3 › XSS stockée — fil de conversation › une position légitime reste un vrai lien cliquable
+[1A[2K[1095/1103] [local] › tests/e2e/ui-v8-passions.spec.js:536:3 › UI-8 — un profil personnel, plusieurs passions › une passion archivée est publiée MARQUÉE, et retirée à l'affichage
+[1A[2K[1096/1103] [local] › tests/e2e/ui-v8-passions.spec.js:564:3 › UI-8 — un profil personnel, plusieurs passions › recréer une passion archivée la RESTAURE au lieu d'en faire un doublon
+[1A[2K[1097/1103] [local] › tests/e2e/ui-v8-passions.spec.js:595:3 › UI-8 — un profil personnel, plusieurs passions › un message garde le pseudo principal comme identité
+[1A[2K[1098/1103] [local] › tests/e2e/ui-v8-passions.spec.js:616:3 › UI-8 — un profil personnel, plusieurs passions › kill switch : l'écran historique revient, multisélection comprise
+[1A[2K[1099/1103] [local] › tests/e2e/ui-v8-passions.spec.js:632:3 › UI-8 — un profil personnel, plusieurs passions › kill switch : le composer et les Messages retrouvent leurs mots
+[1A[2K[1100/1103] [local] › tests/e2e/ui-v8-passions.spec.js:652:3 › UI-8 — un profil personnel, plusieurs passions › quota : archiver puis restaurer ne réclame jamais de paiement
+[1A[2K[1101/1103] [local] › tests/e2e/ui-v8-passions.spec.js:666:3 › UI-8 — un profil personnel, plusieurs passions › kill switch par window : le menu redonne la suppression
+[1A[2K[1102/1103] [local] › tests/e2e/ui-v8-passions.spec.js:678:5 › UI-8 — un profil personnel, plusieurs passions › 320 px : aucun débordement horizontal
+[1A[2K[1103/1103] [local] › tests/e2e/ui-v8-passions.spec.js:678:5 › UI-8 — un profil personnel, plusieurs passions › 390 px : aucun débordement horizontal
+[1A[2K[1104/1103] [local] › tests/e2e/ui-v8-passions.spec.js:678:5 › UI-8 — un profil personnel, plusieurs passions › 430 px : aucun débordement horizontal
+[1A[2K  Slow test file: [local] › tests/e2e/first-run.spec.js (13.6m)
+  Slow test file: [local] › tests/e2e/passions-plates.spec.js (9.8m)
+  Slow test file: [local] › tests/e2e/profil-entete-passions.spec.js (8.8m)
+  Slow test file: [local] › tests/e2e/mes-passions-page.spec.js (7.8m)
+  Slow test file: [local] › tests/e2e/passions-archive-quota.spec.js (7.8m)
+  Consider running tests from slow files in parallel. See: https://playwright.dev/docs/test-parallel
+  1 failed
+    [local] › tests/e2e/irl.spec.js:354:3 › IRL — participation (RSVP, liste d'attente, check-in) › inscription et like ne recadrent PAS la carte 
+  8 skipped
+  1094 passed (1.6h)
