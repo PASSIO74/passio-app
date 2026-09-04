@@ -25,9 +25,11 @@ test.describe("ContextualTools — ouverture / fermeture", () => {
     // Ouverture par clic sur le déclencheur.
     await page.locator("#irlToolsBtn").click();
     await expect(root).not.toHaveAttribute("hidden", /.*/);
-    // §1 du lot UI-7 : le panneau s'intitule « Filtres » (et non plus
+    // §1 du lot UI-7 : le panneau s'intitule « Filtre » (et non plus
     // « Outils · IRL ») — le titre change, le panneau et ses handlers non.
-    await expect(page.locator("#ctxToolsTitle")).toHaveText("Filtres");
+    // ⚠️ AU SINGULIER depuis le 2026-09-04 : un seul mot pour la troisième case
+    // du commutateur, sa page, et ce dialogue de repli.
+    await expect(page.locator("#ctxToolsTitle")).toHaveText("Filtre");
     expect(await page.evaluate(() => ContextualTools.isOpen())).toBe(true);
 
     // Fermeture par le bouton ✕.
