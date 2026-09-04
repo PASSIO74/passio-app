@@ -173,6 +173,14 @@
   `ui-v4a4-outils` et `ui-v7-lot` posent au boot `passio_ui_4a5="0"` et gardent TOUTES
   leurs assertions ; la cohabitation est prouvée à part.
 
+  > **⚠️ CADUC EN PARTIE DEPUIS LE 2026-09-04.** La vue Filtre a été REFONDUE
+  > (quatre sections nommées, bouton violet FIXE, « Filtre » au singulier) :
+  > voir **`docs/lots-ui/20-PAGE-FILTRE-RENCONTRER-2026-09-04.md`**, qui est
+  > désormais la référence. Ce qui suit décrit l'état d'AVANT la refonte et
+  > reste ici pour l'histoire — deux choses seulement y survivent telles
+  > quelles : le repli fait **en JS et jamais en CSS**, et la sentinelle
+  > `window._irlFilterTab` NON VIDE rendue à `"date"` à la fermeture.
+
   **⚠️ LE PANNEAU FILTRES TIENT SUR UN ÉCRAN (2026-09-02), SANS NOUVEAU DRAPEAU.**
   Demande de Benjamin après essai réel : « repositionne les onglets dans la page
   filtre de Rencontrer, les onglets sont trop gros, mal ordonnés ; je voudrais

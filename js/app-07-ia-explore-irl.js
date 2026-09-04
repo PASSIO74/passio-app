@@ -2062,6 +2062,127 @@ function _syncIrlDistanceUI() {
   if (clear) clear.style.display = irlDistanceFilter ? "block" : "none";
 }
 
+// ═════════════════════════════════════════════════════════════════════════
+// PAGE « Filtre » DE « Rencontrer » (2026-09-04) — les commandes explicites.
+// ────────────────────────────────────────────────────────────────────────
+// La maquette validée du 2026-09-04 remplace les quatre « intentions »
+// (Tous · Cette semaine · Ma ville · Mes passions) par quatre sections nommées :
+// Quand ? · Où ? · Quelles passions ? · Horaire. Ces sections ont besoin de
+// commandes qui BASCULENT (un second tap retire le filtre) et de lecteurs
+// d'état pour savoir laquelle est cochée.
+//
+// ⚠️ AUCUN SECOND MOTEUR. Tout ce qui suit écrit dans les MÊMES variables que
+// le panneau historique (`irlDateFilters`, `irlDistanceFilter`, `irlTimeFilter`,
+// `irlPassionFilters`) et repasse par `renderIRL()`. Couper le lot UI-4A5 rend
+// la feuille d'avant, qui lit exactement le même état.
+// ═════════════════════════════════════════════════════════════════════════
+
+// « Ce week-end » : samedi 00:00 → dimanche 23:59.
+// ⚠️ UN DIMANCHE, LE WEEK-END EST CELUI QUI FINIT CE SOIR, pas celui d'après :
+// pointer six jours plus loin ferait dire « ce week-end » à un filtre qui masque
+// précisément les activités du jour même.
+function _irlWeekendRange() {
+  var now = new Date();
+  var j = now.getDay();                       // 0 = dimanche, 6 = samedi
+  var versSamedi = (j === 0) ? -1 : (6 - j);  // dimanche : la veille
+  var sam = new Date(now.getFullYear(), now.getMonth(), now.getDate() + versSamedi, 0, 0, 0, 0);
+  var dim = new Date(sam.getFullYear(), sam.getMonth(), sam.getDate() + 1, 23, 59, 59, 999);
+  return { start: sam.getTime(), end: dim.getTime() };
+}
+
+// Une case « Quand ? » est-elle cochée ? (lecture seule, pour l'affichage)
+function irlDateFilterActif(val) {
+  return !!(irlDateFilters && irlDateFilters.has(val));
+}
+
+// ── Distance : les paliers de la maquette (5 / 10 / 25 / 50 km) ─────────
+// Même variable que le curseur historique : `irlDistanceFilter`, en km, en
+// chaîne. Un second tap sur le palier actif le retire — sans quoi une distance
+// choisie par erreur ne pourrait plus être annulée depuis cette page.
+function irlDistanceValue() { return irlDistanceFilter || ""; }
+
+function setIrlDistanceKm(km) {
+  var v = String(km == null ? "" : km);
+  irlDistanceFilter = (irlDistanceFilter === v) ? "" : v;
+  _syncIrlDistanceUI();
+  renderIRL();
+}
+
+// ── Horaire : Matin / Après-midi / Soir ───────────────────────
+// La clé « 6-12 » est celle que `_syncIrlTimeUI` pose déjà sur les pastilles
+// `[data-irltime]` du volet historique : une seule grammaire pour les deux.
+function irlTimePresetKey() {
+  if (!irlTimeFilter || irlTimeFilter.indexOf(" - ") < 0) return "";
+  var p = irlTimeFilter.split(" - ");
+  return (parseInt(p[0], 10) || 0) + "-" + (parseInt(p[1], 10) || 0);
+}
+
+function setIrlTimePreset(start, end) {
+  if (irlTimePresetKey() === start + "-" + end) { clearIrlTimeFilter(); return; }
+  // ⚠️ `irlSetQuick` ÉCRIT DANS DEUX <select> qu'il faut avoir peuplés : ils le
+  // sont par `_syncIrlTimeUI`, appelée à chaque rendu — mais pas encore si le
+  // tout premier geste de l'utilisateur est un tap sur « Matin ».
+  _syncIrlTimeUI();
+  irlSetQuick(start, end);
+}
+
+// ── Passions : « Toutes » / « Mes passions » ───────────────────
+// « Toutes » n'est PAS un filtre de plus : c'est l'absence de filtre, donc le
+// jeu vide. « Mes passions » pose exactement `_irlMyPassions()` — la même
+// liste que le Fil (passions VIVANTES, archives exclues).
+function irlPassionsMode() {
+  var set = irlPassionFilterSet();
+  if (!set.size) return "toutes";
+  var miennes = _irlMyPassions();
+  if (miennes.length && miennes.length === set.size
+    && miennes.every(function (p) { return set.has(p); })) return "miennes";
+  return "choix";
+}
+
+function setIrlPassionsToutes() {
+  irlPassionFilterSet().clear();
+  renderIRL();
+}
+
+function setIrlPassionsMiennes() {
+  var set = irlPassionFilterSet();
+  var deja = irlPassionsMode() === "miennes";
+  set.clear();
+  if (!deja) _irlMyPassions().forEach(function (p) { set.add(p); });
+  renderIRL();
+}
+
+// ── Où ? — le lieu de référence, en deux lignes ─────────────────
+// Même règle que `_irlReferenceLoc` : ville choisie > GPS > rien. La seconde
+// ligne dit D'OÙ vient le point, ce que « Annecy » tout seul ne dit pas.
+// ⚠️ Aucun de ces libellés ne part en télémétrie : la position précise de
+// l'utilisateur n'est jamais mesurée (cf. `js/telemetry.js`).
+function irlLieuReference() {
+  if (irlSelectedCity) return { nom: irlSelectedCity.name, sub: "Ville choisie" };
+  if (irlUserLocation) {
+    var el = document.getElementById("irlUserCityName");
+    var n = (el && el.textContent && el.textContent !== "…") ? el.textContent : "Ma position";
+    return { nom: n, sub: "Position actuelle" };
+  }
+  return { nom: "Choisir une ville", sub: "Aucune position" };
+}
+
+// Résumé lisible du filtre de date. UN SEUL constructeur : `_syncIrlDateBtn`
+// (feuille historique) et la ligne « Choisir une date » de la page Filtre
+// l'appellent tous les deux — deux copies auraient divergé au premier ajout.
+function irlDateResumeTexte() {
+  var active = !!(irlDateFilters && irlDateFilters.size);
+  if (!active) return "";
+  if (irlCustomDate && irlDateFilters.has("custom")) {
+    var f = function (ts) { return new Date(ts).toLocaleDateString("fr-FR", { day: "numeric", month: "short" }); };
+    var memeJour = new Date(irlCustomDate.start).toDateString() === new Date(irlCustomDate.end).toDateString();
+    return memeJour ? f(irlCustomDate.start) : f(irlCustomDate.start) + " → " + f(irlCustomDate.end);
+  }
+  var noms = { today: "Aujourd'hui", tomorrow: "Demain", week: "Cette semaine",
+               weekend: "Ce week-end", month: "Ce mois" };
+  return [...irlDateFilters].map(function (k) { return noms[k] || k; }).join(" · ");
+}
+
 // Pied de la feuille de filtres : le bouton principal annonce le résultat, et
 // « Réinitialiser » s'éteint quand il n'y a rien à réinitialiser (un bouton
 // toujours actif qui ne fait rien est un bouton qui ment).
@@ -2069,6 +2190,11 @@ function _syncIrlFiltersFooter(count) {
   var done = document.getElementById("irlFiltersDoneBtn");
   var reset = document.getElementById("irlFiltersResetBtn");
   var n = (typeof count === "number") ? count : null;
+  // ⚠️ POINT UNIQUE DE COMPTAGE. Le pied « Afficher N résultats » de la page
+  // Filtre (UI-4A5) LIT ce nombre au lieu de refiltrer de son côté : un second
+  // comptage divergerait le jour où `_filterIrlEvents` changerait, et personne
+  // ne le verrait — les deux nombres restant plausibles.
+  window._irlResultCount = n;
   if (done) {
     done.textContent = n === null ? "Voir les événements"
       : n === 0 ? "Aucun résultat"
@@ -2174,15 +2300,7 @@ function _syncIrlDateBtn() {
   var clear = document.getElementById("irlDateClearBtn");
   if (!label) return;
   var active = !!(irlDateFilters && irlDateFilters.size);
-  var txt = "Toutes les dates";
-  if (active && irlCustomDate) {
-    var f = function(ts) { return new Date(ts).toLocaleDateString("fr-FR", { day: "numeric", month: "short" }); };
-    var sameDay = new Date(irlCustomDate.start).toDateString() === new Date(irlCustomDate.end).toDateString();
-    txt = sameDay ? f(irlCustomDate.start) : f(irlCustomDate.start) + " → " + f(irlCustomDate.end);
-  } else if (active) {
-    var names = { today: "Aujourd'hui", tomorrow: "Demain", week: "Cette semaine", month: "Ce mois" };
-    txt = [...irlDateFilters].map(function(k) { return names[k] || k; }).join(" · ");
-  }
+  var txt = irlDateResumeTexte() || "Toutes les dates";
   label.textContent = txt;
   if (btn) {
     btn.style.borderColor = active ? "var(--accent)" : "var(--border)";
@@ -2298,6 +2416,9 @@ function _filterIrlEvents(events) {
   }
   // 3. Date (multi-select)
   if (irlDateFilters && irlDateFilters.size > 0) {
+    // Calculée UNE fois : la recalculer dans le prédicat la rejouerait pour
+    // chaque événement de la liste, pour un résultat rigoureusement identique.
+    var _we = irlDateFilters.has("weekend") ? _irlWeekendRange() : null;
     filtered = filtered.filter(function(e) {
       if (irlDateFilters.has("today")) {
         var ts = new Date(); ts.setHours(0,0,0,0);
@@ -2309,6 +2430,7 @@ function _filterIrlEvents(events) {
         var me = new Date(); me.setDate(me.getDate()+1); me.setHours(23,59,59,999);
         if (e.date >= ms.getTime() && e.date <= me.getTime()) return true;
       }
+      if (_we && e.date >= _we.start && e.date <= _we.end) return true;
       if (irlDateFilters.has("week") && e.date >= now && e.date <= now + 7 * 86400000) return true;
       if (irlDateFilters.has("month") && e.date >= now && e.date <= now + 30 * 86400000) return true;
       if (irlDateFilters.has("custom") && irlCustomDate && e.date >= irlCustomDate.start && e.date <= irlCustomDate.end) return true;
@@ -2500,7 +2622,9 @@ function irlToolsSections() {
   // libellé y avait fait disparaître une section entière, en silence.
   // `contextual-nav.js` ignore les clés qu'il ne connaît pas.
   return {
-    title: "Filtres",
+    // « Filtre » au SINGULIER (2026-09-04) : un seul mot pour la troisième case
+    // du commutateur, le titre de sa page et celui de ce dialogue de repli.
+    title: "Filtre",
     sections: [
       { id: "ville", title: "Autour de moi", items: [
         { icon: pin, label: "Choisir une ville", sub: city, onClick: "closeCtxTools();openIrlCitySelector()" }

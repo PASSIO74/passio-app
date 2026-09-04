@@ -114,20 +114,23 @@ test.describe("UI-7 §1 — vocabulaire visible", () => {
     expect(errors.js, "exceptions JS").toEqual([]);
   });
 
-  test("Rencontrer : « Filtres », « Choisir une ville », « Mes inscriptions »", async ({ page }) => {
+  test("Rencontrer : « Filtre », « Choisir une ville », « Mes inscriptions »", async ({ page }) => {
     await boot(page);
     await allerIrl(page);
 
-    await expect(page.locator("#irlToolsBtn")).toContainText("Filtres");
+    // ⚠️ AU SINGULIER depuis le 2026-09-04 (maquette de la page Filtre) : le
+    // renommage d'UI-7 tient, seul le nombre change.
+    await expect(page.locator("#irlToolsBtn")).toContainText("Filtre");
     await page.locator("#irlToolsBtn").click();
 
     // ⚠️ NON-RÉGRESSION. UI-4A4 devinait l'écran du panneau en cherchant « IRL »
     // dans son TITRE : renommer ce titre en « Filtres » a fait disparaître les
-    // quatre intentions, en silence. L'écran courant est désormais une DONNÉE.
+    // quatre intentions, en silence — et le repasser au SINGULIER le 2026-09-04
+    // aurait rejoué exactement le même défaut. L'écran courant est une DONNÉE.
     expect(await page.evaluate(() => ContextualTools.pageType())).toBe("irl");
     await expect(page.locator("#ctxToolsRoot")).toHaveAttribute("data-ctx-page", "irl");
     await expect(page.locator("#ctxToolsBody [data-v4a0-intent]")).toHaveCount(4);
-    await expect(page.locator("#ctxToolsTitle")).toHaveText("Filtres");
+    await expect(page.locator("#ctxToolsTitle")).toHaveText("Filtre");
 
     const corps = page.locator("#ctxToolsBody");
     await expect(corps).toContainText("Choisir une ville");
@@ -146,7 +149,7 @@ test.describe("UI-7 §1 — vocabulaire visible", () => {
 // ② RENCONTRER (§2)
 // ══════════════════════════════════════════════════════════════════════════
 test.describe("UI-7 §2 — la carte d'activité dit ce qu'il faut", () => {
-  test("« Filtres » n'a pas l'allure des deux onglets", async ({ page }) => {
+  test("« Filtre » n'a pas l'allure des deux onglets", async ({ page }) => {
     await boot(page);
     await allerIrl(page);
 

@@ -1,101 +1,88 @@
 // ══════════════════════════════════════════════════════════════════════════
-// PASSIO — LOT UI-4A5 : « Filtres » devient une VUE de « Rencontrer », et les
-// bulles de passion y entrent.
+// PASSIO — LOT UI-4A5 : « Filtre » est une VUE de « Rencontrer ».
 // ──────────────────────────────────────────────────────────────────────────
-// Demandé par Benjamin le 2026-08-29, après essai réel :
-//   ① les bulles de profil (la rangée de passions) quittent le corps de
-//      l'écran et entrent DANS le filtre ;
-//   ② « Filtres » se comporte comme « Liste » et « Carte » : un clic n'ouvre
-//      plus un panneau par-dessus l'écran, il AFFICHE DESSOUS tous les choix.
+// ① 2026-08-29, après essai réel : « les bulles de profil dans le filtre, et
+//    l'onglet Filtres fait comme pour Liste et Carte : quand on clique dessus
+//    tu n'ouvres plus un panel mais tu affiches dessous tous les choix. »
+//    La troisième case a donc cessé d'ouvrir un dialogue pour devenir une VUE.
 //
-// Autrement dit, la troisième case du commutateur cesse d'être une action qui
-// ouvre un dialogue pour devenir une VUE de plus. Trois vues exclusives :
-//     [ Liste ]  [ Carte ]  [ Filtres ]
+// ② 2026-09-04, maquette validée : la vue est réorganisée en QUATRE SECTIONS
+//    NOMMÉES, dans cet ordre, et rien d'autre :
 //
-// ── Ce que ce lot ne fait PAS ─────────────────────────────────────────────
-// Aucun moteur de filtrage n'est écrit ici. Pas un seul. Tout ce que le
-// panneau affiche est SERVI par l'existant :
+//        Quand ?            Aujourd'hui · Cette semaine · Ce week-end
+//                           + « Choisir une date » (le vrai calendrier)
+//        Où ?               la ville / position de référence + « Modifier »
+//                           + Distance maximale : 5 · 10 · 25 · 50 km
+//        Quelles passions ? Toutes · Mes passions · Chercher, puis les bulles
+//        Horaire            Matin · Après-midi · Soir
+//
+//    puis, discrètement, une ligne « Mes événements | Mes rencontres », et un
+//    bouton violet FIXE « Afficher N résultats » posé juste au-dessus de la
+//    barre d'onglets.
+//
+//    ⚠️ Le mot est « Filtre », au SINGULIER, partout : la case du commutateur,
+//    le titre de la page, le dialogue de repli. Jamais « Filtres », jamais
+//    « Filtrer les rencontres ».
+//
+//    ⚠️ Les quatre « intentions » (Tous · Cette semaine · Ma ville · Mes
+//    passions) ne sont plus RENDUES DANS CETTE VUE : chacune de leurs trois
+//    actions y est devenue une commande explicite et nommée — « Cette semaine »
+//    est une case de « Quand ? », « Ma ville » est la carte de « Où ? », « Mes
+//    passions » est une case de « Quelles passions ? ». Le module UI-4A0/4A1
+//    n'est pas touché : sous `passio_ui_4a5="0"` il reprend sa place dans la
+//    tête et dans le dialogue d'outils, à la lettre.
+//
+// ── Ce que ce lot ne fait TOUJOURS PAS ────────────────────────────────────
+// Aucun moteur de filtrage n'est écrit ici. Pas un seul. Tout est SERVI par
+// l'existant :
 //   • les bulles de passion sont le nœud `#irlPassionRow` DÉPLACÉ — le moteur
 //     `renderIrlPassionTiles()` continue d'y écrire, la délégation
 //     `[data-irlpassion]` continue de le lire ;
-//   • les quatre intentions sont CONSTRUITES par UI-4A0
-//     (`PassioUIV4A0.renderIntentsInto`), seule détentrice de
-//     `basculerIntention` — la seule voie qui émette l'événement dont UI-4A1
-//     dépend ;
-//   • « Choisir une ville », « Mes événements » et « Mes inscriptions » sont
-//     les items de `irlToolsSections()`, rendus par
-//     `ContextualTools.renderInto` — même échappement, même délégation
-//     `[data-irlfilter]` ;
-//   • le calendrier, le curseur de distance et la plage horaire sont les
-//     nœuds `.irl-ftabs` / `#irlPaneDate` / `#irlPaneDist` / `#irlPaneTime`
-//     DÉPLACÉS depuis la feuille `#irlFiltersPanel`. `renderIRL()` appelle
-//     déjà `_syncIrlFilterTabs`, `_syncIrlDistanceUI`, `_syncIrlTimeUI` et
-//     `_syncIrlFiltersFooter` à chaque rendu : ils retrouvent ces nœuds par
-//     leur `id`, quel que soit leur parent. Rien à resynchroniser ici.
+//   • le calendrier est le volet `#irlPaneDate` DÉPLACÉ depuis la feuille
+//     `#irlFiltersPanel` — `_renderIrlInlineCal` et `_syncIrlFilterTabs` le
+//     retrouvent par son `id`, et les `onclick` inline de ses cellules ne
+//     survivraient pas à une régénération ;
+//   • « Quand ? » appelle `setIrlDateFilter`, « Distance » `setIrlDistanceKm`,
+//     « Horaire » `setIrlTimePreset`, « Toutes / Mes passions »
+//     `setIrlPassionsToutes` / `setIrlPassionsMiennes`, « Modifier »
+//     `openIrlCitySelector`, « Chercher » `ouvrirRecherchePassionIRL` — toutes
+//     dans app-07, toutes écrivant dans les MÊMES variables que la feuille
+//     historique ;
+//   • « Mes événements » et « Mes rencontres » portent `data-irlfilter`, dont
+//     la délégation globale existe depuis toujours (app-07) ;
+//   • le nombre du pied est celui que `_syncIrlFiltersFooter(n)` publie à
+//     chaque rendu (`window._irlResultCount`). On le RECOPIE : un second
+//     comptage divergerait le jour où le filtrage changerait.
 //
-// ── DÉPLACER vs RECONSTRUIRE : la ligne de partage, et pourquoi ───────────
-// On DÉPLACE ce qui est réécrit EN PLACE par un moteur (`#irlPassionRow`, dont
-// l'`innerHTML` est refait à chaque rendu mais dont le nœud, lui, survit ; les
-// volets de filtres, que personne ne recrée). On RECONSTRUIT ce qui vit dans
-// un hôte réécrit en entier — c'est le cas des intentions dans le panneau
-// contextuel (piège du lot UI-4A4 : une chip déplacée y était arrachée par son
-// propre clic). Ici l'hôte est le NÔTRE et n'est jamais réécrit, mais on passe
-// quand même par le constructeur d'UI-4A0 : le moteur d'intentions ne se
-// duplique pas.
+// ── Activation — ACTIF PAR DÉFAUT ─────────────────────────────────────────
+//     localStorage.passio_ui_4a5 = "0"    → kill switch local, prioritaire
+//     window.PASSIO_UI_4A5 = false        → coupure immédiate en mémoire
 //
-// ⚠️ Ce que le panneau réécrit, il le réécrit sous SIGNATURE. `#v4a5Outils`
-// (les items ville / mes événements) et le pied dépendent de l'état des
-// filtres : ils sont recalculés à chaque rendu, mais n'écrivent QUE si le
-// résultat a changé — on écrit dans ce que l'on observe.
-//
-// ⚠️ Le clic sur `#irlToolsBtn` est intercepté en phase de CAPTURE sur
-// `document`, avec `stopPropagation()`. C'est le seul moyen d'empêcher le
-// `onclick` inline `ContextualTools.open('irl', this)` de partir : un écouteur
-// posé sur le bouton lui-même s'exécuterait APRÈS l'attribut, l'ordre en phase
-// « at target » étant celui de l'enregistrement. L'attribut reste intact dans
-// le DOM et redevient actif dès la coupure.
-//
-// ⚠️ La sélection visuelle des onglets se dispute avec UI-4A3, qui repose
-// `aria-selected` à chaque rendu (`syncBarre`). On ne lui prend pas son état :
-// on le RÉ-ALIGNE après coup, et seulement quand la valeur diffère. UI-4A3
-// n'observe que les enfants directs de `#screen-irl`, jamais les attributs :
-// aucune de nos écritures ne le réveille, donc aucun aller-retour.
-//
-// Coupures, prioritaires sur tout :
-//   window.PASSIO_UI_4A5 === false   ·   localStorage.passio_ui_4a5 === "0"
 // Le drapeau ne sait qu'ENLEVER : aucune valeur positive n'active, rien n'est
-// écrit dans localStorage. La coupure rend `#irlPassionRow` et les volets de
-// filtres à leur place d'origine, retire le panneau, et le bouton « Filtres »
-// rouvre le dialogue historique — sans rechargement.
+// écrit dans `localStorage`. La coupure REND les nœuds déplacés à leur place
+// AVANT de retirer le panneau, sinon la suppression les emporterait.
 // ══════════════════════════════════════════════════════════════════════════
 (function () {
   "use strict";
 
-  var VERSION = "ui4a5";
   var STORAGE_KEY = "passio_ui_4a5";
   var ROOT_CLASS = "passio-ui-4a5";
-  var ATTR_VUE = "data-v4a5-vue";        // "filtres" quand la vue est ouverte
+  var VERSION = "ui4a5";
+  var ATTR_VUE = "data-v4a5-vue";      // "filtres" quand la vue est ouverte
+
   var PANNEAU_ID = "v4a5Panneau";
-  var OUTILS_ID = "v4a5Outils";
-  var INTENTS_ID = "v4a5Intents";
-  var AVANCE_ID = "v4a5Avance";
-  var PASSIONS_ID = "v4a5Passions";
+  var AVANCE_ID = "v4a5Avance";        // hôte du calendrier déplacé
+  var PASSIONS_ID = "v4a5Passions";    // hôte des bulles déplacées
   var PIED_ID = "v4a5Pied";
   var DONE_ID = "v4a5Done";
   var RESET_ID = "v4a5Reset";
 
-  // ⚠️ VOLETS REPLIÉS À L'OUVERTURE (2026-09-02, demande de Benjamin : « je
-  // voudrais que tout tienne sur la page sans descendre »). Le volet Date
-  // s'ouvrait d'office et pesait 337 px à lui seul — le tiers du panneau —
-  // alors que Distance et Horaire, eux, étaient repliés : « Voir les
-  // activités » se trouvait hors de l'écran, donc valider ses choix
-  // demandait de descendre.
-  //
-  // `_syncIrlFilterTabs()` lit `window._irlFilterTab || "date"` et pose la
-  // classe `on` sur le volet correspondant, À CHAQUE `renderIRL()`. Une
-  // valeur qui ne désigne AUCUN onglet laisse donc les trois volets repliés,
-  // sans toucher au moteur ni masquer quoi que ce soit en CSS — ce qui aurait
-  // fait mentir la pastille « ce filtre est actif » des onglets.
+  // ⚠️ VOLET DATE REPLIÉ À L'OUVERTURE (2026-09-02, « je voudrais que tout
+  // tienne sur la page sans descendre »). Le calendrier pèse ~340 px à lui
+  // seul. `_syncIrlFilterTabs()` lit `window._irlFilterTab || "date"` et pose
+  // la classe `on` sur le volet correspondant, À CHAQUE `renderIRL()` : une
+  // valeur qui ne désigne AUCUN onglet laisse donc le volet replié, sans
+  // toucher au moteur ni masquer quoi que ce soit en CSS.
   //
   // ⚠️ Elle doit être NON VIDE : `""` est faux, et le moteur retomberait sur
   // « date ». Et elle est rendue à "date" quand la vue se ferme ou que le
@@ -103,18 +90,28 @@
   // repose la valeur que si elle est absente) s'ouvrirait sans aucun volet.
   var TAB_AUCUN = "aucun";
 
-  function replierVolets() {
-    try {
-      window._irlFilterTab = TAB_AUCUN;
-      if (typeof _syncIrlFilterTabs === "function") _syncIrlFilterTabs();
-    } catch (e) { fail("replier_volets", e); }
-  }
-
-  function rendreVoletParDefaut() {
-    try {
-      if (window._irlFilterTab === TAB_AUCUN) window._irlFilterTab = "date";
-    } catch (e) {}
-  }
+  // ── Les trois tables de choix. Les VALEURS sont celles du moteur ─────────
+  // ⚠️ Ne jamais renommer une valeur : `today`, `week`, `weekend` sont écrites
+  // dans `irlDateFilters` et relues par `_filterIrlEvents`, et « 6-12 » est la
+  // clé que `_syncIrlTimeUI` pose déjà sur les pastilles du volet historique.
+  var QUAND = [
+    { val: "today", label: "Aujourd'hui" },
+    { val: "week", label: "Cette semaine" },
+    { val: "weekend", label: "Ce week-end" },
+  ];
+  var DISTANCES = ["5", "10", "25", "50"];
+  var HORAIRES = [
+    { debut: 6, fin: 12, label: "Matin" },
+    { debut: 12, fin: 18, label: "Après-midi" },
+    { debut: 18, fin: 23, label: "Soir" },
+  ];
+  var RACCOURCIS = [
+    { filtre: "mine", label: "Mes événements" },
+    // « Mes rencontres » = les activités auxquelles je me suis INSCRIT, le même
+    // état `joined` que « Mes inscriptions » du dialogue historique. Seul le
+    // mot change ; l'identifiant, lui, ne bouge pas.
+    { filtre: "joined", label: "Mes rencontres" },
+  ];
 
   var vueFiltres = false;
   var enPanne = false;
@@ -122,7 +119,7 @@
   var listeObservee = null;
   var enAttente = false;
   var essais = 0;
-  var sigOutils = null;
+  var sigLieu = null;
   var sigPied = null;
 
   // Places d'origine, pour les rendre à la coupure. `null` = jamais déplacé.
@@ -159,6 +156,10 @@
     } catch (e) {}
   }
 
+  // ⚠️ AUCUNE clé de `meta` ne doit percuter le filtre PII de `telemetry.js`
+  // (`pass`, `name`, `label`, `city`, `ville`, `lat`, `lng`, `location`…) : une
+  // clé filtrée disparaît EN SILENCE. Et surtout : la position précise de
+  // l'utilisateur n'est JAMAIS mesurée — on n'envoie ni ville, ni coordonnées.
   function track(nom, meta) {
     try {
       if (window.tel && typeof window.tel.action === "function") window.tel.action(nom, meta || { v: VERSION });
@@ -172,24 +173,79 @@
   function declencheur() { return el("irlToolsBtn"); }
   function liste() { return el("eventList"); }
   function panneau() { return el(PANNEAU_ID); }
+  function coque() { return document.querySelector(".app-shell"); }
+
+  function replierVolets() {
+    try {
+      window._irlFilterTab = TAB_AUCUN;
+      if (typeof _syncIrlFilterTabs === "function") _syncIrlFilterTabs();
+    } catch (e) { fail("replier_volets", e); }
+  }
+
+  function rendreVoletParDefaut() {
+    try {
+      if (window._irlFilterTab === TAB_AUCUN) window._irlFilterTab = "date";
+    } catch (e) {}
+  }
 
   // ══════════════════════════════════════════════════════════════════════════
   // CONSTRUCTION DU PANNEAU
   // Construit UNE fois, jamais régénéré : il héberge des nœuds déplacés (les
-  // bulles, les volets) et des chips dont le clic déclenche un rendu. Le
+  // bulles, le calendrier) et des cases dont le clic déclenche un rendu. Le
   // régénérer les arracherait — c'est exactement le piège d'UI-4A4.
+  //
+  // ⚠️ Tout est bâti par `createElement` + `textContent` : aucun contenu
+  // utilisateur n'entre ici, et rien n'est concaténé en HTML.
   // ══════════════════════════════════════════════════════════════════════════
-  function section(titre, id) {
-    var s = document.createElement("div");
-    s.className = "ctx-section v4a5-section";
+
+  // Une case de choix : coche + libellé. L'état vit sur `aria-pressed`, et la
+  // coche le redit une seconde fois — il ne tient jamais à la seule couleur.
+  function caseChoix(label, attr, valeur) {
+    var b = document.createElement("button");
+    b.type = "button";
+    b.className = "v4a5-case";
+    b.setAttribute(attr, valeur);
+    b.setAttribute("aria-pressed", "false");
+    var mark = document.createElement("span");
+    mark.className = "v4a5-case-mark";
+    mark.setAttribute("aria-hidden", "true");
+    mark.textContent = "✓";
+    var txt = document.createElement("span");
+    txt.className = "v4a5-case-txt";
+    txt.textContent = label;
+    b.appendChild(mark);
+    b.appendChild(txt);
+    return b;
+  }
+
+  function bloc(titre, id) {
+    var s = document.createElement("section");
+    s.className = "v4a5-bloc";
     if (id) s.id = id;
-    if (titre) {
-      var t = document.createElement("div");
-      t.className = "ctx-section-title";
-      t.textContent = titre;
-      s.appendChild(t);
-    }
+    var t = document.createElement("h3");
+    t.className = "v4a5-bloc-titre";
+    t.textContent = titre;
+    s.appendChild(t);
     return s;
+  }
+
+  function svgIcone(d, extra) {
+    var ns = "http://www.w3.org/2000/svg";
+    var svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "1.8");
+    svg.setAttribute("stroke-linecap", "round");
+    svg.setAttribute("stroke-linejoin", "round");
+    svg.setAttribute("aria-hidden", "true");
+    var chemins = [d].concat(extra || []);
+    for (var i = 0; i < chemins.length; i++) {
+      var p = document.createElementNS(ns, "path");
+      p.setAttribute("d", chemins[i]);
+      svg.appendChild(p);
+    }
+    return svg;
   }
 
   function construirePanneau() {
@@ -197,58 +253,214 @@
     wrap.className = "v4a5-panneau";
     wrap.id = PANNEAU_ID;
     wrap.setAttribute("role", "region");
-    wrap.setAttribute("aria-label", "Filtres des activités");
+    wrap.setAttribute("aria-label", "Filtre des activités");
 
-    // ① Les bulles de passion. La section est créée vide : `poserPassions`
-    //    y déplace le nœud historique quand il existe.
-    wrap.appendChild(section("Mes passions", PASSIONS_ID));
-
-    // ② Les quatre intentions, construites par UI-4A0.
-    var sIntents = section("Ce que je cherche");
-    var hoteIntents = document.createElement("div");
-    hoteIntents.className = "v4a5-intents";
-    hoteIntents.id = INTENTS_ID;
-    sIntents.appendChild(hoteIntents);
-    wrap.appendChild(sIntents);
-
-    // ③ Ville + « Mes événements / Mes inscriptions », servis par
-    //    irlToolsSections() et rendus par ContextualTools.
-    var sOutils = document.createElement("div");
-    sOutils.className = "v4a5-outils";
-    sOutils.id = OUTILS_ID;
-    wrap.appendChild(sOutils);
-
-    // ④ Date / Distance / Horaire : les volets historiques, déplacés.
-    var sAvance = section("Date, distance, horaire", AVANCE_ID);
-    wrap.appendChild(sAvance);
-
-    // ⑤ Le pied : effacer, et revenir au résultat.
-    var pied = document.createElement("div");
-    pied.className = "v4a5-pied";
-    pied.id = PIED_ID;
-
+    // ── ① Quand ? ──────────────────────────────────────────────────────────
+    var quand = bloc("Quand ?", "v4a5BlocQuand");
+    // « Tout effacer » n'a PAS de case à lui : c'est une commande, pas un
+    // filtre. Elle se pose au bout du premier titre, en petit, et s'éteint
+    // quand il n'y a rien à effacer — un bouton toujours actif qui ne fait
+    // rien est un bouton qui ment.
+    var tete = document.createElement("div");
+    tete.className = "v4a5-bloc-tete";
+    tete.appendChild(quand.firstChild);              // le <h3> déjà créé
     var reset = document.createElement("button");
     reset.type = "button";
-    reset.className = "btn secondary block";
+    reset.className = "v4a5-reset";
     reset.id = RESET_ID;
-    reset.textContent = "✕ Tout effacer";
+    reset.textContent = "Tout effacer";
     reset.addEventListener("click", function () {
       try {
         if (typeof clearAllIrlFilters === "function") clearAllIrlFilters();
+        replierVolets();
         track("ui_v4a5_reset", { v: VERSION });
       } catch (e) { fail("reset", e); }
     });
+    tete.appendChild(reset);
+    quand.insertBefore(tete, quand.firstChild);
 
-    var done = document.createElement("button");
-    done.type = "button";
-    done.className = "btn primary block";
-    done.id = DONE_ID;
-    done.textContent = "Voir les activités";
-    done.addEventListener("click", function () { fermer("done"); });
+    var gQuand = document.createElement("div");
+    gQuand.className = "v4a5-choix";
+    gQuand.id = "v4a5Quand";
+    QUAND.forEach(function (q) {
+      var b = caseChoix(q.label, "data-v4a5-quand", q.val);
+      b.addEventListener("click", function () {
+        try {
+          if (typeof setIrlDateFilter === "function") setIrlDateFilter(q.val);
+          track("ui_v4a5_quand", { v: VERSION, quand: q.val });
+        } catch (e) { fail("quand", e); }
+      });
+      gQuand.appendChild(b);
+    });
+    quand.appendChild(gQuand);
 
-    pied.appendChild(reset);
-    pied.appendChild(done);
-    wrap.appendChild(pied);
+    // « Choisir une date » : une LIGNE, pas une case — elle n'est pas un choix
+    // de plus, elle déplie le calendrier réel. L'icône reste : elle est
+    // FONCTIONNELLE (elle dit ce que la ligne ouvre), contrairement aux
+    // pictogrammes de titre, retirés le 2026-09-04.
+    var ligne = document.createElement("button");
+    ligne.type = "button";
+    ligne.className = "v4a5-ligne";
+    ligne.id = "v4a5DateBtn";
+    ligne.setAttribute("aria-expanded", "false");
+    ligne.setAttribute("aria-controls", AVANCE_ID);
+    var ico = document.createElement("span");
+    ico.className = "v4a5-ligne-ico";
+    ico.appendChild(svgIcone("M4 6.5a2.5 2.5 0 0 1 2.5-2.5h11A2.5 2.5 0 0 1 20 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5z",
+      ["M8 2.6v3.4", "M16 2.6v3.4", "M4 10h16"]));
+    var txt = document.createElement("span");
+    txt.className = "v4a5-ligne-txt";
+    txt.id = "v4a5DateTxt";
+    txt.textContent = "Choisir une date";
+    var go = document.createElement("span");
+    go.className = "v4a5-ligne-go";
+    go.setAttribute("aria-hidden", "true");
+    go.appendChild(svgIcone("M9 5l7 7-7 7"));
+    ligne.appendChild(ico);
+    ligne.appendChild(txt);
+    ligne.appendChild(go);
+    ligne.addEventListener("click", function () { basculerCalendrier(); });
+    quand.appendChild(ligne);
+
+    // Hôte du calendrier historique (`#irlPaneDate`), déplacé par `poserAvance`.
+    var hoteCal = document.createElement("div");
+    hoteCal.className = "v4a5-volet";
+    hoteCal.id = AVANCE_ID;
+    quand.appendChild(hoteCal);
+    wrap.appendChild(quand);
+
+    // ── ② Où ? ─────────────────────────────────────────────────────────────
+    var ou = bloc("Où ?", "v4a5BlocOu");
+    var lieu = document.createElement("div");
+    lieu.className = "v4a5-lieu";
+    var lico = document.createElement("span");
+    lico.className = "v4a5-lieu-ico";
+    lico.appendChild(svgIcone("M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z",
+      ["M14.6 10a2.6 2.6 0 1 1-5.2 0 2.6 2.6 0 0 1 5.2 0"]));
+    var corps = document.createElement("span");
+    corps.className = "v4a5-lieu-corps";
+    var nom = document.createElement("b");
+    nom.id = "v4a5LieuNom";
+    nom.textContent = "…";
+    var sub = document.createElement("span");
+    sub.id = "v4a5LieuSub";
+    sub.className = "v4a5-lieu-sub";
+    sub.textContent = "";
+    corps.appendChild(nom);
+    corps.appendChild(sub);
+    var modif = document.createElement("button");
+    modif.type = "button";
+    modif.className = "v4a5-lieu-btn";
+    modif.id = "v4a5LieuBtn";
+    modif.textContent = "Modifier";
+    modif.appendChild(svgIcone("M9 5l7 7-7 7"));
+    modif.addEventListener("click", function (e) {
+      e.stopPropagation();
+      try {
+        if (typeof openIrlCitySelector === "function") openIrlCitySelector();
+        track("ui_v4a5_lieu", { v: VERSION });
+      } catch (err) { fail("lieu", err); }
+    });
+    lieu.appendChild(lico);
+    lieu.appendChild(corps);
+    lieu.appendChild(modif);
+    ou.appendChild(lieu);
+
+    var sTitre = document.createElement("div");
+    sTitre.className = "v4a5-sous-titre";
+    sTitre.textContent = "Distance maximale";
+    ou.appendChild(sTitre);
+
+    var gDist = document.createElement("div");
+    gDist.className = "v4a5-choix v4a5-choix-4";
+    gDist.id = "v4a5Dist";
+    DISTANCES.forEach(function (km) {
+      var b = caseChoix(km + " km", "data-v4a5-dist", km);
+      b.addEventListener("click", function () {
+        try {
+          if (typeof setIrlDistanceKm === "function") setIrlDistanceKm(km);
+          track("ui_v4a5_dist", { v: VERSION, km: Number(km) });
+        } catch (e) { fail("dist", e); }
+      });
+      gDist.appendChild(b);
+    });
+    ou.appendChild(gDist);
+    wrap.appendChild(ou);
+
+    // ── ③ Quelles passions ? ───────────────────────────────────────────────
+    var pass = bloc("Quelles passions ?", "v4a5BlocPassions");
+    var gModes = document.createElement("div");
+    gModes.className = "v4a5-choix";
+    gModes.id = "v4a5Modes";
+    [
+      { mode: "toutes", label: "Toutes" },
+      { mode: "miennes", label: "Mes passions" },
+      { mode: "chercher", label: "Chercher" },
+    ].forEach(function (m) {
+      var b = caseChoix(m.label, "data-v4a5-passions", m.mode);
+      b.addEventListener("click", function () {
+        try {
+          if (m.mode === "toutes" && typeof setIrlPassionsToutes === "function") setIrlPassionsToutes();
+          else if (m.mode === "miennes" && typeof setIrlPassionsMiennes === "function") setIrlPassionsMiennes();
+          else if (m.mode === "chercher" && typeof ouvrirRecherchePassionIRL === "function") ouvrirRecherchePassionIRL();
+          track("ui_v4a5_passions", { v: VERSION, mode: m.mode });
+        } catch (e) { fail("passions", e); }
+      });
+      gModes.appendChild(b);
+    });
+    pass.appendChild(gModes);
+
+    // Hôte des bulles historiques (`#irlPassionRow`), déplacées par
+    // `poserPassions`. La section garde son `id` : trois suites et le bloc CSS
+    // du lot le visent.
+    var hotePass = document.createElement("div");
+    hotePass.className = "v4a5-section";
+    hotePass.id = PASSIONS_ID;
+    pass.appendChild(hotePass);
+    wrap.appendChild(pass);
+
+    // ── ④ Horaire ──────────────────────────────────────────────────────────
+    var hor = bloc("Horaire", "v4a5BlocHoraire");
+    var gHor = document.createElement("div");
+    gHor.className = "v4a5-choix";
+    gHor.id = "v4a5Horaire";
+    HORAIRES.forEach(function (h) {
+      var b = caseChoix(h.label, "data-v4a5-horaire", h.debut + "-" + h.fin);
+      b.addEventListener("click", function () {
+        try {
+          if (typeof setIrlTimePreset === "function") setIrlTimePreset(h.debut, h.fin);
+          track("ui_v4a5_horaire", { v: VERSION, plage: h.debut + "-" + h.fin });
+        } catch (e) { fail("horaire", e); }
+      });
+      gHor.appendChild(b);
+    });
+    hor.appendChild(gHor);
+    wrap.appendChild(hor);
+
+    // ── ⑤ Raccourcis personnels, sur UNE ligne, visuellement secondaires ────
+    // ⚠️ `data-irlfilter` : la délégation globale d'app-07 les prend en charge,
+    // et `renderIRL` repose leur classe `active` à chaque rendu. Aucun second
+    // gestionnaire ici — deux écouteurs, ce serait deux bascules par clic.
+    var racc = document.createElement("div");
+    racc.className = "v4a5-raccourcis";
+    racc.id = "v4a5Raccourcis";
+    RACCOURCIS.forEach(function (r, i) {
+      if (i > 0) {
+        var sep = document.createElement("span");
+        sep.className = "v4a5-raccourci-sep";
+        sep.setAttribute("aria-hidden", "true");
+        racc.appendChild(sep);
+      }
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "v4a5-raccourci";
+      b.setAttribute("data-irlfilter", r.filtre);
+      b.setAttribute("aria-pressed", "false");
+      b.textContent = r.label;
+      racc.appendChild(b);
+    });
+    wrap.appendChild(racc);
+
     return wrap;
   }
 
@@ -275,7 +487,65 @@
     return true;
   }
 
-  // ── ① Les bulles de passion entrent dans le filtre ───────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // LE PIED FIXE — « Afficher N résultats »
+  // ⚠️ Il n'est PAS dans `#screen-irl` : il est posé dans `.app-shell`, en
+  // frère de `.app-main` et de `.app-nav`, et positionné en absolu par rapport
+  // à la coque. C'est la seule façon qu'il ne défile pas avec le contenu ET
+  // qu'il reste dans la colonne de 440 px sur grand écran — un `position:
+  // fixed` s'étalerait sur toute la fenêtre. La hauteur de la barre d'onglets
+  // (`62px + env(safe-area-inset-bottom)`) est reprise telle quelle en CSS :
+  // le bouton ne peut donc jamais passer sous la barre système du téléphone.
+  // ══════════════════════════════════════════════════════════════════════════
+  function pied() { return el(PIED_ID); }
+
+  function poserPied() {
+    var c = coque();
+    if (!c) return;
+    var p = pied();
+    if (p && p.parentNode === c) return;
+    if (!p) {
+      p = document.createElement("div");
+      p.className = "v4a5-pied";
+      p.id = PIED_ID;
+      var done = document.createElement("button");
+      done.type = "button";
+      done.className = "v4a5-done";
+      done.id = DONE_ID;
+      done.textContent = "Afficher les résultats";
+      done.addEventListener("click", function () { fermer("done"); });
+      p.appendChild(done);
+    }
+    var nav = c.querySelector(".app-nav");
+    if (nav) c.insertBefore(p, nav); else c.appendChild(p);
+  }
+
+  // ⚠️ On RECOPIE le nombre publié par `_syncIrlFiltersFooter`, on ne recompte
+  // rien : un second comptage divergerait le jour où `_filterIrlEvents`
+  // changerait, et les deux nombres resteraient plausibles.
+  function majPied() {
+    var done = el(DONE_ID);
+    var reset = el(RESET_ID);
+    if (!done) return;
+    var n = window._irlResultCount;
+    var txt = (typeof n !== "number") ? "Afficher les résultats"
+      : n === 0 ? "Aucun résultat"
+      : n === 1 ? "Afficher 1 résultat"
+      : "Afficher " + n + " résultats";
+    var srcReset = el("irlFiltersResetBtn");
+    var off = !!(srcReset && srcReset.disabled);
+    var sig = txt + "|" + (off ? "1" : "0");
+    if (sig === sigPied) return;
+    sigPied = sig;
+    done.textContent = txt;
+    done.disabled = (n === 0);
+    if (reset) {
+      reset.disabled = off;
+      reset.hidden = off;
+    }
+  }
+
+  // ── Les bulles de passion entrent dans le filtre ─────────────────────────
   function poserPassions() {
     var row = el("irlPassionRow");
     var hote = el(PASSIONS_ID);
@@ -298,38 +568,23 @@
     origPassion = null;
   }
 
-  // ── ② Les intentions ─────────────────────────────────────────────────────
-  function poserIntentions() {
-    var hote = el(INTENTS_ID);
-    if (!hote || hote.firstChild) return;              // déjà construites
-    var api = window.PassioUIV4A0;
-    if (!api || typeof api.renderIntentsInto !== "function") return;   // lot amont coupé
-    if (typeof api.isEnabled === "function" && !api.isEnabled()) return;
-    api.renderIntentsInto(hote);
-  }
-
-  // ── ④ Les volets Date / Distance / Horaire ───────────────────────────────
-  // Déplacés, jamais recréés : `_syncIrlFilterTabs`, `_syncIrlDistanceUI`,
-  // `_syncIrlTimeUI` et `_renderIrlInlineCal` les retrouvent par leur `id`,
-  // et les `onclick` inline des cellules du calendrier ne survivraient pas à
-  // une régénération.
+  // ── Le calendrier ────────────────────────────────────────────────────────
+  // Déplacé, jamais recréé : `_syncIrlFilterTabs` et `_renderIrlInlineCal` le
+  // retrouvent par son `id`, et les `onclick` inline des cellules du
+  // calendrier ne survivraient pas à une régénération.
+  //
+  // ⚠️ Seul `#irlPaneDate` monte ici. Les trois onglets carrés (`.irl-ftabs`)
+  // et les volets Distance / Horaire restent dans la feuille historique : la
+  // maquette du 2026-09-04 les remplace par les cases « 5/10/25/50 km » et
+  // « Matin / Après-midi / Soir ». Ils continuent d'être synchronisés par
+  // `renderIRL` — le kill switch retrouve donc la feuille complète.
   function poserAvance() {
     var hote = el(AVANCE_ID);
-    var source = el("irlFiltersPanel");
-    if (!hote || !source) return;
-    var noeuds = [];
-    var tabs = source.querySelector(".irl-ftabs");
-    if (tabs) noeuds.push(tabs);
-    ["irlPaneDate", "irlPaneDist", "irlPaneTime"].forEach(function (id) {
-      var n = el(id);
-      if (n) noeuds.push(n);
-    });
-    for (var i = 0; i < noeuds.length; i++) {
-      var n = noeuds[i];
-      if (n.parentNode === hote) continue;
-      origAvance.push({ node: n, parent: n.parentNode, next: n.nextSibling });
-      hote.appendChild(n);
-    }
+    var n = el("irlPaneDate");
+    if (!hote || !n) return;
+    if (n.parentNode === hote) return;
+    origAvance.push({ node: n, parent: n.parentNode, next: n.nextSibling });
+    hote.appendChild(n);
   }
 
   function rendreAvance() {
@@ -344,43 +599,136 @@
     origAvance = [];
   }
 
-  // ── ③ Ville / Mes événements — sous signature ────────────────────────────
-  // La section « affiner » est RETIRÉE : ses contrôles sont juste au-dessous,
-  // en ligne. Un item qui rouvrirait la feuille historique contredirait le lot.
-  function majOutils() {
-    var hote = el(OUTILS_ID);
-    if (!hote) return;
-    if (typeof irlToolsSections !== "function") return;
-    if (!window.ContextualTools || typeof ContextualTools.renderInto !== "function") return;
-    var config;
-    try { config = irlToolsSections(); } catch (e) { fail("sections", e); return; }
-    if (!config || !config.sections) return;
-    var garde = { sections: config.sections.filter(function (s) { return s && s.id !== "affiner"; }) };
-    var sig;
-    try { sig = JSON.stringify(garde); } catch (e) { sig = null; }
-    if (sig !== null && sig === sigOutils) return;     // rien n'a changé : on n'écrit pas
-    if (ContextualTools.renderInto(hote, garde)) sigOutils = sig;
+  function calendrierOuvert() { return window._irlFilterTab === "date"; }
+
+  function basculerCalendrier() {
+    try {
+      if (calendrierOuvert()) {
+        replierVolets();
+      } else if (typeof setIrlFilterTab === "function") {
+        setIrlFilterTab("date");
+      }
+      majQuand();
+      track("ui_v4a5_calendrier", { v: VERSION, ouvert: calendrierOuvert() });
+    } catch (e) { fail("calendrier_bascule", e); }
   }
 
-  // ── ⑤ Le pied miroite le moteur, il ne recompte rien ─────────────────────
-  // `_syncIrlFiltersFooter(n)` écrit déjà « Voir les 12 événements » et l'état
-  // désactivé dans les boutons de la feuille historique, à CHAQUE rendu. On
-  // recopie : un second comptage divergerait le jour où le filtrage changerait.
-  function majPied() {
-    var done = el(DONE_ID);
-    var reset = el(RESET_ID);
-    var srcDone = el("irlFiltersDoneBtn");
-    var srcReset = el("irlFiltersResetBtn");
-    var txt = (srcDone && srcDone.textContent) ? srcDone.textContent : "Voir les activités";
-    var off = !!(srcReset && srcReset.disabled);
-    var sig = txt + "|" + (off ? "1" : "0");
-    if (sig === sigPied) return;
-    sigPied = sig;
-    if (done) done.textContent = txt;
-    if (reset) {
-      reset.disabled = off;
-      reset.style.opacity = off ? ".45" : "1";
+  // ══════════════════════════════════════════════════════════════════════════
+  // SYNCHRONISATION DES ÉTATS — l'écran MIROITE le moteur, il ne décide rien.
+  // Appelée à chaque `appliquer()`, donc après chaque `renderIRL()`.
+  // ══════════════════════════════════════════════════════════════════════════
+  function cocher(noeud, on) {
+    if (!noeud) return;
+    var v = on ? "true" : "false";
+    if (noeud.getAttribute("aria-pressed") !== v) noeud.setAttribute("aria-pressed", v);
+  }
+
+  function majQuand() {
+    var g = el("v4a5Quand");
+    if (g) {
+      var cases = g.querySelectorAll("[data-v4a5-quand]");
+      for (var i = 0; i < cases.length; i++) {
+        var val = cases[i].getAttribute("data-v4a5-quand");
+        cocher(cases[i], typeof irlDateFilterActif === "function" && irlDateFilterActif(val));
+      }
     }
+    var btn = el("v4a5DateBtn");
+    var txt = el("v4a5DateTxt");
+    var ouvert = calendrierOuvert();
+    var pose = false;
+    try { pose = typeof irlDateFilterActif === "function" && irlDateFilterActif("custom"); } catch (e) {}
+    if (btn) {
+      if (btn.getAttribute("aria-expanded") !== String(ouvert)) btn.setAttribute("aria-expanded", String(ouvert));
+      btn.classList.toggle("is-open", ouvert);
+      // ⚠️ Une date choisie au calendrier n'a AUCUNE case pour la porter : les
+      // trois cases du dessus ne connaissent que « today », « week » et
+      // « weekend ». Sans ce marqueur, la seule trace d'une période retenue
+      // serait le libellé de la ligne — et un texte gris se lit comme un
+      // repos. La ligne prend donc l'accent tant que la période tient.
+      btn.classList.toggle("is-set", pose);
+    }
+    if (txt) {
+      // ⚠️ La ligne ne dit la période que si elle vient DU CALENDRIER. Cocher
+      // « Aujourd'hui » y écrivait « Aujourd'hui », juste sous la case qui le
+      // disait déjà : la même information deux fois, à deux endroits, pour
+      // deux commandes différentes. Une période choisie au calendrier, elle,
+      // n'a aucune case pour la porter — c'est le seul cas où la ligne parle.
+      var resume = "";
+      try {
+        if (pose && typeof irlDateResumeTexte === "function") resume = irlDateResumeTexte();
+      } catch (e) {}
+      var voulu = resume || "Choisir une date";
+      if (txt.textContent !== voulu) txt.textContent = voulu;
+    }
+  }
+
+  function majDistance() {
+    var g = el("v4a5Dist");
+    if (!g) return;
+    var courant = "";
+    try { if (typeof irlDistanceValue === "function") courant = irlDistanceValue(); } catch (e) {}
+    var cases = g.querySelectorAll("[data-v4a5-dist]");
+    for (var i = 0; i < cases.length; i++) {
+      cocher(cases[i], cases[i].getAttribute("data-v4a5-dist") === courant && !!courant);
+    }
+  }
+
+  function majHoraire() {
+    var g = el("v4a5Horaire");
+    if (!g) return;
+    var cle = "";
+    try { if (typeof irlTimePresetKey === "function") cle = irlTimePresetKey(); } catch (e) {}
+    var cases = g.querySelectorAll("[data-v4a5-horaire]");
+    for (var i = 0; i < cases.length; i++) {
+      cocher(cases[i], !!cle && cases[i].getAttribute("data-v4a5-horaire") === cle);
+    }
+  }
+
+  function majModes() {
+    var g = el("v4a5Modes");
+    if (!g) return;
+    var mode = "choix";
+    try { if (typeof irlPassionsMode === "function") mode = irlPassionsMode(); } catch (e) {}
+    var cases = g.querySelectorAll("[data-v4a5-passions]");
+    for (var i = 0; i < cases.length; i++) {
+      var m = cases[i].getAttribute("data-v4a5-passions");
+      // « Chercher » ouvre un sélecteur : ce n'est pas un état, donc jamais coché.
+      cocher(cases[i], m !== "chercher" && m === mode);
+    }
+  }
+
+  function majLieu() {
+    var nom = el("v4a5LieuNom");
+    var sub = el("v4a5LieuSub");
+    if (!nom || !sub) return;
+    var ref = { nom: "Choisir une ville", sub: "" };
+    try { if (typeof irlLieuReference === "function") ref = irlLieuReference(); } catch (e) { fail("lieu_ref", e); }
+    var sig = String(ref.nom) + "|" + String(ref.sub);
+    if (sig === sigLieu) return;
+    sigLieu = sig;
+    nom.textContent = ref.nom;
+    sub.textContent = ref.sub;
+  }
+
+  function majRaccourcis() {
+    var g = el("v4a5Raccourcis");
+    if (!g) return;
+    var b = g.querySelectorAll("[data-irlfilter]");
+    for (var i = 0; i < b.length; i++) {
+      // `renderIRL` repose déjà la classe `active` : on ne fait que la refléter
+      // sur `aria-pressed`, jamais l'inverse — l'état vit dans `irlFilters`.
+      cocher(b[i], b[i].classList.contains("active"));
+    }
+  }
+
+  function majTout() {
+    majQuand();
+    majDistance();
+    majHoraire();
+    majModes();
+    majLieu();
+    majRaccourcis();
+    majPied();
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -429,7 +777,7 @@
     for (var i = 0; i < onglets.length; i++) {
       var o = onglets[i];
       if (vueFiltres) {
-        // La vue Filtres prend la sélection : deux onglets ne peuvent pas être
+        // La vue Filtre prend la sélection : deux onglets ne peuvent pas être
         // sélectionnés en même temps dans un même `tablist`.
         if (o.getAttribute("aria-selected") !== "false") o.setAttribute("aria-selected", "false");
         o.classList.remove("is-on");
@@ -460,13 +808,13 @@
     // (`openIrlFiltersPanel`), que ce lot ne passe plus jamais. Sans cet appel,
     // le volet Date s'ouvre VIDE — un échec parfaitement muet.
     try { if (typeof _renderIrlInlineCal === "function") _renderIrlInlineCal(); } catch (e) { fail("calendrier", e); }
-    // Les trois volets repartent repliés : c'est ce qui fait tenir le panneau
-    // sur un écran. Un tap sur Date, Distance ou Horaire ouvre le sien.
+    // Le calendrier repart replié : c'est ce qui fait tenir la page sur un
+    // écran. Un tap sur « Choisir une date » l'ouvre.
     replierVolets();
     try { if (typeof _syncIrlDistanceUI === "function") _syncIrlDistanceUI(); } catch (e) {}
     try { if (typeof _syncIrlTimeUI === "function") _syncIrlTimeUI(); } catch (e) {}
     syncOnglets();
-    majPied();
+    majTout();
     // Les choix s'affichent DESSOUS : encore faut-il les voir.
     try {
       var main = el("appMain");
@@ -504,21 +852,7 @@
       basculer();
       return;
     }
-    // ⚠️ Un onglet de volet DÉJÀ ouvert se referme au second tap. Sans ça, le
-    // panneau n'aurait plus qu'un sens : on peut déplier Date, jamais le
-    // replier — et on retombe sur le panneau qui dépasse de l'écran. Le
-    // `onclick` inline `setIrlFilterTab('date')` n'a pas de bascule : on
-    // l'arrête en CAPTURE, exactement comme celui de `#irlToolsBtn`, et il
-    // reste intact pour la coupure.
-    var ftab = vueFiltres && t.closest(".irl-ftab");
-    if (ftab && ftab.closest("#" + AVANCE_ID) && ftab.classList.contains("sel")) {
-      e.preventDefault();
-      e.stopPropagation();
-      replierVolets();
-      return;
-    }
-
-    // Un clic sur Liste ou Carte rend la main à UI-4A3 : la vue Filtres se
+    // Un clic sur Liste ou Carte rend la main à UI-4A3 : la vue Filtre se
     // referme, et l'événement suit son cours normal.
     if (vueFiltres && t.closest("[data-v4a3-onglet]")) fermer("vue");
   }, true);
@@ -533,19 +867,18 @@
     if (!actif()) return;
     try {
       observer();                       // (ré)abonne `#eventList` dès qu'elle existe
-      // ⚠️ Quitter l'écran referme la vue. Sans ça, ouvrir Filtres puis passer
+      // ⚠️ Quitter l'écran referme la vue. Sans ça, ouvrir Filtre puis passer
       // au Fil et revenir sur « Rencontrer » ramènerait le panneau au lieu de
       // la liste : un écran qui ne montre pas son contenu, sans que rien ne
       // l'ait demandé. L'état de la vue vit en mémoire et repart de la liste.
       var ecran = ecranIrl();
       if (vueFiltres && ecran && !ecran.classList.contains("active")) fermer("ecran");
       if (!poserPanneau()) return;
+      poserPied();
       poserRoleOnglet();
       poserPassions();
-      poserIntentions();
       poserAvance();
-      majOutils();
-      majPied();
+      majTout();
       syncOnglets();
     } catch (e) {
       // On écrit dans ce que l'on observe : sans verrou, une erreur
@@ -577,7 +910,9 @@
       rendreRoleOnglet();
       var p = panneau();
       if (p && p.parentNode) p.parentNode.removeChild(p);
-      sigOutils = null;
+      var f = pied();
+      if (f && f.parentNode) f.parentNode.removeChild(f);
+      sigLieu = null;
       sigPied = null;
       syncOnglets();
       return false;
@@ -598,11 +933,9 @@
   //
   // ⚠️ PAS de `subtree` sur l'écran. `#irlMapWrap` en est un enfant direct et
   // MapLibre y mute le DOM à chaque frame d'animation : un observateur récursif
-  // relancerait `irlToolsSections()` et sa signature des dizaines de fois par
-  // seconde, pour rien. Rien de ce que ce lot doit voir ne se produit dans la
-  // carte.
+  // relancerait la synchronisation des dizaines de fois par seconde, pour rien.
   //
-  // Nos propres écritures d'attributs (aria-selected, disabled) ne réveillent
+  // Nos propres écritures d'attributs (aria-pressed, disabled) ne réveillent
   // rien — on n'observe pas les attributs — et les réécritures de contenu sont
   // sous signature.
   //
@@ -667,6 +1000,7 @@
     close: function () { fermer("api"); },
     toggle: basculer,
     isOpen: function () { return vueFiltres; },
+    calendarOpen: calendrierOuvert,
   };
 
   window.addEventListener("passio:app-ready", function () {
