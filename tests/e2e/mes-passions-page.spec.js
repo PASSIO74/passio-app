@@ -285,13 +285,34 @@ test("④ place disponible : la porte d'ajout invite et elle est armée", async 
   expect(ouvert.recherche + ouvert.grille, "la porte n'a rien ouvert").toBeGreaterThan(0);
 });
 
-test("⑤ limite atteinte : « Limite de N atteinte », et la porte est désarmée", async ({ page }) => {
+// ══════════════════════════════════════════════════════════════════════════
+// ⑤ AU PLAFOND, LA PORTE REFUSE — MAIS ELLE RÉPOND  (réécrit le 2026-09-04)
+// ──────────────────────────────────────────────────────────────────────────
+// ⚠️ CE CAS MESURAIT L'INVERSE, ET C'EST LE DÉFAUT QU'IL VERROUILLAIT. Il
+// exigeait `aria-disabled="true"`, `role` et `tabindex` absents et
+// `pointer-events: none` : autrement dit, il exigeait qu'un compte à trois
+// passions — un compte NORMAL, arrivé au bout de sa dotation — tape la porte
+// et n'obtienne RIEN. Reproduit au navigateur le 2026-09-04 : ni toast, ni
+// fenêtre, ni mot. Le verdict de l'utilisateur n'a pas été « c'est plein »
+// mais « ajouter une passion ne fonctionne pas » — un refus qui ne se prononce
+// pas est indiscernable d'une panne.
+//
+// La règle de la fiche 16 tranche : UNE PORTE FERMÉE DOIT DIRE PAR OÙ PASSER.
+// Le cas exige donc désormais que le refus soit LISIBLE (le motif dans la
+// porte) ET PRONONÇABLE (le tap ouvre la fenêtre qui nomme la limite et sa
+// sortie), comme à toutes les autres portes d'acquisition — le Studio,
+// `quickCreateProfile`, `ajouterPassionAuCompte` — dont celle-ci était la
+// seule exception muette.
+// ══════════════════════════════════════════════════════════════════════════
+test("⑤ limite atteinte : la porte dit « Limite de N atteinte » — et elle répond", async ({ page }) => {
   await poser(page, { vivantes: 3, changements: 0 });
   await ouvrir(page);
   const { passions } = await plafonds(page);
 
   await expect(page.locator("#nouveauProfilTitre")).toHaveText("Ajouter une passion");
-  await expect(page.locator("#nouveauProfilSous")).toHaveText("Limite de " + passions + " atteinte");
+  // Le motif ET la sortie : « c'est plein » seul est un constat sans geste.
+  await expect(page.locator("#nouveauProfilSous"))
+    .toHaveText("Limite de " + passions + " atteinte — appuie pour voir comment en changer");
 
   const etat = await page.evaluate(() => {
     const b = document.getElementById("nouveauProfilLien");
@@ -301,17 +322,32 @@ test("⑤ limite atteinte : « Limite de N atteinte », et la porte est désarm�
       role: b.getAttribute("role"),
       tabindex: b.getAttribute("tabindex"),
       pointeur: getComputedStyle(b).pointerEvents,
-      // ⚠️ ELLE RESTE PEINTE : désarmer n'est pas cacher. Une porte qu'on ne
-      // voit plus ne dit pas pourquoi elle a disparu.
+      // ⚠️ ELLE RESTE PEINTE : refuser n'est pas disparaître. Une porte qu'on
+      // ne voit plus ne dit pas pourquoi elle a disparu.
       peinte: b.getBoundingClientRect().height > 0,
     };
   });
-  expect(etat.marque).toBe("fermee");
-  expect(etat.desactivee).toBe("true");
-  expect(etat.role, "sans `role`, l'activation clavier déléguée d'app-08 n'a plus de prise").toBeNull();
-  expect(etat.tabindex, "et le focus ne s'y arrête plus").toBeNull();
-  expect(etat.pointeur, "le pointeur atteint encore une porte qui refuse").toBe("none");
+  expect(etat.marque, "l'état « plein » reste marqué — c'est l'aspect, pas l'inertie").toBe("fermee");
+  expect(etat.desactivee, "`aria-disabled` sur une cible qui répond ment aux lecteurs d'écran").toBeNull();
+  expect(etat.role, "sans `role`, l'activation clavier déléguée d'app-08 n'a plus de prise").toBe("button");
+  expect(etat.tabindex, "et le focus doit pouvoir s'y arrêter").toBe("0");
+  expect(etat.pointeur, "le pointeur n'atteint plus une porte qui doit s'expliquer").not.toBe("none");
   expect(etat.peinte).toBe(true);
+
+  // ⚠️ ET LE TAP PRODUIT QUELQUE CHOSE. C'est LA mesure de ce cas : sans elle,
+  // un rendu qui redeviendrait muet resterait vert sur les six assertions
+  // ci-dessus, qui ne décrivent que des attributs.
+  await page.locator("#nouveauProfilLien").click();
+  await page.waitForTimeout(700);
+  const dit = await page.evaluate(() => {
+    const m = document.getElementById("modalContent");
+    return {
+      fenetre: !!document.querySelector("#modalBackdrop.active"),
+      texte: (m && m.textContent) || "",
+    };
+  });
+  expect(dit.fenetre, "au plafond, la porte n'a rien répondu du tout").toBe(true);
+  expect(dit.texte, "et la fenêtre doit nommer la limite").toContain("Trois passions offertes");
 });
 
 test("⑥ changement disponible : une information, PAS une alerte", async ({ page }) => {
@@ -436,7 +472,13 @@ test("⑩ « Réactiver » agit quand c'est possible", async ({ page }) => {
   expect(apres.archivees).toBe(0);
 });
 
-test("⑩ bis — impossible : le bouton est désarmé, et il dit pourquoi", async ({ page }) => {
+// ⚠️ RÉÉCRIT LE 2026-09-04, MÊME MOTIF QUE ⑤. Ce cas exigeait `toBeDisabled()`.
+// Un `<button disabled>` n'envoie pas son `onclick` : le tap ne produisait RIEN,
+// et l'utilisateur lisait une panne là où il y avait un refus (« réactiver ne
+// fonctionne pas »). Le bouton garde son aspect gris et son motif, mais il
+// RÉPOND — et la garde, elle, n'a pas bougé : elle vit dans `restaurerPassion`,
+// point d'écriture, ce que la seconde moitié de ce cas mesure déjà.
+test("⑩ bis — impossible : le bouton refuse, il RÉPOND, et il dit pourquoi", async ({ page }) => {
   // Plafond atteint ET quota épuisé : reprendre demanderait d'en archiver une
   // autre, ce qui coûte le changement qu'on n'a plus.
   await poser(page, { vivantes: 3, archivees: 1, changements: 3 });
@@ -444,10 +486,34 @@ test("⑩ bis — impossible : le bouton est désarmé, et il dit pourquoi", asy
 
   const bouton = page.locator("#passionArchiveBox [data-v8-restaurer]").first();
   await expect(bouton).toHaveText("Réactiver");
-  await expect(bouton).toBeDisabled();
   await expect(bouton).toHaveAttribute("data-v8-reactivation", "bloquee");
+  await expect(bouton).toHaveClass(/est-bloquee/);
   await expect(page.locator("#passionArchiveBox [data-passion-reactivation]"))
     .toHaveText("Réactivation possible lorsqu'un changement sera disponible.");
+
+  // ⚠️ NI `disabled` NI `aria-disabled` : les deux DÉSARMENT. Le second retire
+  // la commande aux lecteurs d'écran et à toute automatisation — c'est d'ailleurs
+  // Playwright qui l'a révélé, en refusant de cliquer avec « element is not
+  // enabled ». L'état vit dans le NOM ACCESSIBLE, pas dans l'inertie.
+  const attrs = await page.evaluate(() => {
+    const b = document.querySelector("#passionArchiveBox [data-v8-restaurer]");
+    return { disabled: b.disabled, aria: b.getAttribute("aria-disabled"), nom: b.getAttribute("aria-label") };
+  });
+  expect(attrs.disabled, "un bouton `disabled` ne dit rien quand on le tape").toBe(false);
+  expect(attrs.aria, "`aria-disabled` désarme aussi, pour qui n'a pas la vue").toBeNull();
+  expect(attrs.nom, "l'état passe par le nom accessible").toContain("indisponible");
+
+  // Et le tap PRODUIT une explication, au lieu de rien.
+  await bouton.click();
+  await page.waitForTimeout(700);
+  const dit = await page.evaluate(() => ({
+    fenetre: !!document.querySelector("#modalBackdrop.active"),
+    texte: (document.getElementById("modalContent") || {}).textContent || "",
+  }));
+  expect(dit.fenetre, "le bouton bloqué n'a rien répondu du tout").toBe(true);
+  expect(dit.texte, "et la fenêtre doit nommer le quota épuisé").toContain("changements de passion");
+  await page.evaluate(() => closeModal());
+  await page.waitForTimeout(300);
 
   // ⚠️ ET LE MOTEUR TIENT AUSSI. Un bouton `disabled` n'envoie pas son
   // `onclick`, mais la garde ne peut pas vivre dans le seul affichage : appelée
@@ -593,3 +659,161 @@ for (const largeur of [320, 360, 390, 430]) {
     expect(vu.titre, "le titre est écrasé par ses deux cibles").toBeGreaterThan(120);
   });
 }
+
+// ══════════════════════════════════════════════════════════════════════════
+// ⑭ LE MODE « PASSIONS ILLIMITÉES »  (2026-09-04)
+// ──────────────────────────────────────────────────────────────────────────
+// « Mets mon compte test en illimité avec les passions pour les tests. »
+//
+// ⚠️ CE N'EST PAS UNE COUPURE DE LOT, C'EST UNE ADHÉSION. Toutes les autres
+// bascules de ce dépôt ne savent qu'ENLEVER (seule la valeur « 0 » décide,
+// rien n'est jamais écrit pour activer) ; celle-ci n'existe QUE si on
+// l'allume. Le premier cas ci-dessous est donc le plus important des trois :
+// il verrouille que le défaut du produit reste le produit.
+//
+// ⚠️ ET IL EST LU À UN SEUL ENDROIT — `plafondPassionsActif()` et
+// `quotaChangementsActif()`, les deux interrupteurs dont TOUT le reste
+// découle. Le troisième cas mesure cette propagation là où elle compte : sur
+// l'écran, et sur un geste qui aurait été refusé sans le drapeau.
+// ══════════════════════════════════════════════════════════════════════════
+const CLE_ILLIMITE = "passio_passions_illimitees_v1";
+
+test("⑭ par défaut, l'illimité est ÉTEINT — le plafond et le quota s'appliquent", async ({ page }) => {
+  await poser(page, { vivantes: 3, archivees: 1, changements: 3 });
+  await ouvrir(page);
+  const vu = await page.evaluate(() => ({
+    drapeau: passionsIllimitees(),
+    stockage: localStorage.getItem("passio_passions_illimitees_v1"),
+    plafond: plafondPassionsActif(),
+    quota: quotaChangementsActif(),
+    restants: String(changementsPassionRestants()),
+    porte: document.getElementById("nouveauProfilLien").getAttribute("data-passion-porte"),
+  }));
+  expect(vu.drapeau, "l'illimité s'est allumé tout seul").toBe(false);
+  expect(vu.stockage, "et il a écrit dans le stockage sans qu'on le lui demande").toBeNull();
+  expect(vu.plafond).toBe(true);
+  expect(vu.quota).toBe(true);
+  expect(vu.restants).toBe("0");
+  expect(vu.porte).toBe("fermee");
+});
+
+test("⑭ bis — allumé, il lève les DEUX limites, et l'écran cesse de les annoncer", async ({ page }) => {
+  await page.addInitScript((c) => localStorage.setItem(c, "1"), CLE_ILLIMITE);
+  await poser(page, { vivantes: 3, archivees: 1, changements: 3 });
+  await ouvrir(page);
+
+  const vu = await page.evaluate(() => ({
+    plafond: plafondPassionsActif(),
+    plafondAtteint: plafondPassionsAtteint(),
+    quota: quotaChangementsActif(),
+    restants: String(changementsPassionRestants()),
+    places: String(passionsRestantesOffertes()),
+    // ⚠️ L'ÉCRAN NE DOIT PAS MENTIR : annoncer une limite qui ne borne rien est
+    // un mensonge (règle de la fiche 19). Les deux mentions doivent disparaître
+    // d'elles-mêmes, sans une ligne de code de plus.
+    resume: (document.getElementById("passionsResume").textContent || "").trim(),
+    quotaVisible: getComputedStyle(document.getElementById("profilesQuotaSub")).display !== "none",
+    quotaMarque: document.getElementById("profilesQuotaSub").getAttribute("data-passion-quota"),
+    porte: document.getElementById("nouveauProfilLien").getAttribute("data-passion-porte"),
+    mot: (document.getElementById("nouveauProfilSous").textContent || "").trim(),
+    motifs: document.querySelectorAll("[data-passion-reactivation]").length,
+    reactivation: document.querySelector("[data-v8-restaurer]").getAttribute("data-v8-reactivation"),
+  }));
+  expect(vu.plafond, "le plafond s'applique encore").toBe(false);
+  expect(vu.plafondAtteint).toBe(false);
+  expect(vu.quota, "le quota de changements s'applique encore").toBe(false);
+  expect(vu.restants).toBe("Infinity");
+  expect(vu.places).toBe("Infinity");
+  expect(vu.resume, "« sur N » annonce une limite qui ne borne plus rien").not.toContain(" sur ");
+  expect(vu.quotaVisible, "l'alerte de quota reste à l'écran sans rien borner").toBe(false);
+  expect(vu.quotaMarque).toBeNull();
+  expect(vu.porte).toBe("ouverte");
+  expect(vu.mot, "la porte annonce encore une limite").not.toContain("Limite");
+  expect(vu.motifs, "le motif de réactivation impossible reste affiché").toBe(0);
+  expect(vu.reactivation).toBe("ouverte");
+});
+
+test("⑭ ter — allumé, les gestes ABOUTISSENT au-delà du plafond et du quota", async ({ page }) => {
+  await page.addInitScript((c) => localStorage.setItem(c, "1"), CLE_ILLIMITE);
+  await poser(page, { vivantes: 3, archivees: 1, changements: 3 });
+  await ouvrir(page);
+
+  // ① Réactiver : quatre passions vivantes, une de plus que le plafond.
+  await page.locator("#passionArchiveBox [data-v8-restaurer]").first().click();
+  await page.waitForTimeout(700);
+  const apresReact = await page.evaluate(() => ({
+    vivantes: (state.user.profiles || []).filter((p) => !p.archived).length,
+    archivees: (state.user.profiles || []).filter((p) => p.archived).length,
+  }));
+  expect(apresReact.vivantes, "la réactivation a buté sur le plafond").toBe(4);
+  expect(apresReact.archivees).toBe(0);
+
+  // ② Archiver, alors que les trois changements sont déjà consommés.
+  const apresArch = await page.evaluate(() => {
+    const cible = (state.user.profiles || []).find((p) => !p.archived);
+    const rendu = archiverPassion(cible.id);
+    return { rendu, vivantes: (state.user.profiles || []).filter((p) => !p.archived).length };
+  });
+  expect(apresArch.rendu, "l'archivage a buté sur le quota épuisé").toBe(true);
+  expect(apresArch.vivantes).toBe(3);
+
+  // ③ La porte d'ajout ouvre la RECHERCHE, pas la fenêtre payante.
+  await page.evaluate(() => { closeModal(); openPassionManager(); });
+  await page.waitForTimeout(600);
+  await page.locator("#nouveauProfilLien").click();
+  await page.waitForTimeout(900);
+  const ouvert = await page.evaluate(() => ({
+    recherche: document.querySelectorAll(".psel-input").length,
+    mur: ((document.getElementById("modalContent") || {}).textContent || "")
+      .includes("Trois passions offertes"),
+  }));
+  expect(ouvert.recherche, "la porte n'a pas ouvert de recherche").toBeGreaterThan(0);
+  expect(ouvert.mur, "la fenêtre payante s'ouvre alors que rien ne borne").toBe(false);
+});
+
+test("⑭ quater — la bascule des Paramètres allume, éteint, et dit son ÉTAT", async ({ page }) => {
+  // ⚠️ ON PART DU DRAPEAU DÉJÀ POSÉ, ET C'EST LE POINT DU CAS. Le bouton est du
+  // balisage STATIQUE : son libellé n'est juste que s'il est RELU à chaque
+  // ouverture du panneau, comme l'entrée « Compte » que `majSectionCompte`
+  // réécrit. Démarrer à zéro aurait laissé le cas vert sur la valeur écrite en
+  // dur dans `index.html`, même si `majBoutonPassionsIllimitees` n'était jamais
+  // appelée — exactement le genre de câblage que ce dépôt a déjà vu disparaître
+  // sans un seul rouge.
+  await page.addInitScript((c) => localStorage.setItem(c, "1"), CLE_ILLIMITE);
+  await poser(page, { vivantes: 3, changements: 0 });
+
+  await page.evaluate(() => { toggleDevPanel(); });
+  await page.waitForTimeout(300);
+  // Le panneau range ses entrées dans des sections repliées : la porte réelle
+  // demande d'ouvrir « Démo » d'abord.
+  await page.evaluate(() => {
+    const b = document.getElementById("settingsPassionsIllimitees");
+    const sec = b && b.closest(".settings-section");
+    if (sec) toggleSettingsSection(sec);
+  });
+  await page.waitForTimeout(400);
+
+  const b = page.locator("#settingsPassionsIllimitees");
+  await expect(b).toBeVisible();
+  await expect(b, "le bouton annonce l'état de la dernière fois, pas l'état réel")
+    .toHaveText("Passions illimitées : ACTIVÉ");
+  await expect(b).toHaveAttribute("data-passions-illimitees", "1");
+
+  // Éteindre.
+  await b.click();
+  await page.waitForTimeout(500);
+  await expect(b).toHaveAttribute("data-passions-illimitees", "0");
+  await expect(b).toHaveText("Passions illimitées (test)");
+  expect(await page.evaluate(() => passionsIllimitees())).toBe(false);
+  // ⚠️ ÉTEINDRE ÉCRIT « 0 », il n'efface pas la clé : un `removeItem` laisserait
+  // un `window.PASSIO_PASSIONS_ILLIMITEES` posé entre-temps décider à sa place.
+  expect(await page.evaluate(() => localStorage.getItem("passio_passions_illimitees_v1"))).toBe("0");
+  expect(await page.evaluate(() => plafondPassionsActif()), "le plafond n'est pas revenu").toBe(true);
+  expect(await page.evaluate(() => quotaChangementsActif()), "le quota n'est pas revenu").toBe(true);
+
+  // Rallumer.
+  await b.click();
+  await page.waitForTimeout(500);
+  await expect(b).toHaveAttribute("data-passions-illimitees", "1");
+  expect(await page.evaluate(() => plafondPassionsActif())).toBe(false);
+});

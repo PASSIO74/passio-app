@@ -546,18 +546,27 @@ test("⑧ quota épuisé : le bouton ne promet pas un échange impossible, et ri
       restants: String(changementsPassionRestants()),
       vivantes: (state.user.profiles || []).filter((p) => !p.archived).length,
       libelle: btn && btn.textContent,
-      desarme: !!(btn && btn.disabled),
+      // ⚠️ 2026-09-04 : le bouton ne doit PAS être désarmé. Ni `disabled` (son
+      // `onclick` ne partirait pas), ni `aria-disabled` (les lecteurs d'écran
+      // et Playwright le traitent comme inerte). On mesure les deux.
+      desarme: !!(btn && (btn.disabled || btn.getAttribute("aria-disabled") === "true")),
+      grise: !!(btn && btn.classList.contains("est-bloquee")),
       motif: motif ? motif.textContent : "",
     };
   });
   expect(etat.restants).toBe("0");
   expect(etat.vivantes).toBe(3);
   // ⚠️ 2026-09-03 : le mot ne porte plus l'explication, l'ÉTAT du bouton la
-  // porte. « Réactiver » désarmé (`disabled`, donc son `onclick` ne part pas)
-  // plus le motif écrit sous la liste — au lieu d'un libellé « Indisponible »
-  // qu'il fallait interpréter.
+  // porte — « Réactiver » plus le motif écrit sous la liste, au lieu d'un
+  // libellé « Indisponible » qu'il fallait interpréter.
+  // ⚠️ 2026-09-04 : MAIS L'ÉTAT N'EST PLUS L'INERTIE. Le bouton était
+  // réellement `disabled`, donc le tap ne produisait RIEN — et le refus se
+  // lisait comme une panne (« réactiver ne fonctionne pas »). Il est gris, il
+  // porte son motif, et il RÉPOND : la fenêtre juste en dessous, ouverte par
+  // `restaurerPassion`, est désormais ce que l'utilisateur obtient en tapant.
   expect(etat.libelle, "le bouton ne dit plus son geste").toBe("Réactiver");
-  expect(etat.desarme, "le bouton promet un échange que le quota interdit").toBe(true);
+  expect(etat.desarme, "un bouton désarmé ne dit rien quand on le tape").toBe(false);
+  expect(etat.grise, "et rien ne signale visuellement que ça ne passera pas").toBe(true);
   expect(etat.motif, "rien ne dit POURQUOI la réactivation est impossible")
     .toContain("Réactivation possible lorsqu'un changement sera disponible");
 

@@ -2242,10 +2242,21 @@ function renderPassionArchiveBox() {
 // lisant un mot qui changeait sous ses yeux. La règle est désormais écrite en
 // toutes lettres, sous la liste, et le bouton ne dit plus que son geste.
 //
-// ⚠️ ET IL EST RÉELLEMENT `disabled`, pas seulement grisé : un `<button disabled>`
-// ne déclenche pas son `onclick`, donc `restaurerPassion` ne peut pas être
-// atteinte par un chemin que l'écran annonce refuser. La garde reste AUSSI dans
-// `restaurerPassion` — deux bouts, comme le plafond.
+// ⚠️ IL N'EST PLUS `disabled` DEPUIS LE 2026-09-04, ET C'EST UN REVIREMENT
+// ASSUMÉ. Il l'était « pas seulement grisé », pour qu'aucun chemin ne puisse
+// atteindre `restaurerPassion` alors que l'écran annonce refuser. Le résultat
+// mesuré chez Benjamin : un `<button disabled>` n'envoie pas son `onclick`,
+// donc le tap ne produisait RIEN — et son verdict n'a pas été « c'est bloqué »
+// mais « réactiver ne fonctionne pas ». Un refus qui ne se prononce pas est
+// indiscernable d'une panne. Le bouton garde son aspect gris (`.est-bloquee`),
+// son `aria-disabled`, son `title` et le motif écrit sous la liste, mais il
+// RÉPOND : `restaurerPassion` ouvre `openPassionPaywall({restaurer})`, qui dit
+// que les changements sont épuisés. C'est la règle de la fiche 16 — une porte
+// fermée doit dire par où passer — appliquée jusqu'au bout.
+// ⚠️ ET LA GARDE N'A PAS BOUGÉ D'UN POUCE : elle vit dans `restaurerPassion`,
+// point d'écriture, exactement comme le plafond. Retirer `disabled` ne
+// réactive AUCUNE passion — le verrou « appelée directement, elle ne ramène pas
+// la passion en douce » de `mes-passions-page.spec.js` ⑩ bis le mesure déjà.
 function _passionReactivationBloquee() {
   try { return plafondPassionsAtteint() && quotaChangementsAtteint(); }
   catch (e) { return false; }
@@ -2264,9 +2275,19 @@ function _lignesArchiveesHTML(archivees) {
       + (quand ? '<span style="display:block;font-weight:400;font-size:11px;color:var(--muted);">Archivée le '
                  + escapeHtml(quand) + "</span>" : "")
       + "</span>"
-      + '<button type="button" class="v8-switch-go" data-v8-restaurer="' + escapeHtml(String(pr.id)) + '"'
-      + (bloque ? ' disabled aria-disabled="true" data-v8-reactivation="bloquee" title="'
-                  + escapeHtml(PASSION_REACTIVATION_MOTIF) + '"'
+      // ⚠️ NI `disabled` NI `aria-disabled` (2026-09-04). Les deux DÉSARMENT :
+      // le premier n'envoie pas l'`onclick`, le second retire la commande aux
+      // lecteurs d'écran et à toute automatisation — Playwright refuse de
+      // cliquer un `aria-disabled="true"` avec « element is not enabled », ce
+      // qui a d'ailleurs révélé le défaut. Poser l'un ou l'autre sur un bouton
+      // qui RÉPOND serait mentir ; ne rien dire de l'état serait pire. L'état
+      // vit donc dans le NOM ACCESSIBLE (`aria-label`), dans l'aspect
+      // (`.est-bloquee`), dans le `title` et dans le motif écrit sous la liste.
+      + '<button type="button" class="v8-switch-go' + (bloque ? " est-bloquee" : "") + '"'
+      + ' data-v8-restaurer="' + escapeHtml(String(pr.id)) + '"'
+      + (bloque ? ' data-v8-reactivation="bloquee" title="' + escapeHtml(PASSION_REACTIVATION_MOTIF) + '"'
+                  + ' aria-label="Réactiver ' + escapeHtml(et.label)
+                  + ' — indisponible pour le moment, appuie pour savoir pourquoi"'
                 : ' data-v8-reactivation="ouverte"')
       + ' onclick="restaurerPassion(\'' + escapeJsArg(String(pr.id)) + '\')">'
       + "Réactiver</button>"
@@ -2352,26 +2373,52 @@ function _rendrePagePassionsEntete() {
   if (porte) {
     var ferme = plafondActif && plein;
     porte.classList.toggle("is-plein", ferme);
-    if (ferme) {
-      // ⚠️ DÉSARMER, PAS SEULEMENT GRISER. `role` et `tabindex` retirés : sans
-      // eux l'écouteur DÉLÉGUÉ d'app-08 (Entrée/Espace sur tout `[role=button]`
-      // non natif) n'a plus de prise, et le CSS coupe le pointeur. Griser une
-      // cible qui répond encore, c'est promettre un refus et faire le geste.
-      porte.setAttribute("aria-disabled", "true");
-      porte.removeAttribute("role");
-      porte.removeAttribute("tabindex");
-      porte.setAttribute("title", "Limite de " + PASSIONS_OFFERTES + " atteinte");
-    } else {
-      porte.removeAttribute("aria-disabled");
-      porte.setAttribute("role", "button");
-      porte.setAttribute("tabindex", "0");
-      porte.setAttribute("title", "Ajouter une passion");
-    }
+    // ══════════════════════════════════════════════════════════════════════
+    // ⚠️ ELLE RESTE ARMÉE, MÊME AU PLAFOND (2026-09-04). REVIREMENT ASSUMÉ.
+    // ──────────────────────────────────────────────────────────────────────
+    // La fiche 19 la DÉSARMAIT (`aria-disabled`, `role` et `tabindex` retirés,
+    // `pointer-events: none`), au motif qu'une cible qui répond à un geste
+    // qu'elle annonce refuser est une promesse trompeuse. Le raisonnement était
+    // juste sur le papier ; à l'usage il produit exactement l'inverse.
+    //
+    // Mesuré sur l'appareil de Benjamin le 2026-09-04, et reproduit au
+    // navigateur : un compte à trois passions — c'est-à-dire un compte NORMAL,
+    // arrivé au bout de sa dotation — tape la porte et **rien ne se passe**.
+    // Pas un toast, pas une fenêtre, pas un mot. Le verdict de l'utilisateur
+    // n'est pas « c'est plein », c'est « c'est cassé » : « ajouter une passion
+    // ne fonctionne pas ». Un refus qui ne se prononce pas est indiscernable
+    // d'une panne — et ce dépôt a déjà écrit la règle qui tranche (fiche 16) :
+    // UNE PORTE FERMÉE DOIT DIRE PAR OÙ PASSER.
+    //
+    // Elle mène donc toujours à `openCreateProfile`, qui au plafond ouvre
+    // `openPassionPaywall()` : la fenêtre nomme la limite, dit qu'aucun
+    // paiement n'est ouvert, et donne la sortie réelle (« archives-en une pour
+    // en activer une autre »). C'est le comportement de TOUTES les autres
+    // portes d'acquisition — le Studio, `quickCreateProfile`,
+    // `ajouterPassionAuCompte` — dont celle-ci était devenue la seule
+    // exception muette. Et la boucle « mur → panneau → mur » reste fermée par
+    // `_paywallCacheGerer()`, qui retire « Gérer mes passions » quand on tape
+    // depuis le panneau déjà ouvert.
+    //
+    // ⚠️ DONC PAS D'`aria-disabled` NON PLUS. Le poser sur une cible qui répond
+    // mentirait aux lecteurs d'écran, et `pointer-events` a quitté le CSS avec
+    // lui : l'état « plein » est désormais VISUEL et TEXTUEL, jamais inerte.
+    // `data-passion-porte` garde ses deux valeurs — c'est le marqueur d'état,
+    // pas un marqueur d'inertie.
+    // ══════════════════════════════════════════════════════════════════════
+    porte.removeAttribute("aria-disabled");
+    porte.setAttribute("role", "button");
+    porte.setAttribute("tabindex", "0");
+    porte.setAttribute("title", ferme
+      ? "Limite de " + PASSIONS_OFFERTES + " atteinte — voir comment changer de passion"
+      : "Ajouter une passion");
     porte.setAttribute("data-passion-porte", ferme ? "fermee" : "ouverte");
   }
   if (mot) {
+    // Le motif du refus ET la sortie, dans la même ligne : « c'est plein » seul
+    // laissait l'utilisateur devant un constat sans geste.
     mot.textContent = (plafondActif && plein)
-      ? "Limite de " + PASSIONS_OFFERTES + " atteinte"
+      ? "Limite de " + PASSIONS_OFFERTES + " atteinte — appuie pour voir comment en changer"
       : "Ajoute une passion à ton profil et à ton fil.";
   }
 }
@@ -3101,15 +3148,98 @@ function comptePassioReel() {
 // pas le nombre de passions. Le plafond de trois vivantes reste donc ce qu'il
 // était avant ce lot — universel — et le visiteur qui s'inscrit arrive dans son
 // dû, sans qu'on ait rien à lui reprendre au passage.
+// ══════════════════════════════════════════════════════════════════════════
+// LE MODE « PASSIONS ILLIMITÉES »  (2026-09-04, demande de Benjamin)
+// ──────────────────────────────────────────────────────────────────────────
+// « Mets mon compte test en illimité avec les passions pour les tests. »
+//
+// ⚠️ CE N'EST PAS UNE COUPURE DE LOT, C'EST UNE ADHÉSION. Toutes les autres
+// bascules de ce dépôt (`flat_passions_v1`, `passio_ui_8`, `passio_ui_4a5`…)
+// ne savent qu'ENLEVER : seule la valeur « 0 » décide, rien n'est jamais écrit
+// pour activer. Celle-ci fait l'inverse — elle n'existe que si on l'ALLUME,
+// explicitement, sur cet appareil. Le défaut du produit reste donc le produit :
+// trois passions, trois changements.
+//
+// ⚠️ ELLE EST LUE À UN SEUL ENDROIT, ET C'EST CE QUI LA REND SÛRE. Les deux
+// interrupteurs de tout le système de quota sont `plafondPassionsActif()` et
+// `quotaChangementsActif()` : TOUT le reste en découle par lecture —
+// `passionsRestantesOffertes` → Infinity, donc `plafondPassionsAtteint` → faux,
+// donc les gardes d'`ajouterPassionAuCompte`, de `restaurerPassion`, du Studio
+// et de `PassioFlatUI.placesRestantes` s'ouvrent ; `changementsPassionRestants`
+// → Infinity, donc `quotaChangementsAtteint` → faux, donc
+// `_inscrireChangementPassion` n'échoue plus, `confirmArchivePassion` n'ouvre
+// plus la fenêtre payante et `_passionReactivationBloquee` rend faux. Poser le
+// drapeau à chaque porte aurait laissé la prochaine porte l'oublier — la faute
+// exacte que `quickCreateProfile` et le Studio ont déjà commise sur le plafond.
+//
+// ⚠️ ET L'ÉCRAN NE MENT PAS. `_rendrePagePassionsEntete` n'écrit « sur N » que
+// si `plafondPassionsActif()`, et n'affiche l'alerte de quota que si
+// `changementsPassionRestants()` est un nombre fini : les deux mentions
+// disparaissent d'elles-mêmes, sans une ligne de plus. Annoncer une limite qui
+// ne borne rien est un mensonge (règle de la fiche 19).
+//
+// ⚠️ AUCUNE PORTE DÉROBÉE OUVERTE. C'est du client vanilla : n'importe qui peut
+// déjà écrire `state.user.profiles` depuis la console de son navigateur, et
+// c'est le SERVEUR qui décidera d'un jour facturer. Ce drapeau ne desserre
+// aucune RLS et n'écrit rien en base que la console ne puisse écrire seule.
+// ══════════════════════════════════════════════════════════════════════════
+var CLE_PASSIONS_ILLIMITEES = "passio_passions_illimitees_v1";
+
+function passionsIllimitees() {
+  try { if (window.PASSIO_PASSIONS_ILLIMITEES === true) return true; } catch (e) {}
+  try { if (window.PASSIO_PASSIONS_ILLIMITEES === false) return false; } catch (e) {}
+  try { return localStorage.getItem(CLE_PASSIONS_ILLIMITEES) === "1"; } catch (e) { return false; }
+}
+
 function plafondPassionsActif() {
+  if (passionsIllimitees()) return false;
   try { return typeof PassioFlatUI !== "undefined" && PassioFlatUI.actif(); }
   catch (e) { return false; }
 }
 
 // Le quota de CHANGEMENTS, lui, ne s'applique qu'à un compte : essayer
 // l'application, c'est ranger et reprendre autant qu'on veut.
+// ⚠️ La garde d'illimité est répétée ici et n'est PAS redondante : elle survit
+// à toute évolution qui rendrait ces deux fonctions indépendantes.
 function quotaChangementsActif() {
+  if (passionsIllimitees()) return false;
   return plafondPassionsActif() && comptePassioReel();
+}
+
+// La bascule, appelée depuis les Paramètres → Démo. Elle DIT ce qu'elle fait et
+// repeint tout de suite ce qui en dépend : la page « Mes passions » affiche ou
+// retire « sur N », l'alerte de quota, l'état de la porte et celui des boutons
+// « Réactiver ». Sans ce re-rendu, l'écran garderait l'état d'avant la bascule
+// et on croirait le drapeau sans effet.
+function basculerPassionsIllimitees() {
+  var actif = !passionsIllimitees();
+  try { localStorage.setItem(CLE_PASSIONS_ILLIMITEES, actif ? "1" : "0"); } catch (e) {}
+  // Une bascule en mémoire prendrait le pas sur le stockage à la lecture
+  // suivante : on l'aligne, sinon un `window.PASSIO_PASSIONS_ILLIMITEES` posé
+  // par un test ou une console figerait le bouton.
+  try { window.PASSIO_PASSIONS_ILLIMITEES = actif; } catch (e) {}
+  try { majBoutonPassionsIllimitees(); } catch (e) {}
+  try { if (typeof renderProfilesScreen === "function") renderProfilesScreen(); } catch (e) {}
+  try { if (typeof renderProfileStrip === "function") renderProfileStrip(); } catch (e) {}
+  _passionsPageTel("passions_illimitees_bascule", {
+    ouvert: actif,
+    actives: nbPassionsVivantes(),
+  });
+  toast(actif
+    ? "♾️ Passions illimitées — plafond et quota levés sur cet appareil"
+    : "Passions illimitées désactivées — retour à " + PASSIONS_OFFERTES + " passions");
+}
+
+// Le bouton des Paramètres doit dire l'état COURANT, pas le geste supposé : il
+// est du balisage statique, relu à chaque ouverture du panneau (comme
+// `majSectionCompte`), sinon il annonce l'état de la dernière fois.
+function majBoutonPassionsIllimitees() {
+  var b = document.getElementById("settingsPassionsIllimitees");
+  if (!b) return;
+  var on = passionsIllimitees();
+  b.textContent = on ? "Passions illimitées : ACTIVÉ" : "Passions illimitées (test)";
+  b.setAttribute("aria-pressed", on ? "true" : "false");
+  b.setAttribute("data-passions-illimitees", on ? "1" : "0");
 }
 
 // ── Le journal des changements ────────────────────────────────────────────
