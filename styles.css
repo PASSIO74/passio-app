@@ -11039,21 +11039,39 @@ button, a, label, select, summary,
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   PASSIO UI V4 — lot UI-4A5 : « Filtres » est une VUE, et les bulles de passion
-   vivent dedans.  ACTIF PAR DÉFAUT.
+   PASSIO UI V4 — lot UI-4A5 : « Filtre » est une VUE de « Rencontrer ».
+   ACTIF PAR DÉFAUT.
    (coupures : localStorage.passio_ui_4a5 = "0" · window.PASSIO_UI_4A5 = false)
 
-   Tout est ancré à `:root.passio-ui-4a5` et à l'attribut `data-v4a5-vue` que le
-   module pose sur la racine. Coupé, les deux disparaissent : la rangée de
-   passions et les volets de filtres retrouvent leur place (le module les
-   rend lui-même), et le bouton rouvre le dialogue historique.
+   ── Deux demandes, deux couches ────────────────────────────────────────────
+   ① 2026-08-29 : la troisième case cesse d'ouvrir un dialogue et devient une
+      VUE — « quand on clique dessus tu n'ouvres plus un panel, tu affiches
+      dessous tous les choix ».
+   ② 2026-09-04, maquette validée : cette vue est réorganisée en QUATRE
+      SECTIONS NOMMÉES — Quand ? · Où ? · Quelles passions ? · Horaire —, une
+      ligne discrète de raccourcis, et un bouton violet FIXE au-dessus de la
+      barre d'onglets.
+
+   ⚠️ LE MOT EST « Filtre », AU SINGULIER, partout. Ni « Filtres », ni
+   « Filtrer les rencontres ».
+
+   ⚠️ AUCUN PICTOGRAMME À CÔTÉ D'UN TITRE DE SECTION. Les seules icônes de
+   cette page sont FONCTIONNELLES et vivent DANS un champ : le calendrier de
+   « Choisir une date », l'épingle de la carte de lieu, le chevron de
+   « Modifier ». Une icône décorative posée devant « Quand ? » n'ajoute rien
+   qu'un mot de quatre lettres ne dise déjà.
+
+   Tout est ancré à `:root.passio-ui-4a5` et à l'attribut `data-v4a5-vue` que
+   le module pose sur la racine. Coupé, les deux disparaissent : la rangée de
+   passions et le calendrier retrouvent leur place (le module les rend
+   lui-même), et le bouton rouvre le dialogue historique.
 
    ⚠️ Ce bloc RÉÉCRIT deux règles du lot UI-7 (§2), qui donnaient volontairement
    à la troisième case une allure DIFFÉRENTE parce qu'elle ouvrait un dialogue.
    Elle n'en ouvre plus : elle redevient une case comme les deux autres, à
    égalité de largeur et sans séparateur. Les sélecteurs sont à spécificité
    égale ou supérieure ET plus bas dans le fichier : c'est ce qui les fait
-   gagner, et c'est pourquoi ce bloc doit rester le dernier.
+   gagner, et c'est pourquoi ce bloc doit rester le DERNIER du fichier.
    ═══════════════════════════════════════════════════════════════════════════ */
 
 /* ── La troisième case redevient un onglet ────────────────────────── */
@@ -11073,29 +11091,36 @@ button, a, label, select, summary,
   padding-inline: 10px;
 }
 
-/* Violet = sélection, comme Liste et Carte. L'état ne repose PAS que sur la
-   couleur : `aria-selected` le dit aux technologies d'assistance. */
+/* Violet PLEIN = sélection, exactement comme Liste et Carte. L'état ne repose
+   PAS que sur la couleur : `aria-selected` le dit aux technologies
+   d'assistance. */
 :root.passio-ui-4a5 .v4a4-outils-hote > .ctx-trigger[aria-selected="true"] {
   background: var(--accent);
   color: #fff;
 }
-/* Sur fond violet, la pastille de compte s'inverse : un violet sur violet ne
-   se lirait plus. */
-:root.passio-ui-4a5 .v4a4-outils-hote > .ctx-trigger[aria-selected="true"] .ctx-trigger-badge {
-  background: #fff;
-  color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent);
+
+/* ⚠️ L'ICÔNE ET LA PASTILLE DE COMPTE SONT MASQUÉES, JAMAIS RETIRÉES.
+   La maquette du 2026-09-04 veut trois cases qui ne portent qu'un MOT — les
+   deux voisines n'ont ni icône ni pastille, et la troisième, à égalité de
+   largeur, n'en a pas besoin non plus. `_updateIrlFiltersBtn` continue
+   d'écrire dans `#irlToolsBadge` à chaque rendu (le recréer ou le retirer
+   perdrait le compteur en silence), et la coupure `passio_ui_4a5="0"` les
+   rend tous les deux. `!important` sur la pastille : le moteur lui pose un
+   `display` EN LIGNE, qu'aucun sélecteur ne bat. */
+:root.passio-ui-4a5 .v4a4-outils-hote > .ctx-trigger > svg { display: none; }
+:root.passio-ui-4a5 .v4a4-outils-hote > .ctx-trigger .ctx-trigger-badge {
+  display: none !important;
 }
 
 /* ── Le panneau : caché hors de sa vue, jamais retiré du DOM ───────────
-   Il héberge des nœuds DÉPLACÉS (#irlPassionRow, les volets de filtres) dans
-   lesquels le moteur historique continue d'écrire à chaque rendu : le retirer
-   de l'arbre les emporterait, et `renderIrlPassionTiles` écrirait dans le
-   vide. On le masque donc, ce qui n'empêche aucune écriture. */
+   Il héberge des nœuds DÉPLACÉS (#irlPassionRow, #irlPaneDate) dans lesquels
+   le moteur historique continue d'écrire à chaque rendu : le retirer de
+   l'arbre les emporterait, et `renderIrlPassionTiles` écrirait dans le vide.
+   On le masque donc, ce qui n'empêche aucune écriture. */
 :root.passio-ui-4a5 .v4a5-panneau { display: none; }
 :root.passio-ui-4a5[data-v4a5-vue="filtres"] .v4a5-panneau { display: block; }
 
-/* Vue Filtres : la liste passe la main, comme la carte le fait en vue Liste.
+/* Vue Filtre : la liste passe la main, comme la carte le fait en vue Liste.
    `!important` parce que `#irlSearchEmpty` porte un `display` INLINE, qu'aucun
    sélecteur ne bat. La liste n'est pas vidée pour autant : le moteur continue
    d'y écrire, et revenir à la vue Liste la retrouve telle quelle. */
@@ -11104,166 +11129,286 @@ button, a, label, select, summary,
   display: none !important;
 }
 
-/* ── Contenu du panneau ──────────────────────────────────── */
-:root.passio-ui-4a5 .v4a5-panneau > .v4a5-section:first-child,
-:root.passio-ui-4a5 .v4a5-panneau > .v4a5-outils:first-child { margin-top: 2px; }
-
-/* Les bulles de passion : mêmes tuiles, même moteur — seule la marge basse
-   change, la rangée n'est plus le premier bloc de l'écran. */
-:root.passio-ui-4a5 #v4a5Passions .msg-filter-tiles { margin: 0; }
-:root.passio-ui-4a5 #v4a5Passions .irl-extra-panel { margin-bottom: 0; }
-
-/* Les quatre intentions, deux par ligne (même grille que le panneau UI-4A4). */
-:root.passio-ui-4a5 .v4a5-intents {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-:root.passio-ui-4a5 .v4a5-intents .v4a0-chip {
-  width: 100%;
-  min-height: 46px;
-  justify-content: flex-start;
+/* ⚠️ LE PIED FIXE MANGE 96 px EN BAS DE LA ZONE DE DÉFILEMENT. Sans cette
+   réserve, la dernière ligne du panneau (les raccourcis « Mes événements |
+   Mes rencontres ») passerait SOUS le bouton, et rien ne dirait qu'elle
+   existe. `.app-main` porte déjà 90 à 96 px de padding bas : on ajoute la
+   hauteur du pied par-dessus, dans cette vue seulement. */
+:root.passio-ui-4a5[data-v4a5-vue="filtres"] .app-main {
+  padding-bottom: 128px;
 }
 
-/* Les volets Date / Distance / Horaire, déplacés depuis la feuille historique :
-   leur dernière marge basse servait à les décoller du pied de cette feuille. */
-:root.passio-ui-4a5 #v4a5Avance .irl-fpane { margin-bottom: 0; }
-:root.passio-ui-4a5 #v4a5Avance .irl-ftabs { margin-bottom: 12px; }
+/* ═══════════════════════════════════════════════════════════════════════════
+   LES QUATRE SECTIONS
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root.passio-ui-4a5 .v4a5-panneau { padding-top: 2px; }
 
-/* Le pied : effacer, et revenir au résultat. Les deux boutons annoncent ce
-   qu'ils font — le principal porte le NOMBRE d'activités restantes, écrit par
-   le moteur (`_syncIrlFiltersFooter`), jamais recompté ici. */
-:root.passio-ui-4a5 .v4a5-pied {
+:root.passio-ui-4a5 .v4a5-bloc { margin: 0 0 18px; }
+:root.passio-ui-4a5 .v4a5-bloc:last-of-type { margin-bottom: 10px; }
+
+:root.passio-ui-4a5 .v4a5-bloc-titre {
+  margin: 0 0 10px;
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.2;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+/* « Tout effacer » n'est pas un filtre : c'est une commande. Elle se pose au
+   bout du premier titre, en petit, et le module la MASQUE quand il n'y a rien
+   à effacer — un bouton toujours actif qui ne fait rien est un bouton qui
+   ment. Elle garde ses 44 px de cible tactile grâce au ::before, comme la
+   pastille d'UI-3A : le texte visible fait 12,5 px, la BOÎTE fait 44. */
+:root.passio-ui-4a5 .v4a5-bloc-tete {
   display: flex;
-  gap: 8px;
-  margin: 18px 0 6px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
-:root.passio-ui-4a5 .v4a5-pied .btn { min-width: 0; }
-/* Le principal porte un compte variable (« Voir les 35 événements ») : il
-   prend la place restante, et « Tout effacer » se contente de la sienne.
-   À colonnes égales, le libellé du principal passait à la ligne. */
-:root.passio-ui-4a5 .v4a5-pied #v4a5Done { flex: 1 1 auto; }
-:root.passio-ui-4a5 .v4a5-pied #v4a5Reset { flex: 0 1 auto; white-space: nowrap; }
-
-@media (max-width: 359px) {
-  :root.passio-ui-4a5 .v4a5-intents { grid-template-columns: minmax(0, 1fr); }
+:root.passio-ui-4a5 .v4a5-bloc-tete .v4a5-bloc-titre { margin-bottom: 0; }
+:root.passio-ui-4a5 #v4a5BlocQuand .v4a5-bloc-tete { margin-bottom: 10px; }
+:root.passio-ui-4a5 .v4a5-reset {
+  position: relative;
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 12.5px;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
 }
 
-
-/* ── Une seule esthétique pour toutes les cases du panneau ─────────────────
-   Demande de Benjamin du 2026-08-31, après essai réel : « dans le filtre de
-   Rencontrer je veux que tous les onglets aient la même esthétique : carré
-   violet + écriture blanche, de la même taille, bien ordonnés — sauf Date,
-   Distance, Horaire, laisse comme ça. »
-
-   Avant : « Ce que je cherche » rendait quatre puces courtes (violettes une
-   fois cochées, blanches sinon) tandis qu'« Autour de moi » et « Mes
-   événements » rendaient des LIGNES pleine largeur, blanches, avec un emoji et
-   un chevron. Trois gabarits pour des contrôles qui font la même chose :
-   restreindre la liste. Ils partagent désormais une seule tuile.
-
-   ⚠️ TOUT EST ANCRÉ à `#v4a5Panneau` / `#v4a5Outils`. `.ctx-item` est le
-   composant COMMUN des outils contextuels (`ContextualTools.renderInto`), servi
-   aussi dans le dialogue des autres écrans : une règle non bornée les
-   repeindrait tous, loin d'ici et sans que rien ne le signale.
-
-   ⚠️ RIEN N'EST RETIRÉ DU DOM. L'emoji (`.ctx-item-ico`) et le chevron
-   (`.ctx-item-go`) sont MASQUÉS — Benjamin a demandé leur disparition dans ce
-   panneau seulement, et le kill switch `passio_ui_4a5="0"` doit les rendre.
-
-   ⚠️ Les volets Date / Distance / Horaire (`#v4a5Avance`) ne sont pas touchés,
-   comme demandé, et les bulles de passion non plus : elles sont le composant
-   partagé avec le Fil (ADR-011 §2), les redessiner ici ferait diverger deux
-   écrans qui doivent raconter le même modèle. */
-:root.passio-ui-4a5 #v4a5Outils .ctx-section-items {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-:root.passio-ui-4a5 .v4a5-intents .v4a0-chip,
-:root.passio-ui-4a5 #v4a5Outils .ctx-item {
+/* ── Les cases de choix ────────────────────────────────────────────────────
+   ⚠️ UNE SEULE GRAMMAIRE POUR LES QUATRE SECTIONS. Au repos : lavis violet,
+   écriture violet foncé (formule du 2026-09-01, `--accent-tile` /
+   `--accent-2`, opaque, contraste AA). Cochée : VIOLET PLEIN, écriture
+   blanche, et la coche ✓ — c'est la demande explicite du 2026-09-04 (« utiliser
+   le violet plein avec une coche pour les choix actifs »), et elle ne vaut que
+   pour l'état COCHÉ : le repos reste un lavis, ce que Benjamin avait demandé le
+   2026-09-01 en trouvant les aplats « agressifs ».
+   ⚠️ L'état ne tient JAMAIS à la seule couleur : `aria-pressed` le dit, et la
+   coche le redit. */
+/* ⚠️ FLEX, PAS UNE GRILLE À COLONNES ÉGALES — et c'est MESURÉ, pas un goût.
+   À 390 px, trois colonnes égales font 115 px, soit 101 px de texte ;
+   « Cette semaine » en fait 100,4 à 12,5 px, et la coche lui en ajoute 13 :
+   cocher « Cette semaine » cassait donc son propre libellé en deux lignes,
+   sous les deux voisines restées sur une. En flex, chaque case se dimensionne
+   sur SON texte puis grandit pour remplir la ligne (`flex: 1 1 auto`) — c'est
+   ce que montre la maquette, où les trois cases n'ont pas la même largeur — et
+   si la rangée déborde, c'est une CASE ENTIÈRE qui passe à la ligne, jamais un
+   mot coupé. */
+:root.passio-ui-4a5 .v4a5-choix {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+/* La distance, elle, garde QUATRE PARTS ÉGALES : « 5 km » et « 50 km » sont
+   assez courts pour que l'égalité tienne, et une échelle de distances se lit
+   mieux régulière. */
+:root.passio-ui-4a5 .v4a5-choix-4 .v4a5-case { flex: 1 1 0; }
+:root.passio-ui-4a5 .v4a5-case {
+  display: flex;
   align-items: center;
   justify-content: center;
-  gap: 2px;
-  width: 100%;
-  /* La MÊME hauteur pour toutes les cases : c'est ce qui les « ordonne ». */
-  min-height: 56px;
-  padding: 8px 10px;
-  /* ⚠️ VIOLET LÉGER + ÉCRITURE VIOLET FONCÉ depuis le 2026-09-01, sur essai
-     réel de Benjamin (« les grands carrés violets sont agressifs… mets les
-     mêmes sur le filtre dans Rencontrer ») : ce panneau et la feuille
-     « Créer » suivent la MÊME formule, ce sont les deux surfaces qui
-     empilaient des aplats violets pleins. */
+  gap: 5px;
+  flex: 1 1 auto;
+  min-width: 0;
+  /* 46 px : au-dessus de la cible tactile minimale, et assez pour deux lignes
+     de 12,5 px si un libellé devait malgré tout revenir à la ligne. */
+  min-height: 46px;
+  padding: 6px 8px;
   border: 1px solid var(--accent-tile-line);
   border-radius: 14px;
   background: var(--accent-tile);
   color: var(--accent-2);
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.15;
   text-align: center;
-  font-size: 13px;
-  font-weight: 700;
-  box-shadow: none;
-  transition: background .16s ease, border-color .16s ease;
+  cursor: pointer;
+  transition: background .16s ease, border-color .16s ease, color .16s ease;
 }
-:root.passio-ui-4a5 .v4a5-intents .v4a0-chip .v4a0-chip-label,
-:root.passio-ui-4a5 #v4a5Outils .ctx-item .ctx-item-label {
-  color: var(--accent-2);
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 1.2;
-}
-:root.passio-ui-4a5 #v4a5Outils .ctx-item .ctx-item-body {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1px;
+:root.passio-ui-4a5 .v4a5-case-txt {
   min-width: 0;
+  overflow-wrap: anywhere;
 }
-:root.passio-ui-4a5 #v4a5Outils .ctx-item .ctx-item-sub {
-  color: var(--accent);
-  font-size: 10.5px;
-  font-weight: 600;
+/* La coche n'existe QUE sur la sélection : c'est le second porteur de l'état. */
+:root.passio-ui-4a5 .v4a5-case-mark {
+  display: none;
+  font-size: 11px;
+  line-height: 1;
 }
-/* Les petits emojis et le chevron, retirés de la vue (jamais du DOM). */
-:root.passio-ui-4a5 #v4a5Outils .ctx-item .ctx-item-ico,
-:root.passio-ui-4a5 #v4a5Outils .ctx-item .ctx-item-go { display: none; }
-
-/* L'ÉTAT COCHÉ se lit désormais à la DENSITÉ du lavis et à son filet, plus à
-   l'opacité : sur un carré déjà très clair, atténuer encore à 0,55 effaçait la
-   case décochée et faisait tomber son texte sous le seuil AA. Cochée, elle
-   prend le ton plus dense et le filet violet plein ; la coche ✓ ne s'affiche
-   toujours que sur la sélection (règle héritée d'UI-4A0, conservée telle
-   quelle) — l'état ne repose donc jamais sur la seule couleur.
-   ⚠️ « Choisir une ville » n'est pas une bascule mais une ACTION : elle ne porte
-   pas `aria-pressed` et garde donc l'aspect au repos — c'est voulu, elle n'a
-   pas d'état à montrer. */
-:root.passio-ui-4a5 .v4a5-intents .v4a0-chip[aria-pressed="true"],
-:root.passio-ui-4a5 #v4a5Outils .ctx-item[aria-pressed="true"] {
-  background: var(--accent-tile-on);
+:root.passio-ui-4a5 .v4a5-case[aria-pressed="true"] {
+  background: var(--accent);
   border-color: var(--accent);
+  color: #fff;
 }
-:root.passio-ui-4a5 .v4a5-intents .v4a0-chip .v4a0-chip-mark { color: var(--accent); }
-:root.passio-ui-4a5 .v4a5-intents .v4a0-chip:focus-visible,
-:root.passio-ui-4a5 #v4a5Outils .ctx-item:focus-visible {
+:root.passio-ui-4a5 .v4a5-case[aria-pressed="true"] .v4a5-case-mark { display: inline; }
+:root.passio-ui-4a5 .v4a5-case:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 @media (prefers-reduced-motion: reduce) {
-  :root.passio-ui-4a5 .v4a5-intents .v4a0-chip,
-  :root.passio-ui-4a5 #v4a5Outils .ctx-item { transition: none; }
-}
-@media (max-width: 359px) {
-  :root.passio-ui-4a5 #v4a5Outils .ctx-section-items { grid-template-columns: minmax(0, 1fr); }
+  :root.passio-ui-4a5 .v4a5-case { transition: none; }
 }
 
-/* ── Les bulles de passion suivent la même règle ───────────────────────────
-   Benjamin, 2026-08-31, en réponse à la question posée : « oui, mets tout ce
-   que je t'ai demandé. » Les tuiles de passion du panneau Filtres — les
-   seules cases qui gardaient encore leur gabarit d'origine — deviennent donc
-   elles aussi des carrés violets à écriture blanche, de la même taille, dans
-   la même grille que les intentions et les items d'outils.
+/* ── ① « Choisir une date » : une LIGNE, pas une case ──────────────────────
+   Elle n'est pas un choix de plus — elle déplie le calendrier réel
+   (`#irlPaneDate`, déplacé). D'où un gabarit différent, volontairement : les
+   trois cases au-dessus se cochent, celle-ci ouvre. */
+:root.passio-ui-4a5 .v4a5-ligne {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 52px;
+  margin-top: 9px;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-card);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+:root.passio-ui-4a5 .v4a5-ligne-ico {
+  flex: 0 0 auto;
+  display: flex;
+  color: var(--muted);
+}
+:root.passio-ui-4a5 .v4a5-ligne-ico svg { width: 20px; height: 20px; }
+:root.passio-ui-4a5 .v4a5-ligne-txt {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+:root.passio-ui-4a5 .v4a5-ligne-go {
+  flex: 0 0 auto;
+  display: flex;
+  color: var(--muted);
+  transition: transform .16s ease;
+}
+:root.passio-ui-4a5 .v4a5-ligne-go svg { width: 18px; height: 18px; }
+/* Ouverte, la ligne se colore et son chevron pointe vers le bas : la page dit
+   d'où vient le calendrier qui vient d'apparaître. */
+:root.passio-ui-4a5 .v4a5-ligne.is-open {
+  border-color: var(--accent);
+  color: var(--accent-2);
+}
+:root.passio-ui-4a5 .v4a5-ligne.is-open .v4a5-ligne-txt,
+:root.passio-ui-4a5 .v4a5-ligne.is-open .v4a5-ligne-ico,
+:root.passio-ui-4a5 .v4a5-ligne.is-open .v4a5-ligne-go { color: var(--accent); }
+:root.passio-ui-4a5 .v4a5-ligne.is-open .v4a5-ligne-go { transform: rotate(90deg); }
+/* Une période RETENUE au calendrier n'a aucune case pour la porter : la ligne
+   elle-même prend l'accent, sinon la seule trace du choix serait un texte gris
+   — que l'œil lit comme un repos. */
+:root.passio-ui-4a5 .v4a5-ligne.is-set {
+  border-color: var(--accent);
+  background: var(--accent-tile);
+}
+:root.passio-ui-4a5 .v4a5-ligne.is-set .v4a5-ligne-txt {
+  color: var(--accent-2);
+  font-weight: 700;
+}
+:root.passio-ui-4a5 .v4a5-ligne.is-set .v4a5-ligne-ico { color: var(--accent); }
+:root.passio-ui-4a5 .v4a5-ligne:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root.passio-ui-4a5 .v4a5-ligne-go { transition: none; }
+}
 
+/* Le calendrier déplacé. Compact pour qu'ouvert, la page tienne encore :
+   40 → 34 px par ligne, soit six lignes de moins de hauteur. */
+:root.passio-ui-4a5 #v4a5Avance .irl-fpane { margin-bottom: 0; }
+:root.passio-ui-4a5 #v4a5Avance .irl-fpane.on { margin-top: 10px; }
+:root.passio-ui-4a5 #v4a5Avance .irl-cal { padding: 8px 8px 10px; border-radius: 14px; }
+:root.passio-ui-4a5 #v4a5Avance .irl-cal-grid { grid-auto-rows: 34px; }
+:root.passio-ui-4a5 #v4a5Avance .irl-cal-head { margin-bottom: 6px; }
+:root.passio-ui-4a5 #v4a5Avance .irl-cal-nav { width: 28px; height: 28px; font-size: 16px; }
+:root.passio-ui-4a5 #v4a5Avance .irl-fsum { margin-top: 8px; padding: 7px 10px; }
+
+/* ── ② « Où ? » : la carte compacte de lieu ────────────────────────────────
+   Une carte, pas un grand encadré : la maquette demande d'en réduire le
+   nombre. Elle dit le lieu de référence ET d'où il vient (« Position
+   actuelle » / « Ville choisie ») — « Annecy » tout seul ne le dirait pas.
+   ⚠️ Aucun de ces libellés ne part en télémétrie : la position précise de
+   l'utilisateur n'est jamais mesurée. */
+:root.passio-ui-4a5 .v4a5-lieu {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 60px;
+  padding: 10px 12px 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-card);
+}
+:root.passio-ui-4a5 .v4a5-lieu-ico {
+  flex: 0 0 auto;
+  display: flex;
+  color: var(--accent);
+}
+:root.passio-ui-4a5 .v4a5-lieu-ico svg { width: 22px; height: 22px; }
+:root.passio-ui-4a5 .v4a5-lieu-corps {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+:root.passio-ui-4a5 .v4a5-lieu-corps > b {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+:root.passio-ui-4a5 .v4a5-lieu-sub {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+:root.passio-ui-4a5 .v4a5-lieu-btn {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 44px;
+  padding: 0 2px 0 8px;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 13.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+:root.passio-ui-4a5 .v4a5-lieu-btn svg { width: 16px; height: 16px; }
+:root.passio-ui-4a5 .v4a5-lieu-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+:root.passio-ui-4a5 .v4a5-sous-titre {
+  margin: 14px 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* ── ③ « Quelles passions ? » : les bulles historiques, au même gabarit ────
    ⚠️ BORNÉ À `#v4a5Passions`. `.msg-tile` / `.msg-filter-tiles` sont le
    composant PARTAGÉ des filtres de la messagerie et du rail de passions : hors
    de ce panneau il ne bouge pas d'un pixel, et le kill switch
@@ -11272,29 +11417,31 @@ button, a, label, select, summary,
    la MÊME bulle qu'avant, seul ce panneau-ci s'en écarte.
 
    ⚠️ Le moteur n'est pas touché : `renderIrlPassionTiles` écrit toujours les
-   mêmes nœuds, avec les mêmes `data-irlpassion` et le même `aria-pressed`. Rien
-   n'est retiré du DOM — l'emoji est MASQUÉ, comme les emojis d'« Autour de moi »
-   et de « Mes événements ». */
+   mêmes nœuds, avec les mêmes `data-irlpassion` et le même `aria-pressed`.
+   Rien n'est retiré du DOM — emoji et compteur sont MASQUÉS. */
+:root.passio-ui-4a5 #v4a5Passions { margin-top: 9px; }
 :root.passio-ui-4a5 #v4a5Passions .msg-filter-tiles {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+  margin: 0;
   /* La carte qui les entourait faisait un cadre dans le cadre : les autres
-     sections du panneau posent leurs tuiles à même le fond. */
+     sections posent leurs cases à même le fond. */
   padding: 0;
   background: none;
   border: 0;
   box-shadow: none;
 }
+:root.passio-ui-4a5 #v4a5Passions .irl-extra-panel { margin-bottom: 0; }
 :root.passio-ui-4a5 #v4a5Passions .msg-tile {
   min-width: 0;
   width: 100%;
-  min-height: 56px;
+  min-height: 46px;
   flex-direction: row;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 8px 10px;
+  padding: 6px 8px;
   border: 1px solid var(--accent-tile-line);
   border-radius: 14px;
   background: var(--accent-tile);
@@ -11302,40 +11449,46 @@ button, a, label, select, summary,
   font-size: 13px;
   font-weight: 700;
   box-shadow: none;
-  transition: background .16s ease, border-color .16s ease;
+  transition: background .16s ease, border-color .16s ease, color .16s ease;
 }
 /* L'emoji de la passion et le marqueur « ✦ » : masqués, jamais retirés. */
 :root.passio-ui-4a5 #v4a5Passions .msg-tile .msg-tile-icon { display: none; }
 :root.passio-ui-4a5 #v4a5Passions .msg-tile .msg-tile-label {
-  max-width: none;
-  color: var(--accent-2);
+  min-width: 0;
+  max-width: 100%;
+  color: inherit;
   font-size: 13px;
   font-weight: 700;
   letter-spacing: 0;
+  line-height: 1.15;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
-/* Le compteur reste une INFORMATION (nombre d'activités dans cette passion) :
-   il n'est pas masqué, il passe simplement en pastille violette sur le lavis —
-   le rose de la messagerie hurlait sur ce fond. (Elle était blanche sur violet
-   plein ; le fond ayant changé de sens, la pastille s'inverse avec lui.) */
-:root.passio-ui-4a5 #v4a5Passions .msg-tile .msg-tile-badge {
-  top: 6px;
-  right: 6px;
-  background: var(--accent);
-  color: #fff;
-  border-color: transparent;
-  box-shadow: none;
-}
-/* Même grammaire d'état que les autres cases : coché = lavis dense et filet
-   violet, décoché = lavis au repos. « Autres » porte `aria-expanded` et non
-   `aria-pressed` : c'est une ACTION, elle garde l'aspect au repos — comme
-   « Choisir une ville ». */
+/* ⚠️ AUCUN NUMÉRO SUR LES PASSIONS (demande du 2026-09-04). Le compteur
+   d'activités est MASQUÉ, jamais retiré : `renderIrlPassionTiles` continue de
+   l'écrire, et la coupure `passio_ui_4a5="0"` le rend — c'est là qu'il garde
+   son sens, sur des tuiles larges qui ont la place de le porter. */
+:root.passio-ui-4a5 #v4a5Passions .msg-tile .msg-tile-badge { display: none; }
+/* La tuile « Chercher » de la rangée fait DOUBLE EMPLOI avec la case
+   « Chercher » de la ligne du dessus, qui appelle exactement la même fonction
+   (`ouvrirRecherchePassionIRL`). Masquée ici, rendue par la coupure.
+   ⚠️ « Autres » (`#irlExtraToggle`), lui, RESTE : il ne cherche pas, il ajoute
+   durablement une passion à la rangée (`state.user.irlExtraPassions`), et
+   aucune autre porte ne fait ça. */
+:root.passio-ui-4a5 #v4a5Passions .msg-tile.psel-tile-chercher { display: none; }
+
+/* Coché = violet plein, comme toutes les cases de la page. */
 :root.passio-ui-4a5 #v4a5Passions .msg-tile[aria-pressed="true"],
 :root.passio-ui-4a5 #v4a5Passions .msg-tile.active {
-  background: var(--accent-tile-on);
+  background: var(--accent);
   border-color: var(--accent);
+  color: #fff;
 }
 :root.passio-ui-4a5 #v4a5Passions .msg-tile.active .msg-tile-icon { box-shadow: none; }
-:root.passio-ui-4a5 #v4a5Passions .msg-tile:hover { color: var(--accent-2); }
 :root.passio-ui-4a5 #v4a5Passions .msg-tile:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -11367,164 +11520,121 @@ button, a, label, select, summary,
   color: #fff;
 }
 
-@media (max-width: 359px) {
-  :root.passio-ui-4a5 #v4a5Passions .msg-filter-tiles { grid-template-columns: minmax(0, 1fr); }
+/* ── ⑤ Les raccourcis personnels : UNE ligne, visuellement secondaire ──────
+   « Mes rencontres » est l'état `joined` — les activités auxquelles je me suis
+   INSCRIT —, celui-là même que le dialogue historique nomme « Mes
+   inscriptions ». Seul le mot change ; `data-irlfilter` ne bouge pas, et la
+   délégation d'app-07 continue de le lire.
+   ⚠️ Secondaires, donc SANS case : ce sont des liens, pas des filtres de même
+   rang que « Aujourd'hui » ou « 25 km ». Cochés, ils se soulignent et prennent
+   le violet — l'état reste visible sans devenir un cinquième bloc. */
+:root.passio-ui-4a5 .v4a5-raccourcis {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin: 16px 0 4px;
 }
-
-/* ══════════════════════════════════════════════════════════════════════════
-   UI-4A5 — LE PANNEAU FILTRES TIENT SUR UN ÉCRAN (2026-09-02)
-   Demande de Benjamin après essai réel : « repositionne les onglets dans la
-   page filtre de Rencontrer, les onglets sont trop gros, mal ordonnés ; je
-   voudrais que tout tienne sur la page sans descendre. »
-
-   Mesuré AVANT, à 390 × 844 : le panneau faisait 1 018 px pour 714 px de zone
-   visible — il fallait descendre pour atteindre « Voir les activités », donc
-   pour valider ses choix. Trois causes, dans cet ordre d'importance :
-     ① le volet Date était OUVERT d'office (337 px à lui seul, calendrier +
-        résumé) alors que Distance et Horaire, eux, étaient repliés ;
-     ② les onglets Date / Distance / Horaire faisaient 92 px de haut, deux fois
-        la hauteur des cases voisines (56 px) — d'où le « mal ordonné » ;
-     ③ « Autour de moi » et « Mes événements » formaient DEUX sous-sections
-        titrées, l'une avec une case, l'autre avec deux : trois cases sur trois
-        lignes de gabarits différents.
-
-   Ce que ce bloc change, et rien d'autre : des TAILLES et une GRILLE. Aucune
-   case ne disparaît, aucun moteur n'est touché, et la coupure
-   `passio_ui_4a5="0"` rend l'écran d'avant à la lettre (tout est ancré à
-   `:root.passio-ui-4a5`).
-
-   ⚠️ Le repli des volets Date / Distance / Horaire est fait en JS
-   (`js/ui-v4a5-filtres.js`, `window._irlFilterTab = "aucun"`), pas ici : les
-   volets sont montrés par une CLASSE que `_syncIrlFilterTabs()` repose à
-   chaque `renderIRL()`. Les masquer en CSS aurait laissé le moteur croire
-   qu'un volet est ouvert, et la pastille d'onglet aurait menti.
-
-   ⚠️ Ce bloc doit rester le DERNIER du fichier : il réécrit des règles du bloc
-   UI-4A5 ci-dessus à spécificité égale, et ne gagne que par la position.
-   ══════════════════════════════════════════════════════════════════════════ */
-
-/* ── ① Une seule hauteur de case, pour toutes ──────────────────────────────
-   56 → 44 px. C'est la cible tactile minimale, et c'est ce qui rend le panneau
-   régulier : intentions, ville, mes activités et bulles de passion partagent
-   désormais la MÊME boîte. Les volets Date/Distance/Horaire gardent leur peau
-   d'origine (demande du 2026-08-31 : « sauf Date, Distance, Horaire, laisse
-   comme ça ») — seule leur TAILLE suit la règle commune. */
-:root.passio-ui-4a5 .v4a5-intents .v4a0-chip,
-:root.passio-ui-4a5 #v4a5Outils .ctx-item,
-:root.passio-ui-4a5 #v4a5Passions .msg-tile {
+:root.passio-ui-4a5 .v4a5-raccourci {
   min-height: 44px;
-  padding: 6px 8px;
-  border-radius: 12px;
-  font-size: 12.5px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
 }
-:root.passio-ui-4a5 .v4a5-intents .v4a0-chip .v4a0-chip-label,
-:root.passio-ui-4a5 #v4a5Outils .ctx-item .ctx-item-label,
-:root.passio-ui-4a5 #v4a5Passions .msg-tile .msg-tile-label {
-  font-size: 12.5px;
-  line-height: 1.15;
+:root.passio-ui-4a5 .v4a5-raccourci[aria-pressed="true"] {
+  color: var(--accent);
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 4px;
 }
-/* À trois colonnes, un libellé long ne doit pas POUSSER sa case : il revient à
-   la ligne, au plus deux fois. ⚠️ Pas d'ellipse ici : mesuré à 390 px, elle
-   sortait « Choisir une … », « Mes évène… » et « Mes inscript… » — trois cases
-   dont plus aucune ne dit ce qu'elle fait. Deux lignes de 12 px tiennent dans
-   les 44 px de la case. `min-width: 0` sur le corps, sans quoi la boîte flex
-   refuse de rétrécir sous la largeur de son texte. */
-:root.passio-ui-4a5 #v4a5Outils .ctx-item .ctx-item-label,
-:root.passio-ui-4a5 #v4a5Passions .msg-tile .msg-tile-label {
-  min-width: 0;
-  max-width: 100%;
-  white-space: normal;
-  overflow-wrap: anywhere;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
+:root.passio-ui-4a5 .v4a5-raccourci:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+:root.passio-ui-4a5 .v4a5-raccourci-sep {
+  width: 1px;
+  height: 16px;
+  background: var(--border);
 }
 
-/* ── ② Les bulles de passion passent à trois colonnes ─────────────────────
-   Quatre tuiles (trois passions + « Autres ») tenaient sur deux lignes de deux ;
-   elles tiennent sur deux lignes de trois, et la seconde ligne ne réapparaît
-   qu'au-delà de trois passions. */
-:root.passio-ui-4a5 #v4a5Passions .msg-filter-tiles {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+/* ═══════════════════════════════════════════════════════════════════════════
+   LE PIED FIXE — « Afficher N résultats »
+   ⚠️ IL N'EST PAS DANS `#screen-irl`. Le module le pose dans `.app-shell`, en
+   frère de `.app-main` et de `.app-nav`, et il est positionné EN ABSOLU par
+   rapport à la coque. Deux raisons, toutes deux mesurées :
+     · dans `.app-main`, il défilerait avec le contenu — « toujours visible »
+       ne serait vrai que sur un panneau court ;
+     · en `position: fixed`, il s'étalerait sur toute la fenêtre au lieu de
+       rester dans la colonne de 440 px du grand écran.
+   ⚠️ SA DISTANCE AU BAS EST CELLE DE LA BARRE D'ONGLETS, safe-area COMPRISE
+   (`62px + env(safe-area-inset-bottom)`, cf. `.app-nav`). Une constante nue
+   suffirait sur Android (inset nul) et glisserait le bouton SOUS la barre
+   d'accueil d'un iPhone — le même défaut que celui corrigé sur les toasts.
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root.passio-ui-4a5 .v4a5-pied { display: none; }
+:root.passio-ui-4a5[data-v4a5-vue="filtres"] .v4a5-pied {
+  display: block;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(62px + env(safe-area-inset-bottom, 0px));
+  z-index: 30;
+  padding: 14px 16px 12px;
+  /* Un dégradé plutôt qu'un bandeau : le contenu qui passe dessous s'efface
+     sans qu'une barre pleine ne vienne couper la page en deux. */
+  background: linear-gradient(to top, #f6f5fa 62%, rgba(246, 245, 250, 0));
+  pointer-events: none;
 }
-:root.passio-ui-4a5 #v4a5Passions .msg-tile .msg-tile-badge {
-  top: 4px;
-  right: 4px;
+:root.passio-ui-4a5 .v4a5-done {
+  display: block;
+  width: 100%;
+  min-height: 52px;
+  padding: 14px 16px;
+  border: 0;
+  border-radius: 16px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 15.5px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  pointer-events: auto;
+  box-shadow: 0 6px 18px rgba(124, 58, 237, 0.28);
+}
+:root.passio-ui-4a5 .v4a5-done:disabled {
+  opacity: .55;
+  cursor: default;
+  box-shadow: none;
+}
+:root.passio-ui-4a5 .v4a5-done:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: 3px;
 }
 
-/* ── ③ Ville et « mes activités » : une seule rangée de trois ──────────────
-   `display: contents` fait tomber les deux sous-sections et leurs conteneurs
-   d'items : les trois cases deviennent les enfants directs de la grille de
-   `#v4a5Outils`, donc trois colonnes d'égale largeur alignées sur les bulles
-   du dessus. Les titres des sous-sections sont MASQUÉS (jamais retirés : le
-   kill switch les rend) — chaque case porte déjà son libellé en toutes
-   lettres, les répéter coûtait deux lignes pour rien.
-   ⚠️ Borné à `#v4a5Outils` : `.ctx-section` est le composant commun des outils
-   contextuels, servi dans le dialogue des autres écrans. */
-:root.passio-ui-4a5 #v4a5Outils {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-}
-:root.passio-ui-4a5 #v4a5Outils > .ctx-section,
-:root.passio-ui-4a5 #v4a5Outils .ctx-section-items {
-  display: contents;
-}
-:root.passio-ui-4a5 #v4a5Outils .ctx-section-title { display: none; }
-
-/* ── ④ Les trois onglets de volet redeviennent des cases comme les autres ──
-   92 px et une icône de 26 px empilée au-dessus du mot : c'était la pièce la
-   plus grosse du panneau, pour trois boutons qui ne font qu'ouvrir un volet.
-   Ils passent à 44 px, icône À CÔTÉ du mot. Leurs couleurs ne changent pas. */
-:root.passio-ui-4a5 #v4a5Avance .irl-ftabs {
-  grid-auto-rows: 44px;
-  margin-bottom: 0;
-}
-:root.passio-ui-4a5 #v4a5Avance .irl-ftab {
-  flex-direction: row;
-  gap: 6px;
-  padding: 6px 8px;
-  border-radius: 12px;
-  border-width: 1px;
-  font-size: 12.5px;
-}
-:root.passio-ui-4a5 #v4a5Avance .irl-ftab svg { width: 17px; height: 17px; }
-:root.passio-ui-4a5 #v4a5Avance .irl-ftab-dot { top: 6px; right: 6px; }
-/* Un volet OUVERT se décolle de ses onglets, et rend sa marge basse. */
-:root.passio-ui-4a5 #v4a5Avance .irl-fpane.on { margin-top: 12px; }
-
-/* Le calendrier reste ouvrable d'un tap : compacté pour qu'ouvert, il tienne
-   encore. 40 → 34 px par ligne, soit six lignes de moins de hauteur. */
-:root.passio-ui-4a5 #v4a5Avance .irl-cal { padding: 8px 8px 10px; border-radius: 14px; }
-:root.passio-ui-4a5 #v4a5Avance .irl-cal-grid { grid-auto-rows: 34px; }
-:root.passio-ui-4a5 #v4a5Avance .irl-cal-head { margin-bottom: 6px; }
-:root.passio-ui-4a5 #v4a5Avance .irl-cal-nav { width: 28px; height: 28px; font-size: 16px; }
-:root.passio-ui-4a5 #v4a5Avance .irl-fsum { margin-top: 8px; padding: 7px 10px; }
-
-/* ── ⑤ Les respirations ────────────────────────────────────────────────────
-   Les titres de section et les écarts entre sections étaient calibrés pour un
-   dialogue qu'on faisait défiler ; ici chaque ligne gagnée est une ligne qu'on
-   n'a pas à descendre. */
-:root.passio-ui-4a5 .v4a5-panneau .ctx-section-title { margin-bottom: 6px; }
-:root.passio-ui-4a5 .v4a5-panneau > .ctx-section,
-:root.passio-ui-4a5 .v4a5-panneau > .v4a5-outils { margin-top: 12px; }
-:root.passio-ui-4a5 .v4a5-panneau > .v4a5-section:first-child,
-:root.passio-ui-4a5 .v4a5-panneau > .v4a5-outils:first-child { margin-top: 0; }
-:root.passio-ui-4a5 .v4a5-pied { margin: 12px 0 4px; }
-:root.passio-ui-4a5 .v4a5-pied .btn { min-height: 44px; padding-block: 0; }
-
-/* Sous 360 px, les trois colonnes redeviennent deux : à ~100 px de large, un
-   libellé de passion n'est plus qu'une ellipse. Les intentions, elles, passent
-   déjà à une colonne par la règle du bloc ci-dessus. */
+/* ── Petits écrans ─────────────────────────────────────────────────────────
+   À 320 px, quatre colonnes de distance donnent des cases de ~66 px : « 50 km »
+   y tient encore (deux lignes au pire), mais les trois cases de « Quand ? » et
+   d'« Horaire » deviennent illisibles à trois colonnes. Elles passent à deux,
+   la troisième prenant la ligne entière — jamais d'ellipse, la règle du
+   2026-09-02 tient : un libellé coupé ne dit plus ce qu'il fait. */
 @media (max-width: 359px) {
-  :root.passio-ui-4a5 #v4a5Passions .msg-filter-tiles,
-  :root.passio-ui-4a5 #v4a5Outils { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* Le flex s'occupe déjà du repli : une case qui ne tient plus passe à la
+     ligne, ENTIÈRE. On resserre seulement les marges intérieures. */
+  :root.passio-ui-4a5 .v4a5-case { padding-inline: 7px; }
+  /* Le nom du lieu passe à DEUX LIGNES plutôt qu'à l'ellipse : « Choisir une
+     … » ne dit plus ce que fait la carte, et la règle du 2026-09-02 vaut ici
+     aussi — un libellé coupé ne dit plus rien. */
+  :root.passio-ui-4a5 .v4a5-lieu-corps > b {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    line-height: 1.15;
+  }
+  :root.passio-ui-4a5 #v4a5Passions .msg-filter-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  :root.passio-ui-4a5 .v4a5-bloc-titre { font-size: 16px; }
 }
-
-/* Le libellé d'une case « outils » est le plus long du panneau (« Mes
-   inscriptions ») : il lui faut la largeur ENTIÈRE de sa case pour que
-   l'ellipse ait un point d'appui — un `text-overflow` sur une boîte flex qui
-   se dimensionne sur son contenu ne coupe jamais rien. */
-:root.passio-ui-4a5 #v4a5Outils .ctx-item .ctx-item-body { width: 100%; }
-:root.passio-ui-4a5 #v4a5Outils .ctx-item .ctx-item-label { font-size: 12px; }
