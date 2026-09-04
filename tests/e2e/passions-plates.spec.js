@@ -825,20 +825,21 @@ test.describe("la porte d'ajout et son plafond", () => {
     await page.evaluate(() => { goTo("profiles"); openPassionManager(); });
     await page.waitForTimeout(600);
 
-    // ⚠️ 2026-09-03 : LA PORTE EST DÉSARMÉE AU PLAFOND, elle n'ouvre plus la
-    // fenêtre. Ce cas la cliquait ; le refus est désormais écrit DANS la porte
-    // (« Limite de N atteinte »), ce qui est ce que l'utilisateur doit lire sans
-    // avoir à toucher quoi que ce soit. On mesure donc le refus là où il est, et
-    // on ouvre ensuite la fenêtre par le chemin qui reste pour vérifier ce
-    // qu'elle promet — et ce qu'elle ne promet pas.
+    // ⚠️ 2026-09-04 : LA PORTE REFUSE EN S'EXPLIQUANT. Le 2026-09-03 elle avait
+    // été DÉSARMÉE (`aria-disabled`, `pointer-events: none`) et ce cas avait été
+    // réécrit pour ne plus la cliquer — donc plus rien ne mesurait qu'un tap
+    // mène quelque part, et le tap ne menait effectivement plus nulle part.
+    // C'est la panne rapportée par Benjamin. Le refus reste écrit DANS la porte
+    // (« Limite de N atteinte »), sans avoir à toucher quoi que ce soit, ET le
+    // tap ouvre la fenêtre. On revient donc au chemin RÉEL pour l'ouvrir.
     const porte = page.locator('#passionManager [data-passion-tile="__ajouter__"]');
-    await expect(porte).toHaveAttribute("aria-disabled", "true");
+    await expect(porte).not.toHaveAttribute("aria-disabled", "true");
     await expect(porte).toHaveAttribute("data-passion-porte", "fermee");
     await expect(page.locator("#nouveauProfilSous")).toContainText("Limite de");
     // Pas de feuille de recherche : on n'ouvre pas ce qui ne peut rien conclure.
     expect(await page.locator(".psel-input").count()).toBe(0);
 
-    await page.evaluate(() => openPassionPaywall());
+    await porte.click();
     await page.waitForTimeout(500);
     expect(await page.locator(".psel-input").count()).toBe(0);
     const modale = page.locator("#modalContent");

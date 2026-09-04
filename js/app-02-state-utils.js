@@ -2203,7 +2203,13 @@ function toggleDevPanel() {
   var panel = $("#devPanel");
   if (!panel) return;
   panel.classList.toggle("active");
-  if (panel.classList.contains("active")) { try { majSectionCompte(); } catch (e) {} }
+  if (panel.classList.contains("active")) {
+    try { majSectionCompte(); } catch (e) {}
+    // Même raison que `majSectionCompte` : ce bouton est du balisage STATIQUE,
+    // et il annonce un ÉTAT (« ACTIVÉ ») et non un geste. Relu à chaque
+    // ouverture, il ne peut pas mentir sur le drapeau posé entre-temps.
+    try { if (typeof majBoutonPassionsIllimitees === "function") majBoutonPassionsIllimitees(); } catch (e) {}
+  }
 }
 
 /* Le panneau Paramètres est du balisage STATIQUE : ses deux entrées de compte
