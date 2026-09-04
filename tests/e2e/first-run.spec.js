@@ -261,10 +261,10 @@ test.describe("Personnalisation", () => {
     await page.evaluate(() => PassioFirstRun.ouvrirPersonnalisation("test"));
     await page.locator('#frGrid [data-fr-passion="musique"]').click();
     // Les spécialités de la passion retenue apparaissent.
-    await expect(page.locator('#frSpecs [data-fr-spec="musique:guitare"]')).toHaveCount(1);
+    await expect(page.locator('#frSpecs [data-fr-spec="musique-guitare"]')).toHaveCount(1);
 
     // On coche une spécialité d'une AUTRE passion, non encore choisie.
-    await page.evaluate(() => PassioFirstRun.basculerSpecialite("photo:portrait"));
+    await page.evaluate(() => PassioFirstRun.basculerSpecialite("photo-portrait"));
     expect(await page.evaluate(() => {
       const t = document.querySelector('#frGrid [data-fr-passion="photo"]');
       return !!t && t.classList.contains("is-on");
@@ -296,6 +296,74 @@ test.describe("Personnalisation", () => {
     // Et le fil montre bien des publications de cette passion.
     await page.waitForTimeout(600);
     expect(await page.locator("#feedList .post").count()).toBeGreaterThan(0);
+  });
+
+  // ⚠️ LE DÉFAUT DU 2026-09-02, ET SA MESURE. « Je sélectionne Sport, en dessous
+  // tu proposes d'autres sports, exemple Vélo ; j'ai sélectionné Vélo et validé,
+  // mais sur le fil tu affiches que Sport. » La spécialité était enregistrée
+  // dans `passio_first_run_v1` et n'entrait JAMAIS dans `_activeFeedPassions` :
+  // son identifiant était fabriqué (« sport:velo ») et ne désignait aucune
+  // passion que le fil sache lire. Le choix précis existait dans les données et
+  // nulle part à l'écran.
+  //
+  // Ce test mesure les TROIS étages, parce qu'un seul vert ne prouve rien :
+  // l'identifiant est bien canonique, il arrive dans le moteur du fil, et une
+  // bulle le NOMME dans le rail — c'est ce dernier point que Benjamin regardait.
+  test("une spécialité choisie arrive dans le fil, et sa bulle la NOMME", async ({ page }) => {
+    await bootVisiteur(page);
+    await page.evaluate(() => PassioFirstRun.ouvrirPersonnalisation("test"));
+    await page.locator('#frGrid [data-fr-passion="sport"]').click();
+
+    // La puce proposée sous « Sport » porte l'identifiant RÉEL de la passion,
+    // pas un identifiant inventé pour l'occasion.
+    const puce = page.locator('#frSpecs [data-fr-spec="cyclisme"]');
+    await expect(puce).toHaveCount(1);
+    await puce.click();
+    await page.locator("#frValider").click();
+    await page.waitForTimeout(1200);
+
+    // ① Le moteur du fil connaît le choix PRÉCIS…
+    const actives = await page.evaluate(() => Array.from(_activeFeedPassions));
+    expect(actives).toContain("cyclisme");
+    // ② …sans avoir perdu la passion parente : les critères sont additifs.
+    expect(actives).toContain("sport");
+    expect(await page.evaluate(() => state.selectedFeedPassions)).toContain("cyclisme");
+    // ③ Et le rail du Fil l'affiche sous son vrai nom — pas « ✨ Passion »,
+    // le repli de `passionById` quand le référentiel plat n'est pas chargé.
+    const bulle = page.locator('#profileStrip [data-passion-tile="cyclisme"]');
+    await expect(bulle).toHaveCount(1, { timeout: 15000 });
+    await expect(bulle).toContainText("Vélo", { timeout: 15000 });
+  });
+
+  // ⚠️ LE CORRECTIF NE DOIT PAS COÛTER LE DÉMARRAGE. Nommer une spécialité
+  // demande le référentiel plat (160 Ko), que PERSONNE ne charge au boot — c'est
+  // une décision d'architecture, tenue par `passions-plates.spec.js` ⑤.
+  // `appliquerPrefs` tourne à CHAQUE entrée directe : le demander sans condition
+  // l'aurait retournée pour tout visiteur qui repasse, et le test ⑤ ne l'aurait
+  // pas vu (il démarre sur un compte, donc hors de ce parcours). Les deux cas
+  // sont donc mesurés ici, et il faut LES DEUX : sans le premier, la dépense est
+  // libre ; sans le second, on peut « économiser » jusqu'à ne plus rien nommer.
+  test("le référentiel plat n'est demandé au démarrage QUE si une spécialité l'exige", async ({ page }) => {
+    const prefsBase = { v: 1, passions: ["moto"], specialites: [], intents: [], tour: {}, bienvenue: "vue", retour: null, migre: false, debut: 1 };
+
+    // Rien que des passions du socle embarqué : elles se nomment sans lui.
+    await bootVisiteur(page, { sansBienvenue: true, prefs: prefsBase });
+    await page.waitForTimeout(1500);
+    expect(await page.evaluate(() => window.PassioPassions._etat().pret),
+      "le référentiel a été chargé au démarrage alors qu'aucune spécialité ne l'exigeait").toBe(false);
+    // La preuve que la mesure porte : la bulle de « moto » est bien là, nommée.
+    await expect(page.locator('#profileStrip [data-passion-tile="moto"]')).toHaveCount(1);
+  });
+
+  test("… et il l'est quand une spécialité déjà choisie doit être nommée", async ({ page }) => {
+    await bootVisiteur(page, {
+      sansBienvenue: true,
+      prefs: { v: 1, passions: ["moto"], specialites: ["moto-balade"], intents: [], tour: {}, bienvenue: "vue", retour: null, migre: false, debut: 1 },
+    });
+    expect(await page.evaluate(() => Array.from(_activeFeedPassions))).toContain("moto-balade");
+    const bulle = page.locator('#profileStrip [data-passion-tile="moto-balade"]');
+    await expect(bulle).toHaveCount(1, { timeout: 15000 });
+    await expect(bulle).toContainText("Balade", { timeout: 15000 });
   });
 });
 
@@ -712,7 +780,7 @@ test.describe("Gate d'authentification", () => {
 test.describe("Transfert du mode invité", () => {
   const prefsInvite = {
     v: 1, passions: ["moto", "photo", "moto", "passion_qui_n_existe_pas"],
-    specialites: ["moto:balade", "photo:portrait", "cuisine:bbq"],
+    specialites: ["moto-balade", "photo-portrait", "cuisine-barbecue"],
     intents: [], tour: { decouvrir: true }, bienvenue: "vue", retour: null, migre: false, debut: 1,
   };
 
@@ -836,8 +904,16 @@ test.describe("Transfert du mode invité", () => {
     expect(resultat.apres1.filter((x) => x === "moto").length).toBe(1); // dédoublonné
     expect(resultat.apres2).toEqual(resultat.apres1);  // relance sans doublon
     // Une spécialité dont la passion parente n'a pas été retenue ne passe pas.
-    expect(resultat.specs).toContain("moto:balade");
-    expect(resultat.specs).not.toContain("cuisine:bbq");
+    expect(resultat.specs).toContain("moto-balade");
+    expect(resultat.specs).not.toContain("cuisine-barbecue");
+    // ⚠️ ET ELLES ARRIVENT DANS LE FIL. C'est le SECOND point d'écriture du
+    // correctif du 2026-09-02 : `appliquerPrefs` sert le visiteur, celui-ci sert
+    // le compte qu'il vient de créer. L'oublier ici referait perdre le choix
+    // précis au moment exact où il devient durable — et le test de l'autre point
+    // serait resté vert.
+    expect(resultat.apres1).toContain("moto-balade");
+    expect(resultat.apres1).toContain("photo-portrait");
+    expect(resultat.apres1).not.toContain("cuisine-barbecue"); // parente non retenue
     // L'état du tour est reporté : on ne le relance pas depuis le début.
     expect(resultat.tour.decouvrir).toBe(true);
   });
