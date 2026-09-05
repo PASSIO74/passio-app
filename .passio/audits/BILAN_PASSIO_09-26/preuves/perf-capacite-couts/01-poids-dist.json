@@ -1,0 +1,80 @@
+{
+  "date": "2026-09-04T13:08:19.863Z",
+  "sha": "c8cb8e99",
+  "fichiers": {
+    "dist_brut (node scripts/build.js, avant minification CI)": {
+      "index.html": {
+        "raw": 884157,
+        "gzip9": 248237,
+        "brotli11": 190788
+      },
+      "app.js": {
+        "raw": 2285374,
+        "gzip9": 689871,
+        "brotli11": 509437
+      },
+      "styles.css": {
+        "raw": 450337,
+        "gzip9": 102129,
+        "brotli11": 81827
+      },
+      "sw.js": {
+        "raw": 9705,
+        "gzip9": 3654,
+        "brotli11": 3196
+      },
+      "data/passions-v1.json": {
+        "raw": 163568,
+        "gzip9": 37883,
+        "brotli11": 32647
+      },
+      "TOTAL (5 fichiers)": {
+        "raw": 3793141,
+        "gz": 1081774,
+        "br": 817895
+      },
+      "BOOT (index+app+styles, sans JSON ni sw)": {
+        "raw": 3619868,
+        "gz": 1040237,
+        "br": 782052
+      }
+    },
+    "dist_minifie (terser/clean-css/html-minifier-terser comme deploy.yml)": {
+      "index.html": {
+        "raw": 302021,
+        "gzip9": 83318,
+        "brotli11": 69863
+      },
+      "app.js": {
+        "raw": 1226117,
+        "gzip9": 342626,
+        "brotli11": 262097
+      },
+      "styles.css": {
+        "raw": 220853,
+        "gzip9": 38342,
+        "brotli11": 31601
+      },
+      "sw.js": {
+        "raw": 9705,
+        "gzip9": 3654,
+        "brotli11": 3196
+      },
+      "data/passions-v1.json": {
+        "raw": 163568,
+        "gzip9": 37883,
+        "brotli11": 32647
+      },
+      "TOTAL (5 fichiers)": {
+        "raw": 1922264,
+        "gz": 505823,
+        "br": 399404
+      },
+      "BOOT (index+app+styles, sans JSON ni sw)": {
+        "raw": 1748991,
+        "gz": 464286,
+        "br": 363561
+      }
+    }
+  }
+}

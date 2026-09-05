@@ -1,0 +1,77 @@
+{
+  "etapes": [
+    {
+      "etape": "liste + XSS carte",
+      "cartes": [
+        "evSam",
+        "evDim",
+        "evA",
+        "evMine",
+        "evLoin"
+      ],
+      "xss": null,
+      "titreCarte": "Jam <script>alert(1)</script>",
+      "samediEstFutur": true
+    },
+    {
+      "etape": "fiche evA XSS",
+      "xss": null,
+      "xss2": null,
+      "hrefTel": "tel:\" onclick=\"window.__xss2=1",
+      "adresse": [
+        "dimanche 6 septembre 2026 à 18:00",
+        "&lt;u&gt;12 rue&lt;/u&gt;, Paris",
+        "&lt;b&gt;Cave&lt;/b&gt;",
+        "Gratuit"
+      ]
+    },
+    {
+      "etape": "clic sur lien contact hostile",
+      "xss2": null
+    },
+    {
+      "etape": "case Ce week-end",
+      "case": true,
+      "pressed": "true",
+      "filtres": [
+        "weekend"
+      ],
+      "resultats": 3,
+      "pied": "Afficher 3 résultats",
+      "cartes": [
+        "evSam",
+        "evDim",
+        "evA"
+      ]
+    },
+    {
+      "etape": "Mes rencontres",
+      "bouton": true,
+      "filtres": [
+        "joined"
+      ],
+      "resultats": 1,
+      "cartes": [
+        "evMine"
+      ]
+    },
+    {
+      "etape": "édition d'un événement avec une date passée",
+      "onclickBouton": "submitEvent('evMine')",
+      "dateDansLePasse": true,
+      "over": true,
+      "appels": [
+        [
+          "supaUpdateEvent",
+          "evMine"
+        ]
+      ],
+      "visibleListe": false
+    },
+    {
+      "etape": "5 signalements successifs sans confirmation",
+      "appels": 5
+    }
+  ],
+  "erreursJs": []
+}

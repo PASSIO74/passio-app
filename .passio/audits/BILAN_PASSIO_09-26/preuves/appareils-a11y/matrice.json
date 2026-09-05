@@ -1,0 +1,1978 @@
+{
+ "date": "2026-09-04T19:49:16.256Z",
+ "base": "http://127.0.0.1:8112",
+ "methode": "ÉMULATION Chromium (Playwright) — aucun appareil réel",
+ "matrice": [
+  {
+   "innerWidth": 390,
+   "innerHeight": 844,
+   "scrollWidth": 390,
+   "bodyScrollWidth": 390,
+   "debordementH": false,
+   "depassent": [],
+   "navVisible": false,
+   "navRect": {
+    "top": 0,
+    "bottom": 0,
+    "h": 0
+   },
+   "shell": {
+    "left": 0,
+    "width": 390,
+    "height": 844
+   },
+   "appVh": "844px",
+   "screenActif": "screen-feed",
+   "boutonPrincipal": {
+    "navCreer": false,
+    "btnPrimary": null
+   },
+   "nbCliquablesVisibles": 28,
+   "nbCibles_moins44": 6,
+   "nbCibles_moins24": 0,
+   "pires10": [
+    {
+     "s": "div.topbar-bell[onclick=goTo('explore')][aria-label=Explorer]",
+     "w": 34,
+     "h": 34
+    },
+    {
+     "s": "div.topbar-bell[onclick=openNotifications()][aria-label=Notifications]",
+     "w": 34,
+     "h": 34
+    },
+    {
+     "s": "div.hamburger[onclick=toggleDevPanel()][aria-label=Paramètres]",
+     "w": 34,
+     "h": 34
+    },
+    {
+     "s": "div.avatar[onclick=openUserProfile('u_mehdi','s]",
+     "w": 40,
+     "h": 40
+    },
+    {
+     "s": "div.post-author[onclick=openUserProfile('u_mehdi','s]",
+     "w": 179,
+     "h": 31
+    },
+    {
+     "s": "div.topbar-left[onclick=goTo('profiles')][aria-label=Mon profil]",
+     "w": 183,
+     "h": 36
+    }
+   ],
+   "champs_moins16": [],
+   "nbChampsVisibles": 0,
+   "imgSansAlt": [],
+   "nbImgVisibles": 11,
+   "titres": [],
+   "iconesSansNom": [],
+   "nbIconesSansNom": 0,
+   "contrastes": [
+    {
+     "s": "span.profile-tile-emoji-badge{👥}",
+     "txt": "👥",
+     "ratio": 17.82,
+     "fs": 11,
+     "fw": 400,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(23, 21, 43)",
+     "bg": "rgb(255,255,255)"
+    },
+    {
+     "s": "div.profile-tile-label{Suivis}",
+     "txt": "Suivis",
+     "ratio": 5.67,
+     "fs": 11,
+     "fw": 800,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(109, 50, 244)",
+     "bg": "rgb(246,245,250)"
+    },
+    {
+     "s": "span.profile-tile-emoji-badge{🎸}",
+     "txt": "🎸",
+     "ratio": 17.82,
+     "fs": 11,
+     "fw": 400,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(23, 21, 43)",
+     "bg": "rgb(255,255,255)"
+    },
+    {
+     "s": "div.profile-tile-label{Musique}",
+     "txt": "Musique",
+     "ratio": 5.67,
+     "fs": 11,
+     "fw": 800,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(109, 50, 244)",
+     "bg": "rgb(246,245,250)"
+    },
+    {
+     "s": "span.profile-tile-emoji-badge{🏋️}",
+     "txt": "🏋️",
+     "ratio": 17.82,
+     "fs": 11,
+     "fw": 400,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(23, 21, 43)",
+     "bg": "rgb(255,255,255)"
+    },
+    {
+     "s": "div.profile-tile-label{Sport}",
+     "txt": "Sport",
+     "ratio": 5.67,
+     "fs": 11,
+     "fw": 800,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(109, 50, 244)",
+     "bg": "rgb(246,245,250)"
+    },
+    {
+     "s": "span.profile-tile-emoji-badge{🍳}",
+     "txt": "🍳",
+     "ratio": 17.82,
+     "fs": 11,
+     "fw": 400,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(23, 21, 43)",
+     "bg": "rgb(255,255,255)"
+    },
+    {
+     "s": "div.profile-tile-label{Cuisine}",
+     "txt": "Cuisine",
+     "ratio": 5.67,
+     "fs": 11,
+     "fw": 800,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(109, 50, 244)",
+     "bg": "rgb(246,245,250)"
+    },
+    {
+     "s": "button.feed-intent-btn{Explorer}",
+     "txt": "Explorer",
+     "ratio": 8.66,
+     "fs": 11,
+     "fw": 560,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(71, 67, 95)",
+     "bg": "rgb(246,245,250)"
+    },
+    {
+     "s": "button.feed-intent-btn{Apprendre}",
+     "txt": "Apprendre",
+     "ratio": 8.66,
+     "fs": 11,
+     "fw": 560,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(71, 67, 95)",
+     "bg": "rgb(246,245,250)"
+    },
+    {
+     "s": "button.feed-intent-btn{Idées}",
+     "txt": "Idées",
+     "ratio": 8.66,
+     "fs": 11,
+     "fw": 560,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(71, 67, 95)",
+     "bg": "rgb(246,245,250)"
+    },
+    {
+     "s": "button.feed-intent-btn{Rencontrer}",
+     "txt": "Rencontrer",
+     "ratio": 8.66,
+     "fs": 11,
+     "fw": 560,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(71, 67, 95)",
+     "bg": "rgb(246,245,250)"
+    },
+    {
+     "s": "div.post-author-meta{🏋️ Sport · 16:49}",
+     "txt": "· 16:49",
+     "ratio": 5.21,
+     "fs": 11,
+     "fw": 400,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(110, 105, 135)",
+     "bg": "rgb(255,255,255)"
+    },
+    {
+     "s": "span.post-passion-tag{🏋️ Sport}",
+     "txt": "🏋️ Sport",
+     "ratio": 6.15,
+     "fs": 11,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(109, 50, 244)",
+     "bg": "rgb(255,255,255)"
+    },
+    {
+     "s": "span.post-mood-tag{Apprendre}",
+     "txt": "Apprendre",
+     "ratio": 5.84,
+     "fs": 11,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(29, 78, 216)",
+     "bg": "rgb(231,240,254)"
+    },
+    {
+     "s": "span.nav-label{Découvrir}",
+     "txt": "Découvrir",
+     "ratio": 6.12,
+     "fs": 10.5,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(109, 50, 244)",
+     "bg": "rgb(254,254,255)"
+    },
+    {
+     "s": "span.nav-label{Rencontrer}",
+     "txt": "Rencontrer",
+     "ratio": 5.18,
+     "fs": 10.5,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(110, 105, 135)",
+     "bg": "rgb(254,254,255)"
+    },
+    {
+     "s": "span.nav-label{Créer}",
+     "txt": "Créer",
+     "ratio": 6.12,
+     "fs": 10.5,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(109, 50, 244)",
+     "bg": "rgb(254,254,255)"
+    },
+    {
+     "s": "span.nav-label{Messages}",
+     "txt": "Messages",
+     "ratio": 5.18,
+     "fs": 10.5,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(110, 105, 135)",
+     "bg": "rgb(254,254,255)"
+    },
+    {
+     "s": "span.nav-label{Profil}",
+     "txt": "Profil",
+     "ratio": 5.18,
+     "fs": 10.5,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(110, 105, 135)",
+     "bg": "rgb(254,254,255)"
+    }
+   ],
+   "contrastesKO": [],
+   "lang": "fr",
+   "capture": "390x844-feed.jpg (29 Ko)",
+   "viewport": "390x844",
+   "ecran": "feed"
+  },
+  {
+   "innerWidth": 390,
+   "innerHeight": 844,
+   "scrollWidth": 390,
+   "bodyScrollWidth": 390,
+   "debordementH": false,
+   "depassent": [],
+   "navVisible": false,
+   "navRect": {
+    "top": 0,
+    "bottom": 0,
+    "h": 0
+   },
+   "shell": {
+    "left": 0,
+    "width": 390,
+    "height": 844
+   },
+   "appVh": "844px",
+   "screenActif": "screen-profiles",
+   "boutonPrincipal": {
+    "navCreer": false,
+    "btnPrimary": null
+   },
+   "nbCliquablesVisibles": 24,
+   "nbCibles_moins44": 7,
+   "nbCibles_moins24": 0,
+   "pires10": [
+    {
+     "s": "div.topbar-bell[onclick=goTo('explore')][aria-label=Explorer]",
+     "w": 34,
+     "h": 34
+    },
+    {
+     "s": "div.topbar-bell[onclick=openNotifications()][aria-label=Notifications]",
+     "w": 34,
+     "h": 34
+    },
+    {
+     "s": "div.hamburger[onclick=toggleDevPanel()][aria-label=Paramètres]",
+     "w": 34,
+     "h": 34
+    },
+    {
+     "s": "div.main-profile-stat[onclick=openFollowersList()]",
+     "w": 108,
+     "h": 41
+    },
+    {
+     "s": "div.main-profile-stat[onclick=ouvrirGestionPassions()]",
+     "w": 108,
+     "h": 41
+    },
+    {
+     "s": "div.main-profile-stat[onclick=openFollowingList()]",
+     "w": 108,
+     "h": 41
+    },
+    {
+     "s": "div.topbar-left[onclick=goTo('profiles')][aria-label=Mon profil]",
+     "w": 183,
+     "h": 36
+    }
+   ],
+   "champs_moins16": [],
+   "nbChampsVisibles": 0,
+   "imgSansAlt": [],
+   "nbImgVisibles": 4,
+   "titres": [],
+   "iconesSansNom": [],
+   "nbIconesSansNom": 0,
+   "contrastes": [
+    {
+     "s": "div.main-profile-avatar-badge{📷}",
+     "txt": "📷",
+     "ratio": 6.15,
+     "fs": 13,
+     "fw": 400,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(255, 255, 255)",
+     "bg": "rgb(109,50,244)"
+    },
+    {
+     "s": "span.profile-tile-emoji-badge{🎸}",
+     "txt": "🎸",
+     "ratio": 17.82,
+     "fs": 16,
+     "fw": 400,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(23, 21, 43)",
+     "bg": "rgb(255,255,255)"
+    },
+    {
+     "s": "div.profile-tile-label{Musique}",
+     "txt": "Musique",
+     "ratio": 4.8,
+     "fs": 10.5,
+     "fw": 600,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(110, 105, 135)",
+     "bg": "rgb(246,245,250)"
+    },
+    {
+     "s": "span.profile-tile-emoji-badge{🏋️}",
+     "txt": "🏋️",
+     "ratio": 17.82,
+     "fs": 16,
+     "fw": 400,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(23, 21, 43)",
+     "bg": "rgb(255,255,255)"
+    },
+    {
+     "s": "div.profile-tile-label{Sport}",
+     "txt": "Sport",
+     "ratio": 4.8,
+     "fs": 10.5,
+     "fw": 600,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(110, 105, 135)",
+     "bg": "rgb(246,245,250)"
+    },
+    {
+     "s": "span.profile-tile-emoji-badge{🍳}",
+     "txt": "🍳",
+     "ratio": 17.82,
+     "fs": 16,
+     "fw": 400,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(23, 21, 43)",
+     "bg": "rgb(255,255,255)"
+    },
+    {
+     "s": "div.profile-tile-label{Cuisine}",
+     "txt": "Cuisine",
+     "ratio": 4.8,
+     "fs": 10.5,
+     "fw": 600,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(110, 105, 135)",
+     "bg": "rgb(246,245,250)"
+    },
+    {
+     "s": "span.nav-label{Découvrir}",
+     "txt": "Découvrir",
+     "ratio": 5.18,
+     "fs": 10.5,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(110, 105, 135)",
+     "bg": "rgb(254,254,255)"
+    },
+    {
+     "s": "span.nav-label{Rencontrer}",
+     "txt": "Rencontrer",
+     "ratio": 5.18,
+     "fs": 10.5,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(110, 105, 135)",
+     "bg": "rgb(254,254,255)"
+    },
+    {
+     "s": "span.nav-label{Créer}",
+     "txt": "Créer",
+     "ratio": 6.12,
+     "fs": 10.5,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(109, 50, 244)",
+     "bg": "rgb(254,254,255)"
+    },
+    {
+     "s": "span.nav-label{Messages}",
+     "txt": "Messages",
+     "ratio": 5.18,
+     "fs": 10.5,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(110, 105, 135)",
+     "bg": "rgb(254,254,255)"
+    },
+    {
+     "s": "span.nav-label{Profil}",
+     "txt": "Profil",
+     "ratio": 6.12,
+     "fs": 10.5,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(109, 50, 244)",
+     "bg": "rgb(254,254,255)"
+    }
+   ],
+   "contrastesKO": [],
+   "lang": "fr",
+   "capture": "390x844-profiles.jpg (21 Ko)",
+   "viewport": "390x844",
+   "ecran": "profiles"
+  },
+  {
+   "innerWidth": 390,
+   "innerHeight": 844,
+   "scrollWidth": 390,
+   "bodyScrollWidth": 390,
+   "debordementH": false,
+   "depassent": [],
+   "navVisible": false,
+   "navRect": {
+    "top": 0,
+    "bottom": 0,
+    "h": 0
+   },
+   "shell": {
+    "left": 0,
+    "width": 390,
+    "height": 844
+   },
+   "appVh": "844px",
+   "screenActif": "screen-irl",
+   "boutonPrincipal": {
+    "navCreer": false,
+    "btnPrimary": "button.btn.small{Je viens}"
+   },
+   "nbCliquablesVisibles": 19,
+   "nbCibles_moins44": 4,
+   "nbCibles_moins24": 0,
+   "pires10": [
+    {
+     "s": "div.topbar-bell[onclick=goTo('explore')][aria-label=Explorer]",
+     "w": 34,
+     "h": 34
+    },
+    {
+     "s": "div.topbar-bell[onclick=openNotifications()][aria-label=Notifications]",
+     "w": 34,
+     "h": 34
+    },
+    {
+     "s": "div.hamburger[onclick=toggleDevPanel()][aria-label=Paramètres]",
+     "w": 34,
+     "h": 34
+    },
+    {
+     "s": "div.topbar-left[onclick=goTo('profiles')][aria-label=Mon profil]",
+     "w": 183,
+     "h": 36
+    }
+   ],
+   "champs_moins16": [],
+   "nbChampsVisibles": 1,
+   "imgSansAlt": [],
+   "nbImgVisibles": 1,
+   "titres": [
+    "H1:Rencontrer"
+   ],
+   "iconesSansNom": [],
+   "nbIconesSansNom": 0,
+   "contrastes": [
+    {
+     "s": "button.btn.small{Détails}",
+     "txt": "Détails",
+     "ratio": 9.39,
+     "fs": 13,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(71, 67, 95)",
+     "bg": "rgb(255,255,255)"
+    },
+    {
+     "s": "button.btn.small{Je viens}",
+     "txt": "Je viens",
+     "ratio": 5.3,
+     "fs": 13,
+     "fw": 800,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(255, 255, 255)",
+     "bg": "rgb(193,61,40)"
+    },
+    {
+     "s": "span.nav-label{Découvrir}",
+     "txt": "Découvrir",
+     "ratio": 5.18,
+     "fs": 10.5,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(110, 105, 135)",
+     "bg": "rgb(254,254,255)"
+    },
+    {
+     "s": "span.nav-label{Rencontrer}",
+     "txt": "Rencontrer",
+     "ratio": 6.12,
+     "fs": 10.5,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(109, 50, 244)",
+     "bg": "rgb(254,254,255)"
+    },
+    {
+     "s": "span.nav-label{Créer}",
+     "txt": "Créer",
+     "ratio": 6.12,
+     "fs": 10.5,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(109, 50, 244)",
+     "bg": "rgb(254,254,255)"
+    },
+    {
+     "s": "span.nav-label{Messages}",
+     "txt": "Messages",
+     "ratio": 5.18,
+     "fs": 10.5,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(110, 105, 135)",
+     "bg": "rgb(254,254,255)"
+    },
+    {
+     "s": "span.nav-label{Profil}",
+     "txt": "Profil",
+     "ratio": 5.18,
+     "fs": 10.5,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(110, 105, 135)",
+     "bg": "rgb(254,254,255)"
+    }
+   ],
+   "contrastesKO": [],
+   "lang": "fr",
+   "capture": "390x844-irl.jpg (29 Ko)",
+   "viewport": "390x844",
+   "ecran": "irl"
+  },
+  {
+   "innerWidth": 390,
+   "innerHeight": 844,
+   "scrollWidth": 390,
+   "bodyScrollWidth": 390,
+   "debordementH": false,
+   "depassent": [],
+   "navVisible": false,
+   "navRect": {
+    "top": 0,
+    "bottom": 0,
+    "h": 0
+   },
+   "shell": {
+    "left": 0,
+    "width": 390,
+    "height": 844
+   },
+   "appVh": "844px",
+   "screenActif": "screen-messages",
+   "boutonPrincipal": {
+    "navCreer": false,
+    "btnPrimary": null
+   },
+   "nbCliquablesVisibles": 15,
+   "nbCibles_moins44": 4,
+   "nbCibles_moins24": 0,
+   "pires10": [
+    {
+     "s": "div.topbar-bell[onclick=goTo('explore')][aria-label=Explorer]",
+     "w": 34,
+     "h": 34
+    },
+    {
+     "s": "div.topbar-bell[onclick=openNotifications()][aria-label=Notifications]",
+     "w": 34,
+     "h": 34
+    },
+    {
+     "s": "div.hamburger[onclick=toggleDevPanel()][aria-label=Paramètres]",
+     "w": 34,
+     "h": 34
+    },
+    {
+     "s": "div.topbar-left[onclick=goTo('profiles')][aria-label=Mon profil]",
+     "w": 183,
+     "h": 36
+    }
+   ],
+   "champs_moins16": [],
+   "nbChampsVisibles": 1,
+   "imgSansAlt": [],
+   "nbImgVisibles": 1,
+   "titres": [
+    "H1:Messages"
+   ],
+   "iconesSansNom": [],
+   "nbIconesSansNom": 0,
+   "contrastes": [
+    {
+     "s": "span.msg-time{30 min}",
+     "txt": "30 min",
+     "ratio": 5.21,
+     "fs": 11,
+     "fw": 400,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(110, 105, 135)",
+     "bg": "rgb(255,255,255)"
+    },
+    {
+     "s": "div.msg-preview.unread-preview{Musique · J'ai un }",
+     "txt": "J'ai un local sympa ",
+     "ratio": 17.82,
+     "fs": 13,
+     "fw": 600,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(23, 21, 43)",
+     "bg": "rgb(255,255,255)"
+    },
+    {
+     "s": "div.msg-badge{2}",
+     "txt": "2",
+     "ratio": 1,
+     "fs": 0,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": false,
+     "fg": "rgba(0, 0, 0, 0)",
+     "bg": "rgb(109,50,244)"
+    },
+    {
+     "s": "span.msg-time{3 h}",
+     "txt": "3 h",
+     "ratio": 5.21,
+     "fs": 11,
+     "fw": 400,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(110, 105, 135)",
+     "bg": "rgb(255,255,255)"
+    },
+    {
+     "s": "div.msg-preview{Cuisine · Toi : Tr}",
+     "txt": "Toi : Trop bien, je ",
+     "ratio": 9.39,
+     "fs": 13,
+     "fw": 400,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(71, 67, 95)",
+     "bg": "rgb(255,255,255)"
+    },
+    {
+     "s": "span.msg-time{6 h}",
+     "txt": "6 h",
+     "ratio": 5.21,
+     "fs": 11,
+     "fw": 400,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(110, 105, 135)",
+     "bg": "rgb(255,255,255)"
+    },
+    {
+     "s": "div.msg-preview.unread-preview{Voyage · Y'a aussi}",
+     "txt": "Y'a aussi des spots ",
+     "ratio": 17.82,
+     "fs": 13,
+     "fw": 600,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(23, 21, 43)",
+     "bg": "rgb(255,255,255)"
+    },
+    {
+     "s": "div.msg-badge{1}",
+     "txt": "1",
+     "ratio": 1,
+     "fs": 0,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": false,
+     "fg": "rgba(0, 0, 0, 0)",
+     "bg": "rgb(109,50,244)"
+    },
+    {
+     "s": "span.msg-time{1 j}",
+     "txt": "1 j",
+     "ratio": 5.21,
+     "fs": 11,
+     "fw": 400,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(110, 105, 135)",
+     "bg": "rgb(255,255,255)"
+    },
+    {
+     "s": "div.msg-preview{Photo · Mardi 19h,}",
+     "txt": "Mardi 19h, atelier r",
+     "ratio": 9.39,
+     "fs": 13,
+     "fw": 400,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(71, 67, 95)",
+     "bg": "rgb(255,255,255)"
+    },
+    {
+     "s": "span.msg-time{2 j}",
+     "txt": "2 j",
+     "ratio": 5.21,
+     "fs": 11,
+     "fw": 400,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(110, 105, 135)",
+     "bg": "rgb(255,255,255)"
+    },
+    {
+     "s": "div.msg-preview{Littérature · Just}",
+     "txt": "Justement je viens d",
+     "ratio": 9.39,
+     "fs": 13,
+     "fw": 400,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(71, 67, 95)",
+     "bg": "rgb(255,255,255)"
+    },
+    {
+     "s": "span.nav-label{Découvrir}",
+     "txt": "Découvrir",
+     "ratio": 5.18,
+     "fs": 10.5,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(110, 105, 135)",
+     "bg": "rgb(254,254,255)"
+    },
+    {
+     "s": "span.nav-label{Rencontrer}",
+     "txt": "Rencontrer",
+     "ratio": 5.18,
+     "fs": 10.5,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(110, 105, 135)",
+     "bg": "rgb(254,254,255)"
+    },
+    {
+     "s": "span.nav-label{Créer}",
+     "txt": "Créer",
+     "ratio": 6.12,
+     "fs": 10.5,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(109, 50, 244)",
+     "bg": "rgb(254,254,255)"
+    },
+    {
+     "s": "span.nav-label{Messages}",
+     "txt": "Messages",
+     "ratio": 6.12,
+     "fs": 10.5,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(109, 50, 244)",
+     "bg": "rgb(254,254,255)"
+    },
+    {
+     "s": "span.nav-label{Profil}",
+     "txt": "Profil",
+     "ratio": 5.18,
+     "fs": 10.5,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(110, 105, 135)",
+     "bg": "rgb(254,254,255)"
+    }
+   ],
+   "contrastesKO": [
+    {
+     "s": "div.msg-badge{2}",
+     "txt": "2",
+     "ratio": 1,
+     "fs": 0,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": false,
+     "fg": "rgba(0, 0, 0, 0)",
+     "bg": "rgb(109,50,244)"
+    },
+    {
+     "s": "div.msg-badge{1}",
+     "txt": "1",
+     "ratio": 1,
+     "fs": 0,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": false,
+     "fg": "rgba(0, 0, 0, 0)",
+     "bg": "rgb(109,50,244)"
+    }
+   ],
+   "lang": "fr",
+   "capture": "390x844-messages.jpg (23 Ko)",
+   "viewport": "390x844",
+   "ecran": "messages"
+  },
+  {
+   "innerWidth": 390,
+   "innerHeight": 844,
+   "scrollWidth": 390,
+   "bodyScrollWidth": 390,
+   "debordementH": false,
+   "depassent": [],
+   "navVisible": false,
+   "navRect": {
+    "top": 0,
+    "bottom": 0,
+    "h": 0
+   },
+   "shell": {
+    "left": 0,
+    "width": 390,
+    "height": 844
+   },
+   "appVh": "844px",
+   "screenActif": "screen-explore",
+   "boutonPrincipal": {
+    "navCreer": false,
+    "btnPrimary": null
+   },
+   "nbCliquablesVisibles": 18,
+   "nbCibles_moins44": 7,
+   "nbCibles_moins24": 0,
+   "pires10": [
+    {
+     "s": "button[onclick=filterExplore()]",
+     "w": 44,
+     "h": 26
+    },
+    {
+     "s": "div.topbar-bell[onclick=goTo('explore')][aria-label=Explorer]",
+     "w": 34,
+     "h": 34
+    },
+    {
+     "s": "div.topbar-bell[onclick=openNotifications()][aria-label=Notifications]",
+     "w": 34,
+     "h": 34
+    },
+    {
+     "s": "div.hamburger[onclick=toggleDevPanel()][aria-label=Paramètres]",
+     "w": 34,
+     "h": 34
+    },
+    {
+     "s": "div.topbar-left[onclick=goTo('profiles')][aria-label=Mon profil]",
+     "w": 183,
+     "h": 36
+    },
+    {
+     "s": "button#exTab_search",
+     "w": 179,
+     "h": 38
+    },
+    {
+     "s": "button#exTab_ai",
+     "w": 179,
+     "h": 38
+    }
+   ],
+   "champs_moins16": [],
+   "nbChampsVisibles": 1,
+   "imgSansAlt": [],
+   "nbImgVisibles": 1,
+   "titres": [
+    "H3:Explorer par passion"
+   ],
+   "iconesSansNom": [],
+   "nbIconesSansNom": 0,
+   "contrastes": [
+    {
+     "s": "button#exTab_search",
+     "txt": "Recherche",
+     "ratio": 5.67,
+     "fs": 14,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(109, 50, 244)",
+     "bg": "rgb(246,245,250)"
+    },
+    {
+     "s": "button#exTab_ai",
+     "txt": "Assistant IA",
+     "ratio": 4.8,
+     "fs": 14,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(110, 105, 135)",
+     "bg": "rgb(246,245,250)"
+    },
+    {
+     "s": "span.nav-label{Découvrir}",
+     "txt": "Découvrir",
+     "ratio": 5.18,
+     "fs": 10.5,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(110, 105, 135)",
+     "bg": "rgb(254,254,255)"
+    },
+    {
+     "s": "span.nav-label{Rencontrer}",
+     "txt": "Rencontrer",
+     "ratio": 5.18,
+     "fs": 10.5,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(110, 105, 135)",
+     "bg": "rgb(254,254,255)"
+    },
+    {
+     "s": "span.nav-label{Créer}",
+     "txt": "Créer",
+     "ratio": 6.12,
+     "fs": 10.5,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(109, 50, 244)",
+     "bg": "rgb(254,254,255)"
+    },
+    {
+     "s": "span.nav-label{Messages}",
+     "txt": "Messages",
+     "ratio": 5.18,
+     "fs": 10.5,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(110, 105, 135)",
+     "bg": "rgb(254,254,255)"
+    },
+    {
+     "s": "span.nav-label{Profil}",
+     "txt": "Profil",
+     "ratio": 5.18,
+     "fs": 10.5,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(110, 105, 135)",
+     "bg": "rgb(254,254,255)"
+    }
+   ],
+   "contrastesKO": [],
+   "lang": "fr",
+   "capture": "390x844-explore.jpg (26 Ko)",
+   "viewport": "390x844",
+   "ecran": "explore"
+  },
+  {
+   "innerWidth": 390,
+   "innerHeight": 844,
+   "scrollWidth": 390,
+   "bodyScrollWidth": 390,
+   "debordementH": false,
+   "depassent": [],
+   "navVisible": false,
+   "navRect": {
+    "top": 0,
+    "bottom": 0,
+    "h": 0
+   },
+   "shell": {
+    "left": 0,
+    "width": 390,
+    "height": 844
+   },
+   "appVh": "844px",
+   "screenActif": "screen-studio",
+   "boutonPrincipal": {
+    "navCreer": false,
+    "btnPrimary": "button.btn.primary[onclick=publishPost()]"
+   },
+   "nbCliquablesVisibles": 17,
+   "nbCibles_moins44": 8,
+   "nbCibles_moins24": 0,
+   "pires10": [
+    {
+     "s": "div.topbar-bell[onclick=goTo('explore')][aria-label=Explorer]",
+     "w": 34,
+     "h": 34
+    },
+    {
+     "s": "div.topbar-bell[onclick=openNotifications()][aria-label=Notifications]",
+     "w": 34,
+     "h": 34
+    },
+    {
+     "s": "div.hamburger[onclick=toggleDevPanel()][aria-label=Paramètres]",
+     "w": 34,
+     "h": 34
+    },
+    {
+     "s": "button.pill{Tous}",
+     "w": 54,
+     "h": 40
+    },
+    {
+     "s": "button.pill.active{Idées}",
+     "w": 61,
+     "h": 40
+    },
+    {
+     "s": "button.pill{Apprendre}",
+     "w": 92,
+     "h": 40
+    },
+    {
+     "s": "button.pill{Rencontrer}",
+     "w": 95,
+     "h": 40
+    },
+    {
+     "s": "div.topbar-left[onclick=goTo('profiles')][aria-label=Mon profil]",
+     "w": 183,
+     "h": 36
+    }
+   ],
+   "champs_moins16": [],
+   "nbChampsVisibles": 1,
+   "imgSansAlt": [],
+   "nbImgVisibles": 1,
+   "titres": [],
+   "iconesSansNom": [],
+   "nbIconesSansNom": 0,
+   "contrastes": [
+    {
+     "s": "button.pill.active{Idées}",
+     "txt": "Idées",
+     "ratio": 5.38,
+     "fs": 11,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(109, 50, 244)",
+     "bg": "rgb(241,238,251)"
+    },
+    {
+     "s": "button.pill{Apprendre}",
+     "txt": "Apprendre",
+     "ratio": 9.39,
+     "fs": 11,
+     "fw": 600,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(71, 67, 95)",
+     "bg": "rgb(255,255,255)"
+    },
+    {
+     "s": "button.pill{Rencontrer}",
+     "txt": "Rencontrer",
+     "ratio": 9.39,
+     "fs": 11,
+     "fw": 600,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(71, 67, 95)",
+     "bg": "rgb(255,255,255)"
+    },
+    {
+     "s": "button.pill{Tous}",
+     "txt": "Tous",
+     "ratio": 9.39,
+     "fs": 11,
+     "fw": 600,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(71, 67, 95)",
+     "bg": "rgb(255,255,255)"
+    },
+    {
+     "s": "button.btn.primary[onclick=publishPost()]",
+     "txt": "Publier",
+     "ratio": null,
+     "note": "fond image/dégradé"
+    },
+    {
+     "s": "span.nav-label{Découvrir}",
+     "txt": "Découvrir",
+     "ratio": 5.18,
+     "fs": 10.5,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(110, 105, 135)",
+     "bg": "rgb(254,254,255)"
+    },
+    {
+     "s": "span.nav-label{Rencontrer}",
+     "txt": "Rencontrer",
+     "ratio": 5.18,
+     "fs": 10.5,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(110, 105, 135)",
+     "bg": "rgb(254,254,255)"
+    },
+    {
+     "s": "span.nav-label{Créer}",
+     "txt": "Créer",
+     "ratio": 6.12,
+     "fs": 10.5,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(109, 50, 244)",
+     "bg": "rgb(254,254,255)"
+    },
+    {
+     "s": "span.nav-label{Messages}",
+     "txt": "Messages",
+     "ratio": 5.18,
+     "fs": 10.5,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(110, 105, 135)",
+     "bg": "rgb(254,254,255)"
+    },
+    {
+     "s": "span.nav-label{Profil}",
+     "txt": "Profil",
+     "ratio": 5.18,
+     "fs": 10.5,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(110, 105, 135)",
+     "bg": "rgb(254,254,255)"
+    }
+   ],
+   "contrastesKO": [],
+   "lang": "fr",
+   "capture": "390x844-studio.jpg (17 Ko)",
+   "viewport": "390x844",
+   "ecran": "studio"
+  },
+  {
+   "innerWidth": 390,
+   "innerHeight": 844,
+   "scrollWidth": 390,
+   "bodyScrollWidth": 390,
+   "debordementH": false,
+   "depassent": [],
+   "navVisible": false,
+   "navRect": {
+    "top": 0,
+    "bottom": 0,
+    "h": 0
+   },
+   "shell": {
+    "left": 0,
+    "width": 390,
+    "height": 844
+   },
+   "appVh": "844px",
+   "screenActif": "screen-profiles",
+   "boutonPrincipal": {
+    "navCreer": false,
+    "btnPrimary": null
+   },
+   "nbCliquablesVisibles": 21,
+   "nbCibles_moins44": 7,
+   "nbCibles_moins24": 3,
+   "pires10": [
+    {
+     "s": "div.passion-photo-badge[onclick=event.stopPropagation();docu]",
+     "w": 20,
+     "h": 20
+    },
+    {
+     "s": "div.passion-photo-badge[onclick=event.stopPropagation();docu]",
+     "w": 20,
+     "h": 20
+    },
+    {
+     "s": "div.passion-photo-badge[onclick=event.stopPropagation();docu]",
+     "w": 20,
+     "h": 20
+    },
+    {
+     "s": "div.topbar-bell[onclick=goTo('explore')][aria-label=Explorer]",
+     "w": 34,
+     "h": 34
+    },
+    {
+     "s": "div.topbar-bell[onclick=openNotifications()][aria-label=Notifications]",
+     "w": 34,
+     "h": 34
+    },
+    {
+     "s": "div.hamburger[onclick=toggleDevPanel()][aria-label=Paramètres]",
+     "w": 34,
+     "h": 34
+    },
+    {
+     "s": "div.topbar-left[onclick=goTo('profiles')][aria-label=Mon profil]",
+     "w": 183,
+     "h": 36
+    }
+   ],
+   "champs_moins16": [],
+   "nbChampsVisibles": 0,
+   "imgSansAlt": [],
+   "nbImgVisibles": 1,
+   "titres": [
+    "H2:Mes passions"
+   ],
+   "iconesSansNom": [],
+   "nbIconesSansNom": 0,
+   "contrastes": [
+    {
+     "s": "div.passion-photo-badge[onclick=event.stopPropagation();docu]",
+     "txt": "📷",
+     "ratio": 6.15,
+     "fs": 10,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(255, 255, 255)",
+     "bg": "rgb(109,50,244)"
+    },
+    {
+     "s": "span.nav-label{Découvrir}",
+     "txt": "Découvrir",
+     "ratio": 5.18,
+     "fs": 10.5,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(110, 105, 135)",
+     "bg": "rgb(254,254,255)"
+    },
+    {
+     "s": "span.nav-label{Rencontrer}",
+     "txt": "Rencontrer",
+     "ratio": 5.18,
+     "fs": 10.5,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(110, 105, 135)",
+     "bg": "rgb(254,254,255)"
+    },
+    {
+     "s": "span.nav-label{Créer}",
+     "txt": "Créer",
+     "ratio": 6.12,
+     "fs": 10.5,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(109, 50, 244)",
+     "bg": "rgb(254,254,255)"
+    },
+    {
+     "s": "span.nav-label{Messages}",
+     "txt": "Messages",
+     "ratio": 5.18,
+     "fs": 10.5,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(110, 105, 135)",
+     "bg": "rgb(254,254,255)"
+    },
+    {
+     "s": "span.nav-label{Profil}",
+     "txt": "Profil",
+     "ratio": 6.12,
+     "fs": 10.5,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(109, 50, 244)",
+     "bg": "rgb(254,254,255)"
+    }
+   ],
+   "contrastesKO": [],
+   "lang": "fr",
+   "capture": "390x844-mespassions.jpg (24 Ko)",
+   "viewport": "390x844",
+   "ecran": "mespassions"
+  },
+  {
+   "innerWidth": 390,
+   "innerHeight": 844,
+   "scrollWidth": 390,
+   "bodyScrollWidth": 390,
+   "debordementH": false,
+   "depassent": [],
+   "navVisible": false,
+   "navRect": {
+    "top": 0,
+    "bottom": 0,
+    "h": 0
+   },
+   "shell": {
+    "left": 0,
+    "width": 390,
+    "height": 844
+   },
+   "appVh": "844px",
+   "screenActif": "screen-irl",
+   "boutonPrincipal": {
+    "navCreer": false,
+    "btnPrimary": "button#v4a5Done"
+   },
+   "nbCliquablesVisibles": 26,
+   "nbCibles_moins44": 4,
+   "nbCibles_moins24": 0,
+   "pires10": [
+    {
+     "s": "div.topbar-bell[onclick=goTo('explore')][aria-label=Explorer]",
+     "w": 34,
+     "h": 34
+    },
+    {
+     "s": "div.topbar-bell[onclick=openNotifications()][aria-label=Notifications]",
+     "w": 34,
+     "h": 34
+    },
+    {
+     "s": "div.hamburger[onclick=toggleDevPanel()][aria-label=Paramètres]",
+     "w": 34,
+     "h": 34
+    },
+    {
+     "s": "div.topbar-left[onclick=goTo('profiles')][aria-label=Mon profil]",
+     "w": 183,
+     "h": 36
+    }
+   ],
+   "champs_moins16": [],
+   "nbChampsVisibles": 1,
+   "imgSansAlt": [],
+   "nbImgVisibles": 1,
+   "titres": [
+    "H1:Rencontrer",
+    "H3:Quand ?",
+    "H3:Où ?",
+    "H3:Quelles passions ?"
+   ],
+   "iconesSansNom": [],
+   "nbIconesSansNom": 0,
+   "contrastes": [
+    {
+     "s": "span.nav-label{Découvrir}",
+     "txt": "Découvrir",
+     "ratio": 5.18,
+     "fs": 10.5,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(110, 105, 135)",
+     "bg": "rgb(254,254,255)"
+    },
+    {
+     "s": "span.nav-label{Rencontrer}",
+     "txt": "Rencontrer",
+     "ratio": 6.12,
+     "fs": 10.5,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(109, 50, 244)",
+     "bg": "rgb(254,254,255)"
+    },
+    {
+     "s": "span.nav-label{Créer}",
+     "txt": "Créer",
+     "ratio": 6.12,
+     "fs": 10.5,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(109, 50, 244)",
+     "bg": "rgb(254,254,255)"
+    },
+    {
+     "s": "span.nav-label{Messages}",
+     "txt": "Messages",
+     "ratio": 5.18,
+     "fs": 10.5,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(110, 105, 135)",
+     "bg": "rgb(254,254,255)"
+    },
+    {
+     "s": "span.nav-label{Profil}",
+     "txt": "Profil",
+     "ratio": 5.18,
+     "fs": 10.5,
+     "fw": 700,
+     "large": false,
+     "seuil": 4.5,
+     "ok": true,
+     "fg": "rgb(110, 105, 135)",
+     "bg": "rgb(254,254,255)"
+    }
+   ],
+   "contrastesKO": [],
+   "lang": "fr",
+   "capture": "390x844-filtre.jpg (25 Ko)",
+   "viewport": "390x844",
+   "ecran": "filtre"
+  }
+ ],
+ "focus": {
+  "tabs": [
+   {
+    "s": "div.nav-item",
+    "outlineStyle": "solid",
+    "outlineWidth": "2px",
+    "outlineColor": "rgb(109, 50, 244)",
+    "boxShadow": false,
+    "focusVisible": true,
+    "dansViewport": true
+   },
+   {
+    "s": "div.nav-item",
+    "outlineStyle": "solid",
+    "outlineWidth": "2px",
+    "outlineColor": "rgb(109, 50, 244)",
+    "boxShadow": false,
+    "focusVisible": true,
+    "dansViewport": true
+   },
+   {
+    "s": "button.nav-item",
+    "outlineStyle": "solid",
+    "outlineWidth": "2px",
+    "outlineColor": "rgb(109, 50, 244)",
+    "boxShadow": false,
+    "focusVisible": true,
+    "dansViewport": true
+   },
+   {
+    "s": "div.nav-item",
+    "outlineStyle": "solid",
+    "outlineWidth": "2px",
+    "outlineColor": "rgb(109, 50, 244)",
+    "boxShadow": false,
+    "focusVisible": true,
+    "dansViewport": true
+   },
+   {
+    "s": "div.nav-item",
+    "outlineStyle": "solid",
+    "outlineWidth": "2px",
+    "outlineColor": "rgb(109, 50, 244)",
+    "boxShadow": false,
+    "focusVisible": true,
+    "dansViewport": true
+   },
+   {
+    "s": "button.conv-fp-back",
+    "outlineStyle": "solid",
+    "outlineWidth": "3px",
+    "outlineColor": "rgb(109, 50, 244)",
+    "boxShadow": false,
+    "focusVisible": true,
+    "dansViewport": true
+   },
+   {
+    "s": "button.conv-fp-back",
+    "outlineStyle": "solid",
+    "outlineWidth": "3px",
+    "outlineColor": "rgb(109, 50, 244)",
+    "boxShadow": false,
+    "focusVisible": true,
+    "dansViewport": true
+   },
+   {
+    "s": "button#btnAttach.conv-tool-btn",
+    "outlineStyle": "solid",
+    "outlineWidth": "3px",
+    "outlineColor": "rgb(109, 50, 244)",
+    "boxShadow": false,
+    "focusVisible": true,
+    "dansViewport": true
+   },
+   {
+    "s": "button#btnEmoji.conv-tool-btn",
+    "outlineStyle": "solid",
+    "outlineWidth": "3px",
+    "outlineColor": "rgb(109, 50, 244)",
+    "boxShadow": false,
+    "focusVisible": true,
+    "dansViewport": true
+   },
+   {
+    "s": "textarea#convFpInput",
+    "outlineStyle": "none",
+    "outlineWidth": "0px",
+    "outlineColor": "rgb(23, 21, 43)",
+    "boxShadow": false,
+    "focusVisible": true,
+    "dansViewport": true
+   }
+  ],
+  "entreeSurNavIrl": "screen-feed",
+  "espaceSurNavFeed": "screen-feed",
+  "modaleOuverte": true,
+  "modaleFermeeParEchap": true,
+  "focusResteDansModale": false,
+  "focusPremierTabDansModale": false
+ },
+ "reducedMotion": {
+  "animationsActivesSousReduce": [
+   "span.me-rec-dot:mePulse",
+   "span.me-cam-spinner:meSpin",
+   "div.onb-step:fadeIn",
+   "div.onb-logo-big:logoFloat",
+   "div.:spin",
+   "div#postDetailPage.:fadeIn",
+   "div#eventDetailPage.event-detail-page:fadeIn",
+   "div#reelsHint.reels-hint:reelsHintFade",
+   "div#modalBackdrop.modal-backdrop:fadeIn",
+   "div#modalContent.modal:slideUp",
+   "div.voice-dot:pulse-rec",
+   "div#pwa-overlay.:pwaFadeIn",
+   "div#pwa-sheet.:pwaPopIn"
+  ],
+  "nbAnimationsActivesSansPreference": 21
+ },
+ "zoom": {
+  "zoom200_feed": {
+   "debordementH": false,
+   "scrollWidth": 390,
+   "navVisible": false,
+   "navRect": {
+    "top": 0,
+    "bottom": 0,
+    "h": 0
+   },
+   "boutonPrincipal": {
+    "navCreer": false,
+    "btnPrimary": null
+   },
+   "capture": "390x844-zoom200-feed.jpg (22 Ko)"
+  },
+  "zoom200_profiles": {
+   "debordementH": false,
+   "scrollWidth": 390,
+   "navVisible": false,
+   "navRect": {
+    "top": 0,
+    "bottom": 0,
+    "h": 0
+   },
+   "boutonPrincipal": {
+    "navCreer": false,
+    "btnPrimary": null
+   },
+   "capture": "390x844-zoom200-profiles.jpg (18 Ko)"
+  },
+  "zoom200_irl": {
+   "debordementH": false,
+   "scrollWidth": 390,
+   "navVisible": false,
+   "navRect": {
+    "top": 0,
+    "bottom": 0,
+    "h": 0
+   },
+   "boutonPrincipal": {
+    "navCreer": false,
+    "btnPrimary": null
+   },
+   "capture": "390x844-zoom200-irl.jpg (18 Ko)"
+  },
+  "zoom200_studio": {
+   "debordementH": false,
+   "scrollWidth": 390,
+   "navVisible": false,
+   "navRect": {
+    "top": 0,
+    "bottom": 0,
+    "h": 0
+   },
+   "boutonPrincipal": {
+    "navCreer": false,
+    "btnPrimary": null
+   },
+   "capture": "390x844-zoom200-studio.jpg (19 Ko)"
+  },
+  "texte200_feed": {
+   "debordementH": false,
+   "scrollWidth": 390,
+   "depassent": [],
+   "navVisible": false,
+   "navRect": {
+    "top": 0,
+    "bottom": 0,
+    "h": 0
+   },
+   "capture": "390x844-texte200-feed.jpg (35 Ko)"
+  },
+  "texte200_irl": {
+   "debordementH": false,
+   "scrollWidth": 390,
+   "depassent": [],
+   "navVisible": false,
+   "navRect": {
+    "top": 0,
+    "bottom": 0,
+    "h": 0
+   },
+   "capture": "390x844-texte200-irl.jpg (30 Ko)"
+  }
+ },
+ "paysage": null,
+ "desktop": null,
+ "permissions": null,
+ "pwa": null,
+ "erreursJS": {
+  "390x844": {
+   "js": [],
+   "console": [],
+   "network": [
+    "Failed to load resource: net::ERR_CONNECTION_RESET",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED"
+   ]
+  }
+ }
+}

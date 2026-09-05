@@ -1,0 +1,5 @@
+Force brute hors ligne du hash du gate (SHA-256 salé, sel public, 4 chiffres) : 2126 essais, 6 ms, code retrouvé = [trouvé, 4 chiffres, non recopié]
+CLAUDE.md:31:- `js/access-gate.js` : verrouillage par code (2125) — chargé en PREMIER dans <head>. Voir `docs/SECURIT
+CLAUDE.md:38:- Serveur local : `npm run serve` → http://localhost:8080 (code d'accès : 2125 ; http-server, plus besoi
+docs/SECURITE_CODE_ACCES.md:44:Code actuel : `2125` → hash `67a2ba44e8c09efc9e9e9d60690ef7cd1e3069d072231a1834b30ec1fc
+tests/e2e/gate-helper.js:34:  GATE_CODE: "2125", // utilisé uniquement par access-gate.spec.js

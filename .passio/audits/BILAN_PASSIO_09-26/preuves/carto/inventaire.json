@@ -1,0 +1,1655 @@
+{
+  "sha": "c8cb8e995b88159a1e9d4c2f7dc196ad93a133bf",
+  "index": {
+    "lignes": 1737,
+    "ecrans": 6,
+    "handlersTotal": 167,
+    "modales": [
+      "landing",
+      "storyOverlays",
+      "meOverlays",
+      "onboarding",
+      "devPanel",
+      "passionManager",
+      "passionManagerTitre",
+      "exPanel_search",
+      "exPanel_ai",
+      "irlFiltersPanel",
+      "reelCommentsPanel",
+      "modalBackdrop",
+      "modalContent",
+      "tourOverlay",
+      "conv-fullpage",
+      "convSettingsPanel",
+      "convFilesPanel",
+      "pwa-overlay",
+      "pwa-sheet",
+      "pwaLogoImg",
+      "pwa-content",
+      "convEmojiPanel"
+    ],
+    "scriptsCharges": [
+      "access-gate.js",
+      "platform.js",
+      "telemetry.js",
+      "perf-ios.js",
+      "pwa-detect.js",
+      "supabase-loader.js",
+      "map-loader.js",
+      "idb-store.js",
+      "first-run.js",
+      "app-01-diag-seed.js",
+      "app-02-state-utils.js",
+      "app-03-posts-vlogs.js",
+      "app-04-comments-shop.js",
+      "app-05-config-profil.js",
+      "app-06-reels-partage.js",
+      "app-07-ia-explore-irl.js",
+      "app-08-ui-modals-tour.js",
+      "app-09-boot-pwa.js",
+      "contextual-nav.js",
+      "ui-v2-shell.js",
+      "ui-v3-passerelle.js",
+      "ui-v4b-fiche.js",
+      "ui-v4a0-tete.js",
+      "ui-v4a1-intentions.js",
+      "ui-v4a2-cartes.js",
+      "ui-v4a3-vue.js",
+      "ui-v5-bobines.js",
+      "ui-v4a4-outils.js",
+      "ui-v4a5-filtres.js",
+      "ui-v6-composer.js",
+      "ui-v6a-messages.js",
+      "ui-v6b-profil.js",
+      "ui-v6c-proposer-irl.js",
+      "ui-v7-lot.js",
+      "…",
+      "passions-flat.js",
+      "passion-selector.js",
+      "passions-flat-ui.js",
+      "pwa-landing.js",
+      "emoji-misc.js"
+    ]
+  },
+  "ecrans": [
+    {
+      "ecran": "feed",
+      "ligne": 508,
+      "lignes": 58,
+      "handlers": 0,
+      "parAttr": {},
+      "fonctions": [],
+      "formulaire": {
+        "input": 0,
+        "textarea": 0,
+        "select": 0,
+        "button": 8,
+        "roleButton": 0
+      },
+      "ids": 10,
+      "idsListe": [
+        "screen-feed",
+        "_pullIndicator",
+        "feedPassionsBlock",
+        "profileStrip",
+        "moodSelector",
+        "feedIntentSelector",
+        "storiesRowFeed",
+        "feedList",
+        "feedSkeleton",
+        "feedEmpty"
+      ]
+    },
+    {
+      "ecran": "profiles",
+      "ligne": 565,
+      "lignes": 208,
+      "handlers": 18,
+      "parAttr": {
+        "onclick": 15,
+        "onchange": 2,
+        "onkeydown": 1
+      },
+      "fonctions": [
+        "changeAvatarPhoto",
+        "changeCoverPhoto",
+        "closePassionManager",
+        "openCreateProfile",
+        "openEditMainProfile",
+        "openFollowersList",
+        "openFollowingList",
+        "openMainProfileMenu",
+        "openMyPostsTab",
+        "openPassionsAide",
+        "ouvrirGestionPassions",
+        "switchProfileTab"
+      ],
+      "formulaire": {
+        "input": 2,
+        "textarea": 0,
+        "select": 0,
+        "button": 8,
+        "roleButton": 3
+      },
+      "ids": 28,
+      "idsListe": [
+        "screen-profiles",
+        "mainProfileCard",
+        "mainProfileCover",
+        "coverPhotoInput",
+        "mainProfileAvatar",
+        "avatarPhotoInput",
+        "mainProfileUsername",
+        "mainProfileBio",
+        "mainProfileRs",
+        "mainStatPosts",
+        "mainStatFollowers",
+        "mainStatPassions",
+        "mainStatFollowing",
+        "passionManager",
+        "fermerPassionManager",
+        "passionManagerTitre",
+        "aidePassionManager",
+        "profilesModeleSub",
+        "passionsResume",
+        "profilesQuotaSub",
+        "passionsActivesTitre",
+        "profileList",
+        "nouveauProfilLien",
+        "nouveauProfilTitre",
+        "nouveauProfilSous",
+        "passionArchiveBox",
+        "myPosts",
+        "profileEvents"
+      ]
+    },
+    {
+      "ecran": "studio",
+      "ligne": 772,
+      "lignes": 98,
+      "handlers": 5,
+      "parAttr": {
+        "onclick": 4,
+        "onchange": 1
+      },
+      "fonctions": [
+        "onStudioPassionChange",
+        "ouvrirRecherchePassionStudio",
+        "publishPost",
+        "toggleRecording"
+      ],
+      "formulaire": {
+        "input": 3,
+        "textarea": 1,
+        "select": 2,
+        "button": 6,
+        "roleButton": 0
+      },
+      "ids": 24,
+      "idsListe": [
+        "screen-studio",
+        "studioTypeTabs",
+        "postText",
+        "studioPhoto",
+        "photoPreviewBox",
+        "uploadZone",
+        "photoInput",
+        "studioVideo",
+        "videoPreviewBox",
+        "videoUploadZone",
+        "videoInput",
+        "studioAudio",
+        "recTime",
+        "recBtn",
+        "audioFileBtn",
+        "recStatus",
+        "recPlayback",
+        "audioInput",
+        "fieldPassion",
+        "postPassion",
+        "studioPassionBtn",
+        "studioPassionNote",
+        "fieldMood",
+        "postMoodRow"
+      ]
+    },
+    {
+      "ecran": "explore",
+      "ligne": 869,
+      "lignes": 184,
+      "handlers": 15,
+      "parAttr": {
+        "onclick": 14,
+        "oninput": 1
+      },
+      "fonctions": [
+        "closeEventDetail",
+        "closePost",
+        "filterExplore",
+        "sendAIQuery",
+        "switchExploreTab"
+      ],
+      "formulaire": {
+        "input": 3,
+        "textarea": 0,
+        "select": 0,
+        "button": 15,
+        "roleButton": 0
+      },
+      "ids": 27,
+      "idsListe": [
+        "screen-explore",
+        "exTab_search",
+        "exTab_ai",
+        "exPanel_search",
+        "explorerSearch",
+        "exploreSearchResults",
+        "searchResultsBox",
+        "exploreNormalContent",
+        "trendingGrid",
+        "explorePassionsCount",
+        "allPassions",
+        "suggestedCreators",
+        "exPanel_ai",
+        "aiInput",
+        "aiResults",
+        "aiHome",
+        "aiHistoryBox",
+        "aiResultContent",
+        "postDetailPage",
+        "postDetailContent",
+        "eventDetailPage",
+        "eventDetailHero",
+        "eventDetailCover",
+        "eventDetailShareBtn",
+        "eventDetailHeroTitle",
+        "eventDetailContent",
+        "eventDetailCta"
+      ]
+    },
+    {
+      "ecran": "irl",
+      "ligne": 1052,
+      "lignes": 176,
+      "handlers": 23,
+      "parAttr": {
+        "onclick": 19,
+        "onchange": 2,
+        "oninput": 2
+      },
+      "fonctions": [
+        "ContextualTools.open",
+        "clearAllIrlFilters",
+        "clearIrlDateFilter",
+        "clearIrlDistanceFilter",
+        "clearIrlTimeFilter",
+        "closeIrlFiltersPanel",
+        "filterIrlByCity",
+        "irlCalNavMonth",
+        "irlSetQuick",
+        "irlUpdateTime",
+        "openCreateEvent",
+        "setIrlDistanceFromRange",
+        "setIrlFilterTab",
+        "toggleIrlMapFullscreen",
+        "toggleIrlMapPeek"
+      ],
+      "formulaire": {
+        "input": 2,
+        "textarea": 0,
+        "select": 3,
+        "button": 19,
+        "roleButton": 0
+      },
+      "ids": 38,
+      "idsListe": [
+        "screen-irl",
+        "irlToolsBtn",
+        "irlToolsBadge",
+        "irlUserCityName",
+        "irlMapWrap",
+        "irlMap",
+        "irlMapCollapseBtn",
+        "irlMapExpandBtn",
+        "irlPassionRow",
+        "irlFiltersPanel",
+        "irlFtabDate",
+        "irlFtabDist",
+        "irlFtabTime",
+        "irlPaneDate",
+        "irlCalPrev",
+        "irlCalMonthLbl",
+        "irlCalGrid",
+        "irlDateBtnLabel",
+        "irlDateClearBtn",
+        "irlPaneDist",
+        "irlDistLabel",
+        "irlDistanceRange",
+        "irlDistSum",
+        "irlDistClearBtn",
+        "irlPaneTime",
+        "irlDisplayStart",
+        "irlDisplayEnd",
+        "irlStartHour",
+        "irlEndHour",
+        "irlTimeSum",
+        "irlTimeClearBtn",
+        "irlTimeFilterBtn",
+        "irlFiltersResetBtn",
+        "irlFiltersDoneBtn",
+        "irlSearchRow",
+        "irlCitySearch",
+        "irlSearchEmpty",
+        "eventList"
+      ]
+    },
+    {
+      "ecran": "messages",
+      "ligne": 1227,
+      "lignes": 42,
+      "handlers": 3,
+      "parAttr": {
+        "onclick": 2,
+        "oninput": 1
+      },
+      "fonctions": [
+        "_globalMsgSearch",
+        "openCreateGroup",
+        "openNewMessage"
+      ],
+      "formulaire": {
+        "input": 1,
+        "textarea": 0,
+        "select": 0,
+        "button": 2,
+        "roleButton": 0
+      },
+      "ids": 8,
+      "idsListe": [
+        "screen-messages",
+        "msgUserResults",
+        "convGlobalSearch",
+        "archivedToggleRow",
+        "msgFilterRow",
+        "msgReadFilterRow",
+        "messageList",
+        "messagesEmpty"
+      ]
+    }
+  ],
+  "horsEcrans": {
+    "avantMain": {
+      "handlers": 66,
+      "fonctions": [
+        "PassioFirstRun.ouvrirPersonnalisation",
+        "PassioFirstRun.relancerTour",
+        "basculerPassionsIllimitees",
+        "closeStoryViewer",
+        "exitLandingAsAuth",
+        "feedbackModal",
+        "goTo",
+        "meAddEmoji",
+        "meAddGif",
+        "meAddText",
+        "meCycleBg",
+        "meFlipCamera",
+        "meOnMedia",
+        "mePickMedia",
+        "mePublish",
+        "meTopBack",
+        "onbDoAuth",
+        "onbFinish",
+        "onbForgotPassword",
+        "onbGoogleAuth",
+        "onbPrev",
+        "onbResendConfirmation",
+        "onbValidateAge",
+        "onbValidateName",
+        "openAbout",
+        "openAccountSwitch",
+        "openBlockedList",
+        "openChangePassword",
+        "openConfigurator",
+        "openContentSettings",
+        "openDeleteAccountConfirm",
+        "openEditMainProfile",
+        "openLogoutConfirm",
+        "openNotifSettings",
+        "openNotifications",
+        "openPauseMode",
+        "openPrivacyPolicy",
+        "openPrivacySettings",
+        "openScreenTime",
+        "pwaInstall",
+        "renderPassionGrid",
+        "resetOnboarding",
+        "shareBeta",
+        "showPitchLanding",
+        "startTour",
+        "storyNext",
+        "storyPrev",
+        "switchAuthTab",
+        "toggleDevPanel",
+        "togglePwd",
+        "toggleSettingsSection"
+      ],
+      "formulaire": {
+        "input": 8,
+        "textarea": 0,
+        "select": 0,
+        "button": 50,
+        "roleButton": 5
+      }
+    },
+    "apresMain": {
+      "handlers": 36,
+      "fonctions": [
+        "_onEmojiSearch",
+        "_onGifSearch",
+        "autoResizeReelCommentInput",
+        "autoResizeTextarea",
+        "cancelVoiceRecord",
+        "closeConvFiles",
+        "closeConvSettings",
+        "closeModalOnBackdrop",
+        "closeReelComments",
+        "closeReels",
+        "endTour",
+        "handleAttachFile",
+        "nextReel",
+        "onConvInputTyping",
+        "openConvFiles",
+        "prevReel",
+        "reactToReel",
+        "resumeReels",
+        "shareLocation",
+        "showGifPickerForMessage",
+        "submitReelComment",
+        "switchEmojiTab",
+        "toggleAttachMenu",
+        "toggleEmojiPanel",
+        "tourNext",
+        "triggerAttach"
+      ],
+      "formulaire": {
+        "input": 5,
+        "textarea": 2,
+        "select": 0,
+        "button": 24,
+        "roleButton": 4
+      }
+    }
+  },
+  "js": {
+    "fichiers": 42,
+    "charges": 40,
+    "nonChargesParIndex": [
+      "identity-transition.js",
+      "passion-context.js",
+      "release-guard.js"
+    ],
+    "fnTopLevelTotal": 1285,
+    "handlersTotal": 459,
+    "handlersParAttr": {
+      "onclick": 431,
+      "oninput": 15,
+      "onkeydown": 4,
+      "onchange": 9
+    },
+    "interactionsDistinctesJs": 267,
+    "parFichier": {
+      "access-gate.js": {
+        "lignes": 290,
+        "charge": true,
+        "fnTopLevel": 0,
+        "windowAssignFn": 0,
+        "windowAssignTotal": 1,
+        "handlers": 0,
+        "parAttr": {},
+        "tables": [],
+        "rpc": [],
+        "storageKeys": 2,
+        "hosts": [
+          "www.w3.org"
+        ]
+      },
+      "app-01-diag-seed.js": {
+        "lignes": 2233,
+        "charge": true,
+        "fnTopLevel": 6,
+        "windowAssignFn": 0,
+        "windowAssignTotal": 2,
+        "handlers": 0,
+        "parAttr": {},
+        "tables": [],
+        "rpc": [],
+        "storageKeys": 1,
+        "hosts": [
+          "www.w3.org",
+          "images.unsplash.com",
+          "galerielapetite.fr"
+        ]
+      },
+      "app-02-state-utils.js": {
+        "lignes": 6915,
+        "charge": true,
+        "fnTopLevel": 239,
+        "windowAssignFn": 1,
+        "windowAssignTotal": 39,
+        "handlers": 76,
+        "parAttr": {
+          "onclick": 69,
+          "oninput": 7
+        },
+        "tables": [
+          "blocks",
+          "follows",
+          "passion_requests",
+          "passions",
+          "user_state"
+        ],
+        "rpc": [],
+        "storageKeys": 11,
+        "hosts": [
+          "instagram.com",
+          "images.unsplash.com",
+          "picsum.photos",
+          "loremflickr.com"
+        ]
+      },
+      "app-03-posts-vlogs.js": {
+        "lignes": 400,
+        "charge": true,
+        "fnTopLevel": 11,
+        "windowAssignFn": 0,
+        "windowAssignTotal": 0,
+        "handlers": 1,
+        "parAttr": {
+          "onclick": 1
+        },
+        "tables": [
+          "post_likes",
+          "profiles"
+        ],
+        "rpc": [],
+        "storageKeys": 1,
+        "hosts": [
+          "passio-app.netlify.app"
+        ]
+      },
+      "app-04-comments-shop.js": {
+        "lignes": 4865,
+        "charge": true,
+        "fnTopLevel": 182,
+        "windowAssignFn": 1,
+        "windowAssignTotal": 23,
+        "handlers": 75,
+        "parAttr": {
+          "onclick": 72,
+          "oninput": 2,
+          "onkeydown": 1
+        },
+        "tables": [
+          "comment_interactions",
+          "content",
+          "conv_members",
+          "conv_messages",
+          "conversations",
+          "follows",
+          "posts",
+          "profiles"
+        ],
+        "rpc": [],
+        "storageKeys": 1,
+        "hosts": [
+          "picsum.photos",
+          "maps.google.com",
+          "fonts.googleapis.com"
+        ]
+      },
+      "app-05-config-profil.js": {
+        "lignes": 4053,
+        "charge": true,
+        "fnTopLevel": 148,
+        "windowAssignFn": 2,
+        "windowAssignTotal": 37,
+        "handlers": 67,
+        "parAttr": {
+          "onclick": 64,
+          "oninput": 2,
+          "onkeydown": 1
+        },
+        "tables": [
+          "conv_members",
+          "conv_messages",
+          "conversations",
+          "follows",
+          "profiles",
+          "push_subscriptions",
+          "video_lives"
+        ],
+        "rpc": [],
+        "storageKeys": 1,
+        "hosts": [
+          "www.w3.org",
+          "videos.pexels.com",
+          "images.unsplash.com",
+          "commondatastorage.googleapis.com",
+          "picsum.photos"
+        ]
+      },
+      "app-06-reels-partage.js": {
+        "lignes": 5052,
+        "charge": true,
+        "fnTopLevel": 150,
+        "windowAssignFn": 1,
+        "windowAssignTotal": 14,
+        "handlers": 64,
+        "parAttr": {
+          "onclick": 57,
+          "onchange": 7
+        },
+        "tables": [
+          "follows",
+          "profiles"
+        ],
+        "rpc": [],
+        "storageKeys": 2,
+        "hosts": [
+          "wa.me",
+          "twitter.com",
+          "www.facebook.com",
+          "t.me",
+          "picsum.photos",
+          "images.unsplash.com"
+        ]
+      },
+      "app-07-ia-explore-irl.js": {
+        "lignes": 6670,
+        "charge": true,
+        "fnTopLevel": 273,
+        "windowAssignFn": 1,
+        "windowAssignTotal": 33,
+        "handlers": 103,
+        "parAttr": {
+          "onclick": 97,
+          "onchange": 2,
+          "oninput": 2,
+          "onkeydown": 2
+        },
+        "tables": [
+          "profiles"
+        ],
+        "rpc": [
+          "declare_birth_year",
+          "irl_interaction_allowed"
+        ],
+        "storageKeys": 4,
+        "hosts": [
+          "api-adresse.data.gouv.fr",
+          "photon.komoot.io",
+          "maps.google.com",
+          "www.w3.org"
+        ]
+      },
+      "app-08-ui-modals-tour.js": {
+        "lignes": 6148,
+        "charge": true,
+        "fnTopLevel": 211,
+        "windowAssignFn": 8,
+        "windowAssignTotal": 31,
+        "handlers": 13,
+        "parAttr": {
+          "onclick": 12,
+          "oninput": 1
+        },
+        "tables": [
+          "analytics_events",
+          "blocks",
+          "comment_interactions",
+          "comment_likes",
+          "content",
+          "conv_members",
+          "conv_messages",
+          "conv_reads",
+          "conversations",
+          "event_attendees",
+          "event_comments",
+          "event_reactions",
+          "events",
+          "follows",
+          "notifications",
+          "post_comments",
+          "post_likes",
+          "posts",
+          "profiles",
+          "reports",
+          "stories",
+          "story_views",
+          "user_passions"
+        ],
+        "rpc": [],
+        "storageKeys": 5,
+        "hosts": [
+          "images.unsplash.com",
+          "picsum.photos",
+          "njkiyoklssvefstljemx.supabase.co",
+          "passio-cdn.toncompte.workers.dev"
+        ]
+      },
+      "app-09-boot-pwa.js": {
+        "lignes": 1723,
+        "charge": true,
+        "fnTopLevel": 44,
+        "windowAssignFn": 0,
+        "windowAssignTotal": 3,
+        "handlers": 35,
+        "parAttr": {
+          "onclick": 35
+        },
+        "tables": [
+          "attachments",
+          "conv_messages"
+        ],
+        "rpc": [],
+        "storageKeys": 1,
+        "hosts": [
+          "passio-app.netlify.app",
+          "maps.google.com"
+        ]
+      },
+      "contextual-nav.js": {
+        "lignes": 268,
+        "charge": true,
+        "fnTopLevel": 0,
+        "windowAssignFn": 0,
+        "windowAssignTotal": 5,
+        "handlers": 1,
+        "parAttr": {
+          "onclick": 1
+        },
+        "tables": [],
+        "rpc": [],
+        "storageKeys": 0,
+        "hosts": []
+      },
+      "emoji-misc.js": {
+        "lignes": 1099,
+        "charge": true,
+        "fnTopLevel": 21,
+        "windowAssignFn": 10,
+        "windowAssignTotal": 19,
+        "handlers": 6,
+        "parAttr": {
+          "onclick": 6
+        },
+        "tables": [
+          "posts"
+        ],
+        "rpc": [],
+        "storageKeys": 1,
+        "hosts": [
+          "media.giphy.com",
+          "api.giphy.com",
+          "tenor.googleapis.com"
+        ]
+      },
+      "first-run.js": {
+        "lignes": 2086,
+        "charge": true,
+        "fnTopLevel": 0,
+        "windowAssignFn": 0,
+        "windowAssignTotal": 5,
+        "handlers": 15,
+        "parAttr": {
+          "onclick": 14,
+          "oninput": 1
+        },
+        "tables": [],
+        "rpc": [],
+        "storageKeys": 1,
+        "hosts": []
+      },
+      "idb-store.js": {
+        "lignes": 119,
+        "charge": true,
+        "fnTopLevel": 0,
+        "windowAssignFn": 3,
+        "windowAssignTotal": 3,
+        "handlers": 0,
+        "parAttr": {},
+        "tables": [],
+        "rpc": [],
+        "storageKeys": 0,
+        "hosts": []
+      },
+      "identity-transition.js": {
+        "lignes": 135,
+        "charge": false,
+        "fnTopLevel": 0,
+        "windowAssignFn": 0,
+        "windowAssignTotal": 3,
+        "handlers": 0,
+        "parAttr": {},
+        "tables": [],
+        "rpc": [],
+        "storageKeys": 0,
+        "hosts": []
+      },
+      "map-loader.js": {
+        "lignes": 297,
+        "charge": true,
+        "fnTopLevel": 0,
+        "windowAssignFn": 1,
+        "windowAssignTotal": 6,
+        "handlers": 0,
+        "parAttr": {},
+        "tables": [],
+        "rpc": [],
+        "storageKeys": 0,
+        "hosts": [
+          "unpkg.com",
+          "tiles.openfreemap.org",
+          "openfreemap.org",
+          "www.openstreetmap.org"
+        ]
+      },
+      "passion-context.js": {
+        "lignes": 90,
+        "charge": false,
+        "fnTopLevel": 0,
+        "windowAssignFn": 0,
+        "windowAssignTotal": 1,
+        "handlers": 0,
+        "parAttr": {},
+        "tables": [],
+        "rpc": [],
+        "storageKeys": 0,
+        "hosts": []
+      },
+      "passion-selector.js": {
+        "lignes": 474,
+        "charge": true,
+        "fnTopLevel": 0,
+        "windowAssignFn": 0,
+        "windowAssignTotal": 1,
+        "handlers": 0,
+        "parAttr": {},
+        "tables": [],
+        "rpc": [],
+        "storageKeys": 0,
+        "hosts": []
+      },
+      "passions-flat-ui.js": {
+        "lignes": 309,
+        "charge": true,
+        "fnTopLevel": 0,
+        "windowAssignFn": 0,
+        "windowAssignTotal": 1,
+        "handlers": 0,
+        "parAttr": {},
+        "tables": [],
+        "rpc": [],
+        "storageKeys": 0,
+        "hosts": []
+      },
+      "passions-flat.js": {
+        "lignes": 930,
+        "charge": true,
+        "fnTopLevel": 0,
+        "windowAssignFn": 0,
+        "windowAssignTotal": 3,
+        "handlers": 0,
+        "parAttr": {},
+        "tables": [
+          "passion_requests"
+        ],
+        "rpc": [
+          "rechercher_passions"
+        ],
+        "storageKeys": 0,
+        "hosts": []
+      },
+      "perf-ios.js": {
+        "lignes": 492,
+        "charge": true,
+        "fnTopLevel": 0,
+        "windowAssignFn": 0,
+        "windowAssignTotal": 0,
+        "handlers": 0,
+        "parAttr": {},
+        "tables": [],
+        "rpc": [],
+        "storageKeys": 0,
+        "hosts": []
+      },
+      "platform.js": {
+        "lignes": 203,
+        "charge": true,
+        "fnTopLevel": 0,
+        "windowAssignFn": 0,
+        "windowAssignTotal": 3,
+        "handlers": 0,
+        "parAttr": {},
+        "tables": [
+          "client_errors"
+        ],
+        "rpc": [],
+        "storageKeys": 2,
+        "hosts": [
+          "passio-app.netlify.app"
+        ]
+      },
+      "pwa-detect.js": {
+        "lignes": 43,
+        "charge": true,
+        "fnTopLevel": 0,
+        "windowAssignFn": 0,
+        "windowAssignTotal": 0,
+        "handlers": 0,
+        "parAttr": {},
+        "tables": [],
+        "rpc": [],
+        "storageKeys": 0,
+        "hosts": []
+      },
+      "pwa-landing.js": {
+        "lignes": 8,
+        "charge": true,
+        "fnTopLevel": 0,
+        "windowAssignFn": 0,
+        "windowAssignTotal": 0,
+        "handlers": 0,
+        "parAttr": {},
+        "tables": [],
+        "rpc": [],
+        "storageKeys": 0,
+        "hosts": []
+      },
+      "release-guard.js": {
+        "lignes": 121,
+        "charge": false,
+        "fnTopLevel": 0,
+        "windowAssignFn": 0,
+        "windowAssignTotal": 2,
+        "handlers": 0,
+        "parAttr": {},
+        "tables": [],
+        "rpc": [],
+        "storageKeys": 0,
+        "hosts": []
+      },
+      "supabase-loader.js": {
+        "lignes": 18,
+        "charge": true,
+        "fnTopLevel": 0,
+        "windowAssignFn": 1,
+        "windowAssignTotal": 2,
+        "handlers": 0,
+        "parAttr": {},
+        "tables": [],
+        "rpc": [],
+        "storageKeys": 0,
+        "hosts": [
+          "cdn.jsdelivr.net"
+        ]
+      },
+      "telemetry.js": {
+        "lignes": 882,
+        "charge": true,
+        "fnTopLevel": 0,
+        "windowAssignFn": 2,
+        "windowAssignTotal": 6,
+        "handlers": 0,
+        "parAttr": {},
+        "tables": [],
+        "rpc": [],
+        "storageKeys": 3,
+        "hosts": []
+      },
+      "ui-v2-shell.js": {
+        "lignes": 843,
+        "charge": true,
+        "fnTopLevel": 0,
+        "windowAssignFn": 0,
+        "windowAssignTotal": 8,
+        "handlers": 0,
+        "parAttr": {},
+        "tables": [],
+        "rpc": [],
+        "storageKeys": 0,
+        "hosts": []
+      },
+      "ui-v3-passerelle.js": {
+        "lignes": 1359,
+        "charge": true,
+        "fnTopLevel": 0,
+        "windowAssignFn": 0,
+        "windowAssignTotal": 6,
+        "handlers": 0,
+        "parAttr": {},
+        "tables": [],
+        "rpc": [],
+        "storageKeys": 0,
+        "hosts": []
+      },
+      "ui-v4a0-tete.js": {
+        "lignes": 492,
+        "charge": true,
+        "fnTopLevel": 0,
+        "windowAssignFn": 0,
+        "windowAssignTotal": 5,
+        "handlers": 0,
+        "parAttr": {},
+        "tables": [],
+        "rpc": [],
+        "storageKeys": 0,
+        "hosts": [
+          "www.w3.org"
+        ]
+      },
+      "ui-v4a1-intentions.js": {
+        "lignes": 553,
+        "charge": true,
+        "fnTopLevel": 0,
+        "windowAssignFn": 0,
+        "windowAssignTotal": 11,
+        "handlers": 0,
+        "parAttr": {},
+        "tables": [],
+        "rpc": [],
+        "storageKeys": 0,
+        "hosts": []
+      },
+      "ui-v4a2-cartes.js": {
+        "lignes": 775,
+        "charge": true,
+        "fnTopLevel": 0,
+        "windowAssignFn": 0,
+        "windowAssignTotal": 2,
+        "handlers": 0,
+        "parAttr": {},
+        "tables": [],
+        "rpc": [],
+        "storageKeys": 0,
+        "hosts": []
+      },
+      "ui-v4a3-vue.js": {
+        "lignes": 437,
+        "charge": true,
+        "fnTopLevel": 0,
+        "windowAssignFn": 0,
+        "windowAssignTotal": 2,
+        "handlers": 0,
+        "parAttr": {},
+        "tables": [],
+        "rpc": [],
+        "storageKeys": 0,
+        "hosts": []
+      },
+      "ui-v4a4-outils.js": {
+        "lignes": 263,
+        "charge": true,
+        "fnTopLevel": 0,
+        "windowAssignFn": 0,
+        "windowAssignTotal": 2,
+        "handlers": 0,
+        "parAttr": {},
+        "tables": [],
+        "rpc": [],
+        "storageKeys": 1,
+        "hosts": []
+      },
+      "ui-v4a5-filtres.js": {
+        "lignes": 1017,
+        "charge": true,
+        "fnTopLevel": 0,
+        "windowAssignFn": 0,
+        "windowAssignTotal": 3,
+        "handlers": 0,
+        "parAttr": {},
+        "tables": [],
+        "rpc": [],
+        "storageKeys": 0,
+        "hosts": [
+          "www.w3.org"
+        ]
+      },
+      "ui-v4b-fiche.js": {
+        "lignes": 921,
+        "charge": true,
+        "fnTopLevel": 0,
+        "windowAssignFn": 0,
+        "windowAssignTotal": 3,
+        "handlers": 0,
+        "parAttr": {},
+        "tables": [],
+        "rpc": [],
+        "storageKeys": 0,
+        "hosts": [
+          "www.w3.org"
+        ]
+      },
+      "ui-v5-bobines.js": {
+        "lignes": 423,
+        "charge": true,
+        "fnTopLevel": 0,
+        "windowAssignFn": 0,
+        "windowAssignTotal": 4,
+        "handlers": 0,
+        "parAttr": {},
+        "tables": [],
+        "rpc": [],
+        "storageKeys": 1,
+        "hosts": []
+      },
+      "ui-v6-composer.js": {
+        "lignes": 363,
+        "charge": true,
+        "fnTopLevel": 0,
+        "windowAssignFn": 0,
+        "windowAssignTotal": 3,
+        "handlers": 1,
+        "parAttr": {
+          "onclick": 1
+        },
+        "tables": [],
+        "rpc": [],
+        "storageKeys": 2,
+        "hosts": []
+      },
+      "ui-v6a-messages.js": {
+        "lignes": 365,
+        "charge": true,
+        "fnTopLevel": 0,
+        "windowAssignFn": 0,
+        "windowAssignTotal": 2,
+        "handlers": 1,
+        "parAttr": {
+          "onclick": 1
+        },
+        "tables": [],
+        "rpc": [],
+        "storageKeys": 1,
+        "hosts": []
+      },
+      "ui-v6b-profil.js": {
+        "lignes": 323,
+        "charge": true,
+        "fnTopLevel": 0,
+        "windowAssignFn": 0,
+        "windowAssignTotal": 3,
+        "handlers": 1,
+        "parAttr": {
+          "onclick": 1
+        },
+        "tables": [],
+        "rpc": [],
+        "storageKeys": 2,
+        "hosts": []
+      },
+      "ui-v6c-proposer-irl.js": {
+        "lignes": 277,
+        "charge": true,
+        "fnTopLevel": 0,
+        "windowAssignFn": 0,
+        "windowAssignTotal": 2,
+        "handlers": 0,
+        "parAttr": {},
+        "tables": [],
+        "rpc": [],
+        "storageKeys": 1,
+        "hosts": []
+      },
+      "ui-v7-lot.js": {
+        "lignes": 719,
+        "charge": true,
+        "fnTopLevel": 0,
+        "windowAssignFn": 0,
+        "windowAssignTotal": 2,
+        "handlers": 0,
+        "parAttr": {},
+        "tables": [],
+        "rpc": [],
+        "storageKeys": 1,
+        "hosts": []
+      }
+    },
+    "doublonsNomTopLevel": [
+      [
+        "$",
+        [
+          "app-01-diag-seed.js",
+          "app-02-state-utils.js"
+        ]
+      ]
+    ]
+  },
+  "tables": {
+    "analytics_events": {
+      "app-08-ui-modals-tour.js": 1
+    },
+    "attachments": {
+      "app-09-boot-pwa.js": 5
+    },
+    "blocks": {
+      "app-02-state-utils.js": 2,
+      "app-08-ui-modals-tour.js": 3
+    },
+    "client_errors": {
+      "platform.js": 1
+    },
+    "comment_interactions": {
+      "app-04-comments-shop.js": 1,
+      "app-08-ui-modals-tour.js": 5
+    },
+    "comment_likes": {
+      "app-08-ui-modals-tour.js": 3
+    },
+    "content": {
+      "app-04-comments-shop.js": 1,
+      "app-08-ui-modals-tour.js": 4
+    },
+    "conv_members": {
+      "app-04-comments-shop.js": 2,
+      "app-05-config-profil.js": 3,
+      "app-08-ui-modals-tour.js": 12
+    },
+    "conv_messages": {
+      "app-04-comments-shop.js": 5,
+      "app-05-config-profil.js": 1,
+      "app-08-ui-modals-tour.js": 3,
+      "app-09-boot-pwa.js": 6
+    },
+    "conv_reads": {
+      "app-08-ui-modals-tour.js": 2
+    },
+    "conversations": {
+      "app-04-comments-shop.js": 1,
+      "app-05-config-profil.js": 1,
+      "app-08-ui-modals-tour.js": 7
+    },
+    "event_attendees": {
+      "app-08-ui-modals-tour.js": 14
+    },
+    "event_comments": {
+      "app-08-ui-modals-tour.js": 4
+    },
+    "event_reactions": {
+      "app-08-ui-modals-tour.js": 6
+    },
+    "events": {
+      "app-08-ui-modals-tour.js": 5
+    },
+    "follows": {
+      "app-02-state-utils.js": 2,
+      "app-04-comments-shop.js": 2,
+      "app-05-config-profil.js": 1,
+      "app-06-reels-partage.js": 2,
+      "app-08-ui-modals-tour.js": 4
+    },
+    "notifications": {
+      "app-08-ui-modals-tour.js": 4
+    },
+    "passion_requests": {
+      "app-02-state-utils.js": 1,
+      "passions-flat.js": 1
+    },
+    "passions": {
+      "app-02-state-utils.js": 1
+    },
+    "post_comments": {
+      "app-08-ui-modals-tour.js": 3
+    },
+    "post_likes": {
+      "app-03-posts-vlogs.js": 3,
+      "app-08-ui-modals-tour.js": 2
+    },
+    "posts": {
+      "app-04-comments-shop.js": 2,
+      "app-08-ui-modals-tour.js": 4,
+      "emoji-misc.js": 4
+    },
+    "profiles": {
+      "app-03-posts-vlogs.js": 1,
+      "app-04-comments-shop.js": 4,
+      "app-05-config-profil.js": 1,
+      "app-06-reels-partage.js": 3,
+      "app-07-ia-explore-irl.js": 2,
+      "app-08-ui-modals-tour.js": 14
+    },
+    "push_subscriptions": {
+      "app-05-config-profil.js": 1
+    },
+    "reports": {
+      "app-08-ui-modals-tour.js": 1
+    },
+    "stories": {
+      "app-08-ui-modals-tour.js": 2
+    },
+    "story_views": {
+      "app-08-ui-modals-tour.js": 2
+    },
+    "user_passions": {
+      "app-08-ui-modals-tour.js": 2
+    },
+    "user_state": {
+      "app-02-state-utils.js": 5
+    },
+    "video_lives": {
+      "app-05-config-profil.js": 5
+    }
+  },
+  "rpc": {
+    "declare_birth_year": [
+      "app-07-ia-explore-irl.js"
+    ],
+    "irl_interaction_allowed": [
+      "app-07-ia-explore-irl.js"
+    ],
+    "rechercher_passions": [
+      "passions-flat.js"
+    ]
+  },
+  "buckets": {
+    "content": [
+      "app-04-comments-shop.js",
+      "app-08-ui-modals-tour.js"
+    ],
+    "attachments": [
+      "app-09-boot-pwa.js"
+    ]
+  },
+  "edgeAppelees": {
+    "delete-account": [
+      "app-02-state-utils.js"
+    ],
+    "notify-call": [
+      "app-05-config-profil.js",
+      "app-08-ui-modals-tour.js"
+    ],
+    "ask-ai": [
+      "app-07-ia-explore-irl.js"
+    ]
+  },
+  "hosts": {
+    "www.w3.org": [
+      "access-gate.js",
+      "app-01-diag-seed.js",
+      "app-05-config-profil.js",
+      "app-07-ia-explore-irl.js",
+      "ui-v4a0-tete.js",
+      "ui-v4a5-filtres.js",
+      "ui-v4b-fiche.js"
+    ],
+    "images.unsplash.com": [
+      "app-01-diag-seed.js",
+      "app-02-state-utils.js",
+      "app-05-config-profil.js",
+      "app-06-reels-partage.js",
+      "app-08-ui-modals-tour.js"
+    ],
+    "galerielapetite.fr": [
+      "app-01-diag-seed.js"
+    ],
+    "instagram.com": [
+      "app-02-state-utils.js"
+    ],
+    "picsum.photos": [
+      "app-02-state-utils.js",
+      "app-04-comments-shop.js",
+      "app-05-config-profil.js",
+      "app-06-reels-partage.js",
+      "app-08-ui-modals-tour.js"
+    ],
+    "loremflickr.com": [
+      "app-02-state-utils.js"
+    ],
+    "passio-app.netlify.app": [
+      "app-03-posts-vlogs.js",
+      "app-09-boot-pwa.js",
+      "platform.js"
+    ],
+    "maps.google.com": [
+      "app-04-comments-shop.js",
+      "app-07-ia-explore-irl.js",
+      "app-09-boot-pwa.js"
+    ],
+    "fonts.googleapis.com": [
+      "app-04-comments-shop.js"
+    ],
+    "videos.pexels.com": [
+      "app-05-config-profil.js"
+    ],
+    "commondatastorage.googleapis.com": [
+      "app-05-config-profil.js"
+    ],
+    "wa.me": [
+      "app-06-reels-partage.js"
+    ],
+    "twitter.com": [
+      "app-06-reels-partage.js"
+    ],
+    "www.facebook.com": [
+      "app-06-reels-partage.js"
+    ],
+    "t.me": [
+      "app-06-reels-partage.js"
+    ],
+    "api-adresse.data.gouv.fr": [
+      "app-07-ia-explore-irl.js"
+    ],
+    "photon.komoot.io": [
+      "app-07-ia-explore-irl.js"
+    ],
+    "njkiyoklssvefstljemx.supabase.co": [
+      "app-08-ui-modals-tour.js"
+    ],
+    "passio-cdn.toncompte.workers.dev": [
+      "app-08-ui-modals-tour.js"
+    ],
+    "media.giphy.com": [
+      "emoji-misc.js"
+    ],
+    "api.giphy.com": [
+      "emoji-misc.js"
+    ],
+    "tenor.googleapis.com": [
+      "emoji-misc.js"
+    ],
+    "unpkg.com": [
+      "map-loader.js"
+    ],
+    "tiles.openfreemap.org": [
+      "map-loader.js"
+    ],
+    "openfreemap.org": [
+      "map-loader.js"
+    ],
+    "www.openstreetmap.org": [
+      "map-loader.js"
+    ],
+    "cdn.jsdelivr.net": [
+      "supabase-loader.js"
+    ]
+  },
+  "storageKeys": {
+    "localStorage:passio_mvp_state_v1": [
+      "access-gate.js"
+    ],
+    "localStorage:passio_state": [
+      "access-gate.js"
+    ],
+    "localStorage:passio_logo_variant": [
+      "app-01-diag-seed.js"
+    ],
+    "localStorage:sb-": [
+      "app-02-state-utils.js",
+      "telemetry.js"
+    ],
+    "localStorage:passio_usage_min": [
+      "app-02-state-utils.js"
+    ],
+    "localStorage:passio_limit_sec": [
+      "app-02-state-utils.js"
+    ],
+    "localStorage:passio_parental_code": [
+      "app-02-state-utils.js"
+    ],
+    "localStorage:passio_uid": [
+      "app-02-state-utils.js",
+      "app-06-reels-partage.js",
+      "app-08-ui-modals-tour.js",
+      "emoji-misc.js",
+      "first-run.js"
+    ],
+    "localStorage:passio_oauth_pending": [
+      "app-02-state-utils.js",
+      "app-08-ui-modals-tour.js"
+    ],
+    "localStorage:passio_passion_requests": [
+      "app-02-state-utils.js"
+    ],
+    "localStorage:passio_feed_intents_v1": [
+      "app-02-state-utils.js"
+    ],
+    "localStorage:passio_ui_v2": [
+      "app-02-state-utils.js"
+    ],
+    "localStorage:passio_feed_rank": [
+      "app-02-state-utils.js"
+    ],
+    "localStorage:passio_feed_window_v1": [
+      "app-02-state-utils.js"
+    ],
+    "localStorage:passio_cdv_lives": [
+      "app-03-posts-vlogs.js"
+    ],
+    "localStorage:passio_conversations_v1": [
+      "app-04-comments-shop.js"
+    ],
+    "localStorage:passio_config": [
+      "app-05-config-profil.js"
+    ],
+    "localStorage:passio_ui_8": [
+      "app-06-reels-partage.js",
+      "ui-v6-composer.js",
+      "ui-v6b-profil.js"
+    ],
+    "localStorage:passio_irl_map_peek": [
+      "app-07-ia-explore-irl.js"
+    ],
+    "localStorage:passio_event_reminded": [
+      "app-07-ia-explore-irl.js"
+    ],
+    "localStorage:passio_feed_irl_bridge_v1": [
+      "app-07-ia-explore-irl.js"
+    ],
+    "localStorage:passio_irl_proposal_v1": [
+      "app-07-ia-explore-irl.js"
+    ],
+    "localStorage:passio_realtime_v2": [
+      "app-08-ui-modals-tour.js"
+    ],
+    "localStorage:passio_realtime_v3": [
+      "app-08-ui-modals-tour.js"
+    ],
+    "localStorage:passio_ai_history": [
+      "app-08-ui-modals-tour.js"
+    ],
+    "sessionStorage:passio_pwa_dismissed": [
+      "app-09-boot-pwa.js"
+    ],
+    "localStorage:passio_debug": [
+      "platform.js"
+    ],
+    "localStorage:passio_pwa_installed": [
+      "platform.js"
+    ],
+    "localStorage:passio_device_id": [
+      "telemetry.js"
+    ],
+    "localStorage:passio_telemetry": [
+      "telemetry.js"
+    ],
+    "localStorage:passio_ui_4a4": [
+      "ui-v4a4-outils.js"
+    ],
+    "localStorage:passio_ui_5": [
+      "ui-v5-bobines.js"
+    ],
+    "localStorage:passio_ui_6": [
+      "ui-v6-composer.js"
+    ],
+    "localStorage:passio_ui_6a": [
+      "ui-v6a-messages.js"
+    ],
+    "localStorage:passio_ui_6b": [
+      "ui-v6b-profil.js"
+    ],
+    "localStorage:passio_ui_6c": [
+      "ui-v6c-proposer-irl.js"
+    ],
+    "localStorage:passio_ui_7": [
+      "ui-v7-lot.js"
+    ]
+  },
+  "canauxRealtime": {
+    "typing:": [
+      "app-04-comments-shop.js"
+    ],
+    "conv_specific:": [
+      "app-04-comments-shop.js"
+    ],
+    "vlive:": [
+      "app-05-config-profil.js"
+    ],
+    "conv:": [
+      "app-08-ui-modals-tour.js"
+    ],
+    "user:": [
+      "app-08-ui-modals-tour.js"
+    ],
+    "realtime:db": [
+      "app-08-ui-modals-tour.js"
+    ]
+  },
+  "sw": {
+    "lignes": 221,
+    "hosts": []
+  },
+  "edgeFunctions": {
+    "ask-ai": {
+      "fichiers": [
+        "index.ts"
+      ],
+      "tables": [],
+      "hosts": [
+        "esm.sh",
+        "api.anthropic.com"
+      ]
+    },
+    "delete-account": {
+      "fichiers": [
+        "index.ts"
+      ],
+      "tables": [
+        "content"
+      ],
+      "hosts": [
+        "esm.sh"
+      ]
+    },
+    "notify-call": {
+      "fichiers": [
+        "index.ts"
+      ],
+      "tables": [
+        "push_subscriptions"
+      ],
+      "hosts": [
+        "esm.sh"
+      ]
+    }
+  }
+}

@@ -1,0 +1,370 @@
+[
+ {
+  "flag": "passio_ui_v2 / PASSIO_UI_V2",
+  "sens": "\"0\" coupe (enlever)",
+  "lus_dans": [
+   "js/app-02-state-utils.js",
+   "js/ui-v2-shell.js",
+   "js/ui-v3-passerelle.js",
+   "js/ui-v4a0-tete.js",
+   "js/ui-v4a1-intentions.js",
+   "js/ui-v4a2-cartes.js",
+   "js/ui-v4a3-vue.js",
+   "js/ui-v4b-fiche.js",
+   "js/ui-v5-bobines.js"
+  ],
+  "index_html": true,
+  "tests": 6,
+  "docs": 5,
+  "premier_commit": "2026-08-31"
+ },
+ {
+  "flag": "passio_ui_3 / PASSIO_UI_3",
+  "sens": "\"0\" coupe (enlever)",
+  "lus_dans": [
+   "js/ui-v3-passerelle.js"
+  ],
+  "index_html": true,
+  "tests": 4,
+  "docs": 1,
+  "premier_commit": "2026-08-31"
+ },
+ {
+  "flag": "passio_ui_4b / PASSIO_UI_4B",
+  "sens": "\"0\" coupe (enlever)",
+  "lus_dans": [
+   "js/ui-v4b-fiche.js"
+  ],
+  "index_html": true,
+  "tests": 3,
+  "docs": 1,
+  "premier_commit": "2026-08-31"
+ },
+ {
+  "flag": "passio_ui_4a0 / PASSIO_UI_4A0",
+  "sens": "\"0\" coupe (enlever)",
+  "lus_dans": [
+   "js/ui-v4a0-tete.js"
+  ],
+  "index_html": true,
+  "tests": 4,
+  "docs": 2,
+  "premier_commit": "2026-08-31"
+ },
+ {
+  "flag": "passio_ui_4a1 / PASSIO_UI_4A1",
+  "sens": "\"0\" coupe (enlever)",
+  "lus_dans": [
+   "js/ui-v4a1-intentions.js"
+  ],
+  "index_html": true,
+  "tests": 4,
+  "docs": 1,
+  "premier_commit": "2026-08-31"
+ },
+ {
+  "flag": "passio_ui_4a2 / PASSIO_UI_4A2",
+  "sens": "\"0\" coupe (enlever)",
+  "lus_dans": [
+   "js/ui-v4a2-cartes.js"
+  ],
+  "index_html": true,
+  "tests": 2,
+  "docs": 1,
+  "premier_commit": "2026-08-31"
+ },
+ {
+  "flag": "passio_ui_4a3 / PASSIO_UI_4A3",
+  "sens": "\"0\" coupe (enlever)",
+  "lus_dans": [
+   "js/ui-v4a3-vue.js"
+  ],
+  "index_html": true,
+  "tests": 2,
+  "docs": 0,
+  "premier_commit": "2026-08-31"
+ },
+ {
+  "flag": "passio_ui_4a4 / PASSIO_UI_4A4",
+  "sens": "\"0\" coupe (enlever)",
+  "lus_dans": [
+   "js/ui-v4a4-outils.js"
+  ],
+  "index_html": true,
+  "tests": 3,
+  "docs": 2,
+  "premier_commit": "2026-08-31"
+ },
+ {
+  "flag": "passio_ui_4a5 / PASSIO_UI_4A5",
+  "sens": "\"0\" coupe (enlever)",
+  "lus_dans": [
+   "js/app-06-reels-partage.js",
+   "js/ui-v4a5-filtres.js"
+  ],
+  "index_html": true,
+  "tests": 9,
+  "docs": 4,
+  "premier_commit": "2026-08-31"
+ },
+ {
+  "flag": "passio_ui_5 / PASSIO_UI_5",
+  "sens": "\"0\" coupe (enlever)",
+  "lus_dans": [
+   "js/ui-v5-bobines.js"
+  ],
+  "index_html": true,
+  "tests": 1,
+  "docs": 1,
+  "premier_commit": "2026-08-31"
+ },
+ {
+  "flag": "passio_ui_6 / PASSIO_UI_6",
+  "sens": "\"0\" coupe (enlever)",
+  "lus_dans": [
+   "js/ui-v6-composer.js",
+   "js/ui-v6a-messages.js",
+   "js/ui-v6b-profil.js",
+   "js/ui-v6c-proposer-irl.js"
+  ],
+  "index_html": true,
+  "tests": 5,
+  "docs": 2,
+  "premier_commit": "2026-08-31"
+ },
+ {
+  "flag": "passio_ui_6a / PASSIO_UI_6A",
+  "sens": "\"0\" coupe (enlever)",
+  "lus_dans": [
+   "js/ui-v6a-messages.js"
+  ],
+  "index_html": true,
+  "tests": 1,
+  "docs": 0,
+  "premier_commit": "2026-08-31"
+ },
+ {
+  "flag": "passio_ui_6b / PASSIO_UI_6B",
+  "sens": "\"0\" coupe (enlever)",
+  "lus_dans": [
+   "js/ui-v6b-profil.js"
+  ],
+  "index_html": true,
+  "tests": 2,
+  "docs": 2,
+  "premier_commit": "2026-08-31"
+ },
+ {
+  "flag": "passio_ui_6c / PASSIO_UI_6C",
+  "sens": "\"0\" coupe (enlever)",
+  "lus_dans": [
+   "js/ui-v6c-proposer-irl.js"
+  ],
+  "index_html": true,
+  "tests": 1,
+  "docs": 0,
+  "premier_commit": "2026-08-31"
+ },
+ {
+  "flag": "passio_ui_7 / PASSIO_UI_7",
+  "sens": "\"0\" coupe (enlever)",
+  "lus_dans": [
+   "js/ui-v7-lot.js"
+  ],
+  "index_html": true,
+  "tests": 2,
+  "docs": 1,
+  "premier_commit": "2026-08-31"
+ },
+ {
+  "flag": "passio_ui_8 / PASSIO_UI_8",
+  "sens": "\"0\" coupe (enlever)",
+  "lus_dans": [
+   "js/app-06-reels-partage.js",
+   "js/ui-v6-composer.js",
+   "js/ui-v6b-profil.js"
+  ],
+  "index_html": false,
+  "tests": 6,
+  "docs": 5,
+  "premier_commit": "2026-08-31"
+ },
+ {
+  "flag": "passio_feed_rank",
+  "sens": "\"0\" coupe (enlever)",
+  "lus_dans": [
+   "js/app-02-state-utils.js"
+  ],
+  "index_html": false,
+  "tests": 1,
+  "docs": 2,
+  "premier_commit": "2026-08-31"
+ },
+ {
+  "flag": "passio_feed_window_v1 / PASSIO_FEED_WINDOW_V1",
+  "sens": "\"0\" coupe, \"1\" force",
+  "lus_dans": [
+   "js/app-02-state-utils.js"
+  ],
+  "index_html": false,
+  "tests": 1,
+  "docs": 0,
+  "premier_commit": "2026-08-31"
+ },
+ {
+  "flag": "passio_feed_intents_v1 / PASSIO_FEED_INTENTS_V1",
+  "sens": "\"0\" coupe (enlever)",
+  "lus_dans": [
+   "js/app-02-state-utils.js"
+  ],
+  "index_html": false,
+  "tests": 1,
+  "docs": 3,
+  "premier_commit": "2026-08-31"
+ },
+ {
+  "flag": "passio_feed_irl_bridge_v1 / PASSIO_FEED_IRL_BRIDGE_V1",
+  "sens": "\"0\" coupe, \"1\" force",
+  "lus_dans": [
+   "js/app-07-ia-explore-irl.js"
+  ],
+  "index_html": false,
+  "tests": 5,
+  "docs": 0,
+  "premier_commit": "2026-08-31"
+ },
+ {
+  "flag": "passio_irl_proposal_v1 / PASSIO_IRL_PROPOSAL_V1",
+  "sens": "\"0\" coupe, \"1\" force",
+  "lus_dans": [
+   "js/app-07-ia-explore-irl.js"
+  ],
+  "index_html": false,
+  "tests": 2,
+  "docs": 0,
+  "premier_commit": "2026-08-31"
+ },
+ {
+  "flag": "passio_first_run_experience_v1 / PASSIO_FIRST_RUN_V1",
+  "sens": "\"0\" coupe (enlever)",
+  "lus_dans": [
+   "js/first-run.js"
+  ],
+  "index_html": true,
+  "tests": 7,
+  "docs": 2,
+  "premier_commit": "2026-09-01"
+ },
+ {
+  "flag": "flat_passions_v1 / PASSIO_FLAT_PASSIONS",
+  "sens": "\"0\" coupe (enlever)",
+  "lus_dans": [
+   "js/app-02-state-utils.js",
+   "js/app-06-reels-partage.js",
+   "js/app-07-ia-explore-irl.js",
+   "js/app-08-ui-modals-tour.js",
+   "js/passions-flat-ui.js",
+   "js/passions-flat.js",
+   "js/ui-v6-composer.js"
+  ],
+  "index_html": true,
+  "tests": 8,
+  "docs": 8,
+  "premier_commit": "2026-09-01"
+ },
+ {
+  "flag": "passio_passions_illimitees_v1 / PASSIO_PASSIONS_ILLIMITEES",
+  "sens": "lecture brute",
+  "lus_dans": [
+   "js/app-06-reels-partage.js"
+  ],
+  "index_html": true,
+  "tests": 1,
+  "docs": 2,
+  "premier_commit": ""
+ },
+ {
+  "flag": "passio_realtime_v2 / PASSIO_REALTIME_V2",
+  "sens": "\"1\" active (adhésion)",
+  "lus_dans": [
+   "js/app-04-comments-shop.js",
+   "js/app-08-ui-modals-tour.js"
+  ],
+  "index_html": false,
+  "tests": 0,
+  "docs": 2,
+  "premier_commit": "2026-08-31"
+ },
+ {
+  "flag": "passio_realtime_v3 / PASSIO_REALTIME_V3",
+  "sens": "\"0\" coupe (enlever)",
+  "lus_dans": [
+   "js/app-04-comments-shop.js",
+   "js/app-08-ui-modals-tour.js"
+  ],
+  "index_html": false,
+  "tests": 0,
+  "docs": 2,
+  "premier_commit": "2026-08-31"
+ },
+ {
+  "flag": "passio_telemetry / PASSIO_TELEMETRY_DEFAULT_ON",
+  "sens": "\"0\" coupe, \"1\" force",
+  "lus_dans": [
+   "js/app-02-state-utils.js",
+   "js/telemetry.js"
+  ],
+  "index_html": false,
+  "tests": 1,
+  "docs": 1,
+  "premier_commit": "2026-08-31"
+ },
+ {
+  "flag": "passio_debug / PASSIO_DEBUG",
+  "sens": "\"1\" active (adhésion)",
+  "lus_dans": [
+   "js/app-02-state-utils.js",
+   "js/app-08-ui-modals-tour.js",
+   "js/platform.js"
+  ],
+  "index_html": false,
+  "tests": 1,
+  "docs": 2,
+  "premier_commit": "2026-08-31"
+ },
+ {
+  "flag": "PASSIO_ONBOARDING_V2",
+  "sens": "?",
+  "lus_dans": [
+   "js/app-02-state-utils.js"
+  ],
+  "index_html": false,
+  "tests": 7,
+  "docs": 1,
+  "premier_commit": "2026-08-31"
+ },
+ {
+  "flag": "passio_irl_map_peek",
+  "sens": "\"0\" coupe, \"1\" force",
+  "lus_dans": [
+   "js/app-07-ia-explore-irl.js",
+   "js/ui-v4a3-vue.js"
+  ],
+  "index_html": true,
+  "tests": 1,
+  "docs": 0,
+  "premier_commit": "2026-08-31"
+ },
+ {
+  "flag": "passio_logo_variant",
+  "sens": "lecture brute",
+  "lus_dans": [
+   "js/app-01-diag-seed.js",
+   "js/app-02-state-utils.js"
+  ],
+  "index_html": false,
+  "tests": 1,
+  "docs": 0,
+  "premier_commit": "2026-08-31"
+ }
+]

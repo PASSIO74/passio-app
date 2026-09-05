@@ -1,0 +1,9 @@
+{
+ "nom_membre_resolu": "x\" onmouseover=\"window.__pwn=9\" data-x=\"",
+ "box_present": true,
+ "box_par_evenement_input": true,
+ "lignes_onmouseover": 1,
+ "extrait_html": "<div onclick=\"_pickMention('x\" onmouseover=\"window.__pwn=9\" data-x=\"')\" style=\"display:flex;align-items:center;gap:8px;padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--border);\"><span sty",
+ "pwn_apres_survol_reel": 9,
+ "pageerrors": []
+}

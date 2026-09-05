@@ -1,0 +1,13 @@
+{
+  "r1": true,
+  "r2": false,
+  "journal": 1,
+  "activeChangee": true,
+  "activeArchivee": true,
+  "vivantesApresArchive": 2,
+  "ajout": true,
+  "plafond": true,
+  "restaurerAuPlafond": false,
+  "paywallOuvert": true,
+  "toujoursArchivee": true
+}

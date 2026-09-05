@@ -1,0 +1,63 @@
+reports | reports_insert | INSERT | {public} | USING=None | CHECK=(reporter_id = (auth.uid())::text)
+blocks | blocks_delete_own | DELETE | {public} | USING=(blocker_id = (auth.uid())::text) | CHECK=None
+blocks | blocks_insert_own | INSERT | {public} | USING=None | CHECK=(blocker_id = (auth.uid())::text)
+blocks | blocks_select_own | SELECT | {public} | USING=(blocker_id = ((SELECT auth.uid()))::text) | CHECK=None
+user_safety | user_safety_select_own | SELECT | {authenticated} | USING=(user_id = ((SELECT auth.uid()))::text) | CHECK=None
+follows | Ecriture propre | INSERT | {public} | USING=None | CHECK=(follower_id = (auth.uid())::text)
+follows | Lecture publique | SELECT | {public} | USING=true | CHECK=None
+follows | Read follows | SELECT | {public} | USING=true | CHECK=None
+follows | Suppression cote suivi | DELETE | {public} | USING=(following_id = (auth.uid())::text) | CHECK=None
+follows | Suppression propre | DELETE | {public} | USING=(follower_id = (auth.uid())::text) | CHECK=None
+conv_messages | Suppression propre | DELETE | {public} | USING=(from_id = (auth.uid())::text) | CHECK=None
+conv_messages | Update propre | UPDATE | {public} | USING=(from_id = (auth.uid())::text) | CHECK=None
+conv_messages | conv_messages_insert_member | INSERT | {authenticated} | USING=None | CHECK=(from_id = ((SELECT auth.uid()))::text) AND is_conv_member(conv_id, ((SELECT auth.uid()))::text)
+conv_messages | conv_messages_select_member | SELECT | {public} | USING=is_conv_member(conv_id, ((SELECT auth.uid()))::text) | CHECK=None
+conversations | conversations_insert_creator | INSERT | {authenticated} | USING=None | CHECK=(created_by = ((SELECT auth.uid()))::text)
+conversations | conversations_select_member | SELECT | {public} | USING=is_conv_member(id, ((SELECT auth.uid()))::text) | CHECK=None
+conv_members | Ecriture propre | INSERT | {authenticated} | USING=None | CHECK=(is_conversation_creator(conv_id) OR ((user_id = ((SELECT auth.uid()))::text) AND can_join_event_conversation(conv_id))) AND (NOT is_blocked_with(user_id))
+conv_members | Suppression admin | DELETE | {public} | USING=(user_id = auth.uid()::text) OR EXISTS(conversations c WHERE c.id=conv_id AND c.created_by=auth.uid()::text) | CHECK=None
+conv_members | Suppression propre | DELETE | {public} | USING=(user_id = (auth.uid())::text) | CHECK=None
+conv_members | conv_members_select_member | SELECT | {public} | USING=is_conv_member(conv_id, ((SELECT auth.uid()))::text) | CHECK=None
+event_attendees | Ecriture propre | INSERT | {public} | USING=None | CHECK=(user_id = (auth.uid())::text)
+event_attendees | Lecture publique | SELECT | {public} | USING=true | CHECK=None
+event_attendees | Maj de sa propre participation | UPDATE | {public} | USING=(user_id = (auth.uid())::text) | CHECK=(user_id = (auth.uid())::text)
+event_attendees | Suppression propre | DELETE | {public} | USING=(user_id = (auth.uid())::text) | CHECK=None
+event_comments | event_comments_delete_own | DELETE | {public} | USING=(author_id = (auth.uid())::text) | CHECK=None
+event_comments | event_comments_insert_own | INSERT | {public} | USING=None | CHECK=(author_id = (auth.uid())::text)
+event_comments | event_comments_select | SELECT | {public} | USING=true | CHECK=None
+event_reactions | event_reactions_delete | DELETE | {public} | USING=(user_id = (auth.uid())::text) | CHECK=None
+event_reactions | event_reactions_insert | INSERT | {public} | USING=None | CHECK=(user_id = (auth.uid())::text)
+event_reactions | event_reactions_select | SELECT | {public} | USING=true | CHECK=None
+comment_interactions | Lecture selon visibilite de la cible | SELECT | {public} | USING=(user_id = ((SELECT auth.uid()))::text) OR comment_target_visible(comment_id) | CHECK=None
+comment_interactions | ci_delete | DELETE | {public} | USING=(user_id = (auth.uid())::text) | CHECK=None
+comment_interactions | ci_insert | INSERT | {public} | USING=None | CHECK=(user_id = (auth.uid())::text)
+post_comments | Ecriture propre | INSERT | {public} | USING=None | CHECK=(author_id = (auth.uid())::text)
+post_comments | Lecture selon visibilite du post | SELECT | {public} | USING=(author_id = ((SELECT auth.uid()))::text) OR post_is_visible(post_id) | CHECK=None
+post_comments | Suppression propre | DELETE | {public} | USING=(author_id = (auth.uid())::text) | CHECK=None
+post_comments | Update propre | UPDATE | {public} | USING=(author_id = (auth.uid())::text) | CHECK=None
+stories | Ecriture propre | INSERT | {public} | USING=None | CHECK=(author_id = (auth.uid())::text)
+stories | Lecture stories respectant les comptes prives | SELECT | {public} | USING=(author_id = (SELECT auth.uid())::text) OR NOT EXISTS(profiles pr WHERE pr.id=author_id AND pr.is_private) OR EXISTS(follows f WHERE f.follower_id=(SELECT auth.uid())::text AND f.following_id=author_id) | CHECK=None
+stories | Suppression propre | DELETE | {public} | USING=(author_id = (auth.uid())::text) | CHECK=None
+notifications | Lecture propre | SELECT | {public} | USING=(user_id = ((SELECT auth.uid()))::text) | CHECK=None
+notifications | Suppression propre | DELETE | {public} | USING=(user_id = (auth.uid())::text) | CHECK=None
+notifications | Update propre | UPDATE | {public} | USING=(user_id = (auth.uid())::text) | CHECK=None
+notifications | notifications_insert_own_author | INSERT | {public} | USING=None | CHECK=(from_id = ((SELECT auth.uid()))::text)
+events | Ecriture propre | INSERT | {public} | USING=None | CHECK=(author_id = (auth.uid())::text)
+events | Lecture publique | SELECT | {public} | USING=true | CHECK=None
+events | Read events | SELECT | {public} | USING=true | CHECK=None
+events | Suppression propre | DELETE | {public} | USING=(author_id = (auth.uid())::text) | CHECK=None
+events | Update organisateurs | UPDATE | {public} | USING=(author_id = (auth.uid())::text) OR jsonb_exists(co_organizers, (auth.uid())::text) | CHECK=None
+posts | Ecriture propre | INSERT | {public} | USING=None | CHECK=(author_id = (auth.uid())::text)
+posts | Lecture respectant les comptes prives | SELECT | {public} | USING=(author_id = (SELECT auth.uid())::text) OR NOT EXISTS(profiles pr WHERE pr.id=author_id AND pr.is_private) OR EXISTS(follows f WHERE f.follower_id=(SELECT auth.uid())::text AND f.following_id=author_id) | CHECK=None
+posts | Suppression propre | DELETE | {public} | USING=(author_id = (auth.uid())::text) | CHECK=None
+posts | Update propre | UPDATE | {public} | USING=can_edit_post(id) | CHECK=can_edit_post(id)
+profiles | Lecture publique | SELECT | {public} | USING=true | CHECK=None
+profiles | Read profiles | SELECT | {public} | USING=true | CHECK=None
+profiles | Suppression propre | DELETE | {public} | USING=(id = (auth.uid())::text) | CHECK=None
+profiles | Update propre | UPDATE | {public} | USING=(id = (auth.uid())::text) | CHECK=None
+profiles | Upsert propre | INSERT | {public} | USING=None | CHECK=(id = (auth.uid())::text)
+--- policies referencing block/age functions
+blocks blocks_delete_own DELETE
+blocks blocks_insert_own INSERT
+blocks blocks_select_own SELECT
+conv_members Ecriture propre INSERT

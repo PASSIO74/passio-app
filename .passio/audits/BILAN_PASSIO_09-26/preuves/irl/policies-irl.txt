@@ -1,0 +1,90 @@
+[blocks] blocks_delete_own | cmd=DELETE | roles={public}
+   qual=(blocker_id = (auth.uid())::text)
+   check=None
+[blocks] blocks_insert_own | cmd=INSERT | roles={public}
+   qual=None
+   check=(blocker_id = (auth.uid())::text)
+[blocks] blocks_select_own | cmd=SELECT | roles={public}
+   qual=(blocker_id = ((SELECT auth.uid()))::text)
+   check=None
+[conv_members] Ecriture propre | cmd=INSERT | roles={authenticated}
+   qual=None
+   check=(is_conversation_creator(conv_id) OR ((user_id = ((SELECT auth.uid()))::text) AND can_join_event_conversation(conv_id))) AND (NOT is_blocked_with(user_id))
+[conv_members] Suppression admin | cmd=DELETE | roles={public}
+   qual=(user_id = auth.uid()::text) OR EXISTS(conversations c WHERE c.id=conv_id AND c.created_by=auth.uid()::text)
+   check=None
+[conv_members] Suppression propre | cmd=DELETE | roles={public}
+   qual=(user_id = (auth.uid())::text)
+   check=None
+[conv_members] conv_members_select_member | cmd=SELECT | roles={public}
+   qual=is_conv_member(conv_id, ((SELECT auth.uid()))::text)
+   check=None
+[conversations] conversations_insert_creator | cmd=INSERT | roles={authenticated}
+   qual=None
+   check=(created_by = ((SELECT auth.uid()))::text)
+[conversations] conversations_select_member | cmd=SELECT | roles={public}
+   qual=is_conv_member(id, ((SELECT auth.uid()))::text)
+   check=None
+[event_attendees] Ecriture propre | cmd=INSERT | roles={public}
+   qual=None
+   check=(user_id = (auth.uid())::text)
+[event_attendees] Lecture publique | cmd=SELECT | roles={public}
+   qual=true
+   check=None
+[event_attendees] Maj de sa propre participation | cmd=UPDATE | roles={public}
+   qual=(user_id = (auth.uid())::text)
+   check=(user_id = (auth.uid())::text)
+[event_attendees] Suppression propre | cmd=DELETE | roles={public}
+   qual=(user_id = (auth.uid())::text)
+   check=None
+[event_comments] event_comments_delete_own | cmd=DELETE | roles={public}
+   qual=(author_id = (auth.uid())::text)
+   check=None
+[event_comments] event_comments_insert_own | cmd=INSERT | roles={public}
+   qual=None
+   check=(author_id = (auth.uid())::text)
+[event_comments] event_comments_select | cmd=SELECT | roles={public}
+   qual=true
+   check=None
+[event_reactions] event_reactions_delete | cmd=DELETE | roles={public}
+   qual=(user_id = (auth.uid())::text)
+   check=None
+[event_reactions] event_reactions_insert | cmd=INSERT | roles={public}
+   qual=None
+   check=(user_id = (auth.uid())::text)
+[event_reactions] event_reactions_select | cmd=SELECT | roles={public}
+   qual=true
+   check=None
+[events] Ecriture propre | cmd=INSERT | roles={public}
+   qual=None
+   check=(author_id = (auth.uid())::text)
+[events] Lecture publique | cmd=SELECT | roles={public}
+   qual=true
+   check=None
+[events] Read events | cmd=SELECT | roles={public}
+   qual=true
+   check=None
+[events] Suppression propre | cmd=DELETE | roles={public}
+   qual=(author_id = (auth.uid())::text)
+   check=None
+[events] Update organisateurs | cmd=UPDATE | roles={public}
+   qual=(author_id = (auth.uid())::text) OR jsonb_exists(co_organizers, (auth.uid())::text)
+   check=None
+[notifications] Lecture propre | cmd=SELECT | roles={public}
+   qual=(user_id = ((SELECT auth.uid()))::text)
+   check=None
+[notifications] Suppression propre | cmd=DELETE | roles={public}
+   qual=(user_id = (auth.uid())::text)
+   check=None
+[notifications] Update propre | cmd=UPDATE | roles={public}
+   qual=(user_id = (auth.uid())::text)
+   check=None
+[notifications] notifications_insert_own_author | cmd=INSERT | roles={public}
+   qual=None
+   check=(from_id = ((SELECT auth.uid()))::text)
+[reports] reports_insert | cmd=INSERT | roles={public}
+   qual=None
+   check=(reporter_id = (auth.uid())::text)
+[user_safety] user_safety_select_own | cmd=SELECT | roles={authenticated}
+   qual=(user_id = ((SELECT auth.uid()))::text)
+   check=None

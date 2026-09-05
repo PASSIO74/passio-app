@@ -1,0 +1,17 @@
+{
+ "avant": 7,
+ "apres": 8,
+ "mine": 1,
+ "pubStory": 1,
+ "toasts": [
+  "Story publiée|success"
+ ],
+ "bulleMaStory": true,
+ "deleteStory": "undefined",
+ "fnsSuppr": [],
+ "viewerBtns": [
+  "closeStoryViewer()",
+  "storyPrev()",
+  "storyNext()"
+ ]
+}

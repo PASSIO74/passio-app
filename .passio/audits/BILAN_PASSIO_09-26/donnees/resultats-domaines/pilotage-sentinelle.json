@@ -1,0 +1,641 @@
+{
+ "domaine": "pilotage-sentinelle",
+ "resume": "Audit en lecture seule du Centre de pilotage (dashboard/ : 54 modules serveur, 7 565 lignes, 30 vues SPA + command.html + mobile.html) et de la Sentinelle (locale : sentinel.js/repair.js/autopilot ; distante : sentinelle-distante.yml), de js/telemetry.js et de la table telemetry_events, sur le SHA c8cb8e99 (les 2 commits suivants de la branche d'audit ne touchent que .passio/audits). Méthode : tests du dashboard exécutés (npm ci 1,9 s ; npm test : 349 passés / 0 échoué / 21,6 s, 54 fichiers .test.js) ; serveur démarré SANS aucun secret et sondé (14 routes, 401 sans session, identifiants par défaut, contournement de la limitation de tentatives) ; 12 requêtes SQL lecture seule sur la prod ; lecture intégrale des modules critiques avec fichier:ligne. Verdict du domaine : l'ossature est sérieuse (gardes de routes prouvées par 2 suites, sandbox CLI en liste blanche verrouillée par test, readiness = pire domaine, incident packets, canari/DB_READ/SSE), mais le pilotage est un OUTIL DE POSTE, pas une supervision de production : (1) aucun canal de notification hors de la page ouverte (NOTIFY_SINKS vide) et une télémétrie arrêtée ne produit AUCUNE alerte ni diagnostic ; (2) les fonctions critiques côté serveur (confirmation e-mail SMTP, push, suppression de compte, Netlify, quotas) n'émettent aucun signal : invisibles du pilotage ET de la Sentinelle ; (3) la console admin est à mot de passe unique sans MFA, accepte admin/admin sans .env, et sa limitation de tentatives se contourne par X-Forwarded-For (prouvé), alors qu'un déploiement public Render est prévu ; (4) la télémétrie est insérable anonymement sans borne ni purge planifiée (3 684 lignes/appareil/jour, 349 o) : à 100 k comptes elle dépasse la capacité d'ingestion du dashboard (100 lignes/s) et le budget Supabase ; (5) feature flags, rollback, modération, sauvegardes, coûts sont absents ou factices ; (6) l'Autopilot (flag OFF) fusionnerait dans le main du poste sans PR et lancerait la suite authz en prod sans le verrou. GO commercial interdit tant que PIL-01, PIL-02, PIL-03 et PIL-04 ne sont pas traités.",
+ "controles": [
+  {
+   "id": "CTL-01",
+   "controle": "Tests du dashboard (npm ci + npm test, Node 22.22.2)",
+   "statut": "PROUVÉ",
+   "methode": "test exécuté",
+   "preuve": "cd dashboard && npm ci --no-audit --no-fund (80 paquets, 1,9 s) ; npm test → 349 tests, 349 pass, 0 fail, 0 skipped, 21 553 ms (preuves/pilotage-sentinelle/npm-test.log). 54 fichiers *.test.js + 2 aides."
+  },
+  {
+   "id": "CTL-02",
+   "controle": "Démarrage du serveur sans clé service_role",
+   "statut": "PROUVÉ",
+   "methode": "test exécuté",
+   "preuve": "node server/index.js sans SUPABASE_SERVICE_ROLE_KEY → démarre en « mode LOCAL » (ingest.js:258-261), GET /api/health 200 {ok:true,supabase:false}. Le serveur ne refuse jamais de démarrer (serveur-local-sondes.txt)."
+  },
+  {
+   "id": "CTL-03",
+   "controle": "Authentification exigée sur les routes (401 sans session)",
+   "statut": "PROUVÉ",
+   "methode": "test exécuté",
+   "preuve": "12 routes sondées sans cookie (overview, alerts, sentinel, audit, incidents, releases, database, git/status, readiness, control/command, anomalies, observation) → 401 ×12 ; auth.js:477-486 requireAuth/requireCap ; test/http-routes.test.js « sans session, toute route non publique répond 401 » (81 routes)."
+  },
+  {
+   "id": "CTL-04",
+   "controle": "Identifiants par défaut refusés",
+   "statut": "DÉFAILLANT",
+   "methode": "test exécuté",
+   "preuve": "POST /api/login {admin/admin} → 200, rôle admin, 12 capacités. config.js:334-335 (adminUser 'admin', adminPassword 'admin' par défaut), aucun refus de démarrage dans index.js:280-292."
+  },
+  {
+   "id": "CTL-05",
+   "controle": "Limitation des tentatives de connexion (8/IP/5 min)",
+   "statut": "DÉFAILLANT",
+   "methode": "test exécuté",
+   "preuve": "10 mots de passe faux avec X-Forwarded-For 10.0.0.1…10 → 401 ×10, jamais 429 ; même XFF ×10 → 429 dès le 9e. Cause : index.js:46 app.set('trust proxy', true) + auth.js:446 req.ip = valeur XFF contrôlée par le client."
+  },
+  {
+   "id": "CTL-06",
+   "controle": "Secret de session HMAC par défaut",
+   "statut": "DÉFAILLANT",
+   "methode": "inspection code",
+   "preuve": "config.js:332 sessionSecret = 'dev-insecure-secret-change-me' si DASH_SESSION_SECRET absent ; auth.js:403-410 signe avec ce secret → tout cookie admin est forgeable hors ligne. render.yaml:420-421 generateValue:true corrige le cas Render uniquement."
+  },
+  {
+   "id": "CTL-07",
+   "controle": "MFA sur la console d'administration",
+   "statut": "DÉFAILLANT",
+   "methode": "inspection code",
+   "preuve": "auth.js:445-457 : facteur unique (user+password en clair dans .env, USERS Map auth.js:386-388). Aucun second facteur, aucune rotation, aucun verrouillage de compte (seulement par IP)."
+  },
+  {
+   "id": "CTL-08",
+   "controle": "Matrice rôles → capacités et tests de la matrice",
+   "statut": "PROUVÉ",
+   "methode": "test exécuté",
+   "preuve": "auth.js:392-397 (admin 12 caps, developer 9, tester 3, observer 1) ; test/routes-caps.test.js (11 tests, inventaire figé des 81 routes lu dans la source) + test/http-routes.test.js (7 tests, serveur réel, 401 puis 403 par rôle) — tous verts dans le run CTL-01."
+  },
+  {
+   "id": "CTL-09",
+   "controle": "Journal d'audit : immutabilité et rétention",
+   "statut": "DÉFAILLANT",
+   "methode": "inspection code",
+   "preuve": "audit.js:363-367 unshift + pop au-delà de 5 000 (perte silencieuse) ; jsondb.js:403-408 réécriture intégrale de data/audit.json (modifiable par tout process du poste, aucune chaîne de hachage) ; render.yaml:396-399 disque éphémère → journal perdu au redémarrage."
+  },
+  {
+   "id": "CTL-10",
+   "controle": "Confirmation des actions dangereuses (fusion, patch, suppression compte de test)",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": "index.js:213-220 git/branch et git/apply exigent confirm:true + git_mutate ; index.js:247-252 sentinel/:id/merge idem ; index.js:233 DELETE test-users exige test_users SANS confirmation ; DASH_ENV=production force allowMutations=false (config.js:345)."
+  },
+  {
+   "id": "CTL-11",
+   "controle": "Exposition réseau (localhost vs Render public)",
+   "statut": "BLOQUÉ",
+   "methode": "non réalisé",
+   "preuve": "render.yaml (racine) prévoit un service web public passio-pilotage (plan free, startCommand node server/index.js, DASH_ENV=production, clé service_role à saisir). curl https://passio-pilotage.onrender.com/api/health → code 000 (proxy sortant bloqué) : existence du déploiement NON VÉRIFIABLE ici. Il faudrait un accès réseau ou le tableau Render."
+  },
+  {
+   "id": "CTL-12",
+   "controle": "Secrets dans .env / .gitignore",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": "dashboard/.gitignore:2-3 ignore .env et data/ ; .env.example sans valeur réelle ; claudecli.js:506-514 retire 6 variables de l'env du CLI enfant. ⚠️ tests.js:451,482 et repair.js:718 passent {...process.env} COMPLET (clé service_role incluse) aux suites Playwright."
+  },
+  {
+   "id": "CTL-13",
+   "controle": "Règles d'alerte (alerts.js) et seuils",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": "alerts.js:73-128 : critical isolé (76), même bug ≥2 utilisateurs (81), pic ≥6 erreurs/60 s (88), connectivité non-info (96), lien (109), API http≥500 (123) ou >4 000 ms (125) ; alerts.js:136-173 verdicts de trace (dead_click/failed high, partial/slow warn) ; cooldown 60 s par clé (38). Aucune règle sur 4xx (401/403/429), ni sur l'absence d'événements."
+  },
+  {
+   "id": "CTL-14",
+   "controle": "Détection de l'ARRÊT de la télémétrie / panne silencieuse",
+   "statut": "DÉFAILLANT",
+   "methode": "inspection code",
+   "preuve": "observation.js:116-148 calcule DB_READ/SSE/canari (canari 15 min, délai 90 s) mais n'appelle JAMAIS emit()/alerts ; ingest.js:193 lastRealSeenIso affiché seulement ; sentinel.js:35-40 admet l'angle mort. Aucune alerte « aucun événement depuis N min », aucun abonné externe."
+  },
+  {
+   "id": "CTL-15",
+   "controle": "Moteur d'anomalies (médiane + MAD)",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": "anomaly-engine.js:211-217 5 métriques (errors, api_failures, slow_api, connectivity, version_skew), fenêtre 5 min vs 4 fenêtres, seuil max(3, med+max(3,4·MAD)) (224), état INSUFFICIENT si <20 min d'historique (236). Lecture seule via /api/anomalies et release-guardian ; ne déclenche aucune alerte (jamais d'emit)."
+  },
+  {
+   "id": "CTL-16",
+   "controle": "Regroupement des incidents liés (corrélation, récurrence)",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": "incident-packets.js:717-742 cluster par clé signal@révision sur 15 min ; correlate.js:872-912 suspects commits 24 h (proximité 2 h/6 h, exclusion des chemins non déployés) ; traces.js:329-350 groupes action+étape ; sentinel-recurrence.js:492-539 uniquement après PROMOTED_LOCAL (autopilot)."
+  },
+  {
+   "id": "CTL-17",
+   "controle": "Distinction défaut réel / attendu / données insuffisantes",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": "sentinel.js:216-221 format imposé, extractVerdict 402-411 ; réparation seulement si verdict 'defect' (385) ; anomaly-engine INSUFFICIENT ; readiness 'inconnu' distinct de 'vert' (readiness.js:1043-1067) ; control-intelligence.js:597-601 sépare santé produit / technique. Verdict = auto-déclaration du modèle, non vérifiée."
+  },
+  {
+   "id": "CTL-18",
+   "controle": "Protection des secrets/PII avant envoi au LLM",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": "claudecli.js:506-514 env filtré ; claude.js:644-668 fiche neutralisée par sanitizeObserved ; prompts sans user_id/e-mail (buildTracePrompt 686-717). ⚠️ liste-blanche.js n'est PAS un filtre PII : c'est un garde Object.hasOwn contre 'constructor'/'__proto__' (300-303). Le filtre PII est côté client (telemetry.js:139-170)."
+  },
+  {
+   "id": "CTL-19",
+   "controle": "Résistance à l'injection de prompt (stack fabriquée → prompt)",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": "donnees-observees.js:334-355 (clôtures ``` et >>> cassées, faux tours de parole, 600 car.) + test/prompts-injection.test.js (12 tests, charge HOSTILE) ; sandbox claudecli.js:500 (--safe-mode --strict-mcp-config --no-session-persistence --no-chrome) et :572 --tools 'TodoWrite' (rapide) / 'Read,Grep,Glob' (approfondi, DASH_SENTINEL_DEEP off par défaut sentinel.js:89) ; verrou test/sentinel.test.js:278-303. Non éprouvé sur un CLI réel ici (hygiène de prompt, pas frontière)."
+  },
+  {
+   "id": "CTL-20",
+   "controle": "Réparations sûres, limitées, réversibles (repair.js)",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": "repair.js:688 liste blanche js/*.js, styles.css, index.html, sw.js ; 764 refus création/suppression/renommage ; 679-681 120 lignes / 3 fichiers / 2 par h ; 846-861 worktree isolé sous os.tmpdir ; 892-893 refus si fichiers suivis modifiés ; 949-961 suites globals,handlers,smoke ; branche supprimée si rouge (863-868). Jamais de push (1009-1022). test/repair.test.js 14 tests verts."
+  },
+  {
+   "id": "CTL-21",
+   "controle": "Fusion automatique interdite / PR obligatoire",
+   "statut": "DÉFAILLANT",
+   "methode": "inspection code",
+   "preuve": "repair.js:1009-1022 mergeRepair fusionne DIRECTEMENT dans main local (--no-ff) sur clic + confirm, sans PR ; sentinel-autopilot-executor.js:97,123-127,232 fusionne dans main du dépôt de travail SANS clic quand DASH_SENTINEL_AUTOPILOT=true (sentinel-autopilot.js:362) et reset --hard (127) ; contraire à AGENTS.md §7 et au principe 1 de repair.js:642-648. Flag OFF par défaut."
+  },
+  {
+   "id": "CTL-22",
+   "controle": "Journalisation des actions de la Sentinelle",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": "sentinel.js:124 sentinel_toggle, 376 sentinel_diagnose ; repair.js:982 sentinel_repair_ready, 1000 sentinel_repair_rejected, 1020 sentinel_repair_merged ; executor.js:326-335 sentinel_autopilot_* ; journal de promotion sentinel-promotion-journal.js:974-992 (borné 20-1 000). Route /api/sentinel/promotions (sentinel-promotion-routes.js:864-868) JAMAIS enregistrée dans index.js (aucun importateur)."
+  },
+  {
+   "id": "CTL-23",
+   "controle": "Vérification réelle du retour à la normale après action",
+   "statut": "DÉFAILLANT",
+   "methode": "inspection code",
+   "preuve": "Après repair : aucune re-mesure du signal (repair.js:963-984 se termine sur le commit) ; recurrence watch armée UNIQUEMENT si autopilot.status==='PROMOTED_LOCAL' (sentinel-recurrence.js:493) ; incident-packets.js:769-803 : les phases CONFIRMED→RESOLVED n'avancent qu'à la main (POST /incidents/:id/transition, index.js:100) ; definitionOfDone (705-709) est un texte, pas une mesure ; cooldown 6 h (sentinel.js:65) masque une cause persistante."
+  },
+  {
+   "id": "CTL-24",
+   "controle": "Mode dégradé quand Claude Code est indisponible (fail-closed)",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": "sentinel.js:286 skipped.unavailable si !liveFixAvailable() ; alerts/incident packets/anomalies/readiness/guardian ne dépendent pas de Claude (alerts.js:45, control-intelligence.js:465-466) ; claudecli.js:589-600 délais 120 s/420 s + taskkill ; sortie bornée 400 Ko (604). En sandbox le serveur a détecté « Claude Code local : connecté » → la Sentinelle est ACTIVE par défaut (sentinel.js:119) sans opt-in."
+  },
+  {
+   "id": "CTL-25",
+   "controle": "Budget/rafales de la Sentinelle",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": "sentinel.js:61-90 : 8 analyses/h, 3 approfondies/h, cooldown 6 h par cause+révision (167-171), 90 s d'espacement, file 20, arriéré non rejoué (285). ⚠️ Une insertion anonyme severity=critical env=production suffit à consommer ce budget (voir PIL-03)."
+  },
+  {
+   "id": "CTL-26",
+   "controle": "Sentinelle distante (workflow horaire GitHub)",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": ".github/workflows/sentinelle-distante.yml : cron 17 * * * * ; audits statiques (80-85), curl page publique (92-94), canari authz-critical en prod avec PASSIO_E2E_PROD=1 et verrou passio-e2e-prod (38-40,116) ; issue « [SENTINELLE DISTANTE] Santé rouge » ouverte/fermée (127-165) ; coupe-circuit issue [SENTINELLE PAUSE] (51-58). Ne modifie rien. Runs récents NON consultés (hors périmètre réseau)."
+  },
+  {
+   "id": "CTL-27",
+   "controle": "Affichage : santé générale",
+   "statut": "PROUVÉ",
+   "methode": "test exécuté",
+   "preuve": "GET /api/readiness → statut 'inconnu', confiance 38 %, score 85 (resp-readiness.json) ; readiness.js:1060-1064 = pire domaine critique ; Accueil app.js:536-552 ; command.html (control/command) et mobile.js:107-108. Sans configuration, le statut reste 'inconnu' (4 domaines sur 8 non instrumentés)."
+  },
+  {
+   "id": "CTL-28",
+   "controle": "Affichage : incidents actifs",
+   "statut": "PROUVÉ",
+   "methode": "test exécuté",
+   "preuve": "Alerte manuelle critical → GET /api/incidents rend 1 incident phase DETECTED (incident-packets.js:662-715) ; vues : command.html + mobile.js:108 ; SPA principale : onglet Alertes (app.js:1763) mais aucun onglet Incidents dans NAV (app.js:101-131)."
+  },
+  {
+   "id": "CTL-29",
+   "controle": "Affichage : fonctions et utilisateurs affectés",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": "traces.js:329-350 groupes par action+étape avec users.size ; store.bug users/count (alerts.js:81-83) ; onglets Traçage (app.js:1125) et Problèmes (1526). Limité aux actions instrumentées par flowStart (11 actions, cf. notes) et aux utilisateurs identifiés (27 678 lignes anonymes sur 111 829)."
+  },
+  {
+   "id": "CTL-30",
+   "controle": "Affichage : version déployée (vue RELEASES)",
+   "statut": "DÉFAILLANT",
+   "methode": "test exécuté",
+   "preuve": "Route GET /api/releases existe (index.js:96) mais n'est rendue par AUCUNE page (grep public/ : aucune référence à /releases) ; aucune entrée NAV. releaseHealth → NOT_CONFIGURED : 'frontend version, DB version, deploy id' manquants, PASSIO_PUBLIC_URL absent de .env.example et render.yaml (public-release-evidence.js:57,100). La « révision » affichée est le HEAD du dépôt LOCAL (release-recorder.js:649-664), pas la prod. release.json est bien produit par build.js:122."
+  },
+  {
+   "id": "CTL-31",
+   "controle": "Affichage : erreurs",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": "Onglet Problèmes (store.bugList, app.js:1526) + Alertes + erreurs 5 min sur l'Accueil (app.js:553). Seule source : telemetry_events type=error ; la table client_errors (16 lignes, platform.js:46) n'est lue que pour un COUNT (dbwatch.js:13), jamais alertée."
+  },
+  {
+   "id": "CTL-32",
+   "controle": "Affichage : services externes (Supabase, Netlify, SMTP, carte, GitHub)",
+   "statut": "DÉFAILLANT",
+   "methode": "test exécuté",
+   "preuve": "GET /api/services → 8 pseudo-services tous 'unknown' (resp-services.json) dérivés du trafic client 10 min (store.js:609-632) ; aucune sonde serveur vers Supabase (hors DB_READ observation.js:67-80), Netlify (hors sentinelle distante), SMTP Brevo, OpenFreeMap/BAN/Photon, GitHub Actions : ABSENTS."
+  },
+  {
+   "id": "CTL-33",
+   "controle": "Affichage : sécurité (panneau AUTORISATION)",
+   "statut": "DÉFAILLANT",
+   "methode": "test exécuté",
+   "preuve": "Pas de panneau dédié : une ligne « Autorisation » sur l'Accueil (app.js:545-552) + domaine readiness.js:1041-1045. Alimentée uniquement par un lancement MANUEL de la suite authz depuis le dashboard (tests.js:412-436, en mémoire, perdu au redémarrage) ; jamais par la CI ni la sentinelle distante. Observé : 'inconnu — NON INSTRUMENTÉ'."
+  },
+  {
+   "id": "CTL-34",
+   "controle": "Affichage : modération (signalements)",
+   "statut": "DÉFAILLANT",
+   "methode": "inspection code",
+   "preuve": "grep dashboard/server pour reports/blocks/user_safety → aucune lecture. Tables reports (2 lignes), blocks, user_safety jamais surfacées. ABSENT."
+  },
+  {
+   "id": "CTL-35",
+   "controle": "Affichage : coûts et capacité",
+   "statut": "DÉFAILLANT",
+   "methode": "inspection code",
+   "preuve": "Aucune métrique de coût, quota Supabase, taille de table, débit d'ingestion (dbwatch.js:16-44 ne rend que des COUNT à la demande derrière la capacité db). ABSENT."
+  },
+  {
+   "id": "CTL-36",
+   "controle": "Affichage : sauvegardes",
+   "statut": "DÉFAILLANT",
+   "methode": "inspection code",
+   "preuve": "grep dashboard/ sauvegarde|backup → seulement node_modules. scripts/sauvegarde-donnees.js existe côté dépôt mais aucune vue/route. ABSENT."
+  },
+  {
+   "id": "CTL-37",
+   "controle": "Affichage : feature flags et kill switches",
+   "statut": "DÉFAILLANT",
+   "methode": "inspection code",
+   "preuve": "checklist.js:192-223 : 3 drapeaux (feed_ranking, live_video, realtime_v3) avec rollout % stockés dans data/flags.json du poste ; grep js/ index.html → l'application ne lit JAMAIS /api/flags. Les coupures réelles sont des localStorage par appareil (ex. app-08:4836 passio_realtime_v3). Panneau sans effet sur la production."
+  },
+  {
+   "id": "CTL-38",
+   "controle": "Affichage : rollback",
+   "statut": "DÉFAILLANT",
+   "methode": "inspection code",
+   "preuve": "Aucune vue ni route de rollback dans le dashboard (grep app.js 'rollback' → 0). Le rollback réel est rollback.yml (workflow_dispatch GitHub, revert → PR brouillon). L'exécuteur autopilot fait un reset --hard local (executor.js:127,248), pas un rollback de production."
+  },
+  {
+   "id": "CTL-39",
+   "controle": "Affichage : historique des actions (audit, control-history)",
+   "statut": "PROUVÉ",
+   "methode": "test exécuté",
+   "preuve": "GET /api/audit (cap audit) rend login_failed/login_blocked horodatés (serveur-local-sondes.txt) ; onglet Journal d'audit app.js:1943 ; control-history.js:451-508 snapshots toutes les 5 min, comparaison « ce qui a changé » (/api/control/changes, command.js:68). Rétention 240 snapshots / 5 000 entrées."
+  },
+  {
+   "id": "CTL-40",
+   "controle": "Télémétrie : couverture (81 clés) et filtre PII (DENY_KEY)",
+   "statut": "PROUVÉ",
+   "methode": "requête base",
+   "preuve": "node scripts/audit-telemetry-keys.js → « OK — 81 clé(s) dans 42 fichiers, toutes survivent au filtre PII » ; telemetry.js:139 DENY_KEY (liste NOIRE), 152-170 scrubMeta primitives/160 car./30 clés, 144-151 redactString ; SQL prod : 97 clés meta distinctes, 0 e-mail/JWT/data-URI dans message/stack/meta, max message 200, stack 262, meta 230 o."
+  },
+  {
+   "id": "CTL-41",
+   "controle": "Télémétrie : RLS INSERT only, pré-auth, opt-out",
+   "statut": "PROUVÉ",
+   "methode": "requête base",
+   "preuve": "pg_policies : telemetry_events 1 seule policy INSERT (user_id IS NULL OR = auth.uid()), aucune SELECT ; client_errors INSERT with_check true ; telemetry.js:49-75 opt-out durable ?telemetry=0, localhost désactivé, prod actif par défaut échantillonné ; 232-236 user_id NULL hors uuid d'auth (27 678 lignes anonymes). Aucun trigger ni contrainte de longueur côté serveur (pg_trigger/pg_constraint vides)."
+  },
+  {
+   "id": "CTL-42",
+   "controle": "Télémétrie : volume et purge automatique",
+   "statut": "DÉFAILLANT",
+   "methode": "requête base",
+   "preuve": "111 829 lignes / 54 MB depuis le 2026-08-05 ; cron.job = 1 seul job purge_client_errors 03:00 ; purge_telemetry(keep_days=30) existe (SECURITY DEFINER) mais n'est planifiée NULLE PART ; 0 ligne >30 j aujourd'hui uniquement parce que la table a 30 jours. Croissance ~3 700 lignes/j et jusqu'à 19 006 lignes le 2026-08-28."
+  },
+  {
+   "id": "CTL-43",
+   "controle": "Télémétrie : coût/capacité à 100 k utilisateurs (extrapolation)",
+   "statut": "DÉFAILLANT",
+   "methode": "requête base",
+   "preuve": "Prod 7 j hors canari : 3 684 lignes/appareil/jour × 349 o = 1,29 MB/appareil/jour (heartbeat 20 s telemetry.js:731-734, api, perf, click). 100 k comptes à 10 % DAU → 36,8 M lignes et ~12,9 GB par JOUR (~390 GB/mois sans purge) ; 1 % DAU → 3,7 M lignes/j, 39 GB/mois. Ingestion dashboard bornée à 500 lignes/5 s = 100 lignes/s = 8,6 M/j (ingest.js:346-351) et realtime eventsPerSecond 20 (265) : décrochage dès ~2,5 % DAU. Capacité non prouvée au-delà de 3 appareils."
+  },
+  {
+   "id": "CTL-44",
+   "controle": "CI : tests du dashboard et garde de gouvernance",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": "deploy.yml:283-298 job « Tests centre de pilotage / Sentinel » (npm ci + npm test) ; deploy.yml:110 auth.js/config.js/repair.js/sentinel.js classés critiques (contre-revue obligatoire) ; run 33861671142 vert (fait établi par l'orchestrateur)."
+  },
+  {
+   "id": "CTL-45",
+   "controle": "Suites de test exécutables depuis le dashboard (liste blanche)",
+   "statut": "DÉFAILLANT",
+   "methode": "inspection code",
+   "preuve": "tests.js:400-409 : 'cdv' pointe tests/e2e/cdv.spec.js qui N'EXISTE PLUS (ls → No such file) ; 'smoke' = `npm test` = suite COMPLÈTE prod+local (playwright.config.js:78-80) ; 'authz' crée des comptes réels en prod sans PASSIO_E2E_PROD (global-teardown.js:58 → jamais purgés) ni verrou passio-e2e-prod ; env complet du serveur hérité (451,482)."
+  },
+  {
+   "id": "CTL-46",
+   "controle": "Supervision permanente locale (supervise.mjs) et worker IA",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": "supervise.mjs:314-343 relance serveur (start.js → autopilot bootstrap) et aiworker.mjs (paliers 2→60 s, log borné 2 Mo) ; aiworker.mjs:278 pousse uniquement des branches ai/result/*, jamais main. Dépend d'un poste Windows allumé."
+  },
+  {
+   "id": "CTL-47",
+   "controle": "Sortie des routes sensibles (intégrité derrière db, sentinel derrière claude)",
+   "statut": "PROUVÉ",
+   "methode": "test exécuté",
+   "preuve": "index.js:124-129 reconcile cap db ; 132-153 diagnose n'évalue l'intégrité que si can(db) ; 239-246 sentinel cap claude ; test/http-routes.test.js « l'intégrité n'est pas lisible par la bande via /api/diagnose » vert."
+  },
+  {
+   "id": "CTL-48",
+   "controle": "git status final propre",
+   "statut": "PROUVÉ",
+   "methode": "test exécuté",
+   "preuve": "cd /home/user/passio-app && git status --short → vide (0 ligne) ; serveur local 4610 arrêté (health → 000) ; aucun fichier suivi modifié ; diff c8cb8e9..HEAD = 3 fichiers .passio/audits uniquement."
+  }
+ ],
+ "findings": [
+  {
+   "id": "PIL-01",
+   "priorite": "P1",
+   "titre": "Aucun canal de notification : une panne n'atteint personne si le dashboard n'est pas ouvert, et l'arrêt de la télémétrie ne déclenche ni alerte ni Sentinelle",
+   "fonctionnalite": "Pilotage / alertes / Sentinelle (télémétrie elle-même, Supabase, réseau)",
+   "attendu": "Une alerte critical/high ou une chaîne d'observation UNAVAILABLE (DB_READ, canari, SSE) doit joindre l'exploitant hors de la page (e-mail/push/webhook) et être traitée comme un incident par la Sentinelle.",
+   "observe": "alerts.js:24-27 NOTIFY_SINKS est vide et :64 est un TODO ; la seule diffusion est SSE vers les navigateurs ouverts (alerts.js:61). observation.js:116-148 calcule l'état mais n'appelle jamais emit() ; sentinel.js:283 ne réagit qu'aux alertes. En sandbox : observation NOT_CONFIGURED/DEGRADED, aucune alerte créée. Les 8 « services » sont 'unknown' dès que le trafic client s'arrête (store.js:626).",
+   "reproduction": "1) Démarrer le dashboard sans SUPABASE_ANON_KEY (ou couper le réseau) ; 2) GET /api/observation → canary NOT_CONFIGURED/UNAVAILABLE ; 3) GET /api/alerts → [] ; 4) GET /api/sentinel → queued 0, total 0 (resp-observation.json, resp-alerts.json, resp-sentinel.json).",
+   "preuve": "alerts.js:24-27,61-64 ; observation.js:116-148 ; sentinel.js:35-40,283-286 ; store.js:609-632 ; preuves/pilotage-sentinelle/resp-*.json",
+   "impact": "Utilisateur : une panne nocturne (Supabase indisponible, télémétrie cassée après un déploiement, quota atteint) dure jusqu'à ce que Benjamin ouvre la page. Commercial : le « pilotage » vendu comme supervision permanente ne supervise que pendant les heures d'écran ; seule la sentinelle distante horaire (page publique + authz) crée une issue GitHub.",
+   "visibilite_pilotage": "partiel — visible sur l'Accueil/command.html/mobile UNIQUEMENT si la page est ouverte ; aucune alerte dans l'onglet Alertes",
+   "detection_sentinelle": "non — la Sentinelle ne consomme que les alertes (sentinel.js:447) et aucune alerte n'est émise pour une chaîne d'observation morte",
+   "correction": "1) Émettre une alerte high depuis observation.js quand un seam passe UNAVAILABLE (et une info au retour) ; 2) implémenter au moins un sink (webhook GitHub issue ou e-mail Brevo déjà configuré) dans alerts.js NOTIFY_SINKS avec dédup ; 3) ajouter dans sentinelle-distante.yml une requête « nombre d'événements production des 60 dernières minutes » via service_role et ouvrir l'issue si 0 pendant les heures d'activité.",
+   "risque_regression": "faible (ajout d'un émetteur ; risque de bruit à borner par cooldown)",
+   "effort": "1-2 jours",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "PIL-02",
+   "priorite": "P1",
+   "titre": "Console d'administration à facteur unique : identifiants par défaut acceptés, secret de session par défaut connu, limitation de tentatives contournable par X-Forwarded-For, exposition publique Render prévue",
+   "fonctionnalite": "Sécurité administrative du Centre de pilotage (détient la clé service_role et le CLI Claude)",
+   "attendu": "Le serveur refuse de démarrer sans mot de passe fort et secret aléatoire ; blocage par IP non falsifiable ; MFA ou au minimum liaison IP/VPN pour toute exposition publique.",
+   "observe": "Sans .env : POST /api/login admin/admin → 200 rôle admin (config.js:334-335). config.js:332 secret HMAC par défaut 'dev-insecure-secret-change-me' → cookie admin forgeable. index.js:46 trust proxy true + auth.js:446 req.ip : 10 tentatives avec XFF variés → jamais 429 (prouvé). Aucun MFA (auth.js:445-457). render.yaml expose le service publiquement (mot de passe requis et secret généré, mais XFF/MFA restent ouverts).",
+   "reproduction": "cd dashboard && env -u DASH_ADMIN_PASSWORD -u DASH_SESSION_SECRET node server/index.js ; curl -X POST /api/login -d '{\"user\":\"admin\",\"password\":\"admin\"}' → 200 ; boucle de 10 POST avec en-tête X-Forwarded-For différent → 401×10 sans 429 (serveur-local-sondes.txt).",
+   "preuve": "config.js:332-335 ; auth.js:404,426-436,446 ; index.js:46 ; render.yaml:402-431 ; preuves/pilotage-sentinelle/serveur-local-sondes.txt",
+   "impact": "Utilisateur : une prise de contrôle du dashboard donne la lecture de toute la télémétrie, le lancement de suites e2e en prod, la suppression de comptes de test via service_role (testusers.js) et le déclenchement d'analyses Claude. Commercial : un actif de supervision devient un vecteur de compromission ; inacceptable pour une exposition publique.",
+   "visibilite_pilotage": "partiel — login_failed/login_blocked audités (auth.js:447-451) mais avec l'IP fournie par l'attaquant",
+   "detection_sentinelle": "non — aucune alerte sur les échecs de connexion au dashboard",
+   "correction": "1) Refus de démarrage si DASH_ADMIN_PASSWORD/DASH_SESSION_SECRET absents ou égaux au défaut ; 2) trust proxy = nombre de sauts connu (Render : 1) et limitation par compte en plus de l'IP ; 3) TOTP (otplib) ou, à défaut, allowlist IP/VPN sur Render ; 4) rotation du secret documentée.",
+   "risque_regression": "faible (config) ; moyen pour le MFA (parcours de connexion mobile)",
+   "effort": "1 jour (durcissement) + 1-2 jours (MFA)",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "PIL-03",
+   "priorite": "P1",
+   "titre": "Télémétrie insérable anonymement sans borne, jamais purgée, et hors capacité/budget dès quelques milliers d'utilisateurs",
+   "fonctionnalite": "Télémétrie (telemetry_events) → ingestion dashboard → coûts Supabase",
+   "attendu": "Écriture bornée côté serveur (longueur, débit), rétention planifiée, volume par utilisateur compatible avec 100 k comptes, ingestion dimensionnée.",
+   "observe": "Policy INSERT publique avec user_id NULL, aucun trigger, aucune contrainte (pg_trigger/pg_constraint vides) : n'importe qui avec la clé anon (publique dans le bundle) insère des lignes de taille libre, avec env='production' et severity='critical' choisis (store.js:133 filtre sur la valeur déclarée). Mesuré : 3 684 lignes/appareil/jour, 349 o (heartbeat 20 s telemetry.js:731-734) ; 111 829 lignes/54 MB en 30 j pour 3-4 utilisateurs. purge_telemetry existe mais aucun cron (cron.job = purge_client_errors seul). Ingestion : polling 500 lignes/5 s (ingest.js:346-351) et realtime 20 evt/s (265) ; store mémoire 5 000 événements.",
+   "reproduction": "SQL lecture seule : select * from cron.job ; select policyname,cmd,with_check from pg_policies where tablename='telemetry_events' ; select count(*)/count(distinct day||device_id) from telemetry_events where env='production' and received_at>now()-'7 days' (preuves/pilotage-sentinelle/requetes-supabase-lecture-seule.txt).",
+   "preuve": "pg_policies telemetry_insert_own ; cron.job (1 job) ; telemetry.js:731-734,139-170 ; ingest.js:265,346-351 ; store.js:133 ; anomaly-engine/alerts sur severity déclarée (alerts.js:76)",
+   "impact": "Utilisateur : aucun direct, mais un flood anonyme remplit la base (quota Pro 8 GB) et déclenche des alertes critical qui consomment le budget Claude de la Sentinelle (8/h). Commercial : extrapolation 100 k comptes/10 % DAU ≈ 36,8 M lignes et 12,9 GB par jour (≈390 GB/mois) + 36,8 M messages realtime/jour (offre Pro : 5 M/mois inclus) — plusieurs milliers d'euros/mois et un dashboard qui décroche (100 lignes/s max). Capacité non prouvée au-delà de 3 appareils.",
+   "visibilite_pilotage": "non — aucune métrique de volume/débit/coût (dbwatch ne rend qu'un COUNT à la demande)",
+   "detection_sentinelle": "non — un flood produit des alertes 'spike' mais rien ne signale le coût ni la saturation ; un flood hostile la fait au contraire travailler",
+   "correction": "1) Planifier cron.schedule('purge_telemetry', '0 4 * * *', $$select purge_telemetry(30)$$) ; 2) trigger rate_limit_insert sur telemetry_events + CHECK length(message)<=500, length(stack)<=4000, pg_column_size(meta)<=2048 ; 3) supprimer le heartbeat 20 s (garder visibilitychange) et échantillonner perf/api (PASSIO_TELEMETRY_SAMPLE) ; 4) sortir telemetry_events de la publication realtime et agréger côté SQL (vues matérialisées) plutôt que d'ingérer chaque ligne ; 5) sonde de volume + alerte de dépassement.",
+   "risque_regression": "moyen (le traçage bout-en-bout et les KPI dépendent des lignes brutes ; un échantillonnage doit exclure error/connectivity/flow)",
+   "effort": "2-3 jours",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "PIL-04",
+   "priorite": "P1",
+   "titre": "Fonctions critiques côté serveur sans aucun signal : confirmation e-mail (SMTP Brevo), push (notify-call), suppression de compte, Storage refusé, Netlify — invisibles du pilotage ET de la Sentinelle",
+   "fonctionnalite": "Inscription/confirmation e-mail, notifications push, suppression de compte, médias, déploiement",
+   "attendu": "Chaque fonction critique a un signal (succès/échec), une règle d'alerte, et un chemin de diagnostic.",
+   "observe": "Les 3 Edge Functions (ask-ai, notify-call, delete-account) n'émettent aucune télémétrie (grep supabase/functions : seule delete-account cite client_errors pour PURGER, index.ts:59). L'envoi SMTP se fait dans Supabase Auth : un e-mail non délivré ne produit ni ligne ni alerte. Storage : le hook fetch (telemetry.js:823-865) capte /storage/ mais alerts.js:123 n'alerte que sur http_status ≥ 500 ; un refus RLS 403 ou un quota 429 n'alerte jamais. Netlify : seul le curl horaire de la sentinelle distante. Aucune mesure de délivrabilité push (push_subscriptions non lue).",
+   "reproduction": "Inspection : grep -rn 'telemetry|client_errors' supabase/functions → uniquement delete-account/index.ts:59 (purge) ; alerts.js:122-128 ; grep dashboard/server 'push_subscriptions|smtp|brevo' → 0.",
+   "preuve": "supabase/functions/*/index.ts ; alerts.js:122-128 ; telemetry.js:835-849 ; sentinelle-distante.yml:87-94",
+   "impact": "Utilisateur : depuis le 2026-08-30 un compte est inutilisable sans e-mail confirmé (CLAUDE.md) — une panne SMTP/DKIM bloque 100 % des inscriptions sans qu'aucun voyant ne change. Commercial : perte totale d'acquisition pendant toute la durée de la panne, et incapacité à la dater a posteriori. Critère d'interdiction du GO.",
+   "visibilite_pilotage": "non — aucun affichage SMTP/push/Edge ; l'entonnoir « Comptes créés » (signups.js) montrerait une baisse sans cause",
+   "detection_sentinelle": "non — pas d'alerte, donc pas de diagnostic",
+   "correction": "1) Sonde serveur dans le dashboard (ou la sentinelle distante) : compte auth.users créés vs confirmés sur 24 h (service_role, lecture seule) → alerte si confirmés/créés < 50 % avec ≥3 créés ; 2) log structuré + insert telemetry_events (user_id NULL, type 'edge') dans les 3 Edge Functions avec status/erreur ; 3) règle alerts.js sur http_status 401/403/429 en volume (≥3/5 min par endpoint) ; 4) sonde Netlify : GET /release.json toutes les 5 min (public-release-evidence déjà écrit, il manque PASSIO_PUBLIC_URL).",
+   "risque_regression": "faible",
+   "effort": "2-3 jours",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "PIL-05",
+   "priorite": "P2",
+   "titre": "Autopilot (flag OFF) et mergeRepair fusionnent dans le main LOCAL sans PR, avec reset --hard sur le dossier de travail et une suite authz lancée en prod sans verrou",
+   "fonctionnalite": "Sentinelle — réparation, promotion locale, rollback",
+   "attendu": "Toute modification atteint main par une PR relue (AGENTS.md §7,9) ; jamais de checkout/reset dans le dossier de travail (repair.js principe 1) ; les suites à comptes réels ne tournent qu'avec le verrou passio-e2e-prod et PASSIO_E2E_PROD=1.",
+   "observe": "sentinel-autopilot-executor.js:97 cible 'main', :123-127 merge --no-ff puis reset --hard dans config.repoPath (le dépôt de travail), :98 VERIFY_SUITES 'authz,globals,handlers,smoke' → tests.js:401 authz = authz-critical.spec.js en prod, sans PASSIO_E2E_PROD (env hérité tests.js:482) → comptes jamais purgés (global-teardown.js:58), scénario de l'incident du 2026-08-30. start.js:6 installe l'enveloppe par défaut (supervise.mjs:361) ; seule la variable DASH_SENTINEL_AUTOPILOT=true (sentinel-autopilot.js:362) arme la promotion. repair.js:1009-1022 mergeRepair (clic + confirm) fusionne aussi directement dans main sans PR.",
+   "reproduction": "Inspection code (flag OFF : non reproduit). Chaîne : startSentinelAutopilot → makeAutopilotRepairer → executeAutopilotPromotion → runPromotionTransaction (executor.js:178-270).",
+   "preuve": "sentinel-autopilot-executor.js:97-128,232-253 ; sentinel-autopilot.js:362-364 ; start.js:4-7 ; repair.js:1009-1022 ; tests.js:401,476-483 ; global-teardown.js:52-58 ; .passio/SENTINEL_AUTOPILOT_ACTIVATION_PROTOCOL.md",
+   "impact": "Utilisateur : un patch écrit par un modèle à partir de données adversariales peut atteindre main puis la prod au prochain push manuel, sans revue. Commercial : violation du contrat de gouvernance (revue indépendante des remédiations automatiques) ; risque d'incident de quota d'inscription (comptes e2e non purgés).",
+   "visibilite_pilotage": "partiel — journal de promotion et audit sentinel_autopilot_* ; route /api/sentinel/promotions jamais enregistrée (sentinel-promotion-routes.js sans importateur)",
+   "detection_sentinelle": "partiel — watch de récidive 120 min uniquement après PROMOTED_LOCAL",
+   "correction": "1) Remplacer la fusion locale par une PR (gh pr create) depuis la branche sentinelle/* ; 2) retirer 'authz' des VERIFY_SUITES par défaut ou exiger le verrou + PASSIO_E2E_PROD ; 3) exécuter la promotion dans un worktree, jamais dans config.repoPath ; 4) enregistrer la route de lecture des promotions ; 5) garder le flag OFF jusque-là (déjà le cas).",
+   "risque_regression": "faible (fonction non activée)",
+   "effort": "1-2 jours",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "PIL-06",
+   "priorite": "P2",
+   "titre": "Le bouton « Tests automatiques » et la vérification de réparation héritent de l'env complet du serveur et exécutent la suite COMPLÈTE (dont le projet prod) sous le nom « smoke »",
+   "fonctionnalite": "Dashboard — Tests automatiques / repair.js vérification",
+   "attendu": "Liste blanche de suites locales, env minimal, aucune création de compte en production depuis un bouton.",
+   "observe": "tests.js:402 'smoke' = `npm test` = playwright test sans --project = projets prod+local (playwright.config.js:77-80, ~900 suites, ~30 min) ; tests.js:451,482 env {...process.env, CI:'1'} transmet SUPABASE_SERVICE_ROLE_KEY et DASH_ADMIN_PASSWORD au processus Playwright ; CI='1' sans PASSIO_E2E_PROD → global-teardown ne purge pas (58) ; repair.js:683 suites par défaut 'globals,handlers,smoke' avec délai 900 s (tests.js:476) inférieur à la durée réelle → réparation rejetée par timeout. 'cdv' pointe un spec supprimé (tests.js:406).",
+   "reproduction": "Inspection : tests.js:400-409,451,482 ; playwright.config.js:78-80 ; ls tests/e2e/cdv.spec.js → absent.",
+   "preuve": "tests.js:400-409,451,476-483 ; repair.js:683 ; playwright.config.js:61-80 ; global-teardown.js:52-58",
+   "impact": "Utilisateur : comptes @passio-e2e.test créés en prod et jamais purgés (quota d'inscription horaire). Commercial : la réparation automatique ne peut pratiquement jamais devenir verte (timeout), et un rôle 'developer' peut lancer la suite prod depuis un téléphone (mobile.js:98).",
+   "visibilite_pilotage": "partiel — run_tests audité",
+   "detection_sentinelle": "non",
+   "correction": "1) 'smoke' → `npx playwright test --project=local tests/e2e/smoke*.spec.js` ; 2) env explicite minimal (PATH, HOME, CI) sans secrets ; 3) retirer 'cdv' ; 4) exiger PASSIO_E2E_PROD + verrou pour 'authz' ou le réserver à la CI.",
+   "risque_regression": "faible",
+   "effort": "0,5 jour",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "PIL-07",
+   "priorite": "P2",
+   "titre": "Le panneau « Feature flags » ne pilote rien en production ; aucun kill switch ni rollback n'est actionnable depuis le pilotage",
+   "fonctionnalite": "Feature flags / kill switches / rollback",
+   "attendu": "Un drapeau modifié dans le pilotage change le comportement des clients ; un kill switch et un rollback sont déclenchables et visibles.",
+   "observe": "checklist.js:192-223 stocke 3 drapeaux (rollout %, cibles) dans data/flags.json du poste ; grep js/ index.html → aucune lecture de /api/flags. Les coupures réelles sont localStorage par appareil (passio_ui_*='0', passio_realtime_v3, app-08:4836). Aucune vue rollback (grep app.js) ; rollback.yml n'est atteignable que via GitHub.",
+   "reproduction": "PATCH /api/flags/ff_feed_rank {enabled:false} puis ouvrir l'app : le classement du fil reste actif (aucune requête vers le dashboard dans js/).",
+   "preuve": "checklist.js:192-223 ; index.js:201-203 ; grep -rn 'api/flags' js/ → 0",
+   "impact": "Utilisateur : aucun ; Commercial : illusion de contrôle — en incident, l'exploitant croit couper une fonctionnalité qui reste active ; le vrai geste (redéploiement ou revert via workflow) prend ≥30 min de CI.",
+   "visibilite_pilotage": "oui mais trompeur — le panneau affiche un état qui n'a aucun effet",
+   "detection_sentinelle": "non",
+   "correction": "Soit retirer le panneau, soit le rendre réel : table public.feature_flags (SELECT public, écriture service_role) lue au boot par app-08 avec repli local, et un bouton « Couper » par lot sous drapeau ; ajouter un lien/route vers rollback.yml (workflow_dispatch) avec état du run.",
+   "risque_regression": "moyen (nouveau chemin de config au boot)",
+   "effort": "2 jours",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "PIL-08",
+   "priorite": "P2",
+   "titre": "Chaîne RELEASES/observation jamais LIVE en configuration livrée : Release Guardian NO_GO permanent, version déployée = HEAD du poste, canari non configuré",
+   "fonctionnalite": "Version déployée, preuve publique, Release Guardian",
+   "attendu": "Le pilotage affiche le commit/buildId réellement servi par https://passio-app.netlify.app et compare à la version DB.",
+   "observe": "PASSIO_PUBLIC_URL absent de .env.example et render.yaml → public-release-evidence NOT_CONFIGURED (:57,100) ; PASSIO_APP_VERSION/PASSIO_DB_VERSION/DEPLOY_ID absents → releaseHealth NOT_CONFIGURED ('frontend version, DB version, deploy id' manquants, resp-releases.json) ; SUPABASE_ANON_KEY 'facultative' → canari NOT_CONFIGURED ; release-guardian.js:966-971 exige release LIVE → NO_GO structurel. /api/releases n'est rendu par aucune page. La « révision » vient de .git/HEAD local (release-recorder.js:649-664).",
+   "reproduction": "Démarrer avec .env.example copié ; GET /api/releases → state NOT_CONFIGURED ; GET /api/release-guardian → decision NO_GO (resp-release-guardian.json).",
+   "preuve": "release-recorder.js:649-664,722-759 ; public-release-evidence.js:57,100 ; .env.example ; render.yaml ; resp-releases.json ; grep public/ '/releases' → 0",
+   "impact": "Commercial : l'affirmation « le pilotage sait ce que l'utilisateur exécute » est fausse par défaut ; un version skew réel (11 événements version_skew en prod) n'est corrélé à rien.",
+   "visibilite_pilotage": "partiel — via command.html/mobile (guardian) ; vue RELEASES absente",
+   "detection_sentinelle": "non",
+   "correction": "Ajouter PASSIO_PUBLIC_URL=https://passio-app.netlify.app et SUPABASE_ANON_KEY (obligatoires) à .env.example/render.yaml ; exposer PASSIO_APP_VERSION depuis dist/release.json ; rendre /api/releases dans une vue NAV.",
+   "risque_regression": "faible",
+   "effort": "0,5-1 jour",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "PIL-09",
+   "priorite": "P2",
+   "titre": "Le domaine « Autorisation » du pilotage n'est alimenté que par un lancement manuel, en mémoire ; la CI et la sentinelle distante ne le nourrissent jamais",
+   "fonctionnalite": "Sécurité / panneau AUTORISATION",
+   "attendu": "L'état des canaris d'autorisation (authz-critical, exécuté toutes les heures par la sentinelle distante et à chaque déploiement) est visible et daté dans le pilotage.",
+   "observe": "tests.js:412 dernierAuthz en mémoire, rempli seulement par runSuite/runSuiteAwait('authz') (429-436, 464, 497) ; perdu au redémarrage ; readiness.js:1043-1044 → 'inconnu — NON INSTRUMENTÉ' observé ; release-guardian.js:948 STALE après 30 min → NO_GO. Aucun pont depuis GitHub Actions (aucune lecture de l'API Actions dans dashboard/server).",
+   "reproduction": "GET /api/readiness sur un serveur fraîchement démarré → domaine autorisation etat 'inconnu' (resp-readiness.json).",
+   "preuve": "tests.js:412-436 ; readiness.js:1041-1045 ; release-guardian.js:931-951 ; app.js:545-552",
+   "impact": "Commercial : le panneau promis par PASSIO_CONTROL_CENTER_AUDIT (P1) existe comme une ligne, mais dit « inconnu » en pratique ; une fuite cross-compte détectée par la sentinelle distante n'apparaît que dans une issue GitHub.",
+   "visibilite_pilotage": "partiel",
+   "detection_sentinelle": "non (locale) / oui (distante, issue GitHub)",
+   "correction": "Persister dernierAuthz (JsonDb) et l'alimenter depuis les runs GitHub (API Actions, jeton lecture) ou faire écrire le résultat du canari horaire dans une table release_evidence lue par le dashboard.",
+   "risque_regression": "faible",
+   "effort": "1 jour",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "PIL-10",
+   "priorite": "P2",
+   "titre": "Modération, sauvegardes, coûts et capacité sont absents du Centre de pilotage",
+   "fonctionnalite": "Modération (reports/blocks/user_safety), sauvegardes, coûts, capacité",
+   "attendu": "Signalements en attente, dernière sauvegarde réussie, consommation/quotas et débit d'ingestion visibles avec seuils.",
+   "observe": "grep dashboard/server → aucune lecture de reports/blocks/user_safety ; aucune vue sauvegarde (scripts/sauvegarde-donnees.js non relié) ; aucune métrique de coût/quota ; dbwatch.js:16-44 ne rend que des COUNT à la demande (cap db).",
+   "reproduction": "Inspection code + NAV app.js:101-131 (30 vues, aucune modération/sauvegarde/coûts).",
+   "preuve": "dashboard/server/*.js (grep) ; app.js:101-131",
+   "impact": "Commercial : un signalement d'abus (2 en base) ou une sauvegarde manquante ne sont vus nulle part ; obligation de traitement des signalements (DSA/CGU) non outillée.",
+   "visibilite_pilotage": "non",
+   "detection_sentinelle": "non",
+   "correction": "Vue Modération (reports ouverts, âge, actions) ; vue Sauvegardes (dernier run de sauvegarde-donnees.js + taille) ; carte Capacité (taille tables, lignes/jour, débit d'ingestion, marge realtime).",
+   "risque_regression": "faible",
+   "effort": "2-3 jours",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "PIL-11",
+   "priorite": "P2",
+   "titre": "Journal d'audit non immuable, borné avec perte silencieuse et éphémère sur Render",
+   "fonctionnalite": "Journal d'audit",
+   "attendu": "Journal append-only, intègre (chaînage/hash ou stockage externe), conservé au-delà de 5 000 entrées et des redémarrages.",
+   "observe": "audit.js:365 unshift + pop après 5 000 ; jsondb.js:403-408 réécriture complète de data/audit.json (modifiable/effaçable par tout process ou par la réparation qui casse) ; render.yaml:396-399 stockage éphémère.",
+   "reproduction": "Inspection ; en sandbox le journal est un fichier JSON dans DASH_DATA_DIR.",
+   "preuve": "audit.js:361-374 ; jsondb.js:384-418 ; render.yaml:396-400",
+   "impact": "Commercial : la traçabilité exigée pour les actions automatiques (AGENTS.md) n'est pas opposable ; un incident ne peut pas être reconstitué après redémarrage sur Render.",
+   "visibilite_pilotage": "oui (onglet Journal d'audit, cap audit)",
+   "detection_sentinelle": "non",
+   "correction": "Écrire chaque entrée en append (JSONL) avec hash chaîné, rotation par fichier daté, et copie vers une table Supabase audit_dashboard (service_role) ou vers GitHub.",
+   "risque_regression": "faible",
+   "effort": "1 jour",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "PIL-12",
+   "priorite": "P2",
+   "titre": "Pas de vérification du retour à la normale : aucune re-mesure après diagnostic/réparation, phases d'incident manuelles, cooldowns qui masquent une cause persistante",
+   "fonctionnalite": "Sentinelle — clôture d'incident",
+   "attendu": "Après une action, le signal initial est re-mesuré (definitionOfDone) et l'incident passe VERIFIED/RESOLVED sur preuve ; une cause persistante re-sonne.",
+   "observe": "repair.js:963-984 termine au commit ; sentinel-recurrence.js:493 n'arme la watch que sur PROMOTED_LOCAL (autopilot OFF) ; incident-packets.js:769-803 transitions uniquement via POST manuel avec note ; alerts.js:38 cooldown 60 s et sentinel.js:65 cooldown 6 h par cause+révision ; incident cluster 15 min (538) : un incident qui dure crée un nouveau paquet toutes les 15 min au lieu de rester ouvert.",
+   "reproduction": "Inspection code.",
+   "preuve": "repair.js:963-1002 ; sentinel-recurrence.js:492-508 ; incident-packets.js:538,705-709,769-803 ; sentinel.js:65,183",
+   "impact": "Commercial : « incident résolu » n'est jamais prouvé par le système ; un défaut qui persiste 6 h n'est rediagnostiqué qu'après un commit.",
+   "visibilite_pilotage": "partiel (phases affichées mais manuelles)",
+   "detection_sentinelle": "non",
+   "correction": "Après repair ok ou après acquittement : planifier une re-mesure (même clé d'alerte, fenêtre 30-120 min) via la watch de récurrence existante, indépendante de l'autopilot ; fermer automatiquement l'incident si le signal est absent sur la fenêtre, le rouvrir sinon ; escalader (alerte 'persistant') au-delà de 2 cooldowns.",
+   "risque_regression": "faible",
+   "effort": "1-2 jours",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "PIL-13",
+   "priorite": "P3",
+   "titre": "client_errors n'est pas ingéré : les erreurs remontées par platform.js n'alertent jamais",
+   "fonctionnalite": "Erreurs client (table client_errors)",
+   "attendu": "Toute erreur JS remontée est visible et alertée une fois.",
+   "observe": "platform.js:46 écrit client_errors (16 lignes, dernière 2026-08-31) ; dashboard/server ne la lit que pour un COUNT (dbwatch.js:13) ; seules les erreurs passées par telemetry.js (type=error, 22 lignes prod) alertent. Deux tables, deux capteurs, une seule lue.",
+   "reproduction": "grep -rn client_errors dashboard/server → dbwatch.js:13 uniquement.",
+   "preuve": "platform.js:15-46 ; dbwatch.js:10-14 ; CHECKLIST_COMMERCIALISATION.md:62 « Monitoring client_errors câblé »",
+   "impact": "Faible aujourd'hui (doublon partiel avec telemetry) ; la checklist commerciale coche un monitoring que le pilotage n'exploite pas.",
+   "visibilite_pilotage": "partiel (compte seulement)",
+   "detection_sentinelle": "non",
+   "correction": "Ingérer client_errors dans ingestOne (normalisation en type=error) ou supprimer le double capteur.",
+   "risque_regression": "faible",
+   "effort": "0,5 jour",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "PIL-14",
+   "priorite": "P3",
+   "titre": "Documentation de sécurité contradictoire avec le code (opt-in vs opt-out, liste blanche vs liste noire, 77 vs 349 tests, suite cdv fantôme)",
+   "fonctionnalite": "Documentation du pilotage",
+   "attendu": "Les documents de sécurité décrivent le comportement réel.",
+   "observe": "dashboard/docs/SECURITE.md:238-243 affirme « Opt-in » et « meta sur liste blanche » ; telemetry.js:12-19,139 : opt-out par défaut en prod et DENY_KEY liste noire (rectifié dans docs/CENTRE_DE_PILOTAGE.md:10 mais pas dans SECURITE.md). docs/CENTRE_DE_PILOTAGE.md:10 « 77 verts » vs 349. tests.js:406 suite 'cdv' vers un spec supprimé (ADR-011).",
+   "reproduction": "Lecture croisée des fichiers cités.",
+   "preuve": "dashboard/docs/SECURITE.md:236-243 ; js/telemetry.js:12-19,126-139 ; docs/CENTRE_DE_PILOTAGE.md:10 ; tests.js:406",
+   "impact": "Commercial : la politique de confidentialité et le DPA seraient rédigés sur une base fausse (opt-in) ; risque RGPD documentaire.",
+   "visibilite_pilotage": "non applicable",
+   "detection_sentinelle": "non applicable",
+   "correction": "Réécrire SECURITE.md §6 (opt-out, liste noire + contrainte de primitives, 30 clés, 160 car.), mettre à jour les compteurs, retirer 'cdv'.",
+   "risque_regression": "nul",
+   "effort": "1 heure",
+   "confiance": "CONFIRMÉ"
+  }
+ ],
+ "surfaces_saines": [
+  "Gardes de routes : 81 routes inventoriées, 401 sans session et 403 sans capacité prouvés sur serveur réel (test/http-routes.test.js, test/routes-caps.test.js) et re-sondées manuellement (12 routes → 401).",
+  "Sandbox du CLI Claude en liste BLANCHE (--tools TodoWrite / Read,Grep,Glob, --safe-mode, --strict-mcp-config, --no-session-persistence, --no-chrome), env enfant filtré de 6 secrets, sortie bornée 400 Ko / 60 Ko, délais + taskkill — verrouillée par test/sentinel.test.js:278-303.",
+  "Hygiène de prompt (sanitizeObserved + dataBlock) appliquée aux 4 constructeurs de prompts, verrouillée par test/prompts-injection.test.js (12 tests) ; mode approfondi automatique désactivé par défaut.",
+  "Filtre PII client (DENY_KEY + primitives + troncature + redactString) : audit-telemetry-keys OK (81 clés) et vérification SQL en prod : 0 e-mail/JWT/data-URI dans 111 829 lignes, message ≤200, stack ≤262, meta ≤230 octets.",
+  "RLS telemetry_events : INSERT seul (user_id NULL ou auth.uid()), aucune SELECT ; lecture uniquement côté serveur.",
+  "Readiness = pire domaine critique avec confiance mesurée (readiness.js), séparation santé produit / technique (control-intelligence.js) — F7 corrigé.",
+  "Réparation automatique bornée : liste blanche de chemins (tests/ interdit), 120 lignes / 3 fichiers / 2 par h, worktree isolé, branche supprimée si rouge, jamais de push ; 14 tests verts.",
+  "Incident packets déterministes avant tout appel IA, avec rétention fail-closed des critiques ouverts (incident-packets.js) ; anomaly engine sans IA (médiane+MAD, état INSUFFICIENT honnête).",
+  "Observation health explicite (DB_READ 5 min, canari anon 15 min/90 s, heartbeat SSE 25 s) et canari exclu des métriques produit (ingest.js:215-219) ; 446 canaris observés en prod, dernier 12:43:38 UTC.",
+  "Sentinelle distante horaire indépendante du poste : audits statiques, page publique, canari authz avec verrou et purge, issue GitHub ouverte/fermée automatiquement, coupe-circuit par issue.",
+  "CI : les 349 tests du dashboard sont une gate explicite (deploy.yml:283-298) et auth/config/repair/sentinel sont classés critiques (contre-revue obligatoire, deploy.yml:110).",
+  "Échappement de la page de pilotage (escJsArg/esc, command.js sans innerHTML) verrouillé par spa-echappement.test.js et navigateur.test.js."
+ ],
+ "non_verifie": [
+  "Déploiement Render (passio-pilotage.onrender.com) : existence, version, mot de passe fort, secret : BLOQUÉ — curl → code 000 (proxy sortant) ; il faudrait l'accès au tableau Render ou un réseau ouvert.",
+  "Comportement RÉEL du CLI `claude` sous --tools TodoWrite / Read,Grep,Glob (liste blanche effective, lecture hors dépôt) : BLOQUÉ — non exécuté ici (consommerait l'abonnement et n'est pas reproductible sans le poste Windows) ; seules les mesures du 2026-08-16 (PASSIO_SENTINELLE_JOINT_AUDIT) existent.",
+  "Sentinelle distante : résultats des runs horaires récents et issues « Santé rouge » : NON RÉALISÉ (accès GitHub Actions non exercé dans ce sous-audit ; le run CI 33861671142 vert est le seul fait établi).",
+  "Runtime de la Sentinelle en conditions réelles (alerte → analyse → diagnostic → réparation) : BLOQUÉ — exige le poste avec `claude` connecté et DASH_ALLOW_MUTATIONS ; en sandbox le CLI était détecté « connecté » mais aucune alerte non manuelle n'a été provoquée pour ne pas consommer le quota.",
+  "Insertion anonyme hostile dans telemetry_events (flood, severity critical) : NON RÉALISÉ (aucune écriture en base autorisée) — conclusion par policy + absence de trigger/contrainte (CONFIRMÉ par inspection).",
+  "GRANT EXECUTE sur purge_telemetry (révocation affirmée par KNOWN_RISKS) : NON VÉRIFIÉ (pg_proc consulté, pas les ACL).",
+  "Suites du projet prod (authz-critical, etc.) : NON LANCÉES (règle 7) — job « Suites production » vert dans le run 33861671142.",
+  "Charge réelle d'ingestion du dashboard (100 lignes/s) : extrapolation calculée, non mesurée (aucun test de charge autorisé)."
+ ],
+ "anciens_rapports": [
+  "PASSIO_CONTROL_CENTER_AUDIT F7 « score = moyenne pondérée sans composante d'autorisation » → corrigé : readiness.js:1060-1064 statut = pire domaine critique, domaine 'autorisation' critique (1041-1045) ; un score numérique subsiste mais plafonné par le statut (1069-1072).",
+  "PASSIO_SENTINELLE_JOINT_AUDIT « liste noire --disallowedTools remplacée par liste blanche --tools » → toujours vraie : claudecli.js:500,570-573 ; verrou test/sentinel.test.js:278-303 (vert).",
+  "PASSIO_CONTROL_CENTER_AUDIT « Panneau AUTORISATION à créer (P1) » → partiellement fait : ligne « Autorisation » sur l'Accueil (app.js:545-552) + domaine readiness ; mais alimenté seulement par un lancement manuel en mémoire → affiche 'inconnu' par défaut (PIL-09).",
+  "PASSIO_CONTROL_CENTER_AUDIT « Vue RELEASES à créer (P2) » → partiellement : release-recorder.js + public-release-evidence.js + route /api/releases (index.js:96), mais AUCUNE vue ne la rend et l'état est NOT_CONFIGURED par défaut (PIL-08).",
+  "PASSIO_CONTROL_CENTER_AUDIT « tests de la matrice de permissions (P2) » → fait : test/routes-caps.test.js (11) + test/http-routes.test.js (7), verts.",
+  "PASSIO_CONTROL_CENTER_AUDIT « 61 routes, 29 vues, 89 tests » → obsolète : 81 routes (routes-caps), 30 vues NAV + command.html + mobile.html, 349 tests.",
+  "PASSIO_SENTINELLE_JOINT_AUDIT R2 « canari synthétique + DB_READ + heartbeat SSE : retenu, non implémenté » → implémenté depuis (observation.js, PASSIO_SENTINEL_2.md) ; mais sans alerte ni notification (PIL-01).",
+  "PASSIO_SENTINELLE_JOINT_AUDIT « service_role peut écrire — ouvert » → toujours vraie : ingest.js:263 crée le client service_role ; aucun rôle DB en lecture seule ; testusers.js supprime des comptes avec cette clé.",
+  "PASSIO_SENTINEL_2 « un seul canari authz en échec impose le rouge » → vraie dans le code (readiness.js:1043) mais non vérifiable en pratique tant que le domaine reste 'inconnu' (PIL-09).",
+  "docs/CENTRE_DE_PILOTAGE.md « Tests backend : 77 verts » → obsolète (349).",
+  "dashboard/docs/SECURITE.md §6 « Opt-in » et « meta sur liste blanche » → fausses : telemetry.js opt-out par défaut en prod (12-19, 72) et DENY_KEY liste noire (139) — rectifié seulement dans CENTRE_DE_PILOTAGE.md:10 (PIL-14).",
+  "docs/CENTRE_DE_PILOTAGE.md « Sentinelle : elle ne corrige RIEN » → partiellement fausse : repair.js écrit, applique dans un worktree et committe une branche sentinelle/* (documenté plus bas dans le même fichier) ; avec DASH_SENTINEL_AUTOPILOT=true elle fusionnerait dans main local (PIL-05).",
+  "docs/SENTINELLE_DISTANTE.md « détecte et alerte, ne modifie rien » → toujours vraie (workflow : permissions contents:read, issues:write ; aucune écriture de fichier).",
+  "docs/CHECKLIST_COMMERCIALISATION.md:62 « Monitoring client_errors câblé » → vraie côté écriture (platform.js:46), fausse côté exploitation (jamais lue pour alerter, PIL-13).",
+  ".passio/context/KNOWN_RISKS.md « EXECUTE révoqué sur purge_telemetry » → non vérifiable ici (ACL non consultées) ; la fonction existe, SECURITY DEFINER, non planifiée.",
+  "CLAUDE.md « purge cron seulement pour client_errors » → toujours vraie : cron.job contient 1 seul job purge_client_errors (PIL-03)."
+ ],
+ "preuves_fichiers": [
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/pilotage-sentinelle/npm-ci.log",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/pilotage-sentinelle/npm-test.log",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/pilotage-sentinelle/server-noenv.log",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/pilotage-sentinelle/serveur-local-sondes.txt",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/pilotage-sentinelle/requetes-supabase-lecture-seule.txt",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/pilotage-sentinelle/resp-readiness.json",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/pilotage-sentinelle/resp-releases.json",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/pilotage-sentinelle/resp-observation.json",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/pilotage-sentinelle/resp-services.json",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/pilotage-sentinelle/resp-sentinel.json",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/pilotage-sentinelle/resp-release-guardian.json",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/pilotage-sentinelle/resp-control_command.json",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/pilotage-sentinelle/resp-flags.json",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/pilotage-sentinelle/dash-data-noenv/ (JsonDb jetables du serveur de test : audit.json, alerts.json, incident-packets.json, sentinel.json)"
+ ],
+ "notes": "A) MATRICE fonctionnalité → signal → alerte → diagnostic → action → preuve de retour (fichier:ligne ; « aucun » = rien) :\n1. Inscription/connexion : signal = api auto-tag /auth/v1/* (telemetry.js:823-849) + tel.action('signup_completed') ; alerte = api5xx ≥500 seulement (alerts.js:123) — 401/403/429 jamais ; diagnostic = incident packet + sentinel kind generic (sentinel.js:191) ; action = aucune (auth hors périmètre de repair, chemin Supabase) ; retour = aucun.\n2. Confirmation e-mail (SMTP Brevo) : signal AUCUN ; alerte aucune ; diagnostic aucun ; action aucune ; retour aucun (PIL-04).\n3. Fil : signal = api rest/v1/posts + perf + click ; alerte api5xx/apislow>4 s (123-126) ; diagnostic = suspects commits FEATURE_PATHS feed (correlate.js:841) ; action = repair.js si verdict defect (js/app-03 en liste blanche) ; retour aucun.\n4. Publication : signal = flowStart publish_post/publish_reel + step saved (app-08:3323-3325), contrat traces.js:69-70 ; alerte verdict failed/dead_click high (alerts.js:136-163) ; diagnostic = buildTracePrompt (claude.js:686) + suspects ; action = repair ; retour aucun.\n5. Médias/Storage : signal = api /storage/v1 (hook fetch) ; alerte ≥500 seulement ; refus RLS/403 et quota invisibles ; diagnostic generic ; action aucune ; retour aucun. Intégrité (reconcile.js) détecte les bobines sans média a posteriori (cap db).\n6. Messagerie : signal = flowStart send_message + step saved (app-09:907-911) + rt_recv livraison ; alerte failed/partial/dead_click + doublon (alerts.js:166-172) ; diagnostic trace ; action repair ; retour aucun. Contenu jamais collecté (metadata seule).\n7. Notifications/push : signal = aucun côté serveur (notify-call sans télémétrie) ; côté client seulement api /functions/ ≥500 ; alerte quasi nulle ; diagnostic aucun ; action aucune ; retour aucun.\n8. IRL/RSVP : signal = flowStart event_join/event_leave (app-07:3262) contrat S_REQUEST_CONFIRM ; alerte verdict ; diagnostic trace + FEATURE_PATHS irl ; action repair ; retour aucun.\n9. Recherche : signal = click/nav uniquement (aucun flowStart, aucun tel.action de recherche — 'query/search' sont des clés DENY) ; alerte aucune spécifique ; diagnostic aucun.\n10. Suppression de compte : Edge delete-account sans signal ; client api /functions/delete-account ≥500 ; rien d'autre.\n11. Déploiement : signal = release-guard.js version_skew (11 en prod) + sentinelle distante curl horaire ; alerte = anomaly metric version_skew (anomaly-engine.js:216, pas d'emit) + issue GitHub ; diagnostic aucun ; action = rollback.yml manuel ; retour = fermeture d'issue automatique quand le curl repasse vert.\n12. Base Supabase : signal = DB_READ 5 min (observation.js:67-80) + api rest/v1 errors ; alerte aucune sur DB_READ UNAVAILABLE ; diagnostic aucun ; action aucune ; retour aucun.\n13. Télémétrie elle-même : signal = canari 15 min/90 s, heartbeat SSE, lastRealSeenIso ; alerte aucune ; Sentinelle aveugle ; retour aucun (PIL-01).\n14. Autorisation/RLS : signal = authz suite (manuelle) ou sentinelle distante horaire ; alerte = readiness rouge (local) / issue GitHub (distant) ; diagnostic aucun automatique ; action aucune ; retour = prochain run vert.\n\nB) TABLEAU DES 15 AFFICHAGES (vue + route + source) : santé générale = PARTIEL (Accueil/command/mobile, /api/readiness + /control/command, 'inconnu' par défaut) ; incidents actifs = PARTIEL (command/mobile, /api/incidents ; pas d'onglet SPA) ; fonctions/utilisateurs affectés = PARTIEL (Traçage/Problèmes, 11 actions instrumentées) ; version déployée = ABSENT en vue, PARTIEL en API (/api/releases NOT_CONFIGURED, HEAD local) ; erreurs = PROUVÉ (Problèmes/Alertes, telemetry seule, client_errors non lue) ; services externes = ABSENT (pseudo-services dérivés du trafic, tous unknown) ; sécurité/AUTORISATION = PARTIEL (ligne Accueil, manuel, 'inconnu') ; modération = ABSENT ; coûts = ABSENT ; capacité = ABSENT ; sauvegardes = ABSENT ; feature flags = PRÉSENT mais SANS EFFET ; kill switches = ABSENT ; rollback = ABSENT (GitHub seulement) ; historique des actions = PROUVÉ (Journal d'audit cap audit + /control/history).\n\nC) TABLEAU DES 10 PROPRIÉTÉS SENTINELLE : détecte erreurs importantes = CONFORME (critical, multi-utilisateurs, pic, api5xx, verdicts de trace) mais seuils calibrés pour >6 erreurs/min et ≥500, aveugle aux 4xx ; détecte pannes silencieuses/arrêt télémétrie = DÉFAILLANT (état observation sans alerte) ; regroupe incidents = CONFORME (cluster 15 min, corrélation commits, groupes trace) ; distingue défaut/attendu/insuffisant = CONFORME (verdict auto-déclaré par le modèle, INSUFFICIENT anomalies, 'inconnu' readiness) ; protège secrets/PII = CONFORME (env filtré, sanitizeObserved, PII filtré côté client ; liste-blanche.js n'est PAS un filtre PII) ; résiste aux injections = CONFORME PAR INSPECTION (hygiène + sandbox liste blanche verrouillée ; non éprouvé sur CLI réel ici) ; réparations sûres/limitées/réversibles = CONFORME pour repair.js, DÉFAILLANT pour mergeRepair/autopilot (fusion locale sans PR, reset --hard, suite authz prod) ; journalise = CONFORME (audit + journal de promotion, route de lecture non enregistrée) ; vérifie le retour à la normale = DÉFAILLANT ; limites claires sans Claude = CONFORME (skipped.unavailable, chaîne déterministe indépendante) mais Sentinelle ACTIVE par défaut dès qu'un `claude` est connecté.\n\nD) SÉCURITÉ ADMIN (synthèse) : facteur unique, admin/admin accepté sans .env, secret HMAC par défaut, XFF contourne le blocage (prouvé), rôles/capacités corrects et testés, confirm:true sur git/merge, journal mutable et borné, exposition Render prévue avec service_role, testusers DELETE sans confirmation, suites Playwright héritant des secrets.\n\nE) CAPACITÉ/COÛTS : 3 684 lignes/appareil/jour × 349 o ; dashboard 100 lignes/s max ; extrapolation 100 k comptes : 10 % DAU → 36,8 M lignes et 12,9 GB/jour ; 1 % DAU → 3,7 M lignes et 1,3 GB/jour ; realtime publication sur telemetry_events multiplie le coût (messages par insert). Capacité non prouvée.\n\nF) RECOMMANDATIONS : CONSERVER gardes de routes, sandbox, incident packets, readiness pire-domaine, sentinelle distante, tests (349). CORRIGER avant GO : PIL-01..04. REFACTORISER : tests.js (suites/env), repair mergeRepair → PR, autopilot → worktree + PR, flags → réels ou retirés, docs SECURITE.md. SUPPRIMER : suite 'cdv', heartbeat 20 s, route morte sentinel-promotion-routes.js ou l'enregistrer. À SOUMETTRE À BENJAMIN : décision d'exposer ou non le dashboard sur Render (si oui : MFA/VPN obligatoire, rôle DB lecture seule au lieu de service_role) ; choix d'un canal de notification (issue GitHub vs e-mail Brevo) ; politique de rétention télémétrie (30 j ?) à inscrire dans la politique de confidentialité, qui doit dire « opt-out » et non « opt-in »."
+}

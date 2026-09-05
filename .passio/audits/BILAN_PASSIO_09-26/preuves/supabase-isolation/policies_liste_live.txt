@@ -1,0 +1,125 @@
+DELETE|public.blocks|blocks_delete_own
+DELETE|public.cdv_live_collaborators|cdv_collab_delete
+DELETE|public.cdv_live_comments|cdv_comments_delete_own
+DELETE|public.cdv_live_followers|cdv_followers_delete_own
+DELETE|public.cdv_live_reactions|cdv_reactions_delete_own
+DELETE|public.cdv_live_steps|cdv_steps_delete_own
+DELETE|public.cdv_lives|cdv_lives_delete_own
+DELETE|public.comment_interactions|ci_delete
+DELETE|public.comment_likes|comment_likes_delete_own
+DELETE|public.conv_members|Suppression admin
+DELETE|public.conv_members|Suppression propre
+DELETE|public.conv_messages|Suppression propre
+DELETE|public.event_attendees|Suppression propre
+DELETE|public.event_comments|event_comments_delete_own
+DELETE|public.event_reactions|event_reactions_delete
+DELETE|public.events|Suppression propre
+DELETE|public.follows|Suppression cote suivi
+DELETE|public.follows|Suppression propre
+DELETE|public.notifications|Suppression propre
+DELETE|public.post_collaborators|post_collab_delete
+DELETE|public.post_comments|Suppression propre
+DELETE|public.post_likes|Suppression propre
+DELETE|public.posts|Suppression propre
+DELETE|public.profiles|Suppression propre
+DELETE|public.push_subscriptions|push_delete_own
+DELETE|public.step_interactions|si_delete
+DELETE|public.stories|Suppression propre
+DELETE|public.story_views|story_views_delete_own
+DELETE|public.user_passions|user_passions_delete_own
+DELETE|public.user_state|user_state_delete_own
+DELETE|public.video_lives|video_lives_delete
+DELETE|storage.objects|passio_media_delete
+INSERT|public.analytics_events|analytics_insert_own
+INSERT|public.blocks|blocks_insert_own
+INSERT|public.cdv_live_collaborators|cdv_collab_insert_owner
+INSERT|public.cdv_live_comments|cdv_comments_insert_own
+INSERT|public.cdv_live_followers|cdv_followers_insert_own
+INSERT|public.cdv_live_reactions|cdv_reactions_insert_own
+INSERT|public.cdv_live_steps|cdv_steps_insert_own
+INSERT|public.cdv_lives|cdv_lives_insert_own
+INSERT|public.client_errors|Insert erreurs
+INSERT|public.comment_interactions|ci_insert
+INSERT|public.comment_likes|comment_likes_insert_own
+INSERT|public.conv_members|Ecriture propre
+INSERT|public.conv_messages|conv_messages_insert_member
+INSERT|public.conv_reads|reads_upsert
+INSERT|public.conversations|conversations_insert_creator
+INSERT|public.event_attendees|Ecriture propre
+INSERT|public.event_comments|event_comments_insert_own
+INSERT|public.event_reactions|event_reactions_insert
+INSERT|public.events|Ecriture propre
+INSERT|public.follows|Ecriture propre
+INSERT|public.notifications|notifications_insert_own_author
+INSERT|public.passion_requests|passion_requests_insert_own
+INSERT|public.post_collaborators|post_collab_insert_owner
+INSERT|public.post_comments|Ecriture propre
+INSERT|public.post_likes|Ecriture propre
+INSERT|public.posts|Ecriture propre
+INSERT|public.profiles|Upsert propre
+INSERT|public.push_subscriptions|push_insert_own
+INSERT|public.reports|reports_insert
+INSERT|public.step_interactions|si_insert
+INSERT|public.stories|Ecriture propre
+INSERT|public.story_views|story_views_insert_own
+INSERT|public.telemetry_events|telemetry_insert_own
+INSERT|public.user_passions|user_passions_insert_own
+INSERT|public.user_state|user_state_insert_own
+INSERT|public.video_lives|video_lives_insert
+INSERT|storage.objects|passio_media_insert_cloisonne
+SELECT|public.blocks|blocks_select_own
+SELECT|public.cdv_live_collaborators|cdv_collab_select
+SELECT|public.cdv_live_comments|cdv_comments_select
+SELECT|public.cdv_live_followers|cdv_followers_select
+SELECT|public.cdv_live_reactions|cdv_reactions_select
+SELECT|public.cdv_live_steps|cdv_steps_select
+SELECT|public.cdv_lives|cdv_lives_select
+SELECT|public.comment_interactions|Lecture selon visibilite de la cible
+SELECT|public.comment_likes|comment_likes_select
+SELECT|public.conv_members|conv_members_select_member
+SELECT|public.conv_messages|conv_messages_select_member
+SELECT|public.conv_reads|reads_select
+SELECT|public.conversations|conversations_select_member
+SELECT|public.event_attendees|Lecture publique
+SELECT|public.event_comments|event_comments_select
+SELECT|public.event_reactions|event_reactions_select
+SELECT|public.events|Lecture publique
+SELECT|public.events|Read events
+SELECT|public.follows|Lecture publique
+SELECT|public.follows|Read follows
+SELECT|public.notifications|Lecture propre
+SELECT|public.passion_relations|passion_relations_select_all
+SELECT|public.passion_requests|passion_requests_select_own
+SELECT|public.passions|passions_select_all
+SELECT|public.post_collaborators|post_collab_select
+SELECT|public.post_comments|Lecture selon visibilite du post
+SELECT|public.post_likes|Lecture selon visibilite du post
+SELECT|public.posts|Lecture respectant les comptes prives
+SELECT|public.profiles|Lecture publique
+SELECT|public.profiles|Read profiles
+SELECT|public.push_subscriptions|push_select_own
+SELECT|public.step_interactions|si_select
+SELECT|public.stories|Lecture stories respectant les comptes prives
+SELECT|public.story_views|story_views_select_own
+SELECT|public.user_passions|user_passions_select_all
+SELECT|public.user_safety|user_safety_select_own
+SELECT|public.user_state|user_state_select_own
+SELECT|public.video_lives|video_lives_select
+SELECT|realtime.messages|Utilisateur recoit ses messages
+SELECT|realtime.messages|Utilisateur reçoit ses messages
+SELECT|storage.objects|passio_media_read
+UPDATE|public.cdv_live_steps|cdv_steps_update_own
+UPDATE|public.cdv_lives|cdv_lives_update_own
+UPDATE|public.conv_messages|Update propre
+UPDATE|public.conv_reads|reads_update
+UPDATE|public.event_attendees|Maj de sa propre participation
+UPDATE|public.events|Update organisateurs
+UPDATE|public.notifications|Update propre
+UPDATE|public.post_comments|Update propre
+UPDATE|public.posts|Update propre
+UPDATE|public.profiles|Update propre
+UPDATE|public.push_subscriptions|push_update_own
+UPDATE|public.user_passions|user_passions_update_own
+UPDATE|public.user_state|user_state_update_own
+UPDATE|public.video_lives|video_lives_update
+UPDATE|storage.objects|passio_media_update_cloisonne

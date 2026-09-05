@@ -1,0 +1,131 @@
+access-gate:
+adr-009-retrait-economie: feed profiles modales
+adr-010-vocabulaire:
+aides-contextuelles: profiles messages
+audit-identite-emoji:
+authz-critical:
+avatar-public-stable:
+badge-messages: messages
+biographie-multiligne: profiles
+blocage-acces:
+cadrage:
+carte-passion-photo: profiles
+cases-violet-leger: irl
+commentaires-bobine: bobines
+confidentialite:
+confirmation-email:
+connexion-compte-existant: feed first-run modales
+contenu-passion-mood: feed
+contextual-nav: profiles irl
+conv-clavier-ouverture: messages
+conv-ouverture-fil: messages
+conv-suppression:
+dist-build:
+echappement-ids-reactions:
+echappement-type-et-duree:
+echappement:
+edition-activite-echappement:
+entete-fil-permanent: feed
+etat-sync-base64:
+exploration-anonyme-vs-compte: first-run
+exploration-moods: feed
+feed-activite-relue:
+feed-intents:
+feed-interets-migration:
+feed-irl-bridge: modales
+feed-malformed-post: bobines
+feed-premier-rendu: profiles studio explore
+feed-ranking:
+feed-realtime-course:
+feed-vues-adr010: feed modales
+feed-window: feed profiles explore irl messages
+first-run: feed profiles irl bobines first-run modales
+fuite-blob-bobines: bobines
+gate-sans-app: feed
+hotfix-profil-passion-custom: bobines modales
+interactions: explore irl bobines
+ios-navigation-et-zoom: feed irl messages modales
+ios-zones-sures: bobines
+irl-changement-ville: irl
+irl-deeplink-etat-null:
+irl-funnel: irl
+irl-passion-archivee: irl
+irl-trust-safety:
+irl: irl
+latence-percue:
+mes-passions-page: feed profiles modales
+message-media-echec:
+monitoring-bruit:
+monitoring-file-boot:
+multi-comptes: bobines
+multi-passion-audit-restant: feed modales
+multi-passion-integrite: profiles
+navigation: feed explore irl messages bobines
+notifications-echappement:
+notifications-economie-retiree:
+onboarding-acceptation: feed
+onboarding-passions-v2: feed
+onboarding-v2:
+parcours-suivre: feed
+partage-bobine: feed bobines
+partage-experience-passion: feed studio
+passion-context:
+passion-personnalisee-fk: studio
+passion-politiques-ecriture: studio bobines
+passion-referentiel:
+passions-archive-quota: profiles modales
+passions-plates: feed profiles studio modales
+pastille-mood: feed
+perf-ios:
+prix-euros: irl modales
+profil-badges-visibles: profiles
+profil-confidentialite-interface:
+profil-entete-passions: feed profiles modales
+profil-identite-serveur-autoritaire: bobines
+profil-trois-autorites:
+profil-visite-options: modales
+profils-types: feed profiles studio explore
+projets-playwright: bobines
+publication-optimiste-refusee: bobines
+purge-rest-parite:
+qa-campaign:
+reaction-cle-entree:
+recherche-comptes:
+recherche-referentiel: explore
+reel-deeplink: bobines
+refonte-multi-passion: feed profiles studio
+release-integrity: feed
+smoke: first-run
+stories-blocage: bobines
+studio-moods: studio bobines
+supa-hors-ligne:
+suppression-compte:
+suppression-durable: studio
+sync-passion-active:
+telemetrie-preauth:
+transfert-message:
+ui-v2-feed: feed explore bobines
+ui-v2-shell: feed profiles studio explore bobines
+ui-v3-passerelle: feed irl messages modales
+ui-v3b-activite: feed
+ui-v4a0-tete: irl
+ui-v4a1-intentions: irl
+ui-v4a2-cartes: irl
+ui-v4a3-vue: feed irl
+ui-v4a4-outils: irl
+ui-v4a5-filtres: feed irl
+ui-v4b-fiche: feed
+ui-v5-bobines: irl bobines
+ui-v6-composer: profiles studio
+ui-v6a-boucle: messages
+ui-v6a-messages: messages
+ui-v6b-profil: profiles
+ui-v6c-proposer-irl: messages
+ui-v7-bobine-camera: bobines
+ui-v7-lot: feed profiles studio irl messages bobines
+ui-v7-parcours: studio bobines modales
+ui-v8-passions: feed profiles studio messages modales
+user-passions-miroir:
+user-state-horodatage:
+version-skew:
+xss-notifs-messages:

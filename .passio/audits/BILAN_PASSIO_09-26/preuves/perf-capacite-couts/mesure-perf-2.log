@@ -1,0 +1,97 @@
+cpu×1 run 1 ERREUR page.waitForTimeout: Target page, context or browser has been closed
+cpu×1 run 2 ERREUR browser.newContext: Protocol error (Target.createBrowserContext): Failed to create browser context.
+cpu×1 run 3 ERREUR browser.newContext: Target page, context or browser has been closed
+Browser logs:
+
+<launching> /opt/pw-browsers/chromium_headless_shell-1223/chrome-headless-shell-linux64/chrome-headless-shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,Translate,AutoDeElevate,RenderDocument,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=/tmp/playwright_chromiumdev_profile-NuDohb --remote-debugging-pipe --no-startup-window
+<launched> pid=19725
+[pid=19725][err] [0904/195408.149999:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Failed to connect to socket /run/dbus/system_bus_socket: No such file or directory
+[pid=19725][err] [0904/195408.151465:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Failed to connect to socket /run/dbus/system_bus_socket: No such file or directory
+[pid=19725][err] [0904/195408.153186:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Failed to connect to socket /run/dbus/system_bus_socket: No such file or directory
+[pid=19725][err] [0904/195408.165128:WARNING:device/bluetooth/dbus/bluez_dbus_manager.cc:209] Floss manager service not available, cannot set Floss enable/disable.
+[pid=19725][err] [0904/195408.168826:WARNING:sandbox/policy/linux/sandbox_linux.cc:414] InitializeSandbox() called with multiple threads in process gpu-process.
+[pid=19725][err] [0904/195408.365652:INFO:CONSOLE:1] "🚀 Démarrage PASSIO...", source: http://127.0.0.1:8110/app.js?v=a4f9327d3d (1)
+[pid=19725][err] [0904/195408.365931:INFO:CONSOLE:1] "✅ Mode normal - diagnostic panel désactivé", source: http://127.0.0.1:8110/app.js?v=a4f9327d3d (1)
+[pid=19725][err] [0904/195408.365949:INFO:CONSOLE:1] "🎨 INITIALISATION MOODS GLOBALE", source: http://127.0.0.1:8110/app.js?v=a4f9327d3d (1)
+[pid=19725][err] [0904/195408.365957:INFO:CONSOLE:1] "✅ Mode normal - diagnostic buttons désactivés", source: http://127.0.0.1:8110/app.js?v=a4f9327d3d (1)
+[pid=19725][err] [0904/195408.371396:INFO:CONSOLE:1] "Supabase SDK load failed: [object Event]", source: http://127.0.0.1:8110/app.js?v=a4f9327d3d (1)
+[pid=19725][err] [0904/195408.464011:INFO:CONSOLE:1] "✅ MY_UID assigné: u_cmg4xkqo", source: http://127.0.0.1:8110/app.js?v=a4f9327d3d (1)
+[pid=19725][err] [0904/195408.465049:INFO:CONSOLE:1] "✅ Diagnostics fermés", source: http://127.0.0.1:8110/app.js?v=a4f9327d3d (1)
+[pid=19725][err] [0904/195408.566298:INFO:CONSOLE:1] "🎨 MOOD INIT TERMINÉE", source: http://127.0.0.1:8110/app.js?v=a4f9327d3d (1)
+[pid=19725][err] [0904/195408.600164:INFO:CONSOLE:1] "🎨 INIT MOOD BUTTONS - selectedMoods: creation", source: http://127.0.0.1:8110/app.js?v=a4f9327d3d (1)
+[pid=19725][err] [0904/195408.600321:INFO:CONSOLE:1] "  Boutons trouvés: 4", source: http://127.0.0.1:8110/app.js?v=a4f9327d3d (1)
+[pid=19725][err] [0904/195408.600382:INFO:CONSOLE:1] "  ✅ Bouton [creation] activé", source: http://127.0.0.1:8110/app.js?v=a4f9327d3d (1)
+[pid=19725][err] [0904/195408.600414:INFO:CONSOLE:1] "  ⬜ Bouton [learn] désactivé", source: http://127.0.0.1:8110/app.js?v=a4f9327d3d (1)
+[pid=19725][err] [0904/195408.600424:INFO:CONSOLE:1] "  ⬜ Bouton [chill] désactivé", source: http://127.0.0.1:8110/app.js?v=a4f9327d3d (1)
+[pid=19725][err] [0904/195408.600443:INFO:CONSOLE:1] "  ⬜ Bouton [actu] désactivé", source: http://127.0.0.1:8110/app.js?v=a4f9327d3d (1)
+[pid=19725][err] [0904/195408.687502:INFO:CONSOLE:1] "🎨 INIT MOOD BUTTONS - selectedMoods: creation", source: http://127.0.0.1:8110/app.js?v=a4f9327d3d (1)
+[pid=19725][err] [0904/195408.687907:INFO:CONSOLE:1] "  Boutons trouvés: 4", source: http://127.0.0.1:8110/app.js?v=a4f9327d3d (1)
+[pid=19725][err] [0904/195408.687947:INFO:CONSOLE:1] "  ✅ Bouton [creation] activé", source: http://127.0.0.1:8110/app.js?v=a4f9327d3d (1)
+[pid=19725][err] [0904/195408.687969:INFO:CONSOLE:1] "  ⬜ Bouton [learn] désactivé", source: http://127.0.0.1:8110/app.js?v=a4f9327d3d (1)
+[pid=19725][err] [0904/195408.687989:INFO:CONSOLE:1] "  ⬜ Bouton [chill] désactivé", source: http://127.0.0.1:8110/app.js?v=a4f9327d3d (1)
+[pid=19725][err] [0904/195408.687999:INFO:CONSOLE:1] "  ⬜ Bouton [actu] désactivé", source: http://127.0.0.1:8110/app.js?v=a4f9327d3d (1)
+[pid=19725][err] [0904/195408.966402:INFO:CONSOLE:1] "📱 MY_UID=u_cmg4xkqo", source: http://127.0.0.1:8110/app.js?v=a4f9327d3d (1)
+[pid=19725][err] [0904/195408.966444:INFO:CONSOLE:1] "📱 Appel initApp()", source: http://127.0.0.1:8110/app.js?v=a4f9327d3d (1)
+[pid=19725][err] [0904/195409.015211:INFO:CONSOLE:1] "📥 [INIT] Chargement des posts Supabase", source: http://127.0.0.1:8110/app.js?v=a4f9327d3d (1)
+[pid=19725][err] [0904/195409.015711:INFO:CONSOLE:1] "✅ [INIT] 0 posts chargés", source: http://127.0.0.1:8110/app.js?v=a4f9327d3d (1)
+[pid=19725][err] [0904/195409.017393:INFO:CONSOLE:1] "✅ [INIT] Initialisation Supabase complète", source: http://127.0.0.1:8110/app.js?v=a4f9327d3d (1)
+[pid=19725][err] [0904/195410.017043:INFO:CONSOLE:1] "✅ Activation auto-refresh du feed", source: http://127.0.0.1:8110/app.js?v=a4f9327d3d (1)
+[pid=19725] <gracefully close start>
+[pid=19725][err] [0904/195459.480432:WARNING:content/common/zygote/zygote_communication_linux.cc:303] Error reading message from zygote: Connection reset by peer (104)
+[pid=19725][err] [0904/195459.490900:ERROR:content/common/zygote/zygote_communication_linux.cc:293] Failed to send GetTerminationStatus message to zygote
+[pid=19725][err] [0904/195459.490918:WARNING:content/common/zygote/zygote_communication_linux.cc:305] Socket closed prematurely.
+cpu×4 run 1 ERREUR browser.newContext: Target page, context or browser has been closed
+cpu×4 run 2 ERREUR browser.newContext: Target page, context or browser has been closed
+cpu×4 run 3 ERREUR browser.newContext: Target page, context or browser has been closed
+{
+  "cpu_x1": {
+    "n": 0,
+    "appReady_ms": null,
+    "boot_heapUsedMB": null,
+    "boot_nodes": null,
+    "boot_listeners": null,
+    "passions_fetch_ms": null,
+    "passions_parse_ms": null,
+    "passions_transfer_bytes": null,
+    "passions_chercher_guitare_ms": null,
+    "passions_chercher_aquascaping_ms": null,
+    "passions_taille": null,
+    "conv_open_ms": null,
+    "conv_bulles_rendues": null,
+    "conv_page2_ms": null,
+    "conv_all_ms": null,
+    "conv_bulles_all": null,
+    "conv_thread_nodes_all": null,
+    "feed500_render_to_frame_ms": null,
+    "feed500_cards": null,
+    "feed500_heapUsedMB": null,
+    "feed500_heap_apres_gc_MB": null,
+    "feed500_nodes": null,
+    "feed500_listeners": null
+  },
+  "cpu_x4": {
+    "n": 0,
+    "appReady_ms": null,
+    "boot_heapUsedMB": null,
+    "boot_nodes": null,
+    "boot_listeners": null,
+    "passions_fetch_ms": null,
+    "passions_parse_ms": null,
+    "passions_transfer_bytes": null,
+    "passions_chercher_guitare_ms": null,
+    "passions_chercher_aquascaping_ms": null,
+    "passions_taille": null,
+    "conv_open_ms": null,
+    "conv_bulles_rendues": null,
+    "conv_page2_ms": null,
+    "conv_all_ms": null,
+    "conv_bulles_all": null,
+    "conv_thread_nodes_all": null,
+    "feed500_render_to_frame_ms": null,
+    "feed500_cards": null,
+    "feed500_heapUsedMB": null,
+    "feed500_heap_apres_gc_MB": null,
+    "feed500_nodes": null,
+    "feed500_listeners": null
+  }
+}

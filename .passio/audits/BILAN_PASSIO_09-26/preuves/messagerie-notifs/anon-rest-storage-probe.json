@@ -1,0 +1,55 @@
+[
+  {
+    "test": "anon GET conv_messages",
+    "status": 403,
+    "ct": "text/plain",
+    "len": 119,
+    "rows": "non-json:Host not in allowlist: njkiyoklssvefstljemx.supabase.co. Add"
+  },
+  {
+    "test": "anon GET conversations",
+    "status": 403,
+    "ct": "text/plain",
+    "len": 119,
+    "rows": "non-json:Host not in allowlist: njkiyoklssvefstljemx.supabase.co. Add"
+  },
+  {
+    "test": "anon GET conv_members",
+    "status": 403,
+    "ct": "text/plain",
+    "len": 119,
+    "rows": "non-json:Host not in allowlist: njkiyoklssvefstljemx.supabase.co. Add"
+  },
+  {
+    "test": "anon GET conv_reads",
+    "status": 403,
+    "ct": "text/plain",
+    "len": 119,
+    "rows": "non-json:Host not in allowlist: njkiyoklssvefstljemx.supabase.co. Add"
+  },
+  {
+    "test": "anon GET notifications",
+    "status": 403,
+    "ct": "text/plain",
+    "len": 119,
+    "rows": "non-json:Host not in allowlist: njkiyoklssvefstljemx.supabase.co. Add"
+  },
+  {
+    "test": "anon GET push_subscriptions",
+    "status": 403,
+    "ct": "text/plain",
+    "len": 119,
+    "rows": "non-json:Host not in allowlist: njkiyoklssvefstljemx.supabase.co. Add"
+  },
+  {
+    "test": "anon POST storage list attachments",
+    "status": 403,
+    "ct": "text/plain",
+    "len": 119,
+    "rows": "non-json:Host not in allowlist: njkiyoklssvefstljemx.supabase.co. Add"
+  },
+  {
+    "test": "list parse",
+    "error": "Unexpected token 'H', \"Host not i\"... is not valid JSON"
+  }
+]

@@ -8,6 +8,7 @@ Audits fondateurs du plan de contrôle. Chaque audit est **daté** et ancré dan
 | Sécurité | [`SECURITY_AUDIT.md`](SECURITY_AUDIT.md) | 2026-08-08 |
 | Performance | [`PERFORMANCE_AUDIT.md`](PERFORMANCE_AUDIT.md) | 2026-08-08 |
 | Système d'agents/skills | via [`../AGENTS_REGISTRY.md`](../AGENTS_REGISTRY.md) + [`../SKILLS_REGISTRY.md`](../SKILLS_REGISTRY.md) | 2026-08-08 |
+| **Bilan de commercialisation 09/26** (Fable 5.1, 16 domaines, relecture adversariale) | [`BILAN_PASSIO_09-26/`](BILAN_PASSIO_09-26/00-MANIFESTE.md) | 2026-09-04 |
 
 ## Audits historiques (docs/)
 Le dépôt contient des audits antérieurs riches : `docs/AUDIT_EXECUTIVE_SUMMARY.md`, `docs/AUDIT_COMPLET_BUGS.md`, `docs/AUDIT_FINAL_10_POINTS.md`, `docs/CONTROLE_16_MISSIONS.md`. `.passio/audits/` **pointe** vers eux, ne les recopie pas.

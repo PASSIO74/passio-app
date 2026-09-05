@@ -1,0 +1,52 @@
+{
+  "etat_apres_boot": {
+    "MY_UID": "22222222-2222-4222-8222-222222222222",
+    "supaReal": true,
+    "onLine": true,
+    "outbox": "[]",
+    "flushDefini": "function"
+  },
+  "inserts_captes_au_boot": 1,
+  "inserts_apres_flush_explicite": [
+    {
+      "url": "/rest/v1/conv_messages",
+      "body": "{\"id\":\"msg_prive_de_A\",\"conv_id\":\"conv_A_B\",\"from_id\":\"22222222-2222-4222-8222-222222222222\",\"content\":\"message privé écrit par A\",\"created_at\":\"2026-09-04T20:43:19.329Z\"}"
+    }
+  ],
+  "requetes_supabase": [
+    "GET /rest/v1/passions",
+    "GET /rest/v1/user_state?user_id=eq.22222222-2222-4222-8222-222222222222",
+    "POST /rest/v1/user_state",
+    "GET /rest/v1/profiles?id=eq.22222222-2222-4222-8222-222222222222",
+    "POST /rest/v1/user_state",
+    "GET /rest/v1/user_state?user_id=eq.22222222-2222-4222-8222-222222222222",
+    "GET /rest/v1/profiles?id=eq.22222222-2222-4222-8222-222222222222",
+    "POST /rest/v1/profiles",
+    "GET /rest/v1/posts",
+    "GET /rest/v1/conv_members?user_id=eq.22222222-2222-4222-8222-222222222222",
+    "GET /rest/v1/user_state?user_id=eq.22222222-2222-4222-8222-222222222222",
+    "POST /rest/v1/user_state",
+    "GET /rest/v1/profiles?id=eq.22222222-2222-4222-8222-222222222222",
+    "GET /rest/v1/posts",
+    "GET /rest/v1/conv_members?user_id=eq.22222222-2222-4222-8222-222222222222",
+    "POST /rest/v1/conv_messages",
+    "GET /rest/v1/stories",
+    "GET /rest/v1/events",
+    "GET /rest/v1/notifications?user_id=eq.22222222-2222-4222-8222-222222222222",
+    "GET /rest/v1/video_lives?status=eq.live",
+    "GET /rest/v1/event_attendees?user_id=eq.22222222-2222-4222-8222-222222222222",
+    "GET /rest/v1/blocks?blocker_id=eq.22222222-2222-4222-8222-222222222222",
+    "GET /rest/v1/story_views?user_id=eq.22222222-2222-4222-8222-222222222222",
+    "GET /rest/v1/follows?follower_id=eq.22222222-2222-4222-8222-222222222222",
+    "GET /rest/v1/stories",
+    "GET /rest/v1/events",
+    "GET /rest/v1/notifications?user_id=eq.22222222-2222-4222-8222-222222222222",
+    "GET /rest/v1/video_lives?status=eq.live",
+    "GET /rest/v1/event_attendees?user_id=eq.22222222-2222-4222-8222-222222222222",
+    "GET /rest/v1/blocks?blocker_id=eq.22222222-2222-4222-8222-222222222222",
+    "GET /rest/v1/story_views?user_id=eq.22222222-2222-4222-8222-222222222222",
+    "GET /rest/v1/follows?follower_id=eq.22222222-2222-4222-8222-222222222222",
+    "POST /rest/v1/user_state",
+    "POST /rest/v1/user_state"
+  ]
+}

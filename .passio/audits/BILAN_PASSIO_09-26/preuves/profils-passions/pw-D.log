@@ -1,0 +1,79 @@
+
+Running 72 tests using 1 worker
+
+[1A[2K[1/72] [local] › tests/e2e/hotfix-profil-passion-custom.spec.js:121:1 › compte custom-only : la ligne profiles est CRÉÉE, avec passion_id null
+[1A[2K[2/72] [local] › tests/e2e/hotfix-profil-passion-custom.spec.js:136:1 › AUCUN profil résoluble : la ligne est créée quand même
+[1A[2K[3/72] [local] › tests/e2e/hotfix-profil-passion-custom.spec.js:162:1 › le username explicite du compte est CONSERVÉ
+[1A[2K[4/72] [local] › tests/e2e/hotfix-profil-passion-custom.spec.js:169:1 › sans username résoluble : la ligne est créée avec « Profil »
+[1A[2K[5/72] [local] › tests/e2e/hotfix-profil-passion-custom.spec.js:179:1 › aucune donnée d'authentification privée n'est utilisée
+[1A[2K[6/72] [local] › tests/e2e/hotfix-profil-passion-custom.spec.js:197:1 › une passion CANONIQUE reste publiée telle quelle
+[1A[2K[7/72] [local] › tests/e2e/hotfix-profil-passion-custom.spec.js:209:1 › passion canonique + passion perso : la canonique est choisie, rien n'est perdu
+[1A[2K[8/72] [local] › tests/e2e/hotfix-profil-passion-custom.spec.js:242:1 › `ensure` ne réécrit AUCUN champ d'une ligne existante
+[1A[2K[9/72] [local] › tests/e2e/hotfix-profil-passion-custom.spec.js:267:1 › sans profil résoluble : les replis NEUTRES, jamais une passion
+[1A[2K[10/72] [local] › tests/e2e/hotfix-profil-passion-custom.spec.js:281:1 › changer de passion ne réécrit AUCUN champ d'identité publique
+[1A[2K[11/72] [local] › tests/e2e/hotfix-profil-passion-custom.spec.js:326:1 › aucune passion locale n'est supprimée ni transformée par le hotfix
+[1A[2K[12/72] [local] › tests/e2e/hotfix-profil-passion-custom.spec.js:335:1 › la création de passion personnalisée est indisponible, et le dit
+[1A[2K[13/72] [local] › tests/e2e/hotfix-profil-passion-custom.spec.js:350:1 › l'outil de diagnostic utilise une passion canonique
+[1A[2K[14/72] [local] › tests/e2e/passion-personnalisee-fk.spec.js:73:1 › ① ② ③ intacts (rien n'est supprimé), ④ coupé : le Studio ne la propose plus
+[1A[2K[15/72] [local] › tests/e2e/passion-personnalisee-fk.spec.js:107:1 › ⑤ coupé : la publication ne PART PLUS, et rien n'est écrit en local
+[1A[2K[16/72] [local] › tests/e2e/passion-personnalisee-fk.spec.js:134:1 › le message dit la VRAIE cause, et oriente vers le catalogue
+[1A[2K[17/72] [local] › tests/e2e/passion-personnalisee-fk.spec.js:169:1 › le profil PUBLIC part quand même : la passion invalide est normalisée en null
+[1A[2K[18/72] [local] › tests/e2e/profil-identite-serveur-autoritaire.spec.js:117:1 › ① ligne absente + état local vide : la ligne est créée, et PRIVÉE
+[1A[2K[19/72] [local] › tests/e2e/profil-identite-serveur-autoritaire.spec.js:132:1 › ② ligne existante + état local vide : le username n'est PAS écrasé
+[1A[2K[20/72] [local] › tests/e2e/profil-identite-serveur-autoritaire.spec.js:148:1 › ③ ligne existante PRIVÉE + état local vide : elle reste privée
+[1A[2K[21/72] [local] › tests/e2e/profil-identite-serveur-autoritaire.spec.js:159:1 › ④ ligne existante PUBLIQUE + état local vide : elle reste publique
+[1A[2K[22/72] [local] › tests/e2e/profil-identite-serveur-autoritaire.spec.js:173:1 › ⑤ écriture concurrente : la ligne arrivée entre-temps n'est pas écrasée
+[1A[2K[23/72] [local] › tests/e2e/profil-identite-serveur-autoritaire.spec.js:204:1 › ⑥ choix public explicitement PROUVÉ + ligne absente : créée publique
+[1A[2K[24/72] [local] › tests/e2e/profil-identite-serveur-autoritaire.spec.js:215:1 › ⑦ simple `false` local, SANS preuve de choix : créée PRIVÉE
+[1A[2K[25/72] [local] › tests/e2e/profil-identite-serveur-autoritaire.spec.js:226:1 › ⑦ bis — `undefined` ne doit jamais devenir `false` en silence
+[1A[2K[26/72] [local] › tests/e2e/profil-identite-serveur-autoritaire.spec.js:240:1 › ⑧ profil local perso résoluble : chemin NORMAL, passion normalisée en null
+[1A[2K[27/72] [local] › tests/e2e/profil-identite-serveur-autoritaire.spec.js:265:1 › ⑨ un 23505 sur une AUTRE contrainte n'est PAS « la ligne existe »
+[1A[2K[28/72] [local] › tests/e2e/profil-trois-autorites.spec.js:85:1 › ① dix envois dans la même session : UN SEUL ensure réseau
+[1A[2K[29/72] [local] › tests/e2e/profil-trois-autorites.spec.js:97:1 › ② deux ensure SIMULTANÉS : un seul insert
+[1A[2K[30/72] [local] › tests/e2e/profil-trois-autorites.spec.js:109:1 › ③ premier ensure en erreur RÉSEAU : le second réessaie
+[1A[2K[31/72] [local] › tests/e2e/profil-trois-autorites.spec.js:125:1 › ④ changement d'UID : un nouvel ensure part
+[1A[2K[32/72] [local] › tests/e2e/profil-trois-autorites.spec.js:144:1 › ⑤ onboarding SANS contrôle de confidentialité : le profil reste privé
+[1A[2K[33/72] [local] › tests/e2e/profil-trois-autorites.spec.js:160:1 › ⑤ bis — `is_private` soumis SANS preuve de choix est refusé
+[1A[2K[34/72] [local] › tests/e2e/profil-trois-autorites.spec.js:175:1 › ⑤ ter — avec la preuve, le choix public est respecté
+[1A[2K[35/72] [local] › tests/e2e/profil-trois-autorites.spec.js:186:1 › ⑥ sauvegarde de la bio seule : la confidentialité ne bouge pas
+[1A[2K[36/72] [local] › tests/e2e/profil-trois-autorites.spec.js:199:1 › ⑦ changement de photo : seul `avatar_url` change
+[1A[2K[37/72] [local] › tests/e2e/profil-trois-autorites.spec.js:212:1 › ⑧ changement de passion : AUCUN champ d'identité ne change
+[1A[2K[38/72] [local] › tests/e2e/profil-trois-autorites.spec.js:234:1 › ⑨ LE CAS CRITIQUE — profil serveur privé + passions locales + `general` incomplet
+[1A[2K[39/72] [local] › tests/e2e/profil-trois-autorites.spec.js:255:1 › ⑩ liste blanche : un champ inconnu n'est jamais écrit
+[1A[2K[40/72] [local] › tests/e2e/ui-v8-passions.spec.js:96:3 › UI-8 — un profil personnel, plusieurs passions › le profil personnel garde tout
+[1A[2K[41/72] [local] › tests/e2e/ui-v8-passions.spec.js:123:3 › UI-8 — un profil personnel, plusieurs passions › le choix de la passion d'écriture vit dans le STUDIO, et il persiste
+[1A[2K[42/72] [local] › tests/e2e/ui-v8-passions.spec.js:144:3 › UI-8 — un profil personnel, plusieurs passions › les cartes ne portent plus la multisélection ni « Réinitialiser »
+[1A[2K[43/72] [local] › tests/e2e/ui-v8-passions.spec.js:183:3 › UI-8 — un profil personnel, plusieurs passions › changer de passion dans le Studio ne distingue AUCUNE carte
+[1A[2K[44/72] [local] › tests/e2e/ui-v8-passions.spec.js:209:3 › UI-8 — un profil personnel, plusieurs passions › le reste de la carte ouvre l'édition existante de la passion
+[1A[2K[45/72] [local] › tests/e2e/ui-v8-passions.spec.js:222:3 › UI-8 — un profil personnel, plusieurs passions › « Publications » : filtre MULTI-SÉLECTION, rien de coché = tout
+[1A[2K[46/72] [local] › tests/e2e/ui-v8-passions.spec.js:268:3 › UI-8 — un profil personnel, plusieurs passions › une publication qui n'a QU'un profileId reste atteignable
+[1A[2K[47/72] [local] › tests/e2e/ui-v8-passions.spec.js:285:3 › UI-8 — un profil personnel, plusieurs passions › migration : une seule ancienne valeur valide est reprise
+[1A[2K[48/72] [local] › tests/e2e/ui-v8-passions.spec.js:300:3 › UI-8 — un profil personnel, plusieurs passions › migration : zéro ou plusieurs anciennes valeurs → « Toutes »
+[1A[2K[49/72] [local] › tests/e2e/ui-v8-passions.spec.js:316:3 › UI-8 — un profil personnel, plusieurs passions › « Activités » porte le même filtre, servi par les événements existants
+[1A[2K[50/72] [local] › tests/e2e/ui-v8-passions.spec.js:344:3 › UI-8 — un profil personnel, plusieurs passions › le Studio annonce la passion de publication et prend l'active par défaut
+[1A[2K[51/72] [local] › tests/e2e/ui-v8-passions.spec.js:377:3 › UI-8 — un profil personnel, plusieurs passions › le Studio ne propose pas de publier dans une passion archivée
+[1A[2K[52/72] [local] › tests/e2e/ui-v8-passions.spec.js:391:3 › UI-8 — un profil personnel, plusieurs passions › archiver ne supprime AUCUN contenu, et la restauration remet tout
+[1A[2K[53/72] [local] › tests/e2e/ui-v8-passions.spec.js:437:3 › UI-8 — un profil personnel, plusieurs passions › archiver la passion du Studio est possible : elle bascule d'elle-même
+[1A[2K[54/72] [local] › tests/e2e/ui-v8-passions.spec.js:458:3 › UI-8 — un profil personnel, plusieurs passions › archiver la DERNIÈRE passion est refusé
+[1A[2K[55/72] [local] › tests/e2e/ui-v8-passions.spec.js:478:3 › UI-8 — un profil personnel, plusieurs passions › le menu d'une passion propose l'archivage, plus la suppression
+[1A[2K[56/72] [local] › tests/e2e/ui-v8-passions.spec.js:494:3 › UI-8 — un profil personnel, plusieurs passions › la modale d'édition ne propose plus la suppression destructrice
+[1A[2K[57/72] [local] › tests/e2e/ui-v8-passions.spec.js:508:3 › UI-8 — un profil personnel, plusieurs passions › archiver décroche le filtre du Fil, qui serait resté sans commande
+[1A[2K[58/72] [local] › tests/e2e/ui-v8-passions.spec.js:536:3 › UI-8 — un profil personnel, plusieurs passions › une passion archivée est publiée MARQUÉE, et retirée à l'affichage
+[1A[2K[59/72] [local] › tests/e2e/ui-v8-passions.spec.js:564:3 › UI-8 — un profil personnel, plusieurs passions › recréer une passion archivée la RESTAURE au lieu d'en faire un doublon
+[1A[2K[60/72] [local] › tests/e2e/ui-v8-passions.spec.js:595:3 › UI-8 — un profil personnel, plusieurs passions › un message garde le pseudo principal comme identité
+[1A[2K[61/72] [local] › tests/e2e/ui-v8-passions.spec.js:616:3 › UI-8 — un profil personnel, plusieurs passions › kill switch : l'écran historique revient, multisélection comprise
+[1A[2K[62/72] [local] › tests/e2e/ui-v8-passions.spec.js:632:3 › UI-8 — un profil personnel, plusieurs passions › kill switch : le composer et les Messages retrouvent leurs mots
+[1A[2K[63/72] [local] › tests/e2e/ui-v8-passions.spec.js:652:3 › UI-8 — un profil personnel, plusieurs passions › quota : archiver puis restaurer ne réclame jamais de paiement
+[1A[2K[64/72] [local] › tests/e2e/ui-v8-passions.spec.js:666:3 › UI-8 — un profil personnel, plusieurs passions › kill switch par window : le menu redonne la suppression
+[1A[2K[65/72] [local] › tests/e2e/ui-v8-passions.spec.js:678:5 › UI-8 — un profil personnel, plusieurs passions › 320 px : aucun débordement horizontal
+[1A[2K[66/72] [local] › tests/e2e/ui-v8-passions.spec.js:678:5 › UI-8 — un profil personnel, plusieurs passions › 390 px : aucun débordement horizontal
+[1A[2K[67/72] [local] › tests/e2e/ui-v8-passions.spec.js:678:5 › UI-8 — un profil personnel, plusieurs passions › 430 px : aucun débordement horizontal
+[1A[2K[68/72] [local] › tests/e2e/user-passions-miroir.spec.js:82:3 › miroir user_passions › la table absente désarme le miroir, une seule fois, sans bruit
+[1A[2K[69/72] [local] › tests/e2e/user-passions-miroir.spec.js:104:3 › miroir user_passions › un identifiant hors référentiel serveur n'est jamais envoyé
+[1A[2K[70/72] [local] › tests/e2e/user-passions-miroir.spec.js:124:3 › miroir user_passions › l'archivage voyage, et la position aussi
+[1A[2K[71/72] [local] › tests/e2e/user-passions-miroir.spec.js:145:3 › miroir user_passions › ce qui a disparu localement est retiré du miroir
+[1A[2K[72/72] [local] › tests/e2e/user-passions-miroir.spec.js:167:3 › miroir user_passions › aucune écriture ne part sans compte authentifié
+[1A[2K  Slow test file: [local] › tests/e2e/ui-v8-passions.spec.js (7.7m)
+  Consider running tests from slow files in parallel. See: https://playwright.dev/docs/test-parallel
+  72 passed (19.3m)
+EXIT=0

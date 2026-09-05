@@ -1,0 +1,60 @@
+Running 7 tests using 1 worker
+[1A[2K[1/7] [local] › tests/e2e/adr-009-retrait-economie.spec.js:78:3 › ADR-009 — retrait de l'économie interne › aucune destination Wallet, aucun solde, aucun score public
+[1A[2K  1) [local] › tests/e2e/adr-009-retrait-economie.spec.js:78:3 › ADR-009 — retrait de l'économie interne › aucune destination Wallet, aucun solde, aucun score public 
+    Error: browserType.launch: Executable doesn't exist at /opt/pw-browsers/chromium_headless_shell-1223/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+    Error Context: test-results/adr-009-retrait-economie-A-0a4c3-un-solde-aucun-score-public-local/error-context.md
+[1A[2K[2/7] [local] › tests/e2e/adr-009-retrait-economie.spec.js:94:3 › ADR-009 — retrait de l'économie interne › un ancien deep link #wallet ne laisse jamais l'app sans écran actif
+[1A[2K  2) [local] › tests/e2e/adr-009-retrait-economie.spec.js:94:3 › ADR-009 — retrait de l'économie interne › un ancien deep link #wallet ne laisse jamais l'app sans écran actif 
+    Error: browserType.launch: Executable doesn't exist at /opt/pw-browsers/chromium_headless_shell-1223/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+    Error Context: test-results/adr-009-retrait-economie-A-3bd57-mais-l-app-sans-écran-actif-local/error-context.md
+[1A[2K[3/7] [local] › tests/e2e/adr-009-retrait-economie.spec.js:106:3 › ADR-009 — retrait de l'économie interne › le moteur de récompenses n'existe plus, sous aucun de ses noms
+[1A[2K  3) [local] › tests/e2e/adr-009-retrait-economie.spec.js:106:3 › ADR-009 — retrait de l'économie interne › le moteur de récompenses n'existe plus, sous aucun de ses noms 
+    Error: browserType.launch: Executable doesn't exist at /opt/pw-browsers/chromium_headless_shell-1223/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+    Error Context: test-results/adr-009-retrait-economie-A-77447-plus-sous-aucun-de-ses-noms-local/error-context.md
+[1A[2K[4/7] [local] › tests/e2e/adr-009-retrait-economie.spec.js:117:3 › ADR-009 — retrait de l'économie interne › publier, commenter et aimer fonctionnent sans récompense ni erreur
+[1A[2K  4) [local] › tests/e2e/adr-009-retrait-economie.spec.js:117:3 › ADR-009 — retrait de l'économie interne › publier, commenter et aimer fonctionnent sans récompense ni erreur 
+    Error: browserType.launch: Executable doesn't exist at /opt/pw-browsers/chromium_headless_shell-1223/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+    Error Context: test-results/adr-009-retrait-economie-A-aeed4-t-sans-récompense-ni-erreur-local/error-context.md
+[1A[2K[5/7] [local] › tests/e2e/adr-009-retrait-economie.spec.js:140:3 › ADR-009 — retrait de l'économie interne › créer un 4ᵉ profil est libre : aucun paywall, aucun coût
+[1A[2K  5) [local] › tests/e2e/adr-009-retrait-economie.spec.js:140:3 › ADR-009 — retrait de l'économie interne › créer un 4ᵉ profil est libre : aucun paywall, aucun coût 
+    Error: browserType.launch: Executable doesn't exist at /opt/pw-browsers/chromium_headless_shell-1223/chrome-headless-shell-linux64/chrome-headless-shell
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝

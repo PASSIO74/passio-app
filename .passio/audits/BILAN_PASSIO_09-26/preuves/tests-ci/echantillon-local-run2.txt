@@ -1,0 +1,55 @@
+[1A[2K[2m[WebServer] [22m(node:18273) [DEP0066] DeprecationWarning: OutgoingMessage.prototype._headers is deprecated
+[2m[WebServer] [22m(Use `node --trace-deprecation ...` to show where the warning was created)
+
+
+Running 32 tests using 1 worker
+
+[1A[2K[1/32] [local] › tests/e2e/adr-009-retrait-economie.spec.js:78:3 › ADR-009 — retrait de l'économie interne › aucune destination Wallet, aucun solde, aucun score public
+[1A[2K[2/32] [local] › tests/e2e/adr-009-retrait-economie.spec.js:94:3 › ADR-009 — retrait de l'économie interne › un ancien deep link #wallet ne laisse jamais l'app sans écran actif
+[1A[2K[3/32] [local] › tests/e2e/adr-009-retrait-economie.spec.js:106:3 › ADR-009 — retrait de l'économie interne › le moteur de récompenses n'existe plus, sous aucun de ses noms
+[1A[2K[4/32] [local] › tests/e2e/adr-009-retrait-economie.spec.js:117:3 › ADR-009 — retrait de l'économie interne › publier, commenter et aimer fonctionnent sans récompense ni erreur
+[1A[2K[5/32] [local] › tests/e2e/adr-009-retrait-economie.spec.js:140:3 › ADR-009 — retrait de l'économie interne › créer un 4ᵉ profil est libre : aucun paywall, aucun coût
+[1A[2K[6/32] [local] › tests/e2e/adr-009-retrait-economie.spec.js:186:3 › ADR-009 — retrait de l'économie interne › un état d'avant le retrait charge sans lever et sans rien réafficher
+[1A[2K[7/32] [local] › tests/e2e/adr-009-retrait-economie.spec.js:219:3 › ADR-009 — retrait de l'économie interne › la synchronisation ne re-propage pas les clés d'un ancien client
+[1A[2K[8/32] [local] › tests/e2e/adr-010-vocabulaire.spec.js:64:1 › aucune formulation contraire à ADR-010 n'est servie au navigateur
+[1A[2K[9/32] [local] › tests/e2e/adr-010-vocabulaire.spec.js:77:1 › le tour d'accueil enseigne le bon modèle
+[1A[2K[10/32] [local] › tests/e2e/adr-010-vocabulaire.spec.js:87:1 › la promesse produit est affichée, et de façon permanente
+[1A[2K[11/32] [local] › tests/e2e/dist-build.spec.js:29:3 › build prod (dist) — app.js externalisé derrière le gate › page verrouillée : gate peint, aucun JS applicatif exécuté
+[1A[2K[local] › tests/e2e/dist-build.spec.js:29:3 › build prod (dist) — app.js externalisé derrière le gate › page verrouillée : gate peint, aucun JS applicatif exécuté
+
+
+[1A[2K[12/32] [local] › tests/e2e/dist-build.spec.js:36:3 › build prod (dist) — app.js externalisé derrière le gate › saisie du code → app.js injecté → landing
+[1A[2K[13/32] [local] › tests/e2e/dist-build.spec.js:44:3 › build prod (dist) — app.js externalisé derrière le gate › session déjà déverrouillée (jeton) : boot direct sans étape gate
+[1A[2K[14/32] [local] › tests/e2e/latence-percue.spec.js:52:3 › Latence perçue › chaque clic transporte son délai jusqu'à la première image peinte
+[1A[2K[local] › tests/e2e/latence-percue.spec.js:52:3 › Latence perçue › chaque clic transporte son délai jusqu'à la première image peinte
+[latence] 9 ligne(s) envoyée(s), dont 1 clic(s)
+
+[1A[2K[latence] Se connecter → 23 ms
+
+[1A[2K[15/32] [local] › tests/e2e/latence-percue.spec.js:92:3 › Latence perçue › un clic reste transmis quand aucune image n'est jamais peinte
+[1A[2K[local] › tests/e2e/latence-percue.spec.js:92:3 › Latence perçue › un clic reste transmis quand aucune image n'est jamais peinte
+[latence] sans peinture : 1 clic(s) transmis
+
+[1A[2K[16/32] [local] › tests/e2e/projets-playwright.spec.js:85:1 › la partition prod/local est déclarée dans playwright.config.js
+[1A[2K[17/32] [local] › tests/e2e/projets-playwright.spec.js:93:1 › toute suite qui écrit en production est déclarée dans SUITES_PROD
+[1A[2K[18/32] [local] › tests/e2e/projets-playwright.spec.js:115:1 › aucune suite déclarée prod n'a disparu du dossier
+[1A[2K[19/32] [local] › tests/e2e/release-integrity.spec.js:9:3 › RELEASE-INTEGRITY — contrat de release et transition d'identité › release.json, HTML et service worker désignent exactement le même build
+[1A[2K[20/32] [local] › tests/e2e/release-integrity.spec.js:33:3 › RELEASE-INTEGRITY — contrat de release et transition d'identité › le bundle différé redirige un ancien lien Carnets de voyage
+[1A[2K[21/32] [local] › tests/e2e/release-integrity.spec.js:60:5 › RELEASE-INTEGRITY — contrat de release et transition d'identité › sans service worker › un onglet N détecte N+1 sans forcer le rechargement
+[1A[2K[22/32] [local] › tests/e2e/release-integrity.spec.js:85:3 › RELEASE-INTEGRITY — contrat de release et transition d'identité › le drain attend les POST telemetry_events avant de rendre la main
+[1A[2K[23/32] [local] › tests/e2e/smoke.spec.js:26:1 › la page charge avec le bon titre
+[1A[2K[24/32] [local] › tests/e2e/smoke.spec.js:31:1 › la landing s'affiche (logo, badge beta, CTA)
+[1A[2K[25/32] [local] › tests/e2e/smoke.spec.js:38:1 › le bouton Se connecter ouvre le formulaire d'authentification
+[1A[2K[26/32] [local] › tests/e2e/smoke.spec.js:45:1 › aucune erreur JavaScript fatale au démarrage
+[1A[2K[27/32] [local] › tests/e2e/smoke.spec.js:54:1 › le manifest PWA et le service worker sont servis
+[1A[2K[28/32] [local] › tests/e2e/version-skew.spec.js:37:3 › Version skew — cohérence des versions servies › le hash de chaque asset vient RÉELLEMENT de son contenu
+[1A[2K[local] › tests/e2e/version-skew.spec.js:37:3 › Version skew — cohérence des versions servies › le hash de chaque asset vient RÉELLEMENT de son contenu
+
+
+[1A[2K[29/32] [local] › tests/e2e/version-skew.spec.js:57:3 › Version skew — cohérence des versions servies › deux contenus différents produisent deux URL différentes
+[1A[2K[30/32] [local] › tests/e2e/version-skew.spec.js:67:3 › Version skew — cohérence des versions servies › index.html n'est jamais mis en cache, les assets hachés le sont
+[1A[2K[31/32] [local] › tests/e2e/version-skew.spec.js:85:3 › Version skew — cohérence des versions servies › le service worker sert index.html par le RÉSEAU d'abord
+[1A[2K[32/32] [local] › tests/e2e/version-skew.spec.js:94:3 › Version skew — cohérence des versions servies › le cache du service worker change à chaque build
+[1A[2K  4 skipped
+  28 passed (4.6m)
+EXIT=0

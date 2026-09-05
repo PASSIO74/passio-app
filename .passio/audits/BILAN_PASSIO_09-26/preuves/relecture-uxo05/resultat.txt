@@ -1,0 +1,45 @@
+RESULT {
+ "avant": {
+  "landing": false,
+  "onboarded": true
+ },
+ "apres": {
+  "landing": true,
+  "boutonsVisibles": [
+   "Se connecter",
+   "Créer un compte",
+   "Installer l'application"
+  ],
+  "boutonsTous": [
+   "exitLandingAsAuth('signin') | Se connecter",
+   "exitLandingAsAuth('signup') | Créer un compte",
+   "pwaInstall() | Installer l'application"
+  ]
+ },
+ "histAvantPitch": 2,
+ "back": {
+  "landing": true,
+  "url": "http://127.0.0.1:8120/index.html"
+ },
+ "popstateSynth": true,
+ "escape": true,
+ "closeOverlay": {
+  "rc": false,
+  "landing": true
+ },
+ "seConnecter": {
+  "landing": false,
+  "onboarding": true,
+  "onbStep": "splash",
+  "authFormVisible": true,
+  "onboardedEncore": true,
+  "myUid": "11111111-2222-4333-8444-555555555555"
+ },
+ "errors": {
+  "js": [],
+  "console": [],
+  "network": [
+  ],
+  "page": []
+ }
+}

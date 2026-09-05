@@ -1,0 +1,563 @@
+{
+ "domaine": "supabase-isolation (points 14–15 : tables, RLS, Storage, Realtime, fonctions, clés, permissions, isolation des comptes, staging vs prod)",
+ "resume": "Audit en lecture seule du projet Supabase njkiyoklssvefstljemx (PostgreSQL 17.6) sur le SHA c8cb8e99, via le connecteur supabase-passio-readonly (execute_sql, get_advisors, list_migrations) et l'inspection du dépôt. Dump complet des 125 policies (119 public + 4 storage + 2 realtime, toutes PERMISSIVE) déposé dans policies.json et analysé table par table ; prosrc des 20 fonctions maison, 12 triggers, grants, publication realtime, buckets et 25 chemins d'objets (masqués) relevés.\nIsolation par requête : SET LOCAL ROLE anon/authenticated est REFUSÉ au rôle du connecteur (ERROR 42501) et l'accès HTTPS à supabase.co est bloqué par le proxy (CONNECT 403) → la preuve « moteur RLS » n'a pas pu être exécutée ici ; elle a été remplacée par une ÉMULATION fidèle (quals exacts des policies et prosrc des helpers inlinés, auth.uid() = NULL puis uuid inexistant) sur les 39 tables et storage.objects, et par la lecture de authz-critical.spec.js (12 blocs d'invariants, run CI 33861671142 vert).\nVerdict côté base : isolation des comptes CONFORME sur le noyau (conv_messages, conv_members, conversations, notifications, user_state, blocks, reports, push_subscriptions, story_views, user_safety, telemetry, analytics, client_errors : 0 ligne pour anon et pour un tiers ; 0 ligne UPDATE/DELETE touchable par un tiers) mais NON PROUVÉE au sens strict ici (émulation, pas exécution) et DÉFAILLANTE sur trois surfaces : (1) conv_reads en lecture publique (34 accusés de lecture de 19 conversations privées lisibles par anon et diffusés en realtime à tous) ; (2) les 12 pièces jointes vocales de conversations privées dans un bucket public LISTABLE avec la seule clé anon (R2 « P0 » ouvert depuis le 2026-08-08) ; (3) la policy UPDATE de conv_messages sans WITH CHECK, qui laisse déplacer un message dans n'importe quelle conversation.\nStaging séparé : NON — un seul project_ref sert le dev local, les previews Netlify de PR, les suites CI à comptes réels (créés puis purgés EN PROD) et la production. Schéma : 4 migrations enregistrées contre 64 fichiers, et SCHEMA_PROD_REFERENCE.sql (photographie du 2026-08-17) est périmé (4 tables absentes, passions 5 → 13 colonnes, 116 policies vs 125) → non reconstructible depuis le dépôt.\nClés : aucune valeur service_role ni JWT de service dans le dépôt ; service_role uniquement en secret GitHub (deploy.yml, sentinelle-distante.yml), dans dashboard/.env (serveur) et dans les Edge Functions, qui vérifient toutes le JWT par auth.getUser(). 18 WARN advisors, 0 ERROR (relevé identique au 2026-09-03).",
+ "controles": [
+  {
+   "id": "C01",
+   "controle": "Dump complet des policies (pg_policies public/storage/realtime) et analyse table par table",
+   "statut": "PROUVÉ",
+   "methode": "requête base",
+   "preuve": "execute_sql pg_policies → 125 policies (public=119, realtime=2, storage=4), toutes PERMISSIVE ; fichier policies.json (avec listes : tables sans SELECT/UPDATE/DELETE, UPDATE sans WITH CHECK ×9, SELECT USING true ×20, doublons ×5)"
+  },
+  {
+   "id": "C02",
+   "controle": "RLS activée sur toutes les tables public + storage.objects + realtime.messages",
+   "statut": "PROUVÉ",
+   "methode": "requête base",
+   "preuve": "pg_class.relrowsecurity = true sur 39/39 tables public, storage.objects, storage.buckets, realtime.messages ; relforcerowsecurity=false partout (attendu)"
+  },
+  {
+   "id": "C03",
+   "controle": "USING (true) sur des données privées",
+   "statut": "DÉFAILLANT",
+   "methode": "requête base",
+   "preuve": "conv_reads.reads_select USING (true) — 34 lignes (conv_id, user_id, last_read_at) de 19 conversations privées ; émulation anon = 34 (attendu 0). Voir SUP-02. Les autres USING true (profiles, events, event_attendees, follows, user_passions, passions, comment_likes, event_comments, event_reactions, video_lives, step_interactions, post_collaborators, cdv_*) sont publics par conception ou données mortes (cdv_*)"
+  },
+  {
+   "id": "C04",
+   "controle": "Absence de policy UPDATE/DELETE = écriture ignorée en silence (0 ligne)",
+   "statut": "DÉFAILLANT",
+   "methode": "inspection code",
+   "preuve": "conversations : aucune policy UPDATE ni DELETE, or js/app-05-config-profil.js:1624 fait conversations.update({description}) et js/app-08-ui-modals-tour.js:4518 conversations.delete() → 0 ligne, erreur avalée par .then(function(){},function(){}) / try-catch (SUP-16). Autres tables sans UPDATE (post_likes, follows, comment_interactions, blocks…) : le client ne fait que delete+insert (grep js/, aucun .update() sur ces tables)"
+  },
+  {
+   "id": "C05",
+   "controle": "Policies d'écriture UPDATE sans WITH CHECK (le USING s'applique à la nouvelle ligne mais les colonnes non citées restent libres)",
+   "statut": "DÉFAILLANT",
+   "methode": "requête base",
+   "preuve": "9 policies UPDATE sans with_check : conv_messages « Update propre » (from_id seul contraint → conv_id libre, SUP-03), events « Update organisateurs » (author_id réassignable par un co-organisateur, SUP-09), post_comments « Update propre » (post_id libre, SUP-09), cdv_lives, conv_reads, notifications, profiles, push_subscriptions, video_lives (sans conséquence : la clé est dans le USING)"
+  },
+  {
+   "id": "C06",
+   "controle": "Colonnes de profiles exposées à anon (e-mail, téléphone, année de naissance, localisation ?)",
+   "statut": "PROUVÉ",
+   "methode": "requête base",
+   "preuve": "information_schema.columns profiles = id, username, emoji, color, passion_id, bio, created_at, avatar_url, cover_url, passions, is_private, rs_links — aucune PII forte. Téléphone/e-mail/majorité vivent dans auth.users (raw_user_meta_data porte la clé phone pour 1 compte) et user_safety (SELECT propre, aucun grant anon) : non exposés par PostgREST"
+  },
+  {
+   "id": "C07",
+   "controle": "follows / event_attendees publics (choix assumé)",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "requête base",
+   "preuve": "Lecture publique USING true sur follows (7 lignes) et event_attendees (17 lignes, y compris checked_in_at, rating, feedback) ; choix écrit dans .passio/context/KNOWN_RISKS.md (remédiation 2026-08-09). event_attendees.feedback/rating publics n'y sont PAS mentionnés"
+  },
+  {
+   "id": "C08",
+   "controle": "reports sans SELECT, telemetry/analytics/client_errors INSERT-only, user_state privé",
+   "statut": "PROUVÉ",
+   "methode": "requête base",
+   "preuve": "policies.json : reports = reports_insert seul ; telemetry_events = telemetry_insert_own (user_id IS NULL OR own) ; analytics_events = analytics_insert_own ; client_errors = INSERT WITH CHECK true ; user_state = 4 policies propres. Émulation anon/tiers = 0 ligne lisible sur chacune"
+  },
+  {
+   "id": "C09",
+   "controle": "notifications : insertion par un tiers (notifications_insert_own_author)",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "requête base",
+   "preuve": "WITH CHECK (from_id = auth.uid()) : l'auteur est contraint, le destinataire user_id, kind, ref_id, content restent libres et aucun trigger rate_limit sur notifications (pg_trigger : 0) → SUP-07. Lecture scellée (user_id = auth.uid()), émulation tiers = 0"
+  },
+  {
+   "id": "C10",
+   "controle": "Preuve d'isolation par requête sous rôle anon (SET LOCAL ROLE anon ; count par table)",
+   "statut": "BLOQUÉ",
+   "methode": "requête base",
+   "preuve": "begin; set local role anon; … → ERROR 42501 permission denied to set role \"anon\" (idem authenticated). Remplacé par l'émulation C12. Il faudrait un rôle de connecteur membre de anon/authenticated, ou une base jetable (docker postgres + tests/sql/socle-prod.sql) avec les policies réelles"
+  },
+  {
+   "id": "C11",
+   "controle": "Preuve d'isolation par API REST anon (clé anon publique, GET count=exact)",
+   "statut": "BLOQUÉ",
+   "methode": "non réalisé",
+   "preuve": "curl https://njkiyoklssvefstljemx.supabase.co/rest/v1/ → « CONNECT tunnel failed, response 403 » (proxy de l'environnement). Le script rest_anon.sh a en outre été refusé par le classificateur de permissions. Il faudrait un poste avec accès réseau à supabase.co"
+  },
+  {
+   "id": "C12",
+   "controle": "ÉMULATION anon et tiers : quals exacts + helpers inlinés, count par table (39 tables + storage.objects)",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "requête base",
+   "preuve": "isolation_par_table.md : anon et tiers (uuid 0000…) → conversations 0/117, conv_members 0/7, conv_messages 0/68, notifications 0/188, user_state 0/84, blocks 0, reports 0/2, push 0/5, story_views 0/7, user_safety 0/2, telemetry 0/111 829, analytics 0/3 855, client_errors 0/16 ; profiles 5, posts 32, events 3, follows 7, passions 1 908 (>0 attendu) ; EXCEPTIONS : conv_reads 34/34 et storage.objects 70/70 (dont 12 attachments)"
+  },
+  {
+   "id": "C13",
+   "controle": "UPDATE/DELETE ciblé sous rôle tiers dans une transaction annulée (update posts … returning id → 0 ligne)",
+   "statut": "BLOQUÉ",
+   "methode": "requête base",
+   "preuve": "begin; set local role authenticated; set local request.jwt.claims=…; update … ; rollback → refusé dès le SET ROLE (42501) ; le connecteur est de plus en transaction_read_only=on (ADR-012). Émulation des USING : posts/profiles/conv_messages/notifications/events/user_state/conv_members/stories/storage → 0 ligne touchable par le tiers. Preuve exécutée réelle : authz-critical.spec.js blocs 2–3 (PATCH/DELETE cross-compte = 0 ligne), CI 33861671142"
+  },
+  {
+   "id": "C14",
+   "controle": "Compte privé : un post d'un profil is_private est-il invisible pour le tiers ?",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "requête base",
+   "preuve": "0 profil is_private=true en prod (posts_auteur_prive = 0) → NON VÉRIFIABLE sur données. Policy « Lecture respectant les comptes prives » (posts) et « Lecture stories… » : author_id = uid OR NOT EXISTS(profil privé) OR EXISTS(follow) ; post_likes/post_comments/comment_interactions dérivent via post_is_visible/comment_target_visible. Suite confidentialite.spec.js (projet prod) la couvre avec 3 comptes réels"
+  },
+  {
+   "id": "C15",
+   "controle": "Storage : policies storage.objects, fonction storage_chemin_autorise, buckets publics",
+   "statut": "DÉFAILLANT",
+   "methode": "requête base",
+   "preuve": "buckets content et attachments : public=true, 50 Mo, allowed_mime_types NULL ; passio_media_read SELECT USING bucket_id IN (content, attachments) pour {public} → LISTING /storage/v1/object/list autorisé à anon ; 12 objets attachments/conv_<id>/<epoch>_voice.webm (vocaux de DM) ; 5 conv_messages contiennent une URL /object/public/attachments/. INSERT/UPDATE cloisonnés par storage_chemin_autorise (content : dossier[2]=uid ; attachments : is_conv_member), DELETE owner = auth.uid() (70/70 objets avec owner). Voir SUP-01"
+  },
+  {
+   "id": "C16",
+   "controle": "Signed URLs utilisées ?",
+   "statut": "PROUVÉ",
+   "methode": "inspection code",
+   "preuve": "grep createSignedUrl js/ → seule occurrence js/app-08-ui-modals-tour.js:2644-2645 (stub hors-ligne _ko). getPublicUrl partout : app-08:3593, app-09:886, app-09:1599 ; app-02:1089-1090 transforme en /render/image/public/. Aucune URL signée en production"
+  },
+  {
+   "id": "C17",
+   "controle": "Realtime : publication (25 tables) et respect de la RLS pour postgres_changes",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "requête base",
+   "preuve": "pg_publication_tables supabase_realtime = 25 tables (cdv_* ×6, comment_interactions, comment_likes, conv_members, conv_messages, conv_reads, conversations, event_comments, event_reactions, events, notifications, post_collaborators, post_comments, post_likes, posts, profiles, step_interactions, stories, telemetry_events, video_lives). postgres_changes est filtré par la RLS du JWT souscripteur (comportement Supabase, non ré-exécuté ici) ; conséquence : conv_reads (SELECT true) est diffusé à TOUT client abonné (app-08 dbChan.on postgres_changes conv_reads)"
+  },
+  {
+   "id": "C18",
+   "controle": "Realtime : policies realtime.messages (broadcast privé user:<uid>) et fonction broadcast_conv_message_to_users",
+   "statut": "PROUVÉ",
+   "methode": "requête base",
+   "preuve": "realtime.messages RLS on, 2 policies identiques « Utilisateur recoit/reçoit ses messages » : SELECT authenticated, realtime.topic() = 'user:'||auth.uid(). Trigger AFTER INSERT conv_messages → broadcast_changes('user:'||member) pour chaque conv_members (prosrc lu). Le canal v2 conv:<id> (private) n'a AUCUNE policy → mort (v3 actif par défaut, app-08:4833-4843)"
+  },
+  {
+   "id": "C19",
+   "controle": "Realtime : canaux broadcast publics écoutés/émis par tous (grep channel( js/)",
+   "statut": "DÉFAILLANT",
+   "methode": "inspection code",
+   "preuve": "app-05:493-497 _callChannel = canal broadcast PUBLIC ; ring:<uid> (app-05:556-564, payload.from choisi par l'émetteur ; réception app-05:1105 + filtre isBlocked(payload.from) app-05:832 seulement), call:<callId> avec callId = MY_UID + Date.now().toString(36) (app-05:531), typing:<convId> (app-04:4755), vlive:<id> presence keyed MY_UID (app-05:3237, 3497). Voir SUP-06"
+  },
+  {
+   "id": "C20",
+   "controle": "Realtime : limites du plan (connexions simultanées, msgs/s)",
+   "statut": "BLOQUÉ",
+   "methode": "non réalisé",
+   "preuve": "Le plan Supabase n'est pas lisible par le connecteur (features=database,debugging,docs). Capacité non prouvée. Il faudrait le tableau de bord Supabase (Settings → Billing) ; au repos l'app tient 3 canaux par client (app-08:5027-5029)"
+  },
+  {
+   "id": "C21",
+   "controle": "Fonctions : 13 SECURITY DEFINER, celles exécutables par anon (prosrc lu), fuite par oracle",
+   "statut": "DÉFAILLANT",
+   "methode": "requête base",
+   "preuve": "pg_proc : 13 secdef ; EXECUTE anon+authenticated sur can_edit_post, comment_target_visible, is_conv_member, post_is_visible ; authenticated sur is_blocked_with, irl_interaction_allowed, can_join_event_conversation, is_conversation_creator, declare_birth_year. is_conv_member(_conv_id,_uid) répond pour N'IMPORTE quel couple sans lire auth.uid() → oracle d'appartenance ; post_is_visible(pid) : inexistant → true, existant-privé → false → oracle d'existence. Voir SUP-05"
+  },
+  {
+   "id": "C22",
+   "controle": "search_path des 3 fonctions non épinglées (storage_chemin_autorise, unaccent_immutable, rechercher_passions)",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "requête base",
+   "preuve": "Toutes trois SECURITY INVOKER (prosecdef=false). storage_chemin_autorise : références toutes qualifiées (storage.foldername, public.is_conv_member, auth.uid). rechercher_passions : similarity/unnest non qualifiés MAIS has_schema_privilege('anon'|'authenticated','public','CREATE') = false → aucune usurpation possible. WARN advisor à corriger par hygiène (SET search_path = '')"
+  },
+  {
+   "id": "C23",
+   "controle": "declare_birth_year non avançable : fonction + trigger",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "requête base",
+   "preuve": "prosrc : INSERT … ON CONFLICT DO UPDATE … WHERE s.majority_at IS NULL OR EXCLUDED.majority_at > s.majority_at ; trigger trg_user_safety_majorite BEFORE UPDATE → RAISE si NEW.majority_at < OLD.majority_at ; bornes 1900..année courante. Limite : la PREMIÈRE déclaration est libre (auto-déclaration), user_safety n'a ni INSERT ni UPDATE policy (seule la fonction écrit)"
+  },
+  {
+   "id": "C24",
+   "controle": "Clé service_role absente du dépôt ; clé anon dans app-08",
+   "statut": "PROUVÉ",
+   "methode": "inspection code",
+   "preuve": "grep -rn service_role|eyJhbGciOi (hors node_modules, dist) : une seule valeur JWT = clé anon js/app-08-ui-modals-tour.js:2552 (attendu) ; toutes les autres occurrences sont des commentaires, docs, dashboard/.env.example:33 (vide) et .claude/scripts/compact-permissions.js:41 (regex de détection). .mcp.json absent"
+  },
+  {
+   "id": "C25",
+   "controle": "Secrets GitHub (noms), Edge Functions (JWT vérifié ?), CSP",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": "Secrets référencés : SUPABASE_SERVICE_ROLE_KEY (deploy.yml:108,346,357 ; sentinelle-distante.yml:108), NETLIFY_AUTH_TOKEN, CLAUDE_CODE_OAUTH_TOKEN, GITHUB_TOKEN, PASSIO ; NETLIFY_SITE_ID en clair (identifiant). Edge : ask-ai:51-58, notify-call:29-35, delete-account:27-33 → auth.getUser() avant tout, 401 sinon ; service_role via Deno.env. CSP _headers/netlify.toml : connect-src limité au projet + tuiles/BAN/Photon/Tenor/Giphy/STUN/TURN"
+  },
+  {
+   "id": "C26",
+   "controle": "API exposée : tables PostgREST, grants anon, RPC",
+   "statut": "PROUVÉ",
+   "methode": "requête base",
+   "preuve": "relacl : anon = arwdDxtm (tous droits) sur toutes les tables public sauf conv_members/conv_messages/conversations (sans INSERT) et user_safety (aucun) ; 3 vues security_invoker=on (telemetry_last24h, client_errors_*) → vides sous RLS ; RPC anon : can_edit_post, comment_target_visible, is_conv_member, post_is_visible, rechercher_passions, storage_chemin_autorise, unaccent_immutable. RPC utilisées par l'app : declare_birth_year (app-07:5024), irl_interaction_allowed (app-07:5050), rechercher_passions (passions-flat.js:405)"
+  },
+  {
+   "id": "C27",
+   "controle": "Séparation staging / production (project_ref, previews Netlify, comptes CI)",
+   "statut": "DÉFAILLANT",
+   "methode": "inspection code",
+   "preuve": "grep supabase.co : un seul ref njkiyoklssvefstljemx dans js/app-08:2551, index.html, _headers, netlify.toml, dashboard/.env.example, tests/e2e/*.js, scripts/*.html ; aucune variable *_STAGING. deploy.yml:530-586 preview PR = même dist → même prod. deploy.yml:301-357 « Suites production (comptes réels) » PASSIO_E2E_PROD=1 crée des comptes %@passio-e2e.test en prod puis purge (scripts/purge-e2e-rest.js). Voir SUP-04"
+  },
+  {
+   "id": "C28",
+   "controle": "Schéma prod vs migrations : migrations enregistrées, SCHEMA_PROD_REFERENCE.sql à jour ?",
+   "statut": "DÉFAILLANT",
+   "methode": "requête base",
+   "preuve": "list_migrations = 4 (20260809182329, 20260809182411, 20260809183406, 20260824132958) vs 64 fichiers migrations/. Comparaison md5 colonnes (schema_reference_vs_prod.txt) : 36 relations identiques, passions et video_lives différentes, passion_relations/passion_requests/user_passions/user_safety ABSENTES de la référence ; policies 116 (réf.) vs 125 (prod) : 12 nouvelles, 3 disparues. Voir SUP-08"
+  },
+  {
+   "id": "C29",
+   "controle": "Les invariants de authz-critical.spec.js sont-ils portés par une policy réelle ?",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": "Bloc 0 profil usurpé → profiles Upsert propre (id = uid) ✓ ; 1 post forgé → posts Ecriture propre ✓ ; 2 PATCH cross → posts Update propre can_edit_post ✓ (+ trigger posts_freeze_author) ; 3 DELETE cross → Suppression propre ✓ ; 4 intégrité ✓ ; 5 notifications d'autrui → Lecture propre ✓ ; 6 DM hors conv → conv_messages_select_member ✓ ; 7 télémétrie → aucune policy SELECT ✓ ; 8 identité canonique → trg_identite_affichage BEFORE INSERT OR UPDATE video_lives ✓ ; 9 notif forgée → notifications_insert_own_author ✓ ; 10 anon sans donnée privée → ✓ pour conv_messages MAIS faux si étendu à conv_reads ; 11 storage dépôt/move/copy/traversal/attachments → passio_media_insert_cloisonne + passio_media_update_cloisonne (storage_chemin_autorise) ✓. Exécution réelle : CI 33861671142, job « Suites production (comptes réels) » vert (non relancé ici, comptes réels + service_role requis)"
+  },
+  {
+   "id": "C30",
+   "controle": "Advisors sécurité (relevé du jour)",
+   "statut": "PROUVÉ",
+   "methode": "requête base",
+   "preuve": "get_advisors security 2026-09-04 12:49 UTC : 0 ERROR, 18 WARN — search_path mutable ×3, pg_trgm in public, secdef exécutable par anon ×4, par authenticated ×9, auth_leaked_password_protection désactivée. Identique aux faits établis"
+  },
+  {
+   "id": "C31",
+   "controle": "Anonymous sign-in (signInAnonymously appelé par app-02:3530) : provider activé côté Auth ?",
+   "statut": "BLOQUÉ",
+   "methode": "requête base",
+   "preuve": "auth.users : 5 comptes, 0 is_anonymous, 5 confirmés, 0 avec phone. La configuration Auth (anonymous provider, MFA, captcha) n'est pas lisible via SQL/MCP ; il faudrait le tableau de bord Auth. first-run.js:35 affirme qu'aucun signInAnonymously n'est fait en mode invité"
+  },
+  {
+   "id": "C32",
+   "controle": "Triggers anti-abus et rate limiting serveur",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "requête base",
+   "preuve": "rate_limit_insert sur comment_interactions (60/min), event_reactions (30/min), reports (10/min) ; passion_requests bornée à 5/24 h par la policy. AUCUN rate-limit sur notifications, conv_messages, posts, telemetry_events (INSERT anon autorisé, 111 829 lignes/30 j) ni client_errors (INSERT true) → SUP-07 / notes"
+  },
+  {
+   "id": "C33",
+   "controle": "Suppression de compte (Edge delete-account) : résidus de données et Storage",
+   "statut": "DÉFAILLANT",
+   "methode": "inspection code",
+   "preuve": "supabase/functions/delete-account/index.ts:46-62 purge 15 couples table/colonne et :67-76 seulement content/photos|videos|audios/<uid> ; non purgés : comment_interactions, event_comments, event_reactions, blocks, reports, user_state, user_safety, user_passions, analytics_events, telemetry_events, video_lives, cdv_*, conv_reads, comment_likes, post_collaborators, step_interactions ; Storage covers/avatars/passion_*/cdv_steps/<uid> et attachments. Voir SUP-10"
+  }
+ ],
+ "findings": [
+  {
+   "id": "SUP-01",
+   "priorite": "P1",
+   "titre": "Pièces jointes vocales de conversations privées dans un bucket public, listables avec la seule clé anon (R2 « P0 » ouvert depuis le 2026-08-08)",
+   "fonctionnalite": "Messagerie privée — vocaux et pièces jointes (bucket attachments) ; médias du bucket content",
+   "attendu": "Un média d'une conversation privée n'est lisible que par ses membres (bucket privé + URL signée ou proxy), et la liste des objets n'est pas énumérable",
+   "observe": "storage.buckets : attachments et content public=true, allowed_mime_types NULL, 50 Mo ; policy passio_media_read SELECT USING bucket_id IN (content, attachments) pour {public} → l'endpoint POST /storage/v1/object/list/attachments répond au rôle anon ; 12 objets attachments/conv_<id>/<epoch_ms>_voice.webm (audio/webm) ; 5 conv_messages portent une URL /object/public/attachments/. Aucune URL signée dans le code (createSignedUrl = stub hors-ligne app-08:2644)",
+   "reproduction": "1) Avec la clé anon (publique, index.html/app-08:2552) : POST {url}/storage/v1/object/list/attachments body {\"prefix\":\"attachments/\",\"limit\":100} → liste des dossiers conv_* et fichiers. 2) GET {url}/storage/v1/object/public/attachments/<chemin listé> → le vocal est servi sans authentification. (Non exécuté ici : proxy 403 ; étapes déduites de la policy et des paramètres de bucket)",
+   "preuve": "execute_sql storage.buckets (public=true ×2) ; pg_policies storage.objects passio_media_read ; storage.objects (25 chemins masqués, fonctions_realtime_storage_staging.md) ; js/app-09-boot-pwa.js:886,1599 getPublicUrl(attachments) ; .passio/audits/SECURITY_AUDIT.md S10 « ❌ P0 » ; KNOWN_RISKS R2",
+   "impact": "Confidentialité des messages privés rompue pour tout média : toute personne disposant de la clé anon (donc tout le monde) peut énumérer et écouter les vocaux des DM. Juridiquement (RGPD art. 32) et commercialement disqualifiant pour une messagerie",
+   "visibilite_pilotage": "non — aucun événement télémétrique ni panneau ne mesure les lectures Storage anonymes",
+   "detection_sentinelle": "non — la Sentinelle lit telemetry_events/client_errors, pas les logs Storage",
+   "correction": "Passer attachments en public=false ; lecture par createSignedUrl (TTL court) côté client au rendu du message, ou policy SELECT storage.objects sur attachments = is_conv_member(dossier[2], auth.uid()) ; remplacer getPublicUrl (app-09:886,1599) ; migrer les 5 messages portant une URL publique ; ajouter un cas dans authz-critical (tiers → 400 sur l'objet). Pour content, au minimum retirer la policy SELECT (le bucket public sert les URLs sans policy ; la policy n'ajoute que le LISTING)",
+   "risque_regression": "Moyen : les vocaux déjà envoyés avec URL publique cessent d'être lisibles sans migration des contenus ; cache du service worker et CDN à invalider ; risque SYNC-B64-005 (repli base64) si l'upload échoue",
+   "effort": "1 à 2 jours (migration + client + test authz)",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "SUP-02",
+   "priorite": "P1",
+   "titre": "conv_reads en lecture publique : appartenance et activité des conversations privées lisibles par anon et diffusées en realtime à tous",
+   "fonctionnalite": "Accusés de lecture ✓✓ de la messagerie (table conv_reads, canal realtime:db)",
+   "attendu": "Qui a lu quelle conversation et quand n'est lisible que par les membres de la conversation (comme conv_members)",
+   "observe": "policy reads_select USING (true) ; 34 lignes (conv_id, user_id, last_read_at) couvrant 19 conversations ; émulation anon = 34, tiers = 34 (attendu 0). La table est dans la publication realtime et app-08-ui-modals-tour.js:5039-5052 s'abonne à postgres_changes sur conv_reads sans filtre → chaque client reçoit en direct les lectures de tout le monde. Combinée à is_conv_member exposée à anon (SUP-05), elle reconstruit la carte des DM (qui parle avec qui, à quelle heure)",
+   "reproduction": "Émulation : select count(*) from public.conv_reads (qual = true) → 34 pour anon comme pour un tiers. REST (non exécuté, proxy 403) : GET /rest/v1/conv_reads?select=conv_id,user_id,last_read_at avec la clé anon",
+   "preuve": "policies.json conv_reads.reads_select ; isolation_par_table.md ligne conv_reads ; pg_publication_tables (conv_reads) ; js/app-08-ui-modals-tour.js:5039 ; migrations/migration_conv_reads.sql",
+   "impact": "Métadonnées de messagerie privée (graphe des conversations, horaires d'activité) exposées à tout internaute ; charge realtime inutile (N clients × chaque lecture)",
+   "visibilite_pilotage": "non",
+   "detection_sentinelle": "non",
+   "correction": "DROP POLICY reads_select ; CREATE POLICY … FOR SELECT USING (is_conv_member(conv_id, (select auth.uid())::text)) ; exiger l'appartenance aussi à l'INSERT/UPDATE (27 lignes existantes sont posées par des non-membres) ; ajouter conv_reads au bloc 10 d'authz-critical",
+   "risque_regression": "Faible : supaLoadOtherReads lit les lectures des autres membres d'une conv dont on est membre — reste vrai sous la nouvelle policy ; realtime conv_reads filtré par RLS continue de livrer aux membres",
+   "effort": "2 heures (migration + test)",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "SUP-03",
+   "priorite": "P1",
+   "titre": "conv_messages « Update propre » sans WITH CHECK : un utilisateur peut déplacer son propre message dans n'importe quelle conversation (injection dans des DM dont il n'est pas membre, contournement du blocage)",
+   "fonctionnalite": "Messagerie privée — modification de message",
+   "attendu": "Un UPDATE de message ne peut jamais changer sa conversation ; seul le contenu de son propre message dans une conversation dont on est membre est modifiable",
+   "observe": "pg_policies : UPDATE conv_messages qual = (from_id = auth.uid()::text), with_check = NULL → PostgreSQL applique le USING à la nouvelle ligne (from_id doit rester le sien) mais conv_id, content, created_at sont libres. L'INSERT exige is_conv_member (conv_messages_insert_member), l'UPDATE non. Les conv_id cibles sont obtenables via conv_reads (SUP-02) ou events.conv_id public (format evgrp_<event_id>, 1 en prod). Les membres de la conversation cible lisent le message (conv_messages_select_member) ; le trigger broadcast (AFTER INSERT) ne le diffuse pas, mais le prochain chargement l'affiche",
+   "reproduction": "Compte B : créer une conversation où il est membre (conversations_insert_creator + conv_members via is_conversation_creator), insérer un message m ; PATCH /rest/v1/conv_messages?id=eq.m body {\"conv_id\":\"<conv de A et C>\"} avec le JWT de B → 1 ligne modifiée (attendu 0). Non exécuté ici (aucune écriture autorisée) ; déduit de la sémantique documentée des policies UPDATE sans WITH CHECK",
+   "preuve": "policies.json conv_messages « Update propre » (check null) vs conv_messages_insert_member ; base : 2 messages existants proviennent déjà d'un non-membre ; docs PostgreSQL CREATE POLICY : « If no WITH CHECK is specified, USING is used for new rows »",
+   "impact": "Harcèlement ciblé et contournement du blocage (is_blocked_with n'est vérifié qu'à l'INSERT de conv_members) ; possibilité d'injecter du contenu dans une conversation de groupe d'événement ; perte de confiance dans la messagerie",
+   "visibilite_pilotage": "non",
+   "detection_sentinelle": "non — aucun signal (le message ressemble à un message normal)",
+   "correction": "ALTER POLICY « Update propre » ON conv_messages … WITH CHECK (from_id = (select auth.uid())::text AND is_conv_member(conv_id, (select auth.uid())::text)) ; idéalement rendre conv_id immuable par trigger (comme posts_freeze_author) ; ajouter un bloc dans authz-critical (PATCH conv_id → 0 ligne)",
+   "risque_regression": "Nul pour l'app : le client ne modifie jamais conv_id (grep conv_messages update = édition de contenu uniquement)",
+   "effort": "1 heure (migration + test)",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "SUP-04",
+   "priorite": "P1",
+   "titre": "Un seul projet Supabase pour le dev, les previews de PR, les tests CI à comptes réels et la production (staging séparé : NON)",
+   "fonctionnalite": "Infrastructure de données — cycle de vie dev/test/preview/prod",
+   "attendu": "Un projet de staging (schéma identique, données factices) reçoit les previews, les suites e2e qui écrivent et les essais de migration ; la production ne reçoit que du trafic réel",
+   "observe": "Un seul project_ref (njkiyoklssvefstljemx) dans js/app-08:2551, index.html, _headers, netlify.toml, dashboard/.env.example, tests/e2e/*.js et scripts/*.html ; aucune variable de staging. deploy.yml:530-586 : la preview Netlify de chaque PR est le même dist → même base prod. deploy.yml:301-357 : « Suites production (comptes réels) » (PASSIO_E2E_PROD=1, --project=prod) crée 2+ comptes %@passio-e2e.test, des posts, des lives, des objets Storage EN PROD à chaque push, puis purge avec la clé service_role. 113 conversations sur 117 sont orphelines (sans membre), trace probable de ces cycles",
+   "reproduction": "grep -rn supabase.co js/ dashboard/ tests/ .github/ | grep -v node_modules → un seul ref ; lire deploy.yml:301-357 et :530-586",
+   "preuve": "fonctions_realtime_storage_staging.md § Staging ; PASSIO_PRODUCTION_READINESS.md:35-40 (« bloqués par une base qui ne soit pas la production ») ; ADR-012 (le canal ③ DDL n'a aucune cible de répétition)",
+   "impact": "Toute migration (RLS, DDL) est essayée directement en prod ; un test rouge ou une purge ratée laisse des données de test visibles des vrais utilisateurs (comptes e2e, posts « authz canary ») ; impossible de répéter une restauration ; critère d'interdiction du GO grande échelle selon le mandat",
+   "visibilite_pilotage": "partiel — le dashboard exclut les comptes de test des KPI (DASH_ONLY_PROD_EVENTS, testusers) mais ne signale pas leur présence en prod",
+   "detection_sentinelle": "non",
+   "correction": "Créer un second projet Supabase (staging) alimenté par SCHEMA_PROD_REFERENCE régénéré + migrations rejouées ; router previews et suites prod dessus (SUPABASE_URL/ANON par environnement, injectés au build) ; garder en prod uniquement des tests en lecture ou un smoke unique post-déploiement ; c'est aussi la base cible de la restauration (readiness §35)",
+   "risque_regression": "Moyen : le build inline la clé anon (scripts/build.js) → il faut paramétrer app-08 par environnement sans casser la CSP (_headers) ; les suites prod devront viser le staging",
+   "effort": "3 à 5 jours (création, schéma, CI, CSP, docs)",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "SUP-05",
+   "priorite": "P2",
+   "titre": "Fonctions SECURITY DEFINER exposées en RPC à anon : oracle d'appartenance (is_conv_member) et d'existence de contenu privé (post_is_visible, comment_target_visible) ; is_blocked_with révèle un blocage",
+   "fonctionnalite": "API PostgREST /rest/v1/rpc",
+   "attendu": "Les helpers de policies ne sont pas appelables depuis l'API (EXECUTE réservé au moteur RLS via un rôle interne ou schéma non exposé), ou ne répondent que sur l'appelant",
+   "observe": "pg_proc : EXECUTE anon+authenticated sur is_conv_member(_conv_id,_uid) — répond true/false pour tout couple (conv, uid) ; post_is_visible(pid) — true si le post n'existe pas, false s'il existe et est privé non suivi → révèle l'existence de contenu caché ; comment_target_visible idem ; is_blocked_with(_other) (authenticated) répond à « X me bloque-t-il ? » ; irl_interaction_allowed révèle la majorité déclarée d'autrui. Advisor : 4 WARN anon + 9 WARN authenticated. ADR-012 (Vérification) l'avait déjà noté « à traiter par le canal ③ » sans suite",
+   "reproduction": "POST /rest/v1/rpc/is_conv_member {\"_conv_id\":\"<conv obtenue via conv_reads>\",\"_uid\":\"<uid d'un profil public>\"} avec la clé anon → true/false (non exécuté ici, proxy 403 ; grants lus dans pg_proc)",
+   "preuve": "execute_sql pg_proc/has_function_privilege (fonctions_realtime_storage_staging.md) ; get_advisors anon_security_definer_function_executable ×4 ; migrations/migration_fonctions_rls_hors_schema_expose.sql existe mais n'est PAS appliquée (fonctions toujours dans public)",
+   "impact": "Énumération des relations privées (avec SUP-02 : carte complète des DM) ; détection d'un blocage (escalade de harcèlement) ; fuite d'existence de posts de comptes privés",
+   "visibilite_pilotage": "non",
+   "detection_sentinelle": "non",
+   "correction": "REVOKE EXECUTE … FROM anon, authenticated sur les 4 helpers (les policies s'exécutent avec les droits du propriétaire de la fonction, pas de l'appelant) ; ou appliquer migration_fonctions_rls_hors_schema_expose.sql (déplacement hors schéma exposé) ; borner is_conv_member à _uid = auth.uid() ; pour is_blocked_with, ne répondre que sur le sens « je bloque » ou réserver au serveur",
+   "risque_regression": "Moyen : storage_chemin_autorise (SECURITY INVOKER) appelle public.is_conv_member avec les droits de l'appelant → il faut garder EXECUTE pour le rôle qui évalue la policy Storage ou passer cette fonction en SECURITY DEFINER ; à vérifier par authz-critical bloc 11",
+   "effort": "0,5 jour",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "SUP-06",
+   "priorite": "P2",
+   "titre": "Canaux Realtime broadcast publics sans autorisation : invitation d'appel usurpable (ring:<uid>), signalisation WebRTC injectable (call:<callId> devinable), frappe (typing:<convId>) écoutable",
+   "fonctionnalite": "Appels audio/vidéo WebRTC, indicateur « est en train d'écrire », lives vidéo",
+   "attendu": "Seuls les pairs légitimes peuvent émettre sur le canal de sonnerie d'un utilisateur et sur le canal de signalisation d'un appel ; les canaux sont privés (config.private + policy realtime.messages)",
+   "observe": "app-05:493-497 _callChannel crée des canaux broadcast PUBLICS (commentaire « Canal Realtime broadcast (public) ») ; ring:<peerId> reçoit un payload {callId, from, kind, name, emoji} où from est fourni par l'émetteur (app-05:556-564) ; à la réception le seul filtre est isBlocked(payload.from) (app-05:832) ; callId = MY_UID + Date.now().toString(36) (app-05:531) donc prédictible à la seconde ; typing:<convId> (app-04:4755) et vlive:<id> (presence keyed MY_UID) sont publics. realtime.messages n'a de policy que pour user:<uid>",
+   "reproduction": "Client anon (clé anon) : supa.channel('ring:<uid public>').send({type:'broadcast',event:'invite',payload:{callId:'x',from:'<uid d un contact de confiance>',kind:'video',name:'…'}}) → sonnerie affichée chez la victime avec l'identité choisie (non exécuté ici)",
+   "preuve": "js/app-05-config-profil.js:493-497, 531, 556-564, 832, 1101-1107 ; js/app-04-comments-shop.js:4755 ; policies.json realtime.messages (topic user:* seulement)",
+   "impact": "Usurpation d'identité dans un canal de confiance (appel entrant), contournement du blocage, détournement d'un appel (offer/answer/ICE injectés), fuite du nom de qui écrit dans une conversation",
+   "visibilite_pilotage": "non",
+   "detection_sentinelle": "non",
+   "correction": "Passer ring:, call:, typing: en canaux privés ({config:{private:true}}) avec policies realtime.messages : ring → topic = 'ring:'||auth.uid() en SELECT et INSERT autorisé pour tout authenticated non bloqué ; call → topic lié aux deux uids ; typing → is_conv_member ; callId aléatoire (crypto.randomUUID) ; vérifier payload.from contre le JWT côté serveur (realtime.messages INSERT policy avec realtime.topic() et auth.uid())",
+   "risque_regression": "Moyen : Realtime Authorization exige que chaque client soit authentifié (visiteur first-run non connecté ne peut plus écouter, acceptable) ; tests appels multi-comptes à rejouer",
+   "effort": "1 à 2 jours",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "SUP-07",
+   "priorite": "P2",
+   "titre": "Écritures de masse non bornées : notifications vers n'importe qui (contenu et lien libres, aucun rate-limit), telemetry_events et client_errors insérables par anon sans limite",
+   "fonctionnalite": "Notifications in-app ; télémétrie ; monitoring client_errors",
+   "attendu": "Un compte ne peut notifier que dans le cadre d'une interaction réelle (ou à un débit borné) ; les tables d'ingestion anonymes sont bornées (rate-limit, taille, TTL)",
+   "observe": "notifications_insert_own_author ne contraint que from_id ; user_id, kind (10 valeurs distinctes en prod), ref_id, content, created_at libres ; 0 trigger rate_limit sur notifications, conv_messages, posts, telemetry_events, client_errors (pg_trigger). telemetry_insert_own accepte user_id IS NULL (anon), 111 829 lignes/30 j, 54 Mo ; client_errors WITH CHECK true. Le rendu des notifications est échappé par défaut (app-08:1804 deConfiance = n.html === true || kind === local) donc pas de XSS, mais le contenu et le lien sont ceux de l'attaquant",
+   "reproduction": "Compte B : boucle POST /rest/v1/notifications {user_id:<A>, from_id:<B>, kind:'like', content:'…', ref_id:'…'} → accepté sans borne. Anon : POST /rest/v1/telemetry_events (user_id null) en boucle → accepté",
+   "preuve": "policies.json notifications/telemetry_events/client_errors ; execute_sql pg_trigger (0 rate_limit sur ces tables) ; volumes telemetry 111 829",
+   "impact": "Spam/hameçonnage dans le seul canal de confiance de l'app ; saturation de la base (coût, quota Supabase) par un script anonyme ; bruit dans le Centre de pilotage",
+   "visibilite_pilotage": "partiel — le dashboard verrait une explosion de telemetry_events (KPI) mais rien sur les notifications",
+   "detection_sentinelle": "partiel — anomalies de volume télémétrie possibles, pas de règle dédiée",
+   "correction": "Triggers rate_limit_insert('from_id', N) sur notifications et ('user_id'/'uid', N) sur telemetry_events et client_errors (le mécanisme existe déjà) ; kind contraint par CHECK sur une liste ; borne de taille sur content/stack ; cron purge_telemetry (fonction existante, aucun job cron ne l'appelle : seul purge_client_errors est planifié)",
+   "risque_regression": "Faible : choisir des seuils au-dessus de l'usage réel (le client batch la télémétrie)",
+   "effort": "0,5 jour",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "SUP-08",
+   "priorite": "P2",
+   "titre": "Schéma de production non reconstructible : 4 migrations enregistrées sur 64 fichiers et SCHEMA_PROD_REFERENCE.sql périmé depuis le 2026-08-17",
+   "fonctionnalite": "Gouvernance du schéma (staging, restauration, revue des policies hors ligne)",
+   "attendu": "Une photographie fidèle de la prod (tables, colonnes, policies, fonctions) régénérée à chaque migration, et un journal de migrations appliqué dans l'ordre",
+   "observe": "supabase_migrations = 4 entrées (3 du 2026-08-09, 1 du 2026-08-24) ; 64 fichiers dont des lots retirés (cdv_*, wallet). SCHEMA_PROD_REFERENCE.sql (« NE PAS ÉDITER À LA MAIN », généré par scripts/schema-baseline.js) date du 2026-08-17 : 4 tables absentes (passion_relations, passion_requests, user_passions, user_safety), passions à 5 colonnes au lieu de 13, video_lives différente, 116 policies contre 125 (12 nouvelles, 3 disparues). CLAUDE.md et ADR-012 le présentent pourtant comme « la photographie de la structure RÉELLE »",
+   "reproduction": "node script de comparaison md5 colonnes/policies (schema_reference_vs_prod.txt) ; list_migrations",
+   "preuve": "preuves/supabase-isolation/schema_reference_vs_prod.txt ; ref_cols.txt ; list_migrations ; git log -1 migrations/SCHEMA_PROD_REFERENCE.sql = 2026-08-31 (commit sans régénération du contenu)",
+   "impact": "Toute décision prise hors ligne sur la référence est fausse pour 4 tables et le référentiel des passions ; impossible de monter un staging ou de restaurer sur une base neuve (prérequis de SUP-04 et du plan de reprise)",
+   "visibilite_pilotage": "non",
+   "detection_sentinelle": "non",
+   "correction": "Régénérer la référence (node scripts/schema-baseline.js) et l'imposer en gate CI (diff vide contre la prod, via le canal ① ou un dump) ; consolider les 64 fichiers en un jeu ordonné rejouable (supabase/migrations/<ts>_*.sql) et enregistrer l'historique réel dans supabase_migrations",
+   "risque_regression": "Faible (documentaire) ; le gate CI doit tolérer la fenêtre entre migration appliquée et référence commitée",
+   "effort": "1 jour + discipline",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "SUP-09",
+   "priorite": "P2",
+   "titre": "UPDATE sans WITH CHECK sur events et post_comments : un co-organisateur peut s'approprier un événement (author_id), un auteur peut déplacer son commentaire vers un autre post",
+   "fonctionnalite": "Événements IRL (co-organisation) ; commentaires",
+   "attendu": "author_id d'un événement est immuable ; post_id d'un commentaire est immuable",
+   "observe": "events « Update organisateurs » qual = author_id = uid OR jsonb_exists(co_organizers, uid), with_check NULL → un co-organisateur peut PATCH author_id=<lui> (la nouvelle ligne satisfait toujours le USING) et devenir propriétaire (DELETE, conv d'événement, retrait des autres) ; aucun trigger freeze sur events (seul posts en a un). post_comments « Update propre » qual author_id = uid, with_check NULL → post_id modifiable (commentaire injecté sous un post d'un compte privé sans le suivre, ou déplacé pour tromper)",
+   "reproduction": "Co-organisateur : PATCH /rest/v1/events?id=eq.<ev> {\"author_id\":\"<moi>\"} → 1 ligne (non exécuté ici)",
+   "preuve": "policies.json events.Update organisateurs / post_comments.Update propre (check null) ; pg_trigger : trg_posts_freeze_author seulement sur posts",
+   "impact": "Prise de contrôle d'un événement par un co-organisateur ; intégrité des fils de commentaires",
+   "visibilite_pilotage": "non",
+   "detection_sentinelle": "non",
+   "correction": "WITH CHECK identiques aux USING + trigger BEFORE UPDATE gelant author_id (events) et post_id/author_id (post_comments), sur le modèle de posts_freeze_author",
+   "risque_regression": "Nul pour l'app (aucun client ne modifie ces colonnes)",
+   "effort": "1 heure",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "SUP-10",
+   "priorite": "P2",
+   "titre": "Suppression de compte incomplète : résidus dans 16 tables et 6 dossiers Storage après delete-account",
+   "fonctionnalite": "RGPD — suppression de compte (Edge Function delete-account)",
+   "attendu": "Toutes les données rattachées à l'uid disparaissent (ou sont anonymisées), Storage compris",
+   "observe": "delete-account/index.ts:46-62 purge 15 couples table/colonne ; oubliés : comment_interactions, event_comments, event_reactions, blocks, reports, user_state (jusqu'à 4,8 Mo par ligne), user_safety, user_passions, analytics_events, telemetry_events (user_id), video_lives, cdv_* , conv_reads, comment_likes, post_collaborators, step_interactions ; Storage : seuls photos/videos/audios/<uid> (index.ts:67-76), pas covers/avatars/passion_photos/passion_covers/cdv_steps/<uid> ni attachments. FK profiles sans ON DELETE CASCADE (confdeltype = a) : la suppression de profiles échoue si posts/conv_messages restent (ordre des jobs le gère partiellement, best-effort silencieux)",
+   "reproduction": "Lire supabase/functions/delete-account/index.ts:46-76 ; select count(*) from <table> where user_id = <uid supprimé> après un parcours de suppression (suppression-compte.spec.js, projet prod)",
+   "preuve": "supabase/functions/delete-account/index.ts:46-76 ; execute_sql pg_constraint confdeltype ; chemins Storage relevés (covers/, avatars/, passion_*/, cdv_steps/)",
+   "impact": "Non-conformité RGPD (droit à l'effacement), données orphelines publiques (event_comments, video_lives avec author_name) après départ de l'utilisateur, coût Storage",
+   "visibilite_pilotage": "non",
+   "detection_sentinelle": "non",
+   "correction": "Compléter la liste des tables et des préfixes Storage ; remplacer le best-effort par une fonction SQL SECURITY DEFINER transactionnelle (ou ON DELETE CASCADE sur les FK vers profiles) ; test suppression-compte à étendre aux tables oubliées",
+   "risque_regression": "Faible",
+   "effort": "0,5 jour",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "SUP-11",
+   "priorite": "P3",
+   "titre": "Dette de policies : données du Carnet de voyage (retiré) toujours exposées publiquement, 5 jeux de policies dupliquées, 78 auth_rls_initplan, données orphelines",
+   "fonctionnalite": "Hygiène RLS et données",
+   "attendu": "Une fonctionnalité retirée n'a plus de surface exposée ; une policy par commande et par intention",
+   "observe": "cdv_lives (2), cdv_live_steps (4, lat/lng/photos), cdv_live_comments, cdv_live_collaborators, cdv_live_followers, cdv_live_reactions, step_interactions (6) : SELECT true, tables dans la publication realtime, alors qu'ADR-011 a retiré la fonctionnalité (aucune donnée détruite, choix documenté). Doublons : events SELECT ×2, follows SELECT ×2, profiles SELECT ×2, conv_members DELETE ×2, realtime.messages ×2 (recoit/reçoit). auth.uid() non enveloppé dans (select …) sur 78 policies (advisor perf). Intégrité : 113 conversations sans membre, 2 messages d'un non-membre, 27 conv_reads hors membre, 92 comment_interactions ciblant une cible introuvable",
+   "reproduction": "policies.json ; execute_sql (isolation_par_table.md § Intégrité) ; get_advisors performance",
+   "preuve": "policies.json § policies_dupliquees ; isolation_par_table.md ; faits établis (auth_rls_initplan ×78, multiple_permissive_policies ×30)",
+   "impact": "Surface d'attaque et coût de maintenance inutiles ; performance RLS dégradée à l'échelle ; données fantômes dans les exports RGPD",
+   "visibilite_pilotage": "non",
+   "detection_sentinelle": "non",
+   "correction": "Retirer cdv_* et step_interactions de la publication et passer leur SELECT en propriétaire (ou archiver/dropper après export) ; supprimer les doublons ; réécrire auth.uid() en (select auth.uid()) ; purger les conversations orphelines et les reads hors membre",
+   "risque_regression": "Faible (fonctionnalité morte) ; vérifier goTo('cdv') redirigé",
+   "effort": "1 jour",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "SUP-12",
+   "priorite": "P3",
+   "titre": "Réglages Auth : protection contre les mots de passe compromis désactivée ; état du provider anonyme non vérifiable",
+   "fonctionnalite": "Authentification Supabase",
+   "attendu": "Leaked password protection activée (gratuit) ; provider anonyme désactivé si non utilisé (first-run.js:35 affirme ne pas l'utiliser, app-02:3530 l'appelle pourtant dans un chemin d'onboarding)",
+   "observe": "get_advisors : auth_leaked_password_protection WARN (déjà noté le 2026-08-09 comme « toggle gratuit » et toujours ouvert) ; auth.users : 0 compte is_anonymous, mais la configuration n'est pas lisible ici",
+   "reproduction": "get_advisors security",
+   "preuve": "get_advisors 2026-09-04 ; js/app-02-state-utils.js:3529-3530 ; js/first-run.js:35",
+   "impact": "Comptes créés avec des mots de passe connus des fuites ; si le provider anonyme est actif, un script peut obtenir un JWT authenticated sans e-mail et exercer toutes les policies {public}/{authenticated} (dont SUP-07)",
+   "visibilite_pilotage": "non",
+   "detection_sentinelle": "non",
+   "correction": "Activer la protection HIBP dans Auth ; vérifier et désactiver Anonymous sign-ins si inutilisé, ou borner les policies d'écriture à (auth.jwt()->>'is_anonymous') = 'false'",
+   "risque_regression": "Faible",
+   "effort": "1 heure",
+   "confiance": "PLAUSIBLE"
+  },
+  {
+   "id": "SUP-13",
+   "priorite": "P3",
+   "titre": "search_path non épinglé sur 3 fonctions exposées et pg_trgm dans public (WARN advisors, exploitabilité nulle aujourd'hui)",
+   "fonctionnalite": "Fonctions SQL exposées (rechercher_passions, storage_chemin_autorise, unaccent_immutable)",
+   "attendu": "SET search_path = '' sur toute fonction exposée, extensions hors du schéma public",
+   "observe": "Les trois sont SECURITY INVOKER ; storage_chemin_autorise n'a que des références qualifiées ; rechercher_passions appelle similarity/unnest non qualifiés mais anon/authenticated n'ont pas CREATE sur public (has_schema_privilege = false) → aucune usurpation possible tant que ce grant ne change pas",
+   "reproduction": "get_advisors security ; execute_sql pg_proc.proconfig ; has_schema_privilege",
+   "preuve": "fonctions_realtime_storage_staging.md § Fonctions",
+   "impact": "Aucun aujourd'hui ; risque latent si un futur GRANT CREATE ou un schéma extensions apparaît",
+   "visibilite_pilotage": "non",
+   "detection_sentinelle": "non",
+   "correction": "ALTER FUNCTION … SET search_path = '' avec références qualifiées (public.similarity) ; déplacer pg_trgm dans extensions",
+   "risque_regression": "Faible (tester rechercher_passions)",
+   "effort": "1 heure",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "SUP-14",
+   "priorite": "P3",
+   "titre": "Pages HTML du dépôt invitant à coller la clé service_role dans un navigateur",
+   "fonctionnalite": "Outillage (scripts/setup-storage.html, scripts/create-buckets-auto.html)",
+   "attendu": "La clé service_role ne transite jamais par un navigateur ni par un fichier ouvert en file://",
+   "observe": "scripts/setup-storage.html:26-46 : textarea « Colle ta clé service_role ici » ; create-buckets-auto.html idem ; ces pages référencent le project_ref prod. Contredit S4 de SECURITY_AUDIT (« service_role côté serveur dashboard uniquement ») sur la pratique, pas sur le code déployé (hors build)",
+   "reproduction": "cat scripts/setup-storage.html",
+   "preuve": "scripts/setup-storage.html:26,27,46 ; scripts/create-buckets-auto.html",
+   "impact": "Habitude dangereuse (historique du navigateur, extensions) ; incident déjà vécu avec settings.local.json",
+   "visibilite_pilotage": "non",
+   "detection_sentinelle": "non",
+   "correction": "Supprimer les deux pages (buckets déjà créés) ou les remplacer par un script Node lisant la variable d'environnement",
+   "risque_regression": "Nul",
+   "effort": "15 minutes",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "SUP-15",
+   "priorite": "P3",
+   "titre": "Faux accusés de lecture : conv_reads acceptable pour toute conv_id sans appartenance",
+   "fonctionnalite": "Accusés de lecture ✓✓",
+   "attendu": "Un accusé de lecture n'est accepté que d'un membre de la conversation",
+   "observe": "reads_upsert WITH CHECK (user_id = uid) sans is_conv_member ; 27 lignes existantes proviennent de non-membres ; app-08:5040-5044 marque « lu par l'autre » dès qu'un conv_reads porte le conv_id (x.id === r.conv_id) → un tiers connaissant un conv_id peut faire croire qu'un message a été lu",
+   "reproduction": "POST /rest/v1/conv_reads {conv_id:<conv d autrui>, user_id:<moi>, last_read_at:now} → accepté (non exécuté ici)",
+   "preuve": "policies.json conv_reads ; js/app-08-ui-modals-tour.js:5039-5052 ; execute_sql reads_hors_membre = 27",
+   "impact": "Signal ✓✓ falsifiable ; faible gravité, corrigé avec SUP-02",
+   "visibilite_pilotage": "non",
+   "detection_sentinelle": "non",
+   "correction": "Même migration que SUP-02 (WITH CHECK is_conv_member)",
+   "risque_regression": "Faible",
+   "effort": "inclus dans SUP-02",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "SUP-16",
+   "priorite": "P2",
+   "titre": "Écritures qui échouent en silence : aucune policy UPDATE/DELETE sur conversations alors que le client les tente (description de groupe non persistée, conversation jamais supprimée côté serveur)",
+   "fonctionnalite": "Messagerie — édition de la description d'un groupe, suppression de conversation",
+   "attendu": "Soit la policy existe (créateur), soit le client ne tente pas l'écriture et l'utilisateur est informé",
+   "observe": "pg_policies conversations = INSERT (créateur) + SELECT (membre) seulement. js/app-05-config-profil.js:1624 conversations.update({description}) → 0 ligne, rejet avalé ; js/app-08-ui-modals-tour.js:4517-4518 conv_members.delete(conv_id) puis conversations.delete(id) dans un nettoyage → 0 ligne. Invariant CLAUDE.md « UPDATE/DELETE qui touche 0 ligne = RLS manquante ; toujours lire { error } » non respecté (le SDK ne lève pas sur 0 ligne)",
+   "reproduction": "Créateur d'un groupe : modifier la description, recharger sur un autre appareil → ancienne description (déduit des policies ; non exécuté)",
+   "preuve": "policies.json § tables_sans_policy_update/delete ; js/app-05-config-profil.js:1624 ; js/app-08-ui-modals-tour.js:4517-4518",
+   "impact": "Fonction visible qui ne fait rien (description de groupe) ; conversations orphelines qui s'accumulent (113/117)",
+   "visibilite_pilotage": "non — aucune erreur remontée (0 ligne = succès HTTP 200/204)",
+   "detection_sentinelle": "non",
+   "correction": "CREATE POLICY conversations_update_creator FOR UPDATE USING/WITH CHECK (created_by = auth.uid()) et conversations_delete_creator FOR DELETE ; côté client lire { data, error } et le count (Prefer: return=representation) ; test e2e mesurant la persistance",
+   "risque_regression": "Faible",
+   "effort": "2 heures",
+   "confiance": "CONFIRMÉ"
+  }
+ ],
+ "surfaces_saines": [
+  "Noyau d'isolation par requête (émulation des quals exacts, anon et tiers) : conv_messages, conv_members, conversations, notifications, user_state, blocks, reports, push_subscriptions, story_views, user_safety, telemetry_events, analytics_events, client_errors, passion_requests → 0 ligne lisible ; 0 ligne UPDATE/DELETE touchable par un tiers sur posts, profiles, conv_messages, notifications, events, user_state, conv_members, stories, storage.objects",
+  "profiles : aucune PII forte exposée (pas d'e-mail, téléphone, année de naissance) ; auth.users et user_safety hors de portée de PostgREST anon",
+  "Usurpation d'identité d'affichage neutralisée par trigger identite_affichage_canonique (BEFORE INSERT OR UPDATE) sur video_lives, event_comments, cdv_live_comments, step_interactions, et propagation depuis profiles",
+  "posts : author_id gelé par trigger posts_freeze_author ; UPDATE gardé par can_edit_post des deux côtés (USING + WITH CHECK)",
+  "conv_members INSERT : créateur OU auto-inscription à une conversation d'événement actif (RSVP going/maybe) ET non bloqué (is_blocked_with) — policy la plus riche du schéma, cohérente avec tests/sql/socle-prod.sql",
+  "conv_messages INSERT : from_id = auth.uid() ET is_conv_member ; conversations INSERT : created_by = auth.uid() (les policies WITH CHECK true de la référence 2026-08-17 ont bien disparu)",
+  "Storage : écriture cloisonnée (INSERT et UPDATE via storage_chemin_autorise, DELETE owner = auth.uid(), 70/70 objets avec owner) — prouvé en CI par authz-critical bloc 11",
+  "Realtime v3 : canal privé user:<uid> avec policy realtime.messages sur realtime.topic() = 'user:'||auth.uid() ; trigger broadcast un topic par membre ; realtime.messages RLS activée",
+  "Aucune valeur service_role ni JWT de service dans le dépôt ; service_role confiné aux secrets GitHub (étapes nommées), à dashboard/.env (serveur) et aux Edge Functions ; .mcp.json absent",
+  "Edge Functions ask-ai, notify-call, delete-account : JWT vérifié par auth.getUser() avant toute action, 401 sinon",
+  "Fonctions de maintenance (purge_telemetry, rate_limit_insert, broadcast_conv_message_to_users, posts_freeze_author) : EXECUTE révoqué à anon/authenticated ; search_path épinglé sur 17/20 fonctions",
+  "Vues telemetry_last24h, client_errors_top_24h, client_errors_par_heure en security_invoker=on → vides sous RLS",
+  "Anti-flood serveur sur comment_interactions (60/min), event_reactions (30/min), reports (10/min), passion_requests (5/24 h)",
+  "declare_birth_year + trigger : majorité non avançable (fonction et trigger concordants)",
+  "CSP connect-src bornée au projet Supabase et aux services cartographiques/GIF/STUN-TURN ; anon/authenticated sans CREATE sur public",
+  "0 base64 en conv_messages.content et posts.media_url (ADR-004 respecté sur les données vivantes)"
+ ],
+ "non_verifie": [
+  "Isolation par requête SOUS LE MOTEUR RLS (SET LOCAL ROLE anon/authenticated) : refusé au rôle du connecteur (42501). Il faudrait un rôle de connecteur membre de anon/authenticated, ou une base jetable (Postgres Docker + policies réelles, comme tests/sql/socle-prod.sql) — ce que le banc CI « Banc Trust & Safety serveur (RLS, PostgreSQL jetable) » fait partiellement.",
+  "Appels REST/Storage/RPC anon contre la production (counts, listing des buckets, oracles RPC) : proxy de l'environnement → CONNECT 403 sur supabase.co ; script rest_anon.sh également refusé par le classificateur. Il faudrait un poste avec accès réseau ; les étapes sont écrites dans les findings.",
+  "UPDATE/DELETE ciblés sous rôle tiers dans une transaction annulée : impossible (SET ROLE refusé + transaction_read_only). Émulation des USING seulement ; la preuve exécutée reste authz-critical.spec.js en CI (run 33861671142 vert, non relancé ici : comptes réels + SUPABASE_SERVICE_ROLE_KEY).",
+  "Compte privé : 0 profil is_private en prod → invisibilité d'un post privé non vérifiable sur données ; portée par la policy et par confidentialite.spec.js (projet prod, non lancé).",
+  "Limites Realtime du plan (connexions simultanées, messages/s) et réglages Auth (provider anonyme, HIBP, captcha, MFA) : non lisibles par le connecteur (features=database,debugging,docs) ; il faudrait le tableau de bord Supabase.",
+  "Suites du projet prod (authz-critical, confidentialite, multi-comptes, blocage-acces, user-state-horodatage, qa-campaign, suppression-compte) : NON LANCÉES (interdit : comptes réels en prod) ; citées via le job CI vert.",
+  "Vérification que les previews Netlify pointent la prod : déduite de deploy.yml (même dist, même clé inlinée) — netlify.app inaccessible (403) donc non observée en ligne."
+ ],
+ "anciens_rapports": [
+  "SECURITY_AUDIT S1 « RLS par propriétaire en place, à auditer par table » → toujours vraie pour le noyau ; l'audit par table révèle 2 exceptions non documentées (conv_reads SELECT true, storage listing anon) et 9 UPDATE sans WITH CHECK — preuve : policies.json",
+  "SECURITY_AUDIT S4 / CHECKLIST « aucun secret en clair, service_role côté serveur uniquement » → toujours vraie pour le code (grep sans valeur), nuancée par scripts/setup-storage.html qui fait coller la clé dans un navigateur",
+  "SECURITY_AUDIT S10 / KNOWN_RISKS R2 « médias privés en bucket public, URLs signées à faire (P0) » → toujours vraie et AGGRAVÉE : la policy SELECT autorise le LISTING à anon ; aucune URL signée dans le code (createSignedUrl = stub)",
+  "KNOWN_RISKS 2026-08-09 « conv_messages/conv_members/conversations : lecture réservée aux membres » → toujours vraie (émulation 0/0/0) ; « follows/event_attendees publics = choix assumé » → toujours vrai ; conv_reads n'y figure pas et est public",
+  "KNOWN_RISKS 2026-08-09 « notifications déjà scellé user_id = auth.uid() » → vrai en lecture ; l'INSERT est depuis contraint sur from_id (notifications_insert_own_author) mais reste libre sur destinataire/contenu et sans rate-limit",
+  "KNOWN_RISKS 2026-08-09 « purge_telemetry n'était appelable par n'importe qui → révoqué » → toujours vraie (exec_roles null) ; mais aucun cron n'appelle purge_telemetry (seul purge_client_errors est planifié)",
+  "KNOWN_RISKS R3 « schéma prod diverge des migrations, migration-checker en gate » → toujours vraie et non mitigée : 4 migrations enregistrées / 64 fichiers, référence périmée (4 tables absentes)",
+  "PASSIO_PRODUCTION_READINESS.md:18 « Confidentialité — base PROUVÉ, RLS sur 34/34 tables » → dépassée : 39/39 tables avec RLS ; la mention PROUVÉ ne couvre ni conv_reads ni le Storage",
+  "PASSIO_PRODUCTION_READINESS.md:35-40 « restauration et staging bloqués par une base qui ne soit pas la production » → toujours vraie (aucun second projet)",
+  "CHECKLIST_COMMERCIALISATION « RLS v2 (26 policies) + migration conv_members appliquée » → périmée : 119 policies public ; conv_members INSERT bien appliquée (is_conversation_creator/can_join_event_conversation/is_blocked_with)",
+  "ADR-012 « canal ① en read_only=on ; 4 fonctions SECURITY DEFINER appelables par anon à traiter par le canal ③ » → read-only confirmé indirectement (SET ROLE refusé, aucune écriture possible) ; les 4 fonctions sont TOUJOURS exposées (advisor identique le 2026-09-04) — non traité",
+  "DATABASE_MODEL.md / CLAUDE.md « SCHEMA_PROD_REFERENCE.sql = photographie de la structure RÉELLE » → FAUSSE aujourd'hui (schema_reference_vs_prod.txt)",
+  "DATABASE_MODEL.md « Realtime : livraison respecte la RLS (prouvée par tests multi-comptes) » → non vérifiable ici (suite prod non lancée) ; cohérent avec les policies pour postgres_changes ; les canaux broadcast publics (ring/call/typing) n'ont AUCUNE RLS",
+  "Faits établis de l'orchestrateur « 128 policies public » → recompté : 119 public + 4 storage + 2 realtime = 125 (pg_policies, 2026-09-04)"
+ ],
+ "preuves_fichiers": [
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/supabase-isolation/policies.json",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/supabase-isolation/policies_liste_live.txt",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/supabase-isolation/isolation_par_table.md",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/supabase-isolation/fonctions_realtime_storage_staging.md",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/supabase-isolation/schema_reference_vs_prod.txt",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/supabase-isolation/ref_cols.txt"
+ ],
+ "notes": "VERDICTS DEMANDÉS. Isolation des comptes côté base : NON PROUVÉE ICI au sens strict (SET ROLE et REST bloqués) ; CONFORME PAR ÉMULATION sur le noyau messagerie/notifications/état ; DÉFAILLANTE sur conv_reads (SUP-02), Storage attachments (SUP-01) et l'UPDATE de conv_messages (SUP-03). La preuve exécutée qui existe est authz-critical en CI (run 33861671142). Staging séparé : NON (SUP-04) — critère d'interdiction du GO grande échelle selon le mandat.\nCAPACITÉ / COÛTS (non prouvés, relevés) : base 92 Mo dont telemetry_events 54 Mo (111 829 lignes en 30 jours, aucun cron de purge, fonction purge_telemetry inutilisée) et user_state 10 Mo (84 lignes, max 4,8 Mo pour UNE ligne — le blob d'état contient probablement des médias, à croiser avec le domaine perf/sync) ; Storage 171 Mo/70 objets, vidéos jusqu'à 9,9 Mo sans filtre MIME ni quota par compte (50 Mo par fichier) ; plan Supabase inconnu → limites Realtime/Storage non prouvées. auth_rls_initplan ×78 : coût RLS par ligne à corriger avant montée en charge.\nRECOMMANDATIONS À SOUMETTRE À BENJAMIN : (1) traiter SUP-01/02/03 en une seule migration RLS + Storage avant toute ouverture publique, avec extension d'authz-critical (conv_reads, PATCH conv_id, lecture d'un attachment par un tiers) ; (2) décider le statut des tables cdv_*/step_interactions (retirer de la publication et fermer la lecture, ou archiver) ; (3) créer le projet de staging et y router previews + suites prod — c'est aussi la base cible de la restauration jamais exécutée ; (4) régénérer SCHEMA_PROD_REFERENCE.sql et l'imposer en gate ; (5) révoquer EXECUTE anon/authenticated sur les 4 helpers de policies (ADR-012 l'a noté le 2026-09-03 sans suite) en vérifiant storage_chemin_autorise ; (6) supprimer scripts/setup-storage.html et create-buckets-auto.html ; (7) documenter dans KNOWN_RISKS que event_attendees expose checked_in_at/rating/feedback publiquement (choix ou défaut ?) ; (8) rate-limit sur notifications, telemetry_events, client_errors, conv_messages, posts.\nCONSERVER : le socle de policies propriétaire, les triggers d'identité canonique et de gel d'auteur, le cloisonnement Storage en écriture, le canal realtime privé user:<uid>, la vérification JWT des Edge Functions, l'absence de secret dans le dépôt.\nLIMITES DE L'AUDIT : Chromium/Playwright non utilisés (aucune mesure navigateur nécessaire dans ce domaine) ; aucune écriture en base ; git status vide à la fin (vérifié deux fois) ; aucun fichier suivi modifié ; rest_anon.sh n'a jamais été créé (commande refusée). Comptage des policies : 125 et non 128 comme dans les faits établis."
+}

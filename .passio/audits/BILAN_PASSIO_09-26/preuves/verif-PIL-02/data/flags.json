@@ -1,0 +1,40 @@
+{
+  "items": [
+    {
+      "id": "ff_feed_rank",
+      "key": "feed_ranking",
+      "label": "Classement du fil par pertinence",
+      "enabled": true,
+      "rollout": 100,
+      "targetUsers": [],
+      "targetDevices": [],
+      "startAt": null,
+      "endAt": null,
+      "history": []
+    },
+    {
+      "id": "ff_live_video",
+      "key": "live_video",
+      "label": "Live vidéo (WebRTC)",
+      "enabled": true,
+      "rollout": 100,
+      "targetUsers": [],
+      "targetDevices": [],
+      "startAt": null,
+      "endAt": null,
+      "history": []
+    },
+    {
+      "id": "ff_realtime_v3",
+      "key": "realtime_v3",
+      "label": "Realtime v3 (topic par utilisateur)",
+      "enabled": true,
+      "rollout": 100,
+      "targetUsers": [],
+      "targetDevices": [],
+      "startAt": null,
+      "endAt": null,
+      "history": []
+    }
+  ]
+}
