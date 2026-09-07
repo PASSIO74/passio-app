@@ -217,6 +217,23 @@ jobs:
             echo "::notice title=Commentaires tiers écartés::${ecartes} commentaire(s) d'autres comptes n'entrent PAS dans la spécification donnée à Claude."
           fi
 
+      - name: Setup Node for pinned Claude Code CLI
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Install pinned Claude Code CLI
+        id: cli
+        run: |
+          set -euo pipefail
+          # Fable 5.1 requires >=2.1.255; subagent FORCE requires >=2.1.257.
+          # Release verified: https://github.com/anthropics/claude-code/releases/tag/v2.1.263
+          CLI_PREFIX="${RUNNER_TEMP}/passio-claude-code-2.1.263"
+          npm install --global --prefix "$CLI_PREFIX" --no-audit --no-fund @anthropic-ai/claude-code@2.1.263
+          CLAUDE_BIN="$CLI_PREFIX/bin/claude"
+          test "$("$CLAUDE_BIN" --version)" = '2.1.263 (Claude Code)'
+          echo "executable=$CLAUDE_BIN" >> "$GITHUB_OUTPUT"
+
       - name: Run Claude Code
         id: claude
         uses: anthropics/claude-code-action@3f854a8fb5146b39d5cbf8b57f70d80810e1366f # v1.0.198
@@ -227,16 +244,18 @@ jobs:
           # VIDE — vérifié dans le source de v1.0.198. C'est ce qui rend la
           # preuve d'exécution ci-dessous possible.
           CLAUDE_BRANCH: ${{ steps.branche.outputs.nom }}
-          # Décision de Benjamin du 2026-09-07 : Fable 5 exact uniquement.
-          # Aucun alias mobile ni repli Opus/Sonnet/Fable 5.1.
-          ANTHROPIC_MODEL: claude-fable-5
-          ANTHROPIC_DEFAULT_FABLE_MODEL: claude-fable-5
-          CLAUDE_CODE_SUBAGENT_MODEL: claude-fable-5
+          # Décision de Benjamin du 2026-09-07 : Fable 5.1 exact uniquement.
+          # Aucun alias mobile ni repli vers Fable 5, Opus ou Sonnet.
+          ANTHROPIC_MODEL: claude-fable-5-1
+          ANTHROPIC_DEFAULT_FABLE_MODEL: claude-fable-5-1
+          CLAUDE_CODE_SUBAGENT_MODEL: claude-fable-5-1
+          CLAUDE_CODE_SUBAGENT_MODEL_FORCE: '1'
           # Défense en profondeur : une clé présente dans l'environnement ne
           # doit jamais supplanter le jeton d'abonnement contrôlé plus haut.
           ANTHROPIC_API_KEY: ''
         with:
-          # Abonnement Claude Pro. `anthropic_api_key` est volontairement ABSENT.
+          # Abonnement Claude. `anthropic_api_key` est volontairement ABSENT.
+          path_to_claude_code_executable: ${{ steps.cli.outputs.executable }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           # Double verrou : l'argument CLI fixe la session principale ; les
@@ -244,18 +263,19 @@ jobs:
           # l'intérieur de l'action composite.
           settings: |
             {
-              "model": "claude-fable-5",
+              "model": "claude-fable-5-1",
               "availableModels": [
-                "claude-fable-5"
+                "claude-fable-5-1"
               ],
               "enforceAvailableModels": true,
               "switchModelsOnFlag": false,
               "fallbackModel": [],
-              "teammateDefaultModel": "claude-fable-5",
+              "teammateDefaultModel": "claude-fable-5-1",
               "env": {
-                "ANTHROPIC_MODEL": "claude-fable-5",
-                "ANTHROPIC_DEFAULT_FABLE_MODEL": "claude-fable-5",
-                "CLAUDE_CODE_SUBAGENT_MODEL": "claude-fable-5"
+                "ANTHROPIC_MODEL": "claude-fable-5-1",
+                "ANTHROPIC_DEFAULT_FABLE_MODEL": "claude-fable-5-1",
+                "CLAUDE_CODE_SUBAGENT_MODEL": "claude-fable-5-1",
+                "CLAUDE_CODE_SUBAGENT_MODEL_FORCE": "1"
               },
               "permissions": {
                 "defaultMode": "default",
@@ -399,7 +419,7 @@ jobs:
           # Claude n'a aucun droit `git push`. Seule la marche de publication,
           # hors de Claude, pousse un refspec explicite vers la branche imposée
           # par le run ; `main` n'est jamais une cible calculable.
-          # Fable 5 exact est obligatoire. Une indisponibilité ou un refus
+          # Fable 5.1 exact est obligatoire. Une indisponibilité ou un refus
           # termine le run ; aucune substitution de modèle n'est autorisée.
           # L'usage effectif est vérifié avant toute publication.
           #
@@ -414,9 +434,10 @@ jobs:
           # `--max-budget-usd` sur ce canal OAuth abonnement : le bug amont
           # anthropics/claude-code#85400 applique un coût API équivalent même
           # quand la dépense réelle est nulle et coupe des runs Max encore dans
-          # leur quota. La garde subscription-only reste la frontière anti-coût.
+          # leur quota. OAuth seul ne prouve PAS une absence de frais :
+          # vérifier quota inclus et usage credits désactivés avant activation.
           claude_args: |
-            --model claude-fable-5
+            --model claude-fable-5-1
             --permission-mode default
             --max-turns 80
             --allowedTools "Read,Write,Edit,Glob,Grep,Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git branch:*),Bash(git remote -v),Bash(git rev-parse:*),Bash(git ls-files:*),Bash(git fetch origin main),Bash(git checkout -b:*),Bash(git switch -c:*),Bash(git add:*),Bash(git commit:*),Bash(ls:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(wc:*),Bash(mkdir:*),Bash(pwd),Bash(date:*),Bash(gh issue comment:*),Bash(gh issue view:*),Bash(gh pr view:*)"
@@ -635,7 +656,7 @@ jobs:
 
           node <<'NODE'
           const fs = require('fs');
-          const EXPECTED_MODEL = 'claude-fable-5';
+          const EXPECTED_MODEL = 'claude-fable-5-1';
           function refuse(reason) {
             console.error('::error title=Preuve Claude refusée::' + reason + ' Publication refusée.');
             process.exit(1);
@@ -668,10 +689,10 @@ jobs:
             if (!used.length) refuse('Preuve modelUsage vide.');
             observed.push(...used);
           }
-          // Égalité stricte : le préfixe claude-fable-5 accepterait aussi Fable 5.1.
+          // Égalité stricte : aucun alias, ancien modèle ou suffixe supplémentaire.
           // Tous les init, messages assistant et bilans d'usage sont vérifiés : un init
           // conforme ne doit pas masquer un repli en cours de session ou dans un agent.
-          if (observed.some(model => model !== EXPECTED_MODEL)) refuse('Un modèle absent ou autre que Fable 5 exact apparaît dans la trace.');
+          if (observed.some(model => model !== EXPECTED_MODEL)) refuse('Un modèle absent ou autre que Fable 5.1 exact apparaît dans la trace.');
           if (process.env.GITHUB_OUTPUT) {
             fs.appendFileSync(process.env.GITHUB_OUTPUT, 'nom=' + EXPECTED_MODEL + '\nauth_reelle=none\n');
           }

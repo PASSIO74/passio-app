@@ -279,7 +279,7 @@ PYW
 if [ $? -eq 0 ]; then ok=$((ok+29)); else ko=$((ko+1)); fi
 
 echo
-echo "═══ Fable 5 exact — configuration et traces des deux canaux ═══"
+echo "═══ Fable 5.1 exact — configuration et traces des deux canaux ═══"
 if node "${RACINE}/tests/ci/claude-model.cjs"; then
   ok=$((ok+1))
 else
@@ -436,4 +436,3 @@ fi
 echo
 echo "Bilan final : ${ok} OK / ${ko} KO"
 [ "${ko}" -eq 0 ]
-

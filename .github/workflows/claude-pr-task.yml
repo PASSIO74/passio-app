@@ -47,11 +47,11 @@ jobs:
         run: |
           # Version ÉPINGLÉE, même raison que le SHA de l'action dans les
           # autres workflows : ce CLI reçoit CLAUDE_CODE_OAUTH_TOKEN et un
-          # GITHUB_TOKEN en écriture. 2.1.238 est la version que
-          # claude-code-action v1.0.198 embarque (« chore: bump Claude Code
-          # to 2.1.238 »), donc les deux canaux exécutent le même code.
-          npm install -g @anthropic-ai/claude-code@2.1.238
-          claude --version
+          # GITHUB_TOKEN en écriture. Même CLI exact dans les deux canaux.
+          # Fable 5.1 nécessite >=2.1.255 et subagent FORCE >=2.1.257.
+          # https://github.com/anthropics/claude-code/releases/tag/v2.1.263
+          npm install -g --no-audit --no-fund @anthropic-ai/claude-code@2.1.263
+          test "$(claude --version)" = '2.1.263 (Claude Code)'
 
       # Preuve d'auth AVANT la moindre dépense : `claude auth status` interroge
       # le CLI lui-même et ne consomme aucun jeton de modèle.
@@ -87,10 +87,10 @@ jobs:
               echo "::error title=Politique subscription-only violée::Le CLI s'authentifie par clé API facturée. PASSIO n'utilise que l'abonnement Claude Pro : refus d'exécuter."
               exit 1 ;;
             *)
-              echo "AUTH = CLAUDE PRO OAUTH" ;;
+              echo "AUTH = ABONNEMENT OAUTH" ;;
           esac
 
-      - name: Run Claude Code (Fable 5 exact uniquement)
+      - name: Run Claude Code (Fable 5.1 exact uniquement)
         env:
           # Abonnement uniquement. ANTHROPIC_API_KEY est vidée explicitement :
           # si elle était définie ailleurs, le CLI la préférerait en silence.
@@ -104,7 +104,7 @@ jobs:
           TASK="$(cat .passio/claude-task.md)"
           PROMPT=$(cat <<EOF
           You are the implementation agent for PASSIO, authenticated with
-          Benjamin's Claude Pro subscription (OAuth token).
+          Benjamin's Claude subscription (OAuth token).
           Read AGENTS.md and CLAUDE.md first and obey all repository invariants.
           Execute the trusted task below on the current PR branch.
           Make the smallest safe implementation that satisfies the task.
@@ -118,16 +118,17 @@ jobs:
           )
 
           # Décision de Benjamin du 2026-09-07 : aucun repli de modèle.
-          MODELE_PRIMAIRE=claude-fable-5
+          MODELE_PRIMAIRE=claude-fable-5-1
           export ANTHROPIC_MODEL="${MODELE_PRIMAIRE}"
           export ANTHROPIC_DEFAULT_FABLE_MODEL="${MODELE_PRIMAIRE}"
           export CLAUDE_CODE_SUBAGENT_MODEL="${MODELE_PRIMAIRE}"
+          export CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1
           # Les settings du projet sélectionnent aussi le modèle, désactivent
           # les replis et limitent les modèles proposés. La trace reste la preuve.
           CLAUDE_EXIT=0
           claude -p "$PROMPT" \
             --model "${MODELE_PRIMAIRE}" \
-            --settings '{"model":"claude-fable-5","availableModels":["claude-fable-5"],"enforceAvailableModels":true,"switchModelsOnFlag":false,"fallbackModel":[],"teammateDefaultModel":"claude-fable-5"}' \
+            --settings '{"model":"claude-fable-5-1","availableModels":["claude-fable-5-1"],"enforceAvailableModels":true,"switchModelsOnFlag":false,"fallbackModel":[],"teammateDefaultModel":"claude-fable-5-1"}' \
             --max-turns 40 \
             --allowedTools "Read,Edit,Write,Glob,Grep,Bash(npm run:*),Bash(npm test:*),Bash(git diff:*),Bash(git status:*)" \
             --output-format stream-json \
@@ -180,7 +181,7 @@ jobs:
           export EXECUTION_FILE=/tmp/claude-stream.jsonl
           node <<'NODE'
           const fs = require('fs');
-          const EXPECTED_MODEL = 'claude-fable-5';
+          const EXPECTED_MODEL = 'claude-fable-5-1';
           function refuse(reason) {
             console.error('::error title=Preuve Claude refusée::' + reason + ' Publication refusée.');
             process.exit(1);
@@ -213,17 +214,17 @@ jobs:
             if (!used.length) refuse('Preuve modelUsage vide.');
             observed.push(...used);
           }
-          // Égalité stricte : le préfixe claude-fable-5 accepterait aussi Fable 5.1.
+          // Égalité stricte : aucun alias, ancien modèle ou suffixe supplémentaire.
           // Tous les init, messages assistant et bilans d'usage sont vérifiés : un init
           // conforme ne doit pas masquer un repli en cours de session ou dans un agent.
-          if (observed.some(model => model !== EXPECTED_MODEL)) refuse('Un modèle absent ou autre que Fable 5 exact apparaît dans la trace.');
+          if (observed.some(model => model !== EXPECTED_MODEL)) refuse('Un modèle absent ou autre que Fable 5.1 exact apparaît dans la trace.');
           if (process.env.GITHUB_OUTPUT) {
             fs.appendFileSync(process.env.GITHUB_OUTPUT, 'nom=' + EXPECTED_MODEL + '\nauth_reelle=none\n');
           }
           console.log('Modèle vérifié dans init et usage : ' + EXPECTED_MODEL);
           console.log('Source authentification : OAuth (apiKeySource=none)');
           NODE
-          MODEL=claude-fable-5
+          MODEL=claude-fable-5-1
 
 
       - name: Verify Claude produced an application diff
