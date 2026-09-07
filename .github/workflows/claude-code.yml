@@ -399,12 +399,9 @@ jobs:
           # Claude n'a aucun droit `git push`. Seule la marche de publication,
           # hors de Claude, pousse un refspec explicite vers la branche imposée
           # par le run ; `main` n'est jamais une cible calculable.
-          # Politique modèles PASSIO : Fable 5 reste le primaire cible, mais le
-          # canal setup-token le déclassait silencieusement vers Sonnet 5 le
-          # 2026-08-21. Opus 5 est donc forcé comme repli autorisé jusqu'à ce
-          # qu'un canari prouve Fable 5 réellement exécuté. Un quota
-          # d'abonnement épuisé reste un échec explicite : aucune clé API
-          # facturée n'est utilisée en secours.
+          # Fable 5 exact est obligatoire. Une indisponibilité ou un refus
+          # termine le run ; aucune substitution de modèle n'est autorisée.
+          # L'usage effectif est vérifié avant toute publication.
           #
           # Budget porté à 80 tours après deux échecs reproductibles à 40 :
           # runs 32504851993 et 32512038095. Le second utilisait bien Opus 5
