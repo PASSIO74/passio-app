@@ -1,11 +1,10 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
-  "model": "claude-opus-5",
+  "model": "claude-fable-5",
   "availableModels": [
-    "claude-opus-5",
-    "claude-fable-5-1"
+    "claude-fable-5"
   ],
-  "teammateDefaultModel": "claude-opus-5",
+  "teammateDefaultModel": "claude-fable-5",
   "hooks": {
     "PreToolUse": [
       {
@@ -57,8 +56,9 @@
   },
   "env": {
     "ENABLE_STOP_REVIEW": "0",
-    "ANTHROPIC_MODEL": "claude-opus-5",
-    "ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-opus-5"
+    "ANTHROPIC_MODEL": "claude-fable-5",
+    "ANTHROPIC_DEFAULT_FABLE_MODEL": "claude-fable-5",
+    "CLAUDE_CODE_SUBAGENT_MODEL": "claude-fable-5"
   },
   "extraKnownMarketplaces": {
     "context7-marketplace": {
@@ -103,5 +103,8 @@
       "Read(./dashboard/.env)",
       "Read(./.claude/settings.local.json)"
     ]
-  }
+  },
+  "enforceAvailableModels": true,
+  "switchModelsOnFlag": false,
+  "fallbackModel": []
 }

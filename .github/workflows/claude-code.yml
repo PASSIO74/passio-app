@@ -227,15 +227,11 @@ jobs:
           # VIDE — vérifié dans le source de v1.0.198. C'est ce qui rend la
           # preuve d'exécution ci-dessous possible.
           CLAUDE_BRANCH: ${{ steps.branche.outputs.nom }}
-          # Le 2026-08-21, le setup-token OAuth a demandé Fable 5 mais le flux
-          # system/init a prouvé un déclassement silencieux vers Sonnet 5
-          # (run 32504851993). Tant que l'incident upstream #83900 n'est pas
-          # résolu et validé par un canari, on sélectionne explicitement le
-          # SEUL repli autorisé par PASSIO : Opus 5. Les trois variables
-          # empêchent aussi un sous-agent de repartir sur un autre modèle.
-          ANTHROPIC_MODEL: claude-opus-5
-          ANTHROPIC_DEFAULT_OPUS_MODEL: claude-opus-5
-          CLAUDE_CODE_SUBAGENT_MODEL: claude-opus-5
+          # Décision de Benjamin du 2026-09-07 : Fable 5 exact uniquement.
+          # Aucun alias mobile ni repli Opus/Sonnet/Fable 5.1.
+          ANTHROPIC_MODEL: claude-fable-5
+          ANTHROPIC_DEFAULT_FABLE_MODEL: claude-fable-5
+          CLAUDE_CODE_SUBAGENT_MODEL: claude-fable-5
           # Défense en profondeur : une clé présente dans l'environnement ne
           # doit jamais supplanter le jeton d'abonnement contrôlé plus haut.
           ANTHROPIC_API_KEY: ''
@@ -248,11 +244,18 @@ jobs:
           # l'intérieur de l'action composite.
           settings: |
             {
-              "model": "claude-opus-5",
+              "model": "claude-fable-5",
+              "availableModels": [
+                "claude-fable-5"
+              ],
+              "enforceAvailableModels": true,
+              "switchModelsOnFlag": false,
+              "fallbackModel": [],
+              "teammateDefaultModel": "claude-fable-5",
               "env": {
-                "ANTHROPIC_MODEL": "claude-opus-5",
-                "ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-opus-5",
-                "CLAUDE_CODE_SUBAGENT_MODEL": "claude-opus-5"
+                "ANTHROPIC_MODEL": "claude-fable-5",
+                "ANTHROPIC_DEFAULT_FABLE_MODEL": "claude-fable-5",
+                "CLAUDE_CODE_SUBAGENT_MODEL": "claude-fable-5"
               },
               "permissions": {
                 "defaultMode": "default",
@@ -416,7 +419,7 @@ jobs:
           # quand la dépense réelle est nulle et coupe des runs Max encore dans
           # leur quota. La garde subscription-only reste la frontière anti-coût.
           claude_args: |
-            --model claude-opus-5
+            --model claude-fable-5
             --permission-mode default
             --max-turns 80
             --allowedTools "Read,Write,Edit,Glob,Grep,Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git branch:*),Bash(git remote -v),Bash(git rev-parse:*),Bash(git ls-files:*),Bash(git fetch origin main),Bash(git checkout -b:*),Bash(git switch -c:*),Bash(git add:*),Bash(git commit:*),Bash(ls:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(wc:*),Bash(mkdir:*),Bash(pwd),Bash(date:*),Bash(gh issue comment:*),Bash(gh issue view:*),Bash(gh pr view:*)"
@@ -635,62 +638,48 @@ jobs:
 
           node <<'NODE'
           const fs = require('fs');
-          let model = '', keySource = '';
-          // La marche `diagnostic` protège déjà sa lecture ; celle-ci ne l'était
-          // pas — un survivant du même correctif. C'est pourtant ICI que ça
-          // compte le plus : la publication dépend de `steps.modele.outcome`,
-          // donc une trace illisible ou trop grosse pour une seule string
-          // (ERR_STRING_TOO_LONG au-delà de ~512 Mo, atteignable sur 80 tours)
-          // bloquerait un travail légitime en ne laissant qu'une stack trace.
-          // On reste fail-closed — une garde qui ne peut pas lire doit refuser —
-          // mais la cause devient lisible du premier coup d'œil.
-          let raw;
-          try {
-            raw = fs.readFileSync(process.env.EXECUTION_FILE, 'utf8');
-          } catch (erreur) {
-            console.error(`::error title=Trace illisible::La preuve d'exécution n'a pas pu être lue (${erreur?.code || erreur?.name || 'erreur inconnue'}). Publication refusée : sans trace, le modèle et la source d'authentification ne sont pas vérifiables.`);
+          const EXPECTED_MODEL = 'claude-fable-5';
+          function refuse(reason) {
+            console.error('::error title=Preuve Claude refusée::' + reason + ' Publication refusée.');
             process.exit(1);
           }
-          let events = [];
+          let events;
           try {
-            const parsed = JSON.parse(raw);
-            events = Array.isArray(parsed) ? parsed : [parsed];
-          } catch (_) {
-            // Compatibilité avec un éventuel retour futur au JSONL.
-            events = raw.split(/\r?\n/).filter(Boolean).flatMap((line) => {
-              try { return [JSON.parse(line)]; } catch (_) { return []; }
-            });
-          }
-          for (const event of events) {
-            if (event?.type === 'system' && event?.subtype === 'init') {
-              model = String(event.model || '');
-              keySource = String(event.apiKeySource || '');
-              break;
+            const raw = fs.readFileSync(process.env.EXECUTION_FILE, 'utf8');
+            try {
+              const parsed = JSON.parse(raw);
+              events = Array.isArray(parsed) ? parsed : [parsed];
+            } catch (_) {
+              events = raw.split(/\r?\n/).filter(line => line.trim()).map(line => JSON.parse(line));
             }
+          } catch (_) {
+            refuse('Trace illisible ou malformée.');
           }
-          const actualModel = model || 'INCONNU';
-          const actualAuth = keySource || 'ABSENTE';
-          fs.appendFileSync(process.env.GITHUB_OUTPUT,
-            `nom=${actualModel}\nauth_reelle=${actualAuth}\n`);
-          console.log(`Modèle réellement exécuté : ${actualModel}`);
-          console.log(`Source d'authentification : ${actualAuth}`);
-
-          // Avec le CLI 2.1.x, le jeton d'abonnement OAuth apparaît comme
-          // apiKeySource="none" dans system/init : aucune clé API n'alimente
-          // la requête. Cette valeur n'est acceptée qu'avec la garde d'entrée
-          // subscription-only déjà verte et une action Claude réussie. Une
-          // source vide, nouvelle ou inconnue échoue fermement jusqu'à revue.
-          if (keySource !== 'none') {
-            console.error(`::error title=Source d'auth non autorisée::Reçu « ${actualAuth} » ; la preuve OAuth attendue est apiKeySource=none. Publication refusée.`);
-            process.exit(1);
+          const inits = events.filter(event => event?.type === 'system' && event?.subtype === 'init');
+          const results = events.filter(event => event?.type === 'result');
+          const assistants = events.filter(event => event?.type === 'assistant');
+          if (!inits.length || !results.length) refuse('Trace incomplète : init et résultat requis.');
+          if (inits.some(event => event.apiKeySource !== 'none')) refuse('Source OAuth non confirmée.');
+          const observed = inits.map(event => event.model);
+          for (const event of assistants) observed.push(event.message?.model);
+          for (const result of results) {
+            if (result.subtype !== 'success' || result.is_error === true) refuse('Exécution non réussie.');
+            if (!result.modelUsage || typeof result.modelUsage !== 'object' || Array.isArray(result.modelUsage)) {
+              refuse('Preuve modelUsage absente.');
+            }
+            const used = Object.keys(result.modelUsage);
+            if (!used.length) refuse('Preuve modelUsage vide.');
+            observed.push(...used);
           }
-          const autorise = ['claude-fable-5', 'claude-opus-5'].some(
-            (prefixe) => model === prefixe || model.startsWith(`${prefixe}-`)
-          );
-          if (!autorise) {
-            console.error(`::error title=Modèle non autorisé::Reçu « ${actualModel} » ; seuls claude-fable-5 et claude-opus-5 sont admis. Publication refusée.`);
-            process.exit(1);
+          // Égalité stricte : le préfixe claude-fable-5 accepterait aussi Fable 5.1.
+          // Tous les init, messages assistant et bilans d'usage sont vérifiés : un init
+          // conforme ne doit pas masquer un repli en cours de session ou dans un agent.
+          if (observed.some(model => model !== EXPECTED_MODEL)) refuse('Un modèle absent ou autre que Fable 5 exact apparaît dans la trace.');
+          if (process.env.GITHUB_OUTPUT) {
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, 'nom=' + EXPECTED_MODEL + '\nauth_reelle=none\n');
           }
+          console.log('Modèle vérifié dans init et usage : ' + EXPECTED_MODEL);
+          console.log('Source authentification : OAuth (apiKeySource=none)');
           NODE
 
       # ── PUBLICATION ───────────────────────────────────────────────────
