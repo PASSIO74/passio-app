@@ -1,0 +1,161 @@
+{
+  "domaine": "auth-rgpd",
+  "sha_verifie": "c8cb8e9 (HEAD 08e7e7a : git diff c8cb8e9..HEAD sur js/ index.html supabase/ migrations/ netlify.toml = vide)",
+  "verdicts": [
+    {
+      "id": "AUTH-01",
+      "verdict": "CONFIRMÉ",
+      "priorite_proposee": "P1",
+      "priorite_changee": false,
+      "preuve": "js/access-gate.js:25-26 (sel + hash publics), :32 (sessionStorage === GATE_HASH suffit), :109-113 (aucun compteur d'essais) ; test exécuté relecture/auth-rgpd/verif-auth01-auth06.js → A_gate_present_sans_token=true, A_gate_absent_avec_token=true ; node sha256 0000-9999 → trouvé au 2126e essai en 7 ms ; api.github.com/repos/PASSIO74/passio-app → \"private\": false ; code en clair dans 31 fichiers du dépôt (grep -rlw 2125, hors node_modules) ; docs/SECURITE_CODE_ACCES.md:44 (code + hash en clair) et :47 (« le hash empêche seulement de retrouver le code » — faux) ; politique §7 app-02-state-utils.js:3146",
+      "commentaire": "Tout est vérifié au SHA : le gate se contourne par un seul setItem, le code se retrouve hors ligne en quelques ms et figure en clair dans un dépôt public. La doc elle-même annonce la limite mais en surestime la portée. P1 juste : ce n'est pas une frontière de sûreté (la RLS l'est), mais la promesse « bêta privée » faite aux testeurs et dans la politique est fausse."
+    },
+    {
+      "id": "AUTH-02",
+      "verdict": "CONFIRMÉ",
+      "priorite_proposee": "P1",
+      "priorite_changee": false,
+      "preuve": "app-02-state-utils.js:3179-3194 (onbValidateAge, seul écrivain de birthYear/isMinor) ; seul appelant index.html:318 (étape data-onb-step=\"age\") ; onbNext() n'est atteint qu'à app-02:3504, APRÈS le return de :3461-3467 (signup sans session → onglet connexion) ; connexion : app-02:3496-3501 onboarded=true + reload ; session au boot : app-08-ui-modals-tour.js:2279 et :2291 state.onboarded=true sans étape ; état initial app-02:33-34 birthYear:null/isMinor:false ; index.html:311 « contrôle d'âge IA » ; skipToApp (app-08:318-320, birthYear 1995 par défaut) n'a AUCUN appelant ; onbSkipAuth (anonyme) n'a aucun appelant non plus ; base : auth.users is_anonymous = 0 sur 6",
+      "commentaire": "Depuis l'activation de « Confirm email », aucun chemin réel n'affiche l'étape âge : onbNext n'est atteignable que si signUp rend une session. Conséquence secondaire : declare_birth_year (app-07:5017-5019) ne peut jamais partir puisque birthYear reste null — sans effet aujourd'hui car le drapeau IRL-proposal est OFF par défaut (app-07:4949). P1 confirmé (mineurs + mention trompeuse)."
+    },
+    {
+      "id": "AUTH-03",
+      "verdict": "CONFIRMÉ",
+      "priorite_proposee": "P1",
+      "priorite_changee": false,
+      "preuve": "grep -rniE 'CGU|conditions générales|mentions légales|SIREN|hébergeur|terms_version|terms_accepted' index.html js/*.js → 0 ; politique app-02-state-utils.js:3139-3146 (« juin 2026 », « carnets », contrôle d'âge §6, code §7, contact §5 = adresse d'une autre société, non recopiée ici) ; À propos app-02:2549-2551 (« PASSIO SAS · France », autre adresse de contact, sans SIREN/adresse/hébergeur) ; formulaire index.html:271-297 sans case ni lien d'acceptation ; CSP netlify.toml:19 liste des tiers absents de la politique",
+      "commentaire": "Tout l'observé tient au SHA. La politique est incomplète (téléphone, télémétrie, sous-traitants) et contradictoire sur deux points déjà démontrés faux (âge, code). P1 juste ; c'est le seul point qui frôle P0 si « commercialisation » signifie encaisser un paiement (aucune base contractuelle), mais à ce stade (bêta gratuite) P1 tient."
+    },
+    {
+      "id": "AUTH-04",
+      "verdict": "CONFIRMÉ",
+      "priorite_proposee": "P1",
+      "priorite_changee": false,
+      "preuve": "js/telemetry.js:31 (TELEMETRY_DEFAULT_ON=true), :71 (défaut prod actif), :36-37 (passio_device_id persistant), :492-496 (user_id + user_label + device_id sur chaque événement) ; setEnabled sans aucun appelant hors telemetry.js (grep) ; aucun mot « télémétrie » dans index.html hors commentaire :51 — qui affirme « opt-in via ?telemetry=1, sans PII », contredit par :71 ; base : telemetry_events = 114 921 lignes (111 828 au moment de l'audit, +3 000 en 4 jours), 85 143 avec user_id, 1 213 device_id distincts, 1 seul cron (purge_client_errors 0 3 * * *), purge_telemetry jamais planifiée ; MAIS user_label IS NOT NULL = 0 ligne",
+      "commentaire": "Confirmé sur l'essentiel (actif sans consentement, device_id persistant, uuid de compte sur 85 k lignes, aucune purge, aucun interrupteur in-app). Une nuance : en production AUCUNE ligne ne porte le pseudo (user_label toujours NULL, cause non identifiée — probablement `state.user.general.username` vide et redaction), donc « profil comportemental nominatif (pseudo) » est à reformuler en « pseudonymisé par uuid de compte + identifiant d'appareil ». P1 maintenu : traceur non nécessaire déposé par défaut."
+    },
+    {
+      "id": "AUTH-05",
+      "verdict": "CONFIRMÉ",
+      "priorite_proposee": "P1",
+      "priorite_changee": false,
+      "preuve": "supabase/functions/delete-account/index.ts:47-68 (14 tables, `{error}` jamais lu, try/catch inopérant), :73-81 (bucket content seulement) ; app-02-state-utils.js:3086-3117 (11 tables + follows/blocks, erreurs ignorées, toast « Compte supprimé » inconditionnel :3130) ; base : pg_constraint → AUCUNE FK d'une table public vers auth.users (seules 8 tables du schéma auth cascadent) ; orphelins réels (user_id absent d'auth.users) : user_state 79/84, analytics_events 51/3 907, notifications.from_id 19/188, storage attachments 12 objets non couverts ; pg_policies : analytics_events, telemetry_events, reports, passion_requests, conv_reads, user_safety n'ont AUCUNE policy DELETE (donc impurgeables par le client) ; user_safety porte majority_at (pas birth_year, précision)",
+      "commentaire": "Confirmé et même aggravé par la base : 79 blobs user_state (état complet, téléphone inclus) appartiennent à des comptes qui n'existent plus, preuve qu'aucun chemin de suppression ne cascade. Correction : user_safety stocke `majority_at`, pas l'année de naissance (donnée personnelle tout de même). P1 juste."
+    },
+    {
+      "id": "AUTH-06",
+      "verdict": "CONFIRMÉ",
+      "priorite_proposee": "P1",
+      "priorite_changee": false,
+      "preuve": "app-02-state-utils.js:2711-2737 (ACCOUNT_SCOPED_KEYS : 12 clés, sans passio_outbox_v1 / passio_cmt_outbox_v1 / passio_post_delete_outbox_v1 / passio_event_comments_v1 ; :2723 purge « passio_cdv_geo_v1 » alors que la clé écrite est passio_geo_cache_v1, app-07:958) ; app-04-comments-shop.js:4623 (from_id: MY_UID au flush), :4644-4648 (_flushOutbox) ; app-08:5956 (setTimeout(_flushOutbox,1500) dans supaInit) ; supaAddComment app-08:3820 (author_id: MY_UID) ; test exécuté relecture/auth-rgpd/verif-auth01-auth06.js (serveur local, SDK stub, aucun réseau) → après purgeAccountScopedData() : passio_outbox_v1 INTACT (contenu « message privé de A »), cmt_outbox et delete_outbox intacts, conversations et passio_uid bien purgés ; _flushOutbox sous MY_UID=B → insert conv_messages {from_id: B, content de A} ; policy conv_messages_insert_member (from_id = auth.uid() AND is_conv_member) → accepté si B est membre",
+      "commentaire": "Reproduit localement au SHA. La fuite du contenu (lisible dans localStorage par le compte suivant) est inconditionnelle ; l'envoi effectif sous l'identité de B exige que B soit membre de la conversation (appareil partagé entre correspondants) — scénario étroit mais réel. P1 maintenu au titre de l'isolation inter-comptes (risque n°1 du modèle de menace), P2 défendable si l'on ne retient que l'envoi usurpé."
+    },
+    {
+      "id": "AUTH-07",
+      "verdict": "CONFIRMÉ",
+      "priorite_proposee": "P2",
+      "priorite_changee": false,
+      "preuve": "index.html:276-279 (#authPhone, affiché à l'inscription) ; app-02-state-utils.js:3403-3406 (obligatoire, 8-15 chiffres), :3418 (user_metadata), :3420-3425 (state.user.general.phone → blob user_state) ; grep general.phone → 1 écriture, 0 lecture applicative ; dashboard/server/accounts.js:4-11, :35-38 (lecture service_role) ; politique §1 app-02:3140 sans téléphone ; base : 2 comptes sur 6 portent raw_user_meta_data.phone ; le chemin Google OAuth (app-02:3305-3322) ne le demande jamais",
+      "commentaire": "Confirmé. Observation complémentaire : l'obligation ne vaut que par le formulaire mot de passe, l'inscription Google la contourne — preuve supplémentaire que la donnée n'a pas de finalité produit. Les 79 blobs user_state orphelins (AUTH-05) contiennent potentiellement ces numéros. P2 juste."
+    },
+    {
+      "id": "AUTH-08",
+      "verdict": "CONFIRMÉ",
+      "priorite_proposee": "P2",
+      "priorite_changee": false,
+      "preuve": "app-02-state-utils.js:3399 (inscription), :3012 (changement), :3345 (récupération) : `length < 6` sans complexité ; index.html:282 et app-02:2993/2995/3334 minlength=6 ; grep mfa|totp|enroll → 0 ; fait établi orchestrateur : advisor « leaked password protection » désactivé (non re-vérifié ici, cité de CONTEXTE_AUDIT.md) ; docs/SETUP_SMTP_AUTH.md §5 le liste comme restant",
+      "commentaire": "Confirmé par inspection. Effort 0,25 j réaliste (deux réglages Dashboard + trois constantes). P2 juste."
+    },
+    {
+      "id": "AUTH-09",
+      "verdict": "CONFIRMÉ",
+      "priorite_proposee": "P2",
+      "priorite_changee": false,
+      "preuve": "app-09-boot-pwa.js:1245-1259 (_exportConv : une conversation en .txt, texte seul, « [Media] » pour le reste) ; grep export dans app-02 → aucune entrée compte ; politique §5 app-02:3144 promet « directement dans l'app » et donne une adresse de contact différente de celle de l'À propos (app-02:2550) ; updateUser n'est appelé que pour le mot de passe (app-02:3026, :3348) — aucune rectification d'e-mail in-app",
+      "commentaire": "Confirmé, et légèrement élargi : ni export, ni changement d'e-mail dans l'app ; seul le mot de passe est modifiable. P2 juste."
+    },
+    {
+      "id": "AUTH-10",
+      "verdict": "CONFIRMÉ",
+      "priorite_proposee": "P2",
+      "priorite_changee": false,
+      "preuve": "netlify.toml:19 (CSP : fonts.googleapis/gstatic, tenor.googleapis, api.giphy, photon.komoot.io, tiles.openfreemap, stun Google, turn:openrelay.metered.ca) ; index.html : 3 références fonts.googleapis.com (pas 18 comme écrit — styles.css en compte 0) ; app-05-config-profil.js:480-483 (TURN openrelay avec identifiants publics « openrelayproject ») ; politique §2 « UE/US » sans liste",
+      "commentaire": "Confirmé ; seule la quantité « 18 références » est fausse (3), sans effet sur le fond : les polices Google sont chargées dès l'ouverture. P2 juste."
+    },
+    {
+      "id": "AUTH-11",
+      "verdict": "CONFIRMÉ",
+      "priorite_proposee": "P2",
+      "priorite_changee": false,
+      "preuve": "app-04-comments-shop.js:3340-3350 (reportUser/reportPost → toast) ; app-08-ui-modals-tour.js:5383-5389 (insert reports : id, reporter_id, target_type, target_id, reason, created_at) ; pg_policies reports = INSERT seul ; SCHEMA_PROD_REFERENCE.sql:236-242 : aucune colonne statut/traitement ; grep CGU/point de contact → 0",
+      "commentaire": "Confirmé par inspection et par la base : la table ne peut même pas représenter un traitement. P2 juste."
+    },
+    {
+      "id": "AUTH-12",
+      "verdict": "CONFIRMÉ",
+      "priorite_proposee": "P3",
+      "priorite_changee": false,
+      "preuve": "tests/e2e/suppression-compte.spec.js:28 test.skip(!PASSIO_E2E_MULTI) ; grep PASSIO_E2E_MULTI .github/workflows/*.yml → uniquement le commentaire deploy.yml:155 ; job « Suites production » deploy.yml:344-348 sans cette variable ; docs/EDGE_FUNCTION_DELETE_ACCOUNT.md:3 « déployée le 2026-06-11 » alors que la purge Storage du fichier date de 43b8ffa (2026-08-31)",
+      "commentaire": "Confirmé. P3 juste tant qu'AUTH-05 n'est pas corrigé (le test prouverait une suppression incomplète de toute façon) ; il devient P2 dès que la fonction est étendue."
+    },
+    {
+      "id": "AUTH-13",
+      "verdict": "RÉFUTÉ",
+      "priorite_proposee": "P3",
+      "priorite_changee": false,
+      "preuve": "base : auth.identities WHERE provider='google' → 2 identités sur 6 comptes ; index.html:294-297 (bouton) ; app-02-state-utils.js:3305-3322 (error.message brut) ; grep signInWithOAuth tests/e2e → 0",
+      "commentaire": "La partie centrale (« sans preuve d'activation du provider », « bouton mort possible ») est réfutée : deux comptes réels se sont créés ou connectés par Google, le provider est actif et fonctionne. Restent deux points mineurs (message d'erreur brut, aucun test e2e du retour OAuth) qui ne justifient pas plus que P3 — et que le formulaire Google contourne le téléphone obligatoire (voir AUTH-07)."
+    }
+  ],
+  "oublis": [
+    {
+      "id": "CPL-AUTH-01",
+      "priorite": "P2",
+      "titre": "Aucune clé étrangère vers auth.users : toute suppression administrative (Dashboard, purge e2e REST, Edge Function) laisse des blobs d'état complets orphelins — 79 lignes user_state sur 84 aujourd'hui",
+      "fonctionnalite": "Modèle de données / cycle de vie d'un compte (user_state, analytics_events, notifications, Storage attachments)",
+      "attendu": "Supprimer un compte auth entraîne (par FK ON DELETE CASCADE ou par job) la disparition de tout ce qui lui est rattaché, quel que soit le chemin de suppression",
+      "observe": "pg_constraint : aucune FK d'une table public vers auth.users (seules auth.identities/sessions/mfa_factors/… cascadent). En prod : user_state 79/84 lignes dont user_id n'existe plus dans auth.users (blob d'état complet : profils, téléphone, notifications, likes), analytics_events 51 orphelines, notifications.from_id 19, 12 objets du bucket attachments jamais couverts. La purge e2e utilisée en CI (scripts/purge-e2e-accounts.js, DELETE auth/v1/admin/users) ne nettoie pas user_state — seul scripts/purge_e2e_accounts.sql:34 le fait, et il n'est pas celui que global-teardown lance (tests/e2e/global-teardown.js:60)",
+      "reproduction": "SELECT count(*) FROM public.user_state WHERE user_id::text NOT IN (SELECT id::text FROM auth.users) → 79 ; SELECT conrelid::regclass FROM pg_constraint WHERE contype='f' AND confrelid='auth.users'::regclass → aucune table public",
+      "preuve": "requêtes execute_sql de cette relecture (agrégats) ; scripts/purge-e2e-accounts.js:125 ; tests/e2e/global-teardown.js:60-63 ; scripts/purge_e2e_accounts.sql:34",
+      "impact": "Données personnelles de comptes disparus conservées sans limite (contradiction avec la politique §4) ; 10 Mo de blobs morts ; tout futur chemin de suppression (support, RGPD manuel via Dashboard) reproduit le défaut",
+      "correction": "Ajouter `user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE` (ou un job hebdomadaire d'orphelins) sur user_state, analytics_events, telemetry_events, user_safety, push_subscriptions, notifications.from_id (SET NULL) ; purge immédiate des 79 lignes ; aligner purge-e2e-accounts.js sur purge_e2e_accounts.sql",
+      "effort": "0,5 j (migration DDL + purge) — attention : colonnes `text`, un cast est nécessaire",
+      "confiance": "PROUVÉ (requête base)"
+    },
+    {
+      "id": "CPL-AUTH-02",
+      "priorite": "P3",
+      "titre": "La suppression de compte efface aussi le contrôle parental de l'appareil (passio_parental_code, passio_limit_sec), que la déconnexion protège délibérément",
+      "fonctionnalite": "Paramètres → Supprimer mon compte (doDeleteAccount) vs contrôle parental posé sur l'appareil",
+      "attendu": "Le code parental appartient à l'APPAREIL (commentaire app-02:2727-2730 : le purger « offrirait à l'enfant un contournement en un clic ») et doit survivre à tout geste de compte",
+      "observe": "doDeleteAccount purge par motif `k.indexOf(\"passio\") !== -1` (app-02-state-utils.js:3123-3125), ce qui emporte passio_parental_code et passio_limit_sec, alors que purgeAccountScopedData (déconnexion) les épargne explicitement. Un enfant peut créer un compte jetable puis le supprimer pour lever la limite de temps",
+      "reproduction": "localStorage.passio_parental_code posé → Paramètres → Supprimer mon compte → SUPPRIMER → après rechargement la clé est absente",
+      "preuve": "app-02-state-utils.js:3123-3125 vs :2727-2732 et :2463",
+      "impact": "Contournement du contrôle parental, contraire à l'intention documentée dans le code",
+      "correction": "Dans doDeleteAccount, purger ACCOUNT_SCOPED_KEYS + le jeton auth + les files (AUTH-06) au lieu du motif « passio » ; ou exclure explicitement les clés d'appareil",
+      "effort": "0,1 j",
+      "confiance": "CONFORME PAR INSPECTION (non exécuté)"
+    },
+    {
+      "id": "CPL-AUTH-03",
+      "priorite": "P3",
+      "titre": "Le commentaire d'intégration de la télémétrie dans index.html annonce « opt-in via ?telemetry=1, sans PII » — l'inverse du comportement en production",
+      "fonctionnalite": "index.html (chargement de js/telemetry.js) / documentation embarquée",
+      "attendu": "Un commentaire qui décrit l'activation réelle (ON par défaut en prod, opt-out) et les données réellement envoyées (uuid de compte, device_id persistant)",
+      "observe": "index.html:51 : « opt-in via ?telemetry=1, sans PII » ; telemetry.js:31 et :71 : ON par défaut hors localhost ; telemetry.js:492-496 : user_id et device_id sur chaque ligne (85 143 lignes avec user_id en prod)",
+      "reproduction": "Lire index.html:51 puis telemetry.js:71",
+      "preuve": "index.html:51 ; js/telemetry.js:31, 71, 492-496 ; requête base (tel_avec_user_id = 85 143)",
+      "impact": "Un relecteur ou un juriste qui s'appuie sur le code conclura à tort que la télémétrie est opt-in ; entretient l'écart de la politique de confidentialité (AUTH-04)",
+      "correction": "Corriger le commentaire en même temps qu'AUTH-04",
+      "effort": "5 min",
+      "confiance": "PROUVÉ (inspection + base)"
+    }
+  ],
+  "tests_lances": [
+    "PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers node relecture/auth-rgpd/verif-auth01-auth06.js (chromium 1.60, http-server local :8125, requêtes externes abandonnées par page.route, SDK Supabase remplacé par un stub en page) → résultat relecture/auth-rgpd/verif-auth01-auth06.resultat.json",
+    "node -e sha256('passio-gate-v1::'+0000..9999) → 2126 essais / 7 ms",
+    "execute_sql (lecture seule, agrégats) : pg_constraint FK→auth.users ; orphelins par table ; pg_policies par cmd ; colonnes telemetry_events/user_safety/client_errors ; cron.job ; auth.identities provider=google ; raw_user_meta_data ? 'phone' ; is_anonymous",
+    "curl api.github.com/repos/PASSIO74/passio-app (visibilité)"
+  ],
+  "limites": "Aucun test à comptes réels ni requête HTTP vers Supabase/Netlify (interdits) : l'acceptation réelle par la RLS de l'insert rejoué (AUTH-06) est déduite de la policy conv_messages_insert_member, pas exécutée. L'advisor « leaked password protection » (AUTH-08) est repris du fait établi par l'orchestrateur, non re-interrogé. La cause de user_label toujours NULL en prod (AUTH-04) n'a pas été élucidée (aucun trigger cherché en base ; probable username vide côté client). SET LOCAL role indisponible au connecteur : aucune vérification d'isolation sous rôle. AUTH-13 : l'activation du provider est prouvée par les identités existantes, le parcours de retour OAuth n'a pas été exercé."
+}
