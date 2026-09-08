@@ -1311,6 +1311,23 @@ function chargerReferentielPassions() {
   } catch (e) {}
 }
 
+// ── Passions CRÉÉES DEPUIS L'APPLICATION (lot creation_passion_v1) ────────
+// ⚠️ UN SET À PART, ET SURTOUT PAS `_referentielPassions`. Celui-là est un
+// cache à UN SEUL COUP (`if (_referentielPassions) return;`) : y écrire avant
+// que le serveur ait répondu INTERDIRAIT le chargement du vrai référentiel
+// pour toute la session, et `estPassionCanonique` retomberait sur les 19 du
+// socle — donc refuserait de publier dans une passion parfaitement légitime.
+//
+// La passion vient d'être créée par `creer_passion` (RPC) : le serveur l'a
+// écrite, la clé étrangère de `posts.passion_id` l'accepte. Sans cette
+// mémoire, elle ne serait publiable qu'au PROCHAIN démarrage — on l'aurait
+// créée puis refusée dans la foulée.
+let _passionsCreees = new Set();
+
+function enregistrerPassionCanonique(id) {
+  try { if (id && typeof id === "string") _passionsCreees.add(id); } catch (e) {}
+}
+
 // L'identifiant existe-t-il réellement dans le référentiel ?
 // ⚠️ LE RÉFÉRENTIEL SERVEUR AJOUTE, IL NE RETRANCHE PAS. Corrigé le 2026-08-31.
 //
@@ -1337,6 +1354,7 @@ function chargerReferentielPassions() {
 function estPassionCanonique(id) {
   if (!id || typeof id !== "string") return false;
   try {
+    if (_passionsCreees.has(id)) return true;   // créée à l'instant par ce compte
     if (_referentielPassions && _referentielPassions.has(id)) return true;
     if (typeof PASSIONS === "undefined" || !Array.isArray(PASSIONS)) return false;
     for (var i = 0; i < PASSIONS.length; i++) if (PASSIONS[i] && PASSIONS[i].id === id) return true;

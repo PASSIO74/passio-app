@@ -529,7 +529,15 @@
     return out;
   }
 
-  function parId(id) { return (DONNEES && DONNEES.parId[id]) || null; }
+  // ⚠️ LES PASSIONS CRÉÉES À L'INSTANT SONT CONSULTÉES MÊME SANS RÉFÉRENTIEL.
+  // `_creees` double `DONNEES.parId` parce que le référentiel peut n'avoir
+  // jamais été chargé (une passion créée depuis une surface qui n'a pas ouvert
+  // la recherche) : sans lui, `passionById` (app-02) retombait sur le générique
+  // et la passion qu'on venait de créer s'affichait « ✨ Passion ». Défaut
+  // mesuré par le verrou ① le 2026-09-08, pas supposé.
+  var _creees = Object.create(null);
+
+  function parId(id) { return (DONNEES && DONNEES.parId[id]) || _creees[id] || null; }
   function existe(id) { return !!parId(id); }
 
   // Combien de passions le référentiel connaît-il RÉELLEMENT.
@@ -603,9 +611,15 @@
     if (!n || n.length < 2) return { valide: false, motif: "trop_court" };
     if (n.length > 60) return { valide: false, motif: "trop_long" };
     var proches = chercher(texte, { limite: 5 });
+    // ⚠️ LE REPLI AU SINGULIER COMPTE COMME UN DOUBLON. « guitares » et
+    // « randonnées » sont affichés juste au-dessus du bouton par la recherche
+    // (qui, elle, replie au singulier) : sans ce repli ici, on créait dans le
+    // référentiel COMMUN un doublon de l'entrée qu'on venait de montrer.
+    var nSing = n.split(" ").map(singulier).join(" ");
     var exact = proches.filter(function (p) {
-      if (p.nLabel === n) return true;
+      if (p.nLabel === n || p.sLabel === nSing) return true;
       for (var i = 0; i < p.nAliases.length; i++) if (p.nAliases[i] === n) return true;
+      for (var j = 0; j < p.sAliases.length; j++) if (p.sAliases[j] === nSing) return true;
       return false;
     })[0] || null;
     return { valide: true, texte: String(texte).trim(), normalise: n, doublon: exact, proches: proches };
@@ -642,6 +656,148 @@
       }
     } catch (e) { journal("demande", e); }
     return Promise.resolve(Object.assign({}, a, { enregistrement: enregistrement, envoyee: false }));
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // CRÉER UNE PASSION — lot creation_passion_v1 (2026-09-08)
+  //
+  // « Chacun peut créer une passion » : premier reproche des testeurs. Le
+  // référentiel en contient 1 908, mais quand la recherche ne trouvait rien,
+  // la seule issue était une DEMANDE (`deposerDemande` ci-dessus) — une entrée
+  // « en vérification », jamais publiable. Une porte qui ne mène nulle part.
+  //
+  // ⚠️ LE CLIENT NE CHOISIT QUE LE NOM. L'identifiant, le statut, la source et
+  // le pliage sont écrits par `creer_passion` (RPC `SECURITY DEFINER`,
+  // migrations/migration_creation_passion_utilisateur.sql) : `public.passions`
+  // reste en LECTURE SEULE pour un client, et le dédoublonnage comme les
+  // plafonds sont tenus côté serveur — une garde d'affichage n'a jamais été
+  // une garde.
+  //
+  // ⚠️ `MY_UID` NE PROUVE PAS QU'UN COMPTE EXISTE : `getMyUserId()` fabrique un
+  // `u_<aléatoire>` pour TOUT visiteur. On exige un vrai uuid Supabase, comme
+  // `admissionCompteReel()` — sinon l'appel part en production sous une
+  // identité inexistante (défaut vécu le 2026-09-08 sur la porte 18+).
+  //
+  // ⚠️ LE REPLI N'EST JAMAIS UN ÉCHEC MUET : hors ligne, sans compte, ou tant
+  // que la migration n'est pas appliquée, on retombe sur la DEMANDE — et
+  // l'appelant l'apprend (`repli: "demande"`), pour le dire à l'écran.
+  // ══════════════════════════════════════════════════════════════════════════
+  var creationIndisponible = false;
+
+  function uidReel() {
+    try {
+      var u = (typeof MY_UID !== "undefined" && MY_UID) ? String(MY_UID) : "";
+      return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(u) ? u : null;
+    } catch (e) { return null; }
+  }
+
+  function creationDisponible() {
+    return !creationIndisponible && !!uidReel() && serveurUtilisable();
+  }
+
+  // Ajoute une passion au référentiel EN MÉMOIRE. Sans ça, la passion qu'on
+  // vient de créer s'afficherait « ✨ Passion » (`passionById` retombe sur le
+  // générique) et resterait introuvable dans la recherche locale jusqu'au
+  // prochain démarrage — créée, puis invisible.
+  function injecterPassion(ligne) {
+    var p = {
+      id: ligne.id, label: ligne.label, emoji: ligne.emoji || "✨",
+      color: ligne.color || "#7c3aed", aliases: [], broader: null,
+      popularity: ligne.popularity || 0, is_broad: false,
+    };
+    _creees[p.id] = p;
+    if (!DONNEES) return p;
+    if (DONNEES.parId[p.id]) return DONNEES.parId[p.id];
+    p.nLabel = norme(p.label);
+    p.nAliases = [];
+    p.sLabel = p.nLabel.split(" ").map(singulier).join(" ");
+    p.sAliases = [];
+    p.foin = (p.nLabel + " " + norme(p.id)).trim();
+    p.foinSing = p.foin.split(" ").map(singulier).join(" ");
+    DONNEES.parId[p.id] = p;
+    var i = DONNEES.liste.push(p) - 1;
+    var vus = Object.create(null);
+    p.foinSing.split(" ").forEach(function (m) {
+      if (!m) return;
+      var cle = m.slice(0, 3);
+      if (vus[cle]) return;
+      vus[cle] = 1;
+      (DONNEES.index[cle] || (DONNEES.index[cle] = [])).push(i);
+    });
+    // Le cache de la recherche serveur ne connaît pas encore ce nom : le
+    // garder ferait dire « aucune passion ne correspond » à la frappe qui
+    // vient de la créer.
+    cacheServeur = Object.create(null);
+    return p;
+  }
+
+  function motifErreur(msg) {
+    if (/auth_requise/.test(msg)) return "auth_requise";
+    if (/nom_indisponible/.test(msg)) return "nom_indisponible";
+    if (/nom_trop_long/.test(msg)) return "nom_trop_long";
+    if (/nom_invalide/.test(msg)) return "nom_invalide";
+    if (/quota_jour/.test(msg)) return "quota_jour";
+    if (/quota_total/.test(msg)) return "quota_total";
+    return "";
+  }
+
+  function replisurDemande(texte, a) {
+    return deposerDemande(texte).then(function (r) {
+      return Object.assign({}, a, r, { cree: false, repli: "demande" });
+    });
+  }
+
+  // Rend TOUJOURS une promesse d'un objet, jamais un rejet :
+  //   { cree: true,  passion }                → créée à l'instant
+  //   { cree: false, passion, doublon }       → elle existait déjà, on la rend
+  //   { cree: false, repli: "demande" }       → demande déposée (hors ligne…)
+  //   { cree: false, erreur: "<motif>" }      → refus serveur, motif nommé
+  function creerPassion(texte, options) {
+    options = options || {};
+    var a = analyserDemande(texte);
+    if (!a.valide) return Promise.resolve(Object.assign({}, a, { cree: false, erreur: a.motif }));
+    if (a.doublon) return Promise.resolve(Object.assign({}, a, { cree: false, passion: a.doublon }));
+    if (!creationDisponible()) return replisurDemande(texte, a);
+
+    try {
+      return supa.rpc("creer_passion", { p_label: a.texte, p_emoji: options.emoji || null })
+        .then(function (r) {
+          if (r && r.error) {
+            var msg = String((r.error.message || "") + " " + (r.error.details || "") + " " + (r.error.code || ""));
+            journal("creer_passion", msg);
+            var motif = motifErreur(msg);
+            if (motif) return Object.assign({}, a, { cree: false, erreur: motif });
+            // ⚠️ ON NE VERROUILLE QUE SUR « LA FONCTION N'EXISTE PAS », jamais
+            // sur un hoquet. Verrouiller sur TOUTE erreur faisait qu'un 5xx ou
+            // une coupure d'une seconde transformait toutes les créations
+            // suivantes en demandes non publiables, jusqu'au rechargement —
+            // une panne passagère devenue un blocage permanent, exactement le
+            // défaut corrigé sur `_referentielPassions` le 2026-08-31.
+            if (/PGRST202|42883|404|does not exist|schema cache/i.test(msg)) creationIndisponible = true;
+            return replisurDemande(texte, a);
+          }
+          var ligne = (r && r.data && r.data[0]) || null;
+          if (!ligne || !ligne.id) return replisurDemande(texte, a);
+          var p = injecterPassion(ligne);
+          noterUtilisation(p.id);
+          // Publiable TOUT DE SUITE : `estPassionCanonique` (app-02) est la
+          // seule autorité de publication, et son cache serveur ne sera pas
+          // rechargé de la session.
+          try { if (typeof enregistrerPassionCanonique === "function") enregistrerPassionCanonique(p.id); } catch (e) {}
+          return Object.assign({}, a, { cree: ligne.cree !== false, passion: p });
+        })
+        .catch(function (e) {
+          // ⚠️ CATCH LARGE : il couvre AUSSI son propre `.then` (injection,
+          // enregistrement canonique). On journalise donc toujours — sans quoi
+          // une ReferenceError se lirait comme « pas de serveur » — et on ne
+          // verrouille rien : le prochain essai doit pouvoir réussir.
+          journal("creer_passion_catch", e);
+          return replisurDemande(texte, a);
+        });
+    } catch (e) {
+      journal("creer_passion_sync", e);
+      return replisurDemande(texte, a);
+    }
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -774,6 +930,46 @@
     return false;
   }
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // NOMMER CE QUE LE RÉFÉRENTIEL EMBARQUÉ NE CONNAÎT PAS
+  // ──────────────────────────────────────────────────────────────────────────
+  // ⚠️ `data/passions-v1.json` EST UN MIROIR GÉNÉRÉ AU BUILD : une passion
+  // créée depuis l'application n'y est pas, et n'y sera jamais avant le
+  // prochain déploiement. Le registre `_creees` ne vaut que pour la session qui
+  // l'a créée — au rechargement, et pour TOUS LES AUTRES COMPTES, la bulle
+  // retombait sur « ✨ Passion » alors que la passion est parfaitement
+  // publiable. Le référentiel chargé ne suffit donc pas : il faut demander les
+  // identifiants qui restent sans nom.
+  //
+  // Une seule requête, plafonnée, et chaque identifiant n'est demandé QU'UNE
+  // FOIS par session (y compris s'il n'a pas de réponse : un identifiant mort
+  // ne doit pas relancer une requête à chaque tour de chaîne).
+  var _idsDemandes = Object.create(null);
+
+  function resoudreNomsManquants() {
+    if (!pret() || !serveurUtilisable()) return;
+    var manquants = [];
+    idsAAfficher().forEach(function (id) {
+      if (typeof id !== "string" || !id || parId(id) || _idsDemandes[id]) return;
+      _idsDemandes[id] = 1;
+      manquants.push(id);
+    });
+    if (!manquants.length) return;
+    try {
+      supa.from("passions").select("id,label,emoji,color").in("id", manquants.slice(0, 50))
+        .then(function (r) {
+          if (r && r.error) { journal("noms_serveur", r.error.message || r.error); return; }
+          var lignes = (r && r.data) || [];
+          if (!lignes.length) return;
+          lignes.forEach(function (l) { try { injecterPassion(l); } catch (e) { journal("injecter", e); } });
+          // Charger ne suffit pas : il faut INVALIDER les caches et repeindre.
+          _essaisRepeint = 0;
+          repeindreLesRails();
+        })
+        .catch(function (e) { journal("noms_serveur_catch", e); });
+    } catch (e) { journal("noms_serveur_sync", e); }
+  }
+
   var ESSAIS_REPEINT = 15;          // 15 × 400 ms = 6 s
   var _essaisRepeint = 0;
 
@@ -837,7 +1033,11 @@
   // `DOMContentLoaded` n'ait tiré (constats mineurs de la revue du 2026-09-02).
   function evaluerBesoinDeNoms(parLaChaine) {
     if (parLaChaine) _chaineArmee = false;
-    if (_chargementLance || !actif() || pret()) return;
+    if (!actif()) return;
+    // Référentiel déjà là : ce qui reste sans nom ne peut venir que du serveur
+    // (une passion créée depuis l'application, ici ou par quelqu'un d'autre).
+    if (pret()) { resoudreNomsManquants(); return; }
+    if (_chargementLance) return;
     var s = etatApp();
     // On attend l'application ET le verdict d'hydratation. L'attente est bornée
     // des deux côtés : son épuisement fait trancher sur ce qu'on a, jamais
@@ -855,7 +1055,7 @@
     }
     _chargementLance = true;
     try {
-      charger().then(function () { _essaisRepeint = 0; repeindreLesRails(); })
+      charger().then(function () { _essaisRepeint = 0; repeindreLesRails(); resoudreNomsManquants(); })
                .catch(function (e) { journal("noms_manquants", e); });
     } catch (e) { journal("noms_manquants_sync", e); }
   }
@@ -917,11 +1117,15 @@
     demandes: demandes,
     analyserDemande: analyserDemande,
     deposerDemande: deposerDemande,
+    creerPassion: creerPassion,
+    creationDisponible: creationDisponible,
+    resoudreNomsManquants: resoudreNomsManquants,
     // Exposé pour les tests et le diagnostic — jamais pour un chemin de rendu.
     _etat: function () {
       return {
         actif: actif(), pret: pret(), horsLigne: !!(DONNEES && DONNEES.horsLigne),
         echecChargement: echecChargement, serveurIndisponible: serveurIndisponible,
+        creationIndisponible: creationIndisponible, creationDisponible: creationDisponible(),
         taille: DONNEES ? DONNEES.liste.length : 0,
       };
     },

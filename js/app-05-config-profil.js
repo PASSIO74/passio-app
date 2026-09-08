@@ -1374,7 +1374,7 @@ function _renderGroupMembersModal(convId) {
       '<div style="width:40px;height:40px;border-radius:50%;background:' + avatarBg(u) + ';display:flex;align-items:center;justify-content:center;font-size:18px;">' + avatarInner(u) + '</div>' +
       '<div style="flex:1;">' +
         '<div style="font-weight:700;font-size:13px;">' + escapeHtml(u.name) + '</div>' +
-        '<div style="font-size:11px;color:var(--muted);">' + (passion ? passion.emoji + ' ' + passion.label : '') + '</div>' +
+        '<div style="font-size:11px;color:var(--muted);">' + (passion ? escapeHtml(passion.emoji) + ' ' + escapeHtml(passion.label) : '') + '</div>' +
       '</div>' +
       '<button class="btn ghost" style="font-size:10px;padding:5px 10px;color:#ef4444;border-color:rgba(239,68,68,0.3);" onclick="removeGroupMember(\'' + escapeJsArg(convId) + '\',\'' + escapeJsArg(uid) + '\')">Retirer</button>' +
     '</div>';
@@ -1382,7 +1382,7 @@ function _renderGroupMembersModal(convId) {
 
   var passionsHTML = (c.groupPassions || [c.passion]).map(function(pid) {
     var p = passionById(pid);
-    return p ? '<span style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:var(--bg-deep);border-radius:8px;font-size:11px;font-weight:700;">' + p.emoji + ' ' + p.label + '</span>' : '';
+    return p ? '<span style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:var(--bg-deep);border-radius:8px;font-size:11px;font-weight:700;">' + escapeHtml(p.emoji) + ' ' + escapeHtml(p.label) + '</span>' : '';
   }).join(" ");
 
   // Utilisateurs non encore membres
