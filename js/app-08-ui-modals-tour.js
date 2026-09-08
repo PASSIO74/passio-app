@@ -2693,6 +2693,19 @@ function _initRealSupa() {
     // cette requête, et tant qu'elle n'a pas répondu `estPassionCanonique`
     // utilise le repli local. Un échec laisse donc les 19 passions utilisables.
     try { if (typeof chargerReferentielPassions === "function") chargerReferentielPassions(); } catch (e) {}
+    // Admission 18+ : pousser UNE fois l'année déjà saisie à l'onboarding, pour
+    // que les comptes EXISTANTS soient admis sans qu'on leur redemande rien.
+    // ⚠️ Sans ce rappel, allumer la règle couperait l'IRL à tous les comptes
+    // créés avant elle : ils ont une année en local et AUCUNE ligne côté
+    // serveur (2 lignes `user_safety` pour 6 comptes, mesuré le 2026-09-08).
+    // ⚠️ Différé et jamais attendu : c'est une politesse d'arrière-plan, le
+    // démarrage ne doit dépendre d'aucune requête, et une requête Supabase
+    // lancée dans le fil d'un changement d'auth peut bloquer le SDK.
+    try {
+      setTimeout(function () {
+        try { if (typeof admissionRappelServeur === "function") admissionRappelServeur(); } catch (e) {}
+      }, 0);
+    } catch (e) {}
     return true;
   } catch(e) { console.warn("Supabase init failed:", e); return false; }
 }

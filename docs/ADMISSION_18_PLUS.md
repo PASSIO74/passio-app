@@ -1,7 +1,9 @@
 # Admission 18+ — la fondation serveur de l'accès aux rencontres
 
 **État au 2026-09-08 : migration ÉCRITE et ÉPROUVÉE sur PostgreSQL jetable, NON APPLIQUÉE
-en production, interrupteur ÉTEINT par construction.** Rien n'a changé pour personne.
+en production, interrupteur ÉTEINT par construction. La porte CLIENT est branchée et
+testée.** Rien n'a changé pour personne : tant que la migration n'est pas appliquée, la
+porte est transparente (§5).
 
 Fichiers du lot :
 
@@ -12,6 +14,8 @@ Fichiers du lot :
 | `migrations/controles_post_admission_18_plus.sql` | vérification de l'état atteint **après** (lecture seule) |
 | `tests/sql/migration-admission-18-plus.test.sh` | le banc : 133 contrôles, gate CI |
 | `tests/sql/socle-prod-admission.sql` | addendum au socle #136 (policies UPDATE/DELETE réelles) |
+| `js/app-07-ia-explore-irl.js` | la porte côté client (`requireAdmission`, bloc « ADMISSION 18+ ») |
+| `tests/e2e/admission-18-plus.spec.js` | le verrou de la porte : 16 cas |
 
 ---
 
@@ -104,7 +108,40 @@ ni lire cette table. Il en connaît en revanche le verdict **le concernant** par
 `adult_access_status()`, et c'est voulu : l'état de la règle n'est pas un secret, c'est ce
 qui permet de montrer la bonne porte avant le refus.
 
-## 5. Ce que le client peut demander
+## 5. La porte côté client
+
+La **barrière** est serveur. Le client porte une **porte** : `requireAdmission(ctx)`, posée
+sur `setEventRsvp` et `submitEvent`, juste après `requireAuthentication` — on ne demande
+pas son âge à quelqu'un qui n'a pas encore de compte.
+
+⚠️ **Elle échoue OUVERT, et c'est le point le plus important du lot.** C'est l'inverse exact
+de la garde `irlProposalVerdict` juste en dessous d'elle dans le même fichier : celle-là tient
+une frontière que personne d'autre ne tient, donc elle retient au moindre doute. Celle-ci
+double une frontière déjà tenue par la base. Si le statut est illisible — migration pas
+encore appliquée, réseau coupé, SDK absent — retenir couperait l'IRL à **tout le monde**
+pour une panne de courtoisie, alors que le serveur, lui, sait très bien décider. On laisse
+passer, et le serveur refuse.
+
+C'est ce qui rend ce lot **déployable avant la migration** : tant que `adult_access_status`
+n'existe pas, la porte est transparente. Le cas ① de la suite e2e mesure exactement cela.
+
+Ce qu'elle fait, selon le statut :
+
+| statut | ce qui se passe |
+|---|---|
+| `off`, `inconnu`, `admitted` | rien, l'action continue |
+| `undeclared` | l'année locale est d'abord poussée en silence ; si ça ne suffit pas, une fenêtre la demande |
+| `minor` | refus expliqué, qui dit ce qui **reste ouvert** — et ne redemande pas l'année |
+
+**Le retrait n'est jamais gardé** : `setEventRsvp` n'appelle la porte que pour une valeur
+d'inscription, jamais pour `null` ni `declined`.
+
+**Les comptes existants n'ont rien à ressaisir** : `admissionRappelServeur()`, déclenché une
+fois au démarrage depuis `_initRealSupa`, pousse l'année déjà saisie à l'onboarding. Sans ce
+rappel, allumer la règle couperait l'IRL à tous les comptes créés avant elle — ils ont une
+année en local et aucune ligne côté serveur.
+
+## 5 bis. Ce que le client peut demander
 
 Une seule fonction, pour choisir la porte à montrer **avant** de se prendre un refus :
 
@@ -145,18 +182,26 @@ d'avant et n'efface **aucune** donnée (`user_safety` et les inscriptions resten
 Ils sont listés parce qu'ils sont réels, pas pour mémoire. La fondation serveur est posée ;
 elle ne suffit pas.
 
-1. **Le client ne déclare toujours pas l'année.** `declare_birth_year` n'est appelé que par
+1. ~~Le client ne déclare pas l'année.~~ **FERMÉ le 2026-09-08** : `requireAdmission` +
+   `admissionRappelServeur` (§5), 16 cas e2e. Ce qui suit décrit l'état d'AVANT et reste
+   pour mémoire — l'ordre d'allumage, lui, tient toujours : appliquer la migration, vérifier
+   les contrôles, déployer le client, PUIS allumer.
+   *(état d'avant)* **Le client ne déclarait pas l'année.** `declare_birth_year` n'est appelé que par
    `irlProposalDeclareBirthYear` (app-07), sous le drapeau `passio_irl_proposal_v1`, éteint.
    Tant que l'onboarding ne l'appelle pas, **allumer l'interrupteur couperait l'IRL à tout
    le monde** — y compris aux comptes majeurs, qui n'ont aucune ligne `user_safety`
    (2 lignes pour 6 comptes en production au 2026-09-08, soit **4 comptes sur 6 sans
    majorité déclarée**, portant 4 inscriptions actives et 1 événement). C'est le prochain
    lot, et c'est un prérequis strict de l'allumage.
-1 bis. **Aucune surface ne lit `adult_access_status()`** — zéro appelant dans `js/`. Sans
+1 bis. ~~Aucune surface ne lit `adult_access_status()`.~~ **FERMÉ le 2026-09-08.**
+   *(état d'avant)* **Aucune surface ne lisait `adult_access_status()`** — zéro appelant dans `js/`. Sans
    elle, un compte non admis ne rencontre pas un refus expliqué mais une **écriture RLS à
    zéro ligne**, c'est-à-dire l'échec silencieux que `CLAUDE.md` interdit. Montrer la porte
    avant le refus fait partie du même lot que le point 1.
-2. **L'étape d'âge n'est pas atteinte sur le chemin d'inscription nominal** (AUTH-02) :
+2. **L'étape d'âge n'est toujours pas atteinte sur le chemin d'inscription nominal**
+   (AUTH-02) — mais elle ne bloque plus l'admission : la porte demande l'année au premier
+   geste IRL, ce qui contourne le trou sans le refermer. Le trou reste, et il reste à
+   corriger pour la cohérence de l'onboarding :
    depuis l'activation de « Confirm email », `signUp` ne rend plus de session, et les trois
    chemins de retour (lien de confirmation, connexion, reprise) posent `onboarded = true`
    sans passer par `onbValidateAge`. Corriger l'un sans l'autre ne donne rien.
