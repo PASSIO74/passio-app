@@ -23,9 +23,20 @@ const { bootOnboarded } = require("./app-helper");
 // Installe un faux canal Supabase qui rend le statut demandé, et enregistre
 // tous les appels RPC pour qu'on puisse prouver ce qui a été demandé — et ce
 // qui ne l'a pas été.
+const UID_REEL = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d";
+
 async function installerAdmission(page, statut, opts = {}) {
-  await page.evaluate(({ statut, declareEchoue, statutEchoue }) => {
+  await page.evaluate(({ statut, declareEchoue, statutEchoue, uid }) => {
     window._supaReal = true;
+    // ⚠️ UN VRAI UUID, pas le `u_<aléatoire>` que `getMyUserId()` fabrique pour
+    // tout visiteur : la porte n'agit que pour un compte Supabase réel. Sans
+    // cette ligne, le test mesurerait la porte TRANSPARENTE et serait vert sans
+    // rien prouver.
+    MY_UID = uid; window.MY_UID = uid;
+    // Session fraîche : le rappel « une fois par session » et le statut mis en
+    // cache ne doivent rien hériter du démarrage.
+    _admissionAnneePoussee = false;
+    _admissionStatut = null;
     window.__rpc = [];
     window.__statutServeur = statut;
     window.supa.rpc = async (nom, args) => {
@@ -47,7 +58,7 @@ async function installerAdmission(page, statut, opts = {}) {
     // Neutralise les écritures réelles : on mesure la PORTE, pas la base.
     window.__ecritures = [];
     window.supaSetEventRsvp = async (id, rsvp) => { window.__ecritures.push({ id, rsvp }); return true; };
-  }, { statut, declareEchoue: !!opts.declareEchoue, statutEchoue: !!opts.statutEchoue });
+  }, { statut, declareEchoue: !!opts.declareEchoue, statutEchoue: !!opts.statutEchoue, uid: UID_REEL });
 }
 
 // Un événement de démonstration auquel on peut réellement s'inscrire.
@@ -97,6 +108,34 @@ test.describe("Admission 18+ — la porte côté client", () => {
     }));
     expect(r.pret).toBe(false);
     expect(r.passe).toBe(true);
+  });
+
+  test("visiteur sans compte réel : aucun RPC ne part, la porte est transparente", async ({ page }) => {
+    // ⚠️ LE DÉFAUT QUI A CASSÉ LA CI, et qu'aucun test local ne voyait.
+    // `getMyUserId()` fabrique un `u_<aléatoire>` pour TOUT visiteur : s'y fier
+    // ouvrait la garde au démarrage, et le rappel partait interroger la
+    // production sous une identité qui n'existe pas — en consommant au passage
+    // son drapeau « une fois par session ». Seul un uuid Supabase prouve un compte.
+    await bootOnboarded(page);
+    const r = await page.evaluate(async () => {
+      window._supaReal = true;
+      window.__rpc = [];
+      window.supa.rpc = async (nom) => { window.__rpc.push(nom); return { data: null, error: null }; };
+      MY_UID = "u_" + Math.random().toString(36).slice(2, 10);   // ce que produit getMyUserId()
+      _admissionAnneePoussee = false; _admissionStatut = null;
+      return {
+        pret: admissionCanalPret(),
+        rappel: await admissionRappelServeur(),
+        passe: await requireAdmission("rejoindre"),
+        appels: window.__rpc.length,
+        drapeau: _admissionAnneePoussee,
+      };
+    });
+    expect(r.pret).toBe(false);
+    expect(r.rappel).toBe(false);
+    expect(r.appels).toBe(0);          // rien n'est demandé au serveur
+    expect(r.drapeau).toBe(false);     // et le « une fois par session » n'est PAS consommé
+    expect(r.passe).toBe(true);        // la porte laisse passer : le serveur décide
   });
 
   test("règle éteinte : la porte ne s'interpose pas et ne demande rien", async ({ page }) => {

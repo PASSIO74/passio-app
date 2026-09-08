@@ -4948,11 +4948,29 @@ function admissionEchec(ou, err) {
 
 // Un vrai compte connecté, avec un SDK utilisable. `MY_UID` ne prouve rien à lui
 // seul (il survit à une déconnexion) : on exige aussi la session Supabase.
+// ⚠️ `MY_UID` NE PROUVE PAS QU'UN COMPTE EXISTE — invariant du projet, et ma
+// première version l'a enfreint. `getMyUserId()` fabrique un `u_<aléatoire>`
+// pour TOUT visiteur, y compris sans compte : la garde s'ouvrait donc au
+// démarrage, et `admissionRappelServeur()` partait appeler le RPC en production
+// sous une identité qui n'existe pas. Seul un uuid Supabase prouve un compte.
+//
+// Le défaut ne se voyait PAS en local — le SDK est chargé depuis un CDN, donc
+// `_supaReal` reste faux ici — et cassait la CI, qui l'atteint : le rappel
+// consommait son drapeau « une fois par session » AU BOOT, et les cas qui le
+// mesurent trouvaient zéro appel au lieu d'un. Un test vert en local et rouge
+// en CI est presque toujours une divergence d'environnement de cette famille.
+function admissionCompteReel() {
+  try {
+    return typeof MY_UID === "string"
+      && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(MY_UID);
+  } catch (e) { return false; }
+}
+
 function admissionCanalPret() {
   try {
     return !!(window._supaReal && typeof supa !== "undefined" && supa
               && typeof supa.rpc === "function"
-              && typeof MY_UID !== "undefined" && MY_UID);
+              && admissionCompteReel());
   } catch (e) { return false; }
 }
 
