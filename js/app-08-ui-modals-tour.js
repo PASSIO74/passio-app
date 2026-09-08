@@ -2693,6 +2693,19 @@ function _initRealSupa() {
     // cette requête, et tant qu'elle n'a pas répondu `estPassionCanonique`
     // utilise le repli local. Un échec laisse donc les 19 passions utilisables.
     try { if (typeof chargerReferentielPassions === "function") chargerReferentielPassions(); } catch (e) {}
+    // Admission 18+ : pousser UNE fois l'année déjà saisie à l'onboarding, pour
+    // que les comptes EXISTANTS soient admis sans qu'on leur redemande rien.
+    // ⚠️ Sans ce rappel, allumer la règle couperait l'IRL à tous les comptes
+    // créés avant elle : ils ont une année en local et AUCUNE ligne côté
+    // serveur (2 lignes `user_safety` pour 6 comptes, mesuré le 2026-09-08).
+    // ⚠️ Différé et jamais attendu : c'est une politesse d'arrière-plan, le
+    // démarrage ne doit dépendre d'aucune requête, et une requête Supabase
+    // lancée dans le fil d'un changement d'auth peut bloquer le SDK.
+    try {
+      setTimeout(function () {
+        try { if (typeof admissionRappelServeur === "function") admissionRappelServeur(); } catch (e) {}
+      }, 0);
+    } catch (e) {}
     return true;
   } catch(e) { console.warn("Supabase init failed:", e); return false; }
 }
@@ -4175,9 +4188,42 @@ async function supaDeleteEvent(eventId) {
   } catch(e) { console.warn("suppression d'événement :", e && e.message); return false; }
 }
 
+// ── Colonnes de `events` demandées à la lecture ──────────────────────────────
+// ⚠️ EXPLICITES, ET NON `select("*")`. `migration_irl_donnees_privees.sql`
+// retire à `anon` le droit de lire `address` et `contact` — l'adresse exacte
+// d'un rendez-vous et le téléphone de son organisateur (audit IRL-01/IRL-03).
+// Or PostgREST refuse la requête ENTIÈRE (42501) dès qu'UNE colonne demandée
+// manque au rôle : un `*` ferait donc disparaître TOUTES les rencontres pour
+// tout visiteur sans compte, au lieu d'en masquer deux champs.
+//
+// ⚠️ Toute colonne ajoutée à `events` doit être ajoutée ICI **et** dans le GRANT
+// de la migration, sinon elle ne remontera pas — un oubli se voit comme une
+// donnée vide, jamais comme une erreur.
+const _EVENT_COLS_PUBLIC = [
+  "id", "author_id", "title", "passion_id", "lat", "lng", "city", "description",
+  "emoji", "max_attendees", "date_at", "created_at", "venue", "postal_code",
+  "price", "external_link", "event_type", "cover_url", "organizer_id", "end_at",
+  "status", "updated_at", "co_organizers", "series_id", "recurrence", "conv_id",
+].join(",");
+const _EVENT_COLS_PRIVE = _EVENT_COLS_PUBLIC + ",address,contact";
+// Mémorisé pour la session : une fois qu'on sait que le rôle courant n'a pas
+// droit aux colonnes privées, inutile de repayer un aller-retour refusé à
+// chaque chargement du fil.
+let _eventColsPubliquesSeulement = false;
+
 async function supaLoadEvents() {
   try {
-    const { data, error } = await supa.from("events").select("*").order("created_at", { ascending: false }).limit(60);
+    const lire = (cols) => supa.from("events").select(cols)
+      .order("created_at", { ascending: false }).limit(60);
+    let { data, error } = await lire(_eventColsPubliquesSeulement ? _EVENT_COLS_PUBLIC : _EVENT_COLS_PRIVE);
+    // Refus portant sur les colonnes privées : on est un visiteur sans compte.
+    // On retombe sur la liste publique — la correspondance plus bas rend déjà
+    // `address` et `contact` à la chaîne vide quand elles sont absentes, donc
+    // rien d'autre ne change.
+    if (error && !_eventColsPubliquesSeulement) {
+      _eventColsPubliquesSeulement = true;
+      ({ data, error } = await lire(_EVENT_COLS_PUBLIC));
+    }
     if (error) { console.warn("supaLoadEvents:", error.message); return []; }
     const rows = data || [];
     const profs = await _resolveProfilesByIds(rows.map(r => r.organizer_id || r.author_id));

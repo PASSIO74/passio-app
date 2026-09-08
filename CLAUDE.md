@@ -108,6 +108,15 @@ Toute suppression passe par `deletePost` (app-04) : `marquerPostSupprime(id)` po
 Un rechargement serveur s'écrit dans `supabasePosts`, **JAMAIS** dans `seed.posts`. La propriété d'un post se teste par `_estMonPost(p)` — l'AUTEUR, jamais `_source` — et se retrouve par `findPostAnywhere`.
 Verrou : `tests/e2e/suppression-durable.spec.js` (8 cas). Les quatre causes du défaut, la file de suppression serveur (`passio_post_delete_outbox_v1`, `_delObRun`) et le post-mortem : `docs/SUPPRESSION_DURABLE.md`.
 
+## 🔞 ADMISSION 18+ ET COLONNES EXPLICITES — le CLIENT (2026-09-08)
+
+Une migration appliquée en production le 2026-09-08 retire à `anon` le droit de lire `events.address` et `events.contact` (l'adresse exacte d'un rendez-vous et le téléphone de son organisateur étaient lisibles SANS COMPTE), et réserve `event_attendees` aux comptes connectés. Ce lot est la contrepartie CLIENT, obligatoire.
+⚠️ **`select("*")` EST LE PIÈGE.** PostgREST refuse la requête ENTIÈRE (42501) dès qu'UNE colonne manque au rôle : un `*` ne masque pas deux champs, il fait **disparaître toutes les rencontres** pour tout visiteur sans compte. `supaLoadEvents` demande donc `_EVENT_COLS_PUBLIC` / `_EVENT_COLS_PRIVE` en toutes lettres, avec repli mémorisé sur la liste publique au premier refus — il fonctionne donc avant comme après la migration. **Toute colonne ajoutée à `events` doit l'être AUSSI dans ces listes**, sinon elle ne remonte pas : un oubli se voit comme une donnée vide, jamais comme une erreur.
+**La porte d'admission 18+** (`requireAdmission(ctx)`, app-07) est posée sur `setEventRsvp` et `submitEvent`, APRÈS `requireAuthentication` — on ne demande pas son âge à quelqu'un sans compte. Le RETRAIT n'est jamais gardé (`null` et `declined` passent toujours). `admissionRappelServeur()` pousse au démarrage l'année déjà saisie, pour que les comptes EXISTANTS soient admis sans rien ressaisir.
+⚠️ **CETTE PORTE ÉCHOUE OUVERT, et c'est l'inverse VOULU de `irlProposalVerdict`** : elle double une frontière déjà tenue par la RLS, donc un statut illisible (règle serveur absente, réseau coupé) la rend TRANSPARENTE — retenir couperait l'IRL à tout le monde pour une panne de courtoisie. Ne jamais la « durcir » en fail-closed.
+⚠️ **`MY_UID` NE PROUVE PAS QU'UN COMPTE EXISTE, et la porte l'a enfreint** : `getMyUserId()` fabrique un `u_<aléatoire>` pour TOUT visiteur, donc la garde s'ouvrait AU BOOT et le rappel partait appeler le RPC en production sous une identité inexistante — en consommant son drapeau « une fois par session ». **Invisible en local** (le SDK vient d'un CDN, `_supaReal` reste faux) et **rouge en CI**, qui l'atteint : un test vert en local et rouge en CI est presque toujours une divergence d'environnement de cette famille. `admissionCompteReel()` exige désormais un vrai uuid Supabase.
+Verrou : `tests/e2e/admission-18-plus.spec.js` (17).
+
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)
 
 59 fiches détaillées par domaine. **Lis la fiche concernée AVANT de modifier ce domaine.** Pour un audit de diff, lance le subagent `audit-passio`.
