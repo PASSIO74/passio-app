@@ -277,6 +277,21 @@ jobs:
       - name: Banc Trust & Safety serveur (RLS, PostgreSQL jetable)
         run: bash tests/sql/migration-ts-serveur.test.sh
 
+      # Admission 18+ : la fondation serveur de l'acces aux rencontres. Meme
+      # raison que le banc ci-dessus — ce sont des policies RLS et des fonctions
+      # SECURITY DEFINER, aucun test navigateur ne peut les prouver.
+      #
+      # Le banc joue les DEUX etats de l'interrupteur : eteint (comportement
+      # d'avant, a l'octet pres — c'est ce qui rend la migration applicable sans
+      # rien casser) et allume (majeur admis, mineur/inconnu refuses, retrait
+      # toujours possible). Puis il retire chaque garde et exige que le test
+      # correspondant redevienne rouge.
+      #
+      # ⚠️ Ce banc n'allume rien en production : il ne touche aucune base reelle.
+      # L'interrupteur `irl_adult_only` se bascule par le canal ③ d'ADR-012.
+      - name: Banc Admission 18+ (RLS, PostgreSQL jetable)
+        run: bash tests/sql/migration-admission-18-plus.test.sh
+
       # La migration du referentiel plat, EXECUTEE deux fois sur un PostgreSQL
       # jetable : idempotence, preservation des 19 identifiants historiques,
       # RLS en lecture seule sur le referentiel, et retour arriere.

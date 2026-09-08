@@ -108,6 +108,14 @@ Toute suppression passe par `deletePost` (app-04) : `marquerPostSupprime(id)` po
 Un rechargement serveur s'écrit dans `supabasePosts`, **JAMAIS** dans `seed.posts`. La propriété d'un post se teste par `_estMonPost(p)` — l'AUTEUR, jamais `_source` — et se retrouve par `findPostAnywhere`.
 Verrou : `tests/e2e/suppression-durable.spec.js` (8 cas). Les quatre causes du défaut, la file de suppression serveur (`passio_post_delete_outbox_v1`, `_delObRun`) et le post-mortem : `docs/SUPPRESSION_DURABLE.md`.
 
+## 🔞 ADMISSION 18+ — fondation serveur ÉCRITE, NON APPLIQUÉE, interrupteur ÉTEINT (2026-09-08)
+
+`migrations/migration_admission_18_plus.sql` branche enfin la garde de majorité de #136 sur les surfaces d'écriture IRL : **organiser** (`events` INSERT), **s'inscrire / changer d'avis / pointer** (`event_attendees` INSERT et UPDATE) et **rejoindre la conversation** (`can_join_event_conversation`) exigent `user_safety.majority_at <= CURRENT_DATE`. Le défaut qu'elle ferme (audit IRL-02/MOD-08) n'était pas une barrière cassée : la barrière existait depuis #136 et **rien ne l'appelait** — `irl_interaction_allowed` ne vivait que sous `passio_irl_proposal_v1`, éteint.
+**Le RETRAIT n'est JAMAIS conditionné** : passer en `declined` et supprimer sa ligne restent permis à tous — un compte rattrapé par la règle doit pouvoir sortir, jamais revenir (et le check-in réécrit `rsvp='going'`, donc il est couvert par la même policy UPDATE).
+⚠️ **Interrupteur SERVEUR** (`public.access_policies`, clé `irl_adult_only`) — le premier du dépôt, les 35 autres drapeaux étant côté client : `UPDATE … SET enabled = TRUE` par le canal ③ d'ADR-012. **Ne JAMAIS supprimer la ligne pour éteindre** : `adult_access_enforced()` est fail-closed, ligne absente = admission **EXIGÉE**. La table n'est ni lisible ni écrivable par `anon`/`authenticated` (aucun GRANT, aucune policy).
+⚠️ **ALLUMER MAINTENANT COUPERAIT L'IRL À TOUT LE MONDE** : l'onboarding n'appelle toujours pas `declare_birth_year` (2 lignes `user_safety` pour 6 comptes en prod), et l'étape d'âge n'est pas atteinte sur le chemin d'inscription nominal depuis « Confirm email » (AUTH-02). Le branchement client est le prochain lot, et c'est un **prérequis strict** de l'allumage.
+Le client demande sa propre porte par `adult_access_status()` → `off` | `admitted` | `undeclared` | `minor` ; `adult_access_enforced()` et `is_adult_declared()` sont des aides internes **sans EXECUTE pour `authenticated`**. Verrou : `tests/sql/migration-admission-18-plus.test.sh` (99 contrôles, gate CI), qui joue les DEUX états de l'interrupteur, 11 mutations et 19 contrôles d'exploitation. Procédure, retour arrière et les huit points ouverts : `docs/ADMISSION_18_PLUS.md`.
+
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)
 
 59 fiches détaillées par domaine. **Lis la fiche concernée AVANT de modifier ce domaine.** Pour un audit de diff, lance le subagent `audit-passio`.
