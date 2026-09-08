@@ -2564,7 +2564,7 @@ function openAbout() {
     </div>\
     <div style="font-size:13px;color:var(--text);line-height:1.6;margin-bottom:14px;">Le premier réseau social pensé pour tes passions. Crée, partage, rencontre — autour de ce qui t\'anime vraiment.</div>\
     <div style="font-size:11px;color:var(--muted);line-height:1.5;">\
-      ' + _champEditeur("raisonSociale") + '<br>\
+      ' + (_editeurParticulier() ? '' : _champEditeur("raisonSociale") + '<br>') + '\
       ' + escapeHtml(PASSIO_EDITEUR.email) + '<br>\
       ' + escapeHtml(PASSIO_EDITEUR.site) + '<br><br>\
       Fondé avec ❤️ par des passionnés.\
@@ -3179,20 +3179,40 @@ function openPrivacyPolicy() {
 // informations qu'aucun document du dépôt n'établit — et dont la dernière
 // contredit l'adresse réelle donnée par la politique de confidentialité. Une
 // mention légale FAUSSE est plus grave qu'une mention légale visiblement
-// inachevée : la première trompe, la seconde se complète. Tout champ laissé
-// vide ci-dessous s'affiche donc « [à compléter] » EN CLAIR, à l'écran, dans
-// les trois surfaces qui le lisent (mentions légales, CGU, À propos).
+// inachevée : la première trompe, la seconde se complète.
 //
-// Les champs obligatoires viennent de la LCEN (art. 6-III) pour un éditeur
-// professionnel : raison sociale, forme juridique, capital, siège, RCS/SIRET,
-// TVA intracommunautaire, directeur de la publication, et l'identité de
-// l'hébergeur. Ils sont à renseigner ICI, une fois, avant l'ouverture au
-// public — jamais recopiés dans un texte.
+// ⚠️ MAIS UN TROU N'EST PAS TOUJOURS UN TROU : LE RÉGIME DÉCIDE DE CE QUI DOIT
+// ÊTRE PUBLIÉ. La première version affichait huit « [à compléter] » parce
+// qu'elle supposait un éditeur professionnel. Il n'y a pas de société : PASSIO
+// est aujourd'hui édité par une personne physique, à titre non professionnel.
+// Ce régime-là ne demande PAS ces huit champs — annoncer huit manques là où la
+// loi n'en voit aucun est une deuxième façon de dire faux.
 const PASSIO_EDITEUR = {
   service: "PASSIO",
   site: "passio-app.netlify.app",
   email: "contact@ladamemetallerie.com",
-  // À renseigner avant l'ouverture au public :
+
+  // ── LE RÉGIME, SEUL INTERRUPTEUR ────────────────────────────────────────
+  // "particulier" — personne physique éditant à titre NON PROFESSIONNEL.
+  //   LCEN art. 1-1, II. ⚠️ L'ancien art. 6-III a été ABROGÉ par la loi
+  //   n° 2024-449 du 21 mai 2024 (SREN) : ne plus le citer. L'éditeur peut
+  //   rester anonyme VIS-À-VIS DU PUBLIC à DEUX conditions cumulatives :
+  //     ① publier le nom et l'adresse de son HÉBERGEUR (d'où l'adresse
+  //        postale complète de Netlify ci-dessous : dans ce régime elle n'est
+  //        pas un détail, c'est la SEULE identité publiée) ;
+  //     ② avoir communiqué à cet hébergeur ses éléments d'identification
+  //        personnelle — ce que fait un compte Netlify nominatif.
+  //   ⚠️ CE RÉGIME TOMBE AU PREMIER EURO. Dès que le service est exploité à
+  //   titre professionnel — les passions payantes d'`openPassionPaywall` en
+  //   sont le déclencheur direct — il faut basculer sur "societe", et les huit
+  //   champs redeviennent obligatoires. Ce n'est pas une destination, c'est un
+  //   abri temporaire.
+  // "societe" — éditeur professionnel : les huit champs sont EXIGÉS et tout
+  //   champ vide s'affiche « [à compléter] » EN CLAIR, à l'écran.
+  regime: "particulier",
+
+  // Exigés par le régime "societe" UNIQUEMENT. Les laisser vides tant qu'il
+  // n'y a pas de structure : sous "particulier" ils ne sont jamais lus.
   raisonSociale: "",
   formeJuridique: "",
   capital: "",
@@ -3201,11 +3221,20 @@ const PASSIO_EDITEUR = {
   siret: "",
   tvaIntra: "",
   directeurPublication: "",
-  // Hébergeurs : les NOMS sont vérifiés, les adresses postales complètes
-  // restent à recopier depuis les contrats (elles ne se devinent pas).
-  hebergeurSite: "Netlify, Inc. — San Francisco, Californie, États-Unis — netlify.com",
-  hebergeurDonnees: "Supabase, Inc. — supabase.com (hébergement des données applicatives)",
+
+  // ── HÉBERGEUR DU SITE — l'identité que la LCEN rend obligatoire ─────────
+  // Adresse relevée sur les conditions d'utilisation de Netlify elles-mêmes,
+  // jamais devinée. C'est l'hébergeur du SITE, celui que vise l'art. 1-1, II.
+  hebergeurSite: "Netlify, Inc., 101 2nd Street, San Francisco, CA 94105, États-Unis — netlify.com",
+  // Sous-traitant technique des DONNÉES (RGPD), distinct de l'hébergeur du
+  // site : il relève de la politique de confidentialité, pas de l'art. 1-1.
+  hebergeurDonnees: "Supabase (Supabase Pte. Ltd., Singapour) — supabase.com",
 };
+
+// Vrai quand l'éditeur est une personne physique non professionnelle.
+function _editeurParticulier() {
+  try { return (PASSIO_EDITEUR && PASSIO_EDITEUR.regime) !== "societe"; } catch (e) { return true; }
+}
 
 // Version du contrat acceptée à l'inscription. Toute réécriture de fond des CGU
 // change cette valeur : c'est elle qui permet de savoir QUI a accepté QUOI.
@@ -3235,7 +3264,7 @@ function openTermsOfService() {
     '<div class="modal-title">Conditions générales d\'utilisation</div>' +
     '<div style="font-size:12.5px;color:var(--muted);line-height:1.65;max-height:55vh;overflow-y:auto;padding-right:4px;">' +
       '<p style="margin:0 0 10px;"><strong style="color:var(--text);">Version du ' + escapeHtml(PASSIO_CGU_VERSION) + ' — service ' + escapeHtml(PASSIO_EDITEUR.service) + '</strong></p>' +
-      p("1. Objet.", "Les présentes conditions régissent l’accès et l’utilisation de PASSIO, réseau social dédié aux passions, accessible à l’adresse " + escapeHtml(PASSIO_EDITEUR.site) + ". Créer un compte vaut acceptation pleine et entière de ce texte. L’éditeur du service est " + _champEditeur("raisonSociale") + " (voir les mentions légales).") +
+      p("1. Objet.", "Les présentes conditions régissent l’accès et l’utilisation de PASSIO, réseau social dédié aux passions, accessible à l’adresse " + escapeHtml(PASSIO_EDITEUR.site) + ". Créer un compte vaut acceptation pleine et entière de ce texte. L’éditeur du service est " + (_editeurParticulier() ? "une personne physique éditant à titre non professionnel" : _champEditeur("raisonSociale")) + " (voir les mentions légales).") +
       p("2. Accès au service.", "Le service est fourni gratuitement, en l’état, pendant sa phase de test. Il peut être protégé par un code d’accès, évoluer, être suspendu ou interrompu sans préavis. Aucune continuité de service n’est garantie.") +
       p("3. Inscription.", "L’inscription est réservée aux personnes de <strong style=\"color:var(--text);\">13 ans révolus</strong> et suppose une adresse e-mail valide, que tu confirmes en cliquant sur le lien reçu. Tu t’engages à fournir des informations exactes, à ne créer qu’un seul compte et à garder ton mot de passe confidentiel. Toute activité effectuée depuis ton compte est réputée être la tienne.") +
       p("4. Tes contenus.", "Tu restes propriétaire de tout ce que tu publies (textes, photos, vidéos, sons, messages). Tu accordes à PASSIO le droit, gratuit et non exclusif, d’héberger, d’afficher et de transmettre ces contenus <em>aux seules fins de faire fonctionner le service</em>, pour la durée de leur publication. Supprimer un contenu ou ton compte met fin à ce droit. Tu garantis détenir les droits sur ce que tu publies et disposer de l’accord des personnes reconnaissables.") +
@@ -3244,7 +3273,7 @@ function openTermsOfService() {
       p("7. Rencontres en vrai.", "Les rencontres proposées dans l’onglet « Rencontrer » sont organisées par leurs auteurs, jamais par PASSIO. L’éditeur n’est pas partie à ces rendez-vous, ne vérifie ni l’identité ni les intentions des participants, et ne saurait être tenu responsable de ce qui s’y produit. La participation à une rencontre est réservée aux personnes <strong style=\"color:var(--text);\">majeures</strong> et suppose une déclaration d’âge. Préviens un proche, choisis un lieu public, reste prudent.") +
       p("8. Données personnelles.", "Le traitement de tes données est décrit dans la politique de confidentialité, qui fait partie intégrante des présentes.") +
       p("9. Propriété du service.", "La marque PASSIO, son interface, ses textes et son code restent la propriété de l’éditeur. Aucune reproduction n’est autorisée sans accord écrit.") +
-      p("10. Responsabilité.", "PASSIO est un hébergeur de contenus au sens de la LCEN : il n’est pas responsable des contenus publiés par ses membres, mais les retire dès qu’il a connaissance de leur caractère manifestement illicite. Le service étant fourni gratuitement et en phase de test, la responsabilité de l’éditeur ne peut être engagée pour une perte de données, une indisponibilité ou un dommage indirect. Rien dans ce paragraphe n’écarte la responsabilité qui ne peut l’être en droit français.") +
+      p("10. Responsabilité.", "PASSIO fournit un service d’hébergement au sens de l’article 6 du règlement européen sur les services numériques (DSA) et de la LCEN : l’éditeur n’est pas responsable des contenus publiés par ses membres, mais les retire promptement dès qu’il a connaissance de leur caractère illicite. Le service étant fourni gratuitement et en phase de test, la responsabilité de l’éditeur ne peut être engagée pour une perte de données, une indisponibilité ou un dommage indirect. Rien dans ce paragraphe n’écarte la responsabilité qui ne peut l’être en droit français.") +
       p("11. Fin du contrat.", "Tu peux supprimer ton compte à tout moment depuis Paramètres → Compte, sans motif et sans frais. L’éditeur peut résilier ton accès en cas de manquement grave aux présentes.") +
       p("12. Modification.", "Les présentes peuvent évoluer. Toute modification substantielle est portée à ta connaissance dans l’application ; la poursuite de l’utilisation vaut acceptation.") +
       p("13. Droit applicable.", "Droit français. En cas de litige, une solution amiable sera recherchée en priorité à l’adresse " + escapeHtml(PASSIO_EDITEUR.email) + ". À défaut, les tribunaux français sont compétents. Un consommateur peut recourir gratuitement à un médiateur de la consommation et à la plateforme européenne de règlement en ligne des litiges (ec.europa.eu/consumers/odr).") +
@@ -3263,22 +3292,35 @@ function openLegalNotice() {
   var p = function (titre, corps) {
     return '<p style="margin:0 0 10px;">' + _legalTitre(titre) + corps + '</p>';
   };
+  // ⚠️ DEUX RÉGIMES, DEUX TEXTES — et le mauvais texte est un texte FAUX.
+  // Sous « particulier », réclamer un RCS ou un directeur de la publication
+  // annoncerait huit manquements que la loi ne constate pas ; sous « societe »,
+  // s'en passer masquerait de vraies obligations. `regime` tranche, une fois.
+  var identite = _editeurParticulier()
+    ? p("Éditeur du service.",
+        'PASSIO est édité par une personne physique, à titre non professionnel. '
+        + 'Conformément à l’article 1-1, II de la loi pour la confiance dans l’économie '
+        + 'numérique, l’éditeur conserve l’anonymat vis-à-vis du public : il a communiqué '
+        + 'ses éléments d’identification à son hébergeur, dont le nom et l’adresse figurent '
+        + 'ci-dessous, et qui les tient à la disposition de l’autorité judiciaire.')
+    : p("Éditeur du service.",
+        _champEditeur("raisonSociale") + ' — ' + _champEditeur("formeJuridique")
+        + ', capital social ' + _champEditeur("capital")
+        + '.<br>Siège social : ' + _champEditeur("siege")
+        + '.<br>RCS : ' + _champEditeur("rcs")
+        + ' — SIRET : ' + _champEditeur("siret")
+        + ' — TVA intracommunautaire : ' + _champEditeur("tvaIntra") + '.')
+      + p("Directeur de la publication.", _champEditeur("directeurPublication") + '.');
+
   openModal(
     '<div class="modal-handle"></div>' +
     '<div class="modal-title">Mentions légales</div>' +
     '<div style="font-size:12.5px;color:var(--muted);line-height:1.65;max-height:55vh;overflow-y:auto;padding-right:4px;">' +
-      p("Éditeur du service.",
-        _champEditeur("raisonSociale") + ' — ' + _champEditeur("formeJuridique") +
-        ', capital social ' + _champEditeur("capital") +
-        '.<br>Siège social : ' + _champEditeur("siege") +
-        '.<br>RCS : ' + _champEditeur("rcs") +
-        ' — SIRET : ' + _champEditeur("siret") +
-        ' — TVA intracommunautaire : ' + _champEditeur("tvaIntra") + '.') +
-      p("Directeur de la publication.", _champEditeur("directeurPublication") + '.') +
+      identite +
       p("Contact.", escapeHtml(PASSIO_EDITEUR.email) + ' — le moyen le plus rapide de joindre l’éditeur, y compris pour signaler un contenu ou exercer tes droits.') +
-      p("Hébergement du site.", escapeHtml(PASSIO_EDITEUR.hebergeurSite) + '.') +
-      p("Hébergement des données.", escapeHtml(PASSIO_EDITEUR.hebergeurDonnees) + '.') +
-      p("Signalement d’un contenu illicite.", 'Un contenu peut être signalé directement dans l’application (menu « ⋯ » d’une publication ou d’un profil) ou par e-mail à ' + escapeHtml(PASSIO_EDITEUR.email) + '. Conformément à l’article 6-I-5 de la LCEN, un signalement gagne à préciser la date, la description du contenu, son emplacement et le motif invoqué.') +
+      p("Hébergeur du site.", escapeHtml(PASSIO_EDITEUR.hebergeurSite) + '.') +
+      p("Hébergement des données.", escapeHtml(PASSIO_EDITEUR.hebergeurDonnees) + ', sous-traitant technique au sens du RGPD.') +
+      p("Signalement d’un contenu illicite.", 'Un contenu peut être signalé directement dans l’application (menu « ⋯ » d’une publication ou d’un profil) ou par e-mail à ' + escapeHtml(PASSIO_EDITEUR.email) + '. Conformément à l’article 16 du règlement européen sur les services numériques (DSA), un signalement gagne à préciser l’emplacement exact du contenu, une explication du motif invoqué, et de quoi recontacter son auteur.') +
       p("Propriété intellectuelle.", 'La marque, le logo, l’interface et le code du service sont protégés. Les contenus publiés par les membres restent la propriété de leurs auteurs.') +
       p("Données personnelles.", 'Voir la politique de confidentialité, accessible depuis Paramètres → Support. Réclamation possible auprès de la CNIL (cnil.fr).') +
       '<p style="margin:0;font-size:11.5px;">Conditions générales d’utilisation : accessibles depuis Paramètres → Support et depuis l’écran de création de compte.</p>' +
