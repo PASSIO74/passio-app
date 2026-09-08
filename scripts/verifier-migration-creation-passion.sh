@@ -86,8 +86,20 @@ $fn$;
 EOF
 chmod a+r "$BASE/authuid.sql"
 F creation "$BASE/authuid.sql" >/dev/null
+# ⚠️ ON SIMULE LES PRIVILÈGES PAR DÉFAUT DE SUPABASE. Le projet accorde EXECUTE
+# à `anon` et `authenticated` sur toute fonction créée dans `public`, par des
+# grants NOMINATIFS qu'un `revoke ... from public` ne retire pas. Un PostgreSQL
+# nu n'a pas cette règle : sans cette ligne, la vérification ⑦ « la fonction est
+# fermée à anon » serait verte PAR ACCIDENT — elle l'a été, pendant que la
+# production portait `anon=X`. On pose donc le grant AVANT, pour que le test
+# mesure ce que la migration RETIRE.
+Q creation "alter default privileges in schema public grant execute on functions to anon, authenticated;" >/dev/null 2>&1
 out=$(F creation "$MIG")
 if [ $? -eq 0 ] && ! grep -qi "^ERROR" <<<"$out"; then ok "migration appliquée"; else ko "échec :"; echo "$out" | grep -i error | head -5; fi
+acl=$(Q creation "select has_function_privilege('anon', 'public.creer_passion(text,text)', 'EXECUTE')::text")
+[ "$acl" = "false" ] && ok "anon n'a PAS le droit d'exécuter creer_passion" || ko "anon garde EXECUTE sur creer_passion : $acl"
+acl=$(Q creation "select has_function_privilege('authenticated', 'public.creer_passion(text,text)', 'EXECUTE')::text")
+[ "$acl" = "true" ] && ok "authenticated peut l'exécuter" || ko "authenticated n'a pas EXECUTE : $acl"
 out=$(F creation "$MIG")
 if [ $? -eq 0 ] && ! grep -qi "^ERROR" <<<"$out"; then ok "seconde exécution : idempotente"; else ko "NON IDEMPOTENTE :"; echo "$out" | grep -i error | head -5; fi
 col=$(Q creation "select count(*) from information_schema.columns where table_name='passions' and column_name='created_by'")

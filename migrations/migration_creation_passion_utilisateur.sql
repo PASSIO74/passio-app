@@ -175,7 +175,16 @@ begin
       from public.passions p where p.id = v_essai;
 end $$;
 
+-- ⚠️ `revoke ... from public` NE SUFFIT PAS SUR SUPABASE, et c'est mesuré en
+-- production le 2026-09-08 : les privilèges par défaut du projet accordent
+-- EXECUTE à `anon` et `authenticated` sur toute fonction créée dans `public`,
+-- et ces grants sont NOMINATIFS. Retirer le pseudo-rôle PUBLIC les laisse
+-- entiers — `proacl` portait bien `anon=X` après la première application.
+-- La fonction refusait déjà un appel sans compte (`auth.uid()` nul →
+-- `auth_requise`, la seule vraie garde), mais la défense en profondeur
+-- annoncée, elle, n'existait pas. On révoque donc NOMMÉMENT.
 revoke all on function public.creer_passion(text, text) from public;
+revoke all on function public.creer_passion(text, text) from anon;
 grant execute on function public.creer_passion(text, text) to authenticated;
 
 comment on function public.creer_passion(text, text) is

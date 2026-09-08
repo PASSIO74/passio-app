@@ -91,6 +91,23 @@ appeler la fonction.
    nommer sa passion à quelqu'un pour lui apprendre ensuite qu'il lui fallait un
    compte. `openModal` **remplace** la feuille ouverte — c'est voulu.
 
+## ⚠️ Sur Supabase, `revoke ... from public` ne ferme rien (mesuré en prod)
+
+Les privilèges par défaut du projet accordent `EXECUTE` à **`anon`** et
+`authenticated` sur toute fonction créée dans `public`, et ces grants sont
+**nominatifs**. Retirer le pseudo-rôle `PUBLIC` les laisse entiers : après la
+première application, `proacl` portait bien `anon=X/postgres`.
+
+La garde réelle n'a jamais bougé — la fonction refuse `auth.uid()` nul
+(`auth_requise`) — mais la défense en profondeur annoncée n'existait pas. La
+migration **révoque donc nommément** `anon`.
+
+⚠️ **Le banc était vert par accident** : un PostgreSQL nu n'a pas cette règle de
+privilèges par défaut, donc « la fonction est fermée à anon » passait sans rien
+mesurer. Il pose désormais le grant **avant** d'appliquer la migration, et
+vérifie `has_function_privilege('anon', …)` — éprouvé par réinjection (la ligne
+`revoke … from anon` retirée fait rougir la vérification).
+
 ## Ce que le lot ne fait PAS, et qu'il faut savoir
 
 - **Aucune modération.** La passion créée est `active` immédiatement et devient
