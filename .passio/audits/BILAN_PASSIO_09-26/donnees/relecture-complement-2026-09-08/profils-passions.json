@@ -1,0 +1,104 @@
+{
+  "domaine": "profils-passions",
+  "sha_verifie": "c8cb8e9 — `git diff --stat c8cb8e9 HEAD -- js/ index.html migrations/ data/` vide (HEAD 1712683 n'a touché que .passio/)",
+  "verdicts": [
+    {
+      "id": "PRO-01",
+      "verdict": "CONFIRMÉ",
+      "priorite_proposee": "P1",
+      "priorite_changee": false,
+      "preuve": "js/app-02-state-utils.js:1304 `supa.from(\"passions\").select(\"id\")` sans `.range()` ni `.limit()`, cache à un seul coup (:1302) ; :1337-1345 `estPassionCanonique` = `_referentielPassions` ∪ `PASSIONS` (19, app-01:80) et RIEN d'autre — `js/passions-flat.js` (data/passions-v1.json, 1 908 entrées, fetch :250) n'alimente jamais `_referentielPassions` (grep : aucune écriture hors app-02:1307). Comptage statique rejoué (scratchpad/relecture/profils-passions/compte-refusees.js) : total_json=1908, ids1000=1000, socle=19 dont 11 dans les 1 000 → refusees=900, sante-sport-sante et parentalite-sport-famille refusées. Studio : js/passions-flat-ui.js:134-136 `passionPubliable` = `estPassionCanonique` ; publishPost app-06:4245 refuse avant tout insert ; renderStudio app-06:3792 filtre le `<select>` par `estPassionCanonique`. Le commentaire app-02:1318-1323 nomme lui-même le plafond max-rows et ne le traite que dans le sens « ne pas rétrécir », jamais dans le sens « compléter ».",
+      "commentaire": "Tient au SHA. La valeur réelle de `max-rows` reste BLOQUÉE (proxy), mais le défaut de Supabase (1 000) est documenté et le code l'anticipe ; la borne exacte des refusées dépend des 1 000 lignes que PostgREST rend (sans ORDER BY : entre 889 et 908), ce qui ne change rien au verdict. P1 justifié (pas P0 : une autre passion reste publiable ; pas P2 : un compte réel est privé de l'une de ses trois passions et la page Rechercher promet 1 908). Précision de correction : `PassioPassions` est chargé à la demande (jamais au boot, invariant 160 Ko) donc ne peut pas être l'autorité seule ; la pagination `.range()` en boucle jusqu'à `data.length < 1000` est la voie sûre, et il faudra RE-RENDRE `#postPassion` à l'arrivée (voir CPL-PRO-02)."
+    },
+    {
+      "id": "PRO-02",
+      "verdict": "CONFIRMÉ",
+      "priorite_proposee": "P1",
+      "priorite_changee": false,
+      "preuve": "js/app-02-state-utils.js:1670-1690 `_msgSenderMeta` : n = premier non-défaut de [g.username, state.user.name, prof.name] (état local libre), ph = toute URL `^https?://` (:1687) ; :1697-1703 injecté dans CHAQUE message sortant. Réception : app-04:4309-4312 `sp.n` écrase `fromName` ; app-08:4746-4750 liste des conversations `userName: lastSp?.n || otherProf?.username`, `userPhoto: lastSp?.ph || …` ; app-08:4924-4928 temps réel réécrit conv.userName/Emoji/Color/Photo depuis `sp`. Serveur : migrations/migration_identite_affichage_canonique.sql:77-87 pose `trg_identite_affichage` sur video_lives, event_comments, cdv_live_comments (+ step_interactions selon requêtes §3), JAMAIS sur conv_messages ; requêtes §1 : conv_messages/notifications n'ont aucune colonne d'identité. Notifications : app-08:4776-4781 `content = escapeHtml(currentProfile().name) + ' ' + content` écrit par l'émetteur.",
+      "commentaire": "Confirmé à la ligne ; l'émulation C est cohérente avec le code. Nuance : l'UI vérifie l'unicité du pseudo (`supaUsernameTaken` app-08:4487, appelé app-06:1319) mais `sp.n` ne dérive pas d'un champ validé serveur, et rien en base n'impose l'unicité (voir CPL-PRO-01). `sp.ph` mérite d'être traité dans la même correction pour une raison SUPPLÉMENTAIRE : la CSP autorise `img-src https:` (netlify.toml:19, _headers:40) et `safeUrlAttr` accepte http(s), donc une URL externe posée dans `ph` devient une balise de pistage (IP, UA, heure de lecture) par destinataire. Réserve sur le risque de régression : `sp.pid` sert UI-8, ne réécrire que n/e/c/ph."
+    },
+    {
+      "id": "PRO-03",
+      "verdict": "CONFIRMÉ",
+      "priorite_proposee": "P2",
+      "priorite_changee": false,
+      "preuve": "Serveur : requêtes-base §2 (policies user_passions = `user_id = auth.uid()` seulement, profiles « Update propre » sans contrainte sur le jsonb) ; migrations/SCHEMA_PROD_REFERENCE.sql:356-357/437 : profiles ne porte que pkey + FK passion_id (et ne connaît pas encore user_passions, référence du 2026-08-17). Client : app-08:3142-3163 `supaSavePassionState` envoie `charge.passions` (jsonb entier) + `passion_id` sans autre garde que `_writeVerdict` ; toutes les gardes de plafond/quota sont dans app-06 (`archiverPassion` :2004-2008, `ajouterPassionAuCompte` :3701) et lisent `state.user.passionChanges.entries`. CLAUDE.md (mode illimité) l'assume : « rien en base que la console ne puisse déjà écrire ».",
+      "commentaire": "Vrai et cohérent avec le code : le plafond est une règle d'écran, pas une règle de données. P2 maintenu — aucun paiement n'existe aujourd'hui (paywall sans montant), donc pas P1 ; mais c'est le prérequis de toute offre payante, donc pas P3. À prévoir : exemption des comptes antérieurs (5 vivantes), et `reinjecterProfilsLocauxBornes` (app-02) qui ne borne que ce qu'elle ajoute."
+    },
+    {
+      "id": "PRO-04",
+      "verdict": "CONFIRMÉ",
+      "priorite_proposee": "P2",
+      "priorite_changee": false,
+      "preuve": "Divergence = fait de base (requêtes §6, non re-vérifiable ici : connecteur interdit). Mais le DIAGNOSTIC du finding est faux sur deux points : (a) `archiverPassion` app-06:2040-2041 et `restaurerPassion` :2081 appellent DÉJÀ `supaSavePassionState()` puis `supaSaveUserState()` dans la même fonction — la correction « publier depuis la même fonction » est déjà en place ; ce qui manque est le SUIVI : `supaSavePassionState` (app-08:3142-3163) est fire-and-forget, sans reprise ni file (`_writeVerdict` app-02:376-395 se contente d'un console.warn + diagLog), alors que user_state a beacon + reprise — un seul échec réseau au moment de l'archivage donne exactement l'état observé (moto-enduro vivante côté vitrine, archivée côté état, et `passion_id` figé sur une valeur antérieure). (b) `.passio/context/MULTI_PROFILE.md` ne dit NULLE PART que `profiles.passion_id` porte l'active (grep « passion_id » : lignes 15 et 59, toutes deux sur `posts.passion_id`) ; le code dit l'inverse et l'assume : app-08:2739-2753 « préfère une passion VIVANTE mais accepte une archivée en dernier recours », `_chargeProfilComplete` « la passion principale (1ʳᵉ créée) reste dans passion_id ».",
+      "commentaire": "Observé confirmé, cause et correction à réécrire : file de reprise (comme `passio_post_delete_outbox_v1`) ou re-publication de `profiles.passions` au verdict RÉUSSI de `supaLoadUserState`, plus retirer l'affirmation doc inexistante. Le `passion_id = art (archivée)` s'explique aussi par PRO-01/CPL-PRO-02 : `_passionIdPubliable` filtre par `estPassionCanonique` et, si le référentiel n'est pas (ou pas entièrement) chargé, seules les passions du socle sont candidates. P2 maintenu : un visiteur voit une passion quittée, et les créateurs d'une page de passion sont cherchés sur cette colonne (app-07:430-435)."
+    },
+    {
+      "id": "PRO-05",
+      "verdict": "CONFIRMÉ",
+      "priorite_proposee": "P3",
+      "priorite_changee": false,
+      "preuve": "app-06:2040-2049 `archiverPassion` ne re-rend que `renderProfilesScreen`/`renderProfileStrip` (jamais `renderStudio`) et rien du tout en mode silencieux ; app-06:4212 `publishPost` lit `#postPassion` et ne vérifie que `estPassionCanonique` (:4245) ; :4295-4296 `_matchProf` retombe sur un profil ARCHIVÉ de même passion (« || find(pr.passion === passion) »). Mais la reproduction du finding (« revenir au Studio sans re-rendu ») n'est PAS un chemin réel : `goTo(\"studio\")` appelle `renderStudio()` (app-02:2053) qui rebâtit le `<select>` sur `passionsVivantes()` (app-06:3789-3792). Le chemin réel existe ailleurs : Studio ouvert sur Y → choix d'une passion X non possédée au plafond (flat-ui :190 `ajouterPassionAuCompte` → app-06:3702 `openPassionPaywall({})`) → « échanger » (app-06:3415 → `echangerPassion` :2108-2114 = `archiverPassion(Y, true)` silencieux, puis closeModal + renderProfilesScreen, sans renderStudio) → `#postPassion` reste sur Y → publication dans la passion qu'on vient d'archiver, `profileId` archivé.",
+      "commentaire": "Défaut réel, reproduction à réécrire avec le chemin d'échange depuis le Studio (le seul qui laisse l'écran ouvert). P3 maintenu : la passion reste canonique et possédée-mais-archivée, aucune perte ; sous UI-6 le `<select>` natif est masqué (app-06:3806) donc l'utilisateur ne peut pas RE-choisir Y à la main, seul l'échange le laisse en place. Correction : re-rendre `#postPassion` dans `archiverPassion`/`echangerPassion` ET ne retenir dans `publishPost` qu'un profil vivant (retirer le repli de :4296)."
+    },
+    {
+      "id": "PRO-06",
+      "verdict": "CONFIRMÉ",
+      "priorite_proposee": "P3",
+      "priorite_changee": false,
+      "preuve": "Chiffres = faits de base (requêtes §4-5, non re-vérifiables ici). Cause du miroir incomplet lisible dans le code : app-08:3195-3210 `supaMiroirUserPassions` saute toute passion `!estPassionCanonique(pid)` — avec PRO-01 (900 ids inconnus du client, dont sante-sport-sante et parentalite-sport-famille, précisément dans la liste des manquantes du §5) et avec la course du chargement (CPL-PRO-02), les lignes manquent DURABLEMENT, pas par accident ; `_userPassionsDispo` se désarme sur 42501 pour la session (:3186-3190). Orphelins user_state : le client supprime user_state (app-02:3094) mais l'Edge Function delete-account ne le fait pas (supabase/functions/delete-account/index.ts:46-62, ni user_state ni user_passions) — déjà rapporté et relu comme SUP-10 (06-AUDIT-SECURITE-DONNEES.md:305-312).",
+      "commentaire": "Confirmé ; le finding manque sa cause principale : corriger PRO-01 (référentiel complet) fait revenir la plupart des 23 entrées à la prochaine écriture, un job de réconciliation seul re-sauterait les mêmes ids. La partie « 79 orphelins » recoupe SUP-10 (résidus après suppression) : à fusionner plutôt qu'à compter deux fois. P3 maintenu tant que rien ne LIT user_passions (app-08:3172-3176)."
+    }
+  ],
+  "oublis": [
+    {
+      "id": "CPL-PRO-01",
+      "priorite": "P2",
+      "titre": "Aucune contrainte d'unicité sur `profiles.username` en base : l'unicité du pseudo n'est qu'un contrôle client, contournable par REST ou par simple course",
+      "fonctionnalite": "Identité centralisée (pseudo unique du compte), messagerie, mentions @",
+      "attendu": "Deux comptes ne peuvent pas porter le même pseudo (à la casse près) — c'est le socle de l'identité centralisée d'ADR-011 et de la confiance en messagerie.",
+      "observe": "L'unique garde est `supaUsernameTaken` (app-08:4487-4497 : `ilike(\"username\", clean).limit(10)` puis comparaison en minuscules, exclusion de MY_UID), appelée à l'enregistrement du pseudo (app-06:1319-1320). En base, `profiles` ne porte que `profiles_pkey` et `profiles_passion_fk` (migrations/SCHEMA_PROD_REFERENCE.sql:356-357, index :437) — aucun index unique, aucun CHECK ; les triggers d'identité propagent le pseudo tel quel. Un `PATCH /rest/v1/profiles?id=eq.<moi>` avec le pseudo d'un autre compte passe la policy « Update propre ».",
+      "reproduction": "Compte A = « benjamin ». Compte B authentifié : `await supa.from(\"profiles\").update({ username: \"benjamin\" }).eq(\"id\", MY_UID)` → 1 ligne, aucune erreur. Ou deux inscriptions simultanées du même pseudo (le contrôle client n'est pas transactionnel).",
+      "preuve": "app-08:4487-4497 ; app-06:1319-1320 ; migrations/SCHEMA_PROD_REFERENCE.sql:356-357,437 ; requêtes-base §1 (aucune colonne d'identité sur conv_messages : l'affichage repose sur `profiles.username`, donc sur son unicité).",
+      "impact": "Usurpation d'identité SANS toucher au payload `sp` (PRO-02) : le pseudo affiché par les embeds `profiles!author_id(username…)` (app-03:17) devient ambigu sur les posts, commentaires et conversations ; la recherche de profil par pseudo (`ilike` app-04:2717, `.limit(1)`) rend le mauvais compte. Aggrave PRO-02 et le hameçonnage interne.",
+      "correction": "`create unique index profiles_username_lower_key on public.profiles (lower(username)) where username is not null` (canal ③ DDL, ADR-012), après dédoublonnage des homonymes existants ; côté client, traiter le 23505 dans `supaSavePublicProfile` par un message honnête (« pseudo déjà pris »).",
+      "effort": "0,25 jour + vérification des homonymes existants en base.",
+      "confiance": "CONFORME PAR INSPECTION (code + schéma de référence ; l'absence d'index en PROD reste à confirmer par `pg_indexes` — BLOQUÉ ici, connecteur interdit)."
+    },
+    {
+      "id": "CPL-PRO-02",
+      "priorite": "P3",
+      "titre": "La canonicité est décidée AU MOMENT de l'écriture ou du rendu alors que le référentiel serveur n'est ni attendu ni suivi : Studio et `passion_id` figés sur le socle des 19 tant que la réponse n'est pas arrivée, et jamais repeints à son arrivée",
+      "fonctionnalite": "Studio (sélecteur de passion), `profiles.passion_id`, miroir `user_passions`",
+      "attendu": "Une passion possédée et réellement dans le référentiel est publiable dès l'ouverture du Studio, et `passion_id`/`user_passions` reflètent les passions vivantes du compte quel que soit l'instant de l'écriture.",
+      "observe": "`chargerReferentielPassions` est lancée sans await à la création du client (app-08:2695), sans callback ni promesse exposée (app-02:1300-1311). Or : (a) `renderStudio` (app-06:3789-3792) filtre le `<select>` par `estPassionCanonique` à l'instant du rendu et n'est jamais rappelé quand le référentiel arrive → un compte dont les passions sont hors socle (ex. moto-enduro, outdoor-randonnee) ouvre le Studio tôt (ou sur réseau lent) et voit un `<select>` vide + « on ne peut pas encore y publier », jusqu'à une nouvelle navigation ; (b) la sauvegarde de fin d'onboarding part à +800 ms (app-02:4368-4384 → `supaSavePassionState`) : `_passionIdPubliable` (app-08:2753-2767) et `supaMiroirUserPassions` (:3210) ne voient alors que le socle → `passion_id` retombe sur une passion du socle (éventuellement archivée, cf. le `art` de PRO-04) et le miroir saute les autres.",
+      "reproduction": "Émulation : `_referentielPassions = null` (état avant réponse), compte avec passion vivante « moto-enduro », `goTo(\"studio\")` → `#postPassion` sans option moto-enduro ; puis `_referentielPassions = new Set([\"moto-enduro\"])` → le `<select>` ne change pas tant qu'on ne quitte pas l'écran. Onboarding : throttler la réponse de `/rest/v1/passions` au-delà de 800 ms et observer `passion_id` envoyé.",
+      "preuve": "app-08:2695 ; app-02:1300-1311 ; app-06:3789-3792 ; app-02:4368-4384 ; app-08:2753-2767 et :3210.",
+      "impact": "Transitoire mais visible (Studio vide juste après le lancement), et durable côté données (`passion_id` et miroir faux jusqu'à la prochaine écriture réussie) ; c'est l'un des mécanismes derrière PRO-04 et PRO-06.",
+      "correction": "Faire rendre une promesse à `chargerReferentielPassions`, et à sa résolution : invalider/repeindre `#postPassion` si le Studio est affiché, et re-jouer `supaSavePassionState` si une écriture est partie avant la réponse (ou attendre la réponse, bornée à 2 s, avant l'écriture de fin d'onboarding). À traiter dans le même correctif que PRO-01.",
+      "effort": "0,25 jour (dans le lot PRO-01).",
+      "confiance": "PROBABLE (mécanisme lu dans le code ; l'occurrence en production n'est pas mesurée — Playwright indisponible ici)."
+    },
+    {
+      "id": "CPL-PRO-03",
+      "priorite": "P3",
+      "titre": "`chargerReferentielPassions` avale toutes ses erreurs sans `diagLog` : une panne ou une troncature du référentiel est invisible au Centre de pilotage et à la Sentinelle",
+      "fonctionnalite": "Référentiel des passions — observabilité",
+      "attendu": "Un chemin critique (il conditionne la publication) ne masque pas ses échecs (invariant CLAUDE.md « catch large » ; précédent diagLog = fil vide 6 jours).",
+      "observe": "app-02:1300-1311 : `try { … } catch (e) {}` autour de l'appel, `catch (e) {}` autour du traitement, `.catch(function () {})` sur la promesse — aucun `diagLog`, aucun `tel.error`, aucune comparaison de `r.data.length` avec un `count` attendu. PRO-01 (900 passions impubliables depuis le 2026-09-01) n'a produit aucun signal ; le finding le note (« visibilité_pilotage : aucune ») sans en faire un défaut à corriger.",
+      "reproduction": "Bloquer `/rest/v1/passions` (route Playwright ou hors ligne) puis publier dans une passion hors socle : refus « on ne peut pas encore y publier », aucune ligne dans client_errors ni telemetry_events.",
+      "preuve": "js/app-02-state-utils.js:1300-1311 ; CLAUDE.md « Catch large ».",
+      "impact": "Le défaut PRO-01 pourrait se reproduire (changement de `max-rows`, panne PostgREST) sans qu'aucun tableau de bord ne le montre ; le diagnostic dépend d'un utilisateur qui se plaint.",
+      "correction": "`diagLog(\"passions referentiel KO: …\")` sur erreur, et `diagLog`/`tel.error` si `r.data.length` est un multiple exact de 1 000 ou inférieur à `PassioPassions.taille()` quand celui-ci est connu (signal de troncature).",
+      "effort": "0,1 jour.",
+      "confiance": "CONFORME PAR INSPECTION."
+    }
+  ],
+  "tests_lances": [
+    "git diff --stat c8cb8e9 HEAD -- js/ index.html migrations/ data/ → vide (code audité = code relu)",
+    "node scratchpad/relecture/profils-passions/compte-refusees.js (calcul statique : data/passions-v1.json ∖ (ids-1000-ctid.txt ∪ PASSIONS app-01)) → {total_json:1908, ids1000:1000, socle:19, socle_dans_les_1000:11, refusees:900, sante_sport_sante_refusee:true, parentalite_sport_famille_refusee:true}",
+    "Rejeu de maxrows-emulation.js sur http-server :8111 → ÉCHEC D'ENVIRONNEMENT : node_modules/ absent (Cannot find module @playwright/test) ; rien installé, serveur arrêté ; conclusions par inspection + calcul statique"
+  ],
+  "limites": "Aucun test navigateur possible (node_modules absent, interdiction d'installer) ; aucune requête base (connecteur interdit) : les faits de base (§2, §4-6 des requêtes du 2026-09-04) sont repris tels quels et non re-vérifiés ; la valeur réelle de `max-rows` du projet et l'absence d'index unique sur `profiles.username` en PRODUCTION restent à confirmer par l'orchestrateur (`select setting from pg_settings` ne l'expose pas ; `select indexdef from pg_indexes where tablename='profiles'`)."
+}

@@ -1,0 +1,118 @@
+{
+  "domaine": "robustesse-pannes",
+  "verdicts": [
+    {
+      "id": "ROB-01",
+      "verdict": "CONFIRMÉ",
+      "priorite_proposee": "P2",
+      "priorite_changee": false,
+      "preuve": "js/app-06-reels-partage.js:4348-4371 (Promise.race 5 s, échec → toast « Post en local », aucune file) ; grep `_pendingSync|syncStatus` sur js/ → seul rejeu existant = bobines (`_scheduleReelRetry` app-08:1403-1420, filtre `p.isReel` 1408) ; app-09-boot-pwa.js:252-262 (`online` → supaLoadPosts seulement) ; script relecture.js T2 → `appelsPublish: 0` après dispatch `online` ; chaos C3 (chaos.spec.js:397, PAS chaos2) → insertsPosts 0 après reload.",
+      "commentaire": "Réel au SHA : aucun code ne rejoue `state.userPosts` (hors bobines) ni au retour du réseau ni au boot, alors que messages (`passio_outbox_v1`), commentaires (`passio_cmt_outbox_v1`), user_state (pending) et bobines ont chacun leur file. Deux corrections de formulation : la preuve cite `chaos2.spec.js` qui n'a jamais tourné (aucune ligne A7-A10 dans 04-chaos-sortie-brute.txt, pas de 02b-*.jsonl) — le scénario C3 est dans `chaos.spec.js:397` ; et `sync: syncing` n'est pas un indice de reprise avortée : c'est la valeur INITIALE (app-06:4314), jamais réécrite nulle part. L'utilisateur reçoit « Post en local (connexion lente) » + notification « Ton post est en attente » (app-06:4424) — pas silencieux, mais mensonger : rien n'attend. P2 tenu (à la limite de P1 pour un usage en événement à connexion faible)."
+    },
+    {
+      "id": "ROB-02",
+      "verdict": "CONFIRMÉ",
+      "priorite_proposee": "P2",
+      "priorite_changee": false,
+      "preuve": "js/app-07-ia-explore-irl.js:3297-3305 (mutation optimiste + saveState AVANT écriture), 3319-3321 (`rsvpOk` lu puis utilisé UNIQUEMENT pour `irlFunnelTrackJoin`, aucun rollback, aucune file) ; script relecture.js T3 (supaSetEventRsvp stubé à `false`) → `rsvpLocal: going`, attendees conservés, toasts [] ; chaos C4 → repriseAutomatique = 1 GET.",
+      "commentaire": "Confirmé par inspection ET exécution hors réseau : l'échec réel de l'écriture ne défait jamais l'affichage optimiste, contrairement à l'invariant CLAUDE.md appliqué au like (`likePost` annule + toast). Correction la plus courte : `if (rsvpOk === false) { restaurer prev ; toast }` — la promotion en file d'attente et la conversation de groupe (3327-3328) doivent aussi être conditionnées. Voir CPL-ROB-02 pour la notification à l'organisateur envoyée malgré l'échec."
+    },
+    {
+      "id": "ROB-03",
+      "verdict": "CONFIRMÉ",
+      "priorite_proposee": "P2",
+      "priorite_changee": false,
+      "preuve": "js/app-09-boot-pwa.js:240-252 (`#offlineBanner` uniquement sur message SW OFFLINE / événement `offline`, jamais sur un statut HTTP) ; js/app-02-state-utils.js:376-400 (`_writeVerdict` → console.warn + diagLog, aucune UI) ; grep `SIGNED_OUT` sur js/ → 0 résultat ; grep « Session expirée » → seulement le formulaire mot de passe (app-02:3020, 3031) ; js/app-08-ui-modals-tour.js:5707-5722 (boucle fil 60 s) ; chaos F_500/401/429 : toasts [] et bannière none.",
+      "commentaire": "Le cœur tient : aucun état « serveur injoignable / session expirée » n'est jamais montré, et l'app n'a AUCUN gestionnaire `SIGNED_OUT` — après un échec de rafraîchissement du jeton, `MY_UID` (restauré de `localStorage.passio_uid`) reste posé et l'app continue comme connectée. Deux surévaluations à corriger : (1) « les écritures échouent en silence » n'est PAS mesuré par F_* (aucune écriture n'y est tentée) et est faux pour like (rollback + toast), commentaires (« Non envoyé · Réessayer »), messages (« réessayer ») et posts (« Post en local ») — il est vrai pour RSVP, suivre, bloquer, story ; (2) « 28 requêtes en 30 s de rejeux » n'est pas prouvé : la fenêtre de mesure inclut le double chargement du boot (supaInit au boot + SIGNED_IN) et la boucle à 60 s, sans backoff mais sans tempête. P2 tenu."
+    },
+    {
+      "id": "ROB-04",
+      "verdict": "CONFIRMÉ",
+      "priorite_proposee": "P3",
+      "priorite_changee": false,
+      "preuve": "js/app-04-comments-shop.js:3280-3311 (`toggleFollowUser` : aucun verrou, bascule sur `state.user.following` synchrone), 3314-3327 (`blockUser` : aucune garde « déjà bloqué », supaBlockUser + supaUnfollowUser + toast à chaque appel) ; script relecture.js T4 → follow 1 / unfollow 3 / block 2, toasts « Tu suis » puis « Tu ne suis plus », « bloqué » ×2.",
+      "commentaire": "Reproduit hors réseau. Nuance : le second tap arrive sur un bouton déjà passé à « ✓ Suivi », donc l'état final (non suivi, local ET serveur cohérents) est une bascule, pas une corruption ; le grief tient par incohérence avec le like, qui a un verrou anti-double-clic. Le côté « Bloquer » est le plus utile à corriger (deux INSERT blocks — le second finit en 23505 grâce à `blocks_pkey`, mais 2 DELETE follows et 2 toasts). P3 juste ; correction : sortir tôt si `state.user.blocked.includes(userId)` et verrou `_followBusy[uid]`."
+    },
+    {
+      "id": "ROB-05",
+      "verdict": "CONFIRMÉ",
+      "priorite_proposee": "P3",
+      "priorite_changee": false,
+      "preuve": "js/app-07-ia-explore-irl.js:1152-1165 (refus → `irlUserLocationError = true` PUIS `irlUserLocation = Paris`, aucun toast) ; 1240-1255 `updateIrlCityTitle` : la branche « Paris (approx) » (1250) est MORTE — `irlUserLocation` est déjà posée, donc 1247 rend « Paris » ; script relecture.js T5 → titre « Paris », toasts [].",
+      "commentaire": "Confirmé, mais le correctif est plus petit que proposé : l'intention d'afficher « Paris (approx) » existe déjà et n'est jamais atteinte (ordre des `if`), et la saisie de ville existe déjà (`openIrlCitySelector` app-07:1258, `#irlCitySearch` index.html:1219). Reste à ajouter : tester `irlUserLocationError` AVANT `irlUserLocation` dans le titre, un toast unique « Localisation refusée — résultats autour de Paris, change de ville », et ne pas confondre ce repli avec une position réelle dans le tri par distance. Effort 0,1 j."
+    },
+    {
+      "id": "ROB-06",
+      "verdict": "CONFIRMÉ",
+      "priorite_proposee": "P3",
+      "priorite_changee": false,
+      "preuve": "js/app-04-comments-shop.js:4644-4649 (`_flushOutbox` : pas de verrou, relit la file et renvoie tout) ; script relecture.js T1a → deux `_flushOutbox()` = 3 INSERT pour 1 message ; chaos C2 envoisDbl [ok, ok, dup, dup].",
+      "commentaire": "Le défaut de verrou est réel et reproduit. Mais la partie « le statut reste failed » n'est PAS due au double flush : elle vient d'un défaut distinct et plus grave — `_sendTextToSupa` (app-04:4630-4634) traite un 23505 comme un échec et REMET le message en file — élevé en CPL-ROB-01 (P2). Sans lui, le double flush ne coûterait que du bruit réseau (T1a : les deux réponses 201 du stub laissent `sent`, outbox vide). P3 tenu pour le verrou seul ; le corriger sans CPL-ROB-01 ne réglerait pas le symptôme observé."
+    }
+  ],
+  "oublis": [
+    {
+      "id": "CPL-ROB-01",
+      "priorite": "P2",
+      "titre": "Un message déjà livré (23505) est affiché « réessayer » pour toujours, remis en file et renvoyé à chaque reconnexion",
+      "fonctionnalite": "Messagerie — envoi, file `passio_outbox_v1`, bouton « réessayer »",
+      "attendu": "Une clé dupliquée sur `conv_messages_pkey` (id client) signifie que le message EST sur le serveur : statut « sent », retrait de la file — comme `supaFollowUser` (app-08:5303) et `supaSetPostLike` le font pour leur 23505.",
+      "observe": "`_sendTextToSupa` (js/app-04-comments-shop.js:4630-4634) : `if (res && res.error) { _setMsgStatus(failed); _outboxAdd(...) }` sans distinguer le code. Toute réponse perdue après commit serveur (coupure mobile mi-requête, timeout, double flush, tap « réessayer » pendant un envoi en vol) produit un 23505 au renvoi → « failed » définitif, file jamais vidée, renvoi à chaque événement `online` (app-04:4651) et à chaque boot (app-08:5956), toujours en 23505.",
+      "reproduction": "Script relecture-t1.js (hors réseau, `supa` stubé) : un flush avec réponse 23505 → status failed, outbox [msg_b] ; dispatch `online` → 2e INSERT du même id, toujours failed. Banc chaos C2 : troisiemeFlush envois3 [dup, dup] → status failed, outbox 2.",
+      "preuve": "js/app-04-comments-shop.js:4630-4634, 4644-4651 ; migrations/SCHEMA_PROD_REFERENCE.sql:337 (`conv_messages_pkey` PRIMARY KEY (id)) ; relecture.json T1 unFlush23505 / apresOnline ; preuves/robustesse-pannes/02-chaos-observations.jsonl C2 (troisiemeFlush).",
+      "impact": "Le destinataire a reçu le message, l'expéditeur voit un échec permanent et le retape → vrai doublon chez le destinataire ; la file grossit et rejoue en 23505 à chaque ouverture (bruit + télémétrie d'échec mensongère). Fréquent sur mobile (réponse perdue après commit).",
+      "correction": "Dans `_sendTextToSupa` : `if (res.error && String(res.error.code) === \"23505\") { _setMsgStatus(sent); _outboxRemove(msgId); return; }` ; plus un verrou `_outboxFlushBusy` dans `_flushOutbox` (ROB-06) et exclure les messages déjà `sending` du renvoi.",
+      "effort": "0,25 jour.",
+      "confiance": "CONFIRMÉ (exécuté hors réseau + banc chaos + inspection)"
+    },
+    {
+      "id": "CPL-ROB-02",
+      "priorite": "P3",
+      "titre": "L'organisateur est notifié « a rejoint ton événement » même quand l'inscription a ÉCHOUÉ",
+      "fonctionnalite": "IRL — RSVP « J'y vais », notifications cross-compte",
+      "attendu": "La notification à l'organisateur (et la notification locale « Tu rejoins ») ne partent que si `supaSetEventRsvp` a rendu `true` — règle déjà appliquée au suivi (app-08:5308 : « la notification ne part QUE si la relation existe vraiment »).",
+      "observe": "js/app-07-ia-explore-irl.js:3311 `pushNotification(« Tu rejoins … »)` AVANT l'écriture ; 3323-3326 `supaInsertNotif(ev.organizerId, \"event_join\", …)` conditionné à `rsvp === \"going\" && ev.fromSupabase && organizerId` mais JAMAIS à `rsvpOk`. Script T3 (supaSetEventRsvp → false) : notifsOrganisateur [\"event_join→u_org\"].",
+      "reproduction": "Stub `supaSetEventRsvp = async () => false` puis `await setEventRsvp(id, \"going\")` sur un événement `fromSupabase` d'un autre organisateur → compter les appels à `supaInsertNotif`.",
+      "preuve": "js/app-07-ia-explore-irl.js:3311, 3319-3326 ; relecture.json T3.",
+      "impact": "L'organisateur compte un participant qui n'existe pas dans `event_attendees` (refus RLS, complet entre-temps, 0 ligne touchée branche 23505 app-08:5433-5436, 5xx sur l'une des deux requêtes). Cumulé à ROB-02 : deux comptes croient à une inscription que la base ignore.",
+      "correction": "Conditionner `pushNotification`, `supaInsertNotif`, `_joinEventConversation` et `_promoteNextWaitlisted` à `rsvpOk === true` (ou `null` en mode local), dans le même correctif que ROB-02.",
+      "effort": "0,1 jour (dans le lot ROB-02).",
+      "confiance": "CONFIRMÉ (exécuté hors réseau + inspection)"
+    },
+    {
+      "id": "CPL-ROB-03",
+      "priorite": "P3",
+      "titre": "L'étiquette de synchronisation d'un post ment : « Sync… » est la seule valeur jamais écrite, « En ligne »/« Local » sont du code mort",
+      "fonctionnalite": "Fil — carte d'une publication de l'utilisateur (`renderPostHTML`)",
+      "attendu": "Après le verdict de `supaPublishPostWithRetry`, la carte dit « En ligne » ou « Local / Réessayer » ; un post jamais envoyé n'affiche pas un état transitoire à vie.",
+      "observe": "`syncStatus` n'est écrit qu'une fois, à `\"syncing\"` (js/app-06-reels-partage.js:4314) ; aucun autre `syncStatus =` dans js/ (grep). Les branches `synced`/`offline` de app-02:6746-6747 sont inatteignables. Un post publié avec succès disparaît de l'étiquette seulement parce que la copie `supabasePosts` gagne le dédoublonnage (app-02:4585, 4602) ; un post jamais envoyé (ROB-01) affiche « Sync… » indéfiniment, y compris après rechargement (chaos C3 apresReload sync: syncing), et la notification dit « en attente » (app-06:4424).",
+      "reproduction": "Publier hors ligne, recharger : `state.userPosts[0].syncStatus === \"syncing\"` et carte « Sync… » ; aucune requête ne part (C3).",
+      "preuve": "js/app-06-reels-partage.js:4314, 4424 ; js/app-02-state-utils.js:6744-6747 ; grep `syncStatus` js/ → 5 occurrences, 1 seule écriture.",
+      "impact": "L'utilisateur ne peut pas distinguer « en cours » de « perdu » ; aucune porte de réessai. Aggrave ROB-01.",
+      "correction": "Écrire `post.syncStatus = ok ? \"synced\" : \"offline\"` dans le `.then` de app-06:4354 et dans la file de rejeu de ROB-01 ; rendre « Local » cliquable → réessai. À faire DANS le correctif ROB-01.",
+      "effort": "0,25 jour (dans le lot ROB-01).",
+      "confiance": "CONFIRMÉ (inspection + banc chaos C3)"
+    },
+    {
+      "id": "CPL-ROB-04",
+      "priorite": "P3",
+      "titre": "Un envoi LENT mais réussi est annoncé « Post en local (connexion lente) » puis jamais confirmé : l'utilisateur republie et double sa publication",
+      "fonctionnalite": "Studio — publication avec média (photo/vidéo/audio)",
+      "attendu": "Si l'upload aboutit après le délai d'affichage, la carte et un toast passent à « publié » ; tant qu'un envoi est en vol pour ce post, on ne laisse pas croire à un échec.",
+      "observe": "js/app-06-reels-partage.js:4348-4357 : `Promise.race(sync, timeout 5 s)` ; à 5 s le toast « Post en local (connexion lente) » (4368) et la notification « en attente » (4424) partent alors que `supaPublishPostWithRetry` continue (timeout d'upload jusqu'à 180 s, app-08:3355-3359). Le `.then` de 4354 ne fait que `saveState(); renderFeed()` — aucun toast, aucun `syncStatus` (CPL-ROB-03). `_publishInProgress` est relâché dans le `finally` (4373) → une nouvelle publication est possible pendant que la première s'envoie.",
+      "reproduction": "Stub `supaPublishPostWithRetry` résolvant `true` après 8 s, publier une photo : toast « Post en local » à 5 s, puis rien ; le post est pourtant inséré côté serveur. Non exécuté ici (inspection).",
+      "preuve": "js/app-06-reels-partage.js:4348-4373, 4424 ; js/app-08-ui-modals-tour.js:3355-3359 (`_uploadTimeoutMs`).",
+      "impact": "Sur réseau lent (photo de galerie, vidéo), message d'échec systématique suivi d'un succès muet → republication → doublon visible par tout le fil, double stockage facturé.",
+      "correction": "Au succès tardif : toast « Post publié » + `syncStatus = synced` + repeindre ; garder un marqueur « envoi en vol » sur le post et l'afficher « Envoi… » plutôt que « Local » ; ne pas dire « connexion lente » avant l'échec réel des 2 tentatives.",
+      "effort": "0,25 jour (dans le lot ROB-01).",
+      "confiance": "PROBABLE (inspection ; non exécuté)"
+    }
+  ],
+  "tests_lances": [
+    "node scratchpad/relecture/robustesse-pannes/relecture.js (Chromium 1194 via playwright 1.56.1 global, http-server 127.0.0.1:8112, toute autre origine abandonnée, écritures stubées) → T2 appelsPublish 0 après `online` ; T3 rsvpLocal going + notifsOrganisateur [event_join→u_org] + toasts [] ; T4 follow 1 / unfollow 3 / block 2, toasts ×4 ; T5 titre « Paris », toasts [] ; erreursJS []",
+    "node scratchpad/relecture/robustesse-pannes/relecture-t1.js (idem, stub `supa` lexical) → T1a deux `_flushOutbox()` = 3 INSERT du même message (statut sent, outbox vide car le stub répond 201) ; T1b un flush avec 23505 → failed, outbox [msg_b] ; après `online` → 2e INSERT, toujours failed, outbox [msg_b]",
+    "grep : `SIGNED_OUT` js/ → 0 ; `syncStatus =` js/ → 1 écriture (app-06:4314) ; `_pendingSync` → bobines uniquement (app-08:1386-1420) ; 04-chaos-sortie-brute.txt → aucune ligne A7/A8/A9/A10/F401b (chaos2.spec.js jamais exécuté)",
+    "git diff --stat c8cb8e9 HEAD -- js/ index.html styles.css → vide (code applicatif identique au SHA audité)"
+  ],
+  "limites": "node_modules du dépôt absent (pas de @playwright/test ni de SDK supabase-js local) : impossible de rejouer chaos.spec.js tel quel ; mes vérifications tournent sur playwright 1.56.1 global + chromium-1194 avec des STUBS en page (aucune requête sortante, aucune écriture en base, production jamais touchée), donc elles prouvent la logique client, pas le comportement du vrai SDK (la reprise C2 marquée failed dans le banc chaos est probablement un artefact de course entre `setOffline(false)` et `log.mode = \"ok\"`, mais cela ne change rien au 23505). ROB-03 : les F_* n'ont tenté aucune écriture — la partie « écritures silencieuses » est jugée par inspection ; le chemin réel d'expiration (refresh_token révoqué → SIGNED_OUT) n'a pas été exercé. CPL-ROB-04 est par inspection seule. Émulation Chromium uniquement, aucun appareil réel."
+}

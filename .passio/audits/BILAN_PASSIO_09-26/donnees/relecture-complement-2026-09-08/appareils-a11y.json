@@ -1,0 +1,152 @@
+{
+ "domaine": "appareils-a11y",
+ "sha_verifie": "c8cb8e9 — HEAD 1712683 ne diffère de c8cb8e9 sur aucun fichier de js/, styles.css, index.html, sw.js (git diff --stat vide) : les fichier:ligne valent pour le SHA audité",
+ "verdicts": [
+  {
+   "id": "DEV-01",
+   "verdict": "CONFIRMÉ",
+   "priorite_proposee": "P2",
+   "priorite_changee": false,
+   "preuve": "Remesuré 390×844 (relecture/appareils-a11y/mesure.json, mesure2.json) : .topbar-bell 34×34 et .hamburger 34×34 (styles.css:300-302, 3014-3016) ; #btnAttach/#btnEmoji/#btnVoice 36×36 (styles.css:6022-6023) ; .conv-fp-back 36×36 sans pseudo-élément (styles.css:5906-5907, ::before = none) ; span.post-action 55×26,5 / 47×26,5 / 31×26,5 (padding 7px 9px, styles.css:1155-1161) ; span.comment-action 26×12 / 15×12 / 12×12, padding 0, font-size 12px, line-height 1 (styles.css:3173-3179).",
+   "commentaire": "Deux nuances qui ne renversent pas le verdict. ① Les trois boutons du composer portent un ::before {inset:-4px} (styles.css:6030, commentaire « Zone tactile ≥ 44px ») : elementFromPoint à −3 px à gauche rend bien le bouton, à −5 px non → la zone de frappe HORIZONTALE est de 44 px, pas 36. Verticalement, à −3 px au-dessus, le point rend .conv-toolbar : l’extension n’est PAS prouvée en hauteur. Le rapport doit donc dire « 36×36 visibles, ≈44 px de large en frappe » pour #btnAttach/#btnEmoji/#btnVoice, et garder 36×36 pour .conv-fp-back qui n’a aucun pseudo-élément. ② Au regard de WCAG 2.5.8 (AA, seuil 24 px), seules les .comment-action (12 px) sont sous le seuil — et elles ne sont sauvées que par l’exception d’espacement (gap 12 px, styles.css:3170 : 12 + 12 = 24 tout juste). Tout le reste passe 24 px et échoue seulement au 44 pt des HIG/Material. P2 tenu : le cœur du défaut (actions de commentaire de 12 px, touchables à la loupe) est réel et fréquent, mais rien ne bloque une recette store."
+  },
+  {
+   "id": "DEV-02",
+   "verdict": "CONFIRMÉ",
+   "priorite_proposee": "P2",
+   "priorite_changee": false,
+   "preuve": "Comptage gabarits reproduit : 95 <div … onclick> sans tabindex sur une seule ligne dans app-02 (11), app-04 (18), app-05 (12), app-06 (18), app-07 (14), app-08 (4), app-09 (18) ; 0 d’entre eux porte role=button. Mais le chiffre est SOUS-ESTIMÉ : 60 autres gabarits <span|img|li…> onclick sans tabindex s’y ajoutent, et dans le DOM du fil à 390×844 (mesure.json → dev02), 271 des 285 éléments [onclick] visibles ne sont pas focusables : span.post-action ×80 (j’aime, commenter, réagir, partager), span.comment-action ×54, div.avatar ×38, div.post-author ×20, div.post-body ×20, div.comment-author ×18, div.story-item ×8. Parcours Tab ×40 depuis le corps : topbar → rail de passions → intentions → stories → boutons UI-v2/v3 (v2-reel-tile, v2-person, v3-tempt) ; AUCUNE carte, aucun j’aime, aucun commentaire n’est atteint (tab40_touchePostCardOuAction=false). .msg-card (app-04:3520) : div sans tabindex ni role (mesure2.json → conv.msgCard).",
+   "commentaire": "Le mécanisme d’activation d’app-08:2059-2069 ne couvre que [role=button] : il existe, il suffit de l’alimenter. Les modules récents (ui-v2-shell, ui-v3-passerelle, contextual-nav) rendent de vrais <button> nommés — le patron correct est déjà dans le dépôt. À l’usage mobile, VoiceOver/TalkBack activent un div onclick par double-tap (ils émettent un click), donc l’exclusion complète ne vaut que pour le clavier physique et les lecteurs d’écran de bureau ; c’est pourquoi P2 et non P1. Le titre du problème devrait dire « ~155 gabarits (95 div + 60 span/img) ; j’aime, commenter et ouvrir une conversation inaccessibles au clavier »."
+  },
+  {
+   "id": "DEV-03",
+   "verdict": "CONFIRMÉ",
+   "priorite_proposee": "P3",
+   "priorite_changee": false,
+   "preuve": "Remesuré (mesure.json → dev03, page Mes passions au plafond) : #nouveauProfilSous rgb(110,105,135) 12px/400 et #nouveauProfilTitre 14,5px/800, tous deux sur le fond opaque de #nouveauProfilLien rgb(239,233,253) = --bg-tint #efe9fd (styles.css:7515) → 4,40:1 recalculé (formule WCAG). --muted #6e6987 (styles.css:45) fait 5,21:1 sur blanc, 4,63:1 sur --accent-tile #f5efff, mais 4,40 sur --bg-tint et 3,88 sur --accent-tile-on #e5d9fc. .passio-hint-ok : blanc sur rgba(255,255,255,.22) composé sur --accent v2 #6D32F4 = #8d5ff6 → 4,12:1 (styles.css:7432, 7447-7448), 12px/700.",
+   "commentaire": "Le titre à 14,5 px gras n’est PAS du « texte large » (seuil 18,66 px gras) : 4,5 s’applique, l’écart est marginal (−0,1). Le commentaire de styles.css:45 (« 4.5+ sur blanc ») est vrai sur blanc et faux sur les lavis. P3 tenu."
+  },
+  {
+   "id": "DEV-04",
+   "verdict": "CONFIRMÉ",
+   "priorite_proposee": "P3",
+   "priorite_changee": false,
+   "preuve": "Gabarits : app-06:2511 et app-06:2557 rendent <div class=\"passion-photo-badge\" onclick=…>📷</div> sans aria-label, title, role ni tabindex ; avatars : app-02:6683, 6739, 6831, app-04:634, 662, 675, 687, 820 (div.avatar onclick=openUserProfile sans nom). DOM du profil à 390×844 (mesure.json → dev04) : 3 pastilles (une par passion) sans nom ni tabindex, 57 .avatar[onclick] sans aria-label/title.",
+   "commentaire": "Les ×28 / ×17 du rapport sont des cumuls sur les 79 combinaisons, pas des occurrences par écran (3 et 57 à 390×844). Deux poids différents : l’avatar double le nom d’auteur adjacent (cible redondante, impact faible) ; la pastille 📷 est la SEULE porte pour changer la photo d’une passion, et elle est à la fois sans nom, hors clavier et à 20×20 px (styles.css:2217-2218) — c’est elle qui justifie la fiche. P3 tenu."
+  },
+  {
+   "id": "DEV-05",
+   "verdict": "RÉFUTÉ",
+   "priorite_proposee": "P3",
+   "priorite_changee": false,
+   "preuve": "`PassioPlatform` n’existe NULLE PART dans le dépôt (grep js/, index.html, sw.js, scripts/build.js : 0 occurrence) : la sonde de permissions-offline.js:153 interroge un global que le code n’a jamais défini. La détection réelle est platform.js:97-101 (`_isStandalone` = matchMedia display-mode standalone || navigator.standalone ; `_pwaInstalled` persisté dans localStorage passio_pwa_installed), et elle est bien présente en page (mesure.json → dev05 : _isStandalone et _pwaInstalled de type boolean). Le champ `platform` de la télémétrie est l’OS (telemetry.js:84-92 detectPlatform → ios/android/…), pas le mode installé. Enfin la mesure n’était pas hors ligne : permissions-offline.js:147-153 fait setOffline(false) + reload AVANT de lire standaloneDetection.",
+   "commentaire": "Aucun défaut de chargement à corriger : en prod, scripts/build.js:105-106 inline TOUT <script src=\"js/…\"> (platform.js compris) dans index.html, lui-même pré-caché par sw.js:17-24 ; le SW ne peut donc pas « oublier » platform.js. Fiche à retirer du rapport ; si l’on veut un point réel sur ce sujet, c’est l’absence d’un champ « standalone » dans la télémétrie (le mode installé n’est mesuré nulle part), qui est une lacune d’observabilité et non un défaut de détection."
+  }
+ ],
+ "controles_debloques": [
+  {
+   "id": "DEV-C13",
+   "statut": "DÉFAILLANT",
+   "methode": "émulation + inspection code",
+   "constat": "FOCUS — (a) openModal (app-08:15-27) ne déplace jamais le focus : après Enter sur la cloche, document.activeElement reste la cloche derrière la modale (mesure.json → c13_modal.focusApresOuverture ; matrice : modaleFocusInitial=false). (b) Aucun piège : Tab ×8 depuis la modale ouverte parcourt hamburger → rail de passions → intentions, tous HORS #modalContent (tab8_sortDeLaModale=true ; matrice focusPiegeModale=[false×6]) ; l’arrière-plan n’est ni inert ni aria-hidden (arrierePlanInert=false) alors que #modalContent porte role=dialog aria-modal=true (index.html:1355) — un aria-modal sans confinement réel est une promesse non tenue au lecteur d’écran. (c) closeModal (app-08:28-40) ne restitue rien : si le focus est entré dans la modale (× de fermeture) puis Escape, le focus tombe sur <body> (mesure2.json → c13_focusDedans.focusApresEscape = BODY) ; le cas « Enter puis Escape immédiat » ne rend le focus à la cloche QUE parce qu’il ne l’a jamais quittée (c13_pur). (d) openModal remplace innerHTML sans empiler : depuis une modale, activer un bouton qui ouvre une autre modale détruit l’élément focalisé et le focus tombe sur <body> (c13_remplacement.focusApres = BODY). 64 appels à openModal( dans js/ sont concernés. (e) Panneaux plein écran : #conv-fullpage (index.html:1381) sans role, sans titre h1/h2, focus laissé sur <body> à l’ouverture au toucher (voulu et documenté app-04:3721-3739, focus sur le champ seulement au pointeur fin), Escape NE le ferme PAS (mesure2.json → conv.escapeFerme=false ; seul le keydown Escape d’app-08:44-48 existe, pour la modale ; closeCurrentOverlay app-02:2063 n’est câblé qu’au popstate) ; closeConversation (app-04:4811-4827), closePassionManager (app-06:1874-1880), closeReels (app-05:2301-2318), closeEventDetail (app-07:4048-4056) ne restituent aucun focus. Trois modules font le travail correctement et montrent le patron à copier : ui-v2-shell.js:352-393 (lastFocused + piège Tab + Escape + restitution), contextual-nav.js:165-242 (idem + prefersReduced), ui-v3-passerelle.js:787-800. PREFERS-REDUCED-MOTION — partiel : 22 blocs dans styles.css (527 .shimmer ; 6717-6720 .screen/.live-dot ; 7389-7394 et 7417 ctx ; 7458 .passio-hint ; 7960, 8186, 8357, 8808, 9081, 9167, 10019, 11065, 11293, 11363 pour les lots UI-2→4A5) + access-gate.js:169 + lecture JS dans contextual-nav.js:53. Sous reduce (mesure.json → reduce, modale ouverte + toast) 7 animations tournent encore : #modalContent slideUp 320 ms (styles.css:1390), #modalBackdrop fadeIn 220 ms (1377), .toast toastIn/toastOut (1488, 1532), #postDetailPage fadeIn (index.html:1026 en ligne), #eventDetailPage fadeIn, #pwa-overlay pwaFadeIn ; hors DOM mesuré, .onb-logo-big logoFloat 4 s infinite (1587) et .onb-step fadeIn (1574) ne sont pas couverts non plus (matrice : 10 animations sous reduce). Les animations fonctionnelles (mePulse 3992, pulse-rec 6033/6242, spin 6280) sont légitimes.",
+   "preuve": "js/app-08-ui-modals-tour.js:15-48 ; index.html:1355, 1381 ; js/app-02-state-utils.js:2063-2170 ; js/app-04-comments-shop.js:3721-3739, 4811-4827 ; styles.css:1377, 1390, 1488, 1532, 1587, 6717-6720, 7389-7394 ; mesures relecture/appareils-a11y/mesure.json (c13_modal, reduce) et mesure2.json (c13_pur, c13_focusDedans, c13_remplacement, conv)"
+  }
+ ],
+ "oublis": [
+  {
+   "domaine": "appareils-a11y",
+   "id": "CPL-DEV-01",
+   "priorite": "P2",
+   "titre": "Modale générique : focus jamais déplacé ni restitué, aucun piège, arrière-plan non inerte, et remplacement de modale qui fait tomber le focus sur <body> (WCAG 2.4.3 / 2.1.2)",
+   "fonctionnalite": "Toutes les modales openModal (64 appels : notifications, options de post, partage, paywall, aides, profil visité…)",
+   "attendu": "À l’ouverture, focus sur le conteneur (#modalContent tabindex=-1) ou le premier focusable ; Tab confiné ; arrière-plan inert ; à la fermeture, focus rendu à l’élément déclencheur mémorisé (uniquement quand le backdrop n’était pas déjà actif, pour respecter le non-empilement).",
+   "observe": "Focus reste derrière la modale ; Tab ×8 sort ; Escape avec focus dans la modale → activeElement=BODY ; openModal depuis une modale → activeElement=BODY.",
+   "reproduction": "relecture/appareils-a11y/mesure2.js (c13_pur, c13_focusDedans, c13_remplacement) ; à la main : Tab jusqu’à la cloche, Entrée, Tab, Tab…",
+   "preuve": "js/app-08-ui-modals-tour.js:15-40 (aucun .focus(), aucun activeElement mémorisé) ; index.html:1355 ; mesure2.json",
+   "impact": "Utilisateur clavier et lecteur d’écran de bureau perdu à chaque modale (64 points d’entrée) ; RGAA 7.1/7.3 non conformes ; aria-modal=true trompe le lecteur d’écran.",
+   "visibilite_pilotage": "Sans objet.",
+   "detection_sentinelle": "Non.",
+   "correction": "Dans openModal : si !backdrop.active, _modalTrigger = document.activeElement ; après innerHTML, #modalContent.tabIndex=-1 + focus({preventScroll:true}) ; ajouter un keydown Tab confiné (copier ui-v2-shell.js:381-393) ; poser inert sur .app-shell (ou aria-hidden) pendant l’ouverture. Dans closeModal : restituer _modalTrigger si encore connecté.",
+   "risque_regression": "Faible ; attention au cas Android « focus dans un geste de tap ouvre le clavier » (app-04:3721) — ne focaliser que le conteneur, jamais un champ.",
+   "effort": "0,5 jour."
+  },
+  {
+   "domaine": "appareils-a11y",
+   "id": "CPL-DEV-02",
+   "priorite": "P2",
+   "titre": "Dialogue sans nom accessible : #modalContent porte role=dialog aria-modal=true mais ni aria-label ni aria-labelledby ; les panneaux plein écran (#conv-fullpage, #eventDetailPage, #postDetailPage, #passionManager) n’ont ni rôle ni titre",
+   "fonctionnalite": "Modales et panneaux plein écran",
+   "attendu": "Tout dialogue est nommé (WCAG 4.1.2) : aria-labelledby vers son .modal-title, ou aria-label ; les panneaux plein écran portent role=dialog + nom + un titre h1/h2.",
+   "observe": "0 aria-labelledby dans app-08 ; mesure : dialogNom {ariaLabel:null, ariaLabelledby:null} ; #conv-fullpage {role:null, h1:false}.",
+   "reproduction": "mesure.json → c13_modal.dialogNom ; mesure2.json → conv.roleConv",
+   "preuve": "index.html:1355, 1381, 1026, 1035 ; js/app-08-ui-modals-tour.js:22-26",
+   "impact": "Le lecteur d’écran annonce « dialogue » sans dire lequel ; navigation par titres impossible dans une conversation ou une fiche d’activité.",
+   "visibilite_pilotage": "Sans objet.",
+   "detection_sentinelle": "Non.",
+   "correction": "Dans openModal, après injection : si un .modal-title existe, lui donner un id et poser aria-labelledby ; sinon aria-label=\"Fenêtre\". Poser role=dialog + aria-label dynamique sur #conv-fullpage (nom du contact), #eventDetailPage, #postDetailPage ; rendre le nom en h1 dans l’en-tête.",
+   "risque_regression": "Nul.",
+   "effort": "0,25 jour."
+  },
+  {
+   "domaine": "appareils-a11y",
+   "id": "CPL-DEV-03",
+   "priorite": "P2",
+   "titre": "Escape ne ferme pas les panneaux plein écran (#conv-fullpage, fiche activité, page post, Mes passions) : closeCurrentOverlay n’est câblé qu’au bouton retour",
+   "fonctionnalite": "Messagerie, IRL, fil, profil — clavier",
+   "attendu": "Escape ferme la couche du dessus, comme pour la modale (WCAG 2.1.2 : pas de piège).",
+   "observe": "Conversation ouverte, Escape → toujours active (mesure2.json → conv.escapeFerme=false) ; seul le bouton « Retour » (36×36, focusable) ferme, et le focus reste alors sur ce bouton devenu invisible (focusApresFermeture = .conv-fp-back dans le panneau translaté hors écran).",
+   "reproduction": "mesure2.js § conv",
+   "preuve": "js/app-08-ui-modals-tour.js:44-48 (Escape → closeModal seulement) ; js/app-02-state-utils.js:2063 (closeCurrentOverlay, appelée par popstate) ; js/app-04-comments-shop.js:4811-4827",
+   "impact": "Utilisateur clavier bloqué dans une conversation tant qu’il ne retrouve pas le bouton Retour ; après fermeture, le focus est sur un élément hors écran.",
+   "visibilite_pilotage": "Sans objet.",
+   "detection_sentinelle": "Non.",
+   "correction": "Remplacer le keydown d’app-08:44 par `if (e.key===\"Escape\") closeCurrentOverlay();` (l’ordre des couches y est déjà géré) ; dans closeConversation/closeEventDetail/closePost/closePassionManager, restituer le focus au déclencheur mémorisé ou, à défaut, au .nav-item actif.",
+   "risque_regression": "Faible — vérifier ContextualTools.isOpen() qui a son propre Escape (contextual-nav.js:175) pour ne pas fermer deux couches d’un coup.",
+   "effort": "0,25 jour."
+  },
+  {
+   "domaine": "appareils-a11y",
+   "id": "CPL-DEV-04",
+   "priorite": "P3",
+   "titre": "prefers-reduced-motion incomplet : modale (slideUp 320 ms), backdrop, toasts, pages post/activité, overlay PWA et logo d’onboarding (logoFloat infinite) continuent d’animer sous reduce",
+   "fonctionnalite": "Transitions globales",
+   "attendu": "Sous prefers-reduced-motion: reduce, aucune animation décorative (WCAG 2.3.3 AAA, 2.2.2 pour les boucles infinies) ; les indicateurs fonctionnels (enregistrement, chargement) peuvent rester.",
+   "observe": "7 animations actives sous reduce avec une modale et un toast (mesure.json → reduce.animesActives), 10 dans la matrice avec l’onboarding.",
+   "reproduction": "mesure.js (contexte reducedMotion:\"reduce\")",
+   "preuve": "styles.css:1377, 1390, 1488, 1532, 1574, 1587 hors des 22 blocs @media (prefers-reduced-motion: reduce) ; index.html:1026 (animation en ligne sur #postDetailPage)",
+   "impact": "Faible : inconfort vestibulaire pour les utilisateurs ayant activé la préférence ; le glissement de la modale est la surface la plus fréquente.",
+   "visibilite_pilotage": "Sans objet.",
+   "detection_sentinelle": "Non.",
+   "correction": "Un bloc unique en fin de la partie « socle » : @media (prefers-reduced-motion: reduce) { .modal, .modal-backdrop, .toast, #postDetailPage, #eventDetailPage, #pwa-overlay, .onb-step, .onb-logo-big { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; } } ; retirer l’animation en ligne d’index.html:1026 au profit d’une classe.",
+   "risque_regression": "Nul ; tests de cadrage insensibles.",
+   "effort": "0,25 jour."
+  },
+  {
+   "domaine": "appareils-a11y",
+   "id": "CPL-DEV-05",
+   "priorite": "P3",
+   "titre": "Fil, Profil et Studio sans aucun titre h1–h6 ; la navigation par titres des lecteurs d’écran n’a rien à saisir sur trois des six écrans",
+   "fonctionnalite": "Structure des écrans",
+   "attendu": "Un h1 par écran (RGAA 9.1, WCAG 1.3.1/2.4.6), au moins visuellement masqué.",
+   "observe": "matrice-synthese.md § Titres : feed AUCUN, profiles AUCUN, studio AUCUN ; irl h1, messages h1, explore h3 seulement.",
+   "reproduction": "preuves/appareils-a11y/matrice.js (section Titres)",
+   "preuve": "preuves/appareils-a11y/matrice-synthese.md:255-263 ; index.html (#screen-feed, #screen-profiles, #screen-studio sans h1)",
+   "impact": "Faible mais transverse : orientation au lecteur d’écran dégradée sur les écrans principaux.",
+   "visibilite_pilotage": "Sans objet.",
+   "detection_sentinelle": "Non.",
+   "correction": "Ajouter un h1 visuellement masqué (classe .sr-only) en tête de chaque .screen (« Fil », « Mon profil », « Créer »), h2 sur Explorer.",
+   "risque_regression": "Nul.",
+   "effort": "0,1 jour."
+  }
+ ],
+ "tests_lances": [
+  "git diff --stat c8cb8e9 HEAD -- js styles.css index.html sw.js → vide (code audité = code relu)",
+  "http-server -p 8114 -s -c-1 . (dépôt, port dédié, arrêté en fin de relecture)",
+  "PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers node relecture/appareils-a11y/mesure.js → mesure.json (Chromium 1194 via playwright global 1.56.1 ; 0 erreur JS ; réseau hors 127.0.0.1 bloqué par route().abort + WebSocket neutralisé)",
+  "PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers node relecture/appareils-a11y/mesure2.js → mesure2.json (0 erreur JS)",
+  "node (formule WCAG) : recalcul des 9 contrastes cités (DEV-03)",
+  "grep -c / grep -o sur js/app-0*.js : 95 <div onclick> sans tabindex reproduits + 60 <span|img|li…> non comptés par le rapport",
+  "grep PassioPlatform sur js/, index.html, sw.js, scripts/build.js → 0 occurrence (DEV-05)"
+ ],
+ "limites": "Émulation Chromium uniquement (aucun appareil réel, aucun WebKit/Firefox, aucun lecteur d’écran VoiceOver/TalkBack — DEV-C14 reste BLOQUÉ). Le composer a été mesuré en forçant la classe active sur #conv-fullpage puis avec une vraie conversation de démo (conv_lea) ; l’extension verticale du ::before à −4 px n’a pas pu être prouvée (elementFromPoint rend .conv-toolbar à −3 px au-dessus). Les hit-tests « au-dessus » de .post-action/.comment-action dans mesure2 sont INVALIDES (panneau de conversation encore en transition au moment du test) — seules les boîtes (rects) et le CSS font foi pour ces deux classes. Playwright n’est pas installé dans le dépôt (pas de node_modules) : scripts exécutés avec le paquet global /opt/node22/lib/node_modules/playwright, sans aucun `playwright install`. Aucune requête n’a atteint Supabase ni Netlify ; aucune écriture en base ; git status vide."
+}

@@ -1,0 +1,34 @@
+S01 anon liste attachments|conv/conv1/vocal-prive.webm
+S02 anon conv_reads|2 lignes, conv=conv1
+S03 anon events|12 rue Exacte, Annecy / 0600000000
+S03 anon participants|aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa:going,cccccccc-cccc-4ccc-8ccc-cccccccccccc:going
+S04 anon is_conv_member(conv1,A)|true
+psql:/tmp/claude-0/-home-user-passio-app/935a726e-af8e-56a6-8884-ab8cea2e45e9/scratchpad/banc-isolation/sondes.sql:13: ERROR:  new row violates row-level security policy for table "posts"
+psql:/tmp/claude-0/-home-user-passio-app/935a726e-af8e-56a6-8884-ab8cea2e45e9/scratchpad/banc-isolation/sondes.sql:13: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:/tmp/claude-0/-home-user-passio-app/935a726e-af8e-56a6-8884-ab8cea2e45e9/scratchpad/banc-isolation/sondes.sql:15: ERROR:  new row violates row-level security policy for table "conv_members"
+psql:/tmp/claude-0/-home-user-passio-app/935a726e-af8e-56a6-8884-ab8cea2e45e9/scratchpad/banc-isolation/sondes.sql:15: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:/tmp/claude-0/-home-user-passio-app/935a726e-af8e-56a6-8884-ab8cea2e45e9/scratchpad/banc-isolation/sondes.sql:17: ERROR:  new row violates row-level security policy for table "conv_messages"
+psql:/tmp/claude-0/-home-user-passio-app/935a726e-af8e-56a6-8884-ab8cea2e45e9/scratchpad/banc-isolation/sondes.sql:17: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+S08 B voit post_C|0
+S08 A voit post_C|1
+S08 anon voit post_C|0
+S09 B update post_A|0
+S10 A lit ses reports|0
+S11 B telemetry|0 user_state|0 user_safety|0 push|0 notifs|0 messages|0
+psql:/tmp/claude-0/-home-user-passio-app/935a726e-af8e-56a6-8884-ab8cea2e45e9/scratchpad/banc-isolation/sondes.sql:29: ERROR:  new row violates row-level security policy for table "notifications"
+psql:/tmp/claude-0/-home-user-passio-app/935a726e-af8e-56a6-8884-ab8cea2e45e9/scratchpad/banc-isolation/sondes.sql:29: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+S12 B notif from=B|ACCEPTE
+psql:/tmp/claude-0/-home-user-passio-app/935a726e-af8e-56a6-8884-ab8cea2e45e9/scratchpad/banc-isolation/sondes.sql:32: ERROR:  new row violates row-level security policy for table "objects"
+psql:/tmp/claude-0/-home-user-passio-app/935a726e-af8e-56a6-8884-ab8cea2e45e9/scratchpad/banc-isolation/sondes.sql:32: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+S13 B upload content propre|ACCEPTE
+S14 B delete objets de A|0
+S15 anon profiles|4 rs_links=1
+S15 anon follows|1
+S15 anon user_passions|1
+S16 anon post_is_visible(post_C)|false inconnu|true
+psql:/tmp/claude-0/-home-user-passio-app/935a726e-af8e-56a6-8884-ab8cea2e45e9/scratchpad/banc-isolation/sondes.sql:41: ERROR:  new row violates row-level security policy for table "telemetry_events"
+psql:/tmp/claude-0/-home-user-passio-app/935a726e-af8e-56a6-8884-ab8cea2e45e9/scratchpad/banc-isolation/sondes.sql:41: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+S17 anon telemetry null|ACCEPTE
+psql:/tmp/claude-0/-home-user-passio-app/935a726e-af8e-56a6-8884-ab8cea2e45e9/scratchpad/banc-isolation/sondes.sql:44: ERROR:  new row violates row-level security policy for table "reports"
+psql:/tmp/claude-0/-home-user-passio-app/935a726e-af8e-56a6-8884-ab8cea2e45e9/scratchpad/banc-isolation/sondes.sql:44: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+S18 anon client_errors|ACCEPTE

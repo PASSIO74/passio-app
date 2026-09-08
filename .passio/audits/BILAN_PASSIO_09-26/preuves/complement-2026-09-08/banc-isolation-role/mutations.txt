@@ -1,0 +1,3 @@
+M1 sans policy, A voit ses notifs|0
+M2 sans reads_select, anon conv_reads|0
+M3 sans passio_media_read, anon attachments|0

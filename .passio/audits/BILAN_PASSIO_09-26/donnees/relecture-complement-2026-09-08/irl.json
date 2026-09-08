@@ -1,0 +1,171 @@
+{
+ "domaine": "irl",
+ "verdicts": [
+  {
+   "id": "IRL-01",
+   "verdict": "CONFIRMÉ",
+   "priorite_proposee": "P1",
+   "priorite_changee": false,
+   "preuve": "js/app-07-ia-explore-irl.js:3767-3777 (infoRow Adresse + lien maps.google + <a href=\"tel:…\"> sans aucune condition d'inscription/compte) ; js/first-run.js:515-524 (supaLoadEvents() lancé pour le visiteur sans compte, résultat écrit dans seed.events) ; preuves/irl/policies-irl.txt [events] Lecture publique + Read events, qual=true, roles={public} ; ref_cols.txt:21 (colonnes address, lat, lng, contact) ; emulation-resultats.json « fiche evA (non inscrit) » adresseVisible=true, contactVisible=true.",
+   "commentaire": "Vrai au SHA : la fiche ne connaît aucune notion de « réservé aux inscrits », et le visiteur de première visite reçoit les vrais événements. Le formulaire (5294) ne prévient pas non plus l'organisateur que son numéro sera lisible par tout le monde, clé anon comprise. P1 justifié (numéro personnel + adresse exacte exposés à anon/scraping)."
+  },
+  {
+   "id": "IRL-02",
+   "verdict": "CONFIRMÉ",
+   "priorite_proposee": "P1",
+   "priorite_changee": false,
+   "preuve": "js/app-07-ia-explore-irl.js:4949 (irlProposalEnabled → `return false` par défaut) ; 5015-5024 et 5041-5050 : `declare_birth_year` et `irl_interaction_allowed` uniquement derrière irlProposalEnabled() ; grep `irl_interaction_allowed|isMinor` sur js/ : seuls appelants 4962/5024/5050, aucun dans setEventRsvp (3269), submitEvent (5568), checkInEvent (3433), _joinEventConversation (3366) ; js/app-02-state-utils.js:3179-3193 (année auto-déclarée, isMinor local) ; migrations/migration_ts_serveur_age_blocage.sql:130-152 (fonction existe, staging.md ligne 11 la liste en prod) ; policies-irl.txt [event_attendees] INSERT check = user_id = auth.uid() seulement.",
+   "commentaire": "Exact : la garde serveur existe en prod mais aucune écriture IRL ne la consulte, et aucune policy ne porte de condition de majorité. L'étape « age » de l'onboarding (onbSteps app-02:3160) est bien traversée par le parcours première visite, mais l'année reste locale (jamais envoyée à user_safety hors drapeau OFF). P1 tenu."
+  },
+  {
+   "id": "IRL-03",
+   "verdict": "CONFIRMÉ",
+   "priorite_proposee": "P1",
+   "priorite_changee": false,
+   "preuve": "preuves/irl/policies-irl.txt [event_attendees] Lecture publique cmd=SELECT roles={public} qual=true ; ref_cols.txt:18 (colonnes rsvp, checked_in_at, rating, feedback, rated_at) ; js/app-08-ui-modals-tour.js:4190-4193 (l'app elle-même lit event_id,user_id,rsvp,checked_in_at pour les 60 événements, y compris en mode visiteur via first-run.js:516).",
+   "commentaire": "La policy le garantit sans exécution : anon lit la table entière (qui, où, quand, pointé ou non, note et retour libre). Non exécuté contre la prod (interdit), mais l'émulation par qual est fidèle pour un `true`. P1 tenu (RGPD + profilage de déplacements)."
+  },
+  {
+   "id": "IRL-04",
+   "verdict": "CONFIRMÉ",
+   "priorite_proposee": "P1",
+   "priorite_changee": false,
+   "preuve": "js/app-08-ui-modals-tour.js:5506-5514 : UPDATE event_attendees SET rsvp='going' WHERE user_id=<autrui>, retour `_writeVerdict(expectRows).ok` (false sur 0 ligne) ; policies-irl.txt [event_attendees] UPDATE qual/check = user_id = auth.uid() → 0 ligne pour toute promotion d'autrui ; js/app-07-ia-explore-irl.js:3355 `await supaPromoteFromWaitlist(ev.id, next);` retour ignoré, 3357-3358 notif « une place s'est libérée, tu es inscrit·e ! » ; 5476-5477 idem côté organisateur ; texte de la modale 5449 « Ils sont promus automatiquement dès qu'une place se libère » ; emulation-resultats.json « désinscription → promotion file » : supaInsertNotif envoyée après stub false.",
+   "commentaire": "Vrai : la fonction rend déjà `false` (moitié du correctif faite) mais ses deux appelants ne le lisent pas. La liste d'attente est donc une fonctionnalité annoncée et intégralement morte côté serveur, avec notification mensongère ; à la reconnexion, supaLoadMyRsvps ré-hydrate « waitlist » chez la personne promue. P1 tenu."
+  },
+  {
+   "id": "IRL-05",
+   "verdict": "CONFIRMÉ",
+   "priorite_proposee": "P2",
+   "priorite_changee": false,
+   "preuve": "policies-irl.txt [event_attendees] INSERT check=(user_id = auth.uid()), UPDATE idem ; ref_cols.txt:18 + liste des contraintes : seule event_attendees_pkey, aucun CHECK ; staging.md ligne 20 : triggers actifs, aucun sur event_attendees ; js/app-07-ia-explore-irl.js:3286-3290 (_eventIsFull) et 3283 (_eventIsCancelled) = gardes CLIENT uniquement.",
+   "commentaire": "Exact : capacité, statut et valeur du rsvp ne sont contrôlés que dans setEventRsvp ; un PATCH/POST REST ou deux clients concurrents passent. P2 correct (intégrité, pas sécurité)."
+  },
+  {
+   "id": "IRL-06",
+   "verdict": "CONFIRMÉ",
+   "priorite_proposee": "P2",
+   "priorite_changee": false,
+   "preuve": "js/app-07-ia-explore-irl.js:5522-5535 : `await supaDeleteEvent(id)` sans lecture du retour, purge locale + toast « Événement supprimé » inconditionnels, aucune _notifyEventAttendees ; js/app-08-ui-modals-tour.js:4159-4175 : delete enfants (RLS DELETE user_id=auth.uid() → seules MES lignes partent, sans erreur) puis delete parent avec verdict expectRows rendu mais ignoré ; ref_cols.txt : event_attendees n'a que sa PK, aucune FK vers events ; policies-irl.txt [events] DELETE qual=author_id=auth.uid() ; emulation-resultats.json « suppression refusée par la base » encoreLocal=false, toast « Événement supprimé ».",
+   "commentaire": "Vrai, et un cas aggravant non cité : openEventManage (5375-5394) est ouvert à _canManageEvent (co-organisateur inclus) et propose « Supprimer définitivement », alors que la policy DELETE est auteur seul → le co-organisateur voit « Événement supprimé », l'événement revient au prochain supaLoadEvents. P2 tenu (l'annulation douce, qui prévient, reste le chemin recommandé)."
+  },
+  {
+   "id": "IRL-07",
+   "verdict": "CONFIRMÉ",
+   "priorite_proposee": "P1",
+   "priorite_changee": true,
+   "preuve": "js/app-08-ui-modals-tour.js:4180 `.select(\"*\").order(\"created_at\",{ascending:false}).limit(60)` sans filtre de date ni pagination ; js/app-07-ia-explore-irl.js:2400-2403 : les événements passés sont écartés CLIENT seulement (ils consomment donc le quota de 60) ; 4018 RECURRENCE_MAX_OCCURRENCES=12 et 5255 value=\"6\" : une série crée 6 à 12 lignes réelles ; 4276-4287 : le lien profond #irl-event-<id> (et donc le QR de pointage) ne cherche que dans allEvents() → « Événement introuvable ou supprimé » pour tout événement hors des 60.",
+   "commentaire": "Confirmé et sous-estimé : avec la récurrence (6 par défaut, 12 max) cinq organisateurs suffisent à saturer les 60, les événements passés y comptent, et la conséquence dépasse la liste — les liens partagés et le QR d'accueil échouent aussi. C'est un plafond de capacité atteint dès les premiers utilisateurs actifs → P1 (avant lancement public) plutôt que P2."
+  },
+  {
+   "id": "IRL-08",
+   "verdict": "CONFIRMÉ",
+   "priorite_proposee": "P2",
+   "priorite_changee": false,
+   "preuve": "policies-irl.txt [events] Update organisateurs qual=(author_id=auth.uid() OR jsonb_exists(co_organizers, auth.uid())) check=None ; [events] INSERT check=(author_id=auth.uid()) sans condition sur organizer_id ; js/app-08-ui-modals-tour.js:4113-4114 organizer_id posé côté client seulement ; 4213-4214 organizerName lu depuis organizer_id || author_id ; staging.md ligne 20 : freeze author existe pour posts uniquement.",
+   "commentaire": "Exact sur le fond. Nuance de correction : sans WITH CHECK, Postgres applique USING à la ligne résultante, donc « WITH CHECK identique à USING » ne change RIEN — un co-organisateur qui s'écrit author_id satisfait déjà USING après coup. Seul un trigger gelant author_id/organizer_id (à l'image de trg_posts_freeze_author) et, au besoin, interdisant au co-organisateur de toucher co_organizers, ferme la prise de contrôle. P2 tenu."
+  },
+  {
+   "id": "IRL-09",
+   "verdict": "CONFIRMÉ",
+   "priorite_proposee": "P2",
+   "priorite_changee": false,
+   "preuve": "js/app-07-ia-explore-irl.js:5562-5565 reportEvent → supaReport(\"event\", id, \"\") puis toast, sans confirm ni motif ; js/app-08-ui-modals-tour.js:5383-5392 : insert direct, aucun anti-doublon (seul rate_limit 10/min serveur) ; grep -i « lieu public|conseils de sécurité|prévenir un proche » sur app-07, ui-v4b*, ui-v4a2*, index.html : 0 résultat ; emulation-resultats-2.json « 5 signalements successifs » appels=5.",
+   "commentaire": "Vrai : aucun rappel de sécurité avant une rencontre physique, signalement à motif vide, pas de blocage de l'organisateur depuis la fiche (le ⋯ ne vit que sur le profil, doc lots-ui/12). P2 correct."
+  },
+  {
+   "id": "IRL-10",
+   "verdict": "CONFIRMÉ",
+   "priorite_proposee": "P2",
+   "priorite_changee": false,
+   "preuve": "js/app-07-ia-explore-irl.js:3369-3372 (_canManageEvent = auteur OU co-organisateur crée la discussion) ; js/app-08-ui-modals-tour.js:5580 created_by: MY_UID ; migrations/migration_ts_serveur_age_blocage.sql:212-232 can_join_event_conversation exige `c.created_by = e.author_id` ; policies.json conv_members INSERT check = is_conversation_creator OR (user_id=auth.uid() AND can_join_event_conversation) ; app-08:5588-5594 rend false sur erreur, app-07:3378 l'ignore ; 3380 `_ensureLocalEventConv(ev)` exécuté quel que soit le verdict.",
+   "commentaire": "Confirmé, et « rien ne se passe » est en-deçà de la réalité : après le refus, _ensureLocalEventConv (3380) puis openEventChat (3421-3423) fabriquent quand même une conversation locale « 📍 <titre> » dans la messagerie du participant, dont il n'est pas membre côté serveur — ses messages y seront refusés par la RLS de conv_messages. P2 tenu."
+  },
+  {
+   "id": "IRL-11",
+   "verdict": "CONFIRMÉ",
+   "priorite_proposee": "P3",
+   "priorite_changee": false,
+   "preuve": "js/app-07-ia-explore-irl.js:5582-5583 parseFloat/parseInt sans borne ; 5608 `if (!editId && ts < Date.now() - 3600000)` : la garde de date saute en édition ; 5287/5290 min=\"0\"/min=\"1\" sur les inputs mais le bouton est un onclick, pas un submit de formulaire → la validation native ne s'applique pas ; ref_cols.txt : aucun CHECK sur events ; emulation-resultats.json « création valide (prix -5, max -3) » full=true, prixAffiche « Gratuit » ; emulation-resultats-2.json « édition d'un événement avec une date passée » supaUpdateEvent appelé, visibleListe=false.",
+   "commentaire": "Exact. Conséquence supplémentaire de l'édition vers le passé : l'événement disparaît de la liste principale de son propre organisateur (visibleListe=false) sans message. P3 correct."
+  },
+  {
+   "id": "IRL-12",
+   "verdict": "CONFIRMÉ",
+   "priorite_proposee": "P3",
+   "priorite_changee": false,
+   "preuve": "js/app-07-ia-explore-irl.js:3462-3464 (erreur GPS → done()) ; 6490-6500 code = FNV(id) avec alphabet public ; 6579 comparaison côté client ; js/app-08-ui-modals-tour.js:5462-5470 supaCheckInEvent = UPDATE de MA ligne avec expectRows, retour ignoré par 3444 et 6593.",
+   "commentaire": "Confirmé avec une nuance : « pointage sans inscription préalable » n'est vrai que LOCALEMENT (badges) — côté serveur l'UPDATE touche 0 ligne sans ligne d'inscription et rend false, que le client ignore sans annuler son checkedInEvents local. Le fond (aucune preuve serveur, code dérivable de l'id public) tient. P3 correct tant que le pointage ne conditionne que des badges."
+  },
+  {
+   "id": "IRL-13",
+   "verdict": "CONFIRMÉ",
+   "priorite_proposee": "P3",
+   "priorite_changee": false,
+   "preuve": "js/app-07-ia-explore-irl.js:5732-5739 _notifyEventAttendees itère ev.attendees uniquement (maybes et waitlist ignorés) ; 5514 toggleCancelEvent → _notifyEventAttendees.",
+   "commentaire": "Exact. Même limite pour _messageEventAttendees (5557) et cancelEventSeries (5491). P3 correct."
+  }
+ ],
+ "oublis": [
+  {
+   "id": "CPL-IRL-01",
+   "priorite": "P2",
+   "titre": "RSVP refusé par le serveur : affichage optimiste jamais annulé, organisateur notifié « a rejoint ton événement » et discussion rejointe quand même",
+   "fonctionnalite": "IRL — participation (setEventRsvp)",
+   "attendu": "Un échec réel de l'écriture (RLS, réseau, 23505 « ligne filtrée ») annule l'affichage optimiste, prévient l'utilisateur et n'envoie aucune notification à l'organisateur (invariant CLAUDE.md « Échec réel = annuler l'affichage optimiste »).",
+   "observe": "js/app-07-ia-explore-irl.js:3327-3337 : `rsvpOk = await supaSetEventRsvp(id, rsvp)` n'alimente que irlFunnelTrackJoin ; la notification à l'organisateur (3332-3334) et _joinEventConversation (3337) partent sans condition sur rsvpOk ; l'état local (3301-3306) et le pushNotification « Tu rejoins … » (3319) ne sont jamais défaits. supaSetEventRsvp rend pourtant explicitement false dans le cas 23505 (app-08:5433-5437).",
+   "reproduction": "Stub `window.supaSetEventRsvp = async () => false` (ou réseau coupé après le chargement, ou refus RLS), fiche → « J'y vais » : compteur +1, « Tu rejoins », organisateur notifié ; au rechargement supaLoadMyRsvps ré-hydrate l'absence d'inscription.",
+   "preuve": "js/app-07-ia-explore-irl.js:3301-3337 ; js/app-08-ui-modals-tour.js:5421-5447 (inspection code).",
+   "impact": "L'organisateur compte un participant qui n'existe pas en base ; l'utilisateur croit être inscrit et découvre le contraire plus tard (ou jamais, s'il ne recharge pas avant de venir). Même famille que IRL-04.",
+   "correction": "Si `rsvpOk === false` : restaurer prev via _setMyRsvpLocal + listes, toast d'échec, ne pas notifier ni rejoindre la conversation ; ne notifier l'organisateur qu'après verdict positif.",
+   "effort": "0,25 jour.",
+   "confiance": "CONFORME PAR INSPECTION (non exécuté)"
+  },
+  {
+   "id": "CPL-IRL-02",
+   "priorite": "P2",
+   "titre": "Le blocage n'existe pas pour les événements : les rencontres d'un compte bloqué me sont listées, et un compte que j'ai bloqué peut s'inscrire à la mienne et y lire l'adresse",
+   "fonctionnalite": "IRL — liste, RSVP, participants",
+   "attendu": "Comme pour le fil et la messagerie, un blocage (dans un sens ou l'autre) masque les événements du bloqué et refuse son inscription à mes événements.",
+   "observe": "grep `isBlocked(` dans app-07 : deux usages seulement (4983 proposition IRL sous drapeau OFF, 5879 suggestions), aucun dans allEvents() (677), _filterIrlEvents (2395), setEventRsvp (3269) ni supaLoadEvents (app-08:4178) ; policies-irl.txt [event_attendees] INSERT check = user_id = auth.uid() sans `NOT is_blocked_with(...)` (contrairement à conv_members) ; emulation-resultats.json « liste initiale » evenementDuBloqueVisible=true. Le bloqué figure alors dans mon trombinoscope (_faces, 3755-3760) et accède à l'adresse et au contact.",
+   "reproduction": "Compte B bloqué par A. B ouvre l'événement de A → « J'y vais » accepté ; A voit B dans ses participants. A voit toujours les événements de B dans Rencontrer.",
+   "preuve": "js/app-07-ia-explore-irl.js:677-690, 2395-2420, 3269-3337 ; policies-irl.txt ; emulation-resultats.json (inspection code + émulation du sous-agent).",
+   "impact": "Le blocage est le seul outil d'auto-protection d'une personne face à quelqu'un qu'elle veut éviter PHYSIQUEMENT ; ici il ne protège que le fil et les messages. Sécurité IRL.",
+   "correction": "Filtrer allEvents()/supaLoadEvents par isBlocked (organisateur) ; refuser le RSVP côté client si bloqué ; côté serveur, ajouter `NOT is_blocked_with((SELECT author_id FROM events WHERE id = event_id))` au WITH CHECK d'INSERT/UPDATE d'event_attendees.",
+   "effort": "0,5 à 1 jour.",
+   "confiance": "CONFORME PAR INSPECTION + émulation"
+  },
+  {
+   "id": "CPL-IRL-03",
+   "priorite": "P3",
+   "titre": "Annulation d'une série : le verdict serveur est ignoré pour chaque date, mais chaque inscrit reçoit « a annulé » et l'organisateur lit « inscrits prévenus »",
+   "fonctionnalite": "IRL — annulation de série récurrente",
+   "attendu": "Comme toggleCancelEvent (5511-5513), une annulation non synchronisée n'annonce rien et prévient d'un défaut.",
+   "observe": "js/app-07-ia-explore-irl.js:5486-5497 cancelEventSeries : `await supaCancelEvent(canon.id, true)` sans lecture du booléen, puis _notifyEventAttendees et toast « Série annulée — inscrits prévenus » inconditionnels ; les dates restent `active` en base si la policy filtre (co-organisateur retiré entre-temps, réseau).",
+   "reproduction": "Stub supaCancelEvent → false, gérer une série → « Annuler toute la série » : notifications envoyées, toast de succès, dates encore actives au rechargement.",
+   "preuve": "js/app-07-ia-explore-irl.js:5482-5497 vs 5504-5516 (inspection code).",
+   "impact": "Inscrits prévenus d'une annulation qui n'a pas eu lieu (ou l'inverse après rechargement). Faible fréquence.",
+   "correction": "Lire le retour par date, ne notifier que les dates réellement annulées, toast d'échec partiel.",
+   "effort": "0,25 jour.",
+   "confiance": "CONFORME PAR INSPECTION"
+  },
+  {
+   "id": "CPL-IRL-04",
+   "priorite": "P3",
+   "titre": "Message groupé aux inscrits : le texte est échappé HTML avant stockage, et la notification push l'affiche avec ses entités (« l&#39;entrée »)",
+   "fonctionnalite": "IRL — « Prévenir les inscrits » (_messageEventAttendees)",
+   "attendu": "Le texte tapé par l'organisateur s'affiche tel quel dans le centre de notifications ET dans la push système.",
+   "observe": "js/app-07-ia-explore-irl.js:5557 `_notifyEventAttendees(ev, escapeHtml(txt.slice(0,200)))` ; js/app-08-ui-modals-tour.js:4781-4792 : la même chaîne est stockée puis passée à notify-call (text) ; supabase/functions/notify-call/index.ts:61 la transmet telle quelle ; sw.js:55 `body: data.text` (texte brut, pas de HTML). Dans l'app, _notifTexteHtml (1804) ne neutralise que les chevrons et l'innerHTML décode `&#39;` → rendu correct ; dans la push, l'entité est littérale.",
+   "reproduction": "Gérer l'événement → « Prévenir les inscrits » → « Rendez-vous à l'entrée » → sur l'appareil d'un inscrit avec push active, la notification système lit « … à l&#39;entrée ».",
+   "preuve": "fichiers:lignes ci-dessus (inspection code ; push non exercée ici).",
+   "impact": "Cosmétique mais visible sur le seul message que l'organisateur adresse à ses participants ; touche aussi tout pseudo avec apostrophe (safeName escapé) dans toute push.",
+   "correction": "Ne pas échapper à l'émission (le rendu non fiable neutralise déjà) ou décoder les entités avant de composer le corps de la push.",
+   "effort": "0,25 jour.",
+   "confiance": "PROBABLE (chaîne lue de bout en bout, push non déclenchée)"
+  }
+ ],
+ "tests_lances": [
+  "Aucun test Playwright lancé : chaque point se tranche par lecture directe du code au SHA (git diff --stat c8cb8e9 HEAD -- js/ index.html styles.css migrations/ → vide) croisée avec les preuves déjà produites (emulation-resultats*.json, policies-irl.txt, ref_cols.txt, fonctions_realtime_storage_staging.md). Commandes exécutées : sed/grep sur js/app-07-ia-explore-irl.js, js/app-08-ui-modals-tour.js, js/app-02-state-utils.js, js/first-run.js, sw.js, supabase/functions/notify-call/index.ts, migrations/migration_ts_serveur_age_blocage.sql."
+ ],
+ "limites": "Aucune requête vers la production ni exécution du moteur RLS (interdit) : les verdicts « RLS » reposent sur le dump policies.json et les sources SQL des fonctions, pas sur une écriture réelle. Les émulations du sous-agent n'ont pas été rejouées (résultats relus contre le code, cohérents). La push Web (CPL-IRL-04) n'a pas été déclenchée. Les priorités P1 des items 01/02/03 supposent la lecture « sécurité IRL » du GO : elles tiennent au regard des colonnes réellement exposées (contact, address, lat/lng, feedback), mais l'appréciation reste celle de l'orchestrateur."
+}
