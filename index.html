@@ -286,6 +286,11 @@
           <div style="position:relative;"><input type="password" class="input" id="authPasswordConfirm" placeholder="••••••••" autocomplete="new-password" style="font-size:16px;padding-right:44px;"/><button type="button" onclick="togglePwd('authPasswordConfirm',this)" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:18px;color:var(--muted);padding:0;">👁</button></div>
         </label>
 
+        <label class="field" id="authConsentWrap" style="display:none;flex-direction:row;align-items:flex-start;gap:10px;margin:2px 0 12px;">
+          <input type="checkbox" id="authConsent" style="width:20px;height:20px;min-width:20px;margin:1px 0 0;accent-color:var(--accent);"/>
+          <span style="display:block;font-size:12px;line-height:1.5;color:var(--muted);margin:0;">J'ai lu et j'accepte les <span id="authCguLink" role="button" tabindex="0" onclick="event.preventDefault();event.stopPropagation();openTermsOfService()" style="color:var(--accent);font-weight:700;cursor:pointer;text-decoration:underline;">conditions générales</span> et la <span id="authPrivacyLink" role="button" tabindex="0" onclick="event.preventDefault();event.stopPropagation();openPrivacyPolicy()" style="color:var(--accent);font-weight:700;cursor:pointer;text-decoration:underline;">politique de confidentialité</span>. J'ai au moins 13 ans.</span>
+        </label>
+
         <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px;">
           <button class="btn primary block" id="authSubmitBtn" onclick="onbDoAuth()" style="padding:14px;font-size:15px;font-weight:800;">Se connecter</button>
           <span id="authForgotLink" onclick="onbForgotPassword()" style="cursor:pointer;font-size:12px;color:var(--accent);text-align:center;padding:4px;">Mot de passe oublié ?</span>
@@ -455,6 +460,8 @@
       <div class="settings-section-body">
         <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();feedbackModal()">Feedback & aide</button>
         <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();openPrivacyPolicy()">Politique de confidentialité</button>
+        <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();openTermsOfService()">Conditions générales d'utilisation</button>
+        <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();openLegalNotice()">Mentions légales</button>
         <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();openAbout()">À propos de PASSIO</button>
         <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();shareBeta()">Inviter des amis</button>
       </div>
