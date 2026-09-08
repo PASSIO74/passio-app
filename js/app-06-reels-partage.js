@@ -5030,7 +5030,7 @@ function aiGenerateResponse(query) {
     var html2 = '<div><div class="ai-section-label">🎯 Passions trouvées</div>';
     matchedPassions.forEach(function(p) {
       html2 += '<div class="ai-card" onclick="openPassionExplorer(\'' + escapeJsArg(p.id) + '\')">' +
-        '<div class="ai-card-title">' + p.emoji + ' ' + p.label + '</div>' +
+        '<div class="ai-card-title">' + escapeHtml(p.emoji) + ' ' + escapeHtml(p.label) + '</div>' +
         '<div class="ai-card-meta">Explore les créateurs et posts → cliquer pour voir</div>' +
       '</div>';
     });

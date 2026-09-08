@@ -285,6 +285,13 @@ jobs:
       - name: Migration du referentiel plat (PostgreSQL jetable)
         run: bash scripts/verifier-migration-passions.sh
 
+      # La creation d'une passion depuis l'application (lot creation_passion_v1).
+      # Elle s'appuie sur une fonction SECURITY DEFINER : c'est ELLE qui tient le
+      # dedoublonnage, les plafonds et le fait que `public.passions` reste NON
+      # INSCRIPTIBLE par un client. Aucun test navigateur ne peut le prouver.
+      - name: Creation de passion (PostgreSQL jetable)
+        run: bash scripts/verifier-migration-creation-passion.sh
+
       # Le centre de pilotage est une application à part entière. Ses tests
       # déterministes (Sentinel, Guardian, Autopilot, rollback) sont désormais
       # une gate CI explicite : une autonomie non testée ne doit jamais être verte.

@@ -426,17 +426,32 @@ test.describe("le modèle et les garde-fous", () => {
     await expect(page.locator('[data-psel="valider"]')).toBeDisabled();
   });
 
-  test("⑯ le client ne peut pas écrire dans le référentiel", async ({ page }) => {
-    // Le référentiel embarqué est en lecture seule côté navigateur : aucune API
-    // publique n'ajoute une passion. (La RLS serveur, elle, est prouvée par
-    // `scripts/verifier-migration-passions.sh`, qui l'exécute réellement.)
+  test("⑯ le client n'écrit pas LUI-MÊME dans le référentiel", async ({ page }) => {
+    // ⚠️ CE VERROU A CHANGÉ DE FORMULATION LE 2026-09-08, PAS DE FOND. Depuis le
+    // lot `creation_passion_v1`, une passion PEUT naître depuis l'application —
+    // mais uniquement par `PassioPassions.creerPassion`, qui délègue TOUT à la
+    // fonction serveur `creer_passion` (SECURITY DEFINER) : le client ne choisit
+    // que le NOM, et `public.passions` reste non inscriptible pour lui (prouvé,
+    // en l'exécutant, par `scripts/verifier-migration-creation-passion.sh` ⑦).
+    //
+    // Ce qui reste interdit ici : toute API qui écrirait le référentiel SANS
+    // passer par le serveur — insertion, suppression, modification locale.
     await bootOnboarded(page, null, 1, { query: APERCU });
     await ouvrirRecherche(page);
     const api = await page.evaluate(() => Object.keys(window.PassioPassions));
-    for (const interdit of ["ajouter", "creer", "inserer", "supprimer", "modifier"]) {
+    for (const interdit of ["ajouter", "inserer", "supprimer", "modifier"]) {
       expect(api.some((k) => k.toLowerCase().includes(interdit)),
         "une API d'écriture du référentiel est exposée : " + interdit).toBe(false);
     }
+    // La SEULE porte d'écriture nommée, et elle passe par le serveur : sans
+    // client Supabase réel, elle ne peut RIEN créer.
+    expect(api).toContain("creerPassion");
+    expect(await page.evaluate(() => window.PassioPassions.creationDisponible())).toBe(false);
+    const r = await page.evaluate(() => window.PassioPassions.creerPassion("une passion inventee de toutes pieces"));
+    expect(r.cree).toBe(false);
+    expect(r.repli).toBe("demande");
+    // Et rien n'est devenu publiable au passage.
+    expect(await page.evaluate(() => estPassionCanonique("une-passion-inventee-de-toutes-pieces"))).toBe(false);
   });
 
   test("⑰ kill switch : le drapeau coupé rend l'écran historique", async ({ page }) => {

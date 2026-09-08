@@ -136,7 +136,7 @@
       e.preventDefault();
       var premier = self.resultats[0];
       if (premier) self.basculer(premier.id);
-      else if (self.peutProposerAjout()) self.demanderAjout();
+      else if (self.peutProposerAjout()) self.creer();
     });
 
     // ⚠️ UNE SEULE délégation, sur le conteneur. Les résultats sont réécrits à
@@ -149,7 +149,7 @@
       if (action === "vider") { self.input.value = ""; self.frappe = ""; b.hidden = true; self.input.focus(); self.chercher(); return; }
       if (action === "choisir" && id) { self.basculer(id); return; }
       if (action === "retirer" && id) { self.retirer(id); return; }
-      if (action === "ajouter") { self.demanderAjout(); return; }
+      if (action === "ajouter") { self.creer(); return; }
       if (action === "valider") { self.valider(); return; }
     });
 
@@ -270,9 +270,22 @@
       // ⚠️ `data-tel` OBLIGATOIRE : sans lui, `telemetry.js` nomme ce clic avec
       // le `textContent` du bouton — donc avec la recherche libre de la
       // personne. Le libellé reste visible à l'écran, il ne part nulle part.
+      // ⚠️ LE LIBELLÉ DIT CE QUI VA SE PASSER (lot creation_passion_v1). Tant
+      // que la création n'est pas possible — hors ligne, sans compte, migration
+      // non appliquée — le bouton DÉPOSE UNE DEMANDE, et il le dit : promettre
+      // « Créer » puis rendre une entrée « en vérification » est exactement le
+      // reproche des testeurs, à l'envers.
+      var peutCreer = false;
+      try {
+        var mm = moteur();
+        peutCreer = !!(mm && typeof mm.creationDisponible === "function" && mm.creationDisponible());
+      } catch (e) {}
       html += '<button type="button" class="psel-ajouter" data-psel="ajouter"'
-        + ' data-tel="passion_ajout_demande">'
-        + "Ajouter « " + ech(q) + " » à mes passions</button>";
+        + ' data-tel="' + (peutCreer ? "passion_creation" : "passion_ajout_demande") + '">'
+        + (peutCreer
+            ? "Créer « " + ech(q) + " »"
+            : "Demander l'ajout de « " + ech(q) + " »")
+        + "</button>";
     }
     if (this.cfg.valider) {
       var n = this.selection.length;
@@ -378,6 +391,100 @@
   // profil public, et publier dessous reste refusé : `estPassionCanonique`
   // (app-02) est la seule autorité, et la clé étrangère de `posts.passion_id`
   // la refuserait de toute façon.
+  var MOTIFS = {
+    auth_requise:     "Crée ton compte pour ajouter une passion.",
+    nom_invalide:     "Choisis un nom de passion — deux lettres au moins, pas d'adresse web.",
+    nom_trop_long:    "Un nom plus court : six mots au maximum.",
+    nom_indisponible: "Ce nom n'est pas disponible. Essaie une autre formulation.",
+    quota_jour:       "Tu as créé beaucoup de passions aujourd'hui. Reviens demain pour en créer d'autres.",
+    quota_total:      "Tu as atteint le nombre de passions que tu peux créer.",
+    trop_court:       "Donne un nom d'au moins 2 caractères.",
+    trop_long:        "Un nom plus court : six mots au maximum."
+  };
+
+  // ── « Je ne trouve pas ma passion » → ON LA CRÉE ───────────────────
+  // Le geste CONCLUT : le serveur écrit la passion au référentiel, elle est
+  // sélectionnée dans la foulée, et PUBLIABLE tout de suite. Le chemin de
+  // DEMANDE (« en vérification ») subsiste comme repli — hors ligne, sans compte,
+  // ou tant que la migration n'est pas appliquée.
+  Selecteur.prototype.creer = function () {
+    var self = this;
+    var m = moteur();
+    if (!m || typeof m.creerPassion !== "function") return this.demanderAjout();
+    var q = String(this.frappe || "").trim();
+    if (!q) return;
+
+    // ⚠️ LE BOUTON DIT « Demander l'ajout » → ON DÉPOSE UNE DEMANDE, POINT.
+    // La première version envoyait TOUS les taps vers la création, donc vers la
+    // porte d'inscription : un visiteur voyait un bouton promettre une demande,
+    // tapait, et recevait un mur — la demande n'étant JAMAIS enregistrée, alors
+    // qu'elle est faite pour ce cas-là. Le libellé et le geste doivent dire la
+    // même chose.
+    var peutCreer = false;
+    try { peutCreer = !!(typeof m.creationDisponible === "function" && m.creationDisponible()); } catch (e) {}
+    if (!peutCreer) return this.demanderAjout();
+
+    // ⚠️ LE PLAFOND SE VÉRIFIE AVANT D'ÉCRIRE AU SERVEUR. Sans ça, `basculer`
+    // refusait la sélection (plafond atteint → `onMax`, qui REMPLACE la
+    // feuille) pendant que le toast annonçait « créée et ajoutée » : la passion
+    // était bien écrite en base, le quota consommé, et elle n'était nulle part.
+    if (this.cfg.mode !== "unique" && this.cfg.max && this.selection.length >= this.cfg.max) {
+      if (typeof this.cfg.onMax === "function") { try { this.cfg.onMax(this.cfg.max); } catch (e) { journal("onMax", e); } return; }
+      try { if (typeof toast === "function") toast("Maximum " + this.cfg.max + " passions pour commencer"); } catch (e) {}
+      return;
+    }
+
+    // La porte, AVANT l'écriture : on ne demande pas à quelqu'un de nommer sa
+    // passion pour lui apprendre ensuite qu'il lui fallait un compte.
+    // ⚠️ `openModal` REMPLACE la feuille ouverte — c'est voulu : le sélecteur
+    // s'efface derrière la porte d'inscription, il ne reste pas dessous.
+    try {
+      if (typeof requireAuthentication === "function" && !requireAuthentication("preferences")) return;
+    } catch (e) { journal("gate", e); }
+
+    m.creerPassion(q).then(function (r) {
+      r = r || {};
+      if (r.erreur && !r.repli) {
+        try { if (typeof toast === "function") toast(MOTIFS[r.erreur] || "Impossible de créer cette passion pour le moment."); } catch (e) {}
+        return;
+      }
+      if (r.passion && r.passion.id) {
+        self.input.value = "";
+        self.frappe = "";
+        self.basculer(r.passion.id);
+        self.chercher();
+        try {
+          if (typeof toast === "function") {
+            toast(r.cree
+              ? "✨ « " + r.passion.label + " » créée et ajoutée."
+              : "« " + r.passion.label + " » existe déjà — ajoutée.", "success");
+          }
+        } catch (e) {}
+        // ⚠️ AUCUNE FRAPPE EN TÉLÉMÉTRIE : on n'envoie ni le nom, ni la recherche.
+        try { if (window.tel && tel.action) tel.action(r.cree ? "passion_creee" : "passion_deja_connue", {}); } catch (e) {}
+        return;
+      }
+      // Repli : une demande a été déposée. On le DIT — un « en vérification »
+      // silencieux se lit comme un échec.
+      self.input.value = "";
+      self.frappe = "";
+      self.chercher();
+      try {
+        if (typeof toast === "function") {
+          toast(r.envoyee
+            ? "Demande envoyée. La passion apparaîtra « en vérification »."
+            : "Demande enregistrée sur cet appareil. Elle partira à la prochaine connexion.", "success");
+        }
+      } catch (e) {}
+      try { if (typeof self.cfg.onDemande === "function") self.cfg.onDemande(r); } catch (e) {}
+    }).catch(function (e) {
+      // ⚠️ JAMAIS MUET : sans ce toast, une faute dans le `.then` ci-dessus
+      // faisait un tap qui ne produit RIEN — indiscernable d'un bouton mort.
+      journal("creer", e);
+      try { if (typeof toast === "function") toast("Impossible de créer cette passion pour le moment."); } catch (_) {}
+    });
+  };
+
   Selecteur.prototype.demanderAjout = function () {
     var self = this;
     var m = moteur();
