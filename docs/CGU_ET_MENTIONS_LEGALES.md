@@ -15,40 +15,73 @@ trois choses, et chacune a une conséquence propre :
 | Aucunes **mentions légales** | Obligation de l'article 6-III de la LCEN non remplie ; personne ne sait qui édite le service, qui l'héberge, ni à qui adresser un signalement. |
 | Aucun **consentement explicite** à l'inscription | Rien ne prouve qu'un membre a accepté quoi que ce soit, et rien ne date son acceptation. |
 
-## 2. `PASSIO_EDITEUR` — une seule source, et aucune invention
+## 2. `PASSIO_EDITEUR` — une seule source, et le RÉGIME décide
 
 ⚠️ **`openAbout()` affichait une identité fabriquée** : « PASSIO SAS · France ·
 contact@passio.app ». Trois informations qu'aucun document du dépôt n'établit,
 et dont la dernière **contredisait** l'adresse réelle donnée par la politique de
-confidentialité (`contact@ladamemetallerie.com`).
+confidentialité (`contact@ladamemetallerie.com`). Une mention légale fausse
+trompe. Elle n'a qu'une source désormais : `PASSIO_EDITEUR` (app-02).
 
-Une mention légale fausse trompe. Une mention légale visiblement inachevée se
-complète. Tout champ vide de `PASSIO_EDITEUR` (app-02) s'affiche donc
-**« [à compléter] » en clair, à l'écran**, dans les trois surfaces qui le lisent
-(mentions légales, CGU, À propos).
+### ⚠️ Un trou n'est pas toujours un trou (correction du 2026-09-08, le soir)
 
-### Champs à renseigner avant l'ouverture au public
+La première version affichait **huit « [à compléter] »** parce qu'elle supposait
+un éditeur **professionnel**. Il n'y a pas de société : PASSIO est édité par une
+**personne physique, à titre non professionnel**. Ce régime-là ne demande pas ces
+huit champs — **annoncer huit manquements là où la loi n'en constate aucun est
+une deuxième façon de dire faux**, exactement symétrique de la première.
 
-Ils sont dans `js/app-02-state-utils.js`, dans l'objet `PASSIO_EDITEUR`, et
-**nulle part ailleurs** — jamais recopiés dans un texte :
+D'où `PASSIO_EDITEUR.regime`, **seul interrupteur** :
 
-```
-raisonSociale         formeJuridique      capital
-siege                 rcs                 siret
-tvaIntra              directeurPublication
-```
+| `regime` | Ce que la loi exige, et donc ce que l'écran affiche |
+|---|---|
+| `"particulier"` (actuel) | L'éditeur conserve l'anonymat **vis-à-vis du public**. L'écran publie l'identité complète de **l'hébergeur du site**, et rien d'autre. Aucun `[à compléter]`. |
+| `"societe"` | Les huit champs (raison sociale, forme, capital, siège, RCS, SIRET, TVA, directeur de la publication) sont exigés, et tout champ vide s'affiche `[à compléter]` en clair. |
 
-Les deux champs `hebergeurSite` / `hebergeurDonnees` portent les **noms** vérifiés
-(Netlify, Supabase) ; les adresses postales complètes restent à recopier depuis
-les contrats — elles ne se devinent pas.
+### La base légale, et l'article qu'il ne faut plus citer
 
-**Tant qu'ils sont vides, le site est en défaut vis-à-vis de la LCEN.** Le lot ne
-prétend pas le contraire : il rend le défaut VISIBLE au lieu de le masquer sous
-une identité plausible.
+⚠️ **L'article 6-III de la LCEN — que la première version citait — a été
+ABROGÉ** par la **loi n° 2024-449 du 21 mai 2024** (SREN), en vigueur au
+23 mai 2024. L'identification de l'éditeur vit désormais à l'**article 1-1**, et
+le droit à l'anonymat du non-professionnel à l'**article 1-1, II**.
 
-⚠️ **Un juriste doit relire les deux textes.** Ils sont écrits pour être justes et
-lisibles, pas pour remplacer un conseil. Avoir un texte correct vaut infiniment
-mieux que rien ; cela ne vaut pas une relecture.
+⚠️ Même chose pour le signalement : **l'article 6-I-5 a été abrogé**. Depuis le
+17 février 2024 c'est le **DSA** (règlement UE 2022/2065), **article 16**, qui
+régit la notification de contenu illicite. Le texte cite désormais le DSA.
+
+**Une mention légale qui cite un article mort est une mention légale fausse** —
+le verrou ⑧ refuse explicitement `6-III` et `6-I-5` dans le texte rendu.
+
+### Les deux conditions de l'anonymat, qui sont CUMULATIVES
+
+1. **Publier le nom et l'adresse de l'hébergeur.** D'où l'adresse postale
+   complète de Netlify : dans ce régime elle n'est pas un détail décoratif,
+   c'est **la seule identité publiée**. Relevée sur les conditions
+   d'utilisation de Netlify, jamais devinée.
+2. **Avoir communiqué à cet hébergeur ses éléments d'identification
+   personnelle** — ce que fait un compte Netlify nominatif. Cette condition-là
+   se vérifie hors du code ; si elle tombe, l'anonymat tombe avec elle.
+
+### ⚠️ Ce régime tombe au premier euro
+
+L'anonymat du non-professionnel suppose un service **exploité à titre non
+professionnel**. Les passions payantes (`openPassionPaywall`) en sont le
+déclencheur direct : **dès que PASSIO encaisse, il faut une structure**, basculer
+`regime` sur `"societe"` et renseigner les huit champs. Ce n'est pas une
+destination, c'est un abri temporaire — et le caractère « non professionnel »
+s'apprécie aussi à l'intention, pas seulement à la facturation.
+
+### Hébergeur du site ≠ hébergeur des données
+
+- **Hébergeur du site** (celui que vise l'art. 1-1, II) : **Netlify, Inc.**,
+  101 2nd Street, San Francisco, CA 94105, États-Unis.
+- **Sous-traitant technique des données** (RGPD, pas LCEN) : **Supabase**
+  (Supabase Pte. Ltd., Singapour). ⚠️ Cette entité vient d'un registre public,
+  pas des conditions de Supabase elles-mêmes (`supabase.com` est bloqué depuis
+  l'environnement d'exécution) : **à confirmer sur une facture ou le contrat.**
+
+⚠️ **Un juriste doit relire les deux textes.** Ils sont écrits pour être justes
+et lisibles, pas pour remplacer un conseil.
 
 ## 3. Le consentement : où, et pourquoi là
 
@@ -117,7 +150,7 @@ retrouve à fermer trois couches.
 
 ## 6. Verrous
 
-`tests/e2e/cgu-consentement.spec.js` (10 cas) :
+`tests/e2e/cgu-consentement.spec.js` (11 cas) :
 
 | № | Ce qu'il empêche |
 |---|---|
@@ -128,7 +161,8 @@ retrouve à fermer trois couches.
 | ⑤ | Le bouton Google contourne le consentement en création. |
 | ⑥ | Le consentement est redemandé à la connexion Google. |
 | ⑦ | Les CGU perdent un engagement que le code applique. |
-| ⑧ | Une identité d'éditeur inventée revient ; le nombre de « [à compléter] » suit exactement les champs vides. |
+| ⑧ | Régime « particulier » : un `[à compléter]` revient là où la loi n'exige rien, l'adresse de l'hébergeur se réduit à un nom de marque, ou un article abrogé (`6-III`, `6-I-5`) est cité. |
+| ⑧ bis | Régime « societe » : `regime` figé sur « particulier » sans qu'aucun verrou ne s'en aperçoive ; les huit champs redeviennent exigibles au basculement. |
 | ⑨ | « À propos » redit une identité à lui. |
 | ⑩ | **Le câblage** : les deux entrées des Paramètres, ouvertes au GESTE (hamburger → Support → bouton), jamais par `page.evaluate`. |
 
@@ -139,11 +173,18 @@ chemin : `confirmation-email.spec.js` (coche la case par un vrai clic) et
 
 ## 7. Ce qui reste ouvert
 
-1. **Renseigner `PASSIO_EDITEUR`** — bloquant pour la conformité LCEN.
-2. **Relecture par un juriste** des deux textes.
-3. **Adresses postales complètes** des deux hébergeurs.
-4. **Médiateur de la consommation** : le texte mentionne le droit d'y recourir ;
-   l'adhésion à un médiateur reste à souscrire si le service devient payant.
-5. **Chaîne de modération** : les CGU promettent un examen « dans les meilleurs
-   délais ». Les signalements arrivent en base (`reports`) ; rien ne les notifie
-   encore à un humain.
+1. **Le jour où une société existe** : basculer `PASSIO_EDITEUR.regime` sur
+   `"societe"` et renseigner les huit champs. **Obligatoire dès le premier
+   encaissement**, pas plus tard.
+2. **Confirmer l'entité Supabase** sur une facture ou le contrat (voir §2).
+3. **Vérifier que la condition ② de l'anonymat tient** : l'identité de l'éditeur
+   doit être connue de Netlify (compte nominatif).
+4. **Relecture par un juriste** des deux textes.
+5. **Région d'hébergement des données** : la politique de confidentialité annonce
+   « UE/US ». À confirmer sur le projet Supabase — pour le RGPD, une région UE
+   simplifie beaucoup.
+6. **Chaîne de modération** : les CGU promettent un examen des signalements
+   « dans les meilleurs délais ». Les signalements arrivent en base, **rien ne
+   les notifie encore à un humain**. Le DSA (art. 16) attend en outre un accusé
+   de réception et une motivation de la décision.
+7. **Médiateur de la consommation** : à souscrire si le service devient payant.

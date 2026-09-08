@@ -187,35 +187,70 @@ test("⑦ les CGU couvrent les engagements que le produit prend vraiment", async
   expect(texte).toContain("contact@ladamemetallerie.com");
   // Une adresse de contact inventée ne doit revenir NULLE PART.
   expect(texte).not.toContain("contact@passio.app");
+  // §1 nomme l'éditeur selon le RÉGIME : sans société, il dit ce qu'il est.
+  expect(texte).toMatch(/personne physique éditant à titre non professionnel/i);
+  expect(texte).not.toContain("[à compléter]");
 });
 
 // ──────────────────────────────────────────────────────────────────────────
 // ⑧ L'identité de l'éditeur : inachevée et VISIBLE, jamais inventée
 // ──────────────────────────────────────────────────────────────────────────
-test("⑧ les mentions légales n'inventent aucune identité", async ({ page }) => {
+test("⑧ mentions légales, régime « particulier » : aucun trou, et l'hébergeur nommé", async ({ page }) => {
   await ouvrirAuth(page);
   await page.evaluate(() => openLegalNotice());
   const texte = await page.locator(".modal-backdrop.active .modal").innerText();
 
   expect(texte).toMatch(/Éditeur du service/i);
-  expect(texte).toMatch(/Directeur de la publication/i);
-  expect(texte).toMatch(/Hébergement/i);
-  expect(texte).toContain("contact@ladamemetallerie.com");
-  expect(texte).toMatch(/LCEN|6-I-5/);
-  expect(texte).toMatch(/cnil\.fr/i);
+  expect(texte).toMatch(/à titre non professionnel/i);
+  // ⚠️ L'ANCRE LÉGALE A CHANGÉ. L'art. 6-III de la LCEN, que la première
+  // version citait, a été ABROGÉ par la loi n° 2024-449 du 21 mai 2024 : le
+  // régime d'anonymat du non-professionnel vit à l'art. 1-1, II. Une mention
+  // légale qui cite un article mort est une mention légale fausse.
+  expect(texte).toContain("1-1, II");
+  expect(texte).not.toMatch(/6-III/);
+  // Même chose pour le signalement : l'art. 6-I-5 a été abrogé, c'est le DSA.
+  expect(texte).toMatch(/article 16 du règlement/i);
+  expect(texte).not.toMatch(/6-I-5/);
 
-  // Aucune identité fabriquée, et les trous se VOIENT.
+  // Dans ce régime, l'adresse de l'HÉBERGEUR est la seule identité publiée :
+  // elle doit être COMPLÈTE, pas un nom de marque.
+  expect(texte).toContain("Netlify, Inc.");
+  expect(texte).toContain("101 2nd Street");
+  expect(texte).toContain("San Francisco");
+  expect(texte).toContain("contact@ladamemetallerie.com");
+
+  // ⚠️ LE CŒUR DU CAS : pas de société, donc AUCUN champ manquant à annoncer.
+  // Afficher huit « [à compléter] » là où la loi n'exige rien serait une
+  // seconde façon de dire faux — l'inverse du défaut que ⑧ corrigeait.
+  expect(texte).not.toContain("[à compléter]");
+  // Et aucune identité fabriquée n'est revenue par la bande.
   expect(texte).not.toContain("PASSIO SAS");
   expect(texte).not.toContain("contact@passio.app");
+});
 
-  // Le marqueur suit exactement les champs vides de PASSIO_EDITEUR : quand ils
-  // seront renseignés, ce cas continuera de dire la vérité au lieu de rougir.
-  const vides = await page.evaluate(() => Object.keys(PASSIO_EDITEUR)
-    .filter((k) => ["raisonSociale", "formeJuridique", "capital", "siege", "rcs",
-      "siret", "tvaIntra", "directeurPublication"].indexOf(k) !== -1)
+test("⑧ bis régime « societe » : les huit champs redeviennent exigibles", async ({ page }) => {
+  await ouvrirAuth(page);
+  // Le jour où une structure existe, une seule ligne bascule — et l'écran doit
+  // aussitôt réclamer ce que la loi réclame. Sans ce cas, `regime` pourrait
+  // être figé sur "particulier" sans qu'aucun verrou ne s'en aperçoive.
+  const texte = await page.evaluate(() => {
+    PASSIO_EDITEUR.regime = "societe";
+    openLegalNotice();
+    return document.querySelector(".modal-backdrop.active .modal").innerText;
+  });
+
+  expect(texte).toMatch(/Directeur de la publication/i);
+  expect(texte).toMatch(/RCS/);
+  expect(texte).toMatch(/SIRET/);
+  expect(texte).toMatch(/TVA intracommunautaire/i);
+  expect(texte).not.toMatch(/à titre non professionnel/i);
+
+  // Le marqueur suit exactement les champs vides : huit aujourd'hui, zéro le
+  // jour où ils seront renseignés — ce cas dira encore la vérité.
+  const vides = await page.evaluate(() => ["raisonSociale", "formeJuridique", "capital",
+    "siege", "rcs", "siret", "tvaIntra", "directeurPublication"]
     .filter((k) => !PASSIO_EDITEUR[k]).length);
-  const marqueurs = (texte.match(/\[à compléter\]/g) || []).length;
-  expect(marqueurs).toBe(vides);
+  expect((texte.match(/\[à compléter\]/g) || []).length).toBe(vides);
 });
 
 test("⑨ « À propos » lit la même source, il ne redit pas une identité à lui", async ({ page }) => {
@@ -225,6 +260,10 @@ test("⑨ « À propos » lit la même source, il ne redit pas une identité à 
   expect(texte).not.toContain("PASSIO SAS");
   expect(texte).not.toContain("contact@passio.app");
   expect(texte).toContain("contact@ladamemetallerie.com");
+  // Sans société, la ligne de raison sociale n'existe pas : elle DISPARAÎT au
+  // lieu d'annoncer un manque. Un « [à compléter] » sur l'écran « À propos »
+  // ferait passer une situation régulière pour un chantier inachevé.
+  expect(texte).not.toContain("[à compléter]");
 });
 
 // ──────────────────────────────────────────────────────────────────────────

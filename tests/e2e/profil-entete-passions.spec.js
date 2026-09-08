@@ -932,9 +932,24 @@ async function ouvrirProfilVisite(page) {
       passions: [{ id: "cuisine", emoji: "🍳" }, { id: "jardinage", emoji: "🌱" }],
     });
     window._supaReal = false;
+    // ⚠️ NON ATTENDU EXPRÈS : `openUserProfile` est `async` et cet appel est
+    // lancé sans `await`. C'est l'attente ci-dessous qui fait foi.
     openUserProfile("u_lea2");
   });
-  await page.waitForTimeout(900);
+  // ⚠️ ATTENDRE LA MODALE, JAMAIS UN DÉLAI FIXE. Cette ligne était
+  // `waitForTimeout(900)`, et elle a fait ROUGIR `main` le 2026-09-08 : le
+  // déploiement production du lot CGU a été sauté pour ça. `openUserProfile`
+  // n'est pas synchrone — elle `await` jusqu'à `supaLoadPosts` avant que la
+  // modale ne soit peinte — donc 900 ms est un pari sur la charge du runner,
+  // pas une garantie. La preuve est dans le run lui-même : au même moment, sur
+  // le MÊME shard, `profil-visite-options.spec.js` ouvre la même modale et
+  // attend `toBeVisible()` (5 s) ; il a été marqué « flaky » puis s'est
+  // rétabli, quand celui-ci a échoué TROIS fois d'affilée. Celui qui attend la
+  // chose s'en sort, celui qui compte les millisecondes tombe.
+  // Aucune assertion n'est retirée : seule la façon d'attendre change.
+  await expect(page.locator(".modal.modal-fullscreen")).toBeVisible();
+  await expect(page.locator(".modal #visitedPassions")).toBeAttached();
+  await page.waitForTimeout(200);   // laisser la mise en page se poser
 }
 
 test("③ sexies — un profil visité suit la même règle : une seule rangée, en bulles", async ({ page }) => {
