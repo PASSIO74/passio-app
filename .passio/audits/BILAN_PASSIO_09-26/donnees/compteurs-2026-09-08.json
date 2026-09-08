@@ -7,25 +7,25 @@
   "irl",
   "profils-passions",
   "robustesse-pannes",
+  "tests-ci",
   "appareils-a11y"
  ],
  "domaines_manquants": [
-  "perf-capacite-couts",
-  "tests-ci"
+  "perf-capacite-couts"
  ],
- "problemes_relus_le_08": 59,
+ "problemes_relus_le_08": 75,
  "verdicts_du_08": {
-  "CONFIRMÉ": 57,
+  "CONFIRMÉ": 73,
   "RÉFUTÉ": 2
  },
  "priorites_changees": {
   "IRL-07": "P1"
  },
  "relecture_globale": {
-  "CONFIRMÉ": 161,
+  "CONFIRMÉ": 177,
   "RÉFUTÉ": 5,
   "INCERTAIN": 4,
-  "Non relu": 22
+  "Non relu": 6
  },
  "priorites_retenues_hors_refutes": {
   "P0": 8,
@@ -34,17 +34,17 @@
   "P3": 56
  },
  "oublis_nouveaux": {
-  "total": 23,
+  "total": 27,
   "par_priorite": {
-   "P2": 11,
-   "P3": 11,
-   "P1": 1
+   "P2": 13,
+   "P3": 12,
+   "P1": 2
   }
  },
  "priorites_avec_oublis": {
   "P0": 8,
-  "P1": 59,
-  "P2": 76,
-  "P3": 67
+  "P1": 60,
+  "P2": 78,
+  "P3": 68
  }
 }

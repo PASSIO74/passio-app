@@ -6,21 +6,21 @@
 >
 > Réserve : c'est une relecture par Claude d'un audit fait par Claude. Elle ferme le trou de méthode (81 problèmes sans second regard), elle ne vaut pas la revue d'un modèle tiers, toujours attendue le 2026-09-14.
 
-Domaines relus : **auth-rgpd, exploitation-continuite, irl, profils-passions, robustesse-pannes, appareils-a11y** — manquants : perf-capacite-couts, tests-ci.
+Domaines relus : **auth-rgpd, exploitation-continuite, irl, profils-passions, robustesse-pannes, tests-ci, appareils-a11y** — manquants : perf-capacite-couts.
 
 ## 1. Compteurs après relecture
 
 | Problèmes relus le 08 | CONFIRMÉ | RÉFUTÉ | INCERTAIN | Priorités changées | Oublis nouveaux |
 |---|---|---|---|---|---|
-| 59 | 57 | 2 | 0 | 1 | 23 |
+| 75 | 73 | 2 | 0 | 1 | 27 |
 
 | | P0 | P1 | P2 | P3 |
 |---|---|---|---|---|
 | Registre du 04 (retenus) | 8 | 57 | 66 | 58 |
 | Après relecture du 08 (réfutés retirés, priorités amendées) | 8 | 58 | 65 | 56 |
-| + oublis trouvés le 08 | 8 | 59 | 76 | 67 |
+| + oublis trouvés le 08 | 8 | 60 | 78 | 68 |
 
-Relecture globale des 192 problèmes : CONFIRMÉ 161, INCERTAIN 4, Non relu 22, RÉFUTÉ 5.
+Relecture globale des 192 problèmes : CONFIRMÉ 177, INCERTAIN 4, Non relu 6, RÉFUTÉ 5.
 
 Priorités amendées : IRL-07 → P1 (était P2).
 
@@ -131,7 +131,28 @@ Limites déclarées : node_modules du dépôt absent (pas de @playwright/test ni
 
 ### tests-ci
 
-_Relecture non rendue._
+| Id | Priorité 04 → 08 | Verdict | Preuve | Commentaire du relecteur |
+|---|---|---|---|---|
+| TCI-01 | P1 → P1 | **CONFIRMÉ** | tests/e2e/multi-comptes.spec.js:21, confidentialite.spec.js:21, suppression-compte.spec.js:28 (test.skip(!process.env.PASSIO_E2E_MULTI)), qa-campaign.spec.js:63 (PASSIO_QA_CAMPAIGN) ; grep PASSIO_E2E_MULTI .github/workflows/*.yml → une seule occurrence, en COMMENTAIRE (deploy.yml:155) ; multi-comptes.spec.js:682 openVlogViewer, :734 supaPublishCdvLive, :736/:785 supaAddCdvLiveStep, :753 supaUpdateCdvLiveStep, :774 supaAddCdvCollaborator, :828 supaAddCarnetCollaborator — aucune définie dans js/*.js ; npx playwright test --list --project=prod → 15 tests / 7 fichiers, ce qui recoupe le journal CI (3 passed = authz-critical, blocage-acces, user-state-horodatage ; 12 skipped = 8 multi-comptes + 2 confidentialite + 1 qa-campaign + 1 suppression-compte). | Tient intégralement. Précision : deux des huit tests multi-comptes (lignes 619 et 712) sont morts (ReferenceError garanti sous PASSIO_E2E_MULTI=1), les six autres restent plausibles mais jamais exécutés. Le job « Suites production » vert ne prouve que 3 tests sur 15, et CLAUDE.md:40 annonce « les 7 suites à comptes réels » pour test:prod. |
+| TCI-02 | P1 → P1 | **CONFIRMÉ** | tests/e2e/confirmation-email.spec.js:47-49 (supa.auth.signUp / signInWithPassword / resend remplacés par des doublures) ; tests/e2e/compte-e2e.js:14 et :89 (POST /auth/v1/admin/users, email_confirm: true) ; grep -l resetPasswordForEmail tests/e2e/*.spec.js → 0 fichier. | Aucune machine ne parcourt le chemin SMTP Brevo → lien de confirmation → session, ni le mot de passe oublié. La porte d'entrée du produit n'est prouvée que par des doublures ; P1 justifié pour tout lancement public. |
+| TCI-03 | P1 → P1 | **CONFIRMÉ** | grep -rl sauvegarde-donnees tests/ → 0 ; .github/workflows/rollback.yml:3-4 (on: workflow_dispatch uniquement), :82/:90/:121 (checkout -b, push, gh pr create --draft) ; tests/sql/socle-prod.sql = 97 lignes, 18 mentions de policy. | Rien n'exerce ni la restauration d'une sauvegarde ni le workflow de rollback. Nuance : rollback.yml est un script bash simple et lisible, le risque porte surtout sur la restauration des DONNÉES, jamais répétée. P1 maintenu (RGPD/continuité avant lancement). |
+| TCI-04 | P1 → P1 | **CONFIRMÉ** | js/app-08-ui-modals-tour.js:2551 const SUPABASE_URL = "https://njkiyoklssvefstljemx.supabase.co" ; grep -c SUPABASE scripts/build.js → 0 (aucune substitution) ; deploy.yml preview needs: [governance, audits] (ligne 563) et déploie AVANT test-local/test-prod ; test-prod sans `if:` tourne aussi sur pull_request ; sentinelle-distante.yml:5 cron "17 * * * *", :117 authz-critical --project=prod ; authz-critical.spec.js:53-54 crée 2 comptes ; scripts/test-prod.js:5-8 documente 5 comptes par lancement. | Un seul projet Supabase pour tout (prod, tests, canari, previews). Le « ≈85 runs/2 jours » n'est pas retrouvé tel quel dans RESUME_PREUVES.txt (qui donne 100 runs du 02 au 04 sept) mais l'ordre de grandeur tient. P1 justifié : chaque PR écrit en production. |
+| TCI-05 | P2 → P2 | **CONFIRMÉ** | REPRODUIT : bac scratchpad/relecture/tests-ci/bac-creux (copie de scripts/audit-tests-creux.js, lien js/, spec de 4 lignes page.setContent + locator) → « OK — aucun spec ne vérifie uniquement ses propres constructions », exit=0. Cause : scripts/audit-tests-creux.js:43 (regex UI) et :91 `if (UI.test(src)) continue;` — tout locator( suffit, sans goto ni fonction de production. | Contournement trivial et reproduit au SHA. P2 correct : c'est un gate de qualité, pas une barrière de sécurité. |
+| TCI-06 | P3 → P3 | **CONFIRMÉ** | REPRODUIT : bac scratchpad/relecture/tests-ci/bac-iso (copie du script + socle, spec avec « sansDonneesDistantes( » en commentaire seulement, goto /index.html + #feedList) → « OK — toute suite qui navigue elle-même pose son isolation », exit=0. Cause : scripts/audit-tests-isolation.js:65-66 ne retire que les lignes require( avant la regex. | Tient. Contournement improbable par accident mais réel ; P3 correct. |
+| TCI-07 | P2 → P2 | **CONFIRMÉ** | npm run couverture (2026-09-08) → « Mesurée le 2026-08-16T17:14:44Z · Interactions 355 · Exécutées 38 · Taux 10.7 % · 28 noms mesurés absents du code actuel : mesure à refaire · dénominateur 435 → 355 » ; npm run couverture:risque → « Non exercées qui ÉCRIVENT en base : 19 » avec exactement les 19 noms listés (mePublish, submitEvent, publishStoryFromComposer, …). | Chiffres reproduits à l'identique. La mesure est périmée de 23 jours et le rapport lui-même le dit. P2 correct. |
+| TCI-08 | P2 → P2 | **CONFIRMÉ** | run-33861671142-jobs.json recalculé : Déploiement production 19,9 min dont Minify index 7,0 / app.js 5,2 / styles 5,0 / Netlify 2,5 ; « Installer Playwright » = 1,1+3,9+7,4+1,6+7,4+1,1+0,8+5,3 = 28,6 min cumulées (variance 0,8→7,4 min = aucun cache) ; deploy.yml:500/:511/:517 `npx --yes html-minifier-terser\|terser\|clean-css-cli` sans version ; deploy.yml:333/:390/:413 `npm install --no-save @playwright/test` (résout `latest`, pas le lock). | Tient. Nuance : package-lock.json épingle bien @playwright/test à 1.60.0 (= latest aujourd'hui), donc le dérapage n'est pas encore visible — mais la commande le contourne à chaque run. Épinglage + cache navigateurs = gain ~25 min de runner par run. |
+| TCI-09 | P2 → P2 | **CONFIRMÉ** | deploy.yml:498-519 : trois étapes `npx … && mv … \|\| echo "Minification … échouée, déploiement du fichier brut"` dans le job deploy, APRÈS tous les tests ; scripts/servir-dist.js (commentaire de tête) : « Ce que ça ne prouve PAS : le comportement APRÈS minification » ; gates-artefact (deploy.yml:421) ne lance que release-integrity + passion-context sur le dist NON minifié. | Tient. Un terser qui sort 0 avec une sortie tronquée est déployé sans aucun test, et un terser en erreur déploie le brut sans rouge ni ::warning. P2 correct (un vrai rouge de prod resterait visible via la Sentinelle). |
+| TCI-10 | P2 → P2 | **CONFIRMÉ** | grep -c 'upload-artifact\\|timeout-minutes' deploy.yml → 0 (sentinelle-distante.yml:43 en a un, deploy.yml aucun) ; playwright.config.js:58 retries: CI ? 2 : … sans reporter ni artefact ; REPRODUIT localement : PASSIO_RETRIES=0 --repeat-each=3 sur monitoring-file-boot.spec.js → 1 failed / 5 passed (test :49, minuteries 50 ms / 4 s / flush 500 ms contre un waitForTimeout(2000)). Réserve : le fichier deploy-runs-100.json cité comme preuve n'existe PAS dans preuves/tests-ci/ (seul run-33861671142-jobs.json y est) ; les chiffres « push/failure 4, PR/failure 8 » ne sont retrouvés que résumés dans RESUME_PREUVES.txt:22. | Le constat de code (aucun timeout, aucun artefact, reprises muettes) est vrai et le flaky des journaux est reproduit hors CI. Les 4 rouges de main ne sont pas re-vérifiables ici (fichier de preuve absent, pas d'appel GitHub). P2 maintenu. |
+| TCI-11 | P2 → P2 | **CONFIRMÉ** | ls .github/dependabot.yml → absent ; grep toHaveScreenshot tests/e2e → 0 ; grep devices playwright.config.js → 0 (Chromium seul) ; tests/e2e/perf-ios.spec.js:89 toBeLessThanOrEqual(120) ; deploy.yml : aucune étape npm audit / gitleaks / lint / axe / Lighthouse. Les chiffres npm audit (1 high sharp, 4 moderate) ne sont PAS re-exécutés (registre = réseau) : repris de RESUME_PREUVES.txt:33. | Tient. Regroupement large mais chaque absence est réelle. P2 correct ; le seul point qui pourrait monter est l'absence totale de WebKit pour une PWA vendue « iOS » — à laisser au domaine mobile. |
+| TCI-12 | P2 → P2 | **CONFIRMÉ** | grep -l 'RTCPeerConnection\\|startCall' tests/e2e/*.spec.js → 0 ; 'ask-ai' → 0 ; 'storage.from(' → supa-hors-ligne.spec.js seulement (stub) ; 'pushManager\\|notify-call' → supa-hors-ligne.spec.js seulement ; tests/e2e/authz-critical.spec.js:298 = fetch REST brut sur /storage/v1/ (RLS par dossier, pas le chemin applicatif). | Tient. Les fonctions les plus « démo » du produit (appel, push, upload réel, export, IA) n'ont aucune preuve automatisée. P2 correct. |
+| TCI-13 | P3 → P3 | **CONFIRMÉ** | npx playwright test --list --project=local → « Total: 1103 tests in 124 files » ; --project=prod → 15 ; CLAUDE.md:40 « 897 suites navigateur » ; le fichier est .passio/context/TESTING_STRATEGY.md (PAS docs/) :7 « ~15 specs », :11 cite CDV comme couvert. | Tient, avec correction de chemin : TESTING_STRATEGY.md vit dans .passio/context/. P3 correct. |
+| TCI-14 | P3 → P3 | **CONFIRMÉ** | ls tests/ hors e2e/sql/ci → 13 entrées : 10 fichiers test-*.html/js (test-debug, test-emoji, test-emoji-simple, test-final-verification, test-irl.js, test-messagerie-complet, test-panel-iso, test-quick-check, test-simple, test-time-filter.js) référencés nulle part (grep docs/ CLAUDE.md package.json → 0) ; les 3 .md : TEST_MULTISELECT.md non référencé, TEST_PUBLICATION_MULTIAPPAREILS.md cité par docs/RAPPORT_ARCHITECTURE_PUBLICATION.md, qa-report.md cité par docs/RAPPORT_QA_CAMPAGNE.md. | Tient au décompte près : 11 fichiers morts (10 test-* + TEST_MULTISELECT.md), 2 .md encore cités par des rapports. P3 correct. |
+| TCI-15 | P3 → P3 | **CONFIRMÉ** | tests/sql/migration-ts-serveur.test.sh applique migration_ts_serveur_age_blocage.sql (4 policies) sur tests/sql/socle-prod.sql (97 lignes, 18 mentions policy) ; ls migrations/*.sql → 64 ; le « 125 policies » vient du dump preuves/supabase-isolation/policies.json (2026-09-04). ⚠️ grep -ci 'policy\|row level\|enable rls' migrations/SCHEMA_PROD_REFERENCE.sql → 0. | Tient, mais la CORRECTION proposée est bancale : SCHEMA_PROD_REFERENCE.sql ne contient AUCUNE policy ni RLS, donc la charger dans un Postgres jetable ne rejouerait rien des 125 policies ; il faut partir du dump policies.json (ou d'un pg_dump --schema-only incluant les policies). P3 maintenu. |
+| TCI-16 | P3 → P3 | **CONFIRMÉ** | sentinelle-distante.yml:5 cron "17 * * * *", :38-40 concurrency group passio-e2e-prod (partagé avec deploy.yml:318), :108 SUPABASE_SERVICE_ROLE_KEY, :117 authz-critical --project=prod ; authz-critical.spec.js:53-54 = 2 creerCompteE2E par passage → 48 comptes/jour créés puis purgés en production. | Tient. Le verrou partagé est délibéré et commenté (sentinelle:36-37, canari ~3 min). P3 correct tant que le quota d'inscriptions horaire n'est pas atteint — c'est pourtant exactement la cause de l'incident du 2026-08-30 (deploy.yml:12-23), donc à surveiller. |
+
+Exécuté : npm run verif → 8 gates vertes (référentiel 1908 passions) · npx playwright test --list --project=prod → 15 tests / 7 fichiers ; --project=local → 1103 tests / 124 fichiers · PASSIO_PORT=8127 PASSIO_RETRIES=0 npx playwright test --project=local tests/e2e/monitoring-file-boot.spec.js --workers=1 --repeat-each=3 → 1 failed / 5 passed (test :49 instable reproduit) · node scripts/audit-tests-creux.js --ci dans un bac scratchpad avec spec setContent+locator → exit 0 (mutation TCI-05 reproduite) · node scripts/audit-tests-isolation.js --ci dans un bac scratchpad avec sansDonneesDistantes( en commentaire → exit 0 (mutation TCI-06 reproduite) · npm run couverture ; npm run couverture:risque → chiffres TCI-07 reproduits · node sur preuves/tests-ci/run-33861671142-jobs.json → durées TCI-08 recalculées
+
+Limites déclarées : Aucun appel réseau : npm audit (TCI-11) et les 100 runs GitHub (TCI-10) ne sont pas re-exécutés — le fichier deploy-runs-100.json cité par TCI-10 est ABSENT de preuves/tests-ci/ (seul le résumé RESUME_PREUVES.txt:22 en garde les chiffres). Les protections de branche (checks requis, approbations) ne sont pas vérifiables sans l'API GitHub : l'exploitabilité de CPL-TCI-03 en dépend. Les suites prod (multi-comptes sous PASSIO_E2E_MULTI) n'ont pas été lancées (écriture en prod interdite) : la ReferenceError de TCI-01 est déduite de l'absence des fonctions dans js/, pas observée. git status --porcelain vide avant et après.
 
 ### appareils-a11y
 
@@ -378,6 +399,54 @@ Toujours BLOQUÉ (rapport 13, inchangé) : fichier servi en production (proxy), 
 - **Correction** : Au succès tardif : toast « Post publié » + `syncStatus = synced` + repeindre ; garder un marqueur « envoi en vol » sur le post et l'afficher « Envoi… » plutôt que « Local » ; ne pas dire « connexion lente » avant l'échec réel des 2 tentatives.
 - **Effort** : 0,25 jour (dans le lot ROB-01).
 - **Confiance** : PROBABLE (inspection ; non exécuté)
+
+### CPL-TCI-01 — P2 — L'étape « Mesure passion_id » est verte sur `fetch failed`, doublement (exit 0 dans le catch + continue-on-error), et sa mesure est tronquée à 1 000 lignes même quand elle réussit
+
+- **Fonctionnalité** : CI deploy.yml job test-prod, étape scripts/mesure-passions.js
+- **Attendu** : Une mesure d'exploitation qui échoue se voit en rouge (ou au moins en ::warning/annotation), et compte le référentiel entier (1 908 passions).
+- **Observé** : scripts/mesure-passions.js:101-104 : `.catch((e) => { console.log("MESURE PASSIONS — échec :", …); process.exit(0); })` ; deploy.yml:355 `continue-on-error: true` par-dessus. Journal du run 33861671142 : « Référentiel passions : 1000 identifiant(s). » puis « MESURE PASSIONS — échec : fetch failed », étape et job verts. mesure-passions.js:68 GET /rest/v1/passions?select=id sans Range ni pagination → plafond PostgREST max-rows (1 000) alors que le référentiel en compte 1 908 (npm run verif : « 1908 passions »).
+- **Reproduction** : sed -n 101,104p scripts/mesure-passions.js ; sed -n 354,358p .github/workflows/deploy.yml ; journaux-resume.md (run 33861671142, job Suites production).
+- **Preuve** : scripts/mesure-passions.js:68-72, :101-104 ; .github/workflows/deploy.yml:354-358 ; preuves/complement-2026-09-08/ci-run-33861671142/journaux-resume.md
+- **Impact** : Une mesure censée piloter la migration passion_id (PRO-01) n'existe plus depuis un temps indéterminé sans qu'aucun voyant ne l'indique ; quand elle marche, elle compte au plus 1 000 identifiants sur 1 908, donc classe à tort ~900 passions en « hors référentiel ». Aucun effet sur le déploiement.
+- **Correction** : Dans le catch : `process.exitCode = 1` + `::warning` ; retirer `continue-on-error` ou le remplacer par une annotation visible ; paginer la lecture du référentiel (Range 0-999, 1000-1999… ou Prefer: count=exact + HEAD) ; épreuver par un test unitaire qui rejoue un fetch en échec.
+- **Effort** : S (1 h)
+- **Confiance** : haute (lu au SHA + journal CI)
+
+### CPL-TCI-02 — P2 — La purge Storage des comptes e2e n'a JAMAIS tourné en CI : `purge-e2e-storage.js` exige SUPABASE_URL en variable d'environnement, qu'aucun workflow ne pose
+
+- **Fonctionnalité** : tests/e2e/global-teardown.js → scripts/purge-e2e-storage.js --appliquer
+- **Attendu** : Après chaque run prod (deploy.yml test-prod et sentinelle horaire), les objets Storage laissés par authz-critical (bloc « storage cloisonné », upload via /storage/v1/) sont supprimés comme le sont les comptes.
+- **Observé** : scripts/purge-e2e-storage.js:27-42 env() lit process.env puis dashboard/.env et rend null sans SUPABASE_URL → :105 « [purge:storage] clés Supabase absentes — ignoré. » ; grep -rn SUPABASE_URL .github/workflows/ → 0 (seule SUPABASE_SERVICE_ROLE_KEY est posée) ; à l'inverse tests/e2e/compte-e2e.js:54-57 (configAdmin) retombe sur la constante de js/app-08:2551, ce qui explique que purge:rest réussit (« 5 compte(s) … comptes restants : 0 ») pendant que la purge Storage est ignorée, sur le même run.
+- **Reproduction** : sed -n 27,42p scripts/purge-e2e-storage.js ; grep -rn SUPABASE_URL .github/workflows/ ; journal run 33861671142 job Suites production.
+- **Preuve** : scripts/purge-e2e-storage.js:27-42,105 ; tests/e2e/compte-e2e.js:54-57 ; preuves/complement-2026-09-08/ci-run-33861671142/journaux-resume.md
+- **Impact** : Chaque run CI prod (≈35-50/jour avec la sentinelle horaire) laisse ses objets de test dans le bucket public de PRODUCTION : résidus orphelins (rejoint SUP-10 / AUTH-05), coût de stockage, et objets d'e2e visibles publiquement si le bucket est public.
+- **Correction** : Faire de purge-e2e-storage.js un consommateur de `configAdmin()` (même repli sur app-08 que compte-e2e.js), ou poser `SUPABASE_URL` dans l'env des jobs test-prod et sentinelle ; ajouter au journal un `::warning` quand la purge est ignorée sous CI ; purge unique de rattrapage avec `--appliquer` depuis un poste.
+- **Effort** : S (30 min + purge de rattrapage)
+- **Confiance** : haute
+
+### CPL-TCI-03 — P1 — Le secret service_role de PRODUCTION est exposé à toute pull_request du dépôt AVANT la gouvernance : test-prod n'a ni `needs` ni `if`
+
+- **Fonctionnalité** : deploy.yml jobs test-prod (et test-local), déclencheur pull_request
+- **Attendu** : Un secret qui contourne toute la RLS n'est remis qu'à du code déjà relu (après le job « Gouvernance critique » qui vérifie la contre-revue), ou seulement sur push main / via un GitHub Environment à approbation.
+- **Observé** : deploy.yml:300-347 : test-prod sans `needs:` et sans `if:` (contrairement à deploy :478-479 et preview :531/:563), avec `SUPABASE_SERVICE_ROLE_KEY: ${{ secrets… }}` ; `on: pull_request` (deploy.yml:7). Le job Gouvernance (deploy.yml:85-136) tourne en PARALLÈLE, pas en amont. Tout push sur une branche du dépôt (dont celles créées par claude-code.yml, permissions contents: write, ligne 82) qui modifie tests/e2e/authz-critical.spec.js, compte-e2e.js ou playwright.config.js obtient le secret dans un processus Node avec accès réseau sortant. Les PR de forks n'ont pas les secrets (mesure-passions.js:63 le rappelle), mais le flux Claude Code n'utilise pas de fork.
+- **Reproduction** : sed -n 300,347p .github/workflows/deploy.yml (aucun needs/if) ; comparer avec :478-479 et :563 ; grep -n 'contents: write' .github/workflows/claude-code.yml.
+- **Preuve** : deploy.yml:300-347, :85-136, :478, :563 ; claude-code.yml:81-83
+- **Impact** : Une branche non relue (erreur, injection de prompt dans une issue traitée par le bot, compromission d'un jeton) peut exfiltrer la clé service_role → lecture/écriture/suppression de TOUTES les données de production, RLS incluse. GitHub masque la valeur dans les journaux, pas dans une requête sortante.
+- **Correction** : `needs: [governance]` sur test-prod (coût : ~6 s), et/ou déplacer les étapes qui portent le secret dans un GitHub Environment `production-tests` à approbateur requis ; à terme, staging (TCI-04) et clé service_role de staging seulement dans les PR.
+- **Effort** : S (workflow) ; M avec Environment
+- **Confiance** : haute sur le fait ; moyenne sur l'exploitabilité (dépend des protections de branche, non vérifiables ici)
+
+### CPL-TCI-04 — P3 — `migrations/SCHEMA_PROD_REFERENCE.sql`, désignée par CLAUDE.md comme référence hors ligne du schéma, ne contient aucune policy RLS : aucun banc local ne peut la rejouer
+
+- **Fonctionnalité** : Référence de schéma pour les bancs SQL (tests/sql/) et les corrections proposées TCI-15 / TCI-01
+- **Attendu** : La référence hors ligne porte les 125 policies de production pour qu'un Postgres jetable puisse les rejouer.
+- **Observé** : grep -ciE 'policy\|row level\|enable rls' migrations/SCHEMA_PROD_REFERENCE.sql → 0 ; les 125 policies n'existent que dans preuves/supabase-isolation/policies.json (dump du 2026-09-04) ; tests/sql/socle-prod.sql en recopie 18 à la main.
+- **Reproduction** : grep -ciE 'policy\|row level' migrations/SCHEMA_PROD_REFERENCE.sql
+- **Preuve** : migrations/SCHEMA_PROD_REFERENCE.sql ; tests/sql/socle-prod.sql ; .passio/audits/…/10-AUDIT-MODERATION…md:88 (mention du dump 125 policies)
+- **Impact** : Toute extension du banc RLS (TCI-15) ou test hors prod de la messagerie (TCI-01) échouerait faute de source rejouable ; la « référence » ne décrit que la moitié du modèle de sécurité.
+- **Correction** : Régénérer la référence par `pg_dump --schema-only` (policies incluses) ou ajouter un fichier `migrations/POLICIES_PROD_REFERENCE.sql` généré depuis pg_policies, et le brancher dans scripts/schema-baseline.js.
+- **Effort** : S
+- **Confiance** : haute
 
 ### CPL-DEV-01 — P2 — Modale générique : focus jamais déplacé ni restitué, aucun piège, arrière-plan non inerte, et remplacement de modale qui fait tomber le focus sur <body> (WCAG 2.4.3 / 2.1.2)
 
