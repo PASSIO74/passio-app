@@ -88,6 +88,9 @@ C=33333333-3333-3333-3333-333333333333   # MINEUR déclaré (majorité 2030)
 D=44444444-4444-4444-4444-444444444444   # majeur, organisateur
 X=99999999-9999-9999-9999-999999999999   # aucune ligne user_safety
 N=55555555-5555-5555-5555-555555555555   # compte NEUF : déclare pendant le banc
+# ⚠️ uid RÉSERVÉ, jamais déclaré : $X finit « minor » en section ④, il ne peut
+# donc plus servir à mesurer le cas « aucune ligne user_safety ».
+Z=00000000-0000-0000-0000-0000000000ff   # jamais déclaré, réservé à la section ⑤
 
 recreer_base() {
   psql -h "$BASE" -p "$PORT" -U postgres -d postgres -tA -q -v ON_ERROR_STOP=1 \
@@ -130,10 +133,16 @@ verifier() { # $1=libellé  $2=attendu  $3=obtenu
 }
 # Rend "refuse" si l'écriture viole la RLS, "accepte" sur succès franc. Tout le
 # reste est une PANNE, jamais un « accepte » par défaut.
+# ⚠️ Un refus peut venir de la RLS **ou d'un trigger** : depuis que l'exception
+# « declined » et la paternité d'un événement sont gardées par trigger (un
+# WITH CHECK ne voit pas OLD), le refus arrive sous la forme d'une exception
+# `check_violation`. La ranger dans « erreur » ferait rougir des tests qui
+# mesurent exactement le refus attendu.
 ecrit() {
   local sortie; sortie="$(AS "$1" "$2" || true)"
   case "$sortie" in
     *"violates row-level security"*|*"permission denied"*) echo refuse ;;
+    *"admission requise"*|*"reassigne que par l"*) echo refuse ;;
     *"connection to server"*|*"could not connect"*) echo PANNE-CONNEXION ;;
     *ERROR*|*error:*) echo erreur ;;
     *) echo accepte ;;
@@ -145,6 +154,7 @@ modifie() { # $1=compte $2=UPDATE ... RETURNING rsvp
   local sortie; sortie="$(AS "$1" "$2" || true)"
   case "$sortie" in
     *"violates row-level security"*|*"permission denied"*) echo refuse ;;
+    *"admission requise"*|*"reassigne que par l"*) echo refuse ;;
     *ERROR*|*error:*) echo erreur ;;
     "") echo refuse ;;
     *) echo accepte ;;
@@ -304,11 +314,75 @@ verifier "l'organisateur peut encore ajouter un membre (créateur, #136)" accept
 # preuves de #136, elle ne les remplace pas.
 verifier "majeur NON inscrit ne rejoint pas la conversation"  refuse "$(ecrit "$B" "insert into public.conv_members values ('evgrp_ev1','$B');")"
 
+echo "   · « declined » ne transporte QUE le retrait (trigger, pas WITH CHECK)"
+# ⚠️ LES DEUX ATTAQUES CONFIRMÉES EN REVUE ADVERSARIALE (2026-09-08). Un
+# WITH CHECK ne voit que la ligne FINALE : poser `rsvp = 'declined'` dans la même
+# requête faisait passer TOUT le reste — pointage, note, avis — c'est-à-dire une
+# preuve de participation fabriquée par un compte non admis.
+# ⚠️ ON CONFLICT obligatoire : C a déjà une ligne sur ev1 à ce stade du banc
+# (posée pour la section « conversation »). Un INSERT nu lèverait une violation
+# de clé, et `set -e` arrêterait le banc AU MILIEU — vert jusque-là, muet après.
+eteindre
+Q -c "insert into public.event_attendees(event_id,user_id,rsvp) values ('ev1','$C','going')
+      on conflict (event_id,user_id) do update set rsvp='going', checked_in_at=null, rating=null, feedback=null, rated_at=null;" >/dev/null
+allumer
+verifier "pointage déguisé en retrait : la date de pointage ne passe PAS" "" \
+  "$(AS "$C" "update public.event_attendees set checked_in_at=now(), rsvp='declined' where event_id='ev1' and user_id='$C'; select coalesce(checked_in_at::text,'') from public.event_attendees where event_id='ev1' and user_id='$C';" | tail -1)"
+verifier "…et le retrait, lui, a bien eu lieu" declined \
+  "$(Q -c "select rsvp from public.event_attendees where event_id='ev1' and user_id='$C';")"
+verifier "note déguisée en retrait : aucune note enregistrée" "" \
+  "$(AS "$C" "update public.event_attendees set rating=1, feedback='sabotage', rated_at=now(), rsvp='declined' where event_id='ev1' and user_id='$C'; select coalesce(rating::text,'') from public.event_attendees where event_id='ev1' and user_id='$C';" | tail -1)"
+verifier "…ni avis"                                          "" \
+  "$(Q -c "select coalesce(feedback,'') from public.event_attendees where event_id='ev1' and user_id='$C';")"
+verifier "ligne non déplaçable vers un autre compte"         "$C" \
+  "$(AS "$C" "update public.event_attendees set user_id='$D' where event_id='ev1' and user_id='$C'; select user_id from public.event_attendees where event_id='ev1' and user_id='$C';" | tail -1)"
+verifier "PRÉMISSE — un admis pointe et note normalement"    "1" \
+  "$(AS "$A" "update public.event_attendees set checked_in_at=now(), rating=5 where event_id='ev1' and user_id='$A'; select case when checked_in_at is not null and rating=5 then 1 else 0 end from public.event_attendees where event_id='ev1' and user_id='$A';" | tail -1)"
+verifier "upsert PostgREST vers « declined » : accepté (le retrait ne se ferme pas)" accepte \
+  "$(ecrit "$C" "insert into public.event_attendees(event_id,user_id,rsvp) values ('ev1','$C','declined') on conflict (event_id,user_id) do update set rsvp='declined';")"
+verifier "upsert vers « going » : toujours refusé"           refuse \
+  "$(ecrit "$C" "insert into public.event_attendees(event_id,user_id,rsvp) values ('ev1','$C','going') on conflict (event_id,user_id) do update set rsvp='going';")"
+verifier "un INSERT « declined » ne peut pas naître déjà pointé" "" \
+  "$(AS "$C" "insert into public.event_attendees(event_id,user_id,rsvp,checked_in_at) values ('ev1','$C','declined', now()) on conflict (event_id,user_id) do update set checked_in_at=excluded.checked_in_at; select coalesce(checked_in_at::text,'') from public.event_attendees where event_id='ev1' and user_id='$C';" | tail -1)"
+
+echo "   · organiser ne se résume pas à l'INSERT : events UPDATE est gardé aussi"
+AS "$C" "insert into public.events(id,author_id,title,conv_id) values ('evC','$C','A moi','evgrp_evC');" >/dev/null 2>&1 || true
+eteindre
+AS "$C" "insert into public.events(id,author_id,title,conv_id) values ('evC','$C','A moi','evgrp_evC');" >/dev/null 2>&1 || true
+allumer
+verifier "PRÉMISSE — l'événement du mineur existe (créé avant l'allumage)" 1 \
+  "$(Q -c "select count(*) from public.events where id='evC';")"
+verifier "un non admis ne modifie plus son événement"        refuse "$(ecrit "$C" "update public.events set title='Rdv deplace' where id='evC';")"
+verifier "…mais il peut toujours l'ANNULER"                  accepte "$(ecrit "$C" "update public.events set status='cancelled' where id='evC';")"
+verifier "…et pas le réactiver"                              refuse "$(ecrit "$C" "update public.events set status='active' where id='evC';")"
+Q -c "insert into public.events(id,author_id,title,co_organizers) values ('evCo','$D','Copil', jsonb_build_object('$C', true));" >/dev/null
+verifier "co-organisateur non admis : édition refusée"       refuse "$(ecrit "$C" "update public.events set title='Reecrit' where id='evCo';")"
+verifier "co-organisateur ne s'attribue PAS la paternité"    refuse "$(ecrit "$C" "update public.events set author_id='$C' where id='evCo';")"
+verifier "…et l'auteur n'a pas bougé"                        "$D" "$(Q -c "select author_id from public.events where id='evCo';")"
+# La règle ① du trigger vaut même interrupteur ÉTEINT : c'est le seul point où
+# ce lot change quelque chose sans être allumé, et il est assumé.
+eteindre
+verifier "interrupteur ÉTEINT : le co-organisateur édite (comportement d'avant)" accepte \
+  "$(ecrit "$C" "update public.events set title='Edition legitime' where id='evCo';")"
+verifier "interrupteur ÉTEINT : mais la paternité reste immuable" refuse \
+  "$(ecrit "$C" "update public.events set author_id='$C' where id='evCo';")"
+# ⚠️ Constat mesuré, et il tient SANS le trigger : céder son événement à
+# quelqu'un d'autre est déjà refusé par « Update organisateurs » elle-même. La
+# policy n'a pas de WITH CHECK, PostgreSQL réutilise donc son USING, qui exige
+# que la ligne FINALE appartienne encore à l'appelant. Le trigger ne retire donc
+# aucun geste légitime : il ferme le sens INVERSE, celui où un tiers s'attribue
+# la paternité — que la policy, elle, laissait passer.
+verifier "céder son événement à un autre : déjà refusé par la policy (pas une perte)" refuse \
+  "$(ecrit "$D" "update public.events set author_id='$A' where id='evCo';")"
+verifier "PRÉMISSE — l'auteur édite bien son propre événement"  accepte \
+  "$(ecrit "$D" "update public.events set title='Edition auteur' where id='evCo';")"
+allumer
+
 echo
 echo "── ⑤ FAIL-CLOSED : la ligne d'interrupteur supprimée EXIGE l'admission ──"
 Q -c "delete from public.access_policies where key='irl_adult_only';" >/dev/null
 verifier "ligne absente : majeur toujours admis"   t "$(AS "$A" "select public.adult_access_allowed();")"
-verifier "ligne absente : INCONNU refusé"           f "$(AS "$X" "select public.adult_access_allowed();")"
+verifier "ligne absente : INCONNU refusé"           f "$(AS "$Z" "select public.adult_access_allowed();")"
 verifier "ligne absente : MINEUR n'organise pas"    refuse "$(ecrit "$C" "insert into public.events(id,author_id,title) values ('ev_c2','$C','T');")"
 verifier "ligne absente : les contrôles le DISENT (≥ 1 ÉCHEC)" t \
   "$([ "$(Q -tA -f "$CONTROLES" | grep -c '|ECHEC|' || true)" -ge 1 ] && echo t || echo f)"
@@ -334,6 +408,23 @@ sonde_mineur_conversation() {
   ecrit "$C" "insert into public.conv_members values ('evgrp_m4','$C');"
 }
 sonde_anon_execute()      { anon_exec "select public.adult_access_status();"; }
+# Le pointage déguisé en retrait : sans le trigger, la date passe.
+sonde_pointage_deguise()  {
+  evenement mp "$D"
+  AS "$C" "insert into public.event_attendees(event_id,user_id,rsvp) values ('mp','$C','going');" >/dev/null
+  allumer
+  AS "$C" "update public.event_attendees set checked_in_at=now(), rsvp='declined' where event_id='mp' and user_id='$C';" >/dev/null 2>&1 || true
+  AS "$C" "select case when checked_in_at is null then 'vide' else 'POINTE' end from public.event_attendees where event_id='mp' and user_id='$C';"
+}
+# La paternité d'un événement, réassignée par un co-organisateur.
+sonde_paternite()         {
+  Q -c "insert into public.events(id,author_id,title,co_organizers) values ('mpat','$D','Copil', jsonb_build_object('$C', true));" >/dev/null
+  allumer
+  AS "$C" "update public.events set author_id='$C' where id='mpat';" >/dev/null 2>&1 || true
+  Q -c "select author_id from public.events where id='mpat';"
+}
+# Une policy FOR ALL : elle couvre INSERT et UPDATE en portant cmd = 'ALL'.
+sonde_for_all()           { allumer; ecrit "$C" "insert into public.events(id,author_id,title) values ('mall','$C','T');"; }
 sonde_client_lit_interrupteur() {
   case "$(AS "$A" "select count(*) from public.access_policies;" || true)" in *"permission denied"*) echo refuse;; *) echo accepte;; esac
 }
@@ -430,6 +521,21 @@ mutation "EXECUTE rendu à anon sur le statut" \
   "grant execute on function public.adult_access_status() to anon;" \
   sonde_anon_execute execute
 
+mutation "trigger de l'inscription retiré (le « declined » redevient une porte)" \
+  "drop trigger trg_event_attendees_admission on public.event_attendees;" \
+  sonde_pointage_deguise POINTE
+
+mutation "trigger d'événement retiré (la paternité redevient réassignable)" \
+  "drop trigger trg_events_admission on public.events;" \
+  sonde_paternite "$C"
+
+# ⚠️ LA DÉRIVE LA PLUS PROBABLE, et celle que le garde laissait passer : le
+# gabarit « Enable all operations » du tableau de bord Supabase crée une policy
+# FOR ALL, que `pg_policies` range sous cmd = 'ALL'.
+mutation "policy FOR ALL ajoutée APRÈS la migration (cmd = 'ALL')" \
+  "create policy \"derive_all\" on public.events for all to authenticated using (true) with check (true);" \
+  sonde_for_all accepte
+
 mutation "lecture de l'interrupteur rendue au client" \
   "grant select on public.access_policies to authenticated;
    create policy \"lecture\" on public.access_policies for select to authenticated using (true);" \
@@ -437,9 +543,40 @@ mutation "lecture de l'interrupteur rendue au client" \
 
 echo
 echo "── ⑦ CONTRÔLES D'EXPLOITATION (migrations/controles_post_admission_18_plus.sql) ──"
-echecs_controles() { Q -tA -f "$CONTROLES" 2>/dev/null | grep -c '|ECHEC|' || true; }
+# ⚠️ COMPTER LES « ECHEC » NE SUFFIT PAS. Si la requête de contrôle part en
+# ERROR (relation absente, colonne renommée, faute de frappe), sa sortie ne
+# contient AUCUN '|ECHEC|' : le compteur rend 0 et le banc conclut « aucun
+# échec » sur un fichier devenu inexploitable. Défaut relevé en revue
+# adversariale (2026-09-08). On exige donc aussi une sortie plausible.
+# ⚠️ LE PRÉFLIGHT EST FAIT POUR TOURNER **AVANT** LA MIGRATION. Il n'était joué
+# que sur une base déjà migrée : sa référence statique à `access_policies` le
+# faisait échouer au PARSE sur la base qu'il doit diagnostiquer — zéro ligne, ni
+# BLOQUANT, ni le comptage des comptes non déclarés. Défaut relevé en revue
+# adversariale (2026-09-08).
+echecs_controles() {
+  local sortie; sortie="$(Q -tA -f "$CONTROLES" 2>&1)"
+  case "$sortie" in *ERROR*|*"error:"*) echo 999; return;; esac
+  [ "$(printf '%s\n' "$sortie" | grep -c '|')" -ge 20 ] || { echo 999; return; }
+  printf '%s\n' "$sortie" | grep -c '|ECHEC|' || true
+}
+recreer_base
+lignes_preflight="$(Q -tA -f "$PREFLIGHT" 2>&1)"
+verifier "PRÉFLIGHT sur base NON migrée : il s'exécute" t \
+  "$(case "$lignes_preflight" in *ERROR*|*"error:"*) echo f;; *) echo t;; esac)"
+verifier "…et il rend des lignes"                     t \
+  "$([ "$(printf '%s\n' "$lignes_preflight" | grep -c '|')" -ge 2 ] && echo t || echo f)"
+verifier "…dont le comptage des comptes non déclarés" 1 \
+  "$(printf '%s\n' "$lignes_preflight" | grep -c "effet de l'allumage" || true)"
+verifier "…et aucun BLOQUANT sur un socle sain"       0 \
+  "$(printf '%s\n' "$lignes_preflight" | grep -c '|BLOQUANT|' || true)"
+
 preparer
 verifier "base correctement migrée : aucun ÉCHEC" 0 "$(echecs_controles)"
+# ⚠️ Le compteur doit hurler quand le fichier de contrôle devient inexploitable :
+# une sortie en ERROR ne contient aucun '|ECHEC|', donc l'ancien comptage rendait
+# 0 — « aucun échec » sur une base dont plus rien n'était vérifié.
+verifier "contrôles rendus inexploitables : le banc NE dit PAS « aucun échec »" 999 \
+  "$(CONTROLES=/inexistant.sql echecs_controles)"
 verifier "…et l'état de l'interrupteur est dit (INFO éteint)" 1 "$(Q -tA -f "$CONTROLES" | grep -c 'irl_adult_only = eteint' || true)"
 allumer
 verifier "…allumé : toujours 0 ÉCHEC, INFO allumé" "0/1" \
@@ -502,6 +639,25 @@ controle_rouge "INSERT rendu à anon sur events" \
   "grant insert on public.events to anon;"
 controle_rouge "policy DELETE de event_attendees supprimée (retrait impossible)" \
   "drop policy \"Suppression propre\" on public.event_attendees;"
+controle_rouge "policy FOR ALL ajoutée sur event_attendees" \
+  "create policy \"derive_all\" on public.event_attendees for all to authenticated using (true) with check (true);"
+controle_rouge "trigger de l'inscription retiré" \
+  "drop trigger trg_event_attendees_admission on public.event_attendees;"
+controle_rouge "trigger d'événement retiré" \
+  "drop trigger trg_events_admission on public.events;"
+controle_rouge "trigger de l'inscription réduit à l'UPDATE (l'INSERT n'est plus couvert)" \
+  "drop trigger trg_event_attendees_admission on public.event_attendees;
+   create trigger trg_event_attendees_admission before update on public.event_attendees
+     for each row execute function public.event_attendees_admission_gardee();"
+controle_rouge "USING de la policy UPDATE ouvert (appropriation de l'inscription d'autrui)" \
+  "drop policy \"event_attendees_update_own_adult\" on public.event_attendees;
+   create policy \"event_attendees_update_own_adult\" on public.event_attendees for update to authenticated
+     using (true)
+     with check (user_id = ((select auth.uid()))::text and (public.adult_access_allowed() or rsvp = 'declined'));"
+controle_rouge "exception « declined » retirée de l'INSERT (le retrait par upsert se ferme)" \
+  "drop policy \"event_attendees_insert_own_adult\" on public.event_attendees;
+   create policy \"event_attendees_insert_own_adult\" on public.event_attendees for insert to authenticated
+     with check (user_id = ((select auth.uid()))::text and public.adult_access_allowed());"
 
 echo
 echo "═══ $OK OK · $KO KO ═══"

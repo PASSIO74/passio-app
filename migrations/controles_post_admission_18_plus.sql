@@ -36,16 +36,29 @@ policies_finales AS (
 ),
 -- Les predicats porteurs de la frontiere. Chaque jeton doit etre PRESENT dans
 -- l'expression normalisee par PostgreSQL ; un `true` isole les annulerait tous.
-exigences (tablename, cmd, policyname, jeton) AS (
-  VALUES ('events', 'INSERT', 'events_insert_author_adult', 'author_id ='),
-         ('events', 'INSERT', 'events_insert_author_adult', 'auth.uid()'),
-         ('events', 'INSERT', 'events_insert_author_adult', 'adult_access_allowed()'),
-         ('event_attendees', 'INSERT', 'event_attendees_insert_own_adult', 'user_id ='),
-         ('event_attendees', 'INSERT', 'event_attendees_insert_own_adult', 'auth.uid()'),
-         ('event_attendees', 'INSERT', 'event_attendees_insert_own_adult', 'adult_access_allowed()'),
-         ('event_attendees', 'UPDATE', 'event_attendees_update_own_adult', 'user_id ='),
-         ('event_attendees', 'UPDATE', 'event_attendees_update_own_adult', 'adult_access_allowed()'),
-         ('event_attendees', 'UPDATE', 'event_attendees_update_own_adult', '''declined''')
+-- ⚠️ La colonne `cible` dit DANS QUELLE expression chercher : tout chercher dans
+-- `with_check` laissait le `USING` deriver sans qu'aucune ligne ne le dise — et
+-- un `USING (true)` sur l'UPDATE d'`event_attendees` permettrait de s'APPROPRIER
+-- l'inscription d'autrui (releve en revue adversariale, 2026-09-08).
+exigences (tablename, cmd, policyname, cible, jeton) AS (
+  VALUES ('events', 'INSERT', 'events_insert_author_adult', 'check', 'author_id ='),
+         ('events', 'INSERT', 'events_insert_author_adult', 'check', 'auth.uid()'),
+         ('events', 'INSERT', 'events_insert_author_adult', 'check', 'adult_access_allowed()'),
+         ('event_attendees', 'INSERT', 'event_attendees_insert_own_adult', 'check', 'user_id ='),
+         ('event_attendees', 'INSERT', 'event_attendees_insert_own_adult', 'check', 'auth.uid()'),
+         ('event_attendees', 'INSERT', 'event_attendees_insert_own_adult', 'check', 'adult_access_allowed()'),
+         ('event_attendees', 'INSERT', 'event_attendees_insert_own_adult', 'check', '''declined'''),
+         ('event_attendees', 'UPDATE', 'event_attendees_update_own_adult', 'check', 'user_id ='),
+         ('event_attendees', 'UPDATE', 'event_attendees_update_own_adult', 'check', 'adult_access_allowed()'),
+         ('event_attendees', 'UPDATE', 'event_attendees_update_own_adult', 'check', '''declined'''),
+         ('event_attendees', 'UPDATE', 'event_attendees_update_own_adult', 'using', 'user_id ='),
+         ('event_attendees', 'UPDATE', 'event_attendees_update_own_adult', 'using', 'auth.uid()')
+),
+-- Les triggers sans lesquels l'exception « declined » devient une porte : un
+-- WITH CHECK ne voit que la ligne FINALE, jamais l'ancienne.
+triggers_attendus (tbl, trg, fonction) AS (
+  VALUES ('event_attendees', 'trg_event_attendees_admission', 'event_attendees_admission_gardee'),
+         ('events', 'trg_events_admission', 'events_admission_gardee')
 )
 
 -- A. L'interrupteur : present, prive, une ligne, et son etat (INFO).
@@ -70,7 +83,7 @@ SELECT 'A. interrupteur',
              AND NOT has_table_privilege('authenticated', 'public.access_policies', 'DELETE')
             THEN 'OK' ELSE 'ECHEC' END,
        'anon et authenticated : aucun droit sur access_policies',
-       'Le client ne sonde ni ne bascule l''interrupteur.'
+       'Le client ne BASCULE pas l''interrupteur, et n''en lit pas la table. Il en connait le verdict LE CONCERNANT par adult_access_status(), ce qui est voulu — l''etat de la regle n''est pas un secret.'
 UNION ALL
 SELECT 'A. interrupteur',
        CASE WHEN (SELECT COUNT(*) FROM policies_finales WHERE tablename = 'access_policies') = 0
@@ -214,10 +227,70 @@ SELECT 'C. policies IRL',
                WHERE NOT EXISTS (
                  SELECT 1 FROM policies_finales pf
                   WHERE pf.tablename = e.tablename AND pf.cmd = e.cmd AND pf.policyname = e.policyname
-                    AND position(e.jeton IN pf.with_check) > 0)
+                    AND position(e.jeton IN CASE WHEN e.cible = 'using' THEN pf.qual ELSE pf.with_check END) > 0)
             ) THEN 'OK' ELSE 'ECHEC' END,
-       'chaque policy d''admission porte encore tous ses predicats',
-       'auteur/titulaire = soi ET adult_access_allowed() ; l''UPDATE garde l''exception « declined » (le retrait est toujours permis).'
+       'chaque policy d''admission porte encore tous ses predicats (USING compris)',
+       'auteur/titulaire = soi ET adult_access_allowed() ; l''exception « declined » vaut sur l''INSERT comme sur l''UPDATE (un upsert evalue le WITH CHECK d''INSERT).'
+UNION ALL
+SELECT 'C. policies IRL',
+       CASE WHEN NOT EXISTS (
+              SELECT 1 FROM pg_catalog.pg_policies
+               WHERE schemaname = 'public' AND tablename IN ('events', 'event_attendees') AND cmd = 'ALL'
+            ) THEN 'OK' ELSE 'ECHEC' END,
+       'aucune policy FOR ALL sur events / event_attendees',
+       'Une policy FOR ALL porte cmd = ''ALL'' : elle autorise INSERT et UPDATE tout en echappant a tout controle qui ne cherche que ''INSERT''/''UPDATE'' — le gabarit « Enable all operations » du tableau de bord.'
+
+-- D. Les triggers : un WITH CHECK ne voit que la ligne FINALE. Sans eux,
+--    l'exception « declined » laisse ecrire pointage, note et avis.
+UNION ALL
+SELECT 'D. triggers', 'ECHEC',
+       'trigger absent ou inactif : ' || t.trg || ' sur ' || t.tbl,
+       'Sans lui, un compte non admis ecrit checked_in_at / rating / feedback en posant rsvp = ''declined'' dans la meme requete.'
+  FROM triggers_attendus t
+ WHERE NOT EXISTS (
+   SELECT 1 FROM pg_catalog.pg_trigger g
+     JOIN pg_catalog.pg_class c ON c.oid = g.tgrelid
+     JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+     JOIN pg_catalog.pg_proc f ON f.oid = g.tgfoid
+    WHERE n.nspname = 'public' AND c.relname = t.tbl AND NOT g.tgisinternal
+      AND g.tgname = t.trg AND g.tgenabled <> 'D' AND f.proname = t.fonction
+      AND (g.tgtype & 1) = 1 AND (g.tgtype & 2) = 2)
+UNION ALL
+SELECT 'D. triggers',
+       CASE WHEN NOT EXISTS (
+         SELECT 1 FROM triggers_attendus t WHERE NOT EXISTS (
+           SELECT 1 FROM pg_catalog.pg_trigger g
+             JOIN pg_catalog.pg_class c ON c.oid = g.tgrelid
+             JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+             JOIN pg_catalog.pg_proc f ON f.oid = g.tgfoid
+            WHERE n.nspname = 'public' AND c.relname = t.tbl AND NOT g.tgisinternal
+              AND g.tgname = t.trg AND g.tgenabled <> 'D' AND f.proname = t.fonction
+              AND (g.tgtype & 1) = 1 AND (g.tgtype & 2) = 2)
+       ) THEN 'OK' ELSE 'ECHEC' END,
+       'les 2 triggers d''admission sont actifs, BEFORE, FOR EACH ROW',
+       'Un AFTER ne peut rien corriger, un trigger desactive ne s''execute jamais.'
+UNION ALL
+SELECT 'D. triggers',
+       CASE WHEN EXISTS (
+         SELECT 1 FROM pg_catalog.pg_trigger g
+           JOIN pg_catalog.pg_class c ON c.oid = g.tgrelid
+           JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+          WHERE n.nspname = 'public' AND c.relname = 'event_attendees'
+            AND g.tgname = 'trg_event_attendees_admission'
+            AND (g.tgtype & 4) = 4 AND (g.tgtype & 16) = 16
+       ) THEN 'OK' ELSE 'ECHEC' END,
+       'le trigger d''inscription couvre INSERT ET UPDATE',
+       'L''INSERT compte autant : un upsert peut poser checked_in_at des la creation de la ligne.'
+UNION ALL
+SELECT 'D. triggers',
+       CASE WHEN EXISTS (
+         SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+          WHERE n.nspname = 'public' AND p.proname = 'events_admission_gardee'
+            AND pg_catalog.pg_get_functiondef(p.oid) LIKE '%author_id%'
+            AND pg_catalog.pg_get_functiondef(p.oid) LIKE '%cancelled%'
+       ) THEN 'OK' ELSE 'ECHEC' END,
+       'le trigger d''evenement garde author_id et n''autorise que l''annulation',
+       'La policy « Update organisateurs » n''a pas de WITH CHECK : sans ce trigger, un co-organisateur se declare auteur.'
 UNION ALL
 SELECT 'C. policies IRL',
        CASE WHEN NOT has_table_privilege('anon', 'public.events', 'INSERT')

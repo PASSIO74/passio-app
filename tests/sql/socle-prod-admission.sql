@@ -23,8 +23,15 @@ CREATE POLICY "Suppression propre" ON public.events
   FOR DELETE USING (author_id = (auth.uid())::text);
 -- Colonnes de prod que l'app écrit au check-in et au retour d'expérience :
 -- le banc les exerce (pointer = UPDATE avec rsvp = 'going').
+-- ⚠️ LES QUATRE, pas seulement deux. La prod porte `checked_in_at`, `rating`,
+-- `feedback` ET `rated_at` : ce sont exactement les colonnes de PREUVE que le
+-- trigger d'admission ramène à leur valeur d'avant. En oublier deux faisait
+-- lever le trigger (« record "new" has no field "feedback" ») — un socle
+-- infidèle qui accuse la migration.
 ALTER TABLE public.event_attendees ADD COLUMN IF NOT EXISTS checked_in_at TIMESTAMP;
 ALTER TABLE public.event_attendees ADD COLUMN IF NOT EXISTS rating SMALLINT;
+ALTER TABLE public.event_attendees ADD COLUMN IF NOT EXISTS feedback TEXT;
+ALTER TABLE public.event_attendees ADD COLUMN IF NOT EXISTS rated_at TIMESTAMPTZ;
 -- ⚠️ La prod accorde à `anon` la TOTALITÉ des droits (`arwdDxtm`) sur ces deux
 -- tables, pas seulement INSERT. Le socle #136 ne lui donnait que SELECT +
 -- INSERT : le banc prouvait alors que la migration retire l'INSERT, mais

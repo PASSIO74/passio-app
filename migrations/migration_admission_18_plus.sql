@@ -75,7 +75,9 @@ $prereq$;
 -- A. INTERRUPTEUR SERVEUR
 -- ============================================================================
 -- Une ligne par règle d'accès. Le client n'y a AUCUN accès (ni lecture ni
--- écriture) : il ne peut ni sonder ni basculer. Seuls `postgres` (SQL Editor,
+-- écriture) : il ne peut pas le BASCULER, ni lire cette table. Il en connaît le
+-- verdict LE CONCERNANT par `adult_access_status()`, ce qui est voulu — l'état de
+-- la règle n'est pas un secret. Seuls `postgres` (SQL Editor,
 -- psql) et `service_role` la voient. Une table plutôt qu'une constante dans une
 -- fonction : l'état se lit et se change en une requête, sans redéployer.
 CREATE TABLE IF NOT EXISTS public.access_policies (
@@ -163,8 +165,21 @@ GRANT EXECUTE ON FUNCTION public.adult_access_status() TO authenticated;
 -- Les policies permissives se combinent en OR : une policy INSERT/UPDATE
 -- inconnue annulerait la garde en silence. Comme #136, on REFUSE la migration
 -- plutôt que d'appliquer un verrou qui ne verrouille rien.
+-- ⚠️ `cmd = 'INSERT'` NE SUFFIT PAS. Une policy `FOR ALL` porte `cmd = 'ALL'` dans
+-- `pg_policies` : elle autorise l'INSERT et l'UPDATE tout en échappant à un garde
+-- qui ne cherche que 'INSERT'/'UPDATE'. Or « Enable all operations » est le
+-- gabarit que propose le tableau de bord Supabase — donc la dérive la PLUS
+-- probable, et celle que ce garde laissait passer en silence (relevé en revue
+-- adversariale, 2026-09-08 : migration acceptée, mineur inscrit, contrôles verts).
 DO $guard_events$
 BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_catalog.pg_policies
+     WHERE schemaname = 'public' AND tablename IN ('events', 'event_attendees')
+       AND cmd = 'ALL'
+  ) THEN
+    RAISE EXCEPTION 'policy FOR ALL sur events/event_attendees : migration refusee (elle couvre INSERT et UPDATE en echappant aux gardes)';
+  END IF;
   IF EXISTS (
     SELECT 1 FROM pg_catalog.pg_policies
      WHERE schemaname = 'public' AND tablename = 'events' AND cmd = 'INSERT'
@@ -201,14 +216,20 @@ CREATE POLICY "events_insert_author_adult" ON public.events
 REVOKE INSERT ON TABLE public.events FROM PUBLIC, anon;
 GRANT INSERT ON TABLE public.events TO authenticated;
 
--- S'inscrire : ligne à soi ET admis.
+-- S'inscrire : ligne à soi ET admis. `declined` est la seule exception, et elle
+-- doit valoir ici AUSSI, pas seulement sur l'UPDATE : un `upsert` PostgREST
+-- (`Prefer: resolution=merge-duplicates`, le `.upsert()` idiomatique de
+-- supabase-js) fait évaluer le WITH CHECK d'INSERT AVANT la branche ON CONFLICT.
+-- Sans cette exception, le jour où quelqu'un « simplifie » `supaSetEventRsvp` en
+-- un upsert, le retrait deviendrait impossible pour exactement les comptes que
+-- ce lot promet de laisser sortir — et aucun test ne rougirait.
 DROP POLICY IF EXISTS "Ecriture propre" ON public.event_attendees;
 DROP POLICY IF EXISTS "event_attendees_insert_own_adult" ON public.event_attendees;
 CREATE POLICY "event_attendees_insert_own_adult" ON public.event_attendees
   FOR INSERT TO authenticated
   WITH CHECK (
     user_id = ((SELECT auth.uid()))::text
-    AND public.adult_access_allowed()
+    AND (public.adult_access_allowed() OR rsvp = 'declined')
   );
 
 -- Changer d'avis : ligne à soi, et le NOUVEL état exige l'admission — SAUF le
@@ -228,6 +249,93 @@ REVOKE INSERT, UPDATE ON TABLE public.event_attendees FROM PUBLIC, anon;
 GRANT INSERT, UPDATE ON TABLE public.event_attendees TO authenticated;
 -- La policy DELETE « Suppression propre » (se désinscrire) est volontairement
 -- laissée telle quelle : le retrait n'est jamais conditionné.
+
+-- ⚠️ UN `WITH CHECK` NE VOIT QUE LA LIGNE FINALE, JAMAIS L'ANCIENNE. L'exception
+-- « declined » ouvrait donc bien plus que le retrait : un compte non admis
+-- écrivait `checked_in_at`, `rating`, `feedback` — c'est-à-dire une PREUVE DE
+-- PARTICIPATION — du moment que la même requête posait `rsvp = 'declined'`.
+--     UPDATE event_attendees SET checked_in_at = now(), rsvp = 'declined' → ACCEPTÉ
+-- Le pointage alimente « N sur place », le marqueur par participant et le badge
+-- « Fiable » ; la note entre dans la moyenne de l'événement. Reproduit en revue
+-- adversariale le 2026-09-08.
+--
+-- Seul un trigger voit OLD. Il ne REFUSE pas le retrait : il RAMÈNE les colonnes
+-- de preuve à leur valeur d'avant, pour que « je me retire » ne puisse jamais
+-- transporter autre chose que le retrait.
+CREATE OR REPLACE FUNCTION public.event_attendees_admission_gardee()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+BEGIN
+  -- Aucune session (postgres, service_role, tâches d'administration) : la règle
+  -- ne s'applique pas. Sans cette sortie, une purge ou une mesure administrative
+  -- se ferait effacer ses colonnes en silence.
+  IF auth.uid() IS NULL THEN RETURN NEW; END IF;
+  IF public.adult_access_allowed() THEN RETURN NEW; END IF;
+
+  IF TG_OP = 'INSERT' THEN
+    NEW.checked_in_at := NULL;
+    NEW.rating        := NULL;
+    NEW.feedback      := NULL;
+    NEW.rated_at      := NULL;
+  ELSE
+    NEW.checked_in_at := OLD.checked_in_at;
+    NEW.rating        := OLD.rating;
+    NEW.feedback      := OLD.feedback;
+    NEW.rated_at      := OLD.rated_at;
+    -- Ni déplacer sa ligne vers un autre événement, ni vers un autre compte.
+    NEW.event_id      := OLD.event_id;
+    NEW.user_id       := OLD.user_id;
+    NEW.created_at    := OLD.created_at;
+  END IF;
+  RETURN NEW;
+END
+$$;
+REVOKE EXECUTE ON FUNCTION public.event_attendees_admission_gardee() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS trg_event_attendees_admission ON public.event_attendees;
+CREATE TRIGGER trg_event_attendees_admission
+  BEFORE INSERT OR UPDATE ON public.event_attendees
+  FOR EACH ROW EXECUTE FUNCTION public.event_attendees_admission_gardee();
+
+-- ⚠️ `events` UPDATE N'ÉTAIT GARDÉ NULLE PART. La policy de production
+-- « Update organisateurs » n'a AUCUN `WITH CHECK` : PostgreSQL réutilise alors
+-- le `USING`, et `author_id` devient réassignable. Un co-organisateur — promu
+-- par un geste produit ordinaire — se déclarait auteur, puis déplaçait la date,
+-- le lieu, ou réactivait un événement annulé. Reproduit en revue adversariale.
+--
+-- Deux règles, et une seule dépend de l'interrupteur :
+--   ① `author_id` est IMMUABLE pour qui n'est pas l'auteur courant. Vraie en
+--      toutes circonstances : aucun chemin client n'écrit `author_id` sur une
+--      édition (`_eventRow` ne le porte pas), c'est un durcissement assumé et
+--      c'est la SEULE chose que ce lot change quand l'interrupteur est éteint.
+--   ② Un compte non admis ne modifie plus son événement, sauf pour l'ANNULER —
+--      le pendant, côté organisateur, du droit de retrait.
+CREATE OR REPLACE FUNCTION public.events_admission_gardee()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+BEGIN
+  IF auth.uid() IS NULL THEN RETURN NEW; END IF;
+
+  IF NEW.author_id IS DISTINCT FROM OLD.author_id
+     AND OLD.author_id IS DISTINCT FROM (auth.uid())::text THEN
+    RAISE EXCEPTION 'author_id ne peut etre reassigne que par l''auteur courant'
+      USING ERRCODE = 'check_violation';
+  END IF;
+
+  IF public.adult_access_allowed() THEN RETURN NEW; END IF;
+
+  IF NEW.status = 'cancelled' AND OLD.author_id = (auth.uid())::text THEN
+    RETURN NEW;
+  END IF;
+
+  RAISE EXCEPTION 'modification d''un evenement refusee : admission requise'
+    USING ERRCODE = 'check_violation';
+END
+$$;
+REVOKE EXECUTE ON FUNCTION public.events_admission_gardee() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS trg_events_admission ON public.events;
+CREATE TRIGGER trg_events_admission
+  BEFORE UPDATE ON public.events
+  FOR EACH ROW EXECUTE FUNCTION public.events_admission_gardee();
 
 -- Rejoindre la conversation d'une rencontre : mêmes preuves qu'en #136, plus
 -- l'admission. Corps de #136 recopié, une ligne ajoutée (la dernière).
@@ -272,6 +380,10 @@ COMMIT;
 --   DROP POLICY IF EXISTS "event_attendees_update_own_adult" ON public.event_attendees;
 --   CREATE POLICY "Maj de sa propre participation" ON public.event_attendees FOR UPDATE
 --     USING (user_id = (auth.uid())::text) WITH CHECK (user_id = (auth.uid())::text);
+--   DROP TRIGGER IF EXISTS trg_event_attendees_admission ON public.event_attendees;
+--   DROP TRIGGER IF EXISTS trg_events_admission ON public.events;
+--   DROP FUNCTION IF EXISTS public.event_attendees_admission_gardee();
+--   DROP FUNCTION IF EXISTS public.events_admission_gardee();
 --   -- can_join_event_conversation : réappliquer la définition de migration_ts_serveur_age_blocage.sql
 --   DROP FUNCTION IF EXISTS public.adult_access_status();
 --   DROP FUNCTION IF EXISTS public.adult_access_allowed();

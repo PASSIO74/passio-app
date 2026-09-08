@@ -10,7 +10,7 @@ Fichiers du lot :
 | `migrations/migration_admission_18_plus.sql` | la migration, atomique et idempotente |
 | `migrations/preflight_admission_18_plus.sql` | diagnostic **avant** application (lecture seule) |
 | `migrations/controles_post_admission_18_plus.sql` | vérification de l'état atteint **après** (lecture seule) |
-| `tests/sql/migration-admission-18-plus.test.sh` | le banc : 99 contrôles, gate CI |
+| `tests/sql/migration-admission-18-plus.test.sh` | le banc : 133 contrôles, gate CI |
 | `tests/sql/socle-prod-admission.sql` | addendum au socle #136 (policies UPDATE/DELETE réelles) |
 
 ---
@@ -42,10 +42,27 @@ Trois gestes exigent l'admission :
 | rejoindre la conversation de groupe | `can_join_event_conversation()` | policy INSERT de `conv_members` (#136) |
 
 Et **un geste ne l'exige jamais : le RETRAIT.** Passer en `declined` et supprimer sa ligne
-restent permis à tout le monde. Un compte que la règle rattrape — inscrit avant l'allumage,
-ou dont l'année déclarée le rend mineur — doit pouvoir sortir ; il ne doit jamais pouvoir
-revenir, ni pointer son arrivée (le check-in réécrit `rsvp = 'going'`, il est donc couvert
-par la même policy UPDATE).
+restent permis à tout le monde, y compris par `upsert` (l'exception vaut sur l'INSERT comme
+sur l'UPDATE). Un compte que la règle rattrape — inscrit avant l'allumage, ou dont l'année
+déclarée le rend mineur — doit pouvoir sortir ; il ne doit jamais pouvoir revenir.
+
+⚠️ **Un `WITH CHECK` ne voit que la ligne finale, jamais l'ancienne.** L'exception
+« declined » ouvrait donc bien plus que le retrait : un compte non admis écrivait
+`checked_in_at`, `rating` et `feedback` — une preuve de participation — du moment que la
+même requête posait `rsvp = 'declined'`. Le pointage alimente « N sur place » et le badge
+« Fiable » ; la note entre dans la moyenne. Seul un trigger voit `OLD` :
+`trg_event_attendees_admission` (BEFORE INSERT OR UPDATE) ramène ces colonnes à leur valeur
+d'avant au lieu de refuser, pour que « je me retire » ne puisse jamais transporter autre
+chose que le retrait. Défaut trouvé en revue adversariale, reproduit, corrigé, verrouillé.
+
+⚠️ **Organiser ne se résume pas à l'INSERT.** La policy de production
+« Update organisateurs » n'a aucun `WITH CHECK` : PostgreSQL réutilise alors son `USING`, et
+`author_id` devenait réassignable — un co-organisateur, promu par un geste produit ordinaire,
+se déclarait auteur puis déplaçait date et lieu. `trg_events_admission` pose deux règles :
+`author_id` est immuable pour qui n'est pas l'auteur courant (vrai **en toutes
+circonstances**, seul point que ce lot change interrupteur éteint), et un compte non admis ne
+modifie plus son événement sauf pour l'**annuler** — le pendant, côté organisateur, du droit
+de retrait.
 
 **Est admis** un compte connecté dont `user_safety.majority_at <= CURRENT_DATE`. Cette date
 vient de #136 : elle est dérivée par le serveur du **31 décembre de l'année des 18 ans** à
@@ -82,7 +99,10 @@ règle, elle ne l'ouvre pas. Le banc l'éprouve (section ⑤) et les contrôles 
 le disent (ligne `A. interrupteur` → `ABSENT`).
 
 La table `access_policies` n'est lisible ni écrivable par `anon` ni par `authenticated` :
-aucun GRANT, aucune policy, RLS active. Le client ne peut ni sonder l'état ni le changer.
+aucun GRANT, aucune policy, RLS active. Le client ne peut pas **basculer** l'interrupteur
+ni lire cette table. Il en connaît en revanche le verdict **le concernant** par
+`adult_access_status()`, et c'est voulu : l'état de la règle n'est pas un secret, c'est ce
+qui permet de montrer la bonne porte avant le refus.
 
 ## 5. Ce que le client peut demander
 
@@ -152,6 +172,14 @@ elle ne suffit pas.
    écrire (la policy INSERT de `conv_messages` teste l'appartenance, pas
    l'admission). Le jour de l'allumage, cela concerne les adhésions existantes ;
    les retirer serait une décision produit distincte, pas un effet de bord.
+6 quater. **La branche « créateur » de `conv_members` n'est pas gardée.** L'admission entre
+   par `can_join_event_conversation`, qui ne couvre que le self-join. Un organisateur adulte
+   peut donc ajouter n'importe qui, mineur compris, au groupe de sa rencontre. Le fermer
+   demanderait un prédicat sur la majorité **d'un tiers**, et toute fonction appelée par une
+   policy doit être exécutable par le rôle appelant — elle deviendrait donc un RPC, c'est-à-dire
+   un oracle sur l'âge d'autrui. Le geste correct est de la poser dans un schéma non exposé
+   (`migrations/migration_fonctions_rls_hors_schema_expose.sql`, écrite le 2026-09-03, jamais
+   appliquée). Limite assumée, pas un oubli.
 6 ter. **`anon` garde UPDATE et DELETE** sur `events` et `event_attendees` : la
    migration ne lui retire que l'INSERT. Ces droits sont inopérants — leurs
    policies exigent `auth.uid()`, NULL sans session — mais ils sont là, et le
@@ -164,19 +192,18 @@ elle ne suffit pas.
 
 ## 8. Ce qui a été éprouvé, et comment
 
-`bash tests/sql/migration-admission-18-plus.test.sh` — **99 contrôles, 0 échec**, sur un
+`bash tests/sql/migration-admission-18-plus.test.sh` — **133 contrôles, 0 échec**, sur un
 PostgreSQL 16 jetable, socle recopié des policies réelles de production. Gate CI (job
 « Audits statiques et bancs serveur »).
 
-Sept sections : atomicité (une policy inconnue annule tout, y compris ce qui précédait) ·
-interrupteur éteint (comportement d'avant pour majeur, mineur et inconnu) · idempotence
-(rejouée, elle ne rétrograde jamais un interrupteur allumé) · interrupteur allumé (les six
-cas décidables, la porte qui s'ouvre par la déclaration, le retrait permis et le retour
-interdit, la conversation qui suit) · fail-closed (ligne supprimée = exigé) · **11
-mutations** (chaque garde retirée doit rendre son test rouge) · **19 contrôles
-d'exploitation** confrontés à chaque faux vert connu.
+Sept sections : atomicité · interrupteur éteint (comportement d'avant pour majeur, mineur
+et inconnu) · idempotence · interrupteur allumé (les cas décidables, la porte qui s'ouvre
+par la déclaration, le retrait permis et le retour interdit, le pointage et la note
+inaccessibles à un non admis, l'édition d'événement gardée, la conversation qui suit) ·
+fail-closed · **14 mutations** (chaque garde retirée doit rendre son test rouge) · **26
+contrôles d'exploitation** confrontés à chaque faux vert connu.
 
-Deux défauts ont été trouvés **en exécutant** le banc, pas en le relisant :
+Défauts trouvés **en exécutant**, pas en relisant :
 
 - une sonde faisait un `UPDATE` sur un compte sans ligne `user_safety` : zéro ligne touchée,
   aucune erreur, et la mutation « comparaison relâchée à l'année » paraissait détectée alors
@@ -184,6 +211,20 @@ Deux défauts ont été trouvés **en exécutant** le banc, pas en le relisant :
 - la même mutation est **indétectable le 31 décembre** (la date-témoin est atteinte ce
   jour-là). Le banc le détecte à l'exécution et saute les deux contrôles concernés en le
   disant, plutôt que de compter un vert qui n'en est pas un.
+- le socle du banc divergeait de la production sur six points (co-organisateurs, policy
+  SELECT en doublon, GRANTs de `anon`, colonnes `feedback` et `rated_at`). Corrigés dans
+  l'addendum, jamais dans `socle-prod.sql`, pour ne pas déplacer les prémisses du banc #136.
+- une assertion affirmait qu'un auteur peut céder son événement : c'est **faux**, la policy
+  le refuse déjà. Le test dit désormais le vrai — et prouve au passage que le trigger ne
+  retire aucun geste légitime.
+
+Défauts trouvés par la **revue adversariale** du 2026-09-08, tous reproduits par exécution
+et tous corrigés ici : l'échappatoire « declined » (§2), l'édition d'événement non gardée
+(§2), les policies `FOR ALL` invisibles des gardes et des contrôles (`cmd = 'ALL'`, le
+gabarit « Enable all operations » du tableau de bord), le préflight qui échouait au *parse*
+sur la base même qu'il doit diagnostiquer, le compteur du banc qui rendait « aucun échec »
+quand le fichier de contrôle partait en erreur, l'upsert qui fermait le retrait, et le
+`USING` d'une policy que nul contrôle ne lisait.
 
 Le banc #136 reste vert (86 contrôles) : la redéfinition de `can_join_event_conversation`
 n'y touche pas, il n'applique pas cette migration.

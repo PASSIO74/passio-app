@@ -17,7 +17,15 @@
 
 WITH
 policies_inconnues AS (
-  SELECT 'events INSERT' AS point, policyname
+  -- ⚠️ `FOR ALL` porte `cmd = 'ALL'` : elle couvre INSERT et UPDATE tout en
+  -- echappant a un garde qui ne cherche que 'INSERT'/'UPDATE'. C'est le gabarit
+  -- « Enable all operations » du tableau de bord Supabase, donc la derive la
+  -- plus probable. Elle est listee en premier.
+  SELECT 'events/event_attendees FOR ALL' AS point, policyname
+    FROM pg_catalog.pg_policies
+   WHERE schemaname = 'public' AND tablename IN ('events', 'event_attendees') AND cmd = 'ALL'
+  UNION ALL
+  SELECT 'events INSERT', policyname
     FROM pg_catalog.pg_policies
    WHERE schemaname = 'public' AND tablename = 'events' AND cmd = 'INSERT'
      AND policyname NOT IN ('Ecriture propre', 'events_insert_author_adult')
@@ -114,12 +122,23 @@ SELECT '3. effet de l''allumage', 'AVERTISSEMENT',
 HAVING COUNT(*) > 0
 
 -- 4. Idempotence : ce que la migration va reprendre plutot que creer.
+--
+-- ⚠️ CE FICHIER DOIT S'EXECUTER SUR UNE BASE **PAS ENCORE MIGREE** — c'est sa
+-- raison d'etre. Une reference STATIQUE a `public.access_policies` faisait donc
+-- echouer le fichier ENTIER au PARSE (`relation does not exist`), avant tout
+-- `WHERE` : aucune ligne rendue, ni BLOQUANT, ni le comptage des comptes non
+-- declares, qui est LE chiffre a regarder avant de decider. Un `WHERE
+-- to_regclass(...) IS NOT NULL` ne protege de rien : l'analyseur passe avant.
+-- Defaut releve en revue adversariale (2026-09-08) ; le banc ne pouvait pas le
+-- voir, il ne lancait ce fichier que sur une base DEJA migree.
+--
+-- L'etat de l'interrupteur appartient de toute facon a l'APRES : il est dit par
+-- `controles_post_admission_18_plus.sql`. Ici, on ne rapporte que la PRESENCE.
 UNION ALL
 SELECT '4. idempotence', 'INFO',
-       'public.access_policies existe deja — irl_adult_only = ' || COALESCE((
-         SELECT CASE WHEN p.enabled THEN 'ALLUME' ELSE 'eteint' END
-           FROM public.access_policies p WHERE p.key = 'irl_adult_only'), 'LIGNE ABSENTE (= exige)'),
-       'CREATE TABLE IF NOT EXISTS + INSERT ... DO NOTHING : l''etat de l''interrupteur est conserve.'
+       'public.access_policies existe deja',
+       'CREATE TABLE IF NOT EXISTS + INSERT ... DO NOTHING : l''etat de l''interrupteur est conserve. '
+       || 'Son etat ALLUME/eteint est rendu par controles_post_admission_18_plus.sql.'
  WHERE to_regclass('public.access_policies') IS NOT NULL
 UNION ALL
 SELECT '4. idempotence', 'INFO', 'les policies d''admission existent deja',
