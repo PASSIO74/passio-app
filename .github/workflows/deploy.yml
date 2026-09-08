@@ -292,6 +292,14 @@ jobs:
       - name: Banc Admission 18+ (RLS, PostgreSQL jetable)
         run: bash tests/sql/migration-admission-18-plus.test.sh
 
+      # Cloisonnement de la LECTURE des pieces jointes de messagerie. La policy
+      # de production laisse aujourd'hui n'importe qui — visiteur sans compte
+      # compris — lister et lire le seau `attachments`. Le banc mesure d'abord
+      # ce defaut, applique la migration, puis exige qu'un tiers ne voie plus
+      # que SA conversation. Il ne touche aucune base reelle.
+      - name: Banc Storage — lecture cloisonnee (PostgreSQL jetable)
+        run: bash tests/sql/migration-storage-lecture.test.sh
+
       # La migration du referentiel plat, EXECUTEE deux fois sur un PostgreSQL
       # jetable : idempotence, preservation des 19 identifiants historiques,
       # RLS en lecture seule sur le referentiel, et retour arriere.
