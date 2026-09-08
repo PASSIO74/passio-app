@@ -61,6 +61,10 @@ async function remplirInscription(page, email = "nouvelle@exemple.com") {
   await page.locator("#authPassword").fill("motdepasse123");
   await page.locator("#authPasswordConfirm").fill("motdepasse123");
   await page.locator("#authPhone").fill("0612345678");
+  // Consentement aux CGU : condition d'inscription depuis le 2026-09-08.
+  // On coche par un CLIC, comme une personne le ferait — un `.check()` sur un
+  // élément masqué passerait là où le parcours réel échouerait.
+  await page.locator("#authConsent").click();
   await page.locator("#authSubmitBtn").click();
 }
 

@@ -2564,12 +2564,15 @@ function openAbout() {
     </div>\
     <div style="font-size:13px;color:var(--text);line-height:1.6;margin-bottom:14px;">Le premier réseau social pensé pour tes passions. Crée, partage, rencontre — autour de ce qui t\'anime vraiment.</div>\
     <div style="font-size:11px;color:var(--muted);line-height:1.5;">\
-      PASSIO SAS · France<br>\
-      contact@passio.app<br>\
-      passio.app<br><br>\
+      ' + _champEditeur("raisonSociale") + '<br>\
+      ' + escapeHtml(PASSIO_EDITEUR.email) + '<br>\
+      ' + escapeHtml(PASSIO_EDITEUR.site) + '<br><br>\
       Fondé avec ❤️ par des passionnés.\
     </div>\
-    <button class="btn primary block" onclick="closeModal()" style="margin-top:14px;">Fermer</button>\
+    <div style="display:flex;gap:8px;margin-top:14px;">\
+      <button class="btn block" onclick="openLegalNotice()" style="flex:1;">Mentions légales</button>\
+      <button class="btn primary block" onclick="closeModal()" style="flex:1;">Fermer</button>\
+    </div>\
   ');
 }
 
@@ -3167,6 +3170,123 @@ function openPrivacyPolicy() {
   ');
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// TEXTES LÉGAUX — CGU, MENTIONS LÉGALES, CONSENTEMENT À L'INSCRIPTION
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// ⚠️ L'IDENTITÉ DE L'ÉDITEUR NE S'INVENTE PAS, ET ELLE N'A QU'UNE SEULE SOURCE.
+// `openAbout()` affichait « PASSIO SAS · France · contact@passio.app », trois
+// informations qu'aucun document du dépôt n'établit — et dont la dernière
+// contredit l'adresse réelle donnée par la politique de confidentialité. Une
+// mention légale FAUSSE est plus grave qu'une mention légale visiblement
+// inachevée : la première trompe, la seconde se complète. Tout champ laissé
+// vide ci-dessous s'affiche donc « [à compléter] » EN CLAIR, à l'écran, dans
+// les trois surfaces qui le lisent (mentions légales, CGU, À propos).
+//
+// Les champs obligatoires viennent de la LCEN (art. 6-III) pour un éditeur
+// professionnel : raison sociale, forme juridique, capital, siège, RCS/SIRET,
+// TVA intracommunautaire, directeur de la publication, et l'identité de
+// l'hébergeur. Ils sont à renseigner ICI, une fois, avant l'ouverture au
+// public — jamais recopiés dans un texte.
+const PASSIO_EDITEUR = {
+  service: "PASSIO",
+  site: "passio-app.netlify.app",
+  email: "contact@ladamemetallerie.com",
+  // À renseigner avant l'ouverture au public :
+  raisonSociale: "",
+  formeJuridique: "",
+  capital: "",
+  siege: "",
+  rcs: "",
+  siret: "",
+  tvaIntra: "",
+  directeurPublication: "",
+  // Hébergeurs : les NOMS sont vérifiés, les adresses postales complètes
+  // restent à recopier depuis les contrats (elles ne se devinent pas).
+  hebergeurSite: "Netlify, Inc. — San Francisco, Californie, États-Unis — netlify.com",
+  hebergeurDonnees: "Supabase, Inc. — supabase.com (hébergement des données applicatives)",
+};
+
+// Version du contrat acceptée à l'inscription. Toute réécriture de fond des CGU
+// change cette valeur : c'est elle qui permet de savoir QUI a accepté QUOI.
+const PASSIO_CGU_VERSION = "2026-09-08";
+
+// Rend un champ d'identité, ou un marqueur VISIBLE quand il n'est pas renseigné.
+function _champEditeur(cle) {
+  var v = "";
+  try { v = (PASSIO_EDITEUR && PASSIO_EDITEUR[cle]) || ""; } catch (e) {}
+  if (!v) return '<em style="color:#b45309;font-style:normal;font-weight:700;">[à compléter]</em>';
+  return escapeHtml(String(v));
+}
+
+function _legalTitre(t) {
+  return '<strong style="color:var(--text);">' + escapeHtml(t) + '</strong> ';
+}
+
+// ---------------------------------------------------------------------------
+// Conditions générales d'utilisation
+// ---------------------------------------------------------------------------
+function openTermsOfService() {
+  var p = function (titre, corps) {
+    return '<p style="margin:0 0 10px;">' + _legalTitre(titre) + corps + '</p>';
+  };
+  openModal(
+    '<div class="modal-handle"></div>' +
+    '<div class="modal-title">Conditions générales d\'utilisation</div>' +
+    '<div style="font-size:12.5px;color:var(--muted);line-height:1.65;max-height:55vh;overflow-y:auto;padding-right:4px;">' +
+      '<p style="margin:0 0 10px;"><strong style="color:var(--text);">Version du ' + escapeHtml(PASSIO_CGU_VERSION) + ' — service ' + escapeHtml(PASSIO_EDITEUR.service) + '</strong></p>' +
+      p("1. Objet.", "Les présentes conditions régissent l’accès et l’utilisation de PASSIO, réseau social dédié aux passions, accessible à l’adresse " + escapeHtml(PASSIO_EDITEUR.site) + ". Créer un compte vaut acceptation pleine et entière de ce texte. L’éditeur du service est " + _champEditeur("raisonSociale") + " (voir les mentions légales).") +
+      p("2. Accès au service.", "Le service est fourni gratuitement, en l’état, pendant sa phase de test. Il peut être protégé par un code d’accès, évoluer, être suspendu ou interrompu sans préavis. Aucune continuité de service n’est garantie.") +
+      p("3. Inscription.", "L’inscription est réservée aux personnes de <strong style=\"color:var(--text);\">13 ans révolus</strong> et suppose une adresse e-mail valide, que tu confirmes en cliquant sur le lien reçu. Tu t’engages à fournir des informations exactes, à ne créer qu’un seul compte et à garder ton mot de passe confidentiel. Toute activité effectuée depuis ton compte est réputée être la tienne.") +
+      p("4. Tes contenus.", "Tu restes propriétaire de tout ce que tu publies (textes, photos, vidéos, sons, messages). Tu accordes à PASSIO le droit, gratuit et non exclusif, d’héberger, d’afficher et de transmettre ces contenus <em>aux seules fins de faire fonctionner le service</em>, pour la durée de leur publication. Supprimer un contenu ou ton compte met fin à ce droit. Tu garantis détenir les droits sur ce que tu publies et disposer de l’accord des personnes reconnaissables.") +
+      p("5. Règles de conduite.", "Sont interdits : la haine, le harcèlement, les menaces, la discrimination ; les contenus sexuels explicites ou violents ; la mise en danger d’un mineur ; l’atteinte à la vie privée d’autrui (publier ses coordonnées, ses images ou ses messages sans son accord) ; la contrefaçon ; l’usurpation d’identité ; le démarchage, le spam et l’automatisation ; toute tentative de contourner les mesures de sécurité ou d’accéder aux données d’autres membres.") +
+      p("6. Signalement et modération.", "Chaque publication, commentaire et profil peut être signalé, et chaque compte bloqué, depuis l’application. Les signalements sont examinés dans les meilleurs délais. Selon la gravité, l’éditeur peut retirer un contenu, avertir, suspendre ou supprimer un compte. Un contenu manifestement illicite peut être retiré sans préavis. Tu peux contester une décision par e-mail à " + escapeHtml(PASSIO_EDITEUR.email) + ".") +
+      p("7. Rencontres en vrai.", "Les rencontres proposées dans l’onglet « Rencontrer » sont organisées par leurs auteurs, jamais par PASSIO. L’éditeur n’est pas partie à ces rendez-vous, ne vérifie ni l’identité ni les intentions des participants, et ne saurait être tenu responsable de ce qui s’y produit. La participation à une rencontre est réservée aux personnes <strong style=\"color:var(--text);\">majeures</strong> et suppose une déclaration d’âge. Préviens un proche, choisis un lieu public, reste prudent.") +
+      p("8. Données personnelles.", "Le traitement de tes données est décrit dans la politique de confidentialité, qui fait partie intégrante des présentes.") +
+      p("9. Propriété du service.", "La marque PASSIO, son interface, ses textes et son code restent la propriété de l’éditeur. Aucune reproduction n’est autorisée sans accord écrit.") +
+      p("10. Responsabilité.", "PASSIO est un hébergeur de contenus au sens de la LCEN : il n’est pas responsable des contenus publiés par ses membres, mais les retire dès qu’il a connaissance de leur caractère manifestement illicite. Le service étant fourni gratuitement et en phase de test, la responsabilité de l’éditeur ne peut être engagée pour une perte de données, une indisponibilité ou un dommage indirect. Rien dans ce paragraphe n’écarte la responsabilité qui ne peut l’être en droit français.") +
+      p("11. Fin du contrat.", "Tu peux supprimer ton compte à tout moment depuis Paramètres → Compte, sans motif et sans frais. L’éditeur peut résilier ton accès en cas de manquement grave aux présentes.") +
+      p("12. Modification.", "Les présentes peuvent évoluer. Toute modification substantielle est portée à ta connaissance dans l’application ; la poursuite de l’utilisation vaut acceptation.") +
+      p("13. Droit applicable.", "Droit français. En cas de litige, une solution amiable sera recherchée en priorité à l’adresse " + escapeHtml(PASSIO_EDITEUR.email) + ". À défaut, les tribunaux français sont compétents. Un consommateur peut recourir gratuitement à un médiateur de la consommation et à la plateforme européenne de règlement en ligne des litiges (ec.europa.eu/consumers/odr).") +
+    '</div>' +
+    '<div style="display:flex;gap:8px;margin-top:14px;">' +
+      '<button class="btn block" onclick="openLegalNotice()" style="flex:1;">Mentions légales</button>' +
+      '<button class="btn primary block" onclick="closeModal()" style="flex:1;">J\'ai compris</button>' +
+    '</div>'
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Mentions légales
+// ---------------------------------------------------------------------------
+function openLegalNotice() {
+  var p = function (titre, corps) {
+    return '<p style="margin:0 0 10px;">' + _legalTitre(titre) + corps + '</p>';
+  };
+  openModal(
+    '<div class="modal-handle"></div>' +
+    '<div class="modal-title">Mentions légales</div>' +
+    '<div style="font-size:12.5px;color:var(--muted);line-height:1.65;max-height:55vh;overflow-y:auto;padding-right:4px;">' +
+      p("Éditeur du service.",
+        _champEditeur("raisonSociale") + ' — ' + _champEditeur("formeJuridique") +
+        ', capital social ' + _champEditeur("capital") +
+        '.<br>Siège social : ' + _champEditeur("siege") +
+        '.<br>RCS : ' + _champEditeur("rcs") +
+        ' — SIRET : ' + _champEditeur("siret") +
+        ' — TVA intracommunautaire : ' + _champEditeur("tvaIntra") + '.') +
+      p("Directeur de la publication.", _champEditeur("directeurPublication") + '.') +
+      p("Contact.", escapeHtml(PASSIO_EDITEUR.email) + ' — le moyen le plus rapide de joindre l’éditeur, y compris pour signaler un contenu ou exercer tes droits.') +
+      p("Hébergement du site.", escapeHtml(PASSIO_EDITEUR.hebergeurSite) + '.') +
+      p("Hébergement des données.", escapeHtml(PASSIO_EDITEUR.hebergeurDonnees) + '.') +
+      p("Signalement d’un contenu illicite.", 'Un contenu peut être signalé directement dans l’application (menu « ⋯ » d’une publication ou d’un profil) ou par e-mail à ' + escapeHtml(PASSIO_EDITEUR.email) + '. Conformément à l’article 6-I-5 de la LCEN, un signalement gagne à préciser la date, la description du contenu, son emplacement et le motif invoqué.') +
+      p("Propriété intellectuelle.", 'La marque, le logo, l’interface et le code du service sont protégés. Les contenus publiés par les membres restent la propriété de leurs auteurs.') +
+      p("Données personnelles.", 'Voir la politique de confidentialité, accessible depuis Paramètres → Support. Réclamation possible auprès de la CNIL (cnil.fr).') +
+      '<p style="margin:0;font-size:11.5px;">Conditions générales d’utilisation : accessibles depuis Paramètres → Support et depuis l’écran de création de compte.</p>' +
+    '</div>' +
+    '<button class="btn primary block" onclick="closeModal()" style="margin-top:14px;">Fermer</button>'
+  );
+}
+
 document.addEventListener("click", (e) => {
   if (!e.target.closest(".hamburger") && !e.target.closest(".dev-panel")) {
     $("#devPanel").classList.remove("active");
@@ -3239,6 +3359,11 @@ function switchAuthTab(mode) {
   document.getElementById("authPasswordConfirmWrap").style.display = mode === "signup" ? "" : "none";
   const phoneWrap = document.getElementById("authPhoneWrap");
   if (phoneWrap) phoneWrap.style.display = mode === "signup" ? "" : "none";
+  // ⚠️ `flex`, PAS `""` : `label.field` est `display:block` en CSS, et la case
+  // de consentement a besoin d'une rangée (case + texte). Rendre la main au CSS
+  // remettrait le texte SOUS la case, sur toute la largeur.
+  const consentWrap = document.getElementById("authConsentWrap");
+  if (consentWrap) consentWrap.style.display = mode === "signup" ? "flex" : "none";
   document.getElementById("authSubmitBtn").textContent = mode === "signin" ? "Se connecter" : "Créer mon compte";
   // "Mot de passe oublié ?" pertinent uniquement en connexion
   const forgot = document.getElementById("authForgotLink");
@@ -3322,6 +3447,13 @@ async function onbResendConfirmation() {
 // → Providers → Google). Le retour est géré par onAuthStateChange (boot, app-08)
 // qui voit le flag passio_oauth_pending et finalise l'entrée dans l'app.
 async function onbGoogleAuth() {
+  // Le bouton Google est unique pour les deux modes : en création de compte, il
+  // forme le même contrat que le formulaire, donc il exige le même accord. En
+  // connexion, le compte existe déjà et rien n'est redemandé.
+  if (_authMode === "signup" && !document.getElementById("authConsent")?.checked) {
+    _showAuthMsg("Pour créer ton compte, accepte les conditions générales et la politique de confidentialité.", "error");
+    return;
+  }
   try {
     try { localStorage.setItem("passio_oauth_pending", "1"); } catch (e) {}
     const { error } = await supa.auth.signInWithOAuth({
@@ -3422,6 +3554,15 @@ async function onbDoAuth() {
     const digits = phone.replace(/\D/g, "");
     if (digits.length < 8 || digits.length > 15) { _showAuthMsg("Numéro de téléphone invalide.", "error"); return; }
   }
+  // ⚠️ LE CONSENTEMENT EST UNE CONDITION D'INSCRIPTION, PAS UNE DÉCORATION.
+  // Il est demandé au SEUL moment où un contrat se forme (la création de
+  // compte) : l'exiger à la connexion redemanderait son accord à quelqu'un qui
+  // l'a déjà donné. La case n'est à l'écran qu'en mode `signup` (switchAuthTab),
+  // donc en mode `signin` cette garde ne peut pas se déclencher.
+  if (_authMode === "signup" && !document.getElementById("authConsent")?.checked) {
+    _showAuthMsg("Pour créer ton compte, accepte les conditions générales et la politique de confidentialité.", "error");
+    return;
+  }
 
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="auth-loading"></span>' + (_authMode === "signin" ? "Connexion…" : "Création…"); }
 
@@ -3440,6 +3581,9 @@ async function onbDoAuth() {
           state.user = state.user || {};
           state.user.general = state.user.general || {};
           state.user.general.phone = phone;
+          // Qui a accepté QUOI, et QUAND. Sans la version, une réécriture des
+          // CGU rendrait la trace inexploitable : « a accepté » ne dit rien.
+          state.user.cgu = { version: PASSIO_CGU_VERSION, acceptedAt: new Date().toISOString() };
         }
       } catch (e) {}
     }
