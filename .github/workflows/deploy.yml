@@ -300,6 +300,13 @@ jobs:
       - name: Banc Storage — lecture cloisonnee (PostgreSQL jetable)
         run: bash tests/sql/migration-storage-lecture.test.sh
 
+      # Adresse, telephone et liste des participants d'une rencontre : le banc
+      # mesure d'abord le defaut sur les policies REELLES de prod, applique la
+      # migration, puis exige qu'un visiteur sans compte garde le titre, la ville
+      # et la carte, et perde l'adresse, le contact et les participants.
+      - name: Banc Rencontres — donnees privees (PostgreSQL jetable)
+        run: bash tests/sql/migration-irl-donnees-privees.test.sh
+
       # La migration du referentiel plat, EXECUTEE deux fois sur un PostgreSQL
       # jetable : idempotence, preservation des 19 identifiants historiques,
       # RLS en lecture seule sur le referentiel, et retour arriere.

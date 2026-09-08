@@ -124,6 +124,15 @@ Mesuré en production : la policy `passio_media_read` de `storage.objects` étai
 ⚠️ Le seau `content` reste lisible par tous, délibérément : il porte les médias publics du fil, qu'un visiteur sans compte doit voir. Limite assumée : une publication d'un compte PRIVÉ y est donc lisible par URL — autre lot.
 Verrou : `tests/sql/migration-storage-lecture.test.sh` (22 contrôles, gate CI), qui mesure d'ABORD le défaut sur la policy réelle de prod, puis le referme, puis éprouve 4 mutations.
 
+## 📍 RENCONTRES — adresse, téléphone et participants n'étaient PAS privés (2026-09-08)
+
+Audit IRL-01/IRL-03 (P1), vérifié en production : `events` et `event_attendees` sont lisibles par `anon` (policy `USING (true)` + GRANT de table). **L'adresse exacte du rendez-vous, le téléphone de l'organisateur et la liste NOMINATIVE des participants d'une rencontre physique sont lisibles sans compte, par un simple appel REST.**
+`migrations/migration_irl_donnees_privees.sql` (**ÉCRITE, NON APPLIQUÉE**) laisse `events` lisible sans compte — c'est le parcours d'entrée du produit — mais retire à `anon` les colonnes `address` et `contact`, et réserve `event_attendees` aux comptes connectés.
+⚠️ **ON NE PEUT PAS RETIRER UNE COLONNE D'UN GRANT DE TABLE** : PostgreSQL ne soustrait pas un privilège de colonne à un privilège de table. Il faut `REVOKE SELECT ON TABLE … FROM anon` puis `GRANT SELECT (col, col, …)`. La liste est EXHAUSTIVE, et c'est voulu : une colonne ajoutée demain est PRIVÉE tant que personne ne l'a déclarée publique.
+⚠️ **`select("*")` EST LE PIÈGE DU LOT.** PostgREST refuse la requête ENTIÈRE (42501) dès qu'une seule colonne manque au rôle : un `*` ne masque pas deux champs, il fait disparaître TOUTES les rencontres pour tout visiteur. `supaLoadEvents` demande donc `_EVENT_COLS_PUBLIC` / `_EVENT_COLS_PRIVE` en toutes lettres, avec repli mémorisé sur la liste publique au premier refus. **Toute colonne ajoutée à `events` doit l'être aux DEUX endroits** — le banc ④ ter compare les deux listes à l'octet près.
+⚠️ `lat`/`lng` restent lisibles sans compte : la carte est l'écran d'entrée d'un visiteur. Décision assumée, pas un oubli — la fermer demande une position approchée pour les non-inscrits, donc un autre lot. `event_comments` et `event_reactions` restent publics eux aussi.
+Verrou : `tests/sql/migration-irl-donnees-privees.test.sh` (22 contrôles, gate CI), qui mesure d'ABORD le défaut, puis le referme, puis éprouve 3 mutations dont « le GRANT de table rendu à anon ».
+
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)
 
 59 fiches détaillées par domaine. **Lis la fiche concernée AVANT de modifier ce domaine.** Pour un audit de diff, lance le subagent `audit-passio`.
