@@ -1,5 +1,7 @@
 # Synthèse pour Benjamin — BILAN PASSIO 09/26
 
+> **Mise à jour du 2026-09-08** — pendant l'indisponibilité de GPT-6 Astra, la session « Avancer sur le projet BILAN » a exécuté les étapes 1 à 3 de la contre-revue : relecture des 81 problèmes jamais relus (`16-RELECTURE-COMPLEMENT-2026-09-08.md`), isolation sous rôle PROUVÉE sur un PostgreSQL jetable chargé des policies réelles, journaux CI lus, bilan consolidé et plan de correction en douze chantiers (`17-BILAN-CONSOLIDE-ET-PLAN-DE-CORRECTION.md`). Verdict MAINTENU. Le texte ci-dessous est celui du 2026-09-04, conservé tel quel.
+
 > Lecture en cinq minutes. Le détail est dans les rapports 02 à 14 du même dossier ; les preuves sont dans `preuves/`, les sorties brutes des auditeurs dans `donnees/`.
 
 ## Ce qui a été audité

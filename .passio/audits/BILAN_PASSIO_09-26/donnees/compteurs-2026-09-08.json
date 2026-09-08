@@ -1,0 +1,49 @@
+{
+ "date": "2026-09-08",
+ "base": "registre du 2026-09-04 (192 problèmes) + verdicts de la relecture complémentaire",
+ "domaines_relus": [
+  "irl",
+  "profils-passions",
+  "robustesse-pannes",
+  "appareils-a11y"
+ ],
+ "domaines_manquants": [
+  "auth-rgpd",
+  "exploitation-continuite",
+  "perf-capacite-couts",
+  "tests-ci"
+ ],
+ "problemes_relus_le_08": 30,
+ "verdicts_du_08": {
+  "CONFIRMÉ": 29,
+  "RÉFUTÉ": 1
+ },
+ "priorites_changees": {
+  "IRL-07": "P1"
+ },
+ "relecture_globale": {
+  "CONFIRMÉ": 133,
+  "RÉFUTÉ": 4,
+  "Non relu": 51,
+  "INCERTAIN": 4
+ },
+ "priorites_retenues_hors_refutes": {
+  "P0": 8,
+  "P1": 58,
+  "P2": 65,
+  "P3": 57
+ },
+ "oublis_nouveaux": {
+  "total": 16,
+  "par_priorite": {
+   "P2": 7,
+   "P3": 9
+  }
+ },
+ "priorites_avec_oublis": {
+  "P0": 8,
+  "P1": 58,
+  "P2": 72,
+  "P3": 66
+ }
+}

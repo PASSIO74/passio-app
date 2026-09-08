@@ -1,5 +1,7 @@
 # Verdict commercial final — BILAN PASSIO 09/26
 
+> **Mise à jour du 2026-09-08** — pendant l'indisponibilité de GPT-6 Astra, la session « Avancer sur le projet BILAN » a exécuté les étapes 1 à 3 de la contre-revue : relecture des 81 problèmes jamais relus (`16-RELECTURE-COMPLEMENT-2026-09-08.md`), isolation sous rôle PROUVÉE sur un PostgreSQL jetable chargé des policies réelles, journaux CI lus, bilan consolidé et plan de correction en douze chantiers (`17-BILAN-CONSOLIDE-ET-PLAN-DE-CORRECTION.md`). Verdict MAINTENU. Le texte ci-dessous est celui du 2026-09-04, conservé tel quel.
+
 > SHA audité : `c8cb8e995b88159a1e9d4c2f7dc196ad93a133bf` (main, 2026-09-04, déployé en production par le run CI 2494). Modèle : Claude Fable 5.1 (orchestrateur, 16 auditeurs de domaine, relecteurs adversariaux). Ce verdict applique strictement les critères de l'ordre de mission ; il ne pèse ni l'ambition du produit ni la qualité du travail accompli, seulement ce qui est prouvé au SHA audité.
 
 ## 1. Verdict

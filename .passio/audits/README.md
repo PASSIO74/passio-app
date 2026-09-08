@@ -9,6 +9,7 @@ Audits fondateurs du plan de contrôle. Chaque audit est **daté** et ancré dan
 | Performance | [`PERFORMANCE_AUDIT.md`](PERFORMANCE_AUDIT.md) | 2026-08-08 |
 | Système d'agents/skills | via [`../AGENTS_REGISTRY.md`](../AGENTS_REGISTRY.md) + [`../SKILLS_REGISTRY.md`](../SKILLS_REGISTRY.md) | 2026-08-08 |
 | **Bilan de commercialisation 09/26** (Fable 5.1, 16 domaines, relecture adversariale) | [`BILAN_PASSIO_09-26/`](BILAN_PASSIO_09-26/00-MANIFESTE.md) | 2026-09-04 |
+| Bilan 09/26 — **complément du 2026-09-08** : 81 problèmes relus, isolation sous rôle prouvée sur réplique, journaux CI, plan de correction en 12 chantiers | [`BILAN_PASSIO_09-26/16-…`](BILAN_PASSIO_09-26/16-RELECTURE-COMPLEMENT-2026-09-08.md) · [`17-…`](BILAN_PASSIO_09-26/17-BILAN-CONSOLIDE-ET-PLAN-DE-CORRECTION.md) | 2026-09-08 |
 
 ## Audits historiques (docs/)
 Le dépôt contient des audits antérieurs riches : `docs/AUDIT_EXECUTIVE_SUMMARY.md`, `docs/AUDIT_COMPLET_BUGS.md`, `docs/AUDIT_FINAL_10_POINTS.md`, `docs/CONTROLE_16_MISSIONS.md`. `.passio/audits/` **pointe** vers eux, ne les recopie pas.
