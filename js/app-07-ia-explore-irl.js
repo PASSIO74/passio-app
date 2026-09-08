@@ -3271,6 +3271,11 @@ async function setEventRsvp(id, rsvp) {
   // EXPLIQUE l'action puis propose la création de compte ; il ne rejoue jamais
   // l'action après coup. Rend `true` — donc inerte — hors mode invité.
   if (window.requireAuthentication && !requireAuthentication("rejoindre")) return;
+  // Admission 18+ : APRÈS le gate d'authentification, jamais avant — on ne
+  // demande pas son âge à quelqu'un qui n'a pas encore de compte. Le RETRAIT
+  // (`rsvp` nul ou « declined ») n'est JAMAIS gardé : un compte que la règle
+  // rattrape doit toujours pouvoir sortir. Voir docs/ADMISSION_18_PLUS.md.
+  if (rsvp && rsvp !== "declined" && !(await requireAdmission("rejoindre"))) return;
   // Muter l'objet canonique (state), pas une copie de allEvents() — sinon le
   // compteur d'inscrits et les avatars ne se mettaient jamais à jour localement.
   const ev = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
@@ -4897,6 +4902,219 @@ function irlFunnelTrackJoin(eventId, rsvp, ok) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+// ADMISSION 18+ — LA PORTE CÔTÉ CLIENT (migrations/migration_admission_18_plus.sql)
+// ──────────────────────────────────────────────────────────────────────────
+// La BARRIÈRE est serveur : les policies RLS d'`events` et d'`event_attendees`
+// refusent l'écriture d'un compte non admis. Ce bloc-ci n'est pas une barrière,
+// c'est une PORTE : il explique avant le refus, et il demande l'année de
+// naissance à qui ne l'a jamais déclarée.
+//
+// ⚠️ IL ÉCHOUE DONC OUVERT, ET C'EST VOULU — l'inverse exact de la garde
+// `irlProposalVerdict` juste en dessous. Celle-là protège une frontière que
+// PERSONNE d'autre ne tient, donc elle retient au moindre doute. Celle-ci
+// double une frontière déjà tenue par la base : si le statut est illisible
+// (migration pas encore appliquée, réseau coupé, SDK absent), retenir
+// couperait l'IRL à TOUT LE MONDE pour une panne de courtoisie, alors que le
+// serveur, lui, sait très bien décider. On laisse passer, et le serveur refuse.
+//
+// C'est ce qui rend ce lot déployable AVANT la migration : tant que
+// `adult_access_status` n'existe pas, la porte est transparente.
+// ══════════════════════════════════════════════════════════════════════════
+var ADMISSION_VERSION = "v1";
+// Statut du compte pour la session : "off" (règle éteinte) · "admitted" ·
+// "undeclared" (aucune année déclarée) · "minor" · "inconnu" (illisible).
+var _admissionStatut = null;
+var _admissionAnneePoussee = false;
+
+// Métadonnées AUTORISÉES : version, statut, contexte. Aucune année, aucun
+// identifiant. ⚠️ Toute clé ajoutée ici doit survivre à `DENY_KEY`
+// (js/telemetry.js) : une clé qui matche est jetée EN SILENCE.
+function admissionMeta(statut, ctx) {
+  return { v: ADMISSION_VERSION, statut: String(statut || "?"), ctx: String(ctx || "-") };
+}
+
+// Un `catch` muet sur un chemin de décision masque un ReferenceError. Tout échec
+// est journalisé et remonté au Centre de pilotage, jamais montré à l'utilisateur.
+function admissionEchec(ou, err) {
+  var msg = "admission (" + ou + ") : " + ((err && err.message) || err || "?");
+  try { if (typeof diagLog === "function") diagLog(msg); } catch (e) {}
+  try {
+    if (window.tel && tel.error) {
+      tel.error(err instanceof Error ? err : new Error(msg),
+                { action: "admission", meta: admissionMeta("erreur", ou) });
+    }
+  } catch (e) {}
+}
+
+// Un vrai compte connecté, avec un SDK utilisable. `MY_UID` ne prouve rien à lui
+// seul (il survit à une déconnexion) : on exige aussi la session Supabase.
+// ⚠️ `MY_UID` NE PROUVE PAS QU'UN COMPTE EXISTE — invariant du projet, et ma
+// première version l'a enfreint. `getMyUserId()` fabrique un `u_<aléatoire>`
+// pour TOUT visiteur, y compris sans compte : la garde s'ouvrait donc au
+// démarrage, et `admissionRappelServeur()` partait appeler le RPC en production
+// sous une identité qui n'existe pas. Seul un uuid Supabase prouve un compte.
+//
+// Le défaut ne se voyait PAS en local — le SDK est chargé depuis un CDN, donc
+// `_supaReal` reste faux ici — et cassait la CI, qui l'atteint : le rappel
+// consommait son drapeau « une fois par session » AU BOOT, et les cas qui le
+// mesurent trouvaient zéro appel au lieu d'un. Un test vert en local et rouge
+// en CI est presque toujours une divergence d'environnement de cette famille.
+function admissionCompteReel() {
+  try {
+    return typeof MY_UID === "string"
+      && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(MY_UID);
+  } catch (e) { return false; }
+}
+
+function admissionCanalPret() {
+  try {
+    return !!(window._supaReal && typeof supa !== "undefined" && supa
+              && typeof supa.rpc === "function"
+              && admissionCompteReel());
+  } catch (e) { return false; }
+}
+
+// Déclare au serveur l'année déjà connue localement. Le RPC dérive lui-même la
+// date de majorité (31 décembre de l'année des 18 ans) et refuse tout
+// « vieillissement » ultérieur : le client ne choisit jamais sa date.
+async function admissionDeclarerAnnee(annee) {
+  if (!admissionCanalPret()) return false;
+  var an = Number(annee);
+  var courante = new Date().getFullYear();
+  if (!Number.isInteger(an) || an < 1900 || an > courante) return false;
+  try {
+    var res = await supa.rpc("declare_birth_year", { _birth_year: an });
+    if (!res || res.error) {
+      // Fonction absente = migration #136 pas appliquée sur cet environnement.
+      // Ce n'est pas une panne à signaler à l'utilisateur, mais on la trace.
+      admissionEchec("declare", res && res.error);
+      return false;
+    }
+    _admissionStatut = null; // le statut vient de changer : on le relira
+    return true;
+  } catch (e) {
+    admissionEchec("declare", e);
+    return false;
+  }
+}
+
+// Statut de l'APPELANT, mis en cache pour la session. `force` le relit.
+// ⚠️ Illisible → "inconnu", qui laisse passer (voir l'en-tête du bloc).
+async function admissionLireStatut(force) {
+  if (!force && _admissionStatut) return _admissionStatut;
+  if (!admissionCanalPret()) return (_admissionStatut = "inconnu");
+  try {
+    var res = await supa.rpc("adult_access_status");
+    if (!res || res.error || typeof res.data !== "string") {
+      admissionEchec("statut", res && res.error);
+      return (_admissionStatut = "inconnu");
+    }
+    return (_admissionStatut = res.data);
+  } catch (e) {
+    admissionEchec("statut", e);
+    return (_admissionStatut = "inconnu");
+  }
+}
+
+// Au démarrage : pousser une fois l'année déjà saisie à l'onboarding, pour que
+// les comptes EXISTANTS deviennent admis sans qu'on leur redemande rien.
+// ⚠️ Sans ce rappel, allumer la règle couperait l'IRL à tous les comptes créés
+// avant elle — ils ont une année en local et aucune ligne côté serveur.
+async function admissionRappelServeur() {
+  if (_admissionAnneePoussee || !admissionCanalPret()) return false;
+  _admissionAnneePoussee = true;
+  var an = null;
+  try { an = state && state.user ? state.user.birthYear : null; } catch (e) {}
+  if (!an) return false;
+  return await admissionDeclarerAnnee(an);
+}
+
+// LA PORTE. Rend `true` si l'action peut continuer, `false` si elle est refusée
+// ici — et dans ce cas l'utilisateur a reçu une explication, jamais un silence.
+async function requireAdmission(ctx) {
+  var statut = await admissionLireStatut(false);
+  // Règle éteinte, statut illisible, ou compte admis : on ne s'interpose pas.
+  if (statut === "off" || statut === "inconnu" || statut === "admitted") return true;
+
+  if (statut === "undeclared") {
+    // Une année existe peut-être en local (compte d'avant la règle) : on tente
+    // de la pousser avant d'ouvrir une fenêtre qui ne servirait à rien.
+    if (await admissionRappelServeur()) {
+      if (await admissionLireStatut(true) === "admitted") return true;
+    }
+    admissionOuvrirPorte(ctx);
+    return false;
+  }
+
+  try { if (window.tel && tel.action) tel.action("admission_refus", admissionMeta(statut, ctx)); } catch (e) {}
+  try { openModal(admissionRefusHTML()); } catch (e) { admissionEchec("refus", e); }
+  return false;
+}
+
+// Fenêtre « quel âge as-tu ? ». Un seul champ, et ce qu'on en fait est dit.
+function admissionOuvrirPorte(ctx) {
+  try { if (window.tel && tel.action) tel.action("admission_porte", admissionMeta("undeclared", ctx)); } catch (e) {}
+  var an = "";
+  try { an = state && state.user && state.user.birthYear ? String(state.user.birthYear) : ""; } catch (e) {}
+  try {
+    openModal(''
+      + '<div class="modal-handle"></div>'
+      + '<div class="modal-title">Ton année de naissance</div>'
+      + '<div class="modal-subtitle">Les rencontres en vrai sont réservées aux personnes majeures. '
+      + 'Ton année n\'est jamais affichée sur ton profil.</div>'
+      + '<label class="field"><span>Année</span>'
+      + '<input type="number" class="input" id="admissionAnnee" inputmode="numeric" '
+      + 'placeholder="1995" min="1900" max="' + new Date().getFullYear() + '" value="' + escapeHtml(an) + '" /></label>'
+      + '<div class="onb-footer">'
+      + '<button type="button" class="btn primary block" onclick="admissionValiderAnnee(\'' + escapeJsArg(String(ctx || "")) + '\')">Valider</button>'
+      + '</div>');
+    var champ = document.getElementById("admissionAnnee");
+    if (champ) champ.focus();
+  } catch (e) { admissionEchec("porte", e); }
+}
+
+// Refus explicite : on dit POURQUOI, et on ne redemande pas l'année — elle est
+// déclarée, elle n'est simplement pas celle d'une personne majeure.
+function admissionRefusHTML() {
+  return ''
+    + '<div class="modal-handle"></div>'
+    + '<div class="modal-title">Réservé aux majeurs</div>'
+    + '<div class="modal-subtitle">Les rencontres en vrai sont réservées aux personnes de 18 ans et plus. '
+    + 'Le reste de PASSIO — le fil, les passions, les messages — te reste ouvert.</div>'
+    + '<div class="onb-footer"><button type="button" class="btn ghost block" onclick="closeModal()">J\'ai compris</button></div>';
+}
+
+// Appelée par la fenêtre. Enregistre l'année localement ET côté serveur.
+async function admissionValiderAnnee(ctx) {
+  var champ = document.getElementById("admissionAnnee");
+  var an = parseInt(champ ? champ.value : "", 10);
+  var courante = new Date().getFullYear();
+  if (!an || an < 1900 || an > courante) { toast("Année invalide", "info"); return false; }
+  if (courante - an < 13) { toast("PASSIO est réservé aux 13 ans et plus.", "info"); return false; }
+
+  try {
+    state.user.birthYear = an;
+    state.user.isMinor = (courante - an) < 18;
+    saveState();
+  } catch (e) { admissionEchec("local", e); }
+
+  var envoye = await admissionDeclarerAnnee(an);
+  var statut = await admissionLireStatut(true);
+  try { if (window.tel && tel.action) tel.action("admission_declaree", admissionMeta(statut, ctx)); } catch (e) {}
+
+  if (statut === "admitted" || statut === "off" || (statut === "inconnu" && envoye)) {
+    closeModal();
+    toast("Merci — c'est enregistré");
+    return true;
+  }
+  if (statut === "minor") { openModal(admissionRefusHTML()); return false; }
+  // Envoi impossible (hors ligne, migration absente) : on n'enferme personne
+  // dehors pour une panne de courtoisie — le serveur reste seul juge.
+  closeModal();
+  return true;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 // GARDE TRUST & SAFETY — PROPOSITION IRL (drapeau `irl_proposal_v1`) — #134/#136
 // ──────────────────────────────────────────────────────────────────────────
 // #136 a fermé côté serveur les trois trous qui interdisaient le CTA : âge
@@ -5570,6 +5788,10 @@ async function submitEvent(editId) {
   // EXPLIQUE l'action puis propose la création de compte ; il ne rejoue jamais
   // l'action après coup. Rend `true` — donc inerte — hors mode invité.
   if (window.requireAuthentication && !requireAuthentication("activite")) return;
+  // Admission 18+ : organiser une rencontre exige la majorité déclarée. On le
+  // demande AVANT d'écrire, pour ne pas laisser le refus RLS se manifester par
+  // une écriture à zéro ligne — l'échec silencieux que CLAUDE.md interdit.
+  if (!(await requireAdmission("activite"))) return;
   const g = (id) => document.getElementById(id);
   const title = (g("evTitle")?.value || "").trim();
   const passion = g("evPassion")?.value || "";
