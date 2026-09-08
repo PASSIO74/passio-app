@@ -1,0 +1,43 @@
+-- ═══════════════════════════════════════════════════════════════════════════
+-- PASSIO — LES TROIS CORRECTIFS DE SÉCURITÉ DU 2026-09-08, EN UN SEUL FICHIER
+--
+-- ▶ MODE D'EMPLOI, sans terminal et sans mot de passe à manipuler :
+--     1. Ouvre Supabase → SQL Editor → New query
+--     2. Copie-colle CE FICHIER EN ENTIER
+--     3. Clique « Run »
+--     4. Lis le tableau final : chaque ligne doit dire OK.
+--
+-- ▶ CE QU'IL CORRIGE
+--     ① Les photos, fichiers et messages vocaux des conversations privées
+--        étaient LISTABLES ET LISIBLES PAR N'IMPORTE QUI, sans compte.
+--     ② L'adresse exacte d'une rencontre, le téléphone de son organisateur et
+--        la liste nominative des participants étaient publics.
+--     ③ La garde de majorité existait côté serveur depuis juin, mais RIEN NE
+--        L'APPELAIT : un compte de 13 ans organisait et rejoignait des
+--        rencontres. Ce fichier la branche — INTERRUPTEUR ÉTEINT.
+--
+-- ▶ CE QU'IL NE FAIT PAS
+--     · Il n'ALLUME PAS l'accès 18+. Rien ne change pour personne à l'exécution.
+--       L'allumage est un geste séparé, à faire APRÈS le déploiement du client
+--       (dernière ligne de ce fichier, en commentaire).
+--     · Il ne crée, ne modifie et ne supprime AUCUNE donnée. Uniquement des
+--       règles d'accès, des droits, des fonctions et un interrupteur.
+--
+-- ▶ SÛRETÉ
+--     TOUT EST DANS UNE SEULE TRANSACTION. La moindre erreur annule
+--     l'intégralité : la base ne peut pas rester à moitié corrigée. Le fichier
+--     est REJOUABLE : l'exécuter deux fois ne change rien de plus, et ne
+--     rétrograde jamais un interrupteur déjà allumé.
+--
+--     Chaque bloc REFUSE de s'appliquer s'il trouve une règle qu'il ne connaît
+--     pas — plutôt que de poser un verrou qu'une règle oubliée annulerait en
+--     silence. Si l'exécution s'arrête sur un message « migration refusee »,
+--     c'est ce garde-là qui a parlé : rien n'a été appliqué, et le message dit
+--     quelle table regarder.
+--
+--     Éprouvé sur PostgreSQL 16 jetable : 177 contrôles, 0 échec
+--     (tests/sql/migration-*.test.sh, joués à chaque commit par la CI).
+-- ═══════════════════════════════════════════════════════════════════════════
+
+BEGIN;
+

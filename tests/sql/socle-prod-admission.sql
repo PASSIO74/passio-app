@@ -55,3 +55,31 @@ CREATE POLICY "Update organisateurs" ON public.events FOR UPDATE
 -- `auth.users` n'existe pas sur un PostgreSQL nu : le preflight y compte les
 -- comptes. Une coquille suffit pour l'exécuter tel quel dans le banc.
 CREATE TABLE IF NOT EXISTS auth.users (id UUID PRIMARY KEY);
+
+-- ⚠️ Les colonnes de `events` que `socle-prod.sql` n'a pas, et que la PRODUCTION
+-- porte (relevées le 2026-09-08). Elles sont nécessaires dès qu'une migration
+-- nomme les colonnes une à une — ce que fait `migration_irl_donnees_privees.sql`
+-- pour retirer `address` et `contact` à `anon` : un GRANT colonne par colonne
+-- échoue sur la PREMIÈRE colonne absente, et le banc accuserait la migration
+-- d'un défaut qui n'est que celui de son socle.
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS lat            DOUBLE PRECISION;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS lng            DOUBLE PRECISION;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS city           TEXT;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS description    TEXT;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS emoji          TEXT;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS max_attendees  INTEGER;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS date_at        TIMESTAMP;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS venue          TEXT;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS address        TEXT;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS postal_code    TEXT;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS price          DOUBLE PRECISION;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS contact        TEXT;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS external_link  TEXT;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS event_type     TEXT;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS cover_url      TEXT;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS organizer_id   TEXT;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS end_at         TIMESTAMP;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS updated_at     TIMESTAMP;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS co_organizers  JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS series_id      TEXT;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS recurrence     TEXT;

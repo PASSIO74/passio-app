@@ -56,6 +56,36 @@ change pour personne. C'est délibéré.
 
 ---
 
+## ⚡ LE CHEMIN COURT — un seul copier-coller, sans terminal
+
+Les manips 2, 3 et 4 ci-dessous décrivent le chemin détaillé, utile pour comprendre.
+**En pratique, tu n'as besoin que de ceci :**
+
+1. Ouvre **Supabase → SQL Editor → New query**.
+2. Copie-colle **`migrations/APPLIQUER_TOUT_2026-09-08.sql`** en entier.
+3. Clique **Run**.
+4. Lis le tableau final : les trois premières lignes doivent dire `OK`, et
+   l'interrupteur 18+ doit dire `eteint (normal)`.
+
+Les trois correctifs sont dans **une seule transaction** : la moindre erreur
+annule tout, la base ne peut pas rester à moitié corrigée. Le fichier est
+**rejouable** — l'exécuter deux fois ne change rien de plus, et ne rétrograde
+jamais un interrupteur déjà allumé.
+
+Si tu préfères le terminal, un script fait la même chose avec les préflights et
+les contrôles :
+
+```bash
+export DATABASE_URL='postgresql://…'
+bash scripts/appliquer-securite-2026-09.sh            # applique
+bash scripts/appliquer-securite-2026-09.sh --verifier # regarde sans rien changer
+```
+
+Les deux chemins sont éprouvés sur un PostgreSQL jetable à chaque commit
+(`tests/sql/appliquer-securite.test.sh`).
+
+---
+
 ## Manip 2 — Cloisonner la lecture des pièces jointes (le plus urgent)
 
 **Ce que ça répare.** Aujourd'hui, n'importe qui — sans compte — peut lister et lire toutes

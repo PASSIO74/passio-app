@@ -133,6 +133,14 @@ Audit IRL-01/IRL-03 (P1), vérifié en production : `events` et `event_attendees
 ⚠️ `lat`/`lng` restent lisibles sans compte : la carte est l'écran d'entrée d'un visiteur. Décision assumée, pas un oubli — la fermer demande une position approchée pour les non-inscrits, donc un autre lot. `event_comments` et `event_reactions` restent publics eux aussi.
 Verrou : `tests/sql/migration-irl-donnees-privees.test.sh` (22 contrôles, gate CI), qui mesure d'ABORD le défaut, puis le referme, puis éprouve 3 mutations dont « le GRANT de table rendu à anon ».
 
+## 🧰 APPLIQUER LES CORRECTIFS DE SÉCURITÉ — deux outils, un seul geste (2026-09-08)
+
+Les trois migrations du 2026-09-08 (pièces jointes, rencontres, admission 18+) demandaient neuf gestes manuels dans le bon ordre, dont trois oubliables sans que rien ne le signale. Deux outils les remplacent, et **les deux sont éprouvés à chaque commit** par `tests/sql/appliquer-securite.test.sh` (27 contrôles, gate CI) :
+- **`migrations/APPLIQUER_TOUT_2026-09-08.sql`** — le chemin SANS terminal : un seul copier-coller dans l'éditeur SQL de Supabase, **une seule transaction** (une erreur annule tout), rejouable, et il finit par un TABLEAU DE VERDICT qui dit OK/ECHEC par correctif. ⚠️ **C'est un MIROIR, jamais une source** : il est généré par `scripts/generer-appliquer-tout.py` à partir des trois migrations, et le banc ⓪ refuse une dérive — corriger une migration sans régénérer laisserait un fichier qui applique l'ANCIENNE version, en silence.
+- **`scripts/appliquer-securite-2026-09.sh`** — le chemin terminal : préflight → migration → contrôles pour chaque lot, avec **arrêt net** au premier BLOQUANT ou ÉCHEC (on ne passe jamais au lot suivant sur une base dont on n'a pas la preuve qu'elle est saine). `--verifier` ne change rien et dit ce qui manque.
+⚠️ **NI L'UN NI L'AUTRE N'ALLUME LE 18+**, et une relance ne rétrograde jamais un interrupteur déjà allumé. L'allumage reste un geste séparé, APRÈS le déploiement du client.
+⚠️ Le socle des bancs (`tests/sql/socle-prod-admission.sql`) porte désormais les 21 colonnes de `events` que la prod a et que `socle-prod.sql` n'avait pas : un `GRANT` colonne par colonne échoue sur la PREMIÈRE colonne absente, et le banc accusait la migration d'un défaut qui n'était que celui de son socle.
+
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)
 
 59 fiches détaillées par domaine. **Lis la fiche concernée AVANT de modifier ce domaine.** Pour un audit de diff, lance le subagent `audit-passio`.

@@ -307,6 +307,14 @@ jobs:
       - name: Banc Rencontres — donnees privees (PostgreSQL jetable)
         run: bash tests/sql/migration-irl-donnees-privees.test.sh
 
+      # Le script d'application et le fichier unique colle dans l'editeur SQL
+      # sont ce que Benjamin execute sur la VRAIE base. Un outil d'application
+      # jamais execute est un pari : celui-ci est joue de bout en bout, et le
+      # banc verifie aussi que le fichier unique n'a pas DERIVE de ses trois
+      # migrations (il en est un miroir, jamais une source).
+      - name: Banc outils d'application (PostgreSQL jetable)
+        run: bash tests/sql/appliquer-securite.test.sh
+
       # La migration du referentiel plat, EXECUTEE deux fois sur un PostgreSQL
       # jetable : idempotence, preservation des 19 identifiants historiques,
       # RLS en lecture seule sur le referentiel, et retour arriere.
