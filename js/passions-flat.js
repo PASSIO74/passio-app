@@ -736,6 +736,10 @@
     if (/nom_indisponible/.test(msg)) return "nom_indisponible";
     if (/nom_trop_long/.test(msg)) return "nom_trop_long";
     if (/nom_invalide/.test(msg)) return "nom_invalide";
+    if (/quota_creation/.test(msg)) return "quota_creation";
+    // Motifs de l'anti-abus du premier jet (rythme et volume) : la migration du
+    // 2026-09-08 au soir les remplace par `quota_creation`, mais un client
+    // déployé peut parler à une base pas encore migrée, et l'inverse.
     if (/quota_jour/.test(msg)) return "quota_jour";
     if (/quota_total/.test(msg)) return "quota_total";
     return "";
