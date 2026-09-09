@@ -21,16 +21,29 @@ const { bootOnboarded } = require("./app-helper");
 // Faux client Supabase : chaînable, mémorise les écritures. Aucune requête ne
 // part — cette suite ne touche JAMAIS la base de production.
 //
-// ⚠️ ON MUTE `window.supa.from`, ON NE REMPLACE PAS `window.supa` : le `supa`
-// lexical d'app-08 (`let supa`) et `window.supa` désignent le MÊME objet, mais
-// une réassignation de `window.supa` ne changerait rien pour le code de l'app —
-// piège déjà payé par `creation-passion.spec.js`.
+// ⚠️ ON MUTE LES MEMBRES DE `window.supa`, ON NE REMPLACE PAS `window.supa` :
+// le `supa` lexical d'app-08 (`let supa`) et `window.supa` désignent le MÊME
+// objet, mais une réassignation de `window.supa` ne changerait rien pour le code
+// de l'app — piège déjà payé par `creation-passion.spec.js`.
+//
+// ⚠️ ET ON POSE CES MEMBRES PAR `defineProperty`, JAMAIS PAR UNE AFFECTATION.
+// Divergence d'environnement mesurée le 2026-09-09 (verte en local, ROUGE en
+// CI, trois essais de suite) : ici le SDK vient d'un CDN que le bac coupe, donc
+// `supa` est le stub noop, un objet littéral où tout s'écrit ; en CI le runner a
+// Internet, le VRAI client se charge, et `functions` y est un GETTER de
+// prototype — une affectation y échoue EN SILENCE (code non strict), le vrai
+// `invoke` partait, et `__push` restait vide. Une propriété PROPRE masque le
+// getter dans les deux mondes. Même famille que « un test vert en local et
+// rouge en CI est presque toujours une divergence d'environnement ».
 const FAUX_SUPA = `
 window.__inserts = [];
 window.__push = [];
 window.__reponses = {};
 window._supaReal = true;
-window.supa.from = function (table) {
+function _poser(nom, valeur) {
+  Object.defineProperty(window.supa, nom, { value: valeur, configurable: true, writable: true });
+}
+_poser("from", function (table) {
   var q = {
     select: function () { return q; },
     eq: function () { return q; },
@@ -44,8 +57,8 @@ window.supa.from = function (table) {
     then: function (r) { return Promise.resolve(window.__reponses[table] || { data: [], error: null }).then(r); },
   };
   return q;
-};
-window.supa.functions = { invoke: function (n, o) { window.__push.push(o && o.body); return Promise.resolve({ data: null }); } };
+});
+_poser("functions", { invoke: function (n, o) { window.__push.push(o && o.body); return Promise.resolve({ data: null }); } });
 `;
 
 test.describe("Notification d'un message privé", () => {
@@ -78,6 +91,28 @@ test.describe("Notification d'un message privé", () => {
     }, FAUX_SUPA);
     expect(push).toHaveLength(1);
     expect(push[0]).toMatchObject({ toUserId: "u_leane", type: "notif", kind: "message" });
+  });
+
+  // ⚠️ RÉINJECTION DE LA DIVERGENCE D'ENVIRONNEMENT (2026-09-09). Ici le SDK
+  // vient d'un CDN que le bac coupe : `supa` est le stub noop, un objet littéral
+  // où `functions` s'écrit sans résistance. En CI le runner a Internet, le VRAI
+  // client se charge, et `functions` y est un GETTER de prototype — une simple
+  // affectation y échoue EN SILENCE. Ce cas reproduit cette forme-là AVANT de
+  // poser le faux client : sans `defineProperty`, il repasse au rouge.
+  test("① ter — le faux client s'impose même quand `functions` est un getter de prototype", async ({ page }) => {
+    await bootOnboarded(page);
+    const push = await page.evaluate(async (fake) => {
+      var vraiInvoke = { invoke: function () { return Promise.resolve({ data: null }); } };
+      var proto = Object.create(Object.getPrototypeOf(window.supa) || Object.prototype);
+      Object.defineProperty(proto, "functions", { get: function () { return vraiInvoke; }, configurable: true });
+      delete window.supa.functions;
+      Object.setPrototypeOf(window.supa, proto);
+      eval(fake);
+      window.__reponses["conv_members"] = { data: [{ user_id: MY_UID }, { user_id: "u_leane" }], error: null };
+      await _notifierMessage("conv_1", "msg_abc");
+      return window.__push;
+    }, FAUX_SUPA);
+    expect(push).toHaveLength(1);
   });
 
   test("② une rafale de messages n'allume le téléphone qu'une fois", async ({ page }) => {
