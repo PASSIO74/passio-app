@@ -3422,13 +3422,28 @@ function openPassionPaywall(opts) {
   // ⚠️ AUCUN TARIF, AUCUN BOUTON « PAYER » : ordre explicite de Benjamin, et
   // verrou de `passions-plates.spec.js` (㉒). Un bouton qui ne mène nulle part
   // est un clic mort — ce dépôt en a déjà payé le prix.
-  const corps = quotaEpuise
+  // ⚠️ TROIS PLAFONDS DISTINCTS ABOUTISSENT ICI, et la fenêtre doit dire
+  // LEQUEL a refusé — sinon quelqu'un qui vient de se faire refuser une
+  // CRÉATION lit qu'il « suit déjà 3 passions », ce qui peut être faux (il peut
+  // n'en suivre qu'une et avoir créé trois noms). Un mur qui parle d'autre
+  // chose que du geste refusé est un mur qu'on croit cassé.
+  //   • `opts.creation` : les trois CRÉATIONS de passion sont utilisées ;
+  //   • `quotaEpuise`   : les trois CHANGEMENTS sont utilisés ;
+  //   • défaut          : les trois passions VIVANTES sont occupées.
+  const corps = opts.creation
+    ? `Tu as utilisé tes <strong>${PASSIONS_OFFERTES} créations de passion</strong>.
+       En créer d'autres fera partie d'une formule <strong>payante</strong>.`
+    : quotaEpuise
     ? `Tu as utilisé tes <strong>${CHANGEMENTS_PASSION_OFFERTS} changements de passion</strong>.
        En changer davantage fera partie d'une formule <strong>payante</strong>.`
     : `Tu suis déjà ${PASSIONS_OFFERTES} passions. Au-delà, les passions
        supplémentaires feront partie d'une formule <strong>payante</strong>.`;
 
-  const suite = quotaEpuise
+  const suite = opts.creation
+    ? `Les passions déjà présentes au catalogue restent accessibles : cherche-les,
+       elles s'ajoutent sans consommer de création. Seuls les noms qui n'existent
+       nulle part sont comptés.`
+    : quotaEpuise
     ? `Tes passions actuelles ne bougent pas : tu continues à publier, commenter et
        participer dans les ${PASSIONS_OFFERTES} que tu as.${archivees ? ` Tes ${archivees} passion${archivees > 1 ? "s" : ""} archivée${archivees > 1 ? "s" : ""} reste${archivees > 1 ? "nt" : ""} enregistrée${archivees > 1 ? "s" : ""} — rien n'est supprimé.` : ""}`
     : `En attendant, il te reste <strong>${restants === Infinity ? "des" : restants} changement${restants > 1 ? "s" : ""}</strong> :
@@ -3438,7 +3453,7 @@ function openPassionPaywall(opts) {
     <div class="modal-handle"></div>
     <div style="text-align:center;margin-bottom:16px;">
       <div style="font-size:30px;margin-bottom:8px;">🔒</div>
-      <div style="font-weight:800;font-size:18px;color:var(--text);margin-bottom:6px;">Trois passions offertes</div>
+      <div style="font-weight:800;font-size:18px;color:var(--text);margin-bottom:6px;">${opts.creation ? "Trois créations offertes" : "Trois passions offertes"}</div>
       <div style="font-size:13px;color:var(--muted);line-height:1.6;">${corps}</div>
     </div>
     <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:12px 14px;font-size:12.5px;color:var(--muted);line-height:1.6;margin-bottom:14px;">
