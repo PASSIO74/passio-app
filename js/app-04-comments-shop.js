@@ -4616,8 +4616,15 @@ var OUTBOX_KEY = "passio_outbox_v1";
 function _outboxLoad() { try { return JSON.parse(localStorage.getItem(OUTBOX_KEY) || "[]"); } catch(e) { return []; } }
 function _outboxSave(a) { try { localStorage.setItem(OUTBOX_KEY, JSON.stringify(a)); } catch(e) {} }
 function _outboxAdd(convId, msgId, content) {
-  var a = _outboxLoad().filter(function(x){ return x.msgId !== msgId; });
-  a.push({ convId: convId, msgId: msgId, content: content, at: Date.now() });
+  var tous = _outboxLoad();
+  // ⚠️ LE COMPTEUR D'ESSAIS SURVIT À LA REMISE EN FILE, sinon il ne compte
+  // RIEN : chaque échec transitoire repasse par ici, et une entrée neuve
+  // repartirait de zéro à chaque tour — le plafond ne serait jamais atteint.
+  // Défaut introduit puis corrigé le 2026-09-09, avant toute mise en ligne.
+  var ancienne = tous.find(function(x){ return x.msgId === msgId; });
+  var a = tous.filter(function(x){ return x.msgId !== msgId; });
+  a.push({ convId: convId, msgId: msgId, content: content, at: Date.now(),
+           essais: Number((ancienne && ancienne.essais) || 0) });
   _outboxSave(a);
 }
 function _outboxRemove(msgId) { _outboxSave(_outboxLoad().filter(function(x){ return x.msgId !== msgId; })); }
@@ -4645,8 +4652,38 @@ function _setMsgStatus(convId, msgId, status) {
   try { var fp = document.getElementById("conv-fullpage"); renderConvFpThread(c, fp ? fp.getAttribute("data-display-name") : (c.userName||"")); } catch(e) {}
 }
 
+// ⚠️ UN REFUS DÉFINITIF NE SE REJOUE PAS (2026-09-09).
+// Mesuré en production : 798 refus HTTP 403 sur `conv_messages` en six jours,
+// pour QUATRE messages réellement partis. Toute défaillance était traitée à
+// l'identique — coupure réseau, panne serveur ET refus de la règle d'accès —
+// donc remise en file, et `_flushOutbox` la rejouait à chaque démarrage et à
+// chaque retour de connexion. Un message que la RLS refuse ne passera JAMAIS :
+// le rejouer indéfiniment ne le livre pas, ça noie seulement le vrai signal.
+//
+// ⚠️ ON NE PERD RIEN POUR AUTANT : le message reste dans la conversation,
+// marqué « échec », avec son « réessayer » cliquable. On retire l'AUTOMATISME,
+// jamais la possibilité — c'est la personne qui décide de retenter, une fois la
+// cause levée (invitation acceptée, session rouverte).
+//
+// ⚠️ LE PLAFOND D'ESSAIS EST LA SECONDE CEINTURE, et il existe parce qu'on
+// vient d'apprendre qu'un refus définitif peut prendre une forme qu'on ne
+// connaît pas encore. Sans lui, la prochaine cause inconnue rouvrirait
+// exactement le même défaut, avec un autre code.
+var MSG_ESSAIS_MAX = 10;
+
+function _refusDefinitif(error, statut) {
+  var code = String((error && error.code) || "");
+  // 42501 = refus d'écriture par une policy PostgreSQL. Rien à rejouer.
+  if (code === "42501") return true;
+  var st = Number(statut || (error && error.status) || 0);
+  // ⚠️ 401 ET 403 sont DEUX causes distinctes qu'on traite pareil ICI, et
+  // seulement ici : 401 = jeton absent ou expiré, 403 = la règle dit non. Dans
+  // les deux cas, rejouer la même requête telle quelle échouera pareil.
+  return st === 401 || st === 403;
+}
+
 // Envoie un message texte/enveloppe à Supabase, gère statut (sending→sent/failed)
-// et la file d'attente : hors-ligne ou échec → garde en outbox pour renvoi auto.
+// et la file d'attente : hors-ligne ou échec TRANSITOIRE → garde en outbox.
 function _sendTextToSupa(convId, msgId, content) {
   if (typeof supa === "undefined" || !supa || typeof MY_UID === "undefined" || !MY_UID || !window._supaReal) {
     _setMsgStatus(convId, msgId, "failed"); _outboxAdd(convId, msgId, content); return;
@@ -4657,7 +4694,18 @@ function _sendTextToSupa(convId, msgId, content) {
   supa.from("conv_messages")
     .insert({ id: msgId, conv_id: convId, from_id: MY_UID, content: content, created_at: new Date().toISOString() })
     .then(function(res) {
-      if (res && res.error) { _setMsgStatus(convId, msgId, "failed"); _outboxAdd(convId, msgId, content); }
+      if (res && res.error) {
+        _setMsgStatus(convId, msgId, "failed");
+        if (_refusDefinitif(res.error, res.status)) {
+          // Sortie de la file : plus AUCUN renvoi automatique pour celui-ci.
+          _outboxRemove(msgId);
+          // Le refus doit laisser une trace : sans elle, il redevient invisible
+          // — c'est exactement ce qui a permis six jours de refus silencieux.
+          try { if (typeof diagLog === "function") diagLog("msg_refus_definitif " + String((res.error && res.error.code) || res.status || "?")); } catch (e) {}
+        } else {
+          _outboxAdd(convId, msgId, content);
+        }
+      }
       else { _setMsgStatus(convId, msgId, "sent"); _outboxRemove(msgId); }
     })
     .catch(function() { _setMsgStatus(convId, msgId, "failed"); _outboxAdd(convId, msgId, content); });
@@ -4680,7 +4728,28 @@ function _flushOutbox() {
   var a = _outboxLoad();
   if (!a.length) return;
   if (navigator && navigator.onLine === false) return;
-  a.forEach(function(item){ _setMsgStatus(item.convId, item.msgId, "sending"); _sendTextToSupa(item.convId, item.msgId, item.content); });
+  // ⚠️ Les entrées d'AVANT ce correctif n'ont pas de compteur : `|| 0` les
+  // adopte sans les jeter. Une file existante ne doit pas être perdue par une
+  // mise à jour — elle porte des messages que la personne croit envoyés.
+  var restants = [];
+  a.forEach(function(item){
+    var essais = Number(item.essais || 0) + 1;
+    if (essais > MSG_ESSAIS_MAX) {
+      // On ne renvoie plus tout seul, mais le message RESTE à l'écran, en
+      // échec, avec son « réessayer ». On abandonne l'automatisme, pas le texte.
+      _setMsgStatus(item.convId, item.msgId, "failed");
+      try { if (typeof diagLog === "function") diagLog("msg_outbox_plafond " + essais); } catch (e) {}
+      return;
+    }
+    item.essais = essais;
+    restants.push(item);
+    _setMsgStatus(item.convId, item.msgId, "sending");
+    _sendTextToSupa(item.convId, item.msgId, item.content);
+  });
+  // ⚠️ On réécrit la file AVANT que les réponses n'arrivent : `_sendTextToSupa`
+  // fait lui-même son `_outboxAdd`/`_outboxRemove` à la réponse, et il gagne.
+  // Écrire après écraserait ses décisions par un instantané périmé.
+  _outboxSave(restants);
 }
 if (typeof window !== "undefined") {
   window.addEventListener("online", function(){ try { toast("🟢 Connexion rétablie — envoi des messages en attente"); } catch(e){} _flushOutbox(); });
