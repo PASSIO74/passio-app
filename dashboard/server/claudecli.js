@@ -83,6 +83,88 @@ export async function detectClaudeCli() {
 /** État connu (sans relancer la détection). */
 export function claudeCliState() { return { ..._state }; }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// SURVEILLANCE DE LA CONNEXION — corrigé le 2026-09-09.
+//
+// `detectClaudeCli()` ne tournait QU'UNE FOIS, au démarrage (`index.js`), et
+// n'était rejouée que si un humain cliquait la clé du dashboard. Or la session
+// OAuth du CLI expire toute seule. Conséquence mesurée : la sentinelle tourne
+// des jours durant avec `available: false`, donc SANS analyser une seule
+// alerte — et l'écran continue d'annoncer l'état du démarrage, qui n'est plus
+// vrai. Le pilotage se croyait calme parce qu'il était sourd, exactement
+// l'angle mort décrit en tête de `sentinel.js`.
+//
+// Deux corrections, complémentaires :
+//   ① `noteAuthFailure()` — un refus d'authentification pendant une analyse
+//      RABAT l'état immédiatement, au lieu de laisser l'écran mentir jusqu'au
+//      prochain redémarrage ;
+//   ② `startClaudeCliWatch()` — re-détection périodique, donc la reconnexion
+//      (`claude auth login` dans un terminal) est reprise TOUTE SEULE, sans
+//      relancer le pilotage ni cliquer nulle part.
+//
+// ⚠️ La sonde `claude auth status` est un lancement de processus : la cadence
+// reste basse (10 min par défaut) et le minuteur est `unref()` — sinon il
+// tiendrait le processus Node en vie et les tests ne rendraient jamais la main.
+// ═══════════════════════════════════════════════════════════════════════════
+const WATCH_MS = Math.max(60_000, Number(process.env.DASH_CLAUDE_CLI_WATCH_MIN || 10) * 60_000);
+let _watchTimer = null;
+
+/**
+ * Rabat l'état sur « non connecté » quand une analyse a échoué faute d'auth.
+ * Ne touche pas `installed` : le binaire est toujours là, c'est la session qui
+ * est tombée. Retourne le nouvel état, pour être VERROUILLÉ par un test.
+ */
+export function noteAuthFailure() {
+  _state = { ..._state, checked: true, loggedIn: false, available: false };
+  return { ..._state };
+}
+
+/**
+ * Un tour de surveillance : re-détecte, et SIGNALE la bascule connecté →
+ * déconnecté. Sans ce signal, la panne est silencieuse par nature : la
+ * sentinelle cesse d'analyser et l'absence de diagnostic ressemble au calme
+ * (l'angle mort décrit en tête de `sentinel.js`). Niveau `warn` volontairement :
+ * la sentinelle n'analyse que `critical,high`, donc l'alerte ne peut pas
+ * déclencher une analyse… qui échouerait faute d'authentification.
+ *
+ * L'import est PARESSEUX : `claudecli.js` est la frontière de sécurité de la
+ * sandbox, on ne lui attache pas la moitié du serveur (et son test l'importe
+ * seul).
+ */
+export async function claudeCliWatchTick({ notify = null, detect = detectClaudeCli } = {}) {
+  const avant = _state.loggedIn;
+  await Promise.resolve().then(detect).catch(() => {});
+  const apres = _state.loggedIn;
+  if (avant === true && apres === false) {
+    try {
+      const raise = notify || (await import("./alerts.js")).raiseManual;
+      raise({
+        level: "warn",
+        title: "Claude Code déconnecté",
+        message: "La session du CLI a expiré : plus aucun diagnostic ni correctif automatique tant que `claude auth login` n'a pas été relancé. La reprise est automatique ensuite.",
+      });
+    } catch {}
+  }
+  return { avant, apres, changed: avant !== apres };
+}
+
+/** Démarre la re-détection périodique. Idempotent. */
+export function startClaudeCliWatch(everyMs = WATCH_MS) {
+  if (_watchTimer) return _watchTimer;
+  _watchTimer = setInterval(() => { claudeCliWatchTick().catch(() => {}); }, everyMs);
+  if (typeof _watchTimer.unref === "function") _watchTimer.unref();
+  return _watchTimer;
+}
+
+/** Force l'état — RÉSERVÉ AUX TESTS : sans lui, impossible de poser la
+ *  prémisse « connecté » avant de mesurer la chute. */
+export function _setStateForTests(next) { _state = { ..._state, ...next }; return { ..._state }; }
+
+/** Arrête la surveillance (tests, arrêt propre). */
+export function stopClaudeCliWatch() {
+  if (_watchTimer) { clearInterval(_watchTimer); _watchTimer = null; }
+}
+
 /** true si on peut faire une analyse « en direct » (clé API OU CLI local connecté). */
 export function liveFixAvailable() { return Boolean(config.anthropicKey) || _state.available; }
 
@@ -157,6 +239,8 @@ export function runClaudeCli(prompt, { deep = false, timeoutMs } = {}) {
       if (j && j.is_error) {
         const msg = String(j.result || "");
         const authNeeded = /authenticate|oauth|401|expired|log ?in|connect/i.test(msg);
+        // L'écran ne doit pas continuer d'annoncer « connecté » après un refus.
+        if (authNeeded) noteAuthFailure();
         return finish({ error: msg || "Erreur Claude Code.", authNeeded });
       }
       if (j && typeof j.result === "string") return finish({ analysis: j.result });

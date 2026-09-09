@@ -5929,11 +5929,29 @@ function stopFeedRefreshLoop() {
 // ═══ ANALYTICS LÉGÈRES ═══
 // Fire-and-forget : n'attend pas la réponse, n'affiche aucune erreur.
 // Instrumentation des actions clés pour DAU, funnel et features populaires.
-// Table analytics_events — migration_analytics.sql à appliquer en prod.
+// Table analytics_events — appliquée en prod (migration_analytics.sql).
+//
+// ⚠️ `MY_UID` NE PROUVE PAS QU'UN COMPTE EXISTE — même famille que la porte 18+
+// (`admissionCompteReel`, app-07) et que la création de passion (`uidReel`,
+// passions-flat.js). `getMyUserId()` fabrique un `u_<aléatoire>` pour TOUT
+// visiteur, or la SEULE policy de la table est
+//     analytics_insert_own — INSERT — WITH CHECK (user_id = auth.uid()::text)
+// Mesuré en production le 2026-09-09 : depuis l'entrée directe sans compte
+// (`first_run_experience_v1`, actif par défaut), chaque visiteur anonyme
+// déclenchait donc un refus RLS 42501 à chaque `screen_view` — avalé par le
+// `.then(…, function(){})`, donc INVISIBLE dans l'app, et remonté en boucle
+// comme « problème » par le centre de pilotage. Le refus n'était pas un bug de
+// droits : la ligne n'avait aucun droit d'exister.
+//
+// ⚠️ ON N'ÉCHAPPE PAS AU PROBLÈME EN ENVOYANT `auth.uid()` : sans session, il
+// vaut NULL et la policy refuse tout autant. La bonne garde est en amont — un
+// visiteur sans compte n'émet simplement rien.
 function supaTrack(event, properties) {
   try {
-    if (!window._supaReal || typeof MY_UID === "undefined" || !MY_UID) return;
-    var payload = { user_id: MY_UID, event: String(event), properties: properties || {} };
+    if (!window._supaReal) return;
+    var uid = (typeof MY_UID === "string" && MY_UID) ? MY_UID : "";
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uid)) return;
+    var payload = { user_id: uid, event: String(event), properties: properties || {} };
     supa.from("analytics_events").insert(payload).then(function() {}, function() {});
   } catch(e) {}
 }
