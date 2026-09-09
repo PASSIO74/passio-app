@@ -133,6 +133,18 @@ Ce canal ne voit QUE ce qui lève une erreur JavaScript. Bouton qui n'émet plus
 
 Coupe-circuit : une issue ouverte dont le titre contient `[SENTINELLE PAUSE]` arrête tout le canal au tour suivant (même convention que `sentinelle-distante.yml`). Une enquête à la fois : tant qu'une issue `[SENTINELLE]` est ouverte, aucune autre n'est créée.
 
+## 🔄 PWA — « newestWorker is null » : PREMIER défaut réparé de bout en bout par la chaîne autonome (2026-09-09)
+
+Erreur en production → issue `[SENTINELLE]` #304 → correctif et verrou écrits par le canal → PR #305, 13 contrôles verts → fusion → déploiement. **Aucun geste humain sur le chemin technique.** À conserver comme référence de ce que la chaîne sait faire seule.
+
+Le défaut : `js/pwa-detect.js` demandait `registration.update()` au démarrage **et toutes les 60 s**. Sur WebKit (iOS/Safari), `update()` **REJETTE** avec « newestWorker is null » quand la registration n'a plus AUCUN worker (`installing`, `waiting` et `active` tous nuls : désinscription, worker devenu redondant, stockage du site vidé).
+⚠️ **`update()` REND UNE PROMESSE, et le `try/catch` qui entoure le bloc NE L'ATTRAPE PAS** — elle rejette plus tard, hors de la pile. Le rejet partait donc dans `unhandledrejection` (`js/platform.js`) → `client_errors`, **sans le moindre effet pour l'utilisateur** : du bruit pur, qui polluait précisément le tableau de bord servant à voir les vrais défauts. Un `try/catch` autour d'un appel qui rend une promesse ne garde rien : c'est la faute de famille à chercher partout ailleurs.
+⚠️ **La minuterie garde une référence sur la MÊME registration** : elle reposait la question chaque minute — d'où 5 occurrences en 24 h sur un seul compte. Un défaut périodique se compte en occurrences, pas en gravité.
+⚠️ **UN SEUL POINT D'APPEL** : `majSilencieuse(r)` ① n'appelle `update()` que s'il reste un worker à mettre à jour, ② avale le rejet. La vérification immédiate ET la minuterie passent par lui — un second appel direct rouvrirait le défaut à lui seul, ce que le verrou ④ mesure à la SOURCE.
+Verrou : `tests/e2e/pwa-maj-silencieuse.spec.js` (4), dont ① et ② éprouvés par RÉINJECTION.
+
+⚠️ **CE QUE LA CHAÎNE NE SAIT PAS FAIRE, ET QUI SE VOIT ICI** : les consignes de l'issue lui interdisent d'écrire ailleurs que dans `js/*.js`, `styles.css`, `index.html`, `sw.js`. Elle produit donc un correctif et un verrou, **jamais une fiche**. La leçon reste dans un message de commit que personne ne relit — cette section-ci a été écrite à la main. **Un correctif automatique sans mémoire écrite rejoue la même enquête au défaut suivant** : tant que ce point n'est pas réglé, toute réparation de la sentinelle demande qu'on vienne écrire sa fiche après elle.
+
 ## 📊 ANALYTICS `analytics_events` — 271 refus **401** en production (2026-09-09)
 
 Second étage du défaut du matin même. `supaTrack` (app-08) exigeait déjà un **uuid** (`MY_UID` ne prouve pas qu'un compte existe), mais **un uuid ne prouve pas qu'une SESSION est vivante** : `localStorage.passio_uid` survit à la fin de session (déconnexion sur un autre appareil, jeton de rafraîchissement révoqué, stockage du SDK vidé), et un onglet endormi porte un jeton **expiré**. Le SDK partait alors avec la seule clé anon → `auth.uid()` NULL → la policy `analytics_insert_own` refuse.
