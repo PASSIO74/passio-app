@@ -1327,12 +1327,33 @@ function chargerReferentielPassions() {
     // un serveur qui rendrait toujours une page pleine ne la ferait pas tourner
     // sans fin. Le Set n'est publié qu'à la FIN — un chargement interrompu ne
     // doit jamais installer une liste partielle pour toute la session.
+    // ⚠️ `PAGES_MAX × PAS` EST UN PLAFOND DUR, ET IL ÉTAIT MUET (2026-09-09).
+    // Atteindre la borne publie un Set TRONQUÉ : `estPassionCanonique` refuse
+    // alors des passions parfaitement légitimes, sans le moindre signal — le
+    // défaut `max-rows` de ce matin, un cran plus haut et tout aussi silencieux.
+    // La marge (40 000) n'est PAS la correction : la correction, c'est de le
+    // DIRE. Le référentiel vise 5 000 entrées ; si cette trace paraît un jour,
+    // c'est que la liste blanche complète a cessé d'être le bon mécanisme
+    // (voir docs/PASSIONS_CAPACITE_ETUDE_2026-09-09.md §3.2).
     var PAS = 1000;
-    var PAGES_MAX = 20;
+    var PAGES_MAX = 40;
     var vus = new Set();
     var page = 0;
     function suite() {
-      if (page >= PAGES_MAX) { if (vus.size) _referentielPassions = vus; return; }
+      if (page >= PAGES_MAX) {
+        // `diagLog` vit dans app-08, chargé APRÈS celui-ci : l'appel est
+        // asynchrone donc la fonction existe, mais le `typeof` reste
+        // obligatoire — un ReferenceError ici serait avalé par le `catch`
+        // englobant et emporterait la publication du Set avec lui.
+        try {
+          if (typeof diagLog === "function") {
+            diagLog("⚠️ referentiel passions TRONQUÉ à " + vus.size +
+                    " ids (plafond " + (PAGES_MAX * PAS) + ") — des passions légitimes seront refusées à la publication");
+          }
+        } catch (e) {}
+        if (vus.size) _referentielPassions = vus;
+        return;
+      }
       var debut = page * PAS;
       supa.from("passions").select("id").eq("status", "active").range(debut, debut + PAS - 1)
         .then(function (r) {
