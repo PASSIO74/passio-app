@@ -803,23 +803,39 @@ jobs:
           if [ -z "$(gh pr list --repo "${DEPOT}" --head "${ATTENDUE}" --state open --json number --jq '.[0] // empty')" ]; then
             titre="$(git log -1 --format=%s "${ATTENDUE}")"
             {
-              # Une PR ouverte avec le GITHUB_TOKEN ne declenche AUCUN workflow
-              # (protection anti-boucle de GitHub). Mesure le 2026-08-22 sur la
-              # PR #121 : check_runs total_count = 0 sur 770 lignes applicatives.
-              # Une liste de controles vide se lit « rien a signaler » alors
-              # qu'elle dit « rien n'a ete verifie ». On l'ecrit dans le corps.
-              echo "> [!IMPORTANT]"
-              echo "> **Cette pull request n'a AUCUNE integration continue.**"
-              echo ">"
-              echo "> GitHub ne declenche aucun workflow sur un evenement cree avec le"
-              echo "> \`GITHUB_TOKEN\`. Une PR ouverte par ce workflow affiche donc une liste"
-              echo "> de controles VIDE : cela ne veut pas dire « rien a signaler », cela veut"
-              echo "> dire « rien n'a ete verifie »."
-              echo ">"
-              echo "> Pour la rendre verifiable : la fermer et en rouvrir une depuis un compte"
-              echo "> humain sur la meme branche \`${ATTENDUE}\`. La protection de branche sur"
-              echo "> \`main\` refuse de toute facon la fusion tant qu'aucun controle n'est"
-              echo "> rapporte."
+              # ⚠️ L'AVERTISSEMENT SUIT L'ÉTAT RÉEL DU CANAL, il n'est plus écrit
+              # en dur. Une PR ouverte avec le GITHUB_TOKEN ne declenche AUCUN
+              # workflow (protection anti-boucle de GitHub) : mesure le
+              # 2026-08-22 sur la PR #121, check_runs total_count = 0 sur 770
+              # lignes applicatives. Une liste de controles vide se lit « rien a
+              # signaler » alors qu'elle dit « rien n'a ete verifie » — d'ou cet
+              # encart.
+              #
+              # Mais avec SENTINELLE_TOKEN la PR nait au nom de PASSIO74 et la CI
+              # PART : le 2026-09-09, la PR #305 portait 13 controles verts sous
+              # un encart qui annoncait « AUCUNE integration continue ». Un
+              # avertissement qui survit a sa cause ne protege plus personne : il
+              # apprend a ne plus lire les avertissements. Meme famille que
+              # « cible supprimee = tout ce qui la vise part avec ».
+              if [ "${JETON_PERSONNEL}" != "oui" ]; then
+                echo "> [!IMPORTANT]"
+                echo "> **Cette pull request n'a AUCUNE integration continue.**"
+                echo ">"
+                echo "> GitHub ne declenche aucun workflow sur un evenement cree avec le"
+                echo "> \`GITHUB_TOKEN\`. Une PR ouverte par ce workflow affiche donc une liste"
+                echo "> de controles VIDE : cela ne veut pas dire « rien a signaler », cela veut"
+                echo "> dire « rien n'a ete verifie »."
+                echo ">"
+                echo "> Pour la rendre verifiable : la fermer et en rouvrir une depuis un compte"
+                echo "> humain sur la meme branche \`${ATTENDUE}\`. La protection de branche sur"
+                echo "> \`main\` refuse de toute facon la fusion tant qu'aucun controle n'est"
+                echo "> rapporte."
+              else
+                echo "> [!NOTE]"
+                echo "> Cette pull request est ouverte au nom de PASSIO74 (\`SENTINELLE_TOKEN\`),"
+                echo "> donc **l'integration continue s'y declenche normalement**. Les controles"
+                echo "> ci-dessous sont ceux du depot : c'est eux qui decident, pas ce message."
+              fi
               echo
               echo "Travail produit par Claude Code depuis l'issue #${NUMERO}."
               echo
