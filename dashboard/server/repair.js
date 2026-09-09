@@ -54,7 +54,7 @@ export const REPAIR = {
 
 // Chemins que le correctif a le droit de toucher. Liste BLANCHE : tout le reste
 // est refusé, y compris ce qui pourrait maquiller le verdict.
-const ALLOWED = [/^js\/[\w.-]+\.js$/, /^styles\.css$/, /^index\.html$/, /^sw\.js$/];
+export const ALLOWED = [/^js\/[\w.-]+\.js$/, /^styles\.css$/, /^index\.html$/, /^sw\.js$/];
 // Explicité pour le message d'erreur (et pour qu'on lise l'intention d'un coup).
 const FORBIDDEN_LABEL = "tests/, .github/, .claude/, migrations/, scripts/, dashboard/, package.json";
 

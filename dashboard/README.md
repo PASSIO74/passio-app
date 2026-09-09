@@ -206,6 +206,51 @@ n'écrit aucune règle durable.
 | `DASH_AUTOPILOT_MAX_LINES` / `_MAX_FILES` | `60` / `2` | bornes d'un correctif promu |
 | `DASH_SENTINEL_QUARANTINE_FAILS` | `2` | ratés avant mise en quarantaine d'un motif |
 
+### Mise en ligne automatique — le mode le plus engageant (éteint par défaut)
+
+Avec l'autopilote seul, la chaîne s'arrête sur « c'est fusionné dans ta branche
+locale ». Avec la mise en ligne automatique, elle va jusqu'aux **utilisateurs** :
+
+```
+correctif vérifié → push de la branche sentinelle/* → PR ouverte
+→ auto-merge armé → CI COMPLÈTE (audits, 7 bancs SQL, 6 shards e2e, prod)
+→ GitHub fusionne SEUL quand tout est vert → Déploiement production → Netlify
+```
+
+Allumer : **`Activer-Autopilote.cmd /enligne`** (`/nonenligne` pour l'éteindre).
+Il refuse d'armer si `GITHUB_TOKEN` est vide — un mode annoncé actif qui
+n'ouvrirait jamais rien serait exactement la panne silencieuse qu'on corrige.
+
+⚠️ **Ce n'est pas un `git push origin main`, et c'est délibéré.** `main` est
+protégée : GitHub refuse un push direct (mesuré, *protected branch hook
+declined*). Contourner demanderait de retirer la protection du dépôt, donc de
+désarmer les 13 contrôles qui rendent une publication sans humain défendable.
+On passe par eux. **Un rouge arrête tout** : l'auto-merge natif ne peut pas
+fusionner une PR dont un check requis échoue — la sécurité n'est pas une
+condition dans notre code, c'est une propriété du serveur d'en face.
+
+⚠️ **La publication REMPLACE la promotion locale**, elle ne s'y ajoute pas :
+sinon `main` local (commit de fusion) et `origin/main` (squash de la PR)
+divergeraient, et aucun `pull --ff-only` ne rattraperait ça.
+
+⚠️ **Le périmètre est re-vérifié à la publication**, indépendamment de
+`repair.js` : `js/*.js`, `styles.css`, `index.html`, `sw.js`. Jamais `tests/`,
+`.github/`, `migrations/`, `scripts/` ni `dashboard/`. La garde « Gouvernance
+critique » du dépôt reste en travers en double : elle exige une contre-revue
+humaine pour `.github/` et `migrations/`.
+
+⚠️ **Plafond quotidien** (`DASH_PRODUCTION_MAX_PER_DAY`, défaut 3). Une journée
+où la sentinelle publie plus que ça n'est pas une bonne journée : c'est le signe
+qu'elle tourne en rond sur une cause qu'elle ne referme pas, et la bonne réponse
+est un humain, pas un quatrième essai.
+
+| Variable | Défaut | Rôle |
+|---|---|---|
+| `DASH_SENTINEL_PRODUCTION` | `false` | arme la mise en ligne automatique |
+| `GITHUB_TOKEN` | — | scope `repo`, pour ouvrir la PR et armer l'auto-merge |
+| `DASH_PRODUCTION_MAX_PER_DAY` | `3` | plafond de publications par 24 h |
+| `DASH_PRODUCTION_BASE_BRANCH` | `main` | branche de base des PR automatiques |
+
 ### La connexion Claude Code se rattrape toute seule
 
 La session OAuth du CLI expire. Jusqu'au 2026-09-09, elle n'était sondée **qu'au
