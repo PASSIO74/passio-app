@@ -1,0 +1,18 @@
+[1A[2K[2m[WebServer] [22m(node:28140) [DEP0066] DeprecationWarning: OutgoingMessage.prototype._headers is deprecated
+[2m[WebServer] [22m(Use `node --trace-deprecation ...` to show where the warning was created)
+
+
+Running 11 tests using 1 worker
+
+[1A[2K[1/11] [local] › tests/e2e/contextual-nav.spec.js:21:3 › ContextualTools — ouverture / fermeture › IRL : le déclencheur ouvre le panneau ; ✕, backdrop, Escape et retour le ferment
+[1A[2K[2/11] [local] › tests/e2e/contextual-nav.spec.js:53:3 › ContextualTools — ouverture / fermeture › changer d'écran ferme le panneau ouvert
+[1A[2K[3/11] [local] › tests/e2e/contextual-nav.spec.js:63:3 › ContextualTools — aucune fonctionnalité perdue › IRL : ville, filtres et mine/inscrit restent accessibles via le panneau
+[1A[2K[4/11] [local] › tests/e2e/contextual-nav.spec.js:93:3 › ContextualTools — responsive › mobile 375 : bottom-sheet ancré en bas, coins arrondis en haut
+[1A[2K[5/11] [local] › tests/e2e/contextual-nav.spec.js:107:3 › ContextualTools — responsive › desktop 1280 : rail latéral droit plein hauteur
+[1A[2K[6/11] [local] › tests/e2e/contextual-nav.spec.js:124:3 › ContextualTools — accessibilité › rôle dialog, aria-modal, focus au panneau et fermeture clavier
+[1A[2K[7/11] [local] › tests/e2e/smoke.spec.js:26:1 › la page charge avec le bon titre
+[1A[2K[8/11] [local] › tests/e2e/smoke.spec.js:31:1 › la landing s'affiche (logo, badge beta, CTA)
+[1A[2K[9/11] [local] › tests/e2e/smoke.spec.js:38:1 › le bouton Se connecter ouvre le formulaire d'authentification
+[1A[2K[10/11] [local] › tests/e2e/smoke.spec.js:45:1 › aucune erreur JavaScript fatale au démarrage
+[1A[2K[11/11] [local] › tests/e2e/smoke.spec.js:54:1 › le manifest PWA et le service worker sont servis
+[1A[2K  11 passed (2.6m)

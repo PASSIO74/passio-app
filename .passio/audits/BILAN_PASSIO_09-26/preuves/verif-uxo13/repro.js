@@ -1,0 +1,25 @@
+const { chromium } = require("/home/user/passio-app/node_modules/playwright");
+(async () => {
+  const b = await chromium.launch();
+  const ctx = await b.newContext({ viewport: { width: 390, height: 844 } });
+  await ctx.addInitScript(() => { sessionStorage.setItem("passio_gate_v1","67a2ba44e8c09efc9e9e9d60690ef7cd1e3069d072231a1834b30ec1fc50390f"); localStorage.setItem("passio_pwa_dismissed","1"); });
+  const page = await ctx.newPage();
+  await page.goto("http://127.0.0.1:8120/", { waitUntil: "load" });
+  await page.waitForSelector("#frWelcome .fr-welcome-alt", { timeout: 20000 });
+  await page.click("#frWelcome .fr-welcome-alt");
+  await page.waitForTimeout(1500);
+  const tip1 = await page.evaluate(() => { const t = document.querySelector(".fr-tip"); return t ? t.getAttribute("data-fr-tip") : null; });
+  if (tip1) await page.click(".fr-tip .fr-tip-ok");
+  await page.waitForTimeout(2500);
+  const rail = await page.$$eval("#profileStrip > *", els => els.map(e => ({ txt: e.textContent.trim().slice(0,30), cls: e.className, vis: !!e.offsetParent })));
+  const nbPassions = await page.evaluate(() => (state.user.profiles||[]).map(p=>({passion:p.passion, def:!!p._parDefaut, arch:!!p.archived})));
+  const prem = await page.$("#profileStrip > *");
+  await prem.click();
+  await page.waitForTimeout(900);
+  const tip2 = await page.evaluate(() => { const t = document.querySelector(".fr-tip"); return t ? { id: t.getAttribute("data-fr-tip"), texte: t.textContent.trim().replace(/\s+/g," ") } : null; });
+  const tour = await page.evaluate(() => { try { return JSON.parse(localStorage.getItem("passio_first_run_prefs_v1")||"null"); } catch(e){ return String(e);} });
+  const keys = await page.evaluate(() => Object.keys(localStorage).filter(k=>/first|fr_/.test(k)));
+  console.log(JSON.stringify({ tip1, rail, nbPassions, tip2, keys, tour }, null, 1));
+  await page.screenshot({ path: process.argv[2] + "/uxo13-apres-tap-suivis.png" });
+  await b.close();
+})().catch(e => { console.error("ERR", e); process.exit(1); });

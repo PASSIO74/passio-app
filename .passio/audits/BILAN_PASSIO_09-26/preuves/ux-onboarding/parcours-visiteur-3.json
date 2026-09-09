@@ -1,0 +1,49 @@
+{
+  "etapes": [
+    {
+      "t_ms": 4429,
+      "etape": "V sans-pwa-dismissed (UA iPhone Safari)",
+      "overlays": [
+        {
+          "id": "pwa-overlay",
+          "cls": "",
+          "z": "99999",
+          "texte": "PASSIO Le réseau de tes passions 📱 Installer sur iPhone / iPad 1️⃣ Appuie sur Partager ⬆️ en bas de Safari 2️⃣ Choisis \"Sur l'écran d'accueil\" puis Ajouter Fermer"
+        }
+      ],
+      "carte": true,
+      "toasts": []
+    },
+    {
+      "t_ms": 9142,
+      "etape": "V avec-pwa-dismissed (UA iPhone Safari)",
+      "overlays": [],
+      "carte": true,
+      "toasts": []
+    },
+    {
+      "t_ms": 11506,
+      "etape": "B tap story « Léa » (visiteur) : visionneuse + aide stories",
+      "viewerActif": true,
+      "viewerZ": "200",
+      "tip": {
+        "id": "stories",
+        "z": "9000",
+        "rect": {
+          "x": 12,
+          "y": 277,
+          "width": 300,
+          "height": 135.671875,
+          "top": 277,
+          "right": 312,
+          "bottom": 412.671875,
+          "left": 12
+        }
+      },
+      "tourPrefs": {
+        "decouvrir": true,
+        "stories": true
+      }
+    }
+  ]
+}

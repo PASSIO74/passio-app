@@ -1,0 +1,534 @@
+{
+ "domaine": "contenu — publications et formats ; réactions, commentaires, abonnements, invitations, partage (points 8 et 9 du mandat)",
+ "resume": "Audit en lecture seule sur le SHA c8cb8e99 (HEAD de la branche a reçu ensuite 2 commits d'audit de l'orchestrateur ; `git diff --stat c8cb8e99 HEAD -- js index.html sw.js migrations tests` est vide). Méthode : inspection code (app-02/03/04/06/08/09, ui-v5/v6/v7, passions-flat-ui, sw.js, index.html), 4 requêtes base en lecture seule (policies, contraintes, triggers, buckets, inventaire des 32 posts/71 likes/86 commentaires/58 objets Storage), 12 suites e2e exécutées sur le port 8102 (67 cas), et un scénario d'émulation Chromium maison (390×844, script `emulation-contenu.js`) : publication texte+photo, double clic, like, commentaire vide/hostile, partage, suppression, image 0 octet, vidéo/audio à MIME menteur, publication pendant coupure, changement de profil en cours de rédaction, story et follow avec refus serveur.\nFormats réellement présents : texte, photo, vidéo, bobine (is_reel), story (24 h), audio (onglet « Podcast », ≤ 500 Ko ou 120 s de micro), partage d'événement dans le fil. Absents : édition d'un post (menu ⋯ = supprimer seulement), suppression d'une story, live vidéo comme publication (le « live » est un appel WebRTC), carnet/vlog (retiré ADR-011, 1 ligne résiduelle en prod, lue mais jamais rendue).\nVerdict par surface : l'échappement des commentaires/réactions/GIF est PROUVÉ (payload hostile rendu inerte, 3 helpers utilisés au bon contexte), le like est idempotent et annulé sur refus (PROUVÉ), la suppression durable tient (8/8 verts, émulation). En revanche la PUBLICATION est fragile : validation client quasi nulle sur vidéo/audio (fichier texte accepté comme vidéo, 0 octet publié), aucune file de reprise pour un post du Studio non envoyé (reste « Sync… » à vie, jamais retenté), badge « Sync… » affiché même après « Post publié », story et follow qui restent « réussis » quand le serveur refuse, lien de partage de profil `#user-` que rien ne route, partage externe d'un post sans lien profond. Côté base : aucun rate-limit sur posts/post_comments/post_likes, `posts.content` et `post_comments.content` non bornés, 39/58 objets Storage orphelins (153 Mo de bucket), 42/71 likes et 58/86 commentaires orphelins (pas de FK vers posts), 1 bobine en prod sans média.\nTests : 58/67 verts au premier passage ; 9 rouges = `ERR_CONNECTION_REFUSED` / « browser has been closed » (chute du serveur 8102 en cours de run, jamais une assertion) ; rerun de la suite ui-v5-bobines 12/15 + 3 « browser closed », rerun ciblé des 3 : 5/5 verts. Aucune assertion applicative rouge. Le navigateur installé (rev 1194) ne correspond pas à Playwright 1.60 (rev 1223) : contourné par un répertoire de liens symboliques dans le scratchpad.",
+ "controles": [
+  {
+   "id": "CT-01",
+   "controle": "Inventaire des formats réellement publiables et de leur chemin (studioType → publishPost → supaPublishPostWithRetry → supaUploadMedia → posts)",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": "index.html:775-780 (onglets texte/photo/vidéo/bobine/audio « Podcast ») ; js/app-06-reels-partage.js:3745,4304-4309 (type/isReel/image/video/audio dérivés de studioType) ; js/app-08-ui-modals-tour.js:3318-3470 (upload puis insert, passion obligatoire l.3352) ; bobine : app-08:1285-1395 (mePublish) ; story : app-08:538-575 et 3968-4030. Prod : 32 posts = 25 texte, 2 webp, 1 mp3, 1 mp4, 1 bobine mp4, 1 bobine SANS média, 1 vlog résiduel (requête base)"
+  },
+  {
+   "id": "CT-02",
+   "controle": "Validation client des médias (type MIME, taille, 0 octet) par format",
+   "statut": "DÉFAILLANT",
+   "methode": "émulation",
+   "preuve": "emulation-resultats.json : video_mime_menteur → fichier text/plain accepté (studioType=video, data:text/plain) ; video_0_octet_publiee → post type video avec `data:video/mp4;base64,` créé et envoyé à supaPublishPostWithRetry ; audio_mime_menteur → application/pdf accepté « Audio chargé et prêt à publier ». Code : app-06:4012-4016 (vidéo : seule la taille ≤30 Mo) ; 4062-4066 (audio : seule la taille ≤500 Ko). Photo : app-06:3980-3982 + passioCompressImage (décodage canvas, image 0 octet refusée « Impossible de lire cette image » — PROUVÉ)"
+  },
+  {
+   "id": "CT-03",
+   "controle": "Stockage : bucket content public, chemin cloisonné, extension fidèle, pas de base64 en base",
+   "statut": "PROUVÉ",
+   "methode": "requête base",
+   "preuve": "storage.buckets content/attachments public=true, 50 Mo, allowed_mime_types NULL ; policy INSERT `storage_chemin_autorise` = dossier[2] = auth.uid() ; posts_media_not_storage = 0 ; supaUploadMedia app-08:3520-3600 (extension dérivée du conteneur réel, retrait de l'orphelin si URL publique introuvable)"
+  },
+  {
+   "id": "CT-04",
+   "controle": "Rendu des publications (renderPostHTML) avec échappement de tout contenu utilisateur",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": "js/app-02-state-utils.js:6553-6790 : escapeHtml sur texte/nom/passion, escapeJsArg dans tous les onclick, safeUrlAttr côté média (commentaire l.6634) ; capture 02-feed-post-photo.png"
+  },
+  {
+   "id": "CT-05",
+   "controle": "Suppression d'une publication : pierre tombale, quatre tableaux, file serveur, retour au rafraîchissement",
+   "statut": "PROUVÉ",
+   "methode": "test exécuté",
+   "preuve": "suppression-durable.spec.js 8/8 verts (suites-contenu.log) ; émulation : suppression → {dansUserPosts:false, tombstone:true, dom:false, outbox:1} ; code app-04:204-232, file _delObRun app-04:101-125 (relecture après 0 ligne)"
+  },
+  {
+   "id": "CT-06",
+   "controle": "Édition d'une publication",
+   "statut": "NON APPLICABLE",
+   "methode": "inspection code",
+   "preuve": "Fonctionnalité absente : openPostOptions app-04:9-24 ne propose que « Supprimer » (`_editBtn = \"\"`) ; la policy UPDATE `can_edit_post` existe en base sans aucun appelant client"
+  },
+  {
+   "id": "CT-07",
+   "controle": "Double clic « Publier » (doublon ?)",
+   "statut": "PROUVÉ",
+   "methode": "émulation",
+   "preuve": "publish_double_clic → userPosts:1, pubCalls:1, toast « Publication en cours, attends un moment... » ; verrou `_publishInProgress` app-06:4196-4204 ; insert 23505 traité comme succès app-08:3439"
+  },
+  {
+   "id": "CT-08",
+   "controle": "Publication pendant coupure réseau : reprise idempotente ?",
+   "statut": "DÉFAILLANT",
+   "methode": "émulation",
+   "preuve": "publication_hors_ligne → syncStatus « syncing », toast « Post en local (connexion lente) », aucune clé outbox posts ; reprise_apres_online → pubCalls:0 ; post_local_apres_reload → présent, toujours « Sync… ». Code : publishPost app-06:4349-4372 n'a ni file ni retentative (contraste : bobines `_scheduleReelRetry` app-08:1408)"
+  },
+  {
+   "id": "CT-09",
+   "controle": "Statut de synchronisation affiché sur mes cartes",
+   "statut": "DÉFAILLANT",
+   "methode": "émulation",
+   "preuve": "feed_rendu.meta = « 🎸 Musique · à l'instant Sync… » alors que le toast dit « Post publié » ; capture 02-feed-post-photo.png ; `syncStatus` n'est écrit qu'à « syncing » (app-06:4314) et jamais mis à jour (grep : aucune autre écriture) ; rendu app-02:6744-6747"
+  },
+  {
+   "id": "CT-10",
+   "controle": "Changement de profil pendant la rédaction",
+   "statut": "PROBABLE",
+   "methode": "émulation",
+   "preuve": "switch_profil → texte et photo conservés, studioType conservé, mais `#postPassion` passe de « musique » à « sport » (renderStudio réécrit le select, app-06:2671+ / 3792-3796) : le brouillon en cours changera de passion sans avertissement"
+  },
+  {
+   "id": "CT-11",
+   "controle": "Réactions : 1 réaction par personne, double-like, écriture de l'intention",
+   "statut": "PROUVÉ",
+   "methode": "test exécuté",
+   "preuve": "interactions.spec.js (verts : « l'écriture serveur reçoit l'INTENTION », « anti double clic », « contenu de démo : aucune écriture ») ; émulation like_double_clic → liked:true, likes:1, likeCalls:1 ; code app-03:291-370 (`_likePending`, annulation optimiste sur refus) ; post_likes PK (post_id,user_id) ; supaCommentRemoveReactions appelé avant réinsertion (emoji-misc.js:543,657)"
+  },
+  {
+   "id": "CT-12",
+   "controle": "Commentaire vide / trop court",
+   "statut": "PROUVÉ",
+   "methode": "émulation",
+   "preuve": "commentaire.vide → n:0, toast « Trop court » (app-04:1082) ; bouton désactivé champ vide (_syncComposerSendState app-04:1134)"
+  },
+  {
+   "id": "CT-13",
+   "controle": "Commentaire XSS (texte, lien javascript:, GIF URL piégée) et payloads comment_interactions",
+   "statut": "PROUVÉ",
+   "methode": "test exécuté",
+   "preuve": "echappement.spec.js, echappement-ids-reactions.spec.js, reaction-cle-entree.spec.js, commentaires-bobine.spec.js verts ; émulation : `<img onerror>` rendu en `&lt;img…` (xss:0, imgInjectees:0), URL giphy avec `\"onload=` rendue en lien `rel=noopener` sans exécution ; code : _commentBodyHtml app-04:301-305 (safeUrlAttr + escapeHtml), réponses emoji/GIF app-04:646-668, escapeJsArg sur tous les onclick ; base : 0 commentaire ou payload contenant « < » ; ci_payload_len_check ≤ 500"
+  },
+  {
+   "id": "CT-14",
+   "controle": "GIF = commentaire (rendu image, non modifiable)",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": "_looksLikeMediaUrl app-04:238-244 ; editCommentEntry refuse « Un GIF ne peut pas être modifié » app-04:1474 ; comment_interactions kind ∈ {like,reply,emoji,gif} (contrainte ci_kind_check) — prod : 188 like / 87 reply / 84 emoji / 2 gif"
+  },
+  {
+   "id": "CT-15",
+   "controle": "Suppression de son commentaire et droits (RLS post_comments)",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "requête base",
+   "preuve": "émulation commentaire_supprime → 0 ; policies post_comments : DELETE/UPDATE `author_id = auth.uid()` uniquement ; UI cohérente (openCommentOptions n'offre « Supprimer » qu'à `isMine`, app-04) — l'auteur du post ne peut PAS modérer les commentaires sous sa publication (épingler seulement). ⚠️ `_supaDeleteCommentRow` app-04:1447-1458 ne lit pas `{error}` : un refus serveur laisse le commentaire supprimé à l'écran seulement"
+  },
+  {
+   "id": "CT-16",
+   "controle": "Commentaire sur un post d'un compte privé / bloqué",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": "posts d'un compte bloqué écartés du fil (allFeedPosts app-02, `blocked.includes(p.authorId)`) et commentaires des bloqués masqués (_renderCommentsList app-04:554) ; posts privés filtrés à la lecture (supaLoadPosts app-08:3637-3639 + policy SELECT posts). Limite : la policy INSERT post_comments ne vérifie que `author_id` — un compte non abonné connaissant l'id peut commenter en aveugle un post privé (PLAUSIBLE, non reproduit)"
+  },
+  {
+   "id": "CT-17",
+   "controle": "Follow / unfollow, multi-surfaces data-follow-uid, refus serveur",
+   "statut": "DÉFAILLANT",
+   "methode": "émulation",
+   "preuve": "parcours-suivre.spec.js vert ; _boutonsSuivi app-04:3264-3278 repeint tous les boutons ; MAIS follow_refus_serveur → following:true, bouton « ✓ Suivi » alors que supaFollowUser a rendu false (toggleFollowUser app-04:3299 ignore le retour ; supaUnfollowUser app-08:5317-5325 ne compte pas les lignes supprimées)"
+  },
+  {
+   "id": "CT-18",
+   "controle": "Compte privé et blocage qui révoque l'abonnement",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": "blockUser app-04:3313-3327 retire de `following` + supaUnfollowUser ; supaBlockUser app-08:5340+ retire aussi la relation inverse ; policy follows DELETE « Suppression cote suivi » (following_id = auth.uid()). Prod : 0 compte privé, 0 blocage, 7 follows, 0 auto-follow"
+  },
+  {
+   "id": "CT-19",
+   "controle": "Compteurs abonnés / abonnements / posts cohérents",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": "profil visité : `count exact` sur follows dans les deux sens (app-04:2885-2895) ; mon profil : `_followersCount` chargé depuis Supabase (app-06:405-412) ; abonnements = state.user.following (local, resynchronisé par supaLoadFollowing). Non mesuré contre la base (BLOQUÉ sans compte réel)"
+  },
+  {
+   "id": "CT-20",
+   "controle": "Feuille de partage d'un post (dans le fil / en dehors) et lien profond",
+   "statut": "DÉFAILLANT",
+   "methode": "émulation",
+   "preuve": "partage_modal → « Partager dans mon feed », « Partager en dehors » (capture 04-partage-post.png) ; « en dehors » partage `https://passio-app.netlify.app` sans identifiant de post (app-03:35-36) — aucun route `#post-` n'existe (grep) ; partage-bobine.spec.js et partage-experience-passion.spec.js verts"
+  },
+  {
+   "id": "CT-21",
+   "controle": "Partage de profil (shareUserProfile) et routage de son lien",
+   "statut": "DÉFAILLANT",
+   "methode": "émulation",
+   "preuve": "partage_profil_url → `…/index.html?plk=…#user-u_theo` ; deep_link_user_route → hash posé, aucune modale, écran feed. Aucun routeur ne traite `#user-` (grep js/ : seul émetteur app-04:3384) ; first-run.js:441 RE_LIEN_PROFOND reconnaît `#profil-`/`#post-`/`#conv-` que personne n'émet"
+  },
+  {
+   "id": "CT-22",
+   "controle": "Liens profonds #reel= et #irl-event-",
+   "statut": "PROUVÉ",
+   "methode": "test exécuté",
+   "preuve": "ui-v5-bobines.spec.js (15/15 verts cumulés sur deux passages, 3 cas rejoués isolément après « browser closed »), fuite-blob-bobines.spec.js vert ; _openReelDeepLink app-06:77-135 (garde d'appartenance buildReels, hash nettoyé au seul succès)"
+  },
+  {
+   "id": "CT-23",
+   "controle": "Web Share API et repli copier",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": "partagerOuCopier app-02:1915-1965 : navigator.share sans await préalable, AbortError ignoré, repli clipboard puis toast « Lien : … »"
+  },
+  {
+   "id": "CT-24",
+   "controle": "Invitation d'amis (parrainage, contacts, lien d'invitation)",
+   "statut": "NON APPLICABLE",
+   "methode": "inspection code",
+   "preuve": "Aucune fonctionnalité d'invitation de personnes extérieures : grep « invit » ne rend que les invitations d'APPEL (app-05:456-1183), les membres de groupe (app-05:1290), un lien beta télémétrique (app-08:223) et les notifications event_invite. Boucle de croissance absente"
+  },
+  {
+   "id": "CT-25",
+   "controle": "Partage vers la messagerie interne",
+   "statut": "NON APPLICABLE",
+   "methode": "inspection code",
+   "preuve": "sharePost (app-03:10-43), openReelShareModal (app-05:2908-2960 : WhatsApp/Telegram/X/Facebook/Email/SMS/feed/copier) et shareUserProfile n'offrent aucun envoi vers une conversation PASSIO"
+  },
+  {
+   "id": "CT-26",
+   "controle": "Stories : publication, 24 h, refus serveur, suppression",
+   "statut": "DÉFAILLANT",
+   "methode": "émulation",
+   "preuve": "story_echec_serveur → story ajoutée localement (7→8), aucun toast d'échec, `typeof deleteStory === \"undefined\"` ; code app-08:1339-1341 et 570-573 (résultat de supaPublishStory ignoré, toast « Story publiée » inconditionnel) ; expiration 24 h à la lecture seulement (supaLoadStories `gte created_at`) ; aucune suppression de story dans le code (grep `from(\"stories\")` : select/insert seuls, hors purge de compte)"
+  },
+  {
+   "id": "CT-27",
+   "controle": "Rate-limit et bornes serveur sur posts / post_comments / post_likes",
+   "statut": "DÉFAILLANT",
+   "methode": "requête base",
+   "preuve": "pg_trigger : `trg_rate_limit` seulement sur comment_interactions (et event_reactions/reports d'après l'orchestrateur) ; posts n'a que `trg_posts_freeze_author` ; post_comments et post_likes : aucun trigger ; information_schema : posts.content et post_comments.content `text` sans longueur ni CHECK ; seules bornes = maxlength client 1200 (index.html:786) et 400 (app-04:1024)"
+  },
+  {
+   "id": "CT-28",
+   "controle": "Intégrité référentielle des interactions (FK vers posts) et orphelins",
+   "statut": "DÉFAILLANT",
+   "methode": "requête base",
+   "preuve": "pg_constraint : post_likes et post_comments n'ont AUCUNE FK vers posts ; prod : likes_orphan 42/71, comments_orphan 58/86, ci_orphan 145/361 (comment_interactions) ; storage_content_orphans 39/58 objets (dont 8 mp4 sur 10 non référencés)"
+  },
+  {
+   "id": "CT-29",
+   "controle": "Pièces jointes de messagerie (app-09) : validation et base64 en base",
+   "statut": "PROBABLE",
+   "methode": "inspection code",
+   "preuve": "handleAttachFile app-09:780-798 : image ≤40 Mo compressée ; vidéo/audio/document : AUCUNE borne de taille ni de type avant lecture en data URL (localStorage) ; sendMessageToSupabase app-09:920-934 refuse bien le base64 en base (« non synchronisé »). Hors périmètre strict (messagerie), signalé"
+  },
+  {
+   "id": "CT-30",
+   "controle": "Service worker : cache des médias, mise à jour",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": "sw.js : cache limité à index/styles/manifest/icônes, navigation network-first no-store, aucun cache de média Storage (fetch hors hostname ignoré l.~150)"
+  },
+  {
+   "id": "CT-31",
+   "controle": "Suites e2e demandées (12) exécutées",
+   "statut": "PROUVÉ",
+   "methode": "test exécuté",
+   "preuve": "`PASSIO_PORT=8102 npx playwright test --project=local <12 suites> --workers=1` → 58 passed / 9 failed (16,9 min) ; les 9 rouges = ui-v5-bobines cas 59-67 avec `ERR_CONNECTION_REFUSED`/« browser has been closed » (serveur tombé) ; rerun suite : 12 passed / 3 « browser closed » ; rerun ciblé :275 :303 :358 → 5 passed. Logs : suites-contenu.log, suite-ui-v5-bobines-rerun.log, suite-ui-v5-bobines-rerun2.log. Aucune assertion applicative rouge"
+  },
+  {
+   "id": "CT-32",
+   "controle": "Scénario manuel émulé : publier texte+photo, rendu, like, commenter, partager, supprimer",
+   "statut": "PROUVÉ",
+   "methode": "émulation",
+   "preuve": "emulation-contenu.js + emulation-resultats.json ; captures 01-studio-photo.png, 02-feed-post-photo.png, 03-commentaire-hostile.png, 04-partage-post.png, 05-apres-suppression.png ; erreurs_js: []"
+  },
+  {
+   "id": "CT-33",
+   "controle": "Politique Storage SELECT (listage) sur content ET attachments",
+   "statut": "DÉFAILLANT",
+   "methode": "requête base",
+   "preuve": "pg_policies storage.objects `passio_media_read` SELECT roles {public} qual `bucket_id IN ('content','attachments')` : tout rôle, anon compris, peut LISTER les objets, y compris les pièces jointes de conversations privées (`attachments/<convId>/…`). Domaine sécurité, signalé ici car il porte sur les médias publiés"
+  },
+  {
+   "id": "CT-34",
+   "controle": "Comportement sur appareils réels (iOS/Android/Safari) pour vidéo/audio",
+   "statut": "BLOQUÉ",
+   "methode": "non réalisé",
+   "preuve": "Chromium seul ; le code porte des reprises iOS (mp4/m4a, app-06:4110-4125, app-08:736-760) non vérifiables ici. Il faudrait un iPhone et un Android réels"
+  }
+ ],
+ "findings": [
+  {
+   "id": "CONT-01",
+   "priorite": "P1",
+   "titre": "Aucune validation de type ni de contenu sur les vidéos et audios du Studio : un fichier texte ou vide est publié comme vidéo",
+   "fonctionnalite": "Studio — publication vidéo / audio (« Podcast »)",
+   "attendu": "Un fichier qui n'est pas une vidéo/un audio décodable est refusé avant tout upload ; un fichier 0 octet est refusé",
+   "observe": "`text/plain` accepté comme vidéo (toast « Vidéo chargée »), vidéo de 0 octet acceptée puis publiée (post type video, `data:video/mp4;base64,` envoyé au chemin de publication) ; `application/pdf` accepté comme audio (« Audio chargé et prêt à publier »)",
+   "reproduction": "Studio → onglet Vidéo → choisir un fichier .mp4 dont le contenu est du texte (ou vide) → Publier. Script : emulation-contenu.js, clés video_mime_menteur, video_0_octet_publiee, audio_mime_menteur",
+   "preuve": "js/app-06-reels-partage.js:4012-4016 (seule la taille est testée), 4062-4066 (audio : taille seule), 4090-4094 ; emulation-resultats.json ; bucket sans allowed_mime_types (requête storage.buckets)",
+   "impact": "Publication invisible/injouable pour tous les lecteurs (carte vidéo noire), fichier facturé en Storage ; en prod une bobine is_reel=true sans média existe déjà (requête base). Image de marque dégradée dès les premiers testeurs",
+   "visibilite_pilotage": "non — le flux publish_post se termine « ok » (traces.js:69) puisque l'upload et l'insert réussissent",
+   "detection_sentinelle": "non — aucune erreur, aucune trace en échec",
+   "correction": "Dans les gestionnaires #videoInput/#audioInput : exiger `file.type` en video/*|audio/*, refuser size===0, décoder via `<video>`/`<audio>` (loadedmetadata, duration>0) avant d'accepter ; côté Storage poser allowed_mime_types sur le bucket content",
+   "risque_regression": "faible (gardes d'entrée) ; attention aux MIME vides d'iOS pour les .mov (accepter par extension avec décodage)",
+   "effort": "0,5 jour",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "CONT-02",
+   "priorite": "P1",
+   "titre": "Un post du Studio non envoyé n'est jamais retenté : il reste « Sync… » à vie sans file de reprise",
+   "fonctionnalite": "Studio — publication pendant coupure/lenteur réseau",
+   "attendu": "Un post accepté localement est mis en file et renvoyé au retour du réseau (idempotent, comme la file des commentaires et celle des suppressions)",
+   "observe": "Toast « Post en local (connexion lente) », `syncStatus` reste « syncing », aucune clé outbox posts, aucun renvoi sur l'événement `online`, et le post survit au rechargement toujours local",
+   "reproduction": "Publier un post texte avec supaPublishPostWithRetry qui rend false (ou réseau coupé) ; déclencher `online` ; recharger. Clés publication_hors_ligne, reprise_apres_online, post_local_apres_reload",
+   "preuve": "js/app-06-reels-partage.js:4349-4372 (Promise.race 5 s puis abandon) ; aucune file : grep `_flushOutbox` = messages seulement (app-04:4644), `_delOb*` = suppressions, `_cmtOb*` = commentaires ; bobines seules ont `_scheduleReelRetry` (app-08:1408)",
+   "impact": "Perte silencieuse de contenu (le post n'existe que sur l'appareil, disparaît au changement d'appareil) ; l'utilisateur croit avoir publié",
+   "visibilite_pilotage": "partiel — la trace publish_post finit « error » (tel.flowEnd app-08:3325-3330) mais rien ne dit que le post ne sera jamais renvoyé",
+   "detection_sentinelle": "partiel — une trace en échec peut lui être soumise (sentinel.js:189,251), sans notion de reprise",
+   "correction": "Créer une file `passio_post_outbox_v1` sur le modèle de `_delOb*` : mise en file à l'échec, flush sur `online`/timer, insert idempotent (23505 = succès), mise à jour de `syncStatus`",
+   "risque_regression": "moyen (interaction avec les pierres tombales : ne jamais renvoyer un id supprimé)",
+   "effort": "1 jour",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "CONT-03",
+   "priorite": "P2",
+   "titre": "Badge « Sync… » affiché en permanence sur mes publications, même après « Post publié »",
+   "fonctionnalite": "Fil — carte de mes publications",
+   "attendu": "« Sync… » pendant l'envoi, « En ligne » après succès, « Local » après échec",
+   "observe": "`syncStatus` n'est écrit qu'à « syncing » à la création et jamais mis à jour ; la carte affiche « Sync… » y compris après le toast de succès et après rechargement",
+   "reproduction": "Publier un post ; lire `.post-author-meta` de la carte (clé feed_rendu) ; capture 02-feed-post-photo.png",
+   "preuve": "js/app-06-reels-partage.js:4314 (seule écriture) ; grep `syncStatus` js/ : aucune autre affectation ; rendu js/app-02-state-utils.js:6744-6747",
+   "impact": "Message contradictoire (« Post publié » vs « Sync… »), perte de confiance dans la synchronisation ; masque le vrai cas d'échec (CONT-02)",
+   "visibilite_pilotage": "non",
+   "detection_sentinelle": "non",
+   "correction": "Écrire `post.syncStatus = ok ? \"synced\" : \"offline\"` dans le `.then` de supaPublishPostWithRetry (app-06:4354) et repeindre la carte ; `supaLoadPosts` marque « synced »",
+   "risque_regression": "faible",
+   "effort": "1 heure",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "CONT-04",
+   "priorite": "P2",
+   "titre": "Le lien de partage d'un profil (#user-<id>) n'est routé par personne",
+   "fonctionnalite": "Partage de profil (menu ⋯ du profil visité, shareUserProfile)",
+   "attendu": "Ouvrir le lien partagé affiche le profil visé",
+   "observe": "Le lien est fabriqué avec `#user-<uid>` ; aucun routeur ne traite ce hash : le destinataire arrive sur le fil, sans message",
+   "reproduction": "shareUserProfile('u_theo') → URL `…#user-u_theo` ; poser ce hash → aucune modale, écran feed (clés partage_profil_url, deep_link_user_route)",
+   "preuve": "js/app-04-comments-shop.js:3384 (émetteur) ; grep `#user-` dans js/ : aucun consommateur ; js/first-run.js:441 RE_LIEN_PROFOND attend `#profil-`, jamais émis",
+   "impact": "Boucle de croissance cassée : partager un profil ne ramène personne sur ce profil ; télémétrie de lien (`plk`) mesure des ouvertures qui n'aboutissent pas",
+   "visibilite_pilotage": "partiel — le lien est tagué (tel.shareLink) mais l'échec d'ouverture n'est pas un événement",
+   "detection_sentinelle": "non",
+   "correction": "Ajouter un routeur `#user-<id>` sur le modèle de `_openReelDeepLink` (attente app prête, openUserProfile(id,'seed'), hash nettoyé au succès) et aligner RE_LIEN_PROFOND",
+   "risque_regression": "faible",
+   "effort": "0,5 jour",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "CONT-05",
+   "priorite": "P2",
+   "titre": "Le partage externe d'un post ne porte aucun lien profond vers le post",
+   "fonctionnalite": "Feuille de partage d'un post → « Partager en dehors »",
+   "attendu": "L'URL partagée ouvre la publication (comme `#reel=` pour les bobines)",
+   "observe": "URL partagée = `https://passio-app.netlify.app` seule ; aucune route `#post-` n'existe",
+   "reproduction": "sharePost(id) → « Partager en dehors » → lire `data.url`",
+   "preuve": "js/app-03-posts-vlogs.js:35-36 ; grep `#post-` js/ : seulement first-run.js:441 (regex sans consommateur)",
+   "impact": "Le contenu partagé hors app n'est jamais retrouvé ; viralité nulle sur les posts (les bobines ont, elles, un lien)",
+   "visibilite_pilotage": "partiel — tel.action share_post existe (app-03:57), pas la destination",
+   "detection_sentinelle": "non",
+   "correction": "Émettre `#post=<id>` et router comme `#reel=` (garde findPostAnywhere/visibilité, openPost)",
+   "risque_regression": "faible",
+   "effort": "0,5 jour",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "CONT-06",
+   "priorite": "P2",
+   "titre": "Story « publiée » même quand le serveur refuse, et aucune suppression de story possible",
+   "fonctionnalite": "Stories (composer texte et éditeur média)",
+   "attendu": "Échec serveur = story retirée localement + message ; l'auteur peut supprimer sa story avant 24 h",
+   "observe": "Le résultat de supaPublishStory est ignoré, toast « Story publiée » inconditionnel, story ajoutée à `state.seed.stories` ; aucune fonction de suppression de story dans le code",
+   "reproduction": "supaPublishStory stubbé à false → publishStoryFromComposer() : stories 7→8, aucun toast d'échec, `typeof deleteStory === 'undefined'` (clé story_echec_serveur)",
+   "preuve": "js/app-08-ui-modals-tour.js:570-573 et 1339-1341 ; grep `from(\"stories\")` : select/insert seuls (purge de compte à part, app-02:3090)",
+   "impact": "Story visible chez l'auteur seul, invisible pour tous ; impossible de retirer une story publiée par erreur (RGPD/modération : seule la suppression de compte l'efface)",
+   "visibilite_pilotage": "partiel — flux publish_story settle « error » (app-08:3998) mais l'écran ne le reflète pas",
+   "detection_sentinelle": "partiel",
+   "correction": "Attendre le verdict de supaPublishStory et retirer la story + toast en cas d'échec ; ajouter « Supprimer ma story » (delete RLS auteur + retrait local + Storage)",
+   "risque_regression": "faible",
+   "effort": "0,5 jour",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "CONT-07",
+   "priorite": "P2",
+   "titre": "Follow/unfollow : un refus serveur laisse « ✓ Suivi » à l'écran et dans l'état",
+   "fonctionnalite": "Abonnements (toggleFollowUser)",
+   "attendu": "Échec réel = annulation de l'affichage optimiste (invariant CLAUDE.md « écritures qui échouent en silence »)",
+   "observe": "supaFollowUser rend `false`, l'état `following` et le bouton restent « suivi » ; supaUnfollowUser ne compte pas les lignes supprimées (0 ligne = RLS ou déjà absent, indistinct)",
+   "reproduction": "supaFollowUser stubbé à false → toggleFollowUser('u_theo') → following:true, bouton « ✓ Suivi » (clé follow_refus_serveur)",
+   "preuve": "js/app-04-comments-shop.js:3299 et 3310 (retour ignoré) ; js/app-08-ui-modals-tour.js:5317-5325 (delete sans `.select()` ni relecture)",
+   "impact": "Compte privé : l'utilisateur croit suivre et ne voit pas le contenu ; désabonnement fantôme ; compteurs faux jusqu'au prochain supaLoadFollowing",
+   "visibilite_pilotage": "oui — flux follow_user/unfollow_user settle « error » (tel.settle)",
+   "detection_sentinelle": "partiel",
+   "correction": "`supaFollowUser(...).then(ok => { if (!ok) revert + toast })` ; unfollow avec `.select('following_id')` et relecture comme supaSetPostLike",
+   "risque_regression": "faible",
+   "effort": "2 heures",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "CONT-08",
+   "priorite": "P1",
+   "titre": "Aucun rate-limit ni borne serveur sur posts, post_comments et post_likes",
+   "fonctionnalite": "Publication / commentaires / likes — protection anti-abus côté base",
+   "attendu": "Trigger rate_limit_insert (déjà utilisé sur comment_interactions) et longueur bornée (CHECK) sur les contenus",
+   "observe": "posts : seul trigger `trg_posts_freeze_author` ; post_comments/post_likes : aucun trigger ; `content` sans CHECK de longueur ; seules bornes = maxlength HTML (1200 / 400), contournables par l'API REST",
+   "reproduction": "SELECT sur pg_trigger et information_schema.columns (résultats dans le contrôle CT-27)",
+   "preuve": "pg_trigger (tables posts/post_likes/post_comments), pg_constraint : aucun CHECK ; index.html:786, app-04:1024",
+   "impact": "Un seul compte confirmé peut inonder le fil ou les fils de commentaires de tout le monde (spam, contenu de 10 Mo par ligne), sans frein ni détection ; coût base et modération",
+   "visibilite_pilotage": "partiel — le volume d'actions apparaît dans interactions.js mais aucune alerte de seuil",
+   "detection_sentinelle": "non",
+   "correction": "Migration : `rate_limit_insert('author_id','60')` sur posts et post_comments, `('user_id','120')` sur post_likes ; CHECK char_length(content) ≤ 2000 / 500 ; passer par le canal DDL d'ADR-012",
+   "risque_regression": "faible (seuils larges) ; vérifier les suites multi-comptes",
+   "effort": "0,5 jour",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "CONT-09",
+   "priorite": "P2",
+   "titre": "Interactions sans clé étrangère vers posts : 42/71 likes, 58/86 commentaires et 145/361 interactions sont orphelins en prod",
+   "fonctionnalite": "Intégrité des données de contenu",
+   "attendu": "FK post_likes.post_id / post_comments.post_id → posts(id) ON DELETE CASCADE ; comptages fiables",
+   "observe": "Aucune FK (pg_constraint) ; les lignes survivent à la suppression du post ; supaLoadPosts recharge likes/commentaires par `in(post_id)` donc les orphelins ne sont pas affichés mais restent stockés et comptés par toute requête agrégée",
+   "reproduction": "Requêtes likes_orphan / comments_orphan / ci_orphan (contrôle CT-28)",
+   "preuve": "pg_constraint pour post_likes, post_comments, comment_interactions ; deletePost n'efface que la ligne posts (app-04:101-125)",
+   "impact": "Statistiques et KPI faux (engagement), base qui gonfle, fuite de contenu de commentaires après suppression du post (les commentaires d'autrui restent lisibles via l'API si `post_is_visible` répond vrai sur un id absent — à vérifier)",
+   "visibilite_pilotage": "non",
+   "detection_sentinelle": "non",
+   "correction": "Migration : purge des orphelins puis FK avec ON DELETE CASCADE (post_likes, post_comments) ; pour comment_interactions, nettoyage périodique pg_cron",
+   "risque_regression": "moyen (identifiants de démo `p48`… ne doivent plus être écrits — déjà le cas pour les likes, app-03:322)",
+   "effort": "0,5 jour + revue RLS",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "CONT-10",
+   "priorite": "P2",
+   "titre": "39 des 58 objets du bucket `content` ne sont référencés par aucune ligne (dont 8 vidéos sur 10)",
+   "fonctionnalite": "Stockage des médias publiés",
+   "attendu": "Un média Storage correspond à une publication/story/avatar vivante ; les orphelins sont purgés",
+   "observe": "39/58 objets orphelins sur un bucket de 153 Mo ; sources : uploads suivis d'un insert raté ou d'un timeout (app-08:3373-3390 réessaie l'upload sous le MÊME chemin avec upsert, mais un échec final laisse le fichier), suppressions RLS refusées, suppressions administratives",
+   "reproduction": "Requête storage_content_orphans (CT-28)",
+   "preuve": "storage.objects vs posts.media_url/stories.media_url/profiles.avatar_url|cover_url ; storage_mime : videos video/mp4 : 10 pour 2 posts mp4",
+   "impact": "Coût Storage/egress inutile (≈ 2/3 du bucket), et médias de contenu supprimé toujours servis publiquement (URL devinable ? non, mais listable : voir CONT-11)",
+   "visibilite_pilotage": "non",
+   "detection_sentinelle": "non",
+   "correction": "Job pg_cron ou script `npm run purge` (canal ② ADR-012) qui liste storage.objects sans référence depuis > 24 h et les supprime ; retirer le fichier dans supaPublishPostWithRetry quand l'insert échoue définitivement (comme supaPublishStory le fait)",
+   "risque_regression": "faible si délai de grâce ≥ 24 h",
+   "effort": "0,5 jour",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "CONT-11",
+   "priorite": "P1",
+   "titre": "La policy Storage SELECT autorise tout rôle (anon compris) à LISTER les objets des buckets content et attachments",
+   "fonctionnalite": "Storage — médias publiés et pièces jointes de conversations",
+   "attendu": "Listage réservé au propriétaire (content) et aux membres de la conversation (attachments) ; lecture par URL seulement",
+   "observe": "`passio_media_read` : SELECT, roles {public}, qual `bucket_id IN ('content','attachments')` → `storage.from('attachments').list()` sans session énumère `attachments/<convId>/…` (vocaux, photos privées), puis URL publique",
+   "reproduction": "SELECT sur pg_policies schemaname='storage' (CT-33) ; à reproduire hors audit avec un client anon : `supabase.storage.from('attachments').list('attachments')`",
+   "preuve": "pg_policies storage.objects (résultat cité dans CT-33) ; app-09:872-873 (chemins attachments/<convId>/<fichier>)",
+   "impact": "Énumération des médias privés de la messagerie et de tout contenu supprimé encore en Storage ; contradiction avec la fuite DM corrigée le 2026-08-09 (KNOWN_RISKS)",
+   "visibilite_pilotage": "non",
+   "detection_sentinelle": "non",
+   "correction": "Remplacer la policy SELECT par `bucket_id='content' AND (owner = auth.uid())` OR `bucket_id='attachments' AND is_conv_member(...)` — la lecture par URL publique n'en dépend pas ; à défaut, passer `attachments` en bucket privé avec URLs signées",
+   "risque_regression": "moyen — vérifier que getPublicUrl n'utilise pas SELECT ; suites confidentialite/multi-comptes",
+   "effort": "0,5 jour + revue sécurité indépendante (changement RLS = critique, AGENTS.md)",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "CONT-12",
+   "priorite": "P3",
+   "titre": "Changer de profil pendant la rédaction change silencieusement la passion de destination du brouillon",
+   "fonctionnalite": "Studio — sélecteur de passion et switchToProfile",
+   "attendu": "La passion choisie pour le post en cours est conservée ou l'utilisateur est prévenu",
+   "observe": "Texte et photo conservés mais `#postPassion` bascule sur la passion du nouveau profil (musique → sport)",
+   "reproduction": "Studio, saisir texte + photo, switchToProfile(autre) → lire #postPassion (clé switch_profil)",
+   "preuve": "js/app-06-reels-partage.js:2699-2703 (renderStudio si le Studio est actif) et 3792-3796 (select réécrit avec `selected` sur currentProfileId)",
+   "impact": "Publication rangée dans la mauvaise passion, invisible dans le fil attendu",
+   "visibilite_pilotage": "non",
+   "detection_sentinelle": "non",
+   "correction": "Mémoriser la valeur du select avant renderStudio et la restaurer si l'option existe encore (même remède que loadDraft)",
+   "risque_regression": "faible",
+   "effort": "1 heure",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "CONT-13",
+   "priorite": "P3",
+   "titre": "L'onglet « Podcast » n'accepte qu'un fichier de 500 Ko ou 2 minutes de micro",
+   "fonctionnalite": "Studio — audio",
+   "attendu": "Un format nommé « Podcast » accepte des durées de podcast (dizaines de minutes) ou porte un autre nom",
+   "observe": "Import limité à 500 Ko (« Audio > 500 KB, compresse-la! »), enregistrement coupé à 120 s ; la landing promet « podcast »",
+   "reproduction": "Studio → Podcast → importer un mp3 de 1 Mo",
+   "preuve": "js/app-06-reels-partage.js:4062-4066, 4189 (`s >= 120`) ; index.html:130 et 780",
+   "impact": "Promesse marketing non tenue ; un seul post audio en prod (extension .mp3 héritée)",
+   "visibilite_pilotage": "non",
+   "detection_sentinelle": "non",
+   "correction": "Renommer « Audio » ou relever les bornes (upload Storage direct en Blob, sans data URL) ; 50 Mo de bucket le permettent",
+   "risque_regression": "faible",
+   "effort": "0,5 jour",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "CONT-14",
+   "priorite": "P3",
+   "titre": "La suppression et l'édition d'un commentaire ignorent le verdict serveur",
+   "fonctionnalite": "Commentaires — supprimer / modifier",
+   "attendu": "Lire `{error}` et compter les lignes ; annuler localement en cas de refus",
+   "observe": "`_supaDeleteCommentRow` et `_supaUpdateCommentRow` sont des fire-and-forget avec catch muet",
+   "reproduction": "Inspection : app-04:1447-1458",
+   "preuve": "js/app-04-comments-shop.js:1447-1458 (`await supa.from(table).delete().eq(\"id\", commentId)` sans lecture du résultat)",
+   "impact": "Commentaire qui « revient » au rechargement chez l'auteur, contenu qu'on croit retiré toujours visible par les autres (modération de soi-même impossible à vérifier)",
+   "visibilite_pilotage": "non",
+   "detection_sentinelle": "non",
+   "correction": "Appliquer `_writeVerdict` + relecture comme `_delObRun`, mise en file si échec",
+   "risque_regression": "faible",
+   "effort": "2 heures",
+   "confiance": "CONFIRMÉ"
+  }
+ ],
+ "surfaces_saines": [
+  "Échappement des commentaires, réponses, réactions emoji/GIF et identifiants (escapeHtml / escapeJsArg / safeUrlAttr au bon contexte) — PROUVÉ par 4 suites vertes + payload hostile en émulation (xss:0)",
+  "Like d'un post : idempotent (PK post_likes), intention envoyée et non re-déduite, annulation sur refus, anti double clic 800 ms, pas d'écriture pour le contenu de démo — PROUVÉ (interactions.spec.js + émulation)",
+  "Suppression durable d'une publication : pierre tombale, purge des 4 tableaux, file serveur vérifiée par relecture, survie au rechargement — PROUVÉ (suppression-durable 8/8 + émulation)",
+  "Double clic « Publier » : un seul post, un seul envoi (`_publishInProgress`, 23505 = succès) — PROUVÉ",
+  "Refus AVANT mutation locale quand aucune passion canonique n'est disponible (les 4 producteurs) — PROUVÉ (publication-optimiste-refusee 4/4)",
+  "Photo : compression canvas côté client (≤1600 px puis ≤2048 px à l'upload, WebP/JPEG), image 0 octet ou non décodable refusée — PROUVÉ",
+  "Storage : aucun base64 en base (posts_media_not_storage = 0), chemins cloisonnés par `storage_chemin_autorise`, extension fidèle au conteneur réel, orphelin retiré si URL publique introuvable — CONFORME",
+  "Liens profonds #reel= (garde d'appartenance buildReels, hash nettoyé au seul succès, viewer fermé avant sortie) — PROUVÉ (ui-v5-bobines 15/15 cumulés, fuite-blob-bobines vert)",
+  "Partage de bobine / d'expérience d'événement : texte non échappé deux fois, passion jamais vide, `createdAt` présent — PROUVÉ (partage-bobine, partage-experience-passion verts)",
+  "Web Share API avec repli presse-papiers et AbortError ignoré (partagerOuCopier) — CONFORME PAR INSPECTION",
+  "Commentaires : file d'attente avec statut « Envoi… / Non envoyé · Réessayer », id aligné local⇄serveur, longueur ≤ 400 côté client — CONFORME PAR INSPECTION",
+  "Blocage : posts et commentaires des comptes bloqués masqués, abonnement révoqué dans les deux sens — CONFORME PAR INSPECTION",
+  "Service worker : aucun cache de média, navigation network-first — CONFORME PAR INSPECTION"
+ ],
+ "non_verifie": [
+  "BLOQUÉ — comportement réel iOS/Android (lecture mp4/m4a, MediaRecorder, Web Share natif) : Chromium seul ; il faudrait un iPhone et un Android physiques",
+  "BLOQUÉ — upload réel d'un fichier 0 octet ou à MIME menteur jusqu'à Storage/insert (aucune écriture en prod autorisée) : mesuré jusqu'à l'appel de supaPublishPostWithRetry seulement ; il faudrait un projet Supabase de préproduction",
+  "BLOQUÉ — suites du projet prod (authz-critical, multi-comptes, confidentialite…) : comptes réels et SUPABASE_SERVICE_ROLE_KEY requis ; le job « Suites production (comptes réels) » du run CI 33861671142 est vert sur le SHA audité",
+  "BLOQUÉ — cohérence des compteurs abonnés/abonnements contre la base avec un compte réel (lecture seule sans session utilisateur)",
+  "BLOQUÉ — vérification que https://passio-app.netlify.app sert bien le SHA audité (proxy réseau : 403 sur netlify.app)",
+  "NON RÉALISÉ — listage anon effectif de storage.objects (CONT-11) : déduit de la policy, non exercé avec un client anon (aucune requête vers la prod hors connecteur lecture seule)",
+  "NON RÉALISÉ — commentaire en aveugle sur un post privé par un non-abonné (CT-16) : déduit de la policy INSERT, non reproduit"
+ ],
+ "anciens_rapports": [
+  "docs/CHECKLIST_COMMERCIALISATION.md l.10 « Créer (Studio) — texte (testé), photo/vidéo/audio/carnet (UI présente) » → partiellement fausse : le carnet est RETIRÉ (ADR-011, studioType vlog ramené à text app-06:3782) ; photo/vidéo/audio présents mais vidéo/audio sans validation (CONT-01)",
+  "docs/CHECKLIST_COMMERCIALISATION.md l.28 « Post photo / vidéo / carnet — testés (type + média + rendu fil) » → fausse pour le carnet (fonctionnalité absente) ; vraie pour photo (ui-v6-composer.spec.js) ; la vidéo n'est testée qu'avec un fichier fixture, jamais un fichier invalide",
+  "docs/CHECKLIST_COMMERCIALISATION.md l.31 « Partage post (feuille de partage) » → toujours vraie, mais le partage externe ne porte aucun lien vers le post (CONT-05)",
+  "docs/CHECKLIST_COMMERCIALISATION.md l.37 « Follow/unfollow — présents, non auto-testés » → dépassée : tests/e2e/parcours-suivre.spec.js existe et est vert ; mais le refus serveur n'est pas annulé (CONT-07)",
+  "PASSIO_FUNCTIONAL_MAP.md l.26 « app-03-posts-vlogs : 89 fonctions — publication, posts, vlogs, médias » → fausse : le fichier fait 399 lignes, les vlogs sont retirés, il ne reste closePost/sharePost/sharePostInFeed/like/_kmBetween ; la publication vit dans app-06 et app-08",
+  "PASSIO_FUNCTIONAL_MAP.md l.72 « passion_id présent sur posts, stories… et sur aucune table d'interaction » → toujours vraie (colonnes posts/stories vérifiées, comment_interactions sans passion_id)",
+  "PASSIO_PRODUCTION_READINESS.md l.17 « Storage — écriture cloisonnée (PROUVÉ) » → toujours vraie pour l'ÉCRITURE (policy INSERT storage_chemin_autorise) ; mais la LECTURE/listage est ouverte à tous les rôles (CONT-11), point que le rapport ne couvrait pas",
+  "PASSIO_PRODUCTION_READINESS.md l.19 « suppression de compte supprime les médias » → non vérifiable ici (BLOQUÉ) ; le résidu de médias annoncé (19) est cohérent avec les 39 orphelins mesurés aujourd'hui (CONT-10) — la situation s'est dégradée",
+  "KNOWN_RISKS.md 2026-08-09 « Reste follows/event_attendees en lecture publique = choix assumé » → toujours vraie (policies « Lecture publique » et « Read follows » USING true, doublon signalé par l'advisor multiple_permissive_policies)",
+  "KNOWN_RISKS.md 2026-08-09 « rate_limit_insert … EXECUTE révoqué » → vraie pour la fonction, mais le trigger n'est posé QUE sur comment_interactions/event_reactions/reports : posts, post_comments, post_likes n'ont aucun frein (CONT-08)",
+  "CLAUDE.md « Un échec réel = annuler l'affichage optimiste » → respecté pour le like (app-03:355-365), NON respecté pour follow (CONT-07), story (CONT-06), suppression/édition de commentaire (CONT-14) et publication du Studio (CONT-02/03)"
+ ],
+ "preuves_fichiers": [
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/contenu/suites-contenu.log",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/contenu/suite-ui-v5-bobines-rerun.log",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/contenu/suite-ui-v5-bobines-rerun2.log",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/contenu/emulation-contenu.js",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/contenu/emulation-resultats.json",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/contenu/01-studio-photo.png",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/contenu/02-feed-post-photo.png",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/contenu/03-commentaire-hostile.png",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/contenu/04-partage-post.png",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/contenu/05-apres-suppression.png"
+ ],
+ "notes": "MATRICE FORMATS × OPÉRATIONS (statut par cellule) :\n- Texte : publication PROUVÉ · validation ≥3 caractères, maxlength 1200 client / illimité serveur (DÉFAILLANT CONT-08) · stockage posts.content · rendu PROUVÉ · suppression PROUVÉ · édition ABSENTE · reprise hors ligne DÉFAILLANT (CONT-02) · badge Sync DÉFAILLANT (CONT-03).\n- Photo : publication PROUVÉ · validation PROUVÉ (MIME image/*, décodage canvas, 0 octet refusé, compression 1600 px puis 2048 px) · stockage content/photos/<uid>/<id>.webp|jpg|png · rendu PROUVÉ (capture 02) · suppression PROUVÉ (chemin Storage retiré après la ligne) · édition ABSENTE.\n- Vidéo (Studio) : publication CONFORME · validation DÉFAILLANT (taille seule, MIME et 0 octet acceptés, CONT-01) · stockage content/videos/<uid>/<id>.mp4|webm · rendu CONFORME PAR INSPECTION · suppression CONFORME · édition ABSENTE · pas de transcodage dans ce chemin (le 720p n'existe que dans l'éditeur média des bobines).\n- Bobine : publication CONFORME (éditeur média, refus avant meClose, retry 8×45 s) · validation CONFORME (vidéo obligatoire, compression >8 Mo, plafond 25/150 Mo) · rendu PROUVÉ (ui-v5) · lien profond PROUVÉ · partage PROUVÉ · 1 bobine sans média en prod (défaut historique réel).\n- Story : publication DÉFAILLANT (échec serveur ignoré, CONT-06) · 24 h à la lecture seulement · suppression ABSENTE · rangée dans state.seed.stories (tableau de démonstration).\n- Audio « Podcast » : publication CONFORME · validation DÉFAILLANT (MIME, CONT-01) · bornes 500 Ko / 120 s (CONT-13) · extension fidèle (.webm/.m4a/.ogg) · 1 post .mp3 hérité en prod.\n- Partage d'événement dans le fil : PROUVÉ (partage-experience-passion) ; album d'événement via posts.event_id (0 ligne en prod).\n- Carnet/vlog : RETIRÉ ; 1 ligne résiduelle lue mais jamais rendue (garantie de confidentialité conservée, app-08:3690-3700).\n- Live vidéo : n'est PAS un format de publication (appel WebRTC P2P, app-05) — annoncé nulle part comme publication.\n\nCAPACITÉ / COÛTS : bucket content 153 Mo dont ≈ 2/3 orphelins (CONT-10) ; cacheControl 1 an sur les médias (bon pour l'egress). Les data URL vidéo (≤30 Mo → 40 Mo base64) transitent par localStorage via saveState avant l'upload : quota 5 Mo probable dépassé sur les gros fichiers (non mesuré, le remplacement par l'URL Storage arrive seulement après l'upload).\n\nRECOMMANDATIONS : conserver le moteur like/suppression/échappement (référence de qualité du dépôt) ; refactoriser la publication du Studio sur le patron des files existantes (CONT-02/03) ; soumettre à Benjamin : (1) le sens de « Podcast » (CONT-13), (2) l'absence volontaire ou non d'édition de post et de suppression de story, (3) l'absence d'invitation d'amis (CT-24) alors qu'AGENTS.md fait du partage une valeur cœur, (4) la modération par l'auteur de son propre fil de commentaires (RLS ne l'autorise pas, CT-15). CONT-11 (listage Storage) relève du domaine sécurité : changement RLS critique, revue indépendante obligatoire.\n\nENVIRONNEMENT : Playwright 1.60 attend Chromium rev 1223, /opt/pw-browsers ne contient que 1194 → contournement par PLAYWRIGHT_BROWSERS_PATH pointant sur un répertoire de liens symboliques du scratchpad (aucune écriture dans le dépôt ni dans /opt). Le serveur http-server 8102 est tombé une fois en cours de run (9 cas ERR_CONNECTION_REFUSED), et le navigateur headless s'est fermé sur 3 cas au rerun : instabilité d'infrastructure, jamais d'assertion applicative rouge. Le serveur 8103 lancé pour l'émulation a été arrêté. `git status --short` vide à la fin ; HEAD de la branche = f501fb78 (deux commits d'audit de l'orchestrateur, aucun fichier de code touché depuis c8cb8e99)."
+}

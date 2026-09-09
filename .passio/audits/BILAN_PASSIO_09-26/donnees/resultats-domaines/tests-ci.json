@@ -1,0 +1,560 @@
+{
+ "domaine": "tests-ci",
+ "resume": "Audit en lecture seule du dispositif de test et de livraison sur le SHA c8cb8e99 (branche audit, git status vide à la fin). Méthode : inventaire mécanique (playwright --list, comptage test( par fichier), exécution de npm run verif (vert, 1,4 s), exécution d'un échantillon de 8 suites locales sur le port 8115 deux fois de suite (28 passés / 4 skippés, 0 flaky, 4,3 et 4,6 min), exécution des gates artefact sur dist (6 passés), exécution des 349 tests unitaires du dashboard (verts), lecture de l'API GitHub publique (run 33861671142 et 100 derniers runs), attaque par mutation des deux gates de qualité des tests (copies en scratchpad), croisement parcours critiques × specs par grep ciblé, confrontation des anciens rapports (897 suites, 175 e2e, 15,2 %, 13 invariants, 94 backend).\nVerdict du domaine : la base est solide sur le NAVIGATEUR LOCAL (1103 tests, 8 gates statiques, suite reproductible, pas de flaky mesuré ici) et le gate d'autorisation en CI est réel (12 invariants REST bruts sur comptes réels). Mais la commercialisation n'est pas couverte : aucun test n'exerce l'inscription réelle par e-mail ni le mot de passe oublié, la messagerie/realtime/suppression de compte cross-compte ne tournent JAMAIS en CI (opt-in, et une suite y référence 6 fonctions supprimées), il n'existe ni staging ni test de restauration/rollback, les deux gates « tests creux » et « isolation » se contournent trivialement, la couverture « 15,2 % » n'est plus reproductible (dénominateur 435→355, mesure de 19 jours), la chaîne main dure 37 min dont 20 min de déploiement (17 min d'outils npx non épinglés), et main a été rouge 4 fois en 2 jours (déploiement sauté à chaque fois). Statut global du domaine : PARTIEL — livrable en beta privée, pas en lancement public sans les P1.",
+ "controles": [
+  {
+   "id": "TCI-C01",
+   "controle": "Inventaire des tests Playwright (local / prod / total) et par fichier",
+   "statut": "PROUVÉ",
+   "methode": "test exécuté",
+   "preuve": "npx playwright test --list --project=local → « Total: 1103 tests in 124 files » ; --project=prod → « 15 tests in 7 files » ; sans projet → 1118/131. Comptage test( : 1053 (preuves/tests-ci/tests-par-fichier.txt ; écart = describe paramétrés). Répartition par domaine : passions 261, irl 170, feed 138, auth/first-run 102, shell/nav 89, bobines/studio 84, profil 66, messagerie/notifs 49, sécurité/échappement 36, sync/supabase 18, monitoring/perf 13"
+  },
+  {
+   "id": "TCI-C02",
+   "controle": "Suites opt-in et suites skippées",
+   "statut": "PROUVÉ",
+   "methode": "inspection code",
+   "preuve": "tests/e2e/multi-comptes.spec.js:21, confidentialite.spec.js:21, suppression-compte.spec.js:28 → test.skip(!PASSIO_E2E_MULTI) ; qa-campaign.spec.js:63 → PASSIO_QA_CAMPAIGN ; release-integrity.spec.js:7 et passion-context.spec.js:5 → skip sauf PASSIO_CIBLE=dist ; monitoring-bruit.spec.js:56 skip si CDN injoignable. Aucune de ces variables opt-in n'est définie dans .github/workflows/deploy.yml (grep PASSIO_E2E_MULTI = 0)"
+  },
+  {
+   "id": "TCI-C03",
+   "controle": "Durée CI par shard et par job (run 33861671142)",
+   "statut": "PROUVÉ",
+   "methode": "requête base",
+   "preuve": "API GitHub (preuves/tests-ci/run-33861671142-jobs.json) : shards 6,0 / 13,8 / 8,1 / 7,2 / 8,0 / 14,4 min ; « Installer Playwright » 7,4 min par job (28,5 min cumulées sur 8 jobs) ; Suites production 5,8 min ; Audits 2,8 min ; Gates artefact 4,3 min ; Déploiement production 20,0 min (Minify index 7,0 + app.js 5,2 + css 5,0 + Netlify 2,5). Total 10:07:06 → 10:44:12 = 37 min"
+  },
+  {
+   "id": "TCI-C04",
+   "controle": "Flakiness dans les derniers runs (retries 2 en CI)",
+   "statut": "BLOQUÉ",
+   "methode": "non réalisé",
+   "preuve": "GET /actions/jobs/{id}/logs → « CONNECT tunnel failed, response 403 » (proxy) ; MCP github en échec (AUTH_HEADER_REJECTED) ; gh CLI absent. Indice indirect : shards 2/6 et 6/6 durent 13,8 et 14,4 min contre 6–8 min pour les autres (retries ou suites lourdes, indiscernable). Il faudrait un jeton GitHub Actions:read ou l'accès aux logs"
+  },
+  {
+   "id": "TCI-C05",
+   "controle": "Stabilité locale : échantillon ciblé (smoke, projets-playwright, dist-build, release-integrity, version-skew, latence-percue, adr-009, adr-010)",
+   "statut": "PROUVÉ",
+   "methode": "test exécuté",
+   "preuve": "PASSIO_PORT=8115 npx playwright test --project=local <8 fichiers> --workers=1 --reporter=line : run1 « 28 passed, 4 skipped (4.3m) EXIT=0 » ; run2 « 28 passed, 4 skipped (4.6m) EXIT=0 » (preuves/tests-ci/echantillon-local-run1.txt, run2.txt). Les 4 skippés = release-integrity sans PASSIO_CIBLE=dist"
+  },
+  {
+   "id": "TCI-C06",
+   "controle": "Gates artefact de production (release-integrity + passion-context sur dist)",
+   "statut": "PROUVÉ",
+   "methode": "test exécuté",
+   "preuve": "PASSIO_CIBLE=dist PASSIO_PORT=8116 COMMIT_REF=c8cb8e99… npx playwright test release-integrity passion-context → « 6 passed (1.4m) EXIT=0 » (preuves/tests-ci/gates-artefact-dist-local.txt)"
+  },
+  {
+   "id": "TCI-C07",
+   "controle": "Gates statiques npm run verif (8 gates + référentiel)",
+   "statut": "PROUVÉ",
+   "methode": "test exécuté",
+   "preuve": "npm run verif → CSS sain, 0 collision de globals (1384 déclarations), 0 handler fantôme (652 handlers), échappement 63 signalements tous au socle, tests creux OK (131 specs, 1312 fonctions), stub Supabase 45/45, télémétrie 81 clés OK, isolation 31 navigants / 5 au socle, référentiel 1908 passions valide ; real 1,43 s"
+  },
+  {
+   "id": "TCI-C08",
+   "controle": "Gate anti-tests creux : résistance à un test creux",
+   "statut": "DÉFAILLANT",
+   "methode": "test exécuté",
+   "preuve": "Copie de scripts/audit-tests-creux.js dans scratchpad/preuves/tests-ci/creux-mutation/ avec un spec faisant page.setContent('<b id=a>1</b>') puis expect(locator('#a').textContent()).toBe('1') → « OK — aucun spec ne vérifie uniquement ses propres constructions », exit 0. Cause : scripts/audit-tests-creux.js:47 (regex UI) accepte tout fichier contenant `locator(`"
+  },
+  {
+   "id": "TCI-C09",
+   "controle": "Gate isolation des suites : résistance à un marqueur factice",
+   "statut": "DÉFAILLANT",
+   "methode": "test exécuté",
+   "preuve": "Copie de scripts/audit-tests-isolation.js + socle dans scratchpad/preuves/tests-ci/isolation-mutation/ avec un spec qui fait page.goto('/index.html') et #feedList, le texte « sansDonneesDistantes( » n'étant présent QUE dans un commentaire → « OK », exit 0. Cause : scripts/audit-tests-isolation.js:71 (regex sur le source après retrait des seules lignes require)"
+  },
+  {
+   "id": "TCI-C10",
+   "controle": "Tests qui recopient le code de production (piège connu)",
+   "statut": "PROBABLE",
+   "methode": "inspection code",
+   "preuve": "Aucun cas franc trouvé par relecture des 8 suites exécutées ; le gate mécanique est contournable (TCI-C08) donc la garantie repose sur la relecture humaine. Marqueurs mutation/réinjection/contre-épreuve : 18 fichiers sur 131 (13,7 %) déclarent une épreuve par mutation"
+  },
+  {
+   "id": "TCI-C11",
+   "controle": "Assertions existence vs visibilité (fiche 12)",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": "grep : 306 toBeVisible, 26 offsetParent, contre 77 assertions d'existence (toBeAttached / count()>0 / toBeTruthy) ; 0 spec sans expect("
+  },
+  {
+   "id": "TCI-C12",
+   "controle": "Tests dépendant de la production (projet prod) et création de comptes réels en prod",
+   "statut": "PROUVÉ",
+   "methode": "inspection code",
+   "preuve": "playwright.config.js:40-48 SUITES_PROD (7). En CI : authz-critical (2 creerCompteE2E), blocage-acces (2), user-state-horodatage (1) = 5 comptes réels par run, job test-prod avec SUPABASE_SERVICE_ROLE_KEY (deploy.yml). 33 push + 52 PR réussis en 2 jours ≈ 85 runs × 5 comptes. Canari horaire sentinelle-distante.yml (cron 17 * * * *) rejoue authz-critical en prod : +48 comptes/jour. Comptes créés via /auth/v1/admin/users (compte-e2e.js:107) puis purgés par global-teardown seulement si CI && PASSIO_E2E_PROD=1"
+  },
+  {
+   "id": "TCI-C13",
+   "controle": "Purge %@passio-e2e.test : risque pour un vrai utilisateur",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": "scripts/purge-e2e-rest.js:88-92 exige endsWith('@passio-e2e.test') (jamais includes) ; scripts/purge_e2e_accounts.sql:12 like '%@passio-e2e.test'. Le TLD .test est réservé (RFC 2606, non routable) : un vrai inscrit avec cette adresse ne recevrait jamais l'e-mail de confirmation (SMTP Brevo), son compte resterait inutilisable puis serait purgé. Aucun refus côté app de ce domaine (grep js/ = 0) : résidu théorique acceptable"
+  },
+  {
+   "id": "TCI-C14",
+   "controle": "Workflow deploy.yml : gates présentes",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": ".github/workflows/deploy.yml : governance (PR obligatoire, contre-revue PASSIO74 sur périmètre critique), audits (7 audits statiques + référentiel + frontière de confiance + banc T&S Postgres jetable + migration référentiel + dashboard npm test), test-prod (--project=prod, verrou passio-e2e-prod), test-local 6 shards, gates-artefact (dist), smoke (agrégateur), deploy (needs governance+audits+test-prod+test-local+gates-artefact), preview PR"
+  },
+  {
+   "id": "TCI-C15",
+   "controle": "Gates manquantes en CI (lint, typecheck, npm audit, Lighthouse, WebKit, visuel, restauration, secrets)",
+   "statut": "DÉFAILLANT",
+   "methode": "inspection code",
+   "preuve": "deploy.yml : 0 lint, 0 node --check, 0 npm audit, 0 Lighthouse, 0 WebKit/Firefox (playwright.config.js : aucun `devices`, Chromium seul), 0 toHaveScreenshot dans tests/e2e, 0 test de restauration (sauvegarde-donnees.js jamais exercé), 0 scan de secrets, .github/dependabot.yml absent. npm audit exécuté ici : app 1 high (sharp <0.35.0, devDep) + 1 moderate (qs) ; dashboard 3 moderate (body-parser, express 4.22.2, qs)"
+  },
+  {
+   "id": "TCI-C16",
+   "controle": "Débit de livraison : concurrency, durée totale, un seul run main à la fois",
+   "statut": "PROUVÉ",
+   "methode": "requête base",
+   "preuve": "deploy.yml concurrency group 'passio-deploy-main' (push) / 'passio-ci-pr-N', cancel-in-progress false. 100 derniers runs (02→04 sept, preuves/tests-ci/deploy-runs-100.json) : médiane main 9,2 min quand la suite est rapide, max 64,2 min ; run 2483 62 min, 2490 44 min, 2494 37 min. push/cancelled 1 (run 2492 : un commit de main n'a jamais eu son propre déploiement)"
+  },
+  {
+   "id": "TCI-C17",
+   "controle": "Déploiement sur push main sans approbation manuelle",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": "deploy.yml job deploy : `if: github.event_name == 'push'`, aucun `environment:` (grep = 0) donc aucun reviewer requis ; garde = PR associée (gh api commits/{sha}/pulls) + contre-revue sur périmètre critique. Protection de branche GitHub : BLOQUÉ (HTTP 403)"
+  },
+  {
+   "id": "TCI-C18",
+   "controle": "Preview PR branchée sur la prod Supabase",
+   "statut": "PROUVÉ",
+   "methode": "inspection code",
+   "preuve": "js/app-08-ui-modals-tour.js:2551 `const SUPABASE_URL = \"https://njkiyoklssvefstljemx.supabase.co\"` en dur ; scripts/build.js ne substitue rien (seuls COMMIT_REF/PASSIO_BUILD_TIME lus, lignes 80/90) ; job preview needs [governance, audits] seulement — déployé AVANT les tests navigateur"
+  },
+  {
+   "id": "TCI-C19",
+   "controle": "Couverture fonctionnelle (npm run couverture) et fraîcheur de la mesure",
+   "statut": "DÉFAILLANT",
+   "methode": "test exécuté",
+   "preuve": "npm run couverture → « Mesurée le 2026-08-16T17:14 ; Interactions 355 ; Exécutées 38 ; Taux 10,7 % ; ⚠ 28 noms mesurés absents du code actuel : mesure à refaire ; ⚠ dénominateur 435 → 355 ». npm run couverture:risque → 19 interactions qui ÉCRIVENT en base jamais exercées (mePublish, submitEvent, publishStoryFromComposer, shareLocation, inviteToEvent…). Re-mesure = suite complète sous PASSIO_COUVERTURE=1 (orchestrateur)"
+  },
+  {
+   "id": "TCI-C20",
+   "controle": "Parcours critiques sans test automatisé (matrice)",
+   "statut": "DÉFAILLANT",
+   "methode": "inspection code",
+   "preuve": "grep sur tests/e2e : resetPasswordForEmail 0 spec ; signUp réel 0 (confirmation-email.spec.js:48 double supa.auth) ; RTCPeerConnection/startCall 0 ; pushManager/notify-call 0 (supa-hors-ligne = stub) ; storage upload réel 0 ; export de données 0 ; ask-ai 0 ; rollback 0 ; restauration 0 ; Sentinelle bout-en-bout 0 (dashboard = 349 tests unitaires sans supabase.co) ; géocodage doublé (irl.spec.js:67-69) ; MapLibre jamais initialisé par un test (navigation.spec.js:26 le contourne)"
+  },
+  {
+   "id": "TCI-C21",
+   "controle": "Suites opt-in : viabilité sur le code actuel",
+   "statut": "DÉFAILLANT",
+   "methode": "inspection code",
+   "preuve": "tests/e2e/multi-comptes.spec.js:619 et :712 (carnet de voyage cross-compte, CDV v2) appellent openVlogViewer, supaAddCarnetCollaborator, supaAddCdvCollaborator, supaAddCdvLiveStep, supaPublishCdvLive, supaUpdateCdvLiveStep : 0 définition dans js/ (retrait ADR-011 du 2026-08-31). La suite échouerait dès qu'on l'activerait"
+  },
+  {
+   "id": "TCI-C22",
+   "controle": "Suites prod exécutées",
+   "statut": "BLOQUÉ",
+   "methode": "non réalisé",
+   "preuve": "Interdiction (comptes réels + SUPABASE_SERVICE_ROLE_KEY). Preuve de substitution : job « Suites production (comptes réels) » du run 33861671142 success, 10:09:47→10:15:35"
+  },
+  {
+   "id": "TCI-C23",
+   "controle": "Affirmation « 897 suites navigateur » (CLAUDE.md:40)",
+   "statut": "DÉFAILLANT",
+   "methode": "test exécuté",
+   "preuve": "Mesuré 1103 tests / 124 fichiers en projet local (+23 % en 2 jours ; chiffre posé le 2026-09-02, commit e773ed4). Le mot « suites » est impropre : ce sont des tests"
+  },
+  {
+   "id": "TCI-C24",
+   "controle": "Affirmation « 175 e2e passés (1 flaky, 1 skipped) + 94 backend » (PASSIO_PRODUCTION_READINESS.md:26)",
+   "statut": "DÉFAILLANT",
+   "methode": "test exécuté",
+   "preuve": "Aujourd'hui 1118 tests e2e listés et 349 tests dashboard (cd dashboard && npm test : « # tests 349 # pass 349 »). Affirmation datée du 2026-08-16, périmée d'un facteur 6 et 3,7"
+  },
+  {
+   "id": "TCI-C25",
+   "controle": "Affirmation « 13 invariants AUTHZ » (PASSIO_PRODUCTION_READINESS.md:10,16 ; passio_qa_registry.json)",
+   "statut": "DÉFAILLANT",
+   "methode": "inspection code",
+   "preuve": "tests/e2e/authz-critical.spec.js : UN seul test( (ligne 36), 12 blocs numérotés 0 à 11 (lignes 100,132,140,152,158,164,171,180,186,224,276,282), 29 expect(). Le compte de 13 n'est pas reproductible sur le code actuel (12 invariants + contre-épreuves)"
+  },
+  {
+   "id": "TCI-C26",
+   "controle": "Banc RLS Postgres jetable : périmètre",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": "tests/sql/migration-ts-serveur.test.sh applique la SEULE migration migration_ts_serveur_age_blocage.sql sur un socle de 97 lignes (tests/sql/socle-prod.sql) — 9 comptes fictifs, scénarios T&S/âge/blocage. Il ne rejoue pas les 125 policies de production ni les 64 fichiers de migrations/"
+  },
+  {
+   "id": "TCI-C27",
+   "controle": "Hygiène du workflow : timeouts, artefacts, épinglage des outils",
+   "statut": "DÉFAILLANT",
+   "methode": "inspection code",
+   "preuve": "deploy.yml : timeout-minutes = 0 occurrence (défaut 6 h par job, dans un groupe de concurrence sérialisé) ; upload-artifact = 0 (aucune trace/rapport Playwright conservé en cas d'échec) ; `npm install --no-save @playwright/test` (version flottante ^1.49 → 1.60.0 aujourd'hui, package-lock ignoré pour ce paquet) ; `npx --yes html-minifier-terser`, `terser`, `clean-css-cli` non épinglés (netlify-cli seul épinglé 27.1.2)"
+  },
+  {
+   "id": "TCI-C28",
+   "controle": "Artefact MINIFIÉ testé avant mise en ligne",
+   "statut": "DÉFAILLANT",
+   "methode": "inspection code",
+   "preuve": "La minification n'a lieu que dans le job deploy (deploy.yml, après tous les tests) ; scripts/servir-dist.js:25-26 l'écrit : « Ce que ça ne prouve PAS : le comportement APRÈS minification ». Chaque étape de minification porte `|| echo \"Minification échouée, déploiement du fichier brut\"` : un minifieur cassé n'arrête rien"
+  },
+  {
+   "id": "TCI-C29",
+   "controle": "Tests manuels tests/*.html, test-irl.js, TEST_*.md",
+   "statut": "DÉFAILLANT",
+   "methode": "inspection code",
+   "preuve": "tests/test-simple.html (« Test Toggle »), test-emoji*.html, test-messagerie-complet.html, test-panel-iso.html, test-quick-check.html, test-debug.html, test-final-verification.html, test-irl.js, test-time-filter.js, TEST_MULTISELECT.md, TEST_PUBLICATION_MULTIAPPAREILS.md : 0 référence dans package.json, CLAUDE.md, docs/*.md. Harnais manuels morts"
+  },
+  {
+   "id": "TCI-C30",
+   "controle": "Taux de rouge sur main et sur PR",
+   "statut": "PROUVÉ",
+   "methode": "requête base",
+   "preuve": "deploy-runs-100.json : push/failure 4 sur 38 runs main (2444, 2437, 2413, 2409 — 10,5 %) → « Déploiement production » sauté 4 fois en 2 jours ; PR/failure 8 sur 62"
+  },
+  {
+   "id": "TCI-C31",
+   "controle": "Télémétrie des tests locaux n'atteint pas la prod",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": "js/telemetry.js:71 (localhost/127.0.0.1 → false) ; js/platform.js:42 ; verrou tests/e2e/telemetrie-preauth.spec.js:122 « envois de télémétrie non sollicités depuis localhost : 0 »"
+  },
+  {
+   "id": "TCI-C32",
+   "controle": "Campagne QA multi-utilisateurs (qa-campaign) : fraîcheur",
+   "statut": "DÉFAILLANT",
+   "methode": "inspection code",
+   "preuve": "tests/qa-report.md généré le 2026-08-09 (26 jours), 7/10 utilisateurs, « Version app : inconnu ». Suite opt-in jamais rejouée en CI"
+  },
+  {
+   "id": "TCI-C33",
+   "controle": "Émulation d'appareils",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": "playwright.config.js:66 viewport unique 390×844, locale fr-FR, Chromium seul ; cadrage.spec.js:14 boucle sur plusieurs viewports (iPhone SE 375×667…). Aucun WebKit : iOS Safari, cible PWA principale, NON RÉALISÉ"
+  }
+ ],
+ "findings": [
+  {
+   "id": "TCI-01",
+   "priorite": "P1",
+   "titre": "Messagerie, realtime, confidentialité et suppression de compte cross-compte ne tournent JAMAIS en CI (opt-in) et la suite multi-comptes est cassée par le retrait CDV",
+   "fonctionnalite": "Suites prod opt-in : multi-comptes (8 tests), confidentialite (2), suppression-compte (1), qa-campaign (1)",
+   "attendu": "Les parcours cross-compte qui portent la promesse produit (conversation texte+vocal, notifications d'interaction, RSVP, stories privées, suppression RGPD) sont éprouvés à chaque déploiement, sur du code qui existe.",
+   "observe": "test.skip(!PASSIO_E2E_MULTI) (multi-comptes.spec.js:21, confidentialite.spec.js:21, suppression-compte.spec.js:28) et PASSIO_QA_CAMPAIGN (qa-campaign.spec.js:63) ; aucune de ces variables n'est posée dans deploy.yml. multi-comptes.spec.js:619 et :712 appellent openVlogViewer, supaAddCarnetCollaborator, supaAddCdvCollaborator, supaAddCdvLiveStep, supaPublishCdvLive, supaUpdateCdvLiveStep, absents de js/ depuis ADR-011 (2026-08-31).",
+   "reproduction": "grep -c PASSIO_E2E_MULTI .github/workflows/deploy.yml → 0 ; for fn in openVlogViewer supaAddCdvLiveStep supaPublishCdvLive; do grep -c \"function $fn\" js/*.js; done → 0 partout ; PASSIO_E2E_MULTI=1 npx playwright test multi-comptes (non lancé ici : écrit en prod) échouerait sur ReferenceError.",
+   "preuve": "tests/e2e/multi-comptes.spec.js:619-884 ; playwright.config.js:40-48 ; preuves/tests-ci/RESUME_PREUVES.txt (section OPT-IN POURRI)",
+   "impact": "Une régression RLS sur conv_messages ou stories privées, ou une Edge Function delete-account cassée, partirait en production sans aucun rouge : perte de confidentialité et non-conformité RGPD invisibles. Commercialement : la promesse « rencontrer » repose sur une messagerie dont la livraison cross-compte n'est plus prouvée depuis le 2026-08-31.",
+   "visibilite_pilotage": "non — le dashboard ne remonte pas l'état des suites opt-in ; le score « autorisation » n'est alimenté que si AUTHZ-CRITICAL tourne depuis le dashboard (passio_qa_registry.json scores.global_health)",
+   "detection_sentinelle": "non — la Sentinelle distante ne rejoue que authz-critical (sentinelle-distante.yml) ; une régression messagerie n'émet aucun signal tant qu'aucun utilisateur ne l'exerce",
+   "correction": "1) Retirer ou réécrire les deux tests CDV de multi-comptes ; 2) inscrire confidentialite + suppression-compte + un sous-ensemble déterministe de multi-comptes (conversation, notifications) dans SUITES_PROD sans skip, sous le verrou passio-e2e-prod ; 3) à défaut, un job nocturne (schedule) PASSIO_E2E_MULTI=1 qui ouvre une issue en rouge comme la Sentinelle distante.",
+   "risque_regression": "Moyen : +3 à 5 comptes réels par run en prod (quota d'inscriptions horaire, cause de l'incident du 2026-08-30) ; attentes realtime = flakiness possible → réserver au job nocturne si instable.",
+   "effort": "1 à 2 jours",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "TCI-02",
+   "priorite": "P1",
+   "titre": "Inscription réelle par e-mail (SMTP Brevo) et « mot de passe oublié » n'ont aucun test automatisé",
+   "fonctionnalite": "Authentification : signUp + confirmation e-mail, resetPasswordForEmail, lien de récupération",
+   "attendu": "Le tunnel qui transforme un visiteur en compte (le seul chemin de revenu) est éprouvé de bout en bout : signUp → e-mail reçu → confirmation → connexion ; et le parcours de récupération de mot de passe.",
+   "observe": "0 spec appelle resetPasswordForEmail ; confirmation-email.spec.js:47-50 remplace supa.auth.signUp / signInWithPassword / resend par des doublures ; les comptes de test sont créés pré-confirmés par l'API admin (compte-e2e.js:107, email_confirm:true), donc le chemin SMTP/DKIM/lien de confirmation n'est jamais parcouru par une machine.",
+   "reproduction": "grep -l resetPasswordForEmail tests/e2e/*.spec.js → vide ; grep -n 'supa.auth.signUp =' tests/e2e/confirmation-email.spec.js → ligne 48 (doublure).",
+   "preuve": "tests/e2e/confirmation-email.spec.js:17-52 ; tests/e2e/compte-e2e.js:100-110 ; grep résultats dans preuves/tests-ci/RESUME_PREUVES.txt",
+   "impact": "Un incident SMTP (quota Brevo 300/j, DKIM, template) ou une régression du fragment de récupération bloque toute nouvelle inscription sans qu'aucun test ne rougisse ; c'est le risque R11 de CLAUDE.md, non instrumenté. Commercialement : acquisition à zéro sans alerte.",
+   "visibilite_pilotage": "partiel — la télémétrie pré-auth remonte les échecs client, mais aucun panneau ne mesure le taux signUp → confirmé",
+   "detection_sentinelle": "non — sa page publique vérifie seulement que index.html contient 'screen-feed' et 'Passio'",
+   "correction": "Canari d'inscription nocturne : boîte de réception jetable (API Brevo « inbound » ou compte IMAP dédié) ; test qui inscrit une adresse réelle, lit l'e-mail, suit le lien, se connecte, puis déclenche resetPasswordForEmail et suit le lien de récupération ; purge par motif dédié. À défaut, un contrôle Sentinelle qui mesure le taux de confirmation sur auth.users (confirmed_at) via service_role.",
+   "risque_regression": "Faible (test additif) ; consomme 2 e-mails/jour du quota Brevo.",
+   "effort": "2 jours",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "TCI-03",
+   "priorite": "P1",
+   "titre": "Restauration de sauvegarde et rollback ne sont jamais exercés par un test",
+   "fonctionnalite": "scripts/sauvegarde-donnees.js, workflow rollback.yml, reprise après incident",
+   "attendu": "Une restauration complète (données + comptes + médias) et un retour arrière applicatif ont été rejoués au moins une fois sur un environnement jetable, avec preuve.",
+   "observe": "0 test référence sauvegarde-donnees.js ; rollback.yml (workflow_dispatch) crée une branche + PR brouillon sans jamais être exercé par la CI ; aucun banc Postgres jetable ne recharge un dump (le banc T&S n'applique qu'une migration sur un socle de 97 lignes).",
+   "reproduction": "grep -rl 'sauvegarde-donnees' tests/ → vide ; grep -c 'rollback' tests/e2e/*.spec.js → 0.",
+   "preuve": ".github/workflows/rollback.yml ; tests/sql/migration-ts-serveur.test.sh:1-50 ; preuves/tests-ci/RESUME_PREUVES.txt",
+   "impact": "En cas de corruption ou de suppression massive, la capacité de restauration est NON PROUVÉE (le contexte impose de l'écrire ainsi) ; la perte définitive de données utilisateur est un risque commercial et légal (RGPD art. 32).",
+   "visibilite_pilotage": "non",
+   "detection_sentinelle": "non",
+   "correction": "Job mensuel (schedule) : sauvegarde → restauration dans un PostgreSQL jetable (comme tests/sql/) → assertions de comptage par table et de rejouabilité des migrations ; exercice de rollback.yml sur un commit trivial avec vérification que la PR de revert est buildable.",
+   "risque_regression": "Nul (lecture seule côté prod).",
+   "effort": "2 jours",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "TCI-04",
+   "priorite": "P1",
+   "titre": "Aucun environnement de staging : tests, canari horaire et previews de PR écrivent tous sur la base de production",
+   "fonctionnalite": "CI test-prod, sentinelle-distante.yml, preview Netlify de PR",
+   "attendu": "Les suites qui écrivent en base et les previews de PR visent une base de test ; la prod ne reçoit que du trafic réel.",
+   "observe": "SUITES_PROD créent 5 comptes réels par run sur njkiyoklssvefstljemx (≈85 runs/2 jours) ; le canari horaire en crée 2 de plus par heure ; l'URL Supabase est une constante (app-08:2551) que build.js ne substitue pas, donc la preview pr-N (deploy.yml job preview, déployée après les seuls audits statiques, AVANT les tests navigateur) est branchée sur la prod et sur son bucket public. Le teardown purge par motif, ce qui a déjà effacé les comptes d'une suite concurrente (incident du 2026-09-01, cf. playwright.config.js:7-15).",
+   "reproduction": "grep -n 'const SUPABASE_URL' js/app-08-ui-modals-tour.js → 2551 ; grep -n 'needs:' .github/workflows/deploy.yml (preview needs [governance, audits]).",
+   "preuve": "deploy.yml jobs test-prod et preview ; sentinelle-distante.yml (cron 17 * * * *, authz-critical --project=prod) ; playwright.config.js:7-15 ; tests/e2e/global-teardown.js",
+   "impact": "Quota d'inscriptions consommé par les tests (cause de la panne du 2026-08-30), données de test mêlées aux données réelles (telemetry_events 111 828 lignes dont bruit de test), testeurs d'une preview qui écrivent des vraies lignes ; une erreur de purge peut toucher des comptes réels si le motif change. Commercialement : impossible de garantir la propreté des KPI ni d'isoler un incident de test d'un incident client.",
+   "visibilite_pilotage": "partiel — le dashboard connaît les comptes de test (comptes.test.js, testusers) mais pas la provenance preview/CI",
+   "detection_sentinelle": "non",
+   "correction": "Second projet Supabase « staging » (gratuit) alimenté par migrations/SCHEMA_PROD_REFERENCE.sql ; injection de SUPABASE_URL/clé anon au build (COMMIT_REF existe déjà comme précédent dans build.js) ; test-prod, canari et preview pointent staging ; la prod ne garde qu'un canari lecture seule.",
+   "risque_regression": "Moyen : dérive de schéma staging/prod (déjà R3 : 4 migrations enregistrées contre 64 fichiers) — à combler par un job qui compare les deux.",
+   "effort": "3 à 5 jours",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "TCI-05",
+   "priorite": "P2",
+   "titre": "Le gate « tests creux » est contournable par n'importe quel locator() sur une page fabriquée",
+   "fonctionnalite": "scripts/audit-tests-creux.js (gate CI et npm run verif)",
+   "attendu": "Un spec qui ne fait que vérifier ses propres constructions est refusé.",
+   "observe": "Un spec de 4 lignes (page.setContent puis expect(locator('#a').textContent()).toBe('1')) passe le gate : « OK — aucun spec ne vérifie uniquement ses propres constructions », exit 0. La regex UI (ligne 47) accepte tout fichier contenant locator( / toBeVisible / getByText, sans exiger un goto vers l'application ni un appel de fonction de production.",
+   "reproduction": "cp scripts/audit-tests-creux.js <bac>/scripts/ ; ln -s js <bac>/js ; écrire <bac>/tests/e2e/creux-attaque.spec.js (contenu dans preuves/tests-ci/creux-mutation/) ; cd <bac> && node scripts/audit-tests-creux.js --ci → exit 0.",
+   "preuve": "scripts/audit-tests-creux.js:47 ; preuves/tests-ci/creux-mutation/tests/e2e/creux-attaque.spec.js ; sortie dans RESUME_PREUVES.txt",
+   "impact": "Le gate est un filet à mailles larges : un futur test creux (le piège n° 5 du registre, qui « fait croire à un succès ») passe la CI. Effet indirect : le vert de la suite est moins probant qu'annoncé.",
+   "visibilite_pilotage": "non",
+   "detection_sentinelle": "non",
+   "correction": "Exiger, en plus du marqueur UI, soit un page.goto vers /index.html|/dist, soit un helper de boot, soit un appel à une fonction de production ; refuser page.setContent sans boot ; ajouter un cas de mutation à projets-playwright.spec.js.",
+   "risque_regression": "Faible : quelques specs légitimes à inscrire dans ARTEFACTS.",
+   "effort": "0,5 jour",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "TCI-06",
+   "priorite": "P3",
+   "titre": "Le gate d'isolation des suites est satisfait par le nom de la fonction dans un commentaire",
+   "fonctionnalite": "scripts/audit-tests-isolation.js (8e gate)",
+   "attendu": "Seul un APPEL réel à sansDonneesDistantes( (ou la déclaration sansIsolationDesDonnees) satisfait le banc.",
+   "observe": "Le banc retire les lignes require puis cherche la regex sur tout le source, commentaires compris ; un spec qui navigue vers #feedList avec « sansDonneesDistantes( » uniquement en commentaire est accepté (exit 0).",
+   "reproduction": "Copie du script + socle dans preuves/tests-ci/isolation-mutation/, spec isolation-attaque.spec.js ; node scripts/audit-tests-isolation.js --ci → « OK ».",
+   "preuve": "scripts/audit-tests-isolation.js:69-71 ; preuves/tests-ci/isolation-mutation/",
+   "impact": "Faible en pratique (il faut le vouloir), mais le banc a été créé après six correctifs d'isolation qui ont chacun fait sauter le déploiement : sa robustesse est censée être mécanique.",
+   "visibilite_pilotage": "non",
+   "detection_sentinelle": "non",
+   "correction": "Retirer les commentaires (// et /* */) et les chaînes avant la recherche, ou parser avec acorn (déjà utilisable en Node sans dépendance via node:vm ? sinon regex de commentaires).",
+   "risque_regression": "Nul.",
+   "effort": "1 heure",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "TCI-07",
+   "priorite": "P2",
+   "titre": "La couverture fonctionnelle « 15,2 % » n'est plus reproductible : mesure de 19 jours, dénominateur 435→355, 19 écritures en base jamais exercées",
+   "fonctionnalite": "scripts/couverture-*.js, .passio/couverture/observe.json",
+   "attendu": "Le chiffre cité par CLAUDE.md, PASSIO_FUNCTIONAL_MAP.md §5 et passio_qa_registry.json (scores.functional 15.2 MESURE) correspond à une mesure sur le code déployé.",
+   "observe": "npm run couverture → mesure du 2026-08-16, 355 interactions aujourd'hui, 38 exécutées (10,7 %), « 28 noms mesurés absents du code actuel : mesure à refaire » (fonctions CDV supprimées). npm run couverture:risque → 19 interactions écrivant en base non exercées : mePublish, submitEvent, publishStoryFromComposer, shareLocation, inviteToEvent, promoteWaitlisted, submitPassionRequest, shareEventInFeed, sharePostInFeed, shareReelInFeed, _forwardTo, addEventComment, addGroupMember, confirmCreateGroup, editGroupDescription, likeCommentNode, likeReelComment, submitEventFeedback, toggleEventCoOrganizer.",
+   "reproduction": "npm run couverture ; npm run couverture:risque (sorties intégrales dans preuves/tests-ci/RESUME_PREUVES.txt).",
+   "preuve": ".passio/couverture/observe.json (genere_le 2026-08-16) ; scripts/couverture-rapport.js:44-48",
+   "impact": "Le pilotage s'appuie sur un chiffre périmé et déjà un plafond ; 19 gestes qui écrivent en prod (publier, créer un événement, publier une story, partager une position) ne sont exercés par aucun test : un `{ error }` non lu y resterait invisible (invariant « écritures qui échouent en silence »).",
+   "visibilite_pilotage": "partiel — passio_qa_registry.json expose 15,2 (MESURE) alors que la mesure est périmée",
+   "detection_sentinelle": "non",
+   "correction": "Re-mesurer (PASSIO_COUVERTURE=1 npx playwright test, à faire par l'orchestrateur en fin de bilan) et régénérer observe.json ; ajouter un job hebdomadaire qui refait la mesure et échoue si `perimes.length > 0` ; écrire en priorité des tests pour les 19 écritures (gate --ci de couverture:risque à 0 écriture nue).",
+   "risque_regression": "Nul.",
+   "effort": "0,5 jour pour la mesure ; 3 à 4 jours pour couvrir les 19 écritures",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "TCI-08",
+   "priorite": "P2",
+   "titre": "Chaîne main de 37 min dont 20 min de déploiement passées à télécharger des minifieurs non épinglés ; 28 min cumulées d'installation Playwright",
+   "fonctionnalite": "deploy.yml jobs deploy et test-local",
+   "attendu": "Un push sur main est en ligne en moins de 15 min avec des outils de build épinglés et reproductibles.",
+   "observe": "Run 2494 : Minify index.html 7,0 min, app.js 5,2 min, styles.css 5,0 min (npx --yes html-minifier-terser / terser / clean-css-cli sans version), Netlify 2,5 min ; « Installer Playwright » 7,4 min × 8 jobs = 28,5 min de runner ; `npm install --no-save @playwright/test` prend la dernière 1.x (1.60.0 aujourd'hui) hors package-lock. 100 derniers runs : main jusqu'à 64 min (run 2483).",
+   "reproduction": "node -e sur preuves/tests-ci/run-33861671142-jobs.json (étapes et durées) ; grep -n 'npx --yes' .github/workflows/deploy.yml.",
+   "preuve": "preuves/tests-ci/run-33861671142-jobs.json ; deploy.yml étapes Minify ; RESUME_PREUVES.txt section CI",
+   "impact": "Débit de livraison borné à ~1,5 déploiement/heure (groupe de concurrence sérialisé) ; un correctif urgent attend 37 min minimum ; une nouvelle version majeure de terser/html-minifier ou de Playwright peut casser main un matin sans changement du dépôt (supply chain).",
+   "visibilite_pilotage": "non",
+   "detection_sentinelle": "non",
+   "correction": "Épingler les trois minifieurs en devDependencies (ou `npx --yes terser@5.x`), les exécuter depuis node_modules avec `npm ci` + cache ; cacher les navigateurs Playwright (actions/cache sur ~/.cache/ms-playwright, clé = version) ; épingler @playwright/test au lock (`npm ci` au lieu de `npm install --no-save`).",
+   "risque_regression": "Faible.",
+   "effort": "0,5 jour",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "TCI-09",
+   "priorite": "P2",
+   "titre": "L'artefact réellement servi (minifié par terser --mangle) n'est testé par rien, et un échec de minification est masqué",
+   "fonctionnalite": "Job deploy : minification puis Netlify",
+   "attendu": "Le fichier mis en ligne est celui qui a passé les gates artefact.",
+   "observe": "Les gates dist tournent sur dist/ non minifié (scripts/servir-dist.js:25-26 l'assume) ; la minification a lieu après tous les tests, dans le job deploy ; chaque étape porte `|| echo \"Minification échouée, déploiement du fichier brut\"` : un minifieur qui produit un fichier vide ou cassé mais sort en 0 est déployé, et un minifieur en erreur déploie le brut sans rouge.",
+   "reproduction": "Lire deploy.yml étapes « Minify … (fallback sur le fichier brut) » ; grep -c 'terser' scripts/servir-dist.js → commentaire seulement.",
+   "preuve": "deploy.yml lignes Minify ; scripts/servir-dist.js:8,25-26 ; registre pieges_de_verification n° 2 (« Minifieur qui renomme les marqueurs cherchés en prod »)",
+   "impact": "Un bug introduit par le mangle (identifiant global attendu par un onclick inline, littéral recherché par release-integrity) n'est vu qu'en production ; le piège est déjà consigné au registre comme vécu.",
+   "visibilite_pilotage": "partiel — la Sentinelle distante lit index.html en prod (grep 'screen-feed'), pas app.js",
+   "detection_sentinelle": "partiel — seulement si le boot lève une erreur remontée dans client_errors",
+   "correction": "Minifier dans un job « build » en amont, publier dist/ en artefact, faire tourner gates-artefact (release-integrity, dist-build, smoke) sur cet artefact, puis déployer ce même artefact ; retirer le fallback silencieux ou le transformer en `::warning` + étape rouge.",
+   "risque_regression": "Faible.",
+   "effort": "1 jour",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "TCI-10",
+   "priorite": "P2",
+   "titre": "Main rouge 4 fois en 2 jours (10,5 % des runs) : chaque rouge saute le déploiement production, sans artefact de diagnostic ni timeout de job",
+   "fonctionnalite": "deploy.yml, retries Playwright en CI",
+   "attendu": "Un rouge sur main est rare, diagnostiquable en une lecture (traces conservées) et ne bloque pas la file plus que nécessaire.",
+   "observe": "deploy-runs-100.json : push/failure 4 (runs 2409, 2413, 2437, 2444), PR/failure 8 ; retries: 2 en CI (playwright.config.js:58) sans reporter ni upload-artifact (0 occurrence) → un test flaky repasse vert sans trace, un test rouge ne laisse ni trace ni capture ; timeout-minutes absent (0 occurrence) → défaut 6 h dans un groupe de concurrence sérialisé.",
+   "reproduction": "node -e sur preuves/tests-ci/deploy-runs-100.json ; grep -c 'upload-artifact\\|timeout-minutes' .github/workflows/deploy.yml → 0.",
+   "preuve": "preuves/tests-ci/deploy-runs-100.json ; playwright.config.js:58-62 ; deploy.yml",
+   "impact": "Quatre commits de main non déployés en 48 h (cf. docs : « six correctifs d'isolation ont chacun fait SAUTER le déploiement ») ; sans traces, chaque rouge coûte un cycle complet pour être compris ; un job pendu bloquerait toute livraison 6 h.",
+   "visibilite_pilotage": "partiel — le dashboard consigne les releases (release-recorder) mais pas les runs rouges",
+   "detection_sentinelle": "non",
+   "correction": "`timeout-minutes: 30` sur chaque job ; `actions/upload-artifact` de playwright-report/ et test-results/ en `if: failure()` ; reporter `github` + `blob` par shard ; compteur hebdomadaire de flaky (reporter JSON agrégé) publié dans le dashboard.",
+   "risque_regression": "Nul.",
+   "effort": "0,5 jour",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "TCI-11",
+   "priorite": "P2",
+   "titre": "Gates manquantes : npm audit (1 high, 4 moderate connus), dependabot, scan de secrets, WebKit/iOS, régression visuelle, Lighthouse, lint",
+   "fonctionnalite": "Pipeline CI",
+   "attendu": "Les contrôles standard d'un produit grand public sont automatisés : vulnérabilités de dépendances, secrets, navigateur iOS, budgets de performance.",
+   "observe": "deploy.yml : aucun de ces contrôles. npm audit exécuté ici : app 1 high (sharp <0.35.0) + 1 moderate (qs) ; dashboard 3 moderate (body-parser 1.20.x, express 4.22.2, qs). .github/dependabot.yml absent. playwright.config.js : Chromium seul, aucun `devices` ; 0 toHaveScreenshot ; a11y : aucun scan axe ; perf : perf-ios.spec.js borne un seul indicateur (≤120, ligne 89).",
+   "reproduction": "npm audit --json ; (cd dashboard && npm audit --json) ; ls .github/dependabot.yml ; grep -c toHaveScreenshot tests/e2e/*.spec.js.",
+   "preuve": "Sorties dans preuves/tests-ci/RESUME_PREUVES.txt ; playwright.config.js:64-70",
+   "impact": "iOS Safari (cible PWA principale, docs/PERF-IOS) n'est exercé par AUCUN moteur WebKit : les défauts iPhone rapportés le 2026-09-02 ne pouvaient pas être vus en CI ; une vulnérabilité de dépendance serveur (dashboard Express) ou une fuite de secret n'est détectée par personne.",
+   "visibilite_pilotage": "non",
+   "detection_sentinelle": "non",
+   "correction": "Ajouter au job audits : `npm audit --audit-level=high` (app et dashboard), gitleaks (action) ; dependabot.yml (npm, weekly) ; projet Playwright `webkit` sur 3 suites de cadrage/navigation iOS (cadrage, ios-navigation-et-zoom, conv-ouverture-fil) ; Lighthouse CI sur dist avec budget ; axe-core sur 5 écrans.",
+   "risque_regression": "Moyen pour WebKit (flakiness initiale) — commencer en `continue-on-error` une semaine.",
+   "effort": "2 jours",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "TCI-12",
+   "priorite": "P2",
+   "titre": "Appels WebRTC, push réel, upload Storage réel, export de données, Edge Function ask-ai : zéro test",
+   "fonctionnalite": "Live vidéo/appels (WebRTC), notify-call, publication média vers Storage via l'app, export RGPD, IA",
+   "attendu": "Chaque fonctionnalité exposée dans l'app a au moins un test qui exerce son chemin réel ou un contrat serveur.",
+   "observe": "grep tests/e2e : RTCPeerConnection/startCall 0 ; pushManager/notify-call 0 (supa-hors-ligne = stub CDN) ; storage.from().upload 0 hors stub ; export 0 ; ask-ai 0 ; caméra bobine testée avec drapeaux de faux média (ui-v7-bobine-camera.spec.js:7). Le seul contrôle Storage réel est la RLS par dossier via REST brut (authz-critical:282-345), pas le chemin applicatif.",
+   "reproduction": "grep -l 'RTCPeerConnection\\|startCall' tests/e2e/*.spec.js → vide ; grep -l 'ask-ai' tests/e2e/*.spec.js → vide.",
+   "preuve": "Résultats de grep dans preuves/tests-ci/RESUME_PREUVES.txt ; tests/e2e/supa-hors-ligne.spec.js:34,73",
+   "impact": "Une publication vidéo qui n'atteint plus le bucket, un appel qui ne se connecte plus ou un export vide seraient découverts par les utilisateurs ; pour l'export, exposition RGPD (art. 20).",
+   "visibilite_pilotage": "partiel — client_errors et télémétrie captent les exceptions, pas les échecs fonctionnels silencieux",
+   "detection_sentinelle": "partiel — seulement sur exception remontée",
+   "correction": "Sur staging (TCI-04) : test d'upload réel d'une image 1 px puis lecture publique ; test de l'export (contenu JSON non vide, PII du seul compte) ; test WebRTC en deux contextes Chromium avec fake-device flags (loopback) ; test contractuel des Edge Functions (401 sans jeton, 200 avec).",
+   "risque_regression": "Faible.",
+   "effort": "3 jours",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "TCI-13",
+   "priorite": "P3",
+   "titre": "Chiffres de la documentation périmés : « 897 suites », « 175 e2e + 94 backend », « 13 invariants », « ~15 specs »",
+   "fonctionnalite": "CLAUDE.md:40, PASSIO_PRODUCTION_READINESS.md:10,16,26, passio_qa_registry.json, .passio/context/TESTING_STRATEGY.md",
+   "attendu": "Les nombres cités se reproduisent par une commande.",
+   "observe": "Mesuré : 1103 tests locaux / 15 prod / 1118 total ; 349 tests dashboard ; authz-critical = 1 test, 12 blocs numérotés 0-11, 29 expect ; TESTING_STRATEGY.md parle de « ~15 specs » et cite encore CDV comme couvert.",
+   "reproduction": "npx playwright test --list --project=local | tail -1 ; cd dashboard && npm test | tail -8 ; grep -nE '// ── [0-9]+\\.' tests/e2e/authz-critical.spec.js.",
+   "preuve": "preuves/tests-ci/RESUME_PREUVES.txt ; tests/e2e/authz-critical.spec.js:100-282",
+   "impact": "Un lecteur du dossier de commercialisation lit des garanties inexactes (13 invariants, 15,2 %) ; perte de crédibilité documentaire, décisions prises sur des nombres faux.",
+   "visibilite_pilotage": "non",
+   "detection_sentinelle": "non",
+   "correction": "Remplacer les nombres par les commandes qui les produisent, ou les générer (script qui met à jour CLAUDE.md et le registre depuis --list).",
+   "risque_regression": "Nul.",
+   "effort": "2 heures",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "TCI-14",
+   "priorite": "P3",
+   "titre": "Harnais de test manuels morts dans tests/ (11 fichiers html/js/md non référencés)",
+   "fonctionnalite": "tests/test-*.html, test-irl.js, test-time-filter.js, TEST_MULTISELECT.md, TEST_PUBLICATION_MULTIAPPAREILS.md",
+   "attendu": "Le dossier tests/ ne contient que ce qui est exécuté ou documenté.",
+   "observe": "0 référence dans package.json, CLAUDE.md, docs/*.md ; contenu = pages de test manuel (« Test Toggle », emoji) et simulations de filtres IRL d'avant les refontes.",
+   "reproduction": "grep -rn 'tests/test-' docs/*.md CLAUDE.md package.json → vide.",
+   "preuve": "ls tests/ ; head tests/test-simple.html, tests/test-irl.js",
+   "impact": "Bruit pour l'auditeur et pour les gates (audit-tests-creux ne les voit pas, mais un futur script pourrait) ; risque de croire à une couverture manuelle qui n'existe plus.",
+   "visibilite_pilotage": "non",
+   "detection_sentinelle": "non",
+   "correction": "Supprimer (ou déplacer dans docs/archives/) après vérification par le domaine code-nettoyage.",
+   "risque_regression": "Nul.",
+   "effort": "30 minutes",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "TCI-15",
+   "priorite": "P3",
+   "titre": "Le banc RLS Postgres jetable ne rejoue qu'une migration sur un socle de 97 lignes, pas les 125 policies de production",
+   "fonctionnalite": "tests/sql/migration-ts-serveur.test.sh, tests/sql/socle-prod.sql",
+   "attendu": "La CI éprouve les policies telles qu'elles sont en production (SCHEMA_PROD_REFERENCE.sql) sur des scénarios multi-comptes.",
+   "observe": "Le banc applique migration_ts_serveur_age_blocage.sql sur socle-prod.sql (97 lignes) : couverture T&S/âge/blocage uniquement ; le reste des policies n'est éprouvé que par authz-critical (12 invariants sur comptes réels) ; divergence R3 (4 migrations enregistrées côté Supabase vs 64 fichiers).",
+   "reproduction": "wc -l tests/sql/socle-prod.sql ; grep MIGRATION= tests/sql/migration-ts-serveur.test.sh.",
+   "preuve": "tests/sql/migration-ts-serveur.test.sh:3-4",
+   "impact": "Une policy régressée hors T&S et hors des 12 invariants n'a aucun filet mécanique en CI.",
+   "visibilite_pilotage": "non",
+   "detection_sentinelle": "non",
+   "correction": "Étendre le banc : charger migrations/SCHEMA_PROD_REFERENCE.sql dans le Postgres jetable, y rejouer les 12 invariants d'authz-critical en SQL (set local role/claims) plus messagerie, stories privées, follows — ce qui rendrait aussi TCI-01 partiellement testable sans prod.",
+   "risque_regression": "Faible.",
+   "effort": "2 jours",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "TCI-16",
+   "priorite": "P3",
+   "titre": "Le canari horaire crée 2 comptes réels par heure en production et tient le verrou passio-e2e-prod",
+   "fonctionnalite": "sentinelle-distante.yml",
+   "attendu": "La surveillance de production est en lecture seule (règle ADR-012 pour la Sentinelle).",
+   "observe": "cron 17 * * * * → authz-critical --project=prod avec service_role : 2 comptes/heure (48/jour) créés puis purgés ; le job partage le groupe de concurrence passio-e2e-prod avec test-prod de deploy.yml, donc un déploiement peut attendre le canari.",
+   "reproduction": "grep -n 'cron\\|authz-critical\\|passio-e2e-prod' .github/workflows/sentinelle-distante.yml.",
+   "preuve": "sentinelle-distante.yml lignes on.schedule, jobs.health.concurrency, étape « Canari d'autorisation »",
+   "impact": "Bruit dans auth.users/analytics, consommation du quota d'inscriptions (cause de l'incident du 2026-08-30), retard possible d'un déploiement.",
+   "visibilite_pilotage": "partiel — issue « [SENTINELLE DISTANTE] Santé rouge » ouverte en cas d'échec",
+   "detection_sentinelle": "oui — c'est elle",
+   "correction": "Sur staging une fois TCI-04 fait ; sinon ramener à toutes les 6 h et réutiliser deux comptes canaris permanents au lieu d'en créer.",
+   "risque_regression": "Faible.",
+   "effort": "2 heures",
+   "confiance": "CONFIRMÉ"
+  }
+ ],
+ "surfaces_saines": [
+  "npm run verif : 8 gates statiques + référentiel des passions verts en 1,4 s sur le SHA audité (audit-globals 0 collision sur 1384 déclarations, audit-handlers 0 fantôme sur 652 handlers, stub Supabase 45/45, télémétrie 81 clés OK)",
+  "Échantillon de 8 suites locales (32 tests) : 28 passés / 4 skippés attendus, deux exécutions consécutives identiques (4,3 et 4,6 min), 0 flaky en local avec workers=1",
+  "Gates artefact dist (release-integrity + passion-context) : 6 passés en local sous PASSIO_CIBLE=dist, comme en CI",
+  "Dashboard : 349 tests unitaires verts en 24,6 s (node --test), sans accès réseau Supabase",
+  "Partition prod/local de playwright.config.js prouvée disjointe et verrouillée par projets-playwright.spec.js (3 tests, verts ici)",
+  "Gate d'autorisation en CI : authz-critical non skippable, 12 invariants par REST brut sur comptes réels (usurpation, UPDATE/DELETE 0 ligne, notifications, DM, télémétrie, identité réécrite, Storage par dossier), job vert sur le run 33861671142",
+  "Gouvernance : push direct sur main refusé (PR obligatoire), contre-revue PASSIO74 exigée sur .github/, migrations/, auth/config/repair/sentinel du dashboard",
+  "Purge des comptes de test : suffixe exact @passio-e2e.test (endsWith, jamais includes), TLD réservé non routable, réservée au job détenteur du verrou en CI",
+  "Télémétrie et client_errors coupées depuis localhost/127.0.0.1 (telemetry.js:71, platform.js:42) avec verrou telemetrie-preauth : les 1103 tests locaux ne polluent pas la prod",
+  "Hygiène des assertions : 306 toBeVisible / 26 offsetParent contre 77 assertions d'existence ; aucun spec sans expect ; 18 suites déclarent une épreuve par mutation"
+ ],
+ "non_verifie": [
+  "Flakiness réelle en CI (retries 2) : logs de jobs inaccessibles (proxy 403 vers l'hôte des logs, MCP github en AUTH_HEADER_REJECTED, gh absent). Il faudrait un jeton Actions:read ou les rapports Playwright en artefact (TCI-10).",
+  "Exécution des 7 suites du projet prod (comptes réels, service_role) : interdite ici ; preuve de substitution = job « Suites production (comptes réels) » vert sur le run 33861671142 (5,8 min).",
+  "Protection de branche main (reviews requis, status checks) : API GitHub 403 sans jeton admin.",
+  "Scan de secrets GitHub natif (secret scanning / push protection) : état du dépôt non consultable sans droits admin.",
+  "Re-mesure de la couverture fonctionnelle : exige la suite COMPLÈTE sous PASSIO_COUVERTURE=1 (interdite au sous-agent ; à lancer par l'orchestrateur : `PASSIO_COUVERTURE=1 PASSIO_PORT=<port> npx playwright test --project=local` puis `npm run couverture`).",
+  "Suites opt-in multi-comptes/confidentialite/suppression-compte/qa-campaign : non lancées (écriture en prod) ; leur rupture sur le code actuel est établie par inspection (6 fonctions absentes), pas par exécution.",
+  "Vérification directe de https://passio-app.netlify.app (artefact minifié servi) : BLOQUÉ par le proxy (403), comme indiqué par l'orchestrateur.",
+  "Tests WebKit/Firefox : non réalisables (Chromium seul installé) — et de toute façon absents du dépôt."
+ ],
+ "anciens_rapports": [
+  "CLAUDE.md:40 « 897 suites navigateur » → fausse aujourd'hui : 1103 tests dans 124 fichiers (npx playwright test --list --project=local), chiffre posé le 2026-09-02 (commit e773ed4)",
+  "PASSIO_PRODUCTION_READINESS.md:26 « 175 e2e passés (1 flaky, 1 skipped) + 94 backend » → fausse : 1118 tests e2e listés, 349 tests dashboard verts (cd dashboard && npm test)",
+  "PASSIO_FUNCTIONAL_MAP.md §5 et passio_qa_registry.json « couverture 15,2 % (66/435) » → non vérifiable sur le code actuel : dénominateur 355, 28 noms mesurés absents, mesure du 2026-08-16 ; npm run couverture affiche 10,7 % sur une mesure périmée",
+  "PASSIO_PRODUCTION_READINESS.md:10,16 et registre « 13 invariants d'autorisation » → fausse : 12 blocs numérotés 0-11 dans un seul test, 29 expect (tests/e2e/authz-critical.spec.js)",
+  "PASSIO_PRODUCTION_READINESS.md:21 « Cross-compte PROUVÉ : 13 tests sur base réelle » → toujours vraie pour authz-critical/blocage-acces/user-state (CI verte), FAUSSE pour multi-comptes : deux tests référencent des fonctions CDV supprimées le 2026-08-31 et la suite est opt-in, jamais rejouée en CI",
+  "PASSIO_PRODUCTION_READINESS.md:19 « Suppression de compte PROUVÉ, mutation-testé » → non vérifiable depuis le 2026-08-17 : suppression-compte.spec.js est opt-in (PASSIO_E2E_MULTI), absent de la CI",
+  "docs/CHECKLIST_COMMERCIALISATION.md:37 « Follow/unfollow, édition bio — non auto-testés » (2026-06-12) → périmée dans le bon sens : parcours-suivre.spec.js et biographie-multiligne.spec.js existent",
+  "docs/CHECKLIST_COMMERCIALISATION.md:61 « CI GitHub Actions → Netlify » → toujours vraie (deploy.yml, run 2494 vert)",
+  ".passio/context/TESTING_STRATEGY.md « ~15 specs, CDV couvert, Audits CI = globals + handlers » → périmée : 131 specs, CDV retiré (ADR-011), 8 gates statiques",
+  ".passio/context/KNOWN_RISKS.md R7 « tout push main = déploiement prod, CI tests avant deploy » → toujours vraie (deploy needs test-local/test-prod/gates-artefact/audits/governance)",
+  "tests/qa-report.md « PRÊT POUR DES TESTS UTILISATEURS RÉELS : OUI » (2026-08-09, 7/10 utilisateurs, version inconnue) → non vérifiable : campagne jamais rejouée depuis, opt-in",
+  "playwright.config.js commentaire « 121 suites, 7 touchent la base, 3 en CI » → toujours vraie sur la partition (7 prod / 124 local aujourd'hui, 3 créant des comptes en CI)"
+ ],
+ "preuves_fichiers": [
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/tests-ci/RESUME_PREUVES.txt",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/tests-ci/tests-par-fichier.txt",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/tests-ci/echantillon-local-run1.txt",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/tests-ci/echantillon-local-run2.txt",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/tests-ci/gates-artefact-dist-local.txt",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/tests-ci/run-33861671142-jobs.json",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/tests-ci/deploy-runs-30.json",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/tests-ci/deploy-runs-100.json",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/tests-ci/creux-mutation/tests/e2e/creux-attaque.spec.js",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/tests-ci/isolation-mutation/tests/e2e/isolation-attaque.spec.js"
+ ],
+ "notes": "MATRICE PARCOURS CRITIQUE × TEST (oui = CI locale / prod-CI = comptes réels en CI / opt-in = jamais en CI / non = aucun) :\n- Gate code d'accès : oui (access-gate, gate-sans-app, dist-build)\n- Première visite sans compte : oui (first-run 41, exploration-anonyme 16)\n- Inscription réelle avec e-mail (SMTP) : NON (doublures ; comptes admin pré-confirmés)\n- Connexion compte existant : oui (connexion-compte-existant 15, doublures) ; prod-CI via signInWithPassword (compte-e2e)\n- Mot de passe oublié : NON\n- Confirmation d'e-mail (écran) : oui (confirmation-email 7, doublure)\n- Fil / classement / intentions : oui (138 tests)\n- Publication texte/photo (Studio) : oui local ; écriture réelle en base : prod-CI (authz-critical 1 post)\n- Publication vidéo / bobine réelle (Storage) : NON (caméra factice, stub)\n- Stories : oui local ; cross-compte : opt-in (multi-comptes)\n- Commentaires / réactions / likes : oui local ; cross-compte notifications : opt-in\n- Messagerie 1-1 texte/vocal : oui local (état local) ; livraison cross-compte réelle : opt-in (multi-comptes) — JAMAIS EN CI\n- Confidentialité messages / stories privées : opt-in (confidentialite) — JAMAIS EN CI\n- Realtime cross-compte : opt-in\n- Blocage : prod-CI (blocage-acces) + local (stories-blocage) ; T&S serveur : banc Postgres jetable\n- Signalement : oui local (profil-visite-options), trigger rate_limit : banc SQL\n- IRL événements, RSVP, liste d'attente, filtres : oui local (170) ; RSVP cross-compte : opt-in\n- Check-in QR : oui local (4 fichiers)\n- Carte avec tuiles MapLibre : NON (init contournée) ; géocodage BAN/Photon : NON (doublé à null)\n- Passions (référentiel, plafond, archives) : oui (261)\n- Profil / identité / multi-appareils user_state : oui local + prod-CI (user-state-horodatage)\n- Suppression de compte (Edge Function) : opt-in — JAMAIS EN CI\n- Export de données : NON\n- Appels / live WebRTC : NON\n- Push réel (notify-call, push_subscriptions) : NON\n- IA (Edge ask-ai) : NON\n- PWA / service worker / version skew : oui (version-skew 5, release-integrity dist 4)\n- Hors ligne (CDN coupé) : oui (supa-hors-ligne 2)\n- Télémétrie pré-auth / bruit local : oui (telemetrie-preauth, monitoring-bruit)\n- Sentinelle bout-en-bout (signal → incident → réparation) : NON (dashboard = 349 tests unitaires isolés ; canari distant = authz seulement)\n- Rollback réel : NON ; Restauration de sauvegarde : NON\n- Accessibilité automatisée : NON (26 fichiers touchent aria-, 0 axe) ; iOS WebKit : NON ; visuel : NON ; charge : NON (scripts/test-volume.sql non branché)\n\nGATES MANQUANTES RECOMMANDÉES (par ordre) : ① staging Supabase + injection d'URL au build (débloque TCI-01, 04, 12, 16) ; ② artefact minifié testé avant deploy + retrait des fallbacks silencieux ; ③ timeout-minutes + upload-artifact en échec + reporter blob + compteur de flaky ; ④ épinglage des minifieurs et de @playwright/test, cache des navigateurs (−17 min sur deploy, −28 min de runner) ; ⑤ npm audit --audit-level=high (app + dashboard), dependabot, gitleaks ; ⑥ projet webkit sur 3 suites iOS ; ⑦ couverture:risque en mode --ci avec 0 écriture nue, re-mesure hebdomadaire ; ⑧ durcir audit-tests-creux (exiger boot ou goto) et audit-tests-isolation (retirer les commentaires) ; ⑨ banc Postgres jetable élargi à SCHEMA_PROD_REFERENCE.sql ; ⑩ canari d'inscription réelle + reset de mot de passe nocturne.\n\nCAPACITÉ / COÛTS : run 2494 = 13 jobs, ≈ 100 min de runner pour 37 min de mur ; 100 runs en 48 h ≈ 8 000 min de runner/2 jours (à confronter au plan GitHub — non mesuré). Débit de livraison : 1 déploiement à la fois, 37 min minimum, jusqu'à 64 min mesurés.\n\nCONSERVER : partition prod/local, audit-tests-isolation (idée), authz-critical, gates artefact dist, telemetry localhost off, purge par suffixe exact. REFACTORISER : deploy job (build → test artefact → deploy), audit-tests-creux, TESTING_STRATEGY.md (réécrire depuis les commandes). SUPPRIMER : tests/test-*.html et compagnons, les deux tests CDV de multi-comptes. SOUMETTRE À BENJAMIN : création d'un projet Supabase staging (coût 0 € sur le palier gratuit, mais dérive de schéma à gérer) ; passage de la Sentinelle distante en lecture seule.\n\nRequêtes à exécuter par l'orchestrateur (aucune requête base n'a été lancée par ce domaine) : `PASSIO_COUVERTURE=1 npx playwright test --project=local` puis `npm run couverture` (re-mesure) ; lecture des logs des shards 2/6 et 6/6 du run 33861671142 pour compter les « flaky ». Hygiène : aucun fichier suivi modifié (git status --short vide en fin de travail) ; dist/ régénéré par dist-build/servir-dist (ignoré par git) ; le lien symbolique de la copie du gate en scratchpad a été retiré."
+}

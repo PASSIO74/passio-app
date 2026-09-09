@@ -1,0 +1,125 @@
+{
+ "methode": "ÉMULATION Chromium — refus simulés par remplacement des API (addInitScript), aucun appareil réel",
+ "permissions": {
+  "geo": {
+   "appels": 0,
+   "ville": "ta position",
+   "irlUserLocation": null,
+   "irlUserLocationError": false,
+   "toasts": []
+  },
+  "geoApresRetours": 0,
+  "checkin": {
+   "fonctions": [
+    "_checkIncomingCallFromUrl",
+    "_canCheckIn",
+    "checkInEvent",
+    "_eventCheckinCode",
+    "_eventCheckinUrl",
+    "openEventCheckinQr",
+    "_copyCheckinLink",
+    "openCheckinCodeEntry"
+   ]
+  },
+  "camera": {
+   "fns": [
+    "meOpen",
+    "meStartCamera"
+   ],
+   "gum": 1,
+   "editorClass": "media-editor phase-capture open me-no-cam",
+   "placeholderVisible": true,
+   "placeholderTitre": "Ajoute une vidéo pour ta bobine",
+   "toasts": []
+  },
+  "micro": {
+   "gum": 2,
+   "toasts": [
+    "🎙️ Micro non disponible (autorisation refusée ?)"
+   ]
+  },
+  "appel": {
+   "fns": [
+    "startCall"
+   ],
+   "gum": 2,
+   "toasts": [
+    "Appel disponible uniquement en conversation privée"
+   ]
+  },
+  "notif": {
+   "requestPermissionAppels": 0,
+   "permission": "denied",
+   "toasts": []
+  },
+  "partage": {
+   "share": 1,
+   "toasts": [
+    "Lien : http://127.0.0.1:8112/index.html#irl"
+   ]
+  },
+  "pageErrors": [],
+  "appUtilisable": true
+ },
+ "horsLigne": {
+  "premierLancementSansReseau": {
+   "ok": false,
+   "erreur": "page.goto: net::ERR_INTERNET_DISCONNECTED at http://127.0.0.1:8112/index.html"
+  },
+  "swApresPremierChargement": {
+   "registre": true,
+   "controller": true,
+   "active": true,
+   "caches": [
+    "passio-v1788533862076"
+   ],
+   "entrees": [
+    "/index.html",
+    "/styles.css",
+    "/icon-192.png",
+    "/manifest.json",
+    "/icon-512.png"
+   ]
+  },
+  "controllerApresReload": true,
+  "secondLancementSansReseau": {
+   "title": "(6) PASSIO",
+   "feedActive": true,
+   "gateVisible": false,
+   "bodyExtrait": "PASSIO\nBETA PRIVÉE\nBIENVENUE\nLe premier réseau\npensé pour\ntes passions.\n\nCrée · Partage · Rencontre\n\n🌈\nUn seul toi, plu",
+   "offlineBanner": "flex",
+   "nbCartes": 23,
+   "appJsOk": true,
+   "cssOk": "540px"
+  },
+  "banniereSurEvenementOffline": {
+   "display": "flex",
+   "texte": "Mode hors-ligne — contenu en cache\n×"
+  },
+  "banniereApresOnline": "none",
+  "standaloneDetection": {
+   "platformStandalone": "PassioPlatform absent",
+   "matchMedia": false
+  }
+ },
+ "manifest": {
+  "status": 200,
+  "name": "PASSIO",
+  "short_name": "PASSIO",
+  "display": "standalone",
+  "start_url": "./index.html",
+  "scope": "./",
+  "theme_color": "#7c3aed",
+  "background_color": "#f5f3ff",
+  "orientation": "portrait",
+  "icons": [
+   "./icon-192.png 192x192 any",
+   "./icon-192.png 192x192 maskable",
+   "./icon-512.png 512x512 any",
+   "./icon-512.png 512x512 maskable"
+  ],
+  "icon-192.png": 200,
+  "icon-512.png": 200,
+  "sw.js": 200
+ }
+}

@@ -1,0 +1,19 @@
+wallet                                   js:   11  css:    1  html:   5  docs:  179  tests:   14
+points                                   js:   51  css:    6  html:   3  docs:  125  tests:   28
+passia                                   js:   20  css:    1  html:   2  docs:  215  tests:   45
+boutique\|shop                           js:   46  css:    2  html:   2  docs:   26  tests:    3
+score passion\|scorePassion\|passionScore js:    1  css:    0  html:   1  docs:   17  tests:    0
+quête\|quest                            js:  212  css:    2  html:   2  docs:  313  tests:  146
+leaderboard                              js:    2  css:    0  html:   1  docs:   25  tests:    1
+cdv                                      js:  103  css:   28  html:   3  docs:  271  tests:   95
+carnet                                   js:   97  css:   12  html:   7  docs:  140  tests:   69
+vlog                                     js:   32  css:   10  html:   1  docs:   61  tests:   52
+video_lives\|videoLive\|vlive            js:  335  css:   49  html:   0  docs:   20  tests:   28
+landing                                  js:   63  css:   34  html:  48  docs:   33  tests:   87
+onboarding                               js:   72  css:    9  html:   3  docs:  112  tests:   87
+leaflet                                  js:   30  css:    2  html:   0  docs:   11  tests:    0
+nominatim                                js:    3  css:    0  html:   0  docs:    2  tests:    0
+openStreetMap\|tile.openstreetmap        js:    7  css:    1  html:   0  docs:    3  tests:    0
+étoile\|stars\b                         js:    7  css:    4  html:   0  docs:   23  tests:    5
+premium\|pass passion                    js:    2  css:    1  html:   1  docs:   20  tests:    2
+crypto\|token                            js:   38  css:    0  html:   1  docs:   79  tests:  137

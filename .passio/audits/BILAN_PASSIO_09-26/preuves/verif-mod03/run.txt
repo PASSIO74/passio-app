@@ -1,0 +1,32 @@
+
+Running 3 tests using 1 worker
+
+A) MY_UID= u_w79hzmka  session supabase= [1mnull[22m  state.onboarded= [33mfalse[39m
+A) MY_UID= u_w79hzmka  _supaReal= [90mundefined[39m  appels supaReport= [{"t":"user","id":"u_lea","reason":"","ret":true}]
+  ✘  1 ../../../tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/verif-mod03/mod03.spec.js:19:1 › A) invité sans compte (réseau Supabase coupé) : ⋯ → Signaler affiche « Signalement envoyé » (17.6s)
+B) appels supaReport= [{"t":"user","id":"u_lea","reason":"","ret":false}]  toasts= ["🚩 Signalement envoyé. Notre équipe va vérifier."]
+  ✓  2 ../../../tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/verif-mod03/mod03.spec.js:40:1 › B) compte onboardé, INSERT refusé (erreur simulée P0001) : toast de succès quand même (16.9s)
+C) appels= [{"t":"event","id":"ev_x","reason":"","ret":false},{"t":"post","id":"p_x","reason":"","ret":false},{"t":"comment","id":"c_x","reason":"","ret":false}]  toasts= ["Signalement envoyé — merci","Post signalé. Merci, on s'en occupe.","Commentaire signalé. Merci, on s'en occupe."]
+  ✓  3 ../../../tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/verif-mod03/mod03.spec.js:61:1 › C) reportEvent / reportPost / reportCommentEntry : motif vide et verdict ignoré (16.2s)
+
+
+  1) ../../../tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/verif-mod03/mod03.spec.js:19:1 › A) invité sans compte (réseau Supabase coupé) : ⋯ → Signaler affiche « Signalement envoyé » 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mnot[2m.[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: not [32mtrue[39m
+
+      34 |   expect(rep.length).toBe(1);
+      35 |   expect(rep[0].reason).toBe("");
+    > 36 |   expect(rep[0].ret).not.toBe(true); // rien n'a pu être écrit
+         |                          ^
+      37 |   await page.screenshot({ path: "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/verif-mod03/A-invite-toast.png" });
+      38 | });
+      39 |
+        at /tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/verif-mod03/mod03.spec.js:36:26
+
+    Error Context: ../../../tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/verif-mod03/test-results/mod03-A-invité-sans-compte-8ec75-iche-«-Signalement-envoyé-»/error-context.md
+
+  1 failed
+    ../../../tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/verif-mod03/mod03.spec.js:19:1 › A) invité sans compte (réseau Supabase coupé) : ⋯ → Signaler affiche « Signalement envoyé » 
+  2 passed (52.2s)

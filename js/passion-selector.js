@@ -396,6 +396,7 @@
     nom_invalide:     "Choisis un nom de passion — deux lettres au moins, pas d'adresse web.",
     nom_trop_long:    "Un nom plus court : six mots au maximum.",
     nom_indisponible: "Ce nom n'est pas disponible. Essaie une autre formulation.",
+    quota_creation:   "Tu as utilisé tes trois créations de passion.",
     quota_jour:       "Tu as créé beaucoup de passions aujourd'hui. Reviens demain pour en créer d'autres.",
     quota_total:      "Tu as atteint le nombre de passions que tu peux créer.",
     trop_court:       "Donne un nom d'au moins 2 caractères.",
@@ -445,6 +446,21 @@
     m.creerPassion(q).then(function (r) {
       r = r || {};
       if (r.erreur && !r.repli) {
+        // ⚠️ TROIS CRÉATIONS OFFERTES, ENSUITE C'EST PAYANT (2026-09-08, soir).
+        // Le plafond est tenu par le SERVEUR (`creer_passion` → `quota_creation`),
+        // jamais par l'écran : un attribut d'affichage n'a jamais été une garde.
+        // Mais un refus qui ne se prononce pas est indiscernable d'une panne —
+        // règle de la fiche 16, réaffirmée par le revirement du 2026-09-04 :
+        // une porte fermée doit dire par où passer. On ouvre donc le paywall,
+        // comme TOUTES les autres portes d'acquisition, plutôt qu'un toast qui
+        // disparaît avant d'être lu.
+        if (/^quota_/.test(r.erreur)) {
+          try { if (typeof toast === "function") toast(MOTIFS[r.erreur] || MOTIFS.quota_creation); } catch (e) {}
+          try {
+            if (typeof openPassionPaywall === "function") openPassionPaywall({ creation: true });
+          } catch (e) { journal("paywall", e); }
+          return;
+        }
         try { if (typeof toast === "function") toast(MOTIFS[r.erreur] || "Impossible de créer cette passion pour le moment."); } catch (e) {}
         return;
       }

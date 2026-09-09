@@ -1,0 +1,1 @@
+{"state":"NOT_CONFIGURED","parts":{"dbRead":{"state":"NOT_CONFIGURED","detail":"Supabase non configuré"},"sse":{"state":"DEGRADED","detail":"aucun navigateur dashboard connecté","clients":0},"canary":{"state":"NOT_CONFIGURED","detail":"SUPABASE_ANON_KEY manquante"}},"updatedAt":"2026-09-04T12:47:33.065Z"}

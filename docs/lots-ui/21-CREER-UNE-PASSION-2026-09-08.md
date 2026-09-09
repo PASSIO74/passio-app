@@ -91,6 +91,47 @@ appeler la fonction.
    nommer sa passion à quelqu'un pour lui apprendre ensuite qu'il lui fallait un
    compte. `openModal` **remplace** la feuille ouverte — c'est voulu.
 
+## 🔒 Trois créations offertes, ensuite c'est payant (le soir même)
+
+> « Il faut limiter la création de passion à 3, ensuite c'est payant. »
+> — Benjamin, quelques minutes après la mise en ligne.
+
+Le premier jet plafonnait le **rythme** (5 / 24 h) et le **volume** (30 par
+compte) : deux garde-fous anti-abus, pas une règle produit. La règle produit est
+celle du reste de l'application — `PASSIONS_OFFERTES = 3` : on reçoit trois
+passions, au-delà on passe par `openPassionPaywall()`. **Créer une passion est
+une acquisition**, elle compte comme telle.
+
+`migrations/migration_passion_creations_offertes.sql` remplace les deux quotas
+par un seul : **3 créations par compte**, motif `quota_creation`.
+
+⚠️ **Trois créations à vie, et ce n'est pas « trois passions vivantes ».**
+Le compteur est `count(*) where created_by = auth.uid()`, **sans condition de
+statut** : archiver une passion créée ne rend pas un droit de création — sans
+quoi il suffirait d'archiver pour repartir de zéro, exactement la porte dérobée
+que le quota de changements a dû fermer le 2026-09-02. Éprouvé par le banc ⑥.
+
+⚠️ **Le dédoublonnage passe AVANT le plafond.** Une passion qui existe déjà ne
+crée rien : elle ne part même pas au serveur (le client la reconnaît), et au
+plafond elle reste ajoutable. Faire payer un nom que le référentiel connaissait
+déjà serait un mur posé au mauvais endroit.
+
+⚠️ **La fenêtre doit dire QUEL plafond a refusé.** Trois plafonds distincts
+aboutissent au même mur (créations, changements, passions vivantes) :
+`openPassionPaywall({ creation: true })` titre « Trois créations offertes » et
+parle de créations — sans quoi quelqu'un qui vient de se faire refuser une
+création y lit qu'il « suit déjà 3 passions », ce qui peut être **faux**. Un mur
+qui parle d'autre chose que du geste refusé se lit comme une panne.
+
+⚠️ **Aucun montant, nulle part** (ADR-009, verrou ㉒) : le serveur dit
+`quota_creation`, le client ouvre le paywall, et le paywall annonce une formule
+payante **pas encore ouverte**. Le jour où le paiement existera, c'est ce
+plafond-là qu'un droit acheté relèvera — d'où **un seul nombre**, dans la
+migration.
+
+Verrous : banc SQL ⑥ (les deux migrations appliquées **dans l'ordre**, comme la
+production les a reçues) et `creation-passion.spec.js` ⑨ et ⑩.
+
 ## ⚠️ Sur Supabase, `revoke ... from public` ne ferme rien (mesuré en prod)
 
 Les privilèges par défaut du projet accordent `EXECUTE` à **`anon`** et

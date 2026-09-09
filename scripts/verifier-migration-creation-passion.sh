@@ -13,7 +13,8 @@
 #   ④ un nom déjà connu — libellé ou ALIAS, avec ou sans accents — rend
 #      l'existante au lieu d'en créer une variante ;
 #   ⑤ les noms invalides (trop court, chiffres seuls, URL) sont refusés ;
-#   ⑥ le plafond de 5 par 24 h tient ;
+#   ⑥ trois créations offertes par compte, ensuite `quota_creation` — et
+#      archiver ne rend PAS un droit de création ;
 #   ⑦ ⚠️ LE RÉFÉRENTIEL RESTE EN LECTURE SEULE pour un client : INSERT et
 #      DELETE directs sont toujours refusés (la création passe UNIQUEMENT par
 #      la fonction `SECURITY DEFINER`) ;
@@ -26,6 +27,10 @@ set -uo pipefail
 RACINE="$(cd "$(dirname "$0")/.." && pwd)"
 MIG_PLAT="$RACINE/migrations/migration_passions_plat.sql"
 MIG="$RACINE/migrations/migration_creation_passion_utilisateur.sql"
+# ⚠️ LE LOT COMPTE DEUX MIGRATIONS, ET LA SECONDE REMPLACE LA FONCTION. Les
+# éprouver séparément laisserait le plafond produit (3 créations offertes) sans
+# banc : on les applique donc DANS L'ORDRE, comme la production les a reçues.
+MIG2="$RACINE/migrations/migration_passion_creations_offertes.sql"
 BASE="${PGDATA_TEST:-${TMPDIR:-/tmp}/passio-pg-creation}"
 SOCK="${PGSOCK_TEST:-/tmp/ppgc-$$}"
 PORT="${PGPORT_TEST:-55433}"
@@ -102,6 +107,12 @@ acl=$(Q creation "select has_function_privilege('authenticated', 'public.creer_p
 [ "$acl" = "true" ] && ok "authenticated peut l'exécuter" || ko "authenticated n'a pas EXECUTE : $acl"
 out=$(F creation "$MIG")
 if [ $? -eq 0 ] && ! grep -qi "^ERROR" <<<"$out"; then ok "seconde exécution : idempotente"; else ko "NON IDEMPOTENTE :"; echo "$out" | grep -i error | head -5; fi
+out=$(F creation "$MIG2")
+if [ $? -eq 0 ] && ! grep -qi "^ERROR" <<<"$out"; then ok "plafond des créations offertes appliqué"; else ko "échec :"; echo "$out" | grep -i error | head -5; fi
+out=$(F creation "$MIG2")
+if [ $? -eq 0 ] && ! grep -qi "^ERROR" <<<"$out"; then ok "seconde exécution : idempotente"; else ko "NON IDEMPOTENTE :"; echo "$out" | grep -i error | head -5; fi
+acl=$(Q creation "select has_function_privilege('anon', 'public.creer_passion(text,text)', 'EXECUTE')::text")
+[ "$acl" = "false" ] && ok "anon reste sans EXECUTE après le remplacement" || ko "le remplacement a rendu EXECUTE à anon : $acl"
 col=$(Q creation "select count(*) from information_schema.columns where table_name='passions' and column_name='created_by'")
 [ "$col" = "1" ] && ok "colonne created_by présente" || ko "colonne created_by absente"
 
@@ -157,12 +168,29 @@ verif_refus "<img src=x onerror=1>"               "nom_invalide"
 verif_refus "un nom vraiment beaucoup trop bavard pour etre une passion" "nom_trop_long"
 
 # ── ⑥ Plafond ─────────────────────────────────────────────────────────────
-titre "⑥ Plafond de 5 créations par 24 h"
-for i in 1 2 3 4; do
+titre "⑥ Trois créations offertes, ensuite le paywall"
+# ③ en a déjà créé UNE pour $UID_A : deux de plus atteignent le plafond.
+for i in 1 2; do
   QA "$UID_A" "select id from public.creer_passion('passion essai numero $i')" >/dev/null
 done
-res=$(QA "$UID_A" "select id from public.creer_passion('passion essai numero cinq')")
-grep -qi "quota_jour" <<<"$res" && ok "la 6ᵉ création est refusée (quota_jour)" || ko "plafond non tenu : $res"
+n=$(Q creation "select count(*) from public.passions where created_by='$UID_A'")
+[ "$n" = "3" ] && ok "trois passions créées par ce compte" || ko "décompte inattendu : $n"
+res=$(QA "$UID_A" "select id from public.creer_passion('une quatrieme passion')")
+grep -qi "quota_creation" <<<"$res" && ok "la 4ᵉ création est refusée (quota_creation → paywall)" || ko "plafond non tenu : $res"
+
+# ⚠️ ARCHIVER NE REND PAS UN DROIT DE CRÉATION. Sans cette mesure, il suffirait
+# d'archiver pour repartir de zéro — la porte dérobée que le quota de
+# changements a dû fermer le 2026-09-02, rouverte par le bas.
+Q creation "update public.passions set status='archived' where created_by='$UID_A'" >/dev/null
+res=$(QA "$UID_A" "select id from public.creer_passion('une cinquieme passion')")
+grep -qi "quota_creation" <<<"$res" && ok "archiver ne rend pas un droit de création" || ko "le quota s'est rouvert par l'archivage : $res"
+Q creation "update public.passions set status='active' where created_by='$UID_A'" >/dev/null
+
+# ⚠️ UN NOM DÉJÀ CONNU RESTE GRATUIT, MÊME AU PLAFOND : il ne CRÉE rien. Le
+# refuser ferait payer pour un nom que le référentiel connaissait déjà.
+res=$(QA "$UID_A" "select id||'|'||cree from public.creer_passion('Musique')")
+[ "$res" = "musique|false" ] && ok "au plafond, une passion existante reste accessible" || ko "le plafond bloque une passion existante : $res"
+
 res=$(QA "$UID_B" "select id||'|'||cree from public.creer_passion('tricot islandais')")
 [ "$res" = "tricot-islandais|true" ] && ok "le plafond est par personne, pas global" || ko "un autre compte est bloqué : $res"
 

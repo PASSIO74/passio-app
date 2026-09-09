@@ -1,0 +1,82 @@
+{
+  "sha": "c8cb8e99",
+  "date": "2026-09-04T14:49:19.426Z",
+  "methode": "node zlib gzipSync level 9 / brotliCompressSync quality 11 (brotli CLI absent, module python absent)",
+  "fichiers": [
+    {
+      "file": "dist/index.html",
+      "raw": 884157,
+      "gzip9": 248237,
+      "brotli11": 190788
+    },
+    {
+      "file": "dist/app.js",
+      "raw": 2285374,
+      "gzip9": 689871,
+      "brotli11": 509437
+    },
+    {
+      "file": "dist/styles.css",
+      "raw": 450337,
+      "gzip9": 102129,
+      "brotli11": 81827
+    },
+    {
+      "file": "dist/sw.js",
+      "raw": 9705,
+      "gzip9": 3654,
+      "brotli11": 3196
+    },
+    {
+      "file": "dist/data/passions-v1.json",
+      "raw": 163568,
+      "gzip9": 37883,
+      "brotli11": 32647
+    },
+    {
+      "file": "TOTAL",
+      "raw": 3793141,
+      "gzip9": 1081774,
+      "brotli11": 817895
+    }
+  ],
+  "fichiers_minifies_comme_CI": [
+    {
+      "file": "index.html",
+      "raw": 302021,
+      "gzip9": 83318,
+      "brotli11": 69863
+    },
+    {
+      "file": "app.js",
+      "raw": 1226117,
+      "gzip9": 342626,
+      "brotli11": 262097
+    },
+    {
+      "file": "styles.css",
+      "raw": 220853,
+      "gzip9": 38342,
+      "brotli11": 31601
+    },
+    {
+      "file": "sw.js",
+      "raw": 9705,
+      "gzip9": 3654,
+      "brotli11": 3196
+    },
+    {
+      "file": "data/passions-v1.json",
+      "raw": 163568,
+      "gzip9": 37883,
+      "brotli11": 32647
+    },
+    {
+      "file": "TOTAL",
+      "raw": 1922264,
+      "gzip9": 505823,
+      "brotli11": 399404
+    }
+  ],
+  "note_minif": "terser --compress --mangle ; html-minifier-terser --collapse-whitespace --remove-comments --minify-css --minify-js ; clean-css-cli (mêmes commandes que deploy.yml:498-519)"
+}

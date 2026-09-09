@@ -1,0 +1,20 @@
+Running 16 tests using 1 worker
+[1A[2K[1/16] [local] › tests/e2e/adr-009-retrait-economie.spec.js:78:3 › ADR-009 — retrait de l'économie interne › aucune destination Wallet, aucun solde, aucun score public
+[1A[2K[2/16] [local] › tests/e2e/adr-009-retrait-economie.spec.js:94:3 › ADR-009 — retrait de l'économie interne › un ancien deep link #wallet ne laisse jamais l'app sans écran actif
+[1A[2K[3/16] [local] › tests/e2e/adr-009-retrait-economie.spec.js:106:3 › ADR-009 — retrait de l'économie interne › le moteur de récompenses n'existe plus, sous aucun de ses noms
+[1A[2K[4/16] [local] › tests/e2e/adr-009-retrait-economie.spec.js:117:3 › ADR-009 — retrait de l'économie interne › publier, commenter et aimer fonctionnent sans récompense ni erreur
+[1A[2K[5/16] [local] › tests/e2e/adr-009-retrait-economie.spec.js:140:3 › ADR-009 — retrait de l'économie interne › créer un 4ᵉ profil est libre : aucun paywall, aucun coût
+[1A[2K[6/16] [local] › tests/e2e/adr-009-retrait-economie.spec.js:186:3 › ADR-009 — retrait de l'économie interne › un état d'avant le retrait charge sans lever et sans rien réafficher
+[1A[2K[7/16] [local] › tests/e2e/adr-009-retrait-economie.spec.js:219:3 › ADR-009 — retrait de l'économie interne › la synchronisation ne re-propage pas les clés d'un ancien client
+[1A[2K[8/16] [local] › tests/e2e/release-integrity.spec.js:9:3 › RELEASE-INTEGRITY — contrat de release et transition d'identité › release.json, HTML et service worker désignent exactement le même build
+[1A[2K[9/16] [local] › tests/e2e/release-integrity.spec.js:33:3 › RELEASE-INTEGRITY — contrat de release et transition d'identité › le bundle différé redirige un ancien lien Carnets de voyage
+[1A[2K[10/16] [local] › tests/e2e/release-integrity.spec.js:60:5 › RELEASE-INTEGRITY — contrat de release et transition d'identité › sans service worker › un onglet N détecte N+1 sans forcer le rechargement
+[1A[2K[11/16] [local] › tests/e2e/release-integrity.spec.js:85:3 › RELEASE-INTEGRITY — contrat de release et transition d'identité › le drain attend les POST telemetry_events avant de rendre la main
+[1A[2K[12/16] [local] › tests/e2e/version-skew.spec.js:37:3 › Version skew — cohérence des versions servies › le hash de chaque asset vient RÉELLEMENT de son contenu
+[1A[2K[local] › tests/e2e/version-skew.spec.js:37:3 › Version skew — cohérence des versions servies › le hash de chaque asset vient RÉELLEMENT de son contenu
+[1A[2K[13/16] [local] › tests/e2e/version-skew.spec.js:57:3 › Version skew — cohérence des versions servies › deux contenus différents produisent deux URL différentes
+[1A[2K[14/16] [local] › tests/e2e/version-skew.spec.js:67:3 › Version skew — cohérence des versions servies › index.html n'est jamais mis en cache, les assets hachés le sont
+[1A[2K[15/16] [local] › tests/e2e/version-skew.spec.js:85:3 › Version skew — cohérence des versions servies › le service worker sert index.html par le RÉSEAU d'abord
+[1A[2K[16/16] [local] › tests/e2e/version-skew.spec.js:94:3 › Version skew — cohérence des versions servies › le cache du service worker change à chaque build
+[1A[2K  4 skipped
+  12 passed (1.9m)

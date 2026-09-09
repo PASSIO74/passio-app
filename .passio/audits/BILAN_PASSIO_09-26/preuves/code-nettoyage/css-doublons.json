@@ -1,0 +1,102 @@
+{
+ "regles": 1985,
+ "selecteursRedeclares": 8,
+ "selecteursRedeclaresCorpsIdentique": 0,
+ "exemplesCorpsIdentique": [],
+ "corpsPartagesPar3SelecteursOuPlus": 9,
+ "exemplesCorpsPartages": [
+  {
+   "corps": "outline: 2px solid var(--accent); outline-offset: 2px;",
+   "selecteurs": [
+    "|.feed-irl-cta:focus-visible",
+    "|.v2-sheet-item:focus-visible",
+    "|#v2CreateSheet .v2-sheet-item:focus-visible, #v3PassioSheet .v2-sheet-item:focus-visible",
+    "|:root.passio-ui-v2 .v2-reel-tile:focus-visible",
+    "|:root.passio-ui-v2 .v2-person:focus-visible",
+    "|:root.passio-ui-3 .v3-tempt:focus-visible"
+   ]
+  },
+  {
+   "corps": "width: 100%; height: 100%; object-fit: cover; display: block;",
+   "selecteurs": [
+    "|.event-detail-cover",
+    "|.story-inner img",
+    "|.me-media img, .me-media video",
+    "|.story-media-layer img, .story-media-layer video",
+    "|.event-album-cell img",
+    "|:root.passio-ui-v2 .v2-reel-poster"
+   ]
+  },
+  {
+   "corps": "background: var(--accent); border-color: var(--accent); color: #fff;",
+   "selecteurs": [
+    "|.group-user-option.selected .grp-check",
+    "|.irl-extra-chip.on .irl-extra-box",
+    "|:root.passio-ui-4a0 .v4a0-chip[aria-pressed=\"true\"]",
+    "|:root.passio-ui-4a5 .v4a5-case[aria-pressed=\"true\"]",
+    "|:root.passio-ui-4a5 #v4a5Passions .msg-tile[aria-pressed=\"true\"], :root.passio-ui-4a5 #v4a5Passions .msg-tile.active",
+    "|:root.passio-ui-4a5 #v4a5Passions .irl-extra-chip.on .irl-extra-box"
+   ]
+  },
+  {
+   "corps": "font-size: 11px; color: var(--muted); margin-top: 2px;",
+   "selecteurs": [
+    "|.post-author-meta",
+    "|.upload-zone-text",
+    "|.list-row-meta",
+    "|.setting-meta"
+   ]
+  },
+  {
+   "corps": "border-color: var(--accent); color: var(--accent);",
+   "selecteurs": [
+    "|.ai-result-back:active",
+    "|.ctx-trigger:hover",
+    "|:root.passio-ui-6 .v6-media-btn:hover",
+    "|:root.passio-ui-6b .v6b-activer:hover"
+   ]
+  },
+  {
+   "corps": "outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 8px;",
+   "selecteurs": [
+    "|.main-profile-bio:focus-visible",
+    "|:root.passio-ui-4a5 .v4a5-lieu-btn:focus-visible",
+    "|:root.passio-ui-4a5 .v4a5-raccourci:focus-visible"
+   ]
+  },
+  {
+   "corps": "background: rgba(239,68,68,0.12); color: #ef4444;",
+   "selecteurs": [
+    "|.event-detail-urgency.today",
+    "|.event-card-banner.cancelled",
+    "|.event-detail-urgency.cancelled"
+   ]
+  },
+  {
+   "corps": "display: flex; align-items: center; gap: 8px;",
+   "selecteurs": [
+    "|.reel-comment-header",
+    "|.vlive-chat-bar",
+    "|.v7-cover-row"
+   ]
+  },
+  {
+   "corps": "cursor: pointer; color: var(--muted); transition: color 200ms;",
+   "selecteurs": [
+    "|.reel-comment-like",
+    "|.reel-comment-reply",
+    "|.reel-comment-action"
+   ]
+  }
+ ],
+ "top20Redeclares": [
+  "|:root ×3",
+  "|:root.passio-ui-v2 ×3",
+  "|.section-title .link ×2",
+  "|.modal ×2",
+  "|.event-card ×2",
+  "|.conv-bubble-wrap ×2",
+  "|:root.passio-ui-3 .v3-tempt ×2",
+  "|:root.passio-ui-4a5 .v4a5-panneau ×2"
+ ]
+}

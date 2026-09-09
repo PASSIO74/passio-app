@@ -1,0 +1,2114 @@
+
+> passio-control-center@1.0.0 test
+> node --test test/*.test.js
+
+TAP version 13
+# Subtest: une entrée porte un identifiant, un horodatage, un acteur et ses détails
+ok 1 - une entrée porte un identifiant, un horodatage, un acteur et ses détails
+  ---
+  duration_ms: 1.930195
+  type: 'test'
+  ...
+# Subtest: l'acteur peut être absent — on ne perd pas l'entrée pour autant
+ok 2 - l'acteur peut être absent — on ne perd pas l'entrée pour autant
+  ---
+  duration_ms: 0.311411
+  type: 'test'
+  ...
+# Subtest: filtres par action et par acteur, et plafond de lecture
+ok 3 - filtres par action et par acteur, et plafond de lecture
+  ---
+  duration_ms: 10.173301
+  type: 'test'
+  ...
+# Subtest: les gestes sensibles laissent réellement une trace
+ok 4 - les gestes sensibles laissent réellement une trace
+  ---
+  duration_ms: 1.306872
+  type: 'test'
+  ...
+# Subtest: un refus n'est pas enregistré comme une action effectuée
+ok 5 - un refus n'est pas enregistré comme une action effectuée
+  ---
+  duration_ms: 0.15032
+  type: 'test'
+  ...
+# Subtest: token signé : aller-retour valide
+ok 6 - token signé : aller-retour valide
+  ---
+  duration_ms: 1.73067
+  type: 'test'
+  ...
+# Subtest: token falsifié : rejeté
+ok 7 - token falsifié : rejeté
+  ---
+  duration_ms: 0.335034
+  type: 'test'
+  ...
+# Subtest: token vide / malformé : rejeté
+ok 8 - token vide / malformé : rejeté
+  ---
+  duration_ms: 0.11144
+  type: 'test'
+  ...
+# Subtest: matrice de permissions
+ok 9 - matrice de permissions
+  ---
+  duration_ms: 2.274383
+  type: 'test'
+  ...
+# Subtest: l'intégrité des données reste réservée aux rôles ayant la capacité `db`
+ok 10 - l'intégrité des données reste réservée aux rôles ayant la capacité `db`
+  ---
+  duration_ms: 0.296142
+  type: 'test'
+  ...
+# Subtest: la checklist démarre remplie et chaque ligne est identifiée
+ok 11 - la checklist démarre remplie et chaque ligne est identifiée
+  ---
+  duration_ms: 0.702956
+  type: 'test'
+  ...
+# Subtest: mise à jour : seuls les champs prévus entrent
+ok 12 - mise à jour : seuls les champs prévus entrent
+  ---
+  duration_ms: 1.406334
+  type: 'test'
+  ...
+# Subtest: un identifiant inconnu rend null, sans rien créer
+ok 13 - un identifiant inconnu rend null, sans rien créer
+  ---
+  duration_ms: 1.260235
+  type: 'test'
+  ...
+# Subtest: drapeaux : création et modification donnent la MÊME forme de données
+ok 14 - drapeaux : création et modification donnent la MÊME forme de données
+  ---
+  duration_ms: 1.673552
+  type: 'test'
+  ...
+# Subtest: drapeaux : l'historique retient qui a changé quoi, et reste borné
+ok 15 - drapeaux : l'historique retient qui a changé quoi, et reste borné
+  ---
+  duration_ms: 60.580284
+  type: 'test'
+  ...
+# Subtest: modifier un drapeau inconnu rend null, sans en créer un
+ok 16 - modifier un drapeau inconnu rend null, sans en créer un
+  ---
+  duration_ms: 0.111891
+  type: 'test'
+  ...
+# Subtest: un compte exclu ne remonte jamais, quelle que soit sa source
+ok 17 - un compte exclu ne remonte jamais, quelle que soit sa source
+  ---
+  duration_ms: 12.544005
+  type: 'test'
+  ...
+# Subtest: une panne d'auth dégrade la fiche sans faire tomber la liste
+ok 18 - une panne d'auth dégrade la fiche sans faire tomber la liste
+  ---
+  duration_ms: 498.700571
+  type: 'test'
+  ...
+# Subtest: le résultat est mis en cache : un second appel ne réinterroge pas Supabase
+ok 19 - le résultat est mis en cache : un second appel ne réinterroge pas Supabase
+  ---
+  duration_ms: 0.214097
+  type: 'test'
+  ...
+# Subtest: sans Supabase, on annonce « non configuré » plutôt qu'une liste vide
+ok 20 - sans Supabase, on annonce « non configuré » plutôt qu'une liste vide
+  ---
+  duration_ms: 0.151727
+  type: 'test'
+  ...
+# Subtest: créations de compte : fenêtres et série de 14 jours
+ok 21 - créations de compte : fenêtres et série de 14 jours
+  ---
+  duration_ms: 0.797566
+  type: 'test'
+  ...
+# Subtest: sans référence, le cockpit dit explicitement que la comparaison est impossible
+ok 22 - sans référence, le cockpit dit explicitement que la comparaison est impossible
+  ---
+  duration_ms: 1.890501
+  type: 'test'
+  ...
+# Subtest: une dégradation technique est un changement matériel, pas une variation produit
+ok 23 - une dégradation technique est un changement matériel, pas une variation produit
+  ---
+  duration_ms: 0.432082
+  type: 'test'
+  ...
+# Subtest: les KPI ne produisent un delta que quand deux nombres réels sont comparables
+ok 24 - les KPI ne produisent un delta que quand deux nombres réels sont comparables
+  ---
+  duration_ms: 0.319974
+  type: 'test'
+  ...
+# Subtest: ouverture et résolution de risque sont distinguées
+ok 25 - ouverture et résolution de risque sont distinguées
+  ---
+  duration_ms: 0.178615
+  type: 'test'
+  ...
+# Subtest: le poste de commande se construit sans Supabase et sans crédits
+ok 26 - le poste de commande se construit sans Supabase et sans crédits
+  ---
+  duration_ms: 8.008203
+  type: 'test'
+  ...
+# Subtest: aucun domaine ne se déclare LIVE par défaut d'information
+ok 27 - aucun domaine ne se déclare LIVE par défaut d'information
+  ---
+  duration_ms: 0.707016
+  type: 'test'
+  ...
+# Subtest: les priorités restent dans l'échelle annoncée
+ok 28 - les priorités restent dans l'échelle annoncée
+  ---
+  duration_ms: 0.736893
+  type: 'test'
+  ...
+# Subtest: un incident non daté ne produit aucune hypothèse
+ok 29 - un incident non daté ne produit aucune hypothèse
+  ---
+  duration_ms: 1.242343
+  type: 'test'
+  ...
+# Subtest: un incident très ancien ne se voit attribuer aucun commit récent
+ok 30 - un incident très ancien ne se voit attribuer aucun commit récent
+  ---
+  duration_ms: 93.272766
+  type: 'test'
+  ...
+# Subtest: les commits POSTÉRIEURS au début de l'incident sont exclus
+ok 31 - les commits POSTÉRIEURS au début de l'incident sont exclus
+  ---
+  duration_ms: 12.000134
+  type: 'test'
+  ...
+# Subtest: le bloc de prompt annonce toujours l'incertitude quand il y a des suspects
+ok 32 - le bloc de prompt annonce toujours l'incertitude quand il y a des suspects
+  ---
+  duration_ms: 0.347151
+  type: 'test'
+  ...
+# Subtest: sans suspect, le bloc le DIT au lieu de rester vide
+ok 33 - sans suspect, le bloc le DIT au lieu de rester vide
+  ---
+  duration_ms: 0.191713
+  type: 'test'
+  ...
+# Subtest: un commit qui ne touche QUE le dashboard n'est jamais suspect d'un bug applicatif
+ok 34 - un commit qui ne touche QUE le dashboard n'est jamais suspect d'un bug applicatif
+  ---
+  duration_ms: 7.541358
+  type: 'test'
+  ...
+# Subtest: la confiance est bornée aux niveaux prévus et « faible » est filtré
+ok 35 - la confiance est bornée aux niveaux prévus et « faible » est filtré
+  ---
+  duration_ms: 9.434221
+  type: 'test'
+  ...
+# Subtest: sans Supabase, on annonce « non configuré »
+ok 36 - sans Supabase, on annonce « non configuré »
+  ---
+  duration_ms: 1.452743
+  type: 'test'
+  ...
+# Subtest: liste blanche : aucune table hors périmètre, et RIEN que des comptages
+ok 37 - liste blanche : aucune table hors périmètre, et RIEN que des comptages
+  ---
+  duration_ms: 0.532724
+  type: 'test'
+  ...
+# Subtest: une table refusée rend null pour elle seule, sans emporter les autres
+ok 38 - une table refusée rend null pour elle seule, sans emporter les autres
+  ---
+  duration_ms: 0.208498
+  type: 'test'
+  ...
+# Subtest: activité : seules les requêtes REST récentes comptent
+ok 39 - activité : seules les requêtes REST récentes comptent
+  ---
+  duration_ms: 1.369876
+  type: 'test'
+  ...
+# Subtest: l'extracteur trouve bien les appels — sinon ce fichier serait vert et vide
+ok 40 - l'extracteur trouve bien les appels — sinon ce fichier serait vert et vide
+  ---
+  duration_ms: 14.945452
+  type: 'test'
+  ...
+# Subtest: chaque appel de la page correspond à une route du serveur, avec le bon verbe
+ok 41 - chaque appel de la page correspond à une route du serveur, avec le bon verbe
+  ---
+  duration_ms: 8.776595
+  type: 'test'
+  ...
+# Subtest: le mauvais VERBE est aussi un appel mort
+ok 42 - le mauvais VERBE est aussi un appel mort
+  ---
+  duration_ms: 0.591917
+  type: 'test'
+  ...
+# Subtest: inventaire des routes qu'AUCUNE page n'appelle
+ok 43 - inventaire des routes qu'AUCUNE page n'appelle
+  ---
+  duration_ms: 6.727967
+  type: 'test'
+  ...
+# Subtest: readSnippet lit un fichier réel du dépôt
+ok 44 - readSnippet lit un fichier réel du dépôt
+  ---
+  duration_ms: 16.67625
+  type: 'test'
+  ...
+# Subtest: readSnippet refuse toute sortie du dépôt
+ok 45 - readSnippet refuse toute sortie du dépôt
+  ---
+  duration_ms: 0.325518
+  type: 'test'
+  ...
+# Subtest: readSnippet refuse le dossier VOISIN — le défaut du préfixe nu
+ok 46 - readSnippet refuse le dossier VOISIN — le défaut du préfixe nu
+  ---
+  duration_ms: 8.733646
+  type: 'test'
+  ...
+# Subtest: readSnippet nettoie la forme du chemin (slashs de tête, query)
+ok 47 - readSnippet nettoie la forme du chemin (slashs de tête, query)
+  ---
+  duration_ms: 3.228738
+  type: 'test'
+  ...
+# Subtest: readSnippet rend null sur un fichier absent, jamais une exception
+ok 48 - readSnippet rend null sur un fichier absent, jamais une exception
+  ---
+  duration_ms: 0.378831
+  type: 'test'
+  ...
+# Subtest: une branche protégée est refusée (jamais de travail direct sur main)
+ok 49 - une branche protégée est refusée (jamais de travail direct sur main)
+  ---
+  duration_ms: 0.704081
+  type: 'test'
+  ...
+# Subtest: un nom de branche hostile est refusé avant toute commande git
+ok 50 - un nom de branche hostile est refusé avant toute commande git
+  ---
+  duration_ms: 0.523947
+  type: 'test'
+  ...
+# Subtest: applyPatch : branche invalide et patch vide/énorme sont refusés
+ok 51 - applyPatch : branche invalide et patch vide/énorme sont refusés
+  ---
+  duration_ms: 0.402279
+  type: 'test'
+  ...
+# Subtest: mutations coupées par défaut : sans DASH_ALLOW_MUTATIONS, tout est refusé
+ok 52 - mutations coupées par défaut : sans DASH_ALLOW_MUTATIONS, tout est refusé
+  ---
+  duration_ms: 142.28759
+  type: 'test'
+  ...
+# Subtest: en production, l'autorisation explicite ne suffit pas
+ok 53 - en production, l'autorisation explicite ne suffit pas
+  ---
+  duration_ms: 409.763239
+  type: 'test'
+  ...
+# Subtest: aucun test de ce fichier n'a touché le dépôt
+ok 54 - aucun test de ce fichier n'a touché le dépôt
+  ---
+  duration_ms: 139.62525
+  type: 'test'
+  ...
+# Subtest: le serveur démarre sans Supabase et sans mutations autorisées
+ok 55 - le serveur démarre sans Supabase et sans mutations autorisées
+  ---
+  duration_ms: 904.059765
+  type: 'test'
+  ...
+# Subtest: sans session, toute route non publique répond 401
+ok 56 - sans session, toute route non publique répond 401
+  ---
+  duration_ms: 539.201216
+  type: 'test'
+  ...
+# Subtest: chaque capacité est réellement appliquée par le serveur
+ok 57 - chaque capacité est réellement appliquée par le serveur
+  ---
+  duration_ms: 188.494785
+  type: 'test'
+  ...
+# Subtest: un observateur lit les vues d'ensemble, et rien de plus
+ok 58 - un observateur lit les vues d'ensemble, et rien de plus
+  ---
+  duration_ms: 42.977152
+  type: 'test'
+  ...
+# Subtest: l'intégrité n'est pas lisible par la bande via /api/diagnose
+ok 59 - l'intégrité n'est pas lisible par la bande via /api/diagnose
+  ---
+  duration_ms: 6.613814
+  type: 'test'
+  ...
+# Subtest: un mot de passe faux est refusé, et la session est signée
+ok 60 - un mot de passe faux est refusé, et la session est signée
+  ---
+  duration_ms: 14.382808
+  type: 'test'
+  ...
+# Subtest: legacy registry without retention metadata never becomes trusted implicitly
+ok 61 - legacy registry without retention metadata never becomes trusted implicitly
+  ---
+  duration_ms: 1.702748
+  type: 'test'
+  ...
+# Subtest: open critical incidents survive normal retention, and hard overflow is permanently fail-closed
+ok 62 - open critical incidents survive normal retention, and hard overflow is permanently fail-closed
+  ---
+  duration_ms: 11.463757
+  type: 'test'
+  ...
+# Subtest: un événement normal entre dans le store et devient visible
+ok 63 - un événement normal entre dans le store et devient visible
+  ---
+  duration_ms: 1.28181
+  type: 'test'
+  ...
+# Subtest: le canari synthétique n'entre JAMAIS dans les données produit
+ok 64 - le canari synthétique n'entre JAMAIS dans les données produit
+  ---
+  duration_ms: 0.531447
+  type: 'test'
+  ...
+# Subtest: le canari fait quand même avancer la marque d'eau du polling
+ok 65 - le canari fait quand même avancer la marque d'eau du polling
+  ---
+  duration_ms: 0.382724
+  type: 'test'
+  ...
+# Subtest: la marque d'eau ne RECULE jamais sur un événement plus ancien
+ok 66 - la marque d'eau ne RECULE jamais sur un événement plus ancien
+  ---
+  duration_ms: 0.209837
+  type: 'test'
+  ...
+# Subtest: le canari ne fait PAS avancer la FRAÎCHEUR affichée
+ok 67 - le canari ne fait PAS avancer la FRAÎCHEUR affichée
+  ---
+  duration_ms: 7.440239
+  type: 'test'
+  ...
+# Subtest: un événement RÉEL fait avancer les DEUX marques d'eau
+ok 68 - un événement RÉEL fait avancer les DEUX marques d'eau
+  ---
+  duration_ms: 0.214844
+  type: 'test'
+  ...
+# Subtest: déduplication : le realtime et le polling livrent le même événement
+ok 69 - déduplication : le realtime et le polling livrent le même événement
+  ---
+  duration_ms: 0.199262
+  type: 'test'
+  ...
+# Subtest: une ligne malformée n'interrompt pas l'ingestion
+ok 70 - une ligne malformée n'interrompt pas l'ingestion
+  ---
+  duration_ms: 1.096759
+  type: 'test'
+  ...
+# Subtest: les événements hors production sont écartés (runs e2e, dev local)
+ok 71 - les événements hors production sont écartés (runs e2e, dev local)
+  ---
+  duration_ms: 0.338712
+  type: 'test'
+  ...
+# Subtest: un like émis puis reçu sur un autre appareil est marqué livré
+ok 72 - un like émis puis reçu sur un autre appareil est marqué livré
+  ---
+  duration_ms: 9.512823
+  type: 'test'
+  ...
+# Subtest: une réception sur le MÊME appareil ne compte pas comme cross-device
+ok 73 - une réception sur le MÊME appareil ne compte pas comme cross-device
+  ---
+  duration_ms: 0.256403
+  type: 'test'
+  ...
+# Subtest: une cible différente n'apparie pas (corrélation par id)
+ok 74 - une cible différente n'apparie pas (corrélation par id)
+  ---
+  duration_ms: 0.144745
+  type: 'test'
+  ...
+# Subtest: un message émis sans réception récente reste 'pending' puis 'unconfirmed'
+ok 75 - un message émis sans réception récente reste 'pending' puis 'unconfirmed'
+  ---
+  duration_ms: 0.327457
+  type: 'test'
+  ...
+# Subtest: plusieurs appareils récepteurs sont tous crédités, une fois chacun
+ok 76 - plusieurs appareils récepteurs sont tous crédités, une fois chacun
+  ---
+  duration_ms: 0.275155
+  type: 'test'
+  ...
+# Subtest: les événements non-interaction sont ignorés
+ok 77 - les événements non-interaction sont ignorés
+  ---
+  duration_ms: 0.115535
+  type: 'test'
+  ...
+# Subtest: publish est vérifiable par proximité temporelle (sans id partagé)
+ok 78 - publish est vérifiable par proximité temporelle (sans id partagé)
+  ---
+  duration_ms: 0.165937
+  type: 'test'
+  ...
+# [jsondb] lecture échouée pour jsondb-health-bad-4249-1788525875424 Expected property name or '}' in JSON at position 2 (line 1 column 3)
+# Subtest: JsonDb reports healthy when persistence loads normally
+ok 79 - JsonDb reports healthy when persistence loads normally
+  ---
+  duration_ms: 10.37205
+  type: 'test'
+  ...
+# Subtest: JsonDb reports unavailable when persisted JSON is corrupted
+ok 80 - JsonDb reports unavailable when persisted JSON is corrupted
+  ---
+  duration_ms: 6.486476
+  type: 'test'
+  ...
+# Subtest: DAU/WAU/MAU comptent des utilisateurs DISTINCTS par fenêtre
+ok 81 - DAU/WAU/MAU comptent des utilisateurs DISTINCTS par fenêtre
+  ---
+  duration_ms: 1.258636
+  type: 'test'
+  ...
+# Subtest: habitude (DAU/MAU) et bornes vides
+ok 82 - habitude (DAU/MAU) et bornes vides
+  ---
+  duration_ms: 0.336017
+  type: 'test'
+  ...
+# Subtest: taux de retour 7 j = actifs [7-14j] revenus dans [0-7j]
+ok 83 - taux de retour 7 j = actifs [7-14j] revenus dans [0-7j]
+  ---
+  duration_ms: 0.176459
+  type: 'test'
+  ...
+# Subtest: honnêteté : partial → confidence, retentionCohort reste inconnu (null)
+ok 84 - honnêteté : partial → confidence, retentionCohort reste inconnu (null)
+  ---
+  duration_ms: 0.268515
+  type: 'test'
+  ...
+# Subtest: série 14 j : longueur, dernier jour = aujourd'hui, dédup par jour
+ok 85 - série 14 j : longueur, dernier jour = aujourd'hui, dédup par jour
+  ---
+  duration_ms: 0.251105
+  type: 'test'
+  ...
+# Subtest: robustesse : lignes sans user_id ou date invalide sont ignorées
+ok 86 - robustesse : lignes sans user_id ou date invalide sont ignorées
+  ---
+  duration_ms: 0.145588
+  type: 'test'
+  ...
+# Subtest: link_create enregistre un lien au statut « créé »
+ok 87 - link_create enregistre un lien au statut « créé »
+  ---
+  duration_ms: 1.305827
+  type: 'test'
+  ...
+# Subtest: link_share fait passer à « partagé · non confirmé »
+ok 88 - link_share fait passer à « partagé · non confirmé »
+  ---
+  duration_ms: 0.357131
+  type: 'test'
+  ...
+# Subtest: link_open ne compte QUE sur signal réel → statut « ouvert »
+ok 89 - link_open ne compte QUE sur signal réel → statut « ouvert »
+  ---
+  duration_ms: 0.133209
+  type: 'test'
+  ...
+# Subtest: link_load_error → « ouverture en échec »
+ok 90 - link_load_error → « ouverture en échec »
+  ---
+  duration_ms: 0.129976
+  type: 'test'
+  ...
+# Subtest: une ouverture sans création connue est marquée « orpheline » mais reste honnête (ouverte)
+ok 91 - une ouverture sans création connue est marquée « orpheline » mais reste honnête (ouverte)
+  ---
+  duration_ms: 0.164947
+  type: 'test'
+  ...
+# Subtest: linkFunnel produit un entonnoir cohérent et un taux d'ouverture honnête
+ok 92 - linkFunnel produit un entonnoir cohérent et un taux d'ouverture honnête
+  ---
+  duration_ms: 0.116401
+  type: 'test'
+  ...
+# Subtest: le lien apparaît dans linkList avec un DTO complet
+ok 93 - le lien apparaît dans linkList avec un DTO complet
+  ---
+  duration_ms: 0.220322
+  type: 'test'
+  ...
+# Subtest: le défaut existe bien : l'accès direct rend une valeur pour ces clés
+ok 94 - le défaut existe bien : l'accès direct rend une valeur pour ces clés
+  ---
+  duration_ms: 0.843279
+  type: 'test'
+  ...
+# Subtest: entree() ne rend QUE des propriétés propres
+ok 95 - entree() ne rend QUE des propriétés propres
+  ---
+  duration_ms: 0.228793
+  type: 'test'
+  ...
+# Subtest: runSuite refuse une clé héritée — et la refuse PROPREMENT
+ok 96 - runSuite refuse une clé héritée — et la refuse PROPREMENT
+  ---
+  duration_ms: 1.985909
+  type: 'test'
+  ...
+# Subtest: une action de télémétrie inventée n'entre pas dans le journal des interactions
+ok 97 - une action de télémétrie inventée n'entre pas dans le journal des interactions
+  ---
+  duration_ms: 0.499161
+  type: 'test'
+  ...
+# Subtest: idem pour le traçage : une action inventée n'apparie aucun flux
+ok 98 - idem pour le traçage : une action inventée n'apparie aucun flux
+  ---
+  duration_ms: 0.278199
+  type: 'test'
+  ...
+# Subtest: desktop Control Center exposes a direct mobile Pilot entry
+ok 99 - desktop Control Center exposes a direct mobile Pilot entry
+  ---
+  duration_ms: 0.899913
+  type: 'test'
+  ...
+# Subtest: mobile Pilot entry is navigation only, not a mutation control
+ok 100 - mobile Pilot entry is navigation only, not a mutation control
+  ---
+  duration_ms: 0.279011
+  type: 'test'
+  ...
+# Subtest: mobile pilot is installable and starts on mobile.html
+ok 101 - mobile pilot is installable and starts on mobile.html
+  ---
+  duration_ms: 5.571858
+  type: 'test'
+  ...
+# Subtest: mobile service worker never caches API responses
+ok 102 - mobile service worker never caches API responses
+  ---
+  duration_ms: 2.214718
+  type: 'test'
+  ...
+# Subtest: mobile service worker controls only explicit pilot assets
+ok 103 - mobile service worker controls only explicit pilot assets
+  ---
+  duration_ms: 1.48053
+  type: 'test'
+  ...
+# Subtest: mobile static assets are network-first with cache only as offline fallback
+ok 104 - mobile static assets are network-first with cache only as offline fallback
+  ---
+  duration_ms: 0.259093
+  type: 'test'
+  ...
+# Subtest: mobile surface exposes only whitelisted test launcher and no arbitrary git console
+ok 105 - mobile surface exposes only whitelisted test launcher and no arbitrary git console
+  ---
+  duration_ms: 0.298715
+  type: 'test'
+  ...
+# Subtest: one unavailable domain cannot blank the whole mobile cockpit
+ok 106 - one unavailable domain cannot blank the whole mobile cockpit
+  ---
+  duration_ms: 9.406813
+  type: 'test'
+  ...
+# Subtest: Sentinel is visible from mobile but remains read-only
+ok 107 - Sentinel is visible from mobile but remains read-only
+  ---
+  duration_ms: 0.583408
+  type: 'test'
+  ...
+# Subtest: mobile renders autopilot result without exposing a mutation endpoint
+ok 108 - mobile renders autopilot result without exposing a mutation endpoint
+  ---
+  duration_ms: 0.233349
+  type: 'test'
+  ...
+# Subtest: la page se charge, la connexion passe, la navigation est rendue
+ok 109 - la page se charge, la connexion passe, la navigation est rendue
+  ---
+  duration_ms: 5003.875123
+  type: 'test'
+  ...
+# Subtest: chaque onglet s'affiche sans rien casser
+ok 110 - chaque onglet s'affiche sans rien casser
+  ---
+  duration_ms: 7457.385948
+  type: 'test'
+  ...
+# Subtest: INJECTION : un message d'erreur hostile ne s'exécute pas, et le bouton marche
+ok 111 - INJECTION : un message d'erreur hostile ne s'exécute pas, et le bouton marche
+  ---
+  duration_ms: 1536.879934
+  type: 'test'
+  ...
+# Subtest: INJECTION : une gravité fabriquée n'ouvre pas d'attribut
+ok 112 - INJECTION : une gravité fabriquée n'ouvre pas d'attribut
+  ---
+  duration_ms: 733.870177
+  type: 'test'
+  ...
+# Subtest: quitter un onglet pendant son rafraîchissement ne lève rien
+ok 113 - quitter un onglet pendant son rafraîchissement ne lève rien
+  ---
+  duration_ms: 2129.876846
+  type: 'test'
+  ...
+# Subtest: le canari Sentinel est reconnu sans dépendre d'un utilisateur
+ok 114 - le canari Sentinel est reconnu sans dépendre d'un utilisateur
+  ---
+  duration_ms: 0.75444
+  type: 'test'
+  ...
+# Subtest: un événement produit ordinaire n'est jamais confondu avec le canari
+ok 115 - un événement produit ordinaire n'est jamais confondu avec le canari
+  ---
+  duration_ms: 0.32543
+  type: 'test'
+  ...
+# Subtest: route UI/UX recommends Lovable then production agents
+ok 116 - route UI/UX recommends Lovable then production agents
+  ---
+  duration_ms: 10.659993
+  type: 'test'
+  ...
+# Subtest: route security work to Claude Code and Codex
+ok 117 - route security work to Claude Code and Codex
+  ---
+  duration_ms: 0.470334
+  type: 'test'
+  ...
+# Subtest: route backend work to Claude Code and Codex
+ok 118 - route backend work to Claude Code and Codex
+  ---
+  duration_ms: 0.16242
+  type: 'test'
+  ...
+# Subtest: route pure review to Codex first
+ok 119 - route pure review to Codex first
+  ---
+  duration_ms: 0.20737
+  type: 'test'
+  ...
+# Subtest: route generic engineering to safe default
+ok 120 - route generic engineering to safe default
+  ---
+  duration_ms: 0.109918
+  type: 'test'
+  ...
+# Subtest: fiche de bug : le message du navigateur est désarmé et encadré
+ok 121 - fiche de bug : le message du navigateur est désarmé et encadré
+  ---
+  duration_ms: 1.28718
+  type: 'test'
+  ...
+# Subtest: fiche de bug : la chronologie aussi vient du client
+ok 122 - fiche de bug : la chronologie aussi vient du client
+  ---
+  duration_ms: 0.665978
+  type: 'test'
+  ...
+# Subtest: trace : action, écran et cible sont désarmés et encadrés
+ok 123 - trace : action, écran et cible sont désarmés et encadrés
+  ---
+  duration_ms: 0.385896
+  type: 'test'
+  ...
+# Subtest: diagnostic de plateforme : titres de bugs et noms d'actions désarmés
+ok 124 - diagnostic de plateforme : titres de bugs et noms d'actions désarmés
+  ---
+  duration_ms: 0.508718
+  type: 'test'
+  ...
+# Subtest: les champs numériques ne transportent pas de texte
+ok 125 - les champs numériques ne transportent pas de texte
+  ---
+  duration_ms: 9.357763
+  type: 'test'
+  ...
+# Subtest: longueur bornée : une stack trace géante ne noie pas le prompt
+ok 126 - longueur bornée : une stack trace géante ne noie pas le prompt
+  ---
+  duration_ms: 0.636763
+  type: 'test'
+  ...
+# Subtest: sanitizeObserved et dataBlock, pris isolément
+ok 127 - sanitizeObserved et dataBlock, pris isolément
+  ---
+  duration_ms: 0.309881
+  type: 'test'
+  ...
+# Subtest: public release evidence never allows commit proof weaker than 12 characters
+ok 128 - public release evidence never allows commit proof weaker than 12 characters
+  ---
+  duration_ms: 0.899471
+  type: 'test'
+  ...
+# Subtest: public release evidence is LIVE when commit/build proof matches
+ok 129 - public release evidence is LIVE when commit/build proof matches
+  ---
+  duration_ms: 0.877928
+  type: 'test'
+  ...
+# Subtest: public release evidence is MISMATCH when deployed commit differs
+ok 130 - public release evidence is MISMATCH when deployed commit differs
+  ---
+  duration_ms: 0.27411
+  type: 'test'
+  ...
+# Subtest: public release evidence rejects a commit prefix that is too short to be proof
+ok 131 - public release evidence rejects a commit prefix that is too short to be proof
+  ---
+  duration_ms: 1.927517
+  type: 'test'
+  ...
+# Subtest: public release evidence is MISMATCH when expected commit proof is absent
+ok 132 - public release evidence is MISMATCH when expected commit proof is absent
+  ---
+  duration_ms: 0.397055
+  type: 'test'
+  ...
+# Subtest: public release evidence can validate structure without inventing an expected commit
+ok 133 - public release evidence can validate structure without inventing an expected commit
+  ---
+  duration_ms: 0.168657
+  type: 'test'
+  ...
+# Subtest: expectation key changes whenever commit or build expectation changes
+ok 134 - expectation key changes whenever commit or build expectation changes
+  ---
+  duration_ms: 0.308082
+  type: 'test'
+  ...
+# Subtest: changed expectations never reuse an in-flight proof for the previous commit
+ok 135 - changed expectations never reuse an in-flight proof for the previous commit
+  ---
+  duration_ms: 11.415163
+  type: 'test'
+  ...
+# Subtest: public release evidence is fail-closed on invalid manifest or network error
+ok 136 - public release evidence is fail-closed on invalid manifest or network error
+  ---
+  duration_ms: 0.429458
+  type: 'test'
+  ...
+# Subtest: aucune campagne : on le dit, et on donne la commande
+ok 137 - aucune campagne : on le dit, et on donne la commande
+  ---
+  duration_ms: 0.794389
+  type: 'test'
+  ...
+# Subtest: un rapport présent est servi tel quel, avec la date du FICHIER
+ok 138 - un rapport présent est servi tel quel, avec la date du FICHIER
+  ---
+  duration_ms: 6.487798
+  type: 'test'
+  ...
+# Subtest: un rapport ILLISIBLE est signalé comme un défaut, pas comme une absence
+ok 139 - un rapport ILLISIBLE est signalé comme un défaut, pas comme une absence
+  ---
+  duration_ms: 2.728425
+  type: 'test'
+  ...
+# Subtest: le chemin suit config.dataDir, comme tout le reste du pilotage
+ok 140 - le chemin suit config.dataDir, comme tout le reste du pilotage
+  ---
+  duration_ms: 0.439014
+  type: 'test'
+  ...
+# Subtest: tout vert et tout mesuré → VERT
+ok 141 - tout vert et tout mesuré → VERT
+  ---
+  duration_ms: 1.523808
+  type: 'test'
+  ...
+# Subtest: UN SEUL bug critique ouvert suffit à rougir
+ok 142 - UN SEUL bug critique ouvert suffit à rougir
+  ---
+  duration_ms: 0.531953
+  type: 'test'
+  ...
+# Subtest: bugs corrigés ou ignorés ne comptent pas
+ok 143 - bugs corrigés ou ignorés ne comptent pas
+  ---
+  duration_ms: 0.279484
+  type: 'test'
+  ...
+# Subtest: un canari d'autorisation en échec rougit immédiatement
+ok 144 - un canari d'autorisation en échec rougit immédiatement
+  ---
+  duration_ms: 0.30433
+  type: 'test'
+  ...
+# Subtest: autorisation non instrumentée = INCONNU
+ok 145 - autorisation non instrumentée = INCONNU
+  ---
+  duration_ms: 0.648635
+  type: 'test'
+  ...
+# Subtest: observation indisponible rougit même si le produit semble calme
+ok 146 - observation indisponible rougit même si le produit semble calme
+  ---
+  duration_ms: 0.351271
+  type: 'test'
+  ...
+# Subtest: observation non configurée reste INCONNU, jamais vert
+ok 147 - observation non configurée reste INCONNU, jamais vert
+  ---
+  duration_ms: 0.333869
+  type: 'test'
+  ...
+# Subtest: un parcours critique en échec rougit
+ok 148 - un parcours critique en échec rougit
+  ---
+  duration_ms: 0.30463
+  type: 'test'
+  ...
+# Subtest: dispo API dégradée ambre, effondrée rouge
+ok 149 - dispo API dégradée ambre, effondrée rouge
+  ---
+  duration_ms: 0.622218
+  type: 'test'
+  ...
+# Subtest: le score ne contredit JAMAIS le statut
+ok 150 - le score ne contredit JAMAIS le statut
+  ---
+  duration_ms: 0.677618
+  type: 'test'
+  ...
+# Subtest: les identifiants de démo sont reconnus (pas des anomalies)
+ok 151 - les identifiants de démo sont reconnus (pas des anomalies)
+  ---
+  duration_ms: 1.36395
+  type: 'test'
+  ...
+# Subtest: les vrais identifiants générés ne sont PAS classés démo
+ok 152 - les vrais identifiants générés ne sont PAS classés démo
+  ---
+  duration_ms: 3.233832
+  type: 'test'
+  ...
+# Subtest: « reel_seed_x » est démo mais « reel_<base36> » est réel (pas de confusion)
+ok 153 - « reel_seed_x » est démo mais « reel_<base36> » est réel (pas de confusion)
+  ---
+  duration_ms: 0.185653
+  type: 'test'
+  ...
+# Subtest: chaque règle déclare id, libellé, gravité, impact et une mesure
+ok 154 - chaque règle déclare id, libellé, gravité, impact et une mesure
+  ---
+  duration_ms: 0.201854
+  type: 'test'
+  ...
+# Subtest: les invariants projet critiques sont couverts
+ok 155 - les invariants projet critiques sont couverts
+  ---
+  duration_ms: 0.17751
+  type: 'test'
+  ...
+# Subtest: le prompt de réparation exige une SIMULATION avant toute écriture
+ok 156 - le prompt de réparation exige une SIMULATION avant toute écriture
+  ---
+  duration_ms: 0.35421
+  type: 'test'
+  ...
+# Subtest: un RÉSIDU (sans récidive) oriente vers le nettoyage, pas vers un correctif de code
+ok 157 - un RÉSIDU (sans récidive) oriente vers le nettoyage, pas vers un correctif de code
+  ---
+  duration_ms: 0.260126
+  type: 'test'
+  ...
+# Subtest: une anomalie ACTIVE ne porte pas la mention « résidu »
+ok 158 - une anomalie ACTIVE ne porte pas la mention « résidu »
+  ---
+  duration_ms: 0.127714
+  type: 'test'
+  ...
+# Subtest: une anomalie non datable ne présume rien (ni résidu, ni récidive)
+ok 159 - une anomalie non datable ne présume rien (ni résidu, ni récidive)
+  ---
+  duration_ms: 0.26692
+  type: 'test'
+  ...
+# Subtest: une analyse partielle est signalée comme minorant dans le prompt
+ok 160 - une analyse partielle est signalée comme minorant dans le prompt
+  ---
+  duration_ms: 0.380074
+  type: 'test'
+  ...
+# Subtest: l'instantané lit la révision réelle du dépôt
+ok 161 - l'instantané lit la révision réelle du dépôt
+  ---
+  duration_ms: 2.318875
+  type: 'test'
+  ...
+# Subtest: déduplication : un instantané identique ne crée pas de ligne
+ok 162 - déduplication : un instantané identique ne crée pas de ligne
+  ---
+  duration_ms: 14.4004
+  type: 'test'
+  ...
+# Subtest: un CHANGEMENT crée bien une ligne, et l'historique reste borné
+ok 163 - un CHANGEMENT crée bien une ligne, et l'historique reste borné
+  ---
+  duration_ms: 1.739964
+  type: 'test'
+  ...
+# Subtest: santé : ce qui manque est nommé, jamais tu
+ok 164 - santé : ce qui manque est nommé, jamais tu
+  ---
+  duration_ms: 0.688288
+  type: 'test'
+  ...
+# Subtest: extrait le diff d'un bloc clôturé
+ok 165 - extrait le diff d'un bloc clôturé
+  ---
+  duration_ms: 1.182099
+  type: 'test'
+  ...
+# Subtest: extrait un diff brut sans bloc, et ne renvoie rien s'il n'y en a pas
+ok 166 - extrait un diff brut sans bloc, et ne renvoie rien s'il n'y en a pas
+  ---
+  duration_ms: 0.333573
+  type: 'test'
+  ...
+# Subtest: REFUSE de modifier les tests — un correctif ne se rend pas vert lui-même
+ok 167 - REFUSE de modifier les tests — un correctif ne se rend pas vert lui-même
+  ---
+  duration_ms: 4.622961
+  type: 'test'
+  ...
+# Subtest: REFUSE la CI, les migrations, la configuration et le dashboard
+ok 168 - REFUSE la CI, les migrations, la configuration et le dashboard
+  ---
+  duration_ms: 0.56818
+  type: 'test'
+  ...
+# Subtest: ACCEPTE le code applicatif
+ok 169 - ACCEPTE le code applicatif
+  ---
+  duration_ms: 0.630551
+  type: 'test'
+  ...
+# Subtest: REFUSE toute sortie du dépôt par le chemin
+ok 170 - REFUSE toute sortie du dépôt par le chemin
+  ---
+  duration_ms: 3.596828
+  type: 'test'
+  ...
+# Subtest: REFUSE création, suppression et renommage de fichier
+ok 171 - REFUSE création, suppression et renommage de fichier
+  ---
+  duration_ms: 0.344789
+  type: 'test'
+  ...
+# Subtest: REFUSE un correctif trop gros : ce n'est plus une réparation
+ok 172 - REFUSE un correctif trop gros : ce n'est plus une réparation
+  ---
+  duration_ms: 0.174762
+  type: 'test'
+  ...
+# Subtest: REFUSE de toucher trop de fichiers à la fois
+ok 173 - REFUSE de toucher trop de fichiers à la fois
+  ---
+  duration_ms: 0.348824
+  type: 'test'
+  ...
+# Subtest: REFUSE le vide et l'illisible
+ok 174 - REFUSE le vide et l'illisible
+  ---
+  duration_ms: 0.376936
+  type: 'test'
+  ...
+# Subtest: compte correctement fichiers et lignes d'un patch valide
+ok 175 - compte correctement fichiers et lignes d'un patch valide
+  ---
+  duration_ms: 1.42633
+  type: 'test'
+  ...
+# Subtest: readRepoFile reste dans le dépôt
+ok 176 - readRepoFile reste dans le dépôt
+  ---
+  duration_ms: 0.451021
+  type: 'test'
+  ...
+# Subtest: le prompt interdit explicitement de toucher aux tests et autorise le refus
+ok 177 - le prompt interdit explicitement de toucher aux tests et autorise le refus
+  ---
+  duration_ms: 0.254845
+  type: 'test'
+  ...
+# Subtest: rétention J1 : retour le lendemain compté, jour d'inscription non compté
+ok 178 - rétention J1 : retour le lendemain compté, jour d'inscription non compté
+  ---
+  duration_ms: 6.661429
+  type: 'test'
+  ...
+# Subtest: cohorte trop récente : fenêtre non écoulée → hors base (jamais 0 %)
+ok 179 - cohorte trop récente : fenêtre non écoulée → hors base (jamais 0 %)
+  ---
+  duration_ms: 0.34276
+  type: 'test'
+  ...
+# Subtest: cohorte antérieure à la télémétrie → exclue (inconnu, jamais 0 %)
+ok 180 - cohorte antérieure à la télémétrie → exclue (inconnu, jamais 0 %)
+  ---
+  duration_ms: 0.229369
+  type: 'test'
+  ...
+# Subtest: échantillon < min → insuffisant (pas de taux inventé)
+ok 181 - échantillon < min → insuffisant (pas de taux inventé)
+  ---
+  duration_ms: 0.121273
+  type: 'test'
+  ...
+# Subtest: retour hors fenêtre non compté (bornes J7 vs J30)
+ok 182 - retour hors fenêtre non compté (bornes J7 vs J30)
+  ---
+  duration_ms: 0.205667
+  type: 'test'
+  ...
+# Subtest: inventaire des routes : aucune garde ne change sans que ce test le dise
+ok 183 - inventaire des routes : aucune garde ne change sans que ce test le dise
+  ---
+  duration_ms: 1.498691
+  type: 'test'
+  ...
+# Subtest: l'analyseur voit TOUTES les déclarations de routes du fichier
+ok 184 - l'analyseur voit TOUTES les déclarations de routes du fichier
+  ---
+  duration_ms: 0.30823
+  type: 'test'
+  ...
+# Subtest: aucun verbe HTTP inattendu
+ok 185 - aucun verbe HTTP inattendu
+  ---
+  duration_ms: 0.162944
+  type: 'test'
+  ...
+# Subtest: les seules routes sans garde sont les quatre routes publiques assumées
+ok 186 - les seules routes sans garde sont les quatre routes publiques assumées
+  ---
+  duration_ms: 52.570976
+  type: 'test'
+  ...
+# Subtest: requireAuth : 401 sans session, passe avec session
+ok 187 - requireAuth : 401 sans session, passe avec session
+  ---
+  duration_ms: 0.287294
+  type: 'test'
+  ...
+# Subtest: requireCap : 401 sans session, 403 sans la capacité, passe avec
+ok 188 - requireCap : 401 sans session, 403 sans la capacité, passe avec
+  ---
+  duration_ms: 0.779799
+  type: 'test'
+  ...
+# Subtest: /me se garde elle-même : 401 sans session
+ok 189 - /me se garde elle-même : 401 sans session
+  ---
+  duration_ms: 0.192021
+  type: 'test'
+  ...
+# Subtest: toute route qui embarque l'intégrité exige la capacité `db`
+ok 190 - toute route qui embarque l'intégrité exige la capacité `db`
+  ---
+  duration_ms: 0.522039
+  type: 'test'
+  ...
+# Subtest: /diagnose : l'intégrité n'est calculée QUE si le rôle a la capacité `db`
+ok 191 - /diagnose : l'intégrité n'est calculée QUE si le rôle a la capacité `db`
+  ---
+  duration_ms: 0.328822
+  type: 'test'
+  ...
+# Subtest: autopilot is never invoked for an unverified repair
+ok 192 - autopilot is never invoked for an unverified repair
+  ---
+  duration_ms: 2.90154
+  type: 'test'
+  ...
+# Subtest: a verified repair is offered to autopilot exactly once with sealed diagnosis and causal context
+ok 193 - a verified repair is offered to autopilot exactly once with sealed diagnosis and causal context
+  ---
+  duration_ms: 1.058121
+  type: 'test'
+  ...
+# Subtest: repair-provided causal context is preserved as fallback but is not canonical diagnosis evidence
+ok 194 - repair-provided causal context is preserved as fallback but is not canonical diagnosis evidence
+  ---
+  duration_ms: 0.209902
+  type: 'test'
+  ...
+# Subtest: a verified local promotion arms recurrence monitoring exactly once
+ok 195 - a verified local promotion arms recurrence monitoring exactly once
+  ---
+  duration_ms: 0.190947
+  type: 'test'
+  ...
+# Subtest: an autopilot exception never destroys a verified repair
+ok 196 - an autopilot exception never destroys a verified repair
+  ---
+  duration_ms: 5.163025
+  type: 'test'
+  ...
+# Subtest: promotion advances HEAD only after every proof is green
+ok 197 - promotion advances HEAD only after every proof is green
+  ---
+  duration_ms: 1.854412
+  type: 'test'
+  ...
+# Subtest: first red proof rolls back exactly to pre-promotion SHA and remains learnable
+ok 198 - first red proof rolls back exactly to pre-promotion SHA and remains learnable
+  ---
+  duration_ms: 0.350882
+  type: 'test'
+  ...
+# Subtest: dirty working tree is an operational HOLD and cannot poison repair learning
+ok 199 - dirty working tree is an operational HOLD and cannot poison repair learning
+  ---
+  duration_ms: 0.139134
+  type: 'test'
+  ...
+# Subtest: wrong target branch is an operational HOLD and cannot poison repair learning
+ok 200 - wrong target branch is an operational HOLD and cannot poison repair learning
+  ---
+  duration_ms: 0.367387
+  type: 'test'
+  ...
+# Subtest: arbitrary branch names are rejected as operational HOLD before mutation
+ok 201 - arbitrary branch names are rejected as operational HOLD before mutation
+  ---
+  duration_ms: 0.278039
+  type: 'test'
+  ...
+# Subtest: concurrency lock rejection is operational and never counts as repair failure
+ok 202 - concurrency lock rejection is operational and never counts as repair failure
+  ---
+  duration_ms: 0.138194
+  type: 'test'
+  ...
+# Subtest: one promotion owns the lock and concurrent callers see no owner token
+ok 203 - one promotion owns the lock and concurrent callers see no owner token
+  ---
+  duration_ms: 1.219277
+  type: 'test'
+  ...
+# Subtest: only the owner token can release the lock
+ok 204 - only the owner token can release the lock
+  ---
+  duration_ms: 0.299878
+  type: 'test'
+  ...
+# Subtest: release without a held lock fails closed
+ok 205 - release without a held lock fails closed
+  ---
+  duration_ms: 2.589226
+  type: 'test'
+  ...
+# Subtest: a concurrent promotion is refused before its first git operation
+ok 206 - a concurrent promotion is refused before its first git operation
+  ---
+  duration_ms: 2.170732
+  type: 'test'
+  ...
+# Subtest: early rejection releases the lock for the next transaction
+ok 207 - early rejection releases the lock for the next transaction
+  ---
+  duration_ms: 0.410258
+  type: 'test'
+  ...
+# Subtest: learning quarantines a repair pattern after repeated failures
+ok 208 - learning quarantines a repair pattern after repeated failures
+  ---
+  duration_ms: 11.533832
+  type: 'test'
+  ...
+# Subtest: post-promotion recurrences quarantine without falsifying repair attempts
+ok 209 - post-promotion recurrences quarantine without falsifying repair attempts
+  ---
+  duration_ms: 8.613598
+  type: 'test'
+  ...
+# Subtest: autopilot is fail-closed when guardian is NO_GO by default
+ok 210 - autopilot is fail-closed when guardian is NO_GO by default
+  ---
+  duration_ms: 0.55634
+  type: 'test'
+  ...
+# Subtest: local gate v2 can promote only when explicitly enabled and GO_LOCAL
+ok 211 - local gate v2 can promote only when explicitly enabled and GO_LOCAL
+  ---
+  duration_ms: 1.411984
+  type: 'test'
+  ...
+# Subtest: local gate v2 HOLD blocks even when full Guardian is GO
+ok 212 - local gate v2 HOLD blocks even when full Guardian is GO
+  ---
+  duration_ms: 0.650487
+  type: 'test'
+  ...
+# Subtest: autopilot disabled remains a blocker even with GO_LOCAL
+ok 213 - autopilot disabled remains a blocker even with GO_LOCAL
+  ---
+  duration_ms: 0.318789
+  type: 'test'
+  ...
+# Subtest: autopilot never enables production deployment
+ok 214 - autopilot never enables production deployment
+  ---
+  duration_ms: 0.384152
+  type: 'test'
+  ...
+# Subtest: alert emission exposes one deterministic causal incident identity to subscribers
+ok 215 - alert emission exposes one deterministic causal incident identity to subscribers
+  ---
+  duration_ms: 2.270205
+  type: 'test'
+  ...
+# Subtest: Sentinel persists causal incident identity and gives it unchanged to the repairer
+ok 216 - Sentinel persists causal incident identity and gives it unchanged to the repairer
+  ---
+  duration_ms: 12.201831
+  type: 'test'
+  ...
+# Subtest: incident inventory is incomplete when retention proof is missing/untrusted
+ok 217 - incident inventory is incomplete when retention proof is missing/untrusted
+  ---
+  duration_ms: 0.752792
+  type: 'test'
+  ...
+# Subtest: a trusted registry still HOLDs if not all stored incidents were read
+ok 218 - a trusted registry still HOLDs if not all stored incidents were read
+  ---
+  duration_ms: 6.557264
+  type: 'test'
+  ...
+# Subtest: critical retention overflow makes the inventory incomplete
+ok 219 - critical retention overflow makes the inventory incomplete
+  ---
+  duration_ms: 0.116381
+  type: 'test'
+  ...
+# Subtest: trusted retention plus a full read can be complete
+ok 220 - trusted retention plus a full read can be complete
+  ---
+  duration_ms: 0.945975
+  type: 'test'
+  ...
+# Subtest: openCritical includes only open high/critical incidents
+ok 221 - openCritical includes only open high/critical incidents
+  ---
+  duration_ms: 0.122108
+  type: 'test'
+  ...
+# Subtest: read-only adapter HOLDs when incident inventory is incomplete
+ok 222 - read-only adapter HOLDs when incident inventory is incomplete
+  ---
+  duration_ms: 1.695211
+  type: 'test'
+  ...
+# Subtest: read-only adapter HOLDs on any unrelated high/critical incident
+ok 223 - read-only adapter HOLDs on any unrelated high/critical incident
+  ---
+  duration_ms: 1.370738
+  type: 'test'
+  ...
+# Subtest: read-only adapter HOLDs when sealed diagnosis evidence is absent
+ok 224 - read-only adapter HOLDs when sealed diagnosis evidence is absent
+  ---
+  duration_ms: 0.229024
+  type: 'test'
+  ...
+# Subtest: read-only adapter HOLDs when repair causal incident mismatches sealed diagnosis
+ok 225 - read-only adapter HOLDs when repair causal incident mismatches sealed diagnosis
+  ---
+  duration_ms: 0.229545
+  type: 'test'
+  ...
+# Subtest: read-only adapter HOLDs when repair diagnosis identity mismatches sealed diagnosis
+ok 226 - read-only adapter HOLDs when repair diagnosis identity mismatches sealed diagnosis
+  ---
+  duration_ms: 0.15627
+  type: 'test'
+  ...
+# Subtest: read-only adapter HOLDs when repair cluster mismatches sealed diagnosis cluster
+ok 227 - read-only adapter HOLDs when repair cluster mismatches sealed diagnosis cluster
+  ---
+  duration_ms: 0.155348
+  type: 'test'
+  ...
+# Subtest: read-only adapter HOLDs on stale Guardian snapshot
+ok 228 - read-only adapter HOLDs on stale Guardian snapshot
+  ---
+  duration_ms: 0.19314
+  type: 'test'
+  ...
+# Subtest: read-only adapter HOLDs on future Guardian timestamp
+ok 229 - read-only adapter HOLDs on future Guardian timestamp
+  ---
+  duration_ms: 0.191838
+  type: 'test'
+  ...
+# Subtest: GO_LOCAL requires fresh Guardian, sealed causal diagnosis and complete incident evidence
+ok 230 - GO_LOCAL requires fresh Guardian, sealed causal diagnosis and complete incident evidence
+  ---
+  duration_ms: 0.460694
+  type: 'test'
+  ...
+# Subtest: le cas nominal rend GO_LOCAL — sans lui, tout ce fichier passerait à vide
+ok 231 - le cas nominal rend GO_LOCAL — sans lui, tout ce fichier passerait à vide
+  ---
+  duration_ms: 1.79728
+  type: 'test'
+  ...
+# Subtest: appelée à vide, elle refuse — le défaut est NON
+ok 232 - appelée à vide, elle refuse — le défaut est NON
+  ---
+  duration_ms: 1.898902
+  type: 'test'
+  ...
+# Subtest: fraîcheur du Guardian : absent, périmé ou dans le FUTUR
+ok 233 - fraîcheur du Guardian : absent, périmé ou dans le FUTUR
+  ---
+  duration_ms: 0.419702
+  type: 'test'
+  ...
+# Subtest: identité causale : le diagnostic et la réparation doivent parler du même incident
+ok 234 - identité causale : le diagnostic et la réparation doivent parler du même incident
+  ---
+  duration_ms: 0.287882
+  type: 'test'
+  ...
+# Subtest: une liste d'incidents PARTIELLE ne prouve jamais l'absence d'un autre
+ok 235 - une liste d'incidents PARTIELLE ne prouve jamais l'absence d'un autre
+  ---
+  duration_ms: 0.102743
+  type: 'test'
+  ...
+# Subtest: l'incident causal doit être ouvert, et seul de sa gravité
+ok 236 - l'incident causal doit être ouvert, et seul de sa gravité
+  ---
+  duration_ms: 0.277563
+  type: 'test'
+  ...
+# Subtest: un portail du Guardian qui manque ou qui échoue bloque, en le nommant
+ok 237 - un portail du Guardian qui manque ou qui échoue bloque, en le nommant
+  ---
+  duration_ms: 0.125658
+  type: 'test'
+  ...
+# Subtest: les blocages sont dédupliqués : une liste lisible, pas un tas
+ok 238 - les blocages sont dédupliqués : une liste lisible, pas un tas
+  ---
+  duration_ms: 0.101891
+  type: 'test'
+  ...
+# Subtest: local gate may ignore release chain and the one exact causal incident only
+ok 239 - local gate may ignore release chain and the one exact causal incident only
+  ---
+  duration_ms: 39.738836
+  type: 'test'
+  ...
+# Subtest: an incomplete incident set always blocks even when it only contains the causal incident
+ok 240 - an incomplete incident set always blocks even when it only contains the causal incident
+  ---
+  duration_ms: 0.293327
+  type: 'test'
+  ...
+# Subtest: an unrelated high or critical incident always blocks local promotion
+ok 241 - an unrelated high or critical incident always blocks local promotion
+  ---
+  duration_ms: 0.271424
+  type: 'test'
+  ...
+# Subtest: causal incident identity is mandatory and must point to an open high/critical incident
+ok 242 - causal incident identity is mandatory and must point to an open high/critical incident
+  ---
+  duration_ms: 1.638859
+  type: 'test'
+  ...
+# Subtest: UNKNOWN/STALE/FAIL on any required safety gate blocks local promotion
+ok 243 - UNKNOWN/STALE/FAIL on any required safety gate blocks local promotion
+  ---
+  duration_ms: 0.567869
+  type: 'test'
+  ...
+# Subtest: a missing required Guardian gate blocks instead of being treated as pass
+ok 244 - a missing required Guardian gate blocks instead of being treated as pass
+  ---
+  duration_ms: 0.199656
+  type: 'test'
+  ...
+# Subtest: journal keeps minimal causal transaction evidence
+ok 245 - journal keeps minimal causal transaction evidence
+  ---
+  duration_ms: 2.51798
+  type: 'test'
+  ...
+# Subtest: legacy rows are sanitized on read boundary
+ok 246 - legacy rows are sanitized on read boundary
+  ---
+  duration_ms: 0.188288
+  type: 'test'
+  ...
+# Subtest: journal document health rejects malformed structures
+ok 247 - journal document health rejects malformed structures
+  ---
+  duration_ms: 0.211143
+  type: 'test'
+  ...
+# Subtest: journal exposes rollback without production authority
+ok 248 - journal exposes rollback without production authority
+  ---
+  duration_ms: 1.552332
+  type: 'test'
+  ...
+# Subtest: promotion HTTP contract is authenticated GET-only
+ok 249 - promotion HTTP contract is authenticated GET-only
+  ---
+  duration_ms: 1.810813
+  type: 'test'
+  ...
+# Subtest: promotion projection carries no mutation or deployment authority
+ok 250 - promotion projection carries no mutation or deployment authority
+  ---
+  duration_ms: 7.918738
+  type: 'test'
+  ...
+# Subtest: only PROMOTED_LOCAL repairs arm recurrence monitoring
+ok 251 - only PROMOTED_LOCAL repairs arm recurrence monitoring
+  ---
+  duration_ms: 0.942202
+  type: 'test'
+  ...
+# Subtest: alerts older than the promotion are never counted as recurrence
+ok 252 - alerts older than the promotion are never counted as recurrence
+  ---
+  duration_ms: 0.245452
+  type: 'test'
+  ...
+# Subtest: same signal after promotion records recurrence once and disarms watch
+ok 253 - same signal after promotion records recurrence once and disarms watch
+  ---
+  duration_ms: 0.63694
+  type: 'test'
+  ...
+# Subtest: different signal cannot poison another repair pattern
+ok 254 - different signal cannot poison another repair pattern
+  ---
+  duration_ms: 0.256978
+  type: 'test'
+  ...
+# Subtest: triage : une alerte info n'est jamais analysée
+ok 255 - triage : une alerte info n'est jamais analysée
+  ---
+  duration_ms: 7.508964
+  type: 'test'
+  ...
+# Subtest: triage : une alerte manuelle (levée à la main) n'est pas analysée
+ok 256 - triage : une alerte manuelle (levée à la main) n'est pas analysée
+  ---
+  duration_ms: 0.412825
+  type: 'test'
+  ...
+# Subtest: triage : la même cause n'est ré-analysée qu'après le cooldown
+ok 257 - triage : la même cause n'est ré-analysée qu'après le cooldown
+  ---
+  duration_ms: 6.511274
+  type: 'test'
+  ...
+# Subtest: le cooldown est levé par un nouveau commit (la cause change de contexte)
+ok 258 - le cooldown est levé par un nouveau commit (la cause change de contexte)
+  ---
+  duration_ms: 7.875785
+  type: 'test'
+  ...
+# Subtest: par défaut, AUCUNE analyse automatique n'a accès au disque
+ok 259 - par défaut, AUCUNE analyse automatique n'a accès au disque
+  ---
+  duration_ms: 16.305753
+  type: 'test'
+  ...
+# Subtest: triage : le mode approfondi est réservé aux contextes structurés
+ok 260 - triage : le mode approfondi est réservé aux contextes structurés
+  ---
+  duration_ms: 1.552278
+  type: 'test'
+  ...
+# Subtest: sanitize : casse les clôtures de bloc et les faux tours de parole
+ok 261 - sanitize : casse les clôtures de bloc et les faux tours de parole
+  ---
+  duration_ms: 0.380854
+  type: 'test'
+  ...
+# Subtest: sanitize : borne la longueur et retire les caractères de contrôle
+ok 262 - sanitize : borne la longueur et retire les caractères de contrôle
+  ---
+  duration_ms: 0.180412
+  type: 'test'
+  ...
+# Subtest: prompt : les données observées sont encadrées et désarmées
+ok 263 - prompt : les données observées sont encadrées et désarmées
+  ---
+  duration_ms: 0.917588
+  type: 'test'
+  ...
+# Subtest: prompt : le préambule impose un verdict explicite
+ok 264 - prompt : le préambule impose un verdict explicite
+  ---
+  duration_ms: 11.980272
+  type: 'test'
+  ...
+# Subtest: une alerte sérieuse produit un diagnostic publié
+ok 265 - une alerte sérieuse produit un diagnostic publié
+  ---
+  duration_ms: 12.630857
+  type: 'test'
+  ...
+# Subtest: une rafale sur la même cause ne déclenche qu'UNE analyse
+ok 266 - une rafale sur la même cause ne déclenche qu'UNE analyse
+  ---
+  duration_ms: 17.094092
+  type: 'test'
+  ...
+# Subtest: l'arriéré d'avant le démarrage n'est pas rejoué
+ok 267 - l'arriéré d'avant le démarrage n'est pas rejoué
+  ---
+  duration_ms: 0.495134
+  type: 'test'
+  ...
+# Subtest: sans source d'analyse, rien n'est mis en file
+ok 268 - sans source d'analyse, rien n'est mis en file
+  ---
+  duration_ms: 0.383332
+  type: 'test'
+  ...
+# Subtest: un échec d'analyse est enregistré comme échec, pas comme succès
+ok 269 - un échec d'analyse est enregistré comme échec, pas comme succès
+  ---
+  duration_ms: 12.269955
+  type: 'test'
+  ...
+# Subtest: une analyse qui lève une exception ne casse pas la sentinelle
+ok 270 - une analyse qui lève une exception ne casse pas la sentinelle
+  ---
+  duration_ms: 23.770588
+  type: 'test'
+  ...
+# Subtest: verdict : les trois issues sont reconnues, une réponse floue ne ment pas
+ok 271 - verdict : les trois issues sont reconnues, une réponse floue ne ment pas
+  ---
+  duration_ms: 0.179258
+  type: 'test'
+  ...
+# Subtest: l'état exposé dit la vérité sur ce qui a été écarté
+ok 272 - l'état exposé dit la vérité sur ce qui a été écarté
+  ---
+  duration_ms: 0.391914
+  type: 'test'
+  ...
+# Subtest: un DÉFAUT RÉEL déclenche la réparation, et le rapport est attaché
+ok 273 - un DÉFAUT RÉEL déclenche la réparation, et le rapport est attaché
+  ---
+  duration_ms: 14.508705
+  type: 'test'
+  ...
+# Subtest: on ne « répare » PAS un comportement attendu ni un manque de données
+ok 274 - on ne « répare » PAS un comportement attendu ni un manque de données
+  ---
+  duration_ms: 26.32453
+  type: 'test'
+  ...
+#   ▸ Sentinelle : active
+# Subtest: une analyse en échec ne déclenche aucune réparation
+ok 275 - une analyse en échec ne déclenche aucune réparation
+  ---
+  duration_ms: 33.434737
+  type: 'test'
+  ...
+# Subtest: sandbox : le mode approfondi n'obtient QUE Read, Grep, Glob
+ok 276 - sandbox : le mode approfondi n'obtient QUE Read, Grep, Glob
+  ---
+  duration_ms: 0.650198
+  type: 'test'
+  ...
+# Subtest: sandbox : le mode rapide n'obtient aucun outil capable d'agir
+ok 277 - sandbox : le mode rapide n'obtient aucun outil capable d'agir
+  ---
+  duration_ms: 0.289647
+  type: 'test'
+  ...
+# Subtest: sandbox : personnalisations et serveurs MCP neutralisés dans les deux modes
+ok 278 - sandbox : personnalisations et serveurs MCP neutralisés dans les deux modes
+  ---
+  duration_ms: 35.001261
+  type: 'test'
+  ...
+# Subtest: intégration : une erreur critique réelle déclenche seule un diagnostic
+ok 279 - intégration : une erreur critique réelle déclenche seule un diagnostic
+  ---
+  duration_ms: 16.764982
+  type: 'test'
+  ...
+# Subtest: Release Guardian rend GO uniquement quand tous les gates critiques passent
+ok 280 - Release Guardian rend GO uniquement quand tous les gates critiques passent
+  ---
+  duration_ms: 5.370329
+  type: 'test'
+  ...
+# Subtest: AUTHZ périmé bloque : une ancienne preuve verte n'est pas un GO
+ok 281 - AUTHZ périmé bloque : une ancienne preuve verte n'est pas un GO
+  ---
+  duration_ms: 3.909856
+  type: 'test'
+  ...
+# Subtest: baseline anomalie insuffisante bloque au lieu de fabriquer un vert
+ok 282 - baseline anomalie insuffisante bloque au lieu de fabriquer un vert
+  ---
+  duration_ms: 0.259299
+  type: 'test'
+  ...
+# Subtest: un incident high ouvert bloque une release
+ok 283 - un incident high ouvert bloque une release
+  ---
+  duration_ms: 0.342348
+  type: 'test'
+  ...
+# Subtest: machine d'état incident : transitions adjacentes seulement
+ok 284 - machine d'état incident : transitions adjacentes seulement
+  ---
+  duration_ms: 0.472991
+  type: 'test'
+  ...
+# Subtest: anomaly engine utilise la baseline robuste et ignore un bruit faible
+ok 285 - anomaly engine utilise la baseline robuste et ignore un bruit faible
+  ---
+  duration_ms: 0.480216
+  type: 'test'
+  ...
+# Subtest: ACK SSE navigateur est distinct du write serveur
+ok 286 - ACK SSE navigateur est distinct du write serveur
+  ---
+  duration_ms: 1.180939
+  type: 'test'
+  ...
+# Subtest: création : valeurs par défaut et état initial
+ok 287 - création : valeurs par défaut et état initial
+  ---
+  duration_ms: 4.975336
+  type: 'test'
+  ...
+# Subtest: machine à états : une REPRISE ne réécrit pas le début de la session
+ok 288 - machine à états : une REPRISE ne réécrit pas le début de la session
+  ---
+  duration_ms: 23.45507
+  type: 'test'
+  ...
+# Subtest: un identifiant inconnu rend null, jamais une exception
+ok 289 - un identifiant inconnu rend null, jamais une exception
+  ---
+  duration_ms: 0.419265
+  type: 'test'
+  ...
+# Subtest: notes et bugs : saisie bornée, auteur conservé
+ok 290 - notes et bugs : saisie bornée, auteur conservé
+  ---
+  duration_ms: 0.900118
+  type: 'test'
+  ...
+# Subtest: rapport : la fenêtre borne DES DEUX CÔTÉS
+ok 291 - rapport : la fenêtre borne DES DEUX CÔTÉS
+  ---
+  duration_ms: 66.938011
+  type: 'test'
+  ...
+# Subtest: rapport : une session jamais démarrée part de sa création
+ok 292 - rapport : une session jamais démarrée part de sa création
+  ---
+  duration_ms: 10.757029
+  type: 'test'
+  ...
+# Subtest: rapport : la chronologie est bornée à 200 lignes
+ok 293 - rapport : la chronologie est bornée à 200 lignes
+  ---
+  duration_ms: 13.979303
+  type: 'test'
+  ...
+# Subtest: le défaut est réel : JSON.stringify seul referme l'attribut
+ok 294 - le défaut est réel : JSON.stringify seul referme l'attribut
+  ---
+  duration_ms: 0.755229
+  type: 'test'
+  ...
+# Subtest: escJsArg neutralise l'apostrophe et rend un littéral JS complet
+ok 295 - escJsArg neutralise l'apostrophe et rend un littéral JS complet
+  ---
+  duration_ms: 14.443046
+  type: 'test'
+  ...
+# Subtest: escJsArg supporte les formes hostiles sans lever
+ok 296 - escJsArg supporte les formes hostiles sans lever
+  ---
+  duration_ms: 0.406758
+  type: 'test'
+  ...
+# Subtest: RÈGLE : toute donnée injectée dans un onclick passe par escJsArg
+ok 297 - RÈGLE : toute donnée injectée dans un onclick passe par escJsArg
+  ---
+  duration_ms: 14.970327
+  type: 'test'
+  ...
+# Subtest: RÈGLE : les champs écrits par le navigateur ne s'affichent jamais bruts
+ok 298 - RÈGLE : les champs écrits par le navigateur ne s'affichent jamais bruts
+  ---
+  duration_ms: 41.077083
+  type: 'test'
+  ...
+# Subtest: les libellés de graphe sont échappés à la SOURCE, dans bars()
+ok 299 - les libellés de graphe sont échappés à la SOURCE, dans bars()
+  ---
+  duration_ms: 0.505657
+  type: 'test'
+  ...
+# Subtest: le poste de commande construit ses nœuds, il n'assemble pas de HTML
+ok 300 - le poste de commande construit ses nœuds, il n'assemble pas de HTML
+  ---
+  duration_ms: 0.25964
+  type: 'test'
+  ...
+# Subtest: le cadre SSE est bien formé (type, données, ligne vide finale)
+ok 301 - le cadre SSE est bien formé (type, données, ligne vide finale)
+  ---
+  duration_ms: 11.44867
+  type: 'test'
+  ...
+# Subtest: un client fermé est retiré : pas de fuite dans le décompte
+ok 302 - un client fermé est retiré : pas de fuite dans le décompte
+  ---
+  duration_ms: 0.30217
+  type: 'test'
+  ...
+# Subtest: un client mort n'empêche pas les autres de recevoir
+ok 303 - un client mort n'empêche pas les autres de recevoir
+  ---
+  duration_ms: 0.392371
+  type: 'test'
+  ...
+# Subtest: sans aucun client, la diffusion ne lève pas et rend 0
+ok 304 - sans aucun client, la diffusion ne lève pas et rend 0
+  ---
+  duration_ms: 4.651017
+  type: 'test'
+  ...
+# Subtest: normalize convertit received_at en ms
+ok 305 - normalize convertit received_at en ms
+  ---
+  duration_ms: 1.217872
+  type: 'test'
+  ...
+# Subtest: add alimente devices/sessions/users et déduplique
+ok 306 - add alimente devices/sessions/users et déduplique
+  ---
+  duration_ms: 0.702528
+  type: 'test'
+  ...
+# Subtest: overview compte publications, messages, likes
+ok 307 - overview compte publications, messages, likes
+  ---
+  duration_ms: 0.775277
+  type: 'test'
+  ...
+# Subtest: les erreurs sont regroupées par empreinte
+ok 308 - les erreurs sont regroupées par empreinte
+  ---
+  duration_ms: 2.771378
+  type: 'test'
+  ...
+# Subtest: updateBug persiste le statut
+ok 309 - updateBug persiste le statut
+  ---
+  duration_ms: 3.384445
+  type: 'test'
+  ...
+# Subtest: health reflète les erreurs récentes
+ok 310 - health reflète les erreurs récentes
+  ---
+  duration_ms: 0.160681
+  type: 'test'
+  ...
+# Subtest: un problème de connexion remonte en bug + marque l'appareil en difficulté
+ok 311 - un problème de connexion remonte en bug + marque l'appareil en difficulté
+  ---
+  duration_ms: 0.509588
+  type: 'test'
+  ...
+# Subtest: un échec d'appel API compte comme problème
+ok 312 - un échec d'appel API compte comme problème
+  ---
+  duration_ms: 0.234754
+  type: 'test'
+  ...
+# Subtest: overview expose les indicateurs de connexion
+ok 313 - overview expose les indicateurs de connexion
+  ---
+  duration_ms: 0.760801
+  type: 'test'
+  ...
+# Subtest: un événement de reconnexion (info) ne bloque PAS l'appareil
+ok 314 - un événement de reconnexion (info) ne bloque PAS l'appareil
+  ---
+  duration_ms: 5.028284
+  type: 'test'
+  ...
+# Subtest: visitorList : un visiteur par appareil, avec identité si compte créé
+ok 315 - visitorList : un visiteur par appareil, avec identité si compte créé
+  ---
+  duration_ms: 0.843903
+  type: 'test'
+  ...
+# Subtest: visitorFunnel : total, signedUp et attribution de lien
+ok 316 - visitorFunnel : total, signedUp et attribution de lien
+  ---
+  duration_ms: 0.538777
+  type: 'test'
+  ...
+# Subtest: sans client Supabase, la liste le dit au lieu de mentir
+ok 317 - sans client Supabase, la liste le dit au lieu de mentir
+  ---
+  duration_ms: 4.914002
+  type: 'test'
+  ...
+# Subtest: la liste ne montre QUE les comptes jetables
+ok 318 - la liste ne montre QUE les comptes jetables
+  ---
+  duration_ms: 16.615731
+  type: 'test'
+  ...
+# Subtest: SUPPRESSION : un compte réel est refusé, même si son id est fourni
+ok 319 - SUPPRESSION : un compte réel est refusé, même si son id est fourni
+  ---
+  duration_ms: 0.788392
+  type: 'test'
+  ...
+# Subtest: SUPPRESSION : le verdict vient de la BASE, jamais de l'appelant
+ok 320 - SUPPRESSION : le verdict vient de la BASE, jamais de l'appelant
+  ---
+  duration_ms: 0.210779
+  type: 'test'
+  ...
+# Subtest: SUPPRESSION : un identifiant inconnu est refusé, pas ignoré
+ok 321 - SUPPRESSION : un identifiant inconnu est refusé, pas ignoré
+  ---
+  duration_ms: 0.182
+  type: 'test'
+  ...
+# Subtest: SUPPRESSION : un vrai compte jetable est bien supprimé
+ok 322 - SUPPRESSION : un vrai compte jetable est bien supprimé
+  ---
+  duration_ms: 0.858325
+  type: 'test'
+  ...
+# Subtest: SUPPRESSION : sans Supabase, refus AVANT toute tentative
+ok 323 - SUPPRESSION : sans Supabase, refus AVANT toute tentative
+  ---
+  duration_ms: 0.352959
+  type: 'test'
+  ...
+# Subtest: SUPPRESSION : mutations coupées = refus, dans un processus neuf
+ok 324 - SUPPRESSION : mutations coupées = refus, dans un processus neuf
+  ---
+  duration_ms: 269.445169
+  type: 'test'
+  ...
+# Subtest: succès complet : handler → requête → enregistré = success
+ok 325 - succès complet : handler → requête → enregistré = success
+  ---
+  duration_ms: 2.884501
+  type: 'test'
+  ...
+# Subtest: clic mort : handler seul, aucune requête, figé = dead_click
+ok 326 - clic mort : handler seul, aucune requête, figé = dead_click
+  ---
+  duration_ms: 0.313078
+  type: 'test'
+  ...
+# Subtest: échec d'enregistrement : requête OK mais saved=fail = failed
+ok 327 - échec d'enregistrement : requête OK mais saved=fail = failed
+  ---
+  duration_ms: 0.265965
+  type: 'test'
+  ...
+# Subtest: livraison non confirmée (mono-appareil) n'altère PAS le verdict = success
+ok 328 - livraison non confirmée (mono-appareil) n'altère PAS le verdict = success
+  ---
+  duration_ms: 0.246683
+  type: 'test'
+  ...
+# Subtest: partiel réel : requête en échec mais message finalement enregistré = partial
+ok 329 - partiel réel : requête en échec mais message finalement enregistré = partial
+  ---
+  duration_ms: 0.243192
+  type: 'test'
+  ...
+# Subtest: livraison cross-device : rt_recv sur un autre appareil confirme delivered
+ok 330 - livraison cross-device : rt_recv sur un autre appareil confirme delivered
+  ---
+  duration_ms: 0.281569
+  type: 'test'
+  ...
+# Subtest: même appareil ne compte PAS comme livraison cross-device
+ok 331 - même appareil ne compte PAS comme livraison cross-device
+  ---
+  duration_ms: 0.186401
+  type: 'test'
+  ...
+# Subtest: doublon : deux flows même user+action+cible rapprochés → duplicate
+ok 332 - doublon : deux flows même user+action+cible rapprochés → duplicate
+  ---
+  duration_ms: 0.177337
+  type: 'test'
+  ...
+# Subtest: step/end sans start connu est ignoré (aucune invention)
+ok 333 - step/end sans start connu est ignoré (aucune invention)
+  ---
+  duration_ms: 0.301611
+  type: 'test'
+  ...
+# Subtest: running : flow récent et incomplet reste « en cours »
+ok 334 - running : flow récent et incomplet reste « en cours »
+  ---
+  duration_ms: 0.479416
+  type: 'test'
+  ...
+# Subtest: snapshot : totaux + incidents dédupliqués par (action+étape)
+ok 335 - snapshot : totaux + incidents dédupliqués par (action+étape)
+  ---
+  duration_ms: 2.415023
+  type: 'test'
+  ...
+# Subtest: api non taguée (sans correlation_id) n'est rattachée à aucun flow
+ok 336 - api non taguée (sans correlation_id) n'est rattachée à aucun flow
+  ---
+  duration_ms: 0.095747
+  type: 'test'
+  ...
+# Subtest: drain : un verdict problématique figé est rendu UNE seule fois
+ok 337 - drain : un verdict problématique figé est rendu UNE seule fois
+  ---
+  duration_ms: 0.140676
+  type: 'test'
+  ...
+# Subtest: drain : une action encore EN COURS n'est pas rendue (on repassera)
+ok 338 - drain : une action encore EN COURS n'est pas rendue (on repassera)
+  ---
+  duration_ms: 0.116293
+  type: 'test'
+  ...
+# Subtest: drain : succès et « non confirmé » sont consommés SANS alerte
+ok 339 - drain : succès et « non confirmé » sont consommés SANS alerte
+  ---
+  duration_ms: 0.120037
+  type: 'test'
+  ...
+# Subtest: sealExisting : l'historique rejoué au démarrage ne refait pas sonner les alertes
+ok 340 - sealExisting : l'historique rejoué au démarrage ne refait pas sonner les alertes
+  ---
+  duration_ms: 0.156001
+  type: 'test'
+  ...
+# Subtest: drain : l'étape en échec est identifiable pour le message d'alerte
+ok 341 - drain : l'étape en échec est identifiable pour le message d'alerte
+  ---
+  duration_ms: 1.216132
+  type: 'test'
+  ...
+# Subtest: like_post : handler + requête OK (la requête EST la confirmation) = success
+ok 342 - like_post : handler + requête OK (la requête EST la confirmation) = success
+  ---
+  duration_ms: 3.201075
+  type: 'test'
+  ...
+# Subtest: like_post : requête refusée (HTTP 403 RLS) = failed
+ok 343 - like_post : requête refusée (HTTP 403 RLS) = failed
+  ---
+  duration_ms: 0.221767
+  type: 'test'
+  ...
+# Subtest: like_post : clic sans aucune requête (figé) = dead_click
+ok 344 - like_post : clic sans aucune requête (figé) = dead_click
+  ---
+  duration_ms: 0.093398
+  type: 'test'
+  ...
+# Subtest: requête lente mais réussie = success (lent), pas « non confirmé »
+ok 345 - requête lente mais réussie = success (lent), pas « non confirmé »
+  ---
+  duration_ms: 0.076628
+  type: 'test'
+  ...
+# Subtest: publish : saved explicite OK = success (auto-tag réseau ignoré)
+ok 346 - publish : saved explicite OK = success (auto-tag réseau ignoré)
+  ---
+  duration_ms: 0.096151
+  type: 'test'
+  ...
+# Subtest: livraison cross-device d'un LIKE : rt_recv like sur autre appareil confirme delivered
+ok 347 - livraison cross-device d'un LIKE : rt_recv like sur autre appareil confirme delivered
+  ---
+  duration_ms: 0.109953
+  type: 'test'
+  ...
+# Subtest: cint : cible = commentId (pas postId) pour l'appariement
+ok 348 - cint : cible = commentId (pas postId) pour l'appariement
+  ---
+  duration_ms: 0.064072
+  type: 'test'
+  ...
+# Subtest: event_join : cible = eventId ; requête OK = success
+ok 349 - event_join : cible = eventId ; requête OK = success
+  ---
+  duration_ms: 0.059602
+  type: 'test'
+  ...
+1..349
+# tests 349
+# suites 0
+# pass 349
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 21553.103582
+
+real	0m21.855s
+user	0m10.646s
+sys	0m3.304s

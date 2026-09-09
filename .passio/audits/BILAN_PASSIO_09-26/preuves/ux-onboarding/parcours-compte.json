@@ -1,0 +1,341 @@
+{
+  "etapes": [
+    {
+      "t_ms": 4354,
+      "etape": "A1 fil compte existant",
+      "hint_apres_ms": 4332,
+      "rail": [
+        "👥👥Suivis",
+        "🎸🎸39Musique"
+      ],
+      "nbCards": 20,
+      "carte": false,
+      "hash": "",
+      "racineFirstRun": false,
+      "ecranActif": "screen-feed",
+      "nbEcransActifs": 1,
+      "nbNavActifs": 1,
+      "tip": null,
+      "hint": {
+        "id": "feed_auteur",
+        "texte": "Appuie sur l'auteur pour découvrir sa Passio Compris"
+      },
+      "modalOuverte": false,
+      "modalTexte": null,
+      "onboardingActif": false,
+      "onbStep": "splash",
+      "landingActif": true,
+      "tourActif": false,
+      "eventDetailAffiche": false,
+      "reelsOuvert": false,
+      "hintsVus": {
+        "feed_auteur": true
+      },
+      "sortieExploration": false
+    },
+    {
+      "t_ms": 4473,
+      "etape": "A1b landing active sans session ?",
+      "landing": true,
+      "boutons": [
+        "Se connecter",
+        "Créer un compte",
+        "Installer l'application"
+      ],
+      "promesses": [],
+      "hintSousLanding": true
+    },
+    {
+      "t_ms": 5105,
+      "etape": "A1c « Se connecter » depuis la landing (compte local)",
+      "onboardingActif": true,
+      "onbStep": "splash",
+      "sortie": false,
+      "landing": false
+    },
+    {
+      "t_ms": 6056,
+      "etape": "A1d (artefact d'audit) landing retirée à la main, comme app-helper.js le fait"
+    },
+    {
+      "t_ms": 9966,
+      "etape": "A2 après rechargement : le hint revient-il ?",
+      "hint": null,
+      "hintsVus": {
+        "feed_auteur": true
+      },
+      "tourActif": false
+    },
+    {
+      "t_ms": 11338,
+      "etape": "A3 profil visité (compte)",
+      "modal": "× × ⋯ 🎸 Léa Moreau Guitariste passionnée · Lyon 22 POSTS 0 ABONNÉS 0 ABONNEMENTS Message Suivre 🎸 Musique Publications",
+      "hint": {
+        "id": "profil_visite",
+        "texte": "Suis-le, ou envoie-lui un message Compris"
+      },
+      "actions": "Message\nSuivre"
+    },
+    {
+      "t_ms": 12703,
+      "etape": "A4 profil (compte)",
+      "hint": {
+        "id": "second_profil",
+        "texte": "Ajoute une autre passion depuis « Gérer mes passions » Compris"
+      },
+      "tabs": [
+        {
+          "label": "Publications",
+          "sel": "true",
+          "visible": true
+        },
+        {
+          "label": "Activité",
+          "sel": "false",
+          "visible": true
+        }
+      ],
+      "texte": "CA 📷 Compte audit 0 ABONNÉS 1 PASSIONS 0 ABONNEMENTS",
+      "rail": [
+        "🎸🎸Musique"
+      ]
+    },
+    {
+      "t_ms": 13375,
+      "etape": "A5 onglet Activité (compte vide)",
+      "texte": "Mes activités Aucune activité pour le moment — rejoins ou propose une sortie depuis « Rencontrer ».",
+      "tabs": [
+        "false",
+        "true"
+      ]
+    },
+    {
+      "t_ms": 14282,
+      "etape": "A6 page Mes passions (compte)",
+      "texte": "Mes passions Un seul profil, plusieurs passions. Publie dans la passion qui correspond ; ton fil réunit les passions que tu choisis et les personnes que tu suis. 1 passion active sur 3 3 changements de passion disponibles sur 3. Passions actives 🎸 📷 🎸 Musique 0 publication · 0 activité ⋯ + Ajouter une passion Ajoute une passion à ton profil et à ton fil.",
+      "quota": "disponible",
+      "porte": "<div class=\"passion-manager-porte\" id=\"nouveauProfilLien\" role=\"button\" tabindex=\"0\" data-passion-tile=\"__ajouter__\" title=\"Ajouter une passion\" aria-label=\"Ajouter une passion\" onclick=\"openCreateProfile()\" data-passion-porte=\"ouverte\">\n          <d"
+    },
+    {
+      "t_ms": 14888,
+      "etape": "A6b onglet Profil pendant la page",
+      "pageOuverte": false
+    },
+    {
+      "t_ms": 15976,
+      "etape": "A7 Messages (compte)",
+      "texte": "Messages + 🎸 Léa Moreau 30 min Musique · J'ai un local sympa au sud de Lyon. 2 🍳 Théo Roussel 3 h Cuisine · Toi : Trop bien, je m'inscris 🌍 Nina Costa 6 h Voyage · Y'a aussi des spots photo dispo, dis-moi ce qui t'intéresse 🌅 1 📷 Karim Belkacem 1 j Photo · Mardi 19h, atelier rue Vauban. Apporte",
+      "nbConvs": 5
+    },
+    {
+      "t_ms": 17615,
+      "etape": "A8 Rencontrer (compte) : permissions demandées ?",
+      "perms": [],
+      "texteHaut": "Rencontrer La carte n'est pas disponible sur cet appareil. La liste des événements ci-dessous fonctionne normalement. Liste Carte Filtre 🎸 Jam session guitaristes débutants 🎸 Musique · Aujourd'hui ·"
+    },
+    {
+      "t_ms": 18314,
+      "etape": "A9 Paramètres (compte) section Compte",
+      "boutons": [
+        {
+          "label": "Mon profil",
+          "visible": true
+        },
+        {
+          "label": "Modifier le profil",
+          "visible": true
+        },
+        {
+          "label": "Changer mon mot de passe",
+          "visible": true
+        },
+        {
+          "label": "Se connecter avec un autre compte",
+          "visible": true
+        },
+        {
+          "label": "Voir l'onboarding",
+          "visible": true
+        },
+        {
+          "label": "Se déconnecter",
+          "visible": true
+        },
+        {
+          "label": "Supprimer mon compte",
+          "visible": true
+        }
+      ]
+    },
+    {
+      "t_ms": 19175,
+      "etape": "A10 « Voir l'onboarding » (compte)",
+      "onboardingActif": true,
+      "onbStep": "splash",
+      "sortie": false,
+      "ecran": null,
+      "onboarded": false,
+      "texte": "PASSIO Le réseau social de tes passions Se connecter Créer un compte ADRESSE E-MAIL MOT DE PASSE 👁 Se connecter Mot de "
+    },
+    {
+      "t_ms": 19892,
+      "etape": "A10b back",
+      "onboardingActif": true
+    },
+    {
+      "t_ms": 23923,
+      "etape": "A11 rechargement après « Voir l'onboarding »",
+      "ecran": "screen-feed",
+      "onboardingActif": false,
+      "landing": false,
+      "racineFirstRun": true,
+      "carte": true,
+      "onboarded": false,
+      "profils": 1
+    },
+    {
+      "t_ms": 31754,
+      "etape": "A12 Tour démo (historique)",
+      "etapes": [
+        {
+          "actif": true,
+          "label": "Étape 1 / 5",
+          "texte": "ÉTAPE 1 / 5 👤 Un seul profil, plusieurs passions Range ce que tu publies, choisis ce que tu vois. Skate, lecture, photo, cuisine : tu publies dans la passion qui correspond Ton fil réunit les passions que tu choisis et les personnes que tu suis Un seul pseudo, un seul profil : les gens te suivent, toi Quitter Suivant →",
+          "bouton": "Suivant →",
+          "ecran": "screen-profiles"
+        },
+        {
+          "actif": true,
+          "label": "Étape 2 / 5",
+          "texte": "ÉTAPE 2 / 5 🏠 Ton fil, à ton rythme Le contenu s'adapte à ton humeur du moment. Tu choisis : envie de créer, d'apprendre ou de te détendre ? Pas d'algorithme qui te garde captif Tu lis ce que tu veux, quand tu veux Quitter Suivant →",
+          "bouton": "Suivant →",
+          "ecran": "screen-feed"
+        },
+        {
+          "actif": true,
+          "label": "Étape 3 / 5",
+          "texte": "ÉTAPE 3 / 5 🤝 Retrouvez-vous en vrai Le cœur de PASSIO : transformer une passion en moments réels avec d'autres. Événements près de chez toi, organisés par la communauté Carte interactive France et Europe Skate jam, atelier, dégustation, book club… Quitter Suivant →",
+          "bouton": "Suivant →",
+          "ecran": "screen-irl"
+        },
+        {
+          "actif": true,
+          "label": "Étape 4 / 5",
+          "texte": "ÉTAPE 4 / 5 🎙 Crée tout ce que tu veux Texte, photo, vidéo, bobine, podcast, tout au même endroit. Pas besoin d'outils externes Templates pour démarrer facilement Tu publies quand ça t'inspire, pas quand un algo te dit Quitter Suivant →",
+          "bouton": "Suivant →",
+          "ecran": "screen-studio"
+        },
+        {
+          "actif": true,
+          "label": "Étape 5 / 5",
+          "texte": "ÉTAPE 5 / 5 🔍 Trouve ta communauté Découvre les passions et les gens qui partagent les tiennes. Toutes les passions, du skate à la céramique Tu peux créer la tienne si elle n'existe pas Des créateurs à découvrir, près de chez toi Quitter Terminer ✨",
+          "bouton": "Terminer ✨",
+          "ecran": "screen-explore"
+        },
+        {
+          "actif": false,
+          "label": "Étape 5 / 5",
+          "texte": "Étape 5 / 5 🔍 Trouve ta communauté Découvre les passions et les gens qui partagent les tiennes. Toutes les passions, du skate à la céramiqueTu peux créer la tienne si elle n'existe pasDes créateurs à découvrir, près de chez toi Quitter Terminer ✨",
+          "bouton": "Terminer ✨",
+          "ecran": "screen-feed"
+        }
+      ],
+      "skipVisible": [
+        "Quitter",
+        "Terminer ✨"
+      ]
+    },
+    {
+      "t_ms": 32570,
+      "etape": "A13 « Afficher le pitch »",
+      "landing": true,
+      "boutons": [
+        "Se connecter",
+        "Créer un compte",
+        "Installer l'application"
+      ]
+    },
+    {
+      "t_ms": 33448,
+      "etape": "A14 sortie du pitch",
+      "bouton": null,
+      "landing": true,
+      "onboarding": false,
+      "ecran": "screen-feed"
+    },
+    {
+      "t_ms": 37914,
+      "etape": "A15 lien profond (compte, boot frais) #irl-event-e1",
+      "ecran": "screen-feed",
+      "nb": 1,
+      "eventDetail": false,
+      "reels": false,
+      "reelsDom": null,
+      "hash": "#irl-event-e1",
+      "modal": null,
+      "navActifs": 1
+    },
+    {
+      "t_ms": 41762,
+      "etape": "A15 lien profond (compte, boot frais) #reel=inexistant",
+      "ecran": "screen-feed",
+      "nb": 1,
+      "eventDetail": false,
+      "reels": false,
+      "reelsDom": null,
+      "hash": "#reel=inexistant",
+      "modal": null,
+      "navActifs": 1
+    },
+    {
+      "t_ms": 45880,
+      "etape": "A15 lien profond (compte, boot frais) #irl-event-%3Cimg%20src%3Dx%20onerror%3Dalert(1)%3E",
+      "ecran": "screen-feed",
+      "nb": 1,
+      "eventDetail": false,
+      "reels": false,
+      "reelsDom": null,
+      "hash": "#irl-event-%3Cimg%20src%3Dx%20onerror%3Dalert(1)%3E",
+      "modal": null,
+      "navActifs": 1
+    },
+    {
+      "t_ms": 49751,
+      "etape": "A15 lien profond (compte, boot frais) #wallet",
+      "ecran": "screen-feed",
+      "nb": 1,
+      "eventDetail": false,
+      "reels": false,
+      "reelsDom": null,
+      "hash": "#wallet",
+      "modal": null,
+      "navActifs": 1
+    },
+    {
+      "t_ms": 53613,
+      "etape": "A15 lien profond (compte, boot frais) #cdv",
+      "ecran": "screen-feed",
+      "nb": 1,
+      "eventDetail": false,
+      "reels": false,
+      "reelsDom": null,
+      "hash": "#cdv",
+      "modal": null,
+      "navActifs": 1
+    },
+    {
+      "t_ms": 57465,
+      "etape": "A15 lien profond (compte, boot frais) #reel=reel_seed_cuisine_1",
+      "ecran": "screen-feed",
+      "nb": 1,
+      "eventDetail": false,
+      "reels": false,
+      "reelsDom": null,
+      "hash": "#reel=reel_seed_cuisine_1",
+      "modal": null,
+      "navActifs": 1
+    }
+  ],
+  "erreursConsole": [],
+  "permissions": []
+}

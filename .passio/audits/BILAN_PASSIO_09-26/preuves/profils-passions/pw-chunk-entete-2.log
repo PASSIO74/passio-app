@@ -1,0 +1,4 @@
+[1A[2K[2m[WebServer] [22m(node:22949) [DEP0066] DeprecationWarning: OutgoingMessage.prototype._headers is deprecated
+[2m[WebServer] [22m(Use `node --trace-deprecation ...` to show where the warning was created)
+
+[1A[2KEXIT=0

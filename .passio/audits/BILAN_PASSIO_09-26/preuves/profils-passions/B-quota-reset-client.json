@@ -1,0 +1,12 @@
+{
+  "quotaActif": true,
+  "r1": true,
+  "r2": true,
+  "r3": true,
+  "restantsApres3": 0,
+  "r4": false,
+  "restantsAvantReset": 0,
+  "restantsApresReset": 3,
+  "r5": true,
+  "journal": 1
+}

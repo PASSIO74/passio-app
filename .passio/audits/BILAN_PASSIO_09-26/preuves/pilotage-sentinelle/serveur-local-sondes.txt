@@ -1,0 +1,12 @@
+# Serveur dashboard lancé SANS .env (env -u SUPABASE_SERVICE_ROLE_KEY -u DASH_ADMIN_PASSWORD -u DASH_SESSION_SECRET), DASH_DATA_DIR jetable, port 4610, 2026-09-04 12:47 UTC
+GET /api/health -> 200 {"ok":true,"env":"development","supabase":false}  (démarre sans clé service_role : mode LOCAL)
+Sans session : overview alerts sentinel audit incidents releases database git/status readiness control/command anomalies observation -> 401 (12/12)
+POST /api/login {"user":"admin","password":"admin"} -> 200 role admin, caps complètes  => IDENTIFIANTS PAR DÉFAUT ACCEPTÉS (config.js:334-335, aucun refus de démarrage)
+Avec session admin : overview alerts sentinel audit incidents releases readiness observation anomalies control/command release-guardian services performance flags -> 200
+Limitation de tentatives : 10 POST /api/login mot de passe faux avec X-Forwarded-For 10.0.0.1..10 -> 401 x10 (jamais 429) ; même XFF 10.9.9.9 x10 -> 401 x8 puis 429 x2. => contournable par en-tête (index.js:46 trust proxy true ; auth.js:446 req.ip)
+Journal : login_failed/login_blocked audités avec ip = valeur XFF fournie par le client.
+Console serveur : "Claude Code local : connecté (analyse gratuite dispo)" + "Sentinelle : active" => la Sentinelle est ACTIVE par défaut, sans configuration, avec le CLI de la machine.
+Alerte manuelle critical -> incident packet créé (DETECTED) ; Sentinelle : queued 0 (manuel exclu par triage) ; repair.possible=false (mutations désactivées hors DASH_ALLOW_MUTATIONS=true).
+readiness : statut "inconnu", confiance 38 %, score 85 ; autorisation "inconnu — NON INSTRUMENTÉ" ; release NOT_CONFIGURED (frontend version, DB version, deploy id manquants ; PASSIO_PUBLIC_URL non configurée).
+services : 8 services (Frontend web, API Supabase, Authentification, Base de données, Messagerie, Notifications, Stockage médias, Realtime) tous "unknown" — dérivés du trafic client (store.js:609-632), aucune sonde serveur.
+Sonde https://passio-pilotage.onrender.com/api/health -> code 000 (réseau sortant bloqué par le proxy) : existence du déploiement Render NON VÉRIFIABLE ici.

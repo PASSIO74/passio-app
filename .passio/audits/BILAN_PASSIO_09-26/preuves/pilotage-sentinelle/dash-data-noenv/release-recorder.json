@@ -1,0 +1,27 @@
+{
+  "snapshots": [
+    {
+      "at": "2026-09-04T12:48:29.014Z",
+      "branch": "audit/bilan-passio-09-26-fable51",
+      "revision": "f501fb78e97d",
+      "appVersion": null,
+      "dbVersion": null,
+      "deployId": null,
+      "deployUrl": null,
+      "provider": null,
+      "source": "periodic",
+      "lastSeenAt": "2026-09-04T12:51:29.017Z"
+    },
+    {
+      "at": "2026-09-04T12:47:29.009Z",
+      "branch": "audit/bilan-passio-09-26-fable51",
+      "revision": "35860121082a",
+      "appVersion": null,
+      "dbVersion": null,
+      "deployId": null,
+      "deployUrl": null,
+      "provider": null,
+      "source": "dashboard_boot"
+    }
+  ]
+}

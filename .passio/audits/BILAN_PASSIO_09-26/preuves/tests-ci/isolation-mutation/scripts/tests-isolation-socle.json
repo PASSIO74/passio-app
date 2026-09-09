@@ -1,0 +1,11 @@
+{
+  "_lisez_moi": "Liste BLANCHE et MOTIVÉE des suites qui naviguent elles-mêmes SANS isolation des données distantes, parce que cette exposition est VOULUE. On n'entre pas ici pour faire taire scripts/audit-tests-isolation.js : on y entre parce que le test a besoin du réseau réel, et on écrit pourquoi. Une entrée devenue inutile (le fichier pose son isolation) est signalée par le banc.",
+
+  "multi-comptes.spec.js": "Projet `prod` : crée de VRAIS comptes Supabase et éprouve la livraison entre eux. Isoler les lectures distantes retirerait précisément ce que cette suite existe pour mesurer.",
+
+  "release-integrity.spec.js": "Ne tourne que sous PASSIO_CIBLE=dist. Vérifie que release.json, le HTML et le service worker portent la même identité de build, et que le drain télémétrique attend ses VRAIS POST. Un réseau simulé ne prouverait rien de l'artefact déployé.",
+
+  "passion-context.spec.js": "Ne tourne que sous PASSIO_CIBLE=dist. Mesure ce que le bundle de production émet réellement en télémétrie au changement de passion : l'émission réelle EST le sujet.",
+
+  "gate-sans-app.spec.js": "Éprouve la fenêtre « gate affiché, application absente » — le seul banc qui couvre les causes d'aperçu invisible du 2026-08-28. Il coupe l'application exprès ; il n'y a aucune donnée distante à isoler."
+}

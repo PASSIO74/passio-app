@@ -179,6 +179,57 @@ test.describe("Créer une passion", () => {
     expect(await page.locator("#hoteCreation .psel-input").inputValue()).toBe("");
   });
 
+  // ⑨ TROIS CRÉATIONS OFFERTES, ENSUITE C'EST PAYANT (2026-09-08, soir).
+  // Le plafond est tenu par le SERVEUR (`creer_passion` → `quota_creation`,
+  // prouvé par `scripts/verifier-migration-creation-passion.sh` ⑥). Ici on
+  // mesure ce que l'écran en fait : un refus qui ne se prononce pas est
+  // indiscernable d'une panne, donc il doit ouvrir le PAYWALL, pas un toast.
+  test("⑨ au plafond, le refus serveur ouvre le paywall des créations", async ({ page }) => {
+    await bootAvecCompte(page);
+    await poserServeur(page, { error: { message: "quota_creation", code: "53400" } });
+    await page.evaluate(() => {
+      const hote = document.createElement("div");
+      hote.id = "hotePlafond";
+      document.body.appendChild(hote);
+      PassionSearchSelector.monterDans(hote, { mode: "multi" });
+    });
+    await page.waitForFunction(() => window.PassioPassions.pret(), null, { timeout: 15000 });
+    await page.locator("#hotePlafond .psel-input").fill("sculpture sur glace");
+    const bouton = page.locator("#hotePlafond .psel-ajouter");
+    await expect(bouton).toBeVisible({ timeout: 10000 });
+    await bouton.click();
+
+    const modale = page.locator("#modalContent");
+    await expect(modale).toBeVisible({ timeout: 10000 });
+    // ⚠️ LA FENÊTRE DOIT PARLER DU GESTE REFUSÉ. Trois plafonds distincts
+    // aboutissent au même mur : quelqu'un qui vient de se faire refuser une
+    // CRÉATION ne doit pas y lire qu'il « suit déjà 3 passions » — ce peut être
+    // faux, et un mur qui parle d'autre chose se lit comme une panne.
+    await expect(modale).toContainText("Trois créations offertes");
+    await expect(modale).toContainText("créations de passion");
+    await expect(modale).not.toContainText("Tu suis déjà");
+    // ⚠️ AUCUN TARIF, AUCUN BOUTON « PAYER » — invariant du paywall (㉒).
+    expect(await modale.textContent()).not.toMatch(/[€$]|\d+\s?(euros?|EUR)/i);
+    // Et rien n'a été créé : la passion refusée n'est pas devenue publiable.
+    expect(await page.evaluate(() => estPassionCanonique("sculpture-sur-glace"))).toBe(false);
+  });
+
+  // ⑩ Une passion qui EXISTE DÉJÀ ne consomme aucune création — elle ne part
+  // même pas au serveur (verrou ③), donc le plafond ne peut pas la barrer.
+  // C'est la contrepartie honnête du plafond : on ne fait pas payer un nom que
+  // le référentiel connaissait déjà.
+  test("⑩ au plafond, une passion déjà connue reste ajoutable", async ({ page }) => {
+    await bootAvecCompte(page);
+    await page.evaluate(() => window.PassioPassions.charger());
+    await page.waitForFunction(() => window.PassioPassions.pret(), null, { timeout: 15000 });
+    await poserServeur(page, { error: { message: "quota_creation", code: "53400" } });
+
+    const r = await page.evaluate(() => window.PassioPassions.creerPassion("Musique"));
+    expect(r.erreur).toBeUndefined();
+    expect(r.passion.id).toBe("musique");
+    expect(await page.evaluate(() => window.__rpcAppels.length)).toBe(0);
+  });
+
   // ⑧ Sans serveur, le bouton ne PROMET pas ce qu'il ne peut pas tenir.
   test("⑧ sans création possible, le bouton annonce une demande", async ({ page }) => {
     await bootAvecCompte(page);

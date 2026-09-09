@@ -1,0 +1,10 @@
+0 boot {"onbActif":false,"onbStep":"splash","ecran":"screen-feed","sortie":false,"boutonsOnb":[],"racine":true,"stored":"ERR"}
+0b history.length 4
+1 bouton visible visiteur: true
+2 après clic {"onbActif":true,"onbStep":"splash","ecran":null,"sortie":false,"boutonsOnb":["Se connecter","Créer un compte","👁","Se connecter","Continuer avec Google"],"racine":true,"stored":false}
+3 après Escape {"onbActif":true,"onbStep":"splash","ecran":null,"sortie":false,"boutonsOnb":["Se connecter","Créer un compte","👁","Se connecter","Continuer avec Google"],"racine":true,"stored":false}
+4a url http://127.0.0.1:8120/index.html#irl
+4 après back {"onbActif":true,"onbStep":"splash","ecran":"screen-irl","sortie":false,"boutonsOnb":["Se connecter","Créer un compte","👁","Se connecter","Continuer avec Google"],"racine":true,"stored":false}
+5 après closeCurrentOverlay() {"onbActif":true,"onbStep":"splash","ecran":"screen-irl","sortie":false,"boutonsOnb":["Se connecter","Créer un compte","👁","Se connecter","Continuer avec Google"],"racine":true,"stored":false}
+6 après reload {"onbActif":false,"onbStep":"splash","ecran":"screen-feed","sortie":false,"boutonsOnb":[],"racine":true,"stored":false}
+pageerrors []

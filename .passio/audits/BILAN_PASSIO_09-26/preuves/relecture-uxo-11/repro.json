@@ -1,0 +1,27 @@
+{
+ "premiere": {
+  "controllerAtStart": false,
+  "msgs": [
+   "SW_UPDATED"
+  ],
+  "toasts": [
+   "✨ Mise à jour disponible — recharge pour l'appliquer"
+  ],
+  "controllerNow": true,
+  "captureToast": true
+ },
+ "seconde": {
+  "controllerAtStart": true,
+  "msgs": [],
+  "toasts": [],
+  "controllerNow": true,
+  "captureToast": false
+ },
+ "troisieme": {
+  "controllerAtStart": true,
+  "msgs": [],
+  "toasts": [],
+  "controllerNow": true,
+  "captureToast": false
+ }
+}

@@ -1,0 +1,117 @@
+[1A[2K[2m[WebServer] [22m(node:28276) [DEP0066] DeprecationWarning: OutgoingMessage.prototype._headers is deprecated
+[2m[WebServer] [22m(Use `node --trace-deprecation ...` to show where the warning was created)
+
+
+Running 58 tests using 1 worker
+
+[1A[2K[1/58] [local] › tests/e2e/access-gate.spec.js:19:1 › au premier lancement, l'écran de code bloque toute l'app
+[1A[2K[2/58] [local] › tests/e2e/access-gate.spec.js:27:1 › un mauvais code est rejeté avec un message d'erreur
+[1A[2K[3/58] [local] › tests/e2e/access-gate.spec.js:39:1 › le bon code déverrouille l'app et pose le jeton de session
+[1A[2K[4/58] [local] › tests/e2e/access-gate.spec.js:48:1 › un jeton falsifié ne déverrouille pas l'app
+[1A[2K[5/58] [local] › tests/e2e/access-gate.spec.js:55:1 › une fois déverrouillé, le rechargement dans le même onglet ne redemande pas le code
+[1A[2K[6/58] [local] › tests/e2e/access-gate.spec.js:65:1 › les deep links / URL internes sont aussi protégés
+[1A[2K[7/58] [local] › tests/e2e/audit-identite-emoji.spec.js:35:3 › Audit identité / isolation / emoji (2026-08-12) › emoji dans une réponse : saisi → stocké → rendu, sans mutation
+[1A[2K[8/58] [local] › tests/e2e/audit-identite-emoji.spec.js:68:3 › Audit identité / isolation / emoji (2026-08-12) › troncature Unicode-sûre : jamais de demi-emoji orphelin à la borne
+[1A[2K[9/58] [local] › tests/e2e/audit-identite-emoji.spec.js:89:3 › Audit identité / isolation / emoji (2026-08-12) › isolation inter-comptes : la déconnexion purge conversations (localStorage + IndexedDB)
+[1A[2K[10/58] [local] › tests/e2e/audit-identite-emoji.spec.js:113:3 › Audit identité / isolation / emoji (2026-08-12) › isolation inter-comptes : AUCUNE clé de compte ne survit, y compris celles ajoutées plus tard
+[1A[2K[11/58] [local] › tests/e2e/confirmation-email.spec.js:67:1 › compte créé sans session : le message de confirmation reste affiché
+[1A[2K[12/58] [local] › tests/e2e/confirmation-email.spec.js:83:1 › e-mail déjà utilisé : l'explication survit au changement d'onglet
+[1A[2K[13/58] [local] › tests/e2e/confirmation-email.spec.js:97:1 › après une inscription à confirmer, le renvoi est proposé et envoie le bon type
+[1A[2K[14/58] [local] › tests/e2e/confirmation-email.spec.js:114:1 › connexion refusée faute de confirmation : le renvoi devient la sortie
+[1A[2K[15/58] [local] › tests/e2e/confirmation-email.spec.js:132:1 › le délai anti-abus de Supabase est traduit, pas recraché en anglais
+[1A[2K[16/58] [local] › tests/e2e/confirmation-email.spec.js:145:1 › le lien de renvoi ne survit pas à un changement d'onglet manuel
+[1A[2K[17/58] [local] › tests/e2e/confirmation-email.spec.js:157:1 › un compte confirmé entre dans l'app : le chemin nominal est intact
+[1A[2K[18/58] [local] › tests/e2e/connexion-compte-existant.spec.js:69:3 › Carte de bienvenue › propose une connexion au compte déjà créé, sans geste préalable
+[1A[2K[19/58] [local] › tests/e2e/connexion-compte-existant.spec.js:88:3 › Carte de bienvenue › « Continuer à explorer » ramène au fil, sans compte créé
+[1A[2K[20/58] [local] › tests/e2e/connexion-compte-existant.spec.js:104:3 › Paramètres → Compte › un visiteur y lit « J'ai déjà un compte » — et pas « Se déconnecter »
+[1A[2K[21/58] [local] › tests/e2e/connexion-compte-existant.spec.js:124:3 › Paramètres → Compte › un compte connecté y lit « Se connecter avec un autre compte »
+[1A[2K[22/58] [local] › tests/e2e/connexion-compte-existant.spec.js:156:3 › Déconnexion › l'intention de reconnexion SURVIT à la purge des clés de compte
+[1A[2K[23/58] [local] › tests/e2e/connexion-compte-existant.spec.js:180:3 › Déconnexion › après la déconnexion, l'écran de connexion s'ouvre — pas le fil invité
+[1A[2K[24/58] [local] › tests/e2e/connexion-compte-existant.spec.js:195:3 › Déconnexion › l'intention consommée ne rouvre pas la connexion au rechargement suivant
+[1A[2K[25/58] [local] › tests/e2e/connexion-compte-existant.spec.js:210:3 › Déconnexion › « Continuer à explorer » depuis cet écran rend un fil INVITÉ complet
+[1A[2K[26/58] [local] › tests/e2e/connexion-compte-existant.spec.js:233:3 › Déconnexion › drapeau coupé : la landing historique reprend la main, pas l'écran d'auth
+[1A[2K[27/58] [local] › tests/e2e/connexion-compte-existant.spec.js:260:3 › Déconnexion › une intention PÉRIMÉE est ignorée : le fil invité, pas un mur de connexion
+[1A[2K[28/58] [local] › tests/e2e/connexion-compte-existant.spec.js:275:3 › Déconnexion › doLogout() SANS argument ne pose aucune intention
+[1A[2K[29/58] [local] › tests/e2e/connexion-compte-existant.spec.js:286:3 › Déconnexion › un signOut qui ÉCHOUE ne laisse pas la session ouverte pour autant
+[1A[2K[30/58] [local] › tests/e2e/connexion-compte-existant.spec.js:300:3 › Déconnexion › purgerJetonAuthLocal ne touche QUE les jetons du SDK
+[1A[2K[31/58] [local] › tests/e2e/connexion-compte-existant.spec.js:323:3 › Déconnexion › le bouton « Se déconnecter » des Paramètres passe bien par la confirmation
+[1A[2K[32/58] [local] › tests/e2e/connexion-compte-existant.spec.js:346:3 › Déconnexion › « Changer de compte » va lui aussi jusqu'à doLogout('signin')
+[1A[2K[33/58] [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js:58:3 › Exploration anonyme puis connexion à un vrai compte › SANS la garde, le beacon posterait l'état de l'exploration sous l'identité du compte
+[1A[2K[34/58] [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js:83:3 › Exploration anonyme puis connexion à un vrai compte › AVEC la garde, plus rien ne part — l'état de l'exploration est purgé
+[1A[2K[35/58] [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js:120:3 › Exploration anonyme puis connexion à un vrai compte › l'identifiant du compte est réécrit aussitôt : pas de boucle de purge
+[1A[2K[36/58] [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js:136:3 › Exploration anonyme puis connexion à un vrai compte › un retour sur SON PROPRE compte ne purge rien
+[1A[2K[37/58] [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js:179:3 › Exploration anonyme puis connexion à un vrai compte › la garde purge même si `passio_uid` a déjà été réécrit par le handler d'auth
+[1A[2K[38/58] [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js:219:3 › Exploration anonyme puis connexion à un vrai compte › une identité DÉCLARÉE délibérément ne purge rien (inscription, session anonyme)
+[1A[2K[39/58] [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js:242:3 › Exploration anonyme puis connexion à un vrai compte › un refus ne laisse aucune trace : ni `passio_uid` touché, ni clé de sonde abandonnée
+[1A[2K[40/58] [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js:268:3 › Exploration anonyme puis connexion à un vrai compte › après une purge, aucune écriture ne part tant que le compte n'a pas été relu
+[1A[2K[41/58] [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js:302:3 › Exploration anonyme puis connexion à un vrai compte › une fois le compte relu, l'appareil réécrit normalement
+[1A[2K[42/58] [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js:322:3 › Exploration anonyme puis connexion à un vrai compte › état d'un AUTRE compte : rien ne part, même sans purge
+[1A[2K[43/58] [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js:350:3 › Exploration anonyme puis connexion à un vrai compte › récupération de mot de passe : l'exigence armée par boot() bloque toute écriture
+[1A[2K[44/58] [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js:388:3 › Exploration anonyme puis connexion à un vrai compte › onbDoAuth branche `signin` : le câblage purge et recharge pour de vrai
+[1A[2K[45/58] [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js:449:3 › Exploration anonyme puis connexion à un vrai compte › onbDoAuth branche `signup` : le câblage déclare la propriété sans purger
+[1A[2K[46/58] [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js:491:3 › Exploration anonyme puis connexion à un vrai compte › chemin SDK réel : l'exigence de restauration bloque l'upsert, et le relâche ensuite
+[1A[2K[47/58] [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js:535:3 › Exploration anonyme puis connexion à un vrai compte › le verdict serveur ignore le profil de remplissage, et lui seul
+[1A[2K[48/58] [local] › tests/e2e/exploration-anonyme-vs-compte.spec.js:567:3 › Exploration anonyme puis connexion à un vrai compte › un identifiant qui n'est pas un uuid ne déclenche jamais de purge
+[1A[2K[49/58] [local] › tests/e2e/gate-sans-app.spec.js:19:1 › gate affiché, application absente : aucune erreur JS, aucun module ne s'emballe
+[1A[2K[50/58] [local] › tests/e2e/gate-sans-app.spec.js:47:1 › la query survit à la fenêtre du gate (piège platform.js du 2026-08-28)
+[1A[2K[51/58] [local] › tests/e2e/gate-sans-app.spec.js:57:1 › après déverrouillage, l'application démarre et le fil s'affiche
+[1A[2K[52/58] [local] › tests/e2e/telemetrie-preauth.spec.js:24:3 › Télémétrie — fenêtre pré-authentification › aucun événement ne part sous une identité fabriquée
+[1A[2K[local] › tests/e2e/telemetrie-preauth.spec.js:24:3 › Télémétrie — fenêtre pré-authentification › aucun événement ne part sous une identité fabriquée
+[tel-preauth] landing affichée, aucune session
+
+[1A[2K[tel-preauth] MY_UID lexical    : u_i25pcx29
+
+[1A[2K[tel-preauth] window.MY_UID     : u_i25pcx29
+
+[1A[2K[tel-preauth] passio_uid stocké : u_i25pcx29
+
+[1A[2K[tel-preauth] session Supabase  : non
+
+[1A[2K[tel-preauth] envois observés   : 18 — statuts : aucun
+
+[1A[2K[tel-preauth]   lot de 7 · user_id=[null] · types=session/action · jwt=session
+
+[1A[2K[tel-preauth]   lot de 9 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 9 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 10 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 10 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 10 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 10 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 10 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 10 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 10 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 11 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 11 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 11 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 11 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 11 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 11 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 11 · user_id=[null] · types=session/action/perf/connectivity · jwt=session
+
+[1A[2K[tel-preauth]   lot de 12 · user_id=[null] · types=session/action/perf/connectivity/lifecycle · jwt=session
+
+[1A[2K[53/58] [local] › tests/e2e/telemetrie-preauth.spec.js:97:3 › Télémétrie — fenêtre pré-authentification › sans forçage, localhost n'écrit RIEN dans la table de production
+[1A[2K[54/58] [local] › tests/e2e/user-passions-miroir.spec.js:82:3 › miroir user_passions › la table absente désarme le miroir, une seule fois, sans bruit
+[1A[2K[55/58] [local] › tests/e2e/user-passions-miroir.spec.js:104:3 › miroir user_passions › un identifiant hors référentiel serveur n'est jamais envoyé
+[1A[2K[56/58] [local] › tests/e2e/user-passions-miroir.spec.js:124:3 › miroir user_passions › l'archivage voyage, et la position aussi
+[1A[2K[57/58] [local] › tests/e2e/user-passions-miroir.spec.js:145:3 › miroir user_passions › ce qui a disparu localement est retiré du miroir
+[1A[2K[58/58] [local] › tests/e2e/user-passions-miroir.spec.js:167:3 › miroir user_passions › aucune écriture ne part sans compte authentifié
+[1A[2K  Slow test file: [local] › tests/e2e/connexion-compte-existant.spec.js (5.3m)
+  Consider running tests from slow files in parallel. See: https://playwright.dev/docs/test-parallel
+  58 passed (16.6m)
+EXIT=0

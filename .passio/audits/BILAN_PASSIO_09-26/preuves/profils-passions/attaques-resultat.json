@@ -1,0 +1,61 @@
+{
+  "A_plafond_console": {
+    "vivantes": 13,
+    "plafondAtteint": true,
+    "publiees_profiles_passions": 13,
+    "publiees_user_state": 13,
+    "identite_texte_me": "Musique · Sport · Cuisine · +10",
+    "rail_profil": 13,
+    "resume": "13 passions actives sur 3"
+  },
+  "B_double_restore": {
+    "r1": true,
+    "r2": true,
+    "entrees_avant": 1,
+    "entrees_apres": 3,
+    "restores": 2,
+    "archives_facturees": 1,
+    "restants": 2
+  },
+  "C_studio_brouillon": {
+    "autre": "sport",
+    "current_apres": "sport",
+    "texte_apres": "brouillon audit",
+    "select_apres": "sport"
+  },
+  "D_select_perime": {
+    "archivage_ok": true,
+    "archivee": "sport",
+    "optionsApres": [
+      "musique",
+      "sport",
+      "cuisine"
+    ],
+    "encoreProposee": true,
+    "publie": {
+      "passion": "sport",
+      "profileId": "pp_1",
+      "profil_archive": true
+    }
+  },
+  "E_xss_libelle": {
+    "contient_img_brut": false,
+    "texte": "<img src=x onerror=window.__xss=1>",
+    "xss_declenche": false
+  },
+  "F_visiteur": {
+    "comptePassioReel": false,
+    "quotaActif": false,
+    "acceptees": 3,
+    "vivantes": 1,
+    "archivagesLibres": 2,
+    "restants": null
+  },
+  "G_illimite": {
+    "acceptees": 8,
+    "vivantes": 8,
+    "publiees_profiles_passions": 8,
+    "plafondActif_apres_coupure": true
+  },
+  "erreurs_js": []
+}

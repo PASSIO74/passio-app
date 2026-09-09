@@ -1,0 +1,2 @@
+FATAL browser.newContext: Target page, context or browser has been closed
+    at async /tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/appareils-a11y/matrice.js:367:19

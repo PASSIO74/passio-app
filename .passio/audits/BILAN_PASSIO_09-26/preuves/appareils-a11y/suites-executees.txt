@@ -1,0 +1,54 @@
+
+Running 43 tests using 1 worker
+
+[1A[2K[1/43] [local] › tests/e2e/cadrage.spec.js:20:3 › iPhone SE : la barre d'onglets tient entièrement dans le viewport
+[1A[2K[2/43] [local] › tests/e2e/cadrage.spec.js:20:3 › Android compact : la barre d'onglets tient entièrement dans le viewport
+[1A[2K[3/43] [local] › tests/e2e/cadrage.spec.js:20:3 › grand mobile : la barre d'onglets tient entièrement dans le viewport
+[1A[2K[4/43] [local] › tests/e2e/cadrage.spec.js:50:1 › un viewport qui rétrécit après le chargement est rattrapé
+[1A[2K[5/43] [local] › tests/e2e/cadrage.spec.js:68:1 › la safe-area du bas s'AJOUTE à la barre au lieu de rogner les icônes
+[1A[2K[6/43] [local] › tests/e2e/cases-violet-leger.spec.js:33:3 › Cases violet léger — Créer et Filtre parlent la même langue › feuille « Créer » : lavis violet, écriture violet foncé
+[1A[2K[7/43] [local] › tests/e2e/cases-violet-leger.spec.js:63:3 › Cases violet léger — Créer et Filtre parlent la même langue › page Filtre de Rencontrer : lavis au repos, violet plein une fois coché
+[1A[2K[8/43] [local] › tests/e2e/entete-fil-permanent.spec.js:70:1 › descendre puis remonter laisse les passions, les moods et les stories affichés
+[1A[2K[9/43] [local] › tests/e2e/entete-fil-permanent.spec.js:102:1 › aucune classe ni transition de repli, même sur une machine lente
+[1A[2K[10/43] [local] › tests/e2e/ios-navigation-et-zoom.spec.js:34:3 › iPhone — navigation, historique et saisie › un pushState qui LÈVE n'empêche pas le changement d'écran
+[1A[2K[11/43] [local] › tests/e2e/ios-navigation-et-zoom.spec.js:63:3 › iPhone — navigation, historique et saisie › les écritures d'historique sont bornées sous le plafond WebKit
+[1A[2K[12/43] [local] › tests/e2e/ios-navigation-et-zoom.spec.js:93:3 › iPhone — navigation, historique et saisie › quatre modales ouvertes et refermées au doigt ne coûtent AUCUN retour
+[1A[2K[13/43] [local] › tests/e2e/ios-navigation-et-zoom.spec.js:116:3 › iPhone — navigation, historique et saisie › le retour matériel ferme la modale, puis ramène à l'écran précédent
+[1A[2K[14/43] [local] › tests/e2e/ios-navigation-et-zoom.spec.js:138:3 › iPhone — navigation, historique et saisie › remplacer une modale par une autre n'empile pas d'entrée
+[1A[2K[15/43] [local] › tests/e2e/ios-navigation-et-zoom.spec.js:189:5 › iPhone — navigation, historique et saisie › closeCurrentOverlay ferme editeur média (#mediaEditor)
+[1A[2K[16/43] [local] › tests/e2e/ios-navigation-et-zoom.spec.js:189:5 › iPhone — navigation, historique et saisie › closeCurrentOverlay ferme conversation (#conv-fullpage)
+[1A[2K[17/43] [local] › tests/e2e/ios-navigation-et-zoom.spec.js:189:5 › iPhone — navigation, historique et saisie › closeCurrentOverlay ferme fiche activité (#eventDetailPage)
+[1A[2K[18/43] [local] › tests/e2e/ios-navigation-et-zoom.spec.js:189:5 › iPhone — navigation, historique et saisie › closeCurrentOverlay ferme page publication (#postDetailPage)
+[1A[2K[19/43] [local] › tests/e2e/ios-navigation-et-zoom.spec.js:213:3 › iPhone — navigation, historique et saisie › le retour referme la page publication au lieu de changer d'écran
+[1A[2K[20/43] [local] › tests/e2e/ios-navigation-et-zoom.spec.js:246:3 › iPhone — navigation, historique et saisie › aucun champ de saisie n'est sous 16 px
+[1A[2K[21/43] [local] › tests/e2e/ios-navigation-et-zoom.spec.js:267:3 › iPhone — navigation, historique et saisie › les champs de connexion sont à 16 px au moins
+[1A[2K[22/43] [local] › tests/e2e/ios-navigation-et-zoom.spec.js:278:3 › iPhone — navigation, historique et saisie › le zoom volontaire reste autorisé
+[1A[2K[23/43] [local] › tests/e2e/ios-navigation-et-zoom.spec.js:292:3 › iPhone — navigation, historique et saisie › le défilement ne revient qu'au dernier overlay fermé
+[1A[2K[24/43] [local] › tests/e2e/ios-zones-sures.spec.js:70:5 › iPhone — zones sûres des panneaux plein écran › .event-detail-back évite l'encoche (« ← Retour » et « Partager » d'une activité)
+[1A[2K[25/43] [local] › tests/e2e/ios-zones-sures.spec.js:70:5 › iPhone — zones sûres des panneaux plein écran › .story-progress-row évite l'encoche (barre de progression des stories)
+[1A[2K[26/43] [local] › tests/e2e/ios-zones-sures.spec.js:70:5 › iPhone — zones sûres des panneaux plein écran › .story-viewer-header évite l'encoche (la croix qui ferme une story)
+[1A[2K[27/43] [local] › tests/e2e/ios-zones-sures.spec.js:70:5 › iPhone — zones sûres des panneaux plein écran › .reels-header évite l'encoche (la croix qui ferme le viewer Bobines)
+[1A[2K[28/43] [local] › tests/e2e/ios-zones-sures.spec.js:70:5 › iPhone — zones sûres des panneaux plein écran › .reel-sound-btn évite l'encoche (coupure du son d'une bobine)
+[1A[2K[29/43] [local] › tests/e2e/ios-zones-sures.spec.js:70:5 › iPhone — zones sûres des panneaux plein écran › .reel-tag-mood évite l'encoche (étiquette d'humeur d'une bobine)
+[1A[2K[30/43] [local] › tests/e2e/ios-zones-sures.spec.js:77:5 › iPhone — zones sûres des panneaux plein écran › .story-sound-btn évite la barre d'accueil (son d'une story)
+[1A[2K[31/43] [local] › tests/e2e/ios-zones-sures.spec.js:77:5 › iPhone — zones sûres des panneaux plein écran › .reel-info évite la barre d'accueil (auteur et légende d'une bobine)
+[1A[2K[32/43] [local] › tests/e2e/ios-zones-sures.spec.js:77:5 › iPhone — zones sûres des panneaux plein écran › .reel-actions évite la barre d'accueil (J'aime / Commenter / Partager d'une bobine)
+[1A[2K[33/43] [local] › tests/e2e/ios-zones-sures.spec.js:77:5 › iPhone — zones sûres des panneaux plein écran › .reels-hint évite la barre d'accueil (indice de défilement des Bobines)
+[1A[2K[34/43] [local] › tests/e2e/ios-zones-sures.spec.js:77:5 › iPhone — zones sûres des panneaux plein écran › .reel-comments-panel évite la barre d'accueil (saisie des commentaires d'une bobine)
+[1A[2K[35/43] [local] › tests/e2e/ios-zones-sures.spec.js:87:3 › iPhone — zones sûres des panneaux plein écran › .irl-map-expand n'ajoute l'inset QUE en plein écran
+[1A[2K[36/43] [local] › tests/e2e/ios-zones-sures.spec.js:96:3 › iPhone — zones sûres des panneaux plein écran › l'en-tête de #postDetailPage évite l'encoche
+[1A[2K[37/43] [local] › tests/e2e/ios-zones-sures.spec.js:107:3 › iPhone — zones sûres des panneaux plein écran › .app-shell garde ses retraits de zone sûre
+[1A[2K[38/43] [local] › tests/e2e/ios-zones-sures.spec.js:118:3 › iPhone — zones sûres des panneaux plein écran › aucun panneau plein écran n'a été ajouté sans arbitrage
+[1A[2K[39/43] [local] › tests/e2e/perf-ios.spec.js:42:3 › PERF-IOS — instrumentation phase 1 › le module se charge, sans erreur JS et sans global parasite
+[1A[2K[40/43] [local] › tests/e2e/perf-ios.spec.js:69:3 › PERF-IOS — instrumentation phase 1 › les percentiles sont exacts (p50/p95/p99 sur une série connue)
+[1A[2K[41/43] [local] › tests/e2e/perf-ios.spec.js:96:3 › PERF-IOS — instrumentation phase 1 › le rapport déclare ce que l'appareil ne sait pas mesurer
+[1A[2K[local] › tests/e2e/perf-ios.spec.js:96:3 › PERF-IOS — instrumentation phase 1 › le rapport déclare ce que l'appareil ne sait pas mesurer
+[perf-ios] support = {"longtask":true,"event_timing":true,"mark":true,"memory":true,"idle":true} contexte = {"dom_nodes":1403,"feed_posts":0,"medias":5,"heap_mb":10,"net":"4g","dev_mem":8,"cpu":4}
+
+[1A[2K[42/43] [local] › tests/e2e/perf-ios.spec.js:114:3 › PERF-IOS — instrumentation phase 1 › la baseline atteint le centre de pilotage avec ses percentiles
+[1A[2K[local] › tests/e2e/perf-ios.spec.js:114:3 › PERF-IOS — instrumentation phase 1 › la baseline atteint le centre de pilotage avec ses percentiles
+[perf-ios] 13 ligne(s), dont 5 événement(s) perf ios_
+
+[1A[2K[43/43] [local] › tests/e2e/perf-ios.spec.js:150:3 › PERF-IOS — instrumentation phase 1 › sans télémétrie, la mesure locale continue et rien n'est envoyé
+[1A[2K  43 passed (7.3m)
+EXIT=0

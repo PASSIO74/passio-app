@@ -1,0 +1,93 @@
+[1A[2K[2m[WebServer] [22m(node:22263) [DEP0066] DeprecationWarning: OutgoingMessage.prototype._headers is deprecated
+[2m[WebServer] [22m(Use `node --trace-deprecation ...` to show where the warning was created)
+
+
+Running 15 tests using 1 worker
+
+[1A[2K[1/15] [local] › tests/e2e/ui-v5-bobines.spec.js:92:3 › UI-5 — Bobines connectées au réel › URL normale : les quatre actions de la direction, dans l'ordre
+[1A[2K[2/15] [local] › tests/e2e/ui-v5-bobines.spec.js:121:3 › UI-5 — Bobines connectées au réel › bobine reliée à une activité : le seul lien « Voir l'activité »
+[1A[2K[3/15] [local] › tests/e2e/ui-v5-bobines.spec.js:138:3 › UI-5 — Bobines connectées au réel › une bobine sans Passio reconnue garde sa mise en page d'avant
+[1A[2K[4/15] [local] › tests/e2e/ui-v5-bobines.spec.js:165:3 › UI-5 — Bobines connectées au réel › « Ça m'intéresse » : signal réel, persisté, réversible, et il pèse
+[1A[2K[5/15] [local] › tests/e2e/ui-v5-bobines.spec.js:197:3 › UI-5 — Bobines connectées au réel › le signal survit à un rechargement
+[1A[2K[6/15] [local] › tests/e2e/ui-v5-bobines.spec.js:208:3 › UI-5 — Bobines connectées au réel › les trois sorties appellent les moteurs d'UI-3A, viewer fermé d'abord
+[1A[2K[7/15] [local] › tests/e2e/ui-v5-bobines.spec.js:244:3 › UI-5 — Bobines connectées au réel › « Voir l'activité » passe par openActivity d'UI-3B, viewer fermé
+[1A[2K[8/15] [local] › tests/e2e/ui-v5-bobines.spec.js:261:3 › UI-5 — Bobines connectées au réel › « À vivre près de moi » ne demande jamais la position
+[1A[2K[9/15] [local] › tests/e2e/ui-v5-bobines.spec.js:275:3 › UI-5 — Bobines connectées au réel › kill switch local au boot : viewer historique, rien du lot
+[1A[2K  1) [local] › tests/e2e/ui-v5-bobines.spec.js:275:3 › UI-5 — Bobines connectées au réel › kill switch local au boot : viewer historique, rien du lot 
+
+    Error: page.goto: Target page, context or browser has been closed
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8102/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/ui-v5-bobines.spec.js:60:3)
+        at /home/user/passio-app/tests/e2e/ui-v5-bobines.spec.js:277:5
+
+    Error Context: test-results/ui-v5-bobines-UI-5-—-Bobin-bafd3-ewer-historique-rien-du-lot-local/error-context.md
+
+
+[1A[2K[10/15] [local] › tests/e2e/ui-v5-bobines.spec.js:303:3 › UI-5 — Bobines connectées au réel › kill switch mémoire en cours de session : retour sans rechargement
+[1A[2K  2) [local] › tests/e2e/ui-v5-bobines.spec.js:303:3 › UI-5 — Bobines connectées au réel › kill switch mémoire en cours de session : retour sans rechargement 
+
+    Error: page.goto: Target page, context or browser has been closed
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8102/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/ui-v5-bobines.spec.js:60:3)
+        at /home/user/passio-app/tests/e2e/ui-v5-bobines.spec.js:304:5
+
+    Error Context: test-results/ui-v5-bobines-UI-5-—-Bobin-9f93b-on-retour-sans-rechargement-local/error-context.md
+
+
+[1A[2K[11/15] [local] › tests/e2e/ui-v5-bobines.spec.js:319:3 › UI-5 — Bobines connectées au réel › la décoration survit à une réouverture du viewer
+[1A[2K[12/15] [local] › tests/e2e/ui-v5-bobines.spec.js:329:3 › UI-5 — Bobines connectées au réel › contenu de démonstration : des bobines sont reliées à une activité
+[1A[2K[13/15] [local] › tests/e2e/ui-v5-bobines.spec.js:358:5 › UI-5 — Bobines connectées au réel › mobile 320 px : aucun débordement, cibles ≥ 44 px
+[1A[2K[14/15] [local] › tests/e2e/ui-v5-bobines.spec.js:358:5 › UI-5 — Bobines connectées au réel › mobile 390 px : aucun débordement, cibles ≥ 44 px
+[1A[2K  3) [local] › tests/e2e/ui-v5-bobines.spec.js:358:5 › UI-5 — Bobines connectées au réel › mobile 390 px : aucun débordement, cibles ≥ 44 px 
+
+    Error: page.waitForTimeout: Target page, context or browser has been closed
+
+       at app-helper.js:126
+
+      124 |     return el && el.classList.contains("active");
+      125 |   }, null, { timeout: 20000 });
+    > 126 |   await page.waitForTimeout(2500); // initApp (emoji-misc) + boot async
+          |              ^
+      127 |   // Fermer la landing (affichée sans session Supabase en test offline ; en prod
+      128 |   // un utilisateur onboardé a une session anonyme persistante → pas de landing).
+      129 |   // Et neutraliser les écritures Supabase pour garder la prod propre.
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:126:14)
+        at boot (/home/user/passio-app/tests/e2e/ui-v5-bobines.spec.js:60:3)
+        at /home/user/passio-app/tests/e2e/ui-v5-bobines.spec.js:360:7
+
+    Error Context: test-results/ui-v5-bobines-UI-5-—-Bobin-d429b--débordement-cibles-≥-44-px-local/error-context.md
+
+
+[1A[2K[15/15] [local] › tests/e2e/ui-v5-bobines.spec.js:358:5 › UI-5 — Bobines connectées au réel › mobile 430 px : aucun débordement, cibles ≥ 44 px
+[1A[2K  3 failed
+    [local] › tests/e2e/ui-v5-bobines.spec.js:275:3 › UI-5 — Bobines connectées au réel › kill switch local au boot : viewer historique, rien du lot 
+    [local] › tests/e2e/ui-v5-bobines.spec.js:303:3 › UI-5 — Bobines connectées au réel › kill switch mémoire en cours de session : retour sans rechargement 
+    [local] › tests/e2e/ui-v5-bobines.spec.js:358:5 › UI-5 — Bobines connectées au réel › mobile 390 px : aucun débordement, cibles ≥ 44 px 
+  12 passed (4.0m)
+EXIT=1
