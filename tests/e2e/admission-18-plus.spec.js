@@ -173,7 +173,12 @@ test.describe("Admission 18+ — la porte côté client", () => {
     // déclarée ferait croire qu'une autre réponse changerait quelque chose.
     await expect(page.locator("#admissionAnnee")).toHaveCount(0);
     // Et elle dit ce qui reste ouvert, plutôt que de claquer la porte.
-    await expect(page.locator("#modalBackdrop.active")).toContainText("reste ouvert");
+    // ⚠️ Ce verrou exigeait « reste ouvert » — la phrase qui promettait le fil et
+    // les messages à un mineur. PASSIO est réservé aux majeurs depuis le
+    // 2026-09-09 : elle est partie avec la règle qu'elle décrivait, et le refus
+    // doit maintenant dire que le COMPTE ne peut pas être maintenu.
+    await expect(page.locator("#modalBackdrop.active")).toContainText(/18 ans et plus/);
+    await expect(page.locator("#modalBackdrop.active")).not.toContainText(/reste ouvert/);
   });
 
   test("année jamais déclarée : la porte la demande, l'enregistre, et l'action passe", async ({ page }) => {
@@ -223,7 +228,7 @@ test.describe("Admission 18+ — la porte côté client", () => {
     expect(r.envoyee).toBe(1);
   });
 
-  test("moins de 13 ans : refusé à la saisie, rien n'est envoyé", async ({ page }) => {
+  test("année manifestement erronée (moins de 13 ans) : refusée à la saisie, rien n'est envoyé", async ({ page }) => {
     await bootOnboarded(page);
     await installerAdmission(page, "undeclared");
     await sansAnnee(page);
