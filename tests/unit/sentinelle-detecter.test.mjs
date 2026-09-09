@@ -3,7 +3,7 @@
 // production le 2026-09-09.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { classer, empreinte, estDuBruit } from "../../scripts/sentinelle-detecter.mjs";
+import { classer, empreinte, estDuBruit, classerApi, estDuBruitApi, libelleApi } from "../../scripts/sentinelle-detecter.mjs";
 
 test("« Script error. » est écarté : le navigateur refuse d'en dire plus", () => {
   // Observé en production. Une erreur d'un script d'une AUTRE origine est
@@ -85,4 +85,82 @@ test("aucune erreur → aucune cible, et ce n'est PAS une preuve de santé", () 
   assert.deepEqual(candidates, []);
   // Le commentaire en tête du script porte l'avertissement ; ce cas existe
   // pour que personne ne transforme « liste vide » en « tout va bien ».
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SECONDE FAMILLE — les appels réseau refusés (2026-09-09)
+// ═══════════════════════════════════════════════════════════════════════════
+
+test("le refus d'envoi de message mesuré en prod devient une cause", () => {
+  // ⚠️ DONNÉES RÉELLES du 2026-09-09 : 798 refus HTTP 403 sur POST
+  // /rest/v1/conv_messages, 2 comptes, 6 jours — pour QUATRE messages
+  // réellement partis. Zéro ligne dans `client_errors` : le SDK Supabase
+  // NE LÈVE PAS sur un refus. C'est le cas qui justifie cette famille.
+  const lignes = Array.from({ length: 20 }, (_, i) => ({
+    endpoint: "njkiyoklssvefstljemx.supabase.co/rest/v1/conv_messages",
+    http_status: 403,
+    action: "POST njkiyoklssvefstljemx.supabase.co/conv_messages",
+    user_id: i % 2 ? "u1" : "u2",
+    received_at: "2026-09-09T18:32:18Z",
+  }));
+  const { candidates } = classerApi(lignes);
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].n, 20);
+  assert.equal(candidates[0].comptes, 2);
+  assert.equal(candidates[0].code, 403);
+  assert.equal(candidates[0].chemin, "/rest/v1/conv_messages");
+  assert.match(candidates[0].message, /HTTP 403/);
+  assert.match(candidates[0].message, /RLS/);
+});
+
+test("un appel qui n'a jamais atteint le serveur (statut 0) est du BRUIT", () => {
+  // Hors ligne, onglet fermé, requête annulée : ça parle de la connexion de
+  // l'appareil, pas de notre code. Mesuré 24 fois sur /posts en production.
+  assert.equal(estDuBruitApi({ endpoint: "x/rest/v1/posts", http_status: 0 }), true);
+  assert.equal(estDuBruitApi({ endpoint: "x/rest/v1/posts", http_status: null }), true);
+  const { candidates, ecartees } = classerApi(
+    Array.from({ length: 30 }, () => ({ endpoint: "x/rest/v1/posts", http_status: 0, action: "GET x", user_id: "u1", received_at: "2026-09-09T00:00:00Z" })));
+  assert.equal(ecartees, 30);
+  assert.deepEqual(candidates, []);
+});
+
+test("un mot de passe faux n'est pas un défaut du produit", () => {
+  // 4xx sur /auth/v1/token = identifiants refusés. Le produit fonctionne,
+  // c'est la personne qui s'est trompée : le compter noierait le vrai signal.
+  assert.equal(estDuBruitApi({ endpoint: "x/auth/v1/token", http_status: 400 }), true);
+  // ⚠️ Mais un 500 sur la même route EST un défaut : la garde ne vise que 4xx.
+  assert.equal(estDuBruitApi({ endpoint: "x/auth/v1/token", http_status: 500 }), false);
+});
+
+test("le tri met les comptes AVANT le volume, comme la famille JS", () => {
+  // 200 refus sur un seul compte = souvent un appareil ; 6 sur 3 comptes = le
+  // produit. Trier par volume ferait travailler la sentinelle sur le mauvais.
+  const beaucoupUnSeul = Array.from({ length: 200 }, () => ({
+    endpoint: "x/rest/v1/story_views", http_status: 401, action: "POST x/story_views",
+    user_id: "solo", received_at: "2026-09-09T00:00:00Z" }));
+  const peuPlusieurs = ["a", "b", "c"].flatMap((u) => [0, 1].map(() => ({
+    endpoint: "x/rest/v1/profiles", http_status: 409, action: "POST x/profiles",
+    user_id: u, received_at: "2026-09-09T01:00:00Z" })));
+  const { candidates } = classerApi([...beaucoupUnSeul, ...peuPlusieurs]);
+  assert.equal(candidates[0].chemin, "/rest/v1/profiles", "3 comptes passent devant 200 occurrences");
+  assert.equal(candidates[0].comptes, 3);
+});
+
+test("le contexte remplace la pile d'appel ABSENTE, et dit la limite", () => {
+  // Aucune erreur JS n'a été levée : sans ce texte, l'enquête n'a RIEN pour
+  // établir une cause. Il doit aussi dire qu'une cause serveur est hors
+  // périmètre — sinon le canal tenterait une migration qu'il n'a pas le droit
+  // d'écrire, et rendrait un correctif faux plutôt que rien.
+  const { candidates } = classerApi(Array.from({ length: 6 }, () => ({
+    endpoint: "x/rest/v1/push_subscriptions", http_status: 403,
+    action: "POST x/push_subscriptions", user_id: "u1", received_at: "2026-09-09T00:00:00Z" })));
+  const stack = candidates[0].exemple.stack;
+  assert.match(stack, /n'a été levée/, "le texte dit POURQUOI il n'y a pas de pile");
+  assert.match(stack, /\{ error \}/);
+  assert.match(stack, /hors|HORS/i);
+});
+
+test("un code inconnu reste nommable, sans inventer de cause", () => {
+  assert.equal(libelleApi("POST", "/x", 418), "HTTP 418 sur POST /x : en échec");
+  assert.match(libelleApi("GET", "/y", 404), /introuvable/);
 });
