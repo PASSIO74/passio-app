@@ -125,7 +125,9 @@ Verrou : `tests/e2e/notification-message.spec.js` (12), dont ④ bis qui RÉINJE
 
 **② La clé `service_role` change.** `sentinelle-detecter.mjs` sort en `exit 2` au lieu de rendre un verdict vide. **BRUYANT**, même raison.
 
-**③ GitHub DÉSACTIVE les workflows `schedule` après 60 jours sans activité dans le dépôt.** Aucune erreur, aucun e-mail : les exécutions cessent, simplement. **SILENCIEUX, et c'est le plus dangereux** — le symptôme est identique à « tout va bien ». Le contrôle ne peut pas venir de l'intérieur : un workflow qui ne tourne plus ne peut pas s'en plaindre. Se vérifier dans Actions : la dernière exécution `schedule` de `sentinelle-autonome.yml` doit dater de moins de 2 h.
+**③ GitHub DÉSACTIVE les workflows `schedule` après 60 jours sans activité dans le dépôt.** Aucune erreur, aucun e-mail : les exécutions cessent, simplement. **SILENCIEUX, et c'est le plus dangereux** — le symptôme est identique à « tout va bien ». Le contrôle ne peut pas venir de l'intérieur : un workflow qui ne tourne plus ne peut pas s'en plaindre.
+
+⚠️ **« TOUTES LES HEURES » N'EST PAS TENU PAR GITHUB, ET LE SEUIL DE 2 h ÉCRIT ICI ÉTAIT FAUX.** Mesuré le 2026-09-09 sur `sentinelle-distante.yml`, même cron horaire, en place depuis le 2026-08-21 : **456 créneaux demandés, 188 exécutions réelles** (41 %), avec des écarts observés de **4 h à 5 h** — 09h48, 14h37, 18h38 le même jour — et **jamais à la minute demandée**. Un `cron` est une DEMANDE que GitHub sert quand il a de la place, et il abandonne purement le créneau sous charge. Le seuil de contrôle est donc **« moins de 6 h »**, jamais 2 h : à 2 h l'alerte se déclencherait plusieurs fois par jour sur un canal parfaitement sain, et **une alarme qui crie à tort finit par ne plus être lue** — elle aurait remplacé une panne silencieuse par une panne ignorée. Corollaire à ne pas oublier : **un défaut n'est PAS relevé dans l'heure**, il l'est dans la demi-journée.
 
 ### ⚠️ ET L'ANGLE MORT, QUI LUI NE MOURRA JAMAIS
 
