@@ -103,7 +103,18 @@ jobs:
             fi
           fi
 
-          files="$(gh pr diff "${pr}" --repo "${GITHUB_REPOSITORY}" --name-only)"
+          # ⚠️ JAMAIS `gh pr diff` : au-dela de 300 fichiers l'API rend un
+          # HTTP 406 (« diff exceeded the maximum number of files ») et, avec
+          # `set -e`, la garde MEURT au lieu de refuser — un « je n'ai pas pu
+          # regarder » indiscernable d'un « rien de critique ». Mesure du
+          # 2026-09-09 sur la PR #290 (470 fichiers). L'API « List pull request
+          # files » n'a pas ce plafond : elle pagine, et c'est ce que le message
+          # d'erreur de GitHub recommande lui-meme.
+          files="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${pr}/files" --jq '.[].filename')"
+          if [ -z "${files}" ]; then
+            echo "::error title=Perimetre illisible::La liste des fichiers de la PR #${pr} est vide ou n'a pas pu etre lue. La garde refuse plutot que de supposer un perimetre non critique."
+            exit 1
+          fi
           critical=false
           while IFS= read -r file; do
             case "${file}" in
