@@ -121,7 +121,11 @@ pas seulement la visibilité).
 
 Les CGU ne décrivent que ce que le produit fait **réellement** :
 
-- **13 ans minimum** — appliqué par `onbValidateAge` (app-02).
+- **18 ans minimum — PASSIO est réservé aux MAJEURS** (2026-09-09) — appliqué par `onbValidateAge` (app-02)
+  et `admissionValiderAnnee` (app-07). ⚠️ **L'âge est DÉCLARATIF** : rien ne le vérifie, et les CGU le
+  disent en toutes lettres plutôt que de laisser croire à un contrôle. La seule barrière SERVEUR de
+  majorité est la RLS de l'IRL (`irl_adult_only`) ; le fil, les messages et les publications n'en ont
+  aucune — « réservé aux majeurs » y est une règle CONTRACTUELLE, pas une garde technique.
 - **Majorité pour les rencontres en vrai** — appliqué par `requireAdmission`
   (app-07), lot du 2026-09-08.
 - **Signalement et blocage depuis l'application** — `reportUser` / `blockUser`

@@ -123,7 +123,10 @@ test("③ inscription acceptée une fois la case cochée", async ({ page }) => {
   // des CGU rendrait « a accepté » inexploitable.
   const cgu = await page.evaluate(() => (state && state.user && state.user.cgu) || null);
   expect(cgu).not.toBeNull();
-  expect(cgu.version).toBe("2026-09-08");
+  // ⚠️ La version SUIT le texte : les CGU du 2026-09-09 passent l'app aux
+  // MAJEURS et ajoutent les clauses de beta. Un accord donné sur la version
+  // précédente ne vaut pas pour celle-ci — c'est tout l'objet du champ.
+  expect(cgu.version).toBe("2026-09-09");
   expect(typeof cgu.acceptedAt).toBe("string");
   expect(cgu.acceptedAt.length).toBeGreaterThan(10);
 });
@@ -179,8 +182,30 @@ test("⑦ les CGU couvrent les engagements que le produit prend vraiment", async
 
   // L'âge minimum, et la majorité pour les rencontres en vrai — les deux portes
   // que le code applique réellement (onbValidateAge, requireAdmission).
-  expect(texte).toContain("13 ans");
+  // ⚠️ Depuis le 2026-09-09 PASSIO est réservé aux MAJEURS : le texte ne doit
+  // plus jamais annoncer 13 ans, sous peine de contredire `onbValidateAge`.
+  expect(texte).toContain("18 ans");
+  expect(texte).not.toMatch(/13 ans/);
   expect(texte).toMatch(/majeur/i);
+
+  // ── Les protections du lancement, verrouillées une par une ──
+  // Sans ces assertions, n'importe quelle réécriture des CGU pourrait retirer
+  // en silence ce qui protège l'éditeur au moment où il ouvre à de vrais
+  // utilisateurs : une clause supprimée ne casse aucun autre test.
+  expect(texte).toMatch(/beta/i);                         // le service est dit expérimental
+  expect(texte).toMatch(/EN L’ÉTAT|EN L'ÉTAT/);           // fourni sans garantie
+  expect(texte).toMatch(/sans garantie/i);
+  expect(texte).toMatch(/perdus|perte/i);                 // les données peuvent disparaître
+  expect(texte).toMatch(/aucune vérification|n’est vérifié|n'est vérifié/i);
+  expect(texte).toMatch(/risques et périls/i);            // les rencontres
+  expect(texte).toMatch(/seul responsable/i);             // §11 Ta responsabilité
+  expect(texte).toMatch(/garantis l’éditeur|garantis l'éditeur/i);
+  expect(texte).toMatch(/obligation de moyens/i);
+  // ⚠️ La réserve d'ordre public est ce qui rend la limitation OPPOSABLE :
+  // une clause qui exonère de TOUT est réputée non écrite et peut faire tomber
+  // l'article entier. Elle ne doit jamais être « nettoyée » comme une redite.
+  expect(texte).toMatch(/ne peut légalement l’être|ne peut légalement l'être/i);
+  expect(texte).toMatch(/dommage corporel/i);
   // Ce qu'un membre doit pouvoir opposer au service, et l'inverse.
   expect(texte).toMatch(/signal/i);          // signalement / modération
   expect(texte).toMatch(/supprimer ton compte/i);

@@ -5090,8 +5090,8 @@ function admissionRefusHTML() {
   return ''
     + '<div class="modal-handle"></div>'
     + '<div class="modal-title">Réservé aux majeurs</div>'
-    + '<div class="modal-subtitle">Les rencontres en vrai sont réservées aux personnes de 18 ans et plus. '
-    + 'Le reste de PASSIO — le fil, les passions, les messages — te reste ouvert.</div>'
+    + '<div class="modal-subtitle">PASSIO est réservé aux personnes de 18 ans et plus. '
+    + 'D\'après l\'année que tu as déclarée, tu n\'as pas encore l\'âge requis : ton compte ne peut pas être maintenu.</div>'
     + '<div class="onb-footer"><button type="button" class="btn ghost block" onclick="closeModal()">J\'ai compris</button></div>';
 }
 
@@ -5101,7 +5101,11 @@ async function admissionValiderAnnee(ctx) {
   var an = parseInt(champ ? champ.value : "", 10);
   var courante = new Date().getFullYear();
   if (!an || an < 1900 || an > courante) { toast("Année invalide", "info"); return false; }
-  if (courante - an < 13) { toast("PASSIO est réservé aux 13 ans et plus.", "info"); return false; }
+  // ⚠️ NE PAS remonter ce seuil à 18 : entre 13 et 17 ans, la déclaration doit
+  // PARTIR au serveur pour y être enregistrée — c'est elle qui rend le refus
+  // durable. Refuser localement ne garde RIEN, donc la personne ressaisit une
+  // autre année et passe. Ici on n'écarte qu'une saisie manifestement erronée.
+  if (courante - an < 13) { toast("Vérifie ton année de naissance.", "info"); return false; }
 
   try {
     state.user.birthYear = an;
