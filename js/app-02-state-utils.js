@@ -68,8 +68,10 @@ function defaultState() {
     deletedPostIds: [],
     currentMood: "all",
     // ── SÉLECTIONS DU FIL (refonte multi-passion) ──────────────────────────
-    // Trois familles de critères, toutes ADDITIVES entre elles (OU inclusif) :
-    // « Suivis », les passions, les envies du moment. Voir `feedSourcesSelected`.
+    // DEUX familles de SOURCES, additives entre elles (OU inclusif) : « Suivis »
+    // et les passions. Les envies du moment, elles, ne sont PAS une source —
+    // elles FILTRENT ce que ces deux-là ont apporté (amendement d'ADR-011 §1,
+    // 2026-09-09). Voir le bloc « SÉLECTION DU FIL » de `renderFeed`.
     feedFollowingOn: true,    // « Suivis » est-il coché ? (remplace state.feedView)
     feedView: "accueil",      // LEGACY, lu une fois pour migrer vers feedFollowingOn
     selectedFeedPassions: [], // passion IDs actifs dans le fil
@@ -5042,6 +5044,22 @@ function feedIntentsEnabled() {
 // cocher revient à tout décocher.
 var FEED_INTENT_SOURCES = ["discover", "learn", "create", "meet"];
 
+// Les libellés des quatre envies, en UN SEUL endroit. Ils sont écrits en dur
+// dans `index.html` (les boutons `.feed-intent-btn`), et le fil a besoin de les
+// NOMMER quand une envie vide l'écran (« Rien en « Apprendre » ») : sans table,
+// on aurait recopié les mots, et deux copies finissent toujours par diverger.
+// Verrou : `feed-envie-filtre.spec.js` ⑦ compare cette table aux boutons rendus.
+var PASSIO_FEED_INTENT_LABELS = {
+  discover: "Explorer",
+  learn: "Apprendre",
+  create: "Idées",
+  meet: "Rencontrer",
+};
+
+function feedIntentLabel(intent) {
+  return PASSIO_FEED_INTENT_LABELS[intent] || "";
+}
+
 function normalizeFeedIntent(intent) {
   return ["for_you", "discover", "learn", "create", "meet"].indexOf(intent) > -1
     ? intent : "for_you";
@@ -5076,8 +5094,18 @@ function setFeedIntents(liste) {
   return propres;
 }
 
-// Un post satisfait-il l'envie `intent` ? Utilisé comme CRITÈRE D'ENTRÉE dans le
-// fil (union), pas seulement comme bonus de classement.
+// Un post satisfait-il l'envie `intent` ? Utilisé comme FILTRE du fil (ET), et
+// comme bonus de classement.
+//
+// ⚠️ CE N'EST PLUS UN CRITÈRE D'ENTRÉE (revirement du 2026-09-09, cf. l'amendement
+// d'ADR-011 §1). Tant que les envies étaient une TROISIÈME SOURCE en OU inclusif,
+// cocher « Apprendre » ouvrait le fil à TOUT PASSIO : n'importe quelle publication
+// du réseau portant ce mood entrait, quelle que soit sa passion et quel que soit
+// son auteur. Mesuré en production le 2026-09-09 sur le compte de Benjamin
+// (« Suivis » DÉCOCHÉ, passions = randonnée/sport-santé, `feedIntents = ["learn"]`) :
+// une publication « Musculation » d'un autre compte s'affichait dans son fil, sans
+// qu'aucune passion ni aucun abonnement ne l'y ait amenée. Une envie dit COMMENT on
+// veut lire, pas OÙ l'on veut aller chercher.
 //
 // ⚠️ « Explorer » n'a aucun mood correspondant, et ne peut pas en avoir : c'est
 // une question posée au LECTEUR (« qu'est-ce qui vient d'ailleurs ? »), pas une
@@ -5280,7 +5308,11 @@ function setupFeedIntentDelegation() {
 
 // Bascule une envie. « Tous » remet le neutre (aucune envie cochée) ; toute
 // autre s'ajoute ou se retire sans toucher aux autres, ni aux passions, ni à
-// « Suivis » — c'est la règle du OU inclusif.
+// « Suivis » : les envies sont multi-sélectionnables entre elles (une
+// publication passe si elle satisfait AU MOINS UNE envie cochée), et elles
+// n'éteignent aucune source. Elles ne peuvent qu'en RETRANCHER (amendement
+// d'ADR-011 §1) : cocher une envie ne fait jamais entrer une publication qu'une
+// passion ou un abonnement n'avait pas déjà amenée.
 function setFeedIntent(intent) {
   if (!feedIntentsEnabled()) return;
   var requested = normalizeFeedIntent(intent);
@@ -6382,19 +6414,36 @@ function renderFeed() {
   let posts = [];
   let availablePostsForMood = []; // Pour afficher les moods disponibles
 
-  // ── SÉLECTION ADDITIVE DU FIL — « Suivis » OU passions OU envies ──
+  // ── SÉLECTION DU FIL — DEUX SOURCES, PUIS UN FILTRE ─────────────────────────
   //
-  // Trois familles de critères, TOUTES cumulables, jamais croisées : une
-  // publication entre dès qu'elle satisfait AU MOINS UN critère coché. Cocher
-  // une passion n'éteint pas « Suivis », cocher une envie n'éteint ni l'un ni
-  // l'autre — c'est la règle du OU inclusif.
+  //   SOURCES (OU inclusif, cumulables)   :  auteur suivi   OU   passion cochée
+  //   FILTRE  (ET, seulement s'il est posé):  envie cochée
   //
-  //   auteur suivi   OU   passion cochée   OU   envie cochée
-  //
-  // Ce que ça change concrètement : si je suis Alice sans partager aucune de ses
+  // Deux familles de critères DISENT D'OÙ VIENT LE CONTENU, et elles seules :
+  // les comptes que je suis, et les passions que j'ai cochées. Cocher l'une
+  // n'éteint jamais l'autre. Si je suis Alice sans partager aucune de ses
   // passions, TOUTES ses publications restent admissibles tant que « Suivis »
   // est coché ; et une publication Moto d'un inconnu entre si « Moto » est
   // cochée, même si je ne suis personne.
+  //
+  // Une troisième famille — les ENVIES (Explorer · Apprendre · Idées · Rencontrer)
+  // — dit COMMENT je veux lire ce que ces sources m'apportent. Elle RESTREINT,
+  // elle n'apporte RIEN.
+  //
+  // ⚠️ REVIREMENT DU 2026-09-09 (amendement d'ADR-011 §1). L'ADR faisait des
+  // envies une TROISIÈME SOURCE, en OU inclusif avec les deux autres. Mesuré en
+  // production le jour même, sur le compte de Benjamin : « Suivis » DÉCOCHÉ,
+  // passions = randonnée + sport-santé, `feedIntents = ["learn"]` — et une
+  // publication « Musculation » d'un autre compte s'affichait dans son fil. Rien
+  // ne l'y avait amenée qu'un mood partagé. En OU, une envie cochée ouvre le fil
+  // à TOUT le réseau : c'est le contraire exact de ce que la promesse du produit
+  // annonce (« ce que je poste dans une passion arrive dans cette passion ; si tu
+  // ne l'as pas, tu ne le vois que parce que tu me suis »).
+  //
+  // ⚠️ L'ADR l'avait pressenti sans aller au bout : « le défaut par défaut ne
+  // doit pas ÉLARGIR », d'où `state.feedIntents` démarrant vide. Mais un critère
+  // qui élargit dès qu'on le coche n'est pas moins élargissant parce qu'il part
+  // décoché — il l'est seulement plus tard, et sans que personne fasse le lien.
   const suivisOn = feedFollowingSelected();
   const enviesChoisies = intentsEnabled ? feedIntentsSelected() : [];
   const followingIds = (state.user && state.user.following) || [];
@@ -6416,12 +6465,17 @@ function renderFeed() {
   // « Suivis » et ne suit personne — donc qui a bel et bien choisi. Son écran
   // dit « Tu ne suis encore personne », et l'action que le lot UI-2 §5 y attache
   // est « Publier », pas « Explorer ».
+  //
+  // ⚠️ LES ENVIES N'ENTRENT DANS AUCUNE DES DEUX. Elles ne sont pas une source :
+  // n'avoir coché QUE des envies, c'est n'avoir choisi aucune source — donc un
+  // fil vide, et l'écran « Choisis tes passions » qui dit par où commencer. Les
+  // laisser ici aurait rendu `nothingSelected` faux pour quelqu'un qui n'a
+  // pourtant désigné aucune provenance, et l'écran vide n'aurait plus proposé
+  // la seule sortie qui marche.
   const aucuneSource = !(suivisOn && suitQuelquun)
-    && _activeFeedPassions.size === 0
-    && enviesChoisies.length === 0;
+    && _activeFeedPassions.size === 0;
   const nothingSelected = !suivisOn
-    && _activeFeedPassions.size === 0
-    && enviesChoisies.length === 0;
+    && _activeFeedPassions.size === 0;
 
   if (!aucuneSource) {
     if (_activeFeedPassions.size > 0) {
@@ -6430,11 +6484,8 @@ function renderFeed() {
     if (suivisOn && suitQuelquun) {
       combinedPosts = combinedPosts.concat(allPosts.filter(function(p) { return followingIds.includes(p.authorId); }));
     }
-    if (enviesChoisies.length > 0) {
-      combinedPosts = combinedPosts.concat(allPosts.filter(function(p) {
-        return enviesChoisies.some(function (env) { return feedPostMatchesIntent(p, env); });
-      }));
-    }
+    // ⚠️ AUCUNE TROISIÈME CONCATÉNATION ICI, ET C'EST LE CORRECTIF DU 2026-09-09.
+    // Les envies s'appliquent PLUS BAS, sur l'union déjà constituée (`_envieRetient`).
   }
   // ── PREMIÈRE VISITE : FIL DE DÉCOUVERTE ─────────────────────────────────
   //
@@ -6512,12 +6563,26 @@ function renderFeed() {
     }
   }
 
+  // ── LE FILTRE D'ENVIE (ET) ──────────────────────────────────────────────────
+  //
+  // Il s'applique à l'UNION DÉJÀ CONSTITUÉE — jamais à `allPosts`. C'est toute
+  // la différence entre « montre-moi ce qui s'apprend DANS MON FIL » et
+  // « montre-moi tout ce qui s'apprend SUR PASSIO ». Aucune envie cochée = pas
+  // de filtre : le neutre laisse passer l'union entière.
+  function _envieRetient(p) {
+    if (!enviesChoisies.length) return true;
+    for (var _i = 0; _i < enviesChoisies.length; _i++) {
+      if (feedPostMatchesIntent(p, enviesChoisies[_i])) return true;
+    }
+    return false;
+  }
+
   // Appliquer le filtre mood :
   // - selectedMoods vide → rien
   // - mood "all" sur un post → visible quel que soit le mood sélectionné (post universel)
   // - sinon → correspondance exacte
   posts = intentsEnabled
-    ? availablePostsForMood.slice()
+    ? availablePostsForMood.filter(_envieRetient)
     : (selectedMoods.size === 0 ? [] : availablePostsForMood.filter(_moodVisible));
 
   renderProfileStrip();
@@ -6540,7 +6605,16 @@ function renderFeed() {
     // que sur une sélection de PASSIONS restée vide de contenu. Une sélection
     // « Suivis » seule ne le déclenche pas : montrer du contenu d'inconnus
     // contredirait exactement ce que ce critère promet.
-    if (onbV2Actif() && _activeFeedPassions.size > 0
+    // ⚠️ UN FIL VIDÉ PAR UNE ENVIE N'EST PAS UN FIL SANS CONTENU, et le repli
+    // d'exploration ment s'il s'y déclenche : il annonce « rien encore dans tes
+    // passions » et va chercher SIX PUBLICATIONS D'AUTRES PASSIONS. C'est
+    // exactement le défaut qu'on vient de fermer, réintroduit par la porte de
+    // l'état vide. Quand les sources ont du contenu et que seule l'envie l'a
+    // retranché, on le DIT, et on nomme la commande qui l'a fait.
+    var _envieAVide = intentsEnabled && enviesChoisies.length > 0
+      && availablePostsForMood.length > 0;
+
+    if (!_envieAVide && onbV2Actif() && _activeFeedPassions.size > 0
         && (availablePostsForMood.length === 0 || !state.feedMoodsTouched)
         && renderFeedExplorationFallback(list)) {
       var emptyElRepli = $("#feedEmpty");
@@ -6553,8 +6627,24 @@ function renderFeed() {
       var emptyTitle = emptyEl.querySelector(".empty-title");
       var emptyText = emptyEl.querySelector(".empty-text");
 
-      var _seulSuivis = suivisOn && _activeFeedPassions.size === 0 && enviesChoisies.length === 0;
-      if (_seulSuivis && !suitQuelquun) {
+      // ⚠️ `enviesChoisies` ne pèse plus dans `_seulSuivis` : une envie cochée ne
+      // change pas le fait que « Suivis » est la seule SOURCE.
+      var _seulSuivis = suivisOn && _activeFeedPassions.size === 0;
+      if (_envieAVide) {
+        // La cause exacte, et la commande qui la lève — elle est juste au-dessus
+        // de la liste (`#feedIntentSelector`), donc « ci-dessus » est vrai ici.
+        var _noms = enviesChoisies.map(feedIntentLabel).filter(function (x) { return !!x; });
+        if (emptyTitle) {
+          emptyTitle.textContent = _noms.length === 1
+            ? "Rien en « " + _noms[0] + " »"
+            : "Rien avec ces envies";
+        }
+        if (emptyText) {
+          emptyText.textContent = "Tes passions et les comptes que tu suis n'ont rien publié de ce genre. "
+            + (_noms.length > 1 ? "Retire les envies ci-dessus" : "Retire l'envie ci-dessus")
+            + " pour retrouver tout ton fil.";
+        }
+      } else if (_seulSuivis && !suitQuelquun) {
         // « Suivis » coché, aucun abonnement : le message dit quoi FAIRE, et où.
         // Ne jamais y proposer du contenu d'inconnus (cf. repli ci-dessus).
         if (emptyTitle) emptyTitle.textContent = "Tu ne suis encore personne";
