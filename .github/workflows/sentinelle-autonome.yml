@@ -182,9 +182,19 @@ jobs:
             require("fs").writeFileSync("/tmp/issue.md", L.join("\n"));
             require("fs").writeFileSync("/tmp/titre.txt", "[SENTINELLE] " + String(c.message).slice(0, 80));
           '
+          # ⚠️ LE LABEL `sentinelle` EST LA MARQUE D'ORIGINE, PAS LE TITRE.
+          # C'est lui, et non le préfixe « [SENTINELLE] », qui autorisera
+          # l'auto-fusion en aval (`claude-code.yml`). Un titre se réutilise
+          # par distraction — on en recopie un pour ouvrir une tâche voisine —
+          # et il autoriserait alors une fusion sans relecture. Un label est un
+          # geste délibéré, que seul un compte ayant les droits d'écriture peut
+          # poser. Signalé par la revue de sécurité automatique du 2026-09-09.
+          gh label create sentinelle --repo "${GITHUB_REPOSITORY}" \
+            --description "Correctif né d'une alerte de production (canal automatique)" \
+            --color "B45309" --force >/dev/null 2>&1 || true
           numero="$(gh issue create --repo "${GITHUB_REPOSITORY}" \
             --title "$(cat /tmp/titre.txt)" --body-file /tmp/issue.md \
-            --label claude | grep -oE '[0-9]+$')"
+            --label claude --label sentinelle | grep -oE '[0-9]+$')"
           echo "Enquête ouverte : #${numero}" >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Rien à signaler
