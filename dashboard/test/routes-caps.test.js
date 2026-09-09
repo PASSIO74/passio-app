@@ -115,6 +115,7 @@ const ATTENDU = [
   ["POST", "/alerts/:id/ack", "alerts"],
   ["POST", "/alerts/manual", "alerts"],
   ["GET", "/sentinel", "claude"],
+  ["GET", "/production", "claude"],
   ["GET", "/sentinel/:id", "claude"],
   ["POST", "/sentinel/toggle", "settings"],
   ["POST", "/sentinel/:id/merge", "git_mutate"],

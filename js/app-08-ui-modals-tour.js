@@ -2508,6 +2508,9 @@ async function boot() {
         // ✅ FIX CRITIQUE : déclencher supaInit() dès qu'une session est établie
         // Sans ça, les posts Supabase ne chargent jamais sur un nouvel appareil
         if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+          // Un jeton frais lève le silence des analytics : le coupe-circuit de
+          // `supaTrack` ne doit pas survivre à la cause qu'il protégeait.
+          try { window._analyticsMuetJusqua = 0; } catch (e) {}
           // ⚠️ setTimeout OBLIGATOIRE (piège supabase-js documenté) : le client tient
           // un verrou auth pendant l'émission de l'événement ; toute requête Supabase
           // lancée DANS le callback attend ce verrou → deadlock, et la promesse de
@@ -5946,13 +5949,86 @@ function stopFeedRefreshLoop() {
 // ⚠️ ON N'ÉCHAPPE PAS AU PROBLÈME EN ENVOYANT `auth.uid()` : sans session, il
 // vaut NULL et la policy refuse tout autant. La bonne garde est en amont — un
 // visiteur sans compte n'émet simplement rien.
+//
+// ⚠️ ET UN UUID NE PROUVE PAS QU'UNE SESSION EST VIVANTE — c'est le second
+// étage du même défaut, mesuré en production le 2026-09-09 : 271 refus HTTP
+// **401** sur `analytics_events`, 6 appareils, TOUS les écrans, 0 utilisateur
+// touché. Un 401 (et non un 403) est la signature de PostgREST pour une
+// requête dont le jeton est ABSENT ou INVALIDE :
+//   ① `localStorage.passio_uid` porte l'uuid d'un compte, mais la session est
+//      finie (déconnexion sur un autre appareil, jeton de rafraîchissement
+//      révoqué, stockage du SDK vidé) → le SDK part avec la seule clé anon,
+//      `auth.uid()` vaut NULL, la policy refuse ;
+//   ② l'onglet dort depuis plus d'une heure : le jeton d'accès a expiré et le
+//      SDK ne l'a pas encore rafraîchi.
+// `window._supaReal` ne dit QUE « le vrai SDK est chargé », jamais « un compte
+// est connecté ». On lit donc la session persistée par le SDK — même source et
+// même technique que `telemetry.js`, qui a réglé le sien le 2026-08-15 — et on
+// n'émet que si elle est UTILISABLE. Un jeton périmé déclenche un
+// rafraîchissement et l'événement est ABANDONNÉ : ces analytics sont
+// fire-and-forget, mieux vaut perdre un `screen_view` que rejouer une rafale.
+var _analyticsDernierNudge = 0;
+function _analyticsNudgeRefresh() {
+  var now = Date.now();
+  if (now - _analyticsDernierNudge < 15000) return;   // anti-rafale
+  _analyticsDernierNudge = now;
+  // getSession() est dédupliqué par le verrou interne du SDK → aucun double
+  // refresh même si son minuteur d'auto-refresh tourne déjà.
+  try {
+    if (supa && supa.auth && typeof supa.auth.getSession === "function") {
+      var p = supa.auth.getSession();
+      if (p && typeof p.then === "function") p.then(function() {}, function() {});
+    }
+  } catch(e) {}
+}
+
+// Session d'auth réellement utilisable POUR CETTE IDENTITÉ : jeton présent,
+// non expiré, et portant le même compte que la ligne qu'on s'apprête à écrire.
+function _analyticsSessionUtilisable(uid) {
+  try {
+    var cfg = window.PASSIO_SUPABASE;
+    if (!cfg || !cfg.url) return false;
+    var ref = (String(cfg.url).match(/https?:\/\/([^.]+)\./) || [])[1];
+    var raw = ref && localStorage.getItem("sb-" + ref + "-auth-token");
+    if (!raw) return false;                        // ① aucune session : on n'émet rien
+    var j = JSON.parse(raw);
+    var s = (j && j.currentSession) ? j.currentSession : j;   // v1 vs v2
+    if (!s || !s.access_token) return false;
+    var expMs = (typeof s.expires_at === "number") ? s.expires_at * 1000 : 0;
+    if (expMs && Date.now() >= expMs - 10000) {     // ② marge d'horloge 10 s
+      _analyticsNudgeRefresh();
+      return false;
+    }
+    var suid = (s.user && s.user.id) || null;
+    // Identité divergente = ligne refusée à coup sûr (WITH CHECK user_id =
+    // auth.uid()). Un id illisible ne bloque pas : on ne durcit pas au-delà
+    // de ce qu'on sait.
+    return !suid || suid === uid;
+  } catch(e) { return false; }
+}
+
+// ⚠️ LE SDK NE LÈVE PAS SUR UN REFUS : `.then(onFulfilled)` reçoit
+// `{ data, error }`. L'ancien `.then(function(){}, function(){})` ne regardait
+// donc RIEN — le refus était deux fois invisible. On lit `{ error }` et on se
+// TAIT dix minutes après un refus : sans ce coupe-circuit, une cause qui
+// survit à la garde (règle serveur changée, horloge fausse) reproduit la même
+// rafale de 271 lignes dans le centre de pilotage.
 function supaTrack(event, properties) {
   try {
     if (!window._supaReal) return;
+    if (window._analyticsMuetJusqua && Date.now() < window._analyticsMuetJusqua) return;
     var uid = (typeof MY_UID === "string" && MY_UID) ? MY_UID : "";
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uid)) return;
+    if (!_analyticsSessionUtilisable(uid)) return;
     var payload = { user_id: uid, event: String(event), properties: properties || {} };
-    supa.from("analytics_events").insert(payload).then(function() {}, function() {});
+    supa.from("analytics_events").insert(payload).then(function(res) {
+      if (res && res.error) {
+        window._analyticsMuetJusqua = Date.now() + 600000;   // 10 min de silence
+        try { if (typeof diagLog === "function") diagLog("analytics refus: " + (res.error.message || res.error.code || "?")); } catch(_) {}
+      }
+    }, function() {
+      window._analyticsMuetJusqua = Date.now() + 600000;
+    });
   } catch(e) {}
 }
 

@@ -709,7 +709,31 @@ jobs:
         id: publier
         if: steps.claude.outcome == 'success' && steps.modele.outcome == 'success'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # ⚠️ LE JETON DÉCIDE SI LA CI TOURNERA, ET C'EST TOUT LE SUJET.
+          # Une PR ouverte avec le `GITHUB_TOKEN` intégré ne déclenche AUCUN
+          # workflow (règle anti-boucle de GitHub) : elle naît sans contrôles,
+          # donc infusionnable, donc en attente d'un humain — l'avertissement
+          # posé ici le 2026-08-21 le disait déjà. `SENTINELLE_TOKEN` est un
+          # jeton personnel : la PR est ouverte au nom de PASSIO74 et la CI
+          # part normalement.
+          # Le repli sur `GITHUB_TOKEN` est CONSERVÉ : si le secret n'existe
+          # pas (ou plus), le canal garde exactement son comportement d'avant
+          # au lieu de casser.
+          GH_TOKEN: ${{ secrets.SENTINELLE_TOKEN || secrets.GITHUB_TOKEN }}
+          JETON_PERSONNEL: ${{ secrets.SENTINELLE_TOKEN != '' && 'oui' || 'non' }}
+          # ⚠️ TROIS CONDITIONS CUMULATIVES POUR L'AUTO-FUSION, ET LE TITRE
+          # EST LA PLUS FAIBLE DES TROIS. Le premier jet ne testait QUE le
+          # préfixe « [SENTINELLE] » ; la revue de sécurité automatique du
+          # 2026-09-09 l'a signalé, et elle a raison sur le fond même si le
+          # scénario d'attaque qu'elle décrit n'existe pas ici (ce workflow ne
+          # s'exécute que sur des issues de PASSIO74 — un tiers n'atteint
+          # jamais ce test). Le vrai risque est l'ACCIDENT : on recopie un
+          # titre pour ouvrir une tâche voisine, et on obtient une fusion sans
+          # relecture. Le LABEL `sentinelle`, lui, est un geste délibéré que
+          # seul un compte ayant les droits d'écriture peut poser.
+          TITRE_ISSUE: ${{ github.event.issue.title }}
+          LABELS_ISSUE: ${{ join(github.event.issue.labels.*.name, ',') }}
+          RELATION_AUTEUR: ${{ github.event.issue.author_association }}
           DEPOT: ${{ github.repository }}
           ATTENDUE: ${{ steps.branche.outputs.nom }}
           NUMERO: ${{ github.event.issue.number || github.event.pull_request.number }}
@@ -821,7 +845,33 @@ jobs:
             if gh pr create --repo "${DEPOT}" --base main --head "${ATTENDUE}" \
                  --title "${titre}" --body-file "${RUNNER_TEMP}/pr.md"; then
               echo "pr_ouverte=true" >> "$GITHUB_OUTPUT"
-              echo "::warning title=PR sans integration continue::La PR est ouverte par le workflow avec le GITHUB_TOKEN : GitHub ne declenchera aucun controle dessus. La rouvrir depuis un compte humain sur la branche « ${ATTENDUE} » pour obtenir une CI."
+              if [ "${JETON_PERSONNEL}" != "oui" ]; then
+                echo "::warning title=PR sans integration continue::La PR est ouverte par le workflow avec le GITHUB_TOKEN : GitHub ne declenchera aucun controle dessus. La rouvrir depuis un compte humain sur la branche « ${ATTENDUE} » pour obtenir une CI. Poser le secret SENTINELLE_TOKEN rend cette etape autonome."
+              else
+                # ⚠️ L'AUTO-FUSION N'EST ARMÉE QUE POUR LA SENTINELLE.
+                # Une tâche demandée par Benjamin doit rester sous ses yeux :
+                # il l'a commandée, il veut la relire. Seul un correctif né
+                # d'une alerte de production (issue « [SENTINELLE] … », ouverte
+                # par le canal automatique) se fusionne sans lui.
+                # Et « auto » ne veut pas dire « tout de suite » : GitHub ne
+                # fusionnera que si TOUS les contrôles requis passent. Un rouge
+                # arrête la PR, qui redevient une PR ordinaire en attente.
+                # ① le label posé par le canal automatique, ② la relation de
+                # l'auteur au dépôt, ③ le préfixe du titre. Il faut les TROIS.
+                marque_sentinelle=non
+                case ",${LABELS_ISSUE}," in *",sentinelle,"*) marque_sentinelle=oui ;; esac
+                case "${TITRE_ISSUE}" in "[SENTINELLE]"*) : ;; *) marque_sentinelle=non ;; esac
+                case "${RELATION_AUTEUR}" in OWNER|MEMBER) : ;; *) marque_sentinelle=non ;; esac
+                if [ "${marque_sentinelle}" = "oui" ]; then
+                  if gh pr merge "${ATTENDUE}" --repo "${DEPOT}" --auto --squash; then
+                    echo "Auto-fusion armée : GitHub fusionnera si toute la CI passe." >> "${GITHUB_STEP_SUMMARY}"
+                  else
+                    echo "::warning title=Auto-fusion non armee::La PR est ouverte et la CI tourne, mais l'auto-fusion a ete refusee (fonction desactivee sur le depot, ou protection de branche absente). La PR attend donc une fusion manuelle."
+                  fi
+                else
+                  echo "Auto-fusion NON armée (label \`sentinelle\` absent, auteur non OWNER/MEMBER, ou titre sans préfixe) : cette tâche reste à relire." >> "${GITHUB_STEP_SUMMARY}"
+                fi
+              fi
             else
               echo "pr_ouverte=false" >> "$GITHUB_OUTPUT"
               echo "::warning title=PR non ouverte::La branche « ${ATTENDUE} » est poussee, mais GitHub interdit aux Actions de creer des pull requests. Cocher « Allow GitHub Actions to create and approve pull requests » dans Settings > Actions > General."

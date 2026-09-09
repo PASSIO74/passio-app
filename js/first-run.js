@@ -1911,17 +1911,22 @@
   // n'a encore rien choisi. Voir le commentaire au point d'appel — c'est lui qui
   // porte le raisonnement.
   //
-  // ⚠️ La condition est « aucun choix », pas « aucun contenu » : dès qu'une
-  // passion est cochée, la sélection additive normale reprend, y compris si
-  // elle ne donne rien (ce vide-là est un choix, et le repli d'exploration
-  // d'app-02 s'en charge déjà).
+  // ⚠️ La condition est « aucune SOURCE choisie », pas « aucun contenu » : dès
+  // qu'une passion est cochée, la sélection normale reprend, y compris si elle
+  // ne donne rien (ce vide-là est un choix, et le repli d'exploration d'app-02
+  // s'en charge déjà).
+  //
+  // ⚠️ UNE ENVIE COCHÉE NE FERME PLUS CE FIL (2026-09-09). Elle le fermait tant
+  // que les envies étaient une source : le visiteur qui touchait « Apprendre »
+  // basculait alors sur la sélection additive, où son envie ramenait du contenu.
+  // Depuis qu'une envie ne fait plus que FILTRER (amendement d'ADR-011 §1), elle
+  // n'apporte plus rien : sortir d'ici sur ce seul geste aurait rendu un fil VIDE
+  // à un visiteur qui n'a encore rien pu choisir — un cul-de-sac créé par le
+  // correctif lui-même. La découverte reste donc sa source, et l'envie la filtre.
   function filDecouverte() {
     if (!estVisiteur()) return false;
     if (prefs().passions.length) return false;
     try { if (typeof _activeFeedPassions !== "undefined" && _activeFeedPassions && _activeFeedPassions.size) return false; } catch (e) {}
-    try {
-      if (typeof feedIntentsSelected === "function" && (feedIntentsSelected() || []).length) return false;
-    } catch (e) {}
     return true;
   }
 

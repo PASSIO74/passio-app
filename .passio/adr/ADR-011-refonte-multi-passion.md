@@ -250,3 +250,85 @@ filtre de l'un des deux groupes.
 **point d'écriture** (`_retirerPassionDesFiltres`) : le rail ne rend que les
 passions vivantes, donc un filtre qui pointe une passion disparue n'aurait plus
 aucune bulle pour le décocher — maintenant que « Toutes » n'existe plus.
+
+---
+
+> ## Amendement du 2026-09-09 — **§1 : l'envie FILTRE, elle n'est plus une SOURCE**
+>
+> *Un ADR ne se réécrit pas. §1 reste tel qu'il a été décidé le 2026-08-31 ; ce
+> qui suit dit ce qui a été défait, et pourquoi.*
+>
+> ### Le signal
+>
+> Essai réel avec une testeuse. Elle publie dans **Musculation**. Benjamin, qui
+> n'a pas cette passion, voit sa publication dans son fil et le rapporte :
+>
+> > « son post apparaît alors que je n'ai pas sélectionné la passion en question ;
+> > normalement son post apparaît que dans suivis car je n'ai pas cette passion
+> > sur mon profil. »
+>
+> ### Ce qui a été mesuré (production, le jour même)
+>
+> | | |
+> |---|---|
+> | la publication | `passion_id = "fitness-musculation"`, `mood = "learn"` |
+> | le compte lecteur | `feedFollowingOn = **false**` (« Suivis » DÉCOCHÉ) |
+> | ses passions | `["outdoor-randonnee","sante-sport-sante","test5"]` — **pas** musculation |
+> | ses envies | `feedIntents = ["learn"]` |
+>
+> Aucune source ne l'amenait. Elle entrait par la **troisième famille de critères**
+> de §1 : l'envie. `feedPostMatchesIntent(p, "learn")` est vrai pour toute
+> publication du réseau portant ce mood — donc cocher « Apprendre » ouvrait le fil
+> à **tout PASSIO**, quelle que soit la passion et quel que soit l'auteur.
+>
+> ### La décision
+>
+> ```
+>   SOURCES (OU inclusif, cumulables) :  auteur suivi  OU  passion cochée
+>   FILTRE  (ET, s'il est posé)       :  envie cochée
+> ```
+>
+> Les **deux sources** de §1 ne bougent pas : elles restent additives, cocher
+> l'une n'éteint jamais l'autre — c'est l'acquis d'ADR-010 et de §1, et il tient.
+> Les **envies** cessent d'être une source : elles s'appliquent à l'union déjà
+> constituée et ne peuvent que **retrancher**. Entre elles, elles restent
+> multi-sélectionnables (une publication passe si elle satisfait **au moins une**
+> envie cochée). Le neutre reste « aucune envie cochée ».
+>
+> ### Pourquoi §1 avait tort
+>
+> Les trois familles ne répondent pas à la même question, contrairement à ce que
+> l'ADR postulait. « Qui je suis » et « quelles passions » disent **d'où vient**
+> le contenu. « Quelle envie » dit **comment je veux le lire**. Promouvoir la
+> seconde question au rang de la première rend le fil inexplicable : plus rien à
+> l'écran ne dit pourquoi une publication est là.
+>
+> §1 l'avait d'ailleurs pressenti — « ⚠️ le défaut par défaut ne doit pas
+> ÉLARGIR », d'où `feedIntents` démarrant vide. Mais un critère qui élargit dès
+> qu'on le coche n'est pas moins élargissant parce qu'il part décoché : il l'est
+> seulement plus tard, et sans que personne fasse le lien entre le geste et
+> l'effet. C'est exactement ce qui s'est produit.
+>
+> ### Les trois pièges du revirement
+>
+> 1. **`nothingSelected` ne compte plus les envies.** N'avoir coché qu'une envie,
+>    c'est n'avoir désigné **aucune provenance** : l'écran vide doit dire
+>    « Choisis tes passions », pas prétendre qu'un critère est actif.
+> 2. **Le repli d'exploration (§7) rouvrait le défaut par la porte de l'état
+>    vide.** Il annonce « rien encore dans tes passions » et va chercher six
+>    publications **d'autres passions**. Quand ce sont les sources qui sont vides,
+>    c'est juste ; quand c'est l'**envie** qui a tout retranché, c'est le défaut
+>    qu'on vient de fermer, remis à l'écran. Il est donc désarmé dans ce cas
+>    précis, au profit d'un message qui **nomme l'envie** et la commande qui la
+>    lève.
+> 3. **Le visiteur sans compte.** `PassioFirstRun.filDecouverte()` sortait dès
+>    qu'une envie était cochée — c'était juste tant qu'une envie prenait le
+>    relais comme source. Depuis qu'elle ne fait que filtrer, sortir sur ce seul
+>    geste rendait un fil **vide** à quelqu'un qui n'a encore rien pu choisir :
+>    un cul-de-sac créé par le correctif lui-même. La découverte reste sa source ;
+>    l'envie la filtre.
+>
+> **Verrou** : `tests/e2e/feed-envie-filtre.spec.js` (12 cas, dont ① et ① bis
+> éprouvés par **réinjection** du défaut). `feed-intents.spec.js` et
+> `refonte-multi-passion.spec.js` ④ ont été réécrits : ils EXIGEAIENT le
+> comportement retiré.

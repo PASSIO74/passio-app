@@ -10,9 +10,10 @@
 //      passions sous le pseudo, quelle que soit la passion de la publication.
 //   ③ SUIVIS SANS PASSION COMMUNE — tout le contenu d'un compte suivi reste
 //      admissible, quelle que soit sa passion.
-//   ④ COMBINAISON + DÉDUPLICATION — « Suivis » + deux passions + une envie
-//      donnent UNE liste, et une publication qui satisfait plusieurs critères
-//      n'y apparaît qu'une fois.
+//   ④ COMBINAISON + DÉDUPLICATION — « Suivis » + deux passions donnent UNE
+//      liste, et une publication qui satisfait les deux n'y apparaît qu'une
+//      fois. L'envie, elle, ne fait que RETRANCHER de cette liste (amendement
+//      d'ADR-011 §1, 2026-09-09).
 //   ⑤ STUDIO — le choix de la passion de destination y est, et NULLE PART ailleurs.
 //   ⑥ SUPPRESSIONS — « À propos », « Passion active » et « Carnet de voyage »
 //      ne sont plus ni visibles ni atteignables.
@@ -21,6 +22,13 @@
 // (`feedIntentsEnabled`, actif par défaut). Les cas qui les exercent le
 // vérifient explicitement plutôt que de le supposer : un test qui mesurerait le
 // chemin legacy passerait pour la mauvaise raison.
+//
+// ⚠️ REVIREMENT DU 2026-09-09 SUR §1. Les envies étaient une TROISIÈME SOURCE en
+// OU inclusif. Mesuré en production le jour même : une envie cochée ouvrait le
+// fil à TOUT PASSIO, et une publication « Musculation » entrait chez quelqu'un
+// qui n'a pas cette passion et n'avait pas « Suivis » coché. Une envie FILTRE
+// désormais l'union passions ∪ suivis, sans jamais l'élargir. Les SOURCES, elles,
+// restent bien en OU inclusif — c'est cela que §1 a établi, et cela ne bouge pas.
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
 
@@ -465,20 +473,16 @@ test("③ je suis Alice sans passion commune : TOUT son contenu est admissible",
   expect(t, "un inconnu, lui, n'entre pas").not.toContain("MOTO_INCONNU");
 });
 
-test("④ Suivis + Moto + Voyage + une envie : tout arrive dans UNE liste", async ({ page }) => {
-  await poser(page, { passions: ["moto", "voyage"], suivis: true, envies: ["create"] });
-
-  // Prémisse contrôlée : sans le rail d'intentions, les envies ne sont pas
-  // consultées et ce test mesurerait autre chose.
-  expect(await page.evaluate(() => feedIntentsEnabled()),
-    "les envies ne sont un critère que si le rail d'intentions est actif").toBe(true);
+test("④ Suivis + Moto + Voyage : tout arrive dans UNE liste", async ({ page }) => {
+  await poser(page, { passions: ["moto", "voyage"], suivis: true, envies: [] });
 
   const t = await filTexte(page);
   expect(t, "les comptes suivis, toutes passions confondues").toContain("ALICE_CUISINE");
   expect(t).toContain("ALICE_JARDIN");
   expect(t, "Moto, d'un compte non suivi").toContain("MOTO_INCONNU");
   expect(t, "Voyage, d'un compte non suivi").toContain("VOYAGE_INCONNU");
-  expect(t, "l'envie « Idées », d'une passion non cochée").toContain("IDEE_TECH");
+  expect(t, "Tech : aucune source ne l'amène — ni passion cochée, ni abonnement")
+    .not.toContain("IDEE_TECH");
 
   // UNE seule liste : pas de section par source.
   const sections = await page.evaluate(() =>
@@ -486,16 +490,38 @@ test("④ Suivis + Moto + Voyage + une envie : tout arrive dans UNE liste", asyn
   expect(sections, "aucune section par passion, mood ou source").toBe(0);
 });
 
-test("④ bis — DÉDUPLICATION : trois critères satisfaits, une seule carte", async ({ page }) => {
+test("④ bis — l'envie RETRANCHE de cette liste, elle n'y ajoute rien", async ({ page }) => {
+  // ⚠️ CE CAS EXIGEAIT L'INVERSE JUSQU'AU 2026-09-09 : il demandait que l'envie
+  // « Idées » fasse ENTRER IDEE_TECH, publication d'un inconnu dans une passion
+  // non cochée. C'est précisément le défaut rapporté par Benjamin.
+  await poser(page, { passions: ["moto", "voyage"], suivis: true, envies: ["create"] });
+
+  // Prémisse contrôlée : sans le rail d'intentions, les envies ne sont pas
+  // consultées et ce test mesurerait autre chose.
+  expect(await page.evaluate(() => feedIntentsEnabled()),
+    "les envies ne filtrent que si le rail d'intentions est actif").toBe(true);
+
+  const t = await filTexte(page);
+  expect(t, "IDEE_TECH n'entre toujours pas : aucune source ne l'amène")
+    .not.toContain("IDEE_TECH");
+  expect(t, "TRIPLE_SOURCE est dans mes sources ET porte le mood « Idées »")
+    .toContain("TRIPLE_SOURCE");
+  expect(t, "ALICE_CUISINE vient d'une source, mais pas du mood « Idées »")
+    .not.toContain("ALICE_CUISINE");
+  expect(t, "ni MOTO_INCONNU, qui est en mood neutre").not.toContain("MOTO_INCONNU");
+});
+
+test("④ bis ter — DÉDUPLICATION : deux sources satisfaites, une seule carte", async ({ page }) => {
   await poser(page, { passions: ["moto"], suivis: true, envies: ["create"] });
   const n = await page.evaluate(() =>
     document.querySelectorAll('#feedList [data-postid="p_triple"]').length);
-  expect(n, "compte suivi ET passion cochée ET envie cochée = une carte").toBe(1);
+  expect(n, "compte suivi ET passion cochée = une carte").toBe(1);
 });
 
 test("④ ter — une envie se coche et se décoche sans toucher aux autres critères", async ({ page }) => {
   await poser(page, { passions: ["moto"], suivis: true, envies: [] });
   expect(await filTexte(page)).not.toContain("IDEE_TECH");
+  expect(await filTexte(page), "sans envie, les deux sources donnent tout").toContain("ALICE_CUISINE");
 
   await page.evaluate(() => setFeedIntent("create"));
   await page.waitForTimeout(400);
@@ -507,7 +533,10 @@ test("④ ter — une envie se coche et se décoche sans toucher aux autres crit
   expect(etat.envies).toEqual(["create"]);
   expect(etat.suivis, "cocher une envie n'éteint pas « Suivis »").toBe(true);
   expect(etat.passions, "ni les passions").toEqual(["moto"]);
-  expect(await filTexte(page)).toContain("IDEE_TECH");
+  expect(await filTexte(page), "l'envie retranche : ALICE_CUISINE n'est pas « Idées »")
+    .not.toContain("ALICE_CUISINE");
+  expect(await filTexte(page), "et elle n'apporte toujours pas IDEE_TECH")
+    .not.toContain("IDEE_TECH");
 
   // Plusieurs envies à la fois.
   await page.evaluate(() => setFeedIntent("learn"));
@@ -525,6 +554,7 @@ test("④ ter — une envie se coche et se décoche sans toucher aux autres crit
   expect(etat.envies).toEqual([]);
   expect(etat.suivis).toBe(true);
   expect(etat.passions).toEqual(["moto"]);
+  expect(await filTexte(page), "le neutre rend l'union entière").toContain("ALICE_CUISINE");
 });
 
 test("④ quater — le classement du fil est conservé (aucun tri inventé)", async ({ page }) => {
