@@ -43,6 +43,21 @@ async function poserUid(page, uid) {
   await page.addInitScript((u) => { try { localStorage.setItem("passio_uid", u); } catch (e) {} }, uid);
 }
 
+// Session persistée par le SDK Supabase — MÊME clé et MÊME format que celle
+// que `supaTrack` relit (`sb-<ref>-auth-token`, v2 à plat). `decalageSec`
+// négatif = jeton DÉJÀ expiré.
+async function poserSession(page, uid, decalageSec) {
+  await page.addInitScript(([u, d]) => {
+    try {
+      localStorage.setItem("sb-njkiyoklssvefstljemx-auth-token", JSON.stringify({
+        access_token: "jeton-de-test",
+        expires_at: Math.floor(Date.now() / 1000) + d,
+        user: { id: u },
+      }));
+    } catch (e) {}
+  }, [uid, decalageSec]);
+}
+
 const UUID = "3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d";
 
 test.describe("Analytics légères", () => {
@@ -61,6 +76,7 @@ test.describe("Analytics légères", () => {
 
   test("② un compte réel (uuid Supabase) écrit bien sa ligne", async ({ page }) => {
     await poserUid(page, UUID);
+    await poserSession(page, UUID, 3600);
     await bootOnboarded(page);
     const r = await page.evaluate((fake) => {
       eval(fake);
@@ -98,5 +114,85 @@ test.describe("Analytics légères", () => {
       return window.__inserts;
     }, FAUX_SUPA);
     expect(inserts).toHaveLength(0);
+  });
+
+  // ── Le 401 de production (2026-09-09) ────────────────────────────────────
+  // 271 refus HTTP 401, 6 appareils, tous les écrans. Un 401 (et non un 403)
+  // dit que le jeton était ABSENT ou INVALIDE : l'uuid survivait dans
+  // `passio_uid` alors que la session, elle, était finie ou périmée.
+  test("⑤ un uuid SANS session vivante n'écrit rien (401 de prod)", async ({ page }) => {
+    await poserUid(page, UUID);            // l'uuid reste… mais aucune session
+    await bootOnboarded(page);
+    const inserts = await page.evaluate((fake) => {
+      eval(fake);
+      try { localStorage.removeItem("sb-njkiyoklssvefstljemx-auth-token"); } catch (e) {}
+      window.__inserts = [];
+      window.supaTrack("screen_view", { screen: "messages" });
+      return window.__inserts;
+    }, FAUX_SUPA);
+    expect(inserts).toHaveLength(0);
+  });
+
+  test("⑥ un jeton EXPIRÉ n'écrit rien et demande un rafraîchissement", async ({ page }) => {
+    await poserUid(page, UUID);
+    await poserSession(page, UUID, -60);   // expiré depuis une minute
+    await bootOnboarded(page);
+    const r = await page.evaluate((fake) => {
+      eval(fake);
+      window.__nudges = 0;
+      Object.defineProperty(window.supa.auth, "getSession", {
+        configurable: true, writable: true,
+        value: function () { window.__nudges++; return Promise.resolve({ data: { session: null } }); },
+      });
+      window.__inserts = [];
+      window.supaTrack("screen_view", { screen: "feed" });
+      return { inserts: window.__inserts, nudges: window.__nudges };
+    }, FAUX_SUPA);
+    expect(r.inserts).toHaveLength(0);
+    expect(r.nudges).toBe(1);              // le SDK est sollicité, une seule fois
+  });
+
+  test("⑦ une session d'un AUTRE compte n'écrit rien (identité divergente)", async ({ page }) => {
+    await poserUid(page, UUID);
+    await poserSession(page, "11111111-2222-4333-8444-555555555555", 3600);
+    await bootOnboarded(page);
+    const inserts = await page.evaluate((fake) => {
+      eval(fake);
+      window.__inserts = [];
+      window.supaTrack("like_post", { passion: "moto" });
+      return window.__inserts;
+    }, FAUX_SUPA);
+    expect(inserts).toHaveLength(0);
+  });
+
+  // ⚠️ LE SDK NE LÈVE PAS SUR UN REFUS : l'erreur arrive dans `{ error }` du
+  // `then` de SUCCÈS. Sans coupe-circuit, la rafale se reproduit à l'identique.
+  test("⑧ un refus serveur fait TAIRE les analytics (coupe-circuit)", async ({ page }) => {
+    await poserUid(page, UUID);
+    await poserSession(page, UUID, 3600);
+    await bootOnboarded(page);
+    const r = await page.evaluate(() => {
+      window.__inserts = [];
+      window._supaReal = true;
+      window._analyticsMuetJusqua = 0;
+      Object.defineProperty(window.supa, "from", {
+        configurable: true, writable: true,
+        value: function (table) {
+          return {
+            insert: function (row) {
+              window.__inserts.push({ table: table, row: row });
+              return Promise.resolve({ error: { code: "42501", message: "refus RLS" } });
+            },
+          };
+        },
+      });
+      window.supaTrack("screen_view", { screen: "feed" });
+      return new Promise((r2) => setTimeout(() => {
+        for (var i = 0; i < 20; i++) window.supaTrack("screen_view", { screen: "feed" });
+        r2({ envois: window.__inserts.length, muet: window._analyticsMuetJusqua > Date.now() });
+      }, 50));
+    });
+    expect(r.envois).toBe(1);   // 1 envoi, pas 21
+    expect(r.muet).toBe(true);
   });
 });
