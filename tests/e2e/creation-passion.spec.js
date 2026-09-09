@@ -278,6 +278,21 @@ test.describe("Créer une passion", () => {
   // filtrait pas le statut, une passion retirée resterait publiable — le
   // retrait ne serait qu'un décor.
   test("⑬ la liste des passions publiables ne demande que les actives", async ({ page }) => {
+    // ⚠️ LE CACHE DU RÉFÉRENTIEL EST À UN SEUL COUP, ET LA CI A DU RÉSEAU.
+    // `chargerReferentielPassions` sort en tête quand `_referentielPassions` est
+    // déjà rempli : en CI, la requête du boot avait réussi, la fonction ne
+    // touchait plus `supa`, et le stub ci-dessous ne voyait RIEN — vert en
+    // local (pas de SDK, donc pas de requête), rouge en CI. La famille de
+    // divergence que ce dépôt connaît par cœur.
+    //
+    // On répond `[]` à la requête du boot : le cache ne se remplit QUE sur une
+    // réponse non vide, donc il reste vide dans les DEUX environnements et
+    // l'appel explicite ci-dessous atteint vraiment le client.
+    //
+    // ⚠️ Posée AVANT `bootOnboarded`, qui fait lui-même la navigation : une
+    // route posée après ne protégerait que les chargements suivants.
+    await page.route("**/rest/v1/passions?*", (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body: "[]" }));
     await bootAvecCompte(page);
     const filtres = await page.evaluate(() => {
       const vus = [];
