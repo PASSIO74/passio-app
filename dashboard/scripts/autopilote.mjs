@@ -41,14 +41,21 @@ export const CLES = [
   { cle: "DASH_SENTINEL_LOCAL_GATE_V2", valeur: "true", bascule: true },// ③ bis barrière de preuves
 ];
 
+// ④ MISE EN LIGNE AUTOMATIQUE — séparée des trois précédentes À DESSEIN.
+// C'est la seule marche dont le résultat est visible par les UTILISATEURS :
+// elle mérite un geste distinct, pas d'être emportée par un « active tout ».
+export const CLES_PRODUCTION = [
+  { cle: "DASH_SENTINEL_PRODUCTION", valeur: "true", bascule: true },
+];
+
 /**
  * Pose ou retire les clés dans le TEXTE d'un .env, sans réordonner le reste ni
  * toucher une seule autre ligne. Exporté pour être verrouillé par un test :
  * c'est le SEUL endroit du dépôt qui écrit dans un `.env`.
  */
-export function appliquer(texte, actif) {
+export function appliquer(texte, actif, cles = CLES) {
   let out = String(texte || "");
-  for (const { cle, valeur, bascule } of CLES) {
+  for (const { cle, valeur, bascule } of cles) {
     if (!actif && !bascule) continue;
     const cible = `${cle}=${actif ? valeur : "false"}`;
     const re = new RegExp(`^${cle}=.*$`, "m");
@@ -60,8 +67,8 @@ export function appliquer(texte, actif) {
 
 function principal() {
   const mode = (process.argv[2] || "on").toLowerCase();
-  if (!["on", "off", "etat"].includes(mode)) {
-    console.error("Usage : node scripts/autopilote.mjs [on|off|etat]");
+  if (!["on", "off", "etat", "production-on", "production-off"].includes(mode)) {
+    console.error("Usage : node scripts/autopilote.mjs [on|off|etat|production-on|production-off]");
     process.exit(2);
   }
   if (!fs.existsSync(ENV_PATH)) {
@@ -71,12 +78,38 @@ function principal() {
   }
   const avant = fs.readFileSync(ENV_PATH, "utf8");
   if (mode === "etat") {
-    for (const { cle } of CLES) {
+    for (const { cle } of [...CLES, ...CLES_PRODUCTION]) {
       const m = avant.match(new RegExp(`^${cle}=(.*)$`, "m"));
       console.log(`  ${cle} = ${m ? m[1].trim() || "(vide)" : "(absente)"}`);
     }
+    const jeton = avant.match(/^GITHUB_TOKEN=(.*)$/m);
+    // On n'affiche JAMAIS la valeur d'un jeton, seulement s'il est renseigné.
+    console.log(`  GITHUB_TOKEN = ${jeton && jeton[1].trim() ? "(renseigne)" : "(VIDE - la mise en ligne auto ne peut pas fonctionner)"}`);
     return;
   }
+
+  if (mode.startsWith("production-")) {
+    const actif = mode === "production-on";
+    // ⚠️ ON REFUSE D'ARMER UN MODE QUI NE PEUT PAS FONCTIONNER. Sans jeton, la
+    // sentinelle se déclarerait active et n'ouvrirait jamais rien : c'est la
+    // panne silencieuse que tout ce chantier corrige.
+    if (actif && !/^GITHUB_TOKEN=.+$/m.test(avant)) {
+      console.error("REFUS : GITHUB_TOKEN est vide dans .env.");
+      console.error("La mise en ligne automatique a besoin d'un jeton GitHub (scope repo)");
+      console.error("pour ouvrir la PR et armer l'auto-merge. Renseigne-le, puis relance.");
+      process.exit(1);
+    }
+    // La mise en ligne suppose les trois marches precedentes.
+    let out = actif ? appliquer(avant, true) : avant;
+    out = appliquer(out, actif, CLES_PRODUCTION);
+    if (out === avant) { console.log("Rien à changer."); return; }
+    fs.writeFileSync(ENV_PATH, out, "utf8");
+    console.log(actif
+      ? "MISE EN LIGNE AUTOMATIQUE ACTIVE. Les correctifs verifies partiront en PR,\net GitHub fusionnera seul quand toute la CI sera verte."
+      : "Mise en ligne automatique DESACTIVEE (l'autopilote local reste tel quel).");
+    return;
+  }
+
   const apres = appliquer(avant, mode === "on");
   if (apres === avant) { console.log("Rien à changer."); return; }
   fs.writeFileSync(ENV_PATH, apres, "utf8");
