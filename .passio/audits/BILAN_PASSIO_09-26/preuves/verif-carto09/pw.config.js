@@ -1,0 +1,1 @@
+module.exports = { testDir: "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/verif-carto09", timeout: 60000, use: { baseURL: "http://localhost:8120", viewport: { width: 390, height: 844 } }, reporter: "list", outputDir: "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/verif-carto09/out" };

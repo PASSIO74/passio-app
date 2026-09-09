@@ -1,0 +1,674 @@
+[1A[2K[2m[WebServer] [22m(node:30753) [DEP0066] DeprecationWarning: OutgoingMessage.prototype._headers is deprecated
+[2m[WebServer] [22m(Use `node --trace-deprecation ...` to show where the warning was created)
+
+
+Running 63 tests using 1 worker
+
+[1A[2K[1/63] [local] › tests/e2e/hotfix-profil-passion-custom.spec.js:121:1 › compte custom-only : la ligne profiles est CRÉÉE, avec passion_id null
+[1A[2K[2/63] [local] › tests/e2e/hotfix-profil-passion-custom.spec.js:136:1 › AUCUN profil résoluble : la ligne est créée quand même
+[1A[2K[3/63] [local] › tests/e2e/hotfix-profil-passion-custom.spec.js:162:1 › le username explicite du compte est CONSERVÉ
+[1A[2K[4/63] [local] › tests/e2e/hotfix-profil-passion-custom.spec.js:169:1 › sans username résoluble : la ligne est créée avec « Profil »
+[1A[2K[5/63] [local] › tests/e2e/hotfix-profil-passion-custom.spec.js:179:1 › aucune donnée d'authentification privée n'est utilisée
+[1A[2K[6/63] [local] › tests/e2e/hotfix-profil-passion-custom.spec.js:197:1 › une passion CANONIQUE reste publiée telle quelle
+[1A[2K[7/63] [local] › tests/e2e/hotfix-profil-passion-custom.spec.js:209:1 › passion canonique + passion perso : la canonique est choisie, rien n'est perdu
+[1A[2K[8/63] [local] › tests/e2e/hotfix-profil-passion-custom.spec.js:242:1 › `ensure` ne réécrit AUCUN champ d'une ligne existante
+[1A[2K[9/63] [local] › tests/e2e/hotfix-profil-passion-custom.spec.js:267:1 › sans profil résoluble : les replis NEUTRES, jamais une passion
+[1A[2K[10/63] [local] › tests/e2e/hotfix-profil-passion-custom.spec.js:281:1 › changer de passion ne réécrit AUCUN champ d'identité publique
+[1A[2K[11/63] [local] › tests/e2e/hotfix-profil-passion-custom.spec.js:326:1 › aucune passion locale n'est supprimée ni transformée par le hotfix
+[1A[2K[12/63] [local] › tests/e2e/hotfix-profil-passion-custom.spec.js:335:1 › la création de passion personnalisée est indisponible, et le dit
+[1A[2K[13/63] [local] › tests/e2e/hotfix-profil-passion-custom.spec.js:350:1 › l'outil de diagnostic utilise une passion canonique
+[1A[2K[14/63] [local] › tests/e2e/multi-passion-audit-restant.spec.js:24:1 › ① le libellé d'une passion personnalisée est celui publié par son auteur
+[1A[2K[15/63] [local] › tests/e2e/multi-passion-audit-restant.spec.js:59:1 › ① bis — une passion du catalogue garde son libellé de catalogue
+[1A[2K[16/63] [local] › tests/e2e/multi-passion-audit-restant.spec.js:91:1 › ② le formulaire ne promet plus de modération humaine
+[1A[2K[17/63] [local] › tests/e2e/multi-passion-audit-restant.spec.js:113:1 › ③ une passion qui filtre le fil a toujours sa bulle
+[1A[2K[18/63] [local] › tests/e2e/multi-passion-audit-restant.spec.js:135:1 › ③ bis — une bulle d'intérêt est décochable, et ne crée aucun profil
+[1A[2K[19/63] [local] › tests/e2e/multi-passion-integrite.spec.js:58:1 › ① l'identité publique publiée est celle du COMPTE, pas de la passion active
+[1A[2K[20/63] [local] › tests/e2e/multi-passion-integrite.spec.js:96:1 › ① bis — enregistrer son profil n'aligne plus l'emoji du compte sur la passion active
+[1A[2K[21/63] [local] › tests/e2e/multi-passion-integrite.spec.js:113:1 › ② le filtre de passion du profil ne laisse passer que la passion choisie
+[1A[2K[22/63] [local] › tests/e2e/multi-passion-integrite.spec.js:132:1 › ③ renommer le pseudo renomme TOUTES les passions
+[1A[2K[23/63] [local] › tests/e2e/multi-passion-integrite.spec.js:146:1 › ④ éditer la bio d'une passion republie le profil public
+[1A[2K[24/63] [local] › tests/e2e/multi-passion-integrite.spec.js:171:1 › ⑤ une passion archivée est publiée MARQUÉE, et retirée à l'affichage
+[1A[2K[25/63] [local] › tests/e2e/multi-passion-integrite.spec.js:191:1 › ⑥ créer une passion la rend visible dans le Fil
+[1A[2K[26/63] [local] › tests/e2e/multi-passion-integrite.spec.js:212:1 › ⑦ restaurer une passion la remet dans le Fil
+[1A[2K[27/63] [local] › tests/e2e/multi-passion-integrite.spec.js:232:1 › ⑧ éditer une passion PUBLIE vraiment : aucun chemin ne retombe sur `ensure`
+[1A[2K[28/63] [local] › tests/e2e/multi-passion-integrite.spec.js:262:1 › ⑨ la passion principale se CHOISIT, elle ne se normalise pas
+[1A[2K[29/63] [local] › tests/e2e/multi-passion-integrite.spec.js:311:1 › ⑩ aucun fichier de production n'appelle `supaUpsertProfile`
+[1A[2K[30/63] [local] › tests/e2e/passion-personnalisee-fk.spec.js:73:1 › ① ② ③ intacts (rien n'est supprimé), ④ coupé : le Studio ne la propose plus
+[1A[2K[31/63] [local] › tests/e2e/passion-personnalisee-fk.spec.js:107:1 › ⑤ coupé : la publication ne PART PLUS, et rien n'est écrit en local
+[1A[2K[32/63] [local] › tests/e2e/passion-personnalisee-fk.spec.js:134:1 › le message dit la VRAIE cause, et oriente vers le catalogue
+[1A[2K[33/63] [local] › tests/e2e/passion-personnalisee-fk.spec.js:169:1 › le profil PUBLIC part quand même : la passion invalide est normalisée en null
+[1A[2K[34/63] [local] › tests/e2e/profil-identite-serveur-autoritaire.spec.js:117:1 › ① ligne absente + état local vide : la ligne est créée, et PRIVÉE
+[1A[2K[35/63] [local] › tests/e2e/profil-identite-serveur-autoritaire.spec.js:132:1 › ② ligne existante + état local vide : le username n'est PAS écrasé
+[1A[2K[36/63] [local] › tests/e2e/profil-identite-serveur-autoritaire.spec.js:148:1 › ③ ligne existante PRIVÉE + état local vide : elle reste privée
+[1A[2K[37/63] [local] › tests/e2e/profil-identite-serveur-autoritaire.spec.js:159:1 › ④ ligne existante PUBLIQUE + état local vide : elle reste publique
+[1A[2K[38/63] [local] › tests/e2e/profil-identite-serveur-autoritaire.spec.js:173:1 › ⑤ écriture concurrente : la ligne arrivée entre-temps n'est pas écrasée
+[1A[2K  1) [local] › tests/e2e/profil-identite-serveur-autoritaire.spec.js:173:1 › ⑤ écriture concurrente : la ligne arrivée entre-temps n'est pas écrasée 
+
+    Error: browserContext.newPage: Target page, context or browser has been closed
+
+    Error: browserContext.close: Target page, context or browser has been closed
+
+    Error Context: test-results/profil-identite-serveur-au-88278-tre-temps-n-est-pas-écrasée-local/error-context.md
+
+
+[1A[2K[39/63] [local] › tests/e2e/profil-identite-serveur-autoritaire.spec.js:204:1 › ⑥ choix public explicitement PROUVÉ + ligne absente : créée publique
+[1A[2K  2) [local] › tests/e2e/profil-identite-serveur-autoritaire.spec.js:204:1 › ⑥ choix public explicitement PROUVÉ + ligne absente : créée publique 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8108/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8108/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/profil-identite-serveur-autoritaire.spec.js:32:3)
+        at /home/user/passio-app/tests/e2e/profil-identite-serveur-autoritaire.spec.js:205:3
+
+    Error Context: test-results/profil-identite-serveur-au-72016-igne-absente-créée-publique-local/error-context.md
+
+
+[1A[2K[40/63] [local] › tests/e2e/profil-identite-serveur-autoritaire.spec.js:215:1 › ⑦ simple `false` local, SANS preuve de choix : créée PRIVÉE
+[1A[2K  3) [local] › tests/e2e/profil-identite-serveur-autoritaire.spec.js:215:1 › ⑦ simple `false` local, SANS preuve de choix : créée PRIVÉE 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8108/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8108/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/profil-identite-serveur-autoritaire.spec.js:32:3)
+        at /home/user/passio-app/tests/e2e/profil-identite-serveur-autoritaire.spec.js:216:3
+
+    Error Context: test-results/profil-identite-serveur-au-b0b22-reuve-de-choix-créée-PRIVÉE-local/error-context.md
+
+
+[1A[2K[41/63] [local] › tests/e2e/profil-identite-serveur-autoritaire.spec.js:226:1 › ⑦ bis — `undefined` ne doit jamais devenir `false` en silence
+[1A[2K  4) [local] › tests/e2e/profil-identite-serveur-autoritaire.spec.js:226:1 › ⑦ bis — `undefined` ne doit jamais devenir `false` en silence 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8108/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8108/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/profil-identite-serveur-autoritaire.spec.js:32:3)
+        at /home/user/passio-app/tests/e2e/profil-identite-serveur-autoritaire.spec.js:227:3
+
+    Error Context: test-results/profil-identite-serveur-au-7e742-is-devenir-false-en-silence-local/error-context.md
+
+
+[1A[2K[42/63] [local] › tests/e2e/profil-identite-serveur-autoritaire.spec.js:240:1 › ⑧ profil local perso résoluble : chemin NORMAL, passion normalisée en null
+[1A[2K  5) [local] › tests/e2e/profil-identite-serveur-autoritaire.spec.js:240:1 › ⑧ profil local perso résoluble : chemin NORMAL, passion normalisée en null 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8108/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8108/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/profil-identite-serveur-autoritaire.spec.js:32:3)
+        at /home/user/passio-app/tests/e2e/profil-identite-serveur-autoritaire.spec.js:243:3
+
+    Error Context: test-results/profil-identite-serveur-au-d7fe0--passion-normalisée-en-null-local/error-context.md
+
+
+[1A[2K[43/63] [local] › tests/e2e/profil-identite-serveur-autoritaire.spec.js:265:1 › ⑨ un 23505 sur une AUTRE contrainte n'est PAS « la ligne existe »
+[1A[2K  6) [local] › tests/e2e/profil-identite-serveur-autoritaire.spec.js:265:1 › ⑨ un 23505 sur une AUTRE contrainte n'est PAS « la ligne existe » 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8108/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8108/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/profil-identite-serveur-autoritaire.spec.js:32:3)
+        at /home/user/passio-app/tests/e2e/profil-identite-serveur-autoritaire.spec.js:270:3
+
+    Error Context: test-results/profil-identite-serveur-au-aac7c-est-PAS-«-la-ligne-existe-»-local/error-context.md
+
+
+[1A[2K[44/63] [local] › tests/e2e/profil-trois-autorites.spec.js:85:1 › ① dix envois dans la même session : UN SEUL ensure réseau
+[1A[2K  7) [local] › tests/e2e/profil-trois-autorites.spec.js:85:1 › ① dix envois dans la même session : UN SEUL ensure réseau 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8108/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8108/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/profil-trois-autorites.spec.js:22:3)
+        at /home/user/passio-app/tests/e2e/profil-trois-autorites.spec.js:86:3
+
+    Error Context: test-results/profil-trois-autorites-①-d-658bc-ssion-UN-SEUL-ensure-réseau-local/error-context.md
+
+
+[1A[2K[45/63] [local] › tests/e2e/profil-trois-autorites.spec.js:97:1 › ② deux ensure SIMULTANÉS : un seul insert
+[1A[2K  8) [local] › tests/e2e/profil-trois-autorites.spec.js:97:1 › ② deux ensure SIMULTANÉS : un seul insert 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8108/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8108/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/profil-trois-autorites.spec.js:22:3)
+        at /home/user/passio-app/tests/e2e/profil-trois-autorites.spec.js:98:3
+
+    Error Context: test-results/profil-trois-autorites-②-d-f1811-e-SIMULTANÉS-un-seul-insert-local/error-context.md
+
+
+[1A[2K[46/63] [local] › tests/e2e/profil-trois-autorites.spec.js:109:1 › ③ premier ensure en erreur RÉSEAU : le second réessaie
+[1A[2K  9) [local] › tests/e2e/profil-trois-autorites.spec.js:109:1 › ③ premier ensure en erreur RÉSEAU : le second réessaie 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8108/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8108/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/profil-trois-autorites.spec.js:22:3)
+        at /home/user/passio-app/tests/e2e/profil-trois-autorites.spec.js:110:3
+
+    Error Context: test-results/profil-trois-autorites-③-p-31f59-r-RÉSEAU-le-second-réessaie-local/error-context.md
+
+
+[1A[2K[47/63] [local] › tests/e2e/profil-trois-autorites.spec.js:125:1 › ④ changement d'UID : un nouvel ensure part
+[1A[2K  10) [local] › tests/e2e/profil-trois-autorites.spec.js:125:1 › ④ changement d'UID : un nouvel ensure part 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8108/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8108/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/profil-trois-autorites.spec.js:22:3)
+        at /home/user/passio-app/tests/e2e/profil-trois-autorites.spec.js:126:3
+
+    Error Context: test-results/profil-trois-autorites-④-c-8e865-d-UID-un-nouvel-ensure-part-local/error-context.md
+
+
+[1A[2K[48/63] [local] › tests/e2e/profil-trois-autorites.spec.js:144:1 › ⑤ onboarding SANS contrôle de confidentialité : le profil reste privé
+[1A[2K  11) [local] › tests/e2e/profil-trois-autorites.spec.js:144:1 › ⑤ onboarding SANS contrôle de confidentialité : le profil reste privé 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8108/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8108/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/profil-trois-autorites.spec.js:22:3)
+        at /home/user/passio-app/tests/e2e/profil-trois-autorites.spec.js:145:3
+
+    Error Context: test-results/profil-trois-autorites-⑤-o-fc21e-alité-le-profil-reste-privé-local/error-context.md
+
+
+[1A[2K[49/63] [local] › tests/e2e/profil-trois-autorites.spec.js:160:1 › ⑤ bis — `is_private` soumis SANS preuve de choix est refusé
+[1A[2K  12) [local] › tests/e2e/profil-trois-autorites.spec.js:160:1 › ⑤ bis — `is_private` soumis SANS preuve de choix est refusé 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8108/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8108/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/profil-trois-autorites.spec.js:22:3)
+        at /home/user/passio-app/tests/e2e/profil-trois-autorites.spec.js:161:3
+
+    Error Context: test-results/profil-trois-autorites-⑤-b-dc566--preuve-de-choix-est-refusé-local/error-context.md
+
+
+[1A[2K[50/63] [local] › tests/e2e/profil-trois-autorites.spec.js:175:1 › ⑤ ter — avec la preuve, le choix public est respecté
+[1A[2K  13) [local] › tests/e2e/profil-trois-autorites.spec.js:175:1 › ⑤ ter — avec la preuve, le choix public est respecté 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8108/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8108/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/profil-trois-autorites.spec.js:22:3)
+        at /home/user/passio-app/tests/e2e/profil-trois-autorites.spec.js:176:3
+
+    Error Context: test-results/profil-trois-autorites-⑤-t-196f1-e-choix-public-est-respecté-local/error-context.md
+
+
+[1A[2K[51/63] [local] › tests/e2e/profil-trois-autorites.spec.js:186:1 › ⑥ sauvegarde de la bio seule : la confidentialité ne bouge pas
+[1A[2K  14) [local] › tests/e2e/profil-trois-autorites.spec.js:186:1 › ⑥ sauvegarde de la bio seule : la confidentialité ne bouge pas 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8108/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8108/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/profil-trois-autorites.spec.js:22:3)
+        at /home/user/passio-app/tests/e2e/profil-trois-autorites.spec.js:187:3
+
+    Error Context: test-results/profil-trois-autorites-⑥-s-5d714-onfidentialité-ne-bouge-pas-local/error-context.md
+
+
+[1A[2K[52/63] [local] › tests/e2e/profil-trois-autorites.spec.js:199:1 › ⑦ changement de photo : seul `avatar_url` change
+[1A[2K  15) [local] › tests/e2e/profil-trois-autorites.spec.js:199:1 › ⑦ changement de photo : seul `avatar_url` change 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8108/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8108/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/profil-trois-autorites.spec.js:22:3)
+        at /home/user/passio-app/tests/e2e/profil-trois-autorites.spec.js:200:3
+
+    Error Context: test-results/profil-trois-autorites-⑦-c-94936-hoto-seul-avatar-url-change-local/error-context.md
+
+
+[1A[2K[53/63] [local] › tests/e2e/profil-trois-autorites.spec.js:212:1 › ⑧ changement de passion : AUCUN champ d'identité ne change
+[1A[2K  16) [local] › tests/e2e/profil-trois-autorites.spec.js:212:1 › ⑧ changement de passion : AUCUN champ d'identité ne change 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8108/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8108/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/profil-trois-autorites.spec.js:22:3)
+        at /home/user/passio-app/tests/e2e/profil-trois-autorites.spec.js:213:3
+
+    Error Context: test-results/profil-trois-autorites-⑧-c-7f15f--champ-d-identité-ne-change-local/error-context.md
+
+
+[1A[2K[54/63] [local] › tests/e2e/profil-trois-autorites.spec.js:234:1 › ⑨ LE CAS CRITIQUE — profil serveur privé + passions locales + `general` incomplet
+[1A[2K  17) [local] › tests/e2e/profil-trois-autorites.spec.js:234:1 › ⑨ LE CAS CRITIQUE — profil serveur privé + passions locales + `general` incomplet 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8108/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8108/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/profil-trois-autorites.spec.js:22:3)
+        at /home/user/passio-app/tests/e2e/profil-trois-autorites.spec.js:238:3
+
+    Error Context: test-results/profil-trois-autorites-⑨-L-4a3e9-s-locales-general-incomplet-local/error-context.md
+
+
+[1A[2K[55/63] [local] › tests/e2e/profil-trois-autorites.spec.js:255:1 › ⑩ liste blanche : un champ inconnu n'est jamais écrit
+[1A[2K  18) [local] › tests/e2e/profil-trois-autorites.spec.js:255:1 › ⑩ liste blanche : un champ inconnu n'est jamais écrit 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8108/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8108/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at boot (/home/user/passio-app/tests/e2e/profil-trois-autorites.spec.js:22:3)
+        at /home/user/passio-app/tests/e2e/profil-trois-autorites.spec.js:256:3
+
+    Error Context: test-results/profil-trois-autorites-⑩-l-25846--inconnu-n-est-jamais-écrit-local/error-context.md
+
+
+[1A[2K[56/63] [local] › tests/e2e/sync-passion-active.spec.js:56:3 › après une synchronisation, la passion active › n'est pas la passion locale si elle a été archivée ailleurs
+[1A[2K  19) [local] › tests/e2e/sync-passion-active.spec.js:56:3 › après une synchronisation, la passion active › n'est pas la passion locale si elle a été archivée ailleurs 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8108/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8108/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/sync-passion-active.spec.js:57:5
+
+    Error Context: test-results/sync-passion-active-après--15d74-lle-a-été-archivée-ailleurs-local/error-context.md
+
+
+[1A[2K[57/63] [local] › tests/e2e/sync-passion-active.spec.js:65:3 › après une synchronisation, la passion active › n'est pas non plus une passion archivée reçue du serveur
+[1A[2K  20) [local] › tests/e2e/sync-passion-active.spec.js:65:3 › après une synchronisation, la passion active › n'est pas non plus une passion archivée reçue du serveur 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8108/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8108/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/sync-passion-active.spec.js:66:5
+
+    Error Context: test-results/sync-passion-active-après--57ab3-n-archivée-reçue-du-serveur-local/error-context.md
+
+
+[1A[2K[58/63] [local] › tests/e2e/sync-passion-active.spec.js:76:3 › après une synchronisation, la passion active › reste la passion locale quand celle-ci est bien vivante
+[1A[2K  21) [local] › tests/e2e/sync-passion-active.spec.js:76:3 › après une synchronisation, la passion active › reste la passion locale quand celle-ci est bien vivante 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8108/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8108/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/sync-passion-active.spec.js:77:5
+
+    Error Context: test-results/sync-passion-active-après--a28c1-d-celle-ci-est-bien-vivante-local/error-context.md
+
+
+[1A[2K[59/63] [local] › tests/e2e/user-passions-miroir.spec.js:82:3 › miroir user_passions › la table absente désarme le miroir, une seule fois, sans bruit
+[1A[2K  22) [local] › tests/e2e/user-passions-miroir.spec.js:82:3 › miroir user_passions › la table absente désarme le miroir, une seule fois, sans bruit 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8108/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8108/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/user-passions-miroir.spec.js:86:5
+
+    Error Context: test-results/user-passions-miroir-miroi-9dbd0-r-une-seule-fois-sans-bruit-local/error-context.md
+
+
+[1A[2K[60/63] [local] › tests/e2e/user-passions-miroir.spec.js:104:3 › miroir user_passions › un identifiant hors référentiel serveur n'est jamais envoyé
+[1A[2K  23) [local] › tests/e2e/user-passions-miroir.spec.js:104:3 › miroir user_passions › un identifiant hors référentiel serveur n'est jamais envoyé 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8108/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8108/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/user-passions-miroir.spec.js:108:5
+
+    Error Context: test-results/user-passions-miroir-miroi-a5a13-serveur-n-est-jamais-envoyé-local/error-context.md
+
+
+[1A[2K[61/63] [local] › tests/e2e/user-passions-miroir.spec.js:124:3 › miroir user_passions › l'archivage voyage, et la position aussi
+[1A[2K  24) [local] › tests/e2e/user-passions-miroir.spec.js:124:3 › miroir user_passions › l'archivage voyage, et la position aussi 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8108/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8108/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/user-passions-miroir.spec.js:127:5
+
+    Error Context: test-results/user-passions-miroir-miroi-7bf63-voyage-et-la-position-aussi-local/error-context.md
+
+
+[1A[2K[62/63] [local] › tests/e2e/user-passions-miroir.spec.js:145:3 › miroir user_passions › ce qui a disparu localement est retiré du miroir
+[1A[2K  25) [local] › tests/e2e/user-passions-miroir.spec.js:145:3 › miroir user_passions › ce qui a disparu localement est retiré du miroir 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8108/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8108/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/user-passions-miroir.spec.js:148:5
+
+    Error Context: test-results/user-passions-miroir-miroi-fb0dc-lement-est-retiré-du-miroir-local/error-context.md
+
+
+[1A[2K[63/63] [local] › tests/e2e/user-passions-miroir.spec.js:167:3 › miroir user_passions › aucune écriture ne part sans compte authentifié
+[1A[2K  26) [local] › tests/e2e/user-passions-miroir.spec.js:167:3 › miroir user_passions › aucune écriture ne part sans compte authentifié 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8108/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8108/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/user-passions-miroir.spec.js:168:5
+
+    Error Context: test-results/user-passions-miroir-miroi-26759-art-sans-compte-authentifié-local/error-context.md
+
+
+[1A[2K  26 failed
+    [local] › tests/e2e/profil-identite-serveur-autoritaire.spec.js:173:1 › ⑤ écriture concurrente : la ligne arrivée entre-temps n'est pas écrasée 
+    [local] › tests/e2e/profil-identite-serveur-autoritaire.spec.js:204:1 › ⑥ choix public explicitement PROUVÉ + ligne absente : créée publique 
+    [local] › tests/e2e/profil-identite-serveur-autoritaire.spec.js:215:1 › ⑦ simple `false` local, SANS preuve de choix : créée PRIVÉE 
+    [local] › tests/e2e/profil-identite-serveur-autoritaire.spec.js:226:1 › ⑦ bis — `undefined` ne doit jamais devenir `false` en silence 
+    [local] › tests/e2e/profil-identite-serveur-autoritaire.spec.js:240:1 › ⑧ profil local perso résoluble : chemin NORMAL, passion normalisée en null 
+    [local] › tests/e2e/profil-identite-serveur-autoritaire.spec.js:265:1 › ⑨ un 23505 sur une AUTRE contrainte n'est PAS « la ligne existe » 
+    [local] › tests/e2e/profil-trois-autorites.spec.js:85:1 › ① dix envois dans la même session : UN SEUL ensure réseau 
+    [local] › tests/e2e/profil-trois-autorites.spec.js:97:1 › ② deux ensure SIMULTANÉS : un seul insert 
+    [local] › tests/e2e/profil-trois-autorites.spec.js:109:1 › ③ premier ensure en erreur RÉSEAU : le second réessaie 
+    [local] › tests/e2e/profil-trois-autorites.spec.js:125:1 › ④ changement d'UID : un nouvel ensure part 
+    [local] › tests/e2e/profil-trois-autorites.spec.js:144:1 › ⑤ onboarding SANS contrôle de confidentialité : le profil reste privé 
+    [local] › tests/e2e/profil-trois-autorites.spec.js:160:1 › ⑤ bis — `is_private` soumis SANS preuve de choix est refusé 
+    [local] › tests/e2e/profil-trois-autorites.spec.js:175:1 › ⑤ ter — avec la preuve, le choix public est respecté 
+    [local] › tests/e2e/profil-trois-autorites.spec.js:186:1 › ⑥ sauvegarde de la bio seule : la confidentialité ne bouge pas 
+    [local] › tests/e2e/profil-trois-autorites.spec.js:199:1 › ⑦ changement de photo : seul `avatar_url` change 
+    [local] › tests/e2e/profil-trois-autorites.spec.js:212:1 › ⑧ changement de passion : AUCUN champ d'identité ne change 
+    [local] › tests/e2e/profil-trois-autorites.spec.js:234:1 › ⑨ LE CAS CRITIQUE — profil serveur privé + passions locales + `general` incomplet 
+    [local] › tests/e2e/profil-trois-autorites.spec.js:255:1 › ⑩ liste blanche : un champ inconnu n'est jamais écrit 
+    [local] › tests/e2e/sync-passion-active.spec.js:56:3 › après une synchronisation, la passion active › n'est pas la passion locale si elle a été archivée ailleurs 
+    [local] › tests/e2e/sync-passion-active.spec.js:65:3 › après une synchronisation, la passion active › n'est pas non plus une passion archivée reçue du serveur 
+    [local] › tests/e2e/sync-passion-active.spec.js:76:3 › après une synchronisation, la passion active › reste la passion locale quand celle-ci est bien vivante 
+    [local] › tests/e2e/user-passions-miroir.spec.js:82:3 › miroir user_passions › la table absente désarme le miroir, une seule fois, sans bruit 
+    [local] › tests/e2e/user-passions-miroir.spec.js:104:3 › miroir user_passions › un identifiant hors référentiel serveur n'est jamais envoyé 
+    [local] › tests/e2e/user-passions-miroir.spec.js:124:3 › miroir user_passions › l'archivage voyage, et la position aussi 
+    [local] › tests/e2e/user-passions-miroir.spec.js:145:3 › miroir user_passions › ce qui a disparu localement est retiré du miroir 
+    [local] › tests/e2e/user-passions-miroir.spec.js:167:3 › miroir user_passions › aucune écriture ne part sans compte authentifié 
+  37 passed (10.5m)
+EXIT=1

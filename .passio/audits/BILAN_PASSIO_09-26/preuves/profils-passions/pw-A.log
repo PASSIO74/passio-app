@@ -1,0 +1,66 @@
+
+Running 59 tests using 1 worker
+
+[1A[2K[1/59] [local] › tests/e2e/passions-archive-quota.spec.js:58:3 › revenir à une passion archivée › ① archiver, prendre une autre passion, puis revenir : la passion REVIENT
+[1A[2K[2/59] [local] › tests/e2e/passions-archive-quota.spec.js:90:3 › revenir à une passion archivée › ① bis — sous le plafond, reprendre une archive est direct et gratuit
+[1A[2K[3/59] [local] › tests/e2e/passions-archive-quota.spec.js:109:3 › revenir à une passion archivée › ② la liste des archives est écrite EN CLAIR, plus derrière un lien
+[1A[2K[4/59] [local] › tests/e2e/passions-archive-quota.spec.js:132:3 › revenir à une passion archivée › ② bis — le bouton dit « Réactiver » dans les deux cas, et il AGIT
+[1A[2K[5/59] [local] › tests/e2e/passions-archive-quota.spec.js:160:3 › revenir à une passion archivée › ② ter — la liste survit à un rechargement (elle est ENREGISTRÉE)
+[1A[2K[6/59] [local] › tests/e2e/passions-archive-quota.spec.js:181:3 › le quota de changements › ③ trois changements offerts, le quatrième est barré
+[1A[2K[7/59] [local] › tests/e2e/passions-archive-quota.spec.js:207:3 › le quota de changements › ③ bis — le coût est ANNONCÉ avant le geste, pas découvert après
+[1A[2K[8/59] [local] › tests/e2e/passions-archive-quota.spec.js:218:3 › le quota de changements › ③ ter — le compteur est affiché sur la page « Mes passions »
+[1A[2K[9/59] [local] › tests/e2e/passions-archive-quota.spec.js:235:3 › le quota de changements › ③ quater — RESTAURER ne consomme rien : un échange se paie UNE fois
+[1A[2K[10/59] [local] › tests/e2e/passions-archive-quota.spec.js:248:3 › le quota de changements › ③ quinquies — l'échange consomme exactement UN changement
+[1A[2K[11/59] [local] › tests/e2e/passions-archive-quota.spec.js:263:3 › le quota de changements › ③ sexies — archiver la DERNIÈRE passion reste refusé, et ne consomme rien
+[1A[2K[12/59] [local] › tests/e2e/passions-archive-quota.spec.js:279:3 › le quota de changements › ③ septies — archiver DEUX FOIS la même passion ne débite qu'une fois
+[1A[2K[13/59] [local] › tests/e2e/passions-archive-quota.spec.js:317:3 › la démo sans compte › ④ changements ILLIMITÉS sans compte — mais le plafond de trois tient
+[1A[2K[14/59] [local] › tests/e2e/passions-archive-quota.spec.js:336:3 › la démo sans compte › ④ quater — AUCUN CRÉDIT DE DÉMO : le visiteur ne dépasse pas le plafond
+[1A[2K[15/59] [local] › tests/e2e/passions-archive-quota.spec.js:365:3 › la démo sans compte › ④ bis — un visiteur archive autant qu'il veut
+[1A[2K[16/59] [local] › tests/e2e/passions-archive-quota.spec.js:383:3 › la démo sans compte › ④ ter — LA DÉMO NE LAISSE AUCUNE DETTE au compte créé ensuite
+[1A[2K[17/59] [local] › tests/e2e/passions-archive-quota.spec.js:411:1 › ⑤ drapeau coupé : ni plafond, ni quota de changements
+[1A[2K[18/59] [local] › tests/e2e/passions-archive-quota.spec.js:441:3 › les portes oubliées du plafond › ⑥ « + Créer profil » (page d'une passion) respecte le plafond
+[1A[2K[19/59] [local] › tests/e2e/passions-archive-quota.spec.js:459:3 › les portes oubliées du plafond › ⑥ bis — sous le plafond, « + Créer profil » marche toujours
+[1A[2K[20/59] [local] › tests/e2e/passions-archive-quota.spec.js:475:3 › les portes oubliées du plafond › ⑥ ter — « + Créer profil » sur une ARCHIVE la restaure, sans doublon
+[1A[2K[21/59] [local] › tests/e2e/passions-archive-quota.spec.js:491:3 › les portes oubliées du plafond › ⑦ Studio : une passion REFUSÉE n'est jamais écrite dans #postPassion
+[1A[2K[22/59] [local] › tests/e2e/passions-archive-quota.spec.js:530:1 › ⑧ quota épuisé : le bouton ne promet pas un échange impossible, et rien ne boucle
+[1A[2K[23/59] [local] › tests/e2e/passions-archive-quota.spec.js:591:1 › ⑨ la SEULE porte visible vers la gestion porte le compte d'archives
+[1A[2K[24/59] [local] › tests/e2e/passions-archive-quota.spec.js:634:3 › la fusion multi-appareils › ⑩ deux appareils, trois passions différentes chacun : le plafond tient
+[1A[2K[25/59] [local] › tests/e2e/passions-archive-quota.spec.js:656:3 › la fusion multi-appareils › ⑩ bis — UN COMPTE QUI PORTE DÉJÀ PLUS DE TROIS PASSIONS N'EST PAS RÉTROGRADÉ
+[1A[2K[26/59] [local] › tests/e2e/passions-archive-quota.spec.js:679:3 › la fusion multi-appareils › ⑩ ter — sous le plafond, la réinjection passe entière
+[1A[2K[27/59] [local] › tests/e2e/passions-archive-quota.spec.js:693:3 › la fusion multi-appareils › ⑩ quater — une locale DÉJÀ archivée le reste, et ne consomme pas de place
+[1A[2K[28/59] [local] › tests/e2e/passions-archive-quota.spec.js:710:3 › la fusion multi-appareils › ⑩ quinquies — la fusion ne FACTURE rien : le compte n'a rien demandé
+[1A[2K[29/59] [local] › tests/e2e/passions-archive-quota.spec.js:728:3 › la fusion multi-appareils › ⑩ sexies — kill switch : drapeau coupé, la fusion ne range plus rien
+[1A[2K[30/59] [local] › tests/e2e/profils-types.spec.js:10:3 › profils types — parcours simulés › créateur : publie un post texte, visible dans le fil ET persistant après reload
+[1A[2K[31/59] [local] › tests/e2e/profils-types.spec.js:62:3 › profils types — parcours simulés › créateur média : publie photo et vidéo
+[1A[2K[32/59] [local] › tests/e2e/profils-types.spec.js:112:3 › profils types — parcours simulés › upload trop volumineux : rejet propre (toast, pas de crash, pas de post)
+[1A[2K[33/59] [local] › tests/e2e/profils-types.spec.js:141:3 › profils types — parcours simulés › utilisateur actif : like + commentaire sur un post du fil
+[1A[2K[34/59] [local] › tests/e2e/profils-types.spec.js:169:3 › profils types — parcours simulés › visiteur : consulte le fil et l'explorer sans rien publier
+[1A[2K[35/59] [local] › tests/e2e/profils-types.spec.js:183:3 › profils types — parcours simulés › visiteur de profils : ouvre le profil d'un auteur depuis le fil
+[1A[2K[36/59] [local] › tests/e2e/profils-types.spec.js:200:3 › profils types — parcours simulés › partageur : la feuille de partage d'un post s'ouvre
+[1A[2K[37/59] [local] › tests/e2e/profils-types.spec.js:215:3 › profils types — parcours simulés › multi-passions : 3 profils, bascule fonctionnelle
+[1A[2K[38/59] [local] › tests/e2e/refonte-multi-passion.spec.js:133:1 › ① le profil porte le rail de passions du Fil, au-dessus des onglets
+[1A[2K[39/59] [local] › tests/e2e/refonte-multi-passion.spec.js:175:1 › ① bis bis — une bulle s'active au CLAVIER, comme le rôle qu'elle annonce
+[1A[2K[40/59] [local] › tests/e2e/refonte-multi-passion.spec.js:223:1 › ① bis — le profil n'a plus que deux onglets : Publications et Activité
+[1A[2K[41/59] [local] › tests/e2e/refonte-multi-passion.spec.js:241:1 › ① ter bis — les onglets du profil et les envies du Fil sont CENTRÉS
+[1A[2K[42/59] [local] › tests/e2e/refonte-multi-passion.spec.js:281:1 › ① ter — choisir une passion filtre Publications ET Activité d'un seul geste
+[1A[2K[43/59] [local] › tests/e2e/refonte-multi-passion.spec.js:341:1 › ① quater — un profil sans passion affiche un état propre, pas une rangée vide
+[1A[2K[44/59] [local] › tests/e2e/refonte-multi-passion.spec.js:360:1 › ① quinquies — une passion sans publication et sans activité le DIT
+[1A[2K[45/59] [local] › tests/e2e/refonte-multi-passion.spec.js:378:1 › ② une publication Moto affiche Benjamin, et la seule passion du post
+[1A[2K[46/59] [local] › tests/e2e/refonte-multi-passion.spec.js:409:1 › ② bis — les passions ARCHIVÉES ne fuient pas dans l'identité affichée
+[1A[2K[47/59] [local] › tests/e2e/refonte-multi-passion.spec.js:426:1 › ② ter — l'identité est bornée et échappée (contenu d'un autre compte)
+[1A[2K[48/59] [local] › tests/e2e/refonte-multi-passion.spec.js:460:1 › ③ je suis Alice sans passion commune : TOUT son contenu est admissible
+[1A[2K[49/59] [local] › tests/e2e/refonte-multi-passion.spec.js:468:1 › ④ Suivis + Moto + Voyage + une envie : tout arrive dans UNE liste
+[1A[2K[50/59] [local] › tests/e2e/refonte-multi-passion.spec.js:489:1 › ④ bis — DÉDUPLICATION : trois critères satisfaits, une seule carte
+[1A[2K[51/59] [local] › tests/e2e/refonte-multi-passion.spec.js:496:1 › ④ ter — une envie se coche et se décoche sans toucher aux autres critères
+[1A[2K[52/59] [local] › tests/e2e/refonte-multi-passion.spec.js:530:1 › ④ quater — le classement du fil est conservé (aucun tri inventé)
+[1A[2K[53/59] [local] › tests/e2e/refonte-multi-passion.spec.js:550:1 › ⑤ le Studio propose les passions du compte et enregistre l'association
+[1A[2K[54/59] [local] › tests/e2e/refonte-multi-passion.spec.js:572:1 › ⑤ bis — aucun sélecteur de passion hors du Studio
+[1A[2K[55/59] [local] › tests/e2e/refonte-multi-passion.spec.js:594:1 › ⑥ « À propos » n'est plus un onglet ni une section
+[1A[2K[56/59] [local] › tests/e2e/refonte-multi-passion.spec.js:610:1 › ⑥ bis — la gestion des passions reste ATTEIGNABLE (retirer un onglet ne doit pas fermer une fonction)
+[1A[2K[57/59] [local] › tests/e2e/refonte-multi-passion.spec.js:635:1 › ⑥ ter — le Carnet de voyage a disparu : écran, navigation, route
+[1A[2K[58/59] [local] › tests/e2e/refonte-multi-passion.spec.js:655:1 › ⑥ quater — un ancien lien #cdv ne laisse pas l'application sans écran
+[1A[2K[59/59] [local] › tests/e2e/refonte-multi-passion.spec.js:670:1 › ⑥ quinquies — aucune donnée de carnet n'est détruite
+[1A[2K  Slow test file: [local] › tests/e2e/passions-archive-quota.spec.js (7.9m)
+  Slow test file: [local] › tests/e2e/refonte-multi-passion.spec.js (6.0m)
+  Consider running tests from slow files in parallel. See: https://playwright.dev/docs/test-parallel
+  59 passed (16.2m)

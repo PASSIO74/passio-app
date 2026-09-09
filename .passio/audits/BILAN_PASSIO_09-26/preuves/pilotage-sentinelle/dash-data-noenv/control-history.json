@@ -1,0 +1,72 @@
+{
+  "snapshots": [
+    {
+      "at": "2026-09-04T12:47:34.015Z",
+      "global": {
+        "state": "NOT_CONFIGURED",
+        "confidence": 38,
+        "rule": "pire domaine critique (technique/sécurité/observation) + confiance de mesure"
+      },
+      "domains": {
+        "product": {
+          "state": "NOT_CONFIGURED",
+          "detail": "KPI produit non configurés."
+        },
+        "technical": {
+          "state": "NOT_CONFIGURED",
+          "detail": "NON INSTRUMENTÉ — brancher tests/e2e/authz-critical.spec.js"
+        },
+        "security": {
+          "state": "NOT_CONFIGURED",
+          "detail": "AUTHZ-CRITICAL n'a pas encore fourni de preuve dans cette session."
+        },
+        "observation": {
+          "state": "NOT_CONFIGURED",
+          "detail": "dbRead:NOT_CONFIGURED · sse:DEGRADED · canary:NOT_CONFIGURED"
+        },
+        "release": {
+          "state": "NOT_CONFIGURED",
+          "detail": "preuves manquantes/incompatibles: frontend version, DB version, deploy id"
+        }
+      },
+      "product": null,
+      "counts": {
+        "openAlerts": 0,
+        "openIncidents": 0,
+        "p0p1": 5
+      },
+      "risks": [
+        {
+          "key": "domain:product",
+          "priority": "P1",
+          "title": "Santé produit",
+          "source": "product"
+        },
+        {
+          "key": "domain:technical",
+          "priority": "P1",
+          "title": "Santé technique",
+          "source": "technical"
+        },
+        {
+          "key": "domain:security",
+          "priority": "P1",
+          "title": "Sécurité & autorisation",
+          "source": "security"
+        },
+        {
+          "key": "domain:observation",
+          "priority": "P1",
+          "title": "Observation",
+          "source": "observation"
+        },
+        {
+          "key": "domain:release",
+          "priority": "P1",
+          "title": "Release",
+          "source": "release"
+        }
+      ]
+    }
+  ]
+}

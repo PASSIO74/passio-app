@@ -1,0 +1,105 @@
+[1A[2K[2m[WebServer] [22m(node:2377) [DEP0066] DeprecationWarning: OutgoingMessage.prototype._headers is deprecated
+[2m[WebServer] [22m(Use `node --trace-deprecation ...` to show where the warning was created)
+
+
+Running 166 tests using 1 worker
+
+[1A[2K[1/166] [local] › tests/e2e/echappement-type-et-duree.spec.js:30:3 › échappement du type d'activité et de la durée › le type d'activité de la fiche est du texte, pas du balisage
+[1A[2K[2/166] [local] › tests/e2e/edition-activite-echappement.spec.js:45:3 › édition d'une activité › les apostrophes et les esperluettes reviennent telles quelles
+[1A[2K[3/166] [local] › tests/e2e/edition-activite-echappement.spec.js:71:3 › édition d'une activité › une tentative de sortie d'attribut reste neutralisée
+[1A[2K[4/166] [local] › tests/e2e/irl-changement-ville.spec.js:62:3 › « Ma ville » après un changement de ville › le filtre suit la ville choisie, il ne reste pas sur la précédente
+[1A[2K[5/166] [local] › tests/e2e/irl-changement-ville.spec.js:112:3 › « Ma ville » après un changement de ville › sans « Ma ville », changer de ville ne pose aucun filtre
+[1A[2K[6/166] [local] › tests/e2e/irl-deeplink-etat-null.spec.js:57:3 › Liens profonds IRL et fenêtre « application pas encore prête » › #irl-event-<id> posé avant que state existe ouvre quand même la fiche
+[1A[2K[7/166] [local] › tests/e2e/irl-deeplink-etat-null.spec.js:69:3 › Liens profonds IRL et fenêtre « application pas encore prête » › #irl-checkin-<id>-<code> posé avant que state existe ouvre quand même la fiche
+[1A[2K[8/166] [local] › tests/e2e/irl-deeplink-etat-null.spec.js:88:3 › Liens profonds IRL et fenêtre « application pas encore prête » › après ouverture, un hashchange sans rapport ne rouvre PAS la fiche
+[1A[2K[9/166] [local] › tests/e2e/irl-deeplink-etat-null.spec.js:111:3 › Liens profonds IRL et fenêtre « application pas encore prête » › le chemin nominal, application prête, est inchangé
+[1A[2K[10/166] [local] › tests/e2e/irl-funnel.spec.js:98:3 › Funnel IRL — création › écriture confirmée : un seul irl_create_success, métadonnées bornées
+[1A[2K[11/166] [local] › tests/e2e/irl-funnel.spec.js:114:3 › Funnel IRL — création › écriture refusée : irl_create_failed(write_failed) alors que l'écran montre l'événement
+[1A[2K[12/166] [local] › tests/e2e/irl-funnel.spec.js:127:3 › Funnel IRL — création › aucune écriture tentée : irl_create_failed(offline), jamais un succès
+[1A[2K[13/166] [local] › tests/e2e/irl-funnel.spec.js:137:3 › Funnel IRL — création › une édition n'entre pas dans le funnel de création
+[1A[2K[14/166] [local] › tests/e2e/irl-funnel.spec.js:155:3 › Funnel IRL — création › origine Fil : marquée quand le pont a ouvert le brouillon, jamais héritée ensuite
+[1A[2K[15/166] [local] › tests/e2e/irl-funnel.spec.js:182:3 › Funnel IRL — création › brouillon du pont abandonné : la création suivante n'est pas attribuée au Fil
+[1A[2K[16/166] [local] › tests/e2e/irl-funnel.spec.js:204:3 › Funnel IRL — participation › RSVP confirmé : irl_join_success sans origine devinée
+[1A[2K[17/166] [local] › tests/e2e/irl-funnel.spec.js:216:3 › Funnel IRL — participation › RSVP refusé par la base : irl_join_failed(write_failed) malgré l'état local à jour
+[1A[2K[18/166] [local] › tests/e2e/irl-funnel.spec.js:229:3 › Funnel IRL — participation › aucun backend : irl_join_failed(offline)
+[1A[2K[19/166] [local] › tests/e2e/irl-funnel.spec.js:240:3 › Funnel IRL — participation › « peut-être » et liste d'attente comptent ; « declined » et le retrait non
+[1A[2K[20/166] [local] › tests/e2e/irl-funnel.spec.js:255:3 › Funnel IRL — participation › dédoublonnage : deux résultats identiques rapprochés = un seul événement
+[1A[2K[21/166] [local] › tests/e2e/irl-funnel.spec.js:275:3 › Funnel IRL — confidentialité et robustesse › aucune donnée personnelle ni identifiant dans les métadonnées
+[1A[2K[22/166] [local] › tests/e2e/irl-funnel.spec.js:303:3 › Funnel IRL — confidentialité et robustesse › télémétrie indisponible : création et participation fonctionnent quand même
+[1A[2K[23/166] [local] › tests/e2e/irl-passion-archivee.spec.js:54:3 › une passion archivée, sur Rencontrer › n'est plus comptée parmi « mes passions », comme sur le Fil
+[1A[2K[24/166] [local] › tests/e2e/irl-passion-archivee.spec.js:69:3 › une passion archivée, sur Rencontrer › reste affichée et décochable si elle était ENCORE filtrée
+[1A[2K[25/166] [local] › tests/e2e/irl-passion-archivee.spec.js:89:3 › une passion archivée, sur Rencontrer › sous le kill switch UI-8, toutes les passions redeviennent « miennes »
+[1A[2K[26/166] [local] › tests/e2e/irl-trust-safety.spec.js:79:3 › Trust & Safety — garde de la proposition IRL › drapeau absent = OFF : aucune proposition n'est autorisée
+[1A[2K[27/166] [local] › tests/e2e/irl-trust-safety.spec.js:90:3 › Trust & Safety — garde de la proposition IRL › kill switch mémoire : PASSIO_IRL_PROPOSAL_V1=false coupe un drapeau posé à 1
+[1A[2K[28/166] [local] › tests/e2e/irl-trust-safety.spec.js:103:3 › Trust & Safety — garde de la proposition IRL › le lien canari active l'aperçu sans persister le drapeau
+[1A[2K[29/166] [local] › tests/e2e/irl-trust-safety.spec.js:123:3 › Trust & Safety — garde de la proposition IRL › verdicts : cible valide, cible vide, soi-même, mineur, compte bloqué
+[1A[2K[30/166] [local] › tests/e2e/irl-trust-safety.spec.js:158:3 › Trust & Safety — garde de la proposition IRL › isMinor n'était relu nulle part : la garde est le premier lecteur
+[1A[2K[31/166] [local] › tests/e2e/irl-trust-safety.spec.js:176:3 › Trust & Safety — garde de la proposition IRL › un lieu choisi à quelques centaines de mètres du GPS reste EXACT
+[1A[2K[32/166] [local] › tests/e2e/irl-trust-safety.spec.js:201:3 › Trust & Safety — garde de la proposition IRL › le lieu part intact même quand il EST exactement la position de l'appareil
+[1A[2K[33/166] [local] › tests/e2e/irl-trust-safety.spec.js:216:3 › Trust & Safety — garde de la proposition IRL › un événement sans coordonnées ne récupère jamais celles de l'appareil
+[1A[2K[34/166] [local] › tests/e2e/irl-trust-safety.spec.js:228:3 › Trust & Safety — garde de la proposition IRL › aucun code ne recopie irlUserLocation dans un payload d'événement
+[1A[2K[35/166] [local] › tests/e2e/irl-trust-safety.spec.js:248:3 › Trust & Safety — garde de la proposition IRL › le drapeau est documenté comme n'étant PAS une frontière de sécurité
+[1A[2K[36/166] [local] › tests/e2e/irl-trust-safety.spec.js:261:3 › Trust & Safety — garde de la proposition IRL › serveur true : CTA accessible de 44 px et quatrième aide, sans PII télémétrique
+[1A[2K[37/166] [local] › tests/e2e/irl-trust-safety.spec.js:290:5 › Trust & Safety — garde de la proposition IRL › serveur false : aucun CTA ni aide n'est révélé
+[1A[2K[38/166] [local] › tests/e2e/irl-trust-safety.spec.js:290:5 › Trust & Safety — garde de la proposition IRL › serveur null : aucun CTA ni aide n'est révélé
+[1A[2K[39/166] [local] › tests/e2e/irl-trust-safety.spec.js:290:5 › Trust & Safety — garde de la proposition IRL › serveur error : aucun CTA ni aide n'est révélé
+[1A[2K[40/166] [local] › tests/e2e/irl-trust-safety.spec.js:301:3 › Trust & Safety — garde de la proposition IRL › OFF par défaut et conversation de groupe : aucun RPC d'éligibilité
+[1A[2K[41/166] [local] › tests/e2e/irl-trust-safety.spec.js:323:3 › Trust & Safety — garde de la proposition IRL › le clic revalide : un refus tardif retire le CTA sans ouvrir le formulaire
+[1A[2K[42/166] [local] › tests/e2e/irl-trust-safety.spec.js:340:3 › Trust & Safety — garde de la proposition IRL › le clic autorisé ouvre le formulaire IRL existant et reste sans identifiant dans les traces
+[1A[2K[43/166] [local] › tests/e2e/irl-trust-safety.spec.js:363:3 › Trust & Safety — garde de la proposition IRL › ouvrir un DM avec un compte bloqué est refusé, aucune conversation créée
+[1A[2K[44/166] [local] › tests/e2e/irl-trust-safety.spec.js:376:3 › Trust & Safety — garde de la proposition IRL › ouvrir un DM avec un compte NON bloqué reste possible (la garde ne déborde pas)
+[1A[2K[45/166] [local] › tests/e2e/irl-trust-safety.spec.js:395:3 › Trust & Safety — garde de la proposition IRL › isBlocked qui lève → verdict refusé (guard_error), jamais autorisé
+[1A[2K[46/166] [local] › tests/e2e/irl-trust-safety.spec.js:413:3 › Trust & Safety — garde de la proposition IRL › état illisible → traité comme mineur (retenu), jamais comme majeur
+[1A[2K[47/166] [local] › tests/e2e/irl-trust-safety.spec.js:431:3 › Trust & Safety — garde de la proposition IRL › les clés de télémétrie de la garde survivent au filtre PII
+[1A[2K[48/166] [local] › tests/e2e/irl-trust-safety.spec.js:447:3 › Trust & Safety — garde de la proposition IRL › la trace du verdict ne porte ni identifiant de compte ni texte
+[1A[2K[49/166] [local] › tests/e2e/irl.spec.js:110:3 › IRL — découverte et filtres › aucun filtre par défaut : TOUS les événements sont visibles
+[1A[2K[50/166] [local] › tests/e2e/irl.spec.js:123:3 › IRL — découverte et filtres › la barre affiche MES passions ; les autres s'ajoutent depuis le panneau
+[1A[2K[51/166] [local] › tests/e2e/irl.spec.js:143:3 › IRL — découverte et filtres › décocher une passion ajoutée retire aussi son filtre
+[1A[2K[52/166] [local] › tests/e2e/irl.spec.js:156:3 › IRL — découverte et filtres › filtrer par passion réduit la liste et la pastille de filtres le dit
+[1A[2K[53/166] [local] › tests/e2e/irl.spec.js:169:3 › IRL — découverte et filtres › la recherche filtre sur le lieu et la description, pas seulement le titre
+[1A[2K[54/166] [local] › tests/e2e/irl.spec.js:183:3 › IRL — découverte et filtres › état vide : « rien avec ces filtres » ≠ « aucun événement »
+[1A[2K[55/166] [local] › tests/e2e/irl.spec.js:192:3 › IRL — découverte et filtres › le séparateur ville · lieu ne se dédouble pas
+[1A[2K[56/166] [local] › tests/e2e/irl.spec.js:200:3 › IRL — découverte et filtres › la liste est paginée et la pagination repart à zéro quand un filtre change
+[1A[2K[57/166] [local] › tests/e2e/irl.spec.js:212:3 › IRL — découverte et filtres › le tri « les plus proches » classe par distance croissante
+[1A[2K[58/166] [local] › tests/e2e/irl.spec.js:227:3 › IRL — cycle de vie d'un événement › un événement EN COURS reste visible (il ne disparaît plus à son début)
+[1A[2K[59/166] [local] › tests/e2e/irl.spec.js:237:3 › IRL — cycle de vie d'un événement › un événement TERMINÉ sort de « à venir » et reste joignable en mode passé
+[1A[2K[60/166] [local] › tests/e2e/irl.spec.js:251:3 › IRL — cycle de vie d'un événement › un événement ANNULÉ reste visible, barré, et ne peut plus être rejoint
+[1A[2K[61/166] [local] › tests/e2e/irl.spec.js:261:3 › IRL — cycle de vie d'un événement › l'organisateur peut modifier son événement, les inscrits sont prévenus
+[1A[2K[62/166] [local] › tests/e2e/irl.spec.js:288:3 › IRL — cycle de vie d'un événement › le lien partagé #irl-event-<id> ouvre bien la fiche
+[1A[2K[63/166] [local] › tests/e2e/irl.spec.js:298:3 › IRL — participation (RSVP, liste d'attente, check-in) › le RSVP a 3 états et seuls les « je viens » occupent une place
+[1A[2K[64/166] [local] › tests/e2e/irl.spec.js:317:3 › IRL — participation (RSVP, liste d'attente, check-in) › rejoindre un événement COMPLET bascule en liste d'attente
+[1A[2K[65/166] [local] › tests/e2e/irl.spec.js:326:3 › IRL — participation (RSVP, liste d'attente, check-in) › une place libérée promeut le premier de la liste d'attente
+[1A[2K[66/166] [local] › tests/e2e/irl.spec.js:342:3 › IRL — participation (RSVP, liste d'attente, check-in) › le check-in n'ouvre qu'à l'approche de l'événement
+[1A[2K[67/166] [local] › tests/e2e/irl.spec.js:354:3 › IRL — participation (RSVP, liste d'attente, check-in) › inscription et like ne recadrent PAS la carte
+[1A[2K  1) [local] › tests/e2e/irl.spec.js:354:3 › IRL — participation (RSVP, liste d'attente, check-in) › inscription et like ne recadrent PAS la carte 
+
+    Error: page.waitForFunction: TypeError: Cannot read properties of null (reading 'getZoom')
+        at eval (eval at predicate (eval at evaluate (:302:30)), <anonymous>:2:37)
+        at predicate (eval at evaluate (:302:30), <anonymous>:7:27)
+        at next (eval at evaluate (:302:30), <anonymous>:29:33)
+        at eval (eval at evaluate (:302:30), <anonymous>:42:13)
+        at UtilityScript.evaluate (<anonymous>:304:16)
+        at UtilityScript.<anonymous> (<anonymous>:1:44)
+        at eval (eval at predicate (eval at evaluate (:302:30)), <anonymous>:2:37)
+        at predicate (eval at evaluate (:302:30), <anonymous>:7:27)
+        at next (eval at evaluate (:302:30), <anonymous>:29:33)
+        at eval (eval at evaluate (:302:30), <anonymous>:42:13)
+        at UtilityScript.evaluate (<anonymous>:304:16)
+        at UtilityScript.<anonymous> (<anonymous>:1:44)
+        at /home/user/passio-app/tests/e2e/irl.spec.js:363:16
+
+    Error Context: test-results/irl-IRL-—-participation-RS-d98d0-e-ne-recadrent-PAS-la-carte-local/error-context.md
+
+
+[1A[2K[68/166] [local] › tests/e2e/irl.spec.js:381:3 › IRL — création, récurrence et vues › créer un événement m'inscrit dessus et refuse une date passée
+[1A[2K[69/166] [local] › tests/e2e/irl.spec.js:407:3 › IRL — création, récurrence et vues › un événement récurrent crée de VRAIS événements partageant une série
+[1A[2K[70/166] [local] › tests/e2e/irl.spec.js:433:3 › IRL — création, récurrence et vues › le volet Date est un calendrier en ligne : 1 tap = un jour
+[1A[2K[71/166] [local] › tests/e2e/irl.spec.js:477:3 › IRL — création, récurrence et vues › le volet Distance est un curseur et affiche « entre 0 et X km »
+[1A[2K[72/166] [local] › tests/e2e/irl.spec.js:503:3 › IRL — création, récurrence et vues › le volet Horaire règle la plage SUR PLACE (pas de modale par-dessus)
+[1A[2K[73/166] [local] › tests/e2e/irl.spec.js:529:3 › IRL — création, récurrence et vues › le filtre horaire porte sur l'heure AFFICHÉE sur la carte
+[1A[2K[74/166] [local] › tests/e2e/irl.spec.js:551:3 › IRL — création, récurrence et vues › le calendrier interdit les jours passés et le pied annonce le résultat
+[1A[2K[75/166] [local] › tests/e2e/irl.spec.js:579:3 › IRL — création, récurrence et vues › le digest hebdo ne se déclenche qu'une fois par semaine
+[1A[2K[76/166] [local] › tests/e2e/irl.spec.js:599:3 › IRL — carte repliable (peek, content-first) › la carte démarre repliée ; le bouton la déplie/replie et l'état est mémorisé
+[1A[2K[77/166] [local] › tests/e2e/irl.spec.js:624:3 › IRL — carte repliable (peek, content-first) › le filtre « Mes events / Inscrit » ne vit plus que dans le panneau d'outils
+[1A[2K[78/166] [local] › tests/e2e/ui-v3b-activite.spec.js:144:1 › aperçu UI-3B : la carte est là même quand AUCUNE passion n'est cochée
+[1A[2K[79/166] [local] › tests/e2e/ui-v3b-activite.spec.js:167:1 › aperçu UI-3B : une publication liée est visible sans donnée persistée

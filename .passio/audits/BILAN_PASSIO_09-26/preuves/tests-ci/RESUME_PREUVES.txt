@@ -1,0 +1,33 @@
+BILAN PASSIO 09/26 — domaine tests-ci — preuves (SHA audité c8cb8e99, branche audit/bilan-passio-09-26-fable51)
+
+INVENTAIRE (npx playwright test --list)
+  --project=local : Total 1103 tests in 124 files
+  --project=prod  : Total 15 tests in 7 files
+  sans projet     : Total 1118 tests in 131 files
+  test( comptés par fichier : 1053 (tests-par-fichier.txt) — l'écart vient des test.describe paramétrés (cadrage, viewports)
+  opt-in : PASSIO_E2E_MULTI (multi-comptes, confidentialite, suppression-compte), PASSIO_QA_CAMPAIGN (qa-campaign), PASSIO_E2E_RT (mode realtime de multi-comptes)
+  skips : release-integrity + passion-context (sauf PASSIO_CIBLE=dist), monitoring-bruit (CDN injoignable), 4 opt-in ci-dessus
+  dashboard : `cd dashboard && npm test` → 349 tests, 349 pass, 24,6 s
+
+GATES STATIQUES : npm run verif → VERT en 1,43 s (8 gates + référentiel)
+
+ÉCHANTILLON EXÉCUTÉ (PASSIO_PORT=8115, workers=1, --project=local, 8 fichiers)
+  run1 : 28 passed, 4 skipped (release-integrity sans dist), 4,3 min, EXIT=0 (echantillon-local-run1.txt)
+  run2 : 28 passed, 4 skipped, 4,6 min, EXIT=0 (echantillon-local-run2.txt) → 0 flaky sur 2 exécutions
+  gates artefact dist (PASSIO_CIBLE=dist, port 8116, release-integrity + passion-context) : 6 passed, 1,4 min, EXIT=0
+
+CI (API GitHub publique, run-33861671142-jobs.json, deploy-runs-100.json)
+  run 2494 : 13 jobs verts, 10:07:06 → 10:44:12 UTC (37 min). Shards navigateur 6,0/13,8/8,1/7,2/8,0/14,4 min ; Installer Playwright 7,4 min PAR job (28,5 min cumulées) ; Lancer les tests 37,6 min cumulées.
+  Déploiement production : 20,0 min dont Minify index.html 7,0 + Minify app.js 5,2 + Minify styles.css 5,0 (npx --yes non épinglés) + Netlify 2,5.
+  100 derniers runs (02→04 sept) : push/success 33, push/failure 4, push/cancelled 1, PR/success 52, PR/failure 8, PR/cancelled 2. Médiane main 9,2 min, max 64,2 ; médiane PR 7,9.
+  Logs de jobs : BLOQUÉ (CONNECT 403 par le proxy vers l'hôte des logs) → flakiness non mesurable ; protection de branche : HTTP 403.
+
+MUTATIONS SUR LES GATES (copies dans creux-mutation/ et isolation-mutation/, aucun fichier du dépôt touché)
+  audit-tests-creux : un spec qui fait page.setContent + locator() sur sa propre construction → « OK » (exit 0)
+  audit-tests-isolation : un spec qui navigue vers l'app avec « sansDonneesDistantes( » uniquement DANS UN COMMENTAIRE → « OK » (exit 0)
+
+COUVERTURE : npm run couverture → mesure du 2026-08-16, dénominateur 435 → 355 aujourd'hui, 28 noms mesurés absents, 38/355 = 10,7 % sur mesure périmée ; couverture:risque → 19 interactions qui ÉCRIVENT en base jamais exercées.
+
+OPT-IN POURRI : multi-comptes.spec.js (tests :619 et :712) appelle openVlogViewer, supaAddCarnetCollaborator, supaAddCdvCollaborator, supaAddCdvLiveStep, supaPublishCdvLive, supaUpdateCdvLiveStep — absents de js/ depuis ADR-011.
+
+npm audit : app 1 high (sharp <0.35.0, devDep) + 1 moderate (qs) ; dashboard 3 moderate (body-parser, express 4.22.2, qs).

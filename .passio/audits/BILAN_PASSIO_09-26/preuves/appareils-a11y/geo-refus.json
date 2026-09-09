@@ -1,0 +1,30 @@
+{
+ "ouvertureOnglet": {
+  "appels": 0,
+  "ville": "ta position",
+  "loc": null,
+  "err": false,
+  "skipOnce": false,
+  "toasts": [],
+  "visible": true
+ },
+ "appelDirect": {
+  "appels": 1,
+  "ville": "Paris",
+  "loc": {
+   "lat": 48.8566,
+   "lng": 2.3522
+  },
+  "err": true,
+  "toasts": []
+ },
+ "appelsApres5Renders": 1,
+ "checkin": {
+  "id": "e41",
+  "toasts": [
+   "Le pointage ouvre 1 h avant le début"
+  ],
+  "pointe": false,
+  "appels": 1
+ }
+}

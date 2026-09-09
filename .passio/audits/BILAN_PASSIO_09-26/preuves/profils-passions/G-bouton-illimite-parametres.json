@@ -1,0 +1,17 @@
+{
+  "boutonPresent": true,
+  "boutonVisible": false,
+  "avant": {
+    "plafondActif": true,
+    "restantes": 0,
+    "quota": 3
+  },
+  "apres": {
+    "plafondActif": false,
+    "restantes": null,
+    "quota": null,
+    "texte": "Passions illimitées : ACTIVÉ",
+    "cle": "1"
+  },
+  "gardeCompte": true
+}

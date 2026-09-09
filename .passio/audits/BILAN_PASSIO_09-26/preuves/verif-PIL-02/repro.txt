@@ -1,0 +1,12 @@
+health 200 {"ok":true,"env":"development","supabase":false}
+admin/admin -> 200 {"user":"admin","role":"admin","caps":["view","sessions","tests","git_read","git_mutate","claude","flags","db","test_users","audit","settings","alerts"]} | set-cookie: dash_session=eyJ1IjoiYWRtaW4iLCJyb2xlIjo…
+10 XFF différents -> 401,401,401,401,401,401,401,401,401,401
+10 XFF identiques -> 401,401,401,401,401,401,401,401,429,429
+XFF 10.9.9.10 admin/admin après blocage -> 200
+cookie forgé (secret par défaut) /api/me -> 200 {"user":"admin","role":"admin","caps":["view","sessions","tests","git_read","git_mutate","claude","flags","db","test_use
+cookie signature invalide /api/me -> 401
+--- console serveur (extrait):
+  ▸ Environnement dashboard : development
+  ▸ Supabase : NON configuré → mode local (voir .env)
+  ▸ Mutations git : désactivées
+[ingest] Supabase non configuré (SUPABASE_SERVICE_ROLE_KEY manquante). Le dashboard démarre en mode LOCAL : instrumentez Passio et renseignez .env pour les données réelles.

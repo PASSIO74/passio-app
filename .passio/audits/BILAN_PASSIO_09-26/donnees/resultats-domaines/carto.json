@@ -1,0 +1,404 @@
+{
+ "domaine": "carto — cartographie complète (écrans, onglets, handlers, modales, formulaires, fonctions, tables, stockage, services) et placement / duplication des fonctionnalités",
+ "resume": "Cartographie mesurée sur le SHA c8cb8e99 par un inventaire statique reproductible (scratchpad/preuves/carto/inventaire.js → inventaire.json), une émulation Chromium 1194 (emulation-ecrans.js : parcours des 6 écrans, viewer Bobines, page « Mes passions », feuille « Créer », tour démo, captures 390×844), deux suites e2e exécutées (smoke + contextual-nav : 11/11 verts sur le port 8100 via un wrapper de config qui force le Chromium 1194 présent — le paquet 1.60 attend le build 1223, absent), et trois requêtes en lecture seule sur la prod (list_tables, information_schema.columns, pg_constraint).\nChiffres actuels : 6 écrans (feed, profiles, studio, explore, irl, messages) ; 42 fichiers js/ (40 chargés en dev, 3 injectés au build seulement) ; 1 285 fonctions `function X` top-level (1 338 fonctions sur window à l'exécution) ; 626 handlers inline (167 index.html + 459 templates JS) pour 366 interactions distinctes (le script du dépôt donne 355/601 sur 10 fichiers) ; 28 tables + 2 buckets touchés par le client sur 39 tables prod ; 3 RPC ; 3 Edge Functions ; 37 motifs de clés de stockage + 9 constantes ; 1 base IndexedDB ; 6 préfixes de canaux realtime ; 131 specs / 1 060 tests ; 15 modules ui-v*.js.\nVerdict du domaine : la surface est cartographiable et cohérente avec les ADR-009/011 (aucun écran wallet/cdv, redirections en place), mais PASSIO_FUNCTIONAL_MAP.md est périmé sur tous ses chiffres. Placement : deux barres de navigation coexistent dans le DOM (legacy masquée), Bobines n'a plus d'entrée de navigation, trois vocabulaires de « mood/intention » cohabitent dans le balisage, et un doublon local vérifié : trois recherches de post à la main (openPost, shareReelInFeed, findPostAnywhere) et deux formateurs de temps relatif. Aucun doublon ne crée un défaut reproduit ; findings en P2/P3 uniquement.",
+ "controles": [
+  {
+   "id": "CARTO-C01",
+   "controle": "Inventaire des écrans id=\"screen-*\" d'index.html",
+   "statut": "PROUVÉ",
+   "methode": "test exécuté",
+   "preuve": "grep -n 'id=\"screen-' index.html → 6 (l.508 feed, 565 profiles, 772 studio, 869 explore, 1052 irl, 1227 messages) ; émulation : goTo(x) rend .screen.active = screen-x pour les 6 (emulation-ecrans.json, captures ecran-*.jpg)"
+  },
+  {
+   "id": "CARTO-C02",
+   "controle": "Barres de navigation et onglets internes (rails d'intentions, onglets profil/explore/IRL)",
+   "statut": "PROUVÉ",
+   "methode": "émulation",
+   "preuve": "emulation-ecrans.json.nav : #appNav (index.html:1331, 4 entrées Fil/Bobines/Créer/IRL) toutes invisibles ; #appNavV2 (ui-v2-shell.js:210-230) 5 entrées visibles Découvrir/Rencontrer/Créer/Messages/Profil ; onglets : .profile-tabs data-tab posts/photos/videos/bobines/audio (index.html:742-760), .explore-tabs Recherche/Assistant IA (872-874), .irl-ftabs Date/Distance/Horaire (1114-1132), #feedIntents data-intent discover/learn/create/meet (546-549), #moodSelector data-mood creation/learn/chill/actu gelé (532-536)"
+  },
+  {
+   "id": "CARTO-C03",
+   "controle": "Comptage des handlers inline par écran et par fichier (onclick/onchange/oninput/onkeydown/onsubmit/onkeyup/onblur/onfocus)",
+   "statut": "PROUVÉ",
+   "methode": "test exécuté",
+   "preuve": "node inventaire.js : index.html 167 (feed 0, profiles 18, studio 5, explore 15, irl 23, messages 3, avant <main> 66, après </main> 36) ; js/ 459 {onclick 431, oninput 15, onchange 9, onkeydown 4} ; total 626 ; interactions distinctes 366 (115 depuis index.html) ; scripts/couverture-interactions.js → 601 handlers / 355 interactions sur 10 fichiers"
+  },
+  {
+   "id": "CARTO-C04",
+   "controle": "Modales, feuilles basses, viewers et pages plein écran",
+   "statut": "PROUVÉ",
+   "methode": "émulation",
+   "preuve": "emulation-ecrans.json.overlays : #modalBackdrop présent-masqué (64 appels openModal( dans js/) ; #v2CreateSheet créé au premier tap (6 cases Publication/Bobine/Activité/Story/Live vidéo/Audio, overlay-creer.jpg) ; #reelsViewer ouvert 'reels-viewer open' 1/20, z-index 9999 (overlay-bobines.jpg) ; #passionManager ouvert : classe passions-page-open, 5/5 frères masqués, 12 portes (overlay-mes-passions.jpg) ; #tourOverlay ouvert sans erreur JS (overlay-tour.jpg) ; 29 'position:fixed' en ligne dans js/ (overlays ad hoc)"
+  },
+  {
+   "id": "CARTO-C05",
+   "controle": "Formulaires (input/textarea/select) par écran",
+   "statut": "PROUVÉ",
+   "methode": "inspection code",
+   "preuve": "inventaire.json.ecrans[].formulaire : profiles 2 input ; studio 3 input/1 textarea/2 select ; explore 3 input ; irl 2 input/3 select ; messages 1 input ; feed 0 ; avant <main> 8 input ; après </main> 5 input/2 textarea. Émulation : champs visibles studio 1, explore 1, irl 1, messages 1"
+  },
+  {
+   "id": "CARTO-C06",
+   "controle": "Fonctions globales par fichier js/ et total ; doublons de nom",
+   "statut": "PROUVÉ",
+   "methode": "test exécuté",
+   "preuve": "inventaire.json.js.parFichier : total 1 285 `function X` top-level (app-02 : cf. tableau §4 de CARTOGRAPHIE.md) ; 1 338 fonctions sur window à l'exécution ; 1 seul nom déclaré 2× : `$` (app-01:7 vs app-02:1094), allowlisté scripts/audit-globals.js:22"
+  },
+  {
+   "id": "CARTO-C07",
+   "controle": "Matrice fichier × table Supabase (.from) + RPC + buckets + Edge Functions",
+   "statut": "PROUVÉ",
+   "methode": "test exécuté",
+   "preuve": "inventaire.json.tables : 28 tables + buckets content (app-04, app-08) et attachments (app-09) ; rpc declare_birth_year, irl_interaction_allowed (app-07:5024/5050), rechercher_passions (passions-flat.js) ; edge delete-account (app-02), notify-call (app-05, app-08), ask-ai (app-07:34) ; dashboard/server : telemetry_events 7, profiles 4, posts 1"
+  },
+  {
+   "id": "CARTO-C08",
+   "controle": "Tables de production et tables jamais touchées par le client",
+   "statut": "PROUVÉ",
+   "methode": "requête base",
+   "preuve": "list_tables(public) → 39 tables, toutes rls_enabled=true ; 11 sans .from() client : cdv_lives, cdv_live_steps, cdv_live_comments, cdv_live_reactions, cdv_live_followers, cdv_live_collaborators, post_collaborators, step_interactions, passion_relations (lue par la fonction SQL rechercher_passions), user_safety (via RPC), telemetry_events (POST REST telemetry.js + dashboard)"
+  },
+  {
+   "id": "CARTO-C09",
+   "controle": "Clés localStorage/sessionStorage/IndexedDB",
+   "statut": "PROUVÉ",
+   "methode": "test exécuté",
+   "preuve": "inventaire.json.storageKeys : 37 motifs littéraux ; constantes STATE_KEY=passio_mvp_state_v1 (app-01:109), AUTH_INTENT_KEY (app-02:2588), ACCOUNT_SCOPED_KEYS (app-02:2711), OUTBOX_KEY (app-04:4580), _DEL_OUTBOX_KEY (app-04:64), _CMT_OUTBOX_KEY (app-04:462), CONV_TOMB_KEY (app-04:2211), GEO_CACHE_KEY (app-07:958), IRL_DIGEST_KEY (app-07:4127), EVENT_COMMENTS_LS_KEY (app-07:4458) ; IndexedDB passio_store/kv v1 (idb-store.js:10) ; après boot onboardé : 6 clés localStorage, 2 sessionStorage (emulation-ecrans.json.storage)"
+  },
+  {
+   "id": "CARTO-C10",
+   "controle": "Services externes et CSP (_headers / netlify.toml)",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": "inventaire.json.hosts (28 hôtes) ; _headers et netlify.toml portent la MÊME CSP (connect-src supabase https+wss, tiles.openfreemap.org, api-adresse.data.gouv.fr, photon.komoot.io, tenor, giphy, stun/turn) ; MapLibre via unpkg (map-loader.js), SDK Supabase via cdn.jsdelivr.net (supabase-loader.js) ; Brevo = config Supabase, aucun code client ; Cloudflare Worker cloudflare/passio-cdn-worker.js INACTIF (PASSIO_CDN_BASE = \"\" app-08:2564) ; sw.js : push + notificationclick + cache (l.15,31,48,88), enregistré par pwa-detect.js:11"
+  },
+  {
+   "id": "CARTO-C11",
+   "controle": "Modules ui-v*.js sous drapeau et ce qu'ils décorent",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": "15 fichiers ui-v*.js (CARTOGRAPHIE.md §8) ; drapeaux passio_ui_v2|3|4a0..4a5|4b|5|6|6a|6b|6c|7 lus en tête de chaque module ; namespaces window PassioUIV2…PassioUIV7 constatés à l'exécution (emulation-ecrans.json.globals.passioNamespaces)"
+  },
+  {
+   "id": "CARTO-C12",
+   "controle": "Fichiers js/ non chargés par index.html en dev mais injectés au build",
+   "statut": "DÉFAILLANT",
+   "methode": "inspection code",
+   "preuve": "index.html charge 40 scripts js/ ; identity-transition.js, release-guard.js injectés par scripts/build.js:96-102 après telemetry.js ; passion-context.js concaténé dans app.js (build.js:32) ; aucune balise dans index.html → le dev et les 124 suites `local` ne les exécutent pas (seule release-integrity.spec.js / passion-context.spec.js sous PASSIO_CIBLE=dist, deploy.yml:421)"
+  },
+  {
+   "id": "CARTO-C13",
+   "controle": "Spec e2e → écrans couverts (matrice)",
+   "statut": "PROUVÉ",
+   "methode": "test exécuté",
+   "preuve": "specs-ecrans.txt (grep goTo/screen-/bootOnboarded par spec) : feed 33, profiles 21, irl 21, bobines 23, modales 17, studio 14, messages 13, explore 8, first-run 4, 48 specs sans écran identifiable ; tests-par-spec.txt : 131 specs, 1 060 `test(` ; smoke + contextual-nav exécutées : 11 passed (smoke-run.txt)"
+  },
+  {
+   "id": "CARTO-C14",
+   "controle": "Affirmations de PASSIO_FUNCTIONAL_MAP.md confrontées au code",
+   "statut": "DÉFAILLANT",
+   "methode": "test exécuté",
+   "preuve": "8 écrans → 6 ; 435/757 → 355/601 (script du dépôt) ou 366/626 (42 fichiers) ; 34 tables → 39 ; 25 specs/175 tests → 131/1 060 ; « cdv 52 tests » → 0 spec cdv ; passion_id sur 5 tables → 6 (user_passions) ; RLS partout → toujours vrai (39/39)"
+  },
+  {
+   "id": "CARTO-C15",
+   "controle": "Placement : portes d'ajout de passion (unicité du moteur d'écriture)",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": "4 portes (openCreateProfile app-06:3587, quickCreateProfile app-07:524, ouvrirRecherchePassionStudio app-06:3502, ouvrirRecherchePassionIRL app-07:1767) convergent vers ajouterPassionAuCompte (app-06:3677) ; quickCreateProfile appelle ajouterPassionAuCompte (app-07:527) ; en émulation la page Mes passions expose 1 seule porte d'ajout #nouveauProfilLien→openCreateProfile()"
+  },
+  {
+   "id": "CARTO-C16",
+   "controle": "Placement : boutons « Suivre » (3 surfaces) et moteur unique",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": "émetteurs data-follow-uid : app-06:4674, app-07:364, app-07:464 ; toggleFollowUser (app-04:3280) retourne TOUS les boutons (app-04:3273) ; _vliveToggleFollow (app-05:4013) délègue à supaFollowUser (app-08:5293)"
+  },
+  {
+   "id": "CARTO-C17",
+   "controle": "Duplication : moteurs de recherche (utilisateurs, passions, messages)",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": "searchUsers (app-04:2503) = seed local + supaSearchUsers (app-08:4423, borne + neutralisation PostgREST) : deux couches, un seul accès base ; _nmDoSearch (app-04:2421) et _globalMsgSearch (app-04:3542) = deux surfaces distinctes (nouveau message / inbox) ; passions : PassioPassions (passions-flat.js) + PassionSearchSelector unique (passion-selector.js)"
+  },
+  {
+   "id": "CARTO-C18",
+   "controle": "Duplication : rendus de carte (MapLibre/Leaflet)",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": "un seul chargeur map-loader.js (shim window.L l.251-260, ensureMapLibre = ensureLeaflet l.279) ; 2 instances : initIrlMap app-07:1400 et tour démo app-08:179 (L.tileLayer no-op du shim l.255 ; tour ouvert en émulation sans erreur, tourMap 0 enfant car L chargé paresseusement)"
+  },
+  {
+   "id": "CARTO-C19",
+   "controle": "Duplication : recherche d'un post (findPostAnywhere) et formatage du temps",
+   "statut": "DÉFAILLANT",
+   "methode": "inspection code",
+   "preuve": "grep 'state.seed.posts.find(' js/*.js → openPost app-02:6783-6785 et shareReelInFeed app-05:2964-2966 refont à la main les 3 tableaux de findPostAnywhere (app-02:4428) ; fmtTime (app-02:1116, via supaTs) vs fmtMsgTime (app-04:2370, ms seulement, appelé app-04:3525) ; escape : 3 helpers seulement (app-02:1156-1175) ; géocodage : _geocodeAddress (app-07:5743) n'est qu'un adaptateur de passioGeocode (app-07:1075)"
+  },
+  {
+   "id": "CARTO-C20",
+   "controle": "Duplication : gardes d'authentification à la main vs requireAuthentication",
+   "statut": "PROBABLE",
+   "methode": "inspection code",
+   "preuve": "19 appels requireAuthentication( contre 32 gardes manuelles `typeof MY_UID === \"undefined\" || !MY_UID` / `!MY_UID)` dans js/ (grep), et 3 comptePassioReel() — CLAUDE.md : « MY_UID ne prouve PAS qu'un compte existe » ; non reproduit en émulation (hors périmètre carto, signalé)"
+  },
+  {
+   "id": "CARTO-C21",
+   "controle": "Résidus ADR-011 (Carnet de voyage) dans le code client",
+   "statut": "CONFORME PAR INSPECTION",
+   "methode": "inspection code",
+   "preuve": "app-04:1452 et :1504 (branche `lc_` → cdv_live_comments), app-08:2012 et :5608 (kind cdv_live_step), app-02:2722 (clé passio_cdv_lives conservée volontairement) — branches mortes sans appelant vivant, aucune requête émise"
+  },
+  {
+   "id": "CARTO-C22",
+   "controle": "Clés étrangères réelles (author_id → profiles, passion_id → passions)",
+   "statut": "PROUVÉ",
+   "methode": "requête base",
+   "preuve": "pg_constraint contype='f' → 20 FK ; posts.author_id→profiles OK ; passion_id→passions sur profiles, posts, stories, events, conversations, user_passions ; SANS FK : events.author_id, event_comments.author_id, video_lives.author_id (signalé au domaine données)"
+  },
+  {
+   "id": "CARTO-C23",
+   "controle": "Vérification directe de la prod Netlify (fichier servi)",
+   "statut": "BLOQUÉ",
+   "methode": "non réalisé",
+   "preuve": "proxy réseau de l'environnement : accès HTTP sortant vers netlify.app refusé (403) — fait établi par l'orchestrateur, non retenté ; SHA prod = c8cb8e99 par le job « Déploiement production » vert du run 33861671142"
+  },
+  {
+   "id": "CARTO-C24",
+   "controle": "Mesure de couverture fonctionnelle (PASSIO_COUVERTURE=1, suite complète)",
+   "statut": "BLOQUÉ",
+   "methode": "non réalisé",
+   "preuve": "exige la suite complète (interdite au sous-agent : l'orchestrateur la lance une fois) et le Chromium 1223 attendu par @playwright/test 1.60 (seul 1194 présent, playwright install interdit) ; il faudrait `PASSIO_COUVERTURE=1 npm run couverture:mesure` sur un poste avec le navigateur aligné"
+  },
+  {
+   "id": "CARTO-C25",
+   "controle": "Suites du projet prod (comptes réels)",
+   "statut": "BLOQUÉ",
+   "methode": "non réalisé",
+   "preuve": "authz-critical, blocage-acces, user-state-horodatage, multi-comptes, confidentialite, qa-campaign, suppression-compte exigent SUPABASE_SERVICE_ROLE_KEY et écrivent en prod ; job « Suites production (comptes réels) » vert au run CI 33861671142"
+  },
+  {
+   "id": "CARTO-C26",
+   "controle": "Propreté du dépôt en fin d'audit",
+   "statut": "PROUVÉ",
+   "methode": "test exécuté",
+   "preuve": "git status --short → 0 ligne ; serveur http-server 8100 arrêté (ss -ltn : 0 écoute)"
+  }
+ ],
+ "findings": [
+  {
+   "id": "CARTO-01",
+   "priorite": "P2",
+   "titre": "PASSIO_FUNCTIONAL_MAP.md est périmé sur tous ses chiffres et décrit deux écrans retirés",
+   "fonctionnalite": "Documentation de référence de la surface applicative (racine du dépôt)",
+   "attendu": "Un document d'inventaire « mesuré » dont les chiffres se reproduisent sur main",
+   "observe": "8 écrans dont cdv et wallet (6 réels, ADR-009/011), 435 interactions sur 757 handlers (355/601 par le script du dépôt, 366/626 sur 42 fichiers), 34 tables (39), 25 specs/175 tests (131/1 060), « cdv 52 tests » (0 spec cdv), passion_id sur 5 tables (6)",
+   "reproduction": "grep -c 'id=\"screen-' index.html ; node scripts/couverture-interactions.js ; ls tests/e2e/*.spec.js | wc -l ; grep -c '^\\s*test(' tests/e2e/*.spec.js | awk -F: '{s+=$2}END{print s}' ; list_tables public",
+   "preuve": "PASSIO_FUNCTIONAL_MAP.md:12-20 vs preuves/carto/inventaire.json, tests-par-spec.txt, list_tables ; CARTOGRAPHIE.md §9",
+   "impact": "Tout audit ou investisseur qui s'appuie sur ce document raisonne sur une application qui n'existe plus (économie interne, carnet de voyage) ; crédibilité de la qualification commerciale",
+   "visibilite_pilotage": "non — le dashboard ne surveille pas la documentation",
+   "detection_sentinelle": "non — aucune règle ne compare la doc au code",
+   "correction": "Régénérer les sections 1, 2 et 4 depuis les scripts (couverture-interactions.js, inventaire.js) et dater ; marquer les tableaux comme générés",
+   "risque_regression": "nul (documentation)",
+   "effort": "2 h",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "CARTO-02",
+   "priorite": "P2",
+   "titre": "Trois modules de garde ne tournent qu'en production : identity-transition.js, release-guard.js, passion-context.js sont absents d'index.html",
+   "fonctionnalite": "Chargement des scripts (index.html) vs artefact de production (scripts/build.js)",
+   "attendu": "Le programme testé par les 124 suites `local` est celui qui est déployé ; tout module vivant est chargé en dev",
+   "observe": "index.html charge 40 des 42 fichiers js/ ; build.js:96-102 injecte identity-transition.js et release-guard.js après telemetry.js, build.js:32 concatène passion-context.js dans app.js. En dev et dans tout test `local`, ces trois modules n'existent pas ; seules release-integrity.spec.js et passion-context.spec.js les exercent, sous PASSIO_CIBLE=dist (deploy.yml:421)",
+   "reproduction": "grep -c '<script src=\"js/' index.html (40) ; ls js/*.js | wc -l (42) ; grep -n 'identity-transition\\|release-guard\\|passion-context' scripts/build.js",
+   "preuve": "scripts/build.js:21-32 et :94-102 ; inventaire.json.js.nonChargesParIndex",
+   "impact": "Une régression dans la purge de la file télémétrie à la déconnexion ou dans la garde de version n'est visible qu'en prod ; un développeur local ne voit jamais leur comportement (ordre de chargement, collisions de globals non couvertes par audit:globals sur ce chemin)",
+   "visibilite_pilotage": "partiel — le dashboard lit telemetry_events, pas l'absence d'un module",
+   "detection_sentinelle": "non",
+   "correction": "Charger les trois fichiers dans index.html à la place que le build leur donne (release-guard peut se contenter d'un PASSIO_RELEASE absent) et faire du build une simple inline ; ou documenter explicitement dans CLAUDE.md « modules prod-only » avec leur verrou dist",
+   "risque_regression": "faible (ordre de chargement à respecter : après telemetry.js, avant BUILD:APP)",
+   "effort": "0,5 j",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "CARTO-03",
+   "priorite": "P3",
+   "titre": "Deux barres de navigation dans le DOM : #appNav (legacy, masquée) et #appNavV2 ; « Bobines » n'a plus d'entrée de navigation",
+   "fonctionnalite": "Navigation principale (UI-1) et accès aux Bobines",
+   "attendu": "Une seule barre ; chaque surface majeure a une porte de navigation",
+   "observe": "#appNav (index.html:1331, Fil/Bobines/Créer/IRL) reste dans le DOM avec ses listeners (app-08:2073-2083) mais aucune entrée n'est visible ; #appNavV2 (ui-v2-shell.js:214-230) porte Découvrir/Rencontrer/Créer/Messages/Profil. Bobines s'ouvre uniquement par les cartes, le rail de stories, la feuille « Créer » et le deep link #reel= (20 bobines de démo chargées en émulation)",
+   "reproduction": "node preuves/carto/emulation-ecrans.js → rapport.nav ; capture ecran-feed.jpg",
+   "preuve": "emulation-ecrans.json.nav (4 entrées visible:false, 5 entrées visible:true) ; index.html:1331-1352 ; ui-v2-shell.js:210-230",
+   "impact": "Dette : deux jeux de listeners clavier/clic (app-08 et ui-v2), 4 nœuds role=button masqués mais focusables selon la coupure ; produit : Bobines n'est atteignable qu'indirectement, découvrabilité réduite",
+   "visibilite_pilotage": "partiel — tel.action bobine_open (perf-ios.js:438) mesure les ouvertures, pas l'absence de porte",
+   "detection_sentinelle": "non",
+   "correction": "Sous drapeau UI-1 actif par défaut depuis le 2026-08-26 : décider de retirer le balisage legacy (avec le kill switch) ou de l'y confiner, et arbitrer une entrée Bobines (produit)",
+   "risque_regression": "moyen si retrait : kill switch passio_ui_v2=\"0\" repose sur #appNav (ui-v2-shell.js:773-781)",
+   "effort": "0,5 j",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "CARTO-04",
+   "priorite": "P3",
+   "titre": "Trois vocabulaires d'intention/mood coexistent dans le balisage et le code du fil",
+   "fonctionnalite": "Fil : rail d'intentions, moods du Studio, rail legacy #moodSelector",
+   "attendu": "Un vocabulaire d'affichage (PASSIO_MOOD_LABELS) et un rail",
+   "observe": "#moodSelector (index.html:532-536) porte data-mood creation/learn/chill/actu (gelé, sans bouton) ; #feedIntents (546-549) porte data-intent discover/learn/create/meet (Explorer/Apprendre/Idées/Rencontrer) ; PASSIO_MOOD_LABELS (app-02:4780) affiche creation/learn/irl et PASSIO_MOODS_ADMIS (app-02:4818) en admet 5 ; legacyMoodToFeedIntent fait la passerelle",
+   "reproduction": "sed -n 532,551p index.html ; grep -n 'PASSIO_MOOD_LABELS\\s*=' js/app-02-state-utils.js",
+   "preuve": "index.html:532-549 ; app-02:4780-4830 ; CLAUDE.md fiche 17 (« deux tables ») et 07 (« rail historique gelé »)",
+   "impact": "Complexité de lecture et de test (trois clés pour une même notion), risque de régression documenté par les fiches 07/14/17 à chaque retouche du fil",
+   "visibilite_pilotage": "non",
+   "detection_sentinelle": "non",
+   "correction": "Ne rien retirer sans rouvrir le drapeau passio_feed_intents_v1 ; consolider la documentation dans une seule fiche « vocabulaire du fil » et retirer #moodSelector quand le drapeau sera supprimé",
+   "risque_regression": "moyen (les valeurs sont écrites dans posts.mood)",
+   "effort": "1 j après suppression du drapeau",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "CARTO-05",
+   "priorite": "P3",
+   "titre": "Recherche d'un post refaite à la main dans openPost et shareReelInFeed au lieu de findPostAnywhere",
+   "fonctionnalite": "Détail d'un post (app-02) et partage d'une bobine dans le fil (app-05)",
+   "attendu": "Invariant CLAUDE.md : toujours findPostAnywhere(id)",
+   "observe": "openPost (app-02:6783-6785) et shareReelInFeed (app-05:2964-2966) enchaînent seed.posts.find || userPosts.find || supabasePosts.find ; findPostAnywhere (app-02:4428) couvre les mêmes trois tableaux, donc aucun défaut fonctionnel aujourd'hui, mais tout élargissement de findPostAnywhere (ex. _feedExtraPosts) laisserait ces deux copies derrière",
+   "reproduction": "grep -n 'state.seed.posts.find(' js/*.js",
+   "preuve": "js/app-02-state-utils.js:6783 ; js/app-05-config-profil.js:2964 ; js/app-02-state-utils.js:4428",
+   "impact": "Dette et contradiction avec l'invariant écrit ; un post trouvé par le fil mais pas par la copie donnerait « Le contenu original n'est plus disponible »",
+   "visibilite_pilotage": "non",
+   "detection_sentinelle": "non — audit-passio ne grep pas ce motif",
+   "correction": "Remplacer les deux chaînes par findPostAnywhere(id) ; ajouter le motif à scripts/audit-*.js",
+   "risque_regression": "nul",
+   "effort": "0,5 h",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "CARTO-06",
+   "priorite": "P3",
+   "titre": "Deux formateurs de temps relatif : fmtTime (supaTs) et fmtMsgTime (millisecondes seulement)",
+   "fonctionnalite": "Affichage des horodatages (fil vs inbox Messages)",
+   "attendu": "Un seul formateur passant par supaTs",
+   "observe": "fmtTime (app-02:1116) normalise par supaTs et rend « à l'instant / N min / HH:MM / N j / date » ; fmtMsgTime (app-04:2370) suppose un nombre en ms et rend « à l'instant / N min / N h / N j / date » ; règles différentes (« N h » vs « HH:MM ») ; un seul appelant app-04:3525 avec c.lastAt (ms locales, donc pas de NaN reproduit)",
+   "reproduction": "grep -n 'function fmtTime\\|function fmtMsgTime\\|fmtMsgTime(' js/*.js",
+   "preuve": "js/app-02-state-utils.js:1116-1134 ; js/app-04-comments-shop.js:2370-2380, :3525",
+   "impact": "Incohérence visible entre inbox et fil pour un même âge ; risque futur si lastAt devient une chaîne Supabase (Invalid Date)",
+   "visibilite_pilotage": "non",
+   "detection_sentinelle": "non",
+   "correction": "Faire de fmtMsgTime un alias de fmtTime (ou un paramètre de style), ou passer lastAt par supaTs",
+   "risque_regression": "faible (libellés de l'inbox changent, 1 suite à ajuster)",
+   "effort": "1 h",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "CARTO-07",
+   "priorite": "P3",
+   "titre": "Résidus du Carnet de voyage (ADR-011) : branches mortes vers cdv_live_comments / cdv_live_step et cloud de 11 tables prod sans usage client",
+   "fonctionnalite": "Commentaires (app-04), notifications (app-08), schéma prod",
+   "attendu": "Cible supprimée = tout ce qui la vise part avec (CLAUDE.md)",
+   "observe": "app-04:1452 et :1504 routent un id `lc_` vers cdv_live_comments ; app-08:2012 et :5608 gardent le kind cdv_live_step ; en prod, 6 tables cdv_* + post_collaborators + step_interactions n'ont aucun .from() client (données conservées volontairement, ADR-011 §6)",
+   "reproduction": "grep -n 'cdv_live\\|step_interactions' js/*.js | grep -v '//' ; list_tables",
+   "preuve": "js/app-04-comments-shop.js:1452,1504 ; js/app-08-ui-modals-tour.js:2012,5608 ; list_tables (39) vs inventaire.json.tables (28)",
+   "impact": "Lecture du code trompeuse ; 25 tables dans la publication realtime dont des tables mortes ; coût nul aujourd'hui (13 lignes au total dans cdv_*)",
+   "visibilite_pilotage": "non",
+   "detection_sentinelle": "non",
+   "correction": "Retirer les branches `lc_` et le kind cdv_live_step (ou les documenter comme lecture-seule d'anciennes notifications) ; décision produit sur l'archivage des tables cdv_* hors publication realtime",
+   "risque_regression": "faible ; les anciennes notifications cdv_live_step perdraient leur icône",
+   "effort": "2 h",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "CARTO-08",
+   "priorite": "P3",
+   "titre": "Cloudflare CDN worker versionné mais inactif (PASSIO_CDN_BASE vide)",
+   "fonctionnalite": "Cache de bord des médias Storage (cloudflare/passio-cdn-worker.js)",
+   "attendu": "Un composant versionné est soit déployé et référencé, soit clairement marqué optionnel",
+   "observe": "cloudflare/passio-cdn-worker.js proxifie les buckets content/attachments ; app-08:2564 `const PASSIO_CDN_BASE = \"\"` → jamais utilisé ; l'hôte d'exemple passio-cdn.toncompte.workers.dev n'apparaît qu'en commentaire ; egress Supabase non soulagé (buckets publics 171 Mo)",
+   "reproduction": "grep -n 'PASSIO_CDN_BASE' js/app-08-ui-modals-tour.js ; sed -n 1,25p cloudflare/passio-cdn-worker.js",
+   "preuve": "js/app-08-ui-modals-tour.js:2561-2564 ; cloudflare/passio-cdn-worker.js:1-24 ; docs/CDN_CLOUDFLARE.md",
+   "impact": "Coût : egress Supabase facturé au-delà du forfait ; capacité non prouvée du CDN (jamais déployé)",
+   "visibilite_pilotage": "non",
+   "detection_sentinelle": "non",
+   "correction": "Décider : déployer (et ajouter le domaine à la CSP img/media-src, déjà `https:`) ou retirer le dossier et la constante",
+   "risque_regression": "nul tant qu'inactif",
+   "effort": "0,5 j pour activer, 15 min pour retirer",
+   "confiance": "CONFIRMÉ"
+  },
+  {
+   "id": "CARTO-09",
+   "priorite": "P3",
+   "titre": "32 gardes d'authentification manuelles (MY_UID) contre 19 requireAuthentication : deux définitions du mot « connecté »",
+   "fonctionnalite": "Portes d'action engageante (partage, like, publication, RSVP…)",
+   "attendu": "Une seule porte (requireAuthentication / comptePassioReel), CLAUDE.md : « MY_UID ne prouve PAS qu'un compte existe »",
+   "observe": "grep : 32 occurrences de `typeof MY_UID === \"undefined\" || !MY_UID` ou `!MY_UID)` dans js/, 19 appels requireAuthentication(, 3 comptePassioReel() ; ex. sharePostInFeed app-03:49, shareEventInFeed app-07:4367 refusent sur MY_UID",
+   "reproduction": "grep -c 'typeof MY_UID === \"undefined\" || !MY_UID\\|!MY_UID)' js/*.js ; grep -o 'requireAuthentication(' js/*.js | wc -l",
+   "preuve": "js/app-03-posts-vlogs.js:49 ; js/app-07-ia-explore-irl.js:4367 ; js/first-run.js (requireAuthentication)",
+   "impact": "Un visiteur du parcours première visite peut voir une porte refuser (« Connexion requise ») au lieu d'ouvrir l'inscription contextuelle, selon la surface ; incohérence de conversion",
+   "visibilite_pilotage": "partiel — tel.action des portes first-run",
+   "detection_sentinelle": "non",
+   "correction": "Inventorier les 32 gardes et les faire passer par requireAuthentication(ctx) quand l'action est engageante (hors périmètre carto : à instruire par le domaine UX/onboarding)",
+   "risque_regression": "moyen (parcours d'inscription contextuelle)",
+   "effort": "1 j",
+   "confiance": "PLAUSIBLE"
+  }
+ ],
+ "surfaces_saines": [
+  "Écrans : les 6 écrans répondent à goTo() et deviennent .active (émulation, 0 erreur JS, 0 erreur console applicative)",
+  "Redirections d'anciens deep links : goTo('wallet'|'shop') → profiles, goTo('cdv') → feed (app-02:1969 ; ADR-009/011) — aucun écran orphelin",
+  "Porte d'ajout de passion : 4 portes, un seul point d'écriture ajouterPassionAuCompte (app-06:3677) ; en émulation la page Mes passions n'expose qu'un #nouveauProfilLien",
+  "Boutons « Suivre » : 3 surfaces émettrices, un seul moteur toggleFollowUser → supaFollowUser/supaUnfollowUser, retour de TOUS les boutons data-follow-uid (app-04:3273)",
+  "Cartes : un seul chargeur (map-loader.js, shim L compatible), deux instances (IRL, tour démo) sans double initialisation",
+  "Échappement : exactement 3 helpers (escapeHtml, escapeJsArg, safeUrlAttr, app-02:1156-1175), aucun doublon",
+  "Chargement des posts serveur : un seul chemin supaLoadPosts (app-08:3615) ; 25 supaLoad* distincts sans doublon de cible",
+  "Modale principale : un seul openModal/closeModal (app-08:15-41) pour 64 appels",
+  "Globals : 1 seul nom top-level redéclaré ($), documenté et allowlisté ; audit:globals vert",
+  "CSP identique dans _headers et netlify.toml, hôtes externes du code tous couverts (sauf CDN inactif)",
+  "Sélecteur de passion unique PassionSearchSelector pour les 7 surfaces, référentiel plat via PassioPassions",
+  "Suites smoke + contextual-nav : 11/11 verts en local (port 8100, Chromium 1194)"
+ ],
+ "non_verifie": [
+  "Fichier réellement servi par https://passio-app.netlify.app (BLOQUÉ : proxy 403 vers netlify.app ; il faudrait un accès réseau direct ou un poste de Benjamin) — SHA prod tenu pour c8cb8e99 par le job vert 33861671142",
+  "Couverture fonctionnelle 66/435 = 15,2 % de PASSIO_FUNCTIONAL_MAP (BLOQUÉ : suite complète interdite au sous-agent et Chromium 1223 absent ; il faudrait `PASSIO_COUVERTURE=1 npm run couverture:mesure` sur un poste avec le navigateur aligné)",
+  "Suites du projet prod (authz-critical, blocage-acces, user-state-horodatage, multi-comptes, confidentialite, qa-campaign, suppression-compte) — BLOQUÉ (comptes réels + service_role) ; job « Suites production (comptes réels) » vert au run 33861671142",
+  "Rendu sur WebKit/Firefox/Safari/Samsung Internet et appareil réel — NON RÉALISÉ (Chromium seul, émulation)",
+  "Comptage exact des interactions atteignables dans les feuilles créées dynamiquement (#v2CreateSheet, #v3PassioSheet) : mesuré à l'ouverture pour « Créer » (6 cases) mais pas pour « Trouver une expérience » ni pour les panneaux ContextualTools",
+  "Chemins réseau externes (images unsplash/picsum, Supabase) coupés par le proxy de l'environnement : 111 erreurs réseau en émulation, non imputables au code"
+ ],
+ "anciens_rapports": [
+  "PASSIO_FUNCTIONAL_MAP.md : « 8 écrans : feed, profiles, studio, explore, irl, messages, cdv, wallet » → FAUSSE : 6 écrans (grep id=\"screen- index.html ; ADR-009 et ADR-011)",
+  "PASSIO_FUNCTIONAL_MAP.md : « 435 interactions distinctes sur 757 handlers » → FAUSSE : node scripts/couverture-interactions.js rend 355 sur 601 (index + 9 app) ; 366 sur 626 en comptant les 42 fichiers js/",
+  "PASSIO_FUNCTIONAL_MAP.md : « 34 tables en production, toutes sous RLS » → FAUSSE sur le nombre (39, list_tables), TOUJOURS VRAIE sur le RLS (39/39 rls_enabled)",
+  "PASSIO_FUNCTIONAL_MAP.md : « 25 specs e2e / 175 tests déclarés » → FAUSSE : 131 specs / 1 060 test( (tests-par-spec.txt)",
+  "PASSIO_FUNCTIONAL_MAP.md : « couverture par domaine : cdv 52 » → FAUSSE : 0 spec cdv* dans tests/e2e (ls)",
+  "PASSIO_FUNCTIONAL_MAP.md : « 66 interactions sur 435 = 15,2 % » → NON VÉRIFIABLE ici (suite complète + PASSIO_COUVERTURE=1 requis)",
+  "PASSIO_FUNCTIONAL_MAP.md §4 : « passion_id présent sur posts, stories, events, conversations, profiles — et sur aucune table d'interaction » → PARTIELLEMENT VRAIE : 6 tables aujourd'hui (user_passions ajoutée, FK vers passions), toujours aucune table d'interaction (information_schema.columns)",
+  "PASSIO_FUNCTIONAL_MAP.md §4 : « posts.author_id → profiles(id) » → TOUJOURS VRAIE (pg_constraint)",
+  "CLAUDE.md : « exactement 9 fichiers app-*.js entre les marqueurs BUILD:APP » → TOUJOURS VRAIE (index.html:1491-1500)",
+  "CLAUDE.md : « js/first-run.js chargé AVANT le bloc BUILD:APP » → TOUJOURS VRAIE (index.html:1489 vs 1491)",
+  "CLAUDE.md : « Les 3 portes d'ajout convergent vers un moteur unique, plafond gardé aux points d'écriture » → TOUJOURS VRAIE (ajouterPassionAuCompte app-06:3677 ; quickCreateProfile app-07:527)",
+  "CLAUDE.md fiche 20 : « followBtn_<uid> émis par TROIS surfaces, boutons portant data-follow-uid, toggleFollowUser les retourne TOUS » → TOUJOURS VRAIE (app-06:4674, app-07:364, app-07:464 ; app-04:3273)",
+  "CONTEXTE_AUDIT (orchestrateur) : « 30 fichiers js/ » → INEXACTE : 42 fichiers js/ (ls js/*.js | wc -l), 55 011 lignes confirmées"
+ ],
+ "preuves_fichiers": [
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/carto/CARTOGRAPHIE.md",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/carto/inventaire.js",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/carto/inventaire.json",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/carto/generer-carto.js",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/carto/emulation-ecrans.js",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/carto/emulation-ecrans.json",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/carto/emulation-ecrans.log",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/carto/ecran-feed.jpg",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/carto/ecran-profiles.jpg",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/carto/ecran-studio.jpg",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/carto/ecran-explore.jpg",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/carto/ecran-irl.jpg",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/carto/ecran-messages.jpg",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/carto/overlay-bobines.jpg",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/carto/overlay-creer.jpg",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/carto/overlay-mes-passions.jpg",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/carto/overlay-tour.jpg",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/carto/tests-par-spec.txt",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/carto/specs-ecrans.txt",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/carto/smoke-run.txt",
+  "/tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/carto/pw.config.js"
+ ],
+ "notes": "Méthode reproductible : `cd /home/user/passio-app && node <scratchpad>/preuves/carto/inventaire.js` (inventaire statique) ; `npx http-server -p 8100 -a 127.0.0.1 -c-1 . &` puis `PASSIO_PORT=8100 node <scratchpad>/preuves/carto/emulation-ecrans.js` (parcours) ; `node <scratchpad>/preuves/carto/generer-carto.js` (CARTOGRAPHIE.md). Serveur arrêté et `git status --short` vide en fin d'audit ; test-results/ (ignoré par git) a reçu les traces des premiers essais Playwright.\nEnvironnement : @playwright/test 1.60 attend le Chromium 1223 ; seul 1194 est présent dans /opt/pw-browsers → les suites ne tournent qu'avec un wrapper de config (pw.config.js : executablePath forcé + webServer.cwd). À signaler à l'orchestrateur avant la suite complète : sans ce wrapper, 100 % des suites navigateur échouent au lancement (« Executable doesn't exist ») et ce rouge n'est pas imputable au code.\nRecommandations de placement (pour Benjamin) : conserver — le moteur unique des passions, toggleFollowUser, map-loader, findPostAnywhere ; refactoriser — openPost/shareReelInFeed → findPostAnywhere, fmtMsgTime → fmtTime, les 32 gardes MY_UID → requireAuthentication ; supprimer ou documenter — #appNav legacy (lié au kill switch UI-1), #moodSelector (lié à passio_feed_intents_v1), branches cdv_live_comments/cdv_live_step, dossier cloudflare/ si le CDN n'est pas déployé ; soumettre à Benjamin — l'entrée de navigation des Bobines (aucune porte directe dans la barre V2) et l'archivage des 8 tables prod sans usage client (6 cdv_*, post_collaborators, step_interactions) hors publication realtime.\nHors périmètre carto mais constaté : events.author_id, event_comments.author_id, video_lives.author_id, post_likes, follows, blocks, reports, notifications n'ont AUCUNE FK vers profiles (pg_constraint : 20 FK seulement) — à instruire par le domaine sécurité/données. Explore garde un onglet « Assistant IA » (Edge ask-ai → api.anthropic.com) : ce n'est pas Passia (ADR-009) mais un service payant à l'appel, à compter dans les coûts. Capacité du CDN Cloudflare : non prouvée (jamais déployé)."
+}

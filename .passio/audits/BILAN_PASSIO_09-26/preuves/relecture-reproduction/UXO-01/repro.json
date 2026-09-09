@@ -1,0 +1,102 @@
+[
+  {
+    "nom": "A-ios-safari-sans-dismissed",
+    "ua": "Mozilla/5.0 (iPhone; CPU iPhon",
+    "dismissedPose": false,
+    "tShown": {
+      "apresLoad_ms": 1520
+    },
+    "etat": {
+      "display": "flex",
+      "position": "fixed",
+      "z": "99999",
+      "rect": {
+        "w": 390,
+        "h": 844
+      },
+      "texte": "PASSIO Le réseau de tes passions 📱 Installer sur iPhone / iPad 1️⃣ Appuie sur Partager ⬆️ en bas de Safari 2️⃣ Choisis \"Sur l'écran d'accueil\" puis Ajouter Fer",
+      "racineFirstRun": "passio-first-run passio-flat-passions passio-ui-v2 passio-ui-3 passio-ui-4b passio-ui-4a0 passio-ui-4a1 passio-ui-4a2 passio-ui-4a3 passio-ui-5 passio-ui-4a4 passio-ui-4a5 passio-ui-6 passio-ui-6a passio-ui-6b passio-ui-6c passio-ui-7",
+      "ecranActif": "screen-feed",
+      "carteBienvenue": true,
+      "elementAuCentre": "pwa-overlay"
+    },
+    "apresFermeture": {
+      "display": "none",
+      "session": "1",
+      "local": null
+    },
+    "pageerrors": []
+  },
+  {
+    "nom": "B-ios-safari-avec-dismissed",
+    "ua": "Mozilla/5.0 (iPhone; CPU iPhon",
+    "dismissedPose": true,
+    "tShown": "non affiche en 5 s",
+    "etat": {
+      "display": "none",
+      "position": "fixed",
+      "z": "99999",
+      "rect": {
+        "w": 0,
+        "h": 0
+      },
+      "texte": "PASSIO Le réseau de tes passions",
+      "racineFirstRun": "passio-first-run passio-flat-passions passio-ui-v2 passio-ui-3 passio-ui-4b passio-ui-4a0 passio-ui-4a1 passio-ui-4a2 passio-ui-4a3 passio-ui-5 passio-ui-4a4 passio-ui-4a5 passio-ui-6 passio-ui-6a passio-ui-6b passio-ui-6c passio-ui-7",
+      "ecranActif": "screen-feed",
+      "carteBienvenue": true,
+      "elementAuCentre": "post-header"
+    },
+    "apresFermeture": null,
+    "pageerrors": []
+  },
+  {
+    "nom": "C-ios-safari-nouvelle-session",
+    "ua": "Mozilla/5.0 (iPhone; CPU iPhon",
+    "dismissedPose": false,
+    "tShown": {
+      "apresLoad_ms": 1523
+    },
+    "etat": {
+      "display": "flex",
+      "position": "fixed",
+      "z": "99999",
+      "rect": {
+        "w": 390,
+        "h": 844
+      },
+      "texte": "PASSIO Le réseau de tes passions 📱 Installer sur iPhone / iPad 1️⃣ Appuie sur Partager ⬆️ en bas de Safari 2️⃣ Choisis \"Sur l'écran d'accueil\" puis Ajouter Fer",
+      "racineFirstRun": "passio-first-run passio-flat-passions passio-ui-v2 passio-ui-3 passio-ui-4b passio-ui-4a0 passio-ui-4a1 passio-ui-4a2 passio-ui-4a3 passio-ui-5 passio-ui-4a4 passio-ui-4a5 passio-ui-6 passio-ui-6a passio-ui-6b passio-ui-6c passio-ui-7",
+      "ecranActif": "screen-feed",
+      "carteBienvenue": true,
+      "elementAuCentre": "pwa-overlay"
+    },
+    "apresFermeture": {
+      "display": "none",
+      "session": "1",
+      "local": null
+    },
+    "pageerrors": []
+  },
+  {
+    "nom": "D-desktop-chrome-sans-dismissed",
+    "ua": "Mozilla/5.0 (Windows NT 10.0; ",
+    "dismissedPose": false,
+    "tShown": "non affiche en 5 s",
+    "etat": {
+      "display": "none",
+      "position": "fixed",
+      "z": "99999",
+      "rect": {
+        "w": 0,
+        "h": 0
+      },
+      "texte": "PASSIO Le réseau de tes passions",
+      "racineFirstRun": "passio-first-run passio-flat-passions passio-ui-v2 passio-ui-3 passio-ui-4b passio-ui-4a0 passio-ui-4a1 passio-ui-4a2 passio-ui-4a3 passio-ui-5 passio-ui-4a4 passio-ui-4a5 passio-ui-6 passio-ui-6a passio-ui-6b passio-ui-6c passio-ui-7",
+      "ecranActif": "screen-feed",
+      "carteBienvenue": true,
+      "elementAuCentre": "post-header"
+    },
+    "apresFermeture": null,
+    "pageerrors": []
+  }
+]

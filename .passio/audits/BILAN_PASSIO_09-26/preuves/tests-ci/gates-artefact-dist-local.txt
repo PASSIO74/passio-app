@@ -1,0 +1,11 @@
+
+Running 6 tests using 1 worker
+
+[1A[2K[1/6] [local] › tests/e2e/passion-context.spec.js:7:1 › le changement de profil émet uniquement la passion métier, jamais l'id local
+[1A[2K[2/6] [local] › tests/e2e/passion-context.spec.js:47:1 › un refresh sans changement n'émet pas de doublon
+[1A[2K[3/6] [local] › tests/e2e/release-integrity.spec.js:9:3 › RELEASE-INTEGRITY — contrat de release et transition d'identité › release.json, HTML et service worker désignent exactement le même build
+[1A[2K[4/6] [local] › tests/e2e/release-integrity.spec.js:33:3 › RELEASE-INTEGRITY — contrat de release et transition d'identité › le bundle différé redirige un ancien lien Carnets de voyage
+[1A[2K[5/6] [local] › tests/e2e/release-integrity.spec.js:60:5 › RELEASE-INTEGRITY — contrat de release et transition d'identité › sans service worker › un onglet N détecte N+1 sans forcer le rechargement
+[1A[2K[6/6] [local] › tests/e2e/release-integrity.spec.js:85:3 › RELEASE-INTEGRITY — contrat de release et transition d'identité › le drain attend les POST telemetry_events avant de rendre la main
+[1A[2K  6 passed (1.4m)
+EXIT=0

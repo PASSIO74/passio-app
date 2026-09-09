@@ -1,0 +1,12 @@
+
+Running 7 tests using 1 worker
+
+[1A[2K[1/7] [local] › ../../../tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/profils-passions/attaques.spec.js:32:1 › A · plafond : 6 passions vivantes injectées → aucun refus client, miroir user_passions envoie 6 lignes
+[1A[2K[2/7] [local] › ../../../tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/profils-passions/attaques.spec.js:53:1 › A bis · kill switch flat_passions_v1=0 → le plafond disparaît, ajouterPassionAuCompte accepte une 4e puis une 5e
+[1A[2K[3/7] [local] › ../../../tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/profils-passions/attaques.spec.js:67:1 › B · quota : 3 archives consommées puis journal vidé depuis le client → 3 changements de nouveau disponibles
+[1A[2K[4/7] [local] › ../../../tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/profils-passions/attaques.spec.js:96:1 › C · messagerie : le nom, l'emoji et la photo du contact suivent les métadonnées `sp` choisies par l'expéditeur
+[1A[2K[5/7] [local] › ../../../tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/profils-passions/attaques.spec.js:120:1 › D · archive de la passion active, double appel, restauration au plafond
+[1A[2K[6/7] [local] › ../../../tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/profils-passions/attaques.spec.js:146:1 › E · profiles.passions hostile d'un autre compte : échappé et borné à 3
+[1A[2K[7/7] [local] › ../../../tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/preuves/profils-passions/attaques.spec.js:160:1 › F · identité d'écriture : publier/commenter/réagir/RSVP/message/story/événement/suivre — colonnes envoyées
+[1A[2K  7 passed (1.8m)
+EXIT=0

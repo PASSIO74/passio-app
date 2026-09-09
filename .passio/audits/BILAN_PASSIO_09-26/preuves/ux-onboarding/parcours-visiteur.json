@@ -1,0 +1,664 @@
+{
+  "etapes": [
+    {
+      "t_ms": 992,
+      "etape": "01 fil visiteur (entrée directe)",
+      "carteBienvenue_apres_ms": 987,
+      "hash": "",
+      "racineFirstRun": true,
+      "ecranActif": "screen-feed",
+      "nbEcransActifs": 1,
+      "nbNavActifs": 1,
+      "navV2": [
+        {
+          "key": "discover",
+          "label": "Découvrir",
+          "active": true,
+          "ariaCurrent": "page"
+        },
+        {
+          "key": "meet",
+          "label": "Rencontrer",
+          "active": false,
+          "ariaCurrent": null
+        },
+        {
+          "key": "create",
+          "label": "Créer",
+          "active": false,
+          "ariaCurrent": null
+        },
+        {
+          "key": "messages",
+          "label": "Messages",
+          "active": false,
+          "ariaCurrent": null
+        },
+        {
+          "key": "profile",
+          "label": "Profil",
+          "active": false,
+          "ariaCurrent": null
+        }
+      ],
+      "carteBienvenue": "× Bienvenue sur PASSIO Tout ce que tu aimes, au même endroit. Personnaliser mon expérience Explorer d'abord J'ai déjà un compte — me connecter",
+      "tip": null,
+      "hint": null,
+      "modalOuverte": false,
+      "modalTexte": null,
+      "onboardingActif": false,
+      "onbStep": "splash",
+      "sortieExploration": false,
+      "mediaEditorOuvert": false,
+      "eventDetailAffiche": false,
+      "reelsOuvert": false,
+      "prefs": {
+        "v": 1,
+        "passions": [],
+        "specialites": [],
+        "intents": [],
+        "tour": {},
+        "bienvenue": "vue",
+        "retour": null,
+        "migre": false,
+        "debut": 1788526304421
+      },
+      "bienvenueFermeeSession": null
+    },
+    {
+      "t_ms": 1059,
+      "etape": "prémisse SDK coupé"
+    },
+    {
+      "t_ms": 2566,
+      "etape": "02 pas de bulle tant que la carte parle",
+      "tip": null
+    },
+    {
+      "t_ms": 3802,
+      "etape": "03 après « Explorer d'abord »",
+      "carte": null,
+      "tip": {
+        "id": "decouvrir",
+        "texte": "CE QUI T'INSPIRE Un Fil construit autour de tes passions Mélange tes passions, tes envies et les personnes que tu suis. Ne plus afficher Compris"
+      },
+      "bienvenueFermeeSession": "1"
+    },
+    {
+      "t_ms": 6409,
+      "etape": "04 après « Compris » (attente 2,5 s)",
+      "tip": null,
+      "tour": {
+        "decouvrir": true
+      }
+    },
+    {
+      "t_ms": 6465,
+      "etape": "rail du haut (visiteur)",
+      "tuiles": [
+        "👥👥Suivis"
+      ]
+    },
+    {
+      "t_ms": 7565,
+      "etape": "05 aide « passions » après tap sur le rail",
+      "tip": {
+        "id": "passions",
+        "texte": "Tes passions filtrent le Fil Touche-en plusieurs : elles s'ADDITIONNENT, elles ne se remplacent pas. Ne plus afficher Compris"
+      }
+    },
+    {
+      "t_ms": 7678,
+      "etape": "sélecteur d'envies visible ?",
+      "boutons": [
+        "Explorer",
+        "Apprendre",
+        "Idées",
+        "Rencontrer"
+      ]
+    },
+    {
+      "t_ms": 8592,
+      "etape": "06 aide « envies »",
+      "tip": {
+        "id": "envies",
+        "texte": "Ton envie du moment Explorer, Apprendre, Idées, Rencontrer — ça s'ajoute à tes passions, ça ne les remplace pas. Ne plus afficher Compris"
+      }
+    },
+    {
+      "t_ms": 8700,
+      "etape": "rangée stories",
+      "stories": [
+        "✨\n        \n        Ta story",
+        "Léa",
+        "Clara",
+        "Noa",
+        "Hugo",
+        "Chloé"
+      ]
+    },
+    {
+      "t_ms": 9671,
+      "etape": "07 tap « Ta story » (visiteur)",
+      "tip": null,
+      "mediaEditorOuvert": false,
+      "modal": "× Crée ton compte pour publier ta création Tes passions et tes préférences seront conservées. Toutes tes passions. Une seule identité. Découvre des contenus, partage ce que tu aimes et rencontre des personnes pour vivre tes passions dans le monde réel. Créer mon compte J'ai déjà un compte Continuer à explorer",
+      "perms": []
+    },
+    {
+      "t_ms": 11140,
+      "etape": "08 Rencontrer",
+      "ecran": "screen-irl",
+      "nbNavActifs": 1,
+      "nav": [
+        {
+          "key": "discover",
+          "label": "Découvrir",
+          "active": false,
+          "ariaCurrent": null
+        },
+        {
+          "key": "meet",
+          "label": "Rencontrer",
+          "active": true,
+          "ariaCurrent": "page"
+        },
+        {
+          "key": "create",
+          "label": "Créer",
+          "active": false,
+          "ariaCurrent": null
+        },
+        {
+          "key": "messages",
+          "label": "Messages",
+          "active": false,
+          "ariaCurrent": null
+        },
+        {
+          "key": "profile",
+          "label": "Profil",
+          "active": false,
+          "ariaCurrent": null
+        }
+      ],
+      "tip": {
+        "id": "rencontrer",
+        "texte": "CE QUE TU VEUX VIVRE Passe du numérique au réel Trouve des activités autour de toi, sans activer automatiquement ta position. Ne plus afficher Compris"
+      },
+      "perms": []
+    },
+    {
+      "t_ms": 11231,
+      "etape": "bouton filtre",
+      "filtreLabel": "Filtre : quand, où, quelles passions, horaire",
+      "present": true
+    },
+    {
+      "t_ms": 12090,
+      "etape": "09 vue Filtre",
+      "vue": "filtres",
+      "titres": [
+        "Quand ?",
+        "Où ?",
+        "Distance maximale",
+        "Quelles passions ?",
+        "Horaire",
+        "Jam session guitaristes débutants",
+        "Jam session jazz Boulogne",
+        "Session escalade nocturne",
+        "Balade photo au lever du soleil",
+        "Trail run du weekend",
+        "Balade vélo Fontainebleau",
+        "Brunch littéraire Rambouilet"
+      ],
+      "pied": "\n        ← Retour\n        Valider\n      "
+    },
+    {
+      "t_ms": 12637,
+      "etape": "09b après Échap",
+      "vue": "filtres",
+      "ctxOpen": false
+    },
+    {
+      "t_ms": 12643,
+      "etape": "onglets liste/carte",
+      "onglets": [
+        {
+          "id": "liste",
+          "label": "Liste",
+          "visible": true
+        },
+        {
+          "id": "carte",
+          "label": "Carte",
+          "visible": true
+        }
+      ]
+    },
+    {
+      "t_ms": 14192,
+      "etape": "10 vue Carte",
+      "vue": "carte",
+      "perms": []
+    },
+    {
+      "t_ms": 15207,
+      "etape": "11 fiche activité (visiteur)",
+      "eventDetail": true,
+      "hash": "#event-e1",
+      "tip": null
+    },
+    {
+      "t_ms": 16044,
+      "etape": "12 CTA fiche → gate ?",
+      "cta": "Envoyer",
+      "modal": null
+    },
+    {
+      "t_ms": 17347,
+      "etape": "13 feuille Créer",
+      "sheet": {
+        "visible": false,
+        "items": [
+          "×",
+          "PublicationPhoto / vidéo",
+          "Bobine",
+          "Activité",
+          "Story",
+          "Live vidéo",
+          "Audio / podcast"
+        ]
+      },
+      "nbNavActifs": 1
+    },
+    {
+      "t_ms": 18256,
+      "etape": "14 premier choix Créer (visiteur)",
+      "modal": null,
+      "ecran": "screen-studio",
+      "mediaEditor": false,
+      "perms": []
+    },
+    {
+      "t_ms": 19563,
+      "etape": "15 Messages (visiteur)",
+      "ecran": "screen-messages",
+      "nbNavActifs": 1,
+      "tip": {
+        "id": "messages",
+        "texte": "Tes conversations Les échanges nés de tes passions se retrouvent ici. Ne plus afficher Compris"
+      },
+      "texte": "Messages + 🎸 Léa Moreau 30 min Musique · J'ai un local sympa au sud de Lyon. 2 🍳 Théo Roussel 3 h Cuisine · Toi : Trop bien, je m'inscris 🌍 Nina Costa 6 h Voyage · Y'a aussi des spots photo dispo, dis-moi ce qui t'intéresse 🌅 1 📷 Karim Belkacem 1 j Photo · Mardi 19h, atelier rue Vauban. Apporte"
+    },
+    {
+      "t_ms": 20986,
+      "etape": "16 Profil (visiteur)",
+      "ecran": "screen-profiles",
+      "nbNavActifs": 1,
+      "tip": {
+        "id": "profil",
+        "texte": "TOUT CE QUI TE PASSIONNE Ton profil réunit tes passions Une seule identité publique, et autant de passions que tu veux. Ne plus afficher Compris"
+      },
+      "texte": "✨ 📷 Mon profil 0 ABONNÉS 0 PASSIONS 0 ABONNEMENTS"
+    },
+    {
+      "t_ms": 21109,
+      "etape": "onglets profil",
+      "ptabs": [
+        {
+          "tab": "posts",
+          "label": "Tout",
+          "pressed": "true",
+          "visible": true
+        },
+        {
+          "tab": "photos",
+          "label": "Photos",
+          "pressed": "false",
+          "visible": true
+        },
+        {
+          "tab": "videos",
+          "label": "Vidéos",
+          "pressed": "false",
+          "visible": true
+        },
+        {
+          "tab": "bobines",
+          "label": "Bobines",
+          "pressed": "false",
+          "visible": true
+        },
+        {
+          "tab": "audio",
+          "label": "Audio",
+          "pressed": "false",
+          "visible": true
+        }
+      ],
+      "v8tabs": [
+        {
+          "label": "Publications",
+          "visible": true,
+          "sel": "true"
+        },
+        {
+          "label": "Activité",
+          "visible": true,
+          "sel": "false"
+        }
+      ]
+    },
+    {
+      "t_ms": 21926,
+      "etape": "17 page Mes passions (visiteur)",
+      "hidden": false,
+      "classe": "screen active passions-page-open",
+      "texte": "Mes passions Un seul profil, plusieurs passions. Publie dans la passion qui correspond ; ton fil réunit les passions que tu choisis et les personnes que tu suis. 0 passion active sur 3 Passions actives + Ajouter une passion Ajoute une passion à ton profil et à ton fil."
+    },
+    {
+      "t_ms": 23272,
+      "etape": "18 Rechercher",
+      "ecran": "screen-explore",
+      "nbNavActifs": 0,
+      "nav": [],
+      "exTabs": [
+        {
+          "label": "Recherche",
+          "active": true,
+          "visible": true
+        },
+        {
+          "label": "Assistant IA",
+          "active": false,
+          "visible": true
+        }
+      ],
+      "exTitre": [
+        "Passions tendance Hot",
+        "Toutes les passions",
+        "Créateurs à suivre"
+      ],
+      "count": "Un aperçu parmi 1 908 passions — cherche la tienne juste au-dessus."
+    },
+    {
+      "t_ms": 24200,
+      "etape": "19 Paramètres (visiteur)",
+      "boutons": [
+        {
+          "label": "Mon profil",
+          "visible": true
+        },
+        {
+          "label": "Modifier le profil",
+          "visible": true
+        },
+        {
+          "label": "Changer mon mot de passe",
+          "visible": false
+        },
+        {
+          "label": "J'ai déjà un compte — me connecter",
+          "visible": true
+        },
+        {
+          "label": "Voir l'onboarding",
+          "visible": true
+        },
+        {
+          "label": "Apparence & thème",
+          "visible": false
+        },
+        {
+          "label": "Notifications",
+          "visible": false
+        },
+        {
+          "label": "Confidentialité",
+          "visible": false
+        },
+        {
+          "label": "Comptes bloqués",
+          "visible": false
+        },
+        {
+          "label": "Contenu & feed",
+          "visible": false
+        },
+        {
+          "label": "Mes passions",
+          "visible": false
+        },
+        {
+          "label": "Revoir les repères",
+          "visible": false
+        },
+        {
+          "label": "Temps d'écran",
+          "visible": false
+        },
+        {
+          "label": "Mode pause",
+          "visible": false
+        },
+        {
+          "label": "Feedback & aide",
+          "visible": false
+        },
+        {
+          "label": "Politique de confidentialité",
+          "visible": false
+        },
+        {
+          "label": "À propos de PASSIO",
+          "visible": false
+        },
+        {
+          "label": "Inviter des amis",
+          "visible": false
+        },
+        {
+          "label": "Afficher le pitch",
+          "visible": false
+        },
+        {
+          "label": "Tour démo",
+          "visible": false
+        },
+        {
+          "label": "Passions illimitées (test)",
+          "visible": false
+        },
+        {
+          "label": "Se déconnecter",
+          "visible": false
+        },
+        {
+          "label": "Supprimer mon compte",
+          "visible": false
+        }
+      ]
+    },
+    {
+      "t_ms": 25065,
+      "etape": "20 « Voir l'onboarding » (visiteur)",
+      "onboardingActif": true,
+      "onbStep": "splash",
+      "sortieExploration": false,
+      "ecran": null,
+      "prefsOnboarded": false
+    },
+    {
+      "t_ms": 25874,
+      "etape": "20b après history.back()",
+      "onboardingActif": true,
+      "ecran": "screen-profiles",
+      "racine": true
+    },
+    {
+      "t_ms": 27477,
+      "etape": "21 retour Fil : bulle « creer » ?",
+      "tip": {
+        "id": "creer",
+        "texte": "CE QUE TU VEUX PARTAGER À toi de créer Publie une idée, une bobine ou propose une activité IRL. Ne plus afficher Compris"
+      },
+      "carte": false,
+      "tour": {
+        "decouvrir": true,
+        "passions": true,
+        "envies": true,
+        "rencontrer": true,
+        "studio": true,
+        "messages": true,
+        "profil": true,
+        "creer": true
+      }
+    },
+    {
+      "t_ms": 27574,
+      "etape": "22 like (visiteur) → gate",
+      "modal": null,
+      "likeTrouve": false
+    },
+    {
+      "t_ms": 27649,
+      "etape": "23 formulaire après double clic « Créer mon compte »",
+      "onboardingActif": false,
+      "onbStep": "splash",
+      "sortieExploration": false,
+      "nbSorties": 0,
+      "authMsg": "",
+      "onglet": {
+        "signin": true,
+        "signup": false,
+        "submit": "Se connecter"
+      },
+      "modalEncore": false
+    },
+    {
+      "t_ms": 28030,
+      "etape": "24 étape âge",
+      "texte": "🔒 Vérification d'âge PASSIO protège les mineurs avec un contrôle d'âge IA. L'expérience adulte est réservée aux +18 ans. Ton année de naissance ← Retour Valider"
+    },
+    {
+      "t_ms": 28394,
+      "etape": "25 étape prénom",
+      "texte": "👋 Comment t'appelles-tu ? C'est ton nom public, le même partout. Tu pourras ajouter d'autres passions ensuite. Ton prénom ← Retour Continuer"
+    },
+    {
+      "t_ms": 28867,
+      "etape": "26 étape passions",
+      "titre": "Qu'est-ce qui te passionne ?",
+      "texte": "Recherche et choisis directement ce que tu aimes.",
+      "nbTuiles": 4,
+      "rechercheVisible": false
+    }
+  ],
+  "erreursConsole": [
+    "Failed to load resource: net::ERR_FAILED",
+    "Failed to load resource: net::ERR_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_FAILED",
+    "Failed to load resource: net::ERR_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED",
+    "Failed to load resource: net::ERR_TUNNEL_CONNECTION_FAILED"
+  ],
+  "permissions": [],
+  "reseauBloque": 4,
+  "echec": "TimeoutError: page.click: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('#frBackToExplore')\u001b[22m\n"
+}

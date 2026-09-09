@@ -1,0 +1,2073 @@
+
+Running 103 tests using 1 worker
+
+[1A[2K[1/103] [local] › tests/e2e/aides-contextuelles.spec.js:58:1 › §8 — la première carte du Fil explique comment ouvrir une Passio
+[1A[2K[2/103] [local] › tests/e2e/aides-contextuelles.spec.js:66:1 › §8 — une aide est dismissible, et ne revient jamais
+[1A[2K[3/103] [local] › tests/e2e/aides-contextuelles.spec.js:86:1 › §8 — jamais deux aides à l'écran
+[1A[2K  1) [local] › tests/e2e/aides-contextuelles.spec.js:86:1 › §8 — jamais deux aides à l'écran ───────
+
+    Error: page.goto: Target page, context or browser has been closed
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+      36 |     }
+      37 |   }, [GATE_KEY, GATE_TOKEN, etat || null]);
+    > 38 |   await page.goto("/index.html");
+         |              ^
+      39 |   await page.waitForFunction(() => typeof montrerHint === "function", null, { timeout: 20000 });
+      40 |   await page.evaluate(() => {
+      41 |     window.supaSaveUserState = async () => {};
+        at boot (/home/user/passio-app/tests/e2e/aides-contextuelles.spec.js:38:14)
+        at /home/user/passio-app/tests/e2e/aides-contextuelles.spec.js:87:3
+
+    Error Context: test-results/aides-contextuelles-§8-—-jamais-deux-aides-à-l-écran-local/error-context.md
+
+
+[1A[2K[4/103] [local] › tests/e2e/aides-contextuelles.spec.js:116:1 › §8 — montrerHint refuse lui-même une aide déjà vue
+[1A[2K[5/103] [local] › tests/e2e/aides-contextuelles.spec.js:137:1 › §8 — une aide ne bloque rien : pas de modale, pas de voile
+[1A[2K[6/103] [local] › tests/e2e/aides-contextuelles.spec.js:167:1 › §8 — changer d'écran retire l'aide au lieu de la laisser flotter
+[1A[2K[7/103] [local] › tests/e2e/aides-contextuelles.spec.js:175:1 › §8 — l'aide « second profil » ne s'affiche que si l'utilisateur n'en a qu'un
+[1A[2K[8/103] [local] › tests/e2e/aides-contextuelles.spec.js:196:1 › §8 — avec un seul profil, l'aide « second profil » s'affiche
+[1A[2K[9/103] [local] › tests/e2e/aides-contextuelles.spec.js:223:1 › §8 — sans UI-6B, l'aide « second profil » trouve encore une ancre
+[1A[2K[10/103] [local] › tests/e2e/aides-contextuelles.spec.js:249:1 › §8 — le texte affiché est celui de HINTS, sans contenu utilisateur
+[1A[2K[11/103] [local] › tests/e2e/connexion-compte-existant.spec.js:69:3 › Carte de bienvenue › propose une connexion au compte déjà créé, sans geste préalable
+[1A[2K[12/103] [local] › tests/e2e/connexion-compte-existant.spec.js:88:3 › Carte de bienvenue › « Continuer à explorer » ramène au fil, sans compte créé
+[1A[2K[13/103] [local] › tests/e2e/connexion-compte-existant.spec.js:104:3 › Paramètres → Compte › un visiteur y lit « J'ai déjà un compte » — et pas « Se déconnecter »
+[1A[2K[14/103] [local] › tests/e2e/connexion-compte-existant.spec.js:124:3 › Paramètres → Compte › un compte connecté y lit « Se connecter avec un autre compte »
+[1A[2K[15/103] [local] › tests/e2e/connexion-compte-existant.spec.js:156:3 › Déconnexion › l'intention de reconnexion SURVIT à la purge des clés de compte
+[1A[2K[16/103] [local] › tests/e2e/connexion-compte-existant.spec.js:180:3 › Déconnexion › après la déconnexion, l'écran de connexion s'ouvre — pas le fil invité
+[1A[2K  2) [local] › tests/e2e/connexion-compte-existant.spec.js:180:3 › Déconnexion › après la déconnexion, l'écran de connexion s'ouvre — pas le fil invité 
+
+    [31mTest timeout of 45000ms exceeded.[39m
+
+    Error: page.waitForSelector: Test timeout of 45000ms exceeded.
+    Call log:
+    [2m  - waiting for locator('#onboarding.active') to be visible[22m
+
+
+      184 |     // 1,2 s. On attend l'ÉCRAN, jamais une durée : `waitForSelector` traverse la
+      185 |     // navigation, un `waitForTimeout` calibré à la main serait un flake de plus.
+    > 186 |     await page.waitForSelector("#onboarding.active", { timeout: 30000 });
+          |                ^
+      187 |     await page.waitForSelector("#authTabSignin.active", { timeout: 10000 });
+      188 |     await expect(page.locator("#landing.active")).toHaveCount(0);
+      189 |     await expect(page.locator("#authSubmitBtn")).toHaveText("Se connecter");
+        at /home/user/passio-app/tests/e2e/connexion-compte-existant.spec.js:186:16
+
+    Error Context: test-results/connexion-compte-existant--12b26-s-ouvre-—-pas-le-fil-invité-local/error-context.md
+
+
+[1A[2K[17/103] [local] › tests/e2e/connexion-compte-existant.spec.js:195:3 › Déconnexion › l'intention consommée ne rouvre pas la connexion au rechargement suivant
+[1A[2K  3) [local] › tests/e2e/connexion-compte-existant.spec.js:195:3 › Déconnexion › l'intention consommée ne rouvre pas la connexion au rechargement suivant 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+      46 |   // déploiements. Verrou mécanique : `scripts/audit-tests-isolation.js`.
+      47 |   await sansDonneesDistantes(page);
+    > 48 |   await page.goto("/index.html");
+         |              ^
+      49 |   await page.waitForFunction(() => typeof window.doLogout === "function", null, { timeout: 20000 });
+      50 |   await page.waitForTimeout(3200);
+      51 |   // Prémisse VÉRIFIÉE, jamais supposée — même exigence que `first-run-helper` :
+        at bootCompteExistant (/home/user/passio-app/tests/e2e/connexion-compte-existant.spec.js:48:14)
+        at /home/user/passio-app/tests/e2e/connexion-compte-existant.spec.js:197:5
+
+    Error Context: test-results/connexion-compte-existant--76d3f-ion-au-rechargement-suivant-local/error-context.md
+
+
+[1A[2K[18/103] [local] › tests/e2e/connexion-compte-existant.spec.js:210:3 › Déconnexion › « Continuer à explorer » depuis cet écran rend un fil INVITÉ complet
+[1A[2K  4) [local] › tests/e2e/connexion-compte-existant.spec.js:210:3 › Déconnexion › « Continuer à explorer » depuis cet écran rend un fil INVITÉ complet 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+      46 |   // déploiements. Verrou mécanique : `scripts/audit-tests-isolation.js`.
+      47 |   await sansDonneesDistantes(page);
+    > 48 |   await page.goto("/index.html");
+         |              ^
+      49 |   await page.waitForFunction(() => typeof window.doLogout === "function", null, { timeout: 20000 });
+      50 |   await page.waitForTimeout(3200);
+      51 |   // Prémisse VÉRIFIÉE, jamais supposée — même exigence que `first-run-helper` :
+        at bootCompteExistant (/home/user/passio-app/tests/e2e/connexion-compte-existant.spec.js:48:14)
+        at /home/user/passio-app/tests/e2e/connexion-compte-existant.spec.js:212:5
+
+    Error Context: test-results/connexion-compte-existant--51cf1--rend-un-fil-INVITÉ-complet-local/error-context.md
+
+
+[1A[2K[19/103] [local] › tests/e2e/connexion-compte-existant.spec.js:233:3 › Déconnexion › drapeau coupé : la landing historique reprend la main, pas l'écran d'auth
+[1A[2K  5) [local] › tests/e2e/connexion-compte-existant.spec.js:233:3 › Déconnexion › drapeau coupé : la landing historique reprend la main, pas l'écran d'auth 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+      247 |     );
+      248 |     await sansDonneesDistantes(page);
+    > 249 |     await page.goto("/index.html");
+          |                ^
+      250 |     await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      251 |     await page.waitForTimeout(3200);
+      252 |     // La landing porte déjà « Se connecter » : rien à défaire, et la coupure
+        at /home/user/passio-app/tests/e2e/connexion-compte-existant.spec.js:249:16
+
+    Error Context: test-results/connexion-compte-existant--4e66c--la-main-pas-l-écran-d-auth-local/error-context.md
+
+
+[1A[2K[20/103] [local] › tests/e2e/connexion-compte-existant.spec.js:260:3 › Déconnexion › une intention PÉRIMÉE est ignorée : le fil invité, pas un mur de connexion
+[1A[2K  6) [local] › tests/e2e/connexion-compte-existant.spec.js:260:3 › Déconnexion › une intention PÉRIMÉE est ignorée : le fil invité, pas un mur de connexion 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at first-run-helper.js:72
+
+      70 |     [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
+      71 |   );
+    > 72 |   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
+         |              ^
+      73 |   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      74 |   await page.waitForTimeout(3200); // boot async + initApp + planification de l'accueil
+      75 |   // Prémisse VÉRIFIÉE, jamais supposée : aucun vrai client Supabase n'a pu se
+        at bootVisiteur (/home/user/passio-app/tests/e2e/first-run-helper.js:72:14)
+        at /home/user/passio-app/tests/e2e/connexion-compte-existant.spec.js:261:5
+
+    Error Context: test-results/connexion-compte-existant--fd609-ité-pas-un-mur-de-connexion-local/error-context.md
+
+
+[1A[2K[21/103] [local] › tests/e2e/connexion-compte-existant.spec.js:275:3 › Déconnexion › doLogout() SANS argument ne pose aucune intention
+[1A[2K  7) [local] › tests/e2e/connexion-compte-existant.spec.js:275:3 › Déconnexion › doLogout() SANS argument ne pose aucune intention 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+      46 |   // déploiements. Verrou mécanique : `scripts/audit-tests-isolation.js`.
+      47 |   await sansDonneesDistantes(page);
+    > 48 |   await page.goto("/index.html");
+         |              ^
+      49 |   await page.waitForFunction(() => typeof window.doLogout === "function", null, { timeout: 20000 });
+      50 |   await page.waitForTimeout(3200);
+      51 |   // Prémisse VÉRIFIÉE, jamais supposée — même exigence que `first-run-helper` :
+        at bootCompteExistant (/home/user/passio-app/tests/e2e/connexion-compte-existant.spec.js:48:14)
+        at /home/user/passio-app/tests/e2e/connexion-compte-existant.spec.js:276:5
+
+    Error Context: test-results/connexion-compte-existant--8596d-nt-ne-pose-aucune-intention-local/error-context.md
+
+
+[1A[2K[22/103] [local] › tests/e2e/connexion-compte-existant.spec.js:286:3 › Déconnexion › un signOut qui ÉCHOUE ne laisse pas la session ouverte pour autant
+[1A[2K  8) [local] › tests/e2e/connexion-compte-existant.spec.js:286:3 › Déconnexion › un signOut qui ÉCHOUE ne laisse pas la session ouverte pour autant 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+      46 |   // déploiements. Verrou mécanique : `scripts/audit-tests-isolation.js`.
+      47 |   await sansDonneesDistantes(page);
+    > 48 |   await page.goto("/index.html");
+         |              ^
+      49 |   await page.waitForFunction(() => typeof window.doLogout === "function", null, { timeout: 20000 });
+      50 |   await page.waitForTimeout(3200);
+      51 |   // Prémisse VÉRIFIÉE, jamais supposée — même exigence que `first-run-helper` :
+        at bootCompteExistant (/home/user/passio-app/tests/e2e/connexion-compte-existant.spec.js:48:14)
+        at /home/user/passio-app/tests/e2e/connexion-compte-existant.spec.js:287:5
+
+    Error Context: test-results/connexion-compte-existant--61f87-session-ouverte-pour-autant-local/error-context.md
+
+
+[1A[2K[23/103] [local] › tests/e2e/connexion-compte-existant.spec.js:300:3 › Déconnexion › purgerJetonAuthLocal ne touche QUE les jetons du SDK
+[1A[2K  9) [local] › tests/e2e/connexion-compte-existant.spec.js:300:3 › Déconnexion › purgerJetonAuthLocal ne touche QUE les jetons du SDK 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+      46 |   // déploiements. Verrou mécanique : `scripts/audit-tests-isolation.js`.
+      47 |   await sansDonneesDistantes(page);
+    > 48 |   await page.goto("/index.html");
+         |              ^
+      49 |   await page.waitForFunction(() => typeof window.doLogout === "function", null, { timeout: 20000 });
+      50 |   await page.waitForTimeout(3200);
+      51 |   // Prémisse VÉRIFIÉE, jamais supposée — même exigence que `first-run-helper` :
+        at bootCompteExistant (/home/user/passio-app/tests/e2e/connexion-compte-existant.spec.js:48:14)
+        at /home/user/passio-app/tests/e2e/connexion-compte-existant.spec.js:301:5
+
+    Error Context: test-results/connexion-compte-existant--896a4-ouche-QUE-les-jetons-du-SDK-local/error-context.md
+
+
+[1A[2K[24/103] [local] › tests/e2e/connexion-compte-existant.spec.js:323:3 › Déconnexion › le bouton « Se déconnecter » des Paramètres passe bien par la confirmation
+[1A[2K  10) [local] › tests/e2e/connexion-compte-existant.spec.js:323:3 › Déconnexion › le bouton « Se déconnecter » des Paramètres passe bien par la confirmation 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+      46 |   // déploiements. Verrou mécanique : `scripts/audit-tests-isolation.js`.
+      47 |   await sansDonneesDistantes(page);
+    > 48 |   await page.goto("/index.html");
+         |              ^
+      49 |   await page.waitForFunction(() => typeof window.doLogout === "function", null, { timeout: 20000 });
+      50 |   await page.waitForTimeout(3200);
+      51 |   // Prémisse VÉRIFIÉE, jamais supposée — même exigence que `first-run-helper` :
+        at bootCompteExistant (/home/user/passio-app/tests/e2e/connexion-compte-existant.spec.js:48:14)
+        at /home/user/passio-app/tests/e2e/connexion-compte-existant.spec.js:324:5
+
+    Error Context: test-results/connexion-compte-existant--b21aa-se-bien-par-la-confirmation-local/error-context.md
+
+
+[1A[2K[25/103] [local] › tests/e2e/connexion-compte-existant.spec.js:346:3 › Déconnexion › « Changer de compte » va lui aussi jusqu'à doLogout('signin')
+[1A[2K  11) [local] › tests/e2e/connexion-compte-existant.spec.js:346:3 › Déconnexion › « Changer de compte » va lui aussi jusqu'à doLogout('signin') 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+      46 |   // déploiements. Verrou mécanique : `scripts/audit-tests-isolation.js`.
+      47 |   await sansDonneesDistantes(page);
+    > 48 |   await page.goto("/index.html");
+         |              ^
+      49 |   await page.waitForFunction(() => typeof window.doLogout === "function", null, { timeout: 20000 });
+      50 |   await page.waitForTimeout(3200);
+      51 |   // Prémisse VÉRIFIÉE, jamais supposée — même exigence que `first-run-helper` :
+        at bootCompteExistant (/home/user/passio-app/tests/e2e/connexion-compte-existant.spec.js:48:14)
+        at /home/user/passio-app/tests/e2e/connexion-compte-existant.spec.js:347:5
+
+    Error Context: test-results/connexion-compte-existant--39809-si-jusqu-à-doLogout-signin--local/error-context.md
+
+
+[1A[2K[26/103] [local] › tests/e2e/first-run.spec.js:18:3 › Entrée › un nouveau visiteur arrive directement dans Découvrir
+[1A[2K  12) [local] › tests/e2e/first-run.spec.js:18:3 › Entrée › un nouveau visiteur arrive directement dans Découvrir 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at first-run-helper.js:72
+
+      70 |     [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
+      71 |   );
+    > 72 |   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
+         |              ^
+      73 |   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      74 |   await page.waitForTimeout(3200); // boot async + initApp + planification de l'accueil
+      75 |   // Prémisse VÉRIFIÉE, jamais supposée : aucun vrai client Supabase n'a pu se
+        at bootVisiteur (/home/user/passio-app/tests/e2e/first-run-helper.js:72:14)
+        at /home/user/passio-app/tests/e2e/first-run.spec.js:19:5
+
+    Error Context: test-results/first-run-Entrée-un-nouvea-a9a9e--directement-dans-Découvrir-local/error-context.md
+
+
+[1A[2K[27/103] [local] › tests/e2e/first-run.spec.js:32:3 › Entrée › aucune demande de géolocalisation ni de notification n'est déclenchée
+[1A[2K  13) [local] › tests/e2e/first-run.spec.js:32:3 › Entrée › aucune demande de géolocalisation ni de notification n'est déclenchée 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at first-run-helper.js:72
+
+      70 |     [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
+      71 |   );
+    > 72 |   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
+         |              ^
+      73 |   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      74 |   await page.waitForTimeout(3200); // boot async + initApp + planification de l'accueil
+      75 |   // Prémisse VÉRIFIÉE, jamais supposée : aucun vrai client Supabase n'a pu se
+        at bootVisiteur (/home/user/passio-app/tests/e2e/first-run-helper.js:72:14)
+        at /home/user/passio-app/tests/e2e/first-run.spec.js:52:5
+
+    Error Context: test-results/first-run-Entrée-aucune-de-8a12c-tification-n-est-déclenchée-local/error-context.md
+
+
+[1A[2K[28/103] [local] › tests/e2e/first-run.spec.js:64:3 › Entrée › aucune écriture Supabase en mode invité — et pas de compte anonyme
+[1A[2K  14) [local] › tests/e2e/first-run.spec.js:64:3 › Entrée › aucune écriture Supabase en mode invité — et pas de compte anonyme 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at first-run-helper.js:72
+
+      70 |     [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
+      71 |   );
+    > 72 |   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
+         |              ^
+      73 |   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      74 |   await page.waitForTimeout(3200); // boot async + initApp + planification de l'accueil
+      75 |   // Prémisse VÉRIFIÉE, jamais supposée : aucun vrai client Supabase n'a pu se
+        at bootVisiteur (/home/user/passio-app/tests/e2e/first-run-helper.js:72:14)
+        at /home/user/passio-app/tests/e2e/first-run.spec.js:65:21
+
+    Error Context: test-results/first-run-Entrée-aucune-éc-5eacd--—-et-pas-de-compte-anonyme-local/error-context.md
+
+
+[1A[2K[29/103] [local] › tests/e2e/first-run.spec.js:93:3 › Entrée › un utilisateur existant n'est jamais renvoyé dans le nouveau parcours
+[1A[2K  15) [local] › tests/e2e/first-run.spec.js:93:3 › Entrée › un utilisateur existant n'est jamais renvoyé dans le nouveau parcours 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+      109 |     // déploiements. Verrou mécanique : `scripts/audit-tests-isolation.js`.
+      110 |     await sansDonneesDistantes(page);
+    > 111 |     await page.goto("/index.html");
+          |                ^
+      112 |     await page.waitForTimeout(3200);
+      113 |
+      114 |     // Le parcours de première visite ne s'est PAS déclenché, malgré le drapeau.
+        at /home/user/passio-app/tests/e2e/first-run.spec.js:111:16
+
+    Error Context: test-results/first-run-Entrée-un-utilis-4c02a-yé-dans-le-nouveau-parcours-local/error-context.md
+
+
+[1A[2K[30/103] [local] › tests/e2e/first-run.spec.js:123:3 › Entrée › un lien profond garde sa destination, le tour est différé
+[1A[2K  16) [local] › tests/e2e/first-run.spec.js:123:3 › Entrée › un lien profond garde sa destination, le tour est différé 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html#irl-event-e1
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html#irl-event-e1", waiting until "load"[22m
+
+
+       at first-run-helper.js:72
+
+      70 |     [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
+      71 |   );
+    > 72 |   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
+         |              ^
+      73 |   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      74 |   await page.waitForTimeout(3200); // boot async + initApp + planification de l'accueil
+      75 |   // Prémisse VÉRIFIÉE, jamais supposée : aucun vrai client Supabase n'a pu se
+        at bootVisiteur (/home/user/passio-app/tests/e2e/first-run-helper.js:72:14)
+        at /home/user/passio-app/tests/e2e/first-run.spec.js:124:5
+
+    Error Context: test-results/first-run-Entrée-un-lien-p-b61c2-ination-le-tour-est-différé-local/error-context.md
+
+
+[1A[2K[31/103] [local] › tests/e2e/first-run.spec.js:148:3 › Carte de bienvenue › elle s'affiche, ne masque pas l'écran, et se ferme sans revenir
+[1A[2K  17) [local] › tests/e2e/first-run.spec.js:148:3 › Carte de bienvenue › elle s'affiche, ne masque pas l'écran, et se ferme sans revenir 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at first-run-helper.js:72
+
+      70 |     [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
+      71 |   );
+    > 72 |   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
+         |              ^
+      73 |   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      74 |   await page.waitForTimeout(3200); // boot async + initApp + planification de l'accueil
+      75 |   // Prémisse VÉRIFIÉE, jamais supposée : aucun vrai client Supabase n'a pu se
+        at bootVisiteur (/home/user/passio-app/tests/e2e/first-run-helper.js:72:14)
+        at /home/user/passio-app/tests/e2e/first-run.spec.js:149:5
+
+    Error Context: test-results/first-run-Carte-de-bienven-2102e-an-et-se-ferme-sans-revenir-local/error-context.md
+
+
+[1A[2K[32/103] [local] › tests/e2e/first-run.spec.js:175:3 › Carte de bienvenue › tant qu'aucun compte n'existe, elle REVIENT à la visite suivante
+[1A[2K  18) [local] › tests/e2e/first-run.spec.js:175:3 › Carte de bienvenue › tant qu'aucun compte n'existe, elle REVIENT à la visite suivante 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at first-run-helper.js:72
+
+      70 |     [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
+      71 |   );
+    > 72 |   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
+         |              ^
+      73 |   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      74 |   await page.waitForTimeout(3200); // boot async + initApp + planification de l'accueil
+      75 |   // Prémisse VÉRIFIÉE, jamais supposée : aucun vrai client Supabase n'a pu se
+        at bootVisiteur (/home/user/passio-app/tests/e2e/first-run-helper.js:72:14)
+        at /home/user/passio-app/tests/e2e/first-run.spec.js:191:5
+
+    Error Context: test-results/first-run-Carte-de-bienven-b25a4-EVIENT-à-la-visite-suivante-local/error-context.md
+
+
+[1A[2K[33/103] [local] › tests/e2e/first-run.spec.js:214:3 › Carte de bienvenue › quand des passions sont déjà choisies, la carte le DIT au lieu de répéter « Bienvenue »
+[1A[2K  19) [local] › tests/e2e/first-run.spec.js:214:3 › Carte de bienvenue › quand des passions sont déjà choisies, la carte le DIT au lieu de répéter « Bienvenue » 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at first-run-helper.js:72
+
+      70 |     [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
+      71 |   );
+    > 72 |   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
+         |              ^
+      73 |   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      74 |   await page.waitForTimeout(3200); // boot async + initApp + planification de l'accueil
+      75 |   // Prémisse VÉRIFIÉE, jamais supposée : aucun vrai client Supabase n'a pu se
+        at bootVisiteur (/home/user/passio-app/tests/e2e/first-run-helper.js:72:14)
+        at /home/user/passio-app/tests/e2e/first-run.spec.js:215:5
+
+    Error Context: test-results/first-run-Carte-de-bienven-55c5a-eu-de-répéter-«-Bienvenue-»-local/error-context.md
+
+
+[1A[2K[34/103] [local] › tests/e2e/first-run.spec.js:234:3 › Personnalisation › le panneau propose les populaires, la recherche, tout le catalogue et les spécialités
+[1A[2K  20) [local] › tests/e2e/first-run.spec.js:234:3 › Personnalisation › le panneau propose les populaires, la recherche, tout le catalogue et les spécialités 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at first-run-helper.js:72
+
+      70 |     [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
+      71 |   );
+    > 72 |   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
+         |              ^
+      73 |   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      74 |   await page.waitForTimeout(3200); // boot async + initApp + planification de l'accueil
+      75 |   // Prémisse VÉRIFIÉE, jamais supposée : aucun vrai client Supabase n'a pu se
+        at bootVisiteur (/home/user/passio-app/tests/e2e/first-run-helper.js:72:14)
+        at /home/user/passio-app/tests/e2e/first-run.spec.js:235:5
+
+    Error Context: test-results/first-run-Personnalisation-5b655-atalogue-et-les-spécialités-local/error-context.md
+
+
+[1A[2K[35/103] [local] › tests/e2e/first-run.spec.js:259:3 › Personnalisation › choisir une spécialité sélectionne automatiquement sa passion principale
+[1A[2K  21) [local] › tests/e2e/first-run.spec.js:259:3 › Personnalisation › choisir une spécialité sélectionne automatiquement sa passion principale 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at first-run-helper.js:72
+
+      70 |     [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
+      71 |   );
+    > 72 |   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
+         |              ^
+      73 |   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      74 |   await page.waitForTimeout(3200); // boot async + initApp + planification de l'accueil
+      75 |   // Prémisse VÉRIFIÉE, jamais supposée : aucun vrai client Supabase n'a pu se
+        at bootVisiteur (/home/user/passio-app/tests/e2e/first-run-helper.js:72:14)
+        at /home/user/passio-app/tests/e2e/first-run.spec.js:260:5
+
+    Error Context: test-results/first-run-Personnalisation-4c25d-ement-sa-passion-principale-local/error-context.md
+
+
+[1A[2K[36/103] [local] › tests/e2e/first-run.spec.js:274:3 › Personnalisation › après validation, le Fil se personnalise IMMÉDIATEMENT, sans rechargement
+[1A[2K  22) [local] › tests/e2e/first-run.spec.js:274:3 › Personnalisation › après validation, le Fil se personnalise IMMÉDIATEMENT, sans rechargement 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at first-run-helper.js:72
+
+      70 |     [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
+      71 |   );
+    > 72 |   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
+         |              ^
+      73 |   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      74 |   await page.waitForTimeout(3200); // boot async + initApp + planification de l'accueil
+      75 |   // Prémisse VÉRIFIÉE, jamais supposée : aucun vrai client Supabase n'a pu se
+        at bootVisiteur (/home/user/passio-app/tests/e2e/first-run-helper.js:72:14)
+        at /home/user/passio-app/tests/e2e/first-run.spec.js:275:5
+
+    Error Context: test-results/first-run-Personnalisation-85fa3-DIATEMENT-sans-rechargement-local/error-context.md
+
+
+[1A[2K[37/103] [local] › tests/e2e/first-run.spec.js:312:3 › Personnalisation › une spécialité choisie arrive dans le fil, et sa bulle la NOMME
+[1A[2K  23) [local] › tests/e2e/first-run.spec.js:312:3 › Personnalisation › une spécialité choisie arrive dans le fil, et sa bulle la NOMME 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at first-run-helper.js:72
+
+      70 |     [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
+      71 |   );
+    > 72 |   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
+         |              ^
+      73 |   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      74 |   await page.waitForTimeout(3200); // boot async + initApp + planification de l'accueil
+      75 |   // Prémisse VÉRIFIÉE, jamais supposée : aucun vrai client Supabase n'a pu se
+        at bootVisiteur (/home/user/passio-app/tests/e2e/first-run-helper.js:72:14)
+        at /home/user/passio-app/tests/e2e/first-run.spec.js:313:5
+
+    Error Context: test-results/first-run-Personnalisation-11b8e-le-fil-et-sa-bulle-la-NOMME-local/error-context.md
+
+
+[1A[2K[38/103] [local] › tests/e2e/first-run.spec.js:346:3 › Personnalisation › le référentiel plat n'est demandé au démarrage QUE si une spécialité l'exige
+[1A[2K  24) [local] › tests/e2e/first-run.spec.js:346:3 › Personnalisation › le référentiel plat n'est demandé au démarrage QUE si une spécialité l'exige 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at first-run-helper.js:72
+
+      70 |     [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
+      71 |   );
+    > 72 |   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
+         |              ^
+      73 |   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      74 |   await page.waitForTimeout(3200); // boot async + initApp + planification de l'accueil
+      75 |   // Prémisse VÉRIFIÉE, jamais supposée : aucun vrai client Supabase n'a pu se
+        at bootVisiteur (/home/user/passio-app/tests/e2e/first-run-helper.js:72:14)
+        at /home/user/passio-app/tests/e2e/first-run.spec.js:350:5
+
+    Error Context: test-results/first-run-Personnalisation-e078f-E-si-une-spécialité-l-exige-local/error-context.md
+
+
+[1A[2K[39/103] [local] › tests/e2e/first-run.spec.js:358:3 › Personnalisation › … et il l'est quand une spécialité déjà choisie doit être nommée
+[1A[2K  25) [local] › tests/e2e/first-run.spec.js:358:3 › Personnalisation › … et il l'est quand une spécialité déjà choisie doit être nommée 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at first-run-helper.js:72
+
+      70 |     [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
+      71 |   );
+    > 72 |   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
+         |              ^
+      73 |   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      74 |   await page.waitForTimeout(3200); // boot async + initApp + planification de l'accueil
+      75 |   // Prémisse VÉRIFIÉE, jamais supposée : aucun vrai client Supabase n'a pu se
+        at bootVisiteur (/home/user/passio-app/tests/e2e/first-run-helper.js:72:14)
+        at /home/user/passio-app/tests/e2e/first-run.spec.js:359:5
+
+    Error Context: test-results/first-run-Personnalisation-54161-jà-choisie-doit-être-nommée-local/error-context.md
+
+
+[1A[2K[40/103] [local] › tests/e2e/first-run.spec.js:374:3 › Tour contextuel › trois indications au maximum, non bloquantes, mémorisées, relançables
+[1A[2K  26) [local] › tests/e2e/first-run.spec.js:374:3 › Tour contextuel › trois indications au maximum, non bloquantes, mémorisées, relançables 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at first-run-helper.js:72
+
+      70 |     [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
+      71 |   );
+    > 72 |   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
+         |              ^
+      73 |   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      74 |   await page.waitForTimeout(3200); // boot async + initApp + planification de l'accueil
+      75 |   // Prémisse VÉRIFIÉE, jamais supposée : aucun vrai client Supabase n'a pu se
+        at bootVisiteur (/home/user/passio-app/tests/e2e/first-run-helper.js:72:14)
+        at /home/user/passio-app/tests/e2e/first-run.spec.js:375:5
+
+    Error Context: test-results/first-run-Tour-contextuel--776e1-ntes-mémorisées-relançables-local/error-context.md
+
+
+[1A[2K[41/103] [local] › tests/e2e/first-run.spec.js:405:3 › Tour contextuel › l'étape « Rencontrer » apparaît à la première ouverture de l'écran IRL
+[1A[2K  27) [local] › tests/e2e/first-run.spec.js:405:3 › Tour contextuel › l'étape « Rencontrer » apparaît à la première ouverture de l'écran IRL 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at first-run-helper.js:72
+
+      70 |     [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
+      71 |   );
+    > 72 |   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
+         |              ^
+      73 |   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      74 |   await page.waitForTimeout(3200); // boot async + initApp + planification de l'accueil
+      75 |   // Prémisse VÉRIFIÉE, jamais supposée : aucun vrai client Supabase n'a pu se
+        at bootVisiteur (/home/user/passio-app/tests/e2e/first-run-helper.js:72:14)
+        at /home/user/passio-app/tests/e2e/first-run.spec.js:406:5
+
+    Error Context: test-results/first-run-Tour-contextuel--e9428-re-ouverture-de-l-écran-IRL-local/error-context.md
+
+
+[1A[2K[42/103] [local] › tests/e2e/first-run.spec.js:415:3 › Tour contextuel › navigation clavier : Entrée active une seule fois, Échap ferme
+[1A[2K  28) [local] › tests/e2e/first-run.spec.js:415:3 › Tour contextuel › navigation clavier : Entrée active une seule fois, Échap ferme 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at first-run-helper.js:72
+
+      70 |     [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
+      71 |   );
+    > 72 |   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
+         |              ^
+      73 |   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      74 |   await page.waitForTimeout(3200); // boot async + initApp + planification de l'accueil
+      75 |   // Prémisse VÉRIFIÉE, jamais supposée : aucun vrai client Supabase n'a pu se
+        at bootVisiteur (/home/user/passio-app/tests/e2e/first-run-helper.js:72:14)
+        at /home/user/passio-app/tests/e2e/first-run.spec.js:416:5
+
+    Error Context: test-results/first-run-Tour-contextuel--3fcda--une-seule-fois-Échap-ferme-local/error-context.md
+
+
+[1A[2K[43/103] [local] › tests/e2e/first-run.spec.js:446:3 › Tour contextuel › le premier tour s'arrête à trois étapes ; Profil, Messages et Studio ont la leur, à part
+[1A[2K  29) [local] › tests/e2e/first-run.spec.js:446:3 › Tour contextuel › le premier tour s'arrête à trois étapes ; Profil, Messages et Studio ont la leur, à part 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at first-run-helper.js:72
+
+      70 |     [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
+      71 |   );
+    > 72 |   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
+         |              ^
+      73 |   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      74 |   await page.waitForTimeout(3200); // boot async + initApp + planification de l'accueil
+      75 |   // Prémisse VÉRIFIÉE, jamais supposée : aucun vrai client Supabase n'a pu se
+        at bootVisiteur (/home/user/passio-app/tests/e2e/first-run-helper.js:72:14)
+        at /home/user/passio-app/tests/e2e/first-run.spec.js:447:5
+
+    Error Context: test-results/first-run-Tour-contextuel--07bdf-t-Studio-ont-la-leur-à-part-local/error-context.md
+
+
+[1A[2K[44/103] [local] › tests/e2e/first-run.spec.js:509:5 › Aides au geste › toucher passions explique passions, une seule fois
+[1A[2K  30) [local] › tests/e2e/first-run.spec.js:509:5 › Aides au geste › toucher passions explique passions, une seule fois 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at first-run-helper.js:72
+
+      70 |     [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
+      71 |   );
+    > 72 |   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
+         |              ^
+      73 |   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      74 |   await page.waitForTimeout(3200); // boot async + initApp + planification de l'accueil
+      75 |   // Prémisse VÉRIFIÉE, jamais supposée : aucun vrai client Supabase n'a pu se
+        at bootVisiteur (/home/user/passio-app/tests/e2e/first-run-helper.js:72:14)
+        at /home/user/passio-app/tests/e2e/first-run.spec.js:510:7
+
+    Error Context: test-results/first-run-Aides-au-geste-t-4f893-que-passions-une-seule-fois-local/error-context.md
+
+
+[1A[2K[45/103] [local] › tests/e2e/first-run.spec.js:509:5 › Aides au geste › toucher envies explique envies, une seule fois
+[1A[2K  31) [local] › tests/e2e/first-run.spec.js:509:5 › Aides au geste › toucher envies explique envies, une seule fois 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at first-run-helper.js:72
+
+      70 |     [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
+      71 |   );
+    > 72 |   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
+         |              ^
+      73 |   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      74 |   await page.waitForTimeout(3200); // boot async + initApp + planification de l'accueil
+      75 |   // Prémisse VÉRIFIÉE, jamais supposée : aucun vrai client Supabase n'a pu se
+        at bootVisiteur (/home/user/passio-app/tests/e2e/first-run-helper.js:72:14)
+        at /home/user/passio-app/tests/e2e/first-run.spec.js:510:7
+
+    Error Context: test-results/first-run-Aides-au-geste-t-d8bc9-lique-envies-une-seule-fois-local/error-context.md
+
+
+[1A[2K[46/103] [local] › tests/e2e/first-run.spec.js:509:5 › Aides au geste › toucher stories explique stories, une seule fois
+[1A[2K  32) [local] › tests/e2e/first-run.spec.js:509:5 › Aides au geste › toucher stories explique stories, une seule fois 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at first-run-helper.js:72
+
+      70 |     [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
+      71 |   );
+    > 72 |   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
+         |              ^
+      73 |   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      74 |   await page.waitForTimeout(3200); // boot async + initApp + planification de l'accueil
+      75 |   // Prémisse VÉRIFIÉE, jamais supposée : aucun vrai client Supabase n'a pu se
+        at bootVisiteur (/home/user/passio-app/tests/e2e/first-run-helper.js:72:14)
+        at /home/user/passio-app/tests/e2e/first-run.spec.js:510:7
+
+    Error Context: test-results/first-run-Aides-au-geste-t-27628-ique-stories-une-seule-fois-local/error-context.md
+
+
+[1A[2K[47/103] [local] › tests/e2e/first-run.spec.js:544:3 › Aides au geste › le geste n'est jamais empêché : la commande touchée agit quand même
+[1A[2K  33) [local] › tests/e2e/first-run.spec.js:544:3 › Aides au geste › le geste n'est jamais empêché : la commande touchée agit quand même 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at first-run-helper.js:72
+
+      70 |     [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
+      71 |   );
+    > 72 |   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
+         |              ^
+      73 |   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      74 |   await page.waitForTimeout(3200); // boot async + initApp + planification de l'accueil
+      75 |   // Prémisse VÉRIFIÉE, jamais supposée : aucun vrai client Supabase n'a pu se
+        at bootVisiteur (/home/user/passio-app/tests/e2e/first-run-helper.js:72:14)
+        at /home/user/passio-app/tests/e2e/first-run.spec.js:548:5
+
+    Error Context: test-results/first-run-Aides-au-geste-l-60da3-nde-touchée-agit-quand-même-local/error-context.md
+
+
+[1A[2K[48/103] [local] › tests/e2e/first-run.spec.js:570:3 › Aides au geste › toute aide déclarée a une ancre RÉELLEMENT atteignable
+[1A[2K  34) [local] › tests/e2e/first-run.spec.js:570:3 › Aides au geste › toute aide déclarée a une ancre RÉELLEMENT atteignable 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at first-run-helper.js:72
+
+      70 |     [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
+      71 |   );
+    > 72 |   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
+         |              ^
+      73 |   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      74 |   await page.waitForTimeout(3200); // boot async + initApp + planification de l'accueil
+      75 |   // Prémisse VÉRIFIÉE, jamais supposée : aucun vrai client Supabase n'a pu se
+        at bootVisiteur (/home/user/passio-app/tests/e2e/first-run-helper.js:72:14)
+        at /home/user/passio-app/tests/e2e/first-run.spec.js:581:5
+
+    Error Context: test-results/first-run-Aides-au-geste-t-65fc5-ncre-RÉELLEMENT-atteignable-local/error-context.md
+
+
+[1A[2K[49/103] [local] › tests/e2e/first-run.spec.js:613:3 › Aides au geste › jamais deux bulles à l'écran en même temps
+[1A[2K  35) [local] › tests/e2e/first-run.spec.js:613:3 › Aides au geste › jamais deux bulles à l'écran en même temps 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at first-run-helper.js:72
+
+      70 |     [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
+      71 |   );
+    > 72 |   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
+         |              ^
+      73 |   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      74 |   await page.waitForTimeout(3200); // boot async + initApp + planification de l'accueil
+      75 |   // Prémisse VÉRIFIÉE, jamais supposée : aucun vrai client Supabase n'a pu se
+        at bootVisiteur (/home/user/passio-app/tests/e2e/first-run-helper.js:72:14)
+        at /home/user/passio-app/tests/e2e/first-run.spec.js:614:5
+
+    Error Context: test-results/first-run-Aides-au-geste-j-d7d89-les-à-l-écran-en-même-temps-local/error-context.md
+
+
+[1A[2K[50/103] [local] › tests/e2e/first-run.spec.js:627:3 › Gate d'authentification › le gate EXPLIQUE l'action demandée, et propose trois issues
+[1A[2K  36) [local] › tests/e2e/first-run.spec.js:627:3 › Gate d'authentification › le gate EXPLIQUE l'action demandée, et propose trois issues 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at first-run-helper.js:72
+
+      70 |     [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
+      71 |   );
+    > 72 |   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
+         |              ^
+      73 |   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      74 |   await page.waitForTimeout(3200); // boot async + initApp + planification de l'accueil
+      75 |   // Prémisse VÉRIFIÉE, jamais supposée : aucun vrai client Supabase n'a pu se
+        at bootVisiteur (/home/user/passio-app/tests/e2e/first-run-helper.js:72:14)
+        at /home/user/passio-app/tests/e2e/first-run.spec.js:628:5
+
+    Error Context: test-results/first-run-Gate-d-authentif-233ad-dée-et-propose-trois-issues-local/error-context.md
+
+
+[1A[2K[51/103] [local] › tests/e2e/first-run.spec.js:650:3 › Gate d'authentification › un like de visiteur est ARRÊTÉ : ni état local modifié, ni écriture
+[1A[2K  37) [local] › tests/e2e/first-run.spec.js:650:3 › Gate d'authentification › un like de visiteur est ARRÊTÉ : ni état local modifié, ni écriture 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at first-run-helper.js:72
+
+      70 |     [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
+      71 |   );
+    > 72 |   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
+         |              ^
+      73 |   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      74 |   await page.waitForTimeout(3200); // boot async + initApp + planification de l'accueil
+      75 |   // Prémisse VÉRIFIÉE, jamais supposée : aucun vrai client Supabase n'a pu se
+        at bootVisiteur (/home/user/passio-app/tests/e2e/first-run-helper.js:72:14)
+        at /home/user/passio-app/tests/e2e/first-run.spec.js:651:5
+
+    Error Context: test-results/first-run-Gate-d-authentif-45575-t-local-modifié-ni-écriture-local/error-context.md
+
+
+[1A[2K[52/103] [local] › tests/e2e/first-run.spec.js:663:3 › Gate d'authentification › une activité de DÉMONSTRATION refuse la participation, sans promettre un compte
+[1A[2K  38) [local] › tests/e2e/first-run.spec.js:663:3 › Gate d'authentification › une activité de DÉMONSTRATION refuse la participation, sans promettre un compte 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at first-run-helper.js:72
+
+      70 |     [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
+      71 |   );
+    > 72 |   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
+         |              ^
+      73 |   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      74 |   await page.waitForTimeout(3200); // boot async + initApp + planification de l'accueil
+      75 |   // Prémisse VÉRIFIÉE, jamais supposée : aucun vrai client Supabase n'a pu se
+        at bootVisiteur (/home/user/passio-app/tests/e2e/first-run-helper.js:72:14)
+        at /home/user/passio-app/tests/e2e/first-run.spec.js:664:5
+
+    Error Context: test-results/first-run-Gate-d-authentif-6f5bc-on-sans-promettre-un-compte-local/error-context.md
+
+
+[1A[2K[53/103] [local] › tests/e2e/first-run.spec.js:683:3 › Gate d'authentification › TOUTES les portes d'écriture sont gardées, y compris celles des bobines
+[1A[2K  39) [local] › tests/e2e/first-run.spec.js:683:3 › Gate d'authentification › TOUTES les portes d'écriture sont gardées, y compris celles des bobines 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at first-run-helper.js:72
+
+      70 |     [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
+      71 |   );
+    > 72 |   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
+         |              ^
+      73 |   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      74 |   await page.waitForTimeout(3200); // boot async + initApp + planification de l'accueil
+      75 |   // Prémisse VÉRIFIÉE, jamais supposée : aucun vrai client Supabase n'a pu se
+        at bootVisiteur (/home/user/passio-app/tests/e2e/first-run-helper.js:72:14)
+        at /home/user/passio-app/tests/e2e/first-run.spec.js:684:5
+
+    Error Context: test-results/first-run-Gate-d-authentif-19d8c--compris-celles-des-bobines-local/error-context.md
+
+
+[1A[2K[54/103] [local] › tests/e2e/first-run.spec.js:724:3 › Gate d'authentification › « Ta story » n'ouvre PAS la caméra à un visiteur
+[1A[2K  40) [local] › tests/e2e/first-run.spec.js:724:3 › Gate d'authentification › « Ta story » n'ouvre PAS la caméra à un visiteur 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at first-run-helper.js:72
+
+      70 |     [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
+      71 |   );
+    > 72 |   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
+         |              ^
+      73 |   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      74 |   await page.waitForTimeout(3200); // boot async + initApp + planification de l'accueil
+      75 |   // Prémisse VÉRIFIÉE, jamais supposée : aucun vrai client Supabase n'a pu se
+        at bootVisiteur (/home/user/passio-app/tests/e2e/first-run-helper.js:72:14)
+        at /home/user/passio-app/tests/e2e/first-run.spec.js:731:5
+
+    Error Context: test-results/first-run-Gate-d-authentif-5fd35-PAS-la-caméra-à-un-visiteur-local/error-context.md
+
+
+[1A[2K[55/103] [local] › tests/e2e/first-run.spec.js:747:3 › Gate d'authentification › le contenu de démonstration est étiqueté « Exemple PASSIO »
+[1A[2K  41) [local] › tests/e2e/first-run.spec.js:747:3 › Gate d'authentification › le contenu de démonstration est étiqueté « Exemple PASSIO » 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at first-run-helper.js:72
+
+      70 |     [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
+      71 |   );
+    > 72 |   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
+         |              ^
+      73 |   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      74 |   await page.waitForTimeout(3200); // boot async + initApp + planification de l'accueil
+      75 |   // Prémisse VÉRIFIÉE, jamais supposée : aucun vrai client Supabase n'a pu se
+        at bootVisiteur (/home/user/passio-app/tests/e2e/first-run-helper.js:72:14)
+        at /home/user/passio-app/tests/e2e/first-run.spec.js:748:5
+
+    Error Context: test-results/first-run-Gate-d-authentif-f4c91-étiqueté-«-Exemple-PASSIO-»-local/error-context.md
+
+
+[1A[2K[56/103] [local] › tests/e2e/first-run.spec.js:753:3 › Gate d'authentification › une activité de démonstration n'invente ni proximité ni participants
+[1A[2K  42) [local] › tests/e2e/first-run.spec.js:753:3 › Gate d'authentification › une activité de démonstration n'invente ni proximité ni participants 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at first-run-helper.js:72
+
+      70 |     [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
+      71 |   );
+    > 72 |   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
+         |              ^
+      73 |   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      74 |   await page.waitForTimeout(3200); // boot async + initApp + planification de l'accueil
+      75 |   // Prémisse VÉRIFIÉE, jamais supposée : aucun vrai client Supabase n'a pu se
+        at bootVisiteur (/home/user/passio-app/tests/e2e/first-run-helper.js:72:14)
+        at /home/user/passio-app/tests/e2e/first-run.spec.js:754:5
+
+    Error Context: test-results/first-run-Gate-d-authentif-083ff-i-proximité-ni-participants-local/error-context.md
+
+
+[1A[2K[57/103] [local] › tests/e2e/first-run.spec.js:793:3 › Transfert du mode invité › un compte qui a DÉJÀ ses passions n'en reçoit AUCUNE de l'exploration
+[1A[2K  43) [local] › tests/e2e/first-run.spec.js:793:3 › Transfert du mode invité › un compte qui a DÉJÀ ses passions n'en reçoit AUCUNE de l'exploration 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at first-run-helper.js:72
+
+      70 |     [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
+      71 |   );
+    > 72 |   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
+         |              ^
+      73 |   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      74 |   await page.waitForTimeout(3200); // boot async + initApp + planification de l'accueil
+      75 |   // Prémisse VÉRIFIÉE, jamais supposée : aucun vrai client Supabase n'a pu se
+        at bootVisiteur (/home/user/passio-app/tests/e2e/first-run-helper.js:72:14)
+        at /home/user/passio-app/tests/e2e/first-run.spec.js:794:5
+
+    Error Context: test-results/first-run-Transfert-du-mod-9ca2e-oit-AUCUNE-de-l-exploration-local/error-context.md
+
+
+[1A[2K[58/103] [local] › tests/e2e/first-run.spec.js:824:3 › Transfert du mode invité › hors ligne, le repli protège quand même le compte qui a ses passions
+[1A[2K  44) [local] › tests/e2e/first-run.spec.js:824:3 › Transfert du mode invité › hors ligne, le repli protège quand même le compte qui a ses passions 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at first-run-helper.js:72
+
+      70 |     [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
+      71 |   );
+    > 72 |   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
+         |              ^
+      73 |   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      74 |   await page.waitForTimeout(3200); // boot async + initApp + planification de l'accueil
+      75 |   // Prémisse VÉRIFIÉE, jamais supposée : aucun vrai client Supabase n'a pu se
+        at bootVisiteur (/home/user/passio-app/tests/e2e/first-run-helper.js:72:14)
+        at /home/user/passio-app/tests/e2e/first-run.spec.js:825:5
+
+    Error Context: test-results/first-run-Transfert-du-mod-52c68-e-compte-qui-a-ses-passions-local/error-context.md
+
+
+[1A[2K[59/103] [local] › tests/e2e/first-run.spec.js:849:3 › Transfert du mode invité › le profil de remplissage de boot() ne fait pas passer un compte neuf pour un compte garni
+[1A[2K  45) [local] › tests/e2e/first-run.spec.js:849:3 › Transfert du mode invité › le profil de remplissage de boot() ne fait pas passer un compte neuf pour un compte garni 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at first-run-helper.js:72
+
+      70 |     [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
+      71 |   );
+    > 72 |   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
+         |              ^
+      73 |   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      74 |   await page.waitForTimeout(3200); // boot async + initApp + planification de l'accueil
+      75 |   // Prémisse VÉRIFIÉE, jamais supposée : aucun vrai client Supabase n'a pu se
+        at bootVisiteur (/home/user/passio-app/tests/e2e/first-run-helper.js:72:14)
+        at /home/user/passio-app/tests/e2e/first-run.spec.js:850:5
+
+    Error Context: test-results/first-run-Transfert-du-mod-73480-e-neuf-pour-un-compte-garni-local/error-context.md
+
+
+[1A[2K[60/103] [local] › tests/e2e/first-run.spec.js:867:3 › Transfert du mode invité › les choix du visiteur passent en TÊTE : le remplissage ne devient pas la passion primaire
+[1A[2K  46) [local] › tests/e2e/first-run.spec.js:867:3 › Transfert du mode invité › les choix du visiteur passent en TÊTE : le remplissage ne devient pas la passion primaire 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at first-run-helper.js:72
+
+      70 |     [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
+      71 |   );
+    > 72 |   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
+         |              ^
+      73 |   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      74 |   await page.waitForTimeout(3200); // boot async + initApp + planification de l'accueil
+      75 |   // Prémisse VÉRIFIÉE, jamais supposée : aucun vrai client Supabase n'a pu se
+        at bootVisiteur (/home/user/passio-app/tests/e2e/first-run-helper.js:72:14)
+        at /home/user/passio-app/tests/e2e/first-run.spec.js:868:5
+
+    Error Context: test-results/first-run-Transfert-du-mod-56f29-ent-pas-la-passion-primaire-local/error-context.md
+
+
+[1A[2K[61/103] [local] › tests/e2e/first-run.spec.js:884:3 › Transfert du mode invité › un compte NEUF adopte les choix du visiteur : dédoublonnés, nettoyés, une seule fois
+[1A[2K  47) [local] › tests/e2e/first-run.spec.js:884:3 › Transfert du mode invité › un compte NEUF adopte les choix du visiteur : dédoublonnés, nettoyés, une seule fois 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at first-run-helper.js:72
+
+      70 |     [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
+      71 |   );
+    > 72 |   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
+         |              ^
+      73 |   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      74 |   await page.waitForTimeout(3200); // boot async + initApp + planification de l'accueil
+      75 |   // Prémisse VÉRIFIÉE, jamais supposée : aucun vrai client Supabase n'a pu se
+        at bootVisiteur (/home/user/passio-app/tests/e2e/first-run-helper.js:72:14)
+        at /home/user/passio-app/tests/e2e/first-run.spec.js:885:5
+
+    Error Context: test-results/first-run-Transfert-du-mod-5a823-nés-nettoyés-une-seule-fois-local/error-context.md
+
+
+[1A[2K[62/103] [local] › tests/e2e/first-run.spec.js:921:3 › Transfert du mode invité › une interruption laisse la migration à refaire, et la refaire aboutit
+[1A[2K  48) [local] › tests/e2e/first-run.spec.js:921:3 › Transfert du mode invité › une interruption laisse la migration à refaire, et la refaire aboutit 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at first-run-helper.js:72
+
+      70 |     [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
+      71 |   );
+    > 72 |   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
+         |              ^
+      73 |   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      74 |   await page.waitForTimeout(3200); // boot async + initApp + planification de l'accueil
+      75 |   // Prémisse VÉRIFIÉE, jamais supposée : aucun vrai client Supabase n'a pu se
+        at bootVisiteur (/home/user/passio-app/tests/e2e/first-run-helper.js:72:14)
+        at /home/user/passio-app/tests/e2e/first-run.spec.js:922:5
+
+    Error Context: test-results/first-run-Transfert-du-mod-2a024-faire-et-la-refaire-aboutit-local/error-context.md
+
+
+[1A[2K[63/103] [local] › tests/e2e/first-run.spec.js:942:3 › Transfert du mode invité › après authentification : retour à la destination, et AUCUNE action rejouée
+[1A[2K  49) [local] › tests/e2e/first-run.spec.js:942:3 › Transfert du mode invité › après authentification : retour à la destination, et AUCUNE action rejouée 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at first-run-helper.js:72
+
+      70 |     [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
+      71 |   );
+    > 72 |   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
+         |              ^
+      73 |   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      74 |   await page.waitForTimeout(3200); // boot async + initApp + planification de l'accueil
+      75 |   // Prémisse VÉRIFIÉE, jamais supposée : aucun vrai client Supabase n'a pu se
+        at bootVisiteur (/home/user/passio-app/tests/e2e/first-run-helper.js:72:14)
+        at /home/user/passio-app/tests/e2e/first-run.spec.js:943:5
+
+    Error Context: test-results/first-run-Transfert-du-mod-a398e-on-et-AUCUNE-action-rejouée-local/error-context.md
+
+
+[1A[2K[64/103] [local] › tests/e2e/first-run.spec.js:968:3 › Transfert du mode invité › une destination disparue ramène proprement dans Découvrir
+[1A[2K  50) [local] › tests/e2e/first-run.spec.js:968:3 › Transfert du mode invité › une destination disparue ramène proprement dans Découvrir 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at first-run-helper.js:72
+
+      70 |     [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
+      71 |   );
+    > 72 |   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
+         |              ^
+      73 |   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      74 |   await page.waitForTimeout(3200); // boot async + initApp + planification de l'accueil
+      75 |   // Prémisse VÉRIFIÉE, jamais supposée : aucun vrai client Supabase n'a pu se
+        at bootVisiteur (/home/user/passio-app/tests/e2e/first-run-helper.js:72:14)
+        at /home/user/passio-app/tests/e2e/first-run.spec.js:969:5
+
+    Error Context: test-results/first-run-Transfert-du-mod-bd137-e-proprement-dans-Découvrir-local/error-context.md
+
+
+[1A[2K[65/103] [local] › tests/e2e/first-run.spec.js:987:3 › Kill switch › drapeau COUPÉ : l'ancien parcours est restitué, sans aucune trace du lot
+[1A[2K  51) [local] › tests/e2e/first-run.spec.js:987:3 › Kill switch › drapeau COUPÉ : l'ancien parcours est restitué, sans aucune trace du lot 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at first-run-helper.js:72
+
+      70 |     [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
+      71 |   );
+    > 72 |   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
+         |              ^
+      73 |   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      74 |   await page.waitForTimeout(3200); // boot async + initApp + planification de l'accueil
+      75 |   // Prémisse VÉRIFIÉE, jamais supposée : aucun vrai client Supabase n'a pu se
+        at bootVisiteur (/home/user/passio-app/tests/e2e/first-run-helper.js:72:14)
+        at /home/user/passio-app/tests/e2e/first-run.spec.js:988:5
+
+    Error Context: test-results/first-run-Kill-switch-drap-069f4-ué-sans-aucune-trace-du-lot-local/error-context.md
+
+
+[1A[2K[66/103] [local] › tests/e2e/first-run.spec.js:1016:3 › Kill switch › l'URL NORMALE suffit désormais, et le lot n'écrit toujours rien pour activer
+[1A[2K  52) [local] › tests/e2e/first-run.spec.js:1016:3 › Kill switch › l'URL NORMALE suffit désormais, et le lot n'écrit toujours rien pour activer 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at first-run-helper.js:72
+
+      70 |     [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
+      71 |   );
+    > 72 |   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
+         |              ^
+      73 |   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      74 |   await page.waitForTimeout(3200); // boot async + initApp + planification de l'accueil
+      75 |   // Prémisse VÉRIFIÉE, jamais supposée : aucun vrai client Supabase n'a pu se
+        at bootVisiteur (/home/user/passio-app/tests/e2e/first-run-helper.js:72:14)
+        at /home/user/passio-app/tests/e2e/first-run.spec.js:1024:5
+
+    Error Context: test-results/first-run-Kill-switch-l-UR-1e430--toujours-rien-pour-activer-local/error-context.md
+
+
+[1A[2K[67/103] [local] › tests/e2e/first-run.spec.js:1037:3 › Kill switch › un ancien appareil d'aperçu (« 1 » persisté) reste coupable par le kill switch
+[1A[2K  53) [local] › tests/e2e/first-run.spec.js:1037:3 › Kill switch › un ancien appareil d'aperçu (« 1 » persisté) reste coupable par le kill switch 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at first-run-helper.js:72
+
+      70 |     [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
+      71 |   );
+    > 72 |   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
+         |              ^
+      73 |   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      74 |   await page.waitForTimeout(3200); // boot async + initApp + planification de l'accueil
+      75 |   // Prémisse VÉRIFIÉE, jamais supposée : aucun vrai client Supabase n'a pu se
+        at bootVisiteur (/home/user/passio-app/tests/e2e/first-run-helper.js:72:14)
+        at /home/user/passio-app/tests/e2e/first-run.spec.js:1042:5
+
+    Error Context: test-results/first-run-Kill-switch-un-a-24456-coupable-par-le-kill-switch-local/error-context.md
+
+
+[1A[2K[68/103] [local] › tests/e2e/first-run.spec.js:1061:5 › Cadrage mobile › à 320 px : aucun débordement horizontal, cibles ≥ 44 px
+[1A[2K  54) [local] › tests/e2e/first-run.spec.js:1061:5 › Cadrage mobile › à 320 px : aucun débordement horizontal, cibles ≥ 44 px 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at first-run-helper.js:72
+
+      70 |     [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
+      71 |   );
+    > 72 |   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
+         |              ^
+      73 |   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      74 |   await page.waitForTimeout(3200); // boot async + initApp + planification de l'accueil
+      75 |   // Prémisse VÉRIFIÉE, jamais supposée : aucun vrai client Supabase n'a pu se
+        at bootVisiteur (/home/user/passio-app/tests/e2e/first-run-helper.js:72:14)
+        at /home/user/passio-app/tests/e2e/first-run.spec.js:1063:7
+
+    Error Context: test-results/first-run-Cadrage-mobile-à-0fa3a-t-horizontal-cibles-≥-44-px-local/error-context.md
+
+
+[1A[2K[69/103] [local] › tests/e2e/first-run.spec.js:1061:5 › Cadrage mobile › à 390 px : aucun débordement horizontal, cibles ≥ 44 px
+[1A[2K  55) [local] › tests/e2e/first-run.spec.js:1061:5 › Cadrage mobile › à 390 px : aucun débordement horizontal, cibles ≥ 44 px 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at first-run-helper.js:72
+
+      70 |     [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
+      71 |   );
+    > 72 |   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
+         |              ^
+      73 |   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      74 |   await page.waitForTimeout(3200); // boot async + initApp + planification de l'accueil
+      75 |   // Prémisse VÉRIFIÉE, jamais supposée : aucun vrai client Supabase n'a pu se
+        at bootVisiteur (/home/user/passio-app/tests/e2e/first-run-helper.js:72:14)
+        at /home/user/passio-app/tests/e2e/first-run.spec.js:1063:7
+
+    Error Context: test-results/first-run-Cadrage-mobile-à-e546e-t-horizontal-cibles-≥-44-px-local/error-context.md
+
+
+[1A[2K[70/103] [local] › tests/e2e/first-run.spec.js:1061:5 › Cadrage mobile › à 430 px : aucun débordement horizontal, cibles ≥ 44 px
+[1A[2K  56) [local] › tests/e2e/first-run.spec.js:1061:5 › Cadrage mobile › à 430 px : aucun débordement horizontal, cibles ≥ 44 px 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at first-run-helper.js:72
+
+      70 |     [GATE_KEY, GATE_TOKEN, flagOn, opts.prefs || null, !!opts.sansBienvenue]
+      71 |   );
+    > 72 |   await page.goto("/index.html" + (opts.query || "") + (opts.hash || ""));
+         |              ^
+      73 |   await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+      74 |   await page.waitForTimeout(3200); // boot async + initApp + planification de l'accueil
+      75 |   // Prémisse VÉRIFIÉE, jamais supposée : aucun vrai client Supabase n'a pu se
+        at bootVisiteur (/home/user/passio-app/tests/e2e/first-run-helper.js:72:14)
+        at /home/user/passio-app/tests/e2e/first-run.spec.js:1063:7
+
+    Error Context: test-results/first-run-Cadrage-mobile-à-c9217-t-horizontal-cibles-≥-44-px-local/error-context.md
+
+
+[1A[2K[71/103] [local] › tests/e2e/navigation.spec.js:17:1 › tour des 6 écrans : zéro erreur JS, chaque écran devient actif
+[1A[2K  57) [local] › tests/e2e/navigation.spec.js:17:1 › tour des 6 écrans : zéro erreur JS, chaque écran devient actif 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/navigation.spec.js:19:3
+
+    Error Context: test-results/navigation-tour-des-6-écra-9cb6a--chaque-écran-devient-actif-local/error-context.md
+
+
+[1A[2K[72/103] [local] › tests/e2e/navigation.spec.js:85:1 › bottom-nav : CDV retiré, et son ancien lien redirigé
+[1A[2K  58) [local] › tests/e2e/navigation.spec.js:85:1 › bottom-nav : CDV retiré, et son ancien lien redirigé 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/navigation.spec.js:87:3
+
+    Error Context: test-results/navigation-bottom-nav-CDV-retiré-et-son-ancien-lien-redirigé-local/error-context.md
+
+
+[1A[2K[73/103] [local] › tests/e2e/onboarding-passions-v2.spec.js:63:1 › §5 — jusqu'à 7 passions, la 8e est refusée
+[1A[2K  59) [local] › tests/e2e/onboarding-passions-v2.spec.js:63:1 › §5 — jusqu'à 7 passions, la 8e est refusée 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+      40 |   // déploiements. Verrou mécanique : `scripts/audit-tests-isolation.js`.
+      41 |   await sansDonneesDistantes(page);
+    > 42 |   await page.goto("/index.html");
+         |              ^
+      43 |   await page.waitForFunction(() => typeof renderPassionGrid === "function", null, { timeout: 20000 });
+      44 |   await page.evaluate(() => {
+      45 |     window.supaSaveUserState = async () => {};
+        at bootEcranPassions (/home/user/passio-app/tests/e2e/onboarding-passions-v2.spec.js:42:14)
+        at /home/user/passio-app/tests/e2e/onboarding-passions-v2.spec.js:64:3
+
+    Error Context: test-results/onboarding-passions-v2-§5--64895--passions-la-8e-est-refusée-local/error-context.md
+
+
+[1A[2K[74/103] [local] › tests/e2e/onboarding-passions-v2.spec.js:74:1 › §5 — une seule passion suffit pour entrer
+[1A[2K  60) [local] › tests/e2e/onboarding-passions-v2.spec.js:74:1 › §5 — une seule passion suffit pour entrer 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+      40 |   // déploiements. Verrou mécanique : `scripts/audit-tests-isolation.js`.
+      41 |   await sansDonneesDistantes(page);
+    > 42 |   await page.goto("/index.html");
+         |              ^
+      43 |   await page.waitForFunction(() => typeof renderPassionGrid === "function", null, { timeout: 20000 });
+      44 |   await page.evaluate(() => {
+      45 |     window.supaSaveUserState = async () => {};
+        at bootEcranPassions (/home/user/passio-app/tests/e2e/onboarding-passions-v2.spec.js:42:14)
+        at /home/user/passio-app/tests/e2e/onboarding-passions-v2.spec.js:75:3
+
+    Error Context: test-results/onboarding-passions-v2-§5--bee77--passion-suffit-pour-entrer-local/error-context.md
+
+
+[1A[2K[75/103] [local] › tests/e2e/onboarding-passions-v2.spec.js:92:1 › §5 — la copie ne promet plus un profil par passion
+[1A[2K  61) [local] › tests/e2e/onboarding-passions-v2.spec.js:92:1 › §5 — la copie ne promet plus un profil par passion 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+      40 |   // déploiements. Verrou mécanique : `scripts/audit-tests-isolation.js`.
+      41 |   await sansDonneesDistantes(page);
+    > 42 |   await page.goto("/index.html");
+         |              ^
+      43 |   await page.waitForFunction(() => typeof renderPassionGrid === "function", null, { timeout: 20000 });
+      44 |   await page.evaluate(() => {
+      45 |     window.supaSaveUserState = async () => {};
+        at bootEcranPassions (/home/user/passio-app/tests/e2e/onboarding-passions-v2.spec.js:42:14)
+        at /home/user/passio-app/tests/e2e/onboarding-passions-v2.spec.js:93:3
+
+    Error Context: test-results/onboarding-passions-v2-§5--77083--plus-un-profil-par-passion-local/error-context.md
+
+
+[1A[2K[76/103] [local] › tests/e2e/onboarding-passions-v2.spec.js:106:1 › §5 — le profil de départ est énoncé, et modifiable d'un tap
+[1A[2K  62) [local] › tests/e2e/onboarding-passions-v2.spec.js:106:1 › §5 — le profil de départ est énoncé, et modifiable d'un tap 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+      40 |   // déploiements. Verrou mécanique : `scripts/audit-tests-isolation.js`.
+      41 |   await sansDonneesDistantes(page);
+    > 42 |   await page.goto("/index.html");
+         |              ^
+      43 |   await page.waitForFunction(() => typeof renderPassionGrid === "function", null, { timeout: 20000 });
+      44 |   await page.evaluate(() => {
+      45 |     window.supaSaveUserState = async () => {};
+        at bootEcranPassions (/home/user/passio-app/tests/e2e/onboarding-passions-v2.spec.js:42:14)
+        at /home/user/passio-app/tests/e2e/onboarding-passions-v2.spec.js:107:3
+
+    Error Context: test-results/onboarding-passions-v2-§5--bc0bf-oncé-et-modifiable-d-un-tap-local/error-context.md
+
+
+[1A[2K[77/103] [local] › tests/e2e/onboarding-passions-v2.spec.js:153:1 › §5 — la recherche filtre sans jamais masquer une passion déjà cochée
+[1A[2K  63) [local] › tests/e2e/onboarding-passions-v2.spec.js:153:1 › §5 — la recherche filtre sans jamais masquer une passion déjà cochée 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+      40 |   // déploiements. Verrou mécanique : `scripts/audit-tests-isolation.js`.
+      41 |   await sansDonneesDistantes(page);
+    > 42 |   await page.goto("/index.html");
+         |              ^
+      43 |   await page.waitForFunction(() => typeof renderPassionGrid === "function", null, { timeout: 20000 });
+      44 |   await page.evaluate(() => {
+      45 |     window.supaSaveUserState = async () => {};
+        at bootEcranPassions (/home/user/passio-app/tests/e2e/onboarding-passions-v2.spec.js:42:14)
+        at /home/user/passio-app/tests/e2e/onboarding-passions-v2.spec.js:154:3
+
+    Error Context: test-results/onboarding-passions-v2-§5--5e689-uer-une-passion-déjà-cochée-local/error-context.md
+
+
+[1A[2K[78/103] [local] › tests/e2e/onboarding-passions-v2.spec.js:176:1 › §5 — la pastille ★ est ancrée dans SA tuile, pas ailleurs
+[1A[2K  64) [local] › tests/e2e/onboarding-passions-v2.spec.js:176:1 › §5 — la pastille ★ est ancrée dans SA tuile, pas ailleurs 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+      40 |   // déploiements. Verrou mécanique : `scripts/audit-tests-isolation.js`.
+      41 |   await sansDonneesDistantes(page);
+    > 42 |   await page.goto("/index.html");
+         |              ^
+      43 |   await page.waitForFunction(() => typeof renderPassionGrid === "function", null, { timeout: 20000 });
+      44 |   await page.evaluate(() => {
+      45 |     window.supaSaveUserState = async () => {};
+        at bootEcranPassions (/home/user/passio-app/tests/e2e/onboarding-passions-v2.spec.js:42:14)
+        at /home/user/passio-app/tests/e2e/onboarding-passions-v2.spec.js:177:3
+
+    Error Context: test-results/onboarding-passions-v2-§5--be802--dans-SA-tuile-pas-ailleurs-local/error-context.md
+
+
+[1A[2K[79/103] [local] › tests/e2e/onboarding-passions-v2.spec.js:194:1 › §5 — drapeau V2 à false : écran d'origine strictement rétabli
+[1A[2K  65) [local] › tests/e2e/onboarding-passions-v2.spec.js:194:1 › §5 — drapeau V2 à false : écran d'origine strictement rétabli 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+      40 |   // déploiements. Verrou mécanique : `scripts/audit-tests-isolation.js`.
+      41 |   await sansDonneesDistantes(page);
+    > 42 |   await page.goto("/index.html");
+         |              ^
+      43 |   await page.waitForFunction(() => typeof renderPassionGrid === "function", null, { timeout: 20000 });
+      44 |   await page.evaluate(() => {
+      45 |     window.supaSaveUserState = async () => {};
+        at bootEcranPassions (/home/user/passio-app/tests/e2e/onboarding-passions-v2.spec.js:42:14)
+        at /home/user/passio-app/tests/e2e/onboarding-passions-v2.spec.js:195:3
+
+    Error Context: test-results/onboarding-passions-v2-§5--245a6-origine-strictement-rétabli-local/error-context.md
+
+
+[1A[2K[80/103] [local] › tests/e2e/onboarding-passions-v2.spec.js:227:1 › §8 — aucun tour forcé après l'inscription, ni à l'entrée ni au rechargement
+[1A[2K  66) [local] › tests/e2e/onboarding-passions-v2.spec.js:227:1 › §8 — aucun tour forcé après l'inscription, ni à l'entrée ni au rechargement 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+      40 |   // déploiements. Verrou mécanique : `scripts/audit-tests-isolation.js`.
+      41 |   await sansDonneesDistantes(page);
+    > 42 |   await page.goto("/index.html");
+         |              ^
+      43 |   await page.waitForFunction(() => typeof renderPassionGrid === "function", null, { timeout: 20000 });
+      44 |   await page.evaluate(() => {
+      45 |     window.supaSaveUserState = async () => {};
+        at bootEcranPassions (/home/user/passio-app/tests/e2e/onboarding-passions-v2.spec.js:42:14)
+        at /home/user/passio-app/tests/e2e/onboarding-passions-v2.spec.js:228:3
+
+    Error Context: test-results/onboarding-passions-v2-§8--65151-l-entrée-ni-au-rechargement-local/error-context.md
+
+
+[1A[2K[81/103] [local] › tests/e2e/onboarding-passions-v2.spec.js:254:1 › §8 — drapeau V2 à false : le tour d'origine est bien relancé
+[1A[2K  67) [local] › tests/e2e/onboarding-passions-v2.spec.js:254:1 › §8 — drapeau V2 à false : le tour d'origine est bien relancé 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+      40 |   // déploiements. Verrou mécanique : `scripts/audit-tests-isolation.js`.
+      41 |   await sansDonneesDistantes(page);
+    > 42 |   await page.goto("/index.html");
+         |              ^
+      43 |   await page.waitForFunction(() => typeof renderPassionGrid === "function", null, { timeout: 20000 });
+      44 |   await page.evaluate(() => {
+      45 |     window.supaSaveUserState = async () => {};
+        at bootEcranPassions (/home/user/passio-app/tests/e2e/onboarding-passions-v2.spec.js:42:14)
+        at /home/user/passio-app/tests/e2e/onboarding-passions-v2.spec.js:255:3
+
+    Error Context: test-results/onboarding-passions-v2-§8--36856--d-origine-est-bien-relancé-local/error-context.md
+
+
+[1A[2K[82/103] [local] › tests/e2e/onboarding-v2.spec.js:53:1 › setFeedPassions écrit les deux sources, déduplique et garde l'ordre
+[1A[2K  68) [local] › tests/e2e/onboarding-v2.spec.js:53:1 › setFeedPassions écrit les deux sources, déduplique et garde l'ordre 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+      37 |   // déploiements. Verrou mécanique : `scripts/audit-tests-isolation.js`.
+      38 |   await sansDonneesDistantes(page);
+    > 39 |   await page.goto("/index.html");
+         |              ^
+      40 |   await page.waitForFunction(() => typeof window.setFeedPassions === "function"
+      41 |     || typeof setFeedPassions === "function", null, { timeout: 20000 });
+      42 |   await page.evaluate(() => {
+        at bootVierge (/home/user/passio-app/tests/e2e/onboarding-v2.spec.js:39:14)
+        at /home/user/passio-app/tests/e2e/onboarding-v2.spec.js:54:3
+
+    Error Context: test-results/onboarding-v2-setFeedPassi-2175d-déduplique-et-garde-l-ordre-local/error-context.md
+
+
+[1A[2K[83/103] [local] › tests/e2e/onboarding-v2.spec.js:71:1 › onbFinish V2 : un seul profil de départ, mais toutes les passions dans le fil
+[1A[2K  69) [local] › tests/e2e/onboarding-v2.spec.js:71:1 › onbFinish V2 : un seul profil de départ, mais toutes les passions dans le fil 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+      37 |   // déploiements. Verrou mécanique : `scripts/audit-tests-isolation.js`.
+      38 |   await sansDonneesDistantes(page);
+    > 39 |   await page.goto("/index.html");
+         |              ^
+      40 |   await page.waitForFunction(() => typeof window.setFeedPassions === "function"
+      41 |     || typeof setFeedPassions === "function", null, { timeout: 20000 });
+      42 |   await page.evaluate(() => {
+        at bootVierge (/home/user/passio-app/tests/e2e/onboarding-v2.spec.js:39:14)
+        at /home/user/passio-app/tests/e2e/onboarding-v2.spec.js:72:3
+
+    Error Context: test-results/onboarding-v2-onbFinish-V2-7c0c6-es-les-passions-dans-le-fil-local/error-context.md
+
+
+[1A[2K[84/103] [local] › tests/e2e/onboarding-v2.spec.js:105:1 › les intérêts choisis survivent à un rechargement complet
+[1A[2K  70) [local] › tests/e2e/onboarding-v2.spec.js:105:1 › les intérêts choisis survivent à un rechargement complet 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+      37 |   // déploiements. Verrou mécanique : `scripts/audit-tests-isolation.js`.
+      38 |   await sansDonneesDistantes(page);
+    > 39 |   await page.goto("/index.html");
+         |              ^
+      40 |   await page.waitForFunction(() => typeof window.setFeedPassions === "function"
+      41 |     || typeof setFeedPassions === "function", null, { timeout: 20000 });
+      42 |   await page.evaluate(() => {
+        at bootVierge (/home/user/passio-app/tests/e2e/onboarding-v2.spec.js:39:14)
+        at /home/user/passio-app/tests/e2e/onboarding-v2.spec.js:106:3
+
+    Error Context: test-results/onboarding-v2-les-intérêts-6eac1-t-à-un-rechargement-complet-local/error-context.md
+
+
+[1A[2K[85/103] [local] › tests/e2e/onboarding-v2.spec.js:124:1 › un compte antérieur est migré depuis ses profils, sans qu'aucun soit supprimé
+[1A[2K  71) [local] › tests/e2e/onboarding-v2.spec.js:124:1 › un compte antérieur est migré depuis ses profils, sans qu'aucun soit supprimé 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+      37 |   // déploiements. Verrou mécanique : `scripts/audit-tests-isolation.js`.
+      38 |   await sansDonneesDistantes(page);
+    > 39 |   await page.goto("/index.html");
+         |              ^
+      40 |   await page.waitForFunction(() => typeof window.setFeedPassions === "function"
+      41 |     || typeof setFeedPassions === "function", null, { timeout: 20000 });
+      42 |   await page.evaluate(() => {
+        at bootVierge (/home/user/passio-app/tests/e2e/onboarding-v2.spec.js:39:14)
+        at /home/user/passio-app/tests/e2e/onboarding-v2.spec.js:140:3
+
+    Error Context: test-results/onboarding-v2-un-compte-an-12d53-sans-qu-aucun-soit-supprimé-local/error-context.md
+
+
+[1A[2K[86/103] [local] › tests/e2e/onboarding-v2.spec.js:158:1 › la télémétrie d'activation part avec des clés qui survivent au filtre PII
+[1A[2K  72) [local] › tests/e2e/onboarding-v2.spec.js:158:1 › la télémétrie d'activation part avec des clés qui survivent au filtre PII 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+      37 |   // déploiements. Verrou mécanique : `scripts/audit-tests-isolation.js`.
+      38 |   await sansDonneesDistantes(page);
+    > 39 |   await page.goto("/index.html");
+         |              ^
+      40 |   await page.waitForFunction(() => typeof window.setFeedPassions === "function"
+      41 |     || typeof setFeedPassions === "function", null, { timeout: 20000 });
+      42 |   await page.evaluate(() => {
+        at bootVierge (/home/user/passio-app/tests/e2e/onboarding-v2.spec.js:39:14)
+        at /home/user/passio-app/tests/e2e/onboarding-v2.spec.js:159:3
+
+    Error Context: test-results/onboarding-v2-la-télémétri-2d5ed-qui-survivent-au-filtre-PII-local/error-context.md
+
+
+[1A[2K[87/103] [local] › tests/e2e/onboarding-v2.spec.js:189:1 › drapeau à false : l'ancien comportement est strictement rétabli
+[1A[2K  73) [local] › tests/e2e/onboarding-v2.spec.js:189:1 › drapeau à false : l'ancien comportement est strictement rétabli 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+      37 |   // déploiements. Verrou mécanique : `scripts/audit-tests-isolation.js`.
+      38 |   await sansDonneesDistantes(page);
+    > 39 |   await page.goto("/index.html");
+         |              ^
+      40 |   await page.waitForFunction(() => typeof window.setFeedPassions === "function"
+      41 |     || typeof setFeedPassions === "function", null, { timeout: 20000 });
+      42 |   await page.evaluate(() => {
+        at bootVierge (/home/user/passio-app/tests/e2e/onboarding-v2.spec.js:39:14)
+        at /home/user/passio-app/tests/e2e/onboarding-v2.spec.js:190:3
+
+    Error Context: test-results/onboarding-v2-drapeau-à-fa-3c0d0-ent-est-strictement-rétabli-local/error-context.md
+
+
+[1A[2K[88/103] [local] › tests/e2e/smoke.spec.js:26:1 › la page charge avec le bon titre
+[1A[2K  74) [local] › tests/e2e/smoke.spec.js:26:1 › la page charge avec le bon titre ────────────────────
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+      25 |
+      26 | test("la page charge avec le bon titre", async ({ page }) => {
+    > 27 |   await page.goto("/index.html");
+         |              ^
+      28 |   await expect(page).toHaveTitle(/PASSIO/i);
+      29 | });
+      30 |
+        at /home/user/passio-app/tests/e2e/smoke.spec.js:27:14
+
+    Error Context: test-results/smoke-la-page-charge-avec-le-bon-titre-local/error-context.md
+
+
+[1A[2K[89/103] [local] › tests/e2e/smoke.spec.js:31:1 › la landing s'affiche (logo, badge beta, CTA)
+[1A[2K  75) [local] › tests/e2e/smoke.spec.js:31:1 › la landing s'affiche (logo, badge beta, CTA) ────────
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+      30 |
+      31 | test("la landing s'affiche (logo, badge beta, CTA)", async ({ page }) => {
+    > 32 |   await page.goto("/index.html");
+         |              ^
+      33 |   await expect(page.locator("#landing")).toBeVisible();
+      34 |   await expect(page.getByText("Beta privée")).toBeVisible();
+      35 |   await expect(page.getByRole("button", { name: "Se connecter" }).first()).toBeVisible();
+        at /home/user/passio-app/tests/e2e/smoke.spec.js:32:14
+
+    Error Context: test-results/smoke-la-landing-s-affiche-logo-badge-beta-CTA--local/error-context.md
+
+
+[1A[2K[90/103] [local] › tests/e2e/smoke.spec.js:38:1 › le bouton Se connecter ouvre le formulaire d'authentification
+[1A[2K  76) [local] › tests/e2e/smoke.spec.js:38:1 › le bouton Se connecter ouvre le formulaire d'authentification 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+      37 |
+      38 | test("le bouton Se connecter ouvre le formulaire d'authentification", async ({ page }) => {
+    > 39 |   await page.goto("/index.html");
+         |              ^
+      40 |   await page.getByRole("button", { name: "Se connecter" }).first().click();
+      41 |   await expect(page.locator("#authEmail")).toBeVisible({ timeout: 10000 });
+      42 |   await expect(page.locator("#authPassword")).toBeVisible();
+        at /home/user/passio-app/tests/e2e/smoke.spec.js:39:14
+
+    Error Context: test-results/smoke-le-bouton-Se-connect-ba846-rmulaire-d-authentification-local/error-context.md
+
+
+[1A[2K[91/103] [local] › tests/e2e/smoke.spec.js:45:1 › aucune erreur JavaScript fatale au démarrage
+[1A[2K  77) [local] › tests/e2e/smoke.spec.js:45:1 › aucune erreur JavaScript fatale au démarrage ────────
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+      44 |
+      45 | test("aucune erreur JavaScript fatale au démarrage", async ({ page }) => {
+    > 46 |   await page.goto("/index.html");
+         |              ^
+      47 |   await page.waitForTimeout(4000);
+      48 |   const fatal = pageErrors.filter(
+      49 |     (m) => !/Failed to fetch|NetworkError|load failed/i.test(m)
+        at /home/user/passio-app/tests/e2e/smoke.spec.js:46:14
+
+    Error Context: test-results/smoke-aucune-erreur-JavaScript-fatale-au-démarrage-local/error-context.md
+
+
+[1A[2K[92/103] [local] › tests/e2e/smoke.spec.js:54:1 › le manifest PWA et le service worker sont servis
+[1A[2K  78) [local] › tests/e2e/smoke.spec.js:54:1 › le manifest PWA et le service worker sont servis ────
+
+    Error: apiRequestContext.get: connect ECONNREFUSED 127.0.0.1:8101
+    Call log:
+    [2m  - → GET http://127.0.0.1:8101/manifest.json[22m
+    [2m    - user-agent: Playwright/1.60.0 (x64; ubuntu 24.04) node/22.22[22m
+    [2m    - accept: */*[22m
+    [2m    - accept-encoding: gzip,deflate,br[22m
+
+
+      53 |
+      54 | test("le manifest PWA et le service worker sont servis", async ({ page, request }) => {
+    > 55 |   const manifest = await request.get("/manifest.json");
+         |                                  ^
+      56 |   expect(manifest.ok()).toBeTruthy();
+      57 |   const sw = await request.get("/sw.js");
+      58 |   expect(sw.ok()).toBeTruthy();
+        at /home/user/passio-app/tests/e2e/smoke.spec.js:55:34
+
+    Error Context: test-results/smoke-le-manifest-PWA-et-le-service-worker-sont-servis-local/error-context.md
+
+
+[1A[2K[93/103] [local] › tests/e2e/ui-v2-shell.spec.js:74:1 › kill switch : navigation historique intacte, aucun nœud V2 créé
+[1A[2K  79) [local] › tests/e2e/ui-v2-shell.spec.js:74:1 › kill switch : navigation historique intacte, aucun nœud V2 créé 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+      50 |   // déploiements. Verrou mécanique : `scripts/audit-tests-isolation.js`.
+      51 |   await sansDonneesDistantes(page);
+    > 52 |   await page.goto("/index.html" + (preview ? PREVIEW : ""));
+         |              ^
+      53 |   await page.waitForFunction(() => {
+      54 |     const el = document.getElementById("screen-feed");
+      55 |     return el && el.classList.contains("active");
+        at boot (/home/user/passio-app/tests/e2e/ui-v2-shell.spec.js:52:14)
+        at /home/user/passio-app/tests/e2e/ui-v2-shell.spec.js:76:3
+
+    Error Context: test-results/ui-v2-shell-kill-switch-na-a2700--intacte-aucun-nœud-V2-créé-local/error-context.md
+
+
+[1A[2K[94/103] [local] › tests/e2e/ui-v2-shell.spec.js:103:1 › URL normale : cinq entrées libellées, chacune menant à sa route existante
+[1A[2K  80) [local] › tests/e2e/ui-v2-shell.spec.js:103:1 › URL normale : cinq entrées libellées, chacune menant à sa route existante 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+      50 |   // déploiements. Verrou mécanique : `scripts/audit-tests-isolation.js`.
+      51 |   await sansDonneesDistantes(page);
+    > 52 |   await page.goto("/index.html" + (preview ? PREVIEW : ""));
+         |              ^
+      53 |   await page.waitForFunction(() => {
+      54 |     const el = document.getElementById("screen-feed");
+      55 |     return el && el.classList.contains("active");
+        at boot (/home/user/passio-app/tests/e2e/ui-v2-shell.spec.js:52:14)
+        at /home/user/passio-app/tests/e2e/ui-v2-shell.spec.js:105:3
+
+    Error Context: test-results/ui-v2-shell-URL-normale-ci-2d3dc-menant-à-sa-route-existante-local/error-context.md
+
+
+[1A[2K[95/103] [local] › tests/e2e/ui-v2-shell.spec.js:140:1 › aperçu : « Créer » ouvre le sélecteur et non l'écran Studio
+[1A[2K  81) [local] › tests/e2e/ui-v2-shell.spec.js:140:1 › aperçu : « Créer » ouvre le sélecteur et non l'écran Studio 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html?passio_preview=passio-ui-v2
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html?passio_preview=passio-ui-v2", waiting until "load"[22m
+
+
+      50 |   // déploiements. Verrou mécanique : `scripts/audit-tests-isolation.js`.
+      51 |   await sansDonneesDistantes(page);
+    > 52 |   await page.goto("/index.html" + (preview ? PREVIEW : ""));
+         |              ^
+      53 |   await page.waitForFunction(() => {
+      54 |     const el = document.getElementById("screen-feed");
+      55 |     return el && el.classList.contains("active");
+        at boot (/home/user/passio-app/tests/e2e/ui-v2-shell.spec.js:52:14)
+        at /home/user/passio-app/tests/e2e/ui-v2-shell.spec.js:141:3
+
+    Error Context: test-results/ui-v2-shell-aperçu-«-Créer-f0478-cteur-et-non-l-écran-Studio-local/error-context.md
+
+
+[1A[2K[96/103] [local] › tests/e2e/ui-v2-shell.spec.js:201:1 › aperçu : chaque choix « Créer » rebranche un éditeur existant
+[1A[2K  82) [local] › tests/e2e/ui-v2-shell.spec.js:201:1 › aperçu : chaque choix « Créer » rebranche un éditeur existant 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html?passio_preview=passio-ui-v2
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html?passio_preview=passio-ui-v2", waiting until "load"[22m
+
+
+      50 |   // déploiements. Verrou mécanique : `scripts/audit-tests-isolation.js`.
+      51 |   await sansDonneesDistantes(page);
+    > 52 |   await page.goto("/index.html" + (preview ? PREVIEW : ""));
+         |              ^
+      53 |   await page.waitForFunction(() => {
+      54 |     const el = document.getElementById("screen-feed");
+      55 |     return el && el.classList.contains("active");
+        at boot (/home/user/passio-app/tests/e2e/ui-v2-shell.spec.js:52:14)
+        at /home/user/passio-app/tests/e2e/ui-v2-shell.spec.js:203:3
+
+    Error Context: test-results/ui-v2-shell-aperçu-chaque--c190f-branche-un-éditeur-existant-local/error-context.md
+
+
+[1A[2K[97/103] [local] › tests/e2e/ui-v2-shell.spec.js:267:1 › barre des stories : plus de bulle de création Live, mais les vrais directs restent
+[1A[2K  83) [local] › tests/e2e/ui-v2-shell.spec.js:267:1 › barre des stories : plus de bulle de création Live, mais les vrais directs restent 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+      50 |   // déploiements. Verrou mécanique : `scripts/audit-tests-isolation.js`.
+      51 |   await sansDonneesDistantes(page);
+    > 52 |   await page.goto("/index.html" + (preview ? PREVIEW : ""));
+         |              ^
+      53 |   await page.waitForFunction(() => {
+      54 |     const el = document.getElementById("screen-feed");
+      55 |     return el && el.classList.contains("active");
+        at boot (/home/user/passio-app/tests/e2e/ui-v2-shell.spec.js:52:14)
+        at /home/user/passio-app/tests/e2e/ui-v2-shell.spec.js:268:3
+
+    Error Context: test-results/ui-v2-shell-barre-des-stor-ddda7-s-les-vrais-directs-restent-local/error-context.md
+
+
+[1A[2K[98/103] [local] › tests/e2e/ui-v2-shell.spec.js:292:1 › aperçu : Bobines sort de la barre mais reste atteignable
+[1A[2K  84) [local] › tests/e2e/ui-v2-shell.spec.js:292:1 › aperçu : Bobines sort de la barre mais reste atteignable 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html?passio_preview=passio-ui-v2
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html?passio_preview=passio-ui-v2", waiting until "load"[22m
+
+
+      50 |   // déploiements. Verrou mécanique : `scripts/audit-tests-isolation.js`.
+      51 |   await sansDonneesDistantes(page);
+    > 52 |   await page.goto("/index.html" + (preview ? PREVIEW : ""));
+         |              ^
+      53 |   await page.waitForFunction(() => {
+      54 |     const el = document.getElementById("screen-feed");
+      55 |     return el && el.classList.contains("active");
+        at boot (/home/user/passio-app/tests/e2e/ui-v2-shell.spec.js:52:14)
+        at /home/user/passio-app/tests/e2e/ui-v2-shell.spec.js:293:3
+
+    Error Context: test-results/ui-v2-shell-aperçu-Bobines-8bf3b-arre-mais-reste-atteignable-local/error-context.md
+
+
+[1A[2K[99/103] [local] › tests/e2e/ui-v2-shell.spec.js:325:1 › aperçu : aucun réglage durable écrit, profil actif inchangé
+[1A[2K  85) [local] › tests/e2e/ui-v2-shell.spec.js:325:1 › aperçu : aucun réglage durable écrit, profil actif inchangé 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html?passio_preview=passio-ui-v2
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html?passio_preview=passio-ui-v2", waiting until "load"[22m
+
+
+      50 |   // déploiements. Verrou mécanique : `scripts/audit-tests-isolation.js`.
+      51 |   await sansDonneesDistantes(page);
+    > 52 |   await page.goto("/index.html" + (preview ? PREVIEW : ""));
+         |              ^
+      53 |   await page.waitForFunction(() => {
+      54 |     const el = document.getElementById("screen-feed");
+      55 |     return el && el.classList.contains("active");
+        at boot (/home/user/passio-app/tests/e2e/ui-v2-shell.spec.js:52:14)
+        at /home/user/passio-app/tests/e2e/ui-v2-shell.spec.js:326:3
+
+    Error Context: test-results/ui-v2-shell-aperçu-aucun-r-e680c-écrit-profil-actif-inchangé-local/error-context.md
+
+
+[1A[2K[100/103] [local] › tests/e2e/ui-v2-shell.spec.js:369:1 › URL normale : un passio_ui_v2 « 1 » hérité ne change pas le défaut V2
+[1A[2K  86) [local] › tests/e2e/ui-v2-shell.spec.js:369:1 › URL normale : un passio_ui_v2 « 1 » hérité ne change pas le défaut V2 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html", waiting until "load"[22m
+
+
+      50 |   // déploiements. Verrou mécanique : `scripts/audit-tests-isolation.js`.
+      51 |   await sansDonneesDistantes(page);
+    > 52 |   await page.goto("/index.html" + (preview ? PREVIEW : ""));
+         |              ^
+      53 |   await page.waitForFunction(() => {
+      54 |     const el = document.getElementById("screen-feed");
+      55 |     return el && el.classList.contains("active");
+        at boot (/home/user/passio-app/tests/e2e/ui-v2-shell.spec.js:52:14)
+        at /home/user/passio-app/tests/e2e/ui-v2-shell.spec.js:375:3
+
+    Error Context: test-results/ui-v2-shell-URL-normale-un-a2b93--ne-change-pas-le-défaut-V2-local/error-context.md
+
+
+[1A[2K[101/103] [local] › tests/e2e/ui-v2-shell.spec.js:398:1 › aperçu : « Créer » ferme l'aide contextuelle qui la recouvrirait
+[1A[2K  87) [local] › tests/e2e/ui-v2-shell.spec.js:398:1 › aperçu : « Créer » ferme l'aide contextuelle qui la recouvrirait 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html?passio_preview=passio-ui-v2
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html?passio_preview=passio-ui-v2", waiting until "load"[22m
+
+
+      50 |   // déploiements. Verrou mécanique : `scripts/audit-tests-isolation.js`.
+      51 |   await sansDonneesDistantes(page);
+    > 52 |   await page.goto("/index.html" + (preview ? PREVIEW : ""));
+         |              ^
+      53 |   await page.waitForFunction(() => {
+      54 |     const el = document.getElementById("screen-feed");
+      55 |     return el && el.classList.contains("active");
+        at boot (/home/user/passio-app/tests/e2e/ui-v2-shell.spec.js:52:14)
+        at /home/user/passio-app/tests/e2e/ui-v2-shell.spec.js:400:3
+
+    Error Context: test-results/ui-v2-shell-aperçu-«-Créer-cdce6-xtuelle-qui-la-recouvrirait-local/error-context.md
+
+
+[1A[2K[102/103] [local] › tests/e2e/ui-v2-shell.spec.js:442:1 › aperçu : ancien navOrder normalisé sans effacer les autres réglages
+[1A[2K  88) [local] › tests/e2e/ui-v2-shell.spec.js:442:1 › aperçu : ancien navOrder normalisé sans effacer les autres réglages 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html?passio_preview=passio-ui-v2
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html?passio_preview=passio-ui-v2", waiting until "load"[22m
+
+
+      50 |   // déploiements. Verrou mécanique : `scripts/audit-tests-isolation.js`.
+      51 |   await sansDonneesDistantes(page);
+    > 52 |   await page.goto("/index.html" + (preview ? PREVIEW : ""));
+         |              ^
+      53 |   await page.waitForFunction(() => {
+      54 |     const el = document.getElementById("screen-feed");
+      55 |     return el && el.classList.contains("active");
+        at boot (/home/user/passio-app/tests/e2e/ui-v2-shell.spec.js:52:14)
+        at /home/user/passio-app/tests/e2e/ui-v2-shell.spec.js:449:3
+
+    Error Context: test-results/ui-v2-shell-aperçu-ancien--918a5-effacer-les-autres-réglages-local/error-context.md
+
+
+[1A[2K[103/103] [local] › tests/e2e/ui-v2-shell.spec.js:462:1 › aperçu 390 × 844 : libellés entiers, cibles tactiles suffisantes
+[1A[2K  89) [local] › tests/e2e/ui-v2-shell.spec.js:462:1 › aperçu 390 × 844 : libellés entiers, cibles tactiles suffisantes 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8101/index.html?passio_preview=passio-ui-v2
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8101/index.html?passio_preview=passio-ui-v2", waiting until "load"[22m
+
+
+      50 |   // déploiements. Verrou mécanique : `scripts/audit-tests-isolation.js`.
+      51 |   await sansDonneesDistantes(page);
+    > 52 |   await page.goto("/index.html" + (preview ? PREVIEW : ""));
+         |              ^
+      53 |   await page.waitForFunction(() => {
+      54 |     const el = document.getElementById("screen-feed");
+      55 |     return el && el.classList.contains("active");
+        at boot (/home/user/passio-app/tests/e2e/ui-v2-shell.spec.js:52:14)
+        at /home/user/passio-app/tests/e2e/ui-v2-shell.spec.js:464:3
+
+    Error Context: test-results/ui-v2-shell-aperçu-390-×-8-bc3ae-cibles-tactiles-suffisantes-local/error-context.md
+
+
+[1A[2K  89 failed
+    [local] › tests/e2e/aides-contextuelles.spec.js:86:1 › §8 — jamais deux aides à l'écran ────────
+    [local] › tests/e2e/connexion-compte-existant.spec.js:180:3 › Déconnexion › après la déconnexion, l'écran de connexion s'ouvre — pas le fil invité 
+    [local] › tests/e2e/connexion-compte-existant.spec.js:195:3 › Déconnexion › l'intention consommée ne rouvre pas la connexion au rechargement suivant 
+    [local] › tests/e2e/connexion-compte-existant.spec.js:210:3 › Déconnexion › « Continuer à explorer » depuis cet écran rend un fil INVITÉ complet 
+    [local] › tests/e2e/connexion-compte-existant.spec.js:233:3 › Déconnexion › drapeau coupé : la landing historique reprend la main, pas l'écran d'auth 
+    [local] › tests/e2e/connexion-compte-existant.spec.js:260:3 › Déconnexion › une intention PÉRIMÉE est ignorée : le fil invité, pas un mur de connexion 
+    [local] › tests/e2e/connexion-compte-existant.spec.js:275:3 › Déconnexion › doLogout() SANS argument ne pose aucune intention 
+    [local] › tests/e2e/connexion-compte-existant.spec.js:286:3 › Déconnexion › un signOut qui ÉCHOUE ne laisse pas la session ouverte pour autant 
+    [local] › tests/e2e/connexion-compte-existant.spec.js:300:3 › Déconnexion › purgerJetonAuthLocal ne touche QUE les jetons du SDK 
+    [local] › tests/e2e/connexion-compte-existant.spec.js:323:3 › Déconnexion › le bouton « Se déconnecter » des Paramètres passe bien par la confirmation 
+    [local] › tests/e2e/connexion-compte-existant.spec.js:346:3 › Déconnexion › « Changer de compte » va lui aussi jusqu'à doLogout('signin') 
+    [local] › tests/e2e/first-run.spec.js:18:3 › Entrée › un nouveau visiteur arrive directement dans Découvrir 
+    [local] › tests/e2e/first-run.spec.js:32:3 › Entrée › aucune demande de géolocalisation ni de notification n'est déclenchée 
+    [local] › tests/e2e/first-run.spec.js:64:3 › Entrée › aucune écriture Supabase en mode invité — et pas de compte anonyme 
+    [local] › tests/e2e/first-run.spec.js:93:3 › Entrée › un utilisateur existant n'est jamais renvoyé dans le nouveau parcours 
+    [local] › tests/e2e/first-run.spec.js:123:3 › Entrée › un lien profond garde sa destination, le tour est différé 
+    [local] › tests/e2e/first-run.spec.js:148:3 › Carte de bienvenue › elle s'affiche, ne masque pas l'écran, et se ferme sans revenir 
+    [local] › tests/e2e/first-run.spec.js:175:3 › Carte de bienvenue › tant qu'aucun compte n'existe, elle REVIENT à la visite suivante 
+    [local] › tests/e2e/first-run.spec.js:214:3 › Carte de bienvenue › quand des passions sont déjà choisies, la carte le DIT au lieu de répéter « Bienvenue » 
+    [local] › tests/e2e/first-run.spec.js:234:3 › Personnalisation › le panneau propose les populaires, la recherche, tout le catalogue et les spécialités 
+    [local] › tests/e2e/first-run.spec.js:259:3 › Personnalisation › choisir une spécialité sélectionne automatiquement sa passion principale 
+    [local] › tests/e2e/first-run.spec.js:274:3 › Personnalisation › après validation, le Fil se personnalise IMMÉDIATEMENT, sans rechargement 
+    [local] › tests/e2e/first-run.spec.js:312:3 › Personnalisation › une spécialité choisie arrive dans le fil, et sa bulle la NOMME 
+    [local] › tests/e2e/first-run.spec.js:346:3 › Personnalisation › le référentiel plat n'est demandé au démarrage QUE si une spécialité l'exige 
+    [local] › tests/e2e/first-run.spec.js:358:3 › Personnalisation › … et il l'est quand une spécialité déjà choisie doit être nommée 
+    [local] › tests/e2e/first-run.spec.js:374:3 › Tour contextuel › trois indications au maximum, non bloquantes, mémorisées, relançables 
+    [local] › tests/e2e/first-run.spec.js:405:3 › Tour contextuel › l'étape « Rencontrer » apparaît à la première ouverture de l'écran IRL 
+    [local] › tests/e2e/first-run.spec.js:415:3 › Tour contextuel › navigation clavier : Entrée active une seule fois, Échap ferme 
+    [local] › tests/e2e/first-run.spec.js:446:3 › Tour contextuel › le premier tour s'arrête à trois étapes ; Profil, Messages et Studio ont la leur, à part 
+    [local] › tests/e2e/first-run.spec.js:509:5 › Aides au geste › toucher passions explique passions, une seule fois 
+    [local] › tests/e2e/first-run.spec.js:509:5 › Aides au geste › toucher envies explique envies, une seule fois 
+    [local] › tests/e2e/first-run.spec.js:509:5 › Aides au geste › toucher stories explique stories, une seule fois 
+    [local] › tests/e2e/first-run.spec.js:544:3 › Aides au geste › le geste n'est jamais empêché : la commande touchée agit quand même 
+    [local] › tests/e2e/first-run.spec.js:570:3 › Aides au geste › toute aide déclarée a une ancre RÉELLEMENT atteignable 
+    [local] › tests/e2e/first-run.spec.js:613:3 › Aides au geste › jamais deux bulles à l'écran en même temps 
+    [local] › tests/e2e/first-run.spec.js:627:3 › Gate d'authentification › le gate EXPLIQUE l'action demandée, et propose trois issues 
+    [local] › tests/e2e/first-run.spec.js:650:3 › Gate d'authentification › un like de visiteur est ARRÊTÉ : ni état local modifié, ni écriture 
+    [local] › tests/e2e/first-run.spec.js:663:3 › Gate d'authentification › une activité de DÉMONSTRATION refuse la participation, sans promettre un compte 
+    [local] › tests/e2e/first-run.spec.js:683:3 › Gate d'authentification › TOUTES les portes d'écriture sont gardées, y compris celles des bobines 
+    [local] › tests/e2e/first-run.spec.js:724:3 › Gate d'authentification › « Ta story » n'ouvre PAS la caméra à un visiteur 
+    [local] › tests/e2e/first-run.spec.js:747:3 › Gate d'authentification › le contenu de démonstration est étiqueté « Exemple PASSIO » 
+    [local] › tests/e2e/first-run.spec.js:753:3 › Gate d'authentification › une activité de démonstration n'invente ni proximité ni participants 
+    [local] › tests/e2e/first-run.spec.js:793:3 › Transfert du mode invité › un compte qui a DÉJÀ ses passions n'en reçoit AUCUNE de l'exploration 
+    [local] › tests/e2e/first-run.spec.js:824:3 › Transfert du mode invité › hors ligne, le repli protège quand même le compte qui a ses passions 
+    [local] › tests/e2e/first-run.spec.js:849:3 › Transfert du mode invité › le profil de remplissage de boot() ne fait pas passer un compte neuf pour un compte garni 
+    [local] › tests/e2e/first-run.spec.js:867:3 › Transfert du mode invité › les choix du visiteur passent en TÊTE : le remplissage ne devient pas la passion primaire 
+    [local] › tests/e2e/first-run.spec.js:884:3 › Transfert du mode invité › un compte NEUF adopte les choix du visiteur : dédoublonnés, nettoyés, une seule fois 
+    [local] › tests/e2e/first-run.spec.js:921:3 › Transfert du mode invité › une interruption laisse la migration à refaire, et la refaire aboutit 
+    [local] › tests/e2e/first-run.spec.js:942:3 › Transfert du mode invité › après authentification : retour à la destination, et AUCUNE action rejouée 
+    [local] › tests/e2e/first-run.spec.js:968:3 › Transfert du mode invité › une destination disparue ramène proprement dans Découvrir 
+    [local] › tests/e2e/first-run.spec.js:987:3 › Kill switch › drapeau COUPÉ : l'ancien parcours est restitué, sans aucune trace du lot 
+    [local] › tests/e2e/first-run.spec.js:1016:3 › Kill switch › l'URL NORMALE suffit désormais, et le lot n'écrit toujours rien pour activer 
+    [local] › tests/e2e/first-run.spec.js:1037:3 › Kill switch › un ancien appareil d'aperçu (« 1 » persisté) reste coupable par le kill switch 
+    [local] › tests/e2e/first-run.spec.js:1061:5 › Cadrage mobile › à 320 px : aucun débordement horizontal, cibles ≥ 44 px 
+    [local] › tests/e2e/first-run.spec.js:1061:5 › Cadrage mobile › à 390 px : aucun débordement horizontal, cibles ≥ 44 px 
+    [local] › tests/e2e/first-run.spec.js:1061:5 › Cadrage mobile › à 430 px : aucun débordement horizontal, cibles ≥ 44 px 
+    [local] › tests/e2e/navigation.spec.js:17:1 › tour des 6 écrans : zéro erreur JS, chaque écran devient actif 
+    [local] › tests/e2e/navigation.spec.js:85:1 › bottom-nav : CDV retiré, et son ancien lien redirigé 
+    [local] › tests/e2e/onboarding-passions-v2.spec.js:63:1 › §5 — jusqu'à 7 passions, la 8e est refusée 
+    [local] › tests/e2e/onboarding-passions-v2.spec.js:74:1 › §5 — une seule passion suffit pour entrer 
+    [local] › tests/e2e/onboarding-passions-v2.spec.js:92:1 › §5 — la copie ne promet plus un profil par passion 
+    [local] › tests/e2e/onboarding-passions-v2.spec.js:106:1 › §5 — le profil de départ est énoncé, et modifiable d'un tap 
+    [local] › tests/e2e/onboarding-passions-v2.spec.js:153:1 › §5 — la recherche filtre sans jamais masquer une passion déjà cochée 
+    [local] › tests/e2e/onboarding-passions-v2.spec.js:176:1 › §5 — la pastille ★ est ancrée dans SA tuile, pas ailleurs 
+    [local] › tests/e2e/onboarding-passions-v2.spec.js:194:1 › §5 — drapeau V2 à false : écran d'origine strictement rétabli 
+    [local] › tests/e2e/onboarding-passions-v2.spec.js:227:1 › §8 — aucun tour forcé après l'inscription, ni à l'entrée ni au rechargement 
+    [local] › tests/e2e/onboarding-passions-v2.spec.js:254:1 › §8 — drapeau V2 à false : le tour d'origine est bien relancé 
+    [local] › tests/e2e/onboarding-v2.spec.js:53:1 › setFeedPassions écrit les deux sources, déduplique et garde l'ordre 
+    [local] › tests/e2e/onboarding-v2.spec.js:71:1 › onbFinish V2 : un seul profil de départ, mais toutes les passions dans le fil 
+    [local] › tests/e2e/onboarding-v2.spec.js:105:1 › les intérêts choisis survivent à un rechargement complet 
+    [local] › tests/e2e/onboarding-v2.spec.js:124:1 › un compte antérieur est migré depuis ses profils, sans qu'aucun soit supprimé 
+    [local] › tests/e2e/onboarding-v2.spec.js:158:1 › la télémétrie d'activation part avec des clés qui survivent au filtre PII 
+    [local] › tests/e2e/onboarding-v2.spec.js:189:1 › drapeau à false : l'ancien comportement est strictement rétabli 
+    [local] › tests/e2e/smoke.spec.js:26:1 › la page charge avec le bon titre ──────────────────────
+    [local] › tests/e2e/smoke.spec.js:31:1 › la landing s'affiche (logo, badge beta, CTA) ──────────
+    [local] › tests/e2e/smoke.spec.js:38:1 › le bouton Se connecter ouvre le formulaire d'authentification 
+    [local] › tests/e2e/smoke.spec.js:45:1 › aucune erreur JavaScript fatale au démarrage ──────────
+    [local] › tests/e2e/smoke.spec.js:54:1 › le manifest PWA et le service worker sont servis ──────
+    [local] › tests/e2e/ui-v2-shell.spec.js:74:1 › kill switch : navigation historique intacte, aucun nœud V2 créé 
+    [local] › tests/e2e/ui-v2-shell.spec.js:103:1 › URL normale : cinq entrées libellées, chacune menant à sa route existante 
+    [local] › tests/e2e/ui-v2-shell.spec.js:140:1 › aperçu : « Créer » ouvre le sélecteur et non l'écran Studio 
+    [local] › tests/e2e/ui-v2-shell.spec.js:201:1 › aperçu : chaque choix « Créer » rebranche un éditeur existant 
+    [local] › tests/e2e/ui-v2-shell.spec.js:267:1 › barre des stories : plus de bulle de création Live, mais les vrais directs restent 
+    [local] › tests/e2e/ui-v2-shell.spec.js:292:1 › aperçu : Bobines sort de la barre mais reste atteignable 
+    [local] › tests/e2e/ui-v2-shell.spec.js:325:1 › aperçu : aucun réglage durable écrit, profil actif inchangé 
+    [local] › tests/e2e/ui-v2-shell.spec.js:369:1 › URL normale : un passio_ui_v2 « 1 » hérité ne change pas le défaut V2 
+    [local] › tests/e2e/ui-v2-shell.spec.js:398:1 › aperçu : « Créer » ferme l'aide contextuelle qui la recouvrirait 
+    [local] › tests/e2e/ui-v2-shell.spec.js:442:1 › aperçu : ancien navOrder normalisé sans effacer les autres réglages 
+    [local] › tests/e2e/ui-v2-shell.spec.js:462:1 › aperçu 390 × 844 : libellés entiers, cibles tactiles suffisantes 
+  14 passed (7.3m)
+
+real	7m18.765s
+user	1m26.264s
+sys	0m19.817s
+EXIT=1

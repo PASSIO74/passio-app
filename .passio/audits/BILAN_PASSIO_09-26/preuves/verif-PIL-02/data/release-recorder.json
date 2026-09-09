@@ -1,0 +1,15 @@
+{
+  "snapshots": [
+    {
+      "at": "2026-09-04T13:04:47.606Z",
+      "branch": "audit/bilan-passio-09-26-fable51",
+      "revision": "f501fb78e97d",
+      "appVersion": null,
+      "dbVersion": null,
+      "deployId": null,
+      "deployUrl": null,
+      "provider": null,
+      "source": "dashboard_boot"
+    }
+  ]
+}

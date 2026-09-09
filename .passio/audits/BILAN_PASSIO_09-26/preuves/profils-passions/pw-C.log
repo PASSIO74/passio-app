@@ -1,0 +1,78 @@
+
+Running 70 tests using 1 worker
+
+[1A[2K[1/70] [local] › tests/e2e/passions-plates.spec.js:67:3 › le référentiel › ① les 19 identifiants historiques sont conservés
+[1A[2K[2/70] [local] › tests/e2e/passions-plates.spec.js:78:3 › le référentiel › ② aucun doublon après normalisation, ni entre libellés ni avec les alias
+[1A[2K[3/70] [local] › tests/e2e/passions-plates.spec.js:96:3 › le référentiel › ③ aucun univers, aucune spécialité : un seul niveau
+[1A[2K[4/70] [local] › tests/e2e/passions-plates.spec.js:108:3 › le référentiel › ④ chaque relation pointe vers une passion qui existe
+[1A[2K[5/70] [local] › tests/e2e/passions-plates.spec.js:121:3 › la recherche › ⑤ le référentiel n'est PAS chargé au démarrage
+[1A[2K[6/70] [local] › tests/e2e/passions-plates.spec.js:137:3 › la recherche › ⑥ bis — le classement ne dépend PAS de la réponse du serveur
+[1A[2K[7/70] [local] › tests/e2e/passions-plates.spec.js:161:3 › la recherche › ⑥ correspondance exacte, alias, sans accent, approximative
+[1A[2K[8/70] [local] › tests/e2e/passions-plates.spec.js:181:3 › la recherche › ⑦ les résultats sont plafonnés, et une frappe absurde ne rend rien
+[1A[2K[9/70] [local] › tests/e2e/passions-plates.spec.js:192:3 › la recherche › ⑧ « Enduro » se choisit SANS passer par « Moto »
+[1A[2K[10/70] [local] › tests/e2e/passions-plates.spec.js:207:3 › la recherche › ⑨ multi-sélection dans « Mes passions », et le fil la reçoit
+[1A[2K[11/70] [local] › tests/e2e/passions-plates.spec.js:228:3 › la recherche › ⑩ le Studio est en choix UNIQUE, et il écrit dans #postPassion
+[1A[2K[12/70] [local] › tests/e2e/passions-plates.spec.js:264:3 › la recherche › ⑩ bis — la bulle du Fil porte le NOM de la passion, jamais « Passion »
+[1A[2K[13/70] [local] › tests/e2e/passions-plates.spec.js:293:3 › la recherche › ⑪ la sélection survit à un rechargement
+[1A[2K[14/70] [local] › tests/e2e/passions-plates.spec.js:314:3 › la recherche › ⑫ les publications existantes restent visibles
+[1A[2K[15/70] [local] › tests/e2e/passions-plates.spec.js:328:3 › le modèle et les garde-fous › ⑬ aucune passion ne crée de profil : une identité, plusieurs passions
+[1A[2K[16/70] [local] › tests/e2e/passions-plates.spec.js:345:3 › le modèle et les garde-fous › ⑭ une passion inexistante ouvre une DEMANDE, pas une passion
+[1A[2K[17/70] [local] › tests/e2e/passions-plates.spec.js:366:3 › le modèle et les garde-fous › ⑭ bis — un terme qui existe déjà ne crée pas de demande
+[1A[2K[18/70] [local] › tests/e2e/passions-plates.spec.js:375:3 › le modèle et les garde-fous › ⑮ publier sous une passion absente du serveur est REFUSÉ, et dit pourquoi
+[1A[2K[19/70] [local] › tests/e2e/passions-plates.spec.js:429:3 › le modèle et les garde-fous › ⑯ le client ne peut pas écrire dans le référentiel
+[1A[2K[20/70] [local] › tests/e2e/passions-plates.spec.js:442:3 › le modèle et les garde-fous › ⑰ kill switch : le drapeau coupé rend l'écran historique
+[1A[2K[21/70] [local] › tests/e2e/passions-plates.spec.js:487:3 › le modèle et les garde-fous › ⑰ bis — sans aperçu, le lot est ACTIF : c'est le défaut depuis le 2026-09-01
+[1A[2K[22/70] [local] › tests/e2e/passions-plates.spec.js:522:3 › le modèle et les garde-fous › ⑰ ter — une passion du référentiel s'affiche AVEC SON NOM, sans ouvrir le sélecteur
+[1A[2K[23/70] [local] › tests/e2e/passions-plates.spec.js:554:3 › le modèle et les garde-fous › ⑰ quater — un compte qui ne vit que sur le socle ne télécharge RIEN de plus
+[1A[2K[24/70] [local] › tests/e2e/passions-plates.spec.js:587:3 › le modèle et les garde-fous › ⑰ quinquies — la passion d'AUTRUI dans le fil déclenche le chargement et s'affiche nommée
+[1A[2K[25/70] [local] › tests/e2e/passions-plates.spec.js:628:3 › le modèle et les garde-fous › ⑰ sexies — le rail du PROFIL est repeint lui aussi, malgré sa signature
+[1A[2K[26/70] [local] › tests/e2e/passions-plates.spec.js:651:3 › le modèle et les garde-fous › ⑱ le pliage du navigateur est celui du référentiel construit
+[1A[2K[27/70] [local] › tests/e2e/passions-plates.spec.js:666:5 › mobile › ⑲ 320 px : la recherche est utilisable, sans débordement
+[1A[2K[28/70] [local] › tests/e2e/passions-plates.spec.js:666:5 › mobile › ⑲ 390 px : la recherche est utilisable, sans débordement
+[1A[2K[29/70] [local] › tests/e2e/passions-plates.spec.js:666:5 › mobile › ⑲ 430 px : la recherche est utilisable, sans débordement
+[1A[2K[30/70] [local] › tests/e2e/passions-plates.spec.js:720:3 › l'onboarding sous le lot › ㉖ la grille de 19 tuiles est remplacée par une recherche, et la copie le dit
+[1A[2K[31/70] [local] › tests/e2e/passions-plates.spec.js:796:3 › la porte d'ajout et son plafond › ㉑ la bulle « + » est dans « Gérer mes passions », ni dans le Fil ni dans le rail du Profil
+[1A[2K[32/70] [local] › tests/e2e/passions-plates.spec.js:822:3 › la porte d'ajout et son plafond › ㉒ à trois passions, la porte refuse en disant pourquoi, et l'offre reste annoncée
+[1A[2K[33/70] [local] › tests/e2e/passions-plates.spec.js:883:3 › la porte d'ajout et son plafond › ㉒ bis — le plafond tient au POINT D'ÉCRITURE, pas seulement à la porte
+[1A[2K[34/70] [local] › tests/e2e/passions-plates.spec.js:900:3 › la porte d'ajout et son plafond › ㉓ archiver libère une place, et restaurer reste gratuit sous le plafond
+[1A[2K[35/70] [local] › tests/e2e/passions-plates.spec.js:926:3 › la porte d'ajout et son plafond › ㉓ bis — restaurer une QUATRIÈME passion vivante est barré
+[1A[2K[36/70] [local] › tests/e2e/passions-plates.spec.js:947:3 › la porte d'ajout et son plafond › ㉓ ter — depuis la PORTE réelle, reprendre une passion archivée est gratuit
+[1A[2K[37/70] [local] › tests/e2e/passions-plates.spec.js:990:3 › la porte d'ajout et son plafond › ㉔ kill switch : drapeau coupé, aucun plafond
+[1A[2K[38/70] [local] › tests/e2e/passions-plates.spec.js:1008:3 › la porte d'ajout et son plafond › ㉕ à deux passions, la recherche s'ouvre et ne laisse en prendre qu'une
+[1A[2K[39/70] [local] › tests/e2e/profil-entete-passions.spec.js:86:1 › ① la couverture s'arrête juste AU-DESSUS du pseudo
+[1A[2K[40/70] [local] › tests/e2e/profil-entete-passions.spec.js:97:1 › ① bis — l'avatar tient ENTIÈREMENT sur la couverture
+[1A[2K[41/70] [local] › tests/e2e/profil-entete-passions.spec.js:112:1 › ② la photo de profil est nettement plus grande qu'avant (90 px)
+[1A[2K[42/70] [local] › tests/e2e/profil-entete-passions.spec.js:120:1 › ① ter — la carte d'identité reste sous les deux tiers de l'écran
+[1A[2K[43/70] [local] › tests/e2e/profil-entete-passions.spec.js:162:1 › ③ aucune ligne de passions sous le pseudo — les bulles du rail les portent
+[1A[2K[44/70] [local] › tests/e2e/profil-entete-passions.spec.js:196:1 › ③ bis bis — la porte d'ajout a quitté le rail pour « Gérer mes passions »
+[1A[2K[45/70] [local] › tests/e2e/profil-entete-passions.spec.js:262:1 › ③ bis bis bis — sous le plafond, la porte d'ajout invite et reste armée
+[1A[2K[46/70] [local] › tests/e2e/profil-entete-passions.spec.js:299:1 › ③ bis ter — la chaîne complète : crayon → « Gérer mes passions » → la bulle
+[1A[2K[47/70] [local] › tests/e2e/profil-entete-passions.spec.js:346:1 › ③ bis quinquies — au plafond, la fenêtre ne renvoie pas au panneau d'où l'on vient
+[1A[2K[48/70] [local] › tests/e2e/profil-entete-passions.spec.js:405:1 › ③ bis quater — la porte survit à deux rendus du panneau
+[1A[2K[49/70] [local] › tests/e2e/profil-entete-passions.spec.js:432:1 › ③ bis — toucher une bulle FILTRE, elle ne quitte plus le profil
+[1A[2K[50/70] [local] › tests/e2e/profil-entete-passions.spec.js:533:1 › ③ ter — une bulle reste une cible tactile confortable
+[1A[2K[51/70] [local] › tests/e2e/profil-entete-passions.spec.js:542:1 › ③ quater — six passions : la rangée COULISSE, elle ne se comprime pas
+[1A[2K[52/70] [local] › tests/e2e/profil-entete-passions.spec.js:578:1 › ③ quater bis — DIX passions : les bulles gardent leur taille et leur nom
+[1A[2K[53/70] [local] › tests/e2e/profil-entete-passions.spec.js:620:3 › ③ nonies — 320 px, 3 passions : la porte d'ajout est peinte dans « Gérer mes passions »
+[1A[2K[54/70] [local] › tests/e2e/profil-entete-passions.spec.js:620:3 › ③ nonies — 320 px, 10 passions : la porte d'ajout est peinte dans « Gérer mes passions »
+[1A[2K[55/70] [local] › tests/e2e/profil-entete-passions.spec.js:620:3 › ③ nonies — 390 px, 10 passions : la porte d'ajout est peinte dans « Gérer mes passions »
+[1A[2K[56/70] [local] › tests/e2e/profil-entete-passions.spec.js:655:1 › ③ quater ter — le rail défile, et sa position survit au choix d'une passion
+[1A[2K[57/70] [local] › tests/e2e/profil-entete-passions.spec.js:740:1 › ③ decies — trois passions : la rangée est CENTRÉE, elle ne colle plus à gauche
+[1A[2K[58/70] [local] › tests/e2e/profil-entete-passions.spec.js:754:1 › ③ decies bis — DIX passions : la rangée déborde, et la PREMIÈRE bulle reste atteignable
+[1A[2K[59/70] [local] › tests/e2e/profil-entete-passions.spec.js:773:1 › ③ decies ter — une SEULE passion se centre aussi
+[1A[2K[60/70] [local] › tests/e2e/profil-entete-passions.spec.js:787:1 › ③ decies quater — le Fil se centre AUSSI, le profil visité garde son alignement
+[1A[2K[61/70] [local] › tests/e2e/profil-entete-passions.spec.js:869:1 › ③ decies quinquies — QUATRE bulles (Suivis + 3 passions) : la rangée est centrée
+[1A[2K[62/70] [local] › tests/e2e/profil-entete-passions.spec.js:879:1 › ③ decies sexies — au-delà, le Fil déborde et sa PREMIÈRE bulle reste atteignable
+[1A[2K[63/70] [local] › tests/e2e/profil-entete-passions.spec.js:900:1 › ③ quinquies — une passion ARCHIVÉE ne réapparaît pas dans le rail
+[1A[2K[64/70] [local] › tests/e2e/profil-entete-passions.spec.js:940:1 › ③ sexies — un profil visité suit la même règle : une seule rangée, en bulles
+[1A[2K[65/70] [local] › tests/e2e/profil-entete-passions.spec.js:957:1 › ③ septies — le RETOUR de la page de passion reste servi (chemin dormant)
+[1A[2K[66/70] [local] › tests/e2e/profil-entete-passions.spec.js:983:1 › ③ octies — ouverte depuis un ÉCRAN, la page de passion n'invente pas de retour
+[1A[2K[67/70] [local] › tests/e2e/profil-entete-passions.spec.js:998:1 › une carte de publication ne nomme la passion QU'UNE FOIS
+[1A[2K[68/70] [local] › tests/e2e/profil-entete-passions.spec.js:1041:1 › ④ — le compteur « passions » compte les vivantes ET les archivées
+[1A[2K[69/70] [local] › tests/e2e/profil-entete-passions.spec.js:1064:1 › ④ bis — le profil de remplissage n'est compté nulle part
+[1A[2K[70/70] [local] › tests/e2e/profil-entete-passions.spec.js:1081:1 › ④ ter — il est ENTRE « abonnés » et « abonnements », et il ouvre la page
+[1A[2K  Slow test file: [local] › tests/e2e/passions-plates.spec.js (9.8m)
+  Slow test file: [local] › tests/e2e/profil-entete-passions.spec.js (8.8m)
+  Consider running tests from slow files in parallel. See: https://playwright.dev/docs/test-parallel
+  70 passed (18.7m)
+EXIT=0

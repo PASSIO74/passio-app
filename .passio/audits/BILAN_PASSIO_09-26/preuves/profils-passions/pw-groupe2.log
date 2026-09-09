@@ -1,0 +1,1365 @@
+[1A[2K[2m[WebServer] [22m(node:30764) [DEP0066] DeprecationWarning: OutgoingMessage.prototype._headers is deprecated
+[2m[WebServer] [22m(Use `node --trace-deprecation ...` to show where the warning was created)
+
+
+Running 87 tests using 1 worker
+
+[1A[2K[1/87] [local] › tests/e2e/mes-passions-page.spec.js:91:1 › ① ouverte, la page remplace le profil : plus de « Créer un post » au-dessus
+[1A[2K[2/87] [local] › tests/e2e/mes-passions-page.spec.js:152:1 › ① bis — le geste de retour referme la page avant de changer d'écran
+[1A[2K[3/87] [local] › tests/e2e/mes-passions-page.spec.js:170:1 › ① ter — naviguer ailleurs referme la page
+[1A[2K[4/87] [local] › tests/e2e/mes-passions-page.spec.js:188:1 › ② aucune passion n'est principale : les cartes sont identiques
+[1A[2K[5/87] [local] › tests/e2e/mes-passions-page.spec.js:226:1 › ② bis — le menu « … » d'une carte ne propose aucune passion principale
+[1A[2K[6/87] [local] › tests/e2e/mes-passions-page.spec.js:243:1 › ③ le résumé compte les passions actives, et il suit
+[1A[2K[7/87] [local] › tests/e2e/mes-passions-page.spec.js:270:1 › ④ place disponible : la porte d'ajout invite et elle est armée
+[1A[2K[8/87] [local] › tests/e2e/mes-passions-page.spec.js:307:1 › ⑤ limite atteinte : la porte dit « Limite de N atteinte » — et elle répond
+[1A[2K[9/87] [local] › tests/e2e/mes-passions-page.spec.js:353:1 › ⑥ changement disponible : une information, PAS une alerte
+[1A[2K[10/87] [local] › tests/e2e/mes-passions-page.spec.js:369:1 › ⑦ aucun changement disponible : l'alerte, et elle seule
+[1A[2K[11/87] [local] › tests/e2e/mes-passions-page.spec.js:387:1 › ⑦ bis — quota sans objet : ni ligne, ni alerte
+[1A[2K[12/87] [local] › tests/e2e/mes-passions-page.spec.js:405:1 › ⑧ une carte ouvre l'espace de sa passion
+[1A[2K[13/87] [local] › tests/e2e/mes-passions-page.spec.js:419:1 › ⑨ « Passions archivées (X) » est repliable et compte juste
+[1A[2K[14/87] [local] › tests/e2e/mes-passions-page.spec.js:445:1 › ⑨ bis — sans archive, la section n'existe pas (pas de gouttière vide)
+[1A[2K[15/87] [local] › tests/e2e/mes-passions-page.spec.js:454:1 › ⑩ « Réactiver » agit quand c'est possible
+[1A[2K[16/87] [local] › tests/e2e/mes-passions-page.spec.js:481:1 › ⑩ bis — impossible : le bouton refuse, il RÉPOND, et il dit pourquoi
+[1A[2K[17/87] [local] › tests/e2e/mes-passions-page.spec.js:536:1 › ⑪ la page ne dit plus « Choisis jusqu'à N passions… »
+[1A[2K[18/87] [local] › tests/e2e/mes-passions-page.spec.js:550:1 › ⑫ le « ? » explique qu'aucune passion n'est principale
+[1A[2K[19/87] [local] › tests/e2e/mes-passions-page.spec.js:570:1 › ⑬ l'ouverture de la page est remontée au Centre de pilotage
+[1A[2K[20/87] [local] › tests/e2e/mes-passions-page.spec.js:603:1 › ⑬ bis — un rendu qui casse remonte en erreur, pas en écran vide
+[1A[2K[21/87] [local] › tests/e2e/mes-passions-page.spec.js:625:3 › ⑭ 320 px : aucun débordement, cibles ≥ 44 px
+[1A[2K[22/87] [local] › tests/e2e/mes-passions-page.spec.js:625:3 › ⑭ 360 px : aucun débordement, cibles ≥ 44 px
+[1A[2K[23/87] [local] › tests/e2e/mes-passions-page.spec.js:625:3 › ⑭ 390 px : aucun débordement, cibles ≥ 44 px
+[1A[2K[24/87] [local] › tests/e2e/mes-passions-page.spec.js:625:3 › ⑭ 430 px : aucun débordement, cibles ≥ 44 px
+[1A[2K[25/87] [local] › tests/e2e/mes-passions-page.spec.js:681:1 › ⑭ par défaut, l'illimité est ÉTEINT — le plafond et le quota s'appliquent
+[1A[2K[26/87] [local] › tests/e2e/mes-passions-page.spec.js:700:1 › ⑭ bis — allumé, il lève les DEUX limites, et l'écran cesse de les annoncer
+[1A[2K[27/87] [local] › tests/e2e/mes-passions-page.spec.js:736:1 › ⑭ ter — allumé, les gestes ABOUTISSENT au-delà du plafond et du quota
+[1A[2K[28/87] [local] › tests/e2e/mes-passions-page.spec.js:774:1 › ⑭ quater — la bascule des Paramètres allume, éteint, et dit son ÉTAT
+[1A[2K[29/87] [local] › tests/e2e/passions-archive-quota.spec.js:58:3 › revenir à une passion archivée › ① archiver, prendre une autre passion, puis revenir : la passion REVIENT
+[1A[2K[30/87] [local] › tests/e2e/passions-archive-quota.spec.js:90:3 › revenir à une passion archivée › ① bis — sous le plafond, reprendre une archive est direct et gratuit
+[1A[2K[31/87] [local] › tests/e2e/passions-archive-quota.spec.js:109:3 › revenir à une passion archivée › ② la liste des archives est écrite EN CLAIR, plus derrière un lien
+[1A[2K[32/87] [local] › tests/e2e/passions-archive-quota.spec.js:132:3 › revenir à une passion archivée › ② bis — le bouton dit « Réactiver » dans les deux cas, et il AGIT
+[1A[2K[33/87] [local] › tests/e2e/passions-archive-quota.spec.js:160:3 › revenir à une passion archivée › ② ter — la liste survit à un rechargement (elle est ENREGISTRÉE)
+[1A[2K[34/87] [local] › tests/e2e/passions-archive-quota.spec.js:181:3 › le quota de changements › ③ trois changements offerts, le quatrième est barré
+[1A[2K  1) [local] › tests/e2e/passions-archive-quota.spec.js:181:3 › le quota de changements › ③ trois changements offerts, le quatrième est barré 
+
+    Error: page.goto: Target page, context or browser has been closed
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/passions-archive-quota.spec.js:182:5
+
+    Error Context: test-results/passions-archive-quota-le--8bafd-erts-le-quatrième-est-barré-local/error-context.md
+
+
+[1A[2K[35/87] [local] › tests/e2e/passions-archive-quota.spec.js:207:3 › le quota de changements › ③ bis — le coût est ANNONCÉ avant le geste, pas découvert après
+[1A[2K  2) [local] › tests/e2e/passions-archive-quota.spec.js:207:3 › le quota de changements › ③ bis — le coût est ANNONCÉ avant le geste, pas découvert après 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/passions-archive-quota.spec.js:208:5
+
+    Error Context: test-results/passions-archive-quota-le--3a926-e-geste-pas-découvert-après-local/error-context.md
+
+
+[1A[2K[36/87] [local] › tests/e2e/passions-archive-quota.spec.js:218:3 › le quota de changements › ③ ter — le compteur est affiché sur la page « Mes passions »
+[1A[2K  3) [local] › tests/e2e/passions-archive-quota.spec.js:218:3 › le quota de changements › ③ ter — le compteur est affiché sur la page « Mes passions » 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/passions-archive-quota.spec.js:219:5
+
+    Error Context: test-results/passions-archive-quota-le--67bb4-ur-la-page-«-Mes-passions-»-local/error-context.md
+
+
+[1A[2K[37/87] [local] › tests/e2e/passions-archive-quota.spec.js:235:3 › le quota de changements › ③ quater — RESTAURER ne consomme rien : un échange se paie UNE fois
+[1A[2K  4) [local] › tests/e2e/passions-archive-quota.spec.js:235:3 › le quota de changements › ③ quater — RESTAURER ne consomme rien : un échange se paie UNE fois 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/passions-archive-quota.spec.js:236:5
+
+    Error Context: test-results/passions-archive-quota-le--5b13f-un-échange-se-paie-UNE-fois-local/error-context.md
+
+
+[1A[2K[38/87] [local] › tests/e2e/passions-archive-quota.spec.js:248:3 › le quota de changements › ③ quinquies — l'échange consomme exactement UN changement
+[1A[2K  5) [local] › tests/e2e/passions-archive-quota.spec.js:248:3 › le quota de changements › ③ quinquies — l'échange consomme exactement UN changement 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/passions-archive-quota.spec.js:249:5
+
+    Error Context: test-results/passions-archive-quota-le--4b970-me-exactement-UN-changement-local/error-context.md
+
+
+[1A[2K[39/87] [local] › tests/e2e/passions-archive-quota.spec.js:263:3 › le quota de changements › ③ sexies — archiver la DERNIÈRE passion reste refusé, et ne consomme rien
+[1A[2K  6) [local] › tests/e2e/passions-archive-quota.spec.js:263:3 › le quota de changements › ③ sexies — archiver la DERNIÈRE passion reste refusé, et ne consomme rien 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/passions-archive-quota.spec.js:267:5
+
+    Error Context: test-results/passions-archive-quota-le--c3173--refusé-et-ne-consomme-rien-local/error-context.md
+
+
+[1A[2K[40/87] [local] › tests/e2e/passions-archive-quota.spec.js:279:3 › le quota de changements › ③ septies — archiver DEUX FOIS la même passion ne débite qu'une fois
+[1A[2K  7) [local] › tests/e2e/passions-archive-quota.spec.js:279:3 › le quota de changements › ③ septies — archiver DEUX FOIS la même passion ne débite qu'une fois 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/passions-archive-quota.spec.js:280:5
+
+    Error Context: test-results/passions-archive-quota-le--fd927-ssion-ne-débite-qu-une-fois-local/error-context.md
+
+
+[1A[2K[41/87] [local] › tests/e2e/passions-archive-quota.spec.js:317:3 › la démo sans compte › ④ changements ILLIMITÉS sans compte — mais le plafond de trois tient
+[1A[2K  8) [local] › tests/e2e/passions-archive-quota.spec.js:317:3 › la démo sans compte › ④ changements ILLIMITÉS sans compte — mais le plafond de trois tient 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1", waiting until "load"[22m
+
+
+      309 |     // déploiements. Verrou mécanique : `scripts/audit-tests-isolation.js`.
+      310 |     await sansDonneesDistantes(page);
+    > 311 |     await page.goto("/index.html" + APERCU);
+          |                ^
+      312 |     // ⚠️ `state` est un `let` de portée script — PAS une propriété de `window`.
+      313 |     await page.waitForFunction(() => typeof state !== "undefined" && state && state.user, null, { timeout: 20000 });
+      314 |     await page.waitForTimeout(2500);
+        at bootVisiteur (/home/user/passio-app/tests/e2e/passions-archive-quota.spec.js:311:16)
+        at /home/user/passio-app/tests/e2e/passions-archive-quota.spec.js:323:5
+
+    Error Context: test-results/passions-archive-quota-la--4ec38-s-le-plafond-de-trois-tient-local/error-context.md
+
+
+[1A[2K[42/87] [local] › tests/e2e/passions-archive-quota.spec.js:336:3 › la démo sans compte › ④ quater — AUCUN CRÉDIT DE DÉMO : le visiteur ne dépasse pas le plafond
+[1A[2K  9) [local] › tests/e2e/passions-archive-quota.spec.js:336:3 › la démo sans compte › ④ quater — AUCUN CRÉDIT DE DÉMO : le visiteur ne dépasse pas le plafond 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1", waiting until "load"[22m
+
+
+      309 |     // déploiements. Verrou mécanique : `scripts/audit-tests-isolation.js`.
+      310 |     await sansDonneesDistantes(page);
+    > 311 |     await page.goto("/index.html" + APERCU);
+          |                ^
+      312 |     // ⚠️ `state` est un `let` de portée script — PAS une propriété de `window`.
+      313 |     await page.waitForFunction(() => typeof state !== "undefined" && state && state.user, null, { timeout: 20000 });
+      314 |     await page.waitForTimeout(2500);
+        at bootVisiteur (/home/user/passio-app/tests/e2e/passions-archive-quota.spec.js:311:16)
+        at /home/user/passio-app/tests/e2e/passions-archive-quota.spec.js:344:5
+
+    Error: browserContext.close: Test ended.
+    Browser logs:
+
+    <launching> /tmp/claude-0/-home-user-passio-app/8e50efcd-cd50-5123-9eb7-687c6d323ca2/scratchpad/pw-browsers/chromium_headless_shell-1223/chrome-headless-shell-linux64/chrome-headless-shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,Translate,AutoDeElevate,RenderDocument,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=/tmp/playwright_chromiumdev_profile-nTVC4Z --remote-debugging-pipe --no-startup-window
+    <launched> pid=12240
+    [pid=12240][err] [0904/130407.821292:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Failed to connect to socket /run/dbus/system_bus_socket: No such file or directory
+    [pid=12240][err] [0904/130407.823257:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Failed to connect to socket /run/dbus/system_bus_socket: No such file or directory
+    [pid=12240][err] [0904/130407.823326:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Failed to connect to socket /run/dbus/system_bus_socket: No such file or directory
+    [pid=12240][err] [0904/130407.843549:WARNING:device/bluetooth/dbus/bluez_dbus_manager.cc:209] Floss manager service not available, cannot set Floss enable/disable.
+    [pid=12240][err] [0904/130407.843048:WARNING:sandbox/policy/linux/sandbox_linux.cc:414] InitializeSandbox() called with multiple threads in process gpu-process.
+
+    Error Context: test-results/passions-archive-quota-la--0fe15-r-ne-dépasse-pas-le-plafond-local/error-context.md
+
+
+[1A[2K[43/87] [local] › tests/e2e/passions-archive-quota.spec.js:365:3 › la démo sans compte › ④ bis — un visiteur archive autant qu'il veut
+[1A[2K  10) [local] › tests/e2e/passions-archive-quota.spec.js:365:3 › la démo sans compte › ④ bis — un visiteur archive autant qu'il veut 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1", waiting until "load"[22m
+
+
+      309 |     // déploiements. Verrou mécanique : `scripts/audit-tests-isolation.js`.
+      310 |     await sansDonneesDistantes(page);
+    > 311 |     await page.goto("/index.html" + APERCU);
+          |                ^
+      312 |     // ⚠️ `state` est un `let` de portée script — PAS une propriété de `window`.
+      313 |     await page.waitForFunction(() => typeof state !== "undefined" && state && state.user, null, { timeout: 20000 });
+      314 |     await page.waitForTimeout(2500);
+        at bootVisiteur (/home/user/passio-app/tests/e2e/passions-archive-quota.spec.js:311:16)
+        at /home/user/passio-app/tests/e2e/passions-archive-quota.spec.js:366:5
+
+    Error Context: test-results/passions-archive-quota-la--27be9-r-archive-autant-qu-il-veut-local/error-context.md
+
+
+[1A[2K[44/87] [local] › tests/e2e/passions-archive-quota.spec.js:383:3 › la démo sans compte › ④ ter — LA DÉMO NE LAISSE AUCUNE DETTE au compte créé ensuite
+[1A[2K  11) [local] › tests/e2e/passions-archive-quota.spec.js:383:3 › la démo sans compte › ④ ter — LA DÉMO NE LAISSE AUCUNE DETTE au compte créé ensuite 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1", waiting until "load"[22m
+
+
+      309 |     // déploiements. Verrou mécanique : `scripts/audit-tests-isolation.js`.
+      310 |     await sansDonneesDistantes(page);
+    > 311 |     await page.goto("/index.html" + APERCU);
+          |                ^
+      312 |     // ⚠️ `state` est un `let` de portée script — PAS une propriété de `window`.
+      313 |     await page.waitForFunction(() => typeof state !== "undefined" && state && state.user, null, { timeout: 20000 });
+      314 |     await page.waitForTimeout(2500);
+        at bootVisiteur (/home/user/passio-app/tests/e2e/passions-archive-quota.spec.js:311:16)
+        at /home/user/passio-app/tests/e2e/passions-archive-quota.spec.js:388:5
+
+    Error Context: test-results/passions-archive-quota-la--b234f-ETTE-au-compte-créé-ensuite-local/error-context.md
+
+
+[1A[2K[45/87] [local] › tests/e2e/passions-archive-quota.spec.js:411:1 › ⑤ drapeau coupé : ni plafond, ni quota de changements
+[1A[2K  12) [local] › tests/e2e/passions-archive-quota.spec.js:411:1 › ⑤ drapeau coupé : ni plafond, ni quota de changements 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/passions-archive-quota.spec.js:413:3
+
+    Error Context: test-results/passions-archive-quota-⑤-d-0b809-ond-ni-quota-de-changements-local/error-context.md
+
+
+[1A[2K[46/87] [local] › tests/e2e/passions-archive-quota.spec.js:441:3 › les portes oubliées du plafond › ⑥ « + Créer profil » (page d'une passion) respecte le plafond
+[1A[2K  13) [local] › tests/e2e/passions-archive-quota.spec.js:441:3 › les portes oubliées du plafond › ⑥ « + Créer profil » (page d'une passion) respecte le plafond 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/passions-archive-quota.spec.js:446:5
+
+    Error Context: test-results/passions-archive-quota-les-ff20f-passion-respecte-le-plafond-local/error-context.md
+
+
+[1A[2K[47/87] [local] › tests/e2e/passions-archive-quota.spec.js:459:3 › les portes oubliées du plafond › ⑥ bis — sous le plafond, « + Créer profil » marche toujours
+[1A[2K  14) [local] › tests/e2e/passions-archive-quota.spec.js:459:3 › les portes oubliées du plafond › ⑥ bis — sous le plafond, « + Créer profil » marche toujours 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/passions-archive-quota.spec.js:461:5
+
+    Error Context: test-results/passions-archive-quota-les-749ad-er-profil-»-marche-toujours-local/error-context.md
+
+
+[1A[2K[48/87] [local] › tests/e2e/passions-archive-quota.spec.js:475:3 › les portes oubliées du plafond › ⑥ ter — « + Créer profil » sur une ARCHIVE la restaure, sans doublon
+[1A[2K  15) [local] › tests/e2e/passions-archive-quota.spec.js:475:3 › les portes oubliées du plafond › ⑥ ter — « + Créer profil » sur une ARCHIVE la restaure, sans doublon 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/passions-archive-quota.spec.js:479:5
+
+    Error Context: test-results/passions-archive-quota-les-c0ffb-VE-la-restaure-sans-doublon-local/error-context.md
+
+
+[1A[2K[49/87] [local] › tests/e2e/passions-archive-quota.spec.js:491:3 › les portes oubliées du plafond › ⑦ Studio : une passion REFUSÉE n'est jamais écrite dans #postPassion
+[1A[2K  16) [local] › tests/e2e/passions-archive-quota.spec.js:491:3 › les portes oubliées du plafond › ⑦ Studio : une passion REFUSÉE n'est jamais écrite dans #postPassion 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/passions-archive-quota.spec.js:497:5
+
+    Error Context: test-results/passions-archive-quota-les-6d46c-ais-écrite-dans-postPassion-local/error-context.md
+
+
+[1A[2K[50/87] [local] › tests/e2e/passions-archive-quota.spec.js:530:1 › ⑧ quota épuisé : le bouton ne promet pas un échange impossible, et rien ne boucle
+[1A[2K  17) [local] › tests/e2e/passions-archive-quota.spec.js:530:1 › ⑧ quota épuisé : le bouton ne promet pas un échange impossible, et rien ne boucle 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/passions-archive-quota.spec.js:536:3
+
+    Error Context: test-results/passions-archive-quota-⑧-q-80ea4-mpossible-et-rien-ne-boucle-local/error-context.md
+
+
+[1A[2K[51/87] [local] › tests/e2e/passions-archive-quota.spec.js:591:1 › ⑨ la SEULE porte visible vers la gestion porte le compte d'archives
+[1A[2K  18) [local] › tests/e2e/passions-archive-quota.spec.js:591:1 › ⑨ la SEULE porte visible vers la gestion porte le compte d'archives 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/passions-archive-quota.spec.js:596:3
+
+    Error Context: test-results/passions-archive-quota-⑨-l-da7d1--porte-le-compte-d-archives-local/error-context.md
+
+
+[1A[2K[52/87] [local] › tests/e2e/passions-archive-quota.spec.js:634:3 › la fusion multi-appareils › ⑩ deux appareils, trois passions différentes chacun : le plafond tient
+[1A[2K  19) [local] › tests/e2e/passions-archive-quota.spec.js:634:3 › la fusion multi-appareils › ⑩ deux appareils, trois passions différentes chacun : le plafond tient 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/passions-archive-quota.spec.js:635:5
+
+    Error Context: test-results/passions-archive-quota-la--5fc6a-tes-chacun-le-plafond-tient-local/error-context.md
+
+
+[1A[2K[53/87] [local] › tests/e2e/passions-archive-quota.spec.js:656:3 › la fusion multi-appareils › ⑩ bis — UN COMPTE QUI PORTE DÉJÀ PLUS DE TROIS PASSIONS N'EST PAS RÉTROGRADÉ
+[1A[2K  20) [local] › tests/e2e/passions-archive-quota.spec.js:656:3 › la fusion multi-appareils › ⑩ bis — UN COMPTE QUI PORTE DÉJÀ PLUS DE TROIS PASSIONS N'EST PAS RÉTROGRADÉ 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/passions-archive-quota.spec.js:663:5
+
+    Error Context: test-results/passions-archive-quota-la--e656d-SSIONS-N-EST-PAS-RÉTROGRADÉ-local/error-context.md
+
+
+[1A[2K[54/87] [local] › tests/e2e/passions-archive-quota.spec.js:679:3 › la fusion multi-appareils › ⑩ ter — sous le plafond, la réinjection passe entière
+[1A[2K  21) [local] › tests/e2e/passions-archive-quota.spec.js:679:3 › la fusion multi-appareils › ⑩ ter — sous le plafond, la réinjection passe entière 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/passions-archive-quota.spec.js:683:5
+
+    Error Context: test-results/passions-archive-quota-la--aefec-a-réinjection-passe-entière-local/error-context.md
+
+
+[1A[2K[55/87] [local] › tests/e2e/passions-archive-quota.spec.js:693:3 › la fusion multi-appareils › ⑩ quater — une locale DÉJÀ archivée le reste, et ne consomme pas de place
+[1A[2K  22) [local] › tests/e2e/passions-archive-quota.spec.js:693:3 › la fusion multi-appareils › ⑩ quater — une locale DÉJÀ archivée le reste, et ne consomme pas de place 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/passions-archive-quota.spec.js:694:5
+
+    Error Context: test-results/passions-archive-quota-la--0b982-et-ne-consomme-pas-de-place-local/error-context.md
+
+
+[1A[2K[56/87] [local] › tests/e2e/passions-archive-quota.spec.js:710:3 › la fusion multi-appareils › ⑩ quinquies — la fusion ne FACTURE rien : le compte n'a rien demandé
+[1A[2K  23) [local] › tests/e2e/passions-archive-quota.spec.js:710:3 › la fusion multi-appareils › ⑩ quinquies — la fusion ne FACTURE rien : le compte n'a rien demandé 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/passions-archive-quota.spec.js:714:5
+
+    Error Context: test-results/passions-archive-quota-la--2ef7f--le-compte-n-a-rien-demandé-local/error-context.md
+
+
+[1A[2K[57/87] [local] › tests/e2e/passions-archive-quota.spec.js:728:3 › la fusion multi-appareils › ⑩ sexies — kill switch : drapeau coupé, la fusion ne range plus rien
+[1A[2K  24) [local] › tests/e2e/passions-archive-quota.spec.js:728:3 › la fusion multi-appareils › ⑩ sexies — kill switch : drapeau coupé, la fusion ne range plus rien 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html?passio_preview=flat-passions-v1", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/passions-archive-quota.spec.js:731:5
+
+    Error Context: test-results/passions-archive-quota-la--225d2-a-fusion-ne-range-plus-rien-local/error-context.md
+
+
+[1A[2K[58/87] [local] › tests/e2e/profils-types.spec.js:10:3 › profils types — parcours simulés › créateur : publie un post texte, visible dans le fil ET persistant après reload
+[1A[2K  25) [local] › tests/e2e/profils-types.spec.js:10:3 › profils types — parcours simulés › créateur : publie un post texte, visible dans le fil ET persistant après reload 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/profils-types.spec.js:12:5
+
+    Error Context: test-results/profils-types-profils-type-55adf--ET-persistant-après-reload-local/error-context.md
+
+
+[1A[2K[59/87] [local] › tests/e2e/profils-types.spec.js:62:3 › profils types — parcours simulés › créateur média : publie photo et vidéo
+[1A[2K  26) [local] › tests/e2e/profils-types.spec.js:62:3 › profils types — parcours simulés › créateur média : publie photo et vidéo 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/profils-types.spec.js:64:5
+
+    Error Context: test-results/profils-types-profils-type-95767-média-publie-photo-et-vidéo-local/error-context.md
+
+
+[1A[2K[60/87] [local] › tests/e2e/profils-types.spec.js:112:3 › profils types — parcours simulés › upload trop volumineux : rejet propre (toast, pas de crash, pas de post)
+[1A[2K  27) [local] › tests/e2e/profils-types.spec.js:112:3 › profils types — parcours simulés › upload trop volumineux : rejet propre (toast, pas de crash, pas de post) 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/profils-types.spec.js:114:5
+
+    Error Context: test-results/profils-types-profils-type-2ceb1-t-pas-de-crash-pas-de-post--local/error-context.md
+
+
+[1A[2K[61/87] [local] › tests/e2e/profils-types.spec.js:141:3 › profils types — parcours simulés › utilisateur actif : like + commentaire sur un post du fil
+[1A[2K  28) [local] › tests/e2e/profils-types.spec.js:141:3 › profils types — parcours simulés › utilisateur actif : like + commentaire sur un post du fil 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/profils-types.spec.js:143:5
+
+    Error Context: test-results/profils-types-profils-type-57b88-mentaire-sur-un-post-du-fil-local/error-context.md
+
+
+[1A[2K[62/87] [local] › tests/e2e/profils-types.spec.js:169:3 › profils types — parcours simulés › visiteur : consulte le fil et l'explorer sans rien publier
+[1A[2K  29) [local] › tests/e2e/profils-types.spec.js:169:3 › profils types — parcours simulés › visiteur : consulte le fil et l'explorer sans rien publier 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/profils-types.spec.js:171:5
+
+    Error Context: test-results/profils-types-profils-type-5850e--explorer-sans-rien-publier-local/error-context.md
+
+
+[1A[2K[63/87] [local] › tests/e2e/profils-types.spec.js:183:3 › profils types — parcours simulés › visiteur de profils : ouvre le profil d'un auteur depuis le fil
+[1A[2K  30) [local] › tests/e2e/profils-types.spec.js:183:3 › profils types — parcours simulés › visiteur de profils : ouvre le profil d'un auteur depuis le fil 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/profils-types.spec.js:185:5
+
+    Error Context: test-results/profils-types-profils-type-caa62-l-d-un-auteur-depuis-le-fil-local/error-context.md
+
+
+[1A[2K[64/87] [local] › tests/e2e/profils-types.spec.js:200:3 › profils types — parcours simulés › partageur : la feuille de partage d'un post s'ouvre
+[1A[2K  31) [local] › tests/e2e/profils-types.spec.js:200:3 › profils types — parcours simulés › partageur : la feuille de partage d'un post s'ouvre 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/profils-types.spec.js:202:5
+
+    Error Context: test-results/profils-types-profils-type-6f784-e-partage-d-un-post-s-ouvre-local/error-context.md
+
+
+[1A[2K[65/87] [local] › tests/e2e/profils-types.spec.js:215:3 › profils types — parcours simulés › multi-passions : 3 profils, bascule fonctionnelle
+[1A[2K  32) [local] › tests/e2e/profils-types.spec.js:215:3 › profils types — parcours simulés › multi-passions : 3 profils, bascule fonctionnelle 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at /home/user/passio-app/tests/e2e/profils-types.spec.js:217:5
+
+    Error Context: test-results/profils-types-profils-type-9bd39-ofils-bascule-fonctionnelle-local/error-context.md
+
+
+[1A[2K[66/87] [local] › tests/e2e/refonte-multi-passion.spec.js:133:1 › ① le profil porte le rail de passions du Fil, au-dessus des onglets
+[1A[2K  33) [local] › tests/e2e/refonte-multi-passion.spec.js:133:1 › ① le profil porte le rail de passions du Fil, au-dessus des onglets 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/refonte-multi-passion.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/refonte-multi-passion.spec.js:134:3
+
+    Error Context: test-results/refonte-multi-passion-①-le-129d3-u-Fil-au-dessus-des-onglets-local/error-context.md
+
+
+[1A[2K[67/87] [local] › tests/e2e/refonte-multi-passion.spec.js:175:1 › ① bis bis — une bulle s'active au CLAVIER, comme le rôle qu'elle annonce
+[1A[2K  34) [local] › tests/e2e/refonte-multi-passion.spec.js:175:1 › ① bis bis — une bulle s'active au CLAVIER, comme le rôle qu'elle annonce 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/refonte-multi-passion.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/refonte-multi-passion.spec.js:185:3
+
+    Error Context: test-results/refonte-multi-passion-①-bi-fecf6-mme-le-rôle-qu-elle-annonce-local/error-context.md
+
+
+[1A[2K[68/87] [local] › tests/e2e/refonte-multi-passion.spec.js:223:1 › ① bis — le profil n'a plus que deux onglets : Publications et Activité
+[1A[2K  35) [local] › tests/e2e/refonte-multi-passion.spec.js:223:1 › ① bis — le profil n'a plus que deux onglets : Publications et Activité 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/refonte-multi-passion.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/refonte-multi-passion.spec.js:224:3
+
+    Error Context: test-results/refonte-multi-passion-①-bi-1b100-ts-Publications-et-Activité-local/error-context.md
+
+
+[1A[2K[69/87] [local] › tests/e2e/refonte-multi-passion.spec.js:241:1 › ① ter bis — les onglets du profil et les envies du Fil sont CENTRÉS
+[1A[2K  36) [local] › tests/e2e/refonte-multi-passion.spec.js:241:1 › ① ter bis — les onglets du profil et les envies du Fil sont CENTRÉS 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/refonte-multi-passion.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/refonte-multi-passion.spec.js:242:3
+
+    Error Context: test-results/refonte-multi-passion-①-te-70018--envies-du-Fil-sont-CENTRÉS-local/error-context.md
+
+
+[1A[2K[70/87] [local] › tests/e2e/refonte-multi-passion.spec.js:281:1 › ① ter — choisir une passion filtre Publications ET Activité d'un seul geste
+[1A[2K  37) [local] › tests/e2e/refonte-multi-passion.spec.js:281:1 › ① ter — choisir une passion filtre Publications ET Activité d'un seul geste 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/refonte-multi-passion.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/refonte-multi-passion.spec.js:282:3
+
+    Error Context: test-results/refonte-multi-passion-①-te-c39dd-ET-Activité-d-un-seul-geste-local/error-context.md
+
+
+[1A[2K[71/87] [local] › tests/e2e/refonte-multi-passion.spec.js:341:1 › ① quater — un profil sans passion affiche un état propre, pas une rangée vide
+[1A[2K  38) [local] › tests/e2e/refonte-multi-passion.spec.js:341:1 › ① quater — un profil sans passion affiche un état propre, pas une rangée vide 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/refonte-multi-passion.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/refonte-multi-passion.spec.js:342:3
+
+    Error Context: test-results/refonte-multi-passion-①-qu-05b0b--propre-pas-une-rangée-vide-local/error-context.md
+
+
+[1A[2K[72/87] [local] › tests/e2e/refonte-multi-passion.spec.js:360:1 › ① quinquies — une passion sans publication et sans activité le DIT
+[1A[2K  39) [local] › tests/e2e/refonte-multi-passion.spec.js:360:1 › ① quinquies — une passion sans publication et sans activité le DIT 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/refonte-multi-passion.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/refonte-multi-passion.spec.js:361:3
+
+    Error Context: test-results/refonte-multi-passion-①-qu-00fb2-ion-et-sans-activité-le-DIT-local/error-context.md
+
+
+[1A[2K[73/87] [local] › tests/e2e/refonte-multi-passion.spec.js:378:1 › ② une publication Moto affiche Benjamin, et la seule passion du post
+[1A[2K  40) [local] › tests/e2e/refonte-multi-passion.spec.js:378:1 › ② une publication Moto affiche Benjamin, et la seule passion du post 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/refonte-multi-passion.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/refonte-multi-passion.spec.js:386:3
+
+    Error Context: test-results/refonte-multi-passion-②-un-a2424-et-la-seule-passion-du-post-local/error-context.md
+
+
+[1A[2K[74/87] [local] › tests/e2e/refonte-multi-passion.spec.js:409:1 › ② bis — les passions ARCHIVÉES ne fuient pas dans l'identité affichée
+[1A[2K  41) [local] › tests/e2e/refonte-multi-passion.spec.js:409:1 › ② bis — les passions ARCHIVÉES ne fuient pas dans l'identité affichée 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/refonte-multi-passion.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/refonte-multi-passion.spec.js:414:3
+
+    Error Context: test-results/refonte-multi-passion-②-bi-6974a-as-dans-l-identité-affichée-local/error-context.md
+
+
+[1A[2K[75/87] [local] › tests/e2e/refonte-multi-passion.spec.js:426:1 › ② ter — l'identité est bornée et échappée (contenu d'un autre compte)
+[1A[2K  42) [local] › tests/e2e/refonte-multi-passion.spec.js:426:1 › ② ter — l'identité est bornée et échappée (contenu d'un autre compte) 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/refonte-multi-passion.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/refonte-multi-passion.spec.js:427:3
+
+    Error Context: test-results/refonte-multi-passion-②-te-9a53b--contenu-d-un-autre-compte--local/error-context.md
+
+
+[1A[2K[76/87] [local] › tests/e2e/refonte-multi-passion.spec.js:460:1 › ③ je suis Alice sans passion commune : TOUT son contenu est admissible
+[1A[2K  43) [local] › tests/e2e/refonte-multi-passion.spec.js:460:1 › ③ je suis Alice sans passion commune : TOUT son contenu est admissible 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/refonte-multi-passion.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/refonte-multi-passion.spec.js:461:3
+
+    Error Context: test-results/refonte-multi-passion-③-je-f5c00--son-contenu-est-admissible-local/error-context.md
+
+
+[1A[2K[77/87] [local] › tests/e2e/refonte-multi-passion.spec.js:468:1 › ④ Suivis + Moto + Voyage + une envie : tout arrive dans UNE liste
+[1A[2K  44) [local] › tests/e2e/refonte-multi-passion.spec.js:468:1 › ④ Suivis + Moto + Voyage + une envie : tout arrive dans UNE liste 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/refonte-multi-passion.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/refonte-multi-passion.spec.js:469:3
+
+    Error Context: test-results/refonte-multi-passion-④-Su-89eb9--tout-arrive-dans-UNE-liste-local/error-context.md
+
+
+[1A[2K[78/87] [local] › tests/e2e/refonte-multi-passion.spec.js:489:1 › ④ bis — DÉDUPLICATION : trois critères satisfaits, une seule carte
+[1A[2K  45) [local] › tests/e2e/refonte-multi-passion.spec.js:489:1 › ④ bis — DÉDUPLICATION : trois critères satisfaits, une seule carte 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/refonte-multi-passion.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/refonte-multi-passion.spec.js:490:3
+
+    Error Context: test-results/refonte-multi-passion-④-bi-a1345--satisfaits-une-seule-carte-local/error-context.md
+
+
+[1A[2K[79/87] [local] › tests/e2e/refonte-multi-passion.spec.js:496:1 › ④ ter — une envie se coche et se décoche sans toucher aux autres critères
+[1A[2K  46) [local] › tests/e2e/refonte-multi-passion.spec.js:496:1 › ④ ter — une envie se coche et se décoche sans toucher aux autres critères 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/refonte-multi-passion.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/refonte-multi-passion.spec.js:497:3
+
+    Error Context: test-results/refonte-multi-passion-④-te-f5186-toucher-aux-autres-critères-local/error-context.md
+
+
+[1A[2K[80/87] [local] › tests/e2e/refonte-multi-passion.spec.js:530:1 › ④ quater — le classement du fil est conservé (aucun tri inventé)
+[1A[2K  47) [local] › tests/e2e/refonte-multi-passion.spec.js:530:1 › ④ quater — le classement du fil est conservé (aucun tri inventé) 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/refonte-multi-passion.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/refonte-multi-passion.spec.js:531:3
+
+    Error Context: test-results/refonte-multi-passion-④-qu-e5dbc-conservé-aucun-tri-inventé--local/error-context.md
+
+
+[1A[2K[81/87] [local] › tests/e2e/refonte-multi-passion.spec.js:550:1 › ⑤ le Studio propose les passions du compte et enregistre l'association
+[1A[2K  48) [local] › tests/e2e/refonte-multi-passion.spec.js:550:1 › ⑤ le Studio propose les passions du compte et enregistre l'association 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/refonte-multi-passion.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/refonte-multi-passion.spec.js:551:3
+
+    Error Context: test-results/refonte-multi-passion-⑤-le-dfee0-et-enregistre-l-association-local/error-context.md
+
+
+[1A[2K[82/87] [local] › tests/e2e/refonte-multi-passion.spec.js:572:1 › ⑤ bis — aucun sélecteur de passion hors du Studio
+[1A[2K  49) [local] › tests/e2e/refonte-multi-passion.spec.js:572:1 › ⑤ bis — aucun sélecteur de passion hors du Studio 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/refonte-multi-passion.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/refonte-multi-passion.spec.js:573:3
+
+    Error Context: test-results/refonte-multi-passion-⑤-bi-8e1f3-r-de-passion-hors-du-Studio-local/error-context.md
+
+
+[1A[2K[83/87] [local] › tests/e2e/refonte-multi-passion.spec.js:594:1 › ⑥ « À propos » n'est plus un onglet ni une section
+[1A[2K  50) [local] › tests/e2e/refonte-multi-passion.spec.js:594:1 › ⑥ « À propos » n'est plus un onglet ni une section 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/refonte-multi-passion.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/refonte-multi-passion.spec.js:595:3
+
+    Error Context: test-results/refonte-multi-passion-⑥-«--76a50-us-un-onglet-ni-une-section-local/error-context.md
+
+
+[1A[2K[84/87] [local] › tests/e2e/refonte-multi-passion.spec.js:610:1 › ⑥ bis — la gestion des passions reste ATTEIGNABLE (retirer un onglet ne doit pas fermer une fonction)
+[1A[2K  51) [local] › tests/e2e/refonte-multi-passion.spec.js:610:1 › ⑥ bis — la gestion des passions reste ATTEIGNABLE (retirer un onglet ne doit pas fermer une fonction) 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/refonte-multi-passion.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/refonte-multi-passion.spec.js:614:3
+
+    Error Context: test-results/refonte-multi-passion-⑥-bi-52fa1-it-pas-fermer-une-fonction--local/error-context.md
+
+
+[1A[2K[85/87] [local] › tests/e2e/refonte-multi-passion.spec.js:635:1 › ⑥ ter — le Carnet de voyage a disparu : écran, navigation, route
+[1A[2K  52) [local] › tests/e2e/refonte-multi-passion.spec.js:635:1 › ⑥ ter — le Carnet de voyage a disparu : écran, navigation, route 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/refonte-multi-passion.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/refonte-multi-passion.spec.js:636:3
+
+    Error Context: test-results/refonte-multi-passion-⑥-te-0f693-paru-écran-navigation-route-local/error-context.md
+
+
+[1A[2K[86/87] [local] › tests/e2e/refonte-multi-passion.spec.js:655:1 › ⑥ quater — un ancien lien #cdv ne laisse pas l'application sans écran
+[1A[2K  53) [local] › tests/e2e/refonte-multi-passion.spec.js:655:1 › ⑥ quater — un ancien lien #cdv ne laisse pas l'application sans écran 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/refonte-multi-passion.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/refonte-multi-passion.spec.js:659:3
+
+    Error Context: test-results/refonte-multi-passion-⑥-qu-0fd5a-as-l-application-sans-écran-local/error-context.md
+
+
+[1A[2K[87/87] [local] › tests/e2e/refonte-multi-passion.spec.js:670:1 › ⑥ quinquies — aucune donnée de carnet n'est détruite
+[1A[2K  54) [local] › tests/e2e/refonte-multi-passion.spec.js:670:1 › ⑥ quinquies — aucune donnée de carnet n'est détruite 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8107/index.html
+    Call log:
+    [2m  - navigating to "http://127.0.0.1:8107/index.html", waiting until "load"[22m
+
+
+       at app-helper.js:121
+
+      119 |     }
+      120 |   }, [GATE_KEY, GATE_TOKEN, opts.state || onboardedState(nProfiles)]);
+    > 121 |   await page.goto("/index.html" + (opts.query || ""));
+          |              ^
+      122 |   await page.waitForFunction(() => {
+      123 |     const el = document.getElementById("screen-feed");
+      124 |     return el && el.classList.contains("active");
+        at bootOnboarded (/home/user/passio-app/tests/e2e/app-helper.js:121:14)
+        at poser (/home/user/passio-app/tests/e2e/refonte-multi-passion.spec.js:43:3)
+        at /home/user/passio-app/tests/e2e/refonte-multi-passion.spec.js:673:3
+
+    Error Context: test-results/refonte-multi-passion-⑥-qu-6d9bc-ée-de-carnet-n-est-détruite-local/error-context.md
+
+
+[1A[2K  Slow test file: [local] › tests/e2e/mes-passions-page.spec.js (7.8m)
+  Consider running tests from slow files in parallel. See: https://playwright.dev/docs/test-parallel
+  54 failed
+    [local] › tests/e2e/passions-archive-quota.spec.js:181:3 › le quota de changements › ③ trois changements offerts, le quatrième est barré 
+    [local] › tests/e2e/passions-archive-quota.spec.js:207:3 › le quota de changements › ③ bis — le coût est ANNONCÉ avant le geste, pas découvert après 
+    [local] › tests/e2e/passions-archive-quota.spec.js:218:3 › le quota de changements › ③ ter — le compteur est affiché sur la page « Mes passions » 
+    [local] › tests/e2e/passions-archive-quota.spec.js:235:3 › le quota de changements › ③ quater — RESTAURER ne consomme rien : un échange se paie UNE fois 
+    [local] › tests/e2e/passions-archive-quota.spec.js:248:3 › le quota de changements › ③ quinquies — l'échange consomme exactement UN changement 
+    [local] › tests/e2e/passions-archive-quota.spec.js:263:3 › le quota de changements › ③ sexies — archiver la DERNIÈRE passion reste refusé, et ne consomme rien 
+    [local] › tests/e2e/passions-archive-quota.spec.js:279:3 › le quota de changements › ③ septies — archiver DEUX FOIS la même passion ne débite qu'une fois 
+    [local] › tests/e2e/passions-archive-quota.spec.js:317:3 › la démo sans compte › ④ changements ILLIMITÉS sans compte — mais le plafond de trois tient 
+    [local] › tests/e2e/passions-archive-quota.spec.js:336:3 › la démo sans compte › ④ quater — AUCUN CRÉDIT DE DÉMO : le visiteur ne dépasse pas le plafond 
+    [local] › tests/e2e/passions-archive-quota.spec.js:365:3 › la démo sans compte › ④ bis — un visiteur archive autant qu'il veut 
+    [local] › tests/e2e/passions-archive-quota.spec.js:383:3 › la démo sans compte › ④ ter — LA DÉMO NE LAISSE AUCUNE DETTE au compte créé ensuite 
+    [local] › tests/e2e/passions-archive-quota.spec.js:411:1 › ⑤ drapeau coupé : ni plafond, ni quota de changements 
+    [local] › tests/e2e/passions-archive-quota.spec.js:441:3 › les portes oubliées du plafond › ⑥ « + Créer profil » (page d'une passion) respecte le plafond 
+    [local] › tests/e2e/passions-archive-quota.spec.js:459:3 › les portes oubliées du plafond › ⑥ bis — sous le plafond, « + Créer profil » marche toujours 
+    [local] › tests/e2e/passions-archive-quota.spec.js:475:3 › les portes oubliées du plafond › ⑥ ter — « + Créer profil » sur une ARCHIVE la restaure, sans doublon 
+    [local] › tests/e2e/passions-archive-quota.spec.js:491:3 › les portes oubliées du plafond › ⑦ Studio : une passion REFUSÉE n'est jamais écrite dans #postPassion 
+    [local] › tests/e2e/passions-archive-quota.spec.js:530:1 › ⑧ quota épuisé : le bouton ne promet pas un échange impossible, et rien ne boucle 
+    [local] › tests/e2e/passions-archive-quota.spec.js:591:1 › ⑨ la SEULE porte visible vers la gestion porte le compte d'archives 
+    [local] › tests/e2e/passions-archive-quota.spec.js:634:3 › la fusion multi-appareils › ⑩ deux appareils, trois passions différentes chacun : le plafond tient 
+    [local] › tests/e2e/passions-archive-quota.spec.js:656:3 › la fusion multi-appareils › ⑩ bis — UN COMPTE QUI PORTE DÉJÀ PLUS DE TROIS PASSIONS N'EST PAS RÉTROGRADÉ 
+    [local] › tests/e2e/passions-archive-quota.spec.js:679:3 › la fusion multi-appareils › ⑩ ter — sous le plafond, la réinjection passe entière 
+    [local] › tests/e2e/passions-archive-quota.spec.js:693:3 › la fusion multi-appareils › ⑩ quater — une locale DÉJÀ archivée le reste, et ne consomme pas de place 
+    [local] › tests/e2e/passions-archive-quota.spec.js:710:3 › la fusion multi-appareils › ⑩ quinquies — la fusion ne FACTURE rien : le compte n'a rien demandé 
+    [local] › tests/e2e/passions-archive-quota.spec.js:728:3 › la fusion multi-appareils › ⑩ sexies — kill switch : drapeau coupé, la fusion ne range plus rien 
+    [local] › tests/e2e/profils-types.spec.js:10:3 › profils types — parcours simulés › créateur : publie un post texte, visible dans le fil ET persistant après reload 
+    [local] › tests/e2e/profils-types.spec.js:62:3 › profils types — parcours simulés › créateur média : publie photo et vidéo 
+    [local] › tests/e2e/profils-types.spec.js:112:3 › profils types — parcours simulés › upload trop volumineux : rejet propre (toast, pas de crash, pas de post) 
+    [local] › tests/e2e/profils-types.spec.js:141:3 › profils types — parcours simulés › utilisateur actif : like + commentaire sur un post du fil 
+    [local] › tests/e2e/profils-types.spec.js:169:3 › profils types — parcours simulés › visiteur : consulte le fil et l'explorer sans rien publier 
+    [local] › tests/e2e/profils-types.spec.js:183:3 › profils types — parcours simulés › visiteur de profils : ouvre le profil d'un auteur depuis le fil 
+    [local] › tests/e2e/profils-types.spec.js:200:3 › profils types — parcours simulés › partageur : la feuille de partage d'un post s'ouvre 
+    [local] › tests/e2e/profils-types.spec.js:215:3 › profils types — parcours simulés › multi-passions : 3 profils, bascule fonctionnelle 
+    [local] › tests/e2e/refonte-multi-passion.spec.js:133:1 › ① le profil porte le rail de passions du Fil, au-dessus des onglets 
+    [local] › tests/e2e/refonte-multi-passion.spec.js:175:1 › ① bis bis — une bulle s'active au CLAVIER, comme le rôle qu'elle annonce 
+    [local] › tests/e2e/refonte-multi-passion.spec.js:223:1 › ① bis — le profil n'a plus que deux onglets : Publications et Activité 
+    [local] › tests/e2e/refonte-multi-passion.spec.js:241:1 › ① ter bis — les onglets du profil et les envies du Fil sont CENTRÉS 
+    [local] › tests/e2e/refonte-multi-passion.spec.js:281:1 › ① ter — choisir une passion filtre Publications ET Activité d'un seul geste 
+    [local] › tests/e2e/refonte-multi-passion.spec.js:341:1 › ① quater — un profil sans passion affiche un état propre, pas une rangée vide 
+    [local] › tests/e2e/refonte-multi-passion.spec.js:360:1 › ① quinquies — une passion sans publication et sans activité le DIT 
+    [local] › tests/e2e/refonte-multi-passion.spec.js:378:1 › ② une publication Moto affiche Benjamin, et la seule passion du post 
+    [local] › tests/e2e/refonte-multi-passion.spec.js:409:1 › ② bis — les passions ARCHIVÉES ne fuient pas dans l'identité affichée 
+    [local] › tests/e2e/refonte-multi-passion.spec.js:426:1 › ② ter — l'identité est bornée et échappée (contenu d'un autre compte) 
+    [local] › tests/e2e/refonte-multi-passion.spec.js:460:1 › ③ je suis Alice sans passion commune : TOUT son contenu est admissible 
+    [local] › tests/e2e/refonte-multi-passion.spec.js:468:1 › ④ Suivis + Moto + Voyage + une envie : tout arrive dans UNE liste 
+    [local] › tests/e2e/refonte-multi-passion.spec.js:489:1 › ④ bis — DÉDUPLICATION : trois critères satisfaits, une seule carte 
+    [local] › tests/e2e/refonte-multi-passion.spec.js:496:1 › ④ ter — une envie se coche et se décoche sans toucher aux autres critères 
+    [local] › tests/e2e/refonte-multi-passion.spec.js:530:1 › ④ quater — le classement du fil est conservé (aucun tri inventé) 
+    [local] › tests/e2e/refonte-multi-passion.spec.js:550:1 › ⑤ le Studio propose les passions du compte et enregistre l'association 
+    [local] › tests/e2e/refonte-multi-passion.spec.js:572:1 › ⑤ bis — aucun sélecteur de passion hors du Studio 
+    [local] › tests/e2e/refonte-multi-passion.spec.js:594:1 › ⑥ « À propos » n'est plus un onglet ni une section 
+    [local] › tests/e2e/refonte-multi-passion.spec.js:610:1 › ⑥ bis — la gestion des passions reste ATTEIGNABLE (retirer un onglet ne doit pas fermer une fonction) 
+    [local] › tests/e2e/refonte-multi-passion.spec.js:635:1 › ⑥ ter — le Carnet de voyage a disparu : écran, navigation, route 
+    [local] › tests/e2e/refonte-multi-passion.spec.js:655:1 › ⑥ quater — un ancien lien #cdv ne laisse pas l'application sans écran 
+    [local] › tests/e2e/refonte-multi-passion.spec.js:670:1 › ⑥ quinquies — aucune donnée de carnet n'est détruite 
+  33 passed (11.4m)
+EXIT=1

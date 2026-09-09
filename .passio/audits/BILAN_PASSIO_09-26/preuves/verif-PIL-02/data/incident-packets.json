@@ -1,0 +1,11 @@
+{
+  "items": [],
+  "retention": {
+    "schema": 1,
+    "historyTrusted": true,
+    "legacyUnproven": false,
+    "criticalOverflow": false,
+    "criticalOverflowCount": 0,
+    "initializedAt": "2026-09-04T13:04:47.598Z"
+  }
+}
