@@ -3344,6 +3344,41 @@ function reportUser(userId, name) {
   toast("🚩 Signalement envoyé. Notre équipe va vérifier.");
 }
 
+// ── SIGNALER UNE PASSION (2026-09-09) ─────────────────────────────────────
+// Depuis le 2026-09-08, un nom écrit par un compte entre dans le référentiel
+// COMMUN : il faut pouvoir le signaler. Aucune file nouvelle — `supaReport`
+// (app-08) et la table `reports` servent déjà aux comptes et aux publications ;
+// une seconde file aurait divergé au premier correctif.
+//
+// ⚠️ LE SIGNALEMENT NE RETIRE RIEN, et le message ne doit pas le laisser
+// croire. Le retrait est un geste humain (`scripts/passions-moderation.js`),
+// et il passe par `status = 'archived'` : la ligne survit, les publications
+// qui la référencent aussi.
+//
+// ⚠️ ON LIT LE VERDICT. `supaReport` rend `false` sur un refus RLS comme sur un
+// doublon — le SDK ne lève pas —, et annoncer « signalement envoyé » sur une
+// écriture refusée est précisément le défaut que ce dépôt a déjà payé.
+async function reportPassion(pid, label) {
+  if (!pid) return;
+  // La porte AVANT l'écriture : signaler suppose un compte (la RLS l'exige de
+  // toute façon, `reporter_id = auth.uid()`).
+  try {
+    if (typeof requireAuthentication === "function" && !requireAuthentication("preferences")) return;
+  } catch (e) {}
+  var nom = String(label || pid);
+  var ok = false;
+  try {
+    if (typeof supaReport === "function") ok = await supaReport("passion", pid, "");
+  } catch (e) { ok = false; }
+  if (ok) {
+    toast("🚩 « " + nom + " » signalée. On vérifie.", "success");
+  } else {
+    // Le doublon est le cas le plus fréquent : l'index unique refuse un second
+    // signalement de la même personne sur la même passion.
+    toast("Signalement déjà envoyé, ou impossible pour le moment.");
+  }
+}
+
 function reportPost(postId) {
   if (!postId) return;
   if (typeof supaReport === "function") supaReport("post", postId, "");

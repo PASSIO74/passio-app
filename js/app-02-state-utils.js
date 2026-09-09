@@ -1301,13 +1301,57 @@ function chargerReferentielPassions() {
   try {
     if (_referentielPassions) return;                       // déjà en cache
     if (typeof supa === "undefined" || !supa || !window._supaReal) return;
-    supa.from("passions").select("id").then(function (r) {
-      try {
-        if (r && !r.error && Array.isArray(r.data) && r.data.length) {
-          _referentielPassions = new Set(r.data.map(function (x) { return x && x.id; }).filter(Boolean));
-        }
-      } catch (e) {}
-    }).catch(function () {});                                // un échec laisse le repli en place
+    // ⚠️ `status = 'active'` N'EST PAS UN DÉTAIL : sans lui, ARCHIVER UNE PASSION
+    // NE L'EMPÊCHE PAS D'ÊTRE PUBLIÉE. Le retrait de modération (2026-09-09) se
+    // fait par `status = 'archived'` — la ligne reste, pour ne rien détruire et
+    // pour que le nom ne soit pas recréé — mais elle doit alors sortir de ce
+    // qui est PUBLIABLE, pas seulement de la recherche.
+    // ⚠️ Ça ne rétracte rien : la liste locale `PASSIONS` reste le PLANCHER
+    // (voir `estPassionCanonique`), donc les 19 historiques passent toujours,
+    // même si cette requête échoue ou revient tronquée.
+    // ⚠️ ET IL FAUT PAGINER. PostgREST plafonne une réponse à `max-rows`
+    // (1 000 par défaut) : une requête simple ne ramenait donc que la MOITIÉ des
+    // 1 912 passions actives, et les autres — parfaitement légitimes — étaient
+    // refusées à la publication par `estPassionCanonique`, sans le moindre
+    // message utile. Le commentaire d'`estPassionCanonique` redoutait déjà « une
+    // réponse serveur partielle (plafond max-rows) » ; l'union avec la liste
+    // locale ne sauve que les 19 du socle, pas les 900 autres.
+    //
+    // ⚠️ DÉFAUT RÉVÉLÉ PAR UN TEST, PAS PAR UN RAPPORT : sans `order by`, quelles
+    // 1 000 lignes reviennent dépend du PLAN d'exécution. Ajouter le filtre
+    // `status` a changé le plan, donc le sous-ensemble tiré, et `user-passions-miroir`
+    // — qui tenait parce qu'un identifiant se trouvait hors des 1 000 premières —
+    // est tombé. Un test qui tient par accident finit toujours par le dire.
+    //
+    // La boucle s'arrête dès qu'une page revient incomplète, et elle est BORNÉE :
+    // un serveur qui rendrait toujours une page pleine ne la ferait pas tourner
+    // sans fin. Le Set n'est publié qu'à la FIN — un chargement interrompu ne
+    // doit jamais installer une liste partielle pour toute la session.
+    var PAS = 1000;
+    var PAGES_MAX = 20;
+    var vus = new Set();
+    var page = 0;
+    function suite() {
+      if (page >= PAGES_MAX) { if (vus.size) _referentielPassions = vus; return; }
+      var debut = page * PAS;
+      supa.from("passions").select("id").eq("status", "active").range(debut, debut + PAS - 1)
+        .then(function (r) {
+          try {
+            if (!r || r.error || !Array.isArray(r.data)) {
+              // Échec en cours de route : on garde ce qu'on a plutôt que rien,
+              // et le repli local reste le plancher.
+              if (vus.size) _referentielPassions = vus;
+              return;
+            }
+            r.data.forEach(function (x) { if (x && x.id) vus.add(x.id); });
+            if (r.data.length < PAS) { if (vus.size) _referentielPassions = vus; return; }
+            page++;
+            suite();
+          } catch (e) { if (vus.size) _referentielPassions = vus; }
+        })
+        .catch(function () { if (vus.size) _referentielPassions = vus; });
+    }
+    suite();
   } catch (e) {}
 }
 

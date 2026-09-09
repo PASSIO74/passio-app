@@ -44,13 +44,31 @@ async function boot(page, opts = {}) {
     window.supabase = {
       createClient: () => ({
         from: (t) => ({
+          // ⚠️ LE FAUX SDK DOIT ÊTRE CHAÎNABLE COMME LE VRAI. `chargerReferentielPassions`
+          // filtre (`.eq("status","active")`) et PAGINE (`.range(...)`) depuis le
+          // 2026-09-09 : un stub qui rendait la promesse dès `select()` cassait la
+          // chaîne, le cache ne se remplissait plus, et la suite tombait pour une
+          // raison qui n'avait rien à voir avec ce qu'elle mesure.
+          // Chaque filtre rend `this` ; c'est l'attente qui déclenche la réponse.
           select: () => {
             if (t === "passions") {
               window.__refLu++;
-              const p = o.panne
-                ? Promise.resolve({ data: null, error: { message: "réseau indisponible" } })
-                : Promise.resolve({ data: (o.serveur || []).map(id => ({ id })), error: null });
-              return Object.assign(p, { eq: () => ({ maybeSingle: async () => ({ data: null }) }) });
+              const q = {
+                eq() { return this; },
+                // Une seule page suffit : le jeu de test tient largement sous
+                // le pas de pagination, donc la réponse est complète et la
+                // boucle s'arrête d'elle-même.
+                range() { return this; },
+                then(res, rej) {
+                  const p = o.panne
+                    ? Promise.resolve({ data: null, error: { message: "réseau indisponible" } })
+                    : Promise.resolve({ data: (o.serveur || []).map(id => ({ id })), error: null });
+                  return p.then(res, rej);
+                },
+                catch(f) { return Promise.resolve(this).catch(f); },
+                maybeSingle: async () => ({ data: null }),
+              };
+              return q;
             }
             return { eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) };
           },

@@ -149,6 +149,96 @@ mesurer. Il pose désormais le grant **avant** d'appliquer la migration, et
 vérifie `has_function_privilege('anon', …)` — éprouvé par réinjection (la ligne
 `revoke … from anon` retirée fait rougir la vérification).
 
+## 🛡️ Modération, et droit de création par compte (2026-09-09)
+
+Le lot de la veille laissait trois manques : voir ce qui a été créé, le retirer,
+et accorder un droit étendu. `migrations/migration_passion_moderation.sql` les
+comble.
+
+### Signaler : aucune file nouvelle
+
+`public.reports` existe et porte déjà `target_type`/`target_id`. Signaler une
+passion, c'est un `target_type = 'passion'` envoyé par **`supaReport`** — le
+moteur qui sert déjà aux comptes et aux publications. Deux files auraient
+divergé au premier correctif.
+
+- Porte : un lien discret **en bas** de la fiche de passion
+  (`openPassionExplorer`). En tête, il ferait de la fiche un formulaire de
+  plainte.
+- `requireAuthentication` **avant** l'écriture (la RLS l'exige de toute façon :
+  `reporter_id = auth.uid()`).
+- ⚠️ **On lit le verdict.** `supaReport` rend `false` sur un refus RLS comme sur
+  un doublon — le SDK ne lève pas — et annoncer « signalement envoyé » sur une
+  écriture refusée est le défaut que ce dépôt a déjà payé. Verrou ⑫.
+- Index unique **partiel** (`where target_type = 'passion'`) : une personne, un
+  signalement par passion. ⚠️ Partiel, et pas global : un index sur les trois
+  colonnes toutes cibles confondues aurait changé le comportement du
+  signalement de **compte** et de **publication**, qui tolèrent plusieurs
+  envois. On ne modifie que ce que le lot introduit.
+
+### Retirer, c'est ARCHIVER
+
+`status = 'archived'`, jamais `delete` :
+
+- les publications qui référencent la passion gardent leur clé étrangère ;
+- **son nom ne peut pas être recréé** (`creer_passion` rend `nom_indisponible`),
+  donc un retrait ne s'annule pas au prochain compte venu ;
+- le geste est réversible.
+
+⚠️ **Et il fallait que l'archivage ait un effet réel.** `chargerReferentielPassions`
+(app-02) demandait `select("id")` **sans filtre de statut** : une passion
+retirée serait restée **publiable**, le retrait n'aurait été qu'un décor. Elle
+demande désormais `.eq("status", "active")` — sans rien rétracter, la liste
+locale `PASSIONS` restant le plancher. Verrou ⑬.
+
+### L'outil de revue
+
+`npm run passions:moderation` — canal ② d'ADR-012 (PostgREST + `service_role`),
+jamais le navigateur : `public.passions` n'a ni policy UPDATE ni policy DELETE.
+
+```
+node scripts/passions-moderation.js lister      # créées, actives et archivées
+node scripts/passions-moderation.js signalees   # les signalées, les plus vues d'abord
+node scripts/passions-moderation.js archiver  --id <identifiant>
+node scripts/passions-moderation.js restaurer --id <identifiant>
+```
+
+⚠️ **Vie privée** : aucun identifiant de signaleur n'est affiché — seulement des
+décomptes. Le `created_by` d'une passion n'apparaît qu'abrégé, et seulement
+parce que modérer sans voir qu'un même compte en a créé douze serait modérer à
+l'aveugle. ⚠️ **Garde-fou** : `archiver` refuse toute passion dont la `source`
+n'est pas `user_suggested` — les 19 historiques et les entrées curées ne se
+retirent pas par un geste de modération.
+
+### Le droit de créer, par compte
+
+> « Sur mon compte j'ai l'option passions illimitées, intègre aussi la création
+> de passions, c'est pour mes tests de développement. »
+
+⚠️ **UN DRAPEAU CLIENT NE PEUT PAS LEVER UN PLAFOND SERVEUR**, et c'est le point.
+`passio_passions_illimitees_v1` (localStorage) ouvre les gardes de l'écran, mais
+`creer_passion` refusera toujours la 4ᵉ création — le plafond est tenu là où il
+doit l'être. Il faut donc un droit **côté base** :
+
+`public.passion_quotas (user_id, creations_max, note)` — `NULL` = illimité, un
+entier = ce plafond-là, **aucune ligne** = le défaut du produit (3).
+
+⚠️ **« Pas de ligne » et « ligne à NULL » sont deux états**, et les confondre
+donnerait l'illimité à tout le monde : la fonction tranche sur `found`, jamais
+sur un `coalesce` de la valeur. Éprouvé par le banc ⑥ bis.
+
+RLS : chacun **lit** sa propre ligne, **personne** ne l'écrit — pas de policy,
+donc pas de droit. Seul l'opérateur accorde :
+
+```
+node scripts/passions-moderation.js quota --uid <uuid> --max illimite
+node scripts/passions-moderation.js quota --uid <uuid> --max 10
+node scripts/passions-moderation.js quota --uid <uuid> --max defaut
+```
+
+C'est aussi **la brique du futur paiement** : le jour où une formule payante
+existera, elle écrira une ligne ici. Un seul nombre, un seul endroit.
+
 ## Ce que le lot ne fait PAS, et qu'il faut savoir
 
 - **Aucune modération.** La passion créée est `active` immédiatement et devient
