@@ -3448,6 +3448,12 @@ function switchAuthTab(mode) {
   document.getElementById("authTabSignin").classList.toggle("active", mode === "signin");
   document.getElementById("authTabSignup").classList.toggle("active", mode === "signup");
   document.getElementById("authPasswordConfirmWrap").style.display = mode === "signup" ? "" : "none";
+  // Nom public : demandé UNIQUEMENT à la création (voir nomCompteValide plus bas).
+  // ⚠️ Ici `""` et pas `"flex"` : `label.field` est `display:block` en CSS et
+  // c'est exactement la mise en page voulue (libellé, champ, aide en dessous) —
+  // la case de consentement, elle, a besoin d'une rangée, d'où son cas à part.
+  const nameWrap = document.getElementById("authNameWrap");
+  if (nameWrap) nameWrap.style.display = mode === "signup" ? "" : "none";
   const phoneWrap = document.getElementById("authPhoneWrap");
   if (phoneWrap) phoneWrap.style.display = mode === "signup" ? "" : "none";
   // ⚠️ `flex`, PAS `""` : `label.field` est `display:block` en CSS, et la case
@@ -3627,12 +3633,80 @@ function normalizePhone(raw) {
   return plus + s.replace(/[^\d]/g, "");
 }
 
+// ── NOM D'UTILISATEUR : DEMANDÉ À L'INSCRIPTION (2026-09-09) ────────────────
+//
+// Rapporté par un testeur : « à l'inscription le nom d'utilisateur n'est pas
+// demandé ». Constat, mesuré dans le code : il l'était bien — mais à l'étape
+// `name` de l'onboarding, qui n'est PLUS JAMAIS ATTEINTE par un compte neuf
+// depuis l'activation de « Confirm email » (2026-08-30). `signUp` ne rend plus
+// de session, donc `onbDoAuth` bascule sur « Se connecter » et sort ; au retour
+// du lien de confirmation, la branche `signin` pose `state.onboarded = true` et
+// RECHARGE — `boot()` entre alors directement dans l'app, sans onboarding. Le
+// compte s'appelait donc « Passionné », nom de repli de `supaEnsureProfileExists`.
+// La correction ne déplace pas l'étape : elle pose la question au SEUL écran que
+// tout compte traverse, le formulaire de création.
+const NOM_COMPTE_MIN = 2, NOM_COMPTE_MAX = 40;
+
+// Rend le nom NORMALISÉ, ou "" s'il est refusé. Un seul point de vérité :
+// l'appelant ne re-teste jamais la longueur de son côté.
+function nomCompteValide(v) {
+  // Les blancs ne font pas une identité : « Ben   jamin » et «  Benjamin  »
+  // ne doivent pas donner deux pseudos différents dans `profiles.username`.
+  const s = String(v == null ? "" : v).replace(/\s+/g, " ").trim();
+  return (s.length >= NOM_COMPTE_MIN && s.length <= NOM_COMPTE_MAX) ? s : "";
+}
+
+// ⚠️ LE NOM DOIT SURVIVRE À UN CHANGEMENT D'APPAREIL. On crée son compte sur le
+// téléphone, on ouvre le lien de confirmation sur l'ordinateur : le `state`
+// local de la création n'est plus là. La seule mémoire qui voyage avec le
+// compte est `user_metadata` (auth.users), écrite par `signUp` et rendue avec
+// CHAQUE session. `full_name`/`name` couvrent au passage le retour Google.
+function nomCompteDepuisSession(session) {
+  try {
+    const m = (session && session.user && session.user.user_metadata) || {};
+    return nomCompteValide(m.name || m.display_name || m.full_name || "");
+  } catch (e) { return ""; }
+}
+
+// N'ÉCRASE JAMAIS un nom déjà choisi : la métadonnée est un filet pour le compte
+// qui arrive sans rien, pas une autorité sur un profil existant (quelqu'un qui
+// s'est renommé depuis les Paramètres ne doit pas retrouver son pseudo d'origine
+// à chaque reconnexion). Les deux noms de REMPLISSAGE font exception, ce sont
+// justement ceux que ce lot vient supprimer.
+function appliquerNomCompte(session) {
+  try {
+    if (typeof state === "undefined" || !state) return "";
+    state.user = state.user || {};
+    const actuel = String(state.user.name || "").trim();
+    const _remplissage = (n) => !n || n === "Passionn\u00e9" || n === "Profil" || n === "Moi";
+    if (!_remplissage(actuel)) return actuel;
+    const nom = nomCompteDepuisSession(session);
+    if (!nom) return actuel;
+    state.user.name = nom;
+    state.user.general = state.user.general || {};
+    // `general.username` est l'identité PUBLIQUE (celle poussée dans `profiles`)
+    // et prime sur `state.user.name` dans `supaEnsureProfileExists` : la laisser
+    // vide, c'est laisser le repli « Profil » gagner la course.
+    if (_remplissage(String(state.user.general.username || "").trim())) state.user.general.username = nom;
+    try { saveState(); } catch (e) {}
+    return nom;
+  } catch (e) { return ""; }
+}
+
 async function onbDoAuth() {
   const email = (document.getElementById("authEmail")?.value || "").trim();
   const pwd = document.getElementById("authPassword")?.value || "";
   const pwd2 = document.getElementById("authPasswordConfirm")?.value || "";
   const phone = normalizePhone(document.getElementById("authPhone")?.value || "");
+  const nom = nomCompteValide(document.getElementById("authName")?.value || "");
   const btn = document.getElementById("authSubmitBtn");
+
+  // Le nom est le PREMIER champ de l'écran : son refus se prononce en premier,
+  // sinon on renvoie quelqu'un vers le bas du formulaire pour un défaut du haut.
+  if (_authMode === "signup" && !nom) {
+    _showAuthMsg("Choisis un nom d'utilisateur (" + NOM_COMPTE_MIN + " \u00e0 " + NOM_COMPTE_MAX + " caract\u00e8res).", "error");
+    return;
+  }
 
   // Validation de format stricte (en plus de la confirmation par e-mail Supabase).
   const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -3665,13 +3739,21 @@ async function onbDoAuth() {
       // Le numéro voyage dans user_metadata (auth.users) : jamais exposé aux
       // autres comptes (contrairement à `profiles`, en lecture publique), lisible
       // seulement côté serveur via service_role (centre de pilotage).
-      result = await supa.auth.signUp({ email, password: pwd, options: { data: { phone } } });
+      // `name` est la clé que relit `nomCompteDepuisSession` ; `display_name` est
+      // celle qu'affiche le tableau de bord Supabase. Les deux portent la MÊME
+      // valeur normalisée : deux orthographes du même pseudo seraient un piège.
+      result = await supa.auth.signUp({ email, password: pwd, options: { data: { phone, name: nom, display_name: nom } } });
       // Copie locale pour le profil et les prochaines synchros.
       try {
         if (typeof state !== "undefined") {
           state.user = state.user || {};
           state.user.general = state.user.general || {};
           state.user.general.phone = phone;
+          // Copie locale du nom public : sert au cas (rare) où `signUp` rend une
+          // session — l'onboarding continue alors sans redemander le prénom.
+          state.user.name = nom;
+          state.user.general.username = nom;
+          try { const el = document.getElementById("userName"); if (el) el.value = nom; } catch (e2) {}
           // Qui a accepté QUOI, et QUAND. Sans la version, une réécriture des
           // CGU rendrait la trace inexploitable : « a accepté » ne dit rien.
           state.user.cgu = { version: PASSIO_CGU_VERSION, acceptedAt: new Date().toISOString() };
