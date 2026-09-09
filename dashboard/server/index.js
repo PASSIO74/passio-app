@@ -19,7 +19,7 @@ import * as checklist from "./checklist.js";
 import * as dbwatch from "./dbwatch.js";
 import { signups } from "./signups.js";
 import { accounts } from "./accounts.js";
-import { detectClaudeCli, claudeCliState } from "./claudecli.js";
+import { detectClaudeCli, claudeCliState, startClaudeCliWatch } from "./claudecli.js";
 import * as testusers from "./testusers.js";
 import * as alerts from "./alerts.js";
 import { snapshot as interactionsSnapshot } from "./interactions.js";
@@ -288,6 +288,9 @@ app.listen(config.port, () => {
   detectClaudeCli().then(() => {
     const s = claudeCliState();
     console.log(`  ▸ Claude Code local : ${s.loggedIn ? "connecté (analyse gratuite dispo)" : s.installed ? "installé mais NON connecté (lancer: claude auth login)" : "absent"}${config.anthropicKey ? " · clé API aussi configurée" : ""}`);
+    // La session OAuth du CLI expire ; sans re-détection la sentinelle reste
+    // sourde jusqu'au prochain redémarrage (cf. claudecli.js).
+    startClaudeCliWatch();
     sentinel.startSentinel();
   });
   if (process.env.DASH_OPEN_BROWSER === "1") {

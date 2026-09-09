@@ -175,6 +175,53 @@ Elle a besoin d'une source d'analyse : le `claude` local connecté (gratuit,
 abonnement Claude Code) ou `ANTHROPIC_API_KEY`. Sans source, elle reste inerte
 et le dit.
 
+### Autopilote — la fusion locale sans clic (éteint par défaut)
+
+Sans autopilote, la chaîne s'arrête sur « une branche t'attend ». Avec, elle va
+jusqu'au bout toute seule : **fusion dans la branche locale cible**, re-jeu des
+suites `authz,globals,handlers,smoke`, et `git reset --hard` **au SHA d'avant**
+si l'une d'elles rougit. Chaque transaction est journalisée.
+
+Allumer, sans terminal : double-clic sur **`Activer-Autopilote.cmd`**
+(`/off` pour revenir au mode « propose seulement », `/etat` pour vérifier).
+Il pose trois clés dans `.env` et redémarre le pilotage.
+
+⚠️ **Il ne déploie JAMAIS en production**, et ce n'est pas un réglage :
+`sentinel-autopilot.js` porte `productionDeploy: false` en dur, et l'exécuteur
+refuse toute promotion si `DASH_ENV=production`. Le `git push` reste humain.
+
+⚠️ **Il s'abstient si l'arbre de travail est sale ou si la branche courante
+n'est pas la cible.** Si tu codes en permanence sur `main`, vise une autre
+branche (`DASH_AUTOPILOT_TARGET_BRANCH`).
+
+⚠️ **Un motif qui rate deux fois est mis en quarantaine** et cesse d'être promu
+automatiquement (`sentinel-learning.js`) : c'est un frein, pas une mémoire — il
+n'écrit aucune règle durable.
+
+| Variable | Défaut | Rôle |
+|---|---|---|
+| `DASH_SENTINEL_AUTOPILOT` | `false` | autorise la promotion locale |
+| `DASH_SENTINEL_LOCAL_GATE_V2` | `false` | barrière de preuves locales exigée avant promotion |
+| `DASH_AUTOPILOT_TARGET_BRANCH` | `main` | branche locale cible (jamais poussée) |
+| `DASH_AUTOPILOT_MAX_LINES` / `_MAX_FILES` | `60` / `2` | bornes d'un correctif promu |
+| `DASH_SENTINEL_QUARANTINE_FAILS` | `2` | ratés avant mise en quarantaine d'un motif |
+
+### La connexion Claude Code se rattrape toute seule
+
+La session OAuth du CLI expire. Jusqu'au 2026-09-09, elle n'était sondée **qu'au
+démarrage** : le pilotage pouvait tourner des jours avec « analyse indisponible »
+sans plus jamais rien diagnostiquer, et l'écran continuait d'annoncer l'état du
+démarrage. Désormais :
+
+- la sonde `claude auth status` est rejouée toutes les 10 min
+  (`DASH_CLAUDE_CLI_WATCH_MIN`) — donc `claude auth login` suffit, **sans
+  redémarrer le pilotage ni cliquer nulle part** ;
+- un refus d'authentification pendant une analyse rabat l'état immédiatement,
+  au lieu de laisser l'écran mentir ;
+- la chute connecté → déconnecté lève une alerte `warn` **une seule fois** :
+  sans elle, la panne est silencieuse par nature (plus d'analyses = plus de
+  diagnostics = ça ressemble au calme).
+
 Réglages (`.env`, tous facultatifs) :
 
 | Variable | Défaut | Rôle |
