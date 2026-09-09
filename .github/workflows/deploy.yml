@@ -579,8 +579,31 @@ jobs:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           NETLIFY_SITE_ID: eee53fe0-9fb2-41f4-ab70-0a4e2c3f01a1
         run: |
-          npx --yes netlify-cli@27.1.2 --version
-          npx --yes netlify-cli@27.1.2 deploy --prod --dir dist --auth "$NETLIFY_AUTH_TOKEN" --site "$NETLIFY_SITE_ID"
+          # ⚠️ NE PAS REVENIR À `npx --yes netlify-cli@…` (2026-09-09).
+          # Le 2026-09-09 vers 15 h, `@netlify/build@36.4.8` a été publié en
+          # exigeant `@netlify/config@^25.2.5`, une version JAMAIS PUBLIÉE
+          # (la dernière est 25.2.4). Comme netlify-cli demande
+          # `@netlify/build: ^36.3.4`, npm résout vers 36.4.8 et l'installation
+          # échoue en ETARGET — sur TOUTES les versions de netlify-cli, la
+          # dernière comprise. Le run 2522 sur `main` (13:29) passait encore ;
+          # le 2523 (15:12) non : rien n'a changé dans le dépôt, le graphe npm
+          # amont s'est cassé sous nos pieds, et il emportait AUSSI le
+          # déploiement de production.
+          # On installe donc dans un dossier jetable avec un `overrides` qui
+          # fige `@netlify/build` à 36.4.7, la dernière version dont le graphe
+          # se résout. La version de netlify-cli, elle, ne bouge pas.
+          # Quand Netlify aura publié `@netlify/config@25.2.5`, ce contournement
+          # deviendra inutile — il ne sera pas nuisible pour autant.
+          set -euo pipefail
+          RUNNER_NETLIFY="${RUNNER_TEMP:-/tmp}/netlify-cli"
+          mkdir -p "$RUNNER_NETLIFY"
+          cat > "$RUNNER_NETLIFY/package.json" <<'JSON'
+          { "name": "passio-netlify-runner", "private": true, "overrides": { "@netlify/build": "36.4.7" } }
+          JSON
+          npm install --prefix "$RUNNER_NETLIFY" --no-audit --no-fund netlify-cli@27.1.2
+          NETLIFY_BIN="$RUNNER_NETLIFY/node_modules/.bin/netlify"
+          "$NETLIFY_BIN" --version
+          "$NETLIFY_BIN" deploy --prod --dir "$GITHUB_WORKSPACE/dist" --auth "$NETLIFY_AUTH_TOKEN" --site "$NETLIFY_SITE_ID"
 
   preview:
     name: Déploiement preview (PR)
@@ -638,5 +661,28 @@ jobs:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           NETLIFY_SITE_ID: eee53fe0-9fb2-41f4-ab70-0a4e2c3f01a1
         run: |
-          npx --yes netlify-cli@27.1.2 --version
-          npx --yes netlify-cli@27.1.2 deploy --dir dist --alias "pr-${{ github.event.number }}" --auth "$NETLIFY_AUTH_TOKEN" --site "$NETLIFY_SITE_ID"
+          # ⚠️ NE PAS REVENIR À `npx --yes netlify-cli@…` (2026-09-09).
+          # Le 2026-09-09 vers 15 h, `@netlify/build@36.4.8` a été publié en
+          # exigeant `@netlify/config@^25.2.5`, une version JAMAIS PUBLIÉE
+          # (la dernière est 25.2.4). Comme netlify-cli demande
+          # `@netlify/build: ^36.3.4`, npm résout vers 36.4.8 et l'installation
+          # échoue en ETARGET — sur TOUTES les versions de netlify-cli, la
+          # dernière comprise. Le run 2522 sur `main` (13:29) passait encore ;
+          # le 2523 (15:12) non : rien n'a changé dans le dépôt, le graphe npm
+          # amont s'est cassé sous nos pieds, et il emportait AUSSI le
+          # déploiement de production.
+          # On installe donc dans un dossier jetable avec un `overrides` qui
+          # fige `@netlify/build` à 36.4.7, la dernière version dont le graphe
+          # se résout. La version de netlify-cli, elle, ne bouge pas.
+          # Quand Netlify aura publié `@netlify/config@25.2.5`, ce contournement
+          # deviendra inutile — il ne sera pas nuisible pour autant.
+          set -euo pipefail
+          RUNNER_NETLIFY="${RUNNER_TEMP:-/tmp}/netlify-cli"
+          mkdir -p "$RUNNER_NETLIFY"
+          cat > "$RUNNER_NETLIFY/package.json" <<'JSON'
+          { "name": "passio-netlify-runner", "private": true, "overrides": { "@netlify/build": "36.4.7" } }
+          JSON
+          npm install --prefix "$RUNNER_NETLIFY" --no-audit --no-fund netlify-cli@27.1.2
+          NETLIFY_BIN="$RUNNER_NETLIFY/node_modules/.bin/netlify"
+          "$NETLIFY_BIN" --version
+          "$NETLIFY_BIN" deploy --dir "$GITHUB_WORKSPACE/dist" --alias "pr-${{ github.event.number }}" --auth "$NETLIFY_AUTH_TOKEN" --site "$NETLIFY_SITE_ID"
