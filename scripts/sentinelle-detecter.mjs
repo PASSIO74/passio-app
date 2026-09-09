@@ -91,6 +91,111 @@ export function classer(lignes = [], options = {}) {
   return { candidates, ecartees };
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// SECONDE FAMILLE — LES APPELS RÉSEAU REFUSÉS (2026-09-09)
+//
+// ⚠️ POURQUOI ELLE EXISTE. `client_errors` ne porte QUE ce qui LÈVE une erreur
+// JavaScript. Or le SDK Supabase NE LÈVE PAS sur un refus : un 401, un 403 ou
+// un 500 revient dans `{ error }`, que le code peut ignorer — et il l'ignore
+// souvent. Mesuré en production le 2026-09-09 : `client_errors` portait
+// 2 lignes sur 7 jours, `telemetry_events` en portait 1 346 de type `api`
+// status `error` sur la même fenêtre. Dont 798 refus HTTP 403 sur l'envoi d'un
+// message privé, six jours d'affilée, pour QUATRE messages réellement partis.
+// La sentinelle regardait la fenêtre où il n'y avait rien.
+//
+// ⚠️ CE N'EST PAS « TOUT VOIR » POUR AUTANT. Cette famille voit ce que le
+// client a DEMANDÉ au serveur et ce que le serveur a RÉPONDU. Un bouton qui
+// n'appelle rien, un résultat faux en HTTP 200, une mise en page cassée :
+// toujours zéro ligne. L'angle mort recule, il ne disparaît pas.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Un appel qui n'a jamais atteint le serveur (statut 0 : hors ligne, onglet
+// fermé, requête annulée) parle de la CONNEXION de l'appareil, pas de notre
+// code — et il n'y a rien à corriger. Un refus d'identifiants sur /auth/v1/token
+// est un mot de passe faux : le produit fonctionne, c'est la personne qui s'est
+// trompée. Les compter noierait le vrai signal.
+export function estDuBruitApi(ligne) {
+  const code = Number(ligne?.http_status || 0);
+  if (!code) return true;
+  const e = String(ligne?.endpoint || "");
+  if (/\/auth\/v1\/token/.test(e) && code >= 400 && code < 500) return true;
+  return false;
+}
+
+const MIN_OCCURRENCES_API = Number(process.env.SENTINELLE_MIN_API || 5);
+
+/** Nomme un refus en une phrase lisible, sans jamais inventer de cause. */
+export function libelleApi(methode, chemin, code) {
+  const quoi = {
+    401: "refusé — jeton absent ou expiré",
+    403: "refusé — la règle d'accès (RLS) dit non",
+    404: "introuvable",
+    409: "conflit — la ligne existe déjà",
+    500: "erreur du serveur",
+  }[Number(code)] || "en échec";
+  return `HTTP ${code} sur ${methode} ${chemin} : ${quoi}`;
+}
+
+/**
+ * Classe des lignes `telemetry_events` (type=api, status=error) en causes.
+ * FONCTION PURE, comme `classer()` — éprouvée sans base et sans réseau.
+ */
+export function classerApi(lignes = [], options = {}) {
+  const min = options.min ?? MIN_OCCURRENCES_API;
+  const groupes = new Map();
+  let ecartees = 0;
+
+  for (const l of lignes) {
+    if (estDuBruitApi(l)) { ecartees++; continue; }
+    const code = Number(l.http_status);
+    // `endpoint` porte l'hôte ; le CHEMIN suffit à nommer la cause, et il ne
+    // change pas d'un projet Supabase à l'autre.
+    const chemin = String(l.endpoint || "").replace(/^[^/]*/, "").replace(/\?.*$/, "") || "/";
+    const methode = (String(l.action || "").match(/^([A-Z]+) /) || [, "?"])[1];
+    const cle = `${methode} ${chemin} ${code}`;
+    if (!groupes.has(cle)) {
+      groupes.set(cle, {
+        cle, famille: "api", methode, chemin, code,
+        message: libelleApi(methode, chemin, code),
+        n: 0, comptes: new Set(), dernier: null, exemple: null,
+      });
+    }
+    const g = groupes.get(cle);
+    g.n++;
+    if (l.user_id) g.comptes.add(String(l.user_id));
+    if (!g.dernier || String(l.received_at) > g.dernier) g.dernier = String(l.received_at);
+  }
+
+  const candidates = [...groupes.values()].map((g) => {
+    const comptes = g.comptes.size;
+    return {
+      ...g, comptes,
+      // Ce texte remplace la pile d'appel : c'est le seul contexte dont
+      // disposera l'enquête, puisqu'aucune erreur JS n'a été levée.
+      exemple: {
+        stack: [
+          `${g.methode} ${g.chemin} → HTTP ${g.code}`,
+          `${g.n} appel(s) refusé(s), ${comptes} compte(s) identifié(s).`,
+          "",
+          "Aucune erreur JavaScript n'a été levée : le SDK Supabase rend le refus",
+          "dans { error } au lieu de lever. Chercher l'appelant de ce chemin et",
+          "vérifier qu'il LIT { error } — un refus non lu laisse l'action affichée",
+          "comme réussie, et une file d'envoi le rejoue indéfiniment.",
+          "",
+          "Si la cause est une règle d'accès (RLS) ou une migration, elle est HORS",
+          "du périmètre autorisé : décrire la cause et laisser la main.",
+        ].join("\n"),
+        source: null, line: null, url: null,
+      },
+    };
+  })
+    // Même doctrine de tri que la famille JS : les comptes d'abord.
+    .sort((a, b) => (b.comptes - a.comptes) || (b.n - a.n))
+    .filter((g) => g.n >= min || g.comptes >= 2);
+
+  return { candidates, ecartees };
+}
+
 /** Lit les erreurs récentes via PostgREST. Isolé pour rester testable. */
 async function lireErreurs({ url, cle, heures }) {
   const depuis = new Date(Date.now() - heures * 3600_000).toISOString();
@@ -98,6 +203,19 @@ async function lireErreurs({ url, cle, heures }) {
     `${url}/rest/v1/client_errors?select=message,source,line,stack,url,uid,created_at&created_at=gt.${depuis}&order=created_at.desc&limit=1000`,
     { headers: { apikey: cle, Authorization: "Bearer " + cle } });
   if (!r.ok) throw new Error(`client_errors: HTTP ${r.status}`);
+  return r.json();
+}
+
+/** Lit les appels réseau refusés. Isolé pour rester testable, comme ci-dessus. */
+async function lireApi({ url, cle, heures }) {
+  const depuis = new Date(Date.now() - heures * 3600_000).toISOString();
+  const r = await fetch(
+    `${url}/rest/v1/telemetry_events?select=endpoint,http_status,action,user_id,received_at` +
+    `&type=eq.api&status=eq.error&received_at=gt.${depuis}&order=received_at.desc&limit=2000`,
+    { headers: { apikey: cle, Authorization: "Bearer " + cle } });
+  // ⚠️ On N'AVALE PAS cet échec : une source muette rendrait « rien à signaler »
+  // alors que c'est l'accès qui manque — la panne silencieuse, encore.
+  if (!r.ok) throw new Error(`telemetry_events: HTTP ${r.status}`);
   return r.json();
 }
 
@@ -112,13 +230,24 @@ async function principal() {
     console.error("SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY manquant : la détection ne peut pas s'exécuter.");
     process.exit(2);
   }
-  const lignes = await lireErreurs({ url, cle, heures });
-  const { candidates, ecartees } = classer(lignes);
+  const [lignes, appels] = await Promise.all([
+    lireErreurs({ url, cle, heures }),
+    lireApi({ url, cle, heures }),
+  ]);
+  const js = classer(lignes);
+  const api = classerApi(appels);
+  // ⚠️ LES DEUX FAMILLES SONT MISES EN CONCURRENCE SUR LA MÊME RÈGLE — comptes
+  // touchés d'abord, volume ensuite — et JAMAIS l'une avant l'autre par
+  // principe : une erreur JavaScript n'est pas plus grave qu'un envoi de
+  // message refusé 798 fois. C'est ce que subissent les gens qui tranche.
+  const candidates = [...js.candidates, ...api.candidates]
+    .sort((a, b) => (b.comptes - a.comptes) || (b.n - a.n));
   const verdict = {
     fenetreHeures: heures,
-    lues: lignes.length,
-    ecartees,
+    lues: lignes.length + appels.length,
+    ecartees: js.ecartees + api.ecartees,
     retenues: candidates.length,
+    parFamille: { js: js.candidates.length, api: api.candidates.length },
     cible: candidates[0] || null,
   };
   console.log(JSON.stringify(verdict, null, 2));
