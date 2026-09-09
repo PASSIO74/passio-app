@@ -193,28 +193,36 @@ mécanisme, donc sans introduire de risque nouveau.
 fil principal, pré-cache SW). C'est un chantier technique séparé, à faire quand
 le contenu le justifiera — pas avant.
 
-### Répartition proposée pour atteindre 5 000
+### ⚠️ CORRECTION DU 2026-09-09, APRÈS LA VAGUE 1 — la répartition par domaine était FAUSSE
 
-| Domaine | Aujourd'hui | Cible | À écrire |
-|---|---:|---:|---:|
-| `85-savoirs` (langues, sciences, histoire) | 79 | 400 | +321 |
-| `80-culture` | 218 | 620 | +402 |
-| `30-arts` | 235 | 560 | +325 |
-| `50-techno` | 215 | 520 | +305 |
-| `10-sport` | 240 | 520 | +280 |
-| `60-maison` | 182 | 480 | +298 |
-| `20-scene` | 156 | 380 | +224 |
-| `70-vivant` | 134 | 340 | +206 |
-| `40-mobilite` | 136 | 300 | +164 |
-| `90-bienetre` | 87 | 260 | +173 |
-| `75-nature-engagement` | 61 | 220 | +159 |
-| `95-social` | 115 | 250 | +135 |
-| `45-air-eau` | 50 | 150 | +100 |
-| **Total** | **1 908** | **5 000** | **+3 092** |
+La première vague a écrit 213 entrées soignées sur `85-savoirs`. **33 existaient
+déjà**, sous un autre fichier : philosophie, stoïcisme, éthique et mythologie
+sous `interiorite-*` (`75-nature-engagement`) ; géographie, cartographie,
+sociologie, psychologie et climatologie sous `sciences-*` (`50-techno`) ;
+généalogie, archives, paléographie et héraldique sous `histoire-*`
+(`80-culture`).
 
-`85-savoirs` mène le classement : 79 entrées pour couvrir les langues, les
-sciences, l'histoire et l'artisanat du savoir, c'est le trou le plus profond du
-référentiel.
+**Le tableau par domaine du §1 mesurait le DÉCOUPAGE EN FICHIERS, pas la
+couverture.** Or chaque fichier du référentiel dit lui-même, en tête, que ce
+découpage « ne sort JAMAIS à l'écran » : c'est une commodité de relecture. En
+déduire que « `85-savoirs` n'a que 79 entrées, c'est le trou le plus profond »,
+c'est lire une carte de fichiers en croyant lire une carte de couverture.
+
+La répartition qui suivait ici (savoirs +321, culture +402, arts +325…) est donc
+**retirée**. Elle allouait des lignes à des domaines dont on ne savait pas ce
+qu'ils couvraient déjà.
+
+**Ce qui la remplace** : à chaque vague, écrire, laisser
+`npm run passions:valider` nommer les collisions, et repointer `broader` sur la
+racine EXISTANTE plutôt que d'en créer une parallèle — deux « Philosophie » dans
+la recherche, c'est le classement qui tranche au hasard.
+
+**Ce que ça coûte** : ~15 % de redondance sur le premier domaine, et ce taux
+monte à mesure que le référentiel se remplit. Compter environ **3 600 entrées
+écrites pour 3 000 nettes** sur le reste du parcours vers 5 000.
+
+**Ce que ça ne change pas** : les trois plafonds techniques du §3, ni le chiffre
+de 5 000, ni celui de 12 000.
 
 ### La règle qui compte plus que le nombre
 
