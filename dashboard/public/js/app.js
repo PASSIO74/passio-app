@@ -1800,7 +1800,11 @@ VIEWS.sentinel = async () => {
     const r = await api.get("/sentinel?limit=50").catch((e) => ({ error: e.message }));
     if (r.error) { setHtml("#sentList", `<div class="empty">${esc(r.error)}</div>`); return; }
     S.sentinel = r.state;
-    renderSentinelState(r.state);
+    // ⚠️ Route SÉPARÉE, et un échec ici ne doit pas vider le panneau : l'état de
+    // la mise en ligne est une information EN PLUS, jamais une condition
+    // d'affichage des diagnostics.
+    const prod = await api.get("/production").catch(() => null);
+    renderSentinelState(r.state, prod);
     $("#sentList").className = "";
     $("#sentList").innerHTML = r.diagnoses.length
       ? r.diagnoses.map(sentItem).join("")
@@ -1818,7 +1822,20 @@ VIEWS.sentinel = async () => {
   await S.refresh();
 };
 
-function renderSentinelState(st) {
+// Ligne d'état de la MISE EN LIGNE AUTOMATIQUE.
+// ⚠️ Elle dit toujours POURQUOI quand elle est indisponible. Un mode qu'on
+// croit armé et qui ne publie rien est exactement la panne silencieuse que
+// tout ce chantier corrige — c'est le cas du jeton GitHub manquant, qui ne se
+// voit nulle part ailleurs.
+function sentProdLigne(prod) {
+  if (!prod) return "";
+  const st = prod.possible
+    ? `Mise en ligne automatique <b>ARMÉE</b> · ${prod.last24h}/${prod.maxPerDay} publication(s) sur 24 h · base <span class="mono">${esc(prod.base)}</span>`
+    : `Mise en ligne automatique inactive${prod.raison ? " — " + esc(prod.raison) : ""}`;
+  return `<div class="muted" style="font-size:12px;margin-top:4px">${st}</div>`;
+}
+
+function renderSentinelState(st, prod) {
   const el = $("#sentState"); if (!el || !st) return;
   const on = st.enabled && st.available;
   const why = !st.available
@@ -1842,6 +1859,7 @@ function renderSentinelState(st) {
       </div>
       ${why ? `<div class="muted" style="font-size:12px;margin-top:6px">${why}</div>` : ""}
       <div class="muted" style="font-size:12px;margin-top:6px">${esc(repLigne)}</div>
+      ${sentProdLigne(prod)}
       ${running}
       ${hasCap("settings") ? `<button class="btn" id="sentToggle" style="margin-top:10px">${st.enabled ? "Mettre en veille" : "Réactiver"}</button>` : ""}
     </div>`;
