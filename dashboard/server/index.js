@@ -20,6 +20,7 @@ import * as dbwatch from "./dbwatch.js";
 import { signups } from "./signups.js";
 import { accounts } from "./accounts.js";
 import { detectClaudeCli, claudeCliState, startClaudeCliWatch } from "./claudecli.js";
+import { productionState } from "./sentinel-production.js";
 import * as testusers from "./testusers.js";
 import * as alerts from "./alerts.js";
 import { snapshot as interactionsSnapshot } from "./interactions.js";
@@ -238,6 +239,26 @@ api.post("/alerts/manual", auth.requireCap("alerts"), (req, res) => res.json(ale
 // ─── Sentinelle ──────────────────────────────────────────────────────────────
 api.get("/sentinel", auth.requireCap("claude"), (req, res) =>
   res.json({ state: sentinel.sentinelState(), diagnoses: sentinel.listDiagnoses(Number(req.query.limit) || 50) }));
+// ─── Mise en ligne automatique : son ÉTAT doit être lisible ─────────────────
+// `sentinelState()` ne le porte pas, et le lui ajouter obligerait à toucher
+// `dashboard/server/sentinel.js`, que la garde « Gouvernance critique » du
+// dépôt classe en périmètre critique — donc une contre-revue humaine de plus
+// pour une ligne d'affichage. Route dédiée : même information, aucun fichier
+// critique modifié.
+//
+// ⚠️ LE CHEMIN EST DÉLIBÉRÉMENT HORS DE `/sentinel/…`. Écrite
+// `/sentinel/production`, elle entrait en collision avec `/sentinel/:id` :
+// posée après, Express l'avalait par le paramètre et la route rendait
+// « Diagnostic introuvable » ; posée avant, c'est l'ouverture d'un diagnostic
+// qui devenait ambiguë. Les deux défauts sont réels et silencieux — un panneau
+// vide, pas une erreur. Un segment frère d'un `:param` est un piège d'ordre
+// permanent : on le supprime au lieu de le documenter.
+// Trouvé par le banc `front-api` (« route qu'aucune page n'appelle »).
+//
+// ⚠️ `productionState()` n'expose JAMAIS la valeur du jeton, seulement s'il est
+// renseigné : cette réponse traverse le réseau et finit dans un navigateur.
+api.get("/production", auth.requireCap("claude"), (req, res) =>
+  res.json(productionState()));
 api.get("/sentinel/:id", auth.requireCap("claude"), (req, res) => {
   const d = sentinel.getDiagnosis(req.params.id);
   d ? res.json(d) : res.status(404).json({ error: "Diagnostic introuvable" });
