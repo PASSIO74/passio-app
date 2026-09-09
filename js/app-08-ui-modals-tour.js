@@ -2035,10 +2035,21 @@ function markAllNotifsRead() {
   toast("Notifications marquées comme lues", "info");
 }
 
-function pushNotification(text, emoji = "✨", fromId = "me") {
+// ⚠️ `opts.id` REND LA NOTIFICATION LOCALE DÉDUPLICABLE (2026-09-09). Une
+// notification de message existe désormais des DEUX côtés : locale ici (appli
+// ouverte, réception temps réel) et en base côté expéditeur (`_notifierMessage`,
+// pour l'appli FERMÉE). Les deux portent le MÊME identifiant déterministe, donc
+// celle qui arrive en second est ignorée — sans lui la cloche affichait deux
+// fois le même message. `opts.kind`/`opts.refId` donnent sa CIBLE à la
+// notification locale (`openNotifTarget` sait ouvrir une conversation) ; sans
+// eux le kind reste `local`, sans cible, comme avant.
+function pushNotification(text, emoji = "✨", fromId = "me", opts) {
   state.notifications = state.notifications || [];
+  var _id = (opts && opts.id) ? String(opts.id) : uid();
+  if (state.notifications.some(function (n) { return n && n.id === _id; })) return;
   state.notifications.unshift({
-    id: uid(), kind: "local", fromId, text, createdAt: Date.now(), unread: true, emoji,
+    id: _id, kind: (opts && opts.kind) || "local", refId: (opts && opts.refId) || null,
+    fromId, text, createdAt: Date.now(), unread: true, emoji,
     // Ce texte est composé ICI, ses parties variables déjà échappées par
     // l'appelant : c'est du HTML de confiance (cf. `_notifTexteHtml`).
     html: true,
@@ -4595,13 +4606,106 @@ async function supaCreateGroup(groupName, memberIds, passionId) {
 async function supaSendMessage(convId, content) {
   try {
     await supaEnsureProfileExists();
-    await supa.from("conv_messages").insert({
-      id: "msg_" + uid(), conv_id: convId,
+    var _msgId = "msg_" + uid();
+    var res = await supa.from("conv_messages").insert({
+      id: _msgId, conv_id: convId,
       from_id: MY_UID, content: _withSenderMeta(content),
       created_at: new Date().toISOString(),
     });
+    // ⚠️ ON LIT `{ error }` : le SDK ne LÈVE PAS sur un refus RLS. Notifier un
+    // message que la base a refusé annoncerait un message qui n'existe pas.
+    if (res && res.error) { console.warn("Msg error:", res.error.message); return; }
+    // Cloche + push du destinataire, même application fermée (fire-and-forget :
+    // l'envoi ne doit pas attendre la notification).
+    try { _notifierMessage(convId, _msgId); } catch (e) {}
   } catch(e) { console.warn("Msg error:", e); }
 }
+
+// ══════════════════════════════════════════════════════════════════════════
+// NOTIFIER UN MESSAGE PRIVÉ  (2026-09-09)
+// ══════════════════════════════════════════════════════════════════════════
+// Un message envoyé ne créait AUCUNE ligne `notifications` : la cloche du
+// destinataire ne s'allumait que si son application était OUVERTE à l'instant
+// exact de l'envoi (`pushNotification` local, dans `_handleIncomingConvMessage`).
+// Application fermée = message découvert par hasard en ouvrant Messages, sans
+// cloche et sans push — c'est le défaut rapporté le 2026-09-09 (« elle a bien
+// reçu le message mais pas la notification »). Mesuré en production : la table
+// `notifications` ne portait AUCUNE ligne `kind = 'message'`, alors que
+// `_notifEmoji` (✉️) et `openNotifTarget` (→ `openConversation`) la connaissent
+// depuis toujours. Le tuyau existait, personne n'y versait rien.
+//
+// ⚠️ L'IDENTIFIANT EST DÉTERMINISTE — `n_<msgId>_<8 premiers car. du destinataire>` —
+// et c'est LUI qui empêche la notification en DOUBLE : le destinataire en ligne
+// fabrique exactement le même pour sa notification locale, et la dédup par id
+// (`pushNotification`, `mergeSupaNotifs`) écarte celle qui arrive en second.
+// Un identifiant par DESTINATAIRE, jamais un seul par message : la clé primaire
+// refuserait la deuxième ligne d'un groupe, en silence.
+//
+// ⚠️ ANTI-SPAM : une rafale de dix messages ne doit pas allumer dix fois le
+// téléphone. Une notification par conversation et par fenêtre de 5 minutes ; la
+// fenêtre est REMISE À ZÉRO dès qu'un message arrive de cette conversation
+// (`_handleIncomingConvMessage`) — l'autre est manifestement revenu, la relance
+// suivante doit sonner. La mémoire est locale et volatile : au pire un
+// rechargement en réautorise une, jamais un silence durable.
+window._msgNotifDerniere = window._msgNotifDerniere || {};
+var MSG_NOTIF_FENETRE_MS = 5 * 60 * 1000;
+
+async function _notifierMessage(convId, msgId) {
+  try {
+    if (typeof supa === "undefined" || !supa || !MY_UID || !convId || !msgId) return;
+    var maintenant = Date.now();
+    var derniere = window._msgNotifDerniere[convId] || 0;
+    if (maintenant - derniere < MSG_NOTIF_FENETRE_MS) return;
+    window._msgNotifDerniere[convId] = maintenant;
+
+    // Destinataires = les AUTRES membres. On les demande à la base plutôt qu'à
+    // l'état local : une conversation reçue à l'instant peut n'avoir aucun
+    // `userIds` en mémoire, et on notifierait alors personne.
+    var { data: membres } = await supa.from("conv_members").select("user_id").eq("conv_id", convId);
+    var cibles = (membres || []).map(function (m) { return m.user_id; })
+      .filter(function (u) { return u && u !== MY_UID; });
+    if (!cibles.length) return;
+
+    var conv = null;
+    try { conv = (getConversations() || []).find(function (c) { return c && c.id === convId; }); } catch (e) {}
+    var prof = (typeof currentProfile === "function") ? currentProfile() : null;
+    var nom = (prof && prof.name) || "Quelqu'un";
+    var safeNom = (typeof escapeHtml === "function") ? escapeHtml(nom) : nom;
+    // Le CONTENU du message ne voyage jamais dans la notification : elle est
+    // lisible par le seul destinataire, mais elle transite aussi par le push —
+    // annoncer l'expéditeur suffit, et le message reste dans la conversation.
+    var texte = (conv && conv.isGroup)
+      ? safeNom + " a écrit dans " + ((typeof escapeHtml === "function") ? escapeHtml(conv.groupName || "un groupe") : (conv.groupName || "un groupe"))
+      : safeNom + " t'a envoyé un message";
+
+    for (var i = 0; i < cibles.length; i++) {
+      var cible = cibles[i];
+      var res = await supa.from("notifications").insert({
+        id: _idNotifMessage(msgId, cible), user_id: cible,
+        kind: "message", from_id: MY_UID, ref_id: convId,
+        content: texte, seen: false, created_at: new Date().toISOString(),
+      });
+      // Clé dupliquée : la notification existe déjà (renvoi d'un message en
+      // file d'attente) — l'état voulu est atteint, on ne repousse pas.
+      var dup = res && res.error && String(res.error.code) === "23505";
+      if (res && res.error && !dup) { console.warn("notif message :", res.error.message); continue; }
+      if (dup) continue;
+      try {
+        supa.functions.invoke("notify-call", {
+          body: { toUserId: cible, type: "notif", kind: "message", text: texte, emoji: "✉️" }
+        }).catch(function () {});
+      } catch (e) {}
+    }
+  } catch (e) { console.warn("notif message :", e && e.message); }
+}
+
+// Identifiant partagé par les DEUX faces de la notification de message (celle
+// que l'expéditeur écrit en base, celle que le destinataire fabrique en local).
+// Changer cette formule d'un seul côté ferait réapparaître le doublon.
+function _idNotifMessage(msgId, destinataireId) {
+  return "n_" + String(msgId) + "_" + String(destinataireId || "").slice(0, 8);
+}
+window._idNotifMessage = _idNotifMessage;
 
 async function supaLoadMessages(convId) {
   // Charge TOUS les messages sans limite (GIFs, pièces jointes, localisations encodées en JSON dans content)
@@ -4734,14 +4838,38 @@ async function supaLoadMyConversations() {
     // .in() puis sont regroupés par conv_id — l'ancien code indexait par POSITION
     // (lastMsgsAll[i] ↔ convs[i]) alors que PostgREST ne garantit pas l'ordre de
     // `.in()` → l'aperçu pouvait être rattaché à la MAUVAISE conversation.
-    const [msgsRes, membersRes] = await Promise.all([
+    const [msgsRes, membersRes, readsRes] = await Promise.all([
       supa.from("conv_messages")
         .select("id,conv_id,from_id,content,created_at,profiles(username,emoji,color,avatar_url)")
         .in("conv_id", convIds).order("created_at", { ascending: false })
         .limit(Math.min(500, Math.max(150, convIds.length * 10))),
       supa.from("conv_members")
         .select("conv_id,user_id,profiles(username,emoji,color,avatar_url)").in("conv_id", convIds),
+      // ⚠️ MES ACCUSÉS DE LECTURE (2026-09-09). Sans eux cette fonction rendait
+      // `unread: 0` pour TOUTE conversation venue du serveur, et son résultat
+      // REMPLACE l'entrée locale au boot (cf. supaInit) : un message reçu
+      // application fermée n'avait donc ni cloche ni pastille au retour — il
+      // fallait le trouver à l'œil dans la liste. Le compteur se recalcule ici
+      // depuis `conv_reads`, la même source que le ✓✓ de `supaLoadOtherRead`.
+      supa.from("conv_reads").select("conv_id,last_read_at").eq("user_id", MY_UID).in("conv_id", convIds),
     ]);
+    const luJusquA = {};
+    (readsRes && readsRes.data || []).forEach(r => { luJusquA[r.conv_id] = supaTs(r.last_read_at) || 0; });
+    // Messages d'AUTRES membres postérieurs à ma dernière lecture. Une
+    // conversation jamais ouverte n'a aucune ligne `conv_reads` : tout ce qui
+    // vient d'un autre y est non lu, ce qui est exactement le cas vécu.
+    const nonLusParConv = {};
+    (msgsRes.data || []).forEach(m => {
+      if (!m || m.from_id === MY_UID) return;
+      if (typeof m.content === "string" && m.content.charAt(0) === "{") {
+        // Les messages de CONTRÔLE (réaction, suppression) ne sont pas des
+        // messages : les compter ferait clignoter une pastille sans bulle.
+        try { var _t = JSON.parse(m.content).type; if (_t === "react" || _t === "del") return; } catch (e) {}
+      }
+      if (supaTs(m.created_at) > (luJusquA[m.conv_id] || 0)) {
+        nonLusParConv[m.conv_id] = (nonLusParConv[m.conv_id] || 0) + 1;
+      }
+    });
     const msgsByConv = {};
     (msgsRes.data || []).forEach(m => {
       const arr = msgsByConv[m.conv_id] || (msgsByConv[m.conv_id] = []);
@@ -4796,7 +4924,7 @@ async function supaLoadMyConversations() {
         userPhoto: lastSp?.ph || otherProf?.avatar_url || null,
         userIds: members.map(m => m.user_id),
         lastAt: last ? supaTs(last.created_at) : supaTs(c.created_at),
-        unread: 0,
+        unread: nonLusParConv[c.id] || 0,
         messages: lastMsg ? [lastMsg] : [],
         fromSupabase: true,
       };
@@ -4892,6 +5020,9 @@ window.PASSIO_REALTIME_V3 = (function(){
 async function _handleIncomingConvMessage(r) {
   if (!r || !r.conv_id) return;
   if (r.from_id === MY_UID) return; // nos propres messages sont déjà dans l'UI (optimistic)
+  // L'autre est revenu dans cette conversation : la fenêtre anti-spam de MES
+  // prochaines notifications de message repart de zéro (cf. `_notifierMessage`).
+  try { if (window._msgNotifDerniere) delete window._msgNotifDerniere[r.conv_id]; } catch (e) {}
   if (typeof isBlocked === "function" && isBlocked(r.from_id)) return; // expéditeur bloqué (modération)
   // Preuve de livraison cross-device : ce message vient d'un AUTRE appareil.
   try { window.tel && tel.recv("message", { convId: r.conv_id }); } catch (e) {}
@@ -5006,7 +5137,14 @@ async function _handleIncomingConvMessage(r) {
       var _msgText = conv.isGroup
         ? "Nouveau message de <b>" + escapeHtml(_msgSender) + "</b> dans <b>" + escapeHtml(conv.groupName || "le groupe") + "</b>"
         : "<b>" + escapeHtml(_msgSender) + "</b> t'a envoyé un message";
-      pushNotification(_msgText, "✉️", r.from_id);
+      // ⚠️ MÊME IDENTIFIANT que la notification écrite en base par l'expéditeur
+      // (`_notifierMessage`) : la seconde arrivée est ignorée, sinon la cloche
+      // afficherait DEUX fois le même message. `kind`/`refId` lui donnent sa
+      // cible — toucher la notification ouvre la conversation.
+      pushNotification(_msgText, "✉️", r.from_id, {
+        id: (typeof _idNotifMessage === "function") ? _idNotifMessage(r.id, MY_UID) : null,
+        kind: "message", refId: conv.id,
+      });
     } catch(e) {}
     try { renderMessages(); } catch(e) {}
   }
