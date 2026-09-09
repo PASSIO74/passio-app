@@ -277,6 +277,44 @@ jobs:
       - name: Banc Trust & Safety serveur (RLS, PostgreSQL jetable)
         run: bash tests/sql/migration-ts-serveur.test.sh
 
+      # Admission 18+ : la fondation serveur de l'acces aux rencontres. Meme
+      # raison que le banc ci-dessus — ce sont des policies RLS et des fonctions
+      # SECURITY DEFINER, aucun test navigateur ne peut les prouver.
+      #
+      # Le banc joue les DEUX etats de l'interrupteur : eteint (comportement
+      # d'avant, a l'octet pres — c'est ce qui rend la migration applicable sans
+      # rien casser) et allume (majeur admis, mineur/inconnu refuses, retrait
+      # toujours possible). Puis il retire chaque garde et exige que le test
+      # correspondant redevienne rouge.
+      #
+      # ⚠️ Ce banc n'allume rien en production : il ne touche aucune base reelle.
+      # L'interrupteur `irl_adult_only` se bascule par le canal ③ d'ADR-012.
+      - name: Banc Admission 18+ (RLS, PostgreSQL jetable)
+        run: bash tests/sql/migration-admission-18-plus.test.sh
+
+      # Cloisonnement de la LECTURE des pieces jointes de messagerie. La policy
+      # de production laisse aujourd'hui n'importe qui — visiteur sans compte
+      # compris — lister et lire le seau `attachments`. Le banc mesure d'abord
+      # ce defaut, applique la migration, puis exige qu'un tiers ne voie plus
+      # que SA conversation. Il ne touche aucune base reelle.
+      - name: Banc Storage — lecture cloisonnee (PostgreSQL jetable)
+        run: bash tests/sql/migration-storage-lecture.test.sh
+
+      # Adresse, telephone et liste des participants d'une rencontre : le banc
+      # mesure d'abord le defaut sur les policies REELLES de prod, applique la
+      # migration, puis exige qu'un visiteur sans compte garde le titre, la ville
+      # et la carte, et perde l'adresse, le contact et les participants.
+      - name: Banc Rencontres — donnees privees (PostgreSQL jetable)
+        run: bash tests/sql/migration-irl-donnees-privees.test.sh
+
+      # Le script d'application et le fichier unique colle dans l'editeur SQL
+      # sont ce que Benjamin execute sur la VRAIE base. Un outil d'application
+      # jamais execute est un pari : celui-ci est joue de bout en bout, et le
+      # banc verifie aussi que le fichier unique n'a pas DERIVE de ses trois
+      # migrations (il en est un miroir, jamais une source).
+      - name: Banc outils d'application (PostgreSQL jetable)
+        run: bash tests/sql/appliquer-securite.test.sh
+
       # La migration du referentiel plat, EXECUTEE deux fois sur un PostgreSQL
       # jetable : idempotence, preservation des 19 identifiants historiques,
       # RLS en lecture seule sur le referentiel, et retour arriere.
