@@ -34,6 +34,7 @@
     "passions:verifier": "node scripts/valider-referentiel-passions.js && node scripts/construire-referentiel-passions.js --verifier",
     "passions:migration": "bash scripts/verifier-migration-passions.sh",
     "passions:demandes": "node scripts/passions-demandes.js",
+    "passions:moderation": "node scripts/passions-moderation.js",
     "purge:e2e:rest": "node scripts/purge-e2e-rest.js"
   },
   "devDependencies": {

@@ -230,6 +230,76 @@ test.describe("Créer une passion", () => {
     expect(await page.evaluate(() => window.__rpcAppels.length)).toBe(0);
   });
 
+  // ⑪ MODÉRATION (2026-09-09) : une passion créée doit pouvoir être signalée.
+  // ⚠️ Le signalement passe par `supaReport` — le moteur qui sert déjà aux
+  // comptes et aux publications — avec `target_type = "passion"`. Une seconde
+  // file aurait divergé au premier correctif ; ce cas mesure qu'il n'y en a
+  // qu'une, et qu'elle est appelée avec le bon type.
+  test("⑪ la fiche d'une passion permet de la signaler", async ({ page }) => {
+    await bootAvecCompte(page);
+    await page.evaluate(() => {
+      window.__signalements = [];
+      window.supaReport = async (type, id, raison) => {
+        window.__signalements.push({ type: type, id: id, raison: raison });
+        return true;
+      };
+      openPassionExplorer("musique");
+    });
+    const modale = page.locator("#modalContent");
+    await expect(modale).toBeVisible({ timeout: 10000 });
+    const lien = modale.locator('[data-tel="passion_signaler"]');
+    await expect(lien).toBeVisible();
+    await lien.click();
+    await expect.poll(async () => await page.evaluate(() => window.__signalements.length),
+      { timeout: 10000 }).toBe(1);
+    expect(await page.evaluate(() => window.__signalements[0])).toEqual({
+      type: "passion", id: "musique", raison: "",
+    });
+  });
+
+  // ⑫ ⚠️ ON LIT LE VERDICT. `supaReport` rend `false` sur un refus RLS comme
+  // sur un doublon — le SDK ne lève pas — et annoncer « signalement envoyé »
+  // sur une écriture refusée est le défaut que ce dépôt a déjà payé.
+  test("⑫ un signalement refusé ne s'annonce pas comme envoyé", async ({ page }) => {
+    await bootAvecCompte(page);
+    const texte = await page.evaluate(async () => {
+      window.supaReport = async () => false;
+      let vu = "";
+      window.toast = (m) => { vu = String(m); };
+      await reportPassion("musique", "Musique");
+      return vu;
+    });
+    expect(texte).not.toMatch(/signalée\. On vérifie/i);
+    expect(texte).toMatch(/déjà envoyé|impossible/i);
+  });
+
+  // ⑬ ARCHIVER DOIT AVOIR UN EFFET RÉEL. Le retrait de modération passe par
+  // `status = 'archived'` : si la liste serveur des identifiants publiables ne
+  // filtrait pas le statut, une passion retirée resterait publiable — le
+  // retrait ne serait qu'un décor.
+  test("⑬ la liste des passions publiables ne demande que les actives", async ({ page }) => {
+    await bootAvecCompte(page);
+    const filtres = await page.evaluate(() => {
+      const vus = [];
+      window._supaReal = true;
+      window.supa.from = (table) => ({
+        select: () => ({
+          eq: (col, val) => {
+            vus.push({ table: table, col: col, val: val });
+            return Promise.resolve({ data: [], error: null });
+          },
+          then: (f) => { vus.push({ table: table, col: null, val: null }); return Promise.resolve(f({ data: [], error: null })); },
+        }),
+      });
+      chargerReferentielPassions();
+      return vus;
+    });
+    const p = filtres.find((f) => f.table === "passions");
+    expect(p, "la liste des passions publiables n'a pas été demandée").toBeTruthy();
+    expect(p.col).toBe("status");
+    expect(p.val).toBe("active");
+  });
+
   // ⑧ Sans serveur, le bouton ne PROMET pas ce qu'il ne peut pas tenir.
   test("⑧ sans création possible, le bouton annonce une demande", async ({ page }) => {
     await bootAvecCompte(page);

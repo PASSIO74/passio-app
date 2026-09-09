@@ -1301,7 +1301,15 @@ function chargerReferentielPassions() {
   try {
     if (_referentielPassions) return;                       // déjà en cache
     if (typeof supa === "undefined" || !supa || !window._supaReal) return;
-    supa.from("passions").select("id").then(function (r) {
+    // ⚠️ `status = 'active'` N'EST PAS UN DÉTAIL : sans lui, ARCHIVER UNE PASSION
+    // NE L'EMPÊCHE PAS D'ÊTRE PUBLIÉE. Le retrait de modération (2026-09-09) se
+    // fait par `status = 'archived'` — la ligne reste, pour ne rien détruire et
+    // pour que le nom ne soit pas recréé — mais elle doit alors sortir de ce
+    // qui est PUBLIABLE, pas seulement de la recherche.
+    // ⚠️ Ça ne rétracte rien : la liste locale `PASSIONS` reste le PLANCHER
+    // (voir `estPassionCanonique`), donc les 19 historiques passent toujours,
+    // même si cette requête échoue ou revient tronquée.
+    supa.from("passions").select("id").eq("status", "active").then(function (r) {
       try {
         if (r && !r.error && Array.isArray(r.data) && r.data.length) {
           _referentielPassions = new Set(r.data.map(function (x) { return x && x.id; }).filter(Boolean));

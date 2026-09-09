@@ -15,6 +15,7 @@
 #   ⑤ les noms invalides (trop court, chiffres seuls, URL) sont refusés ;
 #   ⑥ trois créations offertes par compte, ensuite `quota_creation` — et
 #      archiver ne rend PAS un droit de création ;
+#   ⑥ bis/ter le droit par compte (passion_quotas) et le signalement ;
 #   ⑦ ⚠️ LE RÉFÉRENTIEL RESTE EN LECTURE SEULE pour un client : INSERT et
 #      DELETE directs sont toujours refusés (la création passe UNIQUEMENT par
 #      la fonction `SECURITY DEFINER`) ;
@@ -31,6 +32,9 @@ MIG="$RACINE/migrations/migration_creation_passion_utilisateur.sql"
 # éprouver séparément laisserait le plafond produit (3 créations offertes) sans
 # banc : on les applique donc DANS L'ORDRE, comme la production les a reçues.
 MIG2="$RACINE/migrations/migration_passion_creations_offertes.sql"
+# La troisième : modération (signalement borné aux passions) et droit de
+# création par compte (`passion_quotas`). Même chaîne, même ordre.
+MIG3="$RACINE/migrations/migration_passion_moderation.sql"
 BASE="${PGDATA_TEST:-${TMPDIR:-/tmp}/passio-pg-creation}"
 SOCK="${PGSOCK_TEST:-/tmp/ppgc-$$}"
 PORT="${PGPORT_TEST:-55433}"
@@ -113,6 +117,12 @@ out=$(F creation "$MIG2")
 if [ $? -eq 0 ] && ! grep -qi "^ERROR" <<<"$out"; then ok "seconde exécution : idempotente"; else ko "NON IDEMPOTENTE :"; echo "$out" | grep -i error | head -5; fi
 acl=$(Q creation "select has_function_privilege('anon', 'public.creer_passion(text,text)', 'EXECUTE')::text")
 [ "$acl" = "false" ] && ok "anon reste sans EXECUTE après le remplacement" || ko "le remplacement a rendu EXECUTE à anon : $acl"
+out=$(F creation "$MIG3")
+if [ $? -eq 0 ] && ! grep -qi "^ERROR" <<<"$out"; then ok "modération + quota par compte appliqués"; else ko "échec :"; echo "$out" | grep -i error | head -5; fi
+out=$(F creation "$MIG3")
+if [ $? -eq 0 ] && ! grep -qi "^ERROR" <<<"$out"; then ok "seconde exécution : idempotente"; else ko "NON IDEMPOTENTE :"; echo "$out" | grep -i error | head -5; fi
+acl=$(Q creation "select has_function_privilege('anon', 'public.creer_passion(text,text)', 'EXECUTE')::text")
+[ "$acl" = "false" ] && ok "anon toujours sans EXECUTE" || ko "EXECUTE rendu à anon : $acl"
 col=$(Q creation "select count(*) from information_schema.columns where table_name='passions' and column_name='created_by'")
 [ "$col" = "1" ] && ok "colonne created_by présente" || ko "colonne created_by absente"
 
@@ -193,6 +203,57 @@ res=$(QA "$UID_A" "select id||'|'||cree from public.creer_passion('Musique')")
 
 res=$(QA "$UID_B" "select id||'|'||cree from public.creer_passion('tricot islandais')")
 [ "$res" = "tricot-islandais|true" ] && ok "le plafond est par personne, pas global" || ko "un autre compte est bloqué : $res"
+
+# ── ⑥ bis  Le droit par compte (passion_quotas) ───────────────────────────
+titre "⑥ bis  Droit de création par compte"
+# ⚠️ « PAS DE LIGNE » ET « LIGNE À NULL » SONT DEUX ÉTATS. Les confondre
+# donnerait l'illimité à tout le monde : on mesure les DEUX.
+Q creation "insert into public.passion_quotas (user_id, creations_max, note)
+            values ('$UID_A', null, 'compte de test') on conflict (user_id) do update set creations_max = null" >/dev/null
+res=$(QA "$UID_A" "select id||'|'||cree from public.creer_passion('une quatrieme passion')")
+[ "$res" = "une-quatrieme-passion|true" ] && ok "illimité : la 4ᵉ création passe" || ko "le droit illimité n'a pas pris : $res"
+res=$(QA "$UID_A" "select id||'|'||cree from public.creer_passion('une cinquieme passion')")
+[ "$res" = "une-cinquieme-passion|true" ] && ok "et la 5ᵉ aussi" || ko "plafond réapparu : $res"
+
+# Un plafond CHIFFRÉ, lui, borne bien.
+Q creation "update public.passion_quotas set creations_max = 5 where user_id = '$UID_A'" >/dev/null
+res=$(QA "$UID_A" "select id from public.creer_passion('une sixieme passion')")
+grep -qi "quota_creation" <<<"$res" && ok "un plafond chiffré (5) borne à 5" || ko "le plafond chiffré ne borne pas : $res"
+
+# ⚠️ Le compte SANS ligne garde le défaut du produit — sinon la table donnerait
+# l'illimité à tout le monde par le simple fait d'exister.
+n=$(Q creation "select count(*) from public.passion_quotas where user_id='$UID_B'")
+[ "$n" = "0" ] && ok "l'autre compte n'a aucune ligne" || ko "ligne inattendue pour UID_B"
+for i in 1 2; do QA "$UID_B" "select id from public.creer_passion('essai b numero $i')" >/dev/null; done
+res=$(QA "$UID_B" "select id from public.creer_passion('essai b numero trois')")
+grep -qi "quota_creation" <<<"$res" && ok "sans ligne, le défaut de 3 tient" || ko "le défaut ne tient plus : $res"
+
+# La table n'est PAS écrivable par un client.
+Q creation "grant usage on schema public to anon, authenticated;
+            grant select on all tables in schema public to anon, authenticated;" >/dev/null 2>&1
+res=$(Q creation "set role authenticated; insert into public.passion_quotas (user_id, creations_max) values ('$UID_B', null);")
+grep -qi "policy\|denied\|permission" <<<"$res" && ok "un client ne peut pas s'accorder un droit" || ko "le client a pu écrire son quota : $res"
+
+# ── ⑥ ter  Signalement d'une passion ──────────────────────────────────────
+titre "⑥ ter  Signalement d'une passion"
+res=$(Q creation "insert into public.reports (id, reporter_id, target_type, target_id, reason)
+                  values ('r_1', '$UID_B', 'passion', 'sculpture-sur-glace', 'test') returning target_id" | head -1)
+[ "$res" = "sculpture-sur-glace" ] && ok "un signalement de passion s'enregistre" || ko "signalement refusé : $res"
+res=$(Q creation "insert into public.reports (id, reporter_id, target_type, target_id, reason)
+                  values ('r_2', '$UID_B', 'passion', 'sculpture-sur-glace', 'test');")
+grep -qi "duplicate\|unique" <<<"$res" && ok "deux fois la même personne : refusé" || ko "doublon accepté : $res"
+# ⚠️ L'index est PARTIEL : le signalement d'un COMPTE tolère toujours plusieurs envois.
+res=$(Q creation "insert into public.reports (id, reporter_id, target_type, target_id, reason)
+                  values ('r_3', '$UID_B', 'user', 'u_x', ''), ('r_4', '$UID_B', 'user', 'u_x', '') returning count(*)" 2>&1)
+grep -qi "duplicate\|unique" <<<"$res" && ko "l'index a débordé sur le signalement de compte" || ok "le signalement de compte n'est pas touché"
+
+# Archiver une passion signalée : c'est le geste de modération, réservé au serveur.
+Q creation "update public.passions set status='archived' where id='sculpture-sur-glace'" >/dev/null
+res=$(Q creation "select count(*) from public.rechercher_passions('sculpture sur glace', 20) where id='sculpture-sur-glace'")
+[ "$res" = "0" ] && ok "archivée, elle disparaît de la recherche" || ko "encore rendue par la recherche"
+res=$(QA "$UID_B" "select id from public.creer_passion('sculpture sur glace')")
+grep -qi "nom_indisponible" <<<"$res" && ok "et son nom ne peut pas être recréé" || ko "le nom retiré a été recréé : $res"
+Q creation "update public.passions set status='active' where id='sculpture-sur-glace'" >/dev/null
 
 # ── ⑦ Le référentiel reste en lecture seule ───────────────────────────────
 titre "⑦ RLS : aucune écriture directe sur le référentiel"

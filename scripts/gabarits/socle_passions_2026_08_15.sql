@@ -39,6 +39,20 @@ create table if not exists public.events        (id text primary key, passion_id
 create table if not exists public.conversations (id text primary key, passion_id text);
 create table if not exists public.profiles      (id text primary key, passion_id text, passions jsonb);
 
+-- ⚠️ `public.reports` EXISTE DÉJÀ EN PRODUCTION, et le lot de modération des
+-- passions s'y greffe au lieu de créer une seconde file de signalement. Le
+-- socle de test doit donc la porter, avec les colonnes RÉELLES (relevées en
+-- production le 2026-09-09) : sans elle, la migration de modération échoue ici
+-- alors qu'elle passe en production — un rouge qui n'apprend rien.
+create table if not exists public.reports (
+  id          text primary key,
+  reporter_id text,
+  target_type text,
+  target_id   text,
+  reason      text,
+  created_at  timestamptz default now()
+);
+
 do $$
 declare t text;
 begin

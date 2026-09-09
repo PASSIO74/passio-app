@@ -410,7 +410,18 @@ function openPassionExplorer(pid, retourUserId, libelleConnu) {
     + '<div id="pexCreators">' + creatorsHTML + '</div>'
     + '<div id="pexLiees"></div>'
     + '<div class="section-title" style="margin-top:14px;">Posts</div>'
-    + postsHTML;
+    + postsHTML
+    // ⚠️ EN BAS, ET DISCRET. Signaler n'est pas une action de découverte : la
+    // placer en tête ferait d'une fiche de passion un formulaire de plainte.
+    // `escapeJsArg` et non `escapeHtml` pour l'argument : le libellé passe dans
+    // une chaîne JS simple-quotée d'un `onclick`, et le HTML décode `&#39;`
+    // AVANT le parse JS — un nom avec apostrophe casserait le bouton.
+    + '<div class="passion-explorer-signaler" style="margin-top:18px;text-align:center;">'
+    +   '<span class="link" role="button" tabindex="0" data-tel="passion_signaler"'
+    +   ' style="font-size:11.5px;color:var(--muted);"'
+    +   ' onclick="reportPassion(\'' + escapeJsArg(String(pid)) + '\', \'' + escapeJsArg(String(p.label || pid)) + '\')">'
+    +   'Signaler cette passion</span>'
+    + '</div>';
 
   openModal(html);
 
