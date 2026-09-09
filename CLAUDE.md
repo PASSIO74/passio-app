@@ -111,6 +111,28 @@ Envoyer un message n'écrivait **aucune** ligne `notifications` : la seule notif
 ⚠️ **Le CONTENU du message ne voyage jamais dans la notification** (elle transite aussi par le push) : on n'annonce que l'expéditeur.
 ⚠️ **`supaLoadMyConversations` rendait `unread: 0` EN DUR**, et son résultat REMPLACE l'entrée locale au boot : un message reçu appli fermée n'avait donc ni cloche ni pastille au retour. Le compteur se recalcule depuis `conv_reads` (même source que le ✓✓ de `supaLoadOtherRead`), en écartant les messages de CONTRÔLE (`react`/`del`) qui feraient clignoter une pastille sans bulle.
 Verrou : `tests/e2e/notification-message.spec.js` (12), dont ④ bis qui RÉINJECTE le doublon et ① ter la divergence d'environnement — **en CI le VRAI SDK se charge, et `supa.functions` y est un GETTER de prototype** : le faux client d'une suite doit s'y poser par `Object.defineProperty`, une affectation échoue EN SILENCE (vert en local, rouge en CI).
+## 🤖 SENTINELLE AUTONOME — la chaîne tourne dans GitHub, et voici COMMENT ELLE MEURT (2026-09-09)
+
+`.github/workflows/sentinelle-autonome.yml` (cron horaire) lit `client_errors`, classe les causes (`scripts/sentinelle-detecter.mjs`, fonction PURE, 8 verrous dans `tests/unit/`) et ouvre une issue `[SENTINELLE]` étiquetée `claude` + `sentinelle`. `claude-code.yml` écrit alors le correctif, ouvre la PR, et arme l'auto-fusion. Ni PC allumé, ni geste humain.
+
+⚠️ **`SENTINELLE_TOKEN` EST CE QUI REND LA CHAÎNE POSSIBLE, ET C'EST AUSSI SON POINT DE MORT.** Un événement produit par le `GITHUB_TOKEN` intégré NE DÉCLENCHE AUCUN workflow (règle anti-boucle de GitHub) : une issue ouverte avec lui n'est jamais traitée, et une PR ouverte avec lui n'obtient JAMAIS de CI — donc l'auto-fusion ne peut pas aboutir. Le jeton personnel agit au nom de PASSIO74, ce que `claude-code.yml` exige (`github.event.issue.user.login == 'PASSIO74'`). Le repli sur `GITHUB_TOKEN` est conservé partout : sans le secret, le canal REVIENT à son comportement d'avant, il ne casse pas.
+
+⚠️ **L'AUTO-FUSION N'EST ARMÉE QUE POUR LA SENTINELLE**, à TROIS conditions cumulatives : label `sentinelle` + `author_association` ∈ {OWNER, MEMBER} + préfixe `[SENTINELLE]`. Une tâche demandée par Benjamin reste sous ses yeux. Le premier jet ne testait que le titre : un titre se recopie par distraction, un label est un geste délibéré (revue de sécurité du 2026-09-09).
+
+### ⚠️ LES TROIS FAÇONS DONT CE SYSTÈME MEURT — deux bruyantes, une SILENCIEUSE
+
+**① Le jeton expire (90 j).** L'étape « Le jeton est-il vivant ? » appelle `gh api user` et ÉCHOUE, en nommant la page de renouvellement. GitHub envoie un e-mail d'échec au propriétaire. **BRUYANT** — c'est délibéré : sans cette étape, le canal rendrait « rien à signaler » pour toujours.
+
+**② La clé `service_role` change.** `sentinelle-detecter.mjs` sort en `exit 2` au lieu de rendre un verdict vide. **BRUYANT**, même raison.
+
+**③ GitHub DÉSACTIVE les workflows `schedule` après 60 jours sans activité dans le dépôt.** Aucune erreur, aucun e-mail : les exécutions cessent, simplement. **SILENCIEUX, et c'est le plus dangereux** — le symptôme est identique à « tout va bien ». Le contrôle ne peut pas venir de l'intérieur : un workflow qui ne tourne plus ne peut pas s'en plaindre. Se vérifier dans Actions : la dernière exécution `schedule` de `sentinelle-autonome.yml` doit dater de moins de 2 h.
+
+### ⚠️ ET L'ANGLE MORT, QUI LUI NE MOURRA JAMAIS
+
+Ce canal ne voit QUE ce qui lève une erreur JavaScript. Bouton qui n'émet plus rien, résultat faux en HTTP 200, télémétrie interrompue : zéro ligne dans `client_errors`, donc zéro issue — **et ça ressemble exactement au calme**. Le workflow l'écrit lui-même dans son résumé de run. **Le silence de la sentinelle n'est jamais une preuve de santé** ; elle se lit sur l'usage réel, pas sur l'absence d'alerte.
+
+Coupe-circuit : une issue ouverte dont le titre contient `[SENTINELLE PAUSE]` arrête tout le canal au tour suivant (même convention que `sentinelle-distante.yml`). Une enquête à la fois : tant qu'une issue `[SENTINELLE]` est ouverte, aucune autre n'est créée.
+
 ## 📊 ANALYTICS `analytics_events` — 271 refus **401** en production (2026-09-09)
 
 Second étage du défaut du matin même. `supaTrack` (app-08) exigeait déjà un **uuid** (`MY_UID` ne prouve pas qu'un compte existe), mais **un uuid ne prouve pas qu'une SESSION est vivante** : `localStorage.passio_uid` survit à la fin de session (déconnexion sur un autre appareil, jeton de rafraîchissement révoqué, stockage du SDK vidé), et un onglet endormi porte un jeton **expiré**. Le SDK partait alors avec la seule clé anon → `auth.uid()` NULL → la policy `analytics_insert_own` refuse.
