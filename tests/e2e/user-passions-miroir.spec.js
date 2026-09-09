@@ -70,9 +70,19 @@ async function poserPassions(page) {
     state.user.profiles = [
       { id: "p1", name: "Ben", passion: "musique", emoji: "🎵", color: "#8b5cf6", createdAt: 1 },
       { id: "p2", name: "Ben", passion: "photo", emoji: "📷", color: "#8b5cf6", createdAt: 2, archived: true },
-      // ⚠️ Absente du référentiel SERVEUR tant que la migration n'est pas passée :
-      // la clé étrangère de `user_passions.passion_id` la refuserait en 23503.
-      { id: "p3", name: "Ben", passion: "moto-enduro", emoji: "🏍️", color: "#8b5cf6", createdAt: 3 },
+      // ⚠️ LA PRÉMISSE A ÉTÉ CORRIGÉE LE 2026-09-09, ELLE ÉTAIT PÉRIMÉE.
+      // « moto-enduro » était choisie comme « absente du référentiel serveur
+      // tant que la migration n'est pas passée » — or elle EST passée le
+      // 2026-09-01, et cette passion est l'une des 1 912 actives. Le test ne
+      // tenait plus que par un accident : le référentiel est chargé par pages
+      // et, selon le plan d'exécution, « moto-enduro » tombait hors de la
+      // première. Ajouter un filtre a changé le plan, donc le sous-ensemble,
+      // et le test est tombé — sans que le comportement mesuré ait bougé.
+      //
+      // On pose donc une prémisse VRAIE : un identifiant qui n'existe dans
+      // aucun référentiel, ni local ni serveur, et qui n'a aucune raison
+      // d'y entrer un jour.
+      { id: "p3", name: "Ben", passion: "zzz-passion-hors-referentiel", emoji: "🏍️", color: "#8b5cf6", createdAt: 3 },
     ];
     saveState();
   });
@@ -118,7 +128,7 @@ test.describe("miroir user_passions", () => {
     const ids = envoye.map((r) => r.passion_id);
     expect(ids).toContain("musique");
     expect(ids).toContain("photo");
-    expect(ids, "une passion absente du référentiel serveur a été envoyée").not.toContain("moto-enduro");
+    expect(ids, "une passion absente du référentiel serveur a été envoyée").not.toContain("zzz-passion-hors-referentiel");
   });
 
   test("l'archivage voyage, et la position aussi", async ({ page }) => {
@@ -161,7 +171,7 @@ test.describe("miroir user_passions", () => {
     expect(asTexte).toContain("musique");
     expect(asTexte).toContain("photo");
     expect(asTexte, "la passion refusée par le référentiel est protégée du retrait")
-      .not.toContain("moto-enduro");
+      .not.toContain("zzz-passion-hors-referentiel");
   });
 
   test("aucune écriture ne part sans compte authentifié", async ({ page }) => {
