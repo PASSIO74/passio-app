@@ -57,6 +57,8 @@ async function ouvrirAuth(page, doubles = {}) {
 
 async function remplirInscription(page, email = "nouvelle@exemple.com") {
   await page.locator("#authTabSignup").click();
+  // Nom d'utilisateur : condition d'inscription depuis le 2026-09-09.
+  await page.locator("#authName").fill("Camille");
   await page.locator("#authEmail").fill(email);
   await page.locator("#authPassword").fill("motdepasse123");
   await page.locator("#authPasswordConfirm").fill("motdepasse123");

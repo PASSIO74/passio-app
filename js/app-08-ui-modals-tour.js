@@ -2300,6 +2300,15 @@ async function boot() {
       // supaLoadUserState a pu ré-appliquer un état serveur sans le flag → on le
       // re-garantit (on a une session valide, donc accès).
       state.onboarded = true;
+      // ⚠️ ICI, ET PAS AILLEURS : c'est le SEUL passage qu'emprunte un compte
+      // neuf. Avec « Confirm email », l'onboarding (âge → prénom → passions)
+      // n'est jamais atteint : la personne revient par « Se connecter », qui
+      // recharge, et `boot()` entre directement dans l'app. Sans cette ligne,
+      // le nom choisi au formulaire de création resterait dans `user_metadata`
+      // et le compte s'appellerait « Passionné ». Elle est posée APRÈS
+      // `supaLoadUserState` (l'état du compte fait foi et gagne) et AVANT le
+      // profil de repli ci-dessous, qui lit `state.user.name`.
+      try { if (typeof appliquerNomCompte === "function") appliquerNomCompte(session); } catch (e) {}
       if (state.onboarded) {
         // Session active + déjà onboardé → accès direct à l'app
         // Crée un profil par défaut si l'utilisateur n'en a pas (connexion sans onboarding)

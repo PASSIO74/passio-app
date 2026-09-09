@@ -451,6 +451,10 @@ test.describe("Exploration anonyme puis connexion à un vrai compte", () => {
     const r = await page.evaluate(async () => {
       state.user.name = "Prénom saisi pendant l'onboarding";
       saveStateNow();
+      // Le nom public est désormais demandé au formulaire de création : on le
+      // saisit à l'identique de ce que l'onboarding avait posé, sinon c'est ce
+      // champ-ci qui ferait foi et le marqueur mesuré plus bas disparaîtrait.
+      document.getElementById("authName").value = "Prénom saisi pendant l'onboarding";
       document.getElementById("authEmail").value = "neuf@exemple.test";
       document.getElementById("authPassword").value = "motdepasse";
       const c = document.getElementById("authPasswordConfirm");
