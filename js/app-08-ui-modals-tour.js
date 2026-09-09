@@ -3090,6 +3090,29 @@ let _profilAssureEnCours = null;    // { uid, p } — promesse partagée par les
 function _resetProfilAssure() { _profilAssureUid = null; _profilAssureEnCours = null; }
 window._resetProfilAssure = _resetProfilAssure;
 
+// ── LA PREUVE PEUT VENIR D'AILLEURS QUE D'UN INSERT (2026-09-09) ──────────
+// Sentinelle : « HTTP 409 sur POST /rest/v1/profiles : conflit — la ligne
+// existe déjà », 9 appels refusés, 3 comptes, en 24 h. Le conflit est bien
+// traité (`_conflitClePrimaireProfiles` → « la ligne existe »), donc rien ne
+// casse pour l'utilisateur — mais l'INSERT n'aurait jamais dû partir : `boot()`
+// venait de LIRE cette même ligne, et jetait la preuve. Le premier geste de la
+// session (publier, commenter, écrire, suivre…) repartait donc sur un insert
+// voué au 409, une fois par session et par compte.
+//
+// ⚠️ Ce qui se marque ici est une PREUVE D'EXISTENCE, jamais une supposition :
+// seul un `select` qui a RENDU la ligne du compte courant peut appeler cette
+// fonction. Marquer sans preuve empêcherait la création pour toute la session,
+// et le compte, dont cinq clés étrangères dépendent, ne pourrait plus rien
+// écrire — l'asymétrie est celle de `_conflitClePrimaireProfiles` : trop strict
+// = un aller-retour de trop, trop laxiste = une ligne qui n'existe jamais.
+function _marquerProfilAssure(uid) {
+  if (!uid) return false;
+  if (typeof MY_UID === "undefined" || uid !== MY_UID) return false;  // la preuve d'un autre compte ne vaut rien ici
+  _profilAssureUid = uid;
+  return true;
+}
+window._marquerProfilAssure = _marquerProfilAssure;
+
 // Garantit l'existence de la ligne, sans jamais modifier une ligne existante.
 async function supaEnsureProfileExists() {
   const uid = (typeof MY_UID !== "undefined") ? MY_UID : null;
@@ -6090,6 +6113,14 @@ async function supaInit() {
     try {
       const { data: srv } = await supa.from("profiles")
         .select("username,emoji,color,avatar_url,passion_id,bio").eq("id", MY_UID).maybeSingle();
+      // ⚠️ `srv` non nul PROUVE que la ligne existe, et cette preuve ne dépend NI
+      // du pseudo qu'elle porte NI de l'existence d'un profil local : la marque
+      // se pose donc AVANT la branche d'adoption ci-dessous, qui exige les deux.
+      // Sans elle, un compte dont le `username` est vide — ou dont le profil
+      // local n'est pas encore construit — repassait par `supaEnsureProfileExists`,
+      // donc par un INSERT refusé en 409, à CHAQUE session (défaut relevé par la
+      // sentinelle le 2026-09-09).
+      if (srv) { try { _marquerProfilAssure(MY_UID); } catch (e) {} }
       const cp = (typeof currentProfile === "function") ? currentProfile() : null;
       if (srv && srv.username && cp) {
         // Adopte le NOM/AVATAR du serveur (identit\u00e9 publique partag\u00e9e).
