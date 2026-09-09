@@ -146,7 +146,7 @@ test("ONB-06 — un compte historique à trois profils les garde tous", async ({
   expect(r.interets).toEqual(["musique", "photo", "voyage"]);
 });
 
-test("ONB-07 — moins de 13 ans : refus propre, avant d'entrer dans l'app", async ({ page }) => {
+test("ONB-07 — mineur : refus propre, avant d'entrer dans l'app", async ({ page }) => {
   await boot(page);
   const r = await page.evaluate(() => {
     const avantEtape = onbStepIdx;
@@ -169,7 +169,10 @@ test("ONB-07 — moins de 13 ans : refus propre, avant d'entrer dans l'app", asy
   expect(r.landingActive).toBe(true);        // il n'est pas entré
 });
 
-test("ONB-08 — 13 à 17 ans : compte marqué mineur ; 18 et plus : non", async ({ page }) => {
+// PASSIO est reserve aux MAJEURS depuis le 2026-09-09 : 13 a 17 ans n'entre plus
+// « en compte mineur », il n'entre pas du tout. Le cas 17 ans est la borne qui
+// compte — c'est celui que l'ancienne regle laissait passer.
+test("ONB-08 — la porte est a 18 ans : 17 refuse, 18 admis, et rien n'est ecrit sur un refus", async ({ page }) => {
   await boot(page);
   const r = await page.evaluate(() => {
     const an = new Date().getFullYear();
@@ -177,16 +180,24 @@ test("ONB-08 — 13 à 17 ans : compte marqué mineur ; 18 et plus : non", async
       state.user.isMinor = undefined;
       state.user.birthYear = null;
       onbStepIdx = onbSteps.indexOf("age");
+      const avant = onbStepIdx;
       document.querySelector("#birthYear").value = String(an - age);
       onbValidateAge();
-      return { age, mineur: state.user.isMinor, enregistre: state.user.birthYear === an - age };
+      return {
+        age,
+        mineur: state.user.isMinor,
+        enregistre: state.user.birthYear === an - age,
+        avance: onbStepIdx > avant,
+      };
     };
     return [essai(13), essai(17), essai(18), essai(40)];
   });
-  expect(r[0]).toEqual({ age: 13, mineur: true, enregistre: true });
-  expect(r[1]).toEqual({ age: 17, mineur: true, enregistre: true });
-  expect(r[2]).toEqual({ age: 18, mineur: false, enregistre: true });
-  expect(r[3]).toEqual({ age: 40, mineur: false, enregistre: true });
+  // Un refus n'ecrit RIEN et ne fait pas avancer l'onboarding : sans quoi une
+  // annee de mineur resterait dans l'etat local, prete a etre poussee au serveur.
+  expect(r[0]).toEqual({ age: 13, mineur: undefined, enregistre: false, avance: false });
+  expect(r[1]).toEqual({ age: 17, mineur: undefined, enregistre: false, avance: false });
+  expect(r[2]).toEqual({ age: 18, mineur: false, enregistre: true, avance: true });
+  expect(r[3]).toEqual({ age: 40, mineur: false, enregistre: true, avance: true });
 });
 
 // ONB-10 se lit en deux moitiés. « L'onboarding n'est pas rejoué » est
