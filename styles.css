@@ -1577,6 +1577,9 @@
       width: 112px;
       height: 112px;
       border-radius: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       margin: 14px auto 22px;
       padding: 6px;
       background: #fff;
