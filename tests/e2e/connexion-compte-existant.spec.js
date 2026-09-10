@@ -85,6 +85,40 @@ test.describe("Carte de bienvenue", () => {
     await expect(page.locator("#frBackToExplore")).toBeVisible();
   });
 
+  // ⚠️ LE LOGO ÉTAIT COLLÉ EN HAUT À GAUCHE DE SON CADRE (2026-09-10).
+  // `.onb-logo-big` est un cadre BLANC de 112 px à `padding: 6px`, prévu pour
+  // une image qui remplit ses 100 px. Le balisage lui imposait 72 px en style
+  // EN LIGNE (donc prioritaire sur la feuille), et le conteneur, en `block`,
+  // laissait les 28 px de trop TOMBER EN BAS ET À DROITE — mesuré : 6 px à
+  // gauche et en haut, 34 px à droite et en bas. Le cadre était bien centré
+  // dans la carte violette : c'est le logo qui ne l'était pas DANS son cadre,
+  // ce qu'aucun test de position du cadre ne pouvait voir.
+  // On mesure l'ASYMÉTRIE, jamais la valeur absolue : `logoFloat` fait flotter
+  // et pivoter le cadre en permanence, ce qui déplace l'image ET son cadre
+  // ensemble et laisse donc les écarts opposés égaux.
+  test("le logo est centré dans son cadre blanc", async ({ page }) => {
+    await bootVisiteur(page);
+    await page.locator("#frWelcome .fr-welcome-signin").click();
+    await page.waitForTimeout(400);
+    const ecarts = await page.evaluate(() => {
+      const cadre = document.querySelector('.onb-step.active[data-onb-step="splash"] .onb-logo-big');
+      const img = cadre && cadre.querySelector("img");
+      if (!cadre || !img) return null;
+      const a = cadre.getBoundingClientRect();
+      const c = img.getBoundingClientRect();
+      return {
+        horizontal: Math.abs(c.left - a.left - (a.right - c.right)),
+        vertical: Math.abs(c.top - a.top - (a.bottom - c.bottom)),
+        largeur: c.width,
+      };
+    });
+    expect(ecarts).not.toBeNull();
+    expect(ecarts.horizontal).toBeLessThanOrEqual(1.5);
+    expect(ecarts.vertical).toBeLessThanOrEqual(1.5);
+    // Et il remplit bien son cadre (112 px de cadre, 6 px de marge blanche).
+    expect(ecarts.largeur).toBeGreaterThan(90);
+  });
+
   test("« Continuer à explorer » ramène au fil, sans compte créé", async ({ page }) => {
     await bootVisiteur(page);
     await page.locator("#frWelcome .fr-welcome-signin").click();
