@@ -35,6 +35,10 @@ MIG2="$RACINE/migrations/migration_passion_creations_offertes.sql"
 # La troisième : modération (signalement borné aux passions) et droit de
 # création par compte (`passion_quotas`). Même chaîne, même ordre.
 MIG3="$RACINE/migrations/migration_passion_moderation.sql"
+# La quatrième : alias à la création. Elle SUPPRIME puis recrée les deux
+# signatures (le type de retour change), donc elle efface leurs grants — c'est
+# précisément ce que les contrôles ⑦ et ⑨ re-mesurent APRÈS elle.
+MIG4="$RACINE/migrations/migration_passion_alias_creation.sql"
 BASE="${PGDATA_TEST:-${TMPDIR:-/tmp}/passio-pg-creation}"
 SOCK="${PGSOCK_TEST:-/tmp/ppgc-$$}"
 PORT="${PGPORT_TEST:-55433}"
@@ -123,6 +127,19 @@ out=$(F creation "$MIG3")
 if [ $? -eq 0 ] && ! grep -qi "^ERROR" <<<"$out"; then ok "seconde exécution : idempotente"; else ko "NON IDEMPOTENTE :"; echo "$out" | grep -i error | head -5; fi
 acl=$(Q creation "select has_function_privilege('anon', 'public.creer_passion(text,text)', 'EXECUTE')::text")
 [ "$acl" = "false" ] && ok "anon toujours sans EXECUTE" || ko "EXECUTE rendu à anon : $acl"
+out=$(F creation "$MIG4")
+if [ $? -eq 0 ] && ! grep -qi "^ERROR" <<<"$out"; then ok "alias à la création appliqués"; else ko "échec :"; echo "$out" | grep -i error | head -5; fi
+out=$(F creation "$MIG4")
+if [ $? -eq 0 ] && ! grep -qi "^ERROR" <<<"$out"; then ok "seconde exécution : idempotente"; else ko "NON IDEMPOTENTE :"; echo "$out" | grep -i error | head -5; fi
+# ⚠️ LE DROP EFFACE LES GRANTS, et un `revoke ... from public` ne retire pas le
+# grant NOMINATIF que les privilèges par défaut de Supabase redonnent à `anon`.
+# Les deux signatures sont donc re-mesurées, séparément.
+for sig in "text,text" "text,text,text[]"; do
+  acl=$(Q creation "select has_function_privilege('anon', 'public.creer_passion($sig)', 'EXECUTE')::text")
+  [ "$acl" = "false" ] && ok "anon sans EXECUTE sur creer_passion($sig)" || ko "anon garde EXECUTE sur ($sig) : $acl"
+  acl=$(Q creation "select has_function_privilege('authenticated', 'public.creer_passion($sig)', 'EXECUTE')::text")
+  [ "$acl" = "true" ] && ok "authenticated peut exécuter creer_passion($sig)" || ko "authenticated privé de ($sig) : $acl"
+done
 col=$(Q creation "select count(*) from information_schema.columns where table_name='passions' and column_name='created_by'")
 [ "$col" = "1" ] && ok "colonne created_by présente" || ko "colonne created_by absente"
 
@@ -255,6 +272,77 @@ res=$(QA "$UID_B" "select id from public.creer_passion('sculpture sur glace')")
 grep -qi "nom_indisponible" <<<"$res" && ok "et son nom ne peut pas être recréé" || ko "le nom retiré a été recréé : $res"
 Q creation "update public.passions set status='active' where id='sculpture-sur-glace'" >/dev/null
 
+# ── ⑥ quater. Alias à la création ────────────────────────────────────────────
+titre "⑥ quater. Les alias fournis à la création"
+# ⚠️ Les sections précédentes ont CONSOMMÉ les trois créations offertes des
+# deux comptes. Sans ce droit étendu, tout ce qui suit échouerait en
+# `quota_creation` — et on croirait mesurer les alias en mesurant le plafond.
+Q creation "insert into public.passion_quotas (user_id, creations_max)
+            values ('$UID_A', null), ('$UID_B', null)
+            on conflict (user_id) do update set creations_max = null;" >/dev/null 2>&1
+
+# Le cas qui a motivé le lot : « GRS » est introuvable en tapant son nom long.
+res=$(QA "$UID_A" "select array_to_string(aliases, '|') from public.creer_passion('Gymnastique rythmique sportive', '🤸', array['gym rythmique','ruban et cerceau'])")
+[ "$res" = "gym rythmique|ruban et cerceau" ] \
+  && ok "les deux alias sont retenus : $res" || ko "alias inattendus : « $res »"
+res=$(Q creation "select id from public.rechercher_passions('gym rythmique', 5) limit 1")
+[ "$res" = "gymnastique-rythmique-sportive" ] \
+  && ok "trouvable par son ALIAS dans la recherche serveur" || ko "introuvable par l'alias : « $res »"
+
+# ⚠️ LE CONTRÔLE CENTRAL : un alias qui est le LIBELLÉ d'une passion existante
+# ferait remonter DEUX entrées pour le même mot, et le classement trancherait
+# sur un critère que personne n'a choisi.
+res=$(QA "$UID_A" "select array_to_string(aliases, '|') from public.creer_passion('Course nocturne', null, array['running','trottiner'])")
+[ "$res" = "trottiner" ] \
+  && ok "l'alias « running » (libellé existant) est ÉCARTÉ, « trottiner » gardé" \
+  || ko "l'alias percutant n'a pas été écarté : « $res »"
+n=$(Q creation "select count(*) from public.passions where id='course-nocturne'")
+[ "$n" = "1" ] && ok "…et la passion est créée quand même (l'alias n'est pas un motif de refus)" \
+  || ko "la création a été refusée à cause d'un alias : $n ligne(s)"
+# ⚠️ On mesure l'INVARIANT, pas le classement. `running` a pour libellé
+# « Course à pied » : « Running urbain » le devance légitimement dans
+# `rechercher_passions` (préfixe de libellé = 10 contre alias exact = 20), et
+# c'est vrai AVANT ce lot. Ce que l'alias écarté protège, c'est qu'une seule
+# entrée PORTE ce mot — sans quoi le départage se ferait au hasard.
+n=$(Q creation "select count(*) from public.passions p
+                 where p.normalized_label = 'running'
+                    or exists (select 1 from unnest(p.aliases) a
+                                where public.passion_plier(a) = 'running')")
+[ "$n" = "1" ] && ok "« running » n'est porté que par UNE passion" || ko "$n passions portent « running »"
+
+# Un alias qui est l'ALIAS d'une autre passion : même règle.
+res=$(QA "$UID_A" "select array_to_string(aliases, '|') from public.creer_passion('Trail de nuit', null, array['jogging'])")
+[ "$res" = "" ] && ok "un alias déjà pris comme ALIAS ailleurs est écarté" || ko "alias retenu à tort : « $res »"
+
+# Saletés et bornes.
+res=$(QA "$UID_B" "select array_to_string(aliases, '|') from public.creer_passion('Poterie tournée', null, array['  ','a','2026','<script>','https://x.fr','poterie tournee','au tour','au tour'])")
+[ "$res" = "au tour" ] \
+  && ok "vide, trop court, sans lettre, balisage, URL, alias de son propre nom et doublon : tous écartés" \
+  || ko "filtrage des alias insuffisant : « $res »"
+res=$(QA "$UID_B" "select cardinality(aliases) from public.creer_passion('Vannerie sauvage', null, array['osier libre','saule des champs','brins verts','clisse fine','ligature souple','sixieme alias'])")
+[ "$res" = "5" ] && ok "plafonné à cinq alias" || ko "plafond non tenu : $res"
+
+# La forme HISTORIQUE doit survivre : c'est elle que le client déployé appelle.
+res=$(QA "$UID_B" "select id||'|'||cree||'|'||cardinality(aliases) from public.creer_passion('Aquarelle urbaine', '🎨')")
+[ "$res" = "aquarelle-urbaine|true|0" ] \
+  && ok "l'appel à DEUX arguments fonctionne toujours (surcharge, pas remplacement)" \
+  || ko "la forme historique est cassée : « $res »"
+res=$(QA "$UID_B" "select id||'|'||cree from public.creer_passion('Musique')")
+[ "$res" = "musique|false" ] && ok "…et dédoublonne comme avant" || ko "dédoublonnage cassé : « $res »"
+
+# Le dédoublonnage ne se fait JAMAIS sur les alias PROPOSÉS.
+res=$(QA "$UID_B" "select id||'|'||cree from public.creer_passion('Balade sonore', null, array['podcast'])")
+[ "$res" = "balade-sonore|true" ] \
+  && ok "un alias qui percute n'entraîne pas de dédoublonnage : le libellé seul décide" \
+  || ko "l'alias a servi de dédoublonnage : « $res »"
+
+# ── ⑥ quinquies. Le pliage est le MÊME des deux côtés ───────────────────────────
+titre "⑥ quinquies. Un alias ponctué dédoublonne comme la frappe"
+res=$(QA "$UID_B" "select array_to_string(aliases, '|') from public.creer_passion('Raquette de table', null, array['ping pong'])")
+[ "$res" = "" ] \
+  && ok "« ping pong » écarté : c'est « ping-pong », alias de Tennis de table" \
+  || ko "le pliage des alias diverge : « $res »"
+
 # ── ⑦ Le référentiel reste en lecture seule ───────────────────────────────
 titre "⑦ RLS : aucune écriture directe sur le référentiel"
 Q creation "grant usage on schema public to anon, authenticated;
@@ -271,11 +359,19 @@ grep -qi "denied\|permission\|auth_requise" <<<"$res" && ok "la fonction est fer
 
 # ── ⑧ Retour arrière ──────────────────────────────────────────────────────
 titre "⑧ Retour arrière documenté"
+# ⚠️ DEUX SIGNATURES DEPUIS LE LOT ALIAS. N'en supprimer qu'une laissait la
+# fonction parfaitement vivante sous l'autre forme, pendant que le banc
+# annonçait « retour arrière exécuté » — un contrôle qui rassure à tort est
+# pire que pas de contrôle.
 out=$(Q creation "drop function if exists public.creer_passion(text,text);
+                  drop function if exists public.creer_passion(text,text,text[]);
                   update public.passions set status='archived' where source='user_suggested';")
 grep -qi "^ERROR" <<<"$out" && { ko "le retour arrière échoue :"; echo "$out" | head -3; } || ok "retour arrière exécuté"
 n=$(Q creation "select count(*) from public.passions where source='user_suggested' and status='active'")
 [ "$n" = "0" ] && ok "plus aucune passion créée par un compte n'est active" || ko "$n encore active(s)"
+n=$(Q creation "select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+                 where n.nspname='public' and p.proname='creer_passion'")
+[ "$n" = "0" ] && ok "AUCUNE signature de creer_passion ne survit" || ko "$n signature(s) encore en place"
 
 printf '\n'
 [ $echec -eq 0 ] && { echo "✅ Création de passion vérifiée sur PostgreSQL $(Q creation 'show server_version')."; exit 0; }

@@ -11076,6 +11076,40 @@ button, a, label, select, summary,
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   ALIAS À LA CRÉATION D'UNE PASSION (2026-09-10)
+
+   Un champ FACULTATIF, sous le bouton « Créer « … » » du sélecteur. Il rend la
+   passion trouvable autrement que par son orthographe exacte — mesuré en base :
+   les seules passions à zéro alias étaient celles créées depuis l'app.
+
+   ⚠️ Ce bloc est posé AVANT celui du lot UI-4A5, qui doit rester le DERNIER de
+   cette feuille.
+
+   ⚠️ 16px sur le champ, sans exception : en dessous, iOS ZOOME au focus et le
+   sélecteur sort du cadrage. Règle de la fiche a11y, déjà payée ailleurs.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.psel-alias {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
+  margin: 8px 0 0;
+  padding: 11px 12px;
+  font-size: 16px;
+  font-family: inherit;
+  color: var(--fg, #111);
+  background: var(--bg-card, #fff);
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 10px;
+}
+.psel-alias::placeholder { color: var(--muted, #6b7280); }
+.psel-alias:focus-visible {
+  outline: 2px solid var(--accent, #7c3aed);
+  outline-offset: 1px;
+  border-color: var(--accent, #7c3aed);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
    PASSIO UI V4 — lot UI-4A5 : « Filtre » est une VUE de « Rencontrer ».
    ACTIF PAR DÉFAUT.
    (coupures : localStorage.passio_ui_4a5 = "0" · window.PASSIO_UI_4A5 = false)

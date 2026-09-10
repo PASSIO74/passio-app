@@ -763,8 +763,19 @@
     if (a.doublon) return Promise.resolve(Object.assign({}, a, { cree: false, passion: a.doublon }));
     if (!creationDisponible()) return replisurDemande(texte, a);
 
+    // ⚠️ LES ALIAS NE PARTENT QUE S'IL Y EN A, et c'est ce qui rend le lot
+    // déployable AVANT sa migration. Envoyer `p_aliases` à une base qui ne
+    // connaît que la forme à deux arguments fait répondre PostgREST « fonction
+    // introuvable » (PGRST202) — donc, par la garde ci-dessous, un
+    // verrouillage DÉFINITIF de la création pour toute la session, sur une
+    // base parfaitement saine. Sans alias saisi, la charge utile est identique
+    // à l'octet près à celle d'avant ce lot.
+    var charge = { p_label: a.texte, p_emoji: options.emoji || null };
+    var alias = (options.alias || []).filter(function (x) { return x && String(x).trim(); });
+    if (alias.length) charge.p_aliases = alias.map(function (x) { return String(x).trim(); }).slice(0, 5);
+
     try {
-      return supa.rpc("creer_passion", { p_label: a.texte, p_emoji: options.emoji || null })
+      return supa.rpc("creer_passion", charge)
         .then(function (r) {
           if (r && r.error) {
             var msg = String((r.error.message || "") + " " + (r.error.details || "") + " " + (r.error.code || ""));
@@ -788,7 +799,15 @@
           // seule autorité de publication, et son cache serveur ne sera pas
           // rechargé de la session.
           try { if (typeof enregistrerPassionCanonique === "function") enregistrerPassionCanonique(p.id); } catch (e) {}
-          return Object.assign({}, a, { cree: ligne.cree !== false, passion: p });
+          // ⚠️ ON REMONTE LES ALIAS QUE LE SERVEUR A RETENUS, jamais ceux
+          // qu'on a demandés : il écarte ceux qui percutent une passion
+          // existante, et laisser croire qu'ils ont tous été gardés serait
+          // un mensonge tranquille. `aliases` est absent tant que la migration
+          // n'est pas appliquée — d'où le repli sur un tableau vide.
+          return Object.assign({}, a, {
+            cree: ligne.cree !== false, passion: p,
+            aliasRetenus: Array.isArray(ligne.aliases) ? ligne.aliases : [],
+          });
         })
         .catch(function (e) {
           // ⚠️ CATCH LARGE : il couvre AUSSI son propre `.then` (injection,
