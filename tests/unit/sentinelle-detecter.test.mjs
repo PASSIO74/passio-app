@@ -3,7 +3,7 @@
 // production le 2026-09-09.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { classer, empreinte, estDuBruit, classerApi, estDuBruitApi, libelleApi, classerBoutons } from "../../scripts/sentinelle-detecter.mjs";
+import { classer, empreinte, estDuBruit, classerApi, estDuBruitApi, libelleApi, classerBoutons, dejaCorrige, titreIssue } from "../../scripts/sentinelle-detecter.mjs";
 
 test("« Script error. » est écarté : le navigateur refuse d'en dire plus", () => {
   // Observé en production. Une erreur d'un script d'une AUTRE origine est
@@ -211,4 +211,63 @@ test("le libellé est TRONQUÉ : il porte du texte écrit par des gens", () => {
   const long = "a".repeat(200);
   const clics = Array.from({ length: 10 }, (_, i) => clic(long, "s1", `2026-09-10T10:0${i}:00Z`));
   assert.equal(classerBoutons(clics, []) [0].libelle.length, 60);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// NE PAS ROUVRIR UN DÉFAUT DÉJÀ CORRIGÉ — cas réel des 2026-09-09/10.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const CIBLE_409 = {
+  message: "HTTP 409 sur POST /rest/v1/profiles : conflit — la ligne existe déjà",
+  n: 9,
+  comptes: 3,
+  dernier: "2026-09-09T14:31:57.420524+00:00",
+};
+
+test("le titre a UNE seule source, et il est tronqué à 80 caractères", () => {
+  assert.equal(titreIssue({ message: "abc" }), "[SENTINELLE] abc");
+  const long = titreIssue({ message: "x".repeat(200) });
+  assert.equal(long, "[SENTINELLE] " + "x".repeat(80));
+  // Un message absent ne doit pas fabriquer « undefined » dans un titre public.
+  assert.equal(titreIssue({}), "[SENTINELLE] ");
+  assert.equal(titreIssue(null), "[SENTINELLE] ");
+});
+
+test("⚠️ le cas réel : #316 ne doit PAS rouvrir ce que #313 a corrigé", () => {
+  // #312, même titre, fermée le 2026-09-10 à 04h43 — soit APRÈS la dernière
+  // occurrence (14h31 la veille). Toutes les lignes datent d'avant le correctif.
+  const fermees = [{ title: titreIssue(CIBLE_409), closedAt: "2026-09-10T04:43:12Z" }];
+  assert.equal(dejaCorrige(CIBLE_409, fermees), true);
+});
+
+test("⚠️ UNE SEULE occurrence postérieure suffit à rouvrir : la récidive est le signal", () => {
+  const fermees = [{ title: titreIssue(CIBLE_409), closedAt: "2026-09-10T04:43:12Z" }];
+  const recidive = { ...CIBLE_409, dernier: "2026-09-10T05:00:00Z" };
+  assert.equal(dejaCorrige(recidive, fermees), false);
+});
+
+test("un AUTRE défaut n'est jamais tu par la fermeture d'un premier", () => {
+  const fermees = [{ title: "[SENTINELLE] Promise rejetée: newestWorker is null", closedAt: "2026-09-10T04:43:12Z" }];
+  assert.equal(dejaCorrige(CIBLE_409, fermees), false);
+});
+
+test("aucune enquête fermée, liste absente ou cible nulle : on ouvre", () => {
+  assert.equal(dejaCorrige(CIBLE_409, []), false);
+  assert.equal(dejaCorrige(CIBLE_409, null), false);
+  assert.equal(dejaCorrige(CIBLE_409, undefined), false);
+  assert.equal(dejaCorrige(null, [{ title: titreIssue(CIBLE_409), closedAt: "2026-09-10T04:43:12Z" }]), false);
+});
+
+test("⚠️ une date illisible ne fait JAMAIS taire une enquête", () => {
+  const titre = titreIssue(CIBLE_409);
+  // Date de fermeture illisible : on ne peut pas prouver l'antériorité.
+  assert.equal(dejaCorrige(CIBLE_409, [{ title: titre, closedAt: "hier" }]), false);
+  assert.equal(dejaCorrige(CIBLE_409, [{ title: titre }]), false);
+  // Date d'occurrence illisible : idem, dans l'autre sens.
+  assert.equal(dejaCorrige({ ...CIBLE_409, dernier: "" }, [{ title: titre, closedAt: "2026-09-10T04:43:12Z" }]), false);
+});
+
+test("le champ `closed_at` de l'API REST est accepté comme `closedAt` de gh", () => {
+  const fermees = [{ title: titreIssue(CIBLE_409), closed_at: "2026-09-10T04:43:12Z" }];
+  assert.equal(dejaCorrige(CIBLE_409, fermees), true);
 });
