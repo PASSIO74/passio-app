@@ -131,6 +131,18 @@
     });
     // Entrée sélectionne le premier résultat : sur mobile, c'est le geste que
     // le clavier propose (« rechercher »), et il ne doit pas être un cul-de-sac.
+    // ⚠️ LE PIED EST RÉÉCRIT À CHAQUE FRAPPE (`rendrePied` pose `innerHTML`),
+    // donc un champ d'alias non mémorisé perdrait sa saisie au premier
+    // caractère tapé ailleurs — même famille que le cache `_lastHtml` de
+    // `renderProfileStrip`. On garde la valeur sur l'INSTANCE et on la
+    // réinjecte au rendu ; l'écoute est DÉLÉGUÉE, donc elle survit au
+    // remplacement du nœud, et elle ne déclenche AUCUN re-rendu.
+    this.hote.addEventListener("input", function (e) {
+      var t = e.target;
+      if (!t || !t.getAttribute || !t.getAttribute("data-psel-alias")) return;
+      self.alias = t.value;
+    });
+
     this.input.addEventListener("keydown", function (e) {
       if (e.key !== "Enter") return;
       e.preventDefault();
@@ -286,6 +298,28 @@
             ? "Créer « " + ech(q) + " »"
             : "Demander l'ajout de « " + ech(q) + " »")
         + "</button>";
+      // ⚠️ AUTRES NOMS — LE CHAMP QUI REND LA PASSION TROUVABLE (2026-09-10).
+      // Mesuré en base après le rattrapage des alias : les six passions créées
+      // depuis l'app étaient les SEULES à zéro alias, `creer_passion` écrivant
+      // `aliases = '{}'` EN DUR. « GRS » existe et reste introuvable en tapant
+      // « gymnastique rythmique ». Or la personne qui crée est justement celle
+      // qui sait comment on la nomme autrement — on ne le lui demandait jamais.
+      //
+      // FACULTATIF, ET UNE SEULE LIGNE : le reproche des testeurs était que
+      // créer une passion était trop DIFFICILE. On n'ajoute donc pas une étape,
+      // on ajoute une occasion. Rien de saisi ⇒ comportement d'avant, à l'octet.
+      //
+      // ⚠️ Il n'apparaît QUE si la création est réellement possible. Sous le
+      // chemin de DEMANDE (hors ligne, sans compte, migration non appliquée),
+      // les alias ne seraient transmis à personne : un champ qui ne sert à rien
+      // est un mensonge d'interface.
+      if (peutCreer) {
+        html += '<input type="text" class="psel-alias" data-psel-alias="1"'
+          + ' maxlength="120" autocomplete="off" enterkeyhint="done"'
+          + ' aria-label="Autres noms de cette passion, separes par des virgules"'
+          + ' placeholder="Autres noms, séparés par des virgules (facultatif)"'
+          + ' value="' + ech(this.alias || "") + '">';
+      }
     }
     if (this.cfg.valider) {
       var n = this.selection.length;
@@ -443,7 +477,16 @@
       if (typeof requireAuthentication === "function" && !requireAuthentication("preferences")) return;
     } catch (e) { journal("gate", e); }
 
-    m.creerPassion(q).then(function (r) {
+    // ⚠️ ON DÉCOUPE ICI, LE SERVEUR TRANCHE. Ce découpage n'est pas une
+    // validation : `creer_passion` replie, borne à cinq, refuse le balisage et
+    // ÉCARTE tout alias qui percute une passion existante. Une garde d'écran
+    // n'a jamais été une garde — celle-ci ne sert qu'à ne pas envoyer de vide.
+    var alias = String(this.alias || "").split(",")
+      .map(function (x) { return x.trim(); })
+      .filter(function (x) { return x.length > 1; })
+      .slice(0, 5);
+
+    m.creerPassion(q, alias.length ? { alias: alias } : null).then(function (r) {
       r = r || {};
       if (r.erreur && !r.repli) {
         // ⚠️ TROIS CRÉATIONS OFFERTES, ENSUITE C'EST PAYANT (2026-09-08, soir).
@@ -467,6 +510,7 @@
       if (r.passion && r.passion.id) {
         self.input.value = "";
         self.frappe = "";
+        self.alias = "";
         self.basculer(r.passion.id);
         self.chercher();
         try {

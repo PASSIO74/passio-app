@@ -33,6 +33,8 @@
  *   node scripts/passions-moderation.js quota --uid <uuid> --max illimite
  *   node scripts/passions-moderation.js quota --uid <uuid> --max 10
  *   node scripts/passions-moderation.js quota --uid <uuid> --max defaut
+ *   node scripts/passions-moderation.js alias --id grs --ajouter "gymnastique rythmique,gym rythmique"
+ *   node scripts/passions-moderation.js alias --id grs --retirer "gym rythmique"
  */
 "use strict";
 const { configAdmin } = require("../tests/e2e/compte-e2e.js");
@@ -173,6 +175,86 @@ async function changerStatut(cfg, statut) {
   }
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// ALIAS D'UNE PASSION CRÉÉE (2026-09-10)
+//
+// Depuis ce jour, `creer_passion` accepte des alias — mais les passions déjà
+// créées n'en ont pas, et personne ne va rouvrir son compte pour en ajouter.
+// « GRS », créée le 2026-09-09, reste introuvable en tapant « gymnastique
+// rythmique » tant qu'un opérateur ne le fait pas.
+//
+// ⚠️ MÊME RÈGLE QUE LE SERVEUR, ET C'EST LE POINT : un alias qui est déjà le
+// LIBELLÉ ou l'ALIAS d'une autre passion fait remonter DEUX entrées pour le
+// même mot, et le classement de `rechercher_passions` départage alors sur un
+// critère que personne n'a choisi. L'outil REFUSE — il ne se contente pas
+// d'écarter en silence comme le fait la fonction serveur : ici il y a un
+// humain devant, il peut corriger, et un retrait muet le laisserait croire
+// que son alias a été posé.
+//
+// ⚠️ RÉSERVÉ AUX PASSIONS CRÉÉES DEPUIS L'APPLICATION, comme `archiver` : les
+// alias des 2 088 entrées curées vivent dans `data/passions/`, sous
+// `passions:valider`, et une retouche en base y serait ÉCRASÉE au prochain
+// delta — un correctif qui disparaît tout seul est pire qu'aucun correctif.
+async function alias(cfg) {
+  const id = opt("id");
+  if (!id) sortir("❌ Il faut --id <identifiant de passion>.");
+  const ajouter = opt("ajouter");
+  const retirer = opt("retirer");
+  if (!ajouter && !retirer) sortir("❌ Il faut --ajouter \"a,b\" ou --retirer \"a\".");
+
+  const avant = await rest(cfg, `passions?id=eq.${encodeURIComponent(id)}&select=id,label,status,source,aliases`);
+  if (!avant || !avant.length) sortir(`❌ Aucune passion « ${id} » dans le référentiel.`);
+  const p = avant[0];
+  if (p.source !== "user_suggested") {
+    sortir(`❌ « ${id} » n'a pas été créée depuis l'application (source : ${p.source}).\n` +
+           `   Ses alias vivent dans data/passions/ : les modifier ici serait écrasé au prochain delta.`);
+  }
+
+  const plier = (x) => String(x || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+  let liste = Array.isArray(p.aliases) ? p.aliases.slice() : [];
+
+  if (retirer) {
+    const cibles = retirer.split(",").map((x) => plier(x)).filter(Boolean);
+    const avantN = liste.length;
+    liste = liste.filter((a) => !cibles.includes(plier(a)));
+    if (liste.length === avantN) sortir(`❌ Aucun de ces alias n'est posé sur « ${id} ».`);
+  }
+
+  if (ajouter) {
+    // Tout le référentiel, pour le contrôle de collision. 2 000 lignes de deux
+    // colonnes : une seule requête, pas 2 000.
+    const tout = await rest(cfg, "passions?select=id,normalized_label,aliases&limit=20000");
+    const pris = new Map();
+    for (const q of tout || []) {
+      if (q.normalized_label) pris.set(plier(q.normalized_label), q.id);
+      for (const a of q.aliases || []) pris.set(plier(a), q.id);
+    }
+    for (const brut of ajouter.split(",")) {
+      const a = brut.trim().replace(/\s+/g, " ").slice(0, 60);
+      const n = plier(a);
+      if (n.length < 2 || !/[a-z]/.test(n)) sortir(`❌ Alias inutilisable : « ${brut.trim()} ».`);
+      if (/[<>&"\\`]/.test(a)) sortir(`❌ Alias refusé (balisage) : « ${a} ».`);
+      const proprietaire = pris.get(n);
+      if (proprietaire && proprietaire !== id) {
+        sortir(`❌ « ${a} » est déjà le nom ou l'alias de « ${proprietaire} ».\n` +
+               `   Deux entrées pour le même mot, c'est le classement qui tranche au hasard.`);
+      }
+      if (!liste.some((x) => plier(x) === n)) liste.push(a);
+    }
+    if (liste.length > 8) sortir(`❌ ${liste.length} alias : au-delà de huit, ce n'est plus un synonyme.`);
+  }
+
+  const maj = await rest(cfg, `passions?id=eq.${encodeURIComponent(id)}&select=id,aliases`, {
+    method: "PATCH",
+    body: JSON.stringify({ aliases: liste, updated_at: new Date().toISOString() }),
+  });
+  // ⚠️ ON LIT CE QUE L'ÉCRITURE A TOUCHÉ : zéro ligne = refus silencieux.
+  if (!maj || !maj.length) sortir(`❌ Aucune ligne modifiée pour « ${id} » — droits insuffisants ?`);
+  console.log(`✅ « ${p.label} » (${id}) → alias : ${liste.length ? liste.join(", ") : "(aucun)"}`);
+}
+
 async function quota(cfg) {
   const uid = opt("uid");
   const max = opt("max");
@@ -217,5 +299,6 @@ async function quota(cfg) {
   if (commande === "archiver") return changerStatut(cfg, "archived");
   if (commande === "restaurer") return changerStatut(cfg, "active");
   if (commande === "quota") return quota(cfg);
-  sortir(`Commande inconnue : ${commande}\nAttendu : lister | signalees | archiver | restaurer | quota`);
+  if (commande === "alias") return alias(cfg);
+  sortir(`Commande inconnue : ${commande}\nAttendu : lister | signalees | archiver | restaurer | quota | alias`);
 })().catch((e) => sortir("❌ " + (e && e.message)));

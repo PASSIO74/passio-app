@@ -343,4 +343,120 @@ test.describe("Créer une passion", () => {
     ), { timeout: 10000 }).toContain("sculpture sur glace");
     expect(await page.locator("#hoteDemande .psel-input").inputValue()).toBe("");
   });
+
+  // ══════════════════════════════════════════════════════════════════════
+  // ALIAS À LA CRÉATION (2026-09-10)
+  //
+  // Mesuré en base après le rattrapage des alias : les six passions créées
+  // depuis l'application étaient les SEULES à zéro alias — `creer_passion`
+  // écrivait `aliases = '{}'` en dur. « GRS » existe et reste introuvable en
+  // tapant « gymnastique rythmique ». La personne qui crée est justement celle
+  // qui sait comment on la nomme autrement.
+  //
+  // ⚠️ CE QUI EST MESURÉ ICI EST LE CÂBLAGE, pas la règle. Le filtrage des
+  // alias (pliage, bornes, balisage, alias qui percute une passion existante)
+  // est prouvé sur un vrai PostgreSQL par
+  // `scripts/verifier-migration-creation-passion.sh` ⑥ quater.
+  // ══════════════════════════════════════════════════════════════════════
+
+  // ⑭ Le champ n'existe QUE là où il sert.
+  test("⑭ le champ « autres noms » n'apparaît que si la création est possible", async ({ page }) => {
+    await bootAvecCompte(page);
+    await page.evaluate(() => {
+      window._supaReal = false;                       // chemin de DEMANDE
+      const hote = document.createElement("div");
+      hote.id = "hoteDemande";
+      document.body.appendChild(hote);
+      PassionSearchSelector.monterDans(hote, { mode: "multi" });
+    });
+    await page.waitForFunction(() => window.PassioPassions.pret(), null, { timeout: 15000 });
+    await page.locator("#hoteDemande .psel-input").fill("sculpture sur glace");
+    await expect(page.locator("#hoteDemande .psel-ajouter")).toContainText("Demander l'ajout");
+    // Sous le chemin de demande, les alias ne seraient transmis à personne :
+    // un champ qui ne sert à rien est un mensonge d'interface.
+    await expect(page.locator("#hoteDemande .psel-alias")).toHaveCount(0);
+
+    // Création possible ⇒ le champ paraît.
+    await page.evaluate(() => { window._supaReal = true; });
+    await page.locator("#hoteDemande .psel-input").fill("sculpture sur glace bis");
+    await expect(page.locator("#hoteDemande .psel-alias")).toBeVisible({ timeout: 10000 });
+  });
+
+  // ⑮ LE CAS QUI REND LE LOT DÉPLOYABLE AVANT SA MIGRATION.
+  test("⑮ sans alias saisi, la charge utile n'a PAS changé", async ({ page }) => {
+    await bootAvecCompte(page);
+    await poserServeur(page, CREEE);
+    await page.evaluate(() => window.PassioPassions.creerPassion("sculpture sur glace"));
+    const appel = await page.evaluate(() => window.__rpcAppels[0]);
+    // ⚠️ Envoyer `p_aliases` à une base qui ne connaît que la forme à deux
+    // arguments fait répondre PostgREST « fonction introuvable » (PGRST202) —
+    // que `creerPassion` traite comme un verrouillage DÉFINITIF de la création
+    // pour toute la session. Sur une base parfaitement saine.
+    expect(Object.keys(appel.args).sort()).toEqual(["p_emoji", "p_label"]);
+  });
+
+  // ⑯ Les alias partent, découpés et bornés.
+  test("⑯ les alias saisis partent au serveur, découpés et bornés à cinq", async ({ page }) => {
+    await bootAvecCompte(page);
+    await poserServeur(page, CREEE);
+    await page.evaluate(() => window.PassioPassions.creerPassion("gymnastique rythmique", {
+      alias: ["gym rythmique", "  ruban et cerceau  ", "a", "", "grs", "quatre", "cinq", "six"],
+    }));
+    const appel = await page.evaluate(() => window.__rpcAppels[0]);
+    expect(Object.keys(appel.args).sort()).toEqual(["p_aliases", "p_emoji", "p_label"]);
+    expect(appel.args.p_aliases).toEqual(["gym rythmique", "ruban et cerceau", "a", "grs", "quatre"]);
+  });
+
+  // ⑰ La saisie SURVIT à la réécriture du pied.
+  test("⑰ le champ garde sa saisie quand le pied est réécrit", async ({ page }) => {
+    await bootAvecCompte(page);
+    await poserServeur(page, CREEE);
+    await page.evaluate(() => {
+      const hote = document.createElement("div");
+      hote.id = "hoteDemande";
+      document.body.appendChild(hote);
+      PassionSearchSelector.monterDans(hote, { mode: "multi" });
+    });
+    await page.waitForFunction(() => window.PassioPassions.pret(), null, { timeout: 15000 });
+    await page.locator("#hoteDemande .psel-input").fill("sculpture sur glace");
+    await page.locator("#hoteDemande .psel-alias").fill("glace sculptée");
+
+    // ⚠️ `rendrePied` pose `innerHTML` À CHAQUE FRAPPE : un champ non mémorisé
+    // perdrait sa saisie au caractère suivant tapé dans la recherche — même
+    // famille que le cache `_lastHtml` de `renderProfileStrip`.
+    await page.locator("#hoteDemande .psel-input").fill("sculpture sur glace!");
+    await expect(page.locator("#hoteDemande .psel-alias")).toHaveValue("glace sculptée");
+
+    // Et ils partent réellement au serveur depuis le GESTE, pas seulement
+    // depuis un appel direct au moteur.
+    await page.locator("#hoteDemande .psel-ajouter").click();
+    await expect.poll(async () => await page.evaluate(() => {
+      const a = (window.__rpcAppels || []).find(x => x.nom === "creer_passion");
+      return a && a.args.p_aliases ? a.args.p_aliases : null;
+    }), { timeout: 10000 }).toEqual(["glace sculptée"]);
+  });
+
+  // ⑱ On remonte ce que le SERVEUR a retenu, jamais ce qu'on a demandé.
+  test("⑱ les alias rendus sont ceux que le serveur a gardés", async ({ page }) => {
+    await bootAvecCompte(page);
+    // Le serveur en écarte un : il percute une passion existante.
+    await poserServeur(page, {
+      data: [{
+        id: "course-nocturne", label: "Course nocturne", emoji: "✨", color: "#7c3aed",
+        cree: true, aliases: ["trottiner"],
+      }],
+    });
+    const r = await page.evaluate(() => window.PassioPassions.creerPassion("course nocturne", {
+      alias: ["running", "trottiner"],
+    }));
+    expect(r.cree).toBe(true);
+    // Laisser croire que « running » a été gardé serait un mensonge tranquille.
+    expect(r.aliasRetenus).toEqual(["trottiner"]);
+
+    // Et tant que la migration n'est pas appliquée, la réponse ne porte pas la
+    // colonne : on rend un tableau vide, jamais `undefined`.
+    await poserServeur(page, CREEE);
+    const r2 = await page.evaluate(() => window.PassioPassions.creerPassion("sculpture sur glace"));
+    expect(r2.aliasRetenus).toEqual([]);
+  });
 });
