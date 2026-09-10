@@ -10164,7 +10164,57 @@ body.ctx-locked #appMain { overflow: hidden; }
    visait la LIGNE DE TITRES de la carte d'identité, qui répétait les mêmes mots
    5 px plus haut, et non les bulles. Cette ligne reste retirée ; les règles des
    pastilles, elles, sont parties avec leur seul émetteur. */
-#v9ProfilePassions.v9-profile-strip { margin: 12px 0 2px; }
+#v9ProfilePassions.v9-profile-strip { margin: 8px 0 2px; }
+
+/* ⚠️ LE RAIL DU PROFIL EST LÉGÈREMENT PLUS COMPACT QUE LE COMPOSANT DE BASE
+   (2026-09-10, demande de Benjamin : « réduis légèrement les bulles de passion
+   sur le profil de sorte que sur la page on puisse voir les onglets de choix de
+   visu de contenu »). Mesuré à 390 px : la carte d'identité + le rail à sa
+   taille d'origine poussaient les onglets « Publications | Activité » sous la
+   ligne de flottaison ; le rail passe d'environ 115 px de haut (marge comprise)
+   à environ 86 px, et les onglets reviennent dans le premier écran.
+
+   ⚠️ BORNÉ À `#v9ProfilePassions` — le Fil (`#profileStrip`) a déjà son propre
+   palier UI-7 (62 px / 34 px, gagnant par spécificité) et le profil VISITÉ
+   (`#visitedPassions`) garde le composant de base : on ne touche ni à l'un ni
+   à l'autre, et `ui-v7-lot.spec.js` continue de mesurer 46 px sur le Fil.
+
+   ⚠️ LA LARGEUR RESTE FIXE (jamais `flex: 1 1 0`, cf. `.profile-tile`) : on
+   descend de 84 à 72 px, les bulles ne se partagent pas la largeur du rail. Les
+   marges auto de centrage tiennent telles quelles — elles ne distribuent que du
+   libre POSITIF, donc une rangée plus étroite se centre encore, et une rangée
+   qui déborde coulisse toujours depuis son vrai début.
+
+   ⚠️ Le libellé reste à 10 px : en dessous, un nom de passion cesse d'être
+   lisible avant même d'être rogné par l'ellipse. C'est la VIGNETTE qui donne la
+   hauteur, pas le texte. */
+#v9ProfilePassions.v9-profile-strip { padding: 6px 16px 4px; gap: 10px; }
+#v9ProfilePassions .profile-tile {
+  width: 72px;
+  gap: 6px;
+  padding: 2px 3px 4px;
+}
+#v9ProfilePassions .profile-tile-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 14px;
+  font-size: 19px;
+}
+#v9ProfilePassions .profile-tile.active .profile-tile-avatar { font-size: 30px; }
+#v9ProfilePassions .profile-tile-emoji-badge {
+  width: 22px;
+  height: 22px;
+  bottom: -3px;
+  right: -3px;
+  font-size: 13px;
+}
+#v9ProfilePassions .profile-tile-count {
+  top: -4px;
+  right: -4px;
+  font-size: 9px;
+}
+#v9ProfilePassions .profile-tile-label { font-size: 10px; max-width: 64px; }
+#v9ProfilePassions .profile-tile.active .profile-tile-label { font-size: 11.5px; }
 
 #v9ProfilePassions .v9-strip-empty {
   padding: 12px 14px;
