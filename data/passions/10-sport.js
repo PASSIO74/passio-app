@@ -257,7 +257,7 @@ module.exports = [
   ["glisse-telemark", "Télémark", "ski télémark,talon libre", "glisse"],
   ["glisse-splitboard", "Splitboard", "snowboard de randonnée,planche séparable", "glisse"],
   ["glisse-surf-riviere", "Surf de rivière", "river surf", "glisse"],
-  ["glisse-entretien-materiel", "Entretien du matériel de glisse", "fartage,affûtage", "glisse"],
+  ["glisse-entretien-materiel", "Entretien du matériel de glisse", "fartage,aiguiser les carres", "glisse"],
 
   // ── Montagne et outdoor (compléments) ─────────────────────────────────
   ["outdoor-marche-nordique", "Marche nordique", "nordic walking", "outdoor"],
