@@ -159,6 +159,16 @@ async function referentielAuRepos(page) {
     null, { timeout: 20000 });
   const etat = await page.evaluate(() => window._referentielEtat());
   expect(etat.complet, "le référentiel ne doit pas être COMPLET au départ, sinon la garde fait ressortir le scénario").toBe(false);
+  // ⚠️ ET ON REMET LE FAUX SERVEUR À ZÉRO, ce qui n'est PAS un détail : en CI le
+  // chargement du boot échoue puis se REJOUE sur ce même faux serveur, donc son
+  // compteur de pages a déjà avancé quand le scénario commence. `⑬` demandait
+  // alors la page 2 en croyant demander la page 0 : il recevait la coupure
+  // d'entrée de jeu, ses 2 000 identifiants n'entraient jamais, et le cas était
+  // rouge pour une prémisse jamais posée — pas pour un défaut du code.
+  await page.evaluate(() => {
+    window.__pagePassions = 0;
+    window.__appels = { user_state: 0, passions: 0 };
+  });
 }
 
 test.describe("Reprise des lectures de démarrage après coupure réseau", () => {
@@ -330,7 +340,11 @@ test.describe("Reprise des lectures de démarrage après coupure réseau", () =>
       window.__scenario = "ok";
       window.__pagePassions = 0;
       window.dispatchEvent(new Event("online"));
-      await new Promise((r) => setTimeout(r, 500));
+      const limite = Date.now() + 10000;
+      while (Date.now() < limite) {
+        await new Promise((r) => setTimeout(r, 50));
+        if (window.__pagePassions > 0 && !window._referentielEtat().enVol) break;
+      }
       return {
         avant,
         apres: {
@@ -366,7 +380,12 @@ test.describe("Reprise des lectures de démarrage après coupure réseau", () =>
       window.__pagePassions = 0;
       window.__pagesPleines = 1;
       window.dispatchEvent(new Event("online"));
-      await new Promise((r) => setTimeout(r, 600));
+      // Attendre le REPOS, jamais un délai : la CI est plus lente que le poste.
+      const limite = Date.now() + 10000;
+      while (Date.now() < limite) {
+        await new Promise((r) => setTimeout(r, 50));
+        if (window.__pagePassions > 0 && !window._referentielEtat().enVol) break;
+      }
       return { avant, apres: window.estPassionCanonique("banc-p1-500") };
     }, ID_BANC);
     expect(r.avant).toBe(true);
