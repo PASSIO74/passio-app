@@ -28,7 +28,15 @@ for (const f of files) {
   const lines = src.split(/\r?\n/);
   for (let i = 0; i < lines.length; i++) {
     const m = lines[i].match(/^(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(/)
-      || lines[i].match(/^var\s+([A-Za-z_$][\w$]*)\s*[=;,]/);
+      || lines[i].match(/^var\s+([A-Za-z_$][\w$]*)\s*[=;,]/)
+      // ⚠️ `let`/`const` DE PREMIER NIVEAU ÉTAIENT HORS DU FILET, et leur mode
+      // d'échec est PIRE que celui de `function`. Les scripts classiques
+      // partagent l'environnement lexical global : une `function` redéclarée est
+      // écrasée en silence (déjà couvert), mais un `let`/`const` redéclaré lève
+      // un `SyntaxError` qui TUE LE SCRIPT ENTIER — donc tout un app-*.js.
+      // Trou relevé par l'audit du 2026-09-10 : les 11 déclarations du moteur de
+      // reprise réseau bénéficiaient d'un vert que la gate ne couvrait pas.
+      || lines[i].match(/^(?:let|const)\s+([A-Za-z_$][\w$]*)\s*[=;]/);
     if (!m) continue;
     const name = m[1];
     if (!decls.has(name)) decls.set(name, []);
