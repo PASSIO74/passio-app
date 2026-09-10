@@ -3,7 +3,7 @@
 // production le 2026-09-09.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { classer, empreinte, estDuBruit, classerApi, estDuBruitApi, libelleApi } from "../../scripts/sentinelle-detecter.mjs";
+import { classer, empreinte, estDuBruit, classerApi, estDuBruitApi, libelleApi, classerBoutons } from "../../scripts/sentinelle-detecter.mjs";
 
 test("« Script error. » est écarté : le navigateur refuse d'en dire plus", () => {
   // Observé en production. Une erreur d'un script d'une AUTRE origine est
@@ -163,4 +163,52 @@ test("le contexte remplace la pile d'appel ABSENTE, et dit la limite", () => {
 test("un code inconnu reste nommable, sans inventer de cause", () => {
   assert.equal(libelleApi("POST", "/x", 418), "HTTP 418 sur POST /x : en échec");
   assert.match(libelleApi("GET", "/y", 404), /introuvable/);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TROISIÈME FAMILLE — boutons sans effet mesuré (2026-09-10)
+// ⚠️ Elle RANGE des suspects, elle ne prouve rien. Ces verrous protègent
+// surtout ce qui la rendrait NUISIBLE : compter à travers les sessions, ou
+// publier sur une lecture partielle.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const clic = (a, s, t) => ({ action: a, screen: "irl", session_id: s, client_ts: t });
+const effet = (s, t) => ({ session_id: s, client_ts: t });
+
+test("un bouton dont AUCUN clic n'est suivi d'effet remonte en tête", () => {
+  const clics = Array.from({ length: 12 }, (_, i) => clic("Chercher", "s1", `2026-09-10T10:${String(i).padStart(2,"0")}:00Z`));
+  const vivants = Array.from({ length: 12 }, (_, i) => clic("Carte", "s1", `2026-09-10T11:${String(i).padStart(2,"0")}:00Z`));
+  // Chaque « Carte » est suivi d'un effet 1 s plus tard ; « Chercher » d'aucun.
+  const effets = vivants.map((c, i) => effet("s1", `2026-09-10T11:${String(i).padStart(2,"0")}:01Z`));
+  const r = classerBoutons([...clics, ...vivants], effets);
+  assert.equal(r[0].libelle, "Chercher");
+  assert.equal(r[0].tauxEffet, 0);
+  assert.equal(r[1].libelle, "Carte");
+  assert.equal(r[1].tauxEffet, 100);
+});
+
+test("l'effet d'une AUTRE session ne compte jamais", () => {
+  // Sans l'index par session, l'effet de « s2 » sauverait le bouton de « s1 »
+  // et le défaut deviendrait invisible — le contraire du but.
+  const clics = Array.from({ length: 10 }, (_, i) => clic("Mort", "s1", `2026-09-10T10:0${i}:00Z`));
+  const effets = Array.from({ length: 10 }, (_, i) => effet("s2", `2026-09-10T10:0${i}:01Z`));
+  const r = classerBoutons(clics, effets);
+  assert.equal(r[0].tauxEffet, 0);
+});
+
+test("un effet ARRIVÉ AVANT le clic ne compte pas non plus", () => {
+  const clics = Array.from({ length: 10 }, (_, i) => clic("X", "s1", `2026-09-10T10:0${i}:05Z`));
+  const effets = Array.from({ length: 10 }, (_, i) => effet("s1", `2026-09-10T10:0${i}:00Z`));
+  assert.equal(classerBoutons(clics, effets)[0].tauxEffet, 0);
+});
+
+test("un bouton peu cliqué n'est PAS un suspect", () => {
+  // Trois clics sans effet, c'est du hasard ; le seuil évite d'accuser au bruit.
+  assert.deepEqual(classerBoutons([clic("Rare","s1","2026-09-10T10:00:00Z")], []), []);
+});
+
+test("le libellé est TRONQUÉ : il porte du texte écrit par des gens", () => {
+  const long = "a".repeat(200);
+  const clics = Array.from({ length: 10 }, (_, i) => clic(long, "s1", `2026-09-10T10:0${i}:00Z`));
+  assert.equal(classerBoutons(clics, []) [0].libelle.length, 60);
 });

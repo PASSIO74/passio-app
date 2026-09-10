@@ -196,6 +196,75 @@ export function classerApi(lignes = [], options = {}) {
   return { candidates, ecartees };
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// TROISIÈME FAMILLE — LES BOUTONS QUI N'ONT AUCUN EFFET MESURÉ (2026-09-10)
+//
+// ⚠️ CETTE FAMILLE NE DÉCLENCHE JAMAIS DE CORRECTION AUTOMATIQUE, ET C'EST SA
+// DÉFINITION MÊME. Elle ne prouve RIEN : elle range des SUSPECTS.
+//
+// Le raisonnement : un clic est enregistré (`type=click`) ; si aucun événement
+// `action` / `nav` / `api` / `flow` ne suit dans la même session en 3 secondes,
+// le geste n'a produit aucun effet OBSERVABLE. Un bouton mort donne ça.
+//
+// ⚠️ MAIS UN BOUTON PARFAITEMENT VIVANT AUSSI, et c'est mesuré : « Chercher »
+// de l'écran Rencontrer sort à 8 % de suivi (13 clics, 1 effet) — il ouvre une
+// fenêtre de recherche de passion qui n'émet AUCUNE télémétrie. Le clic n'a pas
+// d'effet ABSENT, il a un effet NON INSTRUMENTÉ. Les deux sont indiscernables
+// ici, et aucune requête plus fine ne les distinguera : la seule vraie réponse
+// est d'instrumenter les effets.
+//
+// D'où la règle : ce classement paraît dans le RÉSUMÉ DU RUN, pour qu'un humain
+// aille regarder. Il n'entre jamais dans `cible`, donc il n'ouvre aucune issue,
+// donc il ne peut pas produire un correctif écrit à l'aveugle sur un bouton qui
+// marche. Le jour où les ouvertures de panneau seront instrumentées, ce signal
+// deviendra fiable — pas avant.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const BOUTON_FENETRE_MS = Number(process.env.SENTINELLE_BOUTON_MS || 3000);
+const BOUTON_MIN_CLICS = Number(process.env.SENTINELLE_BOUTON_MIN || 10);
+
+/**
+ * Range les libellés de clic par TAUX D'EFFET OBSERVÉ, du plus suspect au moins.
+ * FONCTION PURE — éprouvée sans base et sans réseau, comme ses deux sœurs.
+ *
+ * @param clics   [{action, screen, session_id, client_ts}]
+ * @param effets  [{session_id, client_ts}]  (type action|nav|api|flow)
+ */
+export function classerBoutons(clics = [], effets = [], options = {}) {
+  const fenetre = options.fenetreMs ?? BOUTON_FENETRE_MS;
+  const min = options.min ?? BOUTON_MIN_CLICS;
+
+  // Index par session : sans lui, chaque clic balaierait TOUS les effets.
+  const parSession = new Map();
+  for (const e of effets) {
+    const k = String(e.session_id || "");
+    if (!k) continue;
+    if (!parSession.has(k)) parSession.set(k, []);
+    parSession.get(k).push(Date.parse(e.client_ts));
+  }
+  for (const liste of parSession.values()) liste.sort((a, b) => a - b);
+
+  const groupes = new Map();
+  for (const c of clics) {
+    const t = Date.parse(c.client_ts);
+    if (!Number.isFinite(t)) continue;
+    // ⚠️ Le libellé PORTE le texte du bouton, donc potentiellement le nom d'une
+    // passion écrite par la personne. On le tronque et on ne le sort qu'ici,
+    // dans un résumé de run — jamais dans une issue publique.
+    const cle = `${String(c.screen || "?")} · ${String(c.action || "?").slice(0, 60)}`;
+    if (!groupes.has(cle)) groupes.set(cle, { cle, ecran: c.screen || "?", libelle: String(c.action || "?").slice(0, 60), clics: 0, avecEffet: 0 });
+    const g = groupes.get(cle);
+    g.clics++;
+    const suite = parSession.get(String(c.session_id || "")) || [];
+    if (suite.some((te) => te > t && te <= t + fenetre)) g.avecEffet++;
+  }
+
+  return [...groupes.values()]
+    .filter((g) => g.clics >= min)
+    .map((g) => ({ ...g, tauxEffet: Math.round((100 * g.avecEffet) / g.clics) }))
+    .sort((a, b) => (a.tauxEffet - b.tauxEffet) || (b.clics - a.clics));
+}
+
 /** Lit les erreurs récentes via PostgREST. Isolé pour rester testable. */
 async function lireErreurs({ url, cle, heures }) {
   const depuis = new Date(Date.now() - heures * 3600_000).toISOString();
@@ -219,6 +288,30 @@ async function lireApi({ url, cle, heures }) {
   return r.json();
 }
 
+/**
+ * Lit une table de télémétrie EN ENTIER sur la fenêtre, page par page.
+ *
+ * ⚠️ UNE LECTURE PARTIELLE FABRIQUE DE FAUX BOUTONS MORTS : il manquerait des
+ * EFFETS, donc des clics paraîtraient sans suite alors qu'ils en avaient une.
+ * On rend donc `{ lignes, complet }`, et l'appelant REFUSE de publier un
+ * classement incomplet. Mieux vaut ne rien dire que désigner un innocent.
+ */
+async function lirePagine({ url, cle, chemin, heures, pagesMax = 10 }) {
+  const depuis = new Date(Date.now() - heures * 3600_000).toISOString();
+  const taille = 1000;
+  const lignes = [];
+  for (let page = 0; page < pagesMax; page++) {
+    const r = await fetch(`${url}/rest/v1/${chemin}&received_at=gt.${depuis}` +
+      `&order=received_at.asc&limit=${taille}&offset=${page * taille}`,
+      { headers: { apikey: cle, Authorization: "Bearer " + cle } });
+    if (!r.ok) throw new Error(`${chemin}: HTTP ${r.status}`);
+    const lot = await r.json();
+    lignes.push(...lot);
+    if (lot.length < taille) return { lignes, complet: true };
+  }
+  return { lignes, complet: false };
+}
+
 async function principal() {
   const url = process.env.SUPABASE_URL;
   const cle = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -234,6 +327,23 @@ async function principal() {
     lireErreurs({ url, cle, heures }),
     lireApi({ url, cle, heures }),
   ]);
+
+  // ⚠️ LA TROISIÈME FAMILLE NE DOIT JAMAIS FAIRE ÉCHOUER LA DÉTECTION. Elle est
+  // un CONFORT (un classement de suspects) ; les deux autres sont le devoir.
+  // Si sa lecture échoue ou revient incomplète, on se tait sur elle et le reste
+  // du verdict part quand même.
+  let boutonsSuspects = null;
+  try {
+    const [clics, effets] = await Promise.all([
+      lirePagine({ url, cle, heures, chemin: "telemetry_events?select=action,screen,session_id,client_ts&type=eq.click" }),
+      lirePagine({ url, cle, heures, chemin: "telemetry_events?select=session_id,client_ts&type=in.(action,nav,api,flow)" }),
+    ]);
+    boutonsSuspects = (clics.complet && effets.complet)
+      ? classerBoutons(clics.lignes, effets.lignes).slice(0, 5)
+      : { incomplet: true, note: "Lecture tronquée : un classement partiel désignerait des innocents." };
+  } catch (e) {
+    boutonsSuspects = { erreur: String(e.message || e) };
+  }
   const js = classer(lignes);
   const api = classerApi(appels);
   // ⚠️ LES DEUX FAMILLES SONT MISES EN CONCURRENCE SUR LA MÊME RÈGLE — comptes
@@ -248,6 +358,11 @@ async function principal() {
     ecartees: js.ecartees + api.ecartees,
     retenues: candidates.length,
     parFamille: { js: js.candidates.length, api: api.candidates.length },
+    // ⚠️ HORS `cible`, DÉLIBÉRÉMENT : ce classement n'ouvre aucune issue et ne
+    // déclenche aucun correctif. Il paraît dans le résumé du run pour qu'un
+    // humain aille VÉRIFIER — un taux bas peut être un bouton mort comme un
+    // effet non instrumenté, et rien ici ne sait les distinguer.
+    boutonsSuspects,
     cible: candidates[0] || null,
   };
   console.log(JSON.stringify(verdict, null, 2));
