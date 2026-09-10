@@ -265,6 +265,66 @@ export function classerBoutons(clics = [], effets = [], options = {}) {
     .sort((a, b) => (a.tauxEffet - b.tauxEffet) || (b.clics - a.clics));
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// NE PAS ROUVRIR UNE ENQUÊTE SUR UN DÉFAUT DÉJÀ CORRIGÉ (2026-09-10)
+//
+// ⚠️ MESURÉ, PAS SUPPOSÉ. Le 2026-09-09 à 23h22 la sentinelle ouvre #312
+// (« HTTP 409 sur POST /rest/v1/profiles »), le canal produit la PR #313, elle
+// est fusionnée et DÉPLOYÉE à 23h47, l'issue est fermée à 04h43. À 06h05 la
+// sentinelle rouvre EXACTEMENT le même défaut (#316) — parce que sa fenêtre de
+// 24 h porte encore les 9 occurrences d'AVANT le correctif (la dernière à
+// 14h31). Le détecteur ne connaît pas la date du correctif : pour lui, des
+// lignes anciennes et un défaut vivant se ressemblent trait pour trait.
+//
+// ⚠️ CE N'EST PAS UN DÉSAGRÉMENT, C'EST UN ARRÊT DU CANAL. La garde « une
+// enquête à la fois » compte les issues [SENTINELLE] OUVERTES : tant que ce
+// faux doublon est là, AUCUN autre défaut ne peut être détecté ni corrigé.
+// Un défaut réel survenu ce matin-là serait resté invisible — et le canal
+// aurait eu l'air de fonctionner, puisqu'il travaillait.
+//
+// ⚠️ LA COMPARAISON PORTE SUR LA DERNIÈRE OCCURRENCE, JAMAIS SUR LE TITRE SEUL.
+// Taire un titre pendant N heures suppose que le défaut ne récidive pas, ce que
+// personne ne sait. Ici la règle est exacte : si TOUTES les occurrences
+// précèdent la fermeture d'une enquête identique, ce sont des lignes d'avant le
+// correctif, on se tait. Qu'UNE SEULE occurrence lui soit postérieure et le
+// défaut est vivant — on rouvre, c'est même à ça que sert la récidive.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Titre de l'issue d'une cible.
+ * ⚠️ SEULE SOURCE DU TITRE. Le workflow l'écrivait en toutes lettres de son
+ * côté ; deux constructions du même titre finissent toujours par diverger, et
+ * une dédup qui compare des titres divergents ne dédoublonne RIEN, en silence.
+ */
+export function titreIssue(cible) {
+  return "[SENTINELLE] " + String(cible?.message || "").slice(0, 80);
+}
+
+/**
+ * Ce défaut a-t-il déjà été traité ? `fermees` = les issues [SENTINELLE] closes,
+ * telles que `gh issue list --label sentinelle --state closed` les rend.
+ *
+ * ⚠️ On filtre par LABEL, jamais par `--search "[SENTINELLE]" in:title` :
+ * l'index de recherche de GitHub retarde (mesuré le 2026-09-10, #316 absente de
+ * l'index plusieurs heures après sa création). Une dédup qui interroge un index
+ * en retard laisse passer très exactement le doublon qu'elle devait arrêter.
+ */
+export function dejaCorrige(cible, fermees) {
+  if (!cible || !Array.isArray(fermees)) return false;
+  const titre = titreIssue(cible);
+  const dernier = Date.parse(cible.dernier);
+  // Une cible sans date d'occurrence lisible ne se compare à rien : on ne peut
+  // pas prouver qu'elle est ancienne, donc on laisse l'enquête s'ouvrir. Se
+  // taire sur un doute ferait manquer un vrai défaut ; ouvrir en trop coûte une
+  // issue qu'un humain referme.
+  if (!Number.isFinite(dernier)) return false;
+  return fermees.some((f) => {
+    if (String(f?.title || "") !== titre) return false;
+    const clos = Date.parse(f?.closedAt || f?.closed_at);
+    return Number.isFinite(clos) && clos > dernier;
+  });
+}
+
 /** Lit les erreurs récentes via PostgREST. Isolé pour rester testable. */
 async function lireErreurs({ url, cle, heures }) {
   const depuis = new Date(Date.now() - heures * 3600_000).toISOString();
