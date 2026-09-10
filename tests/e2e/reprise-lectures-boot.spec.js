@@ -114,6 +114,26 @@ async function poserFauxSupa(page) {
   }, ID_BANC);
 }
 
+/**
+ * ⚠️ EN CI LE VRAI SDK SE CHARGE, ET IL A DÉJÀ CHARGÉ LE RÉFÉRENTIEL. C'est la
+ * divergence d'environnement de famille du dépôt (`admissionCanalPret`,
+ * `supa.functions`) : en local le SDK vient d'un CDN, `_supaReal` reste faux et
+ * `chargerReferentielPassions` sort sur sa garde au boot — le banc contrôle donc
+ * tout. En CI le vrai client part, la requête `passions` ABOUTIT, le référentiel
+ * est publié COMPLET, et l'appel du banc ressort aussitôt sur
+ * `_referentielPassions && _referentielComplet` : zéro page servie, zéro
+ * inscription, deux cas rouges — pour un défaut du BANC, pas du code.
+ *
+ * On coupe donc la route réelle AVANT la navigation, pour que les deux
+ * environnements partent du même état : référentiel jamais chargé, jamais
+ * complet. Le chargement du boot échoue alors comme une vraie coupure et
+ * s'inscrit au registre — d'où l'acquittement en tête de scénario, qui rend au
+ * cas ses trois essais et désarme la minuterie du boot.
+ */
+async function sansReferentielReel(page) {
+  await page.route("**/rest/v1/passions*", (route) => route.abort("failed"));
+}
+
 test.describe("Reprise des lectures de démarrage après coupure réseau", () => {
 
   test("① estEchecReseau sépare une panne de réseau d'un refus du serveur", async ({ page }) => {
@@ -264,9 +284,11 @@ test.describe("Reprise des lectures de démarrage après coupure réseau", () =>
   });
 
   test("⑨ un référentiel de passions TRONQUÉ par une coupure est rechargé", async ({ page }) => {
+    await sansReferentielReel(page);
     await bootOnboarded(page, null);
     await poserFauxSupa(page);
     const r = await page.evaluate(async (idBanc) => {
+      window.acquitterLecture("passions");   // repartir du même état qu'en local
       window.__scenario = "reseau";
       window.chargerReferentielPassions();          // page 0 pleine, page 1 coupée
       await new Promise((r) => setTimeout(r, 300));
@@ -300,9 +322,11 @@ test.describe("Reprise des lectures de démarrage après coupure réseau", () =>
   });
 
   test("⑬ un rejeu ne RÉTRÉCIT jamais la liste blanche des passions", async ({ page }) => {
+    await sansReferentielReel(page);
     await bootOnboarded(page, null);
     await poserFauxSupa(page);
     const r = await page.evaluate(async (idBanc) => {
+      window.acquitterLecture("passions");   // repartir du même état qu'en local
       // Premier chargement : deux pages pleines, puis coupure → 2 000 ids connus.
       window.__scenario = "reseau";
       window.__pagesPleines = 2;
