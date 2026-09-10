@@ -101,7 +101,7 @@ test.describe("Créer une passion", () => {
     // passion qu'on vient de créer s'afficherait générique jusqu'au prochain
     // démarrage (même famille de défaut que le lot TAXO-1).
     const meta = await page.evaluate((i) => passionById(i), ID_ESSAI);
-    expect(meta.label).toBe("Sculpture sur glace");
+    expect(meta.label).toBe(LIBELLE_ESSAI);
     expect(meta.emoji).toBe("🧊");
 
     // PUBLIABLE TOUT DE SUITE : c'est tout l'objet du lot. `estPassionCanonique`
@@ -205,7 +205,7 @@ test.describe("Créer une passion", () => {
     expect(await bouton.getAttribute("data-tel")).toBe("passion_creation");
 
     await bouton.click();
-    await expect(page.locator("#hoteCreation .psel-puce")).toContainText("Sculpture sur glace", { timeout: 10000 });
+    await expect(page.locator("#hoteCreation .psel-puce")).toContainText(LIBELLE_ESSAI, { timeout: 10000 });
     expect(await page.evaluate(() => window.__choisies)).toContain(ID_ESSAI);
     // Le champ est rendu vide : la frappe a abouti, elle ne reste pas en plan.
     expect(await page.locator("#hoteCreation .psel-input").inputValue()).toBe("");

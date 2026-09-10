@@ -408,6 +408,29 @@ entier (5 001 passions, mêmes relations, `rechercher_passions('jogging')` rend
 toujours `running`), le rejeu ne change rien, et la partie 2 appliquée seule
 **échoue** au lieu de laisser une base à moitié faite.
 
+### ⚠️ LA PRÉVISION DE POIDS DU §3.3 ÉTAIT SOUS-ESTIMÉE DE 40 %, ET C'EST INSTRUCTIF
+
+| à 5 000 passions | prévu (§3.3) | **mesuré** |
+|---|---:|---:|
+| JSON brut | 410 Ko | **568 Ko** |
+| JSON gzip | 94 Ko | **142 Ko** |
+
+Ce n'est pas une erreur de calcul : l'extrapolation du §3.3 partait de la
+densité d'alias **du moment** (0,93 alias par passion). La vague 2 puis la
+vague 3 l'ont portée à **1,82** — presque le double. Le poids suit les alias,
+pas les passions.
+
+**La leçon vaut pour la prochaine prévision** : extrapoler un poids « par
+passion » suppose que la composition d'une passion ne change pas. Ici elle a
+changé, et délibérément — c'était la recommandation la plus importante de
+l'étude. Une prévision de capacité doit dire de quelle densité elle part,
+sinon elle se périme au premier progrès qu'on lui demande.
+
+Les plafonds ne bougent pas pour autant : à 12 000 passions et 1,82 alias, on
+serait autour de 1,4 Mo brut / 340 Ko gzip. C'est cher pour une ressource
+chargée à la demande, ce n'est pas rédhibitoire — et cela renforce la borne
+de 12 000, ça ne l'invalide pas.
+
 ### Ce que la vague 3 ne règle pas
 
 - **1 021 passions n'ont encore qu'UN alias** (c'était 623 avant la vague : les
