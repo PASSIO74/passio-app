@@ -221,7 +221,7 @@ module.exports = [
   ["bricolage-piscine", "Piscine et spa", "spa,jacuzzi", "bricolage"],
   ["bricolage-garage", "Garage et atelier", "atelier maison,établi", "bricolage"],
   ["bricolage-cave-grenier", "Cave et combles", "aménagement de combles", "bricolage"],
-  ["bricolage-isolation-phonique", "Isolation phonique", "acoustique", "bricolage"],
+  ["bricolage-isolation-phonique", "Isolation phonique", "insonoriser,traitement du bruit", "bricolage"],
   ["bricolage-renovation-energetique", "Rénovation énergétique", "dpe,performance énergétique", "bricolage"],
   ["bricolage-deco-scandinave", "Styles de décoration", "scandinave,industriel,bohème", "bricolage"],
   ["bricolage-feng-shui", "Harmonie intérieure", "feng shui", "bricolage"],
