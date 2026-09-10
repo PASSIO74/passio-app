@@ -851,10 +851,30 @@
       }, function (err) {
         var dt = ((performance && performance.now) ? performance.now() : Date.now()) - t0;
         if (/supabase|functions|api/i.test(path) && !_selfCall) {
+          // ⚠️ « LA REQUÊTE A ÉCHOUÉ » ET « NOTRE CODE A UN DÉFAUT » NE SONT PAS
+          // LA MÊME CHOSE, et cette ligne les confondait. Un `http_status = 0`
+          // veut dire que la requête n'a jamais atteint le serveur : appareil
+          // hors ligne, ou page mise en arrière-plan qui fait tomber d'un coup
+          // toutes les requêtes en vol (mesuré en production : jusqu'à 23 dans
+          // la même seconde, 448 sur 14 jours). Les peindre en `error` au même
+          // titre qu'un vrai défaut remplissait le centre de pilotage de bruit
+          // — précisément l'écran qui sert à voir les vrais défauts, même
+          // famille que « newestWorker is null » le 2026-09-08.
+          //
+          // On ne dégrade QUE lorsque la cause est PROUVÉE au moment de l'échec
+          // (page masquée, ou navigateur qui se déclare hors ligne). Un échec
+          // réseau page visible et en ligne reste une `error` : celui-là, on ne
+          // sait pas l'expliquer, et il ne doit pas se taire.
+          var _masquee = false, _horsLigne = false;
+          try { _masquee = (typeof document !== "undefined" && document.visibilityState === "hidden"); } catch (e) {}
+          try { _horsLigne = (typeof navigator !== "undefined" && navigator.onLine === false); } catch (e) {}
+          var _transitoire = _masquee || _horsLigne;
           Telemetry.api({
             action: method + " " + path, endpoint: path,
-            duration_ms: dt, status: "error", severity: "error",
+            duration_ms: dt, status: "error",
+            severity: _transitoire ? "warn" : "error",
             http_status: 0, message: err && err.message,
+            meta: { masquee: _masquee, hors_ligne: _horsLigne },
             correlation_id: Telemetry._ambientFlowCid(),
           });
         }

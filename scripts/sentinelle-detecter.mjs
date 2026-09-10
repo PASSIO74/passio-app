@@ -329,6 +329,98 @@ export function classerBoutons(clics = [], effets = [], options = {}) {
     .sort((a, b) => (a.tauxEffet - b.tauxEffet) || (b.clics - a.clics));
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// NE PAS ROUVRIR UNE ENQUÊTE SUR UN DÉFAUT DÉJÀ CORRIGÉ (2026-09-10)
+//
+// ⚠️ MESURÉ, PAS SUPPOSÉ. Le 2026-09-09 à 23h22 la sentinelle ouvre #312
+// (« HTTP 409 sur POST /rest/v1/profiles »), le canal produit la PR #313, elle
+// est fusionnée et DÉPLOYÉE à 23h47, l'issue est fermée à 04h43. À 06h05 la
+// sentinelle rouvre EXACTEMENT le même défaut (#316) — parce que sa fenêtre de
+// 24 h porte encore les 9 occurrences d'AVANT le correctif (la dernière à
+// 14h31). Le détecteur ne connaît pas la date du correctif : pour lui, des
+// lignes anciennes et un défaut vivant se ressemblent trait pour trait.
+//
+// ⚠️ CE N'EST PAS UN DÉSAGRÉMENT, C'EST UN ARRÊT DU CANAL. La garde « une
+// enquête à la fois » compte les issues [SENTINELLE] OUVERTES : tant que ce
+// faux doublon est là, AUCUN autre défaut ne peut être détecté ni corrigé.
+// Un défaut réel survenu ce matin-là serait resté invisible — et le canal
+// aurait eu l'air de fonctionner, puisqu'il travaillait.
+//
+// ⚠️ LA COMPARAISON PORTE SUR LA DERNIÈRE OCCURRENCE, JAMAIS SUR LE TITRE SEUL.
+// Taire un titre pendant N heures suppose que le défaut ne récidive pas, ce que
+// personne ne sait. Ici la règle est exacte : si TOUTES les occurrences
+// précèdent la fermeture d'une enquête identique, ce sont des lignes d'avant le
+// correctif, on se tait. Qu'UNE SEULE occurrence lui soit postérieure et le
+// défaut est vivant — on rouvre, c'est même à ça que sert la récidive.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Titre de l'issue d'une cible.
+ * ⚠️ SEULE SOURCE DU TITRE. Le workflow l'écrivait en toutes lettres de son
+ * côté ; deux constructions du même titre finissent toujours par diverger, et
+ * une dédup qui compare des titres divergents ne dédoublonne RIEN, en silence.
+ *
+ * ⚠️ ET IL NE PORTE PLUS UNE LIGNE ÉCRITE PAR UN INCONNU (2026-09-10).
+ * `client_errors` accepte un INSERT non authentifié, et ce titre part dans une
+ * issue étiquetée `sentinelle` — donc dans les trois conditions qui arment
+ * l'auto-fusion. C'était la SEULE partie de l'issue qu'aucune clôture de bloc ne
+ * protégeait. Il porte désormais l'EMPREINTE (chiffres et URL normalisés),
+ * passée par `desamorcer()` comme le corps, plus un condensé qui distingue deux
+ * familles voisines. Rien de librement choisi ne subsiste.
+ *
+ * ⚠️ CONSÉQUENCE À CONNAÎTRE, ET ELLE EST BORNÉE : le format du titre a changé,
+ * donc une enquête CLOSE AVANT le 2026-09-10 ne se reconnaît plus dans le
+ * nouveau. `dejaCorrige` peut donc laisser rouvrir UNE fois chaque défaut déjà
+ * corrigé d'avant — une issue qu'un humain referme, jamais un défaut manqué.
+ * Le mécanisme reprend tout son effet dès la première enquête close au nouveau
+ * format. On ne compare pas « à peu près » pour éviter cette bosse : une dédup
+ * approximative rate les vrais doublons, ce qui est bien pire.
+ */
+export function titreIssue(cible) {
+  const cle = String(cible?.cle || cible?.message || "");
+  const lisible = desamorcer(cle, 1).replace(/[\n\r]/g, " ").slice(0, 60).trim();
+  return "[SENTINELLE] " + (lisible || "defaut de production") + " · " + condense(cle);
+}
+
+/**
+ * Condensé stable d'une empreinte, pour distinguer deux familles dont le début
+ * lisible se ressemble. Huit caractères suffisent ici : on distingue, on
+ * n'authentifie rien.
+ */
+export function condense(texte) {
+  let h = 5381;
+  const s = String(texte || "");
+  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
+  return h.toString(16).padStart(8, "0");
+}
+
+/**
+ * Ce défaut a-t-il déjà été traité ? `fermees` = les issues [SENTINELLE] closes,
+ * telles que `gh issue list --label sentinelle --state closed` les rend.
+ *
+ * ⚠️ On filtre par LABEL, jamais par `--search "[SENTINELLE]" in:title` :
+ * l'index de recherche de GitHub retarde (mesuré le 2026-09-10, #316 absente de
+ * l'index plusieurs heures après sa création). Une dédup qui interroge un index
+ * en retard laisse passer très exactement le doublon qu'elle devait arrêter.
+ */
+export function dejaCorrige(cible, fermees) {
+  if (!cible || !Array.isArray(fermees)) return false;
+  const titre = titreIssue(cible);
+  const dernier = Date.parse(cible.dernier);
+  // Une cible sans date d'occurrence lisible ne se compare à rien : on ne peut
+  // pas prouver qu'elle est ancienne, donc on laisse l'enquête s'ouvrir. Se
+  // taire sur un doute ferait manquer un vrai défaut ; ouvrir en trop coûte une
+  // issue qu'un humain referme.
+  if (!Number.isFinite(dernier)) return false;
+  return fermees.some((f) => {
+    if (String(f?.title || "") !== titre) return false;
+    const clos = Date.parse(f?.closedAt || f?.closed_at);
+    return Number.isFinite(clos) && clos > dernier;
+  });
+}
+
+/** Lit les erreurs récentes via PostgREST. Isolé pour rester testable. */
+
 /**
  * Lit les erreurs récentes via PostgREST. Isolé pour rester testable.
  *

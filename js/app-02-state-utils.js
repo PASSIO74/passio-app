@@ -453,6 +453,223 @@ function _peutPousserEtat() {
 window._peutPousserEtat = _peutPousserEtat;
 window._exigerRestaurationAvantEcriture = _exigerRestaurationAvantEcriture;
 
+// ═══════════════════════════════════════════════════════════════════════════
+// REPRISE DES LECTURES DE DÉMARRAGE APRÈS UNE COUPURE RÉSEAU (2026-09-10)
+//
+// Mesuré en production sur 14 jours (telemetry_events, type=api) : 448 appels
+// morts avec `http_status = 0` et le message « Failed to fetch », sur
+// 46 sessions. Ce ne sont PAS des refus du serveur — la requête n'a jamais
+// atteint PostgREST : elle a été tuée dans le navigateur.
+//
+// ⚠️ CE QUE LA MESURE DIT, ET QUI CONTREDIT L'HYPOTHÈSE DE DÉPART. On soupçonnait
+// iOS/Safari, qui coupe les requêtes d'une page mise en arrière-plan. La base ne
+// porte AUCUNE ligne iOS de cette famille : 374 sur Android/Chrome, 57 sur
+// Windows/Edge, 17 sur Windows/Chrome. Et le passage en arrière-plan n'explique
+// qu'un tiers du total (126 des 374 lignes Android sont précédées d'un
+// `lifecycle hidden` dans la minute ; ZÉRO des 74 lignes de bureau). La cause
+// dominante est donc la PERTE DE CONNEXION — 3,2 échecs par seconde en moyenne,
+// jusqu'à 23 d'un coup, c'est-à-dire toutes les requêtes en vol qui tombent
+// ensemble, pas une requête malchanceuse.
+//
+// ⚠️ D'OÙ LA FORME DU CORRECTIF. « N'émettre que si la page est visible » aurait
+// laissé passer les deux tiers des cas, retardé le premier rendu de tout
+// démarrage en arrière-plan (préchargement, lancement PWA), et n'aurait rien
+// réparé du tout : la requête coupée reste coupée. Ce qui manque n'est pas une
+// garde à l'ALLER, c'est un REJEU au RETOUR.
+//
+// ⚠️ ET C'EST LE CHEMIN DE LECTURE QUI N'EN AVAIT PAS. Les ÉCRITURES sont déjà
+// couvertes, chacune par sa file (`_flushPendingUserState`, `_delObFlush`,
+// `_cmtObFlush`, `_flushOutbox`), toutes branchées sur `online`. Les LECTURES de
+// démarrage n'avaient rien : une coupure d'une seconde au boot laissait l'état
+// du compte non restauré et le référentiel des passions tronqué POUR TOUTE LA
+// SESSION, sans un message, sans une seconde tentative. Mesuré : seuls 92 des
+// 448 échecs sont suivis d'un appel réussi dans la même session.
+//
+// ⚠️ ON NE REJOUE QUE CE QUI EST IDEMPOTENT, ET SEULEMENT SUR UNE PANNE DE
+// RÉSEAU. Un refus du serveur (401, 403 RLS, 409) revient dans `{ error }` avec
+// un code : le rejouer, c'est marteler une porte fermée. `estEchecReseau` est la
+// SEULE autorité qui distingue les deux, et elle refuse par défaut.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Les libellés réels des quatre moteurs, pas une supposition : Chrome/Edge
+// « Failed to fetch », WebKit « Load failed », Firefox « NetworkError when
+// attempting to fetch resource », iOS « The network connection was lost ».
+// postgrest-js préfixe les siens par « FetchError: » — d'où la recherche EN
+// SOUS-CHAÎNE, jamais une égalité.
+const _RE_ECHEC_RESEAU = /failed to fetch|fetcherror|networkerror|network request failed|load failed|network connection was lost|connection appears to be offline/i;
+
+// Vrai UNIQUEMENT si la requête n'a jamais eu de réponse. Un refus du serveur en
+// est exclu par deux chemins indépendants : le code PostgREST/PostgreSQL
+// (`42501`, `PGRST116`…) et le statut HTTP. ⚠️ postgrest-js pose `code: ''` sur
+// une panne de fetch — chaîne VIDE, donc falsy : tester la présence du code
+// suffit, mais il faut le faire avant le message, sinon un futur libellé de
+// refus contenant « fetch » passerait pour une panne réseau.
+function estEchecReseau(e) {
+  try {
+    if (!e) return false;
+    // ⚠️ SEUL UN CODE **CHAÎNE** PROUVE UN REFUS SERVEUR. `DOMException` porte un
+    // `code` NUMÉRIQUE hérité (AbortError 20, TimeoutError 23, NETWORK_ERR 19) :
+    // tester la simple présence écartait donc de vraies pannes réseau, très
+    // exactement l'inverse du but. Les codes PostgREST/PostgreSQL sont des
+    // chaînes (`42501`, `PGRST116`, `23505`).
+    if (typeof e.code === "string" && e.code) return false;
+    if (typeof e.status === "number" && e.status >= 400) return false;
+    const m = String((e && e.message) || e || "");
+    return _RE_ECHEC_RESEAU.test(m);
+  } catch (_e) { return false; }
+}
+window.estEchecReseau = estEchecReseau;
+
+// Registre des lectures à rejouer : nom → fonction. Le COMPTEUR d'essais vit
+// dans une seconde table, et c'est nécessaire : le pilote DÉSINSCRIT la lecture
+// avant de la rejouer (elle se réinscrit elle-même si elle échoue encore), donc
+// un compteur porté par l'entrée serait remis à zéro à chaque tour — la borne
+// ne bornerait rien.
+const _lecturesAReprendre = new Map();
+const _repriseEssais = new Map();
+const REPRISE_ESSAIS_MAX = 3;
+const REPRISE_DELAIS = [2000, 8000, 30000];
+// Au-delà, la lecture n'est plus « de démarrage » : on abandonne au lieu de
+// réappliquer un état devenu obsolète (voir le rejeu ci-dessous).
+const REPRISE_TTL_MS = 120000;
+// Un `fetch` qui ne se règle jamais ne doit pas geler le pilote pour les autres.
+const REPRISE_ATTENTE_MAX_MS = 20000;
+let _repriseTimer = null;
+let _repriseEnCours = false;
+
+// Inscrit une lecture au registre. Rend `false` quand la borne est atteinte :
+// l'appelant sait alors que plus personne ne réessaiera.
+function noterLectureAReprendre(nom, rejouer) {
+  try {
+    if (!nom || typeof rejouer !== "function") return false;
+    if ((_repriseEssais.get(nom) || 0) >= REPRISE_ESSAIS_MAX) return false;
+    _lecturesAReprendre.set(nom, { fn: rejouer, pose: Date.now() });
+    _armerReprise();
+    return true;
+  } catch (_e) { return false; }
+}
+
+// La lecture a abouti : on la retire ET on rend son crédit d'essais. Sans la
+// remise à zéro, une coupure au démarrage puis une autre une heure plus tard
+// trouveraient le compteur déjà épuisé.
+function acquitterLecture(nom) {
+  try {
+    _lecturesAReprendre.delete(nom);
+    _repriseEssais.delete(nom);
+    _armerReprise();          // c'était peut-être la dernière : on désarme
+  } catch (_e) {}
+}
+
+function _armerReprise() {
+  try {
+    // ⚠️ PLUS RIEN À REJOUER = PLUS DE MINUTERIE. Sans ce désarmement, la
+    // minuterie posée à la première panne continuait de courir après que la
+    // borne d'essais a vidé le registre : un réveil pour rien, et un état
+    // « armé » que le diagnostic rapportait alors qu'aucune reprise n'était
+    // possible. Même famille que le timer de debounce laissé courir par
+    // `supaSaveUserStateBeacon` — on annule au lieu de laisser expirer.
+    if (!_lecturesAReprendre.size) {
+      if (_repriseTimer) { clearTimeout(_repriseTimer); _repriseTimer = null; }
+      return;
+    }
+    if (_repriseTimer) return;
+    let essais = REPRISE_ESSAIS_MAX;
+    _lecturesAReprendre.forEach(function (_l, nom) {
+      const n = _repriseEssais.get(nom) || 0;
+      if (n < essais) essais = n;
+    });
+    const delai = REPRISE_DELAIS[Math.min(essais, REPRISE_DELAIS.length - 1)];
+    _repriseTimer = setTimeout(function () {
+      _repriseTimer = null;
+      repriseLecturesBoot("minuterie");
+    }, delai);
+  } catch (_e) {}
+}
+
+// Rejoue les lectures en attente. Rend le NOMBRE de lectures relancées — c'est
+// ce que mesure le banc, un `undefined` ne prouverait rien.
+//
+// ⚠️ On ne rejoue JAMAIS depuis une page masquée ni hors ligne : ce serait
+// refabriquer l'échec, consommer un essai, et faire croire à la borne que trois
+// vraies tentatives ont eu lieu. Le retour en visibilité et l'événement `online`
+// rappellent le pilote de toute façon.
+async function repriseLecturesBoot(raison) {
+  if (_repriseEnCours || !_lecturesAReprendre.size) return 0;
+  try {
+    // ⚠️ RÉARMER AVANT DE RENONCER. Ces deux sorties précoces arrivent AVANT le
+    // `try/finally` qui réarme : quand la minuterie expirait pendant que la page
+    // était masquée, son callback avait déjà remis `_repriseTimer` à `null` et
+    // plus AUCUNE minuterie ne courait — le registre restait plein, et
+    // `_repriseEtat().arme` rendait `false` en mentant. Le rattrapage ne tenait
+    // plus qu'aux événements `online`/`visibilitychange`.
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") { _armerReprise(); return 0; }
+    if (typeof navigator !== "undefined" && navigator.onLine === false) { _armerReprise(); return 0; }
+  } catch (_e) {}
+  _repriseEnCours = true;
+  let relancees = 0;
+  try {
+    const entrees = Array.from(_lecturesAReprendre.entries());
+    for (const paire of entrees) {
+      const nom = paire[0], fn = paire[1].fn, pose = paire[1].pose;
+      // ⚠️ UNE LECTURE DE DÉMARRAGE PÉRIME. Le retour en visibilité peut arriver
+      // des heures plus tard : rejouer alors `user_state` ferait réappliquer un
+      // blob serveur par-dessus une session VIVANTE (`_applyUserState` remplace
+      // `state` clé par clé, et sa fusion défensive ne couvre pas `userPosts`).
+      // Le rapport d'origine le disait déjà : « le retry rejoue une requête
+      // potentiellement périmée — à encadrer par une TTL courte ».
+      if (Date.now() - pose > REPRISE_TTL_MS) { _lecturesAReprendre.delete(nom); continue; }
+      const essais = (_repriseEssais.get(nom) || 0) + 1;
+      if (essais > REPRISE_ESSAIS_MAX) { _lecturesAReprendre.delete(nom); continue; }
+      // Désinscription AVANT l'appel : la lecture se réinscrit elle-même si elle
+      // échoue de nouveau, et le fait par `noterLectureAReprendre`, qui porte la
+      // borne. C'est ce qui rend une boucle infinie impossible par construction.
+      _lecturesAReprendre.delete(nom);
+      _repriseEssais.set(nom, essais);
+      relancees++;
+      try {
+        if (typeof diagLog === "function") diagLog("↻ reprise lecture « " + nom + " » (" + raison + ", essai " + essais + "/" + REPRISE_ESSAIS_MAX + ")");
+      } catch (_e) {}
+      // ⚠️ NI CATCH MUET, NI ATTENTE SANS FIN. Un `catch (_e) {}` nu avalait ici
+      // un ReferenceError (renommage d'une lecture, `renderEverything` disparu)
+      // ALORS QUE l'entrée venait d'être désinscrite et l'essai consommé : au
+      // bout de trois tours muets le moteur s'éteignait et rendait un registre
+      // vide, indiscernable de « tout va bien ». Et un `fetch` qui ne se règle
+      // jamais gelait `_repriseEnCours`, donc TOUTES les autres lectures avec.
+      try {
+        await Promise.race([
+          Promise.resolve(fn()),
+          new Promise(function (r) { setTimeout(r, REPRISE_ATTENTE_MAX_MS); }),
+        ]);
+      } catch (e) {
+        try {
+          if (typeof diagLog === "function") diagLog("✗ reprise « " + nom + " » : " + (e && e.message));
+        } catch (_e) {}
+      }
+    }
+  } finally {
+    _repriseEnCours = false;
+    _armerReprise();
+  }
+  return relancees;
+}
+
+window.noterLectureAReprendre = noterLectureAReprendre;
+window.acquitterLecture = acquitterLecture;
+window.repriseLecturesBoot = repriseLecturesBoot;
+// Diagnostic et bancs seulement — jamais un chemin de rendu.
+window._repriseEtat = function () {
+  const essais = {};
+  _repriseEssais.forEach(function (n, nom) { essais[nom] = n; });
+  return { enAttente: Array.from(_lecturesAReprendre.keys()), essais, arme: !!_repriseTimer };
+};
+
+try {
+  window.addEventListener("online", function () { repriseLecturesBoot("online"); });
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "visible") repriseLecturesBoot("visible");
+  });
+} catch (_e) {}
+
 let _stateSyncTimer = null;
 // Drapeau « l'état a changé depuis la dernière sauvegarde aboutie ». saveState() est
 // l'entonnoir unique des mutations (il appelle _scheduleStateSync), donc c'est ici
@@ -932,12 +1149,36 @@ function restaurerPassionActiveApresFusion(localCurrentId) {
 // rendu » n'est pas « le serveur a répondu ».
 window._etatCompteCharge = false;
 
+// Rejeu de la lecture d'état. ⚠️ IL NE SUFFIT PAS DE RELIRE : `supaLoadUserState`
+// applique le blob serveur sur `state` mais ne REPEINT rien — appelée hors du
+// boot, sa restauration resterait invisible jusqu'au prochain rendu spontané.
+// Même raison que le `renderEverything()` du rejeu d'écriture (`supaInit`).
+async function _repriseUserState() {
+  const restaure = await supaLoadUserState();
+  if (restaure) { try { if (typeof renderEverything === "function") renderEverything(); } catch (_e) {} }
+}
+function _noterRepriseUserState() {
+  try { noterLectureAReprendre("user_state", _repriseUserState); } catch (_e) {}
+}
+
 async function supaLoadUserState() {
   try {
     if (typeof supa === "undefined" || !supa || !window._supaReal) return false;
     if (typeof MY_UID === "undefined" || !MY_UID) return false;
     const { data, error } = await supa.from("user_state").select("data,updated_at").eq("user_id", MY_UID).maybeSingle();
-    if (error) { console.warn("supaLoadUserState:", error.message); return false; }
+    if (error) {
+      // ⚠️ UNE COUPURE RÉSEAU N'EST PAS UN REFUS, ET LA CONFONDRE COÛTE LA
+      // SESSION. Sans restauration confirmée, `_peutPousserEtat()` interdit
+      // TOUTE écriture d'état jusqu'au prochain démarrage (garde volontaire :
+      // une lecture ratée ne doit jamais effacer un compte). Une seconde de
+      // réseau perdue au boot gelait donc l'état du compte pour toute la
+      // session, en silence. On se réinscrit pour être rejoué au retour.
+      if (estEchecReseau(error)) _noterRepriseUserState();
+      console.warn("supaLoadUserState:", error.message);
+      return false;
+    }
+    // La lecture a abouti : plus rien à rejouer, et le crédit d'essais est rendu.
+    acquitterLecture("user_state");
     if (!data) {
       // Aucune sauvegarde serveur → on pousse l'état local (création de la ligne).
       // Aucune ligne = compte qui n'a encore RIEN à lui : le verdict est « non ».
@@ -1078,7 +1319,11 @@ async function supaLoadUserState() {
     _restaurationConfirmee();
     await supaSaveUserState();
     return false;
-  } catch (e) { console.warn("supaLoadUserState:", e && e.message); return false; }
+  } catch (e) {
+    if (estEchecReseau(e)) _noterRepriseUserState();
+    console.warn("supaLoadUserState:", e && e.message);
+    return false;
+  }
   finally { window._etatCompteCharge = true; }
 }
 
@@ -1296,13 +1541,61 @@ function passionById(id) {
 // NOIRE, qui ne couvre ni la sentinelle « autre », ni « test », ni la chaîne
 // vide. La liste blanche rejette les quatre d'un coup.
 let _referentielPassions = null;   // Set des ids réels, ou null tant qu'inconnu
+// ⚠️ « CHARGÉ » ET « CHARGÉ ENTIÈREMENT » SONT DEUX ÉTATS, et les confondre a un
+// coût mesurable. Les branches d'échec ci-dessous publient volontairement un Set
+// PARTIEL (« garder ce qu'on a plutôt que rien »), mais le cache à un seul coup
+// `if (_referentielPassions) return;` le figeait alors POUR LA SESSION : une
+// coupure réseau à la 2ᵉ des 6 pages installait une liste blanche tronquée, et
+// `estPassionCanonique` refusait ensuite à la publication des milliers de
+// passions parfaitement légitimes — sans erreur, sans message, sans seconde
+// tentative. Le drapeau ne passe à `true` qu'à la sortie PROPRE de la boucle.
+let _referentielComplet = false;
+let _referentielEnCours = false;
+let _referentielEnCoursDepuis = 0;
+const REFERENTIEL_VOL_MAX_MS = 60000;
 
 // Chargement en arrière-plan. N'est JAMAIS attendu par le démarrage : tant qu'il
 // n'a pas répondu, `estPassionCanonique` utilise le repli local.
+// Diagnostic et bancs seulement — JAMAIS un chemin de rendu, même convention que
+// `_repriseEtat` et que le couple `taille()` / `_etat()` de `passions-flat.js`.
+// ⚠️ IL MANQUAIT, ET SON ABSENCE A COÛTÉ DEUX TOURS DE CI. « Chargé », « complet »
+// et « en vol » sont trois états distincts, tous invisibles de l'extérieur : un
+// banc ne pouvait donc NI attendre que le chargeur soit au repos, NI distinguer
+// « la garde m'a fait ressortir » de « le scénario n'a rien produit ». Les deux
+// rendent exactement le même symptôme — un registre vide.
+window._referentielEtat = function () {
+  return {
+    taille: _referentielPassions ? _referentielPassions.size : 0,
+    complet: _referentielComplet,
+    enVol: _referentielEnCours,
+  };
+};
+
+function _noterReprisePassions() {
+  try { noterLectureAReprendre("passions", chargerReferentielPassions); } catch (_e) {}
+}
+
+// ⚠️ ELLE REND UNE PROMESSE, ET LE REJEU EN DÉPEND. Tant qu'elle rendait
+// `undefined`, le pilote de reprise considérait le rejeu TERMINÉ à l'instant où
+// il l'appelait : il consommait l'essai, trouvait le registre vide et désarmait
+// la minuterie — alors que le vrai verdict tombait quelques secondes plus tard,
+// avec personne pour le réinscrire. La promesse ne REJETTE jamais : elle se
+// résout à chaque sortie, y compris les sorties précoces.
 function chargerReferentielPassions() {
+  var _fini = null;
+  var _promesse = new Promise(function (r) { _fini = r; });
+  function fini() { try { if (_fini) { _fini(); _fini = null; } } catch (_e) {} }
   try {
-    if (_referentielPassions) return;                       // déjà en cache
-    if (typeof supa === "undefined" || !supa || !window._supaReal) return;
+    if (_referentielPassions && _referentielComplet) { fini(); return _promesse; }  // déjà en cache, et COMPLET
+    // ⚠️ « EN VOL » S'PÉRIME. Une promesse `fetch` qui ne se règle JAMAIS (réseau
+    // mort sans rejet, cas courant sur mobile) laissait ce drapeau à `true` pour
+    // toujours : la garde refusait alors TOUT chargement ultérieur, rejeux
+    // compris, et le référentiel restait aux 19 identifiants du socle pour la
+    // session — le verrou définitif que ce lot est censé empêcher.
+    if (_referentielEnCours && (Date.now() - _referentielEnCoursDepuis) < REFERENTIEL_VOL_MAX_MS) {
+      fini(); return _promesse;
+    }
+    if (typeof supa === "undefined" || !supa || !window._supaReal) { fini(); return _promesse; }
     // ⚠️ `status = 'active'` N'EST PAS UN DÉTAIL : sans lui, ARCHIVER UNE PASSION
     // NE L'EMPÊCHE PAS D'ÊTRE PUBLIÉE. Le retrait de modération (2026-09-09) se
     // fait par `status = 'archived'` — la ligne reste, pour ne rien détruire et
@@ -1339,8 +1632,18 @@ function chargerReferentielPassions() {
     // (voir docs/PASSIONS_CAPACITE_ETUDE_2026-09-09.md §3.2).
     var PAS = 1000;
     var PAGES_MAX = 40;
-    var vus = new Set();
+    // ⚠️ ON AMORCE SUR CE QUI EST DÉJÀ CONNU, ET C'EST OBLIGATOIRE DEPUIS QUE
+    // LE CHARGEMENT PEUT ÊTRE REJOUÉ. `vus` est recréé à chaque appel, et les
+    // branches d'échec publient `vus` telle quelle : un rejeu qui repart de la
+    // page 0 et casse à la page 1 REMPLAÇAIT donc 3 000 identifiants par 1 000.
+    // `estPassionCanonique` refusait alors à la publication 2 000 passions
+    // légitimes — pour un rejeu censé RÉPARER. C'est l'invariant écrit plus bas :
+    // « LE RÉFÉRENTIEL SERVEUR AJOUTE, IL NE RETRANCHE PAS » (2026-08-31), que
+    // le cache à un seul coup faisait tenir tout seul et que sa levée a exposé.
+    var vus = new Set(_referentielPassions || []);
     var page = 0;
+    _referentielEnCours = true;
+    _referentielEnCoursDepuis = Date.now();
     function suite() {
       if (page >= PAGES_MAX) {
         // `diagLog` vit dans app-08, chargé APRÈS celui-ci : l'appel est
@@ -1354,6 +1657,11 @@ function chargerReferentielPassions() {
           }
         } catch (e) {}
         if (vus.size) _referentielPassions = vus;
+        // Le plafond n'est pas une panne : rejouer ne rendrait pas une ligne de
+        // plus. On ne s'inscrit donc PAS à la reprise, mais on ne prétend pas
+        // non plus être complet — la trace ci-dessus reste le seul signal.
+        _referentielEnCours = false;
+        fini();
         return;
       }
       var debut = page * PAS;
@@ -1364,23 +1672,59 @@ function chargerReferentielPassions() {
               // Échec en cours de route : on garde ce qu'on a plutôt que rien,
               // et le repli local reste le plancher.
               if (vus.size) _referentielPassions = vus;
+              _referentielEnCours = false;
+              // Une COUPURE se rejoue (la liste blanche tronquée refuserait des
+              // publications légitimes) ; un REFUS du serveur, non.
+              if (!r || estEchecReseau(r.error)) _noterReprisePassions();
+              fini();
               return;
             }
             r.data.forEach(function (x) { if (x && x.id) vus.add(x.id); });
-            if (r.data.length < PAS) { if (vus.size) _referentielPassions = vus; return; }
+            if (r.data.length < PAS) {
+              if (vus.size) _referentielPassions = vus;
+              _referentielComplet = true;
+              _referentielEnCours = false;
+              acquitterLecture("passions");
+              fini();
+              return;
+            }
             page++;
             suite();
-          } catch (e) { if (vus.size) _referentielPassions = vus; }
+          } catch (e) {
+            // ⚠️ CE `catch` NE RÉINSCRIVAIT NI NE JOURNALISAIT RIEN : une levée
+            // ici (y compris dans `_noterReprisePassions` lui-même) éteignait la
+            // reprise en silence, avec une liste blanche possiblement tronquée.
+            if (vus.size) _referentielPassions = vus;
+            _referentielEnCours = false;
+            try { if (typeof diagLog === "function") diagLog("✗ referentiel passions : " + (e && e.message)); } catch (_e) {}
+            fini();
+          }
         })
-        .catch(function () { if (vus.size) _referentielPassions = vus; });
+        .catch(function (e) {
+          if (vus.size) _referentielPassions = vus;
+          _referentielEnCours = false;
+          if (estEchecReseau(e)) _noterReprisePassions();
+          fini();
+        });
     }
     suite();
-  } catch (e) {}
+    return _promesse;
+  } catch (e) {
+    // ⚠️ LE DRAPEAU « EN VOL » DOIT RETOMBER MÊME ICI. Une levée synchrone
+    // (un `supa.from` absent, un SDK à moitié construit) laisserait sinon
+    // `_referentielEnCours` à `true` POUR TOUJOURS : la garde d'entrée
+    // refuserait alors tout chargement ultérieur, et le référentiel resterait
+    // aux 19 passions du socle pour toute la session — un verrou définitif posé
+    // par un `catch` vide, la faute de famille que ce dépôt connaît déjà.
+    _referentielEnCours = false;
+    fini();
+    return _promesse;
+  }
 }
 
 // ── Passions CRÉÉES DEPUIS L'APPLICATION (lot creation_passion_v1) ────────
 // ⚠️ UN SET À PART, ET SURTOUT PAS `_referentielPassions`. Celui-là est un
-// cache à UN SEUL COUP (`if (_referentielPassions) return;`) : y écrire avant
+// cache à UN SEUL COUP (`_referentielPassions && _referentielComplet`) : y écrire avant
 // que le serveur ait répondu INTERDIRAIT le chargement du vrai référentiel
 // pour toute la session, et `estPassionCanonique` retomberait sur les 19 du
 // socle — donc refuserait de publier dans une passion parfaitement légitime.
@@ -1400,7 +1744,9 @@ function enregistrerPassionCanonique(id) {
 //
 // La première version rendait `_referentielPassions.has(id)` DÈS que le cache
 // était rempli — le serveur pouvait donc RÉTRÉCIR la liste. Or `_referentielPassions`
-// est un cache à UN SEUL COUP (`if (_referentielPassions) return;` ci-dessus) :
+// est un cache à UN SEUL COUP (`_referentielPassions && _referentielComplet` ci-dessus,
+// et depuis le 2026-09-10 le rejeu réseau AMORCE `vus` sur l'existant, pour que
+// rechargement ne puisse jamais dire RETRAIT) :
 // une réponse serveur partielle — plafond `max-rows` de PostgREST, réponse
 // tronquée, panne à mi-parcours — s'installait pour toute la session et
 // interdisait DÉFINITIVEMENT de publier dans une passion parfaitement légitime.

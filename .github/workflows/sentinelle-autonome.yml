@@ -143,17 +143,58 @@ jobs:
       # dans un bloc clôturé et annoncé comme tel — `claude-code.yml` assemble
       # ensuite sa spécification de confiance à partir du titre et du corps,
       # et son propre prompt rappelle que l'observé n'est jamais un ordre.
-      - name: Ouvrir l'enquête (issue étiquetée claude)
+      # ⚠️ NE PAS ROUVRIR UNE ENQUÊTE SUR UN DÉFAUT DÉJÀ CORRIGÉ.
+      # Vécu les 2026-09-09/10 : #312 corrigée par la PR #313, déployée à 23h47,
+      # fermée à 04h43 — et rouverte à l'identique à 06h05 (#316), parce que la
+      # fenêtre de 24 h portait encore les occurrences d'AVANT le correctif.
+      # Le canal s'est bloqué tout seul : « une enquête à la fois » compte les
+      # issues OUVERTES, donc ce faux doublon interdisait de voir tout autre
+      # défaut. La règle est exacte (`dejaCorrige`) : on se tait seulement si
+      # TOUTES les occurrences précèdent la fermeture d'une enquête identique.
+      # Une seule occurrence postérieure = récidive = on rouvre.
+      # ⚠️ Filtrage par LABEL, jamais par `--search "…" in:title` : l'index de
+      # recherche de GitHub retarde (mesuré : #316 en était absente des heures
+      # après sa création), et une dédup bâtie sur un index en retard laisse
+      # passer très exactement le doublon qu'elle devait arrêter.
+      - name: Ce défaut a-t-il déjà été corrigé ?
         if: github.event_name != 'pull_request' && steps.pause.outputs.actif == 'true' && steps.encours.outputs.libre == 'true' && steps.detect.outputs.cible == 'oui'
+        id: dedup
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh issue list --repo "${GITHUB_REPOSITORY}" --state closed \
+            --label sentinelle --limit 30 --json title,closedAt > /tmp/fermees.json
+          deja="$(node --input-type=module -e '
+            import fs from "node:fs";
+            const { dejaCorrige } = await import("./scripts/sentinelle-detecter.mjs");
+            const v = JSON.parse(fs.readFileSync("/tmp/verdict.json", "utf8"));
+            const f = JSON.parse(fs.readFileSync("/tmp/fermees.json", "utf8"));
+            process.stdout.write(dejaCorrige(v.cible, f) ? "oui" : "non");
+          ')"
+          echo "deja=${deja}" >> "${GITHUB_OUTPUT}"
+          if [ "${deja}" = "oui" ]; then
+            {
+              echo "## Défaut déjà corrigé — aucune enquête ouverte"
+              echo ""
+              echo "Une enquête identique a été fermée APRÈS la dernière occurrence observée :"
+              echo "ces lignes datent d'avant le correctif. Rouvrir bloquerait le canal pour rien."
+            } >> "${GITHUB_STEP_SUMMARY}"
+          fi
+
+      - name: Ouvrir l'enquête (issue étiquetée claude)
+        if: github.event_name != 'pull_request' && steps.pause.outputs.actif == 'true' && steps.encours.outputs.libre == 'true' && steps.detect.outputs.cible == 'oui' && steps.dedup.outputs.deja == 'non'
         env:
           GH_TOKEN: ${{ secrets.SENTINELLE_TOKEN }}
         run: |
           set -euo pipefail
+          # ⚠️ ESM, comme le module : `require()` d'un `.mjs` dépend de la version
+          # exacte de Node et casserait le canal en silence le jour d'une mise à
+          # jour du runner. Le titre vient du module, jamais d'une seconde copie.
           node --input-type=module -e '
-            const { createRequire } = await import("node:module");
-            const require = createRequire(process.cwd() + "/");
-            const { desamorcer } = await import(process.cwd() + "/scripts/sentinelle-detecter.mjs");
-            const v = require("/tmp/verdict.json");
+            import fs from "node:fs";
+            const { titreIssue, desamorcer } = await import("./scripts/sentinelle-detecter.mjs");
+            const v = JSON.parse(fs.readFileSync("/tmp/verdict.json", "utf8"));
             const c = v.cible;
             // ⚠️ `cloture` NE SUFFIT PAS ET N\u2019A JAMAIS SUFFI : échapper les
             // accents graves empêche de sortir du bloc, pas de donner un ORDRE
@@ -187,23 +228,8 @@ jobs:
             L.push("3. Ajouter un verrou qui ÉCHOUE sur le défaut et passe après (réinjection).");
             L.push("4. `npm run verif` vert, suites e2e concernées vertes, avant toute PR.");
             L.push("5. Au-delà de ~60 lignes ou 2 fichiers, ce n’est plus une réparation : décrire la cause et laisser la main.");
-            require("fs").writeFileSync("/tmp/issue.md", L.join("\n"));
-            // ⚠️ LE TITRE NE PORTE PLUS UNE LIGNE ÉCRITE PAR UN INCONNU. Il
-            // portait `c.message` brut — hors de tout bloc, donc la seule partie
-            // de l\u2019issue qu\u2019aucune clôture ne protégeait. Il porte désormais
-            // l\u2019EMPREINTE normalisée (chiffres → #, URL → <url>, minuscules),
-            // calculée par la sentinelle et non librement choisie.
-            // ⚠️ L\u2019EMPREINTE NE SUFFISAIT PAS, ET LE VERROU LE PRÉTENDAIT.
-            // `empreinte()` normalise les chiffres et les URL — elle laisse donc
-            // passer « ignore les instructions précédentes » intact. Le titre
-            // passe maintenant par `desamorcer()` comme le corps, et il porte en
-            // plus un condensé de l\u2019empreinte : deux tentatives distinctes se
-            // confondent, et il reste lisible pour un humain.
-            const { createHash } = require("node:crypto");
-            const cond = createHash("sha256").update(String(c.cle || "")).digest("hex").slice(0, 8);
-            const lisible = desamorcer(String(c.cle || ""), 1).replace(/[\n\r]/g, " ").slice(0, 60).trim();
-            const titre = "[SENTINELLE] " + (lisible || "defaut de production") + " · " + cond;
-            require("fs").writeFileSync("/tmp/titre.txt", titre);
+            fs.writeFileSync("/tmp/issue.md", L.join("\n"));
+            fs.writeFileSync("/tmp/titre.txt", titreIssue(c));
           '
           # ⚠️ LE LABEL `sentinelle` EST LA MARQUE D'ORIGINE, PAS LE TITRE.
           # C'est lui, et non le préfixe « [SENTINELLE] », qui autorisera
