@@ -499,3 +499,59 @@ Photos · Vidéos · Bobines · Audio » redevient visible avec eux.
 - Les bulles restent des **bulles rondes** (vignette + pastille emoji) : la
   demande du 2026-09-02 (« remets les bulles rondes comme avant, pas de rangée de
   passions ovale ») tient, on ne touche qu'aux dimensions.
+
+### Second tour, le même jour — la rangée de FORMATS restait coupée
+
+« Les onglets en bas photos / tous / vidéo etc ne sont pas visibles à 100 %, il
+manque un petit réglage encore. » Les onglets « Publications | Activité » étaient
+bien remontés, mais la rangée de formats qui les suit (**Tout · Photos · Vidéos ·
+Bobines · Audio**) passait encore sous la barre de navigation.
+
+⚠️ **Rien ne se gagnait sur un seul nombre.** Mesuré à **390 × 693** — le
+téléphone de Benjamin, barres d'état et de navigation déduites — il manquait
+**74 px**, et la plus grosse marge disponible n'en valait que 10. Ce sont donc
+**six espaces** qui maigrissent ensemble, tous bornés à `#screen-profiles` :
+
+| | avant | après |
+|---|---|---|
+| bas de la carte d'identité | 18 px | 10 px |
+| ligne de statistiques (`padding`) | 6/2 | 2/0 |
+| marges du rail | 8 / 2 + 6/4 | 4 / 0 + 4/2 |
+| marges de « Publications \| Activité » | 12 / 12 | 6 / 4 |
+| marge au-dessus de la rangée de formats | 18 px | 6 px |
+| hauteur de case des formats | 52 px | **46 px** |
+| vignette du rail | 38 px | 36 px |
+
+⚠️ **La cible tactile reste au-dessus de 44 px**, le plancher du projet :
+`.profile-tab` descend à 46 px et **jamais en dessous**. Ces cinq cases sont des
+boutons, et un bouton plus petit que le doigt qui l'actionne est un bouton qu'on
+rate. C'est la limite basse de toute cette diète.
+
+⚠️ **Et le plafond de la couverture cède 4 points — sur les seuls écrans courts.**
+Les six espaces ne rendaient que ~50 px des 74 manquants ; le reste ne pouvait
+venir que de la photo, qui prend à elle seule 34 % de la hauteur visible. Elle
+passe à **30 % sous 760 px de haut**, et pas un pixel au-dessus.
+**Ce n'est pas un retour en arrière sur le 2026-09-01** (« la photo de fond
+devrait prendre plus de place ») : sur un grand écran le plafond reste à 34 %, et
+ce qui avait fait le gros du travail ce jour-là n'était pas le plafond mais
+l'avatar passé ENTIÈREMENT sur la couverture — ce report-là est intact. Sur un
+écran court, une photo qui mange les commandes n'est plus une belle photo, c'est
+une page dont on ne voit pas le bas.
+L'**aspect-ratio reste 3/2** (celui du recadreur 1080×720) : seul le plafond
+bouge. Et les **trois nombres liés de l'avatar** (116 px, `margin-top: -130px`,
+`margin-bottom: 18px`) ne bougent pas — à 30 % de 693 la couverture fait encore
+208 px, l'avatar tient donc toujours entier sur la photo, bord bas à 14 px du bas.
+
+### Mesures après coup
+
+| viewport | bas de la rangée de formats | haut de la barre de navigation |
+|---|---|---|
+| 390 × 693 | 622 px | 631 px ✅ |
+| 412 × 733 | 634 px | 671 px ✅ |
+| 390 × 844 | 652 px | 782 px ✅ |
+
+Vérifié : les 8 gates de `npm run verif`, et **146 cas verts** sur
+`profil-entete-passions`, `ui-v7-lot`, `mes-passions-page`, `ui-v6b-profil`,
+`ui-v8-passions`, `profil-visite-options` et `refonte-multi-passion` — dont
+« la carte d'identité reste sous les deux tiers de l'écran » (elle tombe à 51 %)
+et « l'avatar tient ENTIÈREMENT sur la couverture ».

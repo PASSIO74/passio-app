@@ -10191,16 +10191,16 @@ body.ctx-locked #appMain { overflow: hidden; }
 #v9ProfilePassions.v9-profile-strip { padding: 6px 16px 4px; gap: 10px; }
 #v9ProfilePassions .profile-tile {
   width: 72px;
-  gap: 6px;
-  padding: 2px 3px 4px;
+  gap: 5px;
+  padding: 2px 3px 2px;
 }
 #v9ProfilePassions .profile-tile-avatar {
-  width: 38px;
-  height: 38px;
-  border-radius: 14px;
-  font-size: 19px;
+  width: 36px;
+  height: 36px;
+  border-radius: 13px;
+  font-size: 18px;
 }
-#v9ProfilePassions .profile-tile.active .profile-tile-avatar { font-size: 30px; }
+#v9ProfilePassions .profile-tile.active .profile-tile-avatar { font-size: 28px; }
 #v9ProfilePassions .profile-tile-emoji-badge {
   width: 22px;
   height: 22px;
@@ -10215,6 +10215,63 @@ body.ctx-locked #appMain { overflow: hidden; }
 }
 #v9ProfilePassions .profile-tile-label { font-size: 10px; max-width: 64px; }
 #v9ProfilePassions .profile-tile.active .profile-tile-label { font-size: 11.5px; }
+
+/* ⚠️ DIÈTE VERTICALE DE LA PAGE PROFIL (2026-09-10, second tour). Le premier
+   tour a rendu visibles les onglets « Publications | Activité » ; la rangée de
+   FORMATS qui les suit (Tout · Photos · Vidéos · Bobines · Audio) restait coupée
+   par la barre de navigation. « Il manque un petit réglage encore ».
+
+   ⚠️ RIEN NE SE GAGNE SUR UN SEUL NOMBRE : mesuré à 390 × 693 (le téléphone de
+   Benjamin, barre d'état et barre de navigation déduites), il manquait 74 px, et
+   la plus grosse marge disponible n'en valait que 10. Ce sont donc SIX espaces
+   qui maigrissent ensemble, tous bornés à `#screen-profiles` : bas de la carte
+   d'identité, ligne de statistiques, marges du rail, marges des deux rangées
+   d'onglets, et la hauteur de case de la rangée de formats. Aucun n'est
+   perceptible seul ; c'est leur somme qui rend la rangée entière.
+
+   ⚠️ LA CIBLE TACTILE RESTE AU-DESSUS DE 44 px — le plancher du projet.
+   `.profile-tab` descend de 52 à 46 px de haut, jamais en dessous : ces cinq
+   cases sont des boutons, et un bouton plus petit que le doigt qui l'actionne
+   est un bouton qu'on rate. C'est la limite basse de toute cette diète.
+
+   ⚠️ BORNÉ À `#screen-profiles` : ces classes servent AUSSI le profil visité
+   dans sa modale et d'autres surfaces (`.profile-tabs` est le segmented control
+   de la PR #185, déplacé dans le panneau « Publications » par UI-7). On ne
+   resserre que la page dont la hauteur pose problème. */
+#screen-profiles .main-profile-body { padding-bottom: 10px; }
+#screen-profiles .main-profile-stat { padding: 2px 6px 0; }
+#v9ProfilePassions.v9-profile-strip { margin: 4px 0 0; padding: 4px 16px 2px; }
+:root.passio-ui-7 #screen-profiles .v7-tabs { margin: 6px 0 4px; }
+#screen-profiles .profile-tabs { margin: 6px 0 10px; }
+#screen-profiles .profile-tab { min-height: 46px; }
+
+/* ⚠️ ET LE PLAFOND DE LA COUVERTURE CÈDE 4 POINTS — SUR LES SEULS ÉCRANS COURTS.
+   Les six espaces ci-dessus ne rendaient que ~50 px des 74 manquants : le reste
+   ne pouvait venir que de la photo, qui prend à elle seule 34 % de la hauteur
+   visible. Elle passe à 30 % SOUS 760 px de haut, et pas un pixel au-dessus.
+
+   ⚠️ CE N'EST PAS UN RETOUR EN ARRIÈRE SUR LE 2026-09-01 (« la photo de fond
+   devrait prendre plus de place ») : sur un grand écran le plafond reste à
+   34 %, et ce qui avait fait le gros du travail ce jour-là n'était pas le
+   plafond mais l'avatar passé ENTIÈREMENT sur la couverture — ce report-là est
+   intact. Sur un écran court, une photo qui mange les commandes n'est plus une
+   belle photo, c'est une page dont on ne voit pas le bas.
+
+   ⚠️ L'ASPECT-RATIO RESTE 3/2 (celui du recadreur 1080×720) : seul le PLAFOND
+   bouge. On ne change jamais le rapport, sous peine de rogner les côtés de
+   toutes les couvertures déjà recadrées par leurs auteurs.
+   ⚠️ LES TROIS NOMBRES LIÉS DE L'AVATAR NE BOUGENT PAS (116 px, `margin-top`
+   −130, `margin-bottom` 18) : à 30 % de 693 la couverture fait encore 208 px,
+   soit 78 px de garde au-dessus de l'avatar, qui tient donc toujours ENTIÈREMENT
+   sur la photo avec son bord bas à 14 px du bord bas.
+   ⚠️ `max-height` en `@media (max-height: …)` et non en `--app-vh` : la variable
+   mesurée en JS fait autorité sur la VALEUR (elle suit la barre d'URL), la media
+   query ne sert qu'à décider DANS QUEL RÉGIME on est. Les deux se complètent. */
+@media (max-height: 760px) {
+  #screen-profiles .main-profile-cover {
+    max-height: min(420px, calc(var(--app-vh, 100svh) * 0.30));
+  }
+}
 
 #v9ProfilePassions .v9-strip-empty {
   padding: 12px 14px;
