@@ -2839,7 +2839,7 @@ window.openAccountSwitch = openAccountSwitch;
 // hérite des données du précédent : conversations privées (localStorage + IndexedDB),
 // profil de config, historique IA, brouillon de vlog… (fuite d'isolation inter-comptes
 // corrigée le 2026-08-12). On NE touche PAS aux clés device/consentement
-// (passio_gate_* = sessionStorage, passio_telemetry opt-out, passio_realtime_* flags
+// (passio_gate_v1 — session ET appareil depuis le 2026-09-10, passio_telemetry opt-out, passio_realtime_* flags
 // de test, passio_parental_code) qui n'appartiennent pas à un compte.
 var ACCOUNT_SCOPED_KEYS = [
   STATE_KEY,                 // profils, posts perso, notifications, likes…
@@ -2849,6 +2849,10 @@ var ACCOUNT_SCOPED_KEYS = [
   "passio_ai_history",       // historique de l'assistant IA
   "passio_vlog_draft_v1",    // brouillon de publication
   "passio_oauth_pending",    // jeton transitoire de retour OAuth
+  // Sa jumelle : l'accord aux CGU donné AVANT le départ vers Google, en attente
+  // d'être posé sur le compte au retour. Transitoire comme elle, et de compte —
+  // un accord en attente ne doit pas survivre au changement de compte.
+  "passio_oauth_cgu",        // consentement en attente de pose (retour OAuth)
   // Ajoutés le 2026-08-14 après inventaire exhaustif des clés réellement écrites
   // par l'application : ces quatre-là portent du CONTENU de compte et survivaient
   // à la déconnexion.
@@ -3191,11 +3195,11 @@ function openDeleteAccountConfirm() {
     <p style="font-size:13px;color:var(--muted);margin-bottom:10px;">Cette action est <strong>définitive</strong>. Seront supprimés :</p>\
     <ul style="font-size:13px;color:var(--muted);margin:0 0 12px 18px;line-height:1.7;">\
       <li>ton profil et tes passions ;</li>\
-      <li>tous tes posts, photos, vidéos, carnets et stories ;</li>\
+      <li>toutes tes publications, photos, vidéos et stories ;</li>\
       <li>tes messages, conversations et notifications ;</li>\
       <li>tes likes, commentaires, abonnements et événements.</li>\
     </ul>\
-    <p style="font-size:12px;color:var(--muted);margin-bottom:14px;">Ton adresse e-mail de connexion sera définitivement retirée de nos serveurs sous 30 jours (art. 17 RGPD). Pour toute question : contact@ladamemetallerie.com</p>\
+    <p style="font-size:12px;color:var(--muted);margin-bottom:14px;">Ton compte et ton adresse e-mail sont retirés de nos serveurs immédiatement ; en cas d’incident technique, au plus tard sous 30 jours (art. 17 RGPD). Pour toute question : contact@ladamemetallerie.com</p>\
     <label class="field"><span>Tape <strong>SUPPRIMER</strong> pour confirmer</span>\
       <input type="text" class="input" id="deleteConfirmInput" autocomplete="off" placeholder="SUPPRIMER"/></label>\
     <div style="display:flex;gap:8px;margin-top:12px;">\
@@ -3278,7 +3282,7 @@ function openPrivacyPolicy() {
       <p style="margin:0 0 10px;"><strong style="color:var(--text);">5. Qui les héberge, et où.</strong> Base de données et fichiers : <strong style="color:var(--text);">Supabase</strong> (Supabase Pte. Ltd., Singapour). Site : <strong style="color:var(--text);">Netlify, Inc.</strong> (États-Unis). E-mails de confirmation : <strong style="color:var(--text);">Brevo</strong> (France). Ces transferts hors Union européenne se font sur la base des clauses contractuelles types de la Commission européenne. Une partie des données reste sur ton appareil (localStorage, IndexedDB) pour le fonctionnement hors-ligne. En base, l\'accès est restreint par des règles par propriétaire (RLS).</p>\
       <p style="margin:0 0 10px;"><strong style="color:var(--text);">6. Ce que ton navigateur appelle ailleurs.</strong> Afficher une carte, un GIF ou une image de démonstration fait appel à des services tiers qui reçoivent alors ton <strong style="color:var(--text);">adresse IP</strong> : fonds de carte (OpenFreeMap), recherche d\'adresse (Base Adresse Nationale, Photon), GIF (Giphy, Tenor), images et vidéos d\'illustration (Unsplash, Pexels). Nous ne leur transmettons ni ton compte, ni ton nom.</p>\
       <p style="margin:0 0 10px;"><strong style="color:var(--text);">7. Ce que nous ne faisons pas.</strong> Pas de revente de données, pas de publicité, pas de profilage publicitaire, aucun traqueur publicitaire tiers. C\'est l\'engagement fondateur de PASSIO.</p>\
-      <p style="margin:0 0 10px;"><strong style="color:var(--text);">8. Combien de temps.</strong> Ton compte et tes contenus : tant que ton compte existe. Sa suppression efface tes contenus immédiatement et ton adresse e-mail sous 30 jours. Les événements techniques du point 3 : <strong style="color:var(--text);">13 mois au maximum</strong>. Les signalements sont conservés le temps de traiter l\'affaire et d\'en garder la trace.</p>\
+      <p style="margin:0 0 10px;"><strong style="color:var(--text);">8. Combien de temps.</strong> Ton compte et tes contenus : tant que ton compte existe. Sa suppression efface tes contenus et ton adresse e-mail immédiatement ; en cas d’incident technique, au plus tard sous 30 jours. Les événements techniques du point 3 : <strong style="color:var(--text);">13 mois au maximum</strong>. Les signalements sont conservés le temps de traiter l\'affaire et d\'en garder la trace.</p>\
       <p style="margin:0 0 10px;"><strong style="color:var(--text);">9. Tes droits (RGPD).</strong> Accès, rectification, effacement, portabilité, limitation, opposition — et le droit de retirer ton consentement quand il en sert de base. Exerce-les dans l\'app (Paramètres → Supprimer mon compte) ou par e-mail : <strong style="color:var(--text);">' + escapeHtml(PASSIO_EDITEUR.email) + '</strong>. Nous répondons sous un mois. Tu peux aussi réclamer auprès de la CNIL (cnil.fr).</p>\
       <p style="margin:0 0 10px;"><strong style="color:var(--text);">10. Mineurs.</strong> PASSIO est réservé aux personnes majeures : l\'inscription est refusée en dessous de 18 ans révolus. L\'âge est <strong style="color:var(--text);">déclaré</strong> par la personne ; nous ne demandons aucune pièce d\'identité et <strong style="color:var(--text);">ne vérifions pas cette déclaration</strong>. Un compte dont nous apprenons qu\'il appartient à un mineur est supprimé.</p>\
       <p style="margin:0;"><strong style="color:var(--text);">11. Beta privée.</strong> Pendant la phase de test, l\'accès est protégé par un code, les fonctionnalités évoluent et <strong style="color:var(--text);">tes contenus peuvent être perdus</strong> : n\'y dépose rien d\'irremplaçable. Tes retours peuvent être utilisés pour améliorer le produit.</p>\
@@ -3355,7 +3359,14 @@ function _editeurParticulier() {
 
 // Version du contrat acceptée à l'inscription. Toute réécriture de fond des CGU
 // change cette valeur : c'est elle qui permet de savoir QUI a accepté QUOI.
-const PASSIO_CGU_VERSION = "2026-09-09";
+// ⚠️ LA VERSION SUIT LE TEXTE. Passée au 2026-09-10 avec la passe « lancement
+// gratuit » : le périmètre de diffusion (« un petit groupe » → ouvert à tous),
+// le fondement de l'exonération (l'art. 10 ne s'appuie plus sur « phase de
+// test », qui périme, mais sur la gratuité, qui ne périme pas), le retrait du
+// médiateur de la consommation (sans objet, et il contredisait l'art. 1) et la
+// phrase de l'art. 7 sur l'argent des rencontres. Un accord donné sur les CGU
+// « petit groupe » ne vaut pas pour celles-ci.
+const PASSIO_CGU_VERSION = "2026-09-10";
 
 // Version de la politique de confidentialité, affichée en tête du texte. Elle
 // SUIT le texte, comme celle des CGU : une politique qui annonce « juin 2026 »
@@ -3391,22 +3402,22 @@ function openTermsOfService() {
       '<p style="margin:0 0 10px;"><strong style="color:var(--text);">Version du ' + escapeHtml(PASSIO_CGU_VERSION) + ' — service ' + escapeHtml(PASSIO_EDITEUR.service) + '</strong></p>' +
       '<p style="margin:0 0 12px;padding:10px 12px;border-radius:10px;background:#fff4e5;border:1px solid #f0b775;color:#7a4a00;line-height:1.5;">' +
         '<strong>⚠️ Version beta — lis ceci avant de créer un compte.</strong><br>' +
-        'PASSIO est un service expérimental, diffusé à un petit groupe pour être testé. Il est gratuit, fourni EN L’ÉTAT, sans garantie, et il peut à tout moment tomber en panne, perdre tes contenus ou s’arrêter. Les rencontres en vrai sont organisées par les membres, jamais par PASSIO, et <strong>aucun membre n’est vérifié</strong>. Tu utilises ce service sous ta seule responsabilité.' +
+        'PASSIO est un service jeune, ouvert gratuitement à tous et encore en construction. Il est gratuit, fourni EN L’ÉTAT, sans garantie, et il peut à tout moment tomber en panne, perdre tes contenus ou s’arrêter. Les rencontres en vrai sont organisées par les membres, jamais par PASSIO, et <strong>aucun membre n’est vérifié</strong>. Tu utilises ce service sous ta seule responsabilité.' +
       '</p>' +
       p("1. Objet.", "Les présentes conditions régissent l’accès et l’utilisation de PASSIO, réseau social dédié aux passions, accessible à l’adresse " + escapeHtml(PASSIO_EDITEUR.site) + ". Créer un compte vaut acceptation pleine et entière de ce texte. L’éditeur du service est " + (_editeurParticulier() ? "une personne physique éditant à titre non professionnel" : _champEditeur("raisonSociale")) + " (voir les mentions légales).") +
-      p("2. Accès au service — VERSION BETA.", "PASSIO est un service <strong style=\"color:var(--text);\">en cours de développement, diffusé à titre expérimental</strong> à un petit nombre de personnes. Il est fourni <strong style=\"color:var(--text);\">gratuitement, EN L’ÉTAT, sans aucune garantie</strong> de fonctionnement, de disponibilité, de sécurité, d’exactitude ni d’adaptation à un usage particulier. Il comporte, par nature, des défauts et des interruptions. Il peut à tout moment, sans préavis ni indemnité, évoluer, perdre une fonctionnalité, être suspendu ou définitivement arrêté. <strong style=\"color:var(--text);\">Tes contenus peuvent être perdus, altérés ou effacés à tout moment</strong> : aucune sauvegarde n’est garantie. N’y dépose donc rien d’unique, d’irremplaçable, de confidentiel ou de sensible, et conserve toujours ta propre copie de ce qui compte pour toi. En utilisant cette beta, tu acceptes ces conditions en connaissance de cause.") +
+      p("2. Accès au service — VERSION BETA.", "PASSIO est un service <strong style=\"color:var(--text);\">en cours de développement, ouvert gratuitement au public</strong> dans une version encore incomplète. Il est fourni <strong style=\"color:var(--text);\">gratuitement, EN L’ÉTAT, sans aucune garantie</strong> de fonctionnement, de disponibilité, de sécurité, d’exactitude ni d’adaptation à un usage particulier. Il comporte, par nature, des défauts et des interruptions. Il peut à tout moment, sans préavis ni indemnité, évoluer, perdre une fonctionnalité, être suspendu ou définitivement arrêté. <strong style=\"color:var(--text);\">Tes contenus peuvent être perdus, altérés ou effacés à tout moment</strong> : aucune sauvegarde n’est garantie. N’y dépose donc rien d’unique, d’irremplaçable, de confidentiel ou de sensible, et conserve toujours ta propre copie de ce qui compte pour toi. En utilisant cette beta, tu acceptes ces conditions en connaissance de cause.") +
       p("3. Inscription.", "L’inscription est réservée aux personnes <strong style=\"color:var(--text);\">majeures — 18 ans révolus</strong> et suppose une adresse e-mail valide, que tu confirmes en cliquant sur le lien reçu. Tu t’engages à fournir des informations exactes, à ne créer qu’un seul compte et à garder ton mot de passe confidentiel. Toute activité effectuée depuis ton compte est réputée être la tienne.") +
       p("4. Tes contenus.", "Tu restes propriétaire de tout ce que tu publies (textes, photos, vidéos, sons, messages). Tu accordes à PASSIO le droit, gratuit et non exclusif, d’héberger, d’afficher et de transmettre ces contenus <em>aux seules fins de faire fonctionner le service</em>, pour la durée de leur publication. Supprimer un contenu ou ton compte met fin à ce droit. Tu garantis détenir les droits sur ce que tu publies et disposer de l’accord des personnes reconnaissables.") +
       p("5. Règles de conduite.", "Sont interdits : la haine, le harcèlement, les menaces, la discrimination ; les contenus sexuels explicites ou violents ; la mise en danger d’un mineur ; l’atteinte à la vie privée d’autrui (publier ses coordonnées, ses images ou ses messages sans son accord) ; la contrefaçon ; l’usurpation d’identité ; le démarchage, le spam et l’automatisation ; toute tentative de contourner les mesures de sécurité ou d’accéder aux données d’autres membres.") +
       p("6. Signalement et modération.", "Chaque publication, commentaire et profil peut être signalé, et chaque compte bloqué, depuis l’application. Les signalements sont examinés dans les meilleurs délais. Selon la gravité, l’éditeur peut retirer un contenu, avertir, suspendre ou supprimer un compte. Un contenu manifestement illicite peut être retiré sans préavis. Tu peux contester une décision par e-mail à " + escapeHtml(PASSIO_EDITEUR.email) + ".") +
-      p("7. Rencontres en vrai — à tes risques et périls.", "Les rencontres proposées dans l’onglet « Rencontrer » sont créées et organisées <strong style=\"color:var(--text);\">par leurs auteurs, jamais par PASSIO</strong>. L’éditeur n’est ni organisateur, ni co-organisateur, ni intermédiaire, ni assureur, ni partie à ces rendez-vous : il ne fait qu’héberger une annonce. <strong style=\"color:var(--text);\">Aucune vérification n’est effectuée</strong> sur les participants — ni identité, ni âge réel, ni antécédents, ni intentions, ni compétence, ni assurance, ni autorisation, ni sécurité du lieu. Tu participes ou tu organises <strong style=\"color:var(--text);\">sous ta seule responsabilité, à tes risques et périls exclusifs</strong>, et il t’appartient de souscrire les assurances utiles. L’organisateur d’une rencontre est seul responsable de son déroulement, des autorisations, de la sécurité des lieux et des personnes. La participation est <strong style=\"color:var(--text);\">réservée aux personnes majeures</strong> sur simple déclaration d’âge, non vérifiée. Préviens un proche, choisis un lieu public et fréquenté, ne communique pas ton adresse, pars si tu ne le sens pas.") +
+      p("7. Rencontres en vrai — à tes risques et périls.", "Les rencontres proposées dans l’onglet « Rencontrer » sont créées et organisées <strong style=\"color:var(--text);\">par leurs auteurs, jamais par PASSIO</strong>. L’éditeur n’est ni organisateur, ni co-organisateur, ni intermédiaire, ni assureur, ni partie à ces rendez-vous : il ne fait qu’héberger une annonce. Lorsqu’une rencontre est payante, <strong style=\"color:var(--text);\">le paiement se fait directement entre ses participants et son organisateur, en dehors de PASSIO</strong> : l’éditeur ne perçoit aucune somme, ne détient aucun fonds et n’intervient dans aucun remboursement. <strong style=\"color:var(--text);\">Aucune vérification n’est effectuée</strong> sur les participants — ni identité, ni âge réel, ni antécédents, ni intentions, ni compétence, ni assurance, ni autorisation, ni sécurité du lieu. Tu participes ou tu organises <strong style=\"color:var(--text);\">sous ta seule responsabilité, à tes risques et périls exclusifs</strong>, et il t’appartient de souscrire les assurances utiles. L’organisateur d’une rencontre est seul responsable de son déroulement, des autorisations, de la sécurité des lieux et des personnes. La participation est <strong style=\"color:var(--text);\">réservée aux personnes majeures</strong> sur simple déclaration d’âge, non vérifiée. Préviens un proche, choisis un lieu public et fréquenté, ne communique pas ton adresse, pars si tu ne le sens pas.") +
       p("8. Données personnelles.", "Le traitement de tes données est décrit dans la politique de confidentialité, qui fait partie intégrante des présentes.") +
       p("9. Propriété du service.", "La marque PASSIO, son interface, ses textes et son code restent la propriété de l’éditeur. Aucune reproduction n’est autorisée sans accord écrit.") +
-      p("10. Responsabilité de l’éditeur.", "PASSIO fournit un service d’hébergement au sens du règlement européen sur les services numériques (DSA) et de la LCEN : l’éditeur <strong style=\"color:var(--text);\">n’est pas responsable des contenus publiés par ses membres</strong> et n’exerce aucune surveillance générale, mais retire promptement tout contenu dont le caractère illicite lui est signalé. L’éditeur n’est tenu que d’une <strong style=\"color:var(--text);\">obligation de moyens</strong>. Le service étant fourni gratuitement, en phase de test et sans garantie, sa responsabilité ne peut être engagée, dans toute la mesure permise par la loi, à raison : d’une perte, d’une altération ou d’un effacement de données ; d’une indisponibilité, d’une interruption ou de l’arrêt du service ; d’un défaut, d’un bogue ou d’une faille ; des agissements, propos ou contenus d’un autre membre ; d’une rencontre organisée par un membre ; d’un dommage indirect ou immatériel, tel qu’une perte d’image, de chance, de temps ou d’exploitation ; ni d’un événement de force majeure ou du fait d’un tiers. <strong style=\"color:var(--text);\">Rien dans les présentes n’écarte ni ne limite la responsabilité qui ne peut légalement l’être</strong>, notamment en cas de dol, de faute lourde ou de dommage corporel : ces cas restent entièrement réservés.") +
+      p("10. Responsabilité de l’éditeur.", "PASSIO fournit un service d’hébergement au sens du règlement européen sur les services numériques (DSA) et de la LCEN : l’éditeur <strong style=\"color:var(--text);\">n’est pas responsable des contenus publiés par ses membres</strong> et n’exerce aucune surveillance générale, mais retire promptement tout contenu dont le caractère illicite lui est signalé. L’éditeur n’est tenu que d’une <strong style=\"color:var(--text);\">obligation de moyens</strong>. Le service étant fourni <strong style=\"color:var(--text);\">gratuitement et sans aucune garantie</strong>, sa responsabilité ne peut être engagée, dans toute la mesure permise par la loi, à raison : d’une perte, d’une altération ou d’un effacement de données ; d’une indisponibilité, d’une interruption ou de l’arrêt du service ; d’un défaut, d’un bogue ou d’une faille ; des agissements, propos ou contenus d’un autre membre ; d’une rencontre organisée par un membre ; d’un dommage indirect ou immatériel, tel qu’une perte d’image, de chance, de temps ou d’exploitation ; ni d’un événement de force majeure ou du fait d’un tiers. <strong style=\"color:var(--text);\">Rien dans les présentes n’écarte ni ne limite la responsabilité qui ne peut légalement l’être</strong>, notamment en cas de dol, de faute lourde ou de dommage corporel : ces cas restent entièrement réservés.") +
       p("11. Ta responsabilité.", "En créant un compte, tu deviens <strong style=\"color:var(--text);\">seul responsable</strong> de l’usage que tu fais de PASSIO : de tout ce que tu publies, envoies ou partages, des rencontres que tu organises ou auxquelles tu participes, des personnes que tu y côtoies, des liens que tu ouvres, des informations que tu choisis de dévoiler, de l’exactitude de ce que tu déclares — ton âge compris — et du respect des lois qui te sont applicables. Tu reconnais avoir été informé du caractère expérimental du service et de l’absence totale de vérification des membres. Dans la mesure permise par la loi, <strong style=\"color:var(--text);\">tu garantis l’éditeur</strong> contre toute réclamation, plainte ou action d’un tiers, et contre les frais qui en découlent, lorsqu’elle trouve son origine dans tes contenus, tes agissements ou un manquement de ta part aux présentes.") +
-      p("12. Fin du contrat.", "Tu peux supprimer ton compte à tout moment depuis Paramètres → Compte, sans motif et sans frais. L’éditeur peut résilier ton accès en cas de manquement grave aux présentes.") +
+      p("12. Fin du contrat.", "Tu peux supprimer ton compte à tout moment depuis les Paramètres, bouton « Supprimer mon compte » (tout en bas), sans motif et sans frais. L’éditeur peut résilier ton accès en cas de manquement grave aux présentes.") +
       p("13. Modification.", "Les présentes peuvent évoluer. Toute modification substantielle est portée à ta connaissance dans l’application ; la poursuite de l’utilisation vaut acceptation.") +
-      p("14. Droit applicable.", "Droit français. En cas de litige, une solution amiable sera recherchée en priorité à l’adresse " + escapeHtml(PASSIO_EDITEUR.email) + ". À défaut, les tribunaux français sont compétents. Un consommateur peut recourir gratuitement à un médiateur de la consommation et à la plateforme européenne de règlement en ligne des litiges (ec.europa.eu/consumers/odr).") +
+      p("14. Droit applicable.", "Droit français. En cas de litige, une solution amiable sera recherchée en priorité à l’adresse " + escapeHtml(PASSIO_EDITEUR.email) + ". À défaut, les tribunaux français sont compétents.") +
     '</div>' +
     '<div style="display:flex;gap:8px;margin-top:14px;">' +
       '<button class="btn block" onclick="openLegalNotice()" style="flex:1;">Mentions légales</button>' +
@@ -3448,6 +3459,14 @@ function openLegalNotice() {
     '<div style="font-size:12.5px;color:var(--muted);line-height:1.65;max-height:55vh;overflow-y:auto;padding-right:4px;">' +
       identite +
       p("Contact.", escapeHtml(PASSIO_EDITEUR.email) + ' — le moyen le plus rapide de joindre l’éditeur, y compris pour signaler un contenu ou exercer tes droits.') +
+      // ⚠️ C'EST LA MEILLEURE DÉFENSE DU RÉGIME « PARTICULIER », et elle est
+      // vraie aujourd'hui. L'anonymat de la LCEN (art. 1-1, II) tient à
+      // l'exploitation NON PROFESSIONNELLE — pas à la petite taille : une
+      // audience large et un service gratuit y sont parfaitement compatibles.
+      // Ce qui ferait basculer, c'est un encaissement, de la publicité, des
+      // dons, du sponsoring ou une revente de données. Le dire explicitement
+      // vaut mieux que de le laisser déduire.
+      p("Un service sans contrepartie.", 'PASSIO est fourni <strong style="color:var(--text);">gratuitement</strong>, sans publicité, sans dons, sans sponsoring et sans aucune contrepartie financière. L’éditeur n’en tire aucun revenu.') +
       p("Hébergeur du site.", escapeHtml(PASSIO_EDITEUR.hebergeurSite) + '.') +
       p("Hébergement des données.", escapeHtml(PASSIO_EDITEUR.hebergeurDonnees) + ', sous-traitant technique au sens du RGPD.') +
       p("Signalement d’un contenu illicite.", 'Un contenu peut être signalé directement dans l’application (menu « ⋯ » d’une publication ou d’un profil) ou par e-mail à ' + escapeHtml(PASSIO_EDITEUR.email) + '. Conformément à l’article 16 du règlement européen sur les services numériques (DSA), un signalement gagne à préciser l’emplacement exact du contenu, une explication du motif invoqué, et de quoi recontacter son auteur.') +
@@ -3658,8 +3677,24 @@ async function onbGoogleAuth() {
     _showAuthMsg("Pour créer ton compte, accepte les conditions générales et la politique de confidentialité.", "error");
     return;
   }
+  // ⚠️ L'INSTANT DE L'ACCORD SE PREND ICI, une seule fois : c'est le moment où
+  // la personne a coché, pas celui où le serveur répond. Il part ensuite dans
+  // `user_metadata` ET dans l'état local — les deux doivent porter la MÊME
+  // valeur, sinon la trace serveur et la trace locale se contrediraient.
+  const _cguAccepteA = new Date().toISOString();
   try {
     try { localStorage.setItem("passio_oauth_pending", "1"); } catch (e) {}
+    // ⚠️ `signInWithOAuth` QUITTE LA PAGE : il n'y a pas d'`options.data` sur ce
+    // chemin, et tout ce qui vit en mémoire est perdu. L'accord est donc mis de
+    // côté ici et posé au RETOUR, quand la session existe (`_poserConsentementOAuth`).
+    // Clé d'APPAREIL et transitoire, comme `passio_oauth_pending` juste au-dessus.
+    try {
+      localStorage.setItem("passio_oauth_cgu", JSON.stringify({
+        cgu_version: PASSIO_CGU_VERSION,
+        cgu_accepted_at: _cguAccepteA,
+        confidentialite_version: PASSIO_CONFIDENTIALITE_VERSION,
+      }));
+    } catch (e) {}
     const { error } = await supa.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo: window.location.origin + window.location.pathname },
@@ -3671,6 +3706,47 @@ async function onbGoogleAuth() {
   } catch (e) {
     try { localStorage.removeItem("passio_oauth_pending"); } catch (e) {}
     _showAuthMsg("Connexion Google indisponible.", "error");
+  }
+}
+
+// Pose sur le compte l'accord donné AVANT le départ vers Google. Appelée au
+// retour OAuth, une fois la session établie.
+//
+// ⚠️ ELLE N'ÉCRASE JAMAIS UN ACCORD DÉJÀ POSÉ : une reconnexion Google ne doit
+// pas réécrire la date du premier consentement — c'est justement cette date qui
+// a une valeur. Et elle ne SUPPOSE rien : sans accord mémorisé, elle ne fait
+// rien plutôt que d'en inventer un.
+async function _poserConsentementOAuth() {
+  var brut = null;
+  try { brut = localStorage.getItem("passio_oauth_cgu"); } catch (e) {}
+  if (!brut) return false;
+  var accord = null;
+  try { accord = JSON.parse(brut); } catch (e) { accord = null; }
+  try { localStorage.removeItem("passio_oauth_cgu"); } catch (e) {}
+  if (!accord || !accord.cgu_version) return false;
+  try {
+    var u = await supa.auth.getUser();
+    var deja = u && u.data && u.data.user && u.data.user.user_metadata
+      && u.data.user.user_metadata.cgu_accepted_at;
+    if (deja) return false;
+    // ⚠️ ON LIT `{ error }` : le SDK ne LÈVE PAS. Une trace de consentement
+    // qu'on croit posée et qui ne l'est pas est pire que pas de trace du tout.
+    var res = await supa.auth.updateUser({ data: accord });
+    if (res && res.error) {
+      try { if (typeof diagLog === "function") diagLog("cgu_oauth_refus " + res.error.message); } catch (e) {}
+      return false;
+    }
+    try {
+      if (typeof state !== "undefined" && state) {
+        state.user = state.user || {};
+        state.user.cgu = { version: accord.cgu_version, acceptedAt: accord.cgu_accepted_at,
+                           confidentialite: accord.confidentialite_version };
+      }
+    } catch (e) {}
+    return true;
+  } catch (e) {
+    try { if (typeof diagLog === "function") diagLog("cgu_oauth_echec " + ((e && e.message) || "?")); } catch (e2) {}
+    return false;
   }
 }
 
@@ -3820,6 +3896,10 @@ async function onbDoAuth() {
     _showAuthMsg("Pour créer ton compte, accepte les conditions générales et la politique de confidentialité.", "error");
     return;
   }
+  // L'instant de l'accord : celui où la personne a coché, jamais celui où le
+  // serveur répond. La MÊME valeur part dans `user_metadata` et dans l'état
+  // local — deux horodatages pour un seul geste seraient une trace inexploitable.
+  const _cguAccepteA = new Date().toISOString();
 
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="auth-loading"></span>' + (_authMode === "signin" ? "Connexion…" : "Création…"); }
 
@@ -3844,7 +3924,28 @@ async function onbDoAuth() {
       // `name` est la clé que relit `nomCompteDepuisSession` ; `display_name` est
       // celle qu'affiche le tableau de bord Supabase. Les deux portent la MÊME
       // valeur normalisée : deux orthographes du même pseudo seraient un piège.
-      result = await supa.auth.signUp({ email, password: pwd, options: { data: { name: nom, display_name: nom } } });
+      // ⚠️ LE CONSENTEMENT VOYAGE AVEC LE COMPTE, PAS AVEC L'APPAREIL (2026-09-10).
+      // Il n'était écrit que dans `state.user.cgu`, EN MÉMOIRE, et n'atteignait
+      // jamais le serveur : mesuré, ZÉRO trace sur 85 lignes `user_state`, y
+      // compris pour le seul compte créé depuis la mise en place du dispositif.
+      // Deux chemins l'effaçaient — le retour par « Se connecter » (`signUp` ne
+      // rend pas de session depuis « Confirm email », donc aucun `saveState()`
+      // n'intervient) et `purgeAccountScopedData()`, dont `STATE_KEY` est le
+      // premier élément. En cas de litige — une rencontre qui tourne mal — rien
+      // ne prouvait que la personne avait accepté l'art. 7 ni l'art. 10 : c'est
+      // le bouclier lui-même qui était en cause.
+      //
+      // `user_metadata` est la SEULE mémoire qui voyage sans migration, et elle
+      // est déjà le chemin du nom d'utilisateur depuis le 2026-09-09 : elle
+      // survit à la confirmation d'e-mail, au changement d'appareil et à la
+      // purge locale. La VERSION est aussi importante que la date — sans elle,
+      // « a accepté » ne dit pas QUOI.
+      result = await supa.auth.signUp({ email, password: pwd, options: { data: {
+        name: nom, display_name: nom,
+        cgu_version: PASSIO_CGU_VERSION,
+        cgu_accepted_at: _cguAccepteA,
+        confidentialite_version: PASSIO_CONFIDENTIALITE_VERSION,
+      } } });
       // Copie locale pour le profil et les prochaines synchros.
       try {
         if (typeof state !== "undefined") {
@@ -3857,7 +3958,9 @@ async function onbDoAuth() {
           try { const el = document.getElementById("userName"); if (el) el.value = nom; } catch (e2) {}
           // Qui a accepté QUOI, et QUAND. Sans la version, une réécriture des
           // CGU rendrait la trace inexploitable : « a accepté » ne dit rien.
-          state.user.cgu = { version: PASSIO_CGU_VERSION, acceptedAt: new Date().toISOString() };
+          // Même valeur que celle partie dans `user_metadata` : deux horodatages
+          // différents pour un seul geste seraient une trace inexploitable.
+          state.user.cgu = { version: PASSIO_CGU_VERSION, acceptedAt: _cguAccepteA, confidentialite: PASSIO_CONFIDENTIALITE_VERSION };
         }
       } catch (e) {}
     }
@@ -3872,6 +3975,23 @@ async function onbDoAuth() {
       if (msg.includes("Email not confirmed")) {
         msg = "Confirme ton e-mail avant de te connecter.";
         _showResendConfirmation(email);
+      }
+      // ⚠️ LE MODE DE PANNE LE PLUS PROBABLE D'UN JOUR DE LANCEMENT, ET IL
+      // S'AFFICHAIT EN ANGLAIS. Supabase impose 30 e-mails d'authentification
+      // par HEURE à tout projet équipé d'un SMTP externe — un seau PARTAGÉ entre
+      // l'inscription, le renvoi de lien et le mot de passe oublié. Au-delà, la
+      // réponse est un 429 dont le message brut (« Email rate limit exceeded »)
+      // partait tel quel dans une interface française. Le chemin « Renvoyer le
+      // lien » traduisait déjà ce même refus ; c'est le chemin de L'INSCRIPTION,
+      // celui qui compte le jour où on poste le lien, qui ne le faisait pas.
+      //
+      // Et surtout : la personne doit comprendre que son adresse n'est PAS
+      // perdue, sinon elle s'en va pour de bon.
+      if (/rate limit|too many|security purposes/i.test(msg)) {
+        msg = "Beaucoup de monde s'inscrit en ce moment. Réessaie dans quelques minutes — ton adresse n'est pas perdue.";
+        // Sans cette remontée, la panne est invisible : personne ne saura que
+        // des inscriptions ont été refusées ce soir-là.
+        try { if (window.tel && tel.error) tel.error("signup_quota_email", { screen: "auth" }); } catch (e) {}
       }
       _showAuthMsg(msg, "error");
       if (btn) { btn.disabled = false; btn.textContent = _authMode === "signin" ? "Se connecter" : "Créer mon compte"; }

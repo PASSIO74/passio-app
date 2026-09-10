@@ -3458,7 +3458,7 @@ function openPassionPaywall(opts) {
     </div>
     <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:12px 14px;font-size:12.5px;color:var(--muted);line-height:1.6;margin-bottom:14px;">
       Cette formule <strong>n'est pas encore ouverte</strong> : aucun paiement n'est
-      possible aujourd'hui et rien ne t'est débité. Le tarif sera annoncé au lancement.
+      possible aujourd'hui et rien ne t'est débité. Le tarif sera annoncé plus tard.
     </div>
     <div style="font-size:12.5px;color:var(--muted);line-height:1.6;margin-bottom:14px;">${suite}</div>
     ${echange}

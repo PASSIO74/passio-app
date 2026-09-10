@@ -36,7 +36,8 @@
     "passions:demandes": "node scripts/passions-demandes.js",
     "passions:moderation": "node scripts/passions-moderation.js",
     "purge:e2e:rest": "node scripts/purge-e2e-rest.js",
-    "passions:decouper": "node scripts/decouper-migration-passions.js"
+    "passions:decouper": "node scripts/decouper-migration-passions.js",
+    "moderation": "node scripts/moderation.js"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",

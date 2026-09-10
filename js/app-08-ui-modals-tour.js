@@ -2325,6 +2325,20 @@ async function boot() {
       // La clé sera écrite par l'adoption, au changement effectif du mot de passe.
       if (!_recuperationEnCours) localStorage.setItem("passio_uid", MY_UID);
       if (localStorage.getItem("passio_oauth_pending")) localStorage.removeItem("passio_oauth_pending");
+      // ⚠️ C'EST ICI QUE PASSE LE RETOUR DE GOOGLE, PAS DANS `onAuthStateChange`.
+      // Le SDK a déjà reconstruit la session depuis l'URL au moment où `boot()`
+      // regarde : on entre donc dans CETTE branche, qui se termine par un
+      // `return` AVANT même que `onAuthStateChange` ne soit enregistré (il ne
+      // l'est que s'il n'y a AUCUNE session). La ligne juste au-dessus le prouve
+      // — c'est elle qui consomme `passio_oauth_pending`.
+      //
+      // Sans cet appel, l'accord aux CGU donné avant le départ vers Google
+      // restait dans `localStorage` et n'atteignait JAMAIS le compte. Le défaut
+      // était invisible aux tests parce qu'ils appelaient `_poserConsentementOAuth`
+      // en direct : « tester la fonction ne suffit pas, il faut mesurer le
+      // CÂBLAGE ». Idempotente et sans effet sans accord mémorisé, elle est donc
+      // inoffensive sur tous les autres chemins de démarrage.
+      try { if (typeof _poserConsentementOAuth === "function") await _poserConsentementOAuth(); } catch (e) {}
       // 🔑 Une session Supabase valide = compte réel connecté → on entre dans l'app,
       // même si le flag d'onboarding local est absent (nouvel appareil, réinstallation,
       // connexion directe par email, user_state purgé…). Sans ça, un utilisateur
@@ -2504,6 +2518,15 @@ async function boot() {
         if (event === "SIGNED_IN" && _oauthEnAttente) {
           localStorage.removeItem("passio_oauth_pending");
           setTimeout(async () => {
+            // ⚠️ LE CONSENTEMENT AUX CGU SE POSE ICI, ET AVANT L'ADOPTION, parce
+            // que l'adoption RECHARGE la page : tout ce qui n'est pas fait avant
+            // ne sera jamais fait. Sur le chemin Google, l'accord a été donné
+            // sur l'écran d'avant, `signInWithOAuth` a quitté la page, et c'est
+            // le premier instant où une session existe pour l'écrire.
+            // (`_poserConsentementOAuth` n'écrase jamais un accord déjà posé.)
+            try {
+              if (typeof _poserConsentementOAuth === "function") await _poserConsentementOAuth();
+            } catch (e) { console.warn("consentement OAuth:", e); }
             try {
               // Adopter AVANT `state.onboarded = true` + `saveState()` : c'est
               // cette paire qui arme le beacon de `pagehide` déclenché par le
