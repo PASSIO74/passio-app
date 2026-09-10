@@ -837,6 +837,18 @@ jobs:
                 echo "> ci-dessous sont ceux du depot : c'est eux qui decident, pas ce message."
               fi
               echo
+              # ⚠️ CE MOT-CLÉ EST CE QUI DÉBLOQUE LA CHAÎNE, PAS UN RANGEMENT.
+              # `sentinelle-autonome.yml` refuse d'ouvrir une enquête tant
+              # qu'une issue « [SENTINELLE] » est ouverte — garde « une enquête
+              # à la fois ». Sans fermeture automatique, la chaîne devenait
+              # muette DÈS SON PREMIER SUCCÈS : mesuré le 2026-09-09, l'issue
+              # #304 corrigée et déployée restait ouverte, et le premier cron
+              # (21h00) a sauté la lecture de production, `libre=false`. Un
+              # blocage qui ressemble EXACTEMENT à « rien à signaler ».
+              # GitHub ne ferme que sur mot-clé dans le CORPS de la PR, et
+              # seulement à la fusion vers la branche par défaut.
+              echo "Closes #${NUMERO}"
+              echo
               echo "Travail produit par Claude Code depuis l'issue #${NUMERO}."
               echo
               echo "Branche imposée par le run : \`${ATTENDUE}\`"
