@@ -10240,10 +10240,86 @@ body.ctx-locked #appMain { overflow: hidden; }
    resserre que la page dont la hauteur pose problème. */
 #screen-profiles .main-profile-body { padding-bottom: 10px; }
 #screen-profiles .main-profile-stat { padding: 2px 6px 0; }
-#v9ProfilePassions.v9-profile-strip { margin: 4px 0 0; padding: 4px 16px 2px; }
-:root.passio-ui-7 #screen-profiles .v7-tabs { margin: 6px 0 4px; }
-#screen-profiles .profile-tabs { margin: 6px 0 10px; }
+#v9ProfilePassions.v9-profile-strip { padding: 4px 16px 2px; }
 #screen-profiles .profile-tab { min-height: 46px; }
+
+/* ⚠️ LES TROIS ESPACES DU HAUT DE PAGE SE CALCULENT, ILS NE SE CHOISISSENT PAS
+   (2026-09-10, troisième tour). « Tous les onglets sont trop rapprochés.
+   Descends légèrement les onglets de contenu jusqu'en bas, espace tout le reste,
+   mais tout doit tenir sur une page. » Les deux demandes sont contradictoires
+   tant qu'on écrit des marges FIXES : celle qui aère un écran de 765 px fait
+   déborder celui de 693, et celle qui tient sur 693 laisse 50 px de vide en bas
+   sur 765 — exactement le vide que Benjamin a entouré sur sa capture.
+
+   `--espace-profil` RÉPARTIT donc ce qui reste, au lieu de le laisser en bloc
+   sous la dernière rangée : il vaut le TIERS de la place libre, posé aux trois
+   jointures (carte → rail, rail → onglets, onglets → formats). Plus l'écran est
+   haut, plus ça respire ET plus la rangée de formats descend — les deux moitiés
+   de la demande sont le MÊME nombre, ce qui est la seule façon de ne pas avoir
+   à choisir entre elles.
+
+   ⚠️ LA PLACE LIBRE SE CALCULE SUR LA COUVERTURE RÉELLE, PAS SUR SES 34 %.
+   À 390 px de large, c'est le rapport 3/2 qui la borne (239 px) bien avant le
+   pourcentage : croire qu'elle prend 34 % de 765 px, soit 260, ferait perdre
+   21 px à la répartition. `--couverture-profil` est donc calculé une fois, sert
+   de `max-height` À LA PHOTO et d'entrée À LA FORMULE — deux lectures d'une
+   seule vérité, jamais deux estimations qui divergeront au premier changement.
+
+   ⚠️ UNE FORMULE CONTINUE, ET C'EST POURQUOI LA MEDIA QUERY A ÉTÉ RETIRÉE.
+   Le premier jet faisait tomber la photo de 34 % à 30 % sous 760 px : à un pixel
+   près du seuil, elle sautait de 30 px d'un coup et la répartition, elle, ne
+   sautait pas — la rangée serait repassée sous la barre juste au-dessus du
+   seuil. La borne de survie (`vh - 488px`) fait le même travail SANS marche :
+   elle garde toujours 488 px pour le reste, donc sur un très petit écran c'est
+   la photo qui cède, progressivement, et jamais les commandes.
+
+   ⚠️ LES BORNES SONT LA MOITIÉ DU TRAVAIL. En bas, 6 px : sans plancher la
+   formule devient négative sur un très petit écran, et un espace négatif ferait
+   se chevaucher deux rangées de boutons. En haut, 36 px : sans plafond, une
+   tablette étalerait trois trous énormes entre quatre blocs qui se lisent
+   ensemble — aérer n'est pas disperser.
+
+   ⚠️ `var(--app-vh)` et JAMAIS `100dvh` : c'est la hauteur mesurée en JS
+   (app-09) qui fait autorité sur le cadrage dans ce projet, `100svh` n'étant que
+   le repli avant sa première mesure. Elle SUIT la barre d'URL : les espaces se
+   recalculent donc tout seuls quand elle apparaît ou disparaît.
+
+   ⚠️ UN SEUL ESPACE ENTRE DEUX BLOCS, jamais deux marges qui s'additionnent :
+   la carte perd sa marge basse et le rail sa marge basse, les onglets la leur.
+   Deux sources rendraient la répartition fausse d'un facteur deux par endroits,
+   et le débordement reviendrait par la porte de derrière.
+
+   ⚠️ MESURÉ (bas de la rangée de formats / haut de la barre) : 569/578 à
+   390×640 — taille où la version précédente DÉBORDAIT de 31 px —, 622/631 à
+   390×693, 662/671 à 412×733, et 692/703 à 390×765, l'écran de Benjamin, où la
+   rangée descend de 70 px pour venir se poser juste au-dessus de la barre. Une
+   dizaine de pixels de garde partout, par construction : c'est le talon de la
+   formule, pas une coïncidence de maquette.
+   La marge basse de la rangée de formats, elle, ne DESCEND rien : elle sépare
+   les formats des publications, qui défilent. */
+#screen-profiles {
+  /* Hauteur que la couverture prendra RÉELLEMENT : la plus PETITE des quatre
+     bornes. À 390 px de large c'est presque toujours la première — le rapport
+     3/2 sur 358 px de contenu fait 239 px, sous les 34 % de la plupart des
+     écrans. La quatrième est la borne de SURVIE : elle garde 488 px pour tout
+     le reste, donc sur un très petit écran c'est la photo qui cède, jamais les
+     commandes. Les quatre sont des `min()` : aucune ne peut agrandir. */
+  --couverture-profil: min(
+    calc((min(100vw, 440px) - 32px) / 1.5),
+    calc(var(--app-vh, 100svh) * 0.34),
+    420px,
+    calc(var(--app-vh, 100svh) - 488px)
+  );
+  /* Le tiers de ce qui reste une fois la couverture posée et les 470 px
+     incompressibles retirés (haut de page 80, corps de la carte 145, rail 65,
+     onglets 52, rangée de formats 56, barre 62, talon 10). */
+  --espace-profil: clamp(6px, calc((var(--app-vh, 100svh) - 470px - var(--couverture-profil)) / 3), 36px);
+}
+#screen-profiles .main-profile-cover { max-height: var(--couverture-profil); }
+#screen-profiles .main-profile-card { margin-bottom: 0; }
+#screen-profiles #v9ProfilePassions.v9-profile-strip { margin: var(--espace-profil) 0 0; }
+:root.passio-ui-7 #screen-profiles .v7-tabs { margin: var(--espace-profil) 0 0; }
+#screen-profiles .profile-tabs { margin: var(--espace-profil) 0 14px; }
 
 /* ⚠️ ET LE PLAFOND DE LA COUVERTURE CÈDE 4 POINTS — SUR LES SEULS ÉCRANS COURTS.
    Les six espaces ci-dessus ne rendaient que ~50 px des 74 manquants : le reste
@@ -10267,11 +10343,6 @@ body.ctx-locked #appMain { overflow: hidden; }
    ⚠️ `max-height` en `@media (max-height: …)` et non en `--app-vh` : la variable
    mesurée en JS fait autorité sur la VALEUR (elle suit la barre d'URL), la media
    query ne sert qu'à décider DANS QUEL RÉGIME on est. Les deux se complètent. */
-@media (max-height: 760px) {
-  #screen-profiles .main-profile-cover {
-    max-height: min(420px, calc(var(--app-vh, 100svh) * 0.30));
-  }
-}
 
 #v9ProfilePassions .v9-strip-empty {
   padding: 12px 14px;
