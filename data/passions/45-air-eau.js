@@ -45,11 +45,11 @@ module.exports = [
   ["aviation-voltige", "Voltige aérienne", "acrobatie aérienne", "aviation"],
   ["aviation-maintenance", "Mécanique aéronautique", "maintenance avion", "aviation"],
   ["aviation-histoire-air", "Histoire de l'aviation", "avions anciens,warbirds", "aviation"],
-  ["aviation-meteo-vol", "Météo aéronautique", "", "aviation"],
+  ["aviation-meteo-vol", "Météo aéronautique", "météo du pilote,conditions de vol", "aviation"],
   ["aviation-navigation-aerienne", "Navigation aérienne", "radionavigation", "aviation"],
   ["aviation-aeroclub", "Aéroclub", "club de vol", "aviation"],
   ["aviation-paramoteur", "Paramoteur", "parapente motorisé", "aviation"],
-  ["aviation-speed-riding", "Speed riding", "", "aviation"],
+  ["aviation-speed-riding", "Speed riding", "ski parapente,speedriding", "aviation"],
   ["aviation-saut-base", "Base jump", "basejump", "aviation"],
 
   // ── Nautisme ────────────────────────────────────────────
@@ -65,7 +65,7 @@ module.exports = [
   ["nautisme-rafting", "Rafting", "descente en raft", "nautisme"],
   ["nautisme-plongee", "Plongée sous-marine", "scaphandre,niveau 1", "nautisme", { pop: 1 }],
   ["nautisme-apnee", "Apnée", "freediving,plongée en apnée", "nautisme"],
-  ["nautisme-chasse-sous-marine", "Chasse sous-marine", "", "nautisme"],
+  ["nautisme-chasse-sous-marine", "Chasse sous-marine", "chasse en apnée,fusil sous-marin", "nautisme"],
   ["nautisme-snorkeling", "Randonnée palmée", "snorkeling,palmes masque tuba,pmt", "nautisme"],
   ["nautisme-jet-ski", "Jet-ski", "scooter des mers", "nautisme"],
   ["nautisme-bateau-moteur", "Bateau à moteur", "vedette,semi-rigide", "nautisme"],

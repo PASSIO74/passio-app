@@ -149,6 +149,53 @@ const nbSpecs = (function () {
   return n;
 })();
 
+// ── 7 bis. AU MOINS DEUX ALIAS PAR PASSION ────────────────────────────────
+// ⚠️ CE CONTRÔLE EST UNE ERREUR, PAS UNE ALERTE, ET C'EST DÉLIBÉRÉ.
+//
+// Le 2026-09-09, 871 passions sur 1 908 (46 %) n'avaient AUCUN alias. C'est
+// l'étude de capacité qui l'a désigné comme la vraie cause du « il n'y a pas
+// assez de passions » : le référentiel en contenait déjà 1 908, mais la frappe
+// n'en atteignait qu'une partie. « jogging » trouve `running` parce que
+// quelqu'un a écrit l'alias ; « impro » ne trouve « Improvisation théâtrale »
+// que si quelqu'un l'écrit aussi. UNE PASSION QU'ON NE TROUVE PAS N'EXISTE PAS.
+//
+// Le rattrapage a été fait EN ENTIER (0 passion sans alias), donc cette règle
+// n'a besoin d'AUCUNE liste d'exceptions — et c'est précisément pour ça qu'elle
+// peut être une erreur bloquante. Une règle assortie d'un socle de 871
+// dérogations n'aurait jamais été tenue : elle aurait normalisé le manquement.
+//
+// ⚠️ DEUX SEUILS, ET LA DIFFÉRENCE EST UNE QUESTION D'HONNÊTETÉ.
+//
+//   PLANCHER_ALIAS = 1  → ERREUR. Il est TENU : zéro passion sans alias, aucune
+//                         dérogation, aucune liste d'exceptions. Une règle
+//                         bloquante ne se pose que sur un état réellement
+//                         atteint — sinon elle arrive avec son socle de
+//                         dérogations, et un socle de dérogations normalise le
+//                         manquement au lieu de le corriger.
+//   CIBLE_ALIAS    = 2  → ALERTE CHIFFRÉE, tant que le rattrapage n'est pas
+//                         fini. Un alias unique est presque toujours la simple
+//                         variante orthographique du libellé et n'ouvre aucune
+//                         porte d'entrée nouvelle : deux est le vrai objectif.
+//
+// ⚠️ QUAND L'ALERTE TOMBERA À ZÉRO, PASSER `PLANCHER_ALIAS` À 2 ET RETIRER
+//    L'ALERTE. Laisser un objectif en alerte permanente, c'est un objectif que
+//    plus personne ne lit.
+const PLANCHER_ALIAS = 1;
+const CIBLE_ALIAS = 2;
+let sousLaCible = 0;
+passions.forEach(function (p) {
+  if (p.aliases.length < PLANCHER_ALIAS) {
+    err("aucun alias : « " + p.label + " » (" + p._fichier + " · " + p.id +
+        ") — une passion qu'on ne trouve pas n'existe pas");
+  } else if (p.aliases.length < CIBLE_ALIAS) {
+    sousLaCible++;
+  }
+});
+if (sousLaCible) {
+  warn(sousLaCible + " passion(s) n'ont qu'UN alias (cible : " + CIBLE_ALIAS +
+       "). Le plancher est tenu ; la cible ne l'est pas encore.");
+}
+
 // ── 8. Décomptes ───────────────────────────────────────────────────────────
 const nbAlias = passions.reduce((a, p) => a + p.aliases.length, 0);
 const nbPop = passions.filter(p => p.popular).length;

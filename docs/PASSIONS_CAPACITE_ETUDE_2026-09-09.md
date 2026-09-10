@@ -248,6 +248,57 @@ pas une alerte — sinon elle ne sera pas tenue.
 
 ---
 
+---
+
+## 5 bis. Vague 2 (2026-09-10) — le rattrapage des alias est FINI
+
+**Zéro passion sans alias.** 871 entrées enrichies, 1 932 → **3 674 alias**,
+moyenne 0,93 → **1,76**. Aucune passion ajoutée, aucun libellé changé : seul le
+champ alias bouge.
+
+C'était la recommandation la plus importante du §5, et elle est tenue en entier
+— ce qui permet d'en faire une **règle bloquante sans aucune dérogation** :
+`scripts/valider-referentiel-passions.js` refuse désormais une passion sans
+alias. Une règle assortie d'un socle de 871 exceptions n'aurait jamais été
+tenue ; elle aurait normalisé le manquement.
+
+Le seuil est à **deux** alias en ALERTE chiffrée (623 passions n'en ont encore
+qu'un), à un en ERREUR. La différence est une question d'honnêteté : on ne pose
+en bloquant que ce qui est réellement atteint. Quand l'alerte tombera à zéro,
+`PLANCHER_ALIAS` passera à 2 et l'alerte disparaîtra — un objectif laissé en
+alerte permanente est un objectif que plus personne ne lit.
+
+### ⚠️ Un défaut du generateur de delta, trouvé en s'en servant
+
+Le delta de la vague 1 était **incomplet, en silence**. Mode `--ids` : il
+n'émettait que les passions ABSENTES de la production. Or insérer 180 entrées
+au milieu du référentiel **décale le `sort_order` de toutes celles qui
+suivent** — 202 lignes se sont retrouvées avec un rang périmé en base (mesuré :
+`yoga-hatha` à 1708 en prod contre 1888 dans le dépôt, exactement 180 d'écart).
+
+Et la vague 2 l'aurait rendu total : elle ne crée AUCUNE passion, elle modifie
+871 lignes existantes. En mode `--ids`, le générateur rendait « rien à
+écrire » — un fichier vide, parfaitement satisfait de lui-même, pendant que la
+recherche SERVEUR (`rechercher_passions` lit la colonne `aliases`) serait restée
+sur l'ancien état. **Un outil qui ne voit que les ajouts est aveugle à toute
+modification.**
+
+Trois corrections, toutes dans `scripts/generer-delta-passions.js` :
+
+1. **Mode `--etat`** : compare une EMPREINTE par ligne (les 8 colonnes que la
+   migration écrit, dans le même ordre) et rattrape les modifications. Le delta
+   du jour répare aussi, au passage, les 202 rangs périmés de la vague 1.
+2. **Les relations ne suivent que les passions vraiment NOUVELLES.** Une passion
+   dont on change les alias garde exactement les mêmes liens : les émettre
+   produisait 1 984 lignes de `passion_relations` inutiles, 200 Ko de SQL à
+   coller pour rien.
+3. **Le verdict prouve ce que le delta fait.** Compter les passions actives ne
+   dit RIEN d'un delta de modification — le total ne bouge pas d'une ligne quand
+   on change 959 jeux d'alias, donc l'ancien verdict aurait affiché « OK » sur
+   une base où rien n'aurait été écrit. Il recompte désormais l'empreinte
+   attendue contre celle réellement en base, ligne à ligne. Éprouvé : sur des
+   empreintes délibérément fausses, il rend bien `ECHEC`.
+
 ## 6. Ce que cette étude ne dit pas
 
 - Elle ne mesure pas quelles frappes échouent réellement en production. La
