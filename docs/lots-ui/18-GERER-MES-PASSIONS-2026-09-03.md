@@ -555,3 +555,56 @@ Vérifié : les 8 gates de `npm run verif`, et **146 cas verts** sur
 `ui-v8-passions`, `profil-visite-options` et `refonte-multi-passion` — dont
 « la carte d'identité reste sous les deux tiers de l'écran » (elle tombe à 51 %)
 et « l'avatar tient ENTIÈREMENT sur la couverture ».
+
+### Troisième tour — les espaces se CALCULENT, ils ne se choisissent plus
+
+« Tous les onglets sont trop rapprochés. Descends légèrement les onglets de
+contenu jusqu'en bas, espace tout le reste, mais tout doit tenir sur une page. »
+
+⚠️ **Les deux demandes sont contradictoires tant qu'on écrit des marges FIXES** :
+celle qui aère un écran de 765 px fait déborder celui de 693, et celle qui tient
+sur 693 laisse ~50 px de vide en bas sur 765 — exactement le vide que Benjamin a
+entouré sur sa capture. La diète du tour précédent avait donc *deux* défauts
+symétriques : trop serrée sur son écran, et toujours débordante sur un 640.
+
+`--espace-profil` **répartit** ce qui reste au lieu de le laisser en bloc sous la
+dernière rangée : il vaut le **tiers de la place libre**, posé aux trois
+jointures (carte → rail, rail → onglets, onglets → formats). Plus l'écran est
+haut, plus ça respire **et** plus la rangée de formats descend — les deux moitiés
+de la demande sont le **même nombre**, ce qui est la seule façon de ne pas avoir à
+choisir entre elles.
+
+⚠️ **La place libre se calcule sur la couverture RÉELLE, pas sur ses 34 %.** À
+390 px de large, c'est le rapport 3/2 qui la borne (239 px) bien avant le
+pourcentage : croire qu'elle prend 34 % de 765 px, soit 260, ferait perdre 21 px
+à la répartition. `--couverture-profil` est calculé une fois et sert de
+`max-height` **à la photo** et d'entrée **à la formule** — deux lectures d'une
+seule vérité, jamais deux estimations qui divergeront au premier changement.
+
+⚠️ **La media query de 760 px a été RETIRÉE, et c'est le cœur du tour.** Elle
+faisait tomber la photo de 34 % à 30 % sous 760 px : à un pixel près du seuil,
+elle sautait de 30 px d'un coup alors que la répartition, elle, ne sautait pas —
+la rangée serait repassée sous la barre juste au-dessus du seuil. La borne de
+survie `calc(var(--app-vh) - 488px)` fait le même travail **sans marche** : elle
+garde toujours 488 px pour le reste, donc sur un très petit écran c'est la photo
+qui cède, progressivement, et jamais les commandes.
+
+⚠️ **Les bornes sont la moitié du travail** : 6 px en bas (sans plancher la
+formule devient négative sur un très petit écran, et deux rangées de boutons se
+chevaucheraient), 36 px en haut (sans plafond, une tablette étalerait trois trous
+énormes entre quatre blocs qui se lisent ensemble — aérer n'est pas disperser).
+
+### Mesures après coup (bas de la rangée de formats / haut de la barre)
+
+| viewport | avant ce tour | après | garde |
+|---|---|---|---|
+| 390 × 640 | 609 / 578 ❌ **débordait de 31 px** | 569 / 578 | 10 px ✅ |
+| 390 × 693 | 622 / 631 | 622 / 631 | 10 px ✅ |
+| 412 × 733 | 634 / 671 | 662 / 671 | 10 px ✅ |
+| 390 × 765 *(écran de Benjamin)* | 622 / 703 | **692 / 703** | 11 px ✅ |
+| 390 × 844 | 652 / 782 | 744 / 782 | 38 px ✅ |
+
+Une dizaine de pixels de garde partout par **construction** : c'est le talon de la
+formule, pas une coïncidence de maquette. Vérifié : 8 gates et **146 cas verts**
+sur les sept suites profil, avec « la carte d'identité reste sous les deux tiers »
+et « l'avatar tient entièrement sur la couverture » verts aux six tailles testées.
