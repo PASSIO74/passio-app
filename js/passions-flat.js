@@ -551,7 +551,7 @@
   // Le référentiel servi est-il le REPLI hors ligne ?
   // ⚠️ CHEMIN DE RENDU, comme `taille()` — et pour la même raison : `_etat()`
   // est réservé aux tests. Une surface qui annonce un NOMBRE ou qui propose une
-  // SÉLECTION doit pouvoir distinguer les 1 908 passions du repli, qui n'en
+  // SÉLECTION doit pouvoir distinguer les 5 001 passions du repli, qui n'en
   // porte qu'une vingtaine (socle + profils + récentes, toutes à `popularity: 0`,
   // donc invisibles pour `suggestions()`). Sans cette question, la page
   // « Rechercher » annonçait « un aperçu parmi 21 passions » — un nombre
@@ -662,7 +662,7 @@
   // CRÉER UNE PASSION — lot creation_passion_v1 (2026-09-08)
   //
   // « Chacun peut créer une passion » : premier reproche des testeurs. Le
-  // référentiel en contient 1 908, mais quand la recherche ne trouvait rien,
+  // référentiel en contient 5 001, mais quand la recherche ne trouvait rien,
   // la seule issue était une DEMANDE (`deposerDemande` ci-dessus) — une entrée
   // « en vérification », jamais publiable. Une porte qui ne mène nulle part.
   //
@@ -832,14 +832,14 @@
   //
   // ⚠️ LE RÉFÉRENTIEL NE SE CHARGE TOUJOURS PAS « AU DÉMARRAGE », et c'est un
   // invariant protégé par un test (`passions-plates.spec.js` ⑤ et ⑰ bis) :
-  // 160 Ko sur le chemin critique pour une donnée dont la plupart des sessions
+  // 568 Ko sur le chemin critique pour une donnée dont la plupart des sessions
   // n'ont jamais besoin. Un compte qui ne vit que sur les 19 passions du socle
   // embarqué ne télécharge donc RIEN de plus qu'avant ce correctif.
   //
   // ⚠️ MAIS « JAMAIS AVANT LE SÉLECTEUR » ÉTAIT UN DÉFAUT VISIBLE. `passionById`
   // (app-02) résout d'abord le socle, puis interroge ce module — et rend
   // « ✨ Passion » quand il ne sait pas. Tant que `charger()` n'avait pas
-  // tourné, `parId` rendait `null` pour les 1 908 passions du référentiel : une
+  // tourné, `parId` rendait `null` pour les 5 001 passions du référentiel : une
   // passion venue de la recherche s'affichait en bulle GÉNÉRIQUE (« ✨ Passion »,
   // sans son nom) dans le rail du Fil, celui du Profil et le Studio, jusqu'à ce
   // que quelqu'un rouvre le sélecteur. Mesuré à l'écran par Benjamin le
@@ -903,7 +903,7 @@
   //
   // ⚠️ ET SYMÉTRIQUEMENT, ON EXCLUT LES PASSIONS ARCHIVÉES : rangées par le lot
   // UI-8, elles ne sont peintes par aucune surface par défaut. Les compter
-  // faisait télécharger 160 Ko à chaque démarrage pour un nom que personne ne lit.
+  // faisait télécharger 568 Ko à chaque démarrage pour un nom que personne ne lit.
   //
   // ⚠️ NE JAMAIS BORNER PAR LE HAUT D'UNE LISTE TRIÉE PAR DATE. La première
   // rédaction s'arrêtait aux 40 publications les plus récentes — et ne voyait

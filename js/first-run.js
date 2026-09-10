@@ -219,7 +219,7 @@
   //
   // `specialitesDe()` et `chercher()` restent les deux SEULS points de lecture
   // de cette couche : la remplacer un jour par le référentiel plat en entier
-  // (ses 1 908 entrées et leur champ `broader`) ne demandera de toucher qu'eux.
+  // (ses 5 001 entrées et leur champ `broader`) ne demandera de toucher qu'eux.
   //
   // ⚠️ CE QU'UNE SPÉCIALITÉ FAIT : elle sélectionne sa passion parente ET
   // s'ajoute elle-même aux intérêts du fil. Ce qu'elle ne fait pas : rendre
@@ -237,7 +237,7 @@
   // effet. Mesuré à l'écran par Benjamin.
   //
   // Chaque ligne porte donc l'identifiant CANONIQUE du référentiel plat
-  // (`data/passions/*.js`, 1 908 passions) et son libellé, recopié de la même
+  // (`data/passions/*.js`, 5 001 passions) et son libellé, recopié de la même
   // source. `tests/e2e/first-run.spec.js` et `npm run passions:verifier`
   // refusent un identifiant qui n'y existerait pas : une faute de frappe ne peut
   // pas survivre à la CI.
@@ -368,7 +368,7 @@
   //
   // ⚠️ ON N'INTERROGE PAS `metaPassion(id)` SUR LA SPÉCIALITÉ ELLE-MÊME, et
   // c'est délibéré. `metaPassion` passe par `estPassionCanonique`, qui ne
-  // connaît hors ligne que les 19 du socle embarqué et n'apprend les 1 908
+  // connaît hors ligne que les 19 du socle embarqué et n'apprend les 5 000
   // autres qu'après une réponse de la table `passions` — attendre cette réponse
   // ferait retomber le choix précis sur sa passion parente, EN SILENCE et de
   // façon intermittente. C'est exactement le défaut qu'on corrige. La table
@@ -935,7 +935,7 @@
   // démarrage — seul le sélecteur de passions le demande, à son ouverture.
   //
   // ⚠️ ON NE LE DEMANDE QUE SI ON EN A BESOIN, et `ids` sert exactement à ça.
-  // « 160 Ko de référentiel sur le chemin critique du démarrage, pour une donnée
+  // « 568 Ko de référentiel sur le chemin critique du démarrage, pour une donnée
   // dont la plupart des sessions n'ont jamais besoin » est une décision
   // d'architecture tenue par un test (`passions-plates.spec.js` ⑤). Or
   // `appliquerPrefs` tourne à CHAQUE entrée directe : appeler sans condition

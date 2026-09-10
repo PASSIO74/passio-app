@@ -119,9 +119,13 @@ test.describe("le référentiel", () => {
 // ══════════════════════════════════════════════════════════════════════════
 test.describe("la recherche", () => {
   test("⑤ le référentiel n'est PAS chargé au démarrage", async ({ page }) => {
-    // ⚠️ Ce test protège une décision d'architecture, pas un détail : 160 Ko de
+    // ⚠️ Ce test protège une décision d'architecture, pas un détail : 568 Ko de
     // référentiel sur le chemin critique du démarrage, pour une donnée dont la
     // plupart des sessions n'ont jamais besoin.
+    // ⚠️ LE CHIFFRE A TRIPLÉ AVEC LA VAGUE 3 (160 Ko à 1 908 passions, 568 Ko à
+    // 5 001) : l'invariant ne devient pas moins vrai, il devient PLUS cher à
+    // enfreindre. Le corriger dans le commentaire compte — un ordre de grandeur
+    // faux fait sous-estimer ce qu'on protège.
     await bootOnboarded(page, null, 1, { query: APERCU });
     const avant = await page.evaluate(() => window.PassioPassions._etat());
     expect(avant.actif).toBe(true);
@@ -508,7 +512,7 @@ test.describe("le modèle et les garde-fous", () => {
     const etat = await page.evaluate(() => window.PassioPassions._etat());
     expect(etat.actif, "le lot n'est pas actif par défaut").toBe(true);
     // ⚠️ MAIS LE RÉFÉRENTIEL N'EST TOUJOURS PAS CHARGÉ AU DÉMARRAGE. C'est
-    // l'invariant qui protège le temps de démarrage : 160 Ko ne partent qu'au
+    // l'invariant qui protège le temps de démarrage : 568 Ko ne partent qu'au
     // premier usage RÉEL de la recherche, jamais au boot.
     expect(etat.pret, "le référentiel est téléchargé au démarrage").toBe(false);
     // ⚠️ LA PREUVE QUE LE LOT EST ACTIF, C'EST `etat.actif` CI-DESSUS, PAS LA
@@ -532,7 +536,7 @@ test.describe("le modèle et les garde-fous", () => {
   // le second que rien ne soit téléchargé quand il n'y a rien à nommer. Corriger
   // l'un en cassant l'autre est précisément ce qui a failli arriver — la
   // première rédaction préchargeait le référentiel pour tout le monde et faisait
-  // rougir ⑤ et ⑰ bis, qui protègent 160 Ko sur le chemin critique.
+  // rougir ⑤ et ⑰ bis, qui protègent 568 Ko sur le chemin critique.
   // ══════════════════════════════════════════════════════════════════════════
   test("⑰ ter — une passion du référentiel s'affiche AVEC SON NOM, sans ouvrir le sélecteur", async ({ page }) => {
     // ⚠️ MESURÉ À L'ÉCRAN PAR BENJAMIN : trois bulles « ✨ Passion » au milieu de
@@ -569,7 +573,7 @@ test.describe("le modèle et les garde-fous", () => {
   test("⑰ quater — un compte qui ne vit que sur le socle ne télécharge RIEN de plus", async ({ page }) => {
     // Le pendant du cas précédent : `bootOnboarded` pose des passions du socle
     // (musique/sport/cuisine). Rien à nommer ⇒ rien à charger, et l'invariant
-    // des 160 Ko tient — y compris après l'hydratation, qui est le moment où la
+    // des 568 Ko tient — y compris après l'hydratation, qui est le moment où la
     // question se pose.
     // ⚠️ LE FIL DOIT ÊTRE À NOUS, SINON CE TEST NE MESURE PAS CE QU'IL CROIT.
     // Depuis que la détection regarde aussi les publications que le fil va

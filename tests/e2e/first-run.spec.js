@@ -336,7 +336,7 @@ test.describe("Personnalisation", () => {
   });
 
   // ⚠️ LE CORRECTIF NE DOIT PAS COÛTER LE DÉMARRAGE. Nommer une spécialité
-  // demande le référentiel plat (160 Ko), que PERSONNE ne charge au boot — c'est
+  // demande le référentiel plat (568 Ko), que PERSONNE ne charge au boot — c'est
   // une décision d'architecture, tenue par `passions-plates.spec.js` ⑤.
   // `appliquerPrefs` tourne à CHAQUE entrée directe : le demander sans condition
   // l'aurait retournée pour tout visiteur qui repasse, et le test ⑤ ne l'aurait

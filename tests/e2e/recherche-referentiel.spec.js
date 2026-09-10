@@ -26,7 +26,7 @@ async function ouvrirRecherche(page) {
     return el && el.classList.contains("active");
   }, null, { timeout: 10000 });
   // Le référentiel part par `fetch` À L'OUVERTURE de la page, et nulle part
-  // avant : c'est très exactement l'usage réel que l'invariant « 160 Ko jamais
+  // avant : c'est très exactement l'usage réel que l'invariant « 568 Ko jamais
   // au démarrage » réserve (passions-plates ⑤ et ⑰ bis).
   await page.waitForFunction(
     () => window.PassioPassions && window.PassioPassions.pret(),

@@ -299,6 +299,130 @@ Trois corrections, toutes dans `scripts/generer-delta-passions.js` :
    attendue contre celle réellement en base, ligne à ligne. Éprouvé : sur des
    empreintes délibérément fausses, il rend bien `ECHEC`.
 
+## 5 ter. Vague 3 (2026-09-10) — l'objectif de 5 000 est ATTEINT
+
+**2 088 → 5 001 passions.** 2 913 entrées nouvelles, 4 350 → **9 100 alias**.
+Zéro identifiant d'origine perdu, zéro libellé d'origine modifié (contrôlé
+mécaniquement, voir plus bas). Les treize fichiers de domaine ont grossi ;
+aucun n'a été refondu.
+
+| Domaine | Avant | Après |
+|---|---:|---:|
+| `10-sport` | 240 | 574 |
+| `20-scene` | 156 | 486 |
+| `30-arts` | 235 | 581 |
+| `40-mobilite` | 136 | 356 |
+| `45-air-eau` | 50 | 137 |
+| `50-techno` | 215 | 573 |
+| `60-maison` | 182 | 415 |
+| `70-vivant` | 134 | 279 |
+| `75-nature-engagement` | 61 | 200 |
+| `80-culture` | 218 | 447 |
+| `85-savoirs` | 259 | 448 |
+| `90-bienetre` | 87 | 217 |
+| `95-social` | 115 | 288 |
+| **Total** | **2 088** | **5 001** |
+
+### ⚠️ Le taux de redondance mesuré : 7 %
+
+Environ **3 125 entrées ont été écrites, 212 retirées** parce que le concept
+existait déjà — soit **~7 %** (les 212 sont le décompte des retraits prononcés
+au vu des rapports de `passions:valider`, pas une estimation). Ce n'est pas du
+gaspillage, c'est le coût normal d'écrire à cette échelle, et il faut le
+budgéter : viser 3 000 nouvelles demande d'en rédiger ~3 200.
+
+⚠️ **La vague 1 avait mesuré 15 %** (33 doublons sur 213). L'écart n'est pas une
+amélioration de méthode : la vague 1 visait un domaine déjà dense
+(`85-savoirs`), la vague 3 a surtout comblé des domaines pauvres — `45-air-eau`
+n'avait aucune nage (crawl, brasse, dos, papillon n'existaient nulle part,
+alors qu'« apprendre à nager » est une des demandes les plus banales). Le taux
+de redondance dit à quel point un domaine est DÉJÀ couvert ; il remontera.
+
+**La moitié de ces collisions étaient INTER-FICHIERS**, et c'est le point qui
+compte : « Ornithologie » vivait dans `70-vivant`, « Archéologie » dans
+`80-culture`, « Microbiote » dans `90-bienetre`, « Bain de forêt » dans
+`90-bienetre`, « Herbier » dans `85-savoirs`. Aucune relecture par domaine ne
+pouvait les voir — le découpage en fichiers est une commodité de RELECTURE, pas
+une frontière de sens. Seul `passions:valider` les voit, et c'est très
+exactement pour cela qu'il existe.
+
+Second enseignement : **un sigle n'appartient à personne.** « OCR » était déjà
+l'alias d'une course d'obstacles (`running-course-obstacles`) avant d'être la
+reconnaissance de caractères. « VAE » était le vélo à assistance électrique
+avant la validation des acquis. « SIG », « JO », « BAFA », « SCOP » : mêmes
+télescopages. Un alias en sigle mérite d'être relu deux fois.
+
+### ⚠️ LE DÉFAUT LE PLUS GRAVE DE LA VAGUE, ET IL A ÉTÉ RATTRAPÉ PAR UN CONTRÔLE
+### QUI NE CHERCHAIT PAS ÇA
+
+En traitant une collision, le lot de corrections a retiré `finance-salaire`.
+Ce n'était PAS une des nouvelles entrées : c'était une entrée **curée**,
+présente depuis l'origine, **référencée par `posts.passion_id` en production**.
+
+Le validateur ne l'a pas vue par son libellé ni par son identifiant. Il l'a vue
+par la **relation orpheline** qu'elle laissait derrière elle — une autre entrée
+pointait vers elle en `broader`. Sans ce contrôle-là, la perte serait passée :
+un identifiant absent du référentiel ne lève RIEN. Il rend « ✨ Passion » sur
+toutes les publications qui le portent, et le défaut ne se voit qu'à l'écran,
+sur du contenu réel, donc après la mise en ligne.
+
+D'où un contrôle ajouté et passé sur la vague entière, qui doit être rejoué à
+chaque vague :
+
+```
+identifiants d'origine : 2 088 → présents : 2 088   ✅ aucun perdu
+                                              ✅ aucun libellé d'origine modifié
+```
+
+### ⚠️ POURQUOI LE GÉNÉRATEUR DE DELTA NE SERT PLUS À CETTE VAGUE
+
+`sort_order` est un index **GLOBAL** (`p.sort_order = i + 1` dans
+`referentiel-passions.js`). Insérer 2 913 entrées décale donc la valeur de
+**presque toutes** les lignes déjà en base. Un delta « ce qui a changé » —
+même en mode `--etat`, qui compare une empreinte par ligne — vaudrait alors le
+miroir entier. L'outil de la vague 2 reste juste ; il ne répond simplement pas
+à ce cas.
+
+La réponse est `scripts/decouper-migration-passions.js` : le miroir (1,45 Mo)
+est découpé en **7 parties de ~240 Ko**, collables une par une.
+
+⚠️ **Le découpage change une GARANTIE, et il faut le dire** : le miroir entier
+est un `begin; … commit;` unique — tout ou rien. Découpé, chaque partie est sa
+propre transaction, donc un échec à la partie 4 laisse les parties 1 à 3
+appliquées. Ce n'est acceptable QUE parce que le miroir est additif et
+idempotent (`on conflict do update`, protection de `status='archived'` et de
+`source='legacy'`) : reprendre à la partie qui a échoué suffit.
+
+⚠️ **Un découpeur qui perd une instruction en silence est pire que pas de
+découpeur** — on croirait avoir tout appliqué. Deux contrôles, à deux niveaux :
+
+- le script réassemble ses parties et compare la liste d'instructions à celle
+  du fichier d'origine (contrôle sur le TEXTE) ;
+- `tests/sql/decoupage-migration-passions.test.sh` (gate CI) **exécute** les
+  deux chemins sur deux bases PostgreSQL jetables et compare l'**empreinte
+  ligne à ligne** du résultat. Une instruction peut être intacte au texte et le
+  découpage faux à l'exécution.
+
+Mesuré : les 7 parties rendent une base à l'empreinte **identique** au fichier
+entier (5 001 passions, mêmes relations, `rechercher_passions('jogging')` rend
+toujours `running`), le rejeu ne change rien, et la partie 2 appliquée seule
+**échoue** au lieu de laisser une base à moitié faite.
+
+### Ce que la vague 3 ne règle pas
+
+- **1 021 passions n'ont encore qu'UN alias** (c'était 623 avant la vague : les
+  nouvelles entrées en portent deux, mais toutes n'y arrivent pas). Le plancher
+  reste à 1, la cible à 2. `PLANCHER_ALIAS` ne passera à 2 que quand l'alerte
+  sera à zéro.
+- **Le référentiel servi passe de 154 Ko à 568 Ko** (bruts). L'invariant tient —
+  il n'est jamais chargé au démarrage — mais il devient **plus cher à
+  enfreindre**, pas moins. Les commentaires qui citaient « 160 Ko » ont été
+  corrigés dans le code vivant ; ceux des documents d'époque ont été laissés,
+  ce sont des mesures datées.
+- **Le prochain palier n'est pas un nombre, c'est une mesure d'usage.** Le §6
+  ci-dessous vaut plus que jamais : avant d'écrire une vague 4, il faut lire ce
+  que les gens cherchent réellement et ne trouvent pas.
+
 ## 6. Ce que cette étude ne dit pas
 
 - Elle ne mesure pas quelles frappes échouent réellement en production. La

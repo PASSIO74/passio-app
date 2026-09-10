@@ -131,7 +131,7 @@ function aiGetRelated(query) {
 // et « Guitare » sont publiables en production depuis le 2026-09-01.
 //
 // Elle passe désormais par `PassioPassions.chercherAsync` : le référentiel plat
-// entier (1 908 passions), le même barème que le sélecteur des sept surfaces —
+// entier (5 001 passions), le même barème que le sélecteur des sept surfaces —
 // exact, alias, préfixe, milieu de libellé, repli au singulier, mots dans le
 // désordre — et le repli serveur pour ce que l'index local par préfixe ne
 // rattrape pas. Le socle reste le repli quand le lot est coupé.

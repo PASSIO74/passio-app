@@ -235,4 +235,30 @@ module.exports = [
   ["sante-vieillissement", "Bien vieillir", "avancer en âge,prévention du vieillissement", "sante-prevention"],
   ["sante-mobilite-reduite", "Mobilité réduite", "se déplacer avec un handicap,fauteuil et déplacements", "sante-handicap"],
   ["sante-materiel-medical", "Matériel médical du quotidien", "aide technique,appareillage", "sante-handicap"],
+
+  // ── Compléments de fin de vague ───────────────────────────────────────
+  ["yoga-debuter-meditation", "Débuter la méditation", "première séance de méditation,commencer à méditer", "yoga-meditation"],
+  ["yoga-meditation-courte", "Méditer peu mais souvent", "cinq minutes de méditation,pratique courte", "yoga-meditation"],
+  ["yoga-pratique-maison", "Pratiquer chez soi", "tapis à la maison,séance solo à domicile", "yoga"],
+  ["yoga-cours-en-ligne-yoga", "Cours de yoga en ligne", "séance vidéo,suivre un cours à distance", "yoga"],
+  ["yoga-professeur-yoga", "Enseigner le yoga", "formation de professeur de yoga,transmettre le yoga", "yoga"],
+  ["yoga-materiel-yoga", "Matériel de yoga", "tapis de yoga,brique et sangle", "yoga"],
+  ["yoga-regularite", "Tenir une pratique régulière", "régularité,pratique quotidienne", "yoga"],
+  ["sante-consulter", "Consulter un professionnel", "prendre rendez-vous médical,trouver un médecin", "sante-prevention"],
+  ["sante-second-avis", "Deuxième avis médical", "avis complémentaire,confirmer un diagnostic", "sante-prevention"],
+  ["sante-comprendre-ordonnance", "Comprendre une ordonnance", "lire une prescription,posologie", "sante-prevention"],
+  ["sante-parcours-soin", "Parcours de soins", "médecin traitant,orientation vers un spécialiste", "sante-prevention"],
+  ["sante-hopital", "Hospitalisation", "séjour à l'hôpital,préparer une hospitalisation", "sante-prevention"],
+  ["sante-convalescence", "Convalescence", "se remettre d'une maladie,retour à la normale", "sante-prevention"],
+  ["sante-maladie-chronique", "Vivre avec une maladie chronique", "affection longue durée,gérer une maladie au long cours", "sante-prevention"],
+  ["sante-annonce-diagnostic", "Recevoir un diagnostic", "annonce d'une maladie,encaisser une nouvelle médicale", "sante-sante-mentale"],
+  ["sante-motivation-sante", "Changer ses habitudes", "nouvelle habitude de santé,tenir un changement", "sante-prevention"],
+  ["sante-marche-quotidienne", "Marcher tous les jours", "10 000 pas,marche quotidienne", "sante-sport-sante"],
+  ["sante-bouger-au-quotidien", "Bouger dans la journée", "sédentarité,se lever régulièrement", "sante-sport-sante"],
+  ["sante-respirer-mieux", "Mieux respirer", "respiration nasale,ampleur respiratoire", "sante-sport-sante"],
+  ["sante-hygiene-de-vie", "Hygiène de vie", "rythme de vie sain,équilibre quotidien", "sante-prevention"],
+
+  // ── Derniers compléments ──────────────────────────────────────────────
+  ["sante-parler-de-sante-mentale", "Parler de santé mentale", "briser le tabou,oser en parler", "sante-sante-mentale"],
+  ["sante-ecoute-de-soi", "S'écouter", "écouter son corps,respecter ses limites", "sante-sante-mentale"],
 ];

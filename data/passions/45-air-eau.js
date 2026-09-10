@@ -157,4 +157,22 @@ module.exports = [
   ["nautisme-securite-mer", "Sécurité en mer", "gilet de sauvetage,homme à la mer", "nautisme-sauvetage"],
   ["nautisme-sauvetage-cotier", "Sauvetage côtier", "surveillance de plage,poste de secours de plage", "nautisme-sauvetage"],
   ["nautisme-nage-avec-palmes", "Nage avec palmes", "palmes,monopalme", "nautisme-nage"],
+
+  // ── Compléments de fin de vague ───────────────────────────────────────
+  ["nautisme-debuter-voile", "Débuter la voile", "premier bord,école de voile", "nautisme-voile"],
+  ["nautisme-equipier", "Embarquer comme équipier", "trouver un bateau,équipier de croisière", "nautisme-croisiere-voile"],
+  ["nautisme-mal-de-mer", "Mal de mer", "nausée en bateau,tenir la mer", "nautisme-vie-a-bord"],
+  ["nautisme-cuisine-bord", "Cuisiner à bord", "repas en navigation,cambuse", "nautisme-vie-a-bord"],
+  ["nautisme-quart", "Quarts et veille", "prendre son quart,veille de nuit en mer", "nautisme-vie-a-bord"],
+  ["nautisme-ports", "Ports et escales", "escale au port,capitainerie", "nautisme-croisiere-voile"],
+  ["nautisme-phares", "Phares et balisage", "phare,balise maritime", "nautisme-permis-bateau"],
+  ["nautisme-nage-piscine", "Nager en piscine", "longueurs,couloir de nage", "nautisme-nage"],
+  ["nautisme-materiel-nage", "Matériel de natation", "planche et pull-buoy,lunettes de piscine", "nautisme-nage"],
+  ["aviation-bapteme-air", "Baptême de l'air", "premier vol,découverte du vol", "aviation-pilotage"],
+  ["aviation-vol-decouverte", "Vol d'initiation", "vol d'introduction,essayer le pilotage", "aviation-aeroclub"],
+  ["aviation-passion-avion", "Passion des avions", "aimer les avions,culture aéronautique", "aviation-spotting"],
+  ["aviation-maquette-avion", "Maquettes d'aviation", "maquette d'avion,modèle statique aéronautique", "aviation-aeromodelisme"],
+  ["aviation-musee-air", "Musées de l'air", "musée aéronautique,collection d'avions", "aviation-histoire-air"],
+  ["nautisme-plaisir-mer", "Être au bord de l'eau", "contemplation de la mer,regarder les vagues", "nautisme"],
+  ["aviation-regarder-le-ciel", "Regarder le ciel", "lever les yeux,traînées d'avion", "aviation-spotting"],
 ];

@@ -152,7 +152,7 @@ conséquences, et il faut les trois :
   le demande, à son ouverture — et sans lui `passionById` retombe sur « ✨ Passion » : la
   bulle du fil existerait sans nommer le choix qu'on vient de faire. **Il n'est demandé
   que s'il sert** : `appliquerPrefs` tourne à CHAQUE entrée directe, donc l'appeler sans
-  condition aurait remis 160 Ko sur le chemin critique du démarrage pour tout visiteur qui
+  condition aurait remis 568 Ko sur le chemin critique du démarrage pour tout visiteur qui
   repasse — la décision d'architecture que tient `passions-plates.spec.js` ⑤, et que ce
   test-là n'aurait PAS vue (il démarre sur un compte, hors de ce parcours).
 
@@ -618,7 +618,7 @@ passion venue de la recherche s'affichait donc sans son nom, dans le rail du Fil
 celui du Profil et le Studio, jusqu'à ce que quelqu'un rouvre le sélecteur.
 
 ⚠️ **La correction ne charge PAS le référentiel au démarrage**, et c'est délibéré :
-160 Ko sur le chemin critique pour une donnée dont la plupart des sessions n'ont
+568 Ko sur le chemin critique pour une donnée dont la plupart des sessions n'ont
 jamais besoin — invariant protégé par `passions-plates.spec.js` ⑤ et ⑰ bis. La
 conciliation tient en une question, posée une seule fois : « l'écran porte-t-il
 un identifiant que le socle ne sait pas nommer ? ». Non ⇒ rien n'est chargé. Oui

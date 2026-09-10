@@ -4514,8 +4514,8 @@ function deleteDraft(id) {
 // ──────────────────────────────────────────────────────────────────────────
 // ⚠️ ELLE A VÉCU TROIS LOTS EN RETARD. Tout ce qu'elle classait, comptait et
 // proposait sortait de `PASSIONS` — les 19 entrées du socle embarqué d'app-01,
-// un repli d'affichage — alors que le référentiel PLAT publie 1 908 passions
-// en production depuis le 2026-09-01. Conséquences mesurées :
+// un repli d'affichage — alors que le référentiel PLAT en publie 5 001 (1 908
+// à sa mise en production le 2026-09-01). Conséquences mesurées :
 //   • « Toutes les passions » en annonçait 19, et le pitch parlait de milliers ;
 //   • « Passions tendance » ne pouvait faire monter QUE ces 19 : une passion du
 //     réseau portant dix publications n'avait aucun chemin vers la section ;
@@ -4524,13 +4524,13 @@ function deleteDraft(id) {
 // Le référentiel est désormais la SEULE autorité de cette page, et le socle son
 // SEUL repli — jamais l'inverse.
 //
-// ⚠️ INVARIANT « 160 Ko JAMAIS AU DÉMARRAGE » (passions-plates ⑤ et ⑰ bis).
+// ⚠️ INVARIANT « 568 Ko JAMAIS AU DÉMARRAGE » (passions-plates ⑤ et ⑰ bis).
 // Le chargement part à l'OUVERTURE de cette page, ce qui est très exactement
 // l'usage réel de la recherche que l'invariant réserve : `boot()` n'appelle pas
 // `renderExplorer`. Le premier rendu est SYNCHRONE avec ce qu'on a sous la main
 // (socle + passions perso) ; le référentiel repeint quand il arrive.
 //
-// ⚠️ ON N'AFFICHE JAMAIS 1 908 TUILES. La grille montre une sélection
+// ⚠️ ON N'AFFICHE JAMAIS 5 001 TUILES. La grille montre une sélection
 // (`suggestions()`, qui alterne précis et grandes familles) ; le nombre réel est
 // écrit à côté, et c'est la RECHERCHE qui donne accès au reste.
 // ══════════════════════════════════════════════════════════════════════════
