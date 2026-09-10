@@ -456,3 +456,46 @@ hors latin/chiffres/ponctuation dans le `textContent` des cinq entrées, ② zé
 Éprouvé par **réinjection**, chaque moitié séparément : rendre le span
 inconditionnel fait tomber ② seul (① reste vert, le texte n'ayant pas changé) ;
 remettre `icon: "✏️"` sur « Modifier le profil » fait tomber ① seul.
+
+---
+
+## 2026-09-10 — Les bulles du profil rapetissent pour rendre les onglets visibles
+
+Rapport de Benjamin, capture à l'appui (390 px, Android) : sur la page Profil, la
+couverture + la carte d'identité + le rail de passions occupaient tout l'écran, et
+les onglets **« Publications | Activité »** n'apparaissaient qu'en partie, tout en
+bas. Demande : « réduis légèrement les bulles de passion sur le profil de sorte
+que sur la page on puisse voir les onglets de choix de visu de contenu ».
+
+Le rail du Profil reprenait le composant de base (`.profile-tile` : 84 px de
+large, vignette de 46 px, `.profile-strip` en `padding: 12px 16px 8px`), alors que
+le Fil a son propre palier compact depuis UI-7 (62 / 34 px). Le Profil se pose
+donc **entre les deux** :
+
+| | base (avant) | Profil (2026-09-10) | Fil (UI-7) |
+|---|---|---|---|
+| largeur de bulle | 84 px | **72 px** | 62 px |
+| vignette | 46 px | **38 px** | 34 px |
+| libellé | 10,5 px | **10 px** | 9,5 px |
+
+Mesuré à 390 px : la hauteur du rail (marge comprise) passe d'environ **111 px à
+84 px**, et les onglets remontent dans le premier écran — la rangée « Tout ·
+Photos · Vidéos · Bobines · Audio » redevient visible avec eux.
+
+### Ce qui n'a PAS bougé, et pourquoi
+
+- ⚠️ **Borné à `#v9ProfilePassions`.** Le Fil (`#profileStrip`) garde son palier
+  UI-7, qui gagne par spécificité, et le profil VISITÉ (`#visitedPassions`) garde
+  le composant de base. `ui-v7-lot.spec.js` continue de mesurer 46 px sur le Fil
+  quand on coupe UI-7 : c'est la preuve que rien n'a fuité hors du Profil.
+- ⚠️ **La largeur reste FIXE.** Jamais `flex: 1 1 0` (défaut vécu le 2026-09-02) :
+  on descend de 84 à 72 px, les bulles ne se partagent pas la largeur du rail.
+- ⚠️ **Le centrage tient tel quel.** Les deux marges `auto` ne distribuent que du
+  libre POSITIF : une rangée plus étroite se centre encore, une rangée qui déborde
+  coulisse toujours depuis son vrai début. Rien à retoucher là-dessus.
+- ⚠️ **Le libellé ne descend pas sous 10 px.** En dessous, un nom de passion cesse
+  d'être lisible avant même d'être rogné par l'ellipse — c'est la VIGNETTE qui
+  donne la hauteur, pas le texte.
+- Les bulles restent des **bulles rondes** (vignette + pastille emoji) : la
+  demande du 2026-09-02 (« remets les bulles rondes comme avant, pas de rangée de
+  passions ovale ») tient, on ne touche qu'aux dimensions.
