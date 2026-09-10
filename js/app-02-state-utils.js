@@ -1556,6 +1556,21 @@ const REFERENTIEL_VOL_MAX_MS = 60000;
 
 // Chargement en arrière-plan. N'est JAMAIS attendu par le démarrage : tant qu'il
 // n'a pas répondu, `estPassionCanonique` utilise le repli local.
+// Diagnostic et bancs seulement — JAMAIS un chemin de rendu, même convention que
+// `_repriseEtat` et que le couple `taille()` / `_etat()` de `passions-flat.js`.
+// ⚠️ IL MANQUAIT, ET SON ABSENCE A COÛTÉ DEUX TOURS DE CI. « Chargé », « complet »
+// et « en vol » sont trois états distincts, tous invisibles de l'extérieur : un
+// banc ne pouvait donc NI attendre que le chargeur soit au repos, NI distinguer
+// « la garde m'a fait ressortir » de « le scénario n'a rien produit ». Les deux
+// rendent exactement le même symptôme — un registre vide.
+window._referentielEtat = function () {
+  return {
+    taille: _referentielPassions ? _referentielPassions.size : 0,
+    complet: _referentielComplet,
+    enVol: _referentielEnCours,
+  };
+};
+
 function _noterReprisePassions() {
   try { noterLectureAReprendre("passions", chargerReferentielPassions); } catch (_e) {}
 }

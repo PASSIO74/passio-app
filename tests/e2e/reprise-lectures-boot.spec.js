@@ -134,6 +134,33 @@ async function sansReferentielReel(page) {
   await page.route("**/rest/v1/passions*", (route) => route.abort("failed"));
 }
 
+/**
+ * Amène le chargeur de référentiel à un état de départ IDENTIQUE dans les deux
+ * environnements, et le VÉRIFIE au lieu de l'espérer.
+ *
+ * ⚠️ CE N'ÉTAIT PAS LE CACHE « COMPLET » QUI BLOQUAIT, MAIS LE DRAPEAU « EN VOL »,
+ * et les deux rendent le même symptôme — un registre vide — ce qui a coûté un
+ * tour de CI de plus. En CI, le chargement du boot échoue (route coupée), donc
+ * il S'INSCRIT au registre et arme une minuterie de 2 s ; `bootOnboarded` attend
+ * 2,5 s, la minuterie tire, et un REJEU est encore en vol quand le banc appelle
+ * `chargerReferentielPassions()` — qui ressort aussitôt sur `_referentielEnCours`.
+ *
+ * On attend donc le repos AVANT d'acquitter (sinon le rejeu en vol se réinscrit
+ * juste après), puis on acquitte — ce qui vide le registre ET désarme la
+ * minuterie — puis on revérifie. `complet` est asserté : s'il devenait vrai, la
+ * garde ferait ressortir le scénario et le cas serait vert pour rien.
+ */
+async function referentielAuRepos(page) {
+  await page.waitForFunction(() => !window._referentielEtat().enVol, null, { timeout: 20000 });
+  await page.evaluate(() => window.acquitterLecture("passions"));
+  await page.waitForFunction(
+    () => !window._referentielEtat().enVol
+      && window._repriseEtat().enAttente.indexOf("passions") === -1,
+    null, { timeout: 20000 });
+  const etat = await page.evaluate(() => window._referentielEtat());
+  expect(etat.complet, "le référentiel ne doit pas être COMPLET au départ, sinon la garde fait ressortir le scénario").toBe(false);
+}
+
 test.describe("Reprise des lectures de démarrage après coupure réseau", () => {
 
   test("① estEchecReseau sépare une panne de réseau d'un refus du serveur", async ({ page }) => {
@@ -287,11 +314,10 @@ test.describe("Reprise des lectures de démarrage après coupure réseau", () =>
     await sansReferentielReel(page);
     await bootOnboarded(page, null);
     await poserFauxSupa(page);
+    await referentielAuRepos(page);
     const r = await page.evaluate(async (idBanc) => {
-      window.acquitterLecture("passions");   // repartir du même état qu'en local
       window.__scenario = "reseau";
-      window.chargerReferentielPassions();          // page 0 pleine, page 1 coupée
-      await new Promise((r) => setTimeout(r, 300));
+      await window.chargerReferentielPassions();    // page 0 pleine, page 1 coupée
       const avant = {
         canonique: window.estPassionCanonique(idBanc),
         enAttente: window._repriseEtat().enAttente.slice(),
@@ -325,13 +351,12 @@ test.describe("Reprise des lectures de démarrage après coupure réseau", () =>
     await sansReferentielReel(page);
     await bootOnboarded(page, null);
     await poserFauxSupa(page);
+    await referentielAuRepos(page);
     const r = await page.evaluate(async (idBanc) => {
-      window.acquitterLecture("passions");   // repartir du même état qu'en local
       // Premier chargement : deux pages pleines, puis coupure → 2 000 ids connus.
       window.__scenario = "reseau";
       window.__pagesPleines = 2;
-      window.chargerReferentielPassions();
-      await new Promise((r) => setTimeout(r, 400));
+      await window.chargerReferentielPassions();
       const avant = window.estPassionCanonique("banc-p1-500");
       // Le rejeu repart de la page 0 et casse DÈS la page 1 : sans amorçage sur
       // l'existant, `_referentielPassions` tombait de 2 000 à 1 000 ids et
