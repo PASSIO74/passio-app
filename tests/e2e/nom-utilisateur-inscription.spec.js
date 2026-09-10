@@ -227,3 +227,87 @@ test("⑦ boot() appelle appliquerNomCompte, entre l'hydratation et le profil de
   expect(iAppel).toBeGreaterThan(iHydratation);
   expect(iAppel).toBeLessThan(iRepli);
 });
+
+// ──────────────────────────────────────────────────────────────────────────
+// ⑧ LA MÊME QUESTION N'EST JAMAIS POSÉE DEUX FOIS
+//
+// Mesuré en production le 2026-09-10 : le seul compte créé depuis « Confirm
+// email » a sa ligne `profiles` 26 SECONDES après son compte auth, avec son nom
+// ET sa passion — donc `signUp` lui a rendu une session et l'onboarding a
+// continué. Ce chemin est vivant : sans ce saut, le formulaire demande le nom,
+// puis l'écran suivant redemande « Comment t'appelles-tu ? ».
+// ──────────────────────────────────────────────────────────────────────────
+async function allerAgeAvecSession(page, nom) {
+  await page.evaluate(() => {
+    supa.auth.signUp = async () => ({
+      data: { user: { id: "u1", identities: [{ id: "i1" }] },
+              session: { user: { id: "11111111-2222-4333-8444-555555555555" } } },
+      error: null,
+    });
+  });
+  await remplir(page, { nom });
+  await page.locator("#authSubmitBtn").click();
+  await page.waitForTimeout(400);
+}
+
+const etapeActive = () =>
+  document.querySelector(".onb-step.active")?.getAttribute("data-onb-step");
+
+test("⑧ signUp qui rend une session : l'étape « prénom » est SAUTÉE", async ({ page }) => {
+  await ouvrirAuth(page);
+  await allerAgeAvecSession(page, "Camille");
+
+  // L'inscription a continué l'onboarding : on est sur l'âge.
+  expect(await page.evaluate(etapeActive)).toBe("age");
+
+  await page.locator("#birthYear").fill("1995");
+  await page.getByRole("button", { name: "Valider" }).first().click();
+  await page.waitForTimeout(300);
+
+  // ⚠️ LE POINT CENTRAL : on passe directement aux passions, la question du nom
+  // ayant déjà sa réponse — et le nom saisi au formulaire est intact.
+  expect(await page.evaluate(etapeActive)).toBe("passions");
+  expect(await page.evaluate(() => state.user.name)).toBe("Camille");
+});
+
+test("⑧ bis sauter l'étape ne saute pas ce qu'elle préparait (grille peinte)", async ({ page }) => {
+  await ouvrirAuth(page);
+  await allerAgeAvecSession(page, "Camille");
+  await page.locator("#birthYear").fill("1995");
+  await page.getByRole("button", { name: "Valider" }).first().click();
+  await page.waitForTimeout(400);
+
+  // `onbValidateName` peignait la grille APRÈS son `onbNext()` : sans report,
+  // l'écran des passions s'ouvrirait VIDE — défaut muet, invisible aux gates.
+  const tuiles = await page.evaluate(
+    () => document.querySelectorAll("#passionGrid .passion-card, #passionGrid .psel-tile, #passionGrid > *").length,
+  );
+  expect(tuiles).toBeGreaterThan(0);
+});
+
+test("⑨ sans nom connu, l'étape « prénom » est bien POSÉE", async ({ page }) => {
+  await ouvrirAuth(page);
+  await allerAgeAvecSession(page, "Camille");
+  // On efface le nom : le saut ne doit tenir qu'à la réponse déjà connue,
+  // jamais à l'inscription elle-même — sinon plus personne n'est jamais nommé.
+  await page.evaluate(() => { state.user.name = ""; });
+  await page.locator("#birthYear").fill("1995");
+  await page.getByRole("button", { name: "Valider" }).first().click();
+  await page.waitForTimeout(300);
+  expect(await page.evaluate(etapeActive)).toBe("name");
+});
+
+test("⑩ le saut vaut DANS LES DEUX SENS (le retour ne rouvre pas l'étape)", async ({ page }) => {
+  await ouvrirAuth(page);
+  await allerAgeAvecSession(page, "Camille");
+  await page.locator("#birthYear").fill("1995");
+  await page.getByRole("button", { name: "Valider" }).first().click();
+  await page.waitForTimeout(300);
+  expect(await page.evaluate(etapeActive)).toBe("passions");
+
+  // Sauter à l'aller seulement laisserait « ← Retour » ré-afficher l'étape
+  // évitée : une porte fermée dans un seul sens.
+  await page.evaluate(() => onbPrev());
+  await page.waitForTimeout(200);
+  expect(await page.evaluate(etapeActive)).toBe("age");
+});

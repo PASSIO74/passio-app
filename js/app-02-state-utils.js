@@ -3416,16 +3416,47 @@ function showOnbStep(name) {
   $$(".onb-step").forEach(s => s.classList.toggle("active", s.getAttribute("data-onb-step") === name));
 }
 
+// ── L'ÉTAPE « Comment t'appelles-tu ? » NE SE POSE PAS DEUX FOIS (2026-09-10) ──
+//
+// Mesuré en production, pas supposé : le seul compte créé depuis l'activation de
+// « Confirm email » a sa ligne `profiles` 26 secondes après son compte auth, AVEC
+// son nom ET sa passion — donc `signUp` lui a rendu une session et l'onboarding
+// a continué. Ce chemin est vivant, et depuis que le nom est demandé au
+// formulaire de création (2026-09-09), il fait poser la MÊME question deux fois
+// d'affilée. On saute donc l'étape quand la réponse est déjà connue.
+//
+// ⚠️ LE SAUT VAUT DANS LES DEUX SENS. Sauter à l'aller seulement, c'est laisser
+// le « ← Retour » de l'écran des passions ré-afficher l'étape qu'on vient
+// d'éviter — une porte fermée dans un seul sens (piège maison).
+function _onbEtapeASauter(nom) {
+  // Une seule autorité sur ce qu'est un nom valide : `nomCompteValide`.
+  return nom === "name" && !!nomCompteValide((typeof state !== "undefined" && state && state.user && state.user.name) || "");
+}
+
+// ⚠️ SAUTER UNE ÉTAPE, C'EST SAUTER CE QU'ELLE PRÉPARAIT. `onbValidateName`
+// peignait la grille des passions et rejouait le pré-remplissage de la première
+// visite APRÈS son `onbNext()` : sans ce report, l'écran suivant s'ouvrirait VIDE
+// — un défaut muet, que ni le parseur ni les gates ne peuvent voir.
+function _onbPreparerEtape(nom) {
+  if (nom !== "passions") return;
+  try { renderPassionGrid(); } catch (e) {}
+  try { if (window.PassioFirstRun) PassioFirstRun.prefiller(); } catch (e) {}
+}
+
 function onbNext() {
   onbStepIdx++;
+  while (onbStepIdx < onbSteps.length && _onbEtapeASauter(onbSteps[onbStepIdx])) onbStepIdx++;
   if (onbStepIdx >= onbSteps.length) return onbFinish();
   showOnbStep(onbSteps[onbStepIdx]);
+  _onbPreparerEtape(onbSteps[onbStepIdx]);
 }
 
 function onbPrev() {
   if (onbStepIdx === 0) return;
   onbStepIdx--;
+  while (onbStepIdx > 0 && _onbEtapeASauter(onbSteps[onbStepIdx])) onbStepIdx--;
   showOnbStep(onbSteps[onbStepIdx]);
+  _onbPreparerEtape(onbSteps[onbStepIdx]);
 }
 
 function onbValidateAge() {
@@ -3449,13 +3480,10 @@ function onbValidateName() {
   const v = $("#userName").value.trim();
   if (v.length < 2) { toast("Indique ton prénom."); return; }
   state.user.name = v;
+  // La préparation de l'écran des passions (grille + pré-remplissage de la
+  // première visite) vit dans `_onbPreparerEtape`, appelée par `onbNext` : elle
+  // doit se faire AUSSI quand cette étape-ci est sautée, le nom étant déjà connu.
   onbNext();
-  renderPassionGrid();
-  // Première visite : un visiteur qui a déjà choisi ses passions ne doit pas se
-  // les voir redemander — ce serait exactement le « second onboarding » que le
-  // lot interdit. Le pré-remplissage passe par `selectedPassions`, la variable
-  // que cet écran lit déjà : aucun second moteur de sélection.
-  try { if (window.PassioFirstRun) PassioFirstRun.prefiller(); } catch (e) {}
 }
 
 // -------- AUTH STEP --------

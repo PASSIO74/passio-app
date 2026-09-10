@@ -15,10 +15,34 @@ depuis l'activation de « Confirm email » (2026-08-30) :
 3. `boot()` (app-08) voit une session valide et un état onboardé → **entre directement dans
    l'app**, et fabrique un profil de repli dont le nom est `state.user.name || "Passionné"`.
 
-Résultat : tout compte créé depuis le 2026-08-30 s'appelle **« Passionné »**, et rien à
-l'écran n'a jamais proposé de choisir autre chose. Ce n'est pas une porte cassée : c'est une
-étape devenue **inaccessible** par un changement fait ailleurs — la même famille que les
-« survivants d'un retrait » du dépôt.
+Résultat : un compte qui suit ce chemin s'appelle **« Passionné »** (repli local) ou
+**« Profil »** (repli de `supaEnsureProfileExists`), et rien à l'écran ne propose de choisir
+autre chose. Ce n'est pas une porte cassée : c'est une étape devenue **inaccessible** par un
+changement fait ailleurs — la même famille que les « survivants d'un retrait » du dépôt.
+
+### ⚠️ Ce que la production dit vraiment (mesuré le 2026-09-10)
+
+La première rédaction de cette fiche affirmait « **tout** compte créé depuis le 2026-08-30
+s'appelle Passionné ». C'était une **déduction du code, pas une mesure**, et la base la
+dément :
+
+| Mesure (connecteur lecture seule) | Résultat |
+|---|---|
+| `count(*) filter (where username in ('Passionné','Profil','Moi'))` sur `public.profiles` | **0** sur 6 comptes |
+| Écart entre le compte auth et sa ligne `profiles`, seul compte créé depuis le 30/08 | **26 secondes**, avec nom **et** passion |
+| Délai de confirmation de l'e-mail pour ce compte | **21 secondes** (lien ouvert sur le même téléphone) |
+
+Un profil complet en 26 secondes n'est pas une reconnexion après confirmation : c'est un
+**onboarding qui a continué**, donc `signUp` a bien rendu une session pour ce compte. **Les
+deux chemins sont vivants** ; celui « sans session » n'a simplement pas encore laissé de cas
+en base.
+
+Deux conséquences, et la seconde est un défaut que ce constat a révélé :
+
+1. **La reprise de données est SANS OBJET** : il n'y a personne à renommer. Ce point ouvert
+   est clos par la mesure, pas par une décision — le rouvrir demande de refaire la requête.
+2. **La question se posait deux fois** sur le chemin vivant : le formulaire demande le nom,
+   puis l'écran suivant demande « Comment t'appelles-tu ? ». Corrigé le 2026-09-10 (ci-dessous).
 
 ## Le correctif
 
@@ -57,14 +81,45 @@ La question est posée au **SEUL écran que tout compte traverse** : le formulai
 - Le retour Google est couvert par le même chemin : `full_name` est lu au même titre que
   `name` / `display_name`.
 
+## Le correctif du 2026-09-10 — l'étape « prénom » est sautée quand la réponse est connue
+
+`onbNext` et `onbPrev` consultent `_onbEtapeASauter(nom)` : l'étape `name` est sautée dès que
+`nomCompteValide(state.user.name)` rend un nom. Trois pièges, tous traités :
+
+- ⚠️ **Le saut vaut DANS LES DEUX SENS.** Sauter à l'aller seulement, c'est laisser le
+  « ← Retour » de l'écran des passions ré-afficher l'étape qu'on vient d'éviter : une porte
+  fermée dans un seul sens.
+- ⚠️ **Sauter une étape, c'est sauter ce qu'elle PRÉPARAIT.** `onbValidateName` appelait
+  `renderPassionGrid()` et `PassioFirstRun.prefiller()` **après** son `onbNext()` : sans report
+  dans `_onbPreparerEtape`, l'écran des passions s'ouvre **vide** — invisible au parseur comme
+  aux gates, et seul un test qui COMPTE les tuiles peut le voir (cas ⑧ bis).
+- ⚠️ **Le saut tient à la réponse connue, jamais à l'inscription elle-même** (cas ⑨) : sinon
+  un compte sans nom sauterait l'étape et ne serait plus jamais nommé.
+
+## ⚠️ Un serveur `dist/` laissé en vie fausse TOUS les tests locaux
+
+Trouvé en se cassant dessus le 2026-09-10. Le `webServer` de Playwright **réutilise** un
+serveur déjà à l'écoute sur le port 8080 : un `node scripts/servir-dist.js` oublié fait donc
+mesurer **l'artefact précédent** au lieu des sources. Symptôme exact : quatre cas neufs rouges,
+onze verts qui ne prouvaient rien, et une fonction qu'on vient d'écrire rendue `<absente>` par
+la page. Réflexe : `pkill -f servir-dist.js` avant tout `npm run test:local`.
+
 ## Verrou
 
-`tests/e2e/nom-utilisateur-inscription.spec.js` (10). Trois suites voisines ont été mises à
+`tests/e2e/nom-utilisateur-inscription.spec.js` (14). Trois suites voisines ont été mises à
 jour parce qu'elles remplissent le formulaire d'inscription : `cgu-consentement`,
 `confirmation-email`, `exploration-anonyme-vs-compte`.
 
-## Point ouvert
+## Points ouverts
 
-Les comptes créés **entre le 2026-08-30 et ce lot** portent le nom « Passionné » dans
-`profiles.username`. Ils peuvent se renommer depuis les Paramètres ; aucune reprise de
-données n'est faite ici (elle écraserait un nom éventuellement déjà corrigé à la main).
+- ~~Renommer les comptes créés entre le 2026-08-30 et ce lot~~ → **SANS OBJET, mesuré le
+  2026-09-10** : aucun compte ne porte « Passionné », « Profil » ni « Moi » (0 sur 6).
+- **L'unicité des pseudos n'est pas retenue, et c'est une décision, pas un oubli.**
+  `profiles.username` n'a aucun index unique, et il ne doit pas en recevoir : ce champ est un
+  **nom d'affichage**, or deux personnes ont le droit de s'appeler « Léa ». Un index unique
+  répondrait « ce nom est déjà pris » sur un prénom courant — et ne protégerait de rien, une
+  usurpation se faisant à une lettre près. La réponse juste à ce besoin est un **identifiant
+  distinct du nom affiché** (un `@handle` : colonne, index unique, contrainte de format,
+  recherche, écran de choix, reprise des 6 comptes existants) — un lot produit à part entière,
+  à ouvrir quand l'usurpation deviendra un problème réel. À 6 comptes et 6 noms distincts, elle
+  ne l'est pas.
