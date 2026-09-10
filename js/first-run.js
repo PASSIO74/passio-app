@@ -561,12 +561,21 @@
   // la participation à une activité fictive.
   function evenementDemo(ev) {
     if (!ev) return false;
-    var id = String(ev.id || "");
-    // Une activité venue du serveur porte un uuid ; celles du seed portent des
-    // identifiants courts et lisibles posés par `buildSeed` (« e1 », « e2 »…).
-    if (/^e\d+$/.test(id)) return true;
-    if (String(ev.organizerId || "").indexOf("u_") === 0) return true;
-    return false;
+    // Une activité venue du serveur porte un uuid ; les 36 activités livrées
+    // dans `app-01-diag-seed.js` portent toutes un identifiant court posé par
+    // `buildSeed` (« e1 », « e2 »…). C'est le SEUL discriminant sûr.
+    //
+    // ⚠️ « ORGANISATEUR EN `u_` » A ÉTÉ RETIRÉ LE 2026-09-10, ET C'ÉTAIT UN
+    // PIÈGE. Tant que ces garanties ne valaient que pour un VISITEUR, cette
+    // seconde règle était sans danger : un visiteur n'organise rien. Étendues à
+    // tout le monde, elle devenait fausse — `getMyUserId()` fabrique un
+    // `u_<aléatoire>` pour TOUT appareil sans session Supabase, donc la
+    // rencontre qu'une personne vient de créer était prise pour un exemple, et
+    // sa propre participation refusée. Défaut mesuré par `ui-v4b-fiche` (6 cas)
+    // avant d'atteindre qui que ce soit. Les 36 activités du seed sont couvertes
+    // par la forme de leur identifiant, sans exception : cette règle n'apportait
+    // rien qu'un risque.
+    return /^e\d+$/.test(String(ev.id || ""));
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -1047,6 +1056,14 @@
     bobine:      { titre: "Crée ton compte pour publier ta bobine" },
     activite:    { titre: "Crée ton compte pour proposer une activité" },
     rejoindre:   { titre: "Crée ton compte pour participer à cette activité" },
+    // ⚠️ SIGNALER A SON PROPRE CONTEXTE (2026-09-10). Les cinq portes de
+    // signalement empruntaient `preferences` ou `activite` : un visiteur qui
+    // signalait un compte lisait « Crée ton compte pour conserver tes
+    // passions », et qui signalait une rencontre, « pour proposer une
+    // activité ». Dire autre chose que le geste demandé, sur l'action la plus
+    // sensible d'une application 18+ qui organise des rencontres physiques, est
+    // exactement le mensonge que ce lot est venu retirer ailleurs.
+    signaler:    { titre: "Crée ton compte pour signaler ce contenu" },
     preferences: { titre: "Crée ton compte pour conserver tes passions" }
   };
   var TEXTE_COMMUN = "Tes passions et tes préférences seront conservées.";
@@ -1923,35 +1940,80 @@
   // n'apporte plus rien : sortir d'ici sur ce seul geste aurait rendu un fil VIDE
   // à un visiteur qui n'a encore rien pu choisir — un cul-de-sac créé par le
   // correctif lui-même. La découverte reste donc sa source, et l'envie la filtre.
-  function filDecouverte() {
-    if (!estVisiteur()) return false;
-    if (prefs().passions.length) return false;
-    try { if (typeof _activeFeedPassions !== "undefined" && _activeFeedPassions && _activeFeedPassions.size) return false; } catch (e) {}
+  // ⚠️ UN COMPTE NEUF ATTERRISSAIT SUR UN FIL VIDE (2026-09-10). Depuis que la
+  // confirmation d'e-mail est active (2026-08-30), `signUp` ne rend pas de
+  // session : `onbDoAuth` s'arrête sur « Vérifie tes e-mails » et l'onboarding
+  // (âge → prénom → passions) n'est JAMAIS atteint. Le lien de confirmation
+  // ouvre une session, `boot()` pose `onboarded = true` et entre directement
+  // dans l'app avec un profil de REMPLISSAGE (`_parDefaut`), que
+  // `restoreFeedPassions()` écarte volontairement — donc aucune passion active.
+  // `feedFollowingOn` valant `true` et la personne ne suivant personne, le
+  // premier écran après l'inscription était : « Tu ne suis encore personne ».
+  //
+  // Ce fil de découverte l'aurait sauvée, mais il exigeait `estVisiteur()`. Or
+  // ce compte est, du point de vue de ce qu'il y a à MONTRER, dans exactement
+  // l'état d'un visiteur : rien de choisi, personne de suivi. C'est cet état-là
+  // qui décide, pas la présence d'un compte.
+  function comptePasEncoreGarni() {
+    var s = etat();
+    if (!s || !s.user) return false;
+    // Une passion VIVANTE et voulue ? Le profil de remplissage de `boot()` n'en
+    // est pas une — il est marqué `_parDefaut` et n'est compté nulle part.
+    var choisies = (s.user.profiles || []).filter(function (p) { return p && !p.archived && !p._parDefaut; });
+    if (choisies.length) return false;
+    if ((s.user.following || []).length) return false;
     return true;
   }
 
+  function filDecouverte() {
+    if (!actif() || !appPrete()) return false;
+    if (prefs().passions.length) return false;
+    try { if (typeof _activeFeedPassions !== "undefined" && _activeFeedPassions && _activeFeedPassions.size) return false; } catch (e) {}
+    if (estVisiteur()) return true;
+    return comptePasEncoreGarni();
+  }
+
+  // ⚠️ LE CONTENU FABRIQUÉ SE DIT À TOUT LE MONDE, PAS AUX SEULS VISITEURS
+  // (2026-09-10). Ces trois garanties étaient conditionnées à `estVisiteur()`,
+  // donc elles S'ÉTEIGNAIENT à la seconde où quelqu'un créait un compte — c'est
+  // à dire pour exactement les personnes à qui l'application est envoyée. Le fil
+  // porte 550 publications de démonstration signées par 29 comptes fabriqués,
+  // contre 33 publications réelles mesurées en production : un testeur inscrit
+  // voyait donc un fil fabriqué à 94 %, SANS la moindre étiquette, et pouvait
+  // s'inscrire à une rencontre qui n'existe pas, chez un organisateur qui
+  // n'existe pas. Un compte ne rend pas le décor vrai.
+  //
+  // Le discriminant reste `actif()` (le kill switch du lot rend le fil d'avant
+  // à l'octet près) et `appPrete()` — jamais l'existence d'un compte.
+  function contenuDemoSignale() { return actif() && appPrete(); }
+
   // Appelé par le rendu d'une carte de publication (app-02) : étiquette
-  // « Exemple PASSIO » sur le contenu de démonstration, pour un visiteur
-  // seulement. Rend une chaîne HTML, ou "" — jamais `null`.
+  // « Exemple PASSIO » sur le contenu de démonstration, pour TOUT LE MONDE.
+  // Rend une chaîne HTML, ou "" — jamais `null`.
   function etiquetteDemo(p) {
-    if (!estVisiteur() || !estDemo(p)) return "";
+    if (!contenuDemoSignale() || !estDemo(p)) return "";
     return '<span class="fr-demo-tag" title="Contenu de démonstration">Exemple PASSIO</span>';
   }
 
   // Les chiffres d'une activité de démonstration ne doivent RIEN promettre :
   // ni une proximité (la distance vient d'un point de référence, pas de la
-  // position du visiteur — qu'on ne demande jamais), ni des participants qui
+  // position de la personne — qu'on ne demande jamais), ni des participants qui
   // n'existent pas. Consommée par `ui-v4a2-cartes.js`, aux deux endroits qui
-  // fabriquent ces lignes.
+  // fabriquent ces lignes. Vaut pour tout le monde : un faux « 12 participants »
+  // ment autant à un inscrit qu'à un visiteur.
   function masquerChiffresDemo(ev) {
-    return estVisiteur() && evenementDemo(ev);
+    return contenuDemoSignale() && evenementDemo(ev);
   }
 
   // Une activité de démonstration n'est jamais présentée comme une rencontre
   // réellement disponible : la participation y est refusée AVANT même le gate
-  // d'authentification, avec sa propre explication.
+  // d'authentification, avec sa propre explication — et pour tout le monde,
+  // compte ou pas. Un compte inscrit qui répond « j'y vais » à l'activité `e1`
+  // écrivait vers un `event_id` absent de la base : refus RLS silencieux (le SDK
+  // ne lève pas), donc une participation affichée à l'écran et inexistante en
+  // vrai. Le jour dit, personne au rendez-vous.
   function participationPossible(ev) {
-    if (!estVisiteur()) return true;
+    if (!contenuDemoSignale()) return true;
     if (evenementDemo(ev)) {
       try { if (typeof toast === "function") toast("Cette activité est un exemple : elle n'accueille pas de vraie participation."); } catch (e) {}
       return false;

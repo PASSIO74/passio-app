@@ -3697,6 +3697,36 @@ function calculateDistance(lat1, lng1, lat2, lng2) {
   return R * c;
 }
 
+// Rend le lien de contact d'une rencontre selon la FORME de ce qui est écrit.
+// Jamais de `tel:` sur une adresse e-mail, jamais de schéma inventé sur autre
+// chose. Le texte vient d'un autre compte : il est échappé dans tous les cas,
+// et l'URL passe par `safeUrlAttr` (qui refuse `javascript:` et la sortie
+// d'attribut).
+function _lienContactEvenement(contact) {
+  var brut = String(contact || "").trim();
+  if (!brut) return "";
+  var style = ' style="color:var(--accent);font-weight:700;"';
+  // ⚠️ PAS `safeUrlAttr` ICI, ET C'EST DÉLIBÉRÉ. Ce helper n'accepte QUE
+  // http(s), data:image|audio|video et blob : il rend « # » pour `mailto:` comme
+  // pour `tel:`, donc l'utiliser ici CASSERAIT les deux liens — taper « Contact »
+  // sauterait en haut de page, sur la seule façon de joindre un organisateur.
+  // (Défaut introduit puis retiré le 2026-09-10, trouvé par l'audit de diff.)
+  //
+  // Ce qui rend `escapeHtml` suffisant ici : le schéma est le NÔTRE, jamais
+  // celui de la personne — il n'est ajouté qu'APRÈS que la forme a été validée
+  // par les deux expressions ci-dessous, qui excluent `:` et les blancs. Et
+  // `escapeHtml` échappe les guillemets, donc on ne peut pas quitter l'attribut.
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(brut)) {
+    return '<a href="' + escapeHtml("mailto:" + brut) + '"' + style + '>' + escapeHtml(brut) + '</a>';
+  }
+  // Un numéro : au moins 8 chiffres, et rien d'autre que chiffres, espaces,
+  // points, tirets, parenthèses et un « + » de tête.
+  if (/^\+?[\d\s.()-]{8,}$/.test(brut) && (brut.replace(/\D/g, "").length >= 8)) {
+    return '<a href="' + escapeHtml("tel:" + brut.replace(/[^\d+]/g, "")) + '"' + style + '>' + escapeHtml(brut) + '</a>';
+  }
+  return escapeHtml(brut);
+}
+
 function openEventDetails(id) {
   // Première visite : trace l'OUVERTURE d'un contenu par un visiteur — un
   // compteur, jamais un identifiant ni un libellé. Inerte hors mode invité.
@@ -3790,7 +3820,13 @@ function openEventDetails(id) {
     addressFull ? infoRow("Adresse", escapeHtml(addressFull), mapsLink) : (ev.city ? infoRow("Ville", escapeHtml(ev.city)) : ""),
     ev.venue ? infoRow("Lieu", escapeHtml(ev.venue)) : "",
     infoRow("Prix", priceStr),
-    ev.contact ? infoRow("Contact", `<a href="tel:${escapeHtml(ev.contact)}" style="color:var(--accent);font-weight:700;">${escapeHtml(ev.contact)}</a>`) : "",
+    // ⚠️ LE LIEN `tel:` ÉTAIT POSÉ SUR N'IMPORTE QUEL CONTACT (2026-09-10), y
+    // compris une adresse e-mail : toucher « Contact » lançait alors un appel
+    // vers une chaîne qui n'est pas un numéro. Le schéma suit maintenant la
+    // FORME de ce qui est écrit — `tel:` pour un numéro, `mailto:` pour une
+    // adresse, et du texte nu pour le reste. Le contact vient de l'événement
+    // d'un AUTRE compte : il reste échappé dans les deux cas.
+    ev.contact ? infoRow("Contact", _lienContactEvenement(ev.contact)) : "",
     // ⚠️ `externalLink` vient de l'événement d'un AUTRE compte. escapeHtml ferme
     // l'attribut mais PAS le schéma : un `javascript:` restait cliquable ici.
     ev.externalLink ? infoRow("Plus d'infos", `<a href="${safeUrlAttr(ev.externalLink)}" target="_blank" rel="noopener noreferrer" class="event-detail-info-link">${escapeHtml(String(ev.externalLink).replace(/^https?:\/\//, "").slice(0, 45))}</a>`) : "",
@@ -5792,10 +5828,35 @@ function _sendEventBroadcast(id) {
   toast("Message envoyé aux inscrits");
 }
 
-// Signalement d'un événement (parité avec posts / profils / lives CDV).
-function reportEvent(id) {
-  if (typeof supaReport === "function") supaReport("event", id, "");
-  toast("Signalement envoyé — merci");
+// Signalement d'un événement (parité avec posts / profils).
+// ⚠️ CETTE PORTE EST OUVERTE AUX VISITEURS : `openEventDetails` est un chemin
+// invité assumé et le bouton « Signaler cet événement » s'affiche dès que la
+// rencontre n'est pas la sienne. Sans compte, `MY_UID` est un `u_<aléatoire>`
+// fabriqué, la RLS refuse l'insert — et la personne lisait « Signalement envoyé
+// — merci ». D'où la porte d'authentification, l'`await` et la lecture du
+// verdict (2026-09-10, même famille que les trois autres portes).
+async function reportEvent(id) {
+  if (!id) return;
+  try {
+    if (typeof requireAuthentication === "function" && !requireAuthentication("signaler")) return;
+  } catch (e) {}
+  // ⚠️ UN ÉCHEC ICI NE DOIT PAS ENCHAÎNER : `motif = ""` n'est pas `null`, donc
+  // la garde ci-dessous laissait passer, et le signalement partait sans motif ni
+  // fenêtre. On abandonne, et on le dit au journal.
+  var motif = null;
+  try {
+    if (typeof _demanderMotifSignalement === "function") motif = await _demanderMotifSignalement("cette rencontre");
+    else motif = "";
+  } catch (e) {
+    try { if (typeof diagLog === "function") diagLog("signalement_motif_indisponible " + ((e && e.message) || "?")); } catch (e2) {}
+    motif = null;
+  }
+  if (motif === null) return;
+  var ok = false;
+  try { if (typeof supaReport === "function") ok = await supaReport("event", id, motif); } catch (e) { ok = false; }
+  toast(ok
+    ? "Signalement envoyé — merci"
+    : "Signalement déjà envoyé, ou impossible pour le moment.", ok ? "success" : "warning");
 }
 
 async function submitEvent(editId) {

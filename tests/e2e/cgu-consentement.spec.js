@@ -71,7 +71,6 @@ async function remplirInscription(page) {
   await page.locator("#authEmail").fill("nouvelle@exemple.com");
   await page.locator("#authPassword").fill("motdepasse123");
   await page.locator("#authPasswordConfirm").fill("motdepasse123");
-  await page.locator("#authPhone").fill("0612345678");
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -334,4 +333,106 @@ test("⑩ Paramètres → Support ouvre les CGU et les mentions légales, au ges
 
   expect(errors.js).toEqual([]);
   expect(errors.console).toEqual([]);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// POLITIQUE DE CONFIDENTIALITÉ ET MESURE D'USAGE  (2026-09-10)
+//
+// La politique existait « déjà » (en-tête de ce fichier) — mais elle datait de
+// juin 2026 et elle était devenue FAUSSE sur deux points qu'un texte RGPD ne
+// peut pas se permettre :
+//
+//   ⑫ Elle décrivait des données que l'app ne collecte plus (« carnets »,
+//      retirés par ADR-011) et TAISAIT celles qu'elle collecte : les événements
+//      techniques d'usage (`telemetry_events`) et les rapports d'erreur
+//      (`client_errors`), qui portent un identifiant d'appareil PERSISTANT
+//      (`passio_device_id`), un identifiant de session, la plateforme, le
+//      navigateur et la taille d'écran. Elle ne donnait ni base légale, ni
+//      responsable de traitement, ni durée pour ces données.
+//
+//   ⑬ Le refus de cette mesure n'était exerçable QUE par `?telemetry=0` dans
+//      l'URL — donc par personne. Une opposition qu'on ne peut pas exercer
+//      n'est pas une opposition. Le refus vit maintenant dans
+//      Paramètres → Confidentialité, et il porte sur l'APPAREIL (clé
+//      `passio_telemetry`, hors `ACCOUNT_SCOPED_KEYS`), jamais sur le compte.
+// ═══════════════════════════════════════════════════════════════════════════
+
+test("⑫ la politique de confidentialité dit ce qui est vraiment collecté", async ({ page }) => {
+  const errors = { js: [], console: [], network: [] };
+  await bootOnboarded(page, errors);
+  await page.evaluate(() => openPrivacyPolicy());
+  await expect(page.locator(".modal-backdrop.active .modal-title")).toContainText("Politique de confidentialité");
+
+  const txt = await page.locator("#modalContent").innerText();
+
+  // La mesure d'usage est DÉCLARÉE, avec ce qui la rend identifiante.
+  expect(txt).toMatch(/identifiant d.appareil/i);
+  expect(txt).toMatch(/erreur/i);
+  // Une base légale est donnée — sans elle, « on collecte » ne dit pas « on a le droit ».
+  expect(txt).toMatch(/intérêt légitime/i);
+  expect(txt).toMatch(/6\.1\.b|exécution du contrat/i);
+  // Un responsable de traitement joignable.
+  expect(txt).toContain("contact@ladamemetallerie.com");
+  expect(txt).toMatch(/responsable de ce traitement/i);
+  // Les sous-traitants et les transferts hors UE sont nommés.
+  expect(txt).toMatch(/Supabase/);
+  expect(txt).toMatch(/Netlify/);
+  expect(txt).toMatch(/Brevo/);
+  expect(txt).toMatch(/clauses contractuelles types/i);
+  // Une durée pour les données techniques, et la voie de recours.
+  expect(txt).toMatch(/13 mois/);
+  expect(txt).toMatch(/CNIL/);
+  // Et la porte pour couper la mesure est NOMMÉE dans le texte.
+  expect(txt).toMatch(/Param[èe]tres\s*→\s*Confidentialité/i);
+
+  // ⚠️ CIBLE SUPPRIMÉE = TOUT CE QUI LA VISE PART AVEC. Les « carnets » ont été
+  // retirés par ADR-011 ; les annoncer comme collectés décrivait un traitement
+  // qui n'existe plus. Un texte légal périmé est un texte légal faux.
+  expect(txt).not.toMatch(/carnets/i);
+  // Et il ne prétend plus dater de juin : la version SUIT le texte.
+  expect(txt).not.toMatch(/juin 2026/i);
+  const version = await page.evaluate(() => PASSIO_CONFIDENTIALITE_VERSION);
+  expect(txt).toContain(version);
+
+  expect(errors.js).toEqual([]);
+});
+
+test("⑬ la mesure d'usage se coupe depuis les Paramètres, et ne suit pas le compte", async ({ page }) => {
+  const errors = { js: [], console: [], network: [] };
+  await bootOnboarded(page, errors);
+
+  // Au départ, elle est active (défaut du produit : seul « 0 » coupe).
+  expect(await page.evaluate(() => localStorage.getItem("passio_telemetry"))).not.toBe("0");
+
+  await page.evaluate(() => openPrivacySettings());
+  const bascule = page.locator("#privTelemetry");
+  await expect(bascule).toBeVisible();
+  await expect(bascule).toBeChecked();
+
+  // ⚠️ PAR DES GESTES : c'est le CÂBLAGE (l'identifiant lu par
+  // `savePrivacySettings`) qui a manqué dans les défauts passés, pas la
+  // fonction. Appeler `setEnabled` à la main laisserait la case débranchée.
+  await bascule.uncheck();
+  await page.getByRole("button", { name: "Sauvegarder" }).click();
+
+  const apres = await page.evaluate(() => ({
+    cle: localStorage.getItem("passio_telemetry"),
+    // La capture est coupée TOUT DE SUITE : `track()` teste le drapeau à chaque
+    // événement, il n'y a rien à recharger.
+    capture: (function () { try { return !!(window.PassioTelemetry && PassioTelemetry.setEnabled) ; } catch (e) { return false; } })(),
+    // Et le refus n'est PAS parti dans le blob de configuration : ce blob suit
+    // le compte d'un appareil à l'autre, alors que le refus est celui de CET
+    // appareil.
+    dansConfig: JSON.stringify((getCurrentConfig() || {}).privacy || {}),
+  }));
+  expect(apres.cle).toBe("0");
+  expect(apres.capture).toBe(true);
+  expect(apres.dansConfig).not.toMatch(/telemetry|telemetrie|mesure/i);
+
+  // Le choix se relit à la réouverture du panneau — sinon il serait perdu au
+  // premier retour et la personne le referait sans fin.
+  await page.evaluate(() => openPrivacySettings());
+  await expect(page.locator("#privTelemetry")).not.toBeChecked();
+
+  expect(errors.js).toEqual([]);
 });

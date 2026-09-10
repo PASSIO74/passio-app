@@ -239,4 +239,45 @@ test.describe("Notification d'un message privé", () => {
     }, FAUX_SUPA);
     expect(convs[0].unread).toBe(0);
   });
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // ⑧ LE CÂBLAGE — le cas qui manquait, et sans lequel les sept autres ne
+  // prouvaient RIEN (2026-09-10).
+  //
+  // Les cas ci-dessus appellent tous `_notifierMessage(...)` À LA MAIN. Ils
+  // mesurent donc la fonction, jamais son branchement. Or le branchement était
+  // FAUX : le seul appel vivait dans `supaSendMessage`, une écriture MORTE sans
+  // aucun appelant dans le dépôt. Le correctif du 2026-09-09 était écrit, vert
+  // et documenté, sur un chemin que personne n'emprunte — et la production le
+  // disait : ZÉRO ligne `notifications` de type `message`, y compris pour le
+  // message envoyé après son déploiement.
+  //
+  // ⚠️ On mesure donc À LA SOURCE, comme le fait `nom-utilisateur-inscription`
+  // ⑦ : les deux vraies voies d'envoi doivent PORTER l'appel, et la fonction
+  // morte ne doit pas revenir l'absorber. C'est le seul contrôle qu'un
+  // remaniement de la messagerie ne peut pas rendre vert par accident.
+  test("⑧ — les deux vraies voies d'envoi notifient, et la fonction morte n'est pas revenue", async ({ page }) => {
+    await bootOnboarded(page);
+    const r = await page.evaluate(() => ({
+      texte: String(window._sendTextToSupa || ""),
+      media: String(window.sendMessageToSupabase || ""),
+      morte: typeof window.supaSendMessage,
+      notif: typeof window._notifierMessage,
+    }));
+
+    // Les deux voies existent bien (sinon le contrôle serait vert sur du vide).
+    expect(r.texte.length).toBeGreaterThan(200);
+    expect(r.media.length).toBeGreaterThan(200);
+    expect(r.notif).toBe("function");
+
+    // Et chacune appelle la notification.
+    expect(r.texte).toContain("_notifierMessage");
+    expect(r.media).toContain("_notifierMessage");
+
+    // ⚠️ La fonction morte ne doit pas réapparaître : c'est elle qui a donné au
+    // correctif un endroit plausible où se poser, et aux tests un endroit
+    // plausible où être verts.
+    expect(r.morte).toBe("undefined");
+  });
+
 });

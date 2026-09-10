@@ -116,8 +116,15 @@ test.describe("Entrée", () => {
     expect(await page.evaluate(() => document.documentElement.classList.contains("passio-first-run"))).toBe(false);
     expect(await page.locator("#frWelcome").count()).toBe(0);
     expect(await page.locator(".fr-tip").count()).toBe(0);
-    // Et son fil n'est pas étiqueté « Exemple PASSIO ».
-    expect(await page.locator(".fr-demo-tag").count()).toBe(0);
+
+    // ⚠️ RENVERSÉ LE 2026-09-10, ET C'EST LE POINT DU CORRECTIF. Ce cas exigeait
+    // `count() === 0` : le contenu de démonstration cessait d'être étiqueté dès
+    // qu'un compte existait. Le fil porte 550 publications fabriquées par 29 faux
+    // comptes contre 33 réelles en production — l'étiquette disparaissait donc
+    // pour exactement les personnes à qui l'application est envoyée. Ne PAS être
+    // renvoyé dans le parcours de première visite (l'objet de ce test) n'a jamais
+    // voulu dire « lire un décor sans savoir que c'en est un ».
+    expect(await page.locator("#feedList .fr-demo-tag").count()).toBeGreaterThan(0);
   });
 
   test("un lien profond garde sa destination, le tour est différé", async ({ page }) => {
@@ -748,6 +755,106 @@ test.describe("Gate d'authentification", () => {
     await bootVisiteur(page);
     expect(await page.locator("#feedList .fr-demo-tag").count()).toBeGreaterThan(0);
     await expect(page.locator("#feedList .fr-demo-tag").first()).toHaveText("Exemple PASSIO");
+  });
+
+  // ⚠️ LE CAS QUI MANQUAIT, ET QUI EST TOUT LE SUJET (2026-09-10). Les trois
+  // garanties de démonstration — étiquette, chiffres muets, participation
+  // refusée — étaient conditionnées à `estVisiteur()`. Elles s'éteignaient donc
+  // à la création du compte, c'est-à-dire pour les personnes à qui l'application
+  // est envoyée en test. Mesuré : 550 publications de démonstration et 29 faux
+  // comptes contre 33 publications réelles en production.
+  async function bootCompteInscrit(page) {
+    await couperReseauSupabase(page);
+    await page.addInitScript(
+      ([k, t, st]) => {
+        sessionStorage.setItem(k, t);
+        sessionStorage.setItem("passio_pwa_dismissed", "1");
+        localStorage.setItem("passio_first_run_experience_v1", "1"); // drapeau ACTIF
+        localStorage.setItem("passio_mvp_state_v1", JSON.stringify(st));
+      },
+      [GATE_KEY, GATE_TOKEN, etatOnboarde()]
+    );
+    await sansDonneesDistantes(page);
+    await page.goto("/index.html");
+    await page.waitForTimeout(3200);
+  }
+
+  test("un compte inscrit voit lui aussi l'étiquette « Exemple PASSIO »", async ({ page }) => {
+    await bootCompteInscrit(page);
+
+    // La prémisse : ce n'est PAS un visiteur — sans quoi le cas serait vert
+    // sans rien distinguer de celui d'au-dessus.
+    expect(await page.evaluate(() => PassioFirstRun.estVisiteur())).toBe(false);
+
+    expect(await page.locator("#feedList .fr-demo-tag").count()).toBeGreaterThan(0);
+    await expect(page.locator("#feedList .fr-demo-tag").first()).toHaveText("Exemple PASSIO");
+  });
+
+  test("un compte inscrit ne peut pas s'inscrire à une activité de démonstration", async ({ page }) => {
+    await bootCompteInscrit(page);
+    expect(await page.evaluate(() => PassioFirstRun.estVisiteur())).toBe(false);
+
+    const r = await page.evaluate(() => {
+      const demo = { id: "e1", organizerId: "u_lea", attendees: [] };
+      const vraie = { id: "3f1c9a12-0000-4000-8000-000000000001", organizerId: "abc", attendees: [] };
+      return {
+        demoRefusee: PassioFirstRun.participationPossible(demo),
+        vraieAcceptee: PassioFirstRun.participationPossible(vraie),
+        chiffresMuets: PassioFirstRun.masquerChiffresDemo(demo),
+        chiffresVraie: PassioFirstRun.masquerChiffresDemo(vraie),
+      };
+    });
+    expect(r.demoRefusee).toBe(false);   // refusée
+    expect(r.vraieAcceptee).toBe(true);  // une vraie rencontre reste ouverte
+    expect(r.chiffresMuets).toBe(true);
+    expect(r.chiffresVraie).toBe(false);
+
+    // ⚠️ ET LE CÂBLAGE À LA SOURCE : `setEventRsvp` est le SEUL appelant, et il
+    // vit derrière `requireAuthentication`/`requireAdmission`, un chemin que ce
+    // banc ne parcourt pas. Sans ce contrôle, la garde pourrait être supprimée
+    // de l'appelant sans qu'un seul cas ne rougisse.
+    const cable = await page.evaluate(() => String(window.setEventRsvp || ""));
+    expect(cable).toContain("participationPossible");
+  });
+
+
+  // ⚠️ LE PREMIER ÉCRAN APRÈS UNE INSCRIPTION ÉTAIT VIDE (2026-09-10).
+  // Depuis « Confirm email », `signUp` ne rend pas de session : l'onboarding
+  // (âge → prénom → passions) n'est jamais atteint, `boot()` fabrique un profil
+  // de remplissage `_parDefaut` que `restoreFeedPassions` écarte, et le compte
+  // arrive sans aucune passion active. Comme `feedFollowingOn` vaut `true` et
+  // qu'il ne suit personne, il lisait « Tu ne suis encore personne » — pour
+  // premier contact avec le produit. Le fil de découverte, qui existait, était
+  // refusé au seul motif qu'un compte existe.
+  test("un compte neuf sans passion ni abonnement reçoit le fil de découverte, pas un fil vide", async ({ page }) => {
+    await bootCompteInscrit(page);
+
+    const r = await page.evaluate(() => {
+      // Un compte qui n'a traversé NI l'onboarding NI le panneau de passions :
+      // seul le profil de remplissage de boot() est là, et il ne suit personne.
+      state.user.profiles = [{ id: "pp_defaut", name: "Passionné", passion: "musique", _parDefaut: true }];
+      state.user.following = [];
+      _activeFeedPassions = new Set();
+      const decouverte = PassioFirstRun.filDecouverte();
+
+      // …et la contre-épreuve : dès qu'il a choisi UNE passion, la découverte
+      // s'efface. Sans cette moitié, le cas serait vert sur un fil de découverte
+      // devenu permanent, ce qui serait un autre défaut.
+      state.user.profiles = [{ id: "pp_0", name: "Moi", passion: "musique" }];
+      const apresChoix = PassioFirstRun.filDecouverte();
+
+      // Et un compte qui SUIT quelqu'un a bien du contenu à lui montrer.
+      state.user.profiles = [{ id: "pp_defaut", name: "Passionné", passion: "musique", _parDefaut: true }];
+      state.user.following = ["u_lea"];
+      const apresAbonnement = PassioFirstRun.filDecouverte();
+
+      return { decouverte, apresChoix, apresAbonnement, visiteur: PassioFirstRun.estVisiteur() };
+    });
+
+    expect(r.visiteur).toBe(false);        // la prémisse : c'est bien un COMPTE
+    expect(r.decouverte).toBe(true);
+    expect(r.apresChoix).toBe(false);
+    expect(r.apresAbonnement).toBe(false);
   });
 
   test("une activité de démonstration n'invente ni proximité ni participants", async ({ page }) => {

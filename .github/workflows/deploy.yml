@@ -318,6 +318,15 @@ jobs:
       - name: Banc Rencontres — donnees privees (PostgreSQL jetable)
         run: bash tests/sql/migration-irl-donnees-privees.test.sh
 
+      # Deux fuites mesurees le 2026-09-10 : conv_reads lisible SANS COMPTE (le
+      # graphe « qui parle a qui » des messages prives etait public) et
+      # client_errors ecrivable anonymement, dont le texte pilotait la sentinelle.
+      # La mutation ③ du banc rejoue le piege qui a failli passer : « revoke
+      # insert (colonne) » ne retire RIEN sous un GRANT de table, seul un trigger
+      # tient. C'est ce banc-la qui l'a prouve.
+      - name: Banc fuites conv_reads + client_errors (PostgreSQL jetable)
+        run: bash tests/sql/migration-fuites-2026-09-10.test.sh
+
       # Le script d'application et le fichier unique colle dans l'editeur SQL
       # sont ce que Benjamin execute sur la VRAIE base. Un outil d'application
       # jamais execute est un pari : celui-ci est joue de bout en bout, et le

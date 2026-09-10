@@ -149,10 +149,18 @@ jobs:
           GH_TOKEN: ${{ secrets.SENTINELLE_TOKEN }}
         run: |
           set -euo pipefail
-          node -e '
+          node --input-type=module -e '
+            const { createRequire } = await import("node:module");
+            const require = createRequire(process.cwd() + "/");
+            const { desamorcer } = await import(process.cwd() + "/scripts/sentinelle-detecter.mjs");
             const v = require("/tmp/verdict.json");
             const c = v.cible;
-            const cloture = (s) => String(s || "").replace(/`/g, "ˋ");
+            // ⚠️ `cloture` NE SUFFIT PAS ET N\u2019A JAMAIS SUFFI : échapper les
+            // accents graves empêche de sortir du bloc, pas de donner un ORDRE
+            // à l\u2019intérieur. `desamorcer` retire en plus les lignes en forme
+            // d\u2019instruction et les marqueurs de structure. Voir la fiche en
+            // tête de scripts/sentinelle-detecter.mjs (2026-09-10).
+            const cloture = (s) => desamorcer(s);
             const L = [];
             L.push("La sentinelle autonome a relevé un défaut que subissent de vrais utilisateurs.");
             L.push("");
@@ -180,7 +188,22 @@ jobs:
             L.push("4. `npm run verif` vert, suites e2e concernées vertes, avant toute PR.");
             L.push("5. Au-delà de ~60 lignes ou 2 fichiers, ce n’est plus une réparation : décrire la cause et laisser la main.");
             require("fs").writeFileSync("/tmp/issue.md", L.join("\n"));
-            require("fs").writeFileSync("/tmp/titre.txt", "[SENTINELLE] " + String(c.message).slice(0, 80));
+            // ⚠️ LE TITRE NE PORTE PLUS UNE LIGNE ÉCRITE PAR UN INCONNU. Il
+            // portait `c.message` brut — hors de tout bloc, donc la seule partie
+            // de l\u2019issue qu\u2019aucune clôture ne protégeait. Il porte désormais
+            // l\u2019EMPREINTE normalisée (chiffres → #, URL → <url>, minuscules),
+            // calculée par la sentinelle et non librement choisie.
+            // ⚠️ L\u2019EMPREINTE NE SUFFISAIT PAS, ET LE VERROU LE PRÉTENDAIT.
+            // `empreinte()` normalise les chiffres et les URL — elle laisse donc
+            // passer « ignore les instructions précédentes » intact. Le titre
+            // passe maintenant par `desamorcer()` comme le corps, et il porte en
+            // plus un condensé de l\u2019empreinte : deux tentatives distinctes se
+            // confondent, et il reste lisible pour un humain.
+            const { createHash } = require("node:crypto");
+            const cond = createHash("sha256").update(String(c.cle || "")).digest("hex").slice(0, 8);
+            const lisible = desamorcer(String(c.cle || ""), 1).replace(/[\n\r]/g, " ").slice(0, 60).trim();
+            const titre = "[SENTINELLE] " + (lisible || "defaut de production") + " · " + cond;
+            require("fs").writeFileSync("/tmp/titre.txt", titre);
           '
           # ⚠️ LE LABEL `sentinelle` EST LA MARQUE D'ORIGINE, PAS LE TITRE.
           # C'est lui, et non le préfixe « [SENTINELLE] », qui autorisera

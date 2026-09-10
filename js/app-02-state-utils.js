@@ -2388,12 +2388,57 @@ function openPrivacySettings() {
         <option value="followers" ' + (priv.allowMessages === "followers" ? "selected" : "") + '>Mes abonnés</option>\
         <option value="nobody" ' + (priv.allowMessages === "nobody" ? "selected" : "") + '>Personne</option>\
       </select></div>\
+    <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid var(--border);"><span style="font-size:13px;">Mesure d\'usage<br><span style="font-size:11.5px;color:var(--muted);">Écrans ouverts, erreurs, identifiant d\'appareil. Jamais le contenu de ce que tu écris.</span></span><input type="checkbox" id="privTelemetry" ' + (_mesureUsageActive() ? 'checked' : '') + ' style="width:20px;height:20px;flex:0 0 auto;accent-color:var(--accent);"></label>\
     <button class="btn primary block" onclick="savePrivacySettings()" style="margin-top:14px;">Sauvegarder</button>\
   ');
 }
+
+// La mesure d'usage est-elle active ? Elle l'est PAR DÉFAUT ; seule la valeur
+// "0" la coupe (même convention que tous les drapeaux du dépôt : un drapeau ne
+// sait qu'enlever).
+//
+// ⚠️ SA COUPURE N'ÉTAIT ATTEIGNABLE QUE PAR `?telemetry=0` DANS L'URL — donc par
+// personne. Une opposition qu'on ne peut pas exercer n'est pas une opposition,
+// et la politique de confidentialité s'engage désormais à la rendre possible
+// (point 3). Le choix vit dans `localStorage.passio_telemetry`, clé d'APPAREIL
+// hors `ACCOUNT_SCOPED_KEYS` : il ne suit pas le compte, il reste sur le
+// téléphone où il a été fait, et il survit à une déconnexion.
+function _mesureUsageActive() {
+  try { return localStorage.getItem("passio_telemetry") !== "0"; } catch (e) { return true; }
+}
+
 function savePrivacySettings() {
   var cfg = getCurrentConfig();
   cfg.privacy = { profilePublic: document.getElementById("privPublic").checked, showOnline: document.getElementById("privOnline").checked, showActivity: document.getElementById("privActivity").checked, allowMessages: document.getElementById("privMessages").value };
+  // La mesure d'usage n'entre PAS dans `cfg.privacy` : ce blob part dans
+  // `user_state` et suivrait le compte d'un appareil à l'autre, alors que le
+  // refus est celui de CET appareil. `setEnabled` écrit la clé et coupe la
+  // capture immédiatement — `track()` teste ce drapeau à chaque événement, donc
+  // il n'y a rien à recharger.
+  //
+  // ⚠️ ON N'ÉCRIT QUE CE QUI CHANGE, ET RÉACTIVER EFFACE LA CLÉ AU LIEU D'ÉCRIRE
+  // « 1 ». Pour `telemetry.js`, « 1 » ne veut pas dire « activée » mais
+  // **capture complète FORCÉE** : elle court-circuite l'échantillonnage de
+  // production ET la règle « localhost n'émet jamais par défaut », posée le
+  // 2026-08-16 après avoir mesuré 40 625 événements de test dans la table de
+  // production. Un simple « Sauvegarder » sans toucher à la case aurait donc
+  // abonné tout le monde à la capture intégrale. Effacer la clé rend la main au
+  // défaut ; seul le REFUS s'écrit en dur, parce que lui doit être durable.
+  var tel = document.getElementById("privTelemetry");
+  if (tel && tel.checked !== _mesureUsageActive()) {
+    try {
+      if (!tel.checked) {
+        if (window.PassioTelemetry && typeof PassioTelemetry.setEnabled === "function") PassioTelemetry.setEnabled(false);
+        else localStorage.setItem("passio_telemetry", "0");
+      } else {
+        // ⚠️ L'ORDRE COMPTE : `setEnabled(true)` écrit « 1 » lui aussi. On le
+        // laisse rallumer la capture EN MÉMOIRE (sinon rien ne repart avant le
+        // prochain chargement), PUIS on efface la clé qu'il vient de poser.
+        if (window.PassioTelemetry && typeof PassioTelemetry.setEnabled === "function") PassioTelemetry.setEnabled(true);
+        localStorage.removeItem("passio_telemetry");
+      }
+    } catch (e) {}
+  }
   saveConfig(cfg); closeModal(); toast("Confidentialité mise à jour");
 }
 
@@ -3224,14 +3269,19 @@ function openPrivacyPolicy() {
     <div class="modal-handle"></div>\
     <div class="modal-title">Politique de confidentialité</div>\
     <div style="font-size:12.5px;color:var(--muted);line-height:1.65;max-height:55vh;overflow-y:auto;padding-right:4px;">\
-      <p style="margin:0 0 10px;"><strong style="color:var(--text);">Dernière mise à jour : juin 2026 — PASSIO (beta privée)</strong></p>\
-      <p style="margin:0 0 10px;"><strong style="color:var(--text);">1. Données collectées.</strong> Lors de l\'inscription : adresse e-mail et nom d\'utilisateur. Lors de l\'utilisation : passions, publications (textes, photos, vidéos, audio), carnets, messages, commentaires, likes, abonnements, participation aux événements, et préférences locales (thème, filtres).</p>\
-      <p style="margin:0 0 10px;"><strong style="color:var(--text);">2. Où sont stockées tes données.</strong> Sur les serveurs de notre prestataire Supabase (hébergement UE/US, chiffrement en transit), et en partie sur ton appareil (localStorage) pour le fonctionnement hors-ligne. Les accès en base sont restreints par des règles de sécurité par propriétaire (RLS).</p>\
-      <p style="margin:0 0 10px;"><strong style="color:var(--text);">3. Ce que nous ne faisons pas.</strong> Pas de revente de données, pas de publicité ciblée, pas de traqueurs tiers. C\'est l\'engagement fondateur de PASSIO.</p>\
-      <p style="margin:0 0 10px;"><strong style="color:var(--text);">4. Durée de conservation.</strong> Tes données sont conservées tant que ton compte est actif. La suppression du compte efface tes contenus immédiatement et ton e-mail sous 30 jours.</p>\
-      <p style="margin:0 0 10px;"><strong style="color:var(--text);">5. Tes droits (RGPD).</strong> Accès, rectification, effacement, portabilité, opposition. Exerce-les directement dans l\'app (Paramètres → Supprimer mon compte) ou par e-mail : <strong style="color:var(--text);">contact@ladamemetallerie.com</strong>. Tu peux aussi saisir la CNIL (cnil.fr).</p>\
-      <p style="margin:0 0 10px;"><strong style="color:var(--text);">6. Mineurs.</strong> PASSIO est réservé aux personnes majeures : l\'inscription est refusée en dessous de 18 ans révolus. L\'âge est <strong style="color:var(--text);">déclaré</strong> par la personne à l\'inscription ; nous ne collectons aucune pièce d\'identité et ne vérifions pas cette déclaration. Un compte dont nous apprenons qu\'il appartient à un mineur est supprimé.</p>\
-      <p style="margin:0;"><strong style="color:var(--text);">7. Beta privée.</strong> Pendant la phase de test, l\'accès est protégé par code et les fonctionnalités peuvent évoluer ; tes retours peuvent être utilisés pour améliorer le produit.</p>\
+      <p style="margin:0 0 10px;"><strong style="color:var(--text);">Dernière mise à jour : ' + escapeHtml(PASSIO_CONFIDENTIALITE_VERSION) + ' — PASSIO (beta privée)</strong></p>\
+      <p style="margin:0 0 10px;"><strong style="color:var(--text);">1. Qui traite tes données.</strong> PASSIO est édité par une <strong style="color:var(--text);">personne physique, à titre non professionnel</strong>, qui est le responsable de ce traitement. Elle est joignable à <strong style="color:var(--text);">' + escapeHtml(PASSIO_EDITEUR.email) + '</strong>, et communique son identité complète à toute personne qui exerce ses droits, ainsi qu\'à la CNIL. Il n\'y a pas de délégué à la protection des données : le service n\'y est pas tenu.</p>\
+      <p style="margin:0 0 10px;"><strong style="color:var(--text);">2. Ce que tu nous donnes.</strong> À l\'inscription : <strong style="color:var(--text);">adresse e-mail</strong> et <strong style="color:var(--text);">nom d\'utilisateur</strong>. En utilisant PASSIO : tes passions, tes publications (textes, photos, vidéos, sons), tes messages privés et leurs pièces jointes, commentaires, j\'aime, abonnements, participation aux rencontres, l\'<strong style="color:var(--text);">année de naissance</strong> que tu déclares, les signalements que tu envoies, et tes préférences (thème, filtres) gardées sur ton appareil.</p>\
+      <p style="margin:0 0 10px;"><strong style="color:var(--text);">2 bis. Ta position, seulement quand tu la donnes.</strong> Deux gestes, deux usages, jamais d\'autre : ① « Partager ma position » dans une conversation envoie ta <strong style="color:var(--text);">position exacte</strong> aux membres de cette conversation — elle reste dans l\'historique des messages, comme le reste ; ② l\'écran Rencontrer peut demander à ton navigateur où tu es, pour trier les rencontres par distance et afficher le nom de ta ville — <strong style="color:var(--text);">PASSIO ne l\'enregistre pas</strong>, mais tes coordonnées sont envoyées au service de géocodage cité au point 6 pour retrouver ce nom de commune. PASSIO ne suit jamais tes déplacements et ne demande la position ni au démarrage, ni en arrière-plan.</p>\
+      <p style="margin:0 0 10px;"><strong style="color:var(--text);">3. Ce que l\'application mesure toute seule.</strong> Pour voir si elle fonctionne, PASSIO enregistre des <strong style="color:var(--text);">événements techniques d\'usage</strong> : écran ouvert, action effectuée, durée, adresse technique appelée et code de réponse, message et trace d\'une erreur, ainsi qu\'un <strong style="color:var(--text);">identifiant d\'appareil</strong> et un identifiant de session, la plateforme, le navigateur, la taille d\'écran et le type de connexion. Le contenu de ce que tu écris n\'y entre jamais : un filtre écarte les champs sensibles avant l\'envoi. <strong style="color:var(--text);">Tu peux couper cette mesure</strong> à tout moment : Paramètres → Confidentialité → « Mesure d\'usage ».</p>\
+      <p style="margin:0 0 10px;"><strong style="color:var(--text);">4. Pourquoi nous avons le droit.</strong> Fournir le service que tu demandes (exécution du contrat, art. 6.1.b) pour ton compte et tes contenus ; notre <strong style="color:var(--text);">intérêt légitime</strong> (art. 6.1.f) à faire fonctionner, sécuriser et corriger l\'application pour la mesure d\'usage, que tu peux couper ; le respect d\'obligations légales pour la modération et les signalements.</p>\
+      <p style="margin:0 0 10px;"><strong style="color:var(--text);">5. Qui les héberge, et où.</strong> Base de données et fichiers : <strong style="color:var(--text);">Supabase</strong> (Supabase Pte. Ltd., Singapour). Site : <strong style="color:var(--text);">Netlify, Inc.</strong> (États-Unis). E-mails de confirmation : <strong style="color:var(--text);">Brevo</strong> (France). Ces transferts hors Union européenne se font sur la base des clauses contractuelles types de la Commission européenne. Une partie des données reste sur ton appareil (localStorage, IndexedDB) pour le fonctionnement hors-ligne. En base, l\'accès est restreint par des règles par propriétaire (RLS).</p>\
+      <p style="margin:0 0 10px;"><strong style="color:var(--text);">6. Ce que ton navigateur appelle ailleurs.</strong> Afficher une carte, un GIF ou une image de démonstration fait appel à des services tiers qui reçoivent alors ton <strong style="color:var(--text);">adresse IP</strong> : fonds de carte (OpenFreeMap), recherche d\'adresse (Base Adresse Nationale, Photon), GIF (Giphy, Tenor), images et vidéos d\'illustration (Unsplash, Pexels). Nous ne leur transmettons ni ton compte, ni ton nom.</p>\
+      <p style="margin:0 0 10px;"><strong style="color:var(--text);">7. Ce que nous ne faisons pas.</strong> Pas de revente de données, pas de publicité, pas de profilage publicitaire, aucun traqueur publicitaire tiers. C\'est l\'engagement fondateur de PASSIO.</p>\
+      <p style="margin:0 0 10px;"><strong style="color:var(--text);">8. Combien de temps.</strong> Ton compte et tes contenus : tant que ton compte existe. Sa suppression efface tes contenus immédiatement et ton adresse e-mail sous 30 jours. Les événements techniques du point 3 : <strong style="color:var(--text);">13 mois au maximum</strong>. Les signalements sont conservés le temps de traiter l\'affaire et d\'en garder la trace.</p>\
+      <p style="margin:0 0 10px;"><strong style="color:var(--text);">9. Tes droits (RGPD).</strong> Accès, rectification, effacement, portabilité, limitation, opposition — et le droit de retirer ton consentement quand il en sert de base. Exerce-les dans l\'app (Paramètres → Supprimer mon compte) ou par e-mail : <strong style="color:var(--text);">' + escapeHtml(PASSIO_EDITEUR.email) + '</strong>. Nous répondons sous un mois. Tu peux aussi réclamer auprès de la CNIL (cnil.fr).</p>\
+      <p style="margin:0 0 10px;"><strong style="color:var(--text);">10. Mineurs.</strong> PASSIO est réservé aux personnes majeures : l\'inscription est refusée en dessous de 18 ans révolus. L\'âge est <strong style="color:var(--text);">déclaré</strong> par la personne ; nous ne demandons aucune pièce d\'identité et <strong style="color:var(--text);">ne vérifions pas cette déclaration</strong>. Un compte dont nous apprenons qu\'il appartient à un mineur est supprimé.</p>\
+      <p style="margin:0;"><strong style="color:var(--text);">11. Beta privée.</strong> Pendant la phase de test, l\'accès est protégé par un code, les fonctionnalités évoluent et <strong style="color:var(--text);">tes contenus peuvent être perdus</strong> : n\'y dépose rien d\'irremplaçable. Tes retours peuvent être utilisés pour améliorer le produit.</p>\
     </div>\
     <button class="btn primary block" onclick="closeModal()" style="margin-top:14px;">J\'ai compris</button>\
   ');
@@ -3306,6 +3356,14 @@ function _editeurParticulier() {
 // Version du contrat acceptée à l'inscription. Toute réécriture de fond des CGU
 // change cette valeur : c'est elle qui permet de savoir QUI a accepté QUOI.
 const PASSIO_CGU_VERSION = "2026-09-09";
+
+// Version de la politique de confidentialité, affichée en tête du texte. Elle
+// SUIT le texte, comme celle des CGU : une politique qui annonce « juin 2026 »
+// alors qu'elle a changé trois fois depuis ne dit plus quand elle a été écrite,
+// et personne ne peut savoir ce qui lui a été communiqué. Celle de juin 2026
+// décrivait encore les « carnets » (retirés par ADR-011) et ne déclarait AUCUNE
+// des mesures d'usage que l'application enregistre depuis.
+const PASSIO_CONFIDENTIALITE_VERSION = "2026-09-10";
 
 // Rend un champ d'identité, ou un marqueur VISIBLE quand il n'est pas renseigné.
 function _champEditeur(cle) {
@@ -3505,8 +3563,6 @@ function switchAuthTab(mode) {
   // la case de consentement, elle, a besoin d'une rangée, d'où son cas à part.
   const nameWrap = document.getElementById("authNameWrap");
   if (nameWrap) nameWrap.style.display = mode === "signup" ? "" : "none";
-  const phoneWrap = document.getElementById("authPhoneWrap");
-  if (phoneWrap) phoneWrap.style.display = mode === "signup" ? "" : "none";
   // ⚠️ `flex`, PAS `""` : `label.field` est `display:block` en CSS, et la case
   // de consentement a besoin d'une rangée (case + texte). Rendre la main au CSS
   // remettrait le texte SOUS la case, sur toute la largeur.
@@ -3675,14 +3731,6 @@ function _showAuthMsg(text, type) {
   el.className = "onb-auth-msg " + type;
 }
 
-// Normalise un numéro de téléphone : garde le « + » de tête (international) et
-// les chiffres, supprime espaces/points/tirets/parenthèses. Renvoie "" si vide.
-function normalizePhone(raw) {
-  const s = String(raw || "").trim();
-  if (!s) return "";
-  const plus = s[0] === "+" ? "+" : "";
-  return plus + s.replace(/[^\d]/g, "");
-}
 
 // ── NOM D'UTILISATEUR : DEMANDÉ À L'INSCRIPTION (2026-09-09) ────────────────
 //
@@ -3748,7 +3796,6 @@ async function onbDoAuth() {
   const email = (document.getElementById("authEmail")?.value || "").trim();
   const pwd = document.getElementById("authPassword")?.value || "";
   const pwd2 = document.getElementById("authPasswordConfirm")?.value || "";
-  const phone = normalizePhone(document.getElementById("authPhone")?.value || "");
   const nom = nomCompteValide(document.getElementById("authName")?.value || "");
   const btn = document.getElementById("authSubmitBtn");
 
@@ -3764,12 +3811,6 @@ async function onbDoAuth() {
   if (!EMAIL_RE.test(email)) { _showAuthMsg("Adresse e-mail invalide.", "error"); return; }
   if (pwd.length < 6) { _showAuthMsg("Le mot de passe doit contenir au moins 6 caractères.", "error"); return; }
   if (_authMode === "signup" && pwd !== pwd2) { _showAuthMsg("Les mots de passe ne correspondent pas.", "error"); return; }
-  // Numéro obligatoire à la création (demandé au même titre que l'e-mail) :
-  // 8 à 15 chiffres, éventuellement précédés d'un indicatif « + » international.
-  if (_authMode === "signup") {
-    const digits = phone.replace(/\D/g, "");
-    if (digits.length < 8 || digits.length > 15) { _showAuthMsg("Numéro de téléphone invalide.", "error"); return; }
-  }
   // ⚠️ LE CONSENTEMENT EST UNE CONDITION D'INSCRIPTION, PAS UNE DÉCORATION.
   // Il est demandé au SEUL moment où un contrat se forme (la création de
   // compte) : l'exiger à la connexion redemanderait son accord à quelqu'un qui
@@ -3787,19 +3828,28 @@ async function onbDoAuth() {
     if (_authMode === "signin") {
       result = await supa.auth.signInWithPassword({ email, password: pwd });
     } else {
-      // Le numéro voyage dans user_metadata (auth.users) : jamais exposé aux
-      // autres comptes (contrairement à `profiles`, en lecture publique), lisible
-      // seulement côté serveur via service_role (centre de pilotage).
+      // ⚠️ LE NUMÉRO DE TÉLÉPHONE A ÉTÉ RETIRÉ DE L'INSCRIPTION (2026-09-10).
+      // Il était OBLIGATOIRE — 8 à 15 chiffres, sans quoi l'inscription était
+      // refusée — et il n'était lu NULLE PART : une recherche exhaustive du
+      // dépôt ne rendait que la ligne qui l'écrivait. Aucun SMS, aucune
+      // récupération de compte, aucune vérification n'en dépendait. Exiger une
+      // donnée directement identifiante pour une finalité qui n'existe pas
+      // enfreint la minimisation (RGPD art. 5.1.c), et la politique de
+      // confidentialité affichée au même écran énumérait « adresse e-mail et
+      // nom d'utilisateur » — elle ne le mentionnait même pas (art. 13).
+      // Mesuré : 3 comptes sur 7 en portaient un en production.
+      // S'il revient un jour, il revient FACULTATIF, avec sa finalité écrite
+      // sous le champ et au §2 de la politique, et demandé au moment où il sert.
+      //
       // `name` est la clé que relit `nomCompteDepuisSession` ; `display_name` est
       // celle qu'affiche le tableau de bord Supabase. Les deux portent la MÊME
       // valeur normalisée : deux orthographes du même pseudo seraient un piège.
-      result = await supa.auth.signUp({ email, password: pwd, options: { data: { phone, name: nom, display_name: nom } } });
+      result = await supa.auth.signUp({ email, password: pwd, options: { data: { name: nom, display_name: nom } } });
       // Copie locale pour le profil et les prochaines synchros.
       try {
         if (typeof state !== "undefined") {
           state.user = state.user || {};
           state.user.general = state.user.general || {};
-          state.user.general.phone = phone;
           // Copie locale du nom public : sert au cas (rare) où `signUp` rend une
           // session — l'onboarding continue alors sans redemander le prénom.
           state.user.name = nom;
@@ -5249,11 +5299,17 @@ function moodShortLabel(mood) {
   return m ? m.label : "Tout";
 }
 
-// Étiquette « Exemple PASSIO » du contenu de démonstration, posée UNIQUEMENT
-// pour un visiteur sans compte pendant le parcours de première visite (drapeau
-// `first_run_experience_v1`). Rend "" partout ailleurs — donc le HTML d'une
-// carte est identique à l'octet près pour tout compte existant, et quand le
-// drapeau est coupé.
+// Étiquette « Exemple PASSIO » du contenu de démonstration, posée pour TOUT LE
+// MONDE — visiteur comme compte inscrit (2026-09-10). Elle ne s'éteint plus que
+// sur le kill switch du lot (`first_run_experience_v1`), qui rend alors le HTML
+// d'une carte identique à l'octet près.
+//
+// ⚠️ ELLE ÉTAIT RÉSERVÉE AUX VISITEURS, ET C'ÉTAIT L'INVERSE DU BESOIN : elle
+// disparaissait à la création du compte, donc pour les personnes à qui l'app est
+// envoyée. Mesuré le 2026-09-10 : 550 publications de démonstration et 29 faux
+// comptes dans `app-01-diag-seed.js`, contre 33 publications réelles en
+// production — un testeur inscrit lisait un fil fabriqué à 94 % sans le savoir,
+// et écrivait à des gens qui n'existent pas.
 //
 // ⚠️ Le discriminant est `p._source === "seed"`, posé par `allFeedPosts`, et
 // jamais la forme de l'identifiant : deviner finirait par étiqueter une vraie
