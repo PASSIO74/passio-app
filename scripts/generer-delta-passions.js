@@ -20,12 +20,24 @@
 //    contre une liste supposée produirait un fichier qui OUBLIE des passions,
 //    silencieusement — le défaut de famille de ce dépôt.
 //
+// ⚠️ UN DELTA QUI NE REGARDE QUE LES IDS RATE TOUTES LES MODIFICATIONS, et le
+//    lot du 2026-09-10 l'a prouvé : il n'ajoutait AUCUNE passion, il posait des
+//    alias sur 871 lignes existantes. En mode `--ids`, le générateur rendait
+//    donc « rien à écrire » — un fichier vide, parfaitement satisfait de
+//    lui-même, pendant que la recherche SERVEUR (`rechercher_passions` lit la
+//    colonne `aliases`) serait restée sur l'ancien état. Le mode `--etat` compare
+//    une EMPREINTE par ligne et rattrape les modifications.
+//
 //   usage : node scripts/generer-delta-passions.js --ids fichier.txt [--sortie x.sql]
 //           (fichier.txt : les ids déjà en base, séparés par virgules ou retours)
+//           node scripts/generer-delta-passions.js --etat fichier.tsv [--sortie x.sql]
+//           (fichier.tsv : « id<TAB>empreinte » par ligne, tel que rendu par la
+//            requête SQL affichée quand le fichier manque — canal ① lecture seule)
 // ══════════════════════════════════════════════════════════════════════════
 "use strict";
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 const { charger } = require("./referentiel-passions.js");
 
 function arg(nom, defaut) {
@@ -34,26 +46,64 @@ function arg(nom, defaut) {
 }
 
 const fichierIds = arg("--ids", null);
-if (!fichierIds) {
-  console.error("⛔ --ids <fichier> est obligatoire : les ids DÉJÀ en production.");
-  console.error("   Les obtenir en lecture seule :");
-  console.error("   select string_agg(id, ',' order by id) from public.passions;");
+const fichierEtat = arg("--etat", null);
+if (!fichierIds && !fichierEtat) {
+  console.error("⛔ --ids <fichier> ou --etat <fichier> est obligatoire.");
+  console.error("");
+  console.error("   --ids  : les ids DÉJÀ en production (n'émet que les passions NOUVELLES).");
+  console.error("            select string_agg(id, ',' order by id) from public.passions;");
+  console.error("");
+  console.error("   --etat : « id<TAB>empreinte » par ligne (émet AUSSI les lignes MODIFIÉES).");
+  console.error("            select id || chr(9) || md5(");
+  console.error("              label || '|' || normalized_label || '|' ||");
+  console.error("              array_to_string(aliases, ',') || '|' || is_broad::text || '|' ||");
+  console.error("              popularity::text || '|' || sort_order::text || '|' || emoji || '|' || color");
+  console.error("            ) from public.passions order by id;");
   process.exit(1);
 }
 
-const connus = new Set(
-  fs.readFileSync(fichierIds, "utf8").split(/[,\s]+/).map(s => s.trim()).filter(Boolean)
-);
-
 const { passions, relations } = charger();
-const nouvelles = passions.filter(p => !connus.has(p.id));
+
+// L'empreinte couvre EXACTEMENT les colonnes que la migration écrit, et dans le
+// même ordre : une colonne oubliée ici, c'est une modification qui ne partirait
+// jamais — le défaut que le mode `--etat` existe pour fermer.
+function empreinte(p) {
+  return crypto.createHash("md5").update([
+    p.label, p.normalized_label, (p.aliases || []).join(","),
+    p.is_broad ? "true" : "false", String(p.popularity), String(p.sort_order),
+    p.emoji, p.color,
+  ].join("|")).digest("hex");
+}
+
+let connus, nouvelles, motif;
+if (fichierEtat) {
+  const etat = new Map();
+  fs.readFileSync(fichierEtat, "utf8").split(/\r?\n/).forEach(function (ligne) {
+    const [id, emp] = ligne.split(/\t/);
+    if (id && emp) etat.set(id.trim(), emp.trim());
+  });
+  connus = new Set(etat.keys());
+  nouvelles = passions.filter(p => etat.get(p.id) !== empreinte(p));
+  motif = "nouvelles ou modifiées";
+} else {
+  connus = new Set(
+    fs.readFileSync(fichierIds, "utf8").split(/[,\s]+/).map(s => s.trim()).filter(Boolean)
+  );
+  nouvelles = passions.filter(p => !connus.has(p.id));
+  motif = "nouvelles";
+}
 
 if (!nouvelles.length) {
-  console.log("Rien à écrire : la production connaît déjà les " + passions.length + " passions.");
+  console.log("Rien à écrire : la production est déjà à jour sur les " + passions.length + " passions.");
   process.exit(0);
 }
 
-const idsNouveaux = new Set(nouvelles.map(p => p.id));
+// ⚠️ LES RELATIONS NE SUIVENT QUE LES PASSIONS VRAIMENT NOUVELLES, jamais les
+// MODIFIÉES. Une passion dont on change les alias garde exactement les mêmes
+// liens : les émettre quand même produisait 1 984 lignes de `passion_relations`
+// parfaitement inutiles pour un lot qui n'en changeait aucune — 200 Ko de SQL
+// à coller pour rien, et un fichier dont on ne peut plus relire ce qu'il fait.
+const idsNouveaux = new Set(nouvelles.filter(p => !connus.has(p.id)).map(p => p.id));
 // Une relation part dans le delta dès qu'UNE de ses deux extrémités est neuve :
 // rattacher une passion nouvelle à une racine ancienne (`broader` repointé sur
 // `interiorite-philosophie`) crée un lien dont la SOURCE seule est nouvelle,
@@ -81,7 +131,7 @@ let out = "";
 out += "-- ═══════════════════════════════════════════════════════════════════════════\n";
 out += "-- DELTA DU RÉFÉRENTIEL DES PASSIONS — " + date + "\n";
 out += "--\n";
-out += "--   " + nouvelles.length + " passions nouvelles · " + relaSures.length + " relations\n";
+out += "--   " + nouvelles.length + " passions " + motif + " · " + relaSures.length + " relations\n";
 out += "--   (la production en connaissait " + connus.size + " ; le référentiel en compte " + passions.length + ")\n";
 out += "--\n";
 out += "-- ⚠️ FICHIER GÉNÉRÉ — ne pas éditer à la main.\n";
@@ -137,13 +187,32 @@ for (let i = 0; i < relaSures.length; i += PAQUET) {
   out += "on conflict (source_passion_id, target_passion_id, relation_type) do nothing;\n\n";
 }
 
-// Le verdict : sans lui on colle 500 Ko de SQL et on ne sait pas si ça a pris.
+// ⚠️ LE VERDICT DOIT PROUVER CE QUE CE DELTA-LÀ FAIT, pas seulement que la table
+// existe. Compter les passions actives ne dit RIEN d'un delta de MODIFICATION :
+// le total ne bouge pas d'une ligne quand on change 959 jeux d'alias, donc le
+// verdict aurait affiché « OK » sur une base où rien n'aurait été écrit. On
+// recompte donc, ligne à ligne, l'empreinte ATTENDUE contre celle réellement en
+// base — la même formule que celle qui a servi à choisir ces lignes.
 out += "-- ── Verdict ────────────────────────────────────────────────────────────────\n";
+out += "-- Recompte l'empreinte de chaque ligne écrite et la compare à l'attendu.\n";
+out += "with attendu(id, emp) as (values\n";
+out += nouvelles.map(p => "  (" + q(p.id) + ", " + q(empreinte(p)) + ")").join(",\n") + "\n";
+out += "),\n";
+out += "reel as (\n";
+out += "  select p.id, md5(\n";
+out += "    p.label || '|' || p.normalized_label || '|' ||\n";
+out += "    array_to_string(p.aliases, ',') || '|' || p.is_broad::text || '|' ||\n";
+out += "    p.popularity::text || '|' || p.sort_order::text || '|' || p.emoji || '|' || p.color\n";
+out += "  ) as emp\n";
+out += "  from public.passions p\n";
+out += ")\n";
 out += "select\n";
+out += "  count(*) as lignes_attendues,\n";
+out += "  count(*) filter (where r.emp is distinct from a.emp) as lignes_non_conformes,\n";
 out += "  (select count(*) from public.passions where status = 'active') as passions_actives,\n";
-out += "  " + passions.length + " as attendu_au_moins,\n";
-out += "  case when (select count(*) from public.passions where status = 'active') >= " + passions.length + "\n";
-out += "       then 'OK' else 'ECHEC' end as verdict;\n\n";
+out += "  case when count(*) filter (where r.emp is distinct from a.emp) = 0\n";
+out += "       then 'OK' else 'ECHEC' end as verdict\n";
+out += "  from attendu a left join reel r using (id);\n\n";
 out += "commit;\n";
 
 fs.writeFileSync(sortie, out, "utf8");
