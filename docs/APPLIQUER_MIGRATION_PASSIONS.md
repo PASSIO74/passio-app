@@ -7,6 +7,62 @@ transaction** (`begin;` … `commit;`).
 
 ---
 
+## ⚠️ MISE À JOUR DU 2026-09-10 — vague 3 : 5 001 passions, et le fichier n'est plus collable
+
+**Ce document décrit la première application (2026-09-01, 1 908 passions). Elle a eu
+lieu.** Depuis, deux vagues ont porté le référentiel à **5 001 passions et 9 100 alias**,
+et le miroir pèse **1,45 Mo**. Tout ce qui suit reste vrai — additive, idempotente,
+réversible, vérifiée en l'exécutant — sauf le **chemin B**, qui ne tient plus : 1,45 Mo
+ne se collent pas dans l'éditeur SQL.
+
+### Le miroir est découpé en parties collables
+
+```bash
+node scripts/decouper-migration-passions.js
+# → migrations/parties/partie-01.sql … partie-07.sql  (~240 Ko chacune)
+```
+
+Coller les parties **dans l'ordre**, une par une, en attendant la réponse de chacune.
+
+⚠️ **Le découpage change une garantie, et il faut la connaître avant de commencer.**
+Le fichier entier est un `begin; … commit;` unique : tout ou rien. Découpé, **chaque
+partie est sa propre transaction**. Un échec à la partie 4 laisse les parties 1 à 3
+appliquées. Ce n'est acceptable que parce que le miroir est additif et idempotent :
+**reprendre à la partie qui a échoué suffit**, il ne faut PAS repartir de la première.
+
+⚠️ **L'ordre n'est pas décoratif** : la partie 1 crée la table et les colonnes. Le banc
+vérifie d'ailleurs que la partie 2 appliquée seule **échoue** — un faux pas se voit au
+lieu de laisser une base à moitié faite qu'on croirait bonne.
+
+⚠️ **Régénérer le miroir sans redécouper laisserait appliquer l'ANCIENNE version, en
+silence.** `tests/sql/decoupage-migration-passions.test.sh` (gate CI) redécoupe avant de
+mesurer, précisément pour fermer cette porte.
+
+### Ce que le découpage a été obligé de prouver
+
+Un découpeur qui perd une instruction est pire que pas de découpeur : on croit avoir
+tout appliqué. Deux contrôles, à deux niveaux — le script compare la liste
+d'instructions réassemblée à celle du fichier d'origine (le TEXTE), et le banc CI
+**exécute** les deux chemins sur deux bases PostgreSQL jetables et compare l'empreinte
+**ligne à ligne** du résultat (l'EXÉCUTION). Mesuré : empreinte identique, 5 001
+passions, `rechercher_passions('jogging')` rend toujours `running`.
+
+### Les décomptes attendus ont changé
+
+```sql
+select count(*) from public.passions where status = 'active';   -- attendu : 5001 (+ les créées depuis l'app)
+select count(*) from public.passion_relations;                  -- attendu : 10012
+select count(*) from public.passions where source = 'legacy';   -- attendu : 19  (inchangé)
+```
+
+Le contrôle d'intégrité, lui, ne change pas et reste le seul qui compte vraiment :
+**aucune publication orpheline**.
+
+⚠️ **Le chemin A (psql) reste le meilleur** : un seul fichier, une seule transaction,
+un vrai retour d'erreur. Le découpage n'existe que pour le tableau de bord.
+
+---
+
 ## Ce que ça change, et ce que ça ne change pas
 
 **Avant** (aujourd'hui) : les 1 908 passions sont **cherchables et lisibles**, mais seules

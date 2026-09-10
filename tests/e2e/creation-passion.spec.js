@@ -51,36 +51,68 @@ async function poserServeur(page, reponse) {
   }, reponse);
 }
 
+// ⚠️ LE NOM D'ESSAI NE DOIT PAS POUVOIR ENTRER AU RÉFÉRENTIEL, JAMAIS.
+// Cette suite s'appuie sur une prémisse : « ce nom est INCONNU du référentiel »,
+// donc le sélecteur propose de le créer. Elle a d'abord utilisé « sculpture sur
+// glace » — un nom parfaitement plausible, qui est effectivement entré au
+// référentiel à la vague 3 (2026-09-10). Six cas sont tombés d'un coup, et pas
+// pour un défaut du code : pour une prémisse périmée. Même famille que
+// `user-passions-miroir` le 2026-09-09.
+// Le référentiel est FAIT pour grossir (2 088 → 5 001, cible 12 000) : aucun
+// nom vraisemblable n'est sûr. D'où une chaîne que personne n'écrira jamais
+// comme libellé de passion, et un garde ci-dessous qui le VÉRIFIE au lieu de
+// l'espérer.
+const NOM_ESSAI = "zzbanc passion d essai";
+const ID_ESSAI = "zzbanc-passion-d-essai";
+const LIBELLE_ESSAI = "Zzbanc passion d essai";
+
 const CREEE = {
-  data: [{ id: "sculpture-sur-glace", label: "Sculpture sur glace", emoji: "🧊", color: "#7c3aed", cree: true }],
+  data: [{ id: ID_ESSAI, label: LIBELLE_ESSAI, emoji: "🧊", color: "#7c3aed", cree: true }],
 };
 
 test.describe("Créer une passion", () => {
+  // ⓪ LE GARDE DE LA PRÉMISSE. Toute cette suite repose sur « NOM_ESSAI est
+  // inconnu du référentiel ». Ce n'est pas une hypothèse à espérer, c'est un
+  // fait à VÉRIFIER : le jour où il cesse d'être vrai, six cas tombent d'un
+  // coup et le message ne dit pas pourquoi. Celui-ci le dit.
+  test("⓪ le nom d'essai est bien ABSENT du référentiel", async ({ page }) => {
+    await bootAvecCompte(page);
+    await page.evaluate(() => window.PassioPassions.charger());
+    await page.waitForFunction(() => window.PassioPassions.pret(), null, { timeout: 15000 });
+    const trouve = await page.evaluate((n) =>
+      window.PassioPassions.chercher(n, { limite: 5 }).map((p) => p.label), NOM_ESSAI);
+    expect(trouve,
+      "« " + NOM_ESSAI + " » est entré au référentiel : toute cette suite en dépend "
+      + "comme d'un nom INCONNU. Changer NOM_ESSAI / ID_ESSAI / LIBELLE_ESSAI en tête "
+      + "de fichier, ne pas retirer la passion du référentiel."
+    ).toHaveLength(0);
+  });
+
   // ① Le cœur du lot : une passion inconnue devient une passion RÉELLE.
   test("① créer rend une passion nommée, canonique et publiable", async ({ page }) => {
     await bootAvecCompte(page);
     await poserServeur(page, CREEE);
 
-    const r = await page.evaluate(() => window.PassioPassions.creerPassion("sculpture sur glace"));
+    const r = await page.evaluate((n) => window.PassioPassions.creerPassion(n), NOM_ESSAI);
     expect(r.cree).toBe(true);
-    expect(r.passion.id).toBe("sculpture-sur-glace");
+    expect(r.passion.id).toBe(ID_ESSAI);
 
     // Le NOM, pas « ✨ Passion » : sans injection au référentiel en mémoire, la
     // passion qu'on vient de créer s'afficherait générique jusqu'au prochain
     // démarrage (même famille de défaut que le lot TAXO-1).
-    const meta = await page.evaluate(() => passionById("sculpture-sur-glace"));
-    expect(meta.label).toBe("Sculpture sur glace");
+    const meta = await page.evaluate((i) => passionById(i), ID_ESSAI);
+    expect(meta.label).toBe(LIBELLE_ESSAI);
     expect(meta.emoji).toBe("🧊");
 
     // PUBLIABLE TOUT DE SUITE : c'est tout l'objet du lot. `estPassionCanonique`
     // reste la seule autorité de publication.
-    expect(await page.evaluate(() => estPassionCanonique("sculpture-sur-glace"))).toBe(true);
+    expect(await page.evaluate((i) => estPassionCanonique(i), ID_ESSAI)).toBe(true);
 
     // Le client n'envoie QUE le nom : ni identifiant, ni statut, ni source.
     const appel = await page.evaluate(() => window.__rpcAppels[0]);
     expect(appel.nom).toBe("creer_passion");
     expect(Object.keys(appel.args).sort()).toEqual(["p_emoji", "p_label"]);
-    expect(appel.args.p_label).toBe("sculpture sur glace");
+    expect(appel.args.p_label).toBe(NOM_ESSAI);
   });
 
   // ② Elle rejoint la recherche LOCALE, pas seulement la réponse du serveur.
@@ -90,15 +122,15 @@ test.describe("Créer une passion", () => {
     await page.waitForFunction(() => window.PassioPassions.pret(), null, { timeout: 15000 });
     await poserServeur(page, CREEE);
 
-    expect(await page.evaluate(() =>
-      window.PassioPassions.chercher("sculpture sur glace", { limite: 5 }).map(p => p.id)
-    )).not.toContain("sculpture-sur-glace");
+    expect(await page.evaluate((n) =>
+      window.PassioPassions.chercher(n, { limite: 5 }).map(p => p.id), NOM_ESSAI
+    )).not.toContain(ID_ESSAI);
 
-    await page.evaluate(() => window.PassioPassions.creerPassion("sculpture sur glace"));
+    await page.evaluate((n) => window.PassioPassions.creerPassion(n), NOM_ESSAI);
 
-    expect(await page.evaluate(() =>
-      window.PassioPassions.chercher("sculpture sur glace", { limite: 5 }).map(p => p.id)
-    )).toContain("sculpture-sur-glace");
+    expect(await page.evaluate((n) =>
+      window.PassioPassions.chercher(n, { limite: 5 }).map(p => p.id), NOM_ESSAI
+    )).toContain(ID_ESSAI);
   });
 
   // ③ Un nom déjà connu ne part même pas au serveur : on rend l'existante.
@@ -163,7 +195,7 @@ test.describe("Créer une passion", () => {
     });
     await page.waitForFunction(() => window.PassioPassions.pret(), null, { timeout: 15000 });
 
-    await page.locator("#hoteCreation .psel-input").fill("sculpture sur glace");
+    await page.locator("#hoteCreation .psel-input").fill(NOM_ESSAI);
     const bouton = page.locator("#hoteCreation .psel-ajouter");
     await expect(bouton).toBeVisible({ timeout: 10000 });
     // Le libellé DIT ce qui va se passer.
@@ -173,8 +205,8 @@ test.describe("Créer une passion", () => {
     expect(await bouton.getAttribute("data-tel")).toBe("passion_creation");
 
     await bouton.click();
-    await expect(page.locator("#hoteCreation .psel-puce")).toContainText("Sculpture sur glace", { timeout: 10000 });
-    expect(await page.evaluate(() => window.__choisies)).toContain("sculpture-sur-glace");
+    await expect(page.locator("#hoteCreation .psel-puce")).toContainText(LIBELLE_ESSAI, { timeout: 10000 });
+    expect(await page.evaluate(() => window.__choisies)).toContain(ID_ESSAI);
     // Le champ est rendu vide : la frappe a abouti, elle ne reste pas en plan.
     expect(await page.locator("#hoteCreation .psel-input").inputValue()).toBe("");
   });
@@ -194,7 +226,7 @@ test.describe("Créer une passion", () => {
       PassionSearchSelector.monterDans(hote, { mode: "multi" });
     });
     await page.waitForFunction(() => window.PassioPassions.pret(), null, { timeout: 15000 });
-    await page.locator("#hotePlafond .psel-input").fill("sculpture sur glace");
+    await page.locator("#hotePlafond .psel-input").fill(NOM_ESSAI);
     const bouton = page.locator("#hotePlafond .psel-ajouter");
     await expect(bouton).toBeVisible({ timeout: 10000 });
     await bouton.click();
@@ -211,7 +243,7 @@ test.describe("Créer une passion", () => {
     // ⚠️ AUCUN TARIF, AUCUN BOUTON « PAYER » — invariant du paywall (㉒).
     expect(await modale.textContent()).not.toMatch(/[€$]|\d+\s?(euros?|EUR)/i);
     // Et rien n'a été créé : la passion refusée n'est pas devenue publiable.
-    expect(await page.evaluate(() => estPassionCanonique("sculpture-sur-glace"))).toBe(false);
+    expect(await page.evaluate((i) => estPassionCanonique(i), ID_ESSAI)).toBe(false);
   });
 
   // ⑩ Une passion qui EXISTE DÉJÀ ne consomme aucune création — elle ne part
@@ -326,7 +358,7 @@ test.describe("Créer une passion", () => {
       PassionSearchSelector.monterDans(hote, { mode: "multi" });
     });
     await page.waitForFunction(() => window.PassioPassions.pret(), null, { timeout: 15000 });
-    await page.locator("#hoteDemande .psel-input").fill("sculpture sur glace");
+    await page.locator("#hoteDemande .psel-input").fill(NOM_ESSAI);
     const bouton = page.locator("#hoteDemande .psel-ajouter");
     await expect(bouton).toBeVisible({ timeout: 10000 });
     await expect(bouton).toContainText("Demander l'ajout");
@@ -340,7 +372,7 @@ test.describe("Créer une passion", () => {
     await bouton.click();
     await expect.poll(async () => await page.evaluate(() =>
       window.PassioPassions.demandes().map(d => d.normalise)
-    ), { timeout: 10000 }).toContain("sculpture sur glace");
+    ), { timeout: 10000 }).toContain(NOM_ESSAI);
     expect(await page.locator("#hoteDemande .psel-input").inputValue()).toBe("");
   });
 
@@ -370,7 +402,7 @@ test.describe("Créer une passion", () => {
       PassionSearchSelector.monterDans(hote, { mode: "multi" });
     });
     await page.waitForFunction(() => window.PassioPassions.pret(), null, { timeout: 15000 });
-    await page.locator("#hoteDemande .psel-input").fill("sculpture sur glace");
+    await page.locator("#hoteDemande .psel-input").fill(NOM_ESSAI);
     await expect(page.locator("#hoteDemande .psel-ajouter")).toContainText("Demander l'ajout");
     // Sous le chemin de demande, les alias ne seraient transmis à personne :
     // un champ qui ne sert à rien est un mensonge d'interface.
@@ -378,7 +410,7 @@ test.describe("Créer une passion", () => {
 
     // Création possible ⇒ le champ paraît.
     await page.evaluate(() => { window._supaReal = true; });
-    await page.locator("#hoteDemande .psel-input").fill("sculpture sur glace bis");
+    await page.locator("#hoteDemande .psel-input").fill(NOM_ESSAI + " bis");
     await expect(page.locator("#hoteDemande .psel-alias")).toBeVisible({ timeout: 10000 });
   });
 
@@ -386,7 +418,7 @@ test.describe("Créer une passion", () => {
   test("⑮ sans alias saisi, la charge utile n'a PAS changé", async ({ page }) => {
     await bootAvecCompte(page);
     await poserServeur(page, CREEE);
-    await page.evaluate(() => window.PassioPassions.creerPassion("sculpture sur glace"));
+    await page.evaluate((n) => window.PassioPassions.creerPassion(n), NOM_ESSAI);
     const appel = await page.evaluate(() => window.__rpcAppels[0]);
     // ⚠️ Envoyer `p_aliases` à une base qui ne connaît que la forme à deux
     // arguments fait répondre PostgREST « fonction introuvable » (PGRST202) —
@@ -418,13 +450,13 @@ test.describe("Créer une passion", () => {
       PassionSearchSelector.monterDans(hote, { mode: "multi" });
     });
     await page.waitForFunction(() => window.PassioPassions.pret(), null, { timeout: 15000 });
-    await page.locator("#hoteDemande .psel-input").fill("sculpture sur glace");
+    await page.locator("#hoteDemande .psel-input").fill(NOM_ESSAI);
     await page.locator("#hoteDemande .psel-alias").fill("glace sculptée");
 
     // ⚠️ `rendrePied` pose `innerHTML` À CHAQUE FRAPPE : un champ non mémorisé
     // perdrait sa saisie au caractère suivant tapé dans la recherche — même
     // famille que le cache `_lastHtml` de `renderProfileStrip`.
-    await page.locator("#hoteDemande .psel-input").fill("sculpture sur glace!");
+    await page.locator("#hoteDemande .psel-input").fill(NOM_ESSAI + "!");
     await expect(page.locator("#hoteDemande .psel-alias")).toHaveValue("glace sculptée");
 
     // Et ils partent réellement au serveur depuis le GESTE, pas seulement
@@ -456,7 +488,7 @@ test.describe("Créer une passion", () => {
     // Et tant que la migration n'est pas appliquée, la réponse ne porte pas la
     // colonne : on rend un tableau vide, jamais `undefined`.
     await poserServeur(page, CREEE);
-    const r2 = await page.evaluate(() => window.PassioPassions.creerPassion("sculpture sur glace"));
+    const r2 = await page.evaluate((n) => window.PassioPassions.creerPassion(n), NOM_ESSAI);
     expect(r2.aliasRetenus).toEqual([]);
   });
 });

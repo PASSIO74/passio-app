@@ -143,24 +143,53 @@ done
 col=$(Q creation "select count(*) from information_schema.columns where table_name='passions' and column_name='created_by'")
 [ "$col" = "1" ] && ok "colonne created_by présente" || ko "colonne created_by absente"
 
+# ── ⓪ LE GARDE DE LA PRÉMISSE ─────────────────────────────────────────────
+# Tout ce qui suit repose sur « ce nom est INCONNU du référentiel » : sinon
+# `creer_passion` dédoublonne au lieu de créer, et le décompte de créations du
+# compte A part de travers pour toutes les sections suivantes.
+#
+# ⚠️ CE BANC A DÉJÀ ÉTÉ CASSÉ EXACTEMENT COMME ÇA. Son nom d'essai était
+# « Sculpture sur glace » — parfaitement plausible, donc entré au référentiel à
+# la vague 3 (2026-09-10). Neuf contrôles sont tombés d'un coup, dont trois qui
+# accusaient le PLAFOND et le DROIT PAR COMPTE de ne plus tenir : le message ne
+# désignait nulle part la vraie cause. Le référentiel est FAIT pour grossir
+# (2 088 → 5 001, cible 12 000) : aucun nom vraisemblable n'est sûr.
+#
+# ⚠️ ET LA LEÇON DE MÉTHODE : le même nom servait AUSSI dans
+# `tests/e2e/creation-passion.spec.js`. Corriger un endroit sans chercher le nom
+# dans TOUT le dépôt laisse la moitié du défaut en place — c'est ce qui est
+# arrivé, et la CI l'a dit avant la production.
+NOM_ESSAI="zzbanc passion d essai"
+LIBELLE_ESSAI="Zzbanc passion d essai"
+LIBELLE_ESSAI_ACCENTUE="ZZBANC PASSION D ESSÂI"
+ID_ESSAI="zzbanc-passion-d-essai"
+
+titre "⓪ Le nom d'essai est bien ABSENT du référentiel"
+n=$(Q creation "select count(*) from public.passions where normalized_label = '$NOM_ESSAI'")
+# ⚠️ Le message NOMME la valeur réellement testée (`NOM_ESSAI`, la forme
+# normalisée), pas le libellé : un garde qui désigne la mauvaise chose envoie
+# chercher au mauvais endroit.
+[ "$n" = "0" ] && ok "« $NOM_ESSAI » est inconnu du référentiel" \
+  || ko "« $NOM_ESSAI » EXISTE déjà dans le référentiel ($n ligne) : tout ce banc en dépend comme d'un nom INCONNU, et sans ça le plafond et le droit par compte semblent tomber alors qu'ils tiennent. Changer NOM_ESSAI / LIBELLE_ESSAI / ID_ESSAI en tête de section, PAS le référentiel."
+
 # ── ② Sans compte ─────────────────────────────────────────────────────────
 titre "② Sans compte, la création est refusée"
-res=$(Q creation "select * from public.creer_passion('Sculpture sur glace')")
+res=$(Q creation "select * from public.creer_passion('$LIBELLE_ESSAI')")
 grep -qi "auth_requise" <<<"$res" && ok "refus explicite (auth_requise)" || ko "réponse inattendue : $res"
 
 # ── ③ Création réelle ─────────────────────────────────────────────────────
 titre "③ Création par un compte connecté"
-res=$(QA "$UID_A" "select id||'|'||label||'|'||emoji||'|'||cree from public.creer_passion('sculpture sur glace', '🧊')")
-[ "$res" = "sculpture-sur-glace|Sculpture sur glace|🧊|true" ] \
+res=$(QA "$UID_A" "select id||'|'||label||'|'||emoji||'|'||cree from public.creer_passion('$NOM_ESSAI', '🧊')")
+[ "$res" = "$ID_ESSAI|$LIBELLE_ESSAI|🧊|true" ] \
   && ok "créée : $res" || ko "résultat inattendu : $res"
-st=$(Q creation "select status||'|'||source||'|'||popularity||'|'||coalesce(created_by::text,'-') from public.passions where id='sculpture-sur-glace'")
+st=$(Q creation "select status||'|'||source||'|'||popularity||'|'||coalesce(created_by::text,'-') from public.passions where id='$ID_ESSAI'")
 [ "$st" = "active|user_suggested|0|$UID_A" ] && ok "active, source=user_suggested, popularité 0, attribuée" || ko "état inattendu : $st"
-res=$(Q creation "select id from public.rechercher_passions('sculpture sur glace', 5) limit 1")
-[ "$res" = "sculpture-sur-glace" ] && ok "trouvable par la recherche serveur" || ko "introuvable : « $res »"
+res=$(Q creation "select id from public.rechercher_passions('$NOM_ESSAI', 5) limit 1")
+[ "$res" = "$ID_ESSAI" ] && ok "trouvable par la recherche serveur" || ko "introuvable : « $res »"
 # Publiable : c'est TOUT l'objet du lot. Une passion « en vérification » ne
 # passait pas la clé étrangère de posts.passion_id.
-res=$(Q creation "insert into public.posts (id, passion_id, content) values ('p_creation', 'sculpture-sur-glace', 'essai') returning passion_id" | head -1)
-[ "$res" = "sculpture-sur-glace" ] && ok "publication acceptée par la clé étrangère" || ko "publication refusée : $res"
+res=$(Q creation "insert into public.posts (id, passion_id, content) values ('p_creation', '$ID_ESSAI', 'essai') returning passion_id" | head -1)
+[ "$res" = "$ID_ESSAI" ] && ok "publication acceptée par la clé étrangère" || ko "publication refusée : $res"
 
 # ── ④ Dédoublonnage ───────────────────────────────────────────────────────
 titre "④ Un nom déjà connu ne crée pas une variante"
@@ -168,8 +197,8 @@ verif_doublon() {
   res=$(QA "$UID_B" "select id||'|'||cree from public.creer_passion('$1')")
   [ "$res" = "$2|false" ] && ok "« $1 » → $2 (existante)" || ko "« $1 » → « $res » (attendu $2, cree=false)"
 }
-verif_doublon "Sculpture sur glace" "sculpture-sur-glace"
-verif_doublon "SCULPTURE SUR GLÂCE"  "sculpture-sur-glace"
+verif_doublon "$LIBELLE_ESSAI" "$ID_ESSAI"
+verif_doublon "$LIBELLE_ESSAI_ACCENTUE"  "$ID_ESSAI"
 verif_doublon "Musique"              "musique"
 verif_doublon "jogging"              "running"          # alias du référentiel
 # ⚠️ ALIAS PONCTUÉ : 386 des 1 578 alias portent un tiret ou un accent composé.
@@ -178,7 +207,7 @@ verif_doublon "jogging"              "running"          # alias du référentiel
 # ponctuation, restait vert dessus.
 verif_doublon "ping pong"            "sport-tennis-de-table"
 verif_doublon "hors piste"           "glisse-freeride"
-n=$(Q creation "select count(*) from public.passions where normalized_label='sculpture sur glace'")
+n=$(Q creation "select count(*) from public.passions where normalized_label='$NOM_ESSAI'")
 [ "$n" = "1" ] && ok "une seule ligne pour ce nom" || ko "$n lignes pour le même nom"
 
 # ── ⑤ Noms refusés ────────────────────────────────────────────────────────
@@ -254,10 +283,10 @@ grep -qi "policy\|denied\|permission" <<<"$res" && ok "un client ne peut pas s'a
 # ── ⑥ ter  Signalement d'une passion ──────────────────────────────────────
 titre "⑥ ter  Signalement d'une passion"
 res=$(Q creation "insert into public.reports (id, reporter_id, target_type, target_id, reason)
-                  values ('r_1', '$UID_B', 'passion', 'sculpture-sur-glace', 'test') returning target_id" | head -1)
-[ "$res" = "sculpture-sur-glace" ] && ok "un signalement de passion s'enregistre" || ko "signalement refusé : $res"
+                  values ('r_1', '$UID_B', 'passion', '$ID_ESSAI', 'test') returning target_id" | head -1)
+[ "$res" = "$ID_ESSAI" ] && ok "un signalement de passion s'enregistre" || ko "signalement refusé : $res"
 res=$(Q creation "insert into public.reports (id, reporter_id, target_type, target_id, reason)
-                  values ('r_2', '$UID_B', 'passion', 'sculpture-sur-glace', 'test');")
+                  values ('r_2', '$UID_B', 'passion', '$ID_ESSAI', 'test');")
 grep -qi "duplicate\|unique" <<<"$res" && ok "deux fois la même personne : refusé" || ko "doublon accepté : $res"
 # ⚠️ L'index est PARTIEL : le signalement d'un COMPTE tolère toujours plusieurs envois.
 res=$(Q creation "insert into public.reports (id, reporter_id, target_type, target_id, reason)
@@ -265,12 +294,12 @@ res=$(Q creation "insert into public.reports (id, reporter_id, target_type, targ
 grep -qi "duplicate\|unique" <<<"$res" && ko "l'index a débordé sur le signalement de compte" || ok "le signalement de compte n'est pas touché"
 
 # Archiver une passion signalée : c'est le geste de modération, réservé au serveur.
-Q creation "update public.passions set status='archived' where id='sculpture-sur-glace'" >/dev/null
-res=$(Q creation "select count(*) from public.rechercher_passions('sculpture sur glace', 20) where id='sculpture-sur-glace'")
+Q creation "update public.passions set status='archived' where id='$ID_ESSAI'" >/dev/null
+res=$(Q creation "select count(*) from public.rechercher_passions('$NOM_ESSAI', 20) where id='$ID_ESSAI'")
 [ "$res" = "0" ] && ok "archivée, elle disparaît de la recherche" || ko "encore rendue par la recherche"
-res=$(QA "$UID_B" "select id from public.creer_passion('sculpture sur glace')")
+res=$(QA "$UID_B" "select id from public.creer_passion('$NOM_ESSAI')")
 grep -qi "nom_indisponible" <<<"$res" && ok "et son nom ne peut pas être recréé" || ko "le nom retiré a été recréé : $res"
-Q creation "update public.passions set status='active' where id='sculpture-sur-glace'" >/dev/null
+Q creation "update public.passions set status='active' where id='$ID_ESSAI'" >/dev/null
 
 # ── ⑥ quater. Alias à la création ────────────────────────────────────────────
 titre "⑥ quater. Les alias fournis à la création"

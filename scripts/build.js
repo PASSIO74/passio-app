@@ -124,7 +124,7 @@ fs.writeFileSync(path.join(path.dirname(outPath), "release.json"), JSON.stringif
 // 6. Données servies À LA DEMANDE (data/*.json) — recopiées telles quelles.
 //    ⚠️ ELLES NE DOIVENT SURTOUT PAS PASSER PAR L'ÉTAPE 4 : celle-ci inline
 //    tout `<script src="js/…">` dans le monolithe. Le référentiel des passions
-//    (≈ 160 Ko) atterrirait alors sur le chemin critique du démarrage, pour une
+//    (≈ 568 Ko) atterrirait alors sur le chemin critique du démarrage, pour une
 //    donnée dont la plupart des sessions n'ont jamais besoin. C'est un JSON,
 //    chargé par `fetch` au premier usage réel de la recherche.
 //

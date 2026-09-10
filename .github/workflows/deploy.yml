@@ -334,6 +334,15 @@ jobs:
       - name: Migration du referentiel plat (PostgreSQL jetable)
         run: bash scripts/verifier-migration-passions.sh
 
+      # A 5 001 passions le miroir pese 1,45 Mo : il n'est plus collable dans
+      # l'editeur SQL, donc il est DECOUPE en parties. Ce banc EXECUTE les deux
+      # chemins sur deux bases jetables et compare l'empreinte ligne a ligne du
+      # resultat : un decoupage peut etre intact au TEXTE et faux a l'execution.
+      # Il redecoupe aussi avant de mesurer — un miroir regenere sans
+      # redecoupage ferait appliquer l'ANCIENNE version, en silence.
+      - name: Decoupage du referentiel en parties collables (PostgreSQL jetable)
+        run: bash tests/sql/decoupage-migration-passions.test.sh
+
       # La creation d'une passion depuis l'application (lot creation_passion_v1).
       # Elle s'appuie sur une fonction SECURITY DEFINER : c'est ELLE qui tient le
       # dedoublonnage, les plafonds et le fait que `public.passions` reste NON
