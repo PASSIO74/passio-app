@@ -4671,6 +4671,50 @@ function _setMsgStatus(convId, msgId, status) {
 // exactement le même défaut, avec un autre code.
 var MSG_ESSAIS_MAX = 10;
 
+// ⚠️ UN REFUS 403 SUR UN MESSAGE EST SOUVENT RÉPARABLE, ET LE JETER SERAIT
+// PERDRE LA CONVERSATION (2026-09-10).
+// Mesuré en production : 19 conversations sur 20 n'ont AUCUNE ligne
+// `conv_members`. La policy d'insertion de `conv_messages` exige
+// `is_conv_member(conv_id, auth.uid())` : sans membre, TOUT message est refusé,
+// pour toujours. Ces conversations datent d'avant le correctif de policy du
+// 2026-06-11 (`migration_fix_conv_members_insert.sql`), quand le créateur ne
+// pouvait pas ajouter l'autre membre — l'insert échouait, la conversation
+// restait, vide de membres.
+//
+// ⚠️ MAIS ELLES PORTENT TOUTES UN `created_by`, et la policy d'AUJOURD'HUI
+// autorise `is_conversation_creator(conv_id)` : leur créateur PEUT donc
+// réinscrire les membres manquants. La réparation est possible, il suffisait
+// de la tenter.
+//
+// ⚠️ UNE SEULE TENTATIVE PAR CONVERSATION ET PAR SESSION. Sans ce verrou, un
+// refus qui n'a rien à voir avec l'appartenance (compte bloqué, conversation
+// d'un autre) relancerait la réparation à chaque message — on rouvrirait la
+// boucle d'obstination que le correctif du 2026-09-09 vient de fermer, avec un
+// appel de plus à chaque tour.
+window._convReparationTentee = window._convReparationTentee || {};
+
+async function _reparerAppartenanceConv(convId) {
+  if (!convId || window._convReparationTentee[convId]) return false;
+  window._convReparationTentee[convId] = true;
+  try {
+    var c = getConversations().find(function (x) { return x.id === convId; });
+    // Conversation de groupe ou pair inconnu : on ne devine pas une liste de
+    // membres. Le cas 1-à-1 est celui qui est mesuré, on s'y tient.
+    if (!c || !c.userId) return false;
+    // Deux inserts SÉPARÉS : un insert multi-lignes échoue ATOMIQUEMENT, donc
+    // un membre déjà présent ferait échouer l'ajout de l'autre. C'est
+    // exactement la faute d'origine de `migration_fix_conv_members_insert.sql`.
+    var rMoi = await supa.from("conv_members").insert({ conv_id: convId, user_id: MY_UID });
+    var rLui = await supa.from("conv_members").insert({ conv_id: convId, user_id: c.userId });
+    // Un conflit de clé (déjà membre) n'est PAS un échec : ce qu'on voulait est
+    // vrai. Seul un refus RLS dit que la réparation n'était pas permise.
+    var echec = function (r) { return r && r.error && !/duplicate|already exists|23505/i.test(String(r.error.code || "") + String(r.error.message || "")); };
+    var ok = !(echec(rMoi) && echec(rLui));
+    try { if (typeof diagLog === "function") diagLog("conv_reparation " + (ok ? "ok" : "refus")); } catch (e) {}
+    return ok;
+  } catch (e) { return false; }
+}
+
 function _refusDefinitif(error, statut) {
   var code = String((error && error.code) || "");
   // 42501 = refus d'écriture par une policy PostgreSQL. Rien à rejouer.
@@ -4696,6 +4740,17 @@ function _sendTextToSupa(convId, msgId, content) {
     .then(function(res) {
       if (res && res.error) {
         _setMsgStatus(convId, msgId, "failed");
+        // ⚠️ 403 SEULEMENT, JAMAIS 401 : un jeton absent ou expiré ne se répare
+        // pas en ajoutant un membre, et tenter l'écriture sous une identité
+        // qui n'existe pas consommerait la tentative unique pour rien.
+        var estRefusAcces = Number(res.status) === 403 || String(res.error && res.error.code) === "42501";
+        if (estRefusAcces && !window._convReparationTentee[convId]) {
+          _reparerAppartenanceConv(convId).then(function (repare) {
+            if (repare) { _sendTextToSupa(convId, msgId, content); return; }
+            _setMsgStatus(convId, msgId, "failed"); _outboxRemove(msgId);
+          });
+          return;
+        }
         if (_refusDefinitif(res.error, res.status)) {
           // Sortie de la file : plus AUCUN renvoi automatique pour celui-ci.
           _outboxRemove(msgId);
