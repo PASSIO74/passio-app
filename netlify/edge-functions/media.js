@@ -41,6 +41,12 @@ const SEAUX = new Set(["content", "attachments"]);
 const UN_AN = "public, max-age=31536000, immutable";
 
 export default async (req) => {
+  // GET/HEAD seulement — gardé ICI et non dans `config.method` : le manifeste
+  // Netlify n'accepte que GET, POST, PUT, PATCH, DELETE, OPTIONS (mesuré le
+  // 2026-09-11 : « HEAD » y faisait échouer le déploiement entier).
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    return new Response("Method Not Allowed", { status: 405, headers: { Allow: "GET, HEAD", "Cache-Control": "no-store" } });
+  }
   const url = new URL(req.url);
   const rel = url.pathname.replace(/^\/media\//, "");
   const seau = rel.split("/")[0];
@@ -83,7 +89,6 @@ export default async (req) => {
 
 export const config = {
   path: "/media/*",
-  method: ["GET", "HEAD"],
   cache: "manual",
   onError: "bypass",
 };
