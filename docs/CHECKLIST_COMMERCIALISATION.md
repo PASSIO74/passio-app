@@ -151,16 +151,19 @@ Un défaut acceptable en A peut être rédhibitoire en B. L'inverse n'est jamais
 
 ## 🗄️ À appliquer en base — canal ③ d'ADR-012 (psql ou SQL Editor)
 
-`migrations/migration_fuites_2026-09-10.sql`, écrite et prête, **non appliquée** :
+`migrations/migration_fuites_2026-09-10.sql` — **APPLIQUÉE, mesuré le 2026-09-11** :
+`reads_select` porte `is_conv_member(conv_id, auth.uid())`, `client_errors.auth_uid`
+existe et le trigger `trg_client_errors_identite` est posé. Les deux lignes ci-dessous
+restent pour l'histoire du défaut.
 
-- [ ] **`conv_reads` est lisible sans compte.** Policy `reads_select`, rôle `public`,
+- [x] **`conv_reads` était lisible sans compte.** Policy `reads_select`, rôle `public`,
       `qual = true`, plus le GRANT à `anon`. Mesuré : **37 lignes, 24 `user_id`,
       21 `conv_id`**. Deux `user_id` sur un même `conv_id` = ces deux personnes ont
       une conversation privée, avec l'heure de dernière lecture ; croisé avec
       `profiles` (public), ce sont des **pseudos**. Le contenu des messages, lui, est
       bien protégé — **c'est le graphe social qui fuit**, souvent l'information la
       plus sensible d'une messagerie.
-- [ ] **`client_errors.auth_uid`** : colonne posée par le serveur (`default auth.uid()`),
+- [x] **`client_errors.auth_uid`** : colonne posée par le serveur (`default auth.uid()`),
       non écrivable par le client, pour que la sentinelle n'enquête que sur des
       erreurs d'origine vérifiée. Le détecteur la gère déjà **avant comme après**
       (repli signalé si la colonne n'existe pas).
@@ -200,6 +203,77 @@ Un défaut acceptable en A peut être rédhibitoire en B. L'inverse n'est jamais
 
 ---
 
+### Re-mesuré le 2026-09-11 (canal ① d'ADR-012, `get_advisors` + `pg_policies`)
+
+Ce qui a été **fermé** depuis la veille : `conv_reads` (membres seulement),
+`client_errors.auth_uid`, les téléphones effacés d'`auth.users` (**0** sur 7), la
+purge de télémétrie **planifiée** (`cron` 04:00, 7 jours ; `client_errors` 30 jours à
+03:00 — `telemetry_events` est retombée à **8,7 Mo / 20 572 lignes**, base à 51 Mo),
+et `scripts/moderation.js` (`npm run moderation`) lit enfin **tous** les signalements.
+Toujours vrai : RLS sur les 41 tables, `anon` ne lit ni `events.address` ni
+`events.contact` ni `event_attendees`, aucune clé `service_role` dans le code livré
+(un seul JWT embarqué, rôle `anon`), Edge Functions authentifiées par `getUser()`,
+relais `/media/*` borné à l'hôte Supabase, 8 gates statiques vertes.
+
+**Quatre constats NOUVEAUX**, absents de l'audit du 10 :
+
+- [ ] **`is_conv_member(conv_id, uid)` est `SECURITY DEFINER` et exécutable par `anon`**
+      via `/rest/v1/rpc/is_conv_member` (signalé par `get_advisors`, vérifié par
+      `has_function_privilege`). C'est un **oracle d'appartenance** : sans compte, on
+      peut demander « X est-il membre de la conversation Y ? ». Les identifiants de
+      conversation sont aléatoires et `conversations` n'est pas lisible par `anon`,
+      donc le graphe des messages privés ne se reconstitue pas… **sauf pour les
+      rencontres** : `events.conv_id` est dans la liste des colonnes accordées à `anon`,
+      et `profiles.id` est public. Pour toute rencontre dotée d'une conversation, la
+      liste **nominative** des participants se reconstitue sans compte — la porte que
+      la migration du 08/09 a fermée sur `event_attendees`, rouverte par une autre
+      table. Aujourd'hui : 1 rencontre avec conversation, 1 membre. Correctif (canal ③) :
+      retirer `conv_id` du GRANT colonne à `anon`, et remplacer l'oracle par une
+      fonction **sans paramètre `uid`** (`auth.uid()` lu en interne, comme
+      `post_is_visible`) avant de révoquer l'EXECUTE d'`anon` — les policies de
+      `conv_messages`/`conversations`/`conv_members`/`conv_reads` l'appellent au rôle
+      courant, révoquer seul ferait lever « permission denied » au lieu de rendre vide.
+      Les 5 autres `SECURITY DEFINER` ouverts à `anon` (`can_edit_post`,
+      `comment_target_visible`, `post_is_visible`, deux fonctions de trigger) sont
+      inoffensifs à l'appel mais gagnent à être fermés dans le même geste.
+- [ ] **« Compte privé » sans approbation d'abonnement.** `follows` n'a que deux
+      colonnes (`follower_id`, `following_id`), l'INSERT n'exige que
+      `follower_id = auth.uid()`, et la RLS de `posts` et `stories` ouvre le contenu à
+      **tout abonné**. Un compte privé est donc caché des visiteurs sans compte et des
+      non-abonnés, mais **n'importe quel compte s'abonne d'un tap et lit tout** — il n'y
+      a ni demande, ni acceptation, ni notification de refus. 0 profil privé en
+      production aujourd'hui ; la ligne « Compte privé respecté par la RLS » ci-dessus
+      est vraie au sens technique et fausse au sens de la promesse à l'écran
+      (« Ce compte est privé »). À trancher avant l'ouverture : soit une table de
+      demandes (`follow_requests` + policy `posts` sur `accepted`), soit un texte qui
+      dit ce que « privé » veut vraiment dire.
+- [ ] **Les limites de débit ne couvrent que 3 tables** (`comment_interactions` 60/min,
+      `event_reactions` 30/min, `reports` 10/min). Rien sur `posts`, `post_comments`,
+      `conv_messages`, `follows`, `stories`, `events`, ni sur `notifications` — dont
+      l'INSERT (`from_id = auth.uid()`) vise **n'importe quel `user_id`** : un compte
+      peut faire sonner la cloche de tous, sans borne (le texte est neutralisé à
+      l'entrée par `_neutraliserBalisesNotif`, vérifié : pas de XSS). Et les INSERT
+      **anonymes** de `client_errors` et `telemetry_events` (`user_id IS NULL` accepté)
+      n'ont aucune borne : un script sans compte peut remplir la base jusqu'au mur
+      lecture seule du plan gratuit (500 Mo ; 51 Mo aujourd'hui). Les purges à 7 et
+      30 jours bornent la durée, pas le débit. `rate_limit_insert()` existe déjà :
+      c'est une ligne `CREATE TRIGGER` par table.
+- [ ] **`supabase-js` est chargé depuis jsDelivr à la version flottante `@2`**
+      (`js/supabase-loader.js`), sans épinglage ni SRI ; MapLibre vient d'unpkg en
+      4.7.1 sans SRI ; la CSP autorise `'unsafe-inline'` et ces deux CDN. Une
+      publication cassée ou compromise du SDK atteint la production **sans aucun
+      déploiement de notre côté**, et sans qu'aucune gate ne puisse le voir. Épingler
+      `@2.x.y`, ou auto-héberger (le build inline déjà tout le reste).
+
+Non mesurable depuis un poste : les interrupteurs du tableau de bord Supabase Auth
+(fournisseur **Anonymous** — `onbSkipAuth` est un chemin mort et il y a 0 compte
+anonyme, mais s'il reste allumé, un `signInAnonymously()` ouvre toutes les policies
+`authenticated`, dont la liste des participants), la protection HaveIBeenPwned, les
+quotas d'e-mail ; et DKIM/DMARC de `passio-app.fr` (DNS inaccessible depuis cet
+environnement). À lire à l'écran, pas à supposer.
+
+---
+
 ## 🛡️ Confiance et sécurité des personnes — le point le plus lourd
 
 PASSIO organise des **rencontres physiques entre inconnus**. C'est la responsabilité
@@ -208,9 +282,10 @@ la plus grave du produit, et c'est là que la dette est la plus visible.
 - [ ] **Un signalement n'arrive nulle part.** `reports` n'a que 6 colonnes —
       `id, reporter_id, target_type, target_id, reason, created_at` — et **aucun
       statut**. Il est *structurellement impossible* de savoir si un signalement a été
-      lu. Les 2 signalements de production ont **21 et 74 jours**. Le seul outil du
-      dépôt (`passions-moderation.js`) ne lit que `target_type=passion`. Le Centre de
-      pilotage ne surveille pas la table. Aucune alerte, aucun e-mail.
+      lu. Les 2 signalements de production (1 `user`, 1 `comment`) ont **22 et
+      75 jours** au 2026-09-11. `scripts/moderation.js` (`npm run moderation`) les lit
+      désormais tous — **mais il faut penser à le lancer** : le Centre de pilotage ne
+      surveille pas la table, aucune alerte, aucun e-mail, aucun statut.
       **Une testeuse signale un comportement inquiétant, lit « notre équipe va
       vérifier », et personne n'est prévenu.** À faire : colonnes de statut (canal ③),
       un `scripts/moderation.js` sur le modèle de `passions-moderation.js`, `reports`
@@ -231,9 +306,11 @@ la plus grave du produit, et c'est là que la dette est la plus visible.
       **jamais été exécutée une seule fois**. Une sauvegarde jamais restaurée n'est
       pas une sauvegarde, c'est une intention.
 - [ ] Le retour arrière n'a jamais été exercé.
-- [ ] `telemetry_events` occupe **~60 % de la base** et **rien ne la purge** — alors
-      que la politique s'engage désormais sur **13 mois**. Une fonction de purge
-      existe (`migrations/purge_telemetry_development.sql`) mais n'est pas planifiée.
+- [x] `telemetry_events` occupait **~60 % de la base** sans purge. **Planifiée depuis
+      (mesuré le 2026-09-11)** : `cron.job` « `select public.purge_telemetry(7)` » à
+      04:00 et purge de `client_errors` à 30 jours à 03:00 ; la table est à 8,7 Mo.
+      ⚠️ 7 jours de rétention côté base, 13 mois promis par la politique : le texte
+      dit plus que la base ne garde — c'est le texte qui doit rejoindre la mesure.
 - [ ] **Aucune continuité humaine** : un seul contributeur, aucun suppléant, aucune
       procédure d'absence.
 - [x] Monitoring `client_errors` câblé, sentinelle horaire (~41 % des créneaux tenus
@@ -279,6 +356,14 @@ la plus grave du produit, et c'est là que la dette est la plus visible.
 contrat en vigueur **interdit** de facturer — il promet la gratuité et fonde son
 exonération dessus. C'est un chantier juridique et technique à part entière, pas un
 réglage.
+
+**Re-mesuré le 2026-09-11 :** le socle (RLS, cloisonnement des messages, colonnes
+privées des rencontres, secrets, Edge Functions) tient ; `conv_reads` et
+`client_errors.auth_uid` sont appliqués ; restent ouverts le seau `attachments`
+public, les canaux d'appel publics, l'absence de sauvegarde automatique, et quatre
+constats neufs (oracle `is_conv_member` + `events.conv_id`, compte privé sans
+approbation, débit non borné, SDK à version flottante). **Sûre pour des testeurs
+avertis, pas pour le public, pas pour vendre.**
 
 Détail complet des 107 constats et de leurs contre-expertises :
 [`AUDIT_COMMERCIALISATION_2026-09-10.md`](AUDIT_COMMERCIALISATION_2026-09-10.md).
