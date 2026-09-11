@@ -205,10 +205,49 @@ const MOTIF_TABLES_DISTANTES = new RegExp(
   "/rest/v1/(" + TABLES_DISTANTES.join("|") + ")\\?",
 );
 
+// ── LES MÉDIAS DE PRODUCTION, QUI COÛTAIENT LA BANDE PASSANTE DU PROJET ────
+// Mesuré le 2026-09-10 sur le tableau de bord Supabase : 1,12 Go d'egress en
+// 24 h pour un plan qui en offre 10 Go par MOIS — dont 1,06 Go pour un SEUL
+// fichier, un avatar de 2,59 Mo demandé 399 fois. Le demandeur n'était pas un
+// utilisateur : c'était cette suite de tests.
+//
+// ⚠️ LE CHEMIN EST INDIRECT, ET C'EST POUR ÇA QU'IL A TENU SI LONGTEMPS.
+// `profiles` n'est délibérément PAS dans TABLES_DISTANTES (une lecture rendue
+// vide ferait conclure à `supaEnsureProfileExists` que le profil n'existe pas,
+// et tenter une ÉCRITURE en production). Les profils réels remontent donc, avec
+// leurs URLs d'avatar réelles, et le NAVIGATEUR les télécharge — une fois par
+// `page.goto`, six shards en parallèle, plus d'une centaine de suites. Aucune
+// de ces images n'est jamais regardée par un test.
+//
+// ⚠️ ON RÉPOND UNE IMAGE VALIDE, ON N'ABORTE PAS. Le produit porte des
+// `onerror` qui repeignent la boîte en gris et lui imposent une hauteur
+// minimale (`renderPostHTML`) : abandonner la requête ferait donc BOUGER la
+// mise en page, et une suite qui mesure un cadrage rougirait pour une raison
+// qui n'a rien à voir avec elle. Un PNG 1×1 transparent laisse le chemin « image
+// chargée » exactement tel qu'il est. Ce qui n'est pas une image (vidéos de
+// 30 Mo, pièces jointes) est abandonné : aucune suite n'en lit le contenu.
+//
+// ⚠️ CETTE ROUTE NE CHANGE RIEN À LA PRODUCTION — c'est du code de test. Elle ne
+// dispense pas de réduire le poids des avatars servis aux VRAIS utilisateurs,
+// qui est un autre sujet et un autre lot.
+const MOTIF_MEDIAS_DISTANTS = /\/storage\/v1\/(object|render\/image)\//;
+const PIXEL_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=",
+  "base64",
+);
+
 async function sansDonneesDistantes(page) {
   await page.route(MOTIF_TABLES_DISTANTES, (route) => {
     if (route.request().method() !== "GET") return route.continue();
     return route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+  });
+
+  await page.route(MOTIF_MEDIAS_DISTANTS, (route) => {
+    // Les ÉCRITURES passent, comme pour les tables : une suite qui exerce un
+    // vrai dépôt de fichier doit continuer de le faire.
+    if (route.request().method() !== "GET") return route.continue();
+    if (route.request().resourceType() !== "image") return route.abort();
+    return route.fulfill({ status: 200, contentType: "image/png", body: PIXEL_PNG });
   });
 
   // ── LE CANAL TEMPS RÉEL, QUE LA ROUTE REST NE POUVAIT PAS ATTEINDRE ────────

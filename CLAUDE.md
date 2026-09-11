@@ -336,6 +336,76 @@ e-mails de confirmation partent probablement en spam — **le défaut qui tue un
 annoncé ÉTEINT, il est **ALLUMÉ** ; et `docs/CHECKLIST_COMMERCIALISATION.md` cochait Wallet et CDV.
 **L'état d'un interrupteur serveur ne se lit pas dans un fichier du dépôt, il se mesure.**
 
+## 🚪 OUVERTURE AU PUBLIC — UN SEUL COLLER SQL, ET LA CI QUI MANGEAIT LA BANDE PASSANTE (2026-09-11)
+
+Le lot d'ouverture (#329) est **déployé** (`7665c7ac`, job « Déploiement production » vert à
+06:27 UTC). Restaient sept gestes manuels. Ce lot-ci en replie trois en un, et corrige en code la
+cause d'un huitième.
+
+### `migrations/OUVERTURE_2026-09-11.sql` — trois gestes en base, un seul copier-coller
+
+Généré par `node scripts/generer-ouverture.js` à partir de `migration_fuites_2026-09-10.sql`
+(partie ①) plus deux gestes d'exploitation dont ce script EST la source (② téléphones,
+③ purge de télémétrie). ⚠️ **C'est un MIROIR pour sa partie ①** : corriger la migration sans
+régénérer laisserait un fichier qui applique l'ANCIENNE version, en silence — même famille que
+`generer-appliquer-tout.py` du 2026-09-08. `--verifier` est dans `npm run verif`, donc en CI.
+⚠️ **`VACUUM` ne peut pas y vivre** (interdit en transaction) : il est décrit en second coller,
+facultatif — et `VACUUM (ANALYZE)` rend l'espace RÉUTILISABLE tandis que `VACUUM FULL` rend les
+OCTETS, ce qui n'est pas la même promesse.
+Verrou : `tests/sql/ouverture-2026-09-11.test.sh` (34 contrôles, gate CI) — il l'EXÉCUTE, le rejoue
+une seconde fois, et **six mutations exigent que le tableau de verdict ROUGISSE**. ⚠️ Un tableau de
+verdict qui dirait OK quoi qu'il arrive est PIRE que pas de verdict : on croirait avoir appliqué.
+
+### ⚠️ LA CI CONSOMMAIT 95 % DE LA BANDE PASSANTE DU PROJET, PAR UN CHEMIN INDIRECT
+
+Mesuré le 2026-09-10 : **1,12 Go d'egress en 24 h** sur un plan qui en offre **10 Go par MOIS**,
+dont **1,06 Go pour un seul avatar de 2,59 Mo demandé 399 fois**. Le demandeur n'était pas un
+utilisateur, c'était `tests/e2e`.
+⚠️ **LE CHEMIN EST À UN ÉTAGE SOUS TOUT CE QUE L'ISOLATION REGARDAIT.** `profiles` n'est
+délibérément PAS dans `TABLES_DISTANTES` (une lecture rendue vide ferait tenter une ÉCRITURE en
+production à `supaEnsureProfileExists`) : les profils réels remontent donc avec leurs vraies URLs
+d'avatar, et c'est le **NAVIGATEUR** qui télécharge — une fois par `page.goto`, six shards, plus de
+cent suites. Aucune de ces images n'est jamais regardée par un test.
+`sansDonneesDistantes` sert désormais un **PNG 1×1** sur `/storage/v1/(object|render/image)/`.
+⚠️ **ON RÉPOND UNE IMAGE VALIDE, ON N'ABORTE PAS** : le produit porte des `onerror` qui repeignent
+la boîte en gris avec une hauteur minimale (`renderPostHTML`) — abandonner ferait BOUGER la mise en
+page et une suite de cadrage rougirait pour une raison étrangère. Ce qui n'est pas une image
+(vidéos jusqu'à 30 Mo) est abandonné ; les **ÉCRITURES passent**, comme pour les tables.
+⚠️ **LE MOTIF DOIT COUVRIR LES DEUX FORMES D'URL** : `passioThumb` (app-02) réécrit
+`/object/public/` en `/render/image/public/`. N'en connaître qu'une laissait passer toutes les
+images de publication, soit l'essentiel du poids.
+Verrou : `tests/e2e/isolation-medias.spec.js` (6), dont ② qui mesure le **CÂBLAGE** par
+`bootOnboarded` (un verrou qui n'appellerait que `sansDonneesDistantes` resterait vert si l'appel
+disparaissait de `bootOnboarded` — défaut vécu sur `_notifierMessage`), ⑥ qui mesure à la SOURCE,
+et ④/⑤ qui tranchent sur la **RAISON** de l'échec réseau : `ERR_FAILED` = la route a abandonné,
+`ERR_NAME_NOT_RESOLVED`/`ERR_TUNNEL_CONNECTION_FAILED` = la requête est RÉELLEMENT partie. Écrits
+d'abord sans ce discriminant, ils étaient verts dans les deux états — ils ne prouvaient rien.
+Éprouvé par RÉINJECTION : sans la route, 4 cas sur 6 rougissent.
+
+### ⚠️ LES AVATARS SERVIS AUX VRAIS UTILISATEURS NE SONT TOUJOURS PAS REDIMENSIONNÉS — point OUVERT
+
+`passioThumb(url, width)` existe et n'a que **trois appelants**, tous sur des images de
+PUBLICATION (700 px) ; **aucun avatar n'y passe**. Un avatar de 2,59 Mo est donc servi en pleine
+résolution pour être affiché à ~40 px, à chaque utilisateur et à chaque chargement.
+⚠️ **NE PAS L'ÉTENDRE SANS AVOIR VÉRIFIÉ QUE LA TRANSFORMATION D'IMAGE RÉPOND SUR CE PLAN.**
+Elle réécrit l'URL en `/storage/v1/render/image/public/…?width=` ; c'est une option dont la
+disponibilité dépend du plan Supabase. Si elle ne répond pas, l'étendre casserait **tous** les
+avatars de l'application — et l'un des deux appelants actuels n'a même pas de `onerror`. Le
+contrôle tient en une requête : ouvrir une URL `render/image` d'un fichier existant et lire le
+code HTTP. Tant que ce n'est pas fait, c'est un pari, pas un correctif.
+
+### ⚠️ DEUX AFFIRMATIONS DU MODE D'EMPLOI ÉTAIENT FAUSSES, ET C'EST LA MESURE QUI L'A DIT
+
+① « La purge de télémétrie fera tomber la table nettement sous 62 Mo » : **non**. Sur
+130 906 lignes, **8 596 seulement ont plus de 30 jours (6,6 %)** — soit ~4 Mo. Son rôle est
+d'EMPÊCHER LA CROISSANCE (stabilisation vers 44 Mo), pas de faire maigrir. ⚠️ Et **30 jours ne
+tiendra pas à l'échelle** : trafic ×10 = ~440 Mo de rétention, contre un mur en lecture seule à
+500 Mo. Passer à 7 jours quand les comptes décollent.
+② « Les gros médias appartiennent au compte `d59aaaa3…` » : **non**, ils sont à `6902826f…` et
+`dc7ff081…`. Trier par TAILLE, jamais chercher un identifiant recopié.
+**L'état d'une base ne se lit pas dans un fichier du dépôt, il se mesure** — même règle que pour
+l'interrupteur `irl_adult_only`, et c'est la troisième fois qu'elle sert.
+
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)
 
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)
