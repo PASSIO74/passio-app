@@ -237,9 +237,11 @@ test("⑦ les CGU couvrent les engagements que le produit prend vraiment", async
   expect(texte).toMatch(/supprimer ton compte/i);
   expect(texte).toMatch(/propriétaire/i);    // les contenus restent à leur auteur
   expect(texte).toMatch(/droit français/i);
-  expect(texte).toContain("contact@ladamemetallerie.com");
+  expect(texte).toContain("passioadmin@gmail.com");
   // Une adresse de contact inventée ne doit revenir NULLE PART.
   expect(texte).not.toContain("contact@passio.app");
+  // Ni l'ancienne adresse d'une autre activité, remplacée le 2026-09-11.
+  expect(texte).not.toContain("ladamemetallerie");
   // §1 nomme l'éditeur selon le RÉGIME : sans société, il dit ce qu'il est.
   expect(texte).toMatch(/personne physique éditant à titre non professionnel/i);
   expect(texte).not.toContain("[à compléter]");
@@ -270,7 +272,7 @@ test("⑧ mentions légales, régime « particulier » : aucun trou, et l'héber
   expect(texte).toContain("Netlify, Inc.");
   expect(texte).toContain("101 2nd Street");
   expect(texte).toContain("San Francisco");
-  expect(texte).toContain("contact@ladamemetallerie.com");
+  expect(texte).toContain("passioadmin@gmail.com");
 
   // ⚠️ LE CŒUR DU CAS : pas de société, donc AUCUN champ manquant à annoncer.
   // Afficher huit « [à compléter] » là où la loi n'exige rien serait une
@@ -312,7 +314,7 @@ test("⑨ « À propos » lit la même source, il ne redit pas une identité à 
   const texte = await page.locator(".modal-backdrop.active .modal").innerText();
   expect(texte).not.toContain("PASSIO SAS");
   expect(texte).not.toContain("contact@passio.app");
-  expect(texte).toContain("contact@ladamemetallerie.com");
+  expect(texte).toContain("passioadmin@gmail.com");
   // Sans société, la ligne de raison sociale n'existe pas : elle DISPARAÎT au
   // lieu d'annoncer un manque. Un « [à compléter] » sur l'écran « À propos »
   // ferait passer une situation régulière pour un chantier inachevé.
@@ -399,7 +401,7 @@ test("⑫ la politique de confidentialité dit ce qui est vraiment collecté", a
   expect(txt).toMatch(/intérêt légitime/i);
   expect(txt).toMatch(/6\.1\.b|exécution du contrat/i);
   // Un responsable de traitement joignable.
-  expect(txt).toContain("contact@ladamemetallerie.com");
+  expect(txt).toContain("passioadmin@gmail.com");
   expect(txt).toMatch(/responsable de ce traitement/i);
   // Les sous-traitants et les transferts hors UE sont nommés.
   expect(txt).toMatch(/Supabase/);
@@ -578,4 +580,19 @@ test("⑮ boot() pose le consentement sur LES DEUX chemins de retour OAuth", () 
 
   // Les DEUX appels existent : il y en a au moins deux dans le fichier.
   expect(src.split("_poserConsentementOAuth").length - 1).toBeGreaterThanOrEqual(2);
+});
+
+// ⑯ La modale de suppression de compte affichait l'adresse EN DUR, à côté de la
+// source unique PASSIO_EDITEUR : le 2026-09-11, quand l'adresse de contact a
+// changé, elle serait restée sur l'ancienne sans ce verrou. Elle lit désormais
+// la même source que les CGU, les mentions légales et la politique.
+test("⑯ la suppression de compte lit la même adresse que les textes légaux", async ({ page }) => {
+  await ouvrirAuth(page);
+  await page.evaluate(() => openDeleteAccountConfirm());
+  const texte = await page.locator(".modal-backdrop.active .modal").innerText();
+  const attendu = await page.evaluate(() => PASSIO_EDITEUR.email);
+  expect(attendu).toBe("passioadmin@gmail.com");
+  expect(texte).toContain(attendu);
+  expect(texte).not.toContain("ladamemetallerie");
+  expect(texte).not.toContain("contact@passio.app");
 });

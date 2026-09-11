@@ -1,6 +1,6 @@
 # PASSIO — Analyse générale conjointe Claude Code + ChatGPT
 
-> **Analyse croisée réelle**, menée le 2026-08-15 sur le dépôt et la prod réels (Claude Code) confrontés à une revue adversariale indépendante (ChatGPT, compte LADAME Business, 2 tours complets).
+> **Analyse croisée réelle**, menée le 2026-08-15 sur le dépôt et la prod réels (Claude Code) confrontés à une revue adversariale indépendante (ChatGPT, compte ChatGPT Business, 2 tours complets).
 > Répartition : Claude Code détient le dépôt, la prod Supabase, la CI et les tests — il **vérifie**. ChatGPT n'a aucun accès — il **challenge**. Aucune hypothèse de ChatGPT n'est reprise ici sans vérification.
 > Ne remplace pas `.passio/` (plan de contrôle) ni `PASSIO_REPOSITORY_AUDIT.md` (état des lieux 2026-08-07). Mesures : `PASSIO_MASTER_CONTROL.md`. Source machine : `passio_qa_registry.json`.
 

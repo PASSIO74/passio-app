@@ -44,7 +44,7 @@ function faireAdmin(comptes) {
 }
 
 const REELS = [
-  { id: "u_ben", email: "contact@ladamemetallerie.com" },
+  { id: "u_ben", email: "passioadmin@gmail.com" },
   { id: "u_lea", email: "lea@gmail.com" },
   // Pièges : ces adresses CONTIENNENT le motif sans être des comptes jetables.
   { id: "u_piege1", email: "ben+passio-e2e@gmail.com" },
