@@ -68,7 +68,13 @@ A=11111111-1111-1111-1111-111111111111   # compte connecté
 # Les colonnes que le client demande. Recopiées de `_EVENT_COLS_PUBLIC`
 # (js/app-08-ui-modals-tour.js) : si les deux listes divergent, le banc cesse de
 # mesurer ce que l'application fait réellement — d'où le contrôle ④ ter.
-COLS_PUBLIC="id,author_id,title,passion_id,lat,lng,city,description,emoji,max_attendees,date_at,created_at,venue,postal_code,price,external_link,event_type,cover_url,organizer_id,end_at,status,updated_at,co_organizers,series_id,recurrence,conv_id"
+# ⚠️ `conv_id` a quitté la liste PUBLIQUE le 2026-09-11 (migration
+# `migration_ouverture_publique_2026-09-11.sql`) : combiné à `is_conv_member`,
+# exécutable par anon, il permettait de reconstituer sans compte la liste
+# nominative des membres de la conversation d'une rencontre. La migration du
+# 08/09 (celle-ci) l'accordait encore ; celle du 11/09 le retire, et son banc
+# compare la MÊME liste client au nouveau GRANT.
+COLS_PUBLIC="id,author_id,title,passion_id,lat,lng,city,description,emoji,max_attendees,date_at,created_at,venue,postal_code,price,external_link,event_type,cover_url,organizer_id,end_at,status,updated_at,co_organizers,series_id,recurrence"
 
 socle() {
   psql -h "$BASE" -p "$PORT" -U postgres -d postgres -tA -q -v ON_ERROR_STOP=1 -c "drop database if exists irl" >/dev/null
