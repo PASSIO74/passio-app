@@ -29,6 +29,8 @@
 // pas la fonction, qui a manqué dans les défauts passés du projet.
 // ═══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
+const fs = require("fs");
+const path = require("path");
 const { GATE_KEY, GATE_TOKEN, poserGateSansPremiereVisite } = require("./gate-helper");
 const { sansDonneesDistantes, bootOnboarded } = require("./app-helper");
 
@@ -71,7 +73,6 @@ async function remplirInscription(page) {
   await page.locator("#authEmail").fill("nouvelle@exemple.com");
   await page.locator("#authPassword").fill("motdepasse123");
   await page.locator("#authPasswordConfirm").fill("motdepasse123");
-  await page.locator("#authPhone").fill("0612345678");
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -123,12 +124,37 @@ test("③ inscription acceptée une fois la case cochée", async ({ page }) => {
   // des CGU rendrait « a accepté » inexploitable.
   const cgu = await page.evaluate(() => (state && state.user && state.user.cgu) || null);
   expect(cgu).not.toBeNull();
-  // ⚠️ La version SUIT le texte : les CGU du 2026-09-09 passent l'app aux
-  // MAJEURS et ajoutent les clauses de beta. Un accord donné sur la version
-  // précédente ne vaut pas pour celle-ci — c'est tout l'objet du champ.
-  expect(cgu.version).toBe("2026-09-09");
+  // ⚠️ LA VERSION SUIT LE TEXTE, ET LE CAS NE LA FIGE PLUS EN DUR. Elle a changé
+  // deux fois en deux jours (18+ le 09, lancement gratuit le 10) : écrire la
+  // date ici faisait rougir quatre cas à chaque réécriture des CGU, pour une
+  // raison qui n'est JAMAIS un défaut. Ce qui doit être vrai, c'est que la trace
+  // porte LA version en vigueur — pas telle date.
+  const versionEnVigueur = await page.evaluate(() => PASSIO_CGU_VERSION);
+  expect(versionEnVigueur).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  expect(cgu.version).toBe(versionEnVigueur);
   expect(typeof cgu.acceptedAt).toBe("string");
   expect(cgu.acceptedAt.length).toBeGreaterThan(10);
+
+  // ⚠️ ET SURTOUT : L'ACCORD PART AVEC LE COMPTE (2026-09-10). Il ne vivait que
+  // dans `state.user.cgu`, EN MÉMOIRE — mesuré en production : ZÉRO trace sur
+  // 85 lignes `user_state`, y compris pour le seul compte créé depuis la mise en
+  // place du dispositif. Deux chemins l'effaçaient : le retour par « Se
+  // connecter » (depuis « Confirm email », `signUp` ne rend pas de session, donc
+  // aucun `saveState()` n'intervient) et `purgeAccountScopedData()`, dont
+  // `STATE_KEY` est le premier élément. En cas de litige sur une rencontre, rien
+  // ne prouvait que la personne avait accepté quoi que ce soit — c'est le
+  // bouclier de responsabilité lui-même qui était en cause.
+  //
+  // `user_metadata` est la SEULE mémoire qui voyage sans migration : elle survit
+  // à la confirmation d'e-mail, au changement d'appareil et à la purge locale.
+  const meta = appels[0].options && appels[0].options.data;
+  expect(meta).toBeTruthy();
+  expect(meta.cgu_version).toBe(versionEnVigueur);
+  expect(typeof meta.cgu_accepted_at).toBe("string");
+  expect(meta.confidentialite_version).toBeTruthy();
+  // Le MÊME instant des deux côtés : deux horodatages pour un seul geste
+  // rendraient la trace inexploitable.
+  expect(meta.cgu_accepted_at).toBe(cgu.acceptedAt);
 });
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -334,4 +360,222 @@ test("⑩ Paramètres → Support ouvre les CGU et les mentions légales, au ges
 
   expect(errors.js).toEqual([]);
   expect(errors.console).toEqual([]);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// POLITIQUE DE CONFIDENTIALITÉ ET MESURE D'USAGE  (2026-09-10)
+//
+// La politique existait « déjà » (en-tête de ce fichier) — mais elle datait de
+// juin 2026 et elle était devenue FAUSSE sur deux points qu'un texte RGPD ne
+// peut pas se permettre :
+//
+//   ⑫ Elle décrivait des données que l'app ne collecte plus (« carnets »,
+//      retirés par ADR-011) et TAISAIT celles qu'elle collecte : les événements
+//      techniques d'usage (`telemetry_events`) et les rapports d'erreur
+//      (`client_errors`), qui portent un identifiant d'appareil PERSISTANT
+//      (`passio_device_id`), un identifiant de session, la plateforme, le
+//      navigateur et la taille d'écran. Elle ne donnait ni base légale, ni
+//      responsable de traitement, ni durée pour ces données.
+//
+//   ⑬ Le refus de cette mesure n'était exerçable QUE par `?telemetry=0` dans
+//      l'URL — donc par personne. Une opposition qu'on ne peut pas exercer
+//      n'est pas une opposition. Le refus vit maintenant dans
+//      Paramètres → Confidentialité, et il porte sur l'APPAREIL (clé
+//      `passio_telemetry`, hors `ACCOUNT_SCOPED_KEYS`), jamais sur le compte.
+// ═══════════════════════════════════════════════════════════════════════════
+
+test("⑫ la politique de confidentialité dit ce qui est vraiment collecté", async ({ page }) => {
+  const errors = { js: [], console: [], network: [] };
+  await bootOnboarded(page, errors);
+  await page.evaluate(() => openPrivacyPolicy());
+  await expect(page.locator(".modal-backdrop.active .modal-title")).toContainText("Politique de confidentialité");
+
+  const txt = await page.locator("#modalContent").innerText();
+
+  // La mesure d'usage est DÉCLARÉE, avec ce qui la rend identifiante.
+  expect(txt).toMatch(/identifiant d.appareil/i);
+  expect(txt).toMatch(/erreur/i);
+  // Une base légale est donnée — sans elle, « on collecte » ne dit pas « on a le droit ».
+  expect(txt).toMatch(/intérêt légitime/i);
+  expect(txt).toMatch(/6\.1\.b|exécution du contrat/i);
+  // Un responsable de traitement joignable.
+  expect(txt).toContain("contact@ladamemetallerie.com");
+  expect(txt).toMatch(/responsable de ce traitement/i);
+  // Les sous-traitants et les transferts hors UE sont nommés.
+  expect(txt).toMatch(/Supabase/);
+  expect(txt).toMatch(/Netlify/);
+  expect(txt).toMatch(/Brevo/);
+  expect(txt).toMatch(/clauses contractuelles types/i);
+  // Une durée pour les données techniques, et la voie de recours.
+  expect(txt).toMatch(/13 mois/);
+  expect(txt).toMatch(/CNIL/);
+  // Et la porte pour couper la mesure est NOMMÉE dans le texte.
+  expect(txt).toMatch(/Param[èe]tres\s*→\s*Confidentialité/i);
+
+  // ⚠️ CIBLE SUPPRIMÉE = TOUT CE QUI LA VISE PART AVEC. Les « carnets » ont été
+  // retirés par ADR-011 ; les annoncer comme collectés décrivait un traitement
+  // qui n'existe plus. Un texte légal périmé est un texte légal faux.
+  expect(txt).not.toMatch(/carnets/i);
+  // Et il ne prétend plus dater de juin : la version SUIT le texte.
+  expect(txt).not.toMatch(/juin 2026/i);
+  const version = await page.evaluate(() => PASSIO_CONFIDENTIALITE_VERSION);
+  expect(txt).toContain(version);
+
+  expect(errors.js).toEqual([]);
+});
+
+test("⑬ la mesure d'usage se coupe depuis les Paramètres, et ne suit pas le compte", async ({ page }) => {
+  const errors = { js: [], console: [], network: [] };
+  await bootOnboarded(page, errors);
+
+  // Au départ, elle est active (défaut du produit : seul « 0 » coupe).
+  expect(await page.evaluate(() => localStorage.getItem("passio_telemetry"))).not.toBe("0");
+
+  await page.evaluate(() => openPrivacySettings());
+  const bascule = page.locator("#privTelemetry");
+  await expect(bascule).toBeVisible();
+  await expect(bascule).toBeChecked();
+
+  // ⚠️ PAR DES GESTES : c'est le CÂBLAGE (l'identifiant lu par
+  // `savePrivacySettings`) qui a manqué dans les défauts passés, pas la
+  // fonction. Appeler `setEnabled` à la main laisserait la case débranchée.
+  await bascule.uncheck();
+  await page.getByRole("button", { name: "Sauvegarder" }).click();
+
+  const apres = await page.evaluate(() => ({
+    cle: localStorage.getItem("passio_telemetry"),
+    // La capture est coupée TOUT DE SUITE : `track()` teste le drapeau à chaque
+    // événement, il n'y a rien à recharger.
+    capture: (function () { try { return !!(window.PassioTelemetry && PassioTelemetry.setEnabled) ; } catch (e) { return false; } })(),
+    // Et le refus n'est PAS parti dans le blob de configuration : ce blob suit
+    // le compte d'un appareil à l'autre, alors que le refus est celui de CET
+    // appareil.
+    dansConfig: JSON.stringify((getCurrentConfig() || {}).privacy || {}),
+  }));
+  expect(apres.cle).toBe("0");
+  expect(apres.capture).toBe(true);
+  expect(apres.dansConfig).not.toMatch(/telemetry|telemetrie|mesure/i);
+
+  // Le choix se relit à la réouverture du panneau — sinon il serait perdu au
+  // premier retour et la personne le referait sans fin.
+  await page.evaluate(() => openPrivacySettings());
+  await expect(page.locator("#privTelemetry")).not.toBeChecked();
+
+  expect(errors.js).toEqual([]);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ⑭ LE CHEMIN GOOGLE — l'accord donné avant de partir doit revenir
+//
+// `signInWithOAuth` QUITTE LA PAGE : il n'y a pas d'`options.data` sur ce
+// chemin, et tout ce qui vit en mémoire est perdu. L'accord est donc mis de côté
+// avant le départ et posé au RETOUR, quand une session existe enfin.
+// ═══════════════════════════════════════════════════════════════════════════
+test("⑭ Google : l'accord est mis de côté avant le départ, et posé au retour", async ({ page }) => {
+  await ouvrirAuth(page);
+  await page.locator("#authTabSignup").click();
+  await page.locator("#authConsent").click();
+
+  const avant = await page.evaluate(async () => {
+    // On empêche la vraie redirection : on veut mesurer ce qui est mémorisé.
+    Object.defineProperty(window.supa.auth, "signInWithOAuth", {
+      value: async () => ({ error: null }), configurable: true, writable: true,
+    });
+    await onbGoogleAuth();
+    const brut = localStorage.getItem("passio_oauth_cgu");
+    return { attente: !!localStorage.getItem("passio_oauth_pending"), accord: brut ? JSON.parse(brut) : null };
+  });
+  expect(avant.attente).toBe(true);
+  expect(avant.accord).not.toBeNull();
+  const versionOAuth = await page.evaluate(() => PASSIO_CGU_VERSION);
+  expect(avant.accord.cgu_version).toBe(versionOAuth);
+  expect(typeof avant.accord.cgu_accepted_at).toBe("string");
+
+  // Au retour, la pose : on lit `{ error }` (le SDK ne lève pas), et on n'écrase
+  // JAMAIS un accord déjà présent — une reconnexion ne doit pas réécrire la date
+  // du premier consentement, qui est justement ce qui a de la valeur.
+  const apres = await page.evaluate(async () => {
+    const journal = [];
+    Object.defineProperty(window.supa.auth, "getUser", {
+      value: async () => ({ data: { user: { user_metadata: {} } } }), configurable: true, writable: true,
+    });
+    Object.defineProperty(window.supa.auth, "updateUser", {
+      value: async (arg) => { journal.push(arg); return { error: null }; }, configurable: true, writable: true,
+    });
+    const pose = await _poserConsentementOAuth();
+    // Et la seconde fois : la clé a été consommée, rien ne repart.
+    const seconde = await _poserConsentementOAuth();
+    return { pose, seconde, journal, reste: localStorage.getItem("passio_oauth_cgu") };
+  });
+  expect(apres.pose).toBe(true);
+  expect(apres.journal).toHaveLength(1);
+  expect(apres.journal[0].data.cgu_version).toBe(versionOAuth);
+  // La clé transitoire est consommée : elle ne doit pas traîner sur l'appareil.
+  expect(apres.reste).toBeNull();
+  expect(apres.seconde).toBe(false);
+});
+
+test("⑭ bis un accord DÉJÀ posé sur le compte n'est jamais réécrit", async ({ page }) => {
+  await ouvrirAuth(page);
+  const r = await page.evaluate(async () => {
+    const journal = [];
+    localStorage.setItem("passio_oauth_cgu", JSON.stringify({
+      cgu_version: "2026-09-09", cgu_accepted_at: "2026-09-10T10:00:00.000Z",
+    }));
+    Object.defineProperty(window.supa.auth, "getUser", {
+      // Le compte porte déjà une date : c'est ELLE qui fait foi.
+      value: async () => ({ data: { user: { user_metadata: { cgu_accepted_at: "2026-09-01T08:00:00.000Z" } } } }),
+      configurable: true, writable: true,
+    });
+    Object.defineProperty(window.supa.auth, "updateUser", {
+      value: async (arg) => { journal.push(arg); return { error: null }; }, configurable: true, writable: true,
+    });
+    const pose = await _poserConsentementOAuth();
+    return { pose, journal };
+  });
+  expect(r.pose).toBe(false);
+  expect(r.journal).toHaveLength(0);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ⑮ LE CÂBLAGE DU RETOUR GOOGLE — et pourquoi ⑭ ne le prouvait PAS
+//
+// ⚠️ PIÈGE MAISON, ET J'Y SUIS TOMBÉ. ⑭ et ⑭ bis appellent
+// `_poserConsentementOAuth()` EN DIRECT : ils mesurent la fonction, jamais son
+// branchement. Or le branchement était FAUX. Au retour de Google, le SDK a déjà
+// reconstruit la session depuis l'URL quand `boot()` regarde : on entre donc
+// dans la branche « session retrouvée », qui se termine par un `return` AVANT
+// que `onAuthStateChange` ne soit enregistré (il ne l'est que s'il n'y a AUCUNE
+// session). Le seul appel vivait dans ce handler-là : l'accord restait dans
+// `localStorage` et n'atteignait jamais le compte, sans qu'un seul cas rougisse.
+//
+// On mesure donc le câblage À LA SOURCE et sa POSITION — même idiome que
+// `nom-utilisateur-inscription` ⑦, pour la même raison : ce chemin de `boot()`
+// n'est pas parcouru par un banc local (`_supaReal` y est faux, le SDK vient
+// d'un CDN).
+// ═══════════════════════════════════════════════════════════════════════════
+test("⑮ boot() pose le consentement sur LES DEUX chemins de retour OAuth", () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, "..", "..", "js", "app-08-ui-modals-tour.js"), "utf8");
+
+  // ① La branche « session retrouvée » — celle que Google emprunte réellement.
+  const iConsomme = src.indexOf('if (localStorage.getItem("passio_oauth_pending")) localStorage.removeItem("passio_oauth_pending");');
+  expect(iConsomme).toBeGreaterThan(-1);
+  const apres = src.slice(iConsomme, iConsomme + 1400);
+  expect(apres).toContain("_poserConsentementOAuth");
+
+  // ② Le handler onAuthStateChange — le chemin d'un retour arrivé APRÈS le boot.
+  const iHandler = src.indexOf('if (event === "SIGNED_IN" && _oauthEnAttente)');
+  expect(iHandler).toBeGreaterThan(-1);
+  expect(src.slice(iHandler, iHandler + 1600)).toContain("_poserConsentementOAuth");
+
+  // ⚠️ Et dans le handler, la pose vient AVANT l'adoption : l'adoption RECHARGE
+  // la page, donc tout ce qui n'est pas fait avant ne sera jamais fait.
+  const iPose = src.indexOf("_poserConsentementOAuth", iHandler);
+  const iAdoption = src.indexOf("adopterCompteConnecte(_uidSession)", iHandler);
+  expect(iAdoption).toBeGreaterThan(-1);
+  expect(iPose).toBeLessThan(iAdoption);
+
+  // Les DEUX appels existent : il y en a au moins deux dans le fichier.
+  expect(src.split("_poserConsentementOAuth").length - 1).toBeGreaterThanOrEqual(2);
 });

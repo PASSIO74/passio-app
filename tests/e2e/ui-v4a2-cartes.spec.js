@@ -66,6 +66,27 @@ async function boot(page, opts = {}) {
   });
   await bootOnboarded(page, null, 1);
   await page.evaluate(() => { window.supaLoadPosts = async () => []; });
+
+  // ⚠️ PRÉMISSE À POSER, ELLE TENAIT PAR ACCIDENT (2026-09-10). Cette suite
+  // mesure la ligne « N participants · N places restantes » sur la PREMIÈRE
+  // carte de la liste — c'est-à-dire, jusqu'ici, une activité de DÉMONSTRATION.
+  // Depuis que le contenu fabriqué se dit à tout le monde et plus seulement aux
+  // visiteurs, une activité de démonstration affiche « Exemple PASSIO ·
+  // participation désactivée » À LA PLACE de ces chiffres : ne pas inventer de
+  // faux participants est précisément ce qu'on lui demande. La suite doit donc
+  // observer une activité qui n'en est pas une.
+  //
+  // On garde les activités du socle telles quelles — mêmes villes, mêmes
+  // participants, mêmes places — et on ne change QUE la forme de l'identifiant,
+  // seul discriminant de `PassioFirstRun.evenementDemo`. Toutes les assertions
+  // restent exactes, et elles lisent `data-evid` dynamiquement.
+  await page.evaluate(() => {
+    state.seed.events = (state.seed.events || []).map(function (e) {
+      return Object.assign({}, e, { id: "ev_" + e.id });
+    });
+    try { renderIRL(); } catch (e) {}
+  });
+  await page.waitForTimeout(300);
 }
 
 async function ouvrirIrl(page) {

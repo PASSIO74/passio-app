@@ -459,8 +459,6 @@ test.describe("Exploration anonyme puis connexion à un vrai compte", () => {
       document.getElementById("authPassword").value = "motdepasse";
       const c = document.getElementById("authPasswordConfirm");
       if (c) c.value = "motdepasse";
-      const t = document.getElementById("authPhone");
-      if (t) t.value = "0612345678";
       // Consentement aux CGU (2026-09-08) : sans lui, `onbDoAuth` refuse
       // l'inscription avant même d'atteindre le câblage mesuré ici.
       const cgu = document.getElementById("authConsent");

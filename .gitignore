@@ -78,3 +78,7 @@ docs/demo/
 # volumineux et contenant des copies de code à un instant T. Le script est
 # versionné, ses fils jamais.
 .passio/chatgpt/
+
+# Journal LOCAL des signalements deja regardes (pense-bete d operateur,
+# jamais un statut serveur — voir scripts/moderation.js).
+.passio/moderation-vus.json

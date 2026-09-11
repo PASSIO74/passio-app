@@ -958,6 +958,11 @@ function sendMessageToSupabase(msgId, convId, fileUrl, fileType, fileName, kind)
     _diag("handleAttachFile: ✅ Supabase OK (" + voie + ")");
     try { if (typeof _setMsgStatus === "function") _setMsgStatus(convId, msgId, "sent"); } catch (e) {}
     try { if (typeof _outboxRemove === "function") _outboxRemove(msgId); } catch (e) {}
+    // Voie MÉDIA de la notification de message privé (photo, vocal, GIF,
+    // document, position). Même raison qu'app-04 : `_notifierMessage` ne vivait
+    // que sous `supaSendMessage`, sans appelant. Dans la branche de succès
+    // seulement, et sans attendre — la cloche ne doit pas retarder l'envoi.
+    try { if (typeof _notifierMessage === "function") _notifierMessage(convId, msgId); } catch (e) {}
     _flowSaved(true);
   }
 

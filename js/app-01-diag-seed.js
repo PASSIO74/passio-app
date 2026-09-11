@@ -1948,7 +1948,7 @@ function buildSeed() {
       coverUrl: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
       eventType: "Sport & activité", organizerId: "u_jona", date: todayAt(20, 0), time: "20:00",
       city: "Chamonix", venue: "Salle Edelweiss", address: "24 allée du Savoy", postalCode: "74400",
-      contact: "06 72 45 18 33", price: 8, maxAttendees: 20,
+      contact: "06 39 98 12 01", price: 8, maxAttendees: 20,
       attendees: ["u_mehdi", "u_raph"], desc: "Session nocturne en salle. Tous niveaux bienvenus. Chaussons en location sur place (3€). On finit autour d'une bière artisanale." },
     { id: "e1", title: "Jam session guitaristes débutants", passion: "musique", emoji: "🎸",
       coverUrl: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
@@ -1968,7 +1968,7 @@ function buildSeed() {
       coverUrl: "https://images.unsplash.com/photo-1519608487953-e999c86e7455?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
       eventType: "Sport & activité", organizerId: "u_yanis", date: tomorrowAt(14, 0), time: "14:00",
       city: "Bordeaux", venue: "Skatepark des Chartrons", address: "Quai des Chartrons", postalCode: "33300",
-      contact: "06 88 12 54 76", price: 0,
+      contact: "06 39 98 12 02", price: 0,
       attendees: ["u_raph", "u_jona"], desc: "Skatepark des Chartrons. Tous niveaux. Apporte ton board ou viens observer — no judgment. On tourne jusqu'à la tombée de la nuit." },
 
     // CETTE SEMAINE
@@ -1995,7 +1995,7 @@ function buildSeed() {
       coverUrl: "https://images.unsplash.com/photo-1513519245088-0e12902e5a38?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
       eventType: "Dégustation", organizerId: "u_theo", date: inDaysAt(5, 19, 0), time: "19:00",
       city: "Dijon", venue: "Cave Les Écuyers", address: "24 rue des Forges", postalCode: "21000",
-      contact: "06 33 77 91 45", price: 18, maxAttendees: 16,
+      contact: "06 39 98 12 03", price: 18, maxAttendees: 16,
       attendees: ["u_emma", "u_clara"], desc: "5 cuvées d'artisans bourguignons. 90 min de dégustation commentée par Théo. Pain, fromages et charcuterie sur place. Places limitées, inscription obligatoire." },
 
     // CE MOIS
@@ -2003,7 +2003,7 @@ function buildSeed() {
       coverUrl: "https://images.unsplash.com/photo-1501386761578-eac5c94b800a?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
       eventType: "Concert", organizerId: "u_lea", date: inDaysAt(7, 20, 30), time: "20:30",
       city: "Nantes", venue: "Café La Femme Sauvage", address: "3 rue Fénelon", postalCode: "44000",
-      contact: "07 61 42 18 05", price: 5, maxAttendees: 40,
+      contact: "06 39 98 12 04", price: 5, maxAttendees: 40,
       attendees: ["u_karim", "u_clara"], desc: "Café-concert intimiste avec 4 artistes amateurs de la communauté. Acoustique uniquement — guitare, voix, ukulélé. Scène ouverte en seconde partie. Boissons au bar." },
     { id: "e7", title: "Atelier céramique découverte", passion: "art", emoji: "🏺",
       coverUrl: "https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
@@ -2014,9 +2014,9 @@ function buildSeed() {
     { id: "e20", title: "Vernissage galerie indé", passion: "art", emoji: "🎨",
       coverUrl: "https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
       eventType: "Exposition", organizerId: "u_lou", date: inDaysAt(8, 18, 0), time: "18:00",
-      city: "Toulouse", venue: "Galerie La Petite", address: "42 rue Pargaminières", postalCode: "31000",
-      contact: "galerielapetite@gmail.com", price: 0,
-      externalLink: "https://galerielapetite.fr",
+      city: "Toulouse", venue: "Galerie des Trois Ormes", address: "42 rue Pargaminières", postalCode: "31000",
+      contact: "contact@example.com", price: 0,
+      externalLink: "https://example.com",
       attendees: ["u_inès", "u_chloé"], desc: "18 artistes émergents de la région Occitanie. Peinture, photo, installation. Verre offert à l'ouverture. Tous bienvenus, entrée libre." },
     { id: "e10", title: "Ciné-club films restaurés", passion: "cinema", emoji: "🎬",
       coverUrl: "https://images.unsplash.com/photo-1485846234645-a62644f84728?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
@@ -2040,7 +2040,7 @@ function buildSeed() {
       coverUrl: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
       eventType: "Cours", organizerId: "u_jona", date: inDaysAt(15, 18, 0), time: "18:00",
       city: "Biarritz", venue: "Plage Milady", address: "Avenue de la Milady", postalCode: "64200",
-      contact: "06 55 28 44 12", price: 25, maxAttendees: 8,
+      contact: "06 39 98 12 05", price: 25, maxAttendees: 8,
       attendees: ["u_emma"], desc: "Conditions idéales pour les débutants : vagues molles, eau à 18°. Combinaison et planche fournies. Moniteur diplômé. Durée : 2h. Places limitées — inscription obligatoire." },
 
     // AJOUTS SUPPLÉMENTAIRES
@@ -2062,7 +2062,7 @@ function buildSeed() {
       coverUrl: "https://images.unsplash.com/photo-1542751371-adc38448a05e?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
       eventType: "Gaming", organizerId: "u_tom", date: inDaysAt(4, 19, 0), time: "19:00",
       city: "Rennes", venue: "Café Gamer Zone", address: "15 rue Saint-Michel", postalCode: "35000",
-      contact: "06 12 34 56 78", price: 5, maxAttendees: 16,
+      contact: "06 39 98 12 06", price: 5, maxAttendees: 16,
       attendees: ["u_raph"], desc: "Tournoi Mario Kart, Smash Bros et jeux indé. Pizza et boissons à gogo. Inscription rapide — matchs toute la soirée." },
 
     { id: "e33", title: "Tasting biere artisanale", passion: "cuisine", emoji: "🍺",
@@ -2090,7 +2090,7 @@ function buildSeed() {
       coverUrl: "https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
       eventType: "Jam", organizerId: "u_mila", date: inDaysAt(8, 18, 0), time: "18:00",
       city: "Ajaccio", venue: "Studio Mila", address: "Rue Fesch", postalCode: "20000",
-      contact: "06 88 77 55 44", price: 8, maxAttendees: 15,
+      contact: "06 39 98 12 07", price: 8, maxAttendees: 15,
       attendees: ["u_amira"], desc: "Jam libre, mixte tous niveaux. Apporte ta musique ou prends ce qu'on propose. Studio climatisé. Barre disponible. On finit en apéro corse." },
 
     { id: "e37", title: "Rencontre littéraire auteur invité", passion: "litterature", emoji: "📚",

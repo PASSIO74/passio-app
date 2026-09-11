@@ -67,3 +67,44 @@ test("les deep links / URL internes sont aussi protégés", async ({ page }) => 
   await expect(page.locator("#passioGate")).toBeVisible();
   await expect(page.locator(".app-shell")).toBeHidden();
 });
+
+// ⚠️ LE CODE ÉTAIT REDEMANDÉ À CHAQUE OUVERTURE (corrigé le 2026-09-10).
+// Le jeton ne vivait qu'en `sessionStorage` : sur un téléphone, où l'onglet est
+// purgé sans arrêt, cela voulait dire « à chaque fois ». C'est le tout premier
+// écran que rencontre quelqu'un à qui on vient d'envoyer le lien, et pour une
+// diffusion gratuite et large cette friction se paie à chaque session — pour un
+// gain de sécurité nul : le hash est dans le JavaScript livré et un code à
+// 4 chiffres se force en quelques secondes. Ce gate dit « ce n'est pas encore
+// public », il ne protège rien.
+test("le déverrouillage survit à la fin de session : le code n'est pas redemandé à la prochaine ouverture", async ({ page }) => {
+  await page.goto("/index.html");
+  await page.locator("#pgInput").click();
+  await page.keyboard.type(GATE_CODE);
+  await expect(page.locator("#landing")).toBeVisible({ timeout: 10000 });
+
+  // Le jeton est posé aux DEUX endroits : la session (que tout le reste du code
+  // lit) et l'appareil (qui, lui, survit à la fermeture de l'onglet).
+  const pose = await page.evaluate((k) => ({
+    session: sessionStorage.getItem(k), appareil: localStorage.getItem(k),
+  }), GATE_KEY);
+  expect(pose.session).toBe(GATE_TOKEN);
+  expect(pose.appareil).toBe(GATE_TOKEN);
+
+  // Fin de session : l'onglet est fermé, `sessionStorage` disparaît. L'appareil,
+  // lui, se souvient.
+  await page.evaluate(() => sessionStorage.clear());
+  await page.reload();
+  await expect(page.locator("#passioGate")).toHaveCount(0);
+  await expect(page.locator("#landing")).toBeVisible({ timeout: 10000 });
+  // …et la session est réalimentée, puisque c'est elle que le reste du code lit.
+  expect(await page.evaluate((k) => sessionStorage.getItem(k), GATE_KEY)).toBe(GATE_TOKEN);
+});
+
+test("un jeton d'APPAREIL falsifié ne déverrouille pas non plus", async ({ page }) => {
+  // La seconde source ne doit pas être une porte dérobée : elle est comparée au
+  // même hash que la première.
+  await page.addInitScript((k) => localStorage.setItem(k, "jeton-bidon"), GATE_KEY);
+  await page.goto("/index.html");
+  await expect(page.locator("#passioGate")).toBeVisible();
+  await expect(page.locator(".app-shell")).toBeHidden();
+});

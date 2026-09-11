@@ -223,11 +223,11 @@ Une migration appliquée en production le 2026-09-08 retire à `anon` le droit d
 ⚠️ **`MY_UID` NE PROUVE PAS QU'UN COMPTE EXISTE, et la porte l'a enfreint** : `getMyUserId()` fabrique un `u_<aléatoire>` pour TOUT visiteur, donc la garde s'ouvrait AU BOOT et le rappel partait appeler le RPC en production sous une identité inexistante — en consommant son drapeau « une fois par session ». **Invisible en local** (le SDK vient d'un CDN, `_supaReal` reste faux) et **rouge en CI**, qui l'atteint : un test vert en local et rouge en CI est presque toujours une divergence d'environnement de cette famille. `admissionCompteReel()` exige désormais un vrai uuid Supabase.
 Verrou : `tests/e2e/admission-18-plus.spec.js` (17).
 
-## 🔞 ADMISSION 18+ — fondation serveur APPLIQUÉE EN PRODUCTION le 2026-09-08, interrupteur ÉTEINT (mesuré le 2026-09-09)
+## 🔞 ADMISSION 18+ — fondation serveur APPLIQUÉE EN PRODUCTION le 2026-09-08, interrupteur **ALLUMÉ** (mesuré le 2026-09-10)
 
 `migrations/migration_admission_18_plus.sql` branche enfin la garde de majorité de #136 sur les surfaces d'écriture IRL : **organiser** (`events` INSERT), **s'inscrire / changer d'avis / pointer** (`event_attendees` INSERT et UPDATE) et **rejoindre la conversation** (`can_join_event_conversation`) exigent `user_safety.majority_at <= CURRENT_DATE`. Le défaut qu'elle ferme (audit IRL-02/MOD-08) n'était pas une barrière cassée : la barrière existait depuis #136 et **rien ne l'appelait** — `irl_interaction_allowed` ne vivait que sous `passio_irl_proposal_v1`, éteint.
 **Le RETRAIT n'est JAMAIS conditionné** : passer en `declined` et supprimer sa ligne restent permis à tous — un compte rattrapé par la règle doit pouvoir sortir, jamais revenir (et le check-in réécrit `rsvp='going'`, donc il est couvert par la même policy UPDATE).
-⚠️ **Interrupteur SERVEUR** (`public.access_policies`, clé `irl_adult_only`) — le premier du dépôt, les 35 autres drapeaux étant côté client : `UPDATE … SET enabled = TRUE` par le canal ③ d'ADR-012. **Ne JAMAIS supprimer la ligne pour éteindre** : `adult_access_enforced()` est fail-closed, ligne absente = admission **EXIGÉE**. La table n'est ni lisible ni écrivable par `anon`/`authenticated` (aucun GRANT, aucune policy).
+⚠️ **Interrupteur SERVEUR** (`public.access_policies`, clé `irl_adult_only`) — le premier du dépôt, les 35 autres drapeaux étant côté client : `UPDATE … SET enabled = TRUE` par le canal ③ d'ADR-012. **Il est ALLUMÉ depuis (au plus tard) le 2026-09-10 : `enabled = true`, mesuré.** Cette fiche a annoncé « ÉTEINT » jusque-là — une affirmation de sécurité fausse, et la plus coûteuse des trois familles de dette documentaire : elle décide d'un geste. **L'état d'un interrupteur SERVEUR ne se lit pas dans un fichier du dépôt, il se mesure** (`select key, enabled from public.access_policies`, canal ① d'ADR-012). Conséquence VIVANTE : sur 7 comptes de production, **2 seulement** ont une ligne `user_safety` — les 5 autres passent donc par la fenêtre « Ton année de naissance » (`requireAdmission` → `undeclared` → `admissionOuvrirPorte`) avant de pouvoir organiser ou rejoindre une rencontre. C'est le comportement VOULU, pas un défaut : le vérifier avant de « réparer » quoi que ce soit. **Ne JAMAIS supprimer la ligne pour éteindre** : `adult_access_enforced()` est fail-closed, ligne absente = admission **EXIGÉE**. La table n'est ni lisible ni écrivable par `anon`/`authenticated` (aucun GRANT, aucune policy).
 **La porte CLIENT est branchée** (`requireAdmission(ctx)`, app-07, posée sur `setEventRsvp` et `submitEvent` APRÈS `requireAuthentication`) et `admissionRappelServeur()` pousse au démarrage l'année déjà saisie, pour que les comptes EXISTANTS soient admis sans rien ressaisir. ⚠️ **CETTE PORTE ÉCHOUE OUVERT, et c'est l'inverse VOULU de `irlProposalVerdict`** : elle double une frontière déjà tenue par la RLS, donc un statut illisible (migration non appliquée, réseau coupé) la rend TRANSPARENTE — retenir couperait l'IRL à tout le monde pour une panne de courtoisie. C'est ce qui rend le lot déployable AVANT la migration. Ne jamais la « durcir » en fail-closed. ⚠️ ORDRE D'ALLUMAGE : migration → contrôles verts → client déployé → PUIS `enabled = TRUE`. Allumer avant le client couperait l'IRL à tout le monde (2 lignes `user_safety` pour 6 comptes en prod).
 ⚠️ **`MY_UID` NE PROUVE PAS QU'UN COMPTE EXISTE, et la porte l'a enfreint** : `getMyUserId()` fabrique un `u_<aléatoire>` pour TOUT visiteur, donc `admissionCanalPret()` s'ouvrait AU BOOT et `admissionRappelServeur()` partait appeler le RPC en production sous une identité inexistante — en consommant son drapeau « une fois par session ». **Invisible en local** (le SDK vient d'un CDN, `_supaReal` reste faux) et **rouge en CI**, qui l'atteint : un test vert en local et rouge en CI est presque toujours une divergence d'environnement de cette famille. `admissionCompteReel()` exige désormais un vrai uuid Supabase. Le client demande sa propre porte par `adult_access_status()` → `off` | `admitted` | `undeclared` | `minor` ; `adult_access_enforced()` et `is_adult_declared()` sont des aides internes **sans EXECUTE pour `authenticated`**. ⚠️ **Un `WITH CHECK` ne voit que la ligne FINALE, jamais l'ancienne** : l'exception « declined » laissait un compte non admis écrire `checked_in_at`, `rating` et `feedback` (une preuve de participation) dans la même requête, et la policy « Update organisateurs », sans `WITH CHECK`, rendait `author_id` réassignable par un co-organisateur. Les deux passent donc par des TRIGGERS (`trg_event_attendees_admission`, `trg_events_admission`), seuls à voir `OLD`. ⚠️ Un garde de dérive qui ne cherche que `cmd = 'INSERT'`/`'UPDATE'` est AVEUGLE à une policy `FOR ALL` (`cmd = 'ALL'`) — le gabarit « Enable all operations » du tableau de bord Supabase, donc la dérive la plus probable. Verrous : `tests/sql/migration-admission-18-plus.test.sh` (133 contrôles, gate CI) et `tests/e2e/admission-18-plus.spec.js` (16), qui joue les DEUX états de l'interrupteur, 14 mutations et 26 contrôles d'exploitation. Procédure, retour arrière et les huit points ouverts : `docs/ADMISSION_18_PLUS.md`.
 
@@ -255,6 +255,86 @@ Les trois migrations du 2026-09-08 (pièces jointes, rencontres, admission 18+) 
 - **`scripts/appliquer-securite-2026-09.sh`** — le chemin terminal : préflight → migration → contrôles pour chaque lot, avec **arrêt net** au premier BLOQUANT ou ÉCHEC (on ne passe jamais au lot suivant sur une base dont on n'a pas la preuve qu'elle est saine). `--verifier` ne change rien et dit ce qui manque.
 ⚠️ **NI L'UN NI L'AUTRE N'ALLUME LE 18+**, et une relance ne rétrograde jamais un interrupteur déjà allumé. L'allumage reste un geste séparé, APRÈS le déploiement du client.
 ⚠️ Le socle des bancs (`tests/sql/socle-prod-admission.sql`) porte désormais les 21 colonnes de `events` que la prod a et que `socle-prod.sql` n'avait pas : un `GRANT` colonne par colonne échoue sur la PREMIÈRE colonne absente, et le banc accusait la migration d'un défaut qui n'était que celui de son socle.
+
+## 🚦 AUDIT GO/NO-GO DE COMMERCIALISATION (2026-09-10) — et les cinq défauts qu'il a trouvés
+
+Question posée : « j'envoie l'app aux utilisateurs, je commercialise, c'est ok ? » Réponse en deux
+seuils, à ne JAMAIS confondre : **envoyer à des testeurs** est possible ; **commercialiser** ne l'est
+pas — il n'existe **aucun chemin d'encaissement** (recherche exhaustive : ni Stripe, ni PayPal, ni
+Paddle, ni achat intégré), et surtout **les CGU en vigueur promettent la gratuité et fondent
+l'exonération de responsabilité dessus** (art. 2 et art. 10). Encaisser un euro rend ces deux
+articles faux et fait tomber le bouclier avec eux. Décision : `docs/CHECKLIST_COMMERCIALISATION.md`
+(refondue — l'ancienne datait de juin et cochait Wallet et CDV, deux fonctionnalités RETIRÉES) ·
+107 constats et leurs contre-expertises : `docs/AUDIT_COMMERCIALISATION_2026-09-10.md`.
+
+⚠️ **LA FAMILLE COMMUNE DES CINQ DÉFAUTS CORRIGÉS : UNE GARANTIE QUI S'ÉTEINT AU MOMENT OÙ ELLE
+COMPTE.** Ce n'est pas une coïncidence, c'est le mode d'échec à chercher en premier ici.
+
+⚠️ **① LE CONTENU DE DÉMONSTRATION NE SE DISAIT QU'AUX VISITEURS.** L'étiquette « Exemple PASSIO »,
+les chiffres muets d'une activité et le refus de participation étaient conditionnés à
+`estVisiteur()` : ils s'éteignaient **à la création du compte**, donc pour exactement les personnes à
+qui l'application est envoyée. Mesuré : **550 publications de démonstration et 29 comptes fabriqués**
+(`app-01-diag-seed.js`) contre **33 publications réelles** en production — un fil fabriqué à 94 %,
+sans étiquette, et une inscription possible à une rencontre qui n'existe pas, chez un organisateur
+qui n'existe pas. Le discriminant est désormais `contenuDemoSignale()` = `actif() && appPrete()` :
+le kill switch du lot, **jamais l'existence d'un compte**. Un compte ne rend pas le décor vrai.
+
+⚠️ **② LA NOTIFICATION DE MESSAGE PRIVÉ ÉTAIT BRANCHÉE SUR UNE FONCTION MORTE, ET LA FICHE DISAIT
+LE CONTRAIRE.** `_notifierMessage` n'était appelée que par `supaSendMessage`, qui n'avait **aucun
+appelant dans tout le dépôt**. Le correctif du 2026-09-09, ses **12 verrous** et sa section de
+CLAUDE.md portaient donc sur un chemin que personne n'emprunte — et la production le disait :
+**0 ligne `notifications` de type `message`**, y compris pour le message envoyé après le
+déploiement. Les deux vraies voies sont `_sendTextToSupa` (app-04, texte) et `sendMessageToSupabase`
+(app-09, média) ; elles notifient maintenant dans leur **branche de succès**. `supaSendMessage` est
+RETIRÉE : c'est elle qui a rendu le défaut invisible, en offrant au correctif un endroit plausible où
+se poser et aux tests un endroit plausible où être verts. ⚠️ **Les 12 verrous appelaient tous
+`_notifierMessage` À LA MAIN** — aucun ne mesurait le câblage. Le 13ᵉ le fait, à la SOURCE.
+**Une fonction morte qui double une fonction vivante est pire qu'un trou.**
+
+⚠️ **③ QUATRE PORTES DE SIGNALEMENT SUR CINQ ANNONÇAIENT UN SUCCÈS SANS LE VÉRIFIER.** `reportUser`,
+`reportPost`, `reportCommentEntry` et `reportEvent` appelaient `supaReport` **sans `await`** et sans
+lire `{ error }`, puis remerciaient inconditionnellement. Seule `reportPassion` faisait bien. Ce
+n'était pas théorique : la policy est `WITH CHECK (reporter_id = auth.uid()::text)`, et un visiteur
+porte un `MY_UID` fabriqué — son signalement était REFUSÉ en silence pendant qu'il lisait « notre
+équipe va vérifier ». Or « Signaler cet événement » **est** proposé aux visiteurs. Et le motif
+n'était **jamais** renseigné : les cinq appelants passaient `""`, ce que les 2 lignes de production
+confirment. ⚠️ **Mais le vrai trou est en aval et reste OUVERT** : `reports` n'a **aucune colonne de
+statut**, aucun outil de lecture hors passions, aucune alerte. Un signalement n'arrive nulle part.
+
+⚠️ **④ LE PREMIER ÉCRAN APRÈS UNE INSCRIPTION ÉTAIT VIDE.** Depuis « Confirm email », `signUp` ne
+rend pas de session : l'onboarding (âge → prénom → passions) n'est **jamais atteint**, `boot()` pose
+`onboarded = true` avec un profil de remplissage `_parDefaut` que `restoreFeedPassions` écarte, et
+`feedFollowingOn` valant `true`, le compte lisait « Tu ne suis encore personne ». Le fil de
+découverte l'aurait sauvé, mais il exigeait `estVisiteur()`. **C'est l'ÉTAT qui doit décider, pas la
+présence d'un compte** : `filDecouverte()` couvre désormais aussi `comptePasEncoreGarni()` (aucune
+passion voulue — le profil `_parDefaut` n'en est pas une — et personne de suivi).
+
+⚠️ **⑤ UN TEXTE ANONYME DEVENAIT LE PROMPT D'UN AGENT DONT LA PR EST AUTO-FUSIONNÉE.**
+`client_errors` accepte un INSERT **de tout visiteur non authentifié** (policy « Insert erreurs »,
+rôle `public`, `with_check` vrai), et ses colonnes `message`/`stack` étaient recopiées telles quelles
+dans le corps **ET LE TITRE** d'une issue `[SENTINELLE]` — label `sentinelle` + préfixe + OWNER,
+c'est-à-dire les trois conditions exactes qui arment l'auto-fusion. Déclencher était trivial :
+`classer()` retient un groupe dès **2 comptes**, `uid` est une colonne libre, et la production ne
+porte que ~22 erreurs. ⚠️ **Le titre était la seule partie qu'aucune clôture ne protégeait** : il
+porte désormais l'**empreinte normalisée**, rien de librement choisi. Le corps passe par
+`desamorcer()` (`sentinelle-detecter.mjs`, 6 verrous unitaires) : lignes en forme d'instruction
+retirées, marqueurs de structure neutralisés, longueur bornée — **et un VRAI message d'erreur doit
+survivre intact**, sinon on ne peut plus établir de cause. ⚠️ **Le vrai correctif est en base**
+(`migrations/migration_fuites_2026-09-10.sql`, colonne `auth_uid` posée par le serveur) : le
+désamorçage est une barrière, pas la porte. `lireErreurs` gère les DEUX états, avec repli signalé.
+
+⚠️ **CE QUI RESTE OUVERT, ET QU'IL NE FAUT PAS CROIRE RÉGLÉ** : `conv_reads` est lisible **sans
+compte** (`qual = true` — le graphe « qui parle à qui » est public, migration écrite non appliquée) ;
+les canaux Realtime d'appel (`ring:`, `call:`, `typing:`, `vlive:`) sont **publics**, donc on peut
+faire sonner un téléphone sous une fausse identité ou couper un appel ; le seau `attachments` reste
+`public = true`, donc une pièce jointe privée est lisible **à vie par son URL exacte** (l'énumération,
+elle, est bien fermée) ; le **consentement aux CGU n'est persisté nulle part** (0 trace sur 85 lignes
+`user_state`) ; **aucune sauvegarde automatique** de la production ; DKIM/DMARC absents, donc les
+e-mails de confirmation partent probablement en spam — **le défaut qui tue une beta en silence**.
+
+⚠️ **ET DEUX AFFIRMATIONS DE CE FICHIER ÉTAIENT FAUSSES** : l'interrupteur `irl_adult_only` était
+annoncé ÉTEINT, il est **ALLUMÉ** ; et `docs/CHECKLIST_COMMERCIALISATION.md` cochait Wallet et CDV.
+**L'état d'un interrupteur serveur ne se lit pas dans un fichier du dépôt, il se mesure.**
 
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)
 

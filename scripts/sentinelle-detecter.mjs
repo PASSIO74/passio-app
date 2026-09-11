@@ -45,6 +45,70 @@ export function empreinte(message) {
     .toLowerCase();
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// DÉSAMORÇAGE DU TEXTE D'UN INCONNU  (2026-09-10)
+// ═══════════════════════════════════════════════════════════════════════════
+// ⚠️ `client_errors` ACCEPTE UN INSERT DE TOUT VISITEUR NON AUTHENTIFIÉ (policy
+// « Insert erreurs », rôle `public`, `with_check = true`), et la clé anon est
+// dans le JavaScript livré. Le `message` et la `stack` de cette table étaient
+// recopiés TELS QUELS dans le corps ET LE TITRE d'une issue `[SENTINELLE]`,
+// ouverte au nom du propriétaire avec le label `sentinelle` — c'est-à-dire les
+// trois conditions exactes qui arment l'auto-fusion en aval. Un texte choisi par
+// un inconnu devenait donc le prompt d'un agent dont la PR part en production.
+//
+// Déclencher était trivial : `classer()` retient un groupe dès 2 comptes
+// distincts, `uid` est une colonne libre, et la production ne porte que
+// ~22 erreurs — aucune concurrence pour prendre la première place.
+//
+// Trois barrières, du plus dur au plus mou :
+//   ① le TITRE ne porte plus une ligne de ce texte : il porte l'empreinte
+//     normalisée (chiffres et URL déjà remplacés), donc rien de librement
+//     choisi ;
+//   ② le corps passe par `desamorcer()` : les marqueurs de structure et les
+//     lignes en forme d'INSTRUCTION sont neutralisés, la longueur est bornée ;
+//   ③ le bloc reste clôturé et annoncé comme de la donnée (barrière molle,
+//     conservée mais jamais la seule).
+//
+// ⚠️ CECI NE REMPLACE PAS LE VRAI CORRECTIF, qui est en base : tant que
+// `client_errors` accepte une écriture anonyme avec un `uid` librement choisi,
+// la porte reste entrouverte. Voir `migrations/migration_fuites_2026-09-10.sql`.
+
+/** Formes de phrases qui n'ont RIEN à faire dans un message d'erreur de navigateur. */
+const FORMES_INSTRUCTION = [
+  /\b(ignore|oublie|disregard)\b[^\n]{0,40}\b(instructions?|consignes?|ce qui précède|above|previous)\b/i,
+  /\b(nouvelle|new)\b[^\n]{0,20}\b(instructions?|consignes?|t[âa]che|task|r[èe]gles?|rules?)\b/i,
+  /\b(system|assistant|user)\s*:/i,
+  /\byou are\b|\btu es (un|une)\b|\bagis comme\b|\bact as\b/i,
+  /<\/?(system|instructions?|prompt)[^>]*>/i,
+  /\b(exfiltr|curl\s|wget\s|process\.env|service_role|SUPABASE_SERVICE|GITHUB_TOKEN|secrets\.)/i,
+  /\b(commit|push|merge|fusionne|d[ée]ploie)\b[^\n]{0,30}\b(main|production|prod)\b/i,
+];
+
+/**
+ * Rend un texte d'origine inconnue inoffensif dans un corps d'issue Markdown.
+ * On ne cherche pas à « comprendre » l'attaque : on retire ce qui donne à un
+ * texte le POUVOIR d'une instruction (structure Markdown, balises, clôture de
+ * bloc) et on remplace les lignes en forme d'ordre par une marque visible.
+ */
+export function desamorcer(texte, maxLignes = 40) {
+  const lignes = String(texte || "")
+    .replace(/\r/g, "")
+    .split("\n")
+    .slice(0, maxLignes);
+  return lignes
+    .map((ligne) => {
+      let l = ligne.slice(0, 300);
+      if (FORMES_INSTRUCTION.some((re) => re.test(l))) return "[ligne en forme d'instruction — retirée]";
+      // Clôture de bloc, balises et titres Markdown : ce sont les outils qui
+      // permettent à un texte de SORTIR de son cadre et de parler en son nom.
+      l = l.replace(/`/g, "\u02cb").replace(/[<>]/g, "\u2039");
+      l = l.replace(/^\s{0,3}#{1,6}\s/, "");
+      return l;
+    })
+    .join("\n")
+    .trim();
+}
+
 export function estDuBruit(message) {
   const m = String(message || "").trim();
   if (!m) return true;
@@ -295,9 +359,39 @@ export function classerBoutons(clics = [], effets = [], options = {}) {
  * ⚠️ SEULE SOURCE DU TITRE. Le workflow l'écrivait en toutes lettres de son
  * côté ; deux constructions du même titre finissent toujours par diverger, et
  * une dédup qui compare des titres divergents ne dédoublonne RIEN, en silence.
+ *
+ * ⚠️ ET IL NE PORTE PLUS UNE LIGNE ÉCRITE PAR UN INCONNU (2026-09-10).
+ * `client_errors` accepte un INSERT non authentifié, et ce titre part dans une
+ * issue étiquetée `sentinelle` — donc dans les trois conditions qui arment
+ * l'auto-fusion. C'était la SEULE partie de l'issue qu'aucune clôture de bloc ne
+ * protégeait. Il porte désormais l'EMPREINTE (chiffres et URL normalisés),
+ * passée par `desamorcer()` comme le corps, plus un condensé qui distingue deux
+ * familles voisines. Rien de librement choisi ne subsiste.
+ *
+ * ⚠️ CONSÉQUENCE À CONNAÎTRE, ET ELLE EST BORNÉE : le format du titre a changé,
+ * donc une enquête CLOSE AVANT le 2026-09-10 ne se reconnaît plus dans le
+ * nouveau. `dejaCorrige` peut donc laisser rouvrir UNE fois chaque défaut déjà
+ * corrigé d'avant — une issue qu'un humain referme, jamais un défaut manqué.
+ * Le mécanisme reprend tout son effet dès la première enquête close au nouveau
+ * format. On ne compare pas « à peu près » pour éviter cette bosse : une dédup
+ * approximative rate les vrais doublons, ce qui est bien pire.
  */
 export function titreIssue(cible) {
-  return "[SENTINELLE] " + String(cible?.message || "").slice(0, 80);
+  const cle = String(cible?.cle || cible?.message || "");
+  const lisible = desamorcer(cle, 1).replace(/[\n\r]/g, " ").slice(0, 60).trim();
+  return "[SENTINELLE] " + (lisible || "defaut de production") + " · " + condense(cle);
+}
+
+/**
+ * Condensé stable d'une empreinte, pour distinguer deux familles dont le début
+ * lisible se ressemble. Huit caractères suffisent ici : on distingue, on
+ * n'authentifie rien.
+ */
+export function condense(texte) {
+  let h = 5381;
+  const s = String(texte || "");
+  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
+  return h.toString(16).padStart(8, "0");
 }
 
 /**
@@ -326,13 +420,46 @@ export function dejaCorrige(cible, fermees) {
 }
 
 /** Lit les erreurs récentes via PostgREST. Isolé pour rester testable. */
+
+/**
+ * Lit les erreurs récentes via PostgREST. Isolé pour rester testable.
+ *
+ * ⚠️ N'ENQUÊTE QUE SUR CE QU'UN COMPTE RÉEL A RENCONTRÉ, DÈS QUE LA BASE LE
+ * PERMET (2026-09-10). `client_errors` accepte une écriture ANONYME, et le
+ * texte inséré finit dans une issue dont la PR est fusionnée automatiquement :
+ * un inconnu pouvait donc choisir ce que la chaîne allait « réparer ».
+ * `migrations/migration_fuites_2026-09-10.sql` ajoute `auth_uid`, posée par le
+ * SERVEUR (`default auth.uid()`) et non écrivable par le client — NULL pour un
+ * visiteur, l'identité réelle pour un compte.
+ *
+ * ⚠️ DÉPLOYABLE AVANT SA MIGRATION, et c'est la raison de la double requête :
+ * tant que la colonne n'existe pas, PostgREST rend 400 sur le `select`, et la
+ * sentinelle deviendrait MUETTE — une panne silencieuse, exactement ce que ce
+ * canal est censé éviter. On retombe alors sur l'ancienne requête, en le disant
+ * dans le verdict. La colonne `uid`, elle, ne prouve rien : elle est écrite par
+ * le client, et les uuid des comptes sont publics (`profiles` est en lecture
+ * publique) — la recopier est à la portée de quiconque.
+ */
 async function lireErreurs({ url, cle, heures }) {
   const depuis = new Date(Date.now() - heures * 3600_000).toISOString();
-  const r = await fetch(
-    `${url}/rest/v1/client_errors?select=message,source,line,stack,url,uid,created_at&created_at=gt.${depuis}&order=created_at.desc&limit=1000`,
-    { headers: { apikey: cle, Authorization: "Bearer " + cle } });
+  const entetes = { headers: { apikey: cle, Authorization: "Bearer " + cle } };
+  const base = `${url}/rest/v1/client_errors?select=message,source,line,stack,url,uid,created_at`;
+
+  // Chemin nominal : identité vérifiée par le serveur exigée.
+  const rAuth = await fetch(
+    `${base},auth_uid&auth_uid=not.is.null&created_at=gt.${depuis}&order=created_at.desc&limit=1000`,
+    entetes);
+  if (rAuth.ok) return rAuth.json();
+  // 400 = colonne absente : la migration n'est pas encore appliquée.
+  if (rAuth.status !== 400) throw new Error(`client_errors: HTTP ${rAuth.status}`);
+
+  const r = await fetch(`${base}&created_at=gt.${depuis}&order=created_at.desc&limit=1000`, entetes);
   if (!r.ok) throw new Error(`client_errors: HTTP ${r.status}`);
-  return r.json();
+  const lignes = await r.json();
+  // Le repli est SIGNALÉ : sans cette marque, on ne saurait pas que la chaîne
+  // travaille encore sur des lignes d'origine non vérifiée.
+  for (const l of lignes) l._origineNonVerifiee = true;
+  return lignes;
 }
 
 /** Lit les appels réseau refusés. Isolé pour rester testable, comme ci-dessus. */

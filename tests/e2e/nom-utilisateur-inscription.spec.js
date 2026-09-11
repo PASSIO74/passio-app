@@ -56,7 +56,6 @@ async function remplir(page, { nom, consent = true } = {}) {
   await page.locator("#authEmail").fill("nouvelle@exemple.com");
   await page.locator("#authPassword").fill("motdepasse123");
   await page.locator("#authPasswordConfirm").fill("motdepasse123");
-  await page.locator("#authPhone").fill("0612345678");
   if (consent) await page.locator("#authConsent").click();
 }
 
@@ -113,7 +112,15 @@ test("③ le nom voyage dans user_metadata (name ET display_name), normalisé", 
   const d = appels[0].options.data;
   expect(d.name).toBe("Ben jamin");        // blancs de bord et doublons réduits
   expect(d.display_name).toBe("Ben jamin"); // même valeur : deux orthographes seraient un piège
-  expect(d.phone).toBeTruthy();             // le lot ne casse pas le champ voisin
+  // ⚠️ RENVERSÉ LE 2026-09-10. Ce cas exigeait `d.phone` truthy (« le lot ne
+  // casse pas le champ voisin »). Le champ voisin a été RETIRÉ : il était
+  // obligatoire à l'inscription et lu NULLE PART — aucun SMS, aucune
+  // récupération de compte, aucune vérification n'en dépendait. Réclamer une
+  // donnée directement identifiante pour une finalité qui n'existe pas enfreint
+  // la minimisation (RGPD art. 5.1.c), et la politique affichée au même écran ne
+  // le mentionnait même pas. Ce qui doit être vrai maintenant, c'est qu'il ne
+  // part plus.
+  expect(d.phone).toBeUndefined();
 });
 
 // ──────────────────────────────────────────────────────────────────────────

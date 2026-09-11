@@ -234,31 +234,76 @@ function shareBeta() {
   `);
 }
 
+// ⚠️ CE FORMULAIRE N'ENVOYAIT RIEN, ET C'EST LE SEUL CANAL DE RETOUR DE LA BETA
+// (2026-09-10). Il écrivait dans `state.feedbacks`, un tableau que RIEN ne
+// relit : ni un écran, ni un script, ni le tableau de bord — et sa promesse
+// « tu pourras l'exporter au créateur » désignait un export qui n'existe pas.
+// Mesuré en production : `user_state` porte 85 lignes, dont **zéro** avec une
+// clé `feedbacks`. Une application envoyée à des testeurs POUR RECUEILLIR LEURS
+// RETOURS avait donc son unique canal de retour en cul-de-sac : le testeur écrit
+// son bug, lit « Merci pour ton retour ! », et personne ne le lira jamais.
+//
+// Le retour part maintenant par `mailto:` — aucune table, aucune migration,
+// aucune RLS, et il fonctionne hors ligne comme en ligne. La copie locale est
+// CONSERVÉE : elle est le filet quand aucun client mail n'est installé, et c'est
+// ce que le texte dit désormais, au lieu de promettre un export imaginaire.
 function feedbackModal() {
   $("#devPanel").classList.remove("active");
   openModal(`
     <div class="modal-handle"></div>
-    <div class="modal-title">Ton feedback beta</div>
-    <div class="modal-subtitle">Enregistré localement. Tu pourras l'exporter au créateur.</div>
+    <div class="modal-title">Ton retour sur la beta</div>
+    <div class="modal-subtitle">Il part par e-mail à l'équipe, et une copie reste sur ton téléphone.</div>
     <label class="field"><span>Ce que tu as aimé</span><textarea class="textarea" id="fbLike"></textarea></label>
     <label class="field"><span>Ce qui ne va pas / bugs</span><textarea class="textarea" id="fbBad"></textarea></label>
     <label class="field"><span>Une feature à ajouter</span><textarea class="textarea" id="fbIdea"></textarea></label>
-    <button class="btn primary block" onclick="saveFeedback()">Enregistrer</button>
+    <button class="btn primary block" onclick="saveFeedback()">Envoyer</button>
   `);
 }
 
 function saveFeedback() {
+  const champ = (id) => { const el = $("#" + id); return el ? el.value.trim() : ""; };
   const fb = {
     at: Date.now(),
-    like: $("#fbLike").value.trim(),
-    bad: $("#fbBad").value.trim(),
-    idea: $("#fbIdea").value.trim(),
+    like: champ("fbLike"),
+    bad: champ("fbBad"),
+    idea: champ("fbIdea"),
   };
+  // Un envoi vide n'apprend rien à personne et ouvrirait un client mail pour rien.
+  if (!fb.like && !fb.bad && !fb.idea) { toast("Écris au moins une ligne 🙂", "warning"); return; }
+
   state.feedbacks = state.feedbacks || [];
   state.feedbacks.unshift(fb);
   saveState();
+
+  // Le contexte technique évite le premier aller-retour (« sur quel téléphone ? »).
+  // Aucune donnée de compte n'y entre : ni e-mail, ni identifiant.
+  let contexte = "";
+  try {
+    contexte = "\n\n---\nÉcran : " + (document.querySelector(".screen.active") || {}).id
+      + "\nAppareil : " + navigator.userAgent;
+  } catch (e) {}
+
+  const corps = (fb.like ? "CE QUE J'AI AIMÉ\n" + fb.like + "\n\n" : "")
+    + (fb.bad ? "CE QUI NE VA PAS\n" + fb.bad + "\n\n" : "")
+    + (fb.idea ? "UNE IDÉE\n" + fb.idea + "\n\n" : "")
+    + contexte;
+
+  let envoye = false;
+  try {
+    const dest = (typeof PASSIO_EDITEUR !== "undefined" && PASSIO_EDITEUR.email) ? PASSIO_EDITEUR.email : "";
+    if (dest) {
+      window.location.href = "mailto:" + dest
+        + "?subject=" + encodeURIComponent("PASSIO beta — retour")
+        + "&body=" + encodeURIComponent(corps);
+      envoye = true;
+    }
+  } catch (e) {}
+
   closeModal();
-  toast("Merci pour ton retour !", "reward");
+  // ⚠️ ON NE DIT PAS « ENVOYÉ » QUAND ON N'EN SAIT RIEN. `mailto:` ouvre le
+  // client mail de la personne ; c'est elle qui appuie sur « Envoyer ». Annoncer
+  // un envoi accompli serait le même mensonge que celui qu'on vient de retirer.
+  toast(envoye ? "Ton message est prêt dans ta messagerie 📩" : "Retour enregistré sur ton téléphone", "reward");
 }
 
 // ======== RESET ========
@@ -2280,6 +2325,20 @@ async function boot() {
       // La clé sera écrite par l'adoption, au changement effectif du mot de passe.
       if (!_recuperationEnCours) localStorage.setItem("passio_uid", MY_UID);
       if (localStorage.getItem("passio_oauth_pending")) localStorage.removeItem("passio_oauth_pending");
+      // ⚠️ C'EST ICI QUE PASSE LE RETOUR DE GOOGLE, PAS DANS `onAuthStateChange`.
+      // Le SDK a déjà reconstruit la session depuis l'URL au moment où `boot()`
+      // regarde : on entre donc dans CETTE branche, qui se termine par un
+      // `return` AVANT même que `onAuthStateChange` ne soit enregistré (il ne
+      // l'est que s'il n'y a AUCUNE session). La ligne juste au-dessus le prouve
+      // — c'est elle qui consomme `passio_oauth_pending`.
+      //
+      // Sans cet appel, l'accord aux CGU donné avant le départ vers Google
+      // restait dans `localStorage` et n'atteignait JAMAIS le compte. Le défaut
+      // était invisible aux tests parce qu'ils appelaient `_poserConsentementOAuth`
+      // en direct : « tester la fonction ne suffit pas, il faut mesurer le
+      // CÂBLAGE ». Idempotente et sans effet sans accord mémorisé, elle est donc
+      // inoffensive sur tous les autres chemins de démarrage.
+      try { if (typeof _poserConsentementOAuth === "function") await _poserConsentementOAuth(); } catch (e) {}
       // 🔑 Une session Supabase valide = compte réel connecté → on entre dans l'app,
       // même si le flag d'onboarding local est absent (nouvel appareil, réinstallation,
       // connexion directe par email, user_state purgé…). Sans ça, un utilisateur
@@ -2459,6 +2518,15 @@ async function boot() {
         if (event === "SIGNED_IN" && _oauthEnAttente) {
           localStorage.removeItem("passio_oauth_pending");
           setTimeout(async () => {
+            // ⚠️ LE CONSENTEMENT AUX CGU SE POSE ICI, ET AVANT L'ADOPTION, parce
+            // que l'adoption RECHARGE la page : tout ce qui n'est pas fait avant
+            // ne sera jamais fait. Sur le chemin Google, l'accord a été donné
+            // sur l'écran d'avant, `signInWithOAuth` a quitté la page, et c'est
+            // le premier instant où une session existe pour l'écrire.
+            // (`_poserConsentementOAuth` n'écrase jamais un accord déjà posé.)
+            try {
+              if (typeof _poserConsentementOAuth === "function") await _poserConsentementOAuth();
+            } catch (e) { console.warn("consentement OAuth:", e); }
             try {
               // Adopter AVANT `state.onboarded = true` + `saveState()` : c'est
               // cette paire qui arme le beacon de `pagehide` déclenché par le
@@ -4638,23 +4706,17 @@ async function supaCreateGroup(groupName, memberIds, passionId) {
   } catch(e) { return null; }
 }
 
-async function supaSendMessage(convId, content) {
-  try {
-    await supaEnsureProfileExists();
-    var _msgId = "msg_" + uid();
-    var res = await supa.from("conv_messages").insert({
-      id: _msgId, conv_id: convId,
-      from_id: MY_UID, content: _withSenderMeta(content),
-      created_at: new Date().toISOString(),
-    });
-    // ⚠️ ON LIT `{ error }` : le SDK ne LÈVE PAS sur un refus RLS. Notifier un
-    // message que la base a refusé annoncerait un message qui n'existe pas.
-    if (res && res.error) { console.warn("Msg error:", res.error.message); return; }
-    // Cloche + push du destinataire, même application fermée (fire-and-forget :
-    // l'envoi ne doit pas attendre la notification).
-    try { _notifierMessage(convId, _msgId); } catch (e) {}
-  } catch(e) { console.warn("Msg error:", e); }
-}
+// ⚠️ `supaSendMessage` A ÉTÉ RETIRÉE ICI LE 2026-09-10, ET C'EST ELLE QUI A
+// RENDU LE DÉFAUT INVISIBLE. C'était une écriture MORTE — aucun appelant dans
+// tout le dépôt — mais elle portait le seul appel à `_notifierMessage`. Le
+// correctif du 2026-09-09 a donc été écrit, testé par 12 cas et documenté dans
+// CLAUDE.md… sur un chemin que personne n'emprunte. Les deux voies réelles sont
+// `_sendTextToSupa` (app-04, texte) et `sendMessageToSupabase` (app-09, média),
+// qui appellent désormais `_notifierMessage` dans leur branche de succès.
+//
+// Une fonction morte qui double une fonction vivante est pire qu'un trou : elle
+// donne au correctif un endroit plausible où se poser, et aux tests un endroit
+// plausible où être verts. Ne pas la réintroduire.
 
 // ══════════════════════════════════════════════════════════════════════════
 // NOTIFIER UN MESSAGE PRIVÉ  (2026-09-09)

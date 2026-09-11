@@ -24,12 +24,34 @@
 
   var GATE_SALT = "passio-gate-v1::";
   var GATE_HASH = "67a2ba44e8c09efc9e9e9d60690ef7cd1e3069d072231a1834b30ec1fc50390f";
-  var GATE_KEY  = "passio_gate_v1"; // sessionStorage → redemandé à chaque ouverture
+  // ⚠️ LE JETON SURVIT À LA FERMETURE DE L'ONGLET DEPUIS LE 2026-09-10.
+  // Il ne vivait qu'en `sessionStorage` : le code était donc redemandé à CHAQUE
+  // ouverture de l'application. Sur un téléphone, où l'onglet est purgé sans
+  // arrêt, cela veut dire « à chaque fois » — et c'est le tout premier écran que
+  // rencontre quelqu'un à qui on vient d'envoyer le lien. Pour une diffusion
+  // gratuite et large, cette friction se paie à chaque session, pour un gain de
+  // sécurité NUL : le hash est dans le JavaScript livré et un code à 4 chiffres
+  // se retrouve par force brute en quelques secondes. Ce gate est un rideau
+  // (il dit « ce n'est pas encore public »), jamais une serrure.
+  //
+  // `sessionStorage` reste LU en premier : les suites e2e n'y posent que lui, et
+  // un test qui veut un appareil vierge ne doit pas hériter d'un déverrouillage.
+  var GATE_KEY  = "passio_gate_v1"; // lu dans sessionStorage PUIS localStorage
   var CODE_LEN  = 4;
 
   // ---- Déjà déverrouillé dans cette session ? ----
   var unlocked = false;
   try { unlocked = sessionStorage.getItem(GATE_KEY) === GATE_HASH; } catch (e) {}
+  // Déverrouillage mémorisé sur CET appareil, lors d'une visite précédente.
+  if (!unlocked) {
+    try {
+      if (localStorage.getItem(GATE_KEY) === GATE_HASH) {
+        unlocked = true;
+        // On réalimente la session : le reste du code ne lit que celle-ci.
+        try { sessionStorage.setItem(GATE_KEY, GATE_HASH); } catch (e) {}
+      }
+    } catch (e) {}
+  }
 
   var resolveGate;
   window.__gateReady = unlocked
@@ -253,6 +275,8 @@
         verifyCode(attempt).then(function (ok) {
           if (ok) {
             try { sessionStorage.setItem(GATE_KEY, GATE_HASH); } catch (e) {}
+            // …et sur l'appareil, pour ne plus jamais le redemander ici.
+            try { localStorage.setItem(GATE_KEY, GATE_HASH); } catch (e) {}
             dots.forEach(function (d) { d.classList.add("ok"); });
             gate.classList.add("pg-unlock");
             document.documentElement.classList.remove("passio-locked");

@@ -77,16 +77,54 @@ test.describe("Profil visité — options dans le menu ⋯", () => {
     expect(dedans).toBe(true);
   });
 
-  test("④ « Signaler » depuis le menu ouvre bien le signalement", async ({ page }) => {
-    await bootOnboarded(page);
-    await ouvrirProfilVisite(page);
+  // ⚠️ RÉÉCRIT LE 2026-09-10, ET C'EST LE POINT DU CORRECTIF. Ce cas exigeait un
+  // toast « Signalement envoyé » IMMÉDIAT après le clic — c'est-à-dire très
+  // exactement le défaut : `reportUser` appelait `supaReport` sans `await` et
+  // sans lire son verdict, puis remerciait de façon inconditionnelle. La policy
+  // étant `WITH CHECK (reporter_id = auth.uid()::text)`, un refus RLS passait
+  // inaperçu et la personne se croyait protégée. Le cas mesure donc désormais
+  // les DEUX issues, et le motif enfin demandé (les 2 signalements de production
+  // ont un `reason` vide).
+  async function signalerDepuisLeMenu(page, verdict) {
+    await page.evaluate((ok) => {
+      window.__reportRecu = null;
+      window.supaReport = async function (type, id, motif) {
+        window.__reportRecu = { type: type, id: id, motif: motif };
+        return ok;
+      };
+    }, verdict);
     await page.locator(".modal.modal-fullscreen .profile-dots-btn.on-cover").click();
     await page.locator('#profileDotsMenu [role="menuitem"]:has-text("Signaler")').click();
-    // `reportUser` envoie le signalement puis ferme la modale et confirme par un
-    // toast — c'est le comportement d'AVANT, inchangé : seule la surface bouge.
+    // La fenêtre de motif s'interpose : sans elle, le modérateur reçoit un
+    // identifiant nu, sans savoir de quoi on accuse qui.
+    await expect(page.locator("#signalementMotif")).toBeVisible();
+    await page.locator("#signalementMotif").fill("Propos menaçants en message privé");
+    await page.getByRole("button", { name: "Envoyer le signalement" }).click();
+  }
+
+  test("④ « Signaler » demande un motif, l'envoie, et confirme le SUCCÈS", async ({ page }) => {
+    await bootOnboarded(page);
+    await ouvrirProfilVisite(page);
+    await signalerDepuisLeMenu(page, true);
+
     await expect(page.locator("#toastStack .toast")).toContainText(/Signalement envoyé/i);
+    // Le motif saisi est bien celui qui part, sur la bonne cible.
+    const recu = await page.evaluate(() => window.__reportRecu);
+    expect(recu.type).toBe("user");
+    expect(recu.motif).toBe("Propos menaçants en message privé");
     // ⚠️ `closeModal` masque la fenêtre, il ne retire pas le nœud : on mesure
     // la VISIBILITÉ, pas la présence dans le DOM.
     await expect(page.locator(".modal.modal-fullscreen")).toBeHidden();
+  });
+
+  test("④ bis un signalement REFUSÉ ne se fait plus passer pour envoyé", async ({ page }) => {
+    await bootOnboarded(page);
+    await ouvrirProfilVisite(page);
+    await signalerDepuisLeMenu(page, false);
+
+    const toast = page.locator("#toastStack .toast");
+    await expect(toast).toBeVisible();
+    await expect(toast).not.toContainText(/Signalement envoyé/i);
+    await expect(toast).toContainText(/impossible|déjà envoyé/i);
   });
 });

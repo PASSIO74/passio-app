@@ -193,10 +193,15 @@ jobs:
           # jour du runner. Le titre vient du module, jamais d'une seconde copie.
           node --input-type=module -e '
             import fs from "node:fs";
-            const { titreIssue } = await import("./scripts/sentinelle-detecter.mjs");
+            const { titreIssue, desamorcer } = await import("./scripts/sentinelle-detecter.mjs");
             const v = JSON.parse(fs.readFileSync("/tmp/verdict.json", "utf8"));
             const c = v.cible;
-            const cloture = (s) => String(s || "").replace(/`/g, "ˋ");
+            // ⚠️ `cloture` NE SUFFIT PAS ET N\u2019A JAMAIS SUFFI : échapper les
+            // accents graves empêche de sortir du bloc, pas de donner un ORDRE
+            // à l\u2019intérieur. `desamorcer` retire en plus les lignes en forme
+            // d\u2019instruction et les marqueurs de structure. Voir la fiche en
+            // tête de scripts/sentinelle-detecter.mjs (2026-09-10).
+            const cloture = (s) => desamorcer(s);
             const L = [];
             L.push("La sentinelle autonome a relevé un défaut que subissent de vrais utilisateurs.");
             L.push("");

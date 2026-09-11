@@ -1523,9 +1523,19 @@ function togglePinComment(threadId, commentId) {
 }
 
 // Signale un commentaire (modération) → table reports via supaReport.
-function reportCommentEntry(threadId, commentId) {
-  if (typeof supaReport === "function") supaReport("comment", commentId, "");
-  toast("Commentaire signalé. Merci, on s'en occupe.");
+// Même correctif que `reportUser` (2026-09-10) : porte, `await`, verdict lu.
+async function reportCommentEntry(threadId, commentId) {
+  if (!commentId) return;
+  try {
+    if (typeof requireAuthentication === "function" && !requireAuthentication("signaler")) return;
+  } catch (e) {}
+  var motif = await _demanderMotifSignalement("ce commentaire");
+  if (motif === null) return;
+  var ok = false;
+  try { if (typeof supaReport === "function") ok = await supaReport("comment", commentId, motif); } catch (e) { ok = false; }
+  toast(ok
+    ? "Commentaire signalé. Merci, on s'en occupe."
+    : "Signalement déjà envoyé, ou impossible pour le moment.", ok ? "success" : "warning");
 }
 
 // ───────── Feuille de commentaires inline (IRL / CDV sans ouvrir le détail) ─────────
@@ -3337,11 +3347,98 @@ function unblockUser(userId, name) {
   try { if (typeof renderBlockedList === "function") renderBlockedList(); } catch(e) {}
 }
 
-function reportUser(userId, name) {
+// ⚠️ « SIGNALEMENT ENVOYÉ » ÉTAIT ANNONCÉ MÊME QUAND RIEN N'ÉTAIT ÉCRIT
+// (2026-09-10). Quatre des cinq portes de signalement — `reportUser`,
+// `reportPost`, `reportCommentEntry`, `reportEvent` — appelaient `supaReport`
+// SANS `await` et sans lire son verdict, puis affichaient le remerciement de
+// façon inconditionnelle. Seule `reportPassion` faisait bien. Le cas n'était pas
+// théorique : la policy de production est `WITH CHECK (reporter_id =
+// auth.uid()::text)`, et un visiteur sans compte porte un `MY_UID` fabriqué
+// (`u_<aléatoire>`) — son signalement était donc REFUSÉ par la RLS, en silence
+// (le SDK ne lève pas), et il lisait quand même « Notre équipe va vérifier ».
+// Or « Signaler cet événement » est affiché aux visiteurs.
+//
+// Dans une application qui organise des rencontres physiques, un signalement
+// qu'on croit parti et qui n'existe pas est le pire des défauts silencieux :
+// la personne se croit protégée et cesse de chercher un autre recours.
+//
+// Toutes suivent désormais le patron de `reportPassion` : porte
+// d'authentification AVANT l'écriture, `await`, lecture du verdict, et un
+// message qui dit la VÉRITÉ dans les deux cas.
+async function reportUser(userId, name) {
   if (!userId) return;
-  if (typeof supaReport === "function") supaReport("user", userId, "");
+  try {
+    if (typeof requireAuthentication === "function" && !requireAuthentication("signaler")) return;
+  } catch (e) {}
+  var motif = await _demanderMotifSignalement("ce compte");
+  if (motif === null) return;   // annulé
+  var ok = false;
+  try { if (typeof supaReport === "function") ok = await supaReport("user", userId, motif); } catch (e) { ok = false; }
   closeModal();
-  toast("🚩 Signalement envoyé. Notre équipe va vérifier.");
+  toast(ok
+    ? "🚩 Signalement envoyé. Notre équipe va vérifier."
+    : "Signalement déjà envoyé, ou impossible pour le moment.", ok ? "success" : "warning");
+}
+
+// Petite fenêtre de motif, partagée par les quatre portes. Elle rend le texte
+// saisi, ou `null` si la personne renonce.
+//
+// ⚠️ LE MOTIF N'ÉTAIT JAMAIS RENSEIGNÉ : les cinq appelants passaient `""`, et
+// les deux signalements de production le confirment (`reason=''`). Celui qui
+// modère recevait donc un identifiant nu, sans savoir de quoi on accusait qui.
+// `supaReport` tronque déjà à 500 caractères.
+function _demanderMotifSignalement(quoi) {
+  return new Promise(function (resoudre) {
+    var fait = false;
+    var observateur = null;
+    var fini = function (v) {
+      if (fait) return;
+      fait = true;
+      try { if (observateur) observateur.disconnect(); } catch (e) {}
+      resoudre(v);
+    };
+    window._signalementValider = function () {
+      var el = document.getElementById("signalementMotif");
+      fini(el ? String(el.value || "").trim() : "");
+      try { closeModal(); } catch (e) {}
+    };
+    window._signalementAnnuler = function () { fini(null); try { closeModal(); } catch (e) {} };
+    try {
+      openModal(''
+        + '<div class="modal-handle"></div>'
+        + '<div class="modal-title">Signaler ' + escapeHtml(String(quoi || "")) + '</div>'
+        + '<div class="modal-subtitle">Dis-nous en deux mots ce qui ne va pas. '
+        + 'Ton signalement est confidentiel.</div>'
+        + '<label class="field"><span>Motif</span>'
+        + '<textarea class="textarea" id="signalementMotif" placeholder="Ce qui te pose problème…"></textarea></label>'
+        + '<div class="onb-footer">'
+        + '<button type="button" class="btn primary block" onclick="_signalementValider()">Envoyer le signalement</button>'
+        + '<button type="button" class="btn ghost block" onclick="_signalementAnnuler()">Annuler</button>'
+        + '</div>');
+      var champ = document.getElementById("signalementMotif");
+      if (champ) champ.focus();
+
+      // ⚠️ LA FENÊTRE SE FERME PAR QUATRE AUTRES CHEMINS QUE NOS DEUX BOUTONS :
+      // le « × » injecté par `openModal`, le fond, `Escape`, et la poignée
+      // `.modal-handle` — le geste le plus naturel sur un téléphone. Aucun
+      // n'appelle `_signalementAnnuler` : sans ce guetteur, la promesse restait
+      // PENDANTE À VIE et l'appelant ne reprenait jamais la main. Un abandon
+      // doit se prononcer, comme un refus.
+      var racine = document.getElementById("modalContent") || document.body;
+      if (window.MutationObserver && racine) {
+        observateur = new MutationObserver(function () {
+          if (!document.getElementById("signalementMotif")) fini(null);
+        });
+        observateur.observe(racine, { childList: true, subtree: true });
+      }
+    } catch (e) {
+      // ⚠️ ON N'ENCHAÎNE PAS SUR UN MOTIF VIDE. Un `catch` large ici masquerait
+      // une ReferenceError (famille `diagLog`) et enverrait le signalement SANS
+      // motif ni fenêtre — précisément le défaut que ce lot vient de fermer.
+      try { if (typeof diagLog === "function") diagLog("signalement_motif_indisponible " + ((e && e.message) || "?")); } catch (e2) {}
+      fini(null);
+    }
+  });
 }
 
 // ── SIGNALER UNE PASSION (2026-09-09) ─────────────────────────────────────
@@ -3363,7 +3460,7 @@ async function reportPassion(pid, label) {
   // La porte AVANT l'écriture : signaler suppose un compte (la RLS l'exige de
   // toute façon, `reporter_id = auth.uid()`).
   try {
-    if (typeof requireAuthentication === "function" && !requireAuthentication("preferences")) return;
+    if (typeof requireAuthentication === "function" && !requireAuthentication("signaler")) return;
   } catch (e) {}
   var nom = String(label || pid);
   var ok = false;
@@ -3379,10 +3476,18 @@ async function reportPassion(pid, label) {
   }
 }
 
-function reportPost(postId) {
+async function reportPost(postId) {
   if (!postId) return;
-  if (typeof supaReport === "function") supaReport("post", postId, "");
-  toast("Post signalé. Merci, on s'en occupe.");
+  try {
+    if (typeof requireAuthentication === "function" && !requireAuthentication("signaler")) return;
+  } catch (e) {}
+  var motif = await _demanderMotifSignalement("cette publication");
+  if (motif === null) return;
+  var ok = false;
+  try { if (typeof supaReport === "function") ok = await supaReport("post", postId, motif); } catch (e) { ok = false; }
+  toast(ok
+    ? "Publication signalée. Merci, on s'en occupe."
+    : "Signalement déjà envoyé, ou impossible pour le moment.", ok ? "success" : "warning");
 }
 
 function _blockedListHtml() {
@@ -4761,7 +4866,20 @@ function _sendTextToSupa(convId, msgId, content) {
           _outboxAdd(convId, msgId, content);
         }
       }
-      else { _setMsgStatus(convId, msgId, "sent"); _outboxRemove(msgId); }
+      else {
+        _setMsgStatus(convId, msgId, "sent"); _outboxRemove(msgId);
+        // ⚠️ LA NOTIFICATION ÉTAIT BRANCHÉE SUR UNE FONCTION MORTE (2026-09-10).
+        // `_notifierMessage` n'était appelée que par `supaSendMessage`, qui n'a
+        // AUCUN appelant dans le dépôt : le correctif du 2026-09-09 était écrit,
+        // testé, documenté… et sur un chemin que personne n'emprunte. Les deux
+        // vraies voies sont celle-ci (texte) et `sendMessageToSupabase` (média).
+        // Mesuré en production : `notifications` ne portait AUCUNE ligne
+        // `kind='message'`, y compris pour le message envoyé après le déploiement.
+        // C'est ICI qu'il faut notifier : dans la branche de SUCCÈS, jamais avant
+        // — annoncer un message que la base a refusé annoncerait un message qui
+        // n'existe pas. Fire-and-forget : l'envoi n'attend pas la cloche.
+        try { if (typeof _notifierMessage === "function") _notifierMessage(convId, msgId); } catch (e) {}
+      }
     })
     .catch(function() { _setMsgStatus(convId, msgId, "failed"); _outboxAdd(convId, msgId, content); });
 }

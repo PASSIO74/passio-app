@@ -51,9 +51,37 @@ async function boot(page, errors, n = 3) {
   await bootOnboarded(page, errors, n);
 }
 
+// ⚠️ PRÉMISSE À POSER, ELLE TENAIT PAR ACCIDENT (2026-09-10). Deux cas de cette
+// suite mesurent la ligne « N participants · N places restantes » et le passage
+// « Je viens » → « Inscrit ✓ » sur la PREMIÈRE carte de la liste — c'est-à-dire,
+// jusqu'ici, une activité de DÉMONSTRATION.
+//
+// Depuis que le contenu fabriqué se dit à TOUT LE MONDE et plus seulement aux
+// visiteurs, une activité de démonstration affiche « Exemple PASSIO ·
+// participation désactivée » à la place de ces chiffres, et refuse la
+// participation. C'est très exactement ce qu'on lui demande : un testeur inscrit
+// ne doit pas pouvoir répondre « j'y vais » à une rencontre qui n'existe pas,
+// chez un organisateur qui n'existe pas.
+//
+// La suite doit donc observer une activité qui n'en est pas une. On garde les
+// activités du socle telles quelles — mêmes villes, mêmes participants, mêmes
+// places — et on ne change QUE la forme de l'identifiant, seul discriminant de
+// `PassioFirstRun.evenementDemo`. Toutes les assertions restent exactes, et
+// elles lisent `data-evid` dynamiquement.
+async function sansActivitesDeDemo(page) {
+  await page.evaluate(() => {
+    state.seed.events = (state.seed.events || []).map(function (e) {
+      return Object.assign({}, e, { id: "ev_" + e.id });
+    });
+    try { renderIRL(); } catch (e) {}
+  });
+  await page.waitForTimeout(300);
+}
+
 async function allerIrl(page) {
   await page.evaluate(() => goTo("irl"));
   await page.waitForTimeout(900);
+  await sansActivitesDeDemo(page);
 }
 
 // ══════════════════════════════════════════════════════════════════════════
