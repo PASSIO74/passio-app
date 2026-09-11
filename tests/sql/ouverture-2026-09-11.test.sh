@@ -243,6 +243,14 @@ contient "le verdict nomme le graphe social"      "Graphe social" "$SORTIE"
 contient "le verdict nomme l'identité serveur"    "Identité serveur" "$SORTIE"
 contient "le verdict nomme les téléphones"        "Téléphones effacés" "$SORTIE"
 contient "le verdict nomme la purge planifiée"    "Purge télémétrie planifiée" "$SORTIE"
+# ⚠️ LA MUTATION RÉELLE EST LA SEULE PREUVE QUE LA GARDE ② AGIT. Le tableau ne
+# prouve que l'existence du trigger ; celle-ci joue l'attaque d'un visiteur qui
+# se donne un `auth_uid` choisi, et exige que le serveur l'écrase.
+contient "la mutation réelle est jouée et refuse l'identité forgée" \
+  "identité forgée par un visiteur est bien écrasée" "$SORTIE"
+verifier "la mutation réelle n'a laissé AUCUNE ligne derrière elle" \
+  "0" "$(Q "select count(*) from public.client_errors
+             where message like 'verdict_ouverture_2026_09_11%'")"
 echo
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -313,15 +321,22 @@ mutation() { # libellé, SQL de sabotage
   socle
   APPLIQUER >/dev/null 2>&1
   psql -h "$BASE" -p "$PORT" -U postgres -d mut -q -c "$sabotage" >/dev/null 2>&1
-  # On ne rejoue QUE le tableau de verdict : appliquer à nouveau réparerait le
-  # sabotage, et le banc se rendrait vert tout seul.
-  local v
+  # On ne rejoue QUE les CONTRÔLES : appliquer à nouveau réparerait le sabotage,
+  # et le banc se rendrait vert tout seul.
+  #
+  # ⚠️ LES DEUX BLOCS, PAS SEULEMENT LE TABLEAU. Le tableau ne voit que
+  # l'EXISTENCE du trigger : vider le corps de sa fonction le laisse en place et
+  # la ligne ② dirait OK. Seule la MUTATION RÉELLE (transaction annulée) le voit.
+  local v extrait
+  extrait="$(mktemp)"
   # ⚠️ On borne sur le SELECT lui-même, pas sur le titre du bloc : partir de
   # « -- VERDICT » puis retirer « les trois premières lignes » avalait le
   # `SELECT * FROM (` — l'extraction rendait un fragment invalide, donc une
   # sortie vide, donc « pas d'ECHEC », donc un banc vert sur une garde cassée.
-  v="$(psql -h "$BASE" -p "$PORT" -U postgres -d mut -tA -q \
-       -f <(sed -n '/^SELECT \* FROM (/,/^) v ORDER BY n;/p' "$FICHIER") 2>&1)"
+  sed -n '/^SELECT \* FROM (/,/^) v ORDER BY n;/p' "$FICHIER"  > "$extrait"
+  sed -n '/^-- MUTATION RÉELLE/,/^ROLLBACK;/p'      "$FICHIER" >> "$extrait"
+  v="$(psql -h "$BASE" -p "$PORT" -U postgres -d mut -tA -q -f "$extrait" 2>&1)"
+  rm -f "$extrait"
   if printf '%s' "$v" | grep -q "ECHEC"; then
     ok=$((ok+1)); printf '  ✅ %s → le verdict rougit\n' "$nom"
   else
@@ -343,6 +358,14 @@ mutation "un téléphone revient dans auth.users" \
   "update auth.users set raw_user_meta_data = raw_user_meta_data || '{\"phone\":\"0639981298\"}'::jsonb where raw_user_meta_data->>'name'='Quatre';"
 mutation "la tâche de purge est désactivée sans être supprimée" \
   "update cron.job set active = false where jobname = 'purge_telemetry_30j';"
+
+# ⚠️ CES DEUX-LÀ VIENNENT D'UN AUDIT DE DIFF, ET LE VERDICT LES LAISSAIT PASSER.
+# Elles sont la raison d'être de la correction du 2026-09-11 : chacune rouvrait
+# la fuite EN TOUTES LETTRES pendant que le tableau affichait OK.
+mutation "une policy FOR ALL rouvre conv_reads (gabarit « Enable all operations »)" \
+  "create policy \"Enable all operations\" on public.conv_reads for all to public using (true) with check (true);"
+mutation "le trigger reste en place mais sa fonction est VIDÉE de son corps" \
+  "create or replace function public.client_errors_pose_identite() returns trigger language plpgsql security definer set search_path = public, pg_temp as \$vide\$ begin return new; end; \$vide\$;"
 echo
 
 # ─────────────────────────────────────────────────────────────────────────────

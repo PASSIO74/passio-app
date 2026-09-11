@@ -71,9 +71,14 @@ test.describe("Isolation des médias de production", () => {
     await sansDonneesDistantes(page);
     await page.goto("/");
 
-    const partiesReseau = [];
-    page.on("requestfinished", (r) => {
-      if (/\/storage\/v1\//.test(r.url())) partiesReseau.push(r.url());
+    // ⚠️ CE COLLECTEUR DOIT ÊTRE ASSERTÉ, SINON IL NE SERT À RIEN. Sa première
+    // version accumulait les URLs vues et personne ne les regardait — le cas
+    // annonçait « aucun octet de production n'a été demandé » sans jamais le
+    // mesurer. On enregistre donc les échecs de TRANSPORT : ils ne peuvent
+    // survenir que si la requête a quitté le navigateur.
+    const transport = [];
+    page.on("requestfailed", (r) => {
+      if (/\/storage\/v1\//.test(r.url())) transport.push((r.failure() || {}).errorText || "");
     });
 
     const r = await chargerImage(page, IMAGE_DISTANTE);
@@ -81,6 +86,10 @@ test.describe("Isolation des médias de production", () => {
     // reste emprunté), mais aucun octet de production n'a été demandé.
     expect(r.chargee, "l'image doit se charger, pas échouer").toBe(true);
     expect(r.largeur, "un PNG 1×1 a été servi à la place du fichier réel").toBe(1);
+    expect(
+      transport.join(" "),
+      "aucune requête ne doit avoir atteint le réseau : la route sert le pixel",
+    ).not.toMatch(/NAME_NOT_RESOLVED|TUNNEL_CONNECTION_FAILED|ERR_CONNECTION|ERR_PROXY/);
   });
 
   test("② le câblage : bootOnboarded pose la route pour les ~113 suites", async ({ page }) => {

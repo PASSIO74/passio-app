@@ -8,8 +8,14 @@
 -- relancer sans risque après correction. Le fichier est idempotent : le rejouer
 -- ne fait pas de mal.
 --
--- À LA FIN, UN TABLEAU DE VERDICT s'affiche. Chaque ligne doit dire OK.
--- S'il dit ECHEC quelque part : ne rien faire d'autre, copier la ligne.
+-- À LA FIN, UN TABLEAU DE VERDICT s'affiche : les lignes 1 à 4 doivent dire OK,
+-- la ligne 5 dit INFO (c'est une mesure, pas un contrôle). Puis une MUTATION
+-- RÉELLE est jouée et annulée, qui rend son propre OK.
+-- Si quoi que ce soit dit ECHEC : ne rien faire d'autre, copier la ligne.
+--
+-- ⚠️ SI AUCUN TABLEAU NE S'AFFICHE, c'est que la transaction a échoué AVANT son
+-- COMMIT : rien n'a été appliqué, la base est intacte. Ne relance pas en
+-- boucle — copie le message d'erreur et arrête-toi là.
 --
 -- ⚠️ CE FICHIER NE FAIT PAS LE VACUUM. Il ne peut pas : `VACUUM` est interdit
 -- dans une transaction, et tout ce fichier en est une. Le vacuum est un second
@@ -168,10 +174,24 @@ comment on column public.client_errors.auth_uid is
 --
 -- ⚠️ Personne n'est déconnecté : on retire une clé des métadonnées, pas la
 -- session ni le jeton de rafraîchissement.
+--
+-- ⚠️ MAIS L'UPDATE DE `user_state` FAIT AVANCER SON `updated_at` (trigger
+-- `trg_user_state_horodatage`), ET CELA A UN EFFET CÔTÉ APPAREIL. Un appareil
+-- qui portait une écriture d'état EN ATTENTE verra `_flushPendingUserState`
+-- (app-02) comparer avec `.lte("updated_at", baseServeur)`, ne toucher aucune
+-- ligne, conclure « serveur plus récent : file obsolète » et JETER sa file — en
+-- silence. Une seule ligne est concernée aujourd'hui (mesuré), et la perte se
+-- limite à des préférences non encore synchronisées. À coller de préférence à
+-- une heure creuse.
 
+-- ⚠️ `jsonb_exists(x,'k')` ET NON L'OPÉRATEUR `?`. Les deux sont équivalents en
+-- SQL, mais `?` est le caractère que beaucoup de clients prennent pour un
+-- paramètre à substituer. Un fichier fait pour être COLLÉ dans un éditeur web ne
+-- doit pas parier là-dessus — et le reste du fichier utilise déjà la forme
+-- fonction, donc l'uniformité supprime la question.
 UPDATE auth.users
    SET raw_user_meta_data = raw_user_meta_data - 'phone'
- WHERE raw_user_meta_data ? 'phone';
+ WHERE jsonb_exists(raw_user_meta_data, 'phone');
 
 UPDATE public.user_state
    SET data = data #- '{user,general,phone}'
@@ -223,14 +243,24 @@ COMMIT;
 -- VERDICT — chaque ligne doit dire OK
 -- ════════════════════════════════════════════════════════════════════════════
 SELECT * FROM (
+  -- ⚠️ `cmd IN ('SELECT','ALL')`, JAMAIS `cmd='SELECT'` SEUL. Une policy
+  -- `FOR ALL` est enregistrée avec `cmd='ALL'` : un garde qui ne cherche que
+  -- 'SELECT' ne la voit PAS, et le gabarit « Enable all operations » du tableau
+  -- de bord Supabase en crée précisément une — c'est donc la dérive la PLUS
+  -- probable. Mesuré : en posant cette policy après application, `anon` relit
+  -- les 37 lignes et cette ligne disait OK. Même défaut, mot pour mot, que celui
+  -- déjà documenté dans CLAUDE.md pour le garde de dérive de l'admission 18+.
+  -- `qual IS NULL` couvre une policy permissive sans USING, qui laisse tout passer.
   SELECT 1 AS n, '① Graphe social (conv_reads)' AS geste,
          CASE WHEN (SELECT relrowsecurity FROM pg_class WHERE oid='public.conv_reads'::regclass)
                AND EXISTS (SELECT 1 FROM pg_policies
                             WHERE schemaname='public' AND tablename='conv_reads'
-                              AND cmd='SELECT' AND qual LIKE '%is_conv_member%')
+                              AND cmd IN ('SELECT','ALL') AND qual LIKE '%is_conv_member%')
                AND NOT EXISTS (SELECT 1 FROM pg_policies
                             WHERE schemaname='public' AND tablename='conv_reads'
-                              AND cmd='SELECT' AND qual = 'true')
+                              AND cmd IN ('SELECT','ALL')
+                              AND permissive = 'PERMISSIVE'
+                              AND (qual IS NULL OR qual = 'true'))
               THEN 'OK' ELSE 'ECHEC' END AS verdict,
          'Qui parle à qui n''est plus lisible sans compte.' AS detail
   UNION ALL
@@ -246,21 +276,26 @@ SELECT * FROM (
          'Un texte anonyme ne peut plus atteindre la chaîne autonome.'
   UNION ALL
   SELECT 3, '② Téléphones effacés',
-         CASE WHEN (SELECT count(*) FROM auth.users WHERE raw_user_meta_data ? 'phone') = 0
+         CASE WHEN (SELECT count(*) FROM auth.users WHERE jsonb_exists(raw_user_meta_data, 'phone')) = 0
                AND (SELECT count(*) FROM public.user_state
                      WHERE jsonb_exists(data->'user'->'general','phone')) = 0
               THEN 'OK' ELSE 'ECHEC' END,
-         'auth.users : ' || (SELECT count(*)::text FROM auth.users WHERE raw_user_meta_data ? 'phone')
+         'auth.users : ' || (SELECT count(*)::text FROM auth.users WHERE jsonb_exists(raw_user_meta_data, 'phone'))
          || ' restant(s) · user_state : '
          || (SELECT count(*)::text FROM public.user_state
               WHERE jsonb_exists(data->'user'->'general','phone')) || ' restante(s)'
   UNION ALL
+  -- ⚠️ ON LES LISTE TOUTES, sans `LIMIT 1`. Basculer plus tard à 7 jours (voir
+  -- plus haut) puis recoller ce fichier — les deux conseils qu'il donne — laisse
+  -- DEUX tâches actives. Sans dégât (7 j ⊂ 30 j), mais un `LIMIT 1` sans
+  -- `ORDER BY` annoncerait alors une rétention qui n'est pas celle qui s'applique.
   SELECT 4, '③ Purge télémétrie planifiée',
          CASE WHEN EXISTS (SELECT 1 FROM cron.job
                             WHERE jobname LIKE 'purge_telemetry%' AND active)
               THEN 'OK' ELSE 'ECHEC' END,
-         COALESCE((SELECT 'tâche « ' || jobname || ' » à ' || schedule
-                     FROM cron.job WHERE jobname LIKE 'purge_telemetry%' AND active LIMIT 1),
+         COALESCE((SELECT string_agg('« ' || jobname || ' » à ' || schedule, ' + '
+                                     ORDER BY jobname)
+                     FROM cron.job WHERE jobname LIKE 'purge_telemetry%' AND active),
                   'aucune tâche active')
   UNION ALL
   SELECT 5, '   Taille après purge',
@@ -270,6 +305,37 @@ SELECT * FROM (
          || ' (' || (SELECT count(*)::text FROM public.telemetry_events) || ' lignes)'
          || ' — les octets ne sont rendus qu''après le VACUUM ci-dessous'
 ) v ORDER BY n;
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- MUTATION RÉELLE — la SEULE preuve que la garde ② fonctionne vraiment
+-- ════════════════════════════════════════════════════════════════════════════
+-- ⚠️ LA LIGNE ② DU TABLEAU CI-DESSUS NE PROUVE QUE L'EXISTENCE DU TRIGGER.
+-- Vider le corps de sa fonction par un `create or replace` le laisse en place,
+-- `tgenabled` à 'O' — et la ligne dirait OK pendant qu'un visiteur se forge une
+-- identité serveur. Mesuré : c'est exactement ce qui se produit.
+--
+-- On joue donc l'attaque pour de vrai : un visiteur (`anon`) insère une erreur
+-- en se donnant explicitement un `auth_uid` de son choix. Le serveur doit
+-- l'écraser. Tout est dans une transaction ANNULÉE : aucune ligne ne subsiste.
+--
+-- ⚠️ `RESET ROLE` avant la lecture : `anon` a l'INSERT mais PAS le SELECT sur
+-- cette table, donc un `RETURNING` échouerait sur un refus de privilège — ce qui
+-- ressemblerait à un défaut du correctif alors que ce serait un défaut du
+-- contrôle. Le `SET LOCAL` et son INSERT partent dans le même envoi (ADR-012).
+BEGIN;
+  SET LOCAL role anon;
+  INSERT INTO public.client_errors (message, auth_uid)
+       VALUES ('verdict_ouverture_2026_09_11 — ligne annulee',
+               '00000000-0000-4000-8000-000000000000'::uuid);
+  RESET ROLE;
+  SELECT CASE WHEN auth_uid IS NULL THEN 'OK' ELSE 'ECHEC' END AS verdict_mutation,
+         CASE WHEN auth_uid IS NULL
+              THEN 'Une identité forgée par un visiteur est bien écrasée par le serveur.'
+              ELSE 'DANGER : le visiteur a choisi son auth_uid. Le trigger ne fait rien.'
+              END AS detail
+    FROM public.client_errors
+   WHERE message = 'verdict_ouverture_2026_09_11 — ligne annulee';
+ROLLBACK;
 
 -- ════════════════════════════════════════════════════════════════════════════
 -- SECOND COLLER, FACULTATIF — LE VACUUM

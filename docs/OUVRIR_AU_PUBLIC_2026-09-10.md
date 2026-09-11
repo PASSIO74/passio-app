@@ -76,9 +76,18 @@ fichier** : `migrations/OUVERTURE_2026-09-11.sql`. Ouvre-le, sélectionne tout, 
 - **une seule transaction** : si quoi que ce soit échoue, RIEN n'est appliqué ;
 - **rejouable** : le recoller ne fait aucun mal (c'est même la bonne réponse au
   téléphone qui revient tout seul, voir plus bas) ;
-- il finit par un **TABLEAU DE VERDICT** : cinq lignes, chacune doit dire `OK`.
+- il finit par un **TABLEAU DE VERDICT** : les lignes 1 à 4 doivent dire `OK`,
+  la ligne 5 dit `INFO` (c'est une mesure de taille, pas un contrôle) ;
+- puis une **MUTATION RÉELLE** est jouée et annulée — un visiteur tente de se
+  forger une identité serveur, et le serveur doit l'écraser. Elle rend son propre
+  `OK`. C'est la seule ligne qui prouve que la garde *fonctionne* : le tableau, lui,
+  ne prouve que l'*existence* du trigger.
 
-Si une ligne dit `ECHEC` : ne fais rien d'autre, copie-la.
+Si quoi que ce soit dit `ECHEC` : ne fais rien d'autre, copie la ligne.
+
+⚠️ **Si aucun tableau ne s'affiche du tout**, c'est que la transaction a échoué
+avant son `COMMIT` : **rien n'a été appliqué**, ta base est intacte. Ne relance pas
+en boucle — copie le message d'erreur et arrête-toi.
 
 ### Ce que le fichier fait, et pourquoi
 
@@ -304,7 +313,7 @@ select pg_size_pretty(pg_database_size(current_database()));
 ```
 
 Le rapport **confirmés / comptes** est le plus important : s'il tombe sous ~70 %, ce
-sont les e-mails qui partent en spam — geste 7.
+sont les e-mails qui partent en spam — GESTE 5.
 
 Et chaque jour, une commande :
 
