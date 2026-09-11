@@ -108,3 +108,160 @@ test("un jeton d'APPAREIL falsifié ne déverrouille pas non plus", async ({ pag
   await expect(page.locator("#passioGate")).toBeVisible();
   await expect(page.locator(".app-shell")).toBeHidden();
 });
+// ═══════════════════════════════════════════════════════════════════════════
+// TEXTES LÉGAUX LISIBLES SANS CODE (2026-09-11)
+//
+// La LCEN (art. 1-1) impose des mentions légales à la disposition du PUBLIC.
+// Le rideau masquait tout — et en production le bloc applicatif, où vivaient
+// les textes, n'est injecté qu'après le code : un visiteur sans code ne
+// pouvait lire ni qui édite, ni qui héberge, ni comment joindre l'éditeur.
+// Les textes vivent désormais dans js/legal-textes.js (tête de page) et
+// l'écran du code les rend lui-même. Trois cas : ils se lisent ; les lire ne
+// déverrouille rien et ne saisit rien ; ce sont les MÊMES textes que ceux de
+// l'application (source unique, mesurée à l'octet près).
+// ═══════════════════════════════════════════════════════════════════════════
+const LEGAUX = [
+  { bouton: "Mentions légales",         titre: "Mentions légales",                   attendu: ["Netlify, Inc.", "101 2nd Street", "passioadmin@gmail.com", "1-1, II"], modale: "openLegalNotice" },
+  { bouton: "Conditions d'utilisation", titre: "Conditions générales d'utilisation", attendu: ["18 ans", "risques et périls", "Droit français"],                        modale: "openTermsOfService" },
+  { bouton: "Confidentialité",          titre: "Politique de confidentialité",       attendu: ["CNIL", "identifiant d'appareil", "13 mois"],                             modale: "openPrivacyPolicy" },
+];
+
+test("sans code, les mentions légales, les CGU et la politique se lisent depuis l'écran du code d'accès", async ({ page }) => {
+  await page.goto("/index.html");
+  await expect(page.locator("#passioGate")).toBeVisible();
+  const panneau = page.locator("#pgLegalPanel");
+  await expect(panneau).toBeHidden();
+  for (const l of LEGAUX) {
+    await page.getByRole("button", { name: l.bouton, exact: true }).click();
+    await expect(panneau).toBeVisible();
+    await expect(page.locator("#pgLegalTitre")).toHaveText(l.titre);
+    const texte = await page.locator("#pgLegalBody").innerText();
+    for (const mot of l.attendu) expect(texte, `${l.titre} doit contenir « ${mot} »`).toContain(mot);
+    expect(texte).not.toContain("Texte indisponible");
+    expect(texte).not.toContain("[à compléter]");
+    // Lire n'est pas entrer : rien n'est déverrouillé, aucun jeton posé.
+    await expect(page.locator(".app-shell")).toBeHidden();
+    expect(await page.evaluate((k) => sessionStorage.getItem(k), GATE_KEY)).toBeNull();
+    await page.locator("#pgLegalClose").click();
+    await expect(panneau).toBeHidden();
+  }
+});
+
+test("lire un texte légal ne saisit aucun code : le clavier va au panneau, pas au champ", async ({ page }) => {
+  await page.goto("/index.html");
+  // Le champ du code prend le focus 700 ms après l'affichage : on attend qu'il
+  // soit parti, c'est précisément la fenêtre où un lecteur ouvre un texte.
+  await page.waitForTimeout(900);
+  await page.getByRole("button", { name: "Mentions légales", exact: true }).click();
+  await expect(page.locator("#pgLegalPanel")).toBeVisible();
+  expect(await page.evaluate(() => document.activeElement && document.activeElement.id)).toBe("pgLegalClose");
+  await page.keyboard.type(GATE_CODE);
+  await expect(page.locator("#passioGate")).toBeVisible();
+  await expect(page.locator(".app-shell")).toBeHidden();
+  expect(await page.locator("#pgInput").inputValue()).toBe("");
+  // Échap referme et rend le clavier au champ du code.
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#pgLegalPanel")).toBeHidden();
+  expect(await page.evaluate(() => document.activeElement && document.activeElement.id)).toBe("pgInput");
+});
+
+test("ouvrir un texte dans la première seconde : le focus différé du champ ne reprend pas la main", async ({ page }) => {
+  // Le champ du code prend le focus par un setTimeout de 700 ms après
+  // l'affichage. Quelqu'un qui tape « Mentions légales » avant ce délai lisait
+  // le texte pendant que le clavier revenait, en silence, sur le champ du code :
+  // les touches suivantes y auraient saisi un code. `focusInput` s'abstient tant
+  // qu'un texte est ouvert — c'est cette garde que ce cas mesure.
+  //
+  // ⚠️ MESURÉ PAR RÉINJECTION : sans horloge simulée, `page.goto` rend la main
+  // après `load` (scripts, styles, polices), donc APRÈS les 700 ms — le clic
+  // arrivait toujours trop tard, et retirer la garde laissait ce cas VERT. Avec
+  // l'horloge simulée, le minuteur ne part que quand le test le décide.
+  await page.clock.install();
+  await page.goto("/index.html");
+  await page.getByRole("button", { name: "Mentions légales", exact: true }).click();
+  await expect(page.locator("#pgLegalPanel")).toBeVisible();
+  expect(await page.evaluate(() => document.activeElement && document.activeElement.id)).toBe("pgLegalClose");
+  await page.clock.runFor(1500); // le focus différé part maintenant… et doit s'abstenir
+  expect(await page.evaluate(() => document.activeElement && document.activeElement.id)).toBe("pgLegalClose");
+  // Panneau fermé, le champ reprend le clavier comme d'habitude.
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#pgLegalPanel")).toBeHidden();
+  expect(await page.evaluate(() => document.activeElement && document.activeElement.id)).toBe("pgInput");
+});
+
+test("le panneau est inerte : Tab ne rejoint pas le champ du code sous l'overlay", async ({ page }) => {
+  // `aria-modal` n'isole rien par lui-même. Sans `inert` sur la carte du code,
+  // Shift+Tab depuis le bouton × atteignait les trois liens puis le champ du
+  // code, invisibles sous l'overlay : quatre chiffres tapés là déverrouillaient
+  // l'application pendant la lecture (relecture indépendante, 2026-09-11).
+  await page.goto("/index.html");
+  await page.waitForTimeout(900);
+  await page.getByRole("button", { name: "Mentions légales", exact: true }).click();
+  await expect(page.locator("#pgLegalPanel")).toBeVisible();
+  // Mesuré APRÈS CHAQUE pression : sans `inert`, le champ du code reçoit le
+  // focus à la 4e (× → Confidentialité → Conditions → Mentions → champ), puis
+  // le cycle repart ailleurs — une assertion posée seulement à la fin ne le
+  // voyait pas (réinjection du 2026-09-11).
+  for (let i = 0; i < 6; i++) {
+    await page.keyboard.press("Shift+Tab");
+    const actif = await page.evaluate(() => {
+      const a = document.activeElement;
+      return a ? (a.id || a.className || a.tagName) : "aucun";
+    });
+    expect(actif, `après ${i + 1} Shift+Tab, le focus est sur « ${actif} »`).not.toBe("pgInput");
+    expect(actif).not.toContain("pg-legal-link");
+  }
+  await page.keyboard.type(GATE_CODE);
+  await expect(page.locator("#passioGate")).toBeVisible();
+  await expect(page.locator(".app-shell")).toBeHidden();
+  expect(await page.locator("#pgInput").inputValue()).toBe("");
+  expect(await page.evaluate((k) => sessionStorage.getItem(k), GATE_KEY)).toBeNull();
+  // Et la carte redevient utilisable une fois le panneau fermé.
+  await page.locator("#pgLegalClose").click();
+  await expect(page.locator("#pgLegalPanel")).toBeHidden();
+  await page.locator("#pgInput").click();
+  await page.keyboard.type(GATE_CODE);
+  await expect(page.locator("#landing")).toBeVisible({ timeout: 10000 });
+});
+
+test("Échap referme le panneau même après un clic dans le texte", async ({ page }) => {
+  // Un clic sur un paragraphe (non focalisable) posait le focus sur <body> ;
+  // un keydown ciblé sur <body> ne traverse jamais #passioGate, et Échap
+  // devenait muet. La carte est focalisable (tabindex=-1) et l'écoute vit au
+  // niveau du document.
+  await page.goto("/index.html");
+  await page.getByRole("button", { name: "Mentions légales", exact: true }).click();
+  await expect(page.locator("#pgLegalPanel")).toBeVisible();
+  await page.locator("#pgLegalBody p").first().click();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#pgLegalPanel")).toBeHidden();
+  expect(await page.evaluate(() => document.activeElement && document.activeElement.id)).toBe("pgInput");
+});
+
+test("les textes du gate sont ceux de l'application, à l'octet près (source unique)", async ({ page }) => {
+  await page.goto("/index.html");
+  const depuisGate = {};
+  for (const l of LEGAUX) {
+    await page.getByRole("button", { name: l.bouton, exact: true }).click();
+    await expect(page.locator("#pgLegalPanel")).toBeVisible();
+    depuisGate[l.modale] = await page.locator("#pgLegalBody").innerHTML();
+    await page.locator("#pgLegalClose").click();
+  }
+  // Puis on déverrouille et on ouvre les mêmes textes par les modales d'app-02.
+  await page.locator("#pgInput").click();
+  await page.keyboard.type(GATE_CODE);
+  await expect(page.locator("#landing")).toBeVisible({ timeout: 10000 });
+  await page.waitForFunction(() => typeof openLegalNotice === "function" && typeof openModal === "function", null, { timeout: 15000 });
+  for (const l of LEGAUX) {
+    const html = await page.evaluate((fn) => {
+      window[fn]();
+      const corps = document.querySelector(".modal-backdrop.active #modalContent div[style*='max-height:55vh']");
+      const h = corps ? corps.innerHTML : null;
+      closeModal();
+      return h;
+    }, l.modale);
+    expect(html, `${l.modale} : le corps de la modale`).not.toBeNull();
+    expect(html.trim().length).toBeGreaterThan(500);
+    expect(html.trim()).toBe(depuisGate[l.modale].trim());
+  }
+});

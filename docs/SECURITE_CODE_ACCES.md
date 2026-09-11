@@ -8,7 +8,7 @@
 - **`boot()` n'est pas exécuté** : aucune donnée Supabase n'est chargée, aucun écran rendu ;
 - URL directes, routes internes et deep links sont couverts (SPA : tout passe par `index.html`, donc par le gate).
 
-Le déverrouillage est mémorisé en `sessionStorage` uniquement → il expire à la fermeture de l'onglet/app.
+Le déverrouillage est mémorisé en `sessionStorage` **et**, depuis le 2026-09-10, en `localStorage` : le code n'est plus redemandé sur un appareil qui l'a déjà saisi (le jeton de session est réalimenté depuis l'appareil au chargement).
 
 ## Fichiers concernés
 
@@ -42,6 +42,10 @@ crypto.subtle.digest("SHA-256", new TextEncoder().encode("passio-gate-v1::4807")
 4. Rebuild + redéployer.
 
 Code actuel : `2125` → hash `67a2ba44e8c09efc9e9e9d60690ef7cd1e3069d072231a1834b30ec1fc50390f`.
+
+## Ce que le rideau NE masque PAS : les textes légaux (2026-09-11)
+
+La LCEN (art. 1-1) impose des mentions légales à la disposition du **public**, code ou pas. L'écran du rideau porte donc trois liens sous le pied de la carte — Mentions légales · Conditions d’utilisation · Confidentialité — qui ouvrent un panneau (`#pgLegalPanel`) sans rien déverrouiller. Les textes viennent de `js/legal-textes.js`, chargé en tête juste après `access-gate.js` (en production, `app.js` n'existe pas encore à ce moment-là). Détail et verrous : `docs/CGU_ET_MENTIONS_LEGALES.md` §5 bis.
 
 ## Limites connues (assumées pour une beta privée)
 

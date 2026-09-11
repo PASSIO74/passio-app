@@ -183,6 +183,26 @@
     + ".pg-card.shake{animation:pgShake .45s ease}"
     + "@keyframes pgShake{10%,90%{transform:translateX(-2px)}20%,80%{transform:translateX(4px)}30%,50%,70%{transform:translateX(-7px)}40%,60%{transform:translateX(7px)}}"
     + ".pg-foot{font-size:11px;color:rgba(221,214,254,.45);margin-top:18px}"
+    // ⚖️ Textes légaux lisibles SANS code (2026-09-11) : trois liens sous le
+    // pied, et un panneau blanc par-dessus la carte. Le corps des textes
+    // porte des couleurs en `var(--text)` / `var(--muted)` : la carte les
+    // définit elle-même pour ne dépendre d'aucune feuille de style de l'app.
+    + ".pg-legal{display:flex;flex-wrap:wrap;justify-content:center;gap:2px 8px;margin-top:8px}"
+    + ".pg-legal-link{background:none;border:0;padding:6px 4px;margin:0;font:inherit;font-size:11.5px;color:rgba(221,214,254,.78);"
+    + "text-decoration:underline;text-underline-offset:2px;cursor:pointer;border-radius:6px}"
+    + ".pg-legal-link:hover,.pg-legal-link:focus-visible{color:#fff;outline:2px solid rgba(196,181,253,.7);outline-offset:1px}"
+    + "#pgLegalPanel{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;padding:16px;"
+    + "background:rgba(15,10,46,.72);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}"
+    // ⚠️ `[hidden]` ne replie RIEN sur un `display:flex` posé par un sélecteur
+    // plus fort que la règle d'agent utilisateur (piège connu, fiche 19).
+    + "#pgLegalPanel[hidden]{display:none}"
+    + ".pg-legal-card{--text:#1b1830;--muted:#4b4763;width:min(560px,100%);max-height:calc(100% - 24px);display:flex;flex-direction:column;"
+    + "background:#fff;color:#1b1830;border-radius:20px;box-shadow:0 24px 70px rgba(0,0,0,.5);text-align:left;overflow:hidden}"
+    + ".pg-legal-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 18px 12px;border-bottom:1px solid rgba(24,18,48,.08)}"
+    + ".pg-legal-titre{margin:0;font-size:17px;font-weight:800;color:#1b1830}"
+    + ".pg-legal-close{flex:none;width:36px;height:36px;border-radius:50%;border:0;background:rgba(24,18,48,.06);color:#1b1830;font-size:22px;line-height:1;cursor:pointer}"
+    + ".pg-legal-close:hover,.pg-legal-close:focus-visible{background:rgba(124,58,237,.14);outline:2px solid #7c3aed;outline-offset:1px}"
+    + ".pg-legal-body{overflow-y:auto;padding:14px 18px 18px;font-size:12.5px;line-height:1.65;color:#4b4763;-webkit-overflow-scrolling:touch}"
     + "#passioGate.pg-unlock{animation:pgOut .55s cubic-bezier(.55,0,.55,.2) .25s both}"
     + "#passioGate.pg-unlock .pg-card{animation:pgCardOut .5s ease both}"
     + "@keyframes pgOut{to{opacity:0;visibility:hidden}}"
@@ -229,7 +249,21 @@
         '</div>' +
         '<div class="pg-err" id="pgErr">Code incorrect. Réessaie.</div>' +
         '<div class="pg-foot">Accès réservé · PASSIO © ' + new Date().getFullYear() + "</div>" +
-      "</div>";
+        // ⚖️ La LCEN (art. 1-1) veut des mentions légales à la disposition du
+        // PUBLIC : le rideau masque l'application, pas qui l'édite.
+        '<nav class="pg-legal" aria-label="Informations légales">' +
+          '<button type="button" class="pg-legal-link" data-pg-legal="mentions">Mentions légales</button>' +
+          '<button type="button" class="pg-legal-link" data-pg-legal="cgu">Conditions d\'utilisation</button>' +
+          '<button type="button" class="pg-legal-link" data-pg-legal="politique">Confidentialité</button>' +
+        '</nav>' +
+      "</div>" +
+      '<div id="pgLegalPanel" hidden>' +
+        '<div class="pg-legal-card" role="dialog" aria-modal="true" aria-labelledby="pgLegalTitre" tabindex="-1">' +
+          '<div class="pg-legal-head"><h2 class="pg-legal-titre" id="pgLegalTitre"></h2>' +
+          '<button type="button" class="pg-legal-close" id="pgLegalClose" aria-label="Fermer">×</button></div>' +
+          '<div class="pg-legal-body" id="pgLegalBody"></div>' +
+        '</div>' +
+      '</div>';
     document.body.appendChild(gate);
 
     var dotsWrap = gate.querySelector("#pgDots");
@@ -255,17 +289,79 @@
       }
     }
 
-    function focusInput() { try { input.focus({ preventScroll: true }); } catch (e) { input.focus(); } render(); }
+    function focusInput() {
+      // Pendant la lecture d'un texte légal, le focus reste au panneau : le
+      // focus différé du démarrage (700 ms) ne doit pas ramener le clavier sur
+      // le champ du code sous les doigts de quelqu'un qui lit.
+      if (legalOuvert) return;
+      try { input.focus({ preventScroll: true }); } catch (e) { input.focus(); } render();
+    }
     // L'input recouvre les cases (calque transparent) : un tap dessus focus
     // NATIVEMENT dans le geste → clavier iOS. On garde un focus explicite sur le
     // reste du gate (hors input) pour desktop/robustesse.
     var otp = gate.querySelector("#pgOtp");
     if (otp) otp.addEventListener("click", focusInput);
     gate.addEventListener("click", function (ev) { if (ev.target === gate) focusInput(); });
+
+    // ---- Textes légaux, lisibles SANS code (LCEN art. 1-1) — 2026-09-11 ----
+    // Le corps de chaque texte vient de js/legal-textes.js (chargé en tête,
+    // AVANT l'application) : la même fonction alimente les modales d'app-02.
+    var LEGAL = {
+      mentions:  { titre: "Mentions légales",                   corps: "passioTexteMentionsLegales" },
+      cgu:       { titre: "Conditions générales d'utilisation", corps: "passioTexteCGU" },
+      politique: { titre: "Politique de confidentialité",       corps: "passioTextePolitique" },
+    };
+    var legalPanel = gate.querySelector("#pgLegalPanel");
+    var legalTitre = gate.querySelector("#pgLegalTitre");
+    var legalBody = gate.querySelector("#pgLegalBody");
+    var legalClose = gate.querySelector("#pgLegalClose");
+    var legalOuvert = null;
+
+    function ouvrirLegal(cle) {
+      var def = LEGAL[cle];
+      if (!def || !legalPanel) return;
+      var rendu = window[def.corps];
+      legalTitre.textContent = def.titre;
+      // ⚠️ PAS DE REPLI SILENCIEUX : si le fichier des textes manque, on le DIT à
+      // l'écran — un panneau vide passerait pour un texte court. Le verrou
+      // dist-build.spec.js l'attrape sur l'artefact de production.
+      legalBody.innerHTML = (typeof rendu === "function")
+        ? rendu()
+        : '<p style="color:#b45309;font-weight:700;">Texte indisponible : js/legal-textes.js n’est pas chargé.</p>';
+      legalBody.scrollTop = 0;
+      legalPanel.hidden = false;
+      legalOuvert = cle;
+      // ⚠️ `aria-modal` n'isole RIEN par lui-même : sans `inert`, Shift+Tab
+      // depuis le bouton × rejoignait les trois liens puis LE CHAMP DU CODE,
+      // invisibles sous l'overlay — quatre chiffres tapés là déverrouillaient
+      // l'application pendant la lecture (relecture indépendante, 2026-09-11).
+      try { card.inert = true; } catch (e) {}
+      // Le focus quitte le champ du code : taper pendant la lecture ne doit
+      // jamais saisir un code, et un lecteur d'écran doit atterrir sur le texte.
+      try { legalClose.focus({ preventScroll: true }); } catch (e) { legalClose.focus(); }
+    }
+    function fermerLegal() {
+      if (!legalPanel || legalPanel.hidden) return;
+      legalPanel.hidden = true;
+      legalBody.innerHTML = "";
+      legalOuvert = null;
+      try { card.inert = false; } catch (e) {}
+      focusInput();
+    }
+    gate.addEventListener("click", function (ev) {
+      var lien = ev.target && ev.target.closest ? ev.target.closest("[data-pg-legal]") : null;
+      if (lien) { ev.preventDefault(); ev.stopPropagation(); ouvrirLegal(lien.getAttribute("data-pg-legal")); return; }
+      var fermer = ev.target && ev.target.closest ? ev.target.closest("#pgLegalClose") : null;
+      if (fermer || ev.target === legalPanel) { ev.stopPropagation(); fermerLegal(); }
+    });
+    document.addEventListener("keydown", function (ev) {
+      if (ev.key === "Escape" && legalOuvert) { ev.preventDefault(); fermerLegal(); }
+    });
     input.addEventListener("blur", render);
     input.addEventListener("focus", render);
 
     input.addEventListener("input", function () {
+      if (legalOuvert) { input.value = ""; render(); return; }
       input.value = input.value.replace(/\D/g, "").slice(0, CODE_LEN);
       err.classList.remove("show");
       render();

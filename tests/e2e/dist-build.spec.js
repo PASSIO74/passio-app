@@ -47,4 +47,20 @@ test.describe("build prod (dist) — app.js externalisé derrière le gate", () 
     await page.waitForFunction(() => typeof boot === "function", null, { timeout: 20000 });
     await page.waitForSelector("#landing.active", { timeout: 20000 });
   });
+  // ⚖️ LCEN art. 1-1 : les mentions légales doivent se lire SANS code — donc
+  // sans app.js, qui n'est injecté qu'après. Mesuré sur l'ARTEFACT, parce que
+  // c'est le build qui décide de ce qui vit en tête de page et de ce qui est
+  // repoussé derrière le gate.
+  test("page verrouillée : les mentions légales se lisent SANS app.js (LCEN)", async ({ page }) => {
+    await page.goto("/dist/index.html");
+    await page.waitForSelector("#passioGate .pg-title", { timeout: 15000 });
+    await page.getByRole("button", { name: "Mentions légales", exact: true }).click();
+    await expect(page.locator("#pgLegalPanel")).toBeVisible();
+    const texte = await page.locator("#pgLegalBody").innerText();
+    expect(texte).toContain("Netlify, Inc.");
+    expect(texte).toContain("passioadmin@gmail.com");
+    expect(texte).not.toContain("Texte indisponible");
+    // …et toujours aucun JS applicatif : les textes viennent de la tête de page.
+    expect(await page.evaluate(() => typeof boot)).toBe("undefined");
+  });
 });
