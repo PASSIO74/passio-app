@@ -20,7 +20,7 @@ trois choses, et chacune a une conséquence propre :
 ⚠️ **`openAbout()` affichait une identité fabriquée** : « PASSIO SAS · France ·
 contact@passio.app ». Trois informations qu'aucun document du dépôt n'établit,
 et dont la dernière **contredisait** l'adresse réelle donnée par la politique de
-confidentialité (`contact@ladamemetallerie.com`). Une mention légale fausse
+confidentialité (`passioadmin@gmail.com`). Une mention légale fausse
 trompe. Elle n'a qu'une source désormais : `PASSIO_EDITEUR` (app-02).
 
 ### ⚠️ Un trou n'est pas toujours un trou (correction du 2026-09-08, le soir)

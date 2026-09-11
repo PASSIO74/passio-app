@@ -3545,7 +3545,7 @@ function openDeleteAccountConfirm() {
       <li>tes messages, conversations et notifications ;</li>\
       <li>tes likes, commentaires, abonnements et événements.</li>\
     </ul>\
-    <p style="font-size:12px;color:var(--muted);margin-bottom:14px;">Ton compte et ton adresse e-mail sont retirés de nos serveurs immédiatement ; en cas d’incident technique, au plus tard sous 30 jours (art. 17 RGPD). Pour toute question : contact@ladamemetallerie.com</p>\
+    <p style="font-size:12px;color:var(--muted);margin-bottom:14px;">Ton compte et ton adresse e-mail sont retirés de nos serveurs immédiatement ; en cas d’incident technique, au plus tard sous 30 jours (art. 17 RGPD). Pour toute question : ' + escapeHtml(PASSIO_EDITEUR.email) + '</p>\
     <label class="field"><span>Tape <strong>SUPPRIMER</strong> pour confirmer</span>\
       <input type="text" class="input" id="deleteConfirmInput" autocomplete="off" placeholder="SUPPRIMER"/></label>\
     <div style="display:flex;gap:8px;margin-top:12px;">\
@@ -3657,7 +3657,7 @@ function openPrivacyPolicy() {
 const PASSIO_EDITEUR = {
   service: "PASSIO",
   site: "passio-app.netlify.app",
-  email: "contact@ladamemetallerie.com",
+  email: "passioadmin@gmail.com",
 
   // ── LE RÉGIME, SEUL INTERRUPTEUR ────────────────────────────────────────
   // "particulier" — personne physique éditant à titre NON PROFESSIONNEL.

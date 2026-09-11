@@ -45,7 +45,7 @@ Deno.serve(async (req) => {
   // 2. VAPID.
   const pub = Deno.env.get("VAPID_PUBLIC_KEY");
   const priv = Deno.env.get("VAPID_PRIVATE_KEY");
-  const subject = Deno.env.get("VAPID_SUBJECT") || "mailto:contact@passio.app";
+  const subject = Deno.env.get("VAPID_SUBJECT") || "mailto:passioadmin@gmail.com";
   if (!pub || !priv) return json({ error: "VAPID non configuré" }, 500);
   webpush.setVapidDetails(subject, pub, priv);
 

@@ -635,12 +635,12 @@ d'anonymat de la LCEN vise l'identification de l'ÉDITEUR d'un service de commun
 public, elle ne couvre pas le responsable de traitement, et aucun texte ne l'étend. Une
 personne physique qui traite des données personnelles doit se nommer. Aujourd'hui, un
 testeur qui veut savoir qui détient ses messages privés, ses photos et son numéro de
-téléphone n'a qu'une adresse @ladamemetallerie.com. Le fichier PASSIO_EDITEUR est prêt à
+téléphone n'a qu'une adresse e-mail générique. Le fichier PASSIO_EDITEUR est prêt à
 recevoir l'information (il a déjà un interrupteur de régime), mais aucun champ de nom de
 personne physique n'y existe.
 
 **Preuve.** js/app-02-state-utils.js:3232 — §5 « Tes droits (RGPD) … par e-mail :
-contact@ladamemetallerie.com », aucun nom. js/app-02-state-utils.js:3373-3379 — mentions
+passioadmin@gmail.com », aucun nom. js/app-02-state-utils.js:3373-3379 — mentions
 légales : « PASSIO est édité par une personne physique, à titre non professionnel.
 Conformément à l'article 1-1, II […] l'éditeur conserve l'anonymat vis-à-vis du public ».
 js/app-02-state-utils.js:3255-3300 — l'objet PASSIO_EDITEUR ne porte que
@@ -649,7 +649,7 @@ physique. Aucune occurrence de « responsable du traitement » ni de « base lé
 texte rendu (lecture intégrale des lignes 3222-3240 et 3363-3400).
 
 **Correctif.** Ajouter une clé `responsableTraitement` à PASSIO_EDITEUR (nom et prénom réels de Benjamin,
-ou la raison sociale de La Dame Métallerie si c'est elle qui exploite) et l'afficher au §5
+ou d'une structure si elle exploite un jour le service) et l'afficher au §5
 de openPrivacyPolicy sous « Responsable du traitement : … ». Ne PAS toucher aux mentions
 légales : l'anonymat LCEN art. 1-1, II reste valable et distinct — ce sont deux textes et
 deux obligations.
@@ -666,7 +666,7 @@ deux obligations.
 > la case « Mesure d'usage » dans les Paramètres. HEAD = ff3bc4f = ce que sert la
 > production.  Contre HEAD, les preuves du constat sont EXACTES, à la ligne près : - ligne
 > 3232 = « 5. Tes droits (RGPD). Accès, rectification, effacement, portabilité,
-> opposition… par e-mail : contact@ladamemetallerie.com ». Aucun nom. (J'ai compté depuis
+> opposition… par e-mail : passioadmin@gmail.com ». Aucun nom. (J'ai compté depuis
 > 3222 = `function openPrivacyPolicy() {` : 3227 date, 3228 §1 … 3232 §5. Le compte tombe
 > juste.) - lignes ~3372-3378 = mentions légales : « PASSIO est édité par une personne
 > physique, à titre non professionnel. Conformément à l'article 1-1, II […] l'éditeur
@@ -698,7 +698,7 @@ deux obligations.
 > inventer de maillon : (1) un testeur dépose messages privés et photos dans PASSIO ; (2)
 > il veut savoir qui les détient, ou exercer un droit d'accès/effacement ; (3) il ouvre la
 > politique de confidentialité et n'y trouve pas de nom de personne ; (4) il écrit à
-> contact@ladamemetallerie.com ; (5) le §1 promet que l'identité complète lui sera
+> passioadmin@gmail.com ; (5) le §1 promet que l'identité complète lui sera
 > communiquée — il l'obtient, ou n'obtient pas de réponse ; (6) il saisit la CNIL, qui
 > identifie le responsable via le domaine et l'hébergeur Netlify (dont l'adresse postale
 > complète EST publiée, art. 1-1 II) ; (7) la CNIL met en demeure de compléter
@@ -706,7 +706,7 @@ deux obligations.
 > pas une amende.  PROBABILITÉ RÉELLE SUR LA BETA. Très faible, et pas seulement à cause
 > du volume (6 profils, 7 comptes auth). Trois amortisseurs mesurés : le §1 promet déjà la
 > communication de l'identité sur demande, ce qui rend le manquement partiel et non total
-> ; l'adresse de contact porte un nom commercial identifiable (ladamemetallerie.com), donc
+> ; l'adresse de contact est nommée et suivie (passioadmin@gmail.com depuis le 2026-09-11), donc
 > l'utilisateur n'est pas devant une boîte noire ; l'app est protégée par un code d'accès
 > et les testeurs sont recrutés en direct par Benjamin, qu'ils connaissent. Un testeur qui
 > veut savoir à qui il parle le sait déjà.  DOMMAGE MAXIMAL. Gêne administrative et retard
@@ -2456,8 +2456,8 @@ doit être `403`, pas un envoi silencieux.
 > dans le `WITH CHECK` de la policy `conv_members / Ecriture propre`. La machinerie
 > existe, la push ne s'en sert pas.  POURQUOI JE DESCENDS À P2 / COMMERCIALISATION  Le
 > constat dit « 3 comptes sur 7 » et s'arrête là. En regardant QUI : `20762060… =
-> contact@ladamemetallerie.com` (« ben test ordi ») et `6902826f… =
-> benjamin.ladame@gmail.com` (« Ben sur portable test ») sont les deux comptes de Benjamin
+> l'adresse de l'éditeur` (« ben test ordi ») et `6902826f… =
+> une adresse personnelle de Benjamin` (« Ben sur portable test ») sont les deux comptes de Benjamin
 > lui-même. Le seul tiers réellement exposé aujourd'hui est **un** compte, `683bbbd0… «
 > Léa »`, créé le 2026-08-19. La population à risque n'est pas 3 personnes, c'est 1.  Et
 > l'attaquant doit être quelqu'un qui a un compte : 7 comptes en tout, tous connus de
@@ -3430,7 +3430,7 @@ entendu et n'a été entendu par personne. Atténuation réelle mais invisible :
 `state.feedbacks` est bien porté par `_syncableState()` (qui ne retire que `seed` et
 `supabasePosts`), donc les retours ATTERRISSENT dans le blob `user_state` — encore faut-il
 que quelqu'un aille les y chercher en SQL, et rien ne le signale. Un canal e-mail existe par
-ailleurs et il est désormais unifié (`contact@ladamemetallerie.com`, affiché par « À propos
+ailleurs et il est désormais unifié (`passioadmin@gmail.com`, affiché par « À propos
 », la politique de confidentialité, les mentions légales et la suppression de compte) : le
 défaut n'est pas l'absence d'adresse, c'est que le bouton qui dit « Support » est un cul-de-
 sac.
@@ -3446,7 +3446,7 @@ jsonb_array_length(coalesce(data->'feedbacks','[]')) from user_state order by
 length(data::text) desc limit 12` → 0 partout (personne ne s'en est encore servi).
 
 **Correctif.** Le plus rapide, en minutes : remplacer le corps de `feedbackModal` par un lien
-`mailto:contact@ladamemetallerie.com` pré-rempli (sujet + version + écran courant) et
+`mailto:passioadmin@gmail.com` pré-rempli (sujet + version + écran courant) et
 supprimer la phrase « Tu pourras l'exporter au créateur ». La version durable, en heures :
 une table `feedbacks` (RLS insert-own, comme `client_errors`) ou une Edge Function, et un
 panneau dans le Centre de pilotage — un retour de testeur ne doit pas dépendre de quelqu'un
@@ -3482,7 +3482,7 @@ qui pense à interroger `user_state`.
 > vaut pas pour un visiteur qui se connecte ensuite).  POURQUOI P2 ET NON P1 Rien n'est
 > détruit sur le chemin principal : pour un testeur connecté, le retour est récupérable en
 > une requête SQL sur `user_state`. Un canal de secours existe, fonctionne et est unifié —
-> `PASSIO_EDITEUR.email = "contact@ladamemetallerie.com"` (app-02:3292), affiché dans « À
+> `PASSIO_EDITEUR.email = "passioadmin@gmail.com"` (app-02:3292), affiché dans « À
 > propos » (app-02:2663, DEUX boutons plus bas dans la même section « Support »), la
 > politique (3256, 3264), les CGU (3383, 3391), les mentions légales (3432, 3435) et la
 > suppression de compte (3181) ; la moitié « deux adresses différentes » du constat
@@ -3515,7 +3515,7 @@ qui pense à interroger `user_state`.
 > le fil, « ajouter une passion ne fonctionne pas »), tous arrivés par message direct et
 > tous traités. Sur une beta de proches diffusée par lien, le message direct EST le canal.
 > Enfin, la porte de sortie existe à deux boutons de là, dans la même section Support : «
-> À propos de PASSIO » affiche contact@ladamemetallerie.com (app-02:2663). Donc : défaut
+> À propos de PASSIO » affiche passioadmin@gmail.com (app-02:2663). Donc : défaut
 > réel d'intégrité de l'interface (un bouton qui ment), correctif de quelques minutes qui
 > mérite d'entrer dans le lot de départ pour une raison de RENDEMENT — une beta ne sert
 > qu'à récolter des retours — mais pas une barrière devant l'envoi. Pour le seuil (B)
@@ -5159,8 +5159,8 @@ coût du changement d'origine croît avec chaque installation.
 
 L'unique adresse publiée — mentions légales « Contact », CGU §6 (contestation d'une décision
 de modération) et §14 (litige), politique de confidentialité §1 (responsable de traitement)
-et §9 (exercice des droits) — est contact@ladamemetallerie.com, une adresse sur le domaine
-d'une activité de métallerie, sans rapport avec PASSIO. Deux effets : l'anonymat revendiqué
+et §9 (exercice des droits) — était, au moment de l'audit, une adresse sur le domaine
+d'une autre activité, sans rapport avec PASSIO (remplacée le 2026-09-11 par passioadmin@gmail.com). Deux effets : l'anonymat revendiqué
 au titre du régime « particulier » (qui repose sur le fait de ne publier que l'identité de
 l'hébergeur) est vidé de son sens, puisque le contact publié rattache le service à une
 activité identifiable et déclarée ; et le canal légal du service dépend d'un domaine dont la
@@ -5168,7 +5168,7 @@ vie ne suit pas celle de PASSIO — s'il change de main ou expire, les demandes 
 signalements DSA et les contestations n'arrivent plus nulle part, sans que rien ne le
 signale.
 
-**Preuve.** js/app-02-state-utils.js:3292 email: "contact@ladamemetallerie.com" ; affiché par
+**Preuve.** js/app-02-state-utils.js:3292 email: "…" (ancienne adresse, remplacée le 2026-09-11) ; affiché par
 openLegalNotice (« Contact », « Signalement d'un contenu illicite »), openTermsOfService §6
 et §14, openPrivacyPolicy §1 et §9. Régime revendiqué : js/app-02-state-utils.js:3310
 regime: "particulier" + le texte « l'éditeur conserve l'anonymat vis-à-vis du public ». Le
