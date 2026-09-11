@@ -23,8 +23,15 @@ test("① cdnUrl : une URL publique Supabase part vers le CDN, le reste ne bouge
     externe: cdnUrl("https://exemple.org/photo.jpg"),
     nul: cdnUrl(null),
   }), SUPA);
-  expect(r.base).toMatch(/^https:\/\/passio-app\.netlify\.app\/media$/);
-  expect(r.cdn).toBe(r.base + "/content/photos/u1/x.jpg");
+  // Kill switch (`PASSIO_CDN_BASE = ""`) : cdnUrl rend l'URL INCHANGÉE — le test doit
+  // rester vert dans les deux états, un kill switch qui rougit la CI n'en est pas un.
+  if (r.base) {
+    expect(r.base.startsWith("https://")).toBe(true);
+    expect(r.base.endsWith("/media")).toBe(true);
+    expect(r.cdn).toBe(r.base + "/content/photos/u1/x.jpg");
+  } else {
+    expect(r.cdn).toBe(SUPA);
+  }
   expect(r.data).toBe("data:image/png;base64,AAAA");
   expect(r.externe).toBe("https://exemple.org/photo.jpg");
   expect(r.nul).toBeNull();
@@ -39,9 +46,15 @@ test("② passioThumb : une URL CDN reçoit sa largeur, une URL Supabase garde l
     direct: passioThumb(supa, 700),
     externe: passioThumb("https://exemple.org/photo.jpg", 700),
   }), SUPA);
-  expect(r.viaCdn).toBe("https://passio-app.netlify.app/media/content/photos/u1/x.jpg?width=700&quality=75");
-  // Une largeur déjà posée est REMPLACÉE, jamais empilée (deux `?` = URL invalide).
-  expect(r.viaCdnDejaParam).toBe("https://passio-app.netlify.app/media/content/photos/u1/x.jpg?width=700&quality=75");
+  const base = await page.evaluate(() => window.PASSIO_CDN_BASE);
+  if (base) {
+    expect(r.viaCdn).toBe(base + "/content/photos/u1/x.jpg?width=700&quality=75");
+    // Une largeur déjà posée est REMPLACÉE, jamais empilée (deux `?` = URL invalide).
+    expect(r.viaCdnDejaParam).toBe(base + "/content/photos/u1/x.jpg?width=700&quality=75");
+  } else {
+    // Kill switch : cdnUrl est l'identité, la miniature suit le chemin Supabase.
+    expect(r.viaCdn).toContain("/storage/v1/render/image/public/");
+  }
   expect(r.direct).toContain("/storage/v1/render/image/public/");
   expect(r.direct).not.toContain("passio-app.netlify.app");
   expect(r.externe).toBe("https://exemple.org/photo.jpg");

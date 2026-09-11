@@ -131,6 +131,15 @@ self.addEventListener("fetch", e => {
   // Ne pas intercepter les appels externes (Supabase, CDN Leaflet, etc.)
   if (url.hostname !== self.location.hostname) return;
 
+  // Les médias passent par /media/* (Edge Function, docs/CDN_MEDIAS.md) : MÊME
+  // origine que l'app depuis le 2026-09-11, donc ils tomberaient dans le
+  // stale-while-revalidate ci-dessous — chaque vidéo vue (25 Mo) copiée dans
+  // le Cache Storage de l'appareil, sans borne, et un média supprimé servi à
+  // vie depuis l'appareil (la revalidation reçoit un 404, qui ne remplace
+  // rien). Le cache HTTP du navigateur suffit : l'Edge Function pose ses
+  // propres en-têtes. On laisse passer, comme les appels externes.
+  if (url.pathname.startsWith("/media/")) return;
+
   // index.html → toujours réseau d'abord pour avoir la dernière version
   if (
     url.pathname === "/" ||
