@@ -98,7 +98,7 @@ Verrou : `tests/e2e/adr-009-retrait-economie.spec.js` (7). Inventaire complet du
 
 ## 📧 Confirmation d'e-mail ACTIVE depuis le 2026-08-30 (SMTP Brevo)
 
-`signUp` ne rend **plus** de session : le compte existe, il est inutilisable tant que l'adresse n'est pas confirmée. Configuration, rétablissement et geste DNS restant : `docs/SETUP_SMTP_AUTH.md`.
+`signUp` ne rend **plus** de session : le compte existe, il est inutilisable tant que l'adresse n'est pas confirmée. Depuis le 2026-09-11, PASSIO a sa propre identité : contact `passioadmin@gmail.com` (`PASSIO_EDITEUR.email`, source unique), domaine d'envoi `passio-app.fr` sur des comptes OVH et Brevo dédiés — **plus aucune référence à une autre activité de l'éditeur**. Montage complet, enregistrements DKIM/DMARC, bascule SMTP et gabarits français : `docs/SETUP_SMTP_AUTH.md`.
 Deux règles à ne pas enfreindre : **`switchAuthTab` d'abord, message ensuite** (il remet `#authMsg` à zéro — tout ce qu'on veut voir survivre à une bascule se pose APRÈS elle) ; et les comptes de test ne se créent JAMAIS par `signUp` mais par `tests/e2e/compte-e2e.js` (pré-confirmés via `service_role`, aucun e-mail envoyé).
 Verrou : `tests/e2e/confirmation-email.spec.js` (7). Les quatre conséquences détaillées (chemins morts d'`onbDoAuth`, renvoi de lien, anti-énumération, `authz-critical` comme barrière RLS, risque R11 DKIM/DMARC) : `docs/CONFIRMATION_EMAIL.md`.
 

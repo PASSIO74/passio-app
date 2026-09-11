@@ -5,7 +5,7 @@
 | # | Risque | Catégorie | Prob | Impact | Détect. | Mitigation |
 |---|---|---|---|---|---|---|
 | R1 | ~~Réactivation « confirm email » sans SMTP~~ → **traité** le 2026-08-30 (SMTP Brevo + confirmation ON) | Produit/Conf. | — | — | — | Voir « Remédiations appliquées ». Reste ouvert : domaine d'envoi non authentifié (DKIM/DMARC) → **R11**. |
-| R11 | Domaine d'envoi non authentifié (ni DKIM ni DMARC) → confirmations classées en spam, inscriptions perdues sans trace | Produit/Deliverab. | Élevée | Élevé | **Difficile** (rien ne remonte côté app) | Ajouter les enregistrements DNS Brevo (accès registrar requis). |
+| R11 | Domaine d'envoi non authentifié (ni DKIM ni DMARC) → confirmations classées en spam, inscriptions perdues sans trace | Produit/Deliverab. | Élevée | Élevé | **Difficile** (rien ne remonte côté app) | **En cours (2026-09-11)** : domaine `passio-app.fr` acheté sur un compte OVH PASSIO, compte Brevo PASSIO créé, 4 enregistrements DNS à poser puis bascule SMTP Supabase — `docs/SETUP_SMTP_AUTH.md`. |
 | R2 | Médias privés en bucket public (pas d'URL signée) | Confidentialité | Moyenne | Élevé | Difficile | URLs signées (P0). |
 | R3 | Schéma prod diverge des migrations repo → 400 / RLS silencieuse | DB | Élevée | Moyen | Moyen | `migration-checker` en gate. |
 | R4 | Collision de globals sur nouveau code | Archi | Moyenne | Moyen | Facile | `audit-globals` (CI). |
