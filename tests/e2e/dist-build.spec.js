@@ -18,8 +18,14 @@ test.describe("build prod (dist) — app.js externalisé derrière le gate", () 
   // directement dans le Fil, parcours actif par défaut depuis le 2026-09-01.
   // Poser la coupure par suite plutôt que par cas évite qu'un futur test ajouté
   // ici hérite du même piège en silence.
+  // ⚠️ Le rideau est LEVÉ par défaut depuis l'ouverture publique du 2026-09-11 :
+  // cette suite mesure l'architecture « app.js derrière le gate », elle ARME donc
+  // le gate elle-même (`passio_gate_actif = "1"`), comme access-gate.spec.js.
   test.beforeEach(async ({ page }) => {
-    await page.addInitScript((cle) => localStorage.setItem(cle, "0"), CLE_PREMIERE_VISITE);
+    await page.addInitScript((cle) => {
+      localStorage.setItem(cle, "0");
+      localStorage.setItem("passio_gate_actif", "1");
+    }, CLE_PREMIERE_VISITE);
   });
 
   test.beforeAll(() => {
