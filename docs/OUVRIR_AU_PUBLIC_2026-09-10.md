@@ -342,7 +342,9 @@ c'est la seule chose qui ne peut pas attendre.
 - **La restauration d'une sauvegarde n'a jamais été exercée.** Une sauvegarde jamais
   restaurée est une intention, pas une sauvegarde.
 - **Le code d'accès 2125 n'est pas une sécurité** : son hash est dans le JavaScript
-  livré. C'est un rideau qui dit « ce n'est pas encore public ». ⚠️ Tant qu'il est là,
-  les mentions légales ne sont **pas accessibles au public** — la LCEN impose de les
-  mettre à disposition. Le jour où tu ouvres vraiment : retire le rideau (et les mots
-  « Beta privée » de `js/access-gate.js`), ou pose les liens légaux sur son écran.
+  livré. C'est un rideau qui dit « ce n'est pas encore public ». ✅ **Depuis le
+  2026-09-11, les mentions légales, les CGU et la politique de confidentialité se
+  lisent SANS code**, depuis l'écran du rideau lui-même (trois liens sous le pied de
+  la carte, panneau blanc par-dessus) : la LCEN (art. 1-1) est respectée que le
+  rideau reste ou non. Le retirer redevient une pure décision produit — et les mots
+  « Beta privée » de `js/access-gate.js` partent avec lui.

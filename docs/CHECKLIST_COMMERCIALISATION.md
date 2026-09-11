@@ -110,8 +110,12 @@ exploitation : `docs/OUVERTURE_PUBLIQUE_2026-09-11.md` (mode d'emploi et gestes 
       Geste : authentifier le domaine chez Brevo (code, DKIM, puis DMARC).
       Quota gratuit : **300 e-mails/jour**.
 - [x] **② Le code d'accès est LEVÉ (2026-09-11).** Il ne s'arme plus que sur adhésion
-      (`passio_gate_actif = "1"`) ; `access-gate.spec.js` l'arme lui-même. Ce n'était pas
-      une barrière de sécurité : le hash est dans le JavaScript livré.
+      (`passio_gate_actif = "1"`) ; `access-gate.spec.js` l'arme lui-même. Quand il est
+      armé (préproduction), **les mentions légales, les CGU et la politique se lisent
+      SANS lui**, depuis l'écran du rideau (LCEN art. 1-1 — `js/legal-textes.js`, verrous
+      dans `access-gate.spec.js` et `dist-build.spec.js`). Ce n'était pas une barrière de
+      sécurité : le hash est dans le JavaScript livré et un code à 4 chiffres se retrouve
+      par force brute en quelques secondes.
 - [x] **③ Les signalements ont un destinataire (2026-09-11)** : statut en base
       (migration à coller), `npm run moderation traiter`, et l'alerte quotidienne qui
       ouvre une issue `[MODÉRATION]` dès qu'un signalement attend plus de 24 h.

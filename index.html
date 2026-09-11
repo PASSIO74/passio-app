@@ -44,6 +44,10 @@
   <!-- 🔒 ACCESS GATE : verrouillage par code avant tout accès (pré-lancement).
        Doit rester le PREMIER script — voir docs/SECURITE_CODE_ACCES.md -->
   <script src="js/access-gate.js"></script>
+  <!-- ⚖️ TEXTES LÉGAUX (mentions, CGU, confidentialité) : en tête, AVANT l'app,
+       pour être lisibles SANS code d'accès (LCEN art. 1-1). Source unique des
+       trois textes, rendus par le gate ET par les modales d'app-02. -->
+  <script src="js/legal-textes.js"></script>
 
   <!-- PWA : installation automatique adaptée à l'appareil ET au navigateur -->
   <script src="js/platform.js"></script>

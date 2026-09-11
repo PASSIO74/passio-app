@@ -21,7 +21,7 @@ trois choses, et chacune a une conséquence propre :
 contact@passio.app ». Trois informations qu'aucun document du dépôt n'établit,
 et dont la dernière **contredisait** l'adresse réelle donnée par la politique de
 confidentialité (`passioadmin@gmail.com`). Une mention légale fausse
-trompe. Elle n'a qu'une source désormais : `PASSIO_EDITEUR` (app-02).
+trompe. Elle n'a qu'une source désormais : `PASSIO_EDITEUR` (app-02 jusqu'au 2026-09-11, désormais `js/legal-textes.js`).
 
 ### ⚠️ Un trou n'est pas toujours un trou (correction du 2026-09-08, le soir)
 
@@ -147,10 +147,87 @@ si le code diverge. La cohérence code/texte reste un geste humain.
 | CGU | Paramètres → Support → « Conditions générales d'utilisation » ; lien dans la case de consentement. Les CGU portent elles-mêmes un bouton vers les mentions légales. |
 | Mentions légales | Paramètres → Support → « Mentions légales » ; bouton depuis les CGU ; bouton depuis « À propos ». |
 | Politique de confidentialité | Paramètres → Support ; lien dans la case de consentement. |
+| **Sans code d'accès** (2026-09-11) | Écran du rideau (`js/access-gate.js`) : trois liens sous le pied de la carte — Mentions légales · Conditions d’utilisation · Confidentialité — rendus dans un panneau blanc, sans rien déverrouiller. |
 
 ⚠️ `openModal` **n'empile pas** : ouvrir les mentions légales depuis les CGU
 REMPLACE la modale. C'est voulu — le `×` injecté referme tout, et personne ne se
 retrouve à fermer trois couches.
+
+## 5 bis. Les textes vivent en TÊTE de page, pas dans l'application (2026-09-11)
+
+La LCEN (art. 1-1) impose de tenir les mentions légales à la disposition du
+**public**. Or le rideau du code d'accès masque tout — et en production le bloc
+applicatif (`dist/app.js`), où vivaient les trois textes, n'est injecté
+**qu'après** le déverrouillage. Un visiteur sans code ne pouvait donc lire ni qui
+édite le service, ni qui l'héberge, ni comment joindre l'éditeur : le jour de
+l'ouverture au public, une mention légale inaccessible.
+
+Les textes et l'identité de l'éditeur ont donc quitté `app-02` pour
+**`js/legal-textes.js`**, script de tête chargé juste après `access-gate.js` (donc
+inliné dans `index.html` par `scripts/build.js`, jamais dans `app.js`) :
+
+| Symbole | Rôle |
+|---|---|
+| `PASSIO_EDITEUR`, `PASSIO_CGU_VERSION`, `PASSIO_CONFIDENTIALITE_VERSION` | inchangés, toujours globaux |
+| `passioTexteMentionsLegales()`, `passioTexteCGU()`, `passioTextePolitique()` | le **corps** de chaque texte, sans titre ni boutons |
+| `_legalEscapeHtml` | même table que `escapeHtml` (app-02), qui n'existe pas encore quand le rideau s'affiche ; inscrit comme désinfectant dans `scripts/audit-echappement.js` |
+
+`openLegalNotice`, `openTermsOfService` et `openPrivacyPolicy` (app-02) ne sont
+plus que des enveloppes (`_legalModale`) : titre, corps défilant, boutons. L'écran
+du rideau rend le **même** corps dans `#pgLegalPanel`.
+
+⚠️ **Une seule source, mesurée à l'octet** : `access-gate.spec.js` compare
+l'`innerHTML` du panneau du rideau à celui de la modale d'app-02, pour les trois
+textes. Toute retouche d'un texte se fait dans `legal-textes.js`, jamais dans une
+enveloppe. Les rendus des quatre modales (mentions en régime particulier et en
+régime société, CGU, politique) ont été mesurés **identiques avant et après** le
+déplacement (1 812, 1 654, 7 557 et 4 713 caractères).
+
+⚠️ **Lire n'est pas entrer — et `aria-modal` n'isole rien par lui-même.** La
+relecture indépendante du lot a trouvé que Shift+Tab depuis le bouton × rejoignait
+les trois liens puis **le champ du code**, invisibles sous l'overlay : quatre
+chiffres tapés là déverrouillaient l'application pendant la lecture. Quatre
+couches, de la plus forte à la ceinture :
+
+| Couche | Ce qu'elle ferme |
+|---|---|
+| `card.inert = true` à l'ouverture, levé à la fermeture | Tab, clic et lecteur d'écran ne peuvent plus atteindre la carte du code |
+| `legalClose.focus()` | le clavier part sur le panneau, pas sur le champ |
+| `focusInput` s'abstient tant que `legalOuvert` est posé | le focus différé de 700 ms du démarrage ne reprend pas la main (mesuré avec `page.clock` : sans horloge simulée, le clic arrive toujours après `load` et le cas ne mesure rien) |
+| garde de saisie (`input.value = ""` si un texte est ouvert) | navigateurs sans `inert` |
+
+Échap s'écoute au niveau du **document** : un clic sur un paragraphe du corps pose
+le focus sur `<body>`, et un keydown ciblé sur `<body>` ne traverse jamais
+`#passioGate`. La carte du panneau est focalisable (`tabindex="-1"`).
+`#pgLegalPanel[hidden]{display:none}` est obligatoire : `[hidden]` ne replie rien
+sur un `display:flex` (fiche 19).
+
+⚠️ **Pas de repli silencieux** : si `legal-textes.js` manque, le panneau ÉCRIT
+« Texte indisponible ». `dist-build.spec.js` l'attrape sur l'artefact de
+production, où c'est le build qui décide de ce qui vit en tête de page.
+
+Verrous : `tests/e2e/access-gate.spec.js` (+6 : lisibles sans code · lire ne
+saisit rien · première seconde · inerte, mesuré après **chaque** Shift+Tab · Échap
+après un clic dans le texte · source unique) et `tests/e2e/dist-build.spec.js`
+(+1 : sans `app.js`).
+
+**Réinjection** (2026-09-11, sept mutations, fichiers restaurés à l'octet près) :
+
+| Mutation | Verdict |
+|---|---|
+| script de tête `legal-textes.js` retiré | rougit (3 cas : sans code, source unique, artefact sans `app.js`) |
+| focus non déplacé sur le panneau | rougit (clavier va au panneau, première seconde) |
+| source unique cassée (texte différent dans la modale) | rougit (source unique) |
+| `inert` retiré | rougit (inerte) |
+| `inert` **et** garde de saisie retirés ensemble | rougit (inerte) |
+| garde de `focusInput` retirée seule | **reste vert** : `inert` rend `input.focus()` inopérant |
+| `tabindex=-1` retiré seul | **reste vert** : Échap s'écoute déjà sur le document |
+
+Les deux verts sont une défense en profondeur assumée, pas un trou : chaque couche
+est doublée par une plus forte, et le verrou protège le comportement, pas chaque
+couche. Une version antérieure du cas « première seconde » attendait 900 ms après
+`page.goto` : le clic arrivait toujours après le minuteur, et retirer la garde
+laissait le cas vert — c'est la réinjection qui l'a dit.
 
 ## 6. Verrous
 
