@@ -26,12 +26,13 @@ l'identité civile complète.
 
 ---
 
-## ⚠️ Avant tout : rien de ce qui a été réparé n'est en ligne
+## ✅ Le code est en ligne depuis le 2026-09-11, 06:27 UTC
 
-Deux commits attendent sur `claude/app-commercialisation-avis-y1ilpo`. Tant que le
-job **« Déploiement production »** n'est pas vert, la friction du code redemandé à
-chaque ouverture, le fil fabriqué à 94 % sans étiquette et les signalements qui
-mentent sont **toujours ce que voient les utilisateurs**.
+La PR #329 est fusionnée (`7665c7ac`) et le job **« Déploiement production »** est
+vert. L'étiquette « Exemple PASSIO », la notification de message privé, les
+signalements qui disent vrai, le premier écran non vide et le code d'accès mémorisé
+sont **ce que voient les utilisateurs maintenant**. Ce qui suit ne concerne plus le
+code : ce sont les gestes en **base** et chez les **fournisseurs**.
 
 ---
 
@@ -63,75 +64,99 @@ confidentiel, et **jamais dans le dépôt** — il est public.
 
 ---
 
-## GESTE 1 — Refermer la fuite du graphe social
+## GESTE 1 — LE SEUL COLLER SQL : les trois gestes en base d'un coup
 
-*5 min.* → [SQL Editor du projet](https://supabase.com/dashboard/project/njkiyoklssvefstljemx/sql/new)
+*5 min.* → **Supabase → ton projet → SQL Editor → New query**
 
-En ce moment, **n'importe qui, sans compte**, peut lire `conv_reads` : qui parle à
-qui, et quand. Le contenu des messages est bien protégé — c'est le **graphe social**
-qui fuit, souvent l'information la plus sensible d'une messagerie.
+Ce qui demandait trois gestes séparés — appliquer la migration des fuites, effacer
+les téléphones, brancher la purge de télémétrie — tient maintenant dans **un seul
+fichier** : `migrations/OUVERTURE_2026-09-11.sql`. Ouvre-le, sélectionne tout, colle,
+**Run**.
 
-1. Ouvre `migrations/migration_fuites_2026-09-10.sql`, sélectionne tout, colle dans
-   l'éditeur SQL, **Run**. Attendu : *Success. No rows returned*.
-   En cas d'erreur : **ne relance pas**, copie l'erreur et arrête-toi.
-2. **Preuve que c'est fait** — nouvelle requête :
+- **une seule transaction** : si quoi que ce soit échoue, RIEN n'est appliqué ;
+- **rejouable** : le recoller ne fait aucun mal (c'est même la bonne réponse au
+  téléphone qui revient tout seul, voir plus bas) ;
+- il finit par un **TABLEAU DE VERDICT** : les lignes 1 à 4 doivent dire `OK`,
+  la ligne 5 dit `INFO` (c'est une mesure de taille, pas un contrôle) ;
+- puis une **MUTATION RÉELLE** est jouée et annulée — un visiteur tente de se
+  forger une identité serveur, et le serveur doit l'écraser. Elle rend son propre
+  `OK`. C'est la seule ligne qui prouve que la garde *fonctionne* : le tableau, lui,
+  ne prouve que l'*existence* du trigger.
+
+Si quoi que ce soit dit `ECHEC` : ne fais rien d'autre, copie la ligne.
+
+⚠️ **Si aucun tableau ne s'affiche du tout**, c'est que la transaction a échoué
+avant son `COMMIT` : **rien n'a été appliqué**, ta base est intacte. Ne relance pas
+en boucle — copie le message d'erreur et arrête-toi.
+
+### Ce que le fichier fait, et pourquoi
+
+**① Le graphe social.** Aujourd'hui, n'importe qui **sans compte** peut lire
+`conv_reads` : qui parle à qui, et quand. Le contenu des messages est bien protégé —
+c'est le graphe qui fuit, souvent l'information la plus sensible d'une messagerie.
+Mesuré le 2026-09-11 : **37 lignes lisibles par tout le monde**. Le fichier pose le
+prédicat d'appartenance qui gouverne déjà les trois autres tables de la messagerie.
+
+**① bis L'identité serveur sur `client_errors`.** Un texte écrit par un inconnu
+pouvait devenir le prompt d'un agent dont la PR est auto-fusionnée. Une colonne que
+le client ne peut pas écrire (posée par un trigger) referme la porte en amont.
+
+**② Les téléphones.** Le champ était obligatoire à l'inscription et **lu nulle part**.
+Il a été retiré du produit ; reste à effacer le collecté, à **deux** endroits.
+Mesuré : **3 comptes sur 7** dans `auth.users`, **1 ligne** dans `user_state`.
+
+⚠️ **Le numéro peut revenir tout seul** — un appareil qui porte encore l'ancien état
+le repousse à son prochain enregistrement. Recolle le fichier dans une semaine : il
+est fait pour ça, et son verdict te dira s'il en restait.
+
+**③ La purge de télémétrie.** La fonction existait, `pg_cron` était installé (il
+porte déjà `purge_client_errors`) — **il manquait simplement la tâche**.
+
+⚠️ **Ne surestime pas ce geste, la mesure corrige ce que disait la version
+précédente de cette fiche.** Sur 130 906 lignes, **8 596 seulement ont plus de
+30 jours — 6,6 %**. La purge retirera donc ~4 Mo sur 62 Mo, pas « nettement sous
+62 Mo ». Son intérêt n'est pas de faire maigrir la table aujourd'hui, c'est de
+**l'empêcher de grossir** : au rythme actuel (~3 100 lignes/jour) elle se stabilise
+vers 44 Mo au lieu de croître d'environ 45 Mo par mois sans fin.
+
+⚠️ **Et 30 jours ne tiendra pas à grande échelle.** Le plan gratuit bascule la base
+en **lecture seule à 500 Mo** — plus une inscription, plus un message. Si le trafic
+est multiplié par dix, 30 jours de rétention pèsent ~440 Mo *à eux seuls*. Quand les
+comptes décollent, descends à 7 jours :
 
 ```sql
-select relrowsecurity as rls_active from pg_class where oid='public.conv_reads'::regclass;
-select policyname, qual from pg_policies
-  where schemaname='public' and tablename='conv_reads' and cmd='SELECT';
-select tgname, tgenabled from pg_trigger
-  where tgrelid='public.client_errors'::regclass and not tgisinternal;
+select cron.unschedule('purge_telemetry_30j');
+select cron.schedule('purge_telemetry_7j', '0 4 * * *', $$select public.purge_telemetry(7)$$);
 ```
 
-Attendu : `true` · une ligne `reads_select` dont `qual` contient `is_conv_member`
-(et **plus jamais** `true` tout seul) · `trg_client_errors_identite` avec `tgenabled = O`.
+(La politique de confidentialité annonce « 13 mois au maximum » : conserver **moins**
+qu'annoncé est toujours permis, l'inverse jamais.)
+
+### Le second coller, facultatif — le vacuum
+
+`VACUUM` est interdit dans une transaction, il ne peut donc pas vivre dans le fichier.
+Il est décrit à la fin de celui-ci. **Les deux formes ne font pas la même chose** :
+
+- `VACUUM (ANALYZE)` rend l'espace **réutilisable** — la table cesse de grossir, mais
+  la taille affichée ne baisse pas. Aucun verrou gênant.
+- `VACUUM FULL` **rend vraiment les octets** au disque, au prix d'un verrou exclusif
+  de 1 à 3 s à cette taille (les écritures attendent, elles n'échouent pas).
+
+Rien ne casse si tu ne le fais pas.
+
+### Ce fichier est éprouvé, pas écrit à l'aveugle
+
+`tests/sql/ouverture-2026-09-11.test.sh` (gate CI) l'**exécute** sur un PostgreSQL
+jetable qui reconstitue l'état réel : 34 contrôles, une seconde application pour
+prouver qu'il est rejouable, et **six mutations qui cassent chaque garde une par une
+et exigent que le tableau de verdict rougisse**. Un verdict qui dirait `OK` quoi qu'il
+arrive serait pire que pas de verdict.
 
 ---
 
-## GESTE 2 — Effacer les numéros de téléphone déjà collectés
+## GESTE 2 — Supprimer les deux gros médias qui mangent ton quota
 
-*3 min.* Le champ a été retiré de l'inscription : il était obligatoire et **lu nulle
-part**. Reste à effacer ce qui est en base — à **deux** endroits, pas un.
-
-```sql
-update auth.users set raw_user_meta_data = raw_user_meta_data - 'phone'
- where jsonb_exists(raw_user_meta_data,'phone');
-update public.user_state set data = data #- '{user,general,phone}'
- where jsonb_exists(data->'user'->'general','phone');
-```
-
-Attendu : `UPDATE 3` puis `UPDATE 1`. Personne n'est déconnecté.
-
-⚠️ **Le numéro peut revenir tout seul** : un appareil qui garde l'ancien état le
-repousse au prochain enregistrement. Relance la deuxième requête dans une semaine.
-
----
-
-## GESTE 3 — Brancher la purge de la télémétrie
-
-*2 min.* **C'est le mur le plus proche.** Sur l'offre gratuite, Supabase bascule la
-base en **lecture seule à 500 Mo** : plus une inscription, plus un message. La base
-est à 105 Mo, dont **62 Mo (59 %) pour la seule table `telemetry_events`**. Le
-`README` du dashboard annonce une purge à 30 jours : la **fonction** existe, **aucun
-cron ne l'appelle** — la plus vieille ligne a 36 jours. Et cette table grossit
-proportionnellement au nombre d'utilisateurs.
-
-```sql
-select cron.schedule('purge_telemetry_30j', '0 4 * * *', $$select public.purge_telemetry(30)$$);
-select public.purge_telemetry(30);
-vacuum (analyze) public.telemetry_events;
-select pg_size_pretty(pg_total_relation_size('public.telemetry_events'));
-```
-
-Sans le `vacuum`, les lignes supprimées ne rendent pas les octets. Attendu : nettement
-sous 62 Mo, et `select * from cron.job;` montre la ligne avec `active = true`.
-
----
-
-## GESTE 4 — Supprimer les deux gros médias qui mangent ton quota
-
-*15 min.* → [Storage du projet](https://supabase.com/dashboard/project/njkiyoklssvefstljemx/storage/buckets/content)
+*15 min.* → [Storage du projet](https://supabase.com/dashboard/projects)
 
 **Ta bande passante est déjà dépassée, avec six utilisateurs.** Mesuré sur 24 h :
 1,12 Go d'egress, dont **1,06 Go pour un seul fichier** — un avatar de 2,59 Mo demandé
@@ -139,8 +164,22 @@ sous 62 Mo, et `select * from cron.job;` montre la ligne avec `active = true`.
 33 Go, soit 6,7× le quota. Le même compte a un avatar récent de 89 Ko : la compression
 marche aujourd'hui, ces fichiers sont des résidus d'avant.
 
-1. Dans le seau `content`, dossier `avatars/` du compte `d59aaaa3…` : supprime l'avatar
-   de 2,59 Mo et la couverture de 4,34 Mo.
+⚠️ **La version précédente de cette fiche nommait le mauvais compte.** Mesuré le
+2026-09-11 sur `storage.objects` : les deux avatars de 2,59 Mo appartiennent à
+`6902826f…` et `dc7ff081…`, la couverture de 4,34 Mo à `6902826f…`. Le compte
+`d59aaaa3…` ne porte que de petits fichiers. **Trie par taille, ne cherche pas un
+identifiant.**
+
+⚠️ **Et la cause est corrigée en amont depuis le 2026-09-11.** Les 399 requêtes
+venaient de la suite de tests : `profiles` n'est délibérément pas isolée, donc les
+profils réels remontaient avec leurs vraies URLs d'avatar et le navigateur les
+téléchargeait — une fois par chargement de page, six shards en parallèle, plus de
+cent suites. `tests/e2e/app-helper.js` sert désormais un PNG 1×1 à la place
+(verrou : `tests/e2e/isolation-medias.spec.js`, 6 cas, éprouvé par réinjection).
+Supprimer ces fichiers reste utile — mais ils ne seront plus redemandés en boucle.
+
+1. Dans le seau `content`, dossier `avatars/` : **trie par taille** et supprime les
+   deux fichiers de 2,59 Mo et celui de 4,34 Mo.
 2. Abaisse le plafond serveur : `content` → Settings → **File size limit : 26 Mo**
    (juste au-dessus du repli client de 25 Mo, pour que le refus vienne du client avec
    un message, pas du serveur avec un 413 muet). Idem pour `attachments`.
@@ -153,9 +192,9 @@ select bucket_id, name, pg_size_pretty((metadata->>'size')::bigint)
 
 ---
 
-## GESTE 5 — Monter le plafond d'e-mails
+## GESTE 3 — Monter le plafond d'e-mails
 
-*2 min.* → [Rate Limits](https://supabase.com/dashboard/project/njkiyoklssvefstljemx/auth/rate-limits)
+*2 min.* → [Rate Limits](https://supabase.com/dashboard/projects)
 
 **Le chiffre qui compte n'est pas 300/jour, c'est 30/heure.** Supabase impose 30
 e-mails d'authentification par heure à tout projet avec un SMTP externe, et ce seau
@@ -170,7 +209,7 @@ dans le code, et il remonte maintenant au centre de pilotage.*
 
 ---
 
-## GESTE 6 — Protection des mots de passe compromis
+## GESTE 4 — Protection des mots de passe compromis
 
 *2 min.* Supabase → **Authentication** → l'écran qui porte « Minimum password length »
 → active **« Prevent use of leaked passwords »** (HaveIBeenPwned) → Save.
@@ -180,7 +219,7 @@ Protection Disabled* disparaît de Advisors → Security le lendemain.
 
 ---
 
-## GESTE 7 — Authentifier le domaine d'envoi chez Brevo
+## GESTE 5 — Authentifier le domaine d'envoi chez Brevo
 
 *20 à 30 min, puis jusqu'à 48 h de propagation.*
 → [Guide Brevo](https://help.brevo.com/hc/en-us/articles/12163873383186-Authenticate-your-domain-with-Brevo-Brevo-code-DKIM-DMARC)
@@ -274,7 +313,7 @@ select pg_size_pretty(pg_database_size(current_database()));
 ```
 
 Le rapport **confirmés / comptes** est le plus important : s'il tombe sous ~70 %, ce
-sont les e-mails qui partent en spam — geste 7.
+sont les e-mails qui partent en spam — GESTE 5.
 
 Et chaque jour, une commande :
 

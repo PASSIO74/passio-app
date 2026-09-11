@@ -327,6 +327,15 @@ jobs:
       - name: Banc fuites conv_reads + client_errors (PostgreSQL jetable)
         run: bash tests/sql/migration-fuites-2026-09-10.test.sh
 
+      # Le fichier d'OUVERTURE est celui que Benjamin colle dans la production en
+      # un seul geste : il replie la migration des fuites, l'effacement des
+      # telephones et la purge de telemetrie. Un fichier jamais EXECUTE est un
+      # pari — celui-ci est joue de bout en bout, rejoue deux fois, et six
+      # mutations exigent que son tableau de verdict sache dire ECHEC. Le banc
+      # refuse aussi un fichier qui aurait DERIVE de sa migration source.
+      - name: Banc ouverture au public — fichier unique (PostgreSQL jetable)
+        run: bash tests/sql/ouverture-2026-09-11.test.sh
+
       # Le script d'application et le fichier unique colle dans l'editeur SQL
       # sont ce que Benjamin execute sur la VRAIE base. Un outil d'application
       # jamais execute est un pari : celui-ci est joue de bout en bout, et le
