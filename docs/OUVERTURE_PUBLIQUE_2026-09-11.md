@@ -12,9 +12,9 @@ puis **éprouvé par mutation** : chaque garde retirée fait rougir un banc.
 ## 1. Ce que le lot ferme — sept défauts serveur, un fichier à coller
 
 `migrations/migration_ouverture_publique_2026-09-11.sql` — une transaction, rejouable,
-tableau de verdict à dix lignes (tout doit dire `OK`). Banc :
-`tests/sql/migration-ouverture-publique.test.sh` (**86 contrôles**, gate CI), qui mesure
-chaque défaut AVANT, applique, rejoue, éprouve les deux sens, puis cinq mutations.
+tableau de verdict à **treize** lignes (tout doit dire `OK`). Banc :
+`tests/sql/migration-ouverture-publique.test.sh` (**115 contrôles**, gate CI), qui mesure
+chaque défaut AVANT, applique, rejoue, éprouve les deux sens, puis six mutations.
 
 | # | Défaut mesuré en production | Correctif |
 |---|---|---|
@@ -26,9 +26,19 @@ chaque défaut AVANT, applique, rejoue, éprouve les deux sens, puis cinq mutati
 | ⑥ | Seau `attachments` `public = true` : une pièce jointe privée lisible **à vie par son URL exacte**. | `update storage.buckets set public = false` — **en dernier**, après le client (URL signées). |
 | ⑦ | « Compte privé » sans approbation : `follows` n'avait que deux colonnes, tout compte s'abonnait d'un tap et lisait tout. | `follows.status` tranché par le **serveur** (`pending` vers un compte privé), `follows_accepter` (la cible seule, vers `accepted` seulement), identifiants figés par trigger, `posts`/`stories`/`post_is_visible` n'ouvrent qu'aux `accepted`. |
 
+| ⑧ | **Red team** : `conv_messages."Update propre"` et `post_comments."Update propre"` sans `WITH CHECK`, rien ne figeait `conv_id`/`post_id` — un message se **déplaçait** par UPDATE dans le 1:1 d'un compte qui vous a bloqué ou le groupe d'une rencontre dont on n'est pas membre (ids publics). | `WITH CHECK` reprend la condition d'INSERT ; `trg_identifiants_figes` fige les identifiants. |
+| ⑨ | **Red team** : un compte bloqué faisait encore sonner (`ring:%` ouvert à tout compte). | `passio_rt_emettre` lit le bloqueur dans le TOPIC : `not is_blocked_with(substr(topic, 6))`. |
+| ⑩ | **Red team** : les demandes d'abonnement en attente se lisaient sans compte (`follows` : deux SELECT `true`). | `follows_lecture` : `accepted` pour tous, `pending` seulement à ses deux bouts. |
+| ⑪ | **Red team** : `realtime:db` et `conv_specific:` restaient publics et sans policy — le geste « Allow public access OFF » les aurait tués sans erreur. | Policies pour les deux topics (`realtime:db` ouvert à `anon` aussi, le canal n'ouvre rien) ; client privé avec repli. |
+| — | La ligne `notifications` d'un abonnement était écrite par le client qui s'abonne. | `follows_notifier` (serveur, identifiant déterministe) ; le client ne pousse que le push. `reports.target_type` sous `CHECK`. |
+
 Résidus **assumés** et écrits : l'identité de l'appelant dans une sonnerie reste déclarative
-**entre comptes** (ce qui est fermé : le sans-compte et l'écoute) ; les identifiants de
-conversation restent des secrets partagés (aléatoires, 17 caractères).
+**entre comptes** (ce qui est fermé : le sans-compte, l'écoute, et le compte bloqué) ; dans un
+live, `from` reste déclaratif entre comptes (le client n'obéit qu'à `from = author_id`, qu'un
+compte connecté peut usurper — fermer cela demande un topic d'hôte à part) ; les identifiants de
+conversation restent des secrets partagés (aléatoires, 17 caractères) ; `is_conv_member` et
+`is_blocked_with` restent des oracles pour un compte **connecté** (leur retirer EXECUTE ferait
+lever « permission denied » à toutes les policies qui les appellent).
 
 ## 2. Le lot client — déployé AVANT la migration, et il fonctionne dans les deux états
 
@@ -45,9 +55,16 @@ conversation restent des secrets partagés (aléatoires, 17 caractères).
   Médias), `_playVoiceById` signe au premier tap. Repli sur l'URL d'origine si la signature
   échoue : tant que le seau est public, rien ne change ; une fois privé, seul un membre lit.
   `cdnUrl` ne réécrit plus les pièces jointes.
-- **Canaux privés avec sonde.** `_callChannel`, `typing:`, `vlive:` passent `private: true`.
-  La sonnerie (`_subscribeCallRing`) sert de sonde : un refus **de policy** pose
-  `window._rtPriveIndisponible` et tout repart en public — le comportement d'avant.
+- **Canaux privés avec sonde.** `_callChannel`, `typing:`, `vlive:`, `realtime:db` et
+  `conv_specific:` passent `private: true` — **tous** les `supa.channel(` du dépôt (le verrou
+  ⑨ le balaie). La sonnerie (`_subscribeCallRing`) sert de sonde globale : un refus **de
+  policy** pose `window._rtPriveIndisponible` et tout repart en public — le comportement
+  d'avant ; chaque canal a en plus son propre repli.
+- **Red team (client).** L'emoji d'une invitation d'appel est échappé et borné (`_emojiSur` —
+  c'était un XSS exécutable par tout compte), les invitations sont bornées à une toutes les
+  3 s, l'identifiant d'appel est aléatoire (`_callIdAleatoire`), un live n'obéit qu'à son hôte
+  (`_vliveDeLHote`), une URL signée vaut une heure, et une demande d'abonnement en attente
+  reste « Demande envoyée » sur un doublon.
 - **Abonnement à trois états.** `libelleBoutonSuivi` (Suivre / Demande envoyée / ✓ Suivi),
   verdict serveur corrigeant l'affichage optimiste, demande tranchée depuis la notification
   (`follow_request` → Accepter / Refuser), `supaLoadFollowing` sépare acceptés et en attente.
@@ -56,8 +73,8 @@ conversation restent des secrets partagés (aléatoires, 17 caractères).
 - **La politique dit ce que la base fait** : §8, 7 jours de mesure d'usage, 30 jours de
   rapports d'erreur ; `PASSIO_CONFIDENTIALITE_VERSION = "2026-09-11"`.
 
-Verrou : `tests/e2e/ouverture-publique.spec.js` (24 cas, dont trois qui mesurent le
-**câblage** à la source).
+Verrou : `tests/e2e/ouverture-publique.spec.js` (32 cas, dont trois qui mesurent le
+**câblage** à la source et deux éprouvés par réinjection).
 
 ## 3. Exploitation — ce qui tourne sans personne
 
@@ -79,13 +96,18 @@ Verrou : `tests/e2e/ouverture-publique.spec.js` (24 cas, dont trois qui mesurent
    lisez ceci depuis `main` déployé — vérifier sur https://passio-app.netlify.app que le
    code d'accès n'est plus demandé).
 2. **Coller `migrations/migration_ouverture_publique_2026-09-11.sql`** dans l'éditeur SQL
-   de Supabase, en un seul geste. Le tableau final doit afficher **10 × OK**. Rejouable.
+   de Supabase, en un seul geste. Le tableau final doit afficher **13 × OK**. Rejouable.
    ⚠️ Avant le déploiement, la ligne ⑥ ferait disparaître toutes les pièces jointes.
 3. **Tableau de bord Supabase → Realtime → Settings : désactiver les canaux publics**
    (« Allow public access »). C'est ce qui rend les policies de ⑤ **opposables** : tant que
-   les canaux publics sont permis, un client qui omet `private: true` écoute encore. Le
-   client est prêt (tout est privé, la sonde ne replie que sur refus de policy — qui
-   n'arrivera plus une fois ② appliqué).
+   les canaux publics sont permis, un client qui omet `private: true` écoute encore.
+   ⚠️ **Seulement APRÈS l'étape 2** : ce geste refuse tout canal public, et le client ne
+   replie sur du public que si la souscription privée est refusée par policy — sans les
+   policies, tout le temps réel serait mort. Le client est prêt : **tous** ses canaux sont
+   privés (`ring:`, `call:`, `typing:`, `vlive:`, `conv_specific:`, `realtime:db`, `user:`,
+   `conv:`), c'est ce que le verrou ⑨ de `ouverture-publique.spec.js` balaie. Après le geste,
+   ouvrir l'application à deux comptes et vérifier qu'un message arrive en direct et qu'un
+   appel sonne : c'est la seule preuve, aucun test du dépôt ne joue un join Realtime réel.
 4. **Tableau de bord Supabase → Authentication** : vérifier que le fournisseur
    **Anonymous** est désactivé (`onbSkipAuth` est un chemin mort, mais un
    `signInAnonymously()` ouvrirait toutes les policies `authenticated`) ; activer la
@@ -114,7 +136,14 @@ Verrou : `tests/e2e/ouverture-publique.spec.js` (24 cas, dont trois qui mesurent
 - L'âge est **déclaratif** et aucun membre n'est vérifié — les CGU le disent.
 - La **sonnerie** peut encore porter une fausse identité **entre comptes** (charge utile
   déclarative). Fermer cela demande de router l'invitation par la base (trigger + topic
-  `user:<uid>`), un lot à part.
+  `user:<uid>`), un lot à part. Même résidu pour l'hôte d'un **live** (`from` déclaratif).
+- **Non vérifié en conditions réelles** (aucun banc ne joue un join Realtime) : qu'un compte
+  puisse s'abonner à `ring:<autre>` pour ÉMETTRE alors qu'il n'a pas le droit d'y LIRE. Si
+  Realtime refuse le join sans droit de lecture, les appels SORTANTS meurent après l'étape 3
+  — à éprouver à deux comptes juste après le geste, et à rouvrir la policy de réception sur
+  `ring:%` si c'est le cas.
+- `client_errors` : 120 lignes/min pour la table entière — une boucle anonyme suffit à
+  faire perdre de vraies erreurs et à aveugler la sentinelle pendant qu'elle tourne.
 - **Un seul opérateur** lit les signalements ; l'alerte les porte à son e-mail, elle ne
   décide pas.
 - Les avatars ne sont toujours pas redimensionnés (point ouvert du 11/09 matin).

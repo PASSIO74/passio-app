@@ -49,7 +49,11 @@ export function classerSignalements(lignes, maintenantMs) {
     if (age > plusAncienMs) plusAncienMs = age;
     if (age >= SEUIL_H * 3600_000) {
       enRetard++;
-      const t = LIBELLE[l.target_type] || String(l.target_type || "?");
+      // ⚠️ LISTE BLANCHE, jamais la valeur brute : `target_type` est écrit par le
+      // client (≤ 40 caractères, sauts de ligne admis) et ce texte finit dans le
+      // corps d'une issue PUBLIQUE — `![](https://…)` y ferait charger une image
+      // chez qui la lit. Tout ce qui n'est pas connu est « autre ».
+      const t = LIBELLE[l.target_type] || "autre";
       parType[t] = (parType[t] || 0) + 1;
     }
   }

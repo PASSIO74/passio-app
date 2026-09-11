@@ -1451,7 +1451,12 @@ function escapeHtml(s) {
 // ⚠️ Le nom d'objet est `attachments/<conv>/<fichier>` DANS le seau `attachments`
 // (le segment est doublé, depuis toujours) : c'est `(storage.foldername(name))[2]`
 // que la policy compare à la conversation. Ne pas « nettoyer » ce doublon.
-const PJ_SIGNATURE_TTL_S = 7 * 24 * 3600;
+// ⚠️ UNE URL SIGNÉE EST UN PORTEUR : qui la détient lit l'objet jusqu'à son
+// expiration, membre ou non. Une heure, pas sept jours (red team du 2026-09-11) :
+// un membre retiré d'une conversation perd l'accès dans l'heure, et le cache de
+// session re-signe au repeint suivant — une requête par objet, pas par bulle.
+const PJ_SIGNATURE_TTL_S = 3600;
+const PJ_SIGNATURE_MARGE_S = 600; // on re-signe 10 min avant l'expiration
 const _pjSignees = new Map(); // nom d'objet → { url, exp } — mémoire de session
 
 function pieceJointeChemin(url) {
@@ -1467,17 +1472,27 @@ function urlPieceJointeSignee(url) {
   if (!chemin) return Promise.resolve(url);
   var c = _pjSignees.get(chemin);
   if (c && c.exp > Date.now()) return Promise.resolve(c.url);
+  // Le MÊME objet peut être demandé plusieurs fois avant que la première
+  // signature ne revienne (une image et son lien dans la même bulle, le fil et le
+  // panneau Médias) : on partage la promesse en cours, une signature par objet.
+  if (c && c.enCours) return c.enCours;
   var client = (typeof supa !== "undefined") ? supa : null;
   if (!client || !client.storage || typeof client.storage.from !== "function") return Promise.resolve(url);
   var p;
   try { p = client.storage.from("attachments").createSignedUrl(chemin, PJ_SIGNATURE_TTL_S); }
   catch (e) { return Promise.resolve(url); }
-  return Promise.resolve(p).then(function (r) {
+  // Un refus (non-membre, hors ligne) est mémorisé UNE minute : sans cela, chaque
+  // repeint du fil — donc chaque message entrant — redemanderait une signature
+  // que Storage refusera de nouveau.
+  var refus = function () { _pjSignees.set(chemin, { url: url, exp: Date.now() + 60 * 1000 }); return url; };
+  var enCours = Promise.resolve(p).then(function (r) {
     var u = r && r.data && r.data.signedUrl;
-    if (!u || !/^https?:\/\//i.test(u)) return url;
-    _pjSignees.set(chemin, { url: u, exp: Date.now() + (PJ_SIGNATURE_TTL_S - 3600) * 1000 });
+    if (!u || !/^https?:\/\//i.test(u)) return refus();
+    _pjSignees.set(chemin, { url: u, exp: Date.now() + (PJ_SIGNATURE_TTL_S - PJ_SIGNATURE_MARGE_S) * 1000 });
     return u;
-  }).catch(function () { return url; });
+  }).catch(refus);
+  _pjSignees.set(chemin, { enCours: enCours, exp: 0 });
+  return enCours;
 }
 
 // Au rendu : une pièce jointe porte `data-pj` (et PAS de src, sinon le navigateur

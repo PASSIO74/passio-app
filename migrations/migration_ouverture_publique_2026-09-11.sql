@@ -4,7 +4,7 @@
 --
 -- Un seul copier-coller dans l'éditeur SQL de Supabase (canal ③ d'ADR-012),
 -- UNE transaction (une erreur annule tout), REJOUABLE, et il finit par un
--- tableau de verdict qui dit OK / ECHEC par correctif.
+-- tableau de verdict qui dit OK / ECHEC par correctif (13 lignes).
 --
 -- ⚠️ À COLLER APRÈS que le job « Déploiement production » du lot client soit
 -- VERT. La partie ⑥ (seau `attachments` privé) suppose que le client sait
@@ -57,6 +57,29 @@
 --  · `WITH CHECK` ne voit que la ligne FINALE : ce qui doit voir OLD passe par
 --    un trigger (statut d'un abonnement, identifiants figés).
 -- ═══════════════════════════════════════════════════════════════════════════
+--
+-- RED TEAM du même jour (revue adversariale en lecture seule du lot, puis
+-- vérification en production) — quatre trous de plus, refermés ici :
+--  ⑧ `conv_messages."Update propre"` et `post_comments."Update propre"` étaient
+--     `USING (auteur = moi)` SANS `WITH CHECK` et rien ne figeait `conv_id` /
+--     `post_id` : un message se DÉPLAÇAIT par UPDATE dans n'importe quelle
+--     conversation (le 1:1 d'un compte qui vous a bloqué, le groupe d'une
+--     rencontre dont on n'est pas membre — `events.conv_id = 'evgrp_' || id`,
+--     ids publics), un commentaire vers la publication d'un compte privé. ② ne
+--     gardait que l'INSERT.
+--  ⑨ Un compte BLOQUÉ pouvait encore faire sonner (`ring:%` ouvert à tout
+--     compte) : le bloqueur est dans le TOPIC, la policy peut le lire.
+--  ⑩ Les demandes d'abonnement EN ATTENTE étaient lisibles sans compte
+--     (`follows` : deux policies SELECT `true`) — « qui veut suivre quel compte
+--     privé », par un simple GET.
+--  ⑪ `realtime:db` et `conv_specific:<conv>` restaient des canaux PUBLICS sans
+--     policy : le geste « Allow public access OFF » du tableau de bord les
+--     aurait tués (accusés de lecture, arrivée dans une conversation) sans
+--     erreur. Le client les crée désormais en privé, avec repli.
+-- Et un lot de robustesse : la ligne `notifications` d'un abonnement (demande,
+-- suivi, acceptation) est écrite par le SERVEUR (`follows_notifier`) avec un
+-- identifiant déterministe — plus par le client qui vient de s'abonner.
+
 begin;
 
 -- ───────────────────────────────────────────────────────────────────────────
@@ -171,10 +194,44 @@ create policy "conv_messages_insert_member" on public.conv_messages for insert t
               and public.is_conv_member(conv_id, (select auth.uid())::text)
               and not public.conv_1a1_bloquee(conv_id));
 
+-- ⑧ L'UPDATE reprend la condition d'INSERT (WITH CHECK), et un trigger FIGE les
+-- identifiants — `WITH CHECK` ne voit que la ligne finale, il ne sait pas
+-- qu'elle a changé de conversation. Aucun chemin client ne modifie ces colonnes
+-- (mesuré : le client ne fait aucun UPDATE sur ces deux tables).
+drop policy if exists "Update propre" on public.conv_messages;
+create policy "Update propre" on public.conv_messages for update to authenticated
+  using (from_id = (select auth.uid())::text)
+  with check (from_id = (select auth.uid())::text
+              and public.is_conv_member(conv_id, (select auth.uid())::text)
+              and not public.conv_1a1_bloquee(conv_id));
+create or replace function public.identifiants_figes()
+returns trigger language plpgsql as $$
+declare col text; avant text; apres text;
+begin
+  foreach col in array TG_ARGV loop
+    execute format('select ($1).%I::text, ($2).%I::text', col, col) into avant, apres using old, new;
+    if avant is distinct from apres then
+      raise exception '% : la colonne % ne se modifie pas', TG_TABLE_NAME, col using errcode = '42501';
+    end if;
+  end loop;
+  return new;
+end $$;
+revoke execute on function public.identifiants_figes() from public, anon, authenticated;
+drop trigger if exists trg_identifiants_figes on public.conv_messages;
+create trigger trg_identifiants_figes before update on public.conv_messages
+  for each row execute function public.identifiants_figes('conv_id', 'from_id');
+drop trigger if exists trg_identifiants_figes on public.post_comments;
+create trigger trg_identifiants_figes before update on public.post_comments
+  for each row execute function public.identifiants_figes('post_id', 'author_id');
+
 -- post_comments / post_likes / event_comments : pas d'interaction avec le
 -- contenu de quelqu'un qui vous a bloqué.
 drop policy if exists "Ecriture propre" on public.post_comments;
 create policy "Ecriture propre" on public.post_comments for insert to authenticated
+  with check (author_id = (select auth.uid())::text and not public.post_auteur_bloque(post_id));
+drop policy if exists "Update propre" on public.post_comments;
+create policy "Update propre" on public.post_comments for update to authenticated
+  using (author_id = (select auth.uid())::text)
   with check (author_id = (select auth.uid())::text and not public.post_auteur_bloque(post_id));
 drop policy if exists "Ecriture propre" on public.post_likes;
 create policy "Ecriture propre" on public.post_likes for insert to authenticated
@@ -271,6 +328,15 @@ begin
   end if;
 end $$;
 create index if not exists reports_ouverts_idx on public.reports (created_at) where status = 'open';
+-- `target_type` finit (via une liste blanche) dans une issue GitHub publique : la
+-- base n'accepte que les cinq cibles que le client connaît (+ message, réservé).
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'reports_target_type_chk') then
+    alter table public.reports add constraint reports_target_type_chk
+      check (target_type is null or target_type in ('user', 'post', 'comment', 'event', 'passion', 'message'));
+  end if;
+end $$;
 
 -- Le client ne décide pas du statut : un signalement NAÎT ouvert, quoi qu'il
 -- envoie. Seul l'opérateur (service_role, `npm run moderation traiter`) le ferme.
@@ -312,21 +378,34 @@ end $$;
 --                      COMPTES ; ce qui est fermé, c'est le sans-compte et
 --                      l'écoute de qui appelle qui.
 --   · `call:<id>`    : identifiant aléatoire, réservé aux comptes.
---   · `typing:<conv>`/`conv:<conv>` : membres de la conversation seulement.
+--   · `typing:<conv>`/`conv:<conv>`/`conv_specific:<conv>` : membres seulement.
 --   · `vlive:<id>`   : les lives sont publics (video_lives), réservés aux comptes.
+--   · `realtime:db`  : le canal des `postgres_changes` — ouvert à anon ET
+--                      authenticated : il n'ouvre RIEN par lui-même, chaque
+--                      table garde sa RLS ; sans policy, il mourrait dès que le
+--                      tableau de bord interdit les canaux publics.
+--   ⚠️ SONNER quelqu'un qui vous a bloqué est refusé : le bloqueur est dans le
+--      TOPIC (`ring:<uid>`), la policy peut le lire — la charge utile, jamais.
 drop policy if exists "passio_rt_recevoir" on realtime.messages;
 create policy "passio_rt_recevoir" on realtime.messages for select to authenticated using (
      realtime.topic() = 'ring:' || (select auth.uid())::text
   or realtime.topic() like 'call:%'
   or realtime.topic() like 'vlive:%'
+  or realtime.topic() = 'realtime:db'
   or (realtime.topic() like 'typing:%'
       and public.is_conv_member(substr(realtime.topic(), 8), (select auth.uid())::text))
   or (realtime.topic() like 'conv:%'
       and public.is_conv_member(substr(realtime.topic(), 6), (select auth.uid())::text))
+  or (realtime.topic() like 'conv_specific:%'
+      and public.is_conv_member(substr(realtime.topic(), 15), (select auth.uid())::text))
 );
+drop policy if exists "passio_rt_recevoir_visiteur" on realtime.messages;
+create policy "passio_rt_recevoir_visiteur" on realtime.messages for select to anon
+  using (realtime.topic() = 'realtime:db');
 drop policy if exists "passio_rt_emettre" on realtime.messages;
 create policy "passio_rt_emettre" on realtime.messages for insert to authenticated with check (
-     realtime.topic() like 'ring:%'
+     (realtime.topic() like 'ring:%'
+      and not public.is_blocked_with(substr(realtime.topic(), 6)))
   or realtime.topic() like 'call:%'
   or realtime.topic() like 'vlive:%'
   or (realtime.topic() like 'typing:%'
@@ -385,6 +464,59 @@ drop policy if exists "follows_accepter" on public.follows;
 create policy "follows_accepter" on public.follows for update to authenticated
   using (following_id = (select auth.uid())::text)
   with check (following_id = (select auth.uid())::text and status = 'accepted');
+
+-- ⑩ Une demande EN ATTENTE ne se lit qu'à ses deux bouts. Les abonnements
+-- acceptés restent publics (compteurs d'abonnés, profils) — y compris sans
+-- compte, où `auth.uid()` est nul et seul `accepted` passe.
+drop policy if exists "Lecture publique" on public.follows;
+drop policy if exists "Read follows" on public.follows;
+drop policy if exists "follows_lecture" on public.follows;
+create policy "follows_lecture" on public.follows for select to anon, authenticated
+  using (status = 'accepted'
+         or follower_id = (select auth.uid())::text
+         or following_id = (select auth.uid())::text);
+
+-- La NOTIFICATION d'un abonnement est écrite par le serveur : demande
+-- (`follow_request`, vers la cible), suivi (`follow`, vers la cible),
+-- acceptation (`follow`, vers le demandeur). Identifiant DÉTERMINISTE par
+-- couple — même famille que `_idNotifMessage` : c'est lui qui empêche le doublon,
+-- et une relance (se désabonner puis se réabonner) rafraîchit la même ligne au
+-- lieu d'en empiler une. Le client ne pousse plus que le PUSH. SECURITY DEFINER :
+-- la policy INSERT de `notifications` exige `from_id = auth.uid()`, ce qui est
+-- vrai ici, mais la lecture de `profiles` et l'UPSERT n'ont pas à dépendre du
+-- rôle courant. Le nom n'est pas échappé en base : le client neutralise `< >` de
+-- toute notification distante à l'entrée (`mergeSupaNotifs`).
+create or replace function public.follows_notifier()
+returns trigger language plpgsql security definer set search_path = public, pg_temp as $$
+declare acteur text; cible text; genre text; texte text; ident text; nom text;
+begin
+  if TG_OP = 'INSERT' then
+    if new.follower_id = new.following_id then return new; end if;
+    acteur := new.follower_id; cible := new.following_id;
+    if new.status = 'pending' then
+      genre := 'follow_request'; texte := 'souhaite s''abonner à ton compte privé';
+      ident := 'n_fr_' || left(acteur, 8) || '_' || left(cible, 8);
+    else
+      genre := 'follow'; texte := 'a commencé à te suivre';
+      ident := 'n_fw_' || left(acteur, 8) || '_' || left(cible, 8);
+    end if;
+  elsif TG_OP = 'UPDATE' and old.status = 'pending' and new.status = 'accepted' then
+    acteur := new.following_id; cible := new.follower_id;
+    genre := 'follow'; texte := 'a accepté ta demande d''abonnement';
+    ident := 'n_fa_' || left(acteur, 8) || '_' || left(cible, 8);
+  else
+    return new;
+  end if;
+  select nullif(btrim(p.username), '') into nom from public.profiles p where p.id = acteur;
+  insert into public.notifications (id, user_id, kind, from_id, ref_id, content, seen, created_at)
+  values (ident, cible, genre, acteur, acteur, coalesce(nom, 'Quelqu''un') || ' ' || texte, false, now())
+  on conflict (id) do update set content = excluded.content, kind = excluded.kind, seen = false, created_at = now();
+  return new;
+end $$;
+revoke execute on function public.follows_notifier() from public, anon, authenticated;
+drop trigger if exists trg_follows_notifier on public.follows;
+create trigger trg_follows_notifier after insert or update of status on public.follows
+  for each row execute function public.follows_notifier();
 
 -- Seul un abonnement ACCEPTÉ ouvre le contenu d'un compte privé — dans les
 -- deux policies ET dans `post_is_visible`, qui les double pour commentaires,
@@ -469,7 +601,11 @@ with v(ordre, correctif, ok) as (
          and exists (select 1 from pg_trigger where tgname = 'trg_reports_statut_initial')
   union all select 8, '⑤ canaux Realtime : réception et émission sous policy',
          (select count(*) from pg_policies where schemaname = 'realtime' and tablename = 'messages'
-            and policyname in ('passio_rt_recevoir', 'passio_rt_emettre')) = 2
+            and policyname in ('passio_rt_recevoir', 'passio_rt_emettre', 'passio_rt_recevoir_visiteur')) = 3
+         and (select with_check from pg_policies where schemaname = 'realtime' and tablename = 'messages'
+              and policyname = 'passio_rt_emettre') like '%is_blocked_with%'
+         and (select qual from pg_policies where schemaname = 'realtime' and tablename = 'messages'
+              and policyname = 'passio_rt_recevoir') like '%realtime:db%'
   union all select 9, '⑥ seau attachments privé',
          coalesce((select not public from storage.buckets where id = 'attachments'), false)
   union all select 10, '⑦ compte privé : abonnement sur demande (statut + triggers + policies)',
@@ -482,6 +618,19 @@ with v(ordre, correctif, ok) as (
          and (select qual from pg_policies where schemaname = 'public' and tablename = 'stories'
               and policyname = 'Lecture stories respectant les comptes prives') like '%accepted%'
          and pg_get_functiondef('public.post_is_visible(text)'::regprocedure) like '%accepted%'
+  union all select 11, '⑧ UPDATE gardés : conv_id / post_id figés, WITH CHECK posé',
+         exists (select 1 from pg_trigger where tgname = 'trg_identifiants_figes' and tgrelid = 'public.conv_messages'::regclass)
+         and exists (select 1 from pg_trigger where tgname = 'trg_identifiants_figes' and tgrelid = 'public.post_comments'::regclass)
+         and coalesce((select with_check from pg_policies where schemaname = 'public' and tablename = 'conv_messages'
+                       and policyname = 'Update propre'), '') like '%conv_1a1_bloquee%'
+         and coalesce((select with_check from pg_policies where schemaname = 'public' and tablename = 'post_comments'
+                       and policyname = 'Update propre'), '') like '%post_auteur_bloque%'
+  union all select 12, '⑩ follows : une demande en attente ne se lit qu''à ses deux bouts',
+         (select count(*) from pg_policies where schemaname = 'public' and tablename = 'follows' and cmd = 'SELECT') = 1
+         and coalesce((select qual from pg_policies where schemaname = 'public' and tablename = 'follows'
+                       and policyname = 'follows_lecture'), '') like '%accepted%'
+  union all select 13, '⑦ notification d''abonnement écrite par le serveur',
+         exists (select 1 from pg_trigger where tgname = 'trg_follows_notifier' and not tgisinternal)
 )
 select ordre, correctif, case when ok then 'OK' else 'ECHEC' end as verdict
 from v order by ordre;

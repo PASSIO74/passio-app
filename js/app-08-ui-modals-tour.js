@@ -1939,7 +1939,7 @@ function mergeSupaNotifs(ns) {
         attente = state.user.followingPending;
       });
     }
-  } catch (e) {}
+  } catch (e) { try { diagLog("notifs : fusion des demandes acceptées — " + (e && e.message)); } catch (_) {} }
   // Ignorer les notifs émises par un utilisateur bloqué (modération)
   if (typeof isBlocked === "function") ns = ns.filter(n => !isBlocked(n.fromId));
   if (!ns.length) return;
@@ -5103,14 +5103,25 @@ async function supaInsertNotif(toUserId, kind, refId, content) {
       seen: false, created_at: new Date().toISOString(),
     });
     // Push Web → réveille le destinataire même app fermée (fire-and-forget).
-    if (!error) {
-      try {
-        supa.functions.invoke("notify-call", {
-          body: { toUserId, type: "notif", kind, text: fullText, emoji: _notifEmoji(kind) }
-        }).catch(() => {});
-      } catch(e) {}
-    }
+    if (!error) _pousserPushNotif(toUserId, kind, fullText);
   } catch(e) {}
+}
+// Le PUSH seul, sans ligne `notifications` : pour les événements dont la ligne est
+// écrite par le SERVEUR (abonnements, `follows_notifier` depuis le 2026-09-11) —
+// une ligne de plus côté client ferait un doublon, mais le push, lui, ne part
+// que d'ici. `texte` est déjà complet (« Camille a commencé à te suivre »).
+function _pousserPushNotif(toUserId, kind, texte) {
+  try {
+    if (!toUserId || toUserId === MY_UID) return;
+    supa.functions.invoke("notify-call", {
+      body: { toUserId: toUserId, type: "notif", kind: kind, text: texte, emoji: _notifEmoji(kind) }
+    }).catch(() => {});
+  } catch (e) {}
+}
+function _texteNotifDeMoi(content) {
+  const prof = currentProfile();
+  const safeName = (typeof escapeHtml === "function") ? escapeHtml(prof?.name || "Quelqu'un") : (prof?.name || "Quelqu'un");
+  return safeName + " " + content;
 }
 
 // ---- TEMPS RÉEL — abonnements globaux ----
@@ -5355,7 +5366,18 @@ function supaSubscribe() {
   // (5 tables). Chaque handler est INCHANGÉ — seule la plomberie canal change.
   // Au repos un client n'a plus que 3 canaux : user:<uid> (messages v3),
   // ring:<uid> (appels) et realtime:db (celui-ci).
-  const dbChan = supa.channel("realtime:db");
+  window._dbChan = _creerCanalDb(window._rtPriveIndisponible !== true);
+}
+// ⚠️ PRIVÉ depuis le 2026-09-11 : quand le tableau de bord Supabase interdit les
+// canaux publics (« Allow public access » OFF — le geste qui rend les policies
+// Realtime opposables), un canal public est REFUSÉ. Celui-ci portait les accusés
+// de lecture, les interactions en direct, l'arrivée dans une conversation : il
+// serait mort sans erreur visible. Policy : `realtime.topic() = 'realtime:db'`
+// (anon ET authenticated — les tables gardent leur propre RLS, le canal n'ouvre
+// rien). Repli public si la souscription privée est refusée PAR POLICY (migration
+// pas encore collée), comme la sonnerie — jamais sur une coupure réseau.
+function _creerCanalDb(prive) {
+  const dbChan = supa.channel("realtime:db", { config: { private: prive } });
 
   // v1 (si v2/v3 désactivés) : messages entrants via postgres_changes global,
   // filtrage d'appartenance côté client (_handleIncomingConvMessage).
@@ -5609,7 +5631,17 @@ function supaSubscribe() {
     });
 
   // Un SEUL join pour l'ensemble des bindings ci-dessus.
-  dbChan.subscribe();
+  dbChan.subscribe(function (st, err) {
+    if (!prive || st !== "CHANNEL_ERROR" || window._dbChan !== dbChan) return;
+    if (typeof _rtRefusDePolicy !== "function" || !_rtRefusDePolicy(err)) return;
+    // `removeChannel` est asynchrone et `supa.channel(topic)` rend le canal
+    // existant tant qu'il n'est pas parti : on recrée APRÈS le départ.
+    Promise.resolve(supa.removeChannel(dbChan)).catch(function () {}).then(function () {
+      if (window._dbChan !== dbChan) return;
+      window._dbChan = _creerCanalDb(false);
+    });
+  });
+  return dbChan;
 }
 // ---- FOLLOW / UNFOLLOW ----
 // Traçage : plusieurs requêtes en jeu (upsert profil, insert, notif) → l'étape
@@ -5646,15 +5678,27 @@ async function supaFollowUser(targetId) {
     const dup = res && res.error && String(res.error.code) === "23505";
     const ok = !!(!res || !res.error || dup);
     // Le SERVEUR tranche : 'pending' vers un compte privé (trg_follows_statut).
-    const status = (res && res.data && res.data.status) || "accepted";
+    // ⚠️ Sur un DOUBLON le serveur ne rend aucun statut : on garde celui que
+    // l'état du compte connaît (une demande encore en attente reste « Demande
+    // envoyée », elle ne devient pas « ✓ Suivi » par défaut).
+    let status = res && res.data && res.data.status;
+    if (!status && dup && typeof etatSuivi === "function" && etatSuivi(targetId) === "attente") status = "pending";
+    if (!status) status = "accepted";
     try { window.tel && tel.settle(_cid, "saved", ok, res && res.error); } catch (e) {}
     // ⚠️ La notification ne part QUE si la relation existe vraiment, et seulement
     // si on vient de la créer. Hors de toute condition, elle annonçait un suivi
     // qu'un refus RLS avait empêché — et un doublon (état local périmé) renotifiait
     // à chaque nouvelle tentative.
-    if (ok && !dup && targetId && targetId !== MY_UID && typeof supaInsertNotif === "function") {
-      if (status === "pending") supaInsertNotif(targetId, "follow_request", MY_UID, "souhaite s'abonner à ton compte privé");
-      else supaInsertNotif(targetId, "follow", MY_UID, "a commencé à te suivre");
+    // Depuis la migration du 2026-09-11, la LIGNE `notifications` est écrite par le
+    // serveur (`follows_notifier`, identifiant déterministe, infalsifiable) : le
+    // client n'envoie que le PUSH. Tant que la base n'a pas la colonne `status`
+    // (migration pas encore collée), il n'y a pas de trigger non plus : on écrit
+    // la ligne comme avant — le client fonctionne dans les DEUX états.
+    if (ok && !dup && targetId && targetId !== MY_UID) {
+      const texte = status === "pending" ? "souhaite s'abonner à ton compte privé" : "a commencé à te suivre";
+      const kind = status === "pending" ? "follow_request" : "follow";
+      if (window._followsSansStatut === true) { if (typeof supaInsertNotif === "function") supaInsertNotif(targetId, kind, MY_UID, texte); }
+      else _pousserPushNotif(targetId, kind, _texteNotifDeMoi(texte));
     }
     return { ok: ok, status: ok ? status : null, dup: !!dup };
   } catch(e) { try { window.tel && tel.settle(_cid, "saved", false, e); } catch (_) {} return { ok: false, status: null }; }
@@ -5673,7 +5717,9 @@ async function accepterDemandeAbonnement(fromId, notifId) {
     if (!res || !res.data || !res.data.length) { toast("Cette demande n'existe plus"); _demandeAbonnementTraitee(notifId, "expirée"); return false; }
     _demandeAbonnementTraitee(notifId, "acceptée");
     toast("Demande acceptée");
-    if (typeof supaInsertNotif === "function") supaInsertNotif(fromId, "follow", MY_UID, "a accepté ta demande d'abonnement");
+    // La ligne `notifications` est écrite par `follows_notifier` (UPDATE pending →
+    // accepted) ; d'ici ne part que le push.
+    _pousserPushNotif(fromId, "follow", _texteNotifDeMoi("a accepté ta demande d'abonnement"));
     return true;
   } catch (e) { toast("Impossible d'accepter pour le moment"); return false; }
 }

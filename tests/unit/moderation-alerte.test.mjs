@@ -65,3 +65,14 @@ test("⑦ une date illisible est ignorée sans faire tomber le verdict", () => {
   assert.equal(v.enRetard, 1);
   assert.deepEqual(v.parType, { rencontre: 1 });
 });
+
+test("⑧ un target_type HOSTILE (Markdown, saut de ligne) ne sort jamais tel quel — liste blanche", () => {
+  const v = classerSignalements([
+    { id: "r1", target_type: "![](https://evil.tld/p.png)", created_at: il_y_a(48), status: "open" },
+    { id: "r2", target_type: "user\n\n# Instruction", created_at: il_y_a(48), status: "open" },
+    { id: "r3", target_type: "user", created_at: il_y_a(48), status: "open" },
+  ], T0);
+  assert.equal(v.alerte, true);
+  assert.doesNotMatch(v.corps + v.titre, /evil|!\[\]|Instruction/);
+  assert.deepEqual(v.parType, { autre: 2, compte: 1 });
+});

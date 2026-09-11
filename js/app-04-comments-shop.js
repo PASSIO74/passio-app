@@ -3322,6 +3322,19 @@ function toggleFollowUser(userId, userName) {
     _peindreBoutonsSuivi(userId, "suivi");
     toast("Tu suis " + nom + " !");
     Promise.resolve(supaFollowUser(userId)).then(function (r) {
+      // ⚠️ ÉCHEC RÉEL = ANNULER L'OPTIMISTE (invariant CLAUDE.md). Le lot ajoute
+      // deux refus possibles sur `follows` (blocage, débit) : sans cette branche,
+      // l'identifiant refusé restait dans `following`, était persisté, puis
+      // fusionné en UNION au démarrage suivant — un « ✓ Suivi » que rien ne
+      // pouvait plus retirer. `r` vaut `true`/objet sans `ok` sous les faux
+      // clients des suites : seul un `ok: false` EXPLICITE est un refus.
+      if (r && r.ok === false) {
+        state.user.following = (state.user.following || []).filter(function (id) { return id !== userId; });
+        _peindreBoutonsSuivi(userId, "aucun");
+        toast("Impossible de suivre " + nom + " pour le moment");
+        saveState();
+        return;
+      }
       if (!r || r.status !== "pending") return;
       state.user.following = (state.user.following || []).filter(function (id) { return id !== userId; });
       if (state.user.followingPending.indexOf(userId) < 0) state.user.followingPending.push(userId);
@@ -3343,7 +3356,8 @@ function toggleFollowUser(userId, userName) {
 // l'un des trois états. Seul point qui écrit ces libellés : `libelleBoutonSuivi`
 // (app-02) est la source des mots, ceci n'en est que la mise en couleur.
 function _peindreBoutonsSuivi(userId, etat) {
-  var libelle = etat === "suivi" ? "✓ Suivi" : etat === "attente" ? "Demande envoyée" : "Suivre";
+  // L'état est écrit AVANT chaque appel : le libellé se lit dans la seule table.
+  var libelle = libelleBoutonSuivi(userId);
   _boutonsSuivi(userId).forEach(function (btn) {
     btn.innerHTML = libelle;
     if (etat === "suivi") {
@@ -5090,7 +5104,15 @@ function _subscribeTyping(convId) {
   // conversation seulement). `window._rtPriveIndisponible` est posé par la
   // sonnerie d'appel (app-05) quand la souscription privée est REFUSÉE — migration
   // Realtime pas encore appliquée — et l'on replie alors sur le canal public.
-  _typingChannel = supa.channel("typing:" + convId, { config: { private: window._rtPriveIndisponible !== true } })
+  _typingChannel = _creerCanalTyping(convId, window._rtPriveIndisponible !== true);
+}
+// ⚠️ Un identifiant de conversation encore LOCAL (créée cet instant, ligne
+// serveur pas encore écrite) n'est membre de rien pour `is_conv_member` : le
+// canal privé est refusé pour CETTE conversation seulement. On replie alors sur
+// le canal public de cette conversation, sans toucher à la sonde globale (la
+// policy existe bien, c'est l'identifiant qui n'est pas encore connu).
+function _creerCanalTyping(convId, prive) {
+  var chan = supa.channel("typing:" + convId, { config: { private: prive } })
     .on("broadcast", { event: "typing" }, ({ payload }) => {
       const bar = document.getElementById("convTypingBar");
       if (bar) { bar.textContent = (payload.user || "Quelqu'un") + " est en train d'écrire…"; bar.style.display = "block"; }
@@ -5100,8 +5122,18 @@ function _subscribeTyping(convId) {
     .on("broadcast", { event: "stop_typing" }, () => {
       const bar = document.getElementById("convTypingBar");
       if (bar) bar.style.display = "none";
-    })
-    .subscribe();
+    });
+  chan.subscribe((st, err) => {
+    if (!prive || st !== "CHANNEL_ERROR" || _typingChannel !== chan) return;
+    if (typeof _rtRefusDePolicy === "function" && !_rtRefusDePolicy(err)) return;
+    // `removeChannel` est asynchrone et `supa.channel(topic)` rend le canal
+    // existant tant qu'il n'est pas parti : on recrée APRÈS le départ.
+    Promise.resolve(supa.removeChannel(chan)).catch(function () {}).then(function () {
+      if (_typingChannel !== chan) return;
+      _typingChannel = _creerCanalTyping(convId, false);
+    });
+  });
+  return chan;
 }
 
 // Canal Supabase filtré par conv_id (réception instantanée sans aller-retour JS)
@@ -5118,7 +5150,16 @@ function _supaConvSpecificChannel(convId, displayName) {
     return;
   }
   if (_supaConvChannel) { try { supa.removeChannel(_supaConvChannel); } catch(e) {} _supaConvChannel = null; }
-  _supaConvChannel = supa.channel("conv_specific:" + convId)
+  _supaConvChannel = _creerCanalConvSpecifique(convId, displayName, window._rtPriveIndisponible !== true);
+}
+// PRIVÉ (policy `passio_rt_recevoir`, membres seulement) — repli public pour
+// CETTE conversation si la souscription privée est refusée par policy (migration
+// pas encore collée, ou conversation créée à l'instant dont la ligne serveur
+// n'existe pas encore), comme `_creerCanalTyping`. Sans repli, quand le tableau
+// de bord interdira les canaux publics, un canal resté public serait mort sans
+// erreur — et avec un canal privé sans policy, c'est l'inverse.
+function _creerCanalConvSpecifique(convId, displayName, prive) {
+  var chan = supa.channel("conv_specific:" + convId, { config: { private: prive } })
     .on("postgres_changes", {
       event: "INSERT", schema: "public", table: "conv_messages",
       filter: "conv_id=eq." + convId   // filtre côté Supabase → seuls les messages de CETTE conv arrivent
@@ -5142,8 +5183,16 @@ function _supaConvSpecificChannel(convId, displayName) {
       saveConversations();
       if (window._openedConvId === convId) renderConvFpThread(c, displayName);
       renderMessages();
-    })
-    .subscribe();
+    });
+  chan.subscribe(function (st, err) {
+    if (!prive || st !== "CHANNEL_ERROR" || _supaConvChannel !== chan) return;
+    if (typeof _rtRefusDePolicy !== "function" || !_rtRefusDePolicy(err)) return;
+    Promise.resolve(supa.removeChannel(chan)).catch(function () {}).then(function () {
+      if (_supaConvChannel !== chan || window._openedConvId !== convId) return;
+      _supaConvChannel = _creerCanalConvSpecifique(convId, displayName, false);
+    });
+  });
+  return chan;
 }
 
 function closeConversation() {

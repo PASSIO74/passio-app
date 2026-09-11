@@ -21,7 +21,13 @@
 //      serveur CORRIGE l'affichage optimiste, et la demande se tranche depuis la
 //      notification (boutons, puis verdict écrit) ;
 //   ⑧ la politique de confidentialité dit ce que la base fait (7 j / 30 j), et sa
-//      version suit le texte.
+//      version suit le texte ;
+//   ⑨ RED TEAM du 2026-09-11 : la charge utile d'un broadcast est HOSTILE — l'emoji
+//      d'une sonnerie est échappé (XSS par invitation, éprouvé par RÉINJECTION),
+//      les invitations sont bornées en cadence, les ordres d'hôte d'un live ne
+//      sont acceptés que de l'hôte, l'identifiant d'appel n'est plus devinable,
+//      `realtime:db` et `conv_specific:` sont privés avec repli, une URL signée ne
+//      vaut plus qu'une heure, et la notification d'abonnement vient du serveur.
 // ═══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
 const fs = require("fs");
@@ -188,7 +194,7 @@ test.describe("④ pièces jointes signées", () => {
     expect(r.appels.length, "UNE signature par objet distinct (cache mémoire)").toBe(1);
     expect(r.appels[0].seau).toBe("attachments");
     expect(r.appels[0].chemin).toBe("attachments/conv_x9/1787_photo.jpg");
-    expect(r.appels[0].ttl).toBe(7 * 24 * 3600);
+    expect(r.appels[0].ttl, "une heure — une URL signée est un porteur (red team)").toBe(3600);
     expect(r.img).toContain("/object/sign/attachments/attachments/conv_x9/1787_photo.jpg?token=SIGNE");
     expect(r.a).toContain("?token=SIGNE");
     expect(r.gif).toBe("https://media.tenor.com/x.gif");
@@ -259,8 +265,11 @@ test.describe("⑥ canaux Realtime privés", () => {
   test("à la SOURCE : frappe et live sont privés eux aussi, la sonnerie porte la sonde", async () => {
     const app04 = lire("js/app-04-comments-shop.js");
     const app05 = lire("js/app-05-config-profil.js");
-    expect(app04).toMatch(/supa\.channel\("typing:" \+ convId, \{ config: \{ private: window\._rtPriveIndisponible !== true \} \}\)/);
-    expect((app05.match(/supa\.channel\("vlive:" \+ [a-zA-Z]+, \{ config: \{[^}]*private: window\._rtPriveIndisponible !== true \}/g) || []).length).toBe(2);
+    expect(app04).toMatch(/_typingChannel = _creerCanalTyping\(convId, window\._rtPriveIndisponible !== true\)/);
+    expect(app04).toMatch(/supa\.channel\("typing:" \+ convId, \{ config: \{ private: prive \} \}\)/);
+    const lignesVlive = app05.split("\n").filter((l) => l.includes('supa.channel("vlive:'));
+    expect(lignesVlive.length, "deux points de création vlive: (hôte et spectateur)").toBe(2);
+    for (const l of lignesVlive) expect(l).toContain("private: window._rtPriveIndisponible !== true");
     expect(app05).toMatch(/function _subscribeCallRing[\s\S]{0,1200}window\._rtPriveIndisponible = true/);
     // Un seul point crée ring:/call: — sinon la sonde ne protège pas tout.
     expect((app05.match(/supa\.channel\("(ring|call):/g) || []).length).toBe(0);
@@ -355,7 +364,9 @@ test.describe("⑦ compte privé : abonnement sur demande", () => {
       state.user.demandesAbonnementTraitees = {};
       state.notifications = [{ id: "n_a", kind: "follow_request", fromId: "u_dem", text: "x", createdAt: Date.now(), unread: true }];
       const notifs = [];
-      window.supaInsertNotif = async (to, kind) => { notifs.push([to, kind]); };
+      // La LIGNE est écrite par le serveur (follows_notifier) : d'ici ne part que le push.
+      window.supaInsertNotif = async (to, kind) => { notifs.push(["ligne", to, kind]); };
+      window._pousserPushNotif = (to, kind) => { notifs.push(["push", to, kind]); };
       let reponse;
       supa.from = () => ({ update: () => ({ eq: () => ({ eq: () => ({ select: async () => reponse }) }) }),
                           delete: () => ({ eq: () => ({ eq: async () => reponse }) }) });
@@ -376,7 +387,7 @@ test.describe("⑦ compte privé : abonnement sur demande", () => {
     expect(r.memo1, "un refus ne marque RIEN").toEqual({});
     expect(r.r2).toBe(true);
     expect(r.memo2).toEqual({ n_a: "acceptée" });
-    expect(r.notifs).toEqual([["u_dem", "follow"]]);
+    expect(r.notifs, "aucune ligne écrite par le client, un seul push, au succès seulement").toEqual([["push", "u_dem", "follow"]]);
     expect(r.toasts).toContain("Demande acceptée");
   });
 
@@ -426,15 +437,191 @@ test.describe("⑧ la politique dit ce que la base fait", () => {
     expect(app02).toMatch(/13 mois au maximum<\/strong> — en pratique la mesure d\\'usage détaillée est effacée après <strong[^>]*>7 jours<\/strong> et les rapports d\\'erreur après <strong[^>]*>30 jours/);
   });
 
-  test("la migration serveur existe, son banc est branché en CI, et son verdict porte dix lignes", async () => {
+  test("la migration serveur existe, son banc est branché en CI, et son verdict porte treize lignes", async () => {
     const mig = lire("migrations/migration_ouverture_publique_2026-09-11.sql");
     expect(mig).toMatch(/update storage\.buckets set public = false where id = 'attachments'/);
     expect(mig).toMatch(/create policy "passio_rt_recevoir" on realtime\.messages/);
-    expect((mig.match(/union all select \d+,/g) || []).length).toBe(9);
+    expect((mig.match(/union all select \d+,/g) || []).length).toBe(12);
+    // Red team : UPDATE gardés, sonnerie refusée à un compte bloqué, demandes masquées, notifier.
+    expect(mig).toMatch(/create trigger trg_identifiants_figes before update on public\.conv_messages/);
+    expect(mig).toMatch(/create trigger trg_identifiants_figes before update on public\.post_comments/);
+    expect(mig).toMatch(/realtime\.topic\(\) like 'ring:%'\s+and not public\.is_blocked_with\(substr\(realtime\.topic\(\), 6\)\)/);
+    expect(mig).toMatch(/realtime\.topic\(\) = 'realtime:db'/);
+    expect(mig).toMatch(/realtime\.topic\(\) like 'conv_specific:%'/);
+    expect(mig).toMatch(/create policy "follows_lecture" on public\.follows for select to anon, authenticated/);
+    expect(mig).toMatch(/create trigger trg_follows_notifier after insert or update of status on public\.follows/);
+    expect(lire("tests/unit/moderation-alerte.test.mjs")).toMatch(/target_type HOSTILE/);
     const ci = lire(".github/workflows/deploy.yml");
     expect(ci).toMatch(/bash tests\/sql\/migration-ouverture-publique\.test\.sh/);
     expect(ci).toMatch(/node --test tests\/unit\/moderation-alerte\.test\.mjs/);
     expect(fs.existsSync(path.join(RACINE, ".github/workflows/sauvegarde.yml"))).toBe(true);
     expect(fs.existsSync(path.join(RACINE, ".github/workflows/moderation-alerte.yml"))).toBe(true);
+  });
+});
+
+test.describe("⑨ red team : la charge utile d'un broadcast est hostile", () => {
+  test("l'emoji d'une invitation d'appel est ÉCHAPPÉ et borné — réinjection : un <img onerror> ne rend aucun nœud", async ({ page }) => {
+    await bootOnboarded(page);
+    const r = await page.evaluate(() => {
+      const charge = { callId: "x1", from: "u_att", kind: "voice", name: "<b>a</b>",
+                       emoji: '<img src=x onerror="window.__xss=1">' };
+      window.__xss = 0;
+      _callRenderIncomingUI(charge);
+      const el = document.getElementById("callOverlay");
+      const avatar = el.querySelector(".call-avatar");
+      const r0 = { imgs: el.querySelectorAll("img").length, bold: el.querySelectorAll("b").length,
+                   avatarTexte: avatar.textContent, nom: el.querySelector(".call-name").textContent };
+      // Un emoji légitime passe, et le repli vaut pour une charge vide.
+      _callRenderIncomingUI({ callId: "x2", from: "u_b", kind: "video", name: "Léa", emoji: "🎸" });
+      const r1 = document.querySelector("#callOverlay .call-avatar").textContent;
+      _callRenderIncomingUI({ callId: "x3", from: "u_b", kind: "video", name: "Léa" });
+      const r2 = document.querySelector("#callOverlay .call-avatar").textContent;
+      _callCloseUI();
+      return Object.assign(r0, { r1, r2, borne: _emojiSur("🎸🎸🎸🎸🎸🎸") });
+    });
+    expect(r.imgs, "la charge n'a créé AUCUN élément").toBe(0);
+    expect(r.bold).toBe(0);
+    expect(r.avatarTexte.length, "bornée à quatre caractères").toBeLessThanOrEqual(4);
+    expect(r.nom).toBe("<b>a</b>");
+    expect(r.r1).toBe("🎸");
+    expect(r.r2).toBe("🙂");
+    expect(Array.from(r.borne).length).toBe(4);
+    await expect.poll(() => page.evaluate(() => window.__xss)).toBe(0);
+  });
+
+  test("RÉINJECTION : sans `_emojiSur`, la même charge exécute du script — le verrou mesure le défaut", async ({ page }) => {
+    await bootOnboarded(page);
+    const r = await page.evaluate(async () => {
+      window.__xss = 0;
+      const el = _callOverlayEl();
+      // Le rendu D'AVANT (emoji concaténé tel quel).
+      el.innerHTML = '<div class="call-avatar">' + ('<img src=x onerror="window.__xss=1">') + '</div>';
+      await new Promise((r) => setTimeout(r, 300));
+      const xss = window.__xss;
+      el.innerHTML = "";
+      return xss;
+    });
+    expect(r, "l'ancien rendu exécutait le handler : le cas précédent ne teste pas le vide").toBe(1);
+  });
+
+  test("les invitations sont bornées en cadence : un callId neuf par message ne fait plus sonner en boucle", async ({ page }) => {
+    await bootOnboarded(page);
+    const r = await page.evaluate(() => {
+      window._call = null; window._callIncoming = null; window._callInviteAffichee = 0;
+      const rendus = [];
+      window._callRenderIncomingUI = (inv) => rendus.push(inv.callId);
+      for (let i = 0; i < 20; i++) _callOnInvite({ callId: "rafale_" + i, from: "u_att", kind: "voice", name: "x" });
+      // L'appelant LÉGITIME répète le MÊME callId : dédup, pas de re-rendu, pas de blocage.
+      _callOnInvite({ callId: "rafale_0", from: "u_att", kind: "voice", name: "x" });
+      const min = CALL_INVITE_MIN_MS;
+      window._callIncoming = null;
+      return { rendus, min };
+    });
+    expect(r.rendus).toEqual(["rafale_0"]);
+    expect(r.min).toBeGreaterThanOrEqual(2000);
+  });
+
+  test("un live n'obéit qu'à son HÔTE : offer/end/pause/full/sys/history/assign/serve exigent `from = author_id`", async ({ page }) => {
+    await bootOnboarded(page);
+    const r = await page.evaluate(() => {
+      window._vliveView = { id: "L1", row: { id: "L1", author_id: "u_hote" }, chan: null, pc: null, pendingIce: [] };
+      const v = { hote: _vliveDeLHote({ from: "u_hote", to: MY_UID }), tiers: _vliveDeLHote({ from: "u_tiers" }),
+                  sansFrom: _vliveDeLHote({}), nul: _vliveDeLHote(null) };
+      // Le rendu « live terminé » ne doit pas réagir à un tiers : on capture les handlers d'un faux canal.
+      const handlers = {};
+      const chan = { on(type, opts, fn) { if (type === "broadcast") handlers[opts.event] = fn; return this; } };
+      _vliveBindViewer(chan);
+      let termine = 0; window._vliveShowEnded = () => { termine++; };
+      handlers.end({ payload: { from: "u_tiers" } });
+      const termineParTiers = termine;
+      handlers.end({ payload: { from: "u_hote" } });
+      window._vliveView = null;
+      return Object.assign(v, { termineParTiers, termineParHote: termine, evenementsGardes: Object.keys(handlers) });
+    });
+    expect(r.hote).toBe(true);
+    expect(r.tiers).toBe(false);
+    expect(r.sansFrom).toBe(false);
+    expect(r.nul).toBe(false);
+    expect(r.termineParTiers, "un tiers n'a pas terminé le live").toBe(0);
+    expect(r.termineParHote, "l'hôte, si").toBe(1);
+    // À la source : chaque ordre d'hôte passe par la garde.
+    const app05 = lire("js/app-05-config-profil.js");
+    const viewer = app05.slice(app05.indexOf("function _vliveBindViewer"), app05.indexOf("function _vliveRelayServe"));
+    for (const ev of ["offer", "end", "full", "sys", "pause", "history", "assign", "serve"]) {
+      const bloc = viewer.slice(viewer.indexOf('{ event: "' + ev + '" }'));
+      expect(bloc.slice(0, 700), "ordre « " + ev + " » gardé par _vliveDeLHote").toContain("_vliveDeLHote(");
+    }
+    expect(viewer, "roffer : seul le relais ASSIGNÉ sert").toMatch(/d\.srv !== V\.parentAttendu\) return/);
+  });
+
+  test("l'identifiant d'appel n'est plus `<uid>_<horodatage>` : aléatoire, 32 caractères hexadécimaux au moins", async ({ page }) => {
+    await bootOnboarded(page);
+    const ids = await page.evaluate(() => [_callIdAleatoire(), _callIdAleatoire(), _callIdAleatoire()]);
+    for (const id of ids) {
+      expect(id).toMatch(/^[0-9a-f-]{32,36}$/);
+      expect(id).not.toContain("u_");
+    }
+    expect(new Set(ids).size).toBe(3);
+    expect(lire("js/app-05-config-profil.js")).toMatch(/const callId = _callIdAleatoire\(\);/);
+    expect(lire("js/app-05-config-profil.js")).not.toMatch(/MY_UID \+ "_" \+ Date\.now\(\)\.toString\(36\)/);
+  });
+
+  test("à la SOURCE : `realtime:db` et `conv_specific:` sont PRIVÉS, avec repli public sur refus de policy", async () => {
+    const app08 = lire("js/app-08-ui-modals-tour.js");
+    const app04 = lire("js/app-04-comments-shop.js");
+    expect(app08).toMatch(/window\._dbChan = _creerCanalDb\(window\._rtPriveIndisponible !== true\)/);
+    expect(app08).toMatch(/supa\.channel\("realtime:db", \{ config: \{ private: prive \} \}\)/);
+    const db = app08.slice(app08.indexOf("function _creerCanalDb"), app08.indexOf("// ---- FOLLOW / UNFOLLOW ----"));
+    expect(db).toMatch(/_rtRefusDePolicy\(err\)/);
+    expect(db).toMatch(/window\._dbChan = _creerCanalDb\(false\)/);
+    expect(db, "recréé APRÈS le départ effectif du canal (removeChannel est asynchrone)").toMatch(/Promise\.resolve\(supa\.removeChannel\(dbChan\)\)/);
+    expect((app08.match(/supa\.channel\("realtime:db"/g) || []).length, "un seul point de création").toBe(1);
+    expect(app04).toMatch(/_supaConvChannel = _creerCanalConvSpecifique\(convId, displayName, window\._rtPriveIndisponible !== true\)/);
+    expect(app04).toMatch(/supa\.channel\("conv_specific:" \+ convId, \{ config: \{ private: prive \} \}\)/);
+    expect(app04).toMatch(/_supaConvChannel = _creerCanalConvSpecifique\(convId, displayName, false\)/);
+    // Plus AUCUN canal public inconditionnel : le geste « Allow public access OFF » ne tuera rien.
+    for (const f of ["js/app-04-comments-shop.js", "js/app-05-config-profil.js", "js/app-08-ui-modals-tour.js"]) {
+      const lignes = lire(f).split("\n").filter((l) => /supa\.channel\(/.test(l) && !/^\s*\/\//.test(l));
+      for (const l of lignes) expect(l, f + " : " + l.trim()).toMatch(/private:/);
+    }
+  });
+
+  test("une URL signée ne vaut plus qu'une heure, et le cache la relâche avant", async ({ page }) => {
+    await bootOnboarded(page);
+    const r = await page.evaluate(() => ({ ttl: PJ_SIGNATURE_TTL_S, marge: PJ_SIGNATURE_MARGE_S }));
+    expect(r.ttl).toBeLessThanOrEqual(3600);
+    expect(r.marge).toBeGreaterThan(0);
+    expect(r.marge).toBeLessThan(r.ttl);
+  });
+
+  test("`supaFollowUser` : sur un doublon, une demande en attente RESTE en attente ; la ligne de notification vient du serveur", async ({ page }) => {
+    await bootOnboarded(page);
+    const r = await page.evaluate(async () => {
+      window.supaEnsureProfileExists = async () => {};
+      const lignes = [], pushs = [];
+      window.supaInsertNotif = async (to, kind) => { lignes.push([to, kind]); };
+      window._pousserPushNotif = (to, kind) => { pushs.push([to, kind]); };
+      let reponse;
+      supa.from = () => ({ insert: () => Object.assign(Promise.resolve(reponse), { select: () => ({ single: async () => reponse }) }) });
+      state.user.following = []; state.user.followingPending = ["u_prive"];
+      // ① base migrée : le serveur rend le statut, la ligne est la sienne → push seul
+      delete window._followsSansStatut;
+      reponse = { data: { status: "pending" }, error: null };
+      const r1 = await supaFollowUser("u_prive");
+      // ② doublon sur une demande en attente : le statut local prime sur « accepted »
+      reponse = { data: null, error: { code: "23505", message: "duplicate" } };
+      const r2 = await supaFollowUser("u_prive");
+      // ③ base PAS migrée (42703 mémorisé) : pas de trigger → le client écrit la ligne comme avant
+      window._followsSansStatut = true;
+      reponse = { data: null, error: null };
+      const r3 = await supaFollowUser("u_public");
+      delete window._followsSansStatut;
+      return { r1, r2, r3, lignes, pushs };
+    });
+    expect(r.r1).toEqual({ ok: true, status: "pending", dup: false });
+    expect(r.r2).toEqual({ ok: true, status: "pending", dup: true });
+    expect(r.r3).toEqual({ ok: true, status: "accepted", dup: false });
+    expect(r.pushs, "① : un push follow_request ; ② : rien (doublon) ; ③ : pas de push, la ligne suffit").toEqual([["u_prive", "follow_request"]]);
+    expect(r.lignes, "③ seulement : la ligne côté client, comme avant la migration").toEqual([["u_public", "follow"]]);
   });
 });

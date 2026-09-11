@@ -93,7 +93,13 @@ test.describe("RELEASE-INTEGRITY — contrat de release et transition d'identit�
       };
     });
 
-    await page.route("https://telemetry.test/rest/v1/telemetry_events", async (route) => {
+    // ⚠️ TOUT hôte, pas seulement `telemetry.test` (2026-09-11). Depuis que le
+    // rideau est levé, `app.js` se charge et app-08 repose `window.PASSIO_SUPABASE`
+    // sur l'URL de PRODUCTION : la sonde partait alors pour de vrai dans la table
+    // `telemetry_events` de prod, et la route ne voyait plus rien (started = 0).
+    // On intercepte le chemin `/rest/v1/telemetry_events` où qu'il parte : ce que
+    // le test mesure, c'est que le drain ATTEND les POST — pas leur destination.
+    await page.route(/\/rest\/v1\/telemetry_events(\?|$)/, async (route) => {
       started++;
       await new Promise((r) => setTimeout(r, 140));
       finished++;

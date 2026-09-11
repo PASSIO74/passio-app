@@ -139,6 +139,8 @@ create policy "conv_messages_select_member" on public.conv_messages for select t
   using (public.is_conv_member(conv_id, (select auth.uid())::text));
 create policy "conv_messages_insert_member" on public.conv_messages for insert to authenticated
   with check (from_id = (select auth.uid())::text and public.is_conv_member(conv_id, (select auth.uid())::text));
+-- Prod : USING seul, pas de WITH CHECK, rien ne fige conv_id (défaut ⑧ de la red team).
+create policy "Update propre" on public.conv_messages for update to public using (from_id = (auth.uid())::text);
 create policy "reads_select" on public.conv_reads for select to public
   using (public.is_conv_member(conv_id, (select auth.uid())::text));
 
@@ -184,6 +186,7 @@ alter table public.post_comments enable row level security;
 create policy "Ecriture propre" on public.post_comments for insert to public with check (author_id = (auth.uid())::text);
 create policy "Lecture selon visibilite du post" on public.post_comments for select to public
   using (author_id = (select auth.uid())::text or post_is_visible(post_id));
+create policy "Update propre" on public.post_comments for update to public using (author_id = (auth.uid())::text);
 create table public.post_likes (post_id text not null, user_id text not null, primary key (post_id, user_id));
 alter table public.post_likes enable row level security;
 create policy "Ecriture propre" on public.post_likes for insert to public with check (user_id = (auth.uid())::text);
@@ -291,7 +294,12 @@ insert into public.conv_members values ('conv_bc', :'b'), ('conv_bc', :'c'), ('c
 insert into public.events (id, author_id, title, conv_id) values ('ev1', :'b', 'Sortie vélo', 'evgrp_1');
 insert into public.posts (id, author_id, content) values ('p_b', :'b', 'privé'), ('p_a', :'a', 'public');
 insert into public.stories (id, author_id) values ('s_b', :'b');
-insert into realtime.messages (topic, extension) values ('ring:' || :'a', 'broadcast'), ('typing:conv_ab', 'broadcast');
+-- Un message de C dans le groupe, un commentaire de C sur le post public de A :
+-- ce qu'un UPDATE pouvait DÉPLACER.
+insert into public.conv_messages (id, conv_id, from_id, content) values ('m_c0', 'evgrp_1', :'c', 'bonjour le groupe');
+insert into public.post_comments (id, post_id, author_id, text) values ('c_c0', 'p_a', :'c', 'joli');
+insert into realtime.messages (topic, extension) values ('ring:' || :'a', 'broadcast'), ('typing:conv_ab', 'broadcast'),
+  ('realtime:db', 'postgres_changes'), ('conv_specific:conv_ab', 'postgres_changes');
 SQL
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -332,7 +340,16 @@ verifier "⑥ le seau attachments est public" "t" \
   "$(Q "select public from storage.buckets where id='attachments';")"
 verifier "⑦ un abonnement à un compte privé ouvre ses publications d'un tap" "1" \
   "$(Q "insert into public.follows values ('$A','$B');" >/dev/null; AUTH "$A" "select count(*) from public.posts where author_id='$B';")"
+verifier "⑩ la table follows se lit ENTIÈRE sans compte" "1" "$(ANON "select count(*) from public.follows;")"
 Q "delete from public.follows;" >/dev/null
+verifier "⑧ C DÉPLACE son message de groupe dans le 1:1 de B, qui l'a bloqué (UPDATE non gardé)" "OK" \
+  "$(AUTH_OK "$C" "update public.conv_messages set conv_id='conv_bc' where id='m_c0';")"
+verifier "   …et B le lit dans sa conversation privée" "1" \
+  "$(AUTH "$B" "select count(*) from public.conv_messages where conv_id='conv_bc' and from_id='$C';")"
+Q "update public.conv_messages set conv_id='evgrp_1' where id='m_c0';" >/dev/null
+verifier "⑧ C déplace son commentaire vers la publication du compte PRIVÉ qui l'a bloqué" "OK" \
+  "$(AUTH_OK "$C" "update public.post_comments set post_id='p_b' where id='c_c0';")"
+Q "update public.post_comments set post_id='p_a' where id='c_c0';" >/dev/null
 
 echo "── ② APPLICATION DE LA MIGRATION ─────────────────────────────────────"
 sortie="$(psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 -f "$MIGRATION" 2>&1)" || {
@@ -340,7 +357,7 @@ sortie="$(psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 
 echo "  ✅ appliquée sans erreur"; ok=$((ok+1))
 n_echec="$(printf '%s\n' "$sortie" | grep -cE '\|\s*ECHEC\s*$' || true)"
 n_ok="$(printf '%s\n' "$sortie" | grep -cE '\|\s*OK\s*$' || true)"
-verifier "le tableau de verdict rend 10 OK et 0 ECHEC" "10/0" "$n_ok/$n_echec"
+verifier "le tableau de verdict rend 13 OK et 0 ECHEC" "13/0" "$n_ok/$n_echec"
 sortie2="$(psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 -f "$MIGRATION" 2>&1)" \
   && { echo "  ✅ rejouable (idempotente)"; ok=$((ok+1)); } \
   || { echo "  ❌ non rejouable :"; echo "$sortie2" | tail -3; ko=$((ko+1)); }
@@ -368,7 +385,7 @@ verifier "les deux fonctions de trigger ne sont plus appelables par anon" "false
   "$(Q "select has_function_privilege('anon', 'public.passion_request_auto_creer()', 'execute') || '/' || has_function_privilege('anon', 'public.trg_sync_profil_passions()', 'execute');")"
 verifier "post_is_visible reste appelable par anon (les commentaires publics en dépendent)" "t" \
   "$(Q "select has_function_privilege('anon', 'public.post_is_visible(text)', 'execute');")"
-verifier "un visiteur lit les commentaires d'une publication publique" "0" \
+verifier "un visiteur lit le commentaire d'une publication publique (celui de C sur p_a)" "1" \
   "$(ANON "select count(*) from public.post_comments where post_id='p_a';")"
 
 echo "── ④ ② BLOQUER A UN EFFET ───────────────────────────────────────────"
@@ -399,6 +416,25 @@ verifier "…mais A notifie B" "OK" \
 contient "un visiteur ne peut rien insérer dans follows (aucune policy anon)" "row-level security" \
   "$(ANON "insert into public.follows (follower_id, following_id) values ('$A', '$B');")"
 
+echo "── ④ bis ⑧ UN UPDATE NE DÉPLACE PLUS RIEN ───────────────────────────"
+contient "C ne peut plus déplacer son message vers le 1:1 de B (identifiant figé)" "ne se modifie pas" \
+  "$(AUTH "$C" "update public.conv_messages set conv_id='conv_bc' where id='m_c0';")"
+contient "…ni réattribuer son message à quelqu'un d'autre" "ne se modifie pas" \
+  "$(AUTH "$C" "update public.conv_messages set from_id='$A' where id='m_c0';")"
+verifier "…mais corrige encore le TEXTE de son message de groupe" "OK" \
+  "$(AUTH_OK "$C" "update public.conv_messages set content='bonsoir le groupe' where id='m_c0';")"
+Q "insert into public.conv_messages (id, conv_id, from_id, content) values ('m_cb', 'conv_bc', '$C', 'avant le blocage');" >/dev/null
+contient "…et ne peut plus réécrire un message du 1:1 où B l'a bloqué (WITH CHECK)" "row-level security" \
+  "$(AUTH "$C" "update public.conv_messages set content='après' where id='m_cb';")"
+verifier "D (pas membre) ne modifie rien chez les autres : 0 ligne, aucune erreur" "bonsoir le groupe" \
+  "$(AUTH "$D" "update public.conv_messages set content='pirate' where id='m_c0';" >/dev/null; Q "select content from public.conv_messages where id='m_c0';")"
+contient "C ne peut plus déplacer son commentaire vers la publication de B" "ne se modifie pas" \
+  "$(AUTH "$C" "update public.post_comments set post_id='p_b' where id='c_c0';")"
+verifier "…mais corrige encore son texte" "OK" \
+  "$(AUTH_OK "$C" "update public.post_comments set text='très joli' where id='c_c0';")"
+verifier "identifiants_figes n'est exécutable par aucun rôle client" "false/false" \
+  "$(Q "select has_function_privilege('anon','public.identifiants_figes()','execute') || '/' || has_function_privilege('authenticated','public.identifiants_figes()','execute');")"
+
 echo "── ⑤ ③ LE DÉBIT EST BORNÉ ───────────────────────────────────────────"
 verifier "follows a désormais created_at" "1" \
   "$(Q "select count(*) from information_schema.columns where table_name='follows' and column_name='created_at';")"
@@ -428,16 +464,31 @@ verifier "status = open, handled_at vide" "open|" \
   "$(Q "select status || '|' || coalesce(handled_at::text,'') from public.reports where id='r1';")"
 contient "un statut hors liste est refusé" "reports_status_chk" \
   "$(Q "update public.reports set status='banane' where id='r1';")"
+contient "un target_type hors liste est refusé (il finit dans une issue publique)" "reports_target_type_chk" \
+  "$(AUTH "$A" "insert into public.reports (id, reporter_id, target_type, target_id) values ('r2', '$A', '![](https://evil.tld/p.png)', 'x');")"
 
 echo "── ⑦ ⑤ REALTIME : QUI REÇOIT, QUI ÉMET ──────────────────────────────"
-verifier "A reçoit sur SA sonnerie ring:A" "2" "$(RT "$A" "ring:$A" "select count(*) from realtime.messages;")"
+# Dans ce banc `realtime.topic()` est un réglage de SESSION : la policy s'évalue
+# sur lui, pas sur la colonne — un topic autorisé rend donc TOUTES les lignes.
+n_rt="$(Q "select count(*) from realtime.messages;")"
+verifier "A reçoit sur SA sonnerie ring:A" "$n_rt" "$(RT "$A" "ring:$A" "select count(*) from realtime.messages;")"
 verifier "A ne reçoit RIEN sur ring:B (écoute de qui appelle qui : fermée)" "0" "$(RT "$A" "ring:$B" "select count(*) from realtime.messages;")"
-verifier "A reçoit sur typing:conv_ab (membre)" "2" "$(RT "$A" "typing:conv_ab" "select count(*) from realtime.messages;")"
+verifier "A reçoit sur typing:conv_ab (membre)" "$n_rt" "$(RT "$A" "typing:conv_ab" "select count(*) from realtime.messages;")"
 verifier "A ne reçoit rien sur typing:conv_bc (pas membre)" "0" "$(RT "$A" "typing:conv_bc" "select count(*) from realtime.messages;")"
-verifier "A reçoit sur call:xyz et vlive:42 (comptes seulement)" "2/2" \
+verifier "A reçoit sur call:xyz et vlive:42 (comptes seulement)" "$n_rt/$n_rt" \
   "$(RT "$A" "call:xyz" "select count(*) from realtime.messages;")/$(RT "$A" "vlive:42" "select count(*) from realtime.messages;")"
+verifier "A reçoit sur realtime:db (les changements de tables — chaque table garde sa RLS)" "$n_rt" \
+  "$(RT "$A" "realtime:db" "select count(*) from realtime.messages;")"
+verifier "…et un VISITEUR aussi — c'est le seul topic ouvert sans compte" "$n_rt" \
+  "$(psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -tA -q -c "set local role anon; set local realtime.topic='realtime:db'; select count(*) from realtime.messages;" 2>&1)"
+verifier "A reçoit sur conv_specific:conv_ab (membre), rien sur conv_specific:conv_bc" "$n_rt/0" \
+  "$(RT "$A" "conv_specific:conv_ab" "select count(*) from realtime.messages;")/$(RT "$A" "conv_specific:conv_bc" "select count(*) from realtime.messages;")"
 verifier "A peut SONNER B (émettre sur ring:B)" "OK" \
   "$(RT_OK "$A" "ring:$B" "insert into realtime.messages (topic, extension) values ('ring:$B', 'broadcast');")"
+contient "⑨ C, bloqué par B, ne peut PLUS faire sonner B" "row-level security" \
+  "$(RT "$C" "ring:$B" "insert into realtime.messages (topic, extension) values ('ring:$B', 'broadcast');")"
+verifier "…mais sonne A sans problème" "OK" \
+  "$(RT_OK "$C" "ring:$A" "insert into realtime.messages (topic, extension) values ('ring:$A', 'broadcast');")"
 contient "A ne peut pas émettre sur typing:conv_bc (pas membre)" "row-level security" \
   "$(RT "$A" "typing:conv_bc" "insert into realtime.messages (topic, extension) values ('typing:conv_bc', 'broadcast');")"
 verifier "un visiteur sans compte ne reçoit rien, sur aucun topic" "0" \
@@ -453,6 +504,12 @@ Q "delete from public.follows;" >/dev/null
 AUTH "$A" "insert into public.follows (follower_id, following_id, status) values ('$A', '$B', 'accepted');" >/dev/null
 verifier "A demande à suivre B (privé) en se déclarant accepté : le serveur écrit PENDING" "pending" \
   "$(Q "select status from public.follows where follower_id='$A' and following_id='$B';")"
+verifier "⑩ la demande en attente est INVISIBLE sans compte, et pour D" "0/0" \
+  "$(ANON "select count(*) from public.follows where following_id='$B';")/$(AUTH "$D" "select count(*) from public.follows where following_id='$B';")"
+verifier "…mais A (demandeur) et B (cible) la voient" "1/1" \
+  "$(AUTH "$A" "select count(*) from public.follows where following_id='$B';")/$(AUTH "$B" "select count(*) from public.follows where following_id='$B';")"
+verifier "⑦ la notification de DEMANDE est écrite par le serveur, chez B, au nom de A" "follow_request|$B|A souhaite s'abonner à ton compte privé" \
+  "$(Q "select kind || '|' || user_id || '|' || content from public.notifications where id='n_fr_11111111_22222222';")"
 verifier "…et ne voit pas les publications de B" "0" "$(AUTH "$A" "select count(*) from public.posts where author_id='$B';")"
 verifier "…ni ses stories" "0" "$(AUTH "$A" "select count(*) from public.stories where author_id='$B';")"
 verifier "…ni par post_is_visible (commentaires, j'aime)" "f" "$(AUTH "$A" "select public.post_is_visible('p_b');")"
@@ -463,12 +520,24 @@ contient "B ne peut pas réécrire follower_id (fabriquer un abonné)" "ne se mo
   "$(AUTH "$B" "update public.follows set follower_id='$D' where follower_id='$A' and following_id='$B';")"
 verifier "B accepte la demande" "OK" \
   "$(AUTH_OK "$B" "update public.follows set status='accepted' where follower_id='$A' and following_id='$B';")"
+verifier "…la notification d'ACCEPTATION est écrite chez A, au nom de B" "follow|$A|B a accepté ta demande d'abonnement" \
+  "$(Q "select kind || '|' || user_id || '|' || content from public.notifications where id='n_fa_22222222_11111111';")"
+verifier "…et l'abonnement accepté redevient lisible sans compte" "1" \
+  "$(ANON "select count(*) from public.follows where following_id='$B';")"
 verifier "…et A voit désormais TOUTES les publications de B" "$(Q "select count(*) from public.posts where author_id='$B';")" "$(AUTH "$A" "select count(*) from public.posts where author_id='$B';")"
 verifier "…ses stories" "1" "$(AUTH "$A" "select count(*) from public.stories where author_id='$B';")"
 verifier "…et post_is_visible dit vrai" "t" "$(AUTH "$A" "select public.post_is_visible('p_b');")"
 AUTH "$D" "insert into public.follows (follower_id, following_id) values ('$D', '$A');" >/dev/null
 verifier "suivre un compte PUBLIC reste immédiat (accepted)" "accepted" \
   "$(Q "select status from public.follows where follower_id='$D' and following_id='$A';")"
+verifier "…et A est notifié « a commencé à te suivre », par le serveur" "follow|D a commencé à te suivre" \
+  "$(Q "select kind || '|' || content from public.notifications where id='n_fw_44444444_11111111';")"
+AUTH "$D" "delete from public.follows where follower_id='$D' and following_id='$A';" >/dev/null
+AUTH "$D" "insert into public.follows (follower_id, following_id) values ('$D', '$A');" >/dev/null
+verifier "se désabonner puis se réabonner RAFRAÎCHIT la même notification (pas de doublon)" "1" \
+  "$(Q "select count(*) from public.notifications where from_id='$D' and user_id='$A' and kind='follow';")"
+verifier "follows_notifier n'est exécutable par aucun rôle client" "false/false" \
+  "$(Q "select has_function_privilege('anon','public.follows_notifier()','execute') || '/' || has_function_privilege('authenticated','public.follows_notifier()','execute');")"
 verifier "les abonnements existants sont tous 'accepted' (le défaut de la colonne)" "0" \
   "$(Q "select count(*) from public.follows where status is null;")"
 verifier "B refuse une demande en la supprimant (policy « Suppression cote suivi »)" "OK" \
@@ -514,9 +583,21 @@ m="$(RT "$A" "ring:$A" "select count(*) from realtime.messages;")"
 if [ "$m" = "0" ]; then echo "  ✅ mutation ⑤ : sans la policy, un canal privé ne délivre RIEN — c'est elle qui ouvre"; ok=$((ok+1)); else echo "  ❌ mutation ⑤ ($m)"; ko=$((ko+1)); fi
 verifier "  …et le verdict ⑧ dit ECHEC" "ECHEC" "$(verdict_de 8)"
 
+# ⑦ le trigger qui fige conv_id retiré : le WITH CHECK seul laisse un message
+# se déplacer entre deux conversations dont on est membre — c'est le trigger qui
+# interdit TOUT déplacement, et il faut le prouver.
+Q "insert into public.conversations (id, is_group, created_by) values ('evgrp_2', true, '$D');
+   insert into public.conv_members values ('evgrp_2', '$C'), ('evgrp_2', '$D');
+   drop trigger trg_identifiants_figes on public.conv_messages;" >/dev/null
+m="$(AUTH_OK "$C" "update public.conv_messages set conv_id='evgrp_2' where id='m_c0';")"
+if [ "$m" = "OK" ]; then echo "  ✅ mutation ⑦ : sans le trigger, le message change de conversation — le contrôle est réel"; ok=$((ok+1)); else echo "  ❌ mutation ⑦ : déplacement refusé sans le trigger ($m)"; ko=$((ko+1)); fi
+verifier "  …et le verdict ⑪ dit ECHEC" "ECHEC" "$(verdict_de 11)"
+Q "update public.conv_messages set conv_id='evgrp_1' where id='m_c0';" >/dev/null
+
 # ⑥ la migration REJOUÉE répare la mutation ⑤ (c'est ce qui rend une relance sûre)
 psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 -f "$MIGRATION" >/dev/null 2>&1
 verifier "rejouer la migration recrée la policy retirée" "OK" "$(verdict_de 8)"
+verifier "…et le trigger retiré" "OK" "$(verdict_de 11)"
 
 echo
 echo "───────────────────────────────────────────────────────────────────────"

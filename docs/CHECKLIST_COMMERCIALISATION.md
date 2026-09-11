@@ -85,8 +85,15 @@ exploitation : `docs/OUVERTURE_PUBLIQUE_2026-09-11.md` (mode d'emploi et gestes 
 - [x] Code d'accès levé par défaut ; SDK et MapLibre auto-hébergés et épinglés, CSP sans CDN.
 - [x] Sauvegarde quotidienne chiffrée, déchiffrée et relue à chaque run (artefact 30 jours).
 - [x] Politique §8 alignée sur les purges réelles (7 j / 30 j), version `2026-09-11`.
+- [x] **Red team du lot** (agent adversarial, lecture seule, vérifié en prod) : XSS par
+      sonnerie d'appel (P0) fermé ; UPDATE de `conv_messages`/`post_comments` gardés et
+      identifiants figés (P1) ; sonnerie refusée à un compte bloqué et bornée en cadence ;
+      identifiant d'appel aléatoire ; demandes d'abonnement en attente masquées aux tiers ;
+      `realtime:db`/`conv_specific:` privés avec policy ; ordres d'hôte d'un live vérifiés ;
+      URL signée à 1 h ; `target_type` sous liste blanche + CHECK ; notification
+      d'abonnement écrite par le serveur.
 - [ ] **À coller par Benjamin** : `migrations/migration_ouverture_publique_2026-09-11.sql`
-      (après le déploiement vert — 10 × OK attendus).
+      (après le déploiement vert — 13 × OK attendus).
 - [ ] **Tableau de bord Supabase** : Realtime « Allow public access » OFF ; Anonymous
       sign-ins OFF ; HaveIBeenPwned ON.
 - [ ] **DKIM/DMARC de `passio-app.fr`** (point ① ci-dessous, inchangé).
