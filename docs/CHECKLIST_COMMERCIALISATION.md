@@ -63,6 +63,35 @@ Un défaut acceptable en A peut être rédhibitoire en B. L'inverse n'est jamais
 
 ---
 
+## 🚀 Ouverture PUBLIQUE et GRATUITE — le lot du 2026-09-11 (seuil A′)
+
+Benjamin a précisé le sens de « commercialiser » : **rendre l'application publique,
+gratuitement, et la faire utiliser par un maximum de personnes** — pas encaisser. Le
+seuil B ci-dessous ne s'applique donc pas ; c'est le seuil A poussé au public. Ce qui le
+séparait de l'état du matin (re-mesure du 11/09) est fermé par un lot serveur + client +
+exploitation : `docs/OUVERTURE_PUBLIQUE_2026-09-11.md` (mode d'emploi et gestes restants).
+
+- [x] Oracle `is_conv_member` fermé à `anon` ; `events.conv_id` privé ; policies de messagerie
+      au rôle `authenticated` (zéro ligne, aucune erreur pour un visiteur).
+- [x] Bloquer a un effet : follows, messages 1:1, commentaires, j'aime, commentaires de
+      rencontre, notifications.
+- [x] Débit borné par compte sur 12 tables (3 + 9) et plafond global sur les deux tables à
+      INSERT anonyme.
+- [x] `reports.status` + `npm run moderation traiter` + **alerte quotidienne** (issue
+      `[MODÉRATION]`) — un signalement a enfin un destinataire ET un statut.
+- [x] Canaux Realtime privés (policies + client avec sonde de repli).
+- [x] Seau `attachments` privé, pièces jointes par URL signée.
+- [x] Compte privé = abonnement sur demande (statut serveur, Accepter/Refuser depuis la cloche).
+- [x] Code d'accès levé par défaut ; SDK et MapLibre auto-hébergés et épinglés, CSP sans CDN.
+- [x] Sauvegarde quotidienne chiffrée, déchiffrée et relue à chaque run (artefact 30 jours).
+- [x] Politique §8 alignée sur les purges réelles (7 j / 30 j), version `2026-09-11`.
+- [ ] **À coller par Benjamin** : `migrations/migration_ouverture_publique_2026-09-11.sql`
+      (après le déploiement vert — 10 × OK attendus).
+- [ ] **Tableau de bord Supabase** : Realtime « Allow public access » OFF ; Anonymous
+      sign-ins OFF ; HaveIBeenPwned ON.
+- [ ] **DKIM/DMARC de `passio-app.fr`** (point ① ci-dessous, inchangé).
+- [ ] Lancer une fois la sauvegarde à la main et la déchiffrer.
+
 ## ① ② ③ Ce qui doit être réglé avant d'envoyer à des testeurs (seuil A)
 
 - [ ] **① Les e-mails de confirmation partent probablement en spam.** Le domaine
@@ -73,14 +102,12 @@ Un défaut acceptable en A peut être rédhibitoire en B. L'inverse n'est jamais
       la personne ne vous dira pas qu'elle n'a rien reçu, elle abandonnera.**
       Geste : authentifier le domaine chez Brevo (code, DKIM, puis DMARC).
       Quota gratuit : **300 e-mails/jour**.
-- [ ] **② Le code d'accès 2125 est redemandé à CHAQUE ouverture** (`sessionStorage`),
-      et il faut le communiquer à chaque testeur. Décider : le garder (et
-      l'écrire dans le message d'invitation), ou le retirer pour la beta.
-      ⚠️ Ce n'est pas une barrière de sécurité : le hash est dans le JavaScript livré
-      et un code à 4 chiffres se retrouve par force brute en quelques secondes.
-- [ ] **③ Les signalements n'arrivent nulle part.** Voir la section « Confiance et
-      sécurité » ci-dessous. Dans une application qui organise des **rencontres
-      physiques**, c'est le point à ne pas laisser ouvert.
+- [x] **② Le code d'accès est LEVÉ (2026-09-11).** Il ne s'arme plus que sur adhésion
+      (`passio_gate_actif = "1"`) ; `access-gate.spec.js` l'arme lui-même. Ce n'était pas
+      une barrière de sécurité : le hash est dans le JavaScript livré.
+- [x] **③ Les signalements ont un destinataire (2026-09-11)** : statut en base
+      (migration à coller), `npm run moderation traiter`, et l'alerte quotidienne qui
+      ouvre une issue `[MODÉRATION]` dès qu'un signalement attend plus de 24 h.
 
 ---
 
@@ -290,7 +317,9 @@ la plus grave du produit, et c'est là que la dette est la plus visible.
       vérifier », et personne n'est prévenu.** À faire : colonnes de statut (canal ③),
       un `scripts/moderation.js` sur le modèle de `passions-moderation.js`, `reports`
       dans `SAFE_TABLES` du dashboard, et une alerte au-delà de 24 h.
-- [ ] **Bloquer quelqu'un ne l'empêche ni de vous suivre, ni de vous écrire.**
+- [x] **Bloquer quelqu'un l'empêche désormais de vous suivre, de vous écrire en privé, de
+      commenter ou d'aimer vos publications, et de vous notifier** (RLS, 2026-09-11 —
+      migration à coller).
 - [ ] Aucun dispositif de sécurité des rencontres : pas de partage de trajet à un
       proche, pas de bouton d'alerte, aucune vérification d'identité — ce que les CGU
       §7 disent honnêtement (« aucun membre n'est vérifié »).
@@ -302,9 +331,10 @@ la plus grave du produit, et c'est là que la dette est la plus visible.
 
 ## 🧯 Exploitation
 
-- [ ] **Aucune sauvegarde automatique de la production**, et la restauration n'a
-      **jamais été exécutée une seule fois**. Une sauvegarde jamais restaurée n'est
-      pas une sauvegarde, c'est une intention.
+- [x] **Sauvegarde automatique quotidienne (2026-09-11)** : `.github/workflows/sauvegarde.yml`
+      exporte, vérifie, chiffre, **déchiffre et relit** l'archive à chaque run, puis la
+      dépose 30 jours. ⚠️ Reste à la lancer une fois à la main et à déchiffrer en local :
+      une sauvegarde jamais restaurée par un humain reste une intention.
 - [ ] Le retour arrière n'a jamais été exercé.
 - [x] `telemetry_events` occupait **~60 % de la base** sans purge. **Planifiée depuis
       (mesuré le 2026-09-11)** : `cron.job` « `select public.purge_telemetry(7)` » à

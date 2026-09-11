@@ -22,6 +22,20 @@
 (function () {
   "use strict";
 
+  // ⚠️ OUVERTURE PUBLIQUE (2026-09-11) : LE RIDEAU EST LEVÉ PAR DÉFAUT.
+  // Ce gate n'a jamais été une serrure (hash dans le JavaScript livré, code à
+  // quatre chiffres) ; c'était un rideau qui disait « pas encore public ». Le
+  // produit l'est. Le code reste ici pour pouvoir REFERMER une préproduction ou
+  // rejouer la suite `access-gate.spec.js` : il ne s'ARME que sur adhésion
+  // explicite — `localStorage.passio_gate_actif = "1"` ou
+  // `window.PASSIO_GATE_ACTIF = true` posé AVANT ce script (il est le premier).
+  // Sans cela, `__gateReady` est déjà résolue et rien n'est masqué.
+  var GATE_ACTIF = false;
+  try {
+    GATE_ACTIF = window.PASSIO_GATE_ACTIF === true || localStorage.getItem("passio_gate_actif") === "1";
+  } catch (e) {}
+  if (!GATE_ACTIF) { window.__gateReady = Promise.resolve(); return; }
+
   var GATE_SALT = "passio-gate-v1::";
   var GATE_HASH = "67a2ba44e8c09efc9e9e9d60690ef7cd1e3069d072231a1834b30ec1fc50390f";
   // ⚠️ LE JETON SURVIT À LA FERMETURE DE L'ONGLET DEPUIS LE 2026-09-10.

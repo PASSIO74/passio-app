@@ -1,6 +1,15 @@
 # 🔒 Code d'accès PASSIO (Access Gate)
 
-## Ce que fait le système
+> ⚠️ **LE RIDEAU EST LEVÉ DEPUIS L'OUVERTURE PUBLIQUE (2026-09-11).** Par défaut, aucun
+> code n'est demandé : `js/access-gate.js` rend `__gateReady` résolue et ne masque rien.
+> Le mécanisme n'est conservé que pour REFERMER une préproduction ou rejouer la suite
+> `tests/e2e/access-gate.spec.js`, et il ne s'arme que sur adhésion explicite :
+> `localStorage.setItem("passio_gate_actif", "1")` (ou `window.PASSIO_GATE_ACTIF = true`
+> posé AVANT le script, qui est le premier de la page). Sans cette adhésion, tout ce qui
+> suit décrit un code dormant. Ce n'était pas une serrure : le hash est dans le
+> JavaScript livré et un code à quatre chiffres se retrouve en quelques secondes.
+
+## Ce que fait le système (quand il est armé)
 
 À **chaque ouverture** de l'application (nouvel onglet, relance de la PWA), un écran de sécurité s'affiche avant tout contenu. Tant que le code n'est pas validé :
 

@@ -30,7 +30,7 @@ const LOCALES = ["musique","photo","voyage","cuisine","sport","litterature","cin
 // la prémisse — un test qui ne contrôle pas la sienne finit par passer, ou
 // échouer, pour une raison qui ne le regarde pas.
 async function boot(page, opts = {}) {
-  await page.route("**/@supabase/supabase-js**", (r) => r.abort());
+  await page.route("**/js/vendor/supabase-js*", (r) => r.abort()); // le SDK est auto-hébergé depuis le 2026-09-11
   await bootOnboarded(page, null, 1, {});
   // Prémisse : aucun référentiel n'a pu être chargé avant le nôtre.
   expect(await page.evaluate(() => typeof supabase),

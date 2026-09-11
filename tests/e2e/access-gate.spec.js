@@ -13,7 +13,12 @@ const { GATE_CODE, GATE_KEY, GATE_TOKEN, CLE_PREMIERE_VISITE } = require("./gate
 // sont pas affectés : la coupure vit dans `localStorage`, le jeton du gate dans
 // `sessionStorage`, les deux ne se croisent pas.
 test.beforeEach(async ({ page }) => {
-  await page.addInitScript((cle) => localStorage.setItem(cle, "0"), CLE_PREMIERE_VISITE);
+  // ⚠️ Le rideau est LEVÉ par défaut depuis l'ouverture publique (2026-09-11) :
+  // cette suite l'ARME explicitement pour continuer d'éprouver le mécanisme.
+  await page.addInitScript((cle) => {
+    localStorage.setItem(cle, "0");
+    localStorage.setItem("passio_gate_actif", "1");
+  }, CLE_PREMIERE_VISITE);
 });
 
 test("au premier lancement, l'écran de code bloque toute l'app", async ({ page }) => {

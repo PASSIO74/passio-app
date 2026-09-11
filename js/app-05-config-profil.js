@@ -490,10 +490,29 @@ window._call = window._call || null;
 
 let callTimerInterval = null;
 
-// Canal Realtime broadcast (public) ; helper de création.
+// Canal Realtime broadcast des appels ; helper de création — le SEUL point qui
+// crée `ring:` et `call:`.
+// ⚠️ PRIVÉ depuis le 2026-09-11. Mesuré en production : ces canaux étaient
+// publics, donc sans compte on pouvait écouter `ring:<uid>` de n'importe qui
+// (qui appelle qui), faire sonner un téléphone sous une fausse identité ou
+// couper un appel. Les policies `passio_rt_recevoir` / `passio_rt_emettre`
+// (migration du 2026-09-11) ne délivrent une sonnerie qu'à son destinataire et
+// n'ouvrent l'émission qu'aux comptes connectés.
+// ⚠️ DÉPLOYABLE AVANT LA MIGRATION : un canal privé sans policy est REFUSÉ. La
+// sonnerie (`_subscribeCallRing`, abonnée au démarrage) sert de sonde : refusée
+// pour défaut de policy, elle pose `window._rtPriveIndisponible` et TOUS les
+// canaux repartent en public — le comportement d'avant, pas une panne.
+// Une fois la migration appliquée, la sonde passe et tout reste privé.
 function _callChannel(name) {
   if (typeof supa === "undefined" || !supa) return null;
-  return supa.channel(name, { config: { broadcast: { self: false, ack: false } } });
+  return supa.channel(name, { config: { broadcast: { self: false, ack: false }, private: window._rtPriveIndisponible !== true } });
+}
+
+// Le refus d'un canal privé « faute de policy » se reconnaît à son message ;
+// une coupure réseau, elle, se retente toute seule et ne doit PAS faire replier.
+function _rtRefusDePolicy(err) {
+  var m = String((err && (err.message || err.reason)) || err || "");
+  return /permission|unauthori|not allowed|policy|private/i.test(m);
 }
 
 // Résout le pair (id Supabase + identité d'affichage) d'une conversation 1:1.
@@ -1101,9 +1120,20 @@ function _callRenderActiveUI() {
 function _subscribeCallRing() {
   if (typeof supa === "undefined" || !supa || !MY_UID || window._callRingChan) return;
   const chan = _callChannel("ring:" + MY_UID);
+  if (!chan) return;
   window._callRingChan = chan;
   chan.on("broadcast", { event: "invite" }, (msg) => { try { _callOnInvite(msg.payload); } catch (e) {} });
-  chan.subscribe();
+  chan.subscribe((st, err) => {
+    // Sonde du canal privé (cf. _callChannel) : refus de policy → repli public,
+    // UNE fois par session, et on se réabonne aussitôt pour ne pas rater d'appel.
+    if (st !== "CHANNEL_ERROR" || window._rtPriveIndisponible || window._callRingChan !== chan) return;
+    if (!_rtRefusDePolicy(err)) return;
+    window._rtPriveIndisponible = true;
+    try { console.warn("[rt] canaux privés refusés (policies Realtime absentes) → repli public"); } catch (e) {}
+    try { supa.removeChannel(chan); } catch (e) {}
+    window._callRingChan = null;
+    _subscribeCallRing();
+  });
 }
 window._subscribeCallRing = _subscribeCallRing;
 
@@ -3234,7 +3264,8 @@ async function startVideoLive() {
   const lv = document.getElementById("vliveVideo");
   if (lv) { lv.srcObject = stream; lv.muted = true; try { lv.play(); } catch (e) {} }
 
-  const chan = supa.channel("vlive:" + id, { config: { broadcast: { self: false, ack: false }, presence: { key: MY_UID } } });
+  // PRIVÉ (comptes connectés seulement) — cf. _callChannel pour le repli.
+  const chan = supa.channel("vlive:" + id, { config: { broadcast: { self: false, ack: false }, presence: { key: MY_UID }, private: window._rtPriveIndisponible !== true } });
   window._vliveHost.chan = chan;
   _vliveBindHost(chan);
   chan.subscribe((st) => {
@@ -3494,7 +3525,7 @@ async function joinVideoLive(liveId) {
   window._vliveView = { id: liveId, row: row, chan: null, pc: null, pendingIce: [] };
   _vliveRenderUI("viewer", row);
 
-  const chan = supa.channel("vlive:" + liveId, { config: { broadcast: { self: false, ack: false }, presence: { key: MY_UID } } });
+  const chan = supa.channel("vlive:" + liveId, { config: { broadcast: { self: false, ack: false }, presence: { key: MY_UID }, private: window._rtPriveIndisponible !== true } });
   window._vliveView.chan = chan;
   _vliveBindViewer(chan);
   chan.subscribe((st) => {

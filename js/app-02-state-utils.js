@@ -1428,6 +1428,103 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]));
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// PIÈCES JOINTES DE MESSAGERIE — le seau `attachments` est PRIVÉ (2026-09-11)
+// ═══════════════════════════════════════════════════════════════════════════
+// Mesuré en production : `storage.buckets.attachments.public = true`, donc une
+// photo, un fichier ou un vocal de conversation privée restait lisible À VIE par
+// son URL exacte via `/object/public/…`, route qui contourne la RLS. La lecture
+// passe désormais par une URL SIGNÉE, que seul un MEMBRE de la conversation peut
+// obtenir (policy `passio_attachments_read_membre`, 2026-09-08).
+//
+// ⚠️ DÉPLOYABLE AVANT COMME APRÈS la migration qui ferme le seau : tant que le
+// seau est public, l'URL publique ET l'URL signée fonctionnent ; une signature
+// qui échoue (hors ligne, SDK absent, non-membre) REPLIE sur l'URL d'origine —
+// qui ne rend alors plus rien qu'à un seau public. On ne casse jamais l'affichage
+// pour un défaut de signature, on cesse seulement de lire ce qu'on n'a pas le
+// droit de lire.
+// ⚠️ DEUX FORMES D'URL vivent en base et en IndexedDB : la forme Supabase
+// (`…/storage/v1/object/public/attachments/attachments/<conv>/<fichier>`) et la
+// forme CDN du 2026-09-11 (`…/media/attachments/attachments/<conv>/<fichier>`).
+// `pieceJointeChemin` reconnaît les deux — et `cdnUrl` (app-08) NE réécrit PLUS
+// les pièces jointes : un objet privé n'a rien à faire dans un cache public.
+// ⚠️ Le nom d'objet est `attachments/<conv>/<fichier>` DANS le seau `attachments`
+// (le segment est doublé, depuis toujours) : c'est `(storage.foldername(name))[2]`
+// que la policy compare à la conversation. Ne pas « nettoyer » ce doublon.
+const PJ_SIGNATURE_TTL_S = 7 * 24 * 3600;
+const _pjSignees = new Map(); // nom d'objet → { url, exp } — mémoire de session
+
+function pieceJointeChemin(url) {
+  if (typeof url !== "string") return null;
+  var m = url.match(/\/storage\/v1\/object\/(?:public|sign|authenticated)\/attachments\/([^?#]+)/)
+       || url.match(/\/media\/attachments\/([^?#]+)/);
+  if (!m) return null;
+  try { return decodeURIComponent(m[1]); } catch (e) { return m[1]; }
+}
+
+function urlPieceJointeSignee(url) {
+  var chemin = pieceJointeChemin(url);
+  if (!chemin) return Promise.resolve(url);
+  var c = _pjSignees.get(chemin);
+  if (c && c.exp > Date.now()) return Promise.resolve(c.url);
+  var client = (typeof supa !== "undefined") ? supa : null;
+  if (!client || !client.storage || typeof client.storage.from !== "function") return Promise.resolve(url);
+  var p;
+  try { p = client.storage.from("attachments").createSignedUrl(chemin, PJ_SIGNATURE_TTL_S); }
+  catch (e) { return Promise.resolve(url); }
+  return Promise.resolve(p).then(function (r) {
+    var u = r && r.data && r.data.signedUrl;
+    if (!u || !/^https?:\/\//i.test(u)) return url;
+    _pjSignees.set(chemin, { url: u, exp: Date.now() + (PJ_SIGNATURE_TTL_S - 3600) * 1000 });
+    return u;
+  }).catch(function () { return url; });
+}
+
+// Au rendu : une pièce jointe porte `data-pj` (et PAS de src, sinon le navigateur
+// demanderait une URL qu'un seau privé refuse) ; tout autre média garde `src`.
+// `attr` = "src" (img, video) ou "href" (a).
+function attrMediaSrc(url, attr) {
+  attr = attr || "src";
+  if (pieceJointeChemin(url)) return 'data-pj="' + escapeHtml(url) + '"';
+  return attr + '="' + safeUrlAttr(url) + '"';
+}
+
+// Après CHAQUE `innerHTML` qui peint des messages : pose l'URL signée sur les
+// nœuds marqués. Idempotent (l'attribut est consommé).
+function signerPiecesJointes(root) {
+  var racine = root || document;
+  if (!racine || typeof racine.querySelectorAll !== "function") return;
+  Array.prototype.forEach.call(racine.querySelectorAll("[data-pj]"), function (el) {
+    var brut = el.getAttribute("data-pj");
+    el.removeAttribute("data-pj");
+    if (!brut) return;
+    urlPieceJointeSignee(brut).then(function (u) {
+      if (!u || !/^https?:\/\//i.test(u) || !el.isConnected) return;
+      if (el.tagName === "A") el.href = u; else el.src = u;
+    });
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ABONNEMENT À UN COMPTE PRIVÉ — sur DEMANDE (2026-09-11)
+// ═══════════════════════════════════════════════════════════════════════════
+// `follows.status` est tranché par le SERVEUR (`trg_follows_statut`) : 'pending'
+// vers un compte privé, 'accepted' sinon. Le client ne connaît que TROIS états
+// pour un bouton « Suivre », et cette fonction est la SEULE qui les nomme.
+//   · state.user.following        → abonnements ACCEPTÉS (la source « Suivis » du fil)
+//   · state.user.followingPending → demandes envoyées, pas encore acceptées
+function etatSuivi(uid) {
+  var u = (typeof state !== "undefined" && state) ? state.user : null;
+  if (!u || !uid) return "aucun";
+  if ((u.following || []).indexOf(uid) >= 0) return "suivi";
+  if ((u.followingPending || []).indexOf(uid) >= 0) return "attente";
+  return "aucun";
+}
+function libelleBoutonSuivi(uid) {
+  var e = etatSuivi(uid);
+  return e === "suivi" ? "✓ Suivi" : e === "attente" ? "Demande envoyée" : "Suivre";
+}
+
 // Normalise un texte MULTILIGNE saisi dans un <textarea> (biographie…) — il est
 // rendu avec `white-space: pre-line`, donc chaque saut de ligne écrit est un saut
 // de ligne affiché. On respecte STRICTEMENT ce que la personne a tapé, à trois
@@ -3633,7 +3730,7 @@ function openPrivacyPolicy() {
       <p style="margin:0 0 10px;"><strong style="color:var(--text);">5. Qui les héberge, et où.</strong> Base de données et fichiers : <strong style="color:var(--text);">Supabase</strong> (Supabase Pte. Ltd., Singapour). Site : <strong style="color:var(--text);">Netlify, Inc.</strong> (États-Unis). E-mails de confirmation : <strong style="color:var(--text);">Brevo</strong> (France). Ces transferts hors Union européenne se font sur la base des clauses contractuelles types de la Commission européenne. Une partie des données reste sur ton appareil (localStorage, IndexedDB) pour le fonctionnement hors-ligne. En base, l\'accès est restreint par des règles par propriétaire (RLS).</p>\
       <p style="margin:0 0 10px;"><strong style="color:var(--text);">6. Ce que ton navigateur appelle ailleurs.</strong> Afficher une carte, un GIF ou une image de démonstration fait appel à des services tiers qui reçoivent alors ton <strong style="color:var(--text);">adresse IP</strong> : fonds de carte (OpenFreeMap), recherche d\'adresse (Base Adresse Nationale, Photon), GIF (Giphy, Tenor), images et vidéos d\'illustration (Unsplash, Pexels). Nous ne leur transmettons ni ton compte, ni ton nom.</p>\
       <p style="margin:0 0 10px;"><strong style="color:var(--text);">7. Ce que nous ne faisons pas.</strong> Pas de revente de données, pas de publicité, pas de profilage publicitaire, aucun traqueur publicitaire tiers. C\'est l\'engagement fondateur de PASSIO.</p>\
-      <p style="margin:0 0 10px;"><strong style="color:var(--text);">8. Combien de temps.</strong> Ton compte et tes contenus : tant que ton compte existe. Sa suppression efface tes contenus et ton adresse e-mail immédiatement ; en cas d’incident technique, au plus tard sous 30 jours. Les événements techniques du point 3 : <strong style="color:var(--text);">13 mois au maximum</strong>. Les signalements sont conservés le temps de traiter l\'affaire et d\'en garder la trace.</p>\
+      <p style="margin:0 0 10px;"><strong style="color:var(--text);">8. Combien de temps.</strong> Ton compte et tes contenus : tant que ton compte existe. Sa suppression efface tes contenus et ton adresse e-mail immédiatement ; en cas d’incident technique, au plus tard sous 30 jours. Les événements techniques du point 3 : <strong style="color:var(--text);">13 mois au maximum</strong> — en pratique la mesure d\'usage détaillée est effacée après <strong style="color:var(--text);">7 jours</strong> et les rapports d\'erreur après <strong style="color:var(--text);">30 jours</strong>. Les signalements sont conservés le temps de traiter l\'affaire et d\'en garder la trace.</p>\
       <p style="margin:0 0 10px;"><strong style="color:var(--text);">9. Tes droits (RGPD).</strong> Accès, rectification, effacement, portabilité, limitation, opposition — et le droit de retirer ton consentement quand il en sert de base. Exerce-les dans l\'app (Paramètres → Supprimer mon compte) ou par e-mail : <strong style="color:var(--text);">' + escapeHtml(PASSIO_EDITEUR.email) + '</strong>. Nous répondons sous un mois. Tu peux aussi réclamer auprès de la CNIL (cnil.fr).</p>\
       <p style="margin:0 0 10px;"><strong style="color:var(--text);">10. Mineurs.</strong> PASSIO est réservé aux personnes majeures : l\'inscription est refusée en dessous de 18 ans révolus. L\'âge est <strong style="color:var(--text);">déclaré</strong> par la personne ; nous ne demandons aucune pièce d\'identité et <strong style="color:var(--text);">ne vérifions pas cette déclaration</strong>. Un compte dont nous apprenons qu\'il appartient à un mineur est supprimé.</p>\
       <p style="margin:0;"><strong style="color:var(--text);">11. Beta privée.</strong> Pendant la phase de test, l\'accès est protégé par un code, les fonctionnalités évoluent et <strong style="color:var(--text);">tes contenus peuvent être perdus</strong> : n\'y dépose rien d\'irremplaçable. Tes retours peuvent être utilisés pour améliorer le produit.</p>\
@@ -3725,7 +3822,7 @@ const PASSIO_CGU_VERSION = "2026-09-10";
 // et personne ne peut savoir ce qui lui a été communiqué. Celle de juin 2026
 // décrivait encore les « carnets » (retirés par ADR-011) et ne déclarait AUCUNE
 // des mesures d'usage que l'application enregistre depuis.
-const PASSIO_CONFIDENTIALITE_VERSION = "2026-09-10";
+const PASSIO_CONFIDENTIALITE_VERSION = "2026-09-11";
 
 // Rend un champ d'identité, ou un marqueur VISIBLE quand il n'est pas renseigné.
 function _champEditeur(cle) {

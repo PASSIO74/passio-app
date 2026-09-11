@@ -20,8 +20,10 @@
 // GeoJSON, clusters…), utiliser directement `maplibregl` plutôt que d'étendre
 // ce shim à l'aveugle.
 (function () {
-  var MAPLIBRE_JS = "https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js";
-  var MAPLIBRE_CSS = "https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css";
+  // Auto-hébergés depuis le 2026-09-11 (ils venaient d'unpkg, sans intégrité) :
+  // même fichier, même version, servis par notre origine — cf. js/vendor/.
+  var MAPLIBRE_JS = "js/vendor/maplibre-gl-4.7.1.js";
+  var MAPLIBRE_CSS = "js/vendor/maplibre-gl-4.7.1.css";
   // Style « liberty » : le rendu le plus proche de l'ancienne carte OSM raster.
   var STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
 

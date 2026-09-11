@@ -1,0 +1,120 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# ALERTE DE MODÉRATION — un signalement qui attend plus de 24 h ouvre une issue
+#
+# Le défaut du 10/09 : « un signalement n'arrive nulle part ». `reports.status`
+# existe depuis la migration du 11/09 et `npm run moderation` lit la file, mais
+# une file qu'il faut penser à ouvrir n'est pas une alerte. Ce workflow compte,
+# chaque matin, les signalements OUVERTS depuis plus de 24 h et :
+#   · s'il y en a, ouvre (ou met à jour) UNE issue `[MODÉRATION]`, label
+#     `moderation`, SANS le label `claude` — décider d'un signalement est un
+#     geste humain, rien n'est auto-fusionné ;
+#   · s'il n'y en a plus, referme l'issue qu'il avait ouverte.
+# GitHub envoie un e-mail au propriétaire pour toute issue du dépôt : c'est le
+# destinataire qui manquait.
+#
+# ⚠️ Rien de nominatif ne sort : le dépôt est PUBLIC. L'issue dit combien, depuis
+# quand, de quel type. Le détail se lit en local (`npm run moderation voir`).
+# ⚠️ Le `GITHUB_TOKEN` intégré suffit : il n'a PAS à déclencher d'autre workflow
+# (règle anti-boucle de GitHub), contrairement à la sentinelle.
+# ⚠️ Un cron GitHub est une DEMANDE, pas une garantie (mesuré : 41 % des créneaux
+# servis) : un quotidien peut glisser de plusieurs heures. Le seuil est 24 h, pas
+# 1 h, justement pour ne pas crier à tort.
+# ═══════════════════════════════════════════════════════════════════════════
+name: Alerte de modération
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/moderation-alerte.yml"
+      - "scripts/moderation-alerte.mjs"
+      - "tests/unit/moderation-alerte.test.mjs"
+
+concurrency:
+  group: moderation-alerte
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  compter:
+    name: Compter les signalements en attente
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with: { fetch-depth: 1 }
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with: { node-version: '22' }
+
+      # Sur une PR qui touche ce canal : on éprouve la fonction pure, rien d'autre.
+      - name: Verrous unitaires
+        run: node --test tests/unit/moderation-alerte.test.mjs
+
+      - name: Verdict
+        if: github.event_name != 'pull_request'
+        id: verdict
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://njkiyoklssvefstljemx.supabase.co' }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set -uo pipefail
+          if [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]; then
+            echo "::error title=SUPABASE_SERVICE_ROLE_KEY absent::Sans la clé, aucun signalement ne peut être lu : l'alerte est AVEUGLE. Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          node scripts/moderation-alerte.mjs --json > /tmp/verdict.json; code=$?
+          # 0 = rien en retard, 3 = alerte, autre = panne (et une panne se voit).
+          if [ "$code" -ne 0 ] && [ "$code" -ne 3 ]; then cat /tmp/verdict.json; exit "$code"; fi
+          echo "alerte=$([ "$code" -eq 3 ] && echo oui || echo non)" >> "${GITHUB_OUTPUT}"
+          node -e '
+            const v = JSON.parse(require("fs").readFileSync("/tmp/verdict.json","utf8"));
+            require("fs").writeFileSync("/tmp/titre.txt", v.titre);
+            require("fs").writeFileSync("/tmp/corps.md", v.corps + "\n\n_Dernier passage : " + new Date().toISOString() + "_\n");
+            console.log(`${v.ouverts} ouvert(s), ${v.enRetard} en retard`);
+          '
+          {
+            echo "## Modération"
+            echo
+            echo "- Signalements ouverts : $(node -e 'console.log(JSON.parse(require("fs").readFileSync("/tmp/verdict.json","utf8")).ouverts)')"
+            echo "- En attente depuis plus de 24 h : $(node -e 'console.log(JSON.parse(require("fs").readFileSync("/tmp/verdict.json","utf8")).enRetard)')"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Ouvrir ou mettre à jour l'issue
+        if: github.event_name != 'pull_request' && steps.verdict.outputs.alerte == 'oui'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh label create moderation --repo "${GITHUB_REPOSITORY}" \
+            --description "Signalements en attente de traitement (geste humain)" \
+            --color "B91C1C" --force >/dev/null 2>&1 || true
+          existante="$(gh issue list --repo "${GITHUB_REPOSITORY}" --state open --label moderation \
+                        --json number --jq '.[0].number // empty')"
+          if [ -n "${existante}" ]; then
+            gh issue edit "${existante}" --repo "${GITHUB_REPOSITORY}" --title "$(cat /tmp/titre.txt)" --body-file /tmp/corps.md
+            echo "Issue mise à jour : #${existante}" >> "${GITHUB_STEP_SUMMARY}"
+          else
+            numero="$(gh issue create --repo "${GITHUB_REPOSITORY}" --title "$(cat /tmp/titre.txt)" \
+                       --body-file /tmp/corps.md --label moderation | grep -oE '[0-9]+$')"
+            echo "Issue ouverte : #${numero}" >> "${GITHUB_STEP_SUMMARY}"
+          fi
+
+      - name: Refermer l'issue si plus rien n'attend
+        if: github.event_name != 'pull_request' && steps.verdict.outputs.alerte == 'non'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for n in $(gh issue list --repo "${GITHUB_REPOSITORY}" --state open --label moderation --json number --jq '.[].number'); do
+            gh issue close "$n" --repo "${GITHUB_REPOSITORY}" --reason completed \
+              --comment "Plus aucun signalement en attente depuis plus de 24 h au passage du $(date -u +%F). Refermée automatiquement."
+            echo "Issue refermée : #${n}" >> "${GITHUB_STEP_SUMMARY}"
+          done

@@ -2992,7 +2992,7 @@ async function openUserProfile(authorId, source) {
     <!-- BOUTONS -->\
     <div id="visitedProfileActions" style="display:flex;gap:8px;justify-content:center;margin:14px 0 4px;">\
       <button class="btn primary" onclick="closeModal();startDirectMessage(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "Passionné") + '\',\'' + escapeJsArg(user.profileEmoji || "✨") + '\',\'' + escapeJsArg(user.avatar || "#8b5cf6") + '\',\'' + escapeJsArg(user.photoUrl || "") + '\')" style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;">Message</button>\
-      <button class="btn ghost" id="followBtn_' + authorId + '" onclick="toggleFollowUser(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\')" style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;' + (isFollowing ? 'background:var(--accent);color:#fff;border-color:var(--accent);' : '') + '">' + (isFollowing ? '✓ Suivi' : 'Suivre') + '</button>\
+      <button class="btn ghost" id="followBtn_' + authorId + '" onclick="toggleFollowUser(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\')" style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;' + (isFollowing ? 'background:var(--accent);color:#fff;border-color:var(--accent);' : '') + '">' + libelleBoutonSuivi(authorId) + '</button>\
     </div>\
     </div>\
     \
@@ -3296,32 +3296,67 @@ function toggleFollowUser(userId, userName) {
   // EXPLIQUE l'action puis propose la création de compte ; il ne rejoue jamais
   // l'action après coup. Rend `true` — donc inerte — hors mode invité.
   if (window.requireAuthentication && !requireAuthentication("suivre")) return;
-  var btns = _boutonsSuivi(userId);
-  if (!btns.length) return;
+  if (!_boutonsSuivi(userId).length) return;
   state.user.following = state.user.following || [];
-  const isFollowing = state.user.following.includes(userId);
-  if (!isFollowing) {
+  state.user.followingPending = state.user.followingPending || [];
+  var nom = userName || "cet utilisateur";
+  var etat = etatSuivi(userId);
+
+  // ⚠️ TROIS ÉTATS depuis le 2026-09-11 (compte privé = abonnement sur DEMANDE) :
+  //   aucun → on demande ; le SERVEUR répond 'accepted' (compte public) ou
+  //           'pending' (compte privé : la personne devra accepter) ;
+  //   attente → un second tap ANNULE la demande (même ligne `follows`) ;
+  //   suivi → on se désabonne.
+  // L'affichage est optimiste dans le sens « suivi », puis CORRIGÉ au verdict
+  // serveur : c'est `trg_follows_statut` qui tranche, jamais le client.
+  if (etat === "attente") {
+    state.user.followingPending = state.user.followingPending.filter(function (id) { return id !== userId; });
+    _peindreBoutonsSuivi(userId, "aucun");
+    toast("Demande annulée");
+    supaUnfollowUser(userId);
+    saveState();
+    return;
+  }
+  if (etat === "aucun") {
     state.user.following.push(userId);
-    btns.forEach(function (btn) {
-      btn.innerHTML = "✓ Suivi";
+    _peindreBoutonsSuivi(userId, "suivi");
+    toast("Tu suis " + nom + " !");
+    Promise.resolve(supaFollowUser(userId)).then(function (r) {
+      if (!r || r.status !== "pending") return;
+      state.user.following = (state.user.following || []).filter(function (id) { return id !== userId; });
+      if (state.user.followingPending.indexOf(userId) < 0) state.user.followingPending.push(userId);
+      _peindreBoutonsSuivi(userId, "attente");
+      toast("Demande envoyée à " + nom + " — tu verras ses publications dès qu'elle sera acceptée");
+      saveState();
+    }).catch(function () {});
+    saveState();
+    return;
+  }
+  state.user.following = state.user.following.filter(function (id) { return id !== userId; });
+  _peindreBoutonsSuivi(userId, "aucun");
+  toast("Tu ne suis plus " + nom);
+  supaUnfollowUser(userId);
+  saveState();
+}
+
+// Peint TOUS les boutons « Suivre » d'un compte (jusqu'à trois surfaces) dans
+// l'un des trois états. Seul point qui écrit ces libellés : `libelleBoutonSuivi`
+// (app-02) est la source des mots, ceci n'en est que la mise en couleur.
+function _peindreBoutonsSuivi(userId, etat) {
+  var libelle = etat === "suivi" ? "✓ Suivi" : etat === "attente" ? "Demande envoyée" : "Suivre";
+  _boutonsSuivi(userId).forEach(function (btn) {
+    btn.innerHTML = libelle;
+    if (etat === "suivi") {
       btn.style.background = "var(--accent)";
       btn.style.color = "#fff";
       btn.style.borderColor = "var(--accent)";
-    });
-    toast("Tu suis " + (userName || "cet utilisateur") + " !");
-    supaFollowUser(userId);
-  } else {
-    state.user.following = state.user.following.filter(id => id !== userId);
-    btns.forEach(function (btn) {
-      btn.innerHTML = "Suivre";
+    } else {
       btn.style.background = "";
       btn.style.color = "";
       btn.style.borderColor = "";
-    });
-    toast("Tu ne suis plus " + (userName || "cet utilisateur"));
-    supaUnfollowUser(userId);
-  }
-  saveState();
+    }
+    if (etat === "attente") btn.setAttribute("data-suivi-attente", "1"); else btn.removeAttribute("data-suivi-attente");
+  });
 }
 
 // ======== MODÉRATION (UI) ========
@@ -4051,10 +4086,13 @@ function renderConvFpThread(c, displayName) {
       // un élément à contenu : l'analyseur ouvre l'élément et avale ce qui suit.
       // Sans conséquence tant que rien ne suit dans la bulle — c'est un piège
       // posé pour le prochain qui ajoutera quelque chose derrière.
-      content = '<video src="' + safeUrlAttr(m.video) + '" style="max-width:200px;max-height:200px;border-radius:12px;display:block;cursor:pointer;" controls playsinline preload="none"></video>';
+      // `attrMediaSrc` (app-02) : une PIÈCE JOINTE porte `data-pj` au lieu de `src`,
+      // et `signerPiecesJointes(thread)` pose l'URL signée après le rendu — le seau
+      // `attachments` est privé depuis le 2026-09-11. Un GIF (Tenor) garde son src.
+      content = '<video ' + attrMediaSrc(m.video) + ' style="max-width:200px;max-height:200px;border-radius:12px;display:block;cursor:pointer;" controls playsinline preload="none"></video>';
     } else if (m.img) {
       isMedia = true;
-      content = '<img loading="lazy" decoding="async" src="' + safeUrlAttr(m.img) + '" style="max-width:200px;max-height:200px;border-radius:12px;display:block;cursor:pointer;" onclick="openFullImg(this.src)"/>';
+      content = '<img loading="lazy" decoding="async" ' + attrMediaSrc(m.img) + ' style="max-width:200px;max-height:200px;border-radius:12px;display:block;cursor:pointer;" onclick="openFullImg(this.src)"/>';
     } else if (m.fileUrl) {
       isMedia = true;
       var ftype = (m.fileType || 'file').toLowerCase();
@@ -4065,7 +4103,7 @@ function renderConvFpThread(c, displayName) {
                      ftype === 'audio' ? '🎵' : '📎';
       var docBg = isMe ? 'rgba(255,255,255,0.12)' : 'var(--bg-soft)';
       var docBorder = isMe ? 'rgba(255,255,255,0.2)' : 'var(--border)';
-      content = '<a href="' + safeUrlAttr(m.fileUrl) + '" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;display:inline-block;">' +
+      content = '<a ' + attrMediaSrc(m.fileUrl, "href") + ' target="_blank" rel="noopener" style="text-decoration:none;color:inherit;display:inline-block;">' +
         '<div style="display:flex;align-items:center;gap:10px;padding:8px;cursor:pointer;">' +
         '<div style="width:36px;height:36px;border-radius:10px;background:' + docBg + ';border:1px solid ' + docBorder + ';display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">' + fileIcon + '</div>' +
         '<div><div style="font-size:13px;font-weight:700;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + fname + '</div>' +
@@ -4164,6 +4202,8 @@ function renderConvFpThread(c, displayName) {
   }
 
   thread.innerHTML = parts.join('');
+  // ⚠️ APRÈS le innerHTML, jamais avant : les nœuds `data-pj` viennent d'être créés.
+  if (typeof signerPiecesJointes === "function") signerPiecesJointes(thread);
   if (!c._loadingOlder) thread.scrollTop = thread.scrollHeight; // pas de saut en bas pendant le chargement d'historique
   _wireMsgActions(thread, c.id);
   _wireConvScroll(thread, c.id);
@@ -4509,6 +4549,19 @@ function _playVoiceById(aid) {
   var dur = document.getElementById('dur_' + aid);
   var audioKey = '_aud_' + aid;
   if (!window[audioKey]) {
+    // Un vocal déposé dans le seau `attachments` (privé depuis le 2026-09-11) se
+    // lit par URL signée : on la résout ICI, au premier tap, puis on rejoue
+    // l'appel — le reste de la fonction ne connaît qu'un objet Audio prêt.
+    if (typeof src === "string" && typeof pieceJointeChemin === "function" && pieceJointeChemin(src)) {
+      if (window[audioKey + '_attente']) return;
+      window[audioKey + '_attente'] = true;
+      urlPieceJointeSignee(src).then(function (u) {
+        window[audioKey + '_attente'] = false;
+        window[audioKey] = new Audio(u || src);
+        _playVoiceById(aid);
+      });
+      return;
+    }
     window[audioKey] = new Audio(src);
   }
   var audio = window[audioKey];
@@ -5033,7 +5086,11 @@ function _stopTyping(convId) {
 function _subscribeTyping(convId) {
   if (typeof supa === "undefined" || !supa) return;
   if (_typingChannel) { try { supa.removeChannel(_typingChannel); } catch(e) {} _typingChannel = null; }
-  _typingChannel = supa.channel("typing:" + convId)
+  // ⚠️ PRIVÉ depuis le 2026-09-11 (policy `passio_rt_recevoir` : membres de la
+  // conversation seulement). `window._rtPriveIndisponible` est posé par la
+  // sonnerie d'appel (app-05) quand la souscription privée est REFUSÉE — migration
+  // Realtime pas encore appliquée — et l'on replie alors sur le canal public.
+  _typingChannel = supa.channel("typing:" + convId, { config: { private: window._rtPriveIndisponible !== true } })
     .on("broadcast", { event: "typing" }, ({ payload }) => {
       const bar = document.getElementById("convTypingBar");
       if (bar) { bar.textContent = (payload.user || "Quelqu'un") + " est en train d'écrire…"; bar.style.display = "block"; }

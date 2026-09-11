@@ -144,6 +144,22 @@ if (fs.existsSync(dataDir)) {
   }
   if (nData) console.log("  + data/ :", nData, "fichier(s) JSON copié(s)");
 }
+// 7. Bibliothèques AUTO-HÉBERGÉES (js/vendor/*) — chargées à la demande par les
+//    loaders (supabase-loader.js, map-loader.js), donc jamais inlinées à l'étape 4,
+//    donc à copier ICI. Même règle que data/ : un asset qui n'existe qu'en CI est
+//    un asset qu'on découvre manquant en production.
+const vendorDir = path.join(root, "js", "vendor");
+if (fs.existsSync(vendorDir)) {
+  const cible = path.join(path.dirname(outPath), "js", "vendor");
+  fs.mkdirSync(cible, { recursive: true });
+  let nVendor = 0;
+  for (const f of fs.readdirSync(vendorDir)) {
+    if (!/\.(js|css)$/.test(f)) continue;
+    fs.copyFileSync(path.join(vendorDir, f), path.join(cible, f));
+    nVendor++;
+  }
+  console.log("  + js/vendor/ :", nVendor, "fichier(s) copié(s)");
+}
 console.log("Build OK →", outPath,
   "(", Buffer.byteLength(html), "octets ) + app.js (", Buffer.byteLength(appJs),
   "octets, v=" + appHash + ") + styles.css (", Buffer.byteLength(css),

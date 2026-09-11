@@ -336,6 +336,21 @@ jobs:
       - name: Banc ouverture au public — fichier unique (PostgreSQL jetable)
         run: bash tests/sql/ouverture-2026-09-11.test.sh
 
+      # Ouverture PUBLIQUE (2026-09-11) : sept defauts mesures en production le
+      # jour ou n'importe qui peut creer un compte — oracle d'appartenance
+      # exposable sans compte, blocage sans effet sur follows/messages/
+      # commentaires/notifications, debit non borne (dont INSERT anonymes),
+      # signalements sans statut, canaux Realtime publics, seau attachments
+      # public, compte prive sans approbation. Le banc mesure chaque defaut
+      # AVANT, applique, rejoue, verifie les deux sens, puis retire chaque garde
+      # et exige que le banc ET le tableau de verdict du fichier rougissent.
+      - name: Banc ouverture publique — RLS, debit, Realtime, seau prive (PostgreSQL jetable)
+        run: bash tests/sql/migration-ouverture-publique.test.sh
+
+      # Alerte de moderation : la fonction pure qui decide d'ouvrir une issue.
+      - name: Verrous unitaires de l'alerte de moderation
+        run: node --test tests/unit/moderation-alerte.test.mjs
+
       # Le script d'application et le fichier unique colle dans l'editeur SQL
       # sont ce que Benjamin execute sur la VRAIE base. Un outil d'application
       # jamais execute est un pari : celui-ci est joue de bout en bout, et le
