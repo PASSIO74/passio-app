@@ -54,6 +54,9 @@ const DESINFECTANTS = {
   parseInt: ["url", "onclick", "style", "attr", "texte"],
   parseFloat: ["url", "onclick", "style", "attr", "texte"],
   escapeHtml:  ["texte", "attr"],
+  // js/legal-textes.js : même table que escapeHtml, dupliquée parce que le
+  // fichier s'exécute en <head> AVANT app-02 (textes légaux lisibles sans code).
+  _legalEscapeHtml: ["texte", "attr"],
   escapeJsArg: ["onclick", "texte", "attr"],
   safeUrlAttr: ["url", "attr"],
   // js/app-02 : refuse " ' < > ; { } url( expression( @import → reste dans la
