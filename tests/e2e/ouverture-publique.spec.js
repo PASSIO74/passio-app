@@ -353,7 +353,8 @@ test.describe("⑦ compte privé : abonnement sur demande", () => {
     expect(r.apres).toContain("Demande acceptée");
     expect(r.emoji).toBe("🔒");
     expect(r.unread).toBe(false);
-    expect(r.memo).toEqual({ n_req_1: "acceptée" });
+    expect(r.memo.n_req_1.verdict, "verdict HORODATÉ (objet), pas une chaîne").toBe("acceptée");
+    expect(typeof r.memo.n_req_1.at).toBe("number");
   });
 
   test("accepter lit le verdict serveur : 0 ligne = « n'existe plus », erreur = rien n'est marqué", async ({ page }) => {
@@ -382,11 +383,11 @@ test.describe("⑦ compte privé : abonnement sur demande", () => {
       return { r0, memo0, r1, memo1, r2, memo2: state.user.demandesAbonnementTraitees, notifs, toasts };
     });
     expect(r.r0).toBe(false);
-    expect(r.memo0).toEqual({ n_a: "expirée" });
+    expect(r.memo0.n_a.verdict).toBe("expirée");
     expect(r.r1).toBe(false);
     expect(r.memo1, "un refus ne marque RIEN").toEqual({});
     expect(r.r2).toBe(true);
-    expect(r.memo2).toEqual({ n_a: "acceptée" });
+    expect(r.memo2.n_a.verdict).toBe("acceptée");
     expect(r.notifs, "aucune ligne écrite par le client, un seul push, au succès seulement").toEqual([["push", "u_dem", "follow"]]);
     expect(r.toasts).toContain("Demande acceptée");
   });
@@ -433,8 +434,12 @@ test.describe("⑧ la politique dit ce que la base fait", () => {
     await bootOnboarded(page);
     const r = await page.evaluate(() => ({ version: PASSIO_CONFIDENTIALITE_VERSION }));
     expect(r.version).toBe("2026-09-11");
-    const app02 = lire("js/app-02-state-utils.js");
-    expect(app02).toMatch(/13 mois au maximum<\/strong> — en pratique la mesure d\\'usage détaillée est effacée après <strong[^>]*>7 jours<\/strong> et les rapports d\\'erreur après <strong[^>]*>30 jours/);
+    // Les textes légaux vivent dans js/legal-textes.js depuis #334 (lisibles sans code).
+    const legal = lire("js/legal-textes.js");
+    expect(legal).toMatch(/13 mois au maximum<\/strong> — en pratique la mesure d\\'usage détaillée est effacée après <strong[^>]*>7 jours<\/strong> et les rapports d\\'erreur après <strong[^>]*>30 jours/);
+    // …et la modale rend bien ce texte.
+    const rendu = await page.evaluate(() => { openPrivacyPolicy(); const t = document.body.innerText; closeModal(); return t; });
+    expect(rendu).toMatch(/7 jours/);
   });
 
   test("la migration serveur existe, son banc est branché en CI, et son verdict porte treize lignes", async () => {
