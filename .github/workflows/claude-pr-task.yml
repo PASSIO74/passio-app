@@ -47,11 +47,11 @@ jobs:
         run: |
           # Version ÉPINGLÉE, même raison que le SHA de l'action dans les
           # autres workflows : ce CLI reçoit CLAUDE_CODE_OAUTH_TOKEN et un
-          # GITHUB_TOKEN en écriture. 2.1.238 est la version que
-          # claude-code-action v1.0.198 embarque (« chore: bump Claude Code
-          # to 2.1.238 »), donc les deux canaux exécutent le même code.
-          npm install -g @anthropic-ai/claude-code@2.1.238
-          claude --version
+          # GITHUB_TOKEN en écriture. Même CLI exact dans les deux canaux.
+          # Fable 5.1 nécessite >=2.1.255 et subagent FORCE >=2.1.257.
+          # https://github.com/anthropics/claude-code/releases/tag/v2.1.263
+          npm install -g --no-audit --no-fund @anthropic-ai/claude-code@2.1.263
+          test "$(claude --version)" = '2.1.263 (Claude Code)'
 
       # Preuve d'auth AVANT la moindre dépense : `claude auth status` interroge
       # le CLI lui-même et ne consomme aucun jeton de modèle.
@@ -87,10 +87,10 @@ jobs:
               echo "::error title=Politique subscription-only violée::Le CLI s'authentifie par clé API facturée. PASSIO n'utilise que l'abonnement Claude Pro : refus d'exécuter."
               exit 1 ;;
             *)
-              echo "AUTH = CLAUDE PRO OAUTH" ;;
+              echo "AUTH = ABONNEMENT OAUTH" ;;
           esac
 
-      - name: Run Claude Code (Fable 5 primaire, Opus 5 en repli)
+      - name: Run Claude Code (Fable 5.1 exact uniquement)
         env:
           # Abonnement uniquement. ANTHROPIC_API_KEY est vidée explicitement :
           # si elle était définie ailleurs, le CLI la préférerait en silence.
@@ -104,7 +104,7 @@ jobs:
           TASK="$(cat .passio/claude-task.md)"
           PROMPT=$(cat <<EOF
           You are the implementation agent for PASSIO, authenticated with
-          Benjamin's Claude Pro subscription (OAuth token).
+          Benjamin's Claude subscription (OAuth token).
           Read AGENTS.md and CLAUDE.md first and obey all repository invariants.
           Execute the trusted task below on the current PR branch.
           Make the smallest safe implementation that satisfies the task.
@@ -117,100 +117,22 @@ jobs:
           EOF
           )
 
-          # ── Politique modeles : Fable 5 primaire, Opus 5 en repli sur ─────
-          # Le repli n'a lieu QUE si le primaire a echoue SANS avoir touche un
-          # fichier. S'il a deja modifie quelque chose, relancer le repli
-          # par-dessus ecraserait un travail partiel : echec explicite.
-          # Aucun autre modele n'est acceptable, et aucun repli ne bascule sur
-          # une cle API facturee : l'auth reste l'abonnement, verifiee plus bas.
-          MODELE_PRIMAIRE=claude-fable-5
-          MODELE_REPLI=claude-opus-5
-
-          lancer_claude() {
-            local modele="$1" flux="$2" code
-            set +e
-            ANTHROPIC_MODEL="${modele}" \
-            ANTHROPIC_DEFAULT_OPUS_MODEL="${modele}" \
-            CLAUDE_CODE_SUBAGENT_MODEL="${modele}" \
-            claude -p "$PROMPT" \
-              --model "${modele}" \
-              --max-turns 40 \
-              --allowedTools "Read,Edit,Write,Glob,Grep,Bash(npm run:*),Bash(npm test:*),Bash(git diff:*),Bash(git status:*)" \
-              --output-format stream-json \
-              --verbose > "${flux}" 2> /tmp/claude-stderr.log
-            code=$?
-            set -e
-            return ${code}
-          }
-
-          travail_produit() {
-            [ -n "$(git status --porcelain | awk '{print substr($0,4)}' \
-                    | grep -v '^\.passio/claude-task\.md$' || true)" ]
-          }
-
-          echo "Modele primaire : ${MODELE_PRIMAIRE}"
-          set +e
-          lancer_claude "${MODELE_PRIMAIRE}" /tmp/claude-stream.jsonl
-          CLAUDE_EXIT=$?
-          set -e
-
-          if [ "${CLAUDE_EXIT}" -ne 0 ]; then
-            if travail_produit; then
-              echo "::error title=Repli refuse::${MODELE_PRIMAIRE} a echoue APRES avoir modifie des fichiers. Relancer ${MODELE_REPLI} par-dessus ecraserait un travail partiel. Echec explicite, conformement a la politique."
-              exit 1
-            fi
-            echo "::notice title=Repli sur ${MODELE_REPLI}::${MODELE_PRIMAIRE} a echoue (code ${CLAUDE_EXIT}) sans produire la moindre modification : repli controle."
-            cp /tmp/claude-stream.jsonl /tmp/claude-stream-primaire.jsonl 2>/dev/null || true
-            set +e
-            lancer_claude "${MODELE_REPLI}" /tmp/claude-stream.jsonl
-            CLAUDE_EXIT=$?
-            set -e
-          fi
-
-          # L'événement `system/init` porte le modèle ET la source d'auth réelle.
-          # C'est la seule preuve non déclarative de ce qui a servi à payer.
-          MODEL=""; KEY_SOURCE=""
-          eval "$(node <<'NODE'
-          const fs = require('fs');
-          let model = '', keySource = '';
-          try {
-            for (const line of fs.readFileSync('/tmp/claude-stream.jsonl', 'utf8').split(/\r?\n/)) {
-              if (!line.trim()) continue;
-              try {
-                const event = JSON.parse(line);
-                if (event.type === 'system' && event.subtype === 'init') {
-                  model = String(event.model || '');
-                  keySource = String(event.apiKeySource || '');
-                  break;
-                }
-              } catch (_) {}
-            }
-          } catch (_) {}
-          const q = (v) => "'" + String(v).replace(/'/g, "'\\''") + "'";
-          process.stdout.write(`MODEL=${q(model)}\nKEY_SOURCE=${q(keySource)}\n`);
-          NODE
-          )"
-
-          echo "Claude Code model : ${MODEL:-unknown}"
-          echo "apiKeySource      : ${KEY_SOURCE:-none}"
-
-          # Diagnostic d'authentification explicite, sans jamais montrer le secret.
-          case "${KEY_SOURCE}" in
-            ANTHROPIC_API_KEY|apiKey|api_key)
-              echo "AUTH = ANTHROPIC API"
-              echo "::error title=Politique subscription-only violée::Le run a consommé une clé API Anthropic facturée. Refus."
-              exit 1 ;;
-            *)
-              echo "AUTH = CLAUDE PRO OAUTH" ;;
-          esac
-
-          case "$MODEL" in
-            claude-fable-5*|claude-opus-5*) ;;
-            *)
-              echo "::error title=Modele hors politique::Attendu ${MODELE_PRIMAIRE} ou ${MODELE_REPLI}, obtenu « ${MODEL:-unknown} ». Refus : pas de derive silencieuse vers un autre modele."
-              exit 1
-              ;;
-          esac
+          # Décision de Benjamin du 2026-09-07 : aucun repli de modèle.
+          MODELE_PRIMAIRE=claude-fable-5-1
+          export ANTHROPIC_MODEL="${MODELE_PRIMAIRE}"
+          export ANTHROPIC_DEFAULT_FABLE_MODEL="${MODELE_PRIMAIRE}"
+          export CLAUDE_CODE_SUBAGENT_MODEL="${MODELE_PRIMAIRE}"
+          export CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1
+          # Les settings du projet sélectionnent aussi le modèle, désactivent
+          # les replis et limitent les modèles proposés. La trace reste la preuve.
+          CLAUDE_EXIT=0
+          claude -p "$PROMPT" \
+            --model "${MODELE_PRIMAIRE}" \
+            --settings '{"model":"claude-fable-5-1","availableModels":["claude-fable-5-1"],"enforceAvailableModels":true,"switchModelsOnFlag":false,"fallbackModel":[],"teammateDefaultModel":"claude-fable-5-1"}' \
+            --max-turns 40 \
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(npm run:*),Bash(npm test:*),Bash(git diff:*),Bash(git status:*)" \
+            --output-format stream-json \
+            --verbose > /tmp/claude-stream.jsonl 2> /tmp/claude-stderr.log || CLAUDE_EXIT=$?
 
           if [ "$CLAUDE_EXIT" -ne 0 ]; then
             echo "Claude Code exited with status $CLAUDE_EXIT."
@@ -253,6 +175,57 @@ jobs:
           NODE
             exit "$CLAUDE_EXIT"
           fi
+
+          # Preuve complète avant la moindre publication. Jamais d'eval sur
+          # une trace du fournisseur ; les diagnostics ne recopient pas son texte.
+          export EXECUTION_FILE=/tmp/claude-stream.jsonl
+          node <<'NODE'
+          const fs = require('fs');
+          const EXPECTED_MODEL = 'claude-fable-5-1';
+          function refuse(reason) {
+            console.error('::error title=Preuve Claude refusée::' + reason + ' Publication refusée.');
+            process.exit(1);
+          }
+          let events;
+          try {
+            const raw = fs.readFileSync(process.env.EXECUTION_FILE, 'utf8');
+            try {
+              const parsed = JSON.parse(raw);
+              events = Array.isArray(parsed) ? parsed : [parsed];
+            } catch (_) {
+              events = raw.split(/\r?\n/).filter(line => line.trim()).map(line => JSON.parse(line));
+            }
+          } catch (_) {
+            refuse('Trace illisible ou malformée.');
+          }
+          const inits = events.filter(event => event?.type === 'system' && event?.subtype === 'init');
+          const results = events.filter(event => event?.type === 'result');
+          const assistants = events.filter(event => event?.type === 'assistant');
+          if (!inits.length || !results.length) refuse('Trace incomplète : init et résultat requis.');
+          if (inits.some(event => event.apiKeySource !== 'none')) refuse('Source OAuth non confirmée.');
+          const observed = inits.map(event => event.model);
+          for (const event of assistants) observed.push(event.message?.model);
+          for (const result of results) {
+            if (result.subtype !== 'success' || result.is_error === true) refuse('Exécution non réussie.');
+            if (!result.modelUsage || typeof result.modelUsage !== 'object' || Array.isArray(result.modelUsage)) {
+              refuse('Preuve modelUsage absente.');
+            }
+            const used = Object.keys(result.modelUsage);
+            if (!used.length) refuse('Preuve modelUsage vide.');
+            observed.push(...used);
+          }
+          // Égalité stricte : aucun alias, ancien modèle ou suffixe supplémentaire.
+          // Tous les init, messages assistant et bilans d'usage sont vérifiés : un init
+          // conforme ne doit pas masquer un repli en cours de session ou dans un agent.
+          if (observed.some(model => model !== EXPECTED_MODEL)) refuse('Un modèle absent ou autre que Fable 5.1 exact apparaît dans la trace.');
+          if (process.env.GITHUB_OUTPUT) {
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, 'nom=' + EXPECTED_MODEL + '\nauth_reelle=none\n');
+          }
+          console.log('Modèle vérifié dans init et usage : ' + EXPECTED_MODEL);
+          console.log('Source authentification : OAuth (apiKeySource=none)');
+          NODE
+          MODEL=claude-fable-5-1
+
 
       - name: Verify Claude produced an application diff
         run: |
