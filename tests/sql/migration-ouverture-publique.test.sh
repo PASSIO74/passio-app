@@ -536,6 +536,15 @@ AUTH "$D" "delete from public.follows where follower_id='$D' and following_id='$
 AUTH "$D" "insert into public.follows (follower_id, following_id) values ('$D', '$A');" >/dev/null
 verifier "se désabonner puis se réabonner RAFRAÎCHIT la même notification (pas de doublon)" "1" \
   "$(Q "select count(*) from public.notifications where from_id='$D' and user_id='$A' and kind='follow';")"
+# Un refus sur `notifications` (quota, contrainte) ne doit JAMAIS faire échouer
+# l'abonnement : on pose un trigger qui refuse toute insertion, on suit, on retire.
+Q "create function public._refus_notif() returns trigger language plpgsql as \$\$ begin raise exception 'rate limit: simulé'; end \$\$;
+   create trigger trg_refus_notif before insert on public.notifications for each row execute function public._refus_notif();" >/dev/null
+verifier "un refus de notifications ne fait PAS échouer l'abonnement (la notification est un à-côté)" "OK" \
+  "$(AUTH_OK "$C" "insert into public.follows (follower_id, following_id) values ('$C', '$D');")"
+verifier "…l'abonnement existe, sans notification" "accepted/0" \
+  "$(Q "select status from public.follows where follower_id='$C' and following_id='$D';")/$(Q "select count(*) from public.notifications where from_id='$C' and user_id='$D';")"
+Q "drop trigger trg_refus_notif on public.notifications; drop function public._refus_notif(); delete from public.follows where follower_id='$C' and following_id='$D';" >/dev/null
 verifier "follows_notifier n'est exécutable par aucun rôle client" "false/false" \
   "$(Q "select has_function_privilege('anon','public.follows_notifier()','execute') || '/' || has_function_privilege('authenticated','public.follows_notifier()','execute');")"
 verifier "les abonnements existants sont tous 'accepted' (le défaut de la colonne)" "0" \

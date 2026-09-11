@@ -1886,10 +1886,22 @@ function _notifListHtml(notifs) {
 // Une demande d'abonnement (compte privé) se tranche DEPUIS la notification :
 // deux boutons, puis le verdict en toutes lettres. `stopPropagation` : la ligne
 // entière ouvre le profil de l'émetteur, le bouton ne doit pas aussi le faire.
+// Le verdict mémorisé ne vaut que pour la demande qu'il a tranchée : l'identifiant
+// de notification est DÉTERMINISTE par couple (`follows_notifier`), donc une
+// NOUVELLE demande du même compte RAFRAÎCHIT la même ligne (`created_at = now()`).
+// Un verdict plus ancien que la notification est périmé — sinon « Demande refusée »
+// s'afficherait pour toujours, sans bouton (relecture audit-passio, 2026-09-11).
+function _verdictDemandeAbonnement(n) {
+  var traitees = (state.user && state.user.demandesAbonnementTraitees) || {};
+  var memo = traitees[n.id];
+  if (!memo) return null;
+  if (typeof memo === "string") return memo;
+  if (n.createdAt && memo.at && n.createdAt > memo.at) return null;
+  return memo.verdict || null;
+}
 function _notifDemandeAbonnementHtml(n) {
   if (!n || n.kind !== "follow_request" || !n.fromId) return "";
-  var traitees = (state.user && state.user.demandesAbonnementTraitees) || {};
-  var verdict = traitees[n.id];
+  var verdict = _verdictDemandeAbonnement(n);
   if (verdict) return '<div class="notif-demande-verdict" style="font-size:12px;color:var(--muted);margin-top:4px;">Demande ' + escapeHtml(verdict) + '</div>';
   return '<div class="notif-demande-actions" style="display:flex;gap:8px;margin-top:8px;">'
     + '<button class="btn small primary" onclick="event.stopPropagation();accepterDemandeAbonnement(\'' + escapeJsArg(n.fromId) + '\',\'' + escapeJsArg(n.id) + '\')">Accepter</button>'
@@ -1937,6 +1949,16 @@ function mergeSupaNotifs(ns) {
         state.user.following = state.user.following || [];
         if (state.user.following.indexOf(n.fromId) < 0) state.user.following.push(n.fromId);
         attente = state.user.followingPending;
+      });
+    }
+    // Une demande d'abonnement RAFRAÎCHIE (même id, date plus récente que le
+    // verdict mémorisé) est une nouvelle demande : le verdict d'avant est périmé.
+    var traitees = (state.user && state.user.demandesAbonnementTraitees) || null;
+    if (traitees) {
+      ns.forEach(function (n) {
+        if (!n || n.kind !== "follow_request" || !traitees[n.id]) return;
+        var memo = traitees[n.id];
+        if (memo && typeof memo === "object" && memo.at && n.createdAt && n.createdAt > memo.at) delete traitees[n.id];
       });
     }
   } catch (e) { try { diagLog("notifs : fusion des demandes acceptées — " + (e && e.message)); } catch (_) {} }
@@ -5633,7 +5655,7 @@ function _creerCanalDb(prive) {
   // Un SEUL join pour l'ensemble des bindings ci-dessus.
   dbChan.subscribe(function (st, err) {
     if (!prive || st !== "CHANNEL_ERROR" || window._dbChan !== dbChan) return;
-    if (typeof _rtRefusDePolicy !== "function" || !_rtRefusDePolicy(err)) return;
+    if (typeof _rtRefusDePolicy === "function" && !_rtRefusDePolicy(err)) return;
     // `removeChannel` est asynchrone et `supa.channel(topic)` rend le canal
     // existant tant qu'il n'est pas parti : on recrée APRÈS le départ.
     Promise.resolve(supa.removeChannel(dbChan)).catch(function () {}).then(function () {
@@ -5682,6 +5704,16 @@ async function supaFollowUser(targetId) {
     // l'état du compte connaît (une demande encore en attente reste « Demande
     // envoyée », elle ne devient pas « ✓ Suivi » par défaut).
     let status = res && res.data && res.data.status;
+    if (!status && dup && window._followsSansStatut !== true) {
+      // ⚠️ L'appelant (`toggleFollowUser`) a DÉJÀ poussé l'identifiant dans
+      // `following` avant d'appeler : l'état local dit « suivi » quoi qu'il en
+      // soit. Seule la ligne serveur fait foi — `follows_lecture` l'ouvre au
+      // demandeur, même en attente.
+      try {
+        const rl = await supa.from("follows").select("status").eq("follower_id", MY_UID).eq("following_id", targetId).maybeSingle();
+        if (rl && rl.data && rl.data.status) status = rl.data.status;
+      } catch (e) {}
+    }
     if (!status && dup && typeof etatSuivi === "function" && etatSuivi(targetId) === "attente") status = "pending";
     if (!status) status = "accepted";
     try { window.tel && tel.settle(_cid, "saved", ok, res && res.error); } catch (e) {}
@@ -5739,7 +5771,7 @@ async function refuserDemandeAbonnement(fromId, notifId) {
 function _demandeAbonnementTraitee(notifId, verdict) {
   if (!notifId) return;
   state.user.demandesAbonnementTraitees = state.user.demandesAbonnementTraitees || {};
-  state.user.demandesAbonnementTraitees[notifId] = verdict || "traitée";
+  state.user.demandesAbonnementTraitees[notifId] = { verdict: verdict || "traitée", at: Date.now() };
   const n = (state.notifications || []).find(x => x.id === notifId);
   if (n) n.unread = false;
   try { saveState(); } catch (e) {}

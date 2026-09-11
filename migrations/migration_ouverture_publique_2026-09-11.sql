@@ -196,8 +196,9 @@ create policy "conv_messages_insert_member" on public.conv_messages for insert t
 
 -- ⑧ L'UPDATE reprend la condition d'INSERT (WITH CHECK), et un trigger FIGE les
 -- identifiants — `WITH CHECK` ne voit que la ligne finale, il ne sait pas
--- qu'elle a changé de conversation. Aucun chemin client ne modifie ces colonnes
--- (mesuré : le client ne fait aucun UPDATE sur ces deux tables).
+-- qu'elle a changé de conversation. Le seul UPDATE client est l'édition du
+-- TEXTE d'un commentaire (`_supaUpdateCommentRow`, app-04) : `content` n'est
+-- pas figé, et le WITH CHECK est le même que celui de l'INSERT.
 drop policy if exists "Update propre" on public.conv_messages;
 create policy "Update propre" on public.conv_messages for update to authenticated
   using (from_id = (select auth.uid())::text)
@@ -481,10 +482,15 @@ create policy "follows_lecture" on public.follows for select to anon, authentica
 -- acceptation (`follow`, vers le demandeur). Identifiant DÉTERMINISTE par
 -- couple — même famille que `_idNotifMessage` : c'est lui qui empêche le doublon,
 -- et une relance (se désabonner puis se réabonner) rafraîchit la même ligne au
--- lieu d'en empiler une. Le client ne pousse plus que le PUSH. SECURITY DEFINER :
--- la policy INSERT de `notifications` exige `from_id = auth.uid()`, ce qui est
--- vrai ici, mais la lecture de `profiles` et l'UPSERT n'ont pas à dépendre du
--- rôle courant. Le nom n'est pas échappé en base : le client neutralise `< >` de
+-- lieu d'en empiler une. Le client ne pousse plus que le PUSH. SECURITY DEFINER,
+-- propriétaire `postgres` (BYPASSRLS sur Supabase) : c'est CELA qui rend l'UPSERT
+-- possible — la branche `do update` touche une ligne `user_id = cible`, qu'aucune
+-- policy client n'autoriserait, et la lecture de `profiles` ne dépend pas du
+-- rôle courant. ⚠️ La notification est un À-CÔTÉ de l'abonnement, jamais son
+-- contrat : `notifications` porte `trg_rate_limit` (60/min par `from_id`, tous
+-- genres confondus) et un refus y ferait échouer l'INSERT `follows` lui-même
+-- (« Impossible de suivre », pour une erreur qui parle de notifications). D'où
+-- le bloc `exception` : on trace, on ne casse pas. Le nom n'est pas échappé en base : le client neutralise `< >` de
 -- toute notification distante à l'entrée (`mergeSupaNotifs`).
 create or replace function public.follows_notifier()
 returns trigger language plpgsql security definer set search_path = public, pg_temp as $$
@@ -508,9 +514,13 @@ begin
     return new;
   end if;
   select nullif(btrim(p.username), '') into nom from public.profiles p where p.id = acteur;
-  insert into public.notifications (id, user_id, kind, from_id, ref_id, content, seen, created_at)
-  values (ident, cible, genre, acteur, acteur, coalesce(nom, 'Quelqu''un') || ' ' || texte, false, now())
-  on conflict (id) do update set content = excluded.content, kind = excluded.kind, seen = false, created_at = now();
+  begin
+    insert into public.notifications (id, user_id, kind, from_id, ref_id, content, seen, created_at)
+    values (ident, cible, genre, acteur, acteur, coalesce(nom, 'Quelqu''un') || ' ' || texte, false, now())
+    on conflict (id) do update set content = excluded.content, kind = excluded.kind, seen = false, created_at = now();
+  exception when others then
+    raise warning 'follows_notifier : notification non écrite (%) — l''abonnement est conservé', sqlerrm;
+  end;
   return new;
 end $$;
 revoke execute on function public.follows_notifier() from public, anon, authenticated;

@@ -844,6 +844,14 @@ function _callOnInvite(payload) {
   // les doublons : même appel déjà en cours, ou écran entrant déjà affiché.
   if (window._call && window._call.id === payload.callId) return;          // déjà accepté CET appel
   if (!window._call && window._callIncoming && window._callIncoming.callId === payload.callId) return; // sonnerie déjà affichée
+  // Anti-rafale : un callId NEUF à chaque message ferait réafficher l'écran
+  // d'appel entrant en continu — ou, pendant un appel, créer un canal
+  // `call:<id>` + decline par message. Au plus UNE nouvelle invitation traitée
+  // toutes les 3 s ; l'appelant légitime RÉPÈTE le même callId, dédupliqué
+  // ci-dessus, et n'est pas concerné.
+  var maintenant = Date.now();
+  if (maintenant - (window._callInviteAffichee || 0) < CALL_INVITE_MIN_MS) return;
+  window._callInviteAffichee = maintenant;
   if (window._call) {
     // Occupé sur un AUTRE appel → refuse poliment (une seule fois).
     if (window._declinedCallId === payload.callId) return;
@@ -853,13 +861,6 @@ function _callOnInvite(payload) {
     return;
   }
   if (typeof isBlocked === "function" && isBlocked(payload.from)) return; // modération
-  // Anti-rafale : un callId NEUF à chaque message ferait réafficher l'écran
-  // d'appel entrant en continu (la dédup ci-dessus ne voit que le même appel).
-  // Au plus UNE nouvelle sonnerie toutes les 3 s — l'appelant légitime, lui,
-  // RÉPÈTE le même callId, qui passe par la dédup et n'est pas concerné.
-  var maintenant = Date.now();
-  if (maintenant - (window._callInviteAffichee || 0) < CALL_INVITE_MIN_MS) return;
-  window._callInviteAffichee = maintenant;
   console.log("[call] invite reçue de", payload.from, payload.callId);
   window._callIncoming = payload;
   _callRenderIncomingUI(payload);
@@ -883,7 +884,7 @@ async function acceptIncomingCall() {
   catch (e) { toast("Caméra/micro refusé"); _callDeclineSilent(inv); _callCloseUI(); return; }
 
   window._call = {
-    id: inv.callId, peer: { id: inv.from, name: inv.name || "Contact", emoji: inv.emoji || "🙂", color: "#7c3aed", photo: null },
+    id: inv.callId, peer: { id: inv.from, name: inv.name || "Contact", emoji: _emojiBorne(inv.emoji), color: "#7c3aed", photo: null },
     kind: inv.kind, role: "callee", status: "connecting",
     localStream: stream, remoteStream: null, pc: null, chan: null, startedAt: 0, _facing: "user",
   };
@@ -1088,10 +1089,10 @@ function _callCloseUI() {
 // une invitation `{ emoji: '<img src=x onerror=…>' }` exécutait du script chez
 // n'importe quel compte connecté (red team du 2026-09-11). Même règle que pour
 // `comment_interactions` : on échappe à l'AFFICHAGE, et on borne la longueur.
-function _emojiSur(e) {
-  var s = Array.from(String(e == null ? "" : e)).slice(0, 4).join("");
-  return escapeHtml(s || "🙂");
+function _emojiBorne(e) {
+  return Array.from(String(e == null ? "" : e)).slice(0, 4).join("") || "🙂";
 }
+function _emojiSur(e) { return escapeHtml(_emojiBorne(e)); }
 function _callRenderIncomingUI(inv) {
   const el = _callOverlayEl();
   const isVideo = inv.kind === "video";
@@ -4068,7 +4069,7 @@ function _vliveRenderUI(mode, row) {
   const name = isHost ? "Toi" : ((row && row.author_name) || "Live");
   const title = (row && row.title) || (isHost && window._vliveHost && window._vliveHost.title) || "";
   const authorId = (row && row.author_id) || "";
-  const iFollow = !isHost && authorId && (state.user && (state.user.following || []).includes(authorId));
+  const iFollow = !isHost && authorId && (typeof etatSuivi === "function" ? etatSuivi(authorId) !== "aucun" : (state.user && (state.user.following || []).includes(authorId)));
   const canFollow = !isHost && authorId && authorId !== MY_UID;
 
   const reactionRail = VLIVE_REACTIONS.map(e =>
@@ -4083,7 +4084,7 @@ function _vliveRenderUI(mode, row) {
       '<span class="vlive-chip" id="vliveViewers">👁 0</span>' +
       '<span class="vlive-chip" id="vliveTimer">00:00</span>' +
       '<span class="vlive-name">' + escapeHtml(name) + '</span>' +
-      (canFollow ? '<button class="vlive-follow' + (iFollow ? " on" : "") + '" id="vliveFollowBtn" onclick="_vliveToggleFollow()">' + (iFollow ? "✓ Suivi" : "+ Suivre") + '</button>' : "") +
+      (canFollow ? '<button class="vlive-follow' + (iFollow ? " on" : "") + '" id="vliveFollowBtn" onclick="_vliveToggleFollow()">' + ((typeof libelleBoutonSuivi === "function") ? escapeHtml(libelleBoutonSuivi(authorId)) : (iFollow ? "✓ Suivi" : "Suivre")) + '</button>' : "") +
       '<button class="vlive-icon-btn" onclick="_vliveShare()" aria-label="Partager le live">↗</button>' +
       '<button class="vlive-close" onclick="' + (isHost ? "endVideoLive()" : "leaveVideoLive()") + '" aria-label="Quitter">✕</button>' +
     '</div>' +
@@ -4116,19 +4117,50 @@ function _vliveToggleFollow() {
   const aid = V.row.author_id;
   if (!aid || aid === MY_UID) return;
   state.user.following = state.user.following || [];
-  const btn = document.getElementById("vliveFollowBtn");
-  const following = state.user.following.includes(aid);
-  if (!following) {
+  state.user.followingPending = state.user.followingPending || [];
+  const prenom = (V.row.author_name || "cet utilisateur").split(" ")[0];
+  // Même contrat que `toggleFollowUser` (app-04) : TROIS états, affichage
+  // optimiste puis CORRIGÉ au verdict serveur, retour arrière sur un refus
+  // explicite (`ok: false` — blocage, débit). Ce second appelant de
+  // `supaFollowUser` ignorait tout verdict (relecture audit-passio, 2026-09-11).
+  const etat = (typeof etatSuivi === "function") ? etatSuivi(aid) : (state.user.following.includes(aid) ? "suivi" : "aucun");
+  if (etat === "attente") {
+    state.user.followingPending = state.user.followingPending.filter(id => id !== aid);
+    _vlivePeindreSuivi(aid);
+    toast("Demande annulée");
+    if (typeof supaUnfollowUser === "function") supaUnfollowUser(aid);
+  } else if (etat === "aucun") {
     state.user.following.push(aid);
-    if (btn) { btn.textContent = "✓ Suivi"; btn.classList.add("on"); }
-    if (typeof supaFollowUser === "function") supaFollowUser(aid);
-    toast("Tu suis " + ((V.row.author_name || "cet utilisateur").split(" ")[0]) + " !");
+    _vlivePeindreSuivi(aid);
+    toast("Tu suis " + prenom + " !");
+    if (typeof supaFollowUser === "function") {
+      Promise.resolve(supaFollowUser(aid)).then(function (r) {
+        if (r && r.ok === false) {
+          state.user.following = (state.user.following || []).filter(id => id !== aid);
+          _vlivePeindreSuivi(aid);
+          toast("Impossible de suivre " + prenom + " pour le moment");
+        } else if (r && r.status === "pending") {
+          state.user.following = (state.user.following || []).filter(id => id !== aid);
+          if (state.user.followingPending.indexOf(aid) < 0) state.user.followingPending.push(aid);
+          _vlivePeindreSuivi(aid);
+          toast("Demande envoyée à " + prenom);
+        } else return;
+        try { saveState(); } catch (e) {}
+      });
+    }
   } else {
     state.user.following = state.user.following.filter(id => id !== aid);
-    if (btn) { btn.textContent = "+ Suivre"; btn.classList.remove("on"); }
+    _vlivePeindreSuivi(aid);
     if (typeof supaUnfollowUser === "function") supaUnfollowUser(aid);
   }
   try { saveState(); } catch (e) {}
+}
+function _vlivePeindreSuivi(aid) {
+  const btn = document.getElementById("vliveFollowBtn");
+  if (!btn) return;
+  const etat = (typeof etatSuivi === "function") ? etatSuivi(aid) : "aucun";
+  btn.textContent = (typeof libelleBoutonSuivi === "function") ? libelleBoutonSuivi(aid) : (etat === "suivi" ? "✓ Suivi" : "Suivre");
+  btn.classList.toggle("on", etat !== "aucun");
 }
 window._vliveToggleFollow = _vliveToggleFollow;
 

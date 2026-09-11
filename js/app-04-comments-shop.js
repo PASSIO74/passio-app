@@ -1506,7 +1506,11 @@ async function _supaUpdateCommentRow(commentId, text) {
   try {
     if (typeof supa === "undefined" || !supa || !window._supaReal) return;
     var table = /^ec_/.test(commentId) ? "event_comments" : /^lc_/.test(commentId) ? "cdv_live_comments" : "post_comments";
-    await supa.from(table).update({ content: text }).eq("id", commentId);
+    // Le SDK ne LÈVE PAS sur un refus RLS : depuis le 2026-09-11 l'UPDATE de
+    // post_comments porte un WITH CHECK (auteur du post bloqueur → refus), et
+    // une édition refusée resterait « Commentaire modifié » à l'écran.
+    var r = await supa.from(table).update({ content: text }).eq("id", commentId);
+    if (r && r.error) { try { toast("Modification refusée"); } catch (e) {} }
   } catch (e) {}
 }
 // ── #11 ÉPINGLER un commentaire (l'auteur du fil le remonte en tête) ──
@@ -5186,7 +5190,7 @@ function _creerCanalConvSpecifique(convId, displayName, prive) {
     });
   chan.subscribe(function (st, err) {
     if (!prive || st !== "CHANNEL_ERROR" || _supaConvChannel !== chan) return;
-    if (typeof _rtRefusDePolicy !== "function" || !_rtRefusDePolicy(err)) return;
+    if (typeof _rtRefusDePolicy === "function" && !_rtRefusDePolicy(err)) return;
     Promise.resolve(supa.removeChannel(chan)).catch(function () {}).then(function () {
       if (_supaConvChannel !== chan || window._openedConvId !== convId) return;
       _supaConvChannel = _creerCanalConvSpecifique(convId, displayName, false);

@@ -611,17 +611,96 @@ test.describe("⑨ red team : la charge utile d'un broadcast est hostile", () =>
       // ② doublon sur une demande en attente : le statut local prime sur « accepted »
       reponse = { data: null, error: { code: "23505", message: "duplicate" } };
       const r2 = await supaFollowUser("u_prive");
+      // ② bis doublon alors que l'appelant a DÉJÀ poussé l'optimiste dans `following`
+      // (c'est ce que fait toggleFollowUser) : c'est la LIGNE SERVEUR qui tranche.
+      state.user.following = ["u_prive2"]; state.user.followingPending = [];
+      supa.from = () => ({
+        insert: () => Object.assign(Promise.resolve(reponse), { select: () => ({ single: async () => reponse }) }),
+        select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { status: "pending" }, error: null }) }) }) }),
+      });
+      const r2bis = await supaFollowUser("u_prive2");
+      supa.from = () => ({ insert: () => Object.assign(Promise.resolve(reponse), { select: () => ({ single: async () => reponse }) }) });
       // ③ base PAS migrée (42703 mémorisé) : pas de trigger → le client écrit la ligne comme avant
       window._followsSansStatut = true;
       reponse = { data: null, error: null };
       const r3 = await supaFollowUser("u_public");
       delete window._followsSansStatut;
-      return { r1, r2, r3, lignes, pushs };
+      return { r1, r2, r2bis, r3, lignes, pushs };
     });
     expect(r.r1).toEqual({ ok: true, status: "pending", dup: false });
     expect(r.r2).toEqual({ ok: true, status: "pending", dup: true });
+    expect(r.r2bis, "la ligne serveur prime sur un état local déjà optimiste").toEqual({ ok: true, status: "pending", dup: true });
     expect(r.r3).toEqual({ ok: true, status: "accepted", dup: false });
     expect(r.pushs, "① : un push follow_request ; ② : rien (doublon) ; ③ : pas de push, la ligne suffit").toEqual([["u_prive", "follow_request"]]);
     expect(r.lignes, "③ seulement : la ligne côté client, comme avant la migration").toEqual([["u_public", "follow"]]);
+  });
+});
+
+test.describe("⑨ bis relecture audit-passio : ce que le lot avait mal câblé", () => {
+  test("un verdict de demande est HORODATÉ : une nouvelle demande (même id, plus récente) rend les boutons", async ({ page }) => {
+    await bootOnboarded(page);
+    const r = await page.evaluate(() => {
+      const t0 = Date.now();
+      state.user.demandesAbonnementTraitees = {};
+      const n = { id: "n_fr_aaaaaaaa_bbbbbbbb", kind: "follow_request", fromId: "u_dem", text: "A souhaite s'abonner", createdAt: t0 - 60000, unread: true, fromSupabase: true };
+      state.notifications = [n];
+      _demandeAbonnementTraitee(n.id, "refusée");
+      const memo = state.user.demandesAbonnementTraitees[n.id];
+      const apresRefus = _notifDemandeAbonnementHtml(n);
+      // Le serveur RAFRAÎCHIT la même ligne (`on conflict do update`, created_at = now()).
+      const n2 = Object.assign({}, n, { createdAt: Date.now() + 5000 });
+      const nouvelleDemande = _notifDemandeAbonnementHtml(n2);
+      mergeSupaNotifs([n2]);
+      return { memoObjet: typeof memo === "object" && typeof memo.at === "number" && memo.verdict === "refusée",
+               apresRefus, nouvelleDemande, memoApresFusion: state.user.demandesAbonnementTraitees[n.id] };
+    });
+    expect(r.memoObjet).toBe(true);
+    expect(r.apresRefus).toContain("Demande refusée");
+    expect(r.nouvelleDemande, "une demande plus récente que le verdict rend les DEUX boutons").toContain("accepterDemandeAbonnement");
+    expect(r.memoApresFusion, "et la fusion périme le verdict").toBeUndefined();
+  });
+
+  test("le bouton Suivre du LIVE a les trois états et se corrige au verdict serveur", async ({ page }) => {
+    await bootOnboarded(page);
+    const r = await page.evaluate(async () => {
+      const toasts = []; window.toast = (t) => toasts.push(t);
+      let reponse = { ok: true, status: "pending", dup: false };
+      window.supaFollowUser = async () => reponse;
+      window.supaUnfollowUser = async () => {};
+      state.user.following = []; state.user.followingPending = [];
+      window._vliveView = { id: "L1", row: { id: "L1", author_id: "u_hote_prive", author_name: "Léa Martin" } };
+      document.body.insertAdjacentHTML("beforeend", '<button id="vliveFollowBtn">Suivre</button>');
+      const btn = document.getElementById("vliveFollowBtn");
+      _vliveToggleFollow();
+      const optimiste = btn.textContent;
+      await new Promise((r) => setTimeout(r, 20));
+      const apresVerdict = { texte: btn.textContent, following: state.user.following.slice(), attente: state.user.followingPending.slice() };
+      _vliveToggleFollow(); // second tap = annule la demande
+      const annule = { texte: btn.textContent, attente: state.user.followingPending.slice() };
+      reponse = { ok: false, status: null };
+      _vliveToggleFollow();
+      await new Promise((r) => setTimeout(r, 20));
+      const refuse = { texte: btn.textContent, following: state.user.following.slice() };
+      btn.remove(); window._vliveView = null;
+      return { optimiste, apresVerdict, annule, refuse, toasts };
+    });
+    expect(r.optimiste).toBe("✓ Suivi");
+    expect(r.apresVerdict.texte).toBe("Demande envoyée");
+    expect(r.apresVerdict.following).toEqual([]);
+    expect(r.apresVerdict.attente).toEqual(["u_hote_prive"]);
+    expect(r.annule.texte).toBe("Suivre");
+    expect(r.annule.attente).toEqual([]);
+    expect(r.refuse.texte, "un refus explicite annule l'optimiste").toBe("Suivre");
+    expect(r.refuse.following).toEqual([]);
+    expect(r.toasts).toContain("Demande annulée");
+  });
+
+  test("à la SOURCE : le notifier serveur ne fait jamais échouer l'abonnement, et l'emoji du pair est borné", async () => {
+    const mig = lire("migrations/migration_ouverture_publique_2026-09-11.sql");
+    const corps = mig.slice(mig.indexOf("create or replace function public.follows_notifier()"), mig.indexOf("revoke execute on function public.follows_notifier()"));
+    expect(corps).toMatch(/exception when others then/);
+    const app05 = lire("js/app-05-config-profil.js");
+    expect(app05).toMatch(/emoji: _emojiBorne\(inv\.emoji\)/);
+    expect(app05).not.toMatch(/emoji: inv\.emoji \|\| "🙂"/);
   });
 });

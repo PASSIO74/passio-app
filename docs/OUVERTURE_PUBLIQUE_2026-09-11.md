@@ -13,7 +13,7 @@ puis **éprouvé par mutation** : chaque garde retirée fait rougir un banc.
 
 `migrations/migration_ouverture_publique_2026-09-11.sql` — une transaction, rejouable,
 tableau de verdict à **treize** lignes (tout doit dire `OK`). Banc :
-`tests/sql/migration-ouverture-publique.test.sh` (**115 contrôles**, gate CI), qui mesure
+`tests/sql/migration-ouverture-publique.test.sh` (**117 contrôles**, gate CI), qui mesure
 chaque défaut AVANT, applique, rejoue, éprouve les deux sens, puis six mutations.
 
 | # | Défaut mesuré en production | Correctif |
@@ -73,7 +73,7 @@ lever « permission denied » à toutes les policies qui les appellent).
 - **La politique dit ce que la base fait** : §8, 7 jours de mesure d'usage, 30 jours de
   rapports d'erreur ; `PASSIO_CONFIDENTIALITE_VERSION = "2026-09-11"`.
 
-Verrou : `tests/e2e/ouverture-publique.spec.js` (32 cas, dont trois qui mesurent le
+Verrou : `tests/e2e/ouverture-publique.spec.js` (35 cas, dont trois qui mesurent le
 **câblage** à la source et deux éprouvés par réinjection).
 
 ## 3. Exploitation — ce qui tourne sans personne
@@ -98,6 +98,11 @@ Verrou : `tests/e2e/ouverture-publique.spec.js` (32 cas, dont trois qui mesurent
 2. **Coller `migrations/migration_ouverture_publique_2026-09-11.sql`** dans l'éditeur SQL
    de Supabase, en un seul geste. Le tableau final doit afficher **13 × OK**. Rejouable.
    ⚠️ Avant le déploiement, la ligne ⑥ ferait disparaître toutes les pièces jointes.
+   ⚠️ Coller le fichier ENTIER, jamais une version antérieure : le client cesse d'écrire
+   lui-même la notification d'abonnement dès que `follows.status` existe, et c'est le
+   trigger `follows_notifier` du même fichier qui la prend en charge. Mesuré le 2026-09-11
+   à 17:30 UTC (canal ①) : rien de cette migration n'est encore en production — ni la
+   colonne, ni un trigger, ni une policy Realtime.
 3. **Tableau de bord Supabase → Realtime → Settings : désactiver les canaux publics**
    (« Allow public access »). C'est ce qui rend les policies de ⑤ **opposables** : tant que
    les canaux publics sont permis, un client qui omet `private: true` écoute encore.
