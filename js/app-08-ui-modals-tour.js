@@ -2647,12 +2647,12 @@ const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 // réseau perd ses événements (queue en mémoire vidée à la fermeture) → ses
 // problèmes de connexion n'apparaissaient JAMAIS dans le centre de pilotage.
 window.PASSIO_SUPABASE = { url: SUPABASE_URL, anon: SUPABASE_KEY };
-// CDN optionnel devant Supabase Storage (cache au bord → soulage l'egress du
-// forfait gratuit). VIDE = désactivé (URL Supabase directe, comportement actuel).
-// Pour activer : déployer cloudflare/passio-cdn-worker.js puis coller ici l'URL
-// du Worker SANS slash final, ex. "https://passio-cdn.toncompte.workers.dev".
-// Pense à autoriser ce domaine dans la CSP (img-src/media-src). Voir docs/CDN_CLOUDFLARE.md.
-const PASSIO_CDN_BASE = "";
+// CDN devant Supabase Storage : les médias passent par l'Edge Function Netlify
+// `netlify/edge-functions/media.js` (cache au bord, 100 Go/mois gratuits) au
+// lieu de taper Supabase en direct (5 Go/mois, et `no-cache` sur les objets).
+// VIDE = désactivé (URL Supabase directe). Sans slash final. Même origine que
+// l'app, donc rien à ajouter dans la CSP. Voir docs/CDN_MEDIAS.md.
+const PASSIO_CDN_BASE = "https://passio-app.netlify.app/media";
 function cdnUrl(url) {
   if (!PASSIO_CDN_BASE || typeof url !== "string" || url.indexOf("data:") === 0) return url;
   const marker = "/storage/v1/object/public/";
@@ -2661,6 +2661,10 @@ function cdnUrl(url) {
   return PASSIO_CDN_BASE + "/" + url.slice(i + marker.length);
 }
 window.cdnUrl = cdnUrl;
+// Lue par `passioThumb` (app-02, chargé AVANT ce fichier) : une propriété de
+// `window`, jamais la const elle-même — `typeof` sur une const encore en zone
+// morte lève, il ne rend pas "undefined".
+window.PASSIO_CDN_BASE = PASSIO_CDN_BASE;
 
 let supa;
 // Le SDK Supabase est chargé en PARESSEUX (supabase-loader.js, post-gate). Tant

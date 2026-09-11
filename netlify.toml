@@ -1,5 +1,7 @@
 [build]
   publish = "dist"
+  # Edge Function du cache CDN des médias (/media/*) — voir docs/CDN_MEDIAS.md
+  edge_functions = "netlify/edge-functions"
 
 [[headers]]
   for = "/sw.js"
