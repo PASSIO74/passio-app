@@ -14,7 +14,7 @@
 | **Anthropic API / Claude CLI** | IA (dashboard) | local | OPTIONNEL | `ANTHROPIC_API_KEY` ou CLI Claude Code | analyse de bug en direct | à la demande | Sans clé → mode « copier le prompt ». |
 | **MapLibre + OpenFreeMap** | Cartes | prod | RÉEL | aucune | tuiles carto | à la demande | Nominatim retiré de la CSP. |
 | **BAN + Photon** | Géocodage | prod | RÉEL | aucune | adresses FR / POI | à la demande | Pièges cartes/géocodage. |
-| **SMTP (Brevo)** | Notifications | prod | **RÉEL** (2026-08-30) | SMTP Supabase (jamais dans le dépôt) | confirmation e-mail, réinitialisation de mot de passe | 300/jour (offre gratuite) | Port 587 STARTTLS, expéditeur « PASSIO ». **Domaine d'envoi pas encore authentifié (DKIM/DMARC absents)** → risque de spam ; demande un accès DNS. |
+| **SMTP (Brevo)** | Notifications | prod | **RÉEL** (2026-08-30) | SMTP Supabase (jamais dans le dépôt) | confirmation e-mail, réinitialisation de mot de passe | 300/jour (offre gratuite) | Port 587 STARTTLS, expéditeur « PASSIO ». **Depuis le 2026-09-11 : compte Brevo PASSIO (passioadmin@gmail.com) et domaine d'envoi `passio-app.fr` (OVH, compte PASSIO)** ; DKIM/DMARC en cours de pose (4 enregistrements, voir `docs/SETUP_SMTP_AUTH.md`), puis bascule SMTP Supabase. Gabarits d'e-mail en français. |
 | **Stripe / paiements** | Finance | — | **UNKNOWN (absent)** | — | — | — | Hors schéma ; exploration/ADR only. |
 | **Analytics tiers (PostHog/GA…)** | Analytics | — | **UNKNOWN (non branché)** | — | — | — | Non nécessaire : télémétrie maison. |
 
