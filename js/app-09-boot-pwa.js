@@ -1601,7 +1601,10 @@ function _sendVoiceMessage(dataUrl, duration) {
       var blob = new Blob([ia.buffer], { type: _vt });
       var storagePath = "attachments/" + convId + "/" + Date.now() + "_voice." + _vext;
       supa.storage.from("attachments").upload(storagePath, blob, { cacheControl: "3600", upsert: false, contentType: _vt }).then(function (res) {
-        var url = res.error ? dataUrl : supa.storage.from("attachments").getPublicUrl(storagePath).data.publicUrl;
+        var _pub = supa.storage.from("attachments").getPublicUrl(storagePath).data.publicUrl;
+        // Via le CDN comme la pièce jointe (l. ~886) : sans cdnUrl, chaque écoute du vocal
+        // repartait vers Supabase en direct, hors cache — dérive trouvée en revue le 2026-09-11.
+        var url = res.error ? dataUrl : (typeof cdnUrl === "function" ? cdnUrl(_pub) : _pub);
         sendMessageToSupabase(msgId, convId, url, _vt, "Message vocal (" + duration + "s)", "audio");
       }).catch(function () {
         // ⚠️ `_vt`, PAS « audio/webm » en dur : ce chemin d'échec sert quand

@@ -1333,6 +1333,11 @@ async function supaLoadUserState() {
 // conservée pour le visualiseur plein écran.
 function passioThumb(url, width) {
   if (!url || typeof url !== "string") return url;
+  // URL déjà servie par le CDN (app-08, `cdnUrl`) : la miniature passe par la
+  // même Edge Function, qui relaie `?width=` vers la transformation Supabase.
+  // Sinon la miniature repartirait vers Supabase en direct, hors cache.
+  var cdn = window.PASSIO_CDN_BASE;
+  if (cdn && url.indexOf(cdn + "/") === 0) return url.split("?")[0] + "?width=" + (width || 600) + "&quality=75";
   if (url.indexOf("/storage/v1/object/public/") === -1) return url;
   return url.replace("/storage/v1/object/public/", "/storage/v1/render/image/public/") + "?width=" + (width || 600) + "&quality=75";
 }

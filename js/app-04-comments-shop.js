@@ -50,10 +50,14 @@ function openPostOptions(postId) {
 // refuse, le pire est un fichier orphelin — jamais un post qui survit).
 function _cheminsMediaPost(post) {
   try {
-    const marker = "/storage/v1/object/public/content/";
+    // Deux formes d'URL depuis le CDN (2026-09-11) : Supabase direct (anciens
+    // médias) et `<CDN>/content/…` (nouveaux). Ne reconnaître que la première
+    // laisserait chaque nouveau média ORPHELIN à la suppression — sans erreur.
+    const markers = ["/storage/v1/object/public/content/", "/media/content/"];
+    const marqueur = function (u) { for (var i = 0; i < markers.length; i++) { if (u.indexOf(markers[i]) !== -1) return markers[i]; } return null; };
     return [post && post.image, post && post.video, post && post.audio, post && post.cover]
-      .filter(function (u) { return typeof u === "string" && u.indexOf(marker) !== -1; })
-      .map(function (u) { return decodeURIComponent(u.slice(u.indexOf(marker) + marker.length).split("?")[0]); });
+      .filter(function (u) { return typeof u === "string" && marqueur(u) !== null; })
+      .map(function (u) { var m = marqueur(u); return decodeURIComponent(u.slice(u.indexOf(m) + m.length).split("?")[0]); });
   } catch (e) { return []; }
 }
 

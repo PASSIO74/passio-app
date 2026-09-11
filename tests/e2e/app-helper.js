@@ -230,7 +230,7 @@ const MOTIF_TABLES_DISTANTES = new RegExp(
 // ⚠️ CETTE ROUTE NE CHANGE RIEN À LA PRODUCTION — c'est du code de test. Elle ne
 // dispense pas de réduire le poids des avatars servis aux VRAIS utilisateurs,
 // qui est un autre sujet et un autre lot.
-const MOTIF_MEDIAS_DISTANTS = /\/storage\/v1\/(object|render\/image)\//;
+const MOTIF_MEDIAS_DISTANTS = /\/storage\/v1\/(object|render\/image)\/|\/media\/(content|attachments)\//;
 const PIXEL_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=",
   "base64",
