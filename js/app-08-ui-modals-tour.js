@@ -321,7 +321,32 @@ function showLanding() {
 }
 
 // Fonction robuste pour lancer le tour quoi qu'il arrive
+//
+// ⚠️ LE TOUR LONG N'EST JAMAIS IMPOSÉ EN V2, ET LA RÈGLE VIT ICI — PAS CHEZ SES
+// APPELANTS (2026-09-12). Spec §8 : « le tour long actuel ne doit pas suivre
+// l'inscription, la compréhension doit venir du produit lui-même ». Elle avait
+// été posée le 2026-08-23 dans `onbFinish`, qui marquait `tourSeen = true` au
+// lieu d'appeler ici — et le commentaire d'`onbFinish` disait déjà pourquoi
+// sauter le seul appel ne suffisait pas : `launchTourSafe` a QUATRE appelants,
+// les trois autres sont gardés par `if (!state.tourSeen)`, donc laisser le
+// drapeau à false les laissait relancer le tour.
+//
+// ⚠️ CE REMÈDE EST MORT AVEC « CONFIRM EMAIL » (2026-08-30), ET PERSONNE NE L'A
+// VU. `signUp` ne rend plus de session : un compte neuf n'atteint JAMAIS
+// `onbFinish` — il revient par le lien de confirmation ou par « Se connecter »,
+// et `adopterCompteConnecte` PURGE `STATE_KEY` (donc `tourSeen`) puis recharge.
+// `boot()` entre alors directement dans l'app, pose `onboarded = true`, et
+// `emoji-misc.js` appelle `initApp()` ~600 ms plus tard : `tourSeen` est faux,
+// le tour historique s'ouvre par-dessus le Fil. Mesuré en production le
+// 2026-09-12 sur le compte créé à 11:06 — « Étape 1 / 5 », reproduit au banc.
+//
+// La règle est donc exprimée là où le tour se DÉCIDE, une seule fois : aucun
+// appelant, présent ou futur, ne peut plus l'imposer. Le tour reste lançable à
+// la main par « Tour démo » (`startTour`, panneau de dev) — c'est un geste, pas
+// une imposition — et la coupure `PASSIO_ONBOARDING_V2 = false` rend le
+// parcours historique à l'octet près, `onbFinish` compris.
 function launchTourSafe() {
+  if (typeof onbV2Actif === "function" && onbV2Actif()) return;
   function tryLaunch() {
     var overlay = document.getElementById("tourOverlay");
     if (!overlay) { setTimeout(tryLaunch, 500); return; }
