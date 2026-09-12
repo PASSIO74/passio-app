@@ -158,17 +158,28 @@ try {
 
   // ① Le réglage du tableau de bord, mesuré par son EFFET.
   const publik = await joindre(A.cli, "controle_ouverture_public", false);
+  // ⚠️ LE TÉMOIN N'EST PAS QU'UN GARDE-FOU, C'EST LE COMPARATEUR.
+  // Mesuré au premier verdict réel (2026-09-12) : quand l'accès public est
+  // coupé, Realtime ne renvoie PAS de message de permission — il ferme, ou ne
+  // répond simplement pas. Exiger un refus EXPLICITE rendait donc « indéterminé »
+  // l'état le plus probable, et le contrôle ne tranchait jamais la seule question
+  // qu'il existait pour trancher.
+  // Le raisonnement juste tient au témoin : un canal PRIVÉ vient de s'ouvrir sur
+  // la MÊME connexion, à la MÊME seconde. Le réseau et le service sont donc
+  // hors de cause, et la seule différence entre les deux essais est le drapeau
+  // `private`. Un canal public qui n'aboutit pas dans ces conditions dit que
+  // l'accès public est fermé — « pas de réponse » EST la réponse.
+  // ⚠️ Cette conclusion n'est valable QUE parce que le témoin a réussi : sans
+  // lui le script sort bien plus haut, et n'arrive jamais ici.
   if (publik === "OUVERT") {
     lignes.push(["❌", "« Allow public access » est ENCORE ACTIF",
       "un canal PUBLIC s'ouvre : les policies ne sont pas opposables, un client qui omet private:true écoute toujours"]);
     sortie = 1;
-  } else if (publik === "REFUSE") {
-    lignes.push(["✅", "« Allow public access » est COUPÉ",
-      "un canal public est refusé : les policies de realtime.messages gouvernent bien"]);
   } else {
-    lignes.push(["⚠️", "réglage indéterminé",
-      "le canal public n'a ni abouti ni été refusé explicitement — rejouer"]);
-    sortie = sortie || 3;
+    lignes.push(["✅", "« Allow public access » est COUPÉ",
+      publik === "REFUSE"
+        ? "un canal public est refusé explicitement : les policies de realtime.messages gouvernent"
+        : "un canal public n'aboutit pas, alors qu'un canal PRIVÉ vient de s'ouvrir sur la même connexion — seule la différence de drapeau l'explique"]);
   }
 
   // ② L'appel SORTANT : A doit pouvoir s'abonner à la sonnerie de B.
