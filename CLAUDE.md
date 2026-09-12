@@ -333,14 +333,15 @@ survivre intact**, sinon on ne peut plus établir de cause. ⚠️ **Le vrai cor
 (`migrations/migration_fuites_2026-09-10.sql`, colonne `auth_uid` posée par le serveur) : le
 désamorçage est une barrière, pas la porte. `lireErreurs` gère les DEUX états, avec repli signalé.
 
-⚠️ **CE QUI RESTE OUVERT, ET QU'IL NE FAUT PAS CROIRE RÉGLÉ** : `conv_reads` est lisible **sans
-compte** (`qual = true` — le graphe « qui parle à qui » est public, migration écrite non appliquée) ;
-les canaux Realtime d'appel (`ring:`, `call:`, `typing:`, `vlive:`) sont **publics**, donc on peut
-faire sonner un téléphone sous une fausse identité ou couper un appel ; le seau `attachments` reste
-`public = true`, donc une pièce jointe privée est lisible **à vie par son URL exacte** (l'énumération,
-elle, est bien fermée) ; le **consentement aux CGU n'est persisté nulle part** (0 trace sur 85 lignes
-`user_state`) ; **aucune sauvegarde automatique** de la production ; DKIM/DMARC absents, donc les
-e-mails de confirmation partent probablement en spam — **le défaut qui tue une beta en silence**.
+⚠️ **CE QUI RESTE OUVERT, ET QU'IL NE FAUT PAS CROIRE RÉGLÉ** (liste du 2026-09-10, **re-mesurée le
+2026-09-12** — QUATRE de ses points étaient déjà refermés, voir plus bas) : les canaux Realtime
+d'appel (`ring:`, `call:`, `typing:`, `vlive:`) sont **publics**, donc on peut faire sonner un
+téléphone sous une fausse identité ou couper un appel ; le seau `attachments` reste `public = true`,
+donc une pièce jointe privée est lisible **à vie par son URL exacte** (l'énumération, elle, est bien
+fermée) ; DKIM/DMARC absents, donc les e-mails de confirmation partent probablement en spam — **le
+défaut qui tue une beta en silence**. Les DEUX PREMIERS se ferment en collant
+`migration_ouverture_publique_2026-09-11.sql` (Realtime privé, seau privé), qui ne l'est pas encore —
+mesuré le 2026-09-12 : `follows.status` absent, zéro policy `passio_rt_*`, seau encore public.
 
 ⚠️ **ET DEUX AFFIRMATIONS DE CE FICHIER ÉTAIENT FAUSSES** : l'interrupteur `irl_adult_only` était
 annoncé ÉTEINT, il est **ALLUMÉ** ; et `docs/CHECKLIST_COMMERCIALISATION.md` cochait Wallet et CDV.
@@ -558,6 +559,125 @@ tiendra pas à l'échelle** : trafic ×10 = ~440 Mo de rétention, contre un mur
 `dc7ff081…`. Trier par TAILLE, jamais chercher un identifiant recopié.
 **L'état d'une base ne se lit pas dans un fichier du dépôt, il se mesure** — même règle que pour
 l'interrupteur `irl_adult_only`, et c'est la troisième fois qu'elle sert.
+
+### 🔁 RE-MESURE DU 2026-09-12 — SIX AFFIRMATIONS DE CE FICHIER ÉTAIENT PÉRIMÉES
+
+Et c'est la **quatrième** fois que la règle sert. Une fiche qui décrit un défaut déjà refermé coûte
+autant qu'une fiche qui en tait un : elle envoie la session suivante travailler pour rien, ou la
+fait renoncer à un geste déjà sûr. Mesuré au canal ① d'ADR-012, après le déploiement de `3e1e825`.
+
+⚠️ **① `conv_reads` N'EST PLUS LISIBLE SANS COMPTE.** `reads_select` porte
+`is_conv_member(conv_id, auth.uid())`, pas `qual = true` : le graphe « qui parle à qui » est fermé,
+la migration a bien été appliquée. Le paragraphe « ce qui reste ouvert » du 10/09 l'annonçait encore.
+
+⚠️ **② LA PURGE DE TÉLÉMÉTRIE EST DÉJÀ À 7 JOURS, ET LA TABLE FAIT 9,8 Mo.** `cron.job` porte
+`purge_telemetry_7j` (04:00) et `purge_client_errors` (03:00) ; **zéro** ligne de plus de 30 jours.
+Les chiffres de la fiche (62 Mo, 130 906 lignes, « stabilisation vers 44 Mo », « passer à 7 jours
+quand les comptes décollent ») décrivent un état révolu — le geste recommandé est FAIT. Ce qui reste
+vrai, c'est le raisonnement : la rétention est le levier, pas la purge ponctuelle.
+
+⚠️ **③ TOUT LE MÉDIA DE LA BASE PASSE DÉJÀ PAR LE CDN.** Avatars 3/3, couvertures 3/3, publications
+5/5, stories 8/8 en `/media/…` ; **aucune** URL Supabase directe. La sortie Supabase due aux vrais
+utilisateurs est donc ~nulle, et le forfait qui compte est celui de Netlify (100 Go/mois), pas les
+5 Go de Supabase. **Le point « avatars non redimensionnés » reste ouvert, mais ce n'est plus une
+urgence de facture** : c'est une question de charge utile (2,59 Mo servis pour un rond de 40 px, sur
+données mobiles) et de bande passante Netlify à l'échelle. Ne pas le rouvrir en criant à l'egress.
+
+⚠️ **④ ET LA VÉRIFICATION QUI BLOQUAIT CE POINT EST DÉJÀ FAITE PAR LE PRODUIT LUI-MÊME.** La fiche
+dit « ne pas étendre `passioThumb` sans avoir vérifié que la transformation d'image répond sur ce
+plan ». Or ses **trois appelants actuels l'utilisent en production** (photos de publication à 700 px,
+bobines à 720 px) : si `render/image` ne répondait pas, ces images seraient DÉJÀ cassées. La question
+ne se tranche donc pas par une requête à écrire, mais en **regardant le fil** — une photo de
+publication s'affiche, ou elle ne s'affiche pas. ⚠️ Nuance qui empêche de conclure trop vite :
+`renderPostHTML` porte un `onerror` qui repeint la boîte en gris, donc un échec ressemble à une image
+absente, jamais à une erreur. Regarder une publication dont on SAIT qu'elle porte une photo.
+
+⚠️ **⑤ LE CONSENTEMENT AUX CGU EST PERSISTÉ DEPUIS LE 2026-09-10, PAR `user_metadata`.** La liste
+« ce qui reste ouvert » l'annonçait encore comme « persisté nulle part ». `onbDoAuth` envoie
+`cgu_version`, `cgu_accepted_at` et `confidentialite_version` dans les options de `signUp`, et le
+retour Google a son propre chemin (`passio_oauth_cgu` relu puis posé par `updateUser`, avec lecture
+de `{ error }`). ⚠️ **Et la mesure qui semble contredire ça n'en est pas une** : `auth.users` rend
+**0 compte sur 7** portant `cgu_version` — parce que le dernier compte de production date du
+**2026-09-09**, soit la veille du correctif. Zéro trace n'est ici PAS un défaut, c'est l'absence
+d'inscription depuis. Ne pas rouvrir le sujet sur ce chiffre : le vérifier sur le PREMIER compte créé
+après l'ouverture, en lisant `raw_user_meta_data ? 'cgu_version'`.
+
+⚠️ **⑥ LA SAUVEGARDE AUTOMATIQUE EXISTE — ET N'A JAMAIS TOURNÉ.** `.github/workflows/sauvegarde.yml`
+est en place, quotidien, archive chiffrée puis **déchiffrée et relue dans le même run**. Le constat
+« aucune sauvegarde automatique » est donc périmé. ⚠️ Mais l'inverse ne se dit pas non plus : le
+workflow compte **zéro exécution** à ce jour. Une sauvegarde configurée n'est pas une sauvegarde —
+tant qu'un run vert ne l'a pas prouvée, c'est une intention avec un fichier YAML devant. Le premier
+lancement est un geste qui reste à faire.
+
+## 🧭 `search_path` FIGÉ — et pourquoi `''` n'est PAS la bonne réponse partout (2026-09-12)
+
+`get_advisors` signale « Function Search Path Mutable » sur trois fonctions de `public`.
+Migration : `migrations/migration_search_path_fonctions.sql` (une transaction, verdict à 4 lignes)
+· banc `tests/sql/migration-search-path.test.sh` (23 contrôles, gate CI).
+
+⚠️ **AUCUNE des trois n'est `SECURITY DEFINER`** : c'est de la défense en profondeur, pas une porte
+ouverte. Ne pas la présenter comme une faille. Ce qu'elle ferme : `storage_chemin_autorise` est
+évaluée par les policies RLS de `storage.objects`, et un prédicat d'autorisation ne doit pas
+résoudre ses appels dans le chemin de la session APPELANTE.
+
+⚠️ **34 fonctions de `public` ont `proconfig IS NULL`, mais 31 APPARTIENNENT À `pg_trgm`.** On n'y
+touche pas : un `ALTER` y serait perdu à la prochaine mise à jour de l'extension, et ce n'est pas
+notre code. Trois seulement sont à nous — exactement les trois que le linter nomme. Compter les
+fonctions sans chemin sans retirer celles des extensions donne un chiffre qui affole pour rien.
+
+⚠️ **`rechercher_passions` APPELLE `similarity()` SANS LE QUALIFIER**, et pg_trgm vit dans `public`.
+Le `set search_path = ''` que Supabase recommande partout **casserait la recherche de passions en
+production** — 5 001 passions, la page Rechercher. Avant de figer un chemin, lire le CORPS de la
+fonction et chercher les appels NON qualifiés ; `''` n'est sûr que si tout l'est déjà.
+
+⚠️ **LES DEUX CONSTATS DU LINTER SONT COUPLÉS.** Le même rapport demande aussi de sortir `pg_trgm`
+de `public` (« Extension in Public »). Appliquer CE conseil-là plus tard casserait
+`rechercher_passions` si son chemin ne nommait que `public` — d'où `public, extensions, pg_temp`,
+qui tient dans les DEUX états. Le banc déplace vraiment l'extension pour le prouver (contrôle ⑦).
+
+⚠️ **`pg_temp` SE NOMME EN DERNIER, ET C'EST TOUT L'INTÉRÊT** : non nommé, PostgreSQL le place
+IMPLICITEMENT EN TÊTE, et n'importe quel appelant peut alors masquer une fonction par une
+temporaire. Le retirer en croyant durcir le remet devant.
+
+⚠️ **`set search_path = ''` SE RELIT `search_path=""`** dans `pg_proc.proconfig` : un verdict qui
+comparerait à `search_path=` dirait ECHEC sur une migration pourtant appliquée (mesuré, PG 16).
+
+⚠️ **LA LIGNE ④ DU VERDICT EST UNE GARDE, PAS UN RAPPORT** : elle APPELLE `rechercher_passions`.
+Sur une base où le chemin ne résoudrait pas `similarity`, elle lève, la transaction est annulée et
+les trois `ALTER` sont DÉFAITS — le fichier ne peut pas laisser la recherche muette derrière lui.
+Le banc le prouve en retirant pg_trgm (contrôle ⑧). Ne pas la « simplifier » en test de présence.
+
+### ⚠️ LES SIX AUTRES CONSTATS DU MÊME RAPPORT : AUCUN SECOND ORACLE (mesuré le 2026-09-12)
+
+`get_advisors` signale aussi **six fonctions `SECURITY DEFINER` exécutables par `anon`**. Après le
+défaut `is_conv_member` du 11/09 (« une porte fermée sur une table se rouvre par une fonction »),
+la question à trancher était : y en a-t-il un SECOND ? **Non — et c'est mesuré, pas supposé.**
+Écrire ce verdict ici a autant de valeur qu'un correctif : sans lui, la session suivante refera
+l'enquête, ou « réparera » trois non-problèmes et cassera des triggers vivants.
+
+- `post_is_visible` et `comment_target_visible` : **ouverts à `anon` DÉLIBÉRÉMENT** — un visiteur
+  lit par eux les commentaires d'une publication publique. Déjà écrit plus haut, ne pas y toucher.
+- `is_conv_member` : **le vrai oracle**, fermé par la migration d'ouverture, **pas encore collée**.
+- `can_edit_post(pid)` : ne compare qu'à `auth.uid()`, qui est **NULL pour `anon`** — les deux
+  `EXISTS` sont alors faux quel que soit le `pid`. Elle rend donc `false` en toutes circonstances et
+  **ne dit RIEN sur la publication visée**. Un oracle répond sur la CIBLE ; celle-ci répond sur
+  l'APPELANT. C'est la distinction à faire avant de crier à la fuite.
+- `passion_request_auto_creer()` et `trg_sync_profil_passions()` : elles rendent le type `trigger`.
+  **PostgreSQL REFUSE de les appeler directement**, quels que soient le rôle et les `GRANT` —
+  « trigger functions can only be called as triggers », vérifié en production. Le `GRANT` que
+  l'advisor voit est donc **inerte** : l'endpoint RPC existe et ne peut rien exécuter. ⚠️ Leur
+  retirer `EXECUTE` ne fermerait rien et resterait à refaire à chaque `CREATE OR REPLACE` ; les
+  passer en `SECURITY INVOKER` **casserait les triggers** qui, eux, ont besoin des droits du
+  propriétaire. **Le seul geste juste ici est de ne rien faire.**
+
+⚠️ **UN AVERTISSEMENT DE LINTER N'EST PAS UN DÉFAUT, ET LE TRAITER COMME TEL EN FABRIQUE.** Cinq
+de ces six lignes sont du bruit ; la sixième était une vraie fuite. Le tri ne se fait qu'en LISANT
+le corps de chaque fonction et en se demandant **sur QUOI elle répond** — la cible, ou l'appelant.
+
+⚠️ `rls_enabled_no_policy` sur `access_policies` est **voulu** : RLS active, aucune policy, aucun
+`GRANT` — donc refus total pour `anon` et `authenticated`. C'est l'interrupteur serveur du 18+,
+et son inaccessibilité EST sa protection (fiche « ADMISSION 18+ »). Ne pas « corriger » en
+ajoutant une policy.
 
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)
 

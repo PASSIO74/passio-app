@@ -359,6 +359,13 @@ jobs:
       - name: Banc outils d'application (PostgreSQL jetable)
         run: bash tests/sql/appliquer-securite.test.sh
 
+      # `search_path` figé sur les trois fonctions maison qui n'en avaient pas
+      # (constat `get_advisors` du 2026-09-12). Le banc ne mesure pas que
+      # `proconfig` : il PROUVE que la recherche de passions survit au chemin
+      # choisi, dans les deux emplacements possibles de pg_trgm.
+      - name: Banc — search_path des fonctions (2026-09-12)
+        run: bash tests/sql/migration-search-path.test.sh
+
       # La migration du referentiel plat, EXECUTEE deux fois sur un PostgreSQL
       # jetable : idempotence, preservation des 19 identifiants historiques,
       # RLS en lecture seule sur le referentiel, et retour arriere.

@@ -132,6 +132,24 @@ test.describe("Confidentialité cross-compte (RLS)", () => {
         return false;
       }, uidA);
 
+      // ⚠️ MÊME PRÉMISSE PÉRIMÉE QUE `blocage-acces` : depuis la migration
+      // d'ouverture (production, 2026-09-12), s'abonner à un compte privé écrit
+      // `pending`, et la policy des stories exige `accepted`. Un abonné en
+      // attente ne voit RIEN — c'est le comportement voulu. A doit accepter,
+      // et c'est bien A qui émet l'UPDATE : `follows_accepter` ne l'ouvre qu'à
+      // la CIBLE, et seulement vers `accepted`.
+      const accepte = await A.evaluate(async (buid) => {
+        const { data, error } = await supa.from("follows")
+          .update({ status: "accepted" })
+          .eq("follower_id", buid).eq("following_id", MY_UID)
+          .select("status");
+        // ⚠️ On LIT `{ error }` ET le nombre de lignes : le SDK ne lève pas sur
+        // un refus RLS, et un UPDATE qui touche 0 ligne « réussit » en silence.
+        if (error) return "erreur:" + error.message;
+        return (data && data[0] && data[0].status) || "aucune ligne";
+      }, uidB);
+      expect(accepte, "A accepte la demande d'abonnement de B").toBe("accepted");
+
       // Abonné : poll (la propagation RLS peut traîner d'un instant).
       let seenByFollower = 0;
       { const start = Date.now();
