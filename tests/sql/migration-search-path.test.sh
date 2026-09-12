@@ -170,6 +170,43 @@ begin
      limit least(greatest(coalesce(lim, 20), 1), 50);
 end $fn$;
 
+-- Les DEUX triggers arrivés avec le lot d'ouverture (2026-09-11), que
+-- `get_advisors` signale depuis. Ils ne touchent aucune relation : ils lisent
+-- `old`/`new` et lèvent. Une table porteuse pour les EXERCER après la migration
+-- — un chemin figé qui les casserait ne se verrait nulle part ailleurs.
+create function public.identifiants_figes() returns trigger language plpgsql as
+$fn$
+declare col text; avant text; apres text;
+begin
+  foreach col in array TG_ARGV loop
+    execute format('select ($1).%I::text, ($2).%I::text', col, col) into avant, apres using old, new;
+    if avant is distinct from apres then
+      raise exception '% : la colonne % ne se modifie pas', TG_TABLE_NAME, col using errcode = '42501';
+    end if;
+  end loop;
+  return new;
+end $fn$;
+
+create function public.follows_identifiants_figes() returns trigger language plpgsql as
+$fn$
+begin
+  if new.follower_id <> old.follower_id or new.following_id <> old.following_id then
+    raise exception 'follows : les identifiants d''un abonnement ne se modifient pas' using errcode = '42501';
+  end if;
+  return new;
+end $fn$;
+
+create table public.follows (follower_id text, following_id text, status text);
+create trigger trg_follows_figes before update on public.follows
+  for each row execute function public.follows_identifiants_figes();
+
+create table public.conv_messages (id text primary key, conv_id text, corps text);
+create trigger trg_identifiants_figes before update on public.conv_messages
+  for each row execute function public.identifiants_figes('conv_id');
+
+insert into public.follows values ('u_a', 'u_b', 'accepted');
+insert into public.conv_messages values ('m1', 'conv_a', 'coucou');
+
 insert into public.passions (id, label, emoji, color, popularity, sort_order, normalized_label, aliases)
 values ('randonnee', 'Randonnée', '🥾', '#7c3aed', 900, 1, 'randonnee', '{"rando","trek"}'),
        ('astronomie', 'Astronomie', '🔭', '#7c3aed', 800, 2, 'astronomie', '{"astro"}');
@@ -178,10 +215,11 @@ SQL
 
 # ═══════════════════════════════════════════════════════════════════════════
 echo "── ① LE DÉFAUT, MESURÉ AVANT TOUT ───────────────────────────────────"
-verifier "les trois fonctions maison n'ont AUCUN search_path" "3" \
+verifier "les cinq fonctions maison n'ont AUCUN search_path" "5" \
   "$(Q "select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
         where n.nspname='public' and p.proconfig is null
-          and p.proname in ('unaccent_immutable','storage_chemin_autorise','rechercher_passions');")"
+          and p.proname in ('unaccent_immutable','storage_chemin_autorise','rechercher_passions',
+                            'identifiants_figes','follows_identifiants_figes');")"
 verifier "…et la recherche de passions fonctionne (état de départ)" "1" \
   "$(Q "select count(*) from public.rechercher_passions('randonnee', 5);")"
 # ⚠️ Le nombre de fonctions pg_trgm n'est pas figé : il dépend de la version de
@@ -199,7 +237,7 @@ sortie="$(psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 
 echo "  ✅ appliquée sans erreur"; ok=$((ok+1))
 n_echec="$(printf '%s\n' "$sortie" | grep -cE '\|\s*ECHEC\s*$' || true)"
 n_ok="$(printf '%s\n' "$sortie" | grep -cE '\|\s*OK\s*$' || true)"
-verifier "le tableau de verdict rend 4 OK et 0 ECHEC" "4/0" "$n_ok/$n_echec"
+verifier "le tableau de verdict rend 6 OK et 0 ECHEC" "6/0" "$n_ok/$n_echec"
 sortie2="$(psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 -f "$MIGRATION" 2>&1)" \
   && { echo "  ✅ rejouable (idempotente)"; ok=$((ok+1)); } \
   || { echo "  ❌ non rejouable :"; echo "$sortie2" | tail -3; ko=$((ko+1)); }
@@ -214,8 +252,14 @@ verifier "storage_chemin_autorise : chemin VIDE" 'search_path=""' \
 verifier "rechercher_passions : public, extensions, pg_temp" "search_path=public, extensions, pg_temp" \
   "$(Q "select array_to_string(proconfig, ',') from pg_proc p join pg_namespace n on n.oid=p.pronamespace
         where n.nspname='public' and p.proname='rechercher_passions';")"
+verifier "identifiants_figes : chemin VIDE" 'search_path=""' \
+  "$(Q "select array_to_string(proconfig, ',') from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+        where n.nspname='public' and p.proname='identifiants_figes';")"
+verifier "follows_identifiants_figes : chemin VIDE" 'search_path=""' \
+  "$(Q "select array_to_string(proconfig, ',') from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+        where n.nspname='public' and p.proname='follows_identifiants_figes';")"
 
-echo "── ④ LES TROIS FONCTIONS RÉPONDENT ENCORE ───────────────────────────"
+echo "── ④ LES CINQ FONCTIONS RÉPONDENT ENCORE ────────────────────────────"
 verifier "unaccent_immutable rend toujours le texte sans accent" "randonnee" \
   "$(Q "select public.unaccent_immutable('Randonnée');")"
 verifier "storage_chemin_autorise dit OUI au membre de la conversation" "t" \
@@ -230,6 +274,17 @@ verifier "rechercher_passions trouve encore, y compris par ALIAS" "1" \
   "$(Q "select count(*) from public.rechercher_passions('trek', 5);")"
 verifier "…et par approximation (similarity de pg_trgm, le chemin sert ICI)" "1" \
   "$(Q "select count(*) from public.rechercher_passions('randonee', 5);")"
+# ⚠️ LES DEUX TRIGGERS SONT EXERCÉS, PAS SEULEMENT LUS. Un chemin figé qui les
+# casserait laisserait les contrôles de `proconfig` ci-dessus au VERT et la
+# garde d'intégrité muette — c'est-à-dire un message déplaçable par UPDATE, le
+# défaut que la red team du 11/09 avait trouvé. Vérifier l'attribut ne vérifie
+# pas le comportement.
+verifier "identifiants_figes laisse passer une modification légitime" "OK" \
+  "$(_ok_ou_erreur "$(LIBRE "update public.conv_messages set corps='edit' where id='m1';")")"
+contient "…et REFUSE toujours de déplacer le message de conversation" "ne se modifie pas" \
+  "$(LIBRE "update public.conv_messages set conv_id='conv_b' where id='m1';")"
+contient "follows_identifiants_figes refuse toujours de réassigner l'abonné" "ne se modifient pas" \
+  "$(LIBRE "update public.follows set follower_id='u_x' where following_id='u_b';")"
 
 echo "── ⑤ LE CHEMIN VIDE CASSE LA RECHERCHE — mesuré, pas supposé ────────"
 # C'est le contrôle qui justifie le choix de ③. Supabase recommande `''` partout ;

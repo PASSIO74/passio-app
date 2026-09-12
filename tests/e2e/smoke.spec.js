@@ -28,11 +28,45 @@ test("la page charge avec le bon titre", async ({ page }) => {
   await expect(page).toHaveTitle(/PASSIO/i);
 });
 
-test("la landing s'affiche (logo, badge beta, CTA)", async ({ page }) => {
+test("la landing s'affiche (logo, badge, CTA)", async ({ page }) => {
   await page.goto("/index.html");
   await expect(page.locator("#landing")).toBeVisible();
-  await expect(page.getByText("Beta privée")).toBeVisible();
+  await expect(page.getByText("Gratuit · 18 ans et +")).toBeVisible();
   await expect(page.getByRole("button", { name: "Se connecter" }).first()).toBeVisible();
+});
+
+// ⚠️ LA LANDING NE DOIT PROMETTRE QUE CE QUE L'APPLICATION FAIT (2026-09-12).
+// Elle annonçait « Beta privée » — l'application est ouverte depuis le
+// 2026-09-11 — et un pilier « Documente tes voyages », alors que le Carnet de
+// voyage a été RETIRÉ par ADR-011 §6. Personne ne l'avait vu parce qu'elle
+// n'est plus sur le chemin d'un visiteur (`js/first-run.js` entre directement
+// dans le Fil) : elle ne s'affiche QUE pour un appareil qui porte un compte
+// dont la session n'est pas retrouvée — jeton expiré, hors ligne, SDK non
+// chargé. C'est-à-dire, très exactement, quelqu'un qui revient.
+//
+// ⚠️ UNE SURFACE QUE PLUS PERSONNE NE TRAVERSE N'EST PAS UNE SURFACE MORTE :
+// elle vieillit sans témoin. Ce verrou est le témoin.
+test("la landing ne promet rien qui n'existe plus", async ({ page }) => {
+  await page.goto("/index.html");
+  // ⚠️ `textContent`, JAMAIS `innerText` — et ce n'est pas un détail de style.
+  // `innerText` est sensible au RENDU : le badge vit dans `.landing-header`, que
+  // le navigateur ne peint pas tant que la landing n'est pas active, donc
+  // `innerText` rendait un texte PARTIEL (1 472 caractères sans le badge) et ce
+  // cas restait VERT avec le défaut réinjecté. Mesuré le 2026-09-12, en le
+  // réinjectant — pas en le relisant. Même famille qu'`offsetParent` qui ne
+  // mesure rien sur un élément `position: fixed`.
+  const texte = await page.locator("#landing").textContent();
+
+  for (const mort of ["Beta privée", "Documente tes voyages", "Carnet de voyage", "carnet de voyage"]) {
+    expect(texte, `la landing cite « ${mort} », qui n'existe plus`).not.toContain(mort);
+  }
+
+  // Deux piliers portaient le MÊME emoji et la MÊME promesse (« Retrouvez-vous
+  // en vrai » / « Rencontre-les pour de vrai »). Une redite n'est pas un défaut
+  // fonctionnel, donc aucune gate ne pouvait la voir : on la mesure ici.
+  const titres = await page.locator("#landing .landing-pillar-title").allTextContents();
+  expect(titres.length).toBeGreaterThan(0);
+  expect(new Set(titres).size, `piliers en double : ${titres.join(" | ")}`).toBe(titres.length);
 });
 
 test("le bouton Se connecter ouvre le formulaire d'authentification", async ({ page }) => {

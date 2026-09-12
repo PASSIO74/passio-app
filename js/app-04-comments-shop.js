@@ -2966,7 +2966,7 @@ async function openUserProfile(authorId, source) {
   // chevauchant + pseudo + bio + réseaux + stats), via les classes existantes
   // .main-profile-* — sans les contrôles d'édition, évidemment.
   var coverStyle = user.coverUrl
-    ? 'background:url(' + safeUrlAttr(user.coverUrl) + ') center/cover;'
+    ? 'background:url(' + safeUrlAttr(passioThumb(user.coverUrl, 880)) + ') center/cover;'
     : 'background:linear-gradient(135deg, #8b5cf6, #6d28d9);';
 
   var html = '\
@@ -2980,7 +2980,7 @@ async function openUserProfile(authorId, source) {
       <div class="main-profile-cover" style="' + coverStyle + 'cursor:default;"></div>\
       <div class="main-profile-body">\
         <div class="main-profile-avatar-wrap">\
-          <div class="main-profile-avatar" style="background:' + avatarBg(user) + ';background-size:cover;background-position:center;cursor:default;">' + avatarInner(user) + '</div>\
+          <div class="main-profile-avatar" style="background:' + avatarBg(user, 352) + ';background-size:cover;background-position:center;cursor:default;">' + avatarInner(user) + '</div>\
         </div>\
         <div class="main-profile-username">' + escapeHtml(user.name || "Passionné") + (user.isPrivate ? ' <span title="Compte privé" style="font-size:13px;">🔒</span>' : '') + '</div>\
         ' + (user.bio ? '<div class="main-profile-bio">' + escapeHtml(user.bio) + '</div>' : '') + '\

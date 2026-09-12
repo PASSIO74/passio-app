@@ -2161,11 +2161,42 @@ function _cssColor(c) {
   return s;
 }
 // Style `background:` d'un avatar : la photo si dispo, sinon la couleur.
-function avatarBg(u) {
+//
+// ⚠️ LES AVATARS ÉTAIENT SERVIS EN PLEINE RÉSOLUTION (2026-09-12). `passioThumb`
+// existe depuis le lot CDN et n'avait que TROIS appelants, tous sur des images de
+// PUBLICATION : aucun avatar n'y passait. Mesuré : un avatar de 2,59 Mo téléchargé
+// pour être affiché dans un rond de 40 px, à chaque utilisateur et à chaque
+// chargement. Ce n'est plus une question de facture — tout le média passe par le
+// CDN Netlify depuis le 2026-09-11 — c'est une question de charge utile sur
+// données mobiles, et elle se paie à CHAQUE rendu.
+//
+// ⚠️ LE CORRECTIF VIT ICI, ET NULLE PART AILLEURS. `avatarBg` a TRENTE-NEUF
+// appelants : les rattraper un par un aurait laissé le prochain l'oublier, faute
+// déjà commise par `passioThumb` lui-même — trois appelants, et le quatrième
+// (l'avatar) n'est jamais venu. Un seul point d'entrée, donc un seul oubli
+// possible, et il est ici.
+//
+// ⚠️ LA LARGEUR EST UN ARGUMENT, PAS UNE CONSTANTE. Les avatars vont de 22 px
+// (`.avatar.xs`) à 116 px (`.main-profile-avatar`) : un nombre unique servirait
+// soit du flou sur le grand, soit du gaspillage sur les petits. Le défaut de
+// 192 px couvre tout jusqu'à `.avatar.xl` (92 px) sur un écran à 2×, et le seul
+// consommateur plus grand demande sa propre taille.
+//
+// ⚠️ LA COULEUR RESTE SOUS LA PHOTO, et c'est une garde, pas une décoration.
+// Un avatar est un `background`, donc il n'a AUCUN `onerror` : si l'image échoue,
+// l'ancienne version ne laissait rien — ni couleur (elle n'était pas posée), ni
+// emoji (`avatarInner` rend "" dès qu'une photo existe). Un rond vide, sans une
+// erreur. La couleur est désormais la couche du dessous : elle ne se voit que si
+// la photo manque, ce qui est exactement son rôle.
+function avatarBg(u, largeur) {
   const ph = _userPhoto(u);
-  const safe = ph ? _cssUrl(ph) : null;
-  if (safe) return "url('" + safe + "') center/cover";
-  return _cssColor((u && (u.avatar || u.color)) || "#8b5cf6");
+  // Miniature AVANT l'échappement CSS : `passioThumb` ajoute `?width=&quality=`,
+  // que `_cssUrl` laisse intacts (il ne neutralise que de quoi refermer l'url()).
+  const vignette = ph ? passioThumb(ph, largeur || 192) : null;
+  const safe = vignette ? _cssUrl(vignette) : null;
+  const couleur = _cssColor((u && (u.avatar || u.color)) || "#8b5cf6");
+  if (safe) return "url('" + safe + "') center/cover, " + couleur;
+  return couleur;
 }
 // Contenu interne d'un avatar : rien si photo (elle remplit le fond), sinon emoji.
 // ⚠️ La valeur est insérée telle quelle en HTML par ses 38 appelants : c'est ICI

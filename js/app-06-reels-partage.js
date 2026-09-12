@@ -312,13 +312,17 @@ function renderMainProfile() {
     // Configurateur (app-05) ; sans photo : mesh gradient au lieu de l'aplat vide
     cover.dataset.hasPhoto = g.coverPhoto ? "1" : "";
     cover.style.background = g.coverPhoto
-      ? "url(" + g.coverPhoto + ") center/cover"
+      ? "url(" + passioThumb(g.coverPhoto, 880) + ") center/cover"
       : "radial-gradient(130% 140% at 12% -10%, #c4b5fd 0%, rgba(196,181,253,0) 55%), radial-gradient(120% 130% at 95% 15%, #8b5cf6 0%, rgba(139,92,246,0) 60%), radial-gradient(160% 130% at 50% 115%, #5b21b6 0%, #6d28d9 70%)";
   }
 
   avatarEl.dataset.hasPhoto = g.avatarPhoto ? "1" : "";
   if (g.avatarPhoto) {
-    avatarEl.style.backgroundImage = "url(" + g.avatarPhoto + ")";
+    // 116 px de CSS, donc 352 px sur un écran à 3× — et pas les 2,59 Mo de
+    // l'original. `passioThumb` laisse intactes les URLs qu'il ne sait pas
+    // transformer (data:, blob:, externes), donc l'aperçu d'un recadrage tout
+    // juste terminé passe sans être touché.
+    avatarEl.style.backgroundImage = "url(" + passioThumb(g.avatarPhoto, 352) + ")";
     avatarEl.style.backgroundSize = "cover";
     avatarEl.style.backgroundPosition = "center";
     avatarEl.innerHTML = '<div class="main-profile-avatar-badge">📷</div><input type="file" id="avatarPhotoInput" accept="image/*" style="display:none;" onchange="changeAvatarPhoto(event)"/>';
@@ -4875,7 +4879,24 @@ function aiDetectIntent(q) {
   return "general";
 }
 
-function aiGenerateResponse(query) {
+// ⚠️ LE MOTEUR LOCAL NE CONNAISSAIT QUE 19 PASSIONS SUR 5 001 (2026-09-12).
+// C'est le dernier de la famille corrigée le même jour sur trois autres surfaces
+// (« Ski » ne rendait rien dans la première visite, la création de groupe et
+// l'organisation d'une rencontre) : `allPassions()` = socle embarqué + passions
+// du compte, jamais le référentiel. Ses cartes sont CLIQUABLES, donc c'est bien
+// une surface de découverte, et elle envoyait vers un cul-de-sac sur tout ce qui
+// n'est pas dans les 19.
+//
+// ⚠️ ELLE DEVIENT ASYNCHRONE, ET C'EST VOULU. Consulter le référentiel, c'est
+// peut-être le charger (568 Ko, au premier usage réel seulement). Son UNIQUE
+// appelant (`app-07`) vit déjà dans un `.then` et porte déjà la garde « la
+// question a-t-elle changé ? » — la rendre asynchrone ne lui coûte rien et évite
+// le piège inverse : répondre depuis le socle pendant que le référentiel répond.
+//
+// ⚠️ Ce n'est PAS un blocage produit : ce moteur est le REPLI de l'Edge Function
+// Claude, qui répond en temps normal. On corrige une surface dégradée, pas le
+// chemin principal.
+async function aiGenerateResponse(query) {
   var ql = query.toLowerCase();
   var intent = aiDetectIntent(query);
 
@@ -5036,10 +5057,34 @@ function aiGenerateResponse(query) {
   }
 
   // --- Réponse générale ---
+  // Le socle d'abord (instantané, hors ligne compris), le référentiel ENSUITE :
+  // un résultat vide pendant que le moteur a la réponse serait un mensonge, et
+  // c'est très exactement ce que l'écran affichait avant ce correctif.
   var allP2 = allPassions ? allPassions() : PASSIONS;
   var matchedPassions = allP2.filter(function(p) {
     return ql.includes(p.label.toLowerCase()) || p.label.toLowerCase().includes(ql);
-  }).slice(0, 4);
+  });
+
+  var moteur = window.PassioPassions;
+  if (moteur && typeof moteur.chercherAsync === "function") {
+    try {
+      var duRef = await moteur.chercherAsync(query);
+      // Le moteur connaît les alias et les accents, la comparaison littérale
+      // ci-dessus non : ses résultats passent DEVANT, sans écraser les nôtres.
+      var vus = {};
+      var fusion = [];
+      (duRef || []).concat(matchedPassions).forEach(function (p) {
+        if (!p || !p.id || vus[p.id]) return;
+        vus[p.id] = true;
+        fusion.push(p);
+      });
+      matchedPassions = fusion;
+    } catch (e) {
+      // Référentiel injoignable : le socle reste une réponse, pas une panne.
+      console.warn("aiGenerateResponse/referentiel:", e && e.message);
+    }
+  }
+  matchedPassions = matchedPassions.slice(0, 4);
 
   if (matchedPassions.length) {
     var html2 = '<div><div class="ai-section-label">🎯 Passions trouvées</div>';
@@ -5058,7 +5103,7 @@ function aiGenerateResponse(query) {
     'Tu peux :<br>' +
     '• Explorer une passion dans l\'onglet <b>Recherche</b><br>' +
     '• Chercher des événements IRL<br>' +
-    '• Consulter les carnets de voyage<br><br>' +
+    '• Organiser ou rejoindre une rencontre<br><br>' +
     'Essaie des questions comme :<br>' +
     '<em>"Conseils en photographie"</em>, <em>"Events IRL Lyon"</em>, <em>"Rencontrer des passionnés"</em>' +
     '</div>';

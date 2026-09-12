@@ -17,7 +17,7 @@
 --
 -- ── CE QUI A ÉTÉ MESURÉ EN PRODUCTION LE 2026-09-12 (canal ① d'ADR-012) ──
 --
--- `get_advisors` signale « Function Search Path Mutable » sur trois fonctions,
+-- `get_advisors` signale « Function Search Path Mutable » sur cinq fonctions,
 -- et 34 fonctions de `public` ont `proconfig IS NULL`. Les deux nombres ne se
 -- contredisent pas : **31 de ces 34 appartiennent à l'extension `pg_trgm`**
 -- (gin_*, gtrgm_*, similarity*, word_similarity*, set_limit, show_limit,
@@ -68,7 +68,7 @@
 --
 -- ⚠️ La ligne ④ du verdict n'est PAS un rapport : elle APPELLE réellement
 -- `rechercher_passions`. Sur une base où le chemin choisi ne résoudrait pas
--- `similarity`, elle LÈVE — la transaction est alors annulée et les trois
+-- `similarity`, elle LÈVE — la transaction est alors annulée et les cinq
 -- `ALTER` sont DÉFAITS. Autrement dit : ce fichier ne peut pas laisser la
 -- recherche de passions muette derrière lui. Il échoue bruyamment plutôt que
 -- de s'appliquer à moitié. Ne pas « assainir » cette ligne en un test de
@@ -91,6 +91,21 @@ alter function public.storage_chemin_autorise(text, text) set search_path = '';
 --    nommé en dernier pour qu'il cesse d'être implicitement premier.
 alter function public.rechercher_passions(text, integer)
   set search_path = public, extensions, pg_temp;
+
+-- ④ et ⑤ — LES DEUX TRIGGERS ARRIVÉS APRÈS LA RÉDACTION DE CE FICHIER
+--    (2026-09-12). Le lot d'ouverture du 11/09 a ajouté `identifiants_figes` et
+--    `follows_identifiants_figes` ; `get_advisors` les signale donc à leur tour,
+--    et ce fichier — écrit la veille — ne les connaissait pas.
+--    ⚠️ LA LEÇON EST DANS LE DÉCALAGE, PAS DANS LE CORRECTIF : une migration
+--    écrite contre un rapport de linter vieillit dès que le code bouge. RELIRE
+--    `get_advisors` AVANT DE COLLER, toujours — coller ce fichier dans sa
+--    version de la veille aurait laissé deux fonctions dehors, en silence, et
+--    le verdict aurait dit OK sur les trois qu'il connaissait.
+--    Aucune des deux ne référence de relation ni de type : elles ne manipulent
+--    que `old`/`new` et des fonctions de `pg_catalog` (`format`, `raise`) →
+--    chemin VIDE, le plus strict.
+alter function public.identifiants_figes() set search_path = '';
+alter function public.follows_identifiants_figes() set search_path = '';
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- VERDICT — tout doit dire OK.
@@ -115,7 +130,15 @@ with v(ordre, correctif, ok) as (
   -- ⚠️ Le contrôle qui compte vraiment : la recherche de passions RÉPOND
   -- ENCORE. Un chemin figé qui casserait `similarity` rendrait les trois
   -- lignes ci-dessus vertes et le produit muet.
-  union all select 4, '④ la recherche de passions répond toujours',
+  union all select 4, '④ identifiants_figes : chemin vide',
+         coalesce((select 'search_path=""' = any(p.proconfig) from pg_proc p
+                   join pg_namespace n on n.oid = p.pronamespace
+                   where n.nspname = 'public' and p.proname = 'identifiants_figes'), false)
+  union all select 5, '⑤ follows_identifiants_figes : chemin vide',
+         coalesce((select 'search_path=""' = any(p.proconfig) from pg_proc p
+                   join pg_namespace n on n.oid = p.pronamespace
+                   where n.nspname = 'public' and p.proname = 'follows_identifiants_figes'), false)
+  union all select 6, '⑥ la recherche de passions répond toujours',
          (select count(*) >= 0 from public.rechercher_passions('a', 5))
 )
 select ordre, correctif, case when ok then 'OK' else 'ECHEC' end as verdict
