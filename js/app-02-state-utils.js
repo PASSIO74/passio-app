@@ -5254,6 +5254,16 @@ function onbFinish() {
   // Poser le drapeau exprime la règle là où elle se décide, sans dépendre de
   // quel appelant gagne la course. Le tour reste lançable à la main (« Tour
   // démo »), il n'est plus imposé.
+  //
+  // ⚠️ ET CE N'EST PLUS ICI QUE LA RÈGLE SE DÉCIDE (2026-09-12). Depuis
+  // « Confirm email », un compte neuf n'atteint JAMAIS `onbFinish` : `signUp` ne
+  // rend pas de session, la personne revient par le lien de confirmation ou par
+  // « Se connecter », `adopterCompteConnecte` purge `tourSeen` avec le reste de
+  // l'état, et `initApp` (appelé par `emoji-misc.js` après `boot`) relançait le
+  // tour historique par-dessus le Fil. La garde vit désormais dans
+  // `launchTourSafe` (app-08), seul entonnoir des lancements AUTOMATIQUES.
+  // Les deux lignes ci-dessous restent justes — elles n'ont simplement plus à
+  // porter la règle à elles seules.
   if (v2) {
     state.tourSeen = true;
     try { saveState(); } catch (e) {}

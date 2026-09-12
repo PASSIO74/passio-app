@@ -101,7 +101,24 @@ async function compte(prefixe) {
 function joindre(cli, topic, prive) {
   return new Promise((resolve) => {
     const ch = cli.channel(topic, { config: { private: prive, broadcast: { self: false } } });
-    const fin = (v) => { clearTimeout(t); try { cli.removeChannel(ch); } catch (e) {} resolve(v); };
+    // ⚠️ GARDE À UN SEUL COUP, ET ELLE N'EST PAS DE LA COQUETTERIE.
+    // `removeChannel` FERME le canal, ce qui RAPPELLE le rappel d'abonnement
+    // avec `CLOSED` — qui rappelait `fin`, qui refermait, qui rappelait…
+    // Mesuré au premier vrai lancement : « RangeError: Maximum call stack size
+    // exceeded » levée dans un `PromiseRejectCallback`, et le canal témoin rendu
+    // « PANNE ». Le verdict était donc INDÉTERMINÉ — le garde-fou a tenu, il n'a
+    // jamais annoncé « fermé » — mais le contrôle ne mesurait rien.
+    // ⚠️ Et la fermeture est DIFFÉRÉE hors de la pile du rappel : appeler
+    // `removeChannel` depuis l'intérieur de son propre rappel est précisément ce
+    // qui rend la ré-entrance possible. Résoudre d'abord, fermer ensuite.
+    let fini = false;
+    const fin = (v) => {
+      if (fini) return;
+      fini = true;
+      clearTimeout(t);
+      resolve(v);
+      setTimeout(() => { try { cli.removeChannel(ch); } catch (e) {} }, 0);
+    };
     const t = setTimeout(() => fin("PANNE"), DELAI);
     ch.subscribe((statut, err) => {
       if (statut === "SUBSCRIBED") return fin("OUVERT");

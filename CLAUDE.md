@@ -186,6 +186,50 @@ Rapport d'un testeur : « à l'inscription le nom d'utilisateur n'est pas demand
 ⚠️ **UN SERVEUR `dist/` LAISSÉ EN VIE FAUSSE TOUS LES TESTS LOCAUX** (mesuré le 2026-09-10) : `webServer` de Playwright RÉUTILISE un serveur déjà à l'écoute sur le port 8080. Un `node scripts/servir-dist.js` oublié fait donc mesurer l'ARTEFACT PRÉCÉDENT au lieu des sources — ici, quatre cas neufs rouges et onze verts qui ne prouvaient rien. Symptôme : une fonction que l'on vient d'écrire est `<absente>` de la page. `pkill -f servir-dist.js` avant tout `npm run test:local`.
 Verrou : `tests/e2e/nom-utilisateur-inscription.spec.js` (14), dont ⑦ qui mesure le CÂBLAGE à la source et sa position — le seul appelant vit dans un chemin de `boot()` qu'un banc local ne parcourt pas. Détail et point ouvert (les comptes déjà nommés « Passionné ») : `docs/lots-ui/22-NOM-UTILISATEUR-INSCRIPTION-2026-09-09.md`.
 
+## 🎬 LE VIEUX TOUR REVENAIT SUR TOUT COMPTE NEUF — « Confirm email » avait tué son seul garde-fou (2026-09-12)
+
+Rapport d'essai réel : « je viens de créer un compte, la validation par mail a fonctionné, mais en
+arrivant sur l'app c'était l'ancien système de présentation ». Mesuré : compte créé à 11:06:37,
+confirmé à 11:07:39, et le **tour historique plein écran** (`#tourOverlay`, « Étape 1 / 5 ») s'ouvrait
+par-dessus le Fil — au lieu de l'arrivée directe et des aides au geste. Reproduit au banc.
+⚠️ **CE N'EST PAS UNE RÉGRESSION DU LOT PREMIÈRE VISITE : C'EST SON GARDE-FOU QUI EST MORT DE VIEILLESSE.**
+La règle §8 (« le tour long ne doit pas suivre l'inscription, la compréhension vient du produit ») a été
+posée le 2026-08-23 **dans `onbFinish`**, qui pose `tourSeen = true` au lieu d'appeler `launchTourSafe`.
+Son propre commentaire disait déjà pourquoi sauter le seul appel ne suffisait pas — quatre appelants, trois
+gardés par `if (!state.tourSeen)`. Sept jours plus tard, « Confirm email » (2026-08-30) a rendu `onbFinish`
+**inatteignable pour tout compte neuf** : `signUp` ne rend plus de session. **Un remède posé à UN endroit
+meurt le jour où cet endroit cesse d'être sur le chemin, et rien ne le signale.**
+⚠️ **LA CHAÎNE, ET LE MAILLON QUE PERSONNE NE REGARDAIT** : lien de confirmation (ou « Se connecter ») →
+`adopterCompteConnecte` **PURGE `STATE_KEY`, donc `tourSeen`** → rechargement → `boot()` pose
+`onboarded = true` et rend le Fil → **et ~600 ms plus tard `emoji-misc.js` appelle `initApp()`**, qui teste
+`!state.tourSeen` et lance le tour. L'appelant fatal n'est ni `boot()` ni l'onboarding : c'est un
+`setTimeout` de fin de fichier, écrit en 2026-06 pour un tout autre motif. Chercher « qui lance le tour »
+dans `boot()` ne le trouve jamais.
+⚠️ **LA RÈGLE VIT DÉSORMAIS DANS `launchTourSafe` (app-08), seul entonnoir des lancements AUTOMATIQUES** :
+`if (typeof onbV2Actif === "function" && onbV2Actif()) return;`. Aucun appelant, présent ou futur, ne peut
+plus imposer le tour. `startTour()` (bouton « Tour démo », panneau de dev) ne passe pas par là et reste
+entier — **un refus d'imposer n'est pas un retrait** — et la coupure `PASSIO_ONBOARDING_V2 = false` rend le
+parcours historique à l'octet près, `onbFinish` compris.
+⚠️ **L'ANGLE MORT ÉTAIT DANS LE FIXTURE, ET C'EST LE VRAI ENSEIGNEMENT** : `onboardedState` (`app-helper.js`)
+pose `tourSeen: true`. Les ~120 suites qui l'utilisent démarrent donc **toutes dans le seul état où le défaut
+ne peut pas se produire**. Aucune n'était fausse ; ensemble elles étaient aveugles. **Un fixture qui neutralise
+la condition d'un défaut le rend invisible à toute la batterie** — vérifier ce qu'un fixture pose *en dur*
+avant de conclure qu'un chemin est couvert.
+⚠️ **`offsetParent` NE MESURE RIEN SUR UN ÉLÉMENT `position: fixed`** : il y vaut `null` affiché comme masqué.
+Écrit ainsi, le cas ① bis restait VERT sous réinjection du défaut. Pour un élément fixe, mesurer le `display`
+calculé et le rectangle. Trouvé parce que la réinjection était faite, pas parce qu'on l'a relu.
+⚠️ **Les bulles, elles, fonctionnaient** : `montrerHint` ne s'efface que tant que `PassioFirstRun.estVisiteur()`
+est vrai, donc un compte les reçoit (`hint_shown` mesuré sur le compte neuf à 11:07:50). Le défaut n'était pas
+« les bulles ont disparu », c'était « le vieux tour se posait par-dessus » — ne pas partir chercher les aides.
+⚠️ **POINT OUVERT, DE LA MÊME FAMILLE, NON CORRIGÉ ICI** : un appareil qui PORTE un compte (`passio_uid` ou
+`state.onboarded`) mais dont la session n'est pas retrouvée au démarrage (jeton expiré, hors ligne, SDK non
+chargé) sort de `boot()` par **`showLanding()`** — donc sur la landing historique, ses 8 piliers, sa mention
+« Beta privée » et sa promesse « Documente tes voyages » (Carnet de voyage RETIRÉ par ADR-011). Elle reste
+fonctionnelle (elle porte « Se connecter »), mais elle raconte une application qui n'existe plus.
+Verrou : `tests/e2e/tour-jamais-impose.spec.js` (5), dont ①, ① bis et ④ éprouvés par RÉINJECTION (② et ③
+restent verts, ils gardent la coupure et le geste manuel) et ④ qui mesure à la SOURCE que `showTour()` n'a
+pas d'appelant hors du moteur du tour.
+
 ## 🪦 SUPPRIMER UNE PUBLICATION — pierres tombales (2026-09-01)
 
 Toute suppression passe par `deletePost` (app-04) : `marquerPostSupprime(id)` pose d'ABORD la pierre tombale (`state.deletedPostIds`, persistée en `localStorage` ET synchronisée par le blob `user_state`, fusionnée en **UNION** jamais par remplacement), puis `purgerPostsSupprimes()` (app-02) — seul point qui connaît les **QUATRE** tableaux où vit un post (`userPosts`, `supabasePosts`, `seed.posts`, `window._feedExtraPosts`). Ne jamais refaire ce filtrage à la main.
