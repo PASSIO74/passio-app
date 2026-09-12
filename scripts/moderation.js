@@ -241,26 +241,35 @@ async function voir(cfg) {
         console.log(`   ${n} publication(s)\n`);
       } else console.log(`   (compte introuvable — déjà supprimé ?)\n`);
     } else if (t === "post") {
-      const p = (await rest(cfg, `posts?id=eq.${cible}&select=id,author_id,text,passion_id,created_at`) || [])[0];
+      const p = (await rest(cfg, `posts?id=eq.${cible}&select=id,author_id,content,passion_id,created_at`) || [])[0];
       if (p) {
         console.log(`   ── La publication visée ──`);
         console.log(`   Auteur  : ${abrege(p.author_id)}`);
         console.log(`   Passion : ${p.passion_id || "—"}`);
-        console.log(`   Texte   : ${String(p.text || "").slice(0, 600)}\n`);
+        console.log(`   Texte   : ${String(p.content || "").slice(0, 600)}\n`);
       } else console.log(`   (publication introuvable — déjà supprimée ?)\n`);
     } else if (t === "comment") {
-      const c = (await rest(cfg, `post_comments?id=eq.${cible}&select=id,author_id,text,post_id,created_at`) || [])[0];
+      // ⚠️ DEUX TABLES, DEUX COLONNES (mesuré le 2026-09-12) : un identifiant
+      // `ec_…` est un commentaire de RENCONTRE (event_comments, colonne `text`),
+      // les autres sont des commentaires de publication (post_comments, colonne
+      // `content`). La première version interrogeait post_comments.text : 400
+      // sur le seul signalement de commentaire en base, à l'instant où l'outil
+      // devait servir.
+      const surRencontre = String(l.target_id).startsWith("ec_");
+      const c = surRencontre
+        ? (await rest(cfg, `event_comments?id=eq.${cible}&select=id,author_id,author_name,text,event_id,created_at`) || [])[0]
+        : (await rest(cfg, `post_comments?id=eq.${cible}&select=id,author_id,content,post_id,created_at`) || [])[0];
       if (c) {
-        console.log(`   ── Le commentaire visé ──`);
+        console.log(`   ── Le commentaire visé (${surRencontre ? "sur une rencontre" : "sous une publication"}) ──`);
         console.log(`   Auteur : ${abrege(c.author_id)}`);
-        console.log(`   Texte  : ${String(c.text || "").slice(0, 600)}\n`);
-      } else console.log(`   (commentaire introuvable)\n`);
+        console.log(`   Texte  : ${String(surRencontre ? c.text : c.content || "").slice(0, 600)}\n`);
+      } else console.log(`   (commentaire introuvable — déjà supprimé ?)\n`);
     } else if (t === "event") {
-      const e = (await rest(cfg, `events?id=eq.${cible}&select=id,title,description,author_id,city,date`) || [])[0];
+      const e = (await rest(cfg, `events?id=eq.${cible}&select=id,title,description,author_id,city,date_at`) || [])[0];
       if (e) {
         console.log(`   ── La rencontre visée ──`);
         console.log(`   Titre : ${e.title || "—"}`);
-        console.log(`   Ville : ${e.city || "—"}   Date : ${e.date || "—"}`);
+        console.log(`   Ville : ${e.city || "—"}   Date : ${e.date_at || "—"}`);
         console.log(`   Texte : ${String(e.description || "").slice(0, 600)}\n`);
       } else console.log(`   (rencontre introuvable)\n`);
     } else if (t === "passion") {
