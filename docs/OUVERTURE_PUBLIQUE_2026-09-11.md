@@ -22,7 +22,7 @@ chaque défaut AVANT, applique, rejoue, éprouve les deux sens, puis six mutatio
 | ② | **Bloquer quelqu'un ne l'empêchait ni de vous suivre, ni de vous écrire, ni de commenter, ni de vous notifier.** Seul `conv_members` connaissait `is_blocked_with`. | Six policies INSERT (`follows`, `conv_messages` 1:1, `post_comments`, `post_likes`, `event_comments`, `notifications`) exigent `not is_blocked_with(...)` via trois aides `SECURITY DEFINER`. Borné aux 1:1 pour les messages : dans un groupe, la personne bloquée reste membre. |
 | ③ | **Trois tables seulement** avaient une limite de débit. Rien sur `posts`, `post_comments`, `conv_messages`, `stories`, `events`, `follows`, `notifications`, `analytics_events` — ni sur les **INSERT anonymes** de `client_errors` et `telemetry_events` : un script sans compte pouvait remplir la base jusqu'au mur lecture seule du plan (500 Mo). | `trg_rate_limit` (par compte, horodatage **serveur**) sur 9 tables de plus ; `limiter_debit_global()` (plafond par minute sur toute la table) sur les deux tables anonymes. `follows` reçoit `created_at`. |
 | ④ | `reports` n'avait **aucun statut** ; `analytics_events` aucune purge (la politique promet 13 mois). | `status` (`open`/`handled`/`dismissed`, forcé `open` à l'insertion par trigger), `handled_at`, `handled_note`, index des ouverts ; `cron` `passio_purge_analytics` à 13 mois. |
-| ⑤ | Canaux Realtime `ring:`, `call:`, `typing:`, `vlive:` **publics** : écouter qui appelle qui, faire sonner sous une fausse identité, couper un appel. | Policies `passio_rt_recevoir` / `passio_rt_emettre` sur `realtime.messages` : on ne reçoit que **sa** sonnerie, la frappe est réservée aux membres, tout exige un compte. Le client crée ces canaux en `private: true`. |
+| ⑤ | Canaux Realtime `ring:`, `call:`, `typing:`, `vlive:` **publics** : écouter qui appelle qui sans compte, faire sonner sous une fausse identité, couper un appel. | Policies `passio_rt_recevoir` / `passio_rt_emettre` sur `realtime.messages` : la sonnerie n'est lisible que par un **compte non bloqué** (corrigé le 2026-09-12 : l'appelant s'abonne à `ring:<pair>` avant d'émettre, « sa sonnerie seulement » tuait les appels sortants), la frappe est réservée aux membres, tout exige un compte. Le client crée ces canaux en `private: true`. |
 | ⑥ | Seau `attachments` `public = true` : une pièce jointe privée lisible **à vie par son URL exacte**. | `update storage.buckets set public = false` — **en dernier**, après le client (URL signées). |
 | ⑦ | « Compte privé » sans approbation : `follows` n'avait que deux colonnes, tout compte s'abonnait d'un tap et lisait tout. | `follows.status` tranché par le **serveur** (`pending` vers un compte privé), `follows_accepter` (la cible seule, vers `accepted` seulement), identifiants figés par trigger, `posts`/`stories`/`post_is_visible` n'ouvrent qu'aux `accepted`. |
 
@@ -120,9 +120,16 @@ Verrou : `tests/e2e/ouverture-publique.spec.js` (35 cas, dont trois qui mesurent
    replie sur du public que si la souscription privée est refusée par policy — sans les
    policies, tout le temps réel serait mort. Le client est prêt : **tous** ses canaux sont
    privés (`ring:`, `call:`, `typing:`, `vlive:`, `conv_specific:`, `realtime:db`, `user:`,
-   `conv:`), c'est ce que le verrou ⑨ de `ouverture-publique.spec.js` balaie. Après le geste,
-   ouvrir l'application à deux comptes et vérifier qu'un message arrive en direct et qu'un
-   appel sonne : c'est la seule preuve, aucun test du dépôt ne joue un join Realtime réel.
+   `conv:`), c'est ce que le verrou ⑨ de `ouverture-publique.spec.js` balaie. ⚠️ **Le test à
+   deux comptes se fait ENTRE l'étape 2 et celle-ci**, pas après : dès que le SQL est collé,
+   une session fraîche passe en canaux privés et c'est là que les policies décident. Ouvrir
+   l'application à deux comptes, passer un appel (il doit sonner), envoyer un message (il
+   doit arriver en direct), publier une rencontre récurrente de 6 dates (6 lignes en base).
+   Si l'appel ne sonne pas : `drop policy "passio_rt_recevoir" on realtime.messages;` rend le
+   repli public tant que ce réglage est ON. Ne couper « Allow public access » qu'après.
+   ⚠️ Après ce geste, les sessions ouvertes AVANT le SQL (repli public mémorisé) et les
+   onglets restés sur l'ancienne version perdent le temps réel sauf les messages, jusqu'à
+   un rechargement : demander aux comptes actifs de recharger une fois.
 4. **Tableau de bord Supabase → Authentication** : vérifier que le fournisseur
    **Anonymous** est désactivé (`onbSkipAuth` est un chemin mort, mais un
    `signInAnonymously()` ouvrirait toutes les policies `authenticated`) ; activer la
@@ -176,11 +183,16 @@ de l'espace OCCUPÉ : ce sont deux problèmes différents, avec deux remèdes di
 - La **sonnerie** peut encore porter une fausse identité **entre comptes** (charge utile
   déclarative). Fermer cela demande de router l'invitation par la base (trigger + topic
   `user:<uid>`), un lot à part. Même résidu pour l'hôte d'un **live** (`from` déclaratif).
-- **Non vérifié en conditions réelles** (aucun banc ne joue un join Realtime) : qu'un compte
-  puisse s'abonner à `ring:<autre>` pour ÉMETTRE alors qu'il n'a pas le droit d'y LIRE. Si
-  Realtime refuse le join sans droit de lecture, les appels SORTANTS meurent après l'étape 3
-  — à éprouver à deux comptes juste après le geste, et à rouvrir la policy de réception sur
-  `ring:%` si c'est le cas.
+- **Tranché le 2026-09-12, avant application** : Realtime refuse bien un join privé sans
+  droit de lecture (source du serveur, `maybe_assign_policies`), et le client s'abonne à
+  `ring:<pair>` avant d'émettre — la policy de réception « sa sonnerie seulement » aurait
+  tué tous les appels sortants **dès le collage du SQL**, pas après l'étape 3. Elle est
+  rouverte à `ring:%` hors blocage. Résidu : un compte connecté peut écouter la sonnerie
+  d'un autre (jamais sans compte, jamais un bloqué). Le resserrer exige un client qui émet
+  sans s'abonner (envoi HTTP, gouverné par la policy INSERT) : lot suivant.
+- **Plafond des rencontres** : 15 par minute et par auteur, pas 5 — une rencontre récurrente
+  crée 6 lignes par défaut et 12 au plus, en rafale ; à 5, les suivantes étaient perdues en
+  silence (le toast ne regarde que la première).
 - `client_errors` : 120 lignes/min pour la table entière — une boucle anonyme suffit à
   faire perdre de vraies erreurs et à aveugler la sentinelle pendant qu'elle tourne.
 - **Un seul opérateur** lit les signalements ; l'alerte les porte à son e-mail, elle ne
