@@ -92,14 +92,26 @@ Verrou : `tests/e2e/ouverture-publique.spec.js` (35 cas, dont trois qui mesurent
 
 ## 4. LES GESTES QUI RESTENT — dans l'ordre, et pourquoi cet ordre
 
-> **Où l'on en est, mesuré le 2026-09-12** (canal ① d'ADR-012 — l'état d'une base ne se lit
-> pas dans un fichier du dépôt). Le lot client est **déployé** et `migrations/OUVERTURE_2026-09-11.sql`
-> est **appliqué** (`client_errors.auth_uid` présent, `profiles.phone` retiré, les deux purges
-> `cron` en place). En revanche `migration_ouverture_publique_2026-09-11.sql` n'est **toujours pas
-> collé** : `follows.status` absent, **zéro** policy `passio_rt_*`, seau `attachments` encore
-> `public = true`. Autrement dit, l'étape 2 ci-dessous est le verrou de tout le reste — les étapes
-> 3 et 4 en dépendent, et deux des trois points « reste ouvert » de ce document se ferment avec elle.
-> Santé : **zéro `client_errors` sur 24 h**.
+> **Où l'on en est, mesuré le 2026-09-12 à 09:1xZ** (canal ① d'ADR-012 — l'état d'une base ne se
+> lit pas dans un fichier du dépôt, il se mesure). Le lot client est **déployé**,
+> `migrations/OUVERTURE_2026-09-11.sql` est **appliqué**, et
+> **`migration_ouverture_publique_2026-09-11.sql` L'EST AUSSI** : verdict rejoué en lecture seule,
+> **13 × OK**. Les étapes 1 et 2 ci-dessous sont donc FAITES ; **l'étape 3 est la prochaine**.
+>
+> ⚠️ **Et c'est la version CORRIGÉE qui est en base, vérifiée ligne à ligne** — pas la version
+> d'origine : `trg_rate_limit` sur `events` est à **15** (pas 5), et `passio_rt_recevoir` ouvre
+> `ring:%` hors blocage (pas « sa sonnerie seulement »). Les deux correctifs de la PR #341 sont
+> donc bien appliqués, et les appels sortants comme les rencontres récurrentes fonctionnent. Ce
+> contrôle ne se déduit PAS du verdict à 13 lignes, qui rend OK dans les DEUX versions : il se
+> fait sur le texte de la policy et la définition du trigger.
+>
+> Reprise de l'existant, mesurée : les **8** abonnements d'avant la migration sont tous
+> `accepted`, **0** en attente — personne n'a perdu un accès qu'il avait la veille.
+> Santé : **zéro `client_errors`**, aucune erreur de stockage, de canal temps réel ni de policy.
+>
+> ⚠️ **Un point NON vérifié, et il faut le dire** : aucun accès réel à une pièce jointe n'a eu
+> lieu depuis que le seau est privé. La re-signature est dans le client déployé et le chemin est
+> couvert par les verrous, mais l'absence d'erreur ici est une absence de mesure, pas une preuve.
 
 
 1. **Attendre le job « Déploiement production » vert** du lot client (c'est fait si vous
@@ -134,12 +146,19 @@ Verrou : `tests/e2e/ouverture-publique.spec.js` (35 cas, dont trois qui mesurent
    **Anonymous** est désactivé (`onbSkipAuth` est un chemin mort, mais un
    `signInAnonymously()` ouvrirait toutes les policies `authenticated`) ; activer la
    **protection des mots de passe compromis** (HaveIBeenPwned) ; lire les quotas d'e-mail.
-5. **DKIM / DMARC de `passio-app.fr`** chez Brevo et OVH (`docs/SETUP_SMTP_AUTH.md`) —
-   sans eux, l'e-mail de confirmation part en spam et **la personne n'entre jamais**.
-   C'est le défaut qui tue une ouverture en silence.
-6. **Lancer une fois `Sauvegarde production`** à la main (Actions → Run workflow) et
-   déchiffrer l'artefact en local avec la commande de l'en-tête du workflow. Une sauvegarde
-   jamais restaurée est une intention.
+5. ~~**DKIM / DMARC de `passio-app.fr`**~~ — **FAIT, mesuré le 2026-09-12** sur le DNS
+   public avec témoin négatif : les quatre enregistrements résolvent, et la cible des deux
+   CNAME n'est **pas** complétée par le domaine (le point final a bien été posé, c'est le
+   piège du §2 de `SETUP_SMTP_AUTH.md`). Rejouable en deux secondes : **`npm run verif:dns`**.
+   ⚠️ **Le DNS est nécessaire, il n'est PAS suffisant** : Brevo doit encore marquer le
+   domaine « authentifié », et cela ne se lit pas depuis le DNS. C'est le seul reste de ce
+   point. ⚠️ Ce contrôle est **hors de `npm run verif` et hors de la CI** : il juge un fait
+   extérieur au dépôt, et une gate rouge qu'aucun commit ne peut réparer bloquerait tous les
+   déploiements.
+6. ~~**Lancer une fois `Sauvegarde production`**~~ — **FAIT le 2026-09-12, run VERT** :
+   archive chiffrée de 3,9 Mo déposée en artefact, conservée 30 jours. ⚠️ Et il n'y a rien à
+   déchiffrer à la main : l'étape « Chiffrer » **déchiffre et relit** l'archive dans le même
+   run, et elle est passée — le trajet complet est prouvé, phrase de passe comprise.
 7. Facultatif : poser le secret `SAUVEGARDE_PASSPHRASE` (sinon le repli documenté sert).
 8. **Après la fusion de la PR « search_path »** : coller
    `migrations/migration_search_path_fonctions.sql` (verdict à **4 × OK**). C'est de la défense
