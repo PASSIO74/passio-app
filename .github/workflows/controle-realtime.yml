@@ -1,0 +1,96 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# CONTRÔLE REALTIME EN CONDITIONS RÉELLES — le join que personne ne jouait
+#
+# `docs/OUVERTURE_PUBLIQUE_2026-09-11.md` écrivait : « ouvrir l'application à
+# deux comptes et vérifier qu'un appel sonne : c'est la seule preuve, aucun test
+# du dépôt ne joue un join Realtime réel. » Ce workflow la joue, et il tranche
+# les DEUX questions qu'aucune autre mesure ne peut atteindre :
+#
+#   ① « Allow public access » du tableau de bord Supabase est-il coupé ? Ce
+#      réglage vit dans le PLAN DE CONTRÔLE : il n'est ni dans le dépôt, ni dans
+#      la base (aucune table `realtime.tenants`), ni lisible par PostgREST. La
+#      seule façon de le savoir est d'ESSAYER un canal public. Et c'est lui qui
+#      rend les policies opposables : tant qu'il est actif, un client qui omet
+#      `private: true` écoute encore, policies ou pas.
+#   ② Un appel SORTANT fonctionne-t-il ? Défaut rattrapé de justesse par la PR
+#      #341 : l'appelant s'abonne à `ring:<pair>` AVANT d'émettre, et Realtime
+#      refuse un join privé sans droit de lecture.
+#
+# ⚠️ À LA DEMANDE SEULEMENT, et c'est délibéré. Il juge un réglage EXTÉRIEUR au
+# dépôt : en faire une gate de déploiement rendrait la CI rouge sur un fait
+# qu'aucun commit ne peut corriger, et bloquerait toutes les mises en ligne.
+#
+# ⚠️ IL CRÉE DEUX COMPTES JETABLES sur la production (`%@passio-e2e.test`,
+# pré-confirmés par l'API admin, donc AUCUN e-mail envoyé et aucun quota Brevo
+# consommé). Il partage donc le verrou `passio-e2e-prod` des suites à comptes
+# réels : `global-teardown` purge TOUS les comptes e2e, et deux exécutions
+# simultanées s'effacent mutuellement leurs comptes — c'est l'incident du
+# 2026-09-01, `main` rouge et déploiement sauté. Ne jamais retirer ce verrou.
+# ═══════════════════════════════════════════════════════════════════════════
+
+name: Contrôle Realtime (à la demande)
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: passio-e2e-prod
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  controler:
+    name: Joindre les canaux et rendre un verdict
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with: { fetch-depth: 1 }
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with: { node-version: '22' }
+
+      - name: Installer le client Supabase
+        # Épinglé : une version flottante est un déploiement que personne n'a
+        # décidé (même règle que `js/vendor/`, lot du 2026-09-11).
+        run: npm install --no-save --no-audit --no-fund @supabase/supabase-js@2.58.0
+
+      - name: Contrôler
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://njkiyoklssvefstljemx.supabase.co' }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set -uo pipefail
+          if [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]; then
+            echo "::error title=SUPABASE_SERVICE_ROLE_KEY absent::Impossible de créer les comptes jetables."
+            exit 1
+          fi
+          node scripts/controle-realtime.mjs | tee /tmp/verdict.txt
+          code=${PIPESTATUS[0]}
+          { echo '```text'; cat /tmp/verdict.txt; echo '```'; } >> "${GITHUB_STEP_SUMMARY}"
+          # ⚠️ 3 = verdict INDÉTERMINÉ (témoin en échec, réseau) : ce n'est pas un
+          # défaut du produit, et le faire passer pour rouge apprendrait à ignorer
+          # ce workflow. On le distingue.
+          if [ "$code" = "3" ]; then
+            echo "::warning title=Verdict indéterminé::Le canal témoin n'a pas répondu — rien n'est concluant, rejouer."
+            exit 0
+          fi
+          exit "$code"
+
+      - name: Purger les comptes jetables
+        if: always()
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://njkiyoklssvefstljemx.supabase.co' }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        # `if: always()` : un contrôle qui laisse ses comptes derrière lui à
+        # chaque échec remplit la production de déchets — et c'est l'échec qui
+        # se répète, pas le succès.
+        # ⚠️ LE CHEMIN REST, JAMAIS `purge:e2e` : celui-là passe par la CLI
+        # Supabase, qui n'est ni installée ni liée en CI — son échec est un
+        # simple avertissement, et c'est ce silence qui a laissé les comptes e2e
+        # s'accumuler jusqu'à faire rougir `main` le 2026-09-01.
+        run: npm run purge:e2e:rest || echo "purge best-effort, code $?"
