@@ -409,9 +409,73 @@
     return false;
   }
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // LE RÉFÉRENTIEL PLAT DANS CE PANNEAU — 2026-09-12
+  // ──────────────────────────────────────────────────────────────────────────
+  // ⚠️ CE PANNEAU NE CHERCHAIT QUE DANS LE SOCLE EMBARQUÉ : 19 passions. Taper
+  // « ski » rendait « Aucune passion ne correspond. Essaie un autre mot. »
+  // alors que la production porte 5 003 passions actives, dont 15 de ski
+  // (mesuré le 2026-09-12). C'est EXACTEMENT le défaut corrigé le 2026-09-03
+  // sur la page « Rechercher » (`_exChercherPassions`, app-07) — le correctif
+  // n'était jamais venu jusqu'ici, c'est-à-dire jusqu'au SEUL écran que tout
+  // nouveau visiteur traverse. Rapporté à l'écran par Benjamin, pas déduit.
+  //
+  // ⚠️ UNE PASSION QUE CE PANNEAU A MONTRÉE EST RÉELLE PAR CONSTRUCTION : elle
+  // vient du référentiel, donc de la table `passions`. La re-soumettre à
+  // `estPassionCanonique` la ferait JETER EN SILENCE par `interetsDuVisiteur`
+  // tant que le Set du référentiel n'est pas rempli — on choisit « Ski alpin »,
+  // on valide, et le fil ne change pas. C'est le piège déjà nommé plus haut
+  // pour les spécialités ; le registre ci-dessous est la même réponse.
+  //
+  // ⚠️ ON N'INSCRIT RIEN DANS LA LISTE BLANCHE DE PUBLICATION, et la première
+  // version de ce lot le faisait (`enregistrerPassionCanonique`). Elle affirmait
+  // « on n'y inscrit QUE ce que le référentiel a rendu » — le code ne le
+  // vérifiait pas : quand le `fetch` échoue, `charger()` bâtit ses données
+  // depuis `repliHorsLigne()`, c'est-à-dire le socle PLUS `state.user.profiles`,
+  // dont rien ne vient de la table `passions`. Une recherche pouvait donc rendre
+  // un `custom_*` et le lot le déclarait publiable (mesuré : `false` → `true`).
+  // `estPassionCanonique` reste la SEULE autorité de publication, et un lot
+  // d'AFFICHAGE n'y touche pas. `_refVues` suffit à ce qu'on corrige ici.
+  var _refVues = Object.create(null);
+
+  function memoriserPassionRef(p) {
+    if (!p || typeof p.id !== "string" || !p.id) return null;
+    var meta = { id: p.id, emoji: p.emoji || "\u2728", label: p.label || "Passion", color: p.color };
+    _refVues[p.id] = meta;
+    return meta;
+  }
+
+  // ⚠️ `_refVues` NE SURVIT PAS À UN RECHARGEMENT, et s'y fier seul rouvrait le
+  // défaut au tour suivant : rouvrir le panneau et valider un ajout faisait
+  // JETER la passion déjà choisie par `interetsDuVisiteur` (mesuré). Pire,
+  // `migrerPreferences` passe par le même chemin et tourne APRÈS le
+  // `location.reload()` de « Se connecter » — c'est-à-dire au moment exact où
+  // le choix devient durable.
+  //
+  // Le référentiel plat, lui, est le MIROIR de la table `passions` : s'il
+  // connaît l'identifiant, la passion existe. Cette réponse-là se refabrique à
+  // chaque session, sans rien persister.
+  //
+  // ⚠️ SAUF EN REPLI HORS LIGNE : `repliHorsLigne()` fabrique ses entrées depuis
+  // le socle et `state.user.profiles`, donc `parId` y répondrait sur des
+  // identifiants qui ne viennent pas de la base. On l'exclut explicitement.
+  function passionPlate(id) {
+    if (typeof id !== "string" || !id) return null;
+    try {
+      var m = window.PassioPassions;
+      if (!m || !m.actif() || !m.pret() || m.horsLigne()) return null;
+      var p = m.parId(id);
+      if (!p || !p.id) return null;
+      return { id: p.id, emoji: p.emoji || "\u2728", label: p.label || "Passion", color: p.color };
+    } catch (e) { journal("passion_plate", e); return null; }
+  }
+
   // Les métadonnées d'affichage d'une passion CONNUE. Rend `null` pour tout le
   // reste — c'est ce que `passionById` aurait dû faire.
   function metaPassion(id) {
+    if (typeof id === "string" && _refVues[id]) return _refVues[id];
+    var plate = passionPlate(id);
+    if (plate) return plate;
     if (!passionConnue(id)) return null;
     try { if (typeof passionById === "function") return passionById(id) || null; } catch (e) {}
     var l = catalogue();
@@ -762,6 +826,12 @@
     p.specialites.forEach(function (id) { _selSpecialites[id] = 1; });
     _panneauTout = false;
     _panneauQuery = "";
+    // Une recherche laissée en vol par une ouverture précédente ne doit pas
+    // repeindre ce panneau-ci : le jeton la rend caduque.
+    _panneauJeton++;
+    _panneauResultats = null;
+    _panneauEnVol = false;
+    if (_panneauTimer) { clearTimeout(_panneauTimer); _panneauTimer = null; }
     if (_panneauOrigine === "bienvenue") tel("welcome_personalize_clicked", {});
     assurerReferentiel();   // les libellés des spécialités viennent du référentiel plat
     try { openModal(panneauHTML()); } catch (e) { journal("ouverture du panneau", e); return; }
@@ -819,15 +889,110 @@
     return "Voir mon fil (" + nbInterets() + ")";
   }
 
+  // ⚠️ ON NE PEINT JAMAIS 5 001 TUILES. La grille est un APERÇU ; la RECHERCHE
+  // est le chemin vers le reste (même règle que la page « Rechercher », fiche
+  // 20). Sans cette borne, « Voir toutes les passions » demanderait au
+  // navigateur d'un téléphone de poser cinq mille boutons d'un coup.
+  var PANNEAU_LIMITE = 60;
+
+  // Résultats du référentiel plat pour `_panneauQuery`. `null` = rien n'est
+  // encore revenu pour cette frappe — ce n'est PAS « aucun résultat ».
+  var _panneauResultats = null;
+  var _panneauEnVol = false;
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // LA RECHERCHE PASSE PAR LE RÉFÉRENTIEL PLAT — anti-rebond et annulation
+  // ──────────────────────────────────────────────────────────────────────────
+  // Repris à l'identique du correctif de la page « Rechercher » (app-07,
+  // 2026-09-03), avec les deux défauts de flux qu'il avait relevés :
+  //   ① sans anti-rebond, taper « guitare » lance sept recherches réseau ;
+  //   ② sans jeton, une réponse lente partie sur « gui » écrase « guitare ».
+  // ══════════════════════════════════════════════════════════════════════════
+  var _panneauJeton = 0;
+  var _panneauTimer = null;
+  var PANNEAU_DEBOUNCE = 160;
+
+  // ⚠️ UN `catch` NU ICI REND EXACTEMENT LE DÉFAUT QU'ON CORRIGE — la recherche
+  // retombe sur les 19 du socle — et personne ne le sait. On journalise.
+  function referentielUtilisable() {
+    try { return !!(window.PassioPassions && PassioPassions.actif()); }
+    catch (e) { journal("referentiel_utilisable", e); return false; }
+  }
+
+  // ⚠️ LE RÉFÉRENTIEL D'ABORD, LES PASSIONS PERSO ENSUITE. Une passion perso
+  // n'est pas dans le référentiel : elle vit sur le profil de cette personne.
+  // La jeter la rendrait introuvable depuis l'écran qui sert à la retrouver
+  // (défaut ③ de la fiche 20). Le socle complète, il ne remplace pas.
+  function fusionnerAvecReferentiel(resultatsSocle) {
+    var out = [];
+    var vus = Object.create(null);
+    function pousser(passion, specs) {
+      if (!passion || !passion.id || vus[passion.id]) return;
+      vus[passion.id] = 1;
+      out.push({ passion: passion, specialites: specs || [] });
+    }
+    if (_panneauResultats) {
+      _panneauResultats.forEach(function (p) { pousser(p, specialitesDe(p.id)); });
+    }
+    (resultatsSocle || []).forEach(function (r) { pousser(r.passion, r.specialites); });
+    return out.slice(0, PANNEAU_LIMITE);
+  }
+
+  // Lance la recherche référentiel pour la frappe COURANTE. Ne peint rien
+  // elle-même : elle pose le résultat et redemande un rafraîchissement.
+  function lancerRechercheReferentiel(q) {
+    var jeton = ++_panneauJeton;
+    // ⚠️ TOUTE SORTIE QUI BAISSE LE DRAPEAU DOIT REPEINDRE. Deux d'entre elles
+    // ne le faisaient pas : l'écran gardait « Recherche… » POUR TOUJOURS, ce
+    // qui est pire que le message trompeur qu'on est venu retirer — on ne peut
+    // même plus savoir qu'il n'y a rien. Le `.catch` asynchrone le faisait déjà,
+    // et c'est la seule branche que le banc couvrait.
+    function abandonner(e, ou) {
+      if (e) journal(ou || "referentiel_recherche", e);
+      _panneauEnVol = false;
+      rafraichirPanneau();
+    }
+    if (!referentielUtilisable()) { abandonner(null); return; }
+    _panneauEnVol = true;
+    var promesse;
+    try {
+      promesse = PassioPassions.chercherAsync(q, { limite: PANNEAU_LIMITE, serveur: true });
+    } catch (e) { abandonner(e); return; }
+    // ⚠️ Le `try` n'enveloppait que l'APPEL : un retour non-thenable levait une
+    // `TypeError` dans un `setTimeout`, que personne ne rattrape.
+    if (!promesse || typeof promesse.then !== "function") {
+      abandonner(new Error("chercherAsync n'a pas rendu de promesse"));
+      return;
+    }
+    promesse.then(function (r) {
+      // Une réponse devenue caduque ne doit RIEN écrire : ni le résultat, ni
+      // l'état « en vol », que la frappe suivante a déjà repris à son compte.
+      if (jeton !== _panneauJeton) return;
+      _panneauEnVol = false;
+      _panneauResultats = (r || []).map(memoriserPassionRef).filter(Boolean);
+      rafraichirPanneau();
+    }).catch(function (e) {
+      if (jeton !== _panneauJeton) return;
+      // ⚠️ ON LOGUE AVANT DE REPLIER. Le repli, c'est le comportement d'avant :
+      // 19 libellés. Sans log, une erreur dans le `.then` est indiscernable
+      // d'un référentiel qui n'a rien à proposer, et personne ne la voit.
+      abandonner(e);
+    });
+  }
+
   // Grille : les 12 populaires par défaut, le catalogue entier une fois déplié
   // ou dès qu'une recherche est en cours.
+  //
+  // ⚠️ LE SOCLE RESTE PEINT IMMÉDIATEMENT, le référentiel s'y AJOUTE quand il
+  // répond. L'inverse — attendre le référentiel pour peindre quoi que ce soit —
+  // rendrait la grille vide à chaque frappe sur un réseau lent.
   function grilleHTML() {
     var resultats = chercher(_panneauQuery);
     var visibles;
     if (_panneauQuery) {
-      visibles = resultats;
+      visibles = fusionnerAvecReferentiel(resultats);
     } else if (_panneauTout) {
-      visibles = resultats;
+      visibles = fusionnerAvecReferentiel(resultats);
     } else {
       var rang = {};
       POPULAIRES.forEach(function (id, i) { rang[id] = i; });
@@ -836,6 +1001,12 @@
         .sort(function (a, b) { return rang[a.passion.id] - rang[b.passion.id]; });
     }
     if (!visibles.length) {
+      // ⚠️ « Aucune passion ne correspond » PENDANT que le référentiel répond
+      // est un mensonge, et c'est le message que Benjamin a lu à l'écran. Tant
+      // qu'une recherche est en vol, on dit qu'on cherche.
+      if (_panneauEnVol) {
+        return '<div class="fr-vide" role="status">Recherche\u2026</div>';
+      }
       return '<div class="fr-vide">Aucune passion ne correspond. Essaie un autre mot.</div>';
     }
     var html = visibles.map(function (r) { return tuileHTML(r.passion); }).join("");
@@ -921,13 +1092,45 @@
     rafraichirPanneau();
   }
 
-  function voirToutes() { _panneauTout = true; rafraichirPanneau(); }
+  // Déplier, c'est demander au référentiel un APERÇU large — jamais les 5 001.
+  // `chercherAsync("")` rend les suggestions du moteur (récentes, puis précis
+  // et généraux alternés), déjà bornées par `PANNEAU_LIMITE`.
+  function voirToutes() {
+    _panneauTout = true;
+    if (_panneauTimer) { clearTimeout(_panneauTimer); _panneauTimer = null; }
+    lancerRechercheReferentiel("");
+    rafraichirPanneau();
+  }
 
   function chercherDansPanneau(v) {
     _panneauQuery = String(v || "");
     // ⚠️ La recherche libre n'est JAMAIS envoyée à la télémétrie (§ « ne jamais
     // envoyer une recherche libre »). Aucun appel `tel()` ici, délibérément.
+    if (_panneauTimer) { clearTimeout(_panneauTimer); _panneauTimer = null; }
+
+    var q = _panneauQuery.trim();
+    if (!q) {
+      // Toute réponse en vol devient caduque, et le champ vidé retombe sur
+      // l'aperçu — populaires, ou suggestions si la grille est dépliée.
+      _panneauJeton++;
+      _panneauEnVol = false;
+      _panneauResultats = null;
+      if (_panneauTout) lancerRechercheReferentiel("");
+      rafraichirPanneau();
+      return;
+    }
+
+    // Le résultat du socle est peint TOUT DE SUITE ; le référentiel s'y ajoute.
+    // `_panneauEnVol` posé ici (et non dans le timer) évite le clignotement
+    // « Aucune passion ne correspond » pendant les 160 ms d'anti-rebond —
+    // c'est très exactement le message trompeur qu'on corrige.
+    _panneauResultats = null;
+    if (referentielUtilisable()) _panneauEnVol = true;
     rafraichirPanneau();
+    _panneauTimer = setTimeout(function () {
+      _panneauTimer = null;
+      lancerRechercheReferentiel(q);
+    }, PANNEAU_DEBOUNCE);
   }
 
   function validerPersonnalisation() {
