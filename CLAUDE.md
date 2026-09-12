@@ -512,21 +512,36 @@ le seau `attachments` est **privé**. DKIM et DMARC sont **POSÉS** (`npm run ve
 La sauvegarde a **tourné** pour la première fois le 2026-09-12, archive chiffrée puis déchiffrée et
 relue dans le même run.
 
-Reste, et il n'y a plus que cela : **les interrupteurs du tableau de bord Supabase**, qui ne vivent
-ni dans le dépôt ni dans la base — Realtime « Allow public access » OFF (sans lui les policies ne
-sont pas opposables : un client qui omet `private: true` écoute encore), fournisseur Anonymous
-désactivé, protection des mots de passe compromis. ⚠️ Et **Brevo doit marquer le domaine
-« authentifié »** : le DNS est nécessaire, il n'est pas suffisant, et cela ne se lit pas depuis le
-DNS. Résidus assumés déjà écrits plus bas : identité déclarative de l'appelant entre comptes,
-oracles pour un compte connecté.
+**CETTE LISTE EST VIDE DEPUIS LE 2026-09-12.** Les quatre gestes hors dépôt qu'elle nommait —
+Realtime « Allow public access » OFF, fournisseur Anonymous désactivé, protection des mots de passe
+compromis, et l'« authentifié » de Brevo — sont **tous constatés faits**, les deux premiers par le
+run 5 de `controle-realtime.yml`, les deux autres sur les tableaux de bord Brevo et Supabase le
+même jour. Le raisonnement de chacun reste juste (un DNS qui résout ne dit rien de ce que le
+fournisseur en a conclu ; sans « Allow public access » OFF les policies Realtime ne sont pas
+opposables) — ce sont les FAITS qui ont changé. Résidus assumés déjà écrits plus bas : identité
+déclarative de l'appelant entre comptes, oracles pour un compte connecté.
 
 > **MESURÉ LE 2026-09-12 (run 5 de `controle-realtime.yml`) — DEUX DES TROIS SONT FAITS.**
 > « Allow public access » est **COUPÉ** : le canal public est refusé avec, en toutes lettres,
 > `PrivateOnly: This project only allows private channels` — les policies de `realtime.messages`
 > sont donc bien opposables. Le fournisseur **Anonymous est DÉSACTIVÉ** (`signInAnonymously()`
 > refusé : « Anonymous sign-ins are disabled »). Ne plus les compter comme des gestes à faire.
-> Restent la protection des mots de passe compromis (non signalée par `get_advisors`, mais aucune
-> API ne l'expose : elle se constate à l'inscription) et l'« authentifié » de Brevo.
+> **ET LE TROISIÈME AUSSI, LE MÊME JOUR** : « Prevent use of leaked passwords » (API HaveIBeenPwned)
+> est **ACTIVÉ**, constaté sur Authentication → Email du tableau de bord. Aucune API ne l'expose et
+> `get_advisors` ne la signale pas : elle se lit là, ou se constate à l'inscription. L'« authentifié »
+> de Brevo est **ACQUIS** lui aussi, constaté sur son tableau de bord. **Plus aucun geste hors dépôt
+> n'est en attente.**
+> ⚠️ **DEUX RÉGLAGES VOISINS SONT RESTÉS À OFF, ET C'EST UN CHOIX À FAIRE, PAS UN OUBLI CONSTATÉ** :
+> « Secure password change » et « Require current password when updating ». Tant qu'ils sont éteints,
+> **une session volée suffit à changer le mot de passe** sans connaître l'ancien ni se
+> réauthentifier — donc à verrouiller le compte hors de son propriétaire. Le minimum est par ailleurs
+> à **6** caractères (Supabase recommande 8) et « Password requirements » n'est pas renseigné. Rien
+> de cela n'est un défaut du produit ; c'est un arbitrage friction/sécurité qui appartient à
+> Benjamin, et il est écrit ici pour ne pas être redécouvert comme une surprise.
+> ⚠️ **Ne pas confondre avec le « Statut de la marque », qui reste rouge (« Sans marque »)** : c'est
+> le *branded subdomain*, qui remplace les liens de SUIVI de Brevo par le domaine du projet. Il ne
+> concerne que des campagnes marketing et n'a **aucun effet** sur la délivrabilité d'un e-mail de
+> confirmation. Un voyant rouge à côté d'un voyant vert appelle la réparation du mauvais.
 > ⚠️ **ET CE VERDICT A MIS TROIS RUNS À SORTIR POUR DEUX RAISONS QUI N'ÉTAIENT PAS DANS LE
 > PRODUIT** : le discriminant de refus ne connaissait que des mots anglais de permission et ratait
 > `PrivateOnly` (donc un vrai refus était classé « panne ») ; et le `bash -e` que GitHub pose sur
@@ -817,8 +832,11 @@ silence. Mesuré le 2026-09-12 sur le DNS public (8.8.8.8 et 1.1.1.1), avec tém
 **quatre** enregistrements résolvent — `brevo-code`, les deux CNAME `brevo1/brevo2._domainkey` vers
 `b1/b2.passio-app-fr.dkim.brevo.com`, et `_dmarc` en `p=none`. Et le piège documenté est évité : la
 cible des CNAME n'est **pas** complétée par le domaine, donc le point final a bien été posé.
-⚠️ **Ne pas en conclure que l'e-mail est réglé** : le DNS est nécessaire, il n'est pas suffisant —
-Brevo doit encore marquer le domaine « authentifié », et cela ne se lit PAS depuis le DNS.
+⚠️ **Le DNS ne suffisait pas, et la seconde marche est FRANCHIE** : Brevo devait encore marquer le
+domaine « authentifié », ce qui ne se lit PAS depuis le DNS — c'est **FAIT**, constaté sur son
+tableau de bord le 2026-09-12 (`passio-app.fr` → « Authentifié »). Garder la distinction : un
+enregistrement DNS qui résout ne dit rien de ce que le fournisseur en a conclu ; il faut aller le
+lire chez lui.
 ⚠️ **La leçon de méthode** : ce point est resté « ouvert » des jours durant parce que personne
 n'avait de moyen de le MESURER, et qu'une absence de plainte ressemble à une absence de défaut.
 `npm run verif:dns` (`scripts/verifier-dns-email.mjs`, aucune dépendance) le tranche en deux
