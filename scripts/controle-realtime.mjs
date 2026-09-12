@@ -49,7 +49,15 @@
 import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 
-const URL = process.env.SUPABASE_URL || "https://njkiyoklssvefstljemx.supabase.co";
+// ⚠️ NE JAMAIS APPELER CETTE CONSTANTE `URL` : elle MASQUERAIT le constructeur
+// global du même nom, et `new URL(...)` plus bas lèverait « URL is not a
+// constructor ». Défaut commis puis mesuré le 2026-09-12 : le `try/catch` de
+// `anonDuProduit` avalait l'exception et rendait une clé VIDE, donc le contrôle
+// sortait en « clé anon absente » — un message qui désignait un secret manquant
+// alors que le vrai coupable était un nom de variable. ⚠️ Et le test local ne
+// pouvait PAS le voir : il exerçait la lecture de fichier HORS du module, donc
+// sans l'ombre. Tester la fonction ne suffit pas, il faut tester le CÂBLAGE.
+const SUPA_URL = process.env.SUPABASE_URL || "https://njkiyoklssvefstljemx.supabase.co";
 const SERVICE = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 // ⚠️ La clé `anon` est PUBLIQUE par construction (elle vit en clair dans
 // `app-08` et part dans chaque page servie) : la relire depuis la source plutôt
@@ -77,13 +85,13 @@ const jetable = (p) => `e2e_rt_${p}_${Date.now()}_${Math.random().toString(36).s
  *  `signUp` ne rendrait aucune session (et consommerait le quota Brevo). */
 async function compte(prefixe) {
   const email = jetable(prefixe);
-  const r = await fetch(`${URL}/auth/v1/admin/users`, {
+  const r = await fetch(`${SUPA_URL}/auth/v1/admin/users`, {
     method: "POST",
     headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}`, "Content-Type": "application/json" },
     body: JSON.stringify({ email, password: MDP, email_confirm: true }),
   });
   if (!r.ok) throw new Error(`création du compte ${prefixe} : HTTP ${r.status} ${await r.text()}`);
-  const cli = createClient(URL, ANON, { auth: { persistSession: false, autoRefreshToken: false } });
+  const cli = createClient(SUPA_URL, ANON, { auth: { persistSession: false, autoRefreshToken: false } });
   const { data, error } = await cli.auth.signInWithPassword({ email, password: MDP });
   if (error) throw new Error(`connexion ${prefixe} : ${error.message}`);
   return { cli, uid: data.user.id, email };
@@ -163,7 +171,7 @@ try {
   else { lignes.push(["❌", "la sonnerie ENTRANTE est MORTE", `B ne lit pas ring:<B> (${entrant})`]); sortie = 1; }
 
   // ④ Un visiteur SANS COMPTE ne doit rien lire, réglage coupé ou non.
-  const visiteur = createClient(URL, ANON, { auth: { persistSession: false, autoRefreshToken: false } });
+  const visiteur = createClient(SUPA_URL, ANON, { auth: { persistSession: false, autoRefreshToken: false } });
   const sansCompte = await joindre(visiteur, `ring:${B.uid}`, true);
   if (sansCompte === "OUVERT") {
     lignes.push(["❌", "un VISITEUR lit une sonnerie privée", "policy passio_rt_recevoir contournée — à traiter en priorité"]);
@@ -179,7 +187,7 @@ try {
   // ouvrirait TOUTES les policies `authenticated` à n'importe qui, sans compte.
   // ⚠️ Si ça marche, ça CRÉE un compte : on le supprime immédiatement, sinon ce
   // contrôle laisserait derrière lui exactement ce qu'il dénonce.
-  const anonCli = createClient(URL, ANON, { auth: { persistSession: false, autoRefreshToken: false } });
+  const anonCli = createClient(SUPA_URL, ANON, { auth: { persistSession: false, autoRefreshToken: false } });
   let essaiAnon;
   try { essaiAnon = await anonCli.auth.signInAnonymously(); }
   catch (e) { essaiAnon = { error: { message: String(e && e.message || e) } }; }
@@ -190,7 +198,7 @@ try {
       `un compte sans e-mail vient d'être créé (${uid.slice(0, 8)}…) : toutes les policies « authenticated » sont ouvertes à qui le demande`]);
     sortie = 1;
     // Ne pas laisser le compte derrière soi.
-    const sup = await fetch(`${URL}/auth/v1/admin/users/${uid}`, {
+    const sup = await fetch(`${SUPA_URL}/auth/v1/admin/users/${uid}`, {
       method: "DELETE",
       headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}` },
     });
