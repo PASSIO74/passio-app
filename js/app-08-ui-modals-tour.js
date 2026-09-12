@@ -2661,7 +2661,13 @@ async function boot() {
           // jeton manquait ou avait expiré n'a plus de cause une fois la session
           // rétablie — sinon les compteurs d'inscrits resteraient vides jusqu'au
           // prochain rechargement complet.
-          try { _attendeesRefusLecture = false; } catch (e) {}
+          // ⚠️ ET LE MÉMO DES COLONNES D'UNE RENCONTRE AVEC (2026-09-12) : il
+          // survivait, lui, à la cause qu'il protégeait — `address`, `contact` et
+          // `conv_id` revenaient vides jusqu'au prochain rechargement complet.
+          // UNE SEULE levée pour les deux (`_oublierRefusLecturesIRL`) : deux
+          // levées côte à côte finissent par diverger, et c'est la seconde qu'on
+          // oublie.
+          try { if (typeof _oublierRefusLecturesIRL === "function") _oublierRefusLecturesIRL(); } catch (e) {}
           // ⚠️ setTimeout OBLIGATOIRE (piège supabase-js documenté) : le client tient
           // un verrou auth pendant l'émission de l'événement ; toute requête Supabase
           // lancée DANS le callback attend ce verrou → deadlock, et la promesse de
@@ -4509,6 +4515,32 @@ function _attendeesRefusMemorise(err, ou) {
   console.warn("participants (" + ou + ") : lecture refusée — " + (code || "?") + " " + msg);
   try { if (typeof diagLog === "function") diagLog("event_attendees refusé (" + ou + "): " + (code || msg)); } catch (e) {}
   return true;
+}
+
+// ── UN JETON FRAIS LÈVE LES SILENCES DE L'IRL (2026-09-12) ───────────────────
+// ⚠️ `_eventColsPubliquesSeulement` ÉTAIT LE SEUL MÉMO DE REFUS DU FICHIER À
+// SURVIVRE À SA CAUSE. Il se pose dès qu'un refus répond à la demande PRIVÉE —
+// or un refus, ce n'est pas seulement « ce rôle n'a pas droit à ces colonnes »
+// (42501, définitif) : c'est aussi « jeton absent ou expiré » (PGRST301), et
+// celle-là s'efface d'elle-même au jeton suivant. Le mémo restait pourtant posé
+// pour TOUTE la session : `address`, `contact` et `conv_id` revenaient VIDES
+// jusqu'au prochain rechargement complet, donc l'adresse du rendez-vous et le
+// téléphone de l'organisateur absents pour un compte qui y a pleinement droit,
+// et « rejoindre la conversation » sans `conv_id` — pour un jeton qui avait
+// expiré le temps d'un démarrage (une application reprise au bout de quelques
+// heures : le cas NORMAL).
+// ⚠️ Son voisin `_attendeesRefusLecture` avait déjà sa levée sur
+// `SIGNED_IN`/`TOKEN_REFRESHED` — « un silence ne doit pas survivre à la cause
+// qu'il protégeait ». Les deux la partagent désormais, en UN SEUL point : deux
+// levées côte à côte finissent toujours par diverger, et c'est la seconde qu'on
+// oublie (le prochain mémo de cette famille s'inscrit ICI).
+// ⚠️ Coût d'une levée sur un refus qui, lui, était définitif (42501) : UN
+// aller-retour refusé de plus par rafraîchissement de jeton, soit ~1 par heure,
+// et le repli rend déjà la liste complète. C'est le même arbitrage que celui
+// accepté pour les participants.
+function _oublierRefusLecturesIRL() {
+  _attendeesRefusLecture = false;
+  _eventColsPubliquesSeulement = false;
 }
 
 async function supaLoadEvents() {

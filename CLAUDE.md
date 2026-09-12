@@ -149,6 +149,66 @@ Verrou : `tests/e2e/pwa-maj-silencieuse.spec.js` (4), dont ① et ② éprouvés
 
 ⚠️ **CE QUE LA CHAÎNE NE SAIT PAS FAIRE, ET QUI SE VOIT ICI** : les consignes de l'issue lui interdisent d'écrire ailleurs que dans `js/*.js`, `styles.css`, `index.html`, `sw.js`. Elle produit donc un correctif et un verrou, **jamais une fiche**. La leçon reste dans un message de commit que personne ne relit — cette section-ci a été écrite à la main. **Un correctif automatique sans mémoire écrite rejoue la même enquête au défaut suivant** : tant que ce point n'est pas réglé, toute réparation de la sentinelle demande qu'on vienne écrire sa fiche après elle.
 
+## 🔁 401 SUR `events` / `event_attendees` — LA MÊME ENQUÊTE TROIS FOIS DANS LA JOURNÉE (2026-09-12)
+
+Trois issues `[SENTINELLE]` le même jour, deux tables, **une seule cause** — et la troisième ne
+décrivait plus aucun défaut vivant. C'est la fiche que la chaîne ne sait pas écrire (section
+précédente) : sans elle, elle rejoue l'enquête au tour suivant, ce qui est très exactement ce qui
+s'est passé ici.
+
+**La cause, établie dans le code.** `migration_irl_donnees_privees.sql` (08/09) retire à `anon`
+`events.address` et `events.contact` et lui révoque `event_attendees` ; `migration_ouverture_publique`
+(11/09) y ajoute `events.conv_id`. Le client demandait pourtant la liste PRIVÉE **d'abord, pour tout
+le monde**, et ne retombait sur la publique qu'APRÈS le refus — une porte fermée exprès, à laquelle
+on frappait une fois par session sans compte (`js/first-run.js` → `chargerContenuPublic` →
+`supaLoadEvents`, PLUS le bloc « 3. Les autres requêtes » de `supaInit` : deux refus par démarrage).
+⚠️ **PostgREST refuse la requête ENTIÈRE (42501) dès qu'UNE colonne manque au rôle** : ce n'est pas
+« deux champs masqués », c'est « aucune rencontre ». ⚠️ **401 et non 403** : 403 quand un compte est
+authentifié, **401 quand le rôle est `anon`**. Lire le CODE avant d'accuser une policy — la policy
+était juste, le GRANT manque exprès, donc la cause n'est PAS une règle d'accès (hors périmètre de la
+chaîne) mais un appel client qui ne devait plus partir. Correctifs : `_compteAuthReel()` (un uuid
+Supabase, jamais `MY_UID`) décide des colonnes, et `_attendeesLisibles()` de la table des
+participants. Verrous : `tests/e2e/evenements-cols-visiteur.spec.js` et
+`tests/e2e/participants-visiteur.spec.js`.
+
+⚠️ **« 0 COMPTE IDENTIFIÉ » EST LA PREUVE, PAS UN DÉTAIL.** `telemetry.js` ne transmet un `user_id`
+que si `MY_UID` est un **uuid d'auth** (`authUserId`) : 17 refus / 0 compte veut dire « 17 refus chez
+des clients SANS compte », donc le chemin visiteur, donc celui que le correctif ferme. C'est le
+discriminant à lire en premier sur tout refus d'écriture ou de lecture remonté par ce canal.
+
+⚠️ **ET LE DISCRIMINANT QUI DIT « CE N'EST PAS UN PROBLÈME DE JETON » MALGRÉ LE LIBELLÉ DE L'ISSUE** :
+« refusé — jeton absent ou expiré » est le **gabarit** de `libelleApi()` pour tout 401, pas une
+mesure. Un jeton mort ne connaît pas les tables : il ferait tomber `posts`, `profiles` et `passions`
+dans le même démarrage. Un 401 qui ne frappe QUE `events` et `event_attendees` désigne le GRANT de
+colonnes, jamais la session.
+
+⚠️ **POURQUOI LA TROISIÈME ISSUE EXISTE, ET C'EST LA CINQUIÈME FAÇON DONT LE CANAL MANQUE SA CIBLE.**
+`dejaCorrige` se tait quand **toutes** les occurrences précèdent la **FERMETURE** d'une enquête
+identique (le titre est déterministe : `GET /rest/v1/events 401 · 138b32a1`). Or une enquête se ferme
+à la **FUSION** de sa PR, et le défaut ne s'arrête qu'à son **DÉPLOIEMENT** — strictement plus tard
+(cycle CI ~30 min), et plus tard encore pour toute page déjà chargée, qui garde son `app.js` jusqu'à
+son prochain démarrage. La fenêtre de 24 h porte donc des occurrences **postérieures à la clôture et
+antérieures au correctif**, et une seule suffit à rouvrir. **Une réouverture n'est pas une récidive
+tant que la dernière occurrence n'est pas postérieure au DÉPLOIEMENT.**
+⚠️ **Ce qui se mesure avant de croire à une quatrième**, et ça ne se lit pas dans le dépôt : le
+`app.js` **servi** par https://passio-app.netlify.app porte-t-il `_compteAuthReel` ? Si oui, la
+cause reportée est éteinte et il ne reste qu'à refermer. Une fiche du dépôt ne prouve pas l'état de
+la production (même règle que pour l'interrupteur `irl_adult_only`).
+
+⚠️ **CE QUI RESTAIT VRAIMENT OUVERT DANS LA MÊME FONCTION : UN MÉMO QUI SURVIVAIT À SA CAUSE.**
+`_eventColsPubliquesSeulement` se pose sur **n'importe quel** refus de la demande privée — donc aussi
+sur un `PGRST301` « jeton absent ou expiré », qui n'a plus aucune cause au jeton suivant. Il tenait
+pourtant toute la session : pour un compte qui a **pleinement droit** à ces colonnes et dont le jeton
+avait juste expiré le temps d'un démarrage (application reprise après quelques heures : le cas
+normal), `address`, `contact` et `conv_id` revenaient VIDES jusqu'au rechargement complet — adresse
+du rendez-vous absente, téléphone de l'organisateur absent, « rejoindre la conversation » sans
+`conv_id`. Son voisin `_attendeesRefusLecture` avait sa levée sur `SIGNED_IN`/`TOKEN_REFRESHED`
+depuis le début (« un silence ne doit pas survivre à la cause qu'il protégeait ») ; les deux la
+partagent désormais en **UN SEUL point**, `_oublierRefusLecturesIRL()` — deux levées côte à côte
+finissent par diverger, et c'est la seconde qu'on oublie. Verrou : `evenements-cols-visiteur.spec.js`
+⑤ (le CÂBLAGE, à la source — une levée sans appelant serait le défaut `_notifierMessage`) et ⑤ bis
+(le comportement).
+
 ## 🌐 « Failed to fetch » AU DÉMARRAGE — les LECTURES n'avaient pas de file, les écritures si (2026-09-10)
 
 Mesuré sur 14 jours (`telemetry_events`, `type='api'`, `http_status = 0`) : **448 appels morts sur 46 sessions** — `passions`, `user_state`, `posts`, `profiles`, `follows`, `notifications`, `conv_members`, `video_lives`. La requête n'a jamais atteint PostgREST.
