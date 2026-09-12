@@ -87,7 +87,7 @@ contient() { # libellé, motif, texte
 }
 
 # ── SOCLE : l'état RÉEL de la production, mesuré le 2026-09-12 ──────────────
-# Les trois fonctions sont recopiées de `pg_get_functiondef` en production :
+# Les cinq fonctions sont recopiées de `pg_get_functiondef` en production :
 # mêmes corps, mêmes signatures, AUCUN `set search_path` — c'est le défaut.
 psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 >/dev/null <<'SQL'
 create schema auth;
@@ -114,7 +114,7 @@ create table public.passions (
   sort_order int, status text default 'active', normalized_label text, aliases text[] default '{}',
   is_broad boolean default false);
 
--- ── Les TROIS fonctions maison, telles quelles, SANS search_path ──
+-- ── Les CINQ fonctions maison, telles quelles, SANS search_path ──
 create function public.unaccent_immutable(txt text) returns text language sql immutable strict as
 $fn$
   select translate(
@@ -219,6 +219,7 @@ verifier "les cinq fonctions maison n'ont AUCUN search_path" "5" \
   "$(Q "select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
         where n.nspname='public' and p.proconfig is null
           and p.proname in ('unaccent_immutable','storage_chemin_autorise','rechercher_passions',
+                            'identifiants_figes','follows_identifiants_figes',
                             'identifiants_figes','follows_identifiants_figes');")"
 verifier "…et la recherche de passions fonctionne (état de départ)" "1" \
   "$(Q "select count(*) from public.rechercher_passions('randonnee', 5);")"
@@ -324,28 +325,32 @@ echo "── ⑧ LA MIGRATION REFUSE DE S'APPLIQUER SI ELLE CASSE LA RECHERCHE �
 # ⚠️ LE CONTRÔLE LE PLUS IMPORTANT DU BANC. La ligne ④ du verdict n'est pas un
 # rapport, c'est une GARDE : elle APPELLE `rechercher_passions`. Sur une base où
 # le chemin choisi ne résoudrait pas `similarity`, elle lève, la transaction est
-# annulée, et les trois `ALTER` sont DÉFAITS. Un correctif d'hygiène ne doit
+# annulée, et les cinq `ALTER` sont DÉFAITS. Un correctif d'hygiène ne doit
 # jamais pouvoir laisser le produit muet — on le prouve en retirant pg_trgm.
 Q "alter function public.unaccent_immutable(text) reset search_path;
    alter function public.storage_chemin_autorise(text, text) reset search_path;
    alter function public.rechercher_passions(text, integer) reset search_path;
+   alter function public.identifiants_figes() reset search_path;
+   alter function public.follows_identifiants_figes() reset search_path;
    drop extension pg_trgm;" >/dev/null
-verifier "socle de la mutation : les trois chemins sont de nouveau absents" "3" \
+verifier "socle de la mutation : les cinq chemins sont de nouveau absents" "5" \
   "$(Q "select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
         where n.nspname='public' and p.proconfig is null
-          and p.proname in ('unaccent_immutable','storage_chemin_autorise','rechercher_passions');")"
+          and p.proname in ('unaccent_immutable','storage_chemin_autorise','rechercher_passions',
+                            'identifiants_figes','follows_identifiants_figes');")"
 if psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 -f "$MIGRATION" >/dev/null 2>&1; then
   ko=$((ko+1)); printf '  ❌ %s\n' "la migration s'est appliquée alors que la recherche est cassée"
 else
   ok=$((ok+1)); printf '  ✅ %s\n' "sans pg_trgm, la migration ÉCHOUE au lieu de commiter"
 fi
-verifier "  …et AUCUN chemin n'a été laissé derrière (transaction annulée)" "3" \
+verifier "  …et AUCUN chemin n'a été laissé derrière (transaction annulée)" "5" \
   "$(Q "select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
         where n.nspname='public' and p.proconfig is null
-          and p.proname in ('unaccent_immutable','storage_chemin_autorise','rechercher_passions');")"
+          and p.proname in ('unaccent_immutable','storage_chemin_autorise','rechercher_passions',
+                            'identifiants_figes','follows_identifiants_figes');")"
 
 echo
 echo "───────────────────────────────────────────────────────────────────────"
 echo "  $ok contrôle(s) vert(s), $ko rouge(s)"
 [ "$ko" -eq 0 ] || { echo "❌ BANC ROUGE"; exit 1; }
-echo "✅ BANC VERT — les trois chemins sont figés, et la recherche survit aux deux états de pg_trgm"
+echo "✅ BANC VERT — les cinq chemins sont figés, et la recherche survit aux deux états de pg_trgm"

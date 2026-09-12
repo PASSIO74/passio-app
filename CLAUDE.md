@@ -829,8 +829,14 @@ les déploiements. C'est un contrôle d'exploitation, pas une gate de code.
 ## 🧭 `search_path` FIGÉ — et pourquoi `''` n'est PAS la bonne réponse partout (2026-09-12)
 
 `get_advisors` signale « Function Search Path Mutable » sur trois fonctions de `public`.
-Migration : `migrations/migration_search_path_fonctions.sql` (une transaction, verdict à 4 lignes)
-· banc `tests/sql/migration-search-path.test.sh` (23 contrôles, gate CI).
+Migration : `migrations/migration_search_path_fonctions.sql` (une transaction, verdict à 6 lignes)
+· banc `tests/sql/migration-search-path.test.sh` (28 contrôles, gate CI).
+
+⚠️ **ÉTENDUE AUX CINQ FONCTIONS LE 2026-09-12 (soir).** `identifiants_figes` et
+`follows_identifiants_figes` y sont entrées : elles prennent le chemin VIDE (corps relus en
+production — elles ne touchent aucune relation, seulement `old`/`new` et `pg_catalog`). Le banc les
+**EXERCE** après le figement, il ne se contente pas de lire `proconfig` : vérifier l'attribut ne
+vérifie pas le comportement, et une garde d'intégrité muette ne se voit nulle part.
 
 ⚠️ **CETTE MIGRATION N'EST PAS APPLIQUÉE EN PRODUCTION — mesuré le 2026-09-12.** `get_advisors` y
 signale toujours `rechercher_passions` ET `storage_chemin_autorise`. Le banc est vert, le fichier
@@ -908,6 +914,69 @@ le corps de chaque fonction et en se demandant **sur QUOI elle répond** — la 
 `GRANT` — donc refus total pour `anon` et `authenticated`. C'est l'interrupteur serveur du 18+,
 et son inaccessibilité EST sa protection (fiche « ADMISSION 18+ »). Ne pas « corriger » en
 ajoutant une policy.
+
+## 🧹 QUATRE SURFACES QUI VIEILLISSAIENT SANS TÉMOIN (2026-09-12, le soir)
+
+Aucun de ces défauts ne lève d'erreur. Ils ont en commun d'être sur des chemins que **plus personne
+ne traverse** — et une surface que personne ne traverse n'est pas morte : elle vieillit sans témoin.
+
+⚠️ **① LA LANDING RACONTAIT UNE APPLICATION QUI N'EXISTE PLUS.** Badge « Beta privée » (rideau levé
+le 11/09), pilier « Documente tes voyages » (Carnet de voyage RETIRÉ par ADR-011 §6) et **deux
+piliers 🤝 en double**, même emoji et même promesse. Elle ne s'affiche plus QUE pour un appareil qui
+porte un compte dont la session n'est pas retrouvée — jeton expiré, hors ligne, SDK non chargé :
+c'est-à-dire quelqu'un qui REVIENT. Badge réécrit sur deux faits vérifiables : gratuit (les CGU le
+promettent) et 18 ans et +. ⚠️ **Et la politique de confidentialité disait le CONTRAIRE sur le même
+écran** (« beta privée », « l'accès est protégé par un code ») : corrigée, et
+`PASSIO_CONFIDENTIALITE_VERSION` passe à `2026-09-12` — **la version SUIT le texte**, sinon « a
+accepté » ne désigne plus rien. `access-gate.js` garde son badge « Beta privée » : lui n'est peint
+que quand le rideau est ARMÉ, il reste juste.
+
+⚠️ **② LES AVATARS PARTAIENT EN PLEINE RÉSOLUTION, ET « UN SEUL POINT D'ENTRÉE » ÉTAIT FAUX.**
+`passioThumb` n'avait que trois appelants, tous sur des images de publication. Le correctif vit dans
+`avatarBg` (39 appelants) — mais **neuf autres surfaces ne passent pas par lui** : photos de groupe
+(liste Messages, en-tête de conversation, configurateur), photos et couvertures de passion, tuile de
+profil, et mon propre avatar/couverture. La première version du commentaire écrivait « ici et nulle
+part ailleurs » ; c'était faux, et `audit-passio` l'a relevé. **Un point d'entrée unique pour SES
+appelants n'est pas un point d'entrée unique pour la fonctionnalité — le vérifier au `grep`.**
+⚠️ **La largeur est un ARGUMENT** (192 par défaut, 352 pour les avatars de 116 px, 880 pour les
+couvertures) : un nombre unique serait soit flou sur le grand, soit du gaspillage sur les petits.
+⚠️ **La couleur passe SOUS la photo, et c'est une garde** : un avatar est un `background`, donc sans
+`onerror` — une image en échec ne laissait ni couleur (pas posée) ni emoji (`avatarInner` rend `""`
+dès qu'une photo existe). Un rond vide, sans une erreur.
+⚠️ **ORDRE DE GRANDEUR À DIRE JUSTE** : `changeAvatarPhoto` recadre à 480×480 en JPEG 0,9, donc un
+avatar PRODUIT PAR L'APPLICATION pèse quelques dizaines de Ko. Le fichier de 2,59 Mo mesuré dans le
+seau est un RÉSIDU d'import direct, pas la norme. Le gain réel est 480 → 192 px. Une fiche qui
+surévalue finit par ne plus être crue.
+
+⚠️ **③ LE MOTEUR IA CHERCHAIT DANS 19 PASSIONS, ET RETIRER LE TEXTE DE REPLI NE SUFFISAIT PAS.**
+`aiGenerateResponse` devient asynchrone et consulte le référentiel ; son unique appelant l'attend en
+**rejouant** la garde « la question a-t-elle changé ? » (celle d'origine est évaluée avant cette
+attente-là, la plus longue). ⚠️ **Mais la PORTE était au-dessus** : `aiDetectIntent` routait
+`voyage|carnet|live|cdv` vers une branche « 📔 Carnets de Voyage » renvoyant à un onglet retiré — et
+`index.html` livre un raccourci « ✈️ Voyage » qui pose exactement cette question. Ces requêtes
+n'atteignaient donc jamais le référentiel. Intention et branche RETIRÉES.
+⚠️ **On LOGUE avant de replier** (`diagLog`) : le symptôme d'une erreur avalée dans ce bloc est
+EXACTEMENT celui du défaut qu'on vient de fermer — le moteur ne rend que les 19 du socle — et sans
+trace dans `client_errors` la Sentinelle ne peut pas le voir.
+⚠️ La coupure `flat_passions_v1` doit couper **cette surface aussi** (`moteur.actif()`), comme les
+quatre autres appelants de `chercherAsync`.
+
+⚠️ **④ ET MON PROPRE VERROU ÉTAIT VERT SUR LE DÉFAUT.** Trouvé en le RÉINJECTANT, pas en le
+relisant : il lisait `innerText`, **sensible au RENDU**, et le badge vit dans `.landing-header`, que
+le navigateur ne peint pas tant que la landing est inactive — il mesurait 1 472 caractères sans le
+badge et passait quoi qu'il arrive. `textContent` lit le DOM. Même famille qu'`offsetParent` qui ne
+mesure rien sur un `position: fixed`.
+
+⚠️ **AU PASSAGE, DEUX PRISES D'`audit-passio` QUI NE VENAIENT PAS DU LOT** : un attribut `style`
+délimité par des APOSTROPHES autour d'`avatarBg`, qui émet ses propres `url('…')` — la balise se
+refermait sur la première apostrophe dès qu'un compte de la liste « démarrer une conversation »
+portait une photo (pas une injection, `_cssUrl` encode celles de l'URL) ; et le socle de
+`audit-echappement` dont les clés portent l'EXPRESSION : la changer sort l'entrée du socle, et
+régénérer le fichier en entier RETIRE treize entrées étrangères au lot — ajouter à la fin, ne jamais
+retrier.
+
+Verrous : `tests/e2e/avatars-et-ia-referentiel.spec.js` (10) et `smoke.spec.js` (+1). Réinjection
+faite pour les quatre.
 
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)
 

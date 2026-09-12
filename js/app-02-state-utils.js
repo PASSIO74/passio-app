@@ -2164,17 +2164,23 @@ function _cssColor(c) {
 //
 // ⚠️ LES AVATARS ÉTAIENT SERVIS EN PLEINE RÉSOLUTION (2026-09-12). `passioThumb`
 // existe depuis le lot CDN et n'avait que TROIS appelants, tous sur des images de
-// PUBLICATION : aucun avatar n'y passait. Mesuré : un avatar de 2,59 Mo téléchargé
-// pour être affiché dans un rond de 40 px, à chaque utilisateur et à chaque
-// chargement. Ce n'est plus une question de facture — tout le média passe par le
-// CDN Netlify depuis le 2026-09-11 — c'est une question de charge utile sur
-// données mobiles, et elle se paie à CHAQUE rendu.
+// PUBLICATION : aucun avatar n'y passait.
+// ⚠️ ET L'ORDRE DE GRANDEUR SE DIT JUSTE, SOUS PEINE DE NE PLUS ÊTRE CRU :
+// `changeAvatarPhoto` recadre à 480×480 en JPEG 0,9, donc un avatar PRODUIT PAR
+// L'APPLICATION pèse quelques dizaines de Ko. Le fichier de 2,59 Mo mesuré dans
+// le seau est un RÉSIDU (import direct d'avant le recadrage), pas la norme. Le
+// gain réel est 480 → 192 px, soit environ quatre fois moins de pixels à chaque
+// rendu — vrai, utile, et beaucoup plus modeste que « 2,59 Mo pour 40 px ».
 //
-// ⚠️ LE CORRECTIF VIT ICI, ET NULLE PART AILLEURS. `avatarBg` a TRENTE-NEUF
-// appelants : les rattraper un par un aurait laissé le prochain l'oublier, faute
-// déjà commise par `passioThumb` lui-même — trois appelants, et le quatrième
-// (l'avatar) n'est jamais venu. Un seul point d'entrée, donc un seul oubli
-// possible, et il est ici.
+// ⚠️ CE POINT D'ENTRÉE COUVRE SES TRENTE-NEUF APPELANTS, ET RIEN DE PLUS.
+// Il ne faut PAS lire « le correctif vit ici et nulle part ailleurs » : la
+// première version de ce commentaire l'écrivait, et c'était faux. NEUF autres
+// surfaces peignent une image d'utilisateur sans passer par ici — photos de
+// groupe (liste Messages, en-tête de conversation, configurateur), photos et
+// couvertures de passion, tuile de profil, et mon propre avatar/couverture.
+// Elles ont été rattrapées une par une le même jour, et le verrou ④ les nomme.
+// **Un point d'entrée unique pour SES appelants n'est pas un point d'entrée
+// unique pour la fonctionnalité** — le vérifier au `grep`, pas au raisonnement.
 //
 // ⚠️ LA LARGEUR EST UN ARGUMENT, PAS UNE CONSTANTE. Les avatars vont de 22 px
 // (`.avatar.xs`) à 116 px (`.main-profile-avatar`) : un nombre unique servirait
@@ -4984,7 +4990,7 @@ function passionTileHTML(o) {
   var selected = !!o.selected;
   var dimmed = !!o.dimmed;
   var avatarContent = o.photoUrl
-    ? '<img loading="lazy" decoding="async" class="profile-tile-photo" src="' + safeUrlAttr(o.photoUrl) + '" alt="' + escapeHtml(label) + '"'
+    ? '<img loading="lazy" decoding="async" class="profile-tile-photo" src="' + safeUrlAttr(passioThumb(o.photoUrl, 192)) + '" alt="' + escapeHtml(label) + '"'
       + (o.fallbackUrl ? ' onerror="this.onerror=null;this.src=\'' + escapeJsArg(o.fallbackUrl) + '\'"' : '')
       + '/><span class="profile-tile-emoji-badge">' + escapeHtml(emoji) + '</span>'
       + '<span class="profile-tile-glyph" aria-hidden="true">' + escapeHtml(emoji) + '</span>'

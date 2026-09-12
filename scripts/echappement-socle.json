@@ -244,6 +244,18 @@
     {
       "cle": "js/app-09-boot-pwa.js | style | b.css",
       "raison": "Fond de conversation issu de la constante CONV_BGS."
+    },
+    {
+      "cle": "js/app-06-reels-partage.js | style | g.coverPhoto ? \"url(\" + safeUrlAttr(passioThumb(g.coverPhoto, 880)) + \") center/cover\" : \"",
+      "raison": "Aperçu de MA couverture : safeUrlAttr d'un côté, littéral de l'autre. `passioThumb` n'ajoute que `?width=&quality=` et s'applique AVANT le désinfectant, qui reste le dernier à toucher la chaîne."
+    },
+    {
+      "cle": "js/app-06-reels-partage.js | style | photo ? \"background:url(\" + safeUrlAttr(passioThumb(photo, 192)) + \") center/cover;\" : \"ba",
+      "raison": "Photo de passion : safeUrlAttr d'un côté, escapeHtml de l'autre. Miniature d'abord, désinfectant ensuite."
+    },
+    {
+      "cle": "js/app-06-reels-partage.js | style | cover ? \"background:url(\" + safeUrlAttr(passioThumb(cover, 880)) + \") center/cover;\" : \"ba",
+      "raison": "Couverture de passion : safeUrlAttr d'un côté, variable CSS de l'autre. Miniature d'abord, désinfectant ensuite."
     }
   ]
 }

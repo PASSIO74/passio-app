@@ -1,11 +1,11 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- SEARCH_PATH FIGÉ SUR LES TROIS FONCTIONS MAISON QUI N'EN AVAIENT PAS
+-- SEARCH_PATH FIGÉ SUR LES CINQ FONCTIONS MAISON QUI N'EN AVAIENT PAS
 -- (2026-09-12)
 --
 -- Un seul copier-coller dans l'éditeur SQL de Supabase (canal ③ d'ADR-012),
--- UNE transaction, REJOUABLE, tableau de verdict à quatre lignes.
+-- UNE transaction, REJOUABLE, tableau de verdict à six lignes.
 --
--- ⚠️ AUCUNE de ces trois fonctions n'est `SECURITY DEFINER` : elles s'exécutent
+-- ⚠️ AUCUNE de ces cinq fonctions n'est `SECURITY DEFINER` : elles s'exécutent
 -- avec les droits de l'appelant. Ce lot est donc de la DÉFENSE EN PROFONDEUR,
 -- pas la fermeture d'une porte ouverte — ne pas le présenter comme une faille.
 -- Ce qu'il ferme : une fonction sans `search_path` résout ses appels NON
@@ -23,8 +23,9 @@
 -- (gin_*, gtrgm_*, similarity*, word_similarity*, set_limit, show_limit,
 -- show_trgm, strict_word_similarity*). On n'y touche PAS : elles sont la
 -- propriété de l'extension, un `ALTER` serait perdu à sa prochaine mise à jour,
--- et ce n'est pas notre code. Les trois qui restent sont les nôtres, et ce sont
--- exactement les trois que le linter nomme.
+-- et ce n'est pas notre code. Les cinq qui restent sont les nôtres, et ce sont
+-- exactement les cinq que le linter nomme (trois à la rédaction, deux de plus
+-- depuis le lot d'ouverture du 11/09 : la liste d'un linter n'est pas figée).
 --
 -- ── LE PIÈGE, ET IL EST SÉRIEUX ──
 --
@@ -56,7 +57,7 @@
 -- déjà qualifiées ou du `pg_catalog` (toujours résolu, quel que soit le
 -- chemin) : elles prennent le réglage le PLUS STRICT, `''`. Seule
 -- `rechercher_passions` a besoin d'un chemin, et seulement à cause de
--- `similarity`. Harmoniser les trois sur `public, extensions, pg_temp`
+-- `similarity`. Harmoniser les cinq sur `public, extensions, pg_temp`
 -- affaiblirait les deux premières ; harmoniser sur `''` casserait la
 -- troisième. Le commentaire de chaque ligne dit ce qu'elle résout.
 --
@@ -128,7 +129,7 @@ with v(ordre, correctif, ok) as (
                    join pg_namespace n on n.oid = p.pronamespace
                    where n.nspname = 'public' and p.proname = 'rechercher_passions'), false)
   -- ⚠️ Le contrôle qui compte vraiment : la recherche de passions RÉPOND
-  -- ENCORE. Un chemin figé qui casserait `similarity` rendrait les trois
+  -- ENCORE. Un chemin figé qui casserait `similarity` rendrait les cinq
   -- lignes ci-dessus vertes et le produit muet.
   union all select 4, '④ identifiants_figes : chemin vide',
          coalesce((select 'search_path=""' = any(p.proconfig) from pg_proc p

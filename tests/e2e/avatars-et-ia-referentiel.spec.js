@@ -92,12 +92,26 @@ test("④ SOURCE : avatars et couvertures demandent tous une taille", () => {
   // serait flou sur un écran à 3×. Mesuré à la source — le rendu ne le dit pas.
   expect(lire("app-04-comments-shop.js")).toContain("avatarBg(user, 352)");
 
-  // Mon PROPRE profil ne passe PAS par `avatarBg` : il pose `backgroundImage` en
-  // direct. C'est exactement le genre de chemin qu'un correctif posé « au seul
-  // point d'entrée » laisse derrière lui.
+  // ⚠️ NEUF SURFACES NE PASSENT PAS PAR `avatarBg` et auraient survécu à un
+  // correctif posé « au seul point d'entrée ». Elles sont nommées ici une par
+  // une : c'est la seule façon qu'une dixième, ajoutée demain, se remarque.
   const app06 = lire("app-06-reels-partage.js");
-  expect(app06).toContain("passioThumb(g.avatarPhoto, 352)");
-  expect(app06).toContain("passioThumb(g.coverPhoto, 880)");
+  expect(app06).toContain("passioThumb(g.avatarPhoto, 352)");   // mon avatar
+  expect(app06).toContain("passioThumb(g.coverPhoto, 880)");    // ma couverture
+  expect(app06).toContain("passioThumb(_pPhoto, 192)");         // photo de passion
+  expect(app06).toContain("passioThumb(photo, 192)");           // passion, 56 px
+  expect(app06).toContain("passioThumb(cover, 880)");           // couverture de passion
+
+  const app04 = lire("app-04-comments-shop.js");
+  expect(app04).toContain("passioThumb(c.groupPhoto, 192)");    // groupes : Messages
+  expect(lire("app-05-config-profil.js")).toContain("passioThumb(c.groupPhoto, 192)");
+  expect(lire("app-02-state-utils.js")).toContain("passioThumb(o.photoUrl, 192)");
+
+  // ⚠️ `avatarBg` émet ses PROPRES apostrophes (`url('…')`) : un attribut style
+  // délimité par des apostrophes se refermait dessus, balise cassée dès qu'un
+  // compte de la liste « démarrer une conversation » portait une photo.
+  expect(app04, "l'attribut style est redevenu apostrophé autour d'avatarBg")
+    .not.toMatch(/style='[^']*background:" \+ avatarBg/);
 });
 
 test("⑤ SOURCE : le moteur IA est asynchrone ET son unique appelant l'attend", () => {
@@ -124,7 +138,39 @@ test("⑦ le repli ne propose plus une fonctionnalité RETIRÉE", async ({ page 
   await bootOnboarded(page, err);
   // Une chaîne que personne n'écrira jamais : on veut la branche de repli.
   const html = await page.evaluate(async () => await aiGenerateResponse("zzqxw plopfimbul"));
+  // ⚠️ MARQUEUR POSITIF D'ABORD : sans lui, le jour où `chercherAsync` rendrait
+  // le moindre résultat pour cette chaîne, la fonction peindrait « 🎯 Passions
+  // trouvées » — qui ne contient pas « carnet » non plus — et ce cas resterait
+  // VERT sans avoir jamais exercé le repli qu'il prétend mesurer.
+  expect(html, "ce cas n'a pas atteint la branche de repli").toContain("pas de réponse précise");
   expect(html.toLowerCase(), "le repli cite encore le Carnet de voyage (retiré par ADR-011 §6)")
     .not.toContain("carnet");
   sansErreurJs(err);
+});
+
+// ⚠️ RETIRER LE TEXTE DE REPLI NE SUFFISAIT PAS : LA PORTE ÉTAIT AU-DESSUS.
+// `aiDetectIntent` routait `voyage|carnet|live|cdv` vers une branche « 📔 Carnets
+// de Voyage » renvoyant à un onglet retiré par ADR-011 §6 — et `index.html` livre
+// un raccourci « ✈️ Voyage » qui pose très exactement cette question. Ces
+// requêtes n'atteignaient donc JAMAIS le référentiel non plus.
+test("⑧ le raccourci « Voyage » ne mène plus à une fonctionnalité retirée", async ({ page }) => {
+  const err = bacs();
+  await bootOnboarded(page, err);
+  const html = await page.evaluate(async () => await aiGenerateResponse("Conseils voyage et aventure"));
+  expect(html, "la branche « Carnets de Voyage » répond encore").not.toContain("Carnets de Voyage");
+  expect(html.toLowerCase()).not.toContain("cdv live");
+  sansErreurJs(err);
+});
+
+test("⑨ SOURCE : ni intention ni branche « cdv » ne subsistent", () => {
+  const app06 = lire("app-06-reels-partage.js");
+  expect(app06, "l'intention cdv est revenue").not.toMatch(/return "cdv";/);
+  expect(app06, "la branche cdv est revenue").not.toMatch(/intent === "cdv"/);
+  // ⚠️ Le geste manquant du lot précédent : on LOGUE avant de replier, sinon une
+  // erreur avalée ici rend le symptôme du défaut qu'on vient de fermer.
+  expect(app06, "le repli du référentiel ne laisse aucune trace pour la Sentinelle")
+    .toMatch(/diagLog\("ia referentiel echec/);
+  // Un drapeau qui ne sait qu'ENLEVER doit enlever ici aussi.
+  expect(app06, "la coupure flat_passions_v1 ne coupe pas cette surface")
+    .toMatch(/moteur\.actif !== "function" \|\| moteur\.actif\(\)/);
 });
