@@ -4423,6 +4423,39 @@ const _EVENT_COLS_PRIVE = _EVENT_COLS_PUBLIC + ",address,contact,conv_id";
 // chaque chargement du fil.
 let _eventColsPubliquesSeulement = false;
 
+// ── SANS COMPTE, ON NE DEMANDE PAS LES COLONNES PRIVÉES ──────────────────────
+// Défaut relevé par la sentinelle le 2026-09-12 sur la production :
+//     HTTP 401 sur GET /rest/v1/events — 13 appels refusés, 0 compte identifié.
+// C'est le JUMEAU du défaut `event_attendees` du même jour, une table plus loin.
+// `migration_irl_donnees_privees.sql` (08/09) a retiré `address` et `contact` à
+// `anon`, et `migration_ouverture_publique` y a ajouté `conv_id` : un visiteur
+// n'a JAMAIS le droit de lire les trois. Le repli `_EVENT_COLS_PUBLIC` faisait
+// pourtant partir la demande privée D'ABORD, à chaque session sans compte —
+// une porte fermée exprès, à laquelle le client frappait pour se l'entendre
+// dire. Aucune conséquence à l'écran (le repli rend la liste complète, et
+// `address`/`contact` retombaient déjà à la chaîne vide) : du bruit pur dans le
+// tableau de bord qui sert à voir les vrais défauts, même famille que
+// « newestWorker is null ».
+// ⚠️ **401 ET NON 403** : PostgREST rend 403 sur un 42501 quand un compte est
+// authentifié, et 401 quand le rôle est le rôle ANONYME. Lire le CODE avant
+// d'accuser une policy — ici la policy est juste, c'est le GRANT qui manque, et
+// il manque exprès. La cause n'est donc pas une règle d'accès (hors périmètre),
+// c'est un appel client qui ne devait plus partir.
+// ⚠️ **`MY_UID` NE PROUVE PAS QU'UN COMPTE EXISTE** — `getMyUserId()` fabrique
+// un `u_<aléatoire>` pour tout visiteur. Seul un uuid Supabase le prouve, et
+// c'est très exactement ce que les « 0 compte identifié » de la sentinelle
+// disent : `telemetry.js` ne transmet un `user_id` que pour un uuid d'auth.
+// ⚠️ Un uuid SURVIT à sa session (déconnexion ailleurs, jeton révoqué) : ce
+// compte-là prendra encore un refus. C'est la seconde couche, et elle est déjà
+// tenue par `_eventColsPubliquesSeulement`, qui le mémorise pour la session —
+// un refus, pas treize.
+function _compteAuthReel() {
+  try {
+    const uid = (typeof MY_UID === "string" && MY_UID) ? MY_UID : "";
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uid);
+  } catch (e) { return false; }
+}
+
 // ── PARTICIPANTS : UNE LECTURE RÉSERVÉE AUX COMPTES CONNECTÉS ────────────────
 // ⚠️ `migration_irl_donnees_privees.sql` (appliquée en production le 2026-09-08)
 // ne retire pas seulement deux colonnes à `anon` : elle lui RÉVOQUE tout droit de
@@ -4457,10 +4490,7 @@ let _attendeesRefusLecture = false;
 // `u_<aléatoire>` pour tout visiteur. Seul un uuid Supabase le prouve.
 function _attendeesLisibles() {
   if (_attendeesRefusLecture) return false;
-  try {
-    const uid = (typeof MY_UID === "string" && MY_UID) ? MY_UID : "";
-    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uid);
-  } catch (e) { return false; }
+  return _compteAuthReel();
 }
 
 // Rend `true` quand le refus est DÉFINITIF pour la session : privilège manquant
@@ -4485,12 +4515,17 @@ async function supaLoadEvents() {
   try {
     const lire = (cols) => supa.from("events").select(cols)
       .order("created_at", { ascending: false }).limit(60);
-    let { data, error } = await lire(_eventColsPubliquesSeulement ? _EVENT_COLS_PUBLIC : _EVENT_COLS_PRIVE);
-    // Refus portant sur les colonnes privées : on est un visiteur sans compte.
-    // On retombe sur la liste publique — la correspondance plus bas rend déjà
-    // `address` et `contact` à la chaîne vide quand elles sont absentes, donc
-    // rien d'autre ne change.
-    if (error && !_eventColsPubliquesSeulement) {
+    // ⚠️ Sans compte, la demande privée est refusée à COUP SÛR (401) : on ne la
+    // fait plus partir du tout. Voir `_compteAuthReel` plus haut.
+    const prive = !_eventColsPubliquesSeulement && _compteAuthReel();
+    let { data, error } = await lire(prive ? _EVENT_COLS_PRIVE : _EVENT_COLS_PUBLIC);
+    // Refus portant sur les colonnes privées : le compte a un uuid mais plus de
+    // session utilisable. On retombe sur la liste publique — la correspondance
+    // plus bas rend déjà `address` et `contact` à la chaîne vide quand elles
+    // sont absentes, donc rien d'autre ne change.
+    // ⚠️ La condition porte sur `prive`, jamais sur le mémo seul : retenter la
+    // MÊME liste publique après son refus, c'est deux appels morts au lieu d'un.
+    if (error && prive) {
       _eventColsPubliquesSeulement = true;
       ({ data, error } = await lire(_EVENT_COLS_PUBLIC));
     }
