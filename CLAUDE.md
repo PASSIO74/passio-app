@@ -818,6 +818,100 @@ ne passera à 2 que quand l'alerte sera à zéro — un objectif laissé en aler
 un objectif que plus personne ne lit. Détail complet : `docs/PASSIONS_CAPACITE_ETUDE_2026-09-09.md`
 §5 ter · application : `docs/APPLIQUER_MIGRATION_PASSIONS.md` (mise à jour du 2026-09-10).
 
+## 🎿 « ON EST CENSÉ AVOIR 5 000 PASSIONS ? » — TROIS SURFACES CHERCHAIENT DANS 19 (2026-09-12)
+
+Rapport d'écran de Benjamin, capture à l'appui : dans « Qu'est-ce qui te passionne ? », taper
+« Ski » rendait **« Aucune passion ne correspond. Essaie un autre mot. »**
+Mesuré le jour même, dans cet ordre — et c'est l'ordre qui compte :
+**la base est bonne** (`select count(*) … where status='active'` = **5 003**, dont **15** de ski,
+canal ① d'ADR-012), **le dépôt est bon** (`data/passions-v1.json` livre 5 001 entrées, dont **21**
+de ski). Le défaut était **entièrement côté client**, et il ne touchait pas le référentiel : il
+touchait **qui le consulte**.
+
+⚠️ **LA QUESTION « LES 5 000 SONT-ELLES ACTIVÉES ? » N'A PAS UNE RÉPONSE, ELLE EN A UNE PAR
+SURFACE.** Activées en base, livrées dans l'artefact, et pourtant invisibles sur trois écrans.
+Répondre « oui, la migration est appliquée » aurait été exact et inutile. **Un référentiel n'est
+actif que là où quelqu'un l'interroge** ; partout ailleurs il est un fichier sur un disque.
+
+### Le défaut, et pourquoi il est passé sous tous les filets
+
+`allPassions()` (app-02) = **socle embarqué (19) + passions perso du compte**. Il ne contient
+AUCUNE des 5 001. Trois surfaces s'appuyaient dessus pour laisser quelqu'un **choisir** :
+
+- **`js/first-run.js`** — `catalogue()`/`chercher()` du panneau de première visite. C'est celui de
+  la capture, et **le seul écran que tout nouveau visiteur traverse**.
+- **`openCreateGroup`** (app-05) — `allPassions().filter(p => myPassionIds.includes(p.id))`
+  INTERSECTAIT les passions du compte avec le socle : un compte dont les passions viennent du
+  référentiel obtenait une grille **VIDE**, et « Passion(s) du groupe (1 à 3) » est obligatoire.
+  **Impasse dure, sans message.**
+- **`openCreateEvent`** (app-07) — le `<select>` listait `passionsPubliables()`, donc le socle. Sur
+  le **MÊME écran** on pouvait **filtrer** parmi 5 001 rencontres et n'en **organiser** que dans 19.
+
+⚠️ **C'EST EXACTEMENT LE DÉFAUT CORRIGÉ LE 2026-09-03 SUR LA PAGE « RECHERCHER » (fiche 20), ET LE
+CORRECTIF N'ÉTAIT ALLÉ QUE LÀ.** Son propre commentaire dit « ELLE NE CHERCHAIT QUE DANS LE SOCLE
+EMBARQUÉ » — neuf jours plus tard, trois surfaces disaient encore la même chose. **Corriger une
+surface, c'est corriger une surface** : la famille se traque au `grep` (`allPassions`,
+`passionsPubliables`, `PASSIONS.filter`) et se re-traque après CHAQUE correctif de ce type.
+
+⚠️ **LE MODE ÉDITION D'`openCreateEvent` PORTAIT DÉJÀ LA PREUVE DU MANQUE** : il réinjectait à la
+main la passion d'origine « (non publiable) » quand elle était absente de la liste. Le trou était
+connu et n'avait été rustiné que du côté où il faisait une erreur VISIBLE. **Une rustine locale sur
+un défaut général est un panneau indiquant où chercher.**
+
+### Les trois pièges du correctif
+
+⚠️ **① CHOISIE PUIS INVISIBLE.** `interetsDuVisiteur` (first-run) filtre par `metaPassion`, qui
+passe par `estPassionCanonique` — laquelle ne connaît **hors ligne que les 19**. « Ski alpin » était
+donc choisi, validé, puis **JETÉ EN SILENCE** : le fil ne changeait pas et rien ne le disait.
+D'où le registre `_refVues` : **une passion que ce panneau a MONTRÉE est réelle par construction**
+(elle vient du référentiel, donc de la table `passions`), et `enregistrerPassionCanonique` (app-02)
+l'inscrit dans le Set `_passionsCreees`, **séparé** de `_referentielPassions` — écrire dans ce
+cache à un seul coup interdirait le chargement du vrai référentiel pour toute la session. Rien
+n'est desserré : on n'inscrit QUE ce que le référentiel a rendu.
+
+⚠️ **② « AUCUNE PASSION NE CORRESPOND » PENDANT QUE LE RÉFÉRENTIEL RÉPOND EST UN MENSONGE**, et
+c'est très exactement le message lu à l'écran. Le socle est peint **immédiatement** (résultat
+instantané, hors ligne compris), le référentiel s'y **ajoute** ; tant qu'une réponse est en vol la
+grille dit « Recherche… ». `_panneauEnVol` se pose **à la frappe**, pas dans le timer : sinon les
+160 ms d'anti-rebond rouvrent la fenêtre du message trompeur.
+
+⚠️ **③ ON NE PEINT JAMAIS 5 001 TUILES** (fiche 20) : la grille est un **aperçu** borné à 60, la
+recherche est le chemin vers le reste. « Voir toutes les passions » demande `chercherAsync("")`,
+qui rend les suggestions du moteur, déjà classées.
+
+Anti-rebond 160 ms et jeton d'annulation sont repris **à l'identique** d'app-07 : sans eux, taper
+« guitare » lance sept recherches et une réponse lente partie sur « gui » écrase « guitare ».
+
+### ⚠️ DEUX PIÈGES DE BANC, ET LES DEUX RENDAIENT UN TEST VERT SUR LE DÉFAUT
+
+⚠️ **`_activeFeedPassions` EST UN `let` DE PORTÉE SCRIPT (app-01), PAS UNE PROPRIÉTÉ DE `window`.**
+`window._activeFeedPassions` rend `undefined`, donc `(… || []).slice()` rend `[]`, donc l'assertion
+« la passion est dans le fil » passait **sur un tableau vide**. Il se lit par son **nom nu** dans
+`page.evaluate`. Même famille que `studioType` et `photoDataUrl`.
+
+⚠️ **LE SERVICE WORKER SERT `data/passions-v1.json` HORS DU ROUTAGE DE PLAYWRIGHT.** Mesuré : un
+`page.route("**/data/passions-v1.json")` **n'est jamais appelé** (compteur à 0) alors que
+`page.on("request")` voit bien la requête partir et que les données arrivent. Un cas bâti sur une
+route retenue ou abandonnée est donc **vert quoi qu'il arrive** — et le cas « repli hors ligne »
+écrit ainsi ne prouvait rien, d'autant qu'il cherchait « Musique », qui est dans le socle. On mute
+donc **`PassioPassions.chercherAsync`**, comme la maison mute `window.supa.from`.
+⚠️ Corollaire : `bootVisiteur` pose `page.route("**/*")` et **capte tout** ; une route ajoutée après
+lui n'est pas consultée.
+
+Verrous : `tests/e2e/premiere-visite-referentiel.spec.js` (6) et
+`tests/e2e/passions-organiser-et-groupe.spec.js` (4, dont ⓪ qui **VÉRIFIE** que la passion d'essai
+est absente du socle au lieu de l'espérer, et ③ que le repeint ne change pas le choix — repeindre
+un `<select>` en perdant la sélection ferait publier sous une AUTRE passion, en silence).
+**Éprouvés par RÉINJECTION** : la grille rendue au socle fait rougir 3 cas sur 6 ; le registre
+retiré fait rougir exactement celui qui mesure « choisie puis invisible » ; les deux surfaces
+remises à `allPassions()` font rougir 3 cas sur 4, la prémisse restant verte.
+
+⚠️ **POINT OUVERT, ET IL EST DÉLIBÉRÉMENT LAISSÉ** : le moteur IA local (`aiGenerateResponse`,
+app-06) ne sait nommer que 19 passions dans sa branche « 🎯 Passions trouvées », et ses cartes sont
+cliquables — donc c'est une surface de découverte, bornée au socle, en comparaison littérale sans
+alias ni accents. Ce n'est **pas** un blocage (c'est le repli de l'Edge Function Claude, qui répond
+en temps normal) ; c'est le prochain de la famille.
+
 ## 🔤 ALIAS À LA CRÉATION D'UNE PASSION (2026-09-10)
 
 Trouvé en VÉRIFIANT un autre lot, pas par un rapport : après le rattrapage des alias (3 674, plus une seule des 2 088 passions curées sans alias), la base rendait encore **six lignes à zéro** — exactement l'écart entre la base (2 094) et le dépôt (2 088), c'est-à-dire les passions **créées depuis l'application**. `creer_passion` écrivait `aliases = '{}'` EN DUR. « GRS » existe depuis le 2026-09-09 et reste introuvable en tapant « gymnastique rythmique ». **Inégalité structurelle** : une passion curée a deux ou trois portes d'entrée, une passion créée n'en a qu'une — alors que son auteur est justement celui qui sait comment on la nomme autrement.

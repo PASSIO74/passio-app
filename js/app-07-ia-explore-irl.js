@@ -5416,6 +5416,58 @@ async function irlProposalOpenFromConversation(convId, targetUserId, btn) {
 // n'entre jamais dans un payload d'événement, et un lieu choisi à quelques
 // centaines de mètres reste EXACT.
 
+// Les passions sous lesquelles ce compte peut organiser : les SIENNES d'abord
+// (résolues par le référentiel), puis le catalogue publiable. Dédupliqué.
+//
+// ⚠️ `passionById` NE REND JAMAIS `null` — sur un identifiant qu'il ne connaît
+// pas encore il rend « Passion ». On garde alors l'identifiant, qui dit au moins
+// de quoi il s'agit, plutôt qu'un libellé générique répété autant de fois.
+function _irlPassionsOrganisables(myPassionIds) {
+  var out = [];
+  var vus = Object.create(null);
+  function pousser(id, meta) {
+    if (!id || vus[id]) return;
+    vus[id] = 1;
+    out.push({
+      id: id,
+      emoji: (meta && meta.emoji) || "\u2728",
+      label: (meta && meta.label && meta.label !== "Passion") ? meta.label : id,
+    });
+  }
+  (myPassionIds || []).forEach(function (id) {
+    var meta = null;
+    try { meta = (typeof passionById === "function") ? passionById(id) : null; } catch (e) {}
+    pousser(id, meta);
+  });
+  try { passionsPubliables().forEach(function (p) { pousser(p.id, p); }); } catch (e) {}
+  return out;
+}
+
+// Le référentiel porte les libellés ET la liste blanche que `submitEvent`
+// consulte (`requiredCanonicalPassion`) : sans lui, une passion plate du compte
+// s'afficherait sous son identifiant et serait refusée à l'enregistrement. On
+// le demande à l'OUVERTURE — jamais au démarrage, l'invariant « 568 Ko hors du
+// chemin critique » tient — puis on repeint le `<select>` en gardant le choix.
+function _irlAssurerReferentielPassions(myPassionIds) {
+  try {
+    var m = window.PassioPassions;
+    if (!m || !m.actif() || m.pret()) return;
+    m.charger().then(function () {
+      var sel = document.getElementById("evPassion");
+      if (!sel) return;
+      var choix = sel.value;
+      var liste = _irlPassionsOrganisables(myPassionIds);
+      if (choix && !liste.some(function (x) { return x.id === choix; })) return;
+      sel.innerHTML = liste.map(function (p) {
+        return '<option value="' + escapeHtml(p.id) + '"' + (p.id === choix ? " selected" : "") + ">"
+          + escapeHtml(p.emoji) + " " + escapeHtml(p.label)
+          + ((myPassionIds || []).indexOf(p.id) >= 0 ? " \u2726" : "") + "</option>";
+      }).join("");
+      sel.value = choix;
+    }).catch(function (e) { try { diagLog("irl referentiel " + (e && e.message ? e.message : e)); } catch (_) {} });
+  } catch (e) { try { diagLog("irl referentiel " + e.message); } catch (_) {} }
+}
+
 function openCreateEvent(editId) {
   // Mode invité (première visite) : cette action engage le compte. Le gate
   // EXPLIQUE l'action puis propose la création de compte ; il ne rejoue jamais
@@ -5442,7 +5494,19 @@ function openCreateEvent(editId) {
   // sélectionnée, et le garde de `submitEvent` peut faire son travail en
   // affichant un message au lieu de reclasser dans le dos de l'organisateur.
   const _passionEditee = editId ? (ed && ed.passion) : null;
-  const _pubs = passionsPubliables();
+  // ⚠️ ON NE POUVAIT ORGANISER QUE DANS 19 PASSIONS (2026-09-12). Sur le MÊME
+  // écran, la barre de filtres cherche parmi les 5 001 du référentiel plat
+  // (`ouvrirRecherchePassionIRL`) — mais ce `<select>` listait
+  // `passionsPubliables()`, c'est-à-dire `allPassions()` filtré, donc le socle
+  // embarqué. Un compte dont la seule passion est « Ski alpin » pouvait FILTRER
+  // les rencontres de ski et n'avait aucun moyen d'en ORGANISER une.
+  //
+  // Que le mode ÉDITION réinjecte déjà la passion d'origine (juste en dessous)
+  // prouve que le manque était connu : il n'avait été rustiné que côté édition.
+  //
+  // Les passions DU COMPTE passent donc en tête, résolues par `passionById`
+  // (qui sait retomber sur `PassioPassions.parId`), puis le catalogue publiable.
+  const _pubs = _irlPassionsOrganisables(myPassionIds);
   if (_passionEditee && !_pubs.some(function (x) { return x.id === _passionEditee; })) {
     const _pOrig = (typeof passionById === "function") ? passionById(_passionEditee) : null;
     _pubs.push({ id: _passionEditee, emoji: (_pOrig && _pOrig.emoji) || "✨",
@@ -5452,7 +5516,7 @@ function openCreateEvent(editId) {
     (myPassionIds.includes(a.id) ? 0 : 1) - (myPassionIds.includes(b.id) ? 0 : 1));
   const selPassion = ed ? ed.passion : "";
   const passionOptions = sortedPassions
-    .map(p => `<option value="${escapeHtml(p.id)}"${p.id === selPassion ? " selected" : ""}>${p.emoji} ${escapeHtml(p.label)}${myPassionIds.includes(p.id) ? " ✦" : ""}</option>`).join("");
+    .map(p => `<option value="${escapeHtml(p.id)}"${p.id === selPassion ? " selected" : ""}>${escapeHtml(p.emoji)} ${escapeHtml(p.label)}${myPassionIds.includes(p.id) ? " ✦" : ""}</option>`).join("");
 
   const eventTypes = ["Atelier", "Jam session", "Concert", "Exposition", "Sport & activité", "Randonnée", "Dégustation", "Book club", "Cours", "Marché", "Soirée", "Rencontre", "Conférence", "Compétition", "Autre"];
   const typeOptions = eventTypes.map(t => `<option value="${escapeHtml(t)}"${ed && ed.eventType === t ? " selected" : ""}>${t}</option>`).join("");
@@ -5585,6 +5649,8 @@ function openCreateEvent(editId) {
       if (dt) dt.value = ed.coverUrl;
     }
   }, 20);
+
+  _irlAssurerReferentielPassions(myPassionIds);
 }
 
 // Le nombre d'occurrences n'a de sens que si une répétition est choisie.
