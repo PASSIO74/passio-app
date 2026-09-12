@@ -19,13 +19,13 @@
  * Cet outil est le destinataire manquant. Il ne prétend pas être un back-office :
  * il rend la file LISIBLE, et c'est déjà tout ce qui manquait.
  *
- * ⚠️ IL NE PEUT PAS MARQUER « TRAITÉ », ET C'EST VOULU. Ajouter une colonne de
- * statut est une modification de STRUCTURE (canal ③ d'ADR-012 : psql ou
- * l'éditeur SQL, jamais depuis un script). Tant qu'elle n'existe pas, l'outil
- * tient un journal LOCAL des signalements déjà vus (`.passio/moderation-vus.json`,
- * non versionné) : c'est un pense-bête d'opérateur, pas une vérité partagée.
- * Ne pas le confondre avec un état serveur — sur un autre ordinateur, la file
- * réapparaît entière.
+ * ⚠️ LE STATUT VIT EN BASE DEPUIS LE 2026-09-11 (`reports.status`, migration
+ * `migration_ouverture_publique_2026-09-11.sql`) : `traiter` le pose, `lister`
+ * ne montre que les signalements OUVERTS, et `.github/workflows/moderation-alerte.yml`
+ * ouvre une issue quand l'un d'eux attend plus de 24 h. Le journal LOCAL
+ * (`.passio/moderation-vus.json`, non versionné) reste un pense-bête d'opérateur
+ * pour la fenêtre AVANT la migration : sans colonne, l'outil se comporte comme
+ * avant, et le dit.
  *
  * ⚠️ VIE PRIVÉE. `reporter_id` est une identité. On affiche COMBIEN de personnes
  * distinctes ont signalé une même cible, jamais QUI — même règle que
@@ -40,6 +40,8 @@
  *   node scripts/moderation.js lister --tous      inclut les signalements déjà vus
  *   node scripts/moderation.js voir --id r_xxx    le détail, avec le contenu visé
  *   node scripts/moderation.js vu --id r_xxx      marque « vu » dans le journal local
+ *   node scripts/moderation.js traiter --id r_xxx --statut handled|dismissed [--note "…"]
+ *                                                 ferme le signalement EN BASE (statut serveur)
  *   node scripts/moderation.js compte             un seul nombre, pour un contrôle rapide
  */
 "use strict";
@@ -136,13 +138,26 @@ function grouper(lignes) {
     .sort((a, b) => (b.signaleurs - a.signaleurs) || (a.premier < b.premier ? -1 : 1));
 }
 
+// Avec le statut quand la colonne existe ; sans (400) on prend tout, comme avant,
+// et `lister` le dit. Une seule sonde par processus.
+let _sansStatut = false;
 async function charger(cfg) {
+  if (!_sansStatut) {
+    const r = await fetch(`${cfg.url}/rest/v1/reports?select=id,reporter_id,target_type,target_id,reason,created_at,status,handled_at,handled_note&order=created_at.desc&limit=500`,
+      { headers: { apikey: cfg.cle, Authorization: `Bearer ${cfg.cle}` } });
+    if (r.ok) return await r.json();
+    if (r.status !== 400) sortir(`❌ ${r.status} sur reports\n${(await r.text()).slice(0, 400)}`);
+    _sansStatut = true;
+    console.log("ℹ️  La base n'a pas encore de colonne `status` (migration du 2026-09-11 non appliquée) : tout est considéré ouvert.\n");
+  }
   return await rest(cfg,
     "reports?select=id,reporter_id,target_type,target_id,reason,created_at&order=created_at.desc&limit=500");
 }
+const estOuvert = (l) => _sansStatut || l.status === undefined || l.status === null || l.status === "open";
 
 async function lister(cfg) {
-  const lignes = await charger(cfg);
+  const toutes = await charger(cfg);
+  const lignes = TOUS ? toutes : toutes.filter(estOuvert);
   const vus = lireVus();
   const groupes = grouper(lignes).filter((g) => TOUS || g.ids.some((id) => !vus[id]));
 
@@ -171,7 +186,30 @@ async function lister(cfg) {
     console.log(`    → node scripts/moderation.js voir --id ${g.ids[0]}`);
     console.log("");
   }
-  console.log(`Marquer comme regardé : node scripts/moderation.js vu --id <id>\n`);
+  console.log(_sansStatut
+    ? `Marquer comme regardé (journal LOCAL) : node scripts/moderation.js vu --id <id>\n`
+    : `Fermer en base : node scripts/moderation.js traiter --id <id> --statut handled|dismissed --note "…"\n`);
+}
+
+// Pose le statut EN BASE (PATCH, service_role). Le client, lui, ne peut ni lire ni
+// écrire cette colonne : `trg_reports_statut_initial` force 'open' à l'insertion.
+async function traiter(cfg) {
+  const id = opt("id"), statut = opt("statut"), note = opt("note");
+  if (!id) sortir("Il faut --id <identifiant de signalement>");
+  if (!["handled", "dismissed", "open"].includes(statut || "")) sortir("Il faut --statut handled | dismissed | open");
+  const corps = { status: statut, handled_at: statut === "open" ? null : new Date().toISOString(), handled_note: note || null };
+  const r = await fetch(`${cfg.url}/rest/v1/reports?id=eq.${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { apikey: cfg.cle, Authorization: `Bearer ${cfg.cle}`, "Content-Type": "application/json", Prefer: "return=representation" },
+    body: JSON.stringify(corps),
+  });
+  const texte = await r.text();
+  if (r.status === 400 && /status|handled/.test(texte)) sortir("❌ La colonne `status` n'existe pas encore : appliquer migrations/migration_ouverture_publique_2026-09-11.sql (canal ③).");
+  if (!r.ok) sortir(`❌ ${r.status} sur reports\n${texte.slice(0, 400)}`);
+  const lignes = texte ? JSON.parse(texte) : [];
+  // ⚠️ 0 ligne = l'identifiant n'existe pas ; un PATCH « réussi » sans ligne n'a rien fait.
+  if (!lignes.length) sortir(`❌ Aucun signalement ${id} — rien n'a été modifié.`);
+  console.log(`✅ ${id} → ${statut}${note ? ` (« ${note.slice(0, 80)} »)` : ""} — statut SERVEUR, visible de tout opérateur.`);
 }
 
 // Va chercher CE QUI EST VISÉ, pas seulement l'identifiant : modérer sur un
@@ -187,6 +225,7 @@ async function voir(cfg) {
   console.log(`   Cible   : ${l.target_id}`);
   console.log(`   Motif   : ${String(l.reason || "").trim() || "(aucun)"}`);
   console.log(`   Envoyé  : il y a ${age(l.created_at)} (${l.created_at})`);
+  if (l.status !== undefined) console.log(`   Statut  : ${l.status}${l.handled_at ? ` (le ${l.handled_at}${l.handled_note ? ` — ${l.handled_note}` : ""})` : ""}`);
   console.log(`   Par     : ${abrege(l.reporter_id)}  (identité volontairement abrégée)\n`);
 
   const t = l.target_type;
@@ -233,7 +272,8 @@ async function voir(cfg) {
 
   console.log(`   Ce que tu peux faire :`);
   console.log(`     · retirer un contenu ou suspendre un compte : éditeur SQL Supabase (canal ③)`);
-  console.log(`     · marquer ce signalement comme regardé : node scripts/moderation.js vu --id ${l.id}\n`);
+  console.log(`     · le fermer en base : node scripts/moderation.js traiter --id ${l.id} --statut handled --note "…"`);
+  console.log(`     · (avant la migration) le marquer comme regardé : node scripts/moderation.js vu --id ${l.id}\n`);
 }
 
 function vu() {
@@ -246,10 +286,11 @@ function vu() {
 }
 
 async function compter(cfg) {
-  const lignes = await charger(cfg);
+  const toutes = await charger(cfg);
+  const lignes = toutes.filter(estOuvert);
   const vus = lireVus();
   const neufs = lignes.filter((l) => !vus[l.id]).length;
-  console.log(`${neufs} signalement(s) non regardé(s) sur ${lignes.length}.`);
+  console.log(`${lignes.length} signalement(s) ouvert(s) sur ${toutes.length}, dont ${neufs} non regardé(s) ici.`);
   // Code de sortie utilisable dans un contrôle quotidien.
   process.exit(neufs ? 2 : 0);
 }
@@ -270,5 +311,6 @@ async function compter(cfg) {
   if (commande === "lister") return lister(cfg);
   if (commande === "voir") return voir(cfg);
   if (commande === "compte") return compter(cfg);
-  sortir(`Commande inconnue : ${commande}\nAttendu : lister | voir | vu | compte`);
+  if (commande === "traiter") return traiter(cfg);
+  sortir(`Commande inconnue : ${commande}\nAttendu : lister | voir | vu | traiter | compte`);
 })().catch((e) => sortir("❌ " + (e && e.message)));

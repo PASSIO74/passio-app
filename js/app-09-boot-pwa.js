@@ -882,7 +882,10 @@ function _processAttach(input, kind, file) {
         _diag("handleAttachFile: ❌ Storage upload failed - " + storageRes.error.message + " (fallback sur data URL)");
         sendMessageToSupabase(msgId, convId, dataUrl, file.type, file.name, kind);
       } else {
-        // Récupérer l'URL publique
+        // L'URL CANONIQUE de l'objet (`/object/public/attachments/…`). ⚠️ `cdnUrl`
+        // la laisse INTACTE pour ce seau depuis le 2026-09-11 : une pièce jointe
+        // privée ne passe pas par un cache public, et c'est `urlPieceJointeSignee`
+        // (app-02) qui la rend lisible à l'affichage, membre par membre.
         var storageUrl = (typeof cdnUrl === "function" ? cdnUrl(supa.storage.from("attachments").getPublicUrl(storagePath).data.publicUrl) : supa.storage.from("attachments").getPublicUrl(storagePath).data.publicUrl);
         _diag("handleAttachFile: ✅ Storage URL: " + storageUrl);
         sendMessageToSupabase(msgId, convId, storageUrl, file.type, file.name, kind);
@@ -1102,9 +1105,10 @@ function openConvFiles() {
       html += '<div class="csetting-section">Médias (' + medias.length + ')</div><div class="conv-files-grid">';
       medias.forEach(function (md) {
         if (md.kind === "video") {
-          html += '<video src="' + safeUrlAttr(md.src) + '" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:12px;cursor:pointer;" muted playsinline onclick="this.paused?this.play():this.pause()"></video>';
+          // Pièce jointe → `data-pj`, URL signée posée par signerPiecesJointes après le innerHTML (seau privé, 2026-09-11).
+          html += '<video ' + attrMediaSrc(md.src) + ' style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:12px;cursor:pointer;" muted playsinline onclick="this.paused?this.play():this.pause()"></video>';
         } else {
-          html += '<img src="' + safeUrlAttr(md.src) + '" loading="lazy" decoding="async" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:12px;cursor:pointer;" onclick="openFullImg(this.src)"/>';
+          html += '<img ' + attrMediaSrc(md.src) + ' loading="lazy" decoding="async" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:12px;cursor:pointer;" onclick="openFullImg(this.src)"/>';
         }
       });
       html += '</div>';
@@ -1131,7 +1135,7 @@ function openConvFiles() {
           '<div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(f.name) + '</div>' +
           '<div style="font-size:10px;color:var(--muted);">📥 Télécharger</div></div></div>';
         if (f.url) {
-          html += '<a href="' + safeUrlAttr(f.url) + '" target="_blank" rel="noopener" style="text-decoration:none;">' + row + '</a>';
+          html += '<a ' + attrMediaSrc(f.url, "href") + ' target="_blank" rel="noopener" style="text-decoration:none;">' + row + '</a>';
         } else {
           window["_doc_" + f.key] = { data: f.data, name: f.name };
           html += row.replace('<div style="display:flex;align-items:center;gap:12px;', '<div onclick="_docDownload(\'' + escapeJsArg(f.key) + '\')" style="display:flex;align-items:center;gap:12px;');
@@ -1145,6 +1149,7 @@ function openConvFiles() {
         '<div style="font-size:13px;margin-top:6px;">Les photos, vidéos, vocaux et fichiers échangés dans cette conversation apparaîtront ici.</div></div>';
     }
     content.innerHTML = html;
+    if (typeof signerPiecesJointes === "function") signerPiecesJointes(content);
     panel.classList.add("open");
   } catch (e) { console.error("openConvFiles:", e); }
 }
@@ -1602,8 +1607,9 @@ function _sendVoiceMessage(dataUrl, duration) {
       var storagePath = "attachments/" + convId + "/" + Date.now() + "_voice." + _vext;
       supa.storage.from("attachments").upload(storagePath, blob, { cacheControl: "3600", upsert: false, contentType: _vt }).then(function (res) {
         var _pub = supa.storage.from("attachments").getPublicUrl(storagePath).data.publicUrl;
-        // Via le CDN comme la pièce jointe (l. ~886) : sans cdnUrl, chaque écoute du vocal
-        // repartait vers Supabase en direct, hors cache — dérive trouvée en revue le 2026-09-11.
+        // Même chemin que la pièce jointe (l. ~886) : `cdnUrl` rend l'URL canonique
+        // pour le seau `attachments` (privé depuis le 2026-09-11 — aucun cache public),
+        // et le lecteur signe l'URL au moment de lire (`_playVoiceById`, app-04).
         var url = res.error ? dataUrl : (typeof cdnUrl === "function" ? cdnUrl(_pub) : _pub);
         sendMessageToSupabase(msgId, convId, url, _vt, "Message vocal (" + duration + "s)", "audio");
       }).catch(function () {

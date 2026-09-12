@@ -18,6 +18,14 @@ Ce montage remplace le Worker Cloudflare décrit dans `docs/CDN_CLOUDFLARE.md`, 
 un compte Cloudflare de plus. Le Worker reste dans `cloudflare/` comme solution de secours :
 même contrat d'URL (`<base>/<seau>/<chemin>`), il suffirait de changer `PASSIO_CDN_BASE`.
 
+> ⚠️ **Les pièces jointes de messagerie NE PASSENT PLUS par le CDN depuis le 2026-09-11.**
+> Le seau `attachments` est privé (migration `migration_ouverture_publique_2026-09-11.sql`,
+> partie ⑥) : ses objets se lisent par **URL signée**, membre par membre
+> (`urlPieceJointeSignee`, app-02), jamais via un cache public. `cdnUrl()` laisse donc
+> intacte toute URL dont le chemin commence par `attachments/`, et le résolveur reconnaît
+> encore la forme CDN des messages écrits entre le 11/09 matin et ce lot. Seul le seau
+> `content` (médias publics du fil) passe par `/media/*`.
+
 ---
 
 ## Les pièces

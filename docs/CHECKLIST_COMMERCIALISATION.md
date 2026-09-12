@@ -63,6 +63,42 @@ Un défaut acceptable en A peut être rédhibitoire en B. L'inverse n'est jamais
 
 ---
 
+## 🚀 Ouverture PUBLIQUE et GRATUITE — le lot du 2026-09-11 (seuil A′)
+
+Benjamin a précisé le sens de « commercialiser » : **rendre l'application publique,
+gratuitement, et la faire utiliser par un maximum de personnes** — pas encaisser. Le
+seuil B ci-dessous ne s'applique donc pas ; c'est le seuil A poussé au public. Ce qui le
+séparait de l'état du matin (re-mesure du 11/09) est fermé par un lot serveur + client +
+exploitation : `docs/OUVERTURE_PUBLIQUE_2026-09-11.md` (mode d'emploi et gestes restants).
+
+- [x] Oracle `is_conv_member` fermé à `anon` ; `events.conv_id` privé ; policies de messagerie
+      au rôle `authenticated` (zéro ligne, aucune erreur pour un visiteur).
+- [x] Bloquer a un effet : follows, messages 1:1, commentaires, j'aime, commentaires de
+      rencontre, notifications.
+- [x] Débit borné par compte sur 12 tables (3 + 9) et plafond global sur les deux tables à
+      INSERT anonyme.
+- [x] `reports.status` + `npm run moderation traiter` + **alerte quotidienne** (issue
+      `[MODÉRATION]`) — un signalement a enfin un destinataire ET un statut.
+- [x] Canaux Realtime privés (policies + client avec sonde de repli).
+- [x] Seau `attachments` privé, pièces jointes par URL signée.
+- [x] Compte privé = abonnement sur demande (statut serveur, Accepter/Refuser depuis la cloche).
+- [x] Code d'accès levé par défaut ; SDK et MapLibre auto-hébergés et épinglés, CSP sans CDN.
+- [x] Sauvegarde quotidienne chiffrée, déchiffrée et relue à chaque run (artefact 30 jours).
+- [x] Politique §8 alignée sur les purges réelles (7 j / 30 j), version `2026-09-11`.
+- [x] **Red team du lot** (agent adversarial, lecture seule, vérifié en prod) : XSS par
+      sonnerie d'appel (P0) fermé ; UPDATE de `conv_messages`/`post_comments` gardés et
+      identifiants figés (P1) ; sonnerie refusée à un compte bloqué et bornée en cadence ;
+      identifiant d'appel aléatoire ; demandes d'abonnement en attente masquées aux tiers ;
+      `realtime:db`/`conv_specific:` privés avec policy ; ordres d'hôte d'un live vérifiés ;
+      URL signée à 1 h ; `target_type` sous liste blanche + CHECK ; notification
+      d'abonnement écrite par le serveur.
+- [ ] **À coller par Benjamin** : `migrations/migration_ouverture_publique_2026-09-11.sql`
+      (après le déploiement vert — 13 × OK attendus).
+- [ ] **Tableau de bord Supabase** : Realtime « Allow public access » OFF ; Anonymous
+      sign-ins OFF ; HaveIBeenPwned ON.
+- [ ] **DKIM/DMARC de `passio-app.fr`** (point ① ci-dessous, inchangé).
+- [ ] Lancer une fois la sauvegarde à la main et la déchiffrer.
+
 ## ① ② ③ Ce qui doit être réglé avant d'envoyer à des testeurs (seuil A)
 
 - [ ] **① Les e-mails de confirmation partent probablement en spam.** Le domaine
@@ -73,17 +109,16 @@ Un défaut acceptable en A peut être rédhibitoire en B. L'inverse n'est jamais
       la personne ne vous dira pas qu'elle n'a rien reçu, elle abandonnera.**
       Geste : authentifier le domaine chez Brevo (code, DKIM, puis DMARC).
       Quota gratuit : **300 e-mails/jour**.
-- [x] **② Le code d'accès 2125** n'est plus redemandé à chaque ouverture (mémorisé
-      sur l'appareil depuis le 2026-09-10) et, depuis le 2026-09-11, **les mentions
-      légales, les CGU et la politique se lisent SANS lui**, depuis l'écran du rideau
-      (LCEN art. 1-1 — `js/legal-textes.js`, verrous dans `access-gate.spec.js` et
-      `dist-build.spec.js`). Ce qui reste est une décision, pas un défaut : le garder
-      (et l'écrire dans le message d'invitation) ou le retirer.
-      ⚠️ Ce n'est pas une barrière de sécurité : le hash est dans le JavaScript livré
-      et un code à 4 chiffres se retrouve par force brute en quelques secondes.
-- [ ] **③ Les signalements n'arrivent nulle part.** Voir la section « Confiance et
-      sécurité » ci-dessous. Dans une application qui organise des **rencontres
-      physiques**, c'est le point à ne pas laisser ouvert.
+- [x] **② Le code d'accès est LEVÉ (2026-09-11).** Il ne s'arme plus que sur adhésion
+      (`passio_gate_actif = "1"`) ; `access-gate.spec.js` l'arme lui-même. Quand il est
+      armé (préproduction), **les mentions légales, les CGU et la politique se lisent
+      SANS lui**, depuis l'écran du rideau (LCEN art. 1-1 — `js/legal-textes.js`, verrous
+      dans `access-gate.spec.js` et `dist-build.spec.js`). Ce n'était pas une barrière de
+      sécurité : le hash est dans le JavaScript livré et un code à 4 chiffres se retrouve
+      par force brute en quelques secondes.
+- [x] **③ Les signalements ont un destinataire (2026-09-11)** : statut en base
+      (migration à coller), `npm run moderation traiter`, et l'alerte quotidienne qui
+      ouvre une issue `[MODÉRATION]` dès qu'un signalement attend plus de 24 h.
 
 ---
 
@@ -154,16 +189,19 @@ Un défaut acceptable en A peut être rédhibitoire en B. L'inverse n'est jamais
 
 ## 🗄️ À appliquer en base — canal ③ d'ADR-012 (psql ou SQL Editor)
 
-`migrations/migration_fuites_2026-09-10.sql`, écrite et prête, **non appliquée** :
+`migrations/migration_fuites_2026-09-10.sql` — **APPLIQUÉE, mesuré le 2026-09-11** :
+`reads_select` porte `is_conv_member(conv_id, auth.uid())`, `client_errors.auth_uid`
+existe et le trigger `trg_client_errors_identite` est posé. Les deux lignes ci-dessous
+restent pour l'histoire du défaut.
 
-- [ ] **`conv_reads` est lisible sans compte.** Policy `reads_select`, rôle `public`,
+- [x] **`conv_reads` était lisible sans compte.** Policy `reads_select`, rôle `public`,
       `qual = true`, plus le GRANT à `anon`. Mesuré : **37 lignes, 24 `user_id`,
       21 `conv_id`**. Deux `user_id` sur un même `conv_id` = ces deux personnes ont
       une conversation privée, avec l'heure de dernière lecture ; croisé avec
       `profiles` (public), ce sont des **pseudos**. Le contenu des messages, lui, est
       bien protégé — **c'est le graphe social qui fuit**, souvent l'information la
       plus sensible d'une messagerie.
-- [ ] **`client_errors.auth_uid`** : colonne posée par le serveur (`default auth.uid()`),
+- [x] **`client_errors.auth_uid`** : colonne posée par le serveur (`default auth.uid()`),
       non écrivable par le client, pour que la sentinelle n'enquête que sur des
       erreurs d'origine vérifiée. Le détecteur la gère déjà **avant comme après**
       (repli signalé si la colonne n'existe pas).
@@ -203,6 +241,77 @@ Un défaut acceptable en A peut être rédhibitoire en B. L'inverse n'est jamais
 
 ---
 
+### Re-mesuré le 2026-09-11 (canal ① d'ADR-012, `get_advisors` + `pg_policies`)
+
+Ce qui a été **fermé** depuis la veille : `conv_reads` (membres seulement),
+`client_errors.auth_uid`, les téléphones effacés d'`auth.users` (**0** sur 7), la
+purge de télémétrie **planifiée** (`cron` 04:00, 7 jours ; `client_errors` 30 jours à
+03:00 — `telemetry_events` est retombée à **8,7 Mo / 20 572 lignes**, base à 51 Mo),
+et `scripts/moderation.js` (`npm run moderation`) lit enfin **tous** les signalements.
+Toujours vrai : RLS sur les 41 tables, `anon` ne lit ni `events.address` ni
+`events.contact` ni `event_attendees`, aucune clé `service_role` dans le code livré
+(un seul JWT embarqué, rôle `anon`), Edge Functions authentifiées par `getUser()`,
+relais `/media/*` borné à l'hôte Supabase, 8 gates statiques vertes.
+
+**Quatre constats NOUVEAUX**, absents de l'audit du 10 :
+
+- [ ] **`is_conv_member(conv_id, uid)` est `SECURITY DEFINER` et exécutable par `anon`**
+      via `/rest/v1/rpc/is_conv_member` (signalé par `get_advisors`, vérifié par
+      `has_function_privilege`). C'est un **oracle d'appartenance** : sans compte, on
+      peut demander « X est-il membre de la conversation Y ? ». Les identifiants de
+      conversation sont aléatoires et `conversations` n'est pas lisible par `anon`,
+      donc le graphe des messages privés ne se reconstitue pas… **sauf pour les
+      rencontres** : `events.conv_id` est dans la liste des colonnes accordées à `anon`,
+      et `profiles.id` est public. Pour toute rencontre dotée d'une conversation, la
+      liste **nominative** des participants se reconstitue sans compte — la porte que
+      la migration du 08/09 a fermée sur `event_attendees`, rouverte par une autre
+      table. Aujourd'hui : 1 rencontre avec conversation, 1 membre. Correctif (canal ③) :
+      retirer `conv_id` du GRANT colonne à `anon`, et remplacer l'oracle par une
+      fonction **sans paramètre `uid`** (`auth.uid()` lu en interne, comme
+      `post_is_visible`) avant de révoquer l'EXECUTE d'`anon` — les policies de
+      `conv_messages`/`conversations`/`conv_members`/`conv_reads` l'appellent au rôle
+      courant, révoquer seul ferait lever « permission denied » au lieu de rendre vide.
+      Les 5 autres `SECURITY DEFINER` ouverts à `anon` (`can_edit_post`,
+      `comment_target_visible`, `post_is_visible`, deux fonctions de trigger) sont
+      inoffensifs à l'appel mais gagnent à être fermés dans le même geste.
+- [ ] **« Compte privé » sans approbation d'abonnement.** `follows` n'a que deux
+      colonnes (`follower_id`, `following_id`), l'INSERT n'exige que
+      `follower_id = auth.uid()`, et la RLS de `posts` et `stories` ouvre le contenu à
+      **tout abonné**. Un compte privé est donc caché des visiteurs sans compte et des
+      non-abonnés, mais **n'importe quel compte s'abonne d'un tap et lit tout** — il n'y
+      a ni demande, ni acceptation, ni notification de refus. 0 profil privé en
+      production aujourd'hui ; la ligne « Compte privé respecté par la RLS » ci-dessus
+      est vraie au sens technique et fausse au sens de la promesse à l'écran
+      (« Ce compte est privé »). À trancher avant l'ouverture : soit une table de
+      demandes (`follow_requests` + policy `posts` sur `accepted`), soit un texte qui
+      dit ce que « privé » veut vraiment dire.
+- [ ] **Les limites de débit ne couvrent que 3 tables** (`comment_interactions` 60/min,
+      `event_reactions` 30/min, `reports` 10/min). Rien sur `posts`, `post_comments`,
+      `conv_messages`, `follows`, `stories`, `events`, ni sur `notifications` — dont
+      l'INSERT (`from_id = auth.uid()`) vise **n'importe quel `user_id`** : un compte
+      peut faire sonner la cloche de tous, sans borne (le texte est neutralisé à
+      l'entrée par `_neutraliserBalisesNotif`, vérifié : pas de XSS). Et les INSERT
+      **anonymes** de `client_errors` et `telemetry_events` (`user_id IS NULL` accepté)
+      n'ont aucune borne : un script sans compte peut remplir la base jusqu'au mur
+      lecture seule du plan gratuit (500 Mo ; 51 Mo aujourd'hui). Les purges à 7 et
+      30 jours bornent la durée, pas le débit. `rate_limit_insert()` existe déjà :
+      c'est une ligne `CREATE TRIGGER` par table.
+- [ ] **`supabase-js` est chargé depuis jsDelivr à la version flottante `@2`**
+      (`js/supabase-loader.js`), sans épinglage ni SRI ; MapLibre vient d'unpkg en
+      4.7.1 sans SRI ; la CSP autorise `'unsafe-inline'` et ces deux CDN. Une
+      publication cassée ou compromise du SDK atteint la production **sans aucun
+      déploiement de notre côté**, et sans qu'aucune gate ne puisse le voir. Épingler
+      `@2.x.y`, ou auto-héberger (le build inline déjà tout le reste).
+
+Non mesurable depuis un poste : les interrupteurs du tableau de bord Supabase Auth
+(fournisseur **Anonymous** — `onbSkipAuth` est un chemin mort et il y a 0 compte
+anonyme, mais s'il reste allumé, un `signInAnonymously()` ouvre toutes les policies
+`authenticated`, dont la liste des participants), la protection HaveIBeenPwned, les
+quotas d'e-mail ; et DKIM/DMARC de `passio-app.fr` (DNS inaccessible depuis cet
+environnement). À lire à l'écran, pas à supposer.
+
+---
+
 ## 🛡️ Confiance et sécurité des personnes — le point le plus lourd
 
 PASSIO organise des **rencontres physiques entre inconnus**. C'est la responsabilité
@@ -211,14 +320,17 @@ la plus grave du produit, et c'est là que la dette est la plus visible.
 - [ ] **Un signalement n'arrive nulle part.** `reports` n'a que 6 colonnes —
       `id, reporter_id, target_type, target_id, reason, created_at` — et **aucun
       statut**. Il est *structurellement impossible* de savoir si un signalement a été
-      lu. Les 2 signalements de production ont **21 et 74 jours**. Le seul outil du
-      dépôt (`passions-moderation.js`) ne lit que `target_type=passion`. Le Centre de
-      pilotage ne surveille pas la table. Aucune alerte, aucun e-mail.
+      lu. Les 2 signalements de production (1 `user`, 1 `comment`) ont **22 et
+      75 jours** au 2026-09-11. `scripts/moderation.js` (`npm run moderation`) les lit
+      désormais tous — **mais il faut penser à le lancer** : le Centre de pilotage ne
+      surveille pas la table, aucune alerte, aucun e-mail, aucun statut.
       **Une testeuse signale un comportement inquiétant, lit « notre équipe va
       vérifier », et personne n'est prévenu.** À faire : colonnes de statut (canal ③),
       un `scripts/moderation.js` sur le modèle de `passions-moderation.js`, `reports`
       dans `SAFE_TABLES` du dashboard, et une alerte au-delà de 24 h.
-- [ ] **Bloquer quelqu'un ne l'empêche ni de vous suivre, ni de vous écrire.**
+- [x] **Bloquer quelqu'un l'empêche désormais de vous suivre, de vous écrire en privé, de
+      commenter ou d'aimer vos publications, et de vous notifier** (RLS, 2026-09-11 —
+      migration à coller).
 - [ ] Aucun dispositif de sécurité des rencontres : pas de partage de trajet à un
       proche, pas de bouton d'alerte, aucune vérification d'identité — ce que les CGU
       §7 disent honnêtement (« aucun membre n'est vérifié »).
@@ -230,13 +342,16 @@ la plus grave du produit, et c'est là que la dette est la plus visible.
 
 ## 🧯 Exploitation
 
-- [ ] **Aucune sauvegarde automatique de la production**, et la restauration n'a
-      **jamais été exécutée une seule fois**. Une sauvegarde jamais restaurée n'est
-      pas une sauvegarde, c'est une intention.
+- [x] **Sauvegarde automatique quotidienne (2026-09-11)** : `.github/workflows/sauvegarde.yml`
+      exporte, vérifie, chiffre, **déchiffre et relit** l'archive à chaque run, puis la
+      dépose 30 jours. ⚠️ Reste à la lancer une fois à la main et à déchiffrer en local :
+      une sauvegarde jamais restaurée par un humain reste une intention.
 - [ ] Le retour arrière n'a jamais été exercé.
-- [ ] `telemetry_events` occupe **~60 % de la base** et **rien ne la purge** — alors
-      que la politique s'engage désormais sur **13 mois**. Une fonction de purge
-      existe (`migrations/purge_telemetry_development.sql`) mais n'est pas planifiée.
+- [x] `telemetry_events` occupait **~60 % de la base** sans purge. **Planifiée depuis
+      (mesuré le 2026-09-11)** : `cron.job` « `select public.purge_telemetry(7)` » à
+      04:00 et purge de `client_errors` à 30 jours à 03:00 ; la table est à 8,7 Mo.
+      ⚠️ 7 jours de rétention côté base, 13 mois promis par la politique : le texte
+      dit plus que la base ne garde — c'est le texte qui doit rejoindre la mesure.
 - [ ] **Aucune continuité humaine** : un seul contributeur, aucun suppléant, aucune
       procédure d'absence.
 - [x] Monitoring `client_errors` câblé, sentinelle horaire (~41 % des créneaux tenus
@@ -282,6 +397,14 @@ la plus grave du produit, et c'est là que la dette est la plus visible.
 contrat en vigueur **interdit** de facturer — il promet la gratuité et fonde son
 exonération dessus. C'est un chantier juridique et technique à part entière, pas un
 réglage.
+
+**Re-mesuré le 2026-09-11 :** le socle (RLS, cloisonnement des messages, colonnes
+privées des rencontres, secrets, Edge Functions) tient ; `conv_reads` et
+`client_errors.auth_uid` sont appliqués ; restent ouverts le seau `attachments`
+public, les canaux d'appel publics, l'absence de sauvegarde automatique, et quatre
+constats neufs (oracle `is_conv_member` + `events.conv_id`, compte privé sans
+approbation, débit non borné, SDK à version flottante). **Sûre pour des testeurs
+avertis, pas pour le public, pas pour vendre.**
 
 Détail complet des 107 constats et de leurs contre-expertises :
 [`AUDIT_COMMERCIALISATION_2026-09-10.md`](AUDIT_COMMERCIALISATION_2026-09-10.md).

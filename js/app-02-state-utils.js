@@ -1428,6 +1428,118 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]));
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// PIÈCES JOINTES DE MESSAGERIE — le seau `attachments` est PRIVÉ (2026-09-11)
+// ═══════════════════════════════════════════════════════════════════════════
+// Mesuré en production : `storage.buckets.attachments.public = true`, donc une
+// photo, un fichier ou un vocal de conversation privée restait lisible À VIE par
+// son URL exacte via `/object/public/…`, route qui contourne la RLS. La lecture
+// passe désormais par une URL SIGNÉE, que seul un MEMBRE de la conversation peut
+// obtenir (policy `passio_attachments_read_membre`, 2026-09-08).
+//
+// ⚠️ DÉPLOYABLE AVANT COMME APRÈS la migration qui ferme le seau : tant que le
+// seau est public, l'URL publique ET l'URL signée fonctionnent ; une signature
+// qui échoue (hors ligne, SDK absent, non-membre) REPLIE sur l'URL d'origine —
+// qui ne rend alors plus rien qu'à un seau public. On ne casse jamais l'affichage
+// pour un défaut de signature, on cesse seulement de lire ce qu'on n'a pas le
+// droit de lire.
+// ⚠️ DEUX FORMES D'URL vivent en base et en IndexedDB : la forme Supabase
+// (`…/storage/v1/object/public/attachments/attachments/<conv>/<fichier>`) et la
+// forme CDN du 2026-09-11 (`…/media/attachments/attachments/<conv>/<fichier>`).
+// `pieceJointeChemin` reconnaît les deux — et `cdnUrl` (app-08) NE réécrit PLUS
+// les pièces jointes : un objet privé n'a rien à faire dans un cache public.
+// ⚠️ Le nom d'objet est `attachments/<conv>/<fichier>` DANS le seau `attachments`
+// (le segment est doublé, depuis toujours) : c'est `(storage.foldername(name))[2]`
+// que la policy compare à la conversation. Ne pas « nettoyer » ce doublon.
+// ⚠️ UNE URL SIGNÉE EST UN PORTEUR : qui la détient lit l'objet jusqu'à son
+// expiration, membre ou non. Une heure, pas sept jours (red team du 2026-09-11) :
+// un membre retiré d'une conversation perd l'accès dans l'heure, et le cache de
+// session re-signe au repeint suivant — une requête par objet, pas par bulle.
+const PJ_SIGNATURE_TTL_S = 3600;
+const PJ_SIGNATURE_MARGE_S = 600; // on re-signe 10 min avant l'expiration
+const _pjSignees = new Map(); // nom d'objet → { url, exp } — mémoire de session
+
+function pieceJointeChemin(url) {
+  if (typeof url !== "string") return null;
+  var m = url.match(/\/storage\/v1\/object\/(?:public|sign|authenticated)\/attachments\/([^?#]+)/)
+       || url.match(/\/media\/attachments\/([^?#]+)/);
+  if (!m) return null;
+  try { return decodeURIComponent(m[1]); } catch (e) { return m[1]; }
+}
+
+function urlPieceJointeSignee(url) {
+  var chemin = pieceJointeChemin(url);
+  if (!chemin) return Promise.resolve(url);
+  var c = _pjSignees.get(chemin);
+  if (c && c.exp > Date.now()) return Promise.resolve(c.url);
+  // Le MÊME objet peut être demandé plusieurs fois avant que la première
+  // signature ne revienne (une image et son lien dans la même bulle, le fil et le
+  // panneau Médias) : on partage la promesse en cours, une signature par objet.
+  if (c && c.enCours) return c.enCours;
+  var client = (typeof supa !== "undefined") ? supa : null;
+  if (!client || !client.storage || typeof client.storage.from !== "function") return Promise.resolve(url);
+  var p;
+  try { p = client.storage.from("attachments").createSignedUrl(chemin, PJ_SIGNATURE_TTL_S); }
+  catch (e) { return Promise.resolve(url); }
+  // Un refus (non-membre, hors ligne) est mémorisé UNE minute : sans cela, chaque
+  // repeint du fil — donc chaque message entrant — redemanderait une signature
+  // que Storage refusera de nouveau.
+  var refus = function () { _pjSignees.set(chemin, { url: url, exp: Date.now() + 60 * 1000 }); return url; };
+  var enCours = Promise.resolve(p).then(function (r) {
+    var u = r && r.data && r.data.signedUrl;
+    if (!u || !/^https?:\/\//i.test(u)) return refus();
+    _pjSignees.set(chemin, { url: u, exp: Date.now() + (PJ_SIGNATURE_TTL_S - PJ_SIGNATURE_MARGE_S) * 1000 });
+    return u;
+  }).catch(refus);
+  _pjSignees.set(chemin, { enCours: enCours, exp: 0 });
+  return enCours;
+}
+
+// Au rendu : une pièce jointe porte `data-pj` (et PAS de src, sinon le navigateur
+// demanderait une URL qu'un seau privé refuse) ; tout autre média garde `src`.
+// `attr` = "src" (img, video) ou "href" (a).
+function attrMediaSrc(url, attr) {
+  attr = attr || "src";
+  if (pieceJointeChemin(url)) return 'data-pj="' + escapeHtml(url) + '"';
+  return attr + '="' + safeUrlAttr(url) + '"';
+}
+
+// Après CHAQUE `innerHTML` qui peint des messages : pose l'URL signée sur les
+// nœuds marqués. Idempotent (l'attribut est consommé).
+function signerPiecesJointes(root) {
+  var racine = root || document;
+  if (!racine || typeof racine.querySelectorAll !== "function") return;
+  Array.prototype.forEach.call(racine.querySelectorAll("[data-pj]"), function (el) {
+    var brut = el.getAttribute("data-pj");
+    el.removeAttribute("data-pj");
+    if (!brut) return;
+    urlPieceJointeSignee(brut).then(function (u) {
+      if (!u || !/^https?:\/\//i.test(u) || !el.isConnected) return;
+      if (el.tagName === "A") el.href = u; else el.src = u;
+    });
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ABONNEMENT À UN COMPTE PRIVÉ — sur DEMANDE (2026-09-11)
+// ═══════════════════════════════════════════════════════════════════════════
+// `follows.status` est tranché par le SERVEUR (`trg_follows_statut`) : 'pending'
+// vers un compte privé, 'accepted' sinon. Le client ne connaît que TROIS états
+// pour un bouton « Suivre », et cette fonction est la SEULE qui les nomme.
+//   · state.user.following        → abonnements ACCEPTÉS (la source « Suivis » du fil)
+//   · state.user.followingPending → demandes envoyées, pas encore acceptées
+function etatSuivi(uid) {
+  var u = (typeof state !== "undefined" && state) ? state.user : null;
+  if (!u || !uid) return "aucun";
+  if ((u.following || []).indexOf(uid) >= 0) return "suivi";
+  if ((u.followingPending || []).indexOf(uid) >= 0) return "attente";
+  return "aucun";
+}
+function libelleBoutonSuivi(uid) {
+  var e = etatSuivi(uid);
+  return e === "suivi" ? "✓ Suivi" : e === "attente" ? "Demande envoyée" : "Suivre";
+}
+
 // Normalise un texte MULTILIGNE saisi dans un <textarea> (biographie…) — il est
 // rendu avec `white-space: pre-line`, donc chaque saut de ligne écrit est un saut
 // de ligne affiché. On respecte STRICTEMENT ce que la personne a tapé, à trois

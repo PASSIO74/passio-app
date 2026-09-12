@@ -1,0 +1,106 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# SAUVEGARDE QUOTIDIENNE DE LA PRODUCTION — chiffrée, vérifiée, conservée 30 j
+#
+# Constat de la checklist de commercialisation : « aucune sauvegarde
+# automatique, et la restauration n'a jamais été exécutée ». Le script existait
+# (`scripts/sauvegarde-donnees.js`, canal ② d'ADR-012 : lecture par PostgREST
+# avec `service_role`, aucune écriture), rien ne le lançait. Ce workflow le joue
+# chaque nuit et dépose l'archive comme ARTEFACT du run.
+#
+# ⚠️ LE DÉPÔT EST PUBLIC, L'ARCHIVE PORTE DES DONNÉES PERSONNELLES (comptes,
+# e-mails, messages). Elle est donc CHIFFRÉE avant d'être déposée
+# (AES-256-CBC, PBKDF2 200 000 itérations). La phrase de passe est le secret
+# `SAUVEGARDE_PASSPHRASE` s'il existe ; sinon le SHA-256 hexadécimal de la clé
+# `service_role` — quelqu'un qui détient cette clé détient déjà la base entière,
+# donc ce repli n'affaiblit rien, et il n'exige aucun geste de plus.
+#
+# Déchiffrer (en local, jamais dans la CI) :
+#   openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in passio-sauvegarde-<date>.tar.gz.enc \
+#     -pass pass:"$(printf %s "$SUPABASE_SERVICE_ROLE_KEY" | sha256sum | cut -d' ' -f1)" | tar xzf -
+#   node scripts/sauvegarde-donnees.js --verifier <dossier>
+#
+# ⚠️ Ce que l'archive NE contient PAS : le schéma (il vit dans migrations/), les
+# médias du Storage (option --avec-medias : le dimanche seulement, c'est lourd),
+# la télémétrie (régénérable). Restaurer = rejouer les migrations, puis recharger.
+# ⚠️ Un cron GitHub est une demande, pas une garantie : un jour peut manquer.
+# `workflow_dispatch` permet de relancer à la main.
+# ═══════════════════════════════════════════════════════════════════════════
+name: Sauvegarde production
+
+on:
+  schedule:
+    - cron: "41 2 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: sauvegarde-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sauvegarder:
+    name: Exporter, vérifier, chiffrer, déposer
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with: { fetch-depth: 1 }
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with: { node-version: '22' }
+
+      - name: Exporter (données + comptes ; médias le dimanche)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://njkiyoklssvefstljemx.supabase.co' }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]; then
+            echo "::error title=SUPABASE_SERVICE_ROLE_KEY absent::Aucune sauvegarde possible. Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          jour="$(date -u +%u)"
+          medias=""
+          if [ "$jour" = "7" ]; then medias="--avec-medias"; fi
+          # Le script SORT EN ÉCHEC si une table est incomplète : une archive
+          # plausible et amputée est le pire cas, on préfère un run rouge.
+          node scripts/sauvegarde-donnees.js --sortie sauvegarde --avec-comptes ${medias}
+          node scripts/sauvegarde-donnees.js --verifier sauvegarde
+          du -sh sauvegarde | tee -a "${GITHUB_STEP_SUMMARY}"
+
+      - name: Chiffrer
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SAUVEGARDE_PASSPHRASE: ${{ secrets.SAUVEGARDE_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          if [ -n "${SAUVEGARDE_PASSPHRASE:-}" ]; then
+            PASS="${SAUVEGARDE_PASSPHRASE}"; echo "Phrase de passe : secret SAUVEGARDE_PASSPHRASE" >> "${GITHUB_STEP_SUMMARY}"
+          else
+            PASS="$(printf %s "${SUPABASE_SERVICE_ROLE_KEY}" | sha256sum | cut -d' ' -f1)"
+            echo "Phrase de passe : SHA-256 de la clé service_role (repli, cf. en-tête du workflow)" >> "${GITHUB_STEP_SUMMARY}"
+          fi
+          export PASS
+          nom="passio-sauvegarde-$(date -u +%F).tar.gz.enc"
+          tar czf - sauvegarde | openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -pass env:PASS -out "${nom}"
+          rm -rf sauvegarde
+          ls -la "${nom}"
+          # Preuve que l'archive se DÉCHIFFRE et se relit : une sauvegarde jamais
+          # restaurée est une intention, pas une sauvegarde.
+          mkdir -p /tmp/controle && openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in "${nom}" -pass env:PASS | tar xzf - -C /tmp/controle
+          node scripts/sauvegarde-donnees.js --verifier /tmp/controle/sauvegarde
+          rm -rf /tmp/controle
+          echo "nom=${nom}" >> "${GITHUB_ENV}"
+          echo "Archive chiffrée : ${nom} — déchiffrée et relue avec succès" >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Déposer l'artefact (30 jours)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.nom }}
+          path: ${{ env.nom }}
+          retention-days: 30
+          if-no-files-found: error

@@ -1237,7 +1237,7 @@ function openEditMainProfile() {
         <input type="checkbox" id="editIsPrivate" ${g.isPrivate ? "checked" : ""} onchange="marquerConfidentialiteTouchee()" style="width:20px;height:20px;flex-shrink:0;margin-top:1px;accent-color:var(--accent);"/>
         <span style="flex:1;">
           <span style="display:block;font-weight:700;font-size:13px;color:var(--text);">Compte privé</span>
-          <span style="display:block;font-size:11px;color:var(--muted);line-height:1.45;margin-top:3px;">Seuls tes abonnés peuvent voir tes publications, photos, bobines et carnets. Ton pseudo, ton avatar et tes passions restent visibles pour que l'on puisse te trouver.</span>
+          <span style="display:block;font-size:11px;color:var(--muted);line-height:1.45;margin-top:3px;">Seuls les abonnés que tu as <b>acceptés</b> voient tes publications, photos et bobines : chaque demande d'abonnement t'est soumise dans tes notifications. Ton pseudo, ton avatar et tes passions restent visibles pour que l'on puisse te trouver.</span>
         </span>
       </label>
     </div>
@@ -4688,7 +4688,7 @@ function renderExplorer() {
       + '</div>'
       + '<button class="btn small" id="followBtn_' + escapeHtml(u.id) + '" data-follow-uid="' + escapeHtml(u.id) + '"'
       +   ' onclick="event.stopPropagation();toggleFollowUser(\'' + escapeJsArg(u.id) + '\',\'' + escapeJsArg(u.name || "") + '\')">'
-      +   (suivi ? "✓ Suivi" : "Suivre") + '</button>'
+      +   libelleBoutonSuivi(u.id) + '</button>'
       + '</div>';
   }
 

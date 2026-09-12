@@ -64,8 +64,8 @@
   <!-- Service Worker registration + auto-update -->
   <script src="js/pwa-detect.js"></script>
 
-  <!-- Connexions anticipées (DNS+TLS) pour le SDK et le backend, chargés post-gate -->
-  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+  <!-- Connexion anticipée (DNS+TLS) vers le backend. Le SDK, lui, est servi par
+       notre origine depuis le 2026-09-11 (js/vendor/, plus aucun CDN de scripts). -->
   <link rel="preconnect" href="https://njkiyoklssvefstljemx.supabase.co" />
   <!-- Perf : les tuiles passions + couvertures seed chargent depuis Unsplash dès
        le premier paint du fil — la connexion TLS est ouverte en avance. -->

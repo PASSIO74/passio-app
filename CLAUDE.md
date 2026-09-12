@@ -28,14 +28,14 @@ Réseau social des passions. PWA vanilla JS (pas de framework, pas de bundler) +
 
 - `index.html` : markup complet de l'app (landing, onboarding, 8 écrans, modals). En dev les 15 fichiers JS sont chargés séparément ; en prod `scripts/build.js` ré-assemble un monolithe dans `dist/`.
 - `js/app-01` à `app-09` : logique applicative (ordre de chargement = dépendances par hoisting, NE PAS réordonner). 01=diag/seed, 02=state/utils/goTo, 03=posts (partage, likes — les carnets en ont été retirés par ADR-011), 04=commentaires/conversations rendering, 05=config/profils/reels, 06=profil principal/studio/partage, 07=IA/explore/IRL, 08=modals/tour/boot()/Supabase client, 09=PWA/emoji/pièces jointes/wrappers messagerie.
-- `js/access-gate.js` : verrouillage par code (2125) — chargé en PREMIER dans <head>. Voir `docs/SECURITE_CODE_ACCES.md` pour changer le code.
+- `js/access-gate.js` : rideau par code (2125), **LEVÉ par défaut depuis l'ouverture publique du 2026-09-11** — ne s'arme que sur `localStorage.passio_gate_actif="1"` (la suite `access-gate.spec.js` l'arme elle-même). Chargé en PREMIER dans <head>. Voir `docs/SECURITE_CODE_ACCES.md`.
 - `styles.css` : 6300 lignes, thème violet (#7c3aed), variables CSS (--bg-card, --border, --muted, --accent…).
 - Backend : Supabase (URL/clé anon dans app-08). Tables : profiles, posts, post_likes, post_comments, stories, events, event_attendees, conversations, conv_members, conv_messages, notifications, follows, client_errors. RLS par propriétaire (`auth.uid()::text`). Migrations dans `migrations/`.
 - État local : `localStorage["passio_mvp_state_v1"]` (constante `STATE_KEY` dans app-02 — PAS `passio_state`). Contient profils, posts perso, notifs… `MY_UID` = id Supabase auth ; jeton du gate = `sessionStorage["passio_gate_v1"]`. **Les conversations** (le gros volume, vocaux base64 inclus) sont dans `localStorage["passio_conversations_v1"]` ET, depuis le 2026-06-15, dans **IndexedDB** (store durable sans limite ~5 Mo, `js/idb-store.js` : `idbConvLoad`/`idbConvSave`) : write-through à chaque `saveConversations`, hydratation+fusion sans perte au boot via `hydrateConvsFromIDB()` (tête de `boot()`). localStorage reste un cache sync toléré à échouer sur quota.
 
 ## Commandes
 
-- Serveur local : `npm run serve` → http://localhost:8080 (code d'accès : 2125 ; http-server, plus besoin de Python)
+- Serveur local : `npm run serve` → http://localhost:8080 (plus de code d'accès depuis le 2026-09-11 ; http-server, plus besoin de Python)
 - **Vérification rapide : `npm run verif` (~2 s)** — les SEPT gates statiques que la CI exige. À lancer AVANT tout : un rouge s'y trouve en 2 s au lieu d'un cycle CI de ~30 min.
 - Tests : `npx playwright install chromium` puis `npm test`. Ciblé : `npm run test:local` (897 suites navigateur, aucune écriture en base) · `npm run test:prod` (les 7 suites à comptes réels) · `npm run test:local -- tests/e2e/x.spec.js`. Le helper `tests/e2e/gate-helper.js` déverrouille le gate.
 - Build prod : `node scripts/build.js dist/index.html`
@@ -245,7 +245,7 @@ Verrou : `tests/e2e/admission-18-plus.spec.js` (17).
 
 Mesuré en production : la policy `passio_media_read` de `storage.objects` était `FOR SELECT` au rôle `{public}` avec pour seule condition `bucket_id IN ('content','attachments')`. **N'importe qui, sans compte, pouvait LISTER et lire tout le seau `attachments`** — photos, fichiers et messages vocaux des conversations privées (12 objets, 4 conversations au 2026-09-08). Ce n'était pas une fuite par URL devinée, c'était une énumération.
 `migrations/migration_storage_lecture_cloisonnee.sql` (**PARTIE A APPLIQUÉE EN PRODUCTION** — mesuré le 2026-09-09 : `passio_media_read` a disparu, remplacée par `passio_content_read` et `passio_attachments_read_membre`) applique à la LECTURE le prédicat qui gouverne déjà l'ÉCRITURE depuis le 2026-08-17 : `is_conv_member((storage.foldername(name))[2], auth.uid())` — le chemin étant `attachments/<convId>/<fichier>`, le deuxième segment EST la conversation. Aucun prédicat nouveau n'est inventé.
-⚠️ **La PARTIE A ne casse rien et peut s'appliquer seule** : le client lit par `getPublicUrl`, donc la route `/object/public/…`, qui contourne la RLS tant que le seau est déclaré public. On ferme l'énumération et l'API authentifiée, pas la lecture par URL exacte. ⚠️ **La PARTIE B — passer le seau en privé — EXIGE un lot client (URL signées aux deux points de dépôt ET à l'affichage, avec renouvellement à l'expiration) : l'appliquer avant ferait disparaître toutes les pièces jointes.** Ne pas confondre le gain net de A avec la clôture du sujet.
+⚠️ **La PARTIE A ne casse rien et peut s'appliquer seule** : le client lit par `getPublicUrl`, donc la route `/object/public/…`, qui contourne la RLS tant que le seau est déclaré public. On ferme l'énumération et l'API authentifiée, pas la lecture par URL exacte. ⚠️ **La PARTIE B — passer le seau en privé — est ÉCRITE le 2026-09-11** (lot client des URL signées + instruction ⑥ de `migration_ouverture_publique_2026-09-11.sql`, à coller APRÈS le déploiement du client) : voir la section « OUVERTURE PUBLIQUE GRATUITE ».
 ⚠️ Le seau `content` reste lisible par tous, délibérément : il porte les médias publics du fil, qu'un visiteur sans compte doit voir. Limite assumée : une publication d'un compte PRIVÉ y est donc lisible par URL — autre lot.
 Verrou : `tests/sql/migration-storage-lecture.test.sh` (22 contrôles, gate CI), qui mesure d'ABORD le défaut sur la policy réelle de prod, puis le referme, puis éprouve 4 mutations.
 
@@ -345,6 +345,149 @@ e-mails de confirmation partent probablement en spam — **le défaut qui tue un
 ⚠️ **ET DEUX AFFIRMATIONS DE CE FICHIER ÉTAIENT FAUSSES** : l'interrupteur `irl_adult_only` était
 annoncé ÉTEINT, il est **ALLUMÉ** ; et `docs/CHECKLIST_COMMERCIALISATION.md` cochait Wallet et CDV.
 **L'état d'un interrupteur serveur ne se lit pas dans un fichier du dépôt, il se mesure.**
+
+## 🚀 OUVERTURE PUBLIQUE GRATUITE — SEPT DÉFAUTS SERVEUR, UN LOT CLIENT, DEUX CANAUX D'EXPLOITATION (2026-09-11, après-midi)
+
+Benjamin : « commercialiser, c'est la rendre publique gratuitement et la faire utiliser à un
+max d'utilisateurs ». Le matin, la re-mesure disait « sûre pour des testeurs avertis, pas pour
+le public » ; ce lot ferme l'écart. Mode d'emploi et gestes restants (coller le SQL, trois
+interrupteurs du tableau de bord Supabase, DKIM/DMARC, une sauvegarde à déchiffrer une fois) :
+**`docs/OUVERTURE_PUBLIQUE_2026-09-11.md`**. Migration : `migrations/migration_ouverture_publique_2026-09-11.sql`
+(une transaction, verdict à 13 lignes) · banc `tests/sql/migration-ouverture-publique.test.sh` (117, gate CI)
+· verrous client `tests/e2e/ouverture-publique.spec.js` (35) · unitaires `tests/unit/moderation-alerte.test.mjs` (8).
+
+⚠️ **UN ORACLE N'EST PAS UNE FUITE DE TABLE, ET AUCUN AUDIT RLS NE LE VOIT.** `is_conv_member(conv, uid)` est
+`SECURITY DEFINER` et était **exécutable par `anon`** (`get_advisors` le signalait ; `has_function_privilege` l'a
+confirmé). Toutes les tables de messagerie étaient bien fermées — mais `events.conv_id` était dans le GRANT colonne
+d'`anon` et `profiles.id` est public : la liste **nominative** des membres de la conversation d'une rencontre se
+reconstituait sans compte, alors que `event_attendees` venait d'être fermée le 08/09. **Une porte fermée sur une table
+se rouvre par une fonction** : après toute migration de confidentialité, lire `get_advisors` ET
+`has_function_privilege('anon', …)` sur chaque `SECURITY DEFINER`. ⚠️ Révoquer seul aurait fait lever « permission
+denied » aux policies qui l'appellent au rôle courant : elles passent au rôle `authenticated`, et un visiteur obtient
+**zéro ligne sans erreur** — jamais de bruit dans le tableau de bord pour un refus légitime. ⚠️ `post_is_visible` et
+`comment_target_visible` RESTENT ouverts à `anon` : un visiteur lit les commentaires d'une publication publique par eux.
+⚠️ Retirer `conv_id` du GRANT sans le retirer de `_EVENT_COLS_PUBLIC` ferait disparaître **toutes** les rencontres pour
+tout visiteur (42501 sur la requête entière) : le banc compare les deux listes à l'octet, et `_EVENT_COLS_PRIVE`
+= publique + `address, contact, conv_id`.
+
+⚠️ **BLOQUER N'AVAIT D'EFFET QUE SUR `conv_members`.** La personne bloquée pouvait toujours vous suivre, vous écrire dans
+le 1:1 existant, commenter, aimer et vous notifier. Six policies INSERT exigent désormais `not is_blocked_with(...)` via
+trois aides `SECURITY DEFINER` (`post_auteur_bloque`, `event_auteur_bloque`, `conv_1a1_bloquee`) — SECURITY DEFINER parce
+qu'un commentaire vise parfois une ligne que la RLS du rôle courant ne rend pas. **Borné aux 1:1** pour les messages :
+dans un groupe la personne bloquée reste membre, c'est le retrait du groupe qui relève de l'organisateur. Un commentaire
+sur un post SEED (sans ligne `posts`) passe toujours : le banc le mesure.
+
+⚠️ **LE DÉBIT N'ÉTAIT BORNÉ QUE SUR TROIS TABLES, ET `rate_limit_insert` POSE `created_at = now()`.** C'est voulu (un client
+antidaterait pour échapper au compte) et c'est un changement de sémantique pour `posts` : une publication rejouée depuis la
+file hors ligne porte désormais l'heure du SERVEUR. `follows` n'avait pas de `created_at` — le trigger aurait levé « record
+new has no field » à chaque abonnement ; la colonne est ajoutée. Les tables à INSERT **anonyme** (`client_errors`,
+`telemetry_events`) n'ont pas d'identité fiable : `limiter_debit_global()` plafonne la table entière par minute (120 /
+3 000). Un attaquant qui sature ce plafond fait perdre de la télémétrie, jamais la base. ⚠️ Dans un banc, la borne compte
+les lignes du SOCLE : un compte qui a déjà publié dans la minute ne peut pas servir à mesurer « 10 puis refus ».
+
+⚠️ **UN CANAL REALTIME PRIVÉ SANS POLICY EST REFUSÉ** : déployer `private: true` avant les policies aurait coupé appels,
+frappe et lives. La sonnerie (`_subscribeCallRing`, abonnée au démarrage, UN SEUL point de création pour `ring:`/`call:` :
+`_callChannel`) sert de **sonde** : un `CHANNEL_ERROR` dont le message parle de permission/policy pose
+`window._rtPriveIndisponible` et tout repart en public — une coupure réseau ne fait PAS replier. ⚠️ **Les policies ne
+sont opposables que si le tableau de bord Supabase interdit les canaux publics** (Realtime → « Allow public access » OFF) :
+tant qu'il les permet, un client qui omet `private: true` écoute encore. C'est un geste du tableau de bord, pas du dépôt.
+⚠️ **ET CE GESTE TUE TOUT CANAL RESTÉ PUBLIC** : `realtime:db` (accusés de lecture, interactions, arrivée dans une
+conversation) et `conv_specific:<conv>` l'étaient encore, sans policy — la red team l'a vu, pas le lot. **TOUS** les
+`supa.channel(` du dépôt portent désormais `private:` (le verrou ⑨ balaie les trois fichiers), chacun avec son propre
+repli sur refus de policy (`_creerCanalDb`, `_creerCanalConvSpecifique`, `_creerCanalTyping`) ; la policy
+`realtime:db` est ouverte à `anon` aussi — le canal n'ouvre RIEN, chaque table garde sa RLS.
+Résidu assumé : l'identité de l'appelant dans la charge utile reste déclarative **entre comptes**.
+
+⚠️ **RED TEAM DU MÊME JOUR — LA CHARGE UTILE D'UN BROADCAST EST HOSTILE, ET UN UPDATE EST UNE ÉCRITURE COMME UNE AUTRE.**
+Revue adversariale en lecture seule du lot (agent `passio-red-team`, vérifié en production par `execute_sql`), dix
+constats, tous refermés le jour même sauf deux résidus écrits : ① **P0 — XSS par sonnerie** : `_callRenderIncomingUI`
+posait `inv.emoji` dans `innerHTML` sans échappement, et la policy `ring:%` laisse tout compte émettre — une invitation
+`{ emoji: '<img onerror=…>' }` exécutait du script chez n'importe quel compte connecté (vol du jeton de session). La
+policy Realtime ne regarde que le TOPIC, jamais le contenu : **tout champ d'un `payload` broadcast s'échappe à
+l'affichage**, comme `comment_interactions` (`_emojiSur`, borné à 4 caractères, éprouvé par RÉINJECTION). ② **P1 —
+`conv_messages."Update propre"` était `USING (from_id = moi)` SANS `WITH CHECK`, et rien ne figeait `conv_id`** : un
+message se DÉPLAÇAIT par UPDATE dans le 1:1 d'un compte qui vous a bloqué ou dans le groupe d'une rencontre dont on n'est
+pas membre (`events.conv_id = 'evgrp_' || id`, ids publics). Même trou sur `post_comments.post_id`. Le lot ② ne gardait
+que l'INSERT — **une garde posée sur l'INSERT seul se contourne par l'UPDATE** ; `WITH CHECK` reprend la condition
+d'INSERT et `trg_identifiants_figes` fige les identifiants (`WITH CHECK` ne voit que la ligne finale). ③ Un compte
+BLOQUÉ pouvait encore faire sonner : le bloqueur est dans le TOPIC (`ring:<uid>`), la policy `passio_rt_emettre` le lit
+(`is_blocked_with(substr(topic, 6))`) ; et `_callOnInvite` borne la cadence (un callId neuf par message faisait
+réafficher l'écran d'appel en boucle). ④ `callId = <uid>_<horodatage>` se DEVINAIT (uid public, milliseconde proche) et
+`call:%` est lisible par tout compte → offre SDP (adresses IP) et `hangup` à portée d'un tiers : `_callIdAleatoire()`.
+⑤ Les demandes d'abonnement EN ATTENTE se lisaient sans compte (`follows` : deux SELECT `true`) : `follows_lecture`
+n'ouvre `pending` qu'à ses deux bouts. ⑥ Un live obéissait à n'importe qui (`offer` détournait le flux d'un spectateur,
+`end` coupait pour tous) : `_vliveDeLHote(d)` exige `from = video_lives.author_id` sur les huit ordres d'hôte, et un
+`roffer` n'est accepté que du relais ASSIGNÉ. ⑦ `reports.target_type` (libre, ≤ 40 car.) finissait tel quel dans le
+corps d'une issue PUBLIQUE : liste blanche (`autre` sinon) + `CHECK` en base. ⑧ Une URL signée valait **7 jours** — un
+membre retiré lisait encore une semaine : **1 heure**. ⑨ Sur un doublon 23505, `supaFollowUser` rendait `accepted` par
+défaut : une demande en attente devenait « ✓ Suivi » ; le statut local prime. ⑩ La ligne `notifications` d'un abonnement
+était écrite par le client qui s'abonne : **`follows_notifier` (serveur) l'écrit** avec un identifiant déterministe
+(`n_fr_`/`n_fw_`/`n_fa_` + 8 car. de chaque uid — même famille que `_idNotifMessage`), le client ne pousse que le PUSH
+(`_pousserPushNotif`) — et écrit encore la ligne lui-même **tant que la base n'a pas `status`** (pas de colonne = pas de
+trigger : `window._followsSansStatut` est le discriminant des deux états).
+⚠️ **RÉSIDUS ÉCRITS, PAS RÉGLÉS** : `from` reste déclaratif **entre comptes** dans un live (un compte connecté peut se
+dire l'hôte — fermer cela demande un topic d'hôte gardé par policy) ; `is_conv_member`/`is_blocked_with` restent des
+oracles pour un compte **connecté** (les policies `authenticated` les appellent au rôle courant : leur retirer EXECUTE
+ferait lever « permission denied » partout — c'est très exactement ce que ① avait dû contourner pour `anon`).
+⚠️ **ET UNE SUGGESTION DE LA RED TEAM ÉTAIT FAUSSE** : « révoquer EXECUTE aux aides appelées seulement par des policies,
+elles s'exécutent au rôle propriétaire ». Non : SECURITY DEFINER change le rôle DANS la fonction, l'APPEL exige toujours
+EXECUTE pour le rôle courant. Une revue adversariale se vérifie contre le code réel avant d'être appliquée (règle de
+`docs/REVUE_INDEPENDANTE.md`).
+⚠️ **PUIS `audit-passio` A RELU LES CORRECTIFS EUX-MÊMES, ET EN A TROUVÉ TROIS DE TRAVERS** : ① **un identifiant
+déterministe rend un verdict ÉTERNEL** — `follows_notifier` rafraîchit la MÊME ligne à chaque nouvelle demande, et le
+verdict « refusée » mémorisé par id (`demandesAbonnementTraitees`) aurait affiché « Demande refusée », sans bouton, pour
+toujours : le verdict est HORODATÉ (`{ verdict, at }`, `_verdictDemandeAbonnement`), périmé dès qu'une notification plus
+récente arrive, et `mergeSupaNotifs` l'efface. ② **une correction inatteignable depuis son appelant** — « sur doublon, le
+statut local prime » lisait `etatSuivi()`, mais `toggleFollowUser` pousse l'optimiste dans `following` AVANT d'appeler
+`supaFollowUser` : l'état local disait toujours « suivi ». Sur doublon on RELIT la ligne serveur (`follows_lecture`
+l'ouvre au demandeur) ; le verrou qui posait `followingPending` à la main testait la fonction, pas le câblage — le cas
+② bis pose l'état RÉEL de l'appelant. ③ **un second appelant oublié** — `_vliveToggleFollow` (live) ignorait `ok:false`
+et `pending` : il a les trois états de `toggleFollowUser`. Et **un à-côté qui casse le contrat** : `notifications` porte
+`trg_rate_limit` (60/min, tous genres), un refus y aurait fait échouer l'INSERT `follows` par le trigger — le notifier
+avale l'exception (`raise warning`), la notification n'est pas le contrat. Mesuré avant déploiement (canal ①) : rien de
+la migration n'est en prod (ni `status`, ni trigger, ni policy), le discriminant `_followsSansStatut` est donc exact.
+
+⚠️ **LES PIÈCES JOINTES PORTENT `data-pj`, PAS `src`.** Un seau privé refuse l'URL publique : la poser en `src` ferait
+demander au navigateur une URL en 400 avant la signature. `attrMediaSrc(url, "src"|"href")` (app-02) tranche selon
+`pieceJointeChemin(url)`, qui reconnaît les DEUX formes en base (Supabase `/object/public/attachments/…` et CDN
+`/media/attachments/…`) ; `signerPiecesJointes(root)` s'appelle **APRÈS chaque `innerHTML`** qui peint des messages (fil
+`renderConvFpThread`, panneau Médias `openConvFiles`) et le lecteur vocal signe au premier tap. Le nom d'objet est
+`attachments/<conv>/<fichier>` DANS le seau `attachments` — segment doublé depuis toujours, c'est `foldername(name)[2]` que
+la policy compare : ne pas « nettoyer ». `cdnUrl` ne réécrit plus ce seau (un objet privé n'a rien à faire dans un cache
+public). Repli sur l'URL d'origine si la signature échoue : rien ne casse tant que le seau est public, et une fois privé
+seul un membre lit. ⚠️ La partie ⑥ de la migration (seau privé) est **la dernière instruction** et se colle **après** le
+déploiement du client.
+
+⚠️ **`follows.status` : LE SERVEUR TRANCHE, LE CLIENT SE CORRIGE.** `trg_follows_statut` écrit `pending` vers un compte
+privé quoi que le client envoie ; `follows_accepter` (UPDATE, cible seule, vers `accepted` seulement) et
+`trg_follows_figes` (identifiants figés — `WITH CHECK` ne voit que la ligne finale, la cible aurait pu réécrire
+`follower_id` et fabriquer un abonné). `posts`, `stories` ET `post_is_visible` exigent `status = 'accepted'` : trois
+endroits qui doivent dire la même chose. Côté client, `toggleFollowUser` reste optimiste dans le sens « suivi » puis se
+CORRIGE au verdict (`Demande envoyée`, `state.user.followingPending`) ; un second tap annule ; `libelleBoutonSuivi`
+(app-02) est la SEULE table des trois libellés. ⚠️ **PostgREST joue l'insert et son `select` dans la même transaction** :
+demander `status` sur une base qui n'a pas la colonne rend 42703 ET n'écrit pas l'abonnement — d'où
+`_erreurColonneStatutAbsente` et `window._followsSansStatut`, mémorisé pour la session au premier refus. ⚠️ Le verdict
+d'une demande (`demandesAbonnementTraitees`) vit dans l'ÉTAT DU COMPTE, pas sur l'objet notification :
+`mergeSupaNotifs` remplace celui-ci à chaque relecture et les deux boutons réapparaîtraient.
+
+⚠️ **UN SDK EN VERSION FLOTTANTE EST UN DÉPLOIEMENT QUE PERSONNE N'A DÉCIDÉ.** `@supabase/supabase-js@2` venait de jsDelivr
+sans intégrité, MapLibre d'unpkg : une publication cassée ou compromise atteignait la production sans commit et sans
+qu'aucune gate puisse le voir. Les deux vivent dans `js/vendor/` (épinglés, `LICENCES.md`), copiés dans `dist/` par
+`scripts/build.js` (règle `data/` : un asset qui n'existe qu'en CI est un asset qu'on découvre manquant en production), et
+la CSP ne connaît plus que `'self'`. ⚠️ `audit:globals`/`audit:handlers`/`audit-echappement` ne scannent que `js/*.js` de
+premier niveau — `js/vendor/` en est exclu par construction, ne pas y déposer de code maison. ⚠️ Les suites qui coupaient
+le SDK par `**/cdn.jsdelivr.net/**` coupent désormais `**/js/vendor/supabase-js*` ; en local, MapLibre se charge
+désormais (il était bloqué par le bac à sable réseau), comme en CI depuis toujours.
+
+⚠️ **`psql -q` AVALE LES ÉTIQUETTES DE COMMANDE** (« INSERT 0 1 », « DO ») : un banc qui attend ce texte lit une chaîne
+vide et accuse la migration. `AUTH_OK`/`ANON_OK`/`RT_OK` rendent « OK » ou le message d'erreur. Et une assignation
+`res="$(psql …)"` sous `set -e` TUE le banc au premier refus SQL — là où un `$(…)` en argument de fonction ne tue rien.
+
+⚠️ **LE DÉPÔT EST PUBLIC** : l'archive de sauvegarde (comptes, e-mails, messages) est chiffrée AVANT d'être déposée en
+artefact (phrase = `SAUVEGARDE_PASSPHRASE`, sinon SHA-256 de la clé `service_role` : qui détient cette clé détient déjà
+la base, le repli n'affaiblit rien et n'exige aucun geste), puis **déchiffrée et relue** dans le même run — une
+sauvegarde jamais restaurée est une intention. L'issue `[MODÉRATION]` ne porte ni identifiant, ni cible, ni motif : combien,
+depuis quand, quel type. Label `moderation`, jamais `claude` : décider d'un signalement est un geste humain.
 
 ## 🚪 OUVERTURE AU PUBLIC — UN SEUL COLLER SQL, ET LA CI QUI MANGEAIT LA BANDE PASSANTE (2026-09-11)
 

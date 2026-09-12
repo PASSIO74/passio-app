@@ -50,7 +50,7 @@ test.describe("Monitoring — file d'erreurs de boot", () => {
     test.setTimeout(60000);
     const envois = await compteurRemontees(page);
     // Le vrai SDK ne doit pas s'en mêler : c'est le faux qui pilote le timing.
-    await page.route("**/cdn.jsdelivr.net/**", (route) => route.abort());
+    await page.route("**/js/vendor/supabase-js*", (route) => route.abort()); // le SDK est auto-hébergé depuis le 2026-09-11
 
     await page.addInitScript(([k, t, sdk]) => {
       sessionStorage.setItem(k, t);
@@ -78,7 +78,7 @@ test.describe("Monitoring — file d'erreurs de boot", () => {
   test("le stub noop n'avale pas la file : rien ne part tant que _supaReal est faux", async ({ page }) => {
     test.setTimeout(60000);
     const envois = await compteurRemontees(page);
-    await page.route("**/cdn.jsdelivr.net/**", (route) => route.abort());
+    await page.route("**/js/vendor/supabase-js*", (route) => route.abort()); // le SDK est auto-hébergé depuis le 2026-09-11
 
     await page.addInitScript(([k, t]) => {
       sessionStorage.setItem(k, t);

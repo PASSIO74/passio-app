@@ -36,7 +36,7 @@ test.describe("Stub Supabase — dégradation hors ligne", () => {
 
     // Couper le SDK à la source. `abort` et non `fulfill` : on reproduit la
     // panne réelle (script jamais chargé), pas un script vide.
-    await page.route("**/cdn.jsdelivr.net/**", (route) => route.abort());
+    await page.route("**/js/vendor/supabase-js*", (route) => route.abort()); // le SDK est auto-hébergé depuis le 2026-09-11
 
     const errors = { js: [], console: [], network: [] };
     await bootOnboarded(page, errors);
@@ -72,7 +72,7 @@ test.describe("Stub Supabase — dégradation hors ligne", () => {
 
   test("CDN injoignable : la surface Supabase appelée par l'app répond toute", async ({ page }) => {
     test.setTimeout(60000);
-    await page.route("**/cdn.jsdelivr.net/**", (route) => route.abort());
+    await page.route("**/js/vendor/supabase-js*", (route) => route.abort()); // le SDK est auto-hébergé depuis le 2026-09-11
     await bootOnboarded(page);
 
     // Exercer le stub sur les formes exactes que l'app utilise. Chaque entrée

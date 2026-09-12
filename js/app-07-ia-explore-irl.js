@@ -363,7 +363,7 @@ function openPassionExplorer(pid, retourUserId, libelleConnu) {
       // document — `getElementById` retournait donc le bouton caché derrière.
       '<button class="btn small" data-follow-uid="' + escapeHtml(u.id) + '"' +
         ' onclick="event.stopPropagation();toggleFollowUser(\'' + escapeJsArg(u.id) + '\',\'' + escapeJsArg(u.name || "") + '\')">' +
-        (suivi ? "✓ Suivi" : "Suivre") + '</button>' +
+        libelleBoutonSuivi(u.id) + '</button>' +
     '</div>';
   }
 
@@ -474,7 +474,7 @@ function _pexChargerCreateurs(pid, creatorsSeed) {
           '</div>' +
           '<button class="btn small" data-follow-uid="' + escapeHtml(u.id) + '"' +
             ' onclick="event.stopPropagation();toggleFollowUser(\'' + escapeJsArg(u.id) + '\',\'' + escapeJsArg(nom) + '\')">' +
-            (suivi ? "✓ Suivi" : "Suivre") + '</button>' +
+            libelleBoutonSuivi(u.id) + '</button>' +
         '</div>';
       }).join("");
       // Les vrais comptes d'abord ; le seed derrière, et seulement s'il en reste.

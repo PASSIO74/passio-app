@@ -16,6 +16,13 @@
 const { test, expect } = require("@playwright/test");
 const { GATE_KEY, GATE_TOKEN, GATE_CODE } = require("./gate-helper");
 
+// ⚠️ Le rideau est LEVÉ par défaut depuis l'ouverture publique du 2026-09-11 :
+// cette suite mesure précisément la fenêtre « gate affiché », elle l'ARME donc
+// elle-même (`passio_gate_actif = "1"`), comme access-gate.spec.js.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("passio_gate_actif", "1"));
+});
+
 test("gate affiché, application absente : aucune erreur JS, aucun module ne s'emballe", async ({ page }) => {
   // Convention d'app-helper.js : on sépare les erreurs APPLICATIVES des échecs de
   // ressource réseau. Ce bac n'a pas d'accès sortant (polices, images distantes,

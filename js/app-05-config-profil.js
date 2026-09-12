@@ -490,10 +490,29 @@ window._call = window._call || null;
 
 let callTimerInterval = null;
 
-// Canal Realtime broadcast (public) ; helper de création.
+// Canal Realtime broadcast des appels ; helper de création — le SEUL point qui
+// crée `ring:` et `call:`.
+// ⚠️ PRIVÉ depuis le 2026-09-11. Mesuré en production : ces canaux étaient
+// publics, donc sans compte on pouvait écouter `ring:<uid>` de n'importe qui
+// (qui appelle qui), faire sonner un téléphone sous une fausse identité ou
+// couper un appel. Les policies `passio_rt_recevoir` / `passio_rt_emettre`
+// (migration du 2026-09-11) ne délivrent une sonnerie qu'à son destinataire et
+// n'ouvrent l'émission qu'aux comptes connectés.
+// ⚠️ DÉPLOYABLE AVANT LA MIGRATION : un canal privé sans policy est REFUSÉ. La
+// sonnerie (`_subscribeCallRing`, abonnée au démarrage) sert de sonde : refusée
+// pour défaut de policy, elle pose `window._rtPriveIndisponible` et TOUS les
+// canaux repartent en public — le comportement d'avant, pas une panne.
+// Une fois la migration appliquée, la sonde passe et tout reste privé.
 function _callChannel(name) {
   if (typeof supa === "undefined" || !supa) return null;
-  return supa.channel(name, { config: { broadcast: { self: false, ack: false } } });
+  return supa.channel(name, { config: { broadcast: { self: false, ack: false }, private: window._rtPriveIndisponible !== true } });
+}
+
+// Le refus d'un canal privé « faute de policy » se reconnaît à son message ;
+// une coupure réseau, elle, se retente toute seule et ne doit PAS faire replier.
+function _rtRefusDePolicy(err) {
+  var m = String((err && (err.message || err.reason)) || err || "");
+  return /permission|unauthori|not allowed|policy|private/i.test(m);
 }
 
 // Résout le pair (id Supabase + identité d'affichage) d'une conversation 1:1.
@@ -528,7 +547,11 @@ async function startCall(convId, kind) {
     toast("Caméra/micro indisponible ou refusé"); return;
   }
 
-  const callId = MY_UID + "_" + Date.now().toString(36);
+  // ⚠️ Non DEVINABLE : `call:<id>` est lisible par tout compte (policy
+  // `passio_rt_recevoir`), et l'ancien `<uid>_<horodatage>` se reconstituait —
+  // uid public, milliseconde proche — donc l'offre SDP (adresses IP dans les
+  // candidats ICE) et le `hangup` étaient à portée d'un tiers.
+  const callId = _callIdAleatoire();
   window._call = {
     id: callId, peer: peer, kind: kind, role: "caller",
     status: "calling", localStream: stream, remoteStream: null,
@@ -821,6 +844,14 @@ function _callOnInvite(payload) {
   // les doublons : même appel déjà en cours, ou écran entrant déjà affiché.
   if (window._call && window._call.id === payload.callId) return;          // déjà accepté CET appel
   if (!window._call && window._callIncoming && window._callIncoming.callId === payload.callId) return; // sonnerie déjà affichée
+  // Anti-rafale : un callId NEUF à chaque message ferait réafficher l'écran
+  // d'appel entrant en continu — ou, pendant un appel, créer un canal
+  // `call:<id>` + decline par message. Au plus UNE nouvelle invitation traitée
+  // toutes les 3 s ; l'appelant légitime RÉPÈTE le même callId, dédupliqué
+  // ci-dessus, et n'est pas concerné.
+  var maintenant = Date.now();
+  if (maintenant - (window._callInviteAffichee || 0) < CALL_INVITE_MIN_MS) return;
+  window._callInviteAffichee = maintenant;
   if (window._call) {
     // Occupé sur un AUTRE appel → refuse poliment (une seule fois).
     if (window._declinedCallId === payload.callId) return;
@@ -834,6 +865,14 @@ function _callOnInvite(payload) {
   window._callIncoming = payload;
   _callRenderIncomingUI(payload);
 }
+const CALL_INVITE_MIN_MS = 3000;
+
+function _callIdAleatoire() {
+  try { if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID(); } catch (e) {}
+  var a = new Uint32Array(4);
+  try { crypto.getRandomValues(a); } catch (e) { for (var i = 0; i < 4; i++) a[i] = Math.floor(Math.random() * 4294967296); }
+  return Array.prototype.map.call(a, function (x) { return x.toString(16).padStart(8, "0"); }).join("");
+}
 
 async function acceptIncomingCall() {
   const inv = window._callIncoming;
@@ -845,7 +884,7 @@ async function acceptIncomingCall() {
   catch (e) { toast("Caméra/micro refusé"); _callDeclineSilent(inv); _callCloseUI(); return; }
 
   window._call = {
-    id: inv.callId, peer: { id: inv.from, name: inv.name || "Contact", emoji: inv.emoji || "🙂", color: "#7c3aed", photo: null },
+    id: inv.callId, peer: { id: inv.from, name: inv.name || "Contact", emoji: _emojiBorne(inv.emoji), color: "#7c3aed", photo: null },
     kind: inv.kind, role: "callee", status: "connecting",
     localStream: stream, remoteStream: null, pc: null, chan: null, startedAt: 0, _facing: "user",
   };
@@ -1044,12 +1083,22 @@ function _callCloseUI() {
   if (el) { el.classList.remove("active"); el.innerHTML = ""; }
 }
 
+// ⚠️ TOUTE charge utile d'un canal broadcast est HOSTILE par défaut : elle est
+// écrite par un autre client, et la policy Realtime ne regarde que le TOPIC,
+// jamais le contenu. `inv.emoji` était posé dans innerHTML SANS échappement —
+// une invitation `{ emoji: '<img src=x onerror=…>' }` exécutait du script chez
+// n'importe quel compte connecté (red team du 2026-09-11). Même règle que pour
+// `comment_interactions` : on échappe à l'AFFICHAGE, et on borne la longueur.
+function _emojiBorne(e) {
+  return Array.from(String(e == null ? "" : e)).slice(0, 4).join("") || "🙂";
+}
+function _emojiSur(e) { return escapeHtml(_emojiBorne(e)); }
 function _callRenderIncomingUI(inv) {
   const el = _callOverlayEl();
   const isVideo = inv.kind === "video";
   el.innerHTML =
     '<div class="call-card">' +
-      '<div class="call-avatar" style="background:#7c3aed;">' + (inv.emoji || "🙂") + '</div>' +
+      '<div class="call-avatar" style="background:#7c3aed;">' + _emojiSur(inv.emoji) + '</div>' +
       '<div class="call-name">' + escapeHtml(inv.name || "Contact") + '</div>' +
       '<div class="call-status">' + (isVideo ? "Appel vidéo entrant…" : "Appel entrant…") + '</div>' +
       '<div class="call-controls">' +
@@ -1100,10 +1149,32 @@ function _callRenderActiveUI() {
 // appels entrants. Idempotent ; appelé au boot (supaSubscribe).
 function _subscribeCallRing() {
   if (typeof supa === "undefined" || !supa || !MY_UID || window._callRingChan) return;
+  // ⚠️ Un VRAI compte seulement : `MY_UID` est fabriqué (`u_…`) pour tout
+  // visiteur, qui ne peut recevoir aucun appel. Abonner sa sonnerie privée
+  // ferait mesurer à la sonde un refus « pas de compte » et le prendre pour
+  // « policies absentes » — repli public pour rien, et un faux signal.
+  if (typeof admissionCompteReel === "function" && !admissionCompteReel()) return;
   const chan = _callChannel("ring:" + MY_UID);
+  if (!chan) return;
   window._callRingChan = chan;
   chan.on("broadcast", { event: "invite" }, (msg) => { try { _callOnInvite(msg.payload); } catch (e) {} });
-  chan.subscribe();
+  chan.subscribe((st, err) => {
+    // Sonde du canal privé (cf. _callChannel) : refus de policy → repli public,
+    // UNE fois par session, et on se réabonne aussitôt pour ne pas rater d'appel.
+    if (st !== "CHANNEL_ERROR" || window._rtPriveIndisponible || window._callRingChan !== chan) return;
+    if (!_rtRefusDePolicy(err)) return;
+    window._rtPriveIndisponible = true;
+    try { console.warn("[rt] canaux privés refusés (policies Realtime absentes) → repli public"); } catch (e) {}
+    // ⚠️ `removeChannel` est ASYNCHRONE, et `supa.channel(topic)` rend le canal
+    // EXISTANT tant qu'il n'est pas parti (sa config `private: true` avec) :
+    // se réabonner tout de suite rendait le même canal en cours de départ, dont
+    // `subscribe()` est un no-op — plus aucune sonnerie pour toute la session,
+    // sans erreur. On se réabonne APRÈS le départ effectif.
+    Promise.resolve(supa.removeChannel(chan)).catch(function () {}).then(function () {
+      window._callRingChan = null;
+      _subscribeCallRing();
+    });
+  });
 }
 window._subscribeCallRing = _subscribeCallRing;
 
@@ -3234,7 +3305,8 @@ async function startVideoLive() {
   const lv = document.getElementById("vliveVideo");
   if (lv) { lv.srcObject = stream; lv.muted = true; try { lv.play(); } catch (e) {} }
 
-  const chan = supa.channel("vlive:" + id, { config: { broadcast: { self: false, ack: false }, presence: { key: MY_UID } } });
+  // PRIVÉ (comptes connectés seulement) — cf. _callChannel pour le repli.
+  const chan = supa.channel("vlive:" + id, { config: { broadcast: { self: false, ack: false }, presence: { key: MY_UID }, private: window._rtPriveIndisponible !== true } });
   window._vliveHost.chan = chan;
   _vliveBindHost(chan);
   chan.subscribe((st) => {
@@ -3494,7 +3566,7 @@ async function joinVideoLive(liveId) {
   window._vliveView = { id: liveId, row: row, chan: null, pc: null, pendingIce: [] };
   _vliveRenderUI("viewer", row);
 
-  const chan = supa.channel("vlive:" + liveId, { config: { broadcast: { self: false, ack: false }, presence: { key: MY_UID } } });
+  const chan = supa.channel("vlive:" + liveId, { config: { broadcast: { self: false, ack: false }, presence: { key: MY_UID }, private: window._rtPriveIndisponible !== true } });
   window._vliveView.chan = chan;
   _vliveBindViewer(chan);
   chan.subscribe((st) => {
@@ -3504,11 +3576,23 @@ async function joinVideoLive(liveId) {
 }
 window.joinVideoLive = joinVideoLive;
 
+// ⚠️ La charge utile d'un broadcast est écrite par un client, et la policy
+// Realtime `vlive:%` laisse TOUT compte émettre (les spectateurs y parlent : chat,
+// réactions, réponses SDP). Un tiers pouvait donc envoyer `offer` (détourner le
+// flux d'un spectateur vers le sien), `end`, `pause` ou `full` (couper le live).
+// Les ordres d'HÔTE ne sont acceptés que si `from` est l'auteur du live, lu dans
+// `video_lives` (la seule identité que le serveur a écrite). Résidu ASSUMÉ et
+// écrit : `from` reste déclaratif — un compte connecté peut l'usurper ; fermer
+// cela demande un topic d'hôte à part, gardé par policy (lot suivant).
+function _vliveDeLHote(d) {
+  const V = window._vliveView;
+  return !!(V && V.row && d && d.from && d.from === V.row.author_id);
+}
 function _vliveBindViewer(chan) {
   chan.on("broadcast", { event: "offer" }, async (msg) => {
     const V = window._vliveView;
     const d = msg.payload || {};
-    if (!V || d.to !== MY_UID || !d.sdp) return;
+    if (!V || d.to !== MY_UID || !d.sdp || !_vliveDeLHote(d)) return;
     try {
       if (V.pc) { try { V.pc.close(); } catch (e) {} }
       const pc = new RTCPeerConnection({ iceServers: CALL_ICE_SERVERS });
@@ -3551,21 +3635,21 @@ function _vliveBindViewer(chan) {
       else await V.pc.addIceCandidate(new RTCIceCandidate(d.candidate));
     } catch (e) {}
   });
-  chan.on("broadcast", { event: "end" }, () => { _vliveShowEnded("Le live est terminé"); });
+  chan.on("broadcast", { event: "end" }, (msg) => { if (_vliveDeLHote(msg.payload)) _vliveShowEnded("Le live est terminé"); });
   chan.on("broadcast", { event: "full" }, (msg) => {
     const d = msg.payload || {};
-    if (d.to !== MY_UID) return;
+    if (d.to !== MY_UID || !_vliveDeLHote(d)) return;
     toast("Ce live est complet 😅"); leaveVideoLive();
   });
   chan.on("broadcast", { event: "chat" }, (msg) => { _vliveChatMsg(msg.payload); });
   chan.on("broadcast", { event: "react" }, (msg) => { _vliveSpawnReaction((msg.payload || {}).emoji); });
   chan.on("broadcast", { event: "heart" }, () => { _vliveSpawnReaction("❤️"); });
-  chan.on("broadcast", { event: "sys" }, (msg) => { _vliveSysMsg((msg.payload || {}).text); });
-  chan.on("broadcast", { event: "pause" }, (msg) => { _vliveShowPaused(!!(msg.payload || {}).on, false); });
+  chan.on("broadcast", { event: "sys" }, (msg) => { if (_vliveDeLHote(msg.payload)) _vliveSysMsg((msg.payload || {}).text); });
+  chan.on("broadcast", { event: "pause" }, (msg) => { if (_vliveDeLHote(msg.payload)) _vliveShowPaused(!!(msg.payload || {}).on, false); });
   // Rejeu de l'historique du chat à l'arrivée (envoyé par le host, ciblé).
   chan.on("broadcast", { event: "history" }, (msg) => {
     const d = msg.payload || {};
-    if (d.to !== MY_UID || !Array.isArray(d.msgs)) return;
+    if (d.to !== MY_UID || !Array.isArray(d.msgs) || !_vliveDeLHote(d)) return;
     d.msgs.forEach(m => _vliveChatMsg(m, true));
   });
   // ── RELAIS (scaling gratuit) ──
@@ -3573,15 +3657,38 @@ function _vliveBindViewer(chan) {
   // roffer (rien à faire ici, informatif — le flux arrivera via roffer).
   chan.on("broadcast", { event: "assign" }, (msg) => {
     const d = msg.payload || {};
-    if (d.to !== MY_UID) return;
+    if (d.to !== MY_UID || !_vliveDeLHote(d)) return;
+    const V = window._vliveView;
+    if (V) {
+      // Le relais ATTENDU : seul lui pourra me servir (roffer). Une offre de
+      // relais arrivée AVANT cet ordre est gardée et traitée maintenant.
+      V.parentAttendu = d.parent || null;
+      const enAttente = V.rofferEnAttente; V.rofferEnAttente = null;
+      if (enAttente && enAttente.srv === V.parentAttendu) _vliveTraiterRoffer(enAttente);
+    }
     const s = document.getElementById("vliveStatus");
     if (s && !((window._vliveView || {}).remoteStream)) s.textContent = "Connexion au direct…";
   });
   // Je reçois une OFFRE d'un spectateur-relais (je suis un enfant relayé).
+  // ⚠️ Seul le relais que l'hôte m'a ASSIGNÉ peut me servir : sans cette garde,
+  // n'importe quel spectateur substituait son flux au direct.
   chan.on("broadcast", { event: "roffer" }, async (msg) => {
     const V = window._vliveView;
     const d = msg.payload || {};
-    if (!V || d.to !== MY_UID || !d.sdp || !d.srv) return;
+    if (!V || d.to !== MY_UID || !d.sdp || !d.srv || d.from !== d.srv) return;
+    if (!V.parentAttendu) { V.rofferEnAttente = d; return; } // l'ordre `assign` n'est pas encore là
+    if (d.srv !== V.parentAttendu) return;
+    await _vliveTraiterRoffer(d);
+  });
+  // L'hôte me demande de RELAYER vers un enfant (je suis un spectateur direct).
+  chan.on("broadcast", { event: "serve" }, (msg) => {
+    const d = msg.payload || {};
+    if (d.to !== MY_UID || !d.child || !_vliveDeLHote(d)) return;
+    _vliveRelayServe(d.child);
+  });
+  async function _vliveTraiterRoffer(d) {
+    const V = window._vliveView;
+    if (!V) return;
     try {
       if (V.pc) { try { V.pc.close(); } catch (e) {} }
       const pc = new RTCPeerConnection({ iceServers: CALL_ICE_SERVERS });
@@ -3605,13 +3712,7 @@ function _vliveBindViewer(chan) {
       V.pendingIce = [];
       const stEl = document.getElementById("vliveStatus"); if (stEl) stEl.textContent = "";
     } catch (e) { console.warn("[vlive] ranswer:", e && e.message); }
-  });
-  // L'hôte me demande de RELAYER vers un enfant (je suis un spectateur direct).
-  chan.on("broadcast", { event: "serve" }, (msg) => {
-    const d = msg.payload || {};
-    if (d.to !== MY_UID || !d.child) return;
-    _vliveRelayServe(d.child);
-  });
+  }
   // Réponse SDP d'un de mes enfants relayés.
   chan.on("broadcast", { event: "ranswer" }, async (msg) => {
     const V = window._vliveView;
@@ -3968,7 +4069,7 @@ function _vliveRenderUI(mode, row) {
   const name = isHost ? "Toi" : ((row && row.author_name) || "Live");
   const title = (row && row.title) || (isHost && window._vliveHost && window._vliveHost.title) || "";
   const authorId = (row && row.author_id) || "";
-  const iFollow = !isHost && authorId && (state.user && (state.user.following || []).includes(authorId));
+  const iFollow = !isHost && authorId && (typeof etatSuivi === "function" ? etatSuivi(authorId) !== "aucun" : (state.user && (state.user.following || []).includes(authorId)));
   const canFollow = !isHost && authorId && authorId !== MY_UID;
 
   const reactionRail = VLIVE_REACTIONS.map(e =>
@@ -3983,7 +4084,7 @@ function _vliveRenderUI(mode, row) {
       '<span class="vlive-chip" id="vliveViewers">👁 0</span>' +
       '<span class="vlive-chip" id="vliveTimer">00:00</span>' +
       '<span class="vlive-name">' + escapeHtml(name) + '</span>' +
-      (canFollow ? '<button class="vlive-follow' + (iFollow ? " on" : "") + '" id="vliveFollowBtn" onclick="_vliveToggleFollow()">' + (iFollow ? "✓ Suivi" : "+ Suivre") + '</button>' : "") +
+      (canFollow ? '<button class="vlive-follow' + (iFollow ? " on" : "") + '" id="vliveFollowBtn" onclick="_vliveToggleFollow()">' + ((typeof libelleBoutonSuivi === "function") ? escapeHtml(libelleBoutonSuivi(authorId)) : (iFollow ? "✓ Suivi" : "Suivre")) + '</button>' : "") +
       '<button class="vlive-icon-btn" onclick="_vliveShare()" aria-label="Partager le live">↗</button>' +
       '<button class="vlive-close" onclick="' + (isHost ? "endVideoLive()" : "leaveVideoLive()") + '" aria-label="Quitter">✕</button>' +
     '</div>' +
@@ -4016,19 +4117,50 @@ function _vliveToggleFollow() {
   const aid = V.row.author_id;
   if (!aid || aid === MY_UID) return;
   state.user.following = state.user.following || [];
-  const btn = document.getElementById("vliveFollowBtn");
-  const following = state.user.following.includes(aid);
-  if (!following) {
+  state.user.followingPending = state.user.followingPending || [];
+  const prenom = (V.row.author_name || "cet utilisateur").split(" ")[0];
+  // Même contrat que `toggleFollowUser` (app-04) : TROIS états, affichage
+  // optimiste puis CORRIGÉ au verdict serveur, retour arrière sur un refus
+  // explicite (`ok: false` — blocage, débit). Ce second appelant de
+  // `supaFollowUser` ignorait tout verdict (relecture audit-passio, 2026-09-11).
+  const etat = (typeof etatSuivi === "function") ? etatSuivi(aid) : (state.user.following.includes(aid) ? "suivi" : "aucun");
+  if (etat === "attente") {
+    state.user.followingPending = state.user.followingPending.filter(id => id !== aid);
+    _vlivePeindreSuivi(aid);
+    toast("Demande annulée");
+    if (typeof supaUnfollowUser === "function") supaUnfollowUser(aid);
+  } else if (etat === "aucun") {
     state.user.following.push(aid);
-    if (btn) { btn.textContent = "✓ Suivi"; btn.classList.add("on"); }
-    if (typeof supaFollowUser === "function") supaFollowUser(aid);
-    toast("Tu suis " + ((V.row.author_name || "cet utilisateur").split(" ")[0]) + " !");
+    _vlivePeindreSuivi(aid);
+    toast("Tu suis " + prenom + " !");
+    if (typeof supaFollowUser === "function") {
+      Promise.resolve(supaFollowUser(aid)).then(function (r) {
+        if (r && r.ok === false) {
+          state.user.following = (state.user.following || []).filter(id => id !== aid);
+          _vlivePeindreSuivi(aid);
+          toast("Impossible de suivre " + prenom + " pour le moment");
+        } else if (r && r.status === "pending") {
+          state.user.following = (state.user.following || []).filter(id => id !== aid);
+          if (state.user.followingPending.indexOf(aid) < 0) state.user.followingPending.push(aid);
+          _vlivePeindreSuivi(aid);
+          toast("Demande envoyée à " + prenom);
+        } else return;
+        try { saveState(); } catch (e) {}
+      });
+    }
   } else {
     state.user.following = state.user.following.filter(id => id !== aid);
-    if (btn) { btn.textContent = "+ Suivre"; btn.classList.remove("on"); }
+    _vlivePeindreSuivi(aid);
     if (typeof supaUnfollowUser === "function") supaUnfollowUser(aid);
   }
   try { saveState(); } catch (e) {}
+}
+function _vlivePeindreSuivi(aid) {
+  const btn = document.getElementById("vliveFollowBtn");
+  if (!btn) return;
+  const etat = (typeof etatSuivi === "function") ? etatSuivi(aid) : "aucun";
+  btn.textContent = (typeof libelleBoutonSuivi === "function") ? libelleBoutonSuivi(aid) : (etat === "suivi" ? "✓ Suivi" : "Suivre");
+  btn.classList.toggle("on", etat !== "aucun");
 }
 window._vliveToggleFollow = _vliveToggleFollow;
 
