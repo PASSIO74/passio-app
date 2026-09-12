@@ -84,6 +84,27 @@ test.describe("Blocage — retrait d'accès effectif", () => {
       // B s'abonne à A, puis A publie.
       const suivi = await rest(B.token, "follows", { method: "POST", body: JSON.stringify({ follower_id: B.uid, following_id: A.uid }) });
       expect(suivi.status, "B s'abonne à A").toBeLessThan(300);
+
+      // ⚠️ VERS UN COMPTE PRIVÉ, S'ABONNER NE DONNE PLUS ACCÈS : ÇA DEMANDE.
+      // Depuis `migration_ouverture_publique_2026-09-11.sql` (appliquée en
+      // production le 2026-09-12), `trg_follows_statut` écrit `pending` vers un
+      // compte privé quoi que le client envoie, et la policy de lecture des
+      // publications exige `status = 'accepted'`. La prémisse « B s'abonne donc
+      // B voit » est donc PÉRIMÉE — et ce test l'a dit en rougissant trois fois
+      // de suite sur un commit dont la version précédente était verte : même
+      // code, base différente. Ce n'est pas un défaut du produit, c'est le
+      // comportement VOULU, et il faut que A ACCEPTE.
+      // La policy `follows_accepter` n'ouvre cet UPDATE qu'à la CIBLE et
+      // uniquement vers `accepted` : c'est bien A qui l'émet, jamais B.
+      const accept = await rest(A.token, `follows?follower_id=eq.${B.uid}&following_id=eq.${A.uid}`,
+        { method: "PATCH", body: JSON.stringify({ status: "accepted" }) });
+      expect(accept.status, "A accepte la demande d'abonnement de B").toBeLessThan(300);
+      // On ne se contente pas du code HTTP : un PATCH qui ne touche AUCUNE ligne
+      // rend 200 avec un corps vide (RLS manquante, ligne absente). Sans cette
+      // lecture, le test repartirait sur une acceptation qui n'a pas eu lieu.
+      const relAvant = await rest(A.token, `follows?follower_id=eq.${B.uid}&following_id=eq.${A.uid}&select=status`);
+      expect(Array.isArray(relAvant.body) && relAvant.body[0] && relAvant.body[0].status,
+        "l'abonnement doit être réellement passé à accepted").toBe("accepted");
       const pub = await rest(A.token, "posts", { method: "POST", body: JSON.stringify({ id: postId, author_id: A.uid, content: "post privé de A" }) });
       expect(pub.status, "A publie").toBeLessThan(300);
 
