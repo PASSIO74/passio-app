@@ -230,6 +230,74 @@ Verrou : `tests/e2e/tour-jamais-impose.spec.js` (5), dont ①, ① bis et ④ é
 restent verts, ils gardent la coupure et le geste manuel) et ④ qui mesure à la SOURCE que `showTour()` n'a
 pas d'appelant hors du moteur du tour.
 
+## 💬 LES TROIS REPÈRES ATTEIGNENT AUSSI UN COMPTE NEUF (2026-09-12, l'après-midi)
+
+Suite directe de la fiche précédente. Question de Benjamin : « toutes les bulles d'explications sont
+en place sur les nouveaux comptes ? » **Mesuré : non.** Les trois repères (« Ce qui t'inspire » ·
+« Ce que tu veux vivre » · « Ce que tu veux partager ») étaient gardés par `estVisiteur()` : ils
+s'éteignaient à la seconde où un compte existe — **pour exactement les personnes à qui l'application
+est envoyée**. Quelqu'un qui explore d'abord les voit ; quelqu'un qui crée son compte directement
+(lien de confirmation sur un appareil neuf, chemin NORMAL depuis « Confirm email ») ne les voyait
+JAMAIS, et ne pouvait pas les rejouer — « Revoir les repères » portait `.fr-only`, donc
+`display:none` dès qu'un compte existe. Troisième occurrence de la même famille après
+`contenuDemoSignale()` et `filDecouverte()` (2026-09-10) : **c'est l'ÉTAT qui décide, jamais la
+présence d'un compte.**
+⚠️ **LA CARTE DE BIENVENUE, ELLE, RESTE VISITEUR — ET C'EST SON TEXTE QUI TRANCHE.** « Crée ton
+compte pour les garder », « Personnaliser mon expérience » : c'est une carte de **CONVERSION**. La
+montrer à quelqu'un qui vient de créer son compte serait sourd. `poserBienvenue` garde `estVisiteur()`,
+et le verrou ⑦ l'exige à la source. Ne pas « harmoniser » les deux gardes : elles ne disent pas la
+même chose.
+⚠️ **`reperesAutorises()` (js/first-run.js) EST LA SEULE AUTORITÉ**, et elle a deux marches : sans
+compte → visiteur, inchangé ; avec compte → **il faut le verdict d'hydratation PUIS
+`comptePasEncoreGarni()`**.
+⚠️ **LE DISCRIMINANT NE PEUT PAS ÊTRE « PRÉFÉRENCES LOCALES VIDES ».** Un habitué qui se connecte sur
+un téléphone neuf en a d'aussi vides : `adopterCompteConnecte` vient de tout purger. On tranche sur
+l'état du COMPTE (`comptePasEncoreGarni()` — aucune passion voulue, personne de suivi), la même
+autorité que `filDecouverte()`. Le verrou ② mesure ce cas-là, c'est lui qui protège les habitués.
+⚠️ **ET IL FAUT ATTENDRE `window._etatCompteCharge`.** Interrogé trop tôt, `comptePasEncoreGarni()`
+dit « vide » pendant que `user_state` arrive encore : on servirait la présentation à quelqu'un qui
+utilise PASSIO depuis des semaines. Sans verdict, on s'abstient — le silence est le bon sens de
+l'échec ici.
+⚠️ **LE DÉFAUT INTRODUIT PAR LA PREMIÈRE RÉDACTION, ET IL ÉTAIT MUET.** `planifierReperesCompte`
+appelait `planifierTour()` **UNE FOIS**. Or `planifierTour` temporise 700 ms puis abandonne **sans
+reprise** si l'écran n'est pas prêt : à ~2,1 s le Fil n'a pas fini de peindre, `#feedPassionsBlock`
+n'existe pas encore, `montrerEtape` refuse l'ancrage sur `offsetParent`, et **rien ne se reproduit**.
+Chez un visiteur le défaut n'existe pas — `planifierAccueil` réessaie 40 fois et rappelle
+`planifierTour` à chaque tour ; un compte n'avait pas cette boucle. **Mesuré** : la fonction rendait
+`true` en appel direct à 5 s pendant que le câblage ne posait jamais rien. Le planificateur du compte
+est donc une BOUCLE DE REPRISE bornée (40 × 600 ms, même budget que l'accueil). **Relâcher une garde
+ne suffit pas : il faut vérifier qui APPELLE, et à quel moment l'écran est prêt.**
+⚠️ **SANS POINT D'ENTRÉE, LE LOT SERAIT RESTÉ MUET.** `planifierTour` n'avait que deux appelants —
+`planifierAccueil` (gardé `estVisiteur()`) et `surNavigation("feed")` — et `entreeDirecte()`, qui
+appelle le premier, rend `false` dès qu'un compte existe. Au DÉMARRAGE, rien ne planifiait donc les
+repères pour un compte. `surNavigation("feed")` bifurque désormais : visiteur → `planifierAccueil`,
+compte → `planifierTour` directement (sinon le retour sur le Fil ne reposerait jamais rien).
+⚠️ **LA GARDE DE `montrerHint` (app-02) DEVAIT SUIVRE, SOUS PEINE DE ROUVRIR UN DÉFAUT CONNU.** Elle
+lisait `estVisiteur()` ; dès que les repères atteignent un compte, elle ne protège plus rien et les
+quatre aides contextuelles se seraient posées SUR les repères — le défaut exact mesuré en capture
+390 px (« une bulle POSÉE SUR la carte de bienvenue »). `aidesHistoriquesEnPause()` est la seule
+autorité : **branche visiteur rendue à l'octet près** (pause toute la session), et pour un compte la
+pause ne dure que le temps de la présentation — sinon on lui retirerait des aides qu'il recevait hier.
+⚠️ **LA PORTE DE REJEU EST PILOTÉE EN JS, PAS EN CSS, ET DÉLIBÉRÉMENT.** `majBoutonReperes()`
+(app-02, appelée par `toggleDevPanel` comme `majSectionCompte` et `majBoutonPassionsIllimitees`) :
+la règle `html:not(.passio-first-run) .fr-only` ne sait pas exprimer « le module est chargé », et
+ajouter une règle obligerait à toucher `styles.css`, **dont le bloc UI-4A5 doit rester le DERNIER**.
+Sa condition n'est **ni « visiteur » ni « compte neuf »** : c'est le KILL SWITCH du lot, et rien
+d'autre — un compte qui a déjà vu les trois repères doit pouvoir les revoir, c'est ce que le libellé
+promet. Lot coupé → le bouton DISPARAÎT plutôt que de rendre un tap mort (`relancerTour` sortirait
+sur la garde `actif()` : un refus qui ne se prononce pas est indiscernable d'une panne, 2026-09-04).
+⚠️ **`armerAidesAuGeste` RESTE VISITEUR**, et c'est un choix de PÉRIMÈTRE : il n'est armé que par
+`entreeDirecte()`. Le relâcher ajouterait trois à quatre bulles de plus (passions, envies, stories)
+à un compte neuf — hors de ce qui a été demandé. Sa garde interne est restée `estVisiteur()` pour ne
+pas laisser de code inerte derrière.
+⚠️ **MESURER `offsetParent` SUR UN BOUTON DU PANNEAU PARAMÈTRES NE PROUVE RIEN** : la section
+« Démo » est REPLIÉE au repos, donc `offsetParent` y est nul pour tous ses boutons, quoi qu'on
+fasse. Le verrou ⑤ mesure le `display` calculé. (Deuxième piège `offsetParent` de la journée, après
+celui du `position: fixed` — les deux trouvés par la mesure, aucun par la relecture.)
+Verrou : `tests/e2e/reperes-compte-neuf.spec.js` (7), éprouvé par RÉINJECTION de **quatre** mutations
+(garde de `montrerEtape`, câblage du planificateur, garde de `montrerHint`, pilotage de la porte) —
+elles rougissent respectivement 4, 3, 2 et 1 cas.
+
 ## 🪦 SUPPRIMER UNE PUBLICATION — pierres tombales (2026-09-01)
 
 Toute suppression passe par `deletePost` (app-04) : `marquerPostSupprime(id)` pose d'ABORD la pierre tombale (`state.deletedPostIds`, persistée en `localStorage` ET synchronisée par le blob `user_state`, fusionnée en **UNION** jamais par remplacement), puis `purgerPostsSupprimes()` (app-02) — seul point qui connaît les **QUATRE** tableaux où vit un post (`userPosts`, `supabasePosts`, `seed.posts`, `window._feedExtraPosts`). Ne jamais refaire ce filtrage à la main.
