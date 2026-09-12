@@ -4,3 +4,5 @@ data/
 *.log
 # Dossiers de données jetables des tests (DASH_DATA_DIR isolé).
 test/.tmp-*/
+# Identifiants OAuth isolés du `claude` du pilotage (DASH_CLAUDE_CONFIG_DIR).
+.claude-cli/

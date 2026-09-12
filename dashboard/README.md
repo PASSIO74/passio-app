@@ -94,6 +94,14 @@ erreur de démarrage). Journal borné dans `data/supervise.log`.
 | `Installer-Demarrage-Auto.cmd` | installe et lance tout de suite |
 | `Installer-Demarrage-Auto.cmd /retirer` | retire le démarrage automatique |
 | `Arreter-Pilotage.cmd` | arrête superviseur + serveur (repart à la prochaine session) |
+| `Connecter-Claude.cmd` | reconnecte Claude Code pour le pilotage (`/etat` : vérifier) — rien à redémarrer ensuite |
+
+⚠️ **Le pilotage vit sur le disque système.** 22 plantages `ENOSPC` (disque
+plein) du serveur entre le 1er et le 10 septembre 2026 : à chaque écriture
+refusée (alertes, diagnostics, journal) le processus tombe, le superviseur le
+relance, et le CLI `claude` lui-même — qui écrit ses jetons rafraîchis dans
+`~/.claude` — peut perdre sa session. Un pilotage qui « se déconnecte des fois »
+sur un disque à 100 % n'a pas d'abord un problème de connexion.
 
 
 ## 2 ter. Tests du pilotage
@@ -259,13 +267,55 @@ sans plus jamais rien diagnostiquer, et l'écran continuait d'annoncer l'état d
 démarrage. Désormais :
 
 - la sonde `claude auth status` est rejouée toutes les 10 min
-  (`DASH_CLAUDE_CLI_WATCH_MIN`) — donc `claude auth login` suffit, **sans
-  redémarrer le pilotage ni cliquer nulle part** ;
+  (`DASH_CLAUDE_CLI_WATCH_MIN`), et **toutes les minutes dès que la connexion
+  manque** (`DASH_CLAUDE_CLI_RETRY_MIN`) — donc se reconnecter suffit, **sans
+  redémarrer le pilotage ni cliquer nulle part**, et la reprise est vue en
+  moins d'une minute ;
 - un refus d'authentification pendant une analyse rabat l'état immédiatement,
-  au lieu de laisser l'écran mentir ;
-- la chute connecté → déconnecté lève une alerte `warn` **une seule fois** :
-  sans elle, la panne est silencieuse par nature (plus d'analyses = plus de
-  diagnostics = ça ressemble au calme).
+  au lieu de laisser l'écran mentir — et il est signalé (jusqu'au 2026-09-12
+  cette chute-là était muette) ;
+- chaque bascule est signalée **une seule fois** : `warn` à la chute, **avec la
+  raison**, `info` au retour. Sans la chute, la panne est silencieuse par nature
+  (plus d'analyses = plus de diagnostics = ça ressemble au calme) ; sans le
+  retour, on ne sait jamais si la reconnexion a pris.
+
+**Se reconnecter : double-clic sur `Connecter-Claude.cmd`** (ou `claude auth
+login` dans un terminal). Rien à redémarrer ensuite.
+
+#### « Pas de réponse » n'est pas « déconnecté » (corrigé le 2026-09-12)
+
+Mesuré en production : le pilotage affichait « CLI absente » (`installed:false`)
+alors que `claude auth status` répondait en 0,5 s à côté. La sonde avait un
+délai de 12 s et **tout dépassement était lu comme « pas installé »** — sur un
+poste saturé (shards e2e, build, **disque plein** : 22 plantages `ENOSPC` du
+serveur entre le 1er et le 10 septembre), une seule sonde lente rendait la
+sentinelle sourde pour dix minutes, et l'écran donnait le mauvais geste.
+Désormais la sonde distingue trois cas, et l'écran affiche la **raison** :
+
+| `reason` | Ce qui s'est passé | Le geste |
+|---|---|---|
+| `logged_out` / `auth_refused` | le CLI répond : la session OAuth est tombée | `Connecter-Claude.cmd` |
+| `probe` | la sonde ne répond pas (45 s, `DASH_CLAUDE_CLI_PROBE_TIMEOUT_S`) **3 fois de suite** (`DASH_CLAUDE_CLI_PROBE_FAILURES`) — avant ça, l'état connu est gardé | libérer le poste / le disque, chercher des `claude` orphelins ; rien à reconnecter |
+| `not_installed` | la sortie n'est pas du JSON : `claude` introuvable ou trop ancien | installer / mettre à jour |
+
+Un délai dépassé abat tout l'arbre de processus (`taskkill /T`) : un `claude`
+orphelin par sonde s'accumulait sinon. Verrous : `test/claude-cli-watch.test.js`,
+éprouvés par mutation (rabattre dès le premier échec, ne jamais rabattre, poser
+`logged_out` au lieu de `probe`, rendre `noteAuthFailure` muet — chacun rougit
+le sien).
+
+#### Identifiants isolés (facultatif) — `DASH_CLAUDE_CONFIG_DIR`
+
+Par défaut le `claude` du pilotage partage `~/.claude/.credentials.json` avec
+l'application Claude de bureau et tous les terminaux. Observé le 2026-09-12 :
+l'application de bureau **réécrit ce fichier** à chaque session (jetons MCP), et
+les jetons OAuth du CLI s'y sont retrouvés vides — session perdue sans aucun
+`logout`. Si les déconnexions persistent une fois le disque libéré, isoler le
+pilotage : `DASH_CLAUDE_CONFIG_DIR=.claude-cli` dans `.env` (dossier relatif au
+dashboard, déjà ignoré par git), redémarrer, puis **`Connecter-Claude.cmd`** —
+c'est la seule porte qui se connecte dans le bon dossier ; un `claude auth
+login` dans un terminal ordinaire ne reconnecterait pas le pilotage. Prix :
+une connexion de plus à faire, une fois.
 
 Réglages (`.env`, tous facultatifs) :
 
