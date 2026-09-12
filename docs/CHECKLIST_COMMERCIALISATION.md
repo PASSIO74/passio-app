@@ -51,12 +51,23 @@ Un défaut acceptable en A peut être rédhibitoire en B. L'inverse n'est jamais
       `capital`, `rcs` et `tvaIntra`** — trois champs qu'un micro-entrepreneur en
       franchise de TVA n'a pas : elle afficherait « [à compléter] » sur des lignes que
       la loi ne lui demande pas. À adapter **avant** de basculer.
-- [ ] **Le consentement aux CGU n'est enregistré nulle part.** Mesuré : **0 trace sur
-      85 lignes `user_state`**, y compris pour le seul compte créé depuis la mise en
-      place du dispositif. `state.user.cgu` vit en mémoire et n'atteint jamais le
-      serveur ; `purgeAccountScopedData()` l'efface au passage. En cas de litige —
-      typiquement une rencontre qui tourne mal — **rien ne prouve que la personne a
-      accepté** l'art. 7 ni l'art. 10. C'est le bouclier lui-même qui est en cause.
+- [x] **Le consentement aux CGU est enregistré côté serveur (corrigé le 2026-09-10).**
+      Il ne vivait que dans `state.user.cgu`, EN MÉMOIRE : deux chemins l'effaçaient (le
+      retour par « Se connecter », puisque `signUp` ne rend pas de session depuis
+      « Confirm email », et `purgeAccountScopedData()`, dont `STATE_KEY` est le premier
+      élément). En cas de litige — typiquement une rencontre qui tourne mal — rien ne
+      prouvait que la personne avait accepté l'art. 7 ni l'art. 10 : c'était le bouclier
+      lui-même qui était en cause. Il part désormais dans `user_metadata` (`cgu_version`,
+      `cgu_accepted_at`, `confidentialite_version`), la seule mémoire qui survive à la
+      confirmation d'e-mail, au changement d'appareil et à la purge locale ; le retour
+      Google a son propre chemin (`passio_oauth_cgu` relu puis posé par `updateUser`,
+      avec lecture de `{ error }`). ⚠️ **La version compte autant que la date** : sans
+      elle, « a accepté » ne dit pas QUOI.
+      ⚠️ **Re-mesuré le 2026-09-12 : 0 compte sur 7 porte `cgu_version`, et ce n'est PAS
+      un défaut** — le dernier compte de production date du 2026-09-09, la veille du
+      correctif. À revérifier sur le PREMIER compte créé après l'ouverture
+      (`raw_user_meta_data ? 'cgu_version'`), et pas avant : zéro trace ne prouve rien
+      tant que personne ne s'est inscrit.
 - [ ] **« PASSIO » n'est ni déposé, ni disponible en domaine**, et les CGU affirment
       pourtant en détenir la propriété. À vérifier auprès de l'INPI avant toute
       dépense de communication.
@@ -405,6 +416,15 @@ public, les canaux d'appel publics, l'absence de sauvegarde automatique, et quat
 constats neufs (oracle `is_conv_member` + `events.conv_id`, compte privé sans
 approbation, débit non borné, SDK à version flottante). **Sûre pour des testeurs
 avertis, pas pour le public, pas pour vendre.**
+
+**Re-mesuré le 2026-09-12** (canal ① d'ADR-012, après le déploiement de `3e1e825`) — le paragraphe
+ci-dessus est daté, il n'est pas réécrit ; voici ce qui a bougé depuis. Le lot d'ouverture est
+**déployé côté client**, mais sa migration n'est **PAS collée** : `follows.status` absent, zéro
+policy `passio_rt_*`, seau `attachments` toujours `public = true`. Les deux points « canaux d'appel
+publics » et « seau public » restent donc ouverts **par ce seul geste**. « Absence de sauvegarde
+automatique » est en revanche périmé — le workflow existe et est quotidien — mais il n'a **jamais
+tourné** : zéro exécution. ⚠️ Une sauvegarde configurée n'est pas une sauvegarde. Et le consentement
+aux CGU est enregistré depuis le 2026-09-10 (voir plus haut). **Zéro `client_errors` sur 24 h.**
 
 Détail complet des 107 constats et de leurs contre-expertises :
 [`AUDIT_COMMERCIALISATION_2026-09-10.md`](AUDIT_COMMERCIALISATION_2026-09-10.md).

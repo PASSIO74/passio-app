@@ -334,14 +334,14 @@ survivre intact**, sinon on ne peut plus établir de cause. ⚠️ **Le vrai cor
 désamorçage est une barrière, pas la porte. `lireErreurs` gère les DEUX états, avec repli signalé.
 
 ⚠️ **CE QUI RESTE OUVERT, ET QU'IL NE FAUT PAS CROIRE RÉGLÉ** (liste du 2026-09-10, **re-mesurée le
-2026-09-12** — deux points étaient déjà refermés, voir plus bas) : les canaux Realtime d'appel
-(`ring:`, `call:`, `typing:`, `vlive:`) sont **publics**, donc on peut faire sonner un téléphone sous
-une fausse identité ou couper un appel ; le seau `attachments` reste `public = true`, donc une pièce
-jointe privée est lisible **à vie par son URL exacte** (l'énumération, elle, est bien fermée) ; le
-**consentement aux CGU n'est persisté nulle part** (0 trace sur 85 lignes `user_state`) ; DKIM/DMARC
-absents, donc les e-mails de confirmation partent probablement en spam — **le défaut qui tue une
-beta en silence**. Les deux derniers points se ferment en collant
-`migration_ouverture_publique_2026-09-11.sql` (Realtime, seau privé), qui ne l'est pas encore.
+2026-09-12** — QUATRE de ses points étaient déjà refermés, voir plus bas) : les canaux Realtime
+d'appel (`ring:`, `call:`, `typing:`, `vlive:`) sont **publics**, donc on peut faire sonner un
+téléphone sous une fausse identité ou couper un appel ; le seau `attachments` reste `public = true`,
+donc une pièce jointe privée est lisible **à vie par son URL exacte** (l'énumération, elle, est bien
+fermée) ; DKIM/DMARC absents, donc les e-mails de confirmation partent probablement en spam — **le
+défaut qui tue une beta en silence**. Les DEUX PREMIERS se ferment en collant
+`migration_ouverture_publique_2026-09-11.sql` (Realtime privé, seau privé), qui ne l'est pas encore —
+mesuré le 2026-09-12 : `follows.status` absent, zéro policy `passio_rt_*`, seau encore public.
 
 ⚠️ **ET DEUX AFFIRMATIONS DE CE FICHIER ÉTAIENT FAUSSES** : l'interrupteur `irl_adult_only` était
 annoncé ÉTEINT, il est **ALLUMÉ** ; et `docs/CHECKLIST_COMMERCIALISATION.md` cochait Wallet et CDV.
@@ -560,7 +560,7 @@ tiendra pas à l'échelle** : trafic ×10 = ~440 Mo de rétention, contre un mur
 **L'état d'une base ne se lit pas dans un fichier du dépôt, il se mesure** — même règle que pour
 l'interrupteur `irl_adult_only`, et c'est la troisième fois qu'elle sert.
 
-### 🔁 RE-MESURE DU 2026-09-12 — QUATRE AFFIRMATIONS DE CE FICHIER ÉTAIENT PÉRIMÉES
+### 🔁 RE-MESURE DU 2026-09-12 — SIX AFFIRMATIONS DE CE FICHIER ÉTAIENT PÉRIMÉES
 
 Et c'est la **quatrième** fois que la règle sert. Une fiche qui décrit un défaut déjà refermé coûte
 autant qu'une fiche qui en tait un : elle envoie la session suivante travailler pour rien, ou la
@@ -591,6 +591,23 @@ ne se tranche donc pas par une requête à écrire, mais en **regardant le fil**
 publication s'affiche, ou elle ne s'affiche pas. ⚠️ Nuance qui empêche de conclure trop vite :
 `renderPostHTML` porte un `onerror` qui repeint la boîte en gris, donc un échec ressemble à une image
 absente, jamais à une erreur. Regarder une publication dont on SAIT qu'elle porte une photo.
+
+⚠️ **⑤ LE CONSENTEMENT AUX CGU EST PERSISTÉ DEPUIS LE 2026-09-10, PAR `user_metadata`.** La liste
+« ce qui reste ouvert » l'annonçait encore comme « persisté nulle part ». `onbDoAuth` envoie
+`cgu_version`, `cgu_accepted_at` et `confidentialite_version` dans les options de `signUp`, et le
+retour Google a son propre chemin (`passio_oauth_cgu` relu puis posé par `updateUser`, avec lecture
+de `{ error }`). ⚠️ **Et la mesure qui semble contredire ça n'en est pas une** : `auth.users` rend
+**0 compte sur 7** portant `cgu_version` — parce que le dernier compte de production date du
+**2026-09-09**, soit la veille du correctif. Zéro trace n'est ici PAS un défaut, c'est l'absence
+d'inscription depuis. Ne pas rouvrir le sujet sur ce chiffre : le vérifier sur le PREMIER compte créé
+après l'ouverture, en lisant `raw_user_meta_data ? 'cgu_version'`.
+
+⚠️ **⑥ LA SAUVEGARDE AUTOMATIQUE EXISTE — ET N'A JAMAIS TOURNÉ.** `.github/workflows/sauvegarde.yml`
+est en place, quotidien, archive chiffrée puis **déchiffrée et relue dans le même run**. Le constat
+« aucune sauvegarde automatique » est donc périmé. ⚠️ Mais l'inverse ne se dit pas non plus : le
+workflow compte **zéro exécution** à ce jour. Une sauvegarde configurée n'est pas une sauvegarde —
+tant qu'un run vert ne l'a pas prouvée, c'est une intention avec un fichier YAML devant. Le premier
+lancement est un geste qui reste à faire.
 
 ## 🧭 `search_path` FIGÉ — et pourquoi `''` n'est PAS la bonne réponse partout (2026-09-12)
 
