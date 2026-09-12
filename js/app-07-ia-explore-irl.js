@@ -98,7 +98,19 @@ function sendAIQuery(forceQuery) {
     if (remote) {
       _aiRenderResult(query, _aiTextToHtml(remote), "Assistant PASSIO");
     } else {
-      _aiRenderResult(query, aiGenerateResponse(query), "Suggestions PASSIO");
+      // ⚠️ `aiGenerateResponse` est ASYNCHRONE depuis le 2026-09-12 : elle
+      // consulte le référentiel des 5 001 passions, ce qui peut demander de le
+      // charger. Sans ce `.then`, `_aiRenderResult` recevrait la PROMESSE et
+      // peindrait « [object Promise] » — un défaut qui s'affiche en toutes
+      // lettres et qu'aucune gate statique ne voit.
+      // ⚠️ La garde « la question a-t-elle changé ? » est REJOUÉE ici, et ce
+      // n'est pas une redite : celle du dessus a été évaluée AVANT cette
+      // attente-là, qui est la plus longue des deux.
+      aiGenerateResponse(query).then(function (local) {
+        var cur2 = document.querySelector("#aiResultContent .ai-result-query");
+        if (cur2 && cur2.textContent !== '"' + query + '"') return;
+        _aiRenderResult(query, local, "Suggestions PASSIO");
+      });
     }
   });
 }

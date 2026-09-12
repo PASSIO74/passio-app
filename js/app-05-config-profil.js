@@ -1551,7 +1551,7 @@ function _renderGroupMembersModal(convId) {
   var grpAvatarHTML;
   if (c.groupPhoto) {
     grpAvatarHTML = '<div style="position:relative;width:72px;height:72px;margin:0 auto 12px;cursor:pointer;" onclick="pickGroupPhoto(\'' + escapeJsArg(convId) + '\')">' +
-      '<div style="width:72px;height:72px;border-radius:50%;background:url(\'' + (_cssUrl(c.groupPhoto) || "") + '\') center/cover;border:3px solid var(--accent);"></div>' +
+      '<div style="width:72px;height:72px;border-radius:50%;background:url(\'' + (_cssUrl(passioThumb(c.groupPhoto, 192)) || "") + '\') center/cover;border:3px solid var(--accent);"></div>' +
       '<div style="position:absolute;bottom:0;right:0;width:24px;height:24px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:13px;border:2px solid var(--bg-card);">📷</div>' +
     '</div>';
   } else {

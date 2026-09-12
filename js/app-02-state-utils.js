@@ -2161,11 +2161,48 @@ function _cssColor(c) {
   return s;
 }
 // Style `background:` d'un avatar : la photo si dispo, sinon la couleur.
-function avatarBg(u) {
+//
+// ⚠️ LES AVATARS ÉTAIENT SERVIS EN PLEINE RÉSOLUTION (2026-09-12). `passioThumb`
+// existe depuis le lot CDN et n'avait que TROIS appelants, tous sur des images de
+// PUBLICATION : aucun avatar n'y passait.
+// ⚠️ ET L'ORDRE DE GRANDEUR SE DIT JUSTE, SOUS PEINE DE NE PLUS ÊTRE CRU :
+// `changeAvatarPhoto` recadre à 480×480 en JPEG 0,9, donc un avatar PRODUIT PAR
+// L'APPLICATION pèse quelques dizaines de Ko. Le fichier de 2,59 Mo mesuré dans
+// le seau est un RÉSIDU (import direct d'avant le recadrage), pas la norme. Le
+// gain réel est 480 → 192 px, soit environ quatre fois moins de pixels à chaque
+// rendu — vrai, utile, et beaucoup plus modeste que « 2,59 Mo pour 40 px ».
+//
+// ⚠️ CE POINT D'ENTRÉE COUVRE SES TRENTE-NEUF APPELANTS, ET RIEN DE PLUS.
+// Il ne faut PAS lire « le correctif vit ici et nulle part ailleurs » : la
+// première version de ce commentaire l'écrivait, et c'était faux. NEUF autres
+// surfaces peignent une image d'utilisateur sans passer par ici — photos de
+// groupe (liste Messages, en-tête de conversation, configurateur), photos et
+// couvertures de passion, tuile de profil, et mon propre avatar/couverture.
+// Elles ont été rattrapées une par une le même jour, et le verrou ④ les nomme.
+// **Un point d'entrée unique pour SES appelants n'est pas un point d'entrée
+// unique pour la fonctionnalité** — le vérifier au `grep`, pas au raisonnement.
+//
+// ⚠️ LA LARGEUR EST UN ARGUMENT, PAS UNE CONSTANTE. Les avatars vont de 22 px
+// (`.avatar.xs`) à 116 px (`.main-profile-avatar`) : un nombre unique servirait
+// soit du flou sur le grand, soit du gaspillage sur les petits. Le défaut de
+// 192 px couvre tout jusqu'à `.avatar.xl` (92 px) sur un écran à 2×, et le seul
+// consommateur plus grand demande sa propre taille.
+//
+// ⚠️ LA COULEUR RESTE SOUS LA PHOTO, et c'est une garde, pas une décoration.
+// Un avatar est un `background`, donc il n'a AUCUN `onerror` : si l'image échoue,
+// l'ancienne version ne laissait rien — ni couleur (elle n'était pas posée), ni
+// emoji (`avatarInner` rend "" dès qu'une photo existe). Un rond vide, sans une
+// erreur. La couleur est désormais la couche du dessous : elle ne se voit que si
+// la photo manque, ce qui est exactement son rôle.
+function avatarBg(u, largeur) {
   const ph = _userPhoto(u);
-  const safe = ph ? _cssUrl(ph) : null;
-  if (safe) return "url('" + safe + "') center/cover";
-  return _cssColor((u && (u.avatar || u.color)) || "#8b5cf6");
+  // Miniature AVANT l'échappement CSS : `passioThumb` ajoute `?width=&quality=`,
+  // que `_cssUrl` laisse intacts (il ne neutralise que de quoi refermer l'url()).
+  const vignette = ph ? passioThumb(ph, largeur || 192) : null;
+  const safe = vignette ? _cssUrl(vignette) : null;
+  const couleur = _cssColor((u && (u.avatar || u.color)) || "#8b5cf6");
+  if (safe) return "url('" + safe + "') center/cover, " + couleur;
+  return couleur;
 }
 // Contenu interne d'un avatar : rien si photo (elle remplit le fond), sinon emoji.
 // ⚠️ La valeur est insérée telle quelle en HTML par ses 38 appelants : c'est ICI
@@ -4953,7 +4990,7 @@ function passionTileHTML(o) {
   var selected = !!o.selected;
   var dimmed = !!o.dimmed;
   var avatarContent = o.photoUrl
-    ? '<img loading="lazy" decoding="async" class="profile-tile-photo" src="' + safeUrlAttr(o.photoUrl) + '" alt="' + escapeHtml(label) + '"'
+    ? '<img loading="lazy" decoding="async" class="profile-tile-photo" src="' + safeUrlAttr(passioThumb(o.photoUrl, 192)) + '" alt="' + escapeHtml(label) + '"'
       + (o.fallbackUrl ? ' onerror="this.onerror=null;this.src=\'' + escapeJsArg(o.fallbackUrl) + '\'"' : '')
       + '/><span class="profile-tile-emoji-badge">' + escapeHtml(emoji) + '</span>'
       + '<span class="profile-tile-glyph" aria-hidden="true">' + escapeHtml(emoji) + '</span>'

@@ -1,11 +1,11 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- SEARCH_PATH FIGÉ SUR LES TROIS FONCTIONS MAISON QUI N'EN AVAIENT PAS
+-- SEARCH_PATH FIGÉ SUR LES CINQ FONCTIONS MAISON QUI N'EN AVAIENT PAS
 -- (2026-09-12)
 --
 -- Un seul copier-coller dans l'éditeur SQL de Supabase (canal ③ d'ADR-012),
--- UNE transaction, REJOUABLE, tableau de verdict à quatre lignes.
+-- UNE transaction, REJOUABLE, tableau de verdict à six lignes.
 --
--- ⚠️ AUCUNE de ces trois fonctions n'est `SECURITY DEFINER` : elles s'exécutent
+-- ⚠️ AUCUNE de ces cinq fonctions n'est `SECURITY DEFINER` : elles s'exécutent
 -- avec les droits de l'appelant. Ce lot est donc de la DÉFENSE EN PROFONDEUR,
 -- pas la fermeture d'une porte ouverte — ne pas le présenter comme une faille.
 -- Ce qu'il ferme : une fonction sans `search_path` résout ses appels NON
@@ -17,14 +17,15 @@
 --
 -- ── CE QUI A ÉTÉ MESURÉ EN PRODUCTION LE 2026-09-12 (canal ① d'ADR-012) ──
 --
--- `get_advisors` signale « Function Search Path Mutable » sur trois fonctions,
+-- `get_advisors` signale « Function Search Path Mutable » sur cinq fonctions,
 -- et 34 fonctions de `public` ont `proconfig IS NULL`. Les deux nombres ne se
 -- contredisent pas : **31 de ces 34 appartiennent à l'extension `pg_trgm`**
 -- (gin_*, gtrgm_*, similarity*, word_similarity*, set_limit, show_limit,
 -- show_trgm, strict_word_similarity*). On n'y touche PAS : elles sont la
 -- propriété de l'extension, un `ALTER` serait perdu à sa prochaine mise à jour,
--- et ce n'est pas notre code. Les trois qui restent sont les nôtres, et ce sont
--- exactement les trois que le linter nomme.
+-- et ce n'est pas notre code. Les cinq qui restent sont les nôtres, et ce sont
+-- exactement les cinq que le linter nomme (trois à la rédaction, deux de plus
+-- depuis le lot d'ouverture du 11/09 : la liste d'un linter n'est pas figée).
 --
 -- ── LE PIÈGE, ET IL EST SÉRIEUX ──
 --
@@ -56,7 +57,7 @@
 -- déjà qualifiées ou du `pg_catalog` (toujours résolu, quel que soit le
 -- chemin) : elles prennent le réglage le PLUS STRICT, `''`. Seule
 -- `rechercher_passions` a besoin d'un chemin, et seulement à cause de
--- `similarity`. Harmoniser les trois sur `public, extensions, pg_temp`
+-- `similarity`. Harmoniser les cinq sur `public, extensions, pg_temp`
 -- affaiblirait les deux premières ; harmoniser sur `''` casserait la
 -- troisième. Le commentaire de chaque ligne dit ce qu'elle résout.
 --
@@ -68,7 +69,7 @@
 --
 -- ⚠️ La ligne ④ du verdict n'est PAS un rapport : elle APPELLE réellement
 -- `rechercher_passions`. Sur une base où le chemin choisi ne résoudrait pas
--- `similarity`, elle LÈVE — la transaction est alors annulée et les trois
+-- `similarity`, elle LÈVE — la transaction est alors annulée et les cinq
 -- `ALTER` sont DÉFAITS. Autrement dit : ce fichier ne peut pas laisser la
 -- recherche de passions muette derrière lui. Il échoue bruyamment plutôt que
 -- de s'appliquer à moitié. Ne pas « assainir » cette ligne en un test de
@@ -92,6 +93,21 @@ alter function public.storage_chemin_autorise(text, text) set search_path = '';
 alter function public.rechercher_passions(text, integer)
   set search_path = public, extensions, pg_temp;
 
+-- ④ et ⑤ — LES DEUX TRIGGERS ARRIVÉS APRÈS LA RÉDACTION DE CE FICHIER
+--    (2026-09-12). Le lot d'ouverture du 11/09 a ajouté `identifiants_figes` et
+--    `follows_identifiants_figes` ; `get_advisors` les signale donc à leur tour,
+--    et ce fichier — écrit la veille — ne les connaissait pas.
+--    ⚠️ LA LEÇON EST DANS LE DÉCALAGE, PAS DANS LE CORRECTIF : une migration
+--    écrite contre un rapport de linter vieillit dès que le code bouge. RELIRE
+--    `get_advisors` AVANT DE COLLER, toujours — coller ce fichier dans sa
+--    version de la veille aurait laissé deux fonctions dehors, en silence, et
+--    le verdict aurait dit OK sur les trois qu'il connaissait.
+--    Aucune des deux ne référence de relation ni de type : elles ne manipulent
+--    que `old`/`new` et des fonctions de `pg_catalog` (`format`, `raise`) →
+--    chemin VIDE, le plus strict.
+alter function public.identifiants_figes() set search_path = '';
+alter function public.follows_identifiants_figes() set search_path = '';
+
 -- ═══════════════════════════════════════════════════════════════════════════
 -- VERDICT — tout doit dire OK.
 -- ⚠️ `set search_path = ''` se RELIT `search_path=""` dans `pg_proc.proconfig`
@@ -113,9 +129,17 @@ with v(ordre, correctif, ok) as (
                    join pg_namespace n on n.oid = p.pronamespace
                    where n.nspname = 'public' and p.proname = 'rechercher_passions'), false)
   -- ⚠️ Le contrôle qui compte vraiment : la recherche de passions RÉPOND
-  -- ENCORE. Un chemin figé qui casserait `similarity` rendrait les trois
+  -- ENCORE. Un chemin figé qui casserait `similarity` rendrait les cinq
   -- lignes ci-dessus vertes et le produit muet.
-  union all select 4, '④ la recherche de passions répond toujours',
+  union all select 4, '④ identifiants_figes : chemin vide',
+         coalesce((select 'search_path=""' = any(p.proconfig) from pg_proc p
+                   join pg_namespace n on n.oid = p.pronamespace
+                   where n.nspname = 'public' and p.proname = 'identifiants_figes'), false)
+  union all select 5, '⑤ follows_identifiants_figes : chemin vide',
+         coalesce((select 'search_path=""' = any(p.proconfig) from pg_proc p
+                   join pg_namespace n on n.oid = p.pronamespace
+                   where n.nspname = 'public' and p.proname = 'follows_identifiants_figes'), false)
+  union all select 6, '⑥ la recherche de passions répond toujours',
          (select count(*) >= 0 from public.rechercher_passions('a', 5))
 )
 select ordre, correctif, case when ok then 'OK' else 'ECHEC' end as verdict

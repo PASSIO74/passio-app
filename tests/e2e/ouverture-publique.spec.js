@@ -433,7 +433,12 @@ test.describe("⑧ la politique dit ce que la base fait", () => {
   test("§8 : 7 jours de mesure d'usage, 30 jours de rapports d'erreur — et la version suit", async ({ page }) => {
     await bootOnboarded(page);
     const r = await page.evaluate(() => ({ version: PASSIO_CONFIDENTIALITE_VERSION }));
-    expect(r.version).toBe("2026-09-11");
+    // ⚠️ 2026-09-12 : la politique disait encore « beta privée » et « l'accès est
+    // protégé par un code », alors que le rideau est levé depuis le 11/09 et que
+    // la landing annonce « Gratuit · 18 ans et + ». Les deux textes vivent sur le
+    // MÊME écran : le visiteur lisait l'un puis l'autre. La version SUIT le
+    // texte — sans quoi « a accepté » ne désigne plus rien.
+    expect(r.version).toBe("2026-09-12");
     // Les textes légaux vivent dans js/legal-textes.js depuis #334 (lisibles sans code).
     const legal = lire("js/legal-textes.js");
     expect(legal).toMatch(/13 mois au maximum<\/strong> — en pratique la mesure d\\'usage détaillée est effacée après <strong[^>]*>7 jours<\/strong> et les rapports d\\'erreur après <strong[^>]*>30 jours/);

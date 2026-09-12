@@ -2580,7 +2580,13 @@ function searchUsers(query) {
       // gestionnaire d'événement. Tout ce qui entre ici doit être échappé, y compris
       // l'identifiant.
       return "<div class='msg-user-result-row' data-uid='" + escapeHtml(u.id || "") + "' data-name='" + nameEsc + "' data-emoji='" + escapeHtml(emoji) + "' data-avatar='" + escapeHtml(u.avatar||"#8b5cf6") + "' data-photo='" + escapeHtml(u.photoUrl || '') + "' onclick='_pickMsgUser(this)' style='display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);'>" +
-        "<div style='width:38px;height:38px;border-radius:50%;background:" + avatarBg(u) + ";display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;'>" + avatarInner(u) + "</div>" +
+        // ⚠️ ATTRIBUT EN GUILLEMETS, PAS EN APOSTROPHES : `avatarBg` émet ses propres
+        // apostrophes (`url('…')`), et un attribut délimité par `'` se refermait
+        // donc sur la première d'entre elles — balise cassée dès qu'un compte de
+        // cette liste porte une photo. Pas une injection (`_cssUrl` encode les
+        // apostrophes venues de l'URL), un défaut d'affichage. Préexistant.
+        '<div style="width:38px;height:38px;border-radius:50%;background:' + avatarBg(u) + ';display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">'
+         + avatarInner(u) + "</div>" +
         "<div style='flex:1;min-width:0;'>" +
           "<div style='font-weight:700;font-size:13px;color:var(--text);margin-bottom:3px;'>" + nameEsc + "</div>" +
           "<div>" + passionBadges + "</div>" +
@@ -2966,7 +2972,7 @@ async function openUserProfile(authorId, source) {
   // chevauchant + pseudo + bio + réseaux + stats), via les classes existantes
   // .main-profile-* — sans les contrôles d'édition, évidemment.
   var coverStyle = user.coverUrl
-    ? 'background:url(' + safeUrlAttr(user.coverUrl) + ') center/cover;'
+    ? 'background:url(' + safeUrlAttr(passioThumb(user.coverUrl, 880)) + ') center/cover;'
     : 'background:linear-gradient(135deg, #8b5cf6, #6d28d9);';
 
   var html = '\
@@ -2980,7 +2986,7 @@ async function openUserProfile(authorId, source) {
       <div class="main-profile-cover" style="' + coverStyle + 'cursor:default;"></div>\
       <div class="main-profile-body">\
         <div class="main-profile-avatar-wrap">\
-          <div class="main-profile-avatar" style="background:' + avatarBg(user) + ';background-size:cover;background-position:center;cursor:default;">' + avatarInner(user) + '</div>\
+          <div class="main-profile-avatar" style="background:' + avatarBg(user, 352) + ';background-size:cover;background-position:center;cursor:default;">' + avatarInner(user) + '</div>\
         </div>\
         <div class="main-profile-username">' + escapeHtml(user.name || "Passionné") + (user.isPrivate ? ' <span title="Compte privé" style="font-size:13px;">🔒</span>' : '') + '</div>\
         ' + (user.bio ? '<div class="main-profile-bio">' + escapeHtml(user.bio) + '</div>' : '') + '\
@@ -3706,7 +3712,7 @@ function renderMessages() {
     // Avatar de la conv : photo de groupe, sinon photo de profil live de l'autre, sinon couleur+emoji.
     const _convU = c.isGroup ? null : { avatar: displayAvatar, profileEmoji: displayEmoji, photoUrl: (userById(c.userId) || {}).photoUrl || c.userPhoto || u.photoUrl || null };
     const avatarStyle = (c.isGroup && c.groupPhoto)
-      ? `background:url(${c.groupPhoto}) center/cover;font-size:0;`
+      ? `background:url(${passioThumb(c.groupPhoto, 192)}) center/cover;font-size:0;`
       : (c.isGroup ? `background:${displayAvatar};` : `background:${avatarBg(_convU)};`);
     const _convAvInner = (c.isGroup && c.groupPhoto) ? '' : (c.isGroup ? displayEmoji : avatarInner(_convU));
 
@@ -3809,7 +3815,7 @@ async function openConversation(convId) {
     // brute dans un url() CSS, où une parenthèse ou un guillemet suffisait à sortir
     // de la déclaration puis de l'attribut. _cssUrl pourcent-encode les deux.
     avatarHtml = `<div onclick="pickGroupPhoto('${escapeJsArg(convId)}')" style="position:relative;flex-shrink:0;cursor:pointer;">
-      <div class="conv-fp-head-avatar" style="background:url('${_cssUrl(c.groupPhoto) || ""}') center/cover;font-size:0;"></div>
+      <div class="conv-fp-head-avatar" style="background:url('${_cssUrl(passioThumb(c.groupPhoto, 192)) || ""}') center/cover;font-size:0;"></div>
       <div style="position:absolute;bottom:-1px;right:-1px;width:14px;height:14px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:8px;border:1.5px solid var(--bg-soft);">📷</div>
     </div>`;
   } else {

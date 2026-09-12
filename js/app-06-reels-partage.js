@@ -312,13 +312,17 @@ function renderMainProfile() {
     // Configurateur (app-05) ; sans photo : mesh gradient au lieu de l'aplat vide
     cover.dataset.hasPhoto = g.coverPhoto ? "1" : "";
     cover.style.background = g.coverPhoto
-      ? "url(" + g.coverPhoto + ") center/cover"
+      ? "url(" + passioThumb(g.coverPhoto, 880) + ") center/cover"
       : "radial-gradient(130% 140% at 12% -10%, #c4b5fd 0%, rgba(196,181,253,0) 55%), radial-gradient(120% 130% at 95% 15%, #8b5cf6 0%, rgba(139,92,246,0) 60%), radial-gradient(160% 130% at 50% 115%, #5b21b6 0%, #6d28d9 70%)";
   }
 
   avatarEl.dataset.hasPhoto = g.avatarPhoto ? "1" : "";
   if (g.avatarPhoto) {
-    avatarEl.style.backgroundImage = "url(" + g.avatarPhoto + ")";
+    // 116 px de CSS, donc 352 px sur un écran à 3× — et pas les 2,59 Mo de
+    // l'original. `passioThumb` laisse intactes les URLs qu'il ne sait pas
+    // transformer (data:, blob:, externes), donc l'aperçu d'un recadrage tout
+    // juste terminé passe sans être touché.
+    avatarEl.style.backgroundImage = "url(" + passioThumb(g.avatarPhoto, 352) + ")";
     avatarEl.style.backgroundSize = "cover";
     avatarEl.style.backgroundPosition = "center";
     avatarEl.innerHTML = '<div class="main-profile-avatar-badge">📷</div><input type="file" id="avatarPhotoInput" accept="image/*" style="display:none;" onchange="changeAvatarPhoto(event)"/>';
@@ -1213,7 +1217,7 @@ function openEditMainProfile() {
     <div class="field">
       <span>Photo de couverture</span>
       <div style="display:flex;gap:8px;align-items:center;">
-        <div id="editCoverPreview" style="flex:1;height:64px;border-radius:12px;border:1px solid var(--border);background:${g.coverPhoto ? "url(" + safeUrlAttr(g.coverPhoto) + ") center/cover" : "linear-gradient(135deg,#8b5cf6,#6d28d9)"};"></div>
+        <div id="editCoverPreview" style="flex:1;height:64px;border-radius:12px;border:1px solid var(--border);background:${g.coverPhoto ? "url(" + safeUrlAttr(passioThumb(g.coverPhoto, 880)) + ") center/cover" : "linear-gradient(135deg,#8b5cf6,#6d28d9)"};"></div>
         <button class="btn ghost" style="white-space:nowrap;" onclick="editCoverFromModal()">Changer</button>
       </div>
     </div>
@@ -2484,7 +2488,7 @@ function renderProfilesScreen() {
       var et = _passionEtiquette(p);
       var _pPhoto = p.photoUrl || p.photo || null;
       var avatarStyle = _pPhoto
-        ? "background:url(" + safeUrlAttr(_pPhoto) + ") center/cover;"
+        ? "background:url(" + safeUrlAttr(passioThumb(_pPhoto, 192)) + ") center/cover;"
         : "background:" + _couleurSure(p.color) + ";";
       var avatarContent = _pPhoto ? "" : escapeHtml(et.emoji);
       var _pCover = p.coverUrl || p.coverPhoto || null;
@@ -2541,7 +2545,7 @@ function renderProfilesScreen() {
       const _pPhoto = p.photoUrl || p.photo || null;
       const hasPhoto   = !!_pPhoto;
       const avatarStyle = hasPhoto
-        ? `background:url(${safeUrlAttr(_pPhoto)}) center/cover;`
+        ? `background:url(${safeUrlAttr(passioThumb(_pPhoto, 192))}) center/cover;`
         : `background:${p.color};`;
       const avatarContent = hasPhoto ? "" : p.emoji;
 
@@ -2727,7 +2731,7 @@ function openEditPassionProfile(profileId) {
     <div class="field">
       <span>Photo de la passion</span>
       <div style="display:flex;gap:10px;align-items:center;">
-        <div style="width:56px;height:56px;border-radius:50%;flex-shrink:0;${photo ? "background:url(" + safeUrlAttr(photo) + ") center/cover;" : "background:" + escapeHtml(p.color || "var(--accent)") + ";display:flex;align-items:center;justify-content:center;font-size:24px;"}">${photo ? "" : escapeHtml(p.emoji || "")}</div>
+        <div style="width:56px;height:56px;border-radius:50%;flex-shrink:0;${photo ? "background:url(" + safeUrlAttr(passioThumb(photo, 192)) + ") center/cover;" : "background:" + escapeHtml(p.color || "var(--accent)") + ";display:flex;align-items:center;justify-content:center;font-size:24px;"}">${photo ? "" : escapeHtml(p.emoji || "")}</div>
         <button class="btn ghost" onclick="_editPassionPhotoFromModal('${escapeJsArg(p.id)}')">Changer</button>
       </div>
     </div>
@@ -2735,7 +2739,7 @@ function openEditPassionProfile(profileId) {
     <div class="field">
       <span>Photo de fond</span>
       <div style="display:flex;gap:10px;align-items:center;">
-        <div style="flex:1;height:60px;border-radius:12px;border:1px solid var(--border);${cover ? "background:url(" + safeUrlAttr(cover) + ") center/cover;" : "background:var(--bg-deep);"}"></div>
+        <div style="flex:1;height:60px;border-radius:12px;border:1px solid var(--border);${cover ? "background:url(" + safeUrlAttr(passioThumb(cover, 880)) + ") center/cover;" : "background:var(--bg-deep);"}"></div>
         <button class="btn ghost" style="white-space:nowrap;" onclick="_editPassionCoverFromModal('${escapeJsArg(p.id)}')">Changer</button>
       </div>
       ${cover ? `<button class="btn ghost" style="margin-top:6px;font-size:12px;padding:8px;color:var(--muted);" onclick="removePassionCover('${escapeJsArg(p.id)}')">Retirer la photo de fond</button>` : ""}
@@ -4856,7 +4860,14 @@ function aiDetectIntent(q) {
   var ql = q.toLowerCase();
   // App-specific intents
   if (/irl|événement|event|rencontre|près de|proximité/.test(ql)) return "irl";
-  if (/cdv|carnet|voyage|live|en direct/.test(ql)) return "cdv";
+  // ⚠️ PAS D'INTENTION « cdv » : le Carnet de voyage est RETIRÉ (ADR-011 §6).
+  // Elle captait `voyage`, `carnet`, `live`, `en direct` AVANT la branche
+  // générale — donc ces questions-là n'atteignaient jamais le référentiel, et
+  // le raccourci « ✈️ Voyage » d'`index.html` (« Conseils voyage et aventure »)
+  // menait tout droit à un panneau « 📔 Carnets de Voyage » renvoyant vers un
+  // onglet qui n'existe plus. Retirer le texte de repli ne suffisait pas : la
+  // PORTE était au-dessus. Ces questions tombent désormais dans la branche
+  // générale, qui cherche dans les 5 001 passions.
   if (/créateur|profil|suivre|utilisateur|qui suit/.test(ql)) return "creators";
   if (/mode pause|bien-être|digital wellbeing|temps d'écran|pause/.test(ql)) return "wellbeing";
   if (/post|publier|créer|studio/.test(ql) && !/passion/.test(ql)) return "create";
@@ -4875,7 +4886,24 @@ function aiDetectIntent(q) {
   return "general";
 }
 
-function aiGenerateResponse(query) {
+// ⚠️ LE MOTEUR LOCAL NE CONNAISSAIT QUE 19 PASSIONS SUR 5 001 (2026-09-12).
+// C'est le dernier de la famille corrigée le même jour sur trois autres surfaces
+// (« Ski » ne rendait rien dans la première visite, la création de groupe et
+// l'organisation d'une rencontre) : `allPassions()` = socle embarqué + passions
+// du compte, jamais le référentiel. Ses cartes sont CLIQUABLES, donc c'est bien
+// une surface de découverte, et elle envoyait vers un cul-de-sac sur tout ce qui
+// n'est pas dans les 19.
+//
+// ⚠️ ELLE DEVIENT ASYNCHRONE, ET C'EST VOULU. Consulter le référentiel, c'est
+// peut-être le charger (568 Ko, au premier usage réel seulement). Son UNIQUE
+// appelant (`app-07`) vit déjà dans un `.then` et porte déjà la garde « la
+// question a-t-elle changé ? » — la rendre asynchrone ne lui coûte rien et évite
+// le piège inverse : répondre depuis le socle pendant que le référentiel répond.
+//
+// ⚠️ Ce n'est PAS un blocage produit : ce moteur est le REPLI de l'Edge Function
+// Claude, qui répond en temps normal. On corrige une surface dégradée, pas le
+// chemin principal.
+async function aiGenerateResponse(query) {
   var ql = query.toLowerCase();
   var intent = aiDetectIntent(query);
 
@@ -4895,20 +4923,6 @@ function aiGenerateResponse(query) {
     }).join("") : '<div style="font-size:12px;color:var(--muted);">Aucun événement trouvé pour ta recherche.</div>';
     return '<div><div class="ai-section-label">📍 Événements IRL</div>' + cardsHTML +
       '<div style="margin-top:10px;font-size:12px;color:var(--muted);">Tu peux aussi créer ton propre événement dans l\'onglet IRL → <b>+ Créer</b>.</div></div>';
-  }
-
-  // --- CDV ---
-  if (intent === "cdv") {
-    var lives = (state.cdvLives || []);
-    var publicLives = lives.filter(function(l) { return l.visibility !== "private"; }).slice(0, 4);
-    var cdvCards = publicLives.length ? publicLives.map(function(l) {
-      return '<div class="ai-card" onclick="navigateTo(\'cdv\')">' +
-        '<div class="ai-card-title">📔 ' + escapeHtml(l.title || "Carnet") + '</div>' +
-        '<div class="ai-card-meta">' + (l.isLive ? "📡 En direct · " : "✅ Terminé · ") + (l.steps ? l.steps.length : 0) + ' étapes</div>' +
-      '</div>';
-    }).join("") : '<div style="font-size:12px;color:var(--muted);">Aucun carnet public pour l\'instant.</div>';
-    return '<div><div class="ai-section-label">📔 Carnets de Voyage</div>' + cdvCards +
-      '<div style="margin-top:10px;font-size:12px;color:var(--muted);">Lance ton propre CDV Live depuis l\'onglet <b>Carnets</b> → bouton 📡 CDV Live.</div></div>';
   }
 
   // --- Créateurs ---
@@ -5036,10 +5050,46 @@ function aiGenerateResponse(query) {
   }
 
   // --- Réponse générale ---
+  // Le socle d'abord (instantané, hors ligne compris), le référentiel ENSUITE :
+  // un résultat vide pendant que le moteur a la réponse serait un mensonge, et
+  // c'est très exactement ce que l'écran affichait avant ce correctif.
   var allP2 = allPassions ? allPassions() : PASSIONS;
   var matchedPassions = allP2.filter(function(p) {
     return ql.includes(p.label.toLowerCase()) || p.label.toLowerCase().includes(ql);
-  }).slice(0, 4);
+  });
+
+  var moteur = window.PassioPassions;
+  // ⚠️ `actif()`, comme les QUATRE autres appelants de `chercherAsync`
+  // (app-07, first-run) : sans lui, `localStorage.flat_passions_v1="0"` ne
+  // couperait pas cette surface — elle chargerait quand même les 568 Ko et
+  // rendrait quand même des résultats du référentiel. Un drapeau qui ne sait
+  // qu'ENLEVER doit enlever ICI aussi.
+  if (moteur && typeof moteur.chercherAsync === "function" &&
+      (typeof moteur.actif !== "function" || moteur.actif())) {
+    try {
+      var duRef = await moteur.chercherAsync(query);
+      // Le moteur connaît les alias et les accents, la comparaison littérale
+      // ci-dessus non : ses résultats passent DEVANT, sans écraser les nôtres.
+      var vus = {};
+      var fusion = [];
+      (duRef || []).concat(matchedPassions).forEach(function (p) {
+        if (!p || !p.id || vus[p.id]) return;
+        vus[p.id] = true;
+        fusion.push(p);
+      });
+      matchedPassions = fusion;
+    } catch (e) {
+      // ⚠️ ON LOGUE AVANT DE REPLIER, et `diagLog` n'est pas décoratif ici : le
+      // symptôme d'une erreur avalée dans ce bloc est EXACTEMENT celui du défaut
+      // que ce correctif vient de fermer — le moteur ne rend que les 19 du
+      // socle. Sans trace dans `client_errors`, la Sentinelle ne peut pas le
+      // voir, et personne ne saurait distinguer « le référentiel a répondu » de
+      // « le code a levé ». Même geste qu'app-07 (`_exChercherPassions`).
+      try { diagLog("ia referentiel echec: " + (e && e.message)); } catch (_) {}
+      console.warn("aiGenerateResponse/referentiel:", e && e.message);
+    }
+  }
+  matchedPassions = matchedPassions.slice(0, 4);
 
   if (matchedPassions.length) {
     var html2 = '<div><div class="ai-section-label">🎯 Passions trouvées</div>';
@@ -5058,7 +5108,7 @@ function aiGenerateResponse(query) {
     'Tu peux :<br>' +
     '• Explorer une passion dans l\'onglet <b>Recherche</b><br>' +
     '• Chercher des événements IRL<br>' +
-    '• Consulter les carnets de voyage<br><br>' +
+    '• Organiser ou rejoindre une rencontre<br><br>' +
     'Essaie des questions comme :<br>' +
     '<em>"Conseils en photographie"</em>, <em>"Events IRL Lyon"</em>, <em>"Rencontrer des passionnés"</em>' +
     '</div>';
