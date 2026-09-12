@@ -846,7 +846,7 @@ les déploiements. C'est un contrôle d'exploitation, pas une gate de code.
 
 ## 🧭 `search_path` FIGÉ — et pourquoi `''` n'est PAS la bonne réponse partout (2026-09-12)
 
-`get_advisors` signale « Function Search Path Mutable » sur trois fonctions de `public`.
+`get_advisors` signalait « Function Search Path Mutable » sur cinq fonctions de `public`.
 Migration : `migrations/migration_search_path_fonctions.sql` (une transaction, verdict à 6 lignes)
 · banc `tests/sql/migration-search-path.test.sh` (28 contrôles, gate CI).
 
@@ -856,15 +856,30 @@ production — elles ne touchent aucune relation, seulement `old`/`new` et `pg_c
 **EXERCE** après le figement, il ne se contente pas de lire `proconfig` : vérifier l'attribut ne
 vérifie pas le comportement, et une garde d'intégrité muette ne se voit nulle part.
 
-⚠️ **CETTE MIGRATION N'EST PAS APPLIQUÉE EN PRODUCTION — mesuré le 2026-09-12.** `get_advisors` y
-signale toujours `rechercher_passions` ET `storage_chemin_autorise`. Le banc est vert, le fichier
-est juste, personne ne l'a collé : **une migration écrite n'est pas une migration appliquée**, et
-son banc CI vert ne dit rien de la production. ⚠️ Et le rapport nomme désormais **cinq** fonctions,
-pas trois : `identifiants_figes`, `follows_identifiants_figes` et `unaccent_immutable` sont arrivées
-depuis avec les lots d'ouverture. Coller le fichier tel quel en laisserait donc deux dehors —
-**relire `get_advisors` AVANT de coller, la liste a bougé depuis la rédaction.** Ce n'est pas
-bloquant (aucune des cinq n'est `SECURITY DEFINER`, c'est de la défense en profondeur), mais ne
-pas le présenter comme réglé.
+
+⚠️ **APPLIQUÉE EN PRODUCTION LE 2026-09-12 AU SOIR — mesuré, 5 fonctions sur 5.**
+`function_search_path_mutable` a DISPARU de `get_advisors`, et `proconfig` porte le chemin attendu
+sur les cinq. La recherche de passions répond toujours (contrôle par appel réel : 5 résultats sur
+« randonee », donc `similarity` résout bien). Ne pas rouvrir ce point.
+
+⚠️ **ET LE COLLER S'EST FAIT EN DEUX FOIS, POUR UNE RAISON À RETENIR.** Le premier coller n'a posé
+que TROIS chemins : le fichier avait été copié depuis GitHub pendant que la fusion arrivait, donc
+c'est la version **de la veille**, à trois `ALTER`, qui a été appliquée — et **son tableau de verdict
+a dit OK sur tout**, puisqu'il ne connaissait que trois fonctions. C'est exactement ce que le
+commentaire de la migration annonçait. **Un verdict ne peut certifier que ce que sa propre version
+connaît** : il ne dit jamais « il manque quelque chose que j'ignore ». Corollaire opératoire : après
+avoir collé un fichier MIROIR, vérifier l'ÉTAT en base (`proconfig`, `get_advisors`), jamais le
+tableau qu'il vient d'imprimer. Même famille que `generer-ouverture --verifier` et
+`generer-appliquer-tout.py`, mais le piège est ici du côté du COPIEUR, pas du générateur.
+
+⚠️ **LES 25 AVERTISSEMENTS QUI RESTENT SONT TOUS DÉLIBÉRÉS — verdict posé le 2026-09-12 pour que
+personne ne refasse l'enquête.** 18 × « `authenticated` peut exécuter une fonction SECURITY
+DEFINER » : ce sont les aides appelées PAR les policies RLS (`is_conv_member`, `is_blocked_with`…),
+leur retirer `EXECUTE` ferait lever « permission denied » partout (la red team l'avait suggéré,
+c'était faux). 2 × `anon` sur `post_is_visible` / `comment_target_visible` : voulu, un visiteur lit
+par elles les commentaires d'une publication publique. 1 × `pg_trgm` dans `public` : connu, et le
+chemin choisi survit à son déplacement. 1 × `access_policies` RLS sans policy : c'est l'interrupteur
+du 18+, son inaccessibilité EST sa protection. **Aucun n'est actionnable.**
 
 ⚠️ **AUCUNE des trois n'est `SECURITY DEFINER`** : c'est de la défense en profondeur, pas une porte
 ouverte. Ne pas la présenter comme une faille. Ce qu'elle ferme : `storage_chemin_autorise` est
