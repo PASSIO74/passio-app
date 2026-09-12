@@ -2008,12 +2008,23 @@ VIEWS.sources = async () => {
     ing.realtimeOk ? "Actif" : ing.supabaseReady ? "Secours" : "Non connecté");
   // Assistant Claude (analyse de bug)
   const cli = cs && cs.cli || {};
-  const claudeState = cli.loggedIn ? "ok" : cs && cs.apiKey ? "ok" : cli.installed ? "warn" : "off";
-  const claudeDetail = cli.loggedIn ? `CLI connectée (analyse gratuite)${cli.version ? " · " + esc(cli.version) : ""}`
+  // La RAISON de l'indisponibilité est affichée, pas seulement l'état : « sonde
+  // sans réponse » (CLI bloqué, poste saturé) n'appelle pas le même geste que
+  // « session expirée » (Connecter-Claude.cmd) — cf. server/claudecli.js.
+  const RAISON = {
+    logged_out: "session expirée — <span class='mono'>Connecter-Claude.cmd</span> (ou <span class='mono'>claude auth login</span>)",
+    auth_refused: "analyse refusée faute d'authentification — <span class='mono'>Connecter-Claude.cmd</span>",
+    probe: `sonde <span class='mono'>claude auth status</span> sans réponse (${num(cli.probeFailures || 0)} essais, ${esc(cli.lastProbeError || "?")}) — CLI bloqué ou poste saturé (disque ?)`,
+    not_installed: "<span class='mono'>claude</span> introuvable dans le PATH du pilotage",
+  };
+  const depuis = cli.since ? ` · depuis ${ago(cli.since)}` : "";
+  const claudeState = cli.loggedIn ? "ok" : cs && cs.apiKey ? "ok" : cli.reason === "probe" || cli.installed ? "warn" : "off";
+  const claudeDetail = cli.loggedIn ? `CLI connectée (analyse gratuite)${cli.version ? " · " + esc(cli.version) : ""}${cli.isolated ? " · identifiants isolés" : ""}`
     : cs && cs.apiKey ? "Clé API configurée"
-    : cli.installed ? "CLI installée mais non connectée (<span class='mono'>claude auth login</span>)"
-    : "Ni CLI ni clé API — mode « copier le prompt »";
-  push("Assistant Claude (réparation)", claudeState, claudeDetail, "—", cli.loggedIn || (cs && cs.apiKey) ? "Disponible" : cli.installed ? "À reconnecter" : "Indisponible");
+    : cli.installed || cli.reason === "probe" ? `CLI installée mais indisponible : ${RAISON[cli.reason] || RAISON.logged_out}${depuis}`
+    : `Ni CLI ni clé API — mode « copier le prompt »${cli.reason === "not_installed" ? " (" + RAISON.not_installed + ")" : ""}`;
+  push("Assistant Claude (réparation)", claudeState, claudeDetail, cli.lastProbeAt ? "sondé il y a " + ago(cli.lastProbeAt) : "—",
+    cli.loggedIn || (cs && cs.apiKey) ? "Disponible" : cli.reason === "probe" ? "Sonde muette" : cli.installed ? "À reconnecter" : "Indisponible");
   // Git (si autorisé)
   if (git) {
     const dirty = (git.files || []).length;
@@ -2055,12 +2066,11 @@ function claudeSettingsHtml() {
     ${on ? "" : `<div class="section-title" style="margin-top:16px">Activer gratuitement (recommandé)</div>
     <p class="muted" style="font-size:13px;margin-top:0">${S.me.claudeInstalled ? "Claude Code est bien installé sur cet ordinateur, il faut juste le <b>connecter</b> (gratuit, avec ton abonnement) :" : "Utilise Claude Code avec ton abonnement, <b>sans payer au message</b> :"}</p>
     <ol class="setup-steps">
-      <li>Ouvre une <b>invite de commandes</b> (touche Windows → tape « cmd » → Entrée).</li>
-      <li>Copie-colle cette commande exacte, puis Entrée : <span class="mono">claude auth login</span></li>
+      <li>Double-clique sur <span class="mono">dashboard\\Connecter-Claude.cmd</span> (ou, dans une invite de commandes : <span class="mono">claude auth login</span>).</li>
       <li>Une page web s'ouvre → connecte-toi avec ton compte et autorise.</li>
-      <li>Reviens ici et clique <b>« Revérifier »</b> ci-dessous.</li>
+      <li>C'est tout : le pilotage re-sonde la connexion <b>toutes les minutes</b> tant qu'elle manque et la reprend seul — <b>« Revérifier »</b> ci-dessous pour ne pas attendre.</li>
     </ol>
-    <p class="muted" style="font-size:12px;margin-top:-4px">⚠️ Ouvrir juste <span class="mono">claude</span> ne suffit pas : c'est bien <span class="mono">claude auth login</span> qui reconnecte.</p>
+    <p class="muted" style="font-size:12px;margin-top:-4px">⚠️ Ouvrir juste <span class="mono">claude</span> ne suffit pas : c'est bien la connexion (<span class="mono">auth login</span>) qui reconnecte. Si <span class="mono">DASH_CLAUDE_CONFIG_DIR</span> isole les identifiants du pilotage, seul <span class="mono">Connecter-Claude.cmd</span> le reconnecte.</p>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn btn-primary" id="claudeRecheck">${icon("refresh")} Revérifier</button><span class="muted" id="claudeRecheckMsg" style="font-size:12.5px"></span></div>
     <details class="fix-details" style="margin-top:14px"><summary>Autre option : clé API (payante)</summary><ol class="setup-steps"><li>Clé sur <span class="mono">console.anthropic.com</span> → API Keys.</li><li>Colle-la après <span class="mono">ANTHROPIC_API_KEY=</span> dans <span class="mono">dashboard/.env</span>, puis redémarre.</li></ol></details>`}`;
 }
@@ -2075,7 +2085,9 @@ function wireClaudeCard() {
       S.me.claudeVia = r.apiKey ? "api" : r.cli.available ? "cli" : "manuel";
       setHtml("#claudeCard", claudeSettingsHtml()); wireClaudeCard();
       if (S.me.claudeLive) toast("Réparation automatique activée ✓");
-      else if (msg) msg.textContent = "Toujours pas connecté. Lance « claude » dans un terminal et connecte-toi.";
+      else if (msg) msg.textContent = r.cli.reason === "probe"
+        ? "La sonde « claude auth status » ne répond pas : CLI bloqué ou poste saturé (vérifie le disque), ce n'est pas une déconnexion."
+        : "Toujours pas connecté. Double-clique dashboard\\Connecter-Claude.cmd (ou « claude auth login » dans un terminal).";
       renderNav();
     } catch (e) { if (msg) msg.textContent = e.message; btn.disabled = false; }
   };

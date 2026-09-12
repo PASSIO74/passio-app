@@ -34,6 +34,7 @@ let admin = null;
 let lastSeenIso = new Date(Date.now() - 60 * 60_000).toISOString();
 let lastRealSeenIso = null;
 let realtimeOk = false;
+let lastRealtimeStatus = null;
 
 export function getAdmin() { return admin; }
 
@@ -145,7 +146,15 @@ export async function startIngest() {
     })
     .subscribe((status) => {
       realtimeOk = status === "SUBSCRIBED";
-      console.log("[ingest] realtime:", status);
+      // Journaliser le CHANGEMENT d'état, pas chaque tentative : un canal en
+      // `CHANNEL_ERROR` réessaie toutes les 14 s et écrivait ~6 000 lignes par
+      // jour dans `supervise.log` — sur un poste dont le disque plein a déjà
+      // fait planter le pilotage (ENOSPC, 2026-09-10). Le polling de secours
+      // (5 s, ci-dessous) continue d'ingérer pendant ce temps.
+      if (status !== lastRealtimeStatus) {
+        lastRealtimeStatus = status;
+        console.log("[ingest] realtime:", status, status === "SUBSCRIBED" ? "" : "(repli sur le polling 5 s ; prochaine ligne au changement d'état)");
+      }
     });
 
   // 3) Polling de secours (toutes les 5 s) : rattrape ce que le realtime a raté.
