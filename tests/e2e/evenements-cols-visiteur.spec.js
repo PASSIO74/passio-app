@@ -44,6 +44,25 @@
 //      remontent : le correctif ne ferme pas la porte à ceux qui y ont droit ;
 //   ④ compte réel dont la session est morte → UN repli, puis plus jamais la
 //      liste privée de la session (le mémo `_eventColsPubliquesSeulement`).
+//
+// ── AJOUT DU 2026-09-12, APRÈS LA SECONDE REMONTÉE DU MÊME 401 ──────────────
+// Les 17 refus de la seconde remontée portent, comme les 13 premiers,
+// « 0 compte identifié » : ils décrivent le chemin VISITEUR, celui que les cas
+// ① et ② ferment déjà. Ce qui restait ouvert dans la même fonction, c'est le
+// mémo lui-même : `_eventColsPubliquesSeulement` se pose sur N'IMPORTE QUEL
+// refus de la demande privée, y compris « jeton absent ou expiré » (PGRST301),
+// qui n'a plus aucune cause au jeton suivant. Il SURVIVAIT pourtant à la
+// session entière — seul mémo de refus du fichier dans ce cas, son voisin
+// `_attendeesRefusLecture` étant levé depuis toujours par
+// `SIGNED_IN`/`TOKEN_REFRESHED`. Conséquence pour un compte qui a PLEINEMENT
+// droit à ces colonnes, et dont le jeton avait simplement expiré le temps d'un
+// démarrage : `address`, `contact` et `conv_id` vides jusqu'au prochain
+// rechargement complet — l'adresse du rendez-vous, le téléphone de
+// l'organisateur, et « rejoindre la conversation » sans `conv_id`.
+//   ⑤ SOURCE : la branche `SIGNED_IN`/`TOKEN_REFRESHED` lève les DEUX mémos par
+//      un seul point (`_oublierRefusLecturesIRL`) — deux levées côte à côte
+//      finissent par diverger, et c'est la seconde qu'on oublie ;
+//   ⑤ bis COMPORTEMENT : mémo posé, jeton frais → la liste PRIVÉE repart.
 // ═══════════════════════════════════════════════════════════════════════════
 const fs = require("fs");
 const path = require("path");
@@ -223,5 +242,48 @@ test.describe("events : les colonnes privées ne partent qu'avec un compte", () 
     expect(cols.length, "l'appel suivant n'en fait qu'un").toBe(3);
     expect(cols[2], "le mémo tient : la liste privée ne repart pas de la session")
       .toBe(await page.evaluate(() => _EVENT_COLS_PUBLIC));
+  });
+
+  test("⑤ source — un jeton frais lève les DEUX mémos, par un seul point", () => {
+    const src = fs.readFileSync(SOURCE_APP08, "utf8");
+
+    const corps = corpsDeFonction(src, "_oublierRefusLecturesIRL");
+    expect(corps, "la levée unique existe").not.toBe("");
+    expect(corps.includes("_attendeesRefusLecture = false"),
+      "elle lève le mémo des participants").toBe(true);
+    expect(corps.includes("_eventColsPubliquesSeulement = false"),
+      "elle lève AUSSI le mémo des colonnes d'une rencontre").toBe(true);
+
+    // La branche qui reçoit un jeton frais doit l'appeler. Sans ce câblage, la
+    // fonction serait juste et n'aurait aucun appelant — le défaut exact déjà
+    // payé par `_notifierMessage` (fonction morte, 12 verrous verts).
+    const i = src.indexOf('if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED")');
+    expect(i, "la branche du jeton frais existe toujours").toBeGreaterThan(-1);
+    const branche = src.slice(i, i + 1600);
+    expect(branche.includes("_oublierRefusLecturesIRL("),
+      "la branche du jeton frais appelle la levée unique").toBe(true);
+  });
+
+  test("⑤ bis — mémo posé par un refus, jeton frais : la liste privée repart", async ({ page }) => {
+    await banc(page, {
+      compte: true,
+      plan: { events: [{ error: REFUS_401 }, { data: [EV] }] },
+    });
+    await page.evaluate(() => supaLoadEvents());
+    let cols = await lecturesEvents(page);
+    expect(cols.length, "le refus a bien posé le mémo (un repli)").toBe(2);
+
+    // Ce que fait la branche `SIGNED_IN`/`TOKEN_REFRESHED` : elle ne fait QUE
+    // cela, et le cas ⑤ prouve qu'elle le fait.
+    await page.evaluate(() => _oublierRefusLecturesIRL());
+
+    const evs = await page.evaluate(() => supaLoadEvents());
+    cols = await lecturesEvents(page);
+    expect(cols.length, "un seul aller-retour, celui qui a le droit").toBe(3);
+    expect(cols[2], "le mémo ne survit pas au jeton qui le causait")
+      .toBe(await page.evaluate(() => _EVENT_COLS_PRIVE));
+    expect(evs[0].address, "et l'adresse revient pour qui y a droit").toBe(EV.address);
+    expect(evs[0].convId, "conv_id aussi : « rejoindre la conversation » remarche")
+      .toBe(EV.conv_id);
   });
 });
