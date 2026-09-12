@@ -15,6 +15,15 @@
 #   ② Un appel SORTANT fonctionne-t-il ? Défaut rattrapé de justesse par la PR
 #      #341 : l'appelant s'abonne à `ring:<pair>` AVANT d'émettre, et Realtime
 #      refuse un join privé sans droit de lecture.
+#   ③ Le fournisseur « Anonymous » est-il désactivé ? Même nature — invisible
+#      partout, mais il s'ÉPROUVE : un `signInAnonymously()` qui réussit ouvre
+#      TOUTES les policies `authenticated` à qui le demande, sans compte.
+#      ⚠️ L'essai CRÉE un compte s'il aboutit ; le script le supprime aussitôt,
+#      sinon il laisserait derrière lui exactement ce qu'il dénonce.
+#
+# Deux des trois bascules du tableau de bord sont donc mesurées ici. La
+# troisième (protection des mots de passe compromis) n'est exposée par aucune
+# API publique : elle se constate à l'inscription, pas à la lecture.
 #
 # ⚠️ À LA DEMANDE SEULEMENT, et c'est délibéré. Il juge un réglage EXTÉRIEUR au
 # dépôt : en faire une gate de déploiement rendrait la CI rouge sur un fait

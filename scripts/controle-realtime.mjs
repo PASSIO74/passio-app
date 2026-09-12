@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // ═══════════════════════════════════════════════════════════════════════════
-// LE JOIN REALTIME QUE PERSONNE NE JOUAIT — et les deux questions qu'il tranche
+// LE JOIN REALTIME QUE PERSONNE NE JOUAIT — et les TROIS questions qu'il tranche
 // (2026-09-12)
 //
 // `docs/OUVERTURE_PUBLIQUE_2026-09-11.md` écrivait : « ouvrir l'application à
@@ -15,7 +15,7 @@
 // dépôt. Une gate rouge qu'aucun commit ne peut réparer bloquerait tous les
 // déploiements. C'est un contrôle d'EXPLOITATION, lancé à la demande.
 //
-// ── LES DEUX QUESTIONS ─────────────────────────────────────────────────────
+// ── LES TROIS QUESTIONS ────────────────────────────────────────────────────
 //
 // ① « Allow public access » est-il encore ALLUMÉ ? C'est le réglage qui rend
 //    les policies OPPOSABLES : tant qu'il permet les canaux publics, un client
@@ -30,6 +30,13 @@
 //    privé sans droit de LECTURE. Une policy « on ne lit que SA sonnerie »
 //    tuait donc tous les appels sortants — sans une erreur visible côté
 //    produit, l'écran d'appel restant simplement muet.
+//
+// ③ Le fournisseur « Anonymous » est-il désactivé ? Même nature : un réglage du
+//    plan de contrôle, invisible partout, mais qui s'ÉPROUVE. `onbSkipAuth` est
+//    un chemin mort côté produit, mais un `signInAnonymously()` qui réussit
+//    ouvre TOUTES les policies `authenticated` à qui le demande, sans compte.
+//    ⚠️ L'essai CRÉE un compte s'il aboutit : le script le supprime aussitôt,
+//    sinon il laisserait derrière lui exactement ce qu'il dénonce.
 //
 // ⚠️ LE PIÈGE DE CE SCRIPT LUI-MÊME : un `CHANNEL_ERROR` peut venir d'un refus
 // de policy OU d'une panne de réseau, et les confondre ferait dire « le réglage
@@ -163,6 +170,36 @@ try {
     sortie = 1;
   } else {
     lignes.push(["✅", "un visiteur sans compte ne lit aucune sonnerie", `refusé (${sansCompte})`]);
+  }
+
+  // ⑤ LE FOURNISSEUR « ANONYMOUS », MESURÉ EN L'ESSAYANT.
+  // ⚠️ Il ne se lit pas davantage que « Allow public access » : c'est un réglage
+  // du plan de contrôle. Mais il s'ÉPROUVE — et l'enjeu est net : `onbSkipAuth`
+  // est un chemin mort côté produit, mais un `signInAnonymously()` réussi
+  // ouvrirait TOUTES les policies `authenticated` à n'importe qui, sans compte.
+  // ⚠️ Si ça marche, ça CRÉE un compte : on le supprime immédiatement, sinon ce
+  // contrôle laisserait derrière lui exactement ce qu'il dénonce.
+  const anonCli = createClient(URL, ANON, { auth: { persistSession: false, autoRefreshToken: false } });
+  let essaiAnon;
+  try { essaiAnon = await anonCli.auth.signInAnonymously(); }
+  catch (e) { essaiAnon = { error: { message: String(e && e.message || e) } }; }
+
+  if (essaiAnon && essaiAnon.data && essaiAnon.data.user) {
+    const uid = essaiAnon.data.user.id;
+    lignes.push(["❌", "le fournisseur ANONYMOUS est ACTIF",
+      `un compte sans e-mail vient d'être créé (${uid.slice(0, 8)}…) : toutes les policies « authenticated » sont ouvertes à qui le demande`]);
+    sortie = 1;
+    // Ne pas laisser le compte derrière soi.
+    const sup = await fetch(`${URL}/auth/v1/admin/users/${uid}`, {
+      method: "DELETE",
+      headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}` },
+    });
+    lignes.push([sup.ok ? "✅" : "⚠️", "compte anonyme de contrôle supprimé",
+      sup.ok ? uid.slice(0, 8) + "… retiré" : `ÉCHEC HTTP ${sup.status} — à supprimer à la main : ${uid}`]);
+    if (!sup.ok) sortie = 1;
+  } else {
+    const m = (essaiAnon && essaiAnon.error && essaiAnon.error.message) || "refusé";
+    lignes.push(["✅", "le fournisseur ANONYMOUS est DÉSACTIVÉ", `la connexion sans compte est refusée (${m})`]);
   }
 
   l("");
