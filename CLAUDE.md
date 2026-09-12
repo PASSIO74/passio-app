@@ -559,6 +559,44 @@ tiendra pas à l'échelle** : trafic ×10 = ~440 Mo de rétention, contre un mur
 **L'état d'une base ne se lit pas dans un fichier du dépôt, il se mesure** — même règle que pour
 l'interrupteur `irl_adult_only`, et c'est la troisième fois qu'elle sert.
 
+## 🧭 `search_path` FIGÉ — et pourquoi `''` n'est PAS la bonne réponse partout (2026-09-12)
+
+`get_advisors` signale « Function Search Path Mutable » sur trois fonctions de `public`.
+Migration : `migrations/migration_search_path_fonctions.sql` (une transaction, verdict à 4 lignes)
+· banc `tests/sql/migration-search-path.test.sh` (23 contrôles, gate CI).
+
+⚠️ **AUCUNE des trois n'est `SECURITY DEFINER`** : c'est de la défense en profondeur, pas une porte
+ouverte. Ne pas la présenter comme une faille. Ce qu'elle ferme : `storage_chemin_autorise` est
+évaluée par les policies RLS de `storage.objects`, et un prédicat d'autorisation ne doit pas
+résoudre ses appels dans le chemin de la session APPELANTE.
+
+⚠️ **34 fonctions de `public` ont `proconfig IS NULL`, mais 31 APPARTIENNENT À `pg_trgm`.** On n'y
+touche pas : un `ALTER` y serait perdu à la prochaine mise à jour de l'extension, et ce n'est pas
+notre code. Trois seulement sont à nous — exactement les trois que le linter nomme. Compter les
+fonctions sans chemin sans retirer celles des extensions donne un chiffre qui affole pour rien.
+
+⚠️ **`rechercher_passions` APPELLE `similarity()` SANS LE QUALIFIER**, et pg_trgm vit dans `public`.
+Le `set search_path = ''` que Supabase recommande partout **casserait la recherche de passions en
+production** — 5 001 passions, la page Rechercher. Avant de figer un chemin, lire le CORPS de la
+fonction et chercher les appels NON qualifiés ; `''` n'est sûr que si tout l'est déjà.
+
+⚠️ **LES DEUX CONSTATS DU LINTER SONT COUPLÉS.** Le même rapport demande aussi de sortir `pg_trgm`
+de `public` (« Extension in Public »). Appliquer CE conseil-là plus tard casserait
+`rechercher_passions` si son chemin ne nommait que `public` — d'où `public, extensions, pg_temp`,
+qui tient dans les DEUX états. Le banc déplace vraiment l'extension pour le prouver (contrôle ⑦).
+
+⚠️ **`pg_temp` SE NOMME EN DERNIER, ET C'EST TOUT L'INTÉRÊT** : non nommé, PostgreSQL le place
+IMPLICITEMENT EN TÊTE, et n'importe quel appelant peut alors masquer une fonction par une
+temporaire. Le retirer en croyant durcir le remet devant.
+
+⚠️ **`set search_path = ''` SE RELIT `search_path=""`** dans `pg_proc.proconfig` : un verdict qui
+comparerait à `search_path=` dirait ECHEC sur une migration pourtant appliquée (mesuré, PG 16).
+
+⚠️ **LA LIGNE ④ DU VERDICT EST UNE GARDE, PAS UN RAPPORT** : elle APPELLE `rechercher_passions`.
+Sur une base où le chemin ne résoudrait pas `similarity`, elle lève, la transaction est annulée et
+les trois `ALTER` sont DÉFAITS — le fichier ne peut pas laisser la recherche muette derrière lui.
+Le banc le prouve en retirant pg_trgm (contrôle ⑧). Ne pas la « simplifier » en test de présence.
+
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)
 
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)
