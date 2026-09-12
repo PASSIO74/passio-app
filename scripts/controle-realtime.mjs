@@ -97,9 +97,25 @@ async function compte(prefixe) {
   return { cli, uid: data.user.id, email };
 }
 
-/** Rend "OUVERT" | "REFUSE" | "PANNE" — jamais une exception. */
+// ⚠️ UN VERDICT « INDÉTERMINÉ » QUI NE DIT PAS SA CAUSE NE S'ÉCLAIRCIT JAMAIS.
+// Les runs 3 et 4 du 2026-09-12 ont tous deux rendu « le canal public n'a ni
+// abouti ni été refusé — rejouer », et rejouer a rendu exactement la même
+// phrase : le script demandait une seconde mesure sans jamais livrer la
+// PREMIÈRE. Le statut réel du SDK et le message d'erreur étaient calculés, puis
+// jetés. `joindre` rend désormais la cause, et chaque ligne l'imprime — un
+// contrôle qui dit « je ne sais pas » doit dire ce qu'il a VU, sinon il demande
+// un rejeu qui ne peut rien apprendre de plus.
+// ⚠️ LE TEMPS ÉCOULÉ EST UNE DONNÉE, PAS UNE DÉCORATION : un échec en 200 ms
+// alors que le canal témoin vient de s'ouvrir ne ressemble pas à un échec au
+// bout des 15 s du délai. Le premier est un refus du service, le second une
+// absence de réponse — et c'est très exactement la distinction que ce script
+// existe pour faire.
+const REFUS = /permission|policy|unauthorized|denied|not authorized|private|forbidden/i;
+
+/** Rend { v: "OUVERT"|"REFUSE"|"PANNE", statut, msg, ms } — jamais une exception. */
 function joindre(cli, topic, prive) {
   return new Promise((resolve) => {
+    const t0 = Date.now();
     const ch = cli.channel(topic, { config: { private: prive, broadcast: { self: false } } });
     // ⚠️ GARDE À UN SEUL COUP, ET ELLE N'EST PAS DE LA COQUETTERIE.
     // `removeChannel` FERME le canal, ce qui RAPPELLE le rappel d'abonnement
@@ -112,25 +128,28 @@ function joindre(cli, topic, prive) {
     // `removeChannel` depuis l'intérieur de son propre rappel est précisément ce
     // qui rend la ré-entrance possible. Résoudre d'abord, fermer ensuite.
     let fini = false;
-    const fin = (v) => {
+    const fin = (v, statut, msg) => {
       if (fini) return;
       fini = true;
       clearTimeout(t);
-      resolve(v);
+      resolve({ v, statut: statut || v, msg: String(msg || ""), ms: Date.now() - t0 });
       setTimeout(() => { try { cli.removeChannel(ch); } catch (e) {} }, 0);
     };
-    const t = setTimeout(() => fin("PANNE"), DELAI);
+    const t = setTimeout(() => fin("PANNE", "AUCUNE_REPONSE", `rien reçu en ${DELAI} ms`), DELAI);
     ch.subscribe((statut, err) => {
-      if (statut === "SUBSCRIBED") return fin("OUVERT");
+      const m = String((err && err.message) || (err ? err : "") || "");
+      if (statut === "SUBSCRIBED") return fin("OUVERT", statut, m);
       if (statut === "CHANNEL_ERROR") {
-        const m = String((err && err.message) || err || "");
         // Le discriminant : un refus nomme la permission, une panne non.
-        return fin(/permission|policy|unauthorized|denied|not authorized/i.test(m) ? "REFUSE" : "PANNE");
+        return fin(REFUS.test(m) ? "REFUSE" : "PANNE", statut, m);
       }
-      if (statut === "TIMED_OUT" || statut === "CLOSED") return fin("PANNE");
+      if (statut === "TIMED_OUT" || statut === "CLOSED") return fin("PANNE", statut, m);
     });
   });
 }
+
+/** La cause, en clair : c'est elle qui rend un « indéterminé » exploitable. */
+const cause = (r) => `${r.statut}${r.msg ? " — " + r.msg : " — aucun message"}, en ${r.ms} ms`;
 
 const l = (s) => process.stdout.write(s + "\n");
 const lignes = [];
@@ -147,54 +166,61 @@ try {
   // `passio_rt_recevoir` : s'il échoue, c'est le réseau ou le service, pas une
   // policy — et aucun autre verdict de ce script n'est alors interprétable.
   const temoin = await joindre(A.cli, "realtime:db", true);
-  if (temoin !== "OUVERT") {
-    l(`  ⚠️  TÉMOIN EN ÉCHEC (${temoin}) — le canal privé « realtime:db » devrait`);
+  if (temoin.v !== "OUVERT") {
+    l(`  ⚠️  TÉMOIN EN ÉCHEC (${temoin.v}) — le canal privé « realtime:db » devrait`);
+    l(`      cause : ${cause(temoin)}`);
     l("      toujours s'ouvrir à un compte connecté. Rien n'est concluant ici :");
     l("      ni le réglage du tableau de bord, ni l'état des appels.");
     l("      Vérifier le réseau et le service Realtime, puis rejouer.");
     process.exit(3);
   }
-  l("  ✅ témoin : le canal privé « realtime:db » s'ouvre — le service répond.");
+  l(`  ✅ témoin : le canal privé « realtime:db » s'ouvre en ${temoin.ms} ms — le service répond.`);
 
   // ① Le réglage du tableau de bord, mesuré par son EFFET.
   const publik = await joindre(A.cli, "controle_ouverture_public", false);
-  if (publik === "OUVERT") {
+  if (publik.v === "OUVERT") {
     lignes.push(["❌", "« Allow public access » est ENCORE ACTIF",
-      "un canal PUBLIC s'ouvre : les policies ne sont pas opposables, un client qui omet private:true écoute toujours"]);
+      `un canal PUBLIC s'ouvre (${cause(publik)}) : les policies ne sont pas opposables, un client qui omet private:true écoute toujours`]);
     sortie = 1;
-  } else if (publik === "REFUSE") {
+  } else if (publik.v === "REFUSE") {
     lignes.push(["✅", "« Allow public access » est COUPÉ",
-      "un canal public est refusé : les policies de realtime.messages gouvernent bien"]);
+      `un canal public est refusé (${cause(publik)}) : les policies de realtime.messages gouvernent bien`]);
   } else {
+    // ⚠️ ON IMPRIME CE QU'ON A VU, ET LE TÉMOIN SERT D'ÉTALON. Le canal témoin
+    // vient de s'ouvrir sur le même client, la même seconde : le réseau et le
+    // service sont donc hors de cause. Reste un échec dont le libellé ne nomme
+    // aucune permission — ce n'est pas une preuve, c'est une piste, et elle ne
+    // vaut que si on la LIT. Le verdict reste « indéterminé » : un contrôle ne
+    // conclut pas sur une ressemblance.
     lignes.push(["⚠️", "réglage indéterminé",
-      "le canal public n'a ni abouti ni été refusé explicitement — rejouer"]);
+      `le canal public n'a ni abouti ni été refusé explicitement · cause : ${cause(publik)} · témoin ouvert en ${temoin.ms} ms`]);
     sortie = sortie || 3;
   }
 
   // ② L'appel SORTANT : A doit pouvoir s'abonner à la sonnerie de B.
   const sortant = await joindre(A.cli, `ring:${B.uid}`, true);
-  if (sortant === "OUVERT") {
+  if (sortant.v === "OUVERT") {
     lignes.push(["✅", "les appels SORTANTS fonctionnent",
       "A s'abonne à ring:<B> — c'est ce que fait _callChannel avant d'émettre l'invitation"]);
   } else {
     lignes.push(["❌", "les appels SORTANTS sont MORTS",
-      `A ne peut pas s'abonner à ring:<B> (${sortant}) : l'invitation ne partira jamais, sans erreur visible`]);
+      `A ne peut pas s'abonner à ring:<B> (${cause(sortant)}) : l'invitation ne partira jamais, sans erreur visible`]);
     sortie = 1;
   }
 
   // ③ La sonnerie ENTRANTE, contrôle de non-régression.
   const entrant = await joindre(B.cli, `ring:${B.uid}`, true);
-  if (entrant === "OUVERT") lignes.push(["✅", "la sonnerie ENTRANTE fonctionne", "B lit sa propre sonnerie"]);
-  else { lignes.push(["❌", "la sonnerie ENTRANTE est MORTE", `B ne lit pas ring:<B> (${entrant})`]); sortie = 1; }
+  if (entrant.v === "OUVERT") lignes.push(["✅", "la sonnerie ENTRANTE fonctionne", "B lit sa propre sonnerie"]);
+  else { lignes.push(["❌", "la sonnerie ENTRANTE est MORTE", `B ne lit pas ring:<B> (${cause(entrant)})`]); sortie = 1; }
 
   // ④ Un visiteur SANS COMPTE ne doit rien lire, réglage coupé ou non.
   const visiteur = createClient(SUPA_URL, ANON, { auth: { persistSession: false, autoRefreshToken: false } });
   const sansCompte = await joindre(visiteur, `ring:${B.uid}`, true);
-  if (sansCompte === "OUVERT") {
+  if (sansCompte.v === "OUVERT") {
     lignes.push(["❌", "un VISITEUR lit une sonnerie privée", "policy passio_rt_recevoir contournée — à traiter en priorité"]);
     sortie = 1;
   } else {
-    lignes.push(["✅", "un visiteur sans compte ne lit aucune sonnerie", `refusé (${sansCompte})`]);
+    lignes.push(["✅", "un visiteur sans compte ne lit aucune sonnerie", `refusé (${cause(sansCompte)})`]);
   }
 
   // ⑤ LE FOURNISSEUR « ANONYMOUS », MESURÉ EN L'ESSAYANT.

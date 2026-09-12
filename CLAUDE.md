@@ -460,6 +460,21 @@ désactivé, protection des mots de passe compromis. ⚠️ Et **Brevo doit marq
 DNS. Résidus assumés déjà écrits plus bas : identité déclarative de l'appelant entre comptes,
 oracles pour un compte connecté.
 
+> **MESURÉ LE 2026-09-12 (run 5 de `controle-realtime.yml`) — DEUX DES TROIS SONT FAITS.**
+> « Allow public access » est **COUPÉ** : le canal public est refusé avec, en toutes lettres,
+> `PrivateOnly: This project only allows private channels` — les policies de `realtime.messages`
+> sont donc bien opposables. Le fournisseur **Anonymous est DÉSACTIVÉ** (`signInAnonymously()`
+> refusé : « Anonymous sign-ins are disabled »). Ne plus les compter comme des gestes à faire.
+> Restent la protection des mots de passe compromis (non signalée par `get_advisors`, mais aucune
+> API ne l'expose : elle se constate à l'inscription) et l'« authentifié » de Brevo.
+> ⚠️ **ET CE VERDICT A MIS TROIS RUNS À SORTIR POUR DEUX RAISONS QUI N'ÉTAIENT PAS DANS LE
+> PRODUIT** : le discriminant de refus ne connaissait que des mots anglais de permission et ratait
+> `PrivateOnly` (donc un vrai refus était classé « panne ») ; et le `bash -e` que GitHub pose sur
+> `run:` tuait l'étape sur `node … | tee` avant la garde écrite pour le code 3 — `shell: bash {0}`.
+> **Une garde placée après une commande que `-e` rend fatale est du code mort, et plus trompeuse
+> qu'un trou : on a écrit le cas, on croit donc l'avoir traité.** Même parenté que le `try/catch`
+> autour d'un appel qui rend une promesse (« newestWorker is null »).
+
 ⚠️ **ET DEUX AFFIRMATIONS DE CE FICHIER ÉTAIENT FAUSSES** : l'interrupteur `irl_adult_only` était
 annoncé ÉTEINT, il est **ALLUMÉ** ; et `docs/CHECKLIST_COMMERCIALISATION.md` cochait Wallet et CDV.
 **L'état d'un interrupteur serveur ne se lit pas dans un fichier du dépôt, il se mesure.**
@@ -718,6 +733,11 @@ de `{ error }`). ⚠️ **Et la mesure qui semble contredire ça n'en est pas un
 **2026-09-09**, soit la veille du correctif. Zéro trace n'est ici PAS un défaut, c'est l'absence
 d'inscription depuis. Ne pas rouvrir le sujet sur ce chiffre : le vérifier sur le PREMIER compte créé
 après l'ouverture, en lisant `raw_user_meta_data ? 'cgu_version'`.
+> **CE CONTRÔLE EST FAIT, ET IL EST VERT (2026-09-12).** Un compte a été créé le 12/09 à 11:06 :
+> `raw_user_meta_data ? 'cgu_version'` rend **true**, et il a **confirmé son e-mail en 62 secondes**.
+> Le consentement est donc bien persisté sur un compte réel, et la chaîne d'envoi Brevo fonctionne
+> de bout en bout sur un compte neuf — ce qu'aucun enregistrement DNS ne pouvait prouver. C'est la
+> mesure qui manquait pour dire que l'inscription est ouvrable au public.
 
 ⚠️ **⑥ LA SAUVEGARDE AUTOMATIQUE EXISTE — ET N'A JAMAIS TOURNÉ.** `.github/workflows/sauvegarde.yml`
 est en place, quotidien, archive chiffrée puis **déchiffrée et relue dans le même run**. Le constat
@@ -751,6 +771,16 @@ les déploiements. C'est un contrôle d'exploitation, pas une gate de code.
 `get_advisors` signale « Function Search Path Mutable » sur trois fonctions de `public`.
 Migration : `migrations/migration_search_path_fonctions.sql` (une transaction, verdict à 4 lignes)
 · banc `tests/sql/migration-search-path.test.sh` (23 contrôles, gate CI).
+
+⚠️ **CETTE MIGRATION N'EST PAS APPLIQUÉE EN PRODUCTION — mesuré le 2026-09-12.** `get_advisors` y
+signale toujours `rechercher_passions` ET `storage_chemin_autorise`. Le banc est vert, le fichier
+est juste, personne ne l'a collé : **une migration écrite n'est pas une migration appliquée**, et
+son banc CI vert ne dit rien de la production. ⚠️ Et le rapport nomme désormais **cinq** fonctions,
+pas trois : `identifiants_figes`, `follows_identifiants_figes` et `unaccent_immutable` sont arrivées
+depuis avec les lots d'ouverture. Coller le fichier tel quel en laisserait donc deux dehors —
+**relire `get_advisors` AVANT de coller, la liste a bougé depuis la rédaction.** Ce n'est pas
+bloquant (aucune des cinq n'est `SECURITY DEFINER`, c'est de la défense en profondeur), mais ne
+pas le présenter comme réglé.
 
 ⚠️ **AUCUNE des trois n'est `SECURITY DEFINER`** : c'est de la défense en profondeur, pas une porte
 ouverte. Ne pas la présenter comme une faille. Ce qu'elle ferme : `storage_chemin_autorise` est
@@ -794,7 +824,10 @@ l'enquête, ou « réparera » trois non-problèmes et cassera des triggers viva
 
 - `post_is_visible` et `comment_target_visible` : **ouverts à `anon` DÉLIBÉRÉMENT** — un visiteur
   lit par eux les commentaires d'une publication publique. Déjà écrit plus haut, ne pas y toucher.
-- `is_conv_member` : **le vrai oracle**, fermé par la migration d'ouverture, **pas encore collée**.
+- `is_conv_member` : **le vrai oracle**, fermé par la migration d'ouverture — **COLLÉE, mesuré le
+  2026-09-12** : `has_function_privilege('anon', …, 'EXECUTE')` rend **false**. Cette ligne a annoncé
+  le contraire pendant un jour, et c'est la cinquième fois que la règle sert : **l'état de la base
+  ne se lit pas dans un fichier du dépôt, il se mesure.**
 - `can_edit_post(pid)` : ne compare qu'à `auth.uid()`, qui est **NULL pour `anon`** — les deux
   `EXISTS` sont alors faux quel que soit le `pid`. Elle rend donc `false` en toutes circonstances et
   **ne dit RIEN sur la publication visée**. Un oracle répond sur la CIBLE ; celle-ci répond sur
