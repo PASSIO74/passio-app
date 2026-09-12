@@ -72,6 +72,18 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://njkiyoklssvefstljemx.supabase.co' }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        # ⚠️ `shell: bash {0}` RETIRE LE `-e` QUE GITHUB POSE PAR DÉFAUT, ET
+        # C'EST LA CORRECTION, PAS UNE PRÉFÉRENCE. Avec `bash -e {0}`, le `-e`
+        # tuait l'étape sur la ligne `node … | tee` dès que le script sortait en
+        # 3 : `code=${PIPESTATUS[0]}`, l'écriture du résumé ET la garde ci-dessous
+        # — écrite exactement pour ce cas — n'étaient JAMAIS atteintes. Mesuré
+        # sur les runs 3 et 4 du 2026-09-12 : les deux affichés en ROUGE sur un
+        # verdict « je ne sais pas », et sans résumé de run.
+        # ⚠️ LA FAMILLE : une garde placée APRÈS une commande que `-e` rend
+        # fatale est du code mort, et elle est d'autant plus trompeuse qu'on l'a
+        # écrite en croyant traiter le cas. Toute étape qui lit un code de sortie
+        # doit d'abord s'assurer que le shell la laisse vivre jusque-là.
+        shell: bash {0}
         run: |
           set -uo pipefail
           if [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]; then
@@ -81,11 +93,12 @@ jobs:
           node scripts/controle-realtime.mjs | tee /tmp/verdict.txt
           code=${PIPESTATUS[0]}
           { echo '```text'; cat /tmp/verdict.txt; echo '```'; } >> "${GITHUB_STEP_SUMMARY}"
-          # ⚠️ 3 = verdict INDÉTERMINÉ (témoin en échec, réseau) : ce n'est pas un
-          # défaut du produit, et le faire passer pour rouge apprendrait à ignorer
-          # ce workflow. On le distingue.
+          # ⚠️ 3 = verdict INDÉTERMINÉ : soit le canal témoin a échoué (réseau,
+          # service), soit un point n'a ni abouti ni été refusé explicitement.
+          # Dans les deux cas ce n'est PAS un défaut du produit, et le faire
+          # passer pour rouge apprendrait à ignorer ce workflow. On le distingue.
           if [ "$code" = "3" ]; then
-            echo "::warning title=Verdict indéterminé::Le canal témoin n'a pas répondu — rien n'est concluant, rejouer."
+            echo "::warning title=Verdict indéterminé::Rien n'est concluant — la CAUSE est imprimée dans le résumé du run, la lire avant de rejouer."
             exit 0
           fi
           exit "$code"
