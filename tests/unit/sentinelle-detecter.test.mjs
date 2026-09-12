@@ -3,7 +3,7 @@
 // production le 2026-09-09.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { classer, empreinte, estDuBruit, classerApi, estDuBruitApi, libelleApi, classerBoutons, desamorcer, dejaCorrige, titreIssue, condense } from "../../scripts/sentinelle-detecter.mjs";
+import { classer, empreinte, estDuBruit, classerApi, estDuBruitApi, libelleApi, classerBoutons, desamorcer, dejaCorrige, titreIssue, condense, lireApi, lirePagine, CHEMINS_BOUTONS, FILTRE_PRODUCTION } from "../../scripts/sentinelle-detecter.mjs";
 
 test("« Script error. » est écarté : le navigateur refuse d'en dire plus", () => {
   // Observé en production. Une erreur d'un script d'une AUTRE origine est
@@ -361,4 +361,37 @@ test("⚠️ une date illisible ne fait JAMAIS taire une enquête", () => {
 test("le champ `closed_at` de l'API REST est accepté comme `closedAt` de gh", () => {
   const fermees = [{ title: titreIssue(CIBLE_409), closed_at: "2026-09-10T04:43:12Z" }];
   assert.equal(dejaCorrige(CIBLE_409, fermees), true);
+});
+// ═══════════════════════════════════════════════════════════════════════════
+// LA SENTINELLE NE LIT QUE LA PRODUCTION (2026-09-12)
+//
+// Libérée le 2026-09-11 au soir (issue #327 fermée), elle a aussitôt ouvert
+// #337 sur 38 « POST /rest/v1/user_state → 401 » : 100 % env = development,
+// 0 compte, 28 sessions e2e — le bruit des suites de test, qui écrivent dans la
+// même table. Une enquête sur du bruit bloque « une enquête à la fois » comme un
+// vrai défaut. Les trois lectures de telemetry_events portent le même filtre.
+// ═══════════════════════════════════════════════════════════════════════════
+async function avecFetchCapture(fn) {
+  const urls = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = async (u) => { urls.push(String(u)); return { ok: true, json: async () => [] }; };
+  try { await fn(); } finally { globalThis.fetch = original; }
+  return urls;
+}
+
+test("lireApi ne demande que les refus réseau de PRODUCTION", async () => {
+  const urls = await avecFetchCapture(() => lireApi({ url: "https://x.supabase.co", cle: "k", heures: 24 }));
+  assert.equal(urls.length, 1);
+  assert.match(urls[0], /telemetry_events\?/);
+  assert.match(urls[0], /&type=eq\.api/);
+  assert.match(urls[0], /&env=eq\.production/);
+  assert.match(urls[0], /&status=eq\.error/);
+});
+
+test("les deux lectures « boutons morts » portent le même filtre, et lirePagine le transmet tel quel", async () => {
+  assert.equal(FILTRE_PRODUCTION, "&env=eq.production");
+  for (const chemin of Object.values(CHEMINS_BOUTONS)) assert.ok(chemin.endsWith(FILTRE_PRODUCTION), chemin);
+  const urls = await avecFetchCapture(() => lirePagine({ url: "https://x.supabase.co", cle: "k", heures: 1, chemin: CHEMINS_BOUTONS.clics }));
+  assert.equal(urls.length, 1);
+  assert.match(urls[0], /type=eq\.click&env=eq\.production&received_at=gt\./);
 });
