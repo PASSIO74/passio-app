@@ -1345,7 +1345,8 @@ function _groupePassionsHTML() {
     if (!pid || vus[pid]) return;
     vus[pid] = 1;
     let meta = null;
-    try { meta = (typeof passionById === "function") ? passionById(pid) : null; } catch (e) {}
+    try { meta = (typeof passionById === "function") ? passionById(pid) : null; }
+    catch (e) { try { diagLog("groupe passionById " + (e && e.message ? e.message : e)); } catch (_) {} }
     out.push({
       id: pid,
       emoji: (meta && meta.emoji) || "\u2728",
@@ -1366,13 +1367,37 @@ function _groupePassionsHTML() {
 // Le référentiel porte les LIBELLÉS : sans lui, une passion plate s'affiche
 // sous son identifiant. On le demande à l'ouverture — jamais au démarrage,
 // l'invariant « 568 Ko hors du chemin critique » tient — puis on REPEINT.
+//
+// ⚠️ UN REPEINT EFFACE LES COCHES, ET C'EST LA MÊME IMPASSE DURE, DÉCALÉE DE
+// DEUX SECONDES. La grille est le premier bloc interactif après le nom : on
+// coche sa passion tout de suite, le fichier de 568 Ko arrive, `innerHTML`
+// régénère les options SANS la classe `.selected` que `confirmCreateGroup`
+// relit — et « Créer le groupe » répond « Choisis au moins 1 passion ».
+// Mesuré : coches avant repeint 1, après 0. On mémorise donc les cochés et on
+// les repose. (Le même lot le faisait déjà pour le `<select>` de l'IRL ; c'est
+// l'asymétrie entre les deux qui a laissé passer le défaut.)
+function _groupeRepeindreEnGardantLesCoches() {
+  const grille = document.querySelector(".group-passion-grid");
+  if (!grille) return;
+  const coches = Array.from(grille.querySelectorAll(".group-passion-option.selected"))
+    .map(el => el.getAttribute("data-pid"))
+    .filter(Boolean);
+  grille.innerHTML = _groupePassionsHTML();
+  coches.forEach(function (pid) {
+    const el = grille.querySelector('.group-passion-option[data-pid="' + (window.CSS && CSS.escape ? CSS.escape(pid) : pid) + '"]');
+    if (!el) return;
+    el.classList.add("selected");
+    const cb = el.querySelector("input[type=checkbox]");
+    if (cb) cb.checked = true;
+  });
+}
+
 function _groupeAssurerLibelles() {
   try {
     const m = window.PassioPassions;
     if (!m || !m.actif() || m.pret()) return;
     m.charger().then(function () {
-      const grille = document.querySelector(".group-passion-grid");
-      if (grille) grille.innerHTML = _groupePassionsHTML();
+      _groupeRepeindreEnGardantLesCoches();
     }).catch(function (e) { try { diagLog("groupe referentiel " + (e && e.message ? e.message : e)); } catch (_) {} });
   } catch (e) { try { diagLog("groupe referentiel " + e.message); } catch (_) {} }
 }

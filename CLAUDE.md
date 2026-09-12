@@ -906,6 +906,56 @@ un `<select>` en perdant la sélection ferait publier sous une AUTRE passion, en
 retiré fait rougir exactement celui qui mesure « choisie puis invisible » ; les deux surfaces
 remises à `allPassions()` font rougir 3 cas sur 4, la prémisse restant verte.
 
+### ⚠️ QUATRE DÉFAUTS INTRODUITS PAR LE CORRECTIF LUI-MÊME, TROUVÉS PAR `audit-passio`
+
+Les gates étaient vertes, 111 tests au vert, et le lot rouvrait **deux fois** le défaut qu'il
+fermait. À conserver : **la famille commune est « le correctif marche pendant la démonstration »**.
+
+⚠️ **① LA COCHE DU GROUPE ÉTAIT EFFACÉE PAR LE REPEINT — la même impasse dure, décalée de deux
+secondes.** `_groupeAssurerLibelles` réécrivait `innerHTML` ; `confirmCreateGroup` relit
+`.group-passion-option.selected`. Mesuré : coches avant repeint **1**, après **0**. La grille est
+le premier bloc interactif après le nom, donc on coche AVANT que les 568 Ko arrivent, et « Créer le
+groupe » répond « Choisis au moins 1 passion ». **Le même lot le faisait correctement dans app-07**
+(`sel.value = choix`) : c'est l'asymétrie entre deux surfaces sœurs qui a laissé passer le défaut.
+
+⚠️ **② `_refVues` EST UNE MÉMOIRE DE SESSION, ET « CHOISIE PUIS INVISIBLE » REVENAIT AU
+RECHARGEMENT.** Première visite : le ski entre dans le fil. Rechargement : il y est encore
+(`restoreFeedPassions` ne filtre rien). On rouvre le panneau, on ajoute « Musique », on valide →
+**le ski est jeté**, `estPassionCanonique` le rendant `false` et le registre étant vide. Et le pire
+endroit est `migrerPreferences`, appelée depuis `reprise()` **après le `location.reload()`** de
+« Se connecter » : la passion est perdue au moment exact où elle devrait s'attacher au compte. La
+réponse n'est pas de persister un registre, c'est `passionPlate(id)` — **le référentiel plat est le
+MIROIR de la table `passions`**, sa réponse se refabrique à chaque session. ⚠️ **Hors repli hors
+ligne** : `repliHorsLigne()` fabrique ses entrées depuis le socle et `state.user.profiles`.
+
+⚠️ **③ LE LOT ÉLARGISSAIT LA LISTE BLANCHE DE PUBLICATION.** Il appelait
+`enregistrerPassionCanonique` sur tout résultat affiché, avec le commentaire « on n'y inscrit QUE ce
+que le référentiel a rendu » — **que le code ne vérifiait pas**. En repli hors ligne, `charger()`
+bâtit ses données depuis `state.user.profiles` : mesuré, `estPassionCanonique("custom_…")` passait
+de `false` à **`true`**. L'appel n'était même pas nécessaire (`metaPassion` consulte `_refVues`
+AVANT `passionConnue`). **`estPassionCanonique` reste la SEULE autorité de publication, et un lot
+d'AFFICHAGE n'y touche pas** — `_exChercherPassions`, le correctif du 03/09 dont ce lot se réclame,
+n'inscrit rien du tout.
+
+⚠️ **④ `PassioPassions.charger()` ET `chargerReferentielPassions()` SONT DEUX MÉCANISMES DISJOINTS,
+et un commentaire du lot les confondait.** Le premier remplit le JSON d'**affichage**, le second
+`_referentielPassions`, la liste blanche que `requiredCanonicalPassion` consulte à
+l'**enregistrement**. Mesuré : référentiel plat chargé, `estPassionCanonique("glisse-ski-alpin")`
+rend encore **`false`**. Conséquence vivante : le `<select>` proposait une passion que « Publier »
+refusait — là où, avant le lot, elle n'était pas proposée du tout. On demande donc les **deux** à
+l'ouverture. ⚠️ Et filtrer par `estPassionCanonique` **seule** ramènerait les 19 : la liste accepte
+aussi ce que le référentiel plat connaît.
+
+⚠️ **AU PASSAGE, DEUX VERROUS QUI NE VERROUILLAIENT RIEN.** ⓐ « Voir toutes les passions » assertait
+`> 12` — or `voirToutes()` peignait DÉJÀ les 19 du socle avant le lot, et le cas restait vert
+**référentiel entièrement coupé**. L'élargissement se mesure contre `allPassions().length`, pas
+contre une constante. ⓑ Les cas de la seconde suite **n'exerçaient jamais le repeint** :
+`PassioPassions.pret()` est déjà vrai à l'ouverture quand le compte porte une passion hors socle
+(`evaluerBesoinDeNoms` a chargé au boot), donc les deux fonctions neuves sortaient sur leur garde
+`m.pret()` — **c'est très exactement pourquoi le défaut ① est passé**. Il faut RETARDER le
+référentiel dans le banc. Corollaire : le cas « 568 Ko jamais au démarrage » vaut pour un
+**visiteur sans passion**, pas pour un compte dont une passion est hors socle.
+
 ⚠️ **POINT OUVERT, ET IL EST DÉLIBÉRÉMENT LAISSÉ** : le moteur IA local (`aiGenerateResponse`,
 app-06) ne sait nommer que 19 passions dans sa branche « 🎯 Passions trouvées », et ses cartes sont
 cliquables — donc c'est une surface de découverte, bornée au socle, en comparaison littérale sans

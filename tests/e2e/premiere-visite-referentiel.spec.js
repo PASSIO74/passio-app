@@ -98,11 +98,87 @@ test.describe("Première visite — le référentiel plat dans le panneau", () =
     await ouvrirPanneau(page);
 
     await page.evaluate(() => PassioFirstRun.voirToutes());
-    await page.waitForTimeout(2500);
+
+    // ⚠️ « PLUS DE 12 » NE PROUVAIT RIEN : `voirToutes()` peignait DÉJÀ les 19 du
+    // socle avant ce lot, et le cas restait vert avec le référentiel entièrement
+    // coupé (mesuré). L'élargissement se mesure contre le socle LUI-MÊME.
+    const socle = await page.evaluate(() => allPassions().length);
+    await page.waitForFunction(
+      (n) => document.querySelectorAll("#frGrid .fr-tile[data-fr-passion]").length > n,
+      socle,
+      { timeout: 15000 }
+    );
 
     const n = await page.locator("#frGrid .fr-tile[data-fr-passion]").count();
-    expect(n).toBeGreaterThan(12);   // le référentiel a bien élargi l'aperçu
+    expect(n).toBeGreaterThan(socle);
     expect(n).toBeLessThanOrEqual(60);
+  });
+
+  // ⑦ LA LISTE BLANCHE DE PUBLICATION N'EST PAS ÉLARGIE PAR UNE RECHERCHE.
+  // La première version de ce lot appelait `enregistrerPassionCanonique` sur
+  // tout résultat affiché : en repli hors ligne, `charger()` bâtit ses données
+  // depuis le socle ET `state.user.profiles`, donc un `custom_*` devenait
+  // publiable (mesuré : false → true). `estPassionCanonique` est la SEULE
+  // autorité de publication ; un lot d'affichage n'y touche pas.
+  test("⑦ une recherche ne rend rien publiable qui ne l'était pas", async ({ page }) => {
+    await bootVisiteur(page);
+    await ouvrirPanneau(page);
+
+    const faux = "custom_banc_" + Date.now();
+    await page.evaluate((id) => {
+      PassioPassions.chercherAsync = function () {
+        return Promise.resolve([{ id: id, label: "Passion de banc", emoji: "🧪", color: "#7c3aed" }]);
+      };
+    }, faux);
+
+    await taper(page, "banc");
+    await page.waitForFunction(
+      (id) => !!document.querySelector('#frGrid .fr-tile[data-fr-passion="' + id + '"]'),
+      faux,
+      { timeout: 15000 }
+    );
+
+    // Affichée, oui. Publiable, non.
+    const publiable = await page.evaluate((id) => estPassionCanonique(id), faux);
+    expect(publiable).toBe(false);
+  });
+
+  // ⑧ LE CHOIX SURVIT AU RECHARGEMENT. `_refVues` est une mémoire de SESSION :
+  // s'y fier seul rouvrait le défaut au tour suivant — rouvrir le panneau et
+  // valider un ajout faisait JETER la passion déjà choisie par
+  // `interetsDuVisiteur`, au moment même où le choix devient durable.
+  test("⑧ après rechargement, la passion du référentiel n'est pas jetée", async ({ page }) => {
+    await bootVisiteur(page);
+    await ouvrirPanneau(page);
+    await taper(page, "Ski alpin");
+    await page.waitForFunction(
+      () => !!document.querySelector('#frGrid .fr-tile[data-fr-passion="glisse-ski-alpin"]'),
+      null,
+      { timeout: 15000 }
+    );
+    await page.click('#frGrid .fr-tile[data-fr-passion="glisse-ski-alpin"]');
+    await page.click("#frValider");
+    await page.waitForTimeout(600);
+
+    await page.reload();
+    await page.waitForFunction(() => typeof window.PassioFirstRun !== "undefined", null, { timeout: 20000 });
+    await page.waitForTimeout(3200);
+
+    // On rouvre et on AJOUTE une seconde passion, puis on valide : c'est le
+    // geste qui faisait disparaître la première.
+    await ouvrirPanneau(page);
+    await page.waitForFunction(
+      () => !!document.querySelector('#frGrid .fr-tile[data-fr-passion="musique"]'),
+      null,
+      { timeout: 15000 }
+    );
+    await page.click('#frGrid .fr-tile[data-fr-passion="musique"]');
+    await page.click("#frValider");
+    await page.waitForTimeout(800);
+
+    const actives = await page.evaluate(() => Array.from(_activeFeedPassions));
+    expect(actives).toContain("musique");
+    expect(actives).toContain("glisse-ski-alpin");
   });
 
   // ④ L'INVARIANT « 568 Ko JAMAIS AU DÉMARRAGE » TIENT.

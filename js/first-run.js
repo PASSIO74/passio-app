@@ -364,25 +364,55 @@
   // on valide, et le fil ne change pas. C'est le piège déjà nommé plus haut
   // pour les spécialités ; le registre ci-dessous est la même réponse.
   //
-  // ⚠️ `enregistrerPassionCanonique` (app-02) écrit dans un Set SÉPARÉ de
-  // `_referentielPassions` — délibérément : écrire dans ce cache à un seul coup
-  // interdirait le chargement du vrai référentiel pour toute la session. Et
-  // rien n'est desserré : on n'y inscrit QUE ce que le référentiel a rendu.
+  // ⚠️ ON N'INSCRIT RIEN DANS LA LISTE BLANCHE DE PUBLICATION, et la première
+  // version de ce lot le faisait (`enregistrerPassionCanonique`). Elle affirmait
+  // « on n'y inscrit QUE ce que le référentiel a rendu » — le code ne le
+  // vérifiait pas : quand le `fetch` échoue, `charger()` bâtit ses données
+  // depuis `repliHorsLigne()`, c'est-à-dire le socle PLUS `state.user.profiles`,
+  // dont rien ne vient de la table `passions`. Une recherche pouvait donc rendre
+  // un `custom_*` et le lot le déclarait publiable (mesuré : `false` → `true`).
+  // `estPassionCanonique` reste la SEULE autorité de publication, et un lot
+  // d'AFFICHAGE n'y touche pas. `_refVues` suffit à ce qu'on corrige ici.
   var _refVues = Object.create(null);
 
   function memoriserPassionRef(p) {
     if (!p || typeof p.id !== "string" || !p.id) return null;
     var meta = { id: p.id, emoji: p.emoji || "\u2728", label: p.label || "Passion", color: p.color };
     _refVues[p.id] = meta;
-    try { if (typeof enregistrerPassionCanonique === "function") enregistrerPassionCanonique(p.id); }
-    catch (e) { journal("enregistrer_canonique", e); }
     return meta;
+  }
+
+  // ⚠️ `_refVues` NE SURVIT PAS À UN RECHARGEMENT, et s'y fier seul rouvrait le
+  // défaut au tour suivant : rouvrir le panneau et valider un ajout faisait
+  // JETER la passion déjà choisie par `interetsDuVisiteur` (mesuré). Pire,
+  // `migrerPreferences` passe par le même chemin et tourne APRÈS le
+  // `location.reload()` de « Se connecter » — c'est-à-dire au moment exact où
+  // le choix devient durable.
+  //
+  // Le référentiel plat, lui, est le MIROIR de la table `passions` : s'il
+  // connaît l'identifiant, la passion existe. Cette réponse-là se refabrique à
+  // chaque session, sans rien persister.
+  //
+  // ⚠️ SAUF EN REPLI HORS LIGNE : `repliHorsLigne()` fabrique ses entrées depuis
+  // le socle et `state.user.profiles`, donc `parId` y répondrait sur des
+  // identifiants qui ne viennent pas de la base. On l'exclut explicitement.
+  function passionPlate(id) {
+    if (typeof id !== "string" || !id) return null;
+    try {
+      var m = window.PassioPassions;
+      if (!m || !m.actif() || !m.pret() || m.horsLigne()) return null;
+      var p = m.parId(id);
+      if (!p || !p.id) return null;
+      return { id: p.id, emoji: p.emoji || "\u2728", label: p.label || "Passion", color: p.color };
+    } catch (e) { journal("passion_plate", e); return null; }
   }
 
   // Les métadonnées d'affichage d'une passion CONNUE. Rend `null` pour tout le
   // reste — c'est ce que `passionById` aurait dû faire.
   function metaPassion(id) {
     if (typeof id === "string" && _refVues[id]) return _refVues[id];
+    var plate = passionPlate(id);
+    if (plate) return plate;
     if (!passionConnue(id)) return null;
     try { if (typeof passionById === "function") return passionById(id) || null; } catch (e) {}
     var l = catalogue();
@@ -819,8 +849,11 @@
   var _panneauTimer = null;
   var PANNEAU_DEBOUNCE = 160;
 
+  // ⚠️ UN `catch` NU ICI REND EXACTEMENT LE DÉFAUT QU'ON CORRIGE — la recherche
+  // retombe sur les 19 du socle — et personne ne le sait. On journalise.
   function referentielUtilisable() {
-    try { return !!(window.PassioPassions && PassioPassions.actif()); } catch (e) { return false; }
+    try { return !!(window.PassioPassions && PassioPassions.actif()); }
+    catch (e) { journal("referentiel_utilisable", e); return false; }
   }
 
   // ⚠️ LE RÉFÉRENTIEL D'ABORD, LES PASSIONS PERSO ENSUITE. Une passion perso
@@ -846,14 +879,26 @@
   // elle-même : elle pose le résultat et redemande un rafraîchissement.
   function lancerRechercheReferentiel(q) {
     var jeton = ++_panneauJeton;
-    if (!referentielUtilisable()) { _panneauEnVol = false; return; }
+    // ⚠️ TOUTE SORTIE QUI BAISSE LE DRAPEAU DOIT REPEINDRE. Deux d'entre elles
+    // ne le faisaient pas : l'écran gardait « Recherche… » POUR TOUJOURS, ce
+    // qui est pire que le message trompeur qu'on est venu retirer — on ne peut
+    // même plus savoir qu'il n'y a rien. Le `.catch` asynchrone le faisait déjà,
+    // et c'est la seule branche que le banc couvrait.
+    function abandonner(e, ou) {
+      if (e) journal(ou || "referentiel_recherche", e);
+      _panneauEnVol = false;
+      rafraichirPanneau();
+    }
+    if (!referentielUtilisable()) { abandonner(null); return; }
     _panneauEnVol = true;
     var promesse;
     try {
       promesse = PassioPassions.chercherAsync(q, { limite: PANNEAU_LIMITE, serveur: true });
-    } catch (e) {
-      journal("referentiel_recherche", e);
-      _panneauEnVol = false;
+    } catch (e) { abandonner(e); return; }
+    // ⚠️ Le `try` n'enveloppait que l'APPEL : un retour non-thenable levait une
+    // `TypeError` dans un `setTimeout`, que personne ne rattrape.
+    if (!promesse || typeof promesse.then !== "function") {
+      abandonner(new Error("chercherAsync n'a pas rendu de promesse"));
       return;
     }
     promesse.then(function (r) {
@@ -865,12 +910,10 @@
       rafraichirPanneau();
     }).catch(function (e) {
       if (jeton !== _panneauJeton) return;
-      _panneauEnVol = false;
       // ⚠️ ON LOGUE AVANT DE REPLIER. Le repli, c'est le comportement d'avant :
       // 19 libellés. Sans log, une erreur dans le `.then` est indiscernable
       // d'un référentiel qui n'a rien à proposer, et personne ne la voit.
-      journal("referentiel_recherche", e);
-      rafraichirPanneau();
+      abandonner(e);
     });
   }
 

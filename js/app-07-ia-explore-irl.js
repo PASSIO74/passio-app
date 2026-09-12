@@ -5422,6 +5422,35 @@ async function irlProposalOpenFromConversation(convId, targetUserId, btn) {
 // ⚠️ `passionById` NE REND JAMAIS `null` — sur un identifiant qu'il ne connaît
 // pas encore il rend « Passion ». On garde alors l'identifiant, qui dit au moins
 // de quoi il s'agit, plutôt qu'un libellé générique répété autant de fois.
+// ⚠️ NE PROPOSER QUE CE QUI PEUT ABOUTIR (« sortie A », 2026-08-30). La
+// première version de ce correctif poussait `state.user.profiles` TEL QUEL :
+//   · les passions ARCHIVÉES remontaient en tête, avec le « ✦ » qui dit
+//     « c'est la tienne » — alors que « Mes passions » doit dire la même chose
+//     partout (`passionsVivantes`), ce que le même lot respecte dans app-05 ;
+//   · une passion `custom_*` était proposée puis REFUSÉE par `submitEvent`
+//     après que le formulaire entier a été rempli. C'est exactement ce que la
+//     sortie A avait fermé : on cesse de proposer là où ça ne peut pas aboutir.
+//
+// ⚠️ MAIS `estPassionCanonique` SEULE RAMÈNERAIT LES 19. Elle lit
+// `_referentielPassions`, que remplit `chargerReferentielPassions` (app-02) —
+// un mécanisme DISJOINT de `PassioPassions.charger()`, qui ne remplit que le
+// JSON d'affichage. Mesuré : référentiel plat chargé, `estPassionCanonique`
+// rend encore `false`. On accepte donc AUSSI ce que le référentiel plat connaît
+// (hors repli hors ligne, qui fabrique ses entrées depuis les profils locaux) :
+// il est le miroir de la table `passions`, donc la passion existe et
+// `chargerReferentielPassions` la validera.
+function _irlPassionPlateConnue(id) {
+  try {
+    var m = window.PassioPassions;
+    if (!m || !m.actif() || !m.pret() || m.horsLigne()) return null;
+    var p = m.parId(id);
+    return (p && p.id) ? p : null;
+  } catch (e) {
+    try { diagLog("irl passion plate " + (e && e.message ? e.message : e)); } catch (_) {}
+    return null;
+  }
+}
+
 function _irlPassionsOrganisables(myPassionIds) {
   var out = [];
   var vus = Object.create(null);
@@ -5435,20 +5464,33 @@ function _irlPassionsOrganisables(myPassionIds) {
     });
   }
   (myPassionIds || []).forEach(function (id) {
-    var meta = null;
-    try { meta = (typeof passionById === "function") ? passionById(id) : null; } catch (e) {}
+    var plate = _irlPassionPlateConnue(id);
+    var canonique = false;
+    try { canonique = (typeof estPassionCanonique === "function") && estPassionCanonique(id); }
+    catch (e) { try { diagLog("irl canonique " + (e && e.message ? e.message : e)); } catch (_) {} }
+    if (!plate && !canonique) return;          // ne peut pas aboutir : on ne la propose pas
+    var meta = plate;
+    if (!meta) { try { meta = (typeof passionById === "function") ? passionById(id) : null; } catch (e) { meta = null; } }
     pousser(id, meta);
   });
-  try { passionsPubliables().forEach(function (p) { pousser(p.id, p); }); } catch (e) {}
+  try { passionsPubliables().forEach(function (p) { pousser(p.id, p); }); }
+  catch (e) { try { diagLog("irl passionsPubliables " + (e && e.message ? e.message : e)); } catch (_) {} }
   return out;
 }
 
-// Le référentiel porte les libellés ET la liste blanche que `submitEvent`
-// consulte (`requiredCanonicalPassion`) : sans lui, une passion plate du compte
-// s'afficherait sous son identifiant et serait refusée à l'enregistrement. On
-// le demande à l'OUVERTURE — jamais au démarrage, l'invariant « 568 Ko hors du
-// chemin critique » tient — puis on repeint le `<select>` en gardant le choix.
+// ⚠️ DEUX MÉCANISMES DISJOINTS, ET LE COMMENTAIRE D'ORIGINE LES CONFONDAIT —
+// une affirmation qui aurait décidé d'un geste plus tard.
+//   · `PassioPassions.charger()` remplit le JSON d'AFFICHAGE (libellés, emoji) ;
+//   · `chargerReferentielPassions()` (app-02) remplit `_referentielPassions`,
+//     la liste blanche que `requiredCanonicalPassion` consulte à l'ENREGISTREMENT.
+// Mesuré : référentiel plat chargé, `estPassionCanonique` rend encore `false`.
+// On demande donc les DEUX à l'ouverture — sinon le `<select>` propose une
+// passion que « Publier » refuse, là où avant elle n'était pas proposée du tout.
+// Jamais au démarrage : l'invariant « 568 Ko hors du chemin critique » tient.
 function _irlAssurerReferentielPassions(myPassionIds) {
+  // La liste blanche de publication, indépendamment du référentiel d'affichage.
+  try { if (typeof chargerReferentielPassions === "function") chargerReferentielPassions(); }
+  catch (e) { try { diagLog("irl referentiel canonique " + (e && e.message ? e.message : e)); } catch (_) {} }
   try {
     var m = window.PassioPassions;
     if (!m || !m.actif() || m.pret()) return;
@@ -5484,7 +5526,13 @@ function openCreateEvent(editId) {
   // Toutes les passions sont proposées (les miennes en tête) : restreindre le
   // choix aux profils créés empêchait d'organiser un événement « photo » quand on
   // n'avait qu'un profil « musique ».
-  const myPassionIds = (state.user.profiles || []).map(pr => pr.passion).filter(Boolean);
+  // ⚠️ LES PASSIONS ARCHIVÉES N'EN SONT PLUS : `passionsVivantes()` (app-06) est
+  // la seule définition de « mes passions », et une passion rangée ne doit ni
+  // remonter en tête ni porter le « ✦ ».
+  const myPassionIds = ((typeof passionsVivantes === "function")
+    ? passionsVivantes()
+    : (state.user.profiles || []).filter(pr => !pr.archived))
+    .map(pr => pr && pr.passion).filter(Boolean);
   // ⚠️ SORTIE A : `events.passion_id` porte la même clé étrangère que `posts`.
   // ⚠️ NE PAS RECLASSER EN SILENCE. Si l'activité éditée porte une passion
   // absente du catalogue publiable, aucune `<option>` ne serait marquée

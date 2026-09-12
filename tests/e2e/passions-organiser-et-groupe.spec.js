@@ -135,4 +135,122 @@ test.describe("Organiser et grouper dans les 5 001 passions", () => {
     const apres = await page.evaluate(() => document.getElementById("evPassion").value);
     expect(apres).toBe(autre);
   });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // ⚠️ CES CAS N'EXERÇAIENT JAMAIS LE REPEINT, ET C'EST POURQUOI LE DÉFAUT DE LA
+  // COCHE EST PASSÉ. Mesuré : avec ce fixture, `PassioPassions.pret()` est DÉJÀ
+  // vrai quand la modale s'ouvre (le compte porte une passion hors socle, donc
+  // `evaluerBesoinDeNoms` a déclenché `charger()` au boot) — les deux fonctions
+  // neuves du lot sortaient sur leur garde `m.pret()` et n'étaient mesurées par
+  // rien. On retarde donc le référentiel, comme la maison mute `window.supa.from`.
+  // ══════════════════════════════════════════════════════════════════════════
+  async function referentielRetarde(page) {
+    await page.evaluate(() => {
+      const vraiPret = PassioPassions.pret.bind(PassioPassions);
+      const vraiCharger = PassioPassions.charger.bind(PassioPassions);
+      window.__refLibere = null;
+      window.__refPret = false;
+      PassioPassions.pret = function () { return window.__refPret && vraiPret(); };
+      PassioPassions.charger = function () {
+        return new Promise((resoudre) => {
+          window.__refLibere = () => {
+            window.__refPret = true;
+            PassioPassions.pret = vraiPret;
+            PassioPassions.charger = vraiCharger;
+            resoudre(vraiCharger());
+          };
+        });
+      };
+    });
+  }
+
+  // ④ LA COCHE DU GROUPE SURVIT AU REPEINT.
+  // La grille est le premier bloc interactif après le nom : on coche sa passion
+  // tout de suite, le référentiel arrive, `innerHTML` régénère les options — et
+  // « Créer le groupe » répondait « Choisis au moins 1 passion ». La même
+  // impasse dure que ce lot ferme, décalée de deux secondes.
+  test("④ la passion cochée survit à l'arrivée du référentiel", async ({ page }) => {
+    await bootOnboarded(page, null, 1, { state: compteAvecPassionPlate() });
+    await referentielRetarde(page);
+
+    await page.evaluate(() => openCreateGroup());
+    await page.waitForSelector(".group-passion-grid", { timeout: 10000 });
+    await page.click('.group-passion-option[data-pid="' + PASSION + '"]');
+
+    const avant = await page.locator(".group-passion-option.selected").count();
+    expect(avant).toBe(1);
+
+    // Le référentiel arrive et repeint la grille.
+    await page.evaluate(() => window.__refLibere && window.__refLibere());
+    await page.waitForFunction(
+      (l) => new RegExp(l).test(document.querySelector(".group-passion-grid").textContent),
+      LIBELLE,
+      { timeout: 15000 }
+    );
+
+    // La coche est toujours là — et `confirmCreateGroup` la relit par `.selected`.
+    const apres = await page.locator(".group-passion-option.selected").count();
+    expect(apres).toBe(1);
+    const coche = await page.evaluate(
+      (id) => {
+        const el = document.querySelector('.group-passion-option[data-pid="' + id + '"]');
+        const cb = el && el.querySelector("input[type=checkbox]");
+        return !!(el && el.classList.contains("selected") && cb && cb.checked);
+      }, PASSION
+    );
+    expect(coche).toBe(true);
+  });
+
+  // ⑤ UNE PASSION ARCHIVÉE N'EST PAS PROPOSÉE À L'ORGANISATION.
+  // « Mes passions » doit dire la même chose partout (`passionsVivantes`) : une
+  // passion rangée ne remonte pas en tête du `<select>` avec le « ✦ » qui dit
+  // « c'est la tienne ».
+  test("⑤ une passion archivée ne remonte pas dans « Créer un événement »", async ({ page }) => {
+    const etat = compteAvecPassionPlate();
+    etat.user.profiles.push({
+      id: "pp_1", name: "Audit QA", passion: "musique",
+      emoji: "🎸", bio: "rangée", color: "#7c3aed", createdAt: 2, archived: true,
+    });
+    await bootOnboarded(page, null, 1, { state: etat });
+
+    await page.evaluate(() => openCreateEvent());
+    await page.waitForSelector("#evPassion", { timeout: 10000 });
+    await page.waitForTimeout(2500);
+
+    // « Musique » appartient au socle, donc elle reste dans le catalogue — ce
+    // qu'on refuse, c'est qu'elle soit traitée comme une passion DU COMPTE.
+    const marquee = await page.evaluate(() => {
+      const o = Array.from(document.querySelectorAll("#evPassion option"))
+        .find((x) => x.value === "musique");
+      return o ? o.textContent : "";
+    });
+    expect(marquee).not.toMatch(/✦/);
+
+    // Et la passion vivante, elle, garde sa marque et sa place.
+    const premier = await page.evaluate(() => {
+      const o = document.querySelector("#evPassion option");
+      return o ? { v: o.value, t: o.textContent } : null;
+    });
+    expect(premier.v).toBe(PASSION);
+    expect(premier.t).toMatch(/✦/);
+  });
+
+  // ⑥ ON NE PROPOSE PAS CE QUE « PUBLIER » REFUSERA (sortie A, 2026-08-30).
+  test("⑥ une passion qui n'existe que chez moi n'est pas proposée", async ({ page }) => {
+    const etat = compteAvecPassionPlate();
+    etat.user.profiles.push({
+      id: "pp_2", name: "Audit QA", passion: "custom_soudure_banc",
+      emoji: "🔧", bio: "perso", color: "#7c3aed", createdAt: 3,
+    });
+    await bootOnboarded(page, null, 1, { state: etat });
+
+    await page.evaluate(() => openCreateEvent());
+    await page.waitForSelector("#evPassion", { timeout: 10000 });
+    await page.waitForTimeout(2500);
+
+    const presente = await page.evaluate(() =>
+      Array.from(document.querySelectorAll("#evPassion option")).some((o) => o.value === "custom_soudure_banc")
+    );
+    expect(presente).toBe(false);
+  });
 });
