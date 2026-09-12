@@ -2632,6 +2632,11 @@ async function boot() {
           // Un jeton frais lève le silence des analytics : le coupe-circuit de
           // `supaTrack` ne doit pas survivre à la cause qu'il protégeait.
           try { window._analyticsMuetJusqua = 0; } catch (e) {}
+          // Même raison pour les participants : un refus mémorisé parce que le
+          // jeton manquait ou avait expiré n'a plus de cause une fois la session
+          // rétablie — sinon les compteurs d'inscrits resteraient vides jusqu'au
+          // prochain rechargement complet.
+          try { _attendeesRefusLecture = false; } catch (e) {}
           // ⚠️ setTimeout OBLIGATOIRE (piège supabase-js documenté) : le client tient
           // un verrou auth pendant l'émission de l'événement ; toute requête Supabase
           // lancée DANS le callback attend ce verrou → deadlock, et la promesse de
@@ -4393,6 +4398,64 @@ const _EVENT_COLS_PRIVE = _EVENT_COLS_PUBLIC + ",address,contact,conv_id";
 // chaque chargement du fil.
 let _eventColsPubliquesSeulement = false;
 
+// ── PARTICIPANTS : UNE LECTURE RÉSERVÉE AUX COMPTES CONNECTÉS ────────────────
+// ⚠️ `migration_irl_donnees_privees.sql` (appliquée en production le 2026-09-08)
+// ne retire pas seulement deux colonnes à `anon` : elle lui RÉVOQUE tout droit de
+// lecture sur `event_attendees` — la liste NOMINATIVE des participants d'une
+// rencontre physique était lisible sans compte (audit IRL-03). La contrepartie
+// CLIENT de ce jour-là n'a traité que les COLONNES d'`events` (`_EVENT_COLS_*`) :
+// la lecture des participants, elle, partait encore pour TOUT LE MONDE, y compris
+// depuis le parcours visiteur (`js/first-run.js`, `chargerContenuPublic`). Une
+// porte fermée côté serveur dont le client continue de frapper.
+//
+// Mesuré par la sentinelle le 2026-09-12 : 9 × `GET /rest/v1/event_attendees` en
+// 24 h, **0 compte identifié** — et ce zéro est la preuve, pas un détail :
+// `telemetry.js` ne transmet un `user_id` que si `MY_UID` est un uuid d'auth,
+// donc les 9 refus viennent de clients SANS compte.
+// ⚠️ **401 ET NON 403** : PostgREST rend 403 sur un 42501 quand un compte est
+// authentifié, et 401 quand le rôle est le rôle ANONYME. Lire le CODE avant
+// d'accuser une policy — ici la policy est juste, c'est le GRANT qui manque, et
+// il manque exprès.
+// ⚠️ ET LE REFUS ÉTAIT INVISIBLE : `const { data: atts } = await …` ne lisait
+// jamais `{ error }`, et le SDK ne LÈVE PAS sur un refus, donc le `catch` voisin
+// ne s'armait pas. Aucune conséquence à l'écran (un visiteur n'a pas à connaître
+// la liste, et « 0 inscrit » est déjà ce qu'il voyait) : du bruit pur dans le
+// tableau de bord qui sert à voir les vrais défauts — même famille que
+// « newestWorker is null ».
+let _attendeesRefusLecture = false;
+
+// ⚠️ UN SEUL POINT DE DÉCISION pour les QUATRE lectures de cette table
+// (`supaLoadEvents`, `supaLoadMyRsvps`, `supaLoadEventRatings`,
+// `supaFirstWaitlisted`) : poser la garde à chaque appelant, c'est laisser le
+// prochain appelant l'oublier.
+// ⚠️ `MY_UID` NE PROUVE PAS QU'UN COMPTE EXISTE — `getMyUserId()` fabrique un
+// `u_<aléatoire>` pour tout visiteur. Seul un uuid Supabase le prouve.
+function _attendeesLisibles() {
+  if (_attendeesRefusLecture) return false;
+  try {
+    const uid = (typeof MY_UID === "string" && MY_UID) ? MY_UID : "";
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uid);
+  } catch (e) { return false; }
+}
+
+// Rend `true` quand le refus est DÉFINITIF pour la session : privilège manquant
+// (42501) ou jeton absent/expiré (PGRST301). Redemander ne pourrait que le
+// reproduire. ⚠️ La garde ci-dessus ne suffit pas : un uuid SURVIT à sa session
+// (déconnexion sur un autre appareil, jeton révoqué, stockage du SDK vidé), donc
+// ce mémo est la seconde couche. Il est levé par `SIGNED_IN`/`TOKEN_REFRESHED` —
+// un silence ne doit pas survivre à la cause qu'il protégeait.
+function _attendeesRefusMemorise(err, ou) {
+  if (!err) return false;
+  const code = String(err.code || "");
+  const msg = String(err.message || "");
+  if (code !== "42501" && code !== "PGRST301"
+      && !/permission denied|jwt|not authorized/i.test(msg)) return false;
+  _attendeesRefusLecture = true;
+  console.warn("participants (" + ou + ") : lecture refusée — " + (code || "?") + " " + msg);
+  try { if (typeof diagLog === "function") diagLog("event_attendees refusé (" + ou + "): " + (code || msg)); } catch (e) {}
+  return true;
+}
+
 async function supaLoadEvents() {
   try {
     const lire = (cols) => supa.from("events").select(cols)
@@ -4416,24 +4479,31 @@ async function supaLoadEvents() {
     // et la liste d'attente sont comptés à part pour ne pas gonfler le compteur ni
     // remplir les places réservées.
     const attByEvent = {}, maybeByEvent = {}, waitByEvent = {}, checkedByEvent = {};
-    if (rows.length) {
+    if (rows.length && _attendeesLisibles()) {
+      const evIds = rows.map(r => r.id);
+      const ranger = (atts) => (atts || []).forEach(a => {
+        const bucket = a.rsvp === "maybe" ? maybeByEvent : a.rsvp === "waitlist" ? waitByEvent
+          : a.rsvp === "declined" ? null : attByEvent;
+        if (bucket) (bucket[a.event_id] = bucket[a.event_id] || []).push(a.user_id);
+        if (a.checked_in_at) (checkedByEvent[a.event_id] = checkedByEvent[a.event_id] || []).push(a.user_id);
+      });
+      // ⚠️ Le `try` reste : un échec RÉSEAU (le SDK lève, lui) ne doit pas tomber
+      // dans le `catch` de la fonction entière, qui rendrait `[]` — les événements
+      // sont déjà chargés, ils survivent sans leurs participants.
       try {
-        const { data: atts } = await supa.from("event_attendees")
-          .select("event_id,user_id,rsvp,checked_in_at").in("event_id", rows.map(r => r.id));
-        (atts || []).forEach(a => {
-          const bucket = a.rsvp === "maybe" ? maybeByEvent : a.rsvp === "waitlist" ? waitByEvent
-            : a.rsvp === "declined" ? null : attByEvent;
-          if (bucket) (bucket[a.event_id] = bucket[a.event_id] || []).push(a.user_id);
-          if (a.checked_in_at) (checkedByEvent[a.event_id] = checkedByEvent[a.event_id] || []).push(a.user_id);
-        });
-      } catch(e) {
-        // Colonne rsvp absente (migration non appliquée) : repli sur l'ancien modèle.
-        try {
-          const { data: atts } = await supa.from("event_attendees")
-            .select("event_id,user_id").in("event_id", rows.map(r => r.id));
-          (atts || []).forEach(a => { (attByEvent[a.event_id] = attByEvent[a.event_id] || []).push(a.user_id); });
-        } catch(e2) {}
-      }
+        const r1 = await supa.from("event_attendees")
+          .select("event_id,user_id,rsvp,checked_in_at").in("event_id", evIds);
+        if (!r1.error) ranger(r1.data);
+        // ⚠️ Le repli ne vise QUE la colonne `rsvp` absente (base pas encore
+        // migrée). Un REFUS, lui, ne se retente pas : la même table au même rôle
+        // rendrait le même refus — deux appels 401 au lieu d'un.
+        else if (!_attendeesRefusMemorise(r1.error, "supaLoadEvents")) {
+          const r2 = await supa.from("event_attendees")
+            .select("event_id,user_id").in("event_id", evIds);
+          if (r2.error) _attendeesRefusMemorise(r2.error, "supaLoadEvents (repli sans rsvp)");
+          else ranger(r2.data);
+        }
+      } catch(e) { console.warn("participants : lecture interrompue —", e && e.message); }
     }
     return rows.map(r => ({
       id: r.id,
@@ -5968,10 +6038,14 @@ async function supaRateEvent(eventId, rating, feedback) {
 
 // Agrégat des notes d'un événement : { avg, count }. Null si indisponible.
 async function supaLoadEventRatings(eventId) {
+  // Même porte que `supaLoadEvents` : son seul appelant n'exige que `_supaReal`,
+  // vrai aussi chez un visiteur — ouvrir la fiche d'une rencontre sans compte
+  // frappait donc la table fermée. `null` = « indisponible », déjà géré.
+  if (!_attendeesLisibles()) return null;
   try {
     const { data, error } = await supa.from("event_attendees")
       .select("rating").eq("event_id", eventId).not("rating", "is", null);
-    if (error) return null;
+    if (error) { _attendeesRefusMemorise(error, "supaLoadEventRatings"); return null; }
     const notes = (data || []).map(r => r.rating).filter(n => typeof n === "number");
     if (!notes.length) return { avg: 0, count: 0 };
     return { avg: notes.reduce((a, b) => a + b, 0) / notes.length, count: notes.length };
@@ -5991,19 +6065,28 @@ async function supaPromoteFromWaitlist(eventId, userId) {
 
 // Le PREMIER inscrit sur liste d'attente (ordre d'arrivée), ou null.
 async function supaFirstWaitlisted(eventId) {
+  if (!_attendeesLisibles()) return null;
   try {
-    const { data } = await supa.from("event_attendees")
+    const { data, error } = await supa.from("event_attendees")
       .select("user_id,created_at").eq("event_id", eventId).eq("rsvp", "waitlist")
       .order("created_at", { ascending: true }).limit(1);
+    if (error) { _attendeesRefusMemorise(error, "supaFirstWaitlisted"); return null; }
     return (data && data[0]) ? data[0].user_id : null;
   } catch(e) { return null; }
 }
 
 // Mes participations AVEC leur état (pour rehydrater les RSVP au boot).
 async function supaLoadMyRsvps() {
+  // ⚠️ CE CHEMIN COÛTAIT DEUX REFUS, PAS UN : `if (error) throw error` tombait
+  // dans le repli ci-dessous, qui REFAISAIT la même requête refusée. Sans compte
+  // réel, le filtre `user_id = MY_UID` ne pourrait de toute façon rendre aucune
+  // ligne utile — et `{}` est déjà ce que la fonction rend quand elle échoue.
+  if (!_attendeesLisibles()) return {};
   try {
     const { data, error } = await supa.from("event_attendees")
       .select("event_id,rsvp,checked_in_at").eq("user_id", MY_UID);
+    // Un refus est définitif : on ne passe PAS au repli « sans la colonne rsvp ».
+    if (error && _attendeesRefusMemorise(error, "supaLoadMyRsvps")) return {};
     if (error) throw error;
     const out = {};
     (data || []).forEach(r => { out[r.event_id] = { rsvp: r.rsvp || "going", checkedIn: !!r.checked_in_at }; });
@@ -6011,7 +6094,8 @@ async function supaLoadMyRsvps() {
   } catch(e) {
     // Repli sans la colonne rsvp.
     try {
-      const { data } = await supa.from("event_attendees").select("event_id").eq("user_id", MY_UID);
+      const { data, error } = await supa.from("event_attendees").select("event_id").eq("user_id", MY_UID);
+      if (error) { _attendeesRefusMemorise(error, "supaLoadMyRsvps (repli sans rsvp)"); return {}; }
       const out = {};
       (data || []).forEach(r => { out[r.event_id] = { rsvp: "going", checkedIn: false }; });
       return out;
