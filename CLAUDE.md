@@ -333,14 +333,15 @@ survivre intact**, sinon on ne peut plus établir de cause. ⚠️ **Le vrai cor
 (`migrations/migration_fuites_2026-09-10.sql`, colonne `auth_uid` posée par le serveur) : le
 désamorçage est une barrière, pas la porte. `lireErreurs` gère les DEUX états, avec repli signalé.
 
-⚠️ **CE QUI RESTE OUVERT, ET QU'IL NE FAUT PAS CROIRE RÉGLÉ** : `conv_reads` est lisible **sans
-compte** (`qual = true` — le graphe « qui parle à qui » est public, migration écrite non appliquée) ;
-les canaux Realtime d'appel (`ring:`, `call:`, `typing:`, `vlive:`) sont **publics**, donc on peut
-faire sonner un téléphone sous une fausse identité ou couper un appel ; le seau `attachments` reste
-`public = true`, donc une pièce jointe privée est lisible **à vie par son URL exacte** (l'énumération,
-elle, est bien fermée) ; le **consentement aux CGU n'est persisté nulle part** (0 trace sur 85 lignes
-`user_state`) ; **aucune sauvegarde automatique** de la production ; DKIM/DMARC absents, donc les
-e-mails de confirmation partent probablement en spam — **le défaut qui tue une beta en silence**.
+⚠️ **CE QUI RESTE OUVERT, ET QU'IL NE FAUT PAS CROIRE RÉGLÉ** (liste du 2026-09-10, **re-mesurée le
+2026-09-12** — deux points étaient déjà refermés, voir plus bas) : les canaux Realtime d'appel
+(`ring:`, `call:`, `typing:`, `vlive:`) sont **publics**, donc on peut faire sonner un téléphone sous
+une fausse identité ou couper un appel ; le seau `attachments` reste `public = true`, donc une pièce
+jointe privée est lisible **à vie par son URL exacte** (l'énumération, elle, est bien fermée) ; le
+**consentement aux CGU n'est persisté nulle part** (0 trace sur 85 lignes `user_state`) ; DKIM/DMARC
+absents, donc les e-mails de confirmation partent probablement en spam — **le défaut qui tue une
+beta en silence**. Les deux derniers points se ferment en collant
+`migration_ouverture_publique_2026-09-11.sql` (Realtime, seau privé), qui ne l'est pas encore.
 
 ⚠️ **ET DEUX AFFIRMATIONS DE CE FICHIER ÉTAIENT FAUSSES** : l'interrupteur `irl_adult_only` était
 annoncé ÉTEINT, il est **ALLUMÉ** ; et `docs/CHECKLIST_COMMERCIALISATION.md` cochait Wallet et CDV.
@@ -558,6 +559,38 @@ tiendra pas à l'échelle** : trafic ×10 = ~440 Mo de rétention, contre un mur
 `dc7ff081…`. Trier par TAILLE, jamais chercher un identifiant recopié.
 **L'état d'une base ne se lit pas dans un fichier du dépôt, il se mesure** — même règle que pour
 l'interrupteur `irl_adult_only`, et c'est la troisième fois qu'elle sert.
+
+### 🔁 RE-MESURE DU 2026-09-12 — QUATRE AFFIRMATIONS DE CE FICHIER ÉTAIENT PÉRIMÉES
+
+Et c'est la **quatrième** fois que la règle sert. Une fiche qui décrit un défaut déjà refermé coûte
+autant qu'une fiche qui en tait un : elle envoie la session suivante travailler pour rien, ou la
+fait renoncer à un geste déjà sûr. Mesuré au canal ① d'ADR-012, après le déploiement de `3e1e825`.
+
+⚠️ **① `conv_reads` N'EST PLUS LISIBLE SANS COMPTE.** `reads_select` porte
+`is_conv_member(conv_id, auth.uid())`, pas `qual = true` : le graphe « qui parle à qui » est fermé,
+la migration a bien été appliquée. Le paragraphe « ce qui reste ouvert » du 10/09 l'annonçait encore.
+
+⚠️ **② LA PURGE DE TÉLÉMÉTRIE EST DÉJÀ À 7 JOURS, ET LA TABLE FAIT 9,8 Mo.** `cron.job` porte
+`purge_telemetry_7j` (04:00) et `purge_client_errors` (03:00) ; **zéro** ligne de plus de 30 jours.
+Les chiffres de la fiche (62 Mo, 130 906 lignes, « stabilisation vers 44 Mo », « passer à 7 jours
+quand les comptes décollent ») décrivent un état révolu — le geste recommandé est FAIT. Ce qui reste
+vrai, c'est le raisonnement : la rétention est le levier, pas la purge ponctuelle.
+
+⚠️ **③ TOUT LE MÉDIA DE LA BASE PASSE DÉJÀ PAR LE CDN.** Avatars 3/3, couvertures 3/3, publications
+5/5, stories 8/8 en `/media/…` ; **aucune** URL Supabase directe. La sortie Supabase due aux vrais
+utilisateurs est donc ~nulle, et le forfait qui compte est celui de Netlify (100 Go/mois), pas les
+5 Go de Supabase. **Le point « avatars non redimensionnés » reste ouvert, mais ce n'est plus une
+urgence de facture** : c'est une question de charge utile (2,59 Mo servis pour un rond de 40 px, sur
+données mobiles) et de bande passante Netlify à l'échelle. Ne pas le rouvrir en criant à l'egress.
+
+⚠️ **④ ET LA VÉRIFICATION QUI BLOQUAIT CE POINT EST DÉJÀ FAITE PAR LE PRODUIT LUI-MÊME.** La fiche
+dit « ne pas étendre `passioThumb` sans avoir vérifié que la transformation d'image répond sur ce
+plan ». Or ses **trois appelants actuels l'utilisent en production** (photos de publication à 700 px,
+bobines à 720 px) : si `render/image` ne répondait pas, ces images seraient DÉJÀ cassées. La question
+ne se tranche donc pas par une requête à écrire, mais en **regardant le fil** — une photo de
+publication s'affiche, ou elle ne s'affiche pas. ⚠️ Nuance qui empêche de conclure trop vite :
+`renderPostHTML` porte un `onerror` qui repeint la boîte en gris, donc un échec ressemble à une image
+absente, jamais à une erreur. Regarder une publication dont on SAIT qu'elle porte une photo.
 
 ## 🧭 `search_path` FIGÉ — et pourquoi `''` n'est PAS la bonne réponse partout (2026-09-12)
 
