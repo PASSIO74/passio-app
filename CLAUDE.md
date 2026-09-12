@@ -1000,6 +1000,33 @@ contre une constante. ⓑ Les cas de la seconde suite **n'exerçaient jamais le 
 référentiel dans le banc. Corollaire : le cas « 568 Ko jamais au démarrage » vaut pour un
 **visiteur sans passion**, pas pour un compte dont une passion est hors socle.
 
+### ⚠️ LE PIÈGE D'ENVIRONNEMENT EN SENS INVERSE : ROUGE EN LOCAL, VERT EN CI
+
+La maison connaît « vert en local, rouge en CI » (divergence du vrai SDK) et le cherche partout.
+**L'inverse existe aussi, et il fait perdre autant de temps.** Mesuré le 2026-09-12 en cherchant
+pourquoi le lot était rouge après une fusion de `main` :
+
+- `tests/e2e/profil-visite-options.spec.js` (5 cas) et trois cas de `profil-entete-passions`
+  échouent **en local**, sur `origin/main` PUR, dans un worktree neuf — donc sans aucun apport du
+  lot en cours. Symptôme : `.modal.modal-fullscreen` « element(s) not found » après
+  `openUserProfile("u_lea")`.
+- Les mêmes sont **VERTS en CI sur ce même commit** (run 2642).
+
+⚠️ **CONSÉQUENCE DE MÉTHODE, ET C'EST LE VRAI ENSEIGNEMENT** : rejouer le shard en échec en local
+a produit **8 échecs qui n'étaient pas ceux de la CI**. Une reproduction qui rougit n'est une
+reproduction que si elle rougit **pour la même raison** — sinon elle envoie enquêter à côté, avec
+la conviction d'avoir trouvé. Le contrôle qui tranche tient en une commande : **rejouer la suite
+suspecte sur `origin/main` dans un worktree séparé** (`git worktree add`, `PASSIO_PORT=8099` pour
+ne pas percuter le serveur du port 8080). Si elle y rougit aussi, le lot est hors de cause et il
+faut chercher ailleurs.
+
+⚠️ **ET LA COMPOSITION D'UN SHARD N'EST PAS STABLE ENTRE DEUX COMMITS** : Playwright répartit des
+CAS, pas des fichiers. Ajouter des tests — le lot en ajoute, la fusion de `main` en apporte deux
+suites de plus — **décale tout le découpage** : le « shard 4/6 » d'avant et celui d'après ne
+contiennent pas les mêmes tests. Comparer « le shard 4 était vert, il est rouge » n'a donc aucun
+sens sans regarder ce qu'il contient. Rejouer `--shard=4/6` en local ne rejoue le même ensemble
+que si le nombre total de cas est identique.
+
 ⚠️ **POINT OUVERT, ET IL EST DÉLIBÉRÉMENT LAISSÉ** : le moteur IA local (`aiGenerateResponse`,
 app-06) ne sait nommer que 19 passions dans sa branche « 🎯 Passions trouvées », et ses cartes sont
 cliquables — donc c'est une surface de découverte, bornée au socle, en comparaison littérale sans
