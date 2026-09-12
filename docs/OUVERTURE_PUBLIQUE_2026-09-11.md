@@ -146,12 +146,19 @@ Verrou : `tests/e2e/ouverture-publique.spec.js` (35 cas, dont trois qui mesurent
    **Anonymous** est désactivé (`onbSkipAuth` est un chemin mort, mais un
    `signInAnonymously()` ouvrirait toutes les policies `authenticated`) ; activer la
    **protection des mots de passe compromis** (HaveIBeenPwned) ; lire les quotas d'e-mail.
-5. **DKIM / DMARC de `passio-app.fr`** chez Brevo et OVH (`docs/SETUP_SMTP_AUTH.md`) —
-   sans eux, l'e-mail de confirmation part en spam et **la personne n'entre jamais**.
-   C'est le défaut qui tue une ouverture en silence.
-6. **Lancer une fois `Sauvegarde production`** à la main (Actions → Run workflow) et
-   déchiffrer l'artefact en local avec la commande de l'en-tête du workflow. Une sauvegarde
-   jamais restaurée est une intention.
+5. ~~**DKIM / DMARC de `passio-app.fr`**~~ — **FAIT, mesuré le 2026-09-12** sur le DNS
+   public avec témoin négatif : les quatre enregistrements résolvent, et la cible des deux
+   CNAME n'est **pas** complétée par le domaine (le point final a bien été posé, c'est le
+   piège du §2 de `SETUP_SMTP_AUTH.md`). Rejouable en deux secondes : **`npm run verif:dns`**.
+   ⚠️ **Le DNS est nécessaire, il n'est PAS suffisant** : Brevo doit encore marquer le
+   domaine « authentifié », et cela ne se lit pas depuis le DNS. C'est le seul reste de ce
+   point. ⚠️ Ce contrôle est **hors de `npm run verif` et hors de la CI** : il juge un fait
+   extérieur au dépôt, et une gate rouge qu'aucun commit ne peut réparer bloquerait tous les
+   déploiements.
+6. ~~**Lancer une fois `Sauvegarde production`**~~ — **FAIT le 2026-09-12, run VERT** :
+   archive chiffrée de 3,9 Mo déposée en artefact, conservée 30 jours. ⚠️ Et il n'y a rien à
+   déchiffrer à la main : l'étape « Chiffrer » **déchiffre et relit** l'archive dans le même
+   run, et elle est passée — le trajet complet est prouvé, phrase de passe comprise.
 7. Facultatif : poser le secret `SAUVEGARDE_PASSPHRASE` (sinon le repli documenté sert).
 8. **Après la fusion de la PR « search_path »** : coller
    `migrations/migration_search_path_fonctions.sql` (verdict à **4 × OK**). C'est de la défense

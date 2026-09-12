@@ -333,15 +333,20 @@ survivre intact**, sinon on ne peut plus établir de cause. ⚠️ **Le vrai cor
 (`migrations/migration_fuites_2026-09-10.sql`, colonne `auth_uid` posée par le serveur) : le
 désamorçage est une barrière, pas la porte. `lireErreurs` gère les DEUX états, avec repli signalé.
 
-⚠️ **CE QUI RESTE OUVERT, ET QU'IL NE FAUT PAS CROIRE RÉGLÉ** (liste du 2026-09-10, **re-mesurée le
-2026-09-12** — QUATRE de ses points étaient déjà refermés, voir plus bas) : les canaux Realtime
-d'appel (`ring:`, `call:`, `typing:`, `vlive:`) sont **publics**, donc on peut faire sonner un
-téléphone sous une fausse identité ou couper un appel ; le seau `attachments` reste `public = true`,
-donc une pièce jointe privée est lisible **à vie par son URL exacte** (l'énumération, elle, est bien
-fermée) ; DKIM/DMARC absents, donc les e-mails de confirmation partent probablement en spam — **le
-défaut qui tue une beta en silence**. Les DEUX PREMIERS se ferment en collant
-`migration_ouverture_publique_2026-09-11.sql` (Realtime privé, seau privé), qui ne l'est pas encore —
-mesuré le 2026-09-12 : `follows.status` absent, zéro policy `passio_rt_*`, seau encore public.
+⚠️ **CE QUI RESTE OUVERT — LISTE RAMENÉE À CE QUI L'EST VRAIMENT** (liste du 2026-09-10,
+re-mesurée le 2026-09-12 : **six de ses points étaient déjà refermés**, voir plus bas). La migration
+d'ouverture est **APPLIQUÉE** (verdict 13 × OK), donc les canaux Realtime portent leurs policies et
+le seau `attachments` est **privé**. DKIM et DMARC sont **POSÉS** (`npm run verif:dns`, mesuré).
+La sauvegarde a **tourné** pour la première fois le 2026-09-12, archive chiffrée puis déchiffrée et
+relue dans le même run.
+
+Reste, et il n'y a plus que cela : **les interrupteurs du tableau de bord Supabase**, qui ne vivent
+ni dans le dépôt ni dans la base — Realtime « Allow public access » OFF (sans lui les policies ne
+sont pas opposables : un client qui omet `private: true` écoute encore), fournisseur Anonymous
+désactivé, protection des mots de passe compromis. ⚠️ Et **Brevo doit marquer le domaine
+« authentifié »** : le DNS est nécessaire, il n'est pas suffisant, et cela ne se lit pas depuis le
+DNS. Résidus assumés déjà écrits plus bas : identité déclarative de l'appelant entre comptes,
+oracles pour un compte connecté.
 
 ⚠️ **ET DEUX AFFIRMATIONS DE CE FICHIER ÉTAIENT FAUSSES** : l'interrupteur `irl_adult_only` était
 annoncé ÉTEINT, il est **ALLUMÉ** ; et `docs/CHECKLIST_COMMERCIALISATION.md` cochait Wallet et CDV.
@@ -560,7 +565,7 @@ tiendra pas à l'échelle** : trafic ×10 = ~440 Mo de rétention, contre un mur
 **L'état d'une base ne se lit pas dans un fichier du dépôt, il se mesure** — même règle que pour
 l'interrupteur `irl_adult_only`, et c'est la troisième fois qu'elle sert.
 
-### 🔁 RE-MESURE DU 2026-09-12 — SIX AFFIRMATIONS DE CE FICHIER ÉTAIENT PÉRIMÉES
+### 🔁 RE-MESURE DU 2026-09-12 — SEPT AFFIRMATIONS DE CE FICHIER ÉTAIENT PÉRIMÉES
 
 Et c'est la **quatrième** fois que la règle sert. Une fiche qui décrit un défaut déjà refermé coûte
 autant qu'une fiche qui en tait un : elle envoie la session suivante travailler pour rien, ou la
@@ -608,6 +613,26 @@ est en place, quotidien, archive chiffrée puis **déchiffrée et relue dans le 
 workflow compte **zéro exécution** à ce jour. Une sauvegarde configurée n'est pas une sauvegarde —
 tant qu'un run vert ne l'a pas prouvée, c'est une intention avec un fichier YAML devant. Le premier
 lancement est un geste qui reste à faire.
+
+> **Suite du ⑥, le même jour :** le workflow a été lancé et il est **VERT** (run du 2026-09-12,
+> archive chiffrée de 3,9 Mo, conservée 30 jours). L'étape « Chiffrer » **déchiffre et relit**
+> l'archive dans le même run, et elle est passée : le trajet complet est donc prouvé, phrase de
+> passe comprise. Ce n'est plus une intention.
+
+⚠️ **⑦ DKIM ET DMARC SONT POSÉS, ET C'EST L'AFFIRMATION LA PLUS COÛTEUSE DES SEPT.** « DKIM/DMARC
+absents, les e-mails partent en spam » était répété comme LE défaut qui tue une ouverture en
+silence. Mesuré le 2026-09-12 sur le DNS public (8.8.8.8 et 1.1.1.1), avec témoin négatif : les
+**quatre** enregistrements résolvent — `brevo-code`, les deux CNAME `brevo1/brevo2._domainkey` vers
+`b1/b2.passio-app-fr.dkim.brevo.com`, et `_dmarc` en `p=none`. Et le piège documenté est évité : la
+cible des CNAME n'est **pas** complétée par le domaine, donc le point final a bien été posé.
+⚠️ **Ne pas en conclure que l'e-mail est réglé** : le DNS est nécessaire, il n'est pas suffisant —
+Brevo doit encore marquer le domaine « authentifié », et cela ne se lit PAS depuis le DNS.
+⚠️ **La leçon de méthode** : ce point est resté « ouvert » des jours durant parce que personne
+n'avait de moyen de le MESURER, et qu'une absence de plainte ressemble à une absence de défaut.
+`npm run verif:dns` (`scripts/verifier-dns-email.mjs`, aucune dépendance) le tranche en deux
+secondes. ⚠️ Il est **hors de `npm run verif` et hors de la CI de déploiement**, délibérément : il
+juge un fait EXTÉRIEUR au dépôt, et une gate rouge qu'aucun commit ne peut réparer bloquerait tous
+les déploiements. C'est un contrôle d'exploitation, pas une gate de code.
 
 ## 🧭 `search_path` FIGÉ — et pourquoi `''` n'est PAS la bonne réponse partout (2026-09-12)
 

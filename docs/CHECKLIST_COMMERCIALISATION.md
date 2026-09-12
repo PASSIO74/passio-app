@@ -103,23 +103,30 @@ exploitation : `docs/OUVERTURE_PUBLIQUE_2026-09-11.md` (mode d'emploi et gestes 
       `realtime:db`/`conv_specific:` privés avec policy ; ordres d'hôte d'un live vérifiés ;
       URL signée à 1 h ; `target_type` sous liste blanche + CHECK ; notification
       d'abonnement écrite par le serveur.
-- [ ] **À coller par Benjamin** : `migrations/migration_ouverture_publique_2026-09-11.sql`
-      (après le déploiement vert — 13 × OK attendus).
+- [x] **Collée le 2026-09-12** : `migrations/migration_ouverture_publique_2026-09-11.sql`,
+      verdict **13 × OK**, et c'est la version CORRIGÉE (PR #341) qui est en base — vérifié
+      sur le texte de la policy et la définition du trigger, ce que le verdict ne distingue pas.
 - [ ] **Tableau de bord Supabase** : Realtime « Allow public access » OFF ; Anonymous
-      sign-ins OFF ; HaveIBeenPwned ON.
-- [ ] **DKIM/DMARC de `passio-app.fr`** (point ① ci-dessous, inchangé).
-- [ ] Lancer une fois la sauvegarde à la main et la déchiffrer.
+      sign-ins OFF ; HaveIBeenPwned ON. **C'est tout ce qui reste**, et cela ne vit ni dans
+      le dépôt ni dans la base.
+- [x] **DKIM/DMARC de `passio-app.fr`** : les quatre enregistrements résolvent (mesuré le
+      2026-09-12, `npm run verif:dns`). Reste chez Brevo à marquer le domaine « authentifié ».
+- [x] Sauvegarde lancée le 2026-09-12, run **vert**, archive chiffrée déchiffrée et relue
+      dans le même run.
 
 ## ① ② ③ Ce qui doit être réglé avant d'envoyer à des testeurs (seuil A)
 
-- [ ] **① Les e-mails de confirmation partent probablement en spam.** Le domaine
-      d'envoi **n'est pas authentifié** chez Brevo et **DMARC est absent**
-      (`docs/SETUP_SMTP_AUTH.md` §4, risque R11). Depuis l'activation de « Confirm
-      email » (2026-08-30), un compte non confirmé est **inutilisable** — et
-      l'application n'en sait rien. **C'est le défaut qui tue une beta en silence :
-      la personne ne vous dira pas qu'elle n'a rien reçu, elle abandonnera.**
-      Geste : authentifier le domaine chez Brevo (code, DKIM, puis DMARC).
-      Quota gratuit : **300 e-mails/jour**.
+- [x] **① DKIM et DMARC sont POSÉS (mesuré le 2026-09-12, pas déduit).** Ce point a
+      longtemps été décrit comme **le** défaut qui tue une beta en silence, et il est resté
+      « ouvert » des jours durant faute d'un moyen de le MESURER — une absence de plainte
+      ressemble à une absence de défaut. Contrôle sur le DNS public (8.8.8.8 et 1.1.1.1),
+      avec témoin négatif : les **quatre** enregistrements résolvent (`brevo-code`, les deux
+      CNAME `brevo1/brevo2._domainkey`, `_dmarc` en `p=none`), et la cible des CNAME n'est
+      **pas** complétée par le domaine — le point final a bien été posé. Rejouable :
+      **`npm run verif:dns`**.
+      ⚠️ **Nécessaire n'est pas suffisant** : Brevo doit encore marquer le domaine
+      « authentifié », et cela ne se lit pas depuis le DNS. Quota gratuit : **300 e-mails/jour**,
+      donc ~300 inscriptions confirmables par jour au plus.
 - [x] **② Le code d'accès est LEVÉ (2026-09-11).** Il ne s'arme plus que sur adhésion
       (`passio_gate_actif = "1"`) ; `access-gate.spec.js` l'arme lui-même. Quand il est
       armé (préproduction), **les mentions légales, les CGU et la politique se lisent
