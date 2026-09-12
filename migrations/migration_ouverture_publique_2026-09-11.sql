@@ -264,8 +264,12 @@ drop trigger if exists trg_rate_limit on public.stories;
 create trigger trg_rate_limit before insert on public.stories
   for each row execute function public.rate_limit_insert('author_id', '10');
 drop trigger if exists trg_rate_limit on public.events;
+-- ⚠️ 15, pas 5 (corrigé le 2026-09-12 avant application) : une rencontre
+-- RÉCURRENTE est une série d'INSERT en rafale — 6 par défaut, 12 au plus
+-- (app-07, RECURRENCE_MAX_OCCURRENCES) — et un plafond de 5 aurait perdu les
+-- occurrences 6 à 12 en silence, le toast ne regardant que la première.
 create trigger trg_rate_limit before insert on public.events
-  for each row execute function public.rate_limit_insert('author_id', '5');
+  for each row execute function public.rate_limit_insert('author_id', '15');
 drop trigger if exists trg_rate_limit on public.post_comments;
 create trigger trg_rate_limit before insert on public.post_comments
   for each row execute function public.rate_limit_insert('author_id', '30');
@@ -373,11 +377,20 @@ end $$;
 -- policies. Le client replie sur un canal public si la souscription privée est
 -- refusée (migration pas encore appliquée), ce qui rend le lot déployable
 -- dans les deux ordres.
---   · `ring:<uid>`   : on ne REÇOIT que sa propre sonnerie ; tout compte peut
---                      sonner (c'est un appel). Résidu assumé : l'identité de
---                      l'appelant dans la charge utile reste déclarative entre
---                      COMPTES ; ce qui est fermé, c'est le sans-compte et
---                      l'écoute de qui appelle qui.
+--   · `ring:<uid>`   : lisible par tout COMPTE non bloqué, et tout compte peut
+--                      sonner (c'est un appel). ⚠️ CORRIGÉ LE 2026-09-12, AVANT
+--                      APPLICATION : la version initiale ne laissait lire que SA
+--                      sonnerie — or l'appelant S'ABONNE à `ring:<pair>` (app-05,
+--                      `_callChannel("ring:" + peer.id)`) et n'émet l'invitation
+--                      qu'après SUBSCRIBED, et Realtime refuse un join privé sans
+--                      droit de LECTURE : plus aucun appel sortant dès le collage
+--                      (la fiche §6 l'avait anticipé). Résidus assumés : l'identité
+--                      de l'appelant dans la charge utile reste déclarative entre
+--                      COMPTES, et un compte connecté peut écouter la sonnerie d'un
+--                      autre ; ce qui est fermé, c'est le sans-compte et le bloqué.
+--                      Resserrer à « sa propre sonnerie » exige d'abord un client
+--                      qui émet SANS s'abonner (envoi HTTP, gouverné par la policy
+--                      INSERT) — lot suivant.
 --   · `call:<id>`    : identifiant aléatoire, réservé aux comptes.
 --   · `typing:<conv>`/`conv:<conv>`/`conv_specific:<conv>` : membres seulement.
 --   · `vlive:<id>`   : les lives sont publics (video_lives), réservés aux comptes.
@@ -389,7 +402,8 @@ end $$;
 --      TOPIC (`ring:<uid>`), la policy peut le lire — la charge utile, jamais.
 drop policy if exists "passio_rt_recevoir" on realtime.messages;
 create policy "passio_rt_recevoir" on realtime.messages for select to authenticated using (
-     realtime.topic() = 'ring:' || (select auth.uid())::text
+     (realtime.topic() like 'ring:%'
+      and not public.is_blocked_with(substr(realtime.topic(), 6)))
   or realtime.topic() like 'call:%'
   or realtime.topic() like 'vlive:%'
   or realtime.topic() = 'realtime:db'
