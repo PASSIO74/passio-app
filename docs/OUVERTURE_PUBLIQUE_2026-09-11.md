@@ -92,6 +92,16 @@ Verrou : `tests/e2e/ouverture-publique.spec.js` (35 cas, dont trois qui mesurent
 
 ## 4. LES GESTES QUI RESTENT — dans l'ordre, et pourquoi cet ordre
 
+> **Où l'on en est, mesuré le 2026-09-12** (canal ① d'ADR-012 — l'état d'une base ne se lit
+> pas dans un fichier du dépôt). Le lot client est **déployé** et `migrations/OUVERTURE_2026-09-11.sql`
+> est **appliqué** (`client_errors.auth_uid` présent, `profiles.phone` retiré, les deux purges
+> `cron` en place). En revanche `migration_ouverture_publique_2026-09-11.sql` n'est **toujours pas
+> collé** : `follows.status` absent, **zéro** policy `passio_rt_*`, seau `attachments` encore
+> `public = true`. Autrement dit, l'étape 2 ci-dessous est le verrou de tout le reste — les étapes
+> 3 et 4 en dépendent, et deux des trois points « reste ouvert » de ce document se ferment avec elle.
+> Santé : **zéro `client_errors` sur 24 h**.
+
+
 1. **Attendre le job « Déploiement production » vert** du lot client (c'est fait si vous
    lisez ceci depuis `main` déployé — vérifier sur https://passio-app.netlify.app que le
    code d'accès n'est plus demandé).
@@ -124,17 +134,41 @@ Verrou : `tests/e2e/ouverture-publique.spec.js` (35 cas, dont trois qui mesurent
    déchiffrer l'artefact en local avec la commande de l'en-tête du workflow. Une sauvegarde
    jamais restaurée est une intention.
 7. Facultatif : poser le secret `SAUVEGARDE_PASSPHRASE` (sinon le repli documenté sert).
+8. **Après la fusion de la PR « search_path »** : coller
+   `migrations/migration_search_path_fonctions.sql` (verdict à **4 × OK**). C'est de la défense
+   en profondeur, pas une porte ouverte — aucune des trois fonctions n'est `SECURITY DEFINER` —
+   donc ce geste vient en DERNIER, jamais avant l'étape 2. ⚠️ Ne pas le remplacer par le
+   `set search_path = ''` que Supabase recommande partout : il casserait la recherche de passions
+   (`rechercher_passions` appelle `similarity()` sans le qualifier). Le fichier se protège
+   lui-même — sa dernière ligne de verdict APPELLE la recherche, donc il échoue bruyamment
+   plutôt que de laisser le produit muet.
 
 ## 5. Les plafonds du gratuit — ce que « un maximum d'utilisateurs » veut dire ici
 
 | Ressource | Plafond | Conséquence |
 |---|---|---|
-| Base Supabase (plan gratuit) | 500 Mo, puis **lecture seule** | 51 Mo aujourd'hui ; purges à 7 j / 30 j / 13 mois ; débit borné par ③. |
+| Base Supabase (plan gratuit) | 500 Mo, puis **lecture seule** | **53 Mo** le 2026-09-12 ; purges à 7 j / 30 j / 13 mois ; débit borné par ③. |
 | Sortie Supabase | 5 Go/mois | Les médias du fil passent par le CDN Netlify (100 Go/mois). Les **pièces jointes** signées n'y passent pas : elles sortent de Supabase. |
-| Storage | 1 Go | Aucune purge de médias orphelins automatisée. |
+| Storage | 1 Go | **C'est le plafond qui mord en premier** — voir sous le tableau. Aucune purge de médias orphelins automatisée. |
 | E-mails Brevo | **300 / jour** | Au plus ~300 inscriptions confirmables par jour. Au-delà, les confirmations attendent le lendemain. |
 | Auth | 50 000 MAU | Hors de portée à court terme. |
 | GitHub `cron` | ~41 % des créneaux servis, écarts de 4 à 5 h | Sauvegarde et alerte sont **quotidiennes**, pas horaires : un glissement de quelques heures ne change rien. |
+
+⚠️ **LE PREMIER MUR N'EST PAS CELUI QU'ON SURVEILLE, ET IL EST BAS.** Mesuré le 2026-09-12 :
+le Storage porte **79 Mo pour 65 objets** — 69 Mo dans `content` (53 objets, le plus gros
+à **24 Mo**, moyenne 1,34 Mo) et 10 Mo dans `attachments` (12 objets). Rapporté aux **6 comptes**
+qui ont produit ce contenu, cela fait ~13 Mo par compte, donc **le seau de 1 Go est plein vers
+75 à 80 comptes**. À comparer aux autres lignes : la base est à **53 Mo sur 500** et la
+télémétrie est retombée à 20 905 lignes. Autrement dit, ce n'est ni la base, ni la sortie
+réseau, ni les e-mails qui arrêteront « un maximum d'utilisateurs » : **c'est le Storage**.
+
+⚠️ **Et la cause est un réglage, pas un usage** : les deux seaux ont `file_size_limit`
+à **26 Mo** et `allowed_mime_types` à **NULL** — un seul envoi peut donc consommer 2,6 % du
+forfait, et rien ne restreint le type de fichier. Les deux leviers, dans l'ordre de coût
+croissant : baisser la limite par fichier (un geste du tableau de bord, réversible) et
+compresser les vidéos à l'envoi (un lot client). ⚠️ Ne pas confondre avec le point
+« avatars non redimensionnés », qui parle de la charge utile SERVIE à chaque lecture, pas
+de l'espace OCCUPÉ : ce sont deux problèmes différents, avec deux remèdes différents.
 
 ## 6. Ce qui reste ouvert, et qu'il ne faut pas croire réglé
 
