@@ -78,8 +78,34 @@ jobs:
             echo "::error title=SUPABASE_SERVICE_ROLE_KEY absent::Impossible de créer les comptes jetables."
             exit 1
           fi
+          # ⚠️ `set +e` EST CE QUI REND TOUT CE QUI SUIT ATTEIGNABLE, et son
+          # absence a coûté les deux garanties de ce workflow (mesuré le
+          # 2026-09-12 sur le run 34701841196, reproduit en bash).
+          #
+          # Le shell par défaut d'une étape est `bash -e {0}` : `-e` est DÉJÀ
+          # posé, et `set -uo pipefail` ne le retire pas — il ajoute seulement
+          # `pipefail`, donc il AGGRAVE le cas en donnant au pipeline le code de
+          # `node` au lieu de celui de `tee`. Résultat : dès que le script sort
+          # non nul, `-e` tue l'étape SUR LA LIGNE DU PIPELINE.
+          #
+          # Deux conséquences, et la seconde est la pire :
+          #   ① `code=${PIPESTATUS[0]}` et la garde « verdict indéterminé »
+          #      (exit 3) ne sont JAMAIS atteints — un témoin qui ne répond pas
+          #      est rapporté comme un échec dur, très exactement ce que le
+          #      commentaire de cette garde cherchait à éviter (« le faire
+          #      passer pour rouge apprendrait à ignorer ce workflow ») ;
+          #   ② la ligne qui verse le verdict dans `GITHUB_STEP_SUMMARY` est
+          #      sautée elle aussi. Le workflow n'écrivait donc son explication
+          #      QUE lorsque tout était vert — il se taisait précisément quand
+          #      il avait quelque chose à dire, y compris sur un vrai constat
+          #      (exit 1). Un contrôle muet sur l'échec ne sert à rien.
+          #
+          # On désarme donc `-e` autour du seul pipeline dont on veut lire le
+          # code, et on le repose aussitôt : tout ce qui suit reste protégé.
+          set +e
           node scripts/controle-realtime.mjs | tee /tmp/verdict.txt
           code=${PIPESTATUS[0]}
+          set -e
           { echo '```text'; cat /tmp/verdict.txt; echo '```'; } >> "${GITHUB_STEP_SUMMARY}"
           # ⚠️ 3 = verdict INDÉTERMINÉ (témoin en échec, réseau) : ce n'est pas un
           # défaut du produit, et le faire passer pour rouge apprendrait à ignorer

@@ -452,6 +452,24 @@ le seau `attachments` est **privé**. DKIM et DMARC sont **POSÉS** (`npm run ve
 La sauvegarde a **tourné** pour la première fois le 2026-09-12, archive chiffrée puis déchiffrée et
 relue dans le même run.
 
+⚠️ **ET LE CONTRÔLE QUI DEVAIT LES MESURER SE TAISAIT SUR L'ÉCHEC (2026-09-12).**
+`.github/workflows/controle-realtime.yml` est le seul moyen de trancher deux de ces trois bascules
+(« Allow public access », fournisseur Anonymous) : elles vivent dans le PLAN DE CONTRÔLE, invisibles
+au dépôt comme à la base, et ne s'éprouvent qu'en ESSAYANT. Son étape posait `set -uo pipefail` —
+mais le shell par défaut d'une étape est déjà `bash -e {0}`, et `set -uo pipefail` ne retire pas
+`-e` : il ajoute `pipefail`, donc il DONNE au pipeline le code de `node` au lieu de celui de `tee`.
+Dès que le script sortait non nul, `-e` tuait l'étape **sur la ligne du pipeline**. Deux garanties
+tombaient avec : ① la garde « verdict indéterminé » (exit 3) n'était JAMAIS atteinte — un témoin
+muet se rapportait en échec dur, exactement ce que son propre commentaire cherchait à éviter ;
+② la ligne qui verse le verdict dans `GITHUB_STEP_SUMMARY` était sautée elle aussi, donc **le
+workflow n'écrivait son explication que lorsque tout était vert** — il se taisait précisément quand
+il avait quelque chose à dire, y compris sur un vrai constat (exit 1). **Un contrôle muet sur
+l'échec ne sert à rien**, et un rouge sans explication apprend à ignorer le workflow. Correctif :
+`set +e` autour du seul pipeline dont on lit le code, reposé aussitôt. Mesuré sur le run
+34701841196 (exit 3), reproduit en bash, et les deux versions rejouées sur les trois verdicts.
+⚠️ Conséquence à ne pas oublier : **ce run-là n'a rien conclu**. Les deux bascules restent
+NON MESURÉES tant que le contrôle n'a pas été rejoué avec le correctif.
+
 Reste, et il n'y a plus que cela : **les interrupteurs du tableau de bord Supabase**, qui ne vivent
 ni dans le dépôt ni dans la base — Realtime « Allow public access » OFF (sans lui les policies ne
 sont pas opposables : un client qui omet `private: true` écoute encore), fournisseur Anonymous
