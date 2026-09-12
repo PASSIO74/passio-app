@@ -462,12 +462,31 @@ async function lireErreurs({ url, cle, heures }) {
   return lignes;
 }
 
-/** Lit les appels réseau refusés. Isolé pour rester testable, comme ci-dessus. */
-async function lireApi({ url, cle, heures }) {
+// ⚠️ LA TÉLÉMÉTRIE N'EST PAS QUE DE LA PRODUCTION. Les suites e2e écrivent dans
+// la MÊME table (env = development, opt-in `?telemetry=1`), et la sentinelle
+// lisait sans filtre : libérée le 2026-09-11 au soir (issue #327 fermée), elle a
+// aussitôt ouvert #337 sur 38 « POST /rest/v1/user_state → 401 » qui étaient
+// TOUS du bruit de test — mesuré le 2026-09-12 : 56 lignes sur 48 h, 100 %
+// env = development, 0 compte, 28 sessions e2e, 0 en production. Une enquête
+// ouverte sur du bruit bloque « une enquête à la fois » exactement comme un vrai
+// défaut : le canal était donc aveugle une seconde fois, pour une raison qu'il
+// avait fabriquée lui-même. Le filtre vit dans UNE constante, posée sur les
+// TROIS lectures de telemetry_events (refus réseau, clics, effets) : en oublier
+// une rendrait un classement mêlant tests et utilisateurs.
+export const FILTRE_PRODUCTION = "&env=eq.production";
+
+/** Chemins des deux lectures « boutons morts » — exportés pour être vérifiés. */
+export const CHEMINS_BOUTONS = {
+  clics: "telemetry_events?select=action,screen,session_id,client_ts&type=eq.click" + FILTRE_PRODUCTION,
+  effets: "telemetry_events?select=session_id,client_ts&type=in.(action,nav,api,flow)" + FILTRE_PRODUCTION,
+};
+
+/** Lit les appels réseau refusés — EN PRODUCTION SEULEMENT. Exporté pour le verrou. */
+export async function lireApi({ url, cle, heures }) {
   const depuis = new Date(Date.now() - heures * 3600_000).toISOString();
   const r = await fetch(
     `${url}/rest/v1/telemetry_events?select=endpoint,http_status,action,user_id,received_at` +
-    `&type=eq.api&status=eq.error&received_at=gt.${depuis}&order=received_at.desc&limit=2000`,
+    `&type=eq.api${FILTRE_PRODUCTION}&status=eq.error&received_at=gt.${depuis}&order=received_at.desc&limit=2000`,
     { headers: { apikey: cle, Authorization: "Bearer " + cle } });
   // ⚠️ On N'AVALE PAS cet échec : une source muette rendrait « rien à signaler »
   // alors que c'est l'accès qui manque — la panne silencieuse, encore.
@@ -483,7 +502,7 @@ async function lireApi({ url, cle, heures }) {
  * On rend donc `{ lignes, complet }`, et l'appelant REFUSE de publier un
  * classement incomplet. Mieux vaut ne rien dire que désigner un innocent.
  */
-async function lirePagine({ url, cle, chemin, heures, pagesMax = 10 }) {
+export async function lirePagine({ url, cle, chemin, heures, pagesMax = 10 }) {
   const depuis = new Date(Date.now() - heures * 3600_000).toISOString();
   const taille = 1000;
   const lignes = [];
@@ -522,8 +541,8 @@ async function principal() {
   let boutonsSuspects = null;
   try {
     const [clics, effets] = await Promise.all([
-      lirePagine({ url, cle, heures, chemin: "telemetry_events?select=action,screen,session_id,client_ts&type=eq.click" }),
-      lirePagine({ url, cle, heures, chemin: "telemetry_events?select=session_id,client_ts&type=in.(action,nav,api,flow)" }),
+      lirePagine({ url, cle, heures, chemin: CHEMINS_BOUTONS.clics }),
+      lirePagine({ url, cle, heures, chemin: CHEMINS_BOUTONS.effets }),
     ]);
     boutonsSuspects = (clics.complet && effets.complet)
       ? classerBoutons(clics.lignes, effets.lignes).slice(0, 5)
