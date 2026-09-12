@@ -472,7 +472,14 @@ echo "── ⑦ ⑤ REALTIME : QUI REÇOIT, QUI ÉMET ────────�
 # sur lui, pas sur la colonne — un topic autorisé rend donc TOUTES les lignes.
 n_rt="$(Q "select count(*) from realtime.messages;")"
 verifier "A reçoit sur SA sonnerie ring:A" "$n_rt" "$(RT "$A" "ring:$A" "select count(*) from realtime.messages;")"
-verifier "A ne reçoit RIEN sur ring:B (écoute de qui appelle qui : fermée)" "0" "$(RT "$A" "ring:$B" "select count(*) from realtime.messages;")"
+# ⚠️ L'APPELANT S'ABONNE À LA SONNERIE DE L'AUTRE AVANT D'ÉMETTRE (app-05,
+# `_callChannel("ring:" + peer.id)`, envoi après SUBSCRIBED) et Realtime refuse un
+# join privé sans droit de lecture : « A ne reçoit RIEN sur ring:B » aurait tué
+# tous les appels sortants (relecture du 2026-09-12). La lecture est donc ouverte
+# à tout compte NON BLOQUÉ ; ce qui reste fermé, c'est le bloqué et le sans-compte.
+verifier "A reçoit sur ring:B (il doit pouvoir s'y abonner pour l'appeler)" "$n_rt" "$(RT "$A" "ring:$B" "select count(*) from realtime.messages;")"
+verifier "C, bloqué par B, ne reçoit RIEN sur ring:B" "0" "$(RT "$C" "ring:$B" "select count(*) from realtime.messages;")"
+verifier "…ni B sur ring:C (le blocage vaut dans les deux sens)" "0" "$(RT "$B" "ring:$C" "select count(*) from realtime.messages;")"
 verifier "A reçoit sur typing:conv_ab (membre)" "$n_rt" "$(RT "$A" "typing:conv_ab" "select count(*) from realtime.messages;")"
 verifier "A ne reçoit rien sur typing:conv_bc (pas membre)" "0" "$(RT "$A" "typing:conv_bc" "select count(*) from realtime.messages;")"
 verifier "A reçoit sur call:xyz et vlive:42 (comptes seulement)" "$n_rt/$n_rt" \
