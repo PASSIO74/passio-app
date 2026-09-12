@@ -647,6 +647,38 @@ Sur une base où le chemin ne résoudrait pas `similarity`, elle lève, la trans
 les trois `ALTER` sont DÉFAITS — le fichier ne peut pas laisser la recherche muette derrière lui.
 Le banc le prouve en retirant pg_trgm (contrôle ⑧). Ne pas la « simplifier » en test de présence.
 
+### ⚠️ LES SIX AUTRES CONSTATS DU MÊME RAPPORT : AUCUN SECOND ORACLE (mesuré le 2026-09-12)
+
+`get_advisors` signale aussi **six fonctions `SECURITY DEFINER` exécutables par `anon`**. Après le
+défaut `is_conv_member` du 11/09 (« une porte fermée sur une table se rouvre par une fonction »),
+la question à trancher était : y en a-t-il un SECOND ? **Non — et c'est mesuré, pas supposé.**
+Écrire ce verdict ici a autant de valeur qu'un correctif : sans lui, la session suivante refera
+l'enquête, ou « réparera » trois non-problèmes et cassera des triggers vivants.
+
+- `post_is_visible` et `comment_target_visible` : **ouverts à `anon` DÉLIBÉRÉMENT** — un visiteur
+  lit par eux les commentaires d'une publication publique. Déjà écrit plus haut, ne pas y toucher.
+- `is_conv_member` : **le vrai oracle**, fermé par la migration d'ouverture, **pas encore collée**.
+- `can_edit_post(pid)` : ne compare qu'à `auth.uid()`, qui est **NULL pour `anon`** — les deux
+  `EXISTS` sont alors faux quel que soit le `pid`. Elle rend donc `false` en toutes circonstances et
+  **ne dit RIEN sur la publication visée**. Un oracle répond sur la CIBLE ; celle-ci répond sur
+  l'APPELANT. C'est la distinction à faire avant de crier à la fuite.
+- `passion_request_auto_creer()` et `trg_sync_profil_passions()` : elles rendent le type `trigger`.
+  **PostgreSQL REFUSE de les appeler directement**, quels que soient le rôle et les `GRANT` —
+  « trigger functions can only be called as triggers », vérifié en production. Le `GRANT` que
+  l'advisor voit est donc **inerte** : l'endpoint RPC existe et ne peut rien exécuter. ⚠️ Leur
+  retirer `EXECUTE` ne fermerait rien et resterait à refaire à chaque `CREATE OR REPLACE` ; les
+  passer en `SECURITY INVOKER` **casserait les triggers** qui, eux, ont besoin des droits du
+  propriétaire. **Le seul geste juste ici est de ne rien faire.**
+
+⚠️ **UN AVERTISSEMENT DE LINTER N'EST PAS UN DÉFAUT, ET LE TRAITER COMME TEL EN FABRIQUE.** Cinq
+de ces six lignes sont du bruit ; la sixième était une vraie fuite. Le tri ne se fait qu'en LISANT
+le corps de chaque fonction et en se demandant **sur QUOI elle répond** — la cible, ou l'appelant.
+
+⚠️ `rls_enabled_no_policy` sur `access_policies` est **voulu** : RLS active, aucune policy, aucun
+`GRANT` — donc refus total pour `anon` et `authenticated`. C'est l'interrupteur serveur du 18+,
+et son inaccessibilité EST sa protection (fiche « ADMISSION 18+ »). Ne pas « corriger » en
+ajoutant une policy.
+
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)
 
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)
