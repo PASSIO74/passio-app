@@ -4,7 +4,7 @@
   "scripts": {
     "test": "playwright test",
     "test:all": "playwright test",
-    "verif": "node scripts/audit-css-structure.js && node scripts/audit-globals.js && node scripts/audit-handlers.js && node scripts/audit-echappement.js --ci && node scripts/audit-tests-creux.js --ci && node scripts/audit-supa-stub.js && node scripts/audit-telemetry-keys.js && node scripts/audit-tests-isolation.js --ci && node scripts/generer-ouverture.js --verifier && npm run passions:verifier",
+    "verif": "node scripts/audit-css-structure.js && node scripts/audit-globals.js && node scripts/audit-handlers.js && node scripts/audit-echappement.js --ci && node scripts/audit-tests-creux.js --ci && node scripts/audit-supa-stub.js && node scripts/audit-telemetry-keys.js && node scripts/audit-tests-isolation.js --ci && node scripts/generer-ouverture.js --verifier && npm run passions:verifier && node --test tests/unit/plafond.test.mjs",
     "test:local": "playwright test --project=local",
     "test:prod": "node scripts/test-prod.js",
     "verif:dns": "node scripts/verifier-dns-email.mjs",
@@ -38,7 +38,8 @@
     "passions:moderation": "node scripts/passions-moderation.js",
     "purge:e2e:rest": "node scripts/purge-e2e-rest.js",
     "passions:decouper": "node scripts/decouper-migration-passions.js",
-    "moderation": "node scripts/moderation.js"
+    "moderation": "node scripts/moderation.js",
+    "test:unit": "node --test tests/unit/"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",
