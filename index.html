@@ -440,7 +440,7 @@
              tant que `html.passio-first-run` n'est pas posée — donc pour tout
              compte existant, et dès que le drapeau est coupé. -->
         <button class="btn ghost fr-only" onclick="event.stopPropagation();toggleDevPanel();PassioFirstRun.ouvrirPersonnalisation('options')">Mes passions</button>
-        <button class="btn ghost fr-only" onclick="event.stopPropagation();toggleDevPanel();PassioFirstRun.relancerTour()">Revoir les repères</button>
+        <button class="btn ghost" id="frReperesBtn" style="display:none" onclick="event.stopPropagation();toggleDevPanel();PassioFirstRun.relancerTour()">Revoir les repères</button>
       </div>
     </div>
 

@@ -2776,7 +2776,36 @@ function toggleDevPanel() {
     // et il annonce un ÉTAT (« ACTIVÉ ») et non un geste. Relu à chaque
     // ouverture, il ne peut pas mentir sur le drapeau posé entre-temps.
     try { if (typeof majBoutonPassionsIllimitees === "function") majBoutonPassionsIllimitees(); } catch (e) {}
+    // Même famille : « Revoir les repères » portait `.fr-only`, donc
+    // `display:none` dès qu'un compte existe — un tour à UN SEUL COUP sans
+    // aucune porte de rejeu. Une porte fermée doit dire par où passer (fiche 16).
+    try { majBoutonReperes(); } catch (e) {}
   }
+}
+
+/* « Revoir les repères » — visible dès que le lot de première visite EXISTE,
+   compte ou pas. Sa condition n'est ni « visiteur » ni « compte neuf » : c'est
+   le KILL SWITCH du lot, et rien d'autre. Un compte qui a déjà vu les trois
+   repères doit pouvoir les revoir — c'est très exactement ce que le libellé
+   promet.
+
+   ⚠️ EN JS ET NON EN CSS, DÉLIBÉRÉMENT. La règle existante
+   (`html:not(.passio-first-run) .fr-only { display:none !important }`) ne peut
+   pas exprimer « le module est chargé », et ajouter une règle obligerait à
+   toucher `styles.css`, dont le bloc UI-4A5 doit rester le DERNIER. Le panneau
+   Paramètres est du balisage STATIQUE relu à chaque ouverture : c'est déjà
+   l'idiome de `majSectionCompte` et de `majBoutonPassionsIllimitees`.
+
+   ⚠️ ON MASQUE QUAND LE LOT EST COUPÉ, au lieu de laisser un bouton qui ne
+   produit RIEN : `relancerTour` sort alors sur la garde `actif()` de
+   `planifierTour`, et un refus qui ne se prononce pas est indiscernable d'une
+   panne (revirement du 2026-09-04). */
+function majBoutonReperes() {
+  var b = document.getElementById("frReperesBtn");
+  if (!b) return;
+  var dispo = false;
+  try { dispo = !!(window.PassioFirstRun && PassioFirstRun.actif()); } catch (e) { dispo = false; }
+  b.style.display = dispo ? "" : "none";
 }
 
 /* Le panneau Paramètres est du balisage STATIQUE : ses deux entrées de compte
@@ -6406,7 +6435,18 @@ function montrerHint(id, cible) {
     // historiques se déclencher en plus produisait une bulle POSÉE SUR la carte
     // de bienvenue, dont elle recouvrait l'action principale (mesuré en capture
     // 390 px). Elles reprennent dès que le parcours est terminé ou coupé.
-    if (window.PassioFirstRun && PassioFirstRun.estVisiteur()) return false;
+    //
+    // ⚠️ CETTE GARDE LISAIT `estVisiteur()`, ET CE N'EST PLUS SUFFISANT
+    // (2026-09-12). Depuis que les trois repères atteignent aussi un compte
+    // NEUF, « visiteur » ne décrit plus l'état où la présentation occupe
+    // l'écran : les quatre aides contextuelles se seraient superposées aux
+    // repères, rouvrant le défaut exact que ce commentaire décrit.
+    // `aidesHistoriquesEnPause()` est la seule autorité : elle rend la branche
+    // visiteur À L'OCTET PRÈS (pause toute la session) et, pour un compte, ne
+    // met en pause que le temps de la présentation — sans quoi on retirerait à
+    // un compte des aides qu'il recevait hier.
+    if (window.PassioFirstRun && typeof PassioFirstRun.aidesHistoriquesEnPause === "function"
+        && PassioFirstRun.aidesHistoriquesEnPause()) return false;
     var texte = HINTS[id];
     if (!texte || hintDejaVu(id) || hintVisible()) return false;
     var el = (typeof cible === "string") ? document.querySelector(cible) : cible;

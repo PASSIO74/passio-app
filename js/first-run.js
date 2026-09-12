@@ -142,6 +142,69 @@
   function estVisiteur() { return actif() && appPrete() && !compteExistant(); }
 
   // ══════════════════════════════════════════════════════════════════════════
+  // LES TROIS REPÈRES ATTEIGNENT AUSSI UN COMPTE NEUF  (2026-09-12)
+  // ──────────────────────────────────────────────────────────────────────────
+  // Rapport d'essai réel : « les bulles de présentation ». Mesuré : elles
+  // existent, mais `estVisiteur()` les éteignait à la seconde où un compte
+  // existe — donc pour exactement les personnes à qui l'application est
+  // envoyée. Quelqu'un qui explore d'abord sans compte les voit ; quelqu'un qui
+  // crée son compte directement (lien de confirmation sur un appareil neuf,
+  // chemin NORMAL depuis « Confirm email ») ne les voit JAMAIS, et ne peut même
+  // pas les rejouer : « Revoir les repères » est masqué dès qu'un compte existe.
+  // Même famille que le défaut du 2026-09-10 sur `filDecouverte()` : c'est
+  // l'ÉTAT qui doit décider, jamais la présence d'un compte.
+  //
+  // ⚠️ CETTE FONCTION NE COUVRE QUE LES TROIS REPÈRES, JAMAIS LA CARTE DE
+  // BIENVENUE. Le texte de la carte tranche tout seul : « Crée ton compte pour
+  // les garder », « Personnaliser mon expérience » — c'est une carte de
+  // CONVERSION, écrite pour un visiteur. La montrer à quelqu'un qui vient de
+  // créer son compte serait sourd. `poserBienvenue` garde donc `estVisiteur()`.
+  //
+  // ⚠️ LE DISCRIMINANT NE PEUT PAS ÊTRE « PRÉFÉRENCES VIDES ». Un habitué qui se
+  // connecte sur un téléphone neuf en a d'aussi vides : `adopterCompteConnecte`
+  // vient de tout purger. On tranche donc sur l'ÉTAT DU COMPTE, par
+  // `comptePasEncoreGarni()` — aucune passion voulue, personne de suivi — la
+  // même autorité que `filDecouverte()` utilise depuis le 2026-09-10.
+  //
+  // ⚠️ ET IL FAUT ATTENDRE LE VERDICT D'HYDRATATION. Interrogé trop tôt,
+  // `comptePasEncoreGarni()` dit « vide » pendant que `user_state` arrive
+  // encore : on servirait les repères à quelqu'un qui utilise PASSIO depuis des
+  // semaines. `window._etatCompteCharge` (app-02) est posé à CHAQUE sortie de
+  // l'hydratation, y compris les précoces. Sans verdict, on s'abstient — le
+  // silence est le bon sens de l'échec ici.
+  function reperesAutorises() {
+    if (!actif() || !appPrete()) return false;
+    if (!compteExistant()) return true;                    // visiteur : inchangé
+    if (window._etatCompteCharge !== true) return false;   // le compte n'a pas parlé
+    return comptePasEncoreGarni();
+  }
+
+  // La présentation est-elle encore en cours ? Sert à mettre les aides
+  // contextuelles historiques en pause tant qu'elle occupe l'écran.
+  function reperesEnCours() {
+    if (!reperesAutorises()) return false;
+    var t = prefs().tour || {};
+    return !t.abandonne && !t.termine;
+  }
+
+  // ⚠️ DEUX SYSTÈMES D'AIDE NE PEUVENT TOUJOURS PAS COHABITER À L'ÉCRAN, et
+  // c'est `montrerHint` (app-02) qui consulte cette fonction. Sa garde lisait
+  // `estVisiteur()` : dès que les repères atteignent un compte, elle ne protège
+  // plus rien et les quatre aides contextuelles se superposeraient aux trois
+  // repères — le défaut exact mesuré en capture 390 px (« une bulle POSÉE SUR
+  // la carte de bienvenue »).
+  //
+  // ⚠️ LA BRANCHE VISITEUR EST RENDUE À L'OCTET PRÈS : pour lui, la pause dure
+  // toute la session, comme avant. Pour un COMPTE, elle ne dure que le temps de
+  // la présentation — sans quoi on lui retirerait des aides qu'il recevait
+  // hier.
+  function aidesHistoriquesEnPause() {
+    if (!actif() || !appPrete()) return false;
+    if (!compteExistant()) return true;      // visiteur : comportement inchangé
+    return reperesEnCours();
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
   // 3. PRÉFÉRENCES LOCALES DU VISITEUR — format VERSIONNÉ
   // ══════════════════════════════════════════════════════════════════════════
   //
@@ -1588,7 +1651,7 @@
   }
 
   function montrerEtape(id) {
-    if (!estVisiteur()) return false;
+    if (!reperesAutorises()) return false;
     var e = ETAPES[id];
     if (!e || etapeVue(id) || tourAbandonne() || bulleVisible()) return false;
     if (ecranOccupe()) return false;
@@ -1693,7 +1756,7 @@
   var _tourPlanifie = null;
 
   function planifierTour() {
-    if (!estVisiteur() || tourAbandonne()) return;
+    if (!reperesAutorises() || tourAbandonne()) return;
     if (_tourPlanifie) clearTimeout(_tourPlanifie);
     // ⚠️ `setTimeout`, JAMAIS `requestAnimationFrame` : sur une page qui ne
     // compose pas de frames (onglet en arrière-plan, headless, machine
@@ -2090,7 +2153,7 @@
 
   // Appelé par `goTo` (app-02) après le changement d'écran.
   function surNavigation(screen) {
-    if (!estVisiteur()) return;
+    if (!reperesAutorises()) return;
     fermerBulle();
     if (screen === "irl") {
       // « Ne jamais déclencher automatiquement la géolocalisation. » UI-4A0 arme
@@ -2108,6 +2171,11 @@
       return;
     }
     if (screen === "feed") {
+      // ⚠️ UN COMPTE N'A PAS DE CARTE DE BIENVENUE, DONC PAS DE `planifierAccueil`.
+      // Celle-ci est gardée par `estVisiteur()` et sortirait en silence : le
+      // retour sur le Fil ne reposerait alors JAMAIS de repère pour un compte
+      // neuf, et le lot serait muet — indiscernable d'un lot cassé.
+      if (!estVisiteur()) { planifierTour(); return; }
       // Le budget d'essais est REMIS À ZÉRO à chaque retour sur le fil : sinon
       // une navigation un peu longue (Rencontrer, une fiche, un profil) le
       // consommerait entièrement et la carte de bienvenue ne serait jamais
@@ -2230,6 +2298,11 @@
   window.PassioFirstRun = {
     actif: actif,
     estVisiteur: estVisiteur,
+    // Autorité UNIQUE des trois repères, et sa lecture par `montrerHint`
+    // (app-02). Exposées pour que le verrou mesure la fonction RÉELLE.
+    reperesAutorises: reperesAutorises,
+    reperesEnCours: reperesEnCours,
+    aidesHistoriquesEnPause: aidesHistoriquesEnPause,
     entreeDirecte: entreeDirecte,
     prefs: prefs,
     oublierPrefs: oublierPrefs,
@@ -2341,9 +2414,66 @@
     }
   }
 
+  // ⚠️ SANS CE POINT D'ENTRÉE, LE LOT RESTE MUET POUR UN COMPTE. `planifierTour`
+  // n'a que deux appelants : `planifierAccueil` (gardé par `estVisiteur()`) et
+  // `surNavigation("feed")`. Or `entreeDirecte()` — qui appelle le premier —
+  // rend `false` dès qu'un compte existe : au DÉMARRAGE, rien ne planifiait
+  // donc les repères pour un compte neuf, et relâcher les gardes n'aurait
+  // suffi qu'au retour sur le Fil depuis un autre écran. Tester les fonctions
+  // n'aurait rien vu ; c'est le CÂBLAGE qui manquait.
+  //
+  // ⚠️ L'ATTENTE EST BORNÉE ET NE CONCLUT PAS : hors ligne, le verdict
+  // d'hydratation n'arrive jamais, et on préfère ne rien montrer plutôt que
+  // servir la présentation à un habitué (`reperesAutorises` s'en charge).
+  var ESSAIS_REPERES = 40;      // 40 × 600 ms ≈ 24 s — même budget que l'accueil
+  var _essaisReperes = 0;
+
+  function reessayerReperes() {
+    if (_essaisReperes >= ESSAIS_REPERES) return;
+    _essaisReperes++;
+    setTimeout(planifierReperesCompte, 600);
+  }
+
+  function planifierReperesCompte() {
+    try {
+      if (!actif() || !appPrete()) { reessayerReperes(); return; }
+      if (!compteExistant()) return;       // le visiteur a déjà son chemin
+      var t = prefs().tour || {};
+      if (t.abandonne || t.termine) return;
+      // Le compte n'a pas encore parlé : on attend son verdict, sans conclure.
+      if (window._etatCompteCharge !== true) { reessayerReperes(); return; }
+      if (!comptePasEncoreGarni()) return;  // compte déjà garni : rien à présenter
+      if (etapeVue("decouvrir") || bulleVisible()) return;  // posé, ou déjà à l'écran
+      // ⚠️ ET C'EST ICI QUE LA PREMIÈRE RÉDACTION ÉCHOUAIT, EN SILENCE. Elle
+      // appelait `planifierTour()` UNE FOIS. Or `planifierTour` temporise 700 ms
+      // puis abandonne sans reprise si l'écran n'est pas prêt — et à ~2,1 s le
+      // Fil n'a pas fini de peindre : `#feedPassionsBlock` n'existe pas encore,
+      // `montrerEtape` refuse l'ancrage sur `offsetParent`, et RIEN ne se
+      // reproduit. Chez un visiteur le défaut n'existe pas : `planifierAccueil`
+      // réessaie 40 fois et rappelle `planifierTour` à chaque tour. Un compte
+      // n'avait pas cette boucle — mesuré, la fonction rendait `true` en appel
+      // direct à 5 s pendant que le câblage, lui, ne posait jamais rien.
+      if (ecranActif() !== "feed" || ecranOccupe()) { reessayerReperes(); return; }
+      if (!montrerEtape("decouvrir")) { reessayerReperes(); return; }
+      // Posée. Les deux autres marches ont leurs propres déclencheurs
+      // (`surNavigation` : « Rencontrer » à l'ouverture de l'IRL, « Créer » au
+      // retour sur le Fil) — exactement comme pour un visiteur.
+    } catch (e) {
+      // Corps entier sous `try` qui REPLANIFIE au lieu de conclure : une
+      // exception venue d'un `setTimeout` n'est rattrapée par personne, et
+      // conclure ici tuerait la chaîne en silence.
+      journal("repères compte", e);
+      reessayerReperes();
+    }
+  }
+
   function reprise() {
     _essaisAccueil = 0;
     _essaisHydratation = 0;
+    _essaisReperes = 0;
+    // Après la migration : l'ordre n'a pas d'importance (les deux attendent le
+    // même verdict), mais le délai laisse `boot()` peindre le Fil.
+    setTimeout(planifierReperesCompte, 1400);
     // Compte retrouvé (session, ou onboarding terminé) + préférences d'invité en
     // attente ⇒ migration. Indépendante du drapeau, et sans effet si rien à faire.
     setTimeout(migrerQuandLeCompteAParle, 1200);
