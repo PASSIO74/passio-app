@@ -1204,6 +1204,27 @@ async function ensureCallPushSubscription() {
     // d'un visiteur, `push_insert_own` refuse — et un visiteur n'a personne à
     // qui répondre au téléphone.
     if (typeof _uidEstUnCompte === "function" ? !_uidEstUnCompte() : !MY_UID) return;
+    // ⚠️ UN 403 AVEC UN COMPTE N'EST PAS TOUJOURS UN ENDPOINT VOLÉ, ET LA
+    // REPRISE D'ENDPOINT EST ALORS UN REMÈDE DESTRUCTIF POSÉ SUR LA MAUVAISE
+    // CAUSE. `_uidEstUnCompte()` ne regarde que la FORME de `MY_UID` ; la policy
+    // `push_insert_own` / `push_update_own`, elle, compare à `auth.uid()`. Sous
+    // une identité divergente (appareil repris par un autre compte, `passio_uid`
+    // survivant), l'upsert est refusé QUOI QU'IL ARRIVE : l'endpoint neuf
+    // demandé au navigateur est refusé exactement comme l'ancien. La reprise ne
+    // converge donc jamais — un 403 par session, indéfiniment, pour le MÊME
+    // compte — et elle a jeté au passage, par `unsubscribe()`, le seul
+    // abonnement push valide de l'appareil : le remède laisse l'appareil plus
+    // sourd qu'il ne l'était. `supaMarkRead` et `supaMarkStoryView` consultent
+    // cette autorité depuis #369 ; ce chemin-ci, le SEUL où le 403 a été mesuré
+    // AVEC un compte, ne la consultait pas.
+    // ⚠️ Elle ne répond `true` que sur une divergence PROUVÉE (session absente,
+    // illisible ou sans `user.id` → `false`) : on ne coupe jamais un abonnement
+    // légitime pour une cause supposée. Et on le TRACE — une divergence muette
+    // est indiscernable d'un calme plat.
+    if (typeof _identiteDivergeDeLaSession === "function" && _identiteDivergeDeLaSession(MY_UID)) {
+      try { if (typeof diagLog === "function") diagLog("push_subscription: identite locale != session"); } catch (e) {}
+      return;
+    }
     const reg = await navigator.serviceWorker.ready;
     let sub = await reg.pushManager.getSubscription();
     if (!sub) {
