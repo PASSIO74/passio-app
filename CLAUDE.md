@@ -97,6 +97,25 @@ Wallet, points, étoiles, rangs, Score Passion, leaderboard, quêtes, Passia, bo
 `stripLegacyEconomy()` (app-02) est appelée aux **TROIS** frontières — `loadState`, `_applyUserState` (hydratation serveur) et `_syncableState` (envoi) : l'état legacy se propage dans les DEUX sens. `fmtEventPrice(price)` (app-02) est la **SEULE** fonction autorisée à écrire un prix à l'écran.
 Verrou : `tests/e2e/adr-009-retrait-economie.spec.js` (7). Inventaire complet du retrait et les six pièges du chantier (`renderTopbar` sans garde, classe morte, balise structurelle avalée, libellés « +N pts » en dur) : `docs/ADR-009_RETRAIT_ECONOMIE.md` et `docs/PASSIO_WALLET_PASSIA_REMOVAL_MAP_2026-08-20.md`.
 
+## 🤖 CAPTCHA TURNSTILE À L'INSCRIPTION — le client d'abord, l'interrupteur ensuite (2026-09-13)
+
+SEC-06 du go/no-go : sans captcha, un script vide le quota d'e-mails (150/h Supabase, 300/j Brevo) et rend l'inscription
+indisponible 24 h. Moteur `captcha*` (app-02, avant `switchAuthTab`), conteneur `#authCaptcha` (index.html, juste avant
+`#authSubmitBtn`), sitekey **publique** `PASSIO_TURNSTILE_SITEKEY` (app-08, à côté du CDN). **Sitekey VIDE = inactif** : aucun
+script chargé, aucun jeton envoyé, l'appel part comme avant — c'est ce qui rend le client déployable AVANT l'interrupteur.
+⚠️ **ORDRE D'ALLUMAGE, et il n'est pas négociable** : ① widget Turnstile créé chez Cloudflare (hostname `passio-app.netlify.app`) ;
+② sitekey posée dans app-08 ET déployée ; ③ seulement alors, Supabase → Authentication → Attack Protection → « Enable Captcha
+protection » + secret (ou `PATCH /v1/projects/<ref>/config/auth` : `security_captcha_enabled`, `security_captcha_provider: turnstile`,
+`security_captcha_secret`). **Allumer avant ② casse 100 % des inscriptions** (`captcha_failed` sur signup, `/token` mot de passe,
+`/recover`, `/resend`). ⚠️ **Un jeton ne sert qu'une fois** : `captchaReinitialiser()` après CHAQUE appel, réussi ou non. `captchaJeton()`
+attend jusqu'à 20 s (mode Managed : une case à cocher parfois) et rend `""` sinon — le serveur refuse, `traduireRefusCaptcha` le dit.
+⚠️ **LE BANC DE COMPTES RÉELS N'ENTRE PLUS PAR LE MOT DE PASSE** : `creerCompteE2E` (compte-e2e.js) demande un
+`generate_link` (magiclink, service_role) et la page fait `verifyOtp({ token_hash })` — `/verify` n'est PAS gardé par le captcha,
+`/token?grant_type=password` l'est. Prouvé contre la prod le 2026-09-13 (compte jetable, purgé). Repli sur le mot de passe si l'API
+ne rend pas de jeton. ⚠️ **La CSP admet UN hôte tiers, et un seul** : `https://challenges.cloudflare.com` en `script-src` ET en
+`frame-src` (netlify.toml ET `_headers`) — c'est un service, pas une copie flottante d'une bibliothèque (le verrou d'ouverture-publique
+a été réécrit pour le dire). Verrous : `tests/e2e/captcha-turnstile.spec.js` (9, dont ①/③/④/⑥ éprouvés par RÉINJECTION — jeton
+jamais joint → 2 rouges), faux `window.turnstile` posé AVANT l'app (donc rien ne part vers Cloudflare, et ① le mesure).
 ## 🔑 MOT DE PASSE : 8 CARACTÈRES, ET LES REFUS DU SERVEUR EN FRANÇAIS (2026-09-13)
 
 Le minimum serveur (Supabase → Authentication → Sign In / Providers → **Email** → « Minimum password length ») passe de 6 à **8**,
@@ -107,10 +126,18 @@ un seul nombre, et le `minlength` de chaque champ le suit (verrou ①). Le serve
 guess… » — EM-6 du go/no-go, mesuré deux fois le 2026-09-11) : `traduireRefusMotDePasse(m)` (app-02) est la SEULE table, appelée
 sur les DEUX chemins (inscription ET changement), et rend le message INTACT s'il n'est pas un refus de mot de passe (verrou ⑤).
 ⚠️ **Ordre de bascule** : ce client d'abord (il refuse à 8 quoi que dise le serveur), le réglage serveur ensuite — l'inverse
-aurait affiché l'erreur anglaise à tout inscrit entre 6 et 7 caractères. ⚠️ **« Secure password change » reste OFF** : le
-changement depuis les Paramètres (l.~3692) appelle `updateUser({ password })` sans `reauthenticate()` — l'allumer casserait
-le changement pour toute session de plus de 24 h (`reauthentication_needed`, non traduit). Lot à part. « Require current
-password when updating » exige `current_password` dans `updateUser` (SDK ≥ 2.102, le vendored 2.116 le porte) : même lot.
+aurait affiché l'erreur anglaise à tout inscrit entre 6 et 7 caractères.
+⚠️ **LES DEUX GARDES DE CHANGEMENT SONT ALLUMÉES CÔTÉ SERVEUR (2026-09-13)** — « Require current password when updating » et
+« Secure password change » — et `openChangePassword`/`doChangePassword` (app-02) en sont la contrepartie : le champ « Mot de passe
+actuel » part en `current_password` (champ du SERVEUR : supabase-js transmet l'objet tel quel, quelle que soit sa version), et un
+refus `reauthentication_needed` (session > 24 h) déclenche `supa.auth.reauthenticate()` → champ « Code reçu par e-mail » → renvoi
+avec `nonce`, le mot de passe saisi restant dans le formulaire. **Sans ce client, une session volée suffisait à changer le mot de
+passe et à verrouiller le compte hors de son propriétaire.** ⚠️ Un compte **Google seul** n'a pas de mot de passe : le serveur ne
+lui demande pas l'ancien (`user.HasPassword()` faux) et le champ est MASQUÉ (`app_metadata.providers` sans « email ») — le lui
+demander l'aurait bloqué devant un champ qu'il ne peut pas remplir. ⚠️ La récupération par lien est EXEMPTÉE des deux gardes
+(session `recovery`, GoTrue ≥ 2.189 — prod en 2.196) : ne pas y ajouter de champ. ⚠️ `[hidden]` ne replie rien sur un `label.field`
+(display:block, fiche 19) : la visibilité des deux champs se pilote et se LIT par `style.display`. Verrou :
+`tests/e2e/changement-mdp-securise.spec.js` (12, dont ① et ④ éprouvés par RÉINJECTION — `current_password` retiré → 2 rouges).
 `LICENSE` (racine) dit « Tous droits réservés » — il ne bloque ni la lecture ni le fork d'un dépôt PUBLIC (CGU GitHub D.5) ;
 seul le passage en privé le fait. Verrou : `tests/e2e/mot-de-passe-minimum.spec.js` (7, dont ①/②/④ éprouvés par RÉINJECTION à 6).
 ## 📧 Confirmation d'e-mail ACTIVE depuis le 2026-08-30 (SMTP Brevo)

@@ -3703,34 +3703,81 @@ async function doLogout(intention) {
    via la session active (supa.auth.updateUser). L'envoi d'e-mails EST
    opérationnel depuis le branchement du SMTP (2026-08-30, docs/SETUP_SMTP_AUTH.md) ;
    ce chemin reste le plus court pour qui est déjà connecté — il évite un
-   aller-retour par la boîte mail — et la seule sortie si le mail n'arrive pas. */
+   aller-retour par la boîte mail — et la seule sortie si le mail n'arrive pas.
+
+   ⚠️ DEUX GARDES SERVEUR, ALLUMÉES LE 2026-09-13 (Supabase → Authentication →
+   Sign In / Providers → Email), et ce formulaire est leur contrepartie :
+   · « Require current password when updating » → `current_password` part avec
+     la demande. Sans lui, UNE SESSION VOLÉE SUFFISAIT à changer le mot de passe
+     et à verrouiller le compte hors de son propriétaire. Un compte SANS mot de
+     passe (Google seul) en est exempté par le serveur : le champ est masqué.
+   · « Secure password change » → une session de plus de 24 h reçoit
+     `reauthentication_needed` : on demande alors un code par e-mail
+     (`supa.auth.reauthenticate()`) et on renvoie `nonce` avec la demande.
+   La récupération par lien (`_ouvrirRecuperationMotDePasse`) n'est PAS
+   concernée : une session de récupération est exemptée des deux gardes côté
+   serveur (GoTrue ≥ 2.189 ; prod en 2.196). */
 function openChangePassword() {
   openModal('\
     <div class="modal-handle"></div>\
     <div class="modal-title">Changer mon mot de passe</div>\
-    <p style="font-size:13px;color:var(--muted);margin-bottom:14px;">Choisis un nouveau mot de passe (8 caractères minimum). Tu resteras connecté.</p>\
-    <label class="field"><span>Nouveau mot de passe</span>\
-      <input type="password" class="input" id="cpNew" autocomplete="new-password" minlength="8" placeholder="••••••••"/></label>\
+    <p style="font-size:13px;color:var(--muted);margin-bottom:14px;">Choisis un nouveau mot de passe (' + MOT_DE_PASSE_MIN + ' caractères minimum). Tu resteras connecté.</p>\
+    <label class="field" id="cpCurrentWrap"><span>Mot de passe actuel</span>\
+      <input type="password" class="input" id="cpCurrent" autocomplete="current-password" placeholder="••••••••"/></label>\
+    <label class="field" style="margin-top:8px;"><span>Nouveau mot de passe</span>\
+      <input type="password" class="input" id="cpNew" autocomplete="new-password" minlength="' + MOT_DE_PASSE_MIN + '" placeholder="••••••••"/></label>\
     <label class="field" style="margin-top:8px;"><span>Confirme le mot de passe</span>\
-      <input type="password" class="input" id="cpConfirm" autocomplete="new-password" minlength="8" placeholder="••••••••"/></label>\
+      <input type="password" class="input" id="cpConfirm" autocomplete="new-password" minlength="' + MOT_DE_PASSE_MIN + '" placeholder="••••••••"/></label>\
+    <label class="field" id="cpNonceWrap" style="display:none;margin-top:8px;"><span>Code reçu par e-mail</span>\
+      <input type="text" class="input" id="cpNonce" inputmode="numeric" autocomplete="one-time-code" placeholder="123456"/></label>\
     <div id="cpMsg" style="font-size:12px;min-height:16px;margin:8px 0 2px;"></div>\
     <div style="display:flex;gap:8px;margin-top:10px;">\
       <button class="btn ghost" onclick="closeModal()" style="flex:1;">Annuler</button>\
       <button class="btn primary" id="cpBtn" onclick="doChangePassword()" style="flex:1;">Valider</button>\
     </div>\
   ');
+  _cpMasquerMotDePasseActuelSiAbsent();
+}
+
+// Un compte créé par Google n'a pas de mot de passe : le serveur ne lui demande
+// pas l'ancien (user.HasPassword() faux), et le lui demander à l'écran le
+// bloquerait devant un champ qu'il ne peut pas remplir. La preuve est
+// `app_metadata.providers` de la session : « email » = un mot de passe existe.
+async function _cpMasquerMotDePasseActuelSiAbsent() {
+  try {
+    var gs = await supa.auth.getSession();
+    var u = gs && gs.data && gs.data.session && gs.data.session.user;
+    var providers = (u && u.app_metadata && u.app_metadata.providers) || [];
+    if (Array.isArray(providers) && providers.length && providers.indexOf("email") === -1) {
+      var w = document.getElementById("cpCurrentWrap");
+      if (w) w.style.display = "none";
+    }
+  } catch (e) {}
 }
 
 async function doChangePassword() {
+  var curEl = document.getElementById("cpCurrent");
+  var curWrap = document.getElementById("cpCurrentWrap");
   var nEl = document.getElementById("cpNew");
   var cEl = document.getElementById("cpConfirm");
+  var nonceWrap = document.getElementById("cpNonceWrap");
+  var nonceEl = document.getElementById("cpNonce");
   var msg = document.getElementById("cpMsg");
   var btn = document.getElementById("cpBtn");
+  var cur = curEl ? curEl.value : "";
   var n = nEl ? nEl.value : "";
   var c = cEl ? cEl.value : "";
+  var nonce = nonceEl ? String(nonceEl.value || "").trim() : "";
+  // ⚠️ `[hidden]` ne replie rien sur un `label.field` (display:block en CSS,
+  // fiche 19) : la visibilité se pilote et se lit par `style.display`.
+  var motDePasseActuelDemande = !!(curWrap && curWrap.style.display !== "none");
   function err(t) { if (msg) { msg.style.color = "#e11d48"; msg.textContent = t; } }
+  function info(t) { if (msg) { msg.style.color = "var(--muted)"; msg.textContent = t; } }
+  function rendreBouton() { if (btn) { btn.disabled = false; btn.textContent = "Valider"; } }
+  if (motDePasseActuelDemande && !cur) { err("Saisis ton mot de passe actuel."); return; }
   if (n.length < MOT_DE_PASSE_MIN) { err("Au moins " + MOT_DE_PASSE_MIN + " caractères."); return; }
   if (n !== c) { err("Les mots de passe ne correspondent pas."); return; }
+  if (nonceWrap && nonceWrap.style.display !== "none" && !nonce) { err("Saisis le code reçu par e-mail."); return; }
   if (btn) { btn.disabled = true; btn.textContent = "…"; }
   // S'assurer que la session est bien chargée en mémoire avant updateUser
   // (sinon supabase-js renvoie « Auth session missing »).
@@ -3738,28 +3785,49 @@ async function doChangePassword() {
     var gs = await supa.auth.getSession();
     if (!gs || !gs.data || !gs.data.session) {
       err("Session expirée. Reconnecte-toi puis réessaie.");
-      if (btn) { btn.disabled = false; btn.textContent = "Valider"; }
+      rendreBouton();
       return;
     }
   } catch (e) {}
   try {
-    var r = await supa.auth.updateUser({ password: n });
+    // `current_password` et `nonce` sont des champs du SERVEUR (PUT /auth/v1/user) :
+    // supabase-js transmet l'objet tel quel, quelle que soit sa version.
+    var attrs = { password: n };
+    if (cur) attrs.current_password = cur;
+    if (nonce) attrs.nonce = nonce;
+    var r = await supa.auth.updateUser(attrs);
     if (r && r.error) {
+      var code = r.error.code || "";
       var m = r.error.message || "";
-      // Traduction des messages Supabase courants.
-      if (/different from the old/i.test(m)) m = "Le nouveau mot de passe doit être différent de l'ancien.";
+      if (code === "reauthentication_needed" || /reauthentication/i.test(m)) {
+        // Session de plus de 24 h : le serveur exige une preuve fraîche. On
+        // demande le code (e-mail), on ouvre le champ, et on laisse la personne
+        // valider à nouveau — le mot de passe saisi reste dans le formulaire.
+        var ra = null;
+        try { ra = await supa.auth.reauthenticate(); } catch (e2) { ra = { error: e2 }; }
+        if (ra && ra.error) { err("Impossible d'envoyer le code de vérification. Réessaie dans un instant."); rendreBouton(); return; }
+        if (nonceWrap) nonceWrap.style.display = "";
+        info("Pour ta sécurité, un code à 6 chiffres vient de t'être envoyé par e-mail. Saisis-le puis valide à nouveau.");
+        rendreBouton();
+        try { if (nonceEl) nonceEl.focus(); } catch (e3) {}
+        return;
+      }
+      if (code === "reauthentication_not_valid" || /nonce|not valid/i.test(m)) m = "Code incorrect ou expiré. Reprends celui du dernier e-mail reçu.";
+      else if (code === "current_password_required" || /current password required/i.test(m)) m = "Saisis ton mot de passe actuel.";
+      else if (code === "current_password_invalid" || /current password/i.test(m)) m = "Mot de passe actuel incorrect.";
+      else if (/different from the old/i.test(m)) m = "Le nouveau mot de passe doit être différent de l'ancien.";
       else if (/session/i.test(m)) m = "Session expirée. Reconnecte-toi puis réessaie.";
       else if (traduireRefusMotDePasse(m) !== m) m = traduireRefusMotDePasse(m);
       else if (!m) m = "Impossible de changer le mot de passe.";
       err(m);
-      if (btn) { btn.disabled = false; btn.textContent = "Valider"; }
+      rendreBouton();
       return;
     }
     closeModal();
     toast("Mot de passe mis à jour", "success");
   } catch (e) {
     err("Erreur réseau. Réessaie.");
-    if (btn) { btn.disabled = false; btn.textContent = "Valider"; }
+    rendreBouton();
   }
 }
 window.openChangePassword = openChangePassword;
@@ -3994,6 +4062,119 @@ let _authMode = "signin";
 // fait pendant l'évaluation du script la trouverait en zone morte temporelle.
 let _pendingConfirmEmail = "";
 
+// ── CAPTCHA anti-robots (Cloudflare Turnstile) ──────────────────────────────
+//
+// SEC-06 du go/no-go du 2026-09-11 : sans captcha, un script vide le quota
+// d'e-mails d'authentification (150/h Supabase, 300/j Brevo) et rend
+// l'inscription indisponible jusqu'à 24 h. Le serveur (Supabase → Authentication
+// → Attack Protection → « Enable Captcha protection », secret Turnstile) refuse
+// alors TOUT appel d'auth sans jeton : signup, connexion par mot de passe,
+// mot de passe oublié, renvoi de lien — `captcha_failed`, 400.
+//
+// ⚠️ ORDRE D'ALLUMAGE : ① widget créé chez Cloudflare (hostname
+// passio-app.netlify.app), ② la sitekey PUBLIQUE posée dans
+// `PASSIO_TURNSTILE_SITEKEY` (app-08) et DÉPLOYÉE, ③ seulement alors le
+// secret collé dans Supabase et l'interrupteur allumé. Allumer avant ② casse
+// 100 % des inscriptions. Sitekey vide = captcha inactif côté client : aucun
+// script chargé, aucun jeton envoyé — le client fonctionne AVANT comme APRÈS.
+//
+// ⚠️ UN JETON NE SERT QU'UNE FOIS : après chaque appel d'auth, réussi ou non,
+// `captchaReinitialiser()` en redemande un. ⚠️ Les comptes de test ne passent
+// pas par ici : `tests/e2e/compte-e2e.js` ouvre sa session par
+// generate_link + verifyOtp (`/verify` n'est pas gardé par le captcha).
+function captchaSitekey() {
+  try { if (typeof window.PASSIO_TURNSTILE_SITEKEY === "string") return window.PASSIO_TURNSTILE_SITEKEY; } catch (e) {}
+  return (typeof PASSIO_TURNSTILE_SITEKEY === "string") ? PASSIO_TURNSTILE_SITEKEY : "";
+}
+function captchaActif() { return captchaSitekey().length > 0; }
+
+let _captchaWidget = null;
+let _captchaJetonCourant = "";
+let _captchaScript = null;
+let _captchaAttentes = [];
+const CAPTCHA_SCRIPT_URL = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+const CAPTCHA_ATTENTE_MS = 20000;
+
+function _captchaChargerScript() {
+  if (window.turnstile) return Promise.resolve();
+  if (_captchaScript) return _captchaScript;
+  _captchaScript = new Promise(function (res, rej) {
+    const s = document.createElement("script");
+    s.src = CAPTCHA_SCRIPT_URL;
+    s.async = true;
+    s.defer = true;
+    s.onload = function () { res(); };
+    s.onerror = function () { _captchaScript = null; rej(new Error("captcha: script indisponible")); };
+    document.head.appendChild(s);
+  });
+  return _captchaScript;
+}
+
+function _captchaResoudreAttentes(jeton) {
+  const a = _captchaAttentes;
+  _captchaAttentes = [];
+  a.forEach(function (f) { try { f(jeton); } catch (e) {} });
+}
+
+// Peint (ou remet à zéro) le widget dans #authCaptcha. Rend true si un widget
+// est en place. Sans sitekey : ne charge rien, ne montre rien.
+async function captchaPreparer() {
+  if (!captchaActif()) return false;
+  const box = document.getElementById("authCaptcha");
+  if (!box) return false;
+  try { await _captchaChargerScript(); } catch (e) { return false; }
+  if (!window.turnstile) return false;
+  box.style.display = "";
+  if (_captchaWidget !== null) {
+    try { turnstile.reset(_captchaWidget); } catch (e) {}
+    _captchaJetonCourant = "";
+    return true;
+  }
+  try {
+    _captchaWidget = turnstile.render(box, {
+      sitekey: captchaSitekey(),
+      language: "fr",
+      callback: function (t) { _captchaJetonCourant = t; _captchaResoudreAttentes(t); },
+      "expired-callback": function () { _captchaJetonCourant = ""; },
+      "error-callback": function () { _captchaJetonCourant = ""; },
+    });
+  } catch (e) { _captchaWidget = null; return false; }
+  return true;
+}
+
+// Le jeton à joindre à un appel d'auth : `undefined` si le captcha est
+// inactif (l'appel part comme avant), sinon le jeton — en attendant jusqu'à
+// 20 s qu'il arrive (mode « Managed » : la personne a parfois une case à
+// cocher). Chaîne vide = pas de jeton dans les temps ; le serveur refusera
+// et `traduireRefusCaptcha` le dira en français.
+async function captchaJeton() {
+  if (!captchaActif()) return undefined;
+  if (_captchaJetonCourant) return _captchaJetonCourant;
+  if (_captchaWidget === null) await captchaPreparer();
+  if (_captchaJetonCourant) return _captchaJetonCourant;
+  if (_captchaWidget === null) return "";
+  return new Promise(function (res) {
+    let fin = null;
+    const minuteur = setTimeout(function () {
+      _captchaAttentes = _captchaAttentes.filter(function (f) { return f !== fin; });
+      res("");
+    }, CAPTCHA_ATTENTE_MS);
+    fin = function (jeton) { clearTimeout(minuteur); res(jeton); };
+    _captchaAttentes.push(fin);
+  });
+}
+
+function captchaReinitialiser() {
+  _captchaJetonCourant = "";
+  if (_captchaWidget !== null && window.turnstile) { try { turnstile.reset(_captchaWidget); } catch (e) {} }
+}
+
+function traduireRefusCaptcha(m) {
+  m = String(m || "");
+  if (/captcha/i.test(m)) return "La vérification anti-robots a échoué. Recharge la page puis réessaie.";
+  return m;
+}
+
 function switchAuthTab(mode) {
   _authMode = mode;
   document.getElementById("authTabSignin").classList.toggle("active", mode === "signin");
@@ -4021,6 +4202,8 @@ function switchAuthTab(mode) {
   // changement d'onglet. Les appelants qui basculent PUIS proposent le renvoi
   // (onbDoAuth) doivent donc appeler _showResendConfirmation APRÈS switchAuthTab.
   _showResendConfirmation("");
+  // Le widget anti-robots se peint (ou se remet à zéro) à chaque affichage de l'écran.
+  try { captchaPreparer(); } catch (e) {}
 }
 
 // ── Mot de passe oublié : envoie un e-mail de réinitialisation Supabase ──
@@ -4031,8 +4214,10 @@ async function onbForgotPassword() {
     return;
   }
   try {
-    const { error } = await supa.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + window.location.pathname });
-    if (error) { _showAuthMsg(error.message || "Échec de l'envoi.", "error"); return; }
+    const captchaToken = await captchaJeton();
+    const { error } = await supa.auth.resetPasswordForEmail(email, Object.assign({ redirectTo: window.location.origin + window.location.pathname }, captchaToken !== undefined ? { captchaToken } : {}));
+    captchaReinitialiser();
+    if (error) { _showAuthMsg(traduireRefusCaptcha(error.message || "Échec de l'envoi."), "error"); return; }
     _showAuthMsg("📧 E-mail de réinitialisation envoyé. Vérifie ta boîte (et les spams).", "success");
   } catch (e) {
     _showAuthMsg("Erreur réseau. Vérifie ta connexion.", "error");
@@ -4071,9 +4256,11 @@ async function onbResendConfirmation() {
       _showAuthMsg("Renvoi indisponible pour l'instant. Réessaie dans un moment.", "error");
       return;
     }
-    const { error } = await supa.auth.resend({ type: "signup", email });
+    const captchaToken = await captchaJeton();
+    const { error } = await supa.auth.resend(Object.assign({ type: "signup", email }, captchaToken !== undefined ? { options: { captchaToken } } : {}));
+    captchaReinitialiser();
     if (error) {
-      let m = error.message || "Échec de l'envoi.";
+      let m = traduireRefusCaptcha(error.message || "Échec de l'envoi.");
       // Supabase impose un délai minimal entre deux envois (anti-abus) : le
       // message brut est en anglais et cite des secondes, on le rend lisible.
       if (/security purposes|rate limit|too many/i.test(m)) m = "Un e-mail vient déjà d'être envoyé. Patiente une minute avant de réessayer.";
@@ -4348,8 +4535,10 @@ async function onbDoAuth() {
 
   try {
     let result;
+    // Jeton anti-robots : `undefined` tant que le captcha est inactif (appel inchangé).
+    const captchaToken = await captchaJeton();
     if (_authMode === "signin") {
-      result = await supa.auth.signInWithPassword({ email, password: pwd });
+      result = await supa.auth.signInWithPassword(Object.assign({ email, password: pwd }, captchaToken !== undefined ? { options: { captchaToken } } : {}));
     } else {
       // ⚠️ LE NUMÉRO DE TÉLÉPHONE A ÉTÉ RETIRÉ DE L'INSCRIPTION (2026-09-10).
       // Il était OBLIGATOIRE — 8 à 15 chiffres, sans quoi l'inscription était
@@ -4383,12 +4572,12 @@ async function onbDoAuth() {
       // survit à la confirmation d'e-mail, au changement d'appareil et à la
       // purge locale. La VERSION est aussi importante que la date — sans elle,
       // « a accepté » ne dit pas QUOI.
-      result = await supa.auth.signUp({ email, password: pwd, options: { data: {
+      result = await supa.auth.signUp({ email, password: pwd, options: Object.assign({ data: {
         name: nom, display_name: nom,
         cgu_version: PASSIO_CGU_VERSION,
         cgu_accepted_at: _cguAccepteA,
         confidentialite_version: PASSIO_CONFIDENTIALITE_VERSION,
-      } } });
+      } }, captchaToken !== undefined ? { captchaToken } : {}) });
       // Copie locale pour le profil et les prochaines synchros.
       try {
         if (typeof state !== "undefined") {
@@ -4407,9 +4596,11 @@ async function onbDoAuth() {
         }
       } catch (e) {}
     }
+    // Le jeton est consommé par l'appel, réussi ou non.
+    captchaReinitialiser();
     const { data, error } = result;
     if (error) {
-      let msg = error.message;
+      let msg = traduireRefusCaptcha(error.message);
       if (msg.includes("Invalid login")) msg = "E-mail ou mot de passe incorrect.";
       msg = traduireRefusMotDePasse(msg);
       if (msg.includes("already registered")) msg = "Cet e-mail est déjà utilisé. Connecte-toi.";

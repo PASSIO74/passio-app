@@ -90,11 +90,15 @@ test.describe("② bibliothèques auto-hébergées", () => {
     }
   });
 
-  test("la CSP n'autorise plus aucun hôte de scripts tiers, et le build copie js/vendor", async () => {
+  test("la CSP n'autorise aucun CDN de scripts tiers (un seul hôte : le captcha Turnstile), et le build copie js/vendor", async () => {
     const toml = lire("netlify.toml");
     const csp = (toml.match(/Content-Security-Policy = "([^"]+)"/) || [])[1] || "";
     const scriptSrc = (csp.match(/script-src ([^;]+);/) || [])[1] || "";
-    expect(scriptSrc.trim()).toBe("'self' 'unsafe-inline'");
+    // challenges.cloudflare.com est un SERVICE (widget anti-robots, SEC-06),
+    // pas une copie flottante d'une de nos bibliothèques : il ne peut pas être
+    // auto-hébergé. C'est le seul hôte admis, et captcha-turnstile.spec.js ⑧
+    // exige qu'il le reste.
+    expect(scriptSrc.trim()).toBe("'self' 'unsafe-inline' https://challenges.cloudflare.com");
     expect(csp).not.toMatch(/jsdelivr|unpkg/);
     expect(lire("scripts/build.js")).toMatch(/js", "vendor"/);
   });
