@@ -3649,34 +3649,81 @@ async function doLogout(intention) {
    via la session active (supa.auth.updateUser). L'envoi d'e-mails EST
    opérationnel depuis le branchement du SMTP (2026-08-30, docs/SETUP_SMTP_AUTH.md) ;
    ce chemin reste le plus court pour qui est déjà connecté — il évite un
-   aller-retour par la boîte mail — et la seule sortie si le mail n'arrive pas. */
+   aller-retour par la boîte mail — et la seule sortie si le mail n'arrive pas.
+
+   ⚠️ DEUX GARDES SERVEUR, ALLUMÉES LE 2026-09-13 (Supabase → Authentication →
+   Sign In / Providers → Email), et ce formulaire est leur contrepartie :
+   · « Require current password when updating » → `current_password` part avec
+     la demande. Sans lui, UNE SESSION VOLÉE SUFFISAIT à changer le mot de passe
+     et à verrouiller le compte hors de son propriétaire. Un compte SANS mot de
+     passe (Google seul) en est exempté par le serveur : le champ est masqué.
+   · « Secure password change » → une session de plus de 24 h reçoit
+     `reauthentication_needed` : on demande alors un code par e-mail
+     (`supa.auth.reauthenticate()`) et on renvoie `nonce` avec la demande.
+   La récupération par lien (`_ouvrirRecuperationMotDePasse`) n'est PAS
+   concernée : une session de récupération est exemptée des deux gardes côté
+   serveur (GoTrue ≥ 2.189 ; prod en 2.196). */
 function openChangePassword() {
   openModal('\
     <div class="modal-handle"></div>\
     <div class="modal-title">Changer mon mot de passe</div>\
-    <p style="font-size:13px;color:var(--muted);margin-bottom:14px;">Choisis un nouveau mot de passe (8 caractères minimum). Tu resteras connecté.</p>\
-    <label class="field"><span>Nouveau mot de passe</span>\
-      <input type="password" class="input" id="cpNew" autocomplete="new-password" minlength="8" placeholder="••••••••"/></label>\
+    <p style="font-size:13px;color:var(--muted);margin-bottom:14px;">Choisis un nouveau mot de passe (' + MOT_DE_PASSE_MIN + ' caractères minimum). Tu resteras connecté.</p>\
+    <label class="field" id="cpCurrentWrap"><span>Mot de passe actuel</span>\
+      <input type="password" class="input" id="cpCurrent" autocomplete="current-password" placeholder="••••••••"/></label>\
+    <label class="field" style="margin-top:8px;"><span>Nouveau mot de passe</span>\
+      <input type="password" class="input" id="cpNew" autocomplete="new-password" minlength="' + MOT_DE_PASSE_MIN + '" placeholder="••••••••"/></label>\
     <label class="field" style="margin-top:8px;"><span>Confirme le mot de passe</span>\
-      <input type="password" class="input" id="cpConfirm" autocomplete="new-password" minlength="8" placeholder="••••••••"/></label>\
+      <input type="password" class="input" id="cpConfirm" autocomplete="new-password" minlength="' + MOT_DE_PASSE_MIN + '" placeholder="••••••••"/></label>\
+    <label class="field" id="cpNonceWrap" style="display:none;margin-top:8px;"><span>Code reçu par e-mail</span>\
+      <input type="text" class="input" id="cpNonce" inputmode="numeric" autocomplete="one-time-code" placeholder="123456"/></label>\
     <div id="cpMsg" style="font-size:12px;min-height:16px;margin:8px 0 2px;"></div>\
     <div style="display:flex;gap:8px;margin-top:10px;">\
       <button class="btn ghost" onclick="closeModal()" style="flex:1;">Annuler</button>\
       <button class="btn primary" id="cpBtn" onclick="doChangePassword()" style="flex:1;">Valider</button>\
     </div>\
   ');
+  _cpMasquerMotDePasseActuelSiAbsent();
+}
+
+// Un compte créé par Google n'a pas de mot de passe : le serveur ne lui demande
+// pas l'ancien (user.HasPassword() faux), et le lui demander à l'écran le
+// bloquerait devant un champ qu'il ne peut pas remplir. La preuve est
+// `app_metadata.providers` de la session : « email » = un mot de passe existe.
+async function _cpMasquerMotDePasseActuelSiAbsent() {
+  try {
+    var gs = await supa.auth.getSession();
+    var u = gs && gs.data && gs.data.session && gs.data.session.user;
+    var providers = (u && u.app_metadata && u.app_metadata.providers) || [];
+    if (Array.isArray(providers) && providers.length && providers.indexOf("email") === -1) {
+      var w = document.getElementById("cpCurrentWrap");
+      if (w) w.style.display = "none";
+    }
+  } catch (e) {}
 }
 
 async function doChangePassword() {
+  var curEl = document.getElementById("cpCurrent");
+  var curWrap = document.getElementById("cpCurrentWrap");
   var nEl = document.getElementById("cpNew");
   var cEl = document.getElementById("cpConfirm");
+  var nonceWrap = document.getElementById("cpNonceWrap");
+  var nonceEl = document.getElementById("cpNonce");
   var msg = document.getElementById("cpMsg");
   var btn = document.getElementById("cpBtn");
+  var cur = curEl ? curEl.value : "";
   var n = nEl ? nEl.value : "";
   var c = cEl ? cEl.value : "";
+  var nonce = nonceEl ? String(nonceEl.value || "").trim() : "";
+  // ⚠️ `[hidden]` ne replie rien sur un `label.field` (display:block en CSS,
+  // fiche 19) : la visibilité se pilote et se lit par `style.display`.
+  var motDePasseActuelDemande = !!(curWrap && curWrap.style.display !== "none");
   function err(t) { if (msg) { msg.style.color = "#e11d48"; msg.textContent = t; } }
+  function info(t) { if (msg) { msg.style.color = "var(--muted)"; msg.textContent = t; } }
+  function rendreBouton() { if (btn) { btn.disabled = false; btn.textContent = "Valider"; } }
+  if (motDePasseActuelDemande && !cur) { err("Saisis ton mot de passe actuel."); return; }
   if (n.length < MOT_DE_PASSE_MIN) { err("Au moins " + MOT_DE_PASSE_MIN + " caractères."); return; }
   if (n !== c) { err("Les mots de passe ne correspondent pas."); return; }
+  if (nonceWrap && nonceWrap.style.display !== "none" && !nonce) { err("Saisis le code reçu par e-mail."); return; }
   if (btn) { btn.disabled = true; btn.textContent = "…"; }
   // S'assurer que la session est bien chargée en mémoire avant updateUser
   // (sinon supabase-js renvoie « Auth session missing »).
@@ -3684,28 +3731,49 @@ async function doChangePassword() {
     var gs = await supa.auth.getSession();
     if (!gs || !gs.data || !gs.data.session) {
       err("Session expirée. Reconnecte-toi puis réessaie.");
-      if (btn) { btn.disabled = false; btn.textContent = "Valider"; }
+      rendreBouton();
       return;
     }
   } catch (e) {}
   try {
-    var r = await supa.auth.updateUser({ password: n });
+    // `current_password` et `nonce` sont des champs du SERVEUR (PUT /auth/v1/user) :
+    // supabase-js transmet l'objet tel quel, quelle que soit sa version.
+    var attrs = { password: n };
+    if (cur) attrs.current_password = cur;
+    if (nonce) attrs.nonce = nonce;
+    var r = await supa.auth.updateUser(attrs);
     if (r && r.error) {
+      var code = r.error.code || "";
       var m = r.error.message || "";
-      // Traduction des messages Supabase courants.
-      if (/different from the old/i.test(m)) m = "Le nouveau mot de passe doit être différent de l'ancien.";
+      if (code === "reauthentication_needed" || /reauthentication/i.test(m)) {
+        // Session de plus de 24 h : le serveur exige une preuve fraîche. On
+        // demande le code (e-mail), on ouvre le champ, et on laisse la personne
+        // valider à nouveau — le mot de passe saisi reste dans le formulaire.
+        var ra = null;
+        try { ra = await supa.auth.reauthenticate(); } catch (e2) { ra = { error: e2 }; }
+        if (ra && ra.error) { err("Impossible d'envoyer le code de vérification. Réessaie dans un instant."); rendreBouton(); return; }
+        if (nonceWrap) nonceWrap.style.display = "";
+        info("Pour ta sécurité, un code à 6 chiffres vient de t'être envoyé par e-mail. Saisis-le puis valide à nouveau.");
+        rendreBouton();
+        try { if (nonceEl) nonceEl.focus(); } catch (e3) {}
+        return;
+      }
+      if (code === "reauthentication_not_valid" || /nonce|not valid/i.test(m)) m = "Code incorrect ou expiré. Reprends celui du dernier e-mail reçu.";
+      else if (code === "current_password_required" || /current password required/i.test(m)) m = "Saisis ton mot de passe actuel.";
+      else if (code === "current_password_invalid" || /current password/i.test(m)) m = "Mot de passe actuel incorrect.";
+      else if (/different from the old/i.test(m)) m = "Le nouveau mot de passe doit être différent de l'ancien.";
       else if (/session/i.test(m)) m = "Session expirée. Reconnecte-toi puis réessaie.";
       else if (traduireRefusMotDePasse(m) !== m) m = traduireRefusMotDePasse(m);
       else if (!m) m = "Impossible de changer le mot de passe.";
       err(m);
-      if (btn) { btn.disabled = false; btn.textContent = "Valider"; }
+      rendreBouton();
       return;
     }
     closeModal();
     toast("Mot de passe mis à jour", "success");
   } catch (e) {
     err("Erreur réseau. Réessaie.");
-    if (btn) { btn.disabled = false; btn.textContent = "Valider"; }
+    rendreBouton();
   }
 }
 window.openChangePassword = openChangePassword;
