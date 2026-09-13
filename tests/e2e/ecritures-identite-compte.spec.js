@@ -179,11 +179,22 @@ test.describe("écritures Supabase : l'identité écrite est celle de la session
     expect(diverge.includes("!!(suid && uid &&"),
       "elle exige les DEUX identités avant de conclure").toBe(true);
 
-    for (const nom of ["supaEnsureProfileExists", "supaMarkRead", "supaMarkStoryView"]) {
+    for (const nom of ["supaMarkRead", "supaMarkStoryView"]) {
       const corps = corpsDeFonction(app08, nom);
       expect(corps, `${nom} existe toujours`).not.toBe("");
       expect(corps.includes("_compteAuthReel("), `${nom} passe par l'autorité de compte`).toBe(true);
     }
+    // ⚠️ LA GARDE DE `profiles` N'EST PAS DANS `supaEnsureProfileExists`, ET C'EST
+    // VOULU : cette fonction a seize appelants, presque tous déclenchés par un
+    // geste d'un compte réel, et son contrat (« la ligne existe ») est exigé par
+    // dix cas de `hotfix-profil-passion-custom`. Le défaut mesuré ne vient que
+    // d'UN appelant — le démarrage — donc c'est LUI qui est gardé. On le mesure
+    // à la source, sur le seul endroit du fichier qui crée la ligne sans qu'un
+    // geste l'ait demandé.
+    expect(app08.includes("} else if (_compteAuthReel()) {"),
+      "le démarrage ne crée la ligne profiles que pour un compte").toBe(true);
+    expect(app08.includes("catch(e) { if (_compteAuthReel()) { try { await supaEnsureProfileExists(); }"),
+      "et sa branche d'échec est gardée de la même façon — sinon le refus repart par là").toBe(true);
     // La forme EXACTE du défaut : une garde qui se contente de « MY_UID est posé ».
     expect(corpsDeFonction(app08, "supaMarkRead").includes("!MY_UID"),
       "supaMarkRead ne se contente plus de la présence de MY_UID").toBe(false);
@@ -200,16 +211,19 @@ test.describe("écritures Supabase : l'identité écrite est celle de la session
       "le drapeau n'est posé qu'APRÈS le verdict").toBe(true);
   });
 
-  test("① sans compte — supaEnsureProfileExists ne touche pas profiles", async ({ page }) => {
+  test("① sans compte — le DÉMARRAGE ne crée pas de ligne profiles", async ({ page }) => {
+    // ⚠️ On exerce `supaInit()`, pas `supaEnsureProfileExists()` : le défaut n'est
+    // pas dans la fonction (son contrat reste « crée la ligne de MY_UID ») mais
+    // dans l'appelant qui la déclenche sans qu'un geste l'ait demandée. Un cas qui
+    // appellerait la fonction à la main resterait vert le jour où la garde
+    // disparaîtrait du démarrage — le défaut exact vécu avec `_notifierMessage`.
     await banc(page, {});
-    const r = await page.evaluate(async () => {
-      const uid = MY_UID;
-      const ok = await supaEnsureProfileExists();
-      return { uid, ok };
-    });
-    expect(r.uid, "le banc part bien d'un placeholder").toMatch(/^u_/);
-    expect(r.ok, "la fonction refuse, elle ne prétend pas avoir créé").toBe(false);
-    expect(await ops(page, "profiles"), "aucune écriture sur profiles").toEqual([]);
+    const uid = await page.evaluate(() => MY_UID);
+    expect(uid, "le banc part bien d'un placeholder").toMatch(/^u_/);
+    await page.evaluate(async () => { try { await supaInit(); } catch (e) {} });
+    await page.waitForTimeout(400);
+    const ecritures = (await ops(page, "profiles")).filter((o) => o.op !== "select");
+    expect(ecritures, "aucune écriture sur profiles au démarrage d'un visiteur").toEqual([]);
   });
 
   test("② sans compte — ni conv_reads, ni story_views", async ({ page }) => {
@@ -273,8 +287,9 @@ test.describe("écritures Supabase : l'identité écrite est celle de la session
     await page.evaluate(async () => {
       await supaMarkRead("conv_banc");
       await supaMarkStoryView("s1");
-      await supaEnsureProfileExists();
+      try { await supaInit(); } catch (e) {}
     });
+    await page.waitForTimeout(400);
     const reads = await ops(page, "conv_reads");
     const vues = await ops(page, "story_views");
     const profils = await ops(page, "profiles");
@@ -282,8 +297,9 @@ test.describe("écritures Supabase : l'identité écrite est celle de la session
     expect(reads[0].payload.user_id).toBe(UID_COMPTE);
     expect(vues.length, "vue de story").toBe(1);
     expect(vues[0].payload.user_id).toBe(UID_COMPTE);
-    expect(profils.length, "création du profil tentée").toBeGreaterThanOrEqual(1);
-    expect(profils[0].payload.id).toBe(UID_COMPTE);
+    const creations = profils.filter((o) => o.op === "insert");
+    expect(creations.length, "le démarrage d'un compte crée bien sa ligne").toBeGreaterThanOrEqual(1);
+    expect(creations[0].payload.id, "et elle porte son uuid").toBe(UID_COMPTE);
   });
 
   test("⑦ push refusé une fois — l'endpoint est repris, l'upsert réussit", async ({ page }) => {

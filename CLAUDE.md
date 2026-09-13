@@ -294,10 +294,26 @@ Suite directe de #367, et **son second étage**. Mesuré en production le jour m
 ⚠️ **IL Y A DEUX CAUSES, ET C'EST LE CODE HTTP QUI LES SÉPARE — jamais le libellé.**
 **401 avec 0 compte** = rôle anonyme : le placeholder `u_<aléatoire>` de
 `getMyUserId()` passait la garde `!MY_UID`, exactement comme pour `user_state`.
-Gardes posées sur `supaEnsureProfileExists`, `supaMarkRead` et `supaMarkStoryView`
-(`_compteAuthReel()`, l'autorité déjà présente dans app-08 — on n'en a pas créé
-une troisième). **403 AVEC un compte** = le jeton est joint et valide, donc la
-session existe : ce n'est pas elle qui manque.
+Gardes posées sur `supaMarkRead`, `supaMarkStoryView` et — pour `profiles` — sur le
+**démarrage** (`_compteAuthReel()`, l'autorité déjà présente dans app-08 : on n'en a
+pas créé une troisième). **403 AVEC un compte** = le jeton est joint et valide, donc
+la session existe : ce n'est pas elle qui manque.
+
+⚠️ **ET LA GARDE DE `profiles` N'EST PAS DANS `supaEnsureProfileExists` — un run
+rouge a payé cette leçon.** Posée là, elle faisait tomber **quinze cas** :
+`hotfix-profil-passion-custom` en ENTIER (10), `profil-trois-autorites` (4) et
+`multi-passion-integrite` ⑧ — dont l'objet est précisément « la ligne est créée
+quand même », dans les états dégradés. Cette fonction a **seize appelants**,
+presque tous déclenchés par un geste d'un compte réel, et son contrat est « la
+ligne de `MY_UID` existe ». **Quand une garde fait tomber la suite DÉDIÉE à la
+fonction gardée, ce n'est pas la suite qui a tort : la garde est trop haut.** Le
+défaut mesuré ne vient que d'UN appelant — le bloc « pas de profil serveur encore »
+de `supaInit` — donc c'est lui qui est gardé, **branche `catch` comprise** (sinon le
+refus repart par là, et c'est invisible). Corollaire de banc : le verrou exerce
+`supaInit()`, jamais la fonction à la main — appelée directement, elle resterait
+verte le jour où la garde disparaîtrait du démarrage (défaut `_notifierMessage`).
+⚠️ Le `SELECT` qui précède cette création n'est PAS un défaut et reste non gardé :
+une lecture sans compte rend 200 vide (même raison que `supaLoadUserState`, #367).
 
 ⚠️ **UN UUID DE LA BONNE FORME PEUT ÊTRE CELUI DU MAUVAIS COMPTE.** `_compteAuthReel`
 et `_uidEstUnCompte` ne regardent que la FORME ; les policies comparent à

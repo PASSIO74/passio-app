@@ -3291,18 +3291,16 @@ window._marquerProfilAssure = _marquerProfilAssure;
 
 // Garantit l'existence de la ligne, sans jamais modifier une ligne existante.
 async function supaEnsureProfileExists() {
-  // ⚠️ `MY_UID` NE PROUVE PAS QU'UN COMPTE EXISTE — mesuré en production :
-  // 102 × POST /rest/v1/profiles → 401 sur 101 sessions, **0 uuid d'auth**,
-  // dernier refus le 2026-09-13 à 06:03, à la MÊME minute que les 401 de
-  // `user_state` que #367 vient de fermer. Une seule cause pour les deux :
-  // `getMyUserId()` fabrique un `u_<aléatoire>` pour tout visiteur, et la garde
-  // `!uid` le laissait passer — chaque démarrage sans compte tentait donc de
-  // créer une ligne `profiles` sous le rôle anonyme, que les policies `*_own`
-  // refusent. Aucune conséquence à l'écran (un visiteur n'a pas de profil
-  // serveur), mais du bruit pur dans le tableau de bord qui sert à voir les
-  // vrais défauts — et un bruit qui masquait sa propre famille.
+  // ⚠️ CETTE FONCTION N'EST PAS LA PORTE DU VISITEUR, et l'y avoir cru a coûté un
+  // run rouge. Son contrat est « la ligne `profiles` de `MY_UID` existe », elle a
+  // SEIZE appelants — presque tous déclenchés par un geste d'un compte réel — et
+  // dix cas de `hotfix-profil-passion-custom` exigent précisément qu'elle crée la
+  // ligne dans les états dégradés. Y poser la garde de compte refusait donc des
+  // écritures légitimes pour fermer un défaut qui, lui, vient d'UN seul appelant :
+  // le démarrage. La garde vit dans `supaInit`, à la porte que franchit un
+  // visiteur sans que personne l'ait demandé.
   const uid = (typeof MY_UID !== "undefined") ? MY_UID : null;
-  if (!_compteAuthReel()) return false;
+  if (!uid) return false;
   // Changement d'utilisateur : le cache d'un autre UID ne vaut rien ici. Le
   // fait de CLÉER sur l'uid est la réinitialisation — pas besoin d'un signal.
   if (_profilAssureUid === uid) return true;
@@ -6643,11 +6641,18 @@ async function supaInit() {
         try { saveState(); } catch(e) {}
         try { if (typeof renderTopbar === "function") renderTopbar(); } catch(e) {}
         try { if (typeof renderMainProfile === "function") renderMainProfile(); } catch(e) {}
-      } else {
+      } else if (_compteAuthReel()) {
         // Pas de profil serveur encore \u2192 publier le profil local (cr\u00e9ation).
+        // ⚠️ ET SEULEMENT POUR UN COMPTE. Mesuré en production : 104 × POST
+        // /rest/v1/profiles → 401 sur 101 sessions et **0 uuid d'auth**, dernier
+        // refus le 2026-09-13 à 07:16 — à la même minute que les 401 de
+        // `user_state` que #367 a fermés, et pour la même cause : `getMyUserId()`
+        // fabrique un `u_<aléatoire>` pour tout visiteur. Le SELECT juste au-dessus
+        // n'est PAS un défaut (une lecture sans compte rend 200 vide) ; c'est cette
+        // création-ci qui frappait une porte fermée exprès, à chaque démarrage.
         await supaEnsureProfileExists();
       }
-    } catch(e) { try { await supaEnsureProfileExists(); } catch(_e) {} }
+    } catch(e) { if (_compteAuthReel()) { try { await supaEnsureProfileExists(); } catch(_e) {} } }
 
     // 1. CHARGER LES POSTS au d\u00e9marrage
     console.log("\ud83d\udce5 [INIT] Chargement des posts Supabase");
