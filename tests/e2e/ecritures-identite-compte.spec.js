@@ -50,6 +50,17 @@
 //   ⑦ push refusé une fois → endpoint reprisIS, upsert réussi, `_callPushReady` vrai ;
 //   ⑧ push refusé deux fois → `_callPushReady` reste FAUX (plus de mensonge),
 //      et la reprise n'est pas rejouée en boucle.
+//
+// ⚠️ ⑨ EST LA SUITE DU 13/09 (#370), ET ELLE CORRIGE UNE PHRASE DE CE FICHIER.
+// « Pour `push_subscriptions`, la cause du 403 n'est pas l'identité » décrivait
+// UNE cause, pas toutes : la reprise d'endpoint referme le cas de l'appareil
+// partagé, et ne peut RIEN quand `MY_UID` n'est pas `auth.uid()` — l'endpoint
+// neuf est refusé exactement comme l'ancien, un 403 par session pour le MÊME
+// compte, indéfiniment. Pire : `unsubscribe()` a jeté au passage le seul
+// abonnement push valide de l'appareil. Un remède posé sans discriminer la
+// cause ne se contente pas d'être inutile, il retire ce qui marchait.
+//   ⑨ identité PROUVÉE divergente → aucun upsert push, et le navigateur GARDE
+//      son abonnement.
 // ═══════════════════════════════════════════════════════════════════════════
 const fs = require("fs");
 const path = require("path");
@@ -209,6 +220,11 @@ test.describe("écritures Supabase : l'identité écrite est celle de la session
     const avantDrapeau = push.slice(0, push.indexOf("window._callPushReady = true"));
     expect(avantDrapeau.includes("if (r && r.error)"),
       "le drapeau n'est posé qu'APRÈS le verdict").toBe(true);
+    // #370 — le push consulte la MÊME autorité d'identité que les deux autres
+    // points d'écriture. Mesuré à la source : une garde posée ailleurs (dans un
+    // appelant, dans une copie) ne protégerait pas ce chemin-ci.
+    expect(push.includes("_identiteDivergeDeLaSession("),
+      "le push consulte l'autorité d'identité, comme conv_reads et story_views").toBe(true);
   });
 
   test("① sans compte — le DÉMARRAGE ne crée pas de ligne profiles", async ({ page }) => {
@@ -335,5 +351,29 @@ test.describe("écritures Supabase : l'identité écrite est celle de la session
     expect(r.push.subscribe, "une seule reprise, jamais deux").toBe(1);
     expect(r.total, "le second appel retente, mais sans reprendre l'endpoint").toBe(3);
     expect(r.pret, "et surtout : le drapeau ne ment pas").toBe(false);
+  });
+
+  test("⑨ identité prouvée divergente — aucun upsert push, et l'abonnement du navigateur survit", async ({ page }) => {
+    await banc(page, { uidLocal: UID_COMPTE, uidSession: UID_AUTRE });
+    await poserFauxPush(page);
+    const r = await page.evaluate(async () => {
+      // Le serveur refuserait les DEUX tentatives : sous une identité qui n'est
+      // pas la sienne, l'endpoint neuf est refusé comme l'ancien. C'est très
+      // exactement ce que le code d'avant allait chercher — et il y laissait
+      // l'abonnement de l'appareil.
+      const refus = { error: { code: "42501", message: "row-level security" } };
+      window.__reponses.push_subscriptions = [refus, refus];
+      const diverge = _identiteDivergeDeLaSession(MY_UID);
+      await ensureCallPushSubscription();
+      return { diverge, push: window.__push, pret: !!window._callPushReady, uid: MY_UID };
+    });
+    expect(r.uid, "le client se croit ce compte").toBe(UID_COMPTE);
+    expect(r.diverge, "mais la session en nomme un autre, et on le sait").toBe(true);
+    expect(await ops(page, "push_subscriptions"),
+      "donc aucun appel ne part : c'est le 403 que la sentinelle comptait").toEqual([]);
+    expect(r.push.unsubscribe,
+      "et surtout l'abonnement valide de l'appareil n'est PAS jeté pour rien").toBe(0);
+    expect(r.push.subscribe, "aucun endpoint neuf n'est demandé").toBe(0);
+    expect(r.pret, "le drapeau ne ment pas davantage").toBe(false);
   });
 });
