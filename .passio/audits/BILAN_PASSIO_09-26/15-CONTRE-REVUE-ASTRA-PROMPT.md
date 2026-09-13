@@ -5,7 +5,7 @@
 > la PR #280 est **fusionnée** depuis le 2026-09-09 (le dossier est sur `main`) ; et il fait
 > juger un produit **payant** alors que PASSIO est commercialisée **gratuitement**. Entre
 > les deux dates : 109 commits, 75 PR, 11 migrations appliquées en production.
-> **Le prompt à utiliser est `16-CONTRE-REVUE-ASTRA-REPRISE-2026-09-13.md`.**
+> **Le prompt à coller est `17-PROMPT-ASTRA-2026-09-13.md` ; le dossier qu'il ouvre est la fiche 16.**
 > Celui-ci est conservé pour l'histoire : il dit ce qu'on pensait devoir vérifier le 05/09.
 
 > Bloc à coller tel quel dans Codex. Il fixe l'ordre de mission de la contre-revue, la version exacte à analyser, l'emplacement des rapports et des preuves, le message final de Claude Code, les huit P0 et les priorités de vérification.

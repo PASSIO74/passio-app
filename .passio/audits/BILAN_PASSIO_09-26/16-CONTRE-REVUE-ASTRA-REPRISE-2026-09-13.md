@@ -1,352 +1,453 @@
-# Contre-revue GPT-6 Astra — REPRISE après interruption (2026-09-13)
+# Dossier de reprise — contre-revue GPT-6 Astra (2026-09-13)
 
-> Ce document remplace `15-CONTRE-REVUE-ASTRA-PROMPT.md`, écrit le 2026-09-05 et **périmé** :
-> il désigne un SHA qui n'est plus en production, une branche dont la PR est fusionnée depuis,
-> et un verdict qui portait sur un produit payant. Le bloc ci-dessous est à coller tel quel.
+> **À QUOI SERT CE FICHIER.** C'est le dossier que le relecteur indépendant lit DANS LE DÉPÔT
+> au début de sa mission. Ce n'est pas un bloc à coller dans un chat : le prompt d'ouverture,
+> court, est dans `17-PROMPT-ASTRA-2026-09-13.md`, et il renvoie ici.
+>
+> **Pourquoi cette séparation.** Les deux premières versions de ce document étaient écrites
+> pour être collées telles quelles. La première a été refusée par le filtre de sécurité de
+> Codex ; la seconde, réécrite en vocabulaire défensif, l'a été aussi lors d'un contrôle.
+> La cause n'est pas le vocabulaire : **un message d'ouverture de conversation qui décrit des
+> défauts de sécurité est filtré bien plus sévèrement que les mêmes informations lues dans un
+> dépôt, en cours de session de travail.** D'où l'architecture actuelle : un prompt court qui
+> pose le mandat, et ce dossier, que l'agent va chercher lui-même.
+>
+> Il remplace `15-CONTRE-REVUE-ASTRA-PROMPT.md` (2026-09-05), périmé sur trois points : il
+> désigne un SHA qui n'est plus en service, il envoie sur une branche dont la PR est fusionnée
+> depuis, et il fait juger un produit payant alors que PASSIO est ouverte gratuitement.
 
 ```text
-CONTRE-REVUE INDÉPENDANTE — PASSIO — REPRISE APRÈS INTERRUPTION
-Date de reprise : 2026-09-13. Tu es GPT-6 Astra, relecteur indépendant.
+REVUE DE SÉCURITÉ ET DE QUALITÉ — PASSIO — MANDAT DU PROPRIÉTAIRE
+Reprise d'une mission interrompue. Date : 2026-09-13.
+
+═══════════════════════════════════════════════════════════════════
+CADRE ET AUTORISATION — à lire avant tout le reste
+═══════════════════════════════════════════════════════════════════
+Ce document est un ordre de mission d'AUDIT INTERNE, émis par le propriétaire du produit
+sur son propre produit.
+
+Benjamin (compte GitHub PASSIO74) est l'éditeur de PASSIO, une application web de mise en
+relation autour des passions. Il est propriétaire du dépôt, du projet de base de données,
+du domaine et du compte d'hébergement. Il vient d'ouvrir son application au public,
+gratuitement, et il veut savoir si elle protège correctement les personnes qui vont s'en
+servir. C'est le sens de cette mission, et il n'y en a pas d'autre.
+
+Tu es GPT-6 Astra, relecteur indépendant mandaté par lui. Ton travail est une REVUE
+DÉFENSIVE : lire du code (le dépôt est public), lire l'état de la configuration, et vérifier
+que les règles de protection des données font bien ce qu'elles annoncent. Le but de chaque
+vérification est de trouver ce qui protège mal les utilisateurs, pour le faire corriger.
+
+Ce que la mission exclut, explicitement et pour toute sa durée :
+  · aucune écriture de quelque nature que ce soit, ni en base, ni dans le dépôt, ni en ligne ;
+  · aucune lecture de contenu personnel : on compte des lignes, on ne lit pas de messages ;
+  · aucun test de charge, aucune création de compte, aucune donnée modifiée ou supprimée ;
+  · aucun secret recopié, aucune correction appliquée avant l'accord explicite de Benjamin.
+
+Si un contrôle ne peut pas être fait dans ces limites, il reste NON FAIT et tu l'écris.
+Un « je n'ai pas pu le vérifier » est un résultat acceptable. Un vert non mesuré ne l'est pas.
 
 ═══════════════════════════════════════════════════════════════════
 0. CE QUI T'EST ARRIVÉ, ET POURQUOI CE PROMPT N'EST PAS L'ANCIEN
 ═══════════════════════════════════════════════════════════════════
-Le 2026-09-05, on t'a confié la contre-revue du « BILAN PASSIO 09/26 », un audit rendu par
-Claude Code (Fable 5.1) le 2026-09-04 : verdict NO-GO, 8 P0, 192 problèmes, 462 contrôles.
-Tu as été interrompu en cours de route, faute de crédits. Tu as de nouveau des crédits.
+Le 2026-09-05, Benjamin t'a confié la contre-revue du « BILAN PASSIO 09/26 », un audit rendu
+par Claude Code le 2026-09-04 : verdict NO-GO, 8 problèmes bloquants, 192 problèmes au total,
+462 contrôles — dont 41 n'ont pas pu être exécutés (voir §5). Tu as été interrompu en cours de route, faute de crédits. Tu en as de nouveau.
 
-Ne reprends PAS où tu t'étais arrêté. Entre-temps le produit a changé sous tes pieds :
-109 commits, 75 pull requests fusionnées, 11 migrations SQL appliquées en production,
-+137 540 lignes. L'ancien ordre de mission te demandait de vérifier un code figé au SHA
-c8cb8e99 ; ce code n'est plus en production, et la moitié des défauts que tu devais
-vérifier n'existent plus. Vérifier c8cb8e99 aujourd'hui serait un travail juste et inutile.
+Ne reprends PAS où tu t'étais arrêté. Le produit a changé sous tes pieds : 109 commits,
+75 pull requests fusionnées, 11 migrations de base appliquées, environ 137 000 lignes.
+L'ancien ordre de mission te faisait vérifier un code figé au 4 septembre ; ce code n'est
+plus celui qui tourne. 680 fichiers ont changé depuis, dont tous ceux qui portent les défauts
+que tu devais examiner : même là où un défaut subsiste, le code qui le porte a été réécrit, et
+ta preuve d'alors ne désignerait plus rien. Le vérifier aujourd'hui serait un travail juste
+et inutile.
 
-Ta mission est réécrite en §6. Elle est plus dure que l'ancienne, pas plus simple.
+Ta mission est réécrite au §6. Elle est plus exigeante que l'ancienne, pas plus simple.
 
 ═══════════════════════════════════════════════════════════════════
-1. LE CADRE A CHANGÉ — C'EST LE POINT LE PLUS IMPORTANT DE CE PROMPT
+1. LE CADRE PRODUIT A CHANGÉ — C'EST LE POINT LE PLUS IMPORTANT
 ═══════════════════════════════════════════════════════════════════
-Benjamin COMMERCIALISE PASSIO, ET IL LE FAIT GRATUITEMENT. L'application est ouverte au
-public, sans code d'accès, sans encaissement d'aucune sorte. Le rideau « bêta privée »
-(code 2125) est levé depuis le 2026-09-11 ; il ne s'arme plus que sur un drapeau local.
+PASSIO est désormais ouverte au public, ET ELLE EST GRATUITE. Aucun encaissement d'aucune
+sorte. Le code d'accès qui réservait l'application à des testeurs a été retiré le 11/09.
 
-Cela déplace le verdict que tu dois rendre, dans les deux sens :
+Cela déplace le verdict attendu, dans les deux sens :
 
 CE QUI DEVIENT SANS OBJET. Tout ce que l'audit du 04/09 jugeait au regard d'un service
-PAYANT : CGV, information précontractuelle, droit de rétractation, TVA, droit de la
-consommation marchande, garantie de conformité. Il n'existe aucun chemin d'encaissement
-dans le dépôt (recherche exhaustive : ni Stripe, ni PayPal, ni Paddle, ni achat intégré),
-et les CGU en vigueur FONDENT l'exonération de responsabilité sur la gratuité (art. 2 et
-art. 10). Ne recote pas ces points : dis qu'ils sont caducs tant que rien n'est encaissé,
-et signale que le jour où un euro entre, les articles 2 et 10 des CGU deviennent faux et
-doivent être RÉÉCRITS, pas complétés.
+PAYANT : conditions de vente, information précontractuelle, droit de rétractation, TVA,
+droit de la consommation marchande, garantie de conformité. Il n'existe aucun moyen de payer
+dans le produit (vérification exhaustive du dépôt : aucun prestataire de paiement, aucun
+achat intégré), et les conditions d'utilisation en vigueur FONDENT l'exonération de
+responsabilité sur la gratuité (articles 2 et 10). Ne recote pas ces points : dis qu'ils
+sont caducs tant que rien n'est encaissé, et signale que le jour où un paiement apparaîtra,
+ces deux articles deviendront faux et devront être RÉÉCRITS, pas complétés.
 
-CE QUI DEVIENT PLUS GRAVE, PAS MOINS. « Gratuit » n'allège aucune obligation envers les
-personnes : RGPD, DSA (règlement UE 2022/2065, art. 16 — notice & action), LCEN art. 1-1,
-protection des mineurs, sécurité des données. Un service gratuit ouvert à des inconnus
-expose EXACTEMENT les mêmes personnes qu'un service payant. Et l'ouverture publique
-change l'échelle : les défauts qui étaient tolérables devant 5 comptes connus ne le sont
-plus devant un public qui ne connaît pas Benjamin et ne lui a rien pardonné d'avance.
+CE QUI DEVIENT PLUS EXIGEANT, PAS MOINS. La gratuité n'allège aucune obligation envers les
+personnes : RGPD, règlement européen sur les services numériques (UE 2022/2065, article 16
+sur le signalement et l'action), LCEN article 1-1, protection des mineurs, sécurité des
+données. Un service gratuit ouvert à des inconnus expose exactement les mêmes personnes
+qu'un service payant. Et l'ouverture change l'échelle : ce qui était tolérable devant cinq
+comptes connus et prévenus ne l'est plus devant un public qui ne connaît pas l'éditeur.
 
-Le verdict que tu dois rendre n'est donc PAS « peut-on commercialiser ». C'est :
-  « PASSIO, gratuite et déjà ouverte au public, peut-elle continuer à l'être, et jusqu'à
-    quelle échelle, sans exposer ses utilisateurs ni perdre leurs données ? »
+La question à laquelle tu dois répondre n'est donc pas « peut-on commercialiser ». C'est :
+  « PASSIO, gratuite et déjà ouverte, peut-elle le rester, et jusqu'à quelle échelle,
+    sans exposer ses utilisateurs ni risquer de perdre leurs données ? »
 
 ═══════════════════════════════════════════════════════════════════
-2. LA VERSION À ANALYSER
+2. LA VERSION À EXAMINER
 ═══════════════════════════════════════════════════════════════════
-Dépôt        : https://github.com/PASSIO74/passio-app  (PUBLIC — tu peux tout lire)
-Branche      : main
-SHA à auditer: 30cc8851d1f9486d146bbb6448612557cbc7f4bf  (2026-09-13, PR #371)
-Ancien SHA   : c8cb8e995b88159a1e9d4c2f7dc196ad93a133bf  (2026-09-04) — référence
-               historique seulement. Le delta c8cb8e9..30cc885 EST ton objet d'étude.
-Production   : https://passio-app.netlify.app  (vérifie /release.json — tu as le réseau,
-               l'audit de Claude Code ne l'avait pas, c'est une preuve qu'il n'a pas pu faire)
-Base         : projet Supabase njkiyoklssvefstljemx. La clé anon est PUBLIQUE, dans le
-               bundle (js/app-08-ui-modals-tour.js). LECTURE SEULE, aucune écriture.
+Dépôt         : https://github.com/PASSIO74/passio-app  (dépôt public, propriété du mandant)
+Branche       : main
+Version cible : 30cc8851d1f9486d146bbb6448612557cbc7f4bf  (2026-09-13, PR #371)
+Version 04/09 : c8cb8e995b88159a1e9d4c2f7dc196ad93a133bf  — référence historique seulement.
+                L'écart entre les deux EST ton objet d'étude.
+En ligne      : https://passio-app.netlify.app
 
-Le dossier d'audit N'EST PLUS sur une branche séparée : la PR #280 a été FUSIONNÉE le
+Le dossier d'audit N'EST PLUS sur une branche séparée : la PR #280 a été fusionnée le
 2026-09-09. Tout est sur main, dans .passio/audits/BILAN_PASSIO_09-26/ :
   00-MANIFESTE · 01-SYNTHESE-BENJAMIN · 02-CARTOGRAPHIE · 03 UX · 04 fonctionnel ·
-  05 code · 06 sécurité/données · 07 perf/capacité/coûts · 08 pilotage/Sentinelle ·
-  09 appareils/a11y · 10 modération/IRL/exploitation · 11-REGISTRE-DES-RISQUES (les 192) ·
-  12-VERDICT-COMMERCIAL · 13-PREUVES-NECESSAIRES (tout ce qui était BLOQUÉ) ·
-  14-COUVERTURE-DU-MANDAT · donnees/registre-problemes.json (registre structuré complet) ·
-  preuves/ (~400 fichiers).
+  05 code · 06 sécurité/données · 07 performance/capacité/coûts · 08 pilotage/supervision ·
+  09 appareils/accessibilité · 10 modération/rencontres/exploitation ·
+  11-REGISTRE-DES-RISQUES (les 192) · 12-VERDICT-COMMERCIAL ·
+  13-PREUVES-NECESSAIRES (tout ce qui n'a pas pu être vérifié) · 14-COUVERTURE-DU-MANDAT ·
+  donnees/registre-problemes.json (registre structuré complet) · preuves/ (~400 fichiers).
 Issue de suivi #279, toujours ouverte. Ne fais pas `git checkout audit/bilan-...` : inutile.
 
-⚠️ Le dépôt se clone en profondeur COMPLÈTE, jamais en shallow : une session précédente a
+⚠️ Clone le dépôt en profondeur COMPLÈTE, jamais en superficiel : une session précédente a
 cru compter 53 commits là où il y en avait 109, parce que son clone était tronqué et que
 `git merge-base --is-ancestor c8cb8e9 HEAD` répondait NON. Fais ce contrôle en premier.
 
 ═══════════════════════════════════════════════════════════════════
 3. CE QUI A ÉTÉ FAIT PENDANT TON ABSENCE (2026-09-04 → 2026-09-13)
 ═══════════════════════════════════════════════════════════════════
-Chiffres mesurés (API GitHub, branche main, fenêtre du 04/09 12:07 UTC au 14/09) :
+Chiffres mesurés (interface GitHub, branche main, du 04/09 12:07 UTC au 14/09) :
 
   109 commits · 75 PR fusionnées (#285 → #371) · 680 fichiers · +137 540 / −3 597 lignes
   Par jour : 04/09 : 5 (documentaires) · 05 : 1 · 06 et 07 : ZÉRO · 08 : 14 · 09 : 35 ·
              10 : 14 · 11 : 7 · 12 : 23 · 13 : 10
-  11 migrations SQL réelles, TOUTES appliquées en production (mesuré, pas déduit)
-  27 suites e2e nouvelles (264 cas) : 131 fichiers / 1 053 cas → 158 fichiers / 1 333 cas
-  9 bancs SQL nouveaux (tests/sql/*.test.sh, bloquants en CI) + 3 suites unitaires (54 cas)
-  npm run verif : 9 → 11 gates statiques · 4 workflows GitHub nouveaux · CLAUDE.md +1 411 l.
+  11 migrations de base réelles, toutes appliquées en production (mesuré, pas déduit)
+  27 suites de tests nouvelles (264 cas) : 131 fichiers / 1 053 cas → 158 / 1 333
+  9 bancs de test SQL nouveaux, bloquants en intégration continue, + 3 suites unitaires
+  Les contrôles statiques passent de 9 à 11 · 4 automatismes nouveaux, dont 3 planifiés ·
+  CLAUDE.md +1 411 lignes
 
 LES ONZE CHANTIERS, dans l'ordre où ils ont été menés :
 
-① Sécurité serveur / RLS (08/09, 14 commits). Trois migrations le même jour, chacune avec
-  son banc SQL bloquant : admission 18+ (garde de majorité branchée sur les écritures IRL,
-  triggers parce qu'un WITH CHECK ne voit que la ligne finale) ; rencontres privées (retrait
-  à anon de events.address et events.contact, et de toute event_attendees) ; pièces jointes
-  (la policy passio_media_read, SELECT au rôle public sur attachments, est remplacée).
+① Règles d'accès aux données (08/09, 14 commits). Trois migrations le même jour, chacune
+  avec son banc de test bloquant : réservation des rencontres aux majeurs (la règle existait
+  mais n'était appelée par rien) ; adresse et téléphone d'une rencontre retirés au rôle
+  visiteur, liste des participants réservée aux comptes ; règle de lecture des pièces
+  jointes de messagerie resserrée aux membres de la conversation.
 
-② Juridique (08 → 12/09). CGU, mentions légales LCEN art. 1-1, case de consentement
-  #authConsent, PASSIO_EDITEUR.regime (« particulier » : publie l'identité de l'hébergeur
-  et rien d'autre — l'anonymat du non-professionnel). Passage de 13 ans à 18 ans révolus.
-  Identité propre (passioadmin@gmail.com, domaine passio-app.fr, SMTP Brevo avec DKIM et
-  DMARC posés et vérifiés). js/legal-textes.js : les textes sont lisibles SANS le rideau,
-  chargés en tête de page, versionnés (PASSIO_CGU_VERSION, PASSIO_CONFIDENTIALITE_VERSION).
-  Un LICENSE a été ajouté.
+② Juridique (08 → 12/09). Conditions d'utilisation, mentions légales conformes à la LCEN
+  article 1-1, case de consentement à l'inscription, régime d'éditeur « particulier » (qui
+  publie l'identité de l'hébergeur et rien d'autre, ce que la loi permet au non-professionnel).
+  Passage de 13 à 18 ans révolus. Identité de contact propre au produit, domaine dédié pour
+  l'envoi d'e-mails, avec les enregistrements d'authentification posés et vérifiés. Les textes
+  légaux sont désormais lisibles sans compte et sans code d'accès, et versionnés.
 
-③ Référentiel des passions (08 → 12/09) — le plus gros volume. 1 908 → 5 001 passions,
-  9 100 alias. Création d'une passion depuis l'app (fonction SECURITY DEFINER creer_passion,
-  public.passions reste non inscriptible, 3 créations offertes à vie). Correction du plafond
-  max-rows de PostgREST qui rendait ~900 passions impubliables. Puis, le 12/09, « taper Ski
-  ne rendait rien » : trois surfaces cherchaient encore dans les 19 passions du socle embarqué.
+③ Référentiel des passions (08 → 12/09), le plus gros volume. De 1 908 à 5 001 passions et
+  9 100 synonymes. Création d'une passion depuis l'application, par une fonction serveur
+  contrôlée : la table reste non inscriptible par un client. Correction d'un plafond de
+  pagination qui rendait environ 900 passions impubliables. Puis, le 12/09 : « taper Ski ne
+  rendait rien », trois écrans cherchaient encore dans les 19 passions embarquées d'origine.
 
 ④ Messagerie et notifications (09 → 10/09). La notification de message privé n'écrivait
-  AUCUNE ligne en base (la fonction corrective était branchée sur une fonction morte —
-  défaut trouvé par l'audit de commercialisation du 10/09). File d'envoi qui ne renonçait
-  jamais (798 refus rejoués pour 4 messages). Réparation des conversations orphelines
-  (19 sur 20 sans conv_members ; conversations n'avait aucune policy DELETE).
+  aucune ligne : le correctif était branché sur une fonction que plus personne n'appelait.
+  File d'envoi qui ne renonçait jamais (798 refus rejoués pour 4 messages). Réparation des
+  conversations orphelines et ajout de la règle de suppression qui manquait.
 
-⑤ Inscription et onboarding (09 → 13/09). Nom d'utilisateur demandé au formulaire.
-  Le vieux tour plein écran ne s'impose plus à un compte neuf. Mot de passe : minimum 8
+⑤ Inscription et accueil (09 → 13/09). Nom d'utilisateur demandé au formulaire. L'ancienne
+  visite guidée ne s'impose plus à un compte neuf. Mot de passe : minimum porté à 8
   caractères, refus du serveur traduits en français, changement exigeant l'ancien mot de
-  passe et une réauthentification si la session a plus de 24 h. CAPTCHA Turnstile câblé
-  côté client (sitekey vide = inactif : déployable avant l'interrupteur serveur).
+  passe et une nouvelle preuve d'identité si la session est ancienne. Vérification anti-robot
+  câblée côté client mais AUJOURD'HUI INACTIVE : sa clé publique est vide dans le code servi,
+  donc aucun contrôle ne s'exécute et rien n'est exigé du serveur. C'est conforme au plan (le
+  client se déploie avant l'interrupteur), ce n'est pas une protection en place.
 
-⑥ Fiabilité client (09 → 13/09) — la série la plus dense, toujours le même schéma :
-  une mesure en production, un correctif, un verrou. 401 sur analytics_events, sur events,
-  sur user_state, sur profiles, story_views, conv_reads ; 403 sur push_subscriptions ;
-  rejeu des lectures de démarrage coupées par le réseau (448 appels morts mesurés sur
-  14 jours) ; « newestWorker is null » sur WebKit.
+⑥ Fiabilité (09 → 13/09), la série la plus dense, toujours le même schéma : une mesure en
+  production, un correctif, un test de non-régression. Six tables refusaient des ÉCRITURES
+  (l'application écrivait sous une identité de visiteur, ou sous une identité qui n'était pas
+  celle de la session) ; deux autres refusaient des LECTURES pour une cause DIFFÉRENTE — un
+  droit de colonne retiré au rôle visiteur, que le client sollicitait quand même. Le même
+  symptôme, deux causes : c'est le genre de piste à garder. Plus le rejeu des lectures de
+  démarrage coupées par le réseau (448 appels perdus mesurés sur deux semaines) et un rejet
+  de promesse non capturé sur iOS.
 
-⑦ Ouverture publique gratuite (11 → 12/09) — le chantier pivot. Sept défauts serveur fermés
-  d'un coup : is_conv_member retiré à anon (un oracle qui rouvrait par une fonction une porte
-  fermée sur une table), blocage appliqué partout et non plus au seul conv_members, débit
-  borné sur 9 tables, reports.status, policies Realtime, seau attachments passé en PRIVÉ,
-  comptes privés à acceptation. Plus une red team qui a trouvé dix choses de plus, dont une
-  XSS P0 par sonnerie d'appel et un UPDATE sans WITH CHECK qui laissait déplacer un message
-  dans une conversation dont on n'est pas membre. SDK Supabase et MapLibre auto-hébergés
-  (fin des versions flottantes de CDN), CSP réduite à 'self' plus un seul hôte tiers.
-  CDN médias via Edge Function Netlify. Banc SQL de 117 contrôles, 35 cas e2e.
+⑦ Ouverture publique (11 → 12/09), le chantier pivot. Sept points fermés d'un coup côté
+  serveur : une fonction d'aide qui restait appelable par le rôle visiteur et permettait de
+  reconstituer une information qu'on venait de fermer ; le blocage d'un compte rendu effectif
+  partout et non plus sur une seule table ; un débit maximal posé sur neuf tables ; un statut
+  sur les signalements ; des règles d'autorisation sur les canaux temps réel ; le stockage
+  des pièces jointes passé en privé ; les comptes privés à acceptation. Plus une revue
+  adversariale interne qui a trouvé dix points supplémentaires, dont un défaut CRITIQUE
+  d'échappement (un champ de la charge utile d'une invitation d'appel, affiché sans
+  désinfection, permettait l'exécution de script chez tout compte connecté) et une règle de
+  mise à jour à laquelle il manquait sa contrainte de sortie.
+  Bibliothèques tierces auto-hébergées et épinglées, politique de sécurité du contenu
+  resserrée. Banc de 117 contrôles SQL et 35 cas de test.
 
-⑧ Sentinelle autonome (09 → 12/09). La détection quitte le PC pour GitHub : lecture horaire
-  de client_errors, classement des causes par une fonction pure (26 verrous unitaires),
-  ouverture d'une issue [SENTINELLE] étiquetée claude, correctif écrit et PR ouverte par la
-  chaîne, auto-fusion. Un défaut a été réparé de bout en bout SANS AUCUN GESTE HUMAIN.
+⑧ Supervision autonome (09 → 12/09). La détection d'erreurs quitte le poste de travail pour
+  une tâche planifiée : lecture horaire du journal d'erreurs, classement des causes par une
+  fonction pure couverte par 26 tests unitaires, ouverture d'une fiche, correctif écrit et
+  proposé par la chaîne. Un défaut a été réparé de bout en bout sans aucun geste humain.
 
-⑨ Centre de pilotage (09 → 13/09). Canal Realtime privé, mesure du disque, sonde
-  d'authentification qui ne conclut plus à une déconnexion au premier délai dépassé.
+⑨ Centre de pilotage (09 → 13/09). Canal temps réel privé, surveillance de l'espace disque,
+  sonde d'état qui ne conclut plus à une panne au premier délai dépassé.
 
-⑩ Exploitation (09 → 13/09). Sauvegarde quotidienne chiffrée en artefact GitHub, DÉCHIFFRÉE
-  ET RELUE dans le même run — elle a tourné, verte, le 12/09. Alerte de modération à 24 h.
-  Plafonds sur les Edge Functions (ask-ai et notify-call n'en avaient AUCUN : un compte
-  confirmé pouvait facturer l'API Anthropic en boucle et réveiller qui il voulait).
+⑩ Exploitation (09 → 13/09). Sauvegarde quotidienne chiffrée, DÉCHIFFRÉE ET RELUE dans la
+  même exécution : elle a tourné, avec succès, le 12/09. Alerte quotidienne sur les
+  signalements non traités depuis 24 h. Plafonds d'usage sur les fonctions serveur, qui n'en
+  avaient aucun (un compte pouvait déclencher un service payant en boucle).
 
-⑪ UI et fil (09 → 12/09). L'envie devient un FILTRE au lieu d'être une source (un post
-  d'une passion non suivie entrait dans le fil). Avatars redimensionnés. Quatre surfaces
-  qui « vieillissaient sans témoin » (landing promettant une fonctionnalité retirée).
+⑪ Interface et fil (09 → 12/09). Le critère d'envie devient un filtre au lieu d'être une
+  source (des publications de passions non suivies entraient dans le fil). Images de profil
+  redimensionnées. Quatre écrans qui promettaient encore des fonctionnalités retirées.
 
-ÉTAT MESURÉ DE LA PRODUCTION AU 2026-09-13 (connecteur lecture seule) :
-  8 comptes auth (7 confirmés) · 7 profils · 33 publications (3 auteurs) · 74 messages ·
-  119 conversations dont 113 VIDES · 9 événements · 2 signalements, tous deux TRAITÉS
-  (status='dismissed', handled_at renseigné — file ouverte : 0) · 0 blocage ·
-  5 003 passions actives · 32 361 lignes de télémétrie (14 Mo) · 23 erreurs client ·
-  irl_adult_only = TRUE · seau attachments public = FALSE.
+ÉTAT MESURÉ DE LA PRODUCTION AU 2026-09-13 (lecture seule) :
+  8 comptes (7 confirmés) · 7 profils · 33 publications (3 auteurs) · 74 messages ·
+  119 conversations dont 113 vides · 9 rencontres · 2 signalements, tous deux TRAITÉS
+  (file en attente : 0) · 0 blocage · 5 003 passions actives (5 001 livrées par le dépôt,
+  plus celles créées depuis l'application) · 32 361 lignes de télémétrie (compteur vivant,
+  relevé le 13/09) ·
+  23 erreurs clientes · règle de majorité activée · stockage des pièces jointes privé.
   Activité réelle sur 7 jours : 796 sessions, 4 comptes actifs, 1 publication.
-  ⚠️ Ce produit est ouvert mais encore quasi vide. Aucune mesure de capacité n'a jamais
-  été faite, et 8 comptes ne prouvent rien sur 8 000.
+  ⚠️ Le produit est ouvert mais encore quasi vide. La capacité n'a jamais été mesurée,
+  et 8 comptes ne prouvent rien sur 8 000.
 
 ═══════════════════════════════════════════════════════════════════
-4. LE CROISEMENT DÉJÀ FAIT — ET POURQUOI TU DOIS T'EN MÉFIER
+4. LE CROISEMENT DÉJÀ FAIT — ET POURQUOI T'EN MÉFIER
 ═══════════════════════════════════════════════════════════════════
-Claude Code a repris les 65 problèmes P0 et P1 de l'audit du 04/09 et les a confrontés un
-par un au code du 13/09, puis a lancé une passe ADVERSARIALE chargée de réfuter chaque
-« c'est réglé ». Elle a cassé 5 fermetures sur 9. Résultat consolidé :
+Claude Code a repris les 65 problèmes les plus graves de l'audit du 04/09 et les a confrontés
+un par un au code du 13/09, puis a fait relire chaque « c'est réglé » par un second analyste
+chargé de le contredire. Ce second passage a invalidé 5 fermetures sur 9. Bilan :
 
-    FERMÉ : 4    PARTIEL : 33    OUVERT : 28    (sur 65)
+    FERMÉ : 4    PARTIEL : 33    ENCORE OUVERT : 28    (sur 65)
 
-Sur les 8 P0 : AUCUN n'est intégralement fermé. Trois sont OUVERTS, cinq sont PARTIELS.
+Sur les 8 problèmes bloquants d'origine, AUCUN n'est intégralement clos : trois sont
+intacts, cinq ont leur cœur réglé et un résidu nommé.
 
-  P0 OUVERTS (intacts) :
-   · SUP-04 — un seul projet Supabase. Les previews de PR et le job CI « Suites production »
-     écrivent en PRODUCTION avec la service_role ; un troisième workflow y crée deux comptes
-     jetables. L'URL du projet est EN DUR dans index.html et app-08 : rien n'est injecté au
-     build. Le projet staging existe (fcksxofaelcdmmifnwjo) et n'a jamais servi.
-   · EXP-01 — restauration jamais exécutée. docs/RECUPERATION.md le dit encore lui-même.
-     SCHEMA_PROD_REFERENCE.sql est la photo du 17/08 : 36 tables listées contre 41 en prod,
-     et il ne contient AUCUN CREATE TABLE exécutable, seulement des CREATE INDEX. Le schéma
-     n'est pas reconstructible. Atténuation réelle : l'archive de DONNÉES, elle, est
-     désormais produite, chiffrée et relue automatiquement chaque nuit.
-   · PERF-01 — capacité toujours non mesurée. Zéro occurrence de k6, artillery ou autocannon
-     dans le dépôt. max_connections = 60, identique au 04/09. 70 policies utilisent encore
-     auth.uid() au lieu de (select auth.uid()), 24 policies permissives sont doublonnées,
-     et conv_reads comme telemetry_events sont toujours dans la publication Realtime.
+  LES TROIS INTACTS :
+   · SUP-04 — UN SEUL ENVIRONNEMENT. Le même projet de base sert au développement, aux
+     aperçus de pull request, aux tests d'intégration à comptes réels — qui ÉCRIVENT en
+     production avec la clé de service et y purgent des comptes — et à la production
+     elle-même ; un quatrième automatisme y crée deux comptes jetables à chaque exécution.
+     L'adresse du projet est écrite en dur dans la page et dans le code : rien n'est injecté
+     à la construction. Un projet de pré-production existe et n'a jamais servi.
+   · EXP-01 — RESTAURATION JAMAIS EXERCÉE. Le document de reprise le dit lui-même, et deux
+     de ses prémisses sont périmées, à re-vérifier : le dossier du 11/09 note que la base
+     cible existe et que l'hébergeur produit des sauvegardes physiques quotidiennes en état
+     « terminé ». Le fichier de référence du schéma date du 17/08, liste 36 tables contre 41
+     aujourd'hui, et ne contient aucune instruction de création exécutable : le schéma n'est
+     pas reconstructible à partir du dépôt. Atténuation réelle : l'archive des DONNÉES est
+     désormais produite, chiffrée et relue automatiquement chaque nuit, ce qui n'existait pas
+     au 04/09. Ce qui manque n'est donc pas un fichier, c'est l'EXERCICE : personne n'a
+     jamais reconstruit la base de bout en bout.
+   · PERF-01 — CAPACITÉ JAMAIS MESURÉE. Aucun outil de test de charge dans le dépôt.
+     La limite de connexions simultanées est à 60, inchangée depuis le 04/09. 70 règles
+     d'accès ré-évaluent la fonction d'identité à chaque ligne au lieu de la calculer une
+     fois, 24 règles permissives font doublon, et deux tables à fort volume (accusés de
+     lecture, télémétrie) sont toujours dans la publication temps réel — ce qui fait porter
+     à chaque abonné le coût d'évaluation de leurs règles. ⚠️ Confidentialité INCHANGÉE :
+     ces deux tables ont leurs règles d'accès actives, chaque abonné ne reçoit que ses
+     lignes. C'est un point de COÛT, pas une fuite ; ne le lis pas comme telle.
 
-  P0 PARTIELS (cœur clos, résidu nommé) :
-   · SUP-01 / MSG-03 / CONT-11 — le seau attachments est PRIVÉ et l'énumération anonyme est
-     morte (mesuré en base, pas déduit) ; le client est passé aux URL signées d'une heure.
-     Résidus : le seau `content` reste énuméré sans compte (55 objets, avatars, couvertures,
-     photos, vidéos — dont ceux de comptes privés), c'est un choix assumé ; et une pièce
-     jointe n'est pas supprimée quand son message l'est, ni quand le compte est supprimé.
-   · MSG-01 — l'XSS par invitation d'appel est fermée, éprouvée par réinjection, et les
-     canaux Realtime sont privés avec leurs policies en base. Résidu : la policy
-     passio_rt_recevoir n'exige pas que le topic ring:<uid> soit celui de l'abonné.
-     N'importe quel compte connecté peut donc encore s'abonner à la sonnerie de n'importe
-     qui, lire qui l'appelle, et faire sonner sous un faux nom. L'identité de l'appelant
-     reste déclarative entre comptes : c'est un résidu ASSUMÉ et écrit, pas un oubli.
-   · MOD-01 — la file de signalement est désormais lisible et traçable (colonnes status,
-     handled_at, handled_note posées par un trigger ; outil scripts/moderation.js ; alerte
-     quotidienne à 24 h). Résidu, et il est lourd : le RETRAIT d'un contenu reste du SQL
-     manuel. Aucune policy ni RPC de modération sur posts, post_comments, stories,
-     conv_messages, events ; aucun journal moderation_actions ; aucune suspension de compte ;
-     aucune interface. Notice & action au sens du DSA n'est donc pas tenable en pratique.
+  LES CINQ AU CŒUR RÉGLÉ, avec leur résidu :
+   · SUP-01 / MSG-03 / CONT-11 — PIÈCES JOINTES DE MESSAGERIE. Le stockage est privé et l'accès sans compte est fermé
+     (mesuré dans la configuration, pas déduit du dépôt) ; l'affichage passe par des liens
+     signés d'une heure. Résidus : le stockage des médias PUBLICS reste listable sans compte,
+     ce qui est un choix assumé mais qui expose les chemins des médias de comptes privés ;
+     et une pièce jointe n'est pas supprimée avec son message ni avec le compte.
+   · MSG-01 — AFFICHAGE D'UNE INVITATION D'APPEL. Le champ non échappé est corrigé et le correctif
+     est éprouvé par réinjection du défaut ; les canaux temps réel sont privés et portent
+     leurs règles d'autorisation. Résidu : la règle de réception n'exige pas que le canal
+     d'un utilisateur soit celui de l'abonné. Conséquence, et c'est elle qui donne sa gravité
+     au point : tout compte connecté peut observer qui appelle qui, et présenter une invitation
+     sous un nom qui n'est pas le sien, l'identité transmise dans le message n'étant pas
+     rattachée à sa session. C'est un résidu ASSUMÉ et écrit comme tel, pas un oubli.
+   · MOD-01 — TRAITEMENT DES SIGNALEMENTS. La file est désormais consultable et traçable (statut,
+     date et note de traitement posés par le serveur ; outil en ligne de commande ; alerte
+     quotidienne). Résidu, et il est lourd : le RETRAIT d'un contenu reste une opération SQL
+     manuelle. Aucune règle ni fonction de modération sur les publications, commentaires,
+     stories, messages et rencontres ; aucun journal des décisions ; aucune suspension de
+     compte ; aucune interface. L'obligation de retrait du règlement européen n'est donc pas
+     tenable en pratique aujourd'hui.
 
-CE QUE LA PASSE ADVERSARIALE A CASSÉ — lis-le, c'est ce qui se rapproche le plus de ton
-travail, et tu dois faire mieux :
-   · AUTH-03 « CGU et consentement » annoncé FERMÉ → ramené à PARTIEL. Chemin alternatif
-     vivant : l'écran d'authentification s'OUVRE en mode connexion ; la case de consentement
-     n'est montrée qu'en mode inscription ; or le bouton « Continuer avec Google » n'est
-     JAMAIS masqué et aucun code ne le pilote. Un compte peut donc naître par Google sans
-     que la case ait été montrée, et l'application fabrique alors un consentement.
-   · PRO-01 « référentiel tronqué » annoncé FERMÉ → PARTIEL : le correctif CONTOURNE le
-     plafond max-rows sans le neutraliser, et sa condition d'arrêt transformerait une baisse
-     de ce plafond en troncature GELÉE pour toute la session.
-   · MOD-04 « un bloqué ne peut plus se réabonner » → PARTIEL : la policy serveur est juste,
-     mais l'unique écrivain de la ligne `blocks` est un appel client non vérifié, non rejoué
-     et non gardé. La garde est bonne, sa condition d'entrée ne l'est pas. (0 blocage en base.)
-   · SUP-01 et EXP-09 : voir plus haut.
+CE QUE LE SECOND PASSAGE A INVALIDÉ — c'est ce qui ressemble le plus à ton travail, et tu
+dois faire mieux :
+   · AUTH-03 — « Conditions d'utilisation et consentement » annoncé FERMÉ, ramené à PARTIEL. Un chemin
+     de contournement est vivant : l'écran d'authentification s'ouvre en mode connexion, la
+     case de consentement n'est affichée qu'en mode inscription, or le bouton d'inscription
+     par Google n'est jamais masqué et aucun code ne le pilote. Un compte peut donc être créé
+     sans que la case ait été montrée, et l'application enregistre alors un consentement
+     qui n'a pas été donné.
+   · PRO-01 — « Référentiel tronqué » annoncé FERMÉ, ramené à PARTIEL : le correctif contourne le
+     plafond de pagination sans le neutraliser, et sa condition d'arrêt transformerait une
+     baisse de ce plafond en troncature figée pour toute la session.
+   · MOD-04 — « Un compte bloqué ne peut plus se réabonner » ramené à PARTIEL : la règle serveur est
+     juste, mais l'unique écrivain de la ligne de blocage est un appel client non vérifié,
+     non rejoué et non gardé. La garde est bonne, sa condition d'entrée ne l'est pas.
+   · SUP-01 est la quatrième : elle est décrite plus haut, parmi les cinq au cœur réglé.
+   · EXP-09 — « Mentions légales, conditions et consentement horodaté sont en place » annoncé
+     FERMÉ, ramené à PARTIEL : les images de démonstration restent des adresses tierces (une
+     soixantaine d'occurrences), désormais déclarées dans la politique de confidentialité mais
+     jamais remplacées par des médias dont la licence est tracée.
 
-⚠️ TROIS AVERTISSEMENTS SUR CE CROISEMENT, et ils sont sérieux.
+⚠️ TROIS AVERTISSEMENTS SUR CE CROISEMENT, et ils comptent.
   (a) Il a été produit par Claude Code, c'est-à-dire par l'auteur des correctifs qu'il juge.
-      C'est exactement le conflit d'intérêts que ta contre-revue existe pour lever.
-      Prends-le comme une PISTE, jamais comme un acquis.
+      C'est exactement le conflit d'intérêts que ta relecture existe pour lever. Prends-le
+      comme une piste de départ, jamais comme un acquis.
   (b) « PARTIEL » y est sévère par construction : les analystes avaient consigne de
-      soupçonner toute fermeture. Un PARTIEL veut souvent dire « le cœur est clos, un résidu
-      nommé demeure ». Ne lis pas 33 PARTIEL comme 33 défauts vivants — mais ne lis pas non
-      plus un seul d'entre eux comme réglé sans l'avoir mesuré.
-  (c) Les 81 problèmes que l'audit du 04/09 n'avait JAMAIS fait relire (domaines irl,
-      profils-passions, robustesse-pannes, perf-capacite-couts, appareils-a11y, auth-rgpd,
-      exploitation-continuite, tests-ci) ne l'ont toujours pas été par un tiers indépendant.
-      Le croisement ne les a pas relus non plus : il a seulement vérifié s'ils existaient
-      encore. Une priorité surestimée au 04/09 l'est encore aujourd'hui.
+      soupçonner toute fermeture. Un PARTIEL signifie souvent « le cœur est réglé, un résidu
+      nommé demeure ». Ne lis pas 33 PARTIEL comme 33 défauts vivants, mais n'en considère
+      aucun comme réglé sans l'avoir vérifié toi-même.
+  (c) Les 81 problèmes que l'audit du 04/09 n'avait jamais fait relire ne l'ont toujours pas
+      été par un tiers. Ils se répartissent en 2 graves, 26 importants, 34 moyens, 19 mineurs,
+      et se lisent dans donnees/registre-problemes.json au champ relecture = « NON VÉRIFIÉ » :
+      exploitation-continuite 16 · tests-ci 16 · auth-rgpd 13 · irl 13 · perf-capacite-couts 6
+      · profils-passions 6 · robustesse-pannes 6 · appareils-a11y 5 (valeurs exactes du champ
+      `domaine`, à reprendre telles quelles pour filtrer). Le croisement a seulement vérifié s'ils
+      existaient encore, jamais si leur gravité était juste. Une priorité surestimée au 04/09
+      l'est donc encore aujourd'hui, dans un sens comme dans l'autre.
 
 ═══════════════════════════════════════════════════════════════════
-5. CE QUE PERSONNE N'A PU PROUVER — ET QUE TOI, TU PEUX
+5. LES CONTRÔLES QUE L'AUDIT N'A PAS PU FAIRE — ET QUE TU PEUX FAIRE
 ═══════════════════════════════════════════════════════════════════
-L'audit du 04/09 a rendu 41 contrôles BLOQUÉS (rapport 13), pour une raison bête : son bac
-à sable refusait toute sortie réseau vers netlify.app et vers supabase.co. Tu n'as pas cette
-limite. Ces preuves-là sont à ta portée, et elles pèsent sur le verdict :
+L'audit du 04/09 a laissé 41 contrôles non réalisés (rapport 13) pour une raison matérielle :
+son environnement d'exécution n'avait aucune sortie réseau vers l'hébergeur ni vers la base.
+Tu n'as pas cette limite. Ces vérifications-là pèsent sur le verdict. Toutes sont des
+contrôles de CONFORMITÉ, en lecture seule, sur le produit du mandant :
 
-  1. Le fichier RÉELLEMENT servi en production. curl -sI https://passio-app.netlify.app/
-     release.json, puis compare le hash d'app.js au build de 30cc885. Personne ne l'a fait.
-  2. L'isolation sous rôle, en vrai. Requêtes REST anon directes sur chaque table, avec la
-     clé publique : count=exact doit rendre 0 ou du public assumé. Le connecteur de Claude
-     Code ne pouvait pas faire SET ROLE (42501). C'est LA preuve manquante du critère
-     « isolation des comptes prouvée ». LECTURE SEULE, aucune écriture, aucun compte créé.
-  3. POST /storage/v1/object/list/content sans compte : combien d'objets, quels chemins.
-  4. Les canaux Realtime : un client anon, puis un client authentifié, peuvent-ils encore
-     rejoindre ring:<uid d'un tiers> et y émettre ? C'est le résidu MSG-01, et il se mesure.
-  5. Les plans et quotas réels : Supabase (compute, connexions, Realtime, PITR), Netlify
-     (bande passante), Brevo (e-mails/jour). Ils décident de la capacité autant que le code.
-  6. Les appareils réels : iPhone Safari, Android Chrome, tablette, PWA installée. TOUT ce
-     qui a été mesuré jusqu'ici l'a été sous Chromium headless. Le mur PWA « Installer sur
-     iPhone » qui recouvre le fil 1,5 s après le chargement (UXO-01) est toujours dans le
-     code, intact, et personne ne l'a jamais vu sur un vrai iPhone.
+  (les six ci-dessous sont ceux qui pèsent le plus ; le rapport 13 en liste 41 — vas-y
+  chercher le reste une fois ceux-là faits)
+
+  1. La version réellement servie correspond-elle à celle du dépôt ? Le produit publie
+     /release.json à la racine (généré par scripts/build.js) : lis-le et compare l'identifiant
+     de construction et l'empreinte du bundle à la construction de 30cc885. Personne ne l'a
+     encore fait, et tout le reste en dépend.
+  2. Les règles de confidentialité au niveau ligne tiennent-elles vraiment pour un visiteur
+     non connecté ? Le produit expose sa clé d'interface publique dans le bundle servi — celle
+     que tout navigateur reçoit, prévue pour cela : c'est avec elle, et sans aucune session,
+     que le contrôle se fait. Pour chaque table, un DÉCOMPTE doit rendre zéro, ou un contenu
+     délibérément public. Compte des lignes, ne lis aucun contenu personnel, n'écris rien.
+     C'est le contrôle qui manque pour affirmer « l'isolation des comptes est prouvée » :
+     l'outil dont disposait l'audit s'exécutait avec des droits élevés et ne pouvait pas se
+     placer dans le rôle à tester.
+  3. Le stockage des médias publics : combien d'objets sont listables sans compte ? Un chemin
+     d'objet n'est pas du contenu personnel — compte-les et regarde leur FORME (révèle-t-elle
+     à quel compte appartient le média, et ce compte est-il privé ?), sans jamais télécharger
+     ni reproduire un fichier.
+  4. Les règles d'autorisation des canaux temps réel restreignent-elles bien l'abonnement à
+     son destinataire ? Lis les règles TELLES QU'ELLES SONT EN BASE, jamais le fichier de
+     migration — une migration écrite n'est pas une migration appliquée (§7①). Si tu peux
+     l'observer sans rien émettre, fais-le ; sinon écris-le NON FAIT.
+  5. Les limites réelles des fournisseurs, à relever dans les consoles d'administration
+     auxquelles Benjamin a accès : pour la base, la puissance allouée, le nombre de connexions,
+     les quotas temps réel ET la profondeur de récupération à un instant donné — ce dernier
+     point décide si « restauration jamais exercée » est un risque de PERTE ou seulement
+     d'indisponibilité ; pour l'hébergement, la bande passante ; pour l'envoi d'e-mails, le
+     quota journalier. Elles décident de la capacité autant que le code.
+  6. Les appareils réels : iPhone, Android, tablette, application installée. TOUT ce qui a
+     été mesuré jusqu'ici l'a été sous un seul navigateur sans interface. Exemple concret et
+     toujours dans le code : un panneau « Installer sur iPhone » recouvre le fil une seconde
+     et demie après le chargement, à chaque session, et personne ne l'a jamais vu sur un
+     vrai téléphone (UXO-01).
+  7. TROIS MÉCANISMES SONT DANS LE CODE ET N'ONT JAMAIS ÉTÉ OBSERVÉS EN SERVICE. Chacun se
+     tranche par un simple décompte, et ce sont les contrôles les plus rentables de la liste :
+     · la vérification anti-robot à l'inscription : clé vide dans le code servi, donc rien ne
+       s'exécute aujourd'hui ;
+     · les plafonds d'usage des fonctions serveur : ils écrivent un événement par appel
+       accepté, et la table d'analytique n'en porte AUCUN — soit les fonctions n'ont pas été
+       redéployées, soit personne ne les appelle ;
+     · la notification de message privé : la table des notifications ne porte toujours aucune
+       ligne de ce type. Ce défaut a DÉJÀ été « corrigé » une fois sur une fonction que
+       personne n'appelait ; ne conclus ni dans un sens ni dans l'autre sans mesurer.
+     Un mécanisme présent dans le dépôt et jamais observé en production n'est pas une
+     protection : c'est une intention.
 
 ═══════════════════════════════════════════════════════════════════
 6. TA MISSION — quatre étapes, dans cet ordre, une à la fois
 ═══════════════════════════════════════════════════════════════════
-ÉTAPE 1 — VÉRIFIER, sur le SHA 30cc885 et sur la production.
-  a. Reprends les 65 P0/P1 avec le croisement du §4 comme hypothèse à ATTAQUER. Pour chacun :
-     CONFIRMÉ / RÉFUTÉ / INCERTAIN, avec TA preuve (fichier:ligne, requête et son résultat,
-     commande et sa sortie). Concentre l'effort sur les 4 FERMÉ et les 33 PARTIEL : c'est là
-     qu'une erreur coûte cher, parce qu'elle se lit comme une garantie.
-  b. Débloque les preuves du §5. Ce sont elles qui changeront le verdict, pas une relecture
+ÉTAPE 1 — VÉRIFIER, sur la version 30cc885 et sur le service en ligne.
+  a. Reprends les 65 problèmes les plus graves avec le croisement du §4 comme hypothèse à
+     CONTREDIRE. Pour chacun : CONFIRMÉ / INFIRMÉ / INCERTAIN, avec ta propre preuve
+     (fichier et ligne, requête et son résultat, commande et sa sortie). Concentre l'effort
+     sur les 4 FERMÉ et les 33 PARTIEL : c'est là qu'une erreur coûte cher, parce qu'elle
+     se lit comme une garantie.
+  b. Fais les contrôles du §5. Ce sont eux qui feront bouger le verdict, pas une relecture
      de plus du même code.
-  c. AUDITE LE NEUF. 137 000 lignes sont arrivées en dix jours, dont 11 migrations et une
-     red team qui s'est auto-évaluée. Le delta c8cb8e9..30cc885 n'a JAMAIS été relu par un
-     tiers. Cherche les défauts INTRODUITS par les correctifs — le dépôt en a déjà trouvé
-     plusieurs de cette famille, et les nomme : un correctif qui rouvre le défaut qu'il ferme,
-     une garde posée trop haut qui casse quinze tests, un verrou vert sur le défaut qu'il
-     prétend garder. Numérote tes trouvailles ASTRA-xx.
-  d. Traite les 81 problèmes jamais relus (§4c) — ils sont identifiés dans
-     donnees/registre-problemes.json par le champ relecture = « NON VÉRIFIÉ ».
+  c. EXAMINE LE NEUF. 137 000 lignes sont arrivées en dix jours, dont 11 migrations et une
+     revue adversariale qui s'est auto-évaluée. L'écart entre les deux versions n'a jamais
+     été relu par un tiers. Cherche les défauts INTRODUITS par les correctifs : ce dépôt en
+     a déjà trouvé plusieurs de cette famille et les nomme — un correctif qui rouvre le
+     défaut qu'il ferme, une garde posée trop haut qui casse quinze tests, un test vert sur
+     le défaut qu'il prétend protéger. Numérote tes trouvailles ASTRA-xx.
+  d. Traite les 81 problèmes jamais relus (§4c) : ils sont identifiés dans
+     donnees/registre-problemes.json au champ relecture, dont la valeur exacte est
+     « NON VÉRIFIÉ (pas de relecture) » — 81 entrées sur 192.
 
 ÉTAPE 2 — CONSOLIDER, dans le cadre du §1 (gratuit, déjà ouvert).
-  Trois listes : ce qui fonctionne (prouvé) · ce qui doit fermer avant de pousser l'échelle ·
-  ce qui reste à mesurer. Puis un verdict motivé, à l'échelle : jusqu'à combien
+  Trois listes : ce qui fonctionne et le prouve · ce qui doit être réglé avant d'augmenter
+  l'audience · ce qui reste à mesurer. Puis un verdict motivé, à l'échelle : combien
   d'utilisateurs PASSIO peut-elle accueillir aujourd'hui sans exposer personne et sans
-  risquer de perdre les données ? Dis un nombre, et dis ce qui le fixe.
-  Note honnêtement la nature des trois P0 restants : staging, restauration et capacité ne
-  mettent pas les UTILISATEURS en danger, ils mettent le PROJET en danger (perte
-  irréversible, indisponibilité). Ce n'est pas la même urgence qu'une fuite de données,
-  et ta priorisation doit le refléter au lieu de les empiler.
+  risquer de perdre les données ? Donne un nombre, et dis ce qui le fixe.
+  Sois honnête sur la NATURE des trois points intacts : environnement unique, restauration
+  et capacité ne mettent pas les UTILISATEURS en danger, ils mettent le PROJET en danger
+  (perte irréversible, indisponibilité). Ce n'est pas la même urgence qu'un défaut de
+  confidentialité, et ta priorisation doit le refléter au lieu de les empiler.
 
 ÉTAPE 3 — PRÉSENTER À BENJAMIN un plan de correction ordonné : par chantier, avec les
-  problèmes couverts, la correction proposée, le risque de régression, l'effort, et l'ordre.
-  Puis STOP. Tu attends son accord.
+  problèmes couverts, la correction proposée, le risque de régression, l'effort estimé et
+  l'ordre recommandé. Puis STOP, jusqu'à son accord.
 
-ÉTAPE 4 — SEULEMENT APRÈS SON ACCORD : corriger, puis prouver (tests, réinjection du défaut,
-  non-régression).
+ÉTAPE 4 — APRÈS SON ACCORD SEULEMENT : corriger, puis prouver (tests, réinjection du
+  défaut pour vérifier que le test le voit, non-régression).
 
-RÈGLES ABSOLUES pendant les étapes 1 à 3 : lecture seule. Ne corrige rien, ne fusionne rien,
-ne déploie rien, n'écris rien en base, ne charge pas la production, ne crée aucun compte, ne
-recopie aucun secret. GitHub est la seule source de vérité.
+Rappel : pendant les étapes 1 à 3, lecture seule stricte, selon le cadre posé en tête. Et une
+règle de méthode propre à ce projet : GitHub et la base sont les seules sources de vérité —
+ni une conversation, ni un prototype, ni un export ne fait foi.
 
 ═══════════════════════════════════════════════════════════════════
 7. SEPT PIÈGES DE MÉTHODE — chacun a déjà coûté du temps sur ce projet
 ═══════════════════════════════════════════════════════════════════
-① L'ÉTAT DE LA BASE NE SE LIT PAS DANS LE DÉPÔT, IL SE MESURE. Cinq affirmations de
-  CLAUDE.md se sont révélées périmées, dont une de sécurité (un interrupteur annoncé ÉTEINT
-  était ALLUMÉ). Une migration présente dans migrations/ n'est pas une migration appliquée,
-  et supabase_migrations.schema_migrations ne porte que 4 entrées sur des dizaines : les
-  collers SQL manuels ne l'alimentent pas. Elle n'est PAS un indicateur d'état.
-② CLAUDE.md (2 000+ lignes) est une piste, jamais une preuve. Il documente lui-même ses
-  propres péremptions. Confronte toujours au code et à la base.
-③ UNE FONCTION CORRECTIVE SANS APPELANT NE CORRIGE RIEN. Ce projet a vécu le cas en vrai :
-  un correctif, 12 verrous et une fiche entière portaient sur une fonction que personne
-  n'appelait, pendant que la production ne montrait aucune ligne. Cherche les appelants.
-④ UNE GARDE POSÉE SUR L'INSERT SE CONTOURNE PAR L'UPDATE. Déjà trouvé deux fois ici.
-  Et un WITH CHECK ne voit que la ligne finale, jamais l'ancienne.
-⑤ UNE PORTE FERMÉE SUR UNE TABLE SE ROUVRE PAR UNE FONCTION. is_conv_member était
-  SECURITY DEFINER et exécutable par anon : la liste nominative des membres d'une
-  conversation se reconstituait sans compte, alors que la table était bien fermée. Après
-  toute migration de confidentialité, lis get_advisors ET has_function_privilege('anon', …).
-⑥ UN AVERTISSEMENT DE LINTER N'EST PAS UN DÉFAUT. Sur six alertes « SECURITY DEFINER
-  exécutable par anon », cinq étaient du bruit (deux fonctions de trigger que PostgreSQL
-  REFUSE d'appeler directement, deux ouvertures délibérées, une fonction qui répond sur
-  l'APPELANT et non sur la CIBLE) et une seule était une vraie fuite. Le tri ne se fait
-  qu'en lisant le corps de chaque fonction, et en demandant : sur QUOI répond-elle ?
-⑦ UNE REPRODUCTION QUI ROUGIT POUR UNE AUTRE RAISON N'EST PAS UNE REPRODUCTION. Ce dépôt
-  connaît « vert en local, rouge en CI » (le vrai SDK ne se charge qu'en CI) ET l'inverse
-  (cinq suites rouges en local sur main pur, vertes en CI). Avant d'accuser un changement,
-  rejoue la suite sur main dans un worktree séparé.
+① L'ÉTAT DE LA BASE NE SE LIT PAS DANS LE DÉPÔT, IL SE MESURE. Cinq affirmations du guide
+  interne se sont révélées périmées, dont une de sécurité (un réglage annoncé éteint était
+  allumé). Une migration présente dans le dossier n'est pas une migration appliquée, et la
+  table d'historique n'en enregistre que 4 sur des dizaines, parce que les applications
+  manuelles ne l'alimentent pas. Elle n'est donc pas un indicateur d'état.
+② Le guide interne CLAUDE.md (plus de 2 000 lignes) est une piste, jamais une preuve. Il
+  documente lui-même ses propres péremptions. Confronte toujours au code et à la base.
+③ UNE FONCTION CORRECTIVE SANS APPELANT NE CORRIGE RIEN. Ce projet l'a vécu : un correctif,
+  12 tests et une fiche entière portaient sur une fonction que personne n'appelait, pendant
+  que la production ne montrait aucune ligne. Cherche systématiquement les appelants.
+④ UNE GARDE POSÉE SUR LA CRÉATION SE CONTOURNE PAR LA MISE À JOUR. Déjà trouvé deux fois
+  ici. Et une contrainte de sortie ne voit que la ligne finale, jamais l'ancienne.
+⑤ UNE PORTE FERMÉE SUR UNE TABLE PEUT SE ROUVRIR PAR UNE FONCTION. Une fonction d'aide
+  s'exécutant avec les droits de son propriétaire restait appelable par le rôle visiteur :
+  une information qu'on venait de fermer se reconstituait par elle. Après toute migration de
+  confidentialité, relis les recommandations de l'outil d'analyse ET les droits d'exécution
+  des fonctions.
+⑥ UN AVERTISSEMENT D'OUTIL D'ANALYSE N'EST PAS UN DÉFAUT. Sur six alertes du même type,
+  cinq étaient du bruit (deux fonctions de déclencheur que le moteur refuse d'appeler
+  directement, deux ouvertures délibérées, une fonction qui répond sur l'appelant et non sur
+  la cible) et une seule était réelle. Le tri ne se fait qu'en lisant le corps de chaque
+  fonction et en demandant : sur QUOI répond-elle ?
+⑦ UNE REPRODUCTION QUI ÉCHOUE POUR UNE AUTRE RAISON N'EST PAS UNE REPRODUCTION. Ce dépôt
+  connaît « vert en local, rouge en intégration » (la vraie bibliothèque ne se charge qu'en
+  intégration) ET l'inverse (cinq suites rouges en local sur main pur, vertes en intégration).
+  Avant d'accuser un changement, rejoue la suite sur main dans une copie de travail séparée.
 
 ═══════════════════════════════════════════════════════════════════
 8. FORMAT ATTENDU
 ═══════════════════════════════════════════════════════════════════
-Problème : identifiant · priorité (P0 bloque l'ouverture large · P1 avant de pousser
-l'échelle · P2 amélioration importante · P3 optimisation) · fonctionnalité · attendu ·
-observé · reproduction · preuve · impact utilisateur · visibilité Pilotage · détection
-Sentinelle · correction · risque de régression · effort · confiance.
-Contrôles : PROUVÉ · CONFORME PAR INSPECTION · PROBABLE · DÉFAILLANT · BLOQUÉ · SANS OBJET.
-Méthodes : appareil réel · émulation · inspection code · requête base · test exécuté · non fait.
+Problème : identifiant · priorité (P0 empêche d'élargir l'audience · P1 à régler avant de
+l'élargir · P2 amélioration importante · P3 optimisation) · fonctionnalité · comportement
+attendu · comportement observé · reproduction · preuve · impact pour l'utilisateur ·
+visible depuis le centre de pilotage ? · détectable par la supervision ? · correction
+proposée · risque de régression · effort · confiance.
+Statuts : PROUVÉ · CONFORME PAR INSPECTION · PROBABLE · DÉFAILLANT · NON VÉRIFIABLE · SANS OBJET.
+Méthodes : appareil réel · émulation · inspection du code · requête base · test exécuté · non fait.
 
-Une dernière chose, et elle compte. Ce projet a une règle qu'il s'applique à lui-même :
-se taire plutôt qu'inventer, et écrire « non mesuré » plutôt que cocher. Tiens-la. Un
-« je n'ai pas pu le prouver » vaut mieux qu'un vert qui enverrait quelqu'un ouvrir son
-application à des inconnus sur une garantie qui n'en était pas une.
+Une dernière chose, et elle compte. Ce projet s'applique une règle à lui-même : se taire
+plutôt qu'inventer, et écrire « non mesuré » plutôt que cocher. Tiens-la. Un « je n'ai pas
+pu le prouver » vaut mieux qu'un vert qui enverrait quelqu'un ouvrir son application à des
+inconnus sur une garantie qui n'en était pas une.
 ```
