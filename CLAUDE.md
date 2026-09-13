@@ -107,10 +107,18 @@ un seul nombre, et le `minlength` de chaque champ le suit (verrou ①). Le serve
 guess… » — EM-6 du go/no-go, mesuré deux fois le 2026-09-11) : `traduireRefusMotDePasse(m)` (app-02) est la SEULE table, appelée
 sur les DEUX chemins (inscription ET changement), et rend le message INTACT s'il n'est pas un refus de mot de passe (verrou ⑤).
 ⚠️ **Ordre de bascule** : ce client d'abord (il refuse à 8 quoi que dise le serveur), le réglage serveur ensuite — l'inverse
-aurait affiché l'erreur anglaise à tout inscrit entre 6 et 7 caractères. ⚠️ **« Secure password change » reste OFF** : le
-changement depuis les Paramètres (l.~3692) appelle `updateUser({ password })` sans `reauthenticate()` — l'allumer casserait
-le changement pour toute session de plus de 24 h (`reauthentication_needed`, non traduit). Lot à part. « Require current
-password when updating » exige `current_password` dans `updateUser` (SDK ≥ 2.102, le vendored 2.116 le porte) : même lot.
+aurait affiché l'erreur anglaise à tout inscrit entre 6 et 7 caractères.
+⚠️ **LES DEUX GARDES DE CHANGEMENT SONT ALLUMÉES CÔTÉ SERVEUR (2026-09-13)** — « Require current password when updating » et
+« Secure password change » — et `openChangePassword`/`doChangePassword` (app-02) en sont la contrepartie : le champ « Mot de passe
+actuel » part en `current_password` (champ du SERVEUR : supabase-js transmet l'objet tel quel, quelle que soit sa version), et un
+refus `reauthentication_needed` (session > 24 h) déclenche `supa.auth.reauthenticate()` → champ « Code reçu par e-mail » → renvoi
+avec `nonce`, le mot de passe saisi restant dans le formulaire. **Sans ce client, une session volée suffisait à changer le mot de
+passe et à verrouiller le compte hors de son propriétaire.** ⚠️ Un compte **Google seul** n'a pas de mot de passe : le serveur ne
+lui demande pas l'ancien (`user.HasPassword()` faux) et le champ est MASQUÉ (`app_metadata.providers` sans « email ») — le lui
+demander l'aurait bloqué devant un champ qu'il ne peut pas remplir. ⚠️ La récupération par lien est EXEMPTÉE des deux gardes
+(session `recovery`, GoTrue ≥ 2.189 — prod en 2.196) : ne pas y ajouter de champ. ⚠️ `[hidden]` ne replie rien sur un `label.field`
+(display:block, fiche 19) : la visibilité des deux champs se pilote et se LIT par `style.display`. Verrou :
+`tests/e2e/changement-mdp-securise.spec.js` (12, dont ① et ④ éprouvés par RÉINJECTION — `current_password` retiré → 2 rouges).
 `LICENSE` (racine) dit « Tous droits réservés » — il ne bloque ni la lecture ni le fork d'un dépôt PUBLIC (CGU GitHub D.5) ;
 seul le passage en privé le fait. Verrou : `tests/e2e/mot-de-passe-minimum.spec.js` (7, dont ①/②/④ éprouvés par RÉINJECTION à 6).
 ## 📧 Confirmation d'e-mail ACTIVE depuis le 2026-08-30 (SMTP Brevo)

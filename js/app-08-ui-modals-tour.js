@@ -2853,6 +2853,8 @@ function _buildNoopSupa() {
       signInAnonymously: _ko,
       signUp: _ko,
       updateUser: _ko,
+      // Preuve fraîche avant un changement de mot de passe (session > 24 h) : hors ligne, refus propre.
+      reauthenticate: _ko,
       resetPasswordForEmail: _ko,
       resend: _ko,
       signOut: () => Promise.resolve({ error: null }),
