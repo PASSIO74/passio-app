@@ -13,9 +13,17 @@
 //   supabase functions deploy ask-ai
 //
 // Coût maîtrisé : modèle Haiku (rapide + bon marché), max_tokens borné, et
-// rate-limit léger par utilisateur (table optionnelle ai_usage, sinon ignoré).
+// PLAFOND PAR COMPTE EN BASE (_shared/plafond.js). ⚠️ L'ancien commentaire promettait
+// un « rate-limit léger (table optionnelle ai_usage, sinon ignoré) » : la table
+// n'a jamais existé et rien ne comptait — un compte confirmé pouvait facturer
+// l'API en boucle. Une garde décrite mais absente est pire qu'un trou.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { verifierPlafondEnBase, reponsePlafond } from "../_shared/plafond.js";
+
+// 8 questions par minute, 60 par heure et par compte : large pour un humain
+// (une question toutes les 7 s), fermé pour une boucle.
+const PLAFOND = { parMinute: 8, parHeure: 60 };
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -56,6 +64,13 @@ Deno.serve(async (req) => {
   );
   const { data: userData, error: userErr } = await userClient.auth.getUser();
   if (userErr || !userData?.user) return json({ error: "Non authentifié" }, 401);
+
+  // 1 bis. Plafond par compte — AVANT de lire le corps et AVANT d'appeler
+  // Anthropic : un appel refusé ne coûte rien. Le compte vit en base
+  // (analytics_events, écrite en service_role), pas dans l'isolat.
+  const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+  const verdict = await verifierPlafondEnBase(admin, userData.user.id, "ask-ai", PLAFOND);
+  if (!verdict.ok) return reponsePlafond(verdict, corsHeaders);
 
   // 2. Lire la question.
   let body: { query?: string };

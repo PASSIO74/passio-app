@@ -351,6 +351,13 @@ jobs:
       - name: Verrous unitaires de l'alerte de moderation
         run: node --test tests/unit/moderation-alerte.test.mjs
 
+      # Plafond d'appels des Edge Functions (ask-ai, notify-call) : le fichier
+      # teste est CELUI que Deno charge en production, pas une copie. Sans lui,
+      # un compte confirme facturait l'API Anthropic en boucle et reveillait
+      # n'importe quel membre par push sans limite (audit du 2026-09-12).
+      - name: Verrous unitaires du plafond des Edge Functions
+        run: node --test tests/unit/plafond.test.mjs
+
       # Le script d'application et le fichier unique colle dans l'editeur SQL
       # sont ce que Benjamin execute sur la VRAIE base. Un outil d'application
       # jamais execute est un pari : celui-ci est joue de bout en bout, et le

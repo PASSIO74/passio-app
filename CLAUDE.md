@@ -555,6 +555,48 @@ déclarative de l'appelant entre comptes, oracles pour un compte connecté.
 annoncé ÉTEINT, il est **ALLUMÉ** ; et `docs/CHECKLIST_COMMERCIALISATION.md` cochait Wallet et CDV.
 **L'état d'un interrupteur serveur ne se lit pas dans un fichier du dépôt, il se mesure.**
 
+## 🚧 EDGE FUNCTIONS SANS PLAFOND — un compte confirmé facturait l'IA en boucle et réveillait qui il voulait (2026-09-12, soir)
+
+Question de Benjamin : « je vais envoyer l'app à des milliers de personnes, confirme-moi qu'elle est sécurisée ».
+Re-mesure depuis l'extérieur avec la seule clé anon (lecture de chaque table, écritures, listage des seaux,
+schéma OpenAPI, fonctions sans jeton, historique git) : **tout ce que les lots des 8–11/09 ont fermé est bien fermé**
+(41 tables RLS, aucune écriture anonyme sauf `client_errors` bornée, seau `attachments` privé, `get_advisors` sans
+ERROR, aucun secret dans l'historique — seule la clé `anon` y figure, ce qui est normal). Deux trous restaient, tous
+deux derrière l'authentification : **`ask-ai` et `notify-call` n'avaient AUCUN plafond**. Le commentaire d'`ask-ai`
+promettait un « rate-limit léger (table optionnelle ai_usage, sinon ignoré) » — la table n'a jamais existé, rien ne
+comptait : un compte confirmé pouvait facturer l'API Anthropic en boucle. Et `notify-call` réveillait N'IMPORTE QUEL
+membre, sans limite, **y compris quelqu'un qui avait bloqué l'appelant** (MOD-03 du go/no-go : « seul canal qui perce »).
+
+⚠️ **LA MÉMOIRE D'UNE EDGE FUNCTION N'EST PAS UNE MÉMOIRE.** Le premier correctif comptait dans une `Map` au niveau
+du module : déployé, puis mesuré en production — **23 appels consécutifs, 23 acceptés**. Le runtime Supabase ne
+garantit rien entre deux requêtes ; une garde qui n'existe que dans un isolat froid n'existe pas. Le compte vit
+donc **en base** : `supabase/functions/_shared/plafond.js` lit et écrit `analytics_events` (table existante, purge à
+13 mois, index en place, écrite par service_role) — un événement `edge_<fonction>` par appel **accepté**, rien pour
+un refus (sinon insister repousserait la fenêtre). Panne de lecture ou d'écriture = refus (fail-closed). Plafonds :
+`ask-ai` 8/min · 60/h ; `notify-call` 20/min · 200/h. Mesuré après redéploiement : 20 × 200 puis 429 ; 8 × 400 (corps
+vide, compté, zéro coût) puis 429. Le refus est un **429 `Retry-After`** : `sendAIQuery` retombe déjà sur son moteur
+local, les appelants de `notify-call` avalent l'échec — aucun écran ne casse.
+
+⚠️ **`notify-call` LIT `blocks` DANS LES DEUX SENS** et rend exactement la réponse « aucun appareil abonné » — ni
+l'un ni l'autre ne doit apprendre le blocage par là. Mesuré en prod avec un compte jetable : sans blocage `sent: 2`,
+cible qui bloque `sent: 0`, émetteur qui bloque `sent: 0`. Chaque champ affiché est **borné** (`text` 200, `fromName`
+60, emojis 8) et `toUserId` doit ressembler à un UUID **avant** d'entrer dans le filtre `.or()` de PostgREST — une
+virgule ou une parenthèse y changerait le sens de la requête. Résidu assumé, inchangé : `fromName`/`text` restent
+déclaratifs entre comptes.
+
+⚠️ **Le fichier testé est CELUI que Deno déploie** : `plafond.js` est en `.js` pour que `node --test
+tests/unit/plafond.test.mjs` (10 verrous, dont ⑧ fail-closed et ⑩ réinjection de la boucle) charge le même
+fichier sans transpileur. Déploiement : `supabase functions deploy ask-ai` / `notify-call` (la CLI **est** installée
+et liée sur ce poste — `supabase functions list` le prouve ; l'ADR-012 ne retire que `db query`). ⚠️ Sur ce poste,
+`core.autocrlf=true` fait ROUGIR `audit-supa-stub.js` et `generer-ouverture.js --verifier` (ils cherchent `
+}
+`
+dans des fichiers relus en CRLF) — vert en CI, fichiers identiques à `origin/main` : ce n'est pas le produit.
+
+**Ce qui reste, et qui n'est pas du code** : le dépôt est PUBLIC (le code se clone en une commande — voir la réponse
+du 2026-09-12 sur la copie), pas de captcha à l'inscription (SEC-06 : Turnstile, à poser dans la semaine), CSP
+`script-src 'unsafe-inline'` (152 `onclick` inline dans index.html : tout XSS résiduel devient exécution), 2FA des
+comptes GitHub/Supabase/Netlify/Brevo non mesurable d'ici, « Secure password change » OFF, mot de passe minimum 6.
 ## 🚀 OUVERTURE PUBLIQUE GRATUITE — SEPT DÉFAUTS SERVEUR, UN LOT CLIENT, DEUX CANAUX D'EXPLOITATION (2026-09-11, après-midi)
 
 Benjamin : « commercialiser, c'est la rendre publique gratuitement et la faire utiliser à un
