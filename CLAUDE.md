@@ -226,6 +226,32 @@ finissent par diverger, et c'est la seconde qu'on oublie. Verrou : `evenements-c
 ⑤ (le CÂBLAGE, à la source — une levée sans appelant serait le défaut `_notifierMessage`) et ⑤ bis
 (le comportement).
 
+## 🔁 401 SUR `POST /rest/v1/user_state` — L'ÉTAT D'UN VISITEUR PARTAIT VERS UNE TABLE QUI N'ACCEPTE QUE `auth.uid()` (2026-09-13)
+
+Même famille que la section précédente, une table plus loin. Mesuré sur 14 jours : **261 refus, 101
+sessions, 0 uuid d'auth** dans ces sessions — le chemin visiteur, et rien d'autre. `user_state` porte
+86 lignes, toutes en uuid ; ses quatre policies `*_own` exigent `auth.uid()`.
+**La cause est dans le client, pas dans la policy.** `getMyUserId()` fabrique un `u_<aléatoire>` pour
+tout visiteur, et les gardes des chemins d'écriture d'état (`_scheduleStateSync`, `supaSaveUserState`,
+le beacon de `pagehide`, `_flushPendingUserState`) ne testaient que `!MY_UID` : le placeholder passait,
+et chaque `saveState()` sans compte POSTait l'état sous le rôle anonyme → 401.
+⚠️ **LE TUYAU DOMINANT N'ÉTAIT PAS LE BEACON** (4 refus sur 261 précédés d'un `hidden`) mais le
+debounce de 2,5 s après `saveState()`, dès le démarrage (`ios_boot_feed` → `ui_v4a4_pose` → `hint_shown`
+→ 401). ⚠️ **ET LE DÉFAUT S'AMPLIFIAIT TOUT SEUL** : le 401 mettait le blob en file
+(`passio_pending_user_state_u_xxx`), que le rejeu du démarrage suivant rejouait — PATCH 200 (zéro
+ligne), SELECT, INSERT 401 — d'où 87 des 101 sessions avec ce PATCH. Un correctif qui n'aurait touché
+que l'envoi aurait laissé la file rejouer le 401 à chaque visite.
+Correctif : **une seule autorité**, `_uidEstUnCompte()` (app-02 — pas `_compteAuthReel` d'app-08,
+parce que le beacon tire dans `pagehide` et qu'app-02 ne doit dépendre de rien chargé après lui), et
+les QUATRE chemins passent par elle ; le rejeu retire la file d'un placeholder au lieu de la rejouer.
+La **lecture** (`supaLoadUserState`) n'est PAS touchée : un GET sans compte rend 200 vide, ce n'est
+pas un défaut, et `reprise-lectures-boot.spec.js` l'exerce avec le placeholder. Verrou :
+`tests/e2e/user-state-invite.spec.js` (5), ⓪ à ③ éprouvés par RÉINJECTION (4 rouges sur le code
+d'avant), ④ garde la porte ouverte aux comptes réels.
+⚠️ **CE QUI RESTE OUVERT DANS LA MÊME FAMILLE** : les mêmes sessions produisent aussi
+`POST /rest/v1/profiles` → 401 (97 refus / 96 sessions / 0 compte sur 14 jours,
+`supaEnsureProfileExists` via `supaInit`) — même cause, autre table, hors du périmètre de ce correctif.
+
 ## 🌐 « Failed to fetch » AU DÉMARRAGE — les LECTURES n'avaient pas de file, les écritures si (2026-09-10)
 
 Mesuré sur 14 jours (`telemetry_events`, `type='api'`, `http_status = 0`) : **448 appels morts sur 46 sessions** — `passions`, `user_state`, `posts`, `profiles`, `follows`, `notifications`, `conv_members`, `video_lives`. La requête n'a jamais atteint PostgREST.

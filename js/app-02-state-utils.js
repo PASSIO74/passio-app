@@ -453,6 +453,47 @@ function _peutPousserEtat() {
 window._peutPousserEtat = _peutPousserEtat;
 window._exigerRestaurationAvantEcriture = _exigerRestaurationAvantEcriture;
 
+// ──────────────────────────────────────────────────────────────────────────
+// UN IDENTIFIANT FABRIQUÉ N'A AUCUNE LIGNE `user_state`, ET N'EN AURA JAMAIS
+// ──────────────────────────────────────────────────────────────────────────
+// ⚠️ `MY_UID` NE PROUVE PAS QU'UN COMPTE EXISTE — `getMyUserId()` (app-08)
+// fabrique un `u_<aléatoire>` pour tout visiteur, et l'écrit dans
+// `localStorage.passio_uid`. Les gardes des trois chemins d'écriture d'état
+// (`supaSaveUserState`, le beacon de `pagehide`, le rejeu de la file) ne
+// testaient que `!MY_UID` : elles laissaient donc passer ce placeholder, et le
+// client POSTait l'état d'un visiteur dans une table dont les quatre policies
+// exigent `auth.uid()` — une porte fermée exprès, à laquelle on frappait à
+// chaque `saveState()` sans compte.
+//
+// Mesuré en production sur 14 jours (2026-09-13, `telemetry_events`) :
+// 261 × `POST /rest/v1/user_state` → 401 sur 101 sessions, **0 uuid d'auth**
+// dans ces sessions (`telemetry.js` ne transmet un `user_id` que pour un uuid
+// d'auth — ce zéro est la preuve, pas un détail). La table porte 86 lignes,
+// toutes en uuid.
+// ⚠️ 401 ET NON 403 : PostgREST rend 403 sur un 42501 quand un compte est
+// authentifié, 401 quand le rôle est ANONYME. Le code d'abord : la policy est
+// juste, c'est l'appel client qui ne devait pas partir (même famille que le
+// 401 sur `events`/`event_attendees` du 2026-09-12, `_compteAuthReel`, app-08).
+// ⚠️ ET LE DÉFAUT S'AMPLIFIAIT TOUT SEUL : le 401 mettait le blob en file
+// (`passio_pending_user_state_u_xxx`), que `_flushPendingUserState` rejouait à
+// CHAQUE démarrage — PATCH 200 (zéro ligne), SELECT, INSERT 401 — d'où 87 des
+// 101 sessions avec ce rejeu. Aucune conséquence à l'écran (un visiteur n'a
+// pas d'état de compte à synchroniser) : du bruit pur dans le tableau de bord
+// qui sert à voir les vrais défauts.
+//
+// ⚠️ UN SEUL POINT DE DÉCISION pour les QUATRE chemins (armement du debounce,
+// envoi, beacon, rejeu) : poser la garde à chaque appelant, c'est laisser le
+// prochain l'oublier. Seul un uuid Supabase prouve un compte ; `null` (entre
+// `onbSkipAuth` et son retour) échoue au même test, la sémantique d'avant est
+// conservée. Portée ICI plutôt que déléguée à `_compteAuthReel` (app-08) :
+// le beacon tire dans `pagehide`, et ce fichier ne doit dépendre de rien qui
+// se charge après lui.
+function _uidEstUnCompte() {
+  try { return typeof MY_UID === "string" && RE_UID_COMPTE.test(MY_UID); }
+  catch (e) { return false; }
+}
+window._uidEstUnCompte = _uidEstUnCompte;
+
 // ═══════════════════════════════════════════════════════════════════════════
 // REPRISE DES LECTURES DE DÉMARRAGE APRÈS UNE COUPURE RÉSEAU (2026-09-10)
 //
@@ -679,7 +720,8 @@ let _stateDirty = false;
 function _scheduleStateSync() {
   if (_accountPurged) return;
   _stateDirty = true;
-  if (typeof MY_UID === "undefined" || !MY_UID) return;
+  // Sans compte, rien à armer : l'envoi serait refusé (cf. `_uidEstUnCompte`).
+  if (!_uidEstUnCompte()) return;
   if (_stateSyncTimer) clearTimeout(_stateSyncTimer);
   _stateSyncTimer = setTimeout(() => { _stateSyncTimer = null; supaSaveUserState(); }, 2500);
 }
@@ -776,7 +818,9 @@ async function supaSaveUserState() {
 async function _supaSaveUserStateOnce() {
   try {
     if (typeof supa === "undefined" || !supa || !window._supaReal) return;
-    if (typeof MY_UID === "undefined" || !MY_UID) return;
+    // ⚠️ Un uuid d'auth, jamais le seul `!MY_UID` : le placeholder `u_xxx` d'un
+    // visiteur passait cette garde et partait se faire refuser (401).
+    if (!_uidEstUnCompte()) return;
     // ⚠️ Un appareil vidé par l'adoption, ou porteur de l'état d'un autre, ne
     // pousse RIEN tant qu'il n'a pas vu l'état du compte (cf. le bloc
     // `_peutPousserEtat` ci-dessus). Sans cette ligne, une seule lecture
@@ -854,7 +898,9 @@ function supaSaveUserStateBeacon() {
   try {
     const cfg = window.PASSIO_SUPABASE;
     if (!cfg || !cfg.url || !cfg.anon) return;
-    if (typeof MY_UID === "undefined" || !MY_UID) return;
+    // Même autorité que `supaSaveUserState` : un placeholder `u_xxx` n'a
+    // aucune ligne à pousser, et le keepalive partirait sous le rôle anonyme.
+    if (!_uidEstUnCompte()) return;
     if (typeof state === "undefined" || !state || !state.onboarded) return;
     // Même garde que `supaSaveUserState` : le beacon est un chemin d'écriture à
     // part entière, et c'est même LUI qui portait le défaut d'origine.
@@ -924,7 +970,15 @@ async function _flushPendingUserState() {
   // chevaucher : sans ce verrou, deux SELECT puis deux upserts concurrents du même blob.
   if (_flushingPendingState) return;
   try {
-    if (typeof MY_UID === "undefined" || !MY_UID) return;
+    if (!_uidEstUnCompte()) {
+      // ⚠️ LA FILE D'UN PLACEHOLDER N'A ÉTÉ CRÉÉE QUE PAR LE DÉFAUT LUI-MÊME
+      // (le 401 d'un visiteur la remplissait, et ce rejeu la rejouait à chaque
+      // démarrage — PATCH, SELECT, INSERT 401). Elle ne se rejouera jamais : on
+      // la retire, sinon elle survit sur l'appareil pour rien. Un compte réel
+      // n'est pas concerné — sa clé est suffixée par SON uuid.
+      if (typeof MY_UID === "string" && MY_UID) _clearPendingUserState(MY_UID);
+      return;
+    }
     // Clé suffixée par compte : on ne lit QUE sa propre file et on ne détruit jamais
     // celle d'un autre compte de la même origine.
     const raw = localStorage.getItem(_pendingUserStateKey(MY_UID));
