@@ -2741,6 +2741,14 @@ window.PASSIO_SUPABASE = { url: SUPABASE_URL, anon: SUPABASE_KEY };
 // lieu de taper Supabase en direct (5 Go/mois, et `no-cache` sur les objets).
 // VIDE = désactivé (URL Supabase directe). Sans slash final. Même origine que
 // l'app, donc rien à ajouter dans la CSP. Voir docs/CDN_MEDIAS.md.
+// Sitekey PUBLIQUE du widget Cloudflare Turnstile (anti-robots à l'inscription,
+// SEC-06). VIDE = captcha inactif côté client : aucun script chargé, aucun jeton
+// envoyé. ⚠️ À renseigner et DÉPLOYER AVANT d'allumer « Enable Captcha
+// protection » dans Supabase (Authentication → Attack Protection), sinon 100 %
+// des inscriptions échouent en `captcha_failed`. Le secret, lui, ne vit QUE dans
+// Supabase. Moteur : captcha* dans app-02. Hôte à garder dans la CSP :
+// challenges.cloudflare.com (script-src ET frame-src).
+const PASSIO_TURNSTILE_SITEKEY = "";
 const PASSIO_CDN_BASE = "https://passio-app.netlify.app/media";
 function cdnUrl(url) {
   if (!PASSIO_CDN_BASE || typeof url !== "string" || url.indexOf("data:") === 0) return url;
