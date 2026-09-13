@@ -331,19 +331,6 @@ async function pump() {
   }
   pumping = true;
   const job = rt.queue.shift();
-  // La source d'analyse est re-vérifiée ICI, pas seulement à l'entrée de la file
-  // (revue contradictoire du 2026-09-13) : si la session du CLI tombe pendant
-  // qu'une file de 20 alertes attend, chaque job partait quand même, recevait
-  // « Aucune source d'analyse disponible » et CONSOMMAIT un cooldown de 6 h et un
-  // cran du budget horaire, sans qu'aucun Claude n'ait été appelé. On rend la
-  // clé et on laisse l'alerte revenir : elle sera analysée dès la reconnexion.
-  if (!available()) {
-    rt.skipped.unavailable++;
-    db.update((d) => { delete d.seen[job.key]; });
-    pumping = false;
-    broadcast("sentinel_state", sentinelState());
-    return;
-  }
   rt.running = { id: job.id, title: job.alert.title, startedAt: now, deep: job.deep };
   rt.lastRunAt = now;
   rt.runsWindow.push(now);
@@ -356,19 +343,6 @@ async function pump() {
     result = await analyzer(prompt, { deep: job.deep });
   } catch (e) {
     result = { error: e.message || String(e) };
-  }
-
-  // Un échec qui n'a RIEN coûté à Claude (pas de source, refus d'authentification,
-  // exception avant l'appel) ne doit ni brûler le cooldown de la cause ni compter
-  // dans le budget horaire : mesuré le 09/09 (sentinel.json), deux alertes `high`
-  // « consommées » en 2 s avec « OAuth session expired », puis 6 h de silence sur
-  // la même cause. Un délai dépassé ou une limite d'usage, eux, ont bien occupé
-  // Claude ou son quota : leur cooldown reste (garde-fou n°3, cf. en-tête).
-  const sansCout = Boolean(result?.error) && (result?.via === "none" || result?.authNeeded === true || result?.via == null);
-  if (sansCout) {
-    db.update((d) => { delete d.seen[job.key]; });
-    rt.runsWindow = rt.runsWindow.filter((t) => t !== now);
-    if (job.deep) rt.deepWindow = rt.deepWindow.filter((t) => t !== now);
   }
 
   const record = {

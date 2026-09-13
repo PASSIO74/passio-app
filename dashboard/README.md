@@ -395,20 +395,6 @@ PRIME sur la session : une sonde « connecté » ne le lève pas avant l'heure. 
 (surcharge transitoire) n'en fait pas partie. Verrous : `looksLikeQuotaError`,
 `noteQuota`.
 
-#### Un échec qui n'a rien coûté à Claude ne brûle plus la sentinelle (2026-09-13)
-
-Le cooldown de 6 h est posé à l'ENTRÉE de la file ; jusqu'ici il n'était jamais
-rendu. Mesuré le 09/09 (`sentinel.json`) : deux alertes `high` « consommées »
-en 2 s avec « OAuth session expired », puis six heures de silence sur la même
-cause alors que la reconnexion avait eu lieu cinq minutes plus tard — et chaque
-échec comptait dans le budget horaire. Désormais `pump()` re-vérifie la source
-au moment d'exécuter (une file en attente n'est pas brûlée si la session tombe
-entre-temps) et, quand l'échec n'a rien coûté (`via: "none"`, refus d'auth,
-exception avant l'appel), rend la clé de cooldown et le cran de budget. Un
-délai dépassé ou une limite d'usage, eux, ont bien occupé Claude : leur
-cooldown reste (garde-fou n°3). Verrous : `test/sentinel.test.js` « rend la
-clé », « garde son cooldown », « file en attente ».
-
 #### Ce que l'écran suit en direct (2026-09-13)
 
 Chaque bascule de la connexion est poussée en SSE (`claude`) : la carte
