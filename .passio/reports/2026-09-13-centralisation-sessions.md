@@ -1,8 +1,9 @@
 # Centralisation des sessions parallèles — 2026-09-13
 
-Document unique de reprise. Il remplace les 40 sessions Claude Code visibles sur
-ce compte (30 actives ou au repos, 10 archivées) et les 235 branches distantes du
-dépôt. **Aucun statut n'est déduit d'un résumé de session** : chaque ligne
+Document unique de reprise. Il remplace les 40 sessions Claude Code que l'API a
+rendues pour ce compte — 1 en cours (celle-ci), 28 au repos, 11 archivées ; la
+liste était plafonnée à 40, il peut en exister d'antérieures — et les 283
+branches distantes du dépôt. **Aucun statut n'est déduit d'un résumé de session** : chaque ligne
 ci-dessous est établie sur une PR, un run GitHub Actions, une requête en
 production (canal ① d'ADR-012) ou une commande exécutée dans ce worktree.
 
@@ -30,9 +31,12 @@ Deux PR sont closes **sans** fusion, et ni l'une ni l'autre ne laisse un trou :
   VIDE DEPUIS LE 2026-09-12 » et le paragraphe « Statut de la marque ».
 - **#260** — remplacée par les suites de messagerie du 2026-09-03.
 
-**Aucune branche récente n'est orpheline.** Les 50 branches touchées depuis le
-2026-09-09 ont toutes eu leur PR — le mode d'échec du 2026-08-29 (« quatre
-demandes codées, jamais de PR ») ne s'est pas reproduit.
+**Aucune branche récente n'est orpheline**, et ce n'est pas une impression :
+les **37** branches touchées depuis le 2026-09-09 (hors `main` et la branche de
+cette session) apparaissent **toutes** comme tête d'au moins une des 100
+dernières PR — comparaison mécanique des deux listes, pas une relecture. Le mode
+d'échec du 2026-08-29 (« quatre demandes codées, jamais de PR ») ne s'est pas
+reproduit.
 
 ⚠️ **Le piège de méthode de cette centralisation, à ne pas refaire.** Trois
 mesures « évidentes » ont donné des verdicts FAUX avant d'être abandonnées :
@@ -174,8 +178,8 @@ un fichier du dépôt, il se mesure.**
 
 ## 4. Hygiène du dépôt
 
-235 branches distantes, dont **~180 antérieures au 2026-09-01 dont la PR est
-fusionnée ou close**. Elles ne gênent aucun outil, mais elles rendent toute
+283 branches distantes, dont **205 antérieures au 2026-09-02**, presque toutes
+fusionnées ou closes. Elles ne gênent aucun outil, mais elles rendent toute
 lecture de « ce qui reste » coûteuse — c'est très exactement ce qui a fait perdre
 du temps au début de cette session. Un élagage des branches dont la PR est
 fermée est sans risque (l'historique vit dans `main`), et c'est un geste que
