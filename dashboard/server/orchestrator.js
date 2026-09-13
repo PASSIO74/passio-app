@@ -9,6 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import { config } from "./config.js";
 import { audit } from "./audit.js";
+import { claudeCliState } from "./claudecli.js";
 
 const exec = promisify(execFile);
 const REPO = path.resolve(config.repoPath);
@@ -147,7 +148,19 @@ export async function snapshot() {
     },
     agents: {
       chatgpt: { status: "external", truthfulLabel: "Orchestrateur dans ChatGPT", model: manifest?.orchestrator?.model || "GPT-5.6 Sol" },
-      claude_code: { status: processAlive(supervisorPid) ? "supervised" : "unknown", truthfulLabel: "Exécuté par aiworker.mjs dans la session locale standard" },
+      // L'état de CONNEXION du CLI, pas la seule vie du pid (revue du 2026-09-13) :
+      // « Supervisé » en vert s'affichait pendant que le worker refusait ses
+      // tâches faute de session. Le superviseur donne le même CLAUDE_CONFIG_DIR au
+      // serveur et au worker : claudeCliState() est la source unique.
+      claude_code: (() => {
+        const cli = claudeCliState();
+        const alive = processAlive(supervisorPid);
+        const status = !alive ? "unknown" : !cli.checked ? "unknown" : cli.available ? "connected" : cli.reason || "unavailable";
+        return {
+          status, reason: cli.reason || null, isolated: Boolean(cli.isolated), version: cli.version || null,
+          truthfulLabel: `Exécuté par aiworker.mjs · CLI ${cli.available ? "connectée" : cli.reason === "quota" ? "sous limite d'usage" : cli.checked ? "NON connectée (Connecter-Claude.cmd)" : "non sondée"}${cli.isolated ? " · identifiants isolés" : ""}`,
+        };
+      })(),
       codex: { status: processAlive(supervisorPid) ? "supervised" : "unknown", truthfulLabel: "Reviewer local appelé par aiworker.mjs" },
       lovable: {
         status: manifest?.agents?.lovable?.project_id ? "configured" : "unknown",

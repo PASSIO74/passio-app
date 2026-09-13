@@ -6,6 +6,10 @@ import assert from "node:assert/strict";
 import { appliquer, CLES } from "../scripts/autopilote.mjs";
 
 const cli = await import("../server/claudecli.js");
+// La diffusion SSE des bascules est neutralisée : sinon l'import de sse.js tire
+// observation.js et ses fichiers data/ dans le processus de test.
+const diffusions = [];
+cli._setBroadcastForTests((type, data) => diffusions.push({ type, data }));
 
 test("noteAuthFailure rabat l'état sans prétendre que le binaire a disparu", () => {
   const apres = cli.noteAuthFailure();
@@ -76,7 +80,7 @@ test("une sonde sans réponse GARDE l'état connu et compte, au lieu de déclare
   assert.equal(s.loggedIn, true);
   assert.equal(s.available, true, "un délai dépassé n'est pas une déconnexion");
   assert.equal(s.probeFailures, 1);
-  assert.equal(s.lastProbeError, "timeout");
+  assert.match(s.lastProbeError, /^timeout: aucune réponse/, "code ET détail : « spawn ENOMEM » ne doit plus se perdre");
 });
 
 test("après N sondes muettes de suite, indisponible avec la raison « probe » — et le retour remet tout à zéro", async () => {
@@ -220,4 +224,122 @@ test("une clé absente est ajoutée, une clé présente est remplacée (jamais d
   assert.equal((apres.match(/^DASH_SENTINEL_AUTOPILOT=/gm) || []).length, 1);
   assert.equal((apres.match(/^DASH_SENTINEL_LOCAL_GATE_V2=/gm) || []).length, 1);
   assert.match(apres, /^DASH_SENTINEL_AUTOPILOT=true$/m);
+});
+
+// ── Un refus d'auth apparent est RE-SONDÉ avant d'être cru (2026-09-13) ──────
+// Avant, `noteAuthFailure()` rabattait l'état sur le seul message d'erreur, et
+// la regex contenait `connect` : « Could not connect to server » ou ECONNREFUSED
+// déconnectaient le pilotage à l'écran. Mutations : remettre `connect` dans la
+// regex (rougit « réseau ») ; rabattre sans sonder (rougit « sonde connectée »).
+test("looksLikeAuthError : oui pour une session tombée, non pour une panne réseau", () => {
+  for (const m of ["Not logged in · run claude auth login", "OAuth token has expired", "401 Unauthorized", "Invalid authentication credentials", "invalid_grant"])
+    assert.equal(cli.looksLikeAuthError(m), true, m);
+  for (const m of ["Could not connect to server", "connect ECONNREFUSED 127.0.0.1:443", "fetch failed", "getaddrinfo ENOTFOUND api.anthropic.com", "network error", "rate limit reached"])
+    assert.equal(cli.looksLikeAuthError(m), false, m);
+});
+
+test("confirmAuthFailure GARDE l'état si la sonde dit « connecté » — et ne signale rien", async () => {
+  const vues = [];
+  cli._setStateForTests({ ...CONNECTE });
+  const r = await cli.confirmAuthFailure({ detect: () => cli.detectClaudeCli({ probe: sondeConnectee }), notify: (a) => vues.push(a), error: "401 (proxy)" });
+  assert.equal(r.kept, true);
+  assert.equal(cli.claudeCliState().available, true, "une erreur d'analyse qui ressemble à un refus n'est pas une session tombée");
+  assert.equal(vues.length, 0);
+  assert.match(cli.claudeCliState().lastAnalysisError, /401/);
+});
+
+test("confirmAuthFailure rabat et signale UNE fois quand la sonde confirme", async () => {
+  const vues = [];
+  cli._setStateForTests({ ...CONNECTE });
+  const r = await cli.confirmAuthFailure({ detect: () => cli.detectClaudeCli({ probe: sondeDeconnectee }), notify: (a) => vues.push(a) });
+  assert.equal(r.flipped, true);
+  assert.equal(cli.claudeCliState().reason, "auth_refused");
+  assert.equal(vues.length, 1);
+  assert.equal(vues[0].level, "warn");
+  const r2 = await cli.confirmAuthFailure({ detect: () => cli.detectClaudeCli({ probe: sondeDeconnectee }), notify: (a) => vues.push(a) });
+  assert.equal(r2.flipped, false);
+  assert.equal(vues.length, 1, "déjà déconnecté : pas de doublon");
+});
+
+test("confirmAuthFailure avec une sonde MUETTE garde l'état (ni plein, ni vide)", async () => {
+  const vues = [];
+  cli._setStateForTests({ ...CONNECTE });
+  const r = await cli.confirmAuthFailure({ detect: () => cli.detectClaudeCli({ probe: sondeMuette }), notify: (a) => vues.push(a) });
+  assert.equal(r.kept, true);
+  assert.equal(cli.claudeCliState().available, true);
+  assert.equal(cli.claudeCliState().probeFailures, 1);
+  assert.equal(vues.length, 0);
+});
+
+// ── Limite d'usage : ni déconnexion ni panne, mais indisponible jusqu'à l'heure dite ──
+// Mesuré le 24/08 (supervise.log) : « You've hit your weekly limit · resets Aug 28,
+// 3am » — l'état restait « connecté » pendant des jours, chaque alerte était
+// consommée en erreur. Mutations : retirer le bloc quota de poser() rougit
+// « prime » ; retirer le `if (quota)` de runClaudeCli n'est pas testable sans CLI.
+test("looksLikeQuotaError : limite d'abonnement (429 / weekly limit) avec heure de reset, limite de débit, et rien pour 529", () => {
+  const now = Date.parse("2026-09-13T00:30:00");
+  const q = cli.looksLikeQuotaError("You've hit your weekly limit · resets Aug 28, 3am (Europe/Paris)", 429, now);
+  assert.ok(q && q.until > now, "une heure de reset est lue");
+  const d = new Date(q.until); assert.equal(d.getHours(), 3); assert.equal(d.getDate(), 28);
+  const q2 = cli.looksLikeQuotaError("Usage limit reached", 429, now);
+  assert.equal(q2.until, now + 60 * 60_000, "sans heure lisible : 60 min pour l'abonnement");
+  const q3 = cli.looksLikeQuotaError("rate limit exceeded, retry later", null, now);
+  assert.equal(q3.until, now + 15 * 60_000, "limite de débit : 15 min");
+  assert.equal(cli.looksLikeQuotaError("Overloaded", 529, now), null, "529 = surcharge transitoire, pas un quota");
+  assert.equal(cli.looksLikeQuotaError("Not logged in", 401, now), null);
+});
+
+test("noteQuota rend indisponible avec la raison « quota » et une alerte ; la sonde connectée ne la lève pas avant l'heure", async () => {
+  const vues = [];
+  cli._setStateForTests({ ...CONNECTE, quotaUntil: null });
+  const until = Date.now() + 60_000;
+  cli.noteQuota(until, "You've hit your weekly limit", { notify: (a) => vues.push(a) });
+  await new Promise((r) => setImmediate(r));
+  let s = cli.claudeCliState();
+  assert.equal(s.available, false);
+  assert.equal(s.reason, "quota");
+  assert.equal(s.loggedIn, true, "la session est valide : ce n'est pas une déconnexion");
+  assert.equal(vues.length, 1);
+  assert.match(vues[0].message, /Limite d'usage/);
+  assert.match(vues[0].message, /Rien à reconnecter/);
+  // Une sonde « connecté » pendant le quota ne rétablit PAS la disponibilité.
+  await cli.claudeCliWatchTick({ notify: (a) => vues.push(a), detect: () => cli.detectClaudeCli({ probe: sondeConnectee }) });
+  s = cli.claudeCliState();
+  assert.equal(s.available, false, "le quota prime sur la session");
+  assert.equal(vues.length, 1);
+});
+
+test("à l'échéance du quota, la sonde suivante rétablit la disponibilité et le signale", async () => {
+  const vues = [];
+  cli._setStateForTests({ ...CONNECTE, available: false, reason: "quota", quotaUntil: Date.now() - 1 });
+  await cli.claudeCliWatchTick({ notify: (a) => vues.push(a), detect: () => cli.detectClaudeCli({ probe: sondeConnectee }) });
+  const s = cli.claudeCliState();
+  assert.equal(s.available, true);
+  assert.equal(s.reason, null);
+  assert.equal(s.quotaUntil, null);
+  assert.equal(vues.length, 1);
+  assert.match(vues[0].title, /limite d'usage levée/);
+});
+
+test("lireNombre : vide → défaut, texte → défaut, sinon borné", () => {
+  assert.equal(cli.lireNombre("X", 10, 1, {}), 10);
+  assert.equal(cli.lireNombre("X", 10, 1, { X: "" }), 10);
+  assert.equal(cli.lireNombre("X", 10, 1, { X: "abc" }), 10, "un texte ne doit jamais devenir NaN → setTimeout(NaN)");
+  assert.equal(cli.lireNombre("X", 10, 1, { X: "0" }), 1, "borné par le minimum");
+  assert.equal(cli.lireNombre("X", 10, 1, { X: "2.5" }), 2.5);
+});
+
+test("stop() puis start() pendant un tour en vol ne laisse qu'UNE chaîne de minuteurs", async () => {
+  let ticks = 0;
+  cli.stopClaudeCliWatch();
+  cli._setStateForTests({ ...CONNECTE, available: false });
+  // Un tour « en vol » : on simule via le tick public puis on relance.
+  const a = cli.startClaudeCliWatch(30_000, 30_000);
+  cli.stopClaudeCliWatch();
+  const b = cli.startClaudeCliWatch(30_000, 30_000);
+  assert.notEqual(a, b, "une nouvelle chaîne a été créée");
+  cli.stopClaudeCliWatch();
+  // Après stop, aucune planification ne doit survivre : le compteur de génération l'interdit.
+  assert.equal(typeof cli.nextWatchDelay, "function");
+  assert.equal(ticks, 0);
 });

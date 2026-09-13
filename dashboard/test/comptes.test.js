@@ -140,7 +140,10 @@ test("créations de compte : fenêtres et série de 14 jours", async () => {
   store.setTestUids(["u_e2e"]);
   _setAdminForTests(faireAdmin({
     profils: [
-      { id: "a", created_at: new Date(Date.now() - 3600_000).toISOString() },  // aujourd'hui
+      // « aujourd'hui » : il y a une heure, mais JAMAIS avant minuit local — la
+      // série est découpée à minuit (signups.js setHours(0,0,0,0)) et ce test
+      // rougissait entre 00:00 et 01:00 (CI du 13/09 à 00:10 UTC, poste à 00:09).
+      { id: "a", created_at: new Date(Math.max(new Date().setHours(0, 0, 0, 0), Date.now() - 3600_000)).toISOString() },
       { id: "b", created_at: jours(3) },                                        // semaine
       { id: "c", created_at: jours(20) },                                       // mois
       { id: "d", created_at: jours(200) },                                      // hors fenêtres

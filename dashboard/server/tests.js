@@ -47,6 +47,23 @@ function capterAuthz(sortie, code) {
   dernierAuthz = { pass: p, total: p + f, at: Date.now(), code };
 }
 
+/** Abat tout l'arbre (revue du 2026-09-13) : sous Windows `proc.kill()` ne tuait
+ *  que cmd.exe — Playwright et Chromium survivaient, et une seconde suite pouvait
+ *  démarrer en parallèle sur le même port 8080. `taskkill /T /F` seul, `kill()`
+ *  en repli (cf. claudecli.js tuerArbre, mesuré). */
+function tuerArbre(proc) {
+  if (!proc) return;
+  if (process.platform === "win32" && proc.pid) {
+    let tk = null;
+    try { tk = spawn("taskkill", ["/PID", String(proc.pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" }); } catch {}
+    if (!tk) { try { proc.kill(); } catch {} return; }
+    tk.on("error", () => { try { proc.kill(); } catch {} });
+    tk.on("close", (code) => { if (code !== 0) { try { proc.kill(); } catch {} } });
+    return;
+  }
+  try { proc.kill(); } catch {}
+}
+
 export function listSuites() {
   return Object.entries(TEST_SUITES).map(([id, s]) => ({ id, label: s.label, cmd: [s.cmd, ...s.args].join(" ") }));
 }
@@ -61,26 +78,30 @@ export function runSuite(id, actor) {
   audit("run_tests", { id, cmd: suite.cmd + " " + suite.args.join(" ") }, actor);
 
   const proc = spawn(suite.cmd, suite.args, { cwd: config.repoPath, shell: process.platform === "win32", env: { ...process.env, CI: "1", FORCE_COLOR: "0" } });
-  running = { id, proc, startedAt: Date.now(), output: [] };
+  const run = { id, proc, startedAt: Date.now(), output: [] };
+  running = run;
   broadcast("test", { phase: "start", id, label: suite.label });
 
+  // `run`, pas `running` : après un arrêt, un processus qui vide encore ses tampons
+  // écrivait dans `running.output` alors que `running` valait null → TypeError
+  // dans un gestionnaire 'data' → exception non rattrapée → serveur mort.
   const push = (chunk, stream) => {
     const text = chunk.toString();
-    running.output.push(text);
-    if (running.output.length > 4000) running.output.shift();
+    run.output.push(text);
+    if (run.output.length > 4000) run.output.shift();
     broadcast("test", { phase: "log", id, stream, text });
   };
   proc.stdout.on("data", (c) => push(c, "out"));
   proc.stderr.on("data", (c) => push(c, "err"));
   proc.on("close", (code) => {
-    if (id === "authz") capterAuthz(running.output.join(""), code);
+    if (id === "authz") capterAuthz(run.output.join(""), code);
     broadcast("test", { phase: "end", id, code });
     audit("run_tests_done", { id, code }, actor);
-    running = null;
+    if (running === run) running = null;
   });
   proc.on("error", (err) => {
     broadcast("test", { phase: "end", id, code: -1, error: err.message });
-    running = null;
+    if (running === run) running = null;
   });
   return { started: id };
 }
@@ -92,29 +113,30 @@ export function runSuiteAwait(id, cwd, actor, timeoutMs = 900_000) {
     if (!suite) { const e = new Error("Suite inconnue (hors liste blanche)."); e.code = 400; return reject(e); }
     audit("run_tests_auto", { id, cwd }, actor);
     const proc = spawn(suite.cmd, suite.args, { cwd: cwd || config.repoPath, shell: process.platform === "win32", env: { ...process.env, CI: "1", FORCE_COLOR: "0" } });
-    running = { id, proc, startedAt: Date.now(), output: [] };
+    const run = { id, proc, startedAt: Date.now(), output: [] };
+    running = run;
     broadcast("test", { phase: "start", id, label: suite.label + " (vérification automatique)" });
     let out = "";
     const push = (c, stream) => {
       const text = c.toString();
       out += text; if (out.length > 400_000) out = out.slice(-400_000);
-      running.output.push(text); if (running.output.length > 4000) running.output.shift();
+      run.output.push(text); if (run.output.length > 4000) run.output.shift();
       broadcast("test", { phase: "log", id, stream, text });
     };
-    const timer = setTimeout(() => { try { proc.kill(); } catch {} }, timeoutMs);
+    const timer = setTimeout(() => tuerArbre(proc), timeoutMs);
     proc.stdout.on("data", (c) => push(c, "out"));
     proc.stderr.on("data", (c) => push(c, "err"));
     proc.on("close", (code) => {
       clearTimeout(timer);
       if (id === "authz") capterAuthz(out, code);
       broadcast("test", { phase: "end", id, code });
-      running = null;
+      if (running === run) running = null;
       resolve({ code: code === null ? -1 : code, output: out });
     });
     proc.on("error", (err) => {
       clearTimeout(timer);
       broadcast("test", { phase: "end", id, code: -1, error: err.message });
-      running = null;
+      if (running === run) running = null;
       resolve({ code: -1, output: out + "\n" + err.message });
     });
   });
@@ -122,8 +144,11 @@ export function runSuiteAwait(id, cwd, actor, timeoutMs = 900_000) {
 
 export function stopRun(actor) {
   if (!running) return { stopped: false };
-  try { running.proc.kill(); } catch {}
+  tuerArbre(running.proc);
   audit("stop_tests", { id: running.id }, actor);
-  const id = running.id; running = null;
+  // `running` est libéré par l'événement 'close' du processus (l'arbre entier est
+  // abattu, il arrive vite) : le libérer ici laissait démarrer une seconde suite
+  // pendant que la première vidait encore Chromium sur le port 8080.
+  const id = running.id;
   return { stopped: true, id };
 }

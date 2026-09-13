@@ -25,11 +25,12 @@ git pull --ff-only origin main
 if errorlevel 1 goto :gitdirty
 
 echo [2/4] Verification Claude Code...
-REM Sur Windows, claude installe par npm est souvent claude.cmd. Sans CALL,
-REM l execution transfere le controle au shim et ce script ne reprend jamais.
-call claude auth status > "%TEMP%\passio-claude-status.txt" 2>&1
-if errorlevel 1 goto :claudeauth
-findstr /I /C:"\"loggedIn\":true" /C:"\"loggedIn\": true" "%TEMP%\passio-claude-status.txt" >nul 2>&1
+REM La sonde passe par connecter-claude.mjs (revue du 2026-09-13) : lui lit
+REM dashboard\.env et sonde le MEME dossier d identifiants que le pilotage
+REM (DASH_CLAUDE_CONFIG_DIR). Un "claude auth status" nu sondait ~\.claude de la
+REM session Windows, annoncait "connecte" et redemarrait un pilotage sourd.
+REM Chemin absolu : le cwd est le depot depuis la ligne 21.
+call node "%DASH%scripts\connecter-claude.mjs" etat > "%TEMP%\passio-claude-status.txt" 2>&1
 if errorlevel 1 goto :claudeauth
 
 echo [3/4] Verification Codex...

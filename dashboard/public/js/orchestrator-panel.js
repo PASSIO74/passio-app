@@ -17,8 +17,10 @@ async function req(method, path, body) {
 }
 
 const aiIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/><circle cx="12" cy="12" r="4"/><path d="M10.5 12h3M12 10.5v3"/></svg>`;
-const statusLabel = (s) => ({ done:"Terminé", running:"En cours", queued:"En attente", failed:"Échec", supervised:"Supervisé", configured:"Configuré", available:"Disponible", external:"Externe", historical:"Historique", unknown:"Non vérifié" }[s] || s || "—");
-const statusClass = (s) => ["done","supervised","configured","available"].includes(s) ? "ok" : s === "failed" ? "bad" : s === "running" ? "run" : "muted";
+// Les états de CONNEXION du CLI Claude (revue du 2026-09-13) : « Supervisé » en
+// vert ne voulait dire que « le pid du superviseur vit ».
+const statusLabel = (s) => ({ done:"Terminé", running:"En cours", queued:"En attente", failed:"Échec", supervised:"Supervisé", configured:"Configuré", available:"Disponible", connected:"Connecté", logged_out:"À reconnecter", auth_refused:"À reconnecter", quota:"Limite d'usage", probe:"Sonde muette", not_installed:"CLI absente", unavailable:"Indisponible", external:"Externe", historical:"Historique", unknown:"Non vérifié" }[s] || s || "—");
+const statusClass = (s) => ["done","supervised","configured","available","connected"].includes(s) ? "ok" : ["failed","logged_out","auth_refused","not_installed"].includes(s) ? "bad" : s === "running" ? "run" : "muted";
 
 let me = null;
 let panel = null;
