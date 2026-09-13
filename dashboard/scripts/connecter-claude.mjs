@@ -18,7 +18,7 @@
 //
 // Il n'écrit rien dans .env et ne touche à aucun autre identifiant.
 // ═══════════════════════════════════════════════════════════════════════════
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -105,9 +105,9 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     process.exit(0);
   }
 
-  console.log("  Ouverture de la connexion (une page web va s'ouvrir, autorise l'accès)…\n");
+  console.log("  Ouverture de la connexion…\n");
   if (isole) fs.mkdirSync(env.CLAUDE_CONFIG_DIR, { recursive: true });
-  spawnSync("claude", ["auth", "login"], { shell: true, env, stdio: "inherit", windowsHide: false });
+  await connexionAssistee(env);
 
   const apres = statut(env);
   if (apres.connecte) {
@@ -116,4 +116,40 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   }
   console.log("\n  ✗ Toujours pas connecté. Relance ce script, ou vérifie que la page web a bien confirmé l'autorisation.");
   process.exit(1);
+}
+
+/**
+ * `claude auth login`, mais on OUVRE la page nous-mêmes (2026-09-13). Mesuré sur
+ * ce poste : le CLI affiche « Opening browser to sign in… » et aucune page ne
+ * s'ouvre — lancé depuis un script, il n'atteint pas le navigateur de la session.
+ * On relaie sa sortie à l'écran, on y lit l'URL d'autorisation et on la donne à
+ * `start` (le navigateur par défaut de la session Windows). Le code que la page
+ * affiche ensuite se colle DANS CETTE FENÊTRE : l'entrée clavier reste celle du
+ * CLI (stdin hérité), rien ne transite par ailleurs.
+ */
+function connexionAssistee(env) {
+  return new Promise((resolve) => {
+    const p = spawn("claude", ["auth", "login"], { shell: true, env, stdio: ["inherit", "pipe", "pipe"], windowsHide: false });
+    let tampon = "", ouverte = false;
+    const relayer = (flux) => (c) => {
+      const t = c.toString();
+      flux.write(t);
+      tampon += t;
+      const m = tampon.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "").match(/https:\/\/\S+oauth\S+/);
+      if (m && !ouverte) {
+        ouverte = true;
+        const url = m[0].replace(/[\s'")\]]+$/, "");
+        console.log(`\n  ▸ Ouverture de la page d'autorisation dans ton navigateur…\n    (si rien ne s'ouvre, copie cette adresse : ${url})\n`);
+        try {
+          // `start "" "<url>"` : le premier argument est le TITRE de fenêtre, sinon l'URL est prise pour lui.
+          spawn("cmd.exe", ["/c", "start", "", url.replace(/&/g, "^&")], { windowsHide: true, stdio: "ignore", detached: true }).unref();
+        } catch {}
+        console.log("  ▸ Autorise l'accès, puis COLLE ICI le code affiché par la page, et appuie sur Entrée.\n");
+      }
+    };
+    p.stdout.on("data", relayer(process.stdout));
+    p.stderr.on("data", relayer(process.stderr));
+    p.on("close", () => resolve());
+    p.on("error", (e) => { console.log("  ✗ impossible de lancer `claude auth login` :", e.message); resolve(); });
+  });
 }
