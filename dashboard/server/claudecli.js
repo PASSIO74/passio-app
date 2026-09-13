@@ -24,6 +24,7 @@
 // personnalisations et des serveurs MCP.
 // ═══════════════════════════════════════════════════════════════════════════
 import { spawn } from "node:child_process";
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { config } from "./config.js";
@@ -35,6 +36,15 @@ import { config } from "./config.js";
 // « gouvernance critique » (contre-revue humaine) pour d'autres raisons.
 const CLAUDE_CONFIG_DIR = process.env.DASH_CLAUDE_CONFIG_DIR
   ? path.resolve(config.root, process.env.DASH_CLAUDE_CONFIG_DIR) : "";
+// Marqueur pour Connecter-Claude.cmd : le dossier que CE serveur lit vraiment
+// (chaîne vide = ~/.claude partagé). Sans lui, le script promettait « le
+// pilotage le voit en moins d'une minute » alors qu'un serveur démarré avant le
+// réglage regardait ailleurs. Écriture protégée : un disque plein ne doit pas
+// empêcher le module de charger.
+try {
+  fs.mkdirSync(config.dataDir, { recursive: true });
+  fs.writeFileSync(path.join(config.dataDir, "claude-config-dir.txt"), CLAUDE_CONFIG_DIR);
+} catch {}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ÉTAT DE LA CONNEXION — et POURQUOI elle est dans cet état (`reason`).
@@ -46,13 +56,15 @@ const CLAUDE_CONFIG_DIR = process.env.DASH_CLAUDE_CONFIG_DIR
 //            "not_installed" → `claude` introuvable (PATH) ou trop ancien
 //            "probe"         → la sonde elle-même ne répond plus (délai dépassé,
 //                              machine saturée, disque plein…) N fois de suite
+//            "quota"         → limite d'usage de l'abonnement atteinte : session
+//                              valide, aucune analyse jusqu'à `quotaUntil`
 //
 // `since` date le dernier CHANGEMENT de disponibilité : l'écran peut dire
 // « déconnecté depuis 3 h » au lieu d'un état sans histoire.
 // ═══════════════════════════════════════════════════════════════════════════
 let _state = {
   checked: false, installed: false, loggedIn: false, available: false, version: "",
-  reason: null, probeFailures: 0, lastProbeAt: null, lastProbeError: null, since: null,
+  reason: null, probeFailures: 0, lastProbeAt: null, lastProbeError: null, since: null, quotaUntil: null,
 };
 
 // Neutralise tout ce qui pourrait élargir la sandbox sans passer par ce fichier :
@@ -94,10 +106,38 @@ function childEnv() {
 /** Sous Windows, `p.kill()` tue le shell intermédiaire (`shell: true`), pas
  *  l'arbre en dessous : on abat tout l'arbre, sinon un `claude` orphelin survit. */
 function tuerArbre(p) {
-  try { p.kill(); } catch {}
-  if (process.platform === "win32" && p && p.pid) {
-    try { spawn("taskkill", ["/pid", String(p.pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" }); } catch {}
+  if (!p) return;
+  // ⚠️ Sous Windows, `taskkill /T /F` SEUL (revue contradictoire du 2026-09-13,
+  // mesuré par essai réel) : il abat la racine ET ses descendants, mais il
+  // énumère l'arbre ~300 ms après son lancement — si `p.kill()` a déjà tué
+  // cmd.exe entre-temps (< 10 ms), l'arbre n'est plus rattaché et le `claude`
+  // petit-enfant survit. Tant « kill puis taskkill » (version d'origine) que
+  // « taskkill puis kill dans la foulée » laissent l'orphelin en vie.
+  // `p.kill()` n'est plus qu'un repli : si taskkill ne peut pas être lancé, ou
+  // s'il rend un code non nul (processus déjà parti, arbre introuvable).
+  if (process.platform === "win32" && p.pid) {
+    let tk = null;
+    try { tk = spawn("taskkill", ["/pid", String(p.pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" }); } catch {}
+    if (!tk) { try { p.kill(); } catch {} return; }
+    tk.on("error", () => { try { p.kill(); } catch {} });
+    tk.on("close", (code) => { if (code !== 0) { try { p.kill(); } catch {} } });
+    return;
   }
+  try { p.kill(); } catch {}
+}
+
+/**
+ * Nombre lu dans l'environnement : vide/absent → défaut ; non numérique → défaut
+ * (avec une trace : `setTimeout(NaN)` déclenche tout de suite, une cadence NaN
+ * faisait tourner la surveillance en boucle serrée ou rendait la sonde muette) ;
+ * sinon borné par `min` dans l'unité de la variable. Exporté pour être verrouillé.
+ */
+export function lireNombre(nom, defaut, min, env = process.env) {
+  const brut = env[nom];
+  if (brut === undefined || String(brut).trim() === "") return defaut;
+  const n = Number(brut);
+  if (!Number.isFinite(n)) { try { console.error(`[claudecli] ${nom}="${String(brut).slice(0, 40)}" n'est pas un nombre : défaut ${defaut}`); } catch {} return defaut; }
+  return Math.max(min, n);
 }
 
 // ── Sonde ──────────────────────────────────────────────────────────────────
@@ -105,9 +145,9 @@ function tuerArbre(p) {
 // calme, mais un poste saturé (shards e2e, build, disque plein) peut mettre
 // bien plus — et un délai dépassé n'est PAS une déconnexion, c'est une sonde
 // qui n'a rien vu. Les deux cas sont distingués plus bas.
-const PROBE_TIMEOUT_MS = Math.max(10_000, Number(process.env.DASH_CLAUDE_CLI_PROBE_TIMEOUT_S || 45) * 1000);
+const PROBE_TIMEOUT_MS = lireNombre("DASH_CLAUDE_CLI_PROBE_TIMEOUT_S", 45, 10) * 1000;
 // Sondes NON CONCLUANTES consécutives avant de se déclarer indisponible.
-const PROBE_FAILURES_MAX = Math.max(1, Number(process.env.DASH_CLAUDE_CLI_PROBE_FAILURES || 3));
+const PROBE_FAILURES_MAX = lireNombre("DASH_CLAUDE_CLI_PROBE_FAILURES", 3, 1);
 
 /**
  * Lance `claude <args>` (sans stdin).
@@ -142,11 +182,38 @@ function parseAuthStatus(out) {
 
 /** Pose le nouvel état ; `since` ne bouge que si la DISPONIBILITÉ change. */
 function poser(next, now = Date.now()) {
-  if (next.available !== _state.available || _state.since === null) next.since = now;
+  // Limite d'usage : elle PRIME sur la session tant qu'elle court (la session
+  // est valide, mais aucune analyse ne passera), et s'efface seule à l'heure de
+  // remise à zéro — la disponibilité redevient alors celle de la session.
+  if (next.quotaUntil && next.quotaUntil <= now) {
+    next.quotaUntil = null;
+    if (next.reason === "quota") next.reason = null;
+    next.available = next.loggedIn === true;
+  }
+  if (next.quotaUntil && next.quotaUntil > now) { next.available = false; next.reason = "quota"; }
+  // Strictement croissant : deux bascules dans la même milliseconde (tests,
+  // rafale) doivent rester distinguables — `since` sert d'identité de bascule
+  // pour ne signaler chacune qu'une fois (cf. signaler).
+  const bascule = next.available !== _state.available;
+  if (bascule || _state.since === null) next.since = Math.max(now, (_state.since || 0) + 1);
   else next.since = _state.since;
   _state = next;
+  // L'écran suit la bascule EN DIRECT (revue du 2026-09-13) : la SPA figeait
+  // « Réparation automatique active » avec l'état lu au login (12 h), donc
+  // mentait dans les deux sens après une chute ou un retour du CLI. Import
+  // paresseux : ce fichier est la frontière de sécurité, il n'embarque pas le
+  // serveur ; et une diffusion qui échoue ne doit jamais casser une sonde.
+  if (bascule) {
+    try {
+      if (_broadcast) _broadcast("claude", claudeCliState());
+      else import("./sse.js").then((m) => m.broadcast("claude", claudeCliState())).catch(() => {});
+    } catch {}
+  }
   return _state;
 }
+let _broadcast = null;
+/** RÉSERVÉ AUX TESTS : remplace la diffusion SSE (sinon l'import de sse.js tire l'observation et ses fichiers). */
+export function _setBroadcastForTests(fn) { _broadcast = fn; }
 
 /**
  * Détecte le `claude` local ET son état de connexion RÉEL (`claude auth status`).
@@ -167,10 +234,16 @@ export async function detectClaudeCli({ probe = runCli } = {}) {
 
   if (!st || !st.ran) {
     const failures = (_state.probeFailures || 0) + 1;
-    const next = { ..._state, checked: true, probeFailures: failures, lastProbeAt: now, lastProbeError: (st && st.reason) || "spawn" };
+    const code = (st && st.reason) || "spawn";
+    const detail = st && st.err ? String(st.err).replace(/\s+/g, " ").trim().slice(0, 120) : "";
+    const next = { ..._state, checked: true, probeFailures: failures, lastProbeAt: now, lastProbeError: detail ? `${code}: ${detail}` : code };
     if (failures >= PROBE_FAILURES_MAX && _state.available) {
       next.loggedIn = false; next.available = false; next.reason = "probe";
     }
+    // Jamais de réponse conclusive jusqu'ici (démarrage sur un poste saturé) :
+    // l'écran dirait « ni CLI ni clé API » — faux, on ne SAIT pas. La raison
+    // « probe » le dit sans rien rabattre (revue contradictoire du 2026-09-13).
+    if (!_state.installed && !_state.loggedIn && !_state.reason) next.reason = "probe";
     poser(next, now);
     return _state.loggedIn;
   }
@@ -222,9 +295,10 @@ export function claudeCliState() { return { ..._state, isolated: Boolean(CLAUDE_
 // reste basse et le minuteur est `unref()` — sinon il tiendrait le processus
 // Node en vie et les tests ne rendraient jamais la main.
 // ═══════════════════════════════════════════════════════════════════════════
-const WATCH_MS = Math.max(60_000, Number(process.env.DASH_CLAUDE_CLI_WATCH_MIN || 10) * 60_000);
-const RETRY_MS = Math.max(30_000, Number(process.env.DASH_CLAUDE_CLI_RETRY_MIN || 1) * 60_000);
+const WATCH_MS = lireNombre("DASH_CLAUDE_CLI_WATCH_MIN", 10, 1) * 60_000;
+const RETRY_MS = lireNombre("DASH_CLAUDE_CLI_RETRY_MIN", 1, 0.5) * 60_000;
 let _watchTimer = null;
+let _watchGeneration = 0;
 let _watching = false;
 
 /** Délai avant la prochaine sonde : long si connecté, court si on attend la reconnexion. Pur, verrouillé par test. */
@@ -233,14 +307,59 @@ export function nextWatchDelay(state = _state, everyMs = WATCH_MS, retryMs = RET
 }
 
 const RAISONS = {
-  logged_out: "La session du CLI a expiré : plus aucun diagnostic ni correctif automatique tant que `claude auth login` (ou dashboard\\Connecter-Claude.cmd) n'a pas été relancé. La reprise est automatique ensuite, en moins d'une minute.",
+  logged_out: "La session du CLI a expiré : plus aucun diagnostic ni correctif automatique tant que `claude auth login` (ou dashboard\\Connecter-Claude.cmd) n'a pas été relancé. La reprise est automatique ensuite (%R).",
   auth_refused: "Une analyse a été refusée faute d'authentification : la session du CLI est tombée. Relancer `claude auth login` (ou dashboard\\Connecter-Claude.cmd) ; la reprise est automatique ensuite.",
   not_installed: "`claude` est introuvable depuis le pilotage (PATH) ou trop ancien pour `claude auth status`. Installer ou mettre à jour Claude Code, puis relancer le pilotage.",
   probe: "La sonde `claude auth status` ne répond plus (%N essais de suite, dernier : %E). Le CLI est peut-être bloqué ou la machine saturée — vérifier le disque (un disque plein a déjà fait planter le pilotage) et les processus `claude` orphelins. Aucune action de reconnexion n'est requise si le CLI répond de nouveau.",
+  quota: "Limite d'usage de l'abonnement Claude atteinte (%M). Plus aucune analyse jusqu'à %U : l'état se rétablit seul à cette heure-là (%R). Rien à reconnecter — la session est valide.",
 };
 function messageChute(apres) {
   const r = RAISONS[apres.reason] || RAISONS.logged_out;
-  return r.replace("%N", String(apres.probeFailures || 0)).replace("%E", apres.lastProbeError || "inconnu");
+  return r.replace("%N", String(apres.probeFailures || 0)).replace("%E", apres.lastProbeError || "inconnu")
+    .replace("%R", `sondée toutes les ${Math.round(RETRY_MS / 60_000) || 1} min tant qu'elle manque`)
+    .replace("%M", String(apres.lastAnalysisError || "").slice(0, 160) || "message du CLI non disponible")
+    .replace("%U", apres.quotaUntil ? new Date(apres.quotaUntil).toLocaleString("fr-FR") : "l'heure de remise à zéro");
+}
+
+/**
+ * Le message d'erreur d'une analyse est-il une LIMITE D'USAGE (abonnement ou
+ * débit) ? Retourne { until } — l'heure de remise à zéro annoncée par le CLI
+ * (« resets Aug 28, 3am (Europe/Paris) ») si elle se lit, sinon 60 min pour une
+ * limite d'abonnement, 15 min pour une limite de débit — ou null. Pur, exporté
+ * pour être VERROUILLÉ. 529 (surcharge serveur, transitoire) n'en fait PAS partie.
+ */
+export function looksLikeQuotaError(msg, status = null, now = Date.now()) {
+  const s = String(msg || "");
+  const abonnement = Number(status) === 429 || /hit your (?:weekly |daily |monthly |session |5-hour )?(?:usage )?limit|usage limit|quota/i.test(s);
+  const debit = /rate limit/i.test(s);
+  if (!abonnement && !debit) return null;
+  let until = null;
+  const m = s.match(/resets?\s+(?:at\s+)?([A-Za-z]{3,9}\.?\s+\d{1,2},?\s*)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+  if (m) {
+    const ref = new Date(now);
+    let d = m[1] ? new Date(`${m[1].replace(/\.|,/g, "").trim()} ${ref.getFullYear()}`) : new Date(ref);
+    if (!Number.isNaN(d.getTime())) {
+      let h = Number(m[2]); const min = Number(m[3] || 0); const ap = (m[4] || "").toLowerCase();
+      if (ap === "pm" && h < 12) h += 12; if (ap === "am" && h === 12) h = 0;
+      d.setHours(h, min, 0, 0);
+      if (d.getTime() <= now) d = new Date(d.getTime() + (m[1] ? 365 : 1) * 86_400_000);
+      until = d.getTime();
+    }
+  }
+  if (!until) until = now + (abonnement ? 60 : 15) * 60_000;
+  return { until };
+}
+
+/**
+ * Pose la limite d'usage : indisponible jusqu'à `until`, raison « quota »,
+ * alerte une fois ; `poser()` l'efface seul à l'échéance (la sonde tourne
+ * chaque minute tant que l'état n'est pas disponible).
+ */
+export function noteQuota(until, message = "", { notify = null } = {}) {
+  const avant = { ..._state };
+  poser({ ..._state, checked: true, quotaUntil: until, lastAnalysisError: String(message || "").slice(0, 300) });
+  signaler(avant, { ..._state }, notify).catch(() => {});
+  return { ..._state };
 }
 
 /**
@@ -257,18 +376,32 @@ function messageChute(apres) {
  * sandbox, on ne lui attache pas la moitié du serveur (et son test l'importe
  * seul). Retourne l'alerte émise, ou null.
  */
+let _derniereBasculeSignalee = null;
 async function signaler(avant, apres, notify = null) {
   let alerte = null;
   if (avant.available === true && apres.available === false) {
     alerte = { level: "warn", title: "Claude Code déconnecté", message: messageChute(apres) };
   } else if (avant.checked && avant.available === false && apres.available === true) {
-    alerte = { level: "info", title: "Claude Code reconnecté", message: `La session du CLI répond de nouveau${apres.version ? ` (${apres.version})` : ""} : diagnostics et correctifs automatiques repris.` };
+    alerte = avant.reason === "quota"
+      ? { level: "info", title: "Claude Code : limite d'usage levée", message: "L'heure de remise à zéro est passée : diagnostics et correctifs automatiques repris." }
+      : { level: "info", title: "Claude Code reconnecté", message: `La session du CLI répond de nouveau${apres.version ? ` (${apres.version})` : ""} : diagnostics et correctifs automatiques repris.` };
   }
   if (!alerte) return null;
+  // Une bascule = une alerte, même si deux chemins la voient (revue du
+  // 2026-09-13) : un tour de surveillance prend son instantané `avant`, sa sonde
+  // dure 0,5 à 45 s, et pendant ce temps `confirmAuthFailure()` peut rabattre
+  // et signaler — le tour, à son retour, re-signalerait la même chute.
+  // `since` ne change qu'à une bascule de disponibilité : il l'identifie.
+  if (apres.since !== null && apres.since === _derniereBasculeSignalee) return null;
+  _derniereBasculeSignalee = apres.since;
   try {
     const raise = notify || (await import("./alerts.js")).raiseManual;
     raise(alerte);
-  } catch {}
+  } catch (e) {
+    // Une alerte perdue (disque plein, store indisponible) laisse au moins une
+    // trace dans le journal du superviseur : sinon la panne est deux fois muette.
+    try { console.error(`[claudecli] alerte non enregistrée (${alerte.title}) : ${e && e.message ? e.message : e}`); } catch {}
+  }
   return alerte;
 }
 
@@ -284,6 +417,44 @@ export function noteAuthFailure({ notify = null } = {}) {
   poser({ ..._state, checked: true, loggedIn: false, available: false, reason: "auth_refused" });
   signaler(avant, { ..._state }, notify).catch(() => {});
   return { ..._state };
+}
+
+/**
+ * Le message d'erreur d'une analyse ressemble-t-il à un refus d'authentification ?
+ * Pur, exporté pour être VERROUILLÉ. L'ancienne expression contenait `connect` :
+ * « Could not connect to server », « ECONNREFUSED » ou un « fetch failed » de
+ * réseau passaient pour une session tombée, et l'écran basculait sur « à
+ * reconnecter » alors qu'il n'y avait rien à reconnecter. Les mots réseau
+ * excluent explicitement.
+ */
+export function looksLikeAuthError(msg) {
+  const s = String(msg || "");
+  if (/ECONN|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|could not connect|failed to connect|unable to connect|connection error|internet connection|fetch failed|network|socket|DNS|ssl|certificate|proxy/i.test(s)) return false;
+  return /authenticat|unauthori|oauth|\b401\b|expired|not logged|log ?in\b|invalid[ _-]?(?:token|grant|api key)|credential/i.test(s);
+}
+
+/**
+ * Un refus d'authentification pendant une analyse n'est cru qu'après RE-SONDE
+ * (2026-09-13). Avant : `noteAuthFailure()` rabattait l'état sur le seul
+ * message d'erreur — une erreur de réseau ou de proxy qui « ressemblait » à un
+ * refus déconnectait le pilotage à l'écran, et la sentinelle sautait toutes les
+ * alertes (`skipped.unavailable`) jusqu'au tour de surveillance suivant.
+ *   • la sonde dit « connecté » (ou reste muette) → l'état connu est GARDÉ, on
+ *     note seulement l'erreur d'analyse ;
+ *   • la sonde confirme la déconnexion → raison `auth_refused`, alerte une fois.
+ * `detect` et `notify` sont injectables pour les tests.
+ */
+export async function confirmAuthFailure({ detect = detectClaudeCli, notify = null, error = "" } = {}) {
+  const avant = { ..._state };
+  let loggedIn = avant.loggedIn;
+  try { loggedIn = await detect(); } catch {}
+  if (loggedIn) {
+    _state = { ..._state, lastAnalysisError: error ? String(error).slice(0, 300) : "refus d'authentification apparent, sonde connectée" };
+    return { flipped: false, kept: true };
+  }
+  poser({ ..._state, checked: true, loggedIn: false, available: false, reason: "auth_refused" });
+  await signaler(avant, { ..._state }, notify);
+  return { flipped: avant.available === true, kept: false };
 }
 
 /**
@@ -306,8 +477,13 @@ export async function claudeCliWatchTick({ notify = null, detect = detectClaudeC
 export function startClaudeCliWatch(everyMs = WATCH_MS, retryMs = RETRY_MS) {
   if (_watching) return _watchTimer;
   _watching = true;
+  // Compteur de génération : un `stop()` puis `start()` pendant qu'un tour est
+  // EN VOL (sonde de 0,5 à 45 s) créait deux chaînes de minuteurs, et `stop()`
+  // n'en arrêtait qu'une — deux sondes par cadence, pour toujours. Le tour en
+  // vol d'une génération périmée ne se replanifie pas.
+  const generation = ++_watchGeneration;
   const planifier = () => {
-    if (!_watching) return;
+    if (!_watching || generation !== _watchGeneration) return;
     _watchTimer = setTimeout(async () => {
       try { await claudeCliWatchTick(); } catch {}
       planifier();
@@ -325,6 +501,7 @@ export function _setStateForTests(next) { _state = { ..._state, ...next }; retur
 /** Arrête la surveillance (tests, arrêt propre). */
 export function stopClaudeCliWatch() {
   _watching = false;
+  _watchGeneration++; // invalide aussi un tour en vol : il ne se replanifiera pas
   if (_watchTimer) { clearTimeout(_watchTimer); _watchTimer = null; }
 }
 
@@ -387,7 +564,7 @@ export function runClaudeCli(prompt, { deep = false, timeoutMs } = {}) {
       out += d;
       if (out.length > MAX_OUT) {
         out = out.slice(0, MAX_OUT);
-        try { p.kill(); } catch {}
+        tuerArbre(p);
         finish({ error: "Réponse anormalement longue, analyse interrompue." });
       }
     });
@@ -399,9 +576,17 @@ export function runClaudeCli(prompt, { deep = false, timeoutMs } = {}) {
       try { j = JSON.parse(out); } catch {}
       if (j && j.is_error) {
         const msg = String(j.result || "");
-        const authNeeded = /authenticate|oauth|401|expired|log ?in|connect/i.test(msg);
-        // L'écran ne doit pas continuer d'annoncer « connecté » après un refus.
-        if (authNeeded) noteAuthFailure();
+        // Limite d'usage de l'abonnement (429, « You've hit your weekly limit ·
+        // resets Aug 28, 3am ») : ce n'est ni une déconnexion ni une panne, et
+        // `claude auth status` continue de dire « connecté » — jusqu'au
+        // 2026-09-13 l'état restait vert pendant des jours, chaque alerte était
+        // consommée en erreur, sans raison ni alerte. Modélisée à part.
+        const quota = looksLikeQuotaError(msg, j.api_error_status);
+        if (quota) { noteQuota(quota.until, msg); return finish({ error: msg || "Limite d'usage atteinte.", quota: true, until: quota.until }); }
+        const authNeeded = looksLikeAuthError(msg);
+        // L'écran ne doit pas continuer d'annoncer « connecté » après un refus —
+        // mais on RE-SONDE avant de rabattre (cf. confirmAuthFailure).
+        if (authNeeded) confirmAuthFailure({ error: msg }).catch(() => {});
         return finish({ error: msg || "Erreur Claude Code.", authNeeded });
       }
       if (j && typeof j.result === "string") return finish({ analysis: j.result });

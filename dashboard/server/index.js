@@ -19,7 +19,22 @@ import * as checklist from "./checklist.js";
 import * as dbwatch from "./dbwatch.js";
 import { signups } from "./signups.js";
 import { accounts } from "./accounts.js";
-import { detectClaudeCli, claudeCliState, startClaudeCliWatch } from "./claudecli.js";
+import { detectClaudeCli, claudeCliState, startClaudeCliWatch, claudeCliWatchTick } from "./claudecli.js";
+import { startDiskWatch, diskState } from "./disque.js";
+
+/** Ce que le superviseur sait de nous : relances depuis le logon, dernier code de
+ *  sortie (transmis par supervise.mjs dans l'environnement à chaque relance). */
+function superviseState() {
+  const supervised = process.env.DASH_SUPERVISED === "1";
+  return {
+    supervised,
+    restarts: Number(process.env.DASH_SUPERVISE_RESTARTS || 0) || 0,
+    lastExit: process.env.DASH_SUPERVISE_LAST_EXIT || null,
+    lastExitAt: process.env.DASH_SUPERVISE_LAST_EXIT_AT || null,
+    startedAt: SERVER_STARTED_AT,
+  };
+}
+const SERVER_STARTED_AT = new Date().toISOString();
 import { productionState } from "./sentinel-production.js";
 import * as testusers from "./testusers.js";
 import * as alerts from "./alerts.js";
@@ -81,7 +96,9 @@ api.get("/stream", auth.requireAuth, (req, res) => {
   addClient(res);
 });
 
-api.get("/overview", auth.requireAuth, (req, res) => res.json({ ...store.overview(), ingest: ingestState() }));
+// `supervise` : compteurs transmis par supervise.mjs (relances depuis le logon) —
+// un serveur relancé 22 fois en dix jours ne doit plus le cacher (revue 2026-09-13).
+api.get("/overview", auth.requireAuth, (req, res) => res.json({ ...store.overview(), ingest: ingestState(), disk: diskState(), supervise: superviseState() }));
 api.get("/timeseries", auth.requireAuth, (req, res) => res.json(store.timeseries(Number(req.query.minutes) || 30)));
 api.get("/events", auth.requireAuth, (req, res) => {
   const { type, severity, user, device, session, env, screen, status, q, limit } = req.query;
@@ -228,7 +245,10 @@ api.post("/claude/context", auth.requireCap("claude"), asyncH(async (req, res) =
 api.post("/claude/analyze", auth.requireCap("claude"), asyncH(async (req, res) => res.json(await claude.analyze(req.body?.bugId, { note: req.body?.note }, req.session.u))));
 api.post("/claude/quickfix", auth.requireCap("claude"), asyncH(async (req, res) => res.json(await claude.quickFix({ bugId: req.body?.bugId, event: req.body?.event, note: req.body?.note, deep: req.body?.deep === true }, req.session.u))));
 api.get("/claude/status", auth.requireAuth, (req, res) => res.json({ cli: claudeCliState(), apiKey: Boolean(config.anthropicKey) }));
-api.post("/claude/recheck", auth.requireCap("claude"), asyncH(async (req, res) => { await detectClaudeCli(); res.json({ cli: claudeCliState(), apiKey: Boolean(config.anthropicKey) }); }));
+// « Revérifier » passe par le TOUR de surveillance, pas par la seule détection
+// (revue du 2026-09-13) : il prend l'instantané `avant`, re-sonde et SIGNALE la
+// bascule — un clic qui constatait la reconnexion la laissait muette dans le flux.
+api.post("/claude/recheck", auth.requireCap("claude"), asyncH(async (req, res) => { await claudeCliWatchTick(); res.json({ cli: claudeCliState(), apiKey: Boolean(config.anthropicKey) }); }));
 
 api.get("/test-users", auth.requireCap("test_users"), asyncH(async (req, res) => res.json(await testusers.list())));
 api.delete("/test-users/:id", auth.requireCap("test_users"), asyncH(async (req, res) => res.json(await testusers.remove(req.params.id, req.session.u))));
@@ -304,8 +324,14 @@ app.listen(config.port, () => {
   console.log(`  ▸ Environnement dashboard : ${config.dashEnv}${config.isProd ? " (mutations code DÉSACTIVÉES)" : ""}`);
   console.log(`  ▸ Supabase : ${supabaseReady ? "connecté (service_role)" : "NON configuré → mode local (voir .env)"}`);
   console.log(`  ▸ Mutations git : ${config.allowMutations ? "autorisées (hors prod)" : "désactivées"}\n`);
-  startIngest();
+  // Promesse rattrapée (revue du 2026-09-13) : un rejet non traité tue le
+  // processus depuis Node 15 — un `loadTestUids` qui échoue au démarrage
+  // faisait redémarrer le serveur en boucle au lieu de tourner en mode dégradé.
+  startIngest().catch((e) => console.error("[ingest] démarrage échoué (mode dégradé, polling et realtime absents) :", e && e.message ? e.message : e));
   startControlHistory();
+  // Le sol sous le pilotage : un disque plein a déjà tué le serveur 22 fois
+  // (ENOSPC, sept. 2026) et fait perdre sa session au CLI. Voir disque.js.
+  startDiskWatch();
   detectClaudeCli().then(() => {
     const s = claudeCliState();
     console.log(`  ▸ Claude Code local : ${s.loggedIn ? "connecté (analyse gratuite dispo)" : s.installed ? "installé mais NON connecté (lancer: claude auth login)" : "absent"}${config.anthropicKey ? " · clé API aussi configurée" : ""}`);

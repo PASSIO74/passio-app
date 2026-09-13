@@ -103,6 +103,54 @@ relance, et le CLI `claude` lui-même — qui écrit ses jetons rafraîchis dans
 `~/.claude` — peut perdre sa session. Un pilotage qui « se déconnecte des fois »
 sur un disque à 100 % n'a pas d'abord un problème de connexion.
 
+Depuis le 2026-09-13 le pilotage **mesure ce disque** (`server/disque.js`,
+`fs.statfs` sur le volume de `data/`, toutes les 5 min) : ligne « Disque du
+poste » sur la page Sources, alerte `warn` **une fois** au passage sous
+`DASH_DISK_WARN_GB` (10 Go), `info` au retour au-dessus du seuil + 2 Go
+d'hystérésis (`DASH_DISK_HYSTERESIS_GB`). Une mesure impossible garde l'état
+connu — elle ne vaut ni « plein » ni « sain ». Verrous : `test/disque.test.js`.
+
+Et **une écriture qui échoue ne tue plus le serveur** (`server/jsondb.js`,
+2026-09-13) : `save()` était appelée sans garde par des minuteurs (battement SSE
+toutes les 25 s, historique de contrôle, observation) et par `alerts.emit` — à
+disque plein, ENOSPC hors de tout `try` arrêtait le processus, 22 fois. La
+mémoire est désormais la vérité : la donnée est posée AVANT l'écriture, l'échec
+est compté et exposé par `health()` (`write_failed:ENOSPC`), et la prochaine
+écriture qui réussit réarme l'état sain et réécrit tout. Même esprit pour
+`startIngest()` (promesse rattrapée), `release-recorder` (les deux
+enregistrements protégés) et le superviseur (PID réécrit toutes les 5 min tant
+que le disque le refuse). Verrou : `test/jsondb-health.test.js` « une écriture
+impossible ne lève pas ».
+
+Le superviseur, depuis le 2026-09-13 : **instance unique** (un second
+`supervise.mjs` s'efface si le PID du fichier est vivant ET porte bien ce
+dossier dans sa ligne de commande — dans le doute, il démarre), **compteur de
+relances** transmis au serveur et affiché sur la page Sources (« Superviseur »,
+rouge dès 3 relances), journal relayé en 8 premières + 12 dernières lignes (la
+pile d'un `ENOSPC` tenait dans ce qu'on coupait). `Arreter-Pilotage.cmd` tue
+désormais **tous** les superviseurs de ce dossier par leur ligne de commande,
+filtre le port strictement, et vérifie à la fin que rien ne survit.
+
+Le worker IA (`aiworker.mjs`, 2026-09-13) : une demande en échec n'est plus
+rejouée toutes les 20 s à l'infini — **5 essais** (`PASSIO_AI_MAX_ATTEMPTS`) avec
+recul 5, 10, 20, 40, 80 min, puis abandon annoncé ; une demande figée en
+`running` par un arrêt brutal (le superviseur tue sans `finally`) est remise en
+jeu au démarrage (quatre l'étaient depuis le 19-24/08) ; au délai dépassé,
+l'arbre `claude`/`codex` est abattu en entier.
+
+#### Realtime : le canal du pilotage est PRIVÉ (2026-09-12)
+
+Le projet Supabase n'accepte plus que des canaux privés (« Allow public
+access » OFF, geste ③ de `docs/OUVERTURE_PUBLIQUE_2026-09-11.md`). Le verrou
+du dépôt ne couvrait que les `supa.channel(` de l'app : `dash:telemetry`, en
+`admin.channel(`, est resté public et a été refusé toutes les 14 s pendant
+neuf heures (`PrivateOnly: This project only allows private channels`, ~260
+refus par heure dans les journaux Realtime), le pilotage vivant sur le seul
+polling de secours sans le dire — le motif du refus n'était pas journalisé.
+Corrigé : `{ config: { private: true } }` (mesuré : abonné en 0,9 s avec
+`service_role`), motif gardé (`ingestState().realtimeLastError`) et affiché sur
+la page Sources. Verrou : `test/ingest.test.js` « canal privé ».
+
 
 ## 2 ter. Tests du pilotage
 
@@ -304,18 +352,71 @@ orphelin par sonde s'accumulait sinon. Verrous : `test/claude-cli-watch.test.js`
 `logged_out` au lieu de `probe`, rendre `noteAuthFailure` muet — chacun rougit
 le sien).
 
-#### Identifiants isolés (facultatif) — `DASH_CLAUDE_CONFIG_DIR`
+#### Identifiants isolés — `DASH_CLAUDE_CONFIG_DIR` (posé sur ce poste le 2026-09-12)
 
 Par défaut le `claude` du pilotage partage `~/.claude/.credentials.json` avec
 l'application Claude de bureau et tous les terminaux. Observé le 2026-09-12 :
 l'application de bureau **réécrit ce fichier** à chaque session (jetons MCP), et
 les jetons OAuth du CLI s'y sont retrouvés vides — session perdue sans aucun
-`logout`. Si les déconnexions persistent une fois le disque libéré, isoler le
-pilotage : `DASH_CLAUDE_CONFIG_DIR=.claude-cli` dans `.env` (dossier relatif au
-dashboard, déjà ignoré par git), redémarrer, puis **`Connecter-Claude.cmd`** —
-c'est la seule porte qui se connecte dans le bon dossier ; un `claude auth
-login` dans un terminal ordinaire ne reconnecterait pas le pilotage. Prix :
-une connexion de plus à faire, une fois.
+`logout`. Isoler le pilotage : `DASH_CLAUDE_CONFIG_DIR=.claude-cli` dans `.env`
+(dossier relatif au dashboard, déjà ignoré par git), redémarrer, puis
+**`Connecter-Claude.cmd`** — c'est la seule porte qui se connecte dans le bon
+dossier ; un `claude auth login` dans un terminal ordinaire ne reconnecterait
+pas le pilotage. Prix : une connexion de plus à faire, une fois.
+
+Le dossier est appliqué par le **superviseur** à ses deux enfants (serveur ET
+worker IA) — jusqu'au 2026-09-13, seul le serveur le lisait : le worker sondait
+`~/.claude`, se déclarait « non connecté » et refusait ses tâches pendant que
+le serveur analysait. Vérifié : `claude -p` avec un dossier vierge va droit au
+contrôle d'authentification (pas d'écran d'accueil qui bloque).
+
+#### Un refus d'authentification est re-sondé avant d'être cru (2026-09-13)
+
+Une analyse qui échoue avec un message « ressemblant » à un refus d'auth ne
+rabat plus l'état sur le seul message : la sonde `claude auth status` est
+rejouée d'abord. Sonde connectée → l'état est gardé, l'erreur d'analyse est
+notée ; sonde déconnectée → `auth_refused`, alerte une fois. L'ancienne
+expression contenait `connect` : « Could not connect to server » ou
+`ECONNREFUSED` faisaient passer une panne réseau pour une session tombée.
+Verrous : `looksLikeAuthError`, `confirmAuthFailure` dans
+`test/claude-cli-watch.test.js` (mutations : remettre `connect`, rabattre sans
+sonder).
+
+#### Limite d'usage de l'abonnement : raison `quota` (2026-09-13)
+
+« You've hit your weekly limit · resets Aug 28, 3am » n'est ni une déconnexion
+ni une panne — et `claude auth status` continue de dire « connecté ». Jusqu'ici
+l'état restait vert pendant des jours (mesuré le 24/08), chaque alerte était
+consommée en erreur, sans raison ni alerte. Désormais : 429 ou « … limit » →
+raison `quota`, indisponible jusqu'à l'heure de remise à zéro lue dans le
+message (sinon 60 min ; 15 min pour une limite de débit), alerte `warn` une
+fois « Rien à reconnecter », puis `info` « limite levée » à l'échéance. Le quota
+PRIME sur la session : une sonde « connecté » ne le lève pas avant l'heure. 529
+(surcharge transitoire) n'en fait pas partie. Verrous : `looksLikeQuotaError`,
+`noteQuota`.
+
+#### Un échec qui n'a rien coûté à Claude ne brûle plus la sentinelle (2026-09-13)
+
+Le cooldown de 6 h est posé à l'ENTRÉE de la file ; jusqu'ici il n'était jamais
+rendu. Mesuré le 09/09 (`sentinel.json`) : deux alertes `high` « consommées »
+en 2 s avec « OAuth session expired », puis six heures de silence sur la même
+cause alors que la reconnexion avait eu lieu cinq minutes plus tard — et chaque
+échec comptait dans le budget horaire. Désormais `pump()` re-vérifie la source
+au moment d'exécuter (une file en attente n'est pas brûlée si la session tombe
+entre-temps) et, quand l'échec n'a rien coûté (`via: "none"`, refus d'auth,
+exception avant l'appel), rend la clé de cooldown et le cran de budget. Un
+délai dépassé ou une limite d'usage, eux, ont bien occupé Claude : leur
+cooldown reste (garde-fou n°3). Verrous : `test/sentinel.test.js` « rend la
+clé », « garde son cooldown », « file en attente ».
+
+#### Ce que l'écran suit en direct (2026-09-13)
+
+Chaque bascule de la connexion est poussée en SSE (`claude`) : la carte
+« Réparation automatique », la navigation et la page Sources se mettent à jour
+sans recharger — jusqu'ici l'état lu au login était gardé 12 h et mentait dans
+les deux sens. « Revérifier » passe par le tour de surveillance (il SIGNALE la
+bascule). Le panneau Orchestrateur affiche l'état de connexion du CLI, plus la
+seule vie du pid.
 
 Réglages (`.env`, tous facultatifs) :
 

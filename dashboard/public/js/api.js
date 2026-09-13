@@ -33,6 +33,8 @@ export function connectStream(handlers) {
     es.addEventListener("trace", (e) => handlers.trace && handlers.trace(JSON.parse(e.data)));
     es.addEventListener("sentinel", (e) => handlers.sentinel && handlers.sentinel(JSON.parse(e.data)));
     es.addEventListener("sentinel_state", (e) => handlers.sentinelState && handlers.sentinelState(JSON.parse(e.data)));
+    // Bascule de la connexion Claude Code (chute / retour / limite d'usage) : l'écran suit en direct.
+    es.addEventListener("claude", (e) => handlers.claude && handlers.claude(JSON.parse(e.data)));
     es.addEventListener("test", (e) => handlers.test && handlers.test(JSON.parse(e.data)));
     es.addEventListener("ping", (e) => {
       let ping = null;

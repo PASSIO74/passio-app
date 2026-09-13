@@ -47,11 +47,26 @@ export function envCli(texteEnv, base = process.env) {
   return e;
 }
 
+/**
+ * Sonde `claude auth status` et DISTINGUE (revue du 2026-09-13) :
+ *   • muette   — délai dépassé ou tuée par signal : le CLI existe peut-être, on
+ *                ne SAIT pas (poste saturé) ; on ne refuse pas la connexion pour ça ;
+ *   • absente  — le shell a répondu sans JSON (« n'est pas reconnu », code 9009/1) ;
+ *   • connectée / déconnectée — JSON lu.
+ * Avant, une sonde muette était lue comme « claude pas installé ».
+ */
 function statut(env) {
   const r = spawnSync("claude", ["auth", "status"], { shell: true, env, encoding: "utf8", windowsHide: true, timeout: 45_000 });
   let j = null;
   try { j = JSON.parse((r.stdout || "").match(/\{[\s\S]*\}/)?.[0] || ""); } catch {}
-  return { installe: j !== null, connecte: Boolean(j && j.loggedIn === true), brut: (r.stdout || r.stderr || "").trim() };
+  const muette = Boolean(r.error && r.error.code === "ETIMEDOUT") || (r.status === null && j === null);
+  return { muette, installe: !muette && j !== null, connecte: Boolean(j && j.loggedIn === true), brut: (r.stdout || r.stderr || "").trim() };
+}
+
+/** Le dossier d'identifiants que le SERVEUR en cours utilise vraiment (marqueur
+ *  écrit par server/claudecli.js au chargement), ou null s'il n'y en a pas. */
+function dossierDuServeur() {
+  try { return fs.readFileSync(path.join(RACINE, "data", "claude-config-dir.txt"), "utf8").trim(); } catch { return null; }
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
@@ -62,8 +77,21 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   console.log(`\n  PASSIO — Connexion de Claude Code pour le pilotage`);
   console.log(`  ▸ Identifiants : ${isole ? `ISOLÉS dans ${env.CLAUDE_CONFIG_DIR}` : "partagés (~/.claude, comme les terminaux)"}\n`);
 
+  // Le serveur qui tourne regarde-t-il le même dossier ? Sinon « le pilotage le
+  // voit en moins d'une minute » serait faux : il faut le redémarrer.
+  const duServeur = dossierDuServeur();
+  const attendu = env.CLAUDE_CONFIG_DIR || "";
+  if (duServeur !== null && duServeur !== attendu) {
+    console.log(`  ⚠ Le pilotage EN COURS lit ${duServeur || "~/.claude (partagé)"} — .env dit ${attendu || "~/.claude (partagé)"}.`);
+    console.log("    Il a été démarré avant ce réglage : redémarre-le (Arreter-Pilotage.cmd puis Sentinelle-Demarrage.vbs) pour qu'il voie cette connexion.\n");
+  }
+
   const avant = statut(env);
-  if (!avant.installe) {
+  if (avant.muette) {
+    console.log("  ⚠ `claude auth status` ne répond pas (45 s) : le poste est peut-être saturé — ce n'est pas « pas installé ».");
+    if (process.argv[2] === "etat") process.exit(3);
+    console.log("    On tente quand même la connexion.\n");
+  } else if (!avant.installe) {
     console.log("  ✗ `claude` ne répond pas ici : Claude Code est-il installé et dans le PATH ?");
     console.log("    " + (avant.brut || "(aucune sortie)").split("\n")[0]);
     process.exit(2);

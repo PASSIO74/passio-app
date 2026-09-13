@@ -74,9 +74,17 @@ function run(command, args = [], opts = {}) {
     const timeoutMs = opts.timeoutMs || 120_000;
     setTimeout(() => {
       if (finished) return;
-      try { child.kill(); } catch {}
+      // L'arbre d'abord, et SEUL sous Windows (revue du 2026-09-13, mesuré) :
+      // `child.kill()` avant `taskkill /T` tuait le shell en < 10 ms, taskkill
+      // n'énumérait plus d'arbre 300 ms après, et le `claude`/`codex`
+      // petit-enfant survivait (45 min de quota). `kill()` n'est qu'un repli.
       if (process.platform === "win32" && child.pid) {
-        try { spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" }); } catch {}
+        let tk = null;
+        try { tk = spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" }); } catch {}
+        if (!tk) { try { child.kill(); } catch {} }
+        else { tk.on("error", () => { try { child.kill(); } catch {} }); tk.on("close", (c) => { if (c !== 0) { try { child.kill(); } catch {} } }); }
+      } else {
+        try { child.kill(); } catch {}
       }
       finish({ code: -2, out, err: `${err}\nTIMEOUT after ${timeoutMs} ms`.trim() });
     }, timeoutMs).unref?.();
@@ -287,12 +295,53 @@ async function cleanupWorktree(cwd) {
   await git(["worktree", "prune"], { timeoutMs: 30_000 }).catch(() => {});
 }
 
+// ── Plafond et recul entre deux essais (revue contradictoire du 2026-09-13) ──
+// Une demande en échec était REPRISE au sondage suivant (20 s), sans compteur :
+// chaque reprise recréait un worktree complet et relançait Claude (jusqu'à
+// 45 min) puis Codex. Mesuré le 24/08 : la même demande rejouée toute la
+// journée sur « You've hit your weekly limit », vidant le quota partagé avec la
+// sentinelle. Et une demande laissée `running` par un arrêt brutal (le
+// superviseur tue l'enfant sans `finally`) était ignorée POUR TOUJOURS : quatre
+// demandes figées depuis le 19-24/08.
+const MAX_ATTEMPTS = Math.max(1, Number(process.env.PASSIO_AI_MAX_ATTEMPTS) || 5);
+const RUNNING_STALE_MS = Math.max(60_000, Number(process.env.PASSIO_AI_RUNNING_STALE_MIN || 90) * 60_000);
+function reculMs(attempts) { return Math.min(6 * 3600_000, 5 * 60_000 * 2 ** Math.max(0, attempts - 1)); } // 5, 10, 20, 40, 80 min… plafonné 6 h
+
+/** Au démarrage : une demande `running` d'un processus MORT ne l'est plus. */
+function libererRunningOrphelins(state) {
+  let n = 0;
+  for (const [key, r] of Object.entries(state.requests || {})) {
+    if (r && r.status === "running" && r.pid !== process.pid) {
+      state.requests[key] = { ...r, status: "failed", error: `interrompue (processus ${r.pid || "?"} disparu) — reprise possible`, attempts: r.attempts || 0, updatedAt: new Date().toISOString() };
+      n++;
+    }
+  }
+  if (n) { saveState(state); log(`${n} demande(s) figée(s) en « running » par un arrêt brutal remise(s) en jeu`); }
+  return n;
+}
+
 async function processRequest(req, state) {
   const id = safeId(req.branch.slice(REQUEST_PREFIX.length));
   const key = req.branch;
   const previous = state.requests[key];
-  if (previous?.sha === req.sha && previous?.status === "done") return;
-  if (previous?.sha === req.sha && previous?.status === "running") return;
+  const meme = previous?.sha === req.sha;
+  if (meme && previous?.status === "done") return;
+  if (meme && previous?.status === "running") {
+    // Un `running` de CE processus est en cours (poll sérialisé : impossible en
+    // pratique) ; un `running` trop vieux ou d'un autre pid est un fantôme.
+    const age = Date.now() - Date.parse(previous.updatedAt || 0);
+    if (previous.pid === process.pid && age < RUNNING_STALE_MS) return;
+    log(`demande ${id} figée en « running » (pid ${previous.pid || "?"}, ${Math.round(age / 60_000)} min) : remise en jeu`);
+  }
+  const attempts = meme ? (previous.attempts || 0) : 0;
+  if (meme && previous?.status === "failed") {
+    if (attempts >= MAX_ATTEMPTS) {
+      if (!previous.abandonLogged) { log(`demande ${id} abandonnée après ${attempts} essai(s) — pousser un nouveau commit sur ${req.branch} pour la relancer`); state.requests[key] = { ...previous, abandonLogged: true }; saveState(state); }
+      return;
+    }
+    const prochain = Date.parse(previous.updatedAt || 0) + reculMs(attempts);
+    if (Date.now() < prochain) return; // recul : pas encore l'heure
+  }
 
   const resultBranch = `${RESULT_PREFIX}${id}`;
   if (await remoteBranchExists(resultBranch)) {
@@ -301,9 +350,9 @@ async function processRequest(req, state) {
     return;
   }
 
-  state.requests[key] = { sha: req.sha, status: "running", updatedAt: new Date().toISOString() };
+  state.requests[key] = { sha: req.sha, status: "running", attempts: attempts + 1, pid: process.pid, updatedAt: new Date().toISOString() };
   saveState(state);
-  log(`prise en charge ${req.branch} @ ${req.sha.slice(0, 8)}`);
+  log(`prise en charge ${req.branch} @ ${req.sha.slice(0, 8)} (essai ${attempts + 1}/${MAX_ATTEMPTS})`);
 
   let cwd = null;
   try {
@@ -372,14 +421,16 @@ async function processRequest(req, state) {
     saveState(state);
     log(`terminé ${task.id} -> ${wt.resultBranch} @ ${commit.slice(0, 8)} (Claude + Codex OK)`);
   } catch (e) {
+    const essais = attempts + 1;
     state.requests[key] = {
       sha: req.sha,
       status: "failed",
+      attempts: essais,
       error: String(e.message || e).slice(0, 3000),
       updatedAt: new Date().toISOString(),
     };
-    saveState(state);
-    log(`échec ${id}: ${String(e.message || e).replace(/\s+/g, " ").slice(0, 1200)}`);
+    try { saveState(state); } catch (se) { log(`état non écrit (${se.code || se.message}) : la demande sera rejouée au redémarrage`); }
+    log(`échec ${id} (essai ${essais}/${MAX_ATTEMPTS}${essais < MAX_ATTEMPTS ? `, prochain dans ${Math.round(reculMs(essais) / 60_000)} min` : ", abandon"}): ${String(e.message || e).replace(/\s+/g, " ").slice(0, 1200)}`);
   } finally {
     await cleanupWorktree(cwd);
   }
@@ -414,6 +465,7 @@ function stop(signal) {
 process.on("SIGINT", () => stop("SIGINT"));
 process.on("SIGTERM", () => stop("SIGTERM"));
 
-log(`worker Claude+Codex actif — dépôt ${REPO}, sondage ${Math.round(POLL_MS / 1000)} s`);
+log(`worker Claude+Codex actif — dépôt ${REPO}, sondage ${Math.round(POLL_MS / 1000)} s, ${MAX_ATTEMPTS} essais max par demande${process.env.CLAUDE_CONFIG_DIR ? `, identifiants Claude isolés (${process.env.CLAUDE_CONFIG_DIR})` : ""}`);
+try { libererRunningOrphelins(loadState()); } catch (e) { log(`état initial illisible : ${e.message}`); }
 await poll();
 setInterval(poll, POLL_MS);

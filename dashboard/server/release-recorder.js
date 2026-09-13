@@ -139,7 +139,17 @@ export function releaseHealth() {
 }
 
 export function startReleaseRecorder() {
-  recordRelease({ source: "dashboard_boot" });
-  startPublicReleaseEvidence(publicReleaseExpectations);
-  setInterval(() => recordRelease({ source: "periodic" }), 60_000).unref();
+  // Les DEUX appels sont protégés (revue du 2026-09-13) : `recordRelease` lit le
+  // dépôt et écrit un JsonDb ; une exception au boot remontait dans `startIngest()`
+  // — lancée sans `.catch` — et tuait le serveur avant toute ingestion ; une
+  // exception dans le minuteur le tuait une minute plus tard. L'enregistrement
+  // de révision est une preuve, pas une condition de vie du pilotage.
+  const sur = (source) => {
+    try { recordRelease({ source }); }
+    catch (e) { console.error(`[release-recorder] enregistrement ${source} échoué :`, e && (e.code || e.message)); }
+  };
+  sur("dashboard_boot");
+  try { startPublicReleaseEvidence(publicReleaseExpectations); }
+  catch (e) { console.error("[release-recorder] preuve publique non démarrée :", e && (e.code || e.message)); }
+  setInterval(() => sur("periodic"), 60_000).unref();
 }

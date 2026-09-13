@@ -590,10 +590,20 @@ test.describe("⑨ red team : la charge utile d'un broadcast est hostile", () =>
     expect(app04).toMatch(/supa\.channel\("conv_specific:" \+ convId, \{ config: \{ private: prive \} \}\)/);
     expect(app04).toMatch(/_supaConvChannel = _creerCanalConvSpecifique\(convId, displayName, false\)/);
     // Plus AUCUN canal public inconditionnel : le geste « Allow public access OFF » ne tuera rien.
-    for (const f of ["js/app-04-comments-shop.js", "js/app-05-config-profil.js", "js/app-08-ui-modals-tour.js"]) {
-      const lignes = lire(f).split("\n").filter((l) => /supa\.channel\(/.test(l) && !/^\s*\/\//.test(l));
-      for (const l of lignes) expect(l, f + " : " + l.trim()).toMatch(/private:/);
+    // ⚠️ Élargi le 2026-09-13 : le motif `supa\.channel\(` ne voyait pas
+    // `admin.channel("dash:telemetry")` du centre de pilotage, resté public et
+    // refusé toutes les 14 s pendant neuf heures après le geste (PrivateOnly). On
+    // balaie désormais TOUT `.channel(` de l'app ET du dashboard, et `private:
+    // false` en dur est refusé (une variable, elle, peut valoir faux à dessein).
+    for (const f of ["js/app-04-comments-shop.js", "js/app-05-config-profil.js", "js/app-08-ui-modals-tour.js", "dashboard/server/ingest.js", "dashboard/server/dbwatch.js"]) {
+      const lignes = lire(f).split("\n").filter((l) => /\.channel\(/.test(l) && !/^\s*\/\//.test(l) && !/^\s*\*/.test(l));
+      for (const l of lignes) {
+        expect(l, f + " : " + l.trim()).toMatch(/private:|REALTIME_CHANNEL_OPTS/);
+        expect(l, f + " : canal PUBLIC en dur — " + l.trim()).not.toMatch(/private:\s*false\b/);
+      }
     }
+    // Et l'option nommée du pilotage est bien privée (le motif ci-dessus ne lit que la ligne).
+    expect(lire("dashboard/server/ingest.js")).toMatch(/REALTIME_CHANNEL_OPTS = \{ config: \{ private: true \} \}/);
   });
 
   test("une URL signée ne vaut plus qu'une heure, et le cache la relâche avant", async ({ page }) => {

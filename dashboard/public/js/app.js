@@ -1979,10 +1979,16 @@ VIEWS.sources = async () => {
     <div class="table-wrap"><table><thead><tr><th>Source</th><th>État</th><th>Détail</th><th>Fraîcheur</th></tr></thead><tbody id="srcRows"></tbody></table></div>
     <p class="muted" style="font-size:12px;margin-top:12px">Référence : <span class="mono">.passio/INTEGRATIONS_REGISTRY.md</span> — <span class="prov-pill ok" style="vertical-align:middle">Connecté</span> = données de prod réelles · <span class="prov-pill off" style="vertical-align:middle">Non connecté / absent</span></p>`);
 
+  // Un appel en échec est « non lu », pas « non configuré » (revue du 2026-09-13) :
+  // /claude/status injoignable s'affichait « Ni CLI ni clé API — Indisponible ».
   const [ov, cs] = await Promise.all([
-    api.get("/overview").catch(() => ({ ingest: {} })),
+    api.get("/overview").catch(() => null),
     api.get("/claude/status").catch(() => null),
   ]);
+  if (!ov) {
+    setHtml("#srcRows", `<tr><td colspan="4" class="empty">Serveur du pilotage injoignable (<span class="mono">/api/overview</span> en erreur) — aucune source n'est lisible pour l'instant.</td></tr>`);
+    return;
+  }
   const git = hasCap("git_read") ? await api.get("/git/status").catch(() => null) : null;
   const ing = ov.ingest || {};
   // ⚠️ `lastRealSeenIso`, jamais `lastSeenIso` : la seconde est la marque d'eau du
@@ -1999,13 +2005,42 @@ VIEWS.sources = async () => {
     rows.push(`<tr><td><b>${esc(name)}</b></td><td><span class="pill ${cls}">${esc(labelOverride || lbl)}</span></td><td>${detail}</td><td class="muted nowrap">${fresh || "—"}</td></tr>`);
   };
 
+  // Le sol sous le pilotage : un disque plein a tué le serveur 22 fois (ENOSPC,
+  // sept. 2026) et fait perdre sa session au CLI — la première cause des
+  // « déconnexions » de Claude Code. Il est mesuré comme le reste.
+  const dk = ov.disk || {};
+  if (dk.checked) {
+    const libre = dk.freeGb != null ? `${dk.freeGb.toFixed(1)} Go libres sur ${Math.round(dk.totalGb || 0)} Go` : "mesure indisponible";
+    push("Disque du poste (volume de <span class='mono'>dashboard/data</span>)", dk.error ? "unknown" : dk.low ? "warn" : "ok",
+      dk.error ? `Mesure impossible : ${esc(dk.error)}` : `${libre}${dk.low ? ` — <b>sous le seuil de ${dk.thresholdGb} Go</b> : le serveur plante en écriture (ENOSPC) et la session <span class='mono'>claude</span> se perd` : ` · seuil d'alerte ${dk.thresholdGb} Go`}${dk.since ? " · depuis " + ago(dk.since) : ""}`,
+      dk.lastCheckAt ? "mesuré il y a " + ago(dk.lastCheckAt) : "—",
+      dk.error ? "Inconnu" : dk.low ? "Presque plein" : "Sain");
+  }
+  // Le superviseur : combien de fois il a dû relancer ce serveur depuis le logon.
+  // 22 relances en dix jours (ENOSPC) n'avaient aucun témoin à l'écran.
+  const sv = ov.supervise || {};
+  if (sv.supervised) {
+    const r = sv.restarts || 0;
+    push("Superviseur (présence permanente)", r >= 3 ? "warn" : "ok",
+      r ? `${num(r)} relance(s) du serveur depuis le logon — dernière sortie : code <span class='mono'>${esc(String(sv.lastExit))}</span>${sv.lastExitAt ? " il y a " + ago(Date.parse(sv.lastExitAt)) : ""}${r >= 3 ? " — <b>relances répétées</b> : regarder le disque et <span class='mono'>data/supervise.log</span>" : ""}` : "Aucune relance depuis le logon",
+      sv.startedAt ? "serveur démarré il y a " + ago(Date.parse(sv.startedAt)) : "—",
+      r >= 3 ? "Instable" : "Stable");
+  }
   push("Supabase (Postgres · Auth · Storage)", ing.supabaseReady ? "ok" : "off",
     ing.supabaseReady ? "Clé <span class='mono'>service_role</span> côté serveur (jamais exposée au navigateur)" : "Mode local — renseigner <span class='mono'>dashboard/.env</span>", "—");
   push("Télémétrie (<span class='mono'>telemetry_events</span>)", (ing.buffered || 0) > 0 ? "ok" : ing.supabaseReady ? "unknown" : "off",
     `${num(ing.buffered || 0)} événements en mémoire`, lastSeen ? "il y a " + ago(lastSeen) : "aucun signal", (ing.buffered || 0) > 0 ? "Reçoit" : undefined);
-  push("Realtime (postgres_changes)", ing.realtimeOk ? "active" : ing.supabaseReady ? "warn" : "off",
-    ing.realtimeOk ? "Abonné aux INSERT" : ing.supabaseReady ? "Repli sur polling (5 s)" : "Nécessite Supabase", "—",
-    ing.realtimeOk ? "Actif" : ing.supabaseReady ? "Secours" : "Non connecté");
+  // Le MOTIF du refus est affiché : neuf heures de « Secours » sans lui n'ont
+  // jamais dit que le projet n'acceptait plus que des canaux privés (2026-09-12).
+  const rtMotif = !ing.realtimeOk && ing.realtimeLastError ? ` — <span class='mono'>${esc(ing.realtimeLastError)}</span>` : "";
+  // Le repli est MESURÉ : « Secours » n'est vrai que si le polling lit vraiment.
+  const pl = ing.polling || {};
+  const pollTxt = pl.ok ? `polling vivant (dernière lecture il y a ${ago(pl.lastOkAt)}${pl.lastRows ? `, ${num(pl.lastRows)} ligne(s)` : ""})`
+    : pl.lastError ? `<b>polling en échec</b> ×${num(pl.failStreak || 0)} — <span class='mono'>${esc(pl.lastError)}</span>` : pl.lastAt ? "polling sans lecture réussie" : "polling pas encore parti";
+  const rtEtat = ing.realtimeOk ? "active" : !ing.supabaseReady ? "off" : pl.ok ? "warn" : "off";
+  push("Realtime (postgres_changes)", rtEtat,
+    ing.realtimeOk ? "Abonné aux INSERT (canal privé)" : ing.supabaseReady ? `Repli sur polling (5 s)${ing.realtimeStatus ? " · " + esc(ing.realtimeStatus) : ""}${rtMotif} · ${pollTxt}` : "Nécessite Supabase", "—",
+    ing.realtimeOk ? "Actif" : !ing.supabaseReady ? "Non connecté" : pl.ok ? "Secours" : "SOURD");
   // Assistant Claude (analyse de bug)
   const cli = cs && cs.cli || {};
   // La RAISON de l'indisponibilité est affichée, pas seulement l'état : « sonde
@@ -2016,15 +2051,18 @@ VIEWS.sources = async () => {
     auth_refused: "analyse refusée faute d'authentification — <span class='mono'>Connecter-Claude.cmd</span>",
     probe: `sonde <span class='mono'>claude auth status</span> sans réponse (${num(cli.probeFailures || 0)} essais, ${esc(cli.lastProbeError || "?")}) — CLI bloqué ou poste saturé (disque ?)`,
     not_installed: "<span class='mono'>claude</span> introuvable dans le PATH du pilotage",
+    quota: `limite d'usage de l'abonnement atteinte — rien à reconnecter, reprise seule ${cli.quotaUntil ? "à " + new Date(cli.quotaUntil).toLocaleString("fr-FR") : "à l'heure de remise à zéro"}`,
   };
   const depuis = cli.since ? ` · depuis ${ago(cli.since)}` : "";
-  const claudeState = cli.loggedIn ? "ok" : cs && cs.apiKey ? "ok" : cli.reason === "probe" || cli.installed ? "warn" : "off";
-  const claudeDetail = cli.loggedIn ? `CLI connectée (analyse gratuite)${cli.version ? " · " + esc(cli.version) : ""}${cli.isolated ? " · identifiants isolés" : ""}`
-    : cs && cs.apiKey ? "Clé API configurée"
+  // `available`, pas `loggedIn` : une session valide sous limite d'usage n'analyse rien.
+  const dispo = Boolean(cli.available) || Boolean(cs && cs.apiKey);
+  const claudeState = !cs ? "unknown" : dispo ? "ok" : cli.reason === "probe" || cli.reason === "quota" || cli.installed ? "warn" : "off";
+  const claudeDetail = !cs ? "État non lu (<span class='mono'>/api/claude/status</span> en erreur) — ce n'est pas « non configuré »"
+    : dispo ? (cli.available ? `CLI connectée (analyse gratuite)${cli.version ? " · " + esc(cli.version) : ""}${cli.isolated ? " · identifiants isolés" : ""}` : "Clé API configurée")
     : cli.installed || cli.reason === "probe" ? `CLI installée mais indisponible : ${RAISON[cli.reason] || RAISON.logged_out}${depuis}`
     : `Ni CLI ni clé API — mode « copier le prompt »${cli.reason === "not_installed" ? " (" + RAISON.not_installed + ")" : ""}`;
   push("Assistant Claude (réparation)", claudeState, claudeDetail, cli.lastProbeAt ? "sondé il y a " + ago(cli.lastProbeAt) : "—",
-    cli.loggedIn || (cs && cs.apiKey) ? "Disponible" : cli.reason === "probe" ? "Sonde muette" : cli.installed ? "À reconnecter" : "Indisponible");
+    !cs ? "Inconnu" : dispo ? "Disponible" : cli.reason === "probe" ? "Sonde muette" : cli.reason === "quota" ? "Limite d'usage" : cli.installed ? "À reconnecter" : "Indisponible");
   // Git (si autorisé)
   if (git) {
     const dirty = (git.files || []).length;
@@ -2083,11 +2121,18 @@ function wireClaudeCard() {
       const r = await api.post("/claude/recheck", {});
       S.me.claudeLive = r.cli.available || r.apiKey;
       S.me.claudeVia = r.apiKey ? "api" : r.cli.available ? "cli" : "manuel";
+      S.me.claudeInstalled = Boolean(r.cli.installed);
+      S.me.claudeReason = r.cli.reason || null;
       setHtml("#claudeCard", claudeSettingsHtml()); wireClaudeCard();
+      // ⚠️ Le nœud `msg` d'avant le re-rendu est DÉTACHÉ : écrire dedans n'affiche
+      // rien (revue du 2026-09-13). On vise le nœud fraîchement rendu.
+      const msg2 = $("#claudeRecheckMsg");
       if (S.me.claudeLive) toast("Réparation automatique activée ✓");
-      else if (msg) msg.textContent = r.cli.reason === "probe"
+      else if (msg2) msg2.textContent = r.cli.reason === "probe"
         ? "La sonde « claude auth status » ne répond pas : CLI bloqué ou poste saturé (vérifie le disque), ce n'est pas une déconnexion."
-        : "Toujours pas connecté. Double-clique dashboard\\Connecter-Claude.cmd (ou « claude auth login » dans un terminal).";
+        : r.cli.reason === "quota"
+          ? `Limite d'usage de l'abonnement atteinte : rien à reconnecter, l'analyse reprend seule ${r.cli.quotaUntil ? "vers " + new Date(r.cli.quotaUntil).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "à l'heure de remise à zéro"}.`
+          : "Toujours pas connecté. Double-clique dashboard\\Connecter-Claude.cmd (ou « claude auth login » dans un terminal).";
       renderNav();
     } catch (e) { if (msg) msg.textContent = e.message; btn.disabled = false; }
   };
@@ -2163,6 +2208,21 @@ function onSentinelDiagnosis(d) {
 function onSentinelState(st) {
   S.sentinel = st;
   if (S.currentView === "sentinel") renderSentinelState(st);
+}
+// Bascule de la connexion Claude Code poussée par le serveur (chute, retour,
+// limite d'usage). Jusqu'au 2026-09-13 `S.me.claudeLive` était l'état lu au
+// login et gardé 12 h : « Réparation automatique active » restait affiché
+// pendant une panne, et « inactive » après une reconnexion. On met à jour ce
+// que le serveur sait, puis on re-rend ce qui le montre.
+function onClaudeState(cli) {
+  if (!cli || typeof cli !== "object") return;
+  S.me.claudeLive = Boolean(cli.available) || S.me.claudeVia === "api";
+  if (S.me.claudeVia !== "api") S.me.claudeVia = cli.available ? "cli" : "manuel";
+  S.me.claudeInstalled = Boolean(cli.installed);
+  S.me.claudeReason = cli.reason || null;
+  renderNav();
+  if ($("#claudeCard")) { setHtml("#claudeCard", claudeSettingsHtml()); wireClaudeCard(); }
+  if (S.currentView === "sources" || S.currentView === "claude") { try { S.refresh && S.refresh(); } catch {} }
 }
 
 function updateAlertBadges() {
@@ -2375,7 +2435,7 @@ async function showApp() {
   connectStream({
     open: () => setSse(true), error: () => setSse(false),
     event: onLiveEvent, interaction: onInteractionSignal, trace: onTraceSignal, alert: onAlert, test: onTest, ping: () => setSse(true),
-    sentinel: onSentinelDiagnosis, sentinelState: onSentinelState,
+    sentinel: onSentinelDiagnosis, sentinelState: onSentinelState, claude: onClaudeState,
   });
   // Événements UI
   window.addEventListener("hashchange", route);

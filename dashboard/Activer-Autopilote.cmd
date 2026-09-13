@@ -24,7 +24,9 @@ cd /d "%DASH%"
 where node >nul 2>&1 || goto :nonode
 if not exist "%DASH%.env" goto :noenv
 
-if /I "%~1"=="/off"  ( node scripts\autopilote.mjs off  & goto :fin )
+REM /off redemarre AUSSI (revue du 2026-09-13) : .env etait ecrit mais le
+REM pilotage en cours gardait l autopilote ALLUME jusqu au prochain redemarrage.
+if /I "%~1"=="/off"  ( node scripts\autopilote.mjs off  & goto :redemarre )
 if /I "%~1"=="/etat" ( node scripts\autopilote.mjs etat & goto :fin )
 if /I "%~1"=="/nonenligne" ( node scripts\autopilote.mjs production-off & goto :redemarre )
 if /I "%~1"=="/enligne" (
