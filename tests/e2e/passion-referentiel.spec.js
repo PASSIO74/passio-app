@@ -142,8 +142,18 @@ test("① bis — un référentiel partiel n'interdit PAS de publier (le cas ré
   });
 
   expect(vu.ok, "publier dans « musique » reste possible malgré un référentiel à une entrée").toBe(true);
-  expect(vu.envoye.length).toBe(1);
-  expect(vu.envoye[0].p.passion_id).toBe("musique");
+  // ⚠️ ON COMPTE LES INSERTS DE `posts`, PAS TOUS LES INSERTS. Le faux ci-dessus
+  // observe TOUTES les tables, et ce cas mesure une PUBLICATION : compter le total
+  // le rendait dépendant de ce qui se passe ailleurs au même instant. Mesuré ici :
+  // `["profiles", "posts"]` — depuis que le démarrage d'un VISITEUR ne crée plus sa
+  // ligne `profiles` (elle serait refusée : 104 × 401, 0 compte), le cache
+  // `_profilAssureUid` n'est plus posé au boot, donc `publishPost` garantit la ligne
+  // lui-même et son insert tombe DANS la fenêtre de mesure au lieu d'avant elle.
+  // Le nombre de posts publiés, lui, n'a pas bougé : c'est la seule chose que ce
+  // cas garde, et c'est désormais ce qu'il compte.
+  const posts = vu.envoye.filter((e) => e.t === "posts");
+  expect(posts.length, "une seule publication est partie").toBe(1);
+  expect(posts[0].p.passion_id).toBe("musique");
 });
 
 test("② Supabase indisponible : les 19 passions locales restent utilisables", async ({ page }) => {

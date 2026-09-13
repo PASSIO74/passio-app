@@ -3291,6 +3291,14 @@ window._marquerProfilAssure = _marquerProfilAssure;
 
 // Garantit l'existence de la ligne, sans jamais modifier une ligne existante.
 async function supaEnsureProfileExists() {
+  // ⚠️ CETTE FONCTION N'EST PAS LA PORTE DU VISITEUR, et l'y avoir cru a coûté un
+  // run rouge. Son contrat est « la ligne `profiles` de `MY_UID` existe », elle a
+  // SEIZE appelants — presque tous déclenchés par un geste d'un compte réel — et
+  // dix cas de `hotfix-profil-passion-custom` exigent précisément qu'elle crée la
+  // ligne dans les états dégradés. Y poser la garde de compte refusait donc des
+  // écritures légitimes pour fermer un défaut qui, lui, vient d'UN seul appelant :
+  // le démarrage. La garde vit dans `supaInit`, à la porte que franchit un
+  // visiteur sans que personne l'ait demandé.
   const uid = (typeof MY_UID !== "undefined") ? MY_UID : null;
   if (!uid) return false;
   // Changement d'utilisateur : le cache d'un autre UID ne vaut rien ici. Le
@@ -5135,7 +5143,18 @@ async function supaLoadMessages(convId) {
 // Marque la conversation comme lue par MOI (upsert de mon last_read_at).
 async function supaMarkRead(convId) {
   try {
-    if (typeof supa === "undefined" || !supa || !MY_UID || !window._supaReal || !convId) return;
+    // Même famille que `profiles` et `user_state` (#367) : `reads_insert_own`
+    // exige `auth.uid()`, donc un accusé de lecture posé sous le placeholder
+    // d'un visiteur est refusé (13 × 401, 0 compte). Un visiteur n'a de toute
+    // façon aucune conversation à marquer comme lue.
+    if (typeof supa === "undefined" || !supa || !_compteAuthReel() || !window._supaReal || !convId) return;
+    // Identité prouvée divergente : la ligne serait refusée (`reads_upsert`
+    // exige `user_id = auth.uid()`). On le TRACE au lieu de le taire — sans
+    // trace, une divergence d'identité est indiscernable d'un calme plat.
+    if (_identiteDivergeDeLaSession(MY_UID)) {
+      try { if (typeof diagLog === "function") diagLog("conv_reads: identite locale != session"); } catch (e) {}
+      return;
+    }
     await supa.from("conv_reads").upsert(
       { conv_id: convId, user_id: MY_UID, last_read_at: new Date().toISOString() },
       { onConflict: "conv_id,user_id" }
@@ -6046,7 +6065,10 @@ async function supaReport(targetType, targetId, reason) {
 // leur état vu se synchronise comme les vraies. RLS : chacun ne lit/écrit
 // que ses propres lignes.
 async function supaMarkStoryView(storyId) {
-  if (!window._supaReal || !MY_UID || !storyId) return;
+  // Même famille : la vue d'une story s'écrit sous `auth.uid()` (17 × 401,
+  // 0 compte). Les anneaux vus/non-vus d'un visiteur vivent dans son état
+  // local — rien n'est perdu à ne pas les pousser.
+  if (!window._supaReal || !_compteAuthReel() || !storyId) return;
   try {
     await supa.from("story_views").upsert(
       { story_id: String(storyId), user_id: MY_UID },
@@ -6450,16 +6472,53 @@ function _analyticsNudgeRefresh() {
 
 // Session d'auth réellement utilisable POUR CETTE IDENTITÉ : jeton présent,
 // non expiré, et portant le même compte que la ligne qu'on s'apprête à écrire.
-function _analyticsSessionUtilisable(uid) {
+// ── LA SESSION PERSISTÉE PAR LE SDK — UNE SEULE LECTURE POUR TOUS LES VERDICTS ─
+// Le jeton `sb-<ref>-auth-token` EST la session pour supabase-js. Trois surfaces
+// ont besoin de le lire (analytics, accusés de lecture, abonnement push) et elles
+// n'en tirent PAS le même verdict : l'une veut « le jeton est-il frais ? »,
+// l'autre « est-ce bien MON compte ? ». Deux questions, une seule lecture — deux
+// copies de ce parsing (v1 vs v2, marge d'horloge) finiraient par diverger, et
+// c'est la seconde qu'on oublierait de corriger.
+// Rend `null` dès que rien n'est lisible : l'appelant décide quoi en faire, et
+// aucun appelant ne durcit sur un inconnu.
+function _sessionSdkPersistee() {
   try {
     var cfg = window.PASSIO_SUPABASE;
-    if (!cfg || !cfg.url) return false;
+    if (!cfg || !cfg.url) return null;
     var ref = (String(cfg.url).match(/https?:\/\/([^.]+)\./) || [])[1];
     var raw = ref && localStorage.getItem("sb-" + ref + "-auth-token");
-    if (!raw) return false;                        // ① aucune session : on n'émet rien
+    if (!raw) return null;
     var j = JSON.parse(raw);
     var s = (j && j.currentSession) ? j.currentSession : j;   // v1 vs v2
-    if (!s || !s.access_token) return false;
+    return (s && s.access_token) ? s : null;
+  } catch (e) { return null; }
+}
+window._sessionSdkPersistee = _sessionSdkPersistee;
+
+// ⚠️ UN UUID DE LA BONNE FORME PEUT ÊTRE CELUI DU MAUVAIS COMPTE, et c'est le
+// SECOND étage de la famille ouverte par #367. `_compteAuthReel()` ne regarde
+// que la FORME de `MY_UID` ; les policies, elles, comparent à `auth.uid()`.
+// Mesuré en production : `push_subscriptions` → 403 × 17 (dernier le 2026-09-13
+// à 05:51) et `conv_reads` → 403 × 2 (05:29), **avec un compte identifié**. Un
+// 403 et non un 401 est le discriminant : le jeton est joint et valide, donc ce
+// n'est pas la session qui manque — c'est l'identité écrite qui n'est pas la
+// sienne (appareil repris par un autre compte, `passio_uid` survivant).
+// ⚠️ ON NE RÉPOND `true` QUE SUR UNE DIVERGENCE PROUVÉE : session illisible,
+// absente ou sans `user.id` → `false`, l'écriture part comme avant. Durcir sur
+// un inconnu casserait des écritures légitimes pour une cause supposée.
+function _identiteDivergeDeLaSession(uid) {
+  try {
+    var s = _sessionSdkPersistee();
+    var suid = s && s.user && s.user.id;
+    return !!(suid && uid && String(suid) !== String(uid));
+  } catch (e) { return false; }
+}
+window._identiteDivergeDeLaSession = _identiteDivergeDeLaSession;
+
+function _analyticsSessionUtilisable(uid) {
+  try {
+    var s = _sessionSdkPersistee();
+    if (!s) return false;                          // ① aucune session : on n'émet rien
     var expMs = (typeof s.expires_at === "number") ? s.expires_at * 1000 : 0;
     if (expMs && Date.now() >= expMs - 10000) {     // ② marge d'horloge 10 s
       _analyticsNudgeRefresh();
@@ -6582,11 +6641,18 @@ async function supaInit() {
         try { saveState(); } catch(e) {}
         try { if (typeof renderTopbar === "function") renderTopbar(); } catch(e) {}
         try { if (typeof renderMainProfile === "function") renderMainProfile(); } catch(e) {}
-      } else {
+      } else if (_compteAuthReel()) {
         // Pas de profil serveur encore \u2192 publier le profil local (cr\u00e9ation).
+        // ⚠️ ET SEULEMENT POUR UN COMPTE. Mesuré en production : 104 × POST
+        // /rest/v1/profiles → 401 sur 101 sessions et **0 uuid d'auth**, dernier
+        // refus le 2026-09-13 à 07:16 — à la même minute que les 401 de
+        // `user_state` que #367 a fermés, et pour la même cause : `getMyUserId()`
+        // fabrique un `u_<aléatoire>` pour tout visiteur. Le SELECT juste au-dessus
+        // n'est PAS un défaut (une lecture sans compte rend 200 vide) ; c'est cette
+        // création-ci qui frappait une porte fermée exprès, à chaque démarrage.
         await supaEnsureProfileExists();
       }
-    } catch(e) { try { await supaEnsureProfileExists(); } catch(_e) {} }
+    } catch(e) { if (_compteAuthReel()) { try { await supaEnsureProfileExists(); } catch(_e) {} } }
 
     // 1. CHARGER LES POSTS au d\u00e9marrage
     console.log("\ud83d\udce5 [INIT] Chargement des posts Supabase");

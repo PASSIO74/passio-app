@@ -1199,17 +1199,56 @@ async function ensureCallPushSubscription() {
   try {
     if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
     if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
-    if (typeof supa === "undefined" || !supa || !window._supaReal || !MY_UID) return;
+    if (typeof supa === "undefined" || !supa || !window._supaReal) return;
+    // `MY_UID` ne prouve pas qu'un compte existe (#367) : sous le placeholder
+    // d'un visiteur, `push_insert_own` refuse — et un visiteur n'a personne à
+    // qui répondre au téléphone.
+    if (typeof _uidEstUnCompte === "function" ? !_uidEstUnCompte() : !MY_UID) return;
     const reg = await navigator.serviceWorker.ready;
     let sub = await reg.pushManager.getSubscription();
     if (!sub) {
       sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: _urlB64ToUint8(CALL_VAPID_PUBLIC) });
     }
-    const json = sub.toJSON();
-    await supa.from("push_subscriptions").upsert(
-      { endpoint: sub.endpoint, user_id: MY_UID, subscription: json },
+    // ⚠️ L'ÉCHEC ÉTAIT DEUX FOIS MUET, ET `_callPushReady` MENTAIT.
+    // Mesuré en production : 17 × POST /rest/v1/push_subscriptions → 403, sur
+    // 12 sessions et 3 comptes réels, le dernier le 2026-09-13 à 05:51. Le SDK
+    // ne LÈVE PAS sur un refus RLS : l'`await` sans lecture de `{ error }`
+    // passait pour un succès, `_callPushReady = true` était posé quand même, et
+    // l'appareil n'était abonné à RIEN — donc aucune notification d'appel ni de
+    // message application fermée, ce qui vide de son effet la fiche « Notifier
+    // un message privé ». Un abonnement qui échoue en silence est pire qu'une
+    // absence d'abonnement : il se croit fait.
+    let r = await supa.from("push_subscriptions").upsert(
+      { endpoint: sub.endpoint, user_id: MY_UID, subscription: sub.toJSON() },
       { onConflict: "endpoint" }
     );
+    // ⚠️ LA CAUSE DU 403 N'EST PAS UNE POLICY TROP STRICTE, C'EST UN ENDPOINT
+    // DÉJÀ POSSÉDÉ. La clé primaire est l'`endpoint`, qui appartient au
+    // NAVIGATEUR, pas au compte : quand un second compte se connecte sur le même
+    // appareil, `getSubscription()` rend le MÊME endpoint et l'upsert tente de
+    // réassigner une ligne dont `user_id` est celui du premier — `push_update_own`
+    // (USING user_id = auth.uid()) refuse, et PostgreSQL rend 42501. Aucune
+    // policy ne peut arbitrer cela sans laisser un compte revendiquer la ligne
+    // d'un autre ; c'est au navigateur de trancher, et il sait le faire : on lui
+    // demande un endpoint NEUF. L'appareil change de main, la ligne ne change
+    // pas d'avis. UNE SEULE reprise par session — deux comptes qui se partagent
+    // vraiment un téléphone ne doivent pas se voler l'abonnement en boucle.
+    const refusAcces = !!(r && r.error && (Number(r.status) === 403 || String(r.error.code || "") === "42501"));
+    if (refusAcces && !window._pushEndpointRepris) {
+      window._pushEndpointRepris = true;
+      try { await sub.unsubscribe(); } catch (e) {}
+      sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: _urlB64ToUint8(CALL_VAPID_PUBLIC) });
+      r = await supa.from("push_subscriptions").upsert(
+        { endpoint: sub.endpoint, user_id: MY_UID, subscription: sub.toJSON() },
+        { onConflict: "endpoint" }
+      );
+    }
+    if (r && r.error) {
+      // Le refus laisse une trace : c'est ce qui manquait pour qu'il se voie.
+      try { if (typeof diagLog === "function") diagLog("push_subscription refus " + String(r.error.code || r.status || "?")); } catch (e) {}
+      console.warn("[call] push subscription refusée :", r.error.message);
+      return;
+    }
     window._callPushReady = true;
     console.log("[call] push subscription enregistrée");
   } catch (e) { console.warn("[call] ensureCallPushSubscription:", e && e.message); }

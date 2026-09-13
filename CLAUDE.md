@@ -275,9 +275,116 @@ La **lecture** (`supaLoadUserState`) n'est PAS touchée : un GET sans compte ren
 pas un défaut, et `reprise-lectures-boot.spec.js` l'exerce avec le placeholder. Verrou :
 `tests/e2e/user-state-invite.spec.js` (5), ⓪ à ③ éprouvés par RÉINJECTION (4 rouges sur le code
 d'avant), ④ garde la porte ouverte aux comptes réels.
-⚠️ **CE QUI RESTE OUVERT DANS LA MÊME FAMILLE** : les mêmes sessions produisent aussi
-`POST /rest/v1/profiles` → 401 (97 refus / 96 sessions / 0 compte sur 14 jours,
-`supaEnsureProfileExists` via `supaInit`) — même cause, autre table, hors du périmètre de ce correctif.
+⚠️ **CE QUI RESTAIT OUVERT DANS LA MÊME FAMILLE EST FERMÉ LE MÊME JOUR** : `profiles`,
+`story_views`, `conv_reads` et `push_subscriptions` suivaient — voir la fiche suivante.
+
+## 🔁 TROIS TABLES DE PLUS EN 401, UNE EN 403 — ET LE 403 N'AVAIT PAS LA MÊME CAUSE (2026-09-13)
+
+Suite directe de #367, et **son second étage**. Mesuré en production le jour même
+(`telemetry_events`, `type='api'`), tous des **POST** :
+
+| Cible | Statut | Refus | Sessions | Comptes | Dernier |
+|---|---|---|---|---|---|
+| `profiles` | 401 | 104 | 101 | **0** | 07:16 |
+| `story_views` | 401 | 17 | 3 | **0** | 08/09 |
+| `conv_reads` | 401 | 13 | 5 | **0** | 12/09 |
+| `push_subscriptions` | **403** | 17 | 12 | **3** | **05:51** |
+| `conv_reads` | **403** | 2 | 2 | **1** | **05:29** |
+
+⚠️ **IL Y A DEUX CAUSES, ET C'EST LE CODE HTTP QUI LES SÉPARE — jamais le libellé.**
+**401 avec 0 compte** = rôle anonyme : le placeholder `u_<aléatoire>` de
+`getMyUserId()` passait la garde `!MY_UID`, exactement comme pour `user_state`.
+Gardes posées sur `supaMarkRead`, `supaMarkStoryView` et — pour `profiles` — sur le
+**démarrage** (`_compteAuthReel()`, l'autorité déjà présente dans app-08 : on n'en a
+pas créé une troisième). **403 AVEC un compte** = le jeton est joint et valide, donc
+la session existe : ce n'est pas elle qui manque.
+
+⚠️ **ET LA GARDE DE `profiles` N'EST PAS DANS `supaEnsureProfileExists` — un run
+rouge a payé cette leçon.** Posée là, elle faisait tomber **quinze cas** :
+`hotfix-profil-passion-custom` en ENTIER (10), `profil-trois-autorites` (4) et
+`multi-passion-integrite` ⑧ — dont l'objet est précisément « la ligne est créée
+quand même », dans les états dégradés. Cette fonction a **seize appelants**,
+presque tous déclenchés par un geste d'un compte réel, et son contrat est « la
+ligne de `MY_UID` existe ». **Quand une garde fait tomber la suite DÉDIÉE à la
+fonction gardée, ce n'est pas la suite qui a tort : la garde est trop haut.** Le
+défaut mesuré ne vient que d'UN appelant — le bloc « pas de profil serveur encore »
+de `supaInit` — donc c'est lui qui est gardé, **branche `catch` comprise** (sinon le
+refus repart par là, et c'est invisible). Corollaire de banc : le verrou exerce
+`supaInit()`, jamais la fonction à la main — appelée directement, elle resterait
+verte le jour où la garde disparaîtrait du démarrage (défaut `_notifierMessage`).
+⚠️ Le `SELECT` qui précède cette création n'est PAS un défaut et reste non gardé :
+une lecture sans compte rend 200 vide (même raison que `supaLoadUserState`, #367).
+
+⚠️ **UN UUID DE LA BONNE FORME PEUT ÊTRE CELUI DU MAUVAIS COMPTE.** `_compteAuthReel`
+et `_uidEstUnCompte` ne regardent que la FORME ; les policies comparent à
+`auth.uid()`. Aucune garde de forme ne verra jamais ce cas — d'où
+`_identiteDivergeDeLaSession(uid)`, qui ne répond `true` que sur une divergence
+**PROUVÉE** : session absente, illisible ou sans `user.id` → `false`, l'écriture
+part comme avant. **Durcir sur un inconnu couperait des écritures légitimes pour
+une cause supposée** (même raisonnement que la porte d'admission, qui échoue
+ouvert). Le refus est **TRACÉ** (`diagLog`) : une divergence d'identité muette est
+indiscernable d'un calme plat.
+
+⚠️ **UNE SEULE LECTURE DU JETON POUR TROIS VERDICTS.** `_sessionSdkPersistee()`
+(app-08) est désormais le seul endroit qui lit `sb-<ref>-auth-token` (v1 et v2) ;
+`_analyticsSessionUtilisable` l'appelle au lieu de garder sa copie. Les questions
+sont différentes — « le jeton est-il frais ? » pour les analytics, « est-ce bien
+MON compte ? » pour les écritures — mais la lecture est la même, et deux copies du
+parsing finissent toujours par diverger sur celle qu'on oublie. Le verrou ⓪ compte
+les occurrences : **exactement une**.
+
+⚠️ **ET LE 403 DE `push_subscriptions` N'EST MÊME PAS UN PROBLÈME D'IDENTITÉ : c'est
+la PROPRIÉTÉ DE L'ENDPOINT.** La clé primaire est l'`endpoint`, qui appartient au
+**NAVIGATEUR**, pas au compte. Quand un second compte se connecte sur le même
+appareil, `getSubscription()` rend le MÊME endpoint et l'upsert
+(`onConflict: "endpoint"`) tente de réassigner la ligne du premier :
+`push_update_own` (USING `user_id = auth.uid()`) refuse, PostgreSQL rend 42501.
+**Aucune policy ne peut arbitrer ça** sans autoriser un compte à revendiquer la
+ligne d'un autre — c'est au navigateur de trancher, et il sait le faire : on lui
+demande un endpoint NEUF (`unsubscribe()` puis `subscribe()`), **une seule fois par
+session** (`window._pushEndpointRepris`), sinon deux comptes qui partagent
+vraiment un téléphone se voleraient l'abonnement en boucle. L'ancienne ligne
+devient orpheline et **`notify-call` la purge déjà lui-même sur 410/404** : ne pas
+ajouter de nettoyage, il existe.
+
+⚠️ **L'ÉCHEC ÉTAIT DEUX FOIS MUET, ET LE DRAPEAU MENTAIT.** `await
+supa.from("push_subscriptions").upsert(...)` **sans lire `{ error }`** — le SDK ne
+LÈVE PAS sur un refus RLS — puis `window._callPushReady = true` posé quoi qu'il
+arrive. L'appareil se croyait abonné sans l'être : **aucune notification d'appel ni
+de message application fermée**, ce qui vidait de son effet la fiche « Notifier un
+message privé ». Un abonnement qui échoue en silence est pire qu'une absence
+d'abonnement : il se croit fait, donc personne ne le refait.
+
+⚠️ **`conv_messages` (403 × 285, 31 sessions, vrais téléphones) EST DÉJÀ REFERMÉ —
+NE PAS REJOUER L'ENQUÊTE.** Le dernier refus est le 2026-09-10 à **07:19 UTC** et
+`_reparerAppartenanceConv` (#318) a été fusionné à **07:54 UTC** le même jour :
+toutes les occurrences précèdent le correctif. C'est la règle déjà écrite pour la
+Sentinelle — **une réouverture n'est pas une récidive tant que la dernière
+occurrence n'est pas postérieure au déploiement** — et elle vaut aussi pour un
+humain qui lit un tableau de bord. Ce lot a commencé par classer ce point « le
+plus coûteux à faire » : c'est la mesure qui l'a détrompé, pas la relecture.
+
+⚠️ **LE PIÈGE DE BANC, ET IL RENDAIT DEUX CAS VERTS SUR LE DÉFAUT.** Le jeton de
+session posé en `addInitScript` **a DISPARU** une fois l'app démarrée (plus aucune
+clé `sb-…` dans `localStorage`) : un appareil qui porte un compte sans session
+retrouvée passe par `purgerJetonAuthLocal()`, geste délibéré du produit. Posé
+avant, on mesure une fenêtre que le produit referme — et comme « pas de jeton » =
+fail-open, le cas passait **quoi qu'il arrive**. `_identiteDivergeDeLaSession` lit
+le stockage à CHAQUE appel : le jeton se pose donc à l'instant de l'écriture, ce
+qui est son contrat réel. Le cas ⑥ exige en plus que la session soit **lue**,
+sinon il repasserait vert par le fail-open.
+
+⚠️ **POINT OUVERT, DÉLIBÉRÉMENT LAISSÉ** : **d'où vient la divergence d'identité**
+n'est pas établi. On sait qu'elle existe (19 refus mesurés sur deux tables), on
+refuse d'écrire sous une identité fausse et on la trace — mais réaligner `MY_UID`
+à chaud depuis une écriture de push serait poser un correctif sur une cause
+supposée, dans un chemin (`adopterCompteConnecte`, quatre entrées) dont le dépôt
+documente déjà la sensibilité. La trace `diagLog` est ce qui rendra la cause
+mesurable au prochain cas.
+Verrou : `tests/e2e/ecritures-identite-compte.spec.js` (9), **éprouvé par
+RÉINJECTION de trois mutations** — gardes de forme remises (3 rouges), push sans
+lecture d'erreur ni reprise (3 rouges), garde d'identité retirée (1 rouge, celui
+qui la mesure).
 
 ## 🌐 « Failed to fetch » AU DÉMARRAGE — les LECTURES n'avaient pas de file, les écritures si (2026-09-10)
 
