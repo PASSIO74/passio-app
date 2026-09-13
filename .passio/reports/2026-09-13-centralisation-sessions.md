@@ -11,6 +11,14 @@ Référence `main` à l'ouverture : `ca2daba` — « Captcha Turnstile à l'insc
 (#368), run « CI & Deploy » n° 2681 **vert**, job « Déploiement production »
 terminé à 06:10 UTC. C'est donc bien l'état servi aux utilisateurs.
 
+> **⚠️ MISE À JOUR — C'EST FAIT, ET C'EST EN LIGNE.** #367 est fusionnée
+> (`main` → `1432ddb1`) après une CI verte sur l'état fusionné (run 2682), et le
+> run 2683 a publié : job **« Déploiement production » vert, « Deploy to Netlify »
+> terminé à 07:21:55 UTC**. Les 278 refus `POST /rest/v1/user_state` → 401, dont
+> le dernier datait de ce matin 06:03, n'ont plus de cause côté client.
+> **Plus aucun travail de session parallèle n'attend d'être livré.** Ce qui reste
+> est en §3, et rien de cela n'était en cours dans une session.
+
 ---
 
 ## 1. Ce que la centralisation a trouvé
