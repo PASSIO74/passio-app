@@ -193,10 +193,15 @@
   var flushTimer = null;
   var retryTimer = null;
   var sending = false;          // un envoi réseau est en cours
-  var sendFailures = 0;         // échecs d'envoi CONSÉCUTIFS (appareil injoignable)
+  var sendFailures = 0;         // échecs INEXPLIQUÉS consécutifs (appareil injoignable)
+  var softFailures = 0;         // échecs EXPLIQUÉS consécutifs — page qui se ferme,
+                                // onglet masqué, navigateur qui se déclare hors ligne.
+                                // Ils règlent le backoff ; ils ne lèvent PAS d'alarme.
   var authRetries = 0;          // rejets d'auth CONSÉCUTIFS (token expiré, ≠ coupure)
   var AUTH_MAX_RETRIES = 6;     // grâce (~30 s) laissée au SDK pour rafraîchir le token
   var offlineSince = 0;         // ms epoch du passage hors-ligne (0 = en ligne)
+  var unloading = false;        // vrai entre `pagehide` et un éventuel `pageshow` :
+                                // le navigateur annule alors les requêtes en vol
   var BACKLOG_KEY = "passio_tel_backlog";  // file persistée (survit reload/coupure)
 
   // Persiste la file : si l'appareil est en coupure et que l'onglet se ferme,
@@ -259,6 +264,11 @@
     queue.push(ev);
     if (queue.length > MAX_QUEUE) queue.splice(0, queue.length - MAX_QUEUE);
     persistBacklog();                      // durable : rien n'est perdu même en coupure
+    // Un réessai armé = envoi en backoff après échec. Sans cette garde, l'événement
+    // émis PAR un échec relançait immédiatement un envoi, qui échouait de nouveau :
+    // l'alarme se nourrissait d'elle-même (#1 puis #3 en quelques millisecondes,
+    // donc gravité « error », sur un appareil parfaitement en ligne).
+    if (retryTimer) return;
     if (queue.length >= 12) flush();
     else if (!flushTimer) flushTimer = setTimeout(flush, 3000);
   }
@@ -418,22 +428,55 @@
     if (!retryTimer) retryTimer = setTimeout(function () { retryTimer = null; flush(); }, delay);
   }
 
-  // Panne d'envoi (réseau/serveur) : l'appareil est probablement injoignable.
-  // On trace l'échec (il partira au rétablissement) et on réessaie en backoff.
-  function onSendFailure(httpStatus /*, n, opts */) {
+  // Contexte d'un échec d'envoi. Le navigateur ANNULE les requêtes en vol quand la
+  // page part ou passe en arrière-plan : le lot meurt alors pour une raison CONNUE,
+  // sur un appareil parfaitement joignable. Même distinction que le hook fetch plus
+  // bas — « la requête a échoué » et « notre code a un défaut » ne sont pas la même
+  // chose, et cette fonction-ci les confondait encore.
+  function contexteEchec(opts) {
+    var masquee = false, horsLigne = false;
+    try { masquee = (typeof document !== "undefined" && document.visibilityState === "hidden"); } catch (e) {}
+    try { horsLigne = (typeof navigator !== "undefined" && navigator.onLine === false); } catch (e) {}
+    return { masquee: masquee, hors_ligne: horsLigne, fermeture: unloading || !!(opts && opts.keepalive) };
+  }
+
+  // Backoff commun (3 s → 60 s) sur le TOTAL des échecs consécutifs, expliqués ou
+  // non : on ne martèle ni un serveur ni une radio en difficulté.
+  function armerReessai() {
+    var essais = Math.max(1, sendFailures + softFailures);
+    var delay = Math.min(60000, 3000 * Math.pow(2, Math.min(essais - 1, 5)));
+    if (!retryTimer) retryTimer = setTimeout(function () { retryTimer = null; flush(); }, delay);
+  }
+
+  // Panne d'envoi (réseau/serveur). Le lot RESTE en file dans tous les cas : rien
+  // n'est perdu, il repart au prochain essai ou au prochain chargement (backlog).
+  // On ne lève une alarme que pour un échec INEXPLIQUÉ — page visible, navigateur
+  // qui se déclare en ligne : celui-là, on ne sait pas l'expliquer, il doit remonter.
+  function onSendFailure(httpStatus, n, opts) {
     sending = false;
+    persistBacklog();
+    var ctx = contexteEchec(opts);
+    if (ctx.fermeture || ctx.masquee || ctx.hors_ligne) {
+      // Cause connue. Le vrai hors-ligne a DÉJÀ son signal dédié
+      // (connectivity/offline, émis par l'écouteur `offline`) ; inventer ici un
+      // « appareil peut-être hors ligne » à chaque fermeture d'onglet remplissait
+      // le centre de pilotage de faux problèmes — précisément l'écran qui sert à
+      // voir les vrais.
+      softFailures++;
+      if (unloading) return;           // plus de page : aucun timer ne s'exécutera
+      armerReessai();                  // onglet masqué / hors ligne : on réessaiera
+      return;
+    }
     sendFailures++;
     if (!offlineSince) offlineSince = Date.now();
-    persistBacklog();
     if (sendFailures === 1 || sendFailures === 3 || sendFailures % 10 === 0) {
       track("connectivity", "send_failed", {
         severity: sendFailures >= 3 ? "error" : "warn", status: "error", http_status: httpStatus,
         message: "Échec d'envoi de la télémétrie #" + sendFailures + " (appareil peut-être hors ligne)",
-        meta: { failed_sends: sendFailures, online: navigator.onLine, backlog: queue.length },
+        meta: { failed_sends: sendFailures, ignores: softFailures, online: navigator.onLine, backlog: queue.length },
       });
     }
-    var delay = Math.min(60000, 3000 * Math.pow(2, Math.min(sendFailures - 1, 5)));  // 3s→60s
-    if (!retryTimer) retryTimer = setTimeout(function () { retryTimer = null; flush(); }, delay);
+    armerReessai();
   }
 
   // Envoi réussi : si on sortait d'une série d'échecs, trace la RÉCUPÉRATION
@@ -446,7 +489,7 @@
         meta: { failed_sends: sendFailures, offline_ms: offlineSince ? Date.now() - offlineSince : null, backlog: queue.length },
       });
     }
-    sendFailures = 0; offlineSince = 0; authRetries = 0;
+    sendFailures = 0; softFailures = 0; offlineSince = 0; authRetries = 0;
     if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
   }
 
@@ -706,8 +749,27 @@
   document.addEventListener("visibilitychange", function () {
     track("lifecycle", document.hidden ? "hidden" : "visible");
     if (document.hidden) flush({ keepalive: true });
+    else {
+      // Retour au premier plan : le backoff accumulé en arrière-plan n'a plus de
+      // raison d'être (les envois y étaient annulés par le navigateur, pas refusés
+      // par le serveur). On repart à plein régime pour écouler le backlog.
+      softFailures = 0;
+      if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+      flush();
+    }
   });
-  window.addEventListener("pagehide", function () { track("session", "end"); flush({ keepalive: true }); });
+  // `unloading` est posé AVANT le moindre envoi : telemetry.js est chargé avant
+  // perf-ios.js (index.html:57 puis :62), son écouteur `pagehide` passe donc en
+  // premier et le burst de snapshots « exit » de perf-ios trouve le drapeau levé.
+  window.addEventListener("pagehide", function () {
+    unloading = true;
+    track("session", "end");
+    flush({ keepalive: true });
+  });
+  // Retour depuis le cache aller-retour (bfcache) : la page revit, le contexte JS
+  // aussi. Sans ce réarmement, `unloading` resterait vrai et TOUTE panne d'envoi
+  // serait avalée en silence pour le reste de la vie de l'onglet.
+  window.addEventListener("pageshow", function () { unloading = false; });
 
   // 1bis) Connectivité réseau : capture EXPLICITE des coupures (le signal le plus
   // demandé — un testeur qui perd le réseau doit apparaître, pas disparaître).
