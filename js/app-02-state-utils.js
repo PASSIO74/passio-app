@@ -4008,6 +4008,119 @@ let _authMode = "signin";
 // fait pendant l'évaluation du script la trouverait en zone morte temporelle.
 let _pendingConfirmEmail = "";
 
+// ── CAPTCHA anti-robots (Cloudflare Turnstile) ──────────────────────────────
+//
+// SEC-06 du go/no-go du 2026-09-11 : sans captcha, un script vide le quota
+// d'e-mails d'authentification (150/h Supabase, 300/j Brevo) et rend
+// l'inscription indisponible jusqu'à 24 h. Le serveur (Supabase → Authentication
+// → Attack Protection → « Enable Captcha protection », secret Turnstile) refuse
+// alors TOUT appel d'auth sans jeton : signup, connexion par mot de passe,
+// mot de passe oublié, renvoi de lien — `captcha_failed`, 400.
+//
+// ⚠️ ORDRE D'ALLUMAGE : ① widget créé chez Cloudflare (hostname
+// passio-app.netlify.app), ② la sitekey PUBLIQUE posée dans
+// `PASSIO_TURNSTILE_SITEKEY` (app-08) et DÉPLOYÉE, ③ seulement alors le
+// secret collé dans Supabase et l'interrupteur allumé. Allumer avant ② casse
+// 100 % des inscriptions. Sitekey vide = captcha inactif côté client : aucun
+// script chargé, aucun jeton envoyé — le client fonctionne AVANT comme APRÈS.
+//
+// ⚠️ UN JETON NE SERT QU'UNE FOIS : après chaque appel d'auth, réussi ou non,
+// `captchaReinitialiser()` en redemande un. ⚠️ Les comptes de test ne passent
+// pas par ici : `tests/e2e/compte-e2e.js` ouvre sa session par
+// generate_link + verifyOtp (`/verify` n'est pas gardé par le captcha).
+function captchaSitekey() {
+  try { if (typeof window.PASSIO_TURNSTILE_SITEKEY === "string") return window.PASSIO_TURNSTILE_SITEKEY; } catch (e) {}
+  return (typeof PASSIO_TURNSTILE_SITEKEY === "string") ? PASSIO_TURNSTILE_SITEKEY : "";
+}
+function captchaActif() { return captchaSitekey().length > 0; }
+
+let _captchaWidget = null;
+let _captchaJetonCourant = "";
+let _captchaScript = null;
+let _captchaAttentes = [];
+const CAPTCHA_SCRIPT_URL = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+const CAPTCHA_ATTENTE_MS = 20000;
+
+function _captchaChargerScript() {
+  if (window.turnstile) return Promise.resolve();
+  if (_captchaScript) return _captchaScript;
+  _captchaScript = new Promise(function (res, rej) {
+    const s = document.createElement("script");
+    s.src = CAPTCHA_SCRIPT_URL;
+    s.async = true;
+    s.defer = true;
+    s.onload = function () { res(); };
+    s.onerror = function () { _captchaScript = null; rej(new Error("captcha: script indisponible")); };
+    document.head.appendChild(s);
+  });
+  return _captchaScript;
+}
+
+function _captchaResoudreAttentes(jeton) {
+  const a = _captchaAttentes;
+  _captchaAttentes = [];
+  a.forEach(function (f) { try { f(jeton); } catch (e) {} });
+}
+
+// Peint (ou remet à zéro) le widget dans #authCaptcha. Rend true si un widget
+// est en place. Sans sitekey : ne charge rien, ne montre rien.
+async function captchaPreparer() {
+  if (!captchaActif()) return false;
+  const box = document.getElementById("authCaptcha");
+  if (!box) return false;
+  try { await _captchaChargerScript(); } catch (e) { return false; }
+  if (!window.turnstile) return false;
+  box.style.display = "";
+  if (_captchaWidget !== null) {
+    try { turnstile.reset(_captchaWidget); } catch (e) {}
+    _captchaJetonCourant = "";
+    return true;
+  }
+  try {
+    _captchaWidget = turnstile.render(box, {
+      sitekey: captchaSitekey(),
+      language: "fr",
+      callback: function (t) { _captchaJetonCourant = t; _captchaResoudreAttentes(t); },
+      "expired-callback": function () { _captchaJetonCourant = ""; },
+      "error-callback": function () { _captchaJetonCourant = ""; },
+    });
+  } catch (e) { _captchaWidget = null; return false; }
+  return true;
+}
+
+// Le jeton à joindre à un appel d'auth : `undefined` si le captcha est
+// inactif (l'appel part comme avant), sinon le jeton — en attendant jusqu'à
+// 20 s qu'il arrive (mode « Managed » : la personne a parfois une case à
+// cocher). Chaîne vide = pas de jeton dans les temps ; le serveur refusera
+// et `traduireRefusCaptcha` le dira en français.
+async function captchaJeton() {
+  if (!captchaActif()) return undefined;
+  if (_captchaJetonCourant) return _captchaJetonCourant;
+  if (_captchaWidget === null) await captchaPreparer();
+  if (_captchaJetonCourant) return _captchaJetonCourant;
+  if (_captchaWidget === null) return "";
+  return new Promise(function (res) {
+    let fin = null;
+    const minuteur = setTimeout(function () {
+      _captchaAttentes = _captchaAttentes.filter(function (f) { return f !== fin; });
+      res("");
+    }, CAPTCHA_ATTENTE_MS);
+    fin = function (jeton) { clearTimeout(minuteur); res(jeton); };
+    _captchaAttentes.push(fin);
+  });
+}
+
+function captchaReinitialiser() {
+  _captchaJetonCourant = "";
+  if (_captchaWidget !== null && window.turnstile) { try { turnstile.reset(_captchaWidget); } catch (e) {} }
+}
+
+function traduireRefusCaptcha(m) {
+  m = String(m || "");
+  if (/captcha/i.test(m)) return "La vérification anti-robots a échoué. Recharge la page puis réessaie.";
+  return m;
+}
+
 function switchAuthTab(mode) {
   _authMode = mode;
   document.getElementById("authTabSignin").classList.toggle("active", mode === "signin");
@@ -4035,6 +4148,8 @@ function switchAuthTab(mode) {
   // changement d'onglet. Les appelants qui basculent PUIS proposent le renvoi
   // (onbDoAuth) doivent donc appeler _showResendConfirmation APRÈS switchAuthTab.
   _showResendConfirmation("");
+  // Le widget anti-robots se peint (ou se remet à zéro) à chaque affichage de l'écran.
+  try { captchaPreparer(); } catch (e) {}
 }
 
 // ── Mot de passe oublié : envoie un e-mail de réinitialisation Supabase ──
@@ -4045,8 +4160,10 @@ async function onbForgotPassword() {
     return;
   }
   try {
-    const { error } = await supa.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + window.location.pathname });
-    if (error) { _showAuthMsg(error.message || "Échec de l'envoi.", "error"); return; }
+    const captchaToken = await captchaJeton();
+    const { error } = await supa.auth.resetPasswordForEmail(email, Object.assign({ redirectTo: window.location.origin + window.location.pathname }, captchaToken !== undefined ? { captchaToken } : {}));
+    captchaReinitialiser();
+    if (error) { _showAuthMsg(traduireRefusCaptcha(error.message || "Échec de l'envoi."), "error"); return; }
     _showAuthMsg("📧 E-mail de réinitialisation envoyé. Vérifie ta boîte (et les spams).", "success");
   } catch (e) {
     _showAuthMsg("Erreur réseau. Vérifie ta connexion.", "error");
@@ -4085,9 +4202,11 @@ async function onbResendConfirmation() {
       _showAuthMsg("Renvoi indisponible pour l'instant. Réessaie dans un moment.", "error");
       return;
     }
-    const { error } = await supa.auth.resend({ type: "signup", email });
+    const captchaToken = await captchaJeton();
+    const { error } = await supa.auth.resend(Object.assign({ type: "signup", email }, captchaToken !== undefined ? { options: { captchaToken } } : {}));
+    captchaReinitialiser();
     if (error) {
-      let m = error.message || "Échec de l'envoi.";
+      let m = traduireRefusCaptcha(error.message || "Échec de l'envoi.");
       // Supabase impose un délai minimal entre deux envois (anti-abus) : le
       // message brut est en anglais et cite des secondes, on le rend lisible.
       if (/security purposes|rate limit|too many/i.test(m)) m = "Un e-mail vient déjà d'être envoyé. Patiente une minute avant de réessayer.";
@@ -4362,8 +4481,10 @@ async function onbDoAuth() {
 
   try {
     let result;
+    // Jeton anti-robots : `undefined` tant que le captcha est inactif (appel inchangé).
+    const captchaToken = await captchaJeton();
     if (_authMode === "signin") {
-      result = await supa.auth.signInWithPassword({ email, password: pwd });
+      result = await supa.auth.signInWithPassword(Object.assign({ email, password: pwd }, captchaToken !== undefined ? { options: { captchaToken } } : {}));
     } else {
       // ⚠️ LE NUMÉRO DE TÉLÉPHONE A ÉTÉ RETIRÉ DE L'INSCRIPTION (2026-09-10).
       // Il était OBLIGATOIRE — 8 à 15 chiffres, sans quoi l'inscription était
@@ -4397,12 +4518,12 @@ async function onbDoAuth() {
       // survit à la confirmation d'e-mail, au changement d'appareil et à la
       // purge locale. La VERSION est aussi importante que la date — sans elle,
       // « a accepté » ne dit pas QUOI.
-      result = await supa.auth.signUp({ email, password: pwd, options: { data: {
+      result = await supa.auth.signUp({ email, password: pwd, options: Object.assign({ data: {
         name: nom, display_name: nom,
         cgu_version: PASSIO_CGU_VERSION,
         cgu_accepted_at: _cguAccepteA,
         confidentialite_version: PASSIO_CONFIDENTIALITE_VERSION,
-      } } });
+      } }, captchaToken !== undefined ? { captchaToken } : {}) });
       // Copie locale pour le profil et les prochaines synchros.
       try {
         if (typeof state !== "undefined") {
@@ -4421,9 +4542,11 @@ async function onbDoAuth() {
         }
       } catch (e) {}
     }
+    // Le jeton est consommé par l'appel, réussi ou non.
+    captchaReinitialiser();
     const { data, error } = result;
     if (error) {
-      let msg = error.message;
+      let msg = traduireRefusCaptcha(error.message);
       if (msg.includes("Invalid login")) msg = "E-mail ou mot de passe incorrect.";
       msg = traduireRefusMotDePasse(msg);
       if (msg.includes("already registered")) msg = "Cet e-mail est déjà utilisé. Connecte-toi.";

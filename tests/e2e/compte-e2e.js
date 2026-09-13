@@ -98,6 +98,31 @@ async function _creerViaAdmin(cfg, email) {
 }
 
 /**
+ * Jeton de lien magique (hashed_token) délivré par l'API d'administration —
+ * la page l'échange contre une session par `verifyOtp`, sur `/auth/v1/verify`.
+ *
+ * ⚠️ POURQUOI PAS `signInWithPassword` : depuis le captcha Turnstile (SEC-06),
+ * le serveur refuse `/token?grant_type=password` sans jeton anti-robots —
+ * `captcha_failed`, 400 — et un banc ne peut ni résoudre un captcha ni
+ * embarquer le secret. `/verify` n'est PAS gardé par le captcha (périmètre
+ * mesuré dans supabase/auth `api.go`) et la clé service_role, elle, saute la
+ * vérification : le chemin ci-dessous marche captcha allumé OU éteint.
+ * Rend null si l'API ne délivre pas de jeton (on retombe alors sur le mot de
+ * passe, qui marche tant que le captcha est éteint).
+ */
+async function _jetonLienMagique(cfg, email) {
+  try {
+    const r = await fetch(`${cfg.url}/auth/v1/admin/generate_link`, {
+      method: "POST",
+      headers: { apikey: cfg.cle, Authorization: `Bearer ${cfg.cle}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "magiclink", email }),
+    });
+    const corps = await r.json().catch(() => null);
+    return (r.ok && corps && corps.hashed_token) ? corps.hashed_token : null;
+  } catch (e) { return null; }
+}
+
+/**
  * Crée un compte réel et ouvre sa session DANS LA PAGE.
  *
  * ⚠️ Comme `signUp` auparavant, l'appel BASCULE la session de la page sur le
@@ -112,14 +137,19 @@ async function creerCompteE2E(page, prefixe = "") {
 
   if (cfg) {
     await _creerViaAdmin(cfg, email);
-    const out = await page.evaluate(async ([em, mdp]) => {
+    const tokenHash = await _jetonLienMagique(cfg, email);
+    const out = await page.evaluate(async ([em, mdp, th]) => {
       try {
-        const { data, error } = await supa.auth.signInWithPassword({ email: em, password: mdp });
+        // Lien magique d'abord (immunisé contre le captcha) ; mot de passe en repli.
+        const r = th
+          ? await supa.auth.verifyOtp({ token_hash: th, type: "magiclink" })
+          : await supa.auth.signInWithPassword({ email: em, password: mdp });
+        const { data, error } = r;
         if (error) return { erreur: error.message };
         if (!data || !data.session) return { erreur: "connexion sans session" };
         return { uid: data.session.user.id, token: data.session.access_token };
       } catch (e) { return { erreur: (e && e.message) || String(e) }; }
-    }, [email, MDP_E2E]);
+    }, [email, MDP_E2E, tokenHash]);
     if (out.erreur) throw new Error(`connexion du compte e2e : ${out.erreur}`);
     await _memoriserUid(page, out.uid);
     return { uid: out.uid, token: out.token, email };

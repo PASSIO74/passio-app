@@ -283,6 +283,7 @@
         </label>
 
         <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px;">
+          <div id="authCaptcha" style="display:none;margin:0 0 2px;"></div>
           <button class="btn primary block" id="authSubmitBtn" onclick="onbDoAuth()" style="padding:14px;font-size:15px;font-weight:800;">Se connecter</button>
           <span id="authForgotLink" onclick="onbForgotPassword()" style="cursor:pointer;font-size:12px;color:var(--accent);text-align:center;padding:4px;">Mot de passe oublié ?</span>
           <span id="authResendLink" onclick="onbResendConfirmation()" style="display:none;cursor:pointer;font-size:12px;color:var(--accent);text-align:center;padding:4px;">Renvoyer l'e-mail de confirmation</span>
