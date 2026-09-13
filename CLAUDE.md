@@ -97,6 +97,22 @@ Wallet, points, étoiles, rangs, Score Passion, leaderboard, quêtes, Passia, bo
 `stripLegacyEconomy()` (app-02) est appelée aux **TROIS** frontières — `loadState`, `_applyUserState` (hydratation serveur) et `_syncableState` (envoi) : l'état legacy se propage dans les DEUX sens. `fmtEventPrice(price)` (app-02) est la **SEULE** fonction autorisée à écrire un prix à l'écran.
 Verrou : `tests/e2e/adr-009-retrait-economie.spec.js` (7). Inventaire complet du retrait et les six pièges du chantier (`renderTopbar` sans garde, classe morte, balise structurelle avalée, libellés « +N pts » en dur) : `docs/ADR-009_RETRAIT_ECONOMIE.md` et `docs/PASSIO_WALLET_PASSIA_REMOVAL_MAP_2026-08-20.md`.
 
+## 🔑 MOT DE PASSE : 8 CARACTÈRES, ET LES REFUS DU SERVEUR EN FRANÇAIS (2026-09-13)
+
+Le minimum serveur (Supabase → Authentication → Sign In / Providers → **Email** → « Minimum password length ») passe de 6 à **8**,
+avec « Password requirements » = lettres et chiffres. **`MOT_DE_PASSE_MIN` (app-02) est la SEULE source du nombre côté client** —
+inscription (`onbDoAuth`), changement depuis les Paramètres (`#cpNew`), récupération par lien (`#pwdRecoveryInput`) : trois portes,
+un seul nombre, et le `minlength` de chaque champ le suit (verrou ①). Le serveur tranche ; le client refuse plus tôt, en français.
+⚠️ **Les refus du serveur partaient en anglais** (« Password should be at least… », « Password is known to be weak and easy to
+guess… » — EM-6 du go/no-go, mesuré deux fois le 2026-09-11) : `traduireRefusMotDePasse(m)` (app-02) est la SEULE table, appelée
+sur les DEUX chemins (inscription ET changement), et rend le message INTACT s'il n'est pas un refus de mot de passe (verrou ⑤).
+⚠️ **Ordre de bascule** : ce client d'abord (il refuse à 8 quoi que dise le serveur), le réglage serveur ensuite — l'inverse
+aurait affiché l'erreur anglaise à tout inscrit entre 6 et 7 caractères. ⚠️ **« Secure password change » reste OFF** : le
+changement depuis les Paramètres (l.~3692) appelle `updateUser({ password })` sans `reauthenticate()` — l'allumer casserait
+le changement pour toute session de plus de 24 h (`reauthentication_needed`, non traduit). Lot à part. « Require current
+password when updating » exige `current_password` dans `updateUser` (SDK ≥ 2.102, le vendored 2.116 le porte) : même lot.
+`LICENSE` (racine) dit « Tous droits réservés » — il ne bloque ni la lecture ni le fork d'un dépôt PUBLIC (CGU GitHub D.5) ;
+seul le passage en privé le fait. Verrou : `tests/e2e/mot-de-passe-minimum.spec.js` (7, dont ①/②/④ éprouvés par RÉINJECTION à 6).
 ## 📧 Confirmation d'e-mail ACTIVE depuis le 2026-08-30 (SMTP Brevo)
 
 `signUp` ne rend **plus** de session : le compte existe, il est inutilisable tant que l'adresse n'est pas confirmée. Depuis le 2026-09-11, PASSIO a sa propre identité : contact `passioadmin@gmail.com` (`PASSIO_EDITEUR.email`, source unique), domaine d'envoi `passio-app.fr` sur des comptes OVH et Brevo dédiés — **plus aucune référence à une autre activité de l'éditeur**. Montage complet, enregistrements DKIM/DMARC, bascule SMTP et gabarits français : `docs/SETUP_SMTP_AUTH.md`.

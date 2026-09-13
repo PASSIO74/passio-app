@@ -3654,11 +3654,11 @@ function openChangePassword() {
   openModal('\
     <div class="modal-handle"></div>\
     <div class="modal-title">Changer mon mot de passe</div>\
-    <p style="font-size:13px;color:var(--muted);margin-bottom:14px;">Choisis un nouveau mot de passe (6 caractères minimum). Tu resteras connecté.</p>\
+    <p style="font-size:13px;color:var(--muted);margin-bottom:14px;">Choisis un nouveau mot de passe (8 caractères minimum). Tu resteras connecté.</p>\
     <label class="field"><span>Nouveau mot de passe</span>\
-      <input type="password" class="input" id="cpNew" autocomplete="new-password" minlength="6" placeholder="••••••••"/></label>\
+      <input type="password" class="input" id="cpNew" autocomplete="new-password" minlength="8" placeholder="••••••••"/></label>\
     <label class="field" style="margin-top:8px;"><span>Confirme le mot de passe</span>\
-      <input type="password" class="input" id="cpConfirm" autocomplete="new-password" minlength="6" placeholder="••••••••"/></label>\
+      <input type="password" class="input" id="cpConfirm" autocomplete="new-password" minlength="8" placeholder="••••••••"/></label>\
     <div id="cpMsg" style="font-size:12px;min-height:16px;margin:8px 0 2px;"></div>\
     <div style="display:flex;gap:8px;margin-top:10px;">\
       <button class="btn ghost" onclick="closeModal()" style="flex:1;">Annuler</button>\
@@ -3675,7 +3675,7 @@ async function doChangePassword() {
   var n = nEl ? nEl.value : "";
   var c = cEl ? cEl.value : "";
   function err(t) { if (msg) { msg.style.color = "#e11d48"; msg.textContent = t; } }
-  if (n.length < 6) { err("Au moins 6 caractères."); return; }
+  if (n.length < MOT_DE_PASSE_MIN) { err("Au moins " + MOT_DE_PASSE_MIN + " caractères."); return; }
   if (n !== c) { err("Les mots de passe ne correspondent pas."); return; }
   if (btn) { btn.disabled = true; btn.textContent = "…"; }
   // S'assurer que la session est bien chargée en mémoire avant updateUser
@@ -3695,7 +3695,7 @@ async function doChangePassword() {
       // Traduction des messages Supabase courants.
       if (/different from the old/i.test(m)) m = "Le nouveau mot de passe doit être différent de l'ancien.";
       else if (/session/i.test(m)) m = "Session expirée. Reconnecte-toi puis réessaie.";
-      else if (/at least/i.test(m)) m = "Mot de passe trop court.";
+      else if (traduireRefusMotDePasse(m) !== m) m = traduireRefusMotDePasse(m);
       else if (!m) m = "Impossible de changer le mot de passe.";
       err(m);
       if (btn) { btn.disabled = false; btn.textContent = "Valider"; }
@@ -4130,7 +4130,7 @@ function _showPasswordRecoveryUI() {
     '<div style="background:var(--bg-card,#fff);border-radius:18px;padding:24px;max-width:360px;width:100%;box-shadow:0 12px 48px rgba(0,0,0,0.3);">' +
       '<div style="font-size:18px;font-weight:800;margin-bottom:6px;">Nouveau mot de passe</div>' +
       '<div style="font-size:13px;color:var(--muted);margin-bottom:16px;">Choisis un nouveau mot de passe pour ton compte.</div>' +
-      '<input type="password" id="pwdRecoveryInput" placeholder="••••••••" minlength="6" autocomplete="new-password" class="input" style="width:100%;box-sizing:border-box;font-size:16px;margin-bottom:8px;"/>' +
+      '<input type="password" id="pwdRecoveryInput" placeholder="••••••••" minlength="8" autocomplete="new-password" class="input" style="width:100%;box-sizing:border-box;font-size:16px;margin-bottom:8px;"/>' +
       '<div id="pwdRecoveryMsg" style="font-size:12px;min-height:16px;margin-bottom:10px;"></div>' +
       '<button id="pwdRecoveryBtn" class="btn primary block" style="padding:13px;font-weight:800;">Valider</button>' +
     '</div>';
@@ -4141,7 +4141,7 @@ function _showPasswordRecoveryUI() {
   setTimeout(function () { try { input.focus(); } catch (e) {} }, 50);
   btn.onclick = async function () {
     const pwd = input.value || "";
-    if (pwd.length < 6) { msg.style.color = "#e11d48"; msg.textContent = "Au moins 6 caractères."; return; }
+    if (pwd.length < MOT_DE_PASSE_MIN) { msg.style.color = "#e11d48"; msg.textContent = "Au moins " + MOT_DE_PASSE_MIN + " caractères."; return; }
     btn.disabled = true; btn.textContent = "…";
     try {
       const { error } = await supa.auth.updateUser({ password: pwd });
@@ -4193,6 +4193,26 @@ const NOM_COMPTE_MIN = 2, NOM_COMPTE_MAX = 40;
 
 // Rend le nom NORMALISÉ, ou "" s'il est refusé. Un seul point de vérité :
 // l'appelant ne re-teste jamais la longueur de son côté.
+// Longueur minimale d'un mot de passe — la MÊME que le réglage serveur
+// (Supabase → Authentication → Sign In / Providers → Email → « Minimum
+// password length »). Le serveur tranche ; le client refuse plus tôt, en
+// français. Passé de 6 à 8 le 2026-09-13 (audit de sécurité avant l'envoi à
+// des milliers de personnes ; Supabase recommande 8).
+const MOT_DE_PASSE_MIN = 8;
+
+// Traduit les refus de mot de passe du serveur (inscription, changement,
+// récupération), qui partaient tels quels en anglais (EM-6 du go/no-go du
+// 2026-09-11, mesuré deux fois ce jour-là). Rend le message intact s'il n'est
+// pas un refus de mot de passe.
+function traduireRefusMotDePasse(m) {
+  m = String(m || "");
+  if (/known to be weak|easy to guess|pwned|leaked/i.test(m)) return "Ce mot de passe apparaît dans des fuites de données connues. Choisis-en un autre, plus original.";
+  if (/at least \d+ characters|too short|Password should be at least/i.test(m)) return "Mot de passe trop court (" + MOT_DE_PASSE_MIN + " caractères minimum).";
+  if (/should contain at least one|lowercase|uppercase|digit|symbol/i.test(m) && /password/i.test(m)) return "Le mot de passe doit mélanger lettres et chiffres.";
+  if (/different from the old|same_password|same password/i.test(m)) return "Le nouveau mot de passe doit être différent de l'ancien.";
+  return m;
+}
+
 function nomCompteValide(v) {
   // Les blancs ne font pas une identité : « Ben   jamin » et «  Benjamin  »
   // ne doivent pas donner deux pseudos différents dans `profiles.username`.
@@ -4254,7 +4274,7 @@ async function onbDoAuth() {
   // Validation de format stricte (en plus de la confirmation par e-mail Supabase).
   const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
   if (!EMAIL_RE.test(email)) { _showAuthMsg("Adresse e-mail invalide.", "error"); return; }
-  if (pwd.length < 6) { _showAuthMsg("Le mot de passe doit contenir au moins 6 caractères.", "error"); return; }
+  if (pwd.length < MOT_DE_PASSE_MIN) { _showAuthMsg("Le mot de passe doit contenir au moins " + MOT_DE_PASSE_MIN + " caractères.", "error"); return; }
   if (_authMode === "signup" && pwd !== pwd2) { _showAuthMsg("Les mots de passe ne correspondent pas.", "error"); return; }
   // ⚠️ LE CONSENTEMENT EST UNE CONDITION D'INSCRIPTION, PAS UNE DÉCORATION.
   // Il est demandé au SEUL moment où un contrat se forme (la création de
@@ -4337,6 +4357,7 @@ async function onbDoAuth() {
     if (error) {
       let msg = error.message;
       if (msg.includes("Invalid login")) msg = "E-mail ou mot de passe incorrect.";
+      msg = traduireRefusMotDePasse(msg);
       if (msg.includes("already registered")) msg = "Cet e-mail est déjà utilisé. Connecte-toi.";
       // Seule sortie possible pour qui n'a jamais reçu le lien : sans ce renvoi,
       // le compte est inaccessible pour toujours (« déjà utilisé » à
