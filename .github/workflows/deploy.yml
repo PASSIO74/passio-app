@@ -347,6 +347,15 @@ jobs:
       - name: Banc ouverture publique — RLS, debit, Realtime, seau prive (PostgreSQL jetable)
         run: bash tests/sql/migration-ouverture-publique.test.sh
 
+      # Appels : la sonnerie d'un compte ne se lit que par lui (MSG-01 / SUP-06,
+      # contre-revue Astra). Le banc mesure le defaut AVANT (un tiers lit la
+      # sonnerie d'un autre compte), applique, rejoue, verifie que le reste de
+      # la reception et toute l'emission sont intacts, puis remet l'ancienne
+      # policy et exige que le banc ET le verdict rougissent. La migration se
+      # colle APRES le client qui emet en REST (tests/e2e/appels-sonnerie-privee).
+      - name: Banc appels — sonnerie privee (PostgreSQL jetable)
+        run: bash tests/sql/migration-appels-sonnerie-privee.test.sh
+
       # Alerte de moderation : la fonction pure qui decide d'ouvrir une issue.
       - name: Verrous unitaires de l'alerte de moderation
         run: node --test tests/unit/moderation-alerte.test.mjs
