@@ -39,6 +39,9 @@ MIG3="$RACINE/migrations/migration_passion_moderation.sql"
 # signatures (le type de retour change), donc elle efface leurs grants — c'est
 # précisément ce que les contrôles ⑦ et ⑨ re-mesurent APRÈS elle.
 MIG4="$RACINE/migrations/migration_passion_alias_creation.sql"
+# La cinquième : le plafond est sérialisé par compte (ASTRA-04) — la fonction
+# de production reprise à l'identique, plus un verrou consultatif par compte.
+MIG5="$RACINE/migrations/migration_passion_creation_serialisee_2026-09-15.sql"
 BASE="${PGDATA_TEST:-${TMPDIR:-/tmp}/passio-pg-creation}"
 SOCK="${PGSOCK_TEST:-/tmp/ppgc-$$}"
 PORT="${PGPORT_TEST:-55433}"
@@ -131,6 +134,12 @@ out=$(F creation "$MIG4")
 if [ $? -eq 0 ] && ! grep -qi "^ERROR" <<<"$out"; then ok "alias à la création appliqués"; else ko "échec :"; echo "$out" | grep -i error | head -5; fi
 out=$(F creation "$MIG4")
 if [ $? -eq 0 ] && ! grep -qi "^ERROR" <<<"$out"; then ok "seconde exécution : idempotente"; else ko "NON IDEMPOTENTE :"; echo "$out" | grep -i error | head -5; fi
+out=$(F creation "$MIG5")
+if [ $? -eq 0 ] && ! grep -qi "^ERROR" <<<"$out"; then ok "plafond sérialisé par compte appliqué (ASTRA-04)"; else ko "échec :"; echo "$out" | grep -i error | head -5; fi
+out=$(F creation "$MIG5")
+if [ $? -eq 0 ] && ! grep -qi "^ERROR" <<<"$out"; then ok "seconde exécution : idempotente"; else ko "NON IDEMPOTENTE :"; echo "$out" | grep -i error | head -5; fi
+src=$(Q creation "select pg_get_functiondef('public.creer_passion(text,text,text[])'::regprocedure)")
+grep -q "pg_advisory_xact_lock" <<<"$src" && ok "creer_passion prend un verrou consultatif par compte avant de compter (ASTRA-04)" || ko "aucun verrou consultatif dans creer_passion"
 # ⚠️ LE DROP EFFACE LES GRANTS, et un `revoke ... from public` ne retire pas le
 # grant NOMINATIF que les privilèges par défaut de Supabase redonnent à `anon`.
 # Les deux signatures sont donc re-mesurées, séparément.

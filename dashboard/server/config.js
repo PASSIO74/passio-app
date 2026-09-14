@@ -71,5 +71,34 @@ export const config = {
     .split(",").map((s) => s.trim()).filter(Boolean),
 };
 
+// ⚠️ PIL-02 (contre-revue Astra, 2026-09-15) : LE PILOTAGE NE DÉMARRE PAS EN
+// PRODUCTION AVEC SES IDENTIFIANTS PAR DÉFAUT. Sans .env, `admin`/`admin`
+// donnait le rôle admin et le secret HMAC par défaut rendait le cookie de
+// session forgeable — un facteur unique, connu de quiconque lit ce fichier.
+// En production (`DASH_ENV=production`), chacun des trois défauts est une
+// ERREUR au démarrage ; en développement, un avertissement lisible.
+// `verifierSecrets` est exportée pour être éprouvée sans démarrer le serveur.
+export const DEFAUTS_INTERDITS = {
+  sessionSecret: "dev-insecure-secret-change-me",
+  adminUser: "admin",
+  adminPassword: "admin",
+};
+export function verifierSecrets(cfg = config) {
+  const fautes = [];
+  if (cfg.sessionSecret === DEFAUTS_INTERDITS.sessionSecret || String(cfg.sessionSecret || "").length < 32) fautes.push("DASH_SESSION_SECRET absent ou trop court (32 caractères minimum)");
+  if (cfg.adminPassword === DEFAUTS_INTERDITS.adminPassword || String(cfg.adminPassword || "").length < 12) fautes.push("DASH_ADMIN_PASSWORD absent, par défaut ou trop court (12 caractères minimum)");
+  if (cfg.adminUser === DEFAUTS_INTERDITS.adminUser) fautes.push("DASH_ADMIN_USER laissé à « admin »");
+  return fautes;
+}
+{
+  const fautes = verifierSecrets(config);
+  if (fautes.length && config.isProd) {
+    throw new Error("Pilotage refusé en production — identifiants par défaut : " + fautes.join(" ; ") + ". Poser DASH_SESSION_SECRET, DASH_ADMIN_USER et DASH_ADMIN_PASSWORD dans dashboard/.env.");
+  }
+  if (fautes.length && !process.env.DASH_SILENCE_SECRETS) {
+    console.warn("⚠️  pilotage : identifiants par défaut (" + fautes.join(" ; ") + ") — refusés en production, tolérés ici.");
+  }
+}
+
 /** Indique si la collecte Supabase est configurée (sinon mode démo/local). */
 export const supabaseReady = Boolean(config.supabaseUrl && config.supabaseServiceKey);
