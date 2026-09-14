@@ -58,6 +58,10 @@ async function installerAdmission(page, statut, opts = {}) {
     // Neutralise les écritures réelles : on mesure la PORTE, pas la base.
     window.__ecritures = [];
     window.supaSetEventRsvp = async (id, rsvp) => { window.__ecritures.push({ id, rsvp }); return true; };
+    // Depuis ROB-02 (2026-09-14), se retirer attend aussi le verdict du serveur :
+    // le faux client doit l'accorder, sinon c'est le REFUS serveur — pas la
+    // porte — qui garderait la personne inscrite.
+    window.supaLeaveEvent = async () => true;
   }, { statut, declareEchoue: !!opts.declareEchoue, statutEchoue: !!opts.statutEchoue, uid: UID_REEL });
 }
 

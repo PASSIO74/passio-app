@@ -319,3 +319,46 @@ Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, 
 | Limite restante | Le signalement d'un **commentaire** depuis le fil et d'une **story** : non revus ici (`reportCommentEntry` a un appelant dans le fil de commentaires ; les stories n'ont pas de porte — à faire). Le **traitement** du signalement (MOD-01 : réception, décision, retrait, traçabilité) reste manuel via `scripts/moderation.js` ; l'alerte quotidienne existe ; aucun retrait automatique — non mesuré de bout en bout. |
 | État | **corrigé dans le code** · déployé : non · vérifié après déploiement : non |
 | PR | `claude/mod-02-signaler-publication` — voir la PR ouverte depuis cette branche. |
+
+
+---
+
+## ROB-02 — RSVP annoncé avant confirmation, absence de retour arrière sur refus — P1 (chantier 8)
+
+| Champ | Valeur |
+|---|---|
+| État constaté (base `fbc8ae09`) | `setEventRsvp` (app-07) : état local mis à jour, notification « Tu rejoins … » et toast émis, puis seulement `supaSetEventRsvp` ; un verdict `false` n'annulait rien — la personne se croyait inscrite, l'événement ne la comptait pas ; l'organisateur était notifié et la conversation rejointe quand même. Désinscription : « Désinscrit » affiché avant `supaLeaveEvent`, résultat ignoré. **Reproduit** au banc (verdict programmé `false`). |
+| Correction | Instantané des listes avant l'optimiste ; `supaSetEventRsvp` / `supaLeaveEvent` **attendus** ; un refus **annule** l'affichage (listes, `eventRsvp`, carte, fiche), le dit (« ⚠️ Inscription / Désinscription non enregistrée — réessaie »), trace `diagLog`, et **n'émet ni notification ni entrée en conversation**. Le funnel (`irl_join_failed(write_failed)`) reste alimenté par le verdict. |
+| Test effectué | `tests/e2e/faux-succes-irl-story.spec.js` ① ② ③ ; `irl-funnel.spec.js` (un cas réécrit : il exigeait que l'état optimiste survive au refus) ; `irl`, `irl-trust-safety`, `ui-v4a2-cartes`, `admission-18-plus`. |
+| Résultat | **Avant** (main pristine) : ① ③ rouges. **Après** : 7/7 ; voisines 99/99. |
+| Limite restante | En mode local (aucun SDK), l'inscription reste locale, comme avant (compté `offline` par le funnel). Non mesuré sur deux comptes réels. |
+| État | **corrigé dans le code** · déployé : non · vérifié après déploiement : non |
+| PR | `claude/chantier-8-faux-succes` — voir la PR ouverte depuis cette branche. |
+
+---
+
+## IRL-04 — Promotion de liste d'attente annoncée malgré un refus — P1 (chantier 8)
+
+| Champ | Valeur |
+|---|---|
+| État constaté | `_promoteNextWaitlisted` (app-07) déplaçait localement le premier de la file vers les inscrits, appelait `supaPromoteFromWaitlist` (qui rend déjà `false` sur zéro ligne — verdict lu depuis le 2026-09-02) **sans lire le retour**, puis notifiait « une place s'est libérée, tu es inscrit·e ! » quoi qu'il arrive. |
+| Correction | Le serveur d'abord : promotion refusée → rien ne bouge localement, aucune notification, trace `diagLog` ; acceptée → déplacement, sauvegarde, notification. |
+| Test effectué | `faux-succes-irl-story.spec.js` ④ (refus : reste en liste, pas de « inscrit ») ⑤ (accepté : monte, prévenu). |
+| Résultat | **Avant** : ④ rouge. **Après** : vert. |
+| Limite restante | La promotion reste faite **par le client qui se désinscrit** (pas de trigger serveur) : si ce client ferme l'application entre les deux appels, la place libérée n'est promue qu'à la prochaine désinscription. Autre lot (IRL-05 : capacité non garantie atomiquement). |
+| État | **corrigé dans le code** · déployé : non · vérifié après déploiement : non |
+| PR | `claude/chantier-8-faux-succes`. |
+
+---
+
+## CONT-06 — Publication de story annoncée sans attendre le résultat — P1 (chantier 8)
+
+| Champ | Valeur |
+|---|---|
+| État constaté | Les deux composeurs (`publishStoryFromComposer`, éditeur média mode `story`, app-08) appelaient `supaPublishStory(story)` **sans attendre ni lire son verdict**, puis « Story publiée ». Un refus (RLS, média non uploadé, réseau) laissait une story visible sur cet appareil seulement, annoncée comme publiée. |
+| Correction | `_publierStoryAvecVerdict(story)` (un seul point pour les deux composeurs) : optimiste à l'écran, puis `await supaPublishStory` ; échec → story locale retirée, « ⚠️ Story non publiée — réessaie », trace ; succès → « Story publiée » ; sans compte réel ou sans SDK → « Story enregistrée sur cet appareil ». |
+| Test effectué | `faux-succes-irl-story.spec.js` ⑥ (refus → retirée, dit) ⑦ (succès → publiée ; local → « sur cet appareil ») ; `stories-blocage`, `studio-moods`. |
+| Résultat | **Avant** : ⑥ ⑦ rouges (la fonction n'existait pas). **Après** : vert. |
+| Limite restante | Aucune file de renvoi pour une story (contrairement aux publications) : l'échec est dit, pas rejoué — CONT-02 / ROB-01 (reprise durable) restent ouverts. |
+| État | **corrigé dans le code** · déployé : non · vérifié après déploiement : non |
+| PR | `claude/chantier-8-faux-succes`. |

@@ -3322,6 +3322,20 @@ async function setEventRsvp(id, rsvp) {
     toast("C'est complet — tu es sur liste d'attente");
   }
 
+  // ⚠️ INSTANTANÉ AVANT L'OPTIMISTE (ROB-02, 2026-09-14) : l'inscription était
+  // annoncée (toast, notification, conversation rejointe) AVANT le verdict du
+  // serveur, et un refus ne défaisait rien — la personne se croyait inscrite,
+  // l'événement ne la comptait pas. Un échec ANNULE désormais l'affichage.
+  const avant = { attendees: (ev.attendees || []).slice(), maybes: (ev.maybes || []).slice(), waitlist: (ev.waitlist || []).slice() };
+  const annuler = (message) => {
+    ev.attendees = avant.attendees; ev.maybes = avant.maybes; ev.waitlist = avant.waitlist;
+    _setMyRsvpLocal(id, prev);
+    saveState();
+    _patchEventCardJoin(id);
+    _refreshEventDetailIfOpen(id);
+    toast(message, "warning");
+    try { if (typeof diagLog === "function") diagLog("rsvp KO " + id + " " + String(rsvp)); } catch (e) {}
+  };
   const strip = (arr) => (arr || []).filter(x => x !== meId && x !== "me");
   ev.attendees = strip(ev.attendees);
   ev.maybes = strip(ev.maybes);
@@ -3336,18 +3350,16 @@ async function setEventRsvp(id, rsvp) {
   _refreshEventDetailIfOpen(id);
 
   if (!rsvp) {
+    // Le serveur d'abord : « Désinscrit » ne se dit que si la place est rendue.
+    if (window._supaReal) {
+      const parti = await supaLeaveEvent(id);
+      if (!parti) { annuler("⚠️ Désinscription non enregistrée — réessaie"); return; }
+    }
     toast("Désinscrit");
-    if (window._supaReal) await supaLeaveEvent(id);
     // Une place se libère → on promeut le premier de la file (et on le prévient).
     if (prev === "going") _promoteNextWaitlisted(ev);
     _leaveEventConversation(ev);
     return;
-  }
-
-  if (rsvp === "going" && prev !== "going") {
-    pushNotification(`Tu rejoins <b>${escapeHtml(ev.title)}</b>`, "🤝");
-  } else {
-    toast(RSVP_LABELS[rsvp] ? RSVP_LABELS[rsvp].label : "Enregistré");
   }
 
   // Point d'AUTORITÉ de la participation : c'est le verdict de cette écriture
@@ -3357,6 +3369,15 @@ async function setEventRsvp(id, rsvp) {
   let rsvpOk = null;
   if (window._supaReal) rsvpOk = await supaSetEventRsvp(id, rsvp);
   irlFunnelTrackJoin(id, rsvp, rsvpOk);
+  // ⚠️ Un refus serveur ANNULE l'optimiste et s'arrête là : ni annonce, ni
+  // notification à l'organisateur, ni conversation rejointe (ROB-02).
+  if (window._supaReal && rsvpOk === false) { annuler("⚠️ Inscription non enregistrée — réessaie"); return; }
+
+  if (rsvp === "going" && prev !== "going") {
+    pushNotification(`Tu rejoins <b>${escapeHtml(ev.title)}</b>`, "🤝");
+  } else {
+    toast(RSVP_LABELS[rsvp] ? RSVP_LABELS[rsvp].label : "Enregistré");
+  }
   // Notifier l'organisateur (interaction cross-compte sur SON événement).
   if (rsvp === "going" && ev.fromSupabase && ev.organizerId && ev.organizerId !== meId && typeof supaInsertNotif === "function") {
     supaInsertNotif(ev.organizerId, "event_join", id, "a rejoint ton événement");
@@ -3376,12 +3397,20 @@ async function _promoteNextWaitlisted(ev) {
     next = await supaFirstWaitlisted(ev.id) || next;
   }
   if (!next) return;
+  // ⚠️ LA PROMOTION N'EST ANNONCÉE QUE SI LE SERVEUR L'A ÉCRITE (IRL-04,
+  // 2026-09-14). `supaPromoteFromWaitlist` rendait déjà son verdict (zéro ligne
+  // = non appliquée), mais il n'était pas lu : la personne recevait « tu es
+  // inscrit·e ! » alors que sa ligne était toujours en liste d'attente.
+  if (window._supaReal && ev.fromSupabase && typeof supaPromoteFromWaitlist === "function") {
+    const promu = await supaPromoteFromWaitlist(ev.id, next);
+    if (!promu) {
+      try { if (typeof diagLog === "function") diagLog("promotion KO " + ev.id); } catch (e) {}
+      return; // l'état local n'a pas bougé : rien à annuler, rien à annoncer
+    }
+  }
   ev.waitlist = (ev.waitlist || []).filter(x => x !== next);
   ev.attendees = (ev.attendees || []).concat([next]);
   saveState();
-  if (window._supaReal && typeof supaPromoteFromWaitlist === "function") {
-    await supaPromoteFromWaitlist(ev.id, next);
-  }
   if (typeof supaInsertNotif === "function") {
     supaInsertNotif(next, "event_update", ev.id, "une place s'est libérée, tu es inscrit·e !");
   }

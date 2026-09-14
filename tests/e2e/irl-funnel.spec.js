@@ -213,7 +213,7 @@ test.describe("Funnel IRL — participation", () => {
     expect(evs[0].meta.v).toBe("v1b1");
   });
 
-  test("RSVP refusé par la base : irl_join_failed(write_failed) malgré l'état local à jour", async ({ page }) => {
+  test("RSVP refusé par la base : irl_join_failed(write_failed), et l'état local optimiste est ANNULÉ", async ({ page }) => {
     await bootFunnel(page);
     await seedEvent(page);
     await setBackend(page, false);
@@ -222,8 +222,11 @@ test.describe("Funnel IRL — participation", () => {
     const evs = await funnel(page);
     expect(evs.map((e) => e.name)).toEqual(["irl_join_failed"]);
     expect(evs[0].meta.reason).toBe("write_failed");
-    // L'état local optimiste existe bel et bien — il n'a pas produit de succès.
-    expect(await page.evaluate(() => myRsvp("ev0"))).toBe("going");
+    // ⚠️ Depuis ROB-02 (2026-09-14) un refus serveur ANNULE l'affichage optimiste :
+    // la personne n'est pas inscrite, l'écran ne doit plus le dire. Le funnel,
+    // lui, a bien compté l'échec — c'est le verdict qui l'alimente, pas le clic.
+    expect(await page.evaluate(() => myRsvp("ev0"))).toBeNull();
+    expect(await page.evaluate(() => (_findCanonicalEvent("ev0") || allEvents().find((e) => e.id === "ev0")).attendees.some((x) => x === MY_UID || x === "me"))).toBe(false);
   });
 
   test("aucun backend : irl_join_failed(offline)", async ({ page }) => {

@@ -293,6 +293,10 @@ test.describe("UI-4A2 — carte d'activité V2", () => {
     // Rien n'a été écrit par le simple affichage de la carte.
     expect(await page.evaluate((e) => myRsvp(e), id)).toBeNull();
 
+    // ⚠️ Depuis ROB-02 (2026-09-14), « Inscrit ✓ » n'est affiché que si le
+    // serveur a écrit l'inscription : un refus annule l'optimiste. Cette suite
+    // mesure la CARTE, pas la base — le faux client accorde l'écriture.
+    await page.evaluate(() => { window.supaSetEventRsvp = async () => true; });
     // Le moteur historique est bien le seul appelé.
     await page.evaluate(() => {
       window.__rsvpCalls = [];
