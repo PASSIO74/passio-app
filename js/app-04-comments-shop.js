@@ -2230,6 +2230,24 @@ function deduplicateConversations(convs) {
   return result;
 }
 
+// ⚠️ UNE CONVERSATION DE DÉMONSTRATION SE DIT (UXO-03, contre-revue Astra,
+// 2026-09-14). Cinq fils fictifs (`SEED_CONVERSATIONS`, interlocuteurs `u_…`
+// absents de la base) étaient rendus comme de vraies conversations : nom sans
+// étiquette, pastille « 3 » de non-lus sur l'onglet Messages, et un message
+// qu'on y écrivait partait vers un compte qui n'existe pas. Même règle que le
+// fil (`contenuDemoSignale`) : le décor se dit, ne compte pas, ne répond pas.
+function _estConvDemo(c) {
+  if (!c) return false;
+  if (typeof SEED_CONVERSATIONS !== "undefined" && SEED_CONVERSATIONS.some(function (s) { return s.id === c.id; })) return true;
+  return !c.isGroup && typeof c.userId === "string" && /^u_/.test(c.userId);
+}
+// Non-lus RÉELS : la démonstration ne fait pas clignoter une pastille.
+function _convNonLus() {
+  var n = 0;
+  try { (getConversations() || []).forEach(function (c) { if (!_estConvDemo(c)) n += (c.unread || 0); }); } catch (e) {}
+  return n;
+}
+
 function getConversations() {
   if (conversationsState) return conversationsState;
   try {
@@ -3864,7 +3882,9 @@ function renderMessages() {
       ? `<div class="msg-passion" style="font-size:11px;color:var(--muted);">👥 ${((c.userIds||[]).length || 0)} membres</div>`
       : "";
 
-    return `<div class="msg-card ${c.unread > 0 ? "unread" : ""}" onclick="openConversation('${escapeJsArg(c.id)}')">
+    const _demo = _estConvDemo(c);
+    const _nonLus = _demo ? 0 : (c.unread || 0);
+    return `<div class="msg-card ${_nonLus > 0 ? "unread" : ""}" ${_demo ? 'data-conv-demo="1"' : ""} onclick="openConversation('${escapeJsArg(c.id)}')">
       <div class="msg-avatar" style="${avatarStyle}">${_convAvInner}</div>
       <div class="msg-body">
         <div class="msg-head">
@@ -3872,9 +3892,10 @@ function renderMessages() {
           <span class="msg-time">${lastMsg ? fmtMsgTime(c.lastAt) : ""}</span>
         </div>
         ${membresLine}
-        <div class="msg-preview ${c.unread > 0 ? 'unread-preview' : ''}">${escapeHtml(previewText)}</div>
+        ${_demo ? '<div class="msg-passion" style="font-size:11px;color:var(--muted);">Exemple PASSIO · réponse désactivée</div>' : ""}
+        <div class="msg-preview ${_nonLus > 0 ? 'unread-preview' : ''}">${escapeHtml(previewText)}</div>
       </div>
-      ${c.unread > 0 ? `<div class="msg-badge">${c.unread}</div>` : ""}
+      ${_nonLus > 0 ? `<div class="msg-badge">${_nonLus}</div>` : ""}
     </div>`;
   }).join("") + moreBtn;
 }
@@ -4978,6 +4999,11 @@ function sendMessageFp(convId, displayName) {
   // EXPLIQUE l'action puis propose la création de compte ; il ne rejoue jamais
   // l'action après coup. Rend `true` — donc inerte — hors mode invité.
   if (window.requireAuthentication && !requireAuthentication("message")) return;
+  // Une conversation de démonstration ne répond pas et n'envoie rien (UXO-03).
+  try {
+    var _cDemo = getConversations().find(function (x) { return x.id === convId; });
+    if (_estConvDemo(_cDemo)) { toast("Conversation de démonstration — écris à un vrai membre depuis son profil"); return; }
+  } catch (e) {}
   // 1. Récupérer le texte
   var inp = document.getElementById("convFpInput");
   if (!inp) { console.error("sendMessageFp: input not found"); return; }
