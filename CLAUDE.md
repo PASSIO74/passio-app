@@ -617,6 +617,36 @@ Les trois migrations du 2026-09-08 (pièces jointes, rencontres, admission 18+) 
 ⚠️ **NI L'UN NI L'AUTRE N'ALLUME LE 18+**, et une relance ne rétrograde jamais un interrupteur déjà allumé. L'allumage reste un geste séparé, APRÈS le déploiement du client.
 ⚠️ Le socle des bancs (`tests/sql/socle-prod-admission.sql`) porte désormais les 21 colonnes de `events` que la prod a et que `socle-prod.sql` n'avait pas : un `GRANT` colonne par colonne échoue sur la PREMIÈRE colonne absente, et le banc accusait la migration d'un défaut qui n'était que celui de son socle.
 
+## 🧯 LA RESTAURATION A ÉTÉ FAITE — et six défauts que la relecture ne voyait pas (2026-09-14)
+
+EXP-01 de la contre-revue Astra, l'un des trois bloquants intacts : « personne n'a jamais reconstruit la base de bout en
+bout ». C'est fait, sur le projet « PASSIO staging » (`fcksxofaelcdmmifnwjo`, réactivé par l'API de gestion, PG 17.6 comme
+la prod) : **40 tables, 8 comptes, 67 médias, 0 écart**, base structurellement identique (16 compteurs d'objets égaux, mêmes
+`get_advisors`), même frontière anonyme (`events.address` 401, `event_attendees` 401). Trois outils, tous par l'API de
+gestion (canal ③ d'ADR-012, jamais la CLI) : `npm run sauvegarde -- --complete` → `npm run schema:executable` (le DDL de
+la prod, `scripts/schema-executable.js`, 16 sections) → `npm run restaurer -- --archive <dossier> --projet <ref> --schema
+<ddl>` (`scripts/restaurer-donnees.js`, verdict table par table). Récit, mesures et limites : `docs/RECUPERATION.md`.
+⚠️ **`restaurer` REFUSE la production ET le projet du manifeste** (en dur) ; `--purger` vide la cible. Le staging a été
+purgé après la preuve — **une copie des données réelles ne reste pas dans un second projet**.
+⚠️ **LES PRIVILÈGES NE SONT PAS DANS LES POLICIES.** Une reconstruction « tables + policies » rend `events.address` lisible
+sans compte (seuls des GRANT de colonnes le protègent) et `is_conv_member` appelable par `anon` — Supabase donne EXECUTE à
+PUBLIC à la création, un `revoke … from anon` seul ne ferme rien. Le DDL porte privilèges de table, de colonne, d'EXECUTE
+(PUBLIC révoqué d'abord) et options de vue (`security_invoker`). C'est la différence entre « la même structure » et « la
+même frontière », et c'est l'exercice qui l'a montrée, pas la relecture.
+⚠️ **`insert … select * from json_populate_recordset` POSE NULL SUR TOUTE COLONNE ABSENTE DU JSON** — le DEFAULT ne joue
+pas. Une colonne ajoutée après l'archive (`follows.created_at`, `reports.status`) faisait tomber la table entière : la
+liste de colonnes est explicite. ⚠️ **Le chargement passe par le SQL, triggers utilisateur coupés** : par PostgREST,
+`trg_rate_limit` refuse la 11ᵉ ligne et `rate_limit_insert` réécrit `created_at`. Les contraintes restent actives — un
+lot refusé se rejoue ligne à ligne DANS la base (un aller-retour : l'API plafonne à ~60 appels/min, 429 mesuré) et chaque
+motif est nommé : l'archive du 11/09 portait les 97 lignes `event_*` orphelines que la FK du 14/09 refuse. **Un écart au
+verdict est une information.** ⚠️ Mesures au passage : un `user_state` de **4,7 Mo** (413 de l'API de gestion → PostgREST
+pour cette ligne), une vidéo de 30,9 Mo dans un seau `content` plafonné à 26 Mo (limite levée le temps du dépôt),
+`storage.protect_delete` interdit le DELETE SQL (purge par l'API). Ce qu'une restauration ne rend PAS : mots de passe,
+identités OAuth, configuration du projet (auth, SMTP, secrets, Edge Functions) — liste écrite dans le doc.
+⚠️ Le brouillon local `scripts/schema-origine.js` / `migrations/00_ORIGINE_PROD.sql` (non versionné) décrit l'état du
+**17/08** (35 tables, 12 fonctions) et passe par `supabase db query`, retiré : à réconcilier avec `schema-executable.js`
+avant d'en faire la baseline NET-07. Verrou : `tests/unit/restaurer-donnees.test.mjs` (7, dans `verif`).
+
 ## 🚦 AUDIT GO/NO-GO DE COMMERCIALISATION (2026-09-10) — et les cinq défauts qu'il a trouvés
 
 Question posée : « j'envoie l'app aux utilisateurs, je commercialise, c'est ok ? » Réponse en deux
