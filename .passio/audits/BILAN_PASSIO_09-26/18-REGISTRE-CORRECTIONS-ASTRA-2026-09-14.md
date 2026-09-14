@@ -75,19 +75,19 @@
 
 ## Points restants (ordre du plan, fiche 16 et rapport du 2026-09-13)
 
-Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, un chantier par PR.
+État au soir du 2026-09-14 (mis à jour à chaque PR fusionnée). Un chantier par PR ; une fiche par identifiant traité, plus bas.
 
 | Ordre | Chantier | Identifiants | État |
 |---|---|---|---|
 | 2 | Séparer les comptes et sécuriser les échanges | AUTH-06 (#375), PRO-02 (#376), MSG-01/SUP-06 (#377 + migration appliquée), MOD-04, MSG-04, MSG-10 (#378) | **fait** — tout déployé ; résidus écrits dans chaque fiche |
-| 3 | Fiabiliser suppression et médias | AUTH-05, SUP-10, MSG-03, ASTRA-01 (#379, fonction déployée et éprouvée) ; CONT-11, SUP-01 | en cours — CONT-11/SUP-01 = décision produit (« profil privé ») puis migration |
-| 4 | Inscription et information cohérentes | AUTH-02/03/04/09/10, EXP-08/09/14/15, UXO-07, ASTRA-09 | non engagé |
-| 5 | Éprouver la modération | MOD-01/02/03/09, AUTH-11, ASTRA-03 | non engagé |
-| 6 | Isoler les essais, prouver une restauration | SUP-04, NET-07, EXP-01/03/04/11, TCI-03/04/15/16, ASTRA-07 | non engagé |
-| 7 | Borner Sentinelle et les protections anti-abus | PIL-01/02/03/04/10, EXP-06/12, CONT-08, MOD-06/07, SUP-07, ASTRA-02/05/06/08 | non engagé |
-| 8 | Supprimer les faux succès et divergences | CONT-02/06, MSG-06, IRL-04 à 13, ROB-01 à 06, PRO-04/05, ASTRA-10 | non engagé |
-| 9 | Mesurer la capacité puis fixer les limites | PERF-01 à 06, PRO-01/03/06, ASTRA-04 | non engagé |
-| 10 | Compléter les parcours et preuves de qualité | DEV-01 à 05, UXO-01/02/03, TCI-01/02/05 à 14 | non engagé |
+| 3 | Fiabiliser suppression et médias | AUTH-05, SUP-10, MSG-03, ASTRA-01 (#379, fonction déployée et éprouvée) ; CONT-11, SUP-01 | **fait** — CONT-11/SUP-01 décidé « 2 », écrit dans la fiche |
+| 4 | Inscription et information cohérentes | AUTH-02/03/04/09/10, EXP-08/09/14/15, UXO-07, ASTRA-09 | en cours — AUTH-03, UXO-07, ASTRA-09/EXP-09, EXP-08 (#397) faits ; AUTH-02/09/10, EXP-14/15 restent à consigner |
+| 5 | Éprouver la modération | MOD-01/02/03/09, AUTH-11, ASTRA-03 | en cours — lot 1 (#396 : retrait de contenu, journal, story signalable, ASTRA-03) en attente de contre-revue |
+| 6 | Isoler les essais, prouver une restauration | SUP-04, NET-07, EXP-01/03/04/11, TCI-03/04/15/16, ASTRA-07 | en cours — **EXP-01 et la moitié « restauration » de TCI-03 : FAITS et mesurés** (ci-dessous) ; ASTRA-07 fait ; EXP-04/TCI-16 (canari + déploiement des Edge Functions) préparés en local ; SUP-04/TCI-04/EXP-11 (le client vise la prod en dur) : lot suivant, le projet staging est réactivé et vide ; EXP-03 (rollback Netlify) et NET-07 restent |
+| 7 | Borner Sentinelle et les protections anti-abus | PIL-01/02/03/04/10, EXP-06/12, CONT-08, MOD-06/07, SUP-07, ASTRA-02/05/06/08 | en cours — ASTRA-02 appliqué, ASTRA-06 partiel, ASTRA-08 préparé ; le reste non engagé |
+| 8 | Supprimer les faux succès et divergences | CONT-02/06, MSG-06, IRL-04 à 13, ROB-01 à 06, PRO-04/05, ASTRA-10 | **fait** — #385 à #394 déployés ; IRL-12 (#395, migration appliquée) en attente de contre-revue |
+| 9 | Mesurer la capacité puis fixer les limites | PERF-01 à 06, PRO-01/03/06, ASTRA-04 | en cours — PERF-03 (71 policies initplan, 24 doublons) appliqué en production et préparé en local (contre-revue à venir) ; PERF-01 (charge) attend le staging ; PERF-04 : un `user_state` de 4,7 Mo mesuré le 14/09 |
+| 10 | Compléter les parcours et preuves de qualité | DEV-01 à 05, UXO-01/02/03, TCI-01/02/05 à 14 | en cours — TCI-05/06/14 (#398), UXO-01/03 (#399), DEV-01/04 (#400) faits ; DEV-02/03/05, UXO-02, TCI-01/02/07 à 13 restent |
 
 ---
 
@@ -609,3 +609,17 @@ Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, 
 | Limite restante | Les conversations de démonstration restent chargées pour tout le monde (l'audit proposait « visiteur seulement ») : les retirer d'un compte changerait la mécanique d'hydratation (`SEED_CONVERSATIONS` sert de socle à `getConversations`) — lot séparé si voulu. Aucun rappel discret d'installation sur iOS n'a été ajouté (choix : rien d'automatique). |
 | État | **corrigé dans le code** · déployé : non |
 | PR | `claude/chantier-10-uxo`. |
+
+---
+
+## EXP-01 / TCI-03 (restauration) — La sauvegarde n'était pas une capacité de reprise : restauration jamais exécutée, schéma non reconstructible — P0 (chantier 6, lot 1)
+
+| Champ | Valeur |
+|---|---|
+| État constaté | L'un des trois bloquants **intacts** de la contre-revue. `docs/RECUPERATION.md` disait lui-même « la restauration n'a jamais été tentée » ; `SCHEMA_PROD_REFERENCE.sql` (08/2026) décrit 36 tables sans une instruction exécutable, la production en a 43 ; le projet « PASSIO staging » (`fcksxofaelcdmmifnwjo`) existait depuis le 17/08, **en pause, jamais servi**. Reproduit : `--verifier` du nouvel outil sur le staging vide = 38 tables ABSENTES. |
+| Correction | Trois outils, canal ③ d'ADR-012 (API de gestion, jamais la CLI) : **`scripts/schema-executable.js`** (`npm run schema:executable`) lit le catalogue de la prod et rend un DDL en une transaction rejouable — 16 sections dont celles qu'une reconstruction « tables + policies » oublie : séquences, privilèges de table et de **colonne** (`events.address` n'est privé que par eux), EXECUTE des fonctions **PUBLIC révoqué d'abord** (`is_conv_member` redevenait appelable par `anon`), vues avec `security_invoker`, cron. **`scripts/restaurer-donnees.js`** (`npm run restaurer`) : schéma → comptes avec leur identifiant d'origine → tables par lots SQL sous `postgres`, triggers utilisateur coupés (les anti-abus refusent la 11ᵉ ligne et réécrivent `created_at`), liste de colonnes explicite, rejeu ligne à ligne dans la base sur refus, ligne > 700 Ko par PostgREST → médias, chemins préservés, limite des seaux levée le temps du dépôt → **verdict** table par table contre le manifeste + comptes + objets Storage. Refuse la production ET le projet du manifeste ; `--purger` rend la cible vide. Le projet staging a été **réactivé** par l'API. |
+| Test effectué | **Exercice complet sur le staging, mesuré** : artefact CI de la nuit téléchargé et **déchiffré avec la phrase de repli** (SHA-256 de `service_role` — aucun secret `SAUVEGARDE_PASSPHRASE` n'est posé) ; DDL appliqué sur base vide puis **rejoué** sur base semée (201, rien ne casse) ; **16 compteurs d'objets égaux prod = staging** (43 tables, 317 colonnes, 123 policies, 38 triggers, 50 fonctions, 117 index, 92 contraintes, 43 RLS, 3 vues, 3 cron, 25 realtime, 2 seaux, 286 grants anon, 1 127 privilèges de colonne, EXECUTE anon 9 / authenticated 27) ; `get_advisors` sécurité identiques (sauf `auth_leaked_password_protection`, réglage d'auth hors base) ; archive fraîche du 14/09 20:19 reversée : **40 tables, 8 comptes, 67 médias, 0 écart** ; sonde anonyme identique à la prod (`events.address` 401, `event_attendees` 401, `conv_messages` vide). `tests/unit/restaurer-donnees.test.mjs` (7, dans `verif`). |
+| Résultat | **Avant** : rien n'existait, verdict « 38 tables absentes ». **Après** : restauration prouvée, 0 écart, puis staging **purgé** (une copie des données réelles ne reste pas dans un second projet). Six défauts trouvés par l'exercice, aucun par relecture — écrits dans `docs/RECUPERATION.md` : colonnes absentes du JSON posées à NULL (défauts ignorés) ; archive du 11/09 portant 97 lignes `event_*` orphelines que la FK du 14/09 refuse ; un `user_state` de **4,7 Mo** (413 de l'API) ; seau `content` à 26 Mo portant une vidéo de 30,9 Mo ; privilèges/EXECUTE/vues absents d'une reconstruction naïve ; `storage.protect_delete`. |
+| Limite restante | Mots de passe, identités OAuth et `created_at` des comptes ne sont pas restaurables (l'export ne les porte pas) ; la configuration du projet (auth, SMTP, secrets, Edge Functions) non plus — liste écrite. `authz-critical.spec.js` ne sait pas viser le staging : l'URL de la prod est en dur dans app-08 (SUP-04, lot suivant) — la frontière a été sondée en REST direct. Le brouillon local `scripts/schema-origine.js` / `migrations/00_ORIGINE_PROD.sql` (non versionné, Benjamin) décrit l'état du 17/08 (35 tables, 12 fonctions), passe par `supabase db query` retiré par ADR-012, et son bloc « contrainte » n'avale pas `invalid_table_definition` : à réconcilier avec `schema-executable.js` avant d'en faire la baseline NET-07. Le staging réactivé coûte le calcul d'un second projet sur le plan Pro (`POST /v1/projects/<ref>/pause` pour le remettre en pause). La moitié « rollback applicatif » de TCI-03 (`rollback.yml`) et EXP-03 restent. |
+| État | **corrigé dans le code** · **testé sur staging** (c'est l'objet même du lot) · déployé : n/a (outillage de poste) |
+| PR | `claude/chantier-6-restauration`. |
