@@ -2825,7 +2825,7 @@ function _buildNoopSupa() {
   return {
     from: () => _noopQ(),
     rpc: () => _noopQ(),
-    channel: () => ({ on: function(){ return this; }, subscribe: () => null, send: () => Promise.resolve("ok"), track: () => Promise.resolve("ok"), untrack: () => Promise.resolve("ok"), unsubscribe: () => Promise.resolve("ok"), presenceState: () => ({}) }),
+    channel: () => ({ on: function(){ return this; }, subscribe: () => null, send: () => Promise.resolve("ok"), httpSend: () => Promise.resolve({ success: false }), track: () => Promise.resolve("ok"), untrack: () => Promise.resolve("ok"), unsubscribe: () => Promise.resolve("ok"), presenceState: () => ({}) }),
     removeChannel: () => {},
     removeAllChannels: () => {},
     getChannels: () => [],
