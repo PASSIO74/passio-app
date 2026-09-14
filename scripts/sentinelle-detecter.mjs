@@ -484,14 +484,29 @@ export const CHEMINS_BOUTONS = {
 /** Lit les appels réseau refusés — EN PRODUCTION SEULEMENT. Exporté pour le verrou. */
 export async function lireApi({ url, cle, heures }) {
   const depuis = new Date(Date.now() - heures * 3600_000).toISOString();
-  const r = await fetch(
-    `${url}/rest/v1/telemetry_events?select=endpoint,http_status,action,user_id,received_at` +
-    `&type=eq.api${FILTRE_PRODUCTION}&status=eq.error&received_at=gt.${depuis}&order=received_at.desc&limit=2000`,
-    { headers: { apikey: cle, Authorization: "Bearer " + cle } });
+  const entetes = { headers: { apikey: cle, Authorization: "Bearer " + cle } };
+  const base = `${url}/rest/v1/telemetry_events?select=endpoint,http_status,action,user_id,received_at`;
+  const filtre = `&type=eq.api${FILTRE_PRODUCTION}&status=eq.error&received_at=gt.${depuis}&order=received_at.desc&limit=2000`;
+  // ⚠️ IDENTITÉ POSÉE PAR LE SERVEUR D'ABORD (ASTRA-06, 2026-09-14) : `auth_uid`
+  // (migration_debit_et_identite_serveur) — `user_id` est écrit par le client.
+  // Même double requête que `lireErreurs` : tant que la colonne n'existe pas,
+  // PostgREST rend 400 et l'on retombe sur `user_id`, en le SIGNALANT sur chaque
+  // ligne — jamais en silence. Une fois la colonne là, `user_id` prend la valeur
+  // de `auth_uid` : `classerApi` continue de compter sur `user_id`.
+  const rAuth = await fetch(`${base},auth_uid&auth_uid=not.is.null${filtre}`, entetes);
+  if (rAuth.ok) {
+    const lignes = await rAuth.json();
+    for (const l of lignes) l.user_id = l.auth_uid;
+    return lignes;
+  }
+  if (rAuth.status !== 400) throw new Error(`telemetry_events: HTTP ${rAuth.status}`);
+  const r = await fetch(`${base}${filtre}`, entetes);
   // ⚠️ On N'AVALE PAS cet échec : une source muette rendrait « rien à signaler »
   // alors que c'est l'accès qui manque — la panne silencieuse, encore.
   if (!r.ok) throw new Error(`telemetry_events: HTTP ${r.status}`);
-  return r.json();
+  const lignes = await r.json();
+  for (const l of lignes) l._origineNonVerifiee = true;
+  return lignes;
 }
 
 /**
