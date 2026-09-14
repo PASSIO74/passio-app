@@ -249,7 +249,11 @@ function verifier(dossier) {
     if (!fs.existsSync(f)) { console.error(`  ${t} : fichier absent`); pb++; continue; }
     const contenu = fs.readFileSync(f, "utf8");
     const lignes = contenu ? contenu.trimEnd().split("\n") : [];
-    if (contenu && lignes.length !== info.exporte) { console.error(`  ${t} : ${lignes.length} lignes, manifeste ${info.exporte}`); pb++; continue; }
+    // ⚠️ UN FICHIER VIDE SE COMPTE (ASTRA-07, 2026-09-14). `if (contenu && …)`
+    // sautait la comparaison quand le fichier était VIDE — précisément le cas
+    // où le manifeste annonce des lignes qui ne sont pas là. Zéro ligne se
+    // compare comme n'importe quel nombre.
+    if (lignes.length !== info.exporte) { console.error(`  ${t} : ${lignes.length} lignes, manifeste ${info.exporte}`); pb++; continue; }
     for (const l of lignes) { try { JSON.parse(l); } catch { console.error(`  ${t} : ligne JSON illisible`); pb++; break; } }
   }
   if (man.medias == null) console.log("  ⚠ archive SANS les médias (Storage).");

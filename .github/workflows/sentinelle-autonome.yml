@@ -165,12 +165,21 @@ jobs:
           set -euo pipefail
           gh issue list --repo "${GITHUB_REPOSITORY}" --state closed \
             --label sentinelle --limit 30 --json title,closedAt > /tmp/fermees.json
+          # ⚠️ ON AVANCE DANS LES CANDIDATS (ASTRA-08, 2026-09-14). Ne juger que
+          # `v.cible` (le premier) faisait taire tout le run dès que ce premier
+          # était déjà corrigé — et le SUIVANT, encore actif, restait invisible
+          # tant que le premier dominait le classement. `choisirCible` rend le
+          # premier candidat NON déjà corrigé, et le verdict est réécrit avec lui
+          # pour que l'étape d'ouverture parte sur la bonne cible.
           deja="$(node --input-type=module -e '
             import fs from "node:fs";
-            const { dejaCorrige } = await import("./scripts/sentinelle-detecter.mjs");
+            const { dejaCorrige, choisirCible } = await import("./scripts/sentinelle-detecter.mjs");
             const v = JSON.parse(fs.readFileSync("/tmp/verdict.json", "utf8"));
             const f = JSON.parse(fs.readFileSync("/tmp/fermees.json", "utf8"));
-            process.stdout.write(dejaCorrige(v.cible, f) ? "oui" : "non");
+            const liste = Array.isArray(v.candidats) && v.candidats.length ? v.candidats : [v.cible].filter(Boolean);
+            const cible = choisirCible(liste, f);
+            if (cible) { v.cible = cible; fs.writeFileSync("/tmp/verdict.json", JSON.stringify(v, null, 2)); }
+            process.stdout.write(cible ? "non" : "oui");
           ')"
           echo "deja=${deja}" >> "${GITHUB_OUTPUT}"
           if [ "${deja}" = "oui" ]; then
