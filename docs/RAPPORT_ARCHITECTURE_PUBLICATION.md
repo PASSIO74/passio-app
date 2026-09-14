@@ -164,7 +164,7 @@ bio (text)
 - Appareil B attend 20s (PAS de refresh manuel)
 - Post apparaît automatiquement en 10s ✅
 
-**Voir**: `TEST_PUBLICATION_MULTIAPPAREILS.md`
+**Voir**: `docs/archives/tests-manuels/TEST_PUBLICATION_MULTIAPPAREILS.md`
 
 ---
 
@@ -256,7 +256,7 @@ npx http-server C:\Users\BENJAMIN\Desktop\PASSIO -p 8080
 - [ ] Tous les tests passent
 - [ ] Documentation complète
 
-**À faire**: Exécuter les tests du fichier `TEST_PUBLICATION_MULTIAPPAREILS.md`
+**À faire**: Exécuter les tests du fichier `docs/archives/tests-manuels/TEST_PUBLICATION_MULTIAPPAREILS.md`
 
 ---
 
