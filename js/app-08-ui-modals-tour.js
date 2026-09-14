@@ -5534,6 +5534,12 @@ async function _handleIncomingConvMessage(r) {
 
   var convs = getConversations();
   var conv = convs.find(c => c.id === r.conv_id);
+  // Un NOUVEAU message dans une conversation supprimée ici la fait réapparaître,
+  // avec ce seul message : la pierre "conv" est levée, la marque "clr" garde
+  // l'historique effacé (MSG-06).
+  try {
+    if (!conv && typeof convTombLoad === "function" && convTombHas(convTombLoad(), "conv", r.conv_id)) convTombRemove("conv", r.conv_id);
+  } catch (e) {}
 
   // La déduplication (1 conv par paire) peut avoir fusionné CETTE conv_id dans une
   // autre entrée ayant le même partenaire → l'entrée locale a un id différent de
@@ -6886,7 +6892,8 @@ async function supaInit() {
     // au realtime global : le destinataire ne recevait rien tant qu'il n'ouvrait pas
     // lui-m\u00eame la conversation (qu'il ne voyait pas non plus dans sa liste).
     try {
-      const supaConvs = await supaLoadMyConversations();
+      // Ce que j'ai supprimé ici ne revient pas du serveur (MSG-06).
+      const supaConvs = (typeof _filtrerConvsServeur === "function") ? _filtrerConvsServeur(await supaLoadMyConversations()) : await supaLoadMyConversations();
       if (supaConvs && supaConvs.length) {
         const localConvs = getConversations();
         const supaConvIds = new Set(supaConvs.map(c => c.id));

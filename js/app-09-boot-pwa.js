@@ -1245,6 +1245,9 @@ function _clearConvMessages(convId) {
   var c = convs.find(function(x){ return x.id === convId; });
   if (!c) return;
   c.messages = [];
+  // Marque « effacé avant maintenant » : sans elle, la réouverture rechargeait
+  // tout l'historique depuis le serveur (MSG-06).
+  if (typeof convTombAdd === "function") convTombAdd("clr", convId);
   saveConversations();
   var fp = document.getElementById("conv-fullpage");
   renderConvFpThread(c, fp ? fp.getAttribute("data-display-name") : "");
@@ -1271,6 +1274,11 @@ function _exportConv(convId) {
 function _deleteConv(convId) {
   if (!confirm("Supprimer cette conversation ?")) return;
   conversationsState = (conversationsState||[]).filter(function(c){ return c.id !== convId; });
+  // Pierres tombales : la conversation ne revient ni au boot ni par la fusion,
+  // et son historique reste effacé si un nouveau message la fait réapparaître
+  // (MSG-06). L'appartenance serveur n'est pas touchée : l'autre peut encore
+  // écrire, et ce nouveau message seul sera montré.
+  if (typeof convTombAdd === "function") { convTombAdd("clr", convId); convTombAdd("conv", convId); }
   saveConversationsNow();
   closeConvSettings();
   closeConversation();
