@@ -54,8 +54,8 @@
 | Test effectué | `tests/e2e/identite-expediteur-serveur.spec.js` (6 cas) : ① groupe — ligne d'expéditeur = nom du profil ; ② 1:1 — l'en-tête ne suit pas la charge ; ③ 1:1 — la photo ne vient jamais de la charge ; ④ décor légitime (emoji, hex) conservé ; ⑤ décor hostile jeté, aucune exécution, aucune balise ; ⑥ à la SOURCE — app-08 ne lit plus `lastSp?.n`, `lastSp?.ph`, `senderProfile.n`, `senderProfile.ph`. Voisines rejouées : audit-identite-emoji, notification-message, conv-ouverture-fil, ui-v6a-messages, xss-notifs-messages, transfert-message, message-media-echec, file-messages-par-compte, mention-groupe-xss, conv-suppression. |
 | Résultat | **Avant** (main pristine, export `git archive`) : 5 échecs / 6 (①②③⑤⑥). **Après** : 6/6 en dev, 6/6 sur l'artefact assemblé + minifié. Voisines : 64/64. Gates locales vertes. |
 | Limite restante | L'identité de l'**émetteur** reste `from_id`, posé par le client mais garanti par la RLS d'insertion (`from_id = auth.uid()`) — non re-mesuré ici. Le persona `pid` n'est plus conservé côté réception (aucun consommateur trouvé). Les **appels** (invitation `fromName` déclarative, résidu MSG-01) et les **lives** (`from` déclaratif) ne sont pas couverts : c'est MSG-01/SUP-06, point suivant. Non mesuré : rendu sur un appareil réel avec deux comptes réels. |
-| État | **corrigé dans le code** · testé sur staging : non · déployé : non · vérifié après déploiement : non |
-| PR | `claude/pro-02-identite-expediteur-serveur` — voir la PR ouverte depuis cette branche. |
+| État | **corrigé dans le code** · testé sur staging : non · **déployé** (fusion automatique #376 après CI verte — règle donnée par Benjamin le 2026-09-14 —, commit `6b004138`, run 34816178233 vert) · **vérifié après déploiement** : `release.json` servi = `6b004138`, `app.js?v=69768a2aae` (1 276 466 octets), plus aucun `senderProfile.n` ni `lastSp?.ph` dans l'artefact servi. |
+| PR | [#376](https://github.com/PASSIO74/passio-app/pull/376) — fusionnée (squash) le 2026-09-14. |
 
 ---
 
@@ -86,8 +86,8 @@ Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, 
 | Test effectué | `tests/e2e/blocage-verdict.spec.js` (5 cas) : ① refus → annulé, dit, rien persisté, abonnement rendu ; ② succès → bloqué, désabonné, annoncé ; ③ doublon = succès ; ④ déblocage refusé → reste bloqué, puis accepté ; ⑤ sans compte réel → local, dit, zéro écriture. Voisines : `parcours-suivre`, `ouverture-publique` (42/42). |
 | Résultat | **Avant** (main pristine) : 5 échecs / 5. **Après** : 5/5 en dev, 5/5 sur l'artefact minifié. |
 | Limite restante | Le blocage dans les **groupes communs** (MSG-10) reste incomplet : la personne bloquée reste membre du groupe, c'est le retrait par l'organisateur qui l'exclut — non traité ici. La cohérence blocage ↔ abonnements côté serveur (retrait de l'abonné, `follows` DELETE) est un complément dont l'échec ne défait pas un blocage écrit — tracé, non bloquant. Non mesuré : parcours réel entre deux comptes. |
-| État | **corrigé dans le code** · testé sur staging : non · déployé : non · vérifié après déploiement : non |
-| PR | `claude/mod-04-msg-04-blocage-et-push` — voir la PR ouverte depuis cette branche. |
+| État | **corrigé dans le code** · testé sur staging : non · **déployé** (fusion automatique #378 après CI verte, commit `00f7eec6`) · **vérifié après déploiement** : `release.json` servi = `00f7eec6`, `app.js?v=5946403cc7` (1 277 794 octets) porte « Blocage non enregistré » et la trace `blocage KO`. |
+| PR | [#378](https://github.com/PASSIO74/passio-app/pull/378) — fusionnée (squash) le 2026-09-14. |
 
 ---
 
@@ -100,8 +100,8 @@ Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, 
 | Test effectué | `tests/unit/lien-metier.test.mjs` (7 cas, faux client scripté) : 1:1 commune ok / groupe seul, sans conversation, tiers refusés / ligne récente ok avec SON texte décodé / ligne ancienne, d'un autre, vers un autre refusées / identité bornée et repli / erreur de lecture = refus / décodage des cinq entités. Branché dans `npm run verif` (donc en CI). |
 | Résultat | **7/7**. Le comportement de bout en bout de la fonction (Deno, web-push) n'est **pas** exécuté localement : le module de décision l'est, et il est celui qui sera déployé. |
 | Limite restante | **La fonction n'est PAS déployée** (`supabase functions deploy notify-call`, geste manuel — la CI ne déploie pas les Edge Functions). Tant qu'elle ne l'est pas, la production garde l'ancien comportement. Après déploiement, mesurer : un appel réel sonne (1:1 existante), une notification de message pousse, une push forgée vers un tiers rend `sent: 0`. La fenêtre de 2 minutes suppose que la ligne `notifications` précède la push — c'est l'ordre des trois appelants (`supaInsertNotif`, `_notifierMessage`, `follows_notifier` + `_pousserPushNotif`) ; un appelant qui pousserait AVANT d'écrire perdrait sa push. Non mesuré : latence réelle des deux lectures ajoutées. |
-| État | **corrigé dans le code** · déployé : **non — attend `supabase functions deploy notify-call`** · vérifié après déploiement : non |
-| PR | `claude/mod-04-msg-04-blocage-et-push` — voir la PR ouverte depuis cette branche. |
+| État | **corrigé dans le code** (fusionné #378, `00f7eec6`) · déployé : **non — la fonction attend `supabase functions deploy notify-call`** (la CI ne déploie pas les Edge Functions) · vérifié après déploiement : non |
+| PR | [#378](https://github.com/PASSIO74/passio-app/pull/378) — fusionnée (squash) le 2026-09-14. |
 
 ---
 
@@ -114,8 +114,8 @@ Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, 
 | Test effectué | `tests/e2e/blocage-groupe-commun.spec.js` (4 cas) : ① fil sans les messages du bloqué, les autres gardés, 4 messages toujours en mémoire ; ② aperçu de la liste sans son dernier mot ; ③ « @ » ne le propose plus ; ④ débloquer rend tout. Voisines : mention-groupe-xss, ui-v6a-messages, conv-ouverture-fil, blocage-verdict (29/29). |
 | Résultat | **Avant** (main pristine) : 3 échecs / 4 (①②③). **Après** : 4/4. |
 | Limite restante | Le bloqué **voit** toujours ce que le bloqueur écrit dans le groupe (le blocage est asymétrique à l'affichage, comme sur les réseaux comparables ; l'exclusion du groupe relève de l'organisateur). Les réactions et accusés de lecture d'un membre bloqué ne sont pas filtrés. Non mesuré : parcours réel entre deux comptes. |
-| État | **corrigé dans le code** · testé sur staging : non · déployé : non · vérifié après déploiement : non |
-| PR | `claude/mod-04-msg-04-blocage-et-push` (même PR que MOD-04 / MSG-04). |
+| État | **corrigé dans le code** · testé sur staging : non · **déployé** (#378, `00f7eec6`) · vérifié après déploiement : artefact servi = `00f7eec6` (marqueurs MOD-04 présents ; le filtre MSG-10 est du même commit, non relu à part) |
+| PR | [#378](https://github.com/PASSIO74/passio-app/pull/378) — fusionnée (squash) le 2026-09-14. |
 
 
 ---
