@@ -6263,15 +6263,27 @@ async function supaLoadStoryViews() {
 // `rsvp` : 'going' | 'maybe' | 'declined' | 'waitlist'. La PK est (event_id,user_id)
 // → on tente l'UPDATE d'abord, puis l'INSERT (l'inverse générerait une erreur de
 // doublon à chaque changement d'avis).
+// Motif du dernier refus d'inscription, posé par le SERVEUR (trigger
+// `trg_event_attendees_capacite`, IRL-05) : `complete` / `annulee` / `passee`,
+// ou null. Lu par `setEventRsvp` pour dire la vraie raison plutôt que
+// « non enregistrée ».
+function _motifRefusRsvp(error) {
+  const m = String((error && error.message) || "");
+  const x = /activite_(complete|annulee|passee|introuvable)/.exec(m);
+  return x ? x[1] : null;
+}
 async function supaSetEventRsvp(eventId, rsvp) {
+  window._irlRefusMotif = null;
   try {
     await supaEnsureProfileExists();
     const upd = await supa.from("event_attendees")
       .update({ rsvp: rsvp }).eq("event_id", eventId).eq("user_id", MY_UID).select();
     if (!upd.error && upd.data && upd.data.length) return true;
+    if (upd.error && _motifRefusRsvp(upd.error)) { window._irlRefusMotif = _motifRefusRsvp(upd.error); return false; }
     const ins = await supa.from("event_attendees")
       .insert({ event_id: eventId, user_id: MY_UID, rsvp: rsvp, created_at: new Date().toISOString() });
     if (!ins.error) return true;
+    if (_motifRefusRsvp(ins.error)) { window._irlRefusMotif = _motifRefusRsvp(ins.error); return false; }
     // ⚠️ Un 23505 ici ne prouve QUE l'existence de la ligne, pas que son `rsvp`
     // vaut ce qu'on demande. On arrive dans cette branche parce que l'UPDATE a
     // touché 0 ligne : la ligne existe donc mais la policy l'a filtrée. La
