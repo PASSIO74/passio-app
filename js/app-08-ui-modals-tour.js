@@ -1841,7 +1841,7 @@ function renderBell() {
   try {
     let _total = 0;
     try { _total += unreadCount(); } catch(e) {}
-    try { (getConversations() || []).forEach(c => { _total += (c.unread || 0); }); } catch(e) {}
+    try { _total += (typeof _convNonLus === "function") ? _convNonLus() : 0; } catch(e) {}
     document.title = _total > 0 ? `(${_total > 99 ? "99+" : _total}) PASSIO` : "PASSIO";
   } catch(e) {}
   updateAppBadge();
@@ -1855,7 +1855,7 @@ function updateAppBadge() {
     if (!("setAppBadge" in navigator)) return;
     let n = 0;
     try { n += unreadCount(); } catch (e) {}
-    try { (getConversations() || []).forEach(c => { n += (c.unread || 0); }); } catch (e) {}
+    try { n += (typeof _convNonLus === "function") ? _convNonLus() : 0; } catch (e) {}
     if (n > 0) navigator.setAppBadge(n).catch(() => {});
     else navigator.clearAppBadge().catch(() => {});
   } catch (e) {}
@@ -1893,8 +1893,9 @@ document.addEventListener("visibilitychange", function() {
 // Badge des messages non-lus sur l'icône Messages du topbar (déplacée depuis la
 // barre du bas). Somme des `unread` de toutes les conversations.
 function renderMsgBadge() {
+  // Non-lus RÉELS seulement : la démonstration ne fait pas clignoter l'onglet (UXO-03).
   let n = 0;
-  try { (getConversations() || []).forEach(c => { n += (c.unread || 0); }); } catch(e) {}
+  try { n = (typeof _convNonLus === "function") ? _convNonLus() : 0; } catch(e) {}
   const libelle = n > 0 ? (n > 9 ? "9+" : String(n)) : "";
 
   // Pastille historique du bandeau supérieur. Depuis le lot UI-7 §4 elle est

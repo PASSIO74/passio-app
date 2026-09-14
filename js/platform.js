@@ -153,12 +153,12 @@
         var btn = document.getElementById('btn-install-app');
         if (btn) btn.style.display = '';
 
-        // ══ iOS Safari : afficher le guide automatiquement après 1.5s ══
-        if (_isIOSSafari) {
-          setTimeout(function() {
-            if (typeof pwaShowOverlay === 'function') pwaShowOverlay();
-          }, 1500);
-        }
+        // ⚠️ PLUS DE MUR AUTOMATIQUE SUR iPHONE SAFARI (UXO-01, contre-revue
+        // Astra, 2026-09-14). Le guide « Installer sur iPhone / iPad » s'ouvrait
+        // 1,5 s après le chargement, PAR-DESSUS le fil de première visite — avant
+        // que la personne ait vu quoi que ce soit. La porte reste : le bouton
+        // « Installer l'application » et l'entrée des Paramètres (`pwaInstall`).
+        // Rien ne se pose tout seul.
         // ══ iOS autre navigateur : ramener sur l'adresse canonique ══
         // ⚠️ Rectifié le 2026-08-28. Cette redirection n'ouvre PAS Safari : le
         // schéma reste `https`, donc on demeure dans le navigateur courant.

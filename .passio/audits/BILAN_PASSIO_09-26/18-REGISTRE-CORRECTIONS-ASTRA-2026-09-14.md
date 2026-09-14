@@ -594,3 +594,18 @@ Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, 
 | Limite restante | Le retrait de commentaires/chaînes est un automate simple : un littéral regex contenant `'` ou `//` peut le tromper localement (aucun cas dans les 180 specs actuels). TCI-07 (couverture non reproductible) et TCI-13 (chiffres périmés dans les docs) restent ouverts. |
 | État | **corrigé dans le code** · déployé : n/a (outillage) |
 | PR | `claude/chantier-10-gates-tests`. |
+
+
+---
+
+## UXO-01 / UXO-03 — Mur d'installation iPhone sur le fil de première visite ; messagerie de démonstration non étiquetée — P3 (chantier 10)
+
+| Champ | Valeur |
+|---|---|
+| État constaté | UXO-01 : `platform.js` ouvrait le guide « Installer sur iPhone / iPad » **1,5 s après le chargement** sur iPhone Safari, par-dessus le fil de première visite. UXO-03 : cinq conversations fictives (`SEED_CONVERSATIONS`, interlocuteurs `u_…`) rendues comme de vraies — sans étiquette, comptées dans la pastille de l'onglet Messages (« 3 »), le titre de l'onglet navigateur et le badge d'icône ; un message écrit dans l'une d'elles partait vers un compte inexistant. **Reproduits** au banc. |
+| Correction | UXO-01 : l'appel automatique est retiré de `platform.js` ; la porte manuelle (bouton « Installer l'application », `pwaInstall()`) reste. UXO-03 : `_estConvDemo(c)` (seed ou interlocuteur `u_…`) et `_convNonLus()` (non-lus réels), SEULE source des trois compteurs (pastille d'onglet, titre du navigateur, badge d'icône) ; la carte porte « Exemple PASSIO · réponse désactivée », sans pastille ni graisse ; `sendMessageFp` refuse et le dit. Même règle que le fil : le décor se dit, ne compte pas, ne répond pas. |
+| Test effectué | `tests/e2e/demo-messagerie-et-ios.spec.js` (4 cas : étiquette + pas de pastille ; compteurs = non-lus réels seulement, vraie conversation gardée ; écrire en démo n'envoie rien ; iPhone Safari sans overlay automatique — mesuré à la SOURCE, le helper de boot masquant l'overlay pour la session — et porte manuelle vivante). Voisines : ios-navigation-et-zoom, perf-ios, ui-v6a-messages, conv-ouverture-fil, first-run, notification-message, qa-campaign, pwa-maj-silencieuse (99/99). |
+| Résultat | **Avant** (main pristine, RÉINJECTION) : 4/4 rouges. **Après** : 4/4 ; artefact minifié : 4/4. |
+| Limite restante | Les conversations de démonstration restent chargées pour tout le monde (l'audit proposait « visiteur seulement ») : les retirer d'un compte changerait la mécanique d'hydratation (`SEED_CONVERSATIONS` sert de socle à `getConversations`) — lot séparé si voulu. Aucun rappel discret d'installation sur iOS n'a été ajouté (choix : rien d'automatique). |
+| État | **corrigé dans le code** · déployé : non |
+| PR | `claude/chantier-10-uxo`. |
