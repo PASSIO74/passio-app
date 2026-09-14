@@ -81,13 +81,13 @@
 |---|---|---|---|
 | 2 | Séparer les comptes et sécuriser les échanges | AUTH-06 (#375), PRO-02 (#376), MSG-01/SUP-06 (#377 + migration appliquée), MOD-04, MSG-04, MSG-10 (#378) | **fait** — tout déployé ; résidus écrits dans chaque fiche |
 | 3 | Fiabiliser suppression et médias | AUTH-05, SUP-10, MSG-03, ASTRA-01 (#379, fonction déployée et éprouvée) ; CONT-11, SUP-01 | **fait** — CONT-11/SUP-01 décidé « 2 », écrit dans la fiche |
-| 4 | Inscription et information cohérentes | AUTH-02/03/04/09/10, EXP-08/09/14/15, UXO-07, ASTRA-09 | en cours — AUTH-03, UXO-07, ASTRA-09/EXP-09, EXP-08 (#397) faits ; AUTH-02/09/10, EXP-14/15 restent à consigner |
+| 4 | Inscription et information cohérentes | AUTH-02/03/04/09/10, EXP-08/09/14/15, UXO-07, ASTRA-09 | **fait** — AUTH-03 (#380), UXO-07, ASTRA-09/EXP-09, EXP-08 (#397) ; AUTH-02/EXP-14, AUTH-04/EXP-15, AUTH-09, AUTH-10 consignés ci-dessous avec leurs mesures (AUTH-10 : §6 complété le 14/09) |
 | 5 | Éprouver la modération | MOD-01/02/03/09, AUTH-11, ASTRA-03 | en cours — lot 1 (#396 : retrait de contenu, journal, story signalable, ASTRA-03) en attente de contre-revue |
-| 6 | Isoler les essais, prouver une restauration | SUP-04, NET-07, EXP-01/03/04/11, TCI-03/04/15/16, ASTRA-07 | en cours — **EXP-01 et la moitié « restauration » de TCI-03 : FAITS et mesurés** (ci-dessous) ; ASTRA-07 fait ; EXP-04/TCI-16 (canari + déploiement des Edge Functions) préparés en local ; SUP-04/TCI-04/EXP-11 (le client vise la prod en dur) : lot suivant, le projet staging est réactivé et vide ; EXP-03 (rollback Netlify) et NET-07 restent |
+| 6 | Isoler les essais, prouver une restauration | SUP-04, NET-07, EXP-01/03/04/11, TCI-03/04/15/16, ASTRA-07 | en cours — **EXP-01 et la moitié « restauration » de TCI-03 : FAITS et mesurés** (ci-dessous) ; ASTRA-07 fait ; EXP-04/TCI-16 (canari + déploiement des Edge Functions) préparés en local ; SUP-04/TCI-04/EXP-11 (le client vise la prod en dur) : lot suivant, le projet staging est réactivé et vide ; EXP-03 : rollback Netlify outillé et exercé (1,8 s) ; NET-07 reste |
 | 7 | Borner Sentinelle et les protections anti-abus | PIL-01/02/03/04/10, EXP-06/12, CONT-08, MOD-06/07, SUP-07, ASTRA-02/05/06/08 | en cours — ASTRA-02 appliqué, ASTRA-06 partiel, ASTRA-08 préparé ; le reste non engagé |
 | 8 | Supprimer les faux succès et divergences | CONT-02/06, MSG-06, IRL-04 à 13, ROB-01 à 06, PRO-04/05, ASTRA-10 | **fait** — #385 à #394 déployés ; IRL-12 (#395, migration appliquée) en attente de contre-revue |
-| 9 | Mesurer la capacité puis fixer les limites | PERF-01 à 06, PRO-01/03/06, ASTRA-04 | en cours — PERF-03 (71 policies initplan, 24 doublons) appliqué en production et préparé en local (contre-revue à venir) ; PERF-01 (charge) attend le staging ; PERF-04 : un `user_state` de 4,7 Mo mesuré le 14/09 |
-| 10 | Compléter les parcours et preuves de qualité | DEV-01 à 05, UXO-01/02/03, TCI-01/02/05 à 14 | en cours — TCI-05/06/14 (#398), UXO-01/03 (#399), DEV-01/04 (#400) faits ; DEV-02/03/05, UXO-02, TCI-01/02/07 à 13 restent |
+| 9 | Mesurer la capacité puis fixer les limites | PERF-01 à 06, PRO-01/03/06, ASTRA-04 | en cours — PERF-03 (71 policies initplan, 24 doublons) appliqué en production et préparé en local (contre-revue à venir) ; PERF-01 (charge) attend le staging ; PERF-04 : le `user_state` de 4,8 Mo était l'état d'un compte supprimé — purgé avec 78 autres orphelins (fiche ci-dessous) |
+| 10 | Compléter les parcours et preuves de qualité | DEV-01 à 05, UXO-01/02/03, TCI-01/02/05 à 14 | en cours — TCI-05/06/14 (#398), UXO-01/03 (#399), DEV-01/04 (#400) faits ; DEV-03 (contrastes) fait ; DEV-02/05, UXO-02, TCI-01/02/07 à 13 restent |
 
 ---
 
@@ -651,3 +651,172 @@
 | Limite restante | Pas de kill switch serveur par fonctionnalité (les drapeaux `passio_*="0"` sont locaux à l'appareil) — écrit, non réglé. Le rollback de `rollback.yml` (chemin propre) n'a toujours pas été exercé : il crée une PR de revert réelle, ce qui n'a de sens que sur un vrai incident. Le jeton Netlify du poste est celui de la CLI ; pour un autre poste, `NETLIFY_AUTH_TOKEN`. |
 | État | **corrigé dans le code** · **testé en production** (exercice aller-retour, aucun utilisateur affecté au-delà de 2 s) |
 | PR | `claude/chantier-6-rollback`. |
+
+---
+
+## AUTH-02 / EXP-14 — Vérification d'âge jamais atteinte sur le chemin nominal ; écran « contrôle d'âge IA » mensonger — P1 (chantier 4) — **déjà traité, consigné**
+
+| Champ | Valeur |
+|---|---|
+| État constaté | Sur le commit examiné : l'étape « âge » de l'onboarding n'est plus atteinte depuis « Confirm email » (30/08), et l'écran promettait « un contrôle d'âge IA ». |
+| Correction | Faite avant ou pendant ce chantier, mesurée le 14/09 : la case de consentement de l'inscription (`#authConsent`, seul écran que tout compte traverse) porte « **J'ai 18 ans ou plus** » ; l'écran d'onboarding dit désormais que l'année de naissance est **déclarative et n'est vérifiée par aucun contrôle automatique** (UXO-07, `index.html` ligne « PASSIO est réservé aux personnes majeures ») ; CGU §2/§3/§7/§10/§11 et politique §6 disent « 18 ans révolus » ; la seule barrière serveur est l'IRL (`irl_adult_only`, allumé, trigger `trg_event_attendees_admission`). Aucune vérification d'identité n'existe et **aucun texte ne le prétend** — c'est l'état honnête, pas une fermeture. |
+| Test effectué | `cgu-consentement.spec.js` (case et libellé), `consentement-google.spec.js` ⑤ (UXO-07), `admission-18-plus.spec.js` (17), `mot-de-passe-minimum` voisines — déjà en CI. |
+| Résultat | Le mensonge est retiré ; la règle est contractuelle et déclarative, écrite comme telle. |
+| Limite restante | Pas de majorité numérique (15 ans) ni de vérification : PASSIO est 18+ déclaratif. Une vérification d'âge réelle (document, tiers) est une décision produit et un coût — hors de ce chantier. |
+| État | déjà **déployé** (UXO-07 le 14/09, consentement le 09/09) · **vérifié après déploiement** : textes lus sur le client servi |
+| PR | aucune nouvelle — consigné dans `claude/chantier-4-consignations`. |
+
+---
+
+## AUTH-04 / EXP-15 — Télémétrie active par défaut sans consentement ni interrupteur, identifiant d'appareil persistant, conservation illimitée — P1 (chantier 4) — **déjà traité, consigné**
+
+| Champ | Valeur |
+|---|---|
+| État constaté | Sur le commit examiné : la coupure n'était atteignable que par `?telemetry=0` ; aucune purge. |
+| Correction | Faite le 11/09 (#329) et mesurée le 14/09 : interrupteur **Paramètres → Confidentialité → « Mesure d'usage »** (`#privTelemetry`, `_mesureUsageActive`, clé d'appareil `passio_telemetry` hors `ACCOUNT_SCOPED_KEYS` ; le refus s'écrit en dur, la réactivation efface la clé — « 1 » forcerait la capture complète) ; politique §3 : ce qui est mesuré (jamais le contenu écrit, filtre PII), l'identifiant d'appareil et de session nommés, la porte de coupure nommée, **conservation 7 jours** pour la mesure détaillée et 30 jours pour les erreurs (cron `purge_telemetry_7j` 04:00, `purge_client_errors` 03:00, `passio_purge_analytics` 04:30 — mesurés dans `cron.job` le 14/09, en prod et sur le staging restauré), 13 mois au maximum. Base légale : intérêt légitime (art. 6.1.f) avec opposition libre. |
+| Test effectué | `ouverture-publique.spec.js` (interrupteur, politique), `analytics-visiteur.spec.js`, `audit-telemetry-keys` (gate : 84 clés survivent au filtre PII). |
+| Résultat | Opposition exerçable dans l'interface, durées bornées et écrites. |
+| Limite restante | L'identifiant d'appareil reste persistant tant que la mesure est active (c'est ce qui permet de compter des sessions) ; il tombe avec l'opposition. Pas de bannière de consentement préalable : le choix retenu est l'opt-out sur intérêt légitime, écrit dans la politique. |
+| État | déjà **déployé** (11/09) · **vérifié après déploiement** |
+| PR | aucune nouvelle — consigné. |
+
+---
+
+## AUTH-09 — Aucun export de compte ; accès/rectification par e-mail vers l'adresse d'une autre société — P2 (chantier 4) — **fait, consigné**
+
+| Champ | Valeur |
+|---|---|
+| État constaté | Sur le commit examiné : pas d'export ; contact = adresse d'une autre activité de l'éditeur. |
+| Correction | EXP-08 (#397) : « Exporter mes données (JSON) » en libre-service, Edge Function `export-account` déployée et éprouvée. Contact : `passioadmin@gmail.com` (`PASSIO_EDITEUR.email`, source unique depuis le 11/09), politique §9 (accès, rectification, effacement, portabilité, opposition — et la suppression du compte en libre-service, `delete-account`). |
+| Test effectué | `export-donnees.spec.js` (5), `tests/unit/export-compte.test.mjs` (3), `responsable-traitement.spec.js`. |
+| Résultat | Les droits de l'art. 15/17/20 ont chacun une porte dans l'app, les autres une adresse qui est celle de PASSIO. |
+| Limite restante | Les médias sont listés, pas embarqués ; pas de registre des traitements écrit (document, hors code). |
+| État | **déployé** · vérifié après déploiement (EXP-08 : Edge Function 401/200/429 mesurés en prod) |
+| PR | #397 — consigné. |
+
+---
+
+## AUTH-10 — Sous-traitants et transferts hors UE non documentés (Google Fonts, Tenor/Giphy, TURN, Photon, région Supabase) — P2 (chantier 4)
+
+| Champ | Valeur |
+|---|---|
+| État constaté | Sur le commit examiné : rien. Le 14/09 avant ce lot : la politique §5 nomme les hébergeurs et la base des transferts (Supabase Pte. Ltd. Singapour, Netlify États-Unis, Brevo France, clauses contractuelles types) ; §6 nomme OpenFreeMap, BAN, Photon, Giphy, Tenor, Unsplash, Pexels — **mais ni Google Fonts (la police Manrope est chargée par `index.html` à CHAQUE ouverture : l'adresse IP de chaque visite part chez Google) ni le relais TURN des appels (`openrelay.metered.ca`, app-05) ni les serveurs STUN de Google**. Reproduit : `politique-tiers-appeles.spec.js` ① rouge sur le texte d'avant (2/2 rouges). |
+| Correction | §6 complété : Google Fonts (Google LLC, États-Unis, à chaque ouverture), Open Relay par Metered (États-Unis, pendant un appel ou un live seulement, quand la connexion directe échoue), STUN de Google. La version de la politique reste `2026-09-14` (même jour que sa dernière modification). |
+| Test effectué | `tests/e2e/politique-tiers-appeles.spec.js` (2) : ① chaque hôte tiers présent dans les SOURCES (`index.html`, app-05, `netlify.toml`) est nommé dans le texte rendu — et l'inverse (un hôte nommé mais plus appelé fait rougir) ; ② le §6 dit quand le relais est sollicité et que ni compte ni nom ne partent. Éprouvé par RÉINJECTION du texte d'avant. |
+| Résultat | **Avant** : 2/2 rouges. **Après** : 2/2. |
+| Limite restante | Nommer n'est pas supprimer : héberger Manrope dans le dépôt (`js/vendor/`-like, CSP sans `fonts.googleapis.com`) ferait disparaître le transfert lui-même — lot suivant, petit. Le relais TURN public d'Open Relay est un service gratuit sans contrat : un relais sous contrat (ou auto-hébergé) serait la réponse propre pour les appels. |
+| État | **corrigé dans le code** · déployé : à la fusion |
+| PR | `claude/chantier-4-consignations`. |
+
+---
+
+## IRL-12 — Le pointage n'a pas de valeur : code devinable, aucune fenêtre serveur, pointage sans inscription, GPS contournable — P3 (chantier 8)
+
+| Champ | Valeur |
+|---|---|
+| État constaté | Code d'accueil = hachage FNV de l'id **public** de l'activité (`_eventCheckinCode`, app-07) : calculable par quiconque lit la liste. Aucune fenêtre horaire serveur (`checked_in_at` s'écrit à toute heure — **mesuré au banc** : accepté sur une activité passée). Pointage possible sans inscription (`supaCheckInEvent` forçait `rsvp = going`). GPS indisponible → `done()` (« on fait confiance »). |
+| Correction | **Base** : `migrations/migration_pointage_serveur_2026-09-14.sql` — table `event_checkin_secrets` (secret 6 car. tiré au hasard, alphabet sans 0/O/1/I, posé par trigger à la création, rempli pour l'existant ; RLS : auteur et co-organisateurs lisent, personne n'écrit ; anon sans privilège) ; RPC `pointer_par_code` (SECURITY DEFINER) : code comparé côté serveur, activité active, fenêtre [début − 1 h, fin], **inscription préalable exigée** (`waitlist`/`declined` refusés), verdict texte stable ; trigger `trg_event_attendees_pointage` : le chemin GPS (UPDATE direct de `checked_in_at`) est borné à la même fenêtre. **Client** : l'organisateur affiche le secret serveur (`supaEventCheckinSecret`), le code dérivé ne sert plus qu'aux activités de démonstration ; le code saisi et le lien profond passent par `supaPointerParCode`, chaque verdict est dit ; sans position GPS → le code est proposé, on ne pointe plus ; le chemin GPS lit le verdict et annule le pointage local sur refus ; `supaCheckInEvent` ne force plus `rsvp = going`. |
+| Test effectué | Banc SQL `tests/sql/migration-pointage-serveur.test.sh` (défaut mesuré avant ; verdict 6/6, rejeu sans changer les secrets ; secret par activité, distincts, lisibles par auteur/co-org seuls ; trigger à la création ; RPC : code faux, ok, deja_pointe, liste_attente, non_inscrit sans ligne créée, hors_fenetre, annulee, « peut-être » → going ; anon sans EXECUTE ; générateur non exposé ; chemin GPS borné, administration libre). `tests/e2e/pointage-serveur.spec.js` (5 cas : secret serveur affiché, verdicts rendus, sans GPS → code, refus GPS annule, démo → local). Voisines IRL 72/72. |
+| Résultat | **Avant** (main pristine) : ①–④ rouges, ⑤ vert. **Après** : 5/5 ; artefact minifié : 5/5. Banc SQL : mesuré en CI. |
+| Limite restante | Un pointage « pour de vrai » suppose l'un des deux : position à 500 m OU code d'accueil ; un code communiqué à distance reste contournable (c'est l'organisateur qui le montre). Le lien profond du QR porte le secret en clair dans l'URL (comme avant pour le code dérivé) : le QR est fait pour être scanné sur place. |
+| État | **corrigé dans le code** · migration **appliquée et mesurée** en production le 14/09 (`event_checkin_secrets` 9/9, RPC `pointer_par_code`, trigger `trg_event_attendees_pointage`) · déployé : non — **PR #395 en attente de contre-revue** |
+| PR | [#395](https://github.com/PASSIO74/passio-app/pull/395) — porte `migrations/*` : **contre-revue** requise (la fiche est consignée ici pour que la PR ne touche plus le registre). |
+
+---
+
+## MOD-01 — Aucun traitement de bout en bout d'un signalement (lecture, décision, retrait, trace) — P1 (chantier 5)
+
+| Champ | Valeur |
+|---|---|
+| État constaté (base `origin/main`, 2026-09-14) | Depuis l'audit : `reports.status` (open/handled/dismissed, migration du 11/09), `scripts/moderation.js` (`lister`, `voir`, `traiter`), alerte quotidienne `[MODÉRATION]`. **Restait** : « retirer un contenu » renvoyait à l'éditeur SQL (canal ③) — un modérateur sans la main sur la base ne pouvait rien faire ; aucun journal des décisions ; le signalant n'apprenait jamais la décision ; 2 signalements en base (`dismissed`, `reason` vide, antérieurs au 10/09). |
+| Correction | `scripts/moderation.js retirer --id r_xxx [--note]` : exécute le plan de `scripts/lib/moderation-decision.js` (pur, verrouillé en unitaire — publication/commentaire/story/message supprimés, rencontre **annulée**, commentaire `ec_…` visé dans la bonne table) avec `service_role` (canal ②), ferme le signalement et ses frères ouverts sur la même cible, écrit le journal `moderation_actions` (migration `migration_moderation_journal_2026-09-14.sql` : table RLS sans policy ni GRANT client), et **prévient le signalant** (notification `moderation`, décision motivée, jamais la cible ni l'auteur — DSA art. 16-17). `traiter` journalise et prévient aussi. Un compte ne se suspend pas ici (aucune colonne) : l'outil le dit. |
+| Test effectué | `tests/unit/moderation-decision.test.mjs` (7 : plans par type, tables des commentaires, encodage, refus dits, texte borné, signalant uuid seulement, statut). Ajouté à `npm run verif`. Le tour complet sur la base réelle : **non mesuré** (aucun signalement ouvert à traiter ; à faire au premier vrai signalement). |
+| Résultat | Unitaire 7/7. |
+| Limite restante | Pas de rôle « modérateur » distinct de l'opérateur (canal ② = clé service_role, poste de Benjamin) ; pas de suspension de compte ; pas d'e-mail (la décision arrive dans la cloche de l'application). |
+| État | **corrigé dans le code** · migration `migration_moderation_journal_2026-09-14.sql` **appliquée** en production le 14/09 (`story` admis dans `reports`, table `moderation_actions`) · déployé : non — **PR #396 en attente de contre-revue** |
+| PR | [#396](https://github.com/PASSIO74/passio-app/pull/396) — porte `migrations/*` : contre-revue requise. |
+
+---
+
+## MOD-03 / AUTH-11 / MOD-09 — Signalement : motif, verdict, accusé de réception, canal sans compte — P1/P2 (chantier 5)
+
+| Champ | Valeur |
+|---|---|
+| État constaté | Depuis l'audit : motif demandé (`_demanderMotifSignalement`), verdict lu, porte d'authentification (2026-09-10) ; textes légaux : point de contact `passioadmin@gmail.com` et signalement **par e-mail sans compte** (DSA art. 16) écrits dans les mentions légales et les CGU §6, conservation dite dans la politique §8. **Restait** : aucun accusé de réception (le toast disparaît), les **stories** n'avaient aucune porte, et aucune cloche pour la décision. |
+| Correction | `_accuserReceptionSignalement()` : notification locale « Signalement reçu — tu seras informé·e de la décision ici » après tout signalement accepté (compte, publication, commentaire, rencontre, story) ; `reportStory` + porte « ⋯ » dans le viewer sur la story d'un autre compte réel (rendu DOM, jamais d'onclick inline avec un identifiant d'autrui) ; `target_type = 'story'` admis en base ; cloche 🛡️ pour `kind = moderation`. |
+| Test effectué | `tests/e2e/signaler-story.spec.js` (6 cas : porte présente pour autrui, absente pour moi/démo, envoi avec motif + accusé, refus dit sans accusé, publication → accusé, cloche). Voisines : signaler-publication, stories-blocage, studio-moods, profil-visite-options, xss-notifs-messages, faux-succes-irl-story (36/36). |
+| Résultat | **Avant** (main pristine, RÉINJECTION) : ① ③ ③bis ④ ⑤ rouges, ② vert. **Après** : 6/6 ; artefact minifié : 6/6. |
+| Limite restante | Le canal sans compte reste l'**e-mail** (pas de formulaire public avec captcha) — conforme à l'art. 16 (moyen électronique), mais sans accusé automatique de ce côté-là. Pas d'e-mail de décision. |
+| État | **corrigé dans le code** · déployé : non — avec #396 |
+| PR | [#396](https://github.com/PASSIO74/passio-app/pull/396). |
+
+---
+
+## PERF-03 — Advisors Supabase : 71 policies réévaluent `auth.uid()` par ligne, 24 doublons de policies, 3 clés étrangères sans index — P2 (chantier 9)
+
+| Champ | Valeur |
+|---|---|
+| État constaté (`get_advisors performance`, 2026-09-14 avant) | `auth_rls_initplan` **71** (37 tables), `multiple_permissive_policies` **24** (events, profiles, conv_members, follows × 6 rôles), `unindexed_foreign_keys` **3**, `unused_index` 13. |
+| Correction | `scripts/generer-migration-initplan.mjs` : LIT les policies de production (`pg_policies`) et émet `drop`/`create` à l'identique sauf `auth.uid()` → `(select auth.uid())` → `migrations/migration_rls_initplan_2026-09-14.sql` (69 policies, générée, à ne pas retoucher). **Dry-run en transaction annulée** (69 créations compilent, verdict 0) avant application. `migration_rls_doublons_index_2026-09-14.sql` (écrite après lecture des définitions) : « Read events » / « Read profiles » retirées (copies exactes de « Lecture publique »), conv_members « Suppression propre » retirée (incluse dans « Suppression admin »), follows fusionnée en une policy `follower OR following`, 3 index de clés étrangères. |
+| Test effectué | `tests/unit/initplan-reecriture.test.mjs` (3, dans `verif`). **Mesuré en base après application** : `auth_rls_initplan` 71 → **2** (les deux restantes sur `realtime.messages`, hors `public`), `multiple_permissive_policies` 24 → **0**, `unindexed_foreign_keys` 3 → **0**. **Sonde à compte jetable** : profil 201, publication 201, publication sous un autre auteur **403**, lectures anonymes 200, suppression propre 200, compte purgé. Les suites à comptes réels de la CI (`authz-critical`) exercent ces policies à chaque PR. |
+| Résultat | Advisors : 3 familles éteintes ; comportement conservé (sonde). |
+| Limite restante | `realtime.messages` (2 policies, schéma `realtime`) non réécrites ici. 16 « index inutilisés » laissés (base de 100 lignes, plusieurs index tout juste créés). `auth_db_connections_absolute` : réglage du tableau de bord, non touché. |
+| État | **corrigé dans le code** · migrations : **appliquées et mesurées** |
+| PR | [#403](https://github.com/PASSIO74/passio-app/pull/403) — porte `migrations/*` (déjà appliquées et mesurées) : contre-revue requise. |
+
+---
+
+## EXP-04 — Aucun retour arrière ni déploiement contrôlé des Edge Functions — P2 (chantier 6)
+
+| Champ | Valeur |
+|---|---|
+| État constaté | Edge Functions déployées à la main (`supabase functions deploy`, poste de Benjamin puis le mien), sans version, sans test, sans trace de ce qui est déployé. |
+| Correction | `.github/workflows/edge-functions.yml` : à chaque fusion sur `main` touchant `supabase/functions/**` (ou à la demande), les verrous unitaires des modules partagés tournent d'abord (plafond, lien-metier, purge-compte, export-compte), puis les quatre fonctions sont déployées (idempotent) avec le jeton personnel de la CLI (`SUPABASE_ACCESS_TOKEN`, posé dans les secrets du dépôt le 2026-09-14 — jamais `service_role`), puis **éprouvées depuis l'extérieur** : OPTIONS → 200, POST sans jeton → 401 sur chacune ; le SHA déployé est écrit dans le résumé du run. **Retour arrière** = relancer le workflow sur le commit précédent (`workflow_dispatch`) ; les versions précédentes restent listées dans le tableau de bord Supabase. |
+| Test effectué | Attentes de fumée **mesurées en production** avant d'écrire le workflow (les quatre fonctions : OPTIONS 200, POST 401). Premier run : à la fusion de cette PR (elle ne touche pas `supabase/functions/**` → déclenchement manuel après fusion, consigné ici). |
+| Résultat | non mesuré tant que le premier run n'a pas tourné (voir ligne suivante après fusion). |
+| Limite restante | Pas de test fonctionnel avec jeton dans la CI (il faudrait un compte jetable : le banc `verif-*.cjs` le fait depuis le poste). Pas de tag de version : c'est le SHA du run qui fait foi. |
+| État | **corrigé dans le code** · déployé : non |
+| PR | [#404](https://github.com/PASSIO74/passio-app/pull/404) — touche `.github/*` : contre-revue requise. |
+
+---
+
+## TCI-16 — Le canari horaire crée 2 comptes réels par heure en production — P3 (chantier 6)
+
+| Champ | Valeur |
+|---|---|
+| État constaté | `sentinelle-distante.yml` : `cron 17 * * * *` → `authz-critical --project=prod`, 2 comptes créés puis purgés par passage (48/jour), verrou `passio-e2e-prod` partagé avec `test-prod`. |
+| Correction | Cadence **toutes les 4 heures** (`17 */4 * * *`) : 6 passages, 12 comptes par jour ; doc `docs/SENTINELLE_DISTANTE.md` mise à jour. Le verrou partagé est **gardé** (les deux jobs purgent les comptes `@passio-e2e.test` par motif : les faire courir ensemble ferait purger les comptes de l'autre en plein run). |
+| Test effectué | non mesuré (cadence). |
+| Limite restante | Le vrai remède (canari sur un projet de staging) attend TCI-04 / SUP-04 : un second projet Supabase, décision et création hors dépôt. |
+| État | **corrigé dans le code** · déployé : non |
+| PR | `claude/chantier-6-edge-functions-canari`. |
+
+---
+
+## PRO-06 / PERF-04 (mesure) / SUP-10 (résidu) — Miroir `user_passions` incomplet ; 79 lignes `user_state` orphelines sur 84, dont une de 4,8 Mo — P3 (chantier 9) — **mesuré et nettoyé**
+
+| Champ | Valeur |
+|---|---|
+| État constaté | Trouvé par l'exercice de restauration (14/09) : une ligne `user_state` de **4 845 000 octets**. Mesuré en production : `data.user.general.avatarPhoto` et `coverPhoto` en **base64 PNG (2,4 Mo chacune)**, état du 23/06 — d'avant l'expurgation de `_syncableState` (16/08). Le compte `1c0acc6b…` **n'existe plus dans `auth.users`** ; et il n'était pas seul : **79 lignes `user_state` sur 86** appartenaient à des comptes supprimés (essais de juin–juillet, avant l'outil de purge), plus **63 `notifications`** et **18 `conv_reads`** adressées à des comptes disparus. Aucune RLS ne les rendait lisibles (`auth.uid()` ne peut plus les égaler) ; elles pesaient dans chaque sauvegarde, chaque restauration et chaque `count`. |
+| Correction | Purge en base des lignes orphelines (`not exists (select 1 from auth.users …)`) : `user_state` 86 → **7** (4,9 Mo → 54 Ko), `notifications` −63, `conv_reads` −18. `profiles`, `posts`, `push_subscriptions`, `story_views`, `user_passions` : 0 orphelin. Le client n'a rien à changer : l'expurgation du base64 à l'envoi existe depuis le 16/08 et `delete-account` purge `user_state` depuis #379. |
+| Test effectué | Recompte après purge : 7 lignes, 0 orphelin. Miroir `user_passions` re-mesuré le 14/09 : **vitrine = miroir pour les 7 comptes** (5/5, 17/17, 3/3, 2/2, 16/16, 0/0, 3/3 ; 46 lignes) — la réconciliation de PRO-04 (#391) l'a comblé, les « 23 entrées manquantes » de l'audit n'existent plus. |
+| Résultat | Le plus gros blob de la base a disparu avec le compte qui ne l'avait pas emporté. |
+| Limite restante | Rien n'empêche un futur orphelin si une suppression passe hors de `delete-account` (tableau de bord Supabase) : une purge périodique des orphelins (cron SQL, ou dans `purge:e2e:rest`) serait la ceinture — non faite. |
+| État | **fait en base** (données, canal ②-équivalent) · rien à déployer |
+| PR | aucune — mesure consignée dans `claude/chantier-4-consignations`. |
+
+
+---
+
+## DEV-03 — Contrastes sous 4,5:1 : la porte « Ajouter une passion » (4,4:1) et le bouton « Compris » des aides (4,11:1) — P3 (chantier 10)
+
+| Champ | Valeur |
+|---|---|
+| État constaté | Matrice d'accessibilité de l'audit, re-mesurée le 14/09 : `#nouveauProfilSous` (12 px) et `#nouveauProfilTitre` en état plein rendus en `--muted` (#6e6987) sur le lavis `--bg-tint` (rgb 239,233,253) = **4,40:1** ; `.passio-hint-ok` blanc sur un voile blanc à 22 % par-dessus le violet = **3,83:1** (4,11:1 sur le violet v2). Les autres lignes de la matrice sont des emojis d'avatar (pas du texte) — écartées. Reproduit : `contraste-aa.spec.js` 2/2 rouges sur le CSS d'avant (4,4 et 4,11 lus). |
+| Correction | `styles.css` (édition binaire, CRLF intact) : mot et titre plein de la porte en `#514b73` (6,81:1 sur le lavis, 8,06:1 sur blanc) ; « Compris » sur un voile **sombre** à 24 % (8,4:1), survol à 34 %. Même forme, même place. |
+| Test effectué | `tests/e2e/contraste-aa.spec.js` (2) : le contraste est **calculé au rendu** (couleur calculée du texte contre le fond composé en remontant les ancêtres, alpha composé), jamais lu dans une constante ; ① exige la prémisse « porte pleine » (trois passions). Voisines : `aides-contextuelles` (10), `politique-tiers-appeles` (2) — 12/12. Gate `audit-css-structure` vert. |
+| Résultat | **Avant** : 2/2 rouges. **Après** : 2/2. |
+| Limite restante | Seuls les deux textes nommés par l'audit sont mesurés ; un balayage AA de tout l'écran (comme la matrice de l'audit) n'est pas un gate CI. |
+| État | **corrigé dans le code** · déployé : à la fusion |
+| PR | `claude/chantier-4-consignations`. |
+

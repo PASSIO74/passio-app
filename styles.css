@@ -7447,13 +7447,13 @@ body.ctx-locked #appMain { overflow: hidden; }
   padding: 7px 12px;
   /* 34 px de haut : au-dessus du seuil tactile confortable sur mobile. */
   min-height: 34px;
-  background: rgba(255, 255, 255, 0.22);
+  background: rgba(0, 0, 0, 0.24); /* DEV-03 : le voile blanc à 22 % laissait « Compris » à 3,8–4,1:1 ; sombre à 24 % : 8,4:1 */
   color: #fff;
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
 }
-.passio-hint-ok:hover { background: rgba(255, 255, 255, 0.34); }
+.passio-hint-ok:hover { background: rgba(0, 0, 0, 0.34); }
 @keyframes passio-hint-in {
   from { opacity: 0; transform: translateY(-6px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -11154,7 +11154,7 @@ button, a, label, select, summary,
 }
 .passion-manager-porte-corps { flex: 1 1 auto; min-width: 0; }
 .passion-manager-porte-titre { font-size: 14.5px; font-weight: 800; color: var(--text); }
-.passion-manager-porte-mot { font-size: 12px; line-height: 1.4; color: var(--muted); margin-top: 2px; }
+.passion-manager-porte-mot { font-size: 12px; line-height: 1.4; color: #514b73; /* DEV-03 : --muted sur le lavis = 4,40:1 ; celui-ci 6,81:1 */ margin-top: 2px; }
 .passion-manager-porte:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* Au plafond : la porte change d'ASPECT, elle ne devient pas inerte.
@@ -11173,7 +11173,7 @@ button, a, label, select, summary,
   border-color: var(--border);
   color: var(--muted);
 }
-.passion-manager-porte.is-plein .passion-manager-porte-titre { color: var(--muted); }
+.passion-manager-porte.is-plein .passion-manager-porte-titre { color: #514b73; /* DEV-03 : idem, 6,81:1 sur le lavis */ }
 
 /* Le menu « … » d'une carte est une CIBLE TACTILE, pas une décoration : la
    règle historique le laissait à 34 px de haut, sous le seuil de 44 px que ce
