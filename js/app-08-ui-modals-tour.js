@@ -6318,14 +6318,41 @@ async function supaLeaveEvent(eventId) {
 
 // Pointage d'arrivée sur place (check-in).
 async function supaCheckInEvent(eventId) {
+  window._irlRefusMotif = null;
   try {
     // `expectRows` : pointer suppose une ligne d'inscription. Zéro ligne = la
     // personne s'est désinscrite ailleurs, ou la policy filtre — pas un succès.
+    // ⚠️ On ne force plus `rsvp = going` (IRL-12) : le pointage n'inscrit pas,
+    // et le trigger de capacité refuserait de toute façon au-delà des places.
     const res = await supa.from("event_attendees")
-      .update({ checked_in_at: new Date().toISOString(), rsvp: "going" })
+      .update({ checked_in_at: new Date().toISOString() })
       .eq("event_id", eventId).eq("user_id", MY_UID).select("event_id");
+    if (res && res.error) { const m = /pointage_(hors_fenetre|annulee)/.exec(String(res.error.message || "")); if (m) window._irlRefusMotif = m[1]; }
     return _writeVerdict(res, { expectRows: true, label: "check-in" }).ok;
   } catch(e) { return false; }
+}
+
+// Code d'accueil SECRET d'une activité (IRL-12) : lisible par l'auteur et les
+// co-organisateurs seulement (RLS de `event_checkin_secrets`). `null` = pas de
+// ligne (activité locale, ou pas organisateur) → l'appelant retombe sur le code
+// dérivé, pour les activités de démonstration.
+async function supaEventCheckinSecret(eventId) {
+  try {
+    const res = await supa.from("event_checkin_secrets").select("secret").eq("event_id", eventId).maybeSingle();
+    if (res && res.error) return null;
+    return (res && res.data && res.data.secret) ? String(res.data.secret) : null;
+  } catch (e) { return null; }
+}
+
+// Pointage par code, tranché par le SERVEUR (`pointer_par_code`) : verdict
+// texte stable — ok · deja_pointe · code_incorrect · hors_fenetre · annulee ·
+// non_inscrit · liste_attente · non_connecte · introuvable — ou "erreur".
+async function supaPointerParCode(eventId, code) {
+  try {
+    const res = await supa.rpc("pointer_par_code", { p_event_id: eventId, p_code: String(code || "") });
+    if (res && res.error) { console.warn("pointage par code :", res.error.message); return "erreur"; }
+    return (res && typeof res.data === "string") ? res.data : "erreur";
+  } catch (e) { return "erreur"; }
 }
 
 // Retour d'expérience : note 1-5 + mot libre sur MA ligne event_attendees

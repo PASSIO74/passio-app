@@ -3532,19 +3532,35 @@ function checkInEvent(id) {
   if (_hasCheckedIn(ev)) { toast("Tu as déjà pointé ton arrivée"); return; }
   if (!_canCheckIn(ev)) { toast("Le pointage ouvre 1 h avant le début", "warning"); return; }
   const loc = eventLatLng(ev);
-  const done = () => {
-    state.user.checkedInEvents = state.user.checkedInEvents || [];
-    if (!state.user.checkedInEvents.includes(id)) state.user.checkedInEvents.push(id);
-    if (myRsvp(id) !== "going") _setMyRsvpLocal(id, "going");
-    saveState();
-    if (window._supaReal && typeof supaCheckInEvent === "function") supaCheckInEvent(id);
+  // ⚠️ POINTER SUPPOSE UNE PREUVE (IRL-12, 2026-09-14) : la position vérifiée,
+  // ou le code d'accueil. Sans GPS, le client pointait quand même (« on fait
+  // confiance ») — un badge de fiabilité qui se gagne depuis le canapé ne vaut
+  // rien. Sans position, on propose le code.
+  const done = async () => {
+    _marquerPointeLocal(ev);
+    if (_pointageServeur(ev)) {
+      const ok = await supaCheckInEvent(id);
+      if (!ok) {
+        _annulerPointeLocal(ev);
+        const motif = window._irlRefusMotif || null;
+        toast(motif === "hors_fenetre" ? "Le pointage n'est ouvert que de 1 h avant le début jusqu'à la fin"
+          : motif === "annulee" ? "Cette activité a été annulée"
+          : "⚠️ Pointage non enregistré — inscris-toi d'abord, ou réessaie", "warning");
+        _refreshEventDetailIfOpen(id);
+        return;
+      }
+    }
     toast("Arrivée confirmée — bon moment !", "success");
     _refreshEventDetailIfOpen(id);
     // Pointer son arrivée est l'action qui débloque le plus de badges (sorties,
     // fiabilité, villes) : c'est le bon moment pour les annoncer.
     if (typeof _announceNewBadges === "function") _announceNewBadges();
   };
-  if (!loc || !navigator.geolocation) { done(); return; }
+  const sansPosition = () => {
+    toast("Position indisponible — saisis le code d'accueil affiché sur place", "warning");
+    openCheckinCodeEntry(id);
+  };
+  if (!loc || !navigator.geolocation) { sansPosition(); return; }
   toast("Vérification de ta position…");
   navigator.geolocation.getCurrentPosition(
     (pos) => {
@@ -3555,10 +3571,27 @@ function checkInEvent(id) {
       }
       done();
     },
-    // GPS refusé/indisponible : on ne bloque pas la personne, on fait confiance.
-    () => done(),
+    // GPS refusé/indisponible : pas de preuve de position → le code d'accueil.
+    () => sansPosition(),
     { timeout: 8000, enableHighAccuracy: true }
   );
+}
+
+// Le pointage passe-t-il par le SERVEUR ? Compte réel + activité réelle. Une
+// activité de démonstration (sans ligne en base) garde le chemin local et son
+// code dérivé — elle ne donne aucun badge crédible de toute façon.
+function _pointageServeur(ev) {
+  return !!(window._supaReal && ev && ev.fromSupabase
+    && (typeof _uidEstUnCompte === "function" && _uidEstUnCompte()));
+}
+function _marquerPointeLocal(ev) {
+  state.user.checkedInEvents = state.user.checkedInEvents || [];
+  if (state.user.checkedInEvents.indexOf(ev.id) === -1) state.user.checkedInEvents.push(ev.id);
+  saveState();
+}
+function _annulerPointeLocal(ev) {
+  state.user.checkedInEvents = (state.user.checkedInEvents || []).filter(function (x) { return x !== ev.id; });
+  saveState();
 }
 
 // Re-rend la fiche détail si c'est bien cet événement qui est ouvert.
@@ -7053,9 +7086,9 @@ function _eventCheckinCode(ev) {
 }
 
 // L'URL que porte le QR : elle ouvre l'app directement sur le pointage.
-function _eventCheckinUrl(ev) {
+function _eventCheckinUrl(ev, code) {
   var base = location.origin + location.pathname;
-  return base + "#irl-checkin-" + ev.id + "-" + _eventCheckinCode(ev);
+  return base + "#irl-checkin-" + ev.id + "-" + (code || _eventCheckinCode(ev));
 }
 
 // Vue ORGANISATEUR : le QR à afficher à l'accueil (écran de téléphone, projeté,
@@ -7064,11 +7097,22 @@ function openEventCheckinQr(eventId) {
   var ev = _findCanonicalEvent(eventId) || allEvents().find(function (e) { return e.id === eventId; });
   if (!ev) return;
   if (!_canManageEvent(ev)) { toast("Réservé à l'organisateur"); return; }
-
-  var code = _eventCheckinCode(ev);
+  // ⚠️ LE CODE VIENT DU SERVEUR (IRL-12) : un secret tiré au hasard, lisible
+  // par les organisateurs seuls. Le code DÉRIVÉ de l'id public ne sert plus
+  // qu'aux activités locales (aucune ligne en base).
+  if (window._supaReal && typeof _uidEstUnCompte === "function" && _uidEstUnCompte() && typeof supaEventCheckinSecret === "function") {
+    _rendreCheckinQr(ev, null);
+    supaEventCheckinSecret(ev.id).then(function (secret) { _rendreCheckinQr(ev, secret || _eventCheckinCode(ev)); });
+    return;
+  }
+  _rendreCheckinQr(ev, _eventCheckinCode(ev));
+}
+function _rendreCheckinQr(ev, code) {
+  var eventId = ev.id;
+  window._checkinCodeAffiche = code || null;
   var svg;
   try {
-    svg = qrSvg(_eventCheckinUrl(ev), 240);
+    svg = code ? qrSvg(_eventCheckinUrl(ev, code), 240) : '<div style="font-size:12px;color:var(--muted);padding:20px;">Chargement du code…</div>';
   } catch (e) {
     // Un QR illisible serait pire que pas de QR : on assume le repli code seul.
     svg = '<div style="font-size:12px;color:var(--muted);padding:20px;">QR indisponible — utilise le code ci-dessous.</div>';
@@ -7081,7 +7125,7 @@ function openEventCheckinQr(eventId) {
     + '<div class="checkin-qr-frame">' + svg + '</div>'
     + '<div style="text-align:center;margin-top:12px;">'
     + '<div style="font-size:11px;color:var(--muted);margin-bottom:4px;">ou code à saisir</div>'
-    + '<div class="checkin-code">' + escapeHtml(code) + '</div>'
+    + '<div class="checkin-code">' + escapeHtml(code || "······") + '</div>'
     + '</div>'
     + '<div style="font-size:12px;color:var(--text-dim);line-height:1.6;margin-top:14px;text-align:center;">'
     + 'Montre cet écran à l\'entrée : chacun le scanne avec son appareil photo et '
@@ -7093,7 +7137,7 @@ function openEventCheckinQr(eventId) {
 function _copyCheckinLink(eventId) {
   var ev = _findCanonicalEvent(eventId) || allEvents().find(function (e) { return e.id === eventId; });
   if (!ev) return;
-  var url = _eventCheckinUrl(ev);
+  var url = _eventCheckinUrl(ev, window._checkinCodeAffiche || null);
   if (window.tel && tel.shareLink) url = tel.shareLink(url, "checkin", ev.id, "clipboard");
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(url).then(function () { toast("Lien copié"); },
@@ -7126,9 +7170,37 @@ function submitCheckinCode(eventId) {
   if (!ev) return;
   var val = ((document.getElementById("checkinCodeInput") || {}).value || "")
     .trim().toUpperCase().replace(/\s/g, "");
+  if (_pointageServeur(ev)) { _pointerParCodeServeur(ev, val); return; }
   if (val !== _eventCheckinCode(ev)) { toast("Code incorrect — vérifie avec l'organisateur"); return; }
   closeModal();
   _checkInViaCode(ev);
+}
+
+// Le SERVEUR compare le code, tient la fenêtre et exige l'inscription (IRL-12).
+// Le verdict est dit tel quel ; « ok » marque le pointage local.
+async function _pointerParCodeServeur(ev, code) {
+  if (_hasCheckedIn(ev)) { toast("Tu as déjà pointé ton arrivée"); return "deja_pointe"; }
+  var verdict = await supaPointerParCode(ev.id, code);
+  if (verdict === "ok" || verdict === "deja_pointe") {
+    closeModal();
+    _marquerPointeLocal(ev);
+    toast(verdict === "ok" ? "Arrivée confirmée — bon moment !" : "Tu as déjà pointé ton arrivée", "success");
+    _refreshEventDetailIfOpen(ev.id);
+    if (verdict === "ok" && typeof _announceNewBadges === "function") _announceNewBadges();
+    return verdict;
+  }
+  var messages = {
+    code_incorrect: "Code incorrect — vérifie avec l'organisateur",
+    hors_fenetre: "Le pointage n'est ouvert que de 1 h avant le début jusqu'à la fin",
+    annulee: "Cette activité a été annulée",
+    non_inscrit: "Inscris-toi à l'activité avant de pointer",
+    liste_attente: "Tu es en liste d'attente : le pointage attend une place",
+    non_connecte: "Connecte-toi pour pointer",
+    introuvable: "Activité introuvable",
+  };
+  toast(messages[verdict] || "⚠️ Pointage non enregistré — réessaie", "warning");
+  try { if (typeof diagLog === "function") diagLog("pointage " + verdict + " " + ev.id); } catch (e) {}
+  return verdict;
 }
 
 // Pointage validé par code/QR : on court-circuite la vérification GPS (être
@@ -7137,11 +7209,9 @@ function submitCheckinCode(eventId) {
 function _checkInViaCode(ev) {
   if (_hasCheckedIn(ev)) { toast("Tu as déjà pointé ton arrivée"); return; }
   if (!_canCheckIn(ev)) { toast("Le pointage ouvre 1 h avant le début", "warning"); return; }
-  state.user.checkedInEvents = state.user.checkedInEvents || [];
-  if (state.user.checkedInEvents.indexOf(ev.id) === -1) state.user.checkedInEvents.push(ev.id);
-  if (myRsvp(ev.id) !== "going") _setMyRsvpLocal(ev.id, "going");
-  saveState();
-  if (window._supaReal && typeof supaCheckInEvent === "function") supaCheckInEvent(ev.id);
+  // Chemin LOCAL (activité de démonstration) : rien ne part au serveur, et le
+  // pointage n'inscrit pas (IRL-12).
+  _marquerPointeLocal(ev);
   toast("Arrivée confirmée — bon moment !", "success");
   _refreshEventDetailIfOpen(ev.id);
   if (typeof _announceNewBadges === "function") _announceNewBadges();
@@ -7191,6 +7261,7 @@ function _openIrlCheckinFromHash() {
     openEventDetails(id);
     // Un code faux ouvre quand même la fiche — la personne est devant le bon
     // événement, elle peut pointer autrement — mais ne pointe PAS.
+    if (_pointageServeur(ev)) { _pointerParCodeServeur(ev, code); return true; }
     if (code !== _eventCheckinCode(ev)) { toast("Lien de pointage invalide"); return true; }
     _checkInViaCode(ev);
     return true;
