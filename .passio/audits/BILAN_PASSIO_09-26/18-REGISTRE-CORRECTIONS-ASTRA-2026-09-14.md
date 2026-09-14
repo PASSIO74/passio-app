@@ -159,3 +159,34 @@ Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, 
 | Limite restante | Un message média supprimé « pour moi » seulement garde son objet (voulu : il existe encore pour l'autre). Les objets déjà orphelins (suppressions passées, comptes supprimés avant ce lot) ne sont pas rattrapés — un balayage `storage.objects` sans ligne `conv_messages` serait un autre lot. Un vocal (`voiceData`) n'est pas transférable (chemin existant : il redevient texte). Non mesuré : `storage.copy` sur le projet réel avec la policy `storage_chemin_autorise`. |
 | État | **corrigé dans le code** · testé sur staging : non · déployé : non · vérifié après déploiement : non |
 | PR | `claude/auth-05-suppression-verifiee-et-pj` (même PR). |
+
+
+---
+
+## ASTRA-09 / EXP-09 — Identité du responsable de traitement à la collecte — P1 (chantier 4) — **décidé « a », fait**
+
+| Champ | Valeur |
+|---|---|
+| État constaté | `js/legal-textes.js`, régime `particulier` : le §1 de la politique promettait l'identité du responsable « à toute personne qui exerce ses droits » — donc après la collecte ; l'écran d'inscription ne la donnait pas. L'art. 13 RGPD exige l'information **au moment de la collecte** ; l'anonymat de l'éditeur non professionnel (LCEN art. 1-1, II) vaut pour les mentions légales, pas pour cette obligation (contre-revue du 2026-09-13, CNIL). |
+| Décision (Benjamin, 2026-09-14) | **« a »** : se nommer dans la politique et à l'inscription ; les mentions légales gardent l'anonymat LCEN. Nom fourni par Benjamin : *Benjamin Ladame*, contact passioadmin@gmail.com. |
+| Correction | `PASSIO_EDITEUR.responsable = { nom, contact }` (source unique) ; `passioNomResponsable()` rend « [à compléter] » EN CLAIR si le nom manque (même règle que le régime `societe`) ; §1 réécrit : « Le responsable du traitement est Benjamin Ladame, personne physique éditant PASSIO à titre non professionnel, joignable à … Cette identité t'est donnée dès l'inscription » ; ligne `#authResponsable` sur l'écran d'inscription, remplie par `switchAuthTab` depuis `passioLigneResponsable()`, en mode inscription seulement. Version de la politique → `2026-09-14`. |
+| Test effectué | `tests/e2e/responsable-traitement.spec.js` (4 cas) : ① §1 nomme le responsable, ne promet plus « à l'exercice des droits », un nom vide s'afficherait « [à compléter] » ; ② ligne d'inscription présente en mode inscription seulement, texte identique à `legal-textes.js` ; ③ cohérence politique ↔ réglage « Compte privé » ; ④ la version suit le texte. `cgu-consentement` (assertion §1 réécrite), `ouverture-publique` ⑧ (version), `access-gate`, `dist-build`, `confirmation-email` : 81/81. |
+| Résultat | Avant : rouge sur ① ② ④. Après : 4/4 ; voisines 81/81. |
+| Limite restante | Qualification juridique globale (droit de la consommation, DSA) hors périmètre du code — à faire relire. Les comptes créés avant ce texte n'ont pas reçu l'information à leur inscription : la politique versionnée les couvre à la prochaine lecture, pas rétroactivement. |
+| État | **corrigé dans le code** · déployé : non · vérifié après déploiement : non |
+| PR | `claude/astra-09-responsable-et-profil-prive` — voir la PR ouverte depuis cette branche. |
+
+
+---
+
+## CONT-11 / SUP-01 — Couvertures d'un profil privé publiques ; ce que « profil privé » protège — P1 (chantier 3) — **DÉCIDÉ « 2 », écrit**
+
+| Champ | Valeur |
+|---|---|
+| État constaté | Policy `passio_content_read` du seau `content` : `SELECT` pour `public` sur tout le seau (mesurée en base). Avatars, couvertures, et les fichiers image/vidéo des publications — profil privé compris — sont lisibles par lien direct et listables sans compte. Ni la politique ni le réglage « Compte privé » ne le disaient (le réglage citait pseudo, avatar, passions ; pas la couverture, pas l'hébergement des fichiers). |
+| Décision (Benjamin, 2026-09-14) | **« 2 »** : le privé protège les publications et stories **dans l'application** ; l'hébergement des fichiers reste public. On l'écrit, on ne le cache pas. |
+| Correction | Politique §2 ter « Ce qu'un compte privé protège — et ce qu'il ne protège pas » ; réglage « Compte privé » : « ta photo de couverture » ajoutée, et « les fichiers image et vidéo restent ouvrables par lien direct ». Version de la politique → `2026-09-14`. Aucune migration. |
+| Test effectué | `tests/e2e/responsable-traitement.spec.js` ③ ④ ; suites `cgu-consentement`, `ouverture-publique` (⑧ réécrit : la version suit), `access-gate`, `dist-build`, `confirmation-email` — 81/81. |
+| Limite restante | La limite technique demeure : un lien direct ouvre un fichier de publication privée. La fermer (seau `content` privé + URL signées) est un lot distinct, à décider si le mot « privé » doit un jour couvrir l'hébergement. |
+| État | **corrigé dans le code** (textes) · déployé : non · vérifié après déploiement : non |
+| PR | `claude/astra-09-responsable-et-profil-prive` — voir la PR ouverte depuis cette branche. |
