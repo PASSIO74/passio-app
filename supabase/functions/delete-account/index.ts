@@ -8,6 +8,7 @@
 // (le JWT de l'utilisateur part dans le header Authorization).
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { purgerCompte } from "../_shared/purge-compte.js";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*", // la sécurité repose sur le JWT, pas sur l'origine
@@ -44,49 +45,24 @@ Deno.serve(async (req) => {
 
   // 3. Dernier nettoyage des données (le client l'a déjà fait via RLS,
   //    ceci rattrape ce qui aurait échoué côté client).
-  const jobs: Array<[string, string]> = [
-    ["posts", "author_id"],
-    ["post_likes", "user_id"],
-    ["post_comments", "author_id"],
-    ["stories", "author_id"],
-    ["events", "author_id"],
-    ["event_attendees", "user_id"],
-    ["conv_messages", "from_id"],
-    ["conv_members", "user_id"],
-    ["notifications", "user_id"],
-    ["story_views", "user_id"],
-    ["push_subscriptions", "user_id"],
-    ["client_errors", "uid"],
-    ["follows", "follower_id"],
-    ["follows", "following_id"],
-    ["profiles", "id"],
-  ];
-  for (const [table, col] of jobs) {
-    try {
-      await admin.from(table).delete().eq(col, uid);
-    } catch (_e) { /* best-effort : on ne bloque pas la suppression du compte */ }
+  // ⚠️ PURGE VÉRIFIÉE (AUTH-05 / SUP-10, 2026-09-14) — _shared/purge-compte.js.
+  // Avant : quinze delete() sans lire { error }, trois dossiers de médias sur
+  // huit, aucune pièce jointe de messagerie, dix-sept tables oubliées, puis le
+  // compte Auth supprimé et `ok: true` quoi qu'il arrive. Désormais : on purge,
+  // on RELIT, et le compte Auth ne part que si rien ne reste. Sinon 409 avec la
+  // liste des restes — le compte reste ouvert, la suppression est RELANÇABLE.
+  const purge = await purgerCompte(admin, uid);
+  if (!purge.ok) {
+    return json({ ok: false, error: "Suppression incomplète : le compte n'a pas été supprimé, réessaie.",
+                  echecs: purge.echecs, restes: purge.restes }, 409);
   }
 
-  // 3bis. Purge des médias Storage de l'utilisateur (best-effort) — bucket
-  // "content", fichiers stockés sous "<photos|videos|audios>/<uid>/...".
-  // Évite les fichiers orphelins (coût de stockage + RGPD).
-  for (const folder of ["photos", "videos", "audios"]) {
-    try {
-      const prefix = `${folder}/${uid}`;
-      const { data: files } = await admin.storage.from("content").list(prefix, { limit: 1000 });
-      if (files && files.length) {
-        await admin.storage.from("content").remove(files.map((f) => `${prefix}/${f.name}`));
-      }
-    } catch (_e) { /* best-effort */ }
-  }
-
-  // 4. Suppression du compte auth (e-mail compris) — l'objet de cette fonction.
   const { error: delErr } = await admin.auth.admin.deleteUser(uid);
   if (delErr) {
     return json({ error: "Échec de la suppression du compte : " + delErr.message }, 500);
   }
 
-  return json({ ok: true });
+  return json({ ok: true, piecesJointes: purge.piecesJointes });
 });
 
 function json(body: unknown, status = 200): Response {
