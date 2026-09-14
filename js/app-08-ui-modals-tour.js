@@ -1471,7 +1471,9 @@ async function mePublish() {
 
 // Envoie une bobine sur Supabase et informe honnêtement l'utilisateur. En cas
 // d'échec : la copie locale (base64) reste jouable dans CETTE session, et on
-// réessaie automatiquement (retour du réseau + toutes les 45 s, 8 essais max).
+// réessaie automatiquement (retour du réseau + toutes les 45 s, 8 essais max —
+// puis au prochain lancement si la vidéo est déjà sur Storage, cf. la file de
+// renvoi `_rejouerPublicationsEnAttente`).
 function _publishReelWithFeedback(post) {
   if (typeof supaPublishPostWithRetry !== "function") return;
   supaPublishPostWithRetry(post).then(function(ok) {
@@ -1487,27 +1489,106 @@ function _publishReelWithFeedback(post) {
     if (_msgP) { post._pendingSync = false; try { saveState(); } catch (e) {} toast(_msgP, "warning"); return; }
     post._pendingSync = true;
     toast("Vidéo pas encore envoyée — nouvel essai automatique. Garde l'app ouverte.", "warning");
-    _scheduleReelRetry();
-  }).catch(function() { post._pendingSync = true; _scheduleReelRetry(); });
+    _planifierReprisePublications();
+  }).catch(function() { post._pendingSync = true; _planifierReprisePublications(); });
 }
-function _scheduleReelRetry() {
+// ⚠️ FILE DE RENVOI DURABLE DES PUBLICATIONS (CONT-02 / ROB-01, 2026-09-14).
+//
+// Le défaut : `syncStatus` était posé à "syncing" à la création et n'était
+// JAMAIS mis à jour ; après le dernier essai de `supaPublishPostWithRetry`,
+// l'échec restait dans la console. La publication vivait sur cet appareil
+// seulement (« Post en local »), et rien ne la renvoyait : ni au retour du
+// réseau, ni au prochain lancement. Seules les bobines avaient un minuteur, en
+// mémoire, perdu au rechargement.
+//
+// Désormais le point d'écriture central pose le VERDICT sur la publication
+// elle-même — persistée par saveState() dans state.userPosts, donc durable :
+//   · "synced"  — écrite par le serveur ;
+//   · "refusee" — refus DÉFINITIF (passion absente/inconnue, clé étrangère) :
+//                 la renvoyer ne changerait rien ;
+//   · "offline" — échec transitoire : elle est REJOUÉE au retour du réseau,
+//                 toutes les 45 s (8 essais par session) et au prochain
+//                 lancement (`_rejouerPublicationsEnAttente`) ;
+//   · "perdue"  — média absent de cet appareil (le base64 n'est jamais
+//                 persisté, cf. `_leanState`) : on ne peut plus l'envoyer, on
+//                 le dit, on ne l'insère surtout pas sans média.
+// Seules MES publications (`authorId === MY_UID`, compte réel) sont rejouées :
+// un état hydraté d'un autre compte ne publie jamais sous ce compte.
+function _verdictPublication(post, ok) {
+  if (!post || typeof post !== "object") return;
+  if (ok) { post.syncStatus = "synced"; post._pendingSync = false; }
+  else if (window._passioEchecPublication) { post.syncStatus = "refusee"; post._pendingSync = false; }
+  else { post.syncStatus = "offline"; post._pendingSync = true; _planifierReprisePublications(); }
+  try { saveState(); } catch (e) {}
+}
+function _publicationRejouable(p) {
+  if (p.type === "photo") return typeof p.image === "string" && p.image.length > 0;
+  if (p.type === "video") return typeof p.video === "string" && p.video.length > 0;
+  if (p.type === "audio") return typeof p.audio === "string" && p.audio.length > 0;
+  return true;
+}
+function _publicationsEnAttente() {
+  if (!window._supaReal || typeof supaPublishPostWithRetry !== "function") return [];
+  if (!(typeof _uidEstUnCompte === "function" && _uidEstUnCompte())) return [];
+  return (state.userPosts || []).filter(function (p) {
+    return p && (p.syncStatus === "offline" || p._pendingSync === true) && p.authorId === MY_UID;
+  });
+}
+async function _rejouerPublicationsEnAttente() {
+  window._reelRetryTimer = null;
+  var pending = _publicationsEnAttente();
+  if (!pending.length) { window._reelRetryCount = 0; return 0; }
+  window._reelRetryCount = (window._reelRetryCount || 0) + 1;
+  var envoyees = 0;
+  for (var i = 0; i < pending.length; i++) {
+    var p = pending[i];
+    if (!_publicationRejouable(p)) {
+      p.syncStatus = "perdue"; p._pendingSync = false;
+      try { saveState(); } catch (e) {}
+      toast("⚠️ Une publication n'a pas pu être envoyée : son média n'est plus sur cet appareil — republie-la", "warning");
+      try { if (typeof diagLog === "function") diagLog("publication perdue " + p.id); } catch (e) {}
+      continue;
+    }
+    var ok = false;
+    try { ok = await supaPublishPostWithRetry(p); } catch (e) { ok = false; }
+    if (ok) {
+      envoyees++;
+      toast(p.isReel ? "Bobine publiée" : "Publication envoyée", "success");
+      try { renderFeed(); } catch (e) {}
+    }
+  }
+  return envoyees;
+}
+function _planifierReprisePublications() {
   window._reelRetryCount = (window._reelRetryCount || 0);
   if (window._reelRetryTimer || window._reelRetryCount >= 8) return;
-  var run = function() {
-    window._reelRetryTimer = null;
-    var pending = (state.userPosts || []).filter(function(p) { return p && p._pendingSync && p.isReel; });
-    if (!pending.length) { window._reelRetryCount = 0; return; }
-    window._reelRetryCount++;
-    pending.forEach(function(p) { _publishReelWithFeedback(p); });
-  };
-  window._reelRetryTimer = setTimeout(run, 45000);
+  window._reelRetryTimer = setTimeout(_rejouerPublicationsEnAttente, 45000);
   if (!window._reelRetryOnline) {
     window._reelRetryOnline = true;
     window.addEventListener("online", function() {
       clearTimeout(window._reelRetryTimer); window._reelRetryTimer = null;
-      run();
+      window._reelRetryCount = 0;
+      _rejouerPublicationsEnAttente();
     });
   }
+}
+// Au lancement : ce qui n'est pas parti la dernière fois repart maintenant. Une
+// publication encore "syncing" mais ANTÉRIEURE à ce chargement de page ne peut
+// plus être en cours (l'application a été fermée pendant l'envoi) : elle passe
+// en attente. Celles de cette session gardent leur envoi en cours — les rejouer
+// doublerait l'upload.
+function _requalifierEnvoisInterrompus() {
+  var debutPage = (window.performance && performance.timeOrigin) || Date.now();
+  var n = 0;
+  (state.userPosts || []).forEach(function (p) {
+    if (p && p.syncStatus === "syncing" && p.authorId === MY_UID && Number(p.createdAt) < debutPage) { p.syncStatus = "offline"; n++; }
+  });
+  if (n) { try { saveState(); } catch (e) {} }
+  return n;
+}
+if (!window._reprisePublicationsArmee) {
+  window._reprisePublicationsArmee = true;
+  try { setTimeout(function () { try { _requalifierEnvoisInterrompus(); } catch (e) {} _rejouerPublicationsEnAttente(); }, 6000); } catch (e) {}
 }
 
 // Viewer groupé (Instagram) : un groupe = un auteur ; storyItemIdx = index de la
@@ -3586,6 +3667,7 @@ async function supaPublishPostWithRetry(post, maxRetries = 2) {
   try { if (window.tel && tel.flowStart) _pubCid = tel.flowStart(post && post.is_reel ? "publish_reel" : "publish_post", { postId: post && post.id, passion: post && post.passion }); } catch (e) {}
   function _pubDone(ok) {
     try { if (_pubCid && window.tel) { tel.step(_pubCid, "saved", ok ? "ok" : "error"); tel.flowEnd(_pubCid, ok ? "ok" : "error"); _pubCid = null; } } catch (e) {}
+    try { _verdictPublication(post, ok); } catch (e) {}
     return ok;
   }
   // ── Politique `posts` : la passion est OBLIGATOIRE (ADR-010) ─────────────

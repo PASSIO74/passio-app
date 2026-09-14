@@ -8202,7 +8202,9 @@ function renderPostHTML(p) {
           ${p._source === "me" && p.syncStatus ? `
             ${p.syncStatus === "syncing" ? '<span style="margin-left:8px;font-size:10px;color:var(--muted);">Sync…</span>' : ""}
             ${p.syncStatus === "synced" ? '<span style="margin-left:8px;font-size:10px;color:#22c55e;">En ligne</span>' : ""}
-            ${p.syncStatus === "offline" ? '<span style="margin-left:8px;font-size:10px;color:#f59e0b;">Local</span>' : ""}
+            ${p.syncStatus === "offline" ? '<span style="margin-left:8px;font-size:10px;color:#f59e0b;">Local · renvoi automatique</span>' : ""}
+            ${p.syncStatus === "refusee" ? '<span style="margin-left:8px;font-size:10px;color:#ef4444;">Non publiée</span>' : ""}
+            ${p.syncStatus === "perdue" ? '<span style="margin-left:8px;font-size:10px;color:#ef4444;">Média perdu</span>' : ""}
           ` : ""}
         </div>
       </div>
