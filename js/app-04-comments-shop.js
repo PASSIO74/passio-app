@@ -2239,7 +2239,9 @@ function deduplicateConversations(convs) {
 function _estConvDemo(c) {
   if (!c) return false;
   if (typeof SEED_CONVERSATIONS !== "undefined" && SEED_CONVERSATIONS.some(function (s) { return s.id === c.id; })) return true;
-  return !c.isGroup && typeof c.userId === "string" && /^u_/.test(c.userId);
+  // Un interlocuteur du SOCLE de démonstration (`state.seed.users`) — jamais un
+  // simple préfixe `u_` : les bancs s'en servent pour des fixtures réelles.
+  try { return !c.isGroup && !!c.userId && (state.seed.users || []).some(function (u) { return u && u.id === c.userId; }); } catch (e) { return false; }
 }
 // Non-lus RÉELS : la démonstration ne fait pas clignoter une pastille.
 function _convNonLus() {
