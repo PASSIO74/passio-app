@@ -1241,7 +1241,7 @@ function openEditMainProfile() {
         <input type="checkbox" id="editIsPrivate" ${g.isPrivate ? "checked" : ""} onchange="marquerConfidentialiteTouchee()" style="width:20px;height:20px;flex-shrink:0;margin-top:1px;accent-color:var(--accent);"/>
         <span style="flex:1;">
           <span style="display:block;font-weight:700;font-size:13px;color:var(--text);">Compte privé</span>
-          <span style="display:block;font-size:11px;color:var(--muted);line-height:1.45;margin-top:3px;">Seuls les abonnés que tu as <b>acceptés</b> voient tes publications, photos et bobines : chaque demande d'abonnement t'est soumise dans tes notifications. Ton pseudo, ton avatar et tes passions restent visibles pour que l'on puisse te trouver.</span>
+          <span style="display:block;font-size:11px;color:var(--muted);line-height:1.45;margin-top:3px;">Seuls les abonnés que tu as <b>acceptés</b> voient tes publications, photos et bobines : chaque demande d'abonnement t'est soumise dans tes notifications. Ton pseudo, ton avatar, ta photo de couverture et tes passions restent visibles pour que l'on puisse te trouver. Les fichiers image et vidéo restent ouvrables par lien direct : le privé protège ce que l'application montre, pas l'hébergement du fichier.</span>
         </span>
       </label>
     </div>

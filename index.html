@@ -282,6 +282,10 @@
           <span style="display:block;font-size:12px;line-height:1.5;color:var(--muted);margin:0;">J'ai lu et j'accepte les <span id="authCguLink" role="button" tabindex="0" onclick="event.preventDefault();event.stopPropagation();openTermsOfService()" style="color:var(--accent);font-weight:700;cursor:pointer;text-decoration:underline;">conditions générales</span> et la <span id="authPrivacyLink" role="button" tabindex="0" onclick="event.preventDefault();event.stopPropagation();openPrivacyPolicy()" style="color:var(--accent);font-weight:700;cursor:pointer;text-decoration:underline;">politique de confidentialité</span>. J'ai 18 ans ou plus et j'ai compris que PASSIO est une beta fournie sans garantie.</span>
         </label>
 
+        <!-- Art. 13 RGPD : l'identité du responsable du traitement, AU MOMENT de la collecte
+             (ASTRA-09). Rempli par switchAuthTab depuis js/legal-textes.js, en mode inscription seulement. -->
+        <p id="authResponsable" style="display:none;font-size:11px;line-height:1.45;color:var(--muted);margin:-6px 0 10px;"></p>
+
         <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px;">
           <div id="authCaptcha" style="display:none;margin:0 0 2px;"></div>
           <button class="btn primary block" id="authSubmitBtn" onclick="onbDoAuth()" style="padding:14px;font-size:15px;font-weight:800;">Se connecter</button>

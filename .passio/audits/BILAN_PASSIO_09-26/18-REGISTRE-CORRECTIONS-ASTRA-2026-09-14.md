@@ -68,7 +68,7 @@
 | Test effectué | `tests/e2e/appels-sonnerie-privee.spec.js` (5 cas) : ① aucun abonnement à `ring:<pair>`, invitation en `httpSend` avec `from = MY_UID` ; ② écran entrant = profil de `from` ; ③ `from` non-uuid ignoré ; ④ « Répondre » retient le profil ; ⑤ à la source (plus de `ring.subscribe` dans `startCall`, migration restrictive, banc branché). `ouverture-publique.spec.js` réécrit sur 3 cas qui EXIGEAIENT l'identité déclarative (charge vs profil, rafale avec un `from` uuid, assertion source). |
 | Résultat | **Avant** (main pristine) : 5 échecs / 5. **Après** : 5/5 en dev, 5/5 sur l'artefact minifié ; `ouverture-publique` 35/35 ; gates locales vertes. Banc SQL : **non exécuté localement** (aucun PostgreSQL sur ce poste) — la CI de la PR est la mesure. |
 | Limite restante | **La migration n'est PAS appliquée** : elle attend le coller de Benjamin (canal ③), **après** le déploiement de ce client — collée avant, elle couperait les appels sortants des clients encore en cache. `call:<id>` reste lisible par tout compte (uuid aléatoire connu des deux parties) ; `from` dans la charge utile n'est pas lié au jeton — lier l'un et l'autre demande une table d'appels (autre lot). Le push `notify-call` compose encore son texte avec `fromName` déclaratif : c'est MSG-04, point suivant. Non mesuré : appel réel entre deux comptes en production, comportement de `httpSend` sur le projet réel (REST broadcast sur canal privé). |
-| État | **corrigé dans le code** (client) · **fusionné #377** le 2026-09-14 après la contre-revue de Benjamin (gate « Gouvernance critique » verte sur `1e843571`), commit `1dac720d` ; déploiement production : run 34823009969, verdict à relever · **migration APPLIQUÉE** par Benjamin (SQL Editor) et **mesurée** en base (canal ①) : `passio_rt_recevoir` restreint `ring:` à `auth.uid()`, `realtime:db` et `conv_specific:` intacts, `passio_rt_emettre` inchangée · ⚠️ collée AVANT la fin du déploiement du client : fenêtre transitoire où un client en cache (abonnement à `ring:<pair>`) ne peut pas passer d'appel sortant, jusqu'à son rechargement sur le nouvel `app.js` · vérifié après déploiement : à relever quand le run est vert (artefact servi) ; appel réel entre deux comptes : non mesuré |
+| État | **corrigé dans le code** (client) · **fusionné #377** le 2026-09-14 après la contre-revue de Benjamin (gate « Gouvernance critique » verte sur `1e843571`), commit `1dac720d` · **déployé** : run 34823009969 vert · **vérifié après déploiement** : `release.json` servi = `1dac720d`, `app.js?v=0b740daf5a` (1 281 049 octets) porte `httpSend` et plus aucun abonnement `ring(send)` · **migration APPLIQUÉE** par Benjamin (SQL Editor) et **mesurée** en base : `passio_rt_recevoir` restreint `ring:` à `auth.uid()`, `realtime:db` / `conv_specific:` intacts, `passio_rt_emettre` inchangée · ⚠️ collée ~20 min AVANT que le client soit servi : fenêtre transitoire où un client en cache ne pouvait pas passer d'appel sortant, refermée au rechargement · appel réel entre deux comptes : non mesuré |
 | PR | [#377](https://github.com/PASSIO74/passio-app/pull/377) — fusionnée (squash) le 2026-09-14. |
 
 ---
@@ -157,7 +157,7 @@ Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, 
 | Test effectué | `tests/e2e/pieces-jointes-cycle.spec.js` (4 cas) : ① remove sous le chemin exact ; ② copie vers le dossier cible, message avec l'URL de la copie ; ③ copie refusée → rien inséré, dit ; ④ texte → aucune copie. Voisines : `transfert-message`, `conv-suppression` (9/9). |
 | Résultat | **Avant** (main pristine) : 3 échecs / 4 (①②③). **Après** : 4/4 en dev, 4/4 sur l'artefact minifié. |
 | Limite restante | Un message média supprimé « pour moi » seulement garde son objet (voulu : il existe encore pour l'autre). Les objets déjà orphelins (suppressions passées, comptes supprimés avant ce lot) ne sont pas rattrapés — un balayage `storage.objects` sans ligne `conv_messages` serait un autre lot. Un vocal (`voiceData`) n'est pas transférable (chemin existant : il redevient texte). Non mesuré : `storage.copy` sur le projet réel avec la policy `storage_chemin_autorise`. |
-| État | **corrigé dans le code** · testé sur staging : non · **fusionné #379** (`9ddbd646`), déploiement production à relever · vérifié après déploiement : non |
+| État | **corrigé dans le code** · **fusionné #379** (`9ddbd646`), déployé avec le run suivant de `main` · vérifié après déploiement : non (artefact non relu à part) |
 | PR | [#379](https://github.com/PASSIO74/passio-app/pull/379) — fusionnée (squash) le 2026-09-14. |
 
 
@@ -172,8 +172,8 @@ Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, 
 | Test effectué | `tests/e2e/consentement-google.spec.js` (5 cas) : ① connexion → rien ; inscription cochée → mémorisé ; ② retour sans accord, compte neuf sans trace → modale, rien écrit ; ③ compte ancien / compte déjà tracé → pas sollicité ; ④ accepter sans case → rien ; avec case → trace écrite, rappel levé, modale fermée ; ⑤ UXO-07 (ci-dessous). Voisines : `cgu-consentement`, `admission-18-plus` (39/39). |
 | Résultat | **Avant** (main pristine) : 4 échecs / 5 (①②④⑤). **Après** : 5/5. |
 | Limite restante | Le parcours Google **réel** (départ, retour, création de compte par Google) n'est pas rejoué : banc à faux `supa.auth`. Les comptes créés par Google avant ce lot depuis l'écran de connexion portent un `cgu_accepted_at` fabriqué — non re-mesuré, non corrigé (une trace ne se retire pas sans décision). Un refus déconnecte mais ne supprime pas le compte que Google vient de créer. |
-| État | **corrigé dans le code** · testé sur staging : non · déployé : non · vérifié après déploiement : non |
-| PR | `claude/auth-03-consentement-google` — voir la PR ouverte depuis cette branche. |
+| État | **corrigé dans le code** · **fusionné #380** (fusion automatique après CI verte, commit `9bd45125`) · déploiement production : à relever · vérifié après déploiement : non |
+| PR | [#380](https://github.com/PASSIO74/passio-app/pull/380) — fusionnée (squash) le 2026-09-14. |
 
 ---
 
@@ -186,15 +186,36 @@ Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, 
 | Test effectué | `consentement-google.spec.js` ⑤ : le HTML (hors commentaires) ne contient plus « contrôle d'âge IA » et dit que l'année est déclarative. |
 | Résultat | Avant : rouge. Après : vert. |
 | Limite restante | Visibilité de cette étape dans le parcours nominal (« Confirm email » peut la sauter) : non re-mesurée. |
-| État | **corrigé dans le code** · déployé : non · vérifié après déploiement : non |
-| PR | `claude/auth-03-consentement-google` (même PR). |
+| État | **corrigé dans le code** · **fusionné #380** (`9bd45125`) · déployé : à relever · vérifié après déploiement : non |
+| PR | [#380](https://github.com/PASSIO74/passio-app/pull/380) — fusionnée (squash) le 2026-09-14. |
+
 
 ---
 
-## ASTRA-09 / EXP-09 — Identité du responsable de traitement à la collecte — P1 (chantier 4) — **DÉCISION REQUISE, non codé**
+## ASTRA-09 / EXP-09 — Identité du responsable de traitement à la collecte — P1 (chantier 4) — **décidé « a », fait**
 
 | Champ | Valeur |
 |---|---|
-| État constaté | `js/legal-textes.js`, régime `particulier` : l'identité du responsable de traitement n'est promise qu'à l'exercice des droits ; l'art. 13 RGPD exige l'information **au moment de la collecte** — et l'anonymat de l'éditeur non professionnel (LCEN art. 1-1 II) ne dispense pas de cette obligation (contre-revue du 2026-09-13, CNIL). |
-| Correction | **Aucune ici** : le texte à écrire est l'identité de Benjamin (nom, moyen de contact), une décision qui lui appartient — je ne la publie pas à sa place. Deux voies : (a) nommer le responsable dans la politique de confidentialité (§ « Qui est responsable ») et sur l'écran d'inscription, en gardant l'anonymat LCEN des mentions légales si la qualification le permet ; (b) passer `PASSIO_EDITEUR.regime` à `societe` si une structure existe. Dans les deux cas : `PASSIO_CONFIDENTIALITE_VERSION` suit le texte. |
-| État | **non engagé — attend la décision de Benjamin** |
+| État constaté | `js/legal-textes.js`, régime `particulier` : le §1 de la politique promettait l'identité du responsable « à toute personne qui exerce ses droits » — donc après la collecte ; l'écran d'inscription ne la donnait pas. L'art. 13 RGPD exige l'information **au moment de la collecte** ; l'anonymat de l'éditeur non professionnel (LCEN art. 1-1, II) vaut pour les mentions légales, pas pour cette obligation (contre-revue du 2026-09-13, CNIL). |
+| Décision (Benjamin, 2026-09-14) | **« a »** : se nommer dans la politique et à l'inscription ; les mentions légales gardent l'anonymat LCEN. Nom fourni par Benjamin : *Benjamin Ladame*, contact passioadmin@gmail.com. |
+| Correction | `PASSIO_EDITEUR.responsable = { nom, contact }` (source unique) ; `passioNomResponsable()` rend « [à compléter] » EN CLAIR si le nom manque (même règle que le régime `societe`) ; §1 réécrit : « Le responsable du traitement est Benjamin Ladame, personne physique éditant PASSIO à titre non professionnel, joignable à … Cette identité t'est donnée dès l'inscription » ; ligne `#authResponsable` sur l'écran d'inscription, remplie par `switchAuthTab` depuis `passioLigneResponsable()`, en mode inscription seulement. Version de la politique → `2026-09-14`. |
+| Test effectué | `tests/e2e/responsable-traitement.spec.js` (4 cas) : ① §1 nomme le responsable, ne promet plus « à l'exercice des droits », un nom vide s'afficherait « [à compléter] » ; ② ligne d'inscription présente en mode inscription seulement, texte identique à `legal-textes.js` ; ③ cohérence politique ↔ réglage « Compte privé » ; ④ la version suit le texte. `cgu-consentement` (assertion §1 réécrite), `ouverture-publique` ⑧ (version), `access-gate`, `dist-build`, `confirmation-email` : 81/81. |
+| Résultat | Avant : rouge sur ① ② ④. Après : 4/4 ; voisines 81/81. |
+| Limite restante | Qualification juridique globale (droit de la consommation, DSA) hors périmètre du code — à faire relire. Les comptes créés avant ce texte n'ont pas reçu l'information à leur inscription : la politique versionnée les couvre à la prochaine lecture, pas rétroactivement. |
+| État | **corrigé dans le code** · déployé : non · vérifié après déploiement : non |
+| PR | `claude/astra-09-responsable-et-profil-prive` — voir la PR ouverte depuis cette branche. |
+
+
+---
+
+## CONT-11 / SUP-01 — Couvertures d'un profil privé publiques ; ce que « profil privé » protège — P1 (chantier 3) — **DÉCIDÉ « 2 », écrit**
+
+| Champ | Valeur |
+|---|---|
+| État constaté | Policy `passio_content_read` du seau `content` : `SELECT` pour `public` sur tout le seau (mesurée en base). Avatars, couvertures, et les fichiers image/vidéo des publications — profil privé compris — sont lisibles par lien direct et listables sans compte. Ni la politique ni le réglage « Compte privé » ne le disaient (le réglage citait pseudo, avatar, passions ; pas la couverture, pas l'hébergement des fichiers). |
+| Décision (Benjamin, 2026-09-14) | **« 2 »** : le privé protège les publications et stories **dans l'application** ; l'hébergement des fichiers reste public. On l'écrit, on ne le cache pas. |
+| Correction | Politique §2 ter « Ce qu'un compte privé protège — et ce qu'il ne protège pas » ; réglage « Compte privé » : « ta photo de couverture » ajoutée, et « les fichiers image et vidéo restent ouvrables par lien direct ». Version de la politique → `2026-09-14`. Aucune migration. |
+| Test effectué | `tests/e2e/responsable-traitement.spec.js` ③ ④ ; suites `cgu-consentement`, `ouverture-publique` (⑧ réécrit : la version suit), `access-gate`, `dist-build`, `confirmation-email` — 81/81. |
+| Limite restante | La limite technique demeure : un lien direct ouvre un fichier de publication privée. La fermer (seau `content` privé + URL signées) est un lot distinct, à décider si le mot « privé » doit un jour couvrir l'hébergement. |
+| État | **corrigé dans le code** (textes) · déployé : non · vérifié après déploiement : non |
+| PR | `claude/astra-09-responsable-et-profil-prive` — voir la PR ouverte depuis cette branche. |

@@ -402,7 +402,8 @@ test("⑫ la politique de confidentialité dit ce qui est vraiment collecté", a
   expect(txt).toMatch(/6\.1\.b|exécution du contrat/i);
   // Un responsable de traitement joignable.
   expect(txt).toContain("passioadmin@gmail.com");
-  expect(txt).toMatch(/responsable de ce traitement/i);
+  // Depuis le 2026-09-14 (ASTRA-09) le responsable est NOMMÉ à la collecte, pas promis « à toute personne qui exerce ses droits ».
+  expect(txt).toMatch(/Le responsable du traitement est /);
   // Les sous-traitants et les transferts hors UE sont nommés.
   expect(txt).toMatch(/Supabase/);
   expect(txt).toMatch(/Netlify/);

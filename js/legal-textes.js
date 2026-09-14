@@ -59,6 +59,17 @@ const PASSIO_EDITEUR = {
   //   champ vide s'affiche « [à compléter] » EN CLAIR, à l'écran.
   regime: "particulier",
 
+  // ── RESPONSABLE DU TRAITEMENT (RGPD art. 13) — donné À LA COLLECTE ──────
+  // L'anonymat de l'éditeur non professionnel (LCEN art. 1-1, II) vaut pour
+  // les MENTIONS LÉGALES du site ; il ne dispense pas d'informer les personnes
+  // de l'IDENTITÉ du responsable du traitement au moment où leurs données sont
+  // recueillies (contre-revue Astra ASTRA-09, 2026-09-13 ; CNIL). Décision de
+  // Benjamin le 2026-09-14 : voie (a) — se nommer ici et à l'inscription.
+  // ⚠️ Un nom VIDE s'affiche « [à compléter] » EN CLAIR (même règle que le
+  // régime "societe") : un trou visible plutôt qu'une promesse de le dire
+  // « plus tard ». Verrou : tests/e2e/responsable-traitement.spec.js.
+  responsable: { nom: "Benjamin Ladame", contact: "passioadmin@gmail.com" },
+
   // Exigés par le régime "societe" UNIQUEMENT. Les laisser vides tant qu'il
   // n'y a pas de structure : sous "particulier" ils ne sont jamais lus.
   raisonSociale: "",
@@ -96,7 +107,7 @@ const PASSIO_CGU_VERSION = "2026-09-10";
 // et personne ne peut savoir ce qui lui a été communiqué. Celle de juin 2026
 // décrivait encore les « carnets » (retirés par ADR-011) et ne déclarait AUCUNE
 // des mesures d'usage que l'application enregistre depuis.
-const PASSIO_CONFIDENTIALITE_VERSION = "2026-09-12";
+const PASSIO_CONFIDENTIALITE_VERSION = "2026-09-14";
 
 // Même table que `escapeHtml` (app-02). Dupliquée ici parce que ce fichier
 // s'exécute AVANT l'application ; ne jamais y ajouter un cas sans l'ajouter
@@ -198,15 +209,28 @@ function passioTexteCGU() {
     p("14. Droit applicable.", "Droit français. En cas de litige, une solution amiable sera recherchée en priorité à l’adresse " + _legalEscapeHtml(PASSIO_EDITEUR.email) + ". À défaut, les tribunaux français sont compétents.");
 }
 
+// Nom du responsable du traitement, ou « [à compléter] » EN CLAIR s'il manque.
+function passioNomResponsable() {
+  var r = (typeof PASSIO_EDITEUR !== "undefined" && PASSIO_EDITEUR.responsable) || {};
+  var n = String(r.nom || "").trim();
+  return n || "[à compléter]";
+}
+// La ligne d'information à la COLLECTE (écran d'inscription), art. 13 RGPD.
+function passioLigneResponsable() {
+  var r = (typeof PASSIO_EDITEUR !== "undefined" && PASSIO_EDITEUR.responsable) || {};
+  return "Responsable du traitement de tes données : " + passioNomResponsable() + " — " + (r.contact || PASSIO_EDITEUR.email) + ".";
+}
+
 // ---------------------------------------------------------------------------
 // Politique de confidentialité — le CORPS du texte.
 // ---------------------------------------------------------------------------
 function passioTextePolitique() {
   return '\
       <p style="margin:0 0 10px;"><strong style="color:var(--text);">Dernière mise à jour : ' + _legalEscapeHtml(PASSIO_CONFIDENTIALITE_VERSION) + ' — PASSIO</strong></p>\
-      <p style="margin:0 0 10px;"><strong style="color:var(--text);">1. Qui traite tes données.</strong> PASSIO est édité par une <strong style="color:var(--text);">personne physique, à titre non professionnel</strong>, qui est le responsable de ce traitement. Elle est joignable à <strong style="color:var(--text);">' + _legalEscapeHtml(PASSIO_EDITEUR.email) + '</strong>, et communique son identité complète à toute personne qui exerce ses droits, ainsi qu\'à la CNIL. Il n\'y a pas de délégué à la protection des données : le service n\'y est pas tenu.</p>\
+      <p style="margin:0 0 10px;"><strong style="color:var(--text);">1. Qui traite tes données.</strong> Le responsable du traitement est <strong style="color:var(--text);">' + _legalEscapeHtml(passioNomResponsable()) + '</strong>, personne physique éditant PASSIO à titre non professionnel, joignable à <strong style="color:var(--text);">' + _legalEscapeHtml(PASSIO_EDITEUR.responsable.contact || PASSIO_EDITEUR.email) + '</strong>. Cette identité t\'est donnée dès l\'inscription (art. 13 RGPD) et à la CNIL sur demande. Il n\'y a pas de délégué à la protection des données : le service n\'y est pas tenu.</p>\
       <p style="margin:0 0 10px;"><strong style="color:var(--text);">2. Ce que tu nous donnes.</strong> À l\'inscription : <strong style="color:var(--text);">adresse e-mail</strong> et <strong style="color:var(--text);">nom d\'utilisateur</strong>. En utilisant PASSIO : tes passions, tes publications (textes, photos, vidéos, sons), tes messages privés et leurs pièces jointes, commentaires, j\'aime, abonnements, participation aux rencontres, l\'<strong style="color:var(--text);">année de naissance</strong> que tu déclares, les signalements que tu envoies, et tes préférences (thème, filtres) gardées sur ton appareil.</p>\
       <p style="margin:0 0 10px;"><strong style="color:var(--text);">2 bis. Ta position, seulement quand tu la donnes.</strong> Deux gestes, deux usages, jamais d\'autre : ① « Partager ma position » dans une conversation envoie ta <strong style="color:var(--text);">position exacte</strong> aux membres de cette conversation — elle reste dans l\'historique des messages, comme le reste ; ② l\'écran Rencontrer peut demander à ton navigateur où tu es, pour trier les rencontres par distance et afficher le nom de ta ville — <strong style="color:var(--text);">PASSIO ne l\'enregistre pas</strong>, mais tes coordonnées sont envoyées au service de géocodage cité au point 6 pour retrouver ce nom de commune. PASSIO ne suit jamais tes déplacements et ne demande la position ni au démarrage, ni en arrière-plan.</p>\
+      <p style="margin:0 0 10px;"><strong style="color:var(--text);">2 ter. Ce qu\'un compte privé protège — et ce qu\'il ne protège pas.</strong> Un compte privé réserve tes <strong style="color:var(--text);">publications et stories</strong> aux abonnés que tu as acceptés, dans l\'application. Ton pseudo, ton avatar, ta photo de couverture et tes passions restent <strong style="color:var(--text);">visibles de tous</strong>, pour qu\'on puisse te trouver. Les fichiers image et vidéo de tes publications sont hébergés sur un espace public : quelqu\'un qui en connaît le lien direct peut les ouvrir, compte privé ou non — c\'est une limite connue, écrite ici pour ne pas être découverte autrement.</p>\
       <p style="margin:0 0 10px;"><strong style="color:var(--text);">3. Ce que l\'application mesure toute seule.</strong> Pour voir si elle fonctionne, PASSIO enregistre des <strong style="color:var(--text);">événements techniques d\'usage</strong> : écran ouvert, action effectuée, durée, adresse technique appelée et code de réponse, message et trace d\'une erreur, ainsi qu\'un <strong style="color:var(--text);">identifiant d\'appareil</strong> et un identifiant de session, la plateforme, le navigateur, la taille d\'écran et le type de connexion. Le contenu de ce que tu écris n\'y entre jamais : un filtre écarte les champs sensibles avant l\'envoi. <strong style="color:var(--text);">Tu peux couper cette mesure</strong> à tout moment : Paramètres → Confidentialité → « Mesure d\'usage ».</p>\
       <p style="margin:0 0 10px;"><strong style="color:var(--text);">4. Pourquoi nous avons le droit.</strong> Fournir le service que tu demandes (exécution du contrat, art. 6.1.b) pour ton compte et tes contenus ; notre <strong style="color:var(--text);">intérêt légitime</strong> (art. 6.1.f) à faire fonctionner, sécuriser et corriger l\'application pour la mesure d\'usage, que tu peux couper ; le respect d\'obligations légales pour la modération et les signalements.</p>\
       <p style="margin:0 0 10px;"><strong style="color:var(--text);">5. Qui les héberge, et où.</strong> Base de données et fichiers : <strong style="color:var(--text);">Supabase</strong> (Supabase Pte. Ltd., Singapour). Site : <strong style="color:var(--text);">Netlify, Inc.</strong> (États-Unis). E-mails de confirmation : <strong style="color:var(--text);">Brevo</strong> (France). Ces transferts hors Union européenne se font sur la base des clauses contractuelles types de la Commission européenne. Une partie des données reste sur ton appareil (localStorage, IndexedDB) pour le fonctionnement hors-ligne. En base, l\'accès est restreint par des règles par propriétaire (RLS).</p>\

@@ -4217,6 +4217,13 @@ function switchAuthTab(mode) {
   // remettrait le texte SOUS la case, sur toute la largeur.
   const consentWrap = document.getElementById("authConsentWrap");
   if (consentWrap) consentWrap.style.display = mode === "signup" ? "flex" : "none";
+  // Art. 13 RGPD : le responsable du traitement, nommé là où les données sont
+  // recueillies (ASTRA-09). Texte unique, tenu par js/legal-textes.js.
+  const resp = document.getElementById("authResponsable");
+  if (resp) {
+    resp.textContent = (typeof passioLigneResponsable === "function") ? passioLigneResponsable() : "";
+    resp.style.display = mode === "signup" && resp.textContent ? "" : "none";
+  }
   document.getElementById("authSubmitBtn").textContent = mode === "signin" ? "Se connecter" : "Créer mon compte";
   // "Mot de passe oublié ?" pertinent uniquement en connexion
   const forgot = document.getElementById("authForgotLink");
