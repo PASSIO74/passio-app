@@ -20,6 +20,7 @@
     "couverture:risque": "node scripts/couverture-risque.js",
     "sauvegarde": "node scripts/sauvegarde-donnees.js",
     "restaurer": "node scripts/restaurer-donnees.js",
+    "rollback:netlify": "node scripts/rollback-netlify.mjs",
     "purge:e2e": "node scripts/purge-e2e-accounts.js",
     "purge:storage": "node scripts/purge-e2e-storage.js",
     "revue": "node scripts/dossier-revue.js",

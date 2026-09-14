@@ -637,3 +637,17 @@
 | Limite restante | DEV-02 (≈95 gabarits `<div onclick>` sans rôle : cartes du fil, événements) : non traité ici — un passage mécanique sur 95 gabarits mérite son propre lot avec vérification au clavier. DEV-03 (contrastes 4,4:1 sur lavis) : non touché (jetons partagés par deux palettes). Les avatars des listes (`list-row`, `ai-card`) restent sans nom : lot DEV-02. |
 | État | **corrigé dans le code** · déployé : non |
 | PR | `claude/chantier-10-a11y`. |
+
+---
+
+## EXP-03 / TCI-03 (rollback) — Rollback jamais exercé, délai réel ≥ 45–80 min, aucun rollback Netlify documenté ni kill switch distant — P1 (chantier 6, lot 2)
+
+| Champ | Valeur |
+|---|---|
+| État constaté | `rollback.yml` ouvre une PR de revert (cycle CI complet) et n'a jamais été exercé ; aucun chemin qui remette la version d'avant sans reconstruire ; rien de documenté. |
+| Correction | `scripts/rollback-netlify.mjs` (`npm run rollback:netlify`) : liste les déploiements de production avec le commit que chacun SERT (lu dans le `release.json` de l'adresse propre du déploiement — `commit_ref` est vide, les déploiements partent de la CLI), `--restaurer precedent|<id>` appelle `POST /deploys/<id>/restore`, puis **relit `release.json` sur le site** jusqu'au commit attendu et rend le délai. Refuse ce qu'il ne sait pas vérifier, refuse la CI, refuse de « restaurer » le déploiement déjà en ligne. Documenté dans `docs/RECUPERATION.md` avec ce qu'un rollback Netlify NE défait PAS (migrations, Edge Functions, service worker installé) et l'ordre à respecter pour un correctif client + base. |
+| Test effectué | **Exercé en production le 14/09 à 20 h 50**, aller et retour : 6eca16aa → 53a4584b (le déploiement d'avant #399) servi conforme après **1,8 s** ; retour → 6eca16aa servi conforme après **1,1 s**. Vérifié par `release.json` sur passio-app.netlify.app avant, pendant, après. |
+| Résultat | Un retour arrière applicatif se fait en **moins de 2 s**, contre un cycle CI de 30–45 min ; il est écrit, outillé, éprouvé. |
+| Limite restante | Pas de kill switch serveur par fonctionnalité (les drapeaux `passio_*="0"` sont locaux à l'appareil) — écrit, non réglé. Le rollback de `rollback.yml` (chemin propre) n'a toujours pas été exercé : il crée une PR de revert réelle, ce qui n'a de sens que sur un vrai incident. Le jeton Netlify du poste est celui de la CLI ; pour un autre poste, `NETLIFY_AUTH_TOKEN`. |
+| État | **corrigé dans le code** · **testé en production** (exercice aller-retour, aucun utilisateur affecté au-delà de 2 s) |
+| PR | `claude/chantier-6-rollback`. |
