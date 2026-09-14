@@ -11298,7 +11298,7 @@ button, a, label, select, summary,
     .topbar-bell::after, .story-viewer-close::after, .modal-close::after {
       content: ""; position: absolute; inset: -6px; min-width: 44px; min-height: 44px;
     }
-    .story-viewer-close, .modal-close { position: relative; }
+    .story-viewer-close { position: relative; } /* .modal-close est déjà absolu : le forcer en relative le déplaçait (rouge CI #400) */
     .comment-action { padding: 14px 6px; margin: -14px -6px; }
 
 
