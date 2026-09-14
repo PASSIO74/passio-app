@@ -9,7 +9,7 @@
 //
 // ⚠️ ÉCRIT EN BASE RÉELLE (prod). Opt-in strict côté spec (PASSIO_QA_CAMPAIGN=1).
 // ═══════════════════════════════════════════════════════════════════════════
-const { GATE_TOKEN, GATE_KEY } = require("./gate-helper");
+const { GATE_TOKEN, GATE_KEY, poserGateSansPremiereVisite } = require("./gate-helper");
 const { viserCibleSupabase } = require("./cible-supabase");
 const { creerCompteE2E } = require("./compte-e2e");
 
@@ -21,7 +21,12 @@ const RT_MODE = process.env.PASSIO_E2E_RT || "";
 // une étape échoue, pour que la campagne la classe en échec de setup.
 async function signupUser(page, label, passionIndex = 0) {
   const step = (m) => console.log(`[signup ${label}] ${m}`);
-  await page.addInitScript(([k, t]) => sessionStorage.setItem(k, t), [GATE_KEY, GATE_TOKEN]);
+  // TCI-01 (2026-09-15) : ce parcours passe par la LANDING HISTORIQUE et son
+  // onboarding (« Créer un compte », année, prénom, passions). Depuis la
+  // première visite (2026-09-01), un appareil vierge entre directement dans le
+  // fil — la suite attendait `#landing.active` pour rien. La convention du dépôt
+  // pour ce cas : couper le parcours de première visite AVANT le boot.
+  await poserGateSansPremiereVisite(page);
   await viserCibleSupabase(page);   // SUP-04 : sans cible, production
   if (RT_MODE === "v2" || RT_MODE === "v3") {
     await page.addInitScript((mode) => { try { localStorage.setItem("passio_realtime_" + mode, "1"); } catch (e) {} }, RT_MODE);
@@ -40,9 +45,20 @@ async function signupUser(page, label, passionIndex = 0) {
   await page.locator("#userName").fill(label);
   await page.getByRole("button", { name: "Continuer" }).click();
   // Passion variée par utilisateur (repli sur la 1re tuile si l'index déborde).
-  const tiles = page.locator("#passionGrid .passion-tile[data-passion]");
-  const count = await tiles.count();
-  await tiles.nth(count ? passionIndex % count : 0).click();
+  // ⚠️ SOUS LE RÉFÉRENTIEL PLAT (flat_passions_v1, défaut depuis le 01/09), la
+  // grille d'onboarding est le SÉLECTEUR (`.psel-item`, montés à la frappe ou en
+  // suggestions), plus les tuiles `.passion-tile` : on choisit par lui, et on
+  // retombe sur les tuiles historiques si le lot est coupé.
+  // Le sélecteur se monte APRÈS le référentiel (568 Ko chargés à la demande) :
+  // compter avant qu'il soit peint rendait 0 et retombait sur des tuiles absentes.
+  await page.waitForSelector("#passionGrid .psel-item[data-psel-id], #passionGrid .passion-tile[data-passion]", { timeout: 20000 });
+  const items = page.locator("#passionGrid .psel-item[data-psel-id]");
+  if (await items.count()) { await items.nth(passionIndex % (await items.count())).click(); }
+  else {
+    const tiles = page.locator("#passionGrid .passion-tile[data-passion]");
+    const count = await tiles.count();
+    await tiles.nth(count ? passionIndex % count : 0).click();
+  }
   await page.getByRole("button", { name: "Entrer sur PASSIO" }).click();
   await page.waitForTimeout(1200);
   await page.reload();

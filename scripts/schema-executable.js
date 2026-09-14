@@ -132,9 +132,9 @@ const ETAPES = [
     sql: `select relname from pg_class where relnamespace='public'::regnamespace and relkind='r' and relrowsecurity order by relname`,
     rendu: (r) => r.map((x) => `alter table public.${ident(x.relname)} enable row level security;`) },
 
-  { titre: "Policies RLS (public et storage) — la frontière de confiance",
+  { titre: "Policies RLS (public, storage et realtime) — la frontière de confiance",
     sql: `select schemaname, tablename, policyname, cmd, permissive, array_to_string(roles, ',') as roles, qual, with_check
-            from pg_policies where schemaname in ('public','storage') order by schemaname, tablename, policyname`,
+            from pg_policies where schemaname in ('public','storage','realtime') order by schemaname, tablename, policyname`,
     rendu: (r) => r.map((x) =>
       `drop policy if exists ${ident(x.policyname)} on ${x.schemaname}.${ident(x.tablename)};\n`
       + `create policy ${ident(x.policyname)} on ${x.schemaname}.${ident(x.tablename)}\n`

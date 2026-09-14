@@ -21,7 +21,8 @@
 // ═══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
 const { GATE_TOKEN, GATE_KEY } = require("./gate-helper");
-const { viserCibleSupabase } = require("./cible-supabase");   // SUP-04 : PASSIO_SUPABASE_URL/ANON → staging
+const { viserCibleSupabase } = require("./cible-supabase");
+const { creerCompteE2E, MDP_E2E } = require("./compte-e2e");   // SUP-04 : PASSIO_SUPABASE_URL/ANON → staging
 
 const PNG_MINIMAL = "iVBORw0KGgo=";   // en-tête PNG, suffisant comme témoin
 
@@ -34,24 +35,27 @@ test.describe("Suppression de compte", () => {
     await viserCibleSupabase(page);   // sans cible : rien (production)
     await page.goto("/index.html");
     await page.waitForFunction(() => !!window.PASSIO_SUPABASE, null, { timeout: 30000 });
+    // TCI-01 (2026-09-15) : le compte est créé PRÉ-CONFIRMÉ par compte-e2e.js —
+    // « Confirm email » est actif, `/auth/v1/signup` ne rend plus de jeton, et
+    // cette suite était morte depuis le 30/08. Le jeton vient de la session que
+    // `creerCompteE2E` ouvre dans la page ; le reste (état, média, Edge
+    // Function, relecture, reconnexion) reste le VRAI chemin réseau de l'app.
+    await page.waitForFunction(() => typeof supa !== "undefined" && !!supa, null, { timeout: 30000 });
+    const compte = await creerCompteE2E(page, "suppr");
+    // La page vient d'ouvrir une session : `supaInit` crée profil, état et
+    // abonnements EN DIFFÉRÉ. Supprimer pendant qu'elle écrit encore laisse un
+    // « reste » que la purge relit (409 relançable, mesuré une fois sur deux
+    // contre le staging) — on la laisse finir avant de demander l'effacement.
+    await page.waitForTimeout(4000);
 
     // Tout se joue dans la page : c'est le MÊME chemin réseau que l'application,
     // avec la clé anon publique — pas un raccourci serveur qui prouverait autre chose.
-    const r = await page.evaluate(async (png) => {
+    const r = await page.evaluate(async ([png, compte, mdp]) => {
       const cfg = window.PASSIO_SUPABASE;
       const H = (tok, extra) => Object.assign({ apikey: cfg.anon, Authorization: "Bearer " + tok }, extra || {});
-
-      const insc = await fetch(cfg.url + "/auth/v1/signup", {
-        method: "POST", headers: { apikey: cfg.anon, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: `suppr-${Date.now()}@passio-e2e.test`,
-          password: "MotDePasse!123", data: { phone: "+33600000000" },
-        }),
-      });
-      const d = await insc.json();
-      const tok = d.access_token || (d.session && d.session.access_token);
-      const uid = (d.user && d.user.id) || d.id;
-      if (!tok) return { erreur: "inscription sans jeton", statut: insc.status };
+      const tok = compte.token, uid = compte.uid;
+      const d = { user: { email: compte.email } };
+      if (!tok) return { erreur: "compte e2e sans jeton" };
 
       // Une donnée et un média, comme en usage réel.
       const etat = await fetch(cfg.url + "/rest/v1/user_state?on_conflict=user_id", {
@@ -69,20 +73,21 @@ test.describe("Suppression de compte", () => {
       const ef = await fetch(cfg.url + "/functions/v1/delete-account", {
         method: "POST", headers: H(tok, { "Content-Type": "application/json" }), body: "{}",
       });
+      const efCorps = await ef.text().catch(() => "");
       await new Promise((res) => setTimeout(res, 2500));
 
       // Ce qui survit, vu SANS aucun privilège : c'est ce que verrait un tiers.
       const relire = await fetch(cfg.url + "/storage/v1/object/public/content/" + chemin);
       const seConnecter = await fetch(cfg.url + "/auth/v1/token?grant_type=password", {
         method: "POST", headers: { apikey: cfg.anon, "Content-Type": "application/json" },
-        body: JSON.stringify({ email: d.user && d.user.email, password: "MotDePasse!123" }),
+        body: JSON.stringify({ email: d.user && d.user.email, password: mdp }),
       });
 
       return {
         uid, etatEcrit: etat.status, mediaDepose: media.status,
-        edge: ef.status, mediaApres: relire.status, reconnexion: seConnecter.status,
+        edge: ef.status, efCorps: efCorps.slice(0, 600), mediaApres: relire.status, reconnexion: seConnecter.status,
       };
-    }, PNG_MINIMAL);
+    }, [PNG_MINIMAL, compte, MDP_E2E]);
 
     console.log("[suppression]", JSON.stringify(r));
     expect(r.erreur, r.erreur || "").toBeUndefined();
@@ -92,7 +97,7 @@ test.describe("Suppression de compte", () => {
     expect(r.etatEcrit, "l'état doit d'abord être écrit").toBeLessThan(300);
     expect(r.mediaDepose, "le média doit d'abord être déposé").toBeLessThan(300);
 
-    expect(r.edge, "l'Edge Function delete-account doit répondre").toBe(200);
+    expect(r.edge, "l'Edge Function delete-account doit répondre — " + (r.efCorps || "")).toBe(200);
     expect(r.mediaApres, "le média ne doit plus être servi").toBeGreaterThanOrEqual(400);
     expect(r.reconnexion, "le compte supprimé ne doit plus permettre de se connecter").toBeGreaterThanOrEqual(400);
   });
