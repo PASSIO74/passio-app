@@ -5947,7 +5947,26 @@ async function deleteEventConfirm(id) {
   const ev = _findCanonicalEvent(id);
   if (!ev) return;
   if (!confirm("Supprimer définitivement « " + (ev.title || "") + " » ? Cette action est irréversible.")) return;
-  if (window._supaReal && typeof supaDeleteEvent === "function") await supaDeleteEvent(id);
+  // ⚠️ LE VERDICT DU SERVEUR EST LU, ET LES INSCRITS SONT PRÉVENUS (IRL-06,
+  // 2026-09-14). « Événement supprimé » était affiché quel que soit le retour de
+  // `supaDeleteEvent` (qui rendait déjà false sur refus ou zéro ligne) : un
+  // refus laissait l'activité en base, retirée de cet écran seulement, et les
+  // personnes inscrites n'apprenaient rien — elles se déplaçaient pour rien.
+  // Refus → rien ne bouge, dit. Succès → chaque inscrit·e, « peut-être » et
+  // liste d'attente reçoit une notification AVANT que les listes disparaissent.
+  // (Pas de garde `fromSupabase` : l'activité de l'organisateur vit dans
+  // `state.userEvents` sans ce drapeau — c'est le compte réel qui décide.)
+  const serveur = window._supaReal && typeof supaDeleteEvent === "function"
+    && (typeof _uidEstUnCompte === "function" && _uidEstUnCompte());
+  if (serveur) {
+    const supprime = await supaDeleteEvent(id);
+    if (!supprime) {
+      toast("⚠️ Suppression non enregistrée — réessaie", "warning");
+      try { if (typeof diagLog === "function") diagLog("suppression événement KO " + id); } catch (e) {}
+      return;
+    }
+    _prevenirSuppressionActivite(ev);
+  }
   state.userEvents = (state.userEvents || []).filter(e => e.id !== id);
   state.seed.events = (state.seed.events || []).filter(e => e.id !== id);
   state.user.joinedEvents = (state.user.joinedEvents || []).filter(x => x !== id);
@@ -5956,7 +5975,22 @@ async function deleteEventConfirm(id) {
   closeEventDetail();
   window._irlMapSig = null; // la carte doit perdre son marqueur
   renderIRL();
-  toast("Événement supprimé");
+  toast(serveur ? "Événement supprimé" : "Événement supprimé sur cet appareil");
+}
+
+// Prévient tout le monde qu'une activité vient d'être supprimée : inscrits,
+// « peut-être » et liste d'attente, chacun une fois, jamais soi-même (IRL-06).
+function _prevenirSuppressionActivite(ev) {
+  if (!ev || typeof supaInsertNotif !== "function") return 0;
+  const meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+  const vus = {};
+  let n = 0;
+  [].concat(ev.attendees || [], ev.maybes || [], ev.waitlist || []).forEach(function (uidTo) {
+    if (!uidTo || uidTo === meId || uidTo === "me" || vus[uidTo]) return;
+    vus[uidTo] = true;
+    try { supaInsertNotif(uidTo, "event_cancelled", ev.id, "« " + String(ev.title || "").slice(0, 60) + " » a été supprimé par l'organisateur"); n++; } catch (e) {}
+  });
+  return n;
 }
 
 // Message groupé aux inscrits (annonce de dernière minute, changement de lieu…).

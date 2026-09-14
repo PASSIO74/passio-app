@@ -365,6 +365,15 @@ jobs:
       - name: Banc debit et identite serveur (PostgreSQL jetable)
         run: bash tests/sql/migration-debit-identite.test.sh
 
+      # Suppression d'une activite (IRL-06) : aucune cle etrangere entre les
+      # tables filles et events, policies DELETE « ses lignes seulement » — les
+      # inscriptions des autres restaient orphelines. Le banc mesure le defaut
+      # AVANT, applique (orphelins retires, 3 FK en cascade), rejoue, verifie
+      # que la suppression du parent emporte les filles sous l'organisateur
+      # seul, et qu'un participant retire toujours sa seule inscription.
+      - name: Banc suppression d'activite en cascade (PostgreSQL jetable)
+        run: bash tests/sql/migration-evenements-cascade.test.sh
+
       # Alerte de moderation : la fonction pure qui decide d'ouvrir une issue.
       - name: Verrous unitaires de l'alerte de moderation
         run: node --test tests/unit/moderation-alerte.test.mjs
