@@ -6392,7 +6392,9 @@ async function supaCreateEventConversation(ev) {
       passion_id: optionalCanonicalPassion(ev.passion), created_by: MY_UID,
     });
     if (r.error && String(r.error.code) !== "23505") return null;
-    await supa.from("conv_members").insert({ conv_id: convId, user_id: MY_UID });
+    // Le créateur doit être membre, sinon la discussion existe sans lui (IRL-10).
+    const m = await supa.from("conv_members").insert({ conv_id: convId, user_id: MY_UID });
+    if (m && m.error && String(m.error.code) !== "23505") { console.warn("discussion créée, créateur non membre —", m.error.message); return null; }
     return convId;
   } catch(e) { return null; }
 }

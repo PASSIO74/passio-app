@@ -3420,22 +3420,33 @@ async function _promoteNextWaitlisted(ev) {
 // ===== Discussion de groupe des participants =====
 // S'inscrire fait entrer dans une conversation de groupe dédiée : c'est ce qui
 // transforme une liste d'inscrits en vrai groupe (Meetup, Facebook Events).
+// ⚠️ LE REFUS D'ENTRÉE EST LU ET RENDU (IRL-10, 2026-09-14). Le verdict de
+// `supaJoinEventConversation` était ignoré : un refus (policy — notamment une
+// discussion créée par un co-organisateur, que `can_join_event_conversation`
+// n'admettait pas avant la migration du même jour) laissait le miroir local
+// se créer quand même — une conversation à l'écran où rien ne peut s'écrire.
+// Rend true si la personne est bien membre ; false sinon, sans miroir local.
 async function _joinEventConversation(ev) {
-  if (!ev || !window._supaReal) return;
+  if (!ev || !window._supaReal) return false;
   try {
     if (!ev.convId) {
       // Seul un gestionnaire crée la conversation (évite N créations parallèles).
-      if (!_canManageEvent(ev)) return;
+      if (!_canManageEvent(ev)) return false;
       const convId = await supaCreateEventConversation(ev);
-      if (!convId) return;
+      if (!convId) return false;
       ev.convId = convId;
       saveState();
       await supaUpdateEvent(ev);
     } else {
-      await supaJoinEventConversation(ev.convId);
+      const membre = await supaJoinEventConversation(ev.convId);
+      if (!membre) {
+        try { if (typeof diagLog === "function") diagLog("discussion refusée " + ev.convId); } catch (e) {}
+        return false;
+      }
     }
     _ensureLocalEventConv(ev);
-  } catch (e) {}
+    return true;
+  } catch (e) { return false; }
 }
 
 async function _leaveEventConversation(ev) {
@@ -3478,7 +3489,15 @@ async function openEventChat(id) {
     await _joinEventConversation(ev);
   }
   if (!ev.convId) { toast("Discussion indisponible hors connexion"); return; }
-  _ensureLocalEventConv(ev);
+  // Déjà membre localement : on ouvre. Sinon on DEMANDE l'entrée au serveur et
+  // on ne montre la discussion que s'il l'accorde (IRL-10).
+  const dejaLocal = typeof getConversations === "function" && getConversations().some(c => c.id === ev.convId);
+  if (!dejaLocal && window._supaReal) {
+    const entre = await _joinEventConversation(ev);
+    if (!entre) { toast("⚠️ Impossible de rejoindre la discussion pour le moment — réessaie", "warning"); return; }
+  } else {
+    _ensureLocalEventConv(ev);
+  }
   closeEventDetail();
   goTo("messages");
   setTimeout(() => { try { openConversation(ev.convId); } catch (e) {} }, 150);
