@@ -3067,7 +3067,45 @@ function openPrivacySettings() {
       </select></div>\
     <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid var(--border);"><span style="font-size:13px;">Mesure d\'usage<br><span style="font-size:11.5px;color:var(--muted);">Écrans ouverts, erreurs, identifiant d\'appareil. Jamais le contenu de ce que tu écris.</span></span><input type="checkbox" id="privTelemetry" ' + (_mesureUsageActive() ? 'checked' : '') + ' style="width:20px;height:20px;flex:0 0 auto;accent-color:var(--accent);"></label>\
     <button class="btn primary block" onclick="savePrivacySettings()" style="margin-top:14px;">Sauvegarder</button>\
+    <button type="button" class="btn ghost block" id="privExporter" onclick="exporterMesDonnees()" style="margin-top:8px;">📦 Exporter mes données (JSON)</button>\
   ');
+}
+
+// ⚠️ PORTABILITÉ EN LIBRE-SERVICE (EXP-08, RGPD art. 20, 2026-09-14). La
+// politique promettait « accès, portabilité » par e-mail et rien n'existait.
+// L'Edge Function `export-account` (JWT de la personne, service_role côté
+// serveur) rend un JSON de tout ce qui lui appartient — `_shared/export-compte.js`
+// dit ce qui entre et ce qui reste dehors (les données d'autrui). Le fichier
+// est proposé au téléchargement ; rien n'est écrit. Sans compte réel, rien à
+// exporter que l'état local — on le dit.
+async function exporterMesDonnees() {
+  var btn = document.getElementById("privExporter");
+  if (!(typeof _uidEstUnCompte === "function" && _uidEstUnCompte()) || !window._supaReal || typeof supa === "undefined" || !supa) {
+    toast("Sans compte, tes données ne vivent que sur cet appareil : rien à exporter du serveur.");
+    return false;
+  }
+  if (btn) { btn.disabled = true; btn.textContent = "Préparation de l'export…"; }
+  var verdict = null;
+  try { verdict = await supa.functions.invoke("export-account"); } catch (e) { verdict = { error: e }; }
+  if (btn) { btn.disabled = false; btn.textContent = "📦 Exporter mes données (JSON)"; }
+  if (!verdict || verdict.error || !verdict.data || verdict.data.format !== "passio-export/1") {
+    var msg = (verdict && verdict.error && verdict.error.message) || "";
+    toast(/429|Trop/.test(msg) ? "Export déjà demandé : réessaie dans une minute." : "⚠️ Export impossible pour le moment — réessaie, ou écris à " + PASSIO_EDITEUR.email, "warning");
+    try { if (typeof diagLog === "function") diagLog("export_compte KO " + msg); } catch (e) {}
+    return false;
+  }
+  _telechargerJson(verdict.data, "passio-export-" + String(MY_UID).slice(0, 8) + ".json");
+  var n = Object.keys(verdict.data.tables || {}).length;
+  toast("Export prêt : " + n + " table" + (n > 1 ? "s" : "") + ", " + (verdict.data.medias || []).length + " média(s) listé(s)" + ((verdict.data.erreurs || []).length ? " — " + verdict.data.erreurs.length + " table(s) illisible(s), écris-nous" : ""), "success");
+  return true;
+}
+function _telechargerJson(objet, nom) {
+  try {
+    var blob = new Blob([JSON.stringify(objet, null, 2)], { type: "application/json" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a"); a.href = url; a.download = nom; document.body.appendChild(a); a.click();
+    setTimeout(function () { try { a.remove(); URL.revokeObjectURL(url); } catch (e) {} }, 2000);
+  } catch (e) { toast("Téléchargement impossible sur ce navigateur"); }
 }
 
 // La mesure d'usage est-elle active ? Elle l'est PAR DÉFAUT ; seule la valeur
