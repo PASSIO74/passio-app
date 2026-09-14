@@ -534,3 +534,18 @@ Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, 
 | Limite restante | Pas de champ ville inline dans le toast (la sortie est nommée, pas offerte à la même place) ; non mesuré sur un appareil réel avec permission refusée. |
 | État | **corrigé dans le code** · déployé : non · vérifié après déploiement : non |
 | PR | `claude/chantier-8-irl-bornes-annulation-geo`. |
+
+
+---
+
+## IRL-05 — La capacité n'est pas garantie par la base (inscriptions concurrentes, statut, valeurs `rsvp`) — P1 (chantier 8)
+
+| Champ | Valeur |
+|---|---|
+| État constaté (base, mesuré le 2026-09-14) | `event_attendees` : aucun CHECK sur `rsvp`, aucune borne de capacité, aucune garde de statut — les policies INSERT/UPDATE ne vérifient que `user_id = auth.uid()` (+ admission 18+). La capacité n'était tenue que par le client qui s'inscrit (contournable en REST, jamais atomique : le banc de chaos de l'audit a fait passer 2 POST + 2 PATCH concurrents). `events.price` / `max_attendees` sans borne. Données : 0 prix négatif, 0 capacité < 1, 0 rsvp hors liste, 0 activité déjà au-delà de sa capacité — rien à réparer. |
+| Correction | **Base** : `migrations/migration_capacite_activite_2026-09-14.sql` — CHECK `rsvp ∈ {going, maybe, declined, waitlist}`, CHECK `price >= 0`, CHECK `max_attendees ≥ 1 ou NULL` (IRL-11 côté base) ; trigger BEFORE INSERT/UPDATE `trg_event_attendees_capacite` : le passage à `going` est refusé sur activité annulée / passée / complète, sous verrou `FOR UPDATE` de la ligne `events` (deux inscriptions concurrentes sérialisées) ; messages stables `activite_complete` / `activite_annulee` / `activite_passee` ; `maybe`, `waitlist`, `declined`, « rester going » passent ; sans session (administration) la règle ne s'applique pas. **Client** : `supaSetEventRsvp` lit le motif (`_motifRefusRsvp`), `setEventRsvp` le dit (« Activité complète — tu peux rejoindre la liste d'attente », « a été annulée », « déjà passée ») en annulant l'optimiste (ROB-02). |
+| Test effectué | Banc SQL `tests/sql/migration-capacite-activite.test.sh` (défaut mesuré avant : 3 going sur 2 places, going sur annulée, `rsvp='bidon'`, prix -5 acceptés ; application, verdict 6/6, rejeu ; refus complet/annulée/passée/bidon/prix/capacité ; passe : waitlist, maybe, pointage, declined, promotion, administration ; **deux sessions concurrentes** sur la dernière place → la seconde refusée, jamais 3). `tests/e2e/capacite-serveur.spec.js` (3 cas : complet nommé + sortie ; annulée / passée ; sans motif → générique, succès → inscrit). Voisines : faux-succes-irl-story, irl-funnel (23/23). |
+| Résultat | **Avant** (main pristine) : ① ② rouges (le refus était dit « non enregistrée » pour tout), ③ vert. **Après** : 3/3 ; artefact minifié : 3/3. Banc SQL : **mesuré en CI** (pas de PostgreSQL local) — voir la PR. |
+| Limite restante | La liste d'attente reste gérée par le client (promotion par celui qui se retire, IRL-04) — le serveur garantit seulement qu'elle ne dépasse pas la capacité. `setEventRsvp` ne bascule pas automatiquement en `waitlist` sur `activite_complete` : la personne choisit. |
+| État | **corrigé dans le code** · déployé : non · migration : **appliquée et mesurée** (banc CI vert d'abord, puis `npm run migration:appliquer` — 3 CHECK, trigger `trg_event_attendees_capacite`, `search_path` figé, vérifiés en base) · vérifié après déploiement : non |
+| PR | `claude/chantier-8-capacite-serveur` — porte `migrations/*` : **contre-revue** requise sur le SHA. |

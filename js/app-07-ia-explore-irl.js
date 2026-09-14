@@ -3382,7 +3382,16 @@ async function setEventRsvp(id, rsvp) {
   irlFunnelTrackJoin(id, rsvp, rsvpOk);
   // ⚠️ Un refus serveur ANNULE l'optimiste et s'arrête là : ni annonce, ni
   // notification à l'organisateur, ni conversation rejointe (ROB-02).
-  if (window._supaReal && rsvpOk === false) { annuler("⚠️ Inscription non enregistrée — réessaie"); return; }
+  if (window._supaReal && rsvpOk === false) {
+    // Le serveur tient désormais la capacité, le statut et la date (IRL-05) :
+    // quand il nomme sa raison, on la dit — et on nomme la sortie.
+    const motif = window._irlRefusMotif || null;
+    annuler(motif === "complete" ? "Activité complète — tu peux rejoindre la liste d'attente"
+      : motif === "annulee" ? "Cette activité a été annulée"
+      : motif === "passee" ? "Cette activité est déjà passée"
+      : "⚠️ Inscription non enregistrée — réessaie");
+    return;
+  }
 
   if (rsvp === "going" && prev !== "going") {
     pushNotification(`Tu rejoins <b>${escapeHtml(ev.title)}</b>`, "🤝");
