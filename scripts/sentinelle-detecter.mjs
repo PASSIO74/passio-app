@@ -204,6 +204,20 @@ export function libelleApi(methode, chemin, code) {
  * Classe des lignes `telemetry_events` (type=api, status=error) en causes.
  * FONCTION PURE, comme `classer()` — éprouvée sans base et sans réseau.
  */
+// ⚠️ LA FAMILLE API N'ENQUÊTE QUE SUR CE QU'UN COMPTE A RENCONTRÉ (ASTRA-06,
+// 2026-09-14). `telemetry_events` accepte une écriture ANONYME et `user_id` y
+// est écrit par le client : cinq lignes fictives sans compte suffisaient à
+// désigner la cible d'une enquête dont la PR est fusionnée automatiquement.
+// Une ligne sans `user_id` en forme d'uuid est ÉCARTÉE. Résidu, écrit : un
+// client hostile peut recopier des uuid publics (`profiles` est lisible) — la
+// fermeture complète est une colonne `auth_uid` posée par le serveur sur
+// `telemetry_events`, comme `client_errors` l'a depuis le 2026-09-10
+// (migration, lot « périmètre critique »).
+const RE_COMPTE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export function estSansCompte(ligne) {
+  return !RE_COMPTE.test(String((ligne && ligne.user_id) || ""));
+}
+
 export function classerApi(lignes = [], options = {}) {
   const min = options.min ?? MIN_OCCURRENCES_API;
   const groupes = new Map();
@@ -211,6 +225,7 @@ export function classerApi(lignes = [], options = {}) {
 
   for (const l of lignes) {
     if (estDuBruitApi(l)) { ecartees++; continue; }
+    if (estSansCompte(l)) { ecartees++; continue; }
     const code = Number(l.http_status);
     // `endpoint` porte l'hôte ; le CHEMIN suffit à nommer la cause, et il ne
     // change pas d'un projet Supabase à l'autre.
@@ -419,6 +434,23 @@ export function dejaCorrige(cible, fermees) {
   });
 }
 
+/**
+ * La cible à ouvrir : le PREMIER candidat, dans l'ordre du classement, dont
+ * l'enquête n'a pas déjà été fermée après sa dernière occurrence.
+ *
+ * ⚠️ AVANT (ASTRA-08) le verdict ne portait que `candidates[0]`, et le workflow
+ * ne dédupliquait que lui : si ce premier était déjà corrigé, le run s'arrêtait
+ * là — « aucune enquête ouverte » — et le SUIVANT, encore actif, restait
+ * invisible tant que le premier continuait de dominer le classement. La
+ * dédup doit AVANCER dans la liste, pas s'arrêter au premier.
+ */
+export function choisirCible(candidats, fermees) {
+  for (const c of candidats || []) {
+    if (!dejaCorrige(c, fermees)) return c;
+  }
+  return null;
+}
+
 /** Lit les erreurs récentes via PostgREST. Isolé pour rester testable. */
 
 /**
@@ -570,6 +602,9 @@ async function principal() {
     // effet non instrumenté, et rien ici ne sait les distinguer.
     boutonsSuspects,
     cible: candidates[0] || null,
+    // ASTRA-08 : les suivants, pour que la dédup du workflow puisse AVANCER
+    // (`choisirCible`) au lieu de s'arrêter sur un premier déjà corrigé.
+    candidats: candidates.slice(0, 5),
   };
   console.log(JSON.stringify(verdict, null, 2));
 }
