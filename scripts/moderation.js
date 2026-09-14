@@ -48,6 +48,7 @@
 const fs = require("fs");
 const path = require("path");
 const { configAdmin } = require("../tests/e2e/compte-e2e.js");
+const { lireToutesLesPages } = require("./lib/pagination-rest.js");
 
 const argv = process.argv.slice(2);
 const commande = argv[0] && !argv[0].startsWith("--") ? argv[0] : "lister";
@@ -141,17 +142,41 @@ function grouper(lignes) {
 // Avec le statut quand la colonne existe ; sans (400) on prend tout, comme avant,
 // et `lister` le dit. Une seule sonde par processus.
 let _sansStatut = false;
+let _listeIncomplete = false;
+// ⚠️ LE FILTRE EST SERVEUR ET LA LECTURE EST PAGINÉE (ASTRA-03, 2026-09-14).
+// L'ancienne lecture prenait les 500 signalements les plus récents PUIS
+// filtrait les ouverts en mémoire : dès 501 lignes en base, les ouverts les
+// plus anciens — ceux qui attendent depuis le plus longtemps — sortaient de la
+// fenêtre et disparaissaient de la liste, sans un mot. Désormais `status=eq.open`
+// part dans la requête (sauf `--tous`), et on lit page après page tant qu'une
+// page est pleine ; une lecture bornée se DIT (`_listeIncomplete`).
+const COLS_AVEC_STATUT = "id,reporter_id,target_type,target_id,reason,created_at,status,handled_at,handled_note";
+const COLS_SANS_STATUT = "id,reporter_id,target_type,target_id,reason,created_at";
+function urlReports(cfg, { avecStatut, ouvertsSeulement, offset, taille }) {
+  return `${cfg.url}/rest/v1/reports?select=${avecStatut ? COLS_AVEC_STATUT : COLS_SANS_STATUT}`
+    + (avecStatut && ouvertsSeulement ? "&status=eq.open" : "")
+    + `&order=created_at.desc&offset=${offset}&limit=${taille}`;
+}
 async function charger(cfg) {
+  const entetes = { headers: { apikey: cfg.cle, Authorization: `Bearer ${cfg.cle}` } };
   if (!_sansStatut) {
-    const r = await fetch(`${cfg.url}/rest/v1/reports?select=id,reporter_id,target_type,target_id,reason,created_at,status,handled_at,handled_note&order=created_at.desc&limit=500`,
-      { headers: { apikey: cfg.cle, Authorization: `Bearer ${cfg.cle}` } });
-    if (r.ok) return await r.json();
-    if (r.status !== 400) sortir(`❌ ${r.status} sur reports\n${(await r.text()).slice(0, 400)}`);
-    _sansStatut = true;
-    console.log("ℹ️  La base n'a pas encore de colonne `status` (migration du 2026-09-11 non appliquée) : tout est considéré ouvert.\n");
+    // Sonde : la première page dit si la colonne existe.
+    const r = await fetch(urlReports(cfg, { avecStatut: true, ouvertsSeulement: !TOUS, offset: 0, taille: 1 }), entetes);
+    if (!r.ok && r.status !== 400) sortir(`❌ ${r.status} sur reports\n${(await r.text()).slice(0, 400)}`);
+    if (!r.ok) {
+      _sansStatut = true;
+      console.log("ℹ️  La base n'a pas encore de colonne `status` (migration du 2026-09-11 non appliquée) : tout est considéré ouvert.\n");
+    }
   }
-  return await rest(cfg,
-    "reports?select=id,reporter_id,target_type,target_id,reason,created_at&order=created_at.desc&limit=500");
+  const lirePage = async (offset, taille) => {
+    const r = await fetch(urlReports(cfg, { avecStatut: !_sansStatut, ouvertsSeulement: !TOUS, offset, taille }), entetes);
+    if (!r.ok) sortir(`❌ ${r.status} sur reports (page ${offset / taille + 1})\n${(await r.text()).slice(0, 400)}`);
+    return await r.json();
+  };
+  const { lignes, complet } = await lireToutesLesPages(lirePage, { taille: 500, pagesMax: 20 });
+  _listeIncomplete = !complet;
+  if (!complet) console.log("⚠️  Plus de 10 000 signalements : la liste ci-dessous est TRONQUÉE aux 10 000 plus récents.\n");
+  return lignes;
 }
 const estOuvert = (l) => _sansStatut || l.status === undefined || l.status === null || l.status === "open";
 

@@ -286,4 +286,35 @@ test.describe("events : les colonnes privées ne partent qu'avec un compte", () 
     expect(evs[0].convId, "conv_id aussi : « rejoindre la conversation » remarche")
       .toBe(EV.conv_id);
   });
+
+  test("⑥ ASTRA-10 — une PANNE (503, réseau) sur la liste privée ne se mémorise pas comme un refus de droit", async ({ page }) => {
+    // Avant : `_eventColsPubliquesSeulement` se posait sur N'IMPORTE QUELLE
+    // erreur de la demande privée. Un 503 au démarrage, et le compte perdait
+    // adresse, contact et conv_id pour toute la session — la relance suivante
+    // aurait pourtant suffi. Seul un refus de DROIT (401/403/42501/42703) mérite
+    // le mémo ; une panne se retente, colonnes privées comprises.
+    await banc(page, {
+      compte: true,
+      plan: { events: [{ error: { message: "Service Unavailable", status: 503, code: "" } }, { data: [EV] }] },
+    });
+    let evs = await page.evaluate(() => supaLoadEvents());
+    let cols = await lecturesEvents(page);
+    expect(cols.length, "la panne est suivie du repli public, comme un refus").toBe(2);
+    expect(evs.length).toBe(1);
+    expect(await page.evaluate(() => _eventColsPubliquesSeulement), "mais le mémo n'est PAS posé").toBe(false);
+    // Second appel : la liste PRIVÉE repart d'elle-même, sans jeton frais.
+    await page.evaluate(() => { window.__lectures = []; });
+    evs = await page.evaluate(() => supaLoadEvents());
+    cols = await lecturesEvents(page);
+    expect(cols[0], "RÉINJECTION : sur le code d'avant, seule la liste publique repart").toBe(await page.evaluate(() => _EVENT_COLS_PRIVE));
+    expect(evs[0].address, "et l'adresse revient").toBe(EV.address);
+  });
+
+  test("⑥ bis — un vrai refus de droit, lui, se mémorise toujours (la garde ④ tient)", async ({ page }) => {
+    await banc(page, { compte: true, plan: { events: [{ error: REFUS_401 }, { data: [EV] }] } });
+    await page.evaluate(() => supaLoadEvents());
+    expect(await page.evaluate(() => _eventColsPubliquesSeulement)).toBe(true);
+    expect(await page.evaluate(() => [_refusDeDroit({ status: 503 }), _refusDeDroit({ code: "42501" }), _refusDeDroit({ status: 401 }), _refusDeDroit(null)]))
+      .toEqual([false, true, true, false]);
+  });
 });

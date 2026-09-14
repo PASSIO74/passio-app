@@ -3,7 +3,12 @@
 // production le 2026-09-09.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { classer, empreinte, estDuBruit, classerApi, estDuBruitApi, libelleApi, classerBoutons, desamorcer, dejaCorrige, titreIssue, condense, lireApi, lirePagine, CHEMINS_BOUTONS, FILTRE_PRODUCTION } from "../../scripts/sentinelle-detecter.mjs";
+import { classer, empreinte, estDuBruit, classerApi, estDuBruitApi, estSansCompte, choisirCible, libelleApi, classerBoutons, desamorcer, dejaCorrige, titreIssue, condense, lireApi, lirePagine, CHEMINS_BOUTONS, FILTRE_PRODUCTION } from "../../scripts/sentinelle-detecter.mjs";
+
+// Des COMPTES (uuid) pour la famille API : depuis ASTRA-06 (2026-09-14) une ligne
+// de télémétrie sans `user_id` en forme d'uuid est écartée — « u1 » n'est pas
+// une personne, c'est ce qu'un client hostile écrirait.
+const U = (n) => `${String(n).padStart(8, "0")}-0000-4000-8000-000000000000`;
 
 test("« Script error. » est écarté : le navigateur refuse d'en dire plus", () => {
   // Observé en production. Une erreur d'un script d'une AUTRE origine est
@@ -100,7 +105,7 @@ test("le refus d'envoi de message mesuré en prod devient une cause", () => {
     endpoint: "njkiyoklssvefstljemx.supabase.co/rest/v1/conv_messages",
     http_status: 403,
     action: "POST njkiyoklssvefstljemx.supabase.co/conv_messages",
-    user_id: i % 2 ? "u1" : "u2",
+    user_id: i % 2 ? U(1) : U(2),
     received_at: "2026-09-09T18:32:18Z",
   }));
   const { candidates } = classerApi(lignes);
@@ -137,8 +142,8 @@ test("le tri met les comptes AVANT le volume, comme la famille JS", () => {
   // produit. Trier par volume ferait travailler la sentinelle sur le mauvais.
   const beaucoupUnSeul = Array.from({ length: 200 }, () => ({
     endpoint: "x/rest/v1/story_views", http_status: 401, action: "POST x/story_views",
-    user_id: "solo", received_at: "2026-09-09T00:00:00Z" }));
-  const peuPlusieurs = ["a", "b", "c"].flatMap((u) => [0, 1].map(() => ({
+    user_id: U(9), received_at: "2026-09-09T00:00:00Z" }));
+  const peuPlusieurs = [U(11), U(12), U(13)].flatMap((u) => [0, 1].map(() => ({
     endpoint: "x/rest/v1/profiles", http_status: 409, action: "POST x/profiles",
     user_id: u, received_at: "2026-09-09T01:00:00Z" })));
   const { candidates } = classerApi([...beaucoupUnSeul, ...peuPlusieurs]);
@@ -153,7 +158,7 @@ test("le contexte remplace la pile d'appel ABSENTE, et dit la limite", () => {
   // d'écrire, et rendrait un correctif faux plutôt que rien.
   const { candidates } = classerApi(Array.from({ length: 6 }, () => ({
     endpoint: "x/rest/v1/push_subscriptions", http_status: 403,
-    action: "POST x/push_subscriptions", user_id: "u1", received_at: "2026-09-09T00:00:00Z" })));
+    action: "POST x/push_subscriptions", user_id: U(1), received_at: "2026-09-09T00:00:00Z" })));
   const stack = candidates[0].exemple.stack;
   assert.match(stack, /n'a été levée/, "le texte dit POURQUOI il n'y a pas de pile");
   assert.match(stack, /\{ error \}/);
@@ -394,4 +399,36 @@ test("les deux lectures « boutons morts » portent le même filtre, et lirePagi
   const urls = await avecFetchCapture(() => lirePagine({ url: "https://x.supabase.co", cle: "k", heures: 1, chemin: CHEMINS_BOUTONS.clics }));
   assert.equal(urls.length, 1);
   assert.match(urls[0], /type=eq\.click&env=eq\.production&received_at=gt\./);
+});
+
+
+test("ASTRA-06 : une ligne API sans COMPTE (uuid) n'entre dans aucune cause", () => {
+  // `telemetry_events` accepte l'écriture anonyme et `user_id` est écrit par le
+  // client : cinq lignes fictives sans compte désignaient une cible d'enquête.
+  assert.equal(estSansCompte({ user_id: null }), true);
+  assert.equal(estSansCompte({ user_id: "u1" }), true);
+  assert.equal(estSansCompte({ user_id: "u_abc12345" }), true);
+  assert.equal(estSansCompte({ user_id: U(1) }), false);
+  const anonymes = Array.from({ length: 50 }, () => ({
+    endpoint: "x/rest/v1/posts", http_status: 500, action: "POST x/posts", user_id: null, received_at: "2026-09-14T00:00:00Z" }));
+  const r = classerApi(anonymes);
+  assert.deepEqual(r.candidates, [], "RÉINJECTION : avant, 50 lignes anonymes faisaient une cible");
+  assert.equal(r.ecartees, 50);
+  // Le même défaut vu par deux COMPTES, lui, reste une cause.
+  const comptes = [U(1), U(2)].flatMap((u) => [0, 1, 2].map(() => ({
+    endpoint: "x/rest/v1/posts", http_status: 500, action: "POST x/posts", user_id: u, received_at: "2026-09-14T00:00:00Z" })));
+  assert.equal(classerApi(comptes).candidates.length, 1);
+});
+
+test("ASTRA-08 : la dédup AVANCE dans les candidats au lieu de s'arrêter au premier", () => {
+  const premier = { message: "A", dernier: "2026-09-14T06:00:00Z", chemin: "/rest/v1/a", code: 500, exemple: { source: null, line: null } };
+  const second = { message: "B", dernier: "2026-09-14T06:00:00Z", chemin: "/rest/v1/b", code: 500, exemple: { source: null, line: null } };
+  // Le premier a été corrigé (enquête fermée APRÈS sa dernière occurrence), pas le second.
+  const fermees = [{ title: titreIssue(premier), closedAt: "2026-09-14T07:00:00Z" }];
+  assert.equal(dejaCorrige(premier, fermees), true);
+  assert.equal(dejaCorrige(second, fermees), false);
+  assert.equal(choisirCible([premier, second], fermees), second, "RÉINJECTION : avant, cible = premier, donc rien d'ouvert");
+  assert.equal(choisirCible([premier], fermees), null);
+  assert.equal(choisirCible([], fermees), null);
+  assert.equal(choisirCible(null, fermees), null);
 });

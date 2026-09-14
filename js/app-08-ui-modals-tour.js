@@ -4446,6 +4446,14 @@ const _EVENT_COLS_PRIVE = _EVENT_COLS_PUBLIC + ",address,contact,conv_id";
 // droit aux colonnes privées, inutile de repayer un aller-retour refusé à
 // chaque chargement du fil.
 let _eventColsPubliquesSeulement = false;
+// Un refus qui tient au DROIT, pas à la disponibilité : c'est lui seul qui
+// justifie de ne plus redemander les colonnes privées (ASTRA-10).
+function _refusDeDroit(error) {
+  if (!error) return false;
+  const code = String(error.code || "");
+  const st = Number(error.status || error.statusCode || 0);
+  return code === "42501" || code === "42703" || code === "PGRST301" || st === 401 || st === 403;
+}
 
 // ── SANS COMPTE, ON NE DEMANDE PAS LES COLONNES PRIVÉES ──────────────────────
 // Défaut relevé par la sentinelle le 2026-09-12 sur la production :
@@ -4576,7 +4584,12 @@ async function supaLoadEvents() {
     // ⚠️ La condition porte sur `prive`, jamais sur le mémo seul : retenter la
     // MÊME liste publique après son refus, c'est deux appels morts au lieu d'un.
     if (error && prive) {
-      _eventColsPubliquesSeulement = true;
+      // ⚠️ ON NE MÉMORISE QU'UN REFUS DE DROIT (ASTRA-10, 2026-09-14) : 401, 403,
+      // 42501, ou une colonne inconnue du rôle (42703). Une panne (5xx, réseau,
+      // délai) était mémorisée comme « pas le droit », et le compte perdait
+      // adresse, contact et conv_id pour toute la session — la relance suivante
+      // aurait suffi. Le repli public, lui, s'applique quoi qu'il arrive.
+      if (_refusDeDroit(error)) _eventColsPubliquesSeulement = true;
       ({ data, error } = await lire(_EVENT_COLS_PUBLIC));
     }
     if (error) { console.warn("supaLoadEvents:", error.message); return []; }
