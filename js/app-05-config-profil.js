@@ -577,18 +577,24 @@ async function startCall(convId, kind) {
     callId: callId, from: MY_UID, kind: kind,
     name: _callMyName(), emoji: (currentProfile() && currentProfile().emoji) || "✨",
   };
+  // ⚠️ L'INVITATION PART PAR HTTP, SANS S'ABONNER À `ring:<pair>` (MSG-01 / SUP-06,
+  // 2026-09-14). Avant, l'appelant S'ABONNAIT à la sonnerie du pair pour y
+  // émettre — et Realtime refuse un abonnement privé sans droit de LECTURE :
+  // la policy de réception devait donc laisser TOUT compte lire la sonnerie de
+  // N'IMPORTE QUI (qui appelle qui, visible de tout compte connecté). Le REST
+  // broadcast (`httpSend`, POST /realtime/v1/api/broadcast, jeton de session
+  // joint) n'est gouverné que par la policy d'ÉMISSION : la réception de
+  // `ring:<uid>` peut être resserrée à son seul destinataire
+  // (`migration_appels_sonnerie_privee_2026-09-14.sql`). Ce client est
+  // déployable AVANT la migration : il émet aussi sous les policies d'avant.
   const ring = _callChannel("ring:" + peer.id);
   window._call.ringSendChan = ring;
-  ring.subscribe((rs) => {
-    console.log("[call] ring(send) channel:", rs);
-    if (rs !== "SUBSCRIBED") return;
-    const fire = () => {
-      if (!window._call || window._call.id !== callId || window._call.status !== "calling") return;
-      try { ring.send({ type: "broadcast", event: "invite", payload: invitePayload }); console.log("[call] invite envoyée"); } catch (e) {}
-    };
-    fire();
-    window._call.inviteInterval = setInterval(fire, 2000);
-  });
+  const fire = () => {
+    if (!window._call || window._call.id !== callId || window._call.status !== "calling") return;
+    _callEmettreInvitation(ring, invitePayload);
+  };
+  fire();
+  window._call.inviteInterval = setInterval(fire, 2000);
 
   // Réveil PUSH du destinataire (app fermée). En plus du ring temps réel.
   _callPushNotify(peer, callId, kind);
@@ -598,6 +604,52 @@ async function startCall(convId, kind) {
   window._call.ringTimeout = setTimeout(() => {
     if (window._call && window._call.status === "calling") { toast("Pas de réponse"); endCall(); }
   }, 60000);
+}
+
+// Dépose l'invitation sur `ring:<pair>` en REST, jamais par un abonnement.
+// `httpSend` (supabase-js ≥ 2.100) est le chemin nominal ; sur un SDK qui ne
+// l'a pas, `send()` hors abonnement part LUI AUSSI en REST (repli du SDK).
+// Rend une promesse toujours résolue : l'échec d'un envoi ne doit pas tuer la
+// répétition — c'est elle qui rend la sonnerie fiable.
+function _callEmettreInvitation(chan, payload) {
+  if (!chan) return Promise.resolve(false);
+  try {
+    if (typeof chan.httpSend === "function") {
+      return Promise.resolve(chan.httpSend("invite", payload)).then(function () { return true; }, function () { return false; });
+    }
+    return Promise.resolve(chan.send({ type: "broadcast", event: "invite", payload: payload })).then(function () { return true; }, function () { return false; });
+  } catch (e) { return Promise.resolve(false); }
+}
+
+// ⚠️ L'IDENTITÉ DE L'APPELANT VIENT DU SERVEUR, JAMAIS DE LA CHARGE UTILE
+// (PRO-02 appliqué aux appels, 2026-09-14). `payload.name`/`payload.emoji`
+// sont écrits par l'émetteur : n'importe quel compte pouvait faire sonner sous
+// le nom d'un autre. Le nom, l'emoji, la couleur et la photo affichés sont
+// ceux du profil de `payload.from` (cache `userById`, puis `_fetchProfile`).
+// `from` doit être un compte (uuid) : un `from` fabriqué n'est pas un appel.
+const RE_CALL_FROM = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function _callFromValide(from) { return typeof from === "string" && RE_CALL_FROM.test(from); }
+function _callIdentiteServeur(from) {
+  var u = (typeof userById === "function") ? userById(from) : null;
+  return {
+    name: (u && u.name) || "Contact",
+    emoji: _emojiBorne(u && u.profileEmoji),
+    color: (u && u.avatar) || "#7c3aed",
+    photo: (u && u.photoUrl) || null,
+  };
+}
+// Rafraîchit l'écran d'appel entrant avec le profil relu (asynchrone, caché).
+function _callRafraichirIdentite(inv) {
+  if (typeof _fetchProfile !== "function") return;
+  Promise.resolve(_fetchProfile(inv.from)).then(function (p) {
+    if (!p || window._callIncoming !== inv) return;
+    inv.identite = { name: p.username || inv.identite.name, emoji: _emojiBorne(p.emoji || inv.identite.emoji),
+                     color: p.color || inv.identite.color, photo: p.photoUrl || inv.identite.photo };
+    var el = document.querySelector("#callOverlay .call-name, .call-overlay.active .call-name");
+    if (el) el.textContent = inv.identite.name;
+    var av = document.querySelector("#callOverlay .call-avatar, .call-overlay.active .call-avatar");
+    if (av) av.textContent = inv.identite.emoji;
+  }).catch(function () {});
 }
 
 function _callMyName() {
@@ -840,6 +892,8 @@ function _callDrainPendingIce() {
 // ── Réception d'une invitation entrante (depuis le canal ring:<MY_UID>) ──
 function _callOnInvite(payload) {
   if (!payload || !payload.callId) return;
+  // Un `from` qui n'est pas un compte n'est pas une invitation (cf. _callFromValide).
+  if (!_callFromValide(payload.from)) return;
   // L'appelant RÉPÈTE l'invitation toutes les 2 s (fiabilité). On ignore donc
   // les doublons : même appel déjà en cours, ou écran entrant déjà affiché.
   if (window._call && window._call.id === payload.callId) return;          // déjà accepté CET appel
@@ -862,8 +916,10 @@ function _callOnInvite(payload) {
   }
   if (typeof isBlocked === "function" && isBlocked(payload.from)) return; // modération
   console.log("[call] invite reçue de", payload.from, payload.callId);
+  payload.identite = _callIdentiteServeur(payload.from);
   window._callIncoming = payload;
   _callRenderIncomingUI(payload);
+  _callRafraichirIdentite(payload);
 }
 const CALL_INVITE_MIN_MS = 3000;
 
@@ -883,8 +939,9 @@ async function acceptIncomingCall() {
   try { stream = await _callGetMedia(inv.kind); }
   catch (e) { toast("Caméra/micro refusé"); _callDeclineSilent(inv); _callCloseUI(); return; }
 
+  const idn = inv.identite || _callIdentiteServeur(inv.from);
   window._call = {
-    id: inv.callId, peer: { id: inv.from, name: inv.name || "Contact", emoji: _emojiBorne(inv.emoji), color: "#7c3aed", photo: null },
+    id: inv.callId, peer: { id: inv.from, name: idn.name, emoji: idn.emoji, color: idn.color, photo: idn.photo },
     kind: inv.kind, role: "callee", status: "connecting",
     localStream: stream, remoteStream: null, pc: null, chan: null, startedAt: 0, _facing: "user",
   };
@@ -1096,10 +1153,13 @@ function _emojiSur(e) { return escapeHtml(_emojiBorne(e)); }
 function _callRenderIncomingUI(inv) {
   const el = _callOverlayEl();
   const isVideo = inv.kind === "video";
+  // Identité du SERVEUR (profil de `from`), jamais `inv.name` / `inv.emoji`
+  // — cf. _callIdentiteServeur. L'échappement reste : un pseudo est un texte.
+  const idn = inv.identite || _callIdentiteServeur(inv.from);
   el.innerHTML =
     '<div class="call-card">' +
-      '<div class="call-avatar" style="background:#7c3aed;">' + _emojiSur(inv.emoji) + '</div>' +
-      '<div class="call-name">' + escapeHtml(inv.name || "Contact") + '</div>' +
+      '<div class="call-avatar" style="background:#7c3aed;">' + _emojiSur(idn.emoji) + '</div>' +
+      '<div class="call-name">' + escapeHtml(idn.name || "Contact") + '</div>' +
       '<div class="call-status">' + (isVideo ? "Appel vidéo entrant…" : "Appel entrant…") + '</div>' +
       '<div class="call-controls">' +
         '<button class="call-control-btn hangup" onclick="declineIncomingCall()" title="Refuser">📵</button>' +

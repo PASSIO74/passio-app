@@ -476,8 +476,13 @@ test.describe("⑧ la politique dit ce que la base fait", () => {
 test.describe("⑨ red team : la charge utile d'un broadcast est hostile", () => {
   test("l'emoji d'une invitation d'appel est ÉCHAPPÉ et borné — réinjection : un <img onerror> ne rend aucun nœud", async ({ page }) => {
     await bootOnboarded(page);
+    // ⚠️ Depuis PRO-02 (2026-09-14), le nom et l'emoji affichés sont ceux du
+    // PROFIL de `from` (serveur), jamais ceux de la charge : le profil de
+    // l'appelant est posé dans le cache, la charge dit autre chose.
     const r = await page.evaluate(() => {
-      const charge = { callId: "x1", from: "u_att", kind: "voice", name: "<b>a</b>",
+      const ATT = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+      cacheRemoteProfile({ id: B, username: "Léa", emoji: "🎸", color: "#22c55e" });
+      const charge = { callId: "x1", from: ATT, kind: "voice", name: "<b>a</b>",
                        emoji: '<img src=x onerror="window.__xss=1">' };
       window.__xss = 0;
       _callRenderIncomingUI(charge);
@@ -485,19 +490,22 @@ test.describe("⑨ red team : la charge utile d'un broadcast est hostile", () =>
       const avatar = el.querySelector(".call-avatar");
       const r0 = { imgs: el.querySelectorAll("img").length, bold: el.querySelectorAll("b").length,
                    avatarTexte: avatar.textContent, nom: el.querySelector(".call-name").textContent };
-      // Un emoji légitime passe, et le repli vaut pour une charge vide.
-      _callRenderIncomingUI({ callId: "x2", from: "u_b", kind: "video", name: "Léa", emoji: "🎸" });
+      // L'emoji et le nom viennent du profil de B, quoi que dise la charge.
+      _callRenderIncomingUI({ callId: "x2", from: B, kind: "video", name: "Usurpé", emoji: "💣" });
       const r1 = document.querySelector("#callOverlay .call-avatar").textContent;
-      _callRenderIncomingUI({ callId: "x3", from: "u_b", kind: "video", name: "Léa" });
+      const n1 = document.querySelector("#callOverlay .call-name").textContent;
+      // Profil inconnu : repli neutre, jamais la charge.
+      _callRenderIncomingUI({ callId: "x3", from: ATT, kind: "video", name: "Usurpé" });
       const r2 = document.querySelector("#callOverlay .call-avatar").textContent;
       _callCloseUI();
-      return Object.assign(r0, { r1, r2, borne: _emojiSur("🎸🎸🎸🎸🎸🎸") });
+      return Object.assign(r0, { r1, n1, r2, borne: _emojiSur("🎸🎸🎸🎸🎸🎸") });
     });
     expect(r.imgs, "la charge n'a créé AUCUN élément").toBe(0);
     expect(r.bold).toBe(0);
     expect(r.avatarTexte.length, "bornée à quatre caractères").toBeLessThanOrEqual(4);
-    expect(r.nom).toBe("<b>a</b>");
+    expect(r.nom, "profil inconnu : ni la charge, ni du HTML").toBe("Contact");
     expect(r.r1).toBe("🎸");
+    expect(r.n1).toBe("Léa");
     expect(r.r2).toBe("🙂");
     expect(Array.from(r.borne).length).toBe(4);
     await expect.poll(() => page.evaluate(() => window.__xss)).toBe(0);
@@ -524,9 +532,10 @@ test.describe("⑨ red team : la charge utile d'un broadcast est hostile", () =>
       window._call = null; window._callIncoming = null; window._callInviteAffichee = 0;
       const rendus = [];
       window._callRenderIncomingUI = (inv) => rendus.push(inv.callId);
-      for (let i = 0; i < 20; i++) _callOnInvite({ callId: "rafale_" + i, from: "u_att", kind: "voice", name: "x" });
+      const ATT = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"; // un compte (uuid) : un `from` fabriqué n'est plus une invitation
+      for (let i = 0; i < 20; i++) _callOnInvite({ callId: "rafale_" + i, from: ATT, kind: "voice", name: "x" });
       // L'appelant LÉGITIME répète le MÊME callId : dédup, pas de re-rendu, pas de blocage.
-      _callOnInvite({ callId: "rafale_0", from: "u_att", kind: "voice", name: "x" });
+      _callOnInvite({ callId: "rafale_0", from: ATT, kind: "voice", name: "x" });
       const min = CALL_INVITE_MIN_MS;
       window._callIncoming = null;
       return { rendus, min };
@@ -724,7 +733,12 @@ test.describe("⑨ bis relecture audit-passio : ce que le lot avait mal câblé"
     const corps = mig.slice(mig.indexOf("create or replace function public.follows_notifier()"), mig.indexOf("revoke execute on function public.follows_notifier()"));
     expect(corps).toMatch(/exception when others then/);
     const app05 = lire("js/app-05-config-profil.js");
-    expect(app05).toMatch(/emoji: _emojiBorne\(inv\.emoji\)/);
+    // Depuis PRO-02 (2026-09-14) l'identité du pair vient du PROFIL de `from`
+    // (`_callIdentiteServeur`), qui borne l'emoji ; `inv.emoji` / `inv.name` ne
+    // sont plus lus nulle part, ni à l'affichage ni à l'acceptation.
+    expect(app05).toMatch(/emoji: _emojiBorne\(u && u\.profileEmoji\)/);
     expect(app05).not.toMatch(/emoji: inv\.emoji \|\| "🙂"/);
+    expect(app05).not.toMatch(/emoji: _emojiBorne\(inv\.emoji\)/);
+    expect(app05).not.toMatch(/escapeHtml\(inv\.name/);
   });
 });
