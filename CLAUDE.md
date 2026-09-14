@@ -646,6 +646,16 @@ identités OAuth, configuration du projet (auth, SMTP, secrets, Edge Functions) 
 ⚠️ Le brouillon local `scripts/schema-origine.js` / `migrations/00_ORIGINE_PROD.sql` (non versionné) décrit l'état du
 **17/08** (35 tables, 12 fonctions) et passe par `supabase db query`, retiré : à réconcilier avec `schema-executable.js`
 avant d'en faire la baseline NET-07. Verrou : `tests/unit/restaurer-donnees.test.mjs` (7, dans `verif`).
+⚠️ **LE RETOUR ARRIÈRE APPLICATIF PREND 2 SECONDES, PAS 45 MINUTES** (EXP-03, exercé le 14/09 à 20 h 50) :
+`npm run rollback:netlify -- --restaurer precedent` (`scripts/rollback-netlify.mjs`) remet en ligne un déploiement de
+production DÉJÀ CONSTRUIT (`POST /deploys/<id>/restore`) et ne dit « en ligne » qu'après avoir relu `release.json` sur le
+site — 1,8 s aller, 1,1 s retour, mesurés. `rollback.yml` (PR de revert par la CI) reste le chemin PROPRE. Ce qu'un
+rollback Netlify NE défait PAS : une migration (chaque migration porte son retour arrière), une Edge Function, le service
+worker déjà installé. Il n'existe AUCUN kill switch serveur par fonctionnalité : les `passio_*="0"` sont locaux à l'appareil.
+⚠️ **79 lignes `user_state` sur 86 étaient les états de comptes SUPPRIMÉS** (essais de juin–juillet, d'avant `delete-account`),
+dont une de 4,8 Mo (avatar + couverture en base64, d'avant l'expurgation du 16/08) — purgées le 14/09 avec 63 notifications et
+18 `conv_reads` orphelines. Une suppression de compte faite hors de `delete-account` (tableau de bord) recrée des orphelins :
+il n'y a pas de purge périodique, c'est écrit dans le registre (PRO-06).
 
 ## 🚦 AUDIT GO/NO-GO DE COMMERCIALISATION (2026-09-10) — et les cinq défauts qu'il a trouvés
 
