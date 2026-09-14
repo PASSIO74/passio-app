@@ -145,3 +145,42 @@ Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, 
 | Limite restante | Un message média supprimé « pour moi » seulement garde son objet (voulu : il existe encore pour l'autre). Les objets déjà orphelins (suppressions passées, comptes supprimés avant ce lot) ne sont pas rattrapés — un balayage `storage.objects` sans ligne `conv_messages` serait un autre lot. Un vocal (`voiceData`) n'est pas transférable (chemin existant : il redevient texte). Non mesuré : `storage.copy` sur le projet réel avec la policy `storage_chemin_autorise`. |
 | État | **corrigé dans le code** · testé sur staging : non · déployé : non · vérifié après déploiement : non |
 | PR | `claude/auth-05-suppression-verifiee-et-pj` (même PR). |
+
+
+---
+
+## AUTH-03 — Accord enregistré sans case cochée par le chemin Google « connexion » — P1 (chantier 4)
+
+| Champ | Valeur |
+|---|---|
+| État constaté (base `00f7eec6`) | `onbGoogleAuth` (app-02) mémorisait `passio_oauth_cgu` (accord horodaté) **dans les deux modes** ; la case n'est à l'écran qu'en inscription, le bouton Google est unique et jamais masqué en connexion. Google crée le compte s'il n'existe pas : depuis l'écran de connexion, un compte NEUF naissait et `_poserConsentementOAuth` posait sur lui, au retour, un consentement que personne n'avait donné (`user_metadata.cgu_accepted_at`). **Reproduit** au banc : en mode connexion, `passio_oauth_cgu` porte un accord horodaté après `onbGoogleAuth`. |
+| Correction | En connexion, rien n'est mémorisé (une trace ancienne est même effacée) ; en inscription, l'accord n'est mémorisé qu'avec la case cochée (inchangé). Au retour sans accord, `_verifierConsentementApresOAuth` lit le compte : **aucune trace serveur ET compte créé il y a moins de 15 min** → rappel posé sur l'appareil et **modale « Avant de continuer »** (case + liens vers les textes, « J'accepte et je continue » / « Refuser et me déconnecter ») ; elle réapparaît tant qu'aucune réponse n'est donnée ; accepter écrit la trace (`updateUser`, verdict lu) et l'état local ; refuser déconnecte. Un compte ancien sans trace n'est pas sollicité ici (autre lot, EXP-09). |
+| Test effectué | `tests/e2e/consentement-google.spec.js` (5 cas) : ① connexion → rien ; inscription cochée → mémorisé ; ② retour sans accord, compte neuf sans trace → modale, rien écrit ; ③ compte ancien / compte déjà tracé → pas sollicité ; ④ accepter sans case → rien ; avec case → trace écrite, rappel levé, modale fermée ; ⑤ UXO-07 (ci-dessous). Voisines : `cgu-consentement`, `admission-18-plus` (39/39). |
+| Résultat | **Avant** (main pristine) : 4 échecs / 5 (①②④⑤). **Après** : 5/5. |
+| Limite restante | Le parcours Google **réel** (départ, retour, création de compte par Google) n'est pas rejoué : banc à faux `supa.auth`. Les comptes créés par Google avant ce lot depuis l'écran de connexion portent un `cgu_accepted_at` fabriqué — non re-mesuré, non corrigé (une trace ne se retire pas sans décision). Un refus déconnecte mais ne supprime pas le compte que Google vient de créer. |
+| État | **corrigé dans le code** · testé sur staging : non · déployé : non · vérifié après déploiement : non |
+| PR | `claude/auth-03-consentement-google` — voir la PR ouverte depuis cette branche. |
+
+---
+
+## UXO-07 — Fausse promesse de contrôle d'âge IA dans le HTML — P2 (chantier 4)
+
+| Champ | Valeur |
+|---|---|
+| État constaté | `index.html`, étape « Vérification d'âge » de l'onboarding : « PASSIO protège les mineurs avec un contrôle d'âge IA. » Aucun contrôle de ce genre n'existe (l'âge est déclaratif — CLAUDE.md « réservé aux majeurs », `onbValidateAge`). Une promesse de sécurité fausse, sur l'écran même qui recueille l'âge. |
+| Correction | Texte remplacé : « PASSIO est réservé aux personnes majeures. Ton année de naissance est déclarative : elle n'est vérifiée par aucun contrôle automatique. » Note d'audit en commentaire HTML. |
+| Test effectué | `consentement-google.spec.js` ⑤ : le HTML (hors commentaires) ne contient plus « contrôle d'âge IA » et dit que l'année est déclarative. |
+| Résultat | Avant : rouge. Après : vert. |
+| Limite restante | Visibilité de cette étape dans le parcours nominal (« Confirm email » peut la sauter) : non re-mesurée. |
+| État | **corrigé dans le code** · déployé : non · vérifié après déploiement : non |
+| PR | `claude/auth-03-consentement-google` (même PR). |
+
+---
+
+## ASTRA-09 / EXP-09 — Identité du responsable de traitement à la collecte — P1 (chantier 4) — **DÉCISION REQUISE, non codé**
+
+| Champ | Valeur |
+|---|---|
+| État constaté | `js/legal-textes.js`, régime `particulier` : l'identité du responsable de traitement n'est promise qu'à l'exercice des droits ; l'art. 13 RGPD exige l'information **au moment de la collecte** — et l'anonymat de l'éditeur non professionnel (LCEN art. 1-1 II) ne dispense pas de cette obligation (contre-revue du 2026-09-13, CNIL). |
+| Correction | **Aucune ici** : le texte à écrire est l'identité de Benjamin (nom, moyen de contact), une décision qui lui appartient — je ne la publie pas à sa place. Deux voies : (a) nommer le responsable dans la politique de confidentialité (§ « Qui est responsable ») et sur l'écran d'inscription, en gardant l'anonymat LCEN des mentions légales si la qualification le permet ; (b) passer `PASSIO_EDITEUR.regime` à `societe` si une structure existe. Dans les deux cas : `PASSIO_CONFIDENTIALITE_VERSION` suit le texte. |
+| État | **non engagé — attend la décision de Benjamin** |
