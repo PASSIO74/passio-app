@@ -374,6 +374,14 @@ jobs:
       - name: Banc suppression d'activite en cascade (PostgreSQL jetable)
         run: bash tests/sql/migration-evenements-cascade.test.sh
 
+      # Discussion d'activite creee par un co-organisateur (IRL-10) : l'aide
+      # can_join_event_conversation n'admettait que l'auteur comme createur,
+      # donc aucun inscrit ne pouvait la rejoindre. Le banc mesure le refus
+      # AVANT, applique, rejoue, verifie les deux sens (auteur et co-organisateur
+      # ouvrent, un tiers et un non-inscrit restent dehors, anon sans EXECUTE).
+      - name: Banc discussion d'activite — co-organisateur (PostgreSQL jetable)
+        run: bash tests/sql/migration-discussion-coorganisateur.test.sh
+
       # Alerte de moderation : la fonction pure qui decide d'ouvrir une issue.
       - name: Verrous unitaires de l'alerte de moderation
         run: node --test tests/unit/moderation-alerte.test.mjs
