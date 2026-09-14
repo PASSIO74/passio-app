@@ -203,7 +203,7 @@ test.describe("la page Rechercher connaît tout le référentiel", () => {
     // `toggleFollowUser` (app-04), le moteur unique.
     await bootOnboarded(page, null, 1);
     await ouvrirRecherche(page);
-    const vu = await page.evaluate(() => {
+    const vu = await page.evaluate(async () => {
       // ⚠️ AUCUNE ÉCRITURE VERS LA PRODUCTION : `toggleFollowUser` appelle
       // `supaFollowUser`, qui passe par `supaEnsureProfileExists` — donc un
       // UPSERT réel. Ce cas mesure l'ÉTAT LOCAL et le bouton, rien d'autre.
@@ -216,6 +216,9 @@ test.describe("la page Rechercher connaît tout le référentiel", () => {
       btn.click();
       const apres = (state.user.following || []).slice();
       const libelleApres = btn.textContent.trim();
+      // Depuis ROB-04 (2026-09-14), un second appui PENDANT l'écriture est
+      // ignoré : on laisse le faux serveur répondre avant de désuivre.
+      await new Promise((r) => setTimeout(r, 20));
       document.getElementById("followBtn_" + uid).click();
       return {
         absent: false, uid, apres, libelleApres,
