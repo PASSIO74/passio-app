@@ -51,10 +51,15 @@ function _env() {
 
 /** L'URL du projet : celle de l'env, sinon la constante que l'app elle-même utilise. */
 function _urlSupabase(vals) {
+  // SUP-04 : la cible du banc (staging) prime, puis l'env historique, puis l'app.
+  if (vals.PASSIO_SUPABASE_URL && vals.PASSIO_SUPABASE_ANON) return vals.PASSIO_SUPABASE_URL.replace(/\/+$/, "");
   if (vals.SUPABASE_URL) return vals.SUPABASE_URL.replace(/\/+$/, "");
   try {
     const src = fs.readFileSync(path.join(RACINE, "js", "app-08-ui-modals-tour.js"), "utf8");
-    const m = /const\s+SUPABASE_URL\s*=\s*"([^"]+)"/.exec(src);
+    // Depuis SUP-04, la constante est `(_cibleSupabase() || {}).url || "https://…"` :
+    // on lit l'URL de PRODUCTION qui termine la ligne, pas la forme d'avant
+    // (rouge CI du 14/09 : sans SUPABASE_URL dans l'env, le repli rendait null).
+    const m = /const\s+SUPABASE_URL\s*=[^;\n]*?"(https:\/\/[a-z]{20}\.supabase\.co)"/.exec(src);
     if (m) return m[1].replace(/\/+$/, "");
   } catch (e) {}
   return null;

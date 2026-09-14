@@ -4066,7 +4066,10 @@ async function doDeleteAccount() {
   discardPendingStateSave();
   try {
     Object.keys(localStorage)
-      .filter(function (k) { return k.indexOf("passio") !== -1 || k === "sb-njkiyoklssvefstljemx-auth-token"; })
+      // Le jeton du SDK se nomme d'après le projet VISÉ (`sb-<ref>-auth-token`) :
+      // par motif, jamais en dur — sinon un client qui vise le staging (SUP-04)
+      // laisserait ici la session du staging intacte.
+      .filter(function (k) { return k.indexOf("passio") !== -1 || /^sb-.+-auth-token$/.test(k); })
       .forEach(function (k) { localStorage.removeItem(k); });
   } catch (e) {}
   // Conversations durables en IndexedDB : non couvertes par le nettoyage localStorage.

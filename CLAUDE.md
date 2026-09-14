@@ -656,6 +656,14 @@ worker déjà installé. Il n'existe AUCUN kill switch serveur par fonctionnalit
 dont une de 4,8 Mo (avatar + couverture en base64, d'avant l'expurgation du 16/08) — purgées le 14/09 avec 63 notifications et
 18 `conv_reads` orphelines. Une suppression de compte faite hors de `delete-account` (tableau de bord) recrée des orphelins :
 il n'y a pas de purge périodique, c'est écrit dans le registre (PRO-06).
+⚠️ **LE CLIENT SAIT VISER LE STAGING (SUP-04, 2026-09-14)** : `window.PASSIO_SUPABASE_CIBLE = { url, anon }` posé AVANT
+app-08 (`_cibleSupabase`, forme vérifiée, sinon ignoré) fait viser ce projet à tout le client. Suites `prod` :
+`PASSIO_SUPABASE_URL` + `PASSIO_SUPABASE_ANON` + `SUPABASE_SERVICE_ROLE_KEY` du staging → `tests/e2e/cible-supabase.js`
+pose la cible avant chaque `page.goto` ; artefact : `scripts/build.js` avec les deux mêmes variables. Mesuré : authz-critical,
+blocage-acces, user-state-horodatage verts contre `fcksxofaelcdmmifnwjo`, production intacte. **La CI, elle, écrit encore en
+production** tant que `deploy.yml`/`sentinelle-distante.yml` ne posent pas la cible (lot `.github`, contre-revue). Le staging
+ne porte AUCUNE donnée personnelle (référentiels seuls) ; ne jamais y reverser une archive complète sans la purger après.
+`docs/STAGING.md`. Verrou : `tests/e2e/cible-supabase.spec.js` (5, ② éprouvé par réinjection).
 
 ## 🚦 AUDIT GO/NO-GO DE COMMERCIALISATION (2026-09-10) — et les cinq défauts qu'il a trouvés
 

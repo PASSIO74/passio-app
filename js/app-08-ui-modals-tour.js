@@ -2830,8 +2830,28 @@ async function boot() {
 // =====================================================
 // SUPABASE — Toutes fonctionnalités temps réel
 // =====================================================
-const SUPABASE_URL = "https://njkiyoklssvefstljemx.supabase.co";
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5qa2l5b2tsc3N2ZWZzdGxqZW14Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTc3MDQsImV4cCI6MjA5NDI3MzcwNH0.wbFAexVW75vlXZ7mRRxeZ28zKevOAYYe0lda0F22dTM";
+// ⚠️ LE PROJET VISÉ N'EST PLUS ÉCRIT EN DUR — il l'est PAR DÉFAUT (SUP-04 /
+// TCI-04, contre-revue Astra, 2026-09-14). Un seul projet servait au
+// développement, aux aperçus de PR, aux tests à comptes réels et à la
+// production ; le staging existait et ne pouvait pas être visé. Désormais un
+// script posé AVANT app-08 (`window.PASSIO_SUPABASE_CIBLE = { url, anon }` —
+// `scripts/build.js` l'écrit depuis PASSIO_SUPABASE_URL/PASSIO_SUPABASE_ANON,
+// les suites `prod` de Playwright l'injectent par `tests/e2e/cible-supabase.js`)
+// fait viser un autre projet à TOUT le client : SDK, REST direct, télémétrie
+// (`window.PASSIO_SUPABASE`), jeton `sb-<ref>-auth-token` (dérivé de l'URL).
+// Sans ce script, rien ne change : la production. ⚠️ Une cible ne se prend
+// que si elle a la FORME attendue (URL https://<ref>.supabase.co ET une clé) —
+// un objet partiel serait une production à moitié détournée.
+function _cibleSupabase() {
+  try {
+    var c = window.PASSIO_SUPABASE_CIBLE;
+    if (!c || typeof c !== "object") return null;
+    if (!/^https:\/\/[a-z]{20}\.supabase\.co$/.test(String(c.url || "")) || !c.anon || typeof c.anon !== "string") return null;
+    return { url: c.url, anon: c.anon };
+  } catch (e) { return null; }
+}
+const SUPABASE_URL = (_cibleSupabase() || {}).url || "https://njkiyoklssvefstljemx.supabase.co";
+const SUPABASE_KEY = (_cibleSupabase() || {}).anon || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5qa2l5b2tsc3N2ZWZzdGxqZW14Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTc3MDQsImV4cCI6MjA5NDI3MzcwNH0.wbFAexVW75vlXZ7mRRxeZ28zKevOAYYe0lda0F22dTM";
 // Exposé pour la télémétrie (js/telemetry.js, chargé AVANT ce fichier) : lui
 // permet d'envoyer ses lots par un POST REST direct avec `keepalive` + backlog
 // persistant, INDÉPENDAMMENT du client SDK. Sans ça, un testeur en coupure

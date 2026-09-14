@@ -95,9 +95,21 @@ const release = {
 // - release-guard connaît déjà PASSIO_RELEASE au moment de son initialisation.
 const TELEMETRY_TAG = '  <script src="js/telemetry.js"></script>';
 if (!html.includes(TELEMETRY_TAG)) throw new Error("Tag telemetry.js introuvable");
+// SUP-04 (2026-09-14) : un artefact construit avec PASSIO_SUPABASE_URL et
+// PASSIO_SUPABASE_ANON vise CE projet (aperçu de PR sur le staging) — le
+// script est posé avant telemetry.js et le bloc app, donc avant app-08, qui
+// le lit (`_cibleSupabase`). Sans les deux variables : rien n'est écrit, la
+// production. Une seule des deux = erreur, pas un silence.
+const cibleUrl = (process.env.PASSIO_SUPABASE_URL || "").trim(), cibleAnon = (process.env.PASSIO_SUPABASE_ANON || "").trim();
+if (!!cibleUrl !== !!cibleAnon) throw new Error("PASSIO_SUPABASE_URL et PASSIO_SUPABASE_ANON vont ensemble (une seule des deux est posée)");
+if (cibleUrl && !/^https:\/\/[a-z]{20}\.supabase\.co$/.test(cibleUrl)) throw new Error("PASSIO_SUPABASE_URL doit être https://<ref>.supabase.co");
+const cibleBootstrap = cibleUrl
+  ? '  <script>window.PASSIO_SUPABASE_CIBLE=' + JSON.stringify({ url: cibleUrl, anon: cibleAnon }).replace(/</g, "\\u003c") + ';</script>\n'
+  : "";
+if (cibleUrl) console.log("cible Supabase de l'artefact : " + cibleUrl + " (PAS la production)");
 const releaseBootstrap = '  <script>window.PASSIO_RELEASE=' + JSON.stringify(release).replace(/</g, "\\u003c") + ';</script>';
 html = html.replace(TELEMETRY_TAG,
-  releaseBootstrap + "\n" + TELEMETRY_TAG + "\n"
+  cibleBootstrap + releaseBootstrap + "\n" + TELEMETRY_TAG + "\n"
   + '  <script src="js/identity-transition.js"></script>\n'
   + '  <script src="js/release-guard.js"></script>');
 
