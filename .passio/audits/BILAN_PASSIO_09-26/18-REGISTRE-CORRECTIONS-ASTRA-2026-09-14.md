@@ -102,3 +102,17 @@ Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, 
 | Limite restante | **La fonction n'est PAS déployée** (`supabase functions deploy notify-call`, geste manuel — la CI ne déploie pas les Edge Functions). Tant qu'elle ne l'est pas, la production garde l'ancien comportement. Après déploiement, mesurer : un appel réel sonne (1:1 existante), une notification de message pousse, une push forgée vers un tiers rend `sent: 0`. La fenêtre de 2 minutes suppose que la ligne `notifications` précède la push — c'est l'ordre des trois appelants (`supaInsertNotif`, `_notifierMessage`, `follows_notifier` + `_pousserPushNotif`) ; un appelant qui pousserait AVANT d'écrire perdrait sa push. Non mesuré : latence réelle des deux lectures ajoutées. |
 | État | **corrigé dans le code** · déployé : **non — attend `supabase functions deploy notify-call`** · vérifié après déploiement : non |
 | PR | `claude/mod-04-msg-04-blocage-et-push` — voir la PR ouverte depuis cette branche. |
+
+---
+
+## MSG-10 — Blocage incomplet dans les groupes communs — P1 (chantier 2)
+
+| Champ | Valeur |
+|---|---|
+| État constaté (base `6b004138`) | Le blocage ne s'appliquait aux messages qu'à la **réception temps réel** (`_handleIncomingConvMessage` ignore un expéditeur bloqué). L'historique rechargé (`supaLoadMessages`) et le fil rendu (`renderConvFpThread`) montraient tout ce qu'un membre bloqué avait écrit dans un groupe commun ; l'aperçu de la liste Messages reprenait son dernier message ; « @ » le proposait encore. La partie « dépendant de sa persistance serveur » est fermée par MOD-04 (verdict attendu). **Reproduit** au banc : fil, aperçu et boîte de mentions montrent le membre bloqué. |
+| Correction | Un seul prédicat `_msgVisiblePourMoi(m)` (app-04) — visible sauf si `m.from` est un compte que **j'ai** bloqué (mes messages et les messages système restent) — appliqué au fil, à l'aperçu de la liste et aux suggestions de @mentions (membres filtrés). **Filtre à l'affichage, rien n'est supprimé** : débloquer rend tout. Côté serveur, rien ne change : la personne reste membre du groupe (c'est l'organisateur qui l'exclut), et la policy d'insertion ne borne le blocage qu'aux 1:1 (décision de l'ouverture publique). |
+| Test effectué | `tests/e2e/blocage-groupe-commun.spec.js` (4 cas) : ① fil sans les messages du bloqué, les autres gardés, 4 messages toujours en mémoire ; ② aperçu de la liste sans son dernier mot ; ③ « @ » ne le propose plus ; ④ débloquer rend tout. Voisines : mention-groupe-xss, ui-v6a-messages, conv-ouverture-fil, blocage-verdict (29/29). |
+| Résultat | **Avant** (main pristine) : 3 échecs / 4 (①②③). **Après** : 4/4. |
+| Limite restante | Le bloqué **voit** toujours ce que le bloqueur écrit dans le groupe (le blocage est asymétrique à l'affichage, comme sur les réseaux comparables ; l'exclusion du groupe relève de l'organisateur). Les réactions et accusés de lecture d'un membre bloqué ne sont pas filtrés. Non mesuré : parcours réel entre deux comptes. |
+| État | **corrigé dans le code** · testé sur staging : non · déployé : non · vérifié après déploiement : non |
+| PR | `claude/mod-04-msg-04-blocage-et-push` (même PR que MOD-04 / MSG-04). |

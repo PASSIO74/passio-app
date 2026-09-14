@@ -3750,7 +3750,8 @@ function renderMessages() {
   list.innerHTML = visible.map(c => {
     const seedUsersArr = state.seed.users || [];
     const u = seedUsersArr.find(x => x.id === c.userId) || { name: "Inconnu", avatar: "#7c3aed", profileEmoji: "🙂" };
-    const lastMsg = c.messages && c.messages.length ? c.messages[c.messages.length - 1] : null;
+    const _visibles = (c.messages || []).filter(_msgVisiblePourMoi);
+    const lastMsg = _visibles.length ? _visibles[_visibles.length - 1] : null;
     const _previewContent = lastMsg
       ? (lastMsg.gif ? "GIF" : lastMsg.voiceData ? "Message vocal" : lastMsg.video ? "Vidéo" : lastMsg.img ? "Photo" : lastMsg.docData ? "Document · " + (lastMsg.fileName || "Fichier") : _sansEmojiEnveloppe(lastMsg.text) || "")
       : "";
@@ -4054,7 +4055,13 @@ async function openConversation(convId) {
 function renderConvFpThread(c, displayName) {
   var thread = document.getElementById("convFpThread");
   if (!thread) return;
-  var allMsgs = c.messages || [];
+  // ⚠️ UN MEMBRE BLOQUÉ NE S'AFFICHE PAS DANS UN GROUPE COMMUN (MSG-10, 2026-09-14).
+  // Le blocage ne s'appliquait aux messages qu'à la RÉCEPTION temps réel
+  // (`_handleIncomingConvMessage`) : l'historique rechargé et le fil rendu
+  // montraient tout ce que la personne bloquée avait écrit dans un groupe
+  // partagé — elle y reste membre (c'est l'organisateur qui l'exclut), mais
+  // ce qu'elle écrit ne doit pas atteindre celui qui l'a bloquée.
+  var allMsgs = (c.messages || []).filter(_msgVisiblePourMoi);
 
   // Scroll infini : on n'affiche que les N derniers messages, on en charge plus en
   // remontant. _convPage = nombre de pages affichées (réinitialisé à l'ouverture).
@@ -4409,6 +4416,12 @@ function _sansEmojiEnveloppe(t) {
   return t;
 }
 
+// Un message est visible sauf s'il vient d'un compte que J'AI bloqué (le mien
+// et les messages système restent). Un seul prédicat : fil, aperçu, mentions.
+function _msgVisiblePourMoi(m) {
+  if (!m || m.from === "me" || !m.from) return true;
+  return !(typeof isBlocked === "function" && isBlocked(m.from));
+}
 function _msgPreviewText(m) {
   if (!m) return "";
   if (m.text && !/^\{/.test(m.text)) return _sansEmojiEnveloppe(m.text);
@@ -5181,7 +5194,9 @@ function _mentionDetect(convId) {
   var mt = val.match(/@([\wà-öø-ÿ' -]{0,20})$/i);
   if (!mt) { _hideMentionBox(); return; }
   var q = (mt[1] || "").toLowerCase().trim();
-  var members = (c.userIds || []).map(function(id){ return { id: id, name: (typeof _groupMemberName === "function" ? _groupMemberName(id) : "Membre") }; })
+  var members = (c.userIds || [])
+    .filter(function(id){ return !(typeof isBlocked === "function" && isBlocked(id)); }) // un membre bloqué n'est pas proposé (MSG-10)
+    .map(function(id){ return { id: id, name: (typeof _groupMemberName === "function" ? _groupMemberName(id) : "Membre") }; })
     .filter(function(m){ return !q || m.name.toLowerCase().indexOf(q) > -1; }).slice(0, 6);
   if (!members.length) { _hideMentionBox(); return; }
   var toolbar = document.querySelector("#conv-fullpage .conv-toolbar"); if (!toolbar) return;
