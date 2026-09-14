@@ -2299,6 +2299,49 @@ function convTombAdd(kind, id) {
 function convTombHas(journal, kind, id) {
   return !!(id && journal && journal[kind + ":" + id]);
 }
+function convTombRemove(kind, id) {
+  if (!id) return;
+  try {
+    var j = convTombLoad();
+    delete j[kind + ":" + id];
+    localStorage.setItem(CONV_TOMB_KEY, JSON.stringify(j));
+  } catch (e) {}
+}
+
+// ⚠️ CE QUI EST SUPPRIMÉ NE RESSUSCITE PAS AU RECHARGEMENT SERVEUR (MSG-06,
+// 2026-09-14). Le journal n'était consulté que par la fusion LOCALE
+// (`_unionConvsById`) : `openConversation` réinjectait tout message serveur
+// absent en local, le boot remettait toute conversation serveur, « Effacer le
+// fil » ne vidait que le tableau local, « Supprimer la conversation » ne posait
+// aucune pierre tombale. « Supprimer pour moi », puis rouvrir : le message
+// était de retour.
+//   · kind "clr" : le fil a été effacé à cet instant — tout message ANTÉRIEUR
+//     (`at <= clr`) reste masqué, d'où qu'il vienne (fusion, réouverture, boot) ;
+//   · kind "conv" : la conversation a été supprimée — elle n'est pas remise par
+//     le boot ni par la fusion. Un NOUVEAU message de l'autre la fait
+//     réapparaître, avec ce seul message (`_handleIncomingConvMessage` lève la
+//     pierre "conv", garde "clr") — comme une messagerie ordinaire.
+// Un seul point décide si un message est masqué : `_msgMasquePourMoi`.
+function convClearedAt(journal, convId) {
+  var v = journal && convId ? journal["clr:" + convId] : 0;
+  return typeof v === "number" ? v : 0;
+}
+function _msgMasquePourMoi(journal, convId, m) {
+  if (!m) return false;
+  if (convTombHas(journal, "msg", m.id)) return true;
+  var clr = convClearedAt(journal, convId);
+  return !!(clr && (Number(m.at) || 0) <= clr);
+}
+// Conversations venues du serveur, expurgées de ce qui a été supprimé ici.
+function _filtrerConvsServeur(convs) {
+  var j = convTombLoad();
+  return (convs || []).filter(function (c) { return c && c.id && !convTombHas(j, "conv", c.id); })
+    .map(function (c) {
+      if (!Array.isArray(c.messages)) return c;
+      var gardes = c.messages.filter(function (m) { return !_msgMasquePourMoi(j, c.id, m); });
+      return gardes.length === c.messages.length ? c : Object.assign({}, c, { messages: gardes });
+    });
+}
 
 function _unionConvsById(a, b) {
   var _tomb = convTombLoad();
@@ -2346,7 +2389,7 @@ function _unionConvsById(a, b) {
     // Filtrage des messages supprimés en UN SEUL point, à la sortie : les deux
     // branches ci-dessus (première copie et copies fusionnées) y passent
     // forcément. Le faire dans chaque branche laisserait un chemin non couvert.
-    byId[k].messages = byId[k].messages.filter(function (m) { return !convTombHas(_tomb, "msg", m && m.id); });
+    byId[k].messages = byId[k].messages.filter(function (m) { return !_msgMasquePourMoi(_tomb, k, m); });
     byId[k].messages.sort(function(x, y) { return (x.at || 0) - (y.at || 0); });
     return byId[k];
   });
@@ -4051,7 +4094,9 @@ async function openConversation(convId) {
       var convs2 = getConversations();
       var c2 = convs2.find(function(x) { return x.id === convId; });
       if (!c2) return;
-      var remote = supaMessages || [];
+      // Ce que j'ai supprimé ici ne revient pas du serveur (MSG-06).
+      var _tombOuv = convTombLoad();
+      var remote = (supaMessages || []).filter(function (m) { return !_msgMasquePourMoi(_tombOuv, convId, m); });
       // Signature avant fusion : si rien ne change, on ÉVITE le 2ᵉ re-render
       // (flash visible + éléments média recréés à CHAQUE ouverture de conv).
       var _sigOf = function(list) { return (list || []).map(function(m){ return m.id + (m.status || ""); }).join(","); };
