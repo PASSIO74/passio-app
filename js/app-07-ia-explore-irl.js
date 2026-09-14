@@ -1179,6 +1179,14 @@ function requestUserLocation() {
       // Utiliser Paris par défaut
       irlUserLocation = { lat: 48.8566, lng: 2.3522 };
       _diag("[GEO] 🔄 Fallback PARIS: 48.8566, 2.3522");
+      // ⚠️ LE REPLI SE DIT (ROB-05, 2026-09-14) : l'écran titrait « Paris »
+      // comme si c'était la position de la personne — résultats trompeurs pour
+      // quiconque n'est pas en Île-de-France. Une fois par session, et la
+      // sortie est nommée : choisir sa ville.
+      if (!window._geoRefusDit) {
+        window._geoRefusDit = true;
+        try { toast("Localisation indisponible — résultats autour de Paris. Choisis ta ville dans Filtre → Autour de moi.", "warning"); } catch (e) {}
+      }
 
       // Afficher Paris comme fallback
       updateIrlCityTitle();
@@ -1267,6 +1275,9 @@ function updateIrlCityTitle() {
   let displayName = "ta position";
   if (irlSelectedCity) {
     displayName = irlSelectedCity.name;
+  } else if (irlUserLocationError) {
+    // Repli assumé, et dit comme tel : jamais « Paris » tout court (ROB-05).
+    displayName = "Paris (par défaut)";
   } else if (irlUserLocation) {
     // Commune réelle (géocodage inverse) si déjà résolue, sinon repli dictionnaire.
     displayName = window._irlResolvedCity || getClosestCity(irlUserLocation.lat, irlUserLocation.lng);
@@ -5932,9 +5943,12 @@ async function cancelEventSeries(id) {
   for (const e of all) {
     const canon = _findCanonicalEvent(e.id);
     if (!canon || _eventIsCancelled(canon)) continue;
+    if (window._supaReal && typeof supaCancelEvent === "function") {
+      const okOcc = await supaCancelEvent(canon.id, true);
+      if (!okOcc) { try { if (typeof diagLog === "function") diagLog("annulation série KO " + canon.id); } catch (e) {} continue; }
+    }
     canon.status = "cancelled";
-    if (window._supaReal && typeof supaCancelEvent === "function") await supaCancelEvent(canon.id, true);
-    _notifyEventAttendees(canon, "a annulé un événement auquel tu participais");
+    _notifyEventAttendees(canon, "a annulé un événement auquel tu participais", "event_cancelled");
   }
   saveState();
   window._irlMapSig = null;
@@ -5950,15 +5964,18 @@ async function toggleCancelEvent(id) {
   if (!ev) return;
   const cancel = !_eventIsCancelled(ev);
   if (cancel && !confirm("Annuler cet événement ? Les inscrits seront prévenus.")) return;
+  // Le serveur d'abord : « annulé » n'est ni affiché ni notifié sur un refus
+  // (même famille que ROB-02 / IRL-06 ; l'annulation optimiste restait barrée
+  // à l'écran après « Changement non synchronisé »).
+  if (window._supaReal && typeof supaCancelEvent === "function") {
+    const ok = await supaCancelEvent(id, cancel);
+    if (!ok) { toast("⚠️ Changement non enregistré — réessaie", "warning"); try { if (typeof diagLog === "function") diagLog("annulation KO " + id); } catch (e) {} return; }
+  }
   ev.status = cancel ? "cancelled" : "active";
   saveState();
   closeModal();
   renderIRL();
-  if (window._supaReal && typeof supaCancelEvent === "function") {
-    const ok = await supaCancelEvent(id, cancel);
-    if (!ok) { toast("Changement non synchronisé", "warning"); return; }
-  }
-  if (cancel) _notifyEventAttendees(ev, "a annulé un événement auquel tu participais");
+  if (cancel) _notifyEventAttendees(ev, "a annulé un événement auquel tu participais", "event_cancelled");
   toast(cancel ? "Événement annulé — inscrits prévenus" : "Événement réactivé");
 }
 
@@ -6000,16 +6017,8 @@ async function deleteEventConfirm(id) {
 // Prévient tout le monde qu'une activité vient d'être supprimée : inscrits,
 // « peut-être » et liste d'attente, chacun une fois, jamais soi-même (IRL-06).
 function _prevenirSuppressionActivite(ev) {
-  if (!ev || typeof supaInsertNotif !== "function") return 0;
-  const meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
-  const vus = {};
-  let n = 0;
-  [].concat(ev.attendees || [], ev.maybes || [], ev.waitlist || []).forEach(function (uidTo) {
-    if (!uidTo || uidTo === meId || uidTo === "me" || vus[uidTo]) return;
-    vus[uidTo] = true;
-    try { supaInsertNotif(uidTo, "event_cancelled", ev.id, "« " + String(ev.title || "").slice(0, 60) + " » a été supprimé par l'organisateur"); n++; } catch (e) {}
-  });
-  return n;
+  if (!ev) return 0;
+  return _notifyEventAttendees(ev, "« " + String(ev.title || "").slice(0, 60) + " » a été supprimé par l'organisateur", "event_cancelled");
 }
 
 // Message groupé aux inscrits (annonce de dernière minute, changement de lieu…).
@@ -6088,6 +6097,11 @@ async function submitEvent(editId) {
   const postalCode = (g("evPostal")?.value || "").trim();
   const price = parseFloat(g("evPrice")?.value || "0") || 0;
   const maxAttendees = parseInt(g("evMax")?.value || "") || null;
+  // ⚠️ BORNES REVALIDÉES ICI, pas seulement dans le `min` du champ (IRL-11,
+  // 2026-09-14) : un prix négatif s'affichait « Gratuit », une capacité
+  // négative rendait l'activité « complète » dès sa création.
+  if (!(price >= 0) || price > 99999) { toast("Le prix doit être un montant positif (ou 0)", "error"); return; }
+  if (maxAttendees !== null && (!(maxAttendees >= 1) || maxAttendees > 9999)) { toast("Le nombre de places doit être au moins 1", "error"); return; }
   const contact = (g("evContact")?.value || "").trim();
   const externalLink = (g("evLink")?.value || "").trim();
   const eventType = g("evType")?.value || "Autre";
@@ -6111,7 +6125,13 @@ async function submitEvent(editId) {
   if (isNaN(ts)) { toast("Date invalide", "error"); return; }
   // Créer un événement DANS LE PASSÉ n'avait aucun garde-fou : il partait en base
   // puis était filtré à l'affichage → l'organisateur ne le retrouvait jamais.
-  if (!editId && ts < Date.now() - 3600000) { toast("Cette date est déjà passée", "error"); return; }
+  // À l'ÉDITION aussi (IRL-11) : on ne peut pas DÉPLACER une activité dans le
+  // passé ; on peut encore retoucher une activité déjà passée sans changer sa
+  // date (correction d'un titre après coup).
+  if (ts < Date.now() - 3600000) {
+    const _dejaCetteDate = !!editId && (function () { const ex = _findCanonicalEvent(editId); if (!ex) return false; const jour = (t) => new Date(t - new Date(t).getTimezoneOffset() * 60000).toISOString().slice(0, 10); return jour(Number(ex.date)) === jour(ts); })();
+    if (!_dejaCetteDate) { toast("Cette date est déjà passée", "error"); return; }
+  }
 
   const recurrence = editId ? null : (g("evRecurrence")?.value || "none");
   const occurrences = parseInt(g("evOccurrences")?.value || "6") || 6;
@@ -6235,13 +6255,28 @@ async function submitEvent(editId) {
 }
 
 // Notifie tous les inscrits (hors moi) d'un changement sur l'événement.
-function _notifyEventAttendees(ev, text) {
+// ⚠️ UNE ANNULATION PRÉVIENT LES TROIS LISTES (IRL-13, 2026-09-14) : inscrits,
+// « peut-être » ET liste d'attente — celle-ci ne bouclait que sur `attendees`,
+// donc quelqu'un en « peut-être » ou en attente apprenait l'annulation en
+// arrivant sur place. `_destinatairesActivite` est la SEULE liste des
+// personnes à prévenir (chacune une fois, jamais soi-même), partagée avec la
+// suppression (IRL-06). `kind` par défaut `event_update`.
+function _destinatairesActivite(ev) {
   const meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
-  if (typeof supaInsertNotif !== "function") return;
-  (ev.attendees || []).forEach(function(uidTo) {
-    if (!uidTo || uidTo === meId || uidTo === "me") return;
-    try { supaInsertNotif(uidTo, "event_update", ev.id, text); } catch (e) {}
+  const vus = {}; const out = [];
+  [].concat(ev.attendees || [], ev.maybes || [], ev.waitlist || []).forEach(function (uidTo) {
+    if (!uidTo || uidTo === meId || uidTo === "me" || vus[uidTo]) return;
+    vus[uidTo] = true; out.push(uidTo);
   });
+  return out;
+}
+function _notifyEventAttendees(ev, text, kind) {
+  if (!ev || typeof supaInsertNotif !== "function") return 0;
+  const cibles = _destinatairesActivite(ev);
+  cibles.forEach(function(uidTo) {
+    try { supaInsertNotif(uidTo, kind || "event_update", ev.id, text); } catch (e) {}
+  });
+  return cibles.length;
 }
 
 // Géocode une adresse libre → { lat, lng } ou null. Passe par la couche
