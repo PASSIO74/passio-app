@@ -632,10 +632,31 @@ function publishStoryFromComposer() {
     state.seed.users.push({ id: meId, name: story.authorName, profileEmoji: story.authorEmoji, avatar: story.authorColor });
   } catch(e) {}
   saveState();
-  if (typeof supa !== "undefined" && supa && typeof supaPublishStory === "function") supaPublishStory(story);
   closeModal();
   try { renderStories(); } catch(e) {}
-  toast("Story publiée", "success");
+  _publierStoryAvecVerdict(story);
+}
+
+// ⚠️ « STORY PUBLIÉE » N'EST DIT QUE SI LE SERVEUR L'A ÉCRITE (CONT-06,
+// 2026-09-14). Les deux composeurs appelaient `supaPublishStory` sans attendre
+// ni lire son verdict, puis annonçaient la publication : un refus (RLS,
+// média non uploadé, réseau) laissait une story visible sur cet appareil
+// seulement, annoncée comme publiée. Optimiste à l'écran, puis le verdict : un
+// échec retire la story locale et le dit. Sans compte réel ou sans SDK, la
+// story reste locale et on le dit.
+async function _publierStoryAvecVerdict(story) {
+  const local = !window._supaReal || typeof supaPublishStory !== "function"
+    || !(typeof _uidEstUnCompte === "function" && _uidEstUnCompte());
+  if (local) { toast("Story enregistrée sur cet appareil", "success"); return true; }
+  let ok = false;
+  try { ok = await supaPublishStory(story); } catch (e) { ok = false; }
+  if (ok) { toast("Story publiée", "success"); return true; }
+  state.seed.stories = (state.seed.stories || []).filter(function (s) { return s.id !== story.id; });
+  saveState();
+  try { renderStories(); } catch (e) {}
+  toast("⚠️ Story non publiée — réessaie", "warning");
+  try { if (typeof diagLog === "function") diagLog("story KO " + story.id); } catch (e) {}
+  return false;
 }
 
 // Conservé pour compat : redirige vers l'éditeur média.
@@ -1404,9 +1425,8 @@ async function mePublish() {
     state.seed.stories.unshift(story);
     try { state.seed.users = (state.seed.users || []).filter(function(u) { return u.id !== authorId; }); state.seed.users.push({ id: authorId, name: story.authorName, profileEmoji: story.authorEmoji, avatar: story.authorColor }); } catch(e) {}
     saveState();
-    if (typeof supaPublishStory === "function") supaPublishStory(story);
     try { renderStories(); } catch(e) {}
-    toast("Story publiée", "success");
+    _publierStoryAvecVerdict(story);
   } else {
     // ── Finition de bobine (lot UI-7 §8) ────────────────────────────────────
     // `meState.details` est renseigné par la feuille légère qui suit l'aperçu
