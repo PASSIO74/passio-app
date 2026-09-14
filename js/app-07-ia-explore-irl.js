@@ -3883,7 +3883,7 @@ function openEventDetails(id) {
     const u = userById(aid) || { name: aid === "me" ? (currentProfile()?.name || "Moi") : "Participant", avatar: "#8b5cf6", profileEmoji: "✨" };
     const firstName = (u.name || "?").split(" ")[0];
     const here = (ev.checkedIn || []).indexOf(aid) > -1;
-    return `<div class="event-detail-participant" style="cursor:pointer;" onclick="openUserProfile('${escapeJsArg(aid)}')">
+    return `<div class="event-detail-participant" role="button" tabindex="0" aria-label="Profil de ${escapeHtml((u && u.name) || "participant")}" style="cursor:pointer;" onclick="openUserProfile('${escapeJsArg(aid)}')">
       <div class="avatar sm" style="background:${avatarBg(u)};position:relative;">${avatarInner(u)}${here ? '<span class="ev-here-dot" title="Sur place">✅</span>' : ""}</div>
       <div class="event-detail-participant-name">${escapeHtml(firstName)}</div>
     </div>`;

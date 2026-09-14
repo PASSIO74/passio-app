@@ -11290,6 +11290,18 @@ button, a, label, select, summary,
   border-color: var(--accent, #7c3aed);
 }
 
+    /* ═══ Cibles tactiles (DEV-01, contre-revue Astra, 2026-09-14) ═══
+       Les commandes de barre font 30-34 px et les actions de commentaire ne
+       couvrent que leur icône : la zone de tap est élargie à 44 px SANS
+       déplacer la mise en page — pseudo-élément transparent pour les boutons
+       de barre, marge négative compensant le padding pour les actions. */
+    .topbar-bell::after, .story-viewer-close::after, .modal-close::after {
+      content: ""; position: absolute; inset: -6px; min-width: 44px; min-height: 44px;
+    }
+    .story-viewer-close { position: relative; } /* .modal-close est déjà absolu : le forcer en relative le déplaçait (rouge CI #400) */
+    .comment-action { padding: 14px 6px; margin: -14px -6px; }
+
+
 /* ═══════════════════════════════════════════════════════════════════════════
    PASSIO UI V4 — lot UI-4A5 : « Filtre » est une VUE de « Rencontrer ».
    ACTIF PAR DÉFAUT.

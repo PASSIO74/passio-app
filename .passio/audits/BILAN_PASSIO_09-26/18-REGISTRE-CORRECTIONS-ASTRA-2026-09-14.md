@@ -623,3 +623,17 @@
 | Limite restante | Mots de passe, identités OAuth et `created_at` des comptes ne sont pas restaurables (l'export ne les porte pas) ; la configuration du projet (auth, SMTP, secrets, Edge Functions) non plus — liste écrite. `authz-critical.spec.js` ne sait pas viser le staging : l'URL de la prod est en dur dans app-08 (SUP-04, lot suivant) — la frontière a été sondée en REST direct. Le brouillon local `scripts/schema-origine.js` / `migrations/00_ORIGINE_PROD.sql` (non versionné, Benjamin) décrit l'état du 17/08 (35 tables, 12 fonctions), passe par `supabase db query` retiré par ADR-012, et son bloc « contrainte » n'avale pas `invalid_table_definition` : à réconcilier avec `schema-executable.js` avant d'en faire la baseline NET-07. Le staging réactivé coûte le calcul d'un second projet sur le plan Pro (`POST /v1/projects/<ref>/pause` pour le remettre en pause). La moitié « rollback applicatif » de TCI-03 (`rollback.yml`) et EXP-03 restent. |
 | État | **corrigé dans le code** · **testé sur staging** (c'est l'objet même du lot) · déployé : n/a (outillage de poste) |
 | PR | `claude/chantier-6-restauration`. |
+
+---
+
+## DEV-01 / DEV-04 — Cibles tactiles sous 44 px, commandes iconiques sans nom accessible — P3 (chantier 10)
+
+| Champ | Valeur |
+|---|---|
+| État constaté | Cloche du bandeau 34 px, croix des panneaux (stories, modales) sans zone élargie ; actions de commentaire réduites à leur icône (12 px) ; avatars cliquables du fil et des fiches sans `role`/`tabindex`/nom accessible ; pastille 📷 lue par les lecteurs d'écran comme un emoji. |
+| Correction | CSS (bloc posé AVANT le bloc UI-4A5, qui reste le dernier) : pseudo-élément `::after` transparent de 44 px sur `.topbar-bell`, `.story-viewer-close`, `.modal-close` — la taille VISIBLE ne change pas ; `.comment-action` : `padding: 14px 6px; margin: -14px -6px` — zone de tap ≥ 40 px sans déplacer la ligne. Balisage : avatars et noms d'auteur des cartes du fil et de la vue détail en `role="button" tabindex="0"` avec `aria-label="Profil de <nom>"` (l'activation clavier existe déjà pour `[role="button"]`), participants d'une rencontre idem ; `#mainProfileAvatar` = « Changer ma photo de profil », pastille 📷 `aria-hidden`. |
+| Test effectué | `tests/e2e/accessibilite-cibles.spec.js` (4 : avatar nommé ; photo de profil nommée + pastille décorative ; cloche 44 px sans changer la boîte ; action de commentaire ≥ 40 px, ligne inchangée). Voisines de cadrage : cadrage, feed-premier-rendu, ui-v7-lot, profil-entete-passions, ios-zones-sures, entete-fil-permanent, commentaires-bobine, interactions (98/99 en parallèle ×2 ; le rouge — mesure de ralentissement processeur — passe seul, sur la branche comme sur main pristine : contention, pas régression). |
+| Résultat | **Avant** (main pristine) : 4/4 rouges. **Après** : 4/4 ; artefact minifié : 4/4. |
+| Limite restante | DEV-02 (≈95 gabarits `<div onclick>` sans rôle : cartes du fil, événements) : non traité ici — un passage mécanique sur 95 gabarits mérite son propre lot avec vérification au clavier. DEV-03 (contrastes 4,4:1 sur lavis) : non touché (jetons partagés par deux palettes). Les avatars des listes (`list-row`, `ai-card`) restent sans nom : lot DEV-02. |
+| État | **corrigé dans le code** · déployé : non |
+| PR | `claude/chantier-10-a11y`. |

@@ -8326,8 +8326,8 @@ function renderPostHTML(p) {
   // affichait exactement la même paire.
   return `<article class="post" data-postid="${escapeHtml(p.id)}">
     <div class="post-header">
-      <div class="avatar" style="background:${avatarBg(author)};cursor:pointer;" onclick="openUserProfile('${escapeJsArg(p.authorId)}','${escapeJsArg(p._source)}')">${avatarInner(author)}</div>
-      <div class="post-author" style="cursor:pointer;" onclick="openUserProfile('${escapeJsArg(p.authorId)}','${escapeJsArg(p._source)}')">
+      <div class="avatar" role="button" tabindex="0" aria-label="Profil de ${escapeHtml(author.name || "Moi")}" style="background:${avatarBg(author)};cursor:pointer;" onclick="openUserProfile('${escapeJsArg(p.authorId)}','${escapeJsArg(p._source)}')">${avatarInner(author)}</div>
+      <div class="post-author" role="button" tabindex="0" style="cursor:pointer;" onclick="openUserProfile('${escapeJsArg(p.authorId)}','${escapeJsArg(p._source)}')">
         <div class="post-author-name">${escapeHtml(author.name || "Moi")}</div>
         <div class="post-author-meta">
           <span class="post-passion-tag">${escapeHtml(passion.emoji)} ${escapeHtml(passion.label)}</span> · ${fmtTime(p.createdAt)}
@@ -8418,8 +8418,8 @@ async function openPost(id) {
   content.innerHTML = `
     <div class="post" data-postid="${escapeHtml(id)}" style="cursor:default;">
       <div class="post-header">
-        <div class="avatar" style="background:${avatarBg(author)};cursor:pointer;" onclick="openUserProfile('${escapeJsArg(post.authorId)}','${escapeJsArg(post._source || "seed")}')">${avatarInner(author)}</div>
-        <div class="post-author" style="cursor:pointer;" onclick="openUserProfile('${escapeJsArg(post.authorId)}','${escapeJsArg(post._source || "seed")}')">
+        <div class="avatar" role="button" tabindex="0" aria-label="Profil de ${escapeHtml(author.name || "Utilisateur")}" style="background:${avatarBg(author)};cursor:pointer;" onclick="openUserProfile('${escapeJsArg(post.authorId)}','${escapeJsArg(post._source || "seed")}')">${avatarInner(author)}</div>
+        <div class="post-author" role="button" tabindex="0" style="cursor:pointer;" onclick="openUserProfile('${escapeJsArg(post.authorId)}','${escapeJsArg(post._source || "seed")}')">
           <div class="post-author-name">${escapeHtml(author.name || "Utilisateur")}</div>
           <div class="post-author-meta"><span class="post-passion-tag">${escapeHtml(passion.emoji)} ${escapeHtml(passion.label)}</span> · ${fmtTime(post.createdAt)}</div>
         </div>
