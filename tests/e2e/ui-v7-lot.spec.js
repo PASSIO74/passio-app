@@ -246,6 +246,10 @@ test.describe("UI-7 §2 — la carte d'activité dit ce qu'il faut", () => {
 
     const carte = page.locator(`#eventList .event-card[data-evid="${id}"]`);
     await expect(carte.locator('[data-v4a2-act="voir"]')).toHaveText("Détails");
+    // ⚠️ Depuis ROB-02 (2026-09-14), « Inscrit ✓ » n'est affiché que si le
+    // serveur a écrit l'inscription : un refus annule l'optimiste. Cette suite
+    // mesure la CARTE, pas la base — le faux client accorde l'écriture.
+    await page.evaluate(() => { window.supaSetEventRsvp = async () => true; });
     await expect(carte.locator('[data-v4a2-act="go"]')).toHaveText("Je viens");
     await carte.locator('[data-v4a2-act="go"]').click();
     await page.waitForTimeout(500);
