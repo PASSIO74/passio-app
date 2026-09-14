@@ -232,8 +232,8 @@ Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, 
 | Test effectué | `tests/unit/pagination-rest.test.mjs` (5 cas : page pleine → suivante, 1 201 lignes = 3 pages, borne dite, vide, page exactement pleine), dans `npm run verif`. Le script lui-même n'est pas exécuté contre la base (il écrit) — la construction d'URL est lue. |
 | Résultat | 5/5. |
 | Limite restante | Non mesuré sur une base de plus de 500 signalements. Le journal local « vu » (`lireVus`) reste sur l'appareil de l'opérateur. |
-| État | **corrigé dans le code** · déployé : sans objet (outil local) |
-| PR | `claude/chantier-7-outillage` — voir la PR ouverte depuis cette branche. |
+| État | **corrigé dans le code** · **fusionné #382** (`920614b2`), outil local : effectif à sa prochaine exécution |
+| PR | [#382](https://github.com/PASSIO74/passio-app/pull/382) — fusionnée (squash) le 2026-09-14. |
 
 ---
 
@@ -246,8 +246,8 @@ Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, 
 | Test effectué | `tests/unit/sentinelle-detecter.test.mjs` : cas « ASTRA-06 » (50 lignes anonymes → aucune cible, RÉINJECTION ; deux comptes → une cause) ; les cas existants réécrits avec des uuid (« u1 » n'est pas une personne). 38/38. |
 | Résultat | 38/38. |
 | Limite restante | **Résidu écrit** : un client hostile peut recopier des uuid publics (`profiles` est lisible) — la fermeture complète est une colonne `auth_uid` posée par le serveur sur `telemetry_events`, comme `client_errors` (migration → lot « périmètre critique », gate de gouvernance). Le seuil de 5 occurrences sur un seul compte reste ouvrable par ce même compte. |
-| État | **corrigé dans le code (partiel)** · déployé : à la prochaine exécution du workflow (le script est lu depuis `main`) |
-| PR | `claude/chantier-7-outillage`. |
+| État | **corrigé dans le code** (écart des lignes sans compte, #382 `920614b2`) · **fermé côté serveur** : `telemetry_events.auth_uid` + trigger `trg_telemetry_identite` (#383 `89f8851a`), **migration APPLIQUÉE** par Benjamin et **mesurée** en base le 2026-09-14 (colonne présente, trigger posé, télémétrie qui continue d'arriver — 95 lignes en 10 min) ; `lireApi` préfère `auth_uid` (déployé avec #383, effectif au prochain run de la Sentinelle) |
+| PR | [#382](https://github.com/PASSIO74/passio-app/pull/382) et [#383](https://github.com/PASSIO74/passio-app/pull/383) — fusionnées le 2026-09-14. |
 
 ---
 
@@ -260,8 +260,8 @@ Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, 
 | Test effectué | `tests/unit/sentinelle-detecter.test.mjs` cas « ASTRA-08 » (premier corrigé, second actif → second ; liste vide/nulle → null). |
 | Résultat | vert. |
 | Limite restante | Sans le câblage, rien ne change en production. |
-| État | **préparé dans le code** · câblage : non |
-| PR | `claude/chantier-7-outillage`. |
+| État | **corrigé dans le code** : `choisirCible` (#382) **et câblage du workflow** (#383, contre-revue de Benjamin sur `ba89e46e`) · effectif au prochain run de `sentinelle-autonome.yml` · vérifié : non (attend un run avec un premier candidat déjà corrigé) |
+| PR | [#382](https://github.com/PASSIO74/passio-app/pull/382) et [#383](https://github.com/PASSIO74/passio-app/pull/383). |
 
 ---
 
@@ -274,5 +274,48 @@ Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, 
 | Test effectué | `tests/e2e/evenements-cols-visiteur.spec.js` ⑥ (503 → repli, mémo NON posé, la liste privée repart — RÉINJECTION) et ⑥ bis (un vrai refus se mémorise toujours ; table de `_refusDeDroit`). |
 | Résultat | **Avant** (main pristine) : ⑥ et ⑥ bis rouges. **Après** : 9/9. |
 | Limite restante | Aucune mesure sur appareil réel. |
+| État | **corrigé dans le code** · **fusionné #382**, **déployé** (`release.json` servi = `89f8851a`) · vérifié après déploiement : artefact non relu à part |
+| PR | [#382](https://github.com/PASSIO74/passio-app/pull/382) — fusionnée (squash) le 2026-09-14. |
+
+
+---
+
+## ASTRA-02 — Le plafond global compte des dates fournies par l'émetteur — P1 (chantier 7) — **appliqué**
+
+| Champ | Valeur |
+|---|---|
+| État constaté | `limiter_debit_global` (ouverture publique) compte les lignes dont `created_at` / `received_at` est dans la dernière minute — colonnes à `DEFAULT now()` mais **écrivables par le client** (mesuré : aucun trigger ne les imposait). Un client qui antidate sort ses lignes de la fenêtre au moment d'y entrer : le plafond ne borne rien. Banc : 5 lignes antidatées passent un plafond de 3/min. |
+| Correction | Le trigger pose la date du serveur (`json_populate_record(new, json_build_object(col_temps, now()))`) avant de compter. Migration `migration_debit_et_identite_serveur_2026-09-14.sql` (une transaction, rejouable, verdict 4 lignes). |
+| Test effectué | `tests/sql/migration-debit-identite.test.sh` (24 contrôles, PostgreSQL jetable, CI) : défaut mesuré avant, antidatées re-datées et refusées au plafond sur les deux tables, mutation (ancienne fonction) → 5 repassent et verdict ① ECHEC, rejeu répare. |
+| Résultat | Banc vert en CI (#383). |
+| Limite restante | Le plafond reste global (par table, par minute), pas par émetteur anonyme — c'est le choix de l'ouverture publique. Non mesuré : comportement sous rafale réelle. |
+| État | **corrigé dans le code** · **fusionné #383** (`89f8851a`) · **migration APPLIQUÉE** par Benjamin le 2026-09-14 et **mesurée** en base (`pg_get_functiondef` porte la pose de date, 2 triggers de débit) · vérifié après application : télémétrie qui continue d'arriver |
+| PR | [#383](https://github.com/PASSIO74/passio-app/pull/383) — fusionnée (squash) le 2026-09-14 après contre-revue. |
+
+---
+
+## ASTRA-07 — Le vérificateur de sauvegarde accepte un fichier vide alors que le manifeste annonce des lignes — P2 (chantier 6) — **fait**
+
+| Champ | Valeur |
+|---|---|
+| État constaté | `scripts/sauvegarde-donnees.js --verifier` : `if (contenu && lignes.length !== info.exporte)` — un fichier **vide** n'était jamais comparé au manifeste. **Reproduit** sur `main` : manifeste à 3 lignes, fichier vide → « Archive relue : conformes au manifeste », sortie 0. Ce vérificateur est celui que le workflow de sauvegarde exécute chaque nuit après déchiffrement : un vert à tort y vaut une archive qu'on croit restaurable. |
+| Correction | Un vide se compte comme n'importe quel nombre (`lignes.length !== info.exporte`). |
+| Test effectué | `tests/unit/sauvegarde-verifier.test.mjs` (3 cas, lance le **script lui-même** sur des dossiers fabriqués : vide vs 3 annoncées → anomalie, sortie 1 ; conforme → 0 ; vide annoncé → conforme), branché dans `deploy.yml`. |
+| Résultat | Avant : rouge (sortie 0 sur le vide). Après : 3/3. |
+| Limite restante | Le vérificateur relit les lignes et compte les fichiers médias ; il ne **restaure** toujours rien (EXP-01 reste ouvert : aucune restauration complète exercée). |
+| État | **corrigé dans le code** · **fusionné #383** · effectif au prochain run de `sauvegarde.yml` |
+| PR | [#383](https://github.com/PASSIO74/passio-app/pull/383). |
+
+---
+
+## MOD-02 — La fonction de signalement d'une publication n'a pas d'appelant — P1 (chantier 5)
+
+| Champ | Valeur |
+|---|---|
+| État constaté (base `89f8851a`) | `reportPost` (app-04) existait — motif demandé, verdict serveur lu depuis le 2026-09-10 — mais **aucune surface ne l'appelait** : le ⋯ d'une publication n'était rendu que sur ses propres publications (`_estMonPost`), pour les supprimer. Un contenu illicite dans le fil n'avait pas de porte de signalement, alors que le DSA (art. 16) exige d'un hébergeur un mécanisme de notification accessible. |
+| Correction | `_boutonOptionsPost(p)` (app-02, un seul constructeur pour le fil et la vue détail) : ma publication → ⋯ de suppression (inchangé) ; publication d'un compte réel → ⋯ « Signaler ou bloquer » → `openPostOptionsAutrui` (app-04) : « 🚩 Signaler cette publication » (`reportPost`) et « 🚫 Bloquer <nom> » / « ✅ Débloquer » (`blockUser` / `unblockUser`, verdict serveur lu depuis MOD-04). Le contenu de démonstration (auteur `u_…`, absent de la base) n'a pas de ⋯. |
+| Test effectué | `tests/e2e/signaler-publication.spec.js` (5 cas) : ① ⋯ sur la publication d'un compte réel, la mienne, jamais la démo ; ② la feuille porte « Signaler » et « Bloquer Léa » ; ③ « Signaler » appelle `reportPost` sur la bonne publication ; ④ vue détail : même ⋯ ; ⑤ à la source : un seul constructeur. Voisines : suppression-durable, feed-premier-rendu, profil-visite-options, refonte-multi-passion, first-run, feed-envie-filtre (110/110). |
+| Résultat | Avant : ① rouge (aucune porte). Après : 5/5. |
+| Limite restante | Le signalement d'un **commentaire** depuis le fil et d'une **story** : non revus ici (`reportCommentEntry` a un appelant dans le fil de commentaires ; les stories n'ont pas de porte — à faire). Le **traitement** du signalement (MOD-01 : réception, décision, retrait, traçabilité) reste manuel via `scripts/moderation.js` ; l'alerte quotidienne existe ; aucun retrait automatique — non mesuré de bout en bout. |
 | État | **corrigé dans le code** · déployé : non · vérifié après déploiement : non |
-| PR | `claude/chantier-7-outillage`. |
+| PR | `claude/mod-02-signaler-publication` — voir la PR ouverte depuis cette branche. |

@@ -25,6 +25,27 @@ function openPostOptions(postId) {
   `);
 }
 
+// Le ⋯ d'une publication d'AUTRUI : signaler la publication, bloquer l'auteur.
+// Même feuille que `openPostOptions`, mêmes moteurs que le profil visité
+// (`reportPost`, `blockUser` — verdict serveur lu dans les deux).
+function openPostOptionsAutrui(postId) {
+  var p = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
+  if (!p) return;
+  var auteur = (typeof userById === "function" && userById(p.authorId)) || {};
+  var nom = auteur.name || "cet utilisateur";
+  var bloque = (typeof isBlocked === "function") && isBlocked(p.authorId);
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="post-options-sheet">
+      <button class="post-option" onclick="closeModal();reportPost('${escapeJsArg(postId)}')">🚩 Signaler cette publication</button>
+      ${bloque
+        ? `<button class="post-option" onclick="closeModal();unblockUser('${escapeJsArg(p.authorId)}','${escapeJsArg(nom)}')">✅ Débloquer ${escapeHtml(nom)}</button>`
+        : `<button class="post-option danger" onclick="closeModal();blockUser('${escapeJsArg(p.authorId)}','${escapeJsArg(nom)}')">🚫 Bloquer ${escapeHtml(nom)}</button>`}
+      <button class="post-option" onclick="closeModal()">Annuler</button>
+    </div>
+  `);
+}
+
 // ═════════════════════════════════════════════════════════════════════════
 // SUPPRESSION DES POSTS
 // ─────────────────────────────────────────────────────────────────────────
