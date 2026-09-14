@@ -38,8 +38,10 @@ function env() {
       if (m && !vals[m[1]]) vals[m[1]] = m[2].trim();
     }
   }
-  if (!vals.SUPABASE_URL || !vals.SUPABASE_SERVICE_ROLE_KEY) return null;
-  return { url: vals.SUPABASE_URL.replace(/\/+$/, ""), cle: vals.SUPABASE_SERVICE_ROLE_KEY };
+  // SUP-04 : la cible du banc (staging) prime sur l'env historique.
+  const url = (vals.PASSIO_SUPABASE_URL && vals.PASSIO_SUPABASE_ANON) ? vals.PASSIO_SUPABASE_URL : vals.SUPABASE_URL;
+  if (!url || !vals.SUPABASE_SERVICE_ROLE_KEY) return null;
+  return { url: url.replace(/\/+$/, ""), cle: vals.SUPABASE_SERVICE_ROLE_KEY };
 }
 
 const entetes = (cle, extra = {}) => ({ apikey: cle, Authorization: `Bearer ${cle}`, ...extra });
