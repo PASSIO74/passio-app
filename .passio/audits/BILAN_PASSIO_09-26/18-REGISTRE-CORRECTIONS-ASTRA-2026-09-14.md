@@ -564,3 +564,18 @@ Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, 
 | Limite restante | Pas de reconnexion automatique sur 401 (un refresh token révoqué ne se répare pas côté client : on propose la sortie). Les écritures refusées pendant la panne restent portées par leurs files respectives (messages, commentaires, publications) ; un like ou un RSVP refusé est annulé à l'écran (invariant), pas rejoué. Non mesuré en production réelle (aucune panne à disposition). |
 | État | **corrigé dans le code** · déployé : non · vérifié après déploiement : non |
 | PR | `claude/chantier-8-etat-serveur`. |
+
+
+---
+
+## EXP-08 — Aucun export des données du compte (portabilité) — P2
+
+| Champ | Valeur |
+|---|---|
+| État constaté | La politique de confidentialité promettait « accès, portabilité » par e-mail ; aucune fonction d'export n'existait. (Le reste du point — politique datée, sous-traitants, durées, `delete-account` — a été traité les 11–14/09.) |
+| Correction | Edge Function `export-account` (JWT de la personne ; `service_role` côté serveur ; plafond 2/min, 10/h via `plafond.js`) qui rend un JSON `passio-export/1` : identité Auth (e-mail, dates, métadonnées), toutes les tables où la personne a écrit (`_shared/export-compte.js`, dérivé de la liste de purge **moins** les données d'autrui — qui la suit, qui l'a bloquée, notifications qu'elle a causées — et les traces techniques), médias listés par chemin + URL publique, tables illisibles nommées, pagination 1 000 / plafond 5 000 par table (tronquées dites). Client : Paramètres → Confidentialité → « 📦 Exporter mes données (JSON) » (`exporterMesDonnees`, téléchargement local, échecs et plafond dits, sans compte réel → dit). Politique §9 : la porte est nommée. |
+| Test effectué | **Éprouvé en production sur un compte jetable** (`verif-export.cjs`) : sans jeton → 401 ; avec jeton → 200, `passio-export/1`, **27 tables**, la publication et le profil semés présents, e-mail présent, 0 erreur ; 3e appel dans la minute → **429** ; compte purgé ensuite (delete-account 200). `tests/unit/export-compte.test.mjs` (3 : exclusions, lecture bornée au compte, table illisible nommée + pagination/plafond) dans `verif`. `tests/e2e/export-donnees.spec.js` (5 : porte, appel + téléchargement + bilan, échec/plafond dit, sans compte, politique). Voisines : confidentialite, cgu-consentement, suppression-compte-verdict, access-gate, ouverture-publique (69/69). |
+| Résultat | **Avant** (main pristine) : 5/5 rouges. **Après** : 5/5 ; artefact minifié : 5/5. Edge Function **déployée** (v1) et vérifiée pour de vrai. |
+| Limite restante | Les médias sont listés, pas embarqués (les URL `content` sont publiques ; les pièces jointes de messagerie, seau privé, ne sont pas listées — lot suivant si voulu). Pas de ZIP ni de signature. Registre des traitements et procédure de violation (72 h) : documents à écrire, hors code. |
+| État | **corrigé dans le code** · Edge Function déployée et vérifiée · client déployé : non |
+| PR | `claude/exp-08-export-donnees`. |
