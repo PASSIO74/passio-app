@@ -473,6 +473,10 @@ function _cmtObStopTimer() { if (_cmtObTimer) { clearInterval(_cmtObTimer); _cmt
 function _enqueueCommentSync(op) {
   op.opId = "ob_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7);
   op.tries = 0; op.ts = Date.now();
+  // ⚠️ L'entrée porte le COMPTE (AUTH-06, 2026-09-14) : même défaut que la
+  // file des messages — `supaAddComment` écrit `author_id = MY_UID` au moment
+  // de l'ENVOI, donc un brouillon de A rejoué sous B était publié par B.
+  op.uid = _fileProprietaire();
   var arr = _cmtObLoad(); arr.push(op); _cmtObSave(arr);
   var found = _findCommentNode(op.threadId, op.nodeId);
   if (found && found.node) { found.node._pending = true; found.node._failed = false; }
@@ -503,8 +507,20 @@ async function _cmtObFlush() {
   if (!window._supaReal) return; // backend pas encore prêt (boot) : réessai plus tard
   _cmtObFlushing = true;
   try {
+    var moi = _fileProprietaire();
     for (var i = 0; i < arr.length; i++) {
       var op = arr[i];
+      // Le compte d'ABORD (AUTH-06) : une entrée d'un autre compte est jetée
+      // — un brouillon ne se publie pas sous une identité qui n'est pas la
+      // sienne. Une entrée d'AVANT ce correctif (sans `uid`) est adoptée si son
+      // commentaire est encore ici, jetée sinon (même règle que les messages).
+      var etrangere = op.uid ? (op.uid !== moi) : !((_findCommentNode(op.threadId, op.nodeId) || {}).node);
+      if (etrangere) {
+        _cmtObSave(_cmtObLoad().filter(function (o) { return o.opId !== op.opId; }));
+        try { if (typeof diagLog === "function") diagLog("cmt_outbox_autre_compte"); } catch (e) {}
+        continue;
+      }
+      if (!op.uid && moi) { op.uid = moi; _cmtObSave(_cmtObLoad().map(function (o) { return o.opId === op.opId ? op : o; })); }
       if ((op.tries || 0) >= 8) continue; // auto-stop : le clic « Réessayer » remet tries à 0
       var ok = false;
       try { ok = await _cmtObRun(op); } catch (e) { ok = false; }
@@ -4801,6 +4817,34 @@ function sendMessageFp(convId, displayName) {
 var OUTBOX_KEY = "passio_outbox_v1";
 function _outboxLoad() { try { return JSON.parse(localStorage.getItem(OUTBOX_KEY) || "[]"); } catch(e) { return []; } }
 function _outboxSave(a) { try { localStorage.setItem(OUTBOX_KEY, JSON.stringify(a)); } catch(e) {} }
+
+// ⚠️ UNE FILE LOCALE APPARTIENT À UN COMPTE (AUTH-06, 2026-09-14).
+// L'entrée ne portait aucun propriétaire et `_sendTextToSupa` reconstruit
+// l'auteur avec `MY_UID` AU MOMENT DE L'ENVOI. Deux comptes se succèdent sur le
+// même appareil (déconnexion, retour OAuth, `onAuthStateChange`) : un texte
+// préparé par A et resté en file (hors-ligne, panne serveur) était rejoué au
+// démarrage ou au retour du réseau avec `from_id = B` — accepté par le serveur
+// dès que B est membre de la conversation (leur 1:1, un groupe commun). Même
+// patron que la file des suppressions (`_enqueuePostDelete`, champ `uid`).
+// Le propriétaire est le compte RÉEL (uuid Supabase) — jamais le `u_<aléatoire>`
+// d'un visiteur, qui ne prouve rien (règle « MY_UID ne prouve pas qu'un compte
+// existe »). Verrou : file-messages-par-compte.spec.js.
+function _fileProprietaire() {
+  try { return (typeof _uidEstUnCompte === "function" && _uidEstUnCompte()) ? MY_UID : null; } catch (e) { return null; }
+}
+// Verdict sur une entrée au rejeu : « moi » (à envoyer), « autre » (à jeter).
+// ⚠️ Une entrée d'AVANT ce correctif n'a pas de propriétaire : on l'ADOPTE si
+// son message est encore dans les conversations de l'appareil (même compte,
+// simple mise à jour de l'application), on la jette sinon — les conversations
+// sont purgées au changement de compte, un message absent n'est pas le nôtre.
+function _outboxVerdict(item, moi) {
+  if (item.owner) return item.owner === moi ? "moi" : "autre";
+  var c = getConversations().find(function(x){ return x.id === item.convId; });
+  var m = c && (c.messages || []).find(function(x){ return x.id === item.msgId; });
+  if (!m) return "autre";
+  if (moi) item.owner = moi;
+  return "moi";
+}
 function _outboxAdd(convId, msgId, content) {
   var tous = _outboxLoad();
   // ⚠️ LE COMPTEUR D'ESSAIS SURVIT À LA REMISE EN FILE, sinon il ne compte
@@ -4810,7 +4854,8 @@ function _outboxAdd(convId, msgId, content) {
   var ancienne = tous.find(function(x){ return x.msgId === msgId; });
   var a = tous.filter(function(x){ return x.msgId !== msgId; });
   a.push({ convId: convId, msgId: msgId, content: content, at: Date.now(),
-           essais: Number((ancienne && ancienne.essais) || 0) });
+           essais: Number((ancienne && ancienne.essais) || 0),
+           owner: _fileProprietaire() });
   _outboxSave(a);
 }
 function _outboxRemove(msgId) { _outboxSave(_outboxLoad().filter(function(x){ return x.msgId !== msgId; })); }
@@ -4968,6 +5013,15 @@ function _sendTextToSupa(convId, msgId, content) {
 // Renvoi manuel d'un message en échec.
 function _retryMsg(convId, msgId) {
   var item = _outboxLoad().find(function(x){ return x.msgId === msgId; });
+  // L'entrée d'un AUTRE compte ne se renvoie pas, même à la main : elle sort de
+  // la file et le message reste à l'écran, en échec — rien n'est perdu, rien
+  // ne part sous une identité qui n'est pas la sienne.
+  if (item && item.owner && item.owner !== _fileProprietaire()) {
+    _outboxRemove(msgId);
+    _setMsgStatus(convId, msgId, "failed");
+    try { if (typeof diagLog === "function") diagLog("msg_outbox_autre_compte retry"); } catch (e) {}
+    return;
+  }
   _setMsgStatus(convId, msgId, "sending");
   if (item) _sendTextToSupa(convId, msgId, item.content);
   else { // pas en outbox → re-tenter depuis le texte du message
@@ -4986,7 +5040,16 @@ function _flushOutbox() {
   // adopte sans les jeter. Une file existante ne doit pas être perdue par une
   // mise à jour — elle porte des messages que la personne croit envoyés.
   var restants = [];
+  var moi = _fileProprietaire();
   a.forEach(function(item){
+    // ⚠️ Le compte d'ABORD, avant tout compteur et tout envoi : une entrée
+    // d'un autre compte est jetée, sans toucher au statut d'un message qui
+    // n'est pas dans nos conversations. Tracé — un rejeu refusé en silence
+    // serait indiscernable d'une file vide.
+    if (_outboxVerdict(item, moi) === "autre") {
+      try { if (typeof diagLog === "function") diagLog("msg_outbox_autre_compte flush"); } catch (e) {}
+      return;
+    }
     var essais = Number(item.essais || 0) + 1;
     if (essais > MSG_ESSAIS_MAX) {
       // On ne renvoie plus tout seul, mais le message RESTE à l'écran, en
