@@ -40,8 +40,22 @@
 | Test effectué | `tests/e2e/file-messages-par-compte.spec.js` (7 cas) : ① rejeu sous B → rien ne part, l'entrée sort ; ② rejeu sous A → part avec `from_id = A` ; ③ la déconnexion purge les deux files ; ④ « réessayer » sous B → rien ne part, message visible en échec ; ⑤ entrée sans propriétaire adoptée si le message est ici (et porte alors `owner`), orpheline jetée ; ⑥ brouillon de commentaire de A non publié par B ; ⑦ même compte → publié. Suites voisines rejouées : message-refus-definitif, conv-reparation-appartenance, message-media-echec, transfert-message, reprise-lectures-boot, audit-identite-emoji, cgu-consentement, exploration-anonyme-vs-compte, connexion-compte-existant, suppression-durable, ecritures-identite-compte, notification-message. |
 | Résultat | **Avant** (dev) : 5 échecs / 7 (①③④⑤⑥). **Après** : 7/7 en dev, 7/7 sur l'artefact assemblé + minifié comme en CI. Voisines : 114/120 en parallèle, les 6 rouges sont des timeouts (`page.goto`, `waitForFunction`, `click`) et repassent 68/68 seules — saturation, sans lien avec les files. Gates locales vertes (les 3 gates CRLF restent hors mesure locale, cf. MSG-02). |
 | Limite restante | Les entrées **sans propriétaire** créées par une version antérieure et dont la conversation a été purgée sont jetées (leur texte n'est de toute façon plus dans l'appareil). Le contenu d'un message porte encore le persona déclaratif (`sp`) — c'est PRO-02, non traité ici. Livraison réelle inter-comptes en production : non mesurée. Changement de compte **sans purge** (`onAuthStateChange`) : la seconde ceinture le couvre, mais l'état des conversations lui-même n'est pas purgé sur ce chemin — c'est la fiche « L'ÉTAT LOCAL APPARTIENT À UN COMPTE », hors périmètre. |
+| État | **corrigé dans le code** · testé sur staging : non · **déployé** (fusion #375 sur ordre explicite « fusionne 375 » le 2026-09-14, commit `82aa48a9`, run 34815138597) · vérifié après déploiement : voir la ligne « Après déploiement » ci-dessous |
+| PR | [#375](https://github.com/PASSIO74/passio-app/pull/375) — fusionnée (squash) le 2026-09-14. |
+
+---
+
+## PRO-02 — Identité déclarative encore utilisée dans certaines représentations de messages — P1 (chantier 2)
+
+| Champ | Valeur |
+|---|---|
+| État constaté (base `82aa48a9`) | `_withSenderMeta` (app-02) attache à chaque `content` un objet `sp` (nom `n`, emoji `e`, couleur `c`, photo `ph`, persona `pid`). À la réception, `applyMsgContentData` (app-04) le faisait **primer** sur la ligne `profiles` de `from_id` (`m.fromName = sp.n`, `m.fromEmoji = sp.e`, `senderProfile = sp` entier) ; en 1:1, `_handleIncomingConvMessage` (app-08) réécrivait `conv.userName`, `userEmoji`, `userColor`, `userPhoto` avec lui, et `supaLoadMyConversations` nommait/photographiait la conversation depuis `lastSp.n`/`lastSp.ph`. `content` est écrit librement par l'émetteur (tout membre). **Reproduit** au banc (profil serveur « Léa » dans le cache, message reçu par le chemin réel `_handleIncomingConvMessage`) : en groupe la ligne d'expéditeur affiche « Benjamin » ; en 1:1 l'en-tête prend « Admin PASSIO » et la photo d'une URL tierce ; un emoji `<img onerror>` est accepté comme `fromEmoji`. |
+| Correction | Le NOM et la PHOTO viennent du serveur (`from_id` → `profiles`, via `_fetchProfile`/`cacheRemoteProfile`) ; `sp.n` et `sp.ph` sont **ignorés** partout (parser, en-tête 1:1, chargement des conversations). Le persona ne fournit plus qu'un décor **borné** : emoji court sans caractère HTML (`_reactionKeySure`, même règle que les réactions) et couleur hexadécimale stricte. L'émetteur continue d'envoyer `sp` (compatibilité des anciens clients en cache) ; la réception ne lui fait plus confiance. |
+| Test effectué | `tests/e2e/identite-expediteur-serveur.spec.js` (6 cas) : ① groupe — ligne d'expéditeur = nom du profil ; ② 1:1 — l'en-tête ne suit pas la charge ; ③ 1:1 — la photo ne vient jamais de la charge ; ④ décor légitime (emoji, hex) conservé ; ⑤ décor hostile jeté, aucune exécution, aucune balise ; ⑥ à la SOURCE — app-08 ne lit plus `lastSp?.n`, `lastSp?.ph`, `senderProfile.n`, `senderProfile.ph`. Voisines rejouées : audit-identite-emoji, notification-message, conv-ouverture-fil, ui-v6a-messages, xss-notifs-messages, transfert-message, message-media-echec, file-messages-par-compte, mention-groupe-xss, conv-suppression. |
+| Résultat | **Avant** (main pristine, export `git archive`) : 5 échecs / 6 (①②③⑤⑥). **Après** : 6/6 en dev, 6/6 sur l'artefact assemblé + minifié. Voisines : 64/64. Gates locales vertes. |
+| Limite restante | L'identité de l'**émetteur** reste `from_id`, posé par le client mais garanti par la RLS d'insertion (`from_id = auth.uid()`) — non re-mesuré ici. Le persona `pid` n'est plus conservé côté réception (aucun consommateur trouvé). Les **appels** (invitation `fromName` déclarative, résidu MSG-01) et les **lives** (`from` déclaratif) ne sont pas couverts : c'est MSG-01/SUP-06, point suivant. Non mesuré : rendu sur un appareil réel avec deux comptes réels. |
 | État | **corrigé dans le code** · testé sur staging : non · déployé : non · vérifié après déploiement : non |
-| PR | `claude/auth-06-file-messages-par-compte` — voir la PR ouverte depuis cette branche. |
+| PR | `claude/pro-02-identite-expediteur-serveur` — voir la PR ouverte depuis cette branche. |
 
 ---
 
@@ -51,7 +65,7 @@ Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, 
 
 | Ordre | Chantier | Identifiants | État |
 |---|---|---|---|
-| 2 | Séparer les comptes et sécuriser les échanges | AUTH-06 (PR ouverte, ci-dessus), PRO-02, MSG-01/04/10, SUP-06, MOD-04 | en cours — AUTH-06 corrigé dans le code ; le reste non engagé |
+| 2 | Séparer les comptes et sécuriser les échanges | AUTH-06 (fusionné #375), PRO-02 (PR ouverte), MSG-01/04/10, SUP-06, MOD-04 | en cours — AUTH-06 déployé, PRO-02 corrigé dans le code ; le reste non engagé |
 | 3 | Fiabiliser suppression et médias | AUTH-05, SUP-10, MSG-03, CONT-11, SUP-01, ASTRA-01 | non engagé |
 | 4 | Inscription et information cohérentes | AUTH-02/03/04/09/10, EXP-08/09/14/15, UXO-07, ASTRA-09 | non engagé |
 | 5 | Éprouver la modération | MOD-01/02/03/09, AUTH-11, ASTRA-03 | non engagé |
