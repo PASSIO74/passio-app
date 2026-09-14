@@ -124,7 +124,7 @@ verifier "trois activités, trois secrets distincts" "3" "$(Q "select count(dist
 verifier "l'AUTEUR lit le secret" "$s1" "$(AUTH "$ORGA" "select secret from public.event_checkin_secrets where event_id='ev_now';")"
 verifier "le CO-ORGANISATEUR lit le secret" "$s1" "$(AUTH "$COORG" "select secret from public.event_checkin_secrets where event_id='ev_now';")"
 verifier "un PARTICIPANT ne lit rien (0 ligne, sans erreur)" "0" "$(AUTH "$A" "select count(*) from public.event_checkin_secrets;")"
-contient "un participant ne peut pas écrire un secret (aucun GRANT INSERT : refus de privilège, avant même la RLS)" "permission denied"" "$(AUTH_OK "$A" "insert into public.event_checkin_secrets values ('ev_now', 'AAAAAA');")"
+contient "un participant ne peut pas écrire un secret (aucun GRANT INSERT : refus de privilège, avant même la RLS)" "permission denied" "$(AUTH_OK "$A" "insert into public.event_checkin_secrets values ('ev_now', 'AAAAAA');")"
 verifier "anon : aucun privilège sur la table" "f" "$(Q "select has_table_privilege('anon', 'public.event_checkin_secrets', 'SELECT');")"
 verifier "une activité CRÉÉE reçoit son secret par trigger" "1" "$(AUTH "$ORGA" "insert into public.events (id, author_id, title, date_at) values ('ev_new', '$ORGA', 'Neuve', now() + interval '1 day'); select count(*) from public.event_checkin_secrets where event_id='ev_new';" | tail -1)"
 
