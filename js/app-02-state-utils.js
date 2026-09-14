@@ -4324,13 +4324,24 @@ async function onbGoogleAuth() {
     // chemin, et tout ce qui vit en mémoire est perdu. L'accord est donc mis de
     // côté ici et posé au RETOUR, quand la session existe (`_poserConsentementOAuth`).
     // Clé d'APPAREIL et transitoire, comme `passio_oauth_pending` juste au-dessus.
-    try {
-      localStorage.setItem("passio_oauth_cgu", JSON.stringify({
-        cgu_version: PASSIO_CGU_VERSION,
-        cgu_accepted_at: _cguAccepteA,
-        confidentialite_version: PASSIO_CONFIDENTIALITE_VERSION,
-      }));
-    } catch (e) {}
+    //
+    // ⚠️ SEULEMENT SI L'ACCORD A ÉTÉ DONNÉ (AUTH-03, 2026-09-14). Ce bloc
+    // s'exécutait aussi en mode CONNEXION — où la case n'est même pas à l'écran
+    // — et le retour posait alors sur le compte un consentement que personne
+    // n'avait donné. Google crée le compte s'il n'existe pas : depuis l'écran de
+    // connexion, un compte NEUF naissait avec un accord fabriqué. En connexion,
+    // rien n'est mémorisé ; au retour, un compte neuf sans accord se voit
+    // DEMANDER le sien (`_verifierConsentementApresOAuth`).
+    try { localStorage.removeItem("passio_oauth_cgu"); } catch (e) {}
+    if (_authMode === "signup") {
+      try {
+        localStorage.setItem("passio_oauth_cgu", JSON.stringify({
+          cgu_version: PASSIO_CGU_VERSION,
+          cgu_accepted_at: _cguAccepteA,
+          confidentialite_version: PASSIO_CONFIDENTIALITE_VERSION,
+        }));
+      } catch (e) {}
+    }
     const { error } = await supa.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo: window.location.origin + window.location.pathname },
@@ -4355,11 +4366,11 @@ async function onbGoogleAuth() {
 async function _poserConsentementOAuth() {
   var brut = null;
   try { brut = localStorage.getItem("passio_oauth_cgu"); } catch (e) {}
-  if (!brut) return false;
+  if (!brut) { try { await _verifierConsentementApresOAuth(); } catch (e) {} return false; }
   var accord = null;
   try { accord = JSON.parse(brut); } catch (e) { accord = null; }
   try { localStorage.removeItem("passio_oauth_cgu"); } catch (e) {}
-  if (!accord || !accord.cgu_version) return false;
+  if (!accord || !accord.cgu_version) { try { await _verifierConsentementApresOAuth(); } catch (e) {} return false; }
   try {
     var u = await supa.auth.getUser();
     var deja = u && u.data && u.data.user && u.data.user.user_metadata
@@ -4384,6 +4395,97 @@ async function _poserConsentementOAuth() {
     try { if (typeof diagLog === "function") diagLog("cgu_oauth_echec " + ((e && e.message) || "?")); } catch (e2) {}
     return false;
   }
+}
+
+// ── Consentement REQUIS après un retour Google sans accord (AUTH-03) ──────
+// Un compte que Google vient de créer depuis l'écran de connexion n'a rien
+// accepté : on le lui DEMANDE, on n'invente rien. Le critère est celui du
+// serveur (aucun `cgu_accepted_at` dans `user_metadata`) borné aux comptes
+// NEUFS (créés il y a moins de quinze minutes) — un compte ancien sans trace
+// relève d'un autre lot (EXP-09). Le rappel vit sur l'appareil, le temps que
+// l'accord soit donné ou refusé ; un refus déconnecte.
+var CONSENTEMENT_REQUIS_KEY = "passio_consentement_requis_v1";
+var CONSENTEMENT_COMPTE_NEUF_MS = 15 * 60 * 1000;
+async function _verifierConsentementApresOAuth() {
+  if (typeof supa === "undefined" || !supa || !window._supaReal) return false;
+  var u = await supa.auth.getUser();
+  var user = u && u.data && u.data.user;
+  if (!user || !user.id) return false;
+  var meta = user.user_metadata || {};
+  if (meta.cgu_accepted_at) return false;
+  var cree = Date.parse(user.created_at || "");
+  if (!isFinite(cree) || Date.now() - cree > CONSENTEMENT_COMPTE_NEUF_MS) return false;
+  try { localStorage.setItem(CONSENTEMENT_REQUIS_KEY, "1"); } catch (e) {}
+  try { if (typeof diagLog === "function") diagLog("cgu_oauth_requis compte neuf sans accord"); } catch (e) {}
+  planifierConsentementRequis();
+  return true;
+}
+function consentementRequis() {
+  try { return localStorage.getItem(CONSENTEMENT_REQUIS_KEY) === "1"; } catch (e) { return false; }
+}
+// L'écran n'est pas prêt à l'instant du retour : reprise bornée (40 × 600 ms),
+// puis, tant que la réponse n'est pas donnée, la modale RÉAPPARAÎT si elle est
+// fermée autrement (Échap, fond, lien vers un texte) — elle ne se ferme que
+// par une réponse.
+function planifierConsentementRequis() {
+  if (window._consentementPlanifie) return;
+  window._consentementPlanifie = true;
+  var essais = 0;
+  var tick = function () {
+    if (!consentementRequis()) { window._consentementPlanifie = false; return; }
+    var bd = document.getElementById("modalBackdrop");
+    var pret = bd && typeof openModal === "function" && document.querySelector(".app-shell") && typeof state !== "undefined" && state && state.onboarded;
+    if (pret && !bd.classList.contains("active")) ouvrirConsentementRequis();
+    essais++;
+    if (essais < 40 || consentementRequis()) setTimeout(tick, 600); else window._consentementPlanifie = false;
+  };
+  setTimeout(tick, 600);
+}
+function ouvrirConsentementRequis() {
+  if (!consentementRequis() || typeof openModal !== "function") return;
+  openModal(
+    '<div class="modal-title">Avant de continuer</div>' +
+    '<p style="font-size:13px;color:var(--muted);margin:8px 0 12px;">Ton compte vient d’être créé avec Google. Pour l’utiliser, accepte les conditions générales et la politique de confidentialité — rien n’a été accepté à ta place.</p>' +
+    '<label class="field" style="display:flex;gap:10px;align-items:flex-start;">' +
+      '<input type="checkbox" id="consentRequisCase" style="margin-top:3px;"/>' +
+      '<span style="font-size:13px;">J’ai 18 ans ou plus et j’accepte les <a href="#" onclick="event.preventDefault();event.stopPropagation();openTermsOfService();return false;">conditions générales</a> et la <a href="#" onclick="event.preventDefault();event.stopPropagation();openPrivacyPolicy();return false;">politique de confidentialité</a>.</span>' +
+    '</label>' +
+    '<div id="consentRequisMsg" style="font-size:12px;color:#ef4444;min-height:16px;margin-top:6px;"></div>' +
+    '<div style="display:flex;gap:8px;margin-top:12px;">' +
+      '<button class="btn ghost" style="flex:1;" onclick="refuserConsentementRequis()">Refuser et me déconnecter</button>' +
+      '<button class="btn primary" style="flex:1;" onclick="accepterConsentementRequis()">J’accepte et je continue</button>' +
+    '</div>'
+  );
+}
+async function accepterConsentementRequis() {
+  var caseAccord = document.getElementById("consentRequisCase");
+  var msg = document.getElementById("consentRequisMsg");
+  if (!caseAccord || !caseAccord.checked) { if (msg) msg.textContent = "Coche la case pour accepter."; return false; }
+  var accord = { cgu_version: PASSIO_CGU_VERSION, cgu_accepted_at: new Date().toISOString(), confidentialite_version: PASSIO_CONFIDENTIALITE_VERSION };
+  try {
+    // ⚠️ ON LIT `{ error }` : une trace qu'on croit posée et qui ne l'est pas est pire que pas de trace.
+    var res = await supa.auth.updateUser({ data: accord });
+    if (res && res.error) {
+      if (msg) msg.textContent = "Enregistrement impossible — réessaie.";
+      try { if (typeof diagLog === "function") diagLog("cgu_requis_refus " + res.error.message); } catch (e) {}
+      return false;
+    }
+  } catch (e) { if (msg) msg.textContent = "Enregistrement impossible — réessaie."; return false; }
+  try {
+    state.user = state.user || {};
+    state.user.cgu = { version: accord.cgu_version, acceptedAt: accord.cgu_accepted_at, confidentialite: accord.confidentialite_version };
+    saveState();
+  } catch (e) {}
+  try { localStorage.removeItem(CONSENTEMENT_REQUIS_KEY); } catch (e) {}
+  closeModal();
+  toast("Merci — bienvenue sur PASSIO");
+  return true;
+}
+async function refuserConsentementRequis() {
+  try { localStorage.removeItem(CONSENTEMENT_REQUIS_KEY); } catch (e) {}
+  closeModal();
+  toast("Compte non activé : tu es déconnecté");
+  try { if (typeof doLogout === "function") await doLogout("signin"); } catch (e) {}
 }
 
 // ── Récupération de mot de passe : UI minimale affichée quand Supabase émet
