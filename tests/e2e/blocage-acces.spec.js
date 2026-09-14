@@ -24,6 +24,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
 const { GATE_TOKEN, GATE_KEY } = require("./gate-helper");
+const { viserCibleSupabase } = require("./cible-supabase");   // SUP-04 : PASSIO_SUPABASE_URL/ANON → staging
 const { creerCompteE2E } = require("./compte-e2e");
 
 test.describe("Blocage — retrait d'accès effectif", () => {
@@ -32,6 +33,7 @@ test.describe("Blocage — retrait d'accès effectif", () => {
     const log = (m) => console.log(`[blocage] ${m}`);
 
     await page.addInitScript(([k, t]) => sessionStorage.setItem(k, t), [GATE_KEY, GATE_TOKEN]);
+    await viserCibleSupabase(page);   // sans cible : rien (production)
     await page.goto("/index.html");
     await page.waitForFunction(
       () => typeof supa !== "undefined" && !!supa && !!window.PASSIO_SUPABASE

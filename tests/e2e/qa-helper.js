@@ -10,6 +10,7 @@
 // ⚠️ ÉCRIT EN BASE RÉELLE (prod). Opt-in strict côté spec (PASSIO_QA_CAMPAIGN=1).
 // ═══════════════════════════════════════════════════════════════════════════
 const { GATE_TOKEN, GATE_KEY } = require("./gate-helper");
+const { viserCibleSupabase } = require("./cible-supabase");
 const { creerCompteE2E } = require("./compte-e2e");
 
 const RT_MODE = process.env.PASSIO_E2E_RT || "";
@@ -21,6 +22,7 @@ const RT_MODE = process.env.PASSIO_E2E_RT || "";
 async function signupUser(page, label, passionIndex = 0) {
   const step = (m) => console.log(`[signup ${label}] ${m}`);
   await page.addInitScript(([k, t]) => sessionStorage.setItem(k, t), [GATE_KEY, GATE_TOKEN]);
+  await viserCibleSupabase(page);   // SUP-04 : sans cible, production
   if (RT_MODE === "v2" || RT_MODE === "v3") {
     await page.addInitScript((mode) => { try { localStorage.setItem("passio_realtime_" + mode, "1"); } catch (e) {} }, RT_MODE);
   }

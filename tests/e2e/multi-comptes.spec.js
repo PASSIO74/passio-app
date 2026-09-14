@@ -10,6 +10,7 @@
 //   bash :        PASSIO_E2E_MULTI=1 npm test -- multi-comptes
 const { test, expect } = require("@playwright/test");
 const { GATE_TOKEN, GATE_KEY } = require("./gate-helper");
+const { viserCibleSupabase } = require("./cible-supabase");   // SUP-04 : PASSIO_SUPABASE_URL/ANON → staging
 const { creerCompteE2E } = require("./compte-e2e");
 
 // Mode realtime à tester : PASSIO_E2E_RT = "v2" | "v3" (sinon v1 par défaut).
@@ -1074,6 +1075,7 @@ test.describe("messagerie entre 2 comptes réels", () => {
 async function signupAnonymous(page, name) {
   const step = (m) => console.log(`[signup ${name}] ${m}`);
   await page.addInitScript(([k, t]) => sessionStorage.setItem(k, t), [GATE_KEY, GATE_TOKEN]);
+  await viserCibleSupabase(page);   // SUP-04 : sans cible, production
   // Active le mode realtime demandé (v2/v3) AVANT le boot, pour tester le scalable.
   if (RT_MODE === "v2" || RT_MODE === "v3") {
     await page.addInitScript((mode) => { try { localStorage.setItem("passio_realtime_" + mode, "1"); } catch (e) {} }, RT_MODE);

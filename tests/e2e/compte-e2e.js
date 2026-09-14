@@ -51,6 +51,8 @@ function _env() {
 
 /** L'URL du projet : celle de l'env, sinon la constante que l'app elle-même utilise. */
 function _urlSupabase(vals) {
+  // SUP-04 : la cible du banc (staging) prime, puis l'env historique, puis l'app.
+  if (vals.PASSIO_SUPABASE_URL && vals.PASSIO_SUPABASE_ANON) return vals.PASSIO_SUPABASE_URL.replace(/\/+$/, "");
   if (vals.SUPABASE_URL) return vals.SUPABASE_URL.replace(/\/+$/, "");
   try {
     const src = fs.readFileSync(path.join(RACINE, "js", "app-08-ui-modals-tour.js"), "utf8");

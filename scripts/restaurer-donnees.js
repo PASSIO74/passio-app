@@ -72,6 +72,13 @@ const PARENTS = ["passions", "passion_relations", "profiles", "access_policies",
 function echec(msg) { console.error("❌ " + msg); process.exit(2); }
 function arg(nom) { const i = process.argv.indexOf(nom); return i === -1 ? null : process.argv[i + 1]; }
 const drapeau = (nom) => process.argv.includes(nom);
+// `--tables a,b,c` : ne reverser que ces tables (référentiels, réglages) —
+// ni comptes ni médias. Sert à SEMER un staging vide sans données personnelles
+// (`passions`, `passion_relations`, `access_policies`), SUP-04.
+const TABLES_VOULUES = (() => { const v = arg("--tables"); return v ? new Set(v.split(",").map((t) => t.trim()).filter(Boolean)) : null; })();
+const tablesRetenues = (noms) => TABLES_VOULUES ? noms.filter((t) => TABLES_VOULUES.has(t)) : noms;
+const sansComptes = () => drapeau("--sans-comptes") || !!TABLES_VOULUES;
+const sansMedias = () => drapeau("--sans-medias") || !!TABLES_VOULUES;
 
 function lireJeton() {
   if (process.env.SUPABASE_ACCESS_TOKEN) return process.env.SUPABASE_ACCESS_TOKEN.trim();
@@ -169,7 +176,7 @@ function lireNdjson(f) {
 
 async function comptes(ctx) {
   const f = path.join(ctx.archive, "_auth_users.ndjson");
-  if (drapeau("--sans-comptes") || !fs.existsSync(f)) { console.log("② comptes : ignorés."); return; }
+  if (sansComptes() || !fs.existsSync(f)) { console.log("② comptes : ignorés."); return; }
   const users = lireNdjson(f);
   let crees = 0, presents = 0, refus = [];
   for (const u of users) {
@@ -292,7 +299,7 @@ async function chargerTable(ctx, t, bilan) {
 }
 
 async function tables(ctx) {
-  const noms = Object.keys(ctx.man.tables);
+  const noms = tablesRetenues(Object.keys(ctx.man.tables));
   const ordre = [...PARENTS.filter((p) => noms.includes(p)), ...noms.filter((n) => !PARENTS.includes(n)).sort()];
   const bilan = { refus: [], notes: [] };
   for (const t of ordre) {
@@ -340,7 +347,7 @@ function fichiersSous(d, base = d) {
 
 async function medias(ctx) {
   const base = path.join(ctx.archive, "_storage");
-  if (drapeau("--sans-medias") || !fs.existsSync(base)) { console.log("④ médias : ignorés."); return true; }
+  if (sansMedias() || !fs.existsSync(base)) { console.log("④ médias : ignorés."); return true; }
   const existants = new Set((await (await fetch(`${ctx.url}/storage/v1/bucket`, { headers: entetes(ctx.cle) })).json()).map((b) => b.name));
   let envoyes = 0, refus = [];
   // ⚠️ LA LIMITE DE TAILLE D'UN SEAU N'EST PAS CELLE DE SON CONTENU (mesuré
@@ -375,7 +382,7 @@ async function medias(ctx) {
 
 // ───────────────────────────── ⑤ verdict ─────────────────────────────
 async function verdict(ctx) {
-  const noms = Object.keys(ctx.man.tables);
+  const noms = tablesRetenues(Object.keys(ctx.man.tables));
   const presentes = await tablesCible(ctx);
   const q = noms.filter((t) => presentes.has(t)).map((t) => `select '${t}' t, count(*)::int n from public."${t}"`).join(" union all ");
   const comptes = new Map((q ? await sql(ctx, q) : []).map((r) => [r.t, r.n]));
@@ -387,7 +394,7 @@ async function verdict(ctx) {
     if (!ok) ecarts++;
     console.log(`   ${ok ? "OK   " : "ECART"} ${t} | ${att} | ${obt}`);
   }
-  if (ctx.man.comptes != null && !drapeau("--sans-comptes")) {
+  if (ctx.man.comptes != null && !sansComptes()) {
     let n = 0;
     for (let page = 1; ; page++) {
       const d = await (await fetch(`${ctx.url}/auth/v1/admin/users?page=${page}&per_page=200`, { headers: entetes(ctx.cle) })).json();
@@ -396,7 +403,7 @@ async function verdict(ctx) {
     const ok = n === ctx.man.comptes; if (!ok) ecarts++;
     console.log(`   ${ok ? "OK   " : "ECART"} _auth_users | ${ctx.man.comptes} | ${n}`);
   }
-  if (ctx.man.medias && !drapeau("--sans-medias")) {
+  if (ctx.man.medias && !sansMedias()) {
     const [{ n }] = await sql(ctx, "select count(*)::int n from storage.objects where metadata is not null");
     const ok = n === ctx.man.medias.fichiers; if (!ok) ecarts++;
     console.log(`   ${ok ? "OK   " : "ECART"} _storage | ${ctx.man.medias.fichiers} | ${n}`);

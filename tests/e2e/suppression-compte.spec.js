@@ -21,6 +21,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
 const { GATE_TOKEN, GATE_KEY } = require("./gate-helper");
+const { viserCibleSupabase } = require("./cible-supabase");   // SUP-04 : PASSIO_SUPABASE_URL/ANON → staging
 
 const PNG_MINIMAL = "iVBORw0KGgo=";   // en-tête PNG, suffisant comme témoin
 
@@ -30,6 +31,7 @@ test.describe("Suppression de compte", () => {
   test("efface les données, le compte ET les médias — pas seulement l'écran", async ({ page }) => {
     test.setTimeout(120000);
     await page.addInitScript(([k, t]) => sessionStorage.setItem(k, t), [GATE_KEY, GATE_TOKEN]);
+    await viserCibleSupabase(page);   // sans cible : rien (production)
     await page.goto("/index.html");
     await page.waitForFunction(() => !!window.PASSIO_SUPABASE, null, { timeout: 30000 });
 
