@@ -3444,6 +3444,17 @@ var ACCOUNT_SCOPED_KEYS = [
   "passio_passion_requests", // demandes de passion faites par la personne
   "passio_event_reminded",   // événements pour lesquels un rappel a été posé
   "passio_conv_deleted_v1",  // journal des suppressions de conversations/messages (ADR-008)
+  // Ajoutées le 2026-09-14 (AUTH-06) : les files d'attente hors-ligne portent
+  // du TEXTE de compte — un message privé, un commentaire — et survivaient à la
+  // déconnexion, lisibles par le compte suivant. Elles portent désormais aussi
+  // leur propriétaire (`owner` / `uid`) et le rejeu le vérifie : la purge est
+  // la première ceinture, le filtre au rejeu la seconde.
+  "passio_outbox_v1",        // file des messages en attente d'envoi
+  "passio_cmt_outbox_v1",    // file des commentaires en attente d'envoi
+  //   passio_post_delete_outbox_v1 — PAS ici, délibérément : elle ne porte que
+  //     des identifiants (aucun texte), porte déjà le compte (`uid`, filtré au
+  //     rejeu), et son rôle est de finir une suppression pour les AUTRES comptes
+  //     au retour de son auteur — la purger perdrait ce rattrapage.
   // ⚠️ NE PAS ajouter ici, et c'est délibéré :
   //   passio_parental_code / passio_limit_sec — le contrôle parental est posé sur
   //     l'APPAREIL par un parent ; le purger à la déconnexion offrirait à l'enfant
