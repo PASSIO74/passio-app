@@ -219,3 +219,60 @@ Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, 
 | Limite restante | La limite technique demeure : un lien direct ouvre un fichier de publication privée. La fermer (seau `content` privé + URL signées) est un lot distinct, à décider si le mot « privé » doit un jour couvrir l'hébergement. |
 | État | **corrigé dans le code** (textes) · déployé : non · vérifié après déploiement : non |
 | PR | `claude/astra-09-responsable-et-profil-prive` — voir la PR ouverte depuis cette branche. |
+
+
+---
+
+## ASTRA-03 — La commande de modération prend les 500 derniers signalements, puis filtre les ouverts — P1 (chantier 5/7)
+
+| Champ | Valeur |
+|---|---|
+| État constaté | `scripts/moderation.js` : `reports?…&order=created_at.desc&limit=500` puis `filter(estOuvert)` en mémoire. Dès 501 lignes en base, les signalements ouverts les plus **anciens** — ceux qui attendent depuis le plus longtemps — sortent de la fenêtre et disparaissent de la liste, sans un mot. (Seuil non atteint en production aujourd'hui : 2 signalements.) |
+| Correction | Filtre **serveur** (`status=eq.open`, sauf `--tous`) et lecture **paginée** (`scripts/lib/pagination-rest.js`, 500 par page, jusqu'à 20 pages) ; une lecture bornée est **dite** (« liste TRONQUÉE aux 10 000 plus récents »). La sonde de présence de la colonne `status` est conservée (base sans la migration du 2026-09-11 → tout est ouvert). |
+| Test effectué | `tests/unit/pagination-rest.test.mjs` (5 cas : page pleine → suivante, 1 201 lignes = 3 pages, borne dite, vide, page exactement pleine), dans `npm run verif`. Le script lui-même n'est pas exécuté contre la base (il écrit) — la construction d'URL est lue. |
+| Résultat | 5/5. |
+| Limite restante | Non mesuré sur une base de plus de 500 signalements. Le journal local « vu » (`lireVus`) reste sur l'appareil de l'opérateur. |
+| État | **corrigé dans le code** · déployé : sans objet (outil local) |
+| PR | `claude/chantier-7-outillage` — voir la PR ouverte depuis cette branche. |
+
+---
+
+## ASTRA-06 — Des erreurs API anonymes peuvent sélectionner une enquête automatique — P1 (chantier 7) — **partiel**
+
+| Champ | Valeur |
+|---|---|
+| État constaté | `scripts/sentinelle-detecter.mjs`, famille API : `lireApi` lit `telemetry_events` (écriture **anonyme** admise, `user_id` écrit par le client) et `classerApi` retenait une cause dès 5 occurrences, compte ou non. Cinq lignes fictives sans compte désignaient la cible d'une enquête dont la PR est fusionnée automatiquement. La famille JS, elle, exige `auth_uid` (colonne posée par le serveur sur `client_errors`) ; `telemetry_events` n'a **pas** cette colonne (mesuré : `user_id` seulement). |
+| Correction (partielle) | `estSansCompte(ligne)` : une ligne dont `user_id` n'est pas un uuid est **écartée** de la famille API (comptée dans `ecartees`). Le seuil « 5 occurrences ou 2 comptes » ne s'applique plus qu'à des lignes portant un compte. |
+| Test effectué | `tests/unit/sentinelle-detecter.test.mjs` : cas « ASTRA-06 » (50 lignes anonymes → aucune cible, RÉINJECTION ; deux comptes → une cause) ; les cas existants réécrits avec des uuid (« u1 » n'est pas une personne). 38/38. |
+| Résultat | 38/38. |
+| Limite restante | **Résidu écrit** : un client hostile peut recopier des uuid publics (`profiles` est lisible) — la fermeture complète est une colonne `auth_uid` posée par le serveur sur `telemetry_events`, comme `client_errors` (migration → lot « périmètre critique », gate de gouvernance). Le seuil de 5 occurrences sur un seul compte reste ouvrable par ce même compte. |
+| État | **corrigé dans le code (partiel)** · déployé : à la prochaine exécution du workflow (le script est lu depuis `main`) |
+| PR | `claude/chantier-7-outillage`. |
+
+---
+
+## ASTRA-08 — La déduplication s'arrête sur un premier candidat déjà corrigé — P2 (chantier 7) — **préparé, câblage à venir**
+
+| Champ | Valeur |
+|---|---|
+| État constaté | Le verdict ne portait que `cible = candidates[0]` ; le workflow (`sentinelle-autonome.yml`) ne déduplique que cette cible : si elle est déjà corrigée, le run s'arrête (« aucune enquête ouverte ») et le **suivant, encore actif**, reste invisible tant que le premier domine le classement. |
+| Correction | `choisirCible(candidats, fermees)` (pure) rend le premier candidat non déjà corrigé ; le verdict porte `candidats` (les 5 premiers). **Le câblage du workflow** (`.github/workflows/sentinelle-autonome.yml`, périmètre critique → contre-revue de Benjamin) est reporté au lot « périmètre critique » : tant qu'il n'est pas fait, le comportement de production est inchangé. |
+| Test effectué | `tests/unit/sentinelle-detecter.test.mjs` cas « ASTRA-08 » (premier corrigé, second actif → second ; liste vide/nulle → null). |
+| Résultat | vert. |
+| Limite restante | Sans le câblage, rien ne change en production. |
+| État | **préparé dans le code** · câblage : non |
+| PR | `claude/chantier-7-outillage`. |
+
+---
+
+## ASTRA-10 — Une erreur transitoire de chargement des événements mémorisée comme absence de droit — P2 (chantier 8)
+
+| Champ | Valeur |
+|---|---|
+| État constaté | `supaLoadEvents` (app-08) : `_eventColsPubliquesSeulement = true` sur **n'importe quelle** erreur de la demande privée. Un 503, une coupure, un délai au démarrage, et le compte perdait `address`, `contact`, `conv_id` pour toute la session (jusqu'à un jeton frais) — alors qu'une relance aurait suffi. **Reproduit** au banc (503 simulé : le second appel ne redemande que la liste publique). |
+| Correction | `_refusDeDroit(error)` : seul un refus de **droit** (401, 403, 42501, 42703, PGRST301) pose le mémo ; une panne fait le repli public de la requête en cours, et la liste privée repart d'elle-même à l'appel suivant. |
+| Test effectué | `tests/e2e/evenements-cols-visiteur.spec.js` ⑥ (503 → repli, mémo NON posé, la liste privée repart — RÉINJECTION) et ⑥ bis (un vrai refus se mémorise toujours ; table de `_refusDeDroit`). |
+| Résultat | **Avant** (main pristine) : ⑥ et ⑥ bis rouges. **Après** : 9/9. |
+| Limite restante | Aucune mesure sur appareil réel. |
+| État | **corrigé dans le code** · déployé : non · vérifié après déploiement : non |
+| PR | `claude/chantier-7-outillage`. |
