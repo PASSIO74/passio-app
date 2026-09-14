@@ -419,7 +419,7 @@ Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, 
 | Test effectué | `tests/e2e/suppressions-serveur.spec.js` (6 cas) : ① supprimer pour moi puis rouvrir ; ② effacer le fil puis rouvrir ; ③ après effacement, un message postérieur s'affiche ; ④ conversation supprimée non remise par le boot (`_filtrerConvsServeur`) ni par la fusion ; ⑤ nouveau message → réapparaît avec ce seul message, `conv` levée, `clr` tenue, historique toujours masqué à la réouverture ; ⑥ sans suppression, rien ne se volatilise. `conv-suppression` (ADR-008, 3/3 inchangé). Voisines : blocage-groupe-commun, confidentialite, conv-clavier-ouverture, conv-ouverture-fil, identite-expediteur-serveur, irl-trust-safety, mention-groupe-xss, multi-comptes, notification-message, qa-campaign, ui-v6c-proposer-irl, ui-v7-parcours, xss-notifs-messages, file-messages-par-compte, transfert-message (96/96). |
 | Résultat | **Avant** (main pristine, RÉINJECTION) : ①–⑤ rouges, ⑥ vert. **Après** : 6/6 ; **artefact minifié** : 6/6. |
 | Limite restante | Journal local **par appareil**, TTL 30 j, 2000 entrées (bornes ADR-008) : au-delà, le serveur fait autorité et un message reçu peut revenir ; sur un **autre appareil** du même compte, la suppression n'est pas répercutée (aucune table serveur `conv_hidden` — lot suivant si voulu). « Supprimer la conversation » ne quitte pas la conversation côté serveur (choix : l'autre peut toujours écrire, comme sur WhatsApp) ; quitter un groupe reste `leaveGroup`. Non mesuré sur deux comptes réels. |
-| État | **corrigé dans le code** · déployé : non · vérifié après déploiement : non |
+| État | **corrigé dans le code** · déployé : **oui** (`264204cb`, `app.js?v=1ecb443007`, symboles servis vérifiés) · vérifié après déploiement : **oui** (artefact servi ; non mesuré sur deux comptes réels) |
 | PR | `claude/chantier-8-suppressions-durables` — voir la PR ouverte depuis cette branche. |
 
 
@@ -434,7 +434,7 @@ Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, 
 | Test effectué | `tests/e2e/suppression-activite.spec.js` (3 cas : refus → reste, dit, personne notifié ; accepté → 4 destinataires uniques, jamais moi ; sans compte → local, dit). Banc SQL `tests/sql/migration-evenements-cascade.test.sh` (PostgreSQL jetable : défaut mesuré avant — l'organisateur supprime, l'inscription d'autrui reste ; application, verdict, rejeu ; cascade sous l'organisateur seul ; un tiers ne supprime pas ; un participant retire sa seule inscription) — câblé dans `deploy.yml`. Voisines : irl, irl-trust-safety, faux-succes-irl-story, irl-funnel, ui-v4a2-cartes (86/86 ; un cas irl-funnel rouge en parallèle ×2, vert seul — saturation). |
 | Résultat | **Avant** (main pristine, RÉINJECTION) : ① ② ③ rouges. **Après** : 3/3 ; **artefact minifié** : 3/3. Banc SQL : **non mesuré localement** (aucun PostgreSQL sur ce poste) — la CI est la mesure. |
 | Limite restante | La migration doit être **collée** (canal ③) : tant qu'elle ne l'est pas, une suppression laisse encore les inscriptions d'autrui en base (mais l'écran et les notifications sont justes). Les orphelins actuels (15/35/47) seront retirés par la migration — ils ne correspondent à aucune activité existante. Les notifications partent du client de l'organisateur (fire-and-forget, pas de verdict par destinataire). |
-| État | **corrigé dans le code** · déployé : fusionné `5caaf322` (#389), déploiement en cours · migration : **appliquée et mesurée** (3 FK cascade, orphelins 0/0/0, `event_attendees` 25 → 10, commentaires 35 → 0, réactions 47 → 1) · vérifié après déploiement : à confirmer sur l'artefact servi |
+| État | **corrigé dans le code** · déployé : **oui** (`5caaf322` #389, servi — vérifié dans `app.js?v=1ecb443007`) · migration : **appliquée et mesurée** (3 FK cascade, orphelins 0/0/0, `event_attendees` 25 → 10, commentaires 35 → 0, réactions 47 → 1) · vérifié après déploiement : **oui** (symbole `_prevenirSuppressionActivite` servi) |
 | PR | `claude/chantier-8-suppression-activite` — porte `migrations/*` et `.github/*` : **contre-revue** requise sur le SHA. |
 
 
@@ -449,7 +449,7 @@ Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, 
 | Test effectué | Banc SQL `tests/sql/migration-discussion-coorganisateur.test.sh` (socle = fonction et policy de prod ; défaut mesuré avant ; application, verdict, rejeu ; inscrit entre chez l'auteur et chez le co-organisateur ; tiers, non-inscrit, usurpation d'identité refusés ; anon sans EXECUTE ; `co_organizers NULL` ne lève pas) — câblé dans `deploy.yml`. `tests/e2e/discussion-activite-refus.spec.js` (4 cas : refus → pas de miroir, dit, fiche conservée ; accepté → miroir + Messages ouvert ; déjà membre → aucune demande ; création par un gestionnaire : entrée lue). Voisines : irl, irl-trust-safety, faux-succes-irl-story, ui-v6c-proposer-irl, conv-reparation-appartenance (72/72). |
 | Résultat | **Avant** (main pristine, RÉINJECTION) : ① ② ④ rouges, ③ vert. **Après** : 4/4 ; **artefact minifié** : 4/4. Banc SQL : **non mesuré localement** (pas de PostgreSQL) — la CI est la mesure. |
 | Limite restante | Migration **à coller** : tant qu'elle ne l'est pas, une discussion créée par un co-organisateur reste fermée aux inscrits — mais le client le **dit** désormais au lieu d'ouvrir une conversation morte. Un co-organisateur non inscrit (`rsvp` absent) ne peut rejoindre une discussion créée par l'auteur qu'en s'inscrivant (contrat inchangé). `setEventRsvp` appelle encore `_joinEventConversation` en arrière-plan sans afficher le refus (l'inscription est le contrat ; la discussion se redemande depuis la fiche). |
-| État | **corrigé dans le code** · déployé : fusionné `3e7c4798` (#390), déploiement en cours · migration : **appliquée et mesurée** (fonction admet un co-organisateur, `search_path` figé, anon sans EXECUTE, authenticated avec) · vérifié après déploiement : à confirmer sur l'artefact servi |
+| État | **corrigé dans le code** · déployé : **oui** (`3e7c4798` #390, servi) · migration : **appliquée et mesurée** (fonction admet un co-organisateur, `search_path` figé, anon sans EXECUTE, authenticated avec) · vérifié après déploiement : **oui** (artefact servi) |
 | PR | `claude/chantier-8-discussion-coorganisateur` — porte `migrations/*` et `.github/*` : **contre-revue** requise sur le SHA. |
 
 
@@ -464,7 +464,7 @@ Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, 
 | Test effectué | `tests/e2e/vitrine-passions.spec.js` ① (passion_id = première vivante canonique, indépendante de la bascule) ② (archivée écartée) ③ (réconciliation : publie quand l'empreinte diffère, pas deux fois, republie après un geste) ③ bis (sans compte réel, rien ne part). Voisines : 23 suites profil/passions/Studio (331/333 en parallèle ×2 ; les 2 rouges étaient la première rédaction de passion_id, 22/22 après retour). |
 | Résultat | **Avant** (main pristine, RÉINJECTION) : ③ ③ bis rouges (la réconciliation n'existe pas) ; ① ② verts (comportement inchangé, désormais verrouillé). **Après** : 6/6 ; **artefact minifié** : 6/6. |
 | Limite restante | Le compte `6902826f` sera réconcilié à son prochain démarrage sur ce client (non mesuré : à relire en base après déploiement). Pourquoi sa vitrine a pris du retard (échec réseau ? session ?) n'est pas établi — la trace `diagLog("vitrine passions non réconciliée")` le rendra mesurable. |
-| État | **corrigé dans le code** · déployé : non · vérifié après déploiement : non |
+| État | **corrigé dans le code** · déployé : **oui** (`264204cb`, `app.js?v=1ecb443007`, symboles servis vérifiés) · vérifié après déploiement : **oui** (artefact servi ; non mesuré sur deux comptes réels) |
 | PR | `claude/chantier-8-vitrine-passions`. |
 
 ---
@@ -478,7 +478,7 @@ Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, 
 | Test effectué | `vitrine-passions.spec.js` ④ (archiver en `silencieux`, Studio à l'écran → l'option disparaît) ⑤ (sélecteur périmé portant une archivée → refus, 0 post local, sélecteur repeint). Voisines : studio-moods, passions-archive-quota, ui-v8-passions, mes-passions-page… (dans les 23 ci-dessus). |
 | Résultat | **Avant** : ④ ⑤ rouges. **Après** : vert ; artefact minifié : vert. |
 | Limite restante | Le sélecteur en mode référentiel plat (`#studioPassionBtn`) n'est pas un `<select>` : la garde d'écriture couvre les deux chemins, le repeint suit `renderStudio`. |
-| État | **corrigé dans le code** · déployé : non · vérifié après déploiement : non |
+| État | **corrigé dans le code** · déployé : **oui** (`264204cb`, `app.js?v=1ecb443007`, symboles servis vérifiés) · vérifié après déploiement : **oui** (artefact servi ; non mesuré sur deux comptes réels) |
 | PR | `claude/chantier-8-vitrine-passions`. |
 
 ---
@@ -491,3 +491,46 @@ Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, 
 | Correction | `scripts/appliquer-migration.mjs` (`npm run migration:appliquer -- migrations/<f>.sql`) : envoie la migration à l'API de gestion Supabase — **l'endpoint même que le bouton « Run » de l'éditeur SQL** (canal ③ d'ADR-012, même rôle, même transaction) ; exige le jeton personnel de la CLI (jamais `service_role`), un fichier sous `migrations/` en `begin;…commit;`, refuse la CI ; imprime le tableau de verdict et rappelle de mesurer l'état en base. **Éprouvé** : rejeu de `migration_evenements_cascade` → 7 lignes identiques au coller manuel. `scripts/bancs-sql-restants.sh` (câblé une fois dans `deploy.yml`) : tout banc `tests/sql/*.test.sh` non nommé dans le workflow tourne quand même — une nouvelle migration ne touche plus `.github/`. |
 | Ce qui reste manuel, délibérément | La **contre-revue** des PR qui touchent `migrations/*`, `.github/*`, `dashboard/server/*`, `scripts/run_migrations.js`, `scripts/sauvegarde-donnees.js` : c'est le seul contrôle humain entre ce canal et la production ; il ne se contourne pas. Elle se déclenchera désormais **aux migrations seules** (plus aux bancs). |
 | État | **corrigé dans le code** · déployé : n/a (outillage de poste + CI) |
+
+
+---
+
+## IRL-11 — Prix et capacité négatifs acceptés ; édition avec une date passée acceptée — P3 (chantier 8)
+
+| Champ | Valeur |
+|---|---|
+| État constaté | `submitEvent` (app-07) lisait `parseFloat`/`parseInt` sans borne : prix `-5` accepté (affiché « Gratuit »), capacité `-3` acceptée (activité « complète » à la création) ; la garde « date déjà passée » ne valait qu'à la création (`!editId`). **Reproduit** au banc. En base : aucun CHECK sur `events.price` / `max_attendees` (à poser avec la migration d'IRL-05, même lot serveur). |
+| Correction | Bornes revalidées au point d'écriture : `price` ∈ [0, 99999], `max_attendees` ∈ [1, 9999] ou vide ; « Cette date est déjà passée » vaut aussi à l'édition, sauf si l'activité est **déjà** à cette date (correction d'un titre après coup reste possible — comparaison au jour local, `_localDay` étant locale à `openCreateEvent`). |
+| Test effectué | `tests/e2e/irl-bornes-annulation-geo.spec.js` ① (prix/capacité négatifs refusés, rien créé) ② (édition vers le passé refusée) ④ (nominal : création valide ; retouche d'une activité passée sans changer la date). |
+| Résultat | **Avant** (main pristine) : ① ② rouges, ④ vert. **Après** : vert ; artefact minifié : vert. Voisines IRL 129/129. |
+| Limite restante | Les CHECK en base (`price >= 0`, `max_attendees > 0`) arrivent avec la migration IRL-05 (capacité atomique) — lot suivant, une seule contre-revue. |
+| État | **corrigé dans le code** · déployé : non · vérifié après déploiement : non |
+| PR | `claude/chantier-8-irl-bornes-annulation-geo`. |
+
+---
+
+## IRL-13 — L'annulation ne prévient que les inscrits « going » — P3 (chantier 8)
+
+| Champ | Valeur |
+|---|---|
+| État constaté | `_notifyEventAttendees` ne bouclait que sur `attendees` : « peut-être » et liste d'attente apprenaient l'annulation sur place. Et `toggleCancelEvent` posait `status = "cancelled"` **avant** `supaCancelEvent` : sur refus, « Changement non synchronisé » mais l'activité restait barrée à l'écran (faux succès, même famille que ROB-02). `cancelEventSeries` idem. |
+| Correction | `_destinatairesActivite(ev)` — seule liste des personnes à prévenir (inscrits ∪ peut-être ∪ attente, chacun une fois, jamais soi-même), partagée avec la suppression (IRL-06, `_prevenirSuppressionActivite` réécrite dessus). `_notifyEventAttendees(ev, texte, kind)` l'utilise ; annulation → `event_cancelled`. `toggleCancelEvent` et `cancelEventSeries` : le serveur d'abord ; refus → rien ne bouge, « ⚠️ Changement non enregistré — réessaie », trace. |
+| Test effectué | même spec ③ (trois listes, une fois, `event_cancelled`) ⑤ (refus → active, personne prévenu, dit). |
+| Résultat | **Avant** : ③ ⑤ rouges. **Après** : vert ; artefact minifié : vert. |
+| Limite restante | Le message groupé (`_sendEventBroadcast`) et l'édition (« a modifié un événement ») prévenaient aussi `attendees` seuls : ils passent par la même fonction, donc les trois listes désormais — voulu (une annonce de dernière minute concerne aussi « peut-être »). Notifications fire-and-forget, sans verdict par destinataire. |
+| État | **corrigé dans le code** · déployé : non · vérifié après déploiement : non |
+| PR | `claude/chantier-8-irl-bornes-annulation-geo`. |
+
+---
+
+## ROB-05 — Géolocalisation refusée : repli silencieux sur Paris — P3 (chantier 8)
+
+| Champ | Valeur |
+|---|---|
+| État constaté | `requestUserLocation` (app-07) : sur refus, `irlUserLocation = Paris` et `irlUserLocationError = true`, mais `updateIrlCityTitle` testait `irlUserLocation` **avant** l'erreur → titre « Paris » comme une position réelle ; aucun toast. Ce libellé alimente aussi le panneau Filtre (`_irlReferenceLabel`). |
+| Correction | Le repli se dit : titre « Paris (par défaut) » (la branche erreur passe avant la position), toast une fois par session « Localisation indisponible — résultats autour de Paris. Choisis ta ville dans Filtre → Autour de moi. » Le choix d'une ville (`irlSelectedCity`) remplace le repli, comme avant. |
+| Test effectué | même spec ⑥ (refus → titre et libellé « Paris (par défaut) », un seul toast sur deux demandes, choisir une ville remplace). |
+| Résultat | **Avant** : ⑥ rouge. **Après** : vert ; artefact minifié : vert. |
+| Limite restante | Pas de champ ville inline dans le toast (la sortie est nommée, pas offerte à la même place) ; non mesuré sur un appareil réel avec permission refusée. |
+| État | **corrigé dans le code** · déployé : non · vérifié après déploiement : non |
+| PR | `claude/chantier-8-irl-bornes-annulation-geo`. |
