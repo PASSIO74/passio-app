@@ -74,3 +74,45 @@ Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, 
 | 8 | Supprimer les faux succès et divergences | CONT-02/06, MSG-06, IRL-04 à 13, ROB-01 à 06, PRO-04/05, ASTRA-10 | non engagé |
 | 9 | Mesurer la capacité puis fixer les limites | PERF-01 à 06, PRO-01/03/06, ASTRA-04 | non engagé |
 | 10 | Compléter les parcours et preuves de qualité | DEV-01 à 05, UXO-01/02/03, TCI-01/02/05 à 14 | non engagé |
+
+---
+
+## MOD-04 — Le blocage est annoncé localement malgré un échec serveur — P1 (chantier 2)
+
+| Champ | Valeur |
+|---|---|
+| État constaté (base `6b004138`) | `blockUser` (app-04) posait l'id dans `state.user.blocked`, appelait `supaBlockUser` **sans attendre ni lire son verdict** (la fonction ne rendait rien), puis affichait « 🚫 X bloqué ». Un refus RLS, une coupure, une session expirée laissaient un blocage purement local — l'autre continuait d'écrire, de commenter, d'appeler — et l'état local survivait à la réhydratation. `unblockUser` : idem. **Reproduit** au banc (faux client, INSERT `blocks` en 42501) : `blockUser` rend `undefined`, l'id reste dans `blocked`, le toast dit « bloqué ». |
+| Correction | `supaBlockUser` rend un **verdict** (`true` si la ligne est écrite ou déjà là — 23505 —, `false` sinon, exception comprise). `blockUser` / `unblockUser` restent optimistes à l'écran puis **attendent** le verdict : un échec **annule** l'affichage (blocked ET following rendus), le dit (« ⚠️ Blocage non enregistré — réessaie »), trace `diagLog`. Sans compte réel (`_uidEstUnCompte()` faux, SDK absent), l'action reste locale et le dit (« bloqué sur cet appareil »), sans écriture sous une identité qui n'existe pas. |
+| Test effectué | `tests/e2e/blocage-verdict.spec.js` (5 cas) : ① refus → annulé, dit, rien persisté, abonnement rendu ; ② succès → bloqué, désabonné, annoncé ; ③ doublon = succès ; ④ déblocage refusé → reste bloqué, puis accepté ; ⑤ sans compte réel → local, dit, zéro écriture. Voisines : `parcours-suivre`, `ouverture-publique` (42/42). |
+| Résultat | **Avant** (main pristine) : 5 échecs / 5. **Après** : 5/5 en dev, 5/5 sur l'artefact minifié. |
+| Limite restante | Le blocage dans les **groupes communs** (MSG-10) reste incomplet : la personne bloquée reste membre du groupe, c'est le retrait par l'organisateur qui l'exclut — non traité ici. La cohérence blocage ↔ abonnements côté serveur (retrait de l'abonné, `follows` DELETE) est un complément dont l'échec ne défait pas un blocage écrit — tracé, non bloquant. Non mesuré : parcours réel entre deux comptes. |
+| État | **corrigé dans le code** · testé sur staging : non · déployé : non · vérifié après déploiement : non |
+| PR | `claude/mod-04-msg-04-blocage-et-push` — voir la PR ouverte depuis cette branche. |
+
+---
+
+## MSG-04 — Origine métier et destinataire d'une push insuffisamment liés — P1 (chantier 2)
+
+| Champ | Valeur |
+|---|---|
+| État constaté (base `6b004138`) | Edge Function `notify-call` : appelant authentifié (jeton), plafond (20/min, 200/h), blocage dans les deux sens — mais **aucun lien exigé** entre l'émetteur et le destinataire : tout compte connecté réveillait n'importe quel membre (`toUserId` libre), avec un texte libre (`text`, jusqu'à 200 caractères) et sous un nom libre (`fromName`) — pour un appel comme pour une « notification ». Le résidu était écrit dans CLAUDE.md (« fromName/text restent déclaratifs »). |
+| Correction | `supabase/functions/_shared/lien-metier.js` (en `.js`, importé tel quel par Deno et par `node --test`) : **appel** → une conversation 1:1 commune est exigée (`conv_members` × `conversations.is_group = false`) ; **notification** → une ligne `notifications` de l'émetteur vers le destinataire, écrite dans les **2 dernières minutes** (donc acceptée par la RLS `from_id = auth.uid()` + `not is_blocked_with` + `trg_rate_limit`, ou par le trigger `follows_notifier`) — et c'est le **texte de cette ligne** qui part (entités décodées), jamais celui du corps ; **identité** → nom et emoji lus dans `profiles`. `fromName`, `fromEmoji`, `text` du corps sont ignorés (acceptés pour les anciens clients). Lien absent ou lecture en erreur → même réponse qu'un blocage (« aucun appareil abonné »), fail-closed. |
+| Test effectué | `tests/unit/lien-metier.test.mjs` (7 cas, faux client scripté) : 1:1 commune ok / groupe seul, sans conversation, tiers refusés / ligne récente ok avec SON texte décodé / ligne ancienne, d'un autre, vers un autre refusées / identité bornée et repli / erreur de lecture = refus / décodage des cinq entités. Branché dans `npm run verif` (donc en CI). |
+| Résultat | **7/7**. Le comportement de bout en bout de la fonction (Deno, web-push) n'est **pas** exécuté localement : le module de décision l'est, et il est celui qui sera déployé. |
+| Limite restante | **La fonction n'est PAS déployée** (`supabase functions deploy notify-call`, geste manuel — la CI ne déploie pas les Edge Functions). Tant qu'elle ne l'est pas, la production garde l'ancien comportement. Après déploiement, mesurer : un appel réel sonne (1:1 existante), une notification de message pousse, une push forgée vers un tiers rend `sent: 0`. La fenêtre de 2 minutes suppose que la ligne `notifications` précède la push — c'est l'ordre des trois appelants (`supaInsertNotif`, `_notifierMessage`, `follows_notifier` + `_pousserPushNotif`) ; un appelant qui pousserait AVANT d'écrire perdrait sa push. Non mesuré : latence réelle des deux lectures ajoutées. |
+| État | **corrigé dans le code** · déployé : **non — attend `supabase functions deploy notify-call`** · vérifié après déploiement : non |
+| PR | `claude/mod-04-msg-04-blocage-et-push` — voir la PR ouverte depuis cette branche. |
+
+---
+
+## MSG-10 — Blocage incomplet dans les groupes communs — P1 (chantier 2)
+
+| Champ | Valeur |
+|---|---|
+| État constaté (base `6b004138`) | Le blocage ne s'appliquait aux messages qu'à la **réception temps réel** (`_handleIncomingConvMessage` ignore un expéditeur bloqué). L'historique rechargé (`supaLoadMessages`) et le fil rendu (`renderConvFpThread`) montraient tout ce qu'un membre bloqué avait écrit dans un groupe commun ; l'aperçu de la liste Messages reprenait son dernier message ; « @ » le proposait encore. La partie « dépendant de sa persistance serveur » est fermée par MOD-04 (verdict attendu). **Reproduit** au banc : fil, aperçu et boîte de mentions montrent le membre bloqué. |
+| Correction | Un seul prédicat `_msgVisiblePourMoi(m)` (app-04) — visible sauf si `m.from` est un compte que **j'ai** bloqué (mes messages et les messages système restent) — appliqué au fil, à l'aperçu de la liste et aux suggestions de @mentions (membres filtrés). **Filtre à l'affichage, rien n'est supprimé** : débloquer rend tout. Côté serveur, rien ne change : la personne reste membre du groupe (c'est l'organisateur qui l'exclut), et la policy d'insertion ne borne le blocage qu'aux 1:1 (décision de l'ouverture publique). |
+| Test effectué | `tests/e2e/blocage-groupe-commun.spec.js` (4 cas) : ① fil sans les messages du bloqué, les autres gardés, 4 messages toujours en mémoire ; ② aperçu de la liste sans son dernier mot ; ③ « @ » ne le propose plus ; ④ débloquer rend tout. Voisines : mention-groupe-xss, ui-v6a-messages, conv-ouverture-fil, blocage-verdict (29/29). |
+| Résultat | **Avant** (main pristine) : 3 échecs / 4 (①②③). **Après** : 4/4. |
+| Limite restante | Le bloqué **voit** toujours ce que le bloqueur écrit dans le groupe (le blocage est asymétrique à l'affichage, comme sur les réseaux comparables ; l'exclusion du groupe relève de l'organisateur). Les réactions et accusés de lecture d'un membre bloqué ne sont pas filtrés. Non mesuré : parcours réel entre deux comptes. |
+| État | **corrigé dans le code** · testé sur staging : non · déployé : non · vérifié après déploiement : non |
+| PR | `claude/mod-04-msg-04-blocage-et-push` (même PR que MOD-04 / MSG-04). |

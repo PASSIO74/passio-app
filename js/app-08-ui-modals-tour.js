@@ -6006,7 +6006,13 @@ async function supaBlockUser(targetId) {
   try {
     const res = await supa.from("blocks").insert({ blocker_id: MY_UID, blocked_id: targetId, created_at: new Date().toISOString() });
     const dup = res && res.error && String(res.error.code) === "23505";  // déjà bloqué = état voulu atteint
-    try { window.tel && tel.settle(_cid, "saved", !!(!res || !res.error || dup), res && res.error); } catch (e) {}
+    const ecrit = !!(!res || !res.error || dup);
+    try { window.tel && tel.settle(_cid, "saved", ecrit, res && res.error); } catch (e) {}
+    // ⚠️ LE VERDICT REMONTE (MOD-04, 2026-09-14) : `blockUser` annonçait « bloqué »
+    // sans le lire. Refus RLS, réseau, session expirée → false, et l'appelant
+    // ANNULE son affichage optimiste. Le retrait d'abonné ci-dessous est un
+    // complément : son échec ne défait pas un blocage réellement écrit.
+    if (!ecrit) { console.warn("blocage refusé —", res && res.error && res.error.message); return false; }
 
     // ⚠️ RETIRER LA PERSONNE DE MES ABONNÉS — sans ça, bloquer ne retire aucun accès.
     //
@@ -6026,7 +6032,8 @@ async function supaBlockUser(targetId) {
     // Le SDK ne LÈVE PAS sur un refus RLS : sans lire `{ error }`, l'échec serait
     // invisible et le blocage paraîtrait complet alors qu'il ne l'est pas.
     if (rf && rf.error) console.warn("blocage : retrait d'abonné refusé —", rf.error.message);
-  } catch(e) { try { window.tel && tel.settle(_cid, "saved", false, e); } catch (_) {} }
+    return true;
+  } catch(e) { try { window.tel && tel.settle(_cid, "saved", false, e); } catch (_) {} return false; }
 }
 // Renvoie true seulement si le déblocage a réellement eu lieu : `state.user.blocked`
 // pilote le filtrage des contenus, commentaires, messages et notifications — un

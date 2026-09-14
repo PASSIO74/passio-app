@@ -3400,30 +3400,77 @@ function _peindreBoutonsSuivi(userId, etat) {
 }
 
 // ======== MODÉRATION (UI) ========
-function blockUser(userId, name) {
-  if (!userId || userId === MY_UID || userId === "me") return;
+// ⚠️ « BLOQUÉ » N'EST ANNONCÉ QUE SI LE SERVEUR L'A ÉCRIT (MOD-04, 2026-09-14).
+// `blockUser` posait l'id dans `state.user.blocked`, appelait `supaBlockUser`
+// SANS attendre ni lire son verdict, et affichait « bloqué ». Or c'est la ligne
+// `blocks` qui fait TOUT ce que bloquer promet : les six policies d'insertion
+// (`is_blocked_with`), la sonnerie, `notify-call`. Un refus (RLS, réseau,
+// session expirée) laissait un blocage PURement local — l'autre personne
+// continuait d'écrire, de commenter, d'appeler — pendant que l'écran disait le
+// contraire, et l'état local, lui, survivait à la réhydratation. Même famille
+// que « signalement envoyé » annoncé sans écriture (2026-09-10).
+// Optimiste à l'écran, puis le verdict : un échec ANNULE l'affichage et le dit.
+async function blockUser(userId, name) {
+  if (!userId || userId === MY_UID || userId === "me") return false;
+  var libelle = name || "Utilisateur";
+  var blockedAvant = (state.user.blocked || []).slice();
+  var followingAvant = (state.user.following || []).slice();
   state.user.blocked = state.user.blocked || [];
   if (!state.user.blocked.includes(userId)) state.user.blocked.push(userId);
   // Bloquer = ne plus suivre non plus
   state.user.following = (state.user.following || []).filter(id => id !== userId);
   saveState();
-  if (typeof supaBlockUser === "function") supaBlockUser(userId);
-  if (typeof supaUnfollowUser === "function") supaUnfollowUser(userId);
   closeModal();
-  toast("🚫 " + (name || "Utilisateur") + " bloqué");
   try { renderFeed(); } catch(e) {}
   try { renderMessages(); } catch(e) {}
   try { renderBell(); } catch(e) {}
+  // Sans compte réel, rien ne peut être écrit : l'état reste local et on le dit.
+  if (typeof supaBlockUser !== "function" || !window._supaReal || !(typeof _uidEstUnCompte === "function" && _uidEstUnCompte())) {
+    toast("🚫 " + libelle + " bloqué sur cet appareil");
+    return true;
+  }
+  var ok = false;
+  try { ok = await supaBlockUser(userId); } catch (e) { ok = false; }
+  if (!ok) {
+    state.user.blocked = blockedAvant;
+    state.user.following = followingAvant;
+    saveState();
+    try { renderFeed(); } catch(e) {}
+    try { renderMessages(); } catch(e) {}
+    try { renderBell(); } catch(e) {}
+    toast("⚠️ Blocage non enregistré — réessaie");
+    try { if (typeof diagLog === "function") diagLog("blocage KO " + userId); } catch (e) {}
+    return false;
+  }
+  if (typeof supaUnfollowUser === "function") { try { supaUnfollowUser(userId); } catch (e) {} }
+  toast("🚫 " + libelle + " bloqué");
+  return true;
 }
 
-function unblockUser(userId, name) {
-  if (!userId) return;
+async function unblockUser(userId, name) {
+  if (!userId) return false;
+  var libelle = name || "Utilisateur";
+  var blockedAvant = (state.user.blocked || []).slice();
   state.user.blocked = (state.user.blocked || []).filter(id => id !== userId);
   saveState();
-  if (typeof supaUnblockUser === "function") supaUnblockUser(userId);
-  toast("✅ " + (name || "Utilisateur") + " débloqué");
   try { renderFeed(); } catch(e) {}
   try { if (typeof renderBlockedList === "function") renderBlockedList(); } catch(e) {}
+  if (typeof supaUnblockUser !== "function" || !window._supaReal || !(typeof _uidEstUnCompte === "function" && _uidEstUnCompte())) {
+    toast("✅ " + libelle + " débloqué sur cet appareil");
+    return true;
+  }
+  var ok = false;
+  try { ok = await supaUnblockUser(userId); } catch (e) { ok = false; }
+  if (!ok) {
+    state.user.blocked = blockedAvant;
+    saveState();
+    try { renderFeed(); } catch(e) {}
+    try { if (typeof renderBlockedList === "function") renderBlockedList(); } catch(e) {}
+    toast("⚠️ Déblocage non enregistré — réessaie");
+    return false;
+  }
+  toast("✅ " + libelle + " débloqué");
+  return true;
 }
 
 // ⚠️ « SIGNALEMENT ENVOYÉ » ÉTAIT ANNONCÉ MÊME QUAND RIEN N'ÉTAIT ÉCRIT
@@ -3703,7 +3750,8 @@ function renderMessages() {
   list.innerHTML = visible.map(c => {
     const seedUsersArr = state.seed.users || [];
     const u = seedUsersArr.find(x => x.id === c.userId) || { name: "Inconnu", avatar: "#7c3aed", profileEmoji: "🙂" };
-    const lastMsg = c.messages && c.messages.length ? c.messages[c.messages.length - 1] : null;
+    const _visibles = (c.messages || []).filter(_msgVisiblePourMoi);
+    const lastMsg = _visibles.length ? _visibles[_visibles.length - 1] : null;
     const _previewContent = lastMsg
       ? (lastMsg.gif ? "GIF" : lastMsg.voiceData ? "Message vocal" : lastMsg.video ? "Vidéo" : lastMsg.img ? "Photo" : lastMsg.docData ? "Document · " + (lastMsg.fileName || "Fichier") : _sansEmojiEnveloppe(lastMsg.text) || "")
       : "";
@@ -4007,7 +4055,13 @@ async function openConversation(convId) {
 function renderConvFpThread(c, displayName) {
   var thread = document.getElementById("convFpThread");
   if (!thread) return;
-  var allMsgs = c.messages || [];
+  // ⚠️ UN MEMBRE BLOQUÉ NE S'AFFICHE PAS DANS UN GROUPE COMMUN (MSG-10, 2026-09-14).
+  // Le blocage ne s'appliquait aux messages qu'à la RÉCEPTION temps réel
+  // (`_handleIncomingConvMessage`) : l'historique rechargé et le fil rendu
+  // montraient tout ce que la personne bloquée avait écrit dans un groupe
+  // partagé — elle y reste membre (c'est l'organisateur qui l'exclut), mais
+  // ce qu'elle écrit ne doit pas atteindre celui qui l'a bloquée.
+  var allMsgs = (c.messages || []).filter(_msgVisiblePourMoi);
 
   // Scroll infini : on n'affiche que les N derniers messages, on en charge plus en
   // remontant. _convPage = nombre de pages affichées (réinitialisé à l'ouverture).
@@ -4362,6 +4416,12 @@ function _sansEmojiEnveloppe(t) {
   return t;
 }
 
+// Un message est visible sauf s'il vient d'un compte que J'AI bloqué (le mien
+// et les messages système restent). Un seul prédicat : fil, aperçu, mentions.
+function _msgVisiblePourMoi(m) {
+  if (!m || m.from === "me" || !m.from) return true;
+  return !(typeof isBlocked === "function" && isBlocked(m.from));
+}
 function _msgPreviewText(m) {
   if (!m) return "";
   if (m.text && !/^\{/.test(m.text)) return _sansEmojiEnveloppe(m.text);
@@ -5134,7 +5194,9 @@ function _mentionDetect(convId) {
   var mt = val.match(/@([\wà-öø-ÿ' -]{0,20})$/i);
   if (!mt) { _hideMentionBox(); return; }
   var q = (mt[1] || "").toLowerCase().trim();
-  var members = (c.userIds || []).map(function(id){ return { id: id, name: (typeof _groupMemberName === "function" ? _groupMemberName(id) : "Membre") }; })
+  var members = (c.userIds || [])
+    .filter(function(id){ return !(typeof isBlocked === "function" && isBlocked(id)); }) // un membre bloqué n'est pas proposé (MSG-10)
+    .map(function(id){ return { id: id, name: (typeof _groupMemberName === "function" ? _groupMemberName(id) : "Membre") }; })
     .filter(function(m){ return !q || m.name.toLowerCase().indexOf(q) > -1; }).slice(0, 6);
   if (!members.length) { _hideMentionBox(); return; }
   var toolbar = document.querySelector("#conv-fullpage .conv-toolbar"); if (!toolbar) return;
