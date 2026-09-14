@@ -48,6 +48,21 @@ Puis la cible a été **purgée** (`--purger`) : une copie des données réelles
 5. **Les privilèges ne sont pas dans les policies.** Une reconstruction « tables + policies » rend `events.address` lisible sans compte (ce ne sont que des GRANT de colonnes qui le protègent) et `is_conv_member` appelable par `anon` — Supabase donne EXECUTE à PUBLIC à la création, un `revoke … from anon` seul ne ferme rien. Les vues sans `security_invoker` ressortaient en `security_definer_view ERROR`. Le DDL porte désormais privilèges de table, de colonne, d'EXECUTE (PUBLIC révoqué d'abord) et options de vue — c'est la différence entre « la même structure » et « la même frontière ».
 6. **Le Storage refuse un `DELETE` SQL direct** (`storage.protect_delete`) : la purge passe par l'API, seau par seau. Et `SCHEMA_PROD_REFERENCE.sql` (08/2026) comme le brouillon `00_ORIGINE_PROD.sql` décrivent un état de 35 tables et 12 fonctions — la production en a 43 et 50. Une photographie ne vaut que datée.
 
+## Le retour arrière APPLICATIF, exercé le même soir (EXP-03, moitié « rollback » de TCI-03)
+
+Deux chemins, et ils ne servent pas la même urgence :
+
+| Chemin | Ce qu'il fait | Délai mesuré |
+|---|---|---|
+| `.github/workflows/rollback.yml` (`workflow_dispatch`, confirmation « ROLLBACK ») | ouvre une branche et une PR de **revert** qui repasse par toute la CI — le chemin PROPRE, qui laisse une trace dans `main` | le cycle CI complet, ~30–45 min, jamais mesuré à moins |
+| `npm run rollback:netlify -- --restaurer precedent` (`scripts/rollback-netlify.mjs`) | remet en ligne un déploiement de production **déjà construit** (Netlify les garde tous : HTML, `app.js`, `styles.css`, `sw.js`, `release.json`) par `POST /deploys/<id>/restore`, puis **relit `release.json` sur le site servi** jusqu'à y lire le commit attendu — le chemin d'URGENCE | **1,8 s** aller (6eca16aa → 53a4584b), **1,1 s** retour, mesurés le 2026-09-14 à 20 h 50 |
+
+Le script liste d'abord les déploiements de production avec le commit que chacun sert (lu dans le `release.json` de son adresse propre `<id>--passio-app.netlify.app` : `commit_ref` est vide, les déploiements partent de la CLI, pas du lien git), refuse de restaurer ce qu'il ne sait pas vérifier, et n'écrit « en ligne » qu'après avoir vu le site le servir. Jeton : `NETLIFY_AUTH_TOKEN` ou la CLI Netlify du poste.
+
+⚠️ **Ce qu'un rollback Netlify ne défait pas** : une migration appliquée (chaque migration porte sa section de retour arrière, à jouer par `npm run migration:appliquer`), une Edge Function déployée (`supabase functions deploy` de la version d'avant), le service worker déjà installé chez quelqu'un (il prend la version restaurée à son prochain démarrage, comme pour tout déploiement). Un correctif qui touche le client ET la base se défait dans l'ordre inverse de sa pose : base d'abord si le client d'avant ne la comprend pas, client d'abord sinon.
+
+⚠️ **Kill switch distant** : il n'y en a pas d'autre que celui-ci — remettre la version d'avant en 2 s. Les drapeaux du dépôt (`passio_*="0"`) sont des coupures **locales**, par appareil ; aucun interrupteur serveur ne coupe une fonctionnalité chez tout le monde, sauf `irl_adult_only` (18+). C'est écrit, pas réglé.
+
 ## Ce qu'une restauration NE REND PAS — écrit, pas tu
 
 - **Les mots de passe** : l'export ne porte pas `encrypted_password`. Chaque compte restauré reçoit un mot de passe aléatoire (jamais journalisé) et repasse par « mot de passe oublié ». Les **identités OAuth** (Google) ne sont pas dans l'export non plus. `created_at` des comptes est celui de la restauration (l'API d'administration l'impose).
