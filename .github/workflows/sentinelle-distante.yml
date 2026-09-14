@@ -2,7 +2,9 @@ name: Sentinelle distante
 
 on:
   schedule:
-    - cron: "17 * * * *"
+    # Toutes les 4 h depuis le 2026-09-14 (TCI-16) : le canari crée deux comptes
+    # réels en production à chaque passage et tient le verrou passio-e2e-prod.
+    - cron: "17 */4 * * *"
   workflow_dispatch:
   pull_request:
     paths:

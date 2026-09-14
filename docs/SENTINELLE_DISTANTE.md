@@ -4,7 +4,9 @@ La Sentinelle historique du Centre de pilotage reste locale : elle analyse les a
 
 Le workflow `.github/workflows/sentinelle-distante.yml` ajoute une couche distante, disponible ordinateur éteint et indépendante des crédits Claude.
 
-## Contrôles horaires
+## Contrôles toutes les 4 heures
+
+> Cadence ramenée de « toutes les heures » à « toutes les 4 heures » le 2026-09-14 (TCI-16, contre-revue Astra) : le canari crée deux comptes RÉELS en production à chaque passage — 48 par jour — et il tenait le verrou `passio-e2e-prod` face aux déploiements. Six passages par jour suffisent à un contrôle de santé ; GitHub n'honore de toute façon qu'une partie des créneaux demandés (mesuré : 41 %).
 
 - audits de globals, handlers, échappement et tests creux ;
 - disponibilité de la page publique PASSIO ;
