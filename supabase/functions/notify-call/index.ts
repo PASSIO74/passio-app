@@ -21,12 +21,21 @@
 //      (même réponse que « aucun appareil abonné », pour ne pas révéler le blocage) ;
 //   ③ faire afficher un texte de longueur libre dans la notification de l'OS →
 //      bornes sur chaque champ affiché.
-// Résidu assumé (déjà écrit dans CLAUDE.md) : `fromName`/`text` restent
-// DÉCLARATIFS entre comptes — le nom affiché est celui que l'appelant envoie.
+// ⚠️ QUATRIÈME GARDE, LE 2026-09-14 (MSG-04, contre-revue Astra) : le LIEN
+// MÉTIER. Rien n'exigeait de rapport entre l'émetteur et le destinataire, et le
+// nom comme le texte venaient du corps de requête. Désormais (_shared/lien-metier.js) :
+//   ④ un APPEL exige une conversation 1:1 commune ; une NOTIFICATION exige une
+//      ligne `notifications` de l'émetteur vers le destinataire écrite dans les
+//      deux dernières minutes — donc acceptée par la RLS ou par un trigger — et
+//      c'est le TEXTE de cette ligne qui part, jamais celui du corps ; le nom
+//      et l'emoji de l'appelant viennent de `profiles`. `fromName`, `fromEmoji`
+//      et `text` du corps sont IGNORÉS (acceptés pour les anciens clients).
+//      Lien absent → même réponse qu'un blocage.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
 import { verifierPlafondEnBase, reponsePlafond } from "../_shared/plafond.js";
+import { identiteAppelant, lienAppel, lienNotification } from "../_shared/lien-metier.js";
 
 // Par appelant : 20 pushes par minute, 200 par heure. Le client n'émet qu'une
 // push par conversation et par 5 min (anti-spam de _notifierMessage) plus les
@@ -75,9 +84,7 @@ Deno.serve(async (req) => {
   const toUserId = borne(body.toUserId, 64);
   const callId = borne(body.callId, 80);
   const kind = borne(body.kind, 32);
-  const fromName = borne(body.fromName, 60);
-  const fromEmoji = borne(body.fromEmoji, 8);
-  const text = borne(body.text, 200);
+  // `fromName`, `fromEmoji` et `text` du corps ne sont plus lus (garde ④).
   const emoji = borne(body.emoji, 8);
   const type = body.type === "notif" ? "notif" : "call";
   // Un identifiant de compte n'a que des caractères d'UUID : tout autre
@@ -105,13 +112,27 @@ Deno.serve(async (req) => {
     .limit(1);
   if (blocErr || (bloc && bloc.length)) return json({ ok: true, sent: 0, note: "aucun appareil abonné" });
 
+  // 3 bis. LIEN MÉTIER (garde ④). Même réponse qu'un blocage : rien à apprendre.
+  let texteServeur = "";
+  let kindServeur = "";
+  if (type === "call") {
+    const lien = await lienAppel(admin, fromUid, toUserId);
+    if (!lien.ok) return json({ ok: true, sent: 0, note: "aucun appareil abonné" });
+  } else {
+    const lien = await lienNotification(admin, fromUid, toUserId);
+    if (!lien.ok) return json({ ok: true, sent: 0, note: "aucun appareil abonné" });
+    texteServeur = lien.texte || "";
+    kindServeur = lien.kind || "";
+  }
+  const idn = await identiteAppelant(admin, fromUid);
+
   // 3. Charger les abonnements du destinataire (service_role → contourne la RLS).
   const { data: subs } = await admin.from("push_subscriptions").select("endpoint, subscription").eq("user_id", toUserId);
   if (!subs || !subs.length) return json({ ok: true, sent: 0, note: "aucun appareil abonné" });
 
   const payload = type === "notif"
-    ? JSON.stringify({ type: "notif", text: text || "Nouvelle notification", emoji: emoji || "🔔", kind })
-    : JSON.stringify({ type: "call", callId, kind: kind || "voice", from: fromUid, name: fromName || "Quelqu'un", emoji: fromEmoji || "📞" });
+    ? JSON.stringify({ type: "notif", text: texteServeur || "Nouvelle notification", emoji: emoji || "🔔", kind: kindServeur || kind })
+    : JSON.stringify({ type: "call", callId, kind: kind || "voice", from: fromUid, name: idn.name, emoji: idn.emoji });
 
   const ttl = type === "notif" ? 3600 : 45;
   const urgency = type === "notif" ? "normal" : "high";
