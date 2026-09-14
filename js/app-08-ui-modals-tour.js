@@ -2294,14 +2294,72 @@ function pushNotification(text, emoji = "✨", fromId = "me", opts) {
 // listener dédié ci-dessous → exclus pour ne pas activer deux fois).
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Enter" && e.key !== " " && e.key !== "Spacebar") return;
-  const el = e.target && e.target.closest ? e.target.closest('[role="button"]') : null;
+  const el = e.target && e.target.closest ? e.target.closest('[role="button"],[data-clavier]') : null;
   if (!el || el === document.body) return;
+  // Un conteneur tabulable (DEV-02) ne s'active que s'il EST l'élément focalisé :
+  // Entrée sur un bouton qu'il contient reste l'affaire de ce bouton.
+  if (el.hasAttribute("data-clavier") && el !== e.target) return;
   const tag = el.tagName;
   if (tag === "BUTTON" || tag === "A" || tag === "INPUT" || tag === "TEXTAREA") return; // natifs : déjà gérés
   if (el.classList.contains("nav-item")) return; // listener dédié plus bas
   e.preventDefault(); // Espace ne doit pas défiler la page
   el.click();
 });
+
+// ======== DEV-02 : TOUT CE QUI SE CLIQUE SE TABULE (2026-09-15) ========
+// ⚠️ ~95 gabarits `<div onclick>` (cartes du fil, rencontres, conversations,
+// stories, réglages) n'avaient ni `tabindex` ni `role` : inaccessibles au
+// clavier et invisibles pour un lecteur d'écran, alors que le délégué
+// ci-dessus sait déjà les activer dès qu'ils portent `role="button"`. Plutôt
+// que 95 retouches de gabarit (dont chaque nouveau gabarit oublierait la
+// sienne), UNE règle mécanique : tout élément non natif qui porte un
+// `onclick` reçoit `role="button"` et `tabindex="0"` — au démarrage, puis à
+// chaque nœud ajouté (les écrans sont peints par `innerHTML`).
+// Ce qui est EXCLU, et pourquoi : les natifs (bouton, lien, champ — déjà
+// tabulables) ; les `.nav-item` (écouteur dédié) ; un `onclick` qui ne fait
+// QUE `event.stopPropagation()` (une enveloppe, pas une commande) ; un
+// élément qui porte déjà un rôle ou un tabindex (choix explicite du gabarit).
+// ⚠️ Pas de `requestAnimationFrame` (une page qui ne compose pas de frames ne
+// le déclenche pas) : les mutations sont regroupées par microtâche.
+(function () {
+  var NON_NATIFS = { DIV: 1, SPAN: 1, LI: 1, IMG: 1, SECTION: 1, ARTICLE: 1, TD: 1, TR: 1, P: 1, LABEL: 0 };
+  function rendreTabulable(el) {
+    if (!el || !NON_NATIFS[el.tagName]) return;
+    if (el.hasAttribute("role") || el.hasAttribute("tabindex") || el.classList.contains("nav-item")) return;
+    var h = el.getAttribute("onclick") || "";
+    if (/^\s*event\.stopPropagation\(\)\s*;?\s*$/.test(h)) return;
+    el.setAttribute("tabindex", "0");
+    // ⚠️ UN CONTENEUR QUI PORTE DES COMMANDES N'EST PAS UN BOUTON (ARIA : un
+    // bouton ne contient pas d'élément interactif). Une section repliable des
+    // Paramètres, une carte du fil avec ses boutons « J'aime » et « Commenter »
+    // deviennent TABULABLES (Entrée/Espace les activent, `data-clavier`) mais ne
+    // prennent pas `role="button"` — sinon leur nom accessible avale tout leur
+    // texte et un `getByRole("button", { name })` désigne deux éléments (mesuré :
+    // « Support › Feedback & aide » contre « Conditions générales »).
+    if (el.querySelector('button,a[href],input,select,textarea,[onclick],[role="button"]')) { el.setAttribute("data-clavier", "1"); return; }
+    el.setAttribute("role", "button");
+  }
+  function balayer(racine) {
+    try {
+      if (racine.nodeType !== 1) return;
+      if (racine.hasAttribute("onclick")) rendreTabulable(racine);
+      var l = racine.querySelectorAll("[onclick]");
+      for (var i = 0; i < l.length; i++) rendreTabulable(l[i]);
+    } catch (e) {}
+  }
+  window._rendreCliquablesAccessibles = balayer;
+  var enAttente = [], planifie = false;
+  function traiter() { planifie = false; var l = enAttente; enAttente = []; for (var i = 0; i < l.length; i++) balayer(l[i]); }
+  function demarrer() {
+    balayer(document.body);
+    if (typeof MutationObserver !== "function") return;
+    new MutationObserver(function (ms) {
+      for (var i = 0; i < ms.length; i++) for (var j = 0; j < ms[i].addedNodes.length; j++) enAttente.push(ms[i].addedNodes[j]);
+      if (!planifie && enAttente.length) { planifie = true; Promise.resolve().then(traiter); }
+    }).observe(document.body, { childList: true, subtree: true });
+  }
+  if (document.body) demarrer(); else document.addEventListener("DOMContentLoaded", demarrer);
+})();
 
 // ======== NAV CLICKS + CLAVIER ========
 // Les nav-item sont des role="button" tabindex="0" (accessibilité) : on active
