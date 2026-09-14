@@ -5887,6 +5887,23 @@ function purgerPostsSupprimes() {
 // bouton « ⋯ » de MA propre publication disparaissait de la carte. Rien ne le
 // signalait ; il ne restait que la fiche ouverte (qui, elle, teste bien
 // `userPosts`) pour supprimer. La question est l'AUTEUR, jamais la source.
+// ⚠️ LE ⋯ D'UNE PUBLICATION D'AUTRUI OUVRE « SIGNALER / BLOQUER » (MOD-02, 2026-09-14).
+// `reportPost` existait, avec son motif et son verdict lu, mais AUCUNE surface
+// ne l'appelait : le ⋯ n'était rendu que sur ses propres publications. Un
+// contenu illicite dans le fil n'avait donc pas de porte de signalement — ce
+// que le règlement européen (DSA art. 16) exige d'un hébergeur. Le contenu de
+// DÉMONSTRATION (auteur `u_…`) n'a pas de ⋯ : il n'existe pas en base.
+function _boutonOptionsPost(p) {
+  if (!p || !p.id) return "";
+  var svg = '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>';
+  if (_estMonPost(p)) {
+    return '<button class="post-menu-btn" onclick="event.stopPropagation();openPostOptions(\'' + escapeJsArg(p.id) + '\')" aria-label="Options du post" title="Options">' + svg + '</button>';
+  }
+  var auteur = String(p.authorId || "");
+  if (!auteur || /^u_/.test(auteur)) return "";
+  return '<button class="post-menu-btn" onclick="event.stopPropagation();openPostOptionsAutrui(\'' + escapeJsArg(p.id) + '\')" aria-label="Signaler ou bloquer" title="Signaler ou bloquer">' + svg + '</button>';
+}
+
 function _estMonPost(p) {
   if (!p || !p.id) return false;
   if ((state.userPosts || []).some(function (up) { return up && up.id === p.id; })) return true;
@@ -8189,9 +8206,7 @@ function renderPostHTML(p) {
           ` : ""}
         </div>
       </div>
-      ${_estMonPost(p) ? `<button class="post-menu-btn" onclick="event.stopPropagation();openPostOptions('${escapeJsArg(p.id)}')" aria-label="Options du post" title="Options">
-        <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
-      </button>` : ""}
+      ${_boutonOptionsPost(p)}
       ${_firstRunDemoTag(p)}
       ${_moodTagHTML(p.mood)}
     </div>
@@ -8274,9 +8289,7 @@ async function openPost(id) {
           <div class="post-author-name">${escapeHtml(author.name || "Utilisateur")}</div>
           <div class="post-author-meta"><span class="post-passion-tag">${escapeHtml(passion.emoji)} ${escapeHtml(passion.label)}</span> · ${fmtTime(post.createdAt)}</div>
         </div>
-        ${(state.userPosts || []).some(function(up){ return up.id === id; }) ? `<button class="post-menu-btn" onclick="event.stopPropagation();openPostOptions('${escapeJsArg(id)}')" aria-label="Options du post" title="Options">
-          <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
-        </button>` : ""}
+        ${_boutonOptionsPost(post)}
         ${_moodTagHTML(post.mood)}
       </div>
       <div class="post-body" style="white-space:pre-wrap;">${escapeHtml(post.text || "")}</div>
