@@ -4528,12 +4528,21 @@ function applyMsgContentData(m, raw) {
   var d;
   try { d = JSON.parse(src); } catch (e) { return; }
   if (!d || !d.type) return;
-  // Identité de l'expéditeur (profil/persona utilisé à l'envoi) — prioritaire sur
-  // le nom dérivé de la ligne `profiles` partagée. Cf. _withSenderMeta (app-02).
-  if (d.sp) {
-    m.senderProfile = d.sp;
-    if (d.sp.n) m.fromName = d.sp.n;
-    if (d.sp.e) m.fromEmoji = d.sp.e;
+  // ⚠️ L'IDENTITÉ VIENT DU SERVEUR, JAMAIS DE LA CHARGE UTILE (PRO-02, 2026-09-14).
+  // `sp` (cf. _withSenderMeta, app-02) est écrit par l'ÉMETTEUR dans `content`,
+  // que tout membre d'une conversation peut poser librement. Il primait sur la
+  // ligne `profiles` de `from_id` : un membre d'un groupe se faisait nommer
+  // « Benjamin » sur la ligne d'expéditeur, et en 1:1 le nom ET la photo de
+  // l'en-tête suivaient le dernier message reçu. Le NOM et la PHOTO sont ceux
+  // de `from_id` (profiles, par `_fetchProfile`/`cacheRemoteProfile`) ; le
+  // persona ne fournit plus qu'un DÉCOR borné — un emoji court sans caractère
+  // HTML (même règle que les réactions) et une couleur hexadécimale. `n` et
+  // `ph` sont ignorés. Verrou : identite-expediteur-serveur.spec.js.
+  if (d.sp && typeof d.sp === "object") {
+    var _e = _reactionKeySure(d.sp.e);
+    var _c = /^#[0-9a-f]{3,8}$/i.test(String(d.sp.c || "")) ? String(d.sp.c) : "";
+    m.senderProfile = { e: _e || undefined, c: _c || undefined };
+    if (_e) m.fromEmoji = _e;
   }
   if (d.rt && !m.replyTo) m.replyTo = d.rt; // contexte de réponse (cf. _setReplyTo)
   if (d.type === "gif" && !m.gif) {

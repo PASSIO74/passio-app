@@ -5267,8 +5267,9 @@ async function supaLoadMyConversations() {
         lastMsg = { id: last.id, from: last.from_id === MY_UID ? "me" : last.from_id, fromName: last.profiles?.username || "Passionné", text: last.content, at: supaTs(last.created_at) };
         applyMsgContentData(lastMsg, last.content); // aperçu : "🎙 Message vocal" + sp (profil expéditeur)
       }
-      // Si le dernier message reçu porte le profil/persona de l'expéditeur, il prime
-      // sur la ligne `profiles` partagée pour nommer la conversation (cf. _withSenderMeta).
+      // Le persona du dernier message reçu ne fournit qu'un DÉCOR (emoji, couleur,
+      // déjà bornés par applyMsgContentData). Le NOM et la PHOTO sont ceux de la
+      // ligne `profiles` de l'autre membre — jamais de la charge utile (PRO-02).
       const lastSp = (last && last.from_id !== MY_UID && lastMsg && lastMsg.senderProfile) ? lastMsg.senderProfile : null;
       return {
         id: c.id, isGroup: c.is_group, groupName: c.group_name,
@@ -5276,8 +5277,8 @@ async function supaLoadMyConversations() {
         userId: otherId,
         userEmoji: lastSp?.e || otherProf?.emoji || "✨",
         userColor: lastSp?.c || otherProf?.color || "#8b5cf6",
-        userName: lastSp?.n || otherProf?.username || "Passionné",
-        userPhoto: lastSp?.ph || otherProf?.avatar_url || null,
+        userName: otherProf?.username || "Passionné",
+        userPhoto: otherProf?.avatar_url || null,
         userIds: members.map(m => m.user_id),
         lastAt: last ? supaTs(last.created_at) : supaTs(c.created_at),
         unread: nonLusParConv[c.id] || 0,
@@ -5461,14 +5462,13 @@ async function _handleIncomingConvMessage(r) {
   const newMsg = { id: r.id, from: r.from_id, fromName: prof.username, fromEmoji: prof.emoji, text: r.content, at: msgAt };
   applyMsgContentData(newMsg, r.content); // décode gif/media/audio/doc/location (+ sp = profil expéditeur)
 
-  // DM : refléter le profil/persona réellement utilisé par l'expéditeur (l'en-tête
-  // et la liste affichent c.userName, pas le nom par message). Sans ça, on verrait
-  // le nom de la ligne `profiles` partagée au lieu du profil d'envoi (« ben123 »).
+  // DM : le persona de l'expéditeur ne touche que le DÉCOR de l'en-tête (emoji,
+  // couleur — bornés par applyMsgContentData). Le NOM et la PHOTO restent ceux de
+  // la ligne `profiles` de `from_id` : la charge utile d'un message ne peut pas
+  // renommer ni re-photographier la conversation (PRO-02, 2026-09-14).
   if (!conv.isGroup && newMsg.senderProfile) {
-    if (newMsg.senderProfile.n) conv.userName = newMsg.senderProfile.n;
     if (newMsg.senderProfile.e) conv.userEmoji = newMsg.senderProfile.e;
     if (newMsg.senderProfile.c) conv.userColor = newMsg.senderProfile.c;
-    if (newMsg.senderProfile.ph) conv.userPhoto = newMsg.senderProfile.ph;
   }
 
   if (!conv.messages) conv.messages = [];
