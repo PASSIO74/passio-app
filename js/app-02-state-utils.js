@@ -495,6 +495,100 @@ function _uidEstUnCompte() {
 window._uidEstUnCompte = _uidEstUnCompte;
 
 // ═══════════════════════════════════════════════════════════════════════════
+// ÉTAT DU SERVEUR — un 5xx/429 répété ou une session morte SE DISENT (ROB-03,
+// 2026-09-14)
+// ──────────────────────────────────────────────────────────────────────────
+// Mesuré au chaos par la contre-revue : toutes les requêtes Supabase en 500,
+// 401 ou 429 → fil servi depuis le cache, navigation possible, AUCUN toast,
+// AUCUNE bannière, 28 rejeux en 30 s. Les écritures échouaient en silence ; une
+// session expirée (401 persistant) laissait la personne « connectée » à
+// l'écran sans qu'aucune écriture n'aboutisse.
+//
+// Une sonde LÉGÈRE sur `fetch`, bornée à l'hôte Supabase :
+//   · 5xx ou 429 : ≥ 3 en 30 s → bandeau « Serveur indisponible » ; une
+//     réponse 2xx suivante le retire (le serveur est revenu) ;
+//   · 401 sur l'API REST/Storage/Functions ALORS QU'UN COMPTE RÉEL est chargé
+//     → la session est morte (supabase-js rafraîchit lui-même un jeton expiré ;
+//     un 401 qui persiste, c'est un refresh token révoqué ou un stockage vidé)
+//     → bandeau « Session expirée » avec la sortie : se reconnecter.
+// ⚠️ Un 401 chez un VISITEUR (placeholder `u_…`, rôle anon) est normal — voir
+// les fiches « 401 sur events / user_state » : jamais de bandeau pour lui.
+// ⚠️ Les échecs RÉSEAU (`http_status = 0`) ne sont PAS comptés ici : c'est le
+// domaine du bandeau hors-ligne (app-09) et de la reprise des lectures.
+// ⚠️ Un seul bandeau (`#serveurBanner`, créé à la demande), jamais de toast :
+// une panne serveur produit des dizaines d'échecs, pas un.
+var _sondeServeur = { echecs: [], visible: null, muetJusqua: 0 };
+function _sondeServeurBandeau(type) {
+  try {
+    var b = document.getElementById("serveurBanner");
+    if (!type) { if (b) b.style.display = "none"; _sondeServeur.visible = null; return; }
+    if (_sondeServeur.visible === type) return;
+    if (!b) {
+      b = document.createElement("div");
+      b.id = "serveurBanner";
+      b.setAttribute("role", "status");
+      b.style.cssText = "display:none;position:fixed;top:0;left:0;right:0;z-index:9998;background:#7f1d1d;color:#fff;text-align:center;padding:calc(10px + env(safe-area-inset-top)) 16px 10px;font-size:13px;font-weight:600;letter-spacing:.01em;";
+      document.body.appendChild(b);
+    }
+    b.setAttribute("data-serveur", type);
+    b.innerHTML = type === "session"
+      ? "Session expirée — <button type=\"button\" onclick=\"_sondeServeurReconnecter()\" style=\"background:#fff;color:#7f1d1d;border:none;border-radius:8px;padding:4px 10px;font-weight:700;cursor:pointer;\">Se reconnecter</button>"
+      : "Serveur indisponible — tes actions ne sont pas enregistrées pour le moment <button type=\"button\" onclick=\"_sondeServeurBandeau(null)\" style=\"background:none;border:none;color:#fecaca;font-size:16px;cursor:pointer;margin-left:8px;\">×</button>";
+    b.style.display = "flex"; b.style.justifyContent = "center"; b.style.alignItems = "center"; b.style.gap = "8px";
+    _sondeServeur.visible = type;
+    try { if (typeof diagLog === "function") diagLog("serveur " + type); } catch (e) {}
+  } catch (e) {}
+}
+function _sondeServeurReconnecter() {
+  try { if (typeof doLogout === "function") doLogout("signin"); } catch (e) {}
+}
+// Verdict d'une réponse de l'hôte Supabase. Exposé pour le banc.
+function _sondeServeurReponse(status, url) {
+  var maintenant = Date.now();
+  if (status >= 200 && status < 300) {
+    _sondeServeur.echecs = [];
+    if (_sondeServeur.visible === "panne") _sondeServeurBandeau(null);
+    return;
+  }
+  if (status === 401) {
+    if (String(url || "").indexOf("/rest/v1/") < 0 && String(url || "").indexOf("/storage/v1/") < 0 && String(url || "").indexOf("/functions/v1/") < 0) return; // /auth/v1 gère ses propres 401
+    if (!_uidEstUnCompte()) return; // visiteur : rôle anon, refus normal
+    if (maintenant < _sondeServeur.muetJusqua) return;
+    _sondeServeur.muetJusqua = maintenant + 60000;
+    // Laisser au SDK une chance de rafraîchir : si une session vivante existe
+    // encore, ce 401 est transitoire ; sinon, c'est fini.
+    var decide = function (vivante) { if (!vivante) _sondeServeurBandeau("session"); };
+    try {
+      if (window.supa && supa.auth && typeof supa.auth.getSession === "function") {
+        supa.auth.getSession().then(function (r) { decide(!!(r && r.data && r.data.session)); }, function () { decide(false); });
+      } else decide(false);
+    } catch (e) { decide(false); }
+    return;
+  }
+  if (status >= 500 || status === 429) {
+    _sondeServeur.echecs = _sondeServeur.echecs.filter(function (t) { return maintenant - t < 30000; });
+    _sondeServeur.echecs.push(maintenant);
+    if (_sondeServeur.echecs.length >= 3) _sondeServeurBandeau("panne");
+  }
+}
+(function _sondeServeurInstaller() {
+  try {
+    if (!window.fetch || window.fetch.__sondeServeur) return;
+    var orig = window.fetch;
+    var hote = /supabase[.]co/i;
+    var enveloppe = function (input, init) {
+      var url = "";
+      try { url = typeof input === "string" ? input : (input && input.url) || ""; } catch (e) {}
+      var p = orig.apply(this, arguments);
+      if (!hote.test(url)) return p;
+      return p.then(function (res) { try { _sondeServeurReponse(res.status, url); } catch (e) {} return res; });
+    };
+    enveloppe.__sondeServeur = true;
+    window.fetch = enveloppe;
+  } catch (e) {}
+})();
+
+// ═══════════════════════════════════════════════════════════════════════════
 // REPRISE DES LECTURES DE DÉMARRAGE APRÈS UNE COUPURE RÉSEAU (2026-09-10)
 //
 // Mesuré en production sur 14 jours (telemetry_events, type=api) : 448 appels
