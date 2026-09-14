@@ -377,3 +377,32 @@ Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, 
 | Limite restante | Un média dont l'**upload** a échoué avant l'insert est perdu au rechargement (contrainte de quota localStorage, `_leanState`) : la personne est prévenue, elle doit republier — une file de médias (IndexedDB) serait le lot suivant. Le « Post en local (connexion lente) » après 5 s reste affiché même si l'envoi aboutit ensuite (faux échec, pas faux succès) : hors périmètre. Les **stories** n'ont pas de file (CONT-06 : l'échec est dit, pas rejoué). Non mesuré sur deux appareils réels. |
 | État | **corrigé dans le code** · déployé : non · vérifié après déploiement : non |
 | PR | `claude/chantier-8-reprise-publications` — voir la PR ouverte depuis cette branche. |
+
+
+---
+
+## ROB-04 — Double tap sur « Suivre » désabonne ; double tap sur « Bloquer » écrit deux fois — P3 (chantier 8)
+
+| Champ | Valeur |
+|---|---|
+| État constaté (base `9de2c4d6`) | `toggleFollowUser` (app-04) : aucun verrou — un second tap pendant l'écriture lisait l'état optimiste « suivi » et lançait le DELETE : POST puis DELETE en 300 ms, deux toasts contradictoires, état final « Suivre ». `blockUser` / `unblockUser` : deux taps = deux INSERT `blocks`, deux toasts. **Reproduit** au banc (écriture tenue en vol). |
+| Correction | `_verrouEcriture(table, id, promesse)` (app-04) : `_ecritureSuiviEnCours[uid]` / `_ecritureBlocageEnCours[uid]` posés à l'envoi, levés **à la réponse du serveur** (jamais sur un minuteur). Pendant ce temps, `toggleFollowUser` ignore le tap ; `blockUser` / `unblockUser` rendent `false` sans rien écrire ni annoncer. Même famille que `_likePending` et `_publishInProgress`. |
+| Test effectué | `tests/e2e/doubles-ecritures.spec.js` ① (Suivre ×2 en vol : un INSERT, un toast, état « suivi » avant et après la réponse) ② (Bloquer ×2 : un INSERT, un toast, second appel `false`) ④ (après la réponse, le geste inverse marche : INSERT puis DELETE). `recherche-referentiel` ⑧ réécrit (il enchaînait deux clics **synchrones** — exactement le double tap — pour prouver que « désuivre » existe ; il laisse désormais le faux serveur répondre). Voisines : blocage-acces, blocage-verdict, blocage-groupe-commun, parcours-suivre, profil-visite-options, first-run, ouverture-publique… (163/163 après réécriture). |
+| Résultat | **Avant** (main pristine, RÉINJECTION) : ① ② rouges, ④ vert. **Après** : 5/5 ; **artefact minifié** : 5/5. |
+| Limite restante | Le verrou est **par compte cible et par appareil** : deux onglets écrivent chacun une fois (le serveur dédoublonne par clé). Le bouton n'est pas grisé pendant l'écriture (l'ignorance du tap suffit ; non mesuré à l'œil). |
+| État | **corrigé dans le code** · déployé : non · vérifié après déploiement : non |
+| PR | `claude/chantier-8-doubles-ecritures` — voir la PR ouverte depuis cette branche. |
+
+---
+
+## ROB-06 — Deux vidages concurrents de la file d'envoi renvoient le même message deux fois — P3 (chantier 8)
+
+| Champ | Valeur |
+|---|---|
+| État constaté | `_flushOutbox` (app-04) déclenché par `online` **et** par le boot (app-08, 1,5 s), ou deux « réessayer » rapprochés : chaque appel lisait la même file et appelait `_sendTextToSupa` pour chaque entrée — quatre INSERT pour deux messages ; le serveur dédoublonnait par clé primaire (id client), mais la seconde réponse (23505) écrasait « envoyé » par « échec ». **Reproduit** au banc (deux `_flushOutbox()` → m1, m2, m1, m2). |
+| Correction | `_msgEnVol[msgId]` (app-04) : tant que l'INSERT d'un message n'a pas répondu, tout nouvel envoi du même id est **ignoré** (`_sendTextToSupa`) ; `_flushOutbox` garde l'entrée en file **sans compter d'essai** ni la renvoyer. Levé à la réponse (succès, refus, exception). |
+| Test effectué | `doubles-ecritures.spec.js` ③ (deux vidages concurrents : deux INSERT pour deux messages, tous deux « sent », file vide) ⑤ (deux « réessayer » : un envoi ; après la réponse, un nouvel échec se renvoie). Voisines : file-messages-par-compte, message-refus-definitif, message-media-echec, conv-reparation-appartenance, notification-message, transfert-message, reprise-lectures-boot. |
+| Résultat | **Avant** : ③ ⑤ rouges. **Après** : vert ; artefact minifié : vert. |
+| Limite restante | Le verrou est en mémoire : deux **onglets** peuvent encore envoyer le même message (la clé primaire tient). Le chemin **média** (`sendMessageToSupabase`) n'a pas de file et n'est pas concerné. |
+| État | **corrigé dans le code** · déployé : non · vérifié après déploiement : non |
+| PR | `claude/chantier-8-doubles-ecritures`. |

@@ -3338,12 +3338,26 @@ function _boutonsSuivi(userId) {
   return out;
 }
 
+// ⚠️ UN BOUTON D'ÉTAT IGNORE LE SECOND TAP PENDANT L'ÉCRITURE (ROB-04,
+// 2026-09-14). Mesuré : deux taps sur « Suivre » en 300 ms → POST follows puis
+// DELETE follows, deux toasts contradictoires, état final « Suivre » ; deux
+// taps sur « Bloquer » → deux INSERT blocks, deux toasts. Le verrou est levé
+// quand la réponse du serveur est arrivée — jamais avant, jamais sur un
+// minuteur. Même famille que `_likePending` et `_publishInProgress`.
+var _ecritureSuiviEnCours = {};
+var _ecritureBlocageEnCours = {};
+function _verrouEcriture(table, id, promesse) {
+  table[id] = true;
+  return Promise.resolve(promesse).then(function (r) { delete table[id]; return r; }, function (e) { delete table[id]; throw e; });
+}
+
 function toggleFollowUser(userId, userName) {
   // Mode invité (première visite) : cette action engage le compte. Le gate
   // EXPLIQUE l'action puis propose la création de compte ; il ne rejoue jamais
   // l'action après coup. Rend `true` — donc inerte — hors mode invité.
   if (window.requireAuthentication && !requireAuthentication("suivre")) return;
   if (!_boutonsSuivi(userId).length) return;
+  if (_ecritureSuiviEnCours[userId]) return; // écriture en cours : le tap est ignoré
   state.user.following = state.user.following || [];
   state.user.followingPending = state.user.followingPending || [];
   var nom = userName || "cet utilisateur";
@@ -3360,7 +3374,7 @@ function toggleFollowUser(userId, userName) {
     state.user.followingPending = state.user.followingPending.filter(function (id) { return id !== userId; });
     _peindreBoutonsSuivi(userId, "aucun");
     toast("Demande annulée");
-    supaUnfollowUser(userId);
+    _verrouEcriture(_ecritureSuiviEnCours, userId, supaUnfollowUser(userId)).catch(function () {});
     saveState();
     return;
   }
@@ -3368,7 +3382,7 @@ function toggleFollowUser(userId, userName) {
     state.user.following.push(userId);
     _peindreBoutonsSuivi(userId, "suivi");
     toast("Tu suis " + nom + " !");
-    Promise.resolve(supaFollowUser(userId)).then(function (r) {
+    _verrouEcriture(_ecritureSuiviEnCours, userId, supaFollowUser(userId)).then(function (r) {
       // ⚠️ ÉCHEC RÉEL = ANNULER L'OPTIMISTE (invariant CLAUDE.md). Le lot ajoute
       // deux refus possibles sur `follows` (blocage, débit) : sans cette branche,
       // l'identifiant refusé restait dans `following`, était persisté, puis
@@ -3395,7 +3409,7 @@ function toggleFollowUser(userId, userName) {
   state.user.following = state.user.following.filter(function (id) { return id !== userId; });
   _peindreBoutonsSuivi(userId, "aucun");
   toast("Tu ne suis plus " + nom);
-  supaUnfollowUser(userId);
+  _verrouEcriture(_ecritureSuiviEnCours, userId, supaUnfollowUser(userId)).catch(function () {});
   saveState();
 }
 
@@ -3433,6 +3447,7 @@ function _peindreBoutonsSuivi(userId, etat) {
 // Optimiste à l'écran, puis le verdict : un échec ANNULE l'affichage et le dit.
 async function blockUser(userId, name) {
   if (!userId || userId === MY_UID || userId === "me") return false;
+  if (_ecritureBlocageEnCours[userId]) return false; // écriture en cours (ROB-04)
   var libelle = name || "Utilisateur";
   var blockedAvant = (state.user.blocked || []).slice();
   var followingAvant = (state.user.following || []).slice();
@@ -3451,7 +3466,7 @@ async function blockUser(userId, name) {
     return true;
   }
   var ok = false;
-  try { ok = await supaBlockUser(userId); } catch (e) { ok = false; }
+  try { ok = await _verrouEcriture(_ecritureBlocageEnCours, userId, supaBlockUser(userId)); } catch (e) { ok = false; }
   if (!ok) {
     state.user.blocked = blockedAvant;
     state.user.following = followingAvant;
@@ -3470,6 +3485,7 @@ async function blockUser(userId, name) {
 
 async function unblockUser(userId, name) {
   if (!userId) return false;
+  if (_ecritureBlocageEnCours[userId]) return false; // écriture en cours (ROB-04)
   var libelle = name || "Utilisateur";
   var blockedAvant = (state.user.blocked || []).slice();
   state.user.blocked = (state.user.blocked || []).filter(id => id !== userId);
@@ -3481,7 +3497,7 @@ async function unblockUser(userId, name) {
     return true;
   }
   var ok = false;
-  try { ok = await supaUnblockUser(userId); } catch (e) { ok = false; }
+  try { ok = await _verrouEcriture(_ecritureBlocageEnCours, userId, supaUnblockUser(userId)); } catch (e) { ok = false; }
   if (!ok) {
     state.user.blocked = blockedAvant;
     saveState();
@@ -5106,6 +5122,16 @@ function _refusDefinitif(error, statut) {
   return st === 401 || st === 403;
 }
 
+// ⚠️ UN MESSAGE N'EST EN VOL QU'UNE FOIS (ROB-06, 2026-09-14). Deux vidages
+// concurrents de la file (`online` + boot, ou deux « réessayer » rapprochés)
+// lisaient la même file et envoyaient chaque message deux fois : quatre INSERT
+// pour deux messages. Le serveur dédoublonnait par clé primaire, mais la
+// seconde réponse (23505) écrasait le statut « envoyé » par « échec ». Tant
+// qu'une écriture de `msgId` n'a pas répondu, tout nouvel envoi du même
+// message est ignoré — et `_flushOutbox` ne compte pas d'essai pour lui.
+var _msgEnVol = {};
+function _msgEstEnVol(msgId) { return _msgEnVol[msgId] === true; }
+
 // Envoie un message texte/enveloppe à Supabase, gère statut (sending→sent/failed)
 // et la file d'attente : hors-ligne ou échec TRANSITOIRE → garde en outbox.
 function _sendTextToSupa(convId, msgId, content) {
@@ -5115,9 +5141,12 @@ function _sendTextToSupa(convId, msgId, content) {
   if (navigator && navigator.onLine === false) {
     _setMsgStatus(convId, msgId, "failed"); _outboxAdd(convId, msgId, content); return;
   }
+  if (_msgEstEnVol(msgId)) return;
+  _msgEnVol[msgId] = true;
   supa.from("conv_messages")
     .insert({ id: msgId, conv_id: convId, from_id: MY_UID, content: content, created_at: new Date().toISOString() })
     .then(function(res) {
+      delete _msgEnVol[msgId];
       if (res && res.error) {
         _setMsgStatus(convId, msgId, "failed");
         // ⚠️ 403 SEULEMENT, JAMAIS 401 : un jeton absent ou expiré ne se répare
@@ -5156,7 +5185,7 @@ function _sendTextToSupa(convId, msgId, content) {
         try { if (typeof _notifierMessage === "function") _notifierMessage(convId, msgId); } catch (e) {}
       }
     })
-    .catch(function() { _setMsgStatus(convId, msgId, "failed"); _outboxAdd(convId, msgId, content); });
+    .catch(function() { delete _msgEnVol[msgId]; _setMsgStatus(convId, msgId, "failed"); _outboxAdd(convId, msgId, content); });
 }
 
 // Renvoi manuel d'un message en échec.
@@ -5199,6 +5228,9 @@ function _flushOutbox() {
       try { if (typeof diagLog === "function") diagLog("msg_outbox_autre_compte flush"); } catch (e) {}
       return;
     }
+    // Déjà en vol (vidage concurrent) : on le garde en file tel quel, sans
+    // compter d'essai ni le renvoyer — sa réponse tranchera (ROB-06).
+    if (_msgEstEnVol(item.msgId)) { restants.push(item); return; }
     var essais = Number(item.essais || 0) + 1;
     if (essais > MSG_ESSAIS_MAX) {
       // On ne renvoie plus tout seul, mais le message RESTE à l'écran, en
