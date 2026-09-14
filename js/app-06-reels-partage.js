@@ -2043,6 +2043,7 @@ function archiverPassion(profileId, silencieux) {
   // Passions seules : ni pseudo, ni bio, ni avatar, ni confidentialité.
   if (typeof supaSavePassionState === "function") { try { supaSavePassionState(); } catch (e) {} }
   if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch (e) {} }
+  _resyncStudioSiVisible();
   if (silencieux) return true;
   closeModal();
   renderProfilesScreen();
@@ -2084,6 +2085,7 @@ function restaurerPassion(profileId, silencieux) {
   // Passions seules : ni pseudo, ni bio, ni avatar, ni confidentialité.
   if (typeof supaSavePassionState === "function") { try { supaSavePassionState(); } catch (e) {} }
   if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch (e) {} }
+  _resyncStudioSiVisible();
   if (silencieux) return true;
   closeModal();
   renderProfilesScreen();
@@ -2702,11 +2704,19 @@ function switchToProfile(id) {
   // RIEN. Ce qu'il faut tester, c'est que le Studio soit à l'écran — sinon
   // `renderStudio()` réécrit le <select> et écrase une passion choisie à la
   // main pour la publication en cours.
+  _resyncStudioSiVisible();
+  try { if (typeof renderProfileStrip === "function") renderProfileStrip(); } catch (e) { _v8Echec("strip_resync", e); }
+}
+
+// Repeint le sélecteur du Studio s'il est à l'écran — un seul point, appelé
+// par la bascule ET par l'archivage/restauration (PRO-05, 2026-09-14) : après
+// `archiverPassion('sport')`, `#postPassion` proposait encore `sport` et la
+// publication partait dans un profil archivé.
+function _resyncStudioSiVisible() {
   try {
     var _st = document.getElementById("screen-studio");
     if (_st && _st.classList.contains("active") && typeof renderStudio === "function") renderStudio();
   } catch (e) { _v8Echec("studio_resync", e); }
-  try { if (typeof renderProfileStrip === "function") renderProfileStrip(); } catch (e) { _v8Echec("strip_resync", e); }
 }
 
 // ===== ÉDITION D'UN PROFIL PASSION (crayon sur la carte) =====
@@ -4229,6 +4239,20 @@ async function publishPost() {
 
   const text = $("#postText").value.trim();
   const passion = $("#postPassion").value;
+
+  // ⚠️ UNE PASSION ARCHIVÉE NE SE PUBLIE PAS, MÊME SI LE SÉLECTEUR LA PROPOSE
+  // ENCORE (PRO-05, 2026-09-14) : le `<select>` peut être périmé (archivage
+  // depuis un autre écran, un autre appareil, une hydratation). La garde est au
+  // POINT D'ÉCRITURE, pas à l'affichage — et elle repeint le sélecteur.
+  if (passion && typeof passionsUnifieesActives === "function" && passionsUnifieesActives()) {
+    const _vivante = (state.user.profiles || []).some(function (p) { return p && !p.archived && p.passion === passion; });
+    const _archivee = !_vivante && (state.user.profiles || []).some(function (p) { return p && p.archived && p.passion === passion; });
+    if (_archivee) {
+      toast("Cette passion est archivée — réactive-la ou choisis-en une autre", "warning");
+      try { renderStudio(); } catch (e) {}
+      return;
+    }
+  }
 
   if (studioType === "text" && text.length < 3) {
     toast("Écris quelque chose.");

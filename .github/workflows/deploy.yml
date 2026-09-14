@@ -430,6 +430,12 @@ jobs:
       - name: Decoupage du referentiel en parties collables (PostgreSQL jetable)
         run: bash tests/sql/decoupage-migration-passions.test.sh
 
+      # Tout banc tests/sql/*.test.sh qui n'est PAS nomme ci-dessus tourne ici :
+      # une nouvelle migration n'a plus a toucher ce fichier (donc plus a passer
+      # la gouvernance critique) pour que son banc soit execute.
+      - name: Bancs SQL non nommes dans ce workflow (PostgreSQL jetable)
+        run: bash scripts/bancs-sql-restants.sh
+
       # La creation d'une passion depuis l'application (lot creation_passion_v1).
       # Elle s'appuie sur une fonction SECURITY DEFINER : c'est ELLE qui tient le
       # dedoublonnage, les plafonds et le fait que `public.passions` reste NON

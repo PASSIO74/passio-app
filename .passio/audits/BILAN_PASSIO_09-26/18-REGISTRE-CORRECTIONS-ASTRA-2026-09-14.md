@@ -449,5 +449,45 @@ Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, 
 | Test effectué | Banc SQL `tests/sql/migration-discussion-coorganisateur.test.sh` (socle = fonction et policy de prod ; défaut mesuré avant ; application, verdict, rejeu ; inscrit entre chez l'auteur et chez le co-organisateur ; tiers, non-inscrit, usurpation d'identité refusés ; anon sans EXECUTE ; `co_organizers NULL` ne lève pas) — câblé dans `deploy.yml`. `tests/e2e/discussion-activite-refus.spec.js` (4 cas : refus → pas de miroir, dit, fiche conservée ; accepté → miroir + Messages ouvert ; déjà membre → aucune demande ; création par un gestionnaire : entrée lue). Voisines : irl, irl-trust-safety, faux-succes-irl-story, ui-v6c-proposer-irl, conv-reparation-appartenance (72/72). |
 | Résultat | **Avant** (main pristine, RÉINJECTION) : ① ② ④ rouges, ③ vert. **Après** : 4/4 ; **artefact minifié** : 4/4. Banc SQL : **non mesuré localement** (pas de PostgreSQL) — la CI est la mesure. |
 | Limite restante | Migration **à coller** : tant qu'elle ne l'est pas, une discussion créée par un co-organisateur reste fermée aux inscrits — mais le client le **dit** désormais au lieu d'ouvrir une conversation morte. Un co-organisateur non inscrit (`rsvp` absent) ne peut rejoindre une discussion créée par l'auteur qu'en s'inscrivant (contrat inchangé). `setEventRsvp` appelle encore `_joinEventConversation` en arrière-plan sans afficher le refus (l'inscription est le contrat ; la discussion se redemande depuis la fiche). |
-| État | **corrigé dans le code** · déployé : non · migration : **à coller** · vérifié après déploiement : non |
+| État | **corrigé dans le code** · déployé : fusionné `3e7c4798` (#390), déploiement en cours · migration : **appliquée et mesurée** (fonction admet un co-organisateur, `search_path` figé, anon sans EXECUTE, authenticated avec) · vérifié après déploiement : à confirmer sur l'artefact servi |
 | PR | `claude/chantier-8-discussion-coorganisateur` — porte `migrations/*` et `.github/*` : **contre-revue** requise sur le SHA. |
+
+
+---
+
+## PRO-04 — La vitrine publique (profiles.passions, passion_id) diverge de l'état réel du compte — P2 (chantier 8)
+
+| Champ | Valeur |
+|---|---|
+| État constaté (base `3e7c4798`, mesuré en base le 2026-09-14, canal ①) | Sur 6 comptes ayant `profiles` + `user_state` : les listes vitrine/état **coïncident** pour 5 (le cas `moto-enduro` du 04/09 est résorbé : archivée des deux côtés) ; **un compte** (`6902826f`) a 25 passions dans l'état et **16** dans la vitrine — la vitrine n'est publiée qu'aux gestes (`supaSavePassionState` à l'ajout, l'archivage, la bascule), un geste dont la publication a échoué la laisse en retard pour toujours. `profiles.passion_id` ≠ passion active sur 4 comptes sur 6 — **et c'est voulu** : ADR-010 en fait la passion PRINCIPALE (première vivante canonique, rétro-compat feed/embeds/anciens clients), deux suites l'exigent (`avatar-public-stable`, `hotfix-profil-passion-custom`) ; la contre-revue a lu l'inverse dans une doc. |
+| Correction | **Réconciliation au démarrage** : `_reconcilierVitrinePassions` (app-08) — une fois l'état du compte chargé (`_etatCompteCharge`), si l'empreinte (passions + rangement + active) diffère de la dernière publication **réussie** (`passio_vitrine_publiee_v1`, posée par `supaSavePassionState` sur verdict `ok`), republier ; compte réel seulement, 6 essais au plus, jamais en boucle, refus tracé. `_passionIdPubliable` **inchangé** (une première rédaction le faisait suivre l'active — deux suites voisines rouges, ADR-010 relu, revenu). `.passio/context/MULTI_PROFILE.md` précisé : `profiles.passion_id` ne suit pas la bascule. |
+| Test effectué | `tests/e2e/vitrine-passions.spec.js` ① (passion_id = première vivante canonique, indépendante de la bascule) ② (archivée écartée) ③ (réconciliation : publie quand l'empreinte diffère, pas deux fois, republie après un geste) ③ bis (sans compte réel, rien ne part). Voisines : 23 suites profil/passions/Studio (331/333 en parallèle ×2 ; les 2 rouges étaient la première rédaction de passion_id, 22/22 après retour). |
+| Résultat | **Avant** (main pristine, RÉINJECTION) : ③ ③ bis rouges (la réconciliation n'existe pas) ; ① ② verts (comportement inchangé, désormais verrouillé). **Après** : 6/6 ; **artefact minifié** : 6/6. |
+| Limite restante | Le compte `6902826f` sera réconcilié à son prochain démarrage sur ce client (non mesuré : à relire en base après déploiement). Pourquoi sa vitrine a pris du retard (échec réseau ? session ?) n'est pas établi — la trace `diagLog("vitrine passions non réconciliée")` le rendra mesurable. |
+| État | **corrigé dans le code** · déployé : non · vérifié après déploiement : non |
+| PR | `claude/chantier-8-vitrine-passions`. |
+
+---
+
+## PRO-05 — Le sélecteur du Studio propose encore une passion archivée et publie dans un profil archivé — P2 (chantier 8)
+
+| Champ | Valeur |
+|---|---|
+| État constaté | `archiverPassion` / `restaurerPassion` (app-06) repeignaient l'écran Profil, pas le Studio : `#postPassion` gardait l'option archivée (surtout sur le chemin `silencieux` de l'échange) ; `publishPost` lisait la valeur et retrouvait le profil **archivé** (`_matchProf` retombe sur n'importe quel profil de cette passion) → publication dans un profil archivé. **Reproduit** au banc (attaque D de l'audit). |
+| Correction | `_resyncStudioSiVisible()` (app-06) — un seul point, appelé par la bascule ET par l'archivage/restauration, `silencieux` compris. Et la garde au **point d'écriture** : `publishPost` refuse une passion archivée même si le sélecteur la propose encore (« Cette passion est archivée — réactive-la ou choisis-en une autre »), repeint le sélecteur, ne crée aucune publication locale. |
+| Test effectué | `vitrine-passions.spec.js` ④ (archiver en `silencieux`, Studio à l'écran → l'option disparaît) ⑤ (sélecteur périmé portant une archivée → refus, 0 post local, sélecteur repeint). Voisines : studio-moods, passions-archive-quota, ui-v8-passions, mes-passions-page… (dans les 23 ci-dessus). |
+| Résultat | **Avant** : ④ ⑤ rouges. **Après** : vert ; artefact minifié : vert. |
+| Limite restante | Le sélecteur en mode référentiel plat (`#studioPassionBtn`) n'est pas un `<select>` : la garde d'écriture couvre les deux chemins, le repeint suit `renderStudio`. |
+| État | **corrigé dans le code** · déployé : non · vérifié après déploiement : non |
+| PR | `claude/chantier-8-vitrine-passions`. |
+
+---
+
+## Outillage — prendre la main sur les gestes manuels (2026-09-14, demande de Benjamin)
+
+| Champ | Valeur |
+|---|---|
+| Constat | Six migrations collées à la main dans la journée, deux contre-revues pour une ligne de YAML par banc. |
+| Correction | `scripts/appliquer-migration.mjs` (`npm run migration:appliquer -- migrations/<f>.sql`) : envoie la migration à l'API de gestion Supabase — **l'endpoint même que le bouton « Run » de l'éditeur SQL** (canal ③ d'ADR-012, même rôle, même transaction) ; exige le jeton personnel de la CLI (jamais `service_role`), un fichier sous `migrations/` en `begin;…commit;`, refuse la CI ; imprime le tableau de verdict et rappelle de mesurer l'état en base. **Éprouvé** : rejeu de `migration_evenements_cascade` → 7 lignes identiques au coller manuel. `scripts/bancs-sql-restants.sh` (câblé une fois dans `deploy.yml`) : tout banc `tests/sql/*.test.sh` non nommé dans le workflow tourne quand même — une nouvelle migration ne touche plus `.github/`. |
+| Ce qui reste manuel, délibérément | La **contre-revue** des PR qui touchent `migrations/*`, `.github/*`, `dashboard/server/*`, `scripts/run_migrations.js`, `scripts/sauvegarde-donnees.js` : c'est le seul contrôle humain entre ce canal et la production ; il ne se contourne pas. Elle se déclenchera désormais **aux migrations seules** (plus aux bancs). |
+| État | **corrigé dans le code** · déployé : n/a (outillage de poste + CI) |

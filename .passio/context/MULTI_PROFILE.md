@@ -57,6 +57,10 @@ notifications · analytics · modération.
   (liste des passions du compte — vitrine publique **et** sauvegarde relue à la reconstruction d'un
   appareil neuf ; les archivées y sont publiées marquées puis filtrées à l'affichage).
   `follows(follower_id, following_id)` entre comptes. `posts.passion_id` = étiquette de classement.
+  `profiles.passion_id` = passion PRINCIPALE du compte (première vivante canonique, rétro-compat :
+  feed, embeds, anciens clients) — elle **ne suit pas** la bascule de `currentProfileId` (ADR-010 ;
+  précisé pour PRO-04 le 2026-09-14, la contre-revue ayant lu ici l'inverse). La vitrine qui suit le
+  compte, c'est `passions`, réconciliée au démarrage (`_reconcilierVitrinePassions`, app-08).
 - **Aucune** table `passion_profiles` / `profile_passions`, aucune colonne `posts.profile_id`.
 - **Client** : `state.user.profiles[]` + `currentProfileId` — la passion d'ÉCRITURE courante ;
   `state.selectedFeedPassions` / `_activeFeedPassions` — les préférences de LECTURE. Deux états
