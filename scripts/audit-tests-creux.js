@@ -47,7 +47,14 @@ const UI = /\.(click|fill|press|tap|selectOption|check|hover|dblclick)\s*\(|getB
 // exécute tout le boot, même s'il ne nomme ensuite aucune fonction applicative.
 // C'est le cas de `cadrage.spec.js`, qui boote puis mesure du CSS calculé — le
 // signaler serait un faux positif, et un outil qui crie au loup finit ignoré.
-const BOOT = /\b(bootOnboarded|bootInteractions|signupAnonymous)\s*\(/;
+const BOOT = /\b(bootOnboarded|bootInteractions|signupAnonymous|bootVisiteur|poserGateSansPremiereVisite)\s*\(/;
+// ⚠️ UN LOCATOR SUR UNE PAGE FABRIQUÉE NE PROUVE RIEN (TCI-05, contre-revue
+// Astra, 2026-09-14). `page.setContent("<button>…")` puis `locator("button")`
+// satisfaisait le marqueur UI ci-dessus : le gate passait sur un spec qui ne
+// touche jamais l'application. Une page réelle, c'est un helper de boot ou un
+// `page.goto` — sans l'un des deux, les marqueurs UI ne valent pas preuve.
+const PAGE_REELLE = /\bpage\.goto\s*\(|\bgoto\s*\(/;
+const PAGE_FABRIQUEE = /\bpage\.setContent\s*\(/;
 
 // Specs dont l'objet n'est PAS l'application en train de tourner, et qui sont
 // donc légitimement sans code de production :
@@ -121,7 +128,9 @@ for (const s of specs) {
   total++;
 
   if (ARTEFACTS.has(s)) continue;           // vérifie un artefact, pas l'app en marche
-  if (UI.test(src)) continue;               // pilote l'UI → exerce la production
+  const vraiePage = BOOT.test(src) || PAGE_REELLE.test(src);
+  if (PAGE_FABRIQUEE.test(src) && !vraiePage) { suspects.push({ spec: s, raison: "pilote une page FABRIQUÉE (page.setContent) sans jamais démarrer l'application" }); continue; }
+  if (UI.test(src) && vraiePage) continue;  // pilote l'UI d'une page réelle → exerce la production
   if (BOOT.test(src)) continue;             // démarre la vraie app → l'exerce entièrement
 
   const touchees = new Set();

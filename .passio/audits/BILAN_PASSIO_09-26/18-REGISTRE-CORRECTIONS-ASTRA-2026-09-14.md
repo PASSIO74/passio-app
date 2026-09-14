@@ -579,3 +579,18 @@ Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, 
 | Limite restante | Les médias sont listés, pas embarqués (les URL `content` sont publiques ; les pièces jointes de messagerie, seau privé, ne sont pas listées — lot suivant si voulu). Pas de ZIP ni de signature. Registre des traitements et procédure de violation (72 h) : documents à écrire, hors code. |
 | État | **corrigé dans le code** · Edge Function déployée et vérifiée · client déployé : non |
 | PR | `claude/exp-08-export-donnees`. |
+
+
+---
+
+## TCI-05 / TCI-06 / TCI-14 — Gates de tests contournables, harnais manuels morts — P3 (chantier 10)
+
+| Champ | Valeur |
+|---|---|
+| État constaté | TCI-05 : `audit-tests-creux` tenait pour preuve tout `locator(`/`click(` — un spec sur `page.setContent("<button>")` passait. TCI-06 : `audit-tests-isolation` cherchait `sansDonneesDistantes(` dans le fichier entier — un appel **en commentaire** satisfaisait le gate. TCI-14 : 10 harnais manuels (`tests/test-*.html`, `test-irl.js`, `test-time-filter.js`) référencés par rien, 2 fiches de tests manuels dans `tests/`. **Reproduits** par mutation (spec fabriqué → gate vert ; appel commenté → gate vert). |
+| Correction | `audit-tests-creux.js` : les marqueurs UI ne valent preuve que sur une page RÉELLE (helper de boot ou `page.goto`) ; `page.setContent` sans boot est nommé et refusé. `audit-tests-isolation.js` : commentaires et contenu des chaînes retirés avant de chercher l'appel (`sansCommentairesNiChaines`, exporté, `main()` gardé par `require.main`). Harnais morts supprimés ; les deux fiches archivées dans `docs/archives/tests-manuels/` (référence du rapport d'architecture mise à jour). |
+| Test effectué | `tests/unit/audit-tests-isolation.test.mjs` (2, dans `verif`). Mutations rejouées après correctif : spec fabriqué → **rouge**, appel commenté → **rouge** ; les 180 specs existants restent verts sur les deux gates. |
+| Résultat | Gates éprouvés par réinjection. |
+| Limite restante | Le retrait de commentaires/chaînes est un automate simple : un littéral regex contenant `'` ou `//` peut le tromper localement (aucun cas dans les 180 specs actuels). TCI-07 (couverture non reproductible) et TCI-13 (chiffres périmés dans les docs) restent ouverts. |
+| État | **corrigé dans le code** · déployé : n/a (outillage) |
+| PR | `claude/chantier-10-gates-tests`. |

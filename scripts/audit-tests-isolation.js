@@ -68,7 +68,11 @@ function main() {
     // satisfaire, et une suite qui importe l'isolation sans jamais l'appeler
     // serait passée au vert. Vérifié par réinjection — le banc n'avait rien vu.
     // On retire donc les lignes d'import avant de chercher un APPEL.
-    const sansImports = src.replace(/^.*require\(["'][^"']*["']\).*$/gm, "");
+    // ⚠️ NI DANS UN COMMENTAIRE, NI DANS UNE CHAÎNE (TCI-06, contre-revue Astra,
+    // 2026-09-14) : `// sansDonneesDistantes(page)` en commentaire satisfaisait le
+    // gate. On retire commentaires (// et /* */) et contenu des chaînes AVANT de
+    // chercher l'appel — un appel commenté n'est pas un appel.
+    const sansImports = sansCommentairesNiChaines(src.replace(/^.*require\(["'][^"']*["']\).*$/gm, ""));
     const isole = /sansDonneesDistantes\s*\(|sansIsolationDesDonnees/.test(sansImports);
     const toucheApp = MARQUEURS_APP.some((m) => src.includes(m));
 
@@ -109,4 +113,32 @@ monde. Deux issues, jamais une troisième :
   process.exit(1);
 }
 
-main();
+if (require.main === module) main();
+
+// Retire les commentaires (// et /* */) et le CONTENU des chaînes ('…', "…", `…`)
+// en respectant les échappements et les `${…}` des gabarits. Ce qui reste est le
+// code — celui qui appelle, ou n'appelle pas. Verrou : audit-tests-isolation.test.mjs.
+function sansCommentairesNiChaines(src) {
+  let out = "", i = 0; const n = src.length;
+  while (i < n) {
+    const c = src[i], d = src[i + 1];
+    if (c === "/" && d === "/") { while (i < n && src[i] !== "\n") i++; continue; }
+    if (c === "/" && d === "*") { i += 2; while (i < n && !(src[i] === "*" && src[i + 1] === "/")) i++; i += 2; continue; }
+    if (c === "'" || c === '"' || c === "`") {
+      const q = c; i++; out += q;
+      while (i < n && src[i] !== q) {
+        if (src[i] === "\\") { i += 2; continue; }
+        if (q === "`" && src[i] === "$" && src[i + 1] === "{") {
+          let prof = 1; i += 2; out += "${";
+          while (i < n && prof) { if (src[i] === "{") prof++; else if (src[i] === "}") prof--; out += src[i]; i++; }
+          continue;
+        }
+        i++;
+      }
+      out += q; i++; continue;
+    }
+    out += c; i++;
+  }
+  return out;
+}
+module.exports = { sansCommentairesNiChaines };
