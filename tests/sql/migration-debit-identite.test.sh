@@ -117,7 +117,7 @@ INS_ANTIDATE="insert into public.telemetry_events (type, user_id, received_at) v
 INS_NORMAL="insert into public.telemetry_events (type, user_id) values ('api', null);"
 
 echo "── ① LES DÉFAUTS, MESURÉS AVANT ──────────────────────────────────────"
-for i in 1 2 3 4 5; do ANON "$INS_ANTIDATE" >/dev/null 2>&1; done
+for i in 1 2 3 4 5; do ANON "$INS_ANTIDATE" >/dev/null 2>&1 || true; done
 verifier "avant : 5 lignes ANTIDATÉES passent le plafond de 3/min (aucune n'est dans la fenêtre)" "5" "$(Q "select count(*) from public.telemetry_events;")"
 verifier "avant : la télémétrie n'a pas de colonne auth_uid" "0" "$(Q "select count(*) from information_schema.columns where table_name='telemetry_events' and column_name='auth_uid';")"
 Q "truncate public.telemetry_events;" >/dev/null
@@ -133,13 +133,13 @@ sortie2="$(psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1
 verifier "rejeu : toujours 4 OK" "4" "$(printf '%s\n' "$sortie2" | grep -cE '\|\s*OK\s*$' || true)"
 
 echo "── ③ ASTRA-02 : la date est celle du serveur, le plafond borne vraiment ──"
-for i in 1 2 3; do ANON "$INS_ANTIDATE" >/dev/null 2>&1; done
+for i in 1 2 3; do ANON "$INS_ANTIDATE" >/dev/null 2>&1 || true; done
 verifier "3 insertions antidatées acceptées (sous le plafond)…" "3" "$(Q "select count(*) from public.telemetry_events;")"
 verifier "…et toutes RE-DATÉES par le serveur (dans la dernière minute)" "3" "$(Q "select count(*) from public.telemetry_events where received_at > now() - interval '1 minute';")"
 contient "la 4ᵉ, antidatée, est REFUSÉE : le plafond compte l'heure du serveur" "plafond global" "$(ANON "$INS_ANTIDATE")"
 contient "…et une insertion normale aussi (même fenêtre)" "plafond global" "$(ANON "$INS_NORMAL")"
 Q "truncate public.telemetry_events;" >/dev/null
-for i in 1 2 3; do ANON "insert into public.client_errors (message, created_at) values ('x', now() - interval '3 hours');" >/dev/null 2>&1; done
+for i in 1 2 3; do ANON "insert into public.client_errors (message, created_at) values ('x', now() - interval '3 hours');" >/dev/null 2>&1 || true; done
 contient "client_errors : même garde, 4ᵉ antidatée refusée" "plafond global" "$(ANON "insert into public.client_errors (message, created_at) values ('x', now() - interval '3 hours');")"
 verifier "client_errors : les 3 acceptées sont re-datées" "3" "$(Q "select count(*) from public.client_errors where created_at > now() - interval '1 minute';")"
 Q "truncate public.telemetry_events; truncate public.client_errors;" >/dev/null
@@ -165,14 +165,14 @@ begin
   if cnt >= max_par_min then raise exception 'rate limit: plafond global' using errcode = 'P0001'; end if;
   return new;
 end \$\$;" >/dev/null
-for i in 1 2 3 4 5; do ANON "$INS_ANTIDATE" >/dev/null 2>&1; done
+for i in 1 2 3 4 5; do ANON "$INS_ANTIDATE" >/dev/null 2>&1 || true; done
 m="$(Q "select count(*) from public.telemetry_events;")"
 if [ "$m" = "5" ]; then echo "  ✅ mutation : avec l'ancienne fonction, 5 antidatées repassent — le contrôle est réel"; ok=$((ok+1)); else echo "  ❌ mutation : $m lignes au lieu de 5"; ko=$((ko+1)); fi
 verdict_mut="$(Q "select pg_get_functiondef('public.limiter_debit_global()'::regprocedure) like '%json_populate_record(new, json_build_object(col_temps, now()))%';")"
 verifier "verdict ① : ECHEC sur l'ancienne fonction" "f" "$verdict_mut"
 Q "truncate public.telemetry_events;" >/dev/null
 psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 -f "$MIGRATION" >/dev/null 2>&1
-for i in 1 2 3 4; do ANON "$INS_ANTIDATE" >/dev/null 2>&1; done
+for i in 1 2 3 4; do ANON "$INS_ANTIDATE" >/dev/null 2>&1 || true; done
 verifier "rejeu après mutation : 3 acceptées, la 4ᵉ refusée" "3" "$(Q "select count(*) from public.telemetry_events;")"
 
 echo
