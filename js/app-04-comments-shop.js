@@ -4509,6 +4509,13 @@ function _deleteMsgForAll(convId, msgId) {
   try { renderMessages(); } catch(e) {}
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
     try { supa.from("conv_messages").delete().eq("id", msgId).then(function(){}, function(){}); } catch(e) {}
+    // ⚠️ LA PIÈCE JOINTE PART AVEC LE MESSAGE (MSG-03, 2026-09-14). La ligne
+    // était supprimée, l'objet Storage jamais : photo, vidéo, vocal, fichier
+    // restaient lisibles par tout membre de la conversation (URL signée), pour
+    // toujours. La policy DELETE du seau exige `owner = auth.uid()` — c'est
+    // l'auteur qui supprime, donc l'uploader. Verdict lu et tracé : un refus
+    // n'annule pas la suppression du message, mais il ne se tait pas.
+    _purgerPieceJointeDe(r.m);
     // Tombstone : prévient l'autre client de retirer le message.
     try {
       var tomb = JSON.stringify({ type: "del", target: msgId, text: "🗑 Message supprimé" });
@@ -4516,6 +4523,42 @@ function _deleteMsgForAll(convId, msgId) {
     } catch(e) {}
   }
   toast("Message supprimé pour tous");
+}
+
+// Copie un objet du seau `attachments` dans le dossier d'une autre conversation
+// et rend l'URL PUBLIQUE de la copie (celle que l'app stocke et signe ensuite),
+// ou null si la copie est refusée.
+function _copierPieceJointeVers(cheminSrc, targetConvId) {
+  try {
+    var nom = String(cheminSrc).split("/").pop() || ("pj_" + Date.now());
+    var cheminDst = "attachments/" + targetConvId + "/" + Date.now() + "_" + nom;
+    return Promise.resolve(supa.storage.from("attachments").copy(cheminSrc, cheminDst)).then(function (res) {
+      if (res && res.error) {
+        try { if (typeof diagLog === "function") diagLog("pj_copie KO " + String(res.error.message)); } catch (e) {}
+        return null;
+      }
+      var pub = supa.storage.from("attachments").getPublicUrl(cheminDst);
+      var url = pub && pub.data && pub.data.publicUrl;
+      return url ? ((typeof cdnUrl === "function") ? cdnUrl(url) : url) : null;
+    }, function () { return null; });
+  } catch (e) { return Promise.resolve(null); }
+}
+
+// Chemin d'objet (seau `attachments`) d'un message média, ou null.
+function _pieceJointeDuMessage(m) {
+  if (!m || typeof pieceJointeChemin !== "function") return null;
+  return pieceJointeChemin(m.img || m.video || m.fileUrl || m.voiceData || null);
+}
+function _purgerPieceJointeDe(m) {
+  var chemin = _pieceJointeDuMessage(m);
+  if (!chemin || typeof supa === "undefined" || !supa || !window._supaReal) return Promise.resolve(false);
+  try {
+    return Promise.resolve(supa.storage.from("attachments").remove([chemin])).then(function (res) {
+      var ok = !(res && res.error);
+      try { if (typeof diagLog === "function") diagLog("pj_purge " + (ok ? "ok" : "KO " + String(res.error && res.error.message))); } catch (e) {}
+      return ok;
+    }, function () { return false; });
+  } catch (e) { return Promise.resolve(false); }
 }
 
 // Transférer : choisir une conversation cible.
@@ -4532,13 +4575,29 @@ function _forwardPick(convId, msgId) {
     '<div style="max-height:340px;overflow-y:auto;margin-top:8px;">' + (rows || '<div style="padding:20px;text-align:center;color:var(--muted);">Aucune conversation</div>') + '</div>');
 }
 
-function _forwardTo(targetConvId) {
+async function _forwardTo(targetConvId) {
   closeModal();
   var src = window._forwardSrc; if (!src) return;
   var r = _msgById(src.convId, src.msgId); if (!r || !r.m) return;
   var m = r.m;
   var convs = getConversations();
   var target = convs.find(function(x){ return x.id === targetConvId; }); if (!target) return;
+  // ⚠️ UNE PIÈCE JOINTE TRANSFÉRÉE CHANGE DE DOSSIER (ASTRA-01, 2026-09-14).
+  // Le transfert réutilisait l'URL d'origine, `attachments/<conv source>/…` ;
+  // or le seau est privé et la lecture exige d'être membre de la conversation
+  // DU CHEMIN : le destinataire du transfert, qui n'est pas membre de la
+  // conversation source, ne pouvait ni signer ni lire. L'objet est COPIÉ dans
+  // le dossier de la cible (le transféreur est membre des deux : SELECT sur
+  // la source, INSERT sur la cible). Copie refusée = transfert refusé, dit —
+  // jamais un message livré avec un média que personne ne peut ouvrir.
+  var cheminSrc = _pieceJointeDuMessage(m);
+  if (cheminSrc && typeof supa !== "undefined" && supa && window._supaReal) {
+    var nouvelleUrl = await _copierPieceJointeVers(cheminSrc, targetConvId);
+    if (!nouvelleUrl) { toast("⚠️ Transfert impossible : la pièce jointe n'a pas pu être copiée"); return; }
+    m = Object.assign({}, m);
+    if (m.img) m.img = nouvelleUrl; else if (m.video) m.video = nouvelleUrl;
+    else if (m.fileUrl) m.fileUrl = nouvelleUrl; else if (m.voiceData) m.voiceData = nouvelleUrl;
+  }
   // Reconstruit un envelope de contenu selon le type, puis insère localement + Supabase.
   var content = null, localMsg = { id: "msg_" + uid(), from: "me", at: Date.now() };
   if (m.img || m.video) { content = { type: "media", url: m.img || m.video, fileType: m.video ? "video/mp4" : "image/jpeg", filename: "média", text: m.video ? "🎬 Vidéo" : "📷 Photo" }; if (m.video) localMsg.video = m.video; else localMsg.img = m.img; }

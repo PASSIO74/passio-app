@@ -3913,7 +3913,21 @@ async function doDeleteAccount() {
     // suppression incomplète là où elle est complète. Non-régression :
     // `tests/e2e/suppression-compte.spec.js` (opt-in PASSIO_E2E_MULTI) —
     // nécessaire parce qu'une Edge Function se redéploie sans que le dépôt bouge.
-    try { await supa.functions.invoke("delete-account"); } catch (e) {}
+    // ⚠️ ON LIT LE VERDICT (AUTH-05 / SUP-10, 2026-09-14). L'appel était avalé
+    // et « Compte supprimé » s'affichait quoi qu'il arrive — même sans réseau,
+    // même quand la fonction rendait une erreur. La fonction purge désormais,
+    // RELIT, et ne supprime le compte Auth que si rien ne reste (409 sinon) :
+    // ici, sans `ok: true`, rien n'est annoncé, rien n'est purgé localement,
+    // la session reste — la suppression est relançable.
+    var verdict = null;
+    try { verdict = await supa.functions.invoke("delete-account"); } catch (e) { verdict = { error: e }; }
+    var okServeur = !!(verdict && !verdict.error && verdict.data && verdict.data.ok === true);
+    if (!okServeur) {
+      var restes = (verdict && verdict.data && (verdict.data.restes || verdict.data.echecs)) || [];
+      try { if (typeof diagLog === "function") diagLog("suppression_compte KO " + (restes.length ? restes.slice(0, 5).join(" ") : String((verdict && verdict.error && verdict.error.message) || "sans verdict"))); } catch (e) {}
+      toast("⚠️ Suppression incomplète : ton compte n'a PAS été supprimé. Réessaie, ou écris à " + PASSIO_EDITEUR.email);
+      return false;
+    }
     try { await supa.auth.signOut(); } catch (e) {}
   }
   // Purge locale complète
@@ -3928,6 +3942,7 @@ async function doDeleteAccount() {
   try { sessionStorage.clear(); } catch (e) {}
   toast("Compte supprimé. Au revoir");
   setTimeout(function () { location.reload(); }, 1500);
+  return true;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
