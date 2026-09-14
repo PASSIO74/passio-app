@@ -68,8 +68,8 @@
 | Test effectué | `tests/e2e/appels-sonnerie-privee.spec.js` (5 cas) : ① aucun abonnement à `ring:<pair>`, invitation en `httpSend` avec `from = MY_UID` ; ② écran entrant = profil de `from` ; ③ `from` non-uuid ignoré ; ④ « Répondre » retient le profil ; ⑤ à la source (plus de `ring.subscribe` dans `startCall`, migration restrictive, banc branché). `ouverture-publique.spec.js` réécrit sur 3 cas qui EXIGEAIENT l'identité déclarative (charge vs profil, rafale avec un `from` uuid, assertion source). |
 | Résultat | **Avant** (main pristine) : 5 échecs / 5. **Après** : 5/5 en dev, 5/5 sur l'artefact minifié ; `ouverture-publique` 35/35 ; gates locales vertes. Banc SQL : **non exécuté localement** (aucun PostgreSQL sur ce poste) — la CI de la PR est la mesure. |
 | Limite restante | **La migration n'est PAS appliquée** : elle attend le coller de Benjamin (canal ③), **après** le déploiement de ce client — collée avant, elle couperait les appels sortants des clients encore en cache. `call:<id>` reste lisible par tout compte (uuid aléatoire connu des deux parties) ; `from` dans la charge utile n'est pas lié au jeton — lier l'un et l'autre demande une table d'appels (autre lot). Le push `notify-call` compose encore son texte avec `fromName` déclaratif : c'est MSG-04, point suivant. Non mesuré : appel réel entre deux comptes en production, comportement de `httpSend` sur le projet réel (REST broadcast sur canal privé). |
-| État | **corrigé dans le code** (client) · migration : **écrite, éprouvée au banc en CI, non appliquée** · testé sur staging : non · déployé : non · vérifié après déploiement : non |
-| PR | `claude/msg-01-sonnerie-privee-http` — voir la PR ouverte depuis cette branche. |
+| État | **corrigé dans le code** (client) · **fusionné #377** le 2026-09-14 après la contre-revue de Benjamin (gate « Gouvernance critique » verte sur `1e843571`), commit `1dac720d` · **déployé** : run 34823009969 vert · **vérifié après déploiement** : `release.json` servi = `1dac720d`, `app.js?v=0b740daf5a` (1 281 049 octets) porte `httpSend` et plus aucun abonnement `ring(send)` · **migration APPLIQUÉE** par Benjamin (SQL Editor) et **mesurée** en base : `passio_rt_recevoir` restreint `ring:` à `auth.uid()`, `realtime:db` / `conv_specific:` intacts, `passio_rt_emettre` inchangée · ⚠️ collée ~20 min AVANT que le client soit servi : fenêtre transitoire où un client en cache ne pouvait pas passer d'appel sortant, refermée au rechargement · appel réel entre deux comptes : non mesuré |
+| PR | [#377](https://github.com/PASSIO74/passio-app/pull/377) — fusionnée (squash) le 2026-09-14. |
 
 ---
 
@@ -79,8 +79,8 @@ Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, 
 
 | Ordre | Chantier | Identifiants | État |
 |---|---|---|---|
-| 2 | Séparer les comptes et sécuriser les échanges | AUTH-06 (#375, déployé), PRO-02 (#376, déployé), MSG-01/SUP-06 (PR ouverte, migration à coller), MSG-04, MSG-10, MOD-04 | en cours |
-| 3 | Fiabiliser suppression et médias | AUTH-05, SUP-10, MSG-03, CONT-11, SUP-01, ASTRA-01 | non engagé |
+| 2 | Séparer les comptes et sécuriser les échanges | AUTH-06 (#375), PRO-02 (#376), MSG-01/SUP-06 (#377 + migration appliquée), MOD-04, MSG-04, MSG-10 (#378) | **fait** — tout déployé ; résidus écrits dans chaque fiche |
+| 3 | Fiabiliser suppression et médias | AUTH-05, SUP-10, MSG-03, ASTRA-01 (#379, fonction déployée et éprouvée) ; CONT-11, SUP-01 | en cours — CONT-11/SUP-01 = décision produit (« profil privé ») puis migration |
 | 4 | Inscription et information cohérentes | AUTH-02/03/04/09/10, EXP-08/09/14/15, UXO-07, ASTRA-09 | non engagé |
 | 5 | Éprouver la modération | MOD-01/02/03/09, AUTH-11, ASTRA-03 | non engagé |
 | 6 | Isoler les essais, prouver une restauration | SUP-04, NET-07, EXP-01/03/04/11, TCI-03/04/15/16, ASTRA-07 | non engagé |
@@ -100,8 +100,8 @@ Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, 
 | Test effectué | `tests/e2e/blocage-verdict.spec.js` (5 cas) : ① refus → annulé, dit, rien persisté, abonnement rendu ; ② succès → bloqué, désabonné, annoncé ; ③ doublon = succès ; ④ déblocage refusé → reste bloqué, puis accepté ; ⑤ sans compte réel → local, dit, zéro écriture. Voisines : `parcours-suivre`, `ouverture-publique` (42/42). |
 | Résultat | **Avant** (main pristine) : 5 échecs / 5. **Après** : 5/5 en dev, 5/5 sur l'artefact minifié. |
 | Limite restante | Le blocage dans les **groupes communs** (MSG-10) reste incomplet : la personne bloquée reste membre du groupe, c'est le retrait par l'organisateur qui l'exclut — non traité ici. La cohérence blocage ↔ abonnements côté serveur (retrait de l'abonné, `follows` DELETE) est un complément dont l'échec ne défait pas un blocage écrit — tracé, non bloquant. Non mesuré : parcours réel entre deux comptes. |
-| État | **corrigé dans le code** · testé sur staging : non · déployé : non · vérifié après déploiement : non |
-| PR | `claude/mod-04-msg-04-blocage-et-push` — voir la PR ouverte depuis cette branche. |
+| État | **corrigé dans le code** · testé sur staging : non · **déployé** (fusion automatique #378 après CI verte, commit `00f7eec6`) · **vérifié après déploiement** : `release.json` servi = `00f7eec6`, `app.js?v=5946403cc7` (1 277 794 octets) porte « Blocage non enregistré » et la trace `blocage KO`. |
+| PR | [#378](https://github.com/PASSIO74/passio-app/pull/378) — fusionnée (squash) le 2026-09-14. |
 
 ---
 
@@ -114,8 +114,8 @@ Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, 
 | Test effectué | `tests/unit/lien-metier.test.mjs` (7 cas, faux client scripté) : 1:1 commune ok / groupe seul, sans conversation, tiers refusés / ligne récente ok avec SON texte décodé / ligne ancienne, d'un autre, vers un autre refusées / identité bornée et repli / erreur de lecture = refus / décodage des cinq entités. Branché dans `npm run verif` (donc en CI). |
 | Résultat | **7/7**. Le comportement de bout en bout de la fonction (Deno, web-push) n'est **pas** exécuté localement : le module de décision l'est, et il est celui qui sera déployé. |
 | Limite restante | **La fonction n'est PAS déployée** (`supabase functions deploy notify-call`, geste manuel — la CI ne déploie pas les Edge Functions). Tant qu'elle ne l'est pas, la production garde l'ancien comportement. Après déploiement, mesurer : un appel réel sonne (1:1 existante), une notification de message pousse, une push forgée vers un tiers rend `sent: 0`. La fenêtre de 2 minutes suppose que la ligne `notifications` précède la push — c'est l'ordre des trois appelants (`supaInsertNotif`, `_notifierMessage`, `follows_notifier` + `_pousserPushNotif`) ; un appelant qui pousserait AVANT d'écrire perdrait sa push. Non mesuré : latence réelle des deux lectures ajoutées. |
-| État | **corrigé dans le code** · déployé : **non — attend `supabase functions deploy notify-call`** · vérifié après déploiement : non |
-| PR | `claude/mod-04-msg-04-blocage-et-push` — voir la PR ouverte depuis cette branche. |
+| État | **corrigé dans le code** (fusionné #378, `00f7eec6`) · **déployé** : `supabase functions deploy notify-call` lancé par Claude Code sur ordre de Benjamin (« déploie les fonctions »), version 7 ACTIVE le 2026-09-14 08:30 UTC · **vérifié après déploiement** : sans jeton → 401 ; avec un compte jetable `@passio-e2e.test` et une cible sans aucun lien : `type: call` → `{ ok: true, sent: 0, note: "aucun appareil abonné" }`, `type: notif` sans ligne `notifications` → même réponse, `fromName` du corps ignoré. Non mesuré : une push réellement délivrée entre deux comptes liés. |
+| PR | [#378](https://github.com/PASSIO74/passio-app/pull/378) — fusionnée (squash) le 2026-09-14. |
 
 ---
 
@@ -128,8 +128,8 @@ Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, 
 | Test effectué | `tests/e2e/blocage-groupe-commun.spec.js` (4 cas) : ① fil sans les messages du bloqué, les autres gardés, 4 messages toujours en mémoire ; ② aperçu de la liste sans son dernier mot ; ③ « @ » ne le propose plus ; ④ débloquer rend tout. Voisines : mention-groupe-xss, ui-v6a-messages, conv-ouverture-fil, blocage-verdict (29/29). |
 | Résultat | **Avant** (main pristine) : 3 échecs / 4 (①②③). **Après** : 4/4. |
 | Limite restante | Le bloqué **voit** toujours ce que le bloqueur écrit dans le groupe (le blocage est asymétrique à l'affichage, comme sur les réseaux comparables ; l'exclusion du groupe relève de l'organisateur). Les réactions et accusés de lecture d'un membre bloqué ne sont pas filtrés. Non mesuré : parcours réel entre deux comptes. |
-| État | **corrigé dans le code** · testé sur staging : non · déployé : non · vérifié après déploiement : non |
-| PR | `claude/mod-04-msg-04-blocage-et-push` (même PR que MOD-04 / MSG-04). |
+| État | **corrigé dans le code** · testé sur staging : non · **déployé** (#378, `00f7eec6`) · vérifié après déploiement : artefact servi = `00f7eec6` (marqueurs MOD-04 présents ; le filtre MSG-10 est du même commit, non relu à part) |
+| PR | [#378](https://github.com/PASSIO74/passio-app/pull/378) — fusionnée (squash) le 2026-09-14. |
 
 
 ---
@@ -143,8 +143,8 @@ Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, 
 | Test effectué | `tests/unit/purge-compte.test.mjs` (7 cas, faux client en mémoire, dans `npm run verif`) : tout part et rien d'autre ; delete en erreur = échec nommé ; delete « réussi » qui ne retire rien = reste nommé ; pièces jointes relevées sans doublon ; seau illisible = échec, dossier vide ≠ échec ; relecture illisible = reste ; couverture du schéma. `tests/e2e/suppression-compte-verdict.spec.js` (3 cas) : 409 → rien annoncé, rien purgé, pas de déconnexion ; fonction injoignable → idem ; verdict positif → tout. |
 | Résultat | Unitaires **7/7**. E2E : **avant** (main pristine) 3 échecs / 3 ; **après** 3/3 en dev, 3/3 sur l'artefact minifié. |
 | Limite restante | **La fonction n'est PAS déployée** (`supabase functions deploy delete-account`, geste manuel). Exercice réel d'une suppression de bout en bout : **non mesuré** (aucun compte réel supprimé ; la suite `suppression-compte.spec.js` à comptes réels est opt-in `PASSIO_E2E_MULTI`). Les FK réelles entre tables ne sont pas modélisées au banc : un refus FK en prod apparaîtrait comme un échec nommé (c'est le but), jamais comme un succès. La purge de `telemetry_events` / `analytics_events` par `user_id` peut être lente sans index (non mesuré). Question juridique ouverte : conserver ou anonymiser `reports.reporter_id`. |
-| État | **corrigé dans le code** · déployé : **non — attend `supabase functions deploy delete-account`** · vérifié après déploiement : non |
-| PR | `claude/auth-05-suppression-verifiee-et-pj` — voir la PR ouverte depuis cette branche. |
+| État | **corrigé dans le code** · **fusionné #379** (`9ddbd646`) · **déployé** : `supabase functions deploy delete-account` lancé par Claude Code sur ordre de Benjamin, version 6 ACTIVE le 2026-09-14 08:30 UTC · **vérifié après déploiement — exercice RÉEL** : un compte jetable `@passio-e2e.test` créé (service_role), doté d'une ligne `profiles`, puis `delete-account` avec son jeton → `200 { ok: true, piecesJointes: 0 }` ; relecture : compte Auth **absent (404)**, ligne `profiles` **absente**. Le chemin 409 (purge incomplète) n'a pas été provoqué en production. |
+| PR | [#379](https://github.com/PASSIO74/passio-app/pull/379) — fusionnée (squash) le 2026-09-14. |
 
 ---
 
@@ -157,8 +157,37 @@ Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, 
 | Test effectué | `tests/e2e/pieces-jointes-cycle.spec.js` (4 cas) : ① remove sous le chemin exact ; ② copie vers le dossier cible, message avec l'URL de la copie ; ③ copie refusée → rien inséré, dit ; ④ texte → aucune copie. Voisines : `transfert-message`, `conv-suppression` (9/9). |
 | Résultat | **Avant** (main pristine) : 3 échecs / 4 (①②③). **Après** : 4/4 en dev, 4/4 sur l'artefact minifié. |
 | Limite restante | Un message média supprimé « pour moi » seulement garde son objet (voulu : il existe encore pour l'autre). Les objets déjà orphelins (suppressions passées, comptes supprimés avant ce lot) ne sont pas rattrapés — un balayage `storage.objects` sans ligne `conv_messages` serait un autre lot. Un vocal (`voiceData`) n'est pas transférable (chemin existant : il redevient texte). Non mesuré : `storage.copy` sur le projet réel avec la policy `storage_chemin_autorise`. |
-| État | **corrigé dans le code** · testé sur staging : non · déployé : non · vérifié après déploiement : non |
-| PR | `claude/auth-05-suppression-verifiee-et-pj` (même PR). |
+| État | **corrigé dans le code** · **fusionné #379** (`9ddbd646`), déployé avec le run suivant de `main` · vérifié après déploiement : non (artefact non relu à part) |
+| PR | [#379](https://github.com/PASSIO74/passio-app/pull/379) — fusionnée (squash) le 2026-09-14. |
+
+
+---
+
+## AUTH-03 — Accord enregistré sans case cochée par le chemin Google « connexion » — P1 (chantier 4)
+
+| Champ | Valeur |
+|---|---|
+| État constaté (base `00f7eec6`) | `onbGoogleAuth` (app-02) mémorisait `passio_oauth_cgu` (accord horodaté) **dans les deux modes** ; la case n'est à l'écran qu'en inscription, le bouton Google est unique et jamais masqué en connexion. Google crée le compte s'il n'existe pas : depuis l'écran de connexion, un compte NEUF naissait et `_poserConsentementOAuth` posait sur lui, au retour, un consentement que personne n'avait donné (`user_metadata.cgu_accepted_at`). **Reproduit** au banc : en mode connexion, `passio_oauth_cgu` porte un accord horodaté après `onbGoogleAuth`. |
+| Correction | En connexion, rien n'est mémorisé (une trace ancienne est même effacée) ; en inscription, l'accord n'est mémorisé qu'avec la case cochée (inchangé). Au retour sans accord, `_verifierConsentementApresOAuth` lit le compte : **aucune trace serveur ET compte créé il y a moins de 15 min** → rappel posé sur l'appareil et **modale « Avant de continuer »** (case + liens vers les textes, « J'accepte et je continue » / « Refuser et me déconnecter ») ; elle réapparaît tant qu'aucune réponse n'est donnée ; accepter écrit la trace (`updateUser`, verdict lu) et l'état local ; refuser déconnecte. Un compte ancien sans trace n'est pas sollicité ici (autre lot, EXP-09). |
+| Test effectué | `tests/e2e/consentement-google.spec.js` (5 cas) : ① connexion → rien ; inscription cochée → mémorisé ; ② retour sans accord, compte neuf sans trace → modale, rien écrit ; ③ compte ancien / compte déjà tracé → pas sollicité ; ④ accepter sans case → rien ; avec case → trace écrite, rappel levé, modale fermée ; ⑤ UXO-07 (ci-dessous). Voisines : `cgu-consentement`, `admission-18-plus` (39/39). |
+| Résultat | **Avant** (main pristine) : 4 échecs / 5 (①②④⑤). **Après** : 5/5. |
+| Limite restante | Le parcours Google **réel** (départ, retour, création de compte par Google) n'est pas rejoué : banc à faux `supa.auth`. Les comptes créés par Google avant ce lot depuis l'écran de connexion portent un `cgu_accepted_at` fabriqué — non re-mesuré, non corrigé (une trace ne se retire pas sans décision). Un refus déconnecte mais ne supprime pas le compte que Google vient de créer. |
+| État | **corrigé dans le code** · **fusionné #380** (fusion automatique après CI verte, commit `9bd45125`) · déploiement production : à relever · vérifié après déploiement : non |
+| PR | [#380](https://github.com/PASSIO74/passio-app/pull/380) — fusionnée (squash) le 2026-09-14. |
+
+---
+
+## UXO-07 — Fausse promesse de contrôle d'âge IA dans le HTML — P2 (chantier 4)
+
+| Champ | Valeur |
+|---|---|
+| État constaté | `index.html`, étape « Vérification d'âge » de l'onboarding : « PASSIO protège les mineurs avec un contrôle d'âge IA. » Aucun contrôle de ce genre n'existe (l'âge est déclaratif — CLAUDE.md « réservé aux majeurs », `onbValidateAge`). Une promesse de sécurité fausse, sur l'écran même qui recueille l'âge. |
+| Correction | Texte remplacé : « PASSIO est réservé aux personnes majeures. Ton année de naissance est déclarative : elle n'est vérifiée par aucun contrôle automatique. » Note d'audit en commentaire HTML. |
+| Test effectué | `consentement-google.spec.js` ⑤ : le HTML (hors commentaires) ne contient plus « contrôle d'âge IA » et dit que l'année est déclarative. |
+| Résultat | Avant : rouge. Après : vert. |
+| Limite restante | Visibilité de cette étape dans le parcours nominal (« Confirm email » peut la sauter) : non re-mesurée. |
+| État | **corrigé dans le code** · **fusionné #380** (`9bd45125`) · déployé : à relever · vérifié après déploiement : non |
+| PR | [#380](https://github.com/PASSIO74/passio-app/pull/380) — fusionnée (squash) le 2026-09-14. |
 
 
 ---
