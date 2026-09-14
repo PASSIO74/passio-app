@@ -579,7 +579,7 @@
         </div>
         <div class="main-profile-body">
           <div class="main-profile-avatar-wrap">
-            <div class="main-profile-avatar" id="mainProfileAvatar" onclick="document.getElementById('avatarPhotoInput').click()">
+            <div class="main-profile-avatar" id="mainProfileAvatar" role="button" tabindex="0" aria-label="Changer ma photo de profil" onclick="document.getElementById('avatarPhotoInput').click()">
               ✨
               <div class="main-profile-avatar-badge">📷</div>
               <input type="file" id="avatarPhotoInput" accept="image/*" style="display:none;" onchange="changeAvatarPhoto(event)"/>

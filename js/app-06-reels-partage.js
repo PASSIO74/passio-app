@@ -325,7 +325,7 @@ function renderMainProfile() {
     avatarEl.style.backgroundImage = "url(" + passioThumb(g.avatarPhoto, 352) + ")";
     avatarEl.style.backgroundSize = "cover";
     avatarEl.style.backgroundPosition = "center";
-    avatarEl.innerHTML = '<div class="main-profile-avatar-badge">📷</div><input type="file" id="avatarPhotoInput" accept="image/*" style="display:none;" onchange="changeAvatarPhoto(event)"/>';
+    avatarEl.innerHTML = '<div class="main-profile-avatar-badge" aria-hidden="true">📷</div><input type="file" id="avatarPhotoInput" accept="image/*" style="display:none;" onchange="changeAvatarPhoto(event)"/>';
   } else {
     // Initiales façon Notion/Slack (identifiable sans photo) ; emoji en repli
     avatarEl.style.backgroundImage = "";
@@ -333,7 +333,7 @@ function renderMainProfile() {
     avatarEl.innerHTML = (_ini
         ? '<span style="font-weight:800;font-size:40px;color:#fff;letter-spacing:.02em;">' + escapeHtml(_ini) + '</span>'
         : (g.emoji || (cur ? cur.emoji : "✨")))
-      + '<div class="main-profile-avatar-badge">📷</div><input type="file" id="avatarPhotoInput" accept="image/*" style="display:none;" onchange="changeAvatarPhoto(event)"/>';
+      + '<div class="main-profile-avatar-badge" aria-hidden="true">📷</div><input type="file" id="avatarPhotoInput" accept="image/*" style="display:none;" onchange="changeAvatarPhoto(event)"/>';
   }
 
   usernameEl.textContent = g.username || state.user.name || "Mon profil";
