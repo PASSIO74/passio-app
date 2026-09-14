@@ -3063,6 +3063,13 @@ let MY_UID = getMyUserId();
 // et un compte dont toutes les passions sont rangées reste mieux classé par une
 // catégorie qu'il a choisie que par `null`. L'affichage, lui, retire les
 // archivées (`passionsPubliques`, app-02) : ranger reste visible côté lecture.
+// ⚠️ `passion_id` NE SUIT PAS LA BASCULE, ET C'EST VOULU (ADR-010 ; relu pour
+// PRO-04 le 2026-09-14). C'est la passion PRINCIPALE du compte — première
+// vivante canonique — pour la rétro-compatibilité (feed, embeds, anciens
+// clients) ; la passion d'ÉCRITURE est `currentProfileId`, et la vitrine
+// complète est `passions`. Deux suites l'exigent (`avatar-public-stable`,
+// `hotfix-profil-passion-custom`). Ce qui DOIT suivre le compte, c'est la
+// liste `passions` : voir `_reconcilierVitrinePassions`.
 function _passionIdPubliable(passions, prof) {
   try {
     var liste = Array.isArray(passions) ? passions : [];
@@ -3483,6 +3490,44 @@ async function supaSavePublicProfile(champs) {
 // La liste des passions a changé (création, archivage, restauration,
 // suppression, changement de passion active). RIEN d'autre ne part : ni pseudo,
 // ni bio, ni avatar, ni couverture, ni confidentialité.
+// Empreinte de ce que la vitrine doit montrer : passions (id + rangement) et
+// passion active. Comparée à la dernière publication RÉUSSIE pour ne pousser
+// que ce qui a changé.
+function _empreinteVitrine() {
+  try {
+    var prof = currentProfile() || {};
+    var l = (state.user.profiles || []).map(function (p) { return (p.passion || "") + (p.archived ? "(A)" : ""); });
+    return l.join(",") + "|" + (prof.passion || "");
+  } catch (e) { return ""; }
+}
+// ⚠️ LA VITRINE SE RÉCONCILIE AU DÉMARRAGE (PRO-04, 2026-09-14). Elle n'était
+// publiée qu'aux gestes (ajout, archivage, bascule) : un geste dont la
+// publication a échoué — réseau, session — ou fait sur un appareil qui n'a
+// pas publié laissait `profiles.passions` en retard sur `user_state` pour
+// toujours (mesuré : 25 passions dans l'état, 16 dans la vitrine). Une fois
+// l'état du compte chargé, si l'empreinte diffère de la dernière publiée, on
+// republie. Compte réel seulement ; quelques essais, jamais en boucle.
+function _reconcilierVitrinePassions(essai) {
+  essai = essai || 0;
+  try {
+    if (!window._supaReal || !(typeof _uidEstUnCompte === "function" && _uidEstUnCompte())) return;
+    if (!window._etatCompteCharge) { if (essai < 6) setTimeout(function () { _reconcilierVitrinePassions(essai + 1); }, 5000); return; }
+    var cle = "passio_vitrine_publiee_v1";
+    var attendue = _empreinteVitrine();
+    var publiee = null;
+    try { publiee = localStorage.getItem(cle); } catch (e) {}
+    if (!attendue || publiee === MY_UID + ":" + attendue) return;
+    supaSavePassionState().then(function (ok) {
+      if (ok) { try { localStorage.setItem(cle, MY_UID + ":" + _empreinteVitrine()); } catch (e) {} }
+      else { try { if (typeof diagLog === "function") diagLog("vitrine passions non réconciliée"); } catch (e) {} }
+    }).catch(function () {});
+  } catch (e) {}
+}
+if (!window._reconciliationVitrineArmee) {
+  window._reconciliationVitrineArmee = true;
+  try { setTimeout(function () { _reconcilierVitrinePassions(0); }, 7000); } catch (e) {}
+}
+
 async function supaSavePassionState() {
   try {
     const charge = _chargeProfilComplete();
@@ -3501,6 +3546,8 @@ async function supaSavePassionState() {
     // Le miroir normalisé ne conditionne RIEN : il suit l'écriture qui fait
     // autorité, et son échec n'invalide jamais le verdict.
     if (ok) { try { await supaMiroirUserPassions(); } catch (e) {} }
+    // Empreinte de la dernière publication réussie (réconciliation au boot).
+    if (ok) { try { localStorage.setItem("passio_vitrine_publiee_v1", MY_UID + ":" + _empreinteVitrine()); } catch (e) {} }
     return ok;
   } catch (e) { console.warn("profil (passions) :", e && e.message); return false; }
 }
