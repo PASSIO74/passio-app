@@ -5068,16 +5068,40 @@ function _mentionDetect(convId) {
   var toolbar = document.querySelector("#conv-fullpage .conv-toolbar"); if (!toolbar) return;
   var box = document.getElementById("convMentionBox");
   if (!box) { box = document.createElement("div"); box.id = "convMentionBox"; box.style.cssText = "position:absolute;bottom:100%;left:8px;right:8px;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;box-shadow:0 -4px 20px rgba(0,0,0,0.18);max-height:200px;overflow-y:auto;z-index:30;margin-bottom:6px;"; toolbar.style.position = "relative"; toolbar.appendChild(box); }
-  box.innerHTML = members.map(function(m){
-    return '<div onclick="_pickMention(\'' + String(m.name).replace(/'/g,"\\'") + '\')" style="display:flex;align-items:center;gap:8px;padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--border);">' +
-      '<span style="width:26px;height:26px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;">' + escapeHtml(String(m.name).charAt(0).toUpperCase()) + '</span>' +
-      '<span style="font-size:13px;font-weight:600;">' + escapeHtml(m.name) + '</span></div>';
-  }).join("");
+  // ⚠️ MSG-02 (2026-09-14) — rendu DOM, JAMAIS une chaîne HTML. L'ancienne
+  // version interpolait le pseudo dans `onclick="_pickMention('…')"` avec pour
+  // seule garde `.replace(/'/g,"\\'")` : un guillemet double FERMAIT l'attribut
+  // et la suite du pseudo devenait un handler (`onmouseover="…"`) exécuté au
+  // survol — la CSP autorise 'unsafe-inline'. Or ce pseudo est celui d'un AUTRE
+  // compte (`_groupMemberName` → `profiles.username`, sans contrainte de
+  // caractères). Même patron que `_showMentionBox` (commentaires) : textContent
+  // + écouteur attaché, aucune interpolation. Verrou : mention-groupe-xss.spec.js.
+  box.textContent = "";
+  members.forEach(function(m){
+    var nom = String(m.name);
+    var row = document.createElement("div");
+    row.className = "conv-mention-row";
+    row.style.cssText = "display:flex;align-items:center;gap:8px;padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--border);";
+    var initiale = document.createElement("span");
+    initiale.style.cssText = "width:26px;height:26px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;";
+    initiale.textContent = nom.charAt(0).toUpperCase();
+    var libelle = document.createElement("span");
+    libelle.style.cssText = "font-size:13px;font-weight:600;";
+    libelle.textContent = nom;
+    row.appendChild(initiale);
+    row.appendChild(libelle);
+    // mousedown + preventDefault : le composeur garde le focus et son curseur,
+    // que `_pickMention` lit (`selectionStart`) — un `click` arriverait après le blur.
+    row.addEventListener("mousedown", function(ev){ ev.preventDefault(); _pickMention(nom); });
+    box.appendChild(row);
+  });
 }
 function _pickMention(name) {
   var inp = document.getElementById("convFpInput"); if (!inp) return;
   var pos = inp.selectionStart || inp.value.length;
-  var before = inp.value.slice(0, pos).replace(/@([\wà-öø-ÿ' -]{0,20})$/i, "@" + name + " ");
+  // Remplacement par FONCTION : avec une chaîne, `String.replace` interprète
+  // `$&`, `$'`, `$$`… et un pseudo qui en contient serait inséré déformé.
+  var before = inp.value.slice(0, pos).replace(/@([\wà-öø-ÿ' -]{0,20})$/i, function(){ return "@" + name + " "; });
   inp.value = before + inp.value.slice(pos);
   _hideMentionBox();
   inp.focus();
