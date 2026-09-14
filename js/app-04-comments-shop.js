@@ -1581,6 +1581,7 @@ async function reportCommentEntry(threadId, commentId) {
   toast(ok
     ? "Commentaire signalé. Merci, on s'en occupe."
     : "Signalement déjà envoyé, ou impossible pour le moment.", ok ? "success" : "warning");
+  if (ok && typeof _accuserReceptionSignalement === "function") _accuserReceptionSignalement();
 }
 
 // ───────── Feuille de commentaires inline (IRL / CDV sans ouvrir le détail) ─────────
@@ -3604,6 +3605,34 @@ async function reportUser(userId, name) {
   toast(ok
     ? "🚩 Signalement envoyé. Notre équipe va vérifier."
     : "Signalement déjà envoyé, ou impossible pour le moment.", ok ? "success" : "warning");
+  if (ok) _accuserReceptionSignalement();
+}
+
+// ⚠️ ACCUSÉ DE RÉCEPTION (AUTH-11 / MOD-09, 2026-09-14). Le DSA (art. 16.4)
+// demande qu'un signalement soit accusé ; jusqu'ici le toast disparaissait et
+// rien ne restait. Une notification LOCALE, dans la cloche, garde la trace
+// pour la personne ; la décision, elle, arrive du serveur (kind `moderation`,
+// écrite par l'outil de modération).
+function _accuserReceptionSignalement() {
+  try { if (typeof pushNotification === "function") pushNotification("Signalement reçu — tu seras informé·e de la décision ici", "🛡️"); } catch (e) {}
+}
+
+// Signaler une STORY (MOD-02 laissait cette porte ouverte : aucune surface).
+// Même contrat que les autres portes : authentification, motif, verdict lu.
+async function reportStory(storyId) {
+  if (!storyId) return;
+  try {
+    if (typeof requireAuthentication === "function" && !requireAuthentication("signaler")) return;
+  } catch (e) {}
+  var motif = await _demanderMotifSignalement("cette story");
+  if (motif === null) return;
+  var ok = false;
+  try { if (typeof supaReport === "function") ok = await supaReport("story", storyId, motif); } catch (e) { ok = false; }
+  toast(ok
+    ? "Story signalée. Merci, on s'en occupe."
+    : "Signalement déjà envoyé, ou impossible pour le moment.", ok ? "success" : "warning");
+  if (ok) _accuserReceptionSignalement();
+  return ok;
 }
 
 // Petite fenêtre de motif, partagée par les quatre portes. Elle rend le texte
@@ -3714,6 +3743,7 @@ async function reportPost(postId) {
   toast(ok
     ? "Publication signalée. Merci, on s'en occupe."
     : "Signalement déjà envoyé, ou impossible pour le moment.", ok ? "success" : "warning");
+  if (ok) _accuserReceptionSignalement();
 }
 
 function _blockedListHtml() {

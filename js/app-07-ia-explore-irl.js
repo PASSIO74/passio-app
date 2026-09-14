@@ -6083,6 +6083,7 @@ async function reportEvent(id) {
   toast(ok
     ? "Signalement envoyé — merci"
     : "Signalement déjà envoyé, ou impossible pour le moment.", ok ? "success" : "warning");
+  if (ok && typeof _accuserReceptionSignalement === "function") _accuserReceptionSignalement();
 }
 
 async function submitEvent(editId) {
