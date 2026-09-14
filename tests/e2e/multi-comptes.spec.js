@@ -9,7 +9,7 @@
 //   PowerShell :  $env:PASSIO_E2E_MULTI = "1"; npm test -- multi-comptes
 //   bash :        PASSIO_E2E_MULTI=1 npm test -- multi-comptes
 const { test, expect } = require("@playwright/test");
-const { GATE_TOKEN, GATE_KEY } = require("./gate-helper");
+const { GATE_TOKEN, GATE_KEY, poserGateSansPremiereVisite } = require("./gate-helper");
 const { viserCibleSupabase } = require("./cible-supabase");   // SUP-04 : PASSIO_SUPABASE_URL/ANON → staging
 const { creerCompteE2E } = require("./compte-e2e");
 
@@ -168,6 +168,18 @@ test.describe("messagerie entre 2 comptes réels", () => {
     try {
       // ── 1. Inscription des deux comptes ──
       const uidA = await signupAnonymous(pageA, "Test Alice");
+      // ⚠️ Un compte neuf est PRIVÉ par défaut (règle du 2026-08-31) : sans
+      // ceci, B n'obtient qu'une `follow_request` et ne voit pas la story de A
+      // tant qu'elle n'a pas accepté. Ce scénario mesure le cas PUBLIC — le cas
+      // privé est celui de `confidentialite.spec.js`. Le choix est PROUVÉ
+      // (`privacyChoisi`), comme le ferait la case des Paramètres.
+      await pageA.evaluate(async () => {
+        state.user.general = state.user.general || {};
+        state.user.general.isPrivate = false; state.user.general.privacyChoisi = true;
+        saveState();
+        await supaUpsertProfile();
+        await supa.from("profiles").update({ is_private: false }).eq("id", MY_UID);
+      });
       const uidB = await signupAnonymous(pageB, "Test Bob");
       expect(uidA).toBeTruthy(); expect(uidB).toBeTruthy(); expect(uidA).not.toBe(uidB);
       log("A=" + uidA + " B=" + uidB);
@@ -545,6 +557,18 @@ test.describe("messagerie entre 2 comptes réels", () => {
     let storyId = null, reelId = null;
     try {
       const uidA = await signupAnonymous(pageA, "Test Alice");
+      // ⚠️ Un compte neuf est PRIVÉ par défaut (règle du 2026-08-31) : sans
+      // ceci, B n'obtient qu'une `follow_request` et ne voit pas la story de A
+      // tant qu'elle n'a pas accepté. Ce scénario mesure le cas PUBLIC — le cas
+      // privé est celui de `confidentialite.spec.js`. Le choix est PROUVÉ
+      // (`privacyChoisi`), comme le ferait la case des Paramètres.
+      await pageA.evaluate(async () => {
+        state.user.general = state.user.general || {};
+        state.user.general.isPrivate = false; state.user.general.privacyChoisi = true;
+        saveState();
+        await supaUpsertProfile();
+        await supa.from("profiles").update({ is_private: false }).eq("id", MY_UID);
+      });
       const uidB = await signupAnonymous(pageB, "Test Bob");
       expect(uidA).toBeTruthy(); expect(uidB).toBeTruthy(); expect(uidA).not.toBe(uidB);
 
@@ -617,7 +641,11 @@ test.describe("messagerie entre 2 comptes réels", () => {
   // B le charge via supaLoadPosts → type "vlog" réhydraté, présent dans
   // allCarnets() (écran CDV) et ouvrable dans le viewer plein écran. Invariant
   // hygiène DB : cover + photos d'étapes = URLs Storage, JAMAIS de base64.
-  test("carnet de voyage d'un autre → visible dans CDV et ouvrable cross-compte", async ({ browser }) => {
+  // ⚠️ ADR-011 (2026-08-31) : le Carnet de voyage est RETIRÉ (`supaPublishCdvLive`
+  // n'existe plus). Ces deux scénarios mesuraient une fonctionnalité morte —
+  // c'est ce qui rendait la suite « cassée » (TCI-01). Ils restent lisibles,
+  // et sautent en le disant.
+  test.skip("carnet de voyage d'un autre → visible dans CDV et ouvrable cross-compte", async ({ browser }) => {
     test.setTimeout(180000);
     const t0 = Date.now();
     const log = (m) => console.log(`[vlog ${(((Date.now() - t0) / 1000) | 0)}s] ${m}`);
@@ -710,7 +738,7 @@ test.describe("messagerie entre 2 comptes réels", () => {
   // Précédent : un live « fantôme » (jamais publié côté serveur) était invisible
   // en local et n'a été trouvé que par une exécution à deux comptes.
   // ═══════════════════════════════════════════════════════════════════════════
-  test("CDV v2 : co-voyageur, édition d'étape, coordonnées et carnet co-écrit", async ({ browser }) => {
+  test.skip("CDV v2 : co-voyageur, édition d'étape, coordonnées et carnet co-écrit", async ({ browser }) => {
     test.setTimeout(240000);
     const t0 = Date.now();
     const log = (m) => console.log(`[cdv2 ${(((Date.now() - t0) / 1000) | 0)}s] ${m}`);
@@ -1074,7 +1102,12 @@ test.describe("messagerie entre 2 comptes réels", () => {
 // comptes anonymes. C'est pourquoi le test reste OPT-IN.
 async function signupAnonymous(page, name) {
   const step = (m) => console.log(`[signup ${name}] ${m}`);
-  await page.addInitScript(([k, t]) => sessionStorage.setItem(k, t), [GATE_KEY, GATE_TOKEN]);
+  // TCI-01 (2026-09-15) : ce parcours passe par la LANDING HISTORIQUE et son
+  // onboarding (« Créer un compte », année, prénom, passions). Depuis la
+  // première visite (2026-09-01), un appareil vierge entre directement dans le
+  // fil — la suite attendait `#landing.active` pour rien. La convention du dépôt
+  // pour ce cas : couper le parcours de première visite AVANT le boot.
+  await poserGateSansPremiereVisite(page);
   await viserCibleSupabase(page);   // SUP-04 : sans cible, production
   // Active le mode realtime demandé (v2/v3) AVANT le boot, pour tester le scalable.
   if (RT_MODE === "v2" || RT_MODE === "v3") {
@@ -1102,7 +1135,20 @@ async function signupAnonymous(page, name) {
   await page.locator("#userName").fill(name);
   await page.getByRole("button", { name: "Continuer" }).click();
   step("prénom validé");
-  await page.locator("#passionGrid .passion-tile[data-passion]").first().click();
+  // ⚠️ SOUS LE RÉFÉRENTIEL PLAT (flat_passions_v1, défaut depuis le 01/09), la
+  // grille d'onboarding est le SÉLECTEUR (`.psel-item`, montés à la frappe ou en
+  // suggestions), plus les tuiles `.passion-tile` : on choisit par lui, et on
+  // retombe sur les tuiles historiques si le lot est coupé.
+  // Le sélecteur se monte APRÈS le référentiel (568 Ko chargés à la demande) :
+  // compter avant qu'il soit peint rendait 0 et retombait sur des tuiles absentes.
+  await page.waitForSelector("#passionGrid .psel-item[data-psel-id], #passionGrid .passion-tile[data-passion]", { timeout: 20000 });
+  const items = page.locator("#passionGrid .psel-item[data-psel-id]");
+  if (await items.count()) { await items.nth(0 % (await items.count())).click(); }
+  else {
+    const tiles = page.locator("#passionGrid .passion-tile[data-passion]");
+    const count = await tiles.count();
+    await tiles.nth(count ? 0 % count : 0).click();
+  }
   await page.getByRole("button", { name: "Entrer sur PASSIO" }).click();
   step("onboarding terminé");
   await page.waitForTimeout(1500);
