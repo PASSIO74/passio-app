@@ -317,7 +317,7 @@ Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, 
 | Test effectué | `tests/e2e/signaler-publication.spec.js` (5 cas) : ① ⋯ sur la publication d'un compte réel, la mienne, jamais la démo ; ② la feuille porte « Signaler » et « Bloquer Léa » ; ③ « Signaler » appelle `reportPost` sur la bonne publication ; ④ vue détail : même ⋯ ; ⑤ à la source : un seul constructeur. Voisines : suppression-durable, feed-premier-rendu, profil-visite-options, refonte-multi-passion, first-run, feed-envie-filtre (110/110). |
 | Résultat | Avant : ① rouge (aucune porte). Après : 5/5. |
 | Limite restante | Le signalement d'un **commentaire** depuis le fil et d'une **story** : non revus ici (`reportCommentEntry` a un appelant dans le fil de commentaires ; les stories n'ont pas de porte — à faire). Le **traitement** du signalement (MOD-01 : réception, décision, retrait, traçabilité) reste manuel via `scripts/moderation.js` ; l'alerte quotidienne existe ; aucun retrait automatique — non mesuré de bout en bout. |
-| État | **corrigé dans le code** · déployé : non · vérifié après déploiement : non |
+| État | **corrigé dans le code** · déployé : **oui** (`11e01618`, `app.js?v=e423aa515d`, symboles servis vérifiés) · vérifié après déploiement : **oui** (artefact servi ; non mesuré sur deux comptes réels) |
 | PR | `claude/mod-02-signaler-publication` — voir la PR ouverte depuis cette branche. |
 
 
@@ -332,7 +332,7 @@ Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, 
 | Test effectué | `tests/e2e/faux-succes-irl-story.spec.js` ① ② ③ ; `irl-funnel.spec.js` (un cas réécrit : il exigeait que l'état optimiste survive au refus) ; `irl`, `irl-trust-safety`, `ui-v4a2-cartes`, `admission-18-plus`. |
 | Résultat | **Avant** (main pristine) : ① ③ rouges. **Après** : 7/7 ; voisines 99/99. |
 | Limite restante | En mode local (aucun SDK), l'inscription reste locale, comme avant (compté `offline` par le funnel). Non mesuré sur deux comptes réels. |
-| État | **corrigé dans le code** · déployé : non · vérifié après déploiement : non |
+| État | **corrigé dans le code** · déployé : **oui** (`11e01618`, `app.js?v=e423aa515d`, symboles servis vérifiés) · vérifié après déploiement : **oui** (artefact servi ; non mesuré sur deux comptes réels) |
 | PR | `claude/chantier-8-faux-succes` — voir la PR ouverte depuis cette branche. |
 
 ---
@@ -346,7 +346,7 @@ Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, 
 | Test effectué | `faux-succes-irl-story.spec.js` ④ (refus : reste en liste, pas de « inscrit ») ⑤ (accepté : monte, prévenu). |
 | Résultat | **Avant** : ④ rouge. **Après** : vert. |
 | Limite restante | La promotion reste faite **par le client qui se désinscrit** (pas de trigger serveur) : si ce client ferme l'application entre les deux appels, la place libérée n'est promue qu'à la prochaine désinscription. Autre lot (IRL-05 : capacité non garantie atomiquement). |
-| État | **corrigé dans le code** · déployé : non · vérifié après déploiement : non |
+| État | **corrigé dans le code** · déployé : **oui** (`11e01618`, `app.js?v=e423aa515d`, symboles servis vérifiés) · vérifié après déploiement : **oui** (artefact servi ; non mesuré sur deux comptes réels) |
 | PR | `claude/chantier-8-faux-succes`. |
 
 ---
@@ -360,7 +360,7 @@ Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, 
 | Test effectué | `faux-succes-irl-story.spec.js` ⑥ (refus → retirée, dit) ⑦ (succès → publiée ; local → « sur cet appareil ») ; `stories-blocage`, `studio-moods`. |
 | Résultat | **Avant** : ⑥ ⑦ rouges (la fonction n'existait pas). **Après** : vert. |
 | Limite restante | Aucune file de renvoi pour une story (contrairement aux publications) : l'échec est dit, pas rejoué — CONT-02 / ROB-01 (reprise durable) restent ouverts. |
-| État | **corrigé dans le code** · déployé : non · vérifié après déploiement : non |
+| État | **corrigé dans le code** · déployé : **oui** (`11e01618`, `app.js?v=e423aa515d`, symboles servis vérifiés) · vérifié après déploiement : **oui** (artefact servi ; non mesuré sur deux comptes réels) |
 | PR | `claude/chantier-8-faux-succes`. |
 
 
@@ -375,7 +375,7 @@ Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, 
 | Test effectué | `tests/e2e/publications-reprise.spec.js` (6 cas) : ① échec transitoire écrit et persisté, renvoi planifié ; ② la file rejoue, `synced`, « Publication envoyée », pas de double insert ; ③ survit au **rechargement** et repart de lui-même au lancement (`offline` et `syncing` antérieur) ; ④ refus définitif → `refusee`, jamais rejoué ; ⑤ média perdu → `perdue`, aucun insert ; ⑥ publication d'un autre compte → jamais publiée sous le mien. Voisines : feed-activite-relue, first-run, multi-comptes, partage-bobine, passion-personnalisee-fk, passion-politiques-ecriture, passion-referentiel, publication-optimiste-refusee, suppression-durable, ui-v2-shell, fuite-blob-bobines (106/106). `audit:globals` OK. |
 | Résultat | **Avant** (main pristine `fbc8ae09`, RÉINJECTION) : 6/6 rouges (① : `syncStatus` reste `"syncing"` ; ②–⑥ : la file n'existe pas). **Après** : 6/6 ; **artefact minifié** (build + html-minifier-terser + terser + clean-css comme le job de déploiement) : 6/6. |
 | Limite restante | Un média dont l'**upload** a échoué avant l'insert est perdu au rechargement (contrainte de quota localStorage, `_leanState`) : la personne est prévenue, elle doit republier — une file de médias (IndexedDB) serait le lot suivant. Le « Post en local (connexion lente) » après 5 s reste affiché même si l'envoi aboutit ensuite (faux échec, pas faux succès) : hors périmètre. Les **stories** n'ont pas de file (CONT-06 : l'échec est dit, pas rejoué). Non mesuré sur deux appareils réels. |
-| État | **corrigé dans le code** · déployé : non · vérifié après déploiement : non |
+| État | **corrigé dans le code** · déployé : **oui** (`11e01618`, `app.js?v=e423aa515d`, symboles servis vérifiés) · vérifié après déploiement : **oui** (artefact servi ; non mesuré sur deux comptes réels) |
 | PR | `claude/chantier-8-reprise-publications` — voir la PR ouverte depuis cette branche. |
 
 
@@ -390,7 +390,7 @@ Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, 
 | Test effectué | `tests/e2e/doubles-ecritures.spec.js` ① (Suivre ×2 en vol : un INSERT, un toast, état « suivi » avant et après la réponse) ② (Bloquer ×2 : un INSERT, un toast, second appel `false`) ④ (après la réponse, le geste inverse marche : INSERT puis DELETE). `recherche-referentiel` ⑧ réécrit (il enchaînait deux clics **synchrones** — exactement le double tap — pour prouver que « désuivre » existe ; il laisse désormais le faux serveur répondre). Voisines : blocage-acces, blocage-verdict, blocage-groupe-commun, parcours-suivre, profil-visite-options, first-run, ouverture-publique… (163/163 après réécriture). |
 | Résultat | **Avant** (main pristine, RÉINJECTION) : ① ② rouges, ④ vert. **Après** : 5/5 ; **artefact minifié** : 5/5. |
 | Limite restante | Le verrou est **par compte cible et par appareil** : deux onglets écrivent chacun une fois (le serveur dédoublonne par clé). Le bouton n'est pas grisé pendant l'écriture (l'ignorance du tap suffit ; non mesuré à l'œil). |
-| État | **corrigé dans le code** · déployé : non · vérifié après déploiement : non |
+| État | **corrigé dans le code** · déployé : **oui** (`11e01618`, `app.js?v=e423aa515d`, symboles servis vérifiés) · vérifié après déploiement : **oui** (artefact servi ; non mesuré sur deux comptes réels) |
 | PR | `claude/chantier-8-doubles-ecritures` — voir la PR ouverte depuis cette branche. |
 
 ---
@@ -404,7 +404,7 @@ Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, 
 | Test effectué | `doubles-ecritures.spec.js` ③ (deux vidages concurrents : deux INSERT pour deux messages, tous deux « sent », file vide) ⑤ (deux « réessayer » : un envoi ; après la réponse, un nouvel échec se renvoie). Voisines : file-messages-par-compte, message-refus-definitif, message-media-echec, conv-reparation-appartenance, notification-message, transfert-message, reprise-lectures-boot. |
 | Résultat | **Avant** : ③ ⑤ rouges. **Après** : vert ; artefact minifié : vert. |
 | Limite restante | Le verrou est en mémoire : deux **onglets** peuvent encore envoyer le même message (la clé primaire tient). Le chemin **média** (`sendMessageToSupabase`) n'a pas de file et n'est pas concerné. |
-| État | **corrigé dans le code** · déployé : non · vérifié après déploiement : non |
+| État | **corrigé dans le code** · déployé : **oui** (`11e01618`, `app.js?v=e423aa515d`, symboles servis vérifiés) · vérifié après déploiement : **oui** (artefact servi ; non mesuré sur deux comptes réels) |
 | PR | `claude/chantier-8-doubles-ecritures`. |
 
 
@@ -421,3 +421,18 @@ Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, 
 | Limite restante | Journal local **par appareil**, TTL 30 j, 2000 entrées (bornes ADR-008) : au-delà, le serveur fait autorité et un message reçu peut revenir ; sur un **autre appareil** du même compte, la suppression n'est pas répercutée (aucune table serveur `conv_hidden` — lot suivant si voulu). « Supprimer la conversation » ne quitte pas la conversation côté serveur (choix : l'autre peut toujours écrire, comme sur WhatsApp) ; quitter un groupe reste `leaveGroup`. Non mesuré sur deux comptes réels. |
 | État | **corrigé dans le code** · déployé : non · vérifié après déploiement : non |
 | PR | `claude/chantier-8-suppressions-durables` — voir la PR ouverte depuis cette branche. |
+
+
+---
+
+## IRL-06 — Suppression d'une activité : verdict serveur ignoré, inscrits jamais prévenus, participations orphelines — P2 (chantier 8)
+
+| Champ | Valeur |
+|---|---|
+| État constaté (base `origin/main` après #388) | `deleteEventConfirm` (app-07) affichait « Événement supprimé » quel que soit le retour de `supaDeleteEvent` (qui rendait déjà `false` sur refus ou zéro ligne) ; aucune notification. **En base (mesuré le 2026-09-14, canal ① lecture)** : aucune clé étrangère entre `event_attendees` / `event_comments` / `event_reactions` et `events` ; policies DELETE « ses lignes seulement » sur les trois tables filles → l'organisateur ne peut pas retirer les inscriptions des autres, `supaDeleteEvent` « nettoyait » en silence ses seules lignes. **15 participations orphelines sur 25**, 35 commentaires et 47 réactions rattachés à des activités disparues. |
+| Correction | **Client** : le verdict est lu — refus → rien ne bouge, « ⚠️ Suppression non enregistrée — réessaie », trace ; succès → `_prevenirSuppressionActivite(ev)` notifie inscrits ∪ « peut-être » ∪ liste d'attente (`event_cancelled`, « « titre » a été supprimé par l'organisateur »), chacun une fois, jamais soi-même, **avant** que les listes disparaissent ; sans compte réel → suppression locale dite « sur cet appareil », aucun appel. **Base** : `migrations/migration_evenements_cascade_2026-09-14.sql` (canal ③, à coller par Benjamin, rejouable, verdict 7 lignes) : orphelins retirés, puis 3 FK `event_id → events(id) ON DELETE CASCADE` — la suppression du parent (policy « Suppression propre » inchangée) emporte les lignes filles sous n'importe quel compte. Aucune policy modifiée. |
+| Test effectué | `tests/e2e/suppression-activite.spec.js` (3 cas : refus → reste, dit, personne notifié ; accepté → 4 destinataires uniques, jamais moi ; sans compte → local, dit). Banc SQL `tests/sql/migration-evenements-cascade.test.sh` (PostgreSQL jetable : défaut mesuré avant — l'organisateur supprime, l'inscription d'autrui reste ; application, verdict, rejeu ; cascade sous l'organisateur seul ; un tiers ne supprime pas ; un participant retire sa seule inscription) — câblé dans `deploy.yml`. Voisines : irl, irl-trust-safety, faux-succes-irl-story, irl-funnel, ui-v4a2-cartes (86/86 ; un cas irl-funnel rouge en parallèle ×2, vert seul — saturation). |
+| Résultat | **Avant** (main pristine, RÉINJECTION) : ① ② ③ rouges. **Après** : 3/3 ; **artefact minifié** : 3/3. Banc SQL : **non mesuré localement** (aucun PostgreSQL sur ce poste) — la CI est la mesure. |
+| Limite restante | La migration doit être **collée** (canal ③) : tant qu'elle ne l'est pas, une suppression laisse encore les inscriptions d'autrui en base (mais l'écran et les notifications sont justes). Les orphelins actuels (15/35/47) seront retirés par la migration — ils ne correspondent à aucune activité existante. Les notifications partent du client de l'organisateur (fire-and-forget, pas de verdict par destinataire). |
+| État | **corrigé dans le code** · déployé : non · migration : **à coller** · vérifié après déploiement : non |
+| PR | `claude/chantier-8-suppression-activite` — porte `migrations/*` et `.github/*` : **contre-revue** requise sur le SHA. |
