@@ -549,3 +549,18 @@ Aucun n'est engagé au 2026-09-14. Ils seront ajoutés ici au fur et à mesure, 
 | Limite restante | La liste d'attente reste gérée par le client (promotion par celui qui se retire, IRL-04) — le serveur garantit seulement qu'elle ne dépasse pas la capacité. `setEventRsvp` ne bascule pas automatiquement en `waitlist` sur `activite_complete` : la personne choisit. |
 | État | **corrigé dans le code** · déployé : non · migration : **appliquée et mesurée** (banc CI vert d'abord, puis `npm run migration:appliquer` — 3 CHECK, trigger `trg_event_attendees_capacite`, `search_path` figé, vérifiés en base) · vérifié après déploiement : non |
 | PR | `claude/chantier-8-capacite-serveur` — porte `migrations/*` : **contre-revue** requise sur le SHA. |
+
+
+---
+
+## ROB-03 — Session expirée (401) ou serveur en panne (500/429) : aucune information à l'utilisateur — P2 (chantier 8)
+
+| Champ | Valeur |
+|---|---|
+| État constaté | Au chaos de l'audit (toutes les requêtes Supabase en 500, 401 ou 429) : fil servi depuis le cache, navigation possible, **aucun toast, aucune bannière**, 28 rejeux en 30 s. Les écritures échouaient en silence ; une session morte laissait la personne « connectée » à l'écran. Le seul bandeau existant (`#offlineBanner`, app-09) ne parle que du réseau coupé. |
+| Correction | Sonde légère sur `fetch` bornée à l'hôte Supabase (`_sondeServeurInstaller`, app-02, chargé avant tout) : **≥ 3 réponses 5xx/429 en 30 s** → bandeau « Serveur indisponible — tes actions ne sont pas enregistrées pour le moment » (`#serveurBanner`, créé à la demande), retiré à la première 2xx ; **401 sur REST/Storage/Functions avec un compte réel** → on demande au SDK si une session vit encore (`supa.auth.getSession`) ; sans session → bandeau « Session expirée — Se reconnecter » (`doLogout("signin")`), anti-rafale 60 s. Un 401 chez un **visiteur** (rôle anon, placeholder `u_…`) ou sur `/auth/v1` n'affiche rien ; les échecs **réseau** (`status 0`) ne sont pas comptés (domaine du bandeau hors-ligne et de la reprise des lectures). Un bandeau, jamais de toast (une panne = des dizaines d'échecs). Tracé `diagLog`. |
+| Test effectué | `tests/e2e/etat-serveur.spec.js` (5 cas) : ① 3 × 5xx/429 → bandeau, 2xx le retire ; ② 401 sans session → « Se reconnecter », avec session vivante → rien, `/auth/v1` ignoré ; ② bis visiteur → rien ; ③ **câblage** : trois vraies réponses 500 de l'hôte allument le bandeau ; ④ échec réseau non compté. Voisines réseau/identité : reprise-lectures-boot, analytics-visiteur, user-state-invite, ecritures-identite-compte, isolation-medias, smoke, conv-reparation-appartenance, message-refus-definitif, first-run, evenements-cols-visiteur (116/116 seul ; 1 rouge en parallèle ×2 = saturation). |
+| Résultat | **Avant** (main pristine, RÉINJECTION) : 5/5 rouges (la sonde n'existe pas). **Après** : 5/5 ; artefact minifié : 5/5. |
+| Limite restante | Pas de reconnexion automatique sur 401 (un refresh token révoqué ne se répare pas côté client : on propose la sortie). Les écritures refusées pendant la panne restent portées par leurs files respectives (messages, commentaires, publications) ; un like ou un RSVP refusé est annulé à l'écran (invariant), pas rejoué. Non mesuré en production réelle (aucune panne à disposition). |
+| État | **corrigé dans le code** · déployé : non · vérifié après déploiement : non |
+| PR | `claude/chantier-8-etat-serveur`. |
