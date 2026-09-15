@@ -188,4 +188,28 @@ test.describe("Média en message — verdict de l'écriture", () => {
     expect(r.statut).toBe("sent");
     expect(r.outbox).not.toContain("m_media");
   });
+
+  // ═══ ASTRA-43 (cinquième contre-revue, 2026-09-15) : le chemin MÉDIA aussi ═══
+  test("ASTRA-43 — un rejet tardif du média après la purge de la file ne le ressuscite pas", async ({ page }) => {
+    test.setTimeout(90000);
+    await boot(page);
+    await preparer(page, { error: null });
+    const r = await page.evaluate(async () => {
+      // L'insertion est RETENUE, puis REJETÉE après la purge : c'est le `catch` → `_echec` d'app-09.
+      var rejeter = null;
+      supa = { from: function (table) { return { insert: function (row) { window.__inserts.push({ table: table, row: row }); return new Promise(function (_res, rej) { rejeter = rej; }); } }; } };
+      sendMessageToSupabase("m_media_rejet", "conv_media", "https://exemple.test/a.webm", "audio/webm", "vocal.webm", "audio");
+      await new Promise((res) => setTimeout(res, 50));
+      // La purge : file vidée, génération incrémentée, identité retirée.
+      try { localStorage.removeItem("passio_outbox_v1"); } catch (e) {}
+      _outboxInvaliderEnVol();
+      MY_UID = null; window.MY_UID = null;
+      rejeter(new Error("Failed to fetch"));
+      await new Promise((res) => setTimeout(res, 200));
+      return { outbox: _outboxLoad().map((x) => x.msgId), inserts: window.__inserts.filter((i) => i.table === "conv_messages").length };
+    });
+    // AVANT : outbox = ["m_media_rejet"] — le vocal revenait dans une file que l'on venait de vider.
+    expect(r.outbox, "un rejet tardif ne repeuple pas une file purgée").toEqual([]);
+    expect(r.inserts).toBe(1);
+  });
 });
