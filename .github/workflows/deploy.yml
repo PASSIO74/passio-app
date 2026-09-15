@@ -146,10 +146,36 @@ jobs:
             # ⚠️ ASTRA-05, second étage (2026-09-15) : l'issue dit aussi « au-delà
             # de ~60 lignes ou 2 fichiers, ce n'est plus une réparation ». Le
             # verrou e2e n'est pas compté (il est EXIGÉ par la même issue) ; le
-            # correctif, lui, est borné ici — additions + suppressions cumulées
-            # sur les fichiers de code, lues par la même API paginée que la liste.
-            taille="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${pr}/files" --jq '[.[] | select(.filename | test("^tests/e2e/.*[.]spec[.]js$") | not)] | "\(length) \(map(.additions + .deletions) | add // 0)"')"
-            nb_fichiers="${taille%% *}"; nb_lignes="${taille##* }"
+            # correctif, lui, est borné ici — additions + suppressions cumulées.
+            #
+            # ⚠️ ASTRA-34 (contre-revue du 15/09) : CETTE BORNE SE CONTOURNAIT PAR
+            # LA PAGINATION. `gh api --paginate --jq` applique le filtre PAR PAGE.
+            # L'ancienne forme demandait un AGRÉGAT par page — `"\(length) \(map(…)
+            # | add)"` — donc UNE LIGNE PAR PAGE, et le Bash prenait le premier mot
+            # de la PREMIÈRE ligne (fichiers de la page 1) et le dernier mot de la
+            # DERNIÈRE (lignes de la page N). Mesuré : une PR de 2 fichiers de code
+            # et 120 lignes, accompagnée d'assez de verrous e2e pour déborder sur
+            # une seconde page, sortait « 2 » et « 0 » — elle PASSAIT la borne de
+            # 60 lignes, et l'auto-fusion l'acceptait.
+            #
+            # ⚠️ LA FORME CORRIGÉE ÉMET UNE LIGNE PAR FICHIER, jamais un agrégat :
+            # c'est exactement ce que fait déjà `files` plus haut (`.[].filename`),
+            # et c'est pourquoi le contrôle de PÉRIMÈTRE, lui, n'a jamais été
+            # trompé. L'agrégation se fait ensuite, sur le flux complet.
+            #
+            # ⚠️ ON RESTE EN SHELL PUR, SANS CHECKOUT. Faire appel à un script du
+            # dépôt obligerait ce job à récupérer le code de la PR qu'il POLICE.
+            # Le contrôle de périmètre le précède et interdirait `scripts/`, mais
+            # une garde qui exécute ce qu'elle surveille est une garde de moins.
+            # ASTRA-34:DEBUT (extrait et exécuté par tests/unit/sentinelle-taille-pr.test.mjs)
+            par_fichier="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${pr}/files" --jq '.[] | select(.filename | test("^tests/e2e/.*[.]spec[.]js$") | not) | (.additions + .deletions)')" || par_fichier="__ECHEC__"
+            if [ "${par_fichier}" = "__ECHEC__" ]; then
+              echo "::error title=Taille de la reparation non mesurable::Impossible de lire la liste des fichiers de la PR #${pr}. Par prudence, cette PR [SENTINELLE] ne sera ni deployee ni fusionnee automatiquement."
+              exit 1
+            fi
+            nb_fichiers="$(printf '%s\n' "${par_fichier}" | grep -c '^[0-9]\+$' || true)"
+            nb_lignes="$(printf '%s\n' "${par_fichier}" | awk '/^[0-9]+$/ { s += $1 } END { print s + 0 }')"
+            # ASTRA-34:FIN
             if [ "${nb_fichiers}" -gt 2 ] || [ "${nb_lignes}" -gt 60 ]; then
               echo "::error title=Reparation trop large pour la sentinelle::Cette PR vient d'une enquete [SENTINELLE] (issue #${issue_num}) et touche ${nb_fichiers} fichier(s) de code pour ${nb_lignes} ligne(s) changees (limite : 2 fichiers, 60 lignes, verrou e2e non compte). Ce n'est plus une reparation : elle ne sera ni deployee ni fusionnee automatiquement — un humain decide."
               exit 1
