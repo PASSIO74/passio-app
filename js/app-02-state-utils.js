@@ -4323,7 +4323,22 @@ function captchaSitekey() {
   try { if (typeof window.PASSIO_TURNSTILE_SITEKEY === "string") return window.PASSIO_TURNSTILE_SITEKEY; } catch (e) {}
   return (typeof PASSIO_TURNSTILE_SITEKEY === "string") ? PASSIO_TURNSTILE_SITEKEY : "";
 }
-function captchaActif() { return captchaSitekey().length > 0; }
+// Hôte de la page ∈ hôtes déclarés (ou sous-domaine d'un hôte déclaré).
+function _captchaHoteAutorise() {
+  try {
+    const h = String(location.hostname || "").toLowerCase();
+    const hotes = Array.isArray(window.PASSIO_TURNSTILE_HOTES) ? window.PASSIO_TURNSTILE_HOTES
+      : (typeof PASSIO_TURNSTILE_HOTES !== "undefined" && Array.isArray(PASSIO_TURNSTILE_HOTES)) ? PASSIO_TURNSTILE_HOTES : [];
+    return hotes.some(function (x) { x = String(x || "").toLowerCase(); return !!x && (h === x || h.endsWith("." + x)); });
+  } catch (e) { return false; }
+}
+// Actif = une sitekey ET un hôte que Cloudflare connaît (voir
+// `PASSIO_TURNSTILE_HOTES`, app-08). Un banc qui pose
+// `window.PASSIO_TURNSTILE_SITEKEY` décide seul : c'est son faux widget qui répond.
+function captchaActif() {
+  try { if (typeof window.PASSIO_TURNSTILE_SITEKEY === "string") return window.PASSIO_TURNSTILE_SITEKEY.length > 0; } catch (e) {}
+  return captchaSitekey().length > 0 && _captchaHoteAutorise();
+}
 
 let _captchaWidget = null;
 let _captchaJetonCourant = "";

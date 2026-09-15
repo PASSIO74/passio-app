@@ -168,3 +168,74 @@ test("⑨ à la SOURCE : le banc de comptes réels n'entre plus par le mot de pa
   expect((app.match(/await captchaJeton\(\)/g) || []).length).toBe(3);
   expect((app.match(/captchaReinitialiser\(\);/g) || []).length).toBeGreaterThanOrEqual(3);
 });
+
+// ── MOD-07 (2026-09-15) : la sitekey est POSÉE, et le widget ne s'allume que
+// sur les hôtes que Cloudflare connaît ──────────────────────────────────────
+// Un widget Turnstile est lié à des hôtes. Sur localhost ou un aperçu de PR il
+// ne peut que rendre une erreur, et `captchaJeton()` attendrait 20 s un jeton
+// qui ne vient jamais, à chaque inscription et chaque connexion — 8 suites en
+// CI. `captchaActif()` exige donc un hôte de `PASSIO_TURNSTILE_HOTES` ; un
+// banc qui pose `window.PASSIO_TURNSTILE_SITEKEY` reste maître (cas ① à ⑦).
+test("⑩ à la SOURCE : la sitekey du widget est posée dans app-08, avec l'hôte de production", async () => {
+  const app08 = lire("js/app-08-ui-modals-tour.js");
+  expect(app08).toMatch(/const PASSIO_TURNSTILE_SITEKEY = "0x[0-9A-Za-z_-]{10,}";/);
+  expect(app08).toMatch(/const PASSIO_TURNSTILE_HOTES = \["passio-app\.netlify\.app"\];/);
+});
+
+async function ouvrirAuthSansOverride(page, hotes) {
+  const demandesCloudflare = [];
+  await page.route("https://challenges.cloudflare.com/**", (route) => { demandesCloudflare.push(route.request().url()); route.abort(); });
+  await page.addInitScript(([k, t, h]) => {
+    sessionStorage.setItem(k, t);
+    sessionStorage.setItem("passio_pwa_dismissed", "1");
+    localStorage.setItem("passio_first_run_experience_v1", "0");
+    if (h) window.PASSIO_TURNSTILE_HOTES = h;   // pas de window.PASSIO_TURNSTILE_SITEKEY : la constante d'app-08 décide
+    window.__ts = { renders: [], n: 0 };
+    // Comme le vrai (et comme le faux des cas ① à ⑦) : un reset rejoue un défi, donc un jeton neuf.
+    window.turnstile = { render(el, opts) { window.__ts.opts = opts; window.__ts.renders.push({ sitekey: opts.sitekey }); window.__ts.n++; setTimeout(() => opts.callback("jeton-" + window.__ts.n), 0); return "w1"; }, reset() { window.__ts.n++; const o = window.__ts.opts; setTimeout(() => o && o.callback("jeton-" + window.__ts.n), 0); } };
+  }, [GATE_KEY, GATE_TOKEN, hotes]);
+  await page.goto("/index.html");
+  await page.waitForSelector("#landing.active", { timeout: 25000 });
+  await page.getByRole("button", { name: "Créer un compte" }).first().click();
+  await page.waitForFunction(() => typeof onbDoAuth === "function" && typeof supa !== "undefined" && !!supa, null, { timeout: 25000 });
+  await page.evaluate(() => {
+    window.__auth = { signUp: [] };
+    supa.auth.signUp = async (a) => { window.__auth.signUp.push(a); return { data: { user: { id: "u1", identities: [{ id: "i1" }] }, session: null }, error: null }; };
+  });
+  return demandesCloudflare;
+}
+
+test("⑪ hors des hôtes déclarés (localhost) : inactif — rien n'est chargé, l'appel part sans jeton, sans attendre", async ({ page }) => {
+  const demandes = await ouvrirAuthSansOverride(page, null);
+  expect(await page.evaluate(() => captchaSitekey().length > 0), "la sitekey d'app-08 est bien là").toBe(true);
+  expect(await page.evaluate(() => captchaActif()), "…mais l'hôte n'est pas déclaré").toBe(false);
+  const t0 = Date.now();
+  await inscrire(page);
+  await expect.poll(() => page.evaluate(() => window.__auth.signUp.length)).toBe(1);
+  expect(Date.now() - t0, "aucune attente de jeton").toBeLessThan(5000);
+  const args = await page.evaluate(() => window.__auth.signUp[0]);
+  expect(args.options).not.toHaveProperty("captchaToken");
+  expect(await page.evaluate(() => window.__ts.renders.length), "aucun widget rendu").toBe(0);
+  expect(demandes).toEqual([]);
+});
+
+test("⑫ sur un hôte déclaré : actif — le widget est rendu avec LA sitekey d'app-08 et le jeton part", async ({ page }) => {
+  await ouvrirAuthSansOverride(page, ["localhost", "127.0.0.1"]);
+  expect(await page.evaluate(() => captchaActif())).toBe(true);
+  await inscrire(page);
+  await expect.poll(() => page.evaluate(() => window.__auth.signUp.length)).toBe(1);
+  const r = await page.evaluate(() => ({ rendus: window.__ts.renders, args: window.__auth.signUp[0] }));
+  expect(r.rendus.length).toBe(1);
+  expect(r.rendus[0].sitekey).toMatch(/^0x[0-9A-Za-z_-]{10,}$/);
+  expect(r.args.options.captchaToken).toMatch(/^jeton-[0-9]+$/);
+  // La règle d'hôte : égalité, ou sous-domaine (frontière au point) — jamais
+  // un simple suffixe (`7.0.0.1` ne couvre pas `127.0.0.1`).
+  expect(await page.evaluate(() => {
+    const h = location.hostname;
+    window.PASSIO_TURNSTILE_HOTES = [h.slice(2)]; const suffixe = captchaActif();
+    window.PASSIO_TURNSTILE_HOTES = [h.slice(h.indexOf(".") + 1)]; const sousDomaine = captchaActif();
+    window.PASSIO_TURNSTILE_HOTES = [h]; const egal = captchaActif();
+    window.PASSIO_TURNSTILE_HOTES = []; const aucun = captchaActif();
+    return { suffixe, sousDomaine, egal, aucun };
+  })).toEqual({ suffixe: false, sousDomaine: true, egal: true, aucun: false });
+});
