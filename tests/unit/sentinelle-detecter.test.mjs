@@ -2,6 +2,7 @@
 // aucune base — les lignes sont fabriquées, y compris celles observées en
 // production le 2026-09-09.
 import test from "node:test";
+import fs from "node:fs";
 import assert from "node:assert/strict";
 import { classer, empreinte, estDuBruit, classerApi, estDuBruitApi, estSansCompte, choisirCible, libelleApi, classerBoutons, desamorcer, dejaCorrige, titreIssue, condense, lireApi, lirePagine, CHEMINS_BOUTONS, FILTRE_PRODUCTION } from "../../scripts/sentinelle-detecter.mjs";
 
@@ -431,4 +432,37 @@ test("ASTRA-08 : la dédup AVANCE dans les candidats au lieu de s'arrêter au pr
   assert.equal(choisirCible([premier], fermees), null);
   assert.equal(choisirCible([], fermees), null);
   assert.equal(choisirCible(null, fermees), null);
+});
+
+// ── ASTRA-06 / ASTRA-08 (contre-revue Astra, 2026-09-15) ────────────────────
+test("ASTRA-06 (RÉINJECTION) : des lignes d'identité NON vérifiée (repli 400) ne sélectionnent jamais une enquête", () => {
+  const lignes = [
+    { message: "TypeError: x is not a function\n  at a.js:1", uid: "a", created_at: "2026-09-09T10:00:00Z", _origineNonVerifiee: true },
+    { message: "TypeError: x is not a function\n  at a.js:1", uid: "b", created_at: "2026-09-09T10:01:00Z", _origineNonVerifiee: true },
+    { message: "TypeError: x is not a function\n  at a.js:1", uid: "c", created_at: "2026-09-09T10:02:00Z", _origineNonVerifiee: true },
+  ];
+  // Sur le code du 14/09 : trois « comptes » fabricables → candidate retenue.
+  const r = classer(lignes);
+  assert.deepEqual(r.candidates, []);
+  assert.equal(r.nonVerifiees, 3);
+  const api = classerApi([
+    { endpoint: "https://x.supabase.co/rest/v1/posts", http_status: 403, action: "POST /rest/v1/posts", user_id: "a", received_at: "2026-09-09T10:00:00Z", _origineNonVerifiee: true },
+    { endpoint: "https://x.supabase.co/rest/v1/posts", http_status: 403, action: "POST /rest/v1/posts", user_id: "b", received_at: "2026-09-09T10:01:00Z", _origineNonVerifiee: true },
+  ]);
+  assert.deepEqual(api.candidates, []);
+  assert.equal(api.nonVerifiees, 2);
+  // …et les mêmes lignes, identité posée par le serveur, sélectionnent bien.
+  const ok = classer(lignes.map((l) => ({ ...l, _origineNonVerifiee: false })));
+  assert.equal(ok.candidates.length, 1);
+});
+
+test("ASTRA-08 (RÉINJECTION) : choisirCible avance au-delà de cinq candidats déjà fermés", () => {
+  const cand = (i) => ({ cle: "k" + i, message: "m" + i, dernier: "2026-09-14T06:00:00Z", chemin: "/rest/v1/" + i, code: 500, exemple: { source: null, line: null } });
+  const liste = [0, 1, 2, 3, 4, 5].map(cand);
+  const fermees = liste.slice(0, 5).map((c) => ({ title: titreIssue(c), closedAt: "2026-09-14T07:00:00Z" }));
+  // Sur le code du 14/09, `candidats: candidates.slice(0, 5)` ne transmettait jamais le sixième.
+  const cible = choisirCible(liste, fermees);
+  assert.ok(cible && cible.cle === "k5", "le sixième, actif, est atteint : " + JSON.stringify(cible && cible.cle));
+  const src = fs.readFileSync(new URL("../../scripts/sentinelle-detecter.mjs", import.meta.url), "utf8");
+  assert.match(src, /candidats: candidates\.slice\(\),/, "à la SOURCE : plus de borne à cinq");
 });
