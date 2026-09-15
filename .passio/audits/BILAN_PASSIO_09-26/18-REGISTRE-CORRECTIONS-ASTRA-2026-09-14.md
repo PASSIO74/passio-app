@@ -82,12 +82,12 @@
 | 2 | Séparer les comptes et sécuriser les échanges | AUTH-06 (#375), PRO-02 (#376), MSG-01/SUP-06 (#377 + migration appliquée), MOD-04, MSG-04, MSG-10 (#378) | **fait** — tout déployé ; résidus écrits dans chaque fiche |
 | 3 | Fiabiliser suppression et médias | AUTH-05, SUP-10, MSG-03, ASTRA-01 (#379, fonction déployée et éprouvée) ; CONT-11, SUP-01 | **fait** — CONT-11/SUP-01 décidé « 2 », écrit dans la fiche |
 | 4 | Inscription et information cohérentes | AUTH-02/03/04/09/10, EXP-08/09/14/15, UXO-07, ASTRA-09 | **fait** — AUTH-03 (#380), UXO-07, ASTRA-09/EXP-09, EXP-08 (#397) ; AUTH-02/EXP-14, AUTH-04/EXP-15, AUTH-09, AUTH-10 consignés ci-dessous avec leurs mesures (AUTH-10 : §6 complété le 14/09) |
-| 5 | Éprouver la modération | MOD-01/02/03/09, AUTH-11, ASTRA-03 | en cours — lot 1 (#396 : retrait de contenu, journal, story signalable, ASTRA-03) en attente de contre-revue |
-| 6 | Isoler les essais, prouver une restauration | SUP-04, NET-07, EXP-01/03/04/11, TCI-03/04/15/16, ASTRA-07 | en cours — **EXP-01 et la moitié « restauration » de TCI-03 : FAITS et mesurés** (ci-dessous) ; ASTRA-07 fait ; EXP-04/TCI-16 (canari + déploiement des Edge Functions) préparés en local ; SUP-04/TCI-04/EXP-11 : **le client sait viser le staging** (fiche ci-dessous, suites prod vertes contre le staging le 14/09) ; reste le câblage CI (`.github`, contre-revue) ; EXP-03 : rollback Netlify outillé et exercé (1,8 s) ; NET-07 reste |
-| 7 | Borner Sentinelle et les protections anti-abus | PIL-01/02/03/04/10, EXP-06/12, CONT-08, MOD-06/07, SUP-07, ASTRA-02/05/06/08 | en cours — ASTRA-02 appliqué, ASTRA-06 partiel, ASTRA-08 préparé ; le reste non engagé |
+| 5 | Éprouver la modération | MOD-01/02/03/09, AUTH-11, ASTRA-03 | en cours — lot 1 (#396 : retrait de contenu, journal, story signalable, ASTRA-03) en attente de contre-revue ; reste : suspension de compte, interface (résidus écrits dans MOD-01) |
+| 6 | Isoler les essais, prouver une restauration | SUP-04, NET-07, EXP-01/03/04/11, TCI-03/04/15/16, ASTRA-07 | **quasi fait** — EXP-01 restauration prouvée (#401), EXP-03 rollback en 2 s (#402), SUP-04/TCI-04/EXP-11 : le client vise le staging (#406) et la CI y tourne dès #409 (contre-revue), EXP-04/TCI-16 (#404, contre-revue), ASTRA-07 fait ; NET-07 reste (baseline : `schema-executable.js` vs brouillon local) ; TCI-15 (banc RLS sur socle) reste |
+| 7 | Borner Sentinelle et les protections anti-abus | PIL-01/02/03/04/10, EXP-06/12, CONT-08, MOD-06/07, SUP-07, ASTRA-02/05/06/08 | en cours — ASTRA-04/05 + PIL-02 (#407, contre-revue) ; PIL-03, CONT-08, MOD-06, SUP-07 : déjà traités le 11/09, consignés ci-dessous avec mesures ; PIL-01/04, EXP-06/12 : consignés avec l'état réel ; MOD-07 (captcha) : **attend une manipulation de Benjamin** (widget Cloudflare) ; PIL-10 reste |
 | 8 | Supprimer les faux succès et divergences | CONT-02/06, MSG-06, IRL-04 à 13, ROB-01 à 06, PRO-04/05, ASTRA-10 | **fait** — #385 à #394 déployés ; IRL-12 (#395, migration appliquée) en attente de contre-revue |
-| 9 | Mesurer la capacité puis fixer les limites | PERF-01 à 06, PRO-01/03/06, ASTRA-04 | en cours — PERF-03 (71 policies initplan, 24 doublons) appliqué en production et préparé en local (contre-revue à venir) ; PERF-01 (charge) attend le staging ; PERF-04 : le `user_state` de 4,8 Mo était l'état d'un compte supprimé — purgé avec 78 autres orphelins (fiche ci-dessous) |
-| 10 | Compléter les parcours et preuves de qualité | DEV-01 à 05, UXO-01/02/03, TCI-01/02/05 à 14 | en cours — TCI-05/06/14 (#398), UXO-01/03 (#399), DEV-01/04 (#400) faits ; DEV-03 (contrastes) fait ; DEV-02/05, UXO-02, TCI-01/02/07 à 13 restent |
+| 9 | Mesurer la capacité puis fixer les limites | PERF-01 à 06, PRO-01/03/06, ASTRA-04 | en cours — **PERF-01 mesuré** (#410 : charge sur le staging, recherche 15 → 149 req/s), PERF-02 mesuré (12 s, 6 s de JS — non corrigé), PERF-03 (#403, contre-revue), PERF-05/06 consignés, PRO-06 fait, ASTRA-04 (#407) ; PRO-01 partiel, PRO-03 = décision produit |
+| 10 | Compléter les parcours et preuves de qualité | DEV-01 à 05, UXO-01/02/03, TCI-01/02/05 à 14 | en cours — TCI-05/06/14 (#398), UXO-01/03 (#399), DEV-01/04 (#400), DEV-03 (#405), **DEV-02 (#408)**, **TCI-01 partiel (#411)** faits ; DEV-05, UXO-02 (analysé ci-dessous), TCI-02/07 à 13 restent |
 
 ---
 
@@ -645,7 +645,7 @@
 | Champ | Valeur |
 |---|---|
 | État constaté | `rollback.yml` ouvre une PR de revert (cycle CI complet) et n'a jamais été exercé ; aucun chemin qui remette la version d'avant sans reconstruire ; rien de documenté. |
-| Correction | `scripts/rollback-netlify.mjs` (`npm run rollback:netlify`) : liste les déploiements de production avec le commit que chacun SERT (lu dans le `release.json` de l'adresse propre du déploiement — `commit_ref` est vide, les déploiements partent de la CLI), `--restaurer precedent|<id>` appelle `POST /deploys/<id>/restore`, puis **relit `release.json` sur le site** jusqu'au commit attendu et rend le délai. Refuse ce qu'il ne sait pas vérifier, refuse la CI, refuse de « restaurer » le déploiement déjà en ligne. Documenté dans `docs/RECUPERATION.md` avec ce qu'un rollback Netlify NE défait PAS (migrations, Edge Functions, service worker installé) et l'ordre à respecter pour un correctif client + base. |
+| Correction | `scripts/rollback-netlify.mjs` (`npm run rollback:netlify`) : liste les déploiements de production avec le commit que chacun SERT (lu dans le `release.json` de l'adresse propre du déploiement — `commit_ref` est vide, les déploiements partent de la CLI), `--restaurer precedent\|<id>` appelle `POST /deploys/<id>/restore`, puis **relit `release.json` sur le site** jusqu'au commit attendu et rend le délai. Refuse ce qu'il ne sait pas vérifier, refuse la CI, refuse de « restaurer » le déploiement déjà en ligne. Documenté dans `docs/RECUPERATION.md` avec ce qu'un rollback Netlify NE défait PAS (migrations, Edge Functions, service worker installé) et l'ordre à respecter pour un correctif client + base. |
 | Test effectué | **Exercé en production le 14/09 à 20 h 50**, aller et retour : 6eca16aa → 53a4584b (le déploiement d'avant #399) servi conforme après **1,8 s** ; retour → 6eca16aa servi conforme après **1,1 s**. Vérifié par `release.json` sur passio-app.netlify.app avant, pendant, après. |
 | Résultat | Un retour arrière applicatif se fait en **moins de 2 s**, contre un cycle CI de 30–45 min ; il est écrit, outillé, éprouvé. |
 | Limite restante | Pas de kill switch serveur par fonctionnalité (les drapeaux `passio_*="0"` sont locaux à l'appareil) — écrit, non réglé. Le rollback de `rollback.yml` (chemin propre) n'a toujours pas été exercé : il crée une PR de revert réelle, ce qui n'a de sens que sur un vrai incident. Le jeton Netlify du poste est celui de la CLI ; pour un autre poste, `NETLIFY_AUTH_TOKEN`. |
@@ -833,3 +833,145 @@
 | Limite restante | **La CI écrit toujours en production tant que `deploy.yml` et `sentinelle-distante.yml` ne posent pas la cible** — lot suivant, `.github` donc contre-revue (secrets du staging à poser). Les aperçus de PR ne sont pas encore construits avec la cible. Les Edge Functions ne sont pas déployées sur le staging (`suppression-compte` y échouerait). Ajouter l'hôte du staging à la CSP de production est un élargissement minime mais réel — le retirer quand les aperçus auront leur propre en-tête. |
 | État | **corrigé dans le code** · **testé sur staging** · déployé : à la fusion (le client de production ne change pas de comportement) |
 | PR | `claude/chantier-6-cible-staging`. |
+
+---
+
+## PERF-01 — Capacité jamais mesurée, aucun outil de test de charge — P0 (chantier 9) — **mesuré, goulot trouvé et corrigé (sur le staging)**
+
+| Champ | Valeur |
+|---|---|
+| État constaté | L'un des trois bloquants intacts : aucun outil, aucune mesure. |
+| Correction | `scripts/charge.mjs` (`npm run charge`) : sème des données synthétiques sur le staging (refuse la production), charge les requêtes RÉELLES de l'app (fil avec embed profil, rencontres, profil, `rpc/rechercher_passions`) par paliers d'utilisateurs simultanés sans pause, rend débit / p50 / p95 / p99 / erreurs. **Trouvé** : le projet plafonnait à ~60 req/s quel que soit le nombre d'utilisateurs, goulot = `rechercher_passions` (430 ms par appel : `unnest(aliases)` + `like` par ligne sur 5 003 lignes, à chaque frappe). `migration_passions_recherche_index_2026-09-15.sql` : colonne `recherche` tenue par trigger, index GIN trigram (+ `normalized_label` pour le flou), fonction qui lit l'index, **mêmes résultats** (cinq requêtes comparées à la production ; banc sur douze). Appliquée sur le **staging** seulement. |
+| Test effectué | Staging = même structure, même calcul (Micro), 300 comptes / 6 000 publications synthétiques + 5 003 passions réelles. **Avant** : 10 simultanés → recherche p50 430 ms, total 55 req/s ; 100 → p95 3,6–4,8 s. **Après** : recherche 15 → **149 req/s** (p50 65 ms) ; **~400 req/s** de lectures réelles à p95 < 1 s, **0 erreur jusqu'à 200 simultanés**. `tests/sql/migration-passions-recherche.test.sh` (résultats identiques avant/après sur 12 requêtes, trigger, plan, privilèges, rejeu). Détail : `docs/CAPACITE_2026-09-14.md`. |
+| Résultat | Ordre de grandeur : 2 000 à 4 000 personnes connectées sur le calcul actuel ; au-delà de ~300 req/s soutenus, la marche suivante est le compute Small (~15 $/mois). |
+| Limite restante | Écritures et temps réel non mesurés ; aucune sonde de latence en production dans la durée (`telemetry_events.duration` est la matière d'un rapport p95 quotidien). La migration attend la contre-revue (#410) puis l'application en production. |
+| État | **corrigé dans le code** · **testé sur staging** · migration en production : non (après contre-revue) |
+| PR | [#410](https://github.com/PASSIO74/passio-app/pull/410) — porte `migrations/*` : contre-revue requise. |
+
+---
+
+## PERF-02 — Monolithe de 1,75 Mo chargé en bloc : 9 s avant la première carte — P2 (chantier 9) — **mesuré, non corrigé**
+
+| Champ | Valeur |
+|---|---|
+| État constaté | Mesuré le 14/09 sur l'artefact minifié comme en CI, Chromium 390×844, Supabase coupé : bureau 1,1 s ; **CPU ×4 + Fast 3G : 17,6 s** jusqu'à la première carte (dont 6,9 s de téléchargement NON compressé en local) ; CPU ×6 + Slow 3G : 52,7 s. Servi par Netlify (brotli) : `app.js` 1 301 139 → **345 493 o**, `index.html` 337 890 → 90 597 o, CSS 37 424 o, SDK 53 213 o. Corrigé de la compression : **≈ 12 s** sur téléphone lent, dont ≈ 2 s de réseau et **≈ 6 s de JavaScript** (analyse + exécution de 1,3 Mo, `boot()`, peinture du fil). Le chiffre de l'audit est confirmé. |
+| Correction | Aucune : découper `app.js` (Studio, IRL, appels, live ne servent pas au premier rendu) est un chantier de build — les fonctions sont globales et s'appellent par hoisting (`app-01` à `app-09`, ordre imposé). |
+| Limite restante | Tout. Piste : charger `app-05/06/07` (config, studio, IRL/IA) après le premier rendu du fil, derrière un `defer` et une promesse `passio:app-ready` ; mesurer avec `mesure-demarrage` (scratch) avant/après. |
+| État | mesuré · non corrigé |
+| PR | aucune (mesure dans `docs/CAPACITE_2026-09-14.md`, #410). |
+
+---
+
+## PERF-05 / PERF-06 — Coûts non maîtrisables ; fil sans fenêtrage — P2/P3 (chantier 9) — **consignés avec l'état réel**
+
+| Champ | Valeur |
+|---|---|
+| État constaté | PERF-05 : mesuré le 14/09 — plan **Pro** (aucun add-on de compute : Micro), limite de fichier du projet 50 Mo, seaux `content`/`attachments` plafonnés à **26 Mo** (`storage.buckets.file_size_limit`), les médias servis par le CDN Netlify (100 Go/mois) et non par Supabase (fiche du 12/09), purges cron : `purge_telemetry_7j` 04:00, `purge_client_errors` 03:00, `passio_purge_analytics` 04:30 ; débit anonyme borné (`trg_debit_global` sur `client_errors` et `telemetry_events`). Second projet (staging) réactivé le 14/09 : coût de calcul supplémentaire, `POST /v1/projects/<ref>/pause` pour l'arrêter. PERF-06 : `feed_window_v1` existe (fenêtrage du fil), coupé par défaut ; le nombre de nœuds à 500 cartes n'a pas été re-mesuré. |
+| Correction | Aucune nouvelle. |
+| Limite restante | Aucune alerte de coût (Supabase envoie les siennes par e-mail au propriétaire de l'organisation) ; PERF-06 à allumer après mesure des nœuds DOM et vérification des décorateurs (`_feedWindowRedecorer`). |
+| État | consigné |
+| PR | aucune. |
+
+---
+
+## SUP-04 / TCI-04 / TCI-16 — Lot 4 : la CI et le canari tournent sur le staging — P0 (chantier 6) — **corrigé, contre-revue**
+
+| Champ | Valeur |
+|---|---|
+| État constaté | Après #406 le client savait viser le staging, mais `deploy.yml` et `sentinelle-distante.yml` écrivaient encore en production. |
+| Correction | `deploy.yml` : le job « Suites production » pose la cible du staging (`vars.STAGING_SUPABASE_URL`, `vars.STAGING_SUPABASE_ANON`, `secrets.STAGING_SERVICE_ROLE_KEY` — **posés**) ; la barrière de la production reste `authz-critical` seule, une fois par déploiement, avec la clé de prod. `sentinelle-distante.yml` : le canari crée ses deux comptes sur le staging. `purge-e2e-storage.js` suit la cible. Edge Functions **déployées sur le staging** (4/4) ; policies `realtime.messages` exportées par le DDL. |
+| Test effectué | En local avant (#406) : trois suites vertes contre le staging, production intacte. En CI : à la fusion. |
+| Résultat | Plus une écriture de test en production hors la barrière de déploiement. |
+| Limite restante | Aperçus de PR pas encore construits avec la cible ; `PASSIO_E2E_MULTI` pas allumé en CI tant que multi-comptes n'est pas 9/9 (TCI-01). |
+| État | **corrigé dans le code** · déployé : à la fusion |
+| PR | [#409](https://github.com/PASSIO74/passio-app/pull/409) — touche `.github/*` : contre-revue requise. |
+
+---
+
+## ASTRA-04 / ASTRA-05 / PIL-02 — Plafond de création non sérialisé ; limites de la chaîne autonome non imposées ; console de pilotage à identifiants par défaut — P2/P1/P1 (chantier 7) — **corrigés, contre-revue**
+
+| Champ | Valeur |
+|---|---|
+| État constaté | ASTRA-04 : `creer_passion` comptait puis insérait sans verrou. ASTRA-05 : l'issue [SENTINELLE] limitait le correctif à `js/*.js`, `styles.css`, `index.html`, `sw.js` — rien ne le vérifiait avant l'auto-fusion. PIL-02 : sans `.env`, `admin`/`admin` donnait le rôle admin et le secret HMAC par défaut rendait le cookie forgeable (mesuré par l'audit). |
+| Correction | `migration_passion_creation_serialisee_2026-09-15.sql` : fonction de production reprise à l'identique + `pg_advisory_xact_lock(hashtext('creer_passion:' \|\| uid))` avant le compteur — **appliquée sur le staging** (verdict 4 OK), pas en production ; MIG5 dans `verifier-migration-creation-passion.sh`. `deploy.yml` (gouvernance) : une PR née d'une issue `sentinelle` (branche `claude/issue-<n>-<run>`) est refusée si elle touche autre chose que `js/*.js`, `styles.css`, `index.html`, `sw.js`, `tests/e2e/*.spec.js`. `dashboard/server/config.js` : refus de démarrer en production avec un défaut (`verifierSecrets`, test unitaire), avertissement en développement. |
+| Test effectué | ASTRA-04 : six `rpc/creer_passion` **en parallèle** avec un vrai compte (quota 3) → 3 créées, avec le verrou ; **sans le verrou aussi** (trois tirs) — la fenêtre est trop courte depuis l'extérieur, le défaut ne se reproduit pas, le verrou est posé par principe. PIL-02 : `dashboard/test/secrets-defaut.test.js` (3). ASTRA-05 : logique de la garde relue ; s'éprouvera à la prochaine PR de la sentinelle. |
+| Résultat | Trois bornes posées ; l'une (ASTRA-05) n'a pas encore vu de cas réel. |
+| Limite restante | ASTRA-05 : la sentinelle demande aussi un verrou e2e, donc `tests/e2e/*.spec.js` est admis — c'est une limite ÉLARGIE par rapport au texte de l'issue (qui dit « jamais tests/ ») ; le texte de l'issue et la garde doivent dire la même chose (à aligner dans `sentinelle-autonome.yml`). |
+| État | **corrigé dans le code** · ASTRA-04 testé sur staging · déployé : à la fusion |
+| PR | [#407](https://github.com/PASSIO74/passio-app/pull/407) — porte `migrations/*`, `.github/*`, `dashboard/server/config.js` : contre-revue requise. |
+
+---
+
+## PIL-03 / CONT-08 / MOD-06 / SUP-07 — Télémétrie et écritures de masse non bornées — P1 (chantier 7) — **déjà traités le 11/09, consignés**
+
+| Champ | Valeur |
+|---|---|
+| État constaté | Sur le commit examiné : vrai. Le 14/09, mesuré en production : `trg_rate_limit` sur **12 tables** (analytics_events, comment_interactions, conv_messages, event_comments, event_reactions, events, follows, notifications, post_comments, posts, reports, stories — 10/min par compte, `created_at = now()` posé par le serveur), `trg_debit_global` sur `client_errors` et `telemetry_events` (120 / 3 000 par minute, table entière), `notifications` : INSERT usurpé refusé 403 (mesuré par `authz-critical` chaque déploiement), lien d'abonnement écrit par le serveur (`follows_notifier`), purges 7 j / 30 j / 13 mois. |
+| Correction | Aucune nouvelle (lot « ouverture publique », #329 et suivants). |
+| Limite restante | Les bornes sont par compte et par minute ; pas de borne par jour, pas de détection de comportement (spam lent). |
+| État | déjà **déployé** · **vérifié après déploiement** (triggers et cron lus en base le 14/09) |
+| PR | aucune. |
+
+---
+
+## MOD-07 — Protection contre les faux comptes non prouvée (captcha, limites d'inscription) — P1 (chantier 7) — **attend une manipulation de Benjamin**
+
+| Champ | Valeur |
+|---|---|
+| État constaté | Mesuré le 14/09 (`GET /v1/projects/<ref>/config/auth`) : `security_captcha_enabled` **false**, `rate_limit_email_sent` 150/h, `rate_limit_anonymous_users` 30, mot de passe minimum 8, mots de passe compromis refusés, fournisseur anonyme désactivé, confirmation d'e-mail active. Le client Turnstile est **déployé** (SEC-06, 13/09) avec une sitekey **vide** — donc inactif, par construction. |
+| Correction | Rien ne peut être fait sans le widget : il faut un compte Cloudflare (Turnstile → « Add widget », hostname `passio-app.netlify.app`, mode Managed) qui rend une **sitekey** et un **secret**. Ensuite, dans l'ordre (CLAUDE.md « captcha ») : sitekey dans app-08 et déployée → **puis** `PATCH /v1/projects/<ref>/config/auth` avec `security_captcha_enabled: true, security_captcha_provider: turnstile, security_captcha_secret`. Je fais tout sauf la création du widget. |
+| Limite restante | Tant que le widget n'existe pas, un script vide le quota d'e-mails (150/h) et rend l'inscription indisponible ; les limites d'inscription (30 par heure et par IP côté Supabase) sont la seule barrière. |
+| État | **en attente d'une manipulation** (voir la liste du 15/09) |
+| PR | aucune encore. |
+
+---
+
+## PIL-01 / PIL-04 / EXP-06 / EXP-12 — Canal de notification, signaux serveur, supervision externe, indépendance de la contre-revue — P1/P1/P1/P2 (chantier 7) — **consignés avec l'état réel**
+
+| Champ | Valeur |
+|---|---|
+| État constaté | **PIL-01** : le canal existe depuis le 09/09 — la sentinelle autonome ouvre une issue GitHub, GitHub la notifie par e-mail au propriétaire (runs mesurés le 14/09 : succès à 14:15 et 19:29) ; la sentinelle distante ouvre « [SENTINELLE DISTANTE] Santé rouge » (runs 19:04, 19:23, 20:43, tous verts). Ce qui n'existe pas : un SMS ou un appel ; et un dashboard éteint ne prévient personne — mais le dashboard n'est plus le seul témoin. **PIL-04** : signaux serveur — les Edge Functions auront un test de fumée à chaque déploiement (#404), `notify-call`/`ask-ai` rendent 429/5xx lisibles ; SMTP : `npm run verif:dns` (contrôle d'exploitation, hors CI) et un compte réel confirmé en 62 s le 12/09 ; `delete-account` éprouvée le 14/09. Pas de sonde périodique de l'envoi d'e-mail. **EXP-06** : la supervision externe est GitHub Actions (hors Netlify et hors Supabase), toutes les 4 h après #404, seuil de lecture « moins de 6 h » (mesuré : GitHub sert ~41 % des créneaux horaires). **EXP-12** : la contre-revue est posée par le même compte GitHub que l'auteur des PR ; l'indépendance vient d'ailleurs — la relecture par un modèle tiers (Astra) et les bancs par réinjection — pas du compte. |
+| Correction | Aucune nouvelle. |
+| Limite restante | Un moniteur tiers gratuit (UptimeRobot, 5 min, sur `https://passio-app.netlify.app/release.json`) fermerait EXP-06 pour de bon — c'est un compte à créer (liste du 15/09). PIL-10 (modération, sauvegardes, coûts, capacité dans le Centre de pilotage) reste ouvert. |
+| État | consigné |
+| PR | aucune. |
+
+---
+
+## DEV-02 — ~95 gabarits `<div onclick>` sans `tabindex` ni rôle — P2 (chantier 10)
+
+| Champ | Valeur |
+|---|---|
+| État constaté | Cartes du fil, rencontres, conversations, stories, réglages : inaccessibles au clavier, muets pour un lecteur d'écran. Reproduit : `clavier-cliquables.spec.js` ① sur le code d'avant compte des dizaines d'oubliés. |
+| Correction | Une règle mécanique dans app-08 : tout élément non natif porteur d'un `onclick` reçoit `tabindex="0"`, et `role="button"` s'il ne contient pas lui-même de commande ; un conteneur qui en porte (section repliable, carte avec ses boutons) devient tabulable (`data-clavier`) **sans** devenir un bouton — ARIA, et sinon `getByRole("button", { name })` désignait deux éléments (mesuré). Au démarrage puis à chaque nœud ajouté (MutationObserver, microtâche). Le délégué clavier existant active Entrée/Espace ; un conteneur ne s'active que s'il est l'élément focalisé. Exclus : natifs, `.nav-item`, enveloppes `event.stopPropagation()`, rôle/tabindex déjà posés. |
+| Test effectué | `tests/e2e/clavier-cliquables.spec.js` (5). Voisines : access-gate, smoke, first-run, profil-visite-options, aides-contextuelles, mes-passions-page, ui-v4a5-filtres, cgu-consentement… 158/158. |
+| Résultat | **Avant** : des dizaines d'oubliés. **Après** : 0 sur cinq écrans, y compris ce qui est peint plus tard. |
+| Limite restante | Le nom accessible d'une carte est son texte entier ; un `aria-label` court par gabarit serait mieux (DEV-04 l'a fait pour les avatars). |
+| État | **corrigé dans le code** · déployé : #408 fusionnée |
+| PR | [#408](https://github.com/PASSIO74/passio-app/pull/408). |
+
+---
+
+## TCI-01 — Messagerie, realtime, confidentialité et suppression cross-compte jamais en CI ; suite multi-comptes cassée — P1 (chantier 10) — **partiel**
+
+| Champ | Valeur |
+|---|---|
+| État constaté | Les quatre suites sont opt-in (`PASSIO_E2E_MULTI`), jamais posé en CI, et mortes : `#landing.active` jamais atteint (première visite), `/auth/v1/signup` sans jeton (confirmation d'e-mail), grille de passions remplacée par le sélecteur, deux scénarios sur une fonctionnalité retirée (Carnet de voyage). |
+| Correction | `qa-helper.js` / `multi-comptes.spec.js` : landing historique posée, choix par le sélecteur plat, attente du référentiel ; `suppression-compte.spec.js` : compte pré-confirmé, corps de l'Edge Function dans l'échec, pause avant l'effacement ; scénarios CDV sautés en le disant ; « notifications » et « story » déclarent un compte public (un compte neuf est privé depuis le 31/08). Le DDL exporte les policies `realtime.messages` (sans elles, aucun canal privé sur le staging). Edge Functions déployées sur le staging. |
+| Test effectué | Contre le staging (`PASSIO_E2E_MULTI=1`) : `confidentialite` 2/2, `suppression-compte` 1/1, `multi-comptes` **5 verts, 2 sautés, 1 rouge** — « texte + vocal » : B ne reçoit pas le message en temps réel dans les 30 s (deux essais ; le même flux passe dans `confidentialite`). |
+| Résultat | 8 scénarios vivants sur 9 ; ils savent tourner sur le staging. |
+| Limite restante | Le scénario temps réel ; puis `PASSIO_E2E_MULTI: "1"` dans le job staging de la CI (#409) — pas avant 9/9. TCI-02 (inscription réelle par e-mail, mot de passe oublié) reste sans test automatisé : il faut une boîte de réception pilotable. |
+| État | **corrigé dans le code** (partiel) · **testé sur staging** |
+| PR | [#411](https://github.com/PASSIO74/passio-app/pull/411). |
+
+---
+
+## UXO-02 — Compte local sans session : landing historique par-dessus le fil, application inaccessible hors ligne — P1 (chantier 10) — **analysé, non corrigé**
+
+| Champ | Valeur |
+|---|---|
+| État constaté | `boot()` : un appareil qui porte un compte (`passio_uid`, `state.onboarded`) mais dont la session n'est pas retrouvée (jeton expiré, hors ligne, SDK non chargé) sort par `showLanding()` — la landing (réécrite le 12/09 : plus de « Beta privée » ni de Carnet) avec « Se connecter ». Hors ligne, l'état local est pourtant complet. |
+| Correction | Non faite, et voici pourquoi : entrer dans le fil avec l'état local (`renderEverything()`) sans session laisserait `MY_UID` = l'uuid du compte SANS jeton ; les chemins d'écriture (`_uidEstUnCompte`, `_identiteDivergeDeLaSession` — qui échoue OUVERT quand la session est absente, par choix documenté le 13/09) repartiraient en 401 — exactement la famille de défauts refermée les 13/09. Le correctif juste est un mode « session expirée » : fil local en lecture, bandeau « Se reconnecter », et **toute écriture coupée** (`_scheduleStateSync`, `supaSaveUserState`, files hors-ligne) tant que la session n'est pas revenue — un lot à part, avec ses verrous par réinjection. |
+| Limite restante | Tout ; à faire avec les suites `connexion-compte-existant` (15) et `first-run` (38) comme filet. |
+| État | non corrigé |
+| PR | aucune. |
