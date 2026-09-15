@@ -13,8 +13,12 @@ const { bootOnboarded } = require("./app-helper");
 // enveloppe stopPropagation : c'est exactement ce qui doit valoir zéro. Un
 // conteneur qui porte des commandes reçoit `tabindex` + `data-clavier`, pas
 // `role="button"` (ARIA : un bouton ne contient pas d'élément interactif).
+// Hors compte aussi, depuis ASTRA-13 : le FOND d'une modale (`.modal-backdrop`,
+// ou tout élément qui contient un `[role="dialog"]`) — une enveloppe qu'on ferme
+// en cliquant à côté, pas une commande ; tabulable, il avalait les frappes.
 const COMPTER_OUBLIES = () => Array.from(document.querySelectorAll("div[onclick],span[onclick],li[onclick],img[onclick],p[onclick]"))
   .filter((el) => !el.hasAttribute("role") && !el.hasAttribute("tabindex") && !el.classList.contains("nav-item")
+    && !el.classList.contains("modal-backdrop") && !el.querySelector('[role="dialog"],[aria-modal="true"]')
     && !/^\s*event\.stopPropagation\(\)\s*;?\s*$/.test(el.getAttribute("onclick") || "")).length;
 
 test.describe("clavier — tout élément cliquable est tabulable", () => {
@@ -90,5 +94,72 @@ test.describe("clavier — tout élément cliquable est tabulable", () => {
     expect(r.env).toEqual([null, null]);
     expect(r.btn).toEqual([null, null]);
     expect(r.deja).toEqual(["listitem", "-1"]);
+  });
+
+  // ── ASTRA-13 (contre-revue du 2026-09-15) : la règle FERMAIT UNE MODALE PENDANT
+  // LA SAISIE. `#modalBackdrop` porte un `onclick` (fermer au clic dehors) et
+  // est VIDE au démarrage : promu `role="button"`. Une modale s'ouvre, on tape
+  // Espace dans son textarea → le délégué remonte au fond, `click()`, la modale
+  // se ferme et la frappe est avalée. Trois couches, chacune mesurée :
+  test("⑤ ASTRA-13 : Espace et Entrée dans un champ d'une modale n'activent rien — la frappe passe, la modale reste", async ({ page }) => {
+    await bootOnboarded(page);
+    await page.evaluate(() => openModal('<div class="modal-title">Essai</div><textarea id="tx" rows="3"></textarea><input id="ix" type="text"><button id="bx" onclick="window.__bx=(window.__bx||0)+1">OK</button>'));
+    await page.waitForTimeout(80);
+    await page.focus("#tx");
+    await page.keyboard.type("a b");
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("c");
+    await page.focus("#ix");
+    await page.keyboard.type("x y");
+    const r = await page.evaluate(() => ({
+      ouverte: document.getElementById("modalBackdrop").classList.contains("active") || getComputedStyle(document.getElementById("modalBackdrop")).display !== "none",
+      tx: document.getElementById("tx") && document.getElementById("tx").value,
+      ix: document.getElementById("ix") && document.getElementById("ix").value,
+      fond: [document.getElementById("modalBackdrop").getAttribute("role"), document.getElementById("modalBackdrop").getAttribute("tabindex")],
+    }));
+    // RÉINJECTION : sur le code du 14/09, la modale est fermée au premier Espace,
+    // `tx` vaut "a" et le fond porte role="button" tabindex="0".
+    expect(r.fond, "le fond d'une modale n'est jamais un bouton").toEqual([null, null]);
+    expect(r.tx).toBe("a b\nc");
+    expect(r.ix).toBe("x y");
+    expect(r.ouverte).toBe(true);
+  });
+
+  test("⑤ bis un élément promu bouton quand il était vide redevient conteneur dès qu'une commande y entre", async ({ page }) => {
+    await bootOnboarded(page);
+    const r = await page.evaluate(() => {
+      const p = document.createElement("div"); p.setAttribute("onclick", "window.__p=(window.__p||0)+1"); document.body.appendChild(p);
+      return new Promise((res) => setTimeout(() => {
+        const avant = [p.getAttribute("role"), p.getAttribute("data-clavier")];
+        p.insertAdjacentHTML("beforeend", '<textarea id="tx2"></textarea>');
+        setTimeout(() => {
+          const apres = [p.getAttribute("role"), p.getAttribute("data-clavier")];
+          document.getElementById("tx2").focus();
+          const ev = new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true });
+          document.getElementById("tx2").dispatchEvent(ev);
+          res({ avant, apres, active: window.__p || 0, empeche: ev.defaultPrevented });
+        }, 50);
+      }, 50));
+    });
+    expect(r.avant).toEqual(["button", null]);
+    // RÉINJECTION : sur le code du 14/09, `apres` reste ["button", null], Espace
+    // active le conteneur (active = 1) et la frappe est empêchée.
+    expect(r.apres).toEqual([null, "1"]);
+    expect(r.active).toBe(0);
+    expect(r.empeche).toBe(false);
+  });
+
+  test("⑤ ter un vrai bouton non natif s'active toujours à Entrée et Espace, lui", async ({ page }) => {
+    await bootOnboarded(page);
+    const r = await page.evaluate(() => {
+      const b = document.createElement("div"); b.setAttribute("onclick", "window.__b=(window.__b||0)+1"); b.textContent = "Valider"; document.body.appendChild(b);
+      return new Promise((res) => setTimeout(() => {
+        b.focus();
+        for (const key of ["Enter", " "]) b.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+        res({ role: b.getAttribute("role"), active: window.__b || 0 });
+      }, 50));
+    });
+    expect(r.role).toBe("button");
+    expect(r.active).toBe(2);
   });
 });
