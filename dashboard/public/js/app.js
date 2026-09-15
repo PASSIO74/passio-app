@@ -550,6 +550,14 @@ VIEWS.brief = async (view) => {
               const cls = a.etat === "vert" ? "ok" : a.etat === "rouge" ? "error" : "warn";
               return `<span class="pill ${cls}">${esc(a.etat.toUpperCase())}</span> <span class="muted" style="font-size:12px">${esc(a.detail)}</span>`;
             })()) : "") +
+          // Résidus du registre structuré (cinquième contre-revue Astra, §9) :
+          // un résidu devenu traitable se voit ici, pas seulement en CI.
+          (rd && rd.domaines ? (() => {
+            const r = rd.domaines.find((d) => d.cle === "residus");
+            if (!r) return "";
+            const cls = r.etat === "vert" ? "ok" : r.etat === "rouge" ? "error" : "warn";
+            return line("Résidus", `<span class="pill ${cls}">${esc(r.etat.toUpperCase())}</span> <span class="muted" style="font-size:12px">${esc(r.detail)}</span>`);
+          })() : "") +
           line("Erreurs (5 min)", num(h.errors5m)) +
           line("Succès API", (t.apiSuccessRate ?? 0) + " %"))}
         ${secCard("Ce qui compte", "trending",

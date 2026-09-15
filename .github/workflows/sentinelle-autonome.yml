@@ -64,6 +64,32 @@ jobs:
       - name: Verrous du détecteur
         run: node --test tests/unit/sentinelle-detecter.test.mjs
 
+      # Registre structuré des résidus (cinquième contre-revue Astra, 2026-09-15,
+      # mandat §9) : la Sentinelle MONTRE, à chaque passage, les résidus devenus
+      # traitables et les écarts registre/dépôt, dans le résumé du run. Elle ne
+      # les corrige pas et n'ouvre aucune issue pour eux (le canal d'enquête
+      # reste réservé aux défauts subis par les utilisateurs) ; l'échec de la
+      # gate est celui du job Audits de deploy.yml. Aucun secret, aucun réseau.
+      - name: Résidus traitables (registre structuré)
+        if: always()
+        run: |
+          node scripts/audit-registre-residus.js --json > /tmp/residus.json || true
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const r = JSON.parse(fs.readFileSync("/tmp/residus.json", "utf8"));
+            const l = ["## Résidus (registre structuré)", ""];
+            if (r.ok === false && r.erreurs) l.push("⚠️ registre invalide : " + r.erreurs.join(" ; "));
+            else {
+              l.push(r.total + " résidus, " + r.ouverts + " ouverts, " + r.traitables.length + " traitables, " + r.non_mesurables.length + " à condition manuelle");
+              for (const x of r.lignes.filter((x) => x.traitable && x.statut !== "ferme")) l.push("- 🟠 " + x.id + " [" + x.gravite + "] " + x.titre + " — " + x.statut + " (" + x.condition.detail + ")");
+              for (const e of r.ecarts) l.push("- ❌ " + e);
+              if (!r.traitables.length && !r.ecarts.length) l.push("Aucun résidu traitable oublié.");
+            }
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, l.join("
+") + "
+");
+          '
+
       - name: Mode PR — on s'arrête là
         if: github.event_name == 'pull_request'
         run: |

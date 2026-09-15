@@ -14,6 +14,14 @@
 > **Les quatre états sont distincts et ne se confondent jamais :**
 > `corrigé dans le code` → `testé sur staging` → `déployé` → `vérifié après déploiement`.
 > Un état non atteint reste écrit tel quel. « non mesuré » signifie qu'aucune preuve n'existe.
+>
+> **Depuis le 2026-09-15 (cinquième contre-revue, mandat §9)** : les RÉSIDUS — ce qui reste ouvert
+> après une correction, avec sa condition de réexamen et ses quatre états — vivent dans UN SEUL
+> registre structuré, `.passio/residus/registre-residus.json`, validé et évalué en CI par
+> `scripts/audit-registre-residus.js` (rouge si un résidu devenu traitable n'est pas réexaminé,
+> ou fermé sans les quatre états) et montré par le pilotage (domaine « résidus » du readiness,
+> `/api/residus`) et par la Sentinelle (résumé de chaque run). Ce fichier-ci reste le journal des
+> CORRECTIONS ; la fiche 23 porte les tableaux A–F de la cinquième contre-revue.
 
 ---
 

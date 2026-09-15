@@ -3,12 +3,13 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import { observationSnapshot } from "./observation.js";
 import { releaseHealth } from "./release-recorder.js";
+import { residusDomaine } from "./residus.js";
 
 const RANG = { vert: 0, inconnu: 1, ambre: 2, rouge: 3 };
 const PIRE = (a, b) => (RANG[b] > RANG[a] ? b : a);
 const observationEtat = (state) => state === "LIVE" ? "vert" : state === "DEGRADED" ? "ambre" : state === "UNAVAILABLE" ? "rouge" : "inconnu";
 
-export function computeReadiness({ overview, checklist = [], bugs = [], authz = null, observation = null, release = null }) {
+export function computeReadiness({ overview, checklist = [], bugs = [], authz = null, observation = null, release = null, residus = null }) {
   const ov = overview || { health: {}, totals: {} };
   const errors5m = ov.health?.errors5m || 0;
   const apiSuccess = ov.totals?.apiSuccessRate ?? null;
@@ -36,6 +37,10 @@ export function computeReadiness({ overview, checklist = [], bugs = [], authz = 
     { cle: "stabilite", label: "Stabilité (erreurs sur 5 min)", critique: true, etat: errors5m === 0 ? "vert" : errors5m < 5 ? "ambre" : "rouge", detail: `${errors5m} erreur(s)` },
     { cle: "release", label: "Release chain (commit → deploy → app → DB)", critique: false, etat: observationEtat(releaseNow.state), detail: releaseNow.detail, meta: releaseNow },
     { cle: "performance", label: "Performance", critique: false, etat: "inconnu", detail: "NON INSTRUMENTÉ — aucune mesure p50/p95 d'interaction" },
+    // Registre structuré des résidus (cinquième contre-revue Astra, §9) : ambre
+    // dès qu'un résidu est traitable, rouge si le registre contredit le dépôt.
+    // Non critique : un résidu ouvert n'est pas une panne — mais il se VOIT.
+    { cle: "residus", label: "Résidus (registre structuré)", critique: false, ...residusDomaine(residus), meta: residus },
   ];
 
   let statut = "vert";
