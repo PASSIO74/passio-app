@@ -46,10 +46,21 @@ Tant qu'elle n'est pas déployée, l'app fonctionne quand même : l'appel est be
   quelqu'un d'autre.
 - La clé `service_role` n'existe que dans l'environnement d'exécution de la fonction.
 
+## Ce que la fonction purge, et sur quelle autorité (2026-09-14, revu le 2026-09-15)
+
+`supabase/functions/_shared/purge-compte.js` (le même fichier que `tests/unit/purge-compte.test.mjs` charge) :
+
+1. **Objets Storage par PROPRIÉTÉ** — `objets_stockage_du_compte(uid)` (migration du 2026-09-15, `service_role` seul) rend les objets dont `storage.objects.owner` est le compte, tous seaux. C'est la seule autorité. ⚠️ **ASTRA-11** : la version du 14/09 relevait les pièces jointes dans le CONTENU des messages du compte — un texte que le client écrit — et les supprimait avec la clé admin : un message de A visant le fichier de B faisait supprimer le fichier de B. Reproduit sur le staging le 15/09 avec cette version (fichier de B supprimé, celui de A oublié, `ok:true`), puis corrigé et re-prouvé (fichier de B intact, ceux de A partis, compte supprimé).
+2. **Lignes** des 35 colonnes de `TABLES_COMPTE`, chaque verdict lu.
+3. **Dossiers `<dossier>/<uid>/`** du seau `content` (second filet : le chemin y porte l'uid).
+4. **Relecture** — objets par propriété, puis chaque table : ce qui reste est nommé ; une relecture illisible est un reste. Le compte Auth ne part que si rien ne reste (409 sinon, relançable).
+
+**Fail-closed** : fonction SQL absente (migration non appliquée) → échec `objets:rpc`, compte conservé. Ordre de mise en ligne : la migration D'ABORD, la fonction ensuite.
+
+**Le client ne supprime plus rien avant le verdict** (ASTRA-12) : `doDeleteAccount` (app-02) appelle la fonction et lit `ok`. Le bloc de onze `delete()` par RLS qui la précédait effaçait les messages avant que la fonction ne les lise, et laissait un compte à moitié vidé sur un 409.
+
 ## Limites connues
 
-- Les fichiers Storage (bucket `attachments`, médias des posts) ne sont pas purgés :
-  les chemins ne contiennent pas l'uid de façon fiable. À traiter plus tard
-  (politique de rétention ou job de nettoyage des orphelins).
+- Un objet Storage sans `owner` (déposé par la clé admin, ou antérieur à la plateforme actuelle) n'appartient à personne : il n'est purgé que s'il vit sous un dossier `<dossier>/<uid>/` du seau `content`.
 - `client_errors` est purgée par la fonction (colonne `uid`) — si le schéma
   diffère, le DELETE échoue silencieusement sans bloquer la suppression du compte.

@@ -87,4 +87,25 @@ test.describe("AUTH-05 / SUP-10 — la suppression du compte attend le verdict",
     expect(r.clesPassio).toEqual([]);
     expect(r.toasts.some((t) => /Compte supprimé/.test(t))).toBe(true);
   });
+
+  // ASTRA-12 (2026-09-15) : le client faisait onze `delete()` par RLS — les
+  // messages compris — AVANT d'appeler la fonction, qui ne retrouvait donc plus
+  // les pièces jointes à purger ; et un 409 laissait un compte à moitié vidé.
+  // La purge est serveur : le client n'efface RIEN avant le verdict.
+  test("④ aucune suppression côté client avant le verdict — la purge est serveur", async ({ page }) => {
+    await banc(page);
+    const r = await page.evaluate(async () => {
+      window.__deletes = [];
+      Object.defineProperty(window.supa, "from", { configurable: true, writable: true,
+        value: function (table) { var b = { delete: function () { window.__deletes.push(table); return b; }, eq: function () { return b; },
+          select: function () { return b; }, then: function (a, c) { return Promise.resolve({ data: [], error: null }).then(a, c); } }; return b; } });
+      window.__verdict = () => Promise.resolve({ data: { ok: false, restes: ["conv_messages:from_id=3"] }, error: { message: "409" } });
+      const ok = await doDeleteAccount();
+      return { ok, deletes: window.__deletes.slice(), invocations: window.__invocations.slice() };
+    });
+    expect(r.invocations).toEqual(["delete-account"]);
+    // RÉINJECTION : sur le code du 14/09, deletes = ["posts", "post_likes", …, "blocks"] (15 tables).
+    expect(r.deletes, "le client ne supprime rien lui-même").toEqual([]);
+    expect(r.ok).toBe(false);
+  });
 });

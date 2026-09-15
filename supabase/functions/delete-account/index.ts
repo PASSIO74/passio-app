@@ -62,7 +62,7 @@ Deno.serve(async (req) => {
     return json({ error: "Échec de la suppression du compte : " + delErr.message }, 500);
   }
 
-  return json({ ok: true, piecesJointes: purge.piecesJointes });
+  return json({ ok: true, objets: purge.objets });
 });
 
 function json(body: unknown, status = 200): Response {
