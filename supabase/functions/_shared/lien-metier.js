@@ -135,6 +135,62 @@ async function organisateurDe(admin, eventId) {
 }
 const estOrganisateur = (o, uid) => !!o && (o.author === uid || o.organizer === uid || o.co.includes(uid));
 
+// ⚠️ ASTRA-24 — UNE MENTION SANS DESTINATAIRE N'EST PAS UNE MENTION.
+// La branche « commentaire » n'exigeait QUE ceci : que l'appelant ait commenté
+// récemment la publication `ref_id`. Elle ne regardait JAMAIS `toUserId`. Le
+// commentaire de l'époque le disait lui-même — « le mentionné n'en est pas
+// forcément l'auteur » — sans voir que cela ne laissait plus AUCUNE condition
+// sur le destinataire : n'importe quel compte pouvait être « le mentionné ».
+//
+// ⚠️ ET ÇA REFERMAIT LE TROU QUE LE LIEN MÉTIER VENAIT D'OUVRIR, PAR LA PORTE
+// D'À CÔTÉ. `lienNotification` prend le texte de la ligne `notifications` au
+// lieu du corps de requête ; mais cette ligne, l'appelant l'écrit lui-même
+// (`notifications_insert_own_author` : `from_id = auth.uid()`, non bloqué —
+// mesuré en production le 2026-09-15). Commenter une publication publique,
+// écrire une ligne « mention » vers n'importe qui avec le texte de son choix,
+// invoquer `notify-call` : le texte libre ressortait sur l'écran verrouillé
+// d'un inconnu. Le lien métier est la seule marche qui pouvait l'arrêter.
+//
+// CE QU'ON EXIGE MAINTENANT, et c'est ce que le client prétend faire : que le
+// commentaire mentionne VRAIMENT cette personne. `_notifyCommentMentions`
+// (app-04) cherche `@<nom>` dans le texte ; on cherche le même `@<nom>`, avec
+// la même règle, dans le commentaire réellement écrit. Une mention devient
+// alors un acte PUBLIC et vérifiable, pas une déclaration.
+//
+// ⚠️ LA RÈGLE DE COMPARAISON EST CELLE DU CLIENT, À LA LETTRE (`toLowerCase`,
+// sous-chaîne, pas de normalisation d'accents). En durcir une seule moitié
+// ferait REFUSER des mentions légitimes — une garde qui coupe le service
+// qu'elle protège est un défaut, pas une précaution.
+// ⚠️ `profiles.username` N'A PAS D'INDEX UNIQUE (écrit dans le dépôt) : deux
+// comptes peuvent porter le même nom, et tous deux passeront cette garde. Ce
+// n'est pas un contournement, c'est la sémantique du produit — la mention est
+// ambiguë à l'écriture. Ce qui est fermé, c'est le destinataire ARBITRAIRE.
+function mentionne(texte, nom) {
+  if (typeof texte !== "string" || typeof nom !== "string" || !nom) return false;
+  return texte.toLowerCase().indexOf("@" + nom.toLowerCase()) > -1;
+}
+
+async function mentionDansUnCommentaire(admin, postId, fromUid, toUserId, maintenant, fenetre) {
+  const prof = await unSeul(admin, "profiles", [["id", toUserId]]);
+  if (prof.erreur) return { erreur: "lecture profiles" };
+  const nom = prof.ligne && typeof prof.ligne.username === "string" ? prof.ligne.username.trim() : "";
+  if (!nom) return { erreur: "destinataire sans nom : aucune mention ne peut le désigner" };
+  // ⚠️ ON LIT PLUSIEURS COMMENTAIRES, ET DANS L'ORDRE. `unSeul` fait `.limit(1)`
+  // SANS `order` : quelle ligne revient dépend du plan. Pour une simple
+  // existence c'était sans effet ; ici il faut le commentaire QUI MENTIONNE,
+  // et un appelant qui a commenté deux fois le même fil en aurait été privé au
+  // hasard — une garde intermittente se lit comme une panne.
+  const r = await admin.from("post_comments").select("content, created_at")
+    .eq("post_id", postId).eq("author_id", fromUid)
+    .order("created_at", { ascending: false }).limit(20);
+  if (!r || r.error) return { erreur: "lecture post_comments" };
+  for (const com of r.data || []) {
+    if (!recent(com, "created_at", maintenant, fenetre)) continue;
+    if (mentionne(com.content, nom)) return { ok: true };
+  }
+  return { ok: false };
+}
+
 /**
  * L'événement métier qui justifie une push de genre `kind`, de `fromUid` vers
  * `toUserId`, à propos de `refId`. Rend `{ ok, raison }`.
@@ -153,12 +209,12 @@ export async function lienEvenement(admin, kind, fromUid, toUserId, refId, maint
         if (membre.erreur) return { ok: false, raison: "lecture conv_members" };
         if (msg.ligne && membre.ligne && recent(msg.ligne, "created_at", maintenant, fenetre)) return { ok: true, raison: "" };
         if (k === "mention") {
-          const com = await unSeul(admin, "post_comments", [["post_id", ref], ["author_id", fromUid]]);
-          if (com.erreur) return { ok: false, raison: "lecture post_comments" };
-          if (com.ligne && recent(com.ligne, "created_at", maintenant, fenetre)) return { ok: true, raison: "" };
+          const v = await mentionDansUnCommentaire(admin, ref, fromUid, toUserId, maintenant, fenetre);
+          if (v.erreur) return { ok: false, raison: v.erreur };
+          if (v.ok) return { ok: true, raison: "" };
         }
       }
-      return { ok: false, raison: "aucun message ni commentaire récent de l'appelant lié au destinataire" };
+      return { ok: false, raison: "aucun message ni commentaire récent de l'appelant DÉSIGNANT le destinataire" };
     }
     if (k === "like" || k === "comment") {
       if (!ref) return { ok: false, raison: "ref_id absent" };

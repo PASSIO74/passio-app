@@ -19,16 +19,29 @@ function fauxAdmin(donnees, erreurs = {}, opts = {}) {
   return {
     appels,
     from(table) {
-      let col = null, debut = 0, fin = PAGE - 1, ordreRefuse = null;
+      let col = null, debut = 0, fin = PAGE - 1, ordreRefuse = null, cles = [], veutCompte = false;
       const b = {
-        select() { return b; }, eq(c, v) { col = c; appels.push(table + "." + c + "=" + v); return b; },
-        order(colonne) { if ((opts.sansColonnes || {})[table] && opts.sansColonnes[table].includes(colonne)) ordreRefuse = colonne; return b; },
+        select(_sel, o) { veutCompte = Boolean(o && o.count); return b; },
+        eq(c, v) { col = c; appels.push(table + "." + c + "=" + v); return b; },
+        order(colonne) { cles.push(colonne); if ((opts.sansColonnes || {})[table] && opts.sansColonnes[table].includes(colonne)) ordreRefuse = colonne; return b; },
         range(a, z) { debut = a; fin = z; return b; },
         then(res) {
           if (erreurs[table]) return Promise.resolve({ data: null, error: { message: erreurs[table] } }).then(res);
           if (ordreRefuse) { const c = ordreRefuse; ordreRefuse = null; return Promise.resolve({ data: null, error: { message: "column " + table + "." + c + " does not exist" } }).then(res); }
           const tout = donnees[table + "." + col] || [];
-          return Promise.resolve({ data: tout.slice(debut, fin + 1), error: null }).then(res);
+          // ⚠️ LE FAUX SERVEUR REND UN ORDRE QUI DÉPEND DES CLÉS DEMANDÉES —
+          // c'est tout l'objet d'ASTRA-28. Trier sur `created_at` seul quand les
+          // dates sont égales laisse PostgreSQL libre : le banc modélise ce
+          // désordre par `opts.melange`, appliqué à chaque page. Trier sur
+          // `(created_at, id)` est TOTAL : le mélange n'a plus de prise.
+          let ordonne = tout.slice();
+          const total = cles[cles.length - 1] === "id";
+          if (cles.length) {
+            ordonne.sort((x, y) => { for (const c of cles) { const a = String(x[c] ?? ""), z = String(y[c] ?? ""); if (a !== z) return a < z ? -1 : 1; } return 0; });
+          }
+          if (!total && opts.melange) ordonne = opts.melange(ordonne, debut);
+          const page = ordonne.slice(debut, fin + 1);
+          return Promise.resolve({ data: page, error: null, count: veutCompte ? tout.length : undefined }).then(res);
         },
       };
       return b;
@@ -93,4 +106,77 @@ test("⑥ un export sans manque est dit COMPLET, avec ses comptes", async () => 
   assert.equal(d.bilan.lignes, 2);
   assert.equal(d.bilan.medias, 1);
   assert.deepEqual(d.bilan.erreurs, []);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ASTRA-28 (quatrième contre-revue, 15/09/2026) — L'EXPORT ENCORE FAUSSEMENT
+// COMPLET. Les deux reproductions d'Astra, jouées telles quelles.
+// ═══════════════════════════════════════════════════════════════════════════
+
+test("ASTRA-28 ① 1001 lignes sans created_at NI id : `complet` ne peut plus être vrai", async () => {
+  // Reproduction : `tables_sans_ordre_stable` était CALCULÉ, RAPPORTÉ… et
+  // n'entrait PAS dans `bilan.complet`. Une table paginée au hasard sortait
+  // « complète » — c'est le premier des deux constats.
+  const lignes = Array.from({ length: PAGE + 1 }, (_, i) => ({ v: i }));
+  const admin = fauxAdmin({ "post_likes.user_id": lignes }, {}, { sansColonnes: { post_likes: ["created_at", "id"] } });
+  const d = await exporterCompte(admin, "moi", null);
+  assert.equal(d.tables.post_likes.length, PAGE + 1);
+  assert.deepEqual(d.bilan.tables_sans_ordre_stable, ["post_likes"], "la table est nommée, comme avant");
+  assert.equal(d.bilan.complet, false, "…et elle empêche désormais `complet`");
+  assert.match(d.bilan.raisons_ordre_non_total.post_likes, /aucun ordre/);
+});
+
+test("ASTRA-28 ② deux pages de dates ÉGALES : un identifiant était omis, et `complet` disait vrai", async () => {
+  // La reproduction d'Astra : 1001 lignes de MÊME `created_at`. Trié sur
+  // `created_at` seul, l'ordre entre ex æquo est libre — le faux serveur le
+  // modélise en tournant la page d'un cran, ce que fait un plan qui change.
+  // Résultat mesuré sur le code d'avant : 1001 lignes rendues, 1000 identifiants
+  // distincts — un doublon, donc un OMIS — et `complet: true`.
+  const lignes = Array.from({ length: PAGE + 1 }, (_, i) => ({ id: "l" + String(i).padStart(4, "0"), created_at: "2026-01-01T00:00:00Z" }));
+  // Le désordre entre ex æquo, modélisé fidèlement : le plan choisi pour la
+  // page 1 n'est pas celui de la page 2. Ici, page 2 lit la liste INVERSÉE.
+  const melange = (tout, debut) => (debut === 0 ? tout.slice() : tout.slice().reverse());
+
+  // (a) Le comportement d'AVANT : ordre sur `created_at` SEUL, donc non total.
+  const avant = [];
+  for (let debut = 0; debut < lignes.length; debut += PAGE) {
+    avant.push(...melange(lignes, debut).slice(debut, debut + PAGE));
+  }
+  const distinctsAvant = new Set(avant.map((l) => l.id));
+  assert.equal(avant.length, PAGE + 1, "reproduction : 1001 lignes rendues");
+  assert.equal(distinctsAvant.size, PAGE, "reproduction : 1000 identifiants distincts — un doublon, donc un OMIS");
+  assert.ok(!distinctsAvant.has("l" + String(PAGE).padStart(4, "0")), "reproduction : c'est la dernière ligne qui manque");
+
+  // (b) Le comportement APRÈS : l'ordre `(created_at, id)` est TOTAL, le
+  // mélange n'a plus de prise, et le compte exact du serveur est confronté.
+  const admin = fauxAdmin({ "post_likes.user_id": lignes }, {}, { melange });
+  const d = await exporterCompte(admin, "moi", null);
+  const ids = d.tables.post_likes.map((l) => l.id);
+  assert.equal(ids.length, PAGE + 1, "toutes les lignes sont là");
+  assert.equal(new Set(ids).size, PAGE + 1, "et toutes distinctes — aucun identifiant omis");
+  assert.deepEqual(d.bilan.incoherences_de_pagination, []);
+  assert.deepEqual(d.bilan.tables_sans_ordre_stable, []);
+  assert.equal(d.bilan.complet, true);
+});
+
+test("ASTRA-28 ③ un doublon ou un compte serveur divergent est une INCOHÉRENCE, jamais un export complet", async () => {
+  // Une écriture concurrente pendant l'export : le serveur en annonce plus que
+  // ce qu'on obtient. On ne peut pas jurer avoir tout pris — on le dit.
+  const lignes = Array.from({ length: 3 }, (_, i) => ({ id: "l" + i, created_at: "2026-01-0" + i }));
+  const admin = fauxAdmin({ "post_likes.user_id": lignes });
+  // On truque le compte exact : le serveur annonce 5, on en obtient 3.
+  const vraiFrom = admin.from.bind(admin);
+  admin.from = (t) => { const b = vraiFrom(t); const vraiThen = b.then.bind(b); b.then = (res) => vraiThen((r) => res({ ...r, count: r.count == null ? r.count : 5 })); return b; };
+  const d = await exporterCompte(admin, "moi", null);
+  assert.equal(d.bilan.complet, false);
+  assert.ok(d.bilan.incoherences_de_pagination.some((x) => /annonce 5 ligne\(s\), 3 obtenue\(s\)/.test(x)), JSON.stringify(d.bilan.incoherences_de_pagination));
+});
+
+test("ASTRA-28 ④ une table TRONQUÉE n'est pas déclarée incohérente — elle est déjà dite tronquée", async () => {
+  const beaucoup = Array.from({ length: PLAFOND_PAR_TABLE + 10 }, (_, i) => ({ id: "m" + String(i).padStart(5, "0"), created_at: "2026-01-01" }));
+  const admin = fauxAdmin({ "conv_messages.from_id": beaucoup });
+  const d = await exporterCompte(admin, "moi", null);
+  assert.deepEqual(d.tronquees, ["conv_messages"]);
+  assert.deepEqual(d.bilan.incoherences_de_pagination, [], "le plafond n'est pas une incohérence : il est annoncé");
+  assert.equal(d.bilan.complet, false, "…mais il empêche toujours `complet`");
 });

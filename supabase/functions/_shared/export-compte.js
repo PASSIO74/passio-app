@@ -47,30 +47,77 @@ export const PLAFOND_PAR_TABLE = 5000;
 // aucun — et l'export le dit), la troncature posée dès qu'une page pleine
 // touche le plafond, les erreurs de listing nommées, le listing paginé, et un
 // BILAN en tête du fichier que le client affiche au téléchargement.
-async function lirePage(admin, table, col, uid, ordre, debut) {
-  let q = admin.from(table).select("*").eq(col, uid);
-  if (ordre) q = q.order(ordre, { ascending: true, nullsFirst: true });
+// ⚠️ ASTRA-28 (quatrième contre-revue, 15/09/2026) — L'EXPORT SE DISAIT ENCORE
+// COMPLET SANS ORDRE TOTAL, ET SANS SAVOIR S'IL AVAIT TOUT PRIS.
+//
+// Deux défauts, mesurés :
+//   ① `created_at` SEUL n'est pas un ordre : deux lignes de même date sont
+//      départagées par le plan, pas par la requête. Avec une pagination par
+//      `range()`, deux pages de dates égales rendaient 1 001 lignes dont
+//      1 000 identifiants distincts — un doublon, donc un identifiant OMIS —
+//      et le bilan disait `complet: true` ;
+//   ② `tables_sans_ordre_stable` était CALCULÉ, RAPPORTÉ… et n'entrait PAS
+//      dans `bilan.complet`. Une table lue sans aucun ordre, donc paginée au
+//      hasard, sortait « complète ».
+//
+// LA RÉPONSE : un ORDRE TOTAL (`created_at` PUIS `id`, l'identifiant étant
+// unique), un COMPTE EXACT demandé au serveur, et une détection de doublons.
+// « Autant de lignes que le serveur en annonce, toutes distinctes » est la
+// seule façon honnête de dire qu'on a tout pris. Sans ordre total, on ne le
+// dit pas : la table est nommée et le bilan n'est plus complet.
+// Référence : https://www.postgresql.org/docs/current/queries-limit.html
+async function lirePage(admin, table, col, uid, cles, debut, veutCompte) {
+  let q = admin.from(table).select("*", veutCompte ? { count: "exact" } : undefined).eq(col, uid);
+  for (const c of cles) q = q.order(c, { ascending: true, nullsFirst: true });
   return q.range(debut, debut + PAGE - 1);
+}
+// Les clés d'ordre, de la plus complète à la moins : on DESCEND d'un cran quand
+// une colonne n'existe pas, et on relit la MÊME page — jamais une page sautée,
+// jamais un ordre changé en route.
+const ECHELLE_ORDRE = [["created_at", "id"], ["id"], []];
+function colonneAbsente(message, cles) {
+  const m = String(message || "");
+  return cles.some((c) => c && new RegExp("\\b" + c + "\\b").test(m)) && /does not exist|unknown|could not find/i.test(m);
 }
 async function lireTable(admin, table, col, uid) {
   const lignes = [];
-  let ordre = "created_at";
+  let niveau = 0;
   let debut = 0;
+  let attendu = null;
+  const vus = new Set();
+  let doublons = 0;
   for (;;) {
-    let r = await lirePage(admin, table, col, uid, ordre, debut);
-    // Colonne d'ordre absente : on descend d'un cran (`id`, puis aucun) et on
-    // relit la MÊME page — jamais une page sautée, jamais un ordre changé en route.
-    while (r.error && ordre && new RegExp(ordre).test(String(r.error.message || ""))) {
-      ordre = ordre === "created_at" ? "id" : null;
-      r = await lirePage(admin, table, col, uid, ordre, debut);
+    let r = await lirePage(admin, table, col, uid, ECHELLE_ORDRE[niveau], debut, debut === 0);
+    while (r.error && niveau < ECHELLE_ORDRE.length - 1 && colonneAbsente(r.error.message, ECHELLE_ORDRE[niveau])) {
+      niveau++;
+      r = await lirePage(admin, table, col, uid, ECHELLE_ORDRE[niveau], debut, debut === 0);
     }
-    if (r.error) return { lignes, erreur: r.error.message, tronque: false, ordre };
+    const ordre = ECHELLE_ORDRE[niveau].join(",") || null;
+    // ⚠️ « TOTAL » veut dire « sans ex æquo possible » : seul un ordre qui se
+    // termine par l'identifiant unique l'est. `created_at` seul ne l'est pas.
+    const ordreTotal = ECHELLE_ORDRE[niveau][ECHELLE_ORDRE[niveau].length - 1] === "id";
+    if (r.error) return { lignes, erreur: r.error.message, tronque: false, ordre, ordreTotal, attendu, doublons, incoherence: null };
+    if (debut === 0 && typeof r.count === "number") attendu = r.count;
     const page = r.data || [];
-    lignes.push(...page);
-    if (page.length < PAGE) return { lignes, erreur: null, tronque: false, ordre };
+    for (const l of page) {
+      const cle = l && l.id != null ? String(l.id) : null;
+      if (cle !== null) { if (vus.has(cle)) doublons++; else vus.add(cle); }
+      lignes.push(l);
+    }
+    const fini = page.length < PAGE;
+    const plafond = lignes.length >= PLAFOND_PAR_TABLE;
+    if (fini || plafond) {
+      const gardees = plafond ? lignes.slice(0, PLAFOND_PAR_TABLE) : lignes;
+      // ⚠️ LA SEULE PREUVE D'EXHAUSTIVITÉ QU'ON PUISSE DONNER : autant de lignes
+      // que le serveur en annonce, et toutes distinctes. Une différence peut
+      // venir d'une écriture concurrente ; elle reste une INCOHÉRENCE, pas un
+      // détail — on ne peut pas jurer avoir tout pris.
+      let incoherence = null;
+      if (doublons) incoherence = doublons + " ligne(s) rendue(s) deux fois — pagination instable";
+      else if (!plafond && attendu != null && gardees.length !== attendu) incoherence = "le serveur annonce " + attendu + " ligne(s), " + gardees.length + " obtenue(s)";
+      return { lignes: gardees, erreur: null, tronque: plafond, ordre, ordreTotal, attendu, doublons, incoherence };
+    }
     debut += PAGE;
-    // Une page PLEINE qui atteint le plafond : il en reste peut-être — tronqué.
-    if (lignes.length >= PLAFOND_PAR_TABLE) return { lignes: lignes.slice(0, PLAFOND_PAR_TABLE), erreur: null, tronque: true, ordre };
   }
 }
 
@@ -97,13 +144,23 @@ export async function exporterCompte(admin, uid, identite) {
   const erreurs = [];
   const tronquees = [];
   const sansOrdre = [];
+  const incoherences = [];
+  const raisonsOrdre = {};
   for (const [table, col] of tablesExport()) {
-    const { lignes, erreur, tronque, ordre } = await lireTable(admin, table, col, uid);
+    const { lignes, erreur, tronque, ordre, ordreTotal, incoherence } = await lireTable(admin, table, col, uid);
     if (erreur) { erreurs.push(table + "." + col + " : " + erreur); continue; }
     const cle = table + (col === "id" || col === "user_id" || col === "author_id" || col === "from_id" || col === "follower_id" || col === "blocker_id" ? "" : " (" + col + ")");
     tables[cle] = (tables[cle] || []).concat(lignes);
     if (tronque) tronquees.push(cle);
-    if (!ordre && lignes.length >= PAGE) sansOrdre.push(cle);
+    // ⚠️ ASTRA-28 : « sans ordre STABLE » veut dire « sans ordre TOTAL ». Une
+    // table lue sur `created_at` seul est ordonnée et pourtant paginée au
+    // hasard dès qu'il y a des ex æquo : elle compte ici, comme celle qui n'a
+    // aucun ordre. Et ce n'est signalé que si la pagination a réellement eu
+    // lieu (une seule page ne peut pas se mélanger).
+    // Le NOM de la table reste nu — c'est ce que le client affiche et ce que
+    // les verrous comparent ; la raison vit à côté, elle ne le pollue pas.
+    if (!ordreTotal && lignes.length >= PAGE) { sansOrdre.push(cle); raisonsOrdre[cle] = ordre ? "ordre « " + ordre + " », non total (ex æquo possibles)" : "aucun ordre"; }
+    if (incoherence) incoherences.push(cle + " : " + incoherence);
   }
   const medias = [];
   for (const dossier of DOSSIERS_CONTENU) {
@@ -117,12 +174,17 @@ export async function exporterCompte(admin, uid, identite) {
   }
   // Le BILAN, en tête : complet ou non, et pourquoi. Le client l'affiche.
   const bilan = {
-    complet: erreurs.length === 0 && tronquees.length === 0,
+    // ⚠️ ASTRA-28 : `tables_sans_ordre_stable` était calculé, rapporté… et
+    // n'entrait PAS dans `complet`. Une table paginée au hasard sortait donc
+    // « complète ». Un état non vérifié n'est jamais annoncé complet.
+    complet: erreurs.length === 0 && tronquees.length === 0 && sansOrdre.length === 0 && incoherences.length === 0,
     tables_exportees: Object.keys(tables).length,
     lignes: Object.values(tables).reduce((n, l) => n + l.length, 0),
     medias: medias.length,
     tables_tronquees: tronquees.slice(),
     tables_sans_ordre_stable: sansOrdre.slice(),
+    incoherences_de_pagination: incoherences.slice(),
+    raisons_ordre_non_total: { ...raisonsOrdre },
     erreurs: erreurs.slice(),
     plafond_par_table: PLAFOND_PAR_TABLE,
   };

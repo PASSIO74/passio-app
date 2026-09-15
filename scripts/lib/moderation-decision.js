@@ -114,4 +114,49 @@ function statutApresAction(action) {
   return action === "rejet" ? "dismissed" : "handled";
 }
 
-module.exports = { planRetrait, planSuspension, planLevee, texteSuspension, notificationPourCible, texteDecision, notificationPourSignalant, statutApresAction, SUSPENSION_JOURS_MAX };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ASTRA-38 (quatrième contre-revue, 15/09/2026) — « SUSPENSION LEVÉE » ÉTAIT
+// ANNONCÉ SANS QUE LA RELECTURE AIT PU DIRE QUOI QUE CE SOIT.
+//
+// `lever` relisait le compte par
+//     .then((x) => x.json()).catch(() => null)
+// puis
+//     const encore = relu && relu.banned_until && …futur ;
+//     if (encore) sortir(…) ;   // sinon : « ✅ suspension levée »
+// Trois chemins menaient donc au succès SANS AUCUNE PREUVE :
+//   · une erreur réseau → `relu = null` → `encore` faux → succès annoncé ;
+//   · un HTTP 403/500 avec un corps JSON d'erreur → pas de `banned_until` →
+//     `encore` faux → succès annoncé (`r.ok` n'était jamais lu) ;
+//   · une réponse portant un AUTRE compte → jamais comparée à `uid`.
+// `suspendre` relisait de la même façon, mais dans le sens INVERSE (`if (!banni)
+// sortir(…)`), donc une relecture illisible y échouait FERMÉ — par direction,
+// pas par contrôle. Les deux passent désormais par la même décision.
+//
+// LA RÈGLE : une modification n'est « vérifiée » que si la bonne réponse, pour
+// le BON compte, dit l'état attendu. Sinon c'est « NON VÉRIFIÉE » — ni un
+// succès, ni nécessairement un échec : un état qu'on ne connaît pas, et qui
+// doit être dit tel quel, y compris au journal.
+// ═══════════════════════════════════════════════════════════════════════════
+function verdictRelectureSuspension(reponse, uid, attendu, maintenant) {
+  const t = maintenant instanceof Date ? maintenant.getTime() : Number(maintenant || Date.now());
+  if (!reponse || typeof reponse !== "object") return { verifie: false, motif: "aucune réponse à la relecture (réseau ?)" };
+  if (reponse.reseau) return { verifie: false, motif: "relecture impossible : " + String(reponse.reseau).slice(0, 160) };
+  if (!reponse.ok) return { verifie: false, motif: "relecture refusée : HTTP " + reponse.status };
+  const c = reponse.corps;
+  if (c === null || typeof c !== "object" || Array.isArray(c)) return { verifie: false, motif: "relecture illisible : corps inattendu" };
+  // ⚠️ LA BONNE RÉPONSE POUR LE BON COMPTE. Sans ce contrôle, la réponse d'un
+  // autre compte — ou un corps d'erreur JSON qui porte un `id` — vaudrait preuve.
+  if (!c.id) return { verifie: false, motif: "relecture illisible : aucun `id` dans la réponse" };
+  if (String(c.id) !== String(uid)) return { verifie: false, motif: "relecture d'un AUTRE compte (" + String(c.id).slice(0, 8) + "… ≠ " + String(uid).slice(0, 8) + "…)" };
+  const b = c.banned_until ? Date.parse(c.banned_until) : NaN;
+  const suspendu = Number.isFinite(b) && b > t;
+  if (attendu === "suspendu") {
+    return suspendu ? { verifie: true, conforme: true, jusqu: c.banned_until }
+                    : { verifie: true, conforme: false, motif: "`banned_until` n'est pas posé (" + String(c.banned_until) + ") — le compte n'est PAS suspendu" };
+  }
+  return suspendu ? { verifie: true, conforme: false, motif: "`banned_until` = " + c.banned_until + ", la suspension tient encore", jusqu: c.banned_until }
+                  : { verifie: true, conforme: true, jusqu: null };
+}
+
+module.exports = { verdictRelectureSuspension, planRetrait, planSuspension, planLevee, texteSuspension, notificationPourCible, texteDecision, notificationPourSignalant, statutApresAction, SUSPENSION_JOURS_MAX };

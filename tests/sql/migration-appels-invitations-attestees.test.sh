@@ -140,7 +140,13 @@ AUTH "$A" "update public.call_invites set repete_le = now() where id = 'call_ab_
 verifier "répétition (UPDATE repete_le) : seconde sonnerie" "2" "$(Q "select count(*) from realtime.envois where topic = 'ring:$B';")"
 contient "déplacer l'invitation vers C : refusé (identifiants figés)" "figés" "$(AUTH_OK "$A" "update public.call_invites set to_id = '$C' where id = 'call_ab_000001';")"
 contient "un client n'émet plus sur ring:<B>" "row-level security" "$(RT_OK "$A" "ring:$B" "insert into realtime.messages (topic, extension, payload) values ('ring:$B', 'broadcast', '$PAYLOAD_A');")"
-verifier "un client émet toujours sur call: (SDP, ICE)" "OK" "$(RT_OK "$A" "call:8f1c" "insert into realtime.messages (topic, extension) values ('call:8f1c', 'broadcast');")"
+# ⚠️ CE CONTRÔLE MESURE UN RÉSIDU, PAS UNE PROPRIÉTÉ VOULUE. À ce stade
+# `call:%` est encore ouvert à TOUT compte, y compris un tiers étranger à
+# l'appel (ASTRA-23) : ce qui est exigé ici, c'est seulement que CETTE
+# migration ne l'ait pas cassé. La fermeture est le lot suivant,
+# `migration_canal_appel_lie_2026-09-15.sql`, et son banc mesure le défaut
+# avant de le refermer. Ne pas relire cette ligne comme « c'est normal ».
+verifier "résidu ASTRA-23 : call: reste ouvert à tout compte après CETTE migration" "OK" "$(RT_OK "$A" "call:8f1c" "insert into realtime.messages (topic, extension) values ('call:8f1c', 'broadcast');")"
 verifier "chacun lit ses invitations : A et B la voient, C non" "1|1|0" "$(AUTH "$A" "select count(*) from public.call_invites;" | tail -1)|$(AUTH "$B" "select count(*) from public.call_invites;" | tail -1)|$(AUTH "$C" "select count(*) from public.call_invites;" | tail -1)"
 verifier "anon : aucun droit sur call_invites" "f" "$(Q "select has_table_privilege('anon', 'public.call_invites', 'SELECT');")"
 contient "un genre inconnu est refusé" "call_invites_kind_check" "$(AUTH_OK "$A" "insert into public.call_invites (id, from_id, to_id, kind) values ('call_ab_000002', '$A', '$B', 'holo');")"
