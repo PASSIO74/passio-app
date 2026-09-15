@@ -4767,23 +4767,23 @@ async function _forwardTo(targetConvId) {
     // Le transfert n'avait simplement jamais reçu ce traitement.
     // ⚠️ MÊME DÉFAUT QUE `_sendTextToSupa`, MÊME REMÈDE (ASTRA-21) : l'auteur du
     // transfert est capturé ICI, pas relu dans la continuation.
-    var auteurTransfert = _fileProprietaire();
+    var auteurTransfert = (typeof MY_UID !== "undefined" ? MY_UID : null);
     var genTransfert = _outboxGenerationActuelle();
     if (!auteurTransfert) { _setMsgStatus(targetConvId, localMsg.id, "failed"); }
     else try {
       supa.from("conv_messages")
         .insert({ id: localMsg.id, conv_id: targetConvId, from_id: auteurTransfert, content: payload, created_at: new Date().toISOString() })
         .then(function (res) {
-          if (genTransfert !== _outboxGenerationActuelle() || _fileProprietaire() !== auteurTransfert) { _setMsgStatus(targetConvId, localMsg.id, "failed"); return; }
-          if (res && res.error) { _setMsgStatus(targetConvId, localMsg.id, "failed"); _outboxAdd(targetConvId, localMsg.id, payload, auteurTransfert); }
+          if (genTransfert !== _outboxGenerationActuelle() || (typeof MY_UID !== "undefined" ? MY_UID : null) !== auteurTransfert) { _setMsgStatus(targetConvId, localMsg.id, "failed"); return; }
+          if (res && res.error) { _setMsgStatus(targetConvId, localMsg.id, "failed"); _outboxAdd(targetConvId, localMsg.id, payload, _estCompteReel(auteurTransfert) ? auteurTransfert : null); }
           else { _setMsgStatus(targetConvId, localMsg.id, "sent"); _outboxRemove(localMsg.id); }
         })
         .catch(function () {
-          if (genTransfert !== _outboxGenerationActuelle() || _fileProprietaire() !== auteurTransfert) { _setMsgStatus(targetConvId, localMsg.id, "failed"); return; }
-          _setMsgStatus(targetConvId, localMsg.id, "failed"); _outboxAdd(targetConvId, localMsg.id, payload, auteurTransfert);
+          if (genTransfert !== _outboxGenerationActuelle() || (typeof MY_UID !== "undefined" ? MY_UID : null) !== auteurTransfert) { _setMsgStatus(targetConvId, localMsg.id, "failed"); return; }
+          _setMsgStatus(targetConvId, localMsg.id, "failed"); _outboxAdd(targetConvId, localMsg.id, payload, _estCompteReel(auteurTransfert) ? auteurTransfert : null);
         });
     } catch (e) {
-      _setMsgStatus(targetConvId, localMsg.id, "failed"); _outboxAdd(targetConvId, localMsg.id, payload, auteurTransfert);
+      _setMsgStatus(targetConvId, localMsg.id, "failed"); _outboxAdd(targetConvId, localMsg.id, payload, _estCompteReel(auteurTransfert) ? auteurTransfert : null);
     }
   }
   try { renderMessages(); } catch(e) {}
@@ -5154,11 +5154,13 @@ function _outboxVerdict(item, moi) {
 // L'auteur est donc capturé À L'ORIGINE de l'envoi et porté jusqu'au bout.
 // Sans propriétaire, on n'écrit RIEN en file : une entrée qui ne sait pas à qui
 // elle appartient est exactement ce qu'AUTH-06 refuse de rejouer.
+// ⚠️ `owner` PEUT ÊTRE `null`, et c'est VOULU : c'est ce que `_fileProprietaire()`
+// rendait déjà pour un visiteur (pas d'uuid d'auth). Une entrée sans
+// propriétaire est stockée puis JETÉE au rejeu par `_outboxVerdict` — refuser
+// de la stocker ici changerait le comportement hors ligne d'un visiteur, qui
+// n'a rien à voir avec ASTRA-21. Ce qui compte, c'est que `owner` soit celui
+// capturé À L'ORIGINE, jamais relu dans la continuation.
 function _outboxAdd(convId, msgId, content, owner) {
-  if (!owner) {
-    try { if (typeof diagLog === "function") diagLog("msg_outbox_sans_auteur " + String(msgId)); } catch (e) {}
-    return;
-  }
   // ⚠️ LA GÉNÉRATION : une purge (déconnexion, adoption d'un compte) invalide
   // tout ce qui était en vol. Une continuation née avant la purge ne doit pas
   // ressusciter une file que l'on vient de vider — c'est le second volet du
@@ -5291,16 +5293,30 @@ function _msgEstEnVol(msgId) { return _msgEnVol[msgId] === true; }
 // jusqu'au bout — réponse, rejet, réparation 403 comprise. Les appelants n'ont
 // rien à passer : le premier appel les prend. Ce sont les RÉCURSIONS et les
 // continuations qui les réutilisent, et c'est tout l'objet du correctif.
+// ⚠️ DEUX IDENTITÉS, ET LES CONFONDRE CASSE LE PRODUIT. Une première rédaction
+// prenait `_fileProprietaire()` comme auteur d'écriture : elle exigeait donc un
+// uuid d'AUTH pour envoyer quoi que ce soit, alors que `MY_UID` peut être le
+// `u_<aléatoire>` d'un visiteur. Mesuré en CI : 9 verrous rouges sur quatre
+// suites, toutes avec la même signature — « 0 écriture là où 1 ou 2 étaient
+// attendues ». Le produit n'émettait plus rien.
+//   · l'identité d'ÉCRITURE est `MY_UID` — c'est elle qui part en `from_id`,
+//     et le serveur tranche (la RLS refusera un placeholder) ;
+//   · le PROPRIÉTAIRE DE LA FILE est le compte RÉEL, ou `null` (AUTH-06).
+// ASTRA-21 ne demande pas de durcir qui peut écrire : il demande que ce qui est
+// écrit le soit sous l'identité qui a COMPOSÉ le texte.
+function _estCompteReel(uid) {
+  try { return typeof uid === "string" && typeof RE_UID_COMPTE !== "undefined" && RE_UID_COMPTE.test(uid); }
+  catch (e) { return false; }
+}
 function _sendTextToSupa(convId, msgId, content, auteur, generation) {
-  var moi = auteur || _fileProprietaire();
+  var moi = auteur || (typeof MY_UID !== "undefined" ? MY_UID : null);
   var gen = generation || _outboxGenerationActuelle();
-  // Sans auteur identifiable, on n'écrit ni en base ni en file : un message qui
-  // ne sait pas qui l'a écrit ne peut pas être envoyé « au nom de quelqu'un ».
+  // Sans identité du tout, on n'écrit ni en base ni en file.
   if (!moi) { _setMsgStatus(convId, msgId, "failed"); return; }
-  // ⚠️ LA GARDE QUI MANQUAIT. L'auteur capturé doit ÊTRE le compte courant au
+  // ⚠️ LA GARDE QUI MANQUAIT. L'auteur capturé doit ÊTRE l'identité courante au
   // moment où l'on écrit. Sinon on n'insère pas, on ne met pas en file, et on
   // laisse le message en échec à l'écran : son auteur le renverra lui-même.
-  var courant = _fileProprietaire();
+  var courant = (typeof MY_UID !== "undefined" ? MY_UID : null);
   if (courant !== moi) {
     _setMsgStatus(convId, msgId, "failed");
     try { if (typeof diagLog === "function") diagLog("msg_auteur_diverge " + String(msgId)); } catch (e) {}
@@ -5312,10 +5328,10 @@ function _sendTextToSupa(convId, msgId, content, auteur, generation) {
     return;
   }
   if (typeof supa === "undefined" || !supa || typeof MY_UID === "undefined" || !MY_UID || !window._supaReal) {
-    _setMsgStatus(convId, msgId, "failed"); _outboxAdd(convId, msgId, content, moi); return;
+    _setMsgStatus(convId, msgId, "failed"); _outboxAdd(convId, msgId, content, _estCompteReel(moi) ? moi : null); return;
   }
   if (navigator && navigator.onLine === false) {
-    _setMsgStatus(convId, msgId, "failed"); _outboxAdd(convId, msgId, content, moi); return;
+    _setMsgStatus(convId, msgId, "failed"); _outboxAdd(convId, msgId, content, _estCompteReel(moi) ? moi : null); return;
   }
   if (_msgEstEnVol(msgId)) return;
   _msgEnVol[msgId] = true;
@@ -5329,7 +5345,7 @@ function _sendTextToSupa(convId, msgId, content, auteur, generation) {
       // ⚠️ UNE PURGE PENDANT LE VOL PÉRIME CETTE RÉPONSE. Sans cette sortie, un
       // 503 revenu après une déconnexion remettait le texte en file — c'est le
       // « la réponse tardive repeuple la file purgée » d'ASTRA-21.
-      if (gen !== _outboxGenerationActuelle() || _fileProprietaire() !== moi) {
+      if (gen !== _outboxGenerationActuelle() || (typeof MY_UID !== "undefined" ? MY_UID : null) !== moi) {
         _setMsgStatus(convId, msgId, "failed");
         try { if (typeof diagLog === "function") diagLog("msg_reponse_perimee " + String(msgId)); } catch (e) {}
         return;
@@ -5358,7 +5374,7 @@ function _sendTextToSupa(convId, msgId, content, auteur, generation) {
           // — c'est exactement ce qui a permis six jours de refus silencieux.
           try { if (typeof diagLog === "function") diagLog("msg_refus_definitif " + String((res.error && res.error.code) || res.status || "?")); } catch (e) {}
         } else {
-          _outboxAdd(convId, msgId, content, moi);
+          _outboxAdd(convId, msgId, content, _estCompteReel(moi) ? moi : null);
         }
       }
       else {
@@ -5376,7 +5392,7 @@ function _sendTextToSupa(convId, msgId, content, auteur, generation) {
         try { if (typeof _notifierMessage === "function") _notifierMessage(convId, msgId); } catch (e) {}
       }
     })
-    .catch(function() { delete _msgEnVol[msgId]; _setMsgStatus(convId, msgId, "failed"); _outboxAdd(convId, msgId, content, moi); });
+    .catch(function() { delete _msgEnVol[msgId]; _setMsgStatus(convId, msgId, "failed"); _outboxAdd(convId, msgId, content, _estCompteReel(moi) ? moi : null); });
 }
 
 // Renvoi manuel d'un message en échec.
