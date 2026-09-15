@@ -31,18 +31,24 @@
   var TELEMETRY_DEFAULT_ON = (window.PASSIO_TELEMETRY_DEFAULT_ON !== false); // false = opt-in strict
   var TELEMETRY_SAMPLE = (typeof window.PASSIO_TELEMETRY_SAMPLE === "number") ? window.PASSIO_TELEMETRY_SAMPLE : 1;
 
-  function _deviceIdRaw() {
+  // ⚠️ AUTH-04 / EXP-15 (contre-revue Astra, 2026-09-15) : l'identifiant d'appareil
+  // n'est CRÉÉ que si la mesure est active, et il TOMBE avec l'opposition — la
+  // politique le promet (« il tombe avec l'opposition »), le code ne le faisait
+  // pas : il naissait avant le garde et survivait au refus. Sans mesure, aucune
+  // clé n'est écrite ; `creer` n'est vrai qu'une fois `ENABLED` connu.
+  function _deviceIdRaw(creer) {
     try {
       var d = localStorage.getItem("passio_device_id");
-      if (!d) { d = "dev_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 18); localStorage.setItem("passio_device_id", d); }
-      return d;
+      if (!d && creer) { d = "dev_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 18); localStorage.setItem("passio_device_id", d); }
+      return d || "dev_ephemere";
     } catch (e) { return "dev_ephemere"; }
   }
+  function _oublierDeviceId() { try { localStorage.removeItem("passio_device_id"); } catch (e) {} }
   // Décision d'échantillonnage STABLE par appareil (toujours dedans ou dehors).
   function _sampledIn(frac) {
     if (frac >= 1) return true;
     if (frac <= 0) return false;
-    var d = _deviceIdRaw(), h = 0;
+    var d = _deviceIdRaw(true), h = 0;
     for (var i = 0; i < d.length; i++) h = (h * 31 + d.charCodeAt(i)) >>> 0;
     return (h % 10000) / 10000 < frac;
   }
@@ -115,7 +121,13 @@
     for (var i = 0; i < 16; i++) s += a[(Math.random() * a.length) | 0];
     return Date.now().toString(36) + "-" + s;
   }
-  var DEVICE_ID = _deviceIdRaw();
+  // Mesure REFUSÉE (« 0 ») : aucun identifiant n'est posé, et un ancien est effacé.
+  // Hors échantillon sans refus : l'identifiant reste (c'est lui qui rend la
+  // décision d'échantillonnage stable) — la politique promet sa disparition à
+  // l'OPPOSITION, pas à la non-sélection.
+  var REFUSE = false; try { REFUSE = localStorage.getItem("passio_telemetry") === "0"; } catch (e) {}
+  if (REFUSE) _oublierDeviceId();
+  var DEVICE_ID = ENABLED ? _deviceIdRaw(true) : "dev_opposition";
   var SESSION_ID = "s_" + uid16();       // une session logique par onglet/chargement
   var ENV = detectEnv();
   var PLATFORM = detectPlatform();
@@ -707,6 +719,9 @@
       ENABLED = !!on;
       // Persiste le choix : "1" = capture, "0" = opt-out durable (respecté aux prochains chargements).
       try { localStorage.setItem("passio_telemetry", on ? "1" : "0"); } catch (e) {}
+      // AUTH-04 : l'opposition emporte l'identifiant d'appareil ; la reprise en pose un NEUF.
+      if (!on) { _oublierDeviceId(); DEVICE_ID = "dev_opposition"; }
+      else DEVICE_ID = _deviceIdRaw(true);
     },
     flush: flush,
   };
