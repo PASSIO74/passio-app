@@ -105,7 +105,14 @@ jobs:
         if: steps.gate.outputs.active == 'true'
         continue-on-error: true
         env:
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # ⚠️ TCI-16 (2026-09-14) : le canari crée ses deux comptes jetables sur
+          # le STAGING, plus sur la production (`docs/STAGING.md`). Il mesure que
+          # la chaîne d'autorisation tient sur une base de même structure ; la
+          # production, elle, est éprouvée à chaque déploiement par deploy.yml.
+          PASSIO_SUPABASE_URL: ${{ vars.STAGING_SUPABASE_URL }}
+          PASSIO_SUPABASE_ANON: ${{ vars.STAGING_SUPABASE_ANON }}
+          SUPABASE_URL: ${{ vars.STAGING_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.STAGING_SERVICE_ROLE_KEY }}
           # ⚠️ SANS CE MARQUEUR, LES COMPTES DU CANARI NE SONT PLUS PURGÉS.
           # `global-teardown` se contentait de tester la présence de `CI` ; depuis
           # le découpage en projets (2026-09-02) il exige `PASSIO_E2E_PROD`, que

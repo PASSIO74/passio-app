@@ -499,10 +499,29 @@ jobs:
       # dépendance transitive compromise suffisait alors à lire
       # `process.env.SUPABASE_SERVICE_ROLE_KEY` et à l'exfiltrer, job vert et sans
       # trace — or cette clé contourne INTÉGRALEMENT la RLS de la prod.
-      - name: Suites production (RLS, comptes, blocage)
+      # ⚠️ SUP-04 / TCI-04 (2026-09-14) : LES SUITES À COMPTES RÉELS TOURNENT SUR LE
+      # STAGING, plus sur la production. Le client vise le projet posé par
+      # PASSIO_SUPABASE_URL/ANON (`tests/e2e/cible-supabase.js` → app-08), et la
+      # clé de service est celle du STAGING : plus une seule écriture, plus un
+      # seul compte jetable en production depuis ce job. Le staging porte la même
+      # structure (`docs/STAGING.md`) et aucune donnée personnelle.
+      - name: Suites à comptes réels — sur le STAGING
+        env:
+          PASSIO_SUPABASE_URL: ${{ vars.STAGING_SUPABASE_URL }}
+          PASSIO_SUPABASE_ANON: ${{ vars.STAGING_SUPABASE_ANON }}
+          SUPABASE_URL: ${{ vars.STAGING_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.STAGING_SERVICE_ROLE_KEY }}
+        run: npx playwright test --project=prod
+
+      # ⚠️ ET LA BARRIÈRE DE LA PRODUCTION RESTE LA PRODUCTION : `authz-critical`
+      # seule, une fois par déploiement — c'est ELLE qui dit si la base qu'on va
+      # servir est fermée (une migration appliquée en prod et pas sur le staging
+      # ne se verrait pas autrement). Deux comptes jetables, purgés par le
+      # teardown, par déploiement : c'est l'exception assumée, pas 48 par jour.
+      - name: Barrière RLS de la production (authz-critical seule)
         env:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: npx playwright test --project=prod
+        run: npx playwright test tests/e2e/authz-critical.spec.js --project=prod
 
       # Mesure de la dette de classement des passions. LECTURE SEULE (requêtes
       # HEAD de comptage), sortie strictement agrégée : aucun identifiant de
