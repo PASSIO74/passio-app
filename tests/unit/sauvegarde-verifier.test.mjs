@@ -132,3 +132,76 @@ test("⑨ une archive avec un compte suspendu le SIGNALE", () => {
   assert.equal(r.code, 0, r.sortie);
   assert.match(r.sortie, /1 compte\(s\) SUSPENDU\(S\)/);
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CINQUIÈME CONTRE-REVUE (15/09/2026) — ASTRA-45 / 48 / 55 sur le VRAI vérificateur.
+// ═══════════════════════════════════════════════════════════════════════════
+const MD5_VIDE = "d41d8cd98f00b204e9800998ecf8427e";
+function avecMedias(d, opts = {}) {
+  // Un média vide dans `content/photos/u/a.jpg`, un index et un inventaire.
+  const base = path.join(d, "_storage", "content", "photos", "u");
+  fs.mkdirSync(base, { recursive: true });
+  if (!opts.sansFichier) fs.writeFileSync(path.join(base, "a.jpg"), "");
+  const index = { format: "passio-index-medias/1", total: 1, objets: { "content/photos/u/a.jpg": { taille: 0, md5: MD5_VIDE } } };
+  const texteIndex = JSON.stringify(index);
+  if (!opts.sansIndex) fs.writeFileSync(path.join(d, "_storage_index.json"), texteIndex);
+  const man = JSON.parse(fs.readFileSync(path.join(d, "manifeste.json"), "utf8"));
+  man.medias = { fichiers: 1, octets: 0, echecs: 0, index_sha256: createHash("sha256").update(texteIndex, "utf8").digest("hex"), proprietaires_lus: opts.proprietairesLus === undefined ? 1 : opts.proprietairesLus };
+  man.comptes = 0;
+  fs.writeFileSync(path.join(d, "_auth_users.ndjson"), "");
+  if (opts.proprietaires !== null) {
+    const texte = opts.proprietaires !== undefined ? opts.proprietaires
+      : JSON.stringify({ format: "passio-proprietaires/1", total: 1, objets: { "content/photos/u/a.jpg": { owner: "u", owner_id: "u" } } });
+    fs.writeFileSync(path.join(d, "_storage_proprietaires.json"), texte);
+    if (opts.proprietaires === undefined) man.medias.proprietaires_sha256 = createHash("sha256").update(texte, "utf8").digest("hex");
+  }
+  fs.writeFileSync(path.join(d, "manifeste.json"), JSON.stringify(man));
+  return d;
+}
+
+test("ASTRA-45 ② REPRODUCTION : proprietaires_lus:null, fichier owners absent → « COMPLÈTE », code 0 (avant) ; désormais PARTIELLE", () => {
+  const r = verifier(avecMedias(archive([{ id: "a" }], 1), { proprietaires: null, proprietairesLus: null }));
+  assert.match(r.sortie, /Nature : archive PARTIELLE/, r.sortie);
+  assert.match(r.sortie, /SANS inventaire complet des propriétaires/);
+  assert.doesNotMatch(r.sortie, /archive COMPLÈTE/);
+});
+
+test("ASTRA-45 ③ un inventaire qui ne relève pas un objet archivé : anomalie, code 1", () => {
+  const texte = JSON.stringify({ format: "passio-proprietaires/1", total: 0, objets: {} });
+  const r = verifier(avecMedias(archive([{ id: "a" }], 1), { proprietaires: texte }));
+  assert.equal(r.code, 1, r.sortie);
+  assert.match(r.sortie, /1 objet\(s\) archivé\(s\) NON RELEVÉ\(S\)/);
+});
+
+test("ASTRA-48 ③ REPRODUCTION : un fichier owners tronqué → « archive COMPLÈTE », code 0 (avant) ; désormais INDÉTERMINÉ, code 1", () => {
+  const r = verifier(avecMedias(archive([{ id: "a" }], 1), { proprietaires: '{"content/photos/u/a.jpg": {"owner": "u", "ow' }));
+  assert.equal(r.code, 1, r.sortie);
+  assert.match(r.sortie, /_storage_proprietaires\.json : JSON illisible[\s\S]*INDÉTERMINÉ/);
+});
+
+test("ASTRA-48 ④ un inventaire dont l'empreinte diverge du manifeste est refusé", () => {
+  const d = avecMedias(archive([{ id: "a" }], 1));
+  // On remplace l'inventaire par un autre, valide mais étranger.
+  fs.writeFileSync(path.join(d, "_storage_proprietaires.json"), JSON.stringify({ format: "passio-proprietaires/1", total: 1, objets: { "content/photos/u/a.jpg": { owner: "autre", owner_id: "autre" } } }));
+  const r = verifier(d);
+  assert.equal(r.code, 1, r.sortie);
+  assert.match(r.sortie, /empreinte[\s\S]*ce n'est pas l'inventaire de cette archive/);
+});
+
+test("ASTRA-55 ③ REPRODUCTION : le média a disparu du disque après la sauvegarde → l'archive est ENDOMMAGÉE, code 1", () => {
+  const r = verifier(avecMedias(archive([{ id: "a" }], 1), { sansFichier: true }));
+  assert.equal(r.code, 1, r.sortie);
+  assert.match(r.sortie, /archive ENDOMMAGÉE — 1 fichier\(s\) de l'index absent\(s\)/);
+});
+
+test("ASTRA-55 ④ un média MODIFIÉ sur disque (même nom) est vu par l'index ; une archive intacte est COMPLÈTE", () => {
+  const d = avecMedias(archive([{ id: "a" }], 1));
+  fs.writeFileSync(path.join(d, "_storage", "content", "photos", "u", "a.jpg"), "corrompu");
+  const r = verifier(d);
+  assert.equal(r.code, 1, r.sortie);
+  assert.match(r.sortie, /1 modifié\(s\)/);
+  const ok = verifier(avecMedias(archive([{ id: "a" }], 1)));
+  assert.equal(ok.code, 0, ok.sortie);
+  assert.match(ok.sortie, /Nature : archive COMPLÈTE/);
+  assert.match(ok.sortie, /tous conformes à l'index/);
+});

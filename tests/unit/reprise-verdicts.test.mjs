@@ -74,8 +74,14 @@ test("ASTRA-30 ③ le verdict compare l'ÉTAT de suspension, pas seulement l'UUI
   const r = V.suspensionRestauree(archive, { id: "u1" }, MAINTENANT);
   assert.equal(r.ok, false);
   assert.match(r.motif, /N'EST PAS suspendu/);
-  assert.equal(V.suspensionRestauree(archive, { id: "u1", banned_until: "2099-06-01T00:00:00Z" }, MAINTENANT).ok, true,
-    "GoTrue recalcule la borne : on compare l'état, pas la milliseconde");
+  // ⚠️ ASTRA-47 : cette assertion exigeait qu'une borne CINQ MOIS PLUS TARD soit
+  // acceptée (« on compare l'état, pas la milliseconde ») — elle encodait le
+  // défaut. GoTrue recalcule la borne à l'heure près : c'est CETTE tolérance
+  // qu'on accepte, pas n'importe quelle borne.
+  assert.equal(V.suspensionRestauree(archive, { id: "u1", banned_until: "2099-01-01T00:40:00Z" }, MAINTENANT).ok, true,
+    "GoTrue arrondit à l'heure au-dessus : une borne dans [attendu, attendu + 1 h] est conforme");
+  assert.equal(V.suspensionRestauree(archive, { id: "u1", banned_until: "2099-06-01T00:00:00Z" }, MAINTENANT).ok, false,
+    "une borne cinq mois plus tard PROLONGE la peine : écart");
   // Une peine expirée dans l'archive ne doit pas être réappliquée.
   assert.equal(V.suspensionRestauree({ banned_until: "2020-01-01T00:00:00Z" }, {}, MAINTENANT).ok, true);
 });
@@ -220,4 +226,105 @@ test("ASTRA-26 ⑤ un objet attendu et ABSENT de la cible est un écart", () => 
 test("ASTRA-26 ⑥ le verdict global refuse de sortir prouvé si les propriétaires ne le sont pas", () => {
   assert.equal(V.verdictGlobalReprise({ ecarts: 1, refus: [], phases: { "propriétaires Storage": { ok: false, motif: "3 objets" } }, nonVerifies: 0 }).prouvee, false);
   assert.equal(V.verdictGlobalReprise({ ecarts: 0, refus: [], phases: { "propriétaires Storage": { ok: false, motif: "archive sans les propriétaires" } }, nonVerifies: 0 }).prouvee, false);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CINQUIÈME CONTRE-REVUE (15/09/2026) — ASTRA-45 / 47 / 48 / 55.
+// ═══════════════════════════════════════════════════════════════════════════
+test("ASTRA-47 ① REPRODUCTION : fin attendue 15/10/2026, borne cible 01/01/2020 → ok:true (avant) ; désormais ÉCART", () => {
+  const now = new Date("2026-09-15T12:00:00Z");
+  const archive = { id: "u1", banned_until: "2026-10-15T12:00:00Z" };
+  const r = V.suspensionRestauree(archive, { id: "u1", banned_until: "2020-01-01T00:00:00Z" }, now);
+  assert.equal(r.ok, false, "une borne déjà passée n'est pas une suspension");
+  assert.match(r.motif, /DÉJÀ PASSÉE/);
+  // Une seconde restante face au mois attendu : écart aussi.
+  const r2 = V.suspensionRestauree(archive, { id: "u1", banned_until: "2026-09-15T12:00:01Z" }, now);
+  assert.equal(r2.ok, false);
+  assert.match(r2.motif, /RACCOURCIE/);
+});
+
+test("ASTRA-47 ② la tolérance est celle de GoTrue : [attendu, attendu + 1 h], ± 5 min d'horloge", () => {
+  const now = new Date("2026-09-15T12:00:00Z");
+  const archive = { banned_until: "2026-10-15T12:00:00Z" };
+  const cas = (b) => V.suspensionRestauree(archive, { banned_until: b }, now).ok;
+  assert.equal(cas("2026-10-15T12:00:00Z"), true, "exact");
+  assert.equal(cas("2026-10-15T12:59:00Z"), true, "arrondi à l'heure au-dessus");
+  assert.equal(cas("2026-10-15T13:04:00Z"), true, "+1 h + 4 min de dérive");
+  assert.equal(cas("2026-10-15T11:56:00Z"), true, "-4 min de dérive");
+  assert.equal(cas("2026-10-15T11:50:00Z"), false, "-10 min : raccourcie");
+  assert.equal(cas("2026-10-15T13:10:00Z"), false, "+1 h 10 : prolongée");
+  assert.equal(V.suspensionRestauree(archive, { banned_until: "2026-10-15T11:50:00Z" }, now, 15 * 60000).ok, true, "tolérance explicite");
+  // Archive SANS suspension en cours : une borne passée sur la cible n'est pas un écart, une borne future en est un.
+  assert.equal(V.suspensionRestauree({ banned_until: "2020-01-01T00:00:00Z" }, { banned_until: "2021-01-01T00:00:00Z" }, now).ok, true);
+  assert.equal(V.suspensionRestauree({}, { banned_until: "2027-01-01T00:00:00Z" }, now).ok, false);
+});
+
+test("ASTRA-48 ① REPRODUCTION : un inventaire JSON tronqué devenait {} → attendus 0, conformes 0, ok:true ; désormais INDÉTERMINÉ", () => {
+  // AVANT : try { JSON.parse } catch { {} } puis comparerProprietaires({}, …) → ok:true.
+  const avant = V.comparerProprietaires({}, new Map([["content/a.jpg", { owner: null, owner_id: null }]]));
+  assert.equal(avant.ok, true, "reproduction : un inventaire vide est « conforme »");
+  const r = V.lireInventaireProprietaires('{"content/a.jpg": {"owner": "u1", "own', null, null);
+  assert.ok(r.erreur && /illisible/.test(r.erreur), r.erreur);
+  assert.equal(r.objets, undefined, "aucun objet n'est rendu : rien à comparer, donc rien de conforme");
+});
+
+test("ASTRA-48 ② forme, total et empreinte de l'inventaire sont validés", () => {
+  const ok = V.lireInventaireProprietaires(JSON.stringify({ format: V.FORMAT_PROPRIETAIRES, total: 2, objets: { "content/a.jpg": { owner: "u1", owner_id: "u1" }, "attachments/c/b.webm": null } }), "abc", "abc");
+  assert.equal(ok.erreur, undefined); assert.equal(ok.version, 1); assert.equal(ok.total, 2);
+  assert.match(V.lireInventaireProprietaires("[]").erreur, /forme inattendue/);
+  assert.match(V.lireInventaireProprietaires(JSON.stringify({ format: V.FORMAT_PROPRIETAIRES, total: 3, objets: { "content/a.jpg": null } })).erreur, /tronqué/);
+  assert.match(V.lireInventaireProprietaires(JSON.stringify({ format: "autre/9", objets: {} })).erreur, /inconnu/);
+  assert.match(V.lireInventaireProprietaires(JSON.stringify({ format: V.FORMAT_PROPRIETAIRES, total: 1, objets: { "sansslash": null } })).erreur, /clé d'objet invalide/);
+  assert.match(V.lireInventaireProprietaires("{}", "attendu", "calculee").erreur, /empreinte/);
+  const v0 = V.lireInventaireProprietaires(JSON.stringify({ "content/a.jpg": { owner: "u1" } }));
+  assert.equal(v0.version, 0, "les archives d'avant (table plate) sont lues, et dites v0");
+  assert.match(V.lireInventaireProprietaires(null).erreur, /absent/);
+});
+
+test("ASTRA-45 ① REPRODUCTION : 1 001 fichiers, 1 000 propriétaires, zéro erreur → le dernier objet est NON RELEVÉ, et c'est dit", () => {
+  const cles = Array.from({ length: 1001 }, (_, i) => "content/photos/u/" + String(i).padStart(4, "0") + ".jpg");
+  const inventaire = {};
+  for (const k of cles.slice(0, 1000)) inventaire[k] = { owner: "u1", owner_id: "u1" };
+  const c = V.couvertureProprietaires(cles, inventaire);
+  assert.equal(c.ok, false);
+  assert.deepEqual(c.nonReleves, [cles[1000]]);
+  assert.equal(c.explicites, 1000);
+  // Trois états distincts : explicite, nul, non relevé.
+  const c2 = V.couvertureProprietaires(["a/x", "a/y", "a/z"], { "a/x": { owner: "u" }, "a/y": null });
+  assert.deepEqual([c2.explicites, c2.nuls, c2.nonReleves], [1, 1, ["a/z"]]);
+  // Inventaire indisponible : tout est non relevé, et c'est « indisponible », pas « zéro objet ».
+  const c3 = V.couvertureProprietaires(["a/x"], null);
+  assert.equal(c3.indisponible, true); assert.equal(c3.ok, false);
+});
+
+test("ASTRA-55 ① REPRODUCTION : manifeste 1 fichier, fichier disparu du disque, objet présent sur la cible → en_trop:1, ok:true (avant) ; désormais ÉCART", () => {
+  const md5 = "d41d8cd98f00b204e9800998ecf8427e";
+  // AVANT : attendus = fichiers sur disque (vide) → comparerMedias([], objets) → enTrop:1, ok = !manquants && !divergents && !nonVerifies → true.
+  const avant = V.comparerMedias([], [{ name: "content/a.jpg", taille: 0, etag: md5 }]);
+  assert.deepEqual([avant.manquants.length, avant.divergents.length, avant.nonVerifies.length, avant.enTrop.length], [0, 0, 0, 1], "reproduction : en_trop n'entrait pas dans ok");
+  const index = { "content/a.jpg": { taille: 0, md5 } };
+  const v = V.verdictMedias({ index, fichiersDisque: [], objets: [{ name: "content/a.jpg", taille: 0, etag: md5 }], attenduManifeste: 1 });
+  assert.equal(v.ok, false, "l'archive est endommagée (fichier attendu absent du disque) : pas prouvée");
+  assert.deepEqual(v.integrite.manquants, ["content/a.jpg"]);
+  // Archive intacte, cible conforme : ok. Un objet EN TROP sur la cible : écart.
+  const disque = [{ name: "content/a.jpg", taille: 0, md5 }];
+  assert.equal(V.verdictMedias({ index, fichiersDisque: disque, objets: [{ name: "content/a.jpg", taille: 0, etag: md5 }], attenduManifeste: 1 }).ok, true);
+  const trop = V.verdictMedias({ index, fichiersDisque: disque, objets: [{ name: "content/a.jpg", taille: 0, etag: md5 }, { name: "content/z.jpg", taille: 3, etag: "x" }], attenduManifeste: 1 });
+  assert.equal(trop.ok, false); assert.deepEqual(trop.enTrop, ["content/z.jpg"]);
+  // Sans index : INDÉTERMINÉ, jamais ok.
+  const sans = V.verdictMedias({ index: null, fichiersDisque: disque, objets: [] });
+  assert.equal(sans.indetermine, true); assert.equal(sans.ok, false);
+  // Un fichier du disque qui n'est plus celui de l'index (modifié) : archive endommagée.
+  const mod = V.verdictMedias({ index, fichiersDisque: [{ name: "content/a.jpg", taille: 5, md5: "0".repeat(32) }], objets: [{ name: "content/a.jpg", taille: 0, etag: md5 }] });
+  assert.equal(mod.ok, false); assert.deepEqual(mod.integrite.divergents, ["content/a.jpg"]);
+});
+
+test("ASTRA-55 ② l'index est lu strictement (forme, total, md5, empreinte)", () => {
+  const md5 = "d41d8cd98f00b204e9800998ecf8427e";
+  assert.equal(V.lireIndexMedias(JSON.stringify({ format: V.FORMAT_INDEX, total: 1, objets: { "content/a.jpg": { taille: 0, md5 } } })).erreur, undefined);
+  assert.match(V.lireIndexMedias("{").erreur, /illisible/);
+  assert.match(V.lireIndexMedias(JSON.stringify({ format: V.FORMAT_INDEX, total: 2, objets: { "content/a.jpg": { taille: 0, md5 } } })).erreur, /tronqué/);
+  assert.match(V.lireIndexMedias(JSON.stringify({ format: V.FORMAT_INDEX, total: 1, objets: { "content/a.jpg": { taille: "0", md5 } } })).erreur, /invalide/);
+  assert.match(V.lireIndexMedias("{}", "a", "b").erreur, /empreinte/);
+  assert.match(V.lireIndexMedias(null).erreur, /absent/);
 });
