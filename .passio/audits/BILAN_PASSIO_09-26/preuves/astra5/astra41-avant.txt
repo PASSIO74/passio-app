@@ -1,0 +1,18 @@
+# ASTRA-41 — AVANT correction — migration au SHA a5e8c717 — PostgreSQL 17.6 (Windows, binaires EDB) — 2026-09-15T17:57:52Z
+── ① L'ÉCRITURE EST ENGAGÉE AVANT LA MARQUE, ET NON VALIDÉE ─────────
+  ✅ S1 (l'application de A) a franchi sa policy : INSERT accepté, transaction OUVERTE
+  ✅ S1 porte bien un xid en cours (elle a écrit)
+── ② LA PURGE POSE LA MARQUE, EFFACE, COMPTE ──────────────────────────
+  ✅ le comptage de la purge rend 0 : la ligne de S1 lui est INVISIBLE
+── ③ LA PURGE ATTEND LES ÉCRITURES EN VOL — ou constate qu'elle ne peut pas ──
+  ⚠️ attendre_ecritures_en_vol absente : ERROR:  function public.attendre_ecritures_en_vol(integer) does not exist
+── ④ S1 VALIDE APRÈS LE COMPTAGE ─────────────────────────────────────
+  ❌ CONSTAT ASTRA-41 : la ligne apparaît APRÈS le comptage (la purge aurait répondu ok avec elle)
+     attendu : 0
+     obtenu  : 1
+── ⑤ UNE ÉCRITURE QUI COMMENCE APRÈS LA MARQUE EST REFUSÉE (READ COMMITTED) ──
+  ✅ la policy relit la marque à CHAQUE ordre : refusée
+── ⑥ MUTATION : une attente qui ne regarde pas les xids en vol ne verrait rien ──
+
+RÉSULTAT : 4 contrôle(s) vert(s), 1 rouge(s)
+exit=1

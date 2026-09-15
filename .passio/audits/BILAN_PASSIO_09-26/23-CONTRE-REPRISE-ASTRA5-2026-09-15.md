@@ -95,7 +95,7 @@ les runs CI du 2026-09-15) de la **migration appliquée** (jamais mesurée). « 
 
 ## C. Preuves — environnement, commandes, natures, limites
 
-**Poste** : Windows 11 Pro, Git Bash ; Node **24.16.0** ; PostgreSQL **17.6** (binaires EDB, `initdb --locale=C`, serveur jetable par banc, `pg_ctl` sur socket local) ; Playwright **1.60.0** + Chromium 1223 (projet `local`, `http-server`) ; `jq` **1.7.1** ; supabase-js **2.116.0** vendu (`js/vendor/`). Worktrees `C:\Users\BENJAMIN\Desktop\PASSIO-wt\<lot>\` (CRLF local, LF poussé). Sorties conservées dans `PASSIO-wt\preuves\` (hors dépôt) et citées ci-dessous par nom.
+**Poste** : Windows 11 Pro, Git Bash ; Node **24.16.0** ; PostgreSQL **17.6** (binaires EDB, `initdb --locale=C`, serveur jetable par banc, `pg_ctl` sur socket local) ; Playwright **1.60.0** + Chromium 1223 (projet `local`, `http-server`) ; `jq` **1.7.1** ; supabase-js **2.116.0** vendu (`js/vendor/`). Worktrees `C:\Users\BENJAMIN\Desktop\PASSIO-wt\<lot>\` (CRLF local, LF poussé). Sorties conservées dans **`.passio/audits/BILAN_PASSIO_09-26/preuves/astra5/`** (copie versionnée sur la branche d'intégration) et citées ci-dessous par nom.
 
 | Preuve | Commande (racine du worktree) | Nature | Sortie / limite |
 |---|---|---|---|

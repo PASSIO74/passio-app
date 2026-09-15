@@ -1,0 +1,11 @@
+# ASTRA-51 — AVANT (CLI a5e8c717), attestation tapée : PR #9999, relecteur « moi-même », source « aucune revue » — 2026-09-15T19:31:08Z
+cible     : njkiyoklssvefstljemx — production (PROTÉGÉE)
+revue     : #9999 · moi-même · revendiquée le 2026-09-15 (aucune revue)
+
+✅ envoyable — la barrière est franchie (--verifier : rien n'a été envoyé, aucun jeton requis).
+exit=0
+
+# APRÈS (CLI corrigé), même attestation
+❌ l'attestation de `migrations/migration_appels_invitations_attestees_2026-09-15.sql` ne désigne pas le COMMIT revu (`commit`, 40 hex) — sans lui, aucune revue n'est ancrée.
+   (revues lues : NON LISIBLES · dépôt : PASSIO74/passio-app)
+exit=0

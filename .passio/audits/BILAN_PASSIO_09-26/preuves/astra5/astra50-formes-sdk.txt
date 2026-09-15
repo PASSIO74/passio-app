@@ -1,0 +1,7 @@
+transport {"status":0,"statusText":"","error":{"code":"","message":"TypeError: Failed to fetch","details":"TypeError: Failed to fetch\n    at fetch (file:///C:/Users/BENJAMIN/Desktop/PASSIO-wt/tmp/sdk-forme.mjs:14:43)\n    at evalmachine.<anonymous>:7:31054\n    at evalmachine.<anonymous>:7:32120\n    at async ie (evalmachine.<anonymous>:1:5457)\n    at async evalmachine.<anonymous>:1:7280\n    at async file:///C:/Users/BENJAMIN/Desktop/PASSIO-wt/tmp/sdk-forme.mjs:24:13"},"data":null}
+refus403 {"status":403,"statusText":"","error":{"code":"42501","message":"new row violates row-level security policy for table \"call_i","details":null},"data":null}
+absente404 {"status":404,"statusText":"","error":{"code":"PGRST205","message":"Could not find the table 'public.call_invites' in the schema","details":null},"data":null}
+panne503 {"status":503,"statusText":"","error":{"message":"<html>503 Service Unavailable</html>"},"data":null}
+ratelimit429 {"status":429,"statusText":"","error":{"code":"PGRST000","message":"rate limited"},"data":null}
+ok201 {"status":201,"statusText":"","error":null,"data":null}
+jwt401 {"status":401,"statusText":"","error":{"code":"PGRST301","message":"JWT expired"},"data":null}

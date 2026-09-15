@@ -1,0 +1,16 @@
+# Mutations lot3 — 2026-09-15T18:52:49Z
+## M1 (celle d'Astra) : le ban n'est plus transmis au POST de création
+ℹ fail 1 ℹ pass 55 ✖ ASTRA-30/47 ⑦ INTÉGRATION : la suspension est TRANSMISE au POST, RELUE, et un ban perdu est un refus (la mutation « ban non transmis » rougit ici) (12.1729ms) 
+## M2 : medias() garde ses refus en local (ne les pousse plus au bilan)
+ℹ fail 2 ℹ pass 54 ✖ ASTRA-45 ④ un objet archivé que l'inventaire ne relève pas : refus nommé et écart (deux fichiers, un seul propriétaire) (33.1618ms) ✖ ASTRA-46 ① REPRODUCTION : un upload refusé → medias:false, mais preuve.prouvee:true et refus:[] (avant) ; désormais un seul résultat (131.8021ms) 
+## M3 : suspensionRestauree revient à « l'état seulement »
+1
+ℹ fail 4 ℹ pass 52 ✖ ASTRA-30 ③ le verdict compare l'ÉTAT de suspension, pas seulement l'UUID (1.6482ms) ✖ ASTRA-47 ① REPRODUCTION : fin attendue 15/10/2026, borne cible 01/01/2020 → ok:true (avant) ; désormais ÉCART (0.7633ms) ✖ ASTRA-47 ② la tolérance est celle de GoTrue : [attendu, attendu + 1 h], ± 5 min d'horloge (0.841ms) ✖ ASTRA-47 ③ compte DÉJÀ PRÉSENT sur la cible sans sa suspension : relu, suspension POSÉE, relue ; si la pose est refusée, c'est un refus (25.7262ms) 
+## M4 : l'inventaire illisible redevient {} (catch → {})
+ℹ fail 3 ℹ pass 53 ✖ ASTRA-45 ④ un objet archivé que l'inventaire ne relève pas : refus nommé et écart (deux fichiers, un seul propriétaire) (28.9897ms) ✖ ASTRA-46 ③ le chemin nominal reste prouvé : upload, propriétaires rendus, limite remise, relectures conformes (29.2476ms) ✖ ASTRA-48 ⑤ un inventaire des propriétaires tronqué : phase INDÉTERMINÉE, verdict ÉCART — jamais « attendus 0, conformes 0, ok » (23.6341ms) 
+## M5 : en_trop ressort du ok du verdict médias
+ℹ fail 3 ℹ pass 53 ✖ ASTRA-55 ① REPRODUCTION : manifeste 1 fichier, fichier disparu du disque, objet présent sur la cible → en_trop:1, ok:true (avant) ; désormais ÉCART (3.2612ms) ✖ ASTRA-55 ⑤ un média disparu de l'archive après sa vérification : l'archive est ENDOMMAGÉE, la reprise n'est pas prouvée même si la cible a l'objet (25.1289ms) ✖ ASTRA-55 ⑥ un objet EN TROP sur la cible est un écart ; sans index l'attendu est INDÉTERMINÉ (39.3796ms) 
+## M6 : la RPC des propriétaires n'est plus paginée (un seul appel, sans Range)
+ℹ fail 2 ℹ pass 54 ✖ ASTRA-45 ⑤ REPRODUCTION : 1 001 fichiers, plafond 1 000, un seul appel (avant) → 1 000 propriétaires, zéro erreur, dernier objet orphelin ; désormais PAGINÉ et COMPLET (1923.9311ms) ✖ ASTRA-45 ⑥ quel que soit le plafond configuré (ici 100), la pagination le franchit (493.039ms) 
+## témoin
+ℹ fail 0 ℹ pass 56 
