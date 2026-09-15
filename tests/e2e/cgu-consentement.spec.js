@@ -447,6 +447,9 @@ test("⑬ la mesure d'usage se coupe depuis les Paramètres, et ne suit pas le c
 
   const apres = await page.evaluate(() => ({
     cle: localStorage.getItem("passio_telemetry"),
+    // AUTH-04 (2026-09-15) : l'opposition emporte l'identifiant d'appareil.
+    deviceId: localStorage.getItem("passio_device_id"),
+    deviceIdEmis: window.PassioTelemetry && PassioTelemetry.deviceId,
     // La capture est coupée TOUT DE SUITE : `track()` teste le drapeau à chaque
     // événement, il n'y a rien à recharger.
     capture: (function () { try { return !!(window.PassioTelemetry && PassioTelemetry.setEnabled) ; } catch (e) { return false; } })(),
@@ -457,12 +460,20 @@ test("⑬ la mesure d'usage se coupe depuis les Paramètres, et ne suit pas le c
   }));
   expect(apres.cle).toBe("0");
   expect(apres.capture).toBe(true);
+  // RÉINJECTION : sur le code du 14/09, la clé survit au refus et `deviceId` reste « dev_… ».
+  expect(apres.deviceId, "l'identifiant d'appareil tombe avec l'opposition").toBeNull();
   expect(apres.dansConfig).not.toMatch(/telemetry|telemetrie|mesure/i);
 
   // Le choix se relit à la réouverture du panneau — sinon il serait perdu au
   // premier retour et la personne le referait sans fin.
   await page.evaluate(() => openPrivacySettings());
   await expect(page.locator("#privTelemetry")).not.toBeChecked();
+
+  // Et au chargement suivant, refus mémorisé : aucun identifiant n'est recréé
+  // (sur le code du 14/09, `_deviceIdRaw()` en posait un AVANT tout garde).
+  await page.reload();
+  await page.waitForFunction(() => !!window.PassioTelemetry, null, { timeout: 15000 });
+  expect(await page.evaluate(() => localStorage.getItem("passio_device_id"))).toBeNull();
 
   expect(errors.js).toEqual([]);
 });
