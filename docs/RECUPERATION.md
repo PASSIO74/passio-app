@@ -78,6 +78,28 @@ Le script liste d'abord les déploiements de production avec le commit que chacu
 
 ⚠️ **Kill switch distant** : il n'y en a pas d'autre que celui-ci — remettre la version d'avant en 2 s. Les drapeaux du dépôt (`passio_*="0"`) sont des coupures **locales**, par appareil ; aucun interrupteur serveur ne coupe une fonctionnalité chez tout le monde, sauf `irl_adult_only` (18+). C'est écrit, pas réglé.
 
+## L'exercice du 2026-09-15 : base VIDE, preuve écrite, parcours de comptes restaurés
+
+Astra (fiche 21, point 4) : « restaurer sur cible vide et prouver des parcours avec comptes et médias ». Fait le 15/09 vers 12 h UTC, dans une fenêtre sans CI (la CI crée des comptes `@passio-e2e.test` sur le staging à chaque run : un exercice lancé pendant un run rend des « écarts » qui ne sont que ses comptes — mesuré une première fois avec 39 `user_safety` pour 2 dans l'archive).
+
+| Étape | Résultat |
+|---|---|
+| Archive `--complete` fraîche de la production + `schema.sql` (DDL exécutable, 725 instructions, 16 sections) | 41 tables, 16 119 lignes, 4,04 Mo ; 10 comptes ; 67 médias, 79,7 Mo ; `--verifier` conforme |
+| Staging **purgé** (`--purger`) puis relu | 0 ligne, 0 compte, 0 objet |
+| Restauration (DDL → comptes → tables → médias), `--preuve` | **64 s** ; 41 tables « contenu identique », 10/10 comptes (mêmes identifiants), 67/67 médias (taille et empreinte) — `prouvee: true`, 0 écart : `.passio/audits/BILAN_PASSIO_09-26/preuves/restauration/2026-09-15-cible-vide.json` |
+| Parcours de trois comptes restaurés : lien magique (`generate_link` → `verify`), lectures par l'API de l'app avec leur jeton | profil, 21/21 et 11/11 publications, conversations, `user_state`, deux médias lus HTTP 200 avec leurs octets — `…/2026-09-15-parcours-comptes-restaures.md` |
+| Purge, puis référentiels seuls reversés, puis données synthétiques de charge | staging sans donnée personnelle |
+
+**Trois défauts de l'outil, trouvés par l'exercice et corrigés le jour même** — aucun n'était visible à la relecture :
+
+1. **Une colonne d'identité `generated always` refuse toute valeur explicite.** `migrations_appliquees.id` (journal du 15/09) : les quatre lignes tombaient (« cannot insert a non-DEFAULT value »), nommées au terminal, mais la preuve JSON disait `4 | 0` avec un détail vide. `overriding system value` sur les deux chemins d'insertion, et le bilan (`refus`, `notes`) voyage désormais dans la preuve.
+2. **Un eTag `<hex>-<n>` n'est pas un MD5.** Deux vidéos de 20 et 25 Mo, identiques à l'octet et au même eTag des deux côtés, étaient dites « divergentes » : le Storage les envoie en multipart et leur eTag n'est pas l'empreinte du fichier. Pour ces objets, la taille est la seule comparaison honnête ; pour les autres, l'eTag reste le MD5 et se compare.
+3. **Un compte ne dit pas quoi regarder.** « 2 divergents » sans leurs noms : la preuve porte désormais `medias.noms` (manquants, divergents, en trop — bornés à 50).
+
+Deux constats de plus : une archive prise **pendant un déploiement** porte les comptes transitoires de la barrière `authz-critical` (deux `@passio-e2e.test`, créés à 13:27, purgés par la fin du run) — ils se reconnaissent à leur domaine, et la fin de run de la CI les retire aussi de la cible restaurée ; et le journal `migrations_appliquees` du staging part avec la purge (il n'est durable que là où on n'exerce pas de restauration).
+
+Ce qui n'est toujours pas rendu par une restauration reste ce qui est écrit plus bas (mots de passe, OAuth, configuration, Edge Functions).
+
 ## Ce qu'une restauration NE REND PAS — écrit, pas tu
 
 - **Les mots de passe** : l'export ne porte pas `encrypted_password`. Chaque compte restauré reçoit un mot de passe aléatoire (jamais journalisé) et repasse par « mot de passe oublié ». Les **identités OAuth** (Google) ne sont pas dans l'export non plus. `created_at` des comptes est celui de la restauration (l'API d'administration l'impose).

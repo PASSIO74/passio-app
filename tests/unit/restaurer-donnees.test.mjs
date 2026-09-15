@@ -55,7 +55,9 @@ test("② le dollar-quoting choisit une étiquette que le contenu ne porte pas",
 
 test("③ l'INSERT ne nomme QUE les colonnes reçues — les autres prennent leur DEFAULT (follows.created_at, reports.status)", () => {
   const sql = ordreInsert("follows", ["follower_id", "following_id"], "[]");
-  assert.match(sql, /insert into public\."follows" \("follower_id", "following_id"\) select "follower_id", "following_id" from json_populate_recordset/);
+  // `overriding system value` (2026-09-15) : une colonne d'identité GENERATED ALWAYS
+  // refuse toute valeur explicite — le journal des migrations tombait entier.
+  assert.match(sql, /insert into public\."follows" \("follower_id", "following_id"\) overriding system value select "follower_id", "following_id" from json_populate_recordset/);
   assert.doesNotMatch(sql, /created_at/, "une colonne absente de l'archive ne doit pas être nommée (elle serait posée à NULL)");
   assert.match(sql, /on conflict do nothing/);
   assert.match(sql, /disable trigger user[\s\S]*enable trigger user/, "triggers utilisateur coupés puis rendus");
@@ -113,4 +115,14 @@ test("④ ter médias : nom, taille et empreinte — un objet vide de même nom 
 test("④ quater une colonne née après l'archive n'est pas une divergence ; une colonne de l'archive absente de la cible, si", () => {
   assert.deepEqual(comparerLignes([{ id: 1, label: "Ski" }], [{ id: 1, label: "Ski", recherche: "ski" }], "id"), { manquantes: [], divergentes: [], enTrop: [] });
   assert.deepEqual(comparerLignes([{ id: 1, label: "Ski", aliases: ["ski"] }], [{ id: 1, label: "Ski" }], "id").divergentes, ["1"]);
+});
+
+test("④ quinquies médias multipart : un eTag « <hex>-<n> » n'est pas un MD5 — même taille = identique, taille différente = divergent (exercice du 2026-09-15 : deux vidéos identiques dites divergentes)", () => {
+  const fichiers = [{ name: "content/videos/u/reel_a.mp4", taille: 20362027, md5: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, { name: "content/videos/u/reel_b.mp4", taille: 25489650, md5: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }];
+  const memes = [{ name: "content/videos/u/reel_a.mp4", taille: "20362027", etag: '"0401bff7b39f376a87aca51f96e0f17e-2"' }, { name: "content/videos/u/reel_b.mp4", taille: "25489650", etag: '"8e971866949fa0acf292eacc489fc72f-2"' }];
+  assert.deepEqual(comparerMedias(fichiers, memes).divergents, []);
+  const tronque = [{ ...memes[0], taille: "1024" }, memes[1]];
+  assert.deepEqual(comparerMedias(fichiers, tronque).divergents, ["content/videos/u/reel_a.mp4"]);
+  // Un eTag simple (pas de « -n ») reste un MD5 et se compare.
+  assert.deepEqual(comparerMedias([{ name: "x", taille: 3, md5: "900150983cd24fb0d6963f7d28e17f72" }], [{ name: "x", taille: "3", etag: '"d41d8cd98f00b204e9800998ecf8427e"' }]).divergents, ["x"]);
 });

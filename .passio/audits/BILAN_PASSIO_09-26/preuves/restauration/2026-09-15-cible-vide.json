@@ -1,0 +1,320 @@
+{
+  "genere_le": "2026-09-15T11:46:05.283Z",
+  "cible": "fcksxofaelcdmmifnwjo",
+  "nom": "PASSIO staging",
+  "archive": ".passio/sauvegardes/2026-09-15-cible-vide",
+  "manifeste_genere_le": "2026-09-15T11:28:47.926Z",
+  "commande": "--archive .passio/sauvegardes/2026-09-15-cible-vide --projet fcksxofaelcdmmifnwjo --schema .passio/sauvegardes/2026-09-15-cible-vide/schema.sql --preuve .passio/audits/BILAN_PASSIO_09-26/preuves/restauration/2026-09-15-cible-vide.json",
+  "tables": [
+    {
+      "table": "access_policies",
+      "attendu": 1,
+      "obtenu": 1,
+      "ok": true,
+      "detail": "contenu identique"
+    },
+    {
+      "table": "blocks",
+      "attendu": 0,
+      "obtenu": 0,
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "table": "cdv_live_collaborators",
+      "attendu": 0,
+      "obtenu": 0,
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "table": "cdv_live_comments",
+      "attendu": 4,
+      "obtenu": 4,
+      "ok": true,
+      "detail": "contenu identique"
+    },
+    {
+      "table": "cdv_live_followers",
+      "attendu": 0,
+      "obtenu": 0,
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "table": "cdv_live_reactions",
+      "attendu": 3,
+      "obtenu": 3,
+      "ok": true,
+      "detail": "contenu identique"
+    },
+    {
+      "table": "cdv_live_steps",
+      "attendu": 4,
+      "obtenu": 4,
+      "ok": true,
+      "detail": "contenu identique"
+    },
+    {
+      "table": "cdv_lives",
+      "attendu": 2,
+      "obtenu": 2,
+      "ok": true,
+      "detail": "contenu identique"
+    },
+    {
+      "table": "comment_interactions",
+      "attendu": 371,
+      "obtenu": 371,
+      "ok": true,
+      "detail": "contenu identique"
+    },
+    {
+      "table": "comment_likes",
+      "attendu": 3,
+      "obtenu": 3,
+      "ok": true,
+      "detail": "contenu identique"
+    },
+    {
+      "table": "conv_members",
+      "attendu": 11,
+      "obtenu": 11,
+      "ok": true,
+      "detail": "contenu identique"
+    },
+    {
+      "table": "conv_messages",
+      "attendu": 74,
+      "obtenu": 74,
+      "ok": true,
+      "detail": "contenu identique"
+    },
+    {
+      "table": "conv_reads",
+      "attendu": 20,
+      "obtenu": 20,
+      "ok": true,
+      "detail": "contenu identique"
+    },
+    {
+      "table": "conversations",
+      "attendu": 119,
+      "obtenu": 119,
+      "ok": true,
+      "detail": "contenu identique"
+    },
+    {
+      "table": "event_attendees",
+      "attendu": 10,
+      "obtenu": 10,
+      "ok": true,
+      "detail": "contenu identique"
+    },
+    {
+      "table": "event_checkin_secrets",
+      "attendu": 9,
+      "obtenu": 9,
+      "ok": true,
+      "detail": "contenu identique"
+    },
+    {
+      "table": "event_comments",
+      "attendu": 0,
+      "obtenu": 0,
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "table": "event_reactions",
+      "attendu": 1,
+      "obtenu": 1,
+      "ok": true,
+      "detail": "contenu identique"
+    },
+    {
+      "table": "events",
+      "attendu": 9,
+      "obtenu": 9,
+      "ok": true,
+      "detail": "contenu identique"
+    },
+    {
+      "table": "follows",
+      "attendu": 8,
+      "obtenu": 8,
+      "ok": true,
+      "detail": "contenu identique"
+    },
+    {
+      "table": "migrations_appliquees",
+      "attendu": 4,
+      "obtenu": 4,
+      "ok": true,
+      "detail": "contenu identique"
+    },
+    {
+      "table": "moderation_actions",
+      "attendu": 0,
+      "obtenu": 0,
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "table": "notifications",
+      "attendu": 139,
+      "obtenu": 139,
+      "ok": true,
+      "detail": "contenu identique"
+    },
+    {
+      "table": "passion_quotas",
+      "attendu": 1,
+      "obtenu": 1,
+      "ok": true,
+      "detail": "contenu identique"
+    },
+    {
+      "table": "passion_relations",
+      "attendu": 10012,
+      "obtenu": 10012,
+      "ok": true,
+      "detail": "contenu identique"
+    },
+    {
+      "table": "passion_requests",
+      "attendu": 2,
+      "obtenu": 2,
+      "ok": true,
+      "detail": "contenu identique"
+    },
+    {
+      "table": "passions",
+      "attendu": 5007,
+      "obtenu": 5007,
+      "ok": true,
+      "detail": "contenu identique"
+    },
+    {
+      "table": "post_collaborators",
+      "attendu": 0,
+      "obtenu": 0,
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "table": "post_comments",
+      "attendu": 89,
+      "obtenu": 89,
+      "ok": true,
+      "detail": "contenu identique"
+    },
+    {
+      "table": "post_likes",
+      "attendu": 72,
+      "obtenu": 72,
+      "ok": true,
+      "detail": "contenu identique"
+    },
+    {
+      "table": "posts",
+      "attendu": 33,
+      "obtenu": 33,
+      "ok": true,
+      "detail": "contenu identique"
+    },
+    {
+      "table": "profiles",
+      "attendu": 7,
+      "obtenu": 7,
+      "ok": true,
+      "detail": "contenu identique"
+    },
+    {
+      "table": "push_subscriptions",
+      "attendu": 7,
+      "obtenu": 7,
+      "ok": true,
+      "detail": "contenu identique"
+    },
+    {
+      "table": "reports",
+      "attendu": 2,
+      "obtenu": 2,
+      "ok": true,
+      "detail": "contenu identique"
+    },
+    {
+      "table": "step_interactions",
+      "attendu": 6,
+      "obtenu": 6,
+      "ok": true,
+      "detail": "contenu identique"
+    },
+    {
+      "table": "stories",
+      "attendu": 8,
+      "obtenu": 8,
+      "ok": true,
+      "detail": "contenu identique"
+    },
+    {
+      "table": "story_views",
+      "attendu": 7,
+      "obtenu": 7,
+      "ok": true,
+      "detail": "contenu identique"
+    },
+    {
+      "table": "user_passions",
+      "attendu": 44,
+      "obtenu": 44,
+      "ok": true,
+      "detail": "contenu identique"
+    },
+    {
+      "table": "user_safety",
+      "attendu": 2,
+      "obtenu": 2,
+      "ok": true,
+      "detail": "contenu identique"
+    },
+    {
+      "table": "user_state",
+      "attendu": 7,
+      "obtenu": 7,
+      "ok": true,
+      "detail": "contenu identique"
+    },
+    {
+      "table": "video_lives",
+      "attendu": 21,
+      "obtenu": 21,
+      "ok": true,
+      "detail": "contenu identique"
+    }
+  ],
+  "comptes": {
+    "attendu": 10,
+    "obtenu": 10,
+    "identifiants_absents": 0,
+    "ok": true
+  },
+  "medias": {
+    "attendu": 67,
+    "obtenu": 67,
+    "manquants": 0,
+    "divergents": 0,
+    "en_trop": 0,
+    "ok": true,
+    "noms": {
+      "manquants": [],
+      "divergents": [],
+      "en_trop": []
+    }
+  },
+  "refus": [],
+  "notes": [],
+  "ecarts": 0,
+  "prouvee": true
+}
