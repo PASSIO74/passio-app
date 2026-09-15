@@ -3703,6 +3703,11 @@ function purgeAccountScopedData() {
   _accountPurged = true;
   _stateDirty = false;
   discardPendingStateSave();
+  // ⚠️ ASTRA-21 : PÉRIMER CE QUI EST EN VOL, et pas seulement ce qui est écrit.
+  // Purger la file ne suffisait pas — une réponse d'envoi partie avant la purge
+  // revenait après elle et la REPEUPLAIT, avec le compte devenu courant pour
+  // propriétaire. La génération rend ces continuations inopérantes.
+  try { if (typeof _outboxInvaliderEnVol === "function") _outboxInvaliderEnVol(); } catch (e) {}
   // L'identité aussi : les fonctions d'écriture testent `!MY_UID` et s'abstiennent.
   try { MY_UID = null; window.MY_UID = null; } catch (e) {}
   // Caches en mémoire : le rechargement les emporte, mais il peut échouer ou tarder.
