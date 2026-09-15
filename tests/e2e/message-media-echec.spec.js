@@ -34,7 +34,9 @@ async function preparer(page, reponse) {
       ],
     }];
     saveConversationsNow();
-    MY_UID = "u_moi"; window.MY_UID = "u_moi";
+    // Un compte RÉEL (uuid) : depuis AUTH-06, une entrée de file sans propriétaire n'est
+    // ni rejouée ni adoptée — un `u_<aléatoire>` ne prouve aucun compte (2026-09-15).
+    MY_UID = "3f2a9c64-5b71-4e2d-8a10-9c7b6d5e4f31"; window.MY_UID = MY_UID;
     window.__inserts = [];
     // ⚠️ LE STUB RETIENT LA TABLE — même défaut, et même correctif, que
     // `transfert-message.spec.js` (2026-09-03). Il remplace le `supa` GLOBAL et
@@ -160,7 +162,9 @@ test.describe("Média en message — verdict de l'écriture", () => {
       conversationsState = [{ id: "conv_media", userId: "u_b", messages: [
         { id: "m_media", from: "me", at: Date.now(), text: "[MEDIA] photo", status: "sending" }] }];
       saveConversationsNow();
-      MY_UID = "u_moi"; window.MY_UID = "u_moi";
+      // Un compte RÉEL (uuid) : depuis AUTH-06, une entrée de file sans propriétaire n'est
+    // ni rejouée ni adoptée — un `u_<aléatoire>` ne prouve aucun compte (2026-09-15).
+    MY_UID = "3f2a9c64-5b71-4e2d-8a10-9c7b6d5e4f31"; window.MY_UID = MY_UID;
       window.__inserts = [];
       // Même correctif que ci-dessus : la table est retenue, et seule
       // `conv_messages` est comptée.
