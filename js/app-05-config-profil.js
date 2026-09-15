@@ -562,12 +562,6 @@ async function startCall(convId, kind) {
   _callSetupPeerConnection();
   console.log("[call] startCall →", peer.id, "callId", callId, "kind", kind);
 
-  // S'abonne au canal d'appel (réponse SDP / ICE).
-  const chan = _callChannel("call:" + callId);
-  window._call.chan = chan;
-  _callBindChannelEvents(chan);
-  chan.subscribe((status) => { console.log("[call] call channel:", status); });
-
   // Invitation déposée sur le canal personnel du pair (`ring:<peerId>`).
   // ⚠️ Le broadcast est ÉPHÉMÈRE : un envoi unique peut être perdu si le canal
   // du destinataire se reconnecte au mauvais moment. On RÉPÈTE donc l'invitation
@@ -589,11 +583,41 @@ async function startCall(convId, kind) {
   // déployable AVANT la migration : il émet aussi sous les policies d'avant.
   const ring = _callChannel("ring:" + peer.id);
   window._call.ringSendChan = ring;
+  // ⚠️ IL REND SON VERDICT : le premier dépôt décide si l'appel peut partir.
   const fire = () => {
-    if (!window._call || window._call.id !== callId || window._call.status !== "calling") return;
-    _callDeposerInvitation(ring, invitePayload);
+    if (!window._call || window._call.id !== callId || window._call.status !== "calling") return Promise.resolve("abandon");
+    return _callDeposerInvitation(ring, invitePayload);
   };
-  fire();
+  // ⚠️ ASTRA-23 — L'INVITATION D'ABORD, LE CANAL ENSUITE, ET C'EST UN ORDRE,
+  // PAS UN STYLE. `call:<id>` est désormais réservé aux deux parties de
+  // l'appel, et c'est la LIGNE `call_invites` qui les nomme
+  // (`call_partie_prenante`). S'abonner avant de l'avoir déposée, c'est
+  // demander l'accès à un canal que rien n'autorise encore : l'appelant se
+  // faisait refuser son PROPRE appel. Les trois chemins du destinataire
+  // (accepter, refuser, occupé) étaient déjà dans le bon ordre — c'est cette
+  // ligne-là qui les a fait sonner.
+  // ⚠️ DÉPLOYABLE AVANT LA MIGRATION : sous les policies d'avant, cet ordre
+  // fonctionne à l'identique. L'inverse n'est pas vrai, d'où l'ordre
+  // d'allumage écrit dans `migration_canal_appel_lie_2026-09-15.sql`.
+  const verdictInvite = await fire();
+  // L'attente est un point d'abandon possible : raccroché, ou autre appel.
+  if (!window._call || window._call.id !== callId) return;
+  // ⚠️ ON N'ABANDONNE QUE SUR UN REFUS PROUVÉ DU SERVEUR. Un envoi qui échoue
+  // pour une autre raison (réseau, repli) doit laisser la RÉPÉTITION faire son
+  // travail — c'est elle qui rend la sonnerie fiable. Traiter tout échec comme
+  // un refus rendrait une coupure d'une seconde indiscernable d'un blocage.
+  if (verdictInvite === "refus") {
+    toast("Appel impossible vers cette personne");
+    endCall();
+    return;
+  }
+
+  // S'abonne au canal d'appel (réponse SDP / ICE).
+  const chan = _callChannel("call:" + callId);
+  window._call.chan = chan;
+  _callBindChannelEvents(chan);
+  chan.subscribe((status) => { console.log("[call] call channel:", status); });
+
   window._call.inviteInterval = setInterval(fire, 2000);
 
   // Réveil PUSH du destinataire (app fermée). En plus du ring temps réel.
@@ -618,23 +642,30 @@ async function startCall(convId, kind) {
 // repli sur le broadcast d'avant, mémorisé pour la session. Un REFUS de la
 // RLS (403 : pas de 1:1 commun, blocage) n'est PAS un repli — le serveur a
 // répondu, on ne contourne pas ; il est tracé.
+// ⚠️ IL REND UN VERDICT, PLUS UN BOOLÉEN (ASTRA-23). « ok », « repli »,
+// « echec » et « refus » ne se traitent pas pareil : seul « refus » est une
+// réponse du SERVEUR (la RLS a dit non — pas de 1:1 commun, blocage), et c'est
+// le seul cas où l'appel ne peut pas aboutir. Un `false` unique confondait ce
+// refus avec une coupure réseau ; l'appelant aurait abandonné un appel
+// parfaitement légitime au premier paquet perdu.
 function _callDeposerInvitation(ring, payload) {
-  if (window._callInvitesAbsente === true || typeof supa === "undefined" || !supa || !window._supaReal) return _callEmettreInvitation(ring, payload);
+  var repli = function () { return Promise.resolve(_callEmettreInvitation(ring, payload)).then(function (b) { return b ? "repli" : "echec"; }); };
+  if (window._callInvitesAbsente === true || typeof supa === "undefined" || !supa || !window._supaReal) return repli();
   try {
     return Promise.resolve(supa.from("call_invites").upsert(
       { id: payload.callId, from_id: payload.from, to_id: payload.to, kind: payload.kind, repete_le: new Date().toISOString() },
       { onConflict: "id" }
     )).then(function (r) {
-      if (!r || !r.error) return true;
+      if (!r || !r.error) return "ok";
       var code = String(r.error.code || ""), msg = String(r.error.message || "");
       if (code === "PGRST205" || code === "42P01" || /call_invites/.test(msg) && /schema cache|does not exist/.test(msg)) {
         window._callInvitesAbsente = true;   // mémorisé pour la session (drapeau sur window : un banc peut le lever)
-        return _callEmettreInvitation(ring, payload);
+        return repli();
       }
       try { if (typeof diagLog === "function") diagLog("call_invites refus " + code + " " + msg.slice(0, 80)); } catch (e) {}
-      return false;
-    }, function () { return _callEmettreInvitation(ring, payload); });
-  } catch (e) { return _callEmettreInvitation(ring, payload); }
+      return "refus";
+    }, function () { return repli(); });
+  } catch (e) { return repli(); }
 }
 
 // Dépose l'invitation sur `ring:<pair>` en REST, jamais par un abonnement.
