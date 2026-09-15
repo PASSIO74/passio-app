@@ -1,0 +1,113 @@
+name: Edge Functions
+
+# ═══════════════════════════════════════════════════════════════════════════
+# DÉPLOIEMENT DES EDGE FUNCTIONS PAR LA CI, AVEC TEST DE FUMÉE (EXP-04,
+# contre-revue Astra, 2026-09-14)
+#
+# Jusqu'ici : `supabase functions deploy <nom>` à la main, depuis un poste, sans
+# version, sans test, sans trace — et l'état déployé n'était connu de personne.
+# Ce workflow déploie les QUATRE fonctions à chaque fusion sur main qui touche
+# `supabase/functions/**` (idempotent : redéployer une fonction inchangée ne
+# change rien), ou à la demande. Puis il les ÉPROUVE depuis l'extérieur :
+#   · OPTIONS → 200 (CORS) ;
+#   · POST sans jeton → 401 (« Non authentifié ») — la porte tient.
+# Le SHA déployé est écrit dans le résumé du run : c'est la trace.
+#
+# ⚠️ `SUPABASE_ACCESS_TOKEN` est le jeton PERSONNEL de la CLI (comme
+# `scripts/appliquer-migration.mjs`), jamais la clé service_role — l'API de
+# gestion ne connaît que lui. Il expire : un déploiement qui échoue en
+# « unauthorized » se répare sur https://supabase.com/dashboard/account/tokens.
+# ═══════════════════════════════════════════════════════════════════════════
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/functions/**"
+      - ".github/workflows/edge-functions.yml"
+  workflow_dispatch:
+    inputs:
+      fonction:
+        description: "Une fonction précise (vide = les quatre)"
+        required: false
+        default: ""
+
+concurrency:
+  group: edge-functions
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  PROJECT_REF: njkiyoklssvefstljemx
+  SUPABASE_URL: https://njkiyoklssvefstljemx.supabase.co
+
+jobs:
+  deployer:
+    name: Déployer et éprouver
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Les modules partagés (_shared/*.js) sont éprouvés en Node AVANT de
+      # déployer : un plafond, une purge ou un export cassé ne part pas.
+      - name: Verrous unitaires des modules partagés
+        run: |
+          node --test tests/unit/plafond.test.mjs
+          node --test tests/unit/lien-metier.test.mjs
+          node --test tests/unit/purge-compte.test.mjs
+          node --test tests/unit/export-compte.test.mjs
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Déployer
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SUPABASE_ACCESS_TOKEN:-}" ]; then
+            echo "::error::SUPABASE_ACCESS_TOKEN absent — poser le jeton personnel de la CLI dans les secrets du dépôt."
+            exit 1
+          fi
+          FONCTIONS="${{ github.event.inputs.fonction }}"
+          if [ -z "$FONCTIONS" ]; then FONCTIONS="ask-ai notify-call delete-account export-account"; fi
+          for f in $FONCTIONS; do
+            echo "── déploiement : $f ──"
+            supabase functions deploy "$f" --project-ref "$PROJECT_REF"
+          done
+          echo "DEPLOYEES=$FONCTIONS" >> "$GITHUB_ENV"
+
+      - name: Test de fumée (CORS, porte d'authentification)
+        run: |
+          set -euo pipefail
+          ko=0
+          for f in $DEPLOYEES; do
+            url="$SUPABASE_URL/functions/v1/$f"
+            opt=$(curl -s -o /dev/null -w "%{http_code}" -X OPTIONS "$url")
+            post=$(curl -s -o /dev/null -w "%{http_code}" -X POST -H "Content-Type: application/json" -d '{}' "$url")
+            if [ "$opt" = "200" ] && [ "$post" = "401" ]; then
+              echo "  ✅ $f : OPTIONS $opt, POST sans jeton $post"
+            else
+              echo "  ❌ $f : OPTIONS $opt (attendu 200), POST sans jeton $post (attendu 401)"
+              ko=1
+            fi
+          done
+          [ "$ko" -eq 0 ]
+
+      - name: Trace
+        run: |
+          {
+            echo "## Edge Functions déployées"
+            echo ""
+            echo "- Commit : \`${{ github.sha }}\`"
+            echo "- Fonctions : $DEPLOYEES"
+            echo "- Fumée : OPTIONS 200, POST sans jeton 401 sur chacune"
+          } >> "$GITHUB_STEP_SUMMARY"
