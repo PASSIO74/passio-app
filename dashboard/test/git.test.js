@@ -183,7 +183,14 @@ test("mutations coupées par défaut : sans DASH_ALLOW_MUTATIONS, tout est refus
 test("en production, l'autorisation explicite ne suffit pas", () => {
   // `allowMutations` exige les DEUX : le drapeau ET un environnement non-prod.
   // C'est la seule barrière entre le pilotage et le dépôt d'une prod.
-  const r = dansUnEnfant({ DASH_ALLOW_MUTATIONS: "true", DASH_ENV: "production" }, `
+  // ⚠️ En production, `config.js` REFUSE de démarrer avec les identifiants par
+  // défaut (PIL-02, 2026-09-15) : ce cas mesure la barrière des mutations, pas
+  // celle des secrets — il pose donc des secrets valides pour atteindre la
+  // sienne. Les secrets par défaut ont leur propre verrou (secrets-defaut.test.js).
+  const r = dansUnEnfant({
+    DASH_ALLOW_MUTATIONS: "true", DASH_ENV: "production",
+    DASH_SESSION_SECRET: "s".repeat(48), DASH_ADMIN_USER: "pilote", DASH_ADMIN_PASSWORD: "motdepasse-de-banc-42",
+  }, `
     const { config } = await import("./server/config.js");
     const { createBranch } = await import("./server/git.js");
     if (config.allowMutations) console.log("MUTATIONS_AUTORISEES_EN_PROD");
