@@ -445,6 +445,59 @@ async function medias(ctx) {
       if (r.ok) envoyes++; else refus.push(`${seau}/${rel} : HTTP ${r.status} ${(await r.text()).slice(0, 120)}`);
     }
   }
+  // ⚠️ ASTRA-26 — RENDRE LE PROPRIÉTAIRE, SINON LA REPRISE REND DES ORPHELINS.
+  // Les objets viennent d'être envoyés sous `service_role` : leur `owner` est
+  // donc celui du service, pas celui de la personne. Conséquences mesurées dans
+  // la migration du 15/09 : `objets_stockage_du_compte(uid)` — l'autorité de
+  // purge de `delete-account` — ne retrouve plus les PIÈCES JOINTES (rangées par
+  // conversation, qu'aucun chemin ne rattache à un compte), et les policies
+  // d'écriture de `storage.objects`, qui comparent `owner` à `auth.uid()`,
+  // rendent l'objet ingérable par celui qui l'a déposé.
+  // On écrit la colonne DOCUMENTÉE de la propriété, par le même canal privilégié
+  // que le reste de la reprise — jamais en déduisant le propriétaire d'une URL
+  // ou d'un texte de message (faute d'ASTRA-12).
+  const fProp = path.join(ctx.archive, "_storage_proprietaires.json");
+  if (!fs.existsSync(fProp)) {
+    // ⚠️ « Pas de fichier » n'est PAS « pas de propriétaire à rendre » : c'est
+    // une archive qui ne les portait pas. La reprise ne peut donc pas être dite
+    // prouvée sur ce point, et le bilan le porte.
+    ctx.bilan = ctx.bilan || { refus: [], notes: [], phases: {}, limitesNonRestaurees: [] };
+    ctx.bilan.phases["propriétaires Storage"] = { ok: false, motif: "archive sans `_storage_proprietaires.json` — les objets restent la propriété de service_role" };
+    console.log("   ⚠ propriétaires Storage : ABSENTS de l'archive — les objets restaurés n'auront pas de propriétaire (purge par compte et édition cassées).");
+  } else {
+    let rendus = 0, inconnus = 0, echouesProp = 0;
+    let table = {};
+    try { table = JSON.parse(fs.readFileSync(fProp, "utf8")); } catch (e) { table = {}; }
+    const parProprietaire = new Map();
+    for (const [cle, p] of Object.entries(table)) {
+      // ⚠️ UN OBJET SANS PROPRIÉTAIRE DANS L'ARCHIVE EN GARDE UN : il a été
+      // déposé par service_role, ou avant le suivi. On ne lui en INVENTE pas.
+      if (!p || (!p.owner && !p.owner_id)) { inconnus++; continue; }
+      const k = (p.owner || "") + "|" + (p.owner_id || "");
+      if (!parProprietaire.has(k)) parProprietaire.set(k, { owner: p.owner || null, owner_id: p.owner_id || null, cles: [] });
+      parProprietaire.get(k).cles.push(cle);
+    }
+    // Un UPDATE par propriétaire, par lots : la reprise fait déjà ses écritures
+    // par l'API de gestion, on n'ouvre pas un canal de plus.
+    for (const { owner, owner_id, cles } of parProprietaire.values()) {
+      for (let i = 0; i < cles.length; i += 200) {
+        const lot = cles.slice(i, i + 200);
+        const paires = lot.map((c) => { const j = c.indexOf("/"); return { b: c.slice(0, j), n: c.slice(j + 1) }; })
+          .map((x) => `(${litteral(x.b)}, ${litteral(x.n)})`).join(", ");
+        try {
+          await sql(ctx, `update storage.objects o set owner = ${owner ? litteral(owner) + "::uuid" : "null"}, owner_id = ${owner_id ? litteral(owner_id) : "null"}
+                          where (o.bucket_id, o.name) in (${paires});`);
+          rendus += lot.length;
+        } catch (e) { echouesProp += lot.length; refus.push(`propriétaires (${lot.length} objet(s)) : ${String(e.message).slice(0, 140)}`); }
+      }
+    }
+    console.log(`   propriétaires Storage : ${rendus} rendu(s)${inconnus ? `, ${inconnus} sans propriétaire dans l'archive (conservés tels quels)` : ""}${echouesProp ? `, ${echouesProp} EN ÉCHEC` : ""}.`);
+    ctx.bilan = ctx.bilan || { refus: [], notes: [], phases: {}, limitesNonRestaurees: [] };
+    ctx.bilan.phases["propriétaires Storage"] = echouesProp
+      ? { ok: false, motif: echouesProp + " objet(s) sans propriétaire rendu" }
+      : { ok: true };
+    if (inconnus) ctx.bilan.notes.push(`${inconnus} objet(s) sans propriétaire dans l'archive : déposés par service_role ou avant le suivi — aucun n'est inventé`);
+  }
   } finally {
     for (const x of await retablir()) refus.push(x);
   }
@@ -577,6 +630,53 @@ async function verdict(ctx) {
     console.log(`   ${ok ? "OK   " : "ECART"} _storage | ${ctx.man.medias.fichiers} | ${objets.length} — ${d.manquants.length} manquant(s), ${d.divergents.length} divergent(s), ${d.nonVerifies.length} NON VÉRIFIÉ(S), ${d.enTrop.length} en trop`);
     for (const nv of d.nonVerifies.slice(0, 10)) console.log(`      ? ${nv.name} — ${nv.raison}`);
   }
+  // ⚠️ ASTRA-26 — ON RELIT LES PROPRIÉTAIRES. Les avoir ÉCRITS n'est pas les
+  // avoir RENDUS : c'est la règle déjà posée pour la suspension (ASTRA-30) et
+  // pour le journal des migrations. Un objet dont le propriétaire n'est pas
+  // celui de l'archive est un ÉCART — la purge par compte et l'édition en
+  // dépendent.
+  const fProp2 = path.join(ctx.archive, "_storage_proprietaires.json");
+  if (fs.existsSync(fProp2) && !sansMedias()) {
+    let attendus = {};
+    try { attendus = JSON.parse(fs.readFileSync(fProp2, "utf8")); } catch (e) { attendus = {}; }
+    const relus = new Map();
+    let illisible = false;
+    try {
+      for (const l of await sql(ctx, "select bucket_id || '/' || name as cle, owner::text as owner, owner_id from storage.objects where metadata is not null")) {
+        relus.set(l.cle, { owner: l.owner || null, owner_id: l.owner_id || null });
+      }
+    } catch (e) { illisible = true; }
+    if (illisible) {
+      ecarts++;
+      preuve.proprietaires = { ok: false, motif: "relecture impossible — état INDÉTERMINÉ" };
+      console.log("   ECART _storage.owner | relecture impossible : état INDÉTERMINÉ");
+    } else {
+      const divergents = [], absents = [];
+      let conformes = 0, sansProprietaire = 0;
+      for (const [cle, att] of Object.entries(attendus)) {
+        // ⚠️ Un objet SANS propriétaire dans l'archive en garde un : il a été
+        // déposé par service_role, ou avant le suivi. On ne lui en INVENTE pas,
+        // et son absence n'est pas un écart — c'est un fait, et il est compté.
+        if (!att || (!att.owner && !att.owner_id)) { sansProprietaire++; continue; }
+        const o = relus.get(cle);
+        if (!o) { absents.push(cle); continue; }
+        if (String(o.owner || "") === String(att.owner || "") && String(o.owner_id || "") === String(att.owner_id || "")) conformes++;
+        else divergents.push(cle);
+      }
+      const okProp = divergents.length === 0 && absents.length === 0; if (!okProp) ecarts++;
+      preuve.proprietaires = { attendus: Object.keys(attendus).length, conformes, sans_proprietaire_dans_l_archive: sansProprietaire,
+        divergents: divergents.length, absents: absents.length, ok: okProp,
+        noms: { divergents: divergents.slice(0, 50), absents: absents.slice(0, 50) } };
+      console.log(`   ${okProp ? "OK   " : "ECART"} _storage.owner | ${conformes} conforme(s), ${sansProprietaire} sans propriétaire dans l'archive, ${divergents.length} divergent(s), ${absents.length} absent(s)`);
+    }
+  } else if (!sansMedias() && ctx.man.medias) {
+    // ⚠️ Une archive qui ne porte PAS les propriétaires ne peut pas être dite
+    // prouvée sur ce point : la purge par compte et l'édition en dépendent.
+    ecarts++;
+    preuve.proprietaires = { ok: false, motif: "archive sans `_storage_proprietaires.json` — propriété non restituable" };
+    console.log("   ECART _storage.owner | l'archive ne porte pas les propriétaires : la purge par compte et l'édition resteront cassées");
+  }
+
   // ⚠️ ASTRA-29 (second volet) — UN SEUL VERDICT, ET IL COUVRE TOUT.
   // `prouvee = ecarts === 0` ne regardait ni les refus des phases précédentes,
   // ni les éléments non vérifiés, ni les limites Storage non restaurées. Un

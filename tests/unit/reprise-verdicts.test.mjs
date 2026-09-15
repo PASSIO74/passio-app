@@ -171,3 +171,53 @@ test("ASTRA-32 ④ sans comptes ni médias : partielle, dit en clair, mais pas u
   assert.deepEqual(n.anomalies, [], "l'absence VOULUE de comptes n'est pas un défaut de l'archive");
   assert.equal(n.notes.length, 2);
 });
+
+// ── ASTRA-26 ──────────────────────────────────────────────────────────────
+const OWN_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const OWN_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+
+test("ASTRA-26 ① un objet restauré sous service_role n'a PLUS son propriétaire — c'est un écart", () => {
+  const attendus = { "attachments/c1/vocal.webm": { owner: OWN_A, owner_id: OWN_A } };
+  // AVANT : la reprise envoyait l'objet et ne regardait jamais `owner`.
+  const apresReprise = { "attachments/c1/vocal.webm": { owner: null, owner_id: null } };
+  const d = V.comparerProprietaires(attendus, apresReprise);
+  assert.equal(d.ok, false);
+  assert.deepEqual(d.divergents, ["attachments/c1/vocal.webm"]);
+  // Et c'est ce qui casse la purge : ce chemin ne porte AUCUN identifiant de
+  // compte — il est rangé par CONVERSATION. Sans `owner`, plus rien ne le relie.
+  assert.ok(!/aaaaaaaa/.test("attachments/c1/vocal.webm"), "le chemin d'une pièce jointe ne porte pas le compte : d'où l'enjeu");
+});
+
+test("ASTRA-26 ② un propriétaire rendu à l'identique est conforme", () => {
+  const t = { "content/photos/u/a.jpg": { owner: OWN_A, owner_id: OWN_A } };
+  assert.deepEqual(V.comparerProprietaires(t, t), { conformes: 1, sansProprietaire: 0, divergents: [], absents: [], ok: true });
+});
+
+test("ASTRA-26 ③ un propriétaire RENDU AU MAUVAIS COMPTE est divergent, jamais conforme", () => {
+  const attendus = { "content/photos/u/a.jpg": { owner: OWN_A, owner_id: OWN_A } };
+  const relus = { "content/photos/u/a.jpg": { owner: OWN_B, owner_id: OWN_B } };
+  assert.deepEqual(V.comparerProprietaires(attendus, relus).divergents, ["content/photos/u/a.jpg"]);
+});
+
+test("ASTRA-26 ④ « sans propriétaire dans l'archive » est un TROISIÈME état, ni succès ni écart", () => {
+  const attendus = {
+    "content/a.jpg": { owner: OWN_A, owner_id: OWN_A },
+    "content/systeme.png": { owner: null, owner_id: null },
+  };
+  const relus = { "content/a.jpg": { owner: OWN_A, owner_id: OWN_A }, "content/systeme.png": { owner: null, owner_id: null } };
+  const d = V.comparerProprietaires(attendus, relus);
+  assert.equal(d.conformes, 1);
+  assert.equal(d.sansProprietaire, 1, "on ne lui INVENTE pas de propriétaire");
+  assert.equal(d.ok, true, "…et son absence n'est pas un écart : c'est un fait, compté à part");
+});
+
+test("ASTRA-26 ⑤ un objet attendu et ABSENT de la cible est un écart", () => {
+  const d = V.comparerProprietaires({ "content/a.jpg": { owner: OWN_A } }, {});
+  assert.deepEqual(d.absents, ["content/a.jpg"]);
+  assert.equal(d.ok, false);
+});
+
+test("ASTRA-26 ⑥ le verdict global refuse de sortir prouvé si les propriétaires ne le sont pas", () => {
+  assert.equal(V.verdictGlobalReprise({ ecarts: 1, refus: [], phases: { "propriétaires Storage": { ok: false, motif: "3 objets" } }, nonVerifies: 0 }).prouvee, false);
+  assert.equal(V.verdictGlobalReprise({ ecarts: 0, refus: [], phases: { "propriétaires Storage": { ok: false, motif: "archive sans les propriétaires" } }, nonVerifies: 0 }).prouvee, false);
+});

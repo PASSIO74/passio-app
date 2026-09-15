@@ -174,7 +174,43 @@ async function exporterMedias(cfg, dossier, journal) {
       }
     }
   }
-  return { fichiers, octets, echecs };
+  // ⚠️ ASTRA-26 — LE PROPRIÉTAIRE VOYAGE AVEC LE FICHIER, ou la reprise rend des
+  // objets ORPHELINS. `storage.objects.owner` est posé par la plateforme à
+  // l'upload, depuis le JWT de l'appelant : ni le chemin ni les octets ne le
+  // portent, et l'API de liste ne le rend pas. Sans lui :
+  //   · `objets_stockage_du_compte(uid)` — l'autorité de purge de
+  //     `delete-account` depuis ASTRA-11 — ne retrouve plus les PIÈCES JOINTES,
+  //     rangées par CONVERSATION (`attachments/<conv>/…`), qu'aucun chemin ne
+  //     rattache à un compte. Le filet `content/<dossier>/<uid>/` ne les couvre
+  //     pas : il est indexé par uid, elles ne le sont pas ;
+  //   · les policies d'écriture de `storage.objects` comparent `owner` à
+  //     `auth.uid()` : l'objet n'est plus modifiable ni supprimable par la
+  //     personne qui l'a déposé.
+  // ⚠️ ON NE DÉDUIT JAMAIS LE PROPRIÉTAIRE D'UNE URL NI D'UN TEXTE DE MESSAGE
+  // (c'est très exactement la faute d'ASTRA-12) : on le lit à sa SOURCE, par une
+  // fonction `service_role` (`proprietaires_objets_stockage`, migration du 15/09).
+  // ⚠️ Fonction absente (migration non appliquée) : l'archive le DIT et se
+  // déclare PARTIELLE sur ce point — elle ne se tait pas, et elle n'échoue pas
+  // non plus : une sauvegarde sans les propriétaires vaut mieux que pas de
+  // sauvegarde, à condition que la reprise sache qu'elle ne pourra pas les rendre.
+  const proprietaires = {};
+  let proprietairesLus = null;
+  try {
+    const r = await fetch(`${cfg.url}/rest/v1/rpc/proprietaires_objets_stockage`, {
+      method: "POST", headers: entetes(cfg.cle, { "Content-Type": "application/json" }), body: "{}",
+    });
+    if (!r.ok) throw new Error("HTTP " + r.status + " " + (await r.text()).slice(0, 160));
+    const lignes = JSON.parse(await r.text());
+    if (!Array.isArray(lignes)) throw new Error("réponse inattendue");
+    for (const l of lignes) proprietaires[l.bucket_id + "/" + l.name] = { owner: l.owner || null, owner_id: l.owner_id || null };
+    proprietairesLus = lignes.length;
+    const sans = lignes.filter((l) => !l.owner && !l.owner_id).length;
+    console.log(`  propriétaires Storage : ${lignes.length} objet(s) lu(s)${sans ? `, dont ${sans} SANS propriétaire (déposés par service_role ou avant le suivi)` : ""}.`);
+  } catch (e) {
+    journal.push({ etape: "proprietaires", motif: String(e.message || e).slice(0, 200) });
+    console.log(`  ⚠ propriétaires Storage NON archivés (${String(e.message || e).slice(0, 120)}) — appliquer migration_proprietaires_objets_stockage_2026-09-15.sql. L'archive sera PARTIELLE sur ce point.`);
+  }
+  return { fichiers, octets, echecs, proprietaires, proprietairesLus };
 }
 
 async function sauvegarder(dossier, avecTelemetrie, avecComptes, avecMedias) {
@@ -211,7 +247,13 @@ async function sauvegarder(dossier, avecTelemetrie, avecComptes, avecMedias) {
   if (avecMedias) {
     const journal = [];
     const m = await exporterMedias(cfg, dossier, journal);
-    manifeste.medias = { fichiers: m.fichiers, octets: m.octets, echecs: m.echecs, detail_echecs: journal };
+    manifeste.medias = { fichiers: m.fichiers, octets: m.octets, echecs: m.echecs, detail_echecs: journal,
+      // ASTRA-26 : `null` veut dire « non archivés », `0` veut dire « aucun
+      // objet ». Les confondre ferait passer une archive muette pour complète.
+      proprietaires_lus: m.proprietairesLus };
+    if (m.proprietaires && Object.keys(m.proprietaires).length) {
+      fs.writeFileSync(path.join(dossier, "_storage_proprietaires.json"), JSON.stringify(m.proprietaires, null, 1));
+    }
     console.log(`  ${"_storage".padEnd(26)} ${String(m.fichiers).padStart(6)} fichiers, ${(m.octets / 1048576).toFixed(1)} Mo` +
       (m.echecs ? `  ⚠ ${m.echecs} échec(s)` : ""));
     if (m.echecs) manifeste.ecarts.push({ table: "_storage", attendu: m.fichiers + m.echecs, exporte: m.fichiers });
