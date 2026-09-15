@@ -17,6 +17,7 @@ import * as claude from "./claude.js";
 import * as sessions from "./sessions.js";
 import * as checklist from "./checklist.js";
 import * as dbwatch from "./dbwatch.js";
+import { exploitation } from "./exploitation.js";
 import { signups } from "./signups.js";
 import { accounts } from "./accounts.js";
 import { detectClaudeCli, claudeCliState, startClaudeCliWatch, claudeCliWatchTick } from "./claudecli.js";
@@ -201,6 +202,9 @@ api.patch("/bugs/:id", auth.requireCap("sessions"), (req, res) => {
 api.get("/performance", auth.requireAuth, (req, res) => res.json({ api: store.apiPerf(), health: store.health() }));
 api.get("/services", auth.requireAuth, (req, res) => res.json(store.services()));
 api.get("/database", auth.requireCap("db"), asyncH(async (req, res) => res.json(await dbwatch.overview())));
+// PIL-10 : modération, sauvegardes, disponibilité, capacité, coûts — comptages et
+// verdicts à seuils, jamais une ligne de contenu (exploitation.js).
+api.get("/exploitation", auth.requireCap("db"), asyncH(async (req, res) => res.json(await exploitation())));
 
 api.get("/test-sessions", auth.requireAuth, (req, res) => res.json(sessions.list()));
 api.post("/test-sessions", auth.requireCap("sessions"), (req, res) => res.json(sessions.create(req.body || {}, req.session.u)));
