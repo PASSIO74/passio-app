@@ -82,3 +82,4 @@ docs/demo/
 # Journal LOCAL des signalements deja regardes (pense-bete d operateur,
 # jamais un statut serveur — voir scripts/moderation.js).
 .passio/moderation-vus.json
+playwright.poste.config.js
