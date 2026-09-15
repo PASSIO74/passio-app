@@ -1684,6 +1684,22 @@ function playCurrentStory() {
   $("#storyAuthor").style.cursor = "pointer";
   $("#storyAuthor").onclick = function(e) { e.stopPropagation(); closeStoryViewer(); openUserProfile(s.authorId); };
   $("#storyTime").textContent = fmtTime(s.createdAt);
+  // ⚠️ UNE STORY A ENFIN UNE PORTE DE SIGNALEMENT (chantier 5, 2026-09-14) :
+  // MOD-02 avait ouvert celle des publications, les stories n'en avaient aucune.
+  // Sur la story d'un compte réel autre que moi ; rendu DOM (jamais d'onclick
+  // inline avec un identifiant d'autrui — règle MSG-02).
+  try {
+    var _hdr = document.querySelector("#storyViewer .story-viewer-header");
+    var _old = document.getElementById("storyReportBtn"); if (_old) _old.remove();
+    var _reel = typeof _uidEstUnCompte === "function" && _uidEstUnCompte() && s.authorId && s.authorId !== MY_UID && !/^u_/.test(String(s.authorId));
+    if (_hdr && _reel) {
+      var _btn = document.createElement("button");
+      _btn.id = "storyReportBtn"; _btn.type = "button"; _btn.setAttribute("aria-label", "Signaler cette story");
+      _btn.textContent = "⋯"; _btn.style.cssText = "background:none;border:none;color:#fff;font-size:20px;line-height:1;padding:4px 8px;cursor:pointer;margin-left:auto;";
+      _btn.addEventListener("click", function (e) { e.stopPropagation(); clearInterval(storyTimer); openModal('<div class="modal-handle"></div><div class="modal-title">Cette story</div><button class="btn ghost block" id="storyReportGo">🚩 Signaler cette story</button>'); var go = document.getElementById("storyReportGo"); if (go) go.addEventListener("click", function () { closeModal(); reportStory(s.id); }); });
+      _hdr.insertBefore(_btn, _hdr.querySelector(".story-viewer-close"));
+    }
+  } catch (e) {}
 
   const card = $("#storyCard");
   card.style.background = (s.media ? "#000" : (s.bg || "var(--grad-hero)"));
@@ -6584,7 +6600,7 @@ async function supaLeaveEventConversation(convId) {
 // Emoji d'une notif dérivé de son `kind` (pas de jointure profiles : voir
 // supaLoadNotifications).
 function _notifEmoji(kind) {
-  return ({ like: "❤️", comment: "💬", follow: "➕", follow_request: "🔒", message: "✉️", mention: "📣", reaction: "😊", event_join: "🤝", event_comment: "💬", event_update: "📝", event_cancelled: "🚫", event_reminder: "⏰", event_invite: "💌", event_feedback: "⭐", live_video: "🔴", cdv_live_step: "📍" })[kind] || "✨";
+  return ({ like: "❤️", comment: "💬", follow: "➕", follow_request: "🔒", message: "✉️", mention: "📣", reaction: "😊", event_join: "🤝", event_comment: "💬", event_update: "📝", event_cancelled: "🚫", event_reminder: "⏰", event_invite: "💌", event_feedback: "⭐", live_video: "🔴", cdv_live_step: "📍", moderation: "🛡️" })[kind] || "✨";
 }
 
 async function supaLoadNotifications() {

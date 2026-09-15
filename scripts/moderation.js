@@ -41,14 +41,30 @@
  *   node scripts/moderation.js voir --id r_xxx    le détail, avec le contenu visé
  *   node scripts/moderation.js vu --id r_xxx      marque « vu » dans le journal local
  *   node scripts/moderation.js traiter --id r_xxx --statut handled|dismissed [--note "…"]
- *                                                 ferme le signalement EN BASE (statut serveur)
+ *                                                 ferme le signalement EN BASE (statut serveur),
+ *                                                 journalise la décision, prévient le signalant
+ *   node scripts/moderation.js retirer --id r_xxx [--note "…"]
+ *                                                 RETIRE le contenu visé (publication, commentaire,
+ *                                                 story, message supprimés ; rencontre annulée),
+ *                                                 ferme le signalement, journalise, prévient
  *   node scripts/moderation.js compte             un seul nombre, pour un contrôle rapide
+ *
+ * ⚠️ RETIRER SANS SQL MANUEL (MOD-01, 2026-09-14). Jusqu'ici « retirer un
+ * contenu » renvoyait à l'éditeur SQL : un modérateur qui n'a pas la main sur
+ * la base ne pouvait rien faire. `retirer` exécute le plan de
+ * `scripts/lib/moderation-decision.js` (pur, verrouillé en unitaire) avec
+ * `service_role`, écrit le journal `moderation_actions` (table sans policy
+ * client, migration_moderation_journal_2026-09-14.sql) et prévient le
+ * signalant par une notification `moderation` — la décision motivée que le
+ * DSA (art. 16-17) demande. Un compte ne se suspend pas ici (aucune colonne) :
+ * l'outil le dit au lieu de faire semblant.
  */
 "use strict";
 const fs = require("fs");
 const path = require("path");
 const { configAdmin } = require("../tests/e2e/compte-e2e.js");
 const { lireToutesLesPages } = require("./lib/pagination-rest.js");
+const { planRetrait, notificationPourSignalant, statutApresAction } = require("./lib/moderation-decision.js");
 
 const argv = process.argv.slice(2);
 const commande = argv[0] && !argv[0].startsWith("--") ? argv[0] : "lister";
@@ -235,6 +251,56 @@ async function traiter(cfg) {
   // ⚠️ 0 ligne = l'identifiant n'existe pas ; un PATCH « réussi » sans ligne n'a rien fait.
   if (!lignes.length) sortir(`❌ Aucun signalement ${id} — rien n'a été modifié.`);
   console.log(`✅ ${id} → ${statut}${note ? ` (« ${note.slice(0, 80)} »)` : ""} — statut SERVEUR, visible de tout opérateur.`);
+  if (statut !== "open") await journaliserEtPrevenir(cfg, lignes[0], statut === "dismissed" ? "rejet" : "note", note);
+}
+
+// Écrit la trace de la décision et prévient le signalant. Ni l'un ni l'autre ne
+// conditionne le statut déjà posé : un échec ici est DIT, pas caché.
+async function journaliserEtPrevenir(cfg, report, action, note) {
+  const entetes = { apikey: cfg.cle, Authorization: `Bearer ${cfg.cle}`, "Content-Type": "application/json", Prefer: "return=minimal" };
+  const j = await fetch(`${cfg.url}/rest/v1/moderation_actions`, { method: "POST", headers: entetes,
+    body: JSON.stringify({ report_id: report.id, action, target_type: report.target_type || null, target_id: report.target_id || null, note: note ? String(note).slice(0, 500) : null }) });
+  if (j.ok) console.log(`   📒 journal : ${action} consigné.`);
+  else if (j.status === 404 || j.status === 400) console.log("   ⚠️  journal absent : appliquer migrations/migration_moderation_journal_2026-09-14.sql — la décision n'est PAS consignée.");
+  else console.log(`   ⚠️  journal : ${j.status} ${(await j.text()).slice(0, 200)}`);
+  const notif = notificationPourSignalant(report, action, note);
+  if (!notif) { console.log("   ℹ️  signalant sans compte : personne à prévenir."); return; }
+  const n = await fetch(`${cfg.url}/rest/v1/notifications`, { method: "POST", headers: { ...entetes, Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(notif) });
+  if (n.ok) console.log(`   🔔 signalant prévenu : « ${notif.content} »`);
+  else console.log(`   ⚠️  signalant NON prévenu : ${n.status} ${(await n.text()).slice(0, 200)}`);
+}
+
+// RETIRE le contenu visé, puis ferme, journalise et prévient — sans SQL manuel.
+async function retirer(cfg) {
+  const id = opt("id"), note = opt("note");
+  if (!id) sortir("Il faut --id <identifiant de signalement>");
+  const l = (await rest(cfg, `reports?id=eq.${encodeURIComponent(id)}&select=*`) || [])[0];
+  if (!l) sortir(`❌ Signalement introuvable : ${id}`);
+  const { plan, raison } = planRetrait(l.target_type, l.target_id);
+  if (!plan) sortir(`❌ Impossible de retirer cette cible (${typeLisible(l.target_type)}) : ${raison}`);
+  const corps = plan.corps ? JSON.stringify(Object.fromEntries(Object.entries(plan.corps).map(([k, v]) => [k, v === "__now__" ? new Date().toISOString() : v]))) : undefined;
+  const r = await fetch(`${cfg.url}/rest/v1/${plan.chemin}`, { method: plan.methode, headers: { apikey: cfg.cle, Authorization: `Bearer ${cfg.cle}`, "Content-Type": "application/json", Prefer: "return=representation" }, body: corps });
+  const texte = await r.text();
+  if (!r.ok) sortir(`❌ ${r.status} en retirant (${plan.methode} ${plan.chemin})\n${texte.slice(0, 400)}`);
+  const touchees = texte ? JSON.parse(texte) : [];
+  // ⚠️ 0 ligne = la cible n'existe plus : rien n'a été retiré, on le dit, et on
+  // ferme quand même (il n'y a plus rien à modérer).
+  console.log(touchees.length ? `✅ ${plan.libelle} (${l.target_id}).` : `ℹ️  Cible déjà absente (${l.target_id}) : rien à retirer.`);
+  const f = await fetch(`${cfg.url}/rest/v1/reports?id=eq.${encodeURIComponent(id)}`, { method: "PATCH",
+    headers: { apikey: cfg.cle, Authorization: `Bearer ${cfg.cle}`, "Content-Type": "application/json", Prefer: "return=minimal" },
+    body: JSON.stringify({ status: statutApresAction("retrait"), handled_at: new Date().toISOString(), handled_note: note || plan.libelle }) });
+  if (!f.ok) sortir(`❌ ${f.status} en fermant le signalement\n${(await f.text()).slice(0, 400)}`);
+  console.log(`✅ ${id} → handled.`);
+  // Les autres signalements OUVERTS de la même cible sont fermés avec : la cible n'est plus là.
+  const freres = (await rest(cfg, `reports?target_type=eq.${encodeURIComponent(l.target_type)}&target_id=eq.${encodeURIComponent(l.target_id)}&status=eq.open&select=*`) || []).filter((x) => x.id !== id);
+  for (const fr of freres) {
+    await fetch(`${cfg.url}/rest/v1/reports?id=eq.${encodeURIComponent(fr.id)}`, { method: "PATCH",
+      headers: { apikey: cfg.cle, Authorization: `Bearer ${cfg.cle}`, "Content-Type": "application/json", Prefer: "return=minimal" },
+      body: JSON.stringify({ status: "handled", handled_at: new Date().toISOString(), handled_note: "retrait (via " + id + ")" }) });
+    await journaliserEtPrevenir(cfg, fr, "retrait", note);
+  }
+  if (freres.length) console.log(`✅ ${freres.length} autre(s) signalement(s) de la même cible fermé(s).`);
+  await journaliserEtPrevenir(cfg, l, "retrait", note);
 }
 
 // Va chercher CE QUI EST VISÉ, pas seulement l'identifiant : modérer sur un
@@ -305,8 +371,9 @@ async function voir(cfg) {
   }
 
   console.log(`   Ce que tu peux faire :`);
-  console.log(`     · retirer un contenu ou suspendre un compte : éditeur SQL Supabase (canal ③)`);
-  console.log(`     · le fermer en base : node scripts/moderation.js traiter --id ${l.id} --statut handled --note "…"`);
+  console.log(`     · RETIRER le contenu (et fermer, journaliser, prévenir) : node scripts/moderation.js retirer --id ${l.id} --note "…"`);
+  console.log(`     · rejeter (aucune infraction) : node scripts/moderation.js traiter --id ${l.id} --statut dismissed --note "…"`);
+  console.log(`     · fermer sans retrait : node scripts/moderation.js traiter --id ${l.id} --statut handled --note "…"`);
   console.log(`     · (avant la migration) le marquer comme regardé : node scripts/moderation.js vu --id ${l.id}\n`);
 }
 
@@ -346,5 +413,6 @@ async function compter(cfg) {
   if (commande === "voir") return voir(cfg);
   if (commande === "compte") return compter(cfg);
   if (commande === "traiter") return traiter(cfg);
-  sortir(`Commande inconnue : ${commande}\nAttendu : lister | voir | vu | traiter | compte`);
+  if (commande === "retirer") return retirer(cfg);
+  sortir(`Commande inconnue : ${commande}\nAttendu : lister | voir | vu | traiter | retirer | compte`);
 })().catch((e) => sortir("❌ " + (e && e.message)));
