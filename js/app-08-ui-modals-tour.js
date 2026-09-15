@@ -4761,20 +4761,39 @@ async function supaCancelEvent(eventId, cancelled) {
   } catch(e) { return false; }
 }
 
+// ⚠️ ASTRA-36 (quatrième contre-revue, 15/09/2026) — ON NE DÉTRUIT PLUS RIEN
+// AVANT DE SAVOIR SI LE PARENT PART.
+//
+// Ce chemin faisait TROIS DELETE sur les tables filles, puis le DELETE du
+// parent. Un refus du parent (HTTP 500, réseau, ou simplement zéro ligne parce
+// que `author_id` ne correspond pas) rendait `false` — mais les filles étaient
+// DÉJÀ effacées. L'activité survivait sans elles, `_prevenirSuppressionActivite`
+// ne partait jamais, et l'écran disait « réessaie » : un second essai n'efface
+// rien de plus, la perte, elle, a déjà eu lieu. Irréversible et muette.
+//
+// ⚠️ PORTÉE EXACTE DE LA PERTE, mesurée et non supposée : les policies DELETE
+// des trois tables filles sont toutes en « ma ligne seulement »
+// (`user_id = auth.uid()`, `author_id = auth.uid()`). Le client ne pouvait donc
+// détruire QUE SES PROPRES lignes — sa participation, ses commentaires, ses
+// réactions sur son activité. Pas celles des autres. C'est réel, c'est
+// irréversible, et c'est plus étroit que « les données d'autrui ».
+//
+// ⚠️ ET LE NETTOYAGE MANUEL ÉTAIT DEVENU INUTILE LE 14/09. Mesuré en production
+// le 15/09 : les QUATRE tables filles portent
+// `event_id → events(id) ON DELETE CASCADE` — `event_attendees`,
+// `event_comments`, `event_reactions` et `event_checkin_secrets`, que ce code
+// n'a JAMAIS nettoyée. La migration `migration_evenements_cascade_2026-09-14`
+// disait que le client « continue de le faire pour ses propres lignes :
+// inoffensif ». Ce n'était pas inoffensif : c'était précisément ce chemin.
+//
+// LE REMÈDE : UNE SEULE ÉCRITURE SERVEUR, celle du parent. Le CASCADE emporte
+// les filles DANS LA MÊME TRANSACTION, sous n'importe quel compte (il ne passe
+// pas par les policies des tables filles), et il couvre la quatrième. Si le
+// parent est refusé, RIEN n'est détruit — c'est l'échec sûr. Et si un jour les
+// clés étrangères manquaient (environnement d'avant la migration), le DELETE du
+// parent échouerait sur la contrainte : là encore, rien de détruit.
 async function supaDeleteEvent(eventId) {
   try {
-    // Les tables filles n'ont pas toutes un ON DELETE CASCADE en prod : on nettoie.
-    // ⚠️ Pas d'atomicité possible côté client : si une suppression fille échoue, on
-    // s'arrête AVANT de toucher le parent, plutôt que de détruire une partie des
-    // lignes puis de buter sur une FK — ce qui laissait un événement à moitié
-    // démoli, ni supprimé ni intact. L'organisateur peut retenter.
-    for (const table of ["event_attendees", "event_comments", "event_reactions"]) {
-      const r = await supa.from(table).delete().eq("event_id", eventId);
-      if (r && r.error) {
-        console.warn("suppression d'événement : " + table + " a refusé — " + r.error.message);
-        return false;
-      }
-    }
     const res = await supa.from("events").delete().eq("id", eventId).eq("author_id", MY_UID).select("id");
     return _writeVerdict(res, { expectRows: true, label: "suppression d'événement" }).ok;
   } catch(e) { console.warn("suppression d'événement :", e && e.message); return false; }
