@@ -26,8 +26,12 @@ import { purgerCompte, listerObjetsDuCompte, TABLES_COMPTE, DOSSIERS_CONTENU, RP
 const U = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const AUTRE = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
-function fauxAdmin({ tables = {}, seaux = {}, pannesDelete = [], pannesCount = [], pannesList = [], pannesRemove = [], rpc = "ok", pannesListApres = [] } = {}) {
+function fauxAdmin({ tables = {}, seaux = {}, pannesDelete = [], pannesCount = [], pannesList = [], pannesRemove = [], rpc = "ok", pannesListApres = [], ecrituresTardives = {} } = {}) {
   const t = JSON.parse(JSON.stringify(tables));
+  // `ecrituresTardives` : { table: n } — à chaque relecture (count) de cette
+  // table, tant que n > 0, une ligne du compte RÉAPPARAÎT avant le comptage
+  // (le client a repoussé son état entre l'effacement et la relecture).
+  const tardives = { ...ecrituresTardives };
   const s = JSON.parse(JSON.stringify(seaux));
   const compteurs = { remove: 0, list: {} };
   return {
@@ -46,6 +50,7 @@ function fauxAdmin({ tables = {}, seaux = {}, pannesDelete = [], pannesCount = [
             if (pannesDelete.includes(table)) out = { data: null, error: { message: "panne delete " + table } };
             else { t[table] = (t[table] || []).filter((r) => !filtres.every((f) => f(r))); out = { data: null, error: null }; }
           } else if (head) {
+            if (tardives[table] > 0) { tardives[table]--; (t[table] = t[table] || []).push({ user_id: U, author_id: U, id: "tardif" }); }
             if (pannesCount.includes(table)) out = { data: null, count: null, error: { message: "panne count " + table } };
             else out = { data: null, count: rows().length, error: null };
           } else out = { data: rows(), error: null };
@@ -262,4 +267,16 @@ test("⑩ plus de 1 000 objets : tout part, la liste est paginée", async () => 
   assert.equal(Object.values(admin._s.attachments).filter((o) => o === U).length, 0);
   assert.equal(Object.keys(admin._s.content).filter((k) => k.startsWith("photos/" + U + "/")).length, 0);
   assert.equal(Object.values(admin._s.attachments).filter((o) => o === AUTRE).length, 1, "l'autre est intact");
+});
+
+test("⑪ SUP-10 : une ligne repoussée par le client entre l'effacement et la relecture est effacée par la reprise ; une ligne qui revient encore est un reste nommé", async () => {
+  const une = fauxAdmin({ tables: { user_state: [{ user_id: U }] }, ecrituresTardives: { user_state: 1 } });
+  const r1 = await purgerCompte(une, U);
+  assert.equal(r1.ok, true, JSON.stringify(r1));
+  assert.deepEqual(une._t.user_state, []);
+  const boucle = fauxAdmin({ tables: { user_state: [{ user_id: U }] }, ecrituresTardives: { user_state: 3 } });
+  const r2 = await purgerCompte(boucle, U);
+  assert.equal(r2.ok, false);
+  assert.deepEqual(r2.restes, ["user_state:user_id=1"]);
+  assert.deepEqual(r2.echecs, []);
 });

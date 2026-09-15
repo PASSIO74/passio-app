@@ -108,4 +108,35 @@ test.describe("AUTH-05 / SUP-10 — la suppression du compte attend le verdict",
     expect(r.deletes, "le client ne supprime rien lui-même").toEqual([]);
     expect(r.ok).toBe(false);
   });
+  test("⑤ SUP-10 : pendant la purge serveur, aucun état ne part ; après un refus, les écritures reprennent", async ({ page }) => {
+    await banc(page);
+    const r = await page.evaluate(async () => {
+      window.__ops = [];
+      Object.defineProperty(window.supa, "from", { configurable: true, writable: true,
+        value: function (table) { var b = { delete: function () { return b; }, eq: function () { return b; }, select: function () { return b; }, upsert: function () { window.__ops.push(table); return b; }, insert: function () { window.__ops.push(table); return b; }, update: function () { window.__ops.push(table); return b; }, maybeSingle: function () { return Promise.resolve({ data: null, error: null }); },
+          then: function (a, c) { return Promise.resolve({ data: [], error: null }).then(a, c); } }; return b; } });
+      // La purge serveur dure 3 s ; PENDANT, l'app enregistre son état (comme
+      // closeModal et le toast le font) : le debounce de 2,5 s tire au milieu.
+      window.__verdict = () => new Promise((res) => setTimeout(() => res({ data: { ok: false, restes: ["user_state:user_id=1"] }, error: { message: "409" } }), 3000));
+      const promesse = doDeleteAccount();
+      await new Promise((r) => setTimeout(r, 200));
+      const pendant = { gele: window._suppressionEnCours === true, peut: _peutPousserEtat() };
+      saveState();
+      await supaSaveUserState();
+      await new Promise((r) => setTimeout(r, 2800));
+      const ecrituresPendant = window.__ops.filter((t) => t === "user_state").length;
+      const ok = await promesse;
+      // Refus rendu : la main revient, l'état repart.
+      const apres = { gele: window._suppressionEnCours === true, peut: _peutPousserEtat() };
+      window.__ops = [];
+      await supaSaveUserState();
+      return { ok, pendant, ecrituresPendant, apres, ecrituresApres: window.__ops.filter((t) => t === "user_state").length };
+    });
+    expect(r.ok).toBe(false);
+    // RÉINJECTION : sur le code d'avant, `gele` est false, `peut` true, et une écriture user_state part pendant la purge.
+    expect(r.pendant).toEqual({ gele: true, peut: false });
+    expect(r.ecrituresPendant, "aucun état ne part pendant la purge").toBe(0);
+    expect(r.apres).toEqual({ gele: false, peut: true });
+    expect(r.ecrituresApres, "après le refus, l'état repart").toBe(1);
+  });
 });
