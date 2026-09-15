@@ -77,7 +77,8 @@ test.describe("AUTH-05 / SUP-10 — la suppression du compte attend le verdict",
   test("③ verdict positif : déconnexion, purge locale, annonce", async ({ page }) => {
     await banc(page);
     const r = await page.evaluate(async () => {
-      window.__verdict = () => Promise.resolve({ data: { ok: true, piecesJointes: 0 }, error: null });
+      // ASTRA-42 (2026-09-15) : le succès porte `garantie: "barriere"` — sans lui, rien n'est annoncé (cas ⑥).
+      window.__verdict = () => Promise.resolve({ data: { ok: true, garantie: "barriere", objets: 0 }, error: null });
       const ok = await doDeleteAccount();
       const clesPassio = Object.keys(localStorage).filter((k) => k.indexOf("passio") !== -1);
       return { ok, toasts: window.__toasts.slice(), signOut: window.__signOut, clesPassio };
@@ -138,5 +139,46 @@ test.describe("AUTH-05 / SUP-10 — la suppression du compte attend le verdict",
     expect(r.ecrituresPendant, "aucun état ne part pendant la purge").toBe(0);
     expect(r.apres).toEqual({ gele: false, peut: true });
     expect(r.ecrituresApres, "après le refus, l'état repart").toBe(1);
+  });
+
+  // ═══ ASTRA-42 (cinquième contre-revue, 2026-09-15) : le contrat de réponse, jusqu'à l'interface ═══
+  test("⑥ ASTRA-42 : `ok:true` SANS `garantie:\"barriere\"` n'est pas un succès — rien n'est annoncé, rien n'est purgé", async ({ page }) => {
+    await banc(page);
+    const r = await page.evaluate(async () => {
+      // La forme de la v1 : une purge sans barrière qui répondait 200 { ok:true, objets:0 }.
+      window.__verdict = () => Promise.resolve({ data: { ok: true, objets: 0 }, error: null });
+      const ok = await doDeleteAccount();
+      return { ok, toasts: window.__toasts.slice(), signOut: window.__signOut, etatLocal: localStorage.getItem(STATE_KEY) !== null };
+    });
+    expect(r.ok).toBe(false);
+    expect(r.toasts.some((t) => /Compte supprimé/.test(t)), "un succès non garanti n'est pas annoncé").toBe(false);
+    expect(r.signOut).toBe(0);
+    expect(r.etatLocal).toBe(true);
+  });
+
+  test("⑦ ASTRA-42 : sur une réponse non-2xx le corps est lu dans `error.context`, et chaque code a son message", async ({ page }) => {
+    await banc(page);
+    const r = await page.evaluate(async () => {
+      // supabase-js : non-2xx → { data: null, error: FunctionsHttpError } avec `error.context` = la Response.
+      const reponse = (status, corps) => Promise.resolve({ data: null, error: { name: "FunctionsHttpError", message: "Edge Function returned a non-2xx status code",
+        context: { status, json: () => Promise.resolve(corps) } } });
+      const cas = {};
+      window.__verdict = () => reponse(503, { ok: false, code: "infrastructure_absente", error: "x" });
+      cas.absente = { ok: await doDeleteAccount(), toasts: window.__toasts.splice(0) };
+      window.__verdict = () => reponse(500, { ok: false, code: "auth_non_supprime", donnees_purgees: true, error: "x" });
+      cas.auth = { ok: await doDeleteAccount(), toasts: window.__toasts.splice(0) };
+      window.__verdict = () => reponse(409, { ok: false, code: "deja_en_cours", error: "x" });
+      cas.enCours = { ok: await doDeleteAccount(), toasts: window.__toasts.splice(0) };
+      window.__verdict = () => reponse(409, { ok: false, code: "incomplete", restes: ["user_state:user_id=1"], error: "x" });
+      cas.restes = { ok: await doDeleteAccount(), toasts: window.__toasts.splice(0) };
+      return { cas, signOut: window.__signOut, etatLocal: localStorage.getItem(STATE_KEY) !== null };
+    });
+    for (const k of Object.keys(r.cas)) expect(r.cas[k].ok, k).toBe(false);
+    expect(r.cas.absente.toasts.some((t) => /indisponible pour le moment : rien n'a été supprimé/.test(t)), JSON.stringify(r.cas.absente.toasts)).toBe(true);
+    expect(r.cas.auth.toasts.some((t) => /données ont été supprimées, mais la fermeture du compte a échoué/.test(t)), JSON.stringify(r.cas.auth.toasts)).toBe(true);
+    expect(r.cas.enCours.toasts.some((t) => /déjà en cours/.test(t)), JSON.stringify(r.cas.enCours.toasts)).toBe(true);
+    expect(r.cas.restes.toasts.some((t) => /n'a PAS été supprimé/.test(t)), JSON.stringify(r.cas.restes.toasts)).toBe(true);
+    expect(r.signOut).toBe(0);
+    expect(r.etatLocal).toBe(true);
   });
 });
