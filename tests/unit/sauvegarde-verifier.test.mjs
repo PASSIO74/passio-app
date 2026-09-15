@@ -50,3 +50,27 @@ test("③ un vide ANNONCÉ est conforme", () => {
   const r = verifier(archive([], 0));
   assert.equal(r.code, 0, r.sortie);
 });
+
+// NET-07 / TCI-15 (2026-09-15) : le schéma voyage avec les données.
+test("④ schema.sql absent : dit (⚠), pas une anomalie — l'archive reste restaurable sur une base qui a la structure", () => {
+  const r = verifier(archive([{ id: "a" }], 1));
+  assert.equal(r.code, 0, r.sortie);
+  assert.match(r.sortie, /SANS le schéma/);
+});
+
+test("⑤ schema.sql présent mais vide ou étranger (page d'erreur) : anomalie, sortie 1 — un DDL de PASSIO a des dizaines de tables et de policies", () => {
+  const d = archive([{ id: "a" }], 1);
+  fs.writeFileSync(path.join(d, "schema.sql"), "<html>Unauthorized</html>");
+  const r = verifier(d);
+  assert.equal(r.code, 1, r.sortie);
+  assert.match(r.sortie, /schema\.sql : 0 create table, 0 create policy/);
+});
+
+test("⑥ schema.sql qui est un DDL : compté, conforme", () => {
+  const d = archive([{ id: "a" }], 1);
+  const ddl = Array.from({ length: 25 }, (_, i) => `create table public.t${i} (id text);\ncreate policy p${i} on public.t${i} for select using (true);`).join("\n");
+  fs.writeFileSync(path.join(d, "schema.sql"), ddl);
+  const r = verifier(d);
+  assert.equal(r.code, 0, r.sortie);
+  assert.match(r.sortie, /schema\.sql : 25 tables, 25 policies/);
+});

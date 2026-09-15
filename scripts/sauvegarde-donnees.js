@@ -266,6 +266,21 @@ function verifier(dossier) {
     const n = compter(base);
     if (n !== man.medias.fichiers) { console.error(`  _storage : ${n} fichiers sur disque, manifeste ${man.medias.fichiers}`); pb++; }
   }
+  // ⚠️ LE SCHÉMA VOYAGE AVEC LES DONNÉES (NET-07 / TCI-15, 2026-09-15). Une
+  // archive de lignes sans le DDL qui les accueille n'est pas une capacité de
+  // reprise : `restaurer-donnees.js --schema` en a besoin, et le DDL de la
+  // production change (quatre migrations le 15/09). `schema.sql` est écrit
+  // par le workflow (`schema-executable.js`, API de gestion) ; ici on exige
+  // qu'il soit là ET qu'il soit un DDL (des `create table`, des policies),
+  // pas un fichier vide ou une page d'erreur.
+  const schema = path.join(dossier, "schema.sql");
+  if (!fs.existsSync(schema)) console.log("  ⚠ archive SANS le schéma (schema.sql) : restaurable sur une base qui a DÉJÀ la structure, pas sur une base vide.");
+  else {
+    const ddl = fs.readFileSync(schema, "utf8");
+    const tables = (ddl.match(/create table/gi) || []).length, policies = (ddl.match(/create policy/gi) || []).length;
+    if (tables < 20 || policies < 20) { console.error(`  schema.sql : ${tables} create table, ${policies} create policy — ce n'est pas le DDL de PASSIO`); pb++; }
+    else console.log(`  schema.sql : ${tables} tables, ${policies} policies.`);
+  }
   if (man.comptes == null) {
     console.log("  ⚠ archive SANS les comptes : restaurable en données, pas en identités.");
   } else {
