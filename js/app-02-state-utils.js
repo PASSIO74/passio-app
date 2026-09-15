@@ -4538,12 +4538,16 @@ async function _poserConsentementOAuth() {
 // ── Consentement REQUIS après un retour Google sans accord (AUTH-03) ──────
 // Un compte que Google vient de créer depuis l'écran de connexion n'a rien
 // accepté : on le lui DEMANDE, on n'invente rien. Le critère est celui du
-// serveur (aucun `cgu_accepted_at` dans `user_metadata`) borné aux comptes
-// NEUFS (créés il y a moins de quinze minutes) — un compte ancien sans trace
-// relève d'un autre lot (EXP-09). Le rappel vit sur l'appareil, le temps que
-// l'accord soit donné ou refusé ; un refus déconnecte.
+// serveur : aucun `cgu_accepted_at` dans `user_metadata`.
+// ⚠️ PLUS DE BORNE À QUINZE MINUTES (contre-revue Astra du 2026-09-15, AUTH-02/03
+// PARTIEL) : « un compte créé depuis seize minutes : absence de rappel
+// reproduite ». La borne renvoyait les comptes anciens sans trace à un autre
+// lot ; ce lot, c'est celui-ci. Tout compte sans accord tracé est sollicité à
+// la session suivante — y compris les comptes d'avant le 10/09 (les CGU ont
+// changé le 09/09 : 18 ans et plus), qui n'ont jamais accepté celles-là. Le
+// rappel vit sur l'appareil, le temps que l'accord soit donné ou refusé ; un
+// refus déconnecte.
 var CONSENTEMENT_REQUIS_KEY = "passio_consentement_requis_v1";
-var CONSENTEMENT_COMPTE_NEUF_MS = 15 * 60 * 1000;
 async function _verifierConsentementApresOAuth() {
   if (typeof supa === "undefined" || !supa || !window._supaReal) return false;
   var u = await supa.auth.getUser();
@@ -4551,8 +4555,6 @@ async function _verifierConsentementApresOAuth() {
   if (!user || !user.id) return false;
   var meta = user.user_metadata || {};
   if (meta.cgu_accepted_at) return false;
-  var cree = Date.parse(user.created_at || "");
-  if (!isFinite(cree) || Date.now() - cree > CONSENTEMENT_COMPTE_NEUF_MS) return false;
   try { localStorage.setItem(CONSENTEMENT_REQUIS_KEY, "1"); } catch (e) {}
   try { if (typeof diagLog === "function") diagLog("cgu_oauth_requis compte neuf sans accord"); } catch (e) {}
   planifierConsentementRequis();
