@@ -127,6 +127,22 @@ lot 5 (#474) → lot 7 (#475), puis les correctifs CI de #473 et #474.
 
 Contrôles sur le SHA combiné **(voir la fin de cette section pour le SHA exact et les résultats finaux)** : `node --test "tests/unit/*.test.mjs"` ; `audit-cle-production`, `audit-tables-compte`, `audit-registre-residus --ci`, `audit-supa-stub`, `audit-tests-creux`, `audit-tests-isolation` ; les 31 bancs SQL + le banc des **trois séquences de mise en service** (`tests/sql/sequences-mise-en-service.test.sh`, ajouté sur la branche d'intégration : infrastructure de suppression avant la fonction, RPC des propriétaires avant toute archive complète, protocole client compatible avant le resserrement des canaux) ; 10 suites e2e ciblées (58 cas).
 
+### D.1 SHA combiné et résultats finaux
+
+**SHA combiné (code) : `055efdef3dfcaa5fce82891cd3c2cbb43f68a8ec`** — `claude/astra5-integration` (le commit de dossier qui suit ne touche que `.passio/audits/`). Têtes des PR combinées : #469 `7bdb8f3d`, #473 `fc11cb87`, #470 `ab3c4df0`, #471 `0960d778`, #472 `ca777b23`, #474 `d7a2bb97`, #475 `7be5323a`.
+
+| Contrôle | Résultat sur `055efdef` | Preuve |
+|---|---|---|
+| `node --test "tests/unit/*.test.mjs"` | **301 / 301** | `integration-final-controles.txt` |
+| gates : clé de production, tables de compte, registre des résidus, stub hors ligne, tests creux, isolation e2e, globals, handlers, échappement, clés de télémétrie | **toutes vertes** | idem |
+| bancs SQL (32, PostgreSQL 17.6) | **27 verts** ; 5 rouges **identiques sur `main` `a5e8c717`** sur ce poste (`python3` absent, extensions `pg_trgm`/`unaccent` absentes du zip EDB, CRLF) et **verts en CI** (run 35017677054, job Audits, bancs nommés et « non nommés : 14, rouges : 0 ») | `integration-bancs-sql-tous.txt`, `bancs-rouges-locaux-main.txt` |
+| `tests/sql/sequences-mise-en-service.test.sh` (nouveau) | **23 / 23** | `integration-sequences.txt` |
+| e2e ciblés (suppression, export, files, médias, appels ×4, mentions, XSS mentions) | **58 / 58** (Chromium) | `integration-e2e.txt` |
+| tests du pilotage (`dashboard/`) | 407 / 409 — les 2 rouges lisent la révision git d'un **worktree** ; verts en CI | — |
+| gate des résidus sur le SHA combiné | rouge sur RES-11 **avant** réexamen, verte après | `residus-integration-avant.txt`, `-apres.txt` |
+
+Ce qui n'a **pas** été joué sur le SHA combiné : les 6 lots e2e complets de la CI (≈ 200 suites — la CI de la PR d'intégration les jouera), l'artefact minifié `dist/` (job « Gates artefact production » de la CI).
+
 ## E. Mise en service proposée — **une proposition, pas une autorisation**
 
 Prérequis communs : lecture du journal `migrations_appliquees` et des versions servies (RES-10, **étape 0**) ; sauvegarde vérifiée (`sauvegarde-donnees --verifier`, archive COMPLÈTE) ; fenêtre hors pic ; chaque migration passée par `appliquer-migration.mjs` avec preuve de revue (#473).
