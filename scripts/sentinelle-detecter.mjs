@@ -122,12 +122,18 @@ export function estDuBruit(message) {
  * @returns {{candidates: Array, ecartees: number}}
  */
 export function classer(lignes = [], options = {}) {
+  let nonVerifiees = 0;
   const min = options.min ?? MIN_OCCURRENCES;
   const groupes = new Map();
   let ecartees = 0;
 
   for (const l of lignes) {
     if (estDuBruit(l.message)) { ecartees++; continue; }
+    // ⚠️ ASTRA-06 (2026-09-15) : une ligne dont l'identité n'est PAS posée par le
+    // serveur (repli HTTP 400, colonne `auth_uid` absente) ne peut pas peser
+    // dans la sélection d'une enquête — `uid` y est écrit par le client, donc
+    // fabricable. Elle est écartée et COMPTÉE, jamais classée.
+    if (l._origineNonVerifiee) { ecartees++; nonVerifiees++; continue; }
     const cle = empreinte(l.message);
     if (!groupes.has(cle)) {
       groupes.set(cle, { cle, message: String(l.message).slice(0, 300), n: 0, comptes: new Set(), dernier: null, exemple: null });
@@ -152,7 +158,7 @@ export function classer(lignes = [], options = {}) {
     .sort((a, b) => (b.comptes - a.comptes) || (b.n - a.n))
     .filter((g) => g.n >= min || g.comptes >= 2);
 
-  return { candidates, ecartees };
+  return { candidates, ecartees, nonVerifiees };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -220,11 +226,13 @@ export function estSansCompte(ligne) {
 
 export function classerApi(lignes = [], options = {}) {
   const min = options.min ?? MIN_OCCURRENCES_API;
+  let nonVerifiees = 0;
   const groupes = new Map();
   let ecartees = 0;
 
   for (const l of lignes) {
     if (estDuBruitApi(l)) { ecartees++; continue; }
+    if (l._origineNonVerifiee) { ecartees++; nonVerifiees++; continue; }   // ASTRA-06 : voir classer()
     if (estSansCompte(l)) { ecartees++; continue; }
     const code = Number(l.http_status);
     // `endpoint` porte l'hôte ; le CHEMIN suffit à nommer la cause, et il ne
@@ -272,7 +280,7 @@ export function classerApi(lignes = [], options = {}) {
     .sort((a, b) => (b.comptes - a.comptes) || (b.n - a.n))
     .filter((g) => g.n >= min || g.comptes >= 2);
 
-  return { candidates, ecartees };
+  return { candidates, ecartees, nonVerifiees };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -619,7 +627,10 @@ async function principal() {
     cible: candidates[0] || null,
     // ASTRA-08 : les suivants, pour que la dédup du workflow puisse AVANCER
     // (`choisirCible`) au lieu de s'arrêter sur un premier déjà corrigé.
-    candidats: candidates.slice(0, 5),
+    // ⚠️ ASTRA-08 (2026-09-15) : TOUS les candidats, pas cinq — cinq déjà fermés
+    // masquaient le sixième, actif. La liste reste bornée par le classement lui-même.
+    candidats: candidates.slice(),
+    identitesNonVerifiees: (js.nonVerifiees || 0) + (api.nonVerifiees || 0),
   };
   console.log(JSON.stringify(verdict, null, 2));
 }
