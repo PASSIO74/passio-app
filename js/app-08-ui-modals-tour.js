@@ -6326,7 +6326,11 @@ async function supaBlockUser(targetId) {
     const rf = await supa.from("follows").delete().eq("following_id", MY_UID).eq("follower_id", targetId);
     // Le SDK ne LÈVE PAS sur un refus RLS : sans lire `{ error }`, l'échec serait
     // invisible et le blocage paraîtrait complet alors qu'il ne l'est pas.
-    if (rf && rf.error) console.warn("blocage : retrait d'abonné refusé —", rf.error.message);
+    // ⚠️ MOD-04 (2026-09-15) : ce retrait n'est plus ce qui FERME l'accès — la base
+    // le fait (`abonne_accepte_non_bloque`, migration du 15/09 : un abonné bloqué
+    // ne lit plus le contenu privé, ligne `follows` ou pas). Son échec est tracé,
+    // pour que la sentinelle le voie, et le blocage reste vrai.
+    if (rf && rf.error) { console.warn("blocage : retrait d'abonné refusé —", rf.error.message); try { if (typeof diagLog === "function") diagLog("blocage retrait abonné KO " + String(rf.error.code || rf.error.message || "?")); } catch (e) {} }
     return true;
   } catch(e) { try { window.tel && tel.settle(_cid, "saved", false, e); } catch (_) {} return false; }
 }
