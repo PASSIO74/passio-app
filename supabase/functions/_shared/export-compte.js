@@ -22,6 +22,12 @@ import { TABLES_COMPTE, DOSSIERS_CONTENU } from "./purge-compte.js";
 export const EXCLUS_EXPORT = new Set([
   "notifications.from_id", "follows.following_id", "blocks.blocked_id", "post_collaborators.added_by",
   "client_errors.uid", "client_errors.auth_uid", "analytics_events.user_id", "telemetry_events.user_id",
+  // ⚠️ ASTRA-27 : l'« autre bout » d'un lien n'est pas MA donnée. `added_by`
+  // dit qui m'a ajouté (comme `post_collaborators.added_by`) ; `call_invites.to_id`
+  // reste EXPORTÉ, lui, car une invitation reçue est un fait qui me concerne —
+  // même raisonnement que `notifications.user_id`, exporté, contre
+  // `notifications.from_id`, exclu.
+  "cdv_live_collaborators.added_by",
 ]);
 
 /** Les couples (table, colonne) exportés, dérivés de la liste de purge. */

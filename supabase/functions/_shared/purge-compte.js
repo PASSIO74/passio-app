@@ -47,12 +47,35 @@ export const TABLES_COMPTE = [
   ["stories", "author_id"], ["story_views", "user_id"],
   ["events", "author_id"], ["event_attendees", "user_id"], ["event_comments", "author_id"], ["event_reactions", "user_id"],
   ["conv_messages", "from_id"], ["conv_members", "user_id"], ["conv_reads", "user_id"],
+  // ⚠️ ASTRA-27 (contre-revue du 15/09) : `call_invites` est née le 15/09 avec
+  // MSG-01 et n'est entrée NI dans cette liste NI dans l'export qui en dérive.
+  // Ses deux colonnes sont du `text` SANS clé étrangère : rien, côté base, ne
+  // l'aurait emportée avec le compte. LES DEUX BOUTS sont purgés — c'est la
+  // règle de la maison pour un LIEN (`follows`, `blocks`, `notifications` la
+  // suivent déjà) : une invitation entre A et B ne veut plus rien dire quand A
+  // n'existe plus, et laisser la ligne laisserait l'identifiant de A en base
+  // après sa suppression. Aucune exception de conservation n'est revendiquée
+  // ici : ce n'est ni une trace de modération ni un objet partagé.
+  ["call_invites", "from_id"], ["call_invites", "to_id"],
   ["notifications", "user_id"], ["notifications", "from_id"],
   ["follows", "follower_id"], ["follows", "following_id"],
   ["blocks", "blocker_id"], ["blocks", "blocked_id"],
   ["push_subscriptions", "user_id"], ["user_state", "user_id"], ["user_safety", "user_id"],
   ["user_passions", "user_id"], ["passion_quotas", "user_id"], ["passion_requests", "user_id"],
   ["step_interactions", "user_id"], ["video_lives", "author_id"],
+  // ⚠️ ASTRA-27, ET CELLES-CI N'ÉTAIENT NOMMÉES NULLE PART. Le Carnet de voyage
+  // a été RETIRÉ (ADR-011 §6) en conservant délibérément ses données : les
+  // tables `cdv_*` sont donc toujours en production — mesuré le 15/09 : 13
+  // lignes portant un identifiant de compte (`cdv_lives` 2, `cdv_live_steps` 4,
+  // `cdv_live_comments` 4, `cdv_live_reactions` 3). Supprimer un compte y
+  // laissait son identifiant, et rien ne pouvait le dire : aucune gate ne
+  // comparait les tables du dépôt à cette liste. C'est très exactement le
+  // défaut d'ASTRA-27, une fonctionnalité plus tôt. « Retirée » ne veut pas
+  // dire « effacée » : tant que les données vivent, elles se purgent.
+  ["cdv_lives", "author_id"], ["cdv_live_steps", "author_id"],
+  ["cdv_live_comments", "author_id"], ["cdv_live_reactions", "user_id"],
+  ["cdv_live_followers", "user_id"],
+  ["cdv_live_collaborators", "user_id"], ["cdv_live_collaborators", "added_by"],
   ["client_errors", "uid"], ["client_errors", "auth_uid"],
   ["analytics_events", "user_id"], ["telemetry_events", "user_id"],
   ["profiles", "id"],
@@ -76,11 +99,24 @@ export const PAGE = 1000;
 /** Taille d'un lot de suppression Storage. */
 const LOT_SUPPRESSION = 100;
 
+// ⚠️ ASTRA-27 : UNE TABLE ABSENTE N'EST PAS UN ÉCHEC DE PURGE — MAIS ELLE SE DIT.
+// La purge est fail-closed : toute erreur laisse le compte ouvert. Ajouter une
+// table à `TABLES_COMPTE` casserait donc la suppression de compte sur tout
+// environnement qui ne l'a pas (staging, projet de reprise, base d'avant la
+// migration). PostgREST répond `PGRST205` / « Could not find the table » : ce
+// cas précis devient une NOTE, jamais un échec — et jamais un silence non plus,
+// sinon une table réellement oubliée se cacherait derrière ce pardon.
+// Tout le reste (droits, contrainte, réseau) reste bloquant.
+const TABLE_ABSENTE = /PGRST205|could not find the table|relation .* does not exist|schema cache/i;
+function estTableAbsente(msg) { return TABLE_ABSENTE.test(String(msg || "")); }
+
 async function supprimerLignes(admin, table, col, uid) {
   try {
     const r = await admin.from(table).delete().eq(col, uid);
-    return r && r.error ? (r.error.message || "erreur") : null;
-  } catch (e) { return (e && e.message) || "exception"; }
+    if (!r || !r.error) return null;
+    const m = r.error.message || (r.error.code ? String(r.error.code) : "erreur");
+    return estTableAbsente(m) || estTableAbsente(r.error.code) ? { absente: m } : m;
+  } catch (e) { const m = (e && e.message) || "exception"; return estTableAbsente(m) ? { absente: m } : m; }
 }
 
 async function compterRestes(admin, table, col, uid) {
@@ -152,9 +188,54 @@ export async function listerObjetsDuCompte(admin, uid) {
  * relecture (table:colonne=n, ou seau/prefixe=n, ou objets=n). `ok` ⇔ les deux
  * listes vides. `objets` = nombre d'objets Storage relevés par propriété.
  */
+// ⚠️ ASTRA-25 — LA BARRIÈRE SE POSE AVANT LE PREMIER COMPTAGE, ou la purge ne
+// peut pas finir. Effacer, relire, ré-effacer est une PASSE DE PLUS, pas une
+// barrière : une écriture qui arrive après le comptage de SA table et avant la
+// relecture finale survit, et `ok` est rendu quand même. Aucun nombre de passes
+// ne ferme cette fenêtre — le gel client (`_accountPurged`) ne vaut que pour CE
+// navigateur, et un second appareil, un onglet resté ouvert, une requête déjà
+// en vol ou un ancien jeton encore valide écrivent quand même (PostgREST ne
+// vérifie que la signature du jeton, pas le bannissement GoTrue).
+// `comptes_en_suppression` marque le compte ; les policies d'écriture le lisent
+// et REFUSENT. À partir de là, la relecture finale est SUFFISANTE.
+async function poserBarriere(admin, uid) {
+  try {
+    const r = await admin.from("comptes_en_suppression").upsert({ user_id: uid, motif: "delete-account" }, { onConflict: "user_id" });
+    if (r && r.error) {
+      const m = r.error.message || String(r.error.code || "erreur");
+      // Table absente = migration non appliquée. On le DIT et on continue :
+      // la purge d'avant reste possible, elle est simplement moins sûre. La
+      // taire ferait passer une purge sans barrière pour une purge avec.
+      return estTableAbsente(m) || estTableAbsente(r.error.code) ? { absente: m } : m;
+    }
+    return null;
+  } catch (e) { const m = (e && e.message) || "exception"; return estTableAbsente(m) ? { absente: m } : m; }
+}
+
+// ⚠️ ELLE SE LÈVE SI LA PURGE N'ABOUTIT PAS. Une purge interrompue doit pouvoir
+// être RELANCÉE, et un compte dont la suppression échoue définitivement doit
+// redevenir utilisable — le laisser marqué le condamnerait au silence sans que
+// personne l'ait décidé.
+async function leverBarriere(admin, uid) {
+  try { await admin.from("comptes_en_suppression").delete().eq("user_id", uid); } catch (e) {}
+}
+
 export async function purgerCompte(admin, uid) {
   const echecs = [];
+  // Tables de la liste absentes de CET environnement : dit, jamais tu.
+  const absentes = [];
   const restes = [];
+  const notes = [];
+
+  // ⓪ LA BARRIÈRE, AVANT TOUT COMPTAGE.
+  const barriere = await poserBarriere(admin, uid);
+  if (barriere && barriere.absente) {
+    notes.push("barrière de suppression ABSENTE (migration non appliquée) : une écriture tardive peut encore survivre à cette purge");
+  } else if (barriere) {
+    // On ne purge PAS sans barrière quand elle EXISTE mais refuse : ce serait
+    // se priver de la seule garantie qu'on ait, sans le savoir.
+    return { ok: false, echecs: [`barrière:pose (${barriere})`], restes: [], absentes: [], notes, objets: 0 };
+  }
 
   // ① Relever les objets Storage du compte PAR PROPRIÉTÉ — l'autorité, pas les
   //    messages. Fonction absente ou illisible : échec nommé, on ne devine rien.
@@ -165,7 +246,9 @@ export async function purgerCompte(admin, uid) {
   // ② Lignes, une table à la fois, chaque verdict lu.
   for (const [table, col] of TABLES_COMPTE) {
     const err = await supprimerLignes(admin, table, col, uid);
-    if (err) echecs.push(`${table}:${col} (${err})`);
+    if (!err) continue;
+    if (err.absente) { absentes.push(`${table}:${col}`); continue; }
+    echecs.push(`${table}:${col} (${err})`);
   }
 
   // ③ Médias : les objets relevés (par seau, par lots), puis les huit dossiers
@@ -203,11 +286,18 @@ export async function purgerCompte(admin, uid) {
     // que quelqu'un le voie.
     if (n > 0) {
       const err = await supprimerLignes(admin, table, col, uid);
-      if (err) echecs.push(`${table}:${col} (reprise : ${err})`);
+      if (err && err.absente) { n = 0; }
+      else if (err) echecs.push(`${table}:${col} (reprise : ${err})`);
       else n = await compterRestes(admin, table, col, uid);
     }
     if (n !== 0) restes.push(`${table}:${col}=${n < 0 ? "illisible" : n}`);
   }
 
-  return { ok: echecs.length === 0 && restes.length === 0, echecs, restes, objets: objets.length };
+  const ok = echecs.length === 0 && restes.length === 0;
+  // ⚠️ LA BARRIÈRE NE SE LÈVE QUE SI LA PURGE N'A PAS ABOUTI. Sur un succès,
+  // le compte Auth part juste après (`delete-account`) : lever la marque
+  // rouvrirait l'écriture pendant la fenêtre qui sépare les deux, et c'est
+  // exactement la fenêtre qu'on vient de fermer.
+  if (!ok) await leverBarriere(admin, uid);
+  return { ok, echecs, restes, absentes, notes, barriere: barriere && barriere.absente ? "absente" : "posee", objets: objets.length };
 }

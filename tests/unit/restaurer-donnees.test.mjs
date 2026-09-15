@@ -108,8 +108,18 @@ test("④ ter médias : nom, taille et empreinte — un objet vide de même nom 
   assert.deepEqual(d.divergents, ["content/photos/u/a.jpg"]);
   assert.deepEqual(d.manquants, []);
   assert.deepEqual(d.enTrop, ["content/inconnu.jpg"]);
-  // Sans eTag (dépôt multi-parts) : la taille tranche seule ; nom absent : manquant.
-  assert.deepEqual(comparerMedias([{ name: "a", taille: 5, md5: "z" }, { name: "b", taille: 1, md5: "q" }], [{ name: "a", taille: "5", etag: null }]), { manquants: ["b"], divergents: [], enTrop: [] });
+  // ⚠️ ASTRA-32/29 (contre-revue du 15/09) — CETTE LIGNE ENCODAIT LE DÉFAUT.
+  // Elle disait « sans eTag, la taille tranche SEULE » et exigeait
+  // `divergents: []`. Or une taille identique ne prouve rien sur le contenu :
+  // deux fichiers de 5 octets peuvent différer. Ce n'est ni conforme ni
+  // divergent — c'est NON VÉRIFIÉ, et ça doit bloquer le verdict. Le cas est
+  // réécrit : on ne réduit pas une propriété attendue, on retire une attente
+  // qui affirmait plus que la mesure ne permettait.
+  const sansEtag = comparerMedias([{ name: "a", taille: 5, md5: "z" }, { name: "b", taille: 1, md5: "q" }], [{ name: "a", taille: "5", etag: null }]);
+  assert.deepEqual(sansEtag.manquants, ["b"], "un nom absent reste manquant");
+  assert.deepEqual(sansEtag.divergents, [], "sans empreinte comparable, on ne peut pas conclure à la divergence");
+  assert.equal(sansEtag.nonVerifies.length, 1, "…mais « a » n'est PAS vérifié, et le verdict doit le dire");
+  assert.match(sansEtag.nonVerifies[0].raison, /aucun eTag sur la cible/);
 });
 
 test("④ quater une colonne née après l'archive n'est pas une divergence ; une colonne de l'archive absente de la cible, si", () => {
@@ -120,7 +130,14 @@ test("④ quater une colonne née après l'archive n'est pas une divergence ; un
 test("④ quinquies médias multipart : un eTag « <hex>-<n> » n'est pas un MD5 — même taille = identique, taille différente = divergent (exercice du 2026-09-15 : deux vidéos identiques dites divergentes)", () => {
   const fichiers = [{ name: "content/videos/u/reel_a.mp4", taille: 20362027, md5: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, { name: "content/videos/u/reel_b.mp4", taille: 25489650, md5: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }];
   const memes = [{ name: "content/videos/u/reel_a.mp4", taille: "20362027", etag: '"0401bff7b39f376a87aca51f96e0f17e-2"' }, { name: "content/videos/u/reel_b.mp4", taille: "25489650", etag: '"8e971866949fa0acf292eacc489fc72f-2"' }];
-  assert.deepEqual(comparerMedias(fichiers, memes).divergents, []);
+  const surMemes = comparerMedias(fichiers, memes);
+  assert.deepEqual(surMemes.divergents, [], "un eTag multipart ne peut pas prouver une divergence");
+  // ⚠️ ASTRA-29 : …et il ne prouve pas l'identité non plus. Deux vidéos de même
+  // taille et de contenu différent passaient ici pour conformes.
+  assert.equal(surMemes.nonVerifies.length, 2, "les deux sont NON VÉRIFIÉES tant qu'on ne les a pas hachées");
+  // Avec l'empreinte de secours (GET + hash), la comparaison redevient réelle.
+  const hachees = comparerMedias(fichiers, memes, { hashes: { "content/videos/u/reel_a.mp4": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "content/videos/u/reel_b.mp4": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" } });
+  assert.deepEqual([hachees.divergents, hachees.nonVerifies], [[], []]);
   const tronque = [{ ...memes[0], taille: "1024" }, memes[1]];
   assert.deepEqual(comparerMedias(fichiers, tronque).divergents, ["content/videos/u/reel_a.mp4"]);
   // Un eTag simple (pas de « -n ») reste un MD5 et se compare.
