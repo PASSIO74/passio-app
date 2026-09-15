@@ -132,6 +132,22 @@
   var ENV = detectEnv();
   var PLATFORM = detectPlatform();
   var BROWSER = detectBrowser();
+  // ⚠️ DEV-05 (2026-09-15) : le MODE — application installée (standalone) ou
+  // navigateur — n'était mesuré NULLE PART. `platform` est le système (ios,
+  // android…), pas le mode, et l'audit cherchait un `window.PassioPlatform`
+  // qui n'a jamais existé. Le mode se lit ICI, au chargement, sans dépendre de
+  // platform.js ni du cache du service worker : `matchMedia` répond aussi hors
+  // ligne. Il part dans `meta.mode` de CHAQUE événement (`pwa` ou `web`),
+  // sous le même filtre PII que le reste — une primitive, une clé de plus.
+  var MODE = detectMode();
+  function detectMode() {
+    try {
+      if (window.navigator.standalone === true) return "pwa";                       // iOS Safari « Sur l'écran d'accueil »
+      if (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) return "pwa";
+      if (window.matchMedia && window.matchMedia("(display-mode: fullscreen)").matches) return "pwa";
+    } catch (e) {}
+    return "web";
+  }
   var SCREEN_SIZE = (window.screen ? screen.width + "x" + screen.height : "");
 
   // ─── Masquage PII ─────────────────────────────────────────────────────────
@@ -566,7 +582,9 @@
         : null,
       message: fields.message != null ? redactString(fields.message) : null,
       stack: fields.stack ? redactString(String(fields.stack).slice(0, 4000)) : null,
-      meta: scrubMeta(fields.meta),
+      // `mode` d'abord, puis les clés de l'appelant : un appelant qui pose sa
+      // propre clé `mode` gagne — le filtre ne trie pas par origine.
+      meta: scrubMeta(Object.assign({ mode: MODE }, (fields.meta && typeof fields.meta === "object") ? fields.meta : {})),
     };
     enqueue(ev);
     return ev.correlation_id || ev.event_id;
