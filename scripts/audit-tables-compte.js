@@ -48,6 +48,12 @@ const EXCEPTIONS = {
   "events.organizer_id": "idem",
   "moderation_actions.target_id": "journal de modération : sa raison d'être est de survivre à la décision",
   "migrations_appliquees.cible": "n'est pas un compte (référence de projet)",
+  // ASTRA-25 : la barrière elle-même. La purger serait la LEVER — or elle doit
+  // survivre à la purge réussie (un jeton déjà émis reste signé valide). Elle
+  // n'est effacée que si la purge échoue (`leverBarriere`, purge-compte.js).
+  // Ce qui reste est un uuid orphelin sans échéance : rétention À DÉCIDER,
+  // écrite dans migration_barriere_suppression_2026-09-15.sql.
+  "comptes_en_suppression.user_id": "barrière de suppression : la purger la lèverait (purge-compte.js) — elle doit survivre au succès ; rétention de l'uuid orphelin à décider",
   "reports.target_id": "polymorphe (publication, rencontre, compte…) : ce n'est pas un identifiant de compte en soi",
 };
 
