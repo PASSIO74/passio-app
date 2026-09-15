@@ -1157,15 +1157,31 @@ après coup** : la date de leur commit est celle de leur ajout réel.
 | ASTRA-36 | P1 | oui | 5 cas e2e + 29 de non-régression ; 1 réinjection | non mesuré | non mesuré | [#461](https://github.com/PASSIO74/passio-app/pull/461) |
 | ASTRA-26 | P1 | oui | banc SQL 21 contrôles + 12 verrous ; 2 réinjections | **non appliquée** | non mesuré | [#463](https://github.com/PASSIO74/passio-app/pull/463) |
 | ASTRA-25 | P1 | oui | banc SQL 25 contrôles + 17 verrous ; 3 réinjections + 1 mutation | **non appliquée** | non mesuré | [#464](https://github.com/PASSIO74/passio-app/pull/464) |
+| ASTRA-23 | P1 | oui | banc SQL 25 contrôles + 4 cas e2e ; 2 réinjections + 1 mutation | **non appliquée** | non mesuré | [#465](https://github.com/PASSIO74/passio-app/pull/465) |
+| ASTRA-24 | P1 | **partiel** | 18 verrous ; 1 réinjection | **fonction non redéployée** | non mesuré | [#466](https://github.com/PASSIO74/passio-app/pull/466) |
 
 ⚠️ **« Corrigé » et « déployé » sont deux colonnes, et aucune ligne n'a la seconde.** Les
 quatre migrations de cette reprise (ASTRA-22, 35, 26, 25) sont écrites et éprouvées **sur
 base jetable**, jamais appliquées ; les Edge Functions d'ASTRA-27/28 ne sont pas
 redéployées. Une PR ouverte ne change rien pour un utilisateur.
 
-**Non traités dans cette reprise, et ils restent OUVERTS :** ASTRA-23 (call: ouvert en
-lecture et émission à un tiers), ASTRA-24 (mention sans destinataire légitime, texte libre
-de push). Ainsi que tous les résidus anciens listés au §4 du plan.
+**Les dix-huit constats ASTRA-21 → ASTRA-38 ont tous été traités.** Restent les résidus
+anciens listés au §4 du plan, et le résidu d'isolation SUP-04 / TCI-04 / EXP-11.
+
+⚠️ **ASTRA-24 EST « PARTIEL », ET LA COLONNE LE DIT.** Le lot ferme la PUSH (une mention
+doit désigner quelqu'un) ; il ne ferme PAS la notification IN-APP, qu'un inconnu peut
+toujours écrire avec un texte libre — `notifications_insert_own_author` n'exige que
+`from_id = auth.uid()` et l'absence de blocage (mesuré en production le 15/09). Porter la
+règle en SQL serait une SECONDE COPIE d'une règle qui vit en JavaScript. Le geste qui
+fermerait vraiment est de faire écrire ces lignes par le SERVEUR, genre par genre, comme
+`follows_notifier` le fait déjà : lot à part entière, non fait. Écrit plutôt que compté
+comme fermé — dossier : `preuves/notifications/2026-09-15-astra-24-mention-et-texte-libre.md`.
+
+⚠️ **ET ASTRA-23 A UNE LEÇON QUI DÉPASSE SON LOT.** La migration du 14/09 avait écrit son
+propre résidu en toutes lettres — « le lier aux participants demanderait une table
+d'appels, autre lot » — et la table est née le LENDEMAIN, sans que personne ne revienne
+fermer ce qu'elle rendait fermable. **Un résidu écrit n'est pas un résidu suivi** : rien
+dans le dépôt ne relie une phrase « autre lot » au jour où sa condition devient vraie.
 
 ---
 
