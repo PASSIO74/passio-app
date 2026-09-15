@@ -120,6 +120,20 @@
 
     window._pwaPrompt = null;
 
+    // ⚠️ DEV-05 (2026-09-15) : l'audit cherchait `window.PassioPlatform` pour
+    // distinguer navigateur et application installée — il n'existait pas. Le
+    // voici, en LECTURE (instantané figé ; `installee()` est une fonction parce
+    // que `appinstalled` peut arriver après). La télémétrie n'en dépend PAS :
+    // elle mesure le mode elle-même (`meta.mode`, telemetry.js), ce qui la rend
+    // juste même si ce fichier n'est pas encore chargé ou vient du cache.
+    window.PassioPlatform = Object.freeze({
+      standalone: _isStandalone,
+      installee: function () { return _pwaInstalled; },
+      ios: _isIOS, android: _isAndroid, windows: _isWindows, mac: _isMac,
+      supportePWA: _supportsPWA,
+      deploiementPassio: _estDeploiementPassio(),
+    });
+
     // Sommes-nous déjà sur un déploiement PASSIO ? L'adresse canonique, mais
     // AUSSI les previews de PR et de branche (`pr-232--passio-app.netlify.app`,
     // `<branche>--passio-app.netlify.app`), que Netlify sert sous un sous-domaine
