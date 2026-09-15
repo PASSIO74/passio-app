@@ -57,6 +57,17 @@ test.describe("IRL-11 — bornes revalidées au point d'écriture", () => {
     const r2 = await page.evaluate(async () => { const n = state.userEvents.length; await submitEvent(); return { cree: state.userEvents.length - n, toasts: window.__toasts.slice() }; });
     expect(r2.cree).toBe(0);
     expect(r2.toasts.some((t) => /places/i.test(t))).toBe(true);
+    // IRL-11, second volet (Astra, 15/09) : une capacité SAISIE à 0 était convertie
+    // en illimitée. RÉINJECTION : sur le code du 14/09, l'activité est créée avec maxAttendees = null.
+    await champs(page, { date: jourPlus(3), price: 0, max: 0 });
+    const r3 = await page.evaluate(async () => { const n = state.userEvents.length; await submitEvent(); return { cree: state.userEvents.length - n, toasts: window.__toasts.slice() }; });
+    expect(r3.cree).toBe(0);
+    expect(r3.toasts.some((t) => /places/i.test(t))).toBe(true);
+    // …et un champ VIDE reste « illimité » : l'activité se crée sans plafond.
+    await champs(page, { date: jourPlus(3), price: 0 });
+    const r4 = await page.evaluate(async () => { const n = state.userEvents.length; await submitEvent(); return { cree: state.userEvents.length - n, max: state.userEvents[0] && state.userEvents[0].maxAttendees }; });
+    expect(r4.cree).toBe(1);
+    expect(r4.max == null).toBe(true);
   });
 
   test("② l'édition ne déplace pas une activité dans le passé", async ({ page }) => {
