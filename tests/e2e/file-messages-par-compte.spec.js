@@ -136,28 +136,62 @@ test.describe("AUTH-06 — la file des messages appartient à un compte", () => 
     expect(res.statut, "le message reste visible, en échec — rien n'est perdu à l'écran").toBe("failed");
   });
 
-  test("⑤ une entrée d'AVANT ce correctif (sans propriétaire) est adoptée si son message est ici, jetée sinon", async ({ page }) => {
+  // ⑤ RÉVISÉ le 2026-09-15 (contre-revue Astra, AUTH-06 PARTIEL) : la version
+  // du 14/09 ADOPTAIT une entrée sans propriétaire dès que son message était
+  // dans les conversations de l'appareil — cache que le chemin court du
+  // changement de compte (`onAuthStateChange`) ne purge pas : le texte de A
+  // partait sous B. Une entrée sans propriétaire ne prouve rien : elle sort,
+  // son message reste à l'écran en échec, rien ne part.
+  test("⑤ une entrée d'AVANT le 14/09 (sans propriétaire) n'est JAMAIS rejouée ni adoptée — même si son message est ici", async ({ page }) => {
     await banc(page);
     const res = await page.evaluate(async () => {
       localStorage.removeItem("passio_outbox_v1");
       window.__poserConv("conv_legacy", "msg_ici", "ancien message");
-      // Deux entrées au format d'avant : l'une a son message dans les
-      // conversations de l'appareil, l'autre non (conversation purgée).
       localStorage.setItem("passio_outbox_v1", JSON.stringify([
         { convId: "conv_legacy", msgId: "msg_ici", content: "ancien message", at: Date.now(), essais: 0 },
         { convId: "conv_disparue", msgId: "msg_ailleurs", content: "orphelin", at: Date.now(), essais: 0 },
       ]));
-      window.__reponse = { status: 500, error: { message: "boom" } }; // reste en file après l'essai
+      // Le cas d'Astra : B a pris la main sur l'appareil sans purge du cache.
+      window.__devenir("88881111-2222-4333-8444-555566667777");
       _flushOutbox();
       await window.__attendre(80);
-      return { envois: window.__envois, file: window.__file() };
+      var c = getConversations().find(function (x) { return x.id === "conv_legacy"; });
+      var m = c && c.messages.find(function (x) { return x.id === "msg_ici"; });
+      return { envois: window.__envois, file: window.__file(), statut: m && m.status };
     });
-    const ids = res.envois.filter((e) => e.table === "conv_messages").map((e) => e.row.id);
-    expect(ids, "seule l'entrée dont le message est ici est rejouée").toEqual(["msg_ici"]);
-    // Adoptée : elle porte désormais son propriétaire, et l'orpheline a disparu.
-    // RÉINJECTION : sur le code d'avant, les deux sont rejouées et aucune n'a d'owner.
-    expect(res.file.map((x) => x.msgId)).toEqual(["msg_ici"]);
-    expect(res.file[0].owner).toBe(UID_A);
+    // RÉINJECTION : sur le code du 14/09, msg_ici est ADOPTÉ et envoyé avec from_id = B.
+    expect(res.envois.filter((e) => e.table === "conv_messages")).toEqual([]);
+    expect(res.file).toEqual([]);
+    expect(res.statut, "le texte reste visible, en échec").toBe("failed");
+  });
+
+  test("⑧ renvoi manuel reconstruit depuis le texte : seulement par le compte qui l'a ÉCRIT (`de`)", async ({ page }) => {
+    await banc(page);
+    const res = await page.evaluate(async () => {
+      localStorage.removeItem("passio_outbox_v1");
+      var convs = getConversations();
+      // Un message écrit par A (il porte `de`), un message d'une ancienne version (sans `de`).
+      convs.push({ id: "conv_r", userId: "88881111-2222-4333-8444-555566667777", userName: "Léane", messages: [
+        { id: "msg_de_a", text: "écrit par A", mine: true, status: "failed", de: MY_UID },
+        { id: "msg_ancien", text: "ancienne version", mine: true, status: "failed" },
+      ] });
+      saveConversations();
+      window.__toasts = []; window.toast = function (t) { window.__toasts.push(String(t)); };
+      // Sous A : le sien part, l'ancien ne part pas.
+      _retryMsg("conv_r", "msg_de_a"); await window.__attendre(60);
+      _retryMsg("conv_r", "msg_ancien"); await window.__attendre(60);
+      var sousA = window.__envois.filter(function (e) { return e.table === "conv_messages"; }).map(function (e) { return e.row.id; });
+      window.__envois = [];
+      // Sous B, sans purge : le message de A ne se reconstruit pas.
+      window.__devenir("88881111-2222-4333-8444-555566667777");
+      _retryMsg("conv_r", "msg_de_a"); await window.__attendre(60);
+      var sousB = window.__envois.filter(function (e) { return e.table === "conv_messages"; }).map(function (e) { return e.row.id; });
+      return { sousA, sousB, toasts: window.__toasts.slice() };
+    });
+    expect(res.sousA).toEqual(["msg_de_a"]);
+    // RÉINJECTION : sur le code du 14/09, sousA = ["msg_de_a", "msg_ancien"] et sousB = ["msg_de_a"] (from_id = B).
+    expect(res.sousB).toEqual([]);
+    expect(res.toasts.some((t) => /autre compte ou une ancienne version/.test(t))).toBe(true);
   });
 
   test("⑥ la file des commentaires : un brouillon de A n'est pas publié par B", async ({ page }) => {

@@ -5066,7 +5066,9 @@ function sendMessageFp(convId, displayName) {
   // 5. Ajouter le message localement (+ contexte de réponse si actif)
   if (!c.messages) c.messages = [];
   var msgId = "msg_" + uid();
-  var _localMsg = { id: msgId, from: "me", text: txt, at: Date.now(), status: "sending" };
+  // `de` : le compte RÉEL qui a écrit ce message (AUTH-06) — c'est lui, et lui
+  // seul, qui autorise un renvoi manuel reconstruit depuis le texte.
+  var _localMsg = { id: msgId, from: "me", text: txt, at: Date.now(), status: "sending", de: _fileProprietaire() };
   var _reply = (window._replyTo && window._replyTo.convId === convId) ? { id: window._replyTo.id, t: window._replyTo.t, n: window._replyTo.n } : null;
   if (_reply) _localMsg.replyTo = _reply;
   c.messages.push(_localMsg);
@@ -5109,17 +5111,17 @@ function _fileProprietaire() {
   try { return (typeof _uidEstUnCompte === "function" && _uidEstUnCompte()) ? MY_UID : null; } catch (e) { return null; }
 }
 // Verdict sur une entrée au rejeu : « moi » (à envoyer), « autre » (à jeter).
-// ⚠️ Une entrée d'AVANT ce correctif n'a pas de propriétaire : on l'ADOPTE si
-// son message est encore dans les conversations de l'appareil (même compte,
-// simple mise à jour de l'application), on la jette sinon — les conversations
-// sont purgées au changement de compte, un message absent n'est pas le nôtre.
+// ⚠️ PLUS D'ADOPTION (ASTRA / AUTH-06, contre-revue du 2026-09-15). La version du
+// 14/09 adoptait une entrée SANS propriétaire si son message était encore dans
+// les conversations de l'appareil — or le chemin le plus court du changement de
+// compte (`onAuthStateChange`, retour OAuth) ne purge PAS ce cache : le texte de
+// A, préparé avant le 14/09, était adopté puis envoyé sous B. Une entrée sans
+// propriétaire ne prouve rien ; elle sort de la file, son message reste à l'écran
+// en échec, et seul un renvoi manuel par le compte qui l'a ÉCRIT (`de`) le fera
+// partir. Le coût est borné : ces entrées datent d'avant le 14/09 au soir.
 function _outboxVerdict(item, moi) {
-  if (item.owner) return item.owner === moi ? "moi" : "autre";
-  var c = getConversations().find(function(x){ return x.id === item.convId; });
-  var m = c && (c.messages || []).find(function(x){ return x.id === item.msgId; });
-  if (!m) return "autre";
-  if (moi) item.owner = moi;
-  return "moi";
+  if (!item.owner) return "autre";
+  return item.owner === moi ? "moi" : "autre";
 }
 function _outboxAdd(convId, msgId, content) {
   var tous = _outboxLoad();
@@ -5305,19 +5307,29 @@ function _retryMsg(convId, msgId) {
   // L'entrée d'un AUTRE compte ne se renvoie pas, même à la main : elle sort de
   // la file et le message reste à l'écran, en échec — rien n'est perdu, rien
   // ne part sous une identité qui n'est pas la sienne.
-  if (item && item.owner && item.owner !== _fileProprietaire()) {
+  var moi = _fileProprietaire();
+  // Une entrée sans propriétaire, ou d'un autre compte : elle sort de la file,
+  // rien ne part sous une identité qui n'est pas prouvée (ASTRA / AUTH-06).
+  if (item && (!item.owner || item.owner !== moi)) {
     _outboxRemove(msgId);
     _setMsgStatus(convId, msgId, "failed");
     try { if (typeof diagLog === "function") diagLog("msg_outbox_autre_compte retry"); } catch (e) {}
+    item = null;
+    if (!moi) { toast("Ce message ne peut pas être renvoyé depuis ce compte."); return; }
+  }
+  if (item) { _setMsgStatus(convId, msgId, "sending"); _sendTextToSupa(convId, msgId, item.content); return; }
+  // Pas en file → reconstruire depuis le texte, SEULEMENT si ce compte l'a écrit.
+  var c = getConversations().find(function(x){ return x.id === convId; });
+  var m = c && (c.messages||[]).find(function(x){ return x.id === msgId; });
+  if (!m) return;
+  if (!moi || !m.de || m.de !== moi) {
+    _setMsgStatus(convId, msgId, "failed");
+    try { if (typeof diagLog === "function") diagLog("msg_retry_auteur_non_prouve"); } catch (e) {}
+    toast("Ce message a été écrit avec un autre compte ou une ancienne version — recopie-le pour l'envoyer.");
     return;
   }
   _setMsgStatus(convId, msgId, "sending");
-  if (item) _sendTextToSupa(convId, msgId, item.content);
-  else { // pas en outbox → re-tenter depuis le texte du message
-    var c = getConversations().find(function(x){ return x.id === convId; });
-    var m = c && (c.messages||[]).find(function(x){ return x.id === msgId; });
-    if (m) { var ct = _withSenderMeta(m.text || ""); _sendTextToSupa(convId, msgId, ct); }
-  }
+  _sendTextToSupa(convId, msgId, _withSenderMeta(m.text || ""));
 }
 
 // Vide la file d'attente (à la reconnexion ou au boot).
@@ -5336,6 +5348,9 @@ function _flushOutbox() {
     // n'est pas dans nos conversations. Tracé — un rejeu refusé en silence
     // serait indiscernable d'une file vide.
     if (_outboxVerdict(item, moi) === "autre") {
+      // Sans propriétaire (d'avant le 14/09) : si le message est encore ici, il
+      // passe en échec à l'écran — visible, renvoyable par son auteur, jamais rejoué.
+      if (!item.owner) _setMsgStatus(item.convId, item.msgId, "failed");
       try { if (typeof diagLog === "function") diagLog("msg_outbox_autre_compte flush"); } catch (e) {}
       return;
     }
