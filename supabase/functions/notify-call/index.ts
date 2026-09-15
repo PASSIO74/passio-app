@@ -35,7 +35,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
 import { verifierPlafondEnBase, reponsePlafond } from "../_shared/plafond.js";
-import { identiteAppelant, lienAppel, lienNotification } from "../_shared/lien-metier.js";
+import { identiteAppelant, lienAppel, lienNotification, lienEvenement } from "../_shared/lien-metier.js";
 
 // Par appelant : 20 pushes par minute, 200 par heure. Le client n'émet qu'une
 // push par conversation et par 5 min (anti-spam de _notifierMessage) plus les
@@ -121,6 +121,13 @@ Deno.serve(async (req) => {
   } else {
     const lien = await lienNotification(admin, fromUid, toUserId);
     if (!lien.ok) return json({ ok: true, sent: 0, note: "aucun appareil abonné" });
+    // ⚠️ MSG-04, second étage (contre-revue Astra, 2026-09-15) : la ligne
+    // `notifications` est écrite par l'appelant lui-même — elle ne prouve rien.
+    // L'ÉVÉNEMENT MÉTIER qu'elle annonce doit exister en base et lier les deux
+    // comptes (message dans une conversation du destinataire, j'aime sur SA
+    // publication, abonnement entre eux…). Sinon : même réponse qu'un blocage.
+    const evenement = await lienEvenement(admin, lien.kind, fromUid, toUserId, lien.refId);
+    if (!evenement.ok) return json({ ok: true, sent: 0, note: "aucun appareil abonné" });
     texteServeur = lien.texte || "";
     kindServeur = lien.kind || "";
   }

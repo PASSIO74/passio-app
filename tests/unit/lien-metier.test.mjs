@@ -13,7 +13,7 @@
 //   ⑦ decoderEntites : les cinq entités d'escapeHtml, et rien d'autre
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { decoderEntites, identiteAppelant, lienAppel, lienNotification } from "../../supabase/functions/_shared/lien-metier.js";
+import { decoderEntites, identiteAppelant, lienAppel, lienNotification, lienEvenement } from "../../supabase/functions/_shared/lien-metier.js";
 
 const A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
@@ -113,4 +113,78 @@ test("⑦ decoderEntites : les cinq entités d'escapeHtml, dans le bon ordre", (
   assert.equal(decoderEntites("a &amp;lt; b"), "a &lt; b"); // &amp; décodé en dernier : pas de double décodage
   assert.equal(decoderEntites("&lt;b&gt; &quot;x&quot; &#39;y&#x27;"), "<b> \"x\" 'y'");
   assert.equal(decoderEntites(null), "");
+});
+
+// ── MSG-04, second étage (contre-revue Astra, 2026-09-15) : la ligne
+// `notifications` est écrite par l'appelant lui-même et ne prouve rien. Une
+// push n'est envoyée que si l'ÉVÉNEMENT MÉTIER existe en base et lie les deux
+// comptes. Le faux admin ci-dessus suffit : `select().eq().limit()`.
+const t = (s) => new Date(T0 - s * 1000).toISOString();
+const EVT = {
+  ...BASE,
+  posts: [{ id: "post_b", author_id: B }, { id: "post_c", author_id: C }],
+  post_likes: [{ post_id: "post_b", user_id: A }],
+  post_comments: [{ id: "cm1", post_id: "post_b", author_id: A, created_at: t(30) }, { id: "cm_vieux", post_id: "post_c", author_id: A, created_at: t(7200) }],
+  conv_messages: [{ id: "m1", conv_id: "dm_ab", from_id: A, created_at: t(20) }, { id: "m_vieux", conv_id: "grp_abc", from_id: A, created_at: t(7200) }],
+  events: [{ id: "ev1", author_id: B, organizer_id: B, co_organizers: [] }, { id: "ev_a", author_id: A, organizer_id: A, co_organizers: [] }],
+  event_attendees: [{ event_id: "ev1", user_id: A, created_at: t(40), rated_at: null }, { event_id: "ev_a", user_id: B, created_at: t(9000) }],
+  event_comments: [{ id: "ec1", event_id: "ev1", author_id: A, created_at: t(10) }],
+  video_lives: [{ id: "live1", author_id: A, started_at: t(60) }],
+  follows: [{ follower_id: B, following_id: A, status: "accepted" }],
+};
+
+test("⑧ ASTRA (RÉINJECTION) : une notification fabriquée SANS événement métier ne pousse rien", async () => {
+  // Sur le code du 14/09 : la ligne `notifications` suffisait.
+  const sans = { ...EVT, post_likes: [], post_comments: [], conv_messages: [] };
+  assert.equal((await lienEvenement(fauxAdmin(sans), "like", A, B, "post_b", T0)).ok, false);
+  assert.equal((await lienEvenement(fauxAdmin(sans), "comment", A, B, "post_b", T0)).ok, false);
+  assert.equal((await lienEvenement(fauxAdmin(sans), "message", A, B, "dm_ab", T0)).ok, false);
+  assert.equal((await lienEvenement(fauxAdmin(EVT), "genre_inventé", A, B, "x", T0)).ok, false, "genre inconnu : refus");
+  assert.equal((await lienEvenement(fauxAdmin(EVT), "like", A, B, "", T0)).ok, false, "ref_id absent : refus");
+});
+
+test("⑨ message : un message récent de l'appelant dans une conversation du destinataire — et pas ailleurs", async () => {
+  assert.equal((await lienEvenement(fauxAdmin(EVT), "message", A, B, "dm_ab", T0)).ok, true);
+  assert.equal((await lienEvenement(fauxAdmin(EVT), "message", A, C, "dm_ab", T0)).ok, false, "C n'est pas membre de dm_ab");
+  assert.equal((await lienEvenement(fauxAdmin(EVT), "message", A, B, "grp_abc", T0)).ok, false, "le message du groupe est trop vieux");
+  assert.equal((await lienEvenement(fauxAdmin(EVT), "message", B, A, "dm_ab", T0)).ok, false, "B n'a rien écrit");
+});
+
+test("⑩ like / comment : sur une publication DU destinataire, par l'appelant, récemment", async () => {
+  assert.equal((await lienEvenement(fauxAdmin(EVT), "like", A, B, "post_b", T0)).ok, true);
+  assert.equal((await lienEvenement(fauxAdmin(EVT), "like", A, C, "post_b", T0)).ok, false, "C n'est pas l'auteur");
+  assert.equal((await lienEvenement(fauxAdmin(EVT), "comment", A, B, "post_b", T0)).ok, true);
+  assert.equal((await lienEvenement(fauxAdmin(EVT), "comment", A, C, "post_c", T0)).ok, false, "commentaire trop vieux");
+  assert.equal((await lienEvenement(fauxAdmin(EVT), "mention", A, B, "post_b", T0)).ok, true, "mention : le commentaire récent suffit");
+});
+
+test("⑪ activités : participant → organisateur, organisateur → inscrit, invitation via une conversation 1:1", async () => {
+  assert.equal((await lienEvenement(fauxAdmin(EVT), "event_join", A, B, "ev1", T0)).ok, true);
+  assert.equal((await lienEvenement(fauxAdmin(EVT), "event_join", A, C, "ev1", T0)).ok, false, "C n'organise pas ev1");
+  assert.equal((await lienEvenement(fauxAdmin(EVT), "event_comment", A, B, "ev1", T0)).ok, true);
+  assert.equal((await lienEvenement(fauxAdmin(EVT), "event_update", A, B, "ev_a", T0)).ok, true, "B est inscrit à ev_a");
+  assert.equal((await lienEvenement(fauxAdmin(EVT), "event_update", A, C, "ev_a", T0)).ok, false, "C n'est pas inscrit");
+  assert.equal((await lienEvenement(fauxAdmin(EVT), "event_update", B, A, "ev_a", T0)).ok, false, "B n'organise pas ev_a");
+  assert.equal((await lienEvenement(fauxAdmin(EVT), "event_invite", A, B, "ev_a", T0)).ok, true);
+  assert.equal((await lienEvenement(fauxAdmin(EVT), "event_invite", A, C, "ev_a", T0)).ok, false, "C : ni inscrit, ni conversation 1:1 avec A");
+});
+
+test("⑫ live et abonnements : un live récent vers un abonné ; une ligne follows entre eux", async () => {
+  assert.equal((await lienEvenement(fauxAdmin(EVT), "live_video", A, B, "live1", T0)).ok, true);
+  assert.equal((await lienEvenement(fauxAdmin(EVT), "live_video", A, C, "live1", T0)).ok, false, "C ne suit pas A");
+  assert.equal((await lienEvenement(fauxAdmin(EVT), "follow", B, A, "", T0)).ok, true);
+  assert.equal((await lienEvenement(fauxAdmin(EVT), "follow_accept", A, B, "", T0)).ok, true, "dans l'autre sens aussi");
+  assert.equal((await lienEvenement(fauxAdmin(EVT), "follow", A, C, "", T0)).ok, false);
+});
+
+test("⑬ une lecture en erreur est un refus, jamais une push", async () => {
+  assert.equal((await lienEvenement(fauxAdmin(EVT, ["post_likes"]), "like", A, B, "post_b", T0)).ok, false);
+  assert.equal((await lienEvenement(fauxAdmin(EVT, ["conv_members"]), "message", A, B, "dm_ab", T0)).ok, false);
+  assert.equal((await lienEvenement(fauxAdmin(EVT, ["events"]), "event_join", A, B, "ev1", T0)).ok, false);
+});
+
+test("⑭ lienNotification rend aussi le ref_id de la ligne, pour l'événement", async () => {
+  const admin = fauxAdmin({ notifications: [{ from_id: A, user_id: B, kind: "like", content: "x", ref_id: "post_b", created_at: t(5) }] });
+  const r = await lienNotification(admin, A, B, T0);
+  assert.equal(r.ok, true); assert.equal(r.refId, "post_b");
 });
