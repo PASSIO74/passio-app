@@ -60,13 +60,36 @@ function dureeBanResiduelle(u, maintenant) {
   const heures = Math.ceil(restantMs / 3600000);
   return heures + "h";
 }
-// Le compte restauré porte-t-il la même suspension que l'archive ? On compare
-// l'ÉTAT (suspendu ou non), jamais la milliseconde : GoTrue recalcule la borne.
-function suspensionRestauree(attendu, obtenu, maintenant) {
+// Le compte restauré porte-t-il la même suspension que l'archive ?
+//
+// ⚠️ ASTRA-47 (cinquième contre-revue, 15/09/2026) — « L'ÉTAT, PAS LA
+// MILLISECONDE » ACCEPTAIT N'IMPORTE QUELLE BORNE. Reproduit : maintenant =
+// 15/09/2026, fin attendue = 15/10/2026, borne cible = 01/01/2020 → ok:true ; une
+// borne cible à UNE SECONDE de l'instant passait aussi. Une suspension déjà
+// expirée sur la cible n'est pas une suspension : la personne exclue se
+// connecte. On compare désormais la BORNE EFFECTIVE à la borne attendue, avec
+// une tolérance JUSTIFIÉE : `ban_duration` est en heures entières, arrondie
+// AU-DESSUS (`dureeBanResiduelle`) et appliquée par GoTrue à partir de SON
+// horloge → la borne rendue est dans [attendu, attendu + 1 h] à la dérive
+// d'horloge près (`toleranceMs`, 5 min par défaut). En dessous : la peine est
+// raccourcie, écart ; au-dessus : elle est prolongée, écart aussi.
+const TOLERANCE_SUSPENSION_MS = 5 * 60 * 1000;
+function suspensionRestauree(attendu, obtenu, maintenant, toleranceMs) {
+  const tol = Number.isFinite(toleranceMs) ? toleranceMs : TOLERANCE_SUSPENSION_MS;
+  const now = maintenant instanceof Date ? maintenant.getTime() : Number(maintenant);
   const a = etatSuspension(attendu), o = etatSuspension(obtenu);
-  const aDoitEtreSuspendu = a.suspendu && Date.parse(a.jusqu) > (maintenant instanceof Date ? maintenant.getTime() : Number(maintenant));
-  if (!aDoitEtreSuspendu) return { ok: !o.suspendu || Date.parse(o.jusqu) <= Date.now(), motif: o.suspendu ? "suspendu alors que l'archive ne l'était pas" : null };
+  const aDoitEtreSuspendu = a.suspendu && Date.parse(a.jusqu) > now;
+  if (!aDoitEtreSuspendu) {
+    // L'archive ne portait pas de suspension EN COURS : la cible ne doit pas en
+    // porter une non plus (une borne passée sur la cible n'en est pas une).
+    const oEnCours = o.suspendu && Date.parse(o.jusqu) > now;
+    return { ok: !oEnCours, motif: oEnCours ? "suspendu jusqu'au " + o.jusqu + " alors que l'archive ne l'était pas" : null };
+  }
   if (!o.suspendu) return { ok: false, motif: "l'archive portait une suspension jusqu'au " + a.jusqu + " ; le compte restauré N'EST PAS suspendu" };
+  const tA = Date.parse(a.jusqu), tO = Date.parse(o.jusqu);
+  if (tO <= now) return { ok: false, motif: "l'archive portait une suspension jusqu'au " + a.jusqu + " ; la borne de la cible (" + o.jusqu + ") est DÉJÀ PASSÉE — le compte est connectable" };
+  if (tO < tA - tol) return { ok: false, motif: "suspension RACCOURCIE : attendu jusqu'au " + a.jusqu + ", cible " + o.jusqu + " (" + Math.round((tA - tO) / 60000) + " min de moins)" };
+  if (tO > tA + 3600000 + tol) return { ok: false, motif: "suspension PROLONGÉE : attendu jusqu'au " + a.jusqu + ", cible " + o.jusqu + " (au-delà de l'arrondi à l'heure)" };
   return { ok: true, motif: null };
 }
 
@@ -131,7 +154,7 @@ function verdictGlobalReprise({ ecarts, refus, phases, nonVerifies, limitesNonRe
 // Une archive est COMPLÈTE quand elle porte de quoi repartir d'une base VIDE :
 // le DDL, les lignes, et (si les comptes ont été exportés) les identités. Sans
 // DDL elle est PARTIELLE — utilisable, mais elle ne doit pas s'annoncer conforme.
-function natureArchive({ schemaPresent, schemaDdl, schemaEmpreinte, empreinteAttendue, comptesExportes, mediasExportes }) {
+function natureArchive({ schemaPresent, schemaDdl, schemaEmpreinte, empreinteAttendue, comptesExportes, mediasExportes, proprietairesComplets }) {
   const anomalies = [], notes = [];
   let ddlValide = false;
   if (schemaPresent) {
@@ -147,7 +170,12 @@ function natureArchive({ schemaPresent, schemaDdl, schemaEmpreinte, empreinteAtt
     }
     if (empreinteAttendue && !schemaEmpreinte) notes.push("schema.sql présent mais non haché : empreinte non vérifiée");
   }
-  const complete = Boolean(ddlValide) && Boolean(comptesExportes) && Boolean(mediasExportes);
+  // ASTRA-45 : des médias sans inventaire COMPLET de leurs propriétaires ne
+  // permettent pas de repartir d'une base vide avec des objets qui appartiennent
+  // à quelqu'un — l'archive est PARTIELLE sur ce point, et le dit.
+  const propOk = proprietairesComplets !== false;
+  if (mediasExportes && !propOk) notes.push("archive avec médias mais SANS inventaire complet des propriétaires : partielle (purge par compte et édition cassées après reprise)");
+  const complete = Boolean(ddlValide) && Boolean(comptesExportes) && Boolean(mediasExportes) && propOk;
   if (!schemaPresent) {
     // ⚠️ AVANT : simple avertissement, `pb` inchangé, sortie 0 « conforme ».
     anomalies.push("archive SANS schema.sql : elle n'est PAS complète — restaurable sur une base qui a déjà la structure, jamais sur une base vide. Passer --partielle pour l'accepter sciemment.");
@@ -178,4 +206,103 @@ function comparerProprietaires(attendus, relus) {
   return { conformes, sansProprietaire, divergents, absents, ok: divergents.length === 0 && absents.length === 0 };
 }
 
-module.exports = { comparerProprietaires, pageComptes, paginationTerminee, etatSuspension, dureeBanResiduelle, suspensionRestauree, comparerMedias, verdictGlobalReprise, natureArchive };
+// ── ASTRA-45 / ASTRA-48 : l'inventaire des propriétaires, lu STRICTEMENT ──
+// Le fichier `_storage_proprietaires.json` porte une VERSION, un TOTAL et les
+// objets ; le manifeste porte son empreinte. Un fichier illisible, tronqué,
+// d'une autre forme, ou dont l'empreinte diverge n'est pas « vide » : il est
+// INDÉTERMINÉ, et ça bloque. (ASTRA-48 : `catch → {}` faisait d'un fichier
+// tronqué un inventaire vide et conforme : attendus 0, conformes 0, ok:true.)
+// Rend { objets, total, version } ou { erreur }. Accepte aussi la forme v0
+// (une table plate), en le DISANT (`version: 0`) — les archives d'avant.
+const FORMAT_PROPRIETAIRES = "passio-proprietaires/1";
+function lireInventaireProprietaires(texte, empreinteAttendue, empreinteCalculee) {
+  if (texte == null) return { erreur: "fichier absent" };
+  if (empreinteAttendue && empreinteCalculee && empreinteAttendue !== empreinteCalculee) {
+    return { erreur: "empreinte " + empreinteCalculee.slice(0, 12) + "… ≠ " + empreinteAttendue.slice(0, 12) + "… du manifeste : ce n'est pas l'inventaire de cette archive" };
+  }
+  let d;
+  try { d = JSON.parse(texte); } catch (e) { return { erreur: "JSON illisible (" + String(e.message).slice(0, 80) + ") — fichier tronqué ou corrompu" }; }
+  if (!d || typeof d !== "object" || Array.isArray(d)) return { erreur: "forme inattendue (" + (Array.isArray(d) ? "tableau" : typeof d) + ")" };
+  let objets, version, total;
+  if (d.format === FORMAT_PROPRIETAIRES) {
+    if (!d.objets || typeof d.objets !== "object" || Array.isArray(d.objets)) return { erreur: "champ `objets` absent ou non objet" };
+    if (typeof d.total !== "number") return { erreur: "champ `total` absent" };
+    objets = d.objets; version = 1; total = d.total;
+    if (Object.keys(objets).length !== total) return { erreur: "total " + total + " annoncé, " + Object.keys(objets).length + " objet(s) présent(s) — inventaire tronqué" };
+  } else if (d.format) {
+    return { erreur: "format " + String(d.format) + " inconnu" };
+  } else {
+    objets = d; version = 0; total = Object.keys(d).length;
+  }
+  for (const [k, v] of Object.entries(objets)) {
+    if (typeof k !== "string" || k.indexOf("/") < 1) return { erreur: "clé d'objet invalide : " + String(k).slice(0, 60) };
+    if (v !== null && (typeof v !== "object" || Array.isArray(v))) return { erreur: "entrée invalide pour " + k };
+  }
+  return { objets, version, total };
+}
+
+// ── ASTRA-45 : chaque objet archivé est-il COUVERT par l'inventaire ? ─────
+// Trois états, distingués : `explicites` (propriétaire connu), `nuls`
+// (propriétaire explicitement nul en base : déposé par service_role ou avant
+// le suivi), `nonReleves` (l'objet est dans l'archive, l'inventaire ne le
+// mentionne PAS — plafond de page, RPC partielle). Un inventaire absent est
+// `indisponible`, jamais « zéro objet ».
+function couvertureProprietaires(clesArchivees, inventaire) {
+  if (!inventaire) return { indisponible: true, explicites: 0, nuls: 0, nonReleves: [...(clesArchivees || [])], ok: false };
+  const explicites = [], nuls = [], nonReleves = [];
+  for (const k of clesArchivees || []) {
+    if (!(k in inventaire)) { nonReleves.push(k); continue; }
+    const p = inventaire[k];
+    if (p && (p.owner || p.owner_id)) explicites.push(k); else nuls.push(k);
+  }
+  return { indisponible: false, explicites: explicites.length, nuls: nuls.length, nonReleves, ok: nonReleves.length === 0 };
+}
+
+// ── ASTRA-55 : l'ensemble attendu vient de l'ARCHIVE, pas du disque ────────
+// Le verdict reconstruisait la liste attendue depuis les fichiers ENCORE
+// présents sur disque : un média disparu de l'archive (manifeste : 1 fichier,
+// disque : 0, cible : 1) donnait en_trop:1, medias.ok:true, prouvee:true.
+// Désormais : l'ensemble attendu est l'INDEX écrit par la sauvegarde
+// (`_storage_index.json` : nom, taille, md5 de chaque objet, empreinte de
+// l'index dans le manifeste) ; le disque est confronté à l'index (archive
+// intacte ?) ; la cible est confrontée à l'index ; et `enTrop` entre dans `ok`.
+// Sans index (archive d'avant), l'attendu n'est pas VÉRIFIABLE : indéterminé.
+const FORMAT_INDEX = "passio-index-medias/1";
+function lireIndexMedias(texte, empreinteAttendue, empreinteCalculee) {
+  if (texte == null) return { erreur: "index absent" };
+  if (empreinteAttendue && empreinteCalculee && empreinteAttendue !== empreinteCalculee) return { erreur: "empreinte de l'index ≠ manifeste : ce n'est pas l'index de cette archive" };
+  let d;
+  try { d = JSON.parse(texte); } catch (e) { return { erreur: "index JSON illisible — fichier tronqué ou corrompu" }; }
+  if (!d || d.format !== FORMAT_INDEX || !d.objets || typeof d.objets !== "object" || typeof d.total !== "number") return { erreur: "index de forme inattendue" };
+  if (Object.keys(d.objets).length !== d.total) return { erreur: "index tronqué : total " + d.total + ", " + Object.keys(d.objets).length + " entrée(s)" };
+  for (const [k, v] of Object.entries(d.objets)) {
+    if (!v || typeof v.taille !== "number" || typeof v.md5 !== "string" || !/^[0-9a-f]{32}$/.test(v.md5)) return { erreur: "entrée d'index invalide : " + k };
+  }
+  return { objets: d.objets, total: d.total };
+}
+// L'archive sur disque est-elle celle de l'index ? Rend ce qui manque, diverge, ou est en trop.
+function integriteArchiveMedias(index, fichiersDisque) {
+  const disque = new Map((fichiersDisque || []).map((f) => [f.name, f]));
+  const manquants = [], divergents = [], enTrop = [];
+  for (const [k, att] of Object.entries(index || {})) {
+    const f = disque.get(k);
+    if (!f) { manquants.push(k); continue; }
+    if (Number(f.taille) !== att.taille || String(f.md5).toLowerCase() !== att.md5) divergents.push(k);
+  }
+  for (const k of disque.keys()) if (!(k in (index || {}))) enTrop.push(k);
+  return { manquants, divergents, enTrop, ok: manquants.length === 0 && divergents.length === 0 && enTrop.length === 0 };
+}
+// Le verdict médias complet : index → cible, en passant par l'intégrité de l'archive.
+function verdictMedias({ index, fichiersDisque, objets, hashes, attenduManifeste }) {
+  if (!index) return { indetermine: true, motif: "aucun index de médias vérifiable : l'ensemble attendu ne peut pas être établi (archive d'avant l'index, ou index illisible)", ok: false };
+  const integrite = integriteArchiveMedias(index, fichiersDisque);
+  // Ce qu'on compare à la cible, c'est l'INDEX (l'archive telle qu'elle a été
+  // écrite), pas ce qui reste sur disque.
+  const attendus = Object.entries(index).map(([name, v]) => ({ name, taille: v.taille, md5: v.md5 }));
+  const d = comparerMedias(attendus, objets, { hashes });
+  const compteOk = attenduManifeste == null || Number(attenduManifeste) === attendus.length;
+  const ok = integrite.ok && compteOk && d.manquants.length === 0 && d.divergents.length === 0 && d.nonVerifies.length === 0 && d.enTrop.length === 0;
+  return { indetermine: false, ok, integrite, attendus: attendus.length, ...d, compteOk };
+}
+
+module.exports = { lireInventaireProprietaires, couvertureProprietaires, lireIndexMedias, integriteArchiveMedias, verdictMedias, FORMAT_PROPRIETAIRES, FORMAT_INDEX, TOLERANCE_SUSPENSION_MS, comparerProprietaires, pageComptes, paginationTerminee, etatSuspension, dureeBanResiduelle, suspensionRestauree, comparerMedias, verdictGlobalReprise, natureArchive };
