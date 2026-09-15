@@ -38,6 +38,38 @@ export function tablesExport() {
 export const PAGE = 1000;
 export const PLAFOND_PAR_TABLE = 5000;
 
+// ⚠️ ASTRA-44 (cinquième contre-revue, 15/09/2026) — UN COMPTE EXACT N'EST PAS UN
+// INSTANTANÉ. La pagination par `range` sur un ordre total, avec compte exact et
+// détection de doublons (ASTRA-28), laissait encore passer ceci, reproduit : 1 001
+// lignes ; première page lue ; une ligne DÉJÀ LUE supprimée et une autre ajoutée
+// en fin ; la seconde page, lue par POSITION, commence une ligne trop loin — une
+// ligne présente du début à la fin est OMISE, le compte final vaut le compte
+// initial, les 1 001 identifiants sont distincts, `complet: true`. Une pagination
+// par clé aurait évité ce cas précis ; aucune pagination ne donne un instantané
+// de TOUTES les tables : entre deux requêtes PostgREST, le monde bouge.
+//
+// LE CONTRAT TEMPOREL, désormais : toutes les lignes du dossier proviennent d'UN
+// SEUL instantané PostgreSQL — `export_compte_instantane(uid)` (migration du
+// 15/09), fonction STABLE : toutes ses requêtes se font sous le snapshot de
+// l'ordre appelant ; le dossier reporte ce snapshot (`bilan.instantane`). Toute
+// écriture validée avant y est ; aucune validée après n'y est.
+// Les MÉDIAS (Storage) restent listés hors instantané, après la prise — dit.
+//
+// ⚠️ SANS LA FONCTION (migration non appliquée), l'export retombe sur la lecture
+// par pages et NE SE DIT JAMAIS COMPLET : `bilan.instantane` est nul, la raison
+// est dans `erreurs`. Un compte absent ne certifie rien.
+export const RPC_EXPORT = "export_compte_instantane";
+const FONCTION_ABSENTE = /PGRST202|could not find the function|function .* does not exist|schema cache/i;
+async function lireInstantane(admin, uid) {
+  try {
+    const r = await admin.rpc(RPC_EXPORT, { p_uid: uid, p_plafond: PLAFOND_PAR_TABLE });
+    if (!r) return { erreur: "réponse vide", absente: false };
+    if (r.error) { const m = r.error.message || String(r.error.code || "erreur"); return { erreur: m, absente: FONCTION_ABSENTE.test(m) || FONCTION_ABSENTE.test(String(r.error.code || "")) }; }
+    if (!r.data || typeof r.data !== "object" || !r.data.tables || typeof r.data.instantane !== "string") return { erreur: "dossier illisible", absente: false };
+    return { dossier: r.data };
+  } catch (e) { return { erreur: (e && e.message) || "exception", absente: false }; }
+}
+
 // ⚠️ ASTRA-14 (contre-revue Astra, 2026-09-15) : L'INCOMPLÉTUDE SE DIT, TOUJOURS.
 // La version du 14/09 avait deux silences : sans colonne `created_at`, le chemin
 // de repli atteignait le plafond de 5 000 lignes SANS poser `tronque` (le
@@ -146,8 +178,27 @@ export async function exporterCompte(admin, uid, identite) {
   const sansOrdre = [];
   const incoherences = [];
   const raisonsOrdre = {};
+  // ① L'INSTANTANÉ. Sans lui, on lit par pages et on le DIT.
+  const inst = await lireInstantane(admin, uid);
+  let instantane = null;
+  if (inst.dossier) {
+    instantane = { snapshot: inst.dossier.instantane, prise_le: inst.dossier.prise_le || null, plafond: inst.dossier.plafond || PLAFOND_PAR_TABLE };
+  } else {
+    erreurs.push("instantané : " + (inst.absente ? "fonction absente (migration non appliquée)" : inst.erreur) + " — lecture par pages, complétude NON garantie");
+  }
   for (const [table, col] of tablesExport()) {
-    const { lignes, erreur, tronque, ordre, ordreTotal, incoherence } = await lireTable(admin, table, col, uid);
+    let lecture;
+    if (instantane) {
+      const e = inst.dossier.tables[table + "." + col];
+      if (!e || !Array.isArray(e.lignes)) { erreurs.push(table + "." + col + " : absente de l'instantané"); continue; }
+      // Compte et lignes viennent du même snapshot : une divergence serait un
+      // défaut de la fonction, pas du monde — elle reste une incohérence nommée.
+      const incoh = !e.tronque && typeof e.attendu === "number" && e.lignes.length !== e.attendu ? "l'instantané annonce " + e.attendu + " ligne(s), " + e.lignes.length + " obtenue(s)" : null;
+      lecture = { lignes: e.lignes, erreur: null, tronque: e.tronque === true, ordre: e.ordre || null, ordreTotal: e.ordre_total === true, incoherence: incoh, instantane: true };
+    } else {
+      lecture = await lireTable(admin, table, col, uid);
+    }
+    const { lignes, erreur, tronque, ordre, ordreTotal, incoherence } = lecture;
     if (erreur) { erreurs.push(table + "." + col + " : " + erreur); continue; }
     const cle = table + (col === "id" || col === "user_id" || col === "author_id" || col === "from_id" || col === "follower_id" || col === "blocker_id" ? "" : " (" + col + ")");
     tables[cle] = (tables[cle] || []).concat(lignes);
@@ -159,7 +210,9 @@ export async function exporterCompte(admin, uid, identite) {
     // lieu (une seule page ne peut pas se mélanger).
     // Le NOM de la table reste nu — c'est ce que le client affiche et ce que
     // les verrous comparent ; la raison vit à côté, elle ne le pollue pas.
-    if (!ordreTotal && lignes.length >= PAGE) { sansOrdre.push(cle); raisonsOrdre[cle] = ordre ? "ordre « " + ordre + " », non total (ex æquo possibles)" : "aucun ordre"; }
+    // Sous instantané, l'ordre ne conditionne plus la complétude (une seule
+    // requête, un seul snapshot) : il n'est signalé que sur le chemin par pages.
+    if (!lecture.instantane && !ordreTotal && lignes.length >= PAGE) { sansOrdre.push(cle); raisonsOrdre[cle] = ordre ? "ordre « " + ordre + " », non total (ex æquo possibles)" : "aucun ordre"; }
     if (incoherence) incoherences.push(cle + " : " + incoherence);
   }
   const medias = [];
@@ -177,7 +230,11 @@ export async function exporterCompte(admin, uid, identite) {
     // ⚠️ ASTRA-28 : `tables_sans_ordre_stable` était calculé, rapporté… et
     // n'entrait PAS dans `complet`. Une table paginée au hasard sortait donc
     // « complète ». Un état non vérifié n'est jamais annoncé complet.
-    complet: erreurs.length === 0 && tronquees.length === 0 && sansOrdre.length === 0 && incoherences.length === 0,
+    // ⚠️ ASTRA-44 : PAS D'INSTANTANÉ, PAS DE « COMPLET ». (Sans lui, `erreurs` porte
+    // déjà la raison ; la condition explicite est là pour qu'une régression qui
+    // viderait `erreurs` ne rende pas `complet` par accident.)
+    complet: instantane !== null && erreurs.length === 0 && tronquees.length === 0 && sansOrdre.length === 0 && incoherences.length === 0,
+    instantane,
     tables_exportees: Object.keys(tables).length,
     lignes: Object.values(tables).reduce((n, l) => n + l.length, 0),
     medias: medias.length,
