@@ -53,6 +53,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 const fs = require("fs");
 const path = require("path");
+const RV = require("./lib/reprise-verdicts.js");
 const os = require("os");
 const crypto = require("crypto");
 
@@ -174,6 +175,28 @@ function lireNdjson(f) {
   return fs.readFileSync(f, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
 }
 
+// ⚠️ ASTRA-31 — LIRE AUTH, OU DIRE QU'ON N'A PAS SU LIRE. `.json()` puis
+// `users || []` faisait passer un HTTP 503 (corps JSON d'erreur) pour « zéro
+// compte » : la purge annonçait « 0/0/0 » et sortait 0 sans qu'un seul DELETE
+// soit parti. Ce lecteur VALIDE le statut ET la forme, et LÈVE sinon — il n'y a
+// pas de repli « liste vide ». La pagination est tranchée par `paginationTerminee`,
+// pas devinée sur place. Verrous : tests/unit/reprise-verdicts.test.mjs.
+async function pageComptesAuth(ctx, page, perPage) {
+  const r = await fetch(`${ctx.url}/auth/v1/admin/users?page=${page}&per_page=${perPage}`, { headers: entetes(ctx.cle) });
+  let corps = null;
+  try { corps = JSON.parse(await r.text()); } catch (e) { corps = undefined; }
+  return RV.pageComptes({ ok: r.ok, status: r.status, corps }, page).users;
+}
+async function tousLesComptesAuth(ctx, perPage) {
+  const pp = perPage || 200, tout = [];
+  for (let page = 1; ; page++) {
+    const lot = await pageComptesAuth(ctx, page, pp);
+    tout.push(...lot);
+    if (RV.paginationTerminee(lot, pp)) return tout;
+    if (page > 200) throw new Error("pagination Auth : plus de 200 pages — arrêt de sécurité, état INDÉTERMINÉ.");
+  }
+}
+
 async function comptes(ctx) {
   const f = path.join(ctx.archive, "_auth_users.ndjson");
   if (sansComptes() || !fs.existsSync(f)) { console.log("② comptes : ignorés."); return; }
@@ -188,16 +211,40 @@ async function comptes(ctx) {
       user_metadata: u.user_metadata || {}, app_metadata: u.app_metadata || {},
     };
     if (u.phone) { corps.phone = u.phone; corps.phone_confirm = !!u.phone_confirmed_at; }
+    // ⚠️ ASTRA-30 — LA SUSPENSION VOYAGE, SINON LA REPRISE LIBÈRE. Un compte
+    // archivé avec `banned_until` dans le futur était recréé SANS sa suspension :
+    // la personne exclue par la modération revenait connectable, et le verdict ne
+    // comparait que des UUID, donc personne ne le voyait. On restitue la durée
+    // RÉSIDUELLE (jamais la durée d'origine : restaurer « 30 jours » un mois plus
+    // tard prolongerait la peine), arrondie AU-DESSUS.
+    const banDuree = RV.dureeBanResiduelle(u, new Date());
+    if (banDuree) corps.ban_duration = banDuree;
     const r = await fetch(`${ctx.url}/auth/v1/admin/users`, {
       method: "POST", headers: entetes(ctx.cle, { "Content-Type": "application/json" }), body: JSON.stringify(corps),
     });
-    if (r.ok) { crees++; continue; }
+    if (r.ok) {
+      crees++;
+      // ⚠️ ON RELIT : `ban_duration` accepté à la création n'est pas une preuve
+      // qu'il a été écrit (le journal de modération seul ne rétablit pas un ban
+      // GoTrue). Si la relecture dit « pas suspendu », c'est un REFUS, pas un
+      // détail — et il compte dans le verdict global.
+      if (banDuree) {
+        const rel = await fetch(`${ctx.url}/auth/v1/admin/users/${u.id}`, { headers: entetes(ctx.cle) });
+        let relu = null; try { relu = JSON.parse(await rel.text()); } catch (e) { relu = null; }
+        if (!rel.ok || !relu) refus.push(`${u.id} : suspension NON RELUE (HTTP ${rel.status}) — état indéterminé`);
+        else { const v = RV.suspensionRestauree(u, relu, new Date()); if (!v.ok) refus.push(`${u.id} : ${v.motif}`); }
+      }
+      continue;
+    }
     const t = await r.text();
     if (r.status === 422 && /already|exist|registered/i.test(t)) { presents++; continue; }
     refus.push(`${u.id} : HTTP ${r.status} ${t.slice(0, 160)}`);
   }
   console.log(`② comptes : ${crees} créé(s), ${presents} déjà présent(s), ${refus.length} refus, sur ${users.length}.`);
   for (const x of refus) console.log("   ✗ " + x);
+  const b = ctx.bilan || (ctx.bilan = { refus: [], notes: [], phases: {}, limitesNonRestaurees: [] });
+  for (const x of refus) b.refus.push("comptes : " + x);
+  b.phases.comptes = { ok: refus.length === 0, motif: refus.length ? refus.length + " refus (création ou suspension non relue)" : null };
 }
 
 // ───────────────────────────── ③ tables ─────────────────────────────
@@ -305,7 +352,10 @@ async function chargerTable(ctx, t, bilan) {
 async function tables(ctx) {
   const noms = tablesRetenues(Object.keys(ctx.man.tables));
   const ordre = [...PARENTS.filter((p) => noms.includes(p)), ...noms.filter((n) => !PARENTS.includes(n)).sort()];
-  const bilan = { refus: [], notes: [] };
+  // ⚠️ ASTRA-29 : le bilan est PARTAGÉ par toutes les phases (il en portait une
+  // seule). Le verdict final le lit : un refus de la phase « comptes » ne peut
+  // plus être invisible dans un JSON `prouvee: true`.
+  const bilan = ctx.bilan || (ctx.bilan = { refus: [], notes: [], phases: {}, limitesNonRestaurees: [] });
   for (const t of ordre) {
     const avant = bilan.refus.length;
     const r = await chargerTable(ctx, t, bilan);
@@ -335,7 +385,7 @@ async function tables(ctx) {
   // Le bilan sort avec le verdict : la preuve JSON portait le compte par table
   // mais pas le MOTIF des refus (exercice du 2026-09-15 : `migrations_appliquees`
   // 4 | 0, détail vide — l'information était au terminal, pas dans la preuve).
-  ctx.bilan = bilan;
+  bilan.phases.tables = { ok: bilan.refus.length === 0, motif: bilan.refus.length ? bilan.refus.length + " refus de chargement" : null };
   return bilan.refus.length === 0;
 }
 
@@ -437,27 +487,22 @@ function comparerLignes(archive, cible, tri) {
   for (const k of c.keys()) if (!a.has(k)) enTrop.push(k);
   return { manquantes, divergentes, enTrop };
 }
-/** Compare les médias de l'archive aux objets de la cible ({ name, taille, etag }). */
-function comparerMedias(fichiers, objets) {
-  const c = new Map((objets || []).map((o) => [o.name, o]));
-  const manquants = [], divergents = [];
-  for (const f of fichiers || []) {
-    const o = c.get(f.name);
-    if (!o) { manquants.push(f.name); continue; }
-    const tailleOk = o.taille == null || Number(o.taille) === f.taille;
-    // ⚠️ Un eTag « <hex>-<n> » vient d'un envoi MULTIPART (objets > 5 Mo) : ce
-    // n'est PAS le MD5 du fichier, et le comparer à l'empreinte locale rendait
-    // deux vidéos IDENTIQUES « divergentes » (exercice du 2026-09-15 : mêmes
-    // 20 362 027 et 25 489 650 octets, même eTag des deux côtés). Pour ces
-    // objets, la taille est la seule comparaison honnête ; pour les autres,
-    // l'eTag est le MD5 et se compare.
-    const etagCible = String(o.etag || "").replace(/"/g, "").toLowerCase();
-    const multipart = /-\d+$/.test(etagCible);
-    const etagOk = !o.etag || !f.md5 || multipart || etagCible === f.md5;
-    if (!tailleOk || !etagOk) divergents.push(f.name);
-  }
-  return { manquants, divergents, enTrop: [...c.keys()].filter((n) => !(fichiers || []).some((f) => f.name === n)) };
-}
+/** Compare les médias de l'archive aux objets de la cible ({ name, taille, etag }).
+ *
+ * ⚠️ ASTRA-29 — « JE N'AI RIEN PU COMPARER » N'EST PAS « C'EST CONFORME ».
+ * L'ancienne version rendait `etagOk = true` dès que l'eTag était absent, que
+ * l'empreinte manquait dans l'archive, ou que l'eTag venait d'un envoi MULTIPART
+ * (« <hex>-<n> », objets > 5 Mo : ce n'est pas le MD5). Combinée à une taille
+ * elle aussi absente, elle acceptait un objet SANS avoir comparé quoi que ce
+ * soit — et `divergents` restait vide. Deux fichiers de même taille et de
+ * contenu différent passaient donc pour identiques.
+ * La décision vit désormais dans `scripts/lib/reprise-verdicts.js` : un
+ * troisième état, `nonVerifies`, qui BLOQUE le verdict au lieu de le verdir.
+ * `--hash-medias` relit et hache les objets concernés : l'empreinte de secours
+ * tranche, y compris sur un multipart.
+ */
+function comparerMedias(fichiers, objets, options) { return RV.comparerMedias(fichiers, objets, options); }
+
 async function lignesCible(ctx, t, tri) {
   const out = [];
   for (let debut = 0; ; debut += 1000) {
@@ -475,7 +520,7 @@ async function verdict(ctx) {
   const presentes = await tablesCible(ctx);
   const q = noms.filter((t) => presentes.has(t)).map((t) => `select '${t}' t, count(*)::int n from public."${t}"`).join(" union all ");
   const comptes = new Map((q ? await sql(ctx, q) : []).map((r) => [r.t, r.n]));
-  let ecarts = 0;
+  let ecarts = 0, nonVerifies = 0;
   console.log("\n⑤ VERDICT — table | manifeste | cible");
   for (const t of noms) {
     const att = ctx.man.tables[t].exporte, obt = comptes.has(t) ? comptes.get(t) : "ABSENTE";
@@ -495,17 +540,23 @@ async function verdict(ctx) {
   }
   if (ctx.man.comptes != null && !sansComptes()) {
     // Les IDENTIFIANTS des comptes, pas leur nombre (ASTRA-16).
-    const ids = new Set();
-    for (let page = 1; ; page++) {
-      const d = await (await fetch(`${ctx.url}/auth/v1/admin/users?page=${page}&per_page=200`, { headers: entetes(ctx.cle) })).json();
-      for (const u of d.users || []) ids.add(u.id);
-      if ((d.users || []).length < 200) break;
+    const surLaCible = await tousLesComptesAuth(ctx, 200);
+    const ids = new Set(surLaCible.map((u) => u.id));
+    const parId = new Map(surLaCible.map((u) => [u.id, u]));
+    const archives = lireNdjson(path.join(ctx.archive, "_auth_users.ndjson"));
+    const manquants = archives.map((u) => u.id).filter((id) => !ids.has(id));
+    // ⚠️ ASTRA-30 — ON COMPARE AUSSI LES ATTRIBUTS DE SÉCURITÉ, pas seulement
+    // l'existence de l'UUID. Un compte présent mais DÉSUSPENDU est un écart.
+    const maintenant = new Date();
+    const suspensionsPerdues = [];
+    for (const a of archives) {
+      const o = parId.get(a.id); if (!o) continue;
+      const v = RV.suspensionRestauree(a, o, maintenant);
+      if (!v.ok) suspensionsPerdues.push(a.id + " : " + v.motif);
     }
-    const attendus = lireNdjson(path.join(ctx.archive, "_auth_users.ndjson")).map((u) => u.id);
-    const manquants = attendus.filter((id) => !ids.has(id));
-    const ok = ids.size === ctx.man.comptes && manquants.length === 0; if (!ok) ecarts++;
-    preuve.comptes = { attendu: ctx.man.comptes, obtenu: ids.size, identifiants_absents: manquants.length, ok };
-    console.log(`   ${ok ? "OK   " : "ECART"} _auth_users | ${ctx.man.comptes} | ${ids.size}${manquants.length ? ` — ${manquants.length} identifiant(s) de l'archive absent(s)` : " — mêmes identifiants"}`);
+    const ok = ids.size === ctx.man.comptes && manquants.length === 0 && suspensionsPerdues.length === 0; if (!ok) ecarts++;
+    preuve.comptes = { attendu: ctx.man.comptes, obtenu: ids.size, identifiants_absents: manquants.length, suspensions_perdues: suspensionsPerdues.length, noms: { suspensions_perdues: suspensionsPerdues.slice(0, 50) }, ok };
+    console.log(`   ${ok ? "OK   " : "ECART"} _auth_users | ${ctx.man.comptes} | ${ids.size}${manquants.length ? ` — ${manquants.length} identifiant(s) de l'archive absent(s)` : " — mêmes identifiants"}${suspensionsPerdues.length ? ` — ${suspensionsPerdues.length} SUSPENSION(S) PERDUE(S)` : ""}`);
   }
   if (ctx.man.medias && !sansMedias()) {
     // Nom, taille et empreinte de chaque média (ASTRA-16).
@@ -517,18 +568,32 @@ async function verdict(ctx) {
       fichiers.push({ name: seau + "/" + rel, taille: buf.length, md5: require("crypto").createHash("md5").update(buf).digest("hex") });
     }
     const d = comparerMedias(fichiers, objets);
-    const ok = objets.length === ctx.man.medias.fichiers && !d.manquants.length && !d.divergents.length; if (!ok) ecarts++;
+    const ok = objets.length === ctx.man.medias.fichiers && !d.manquants.length && !d.divergents.length && !d.nonVerifies.length; if (!ok) ecarts++;
+    nonVerifies += d.nonVerifies.length;
     // Les NOMS des objets manquants, divergents ou en trop (bornés) : un compte
     // seul ne dit pas quoi regarder (exercice du 2026-09-15 : « 2 divergents »).
-    preuve.medias = { attendu: ctx.man.medias.fichiers, obtenu: objets.length, manquants: d.manquants.length, divergents: d.divergents.length, en_trop: d.enTrop.length, ok,
-      noms: { manquants: d.manquants.slice(0, 50), divergents: d.divergents.slice(0, 50), en_trop: d.enTrop.slice(0, 50) } };
-    console.log(`   ${ok ? "OK   " : "ECART"} _storage | ${ctx.man.medias.fichiers} | ${objets.length} — ${d.manquants.length} manquant(s), ${d.divergents.length} divergent(s) (taille ou empreinte), ${d.enTrop.length} en trop`);
+    preuve.medias = { attendu: ctx.man.medias.fichiers, obtenu: objets.length, manquants: d.manquants.length, divergents: d.divergents.length, non_verifies: d.nonVerifies.length, en_trop: d.enTrop.length, ok,
+      noms: { manquants: d.manquants.slice(0, 50), divergents: d.divergents.slice(0, 50), non_verifies: d.nonVerifies.slice(0, 50), en_trop: d.enTrop.slice(0, 50) } };
+    console.log(`   ${ok ? "OK   " : "ECART"} _storage | ${ctx.man.medias.fichiers} | ${objets.length} — ${d.manquants.length} manquant(s), ${d.divergents.length} divergent(s), ${d.nonVerifies.length} NON VÉRIFIÉ(S), ${d.enTrop.length} en trop`);
+    for (const nv of d.nonVerifies.slice(0, 10)) console.log(`      ? ${nv.name} — ${nv.raison}`);
   }
-  preuve.ecarts = ecarts; preuve.prouvee = ecarts === 0;
+  // ⚠️ ASTRA-29 (second volet) — UN SEUL VERDICT, ET IL COUVRE TOUT.
+  // `prouvee = ecarts === 0` ne regardait ni les refus des phases précédentes,
+  // ni les éléments non vérifiés, ni les limites Storage non restaurées. Un
+  // JSON `prouvee: true` pouvait donc être écrit par un processus qui sortait
+  // en code 1 — personne ne doit plus recevoir ça.
+  const g = RV.verdictGlobalReprise({
+    ecarts, nonVerifies,
+    refus: (ctx.bilan && ctx.bilan.refus) || [],
+    phases: (ctx.bilan && ctx.bilan.phases) || {},
+    limitesNonRestaurees: (ctx.bilan && ctx.bilan.limitesNonRestaurees) || [],
+  });
+  preuve.ecarts = ecarts; preuve.non_verifies = nonVerifies; preuve.bloquants = g.bloquants; preuve.prouvee = g.prouvee;
   const fichierPreuve = arg("--preuve");
   if (fichierPreuve) { fs.writeFileSync(fichierPreuve, JSON.stringify(preuve, null, 2) + "\n"); console.log(`   preuve écrite : ${fichierPreuve}`); }
-  console.log(ecarts ? `\n❌ ${ecarts} écart(s) : la restauration n'est PAS prouvée.` : `\n✅ restauration prouvée sur ${ctx.ref} (${ctx.nom}) : lignes, comptes et médias de l'archive retrouvés à l'identique sur la cible.`);
-  return ecarts === 0;
+  if (g.prouvee) console.log(`\n✅ restauration prouvée sur ${ctx.ref} (${ctx.nom}) : lignes, comptes et médias de l'archive retrouvés à l'identique sur la cible.`);
+  else { console.log(`\n❌ la restauration n'est PAS prouvée :`); for (const b of g.bloquants) console.log("   · " + b); }
+  return g.prouvee;
 }
 
 // ───────────────────────────── purge ─────────────────────────────
@@ -543,8 +608,8 @@ async function purger(ctx) {
   if (presentes.length) await sql(ctx, `truncate ${presentes.map((t) => `public."${t}"`).join(", ")} cascade;`);
   let supprimes = 0;
   for (;;) {
-    const d = await (await fetch(`${ctx.url}/auth/v1/admin/users?page=1&per_page=200`, { headers: entetes(ctx.cle) })).json();
-    const lot = d.users || []; if (!lot.length) break;
+    // ⚠️ ASTRA-31 : un refus d'Auth LÈVE, il ne rend plus « zéro compte ».
+    const lot = await pageComptesAuth(ctx, 1, 200); if (!lot.length) break;
     for (const u of lot) { const r = await fetch(`${ctx.url}/auth/v1/admin/users/${u.id}`, { method: "DELETE", headers: entetes(ctx.cle) }); if (r.ok) supprimes++; else refus.push(`compte ${u.id} : HTTP ${r.status}`); }
     // Une page entière refusée : on ne boucle pas sur le même refus.
     if (lot.length < 200 || lot.every((u) => refus.some((x) => x.startsWith("compte " + u.id)))) break;
@@ -563,8 +628,8 @@ async function purger(ctx) {
   // Relecture indépendante : ce qui reste est nommé, et c'est un échec.
   const restes = [];
   if (presentes.length) for (const r of await sql(ctx, presentes.map((t) => `select '${t}' t, count(*)::int n from public."${t}"`).join(" union all "))) if (r.n) restes.push(`${r.t}=${r.n}`);
-  const c = await (await fetch(`${ctx.url}/auth/v1/admin/users?page=1&per_page=1`, { headers: entetes(ctx.cle) })).json();
-  if ((c.users || []).length) restes.push("comptes>0");
+  // La relecture aussi : « je n'ai pas pu lire » n'est pas « il ne reste rien ».
+  if ((await pageComptesAuth(ctx, 1, 1)).length) restes.push("comptes>0");
   const [{ n }] = await sql(ctx, "select count(*)::int n from storage.objects where metadata is not null");
   if (n) restes.push(`objets=${n}`);
   if (refus.length || restes.length) { console.log(`❌ purge INCOMPLÈTE — refus : ${refus.length}, restes : ${restes.join(" ") || "aucun"}`); process.exitCode = 1; }
