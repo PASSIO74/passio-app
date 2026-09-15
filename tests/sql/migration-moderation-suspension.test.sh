@@ -10,7 +10,7 @@
 set -euo pipefail
 
 RACINE="$(cd "$(dirname "$0")/../.." && pwd)"
-MIGRATION="$RACINE/migrations/migration_moderation_journal_2026-09-14.sql"
+MIGRATION="$RACINE/migrations/migration_moderation_suspension_2026-09-15.sql"
 PGBIN="$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | sort -V | tail -1 || true)"
 [ -n "$PGBIN" ] && PATH="$PGBIN:$PATH"
 command -v initdb >/dev/null || { echo "❌ binaires serveur PostgreSQL introuvables"; exit 1; }
