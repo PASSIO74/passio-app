@@ -978,8 +978,9 @@ function _callBindChannelEvents(chan) {
   // (appelant, appelé) : le statut passe d'abord par `_callSurveillerStatut`.
   if (chan && typeof chan.subscribe === "function" && !chan._passioSurveille) {
     chan._passioSurveille = true;
-    const sub = chan.subscribe.bind(chan);
-    chan.subscribe = function (cb) { const reste = Array.prototype.slice.call(arguments, 1); return sub.apply(null, [function (status, err) { try { _callSurveillerStatut(status, err); } catch (e) {} if (typeof cb === "function") cb(status, err); }].concat(reste)); };
+    // (`subscribe(callback, timeout)` : deux paramètres dans supabase-js 2.x.)
+    const abonnerOriginal = chan.subscribe.bind(chan);
+    chan.subscribe = function (cb, timeout) { return abonnerOriginal(function (status, err) { try { _callSurveillerStatut(status, err); } catch (e) {} if (typeof cb === "function") cb(status, err); }, timeout); };
   }
   chan.on("broadcast", { event: "ready" }, async () => {
     const cs = window._call;
