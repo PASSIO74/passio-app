@@ -1,28 +1,37 @@
-// AUTH-05 / SUP-10 — la purge d'un compte est VÉRIFIÉE (supabase/functions/_shared/purge-compte.js).
+// AUTH-05 / SUP-10 / ASTRA-11 / ASTRA-12 — la purge d'un compte est VÉRIFIÉE et
+// ne supprime que ce qui lui APPARTIENT (supabase/functions/_shared/purge-compte.js).
 //
 // Le fichier testé est CELUI que Deno déploie dans `delete-account`. Le client
 // Supabase est un FAUX en mémoire : tables = { nom: [lignes] }, seaux = { nom:
-// { chemin: true } }, avec des pannes scriptables. Assez pour prouver la RÈGLE :
+// { chemin: <uid du propriétaire> } }, une fonction `objets_stockage_du_compte`
+// qui lit ce propriétaire (comme `storage.objects.owner` en production), avec
+// des pannes scriptables. Assez pour prouver la RÈGLE :
 //   ① tout ce qui porte l'uid part, médias et pièces jointes compris, et `ok`
 //   ② un delete en erreur est un ÉCHEC nommé — jamais avalé
 //   ③ ce qui subsiste après relecture est un RESTE nommé, `ok` faux
-//   ④ les pièces jointes sont relevées AVANT la suppression des messages, dans
-//      les deux formes d'URL, sans doublon
+//   ④ ASTRA-11 (RÉINJECTION) : un message de A qui porte le chemin d'une pièce
+//      jointe de B ne fait PAS supprimer l'objet de B — la propriété décide
 //   ⑤ un seau illisible est un échec ; un dossier vide n'en est pas un
 //   ⑥ la relecture illisible compte comme un reste (fail-closed)
 //   ⑦ la liste des tables couvre bien celles que la base porte (schéma du 2026-09-14)
+//   ⑧ ASTRA-12 : messages déjà supprimés (le client les a effacés) → les
+//      fichiers partent quand même ; une première tentative refusée laisse une
+//      seconde qui finit ; une relecture Storage en panne n'est pas « zéro reste »
+//   ⑨ fonction absente = échec nommé, jamais une purge sans autorité
+//   ⑩ plus de 1 000 objets : tout part (pagination)
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { purgerCompte, cheminsPiecesJointes, TABLES_COMPTE, DOSSIERS_CONTENU } from "../../supabase/functions/_shared/purge-compte.js";
+import { purgerCompte, listerObjetsDuCompte, TABLES_COMPTE, DOSSIERS_CONTENU, RPC_OBJETS, PAGE } from "../../supabase/functions/_shared/purge-compte.js";
 
 const U = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const AUTRE = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
-function fauxAdmin({ tables = {}, seaux = {}, pannesDelete = [], pannesCount = [], pannesList = [], pannesRemove = [] } = {}) {
+function fauxAdmin({ tables = {}, seaux = {}, pannesDelete = [], pannesCount = [], pannesList = [], pannesRemove = [], rpc = "ok", pannesListApres = [] } = {}) {
   const t = JSON.parse(JSON.stringify(tables));
   const s = JSON.parse(JSON.stringify(seaux));
+  const compteurs = { remove: 0, list: {} };
   return {
-    _t: t, _s: s,
+    _t: t, _s: s, _n: compteurs,
     from(table) {
       const filtres = [];
       let mode = "select", head = false;
@@ -45,15 +54,39 @@ function fauxAdmin({ tables = {}, seaux = {}, pannesDelete = [], pannesCount = [
       };
       return b;
     },
+    // La fonction SQL : les objets dont `owner` = p_uid, tous seaux, paginés.
+    rpc(nom, args) {
+      let de = 0, a = Infinity;
+      const b = {
+        range(x, y) { de = x; a = y; return b; },
+        then(res, rej) {
+          let out;
+          if (nom !== RPC_OBJETS || rpc === "absente") out = { data: null, error: { code: "PGRST202", message: "function " + nom + " not found" } };
+          else if (rpc === "panne") out = { data: null, error: { message: "panne rpc" } };
+          else {
+            const tous = [];
+            for (const seau of Object.keys(s)) for (const [name, owner] of Object.entries(s[seau])) if (owner === args.p_uid) tous.push({ bucket_id: seau, name });
+            tous.sort((x, y) => (x.bucket_id + x.name).localeCompare(y.bucket_id + y.name));
+            out = { data: tous.slice(de, a + 1), error: null };
+          }
+          return Promise.resolve(out).then(res, rej);
+        },
+      };
+      return b;
+    },
     storage: {
       from(seau) {
         return {
-          list(prefixe) {
+          list(prefixe, o) {
+            compteurs.list[seau] = (compteurs.list[seau] || 0) + 1;
             if (pannesList.includes(seau)) return Promise.resolve({ data: null, error: { message: "panne list" } });
+            if (pannesListApres.includes(seau) && compteurs.remove > 0) return Promise.resolve({ data: null, error: { message: "panne relecture" } });
             const noms = Object.keys(s[seau] || {}).filter((k) => k.startsWith(prefixe + "/")).map((k) => ({ name: k.slice(prefixe.length + 1) }));
-            return Promise.resolve({ data: noms, error: null });
+            const offset = (o && o.offset) || 0, limit = (o && o.limit) || 1000;
+            return Promise.resolve({ data: noms.slice(offset, offset + limit), error: null });
           },
           remove(chemins) {
+            compteurs.remove++;
             if (pannesRemove.includes(seau)) return Promise.resolve({ data: null, error: { message: "panne remove" } });
             for (const c of chemins) delete (s[seau] || {})[c];
             return Promise.resolve({ data: chemins, error: null });
@@ -76,10 +109,11 @@ function baseComplete() {
     { from_id: U, content: "texte simple" },
     { from_id: AUTRE, content: JSON.stringify({ type: "media", url: "https://njki.supabase.co/storage/v1/object/public/attachments/attachments/conv_1/3_autre.jpg" }) },
   ];
+  // Le PROPRIÉTAIRE de chaque objet, comme `storage.objects.owner` en production.
   const seaux = { content: {}, attachments: {
-    "attachments/conv_1/1_photo.jpg": true, "attachments/conv_1/2_voice.webm": true, "attachments/conv_1/3_autre.jpg": true,
+    "attachments/conv_1/1_photo.jpg": U, "attachments/conv_1/2_voice.webm": U, "attachments/conv_1/3_autre.jpg": AUTRE,
   } };
-  for (const d of DOSSIERS_CONTENU) { seaux.content[`${d}/${U}/a.jpg`] = true; seaux.content[`${d}/${AUTRE}/b.jpg`] = true; }
+  for (const d of DOSSIERS_CONTENU) { seaux.content[`${d}/${U}/a.jpg`] = U; seaux.content[`${d}/${AUTRE}/b.jpg`] = AUTRE; }
   return { tables, seaux };
 }
 
@@ -89,18 +123,18 @@ test("① tout ce qui porte l'uid part — lignes, huit dossiers de médias, pi�
   assert.deepEqual(r.echecs, []);
   assert.deepEqual(r.restes, []);
   assert.equal(r.ok, true);
-  assert.equal(r.piecesJointes, 2);
+  assert.equal(r.objets, 2 + DOSSIERS_CONTENU.length, "2 pièces jointes + un média par dossier, relevés par propriété");
   for (const [table, col] of TABLES_COMPTE) {
     assert.equal(admin._t[table].some((x) => x[col] === U), false, table + ":" + col + " purgée");
     assert.equal(admin._t[table].some((x) => x[col] === AUTRE), true, table + " : l'autre compte est intact");
   }
   for (const d of DOSSIERS_CONTENU) {
     assert.equal(admin._s.content[`${d}/${U}/a.jpg`], undefined, d + " purgé");
-    assert.equal(admin._s.content[`${d}/${AUTRE}/b.jpg`], true, d + " de l'autre intact");
+    assert.equal(admin._s.content[`${d}/${AUTRE}/b.jpg`], AUTRE, d + " de l'autre intact");
   }
   assert.equal(admin._s.attachments["attachments/conv_1/1_photo.jpg"], undefined);
   assert.equal(admin._s.attachments["attachments/conv_1/2_voice.webm"], undefined);
-  assert.equal(admin._s.attachments["attachments/conv_1/3_autre.jpg"], true, "la pièce jointe de l'autre reste");
+  assert.equal(admin._s.attachments["attachments/conv_1/3_autre.jpg"], AUTRE, "la pièce jointe de l'autre reste");
 });
 
 test("② un delete en erreur est un échec NOMMÉ, et ok est faux", async () => {
@@ -117,9 +151,6 @@ test("③ ce qui subsiste après relecture est un reste nommé", async () => {
   admin.from = (table) => {
     const b = vraiFrom(table);
     if (table !== "blocks") return b;
-    const vraiThen = b.then;
-    b.then = (res, rej) => vraiThen.call(b, res, rej);
-    const vraiDelete = b.delete;
     b.delete = () => { b.select("*", { head: true }); return b; }; // ne supprime pas : compte seulement
     return b;
   };
@@ -129,17 +160,24 @@ test("③ ce qui subsiste après relecture est un reste nommé", async () => {
   assert.ok(r.restes.includes("blocks:blocker_id=1") && r.restes.includes("blocks:blocked_id=1"), JSON.stringify(r.restes));
 });
 
-test("④ les pièces jointes : deux formes d'URL, sans doublon, seulement celles de l'uid", () => {
-  const lignes = [
-    { content: JSON.stringify({ type: "media", url: "https://x.supabase.co/storage/v1/object/public/attachments/attachments/c1/a.jpg" }) },
-    { content: JSON.stringify({ type: "media", url: "https://x.supabase.co/storage/v1/object/public/attachments/attachments/c1/a.jpg?x=1" }) },
-    { content: JSON.stringify({ type: "audio", fileUrl: "https://passio-app.netlify.app/media/attachments/attachments/c2/v.webm" }) },
-    { content: JSON.stringify({ type: "gif", url: "https://media.giphy.com/x.gif" }) },
-    { content: JSON.stringify({ type: "media", url: "https://x.supabase.co/storage/v1/object/public/content/photos/u/p.jpg" }) },
-    { content: "{pas du json" }, { content: null }, { content: "texte" },
-  ];
-  assert.deepEqual(cheminsPiecesJointes(lignes).sort(), ["attachments/c1/a.jpg", "attachments/c2/v.webm"]);
-  assert.deepEqual(cheminsPiecesJointes(null), []);
+test("④ ASTRA-11 : un message de A qui porte le chemin d'une pièce jointe de B ne supprime PAS l'objet de B", async () => {
+  const base = baseComplete();
+  // A a écrit (ou fabriqué) un message dont l'URL vise la pièce jointe de B —
+  // la contre-épreuve d'Astra. Sur le code du 14/09 : objet de B supprimé, ok:true.
+  base.tables.conv_messages.push({ from_id: U, content: JSON.stringify({ type: "media", url: "https://njki.supabase.co/storage/v1/object/public/attachments/attachments/conv_9/secret_de_B.jpg" }) });
+  base.seaux.attachments["attachments/conv_9/secret_de_B.jpg"] = AUTRE;
+  const admin = fauxAdmin(base);
+  const r = await purgerCompte(admin, U);
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(admin._s.attachments["attachments/conv_9/secret_de_B.jpg"], AUTRE, "l'objet de B est INTACT : le chemin d'un message n'est pas une autorisation");
+  assert.equal(admin._s.attachments["attachments/conv_1/3_autre.jpg"], AUTRE);
+  assert.equal(admin._s.attachments["attachments/conv_1/1_photo.jpg"], undefined, "ceux de A partent bien");
+  // Et symétriquement : un objet de A qu'AUCUN message ne mentionne part quand même.
+  const base2 = baseComplete();
+  base2.seaux.attachments["attachments/conv_7/orphelin_de_A.jpg"] = U;
+  const admin2 = fauxAdmin(base2);
+  assert.equal((await purgerCompte(admin2, U)).ok, true);
+  assert.equal(admin2._s.attachments["attachments/conv_7/orphelin_de_A.jpg"], undefined, "relevé par propriété, pas par les messages");
 });
 
 test("⑤ un seau illisible est un échec ; un dossier vide n'en est pas un", async () => {
@@ -148,11 +186,12 @@ test("⑤ un seau illisible est un échec ; un dossier vide n'en est pas un", as
   assert.ok(r1.echecs.some((e) => e.startsWith("content/photos")));
   const r2 = await purgerCompte(fauxAdmin({ ...baseComplete(), pannesRemove: ["attachments"] }), U);
   assert.equal(r2.ok, false);
-  assert.ok(r2.echecs.some((e) => e.startsWith("attachments")));
-  const vide = baseComplete(); vide.seaux.content = {}; vide.tables.conv_messages = [];
+  assert.ok(r2.echecs.some((e) => e.startsWith("attachments")), JSON.stringify(r2.echecs));
+  assert.ok(r2.restes.includes("objets=2"), "…et la relecture par propriété nomme les deux restés : " + JSON.stringify(r2.restes));
+  const vide = baseComplete(); vide.seaux.content = {}; vide.seaux.attachments = {}; vide.tables.conv_messages = [];
   const r3 = await purgerCompte(fauxAdmin(vide), U);
   assert.equal(r3.ok, true, JSON.stringify(r3));
-  assert.equal(r3.piecesJointes, 0);
+  assert.equal(r3.objets, 0);
 });
 
 test("⑥ une relecture illisible compte comme un reste (fail-closed)", async () => {
@@ -171,4 +210,56 @@ test("⑦ la liste couvre les tables à identifiant de compte du schéma du 2026
   for (const t of attendues) assert.ok(couvertes.has(t), t + " manque à TABLES_COMPTE");
   assert.deepEqual(TABLES_COMPTE[TABLES_COMPTE.length - 1], ["profiles", "id"]);
   assert.ok(TABLES_COMPTE.some(([t, c]) => t === "notifications" && c === "from_id"), "les notifications ENVOYÉES aussi (elles portent le nom)");
+});
+
+test("⑧ ASTRA-12 : messages déjà effacés → les fichiers partent quand même ; refus puis reprise ; relecture en panne ≠ zéro reste", async () => {
+  // Le client a déjà supprimé ses messages avant d'appeler la fonction.
+  const sans = baseComplete(); sans.tables.conv_messages = [];
+  const admin = fauxAdmin(sans);
+  const r = await purgerCompte(admin, U);
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(admin._s.attachments["attachments/conv_1/1_photo.jpg"], undefined, "relevé par propriété : les messages ne sont plus nécessaires");
+  // Première tentative : le Storage refuse. Seconde : il répond. Le fichier doit être parti.
+  const base = baseComplete();
+  let refuser = true;
+  const admin2 = fauxAdmin(base);
+  const vraiStorageFrom = admin2.storage.from.bind(admin2.storage);
+  admin2.storage.from = (seau) => {
+    const s = vraiStorageFrom(seau);
+    const vraiRemove = s.remove;
+    s.remove = (noms) => refuser && seau === "attachments" ? Promise.resolve({ data: null, error: { message: "503" } }) : vraiRemove(noms);
+    return s;
+  };
+  const r1 = await purgerCompte(admin2, U);
+  assert.equal(r1.ok, false, "première tentative : refusée, compte conservé");
+  refuser = false;
+  const r2 = await purgerCompte(admin2, U);
+  assert.equal(r2.ok, true, JSON.stringify(r2));
+  assert.equal(admin2._s.attachments["attachments/conv_1/2_voice.webm"], undefined, "la seconde tentative a bien purgé");
+  // Relecture d'un dossier en panne APRÈS suppression : « illisible », jamais « 0 ».
+  const r3 = await purgerCompte(fauxAdmin({ ...baseComplete(), pannesListApres: ["content"] }), U);
+  assert.equal(r3.ok, false);
+  assert.ok(r3.restes.some((x) => /^content\/photos\/.*=illisible$/.test(x)), JSON.stringify(r3.restes));
+});
+
+test("⑨ fonction SQL absente (migration non appliquée) ou en panne = échec nommé, aucune purge sans autorité", async () => {
+  const r = await purgerCompte(fauxAdmin({ ...baseComplete(), rpc: "absente" }), U);
+  assert.equal(r.ok, false);
+  assert.ok(r.echecs.some((e) => e.startsWith("objets:rpc")), JSON.stringify(r.echecs));
+  const r2 = await purgerCompte(fauxAdmin({ ...baseComplete(), rpc: "panne" }), U);
+  assert.equal(r2.ok, false);
+  assert.ok(r2.echecs.some((e) => e.startsWith("objets:rpc (panne rpc)")), JSON.stringify(r2.echecs));
+  assert.deepEqual(await listerObjetsDuCompte(fauxAdmin({ rpc: "absente" }), U), { erreur: "function " + RPC_OBJETS + " not found" });
+});
+
+test("⑩ plus de 1 000 objets : tout part, la liste est paginée", async () => {
+  const base = baseComplete();
+  for (let i = 0; i < PAGE + 7; i++) base.seaux.attachments[`attachments/conv_x/${String(i).padStart(5, "0")}.jpg`] = U;
+  for (let i = 0; i < PAGE + 3; i++) base.seaux.content[`photos/${U}/${String(i).padStart(5, "0")}.jpg`] = U;
+  const admin = fauxAdmin(base);
+  const r = await purgerCompte(admin, U);
+  assert.equal(r.ok, true, JSON.stringify(r).slice(0, 300));
+  assert.equal(Object.values(admin._s.attachments).filter((o) => o === U).length, 0);
+  assert.equal(Object.keys(admin._s.content).filter((k) => k.startsWith("photos/" + U + "/")).length, 0);
+  assert.equal(Object.values(admin._s.attachments).filter((o) => o === AUTRE).length, 1, "l'autre est intact");
 });

@@ -4022,29 +4022,14 @@ async function doDeleteAccount() {
   }
   closeModal();
   toast("Suppression en cours…");
-  // Suppression best-effort des données serveur, table par table.
-  // Les policies RLS limitent de toute façon chaque DELETE au propriétaire.
+  // ⚠️ PLUS AUCUNE SUPPRESSION CÔTÉ CLIENT AVANT LE VERDICT (ASTRA-12, 2026-09-15).
+  // Ce bloc faisait onze `delete()` par RLS — messages compris — AVANT d'appeler
+  // la fonction serveur. Deux défauts : la fonction relevait alors les pièces
+  // jointes dans des messages déjà effacés (donc rien), et un 409 laissait un
+  // compte à moitié vidé mais toujours ouvert. La purge est SERVEUR, vérifiée,
+  // relançable, et fondée sur la propriété des objets — pas sur ce que le client
+  // a laissé derrière lui. Ici : un appel, un verdict, rien d'autre.
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
-    var jobs = [
-      ["posts",           "author_id"],
-      ["post_likes",      "user_id"],
-      ["post_comments",   "author_id"],
-      ["stories",         "author_id"],
-      ["events",          "author_id"],
-      ["event_attendees", "user_id"],
-      ["conv_messages",   "from_id"],
-      ["conv_members",    "user_id"],
-      ["notifications",   "user_id"],
-      ["user_state",      "user_id"],
-      ["profiles",        "id"],
-    ];
-    for (var i = 0; i < jobs.length; i++) {
-      try { await supa.from(jobs[i][0]).delete().eq(jobs[i][1], MY_UID); } catch (e) {}
-    }
-    try { await supa.from("follows").delete().eq("follower_id", MY_UID); } catch (e) {}
-    try { await supa.from("follows").delete().eq("following_id", MY_UID); } catch (e) {}
-    try { await supa.from("blocks").delete().eq("blocker_id", MY_UID); } catch (e) {}
-    try { await supa.from("blocks").delete().eq("blocked_id", MY_UID); } catch (e) {}
     // Suppression du compte auth côté serveur. L'Edge Function `delete-account`
     // EST déployée et active — vérifié de bout en bout le 2026-08-17 : elle
     // supprime le compte (reconnexion impossible ensuite) ET les MÉDIAS du
