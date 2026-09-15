@@ -233,7 +233,7 @@ jobs:
             L.push("### Ce qui est demandé");
             L.push("");
             L.push("1. Établir la CAUSE dans le code. Sans cause établie, ne rien corriger : commenter ce qui manque et s’arrêter.");
-            L.push("2. Corriger UNIQUEMENT dans `js/*.js`, `styles.css`, `index.html`, `sw.js`. Jamais `tests/`, `.github/`, `migrations/`, `scripts/`, `dashboard/`.");
+            L.push("2. Corriger UNIQUEMENT dans `js/*.js`, `styles.css`, `index.html`, `sw.js` ; le verrou du point 3 UNIQUEMENT dans `tests/e2e/*.spec.js`. Jamais `.github/`, `migrations/`, `scripts/`, `dashboard/`, ni le reste de `tests/`. La gouvernance de `deploy.yml` REFUSE la PR au-delà (ASTRA-05).");
             L.push("3. Ajouter un verrou qui ÉCHOUE sur le défaut et passe après (réinjection).");
             L.push("4. `npm run verif` vert, suites e2e concernées vertes, avant toute PR.");
             L.push("5. Au-delà de ~60 lignes ou 2 fichiers, ce n’est plus une réparation : décrire la cause et laisser la main.");

@@ -536,12 +536,21 @@ jobs:
       # clé de service est celle du STAGING : plus une seule écriture, plus un
       # seul compte jetable en production depuis ce job. Le staging porte la même
       # structure (`docs/STAGING.md`) et aucune donnée personnelle.
+      # ⚠️ TCI-01 (2026-09-15) : LES QUATRE SUITES CROSS-COMPTE TOURNENT ICI AUSSI.
+      # `PASSIO_E2E_MULTI=1` lève leur opt-in (messagerie + temps réel dans les
+      # deux sens, notifications, confidentialité RLS entre trois comptes,
+      # suppression de compte de bout en bout). Elles n'avaient jamais tourné en
+      # CI parce qu'elles créaient de vrais comptes en production ; sur le
+      # staging ce motif tombe. 9 scénarios sur 9 verts contre le staging le
+      # 15/09 — le neuvième a d'ailleurs trouvé une régression de la veille en
+      # production (#413), ce qu'aucune suite `local` ne pouvait voir.
       - name: Suites à comptes réels — sur le STAGING
         env:
           PASSIO_SUPABASE_URL: ${{ vars.STAGING_SUPABASE_URL }}
           PASSIO_SUPABASE_ANON: ${{ vars.STAGING_SUPABASE_ANON }}
           SUPABASE_URL: ${{ vars.STAGING_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.STAGING_SERVICE_ROLE_KEY }}
+          PASSIO_E2E_MULTI: "1"
         run: npx playwright test --project=prod
 
       # ⚠️ ET LA BARRIÈRE DE LA PRODUCTION RESTE LA PRODUCTION : `authz-critical`
