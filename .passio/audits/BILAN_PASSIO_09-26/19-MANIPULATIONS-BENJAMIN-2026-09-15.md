@@ -2,6 +2,8 @@
 
 > Tout ce qui suit est **ce que je ne peux pas faire à ta place**. Le reste est fait, fusionné ou en attente de ta seule revue. Chaque geste dit ce qu'il débloque. Les SHA sont ceux de la tête au moment de l'écriture ; si une PR doit être rebasée, je te redonne son SHA.
 
+> **État à 13 h (15/09) — TOUT EST FAIT.** A) droit `workflow` obtenu à 09:07 UTC (device-code validé) ; B) contre-revues #410, #416, #423 posées sur les bons SHA, les trois fusionnées, migrations appliquées en production et mesurées ; C) widget Turnstile créé par Claude Code après connexion de Benjamin à Cloudflare (#433 porte la sitekey ; interrupteur serveur après déploiement) ; D) UptimeRobot : création de compte = geste que Claude Code ne fait pas — remplacé par une sonde sans compte (à venir, PIL-10/EXP-06). Plus aucun geste en attente.
+
 ## A. Le droit `workflow` du jeton GitHub (30 secondes, durable) — **le plus urgent**
 
 Mon `gh` (compte PASSIO74) n'a que les droits `repo, read:org, gist`. GitHub **refuse toute fusion d'une PR qui crée ou modifie un fichier de `.github/workflows/`** sans le droit `workflow` — c'est ce qui bloque #407 (revue faite, CI verte) et bloquera #416.
