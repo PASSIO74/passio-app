@@ -20,7 +20,7 @@ async function banc(page, avecCompte) {
   await page.evaluate(() => {
     window._supaReal = true;
     window.__toasts = []; window.toast = (t) => window.__toasts.push(String(t));
-    window.__invocations = []; window.__reponse = { data: { format: "passio-export/1", tables: { posts: [{ id: "p1" }], profiles: [{ id: "x" }] }, medias: [{ chemin: "a" }], erreurs: [] }, error: null };
+    window.__invocations = []; window.__reponse = { data: { format: "passio-export/1", bilan: { complet: true, instantane: { snapshot: "742:742:", prise_le: "2026-09-15T18:00:00Z", plafond: 5000 }, tables_exportees: 2, lignes: 2, medias: 1, tables_tronquees: [], tables_sans_ordre_stable: [], erreurs: [], plafond_par_table: 5000 }, tables: { posts: [{ id: "p1" }], profiles: [{ id: "x" }] }, medias: [{ chemin: "a" }], erreurs: [] }, error: null };
     Object.defineProperty(window.supa, "functions", { configurable: true, value: { invoke: async (nom) => { window.__invocations.push(nom); return window.__reponse; } } });
     window.__telechargements = [];
     window._telechargerJson = (objet, nom) => { window.__telechargements.push({ nom, format: objet.format }); };
@@ -60,6 +60,29 @@ test.describe("EXP-08 — exporter mes données", () => {
     // RÉINJECTION : sur le code du 14/09, « Export prêt : 3 tables, 2 média(s) … 1 table(s) illisible(s) » en succès, sans un mot de la troncature.
     expect(r.toasts.some((t) => /Export INCOMPLET/.test(t) && t.indexOf("1 table(s) tronquée(s) au plafond de 5000") !== -1 && /illisible/.test(t))).toBe(true);
     expect(r.toasts.some((t) => /Export complet/.test(t))).toBe(false);
+  });
+
+  // ASTRA-44 (cinquième contre-revue, 2026-09-15) : sans INSTANTANÉ serveur, un
+  // export ne peut pas être dit complet — même si le serveur ne signale ni
+  // troncature ni erreur (fonction d'instantané absente, ou fonction d'avant).
+  test("② ter sans instantané : jamais « Export complet », la raison est nommée, le fichier reste proposé", async ({ page }) => {
+    await banc(page, true);
+    const r = await page.evaluate(async () => {
+      window.__reponse = { data: { format: "passio-export/1", bilan: { complet: false, instantane: null, tables_exportees: 2, lignes: 2, medias: 1, tables_tronquees: [], tables_sans_ordre_stable: [], erreurs: ["instantané : fonction absente (migration non appliquée) — lecture par pages, complétude NON garantie"], plafond_par_table: 5000 }, tables: { posts: [], profiles: [] }, medias: [{}], erreurs: ["instantané : fonction absente (migration non appliquée) — lecture par pages, complétude NON garantie"] }, error: null };
+      await openPrivacySettings(); const ok = await exporterMesDonnees();
+      return { ok, dl: window.__telechargements.length, toasts: window.__toasts.slice() };
+    });
+    expect(r.ok).toBe(true);
+    expect(r.dl).toBe(1);
+    expect(r.toasts.some((t) => /Export INCOMPLET/.test(t) && /sans instantané cohérent/.test(t)), JSON.stringify(r.toasts)).toBe(true);
+    expect(r.toasts.some((t) => /Export complet/.test(t))).toBe(false);
+    // Et un bilan d'AVANT (sans le champ) n'est pas un succès non plus.
+    const r2 = await page.evaluate(async () => {
+      window.__toasts.length = 0;
+      window.__reponse = { data: { format: "passio-export/1", bilan: { complet: true, tables_exportees: 2, lignes: 2, medias: 1, tables_tronquees: [], erreurs: [] }, tables: { posts: [], profiles: [] }, medias: [{}], erreurs: [] }, error: null };
+      await exporterMesDonnees(); return window.__toasts.slice();
+    });
+    expect(r2.some((t) => /Export complet/.test(t))).toBe(false);
   });
 
   test("③ échec ou plafond : dit, rien de téléchargé", async ({ page }) => {
