@@ -41,6 +41,7 @@
 | Résultat | **Avant** (dev) : 5 échecs / 7 (①③④⑤⑥). **Après** : 7/7 en dev, 7/7 sur l'artefact assemblé + minifié comme en CI. Voisines : 114/120 en parallèle, les 6 rouges sont des timeouts (`page.goto`, `waitForFunction`, `click`) et repassent 68/68 seules — saturation, sans lien avec les files. Gates locales vertes (les 3 gates CRLF restent hors mesure locale, cf. MSG-02). |
 | Limite restante | Les entrées **sans propriétaire** créées par une version antérieure et dont la conversation a été purgée sont jetées (leur texte n'est de toute façon plus dans l'appareil). Le contenu d'un message porte encore le persona déclaratif (`sp`) — c'est PRO-02, non traité ici. Livraison réelle inter-comptes en production : non mesurée. Changement de compte **sans purge** (`onAuthStateChange`) : la seconde ceinture le couvre, mais l'état des conversations lui-même n'est pas purgé sur ce chemin — c'est la fiche « L'ÉTAT LOCAL APPARTIENT À UN COMPTE », hors périmètre. |
 | État | **corrigé dans le code** · testé sur staging : non · **déployé** (fusion #375 sur ordre explicite le 2026-09-14, commit `82aa48a9`, run 34815138597, job « Déploiement production » vert) · **vérifié après déploiement** : `release.json` servi = `82aa48a9`, `app.js?v=cd2eafd389` servi (1 276 479 octets) porte `passio_outbox_v1` dans la liste de purge et les traces `msg_outbox_autre_compte` / `cmt_outbox_autre_compte`. Non mesuré : rejeu réel entre deux comptes en production. |
+| Suite du 15/09 (fiche 21) | Astra : PARTIEL — l'adoption d'une entrée sans propriétaire (message encore dans le cache) et le renvoi manuel reconstruit permettaient encore un envoi de A sous B. **Corrigé** ([#422](https://github.com/PASSIO74/passio-app/pull/422)) : plus aucune adoption, le renvoi manuel exige `m.de` = le compte qui a écrit ; `file-messages-par-compte` ⑤ révisé et ⑧, réinjection du 14/09 : 2 rouges. État : corrigé dans le code · fusion automatique en cours. |
 | PR | [#375](https://github.com/PASSIO74/passio-app/pull/375) — fusionnée (squash) le 2026-09-14. |
 
 ---
@@ -75,7 +76,7 @@
 
 ## Points restants (ordre du plan, fiche 16 et rapport du 2026-09-13)
 
-État au soir du 2026-09-14 (mis à jour à chaque PR fusionnée). Un chantier par PR ; une fiche par identifiant traité, plus bas.
+État au 2026-09-15, 10 h 30 (mis à jour à chaque PR fusionnée ; la reprise du 15/09 est détaillée dans le bloc suivant). Un chantier par PR ; une fiche par identifiant traité, plus bas.
 
 | Ordre | Chantier | Identifiants | État |
 |---|---|---|---|
@@ -91,6 +92,31 @@
 
 ---
 
+## Reprise du 15/09 — troisième passe d'Astra (fiche 21), état à 10 h 30
+
+Astra a rendu dix constats neufs (ASTRA-11 à 20) et reclassé 85 identifiants. Chaque ligne ci-dessous a sa reproduction, son verrou par réinjection et ses quatre états ; le détail vit dans les fiches (ligne « Suite du 15/09 »).
+
+| Identifiant | Astra | Ce qui est fait | Code | Staging | Déployé | Vérifié après déploiement | PR |
+|---|---|---|---|---|---|---|---|
+| ASTRA-11 / ASTRA-12 | P1 urgent | objets Storage relevés par PROPRIÉTAIRE (`objets_stockage_du_compte`, service_role), plus jamais par un chemin écrit dans un message ; purge paginée, relue, fail-closed ; le client ne supprime rien avant le verdict. **Reproduit sur le staging avec la fonction du 14/09 : fichier de B supprimé, celui de A oublié.** | ✔ | ✔ 5 OK + preuve | ✔ migration prod 08:18 UTC (anon/authenticated false, service_role true) ; fonction **v7** par la CI 08:24 UTC | ✔ **en production** avec comptes jetables : fichier de B intact, ceux de A partis, compte supprimé (`preuves/suppression-compte/2026-09-15-astra-11-production.md`) | #417 fusionnée |
+| ASTRA-13 | P1 | fond de modale jamais tabulable, délégué clavier limité à l'élément focalisé hors champs, bouton promu vide → conteneur | ✔ | — (pas de serveur) | ✔ #418 fusionnée | à relire sur le site servi | #418 |
+| ASTRA-14 | P2 | export incomplet sans le dire | non commencé | | | | |
+| ASTRA-15 | P3 | deux contrôles de qualité contournables par du texte inerte | non commencé | | | | |
+| ASTRA-16 / 17 / 18 | P1 / P1 / P2 | verdict de restauration sur les DONNÉES (lignes, comptes, médias), `--preuve`, purge fail-closed relue, limites de seaux en `finally` | ✔ | ✔ mesuré (1 divergente sur 5 007 vue) | ✔ #421 fusionnée | outil de poste, n'a pas de « production » ; ASTRA-17 non exercé en direct | #421 |
+| ASTRA-19 | P2 | pagination jusqu'au courant, refus s'il est absent, fonctions pures testées | ✔ | listing réel vérifié | ✔ #420 fusionnée | outil de poste | #420 |
+| ASTRA-20 | P2 | le banc de charge ne distingue pas une réponse vide | non commencé (avec le point 9) | | | | #410 |
+| UXO-03 (régression) | — | écrire à un vrai membre refusé comme « démonstration » depuis le 14/09 soir | ✔ | — | ✔ 07:48 UTC | à relire sur le site servi | #413 |
+| AUTH-06 | PARTIEL | plus d'adoption sans propriétaire ; renvoi manuel par l'auteur prouvé (`de`) | ✔ | — | fusion auto en cours | | #422 |
+| MOD-04 | PARTIEL | accès privé fermé au bloqué CÔTÉ SERVEUR (une aide, trois usages) | ✔ | ✔ 5 OK + preuve comportementale | contre-revue puis migration prod | | #423 |
+| MSG-04 | PARTIEL | push fondée sur l'événement métier en base, pas sur la notification | ✔ | ✔ déployée | fusion auto → CI | | #424 |
+| IRL-04 / IRL-13 / PRO-04 | PARTIEL | promotion manuelle sur verdict ; série comptée ; empreinte = ce qui est parti | ✔ | — | ✔ #419 fusionnée | | #419 |
+| TCI-01 | PARTIEL | 9/9 sur le staging ; `PASSIO_E2E_MULTI=1` en CI | ✔ | ✔ | #416 (contre-revue) | | #416 |
+| EXP-04 / TCI-16 | OUVERT sur main | #404 fusionnée ; premier déploiement par la CI prouvé (notify-call, puis delete-account v7) | ✔ | | ✔ | ✔ | #404 |
+| MSG-01/SUP-06, MSG-10, MSG-03, ASTRA-01, CONT-11/SUP-01, MOD-01, AUTH-11/MOD-09, AUTH-02/03, AUTH-04/EXP-15, AUTH-09, AUTH-10, MSG-06, IRL-05/06/10/11, ASTRA-06/08, PIL-*, PERF-02/03/05/06, PRO-06, DEV-01/04, UXO-02, TCI-05/06 | PARTIEL / OUVERT | non repris dans cette passe — verdict d'Astra maintenu tel quel (fiche 21) | | | | | |
+
+Ce que cette passe a aussi changé hors identifiant : le jeton `gh` du poste n'a pas le droit `workflow` (une PR qui crée ou modifie un workflow ne peut pas être fusionnée par Claude Code — #404 l'a été par Benjamin ; #407 et #416 attendent le geste `gh auth refresh -s workflow`) ; `purge-e2e-accounts.js` ne passe plus par la CLI liée quand une cible explicite est posée (#415 : elle purgeait la production pour rien) ; le secret `SUPABASE_ACCESS_TOKEN` est posé dans le dépôt pour `edge-functions.yml`.
+
+---
 ## MOD-04 — Le blocage est annoncé localement malgré un échec serveur — P1 (chantier 2)
 
 | Champ | Valeur |
@@ -101,6 +127,7 @@
 | Résultat | **Avant** (main pristine) : 5 échecs / 5. **Après** : 5/5 en dev, 5/5 sur l'artefact minifié. |
 | Limite restante | Le blocage dans les **groupes communs** (MSG-10) reste incomplet : la personne bloquée reste membre du groupe, c'est le retrait par l'organisateur qui l'exclut — non traité ici. La cohérence blocage ↔ abonnements côté serveur (retrait de l'abonné, `follows` DELETE) est un complément dont l'échec ne défait pas un blocage écrit — tracé, non bloquant. Non mesuré : parcours réel entre deux comptes. |
 | État | **corrigé dans le code** · testé sur staging : non · **déployé** (fusion automatique #378 après CI verte, commit `00f7eec6`) · **vérifié après déploiement** : `release.json` servi = `00f7eec6`, `app.js?v=5946403cc7` (1 277 794 octets) porte « Blocage non enregistré » et la trace `blocage KO`. |
+| Suite du 15/09 (fiche 21) | Astra : PARTIEL — le retrait de l'abonné était best-effort, et les policies privées gardaient l'abonné accepté. **Corrigé côté serveur** ([#423](https://github.com/PASSIO74/passio-app/pull/423), migration → contre-revue) : `abonne_accepte_non_bloque(auteur)` remplace les trois copies de la condition (posts, stories, `post_is_visible`). Staging 5 OK ; **preuve** : B abonné accepté lit 1+1 → A bloque B, l'abonnement reste → 0+0 ; visiteur 200/0. Banc SQL ⓪ reproduit le défaut sur les policies du 11/09. Prod : après contre-revue. |
 | PR | [#378](https://github.com/PASSIO74/passio-app/pull/378) — fusionnée (squash) le 2026-09-14. |
 
 ---
@@ -115,6 +142,7 @@
 | Résultat | **7/7**. Le comportement de bout en bout de la fonction (Deno, web-push) n'est **pas** exécuté localement : le module de décision l'est, et il est celui qui sera déployé. |
 | Limite restante | **La fonction n'est PAS déployée** (`supabase functions deploy notify-call`, geste manuel — la CI ne déploie pas les Edge Functions). Tant qu'elle ne l'est pas, la production garde l'ancien comportement. Après déploiement, mesurer : un appel réel sonne (1:1 existante), une notification de message pousse, une push forgée vers un tiers rend `sent: 0`. La fenêtre de 2 minutes suppose que la ligne `notifications` précède la push — c'est l'ordre des trois appelants (`supaInsertNotif`, `_notifierMessage`, `follows_notifier` + `_pousserPushNotif`) ; un appelant qui pousserait AVANT d'écrire perdrait sa push. Non mesuré : latence réelle des deux lectures ajoutées. |
 | État | **corrigé dans le code** (fusionné #378, `00f7eec6`) · **déployé** : `supabase functions deploy notify-call` lancé par Claude Code sur ordre de Benjamin (« déploie les fonctions »), version 7 ACTIVE le 2026-09-14 08:30 UTC · **vérifié après déploiement** : sans jeton → 401 ; avec un compte jetable `@passio-e2e.test` et une cible sans aucun lien : `type: call` → `{ ok: true, sent: 0, note: "aucun appareil abonné" }`, `type: notif` sans ligne `notifications` → même réponse, `fromName` du corps ignoré. Non mesuré : une push réellement délivrée entre deux comptes liés. |
+| Suite du 15/09 (fiche 21) | Astra : PARTIEL — la ligne `notifications` est écrite par l'appelant, elle ne prouve rien. **Corrigé** ([#424](https://github.com/PASSIO74/passio-app/pull/424)) : `lienEvenement(kind, from, to, ref_id)` exige l'événement métier en base (message dans une conversation du destinataire, j'aime sur SA publication, participation → organisateur, live → abonné, follows…), genre inconnu = refus. `lien-metier.test.mjs` ⑧–⑭, réinjection « la notification suffit » : 6 rouges. Déployée sur le staging ; prod par la CI à la fusion. |
 | PR | [#378](https://github.com/PASSIO74/passio-app/pull/378) — fusionnée (squash) le 2026-09-14. |
 
 ---
@@ -144,6 +172,7 @@
 | Résultat | Unitaires **7/7**. E2E : **avant** (main pristine) 3 échecs / 3 ; **après** 3/3 en dev, 3/3 sur l'artefact minifié. |
 | Limite restante | **La fonction n'est PAS déployée** (`supabase functions deploy delete-account`, geste manuel). Exercice réel d'une suppression de bout en bout : **non mesuré** (aucun compte réel supprimé ; la suite `suppression-compte.spec.js` à comptes réels est opt-in `PASSIO_E2E_MULTI`). Les FK réelles entre tables ne sont pas modélisées au banc : un refus FK en prod apparaîtrait comme un échec nommé (c'est le but), jamais comme un succès. La purge de `telemetry_events` / `analytics_events` par `user_id` peut être lente sans index (non mesuré). Question juridique ouverte : conserver ou anonymiser `reports.reporter_id`. |
 | État | **corrigé dans le code** · **fusionné #379** (`9ddbd646`) · **déployé** : `supabase functions deploy delete-account` lancé par Claude Code sur ordre de Benjamin, version 6 ACTIVE le 2026-09-14 08:30 UTC · **vérifié après déploiement — exercice RÉEL** : un compte jetable `@passio-e2e.test` créé (service_role), doté d'une ligne `profiles`, puis `delete-account` avec son jeton → `200 { ok: true, piecesJointes: 0 }` ; relecture : compte Auth **absent (404)**, ligne `profiles` **absente**. Le chemin 409 (purge incomplète) n'a pas été provoqué en production. |
+| Suite du 15/09 (fiche 21) | Astra : PARTIEL — **ASTRA-11/12** (purge d'un fichier d'autrui, références perdues). Voir la fiche ASTRA-11 / ASTRA-12 ci-dessous : corrigé, déployé (fonction v7), **vérifié après déploiement en production**. |
 | PR | [#379](https://github.com/PASSIO74/passio-app/pull/379) — fusionnée (squash) le 2026-09-14. |
 
 ---
@@ -333,6 +362,7 @@
 | Résultat | **Avant** (main pristine) : ① ③ rouges. **Après** : 7/7 ; voisines 99/99. |
 | Limite restante | En mode local (aucun SDK), l'inscription reste locale, comme avant (compté `offline` par le funnel). Non mesuré sur deux comptes réels. |
 | État | **corrigé dans le code** · déployé : **oui** (`11e01618`, `app.js?v=e423aa515d`, symboles servis vérifiés) · vérifié après déploiement : **oui** (artefact servi ; non mesuré sur deux comptes réels) |
+| Suite du 15/09 (fiche 21) | Astra : FERMÉ. IRL-04 (promotion **manuelle** encore optimiste) et IRL-13 (annulation de **série** annoncée réussie sur tous refus) : **corrigés** ([#419](https://github.com/PASSIO74/passio-app/pull/419), fusionné) — verdict d'abord pour `promoteWaitlisted`, annulation de série comptée (tout / en partie / rien). Réinjection : 3 rouges. |
 | PR | `claude/chantier-8-faux-succes` — voir la PR ouverte depuis cette branche. |
 
 ---
@@ -465,6 +495,7 @@
 | Résultat | **Avant** (main pristine, RÉINJECTION) : ③ ③ bis rouges (la réconciliation n'existe pas) ; ① ② verts (comportement inchangé, désormais verrouillé). **Après** : 6/6 ; **artefact minifié** : 6/6. |
 | Limite restante | Le compte `6902826f` sera réconcilié à son prochain démarrage sur ce client (non mesuré : à relire en base après déploiement). Pourquoi sa vitrine a pris du retard (échec réseau ? session ?) n'est pas établi — la trace `diagLog("vitrine passions non réconciliée")` le rendra mesurable. |
 | État | **corrigé dans le code** · déployé : **oui** (`264204cb`, `app.js?v=1ecb443007`, symboles servis vérifiés) · vérifié après déploiement : **oui** (artefact servi ; non mesuré sur deux comptes réels) |
+| Suite du 15/09 (fiche 21) | Astra : PARTIEL — course : A envoyé, état devenu B, B mémorisé comme publié. **Corrigé** ([#419](https://github.com/PASSIO74/passio-app/pull/419)) : l'empreinte mémorisée est celle de l'état ENVOYÉ ; la réconciliation suivante republie B. `vitrine-passions` ③ ter, réinjection : rouge. |
 | PR | `claude/chantier-8-vitrine-passions`. |
 
 ---
@@ -608,6 +639,7 @@
 | Résultat | **Avant** (main pristine, RÉINJECTION) : 4/4 rouges. **Après** : 4/4 ; artefact minifié : 4/4. |
 | Limite restante | Les conversations de démonstration restent chargées pour tout le monde (l'audit proposait « visiteur seulement ») : les retirer d'un compte changerait la mécanique d'hydratation (`SEED_CONVERSATIONS` sert de socle à `getConversations`) — lot séparé si voulu. Aucun rappel discret d'installation sur iOS n'a été ajouté (choix : rien d'automatique). |
 | État | **corrigé dans le code** · déployé : non |
+| Suite du 15/09 (fiche 21) | **Régression trouvée le 15/09** : `_estConvDemo` cherchait l'interlocuteur dans `state.seed.users`, où `cacheRemoteProfile` range aussi les profils RÉELS (au démarrage, chaque interlocuteur 1:1) → écrire à n'importe quel vrai membre rendait « Conversation de démonstration » et n'envoyait rien, en production du 14/09 soir au 15/09 matin (0 message perdu mesuré : aucun envoi tenté). **Corrigé** ([#413](https://github.com/PASSIO74/passio-app/pull/413), déployé 07:48 UTC) : les entrées réelles portent `distant: true`. `demo-messagerie-et-ios` ⑥, réinjection : rouge. Astra : FERMÉ sur les défauts ciblés. |
 | PR | `claude/chantier-10-uxo`. |
 
 ---
@@ -622,6 +654,7 @@
 | Résultat | **Avant** : rien n'existait, verdict « 38 tables absentes ». **Après** : restauration prouvée, 0 écart, puis staging **purgé** (une copie des données réelles ne reste pas dans un second projet). Six défauts trouvés par l'exercice, aucun par relecture — écrits dans `docs/RECUPERATION.md` : colonnes absentes du JSON posées à NULL (défauts ignorés) ; archive du 11/09 portant 97 lignes `event_*` orphelines que la FK du 14/09 refuse ; un `user_state` de **4,7 Mo** (413 de l'API) ; seau `content` à 26 Mo portant une vidéo de 30,9 Mo ; privilèges/EXECUTE/vues absents d'une reconstruction naïve ; `storage.protect_delete`. |
 | Limite restante | Mots de passe, identités OAuth et `created_at` des comptes ne sont pas restaurables (l'export ne les porte pas) ; la configuration du projet (auth, SMTP, secrets, Edge Functions) non plus — liste écrite. `authz-critical.spec.js` ne sait pas viser le staging : l'URL de la prod est en dur dans app-08 (SUP-04, lot suivant) — la frontière a été sondée en REST direct. Le brouillon local `scripts/schema-origine.js` / `migrations/00_ORIGINE_PROD.sql` (non versionné, Benjamin) décrit l'état du 17/08 (35 tables, 12 fonctions), passe par `supabase db query` retiré par ADR-012, et son bloc « contrainte » n'avale pas `invalid_table_definition` : à réconcilier avec `schema-executable.js` avant d'en faire la baseline NET-07. Le staging réactivé coûte le calcul d'un second projet sur le plan Pro (`POST /v1/projects/<ref>/pause` pour le remettre en pause). La moitié « rollback applicatif » de TCI-03 (`rollback.yml`) et EXP-03 restent. |
 | État | **corrigé dans le code** · **testé sur staging** (c'est l'objet même du lot) · déployé : n/a (outillage de poste) |
+| Suite du 15/09 (fiche 21) | Astra : PARTIEL — **ASTRA-16/17/18** : le verdict comparait des compteurs ; la purge terminait malgré des refus ; les limites de seaux étaient rétablies hors `finally`. **Corrigé** ([#421](https://github.com/PASSIO74/passio-app/pull/421), fusionné) : lignes clé par clé et contenu (relu par PostgREST, canonisé), comptes par identifiant, médias par nom/taille/empreinte ; `--preuve <json>` ; purge fail-closed relue ; limites en `finally`. **Mesuré sur le staging** : référentiels « contenu identique » (5 007 + 10 012 + 1) puis **une seule étiquette modifiée → ECART 1 divergente** ; preuve versionnée `preuves/restauration/2026-09-15-staging-referentiels.json`. ASTRA-17 non exercé en direct. |
 | PR | `claude/chantier-6-restauration`. |
 
 ---
@@ -650,6 +683,7 @@
 | Résultat | Un retour arrière applicatif se fait en **moins de 2 s**, contre un cycle CI de 30–45 min ; il est écrit, outillé, éprouvé. |
 | Limite restante | Pas de kill switch serveur par fonctionnalité (les drapeaux `passio_*="0"` sont locaux à l'appareil) — écrit, non réglé. Le rollback de `rollback.yml` (chemin propre) n'a toujours pas été exercé : il crée une PR de revert réelle, ce qui n'a de sens que sur un vrai incident. Le jeton Netlify du poste est celui de la CLI ; pour un autre poste, `NETLIFY_AUTH_TOKEN`. |
 | État | **corrigé dans le code** · **testé en production** (exercice aller-retour, aucun utilisateur affecté au-delà de 2 s) |
+| Suite du 15/09 (fiche 21) | Astra : PARTIEL — **ASTRA-19** : courant absent de la page → « précédent » = le plus récent. **Corrigé** ([#420](https://github.com/PASSIO74/passio-app/pull/420), fusionné) : pagination jusqu'au courant, refus explicite s'il est absent, sélection sortie en fonctions pures (`rollback-selection.mjs`, 5 verrous dans `verif`). |
 | PR | `claude/chantier-6-rollback`. |
 
 ---
@@ -776,6 +810,7 @@
 | Résultat | non mesuré tant que le premier run n'a pas tourné (voir ligne suivante après fusion). |
 | Limite restante | Pas de test fonctionnel avec jeton dans la CI (il faudrait un compte jetable : le banc `verif-*.cjs` le fait depuis le poste). Pas de tag de version : c'est le SHA du run qui fait foi. |
 | État | **corrigé dans le code** · déployé : non |
+| Suite du 15/09 (fiche 21) | **Fusionnée (#404) et éprouvée le 15/09** : premier run rouge (secret `SUPABASE_ACCESS_TOKEN` absent — posé par Claude Code ; bundling esm.sh transitoire), puis `notify-call` déployé et éprouvé par la CI (dispatch, vert), puis **`delete-account` v7 déployé par la CI à la fusion de #417** (08:24 UTC). Le retour arrière serveur (redéployer la version précédente) reste un geste CLI, non exercé. |
 | PR | [#404](https://github.com/PASSIO74/passio-app/pull/404) — touche `.github/*` : contre-revue requise. |
 
 ---
@@ -846,6 +881,7 @@
 | Résultat | Ordre de grandeur : 2 000 à 4 000 personnes connectées sur le calcul actuel ; au-delà de ~300 req/s soutenus, la marche suivante est le compute Small (~15 $/mois). |
 | Limite restante | Écritures et temps réel non mesurés ; aucune sonde de latence en production dans la durée (`telemetry_events.duration` est la matière d'un rapport p95 quotidien). La migration attend la contre-revue (#410) puis l'application en production. |
 | État | **corrigé dans le code** · **testé sur staging** · migration en production : non (après contre-revue) |
+| Suite du 15/09 (fiche 21) | Astra : PARTIEL — lectures anonymes seulement, **ASTRA-20** (le banc ne distingue pas une réponse vide). #410 : rouge de CI corrigé (`ANALYZE` avant le plan — cause DÉMONTRÉE, plan relu sur le staging), contre-revue à refaire (SHA `ca78f8bf`). ASTRA-20 et les écritures/temps réel authentifiés : à faire (point 9 du plan). |
 | PR | [#410](https://github.com/PASSIO74/passio-app/pull/410) — porte `migrations/*` : contre-revue requise. |
 
 ---
@@ -898,6 +934,7 @@
 | Résultat | Trois bornes posées ; l'une (ASTRA-05) n'a pas encore vu de cas réel. |
 | Limite restante | ASTRA-05 : la sentinelle demande aussi un verrou e2e, donc `tests/e2e/*.spec.js` est admis — c'est une limite ÉLARGIE par rapport au texte de l'issue (qui dit « jamais tests/ ») ; le texte de l'issue et la garde doivent dire la même chose (à aligner dans `sentinelle-autonome.yml`). |
 | État | **corrigé dans le code** · ASTRA-04 testé sur staging · déployé : à la fusion |
+| Suite du 15/09 (fiche 21) | #407 : rouge de CI (test du pilotage sans secrets) corrigé par [#414](https://github.com/PASSIO74/passio-app/pull/414), CI verte, contre-revue posée — fusion bloquée par le droit `workflow` manquant du jeton `gh` (geste de Benjamin). Astra sur ASTRA-05 : la limite « 2 fichiers / 60 lignes » n'est pas imposée, et le texte de l'issue disait « jamais tests/ » tout en exigeant un verrou → aligné dans #416. |
 | PR | [#407](https://github.com/PASSIO74/passio-app/pull/407) — porte `migrations/*`, `.github/*`, `dashboard/server/config.js` : contre-revue requise. |
 
 ---
@@ -948,6 +985,7 @@
 | Résultat | **Avant** : des dizaines d'oubliés. **Après** : 0 sur cinq écrans, y compris ce qui est peint plus tard. |
 | Limite restante | Le nom accessible d'une carte est son texte entier ; un `aria-label` court par gabarit serait mieux (DEV-04 l'a fait pour les avatars). |
 | État | **corrigé dans le code** · déployé : #408 fusionnée |
+| Suite du 15/09 (fiche 21) | Astra : **OUVERT, régression démontrée (ASTRA-13)** — le fond de modale (`onclick`, vide au démarrage) était promu bouton ; Espace dans un champ fermait la modale. **Corrigé** ([#418](https://github.com/PASSIO74/passio-app/pull/418), fusionné) : le délégué ignore les champs et n'active que l'élément focalisé, `.modal-backdrop`/dialogues jamais tabulables, un bouton promu vide redevient conteneur quand une commande y entre. `clavier-cliquables` ⑤/⑤ bis/⑤ ter, réinjection du 14/09 : 2 rouges. |
 | PR | [#408](https://github.com/PASSIO74/passio-app/pull/408). |
 
 ---
@@ -962,6 +1000,7 @@
 | Résultat | 8 scénarios vivants sur 9 ; ils savent tourner sur le staging. |
 | Limite restante | Le scénario temps réel ; puis `PASSIO_E2E_MULTI: "1"` dans le job staging de la CI (#409) — pas avant 9/9. TCI-02 (inscription réelle par e-mail, mot de passe oublié) reste sans test automatisé : il faut une boîte de réception pilotable. |
 | État | **corrigé dans le code** (partiel) · **testé sur staging** |
+| Suite du 15/09 (fiche 21) | Le 9ᵉ scénario n'était ni une course ni une RLS : c'était la régression ci-dessus (#413). **9/9 verts contre le staging.** `PASSIO_E2E_MULTI=1` dans la CI staging : [#416](https://github.com/PASSIO74/passio-app/pull/416) (`.github`, contre-revue). Astra : PARTIEL tant que #416 n'est pas fusionnée. |
 | PR | [#411](https://github.com/PASSIO74/passio-app/pull/411). |
 
 ---
@@ -975,3 +1014,59 @@
 | Limite restante | Tout ; à faire avec les suites `connexion-compte-existant` (15) et `first-run` (38) comme filet. |
 | État | non corrigé |
 | PR | aucune. |
+
+## ASTRA-11 / ASTRA-12 — La suppression de compte effaçait une pièce jointe d'autrui et perdait ses propres références — P1 urgent (contre-revue du 15/09)
+
+| Champ | Valeur |
+|---|---|
+| État constaté (main `8a11a1c2`) | `purge-compte.js` relevait les pièces jointes à purger dans le CONTENU des messages du compte (`{ url }`, écrit par le client) puis les supprimait avec la clé service_role : un message de A visant le fichier de B faisait supprimer le fichier de B. Et `doDeleteAccount` (app-02) effaçait onze tables par RLS — messages compris — AVANT d'appeler la fonction, qui ne retrouvait plus rien à relever ; un 409 laissait un compte à moitié vidé. **Reproduit sur le staging avec la fonction du 14/09** : `{pjB:false, pjA:true, photoA:false}`, `ok:true` — le fichier de B supprimé ET celui de A oublié (pire que le constat). |
+| Correction | Migration `migration_objets_stockage_compte_2026-09-15.sql` : `objets_stockage_du_compte(uid)` (security definer, search_path vide, EXECUTE retiré nommément à anon/authenticated, accordé à service_role) rend les objets dont `storage.objects.owner` est le compte, tous seaux — la seule autorité. `purge-compte.js` : relève par cette fonction (paginée), suppression par lots, relecture par la même fonction ; dossiers `<dossier>/<uid>/` en second filet, listes paginées, relecture en panne = « illisible », fonction absente = échec nommé (fail-closed). `doDeleteAccount` : plus aucun `delete()` client avant le verdict. |
+| Test effectué | `tests/unit/purge-compte.test.mjs` (10, dont ④ ASTRA-11, ⑧ ASTRA-12, ⑨ fonction absente, ⑩ > 1 000 objets) — **réinjection** de la relève par messages : 6 rouges. `suppression-compte-verdict.spec.js` ④ — réinjection : 15 `delete()` client. Banc SQL `migration-objets-stockage-compte.test.sh` (mutation : EXECUTE rendu à anon → ECHEC). **Bout en bout sur le staging** avec la fonction déployée, puis **en production** avec des comptes jetables (`preuves/suppression-compte/2026-09-15-astra-11-production.md`). |
+| Résultat | Staging : `{pjB:true, pjA:false, photoA:false}`, compte 404. **Production, fonction v7** : idem. Migration prod : anon false, authenticated false, service_role true, 24 objets pour le premier compte. |
+| Limite restante | Un objet Storage sans `owner` (déposé par la clé admin, antérieur) n'appartient à personne et n'est purgé que sous un dossier `<uid>/` du seau `content`. Le retour arrière de la fonction (redéployer v6) est un geste CLI, non exercé. |
+| État | **corrigé dans le code** · **testé sur staging** (5 OK + preuve) · **déployé** (migration prod 08:18 UTC ; fonction v7 par `edge-functions.yml` 08:24:30 UTC) · **vérifié après déploiement** (preuve en production, 08:34 UTC). |
+| PR | [#417](https://github.com/PASSIO74/passio-app/pull/417) — contre-revue de Benjamin sur `1f9ad595`, fusionnée. |
+
+---
+
+## ASTRA-13 — La règle clavier DEV-02 fermait une modale pendant la saisie — P1 (contre-revue du 15/09)
+
+| Champ | Valeur |
+|---|---|
+| État constaté (main `8a11a1c2`) | `#modalBackdrop` porte un `onclick` (fermer au clic dehors) et est vide au démarrage : promu `role="button"` par DEV-02. Une modale s'ouvre, Espace dans son textarea remonte au fond → `click()` → modale fermée, frappe avalée. Reproduit au banc (⑤ rouge sur le code du 14/09). |
+| Correction | Trois couches (app-08) : le délégué clavier ignore INPUT/TEXTAREA/SELECT/contenteditable et n'active que l'élément **focalisé lui-même** ; `.modal-backdrop` et tout élément contenant un `[role=dialog]` ne sont jamais tabulables ; un élément promu bouton quand il était vide (`data-tabulable`) redevient conteneur (`data-clavier`) dès qu'une commande y entre. |
+| Test effectué | `clavier-cliquables.spec.js` ⑤ (modale ouverte puis remplie, frappe au clavier réelle), ⑤ bis (promu vide puis rempli), ⑤ ter (un vrai bouton s'active toujours) — réinjection du 14/09 : ⑤ et ⑤ bis rouges. Suites voisines (modales, rôles) : 64 vertes. |
+| Résultat | 8/8. Astra avait classé DEV-02 OUVERT sur cette régression. |
+| Limite restante | Aucun audit d'accessibilité complet ; la règle reste mécanique — la troisième couche (rétrogradation) couvre un gabarit futur qui échapperait aux marqueurs `.modal-backdrop`/`[role=dialog]`. |
+| État | **corrigé dans le code** · **déployé** (#418 fusionné) · vérifié après déploiement : non (à relire sur le site servi). |
+| PR | [#418](https://github.com/PASSIO74/passio-app/pull/418). |
+
+---
+
+## ASTRA-16 / ASTRA-17 / ASTRA-18 — Le verdict de restauration confondait quantités et données ; la purge terminait malgré des refus ; les limites de seaux restaient levées — P1/P1/P2 (contre-revue du 15/09)
+
+| Champ | Valeur |
+|---|---|
+| État constaté (main `8a11a1c2`) | `verdict()` comparait des compteurs (lignes, comptes, objets) : huit autres identités, une ligne divergente (`on conflict do nothing` la laisse), un objet vide de même nom → « restauration prouvée ». `purger()` ne comptait pas ses refus (HTTP 500 → fin normale). `medias()` rétablissait les limites APRÈS la boucle, hors `finally`. |
+| Correction | `--verifier` compare les lignes clé par clé et contenu (relu par PostgREST, canonisé, sur les colonnes que l'archive porte), les comptes par identifiant, les médias par nom/taille/empreinte (eTag = md5) ; `--preuve <json>` écrit le verdict détaillé. Purge : refus nommés, relecture (tables, comptes, objets), code 1 si reste. Limites de seaux rétablies dans un `finally`, bornées aux seaux lus, échec nommé si refusé. |
+| Test effectué | `tests/unit/restaurer-donnees.test.mjs` ④ à ④ quater (contenu différent à quantités égales, autres identités, objet vide, colonne née après l'archive). **Sur le staging** : référentiels « contenu identique » (5 007 + 10 012 + 1) ; puis une seule étiquette modifiée en base → `ECART passions \| 5007 \| 5007 — 1 divergente (ex. musique)`. Preuve : `preuves/restauration/2026-09-15-staging-referentiels.json`. |
+| Résultat | 11/11 ; verdict de contenu mesuré vrai et faux sur données réelles. |
+| Limite restante | ASTRA-17 (purge) non exercé en direct — le staging portait les référentiels dont la CI a besoin. La preuve versionnée ne porte que les référentiels : une restauration COMPLÈTE avec comptes et médias reste à rejouer sur cible vide avec `--preuve` (point 4 du plan). |
+| État | **corrigé dans le code** · **testé sur staging** · **déployé** (#421 fusionné, outil de poste). |
+| PR | [#421](https://github.com/PASSIO74/passio-app/pull/421). |
+
+---
+
+## ASTRA-19 — Le rollback « précédent » pouvait choisir une version plus récente — P2 (contre-revue du 15/09)
+
+| Champ | Valeur |
+|---|---|
+| État constaté (main `8a11a1c2`) | Une seule page de 30 déploiements lue ; courant absent → `findIndex` = -1 → `prods[0]`, le plus récent. |
+| Correction | `scripts/rollback-selection.mjs` (pur) : `precedentDe` refuse explicitement sans courant vu, `continuerPagination` lit jusqu'au courant et son successeur (borne 10 pages) ; `rollback-netlify.mjs` les appelle. |
+| Test effectué | `tests/unit/rollback-selection.test.mjs` (5, dans `verif`) — ② réinjection du calcul d'avant. Listing réel vérifié (10 déploiements, courant en tête). |
+| Résultat | 5/5. |
+| Limite restante | Aucune. |
+| État | **corrigé dans le code** · **déployé** (#420 fusionné, outil de poste). |
+| PR | [#420](https://github.com/PASSIO74/passio-app/pull/420). |
+
+---
