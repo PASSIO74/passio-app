@@ -127,6 +127,7 @@ test("inventaire des routes qu'AUCUNE page n'appelle", () => {
     "GET /incidents",              // paquets d'incidents : consommés côté serveur
     "GET /observation",            // santé d'observation, agrégée par /control/command
     "GET /releases",               // historique de release
+    "GET /residus",                // registre des résidus : le brief lit le domaine via /readiness ; l'écran détaillé est à venir
     "GET /test-sessions/:id",      // fiche unitaire, la liste suffit à l'écran
     "POST /alerts/manual",         // alerte levée à la main (outil, pas écran)
     "POST /claude/analyze",        // analyse profonde : déclenchée côté serveur
