@@ -438,6 +438,8 @@ function _restaurationConfirmee() {
 }
 
 function _peutPousserEtat() {
+  // ⓪ session expirée (UXO-02) : le compte est joignable en LECTURE seulement
+  if (sessionExpiree()) return false;
   // ① restauration en attente pour CE compte
   try {
     const attendu = localStorage.getItem(CLE_RESTAURATION_REQUISE);
@@ -493,6 +495,69 @@ function _uidEstUnCompte() {
   catch (e) { return false; }
 }
 window._uidEstUnCompte = _uidEstUnCompte;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// UXO-02 — MODE « SESSION EXPIRÉE » : le compte est là, la session ne l'est pas
+// (contre-revue Astra, 2026-09-15)
+// ──────────────────────────────────────────────────────────────────────────
+// Un appareil qui PORTE un compte (état local complet, jeton SDK persisté)
+// mais dont la session n'est pas retrouvée au démarrage (jeton expiré et
+// impossible à rafraîchir : hors ligne, réseau coupé, session révoquée)
+// sortait de `boot()` par `showLanding()` — la landing par-dessus un fil
+// pourtant complet, et une application INACCESSIBLE hors ligne pour quelqu'un
+// qui l'utilise depuis des semaines. Entrer dans le fil « comme si de rien »
+// n'était pas possible non plus : `MY_UID` porte l'uuid du compte SANS jeton,
+// et chaque écriture d'état repartirait en 401 (la famille refermée le 13/09).
+//
+// D'où un MODE, posé par `entrerEnSessionExpiree()` (app-08) et lu ICI par
+// une seule autorité, `sessionExpiree()` : fil local en lecture, bandeau
+// « Se reconnecter », et TOUTE écriture serveur coupée tant que la session
+// n'est pas revenue — état (`_peutPousserEtat`, donc `supaSaveUserState` ET
+// le beacon), rejeu de la file d'état, files hors-ligne des messages,
+// commentaires et suppressions (app-04), portes engageantes
+// (`requireAuthentication`, first-run). ⚠️ LES FILES NE SONT PAS VIDÉES : un
+// message écrit avant l'expiration partira à la reconnexion, sous le même
+// compte — le rejeu en mode expiré l'aurait marqué « échec » (AUTH-06 :
+// `_fileProprietaire()` rend `null` sans compte joignable).
+// ⚠️ Rien n'est purgé, rien n'est rechargé : la sortie du mode est le retour
+// d'une session (`reconnecterSession`, ou `onAuthStateChange` quand le SDK
+// rafraîchit seul le jeton au retour du réseau), qui RECHARGE — `boot()`
+// reprend alors le chemin normal, hydratation `user_state` comprise.
+function sessionExpiree() {
+  try { return window._sessionExpiree === true; } catch (e) { return false; }
+}
+window.sessionExpiree = sessionExpiree;
+
+// Reconnexion : d'abord un rafraîchissement du jeton (le réseau est peut-être
+// simplement revenu), sinon le formulaire de connexion — SANS purger l'état
+// local, qui appartient à ce compte. Rend `true` si une session est revenue.
+const DELAI_RECONNEXION_MS = 4000;
+async function reconnecterSession() {
+  if (window._supaReal && typeof supa !== "undefined" && supa && supa.auth
+      && typeof supa.auth.refreshSession === "function"
+      && !(typeof navigator !== "undefined" && navigator.onLine === false)) {
+    try {
+      // ⚠️ BORNÉ : hors ligne, le SDK réessaie avec repli exponentiel pendant
+      // ~30 s (même cause que `DELAI_SESSION_BOOT_MS`, app-08) — un bouton qui
+      // répond une demi-minute plus tard est un bouton mort. Passé le délai,
+      // on ouvre le formulaire ; si le jeton finit par revenir quand même, le
+      // SDK émet TOKEN_REFRESHED et `onAuthStateChange` recharge.
+      const r = await Promise.race([
+        supa.auth.refreshSession(),
+        new Promise(function (res) { setTimeout(function () { res(null); }, DELAI_RECONNEXION_MS); }),
+      ]);
+      if (r && r.data && r.data.session && r.data.session.user) {
+        try { toast("Session rétablie ✓", "reward"); } catch (e) {}
+        setTimeout(function () { try { location.reload(); } catch (e) {} }, 300);
+        return true;
+      }
+    } catch (e) {}
+  }
+  try { closeModal(); } catch (e) {}
+  try { openAuthScreen("signin"); } catch (e) { if (typeof diagLog === "function") diagLog("reconnecterSession : " + e); }
+  return false;
+}
+window.reconnecterSession = reconnecterSession;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ÉTAT DU SERVEUR — un 5xx/429 répété ou une session morte SE DISENT (ROB-03,
@@ -816,6 +881,8 @@ function _scheduleStateSync() {
   _stateDirty = true;
   // Sans compte, rien à armer : l'envoi serait refusé (cf. `_uidEstUnCompte`).
   if (!_uidEstUnCompte()) return;
+  // Session expirée (UXO-02) : l'état reste marqué sale, il partira à la reconnexion.
+  if (sessionExpiree()) return;
   if (_stateSyncTimer) clearTimeout(_stateSyncTimer);
   _stateSyncTimer = setTimeout(() => { _stateSyncTimer = null; supaSaveUserState(); }, 2500);
 }
@@ -1063,6 +1130,8 @@ async function _flushPendingUserState() {
   // Le rejeu est branché sur deux chemins (boot et supaInit/SIGNED_IN) qui peuvent se
   // chevaucher : sans ce verrou, deux SELECT puis deux upserts concurrents du même blob.
   if (_flushingPendingState) return;
+  // Session expirée (UXO-02) : la file est GARDÉE, elle se rejouera au retour de la session.
+  if (sessionExpiree()) return;
   try {
     if (!_uidEstUnCompte()) {
       // ⚠️ LA FILE D'UN PLACEHOLDER N'A ÉTÉ CRÉÉE QUE PAR LE DÉFAUT LUI-MÊME

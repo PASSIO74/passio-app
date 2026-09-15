@@ -125,6 +125,7 @@ function _enqueuePostDelete(postId, paths) {
 // coûte une requête sur un chemin rare.
 async function _delObRun(op) {
   try {
+    if (typeof sessionExpiree === "function" && sessionExpiree()) return false; // UXO-02
     if (typeof supa === "undefined" || !supa || !window._supaReal) return false;
     if (typeof MY_UID === "undefined" || !MY_UID) return false;
     const res = await supa.from("posts").delete().eq("id", op.postId).eq("author_id", MY_UID).select("id");
@@ -524,6 +525,7 @@ async function _cmtObFlush() {
   if (_cmtObFlushing) return;
   var arr = _cmtObLoad();
   if (!arr.length) { _cmtObStopTimer(); return; }
+  if (typeof sessionExpiree === "function" && sessionExpiree()) return; // UXO-02 : gardée, rejouée à la reconnexion
   if (typeof navigator !== "undefined" && navigator.onLine === false) return; // hors-ligne : attendre `online`
   if (!window._supaReal) return; // backend pas encore prêt (boot) : réessai plus tard
   _cmtObFlushing = true;
@@ -5336,6 +5338,9 @@ function _retryMsg(convId, msgId) {
 function _flushOutbox() {
   var a = _outboxLoad();
   if (!a.length) return;
+  // Session expirée (UXO-02) : on ne rejoue RIEN — sans compte joignable,
+  // `_fileProprietaire()` rend null et chaque entrée serait jetée comme « autre ».
+  if (typeof sessionExpiree === "function" && sessionExpiree()) return;
   if (navigator && navigator.onLine === false) return;
   // ⚠️ Les entrées d'AVANT ce correctif n'ont pas de compteur : `|| 0` les
   // adopte sans les jeter. Une file existante ne doit pas être perdue par une

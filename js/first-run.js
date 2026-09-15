@@ -1335,6 +1335,16 @@
   var TEXTE_COMMUN = "Tes passions et tes préférences seront conservées.";
 
   function requireAuthentication(actionContext) {
+    // ⚠️ SESSION EXPIRÉE (UXO-02, app-02) : le compte existe, la session non.
+    // L'action ne part pas (elle serait refusée en 401) et la fenêtre le DIT,
+    // avec la sortie : se reconnecter. Testé AVANT `estVisiteur()`, qui rend
+    // faux pour tout compte existant et laisserait passer l'écriture.
+    if (typeof window.sessionExpiree === "function" && window.sessionExpiree()) {
+      var ctxE = CONTEXTES[actionContext] ? actionContext : "preferences";
+      tel("session_expiree_gate_shown", { ctx: ctxE });
+      try { openModal(gateSessionExpireeHTML(ctxE)); } catch (e) { journal("gate expirée " + ctxE, e); }
+      return false;
+    }
     if (!estVisiteur()) return true;
     var ctx = CONTEXTES[actionContext] ? actionContext : "preferences";
     memoriserRetour(ctx);
@@ -1353,6 +1363,18 @@
       +   '<button type="button" class="btn primary block" onclick="PassioFirstRun.allerInscription(\'' + escapeJsArg(ctx) + '\')">Créer mon compte</button>'
       +   '<button type="button" class="btn ghost block" onclick="PassioFirstRun.allerConnexion(\'' + escapeJsArg(ctx) + '\')">J\'ai déjà un compte</button>'
       +   '<button type="button" class="btn ghost block fr-gate-stay" onclick="closeModal()">Continuer à explorer</button>'
+      + '</div>';
+  }
+
+  function gateSessionExpireeHTML(ctx) {
+    var titre = CONTEXTES[ctx].titre.replace(/^Crée ton compte pour/, "Reconnecte-toi pour");
+    return ''
+      + '<div class="modal-handle"></div>'
+      + '<div class="modal-title fr-gate-title">' + escapeHtml(titre) + '</div>'
+      + '<div class="modal-subtitle">Ta session a expiré. Tes données restent sur cet appareil, en lecture seule : rien n\'est perdu, rien ne partira sans toi.</div>'
+      + '<div class="fr-gate-actions">'
+      +   '<button type="button" class="btn primary block" onclick="reconnecterSession()">Se reconnecter</button>'
+      +   '<button type="button" class="btn ghost block fr-gate-stay" onclick="closeModal()">Continuer en lecture</button>'
       + '</div>';
   }
 
