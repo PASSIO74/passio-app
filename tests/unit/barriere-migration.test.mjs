@@ -139,7 +139,7 @@ test("⑧ une attestation RÉTROACTIVE est utilisable mais ne se dit jamais pré
 test("⑨ le CLI refuse réellement une cible implicite et une cible protégée non attestée", async () => {
   const { execFileSync } = await import("node:child_process");
   const run = (args) => {
-    try { return { code: 0, out: execFileSync(process.execPath, ["scripts/appliquer-migration.mjs", ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }) }; }
+    try { return { code: 0, out: execFileSync(process.execPath, ["scripts/appliquer-migration.mjs", ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, GITHUB_ACTIONS: "" } }) }; }
     catch (e) { return { code: e.status, out: String(e.stdout || "") + String(e.stderr || "") }; }
   };
   const f = "migrations/migration_appels_invitations_attestees_2026-09-15.sql";
@@ -179,7 +179,7 @@ test("ASTRA-51 ① REPRODUCTION : une attestation TAPÉE (PR fictive, auteur rel
   const avant = BAR.verifierAttestation({ fichier: FICHIER_51, sql, cible: BAR.choisirCible({ argProjet: PROD }), attestations: JSON.parse(readFileSync(join(d, "att.json"), "utf8")) });
   assert.equal(avant.exigee, true); assert.ok(avant.attestation, "reproduction : l'ancienne barrière acceptait cette attestation");
   let r;
-  try { r = { code: 0, out: execFileSync(process.execPath, ["scripts/appliquer-migration.mjs", FICHIER_51, "--verifier", "--projet", PROD], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, PASSIO_ATTESTATIONS: join(d, "att.json") } }) }; }
+  try { r = { code: 0, out: execFileSync(process.execPath, ["scripts/appliquer-migration.mjs", FICHIER_51, "--verifier", "--projet", PROD], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, GITHUB_ACTIONS: "", PASSIO_ATTESTATIONS: join(d, "att.json") } }) }; }
   catch (e) { r = { code: e.status, out: String(e.stdout || "") + String(e.stderr || "") }; }
   assert.equal(r.code, 2, r.out);
   assert.match(r.out, /ne désigne pas le COMMIT revu/);
@@ -228,7 +228,7 @@ test("ASTRA-51 ② avec une revue GitHub réelle dans sa forme (ancrée, marqué
     const d = mkdtempSync(join(tmpdir(), "astra51-"));
     writeFileSync(join(d, "att.json"), JSON.stringify([{ fichier: FICHIER_51, empreinte: emp, cibles: [PROD], pr: "#469", commit: SHA, revue_id: 4242, relecteur: "PASSIO74", revue_le: "2026-09-15", consigne_le: "2026-09-15", source: "https://github.com/PASSIO74/passio-app/pull/469#pullrequestreview-4242", ...(att || {}) }]));
     const gh = fauxGh(fixtures(revue, contenu));
-    try { return { code: 0, out: execFileSync(process.execPath, ["scripts/appliquer-migration.mjs", FICHIER_51, "--verifier", "--projet", PROD], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, PASSIO_ATTESTATIONS: join(d, "att.json"), PASSIO_GH_BIN: gh, PASSIO_DEPOT: "PASSIO74/passio-app" } }) }; }
+    try { return { code: 0, out: execFileSync(process.execPath, ["scripts/appliquer-migration.mjs", FICHIER_51, "--verifier", "--projet", PROD], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, GITHUB_ACTIONS: "", PASSIO_ATTESTATIONS: join(d, "att.json"), PASSIO_GH_BIN: gh, PASSIO_DEPOT: "PASSIO74/passio-app" } }) }; }
     catch (e) { return { code: e.status, out: String(e.stdout || "") + String(e.stderr || "") }; }
   };
   const ok = jouer(revueOk, sql);
@@ -263,7 +263,7 @@ test("ASTRA-51 ③ sans `gh` joignable la preuve est NON VÉRIFIABLE : refus, ja
   const d = mkdtempSync(join(tmpdir(), "astra51-"));
   writeFileSync(join(d, "att.json"), JSON.stringify([{ fichier: FICHIER_51, empreinte: BAR.empreinte(readFileSync(FICHIER_51, "utf8")), cibles: [PROD], pr: "#469", commit: SHA, revue_id: 4242, relecteur: "PASSIO74", revue_le: "2026-09-15", consigne_le: "2026-09-15", source: "x" }]));
   let r;
-  try { r = { code: 0, out: execFileSync(process.execPath, ["scripts/appliquer-migration.mjs", FICHIER_51, "--verifier", "--projet", PROD], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, PASSIO_ATTESTATIONS: join(d, "att.json"), PASSIO_GH_BIN: "/chemin/inexistant/gh", PASSIO_DEPOT: "PASSIO74/passio-app" } }) }; }
+  try { r = { code: 0, out: execFileSync(process.execPath, ["scripts/appliquer-migration.mjs", FICHIER_51, "--verifier", "--projet", PROD], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, GITHUB_ACTIONS: "", PASSIO_ATTESTATIONS: join(d, "att.json"), PASSIO_GH_BIN: "/chemin/inexistant/gh", PASSIO_DEPOT: "PASSIO74/passio-app" } }) }; }
   catch (e) { r = { code: e.status, out: String(e.stdout || "") + String(e.stderr || "") }; }
   assert.equal(r.code, 2, r.out);
   assert.match(r.out, /NON VÉRIFIABLE/);
