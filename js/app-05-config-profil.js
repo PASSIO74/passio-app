@@ -574,7 +574,7 @@ async function startCall(convId, kind) {
   // toutes les 2 s jusqu'à ce que le pair réponde (`ready`/`answer`) ou jusqu'au
   // timeout de sonnerie. C'est ce qui rend la sonnerie fiable en conditions réelles.
   const invitePayload = {
-    callId: callId, from: MY_UID, kind: kind,
+    callId: callId, from: MY_UID, to: peer.id, kind: kind,
     name: _callMyName(), emoji: (currentProfile() && currentProfile().emoji) || "✨",
   };
   // ⚠️ L'INVITATION PART PAR HTTP, SANS S'ABONNER À `ring:<pair>` (MSG-01 / SUP-06,
@@ -591,7 +591,7 @@ async function startCall(convId, kind) {
   window._call.ringSendChan = ring;
   const fire = () => {
     if (!window._call || window._call.id !== callId || window._call.status !== "calling") return;
-    _callEmettreInvitation(ring, invitePayload);
+    _callDeposerInvitation(ring, invitePayload);
   };
   fire();
   window._call.inviteInterval = setInterval(fire, 2000);
@@ -606,7 +606,40 @@ async function startCall(convId, kind) {
   }, 60000);
 }
 
+// ⚠️ L'INVITATION EST UNE LIGNE, PAS UN MESSAGE (MSG-01 / SUP-06, résidu Astra,
+// 2026-09-15). Le REST broadcast d'avant portait un `from` ÉCRIT PAR L'ÉMETTEUR :
+// tout compte non bloqué pouvait faire sonner B « de la part de A ». Désormais
+// l'appelant ÉCRIT dans `call_invites` (`from_id` posé par la RLS = son jeton,
+// destinataire joignable = 1:1 commun et non bloqué), et c'est un trigger de la
+// base qui fait sonner `ring:<pair>` avec un payload construit DEPUIS LA LIGNE.
+// La répétition toutes les 2 s est un UPSERT (`repete_le`) : même ligne, nouvelle
+// sonnerie. Un client n'a plus le droit d'émettre sur `ring:%` (policy).
+// ⚠️ DÉPLOYABLE AVANT LA MIGRATION : table absente (`PGRST205` / `42P01`) →
+// repli sur le broadcast d'avant, mémorisé pour la session. Un REFUS de la
+// RLS (403 : pas de 1:1 commun, blocage) n'est PAS un repli — le serveur a
+// répondu, on ne contourne pas ; il est tracé.
+function _callDeposerInvitation(ring, payload) {
+  if (window._callInvitesAbsente === true || typeof supa === "undefined" || !supa || !window._supaReal) return _callEmettreInvitation(ring, payload);
+  try {
+    return Promise.resolve(supa.from("call_invites").upsert(
+      { id: payload.callId, from_id: payload.from, to_id: payload.to, kind: payload.kind, repete_le: new Date().toISOString() },
+      { onConflict: "id" }
+    )).then(function (r) {
+      if (!r || !r.error) return true;
+      var code = String(r.error.code || ""), msg = String(r.error.message || "");
+      if (code === "PGRST205" || code === "42P01" || /call_invites/.test(msg) && /schema cache|does not exist/.test(msg)) {
+        window._callInvitesAbsente = true;   // mémorisé pour la session (drapeau sur window : un banc peut le lever)
+        return _callEmettreInvitation(ring, payload);
+      }
+      try { if (typeof diagLog === "function") diagLog("call_invites refus " + code + " " + msg.slice(0, 80)); } catch (e) {}
+      return false;
+    }, function () { return _callEmettreInvitation(ring, payload); });
+  } catch (e) { return _callEmettreInvitation(ring, payload); }
+}
+
 // Dépose l'invitation sur `ring:<pair>` en REST, jamais par un abonnement.
+// ⚠️ Depuis le 2026-09-15 ce n'est plus que le REPLI d'`_callDeposerInvitation`
+// (migration non appliquée) : la policy d'émission refuse `ring:%` aux clients.
 // `httpSend` (supabase-js ≥ 2.100) est le chemin nominal ; sur un SDK qui ne
 // l'a pas, `send()` hors abonnement part LUI AUSSI en REST (repli du SDK).
 // Rend une promesse toujours résolue : l'échec d'un envoi ne doit pas tuer la

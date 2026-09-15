@@ -67,32 +67,68 @@ async function banc(page) {
 }
 
 test.describe("MSG-01 / SUP-06 — appels : sonnerie privée, identité serveur", () => {
-  test("① l'appelant n'écoute jamais la sonnerie du pair : l'invitation part en REST", async ({ page }) => {
+  // Le faux `supa.from` : note les upserts vers call_invites et répond selon `window.__inviteReponse`.
+  const FAUX_TABLE = `
+window.__upserts = [];
+window.__inviteReponse = { error: null };
+Object.defineProperty(window.supa, "from", { configurable: true, writable: true,
+  value: function (table) { var b = { upsert: function (ligne, opts) { window.__upserts.push({ table: table, ligne: ligne, opts: opts }); return Promise.resolve(window.__inviteReponse); },
+    select: function () { return b; }, eq: function () { return b; }, maybeSingle: function () { return Promise.resolve({ data: null, error: null }); },
+    then: function (a, c) { return Promise.resolve({ data: [], error: null }).then(a, c); } }; return b; } });
+`;
+
+  test("① l'invitation est une LIGNE de call_invites (from_id = moi, to_id = le pair), pas un broadcast — et l'appelant n'écoute jamais la sonnerie du pair", async ({ page }) => {
     await banc(page);
-    const r = await page.evaluate(async (lea) => {
+    const r = await page.evaluate(async ([lea, faux]) => {
+      eval(faux);
       await startCall("dm_lea", "voice");
       await new Promise((r) => setTimeout(r, 120));
       const ring = window.__canaux["ring:" + lea];
       const appel = window._call;
       const out = {
-        ringExiste: !!ring,
-        ringAbonne: ring ? ring.subscribed : null,
-        ringHttp: ring ? ring.httpSent.map((x) => ({ event: x.event, from: x.payload.from, callId: x.payload.callId })) : [],
-        ringSendSocket: ring ? ring.sent.length : null,
+        ringAbonne: ring ? ring.subscribed : 0,
+        ringHttp: ring ? ring.httpSent.length : 0,
+        upserts: window.__upserts.map((u) => ({ table: u.table, id: u.ligne.id, from: u.ligne.from_id, to: u.ligne.to_id, kind: u.ligne.kind, repete: typeof u.ligne.repete_le, conflit: u.opts && u.opts.onConflict })),
         callAbonne: appel ? (window.__canaux["call:" + appel.id] || {}).subscribed : null,
         callId: appel ? appel.id : null,
       };
       try { endCall(); } catch (e) {}
       return out;
-    }, UID_LEA);
-    expect(r.ringExiste, "prémisse : le canal ring:<pair> est bien créé").toBe(true);
-    // RÉINJECTION : sur le code d'avant, `ring.subscribe` est appelé (1) et rien ne part en REST.
+    }, [UID_LEA, FAUX_TABLE]);
+    // RÉINJECTION : sur le code d'avant, aucun upsert et l'invitation part en httpSend.
+    expect(r.upserts.length, "l'invitation est écrite dans call_invites").toBeGreaterThanOrEqual(1);
+    expect(r.upserts[0]).toEqual({ table: "call_invites", id: r.callId, from: UID_MOI, to: UID_LEA, kind: "voice", repete: "string", conflit: "id" });
+    expect(r.ringHttp, "plus aucun broadcast client sur ring:<pair>").toBe(0);
     expect(r.ringAbonne, "aucun abonnement à la sonnerie du pair").toBe(0);
-    expect(r.ringHttp.length, "l'invitation part par httpSend").toBeGreaterThanOrEqual(1);
-    expect(r.ringHttp[0].event).toBe("invite");
-    expect(r.ringHttp[0].from).toBe(UID_MOI);
-    expect(r.ringHttp[0].callId).toBe(r.callId);
     expect(r.callAbonne, "le canal d'appel, lui, est bien écouté (réponse SDP)").toBe(1);
+  });
+
+  test("① bis table absente (migration non appliquée) : repli sur le broadcast d'avant ; refus RLS : pas de repli, tracé", async ({ page }) => {
+    await banc(page);
+    const r = await page.evaluate(async ([lea, faux]) => {
+      eval(faux);
+      window.__traces = []; window.diagLog = (m) => window.__traces.push(String(m));
+      window.__inviteReponse = { error: { code: "PGRST205", message: "Could not find the table 'public.call_invites' in the schema cache" } };
+      await startCall("dm_lea", "voice");
+      await new Promise((r) => setTimeout(r, 120));
+      const ring = window.__canaux["ring:" + lea];
+      const repli = { upserts: window.__upserts.length, http: ring ? ring.httpSent.length : 0 };
+      try { endCall(); } catch (e) {}
+      // Seconde vie : la table est là, mais la RLS refuse (pas de 1:1 commun, ou blocage).
+      window.__upserts = []; if (ring) ring.httpSent = [];
+      window._callInvitesAbsente = false;
+      window.__inviteReponse = { error: { code: "42501", message: "new row violates row-level security policy for table call_invites" } };
+      await startCall("dm_lea", "voice");
+      await new Promise((r) => setTimeout(r, 120));
+      const refus = { upserts: window.__upserts.length, http: ring ? ring.httpSent.length : 0, traces: window.__traces.filter((t) => /call_invites refus/.test(t)).length };
+      try { endCall(); } catch (e) {}
+      return { repli, refus };
+    }, [UID_LEA, FAUX_TABLE]);
+    expect(r.repli.upserts).toBeGreaterThanOrEqual(1);
+    expect(r.repli.http, "table absente → l'invitation part comme avant").toBeGreaterThanOrEqual(1);
+    expect(r.refus.upserts).toBeGreaterThanOrEqual(1);
+    expect(r.refus.http, "un refus du serveur ne se contourne pas").toBe(0);
+    expect(r.refus.traces, "…et il est tracé").toBeGreaterThanOrEqual(1);
   });
 
   test("② l'écran d'appel entrant affiche le profil de `from`, jamais la charge utile", async ({ page }) => {
@@ -145,7 +181,12 @@ test.describe("MSG-01 / SUP-06 — appels : sonnerie privée, identité serveur"
     const i = app05.indexOf("async function startCall(");
     const corps = app05.slice(i, app05.indexOf("\nfunction ", i + 10));
     expect(corps).not.toContain("ring.subscribe(");
-    expect(corps).toContain("_callEmettreInvitation(ring, invitePayload)");
+    expect(corps).toContain("_callDeposerInvitation(ring, invitePayload)");
+    // MSG-01 (15/09) : la migration retire `ring:%` de l'émission client et fait sonner depuis la base.
+    const mig2 = lire("migrations/migration_appels_invitations_attestees_2026-09-15.sql");
+    expect(mig2).toMatch(/realtime\.send\(/);
+    expect(mig2).toMatch(/from_id = \(select auth\.uid\(\)\)::text and public\.appel_autorise\(to_id\)/);
+    expect(fs.existsSync(path.join(RACINE, "tests/sql/migration-appels-invitations-attestees.test.sh"))).toBe(true);
     const mig = lire("migrations/migration_appels_sonnerie_privee_2026-09-14.sql");
     expect(mig).toMatch(/realtime\.topic\(\) like 'ring:%'\s+and substr\(realtime\.topic\(\), 6\) = \(select auth\.uid\(\)\)::text/);
     expect(mig).not.toMatch(/drop policy if exists "passio_rt_emettre"/);
