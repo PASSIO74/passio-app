@@ -31,11 +31,19 @@ function tryPurge(dir) {
   }
 }
 
-const candidates = [
+// ⚠️ SUP-04 (2026-09-15) : QUAND LE BANC VISE UN AUTRE PROJET, LA CLI NE PEUT PAS
+// LE SUIVRE. `supabase db query --linked` ne parle qu'au projet LIÉ du poste —
+// la production. Avec `PASSIO_SUPABASE_URL`/`ANON` posés (staging), ce chemin
+// purgeait donc les comptes e2e de la PROD (« OK, restants : 0 » — il n'y en a
+// pas) et laissait ceux du staging en place. Mesuré le 15/09 en rejouant
+// `multi-comptes` contre le staging. Le chemin REST (`configAdmin`) suit la cible.
+const cibleExplicite = !!(process.env.PASSIO_SUPABASE_URL && process.env.PASSIO_SUPABASE_ANON);
+const candidates = cibleExplicite ? [] : [
   process.env.PASSIO_SUPABASE_DIR,
   path.resolve(__dirname, ".."),
   mainWorktreeDir(),
 ].filter(Boolean);
+if (cibleExplicite) console.log("[purge:e2e] cible explicite (PASSIO_SUPABASE_URL) — la CLI liée ne la suit pas, chemin REST.");
 
 let out = null;
 for (const dir of candidates) {
