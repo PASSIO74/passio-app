@@ -34,6 +34,14 @@ correctifs et de leurs preuves*, pas un résultat en production.
 
 ## 1. Ce que tu dois savoir avant de lire
 
+- ⚠️ **LE CODE N'EST PAS DANS `main`, ET C'EST LA CONSÉQUENCE DIRECTE DU §0.** Les passes
+  précédentes te faisaient lire la branche par défaut, parce que tout y était fusionné. Cette
+  fois, **aucun correctif n'y est** : ils vivent dans dix-sept branches ouvertes. Lire `main`
+  te montrerait exactement l'état que tu as déjà audité. Chaque ligne du tableau du §2 porte
+  son numéro de PR — c'est là qu'il faut aller
+  (`https://github.com/PASSIO74/passio-app/pull/<n>/files`, ou la branche
+  `claude/astra4-…`). Deux PR sont **empilées** : #464 part de #458, #463 part de #455 ; leur
+  diff GitHub ne montre donc que leur propre apport.
 - **Le registre est la source** : `.passio/audits/BILAN_PASSIO_09-26/18-REGISTRE-CORRECTIONS-ASTRA-2026-09-14.md`,
   section datée du 15/09 au soir — une ligne par identifiant, quatre colonnes d'état, la PR.
 - **Le commit que tu as lu était `872e30ea`.** `main` est à `bd837e9` : deux fichiers de
