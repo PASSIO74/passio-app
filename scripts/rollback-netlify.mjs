@@ -29,6 +29,7 @@
 // (`%APPDATA%/netlify/Config/config.json`, posé par `netlify login`).
 // ═══════════════════════════════════════════════════════════════════════════
 import { readFileSync, existsSync } from "node:fs";
+import { filtrerProduction, precedentDe, continuerPagination } from "./rollback-selection.mjs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 
@@ -62,9 +63,20 @@ async function api(chemin, options = {}) {
   return JSON.parse(t);
 }
 
-async function deploiementsProduction() {
-  const l = await api(`/sites/${SITE}/deploys?per_page=30`);
-  return l.filter((d) => d.context === "production" && d.state === "ready");
+// ⚠️ ASTRA-19 (contre-revue Astra, 2026-09-15) : une seule page de 30 ne
+// suffit pas. Si le déploiement COURANT n'y figure pas (un ancien remis en
+// ligne, ou beaucoup de déploiements depuis), `findIndex` rend -1 et
+// `prods[-1 + 1]` désignait… le PLUS RÉCENT de la liste : « précédent »
+// remettait en ligne une version plus neuve. On pagine jusqu'à trouver le
+// courant (borne : 10 pages), et on refuse explicitement s'il est absent.
+async function deploiementsProduction(jusquA) {
+  const out = [];
+  for (let page = 1; page <= 10; page++) {
+    const l = await api(`/sites/${SITE}/deploys?per_page=30&page=${page}`);
+    out.push(...filtrerProduction(l));
+    if (!continuerPagination(l, 30, out, jusquA)) break;
+  }
+  return out;
 }
 
 async function releaseServie(base = URL_SITE) {
@@ -83,9 +95,9 @@ async function commitDu(d) {
 const args = process.argv.slice(2);
 const iR = args.indexOf("--restaurer");
 
-const prods = await deploiementsProduction();
 const site = await api(`/sites/${SITE}`);
 const courant = site.published_deploy && site.published_deploy.id;
+const prods = await deploiementsProduction(courant);
 console.log(`site ${site.name} — déploiements de production prêts : ${prods.length} (courant : ${courant})`);
 for (const d of prods.slice(0, 8)) {
   const c = await commitDu(d);
@@ -97,10 +109,9 @@ if (iR === -1) { console.log("\n(rien n'a été changé — `--restaurer precede
 let cible = args[iR + 1];
 if (!cible) echec("--restaurer attend `precedent` ou un identifiant de déploiement.");
 if (cible === "precedent") {
-  const i = prods.findIndex((d) => d.id === courant);
-  const prev = prods[i + 1];
-  if (!prev) echec("aucun déploiement de production avant le courant.");
-  cible = prev.id;
+  const choix = precedentDe(prods, courant);
+  if (choix.erreur) echec(choix.erreur);
+  cible = choix.cible;
 }
 const d = prods.find((x) => x.id === cible);
 if (!d) echec(`déploiement ${cible} introuvable parmi les déploiements de production prêts.`);
