@@ -233,10 +233,14 @@ function ordreInsert(t, cols, json) {
   // autres prennent leur défaut, comme à l'écriture d'origine.
   // `on conflict do nothing` : rejouable (toute table du manifeste a une clé
   // primaire — c'est le discriminant qui l'a fait entrer dans l'archive).
+  // ⚠️ `overriding system value` (exercice du 2026-09-15) : une colonne
+  // d'identité `generated always` (`migrations_appliquees.id`) REFUSE toute
+  // valeur explicite — les quatre lignes du journal tombaient, nommées dans le
+  // bilan mais absentes de la cible. Sans identité, la clause est inerte.
   const c = cols.map((x) => `"${x}"`).join(", ");
   return `begin;
 alter table public."${t}" disable trigger user;
-insert into public."${t}" (${c}) select ${c} from json_populate_recordset(null::public."${t}", ${litteral(json)}::json) on conflict do nothing;
+insert into public."${t}" (${c}) overriding system value select ${c} from json_populate_recordset(null::public."${t}", ${litteral(json)}::json) on conflict do nothing;
 alter table public."${t}" enable trigger user;
 commit;`;
 }
@@ -249,7 +253,7 @@ create temp table _refus (motif text) on commit drop;
 do $$ declare e json; begin
   for e in select * from json_array_elements(${litteral(json)}::json) loop
     begin
-      insert into public."${t}" (${c}) select ${c} from json_populate_record(null::public."${t}", e) on conflict do nothing;
+      insert into public."${t}" (${c}) overriding system value select ${c} from json_populate_record(null::public."${t}", e) on conflict do nothing;
     exception when others then insert into _refus values (left(sqlerrm, 160)); end;
   end loop;
 end $$;
@@ -328,6 +332,10 @@ async function tables(ctx) {
   console.log(`③ tables : ${ordre.length} chargées${bilan.refus.length ? ", " + bilan.refus.length + " REFUS à lire" : ", aucun refus"}.`);
   for (const x of bilan.notes) console.log("   ℹ " + x);
   for (const x of bilan.refus) console.log("   ✗ " + x);
+  // Le bilan sort avec le verdict : la preuve JSON portait le compte par table
+  // mais pas le MOTIF des refus (exercice du 2026-09-15 : `migrations_appliquees`
+  // 4 | 0, détail vide — l'information était au terminal, pas dans la preuve).
+  ctx.bilan = bilan;
   return bilan.refus.length === 0;
 }
 
@@ -437,7 +445,15 @@ function comparerMedias(fichiers, objets) {
     const o = c.get(f.name);
     if (!o) { manquants.push(f.name); continue; }
     const tailleOk = o.taille == null || Number(o.taille) === f.taille;
-    const etagOk = !o.etag || !f.md5 || String(o.etag).replace(/"/g, "").toLowerCase() === f.md5;
+    // ⚠️ Un eTag « <hex>-<n> » vient d'un envoi MULTIPART (objets > 5 Mo) : ce
+    // n'est PAS le MD5 du fichier, et le comparer à l'empreinte locale rendait
+    // deux vidéos IDENTIQUES « divergentes » (exercice du 2026-09-15 : mêmes
+    // 20 362 027 et 25 489 650 octets, même eTag des deux côtés). Pour ces
+    // objets, la taille est la seule comparaison honnête ; pour les autres,
+    // l'eTag est le MD5 et se compare.
+    const etagCible = String(o.etag || "").replace(/"/g, "").toLowerCase();
+    const multipart = /-\d+$/.test(etagCible);
+    const etagOk = !o.etag || !f.md5 || multipart || etagCible === f.md5;
     if (!tailleOk || !etagOk) divergents.push(f.name);
   }
   return { manquants, divergents, enTrop: [...c.keys()].filter((n) => !(fichiers || []).some((f) => f.name === n)) };
@@ -454,7 +470,7 @@ async function lignesCible(ctx, t, tri) {
 async function verdict(ctx) {
   // --preuve <fichier> : le verdict détaillé, écrit en JSON — la preuve DURABLE
   // que la contre-revue réclamait (commande, cible, résultats par table).
-  const preuve = { genere_le: new Date().toISOString(), cible: ctx.ref, nom: ctx.nom, archive: ctx.archive, manifeste_genere_le: ctx.man.genere_le, commande: process.argv.slice(2).join(" "), tables: [], comptes: null, medias: null };
+  const preuve = { genere_le: new Date().toISOString(), cible: ctx.ref, nom: ctx.nom, archive: ctx.archive, manifeste_genere_le: ctx.man.genere_le, commande: process.argv.slice(2).join(" "), tables: [], comptes: null, medias: null, refus: (ctx.bilan && ctx.bilan.refus) || [], notes: (ctx.bilan && ctx.bilan.notes) || [] };
   const noms = tablesRetenues(Object.keys(ctx.man.tables));
   const presentes = await tablesCible(ctx);
   const q = noms.filter((t) => presentes.has(t)).map((t) => `select '${t}' t, count(*)::int n from public."${t}"`).join(" union all ");
@@ -502,7 +518,10 @@ async function verdict(ctx) {
     }
     const d = comparerMedias(fichiers, objets);
     const ok = objets.length === ctx.man.medias.fichiers && !d.manquants.length && !d.divergents.length; if (!ok) ecarts++;
-    preuve.medias = { attendu: ctx.man.medias.fichiers, obtenu: objets.length, manquants: d.manquants.length, divergents: d.divergents.length, en_trop: d.enTrop.length, ok };
+    // Les NOMS des objets manquants, divergents ou en trop (bornés) : un compte
+    // seul ne dit pas quoi regarder (exercice du 2026-09-15 : « 2 divergents »).
+    preuve.medias = { attendu: ctx.man.medias.fichiers, obtenu: objets.length, manquants: d.manquants.length, divergents: d.divergents.length, en_trop: d.enTrop.length, ok,
+      noms: { manquants: d.manquants.slice(0, 50), divergents: d.divergents.slice(0, 50), en_trop: d.enTrop.slice(0, 50) } };
     console.log(`   ${ok ? "OK   " : "ECART"} _storage | ${ctx.man.medias.fichiers} | ${objets.length} — ${d.manquants.length} manquant(s), ${d.divergents.length} divergent(s) (taille ou empreinte), ${d.enTrop.length} en trop`);
   }
   preuve.ecarts = ecarts; preuve.prouvee = ecarts === 0;
