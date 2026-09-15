@@ -10,10 +10,10 @@ Tu es Astra, relecteur technique indépendant. Tu contre-vérifies la reprise de
   - #470 `ab3c4df0e7fcfc530a6be60f6f84025361d404e1` — ASTRA-44 (export sous `pg_current_snapshot`)
   - #471 `0960d77888dc4453aeed9b55f2fe055822bd0fcd` — ASTRA-45/46/47/48/55 (inventaire paginé et couvert, bilan unique, bornes de suspension, lecture stricte, intégrité d'archive)
   - #472 `ca777b236343d8b949e9b5ce8d0fd4cef29ea032` — ASTRA-43/49/50 (contexte de file, réponse rejouable, classification SDK)
-  - #473 `fc11cb8748…` (tête au moment de la livraison ; `git rev-parse origin/claude/astra5-lot6-gouvernance`) — ASTRA-51/52/53/54, empilée sur #469 ; ajoute les gates et TOUTES les suites unitaires à la CI
-  - #474 `d7a2bb97…` (`origin/claude/astra5-lot5-appels-transition-push-serveur`) — ASTRA-24 chantier serveur (mentions par identifiants, texte dérivé, `notifications.origine`), ASTRA-23 contrat de transition + garde du canal refusé
-  - #475 `609957f9ce921a6df7177faa50d05bce74807bd9` — registre structuré des résidus (`.passio/residus/registre-residus.json`), gate CI `scripts/audit-registre-residus.js`, pilotage `/api/residus`, résumé Sentinelle
-- Branche d'intégration **`claude/astra5-integration`** (SHA combiné dans la fiche 23 §D, en fin de section) : tout ce qui précède, plus `tests/sql/sequences-mise-en-service.test.sh` et le réexamen de RES-11.
+  - #473 `fc11cb8772e0fab90403ac1a70d16a578dbee75e` — ASTRA-51/52/53/54, empilée sur #469 ; ajoute les gates et TOUTES les suites unitaires à la CI
+  - #474 `d7a2bb97b14fe78919a3fbd2e6b704ba5be5da59` — ASTRA-24 chantier serveur (mentions par identifiants, texte dérivé, `notifications.origine`), ASTRA-23 contrat de transition + garde du canal refusé
+  - #475 `7be5323a5ddbde0bad89f3ae9e6e34d69f869594` — registre structuré des résidus (`.passio/residus/registre-residus.json`), gate CI `scripts/audit-registre-residus.js`, pilotage `/api/residus`, résumé Sentinelle
+- Branche d'intégration **`claude/astra5-integration`**, PR **#476**, SHA combiné du code **`055efdef3dfcaa5fce82891cd3c2cbb43f68a8ec`** (les commits suivants ne touchent que `.passio/audits/`) : tout ce qui précède, plus `tests/sql/sequences-mise-en-service.test.sh` et le réexamen de RES-11.
 - Dossier : `.passio/audits/BILAN_PASSIO_09-26/23-CONTRE-REPRISE-ASTRA5-2026-09-15.md` (sur la branche d'intégration). Registre : `.passio/residus/registre-residus.json` (#475).
 
 ## 2. Ce que tu vérifies, dans cet ordre
