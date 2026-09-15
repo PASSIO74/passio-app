@@ -2310,11 +2310,21 @@ function pushNotification(text, emoji = "✨", fromId = "me", opts) {
 // listener dédié ci-dessous → exclus pour ne pas activer deux fois).
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Enter" && e.key !== " " && e.key !== "Spacebar") return;
-  const el = e.target && e.target.closest ? e.target.closest('[role="button"],[data-clavier]') : null;
+  const cible = e.target;
+  // ⚠️ ASTRA-13 (2026-09-15) : UNE TOUCHE DANS UN CHAMP N'ACTIVE JAMAIS UN
+  // ANCÊTRE. Le fond de modale (`#modalBackdrop`, `onclick`) était rendu
+  // `role="button"` au démarrage — vide, donc « feuille » — puis rempli : Espace
+  // dans son textarea remontait ici, `closest()` trouvait le fond, `click()`
+  // FERMAIT la modale et la frappe était avalée. Un champ éditable garde ses
+  // touches, et une activation ne vaut que pour l'élément FOCALISÉ lui-même.
+  if (!cible || !cible.closest) return;
+  const tagCible = cible.tagName;
+  if (tagCible === "INPUT" || tagCible === "TEXTAREA" || tagCible === "SELECT" || cible.isContentEditable) return;
+  const el = cible.closest('[role="button"],[data-clavier]');
   if (!el || el === document.body) return;
-  // Un conteneur tabulable (DEV-02) ne s'active que s'il EST l'élément focalisé :
+  // Un élément tabulable (DEV-02) ne s'active que s'il EST l'élément focalisé :
   // Entrée sur un bouton qu'il contient reste l'affaire de ce bouton.
-  if (el.hasAttribute("data-clavier") && el !== e.target) return;
+  if (el !== cible) return;
   const tag = el.tagName;
   if (tag === "BUTTON" || tag === "A" || tag === "INPUT" || tag === "TEXTAREA") return; // natifs : déjà gérés
   if (el.classList.contains("nav-item")) return; // listener dédié plus bas
@@ -2344,7 +2354,12 @@ document.addEventListener("keydown", (e) => {
     if (el.hasAttribute("role") || el.hasAttribute("tabindex") || el.classList.contains("nav-item")) return;
     var h = el.getAttribute("onclick") || "";
     if (/^\s*event\.stopPropagation\(\)\s*;?\s*$/.test(h)) return;
+    // ⚠️ ASTRA-13 : le FOND d'une modale ou d'une feuille (`onclick` = fermer au
+    // clic dehors) n'est pas une commande, c'est une enveloppe de dialogue —
+    // vide au démarrage, remplie ensuite. Jamais tabulable, jamais un bouton.
+    if (el.classList.contains("modal-backdrop") || el.querySelector('[role="dialog"],[aria-modal="true"]')) return;
     el.setAttribute("tabindex", "0");
+    el.setAttribute("data-tabulable", "1"); // posé par cette règle, pas par le gabarit
     // ⚠️ UN CONTENEUR QUI PORTE DES COMMANDES N'EST PAS UN BOUTON (ARIA : un
     // bouton ne contient pas d'élément interactif). Une section repliable des
     // Paramètres, une carte du fil avec ses boutons « J'aime » et « Commenter »
@@ -2361,6 +2376,15 @@ document.addEventListener("keydown", (e) => {
       if (racine.hasAttribute("onclick")) rendreTabulable(racine);
       var l = racine.querySelectorAll("[onclick]");
       for (var i = 0; i < l.length; i++) rendreTabulable(l[i]);
+      // ⚠️ ASTRA-13 : UN BOUTON QUI SE REMPLIT DE COMMANDES REDEVIENT UN CONTENEUR.
+      // Un élément promu `role="button"` quand il était vide (un panneau peint en
+      // deux temps) reçoit ensuite des champs et des boutons : son rôle doit
+      // suivre, sinon Entrée/Espace dans un de ses champs l'« activent ». Seuls
+      // les rôles posés par CETTE règle sont repris (`data-tabulable`).
+      var parent = racine.parentElement ? racine.parentElement.closest('[role="button"][data-tabulable]') : null;
+      if (parent && parent.querySelector('button,a[href],input,select,textarea,[onclick],[role="button"]')) {
+        parent.removeAttribute("role"); parent.setAttribute("data-clavier", "1");
+      }
     } catch (e) {}
   }
   window._rendreCliquablesAccessibles = balayer;
