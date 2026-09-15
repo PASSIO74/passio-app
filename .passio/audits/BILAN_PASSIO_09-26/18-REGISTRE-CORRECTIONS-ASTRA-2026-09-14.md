@@ -1155,11 +1155,17 @@ après coup** : la date de leur commit est celle de leur ajout réel.
 | ASTRA-37 | P2 | oui | 9 verrous ; 1 réinjection | non mesuré | **banc non exécuté** | [#459](https://github.com/PASSIO74/passio-app/pull/459) |
 | ASTRA-35 | P1 | oui | banc SQL 25 contrôles ; 2 mutations | **non appliquée** | non mesuré | [#460](https://github.com/PASSIO74/passio-app/pull/460) |
 | ASTRA-36 | P1 | oui | 5 cas e2e + 29 de non-régression ; 1 réinjection | non mesuré | non mesuré | [#461](https://github.com/PASSIO74/passio-app/pull/461) |
+| ASTRA-26 | P1 | oui | banc SQL 21 contrôles + 12 verrous ; 2 réinjections | **non appliquée** | non mesuré | [#463](https://github.com/PASSIO74/passio-app/pull/463) |
+| ASTRA-25 | P1 | oui | banc SQL 25 contrôles + 17 verrous ; 3 réinjections + 1 mutation | **non appliquée** | non mesuré | [#464](https://github.com/PASSIO74/passio-app/pull/464) |
+
+⚠️ **« Corrigé » et « déployé » sont deux colonnes, et aucune ligne n'a la seconde.** Les
+quatre migrations de cette reprise (ASTRA-22, 35, 26, 25) sont écrites et éprouvées **sur
+base jetable**, jamais appliquées ; les Edge Functions d'ASTRA-27/28 ne sont pas
+redéployées. Une PR ouverte ne change rien pour un utilisateur.
 
 **Non traités dans cette reprise, et ils restent OUVERTS :** ASTRA-23 (call: ouvert en
 lecture et émission à un tiers), ASTRA-24 (mention sans destinataire légitime, texte libre
-de push), ASTRA-25 (barrière de suppression côté serveur), ASTRA-26 (propriétaire Storage
-perdu à la restauration). Ainsi que tous les résidus anciens listés au §4 du plan.
+de push). Ainsi que tous les résidus anciens listés au §4 du plan.
 
 ---
 
@@ -1261,6 +1267,32 @@ pire qu'un trou.*
 Ce ne sont pas des propriétés qu'on réduit pour verdir : **ce sont des attentes qui
 affirmaient plus que la mesure ne permettait.** Les fixtures des cas qui portent sur le
 *compte de lignes* ont reçu un DDL valide, pour qu'ils continuent de mesurer leur sujet.
+
+---
+
+## Deux contrôles de cette reprise ont attrapé cette reprise elle-même
+
+C'est le seul fait de méthode qui vaille d'être écrit ici : **les deux fois, la relecture
+n'avait rien vu, et c'est la mesure qui a tranché.**
+
+**① La gate d'ASTRA-27 a rougi sur la table d'ASTRA-25.** `comptes_en_suppression` est née
+trois heures après la gate qui exige qu'aucune table ne naisse sans qu'on dise ce qu'elle
+devient. Elle a nommé le fichier et refusé de conclure seule. La décision écrite : la
+purger la **lèverait**, donc elle est en exception **avec sa raison**, et ce qui reste est
+un uuid orphelin sans échéance — rétention à décider, inscrite dans la migration plutôt que
+tue.
+
+**② Un verrou d'ASTRA-25 ne mesurait pas la propriété d'ASTRA-25.** Le cas ① vérifiait que
+la barrière est *posée* ; la propriété est qu'elle le soit **avant tout comptage**. En
+déplaçant la pose après le premier relevé — c'est-à-dire en la ramenant très exactement à
+la « passe de plus » que le lot refuse — **le banc restait vert**. Trouvé par réinjection,
+jamais par relecture. Le faux client journalise désormais l'**ordre** des gestes.
+
+⚠️ **La règle qui se dégage, et elle est plus large que ces deux cas.** Un verrou qui
+mesure la *présence* d'un geste ne protège pas une propriété d'*ordre*, de *position* ou
+d'*antériorité* — et ces propriétés-là sont précisément celles des correctifs de course
+(ASTRA-21 file par compte, ASTRA-25 barrière, ASTRA-33 journal avant application). Toutes
+ont le même mode d'échec : le correctif marche pendant la démonstration.
 
 ---
 
