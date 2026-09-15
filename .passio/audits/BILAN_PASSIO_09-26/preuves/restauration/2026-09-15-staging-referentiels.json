@@ -1,0 +1,35 @@
+{
+  "genere_le": "2026-09-15T08:07:15.508Z",
+  "cible": "fcksxofaelcdmmifnwjo",
+  "nom": "PASSIO staging",
+  "archive": ".passio/sauvegardes/2026-09-14-18-19-09",
+  "manifeste_genere_le": "2026-09-14T18:19:09.630Z",
+  "commande": "--archive .passio/sauvegardes/2026-09-14-18-19-09 --projet fcksxofaelcdmmifnwjo --tables passions,passion_relations,access_policies --verifier --preuve .passio/audits/BILAN_PASSIO_09-26/preuves/restauration/2026-09-15-staging-referentiels.json",
+  "tables": [
+    {
+      "table": "access_policies",
+      "attendu": 1,
+      "obtenu": 1,
+      "ok": true,
+      "detail": "contenu identique"
+    },
+    {
+      "table": "passion_relations",
+      "attendu": 10012,
+      "obtenu": 10012,
+      "ok": true,
+      "detail": "contenu identique"
+    },
+    {
+      "table": "passions",
+      "attendu": 5007,
+      "obtenu": 5007,
+      "ok": true,
+      "detail": "contenu identique"
+    }
+  ],
+  "comptes": null,
+  "medias": null,
+  "ecarts": 0,
+  "prouvee": true
+}
