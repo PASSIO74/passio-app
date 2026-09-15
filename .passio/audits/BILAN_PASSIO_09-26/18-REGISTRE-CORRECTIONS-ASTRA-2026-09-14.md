@@ -1160,10 +1160,17 @@ après coup** : la date de leur commit est celle de leur ajout réel.
 | ASTRA-23 | P1 | oui | banc SQL 25 contrôles + 4 cas e2e ; 2 réinjections + 1 mutation | **non appliquée** | non mesuré | [#465](https://github.com/PASSIO74/passio-app/pull/465) |
 | ASTRA-24 | P1 | **partiel** | 18 verrous ; 1 réinjection | **fonction non redéployée** | non mesuré | [#466](https://github.com/PASSIO74/passio-app/pull/466) |
 
-⚠️ **« Corrigé » et « déployé » sont deux colonnes, et aucune ligne n'a la seconde.** Les
-quatre migrations de cette reprise (ASTRA-22, 35, 26, 25) sont écrites et éprouvées **sur
-base jetable**, jamais appliquées ; les Edge Functions d'ASTRA-27/28 ne sont pas
-redéployées. Une PR ouverte ne change rien pour un utilisateur.
+⚠️ **« Corrigé » et « déployé » sont deux colonnes, et AUCUNE ligne n'a la seconde.** Les
+**cinq** migrations de cette reprise (ASTRA-22, 35, 26, 25, 23) sont écrites et éprouvées
+**sur base jetable**, jamais appliquées ; **trois** Edge Functions portent du code non
+redéployé (`delete-account` pour ASTRA-27/25, `export-account` pour ASTRA-28, `notify-call`
+pour ASTRA-24). Une PR ouverte ne change rien pour un utilisateur.
+
+⚠️ **ET DEUX MIGRATIONS ONT UN ORDRE D'ALLUMAGE À NE PAS INVERSER.** ASTRA-23 : le client
+doit être SERVI avant que la policy soit collée — appliquée d'abord, tout appel émis par un
+`app.js` encore en cache est refusé (l'appelant se voit refuser son propre canal). ASTRA-25 :
+la barrière doit exister avant que `delete-account` la pose, sinon la purge continue sans
+elle et le DIT (`notes`), ce qui est le comportement voulu mais pas la cible.
 
 **Les dix-huit constats ASTRA-21 → ASTRA-38 ont tous été traités.** Restent les résidus
 anciens listés au §4 du plan, et le résidu d'isolation SUP-04 / TCI-04 / EXP-11.
