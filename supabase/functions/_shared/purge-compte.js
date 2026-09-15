@@ -191,7 +191,21 @@ export async function purgerCompte(admin, uid) {
     else if (relu.objets.length) restes.push(`objets=${relu.objets.length}`);
   }
   for (const [table, col] of TABLES_COMPTE) {
-    const n = await compterRestes(admin, table, col, uid);
+    let n = await compterRestes(admin, table, col, uid);
+    // ⚠️ UNE ÉCRITURE TARDIVE DU CLIENT N'EST PAS UN RESTE (SUP-10, 2026-09-15).
+    // Entre l'effacement et la relecture, l'application encore ouverte peut
+    // repousser son état (`user_state`) ou un accusé de lecture : mesuré en CI
+    // sur le staging (`user_state:user_id=1`), et c'est aussi la mécanique qui
+    // laissait des lignes orphelines derrière un compte supprimé (PRO-06). On
+    // efface UNE seconde fois ce qui est réapparu, et on relit ; ce qui
+    // subsiste encore est un vrai reste, nommé. Une seule reprise : une ligne
+    // qui revient à chaque passage est un client qui écrit en boucle, et il faut
+    // que quelqu'un le voie.
+    if (n > 0) {
+      const err = await supprimerLignes(admin, table, col, uid);
+      if (err) echecs.push(`${table}:${col} (reprise : ${err})`);
+      else n = await compterRestes(admin, table, col, uid);
+    }
     if (n !== 0) restes.push(`${table}:${col}=${n < 0 ? "illisible" : n}`);
   }
 

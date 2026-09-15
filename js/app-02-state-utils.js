@@ -440,6 +440,11 @@ function _restaurationConfirmee() {
 function _peutPousserEtat() {
   // ⓪ session expirée (UXO-02) : le compte est joignable en LECTURE seulement
   if (sessionExpiree()) return false;
+  // ⓪ bis suppression du compte en cours (SUP-10, 2026-09-15) : la purge
+  // serveur RELIT après avoir effacé — un état repoussé pendant qu'elle tourne
+  // devient un « reste », et le compte n'est pas supprimé (mesuré en CI sur le
+  // staging : `user_state:user_id=1`, une fois sur deux).
+  if (window._suppressionEnCours === true) return false;
   // ① restauration en attente pour CE compte
   try {
     const attendu = localStorage.getItem(CLE_RESTAURATION_REQUISE);
@@ -4127,6 +4132,15 @@ async function doDeleteAccount() {
     // RELIT, et ne supprime le compte Auth que si rien ne reste (409 sinon) :
     // ici, sans `ok: true`, rien n'est annoncé, rien n'est purgé localement,
     // la session reste — la suppression est relançable.
+    // ⚠️ AUCUNE ÉCRITURE D'ÉTAT PENDANT LA PURGE (SUP-10, 2026-09-15). `closeModal`
+    // et le premier toast viennent de passer par `saveState()`, dont le debounce
+    // de 2,5 s tirerait EN PLEIN MILIEU de la purge serveur : elle efface
+    // `user_state`, relit, trouve la ligne que ce client vient de repousser, et
+    // refuse (« Suppression incomplète ») — vécu en CI sur le staging. Le timer
+    // armé est jeté et `_peutPousserEtat` refuse (debounce, envoi direct,
+    // beacon de `pagehide`) jusqu'au verdict ; un refus rend la main.
+    discardPendingStateSave();
+    window._suppressionEnCours = true;
     var verdict = null;
     try { verdict = await supa.functions.invoke("delete-account"); } catch (e) { verdict = { error: e }; }
     var okServeur = !!(verdict && !verdict.error && verdict.data && verdict.data.ok === true);
@@ -4134,6 +4148,7 @@ async function doDeleteAccount() {
       var restes = (verdict && verdict.data && (verdict.data.restes || verdict.data.echecs)) || [];
       try { if (typeof diagLog === "function") diagLog("suppression_compte KO " + (restes.length ? restes.slice(0, 5).join(" ") : String((verdict && verdict.error && verdict.error.message) || "sans verdict"))); } catch (e) {}
       toast("⚠️ Suppression incomplète : ton compte n'a PAS été supprimé. Réessaie, ou écris à " + PASSIO_EDITEUR.email);
+      window._suppressionEnCours = false;
       return false;
     }
     try { await supa.auth.signOut(); } catch (e) {}
