@@ -252,3 +252,90 @@ test("⑭ la mention EN GROUPE reste gouvernée par l'appartenance, et c'est un 
   const horsGroupe = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
   assert.equal((await lienEvenement(fauxAdmin(grp), "mention", A, horsGroupe, "grp_abc", T0)).ok, false, "un non-membre reste dehors");
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ASTRA-24 (cinquième contre-revue, 15/09/2026) — la push n'était pas fermée :
+// le texte poussé restait celui de l'émetteur, et « @Lea » désignait un nom,
+// pas un compte. La décision entière vit dans `autoriserPushNotif`.
+// ═══════════════════════════════════════════════════════════════════════════
+import { autoriserPushNotif, textePush } from "../../supabase/functions/_shared/lien-metier.js";
+
+test("ASTRA-24 ① REPRODUCTION : commentaire « Bonjour @Lea » + ligne 'mention' à texte libre → avant : ok, texte libre poussé ; après : refusé (origine client)", async () => {
+  const tables = {
+    ...BASE,
+    profiles: [{ id: A, username: "Alex", emoji: "🎸" }, { id: B, username: "Lea", emoji: "🌿" }],
+    posts: [{ id: "p1", author_id: C }],
+    post_comments: [{ post_id: "p1", author_id: A, content: "Bonjour @Lea", created_at: new Date(T0 - 10_000).toISOString() }],
+    notifications: [{ from_id: A, user_id: B, kind: "mention", ref_id: "p1", content: "texte libre sans rapport", created_at: new Date(T0 - 5_000).toISOString() }],
+  };
+  // AVANT : lienNotification.ok + lienEvenement.ok (la mention est dans le commentaire) → push du texte LIBRE.
+  const lien = await lienNotification(fauxAdmin(tables), A, B, T0);
+  const ev = await lienEvenement(fauxAdmin(tables), "mention", A, B, "p1", T0);
+  assert.equal(lien.ok && ev.ok, true, "reproduction : les deux gardes d'avant disaient oui");
+  assert.equal(lien.texte, "texte libre sans rapport", "reproduction : et le texte poussé était celui de l'émetteur");
+  // APRÈS : la ligne est d'origine CLIENT → aucune push.
+  const d = await autoriserPushNotif(fauxAdmin(tables), A, B, T0);
+  assert.equal(d.ok, false);
+  assert.match(d.raison, /origine client/);
+});
+
+test("ASTRA-24 ② une 'mention' écrite par le SERVEUR (origine serveur) pousse un texte DÉRIVÉ, jamais celui de la ligne", async () => {
+  const tables = {
+    ...BASE,
+    profiles: [{ id: A, username: "Alex", emoji: "🎸" }],
+    notifications: [{ from_id: A, user_id: B, kind: "mention", ref_id: "p1", origine: "serveur", content: "Alex t'a mentionné dans un commentaire", created_at: new Date(T0 - 5_000).toISOString() }],
+  };
+  const d = await autoriserPushNotif(fauxAdmin(tables), A, B, T0);
+  assert.equal(d.ok, true, d.raison);
+  assert.equal(d.texte, "Alex t'a mentionné");
+  assert.equal(d.kind, "mention");
+  // Même une ligne serveur au contenu bizarre ne pousse que le gabarit.
+  tables.notifications[0].content = "<script>alert(1)</script> lis-moi";
+  assert.equal((await autoriserPushNotif(fauxAdmin(tables), A, B, T0)).texte, "Alex t'a mentionné");
+});
+
+test("ASTRA-24 ③ les genres encore écrits par le client : événement exigé, texte DÉRIVÉ (le `content` de la ligne n'est plus poussé)", async () => {
+  const tables = {
+    ...BASE,
+    profiles: [{ id: A, username: "Alex", emoji: "🎸" }],
+    notifications: [{ from_id: A, user_id: B, kind: "message", ref_id: "grp_abc", content: "N'IMPORTE QUOI écrit par le client", created_at: new Date(T0 - 5_000).toISOString() }],
+    conv_messages: [{ conv_id: "grp_abc", from_id: A, created_at: new Date(T0 - 8_000).toISOString() }],
+  };
+  const d = await autoriserPushNotif(fauxAdmin(tables), A, B, T0);
+  assert.equal(d.ok, true, d.raison);
+  assert.equal(d.texte, "Alex a écrit dans un groupe", "groupe : le gabarit de groupe, sans nom interprété");
+  // Conversation 1:1 : autre gabarit.
+  tables.notifications[0].ref_id = "dm_ab"; tables.conv_messages[0].conv_id = "dm_ab";
+  assert.equal((await autoriserPushNotif(fauxAdmin(tables), A, B, T0)).texte, "Alex t'a envoyé un message");
+  // Sans événement métier : refus, comme avant.
+  tables.conv_messages = [];
+  assert.equal((await autoriserPushNotif(fauxAdmin(tables), A, B, T0)).ok, false);
+  // Un genre sans gabarit ne pousse rien.
+  tables.notifications[0].kind = "genre_inconnu";
+  assert.equal((await autoriserPushNotif(fauxAdmin(tables), A, B, T0)).ok, false);
+});
+
+test("ASTRA-24 ④ textePush : un gabarit par genre, le nom borné, l'inconnu nul", () => {
+  assert.equal(textePush("like", "Camille"), "Camille a aimé ta publication");
+  assert.equal(textePush("follow", ""), "Quelqu'un a commencé à te suivre");
+  assert.equal(textePush("like", "x".repeat(80)).length <= 80 + 30, true);
+  assert.equal(textePush("inconnu", "Camille"), null);
+  assert.equal(textePush("mention", "Lea"), "Lea t'a mentionné");
+});
+
+test("ASTRA-24 ⑤ transition : sans colonne `origine` (migration non appliquée), une ligne 'mention' vaut 'client' et ne pousse pas ; les autres genres poussent avec le gabarit", async () => {
+  const sansColonne = {
+    ...BASE,
+    profiles: [{ id: A, username: "Alex" }],
+    notifications: [
+      { from_id: A, user_id: B, kind: "mention", ref_id: "p1", content: "x", created_at: new Date(T0 - 5_000).toISOString() },
+    ],
+    posts: [{ id: "p1", author_id: C }],
+    post_comments: [{ post_id: "p1", author_id: A, content: "@Lea", created_at: new Date(T0 - 6_000).toISOString() }],
+  };
+  assert.equal((await autoriserPushNotif(fauxAdmin(sansColonne), A, B, T0)).ok, false);
+  sansColonne.notifications = [{ from_id: A, user_id: C, kind: "like", ref_id: "p1", content: "x", created_at: new Date(T0 - 5_000).toISOString() }];
+  sansColonne.post_likes = [{ post_id: "p1", user_id: A, created_at: new Date(T0 - 6_000).toISOString() }];
+  const d = await autoriserPushNotif(fauxAdmin(sansColonne), A, C, T0);
+  assert.equal(d.ok, true, d.raison); assert.equal(d.texte, "Alex a aimé ta publication");
+});

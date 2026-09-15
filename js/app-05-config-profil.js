@@ -897,8 +897,33 @@ function _callSend(event, data) {
   try { cs.chan.send({ type: "broadcast", event: event, payload: Object.assign({ from: MY_UID }, data || {}) }); } catch (e) {}
 }
 
+// ⚠️ ASTRA-23, CONTRAT DE TRANSITION (cinquième contre-revue, 15/09/2026) — UN
+// CANAL D'APPEL REFUSÉ NE SONNE PAS DANS LE VIDE. Depuis la migration
+// `migration_canal_appel_lie`, `call:<id>` n'est ouvert qu'aux deux parties
+// nommées par la ligne `call_invites`. Un ONGLET DÉJÀ OUVERT sur l'ancien
+// client s'abonne AVANT de déposer l'invitation : Realtime le refuse
+// (CHANNEL_ERROR, motif de policy) et l'ancien code ne faisait que le
+// journaliser — l'appel « sonnait » jusqu'au délai, l'appelé restait
+// « connexion… ». Ici, tout canal d'appel dont l'abonnement est refusé POUR
+// DÉFAUT DE DROIT termine l'appel en le DISANT (recharger l'application), et
+// le trace. Une coupure réseau (TIMED_OUT sans motif de policy) n'est pas
+// concernée : Realtime la retente. Le contrat complet : docs/APPELS_TRANSITION.md.
+function _callSurveillerStatut(status, err) {
+  if (status !== "CHANNEL_ERROR" && status !== "TIMED_OUT") return;
+  if (!_rtRefusDePolicy(err)) return;
+  try { if (typeof diagLog === "function") diagLog("call_canal_refuse " + status + " " + String((err && err.message) || err || "").slice(0, 80)); } catch (e) {}
+  if (window._call) { toast("Impossible de rejoindre l'appel : ta version de l'application est périmée — recharge-la"); _callTeardown(); }
+}
+
 // Lie les handlers de signalisation à un canal d'appel.
 function _callBindChannelEvents(chan) {
+  // La surveillance s'accroche ICI, sans toucher aux deux appels à `subscribe`
+  // (appelant, appelé) : le statut passe d'abord par `_callSurveillerStatut`.
+  if (chan && typeof chan.subscribe === "function" && !chan._passioSurveille) {
+    chan._passioSurveille = true;
+    const sub = chan.subscribe.bind(chan);
+    chan.subscribe = function (cb) { const reste = Array.prototype.slice.call(arguments, 1); return sub.apply(null, [function (status, err) { try { _callSurveillerStatut(status, err); } catch (e) {} if (typeof cb === "function") cb(status, err); }].concat(reste)); };
+  }
   chan.on("broadcast", { event: "ready" }, async () => {
     // Le pair a accepté et rejoint le canal → on arrête la sonnerie répétée et
     // on crée l'offre.
@@ -2935,7 +2960,7 @@ function _envoyerCommentaireBobine(postId, op) {
         && typeof supaInsertNotif === "function") {
       supaInsertNotif(cible.authorId, "comment", postId, "a commenté ta bobine");
     }
-    if (typeof _notifyCommentMentions === "function") _notifyCommentMentions(postId, op.text);
+    // ASTRA-24 : les mentions partent depuis `supaAddComment`, une fois le commentaire en base.
   } catch (e) {}
 }
 
