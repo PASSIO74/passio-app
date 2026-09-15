@@ -6162,7 +6162,12 @@ async function submitEvent(editId) {
   const address = (g("evAddress")?.value || "").trim();
   const postalCode = (g("evPostal")?.value || "").trim();
   const price = parseFloat(g("evPrice")?.value || "0") || 0;
-  const maxAttendees = parseInt(g("evMax")?.value || "") || null;
+  // ⚠️ IRL-11, second volet (contre-revue Astra, 2026-09-15) : `parseInt("0") || null`
+  // faisait d'une capacité SAISIE à 0 une capacité ILLIMITÉE — l'inverse de ce
+  // que la personne a écrit, et l'inverse de la borne annoncée (« au moins 1 »).
+  // Vide = illimité ; 0 = refusé comme tout nombre sous 1.
+  const maxBrut = String(g("evMax")?.value || "").trim();
+  const maxAttendees = maxBrut === "" ? null : parseInt(maxBrut, 10);
   // ⚠️ BORNES REVALIDÉES ICI, pas seulement dans le `min` du champ (IRL-11,
   // 2026-09-14) : un prix négatif s'affichait « Gratuit », une capacité
   // négative rendait l'activité « complète » dès sa création.
