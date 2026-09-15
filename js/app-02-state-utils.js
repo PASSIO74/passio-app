@@ -4965,6 +4965,11 @@ async function onbDoAuth() {
     if (error) {
       let msg = traduireRefusCaptcha(error.message);
       if (msg.includes("Invalid login")) msg = "E-mail ou mot de passe incorrect.";
+      // Compte SUSPENDU par la modération (MOD-01, 2026-09-15) : GoTrue rend
+      // « User is banned » / `user_banned`. Le motif est dans sa cloche (notification
+      // `moderation`, écrite par `scripts/moderation.js suspendre`) ; ici, l'écran
+      // de connexion dit l'état et la voie de contestation — jamais le message brut.
+      if (/banned/i.test(msg) || (error.code === "user_banned")) msg = "Ce compte est suspendu par la modération. Pour contester : " + PASSIO_EDITEUR.email;
       msg = traduireRefusMotDePasse(msg);
       if (msg.includes("already registered")) msg = "Cet e-mail est déjà utilisé. Connecte-toi.";
       // Seule sortie possible pour qui n'a jamais reçu le lien : sans ce renvoi,

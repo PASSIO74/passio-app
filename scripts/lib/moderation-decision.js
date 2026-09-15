@@ -33,12 +33,50 @@ function planRetrait(targetType, targetId) {
       // barrée, les inscriptions restent lisibles pour la trace).
       return { plan: { methode: "PATCH", chemin: `events?id=eq.${cible}`, corps: { status: "cancelled", updated_at: "__now__" }, libelle: "rencontre annulée" } };
     case "user":
-      return { plan: null, raison: "suspendre un compte n'a pas de colonne en base — bloquer ses contenus un par un, ou supprimer le compte (delete-account, geste du propriétaire)" };
+      return { plan: null, raison: "un compte ne se « retire » pas : node scripts/moderation.js suspendre --id <signalement> --jours N (ou lever --uid)" };
     case "passion":
       return { plan: null, raison: "les passions ont leur outil : node scripts/passions-moderation.js signalees" };
     default:
       return { plan: null, raison: "type de cible inconnu : " + String(targetType) };
   }
+}
+
+const RE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const SUSPENSION_JOURS_MAX = 365;
+
+// Plan de SUSPENSION d'un compte (MOD-01, 2026-09-15) : la suspension vit dans
+// `auth.users.banned_until`, posée par l'API d'administration GoTrue
+// (`PUT /auth/v1/admin/users/<uid>`, `ban_duration` en heures). Un compte
+// banni ne peut plus se connecter ni rafraîchir son jeton ; sa session en
+// cours meurt à l'expiration du jeton d'accès (≤ 1 h). Rien n'est supprimé :
+// une suspension se lève (`planLevee`), une suppression ne se lève pas.
+function planSuspension(uid, jours) {
+  const id = String(uid || "");
+  if (!RE_UUID.test(id)) return { plan: null, raison: "identifiant de compte attendu (uuid), reçu : " + (id || "vide") };
+  const n = Number(jours);
+  if (!Number.isInteger(n) || n < 1 || n > SUSPENSION_JOURS_MAX) return { plan: null, raison: "--jours attend un entier entre 1 et " + SUSPENSION_JOURS_MAX };
+  return { plan: { methode: "PUT", chemin: "auth/v1/admin/users/" + id, corps: { ban_duration: (n * 24) + "h" }, jours: n, libelle: "compte suspendu " + n + " jour" + (n > 1 ? "s" : "") } };
+}
+function planLevee(uid) {
+  const id = String(uid || "");
+  if (!RE_UUID.test(id)) return { plan: null, raison: "identifiant de compte attendu (uuid), reçu : " + (id || "vide") };
+  return { plan: { methode: "PUT", chemin: "auth/v1/admin/users/" + id, corps: { ban_duration: "none" }, libelle: "suspension levée" } };
+}
+
+// Le texte pour le compte SUSPENDU (DSA art. 17 : exposé des motifs à la
+// personne visée). Il arrive dans sa cloche — lisible au retour — et l'écran de
+// connexion, lui, dit « suspendu » tout de suite (`onbDoAuth`, app-02). Borné.
+function texteSuspension(jours, note) {
+  const n = Number(jours);
+  const base = "Ton compte est suspendu " + n + " jour" + (n > 1 ? "s" : "") + ".";
+  const motif = String(note || "").trim();
+  const texte = (motif ? base + " Motif : " + motif + "." : base) + " Pour contester : passioadmin@gmail.com";
+  return texte.length > 200 ? texte.slice(0, 197) + "…" : texte;
+}
+function notificationPourCible(uid, jours, note) {
+  const dest = String(uid || "");
+  if (!RE_UUID.test(dest)) return null;
+  return { id: "n_susp_" + dest.slice(0, 8) + "_" + Date.now().toString(36), user_id: dest, kind: "moderation", from_id: null, ref_id: null, content: texteSuspension(jours, note), seen: false };
 }
 
 // Le texte envoyé au signalant (notification `moderation`). Il ne nomme ni la
@@ -47,6 +85,7 @@ function planRetrait(targetType, targetId) {
 function texteDecision(action, note) {
   const base = action === "retrait" ? "Ton signalement a été examiné : le contenu a été retiré."
     : action === "rejet" ? "Ton signalement a été examiné : aucune infraction n'a été constatée."
+    : action === "suspension" ? "Ton signalement a été examiné : le compte a été suspendu."
     : "Ton signalement a été examiné.";
   const n = String(note || "").trim();
   const texte = n ? base + " " + n : base;
@@ -75,4 +114,4 @@ function statutApresAction(action) {
   return action === "rejet" ? "dismissed" : "handled";
 }
 
-module.exports = { planRetrait, texteDecision, notificationPourSignalant, statutApresAction };
+module.exports = { planRetrait, planSuspension, planLevee, texteSuspension, notificationPourCible, texteDecision, notificationPourSignalant, statutApresAction, SUSPENSION_JOURS_MAX };
