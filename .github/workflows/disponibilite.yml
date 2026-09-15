@@ -1,0 +1,117 @@
+name: Disponibilité du site
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SONDE DE DISPONIBILITÉ SANS COMPTE TIERS — EXP-06 / PIL-10 (2026-09-15)
+#
+# Ce que la sentinelle distante fait toutes les 4 h (checkout, npm ci, audits,
+# canari), cette sonde le fait en 10 secondes et sans rien installer : deux
+# requêtes HTTP sur le site servi, et une issue « [DISPONIBILITÉ] » si le site
+# ne répond pas — refermée d'elle-même au retour. L'e-mail de GitHub sur
+# l'issue est le canal d'alerte ; aucun compte UptimeRobot n'est nécessaire.
+#
+# ⚠️ CE QUE « TOUTES LES 10 MIN » VEUT DIRE CHEZ GITHUB : une DEMANDE, servie
+# quand il a de la place (mesuré le 2026-09-09 sur un cron horaire : 41 % des
+# créneaux, écarts jusqu'à 5 h). Une panne est donc relevée dans la demi-heure
+# en temps normal, parfois dans les heures — jamais « dans les 10 minutes » ;
+# c'est écrit ici pour ne pas être redécouvert. Et GitHub désactive les crons
+# après 60 jours sans commit : le silence de cette sonde n'est pas une preuve
+# de santé (même angle mort que la sentinelle).
+#
+# ⚠️ L'issue est créée avec GITHUB_TOKEN, donc elle ne déclenche AUCUN autre
+# workflow (règle anti-boucle de GitHub) — c'est voulu : personne ne « répare »
+# une indisponibilité de Netlify par une PR. Label `disponibilite`, jamais
+# `claude`. Trois échecs de suite sur la même requête (--retry 2) avant de
+# conclure, et un seul run à la fois : une sonde qui crie à tort finit par ne
+# plus être lue.
+# ═══════════════════════════════════════════════════════════════════════════
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/disponibilite.yml"
+
+concurrency:
+  group: disponibilite
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  PASSIO_PROD_URL: https://passio-app.netlify.app
+
+jobs:
+  sonde:
+    name: Sonde du site servi
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: release.json et page d'accueil
+        id: sonde
+        continue-on-error: true
+        run: |
+          set -u
+          # ⚠️ Pas de `set -e` avec un `||` après : chaque contrôle écrit son
+          # verdict, et c'est la somme qui décide (même leçon que controle-realtime).
+          ko=""
+          t0=$(date +%s%N)
+          if curl --fail --silent --show-error --location --retry 2 --retry-delay 5 --max-time 20 \
+               "${PASSIO_PROD_URL}/release.json" --output /tmp/release.json; then
+            commit="$(grep -o '"commit": *"[0-9a-f]*"' /tmp/release.json | grep -o '[0-9a-f]\{40\}' | head -1)"
+            [ -n "${commit}" ] || ko="${ko}release.json sans commit;"
+          else
+            ko="${ko}release.json injoignable;"
+          fi
+          if curl --fail --silent --show-error --location --retry 2 --retry-delay 5 --max-time 20 \
+               "${PASSIO_PROD_URL}/" --output /tmp/index.html; then
+            grep -q 'screen-feed' /tmp/index.html || ko="${ko}page d'accueil sans l'application;"
+          else
+            ko="${ko}page d'accueil injoignable;"
+          fi
+          ms=$(( ($(date +%s%N) - t0) / 1000000 ))
+          echo "ms=${ms}" >> "${GITHUB_OUTPUT}"
+          echo "commit=${commit:-}" >> "${GITHUB_OUTPUT}"
+          echo "ko=${ko}" >> "${GITHUB_OUTPUT}"
+          echo "## Disponibilité : ${ko:-OK} (${ms} ms, commit ${commit:-?})" >> "${GITHUB_STEP_SUMMARY}"
+          [ -z "${ko}" ]
+
+      - name: Ouvrir ou refermer l'alerte
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KO: ${{ steps.sonde.outputs.ko }}
+          MS: ${{ steps.sonde.outputs.ms }}
+          COMMIT: ${{ steps.sonde.outputs.commit }}
+        run: |
+          set -u
+          title="[DISPONIBILITÉ] passio-app.netlify.app ne répond pas"
+          # ⚠️ Par LABEL, jamais par `--search in:title` : l'index de recherche de
+          # GitHub retarde de plusieurs heures (mesuré sur la sentinelle, #316).
+          existing="$(gh issue list --repo "${GITHUB_REPOSITORY}" --state open --label disponibilite --json number --jq '.[0].number // empty')"
+          run_url="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          if [ -z "${KO}" ]; then
+            if [ -n "${existing}" ]; then
+              gh issue comment "${existing}" --repo "${GITHUB_REPOSITORY}" --body "✅ Le site répond de nouveau (${MS} ms, commit \`${COMMIT}\`) — ${run_url}"
+              gh issue close "${existing}" --repo "${GITHUB_REPOSITORY}" --reason completed
+            fi
+            exit 0
+          fi
+          {
+            echo "Le site servi ne répond pas correctement : **${KO}**"
+            echo
+            echo "- Run : ${run_url}"
+            echo "- Sonde : \`GET /release.json\` puis \`GET /\` (3 essais chacune, 20 s max)"
+            echo "- À regarder : https://app.netlify.com (état du déploiement, incident Netlify), puis \`npm run rollback:netlify -- --restaurer precedent\` si le dernier déploiement est en cause."
+            echo
+            echo "Cette issue se referme d'elle-même quand la sonde repasse au vert. Label \`disponibilite\` : elle ne déclenche aucune correction automatique."
+          } > /tmp/dispo.md
+          if [ -n "${existing}" ]; then
+            gh issue comment "${existing}" --repo "${GITHUB_REPOSITORY}" --body-file /tmp/dispo.md
+          else
+            gh label create disponibilite --repo "${GITHUB_REPOSITORY}" --color "B60205" --description "Sonde de disponibilité du site servi" --force >/dev/null 2>&1 || true
+            gh issue create --repo "${GITHUB_REPOSITORY}" --title "${title}" --label disponibilite --body-file /tmp/dispo.md
+          fi
