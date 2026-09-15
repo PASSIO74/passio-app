@@ -59,8 +59,64 @@ Tant qu'elle n'est pas déployée, l'app fonctionne quand même : l'appel est be
 
 **Le client ne supprime plus rien avant le verdict** (ASTRA-12) : `doDeleteAccount` (app-02) appelle la fonction et lit `ok`. Le bloc de onze `delete()` par RLS qui la précédait effaçait les messages avant que la fonction ne les lise, et laissait un compte à moitié vidé sur un 409.
 
+## La barrière v2 : ce qui se passe pendant la purge, et après (2026-09-15, cinquième contre-revue)
+
+`migrations/migration_barriere_suppression_2026-09-15.sql` + `purge-compte.js` + `_shared/suppression-compte.js`.
+
+**Pendant.** `purgerCompte` RÉCLAME le compte (`reclamer_suppression(uid, jeton)` — une tentative
+vivante à la fois, sérialisée par verrou consultatif), ATTEND les transactions qui avaient franchi
+leur policy avant la marque (`attendre_ecritures_en_vol`, `pg_xact_status` sur les xids en cours,
+5 s au plus ; s'il en reste, la purge ÉCHOUE), puis efface et relit. Entre-temps un trigger
+`zz_barriere_suppression` (BEFORE INSERT OR UPDATE, toutes les tables de `TABLES_COMPTE`, toutes
+leurs colonnes d'identifiant, **tous les rôles**) refuse toute ligne portant l'identifiant — celle
+de l'appelant, celle d'un tiers (B suit A, B notifie A), l'anonyme (`client_errors`), un trigger
+privilégié (`follows_notifier`), la clé de service (`plafond.js`). Le refus a le code et le
+message d'un refus RLS (42501) : aucun oracle nouveau. La clause `not suppression_de_mon_compte()`
+dans les policies d'écriture (v1) est conservée et étendue aux quatre tables omises (ASTRA-39).
+
+**Fin d'opération, par jeton** (`terminer_suppression`) : `echec` lève la protection (compte
+utilisable, purge relançable) ; `purgee` la conserve (le compte Auth doit encore partir) ;
+`supprimee` la conserve (rétention). Une tentative tardive avec un autre jeton n'écrit rien
+(ASTRA-40) — et une purge dont le jeton a été repris n'est jamais `ok` : `delete-account` ne
+supprime pas le compte Auth sur la foi d'une relecture qui n'est plus la sienne.
+
+**Contrat de réponse** (ASTRA-42) — `ok:true` + `garantie:"barriere"` UNIQUEMENT après
+`deleteUser` réussi. Sinon `ok:false` et un `code` : `503 infrastructure_absente` (migration non
+appliquée : RIEN n'est purgé), `409 deja_en_cours | deja_supprimee | en_vol | incomplete |
+jeton_perdu | barriere`, `500 auth_non_supprime` (données purgées, compte Auth resté : protection
+conservée, relance possible, la suppression reprend à la purge — idempotente — puis à deleteUser).
+Le client (`doDeleteAccount`, app-02) lit le corps même sur non-2xx (`error.context`) et affiche
+un message par code ; « Compte supprimé » exige `garantie:"barriere"`.
+
+**Rétention du marqueur** (décision documentée, pas devinée) :
+- renouvellement des sessions : s'arrête à `deleteUser` (sessions et jetons de rafraîchissement
+  emportés avec `auth.users` — schéma GoTrue, `on delete cascade` ; **non mesuré sur la cible**) ;
+- jetons d'accès déjà signés : valides jusqu'à `exp` — durée configurée dans le tableau de bord
+  Auth (défaut Supabase 3600 s ; **non mesurée ici**) ; pendant ce temps PostgREST les accepte,
+  et c'est le trigger qui refuse ;
+- opérations en vol : attendues avant la purge (ci-dessus) ; celles qui commencent après
+  relisent la marque à chaque ordre (READ COMMITTED) et sont refusées ;
+- restauration / reprise : réinsérer une ligne d'un compte marqué est REFUSÉ par le trigger
+  tant que le marqueur existe — c'est voulu (ne pas ressusciter un compte supprimé depuis une
+  sauvegarde) et cela apparaît comme un conflit dans le verdict de restauration ;
+- règle de purge du marqueur : `purger_marqueurs_suppression(interval)` retire les `supprimee`
+  plus vieux que l'intervalle, refuse tout intervalle < 30 jours (durée de vie des artefacts de
+  sauvegarde, `sauvegarde.yml`). **Non planifiée** : la durée est une décision du responsable de
+  traitement (proposition : 45 jours = 30 jours de sauvegardes + marge). Un uuid seul, sans
+  ligne `auth.users`, sans contenu, est ce qui reste entre-temps.
+
+**Ordre de mise en ligne** : la migration D'ABORD (sinon la fonction répond 503 à tout le monde
+— c'est l'effet voulu d'ASTRA-42, pas un bug), la fonction ensuite, puis le client. Le staging
+doit recevoir la migration avant que `tests/e2e/suppression-compte.spec.js` (qui attend 200)
+y tourne contre la nouvelle fonction.
+
 ## Limites connues
 
+- Une session ouverte en REPEATABLE READ avant la marque et qui écrit ensuite échappe à la fois à
+  l'attente (pas de xid au moment de l'instantané) et à la relecture de la marque (instantané
+  figé). PostgREST ne l'offre pas aux clients ; c'est un chemin opérateur (psql), à connaître.
+- `attendre_ecritures_en_vol` compte des xids, sous-transactions comprises (savepoints,
+  blocs `exception`) : `en_vol_initial` peut dépasser le nombre de requêtes.
 - Un objet Storage sans `owner` (déposé par la clé admin, ou antérieur à la plateforme actuelle) n'appartient à personne : il n'est purgé que s'il vit sous un dossier `<dossier>/<uid>/` du seau `content`.
 - `client_errors` est purgée par la fonction (colonne `uid`) — si le schéma
   diffère, le DELETE échoue silencieusement sans bloquer la suppression du compte.

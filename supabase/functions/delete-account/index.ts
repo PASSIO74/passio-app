@@ -1,14 +1,22 @@
 // Edge Function PASSIO — delete-account
 // Supprime DÉFINITIVEMENT le compte auth de l'utilisateur appelant (auth.users),
-// après un dernier nettoyage best-effort des données restantes.
+// après une purge VÉRIFIÉE de ses données sous barrière (purge-compte.js).
 // Le client ne peut pas le faire lui-même : auth.admin exige la clé service_role,
 // qui ne doit JAMAIS être embarquée dans l'app. Voir docs/EDGE_FUNCTION_DELETE_ACCOUNT.md.
 //
 // Appel côté app : supa.functions.invoke("delete-account") avec la session active
 // (le JWT de l'utilisateur part dans le header Authorization).
+//
+// ⚠️ LE CONTRAT DE RÉPONSE VIT DANS `_shared/suppression-compte.js` (ASTRA-42,
+// cinquième contre-revue, 2026-09-15), testé par Node avec un faux client :
+// `ok: true` n'est rendu qu'une fois le compte Auth supprimé après une purge
+// vérifiée sous barrière ; sans infrastructure (migration non appliquée) la
+// réponse est 503 `infrastructure_absente` et RIEN n'est purgé. La v1 purgeait
+// « en le disant » et ce fichier jetait la note : HTTP 200 `ok:true`.
+// Ici : authentifier, construire le client de service, déléguer.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { purgerCompte } from "../_shared/purge-compte.js";
+import { traiterSuppression } from "../_shared/suppression-compte.js";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*", // la sécurité repose sur le JWT, pas sur l'origine
@@ -43,26 +51,9 @@ Deno.serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
-  // 3. Dernier nettoyage des données (le client l'a déjà fait via RLS,
-  //    ceci rattrape ce qui aurait échoué côté client).
-  // ⚠️ PURGE VÉRIFIÉE (AUTH-05 / SUP-10, 2026-09-14) — _shared/purge-compte.js.
-  // Avant : quinze delete() sans lire { error }, trois dossiers de médias sur
-  // huit, aucune pièce jointe de messagerie, dix-sept tables oubliées, puis le
-  // compte Auth supprimé et `ok: true` quoi qu'il arrive. Désormais : on purge,
-  // on RELIT, et le compte Auth ne part que si rien ne reste. Sinon 409 avec la
-  // liste des restes — le compte reste ouvert, la suppression est RELANÇABLE.
-  const purge = await purgerCompte(admin, uid);
-  if (!purge.ok) {
-    return json({ ok: false, error: "Suppression incomplète : le compte n'a pas été supprimé, réessaie.",
-                  echecs: purge.echecs, restes: purge.restes }, 409);
-  }
-
-  const { error: delErr } = await admin.auth.admin.deleteUser(uid);
-  if (delErr) {
-    return json({ error: "Échec de la suppression du compte : " + delErr.message }, 500);
-  }
-
-  return json({ ok: true, objets: purge.objets });
+  // 3. Purge vérifiée sous barrière → suppression Auth → rétention du marqueur.
+  const { status, body } = await traiterSuppression(admin, uid);
+  return json(body, status);
 });
 
 function json(body: unknown, status = 200): Response {
