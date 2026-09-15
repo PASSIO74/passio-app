@@ -188,11 +188,54 @@ export async function listerObjetsDuCompte(admin, uid) {
  * relecture (table:colonne=n, ou seau/prefixe=n, ou objets=n). `ok` ⇔ les deux
  * listes vides. `objets` = nombre d'objets Storage relevés par propriété.
  */
+// ⚠️ ASTRA-25 — LA BARRIÈRE SE POSE AVANT LE PREMIER COMPTAGE, ou la purge ne
+// peut pas finir. Effacer, relire, ré-effacer est une PASSE DE PLUS, pas une
+// barrière : une écriture qui arrive après le comptage de SA table et avant la
+// relecture finale survit, et `ok` est rendu quand même. Aucun nombre de passes
+// ne ferme cette fenêtre — le gel client (`_accountPurged`) ne vaut que pour CE
+// navigateur, et un second appareil, un onglet resté ouvert, une requête déjà
+// en vol ou un ancien jeton encore valide écrivent quand même (PostgREST ne
+// vérifie que la signature du jeton, pas le bannissement GoTrue).
+// `comptes_en_suppression` marque le compte ; les policies d'écriture le lisent
+// et REFUSENT. À partir de là, la relecture finale est SUFFISANTE.
+async function poserBarriere(admin, uid) {
+  try {
+    const r = await admin.from("comptes_en_suppression").upsert({ user_id: uid, motif: "delete-account" }, { onConflict: "user_id" });
+    if (r && r.error) {
+      const m = r.error.message || String(r.error.code || "erreur");
+      // Table absente = migration non appliquée. On le DIT et on continue :
+      // la purge d'avant reste possible, elle est simplement moins sûre. La
+      // taire ferait passer une purge sans barrière pour une purge avec.
+      return estTableAbsente(m) || estTableAbsente(r.error.code) ? { absente: m } : m;
+    }
+    return null;
+  } catch (e) { const m = (e && e.message) || "exception"; return estTableAbsente(m) ? { absente: m } : m; }
+}
+
+// ⚠️ ELLE SE LÈVE SI LA PURGE N'ABOUTIT PAS. Une purge interrompue doit pouvoir
+// être RELANCÉE, et un compte dont la suppression échoue définitivement doit
+// redevenir utilisable — le laisser marqué le condamnerait au silence sans que
+// personne l'ait décidé.
+async function leverBarriere(admin, uid) {
+  try { await admin.from("comptes_en_suppression").delete().eq("user_id", uid); } catch (e) {}
+}
+
 export async function purgerCompte(admin, uid) {
   const echecs = [];
   // Tables de la liste absentes de CET environnement : dit, jamais tu.
   const absentes = [];
   const restes = [];
+  const notes = [];
+
+  // ⓪ LA BARRIÈRE, AVANT TOUT COMPTAGE.
+  const barriere = await poserBarriere(admin, uid);
+  if (barriere && barriere.absente) {
+    notes.push("barrière de suppression ABSENTE (migration non appliquée) : une écriture tardive peut encore survivre à cette purge");
+  } else if (barriere) {
+    // On ne purge PAS sans barrière quand elle EXISTE mais refuse : ce serait
+    // se priver de la seule garantie qu'on ait, sans le savoir.
+    return { ok: false, echecs: [`barrière:pose (${barriere})`], restes: [], absentes: [], notes, objets: 0 };
+  }
 
   // ① Relever les objets Storage du compte PAR PROPRIÉTÉ — l'autorité, pas les
   //    messages. Fonction absente ou illisible : échec nommé, on ne devine rien.
@@ -250,5 +293,11 @@ export async function purgerCompte(admin, uid) {
     if (n !== 0) restes.push(`${table}:${col}=${n < 0 ? "illisible" : n}`);
   }
 
-  return { ok: echecs.length === 0 && restes.length === 0, echecs, restes, absentes, objets: objets.length };
+  const ok = echecs.length === 0 && restes.length === 0;
+  // ⚠️ LA BARRIÈRE NE SE LÈVE QUE SI LA PURGE N'A PAS ABOUTI. Sur un succès,
+  // le compte Auth part juste après (`delete-account`) : lever la marque
+  // rouvrirait l'écriture pendant la fenêtre qui sépare les deux, et c'est
+  // exactement la fenêtre qu'on vient de fermer.
+  if (!ok) await leverBarriere(admin, uid);
+  return { ok, echecs, restes, absentes, notes, barriere: barriere && barriere.absente ? "absente" : "posee", objets: objets.length };
 }
