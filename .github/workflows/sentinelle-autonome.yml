@@ -85,9 +85,7 @@ jobs:
               for (const e of r.ecarts) l.push("- ❌ " + e);
               if (!r.traitables.length && !r.ecarts.length) l.push("Aucun résidu traitable oublié.");
             }
-            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, l.join("
-") + "
-");
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, l.map((x) => x + String.fromCharCode(10)).join(""));
           '
 
       - name: Mode PR — on s'arrête là
