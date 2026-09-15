@@ -157,4 +157,25 @@ function natureArchive({ schemaPresent, schemaDdl, schemaEmpreinte, empreinteAtt
   return { complete, ddlValide, anomalies, notes, nature: complete ? "complète" : "partielle" };
 }
 
-module.exports = { pageComptes, paginationTerminee, etatSuspension, dureeBanResiduelle, suspensionRestauree, comparerMedias, verdictGlobalReprise, natureArchive };
+
+// ── ASTRA-26 : le propriétaire d'un objet Storage ────────────────────────
+// Écrire un propriétaire n'est pas l'avoir rendu : on RELIT, et on compare.
+// ⚠️ TROIS ÉTATS, PAS DEUX. « sans propriétaire dans l'archive » n'est ni un
+// succès ni un écart : c'est un objet déposé par `service_role` ou avant le
+// suivi — on ne lui en INVENTE pas, et on le compte à part. Déduire un
+// propriétaire d'une URL ou d'un texte de message serait refaire ASTRA-12.
+function comparerProprietaires(attendus, relus) {
+  const divergents = [], absents = [];
+  let conformes = 0, sansProprietaire = 0;
+  const carte = relus instanceof Map ? relus : new Map(Object.entries(relus || {}));
+  for (const [cle, att] of Object.entries(attendus || {})) {
+    if (!att || (!att.owner && !att.owner_id)) { sansProprietaire++; continue; }
+    const o = carte.get(cle);
+    if (!o) { absents.push(cle); continue; }
+    if (String(o.owner || "") === String(att.owner || "") && String(o.owner_id || "") === String(att.owner_id || "")) conformes++;
+    else divergents.push(cle);
+  }
+  return { conformes, sansProprietaire, divergents, absents, ok: divergents.length === 0 && absents.length === 0 };
+}
+
+module.exports = { comparerProprietaires, pageComptes, paginationTerminee, etatSuspension, dureeBanResiduelle, suspensionRestauree, comparerMedias, verdictGlobalReprise, natureArchive };
