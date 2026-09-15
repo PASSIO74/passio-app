@@ -177,7 +177,7 @@
       "preuve_attendue": "URL du run CI de main avec les deux pas.",
       "prochaine_etape": "Fusion de #473 (après #469) sur décision de Benjamin.",
       "etats": { "corrige": "oui", "teste": "oui", "deploye": "non", "relu_sur_cible": "non mesuré" },
-      "reexamen": { "statut": "en_attente", "le": "2026-09-15", "note": "La présence de scripts/lib/yaml-workflow.js (livré par #473) rend ce résidu traitable : sur la branche d'intégration et après fusion, le registre doit passer à planifie/ferme." }
+      "reexamen": { "statut": "planifie", "le": "2026-09-15", "note": "Réexaminé sur la branche d'intégration claude/astra5-integration : scripts/lib/yaml-workflow.js présent (#473 combiné), les pas « Gates de gouvernance » et « Toutes les suites unitaires » sont dans deploy.yml du SHA combiné. Fermeture possible seulement après fusion sur main et run CI de main vert (deploye, relu_sur_cible).", "chantier": "PR #473 (combinée dans claude/astra5-integration)" }
     },
     {
       "id": "RES-12",
