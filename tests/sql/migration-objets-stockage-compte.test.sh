@@ -119,7 +119,7 @@ contient "anon : permission denied" "permission denied" "$(EN anon "select count
 contient "authenticated : permission denied (un compte ne liste pas les fichiers d'un autre)" "permission denied" \
   "$(EN authenticated "select count(*) from public.objets_stockage_du_compte('$B')")"
 verifier "service_role : 4" "4" "$(EN service_role "select count(*) from public.objets_stockage_du_compte('$A')")"
-verifier "security definer, search_path vide" "t|t" \
+verifier "security definer, search_path vide" "true|true" \
   "$(Q "select prosecdef || '|' || (proconfig @> array['search_path=\"\"']) from pg_proc where oid = 'public.objets_stockage_du_compte(uuid)'::regprocedure")"
 
 echo "── ④ MUTATION : EXECUTE rendu à anon ─────────────────────────────────"
