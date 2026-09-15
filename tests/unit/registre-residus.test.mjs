@@ -178,6 +178,11 @@ test("⑦ réinjection : RES-06 remis « en_attente » alors que call_invites es
 
 test("⑧ réinjection : une PR pose le fichier attendu par RES-11 (scripts/lib/yaml-workflow.js) → rouge tant que le registre n'est pas réexaminé", () => {
   const dir = copieDepot();
+  // Le registre RÉEL peut déjà avoir réexaminé RES-11 (branche d'intégration,
+  // après fusion de #473) : la réinjection part toujours d'un « en_attente ».
+  const reg0 = JSON.parse(fs.readFileSync(path.join(dir, R.CHEMIN_REGISTRE), "utf8"));
+  reg0.residus.find((x) => x.id === "RES-11").reexamen = { statut: "en_attente", le: "2026-09-15", note: "pas encore réexaminé" };
+  fs.writeFileSync(path.join(dir, R.CHEMIN_REGISTRE), JSON.stringify(reg0));
   fs.writeFileSync(path.join(dir, "scripts/lib/yaml-workflow.js"), "// livré\n");
   const r = lancer(dir);
   assert.equal(r.status, 1, r.stdout);
