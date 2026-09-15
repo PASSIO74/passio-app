@@ -53,7 +53,7 @@ const EXCEPTIONS = {
   // n'est effacée que si la purge échoue (`leverBarriere`, purge-compte.js).
   // Ce qui reste est un uuid orphelin sans échéance : rétention À DÉCIDER,
   // écrite dans migration_barriere_suppression_2026-09-15.sql.
-  "comptes_en_suppression.user_id": "barrière de suppression : la purger la lèverait (purge-compte.js) — elle doit survivre au succès ; rétention de l'uuid orphelin à décider",
+  "comptes_en_suppression.user_id": "barrière de suppression (v2, état par tentative) : la purger la lèverait — elle survit au succès (statut supprimee) ; rétention par purger_marqueurs_suppression(interval), durée à décider (proposition 45 j), non planifiée",
   "reports.target_id": "polymorphe (publication, rencontre, compte…) : ce n'est pas un identifiant de compte en soi",
 };
 
