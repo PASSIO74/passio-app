@@ -125,6 +125,7 @@ const ATTENDU = [
   ["POST", "/orchestrator/tasks", "git_mutate"],
   ["GET", "/audit", "audit"],
   ["GET", "/readiness", "@auth"],
+  ["GET", "/residus", "@auth"],           // registre des résidus (lecture seule, même évaluateur que la CI)
 ];
 
 const cle = (m, r) => `${m} ${r}`;
