@@ -316,6 +316,16 @@ jobs:
       - name: Audits statiques (isolation des suites e2e)
         run: node scripts/audit-tests-isolation.js --ci
 
+      # Registre structuré des résidus (cinquième contre-revue Astra, 2026-09-15,
+      # mandat §9). Un résidu dont la condition de réexamen est satisfaite par le
+      # dépôt (la table dont il dépend vient d'être déclarée, le fichier attendu
+      # est arrivé, l'échéance est passée) et que le registre laisse « en
+      # attente » rend ce job rouge : le réexamen doit être ÉCRIT, pas supposé.
+      # Une fermeture sans les quatre états (corrigé, testé, déployé, relu sur la
+      # cible) est refusée de la même façon. Aucun secret, aucun réseau.
+      - name: Registre des résidus (traitables et fermetures)
+        run: node scripts/audit-registre-residus.js --ci
+
       # Referentiel plat des passions (lot flat_passions_v1).
       # Deux controles, et le second est le plus important : le JSON servi au
       # navigateur et la migration SQL sont GENERES depuis data/passions/*.js.
