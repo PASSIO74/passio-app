@@ -7,7 +7,7 @@
 //
 //   node scripts/restaurer-donnees.js --archive <dossier> --projet <ref>
 //        [--schema <fichier.sql>] [--sans-comptes] [--sans-medias]
-//        [--verifier] [--purger]
+//        [--verifier] [--purger] [--preuve <fichier.json>]
 //
 // CE QU'IL FAIT, dans l'ordre — et chaque étape rend un nombre qu'on compare :
 //   ① le SCHÉMA : les tables du manifeste doivent exister sur la cible ; sinon,
@@ -358,6 +358,19 @@ async function medias(ctx) {
   // remet celle du schéma — l'archive ne doit rien desserrer derrière elle.
   const limites = await sql(ctx, "select id, file_size_limit from storage.buckets");
   await sql(ctx, "update storage.buckets set file_size_limit = null");
+  // ⚠️ ASTRA-18 (contre-revue Astra, 2026-09-15) : le rétablissement était
+  // APRÈS la boucle, hors de tout `finally` — une exception d'upload laissait
+  // tous les seaux sans limite. Il est garanti ici, borné aux seaux lus, et un
+  // rétablissement refusé est un ÉCHEC nommé (la restauration ne rend pas OK).
+  const retablir = async () => {
+    const ratés = [];
+    for (const b of limites) {
+      try { await sql(ctx, `update storage.buckets set file_size_limit = ${b.file_size_limit === null ? "null" : Number(b.file_size_limit)} where id = ${litteral(b.id)}`); }
+      catch (e) { ratés.push(`limite du seau ${b.id} non rétablie : ${(e && e.message) || e}`); }
+    }
+    return ratés;
+  };
+  try {
   for (const seau of fs.readdirSync(base)) {
     if (!existants.has(seau)) {
       const r = await fetch(`${ctx.url}/storage/v1/bucket`, { method: "POST", headers: entetes(ctx.cle, { "Content-Type": "application/json" }),
@@ -374,14 +387,74 @@ async function medias(ctx) {
       if (r.ok) envoyes++; else refus.push(`${seau}/${rel} : HTTP ${r.status} ${(await r.text()).slice(0, 120)}`);
     }
   }
-  for (const b of limites) await sql(ctx, `update storage.buckets set file_size_limit = ${b.file_size_limit === null ? "null" : Number(b.file_size_limit)} where id = ${litteral(b.id)}`);
+  } finally {
+    for (const x of await retablir()) refus.push(x);
+  }
   console.log(`④ médias : ${envoyes} fichier(s) déposé(s), ${refus.length} refus.`);
   for (const x of refus.slice(0, 20)) console.log("   ✗ " + x);
   return refus.length === 0;
 }
 
 // ───────────────────────────── ⑤ verdict ─────────────────────────────
+// ⚠️ ASTRA-16 (contre-revue Astra, 2026-09-15) : « mêmes quantités » n'est
+// pas « mêmes données ». Le verdict comptait les lignes, les comptes et les
+// objets : huit AUTRES comptes, un contenu différent, un objet vide de même
+// nom passaient pour une restauration prouvée — et `on conflict do nothing`
+// laisse en place une ligne divergente sans rien dire. On compare désormais :
+//   · les LIGNES : clé par clé (le tri du manifeste = la clé primaire), et le
+//     CONTENU de chaque ligne, relu par PostgREST — la même sérialisation que
+//     l'export — et canonisé (clés triées) ;
+//   · les COMPTES : les identifiants de l'archive, pas leur nombre ;
+//   · les MÉDIAS : nom, taille et empreinte (le `eTag` du Storage est le md5
+//     d'un dépôt en une passe) contre le fichier de l'archive.
+// Les deux fonctions de comparaison sont PURES et éprouvées dans
+// tests/unit/restaurer-donnees.test.mjs.
+function canoniser(v) {
+  if (Array.isArray(v)) return v.map(canoniser);
+  if (v && typeof v === "object") { const o = {}; for (const k of Object.keys(v).sort()) o[k] = canoniser(v[k]); return o; }
+  return v;
+}
+function cleDe(ligne, tri) { return tri.split(",").map((c) => String(ligne[c.trim()])).join("\u0001"); }
+/** Compare deux jeux de lignes par clé et par contenu. Rend { manquantes, divergentes, enTrop }. */
+function comparerLignes(archive, cible, tri) {
+  const a = new Map(), c = new Map();
+  for (const l of archive || []) a.set(cleDe(l, tri), JSON.stringify(canoniser(l)));
+  // Une colonne ajoutée à la cible APRÈS l'archive (migration, colonne
+  // calculée) n'est pas une divergence : on compare la cible sur les colonnes
+  // que l'archive porte. Une colonne de l'archive absente de la cible, si.
+  const colonnes = new Set(); for (const l of archive || []) for (const k of Object.keys(l)) colonnes.add(k);
+  for (const l of cible || []) { const r = {}; for (const k of colonnes) if (k in l) r[k] = l[k]; c.set(cleDe(l, tri), JSON.stringify(canoniser(r))); }
+  const manquantes = [], divergentes = [], enTrop = [];
+  for (const [k, v] of a) { if (!c.has(k)) manquantes.push(k); else if (c.get(k) !== v) divergentes.push(k); }
+  for (const k of c.keys()) if (!a.has(k)) enTrop.push(k);
+  return { manquantes, divergentes, enTrop };
+}
+/** Compare les médias de l'archive aux objets de la cible ({ name, taille, etag }). */
+function comparerMedias(fichiers, objets) {
+  const c = new Map((objets || []).map((o) => [o.name, o]));
+  const manquants = [], divergents = [];
+  for (const f of fichiers || []) {
+    const o = c.get(f.name);
+    if (!o) { manquants.push(f.name); continue; }
+    const tailleOk = o.taille == null || Number(o.taille) === f.taille;
+    const etagOk = !o.etag || !f.md5 || String(o.etag).replace(/"/g, "").toLowerCase() === f.md5;
+    if (!tailleOk || !etagOk) divergents.push(f.name);
+  }
+  return { manquants, divergents, enTrop: [...c.keys()].filter((n) => !(fichiers || []).some((f) => f.name === n)) };
+}
+async function lignesCible(ctx, t, tri) {
+  const out = [];
+  for (let debut = 0; ; debut += 1000) {
+    const r = await fetch(`${ctx.url}/rest/v1/${t}?select=*&order=${encodeURIComponent(tri)}&limit=1000&offset=${debut}`, { headers: entetes(ctx.cle) });
+    if (!r.ok) throw new Error(`${t} : relecture HTTP ${r.status}`);
+    const l = await r.json(); out.push(...l);
+    if (l.length < 1000) return out;
+  }
+}
 async function verdict(ctx) {
+  // --preuve <fichier> : le verdict détaillé, écrit en JSON — la preuve DURABLE
+  // que la contre-revue réclamait (commande, cible, résultats par table).
+  const preuve = { genere_le: new Date().toISOString(), cible: ctx.ref, nom: ctx.nom, archive: ctx.archive, manifeste_genere_le: ctx.man.genere_le, commande: process.argv.slice(2).join(" "), tables: [], comptes: null, medias: null };
   const noms = tablesRetenues(Object.keys(ctx.man.tables));
   const presentes = await tablesCible(ctx);
   const q = noms.filter((t) => presentes.has(t)).map((t) => `select '${t}' t, count(*)::int n from public."${t}"`).join(" union all ");
@@ -390,38 +463,72 @@ async function verdict(ctx) {
   console.log("\n⑤ VERDICT — table | manifeste | cible");
   for (const t of noms) {
     const att = ctx.man.tables[t].exporte, obt = comptes.has(t) ? comptes.get(t) : "ABSENTE";
-    const ok = obt === att;
+    let ok = obt === att, detail = "";
+    if (ok && obt > 0) {
+      // Même nombre : on compare les DONNÉES (ASTRA-16).
+      const tri = ctx.man.tables[t].tri || "id";
+      const d = comparerLignes(lireNdjson(path.join(ctx.archive, t + ".ndjson")), await lignesCible(ctx, t, tri), tri);
+      if (d.manquantes.length || d.divergentes.length || d.enTrop.length) {
+        ok = false;
+        detail = ` — ${d.manquantes.length} manquante(s), ${d.divergentes.length} divergente(s), ${d.enTrop.length} en trop` + (d.divergentes.length ? ` (ex. ${d.divergentes[0]})` : "");
+      } else detail = " — contenu identique";
+    }
     if (!ok) ecarts++;
-    console.log(`   ${ok ? "OK   " : "ECART"} ${t} | ${att} | ${obt}`);
+    preuve.tables.push({ table: t, attendu: att, obtenu: obt, ok, detail: detail.replace(/^ — /, "") });
+    console.log(`   ${ok ? "OK   " : "ECART"} ${t} | ${att} | ${obt}${detail}`);
   }
   if (ctx.man.comptes != null && !sansComptes()) {
-    let n = 0;
+    // Les IDENTIFIANTS des comptes, pas leur nombre (ASTRA-16).
+    const ids = new Set();
     for (let page = 1; ; page++) {
       const d = await (await fetch(`${ctx.url}/auth/v1/admin/users?page=${page}&per_page=200`, { headers: entetes(ctx.cle) })).json();
-      n += (d.users || []).length; if ((d.users || []).length < 200) break;
+      for (const u of d.users || []) ids.add(u.id);
+      if ((d.users || []).length < 200) break;
     }
-    const ok = n === ctx.man.comptes; if (!ok) ecarts++;
-    console.log(`   ${ok ? "OK   " : "ECART"} _auth_users | ${ctx.man.comptes} | ${n}`);
+    const attendus = lireNdjson(path.join(ctx.archive, "_auth_users.ndjson")).map((u) => u.id);
+    const manquants = attendus.filter((id) => !ids.has(id));
+    const ok = ids.size === ctx.man.comptes && manquants.length === 0; if (!ok) ecarts++;
+    preuve.comptes = { attendu: ctx.man.comptes, obtenu: ids.size, identifiants_absents: manquants.length, ok };
+    console.log(`   ${ok ? "OK   " : "ECART"} _auth_users | ${ctx.man.comptes} | ${ids.size}${manquants.length ? ` — ${manquants.length} identifiant(s) de l'archive absent(s)` : " — mêmes identifiants"}`);
   }
   if (ctx.man.medias && !sansMedias()) {
-    const [{ n }] = await sql(ctx, "select count(*)::int n from storage.objects where metadata is not null");
-    const ok = n === ctx.man.medias.fichiers; if (!ok) ecarts++;
-    console.log(`   ${ok ? "OK   " : "ECART"} _storage | ${ctx.man.medias.fichiers} | ${n}`);
+    // Nom, taille et empreinte de chaque média (ASTRA-16).
+    const objets = (await sql(ctx, "select bucket_id || '/' || name as name, metadata->>'size' as taille, metadata->>'eTag' as etag from storage.objects where metadata is not null"));
+    const base = path.join(ctx.archive, "_storage");
+    const fichiers = [];
+    if (fs.existsSync(base)) for (const seau of fs.readdirSync(base)) for (const rel of fichiersSous(path.join(base, seau))) {
+      const buf = fs.readFileSync(path.join(base, seau, rel));
+      fichiers.push({ name: seau + "/" + rel, taille: buf.length, md5: require("crypto").createHash("md5").update(buf).digest("hex") });
+    }
+    const d = comparerMedias(fichiers, objets);
+    const ok = objets.length === ctx.man.medias.fichiers && !d.manquants.length && !d.divergents.length; if (!ok) ecarts++;
+    preuve.medias = { attendu: ctx.man.medias.fichiers, obtenu: objets.length, manquants: d.manquants.length, divergents: d.divergents.length, en_trop: d.enTrop.length, ok };
+    console.log(`   ${ok ? "OK   " : "ECART"} _storage | ${ctx.man.medias.fichiers} | ${objets.length} — ${d.manquants.length} manquant(s), ${d.divergents.length} divergent(s) (taille ou empreinte), ${d.enTrop.length} en trop`);
   }
-  console.log(ecarts ? `\n❌ ${ecarts} écart(s) : la restauration n'est PAS prouvée.` : `\n✅ restauration prouvée sur ${ctx.ref} (${ctx.nom}) : chaque compte de l'archive est retrouvé sur la cible.`);
+  preuve.ecarts = ecarts; preuve.prouvee = ecarts === 0;
+  const fichierPreuve = arg("--preuve");
+  if (fichierPreuve) { fs.writeFileSync(fichierPreuve, JSON.stringify(preuve, null, 2) + "\n"); console.log(`   preuve écrite : ${fichierPreuve}`); }
+  console.log(ecarts ? `\n❌ ${ecarts} écart(s) : la restauration n'est PAS prouvée.` : `\n✅ restauration prouvée sur ${ctx.ref} (${ctx.nom}) : lignes, comptes et médias de l'archive retrouvés à l'identique sur la cible.`);
   return ecarts === 0;
 }
 
 // ───────────────────────────── purge ─────────────────────────────
+// ⚠️ ASTRA-17 (contre-revue Astra, 2026-09-15) : une suppression refusée
+// (HTTP 500 sur un compte ou un objet) laissait la purge « terminer
+// normalement ». Chaque refus est compté, puis on RELIT — tables, comptes,
+// objets — et tout reste est un échec (code 1). Une copie de données
+// personnelles qui reste sur le staging n'est pas une purge.
 async function purger(ctx) {
+  const refus = [];
   const presentes = [...await tablesCible(ctx)];
   if (presentes.length) await sql(ctx, `truncate ${presentes.map((t) => `public."${t}"`).join(", ")} cascade;`);
   let supprimes = 0;
   for (;;) {
     const d = await (await fetch(`${ctx.url}/auth/v1/admin/users?page=1&per_page=200`, { headers: entetes(ctx.cle) })).json();
     const lot = d.users || []; if (!lot.length) break;
-    for (const u of lot) { const r = await fetch(`${ctx.url}/auth/v1/admin/users/${u.id}`, { method: "DELETE", headers: entetes(ctx.cle) }); if (r.ok) supprimes++; }
-    if (lot.length < 200) break;
+    for (const u of lot) { const r = await fetch(`${ctx.url}/auth/v1/admin/users/${u.id}`, { method: "DELETE", headers: entetes(ctx.cle) }); if (r.ok) supprimes++; else refus.push(`compte ${u.id} : HTTP ${r.status}`); }
+    // Une page entière refusée : on ne boucle pas sur le même refus.
+    if (lot.length < 200 || lot.every((u) => refus.some((x) => x.startsWith("compte " + u.id)))) break;
   }
   // Le Storage refuse un DELETE SQL direct (`storage.protect_delete`, mesuré) :
   // on lit la liste en SQL et on retire par l'API, seau par seau.
@@ -431,13 +538,22 @@ async function purger(ctx) {
   let retires = 0;
   for (const [seau, noms] of parSeau) for (let i = 0; i < noms.length; i += 100) {
     const r = await fetch(`${ctx.url}/storage/v1/object/${seau}`, { method: "DELETE", headers: entetes(ctx.cle, { "Content-Type": "application/json" }), body: JSON.stringify({ prefixes: noms.slice(i, i + 100) }) });
-    if (r.ok) retires += (await r.json()).length; else console.log(`   ✗ ${seau} : HTTP ${r.status} ${(await r.text()).slice(0, 120)}`);
+    if (r.ok) retires += (await r.json()).length; else { const m = `${seau} : HTTP ${r.status} ${(await r.text()).slice(0, 120)}`; console.log("   ✗ " + m); refus.push(m); }
   }
-  console.log(`purge de ${ctx.ref} : ${presentes.length} table(s) vidée(s), ${supprimes} compte(s) supprimé(s), ${retires} objet(s) Storage retiré(s).`);
+  console.log(`purge de ${ctx.ref} : ${presentes.length} table(s) vidée(s), ${supprimes} compte(s) supprimé(s), ${retires} objet(s) Storage retiré(s)${refus.length ? `, ${refus.length} REFUS` : ""}.`);
+  // Relecture indépendante : ce qui reste est nommé, et c'est un échec.
+  const restes = [];
+  if (presentes.length) for (const r of await sql(ctx, presentes.map((t) => `select '${t}' t, count(*)::int n from public."${t}"`).join(" union all "))) if (r.n) restes.push(`${r.t}=${r.n}`);
+  const c = await (await fetch(`${ctx.url}/auth/v1/admin/users?page=1&per_page=1`, { headers: entetes(ctx.cle) })).json();
+  if ((c.users || []).length) restes.push("comptes>0");
+  const [{ n }] = await sql(ctx, "select count(*)::int n from storage.objects where metadata is not null");
+  if (n) restes.push(`objets=${n}`);
+  if (refus.length || restes.length) { console.log(`❌ purge INCOMPLÈTE — refus : ${refus.length}, restes : ${restes.join(" ") || "aucun"}`); process.exitCode = 1; }
+  else console.log("✅ purge relue : 0 ligne, 0 compte, 0 objet.");
 }
 
 // ───────────────────────────── main ─────────────────────────────
-module.exports = { lots, litteral, ordreInsert, ordreLigneALigne, PROD_REF, LOT_OCTETS };
+module.exports = { lots, litteral, ordreInsert, ordreLigneALigne, canoniser, comparerLignes, comparerMedias, PROD_REF, LOT_OCTETS };
 if (require.main === module) (async () => {
   const ctx = await contexte();
   console.log(`cible : ${ctx.ref} (« ${ctx.nom} »)${ctx.archive ? ` ← archive ${ctx.archive}` : ""}`);

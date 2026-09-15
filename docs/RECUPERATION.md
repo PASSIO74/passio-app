@@ -48,6 +48,21 @@ Puis la cible a été **purgée** (`--purger`) : une copie des données réelles
 5. **Les privilèges ne sont pas dans les policies.** Une reconstruction « tables + policies » rend `events.address` lisible sans compte (ce ne sont que des GRANT de colonnes qui le protègent) et `is_conv_member` appelable par `anon` — Supabase donne EXECUTE à PUBLIC à la création, un `revoke … from anon` seul ne ferme rien. Les vues sans `security_invoker` ressortaient en `security_definer_view ERROR`. Le DDL porte désormais privilèges de table, de colonne, d'EXECUTE (PUBLIC révoqué d'abord) et options de vue — c'est la différence entre « la même structure » et « la même frontière ».
 6. **Le Storage refuse un `DELETE` SQL direct** (`storage.protect_delete`) : la purge passe par l'API, seau par seau. Et `SCHEMA_PROD_REFERENCE.sql` (08/2026) comme le brouillon `00_ORIGINE_PROD.sql` décrivent un état de 35 tables et 12 fonctions — la production en a 43 et 50. Une photographie ne vaut que datée.
 
+## Ce que le verdict compare depuis le 2026-09-15 — et ce qu'il ne comparait pas (ASTRA-16/17/18)
+
+La contre-revue du 15/09 a montré que le verdict du 14/09 comparait des **compteurs** : mêmes quantités de lignes, de comptes et d'objets. Huit autres identités, une ligne au contenu différent (`on conflict do nothing` laisse en place une ligne divergente), un objet vide de même nom : « restauration prouvée ». Ce que `--verifier` compare désormais :
+
+- **les lignes, clé par clé et contenu compris** — la cible est relue par PostgREST (la même sérialisation que l'export), chaque ligne est canonisée (clés triées) et comparée à sa jumelle de l'archive sur les colonnes que l'archive porte (une colonne née après l'archive n'est pas une divergence ; une colonne de l'archive absente de la cible, si). Sortie : `manquantes / divergentes / en trop`, avec un exemple.
+- **les comptes par identifiant** — les `id` de `_auth_users.ndjson` doivent tous être là, pas seulement le bon nombre.
+- **les médias par nom, taille et empreinte** — le `eTag` du Storage est le md5 d'un dépôt en une passe ; il est comparé au md5 du fichier de l'archive.
+- **`--preuve <fichier.json>`** écrit le verdict détaillé (commande, cible, archive, résultat par table) : c'est la preuve **durable**, celle qui manquait — la première est `.passio/audits/BILAN_PASSIO_09-26/preuves/restauration/2026-09-15-staging-referentiels.json`.
+
+Mesuré sur le staging le 15/09 : `passions` (5 007), `passion_relations` (10 012), `access_policies` — « contenu identique » ; puis **une seule étiquette modifiée** en base sur 5 007 → `ECART passions | 5007 | 5007 — 0 manquante(s), 1 divergente(s), 0 en trop (ex. musique)`. Le compteur ne l'aurait jamais vu.
+
+Deux autres défauts du même lot : la **purge** (`--purger`) comptait ses refus sans les dire et « terminait normalement » sur des HTTP 500 — chaque refus est nommé, la cible est **relue** (tables, comptes, objets) et tout reste rend le code 1 (ASTRA-17, non exercé en direct : le staging portait les référentiels dont la CI a besoin) ; et les **limites de taille des seaux**, levées le temps du dépôt des médias, étaient rétablies hors de tout `finally` — une exception d'upload laissait les seaux sans plafond ; le rétablissement est garanti, borné aux seaux lus, et un rétablissement refusé est un échec (ASTRA-18).
+
+Les comparaisons sont pures et éprouvées : `tests/unit/restaurer-donnees.test.mjs` ④ à ④ quater (contenu différent à quantités égales, autres identités, objet vide de même nom, colonne née après l'archive).
+
 ## Le retour arrière APPLICATIF, exercé le même soir (EXP-03, moitié « rollback » de TCI-03)
 
 Deux chemins, et ils ne servent pas la même urgence :
