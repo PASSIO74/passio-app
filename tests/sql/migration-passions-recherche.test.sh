@@ -103,6 +103,12 @@ Q "update public.passions set label = 'Zébulonnerie' where id = (select id from
 contient "un libellé renommé est recalculé sans accent" "zebulonnerie" "$(Q "select recherche from public.passions where label='Zébulonnerie'")"
 
 echo "── ④ le plan lit l'index"
+# ⚠️ Sur une base jetable, le socle vient d'être inséré et le planificateur n'a
+# AUCUNE statistique : il estime 25 lignes actives sur 5 001 et préfère l'index
+# de statut au trigramme — rouge en CI le 15/09 alors que la migration est
+# juste. `analyze` donne au plan les chiffres réels ; en production l'autovacuum
+# les tient à jour.
+Q "analyze public.passions" >/dev/null
 plan=$(Q "explain select * from public.passions p where p.status='active' and (p.recherche like '%rando%' or p.normalized_label % 'rando')")
 contient "Bitmap Index Scan sur passions_recherche_trgm" "passions_recherche_trgm" "$plan"
 contient "…et sur passions_normalized_trgm (le flou)" "passions_normalized_trgm" "$plan"
