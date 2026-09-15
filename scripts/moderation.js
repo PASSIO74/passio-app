@@ -64,7 +64,7 @@ const fs = require("fs");
 const path = require("path");
 const { configAdmin } = require("../tests/e2e/compte-e2e.js");
 const { lireToutesLesPages } = require("./lib/pagination-rest.js");
-const { planRetrait, planSuspension, planLevee, notificationPourCible, texteDecision, notificationPourSignalant, statutApresAction } = require("./lib/moderation-decision.js");
+const { planRetrait, planSuspension, planLevee, notificationPourCible, texteDecision, notificationPourSignalant, statutApresAction, verdictRelectureSuspension } = require("./lib/moderation-decision.js");
 
 const argv = process.argv.slice(2);
 const commande = argv[0] && !argv[0].startsWith("--") ? argv[0] : "lister";
@@ -324,9 +324,13 @@ async function suspendre(cfg) {
   if (!r.ok) sortir(`❌ ${r.status} en suspendant (${plan.methode} ${plan.chemin})\n${corps.slice(0, 400)}`);
   let jusqua = null; try { jusqua = JSON.parse(corps).banned_until || null; } catch (e) {}
   // ⚠️ On RELIT : le verdict est ce que GoTrue a écrit, pas ce qu'on a demandé.
-  const relu = await fetch(`${cfg.url}/auth/v1/admin/users/${uid}`, { headers: { apikey: cfg.cle, Authorization: `Bearer ${cfg.cle}` } }).then((x) => x.json()).catch(() => null);
-  const banni = relu && relu.banned_until && new Date(relu.banned_until).getTime() > Date.now();
-  if (!banni) sortir(`❌ Relecture : \`banned_until\` n'est pas posé (${relu && relu.banned_until}) — le compte n'est PAS suspendu.`);
+  // Ce chemin-ci échouait déjà FERMÉ (`if (!banni) sortir`) — mais par DIRECTION,
+  // pas par contrôle : il ne lisait ni `r.ok` ni l'identité du compte relu.
+  // Les deux gestes partagent désormais la même décision (ASTRA-38).
+  const vs = verdictRelectureSuspension(await relireCompte(cfg, uid), uid, "suspendu", new Date());
+  if (!vs.verifie) sortir(`❌ MODIFICATION NON VÉRIFIÉE — ${vs.motif}.\n   Ne pas annoncer une suspension qu'on n'a pas constatée.`);
+  if (!vs.conforme) sortir(`❌ Relecture : ${vs.motif}.`);
+  const relu = { banned_until: vs.jusqu };
   console.log(`✅ ${plan.libelle} (${abrege(uid)}), jusqu'au ${relu.banned_until}.`);
   const H = { apikey: cfg.cle, Authorization: `Bearer ${cfg.cle}`, "Content-Type": "application/json", Prefer: "return=minimal" };
   const j = await fetch(`${cfg.url}/rest/v1/moderation_actions`, { method: "POST", headers: H, body: JSON.stringify({ report_id: report ? report.id : null, action: "suspension", target_type: "user", target_id: uid, note: (note ? String(note) + " · " : "") + plan.jours + " j, jusqu'au " + relu.banned_until }) });
@@ -349,6 +353,18 @@ async function suspendre(cfg) {
   }
 }
 
+// ⚠️ ASTRA-38 — RELIRE, OU DIRE QU'ON N'A PAS PU. Cette fonction ne masque rien :
+// une panne réseau, un refus HTTP et un corps illisible sont TROIS faits
+// distincts, et aucun n'est un succès. La décision est dans
+// `scripts/lib/moderation-decision.js` (`verdictRelectureSuspension`).
+async function relireCompte(cfg, uid) {
+  try {
+    const r = await fetch(`${cfg.url}/auth/v1/admin/users/${uid}`, { headers: { apikey: cfg.cle, Authorization: `Bearer ${cfg.cle}` } });
+    let corps = null; try { corps = JSON.parse(await r.text()); } catch (e) { corps = undefined; }
+    return { ok: r.ok, status: r.status, corps };
+  } catch (e) { return { reseau: e && e.message ? e.message : String(e) }; }
+}
+
 // LÈVE une suspension avant terme : `--uid <compte>` [--note].
 async function lever(cfg) {
   const uid = opt("uid"), note = opt("note");
@@ -356,11 +372,16 @@ async function lever(cfg) {
   if (!plan) sortir("❌ " + raison);
   const r = await fetch(`${cfg.url}/${plan.chemin}`, { method: plan.methode, headers: { apikey: cfg.cle, Authorization: `Bearer ${cfg.cle}`, "Content-Type": "application/json" }, body: JSON.stringify(plan.corps) });
   if (!r.ok) sortir(`❌ ${r.status} en levant la suspension\n${(await r.text()).slice(0, 400)}`);
-  const relu = await fetch(`${cfg.url}/auth/v1/admin/users/${uid}`, { headers: { apikey: cfg.cle, Authorization: `Bearer ${cfg.cle}` } }).then((x) => x.json()).catch(() => null);
-  const encore = relu && relu.banned_until && new Date(relu.banned_until).getTime() > Date.now();
-  if (encore) sortir(`❌ Relecture : \`banned_until\` = ${relu.banned_until}, la suspension tient encore.`);
-  console.log(`✅ ${plan.libelle} (${abrege(uid)}).`);
-  const j = await fetch(`${cfg.url}/rest/v1/moderation_actions`, { method: "POST", headers: { apikey: cfg.cle, Authorization: `Bearer ${cfg.cle}`, "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify({ action: "levee", target_type: "user", target_id: uid, note: note ? String(note).slice(0, 500) : null }) });
+  const v = verdictRelectureSuspension(await relireCompte(cfg, uid), uid, "levee", new Date());
+  // ⚠️ AVANT : tout ce qui n'était pas « encore suspendu » valait « levée ». Une
+  // panne réseau, un 403 et un corps d'erreur JSON annonçaient donc tous trois
+  // un succès. Désormais : non vérifié ≠ levé, et ça sort en erreur.
+  if (!v.verifie) sortir(`❌ MODIFICATION NON VÉRIFIÉE — ${v.motif}.\n   Le PUT a été accepté, mais l'état du compte ${abrege(uid)} n'a pas pu être relu : ne pas annoncer une levée qu'on n'a pas constatée.`);
+  if (!v.conforme) sortir(`❌ Relecture : ${v.motif}.`);
+  console.log(`✅ ${plan.libelle} (${abrege(uid)}) — relu : aucune suspension active.`);
+  // ⚠️ LE JOURNAL DIT LE RÉSULTAT RÉEL, pas l'intention : il n'est écrit que
+  // sur un verdict CONSTATÉ (les deux sorties ci-dessus l'ont déjà empêché).
+  const j = await fetch(`${cfg.url}/rest/v1/moderation_actions`, { method: "POST", headers: { apikey: cfg.cle, Authorization: `Bearer ${cfg.cle}`, "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify({ action: "levee", target_type: "user", target_id: uid, note: (note ? String(note).slice(0, 460) + " · " : "") + "levée relue et constatée" }) });
   console.log(j.ok ? "   📒 journal : levée consignée." : `   ⚠️  journal : ${j.status} ${(await j.text()).slice(0, 200)}`);
 }
 
