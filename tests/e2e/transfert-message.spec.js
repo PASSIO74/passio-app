@@ -36,7 +36,9 @@ async function preparer(page, reponse) {
     ];
     saveConversationsNow();
     window._forwardSrc = { convId: "conv_src", msgId: "m_src" };
-    MY_UID = "u_moi"; window.MY_UID = "u_moi";
+    // Un compte RÉEL (uuid) : depuis AUTH-06, une entrée de file sans propriétaire n'est
+    // ni rejouée ni adoptée — un `u_<aléatoire>` ne prouve aucun compte (2026-09-15).
+    MY_UID = "3f2a9c64-5b71-4e2d-8a10-9c7b6d5e4f31"; window.MY_UID = MY_UID;
     window.__inserts = [];
     // ⚠️ LE STUB RETIENT LA TABLE, ET C'EST INDISPENSABLE (2026-09-03).
     // Il l'ignorait : `from()` ne regardait pas son argument, donc `__inserts`
