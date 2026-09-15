@@ -140,10 +140,17 @@ async function exporterComptes(cfg, dossier) {
  * centaines. Une archive qui les laisse derrière n'est pas une sauvegarde.
  * La liste n'est pas récursive côté API : on descend les dossiers à la main.
  */
+/** Taille de page de l'inventaire des propriétaires (sous tout plafond `max-rows` plausible). */
+const PAGE_PROPRIETAIRES = 500;
 async function exporterMedias(cfg, dossier, journal) {
   const base = path.join(dossier, "_storage");
   const seaux = await (await fetch(`${cfg.url}/storage/v1/bucket`, { headers: entetes(cfg.cle) })).json();
   let fichiers = 0, octets = 0, echecs = 0;
+  // ⚠️ ASTRA-55 — L'INDEX : nom, taille et empreinte de CHAQUE objet archivé, écrit
+  // par la sauvegarde. C'est lui, pas le disque, qui dit ce que l'archive DOIT
+  // contenir : le vérificateur et la restauration y confrontent les fichiers
+  // (une archive endommagée après coup se voit) ET la cible.
+  const index = {};
 
   for (const seau of seaux) {
     const aVisiter = [""];
@@ -168,6 +175,7 @@ async function exporterMedias(cfg, dossier, journal) {
           fs.mkdirSync(path.dirname(dest), { recursive: true });
           fs.writeFileSync(dest, buf);
           fichiers++; octets += buf.length;
+          index[seau.name + "/" + chemin] = { taille: buf.length, md5: crypto.createHash("md5").update(buf).digest("hex") };
         }
         if (lot.length < 100) break;
         debut += 100;
@@ -193,24 +201,49 @@ async function exporterMedias(cfg, dossier, journal) {
   // déclare PARTIELLE sur ce point — elle ne se tait pas, et elle n'échoue pas
   // non plus : une sauvegarde sans les propriétaires vaut mieux que pas de
   // sauvegarde, à condition que la reprise sache qu'elle ne pourra pas les rendre.
+  // ⚠️ ASTRA-45 (cinquième contre-revue, 15/09) — UN SEUL APPEL N'EST PAS UN
+  // INVENTAIRE. PostgREST plafonne toute réponse à `max-rows` (1 000 par défaut
+  // sur Supabase, valeur de production NON MESURÉE ici) : au-delà, la RPC rendait
+  // une liste tronquée SANS erreur, et le 1 001ᵉ objet restait sans propriétaire
+  // — la reprise se disait « prouvée » avec un orphelin. On PAGINE (`Range`,
+  // jusqu'à une page courte, quel que soit le plafond), puis on RAPPROCHE chaque
+  // objet archivé de l'inventaire : trois états distincts — propriétaire
+  // explicite, propriétaire NUL en base, objet NON RELEVÉ — et un quatrième,
+  // inventaire INDISPONIBLE. Le manifeste porte cette distinction.
   const proprietaires = {};
   let proprietairesLus = null;
   try {
-    const r = await fetch(`${cfg.url}/rest/v1/rpc/proprietaires_objets_stockage`, {
-      method: "POST", headers: entetes(cfg.cle, { "Content-Type": "application/json" }), body: "{}",
-    });
-    if (!r.ok) throw new Error("HTTP " + r.status + " " + (await r.text()).slice(0, 160));
-    const lignes = JSON.parse(await r.text());
-    if (!Array.isArray(lignes)) throw new Error("réponse inattendue");
-    for (const l of lignes) proprietaires[l.bucket_id + "/" + l.name] = { owner: l.owner || null, owner_id: l.owner_id || null };
-    proprietairesLus = lignes.length;
-    const sans = lignes.filter((l) => !l.owner && !l.owner_id).length;
-    console.log(`  propriétaires Storage : ${lignes.length} objet(s) lu(s)${sans ? `, dont ${sans} SANS propriétaire (déposés par service_role ou avant le suivi)` : ""}.`);
+    // ⚠️ ON AVANCE DU NOMBRE DE LIGNES REÇUES, PAS DE LA PAGE DEMANDÉE : si le
+    // plafond `max-rows` du serveur est plus petit que la page demandée, la
+    // réponse est courte SANS être la dernière (mesuré au banc : plafond 100,
+    // page 500 → 100 lignes puis arrêt). PostgREST répond 206 tant que la plage
+    // n'est pas complète et 200 sur la dernière : c'est le 200 qui termine, ou
+    // une page vide.
+    for (let debut = 0; ; ) {
+      const r = await fetch(`${cfg.url}/rest/v1/rpc/proprietaires_objets_stockage`, {
+        method: "POST", headers: entetes(cfg.cle, { "Content-Type": "application/json", Range: `${debut}-${debut + PAGE_PROPRIETAIRES - 1}`, "Range-Unit": "items" }), body: "{}",
+      });
+      if (!r.ok && r.status !== 206) throw new Error("HTTP " + r.status + " " + (await r.text()).slice(0, 160));
+      const lignes = JSON.parse(await r.text());
+      if (!Array.isArray(lignes)) throw new Error("réponse inattendue");
+      for (const l of lignes) proprietaires[l.bucket_id + "/" + l.name] = { owner: l.owner || null, owner_id: l.owner_id || null };
+      proprietairesLus = (proprietairesLus || 0) + lignes.length;
+      if (lignes.length === 0 || r.status !== 206) break;
+      debut += lignes.length;
+      if (debut > 5000000) throw new Error("pagination des propriétaires : plus de 5 000 000 d'objets — arrêt de sécurité");
+    }
+    const sans = Object.values(proprietaires).filter((p) => !p.owner && !p.owner_id).length;
+    console.log(`  propriétaires Storage : ${proprietairesLus} objet(s) lu(s)${sans ? `, dont ${sans} SANS propriétaire (déposés par service_role ou avant le suivi)` : ""}.`);
   } catch (e) {
+    proprietairesLus = null;
     journal.push({ etape: "proprietaires", motif: String(e.message || e).slice(0, 200) });
     console.log(`  ⚠ propriétaires Storage NON archivés (${String(e.message || e).slice(0, 120)}) — appliquer migration_proprietaires_objets_stockage_2026-09-15.sql. L'archive sera PARTIELLE sur ce point.`);
   }
-  return { fichiers, octets, echecs, proprietaires, proprietairesLus };
+  const couverture = RV.couvertureProprietaires(Object.keys(index), proprietairesLus === null ? null : proprietaires);
+  if (!couverture.indisponible && couverture.nonReleves.length) {
+    console.log(`  ⚠ propriétaires Storage : ${couverture.nonReleves.length} objet(s) archivé(s) NON RELEVÉ(S) par l'inventaire (ex. ${couverture.nonReleves[0]}) — l'archive est PARTIELLE sur ce point.`);
+  }
+  return { fichiers, octets, echecs, proprietaires, proprietairesLus, index, couverture };
 }
 
 async function sauvegarder(dossier, avecTelemetrie, avecComptes, avecMedias) {
@@ -247,13 +280,29 @@ async function sauvegarder(dossier, avecTelemetrie, avecComptes, avecMedias) {
   if (avecMedias) {
     const journal = [];
     const m = await exporterMedias(cfg, dossier, journal);
+    // ASTRA-55 : l'index des médias, et son empreinte dans le manifeste.
+    const texteIndex = JSON.stringify({ format: RV.FORMAT_INDEX, genere_le: manifeste.genere_le, total: Object.keys(m.index).length, objets: m.index }, null, 1);
+    fs.writeFileSync(path.join(dossier, "_storage_index.json"), texteIndex);
     manifeste.medias = { fichiers: m.fichiers, octets: m.octets, echecs: m.echecs, detail_echecs: journal,
+      index_sha256: crypto.createHash("sha256").update(texteIndex, "utf8").digest("hex"),
       // ASTRA-26 : `null` veut dire « non archivés », `0` veut dire « aucun
       // objet ». Les confondre ferait passer une archive muette pour complète.
-      proprietaires_lus: m.proprietairesLus };
-    if (m.proprietaires && Object.keys(m.proprietaires).length) {
-      fs.writeFileSync(path.join(dossier, "_storage_proprietaires.json"), JSON.stringify(m.proprietaires, null, 1));
+      proprietaires_lus: m.proprietairesLus,
+      // ASTRA-45 : la couverture, objet par objet — `inventaire` vaut
+      // `indisponible` (RPC absente ou en panne), `incomplet` (des objets
+      // archivés que l'inventaire ne relève pas) ou `complet`.
+      proprietaires_inventaire: m.couverture.indisponible ? "indisponible" : (m.couverture.nonReleves.length ? "incomplet" : "complet"),
+      proprietaires_explicites: m.couverture.explicites, proprietaires_nuls: m.couverture.nuls,
+      proprietaires_non_releves: m.couverture.nonReleves.length, proprietaires_non_releves_noms: m.couverture.nonReleves.slice(0, 50) };
+    if (m.proprietairesLus !== null) {
+      // ASTRA-48 : un fichier VERSIONNÉ, avec son total, et son empreinte dans le
+      // manifeste — pour qu'un fichier tronqué ou étranger soit refusé, jamais lu
+      // comme « vide ».
+      const texteProp = JSON.stringify({ format: RV.FORMAT_PROPRIETAIRES, genere_le: manifeste.genere_le, total: Object.keys(m.proprietaires).length, objets: m.proprietaires }, null, 1);
+      fs.writeFileSync(path.join(dossier, "_storage_proprietaires.json"), texteProp);
+      manifeste.medias.proprietaires_sha256 = crypto.createHash("sha256").update(texteProp, "utf8").digest("hex");
     }
+    if (manifeste.medias.proprietaires_inventaire !== "complet") manifeste.ecarts.push({ table: "_storage_proprietaires", motif: "inventaire des propriétaires " + manifeste.medias.proprietaires_inventaire });
     console.log(`  ${"_storage".padEnd(26)} ${String(m.fichiers).padStart(6)} fichiers, ${(m.octets / 1048576).toFixed(1)} Mo` +
       (m.echecs ? `  ⚠ ${m.echecs} échec(s)` : ""));
     if (m.echecs) manifeste.ecarts.push({ table: "_storage", attendu: m.fichiers + m.echecs, exporte: m.fichiers });
@@ -295,6 +344,8 @@ async function sauvegarder(dossier, avecTelemetrie, avecComptes, avecMedias) {
 function verifier(dossier) {
   const man = JSON.parse(fs.readFileSync(path.join(dossier, "manifeste.json"), "utf8"));
   let pb = 0;
+  // ASTRA-45 : « complète » exige un inventaire des propriétaires qui couvre chaque objet.
+  let proprietairesComplets = true;
   for (const [t, info] of Object.entries(man.tables)) {
     const f = path.join(dossier, `${t}.ndjson`);
     if (!fs.existsSync(f)) { console.error(`  ${t} : fichier absent`); pb++; continue; }
@@ -316,6 +367,43 @@ function verifier(dossier) {
       .reduce((s, e) => s + (e.isDirectory() ? compter(path.join(d, e.name)) : 1), 0) : 0;
     const n = compter(base);
     if (n !== man.medias.fichiers) { console.error(`  _storage : ${n} fichiers sur disque, manifeste ${man.medias.fichiers}`); pb++; }
+    // ⚠️ ASTRA-55 : chaque fichier est confronté à l'INDEX (taille, md5) — une
+    // archive endommagée après sa vérification se voit à la relecture suivante.
+    const fIndex = path.join(dossier, "_storage_index.json");
+    const texteIndex = fs.existsSync(fIndex) ? fs.readFileSync(fIndex, "utf8") : null;
+    const idx = RV.lireIndexMedias(texteIndex, man.medias.index_sha256 || null, texteIndex === null ? null : crypto.createHash("sha256").update(texteIndex, "utf8").digest("hex"));
+    if (idx.erreur) {
+      if (texteIndex === null && !man.medias.index_sha256) console.log("  ℹ _storage_index.json absent (archive d'avant l'index) : l'intégrité des médias n'est PAS vérifiable — la reprise ne pourra pas se dire prouvée sur les médias.");
+      else { console.error("  ✗ _storage_index.json : " + idx.erreur); pb++; }
+    } else {
+      const disque = [];
+      const lister = (d, rel) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); const r = rel ? rel + "/" + e.name : e.name; if (e.isDirectory()) lister(p, r); else { const b = fs.readFileSync(p); disque.push({ name: r, taille: b.length, md5: crypto.createHash("md5").update(b).digest("hex") }); } } };
+      if (fs.existsSync(base)) lister(base, "");
+      const integ = RV.integriteArchiveMedias(idx.objets, disque);
+      if (!integ.ok) { console.error(`  ✗ _storage : archive ENDOMMAGÉE — ${integ.manquants.length} fichier(s) de l'index absent(s), ${integ.divergents.length} modifié(s), ${integ.enTrop.length} hors index` + (integ.manquants[0] ? ` (ex. ${integ.manquants[0]})` : "")); pb++; }
+      else console.log(`  _storage : ${disque.length} fichier(s), tous conformes à l'index (taille et empreinte).`);
+    }
+    // ⚠️ ASTRA-45 / ASTRA-48 : l'inventaire des propriétaires est lu STRICTEMENT et
+    // rapproché de chaque objet ; `proprietaires_lus: null` sans fichier n'est
+    // pas « rien à rendre », c'est une archive PARTIELLE — jamais « COMPLÈTE ».
+    const fProp = path.join(dossier, "_storage_proprietaires.json");
+    const texteProp = fs.existsSync(fProp) ? fs.readFileSync(fProp, "utf8") : null;
+    if (texteProp === null) {
+      if (man.medias.proprietaires_lus == null) console.log("  ⚠ propriétaires Storage NON archivés (inventaire indisponible à la sauvegarde) : archive PARTIELLE sur ce point.");
+      else { console.error("  ✗ _storage_proprietaires.json absent alors que le manifeste annonce " + man.medias.proprietaires_lus + " propriétaire(s) lu(s)"); pb++; }
+      proprietairesComplets = false;
+    } else {
+      const inv = RV.lireInventaireProprietaires(texteProp, man.medias.proprietaires_sha256 || null, crypto.createHash("sha256").update(texteProp, "utf8").digest("hex"));
+      if (inv.erreur) { console.error("  ✗ _storage_proprietaires.json : " + inv.erreur + " — état INDÉTERMINÉ"); pb++; proprietairesComplets = false; }
+      else {
+        const cles = idx.erreur ? null : Object.keys(idx.objets);
+        if (cles) {
+          const c = RV.couvertureProprietaires(cles, inv.objets);
+          if (!c.ok) { console.error(`  ✗ propriétaires Storage : ${c.nonReleves.length} objet(s) archivé(s) NON RELEVÉ(S) (ex. ${c.nonReleves[0]}) — inventaire incomplet`); pb++; proprietairesComplets = false; }
+          else console.log(`  propriétaires Storage : ${c.explicites} explicite(s), ${c.nuls} nul(s) en base, 0 non relevé${inv.version === 0 ? " (inventaire v0, sans empreinte)" : ""}.`);
+        } else { console.log("  ℹ propriétaires Storage : inventaire lisible, couverture non vérifiable sans index"); proprietairesComplets = false; }
+      }
+    }
   }
   // ⚠️ LE SCHÉMA VOYAGE AVEC LES DONNÉES (NET-07 / TCI-15, 2026-09-15). Une
   // archive de lignes sans le DDL qui les accueille n'est pas une capacité de
@@ -342,6 +430,7 @@ function verifier(dossier) {
     empreinteAttendue: man.schema_sha256 || null,
     comptesExportes: man.comptes != null,
     mediasExportes: man.medias != null,
+    proprietairesComplets: man.medias == null ? true : proprietairesComplets,
   });
   const partielleAcceptee = process.argv.includes("--partielle");
   for (const note of n.notes) console.log("  ℹ " + note);
@@ -369,9 +458,14 @@ function verifier(dossier) {
   process.exit(pb ? 1 : 0);
 }
 
+// Les internes, pour les tests d'intégration (tests/unit/sauvegarde-medias.test.mjs) :
+// seul `fetch` y est doublé.
+module.exports = { _internes: { exporterMedias, PAGE_PROPRIETAIRES } };
+
 const args = process.argv.slice(2);
 const iv = args.indexOf("--verifier");
-if (iv !== -1) verifier(args[iv + 1]);
+if (require.main !== module) { /* chargé par un test : ne rien lancer */ }
+else if (iv !== -1) verifier(args[iv + 1]);
 else {
   const is = args.indexOf("--sortie");
   const dossier = is !== -1 ? args[is + 1]

@@ -1,0 +1,26 @@
+# ASTRA-44 — banc SQL — 2026-09-15T18:38:41Z — PostgreSQL 17.6
+── ① APPLICATION, VERDICT, REJEU ─────────────────────────────────────
+  ✅ verdict : aucun ECHEC
+  ✅ rejeu sans erreur
+── ② COUVERTURE : chaque paire de tablesExport() est dans le dossier ──
+  ✅ toutes les paires sont lues (35)
+  ✅ aucune paire absente du socle
+  ✅ le dossier porte l'instantané (xmin:xmax:xip)
+  ✅ posts : 1 001 lignes attendues, 1 001 rendues, non tronqué, ordre total
+  ✅ conv_reads (sans id) : ordre partiel, dit
+  ✅ les lignes d'autrui n'y sont pas (post_comments : 2, pas 3)
+  ✅ un plafond de 10 tronque et le dit (attendu reste 1 001)
+── ③ LA REPRODUCTION D'ASTRA, PENDANT L'EXPORT ───────────────────────
+  ✅ S2 tient le verrou avant que l'export ne parte
+  ✅ S2 a bien modifié pendant (deux suppressions, deux naissances : 1 001 posts dont r9999, sans r0000)
+  ✅ posts : 1 001 lignes = attendu ; r0000 (supprimée pendant) PRÉSENTE ; r1000 PRÉSENTE ; r9999 (née pendant) ABSENTE
+  ✅ …et post_comments, lue APRÈS les modifications, montre l'état d'AVANT : c1 présente, c4 absente (même instantané pour toutes les tables)
+  ✅ un export APRÈS voit le nouveau monde (1 001 posts = attendu, c2 c4)
+── ④ MUTATION : une fonction VOLATILE prend un snapshot par requête ─────
+  ✅ mutant VOLATILE : post_comments montre c4 seule (c2 partie pendant) — l'instantané est PERDU, le banc le voit
+  ✅ …la migration rejouée la remet STABLE
+── ⑤ AUCUN ACCÈS CLIENT ──────────────────────────────────────────────
+  ✅ authenticated ne peut pas appeler la fonction
+
+RÉSULTAT : 17 contrôle(s) vert(s), 0 rouge(s)
+exit=0

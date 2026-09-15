@@ -145,6 +145,67 @@ async function contexte() {
   return { jeton, ref, url: `https://${ref}.supabase.co`, cle: sr.api_key, archive, man, nom: projet.name };
 }
 
+// ───────────────────────────── bilan partagé ─────────────────────────────
+// ⚠️ ASTRA-46 (cinquième contre-revue, 15/09/2026) — TOUTES LES PHASES ÉCRIVENT
+// ICI, ET LE VERDICT NE LIT QUE ÇA. `medias()` gardait ses refus dans un
+// tableau local : un upload refusé, une limite de seau non remise donnaient
+// `medias:false` au terminal, `preuve.prouvee:true` dans le JSON, et le main
+// calculait ENSUITE une sortie 1 — trois résultats pour une restauration.
+function bilan(ctx) { return ctx.bilan || (ctx.bilan = { refus: [], notes: [], phases: {}, limitesNonRestaurees: [] }); }
+
+// ⚠️ ASTRA-55 / ASTRA-48 : l'index des médias et l'inventaire des propriétaires
+// sont lus STRICTEMENT (forme, total, empreinte du manifeste) — jamais `{}`.
+function lireIndex(ctx) {
+  if (ctx._index !== undefined) return ctx._index;
+  const fi = path.join(ctx.archive, "_storage_index.json");
+  const texte = fs.existsSync(fi) ? fs.readFileSync(fi, "utf8") : null;
+  const att = (ctx.man.medias && ctx.man.medias.index_sha256) || null;
+  ctx._index = RV.lireIndexMedias(texte, att, texte === null ? null : crypto.createHash("sha256").update(texte, "utf8").digest("hex"));
+  return ctx._index;
+}
+function lireInventaire(ctx) {
+  if (ctx._inventaire !== undefined) return ctx._inventaire;
+  const fp = path.join(ctx.archive, "_storage_proprietaires.json");
+  const texte = fs.existsSync(fp) ? fs.readFileSync(fp, "utf8") : null;
+  const att = (ctx.man.medias && ctx.man.medias.proprietaires_sha256) || null;
+  ctx._inventaire = RV.lireInventaireProprietaires(texte, att, texte === null ? null : crypto.createHash("sha256").update(texte, "utf8").digest("hex"));
+  return ctx._inventaire;
+}
+function fichiersMediasDisque(ctx) {
+  const base = path.join(ctx.archive, "_storage");
+  const out = [];
+  if (!fs.existsSync(base)) return out;
+  for (const seau of fs.readdirSync(base)) for (const rel of fichiersSous(path.join(base, seau))) {
+    const buf = fs.readFileSync(path.join(base, seau, rel));
+    out.push({ name: seau + "/" + rel, taille: buf.length, md5: crypto.createHash("md5").update(buf).digest("hex") });
+  }
+  return out;
+}
+// L'INTÉGRITÉ DE L'ARCHIVE, AU MOMENT DE LA RESTAURATION (ASTRA-55) : une
+// vérification passée d'une archive depuis endommagée ne suffit pas. Rend
+// { ok, indetermine, motif } et l'écrit au bilan ; on n'arrête pas la reprise
+// des lignes pour un média manquant, mais la phase médias est en échec et le
+// verdict ne peut plus être prouvé.
+function integriteArchive(ctx) {
+  if (!ctx.man.medias || sansMedias()) return { ok: true };
+  const idx = lireIndex(ctx);
+  const b = bilan(ctx);
+  if (idx.erreur) {
+    b.phases["intégrité de l'archive (médias)"] = { ok: false, indetermine: true, motif: idx.erreur };
+    console.log("   ⚠ intégrité des médias NON vérifiable : " + idx.erreur);
+    return { ok: false, indetermine: true, motif: idx.erreur };
+  }
+  const integ = RV.integriteArchiveMedias(idx.objets, fichiersMediasDisque(ctx));
+  if (!integ.ok) {
+    const motif = `archive ENDOMMAGÉE : ${integ.manquants.length} fichier(s) de l'index absent(s), ${integ.divergents.length} modifié(s), ${integ.enTrop.length} hors index` + (integ.manquants[0] ? ` (ex. ${integ.manquants[0]})` : "");
+    b.phases["intégrité de l'archive (médias)"] = { ok: false, motif };
+    console.log("   ✗ " + motif);
+    return { ok: false, motif };
+  }
+  b.phases["intégrité de l'archive (médias)"] = { ok: true };
+  return { ok: true };
+}
+
 // ───────────────────────────── ① schéma ─────────────────────────────
 async function tablesCible(ctx) {
   const l = await sql(ctx, "select table_name from information_schema.tables where table_schema='public' and table_type='BASE TABLE' order by 1");
@@ -237,12 +298,32 @@ async function comptes(ctx) {
       continue;
     }
     const t = await r.text();
-    if (r.status === 422 && /already|exist|registered/i.test(t)) { presents++; continue; }
+    if (r.status === 422 && /already|exist|registered/i.test(t)) {
+      presents++;
+      // ⚠️ ASTRA-47 (cinquième contre-revue) : « déjà présent » n'est pas « conforme ».
+      // Un compte déjà sur la cible (rejeu, conflit) peut y être SANS sa suspension,
+      // ou avec une borne expirée. On le RELIT ; si l'archive porte une suspension
+      // en cours que la cible n'a pas, on la POSE (durée résiduelle) puis on relit
+      // encore ; ce qui ne correspond pas à la borne attendue (tolérance GoTrue :
+      // l'heure d'arrondi) est un REFUS.
+      const relire = async () => { const rel = await fetch(`${ctx.url}/auth/v1/admin/users/${u.id}`, { headers: entetes(ctx.cle) }); let relu = null; try { relu = JSON.parse(await rel.text()); } catch (e) { relu = null; } return rel.ok && relu ? relu : null; };
+      let relu = await relire();
+      if (!relu) { refus.push(`${u.id} : déjà présent mais NON RELU — état indéterminé`); continue; }
+      let v = RV.suspensionRestauree(u, relu, new Date());
+      if (!v.ok && banDuree) {
+        const p = await fetch(`${ctx.url}/auth/v1/admin/users/${u.id}`, { method: "PUT", headers: entetes(ctx.cle, { "Content-Type": "application/json" }), body: JSON.stringify({ ban_duration: banDuree }) });
+        if (!p.ok) refus.push(`${u.id} : déjà présent, suspension NON POSÉE (HTTP ${p.status})`);
+        relu = await relire();
+        v = relu ? RV.suspensionRestauree(u, relu, new Date()) : { ok: false, motif: "suspension non relue après pose" };
+      }
+      if (!v.ok) refus.push(`${u.id} : déjà présent, ${v.motif}`);
+      continue;
+    }
     refus.push(`${u.id} : HTTP ${r.status} ${t.slice(0, 160)}`);
   }
   console.log(`② comptes : ${crees} créé(s), ${presents} déjà présent(s), ${refus.length} refus, sur ${users.length}.`);
   for (const x of refus) console.log("   ✗ " + x);
-  const b = ctx.bilan || (ctx.bilan = { refus: [], notes: [], phases: {}, limitesNonRestaurees: [] });
+  const b = bilan(ctx);
   for (const x of refus) b.refus.push("comptes : " + x);
   b.phases.comptes = { ok: refus.length === 0, motif: refus.length ? refus.length + " refus (création ou suspension non relue)" : null };
 }
@@ -355,19 +436,20 @@ async function tables(ctx) {
   // ⚠️ ASTRA-29 : le bilan est PARTAGÉ par toutes les phases (il en portait une
   // seule). Le verdict final le lit : un refus de la phase « comptes » ne peut
   // plus être invisible dans un JSON `prouvee: true`.
-  const bilan = ctx.bilan || (ctx.bilan = { refus: [], notes: [], phases: {}, limitesNonRestaurees: [] });
+  const bl = bilan(ctx);
   for (const t of ordre) {
-    const avant = bilan.refus.length;
-    const r = await chargerTable(ctx, t, bilan);
-    console.log(`   ${t} : ${r.lignes} ligne(s)${bilan.refus.length > avant ? " — des refus, voir le bilan" : ""}`);
+    const avant = bl.refus.length;
+    const r = await chargerTable(ctx, t, bl);
+    console.log(`   ${t} : ${r.lignes} ligne(s)${bl.refus.length > avant ? " — des refus, voir le bilan" : ""}`);
   }
   // Second tour sur les tables qui ont eu des refus : une clé étrangère vers
   // un parent chargé plus tard se résout ici. Ce qui reste refusé est un vrai
   // défaut de l'archive face au schéma, et il est nommé.
-  const aRejouer = [...new Set(bilan.refus.map((x) => x.split(" : ")[0]))];
+  const aRejouer = [...new Set(bl.refus.filter((x) => !x.startsWith("comptes : ")).map((x) => x.split(" : ")[0]))];
   if (aRejouer.length) {
-    bilan.refus = [];
-    for (const t of aRejouer) await chargerTable(ctx, t, bilan);
+    // Seuls les refus de TABLES sont rejoués ; ceux des comptes restent.
+    bl.refus = bl.refus.filter((x) => x.startsWith("comptes : "));
+    for (const t of aRejouer) await chargerTable(ctx, t, bl);
   }
   // Séquences : une colonne `serial`/identity chargée avec ses valeurs laisse
   // sa séquence à zéro — la prochaine insertion percuterait une clé existante.
@@ -379,14 +461,15 @@ async function tables(ctx) {
       if m > 0 then perform setval(r.seq, m); end if;
     end if;
   end loop; end $$;`);
-  console.log(`③ tables : ${ordre.length} chargées${bilan.refus.length ? ", " + bilan.refus.length + " REFUS à lire" : ", aucun refus"}.`);
-  for (const x of bilan.notes) console.log("   ℹ " + x);
-  for (const x of bilan.refus) console.log("   ✗ " + x);
+  const refusTables = bl.refus.filter((x) => !x.startsWith("comptes : "));
+  console.log(`③ tables : ${ordre.length} chargées${refusTables.length ? ", " + refusTables.length + " REFUS à lire" : ", aucun refus"}.`);
+  for (const x of bl.notes) console.log("   ℹ " + x);
+  for (const x of refusTables) console.log("   ✗ " + x);
   // Le bilan sort avec le verdict : la preuve JSON portait le compte par table
   // mais pas le MOTIF des refus (exercice du 2026-09-15 : `migrations_appliquees`
   // 4 | 0, détail vide — l'information était au terminal, pas dans la preuve).
-  bilan.phases.tables = { ok: bilan.refus.length === 0, motif: bilan.refus.length ? bilan.refus.length + " refus de chargement" : null };
-  return bilan.refus.length === 0;
+  bl.phases.tables = { ok: refusTables.length === 0, motif: refusTables.length ? refusTables.length + " refus de chargement" : null };
+  return refusTables.length === 0;
 }
 
 // ───────────────────────────── ④ médias ─────────────────────────────
@@ -424,7 +507,7 @@ async function medias(ctx) {
     const ratés = [];
     for (const b of limites) {
       try { await sql(ctx, `update storage.buckets set file_size_limit = ${b.file_size_limit === null ? "null" : Number(b.file_size_limit)} where id = ${litteral(b.id)}`); }
-      catch (e) { ratés.push(`limite du seau ${b.id} non rétablie : ${(e && e.message) || e}`); }
+      catch (e) { ratés.push(`limite du seau ${b.id} non rétablie : ${(e && e.message) || e}`); bilan(ctx).limitesNonRestaurees.push(b.id); }
     }
     return ratés;
   };
@@ -456,18 +539,23 @@ async function medias(ctx) {
   // On écrit la colonne DOCUMENTÉE de la propriété, par le même canal privilégié
   // que le reste de la reprise — jamais en déduisant le propriétaire d'une URL
   // ou d'un texte de message (faute d'ASTRA-12).
-  const fProp = path.join(ctx.archive, "_storage_proprietaires.json");
-  if (!fs.existsSync(fProp)) {
-    // ⚠️ « Pas de fichier » n'est PAS « pas de propriétaire à rendre » : c'est
-    // une archive qui ne les portait pas. La reprise ne peut donc pas être dite
-    // prouvée sur ce point, et le bilan le porte.
-    ctx.bilan = ctx.bilan || { refus: [], notes: [], phases: {}, limitesNonRestaurees: [] };
-    ctx.bilan.phases["propriétaires Storage"] = { ok: false, motif: "archive sans `_storage_proprietaires.json` — les objets restent la propriété de service_role" };
-    console.log("   ⚠ propriétaires Storage : ABSENTS de l'archive — les objets restaurés n'auront pas de propriétaire (purge par compte et édition cassées).");
+  const inv = lireInventaire(ctx);
+  if (inv.erreur) {
+    // ⚠️ « Pas de fichier », fichier tronqué, empreinte étrangère : ce n'est
+    // JAMAIS « pas de propriétaire à rendre » (ASTRA-48 : `catch → {}` faisait
+    // d'un fichier tronqué un inventaire vide et conforme). État INDÉTERMINÉ.
+    bilan(ctx).phases["propriétaires Storage"] = { ok: false, indetermine: true, motif: "inventaire des propriétaires : " + inv.erreur + " — les objets restent la propriété de service_role" };
+    console.log("   ✗ propriétaires Storage : " + inv.erreur + " — les objets restaurés n'auront pas de propriétaire (purge par compte et édition cassées).");
   } else {
     let rendus = 0, inconnus = 0, echouesProp = 0;
-    let table = {};
-    try { table = JSON.parse(fs.readFileSync(fProp, "utf8")); } catch (e) { table = {}; }
+    const table = inv.objets;
+    // ⚠️ ASTRA-45 : chaque objet ARCHIVÉ doit être relevé par l'inventaire. Un
+    // objet non relevé est un refus nommé, pas un silence.
+    const idx = lireIndex(ctx);
+    if (!idx.erreur) {
+      const c = RV.couvertureProprietaires(Object.keys(idx.objets), table);
+      if (!c.ok) refus.push(`propriétaires : ${c.nonReleves.length} objet(s) archivé(s) NON RELEVÉ(S) par l'inventaire (ex. ${c.nonReleves[0]})`);
+    }
     const parProprietaire = new Map();
     for (const [cle, p] of Object.entries(table)) {
       // ⚠️ UN OBJET SANS PROPRIÉTAIRE DANS L'ARCHIVE EN GARDE UN : il a été
@@ -492,17 +580,21 @@ async function medias(ctx) {
       }
     }
     console.log(`   propriétaires Storage : ${rendus} rendu(s)${inconnus ? `, ${inconnus} sans propriétaire dans l'archive (conservés tels quels)` : ""}${echouesProp ? `, ${echouesProp} EN ÉCHEC` : ""}.`);
-    ctx.bilan = ctx.bilan || { refus: [], notes: [], phases: {}, limitesNonRestaurees: [] };
-    ctx.bilan.phases["propriétaires Storage"] = echouesProp
+    bilan(ctx).phases["propriétaires Storage"] = echouesProp
       ? { ok: false, motif: echouesProp + " objet(s) sans propriétaire rendu" }
       : { ok: true };
-    if (inconnus) ctx.bilan.notes.push(`${inconnus} objet(s) sans propriétaire dans l'archive : déposés par service_role ou avant le suivi — aucun n'est inventé`);
+    if (inconnus) bilan(ctx).notes.push(`${inconnus} objet(s) sans propriétaire dans l'archive : déposés par service_role ou avant le suivi — aucun n'est inventé`);
   }
   } finally {
     for (const x of await retablir()) refus.push(x);
   }
   console.log(`④ médias : ${envoyes} fichier(s) déposé(s), ${refus.length} refus.`);
   for (const x of refus.slice(0, 20)) console.log("   ✗ " + x);
+  // ⚠️ ASTRA-46 : les refus de CETTE phase entrent dans le bilan partagé, que le
+  // verdict lit — JSON, affichage et code de sortie suivent le même résultat.
+  const b = bilan(ctx);
+  for (const x of refus) b.refus.push("médias : " + x);
+  b.phases.medias = { ok: refus.length === 0, motif: refus.length ? refus.length + " refus (upload, seau, limite ou propriétaires)" : null };
   return refus.length === 0;
 }
 
@@ -613,32 +705,45 @@ async function verdict(ctx) {
   }
   if (ctx.man.medias && !sansMedias()) {
     // Nom, taille et empreinte de chaque média (ASTRA-16).
+    // ⚠️ ASTRA-55 : l'ensemble ATTENDU est l'INDEX de l'archive, jamais les
+    // fichiers encore présents sur disque ; l'intégrité du disque est
+    // confrontée à l'index ; et `en_trop` entre dans `ok`.
     const objets = (await sql(ctx, "select bucket_id || '/' || name as name, metadata->>'size' as taille, metadata->>'eTag' as etag from storage.objects where metadata is not null"));
-    const base = path.join(ctx.archive, "_storage");
-    const fichiers = [];
-    if (fs.existsSync(base)) for (const seau of fs.readdirSync(base)) for (const rel of fichiersSous(path.join(base, seau))) {
-      const buf = fs.readFileSync(path.join(base, seau, rel));
-      fichiers.push({ name: seau + "/" + rel, taille: buf.length, md5: require("crypto").createHash("md5").update(buf).digest("hex") });
+    const idx = lireIndex(ctx);
+    const v = RV.verdictMedias({ index: idx.erreur ? null : idx.objets, fichiersDisque: fichiersMediasDisque(ctx), objets, attenduManifeste: ctx.man.medias.fichiers });
+    if (v.indetermine) {
+      ecarts++;
+      preuve.medias = { ok: false, indetermine: true, motif: (idx.erreur ? "index : " + idx.erreur + " — " : "") + v.motif, obtenu: objets.length };
+      console.log(`   ECART _storage | attendu NON VÉRIFIABLE (${idx.erreur || v.motif}) | ${objets.length} — état INDÉTERMINÉ`);
+    } else {
+      const ok = v.ok; if (!ok) ecarts++;
+      nonVerifies += v.nonVerifies.length;
+      // Les NOMS des objets manquants, divergents ou en trop (bornés) : un compte
+      // seul ne dit pas quoi regarder (exercice du 2026-09-15 : « 2 divergents »).
+      preuve.medias = { attendu: v.attendus, attendu_manifeste: ctx.man.medias.fichiers, obtenu: objets.length, manquants: v.manquants.length, divergents: v.divergents.length, non_verifies: v.nonVerifies.length, en_trop: v.enTrop.length,
+        archive_intacte: v.integrite.ok, archive: { manquants: v.integrite.manquants.length, modifies: v.integrite.divergents.length, hors_index: v.integrite.enTrop.length }, ok,
+        noms: { manquants: v.manquants.slice(0, 50), divergents: v.divergents.slice(0, 50), non_verifies: v.nonVerifies.slice(0, 50), en_trop: v.enTrop.slice(0, 50), archive_manquants: v.integrite.manquants.slice(0, 50) } };
+      console.log(`   ${ok ? "OK   " : "ECART"} _storage | ${v.attendus} | ${objets.length} — ${v.manquants.length} manquant(s), ${v.divergents.length} divergent(s), ${v.nonVerifies.length} NON VÉRIFIÉ(S), ${v.enTrop.length} en trop${v.integrite.ok ? "" : ` — ARCHIVE ENDOMMAGÉE (${v.integrite.manquants.length} absent(s), ${v.integrite.divergents.length} modifié(s))`}`);
+      for (const nv of v.nonVerifies.slice(0, 10)) console.log(`      ? ${nv.name} — ${nv.raison}`);
     }
-    const d = comparerMedias(fichiers, objets);
-    const ok = objets.length === ctx.man.medias.fichiers && !d.manquants.length && !d.divergents.length && !d.nonVerifies.length; if (!ok) ecarts++;
-    nonVerifies += d.nonVerifies.length;
-    // Les NOMS des objets manquants, divergents ou en trop (bornés) : un compte
-    // seul ne dit pas quoi regarder (exercice du 2026-09-15 : « 2 divergents »).
-    preuve.medias = { attendu: ctx.man.medias.fichiers, obtenu: objets.length, manquants: d.manquants.length, divergents: d.divergents.length, non_verifies: d.nonVerifies.length, en_trop: d.enTrop.length, ok,
-      noms: { manquants: d.manquants.slice(0, 50), divergents: d.divergents.slice(0, 50), non_verifies: d.nonVerifies.slice(0, 50), en_trop: d.enTrop.slice(0, 50) } };
-    console.log(`   ${ok ? "OK   " : "ECART"} _storage | ${ctx.man.medias.fichiers} | ${objets.length} — ${d.manquants.length} manquant(s), ${d.divergents.length} divergent(s), ${d.nonVerifies.length} NON VÉRIFIÉ(S), ${d.enTrop.length} en trop`);
-    for (const nv of d.nonVerifies.slice(0, 10)) console.log(`      ? ${nv.name} — ${nv.raison}`);
   }
   // ⚠️ ASTRA-26 — ON RELIT LES PROPRIÉTAIRES. Les avoir ÉCRITS n'est pas les
   // avoir RENDUS : c'est la règle déjà posée pour la suspension (ASTRA-30) et
   // pour le journal des migrations. Un objet dont le propriétaire n'est pas
   // celui de l'archive est un ÉCART — la purge par compte et l'édition en
   // dépendent.
-  const fProp2 = path.join(ctx.archive, "_storage_proprietaires.json");
-  if (fs.existsSync(fProp2) && !sansMedias()) {
-    let attendus = {};
-    try { attendus = JSON.parse(fs.readFileSync(fProp2, "utf8")); } catch (e) { attendus = {}; }
+  const inv2 = !sansMedias() && ctx.man.medias ? lireInventaire(ctx) : { erreur: "sans médias" };
+  if (!sansMedias() && ctx.man.medias && inv2.erreur) {
+    // ⚠️ ASTRA-48 : illisible, tronqué, étranger ou absent → INDÉTERMINÉ, jamais « vide et conforme ».
+    ecarts++;
+    preuve.proprietaires = { ok: false, indetermine: true, motif: "inventaire des propriétaires : " + inv2.erreur };
+    console.log("   ECART _storage.owner | inventaire : " + inv2.erreur + " — état INDÉTERMINÉ");
+  } else if (!sansMedias() && ctx.man.medias) {
+    const attendus = inv2.objets;
+    // ⚠️ ASTRA-45 : la couverture, objet par objet — un objet archivé que
+    // l'inventaire ne relève pas est un écart nommé.
+    const idx2 = lireIndex(ctx);
+    const couv = idx2.erreur ? null : RV.couvertureProprietaires(Object.keys(idx2.objets), attendus);
     const relus = new Map();
     let illisible = false;
     try {
@@ -663,18 +768,13 @@ async function verdict(ctx) {
         if (String(o.owner || "") === String(att.owner || "") && String(o.owner_id || "") === String(att.owner_id || "")) conformes++;
         else divergents.push(cle);
       }
-      const okProp = divergents.length === 0 && absents.length === 0; if (!okProp) ecarts++;
+      const nonReleves = couv ? couv.nonReleves : [];
+      const okProp = divergents.length === 0 && absents.length === 0 && nonReleves.length === 0 && couv !== null; if (!okProp) ecarts++;
       preuve.proprietaires = { attendus: Object.keys(attendus).length, conformes, sans_proprietaire_dans_l_archive: sansProprietaire,
-        divergents: divergents.length, absents: absents.length, ok: okProp,
-        noms: { divergents: divergents.slice(0, 50), absents: absents.slice(0, 50) } };
-      console.log(`   ${okProp ? "OK   " : "ECART"} _storage.owner | ${conformes} conforme(s), ${sansProprietaire} sans propriétaire dans l'archive, ${divergents.length} divergent(s), ${absents.length} absent(s)`);
+        divergents: divergents.length, absents: absents.length, non_releves: couv ? nonReleves.length : null, couverture_verifiable: couv !== null, ok: okProp,
+        noms: { divergents: divergents.slice(0, 50), absents: absents.slice(0, 50), non_releves: nonReleves.slice(0, 50) } };
+      console.log(`   ${okProp ? "OK   " : "ECART"} _storage.owner | ${conformes} conforme(s), ${sansProprietaire} sans propriétaire dans l'archive, ${divergents.length} divergent(s), ${absents.length} absent(s), ${couv ? nonReleves.length + " non relevé(s)" : "couverture NON VÉRIFIABLE (sans index)"}`);
     }
-  } else if (!sansMedias() && ctx.man.medias) {
-    // ⚠️ Une archive qui ne porte PAS les propriétaires ne peut pas être dite
-    // prouvée sur ce point : la purge par compte et l'édition en dépendent.
-    ecarts++;
-    preuve.proprietaires = { ok: false, motif: "archive sans `_storage_proprietaires.json` — propriété non restituable" };
-    console.log("   ECART _storage.owner | l'archive ne porte pas les propriétaires : la purge par compte et l'édition resteront cassées");
   }
 
   // ⚠️ ASTRA-29 (second volet) — UN SEUL VERDICT, ET IL COUVRE TOUT.
@@ -737,16 +837,27 @@ async function purger(ctx) {
 }
 
 // ───────────────────────────── main ─────────────────────────────
-module.exports = { lots, litteral, ordreInsert, ordreLigneALigne, canoniser, comparerLignes, comparerMedias, PROD_REF, LOT_OCTETS };
+// `_phases` : les VRAIES fonctions de phase, pour les tests d'intégration
+// (tests/unit/restaurer-phases.test.mjs) qui les exercent avec un faux `fetch`
+// — seules les interfaces EXTERNES (GoTrue, Storage, API de gestion) sont doublées.
+module.exports = { lots, litteral, ordreInsert, ordreLigneALigne, canoniser, comparerLignes, comparerMedias, PROD_REF, LOT_OCTETS,
+  _phases: { comptes, tables, medias, verdict, integriteArchive, bilan, lireIndex, lireInventaire } };
 if (require.main === module) (async () => {
   const ctx = await contexte();
   console.log(`cible : ${ctx.ref} (« ${ctx.nom} »)${ctx.archive ? ` ← archive ${ctx.archive}` : ""}`);
   if (drapeau("--purger")) { await purger(ctx); return; }
+  // L'intégrité de l'archive se vérifie AU MOMENT de l'usage (ASTRA-55), y
+  // compris pour --verifier : une archive endommagée ne prouve rien.
+  integriteArchive(ctx);
   if (drapeau("--verifier")) { process.exit((await verdict(ctx)) ? 0 : 1); }
   await schema(ctx);
   await comptes(ctx);
   const t = await tables(ctx);
   const m = await medias(ctx);
   const v = await verdict(ctx);
-  process.exit(t && m && v ? 0 : 1);
+  // ⚠️ ASTRA-46 : UN SEUL RÉSULTAT. Le verdict lit le bilan de toutes les phases ;
+  // si une phase disait faux alors que le verdict dit prouvé, c'est une
+  // incohérence interne — on la NOMME et on sort en échec plutôt que de choisir.
+  if (v && !(t && m)) { console.log("❌ incohérence interne : une phase a échoué (tables " + t + ", médias " + m + ") mais le verdict était prouvé — sortie en échec."); process.exit(1); }
+  process.exit(v ? 0 : 1);
 })().catch((e) => { console.error("ÉCHEC :", e.message); process.exit(1); });

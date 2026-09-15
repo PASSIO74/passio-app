@@ -388,21 +388,33 @@ function _closeMentionBox() {
   if (b) b.remove();
   window._mentionTarget = null;
 }
-// Notifie les utilisateurs (réels) @mentionnés dans un commentaire/réponse.
+// ⚠️ ASTRA-24 (cinquième contre-revue, 2026-09-15) — LE CLIENT N'ÉCRIT PLUS LA
+// NOTIFICATION DE MENTION. Il RÉSOUT les « @nom » en IDENTIFIANTS de comptes
+// (la même liste que la boîte de suggestion) et les porte au SERVEUR
+// (`notifier_mentions`, migration du 15/09), qui vérifie l'événement (un
+// commentaire récent de l'appelant), autorise chaque destinataire (existant,
+// non bloqué, membre s'il s'agit d'un groupe) et écrit la ligne avec un texte
+// DÉRIVÉ. Un nom n'était pas une identité (homonymes) ; le texte était libre ;
+// la ligne était ouverte à tout compte non bloqué — les trois sont fermés.
 // Ignore les comptes démo (id « u_… ») et soi-même.
-function _notifyCommentMentions(threadId, text) {
-  if (!text || text.indexOf("@") < 0 || typeof supaInsertNotif !== "function") return;
+function _idsMentionnes(text, candidats) {
+  if (!text || text.indexOf("@") < 0) return [];
   var low = text.toLowerCase();
   var meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
-  var done = {};
-  (state.seed.users || []).forEach(function (u) {
+  var done = {}, ids = [];
+  (candidats || []).forEach(function (u) {
     if (!u || !u.name || !u.id || u.id === meId || done[u.id]) return;
     if (String(u.id).indexOf("u_") === 0) return; // compte démo, pas de vraie notif
-    if (low.indexOf("@" + u.name.toLowerCase()) > -1) {
-      done[u.id] = 1;
-      try { supaInsertNotif(u.id, "mention", threadId, "t'a mentionné dans un commentaire"); } catch (e) {}
-    }
+    if (low.indexOf("@" + u.name.toLowerCase()) > -1) { done[u.id] = 1; ids.push(u.id); }
   });
+  return ids;
+}
+// Appelée APRÈS que le commentaire a atterri (`supaAddComment`, app-08) : le
+// serveur exige un commentaire récent de l'appelant, il faut qu'il existe.
+function _notifyCommentMentions(threadId, text) {
+  var ids = _idsMentionnes(text, state.seed.users || []);
+  if (!ids.length || typeof _mentionnerServeur !== "function") return;
+  try { _mentionnerServeur("commentaire", threadId, ids); } catch (e) {}
 }
 function _cmtMentionDetect(el) {
   if (!el) return;
@@ -1151,7 +1163,7 @@ function submitComment(postId) {
     if (commentedPost && commentedPost.authorId && commentedPost.authorId !== MY_UID && commentedPost.fromSupabase) {
       supaInsertNotif(commentedPost.authorId, "comment", postId, "a commenté ton post");
     }
-    if (typeof _notifyCommentMentions === "function") _notifyCommentMentions(postId, text);
+    // ASTRA-24 : les mentions partent depuis `supaAddComment`, une fois le commentaire en base.
   }
   // FLUIDITÉ (façon Instagram/Facebook) : NE PAS fermer la discussion. On vide le
   // champ, on ré-affiche le fil (rapide, scroll préservé) avec le nouveau
@@ -4775,15 +4787,15 @@ async function _forwardTo(targetConvId) {
         .insert({ id: localMsg.id, conv_id: targetConvId, from_id: auteurTransfert, content: payload, created_at: new Date().toISOString() })
         .then(function (res) {
           if (genTransfert !== _outboxGenerationActuelle() || (typeof MY_UID !== "undefined" ? MY_UID : null) !== auteurTransfert) { _setMsgStatus(targetConvId, localMsg.id, "failed"); return; }
-          if (res && res.error) { _setMsgStatus(targetConvId, localMsg.id, "failed"); _outboxAdd(targetConvId, localMsg.id, payload, _estCompteReel(auteurTransfert) ? auteurTransfert : null); }
+          if (res && res.error) { _setMsgStatus(targetConvId, localMsg.id, "failed"); _outboxAdd(targetConvId, localMsg.id, payload, _estCompteReel(auteurTransfert) ? auteurTransfert : null, { generation: genTransfert, auteur: auteurTransfert }); }
           else { _setMsgStatus(targetConvId, localMsg.id, "sent"); _outboxRemove(localMsg.id); }
         })
         .catch(function () {
           if (genTransfert !== _outboxGenerationActuelle() || (typeof MY_UID !== "undefined" ? MY_UID : null) !== auteurTransfert) { _setMsgStatus(targetConvId, localMsg.id, "failed"); return; }
-          _setMsgStatus(targetConvId, localMsg.id, "failed"); _outboxAdd(targetConvId, localMsg.id, payload, _estCompteReel(auteurTransfert) ? auteurTransfert : null);
+          _setMsgStatus(targetConvId, localMsg.id, "failed"); _outboxAdd(targetConvId, localMsg.id, payload, _estCompteReel(auteurTransfert) ? auteurTransfert : null, { generation: genTransfert, auteur: auteurTransfert });
         });
     } catch (e) {
-      _setMsgStatus(targetConvId, localMsg.id, "failed"); _outboxAdd(targetConvId, localMsg.id, payload, _estCompteReel(auteurTransfert) ? auteurTransfert : null);
+      _setMsgStatus(targetConvId, localMsg.id, "failed"); _outboxAdd(targetConvId, localMsg.id, payload, _estCompteReel(auteurTransfert) ? auteurTransfert : null, { generation: genTransfert, auteur: auteurTransfert });
     }
   }
   try { renderMessages(); } catch(e) {}
@@ -5088,7 +5100,7 @@ function sendMessageFp(convId, displayName) {
   saveConversations();
   if (window._replyTo) { window._replyTo = null; try { _renderReplyBar(); } catch(e) {} }
   try { _hideMentionBox(); } catch(e) {}
-  try { if (c.isGroup) _notifyMentions(c, txt); } catch(e) {} // notifie les @mentionnés
+  try { if (c.isGroup) _notifyMentions(c, txt, msgId); } catch(e) {} // résout les @mentionnés (portés au serveur après l'envoi)
 
   // 6. Afficher IMMÉDIATEMENT
   renderConvFpThread(c, displayName);
@@ -5160,12 +5172,31 @@ function _outboxVerdict(item, moi) {
 // de la stocker ici changerait le comportement hors ligne d'un visiteur, qui
 // n'a rien à voir avec ASTRA-21. Ce qui compte, c'est que `owner` soit celui
 // capturé À L'ORIGINE, jamais relu dans la continuation.
-function _outboxAdd(convId, msgId, content, owner) {
+// ⚠️ ASTRA-43 (cinquième contre-revue, 15/09/2026) — L'INVALIDATION VIT ICI, AU
+// SEUL ENDROIT QUI ÉCRIT LA FILE. La branche de résolution de `_sendTextToSupa`
+// vérifiait génération et identité ; son `catch` (rejet réseau), et le chemin
+// MÉDIA d'app-09, remettaient en file sans cette vérification. Reproduit :
+// envoi suspendu, purge de la file, génération incrémentée, identité retirée,
+// puis REJET → le texte revenait en file (owner A). Ce n'est pas un envoi sous
+// B (l'owner reste A) : c'est une RÉSURRECTION après purge. Toute continuation
+// passe désormais son contexte d'origine `{ generation, auteur }` ; s'il ne
+// correspond plus au présent, rien n'est écrit et c'est tracé. Les appels SANS
+// contexte (hors ligne, SDK absent : synchrones, à l'origine) restent tels quels.
+function _outboxContextePerime(contexte) {
+  if (!contexte) return false;
+  var courant = (typeof MY_UID !== "undefined" ? MY_UID : null);
+  return contexte.generation !== _outboxGenerationActuelle() || contexte.auteur !== courant;
+}
+function _outboxAdd(convId, msgId, content, owner, contexte) {
   // ⚠️ LA GÉNÉRATION : une purge (déconnexion, adoption d'un compte) invalide
   // tout ce qui était en vol. Une continuation née avant la purge ne doit pas
   // ressusciter une file que l'on vient de vider — c'est le second volet du
   // scénario d'Astra, et il n'est PAS couvert par le seul propriétaire (une
   // réponse tardive de A, sous A, repeuplerait la file purgée de A).
+  if (_outboxContextePerime(contexte)) {
+    try { if (typeof diagLog === "function") diagLog("msg_file_perimee " + String(msgId)); } catch (e) {}
+    return false;
+  }
   var tous = _outboxLoad();
   // ⚠️ LE COMPTEUR D'ESSAIS SURVIT À LA REMISE EN FILE, sinon il ne compte
   // RIEN : chaque échec transitoire repasse par ici, et une entrée neuve
@@ -5177,6 +5208,7 @@ function _outboxAdd(convId, msgId, content, owner) {
            essais: Number((ancienne && ancienne.essais) || 0),
            owner: owner });
   _outboxSave(a);
+  return true;
 }
 function _outboxRemove(msgId) { _outboxSave(_outboxLoad().filter(function(x){ return x.msgId !== msgId; })); }
 
@@ -5374,7 +5406,7 @@ function _sendTextToSupa(convId, msgId, content, auteur, generation) {
           // — c'est exactement ce qui a permis six jours de refus silencieux.
           try { if (typeof diagLog === "function") diagLog("msg_refus_definitif " + String((res.error && res.error.code) || res.status || "?")); } catch (e) {}
         } else {
-          _outboxAdd(convId, msgId, content, _estCompteReel(moi) ? moi : null);
+          _outboxAdd(convId, msgId, content, _estCompteReel(moi) ? moi : null, { generation: gen, auteur: moi });
         }
       }
       else {
@@ -5390,9 +5422,13 @@ function _sendTextToSupa(convId, msgId, content, auteur, generation) {
         // — annoncer un message que la base a refusé annoncerait un message qui
         // n'existe pas. Fire-and-forget : l'envoi n'attend pas la cloche.
         try { if (typeof _notifierMessage === "function") _notifierMessage(convId, msgId); } catch (e) {}
+        // ASTRA-24 : les mentions du message, maintenant qu'il existe en base.
+        try { if (typeof _mentionnerApresEnvoi === "function") _mentionnerApresEnvoi(msgId); } catch (e) {}
       }
     })
-    .catch(function() { delete _msgEnVol[msgId]; _setMsgStatus(convId, msgId, "failed"); _outboxAdd(convId, msgId, content, _estCompteReel(moi) ? moi : null); });
+    // ⚠️ ASTRA-43 : le REJET porte le même contexte que la résolution — sans lui,
+    // une panne réseau revenue après la purge ressuscitait la file.
+    .catch(function() { delete _msgEnVol[msgId]; _setMsgStatus(convId, msgId, "failed"); _outboxAdd(convId, msgId, content, _estCompteReel(moi) ? moi : null, { generation: gen, auteur: moi }); });
 }
 
 // Renvoi manuel d'un message en échec.
@@ -5581,17 +5617,22 @@ function _pickMention(name) {
   inp.focus();
   try { autoResizeTextarea(inp); } catch(e) {}
 }
-// Notifie les membres mentionnés (@nom) dans un message de groupe.
-function _notifyMentions(c, text) {
-  if (!c || !c.isGroup || !text || text.indexOf("@") < 0) return;
-  if (typeof supaInsertNotif !== "function") return;
-  var low = text.toLowerCase();
-  (c.userIds || []).forEach(function(id){
-    var name = (typeof _groupMemberName === "function" ? _groupMemberName(id) : "");
-    if (name && low.indexOf("@" + name.toLowerCase()) > -1) {
-      try { supaInsertNotif(id, "mention", c.id, "t'a mentionné dans « " + (c.groupName || "un groupe") + " »"); } catch(e) {}
-    }
-  });
+// Les membres mentionnés (@nom) dans un message de groupe : RÉSOLUS en
+// identifiants à la composition, MÉMORISÉS par message, et portés au serveur
+// une fois le message ATTERRI (`_mentionnerApresEnvoi`, dans la branche de
+// succès de `_sendTextToSupa`) — ASTRA-24.
+window._mentionsEnAttente = window._mentionsEnAttente || {};
+function _notifyMentions(c, text, msgId) {
+  if (!c || !c.isGroup || !text || text.indexOf("@") < 0 || !msgId) return;
+  var candidats = (c.userIds || []).map(function (id) { return { id: id, name: (typeof _groupMemberName === "function" ? _groupMemberName(id) : "") }; });
+  var ids = _idsMentionnes(text, candidats);
+  if (ids.length) window._mentionsEnAttente[msgId] = { convId: c.id, ids: ids };
+}
+function _mentionnerApresEnvoi(msgId) {
+  var m = window._mentionsEnAttente && window._mentionsEnAttente[msgId];
+  if (!m) return;
+  delete window._mentionsEnAttente[msgId];
+  if (typeof _mentionnerServeur === "function") { try { _mentionnerServeur("message", m.convId, m.ids); } catch (e) {} }
 }
 
 function _sendTyping(convId) {

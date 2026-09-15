@@ -1,0 +1,28 @@
+── A. SUPPRESSION : l'infrastructure AVANT la fonction qui l'exige ────────
+  ✅ AVANT la migration : reclamer_suppression n'existe pas (42883 → PGRST202 → 503 infrastructure_absente côté fonction)
+  ✅ AVANT : aucune des quatre RPC de la v2 n'existe
+  ✅ AVANT : la table marqueur n'existe pas
+  ✅ APPLICATION : verdict de la migration sans ECHEC
+  ✅ APRÈS : les quatre RPC existent
+  ✅ APRÈS : la première tentative est acquise (statut en_cours)
+  ✅ APRÈS : elle se termine (purgee)
+  ✅ REJEU (reprise après retour arrière partiel) : idempotente, sans ECHEC
+  ✅ REJEU : le marqueur déjà posé est conservé (une reprise n'efface pas l'état)
+── B. SAUVEGARDE : la RPC des propriétaires AVANT toute archive « complète »
+  ✅ AVANT : la RPC n'existe pas — le script la verra PGRST202 et dira « inventaire indisponible », jamais COMPLÈTE
+  ✅ APPLICATION : sans ECHEC
+  ✅ APRÈS : la RPC rend CHAQUE objet, propriétaire nul compris (3 objets)
+  ✅ APRÈS : le propriétaire nul est EXPLICITE (ligne présente, owner null) — pas « non relevé »
+  ✅ APRÈS : authenticated ne peut pas lire l'inventaire
+── C. APPELS : le protocole client compatible AVANT le resserrement ──────
+  ✅ AVANT : ancien ordre (abonnement puis dépôt) — accepté
+  ✅ AVANT : nouvel ordre (dépôt puis abonnement) — accepté
+  ✅ AVANT : un tiers lit le canal (le défaut ASTRA-23, toujours là)
+  ✅ APPLICATION : sans ECHEC
+  ✅ APRÈS : ancien ordre — REFUSÉ (row-level security) : c'est l'onglet ancien en cache, RES-05
+  ✅ APRÈS : nouvel ordre — accepté : le client servi avant la migration fonctionne sous les deux policies
+  ✅ APRÈS : l'appelé (B) rejoint le canal du nouvel ordre
+  ✅ APRÈS : le tiers ne lit plus rien
+  ✅ APRÈS : l'appel de l'ancien ordre, une fois sa ligne écrite, redevient joignable en se RÉABONNANT (reprise = recharger puis rappeler)
+
+RÉSULTAT : 23 contrôle(s) vert(s), 0 rouge(s)

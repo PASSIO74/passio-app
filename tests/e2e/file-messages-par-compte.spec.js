@@ -39,8 +39,10 @@ Object.defineProperty(window.supa, "from", {
         // ASTRA-21 : une réponse RETENUE. Le banc la relâche quand il veut, ce
         // qui est le seul moyen de mesurer ce qui se passe PENDANT le vol.
         if (window.__retenir) {
-          return new Promise(function (resoudre) {
+          return new Promise(function (resoudre, rejeter) {
             window.__relacher = function (rep) { resoudre(rep || window.__reponse || { error: null }); };
+            // ASTRA-43 : le REJET (panne réseau) est une autre continuation que la résolution.
+            window.__rejeter = function (err) { rejeter(err || new Error("Failed to fetch")); };
           });
         }
         return Promise.resolve(window.__reponse || { error: null });
@@ -392,5 +394,56 @@ test.describe("AUTH-06 — la file des messages appartient à un compte", () => 
     });
     expect(res.envois, "un auteur capturé qui n'est plus le compte courant n'écrit rien").toEqual([]);
     for (const e of res.file) expect(e.owner).toBe(UID_A);
+  });
+
+  // ═══ ASTRA-43 (cinquième contre-revue, 2026-09-15) : le REJET tardif après purge ═══
+  test("⑪ ASTRA-43 — REPRODUCTION : envoi suspendu, purge, génération incrémentée, identité retirée, puis REJET → le texte ne ressuscite pas", async ({ page }) => {
+    await banc(page);
+    const res = await page.evaluate(async () => {
+      localStorage.removeItem("passio_outbox_v1");
+      window.__poserConv("conv_ab", "msg_rejet", "texte privé de A");
+      window.__retenir = true;
+      _sendTextToSupa("conv_ab", "msg_rejet", _withSenderMeta("texte privé de A"));
+      await window.__attendre(30);
+      // La purge : file vidée, génération incrémentée, identité retirée (déconnexion).
+      localStorage.removeItem("passio_outbox_v1");
+      _outboxInvaliderEnVol();
+      window.__devenir(null);
+      // La requête est REJETÉE (panne réseau) — c'est le `catch`, pas la résolution.
+      window.__rejeter(new Error("Failed to fetch"));
+      await window.__attendre(80);
+      return { file: window.__file(), statut: (getConversations().find((c) => c.id === "conv_ab").messages[0] || {}).status };
+    });
+    // AVANT : file = [{ msgId: 'msg_rejet', owner: A }] — la résurrection après purge (portée exacte : pas un envoi sous B).
+    expect(res.file, "un rejet tardif ne repeuple pas une file purgée").toEqual([]);
+    expect(res.statut).toBe("failed");
+  });
+
+  test("⑫ ASTRA-43 — la même invalidation vaut pour la RÉSOLUTION en erreur transitoire, et un rejet SANS purge remet bien en file", async ({ page }) => {
+    await banc(page);
+    const res = await page.evaluate(async () => {
+      localStorage.removeItem("passio_outbox_v1");
+      window.__poserConv("conv_ab", "msg_a", "texte privé de A");
+      window.__retenir = true;
+      _sendTextToSupa("conv_ab", "msg_a", _withSenderMeta("texte privé de A"));
+      await window.__attendre(30);
+      // Sans purge : le rejet remet en file, sous A.
+      window.__rejeter(new Error("Failed to fetch"));
+      await window.__attendre(80);
+      const sansPurge = window.__file();
+      // Avec purge, résolution transitoire (503) : rien ne revient.
+      localStorage.removeItem("passio_outbox_v1");
+      window.__poserConv("conv_ab", "msg_b", "texte privé de A");
+      window.__retenir = true;
+      _sendTextToSupa("conv_ab", "msg_b", _withSenderMeta("texte privé de A"));
+      await window.__attendre(30);
+      localStorage.removeItem("passio_outbox_v1");
+      _outboxInvaliderEnVol();
+      window.__relacher({ status: 503, error: { message: "service unavailable" } });
+      await window.__attendre(80);
+      return { sansPurge: sansPurge, avecPurge: window.__file() };
+    });
+    expect(res.sansPurge.map((e) => [e.msgId, e.owner])).toEqual([["msg_a", "3f2a9c64-5b71-4e2d-8a10-9c7b6d5e4f31"]]);
+    expect(res.avecPurge).toEqual([]);
   });
 });

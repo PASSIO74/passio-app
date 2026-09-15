@@ -1,0 +1,14 @@
+# ASTRA-49/50 — AVANT (app-05 d'origine a5e8c717) — 2026-09-15T19:11:34Z
+    Error: …la MÊME, sans renégocier
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+    Error: …et il est répété (≥ 2 de plus en 2,3 s)
+    Expected: >= [32m3[39m
+    Received:    [31m1[39m
+    Error: l'appel n'est PAS abandonné sur une panne de transport
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+    Error: 503 : transitoire, l'appel continue
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+[1A[2K  4 failed

@@ -3190,7 +3190,12 @@ async function exporterMesDonnees() {
   var manques = [];
   if ((b.tables_tronquees || verdict.data.tronquees || []).length) manques.push((b.tables_tronquees || verdict.data.tronquees).length + " table(s) tronquée(s) au plafond de " + (b.plafond_par_table || 5000) + " lignes");
   if ((b.erreurs || verdict.data.erreurs || []).length) manques.push((b.erreurs || verdict.data.erreurs).length + " table(s) ou dossier(s) illisible(s)");
-  var complet = b.complet === true || (b.complet == null && !manques.length);
+  // ⚠️ ASTRA-44 (2026-09-15) : sans INSTANTANÉ serveur (`bilan.instantane`), les
+  // tables ont été lues page par page à des instants différents — l'export
+  // n'est pas cohérent et ne peut pas être dit complet. Le serveur le sait
+  // (`complet:false`) ; ici on le nomme pour la personne.
+  if (b.complet === false && !b.instantane) manques.push("lecture sans instantané cohérent (fonction serveur absente)");
+  var complet = b.complet === true && !!b.instantane;
   toast((complet ? "Export complet : " : "⚠️ Export INCOMPLET : ") + n + " table" + (n > 1 ? "s" : "") + ", " + nMedias + " média(s) listé(s)" + (manques.length ? " — " + manques.join(", ") + " (détail dans le fichier, écris-nous)" : ""), complet ? "success" : "warning");
   try { if (!complet && typeof diagLog === "function") diagLog("export_compte incomplet " + manques.join(" | ")); } catch (e) {}
   return true;
@@ -4148,11 +4153,32 @@ async function doDeleteAccount() {
     window._suppressionEnCours = true;
     var verdict = null;
     try { verdict = await supa.functions.invoke("delete-account"); } catch (e) { verdict = { error: e }; }
-    var okServeur = !!(verdict && !verdict.error && verdict.data && verdict.data.ok === true);
+    // ⚠️ ASTRA-42 (2026-09-15) : « Compte supprimé » N'EST ANNONCÉ QUE SUR UN SUCCÈS
+    // DÉFINITIF — `ok: true` ET `garantie: "barriere"`. La fonction distingue
+    // désormais ses arrêts par un `code` (infrastructure absente, suppression
+    // déjà en cours, écritures en vol, restes, compte Auth non supprimé après
+    // purge…) et chacun a son message : une suppression non garantie ne se
+    // présente plus comme un succès, ni comme un simple « réessaie ».
+    // ⚠️ Sur une réponse non-2xx, le SDK rend `{ data: null, error: FunctionsHttpError }`
+    // et le CORPS est dans `error.context` (une Response) : l'ancien code lisait
+    // `verdict.data.restes` sur un 409 — toujours vide. On lit le corps.
+    var corps = (verdict && verdict.data) || null;
+    if (!corps && verdict && verdict.error && verdict.error.context && typeof verdict.error.context.json === "function") {
+      try { corps = await verdict.error.context.json(); } catch (e) { corps = null; }
+    }
+    var okServeur = !!(verdict && !verdict.error && corps && corps.ok === true && corps.garantie === "barriere");
     if (!okServeur) {
-      var restes = (verdict && verdict.data && (verdict.data.restes || verdict.data.echecs)) || [];
-      try { if (typeof diagLog === "function") diagLog("suppression_compte KO " + (restes.length ? restes.slice(0, 5).join(" ") : String((verdict && verdict.error && verdict.error.message) || "sans verdict"))); } catch (e) {}
-      toast("⚠️ Suppression incomplète : ton compte n'a PAS été supprimé. Réessaie, ou écris à " + PASSIO_EDITEUR.email);
+      var code = (corps && corps.code) || "";
+      var restes = (corps && (corps.restes || corps.echecs)) || [];
+      try { if (typeof diagLog === "function") diagLog("suppression_compte KO " + (code || "sans code") + " " + (restes.length ? restes.slice(0, 5).join(" ") : String((verdict && verdict.error && verdict.error.message) || "sans verdict"))); } catch (e) {}
+      var message;
+      if (code === "infrastructure_absente") message = "⚠️ Suppression indisponible pour le moment : rien n'a été supprimé. Réessaie plus tard, ou écris à " + PASSIO_EDITEUR.email;
+      else if (code === "deja_en_cours" || code === "jeton_perdu") message = "⏳ Une suppression est déjà en cours pour ce compte. Réessaie dans quelques minutes.";
+      else if (code === "deja_supprimee") message = "Ce compte est déjà supprimé.";
+      else if (code === "en_vol") message = "⚠️ Des opérations étaient encore en cours : rien n'a été supprimé. Réessaie.";
+      else if (code === "auth_non_supprime") message = "⚠️ Tes données ont été supprimées, mais la fermeture du compte a échoué. Réessaie pour terminer, ou écris à " + PASSIO_EDITEUR.email;
+      else message = "⚠️ Suppression incomplète : ton compte n'a PAS été supprimé. Réessaie, ou écris à " + PASSIO_EDITEUR.email;
+      toast(message);
       window._suppressionEnCours = false;
       return false;
     }

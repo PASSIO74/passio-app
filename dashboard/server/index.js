@@ -46,6 +46,7 @@ import { suspectsFor, suspectsPromptBlock } from "./correlate.js";
 import { kpi } from "./kpi.js";
 import { retention } from "./retention.js";
 import { computeReadiness } from "./readiness.js";
+import { residusSnapshot } from "./residus.js";
 import { qaReport } from "./qa.js";
 import * as sentinel from "./sentinel.js";
 import { mergeRepair } from "./repair.js";
@@ -312,9 +313,13 @@ api.get("/audit", auth.requireCap("audit"), (req, res) => res.json(listAudit(Num
 api.get("/readiness", auth.requireAuth, (req, res) => {
   res.json(computeReadiness({
     overview: store.overview(), checklist: checklist.listChecklist(), bugs: store.bugList(), authz: tests.authzSnapshot(),
-    observation: observationSnapshot(), release: releaseHealth(),
+    observation: observationSnapshot(), release: releaseHealth(), residus: residusSnapshot(),
   }));
 });
+
+// ─── Registre des résidus (cinquième contre-revue Astra, §9) ───────────────
+// Lecture seule du registre du dépôt, évalué comme en CI. Rien n'est écrit.
+api.get("/residus", auth.requireAuth, (req, res) => res.json(residusSnapshot()));
 
 app.use("/api", api);
 

@@ -53,7 +53,7 @@ const EXCEPTIONS = {
   // n'est effacée que si la purge échoue (`leverBarriere`, purge-compte.js).
   // Ce qui reste est un uuid orphelin sans échéance : rétention À DÉCIDER,
   // écrite dans migration_barriere_suppression_2026-09-15.sql.
-  "comptes_en_suppression.user_id": "barrière de suppression : la purger la lèverait (purge-compte.js) — elle doit survivre au succès ; rétention de l'uuid orphelin à décider",
+  "comptes_en_suppression.user_id": "barrière de suppression (v2, état par tentative) : la purger la lèverait — elle survit au succès (statut supprimee) ; rétention par purger_marqueurs_suppression(interval), durée à décider (proposition 45 j), non planifiée",
   "reports.target_id": "polymorphe (publication, rencontre, compte…) : ce n'est pas un identifiant de compte en soi",
 };
 
@@ -86,25 +86,27 @@ function tablesDuReferentiel(fichier) {
   return out;
 }
 
-// Repère `create table [if not exists] public.<nom> ( … )` et rend ses colonnes.
-function tablesDeclarees(sql, fichier) {
+// ⚠️ ASTRA-54 (cinquième contre-revue, 15/09/2026) — ON LIT LE SCHÉMA RÉSULTANT,
+// PAS DES MOTS. L'expression régulière d'avant voyait `create table
+// public.new_data(user_id text)` mais NI `create table x (id …)` suivi de
+// `alter table x add user_id`, NI `"public".x`. Les migrations sont désormais
+// REJOUÉES dans l'ordre (scripts/lib/schema-resultant.js) : create / alter add /
+// drop column / rename column / rename to / drop table, schéma nu ou quoté ;
+// ce qui n'est pas déterminable (`as select`, `like`, `inherits`) est nommé
+// et fait ROUGIR la gate — une table dont on ne connaît pas les colonnes n'est
+// pas une table sans identifiant de compte. Cette limite est distincte de
+// celle des tables créées à la main hors du dépôt (voir `horsVue`).
+function tablesDeclarees(fichiers) {
+  const { schemaResultant } = require("./lib/schema-resultant.js");
+  const r = schemaResultant(fichiers.map((f) => ({ fichier: path.basename(f), sql: fs.readFileSync(f, "utf8") })));
   const out = [];
-  const re = /create\s+table\s+(?:if\s+not\s+exists\s+)?(?:public\.)?"?([a-z_][a-z0-9_]*)"?\s*\(/gi;
-  let m;
-  while ((m = re.exec(sql))) {
-    const nom = m[1];
-    // Corps de la déclaration : on avance jusqu'à la parenthèse fermante.
-    let i = m.index + m[0].length, profondeur = 1;
-    for (; i < sql.length && profondeur > 0; i++) {
-      if (sql[i] === "(") profondeur++;
-      else if (sql[i] === ")") profondeur--;
-    }
-    const corps = sql.slice(m.index + m[0].length, i - 1);
-    const colonnes = corps.split(",").map((l) => (l.trim().split(/\s+/)[0] || "").replace(/"/g, "").toLowerCase())
-      .filter((c) => COLONNES_COMPTE.test(c));
-    if (colonnes.length) out.push({ table: nom, colonnes: [...new Set(colonnes)], fichier: path.basename(fichier) });
+  for (const [k, t] of r.tables) {
+    const [schema, table] = k.split(".");
+    if (schema !== "public") continue;
+    const colonnes = [...t.colonnes].filter((c) => COLONNES_COMPTE.test(c));
+    if (colonnes.length) out.push({ table, colonnes, fichier: [...t.fichiers].join(", ") });
   }
-  return out;
+  return { tables: out, indeterminees: r.indeterminees.filter((x) => x.table.startsWith("public.")), dynamiques: r.dynamiques };
 }
 
 function lireTablesCompte() {
@@ -121,8 +123,8 @@ function lireTablesCompte() {
 function auditer() {
   const connues = lireTablesCompte();
   const vues = new Map();
-  const declarees = [];
-  for (const f of fichiersSql()) declarees.push(...tablesDeclarees(fs.readFileSync(f, "utf8"), f));
+  const resultant = tablesDeclarees(fichiersSql());
+  const declarees = [...resultant.tables];
   declarees.push(...tablesDuReferentiel(path.join(RACINE, "migrations", "SCHEMA_PROD_REFERENCE.sql")));
   for (const t of declarees) {
     for (const c of t.colonnes) {
@@ -142,14 +144,16 @@ function auditer() {
   // la main dans l'éditeur SQL, ou antérieure à ces fichiers, lui échappe. On
   // le dit à chaque exécution plutôt que de laisser croire à un vert total.
   const horsVue = Object.keys(EXCEPTIONS).filter((c) => !vues.has(c) && !connues.has(c));
-  return { connues, vues, oublis, horsVue };
+  return { connues, vues, oublis, horsVue, indeterminees: resultant.indeterminees, dynamiques: resultant.dynamiques };
 }
 
 module.exports = { auditer, tablesDeclarees, tablesDuReferentiel, EXCEPTIONS, COLONNES_COMPTE };
 
 if (require.main === module) {
-  const { vues, oublis, horsVue } = auditer();
-  console.log(`audit des tables de compte : ${vues.size} couple(s) (table, colonne) déclaré(s) dans migrations/`);
+  const { vues, oublis, horsVue, indeterminees, dynamiques } = auditer();
+  console.log(`audit des tables de compte : ${vues.size} couple(s) (table, colonne) dans le schéma RÉSULTANT de migrations/`);
+  for (const x of indeterminees) console.error(`❌ ${x.table} : ${x.motif} (${x.fichier}) — une table aux colonnes inconnues n'est pas certifiée sans identifiant de compte.`);
+  for (const d of dynamiques) console.log(`ℹ SQL dynamique portant un create/alter table dans ${d.fichier} : non modélisé (${d.extrait}…)`);
   for (const { cle, fichier } of oublis) {
     console.error(`❌ ${cle} n'est NI dans TABLES_COMPTE NI dans les exceptions (déclarée dans ${fichier}).`);
     console.error(`   Décider : la purger et l'exporter (l'ajouter à TABLES_COMPTE), ou écrire pourquoi elle survit (EXCEPTIONS de scripts/audit-tables-compte.js).`);
@@ -159,6 +163,6 @@ if (require.main === module) {
     for (const c of horsVue) console.log(`    ${c}`);
     console.log("  Ce n'est pas un vert de plus : c'est la portée de la gate, qui lit le dépôt et non la base.");
   }
-  if (oublis.length) process.exit(1);
+  if (oublis.length || indeterminees.length) process.exit(1);
   console.log(`✅ les ${vues.size} couples VISIBLES DEPUIS LE DÉPÔT sont purgés, exportés, ou dispensés avec leur raison.`);
 }

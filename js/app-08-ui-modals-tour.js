@@ -4426,6 +4426,8 @@ async function supaAddComment(postId, content, commentId) {
       created_at: new Date().toISOString(),
     });
     if (error) { console.warn("Comment error:", error.message); return false; }
+    // ASTRA-24 : les mentions, maintenant que le commentaire existe en base.
+    try { if (typeof _notifyCommentMentions === "function") _notifyCommentMentions(postId, content); } catch (e) {}
     return true;
   } catch(e) { console.warn("Comment error:", e); return false; }
 }
@@ -5713,6 +5715,29 @@ async function supaInsertNotif(toUserId, kind, refId, content) {
     // Push Web → réveille le destinataire même app fermée (fire-and-forget).
     if (!error) _pousserPushNotif(toUserId, kind, fullText);
   } catch(e) {}
+}
+// ⚠️ ASTRA-24 (2026-09-15) : LES MENTIONS SONT ÉCRITES PAR LE SERVEUR. Le client
+// porte des IDENTIFIANTS (jamais des noms) à `notifier_mentions`, qui vérifie
+// l'événement et les destinataires, écrit la ligne (origine serveur, texte
+// dérivé) et rend un COMPTE. Puis la push part par `notify-call`, qui n'accepte
+// une 'mention' que si sa ligne est d'origine serveur.
+// TRANSITION : fonction absente (migration non appliquée, PGRST202) → RIEN
+// d'autre — surtout pas l'écriture client d'avant, qui est ce qu'on ferme.
+// Tracé, pour que ça se voie.
+async function _mentionnerServeur(genre, refId, ids) {
+  try {
+    if (typeof supa === "undefined" || !supa || !window._supaReal || !MY_UID || !ids || !ids.length) return false;
+    var res = await supa.rpc("notifier_mentions", { p_genre: genre, p_ref_id: refId, p_mentionnes: ids.slice(0, 20) });
+    if (res && res.error) {
+      var code = String(res.error.code || "");
+      try { if (typeof diagLog === "function") diagLog((code === "PGRST202" ? "mentions_serveur_absente " : "mentions_serveur_refus ") + code + " " + String(res.error.message || "").slice(0, 80)); } catch (e) {}
+      return false;
+    }
+    // Un compte, jamais la liste des écartés : on pousse vers ceux qu'on a
+    // demandés, `notify-call` tranche (ligne serveur ou rien).
+    ids.slice(0, 20).forEach(function (id) { _pousserPushNotif(id, "mention", ""); });
+    return true;
+  } catch (e) { return false; }
 }
 // Le PUSH seul, sans ligne `notifications` : pour les événements dont la ligne est
 // écrite par le SERVEUR (abonnements, `follows_notifier` depuis le 2026-09-11) —

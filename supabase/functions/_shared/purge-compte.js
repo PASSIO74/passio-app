@@ -78,6 +78,11 @@ export const TABLES_COMPTE = [
   ["cdv_live_collaborators", "user_id"], ["cdv_live_collaborators", "added_by"],
   ["client_errors", "uid"], ["client_errors", "auth_uid"],
   ["analytics_events", "user_id"], ["telemetry_events", "user_id"],
+  // ⚠️ ASTRA-54 (cinquième contre-revue, 15/09) : trouvé par la gate des tables
+  // une fois qu'elle a lu le SCHÉMA RÉSULTANT et plus des mots — `auth_uid` est
+  // né d'un ALTER TABLE (migration du 14/09), posé par trigger depuis auth.uid() :
+  // un identifiant de compte que rien ne purgeait.
+  ["telemetry_events", "auth_uid"],
   ["profiles", "id"],
 ];
 // ⚠️ Volontairement HORS liste, et pourquoi :
@@ -196,52 +201,119 @@ export async function listerObjetsDuCompte(admin, uid) {
 // navigateur, et un second appareil, un onglet resté ouvert, une requête déjà
 // en vol ou un ancien jeton encore valide écrivent quand même (PostgREST ne
 // vérifie que la signature du jeton, pas le bannissement GoTrue).
-// `comptes_en_suppression` marque le compte ; les policies d'écriture le lisent
-// et REFUSENT. À partir de là, la relecture finale est SUFFISANTE.
-async function poserBarriere(admin, uid) {
+//
+// ⚠️ ASTRA-39 / 40 / 41 / 42 (cinquième contre-revue, 15/09) — LA BARRIÈRE v2.
+// Le marqueur `comptes_en_suppression` n'est plus écrit directement : quatre
+// fonctions SQL (service_role seul) portent la règle, et cette fonction ne fait
+// que les appeler DANS L'ORDRE, avec SON jeton :
+//   ⓪ `reclamer_suppression(uid, jeton)` — UNE tentative à la fois par compte
+//      (ASTRA-40). Non acquise = une autre tentative est vivante, ou le compte
+//      est déjà `supprimee` : on s'arrête, sans rien toucher.
+//   ⓪' `attendre_ecritures_en_vol()` — les transactions qui avaient franchi
+//      leur policy AVANT la marque et n'ont pas encore validé (ASTRA-41) : on
+//      attend leur fin ; s'il en reste au délai, la purge ÉCHOUE (fail-closed).
+//   ① → ④ relevé, effacements, relectures — comme avant. Le trigger SQL posé par
+//      la migration refuse pendant ce temps TOUTE écriture portant l'identifiant
+//      (l'appelant, un tiers, l'anonyme, un trigger privilégié, la clé de
+//      service — ASTRA-39), la clause de policy refuse l'appelant plus tôt.
+//   ⑤ `terminer_suppression(uid, jeton, statut)` — ne touche la ligne QUE si le
+//      jeton est le sien : une tentative tardive ne retire plus la protection
+//      d'une autre (ASTRA-40). `echec` lève la protection (compte utilisable,
+//      purge relançable) ; `purgee` la CONSERVE (le compte Auth doit encore
+//      partir) ; `supprimee` (posé par `marquerSupprime` après deleteUser) la
+//      conserve pour la rétention.
+// ⚠️ SANS INFRASTRUCTURE (migration non appliquée) LA PURGE NE PART PLUS
+// (ASTRA-42). La v1 continuait « en le disant » — et le handler jetait la note :
+// HTTP 200, `ok:true`, pour une suppression que rien ne garantissait. Une purge
+// qui ne peut pas prouver qu'elle a fini n'a pas fini : `code: "infrastructure_absente"`.
+export const RPC_RECLAMER = "reclamer_suppression";
+export const RPC_TERMINER = "terminer_suppression";
+export const RPC_ATTENDRE = "attendre_ecritures_en_vol";
+/** Délai maximal d'attente des écritures en vol, en ms (une fonction Edge a ~150 s ; une transaction PostgREST vit des ms). */
+export const ATTENTE_EN_VOL_MS = 5000;
+
+const FONCTION_ABSENTE = /PGRST202|could not find the function|function .* does not exist|schema cache/i;
+function estInfrastructureAbsente(err) {
+  if (!err) return false;
+  return estTableAbsente(err.message) || estTableAbsente(err.code) || FONCTION_ABSENTE.test(String(err.message || "")) || FONCTION_ABSENTE.test(String(err.code || ""));
+}
+
+async function appelerRpc(admin, nom, args) {
   try {
-    const r = await admin.from("comptes_en_suppression").upsert({ user_id: uid, motif: "delete-account" }, { onConflict: "user_id" });
-    if (r && r.error) {
-      const m = r.error.message || String(r.error.code || "erreur");
-      // Table absente = migration non appliquée. On le DIT et on continue :
-      // la purge d'avant reste possible, elle est simplement moins sûre. La
-      // taire ferait passer une purge sans barrière pour une purge avec.
-      return estTableAbsente(m) || estTableAbsente(r.error.code) ? { absente: m } : m;
-    }
-    return null;
-  } catch (e) { const m = (e && e.message) || "exception"; return estTableAbsente(m) ? { absente: m } : m; }
+    const r = await admin.rpc(nom, args);
+    if (!r) return { erreur: { message: "réponse vide" } };
+    if (r.error) return { erreur: r.error };
+    return { data: r.data };
+  } catch (e) { return { erreur: { message: (e && e.message) || "exception" } }; }
 }
 
-// ⚠️ ELLE SE LÈVE SI LA PURGE N'ABOUTIT PAS. Une purge interrompue doit pouvoir
-// être RELANCÉE, et un compte dont la suppression échoue définitivement doit
-// redevenir utilisable — le laisser marqué le condamnerait au silence sans que
-// personne l'ait décidé.
-async function leverBarriere(admin, uid) {
-  try { await admin.from("comptes_en_suppression").delete().eq("user_id", uid); } catch (e) {}
+/** Fin d'opération, conditionnelle au jeton. Rend { ok, motif, statut } ; ok ⇔ la ligne était bien la nôtre. */
+async function terminer(admin, uid, jeton, statut, detail) {
+  const r = await appelerRpc(admin, RPC_TERMINER, { p_uid: uid, p_jeton: jeton, p_statut: statut, p_detail: detail || null });
+  if (r.erreur) return { ok: false, motif: r.erreur.message || "erreur", statut: null };
+  const d = r.data || {};
+  return { ok: d.ok === true, motif: d.motif || null, statut: d.statut || null };
 }
 
-export async function purgerCompte(admin, uid) {
+/** Après `deleteUser` : le marqueur passe en `supprimee` (rétention). Rend { ok, motif, statut }. */
+export async function marquerSupprime(admin, uid, jeton) {
+  return terminer(admin, uid, jeton, "supprimee", null);
+}
+
+/**
+ * Purge tout ce qui porte `uid`, puis RELIT. Rend `{ ok, code, echecs, restes, absentes, notes, barriere, objets, jeton }` :
+ * `echecs` = gestes en erreur, `restes` = ce qui subsiste après relecture, `ok` ⇔ les deux vides
+ * ET la tentative encore la nôtre. `code` nomme un arrêt avant purge :
+ * `infrastructure_absente`, `deja_en_cours`, `deja_supprimee`, `barriere`, `en_vol`, `jeton_perdu`, `incomplete`.
+ * `jeton` identifie CETTE tentative ; `delete-account` le repasse à `marquerSupprime`.
+ */
+export async function purgerCompte(admin, uid, options) {
+  const jeton = (options && options.jeton) || (globalThis.crypto && globalThis.crypto.randomUUID ? globalThis.crypto.randomUUID() : String(Date.now()) + "-" + Math.random());
   const echecs = [];
-  // Tables de la liste absentes de CET environnement : dit, jamais tu.
   const absentes = [];
   const restes = [];
   const notes = [];
+  const base = { echecs, restes, absentes, notes, jeton, objets: 0 };
 
-  // ⓪ LA BARRIÈRE, AVANT TOUT COMPTAGE.
-  const barriere = await poserBarriere(admin, uid);
-  if (barriere && barriere.absente) {
-    notes.push("barrière de suppression ABSENTE (migration non appliquée) : une écriture tardive peut encore survivre à cette purge");
-  } else if (barriere) {
-    // On ne purge PAS sans barrière quand elle EXISTE mais refuse : ce serait
-    // se priver de la seule garantie qu'on ait, sans le savoir.
-    return { ok: false, echecs: [`barrière:pose (${barriere})`], restes: [], absentes: [], notes, objets: 0 };
+  // ⓪ RÉCLAMER — avant tout comptage, avant tout geste.
+  const rec = await appelerRpc(admin, RPC_RECLAMER, { p_uid: uid, p_jeton: jeton, p_motif: "delete-account" });
+  if (rec.erreur) {
+    if (estInfrastructureAbsente(rec.erreur)) {
+      echecs.push(`barrière:absente (${rec.erreur.message || rec.erreur.code || "?"})`);
+      notes.push("infrastructure de suppression ABSENTE (migration non appliquée) : la purge n'est pas engagée — une suppression sans barrière ne serait pas garantie");
+      return { ok: false, code: "infrastructure_absente", barriere: "absente", ...base };
+    }
+    echecs.push(`barrière:reclamation (${rec.erreur.message || rec.erreur.code || "erreur"})`);
+    return { ok: false, code: "barriere", barriere: "refus", ...base };
   }
+  const etat = rec.data || {};
+  if (etat.acquise !== true) {
+    const code = etat.statut === "supprimee" ? "deja_supprimee" : "deja_en_cours";
+    notes.push(`tentative non acquise : statut ${etat.statut || "?"}`);
+    return { ok: false, code, barriere: "occupee", statut: etat.statut || null, ...base };
+  }
+
+  // ⓪' LES ÉCRITURES DÉJÀ ENGAGÉES (ASTRA-41).
+  const vol = await appelerRpc(admin, RPC_ATTENDRE, { p_max_ms: ATTENTE_EN_VOL_MS });
+  if (vol.erreur) {
+    echecs.push(`barrière:en_vol (${vol.erreur.message || vol.erreur.code || "erreur"})`);
+    await terminer(admin, uid, jeton, "echec", { echecs });
+    return { ok: false, code: "en_vol", barriere: "posee", ...base };
+  }
+  const enVol = vol.data || {};
+  if (typeof enVol.restantes !== "number" || enVol.restantes > 0) {
+    echecs.push(`écritures en vol non terminées (${typeof enVol.restantes === "number" ? enVol.restantes : "illisible"}) après ${enVol.attendu_ms || "?"} ms`);
+    await terminer(admin, uid, jeton, "echec", { echecs, en_vol: enVol });
+    return { ok: false, code: "en_vol", barriere: "posee", ...base };
+  }
+  if (enVol.en_vol_initial > 0) notes.push(`${enVol.en_vol_initial} transaction(s) en vol attendue(s) pendant ${enVol.attendu_ms} ms`);
 
   // ① Relever les objets Storage du compte PAR PROPRIÉTÉ — l'autorité, pas les
   //    messages. Fonction absente ou illisible : échec nommé, on ne devine rien.
   const releve = await listerObjetsDuCompte(admin, uid);
   if (releve.erreur) echecs.push(`objets:rpc (${releve.erreur})`);
   const objets = releve.objets || [];
+  base.objets = objets.length;
 
   // ② Lignes, une table à la fois, chaque verdict lu.
   for (const [table, col] of TABLES_COMPTE) {
@@ -283,7 +355,8 @@ export async function purgerCompte(admin, uid) {
     // efface UNE seconde fois ce qui est réapparu, et on relit ; ce qui
     // subsiste encore est un vrai reste, nommé. Une seule reprise : une ligne
     // qui revient à chaque passage est un client qui écrit en boucle, et il faut
-    // que quelqu'un le voie.
+    // que quelqu'un le voie. (Avec la barrière v2 ce cas ne devrait plus se
+    // produire ; la reprise reste, comme filet, et le reste reste nommé.)
     if (n > 0) {
       const err = await supprimerLignes(admin, table, col, uid);
       if (err && err.absente) { n = 0; }
@@ -293,11 +366,19 @@ export async function purgerCompte(admin, uid) {
     if (n !== 0) restes.push(`${table}:${col}=${n < 0 ? "illisible" : n}`);
   }
 
-  const ok = echecs.length === 0 && restes.length === 0;
-  // ⚠️ LA BARRIÈRE NE SE LÈVE QUE SI LA PURGE N'A PAS ABOUTI. Sur un succès,
-  // le compte Auth part juste après (`delete-account`) : lever la marque
-  // rouvrirait l'écriture pendant la fenêtre qui sépare les deux, et c'est
-  // exactement la fenêtre qu'on vient de fermer.
-  if (!ok) await leverBarriere(admin, uid);
-  return { ok, echecs, restes, absentes, notes, barriere: barriere && barriere.absente ? "absente" : "posee", objets: objets.length };
+  const purgeOk = echecs.length === 0 && restes.length === 0;
+  // ⑤ FIN D'OPÉRATION, PAR JETON. Sur un succès la protection est CONSERVÉE
+  // (`purgee`) : le compte Auth part juste après, et lever la marque rouvrirait
+  // l'écriture dans la fenêtre qui sépare les deux. Sur un échec, `echec` lève
+  // la protection — MAIS seulement si la tentative est encore la nôtre.
+  const fin = await terminer(admin, uid, jeton, purgeOk ? "purgee" : "echec", purgeOk ? null : { echecs, restes });
+  if (!fin.ok) {
+    // Une autre tentative a repris le compte pendant la nôtre (tentative réputée
+    // morte, reprise) : NOTRE relecture ne vaut plus rien pour ELLE, et on ne
+    // doit surtout pas supprimer le compte Auth sur la foi d'une purge dont on
+    // n'a plus la garde.
+    echecs.push(`barrière:fin (${fin.motif || "refus"}, statut ${fin.statut || "?"})`);
+    return { ok: false, code: "jeton_perdu", barriere: "perdue", ...base };
+  }
+  return { ok: purgeOk, code: purgeOk ? null : "incomplete", barriere: "posee", ...base };
 }

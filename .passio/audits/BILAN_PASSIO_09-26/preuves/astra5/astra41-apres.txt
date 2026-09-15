@@ -1,0 +1,21 @@
+# ASTRA-41 — APRÈS — 2026-09-15T18:27:20Z — PostgreSQL 17.6
+── ① L'ÉCRITURE EST ENGAGÉE AVANT LA MARQUE, ET NON VALIDÉE ─────────
+  ✅ S1 (l'application de A) a franchi sa policy : INSERT accepté, transaction OUVERTE
+  ✅ S1 porte bien un xid en cours (elle a écrit)
+── ② LA PURGE POSE LA MARQUE, EFFACE, COMPTE ──────────────────────────
+  ✅ le comptage de la purge rend 0 : la ligne de S1 lui est INVISIBLE
+── ③ LA PURGE ATTEND LES ÉCRITURES EN VOL — ou constate qu'elle ne peut pas ──
+  ✅ elle a VU la transaction de S1 (en_vol_initial ≥ 1)
+  ✅ …et, S1 n'ayant pas fini, elle rend la main au délai avec 1 restante — la purge DOIT échouer, pas conclure
+── ④ S1 VALIDE APRÈS LE COMPTAGE ─────────────────────────────────────
+  ✅ la ligne est là (1) : elle était engagée AVANT la marque — c'est exactement ce que l'attente a signalé
+  ✅ reprise : plus rien en vol (restantes = 0)
+  ✅ reprise : le comptage rend 0 et cette fois il est FIABLE
+── ⑤ UNE ÉCRITURE QUI COMMENCE APRÈS LA MARQUE EST REFUSÉE (READ COMMITTED) ──
+  ✅ la policy relit la marque à CHAQUE ordre : refusée
+── ⑥ MUTATION : une attente qui ne regarde pas les xids en vol ne verrait rien ──
+  ✅ mutant « ne regarde pas les xids » : il dit 0 en vol alors qu'il y en a une → l'exigence « 1 » de ③ le fait rougir
+  ✅ …et la migration rejouée la rétablit : la transaction en vol est vue de nouveau
+
+RÉSULTAT : 11 contrôle(s) vert(s), 0 rouge(s)
+exit=0
