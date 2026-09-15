@@ -951,10 +951,20 @@ function sendMessageToSupabase(msgId, convId, fileUrl, fileType, fileName, kind)
   // (`_outboxAdd`), le pictogramme « ⚠️ réessayer » étant rendu par
   // `_msgStatusIndHtml`. Le média n'avait simplement jamais reçu ce traitement.
   var _charge = _withSenderMeta(contentJson);
+  // ⚠️ ASTRA-21 — L'AUTEUR EST CAPTURÉ ICI, AU DÉPART, et porté jusqu'aux
+  // continuations. `_outboxAdd` prend désormais son propriétaire en ARGUMENT :
+  // il ne le relit plus au moment de la réponse, où le compte peut avoir changé
+  // sur cet appareil. Le chemin MÉDIA a exactement la même forme que le chemin
+  // TEXTE — une insertion, une réponse qui revient plus tard — donc le même
+  // remède. Sans cet argument, l'entrée partait en file SANS propriétaire et
+  // `_outboxVerdict` la jetait au rejeu : le vocal en échec n'était plus
+  // renvoyable. Mesuré en CI (message-media-echec), pas en local.
+  var _auteurMedia = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : null;
+  var _proprietaireMedia = (typeof _estCompteReel === "function" && _estCompteReel(_auteurMedia)) ? _auteurMedia : null;
   function _echec(raison) {
     _diag("handleAttachFile: ❌ Échec définitif - " + raison);
     try { if (typeof _setMsgStatus === "function") _setMsgStatus(convId, msgId, "failed"); } catch (e) {}
-    try { if (typeof _outboxAdd === "function") _outboxAdd(convId, msgId, _charge); } catch (e) {}
+    try { if (typeof _outboxAdd === "function") _outboxAdd(convId, msgId, _charge, _proprietaireMedia); } catch (e) {}
     _flowSaved(false, raison);
   }
   function _succes(voie) {
@@ -972,7 +982,7 @@ function sendMessageToSupabase(msgId, convId, fileUrl, fileType, fileName, kind)
   supa.from("conv_messages").insert({
     id: msgId,
     conv_id: convId,
-    from_id: (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : null,
+    from_id: _auteurMedia,
     content: _charge,
     created_at: new Date().toISOString()
   }).then(function(res) {

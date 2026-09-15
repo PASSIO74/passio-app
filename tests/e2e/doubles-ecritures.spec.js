@@ -124,7 +124,12 @@ test.describe("ROB-06 — un message en file n'est envoyé qu'une fois", () => {
     convs.push({ id: "conv_r6", userId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", userName: "Léa",
       messages: [{ id: "m1", text: "un", mine: true, status: "failed" }, { id: "m2", text: "deux", mine: true, status: "failed" }] });
     saveConversations();
-    _outboxAdd("conv_r6", "m1", "un"); _outboxAdd("conv_r6", "m2", "deux");
+    // ⚠️ ASTRA-21 : `_outboxAdd` prend désormais son PROPRIÉTAIRE en argument —
+    // il ne le relit plus dans la continuation, où le compte peut avoir changé.
+    // Le banc le passe donc explicitement. Ce cas mesure ROB-06 (un message en
+    // file n'est envoyé qu'une fois), pas la propriété de la file : lui donner
+    // son propriétaire le laisse mesurer son propre sujet.
+    _outboxAdd("conv_r6", "m1", "un", MY_UID); _outboxAdd("conv_r6", "m2", "deux", MY_UID);
     window.__ecrits = [];
   });
   const messages = (page) => page.evaluate(() => window.__ecrits.filter((e) => e.table === "conv_messages").map((e) => e.row.id));

@@ -30,6 +30,24 @@
 // `--verifier` n'envoie rien : il lit le fichier et dit s'il est envoyable.
 // `--journal [n]` n'envoie rien non plus : il LIT le journal du projet visé.
 //
+// ⚠️ BARRIÈRE DES GESTES CRITIQUES (ASTRA-33, quatrième contre-revue). Trois
+// règles, toutes dans `scripts/lib/barriere-migration.js` (pures, 11 verrous
+// dans `tests/unit/barriere-migration.test.mjs`) :
+//   ① LA CIBLE EST ÉCRITE ou rien ne part — `--projet <ref>` ou
+//      SUPABASE_PROJECT_REF. Le projet LIÉ du poste n'est plus une cible par
+//      défaut : il ne sert qu'à dire « tu vises ailleurs que lui ». Avant, un
+//      poste lié à la production visait la production sans que ce soit écrit.
+//   ② SUR UNE CIBLE PROTÉGÉE, LE CONTENU ENVOYÉ EST CELUI QUI A ÉTÉ REVU —
+//      l'empreinte SHA-256 du fichier relu MAINTENANT doit figurer dans
+//      `.passio/migrations/attestations.json`, pour CETTE cible, avec sa PR,
+//      son relecteur et sa date. Une modification après revue invalide
+//      l'attestation du contenu précédent : la dérive est refusée, pas avertie.
+//   ③ LE JOURNAL EST DANS LA TRANSACTION — l'insertion est injectée juste après
+//      le `begin;` de la migration. Soit les deux passent, soit aucune. Le DDL
+//      du journal part AVANT et son échec INTERDIT l'envoi : on ne s'autorise
+//      plus à appliquer une migration qu'on ne saurait pas journaliser.
+//   Et le processus ne sort JAMAIS vert sur une phase échouée ou indéterminée.
+//
 // ⚠️ JOURNAL (NET-07 / TCI-15, 2026-09-15). Chaque application réussie laisse
 // une ligne dans `public.migrations_appliquees` du projet visé — fichier,
 // empreinte SHA-256, verdict, date (`scripts/lib/journal-migrations.js`). La
@@ -42,12 +60,17 @@ import { readFileSync, existsSync } from "node:fs";
 import { resolve, relative, sep } from "node:path";
 import { homedir } from "node:os";
 import { createRequire } from "node:module";
-const { sqlCreation, sqlInsertion, sqlLecture } = createRequire(import.meta.url)("./lib/journal-migrations.js");
+const _req = createRequire(import.meta.url);
+const { sqlCreation, sqlLecture } = _req("./lib/journal-migrations.js");
+const BAR = _req("./lib/barriere-migration.js");
 
 const args = process.argv.slice(2);
 const verifierSeulement = args.includes("--verifier");
+const sansAttestation = args.includes("--sans-attestation");
 const iJournal = args.indexOf("--journal");
-const fichier = args.find((a, i) => !a.startsWith("--") && !(iJournal >= 0 && i === iJournal + 1));
+const iProjet = args.indexOf("--projet");
+const argProjet = iProjet >= 0 ? args[iProjet + 1] : null;
+const fichier = args.find((a, i) => !a.startsWith("--") && !(iJournal >= 0 && i === iJournal + 1) && !(iProjet >= 0 && i === iProjet + 1));
 
 function echec(msg) { console.error("❌ " + msg); process.exit(2); }
 async function requeter(ref, jeton, query) {
@@ -63,8 +86,9 @@ if (!fichier && iJournal < 0) echec("usage : node scripts/appliquer-migration.mj
 const racine = resolve(new URL("..", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1"));
 if (iJournal >= 0) {
   // Lecture seule du journal du projet visé (jeton + ref lus plus bas : on les prend ici).
-  const j = lireJeton(), r = lireRef();
-  if (!j || !r) echec("jeton ou projet introuvable pour lire le journal.");
+  const j = lireJeton();
+  if (!j) echec("aucun jeton pour lire le journal.");
+  const r = cibleOuRefus({ argProjet, envRef: process.env.SUPABASE_PROJECT_REF, refLie: lireProjetLie() }).ref;
   const lignes = await requeter(r, j, sqlLecture(Number(args[iJournal + 1]) || 50)).catch((e) => { if (/does not exist/.test(String(e.message))) return null; throw e; });
   if (lignes === null) { console.log("journal absent sur " + r + " : aucune migration n'a encore été appliquée par cet outil."); process.exit(0); }
   console.log("journal des migrations appliquées sur " + r + " (" + lignes.length + ") :");
@@ -88,43 +112,106 @@ function lireJeton() {
   if (existsSync(p)) return readFileSync(p, "utf8").trim();
   return null;
 }
-function lireRef() {
-  if (process.env.SUPABASE_PROJECT_REF) return process.env.SUPABASE_PROJECT_REF.trim();
+// ⚠️ NE REND PLUS UNE CIBLE : seulement le projet LIÉ du poste, que la barrière
+// utilise pour dire « tu vises ailleurs » — jamais pour décider où écrire.
+function lireProjetLie() {
   const p = resolve(racine, "supabase", ".temp", "project-ref");
   if (existsSync(p)) return readFileSync(p, "utf8").trim();
   return null;
 }
+function lireAttestations() {
+  const p = resolve(racine, ".passio", "migrations", "attestations.json");
+  if (!existsSync(p)) return [];
+  try { const j = JSON.parse(readFileSync(p, "utf8")); return Array.isArray(j) ? j : (j.attestations || []); }
+  catch (e) { echec("`.passio/migrations/attestations.json` est illisible (" + e.message + ") — une attestation qu'on ne sait pas lire n'atteste rien."); }
+}
+function cibleOuRefus(opts) {
+  try { return BAR.choisirCible(opts); } catch (e) { echec(e.message); }
+}
+// ⚠️ LA BARRIÈRE PASSE AVANT LE JETON, et c'est délibéré : `--verifier` n'envoie
+// rien, il doit donc pouvoir s'exécuter partout (revue, CI, poste sans accès)
+// pour dire si un fichier est envoyable. Le jeton n'est exigé qu'à l'envoi.
+
+// ── ① LA CIBLE EST ÉCRITE ──────────────────────────────────────────────────
+const cible = cibleOuRefus({ argProjet, envRef: process.env.SUPABASE_PROJECT_REF, refLie: lireProjetLie() });
+const ref = cible.ref;
+
+// ── ② LE CONTENU ENVOYÉ EST CELUI QUI A ÉTÉ REVU ──────────────────────────
+let att;
+try { att = BAR.verifierAttestation({ fichier: rel, sql, cible, attestations: lireAttestations(), sansAttestation }); }
+catch (e) { echec(e.message); }
+
+console.log("migration : " + rel + " (" + sql.length + " caractères)");
+console.log("empreinte : " + att.empreinte);
+console.log("cible     : " + ref + (cible.role ? " — " + cible.role + " (PROTÉGÉE)" : " — non protégée"));
+if (cible.divergeDuProjetLie) console.log("           ⚠️ le poste est lié à `" + cible.refLie + "` : la cible écrite prime, et elle diffère.");
+if (att.attestation) {
+  console.log("revue     : " + att.attestation.pr + " · " + att.attestation.relecteur + " · revendiquée le " + att.attestation.revue_le +
+    (att.attestation.consigne_le && att.attestation.consigne_le !== att.attestation.revue_le ? " · CONSIGNÉE le " + att.attestation.consigne_le : "") +
+    " (" + att.attestation.source + ")");
+  if (att.retroactive) console.log("           ⚠️ attestation RÉTROACTIVE : reconstruction après coup, jamais une revue préalable.");
+}
+else if (att.derive) console.log("           ⚠️ une attestation existe pour ce fichier mais PAS pour ce contenu (cible non protégée : on passe, on le dit).");
+else console.log("revue     : aucune attestation exigée sur une cible non protégée.");
+
+if (verifierSeulement) { console.log("\n✅ envoyable — la barrière est franchie (--verifier : rien n'a été envoyé, aucun jeton requis)."); process.exit(0); }
+
 const jeton = lireJeton();
-const ref = lireRef();
 if (!jeton) echec("aucun jeton : `supabase login` sur ce poste, ou SUPABASE_ACCESS_TOKEN.");
-if (!ref) echec("aucun projet lié : `supabase link`, ou SUPABASE_PROJECT_REF.");
 if (!/^sbp_/.test(jeton)) echec("le jeton ne ressemble pas à un jeton personnel (`sbp_…`) — jamais la clé service_role ici.");
 
-console.log("migration : " + rel + " (" + sql.length + " caractères) → projet " + ref);
-if (verifierSeulement) { console.log("✅ envoyable (--verifier : rien n'a été envoyé)."); process.exit(0); }
+// ── ③ LE JOURNAL D'ABORD : ne pas savoir journaliser INTERDIT d'appliquer ──
+const phases = {};
+try {
+  await requeter(ref, jeton, sqlCreation());
+  await requeter(ref, jeton, BAR.sqlColonnesJournal());
+  phases["journal (préparation)"] = { ok: true };
+} catch (e) {
+  echec("le journal des migrations n'a pas pu être préparé sur " + ref + " (" + String(e.message).slice(0, 220) + ").\n" +
+        "   RIEN n'a été appliqué : on ne s'autorise pas une migration qu'on ne saurait pas journaliser (ASTRA-33 ③).");
+}
+
+// L'insertion du journal est injectée DANS la transaction de la migration :
+// soit les deux passent, soit aucune. Plus de fenêtre entre les deux.
+const envoye = BAR.sqlAvecJournal(sql, { fichier: rel, cible: ref, attestation: att.attestation, outil: "appliquer-migration.mjs" });
 
 const reponse = await fetch("https://api.supabase.com/v1/projects/" + ref + "/database/query", {
   method: "POST",
   headers: { Authorization: "Bearer " + jeton, "Content-Type": "application/json" },
-  body: JSON.stringify({ query: sql }),
+  body: JSON.stringify({ query: envoye }),
 });
 const texte = await reponse.text();
-if (!reponse.ok) echec("l'API a refusé (" + reponse.status + ") : " + texte.slice(0, 600));
+if (!reponse.ok) echec("l'API a refusé (" + reponse.status + ") : " + texte.slice(0, 600) + "\n   La transaction n'a pas été validée : ni la migration ni sa ligne de journal.");
+phases["envoi"] = { ok: true };
 
 let lignes = [];
-try { lignes = JSON.parse(texte); } catch (e) { echec("réponse illisible : " + texte.slice(0, 300)); }
-if (!Array.isArray(lignes) || !lignes.length) {
-  console.log("⚠️ aucune ligne de verdict rendue — la migration a-t-elle un tableau final ? Mesurer l'état en base.");
-  process.exit(0);
+try { lignes = JSON.parse(texte); } catch (e) { lignes = null; }
+if (!Array.isArray(lignes)) { lignes = []; }
+
+if (!lignes.length) {
+  // AVANT : sortie 0, sans journal. Le journal est maintenant DANS la
+  // transaction, donc il existe — mais l'absence de verdict reste un défaut du
+  // fichier, et elle ne sort pas verte.
+  phases["verdict"] = { ok: false, motif: "aucune ligne de verdict rendue — la migration n'a pas de tableau final" };
+} else {
+  console.log("\nVERDICT (" + lignes.length + " ligne" + (lignes.length > 1 ? "s" : "") + ") :");
+  const cles = Object.keys(lignes[0]);
+  for (const l of lignes) console.log("  " + cles.map((k) => String(l[k])).join("  |  "));
+  const rouges = lignes.filter((l) => Object.values(l).some((v) => /ECHEC|anomalie/i.test(String(v))));
+  phases["verdict"] = rouges.length ? { ok: false, motif: rouges.length + " ligne(s) en ECHEC — la transaction a pourtant été validée : lire l'état en base" } : { ok: true };
 }
-console.log("\nVERDICT (" + lignes.length + " ligne" + (lignes.length > 1 ? "s" : "") + ") :");
-const cles = Object.keys(lignes[0]);
-for (const l of lignes) console.log("  " + cles.map((k) => String(l[k])).join("  |  "));
-const rouges = lignes.filter((l) => Object.values(l).some((v) => /ECHEC|anomalie/i.test(String(v))));
-if (rouges.length) { console.log("\n❌ " + rouges.length + " ligne(s) en ECHEC — la transaction a pourtant été validée : lire l'état en base."); process.exit(1); }
-console.log("\n✅ appliquée. Maintenant : mesurer l'état en base (canal ①), pas ce tableau.");
+
+// Enrichissement FACULTATIF : le verdict imprimé, ajouté à la ligne déjà
+// committée. Son échec n'est pas un état indéterminé — le fait est journalisé.
 try {
-  await requeter(ref, jeton, sqlCreation());
-  const ins = await requeter(ref, jeton, sqlInsertion({ fichier: rel, sql, verdict: lignes }));
-  console.log("📒 journal : " + rel + " consignée sur " + ref + (ins && ins[0] ? " (#" + ins[0].id + ")" : "") + " — `--journal` pour relire.");
-} catch (e) { console.log("⚠️ journal NON écrit (" + String(e.message).slice(0, 200) + ") — la migration est passée, le journal, lui, ne dit rien."); }
+  await requeter(ref, jeton, "update public.migrations_appliquees set verdict = " +
+    "'" + JSON.stringify(lignes.slice(0, 50)).replace(/'/g, "''") + "'::jsonb " +
+    "where id = (select max(id) from public.migrations_appliquees where empreinte = '" + att.empreinte + "');");
+  console.log("\n📒 journal : " + rel + " consignée sur " + ref + " DANS la transaction — `--journal` pour relire.");
+} catch (e) {
+  console.log("\n📒 journal : la LIGNE est écrite (transaction commune). Le verdict n'a pas pu y être ajouté (" + String(e.message).slice(0, 160) + ") — enrichissement seul, pas un état indéterminé.");
+}
+
+const global = BAR.verdictGlobal(phases);
+if (!global.ok) { console.log("\n❌ " + global.echecs.join("\n❌ ")); process.exit(global.code); }
+console.log("\n✅ appliquée et journalisée. Maintenant : mesurer l'état en base (canal ①), pas ce tableau.");

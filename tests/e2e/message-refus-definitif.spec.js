@@ -114,12 +114,16 @@ test.describe("Refus définitif d'un message", () => {
       window.__reponse = { status: 500, error: { message: "boom" } };
       // Trois échecs transitoires d'affilée sur le MÊME message.
       for (let i = 0; i < 3; i++) {
-        _outboxAdd("conv_r4", "msg_r4", "coucou");
+        // ⚠️ ASTRA-21 : `_outboxAdd` prend son PROPRIÉTAIRE en argument (il ne le
+        // relit plus dans la continuation). Le banc le passe donc explicitement ;
+        // ces cas mesurent le refus définitif et le compteur d'essais, pas la
+        // propriété de la file.
+        _outboxAdd("conv_r4", "msg_r4", "coucou", MY_UID);
         const a = JSON.parse(localStorage.getItem("passio_outbox_v1"));
         a[0].essais = Number(a[0].essais || 0) + 1;
         localStorage.setItem("passio_outbox_v1", JSON.stringify(a));
       }
-      _outboxAdd("conv_r4", "msg_r4", "coucou");
+      _outboxAdd("conv_r4", "msg_r4", "coucou", MY_UID);
       return JSON.parse(localStorage.getItem("passio_outbox_v1"))[0].essais;
     });
     // RÉINJECTION : sans la reprise de l'ancienne entrée, `essais` vaut 0 et le

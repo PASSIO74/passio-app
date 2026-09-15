@@ -36,6 +36,13 @@ Object.defineProperty(window.supa, "from", {
     return {
       insert: function (row) {
         window.__envois.push({ table: table, row: row });
+        // ASTRA-21 : une réponse RETENUE. Le banc la relâche quand il veut, ce
+        // qui est le seul moyen de mesurer ce qui se passe PENDANT le vol.
+        if (window.__retenir) {
+          return new Promise(function (resoudre) {
+            window.__relacher = function (rep) { resoudre(rep || window.__reponse || { error: null }); };
+          });
+        }
         return Promise.resolve(window.__reponse || { error: null });
       },
     };
@@ -232,5 +239,158 @@ test.describe("AUTH-06 — la file des messages appartient à un compte", () => 
     expect(res.publies).toHaveLength(1);
     expect(res.publies[0].auteur).toBe(UID_A);
     expect(res.reste).toEqual([]);
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // ASTRA-21 (quatrième contre-revue, 15/09/2026) — LE DÉFAUT QUI RESTAIT.
+  //
+  // Le correctif AUTH-06 protège la file AU REPOS : une entrée porte son compte
+  // et le rejeu la jette si ce n'est pas le compte courant. Mais il ne protège
+  // PAS la file EN VOL. `_sendTextToSupa` part sous A ; sa réponse revient plus
+  // tard ; `_outboxAdd` prenait alors `_fileProprietaire()` — c'est-à-dire le
+  // compte COURANT, devenu B. Le texte de A rentrait en file sous le nom de B,
+  // et le vidage suivant l'envoyait avec `from_id = B`.
+  //
+  // Purger la file ne sauvait rien : la réponse tardive la REPEUPLAIT après la
+  // purge. Et la réparation 403 rappelait `_sendTextToSupa`, qui relisait
+  // `MY_UID` — donc insérait le texte de A sous B, sans passer par la file.
+  // ══════════════════════════════════════════════════════════════════════════
+
+  test("⑦ ASTRA-21 — une réponse tardive ne remet PAS le texte de A en file sous B", async ({ page }) => {
+    await banc(page);
+    const res = await page.evaluate(async () => {
+      localStorage.removeItem("passio_outbox_v1");
+      window.__poserConv("conv_ab", "msg_tardif", "texte privé de A");
+      window.__retenir = true;
+      _sendTextToSupa("conv_ab", "msg_tardif", _withSenderMeta("texte privé de A"));
+      await window.__attendre(30);
+      // Le compte change PENDANT le vol, puis la file est purgée.
+      window.__devenir("88881111-2222-4333-8444-555566667777");
+      localStorage.removeItem("passio_outbox_v1");
+      // La réponse de l'envoi de A arrive MAINTENANT : panne transitoire.
+      window.__relacher({ status: 503, error: { message: "service unavailable" } });
+      await window.__attendre(80);
+      const file = window.__file();
+      window.__envois = [];
+      window.__retenir = false;
+      window.__reponse = { error: null };
+      _flushOutbox();
+      await window.__attendre(80);
+      return { file: file, envoisApresFlush: window.__envois.filter((e) => e.table === "conv_messages") };
+    });
+    // AVANT : file = [{ msgId: 'msg_tardif', owner: B }] → flush → INSERT from_id B.
+    expect(res.file, "une réponse tardive ne repeuple pas une file purgée").toEqual([]);
+    expect(res.envoisApresFlush, "le texte de A ne repart jamais sous B").toEqual([]);
+  });
+
+  test("⑦ bis ASTRA-21 — si la file n'est PAS purgée, l'entrée reste la propriété de A", async ({ page }) => {
+    await banc(page);
+    const res = await page.evaluate(async () => {
+      localStorage.removeItem("passio_outbox_v1");
+      window.__poserConv("conv_ab", "msg_tardif2", "texte privé de A");
+      window.__retenir = true;
+      _sendTextToSupa("conv_ab", "msg_tardif2", _withSenderMeta("texte privé de A"));
+      await window.__attendre(30);
+      window.__devenir("88881111-2222-4333-8444-555566667777");
+      window.__relacher({ status: 503, error: { message: "service unavailable" } });
+      await window.__attendre(80);
+      return { file: window.__file() };
+    });
+    // Remise en file OU rien — mais JAMAIS sous B. C'est l'owner qui est mesuré.
+    for (const e of res.file) {
+      expect(e.owner, "une entrée remise en file garde l'auteur d'origine").not.toBe("88881111-2222-4333-8444-555566667777");
+      expect(e.owner).toBe(UID_A);
+    }
+  });
+
+  test("⑧ ASTRA-21 — la réparation 403 n'envoie jamais le texte de A sous B", async ({ page }) => {
+    await banc(page);
+    const res = await page.evaluate(async () => {
+      localStorage.removeItem("passio_outbox_v1");
+      window.__poserConv("conv_403", "msg_403", "texte privé de A");
+      // La réparation d'appartenance réussit : le chemin rappelle _sendTextToSupa.
+      window._reparerAppartenanceConv = function () { return Promise.resolve(true); };
+      window._convReparationTentee = {};
+      window.__retenir = true;
+      _sendTextToSupa("conv_403", "msg_403", _withSenderMeta("texte privé de A"));
+      await window.__attendre(30);
+      window.__devenir("88881111-2222-4333-8444-555566667777");
+      window.__envois = [];
+      window.__retenir = false;
+      window.__reponse = { error: null };
+      window.__relacher({ status: 403, error: { code: "42501", message: "row-level security" } });
+      await window.__attendre(120);
+      return { envois: window.__envois.filter((e) => e.table === "conv_messages"), file: window.__file() };
+    });
+    // AVANT : la récursion relisait MY_UID → INSERT { from_id: B, content: texte de A }.
+    expect(res.envois, "la réparation ne réémet pas sous le compte suivant").toEqual([]);
+    for (const e of res.file) expect(e.owner).not.toBe("88881111-2222-4333-8444-555566667777");
+  });
+
+  // ⚠️ CE CAS DIT CE QUE LE DURCISSEMENT COÛTE, ET CE QU'IL NE COÛTE PAS.
+  // Quand la réponse revient sous B, l'entrée n'est PAS remise en file — et ce
+  // n'est pas un oubli : garder le texte d'un message privé de A dans une file
+  // que B peut lire est très exactement la fuite qu'AUTH-06 a fermée. Le
+  // renvoi AUTOMATIQUE est donc abandonné dans ce cas précis ; le TEXTE, lui,
+  // ne l'est pas — il reste à l'écran en échec, avec son « réessayer », et
+  // `_retryMsg` le reconstruit depuis `m.de`, l'auteur inscrit à l'écriture.
+  // « On abandonne l'automatisme, pas le texte. »
+  test("⑨ ASTRA-21 — A → B → A : rien n'est perdu, et A renvoie lui-même sous A", async ({ page }) => {
+    await banc(page);
+    const res = await page.evaluate(async () => {
+      localStorage.removeItem("passio_outbox_v1");
+      window.__poserConv("conv_ab", "msg_aba", "texte privé de A");
+      // `de` est posé par le chemin d'écriture réel ; le banc pose la conv à la
+      // main, donc on reproduit ce que `sendMessage` inscrit.
+      (function () {
+        var convs = getConversations();
+        var c = convs.find(function (x) { return x.id === "conv_ab"; });
+        var m = c.messages.find(function (x) { return x.id === "msg_aba"; });
+        m.de = MY_UID; m.mine = true; m.from = "me";
+        saveConversations();
+      })();
+      window.__retenir = true;
+      _sendTextToSupa("conv_ab", "msg_aba", _withSenderMeta("texte privé de A"));
+      await window.__attendre(30);
+      window.__devenir("88881111-2222-4333-8444-555566667777");
+      window.__relacher({ status: 503, error: { message: "service unavailable" } });
+      await window.__attendre(60);
+      // Pendant que B est là : la file ne porte RIEN du texte de A.
+      const fileSousB = window.__file();
+      const statutSousB = (function () {
+        var c = getConversations().find(function (x) { return x.id === "conv_ab"; });
+        return (c.messages.find(function (x) { return x.id === "msg_aba"; }) || {}).status;
+      })();
+      // A revient et renvoie lui-même.
+      window.__devenir("3f2a9c64-5b71-4e2d-8a10-9c7b6d5e4f31");
+      window.__envois = [];
+      window.__retenir = false;
+      window.__reponse = { error: null };
+      _retryMsg("conv_ab", "msg_aba");
+      await window.__attendre(80);
+      return { fileSousB, statutSousB, envois: window.__envois.filter((e) => e.table === "conv_messages") };
+    });
+    expect(res.fileSousB, "le texte privé de A ne reste pas en file pendant que B est connecté").toEqual([]);
+    expect(res.statutSousB, "le message reste à l'écran, en échec — donc renvoyable").toBe("failed");
+    expect(res.envois.length, "au retour de A, « réessayer » renvoie le message").toBeGreaterThan(0);
+    for (const e of res.envois) expect(e.row.from_id, "et il part sous A").toBe(UID_A);
+  });
+
+  test("⑩ ASTRA-21 — un envoi n'insère jamais sous un compte autre que celui qui l'a écrit", async ({ page }) => {
+    await banc(page);
+    const res = await page.evaluate(async () => {
+      localStorage.removeItem("passio_outbox_v1");
+      window.__poserConv("conv_ab", "msg_bascule", "texte privé de A");
+      window.__envois = [];
+      // La bascule a lieu AVANT que l'envoi ne parte : l'auteur capturé (A)
+      // n'est plus le compte courant, l'INSERT ne doit pas avoir lieu.
+      const auteurAvant = MY_UID;
+      window.__devenir("88881111-2222-4333-8444-555566667777");
+      _sendTextToSupa("conv_ab", "msg_bascule", _withSenderMeta("texte privé de A"), auteurAvant);
+      await window.__attendre(80);
+      return { envois: window.__envois.filter((e) => e.table === "conv_messages"), file: window.__file() };
+    });
+    expect(res.envois, "un auteur capturé qui n'est plus le compte courant n'écrit rien").toEqual([]);
+    for (const e of res.file) expect(e.owner).toBe(UID_A);
   });
 });

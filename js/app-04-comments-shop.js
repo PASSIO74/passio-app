@@ -4765,16 +4765,25 @@ async function _forwardTo(targetConvId) {
     // (`sendMessageToSupabase`, quelques lignes plus bas) le traite déjà
     // correctement : statut « failed » + mise en file de renvoi.
     // Le transfert n'avait simplement jamais reçu ce traitement.
-    try {
+    // ⚠️ MÊME DÉFAUT QUE `_sendTextToSupa`, MÊME REMÈDE (ASTRA-21) : l'auteur du
+    // transfert est capturé ICI, pas relu dans la continuation.
+    var auteurTransfert = (typeof MY_UID !== "undefined" ? MY_UID : null);
+    var genTransfert = _outboxGenerationActuelle();
+    if (!auteurTransfert) { _setMsgStatus(targetConvId, localMsg.id, "failed"); }
+    else try {
       supa.from("conv_messages")
-        .insert({ id: localMsg.id, conv_id: targetConvId, from_id: MY_UID, content: payload, created_at: new Date().toISOString() })
+        .insert({ id: localMsg.id, conv_id: targetConvId, from_id: auteurTransfert, content: payload, created_at: new Date().toISOString() })
         .then(function (res) {
-          if (res && res.error) { _setMsgStatus(targetConvId, localMsg.id, "failed"); _outboxAdd(targetConvId, localMsg.id, payload); }
+          if (genTransfert !== _outboxGenerationActuelle() || (typeof MY_UID !== "undefined" ? MY_UID : null) !== auteurTransfert) { _setMsgStatus(targetConvId, localMsg.id, "failed"); return; }
+          if (res && res.error) { _setMsgStatus(targetConvId, localMsg.id, "failed"); _outboxAdd(targetConvId, localMsg.id, payload, _estCompteReel(auteurTransfert) ? auteurTransfert : null); }
           else { _setMsgStatus(targetConvId, localMsg.id, "sent"); _outboxRemove(localMsg.id); }
         })
-        .catch(function () { _setMsgStatus(targetConvId, localMsg.id, "failed"); _outboxAdd(targetConvId, localMsg.id, payload); });
+        .catch(function () {
+          if (genTransfert !== _outboxGenerationActuelle() || (typeof MY_UID !== "undefined" ? MY_UID : null) !== auteurTransfert) { _setMsgStatus(targetConvId, localMsg.id, "failed"); return; }
+          _setMsgStatus(targetConvId, localMsg.id, "failed"); _outboxAdd(targetConvId, localMsg.id, payload, _estCompteReel(auteurTransfert) ? auteurTransfert : null);
+        });
     } catch (e) {
-      _setMsgStatus(targetConvId, localMsg.id, "failed"); _outboxAdd(targetConvId, localMsg.id, payload);
+      _setMsgStatus(targetConvId, localMsg.id, "failed"); _outboxAdd(targetConvId, localMsg.id, payload, _estCompteReel(auteurTransfert) ? auteurTransfert : null);
     }
   }
   try { renderMessages(); } catch(e) {}
@@ -5112,6 +5121,15 @@ function _outboxSave(a) { try { localStorage.setItem(OUTBOX_KEY, JSON.stringify(
 function _fileProprietaire() {
   try { return (typeof _uidEstUnCompte === "function" && _uidEstUnCompte()) ? MY_UID : null; } catch (e) { return null; }
 }
+
+// ⚠️ GÉNÉRATION DE FILE (ASTRA-21). Un envoi capture la génération courante ; une
+// purge l'incrémente. Une continuation née avant la purge est PÉRIMÉE et ne
+// réécrit plus rien — sans quoi une réponse tardive repeuple une file que l'on
+// vient de vider, ce qui vide la purge de son sens. Volatile par construction :
+// un rechargement de page est déjà une frontière (rien n'est plus en vol).
+window._outboxGeneration = window._outboxGeneration || 1;
+function _outboxGenerationActuelle() { return window._outboxGeneration; }
+function _outboxInvaliderEnVol() { window._outboxGeneration = (window._outboxGeneration || 1) + 1; }
 // Verdict sur une entrée au rejeu : « moi » (à envoyer), « autre » (à jeter).
 // ⚠️ PLUS D'ADOPTION (ASTRA / AUTH-06, contre-revue du 2026-09-15). La version du
 // 14/09 adoptait une entrée SANS propriétaire si son message était encore dans
@@ -5125,7 +5143,29 @@ function _outboxVerdict(item, moi) {
   if (!item.owner) return "autre";
   return item.owner === moi ? "moi" : "autre";
 }
-function _outboxAdd(convId, msgId, content) {
+// ⚠️ ASTRA-21 (contre-revue du 15/09/2026) — LE PROPRIÉTAIRE EST UN ARGUMENT,
+// PLUS JAMAIS UNE LECTURE DU COMPTE COURANT.
+// `_outboxAdd` appelait `_fileProprietaire()`, c'est-à-dire « qui est connecté
+// MAINTENANT ». Or ses appelants sont des CONTINUATIONS : la réponse d'un envoi
+// parti sous A revient parfois après que B a pris la place (déconnexion, retour
+// OAuth, `onAuthStateChange`). Le texte de A rentrait alors en file sous le nom
+// de B, et le vidage suivant l'envoyait avec `from_id = B`. Purger la file ne
+// sauvait rien : la réponse tardive la REPEUPLAIT après la purge.
+// L'auteur est donc capturé À L'ORIGINE de l'envoi et porté jusqu'au bout.
+// Sans propriétaire, on n'écrit RIEN en file : une entrée qui ne sait pas à qui
+// elle appartient est exactement ce qu'AUTH-06 refuse de rejouer.
+// ⚠️ `owner` PEUT ÊTRE `null`, et c'est VOULU : c'est ce que `_fileProprietaire()`
+// rendait déjà pour un visiteur (pas d'uuid d'auth). Une entrée sans
+// propriétaire est stockée puis JETÉE au rejeu par `_outboxVerdict` — refuser
+// de la stocker ici changerait le comportement hors ligne d'un visiteur, qui
+// n'a rien à voir avec ASTRA-21. Ce qui compte, c'est que `owner` soit celui
+// capturé À L'ORIGINE, jamais relu dans la continuation.
+function _outboxAdd(convId, msgId, content, owner) {
+  // ⚠️ LA GÉNÉRATION : une purge (déconnexion, adoption d'un compte) invalide
+  // tout ce qui était en vol. Une continuation née avant la purge ne doit pas
+  // ressusciter une file que l'on vient de vider — c'est le second volet du
+  // scénario d'Astra, et il n'est PAS couvert par le seul propriétaire (une
+  // réponse tardive de A, sous A, repeuplerait la file purgée de A).
   var tous = _outboxLoad();
   // ⚠️ LE COMPTEUR D'ESSAIS SURVIT À LA REMISE EN FILE, sinon il ne compte
   // RIEN : chaque échec transitoire repasse par ici, et une entrée neuve
@@ -5135,7 +5175,7 @@ function _outboxAdd(convId, msgId, content) {
   var a = tous.filter(function(x){ return x.msgId !== msgId; });
   a.push({ convId: convId, msgId: msgId, content: content, at: Date.now(),
            essais: Number((ancienne && ancienne.essais) || 0),
-           owner: _fileProprietaire() });
+           owner: owner });
   _outboxSave(a);
 }
 function _outboxRemove(msgId) { _outboxSave(_outboxLoad().filter(function(x){ return x.msgId !== msgId; })); }
@@ -5249,19 +5289,67 @@ function _msgEstEnVol(msgId) { return _msgEnVol[msgId] === true; }
 
 // Envoie un message texte/enveloppe à Supabase, gère statut (sending→sent/failed)
 // et la file d'attente : hors-ligne ou échec TRANSITOIRE → garde en outbox.
-function _sendTextToSupa(convId, msgId, content) {
+// ⚠️ `auteur` ET `generation` SONT CAPTURÉS À L'ORIGINE (ASTRA-21) et portés
+// jusqu'au bout — réponse, rejet, réparation 403 comprise. Les appelants n'ont
+// rien à passer : le premier appel les prend. Ce sont les RÉCURSIONS et les
+// continuations qui les réutilisent, et c'est tout l'objet du correctif.
+// ⚠️ DEUX IDENTITÉS, ET LES CONFONDRE CASSE LE PRODUIT. Une première rédaction
+// prenait `_fileProprietaire()` comme auteur d'écriture : elle exigeait donc un
+// uuid d'AUTH pour envoyer quoi que ce soit, alors que `MY_UID` peut être le
+// `u_<aléatoire>` d'un visiteur. Mesuré en CI : 9 verrous rouges sur quatre
+// suites, toutes avec la même signature — « 0 écriture là où 1 ou 2 étaient
+// attendues ». Le produit n'émettait plus rien.
+//   · l'identité d'ÉCRITURE est `MY_UID` — c'est elle qui part en `from_id`,
+//     et le serveur tranche (la RLS refusera un placeholder) ;
+//   · le PROPRIÉTAIRE DE LA FILE est le compte RÉEL, ou `null` (AUTH-06).
+// ASTRA-21 ne demande pas de durcir qui peut écrire : il demande que ce qui est
+// écrit le soit sous l'identité qui a COMPOSÉ le texte.
+function _estCompteReel(uid) {
+  try { return typeof uid === "string" && typeof RE_UID_COMPTE !== "undefined" && RE_UID_COMPTE.test(uid); }
+  catch (e) { return false; }
+}
+function _sendTextToSupa(convId, msgId, content, auteur, generation) {
+  var moi = auteur || (typeof MY_UID !== "undefined" ? MY_UID : null);
+  var gen = generation || _outboxGenerationActuelle();
+  // Sans identité du tout, on n'écrit ni en base ni en file.
+  if (!moi) { _setMsgStatus(convId, msgId, "failed"); return; }
+  // ⚠️ LA GARDE QUI MANQUAIT. L'auteur capturé doit ÊTRE l'identité courante au
+  // moment où l'on écrit. Sinon on n'insère pas, on ne met pas en file, et on
+  // laisse le message en échec à l'écran : son auteur le renverra lui-même.
+  var courant = (typeof MY_UID !== "undefined" ? MY_UID : null);
+  if (courant !== moi) {
+    _setMsgStatus(convId, msgId, "failed");
+    try { if (typeof diagLog === "function") diagLog("msg_auteur_diverge " + String(msgId)); } catch (e) {}
+    return;
+  }
+  if (gen !== _outboxGenerationActuelle()) {
+    _setMsgStatus(convId, msgId, "failed");
+    try { if (typeof diagLog === "function") diagLog("msg_generation_perimee " + String(msgId)); } catch (e) {}
+    return;
+  }
   if (typeof supa === "undefined" || !supa || typeof MY_UID === "undefined" || !MY_UID || !window._supaReal) {
-    _setMsgStatus(convId, msgId, "failed"); _outboxAdd(convId, msgId, content); return;
+    _setMsgStatus(convId, msgId, "failed"); _outboxAdd(convId, msgId, content, _estCompteReel(moi) ? moi : null); return;
   }
   if (navigator && navigator.onLine === false) {
-    _setMsgStatus(convId, msgId, "failed"); _outboxAdd(convId, msgId, content); return;
+    _setMsgStatus(convId, msgId, "failed"); _outboxAdd(convId, msgId, content, _estCompteReel(moi) ? moi : null); return;
   }
   if (_msgEstEnVol(msgId)) return;
   _msgEnVol[msgId] = true;
+  // `from_id: moi` et non `MY_UID` : même si la garde ci-dessus était un jour
+  // contournée, l'insertion ne peut pas partir sous une autre identité que
+  // celle qui a écrit le texte.
   supa.from("conv_messages")
-    .insert({ id: msgId, conv_id: convId, from_id: MY_UID, content: content, created_at: new Date().toISOString() })
+    .insert({ id: msgId, conv_id: convId, from_id: moi, content: content, created_at: new Date().toISOString() })
     .then(function(res) {
       delete _msgEnVol[msgId];
+      // ⚠️ UNE PURGE PENDANT LE VOL PÉRIME CETTE RÉPONSE. Sans cette sortie, un
+      // 503 revenu après une déconnexion remettait le texte en file — c'est le
+      // « la réponse tardive repeuple la file purgée » d'ASTRA-21.
+      if (gen !== _outboxGenerationActuelle() || (typeof MY_UID !== "undefined" ? MY_UID : null) !== moi) {
+        _setMsgStatus(convId, msgId, "failed");
+        try { if (typeof diagLog === "function") diagLog("msg_reponse_perimee " + String(msgId)); } catch (e) {}
+        return;
+      }
       if (res && res.error) {
         _setMsgStatus(convId, msgId, "failed");
         // ⚠️ 403 SEULEMENT, JAMAIS 401 : un jeton absent ou expiré ne se répare
@@ -5269,8 +5357,12 @@ function _sendTextToSupa(convId, msgId, content) {
         // qui n'existe pas consommerait la tentative unique pour rien.
         var estRefusAcces = Number(res.status) === 403 || String(res.error && res.error.code) === "42501";
         if (estRefusAcces && !window._convReparationTentee[convId]) {
+          // ⚠️ LA RÉCURSION PORTE L'AUTEUR (ASTRA-21). Sans lui, elle relisait
+          // `MY_UID` : si le compte avait changé pendant la réparation, le texte
+          // de A repartait sous B — et sans passer par la file, donc hors de
+          // portée de la garde d'AUTH-06.
           _reparerAppartenanceConv(convId).then(function (repare) {
-            if (repare) { _sendTextToSupa(convId, msgId, content); return; }
+            if (repare) { _sendTextToSupa(convId, msgId, content, moi, gen); return; }
             _setMsgStatus(convId, msgId, "failed"); _outboxRemove(msgId);
           });
           return;
@@ -5282,7 +5374,7 @@ function _sendTextToSupa(convId, msgId, content) {
           // — c'est exactement ce qui a permis six jours de refus silencieux.
           try { if (typeof diagLog === "function") diagLog("msg_refus_definitif " + String((res.error && res.error.code) || res.status || "?")); } catch (e) {}
         } else {
-          _outboxAdd(convId, msgId, content);
+          _outboxAdd(convId, msgId, content, _estCompteReel(moi) ? moi : null);
         }
       }
       else {
@@ -5300,7 +5392,7 @@ function _sendTextToSupa(convId, msgId, content) {
         try { if (typeof _notifierMessage === "function") _notifierMessage(convId, msgId); } catch (e) {}
       }
     })
-    .catch(function() { delete _msgEnVol[msgId]; _setMsgStatus(convId, msgId, "failed"); _outboxAdd(convId, msgId, content); });
+    .catch(function() { delete _msgEnVol[msgId]; _setMsgStatus(convId, msgId, "failed"); _outboxAdd(convId, msgId, content, _estCompteReel(moi) ? moi : null); });
 }
 
 // Renvoi manuel d'un message en échec.
@@ -5319,7 +5411,7 @@ function _retryMsg(convId, msgId) {
     item = null;
     if (!moi) { toast("Ce message ne peut pas être renvoyé depuis ce compte."); return; }
   }
-  if (item) { _setMsgStatus(convId, msgId, "sending"); _sendTextToSupa(convId, msgId, item.content); return; }
+  if (item) { _setMsgStatus(convId, msgId, "sending"); _sendTextToSupa(convId, msgId, item.content, item.owner); return; }
   // Pas en file → reconstruire depuis le texte, SEULEMENT si ce compte l'a écrit.
   var c = getConversations().find(function(x){ return x.id === convId; });
   var m = c && (c.messages||[]).find(function(x){ return x.id === msgId; });
@@ -5331,7 +5423,9 @@ function _retryMsg(convId, msgId) {
     return;
   }
   _setMsgStatus(convId, msgId, "sending");
-  _sendTextToSupa(convId, msgId, _withSenderMeta(m.text || ""));
+  // Reconstruit depuis le texte : l'auteur est `m.de`, celui inscrit à
+  // l'écriture — et il vient d'être confronté au compte courant ci-dessus.
+  _sendTextToSupa(convId, msgId, _withSenderMeta(m.text || ""), m.de);
 }
 
 // Vide la file d'attente (à la reconnexion ou au boot).
@@ -5373,7 +5467,10 @@ function _flushOutbox() {
     item.essais = essais;
     restants.push(item);
     _setMsgStatus(item.convId, item.msgId, "sending");
-    _sendTextToSupa(item.convId, item.msgId, item.content);
+    // ⚠️ C'est l'OWNER DE L'ENTRÉE qui gouverne, jamais une relecture du compte
+    // courant (ASTRA-21) : `_outboxVerdict` vient de dire qu'ils coïncident, et
+    // les repasser par une lecture rouvrirait la fenêtre qu'on ferme.
+    _sendTextToSupa(item.convId, item.msgId, item.content, item.owner);
   });
   // ⚠️ On réécrit la file AVANT que les réponses n'arrivent : `_sendTextToSupa`
   // fait lui-même son `_outboxAdd`/`_outboxRemove` à la réponse, et il gagne.
