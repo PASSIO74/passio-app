@@ -78,6 +78,11 @@ export const TABLES_COMPTE = [
   ["cdv_live_collaborators", "user_id"], ["cdv_live_collaborators", "added_by"],
   ["client_errors", "uid"], ["client_errors", "auth_uid"],
   ["analytics_events", "user_id"], ["telemetry_events", "user_id"],
+  // ⚠️ ASTRA-54 (cinquième contre-revue, 15/09) : trouvé par la gate des tables
+  // une fois qu'elle a lu le SCHÉMA RÉSULTANT et plus des mots — `auth_uid` est
+  // né d'un ALTER TABLE (migration du 14/09), posé par trigger depuis auth.uid() :
+  // un identifiant de compte que rien ne purgeait.
+  ["telemetry_events", "auth_uid"],
   ["profiles", "id"],
 ];
 // ⚠️ Volontairement HORS liste, et pourquoi :

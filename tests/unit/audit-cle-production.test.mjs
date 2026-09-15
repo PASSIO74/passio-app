@@ -1,95 +1,128 @@
 // EXP-11 — la clé de service de la PRODUCTION n'est jamais à portée d'une PR.
 //
-// La gate lit le TEXTE des workflows. Ces verrous l'exercent sur des fichiers
-// FABRIQUÉS (pour éprouver la règle) ET sur les workflows RÉELS du dépôt (pour
-// que la règle serve à quelque chose). Le cas ⑦ RÉINJECTE le défaut mesuré.
+// ASTRA-52 (cinquième contre-revue, 15/09/2026) : la gate ligne à ligne
+// acceptait six formes à tort. Chacune est REJOUÉE ici (cas ①–⑥) : elle doit
+// ROUGIR. Puis les workflows RÉELS du dépôt sont lus (⑦), et la réinjection du
+// défaut mesuré sur `deploy.yml` (⑧) — par l'ARBRE lu, plus par une ligne.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const RACINE = path.join(import.meta.dirname, "..", "..");
-const { declencheParPullRequest, gouvernance, HORS_PR, CLE_PROD } = require(path.join(RACINE, "scripts/audit-cle-production.js"));
+const { auditerTexte, auditer, gardeAcceptee, referencesCle } = require(path.join(RACINE, "scripts/audit-cle-production.js"));
+const { lireYaml } = require(path.join(RACINE, "scripts/lib/yaml-workflow.js"));
 
-const L = (s) => s.split("\n");
+const ETAPE_CLE = (indent, iff) => [
+  `${indent}- name: Barrière RLS de la production`,
+  ...(iff ? [`${indent}  if: ${iff}`] : []),
+  `${indent}  env:`,
+  `${indent}    SUPABASE_SERVICE_ROLE_KEY: \${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}`,
+  `${indent}  run: npx playwright test --project=prod`,
+];
+const WF = (on, etapes, jobIf) => ["name: x", on, "jobs:", "  a:", "    runs-on: ubuntu-latest", ...(jobIf ? ["    if: " + jobIf] : []), "    steps:", ...etapes].join("\n") + "\n";
+const manques = (texte) => auditerTexte("t.yml", texte).manques.length;
 
-test("① un workflow sans déclencheur pull_request n'est pas concerné", () => {
-  assert.equal(declencheParPullRequest(L("on:\n  schedule:\n    - cron: '0 * * * *'\n")), false);
-  assert.equal(declencheParPullRequest(L("on:\n  push:\n    branches:\n      - main\n  pull_request:\n")), true);
-  // ⚠️ `pull_request_target` compte aussi : il s'exécute avec les secrets du
-  // dépôt sur du code proposé de l'extérieur — le pire des deux mondes.
-  assert.equal(declencheParPullRequest(L("on:\n  pull_request_target:\n")), true);
-  // Un `pull_request` qui n'est PAS dans le bloc `on:` ne déclenche rien.
-  assert.equal(declencheParPullRequest(L("on:\n  schedule:\n    - cron: '0 * * * *'\njobs:\n  x:\n    if: github.event_name == 'pull_request'\n")), false);
+test("ASTRA-52 ① `on` en TABLEAU ou en SCALAIRE déclenche bien sur pull_request — la gate d'avant ne le voyait pas", () => {
+  const sansGarde = ETAPE_CLE("      ", null);
+  assert.equal(manques(WF("on: [push, pull_request]", sansGarde)), 1, "tableau en ligne");
+  assert.equal(manques(WF("on:\n  - push\n  - pull_request", sansGarde)), 1, "tableau en bloc");
+  assert.equal(manques(WF("on: pull_request", sansGarde)), 1, "scalaire");
+  assert.equal(manques(WF("on: push", sansGarde)), 0, "push seul : pas concerné");
 });
 
-test("② une étape gardée par son propre `if:` est acceptée", () => {
-  const y = L([
-    "jobs:", "  a:", "    runs-on: ubuntu-latest", "    steps:",
-    "      - name: garde", "        if: github.event_name == 'push'", "        env:",
-    "          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}", "        run: x",
-  ].join("\n"));
-  const i = y.findIndex((l) => CLE_PROD.test(l));
-  const { bloc, entete } = gouvernance(y, i);
-  assert.ok([...bloc, ...entete].some((l) => /^\s*if:/.test(l) && HORS_PR.test(l)));
+test("ASTRA-52 ② une indentation de QUATRE espaces est lue comme celle de deux", () => {
+  const y = ["name: x", "on:", "    pull_request:", "jobs:", "    a:", "        runs-on: ubuntu-latest", "        steps:", ...ETAPE_CLE("            ", null)].join("\n") + "\n";
+  assert.equal(manques(y), 1);
+  const g = ["name: x", "on:", "    pull_request:", "jobs:", "    a:", "        runs-on: ubuntu-latest", "        steps:", ...ETAPE_CLE("            ", "github.event_name == 'push'")].join("\n") + "\n";
+  assert.equal(manques(g), 0);
 });
 
-test("③ un `if:` au niveau du JOB couvre toutes ses étapes", () => {
-  const y = L([
-    "jobs:", "  a:", "    if: github.event_name != 'pull_request'", "    runs-on: ubuntu-latest", "    steps:",
-    "      - name: sans if", "        env:",
-    "          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}", "        run: x",
-  ].join("\n"));
-  const i = y.findIndex((l) => CLE_PROD.test(l));
-  const { bloc, entete } = gouvernance(y, i);
-  assert.ok([...bloc, ...entete].some((l) => /^\s*if:/.test(l) && HORS_PR.test(l)));
+test("ASTRA-52 ③ `secrets['SUPABASE_SERVICE_ROLE_KEY']`, `secrets[\"…\"]`, `toJSON(secrets)` et `${{ secrets }}` sont des références", () => {
+  assert.equal(referencesCle("${{ secrets['SUPABASE_SERVICE_ROLE_KEY'] }}").length, 1);
+  assert.equal(referencesCle('${{ secrets["SUPABASE_SERVICE_ROLE_KEY"] }}').length, 1);
+  assert.equal(referencesCle("${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}").length, 1);
+  assert.equal(referencesCle("${{ toJSON(secrets) }}")[0].forme, "contexte entier");
+  assert.equal(referencesCle("${{ secrets }}")[0].forme, "contexte entier");
+  assert.equal(referencesCle("${{ secrets[matrix.cle] }}")[0].forme, "indexation dynamique");
+  assert.equal(referencesCle("${{ secrets.STAGING_SERVICE_ROLE_KEY }}").length, 0, "le staging n'est pas la production");
+  assert.equal(referencesCle("${{ vars.SUPABASE_SERVICE_ROLE_KEY }}").length, 0, "`vars.` n'est pas un secret (et l'en-tête le dit)");
+  const y = WF("on:\n  pull_request:", ["      - name: x", "        env:", "          K: ${{ secrets['SUPABASE_SERVICE_ROLE_KEY'] }}", "        run: x"]);
+  assert.equal(manques(y), 1);
 });
 
-test("④ l'`if:` d'une AUTRE étape ne protège pas celle-ci", () => {
-  const y = L([
-    "jobs:", "  a:", "    runs-on: ubuntu-latest", "    steps:",
-    "      - name: gardée", "        if: github.event_name == 'push'", "        run: x",
-    "      - name: nue", "        env:",
-    "          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}", "        run: y",
-  ].join("\n"));
-  const i = y.findIndex((l) => CLE_PROD.test(l));
-  const { bloc, entete } = gouvernance(y, i);
-  assert.equal([...bloc, ...entete].some((l) => /^\s*if:/.test(l) && HORS_PR.test(l)), false,
-    "sinon une seule étape gardée blanchirait tout le job");
+test("ASTRA-52 ④ `|| true`, une parenthèse, une négation ne sont PAS des gardes", () => {
+  assert.equal(gardeAcceptee("github.event_name == 'push' || true", ["pull_request"]).acceptee, false);
+  assert.equal(gardeAcceptee("(github.event_name == 'push')", ["pull_request"]).acceptee, false);
+  assert.equal(gardeAcceptee("!cancelled() && github.event_name == 'push'", ["pull_request"]).acceptee, false);
+  assert.equal(gardeAcceptee("github.event_name == 'push'", ["pull_request"]).acceptee, true);
+  assert.equal(gardeAcceptee("${{ github.event_name == 'push' }}", ["pull_request"]).acceptee, true);
+  assert.equal(gardeAcceptee("github.event_name != 'pull_request' && steps.pause.outputs.actif == 'true'", ["pull_request"]).acceptee, true, "une conjonction ne fait que restreindre");
+  assert.equal(gardeAcceptee("steps.pause.outputs.actif == 'true'", ["pull_request"]).acceptee, false, "aucun atome accepté");
+  assert.equal(gardeAcceptee("github.event_name == \"push\"", ["pull_request"]).acceptee, true, "guillemets doubles");
+  assert.equal(manques(WF("on:\n  pull_request:", ETAPE_CLE("      ", "github.event_name == 'push' || true"))), 1);
 });
 
-test("⑤ une condition qui ne nomme pas le déclencheur ne prouve rien", () => {
-  assert.equal(HORS_PR.test("if: steps.x.outputs.ok == 'oui'"), false);
-  assert.equal(HORS_PR.test("if: github.ref == 'refs/heads/main'"), false,
-    "un push de branche existe aussi : le ref seul ne dit pas le déclencheur");
-  assert.equal(HORS_PR.test("if: github.event_name == 'push'"), true);
-  assert.equal(HORS_PR.test("if: github.event_name != 'pull_request' && steps.x.outputs.ok == 'oui'"), true);
+test("ASTRA-52 ⑤ un commentaire n'est pas une garde, et un `if:` est lu dans l'ARBRE", () => {
+  const y = WF("on:\n  pull_request:", [
+    "      - name: x   # if: github.event_name == 'push'",
+    "        # if: github.event_name == 'push'",
+    "        env:",
+    "          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}",
+    "        run: x",
+  ]);
+  assert.equal(manques(y), 1, "les commentaires ne gardent rien");
+  // Un `if:` de JOB couvre ses étapes.
+  assert.equal(manques(WF("on:\n  pull_request:", ETAPE_CLE("      ", null), "github.event_name == 'push'")), 0);
+  // Un `if:` d'une AUTRE étape ne couvre pas celle-ci.
+  assert.equal(manques(WF("on:\n  pull_request:", ["      - name: autre", "        if: github.event_name == 'push'", "        run: x", ...ETAPE_CLE("      ", null)])), 1);
 });
 
-test("⑥ la clé du STAGING n'est pas la clé de production", () => {
-  assert.equal(CLE_PROD.test("SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.STAGING_SERVICE_ROLE_KEY }}"), false,
-    "les confondre ferait rougir le correctif SUP-04 qui a déplacé les suites vers le staging");
-  assert.equal(CLE_PROD.test("SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}"), true);
+test("ASTRA-52 ⑥ `!= 'pull_request'` n'exclut pas `pull_request_target`", () => {
+  const cible = "on:\n  pull_request_target:";
+  assert.equal(manques(WF(cible, ETAPE_CLE("      ", "github.event_name != 'pull_request'"))), 1, "pull_request_target passe encore");
+  assert.equal(manques(WF(cible, ETAPE_CLE("      ", "github.event_name != 'pull_request' && github.event_name != 'pull_request_target'"))), 0);
+  assert.equal(manques(WF("on:\n  pull_request:", ETAPE_CLE("      ", "github.event_name != 'pull_request'"))), 0, "sans pull_request_target, l'exclusion simple suffit");
 });
 
-test("⑦ RÉINJECTION : sur les workflows RÉELS, retirer l'`if:` fait rougir la gate", () => {
-  const f = path.join(RACINE, ".github/workflows/deploy.yml");
-  const avant = fs.readFileSync(f, "utf8");
-  const gate = () => {
-    try { execFileSync(process.execPath, [path.join(RACINE, "scripts/audit-cle-production.js")], { stdio: "pipe" }); return 0; }
-    catch (e) { return e.status; }
-  };
-  assert.equal(gate(), 0, "le dépôt est sain avant la mutation");
-  const cible = "      - name: Barrière RLS de la production (authz-critical seule)\n        if: github.event_name == 'push'\n";
-  assert.ok(avant.includes(cible), "l'étape gardée est là où le verrou la cherche");
-  try {
-    fs.writeFileSync(f, avant.replace(cible, "      - name: Barrière RLS de la production (authz-critical seule)\n"));
-    assert.equal(gate(), 1, "la gate doit REFUSER une étape qui emporte la clé de production sur une PR");
-  } finally {
-    fs.writeFileSync(f, avant);
+test("ASTRA-52 ⑦ une forme YAML inconnue n'est JAMAIS certifiée sûre : ancre, alias, documents multiples → erreur, rouge", () => {
+  for (const y of ["on: &a\n  pull_request:\njobs: *a\n", "---\non:\n  push:\n---\non:\n  pull_request:\n", "on: !!map\n  pull_request:\n"]) {
+    const r = auditerTexte("t.yml", y);
+    assert.ok(r.erreurs.length >= 1, "erreur attendue pour : " + JSON.stringify(y));
+    assert.equal(r.concerne, true, "…et le workflow est traité comme concerné");
   }
-  assert.equal(gate(), 0, "et le dépôt est rendu intact");
+  const { manques: m, erreurs } = auditer([{ nom: "t.yml", texte: "on: &a\n  pull_request:\n" }]);
+  assert.ok(erreurs.length >= 1 || m.length >= 1);
+});
+
+test("⑧ sur les workflows RÉELS : tous se lisent, la gate est verte, et les chemins non certifiés sont nommés", () => {
+  const dossier = path.join(RACINE, ".github", "workflows");
+  const liste = fs.readdirSync(dossier).filter((f) => /\.ya?ml$/.test(f)).map((f) => ({ nom: f, texte: fs.readFileSync(path.join(dossier, f), "utf8") }));
+  for (const w of liste) assert.doesNotThrow(() => lireYaml(w.texte), w.nom + " doit se lire");
+  const r = auditer(liste);
+  assert.deepEqual(r.erreurs, []);
+  assert.deepEqual(r.manques, [], JSON.stringify(r.manques));
+  const deploy = r.rapports.find((x) => x.nom === "deploy.yml");
+  assert.equal(deploy.concerne, true);
+  assert.ok(deploy.occurrences.length >= 2, "les deux étapes de la production sont vues : " + deploy.occurrences.length);
+  assert.ok(deploy.occurrences.every((o) => o.garde), "…et gardées");
+  // Les chemins que la gate ne certifie pas sont listés (actions composites du dépôt).
+  const composites = r.rapports.flatMap((x) => x.chemins.actionsComposites);
+  assert.ok(composites.some((c) => /claude-auth-guard/.test(c.uses)), "l'action composite du dépôt est nommée");
+});
+
+test("⑨ RÉINJECTION sur deploy.yml RÉEL : retirer les deux `if:` fait rougir la gate ; les remplacer par `|| true` aussi", () => {
+  // CRLF (poste Windows, autocrlf) → LF : le test d'avant échouait ici, pas sur la gate.
+  const texte = fs.readFileSync(path.join(RACINE, ".github", "workflows", "deploy.yml"), "utf8").split("\r\n").join("\n");
+  // On retire TOUTES les gardes « push » du fichier (celle du job de déploiement
+  // n'emporte aucune clé : seules les deux étapes de la production doivent rougir).
+  const sans = texte.replace(/^\s+if: github\.event_name == 'push'\n/gm, "");
+  assert.notEqual(sans, texte, "le défaut a bien été réinjecté (la garde existe et se trouve là où on la cherche)");
+  const r = auditerTexte("deploy.yml", sans);
+  assert.equal(r.manques.length, 2, JSON.stringify(r.manques.map((m) => m.chemin)));
+  const ouTrue = texte.replace(/if: github\.event_name == 'push'\n/g, "if: github.event_name == 'push' || true\n");
+  assert.notEqual(ouTrue, texte);
+  assert.equal(auditerTexte("deploy.yml", ouTrue).manques.length, 2, "`|| true` n'est pas une garde");
 });

@@ -32,25 +32,42 @@ function snippet() {
 const CODE = (n, a, d) => ({ filename: "js/app-0" + n + ".js", additions: a, deletions: d });
 const VERROU = (n) => ({ filename: "tests/e2e/v" + n + ".spec.js", additions: 20, deletions: 0 });
 
-// Exécute le snippet RÉEL avec un faux `gh` qui rend les pages données.
+// ⚠️ ASTRA-53 (cinquième contre-revue, 15/09/2026) — LE FAUX `gh` NE CALCULE
+// PLUS RIEN LUI-MÊME. La version d'avant additionnait `additions + deletions`
+// en JavaScript et ignorait l'expression `--jq` reçue : remplacer le calcul
+// réel du workflow par `0` laissait 7/7 verts. Désormais le faux `gh` :
+//   · LIT ses arguments comme le vrai (`api`, `--paginate`, le chemin, `--jq <expr>`)
+//     et REFUSE toute forme qu'il ne reconnaît pas ;
+//   · exécute l'EXPRESSION REÇUE avec un vrai `jq`, PAGE PAR PAGE, et concatène
+//     les sorties — c'est la mécanique de `gh api --paginate --jq` (gh embarque
+//     gojq, compatible jq 1.6+ pour ces expressions ; `jq` est présent sur
+//     les runners Ubuntu, et `JQ_BIN` permet d'en désigner un ailleurs).
+// Ce que le test mesure est donc l'expression du workflow, pas une copie.
+const JQ = process.env.JQ_BIN || "jq";
+function jqDisponible() { try { execFileSync(JQ, ["--version"], { stdio: "ignore" }); return true; } catch (e) { return false; } }
 function executer(pages) {
   const dir = mkdtempSync(join(tmpdir(), "astra34-"));
   mkdirSync(join(dir, "bin"));
-  // Le faux `gh` imite `--paginate --jq` : il applique le filtre jq page par
-  // page et concatène les sorties — c'est EXACTEMENT ce que fait le vrai.
   writeFileSync(join(dir, "pages.json"), JSON.stringify(pages));
-  // Le faux `gh` imite `--paginate --jq` : le filtre est appliqué PAGE PAR PAGE
-  // et les sorties concaténées — exactement ce que fait le vrai, et c'est cette
-  // mécanique-là qui a produit le défaut.
   writeFileSync(join(dir, "faux-gh.mjs"), [
     'import { readFileSync } from "node:fs";',
+    'import { execFileSync } from "node:child_process";',
+    'const args = process.argv.slice(2);',
+    '// La forme EXACTE employée par le workflow : gh api --paginate <chemin> --jq <expr>',
+    'if (args[0] !== "api" || args[1] !== "--paginate" || !/^repos\\/[^/]+\\/[^/]+\\/pulls\\/\\d+\\/files$/.test(args[2]) || args[3] !== "--jq" || typeof args[4] !== "string" || args.length !== 5) {',
+    '  process.stderr.write("faux gh : forme d\\x27appel non reconnue : " + JSON.stringify(args) + "\\n"); process.exit(2);',
+    '}',
+    'const expr = args[4];',
     'const pages = JSON.parse(readFileSync(process.env.PAGES, "utf8"));',
-    'const estVerrou = (f) => /^tests\\/e2e\\/.*\\.spec\\.js$/.test(f);',
-    'const lignes = [];',
-    'for (const p of pages) for (const f of p) if (!estVerrou(f.filename)) lignes.push(String(f.additions + f.deletions));',
-    'process.stdout.write(lignes.length ? lignes.join("\\n") + "\\n" : "");',
+    'let sortie = "";',
+    'for (const p of pages) {',
+    '  // Une page = une réponse JSON ; le filtre est appliqué à CHAQUE page, et',
+    '  // les sorties (`-r`, comme gh) sont concaténées.',
+    '  sortie += execFileSync(process.env.JQ_BIN || "jq", ["-r", expr], { input: JSON.stringify(p), encoding: "utf8" });',
+    '}',
+    'process.stdout.write(sortie);',
   ].join("\n"));
-  writeFileSync(join(dir, "bin", "gh"), '#!/usr/bin/env bash\nexec node "' + join(dir, "faux-gh.mjs") + '"\n', { mode: 0o755 });
+  writeFileSync(join(dir, "bin", "gh"), '#!/usr/bin/env bash\nexec node "' + join(dir, "faux-gh.mjs") + '" "$@"\n', { mode: 0o755 });
   chmodSync(join(dir, "bin", "gh"), 0o755);
   const script = [
     "set -euo pipefail",
@@ -60,7 +77,7 @@ function executer(pages) {
   ].join("\n");
   const out = execFileSync("bash", ["-c", script], {
     encoding: "utf8",
-    env: { ...process.env, PATH: join(dir, "bin") + ":" + process.env.PATH, PAGES: join(dir, "pages.json") },
+    env: { ...process.env, PATH: join(dir, "bin") + ":" + process.env.PATH, PAGES: join(dir, "pages.json"), JQ_BIN: JQ },
   });
   const [nbFichiers, nbLignes] = out.trim().split(/\s+/).map(Number);
   return { nbFichiers, nbLignes };

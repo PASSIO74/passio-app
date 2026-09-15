@@ -21,7 +21,7 @@ import { TABLES_COMPTE, DOSSIERS_CONTENU } from "./purge-compte.js";
 /** Couples (table, colonne) à ÉCARTER : données d'autrui ou traces techniques. */
 export const EXCLUS_EXPORT = new Set([
   "notifications.from_id", "follows.following_id", "blocks.blocked_id", "post_collaborators.added_by",
-  "client_errors.uid", "client_errors.auth_uid", "analytics_events.user_id", "telemetry_events.user_id",
+  "client_errors.uid", "client_errors.auth_uid", "analytics_events.user_id", "telemetry_events.user_id", "telemetry_events.auth_uid",
   // ⚠️ ASTRA-27 : l'« autre bout » d'un lien n'est pas MA donnée. `added_by`
   // dit qui m'a ajouté (comme `post_collaborators.added_by`) ; `call_invites.to_id`
   // reste EXPORTÉ, lui, car une invitation reçue est un fait qui me concerne —

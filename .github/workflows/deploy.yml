@@ -466,6 +466,20 @@ jobs:
       - name: Verrous unitaires du verificateur de sauvegarde
         run: node --test tests/unit/sauvegarde-verifier.test.mjs
 
+      # ⚠️ TOUTES LES SUITES UNITAIRES ET LES DEUX GATES, EN CI (cinquieme
+      # contre-revue Astra, 2026-09-15). Jusqu'ici `npm run verif` ne tournait
+      # qu'au poste : audit-cle-production (EXP-11 / ASTRA-52), audit-tables-compte
+      # (ASTRA-27 / ASTRA-54), la barriere des migrations (ASTRA-33 / ASTRA-51),
+      # la purge, l'export, la reprise n'avaient AUCUN verrou dans la CI. Un
+      # controle qui ne tourne que quand on y pense n'est pas un controle.
+      # Aucun secret, aucun reseau : `jq` et `bash` du runner suffisent.
+      - name: Gates de gouvernance (cle de production, tables de compte)
+        run: |
+          node scripts/audit-cle-production.js
+          node scripts/audit-tables-compte.js
+      - name: Toutes les suites unitaires (tests/unit/*.test.mjs)
+        run: node --test "tests/unit/*.test.mjs"
+
       # Le script d'application et le fichier unique colle dans l'editeur SQL
       # sont ce que Benjamin execute sur la VRAIE base. Un outil d'application
       # jamais execute est un pari : celui-ci est joue de bout en bout, et le
