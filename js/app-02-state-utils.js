@@ -3190,7 +3190,12 @@ async function exporterMesDonnees() {
   var manques = [];
   if ((b.tables_tronquees || verdict.data.tronquees || []).length) manques.push((b.tables_tronquees || verdict.data.tronquees).length + " table(s) tronquée(s) au plafond de " + (b.plafond_par_table || 5000) + " lignes");
   if ((b.erreurs || verdict.data.erreurs || []).length) manques.push((b.erreurs || verdict.data.erreurs).length + " table(s) ou dossier(s) illisible(s)");
-  var complet = b.complet === true || (b.complet == null && !manques.length);
+  // ⚠️ ASTRA-44 (2026-09-15) : sans INSTANTANÉ serveur (`bilan.instantane`), les
+  // tables ont été lues page par page à des instants différents — l'export
+  // n'est pas cohérent et ne peut pas être dit complet. Le serveur le sait
+  // (`complet:false`) ; ici on le nomme pour la personne.
+  if (b.complet === false && !b.instantane) manques.push("lecture sans instantané cohérent (fonction serveur absente)");
+  var complet = b.complet === true && !!b.instantane;
   toast((complet ? "Export complet : " : "⚠️ Export INCOMPLET : ") + n + " table" + (n > 1 ? "s" : "") + ", " + nMedias + " média(s) listé(s)" + (manques.length ? " — " + manques.join(", ") + " (détail dans le fichier, écris-nous)" : ""), complet ? "success" : "warning");
   try { if (!complet && typeof diagLog === "function") diagLog("export_compte incomplet " + manques.join(" | ")); } catch (e) {}
   return true;

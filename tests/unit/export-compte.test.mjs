@@ -1,7 +1,7 @@
 // EXP-08 — l'export d'un compte : ce qu'il prend, ce qu'il laisse, ce qu'il dit.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { tablesExport, exporterCompte, EXCLUS_EXPORT, PLAFOND_PAR_TABLE, PAGE } from "../../supabase/functions/_shared/export-compte.js";
+import { tablesExport, exporterCompte, EXCLUS_EXPORT, PLAFOND_PAR_TABLE, PAGE, RPC_EXPORT } from "../../supabase/functions/_shared/export-compte.js";
 import { TABLES_COMPTE } from "../../supabase/functions/_shared/purge-compte.js";
 
 test("① les données d'autrui et les traces techniques ne partent pas ; le reste suit la liste de purge", () => {
@@ -14,10 +14,37 @@ test("① les données d'autrui et les traces techniques ne partent pas ; le res
 });
 
 // Faux client admin : chaque table rend ce qu'on lui a préparé, paginé.
+// ⚠️ ASTRA-44 : `rpc(export_compte_instantane)` rend une COPIE de `donnees` prise
+// à l'appel — c'est ce qu'un snapshot est ; ce que le faux ne refait pas, c'est
+// la garantie STABLE elle-même (mesurée sur PostgreSQL réel par
+// tests/sql/migration-export-instantane.test.sh). `opts.instantane = "absente"`
+// joue la migration non appliquée : la lecture retombe sur les pages.
 function fauxAdmin(donnees, erreurs = {}, opts = {}) {
   const appels = [];
   return {
     appels,
+    rpc(nom, args) {
+      return {
+        then(res) {
+          appels.push("rpc:" + nom + "=" + (args && args.p_uid));
+          if (nom !== RPC_EXPORT || opts.instantane === "absente") return Promise.resolve({ data: null, error: { code: "PGRST202", message: "Could not find the function public." + nom + " in the schema cache" } }).then(res);
+          // Une table illisible fait LEVER la fonction SQL (une seule transaction) :
+          // tout l'instantané échoue, et l'export retombe sur les pages, qui nomment la table.
+          if (opts.instantane === "panne" || Object.keys(erreurs).length) return Promise.resolve({ data: null, error: { message: "panne instantané" } }).then(res);
+          const plafond = args.p_plafond || PLAFOND_PAR_TABLE;
+          const tables = {};
+          for (const [t, c] of tablesExport()) {
+            if (erreurs[t]) continue;                         // table illisible : absente du dossier
+            const tout = (donnees[t + "." + c] || []).map((l) => ({ ...l }));
+            const sans = (opts.sansColonnes || {})[t] || [];
+            const cles = ["created_at", "id"].filter((k) => !sans.includes(k));
+            tout.sort((x, y) => { for (const k of cles) { const a = String(x[k] ?? ""), z = String(y[k] ?? ""); if (a !== z) return a < z ? -1 : 1; } return 0; });
+            tables[t + "." + c] = { lignes: tout.slice(0, plafond), attendu: tout.length, tronque: tout.length > plafond, ordre: cles.join(", ") || null, ordre_total: cles.includes("id") };
+          }
+          return Promise.resolve({ data: { instantane: "742:742:", prise_le: "2026-09-15T18:00:00Z", plafond, tables, absentes: [] }, error: null }).then(res);
+        },
+      };
+    },
     from(table) {
       let col = null, debut = 0, fin = PAGE - 1, ordreRefuse = null, cles = [], veutCompte = false;
       const b = {
@@ -41,7 +68,10 @@ function fauxAdmin(donnees, erreurs = {}, opts = {}) {
           }
           if (!total && opts.melange) ordonne = opts.melange(ordonne, debut);
           const page = ordonne.slice(debut, fin + 1);
-          return Promise.resolve({ data: page, error: null, count: veutCompte ? tout.length : undefined }).then(res);
+          const compte = veutCompte ? tout.length : undefined;
+          // `opts.entrePages` : ce que le monde fait ENTRE deux pages (ASTRA-44).
+          if (opts.entrePages) opts.entrePages(table);
+          return Promise.resolve({ data: page, error: null, count: compte }).then(res);
         },
       };
       return b;
@@ -74,7 +104,7 @@ test("③ une table illisible est NOMMÉE, elle ne fait pas échouer l'export ; 
 // ── ASTRA-14 (contre-revue Astra, 2026-09-15) : l'incomplétude se dit, toujours.
 test("④ ASTRA-14 (RÉINJECTION) : sans colonne created_at, cinq pages pleines → tronqué DIT, plus jamais 5 000 lignes muettes", async () => {
   const beaucoup = Array.from({ length: PLAFOND_PAR_TABLE + 10 }, (_, i) => ({ id: "l" + i }));
-  const admin = fauxAdmin({ "post_likes.user_id": beaucoup }, {}, { sansColonnes: { post_likes: ["created_at"] } });
+  const admin = fauxAdmin({ "post_likes.user_id": beaucoup }, {}, { sansColonnes: { post_likes: ["created_at"] }, instantane: "absente" });
   const d = await exporterCompte(admin, "moi", null);
   // Sur le code du 14/09 : 5 000 lignes, tronquees = [], aucune erreur — un export incomplet présenté comme complet.
   assert.equal(d.tables.post_likes.length, PLAFOND_PAR_TABLE);
@@ -82,7 +112,7 @@ test("④ ASTRA-14 (RÉINJECTION) : sans colonne created_at, cinq pages pleines 
   assert.equal(d.bilan.complet, false);
   assert.deepEqual(d.bilan.tables_tronquees, ["post_likes"]);
   // Sans created_at NI id : l'ordre n'est pas stable, et l'export le dit.
-  const admin2 = fauxAdmin({ "post_likes.user_id": beaucoup.slice(0, PAGE + 1) }, {}, { sansColonnes: { post_likes: ["created_at", "id"] } });
+  const admin2 = fauxAdmin({ "post_likes.user_id": beaucoup.slice(0, PAGE + 1) }, {}, { sansColonnes: { post_likes: ["created_at", "id"] }, instantane: "absente" });
   const d2 = await exporterCompte(admin2, "moi", null);
   assert.equal(d2.tables.post_likes.length, PAGE + 1);
   assert.deepEqual(d2.bilan.tables_sans_ordre_stable, ["post_likes"]);
@@ -118,7 +148,7 @@ test("ASTRA-28 ① 1001 lignes sans created_at NI id : `complet` ne peut plus ê
   // n'entrait PAS dans `bilan.complet`. Une table paginée au hasard sortait
   // « complète » — c'est le premier des deux constats.
   const lignes = Array.from({ length: PAGE + 1 }, (_, i) => ({ v: i }));
-  const admin = fauxAdmin({ "post_likes.user_id": lignes }, {}, { sansColonnes: { post_likes: ["created_at", "id"] } });
+  const admin = fauxAdmin({ "post_likes.user_id": lignes }, {}, { sansColonnes: { post_likes: ["created_at", "id"] }, instantane: "absente" });
   const d = await exporterCompte(admin, "moi", null);
   assert.equal(d.tables.post_likes.length, PAGE + 1);
   assert.deepEqual(d.bilan.tables_sans_ordre_stable, ["post_likes"], "la table est nommée, comme avant");
@@ -163,7 +193,7 @@ test("ASTRA-28 ③ un doublon ou un compte serveur divergent est une INCOHÉRENC
   // Une écriture concurrente pendant l'export : le serveur en annonce plus que
   // ce qu'on obtient. On ne peut pas jurer avoir tout pris — on le dit.
   const lignes = Array.from({ length: 3 }, (_, i) => ({ id: "l" + i, created_at: "2026-01-0" + i }));
-  const admin = fauxAdmin({ "post_likes.user_id": lignes });
+  const admin = fauxAdmin({ "post_likes.user_id": lignes }, {}, { instantane: "absente" });
   // On truque le compte exact : le serveur annonce 5, on en obtient 3.
   const vraiFrom = admin.from.bind(admin);
   admin.from = (t) => { const b = vraiFrom(t); const vraiThen = b.then.bind(b); b.then = (res) => vraiThen((r) => res({ ...r, count: r.count == null ? r.count : 5 })); return b; };
@@ -179,4 +209,68 @@ test("ASTRA-28 ④ une table TRONQUÉE n'est pas déclarée incohérente — ell
   assert.deepEqual(d.tronquees, ["conv_messages"]);
   assert.deepEqual(d.bilan.incoherences_de_pagination, [], "le plafond n'est pas une incohérence : il est annoncé");
   assert.equal(d.bilan.complet, false, "…mais il empêche toujours `complet`");
+});
+
+// ── ASTRA-44 (cinquième contre-revue, 2026-09-15) : compte exact sans instantané cohérent.
+test("ASTRA-44 ① REPRODUCTION : une ligne déjà lue disparaît et une autre naît entre deux pages → une ligne restée présente en permanence est OMISE, et l'export se dit complet", async () => {
+  // 1 001 lignes triées (created_at, id) ; après la première page, le compte
+  // supprime `r0000` (déjà lue) et ajoute `r9999` (en fin). La seconde page,
+  // lue par position, commence une ligne trop loin : `r1000` (présente avant,
+  // pendant et après) manque ; le compte exact final (1 001) et le nombre
+  // d'identifiants distincts (1 001) coïncident — aucune incohérence détectée.
+  const lignes = Array.from({ length: PAGE + 1 }, (_, i) => ({ id: "r" + String(i).padStart(4, "0"), created_at: "2026-01-01" }));
+  const donnees = { "posts.author_id": lignes };
+  let pages = 0;
+  const admin = fauxAdmin(donnees, {}, {
+    entrePages(table) {
+      pages++;
+      if (table === "posts" && pages === 1) {
+        donnees["posts.author_id"] = donnees["posts.author_id"].filter((l) => l.id !== "r0000").concat([{ id: "r9999", created_at: "2026-01-01" }]);
+      }
+    },
+  });
+  const d = await exporterCompte(admin, "moi", null);
+  const ids = new Set(d.tables.posts.map((l) => l.id));
+  // Ce qu'un export honnête doit garantir : tout ce qui a été présent du début
+  // à la fin y est. Ici `r1000` n'a jamais bougé.
+  assert.ok(ids.has("r1000"), "r1000, présente en permanence, doit être dans l'export — ids : " + d.tables.posts.length + ", distincts : " + ids.size);
+  // Et s'il ne peut pas le garantir, il ne se dit pas complet.
+  if (!ids.has("r1000")) assert.equal(d.bilan.complet, false);
+});
+
+test("ASTRA-44 ② sans la fonction d'instantané (migration non appliquée) : lecture par pages, `complet` JAMAIS vrai, la raison est nommée", async () => {
+  const admin = fauxAdmin({ "posts.author_id": [{ id: "p1" }] }, {}, { instantane: "absente" });
+  const d = await exporterCompte(admin, "moi", null);
+  assert.deepEqual(d.tables.posts, [{ id: "p1" }], "les données sortent quand même (portabilité)");
+  assert.equal(d.bilan.instantane, null);
+  assert.equal(d.bilan.complet, false, "un compte absent ne certifie rien");
+  assert.ok(d.bilan.erreurs.some((e) => /instantané : fonction absente \(migration non appliquée\)/.test(e)), JSON.stringify(d.bilan.erreurs));
+  const panne = await exporterCompte(fauxAdmin({ "posts.author_id": [{ id: "p1" }] }, {}, { instantane: "panne" }), "moi", null);
+  assert.equal(panne.bilan.complet, false);
+  assert.ok(panne.bilan.erreurs.some((e) => /instantané : panne instantané/.test(e)));
+});
+
+test("ASTRA-44 ③ sous instantané : le dossier porte le snapshot et l'heure de prise, et `complet` est possible", async () => {
+  const admin = fauxAdmin({ "posts.author_id": [{ id: "p1", created_at: "2026-01-01" }], "storage:photos/moi": ["a.jpg"] });
+  const d = await exporterCompte(admin, "moi", null);
+  assert.deepEqual(d.bilan.instantane, { snapshot: "742:742:", prise_le: "2026-09-15T18:00:00Z", plafond: PLAFOND_PAR_TABLE });
+  assert.equal(d.bilan.complet, true);
+  assert.ok(admin.appels[0].startsWith("rpc:" + RPC_EXPORT + "=moi"), "l'instantané est demandé en premier, pour le bon compte");
+  // Un compte tronqué sous instantané reste dit tronqué, et empêche `complet`.
+  const beaucoup = Array.from({ length: PLAFOND_PAR_TABLE + 1 }, (_, i) => ({ id: "m" + String(i).padStart(5, "0") }));
+  const t = await exporterCompte(fauxAdmin({ "conv_messages.from_id": beaucoup }), "moi", null);
+  assert.deepEqual(t.bilan.tables_tronquees, ["conv_messages"]);
+  assert.equal(t.bilan.complet, false);
+  assert.equal(t.tables.conv_messages.length, PLAFOND_PAR_TABLE);
+});
+
+test("ASTRA-44 ④ COUVERTURE : la liste de la fonction SQL est EXACTEMENT tablesExport() (contrôle indépendant de la migration)", async () => {
+  const { readFileSync } = await import("node:fs");
+  const sql = readFileSync(new URL("../../migrations/migration_export_instantane_2026-09-15.sql", import.meta.url), "utf8");
+  const bloc = sql.slice(sql.indexOf("paires   text[][] := array["), sql.indexOf("];", sql.indexOf("paires   text[][] := array[")));
+  const paires = [...bloc.matchAll(/\['([a-z_]+)', '([a-z_]+)'\]/g)].map((m) => m[1] + "." + m[2]);
+  const attendues = tablesExport().map(([t, c]) => t + "." + c);
+  assert.deepEqual(paires.filter((p) => !attendues.includes(p)), [], "dans la fonction mais pas dans tablesExport()");
+  assert.deepEqual(attendues.filter((p) => !paires.includes(p)), [], "dans tablesExport() mais pas dans la fonction");
+  assert.equal(paires.length, attendues.length);
 });
