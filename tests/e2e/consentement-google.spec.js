@@ -85,19 +85,24 @@ test.describe("AUTH-03 — consentement Google", () => {
     expect(r.modale, "la modale de consentement est à l'écran").toBe(true);
   });
 
-  test("③ compte ancien sans trace, ou compte déjà tracé : pas de sollicitation", async ({ page }) => {
+  // ③ RÉVISÉ le 2026-09-15 (contre-revue Astra) : un compte ANCIEN sans trace est
+  // sollicité lui aussi — la borne de quinze minutes est tombée. Seule une trace
+  // d'accord dispense.
+  test("③ compte ancien sans trace : sollicité ; compte déjà tracé : pas de sollicitation", async ({ page }) => {
     await banc(page);
     const r = await page.evaluate(async () => {
       localStorage.removeItem("passio_oauth_cgu"); localStorage.removeItem("passio_consentement_requis_v1");
       window.__user = { id: "3f2a9c64-5b71-4e2d-8a10-9c7b6d5e4f31", created_at: "2026-09-01T10:00:00Z", user_metadata: {} };
       await _poserConsentementOAuth();
       const ancien = localStorage.getItem("passio_consentement_requis_v1");
+      localStorage.removeItem("passio_consentement_requis_v1"); window._consentementPlanifie = false;
       window.__user = { id: "3f2a9c64-5b71-4e2d-8a10-9c7b6d5e4f31", created_at: new Date().toISOString(), user_metadata: { cgu_accepted_at: "2026-09-14T08:00:00Z" } };
       await _poserConsentementOAuth();
       const trace = localStorage.getItem("passio_consentement_requis_v1");
       return { ancien, trace, updates: window.__updates.length };
     });
-    expect(r.ancien).toBeNull();
+    // RÉINJECTION : sur le code du 14/09, `ancien` est null (compte de plus de 15 min ignoré).
+    expect(r.ancien).toBe("1");
     expect(r.trace).toBeNull();
     expect(r.updates).toBe(0);
   });
