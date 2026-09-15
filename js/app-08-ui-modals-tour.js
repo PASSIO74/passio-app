@@ -2968,7 +2968,15 @@ window.PASSIO_SUPABASE = { url: SUPABASE_URL, anon: SUPABASE_KEY };
 // des inscriptions échouent en `captcha_failed`. Le secret, lui, ne vit QUE dans
 // Supabase. Moteur : captcha* dans app-02. Hôte à garder dans la CSP :
 // challenges.cloudflare.com (script-src ET frame-src).
-const PASSIO_TURNSTILE_SITEKEY = "";
+// Widget « PASSIO » créé chez Cloudflare le 2026-09-15 (mode Managed).
+const PASSIO_TURNSTILE_SITEKEY = "0x4AAAAAAE1sSuozcaZqYV3T";
+// ⚠️ UN WIDGET TURNSTILE EST LIÉ À DES HÔTES. Ailleurs (localhost, aperçu de
+// PR `deploy-preview-N--…`), il ne peut QUE rendre une erreur — et le moteur
+// attendrait 20 s un jeton qui ne viendra jamais, à chaque inscription et
+// chaque connexion. `captchaActif()` (app-02) ne s'allume donc que sur un hôte
+// déclaré ici, le même que chez Cloudflare (sous-domaines compris). Un banc
+// qui pose `window.PASSIO_TURNSTILE_SITEKEY` reste maître, hôte ou pas.
+const PASSIO_TURNSTILE_HOTES = ["passio-app.netlify.app"];
 const PASSIO_CDN_BASE = "https://passio-app.netlify.app/media";
 function cdnUrl(url) {
   if (!PASSIO_CDN_BASE || typeof url !== "string" || url.indexOf("data:") === 0) return url;
