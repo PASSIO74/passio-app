@@ -29,6 +29,7 @@ const fs = require("fs");
 const path = require("path");
 
 const ROOT = path.join(__dirname, "..");
+const { sansCommentairesNiChaines } = require("./audit-tests-isolation.js");
 const CI = process.argv.includes("--ci");
 
 // ── 1. Les fonctions réellement définies par l'application ──────────────────
@@ -77,6 +78,7 @@ const ARTEFACTS = new Set([
   // SUITES_PROD le fait rougir en nommant le fichier manquant.
   "projets-playwright.spec.js",
   "user-state-horodatage.spec.js",   // trigger trg_user_state_horodatage (SYNC-CLOCK-012)
+  "authz-critical.spec.js",         // la frontière RLS par REST brut : aucune fonction cliente, délibérément (révélé par ASTRA-15, 2026-09-15 — avant, un nom de fonction dans un commentaire le faisait passer)
   "suppression-compte.spec.js",      // Edge Function delete-account (compte + médias)
   // Garde-fou de VOCABULAIRE (ADR-010) : il télécharge les SOURCES réellement
   // servies au navigateur et y cherche des formulations interdites. Il ne pilote
@@ -124,7 +126,10 @@ const suspects = [];
 let total = 0;
 
 for (const s of specs) {
-  const src = fs.readFileSync(path.join(dir, s), "utf8");
+  // ⚠️ ASTRA-15 (2026-09-15) : un commentaire contenant `page.goto(...)` suffisait
+  // au contrôle de « page réelle ». Les motifs se cherchent dans le CODE — sans
+  // commentaires ni contenu de chaînes (même épurateur que l'audit d'isolation).
+  const src = sansCommentairesNiChaines(fs.readFileSync(path.join(dir, s), "utf8"));
   total++;
 
   if (ARTEFACTS.has(s)) continue;           // vérifie un artefact, pas l'app en marche

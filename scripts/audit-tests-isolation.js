@@ -129,8 +129,12 @@ function sansCommentairesNiChaines(src) {
       while (i < n && src[i] !== q) {
         if (src[i] === "\\") { i += 2; continue; }
         if (q === "`" && src[i] === "$" && src[i + 1] === "{") {
-          let prof = 1; i += 2; out += "${";
-          while (i < n && prof) { if (src[i] === "{") prof++; else if (src[i] === "}") prof--; out += src[i]; i++; }
+          // ⚠️ ASTRA-15 (2026-09-15) : ce qui vit dans ${…} est du CODE, et il peut
+          // contenir une chaîne — `${"sansDonneesDistantes(page)"}` passait pour un
+          // appel. On l'épure récursivement, comme le reste.
+          let prof = 1, deb = i + 2; i += 2;
+          while (i < n && prof) { if (src[i] === "{") prof++; else if (src[i] === "}") prof--; i++; }
+          out += "${" + sansCommentairesNiChaines(src.slice(deb, i - 1)) + "}";
           continue;
         }
         i++;
