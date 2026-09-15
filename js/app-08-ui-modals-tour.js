@@ -320,6 +320,58 @@ function showLanding() {
   setTimeout(function() { try { applyConfig(); } catch(e) {} }, 150);
 }
 
+// ======== SESSION EXPIRÉE (UXO-02, 2026-09-15) ========
+// Appelée par `boot()` là où il appelait `showLanding()` : un appareil qui
+// porte un compte (état local complet) ET un jeton SDK persisté — donc une
+// session qui a existé et que le SDK n'a pas pu rétablir — entre dans le fil
+// avec son état local, en LECTURE. Rend `false` (et `boot()` garde la landing)
+// quand l'appareil n'a jamais eu de session : là, il n'y a rien à protéger, et
+// c'est aussi l'état de tout banc local, qui ne pose jamais de jeton.
+// ⚠️ PAS de `supaInit()` : il lit les tables privées sous `MY_UID`, et
+// `supaLoadMyConversations` REMPLACE l'entrée locale par son résultat — vide
+// sans session. Lire le public serait possible, écraser le local ne l'est pas.
+function entrerEnSessionExpiree() {
+  if (!(state && state.onboarded)) return false;
+  if (typeof _sessionSdkPersistee !== "function" || !_sessionSdkPersistee()) return false;
+  window._sessionExpiree = true;
+  try { document.documentElement.classList.add("passio-session-expiree"); } catch (e) {}
+  try { restoreFeedPassions(); } catch (e) {}
+  try { purgeConvDuplicates(); } catch (e) {}
+  try { renderEverything(); } catch (e) {}
+  try { document.body.classList.add("screen-feed-active"); } catch (e) {}
+  _poserBandeauSessionExpiree();
+  try { if (window.tel && window.tel.action) window.tel.action("session_expiree_mode", {}); } catch (e) {}
+  try { diagLog("session expirée : fil local en lecture seule"); } catch (e) {}
+  return true;
+}
+
+// Le bandeau vit entre la barre du haut et `#appMain`, en flux (l'app-shell
+// est une colonne flex) : il pousse le contenu, il ne le recouvre pas. Styles
+// en ligne, fonds OPAQUES (le contrôle de contraste ignore l'alpha) — et pas
+// une ligne dans `styles.css`, dont le bloc UI-4A5 doit rester le dernier.
+function _poserBandeauSessionExpiree() {
+  if (document.getElementById("sessionExpireeBandeau")) return;
+  var top = document.querySelector(".app-topbar");
+  if (!top || !top.parentNode) return;
+  var b = document.createElement("div");
+  b.id = "sessionExpireeBandeau";
+  b.setAttribute("role", "status");
+  b.style.cssText = "display:flex;align-items:center;gap:10px;padding:8px 14px;background:#fff4e5;color:#6b3f00;border-bottom:1px solid #f0c48a;font-size:13px;line-height:1.3;flex:0 0 auto;";
+  var t = document.createElement("span");
+  t.style.flex = "1";
+  t.textContent = "Session expirée — lecture seule jusqu'à ta reconnexion.";
+  var btn = document.createElement("button");
+  btn.type = "button";
+  btn.id = "sessionExpireeReconnecter";
+  btn.className = "btn primary";
+  btn.style.cssText = "padding:6px 12px;font-size:13px;white-space:nowrap;";
+  btn.textContent = "Se reconnecter";
+  btn.addEventListener("click", function () { try { reconnecterSession(); } catch (e) {} });
+  b.appendChild(t);
+  b.appendChild(btn);
+  top.parentNode.insertBefore(b, top.nextSibling);
+}
+
 // Fonction robuste pour lancer le tour quoi qu'il arrive
 //
 // ⚠️ LE TOUR LONG N'EST JAMAIS IMPOSÉ EN V2, ET LA RÈGLE VIT ICI — PAS CHEZ SES
@@ -2453,6 +2505,8 @@ function navigateTo(screen) {
   try { goTo(screen); } catch(e) { console.warn("navigateTo error:", e); }
 }
 
+// Délai maximal accordé à `getSession()` au démarrage (voir UXO-02 dans `boot`).
+const DELAI_SESSION_BOOT_MS = 8000;
 async function boot() {
   // Charge le SDK Supabase à la demande (lazy, hors page verrouillée) PUIS
   // construit le vrai client, avant le moindre appel `supa.*` ci-dessous.
@@ -2514,7 +2568,18 @@ async function boot() {
 
   // Vérifie si l'utilisateur est déjà connecté via Supabase Auth
   try {
-    const { data: { session } } = await supa.auth.getSession();
+    // ⚠️ BORNÉ (UXO-02, 2026-09-15). Avec un jeton persisté mais EXPIRÉ et
+    // pas de réseau, `getSession()` tente le rafraîchissement en boucle avec
+    // repli exponentiel tant que « moins de 30 s » (supabase-js 2.116,
+    // `_refreshAccessToken`) : l'application restait BLANCHE une demi-minute
+    // avant de montrer quoi que ce soit — mesuré au banc, route coupée. Passé
+    // le délai, on continue SANS session : le mode « session expirée » prend
+    // la main ; si le SDK finit par obtenir la session (réseau lent), il émet
+    // TOKEN_REFRESHED et le gestionnaire plus bas RECHARGE — rien n'est perdu.
+    const { data: { session } } = await Promise.race([
+      supa.auth.getSession(),
+      new Promise(function (r) { setTimeout(function () { r({ data: { session: null } }); }, DELAI_SESSION_BOOT_MS); }),
+    ]);
     // ⚠️ SESSION SURVIVANTE + RECONNEXION DEMANDÉE = DÉCONNEXION INACHEVÉE.
     // `supa.auth.signOut()` est sous un `try` avale-tout et `ACCOUNT_SCOPED_KEYS`
     // ne touche pas le jeton `sb-…-auth-token` : hors ligne, la session peut
@@ -2768,6 +2833,16 @@ async function boot() {
         try { if (typeof _showPasswordRecoveryUI === "function") _showPasswordRecoveryUI(); } catch(e) {}
         return;
       }
+      if (session?.user && window._sessionExpiree === true) {
+        // SESSION REVENUE EN MODE EXPIRÉ (UXO-02) : le SDK a rafraîchi seul le
+        // jeton (retour du réseau), ou une connexion vient d'aboutir. On ne
+        // « lève » pas le mode à chaud — on RECHARGE : `boot()` reprend le
+        // chemin normal (adoption si c'est un AUTRE compte, hydratation
+        // `user_state`, files rejouées), et rien de ce mode ne survit.
+        try { toast("Session rétablie ✓", "reward"); } catch (e) {}
+        setTimeout(function () { try { location.reload(); } catch (e) {} }, 300);
+        return;
+      }
       if (session?.user) {
         // ⚠️⚠️ TROISIÈME POINT D'ENTRÉE, ET LE PLUS PIÉGEUX (2026-09-02, revue
         // adversariale). Ce handler n'est enregistré que lorsque `boot()` n'a
@@ -2921,6 +2996,9 @@ async function boot() {
   }
 
   if (_entreeInvite) return;
+
+  // ── Compte présent, session absente (UXO-02) : le fil local, en lecture ──
+  if (entrerEnSessionExpiree()) return;
 
   showLanding();
 }
