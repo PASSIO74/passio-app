@@ -1108,3 +1108,234 @@ Ce que cette passe a aussi changé hors identifiant : le jeton `gh` du poste n'a
 | PR | [#420](https://github.com/PASSIO74/passio-app/pull/420). |
 
 ---
+
+---
+
+# QUATRIÈME CONTRE-REVUE ASTRA — reprise du 2026-09-15 (soir)
+
+> **Commit examiné par Astra : `872e30ea5128ee5209cc86097b3e74f5938c6a65`** (après #449).
+> **Écart avec `main` au démarrage de cette reprise : UN commit**, `bd837e9` (#450), qui ne
+> touche que le registre et les preuves. **Le code examiné est donc le code actuel** : aucun
+> constat n'a pu être refermé par une évolution intermédiaire, et chacun a été confronté au
+> code tel qu'il est.
+>
+> **Les dix-huit constats ASTRA-21 à ASTRA-38 étaient OUVERTS.** Cette reprise en traite
+> onze, chacun dans sa propre PR, avec reproduction AVANT correction et réinjection du
+> défaut. Aucune migration n'a été appliquée, aucune Edge Function redéployée, aucune
+> donnée touchée.
+>
+> **Les quatre états restent distincts** : `corrigé dans le code` → `testé` (sur quoi) →
+> `déployé` (cible et version) → `vérifié après déploiement` (par quel parcours).
+> **Pour les onze lots ci-dessous, les colonnes « déployé » et « vérifié » valent toutes
+> « non mesuré ».** C'est la conséquence directe du périmètre autorisé : préparer, tester,
+> ouvrir les PR — pas fusionner, pas déployer, pas migrer.
+
+## Les deux fichiers de preuve annoncés et absents au SHA examiné
+
+Astra relève que `preuves/appels/2026-09-15-msg-01-invitation-attestee-production.md` et
+`preuves/irl/2026-09-15-irl-06-cascade-production.md` n'existaient pas au commit examiné.
+**Vérifié, et c'est exact** : `git cat-file -e 872e30e:<chemin>` échoue pour les deux. Ils
+ont été ajoutés par `bd837e9` (#450), **le commit suivant**, sous
+`.passio/audits/BILAN_PASSIO_09-26/preuves/` (le registre les cite en chemin relatif au
+dossier d'audit, ce qui explique la divergence de chemin). **Aucune trace n'a été recréée
+après coup** : la date de leur commit est celle de leur ajout réel.
+
+## Tableau de reprise — un identifiant par ligne
+
+| ID | P | Corrigé | Testé | Déployé | Vérifié | PR |
+|---|---|---|---|---|---|---|
+| ASTRA-33 | P1 | oui | 13 verrous, poste ; 3 réinjections | non mesuré | non mesuré | [#451](https://github.com/PASSIO74/passio-app/pull/451) |
+| ASTRA-21 | P1 | oui | 13 cas e2e, poste ; 2 réinjections | non mesuré | non mesuré | [#452](https://github.com/PASSIO74/passio-app/pull/452) |
+| ASTRA-22 | P1 | oui | banc SQL 20 contrôles ; 2 mutations | **non appliquée** | non mesuré | [#453](https://github.com/PASSIO74/passio-app/pull/453) |
+| ASTRA-34 | P1 | oui | 7 verrous, snippet réel extrait de `deploy.yml` | non mesuré | non mesuré | [#454](https://github.com/PASSIO74/passio-app/pull/454) |
+| ASTRA-29/30/31/32 | P1/P1/P1/P1 | oui | 37 verrous ; 5 réinjections | non mesuré | non mesuré | [#455](https://github.com/PASSIO74/passio-app/pull/455) |
+| ASTRA-38 | P2 | oui | 16 verrous ; 5 contrôles réinjectés | non mesuré | non mesuré | [#456](https://github.com/PASSIO74/passio-app/pull/456) |
+| ASTRA-28 | P2 | oui | 10 verrous ; 2 réinjections | **fonction non redéployée** | non mesuré | [#457](https://github.com/PASSIO74/passio-app/pull/457) |
+| ASTRA-27 | P1 | oui | 7 verrous + gate ; 1 réinjection | **fonctions non redéployées** | non mesuré | [#458](https://github.com/PASSIO74/passio-app/pull/458) |
+| ASTRA-37 | P2 | oui | 9 verrous ; 1 réinjection | non mesuré | **banc non exécuté** | [#459](https://github.com/PASSIO74/passio-app/pull/459) |
+| ASTRA-35 | P1 | oui | banc SQL 25 contrôles ; 2 mutations | **non appliquée** | non mesuré | [#460](https://github.com/PASSIO74/passio-app/pull/460) |
+| ASTRA-36 | P1 | oui | 5 cas e2e + 29 de non-régression ; 1 réinjection | non mesuré | non mesuré | [#461](https://github.com/PASSIO74/passio-app/pull/461) |
+| ASTRA-26 | P1 | oui | banc SQL 21 contrôles + 12 verrous ; 2 réinjections | **non appliquée** | non mesuré | [#463](https://github.com/PASSIO74/passio-app/pull/463) |
+| ASTRA-25 | P1 | oui | banc SQL 25 contrôles + 17 verrous ; 3 réinjections + 1 mutation | **non appliquée** | non mesuré | [#464](https://github.com/PASSIO74/passio-app/pull/464) |
+| ASTRA-23 | P1 | oui | banc SQL 25 contrôles + 4 cas e2e ; 2 réinjections + 1 mutation | **non appliquée** | non mesuré | [#465](https://github.com/PASSIO74/passio-app/pull/465) |
+| ASTRA-24 | P1 | **partiel** | 18 verrous ; 1 réinjection | **fonction non redéployée** | non mesuré | [#466](https://github.com/PASSIO74/passio-app/pull/466) |
+
+⚠️ **« Corrigé » et « déployé » sont deux colonnes, et AUCUNE ligne n'a la seconde.** Les
+**cinq** migrations de cette reprise (ASTRA-22, 35, 26, 25, 23) sont écrites et éprouvées
+**sur base jetable**, jamais appliquées ; **trois** Edge Functions portent du code non
+redéployé (`delete-account` pour ASTRA-27/25, `export-account` pour ASTRA-28, `notify-call`
+pour ASTRA-24). Une PR ouverte ne change rien pour un utilisateur.
+
+⚠️ **ET DEUX MIGRATIONS ONT UN ORDRE D'ALLUMAGE À NE PAS INVERSER.** ASTRA-23 : le client
+doit être SERVI avant que la policy soit collée — appliquée d'abord, tout appel émis par un
+`app.js` encore en cache est refusé (l'appelant se voit refuser son propre canal). ASTRA-25 :
+la barrière doit exister avant que `delete-account` la pose, sinon la purge continue sans
+elle et le DIT (`notes`), ce qui est le comportement voulu mais pas la cible.
+
+**Les dix-huit constats ASTRA-21 → ASTRA-38 ont tous été traités.** Restent les résidus
+anciens listés au §4 du plan, et le résidu d'isolation SUP-04 / TCI-04 / EXP-11.
+
+⚠️ **ASTRA-24 EST « PARTIEL », ET LA COLONNE LE DIT.** Le lot ferme la PUSH (une mention
+doit désigner quelqu'un) ; il ne ferme PAS la notification IN-APP, qu'un inconnu peut
+toujours écrire avec un texte libre — `notifications_insert_own_author` n'exige que
+`from_id = auth.uid()` et l'absence de blocage (mesuré en production le 15/09). Porter la
+règle en SQL serait une SECONDE COPIE d'une règle qui vit en JavaScript. Le geste qui
+fermerait vraiment est de faire écrire ces lignes par le SERVEUR, genre par genre, comme
+`follows_notifier` le fait déjà : lot à part entière, non fait. Écrit plutôt que compté
+comme fermé — dossier : `preuves/notifications/2026-09-15-astra-24-mention-et-texte-libre.md`.
+
+⚠️ **ET ASTRA-23 A UNE LEÇON QUI DÉPASSE SON LOT.** La migration du 14/09 avait écrit son
+propre résidu en toutes lettres — « le lier aux participants demanderait une table
+d'appels, autre lot » — et la table est née le LENDEMAIN, sans que personne ne revienne
+fermer ce qu'elle rendait fermable. **Un résidu écrit n'est pas un résidu suivi** : rien
+dans le dépôt ne relie une phrase « autre lot » au jour où sa condition devient vraie.
+
+---
+
+## Ce que la reprise a MESURÉ en production, et qui n'était pas dans le rapport
+
+Cinq faits nouveaux, tous relevés au canal ① d'ADR-012 (lecture seule), tous vérifiables.
+
+**① Le journal des migrations a OUBLIÉ la migration de #440.** `public.migrations_appliquees`
+porte six lignes ; `migration_moderation_suspension_2026-09-15.sql` n'y figure pas — pas même
+parmi les quatre reconstructions `retroactif-2026-09-15` — alors que son effet est en base
+(`moderation_actions_action_check` admet `suspension` et `levee`). **Le journal ne sait pas
+dire ce qu'il ne sait pas : NET-07 ne peut pas être fermé sur sa seule existence.** La
+consignation rétroactive est PRÉPARÉE et NON APPLIQUÉE
+(`.passio/migrations/EN_ATTENTE-consignation-440.sql`).
+
+**② Sept couples (table, colonne) portant un identifiant de compte n'étaient purgés nulle
+part.** Les tables `cdv_*` du Carnet de voyage RETIRÉ (ADR-011 §6, données délibérément
+conservées) sont toujours en production et portent **13 lignes** avec un identifiant de
+compte. Supprimer un compte y laissait son identifiant. Trouvé par la gate neuve
+(`scripts/audit-tables-compte.js`), pas par une relecture.
+
+**③ Le broadcast Realtime contourne le blocage que la lecture REST refuse.** Les deux
+moitiés relues : la policy `conv_messages_select_member` porte bien `NOT
+is_blocked_with(from_id)`, et `broadcast_conv_message_to_users` diffuse `NEW` complet sans
+aucune mention de blocage.
+
+**④ Les quatre tables filles d'`events` portent `ON DELETE CASCADE`** — y compris
+`event_checkin_secrets`, que le client ne nettoyait pas. Le commentaire du client
+(« les tables filles n'ont pas toutes un ON DELETE CASCADE en prod ») était **périmé**.
+
+**⑤ Aucun trigger d'`event_attendees` ne regarde `event_id`** — c'est ce qui rend ASTRA-35
+exploitable.
+
+---
+
+## Trois points où cette reprise CONTREDIT ou NUANCE la contre-revue
+
+Astra écrit que ses preuves « restent à contredire ». Trois l'ont été, sur mesure.
+
+**① ASTRA-22 — la justification est un cran trop forte.** Astra dit « ne pas utiliser
+aveuglément une fonction basée sur `auth.uid()` dans un trigger privilégié », en laissant
+entendre qu'elle testerait le mauvais couple. Mesuré sur PostgreSQL 16 : quand l'AUTEUR
+insère depuis SA session — le chemin client, celui que la policy INSERT impose —
+`is_blocked_with(destinataire)` teste le BON couple et **filtre correctement**. Elle ne
+cesse de filtrer que sur les chemins SANS session (`service_role`, Edge Function, message
+système, rejeu de restauration), où `auth.uid()` est NULL. **Le piège n'est donc pas « ça ne
+filtre jamais » mais « ça filtre pendant les tests et cesse de filtrer sur les chemins
+serveur »** — ce qui est pire, parce que rien ne le dit. Le constat est confirmé ; sa
+justification est corrigée, et le banc mesure les deux chemins.
+
+**② ASTRA-36 — la portée est plus étroite que « les dépendances d'autrui ».** Les policies
+DELETE des trois tables filles sont toutes en « ma ligne seulement » (relues en production).
+Le client ne pouvait détruire QUE SES PROPRES lignes. Le mécanisme décrit par Astra est
+exact ; le dégât est borné par la RLS, et il faut le dire ainsi.
+
+**③ ASTRA-37 — ce lot ne permet pas de conclure sur les runs passés.** Il ne permet PAS
+d'affirmer que les 27 et 5 événements manquants étaient des faux négatifs du banc : les
+traces conservées ne le tranchent pas, et une perte serveur reste possible. Il rend les
+mesures À VENIR interprétables et SÉPARE les deux causes. **PERF-01 reste PARTIEL.**
+
+---
+
+## Quatre défauts que cette reprise a introduits, et que ses propres bancs ont trouvés
+
+À conserver : dans les quatre cas, c'est la MESURE qui a corrigé, jamais la relecture.
+
+**① Deux « ne doit pas contenir » se sont piégés sur LEUR PROPRE COMMENTAIRE.** La ligne de
+verdict d'ASTRA-22 cherchait `is_blocked_with` dans tout `prosrc` et trouvait la mention
+dans le commentaire qui l'explique ; le cas ⑥ d'ASTRA-34 cherchait l'agrégat dans tout
+`deploy.yml` et trouvait la citation de la forme d'avant. **Un « ne doit pas contenir » doit
+viser du CODE, jamais un fichier entier.**
+
+**② Une affirmation d'ordre de triggers était fausse.** La migration d'ASTRA-35 affirmait
+que `trg_event_attendees_figes` « s'ordonne avant les autres (PostgreSQL trie par nom) » —
+faux, il arrive après `…_admission` et `…_capacite`. Et c'est **sans importance** : il
+`raise exception`, donc il annule la transaction quoi qu'aient rendu les précédents.
+L'affirmation a été retirée, pas contournée.
+
+**③ Les bits de `tgtype` ont été lus de travers.** `4` est INSERT, `BEFORE` est `2`. La
+ligne de verdict rendait ECHEC sur une migration pourtant juste. **Un verdict faux au ROUGE
+coûte autant qu'un verdict faux au vert.**
+
+**④ Un script testable mais dangereux a été retiré plutôt que gardé.** La première rédaction
+d'ASTRA-34 déportait le calcul dans `scripts/sentinelle-taille-pr.js` — plus facile à
+tester, mais elle obligeait le job `governance` à **récupérer le code de la PR qu'il
+police**. Le script a été supprimé : *une fonction morte qui double une fonction vivante est
+pire qu'un trou.*
+
+---
+
+## Deux verrous existants encodaient un défaut — réécrits, pas assouplis
+
+- `sauvegarde-verifier` ④ **exigeait** qu'une archive sans `schema.sql` sorte en code 0
+  (« dit ⚠, pas une anomalie »), en contradiction avec le registre qui annonçait le DDL
+  « exigé par le vérificateur » ;
+- `restaurer-donnees` ④ ter affirmait « sans eTag, **la taille tranche seule** » et exigeait
+  `divergents: []`.
+
+Ce ne sont pas des propriétés qu'on réduit pour verdir : **ce sont des attentes qui
+affirmaient plus que la mesure ne permettait.** Les fixtures des cas qui portent sur le
+*compte de lignes* ont reçu un DDL valide, pour qu'ils continuent de mesurer leur sujet.
+
+---
+
+## Deux contrôles de cette reprise ont attrapé cette reprise elle-même
+
+C'est le seul fait de méthode qui vaille d'être écrit ici : **les deux fois, la relecture
+n'avait rien vu, et c'est la mesure qui a tranché.**
+
+**① La gate d'ASTRA-27 a rougi sur la table d'ASTRA-25.** `comptes_en_suppression` est née
+trois heures après la gate qui exige qu'aucune table ne naisse sans qu'on dise ce qu'elle
+devient. Elle a nommé le fichier et refusé de conclure seule. La décision écrite : la
+purger la **lèverait**, donc elle est en exception **avec sa raison**, et ce qui reste est
+un uuid orphelin sans échéance — rétention à décider, inscrite dans la migration plutôt que
+tue.
+
+**② Un verrou d'ASTRA-25 ne mesurait pas la propriété d'ASTRA-25.** Le cas ① vérifiait que
+la barrière est *posée* ; la propriété est qu'elle le soit **avant tout comptage**. En
+déplaçant la pose après le premier relevé — c'est-à-dire en la ramenant très exactement à
+la « passe de plus » que le lot refuse — **le banc restait vert**. Trouvé par réinjection,
+jamais par relecture. Le faux client journalise désormais l'**ordre** des gestes.
+
+⚠️ **La règle qui se dégage, et elle est plus large que ces deux cas.** Un verrou qui
+mesure la *présence* d'un geste ne protège pas une propriété d'*ordre*, de *position* ou
+d'*antériorité* — et ces propriétés-là sont précisément celles des correctifs de course
+(ASTRA-21 file par compte, ASTRA-25 barrière, ASTRA-33 journal avant application). Toutes
+ont le même mode d'échec : le correctif marche pendant la démonstration.
+
+---
+
+## Ce qui attend une décision ou une autorisation du propriétaire
+
+1. **Aucune migration ne peut plus partir sans attestation.** `.passio/migrations/attestations.json`
+   est livré **vide, délibérément** : la barrière d'ASTRA-33 refusera ASTRA-22 et ASTRA-35 sur
+   toute cible protégée tant que la revue indépendante du contenu exact n'aura pas été attestée.
+   **C'est l'effet recherché, pas un blocage à contourner.**
+2. **Deux Edge Functions à redéployer** pour qu'ASTRA-27 et ASTRA-28 prennent effet
+   (`delete-account`, `export-compte`) — geste de déploiement, hors périmètre.
+3. **Conservation des invitations d'appel** : ce lot décide de les purger des deux côtés et
+   le dit. Une obligation contraire (sécurité, abus) s'inscrit dans les `EXCEPTIONS` de la
+   gate, avec sa raison.
+4. **Seuils du banc de charge**, à fixer AVANT le prochain test (latence, fraîcheur, erreurs,
+   débit, coûts). Le plafond « ~20 comptes actifs » reste **non établi** : aucun palier 20
+   n'a jamais été joué.
+5. **Procédure** : les reviews de #440 sont `COMMENTED`, pas `APPROVED`. Ce que « contre-revue
+   acquise » exige est une décision, pas un correctif.
+
+**Verdict inchangé, et il n'appartient pas à cette reprise de le changer :** l'ouverture
+publique sans restriction et l'élargissement restent **non validés**. Une petite audience ne
+neutralise pas une exposition entre comptes.
