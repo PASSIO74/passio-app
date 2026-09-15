@@ -105,6 +105,35 @@ test.describe("IRL-13 — annuler prévient les trois listes, après le verdict"
     expect(r.toasts.some((t) => /non enregistré/.test(t))).toBe(true);
     expect(r.toasts.some((t) => /^Événement annulé/.test(t))).toBe(false);
   });
+
+  // IRL-13, second volet (contre-revue Astra, 2026-09-15) : l'annulation d'une
+  // SÉRIE annonçait « Série annulée — inscrits prévenus » même quand tous les
+  // appels serveur échouaient (chaque refus faisait `continue` en silence).
+  test("⑤ bis série : tous les appels refusés → rien d'annulé, personne prévenu, l'échec est dit ; refus partiel → dit en partie", async ({ page }) => {
+    await banc(page);
+    const r = await page.evaluate(async () => {
+      const mk = (id, j) => ({ id, title: "Série", passion: "musique", emoji: "🎸", city: "Paris", lat: 48.85, lng: 2.35,
+        date: Date.now() + j * 86400000, time: "10:00", desc: "", organizerId: MY_UID, status: "active", seriesId: "s1",
+        attendees: [MY_UID, "u_a"], maybes: [], waitlist: [], checkedIn: [] });
+      state.userEvents = [mk("s1_1", 2), mk("s1_2", 9), mk("s1_3", 16)];
+      window.__cancel = false; window.__notifs = []; window.__toasts = [];
+      await cancelEventSeries("s1_1");
+      const tout = { statuts: ["s1_1", "s1_2", "s1_3"].map((i) => _findCanonicalEvent(i).status), notifs: window.__notifs.slice(), toasts: window.__toasts.slice() };
+      // Refus partiel : la 2e date seule est refusée.
+      window.supaCancelEvent = async (id) => id !== "s1_2"; window.__notifs = []; window.__toasts = [];
+      await cancelEventSeries("s1_1");
+      const partiel = { statuts: ["s1_1", "s1_2", "s1_3"].map((i) => _findCanonicalEvent(i).status), notifs: window.__notifs.length, toasts: window.__toasts.slice() };
+      return { tout, partiel };
+    });
+    // RÉINJECTION : sur le code d'avant, `tout.toasts` = ["Série annulée — inscrits prévenus"] malgré trois refus.
+    expect(r.tout.statuts).toEqual(["active", "active", "active"]);
+    expect(r.tout.notifs).toEqual([]);
+    expect(r.tout.toasts.some((t) => /^Série annulée/.test(t))).toBe(false);
+    expect(r.tout.toasts.some((t) => /aucune des 3 dates/.test(t))).toBe(true);
+    expect(r.partiel.statuts).toEqual(["cancelled", "active", "cancelled"]);
+    expect(r.partiel.notifs).toBe(2);
+    expect(r.partiel.toasts.some((t) => /en partie : 2 date\(s\) annulée\(s\), 1 refusée/.test(t))).toBe(true);
+  });
 });
 
 test.describe("ROB-05 — la géolocalisation refusée se dit", () => {

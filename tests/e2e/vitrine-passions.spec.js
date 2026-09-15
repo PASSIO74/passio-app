@@ -87,6 +87,39 @@ test.describe("PRO-04 — la vitrine dit la passion active", () => {
     expect(r.ids).toEqual(["musique", "sport", "photo"]);
   });
 
+  // ③ ter — la COURSE (contre-revue Astra, 2026-09-15) : A est envoyé, l'état
+  // devient B pendant l'aller-retour, et l'empreinte mémorisée au succès était
+  // celle de B — jamais envoyé, jamais republié. L'empreinte mémorisée doit être
+  // celle de ce qui est PARTI ; la réconciliation suivante republie B.
+  test("③ ter l'état qui change pendant la publication est republié au tour suivant", async ({ page }) => {
+    await banc(page);
+    const r = await page.evaluate(async () => {
+      window._etatCompteCharge = true;
+      // Un `update` LENT : l'état change entre l'envoi et la réponse.
+      Object.defineProperty(window.supa, "from", { configurable: true, writable: true, value: (table) => {
+        const lent = { eq: () => lent, select: () => new Promise((res) => setTimeout(() => res({ data: [{ id: "x" }], error: null }), 150)) };
+        return { update: (corps) => { window.__maj.push({ table, corps }); return lent; }, upsert: () => lent, insert: () => lent, select: () => lent };
+      } });
+      const p1 = supaSavePassionState();                       // envoie A (3 passions)
+      await new Promise((res) => setTimeout(res, 30));
+      state.user.profiles[2].archived = true; saveState();     // l'état devient B pendant l'aller-retour
+      await p1;
+      const memorisee = localStorage.getItem("passio_vitrine_publiee_v1");
+      const envoyeA = (window.__maj[0].corps.passions || []).map((p) => p.id + (p.archived ? "(A)" : "")).join(",");
+      // La réconciliation suivante doit voir l'écart et republier B.
+      _reconcilierVitrinePassions(0);
+      await new Promise((res) => setTimeout(res, 400));
+      const n = window.__maj.filter((m) => m.table === "profiles").length;
+      const dernier = (window.__maj[window.__maj.length - 1].corps.passions || []).map((p) => p.id + (p.archived ? "(A)" : "")).join(",");
+      return { memorisee, envoyeA, n, dernier, empreinteB: _empreinteVitrine() };
+    });
+    // RÉINJECTION : sur le code d'avant, `memorisee` porte l'empreinte de B et n = 1 (B jamais republié).
+    expect(r.envoyeA).toBe("musique,sport,photo");
+    expect(r.memorisee, "l'empreinte mémorisée est celle de A, ce qui est parti").not.toBe(UID_MOI + ":" + r.empreinteB);
+    expect(r.n).toBe(2);
+    expect(r.dernier).toBe("musique,sport,photo(A)");
+  });
+
   test("③ bis sans compte réel, rien ne part", async ({ page }) => {
     await banc(page);
     const n = await page.evaluate(async () => {
