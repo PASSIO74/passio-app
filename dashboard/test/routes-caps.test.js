@@ -85,6 +85,7 @@ const ATTENDU = [
   ["GET", "/performance", "@auth"],
   ["GET", "/services", "@auth"],
   ["GET", "/database", "db"],
+  ["GET", "/exploitation", "db"],   // PIL-10 : comptages et verdicts, jamais une ligne de contenu
   ["GET", "/test-sessions", "@auth"],
   ["POST", "/test-sessions", "sessions"],
   ["GET", "/test-sessions/:id", "@auth"],

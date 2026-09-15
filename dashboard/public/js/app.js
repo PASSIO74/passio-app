@@ -109,6 +109,7 @@ const NAV = [
   ["kpi", "KPI produit", "trending", null, "essentiel"],
   ["traces", "Traçage des actions", "route", null, "essentiel"],
   ["integrity", "Intégrité des données", "database", "db", "essentiel"],
+  ["exploitation", "Exploitation", "server", "db", "essentiel"],
   ["interactions", "Vérif. interactions", "wifi", null, "essentiel"],
   ["qa", "Campagne QA", "tests", null, "essentiel"],
   ["bugs", "Problèmes", "bugs", null, "essentiel"],
@@ -1593,6 +1594,32 @@ VIEWS.services = async () => {
 };
 
 // ── Base de données ─────────────────────────────────────────────────────────
+// ── Exploitation (PIL-10) ────────────────────────────────────────────────────
+// Ce que personne ne voyait : signalements en attente, dernière sauvegarde,
+// site qui ne répond plus, ingestion par jour. Chaque carte porte un verdict à
+// seuil, et « inconnu » quand la source n'a pas répondu — jamais un vert par
+// défaut. Les coûts ne sont PAS mesurés ici, et la carte le dit.
+VIEWS.exploitation = async () => {
+  mount(`<h2 class="page-title">Exploitation</h2>
+    <p class="page-sub">Modération, sauvegardes, disponibilité, capacité : des comptages et des seuils, jamais le contenu d'une ligne. Les coûts se lisent sur la page Usage du projet Supabase — ils ne sont pas devinés ici.</p>
+    <div id="exBody"><div class="empty">Lecture…</div></div>`);
+  try {
+    const d = await api.get("/exploitation");
+    const P = { ok: ["ok", "OK"], warn: ["warn", "À regarder"], alert: ["error", "Alerte"], unknown: ["unknown", "Inconnu"] };
+    const carte = (titre, v, detail) => { const [cls, lbl] = P[v && v.etat] || P.unknown; return `<div class="kpi"><div style="font-weight:600;margin-bottom:6px">${esc(titre)} <span class="pill ${cls}">${lbl}</span></div><div>${esc(v ? v.texte : "non lu")}</div>${detail ? `<div class="muted" style="font-size:12px;margin-top:6px">${detail}</div>` : ""}</div>`; };
+    const m = d.moderation || {}, g = d.github || {}, c = d.capacite || {}, v = d.verdicts || {};
+    const lien = (o, t) => o && o.url ? `<a href="${esc(o.url)}" target="_blank" rel="noopener">${esc(t)}</a>` : esc(t);
+    setHtml("#exBody", `<div class="grid kpi-grid">
+      ${carte("Modération", v.moderation, d.configured ? `${num(m.traites7j ?? 0)} traité(s) sur 7 jours · ${num(m.actions7j ?? 0)} décision(s) journalisée(s) · ${num(m.blocages ?? 0)} blocage(s) entre comptes — <span class="mono">npm run moderation lister</span>` : "Supabase non configuré (service_role manquante dans .env)")}
+      ${carte("Sauvegarde quotidienne", v.sauvegarde, g.sauvegarde && g.sauvegarde.dernier ? lien(g.sauvegarde.dernier, "dernier run : " + g.sauvegarde.dernier.conclusion + " · " + new Date(g.sauvegarde.dernier.quand).toLocaleString("fr-FR")) : "aucun run lu (API GitHub)")}
+      ${carte("Disponibilité du site", v.disponibilite, (g.indisponibilites && g.indisponibilites.ouvertes && g.indisponibilites.ouvertes.length) ? g.indisponibilites.ouvertes.map((i) => lien(i, "#" + i.numero + " " + i.titre)).join(" · ") : (g.sonde && g.sonde.dernier ? lien(g.sonde.dernier, "sonde toutes les 10 min (GitHub) · " + new Date(g.sonde.dernier.quand).toLocaleString("fr-FR")) : "sonde non lue"))}
+      ${carte("Capacité (24 h)", v.capacite, d.configured ? "seuil de télémétrie : " + num(d.seuils.capaciteAlerteLignesJour) + " lignes / jour (rétention 7 j) — mesure de charge : <span class=\"mono\">docs/CAPACITE_2026-09-14.md</span>" : "")}
+      ${carte("Coûts", v.couts, `<a href="https://supabase.com/dashboard/project/njkiyoklssvefstljemx/settings/billing/usage" target="_blank" rel="noopener">Usage du projet Supabase</a> · <a href="https://app.netlify.com" target="_blank" rel="noopener">Netlify</a>`)}
+    </div>
+    <p class="muted" style="font-size:12px;margin-top:12px">Sources : Supabase (comptages <span class="mono">head: true</span>, clé service_role) · GitHub, API publique sans jeton, cache 10 min. Lu le ${new Date(d.updatedAt).toLocaleString("fr-FR")}${g.luLe ? " · GitHub lu le " + new Date(g.luLe).toLocaleString("fr-FR") : ""}.</p>`);
+  } catch (e) { setHtml("#exBody", `<div class="empty">${esc(e.message)}</div>`); }
+};
+
 VIEWS.database = async () => {
   mount(`<h2 class="page-title">Base de données</h2><p class="page-sub">Supervision en lecture seule. Aucune donnée de ligne, aucun secret. Opérations destructives désactivées.</p><div id="dbBody"><span class="spinner"></span></div>`);
   try {
