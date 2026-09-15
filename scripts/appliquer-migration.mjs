@@ -28,21 +28,49 @@
 // connaît (fiche « search_path figé » : un fichier miroir périmé imprime OK sur
 // tout). Après application, MESURER l'état en base (canal ①), pas le tableau.
 // `--verifier` n'envoie rien : il lit le fichier et dit s'il est envoyable.
+// `--journal [n]` n'envoie rien non plus : il LIT le journal du projet visé.
+//
+// ⚠️ JOURNAL (NET-07 / TCI-15, 2026-09-15). Chaque application réussie laisse
+// une ligne dans `public.migrations_appliquees` du projet visé — fichier,
+// empreinte SHA-256, verdict, date (`scripts/lib/journal-migrations.js`). La
+// table est créée à la première écriture, RLS, sans droit client. C'est la
+// mémoire de « ce qui a été appliqué, dans quel ordre » qui vit AVEC la base :
+// le dépôt ne la connaît pas, une archive restaurée doit savoir d'où elle part.
+// Un échec du journal est DIT (⚠️) et ne défait rien : la migration est passée.
 // ═══════════════════════════════════════════════════════════════════════════
 import { readFileSync, existsSync } from "node:fs";
 import { resolve, relative, sep } from "node:path";
 import { homedir } from "node:os";
+import { createRequire } from "node:module";
+const { sqlCreation, sqlInsertion, sqlLecture } = createRequire(import.meta.url)("./lib/journal-migrations.js");
 
 const args = process.argv.slice(2);
 const verifierSeulement = args.includes("--verifier");
-const fichier = args.find((a) => !a.startsWith("--"));
+const iJournal = args.indexOf("--journal");
+const fichier = args.find((a, i) => !a.startsWith("--") && !(iJournal >= 0 && i === iJournal + 1));
 
 function echec(msg) { console.error("❌ " + msg); process.exit(2); }
+async function requeter(ref, jeton, query) {
+  const r = await fetch("https://api.supabase.com/v1/projects/" + ref + "/database/query", { method: "POST", headers: { Authorization: "Bearer " + jeton, "Content-Type": "application/json" }, body: JSON.stringify({ query }) });
+  const t = await r.text();
+  if (!r.ok) throw new Error("API " + r.status + " : " + t.slice(0, 300));
+  try { return JSON.parse(t); } catch (e) { return []; }
+}
 
 if (process.env.GITHUB_ACTIONS) echec("jamais depuis la CI (ADR-012, canal ③) — ce script s'exécute sur un poste.");
-if (!fichier) echec("usage : node scripts/appliquer-migration.mjs migrations/<fichier>.sql [--verifier]");
+if (!fichier && iJournal < 0) echec("usage : node scripts/appliquer-migration.mjs migrations/<fichier>.sql [--verifier] | --journal [n]");
 
 const racine = resolve(new URL("..", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1"));
+if (iJournal >= 0) {
+  // Lecture seule du journal du projet visé (jeton + ref lus plus bas : on les prend ici).
+  const j = lireJeton(), r = lireRef();
+  if (!j || !r) echec("jeton ou projet introuvable pour lire le journal.");
+  const lignes = await requeter(r, j, sqlLecture(Number(args[iJournal + 1]) || 50)).catch((e) => { if (/does not exist/.test(String(e.message))) return null; throw e; });
+  if (lignes === null) { console.log("journal absent sur " + r + " : aucune migration n'a encore été appliquée par cet outil."); process.exit(0); }
+  console.log("journal des migrations appliquées sur " + r + " (" + lignes.length + ") :");
+  for (const l of lignes) console.log("  " + String(l.applique_le).slice(0, 19).replace("T", " ") + "  " + l.fichier + "  " + l.empreinte + "  (" + l.outil + ")");
+  process.exit(0);
+}
 const chemin = resolve(fichier);
 const rel = relative(racine, chemin).split(sep).join("/");
 if (!rel.startsWith("migrations/") || !rel.endsWith(".sql")) echec("le fichier doit être un .sql sous migrations/ (reçu : " + rel + ")");
@@ -95,3 +123,8 @@ for (const l of lignes) console.log("  " + cles.map((k) => String(l[k])).join(" 
 const rouges = lignes.filter((l) => Object.values(l).some((v) => /ECHEC|anomalie/i.test(String(v))));
 if (rouges.length) { console.log("\n❌ " + rouges.length + " ligne(s) en ECHEC — la transaction a pourtant été validée : lire l'état en base."); process.exit(1); }
 console.log("\n✅ appliquée. Maintenant : mesurer l'état en base (canal ①), pas ce tableau.");
+try {
+  await requeter(ref, jeton, sqlCreation());
+  const ins = await requeter(ref, jeton, sqlInsertion({ fichier: rel, sql, verdict: lignes }));
+  console.log("📒 journal : " + rel + " consignée sur " + ref + (ins && ins[0] ? " (#" + ins[0].id + ")" : "") + " — `--journal` pour relire.");
+} catch (e) { console.log("⚠️ journal NON écrit (" + String(e.message).slice(0, 200) + ") — la migration est passée, le journal, lui, ne dit rien."); }
