@@ -143,7 +143,18 @@ jobs:
               echo "::error title=Perimetre de la sentinelle depasse::Cette PR vient d'une enquete [SENTINELLE] (issue #${issue_num}) et touche des fichiers hors du perimetre autorise (js/*.js, styles.css, index.html, sw.js, tests/e2e/*.spec.js) : "$'\n'"${hors_perimetre}Elle ne sera ni deployee ni fusionnee automatiquement."
               exit 1
             fi
-            echo "- Sentinelle (issue #${issue_num}) : périmètre respecté" >> "${GITHUB_STEP_SUMMARY}"
+            # ⚠️ ASTRA-05, second étage (2026-09-15) : l'issue dit aussi « au-delà
+            # de ~60 lignes ou 2 fichiers, ce n'est plus une réparation ». Le
+            # verrou e2e n'est pas compté (il est EXIGÉ par la même issue) ; le
+            # correctif, lui, est borné ici — additions + suppressions cumulées
+            # sur les fichiers de code, lues par la même API paginée que la liste.
+            taille="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${pr}/files" --jq '[.[] | select(.filename | test("^tests/e2e/.*[.]spec[.]js$") | not)] | "\(length) \(map(.additions + .deletions) | add // 0)"')"
+            nb_fichiers="${taille%% *}"; nb_lignes="${taille##* }"
+            if [ "${nb_fichiers}" -gt 2 ] || [ "${nb_lignes}" -gt 60 ]; then
+              echo "::error title=Reparation trop large pour la sentinelle::Cette PR vient d'une enquete [SENTINELLE] (issue #${issue_num}) et touche ${nb_fichiers} fichier(s) de code pour ${nb_lignes} ligne(s) changees (limite : 2 fichiers, 60 lignes, verrou e2e non compte). Ce n'est plus une reparation : elle ne sera ni deployee ni fusionnee automatiquement — un humain decide."
+              exit 1
+            fi
+            echo "- Sentinelle (issue #${issue_num}) : périmètre respecté (${nb_fichiers} fichier(s) de code, ${nb_lignes} ligne(s))" >> "${GITHUB_STEP_SUMMARY}"
           fi
 
           critical=false
