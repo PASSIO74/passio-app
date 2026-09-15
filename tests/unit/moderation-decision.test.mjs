@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
-const { planRetrait, texteDecision, notificationPourSignalant, statutApresAction } = require("../../scripts/lib/moderation-decision.js");
+const { planRetrait, planSuspension, planLevee, texteSuspension, notificationPourCible, texteDecision, notificationPourSignalant, statutApresAction, SUSPENSION_JOURS_MAX } = require("../../scripts/lib/moderation-decision.js");
 
 test("① une publication se supprime, une rencontre s'ANNULE (jamais supprimée)", () => {
   assert.deepEqual(planRetrait("post", "p1").plan, { methode: "DELETE", chemin: "posts?id=eq.p1", libelle: "publication supprimée" });
@@ -51,4 +51,32 @@ test("⑦ statut après action : rejet → dismissed, retrait/note → handled",
   assert.equal(statutApresAction("rejet"), "dismissed");
   assert.equal(statutApresAction("retrait"), "handled");
   assert.equal(statutApresAction("note"), "handled");
+});
+
+test("⑧ MOD-01 : suspendre un compte = ban GoTrue en heures, borné à un entier de jours ; un uuid seulement", () => {
+  const U = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const p = planSuspension(U, 7).plan;
+  assert.deepEqual(p, { methode: "PUT", chemin: "auth/v1/admin/users/" + U, corps: { ban_duration: "168h" }, jours: 7, libelle: "compte suspendu 7 jours" });
+  assert.equal(planSuspension(U, 1).plan.libelle, "compte suspendu 1 jour");
+  assert.match(planSuspension("u_abc", 7).raison, /uuid/);
+  assert.match(planSuspension(U, 0).raison, /entre 1 et/);
+  assert.match(planSuspension(U, 2.5).raison, /entre 1 et/);
+  assert.match(planSuspension(U, SUSPENSION_JOURS_MAX + 1).raison, /entre 1 et/);
+  assert.equal(planSuspension(U, "7").plan.jours, 7);          // --jours arrive en chaîne : la lib convertit
+  assert.match(planSuspension(U, "7.5").raison, /entre 1 et/);
+  assert.deepEqual(planLevee(U).plan.corps, { ban_duration: "none" });
+  assert.match(planLevee("").raison, /uuid/);
+  assert.equal(planRetrait("user", U).plan, null);
+  assert.match(planRetrait("user", U).raison, /suspendre/);
+});
+
+test("⑨ MOD-01 : la personne suspendue reçoit les motifs (DSA art. 17), le signalant la décision (art. 16) — tous deux bornés", () => {
+  const U = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const n = notificationPourCible(U, 7, "harcèlement répété");
+  assert.equal(n.user_id, U); assert.equal(n.kind, "moderation"); assert.equal(n.from_id, null);
+  assert.equal(n.content, "Ton compte est suspendu 7 jours. Motif : harcèlement répété. Pour contester : passioadmin@gmail.com");
+  assert.equal(notificationPourCible("u_visiteur", 7, ""), null);
+  assert.ok(texteSuspension(3, "x".repeat(500)).length <= 200);
+  assert.equal(texteDecision("suspension", ""), "Ton signalement a été examiné : le compte a été suspendu.");
+  assert.equal(statutApresAction("suspension"), "handled");
 });

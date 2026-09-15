@@ -64,7 +64,7 @@ const fs = require("fs");
 const path = require("path");
 const { configAdmin } = require("../tests/e2e/compte-e2e.js");
 const { lireToutesLesPages } = require("./lib/pagination-rest.js");
-const { planRetrait, notificationPourSignalant, statutApresAction } = require("./lib/moderation-decision.js");
+const { planRetrait, planSuspension, planLevee, notificationPourCible, texteDecision, notificationPourSignalant, statutApresAction } = require("./lib/moderation-decision.js");
 
 const argv = process.argv.slice(2);
 const commande = argv[0] && !argv[0].startsWith("--") ? argv[0] : "lister";
@@ -303,6 +303,67 @@ async function retirer(cfg) {
   await journaliserEtPrevenir(cfg, l, "retrait", note);
 }
 
+// SUSPEND un compte (MOD-01, 2026-09-15) : `--id <signalement de type user>`
+// ou `--uid <compte>`, `--jours N`, `--note`. GoTrue pose `banned_until` ;
+// le signalement est fermé, la décision journalisée (`suspension`), le
+// signalant ET la personne suspendue prévenus (DSA art. 16 et 17).
+async function suspendre(cfg) {
+  const id = opt("id"), note = opt("note"), jours = opt("jours");
+  let uid = opt("uid"), report = null;
+  if (id) {
+    report = (await rest(cfg, `reports?id=eq.${encodeURIComponent(id)}&select=*`) || [])[0];
+    if (!report) sortir(`❌ Signalement introuvable : ${id}`);
+    if (report.target_type !== "user") sortir(`❌ Ce signalement vise ${typeLisible(report.target_type)}, pas un compte : \`retirer\` ou \`traiter\`.`);
+    uid = uid || report.target_id;
+  }
+  if (!uid) sortir("Il faut --uid <compte> ou --id <signalement de type user>, et --jours N");
+  const { plan, raison } = planSuspension(uid, jours);
+  if (!plan) sortir("❌ " + raison);
+  const r = await fetch(`${cfg.url}/${plan.chemin}`, { method: plan.methode, headers: { apikey: cfg.cle, Authorization: `Bearer ${cfg.cle}`, "Content-Type": "application/json" }, body: JSON.stringify(plan.corps) });
+  const corps = await r.text();
+  if (!r.ok) sortir(`❌ ${r.status} en suspendant (${plan.methode} ${plan.chemin})\n${corps.slice(0, 400)}`);
+  let jusqua = null; try { jusqua = JSON.parse(corps).banned_until || null; } catch (e) {}
+  // ⚠️ On RELIT : le verdict est ce que GoTrue a écrit, pas ce qu'on a demandé.
+  const relu = await fetch(`${cfg.url}/auth/v1/admin/users/${uid}`, { headers: { apikey: cfg.cle, Authorization: `Bearer ${cfg.cle}` } }).then((x) => x.json()).catch(() => null);
+  const banni = relu && relu.banned_until && new Date(relu.banned_until).getTime() > Date.now();
+  if (!banni) sortir(`❌ Relecture : \`banned_until\` n'est pas posé (${relu && relu.banned_until}) — le compte n'est PAS suspendu.`);
+  console.log(`✅ ${plan.libelle} (${abrege(uid)}), jusqu'au ${relu.banned_until}.`);
+  const H = { apikey: cfg.cle, Authorization: `Bearer ${cfg.cle}`, "Content-Type": "application/json", Prefer: "return=minimal" };
+  const j = await fetch(`${cfg.url}/rest/v1/moderation_actions`, { method: "POST", headers: H, body: JSON.stringify({ report_id: report ? report.id : null, action: "suspension", target_type: "user", target_id: uid, note: (note ? String(note) + " · " : "") + plan.jours + " j, jusqu'au " + relu.banned_until }) });
+  if (j.ok) console.log("   📒 journal : suspension consignée.");
+  else console.log(`   ⚠️  journal : ${j.status} ${(await j.text()).slice(0, 200)} — appliquer migrations/migration_moderation_suspension_2026-09-15.sql`);
+  const nc = notificationPourCible(uid, plan.jours, note);
+  const n = await fetch(`${cfg.url}/rest/v1/notifications`, { method: "POST", headers: H, body: JSON.stringify(nc) });
+  if (n.ok) console.log(`   🔔 la personne suspendue est prévenue : « ${nc.content} »`);
+  else console.log(`   ⚠️  personne suspendue NON prévenue : ${n.status} ${(await n.text()).slice(0, 200)}`);
+  if (report) {
+    const f = await fetch(`${cfg.url}/rest/v1/reports?id=eq.${encodeURIComponent(report.id)}`, { method: "PATCH", headers: H,
+      body: JSON.stringify({ status: statutApresAction("suspension"), handled_at: new Date().toISOString(), handled_note: note || plan.libelle }) });
+    if (!f.ok) sortir(`❌ ${f.status} en fermant le signalement\n${(await f.text()).slice(0, 400)}`);
+    console.log(`✅ ${report.id} → handled.`);
+    const notif = notificationPourSignalant(report, "suspension", note);
+    if (notif) {
+      const ns = await fetch(`${cfg.url}/rest/v1/notifications`, { method: "POST", headers: { ...H, Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(notif) });
+      console.log(ns.ok ? `   🔔 signalant prévenu : « ${notif.content} »` : `   ⚠️  signalant NON prévenu : ${ns.status}`);
+    }
+  }
+}
+
+// LÈVE une suspension avant terme : `--uid <compte>` [--note].
+async function lever(cfg) {
+  const uid = opt("uid"), note = opt("note");
+  const { plan, raison } = planLevee(uid);
+  if (!plan) sortir("❌ " + raison);
+  const r = await fetch(`${cfg.url}/${plan.chemin}`, { method: plan.methode, headers: { apikey: cfg.cle, Authorization: `Bearer ${cfg.cle}`, "Content-Type": "application/json" }, body: JSON.stringify(plan.corps) });
+  if (!r.ok) sortir(`❌ ${r.status} en levant la suspension\n${(await r.text()).slice(0, 400)}`);
+  const relu = await fetch(`${cfg.url}/auth/v1/admin/users/${uid}`, { headers: { apikey: cfg.cle, Authorization: `Bearer ${cfg.cle}` } }).then((x) => x.json()).catch(() => null);
+  const encore = relu && relu.banned_until && new Date(relu.banned_until).getTime() > Date.now();
+  if (encore) sortir(`❌ Relecture : \`banned_until\` = ${relu.banned_until}, la suspension tient encore.`);
+  console.log(`✅ ${plan.libelle} (${abrege(uid)}).`);
+  const j = await fetch(`${cfg.url}/rest/v1/moderation_actions`, { method: "POST", headers: { apikey: cfg.cle, Authorization: `Bearer ${cfg.cle}`, "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify({ action: "levee", target_type: "user", target_id: uid, note: note ? String(note).slice(0, 500) : null }) });
+  console.log(j.ok ? "   📒 journal : levée consignée." : `   ⚠️  journal : ${j.status} ${(await j.text()).slice(0, 200)}`);
+}
+
 // Va chercher CE QUI EST VISÉ, pas seulement l'identifiant : modérer sur un
 // identifiant nu, c'est décider à l'aveugle.
 async function voir(cfg) {
@@ -414,5 +475,7 @@ async function compter(cfg) {
   if (commande === "compte") return compter(cfg);
   if (commande === "traiter") return traiter(cfg);
   if (commande === "retirer") return retirer(cfg);
-  sortir(`Commande inconnue : ${commande}\nAttendu : lister | voir | vu | traiter | retirer | compte`);
+  if (commande === "suspendre") return suspendre(cfg);
+  if (commande === "lever") return lever(cfg);
+  sortir(`Commande inconnue : ${commande}\nAttendu : lister | voir | vu | traiter | retirer | suspendre | lever | compte`);
 })().catch((e) => sortir("❌ " + (e && e.message)));
