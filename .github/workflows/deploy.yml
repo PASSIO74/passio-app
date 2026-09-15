@@ -569,7 +569,14 @@ jobs:
       # servir est fermée (une migration appliquée en prod et pas sur le staging
       # ne se verrait pas autrement). Deux comptes jetables, purgés par le
       # teardown, par déploiement : c'est l'exception assumée, pas 48 par jour.
+      # ⚠️ EXP-11 — « PAR DÉPLOIEMENT » N'ÉTAIT ÉCRIT QUE DANS CE COMMENTAIRE.
+      # L'étape n'avait AUCUNE condition : elle partait aussi sur chaque PR, donc
+      # deux comptes réels créés en production à chaque poussée d'une branche, et
+      # la clé de service de la PRODUCTION présente dans un run déclenché par une
+      # pull request. SUP-04 / TCI-04 avaient déplacé la suite vers le staging ;
+      # cette étape-ci était restée derrière. Un commentaire n'est pas une garde.
       - name: Barrière RLS de la production (authz-critical seule)
+        if: github.event_name == 'push'
         env:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: npx playwright test tests/e2e/authz-critical.spec.js --project=prod
@@ -579,7 +586,12 @@ jobs:
       # compte, aucun contenu, aucune donnée personnelle n'atteint ce journal.
       # `continue-on-error` est délibéré : c'est une mesure, pas une barrière —
       # un rouge ici ne dirait rien sur le code du commit.
+      # ⚠️ MÊME RAISON (EXP-11). Lecture seule, certes — mais elle emportait la clé
+      # de service de la PRODUCTION dans un run de pull request, et cette clé
+      # contourne INTÉGRALEMENT la RLS. Une mesure ne vaut pas ce risque-là à
+      # chaque PR ; par déploiement, elle le vaut.
       - name: Mesure `passion_id` (lecture seule, agrégats)
+        if: github.event_name == 'push'
         continue-on-error: true
         env:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
