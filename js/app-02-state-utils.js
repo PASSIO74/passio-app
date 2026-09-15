@@ -2383,6 +2383,17 @@ function cacheRemoteProfile(p) {
     // passions archivées, qui vivent dans ce jsonb comme sauvegarde.
     passions: Array.isArray(p.passions) ? passionsPubliques(p.passions) : undefined,
     bio: p.bio || "",
+    // ⚠️ UN PROFIL RÉEL N'EST PAS UN PERSONNAGE DE DÉMONSTRATION (2026-09-15).
+    // Ce cache vit dans `state.seed.users`, le MÊME tableau que les 29 comptes
+    // fabriqués par `buildSeed`. `_estConvDemo` (app-04) y cherchait « un
+    // interlocuteur du socle » : dès qu'un vrai membre y était mis en cache —
+    // profil visité, fil chargé, story lue — écrire dans SA conversation rendait
+    // « Conversation de démonstration » et n'envoyait rien. Mesuré sur le
+    // staging (TCI-01, scénario « texte + vocal ») : le message n'existait ni en
+    // local ni en base. `distant: true` est le discriminant ; il survit à la
+    // fusion `{ ...ancien, ...entry }` ci-dessous, et une entrée de `buildSeed`
+    // ne le porte jamais.
+    distant: true,
   };
   const i = state.seed.users.findIndex(u => u.id === p.id);
   if (i >= 0) state.seed.users[i] = { ...state.seed.users[i], ...entry };
