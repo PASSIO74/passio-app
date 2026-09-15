@@ -115,6 +115,37 @@ jobs:
             echo "::error title=Perimetre illisible::La liste des fichiers de la PR #${pr} est vide ou n'a pas pu etre lue. La garde refuse plutot que de supposer un perimetre non critique."
             exit 1
           fi
+          # ⚠️ ASTRA-05 (2026-09-15) : LES LIMITES ANNONCÉES À LA CHAÎNE AUTONOME
+          # SONT IMPOSÉES ICI, MÉCANIQUEMENT. L'issue [SENTINELLE] dit au correctif
+          # « uniquement js/*.js, styles.css, index.html, sw.js » (et le verrou
+          # e2e qu'elle exige) — mais rien ne le vérifiait avant la fusion, que
+          # l'auto-merge arme sans relecture humaine. Une PR née d'une issue
+          # étiquetée `sentinelle` (branche `claude/issue-<n>-<run>`) est donc
+          # REFUSÉE dès qu'elle touche autre chose : une consigne qu'aucune garde
+          # n'impose n'est qu'un vœu. Une PR humaine n'est pas concernée.
+          head_ref="$(gh pr view "${pr}" --repo "${GITHUB_REPOSITORY}" --json headRefName --jq '.headRefName')"
+          sentinelle=false
+          if [[ "${head_ref}" =~ ^claude/issue-([0-9]+)-[0-9]+$ ]]; then
+            issue_num="${BASH_REMATCH[1]}"
+            if gh api "repos/${GITHUB_REPOSITORY}/issues/${issue_num}" --jq '.labels[].name' 2>/dev/null | grep -qx 'sentinelle'; then
+              sentinelle=true
+            fi
+          fi
+          if [ "${sentinelle}" = "true" ]; then
+            hors_perimetre=""
+            while IFS= read -r file; do
+              case "${file}" in
+                js/*.js|styles.css|index.html|sw.js|tests/e2e/*.spec.js) ;;
+                *) hors_perimetre="${hors_perimetre}${file}"$'\n' ;;
+              esac
+            done <<< "${files}"
+            if [ -n "${hors_perimetre}" ]; then
+              echo "::error title=Perimetre de la sentinelle depasse::Cette PR vient d'une enquete [SENTINELLE] (issue #${issue_num}) et touche des fichiers hors du perimetre autorise (js/*.js, styles.css, index.html, sw.js, tests/e2e/*.spec.js) : "$'\n'"${hors_perimetre}Elle ne sera ni deployee ni fusionnee automatiquement."
+              exit 1
+            fi
+            echo "- Sentinelle (issue #${issue_num}) : périmètre respecté" >> "${GITHUB_STEP_SUMMARY}"
+          fi
+
           critical=false
           while IFS= read -r file; do
             case "${file}" in
