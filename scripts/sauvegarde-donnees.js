@@ -33,6 +33,8 @@
 "use strict";
 const fs = require("node:fs");
 const path = require("node:path");
+const RV = require("./lib/reprise-verdicts.js");
+const crypto = require("node:crypto");
 
 // Tables d'observabilité : volumineuses et REGÉNÉRABLES. Les inclure d'office
 // ferait passer la sauvegarde de ~2 Mo à ~20 Mo pour zéro valeur de reprise.
@@ -229,6 +231,13 @@ async function sauvegarder(dossier, avecTelemetrie, avecComptes, avecMedias) {
     console.log("  n'ont plus d'auteur identifiable. Ajouter --avec-comptes.");
   }
 
+  // ⚠️ ASTRA-32 : l'empreinte du DDL entre au manifeste quand `schema.sql` est
+  // déjà là (le workflow l'écrit avant l'appel). Sans elle, on ne peut pas dire
+  // si le DDL trouvé est celui de CETTE archive.
+  try {
+    const sch = path.join(dossier, "schema.sql");
+    if (fs.existsSync(sch)) manifeste.schema_sha256 = crypto.createHash("sha256").update(fs.readFileSync(sch, "utf8").replace(/\r\n/g, "\n"), "utf8").digest("hex");
+  } catch (e) { manifeste.ecarts.push({ table: "_schema", motif: "empreinte du DDL non calculée : " + e.message }); }
   fs.writeFileSync(path.join(dossier, "manifeste.json"), JSON.stringify(manifeste, null, 1));
   const lignes = Object.values(manifeste.tables).reduce((s, x) => s + x.exporte, 0);
   const octets = Object.values(manifeste.tables).reduce((s, x) => s + x.octets, 0);
@@ -273,21 +282,47 @@ function verifier(dossier) {
   // par le workflow (`schema-executable.js`, API de gestion) ; ici on exige
   // qu'il soit là ET qu'il soit un DDL (des `create table`, des policies),
   // pas un fichier vide ou une page d'erreur.
+  // ⚠️ ASTRA-32 (contre-revue du 15/09) — « COMPLÈTE » ET « PARTIELLE » SONT DEUX
+  // ÉTATS, ET L'ANCIEN VÉRIFICATEUR NE CONNAISSAIT QUE « CONFORME ». Une archive
+  // sans `schema.sql` ne produisait qu'un ⚠ sans incrémenter `pb` : elle sortait
+  // « Archive relue … conforme au manifeste », code 0 — alors qu'elle ne permet
+  // PAS de repartir d'une base vide, ce que le registre annonçait pourtant.
+  // Désormais : l'absence de DDL est une ANOMALIE, sauf `--partielle` (accepter
+  // sciemment). Et le DDL est comparé à l'EMPREINTE que la sauvegarde a écrite
+  // dans le manifeste : un DDL présent mais qui n'est pas celui de CETTE archive
+  // (tronqué, remplacé, copié d'ailleurs) est pire qu'un DDL absent.
   const schema = path.join(dossier, "schema.sql");
-  if (!fs.existsSync(schema)) console.log("  ⚠ archive SANS le schéma (schema.sql) : restaurable sur une base qui a DÉJÀ la structure, pas sur une base vide.");
-  else {
-    const ddl = fs.readFileSync(schema, "utf8");
-    const tables = (ddl.match(/create table/gi) || []).length, policies = (ddl.match(/create policy/gi) || []).length;
-    if (tables < 20 || policies < 20) { console.error(`  schema.sql : ${tables} create table, ${policies} create policy — ce n'est pas le DDL de PASSIO`); pb++; }
-    else console.log(`  schema.sql : ${tables} tables, ${policies} policies.`);
+  const schemaPresent = fs.existsSync(schema);
+  const ddl = schemaPresent ? fs.readFileSync(schema, "utf8") : null;
+  const n = RV.natureArchive({
+    schemaPresent, schemaDdl: ddl,
+    schemaEmpreinte: schemaPresent ? crypto.createHash("sha256").update(ddl.replace(/\r\n/g, "\n"), "utf8").digest("hex") : null,
+    empreinteAttendue: man.schema_sha256 || null,
+    comptesExportes: man.comptes != null,
+    mediasExportes: man.medias != null,
+  });
+  const partielleAcceptee = process.argv.includes("--partielle");
+  for (const note of n.notes) console.log("  ℹ " + note);
+  for (const a of n.anomalies) {
+    if (partielleAcceptee && /SANS schema\.sql/.test(a)) { console.log("  ⚠ " + a.replace(/ Passer --partielle.*$/, "") + " — ACCEPTÉE par --partielle."); continue; }
+    console.error("  ✗ " + a); pb++;
   }
-  if (man.comptes == null) {
-    console.log("  ⚠ archive SANS les comptes : restaurable en données, pas en identités.");
-  } else {
+  if (n.ddlValide) console.log(`  schema.sql : DDL de PASSIO${man.schema_sha256 ? ", empreinte conforme au manifeste" : " (manifeste sans empreinte : archive d'avant ce contrôle)"}.`);
+  if (man.comptes != null) {
     const f = path.join(dossier, "_auth_users.ndjson");
-    const n = fs.existsSync(f) ? fs.readFileSync(f, "utf8").trimEnd().split("\n").filter(Boolean).length : -1;
-    if (n !== man.comptes) { console.error(`  _auth_users : ${n} lignes, manifeste ${man.comptes}`); pb++; }
+    const lignes = fs.existsSync(f) ? fs.readFileSync(f, "utf8").trimEnd().split("\n").filter(Boolean) : null;
+    if (!lignes || lignes.length !== man.comptes) { console.error(`  _auth_users : ${lignes ? lignes.length : -1} lignes, manifeste ${man.comptes}`); pb++; }
+    else {
+      // ⚠️ ASTRA-30 : une archive doit porter de quoi RESTITUER une suspension.
+      // On ne l'exige pas (les archives d'avant n'ont pas le champ) — on le DIT,
+      // parce qu'une reprise silencieuse qui libère un compte exclu est le pire
+      // des deux mondes.
+      const suspendus = lignes.map((l) => { try { return JSON.parse(l); } catch (e) { return {}; } })
+        .filter((u) => RV.etatSuspension(u).suspendu);
+      if (suspendus.length) console.log(`  _auth_users : ${suspendus.length} compte(s) SUSPENDU(S) — la reprise doit les restituer suspendus (ASTRA-30).`);
+    }
   }
+  console.log(`\nNature : archive ${n.nature.toUpperCase()}${n.complete ? "" : " — elle ne suffit pas à repartir d'une base vide"}.`);
   console.log(pb ? `\n${pb} anomalie(s).` : `\nArchive relue : ${Object.keys(man.tables).length} tables${man.comptes != null ? ` + ${man.comptes} comptes` : ""}, toutes lisibles et conformes au manifeste.`);
   process.exit(pb ? 1 : 0);
 }
