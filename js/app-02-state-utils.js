@@ -3106,8 +3106,19 @@ async function exporterMesDonnees() {
     return false;
   }
   _telechargerJson(verdict.data, "passio-export-" + String(MY_UID).slice(0, 8) + ".json");
-  var n = Object.keys(verdict.data.tables || {}).length;
-  toast("Export prêt : " + n + " table" + (n > 1 ? "s" : "") + ", " + (verdict.data.medias || []).length + " média(s) listé(s)" + ((verdict.data.erreurs || []).length ? " — " + verdict.data.erreurs.length + " table(s) illisible(s), écris-nous" : ""), "success");
+  // ⚠️ ASTRA-14 (2026-09-15) : le BILAN de l'export est affiché — complet, ou
+  // incomplet et pourquoi (tables tronquées au plafond, tables ou médias
+  // illisibles). Un export incomplet présenté comme un succès est un faux
+  // succès de plus ; le fichier porte le même bilan en tête (`bilan`).
+  var b = verdict.data.bilan || {};
+  var n = typeof b.tables_exportees === "number" ? b.tables_exportees : Object.keys(verdict.data.tables || {}).length;
+  var nMedias = typeof b.medias === "number" ? b.medias : (verdict.data.medias || []).length;
+  var manques = [];
+  if ((b.tables_tronquees || verdict.data.tronquees || []).length) manques.push((b.tables_tronquees || verdict.data.tronquees).length + " table(s) tronquée(s) au plafond de " + (b.plafond_par_table || 5000) + " lignes");
+  if ((b.erreurs || verdict.data.erreurs || []).length) manques.push((b.erreurs || verdict.data.erreurs).length + " table(s) ou dossier(s) illisible(s)");
+  var complet = b.complet === true || (b.complet == null && !manques.length);
+  toast((complet ? "Export complet : " : "⚠️ Export INCOMPLET : ") + n + " table" + (n > 1 ? "s" : "") + ", " + nMedias + " média(s) listé(s)" + (manques.length ? " — " + manques.join(", ") + " (détail dans le fichier, écris-nous)" : ""), complet ? "success" : "warning");
+  try { if (!complet && typeof diagLog === "function") diagLog("export_compte incomplet " + manques.join(" | ")); } catch (e) {}
   return true;
 }
 function _telechargerJson(objet, nom) {

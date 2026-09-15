@@ -32,35 +32,54 @@ export function tablesExport() {
 export const PAGE = 1000;
 export const PLAFOND_PAR_TABLE = 5000;
 
+// ⚠️ ASTRA-14 (contre-revue Astra, 2026-09-15) : L'INCOMPLÉTUDE SE DIT, TOUJOURS.
+// La version du 14/09 avait deux silences : sans colonne `created_at`, le chemin
+// de repli atteignait le plafond de 5 000 lignes SANS poser `tronque` (le
+// contrôle ne vivait que sur le chemin ordonné) ; et le listing Storage
+// avalait ses erreurs et s'arrêtait à 1 000 objets. Désormais : un seul
+// chemin de pagination, un ORDRE stable (`created_at`, sinon `id`, sinon
+// aucun — et l'export le dit), la troncature posée dès qu'une page pleine
+// touche le plafond, les erreurs de listing nommées, le listing paginé, et un
+// BILAN en tête du fichier que le client affiche au téléchargement.
+async function lirePage(admin, table, col, uid, ordre, debut) {
+  let q = admin.from(table).select("*").eq(col, uid);
+  if (ordre) q = q.order(ordre, { ascending: true, nullsFirst: true });
+  return q.range(debut, debut + PAGE - 1);
+}
 async function lireTable(admin, table, col, uid) {
   const lignes = [];
-  let tronque = false;
-  for (let debut = 0; debut < PLAFOND_PAR_TABLE; debut += PAGE) {
-    const r = await admin.from(table).select("*").eq(col, uid).order("created_at", { ascending: true, nullsFirst: true }).range(debut, debut + PAGE - 1);
-    if (r.error) {
-      // Une colonne `created_at` absente : on relit sans ordre.
-      if (/created_at/.test(String(r.error.message || ""))) {
-        const r2 = await admin.from(table).select("*").eq(col, uid).range(debut, debut + PAGE - 1);
-        if (r2.error) return { lignes, erreur: r2.error.message, tronque };
-        lignes.push(...(r2.data || []));
-        if ((r2.data || []).length < PAGE) break;
-        continue;
-      }
-      return { lignes, erreur: r.error.message, tronque };
+  let ordre = "created_at";
+  let debut = 0;
+  for (;;) {
+    let r = await lirePage(admin, table, col, uid, ordre, debut);
+    // Colonne d'ordre absente : on descend d'un cran (`id`, puis aucun) et on
+    // relit la MÊME page — jamais une page sautée, jamais un ordre changé en route.
+    while (r.error && ordre && new RegExp(ordre).test(String(r.error.message || ""))) {
+      ordre = ordre === "created_at" ? "id" : null;
+      r = await lirePage(admin, table, col, uid, ordre, debut);
     }
-    lignes.push(...(r.data || []));
-    if ((r.data || []).length < PAGE) break;
-    if (lignes.length >= PLAFOND_PAR_TABLE) { tronque = true; break; }
+    if (r.error) return { lignes, erreur: r.error.message, tronque: false, ordre };
+    const page = r.data || [];
+    lignes.push(...page);
+    if (page.length < PAGE) return { lignes, erreur: null, tronque: false, ordre };
+    debut += PAGE;
+    // Une page PLEINE qui atteint le plafond : il en reste peut-être — tronqué.
+    if (lignes.length >= PLAFOND_PAR_TABLE) return { lignes: lignes.slice(0, PLAFOND_PAR_TABLE), erreur: null, tronque: true, ordre };
   }
-  return { lignes, erreur: null, tronque };
 }
 
+/** Liste COMPLÈTE d'un préfixe (paginée) ; une erreur est rendue, jamais avalée. */
 async function listerDossier(admin, seau, prefixe) {
+  const chemins = [];
   try {
-    const { data, error } = await admin.storage.from(seau).list(prefixe, { limit: 1000 });
-    if (error || !data) return [];
-    return data.filter((o) => o && o.name).map((o) => prefixe + "/" + o.name);
-  } catch (e) { return []; }
+    for (let offset = 0; ; offset += 1000) {
+      const { data, error } = await admin.storage.from(seau).list(prefixe, { limit: 1000, offset });
+      if (error) return { chemins, erreur: error.message || "list" };
+      const page = (data || []).filter((o) => o && o.name).map((o) => prefixe + "/" + o.name);
+      chemins.push(...page);
+      if (page.length < 1000) return { chemins, erreur: null };
+    }
+  } catch (e) { return { chemins, erreur: (e && e.message) || "exception" }; }
 }
 
 /**
@@ -71,24 +90,40 @@ export async function exporterCompte(admin, uid, identite) {
   const tables = {};
   const erreurs = [];
   const tronquees = [];
+  const sansOrdre = [];
   for (const [table, col] of tablesExport()) {
-    const { lignes, erreur, tronque } = await lireTable(admin, table, col, uid);
+    const { lignes, erreur, tronque, ordre } = await lireTable(admin, table, col, uid);
     if (erreur) { erreurs.push(table + "." + col + " : " + erreur); continue; }
     const cle = table + (col === "id" || col === "user_id" || col === "author_id" || col === "from_id" || col === "follower_id" || col === "blocker_id" ? "" : " (" + col + ")");
     tables[cle] = (tables[cle] || []).concat(lignes);
     if (tronque) tronquees.push(cle);
+    if (!ordre && lignes.length >= PAGE) sansOrdre.push(cle);
   }
   const medias = [];
   for (const dossier of DOSSIERS_CONTENU) {
-    for (const chemin of await listerDossier(admin, "content", dossier + "/" + uid)) {
+    const l = await listerDossier(admin, "content", dossier + "/" + uid);
+    if (l.erreur) erreurs.push("content/" + dossier + " : " + l.erreur);
+    for (const chemin of l.chemins) {
       let url = null;
       try { url = admin.storage.from("content").getPublicUrl(chemin).data.publicUrl; } catch (e) {}
       medias.push({ seau: "content", chemin, url });
     }
   }
+  // Le BILAN, en tête : complet ou non, et pourquoi. Le client l'affiche.
+  const bilan = {
+    complet: erreurs.length === 0 && tronquees.length === 0,
+    tables_exportees: Object.keys(tables).length,
+    lignes: Object.values(tables).reduce((n, l) => n + l.length, 0),
+    medias: medias.length,
+    tables_tronquees: tronquees.slice(),
+    tables_sans_ordre_stable: sansOrdre.slice(),
+    erreurs: erreurs.slice(),
+    plafond_par_table: PLAFOND_PAR_TABLE,
+  };
   return {
     format: "passio-export/1",
     genere_le: new Date().toISOString(),
+    bilan,
     compte: identite || null,
     tables,
     medias,

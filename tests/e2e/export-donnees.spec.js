@@ -43,7 +43,23 @@ test.describe("EXP-08 — exporter mes données", () => {
     expect(r.inv).toEqual(["export-account"]);
     expect(r.dl[0].format).toBe("passio-export/1");
     expect(r.dl[0].nom).toMatch(/^passio-export-3f2a9c64\.json$/);
-    expect(r.toasts.some((t) => /Export prêt : 2 tables, 1 média/.test(t))).toBe(true);
+    expect(r.toasts.some((t) => /Export complet : 2 tables, 1 média/.test(t))).toBe(true);
+  });
+
+  // ASTRA-14 (contre-revue Astra, 2026-09-15) : un export incomplet le DIT — au
+  // téléchargement, et dans le fichier (`bilan`). Avant : « Export prêt », succès.
+  test("② bis export incomplet (table tronquée, dossier illisible) : dit en avertissement, fichier quand même proposé", async ({ page }) => {
+    await banc(page, true);
+    const r = await page.evaluate(async () => {
+      window.__reponse = { data: { format: "passio-export/1", bilan: { complet: false, tables_exportees: 3, lignes: 5000, medias: 2, tables_tronquees: ["conv_messages"], tables_sans_ordre_stable: [], erreurs: ["content/avatars : list refusée"], plafond_par_table: 5000 }, tables: { conv_messages: [], posts: [], profiles: [] }, medias: [{}, {}], tronquees: ["conv_messages"], erreurs: ["content/avatars : list refusée"] }, error: null };
+      await openPrivacySettings(); const ok = await exporterMesDonnees();
+      return { ok, dl: window.__telechargements, toasts: window.__toasts.slice() };
+    });
+    expect(r.ok).toBe(true);
+    expect(r.dl.length).toBe(1);
+    // RÉINJECTION : sur le code du 14/09, « Export prêt : 3 tables, 2 média(s) … 1 table(s) illisible(s) » en succès, sans un mot de la troncature.
+    expect(r.toasts.some((t) => /Export INCOMPLET/.test(t) && t.indexOf("1 table(s) tronquée(s) au plafond de 5000") !== -1 && /illisible/.test(t))).toBe(true);
+    expect(r.toasts.some((t) => /Export complet/.test(t))).toBe(false);
   });
 
   test("③ échec ou plafond : dit, rien de téléchargé", async ({ page }) => {
