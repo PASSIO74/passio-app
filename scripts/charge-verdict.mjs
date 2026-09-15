@@ -19,6 +19,17 @@ export const RE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
 export function verdictReponse(status, corps, attentes) {
   if (status < 200 || status >= 300) return { ok: false, motif: `HTTP ${status}` };
   if (!attentes) return { ok: false, motif: "aucune attente déclarée" };
+  // ⚠️ ASTRA-37 : UNE ÉCRITURE SANS CORPS EST UNE ÉCRITURE QUI COMPTE. Le DELETE
+  // d'un « j'aime » rend 204 sans contenu ; il n'était PAS MESURÉ du tout
+  // (`.catch(() => {})`), alors qu'il y en a autant que de « aimer » — 2 390
+  // dans le run mélangé, 6 717 dans la tenue. Une écriture qu'on émet sans la
+  // compter fausse le débit ET peut échouer sans témoin. On exige donc un 2xx
+  // ET un corps VIDE : un corps inattendu sur un 204 est une anomalie, pas un
+  // succès qu'on arrondit.
+  if (attentes.aucunContenu) {
+    const t = typeof corps === "string" ? corps.trim() : "";
+    return t === "" || t === "[]" ? { ok: true, motif: null } : { ok: false, motif: "contenu inattendu sur une réponse sans corps : " + t.slice(0, 60) };
+  }
   let j = corps;
   if (typeof corps === "string") { try { j = JSON.parse(corps); } catch (e) { return { ok: false, motif: "forme : JSON illisible" }; } }
   if (attentes.tableau) {

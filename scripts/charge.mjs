@@ -5,8 +5,10 @@
 //
 //   node scripts/charge.mjs --projet <ref> --semer 300         # données SYNTHÉTIQUES sur le staging
 //   node scripts/charge.mjs --projet <ref> --paliers 10,50,100,200 --duree 20
-//   node scripts/charge.mjs --projet <ref> --purger              # retire les données synthétiques
-//   node scripts/charge.mjs --projet <ref> --mode mixte --comptes 20 --paliers 5,10,20 --duree 30
+//   node scripts/charge.mjs --projet <ref> --purger              # retire les données synthétiques
+
+//   node scripts/charge.mjs --projet <ref> --mode mixte --comptes 20 --paliers 5,10,20 --duree 30
+
 //                                                          # lectures + écritures + envois + temps réel AUTHENTIFIÉS
 //
 // CE QU'IL MESURE : les requêtes que l'application émet RÉELLEMENT — le fil
@@ -23,28 +25,45 @@
 // la même structure (docs/STAGING.md) : la mesure vaut pour la production à
 // données égales — et c'est `--semer` qui pose l'ordre de grandeur voulu
 // (N comptes × 20 publications, N/4 rencontres, N/2 stories).
-// ⚠️ ASTRA-20 (2026-09-15) : UN HTTP 200 VIDE N'EST PAS UN SUCCÈS. Chaque
-// requête déclare ce qu'elle ATTEND (`scripts/charge-verdict.mjs`, pur, testé) :
-// un tableau garni, les champs de l'app, l'embed profil, l'id demandé, un uuid
-// d'auteur. Une réponse qui ne le porte pas est une erreur NOMMÉE (« vide »,
-// « forme », « contenu »), comptée par motif dans le rapport. Les résultats
-// bruts (chaque mesure) sont conservés dans le fichier `--sortie`.
-// ⚠️ MODE MIXTE (point 9 du plan Astra) : des comptes RÉELS et jetables
-// (`auth.users`, e-mail `charge_…@passio-e2e.test`, créés par service_role,
-// purgés en fin de run) font ce que l'app fait connectée — lire le fil, les
-// rencontres et les notifications avec leur jeton, PUBLIER (une publication
-// toutes les ~8 s par compte : `trg_rate_limit` borne à 10/min), aimer, envoyer
-// un média dans `content/posts/<uid>/`, et ÉCOUTER le temps réel (canal privé
-// `realtime:db`, `postgres_changes` sur leurs propres publications) — la
-// latence insert → événement reçu est mesurée par publication. Le mode anon
+// ⚠️ ASTRA-20 (2026-09-15) : UN HTTP 200 VIDE N'EST PAS UN SUCCÈS. Chaque
+
+// requête déclare ce qu'elle ATTEND (`scripts/charge-verdict.mjs`, pur, testé) :
+
+// un tableau garni, les champs de l'app, l'embed profil, l'id demandé, un uuid
+
+// d'auteur. Une réponse qui ne le porte pas est une erreur NOMMÉE (« vide »,
+
+// « forme », « contenu »), comptée par motif dans le rapport. Les résultats
+
+// bruts (chaque mesure) sont conservés dans le fichier `--sortie`.
+
+// ⚠️ MODE MIXTE (point 9 du plan Astra) : des comptes RÉELS et jetables
+
+// (`auth.users`, e-mail `charge_…@passio-e2e.test`, créés par service_role,
+
+// purgés en fin de run) font ce que l'app fait connectée — lire le fil, les
+
+// rencontres et les notifications avec leur jeton, PUBLIER (une publication
+
+// toutes les ~8 s par compte : `trg_rate_limit` borne à 10/min), aimer, envoyer
+
+// un média dans `content/posts/<uid>/`, et ÉCOUTER le temps réel (canal privé
+
+// `realtime:db`, `postgres_changes` sur leurs propres publications) — la
+
+// latence insert → événement reçu est mesurée par publication. Le mode anon
+
 // (défaut) reste ce qu'il était : un visiteur qui lit.
 // ⚠️ Les données semées portent le préfixe `charge_` : `--purger` ne retire que
 // celles-là, jamais autre chose.
 // ═══════════════════════════════════════════════════════════════════════════
 import { readFileSync, existsSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { homedir } from "node:os";
+import { homedir } from "node:os";
+
 import { verdictReponse, ligneRapport } from "./charge-verdict.mjs";
+import { createRequire } from "node:module";
+const { Correlateur } = createRequire(import.meta.url)("./lib/charge-correlation.js");
 
 const PROD_REF = "njkiyoklssvefstljemx";
 const args = process.argv.slice(2);
@@ -72,7 +91,8 @@ async function gestion(chemin, options = {}) {
   return JSON.parse(t);
 }
 const sql = (q) => gestion("/database/query", { method: "POST", body: JSON.stringify({ query: q }) });
-const URL = `https://${ref}.supabase.co`;
+const URL = `https://${ref}.supabase.co`;
+
 const ref_projet = ref;
 const cles = await gestion("/api-keys?reveal=true");
 const ANON = (cles.find((k) => k.name === "anon") || {}).api_key;
@@ -244,9 +264,20 @@ async function purgerComptes(comptes) {
 // « realtime:realtime:db » pour le canal que l'app nomme « realtime:db ». En
 // brut, il faut le faire soi-même — sinon « Unauthorized … topic: db » (mesuré).
 const TOPIC_DB = "realtime:realtime:db";
+// ⚠️ ASTRA-37 (contre-revue du 15/09) — LE BANC PERDAIT LES ÉVÉNEMENTS REÇUS
+// TROP TÔT. L'attente était enregistrée APRÈS la réponse HTTP, et tout
+// événement sans attente était jeté EN SILENCE (`if (a) { … }`, sans `else`).
+// Or le trigger de diffusion part DANS la transaction de l'INSERT : l'événement
+// peut arriver AVANT que la réponse ne revienne. Le banc comptait donc « non
+// reçu en 10 s » très exactement les cas les PLUS RAPIDES — il pénalisait ce
+// qu'il mesurait, et d'autant plus que le serveur répondait vite.
+// Deux gestes, et il faut les deux : ARMER AVANT D'ÉMETTRE (`armer`), et
+// RETENIR les arrivées précoces (le tampon du corrélateur) — armer avant
+// l'envoi ne ferme pas la fenêtre entre l'armement et l'écriture réelle.
+// Décision et comptage : `scripts/lib/charge-correlation.js`, 8 verrous.
 function ecouter(c) {
-  if (typeof WebSocket !== "function") return { pret: Promise.resolve(false), attendre: async () => null, fermer() {} };
-  const attentes = new Map();
+  if (typeof WebSocket !== "function") return { pret: Promise.resolve(false), armer: async () => ({ ok: false, ms: null, motif: "pas de WebSocket" }), fermer() { return null; } };
+  const corr = new Correlateur({ delai: 10000 });
   let ouvert = false, ref = 0;
   const ws = new WebSocket(`wss://${ref_projet}.supabase.co/realtime/v1/websocket?apikey=${ANON}&vsn=1.0.0`);
   const envoyer = (o) => { try { ws.send(JSON.stringify(o)); } catch (e) {} };
@@ -260,8 +291,8 @@ function ecouter(c) {
       if (m.event === "phx_reply" && m.topic === TOPIC_DB) { ouvert = m.payload && m.payload.status === "ok"; clearTimeout(minuteur); res(ouvert); }
       if (m.event === "postgres_changes") {
         const rec = m.payload && m.payload.data && m.payload.data.record;
-        const a = rec && attentes.get(rec.id);
-        if (a) { attentes.delete(rec.id); a(performance.now()); }
+        // Reçu, précoce, doublon ou orphelin : TOUJOURS enregistré, jamais jeté.
+        if (rec && rec.id) corr.recevoir(rec.id, performance.now());
       }
     };
     ws.onerror = () => { clearTimeout(minuteur); res(false); };
@@ -270,14 +301,14 @@ function ecouter(c) {
   const battement = setInterval(() => envoyer({ topic: "phoenix", event: "heartbeat", payload: {}, ref: String(++ref) }), 25000);
   return {
     pret,
-    attendre(postId, t0) {
-      if (!ouvert) return Promise.resolve(null);
-      return new Promise((res) => {
-        const minuteur = setTimeout(() => { attentes.delete(postId); res(null); }, 10000);
-        attentes.set(postId, (t1) => { clearTimeout(minuteur); res(t1 - t0); });
-      });
+    // ⚠️ S'APPELLE AVANT D'ÉMETTRE, jamais après la réponse : c'est tout l'objet
+    // du correctif. Rend une promesse ; l'appelant l'attend APRÈS son POST.
+    armer(postId, t0, meta) {
+      if (!ouvert) return Promise.resolve({ ok: false, ms: null, motif: "canal non joint" });
+      return corr.armer(postId, t0, meta);
     },
-    fermer() { clearInterval(battement); try { ws.close(); } catch (e) {} },
+    fermer() { clearInterval(battement); try { ws.close(); } catch (e) {} return corr.cloturer(); },
+    evenements: () => corr.evenements,
   };
 }
 
@@ -285,7 +316,7 @@ const CADENCE_PUBLICATION_MS = 8000;   // 7,5/min < trg_rate_limit (10/min)
 const CADENCE_ENVOI_MS = 20000;
 
 async function palierMixte(vus, comptes, cibles) {
-  const familles = ["fil (auth)", "rencontres (auth)", "notifications (auth)", "publier", "aimer", "envoyer un média", "temps réel (insert → reçu)"];
+  const familles = ["fil (auth)", "rencontres (auth)", "notifications (auth)", "publier", "aimer", "retirer un j'aime", "envoyer un média", "temps réel (insert → reçu)"];
   const mesures = new Map(familles.map((f) => [f, []]));
   const fin = Date.now() + duree * 1000;
   const vu = async (k) => {
@@ -301,13 +332,19 @@ async function palierMixte(vus, comptes, cibles) {
         prochainePub = maintenant + CADENCE_PUBLICATION_MS;
         const id = `charge_a_${stamp}_${c.uid.slice(0, 8)}_${++c.n}`;
         const t0 = performance.now();
+        // ⚠️ ARMÉ AVANT L'ÉMISSION (ASTRA-37). L'ordre est le correctif.
+        const attente = rt ? ecoute.armer(id, t0, { acteur: c.uid, palier: vus, t_http: Date.now() }) : null;
         const m = await mesurer("publier", vus, `${URL}/rest/v1/posts`, { method: "POST", headers: { ...H, Prefer: "return=representation" }, body: JSON.stringify({ id, author_id: c.uid, passion_id: cibles.passion, mood: "creation", content: "Publication de charge " + c.n }) }, { tableau: true, id, champs: ["author_id", "created_at"] });
         mesures.get("publier").push(m);
-        if (m.ok && rt) {
-          const ms = await ecoute.attendre(id, t0);
-          const r = ms == null ? { ok: false, motif: "événement non reçu en 10 s", ms: 0 } : { ok: true, motif: null, ms };
-          brut.push({ palier: vus, requete: "temps réel (insert → reçu)", ...r, t: Date.now() });
-          mesures.get("temps réel (insert → reçu)").push(r);
+        if (attente) {
+          const v = await attente;
+          // Un INSERT refusé n'attend aucun événement : on n'en compte pas
+          // l'absence comme une perte de livraison.
+          if (m.ok) {
+            const r = v.ok ? { ok: true, motif: null, ms: v.ms } : { ok: false, motif: v.motif || "événement non reçu en 10 s", ms: 0 };
+            brut.push({ palier: vus, requete: "temps réel (insert → reçu)", ...r, id, acteur: c.uid.slice(0, 8), precoce: Boolean(v.precoce), t: Date.now() });
+            mesures.get("temps réel (insert → reçu)").push(r);
+          }
         }
         continue;
       }
@@ -326,10 +363,18 @@ async function palierMixte(vus, comptes, cibles) {
         // Aimer puis retirer : l'état revient, la mesure porte sur l'écriture.
         const m = await mesurer("aimer", vus, `${URL}/rest/v1/post_likes`, { method: "POST", headers: { ...H, Prefer: "return=representation" }, body: JSON.stringify({ post_id: cible, user_id: c.uid }) }, { tableau: true, min: 1, champs: ["post_id"] });
         mesures.get("aimer").push(m);
-        if (m.ok) await fetch(`${URL}/rest/v1/post_likes?post_id=eq.${encodeURIComponent(cible)}&user_id=eq.${c.uid}`, { method: "DELETE", headers: H }).catch(() => {});
+        // ⚠️ ASTRA-37 : CE DELETE N'ÉTAIT PAS MESURÉ DU TOUT (`.catch(() => {})`),
+        // alors qu'il y en a autant que de « aimer » — 2 390 dans le run mélangé
+        // et 6 717 dans la tenue, d'après la contre-revue. Une écriture qu'on
+        // émet sans la compter fausse le débit ET peut échouer sans témoin.
+        if (m.ok) mesures.get("retirer un j'aime").push(await mesurer("retirer un j'aime", vus, `${URL}/rest/v1/post_likes?post_id=eq.${encodeURIComponent(cible)}&user_id=eq.${c.uid}`, { method: "DELETE", headers: H }, { aucunContenu: true }));
       }
     }
-    ecoute.fermer();
+    const bilanRt = ecoute.fermer();
+    // Le bilan du canal est CONSERVÉ : armés, reçus, précoces, expirés,
+    // orphelins, doublons. Sans lui, « p95 des reçus » passerait pour « p95 de
+    // livraison » — ce que la contre-revue reproche précisément aux runs d'avant.
+    if (bilanRt) brut.push({ palier: vus, requete: "temps réel — bilan du canal", acteur: c.uid.slice(0, 8), ...bilanRt, t: Date.now() });
   };
   await Promise.all(Array.from({ length: vus }, (_, k) => vu(k)));
   return [...mesures].map(([nom, m]) => ligneRapport(vus, nom, m, duree));

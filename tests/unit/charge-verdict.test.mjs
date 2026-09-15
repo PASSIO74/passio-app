@@ -57,3 +57,13 @@ test("⑥ le rapport : percentiles sur les seuls succès, erreurs comptées par 
   assert.equal(l.motifs, "2 × HTTP 429, 1 × vide : 0 élément(s), 1 attendu(s)");
   assert.equal(pct([], 0.5), null);
 });
+
+// ASTRA-37 — le DELETE d'un « j'aime » rend 204 sans corps ; il doit se mesurer.
+test("ASTRA-37 une réponse sans contenu est un succès mesurable, et un corps inattendu ne l'est pas", () => {
+  assert.deepEqual(verdictReponse(204, "", { aucunContenu: true }), { ok: true, motif: null });
+  assert.deepEqual(verdictReponse(200, "[]", { aucunContenu: true }), { ok: true, motif: null });
+  assert.equal(verdictReponse(409, "", { aucunContenu: true }).ok, false, "un refus reste un refus");
+  const inattendu = verdictReponse(200, '{"message":"oops"}', { aucunContenu: true });
+  assert.equal(inattendu.ok, false);
+  assert.match(inattendu.motif, /contenu inattendu/);
+});
