@@ -211,6 +211,7 @@ insert into _colonnes_compte values
     ('client_errors', 'auth_uid'),
     ('analytics_events', 'user_id'),
     ('telemetry_events', 'user_id'),
+    ('telemetry_events', 'auth_uid'),
     ('profiles', 'id');
 
 -- ④ La clause dans les policies d'ÉCRITURE de l'appelant (v1, étendue) ─────
