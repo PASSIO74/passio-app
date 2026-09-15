@@ -74,14 +74,79 @@ export async function lienNotification(admin, fromUid, toUserId, maintenantMs, f
   const fenetre = typeof fenetreMs === "number" ? fenetreMs : FENETRE_NOTIF_MS;
   try {
     const depuis = new Date(maintenant - fenetre).toISOString();
-    const r = await admin.from("notifications").select("content, kind, created_at, ref_id")
+    // `*` et non une liste : `origine` (ASTRA-24) n'existe qu'après la migration
+    // du 15/09 — une colonne nommée absente ferait échouer TOUTES les pushes.
+    // Absente, elle vaut 'client' : c'est le comportement de transition.
+    const r = await admin.from("notifications").select("*")
       .eq("from_id", fromUid).eq("user_id", toUserId).gte("created_at", depuis)
       .order("created_at", { ascending: false }).limit(1);
     if (r.error) return { ok: false, raison: "lecture notifications" };
     const ligne = (r.data || [])[0];
     if (!ligne) return { ok: false, raison: "aucune notification récente" };
-    return { ok: true, raison: "", texte: borneTexte(decoderEntites(ligne.content), 200), kind: borneTexte(ligne.kind, 32), refId: ligne.ref_id == null ? "" : String(ligne.ref_id) };
+    return { ok: true, raison: "", texte: borneTexte(decoderEntites(ligne.content), 200), kind: borneTexte(ligne.kind, 32), refId: ligne.ref_id == null ? "" : String(ligne.ref_id),
+      origine: ligne.origine === "serveur" ? "serveur" : "client" };
   } catch (_e) { return { ok: false, raison: "exception" }; }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ⚠️ LE TEXTE POUSSÉ EST DÉRIVÉ PAR LE SERVEUR (ASTRA-24, cinquième contre-revue,
+// 15/09/2026). Jusqu'ici la push répétait le `content` de la ligne
+// `notifications` — ÉCRIT PAR L'ÉMETTEUR pour tous les genres que le client
+// écrit encore. Le contrôle de l'événement bornait QUI pouvait pousser, pas CE
+// QUI était poussé : « Bonjour @Lea » + une ligne à texte libre = une push à
+// texte libre. Désormais un GABARIT par genre, le nom venant de `profiles` ;
+// un genre sans gabarit ne pousse rien.
+const GABARITS_PUSH = {
+  message: "{nom} t'a envoyé un message",
+  message_groupe: "{nom} a écrit dans un groupe",
+  mention: "{nom} t'a mentionné",
+  like: "{nom} a aimé ta publication",
+  comment: "{nom} a commenté ta publication",
+  follow: "{nom} a commencé à te suivre",
+  follow_request: "{nom} souhaite s'abonner à ton compte privé",
+  follow_accept: "{nom} a accepté ta demande d'abonnement",
+  event_join: "{nom} s'est inscrit·e à ton activité",
+  event_feedback: "{nom} a laissé un avis sur ton activité",
+  event_comment: "{nom} a commenté ton activité",
+  event_update: "{nom} a mis à jour une activité où tu es inscrit·e",
+  event_invite: "{nom} t'invite à une activité",
+  live_video: "{nom} est en direct",
+};
+export function textePush(kind, nom, options) {
+  const g = GABARITS_PUSH[String(kind || "")];
+  if (!g) return null;
+  const n = borneTexte(nom, 40) || "Quelqu'un";
+  return g.replace("{nom}", n);
+}
+
+/**
+ * LA DÉCISION D'UNE PUSH « notif », en un seul endroit testable : la ligne
+ * récente (lienNotification), l'événement métier (lienEvenement) — SAUF pour
+ * 'mention', dont la ligne d'origine SERVEUR est la preuve (le serveur a
+ * vérifié l'événement et autorisé le destinataire en l'écrivant ;
+ * `notifier_mentions`, migration du 15/09) — et le texte DÉRIVÉ. Rend
+ * { ok, raison, texte, kind } ; `ok:false` = même réponse qu'un blocage.
+ */
+export async function autoriserPushNotif(admin, fromUid, toUserId, maintenantMs) {
+  const lien = await lienNotification(admin, fromUid, toUserId, maintenantMs);
+  if (!lien.ok) return { ok: false, raison: lien.raison };
+  const idn = await identiteAppelant(admin, fromUid);
+  if (lien.kind === "mention") {
+    // Transition : une ligne 'mention' d'origine client (ancien client, ou
+    // migration non appliquée) ne pousse RIEN — c'est le canal qu'on ferme.
+    if (lien.origine !== "serveur") return { ok: false, raison: "mention d'origine client : refusée (ASTRA-24)" };
+  } else {
+    const evenement = await lienEvenement(admin, lien.kind, fromUid, toUserId, lien.refId, maintenantMs);
+    if (!evenement.ok) return { ok: false, raison: evenement.raison };
+  }
+  let genre = lien.kind;
+  if (genre === "message" && lien.refId) {
+    const conv = await unSeul(admin, "conversations", [["id", lien.refId]]);
+    if (!conv.erreur && conv.ligne && conv.ligne.is_group === true) genre = "message_groupe";
+  }
+  const texte = textePush(genre, idn.name);
+  if (!texte) return { ok: false, raison: "genre sans gabarit : " + lien.kind };
+  return { ok: true, raison: "", texte, kind: lien.kind };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
