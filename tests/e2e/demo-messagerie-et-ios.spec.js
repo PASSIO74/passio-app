@@ -68,6 +68,34 @@ test.describe("UXO-03 — messagerie de démonstration", () => {
     expect(r.ajoutes).toBe(0);
     expect(r.toasts.some((t) => /démonstration/.test(t))).toBe(true);
   });
+
+  // ⑥ LE DÉFAUT DU 14/09, TROUVÉ LE 15 SUR LE STAGING : `cacheRemoteProfile`
+  // range les profils RÉELS dans `state.seed.users`, le tableau où ③ cherche
+  // « un interlocuteur du socle ». Dès qu'un vrai membre y était mis en cache
+  // (profil visité, fil chargé), lui écrire rendait « Conversation de
+  // démonstration » et n'envoyait rien — ni en local, ni en base.
+  test("⑥ écrire à un vrai membre dont le profil est en cache envoie bien", async ({ page }) => {
+    await banc(page);
+    const r = await page.evaluate(async (lea) => {
+      window.__envois = 0; window._sendTextToSupa = () => { window.__envois++; };
+      // Le chemin réel : une ligne `profiles` du serveur entre dans le cache.
+      cacheRemoteProfile({ id: lea, username: "Léa (vraie)", emoji: "🎸", color: "#8b5cf6" });
+      const enCache = (state.seed.users || []).some((u) => u.id === lea);
+      await openConversation("c_reel");
+      const inp = document.getElementById("convFpInput"); inp.value = "bonjour Léa";
+      const avant = (getConversations().find((c) => c.id === "c_reel").messages || []).length;
+      sendMessageFp("c_reel", "Léa");
+      const carte = [...document.querySelectorAll("#messageList .msg-card")].find((c) => /c_reel/.test(c.getAttribute("onclick") || ""));
+      return { enCache, envois: window.__envois, ajoutes: (getConversations().find((c) => c.id === "c_reel").messages || []).length - avant, toasts: window.__toasts.slice(), demo: _estConvDemo(getConversations().find((c) => c.id === "c_reel")), etiquette: carte ? /Exemple PASSIO/.test(carte.textContent) : null };
+    }, UID_LEA);
+    expect(r.enCache, "prémisse : le profil réel est bien dans state.seed.users").toBe(true);
+    // RÉINJECTION : sur le code du 14/09, envois = 0, ajoutes = 0 et le toast
+    // « démonstration » est levé.
+    expect(r.demo).toBe(false);
+    expect(r.envois).toBe(1);
+    expect(r.ajoutes).toBe(1);
+    expect(r.toasts.some((t) => /démonstration/.test(t))).toBe(false);
+  });
 });
 
 test.describe("UXO-01 — iPhone Safari", () => {

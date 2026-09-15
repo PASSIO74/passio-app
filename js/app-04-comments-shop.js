@@ -2241,7 +2241,12 @@ function _estConvDemo(c) {
   if (typeof SEED_CONVERSATIONS !== "undefined" && SEED_CONVERSATIONS.some(function (s) { return s.id === c.id; })) return true;
   // Un interlocuteur du SOCLE de démonstration (`state.seed.users`) — jamais un
   // simple préfixe `u_` : les bancs s'en servent pour des fixtures réelles.
-  try { return !c.isGroup && !!c.userId && (state.seed.users || []).some(function (u) { return u && u.id === c.userId; }); } catch (e) { return false; }
+  // ⚠️ ET JAMAIS UN PROFIL RÉEL MIS EN CACHE DANS CE MÊME TABLEAU (2026-09-15) :
+  // `cacheRemoteProfile` (app-02) et les auteurs de stories y entrent avec
+  // `distant: true`. Sans ce filtre, écrire à un vrai membre dont le profil
+  // venait d'être chargé rendait « Conversation de démonstration » et
+  // n'envoyait rien — mesuré sur le staging, le jour même du correctif UXO-03.
+  try { return !c.isGroup && !!c.userId && (state.seed.users || []).some(function (u) { return u && u.id === c.userId && !u.distant; }); } catch (e) { return false; }
 }
 // Non-lus RÉELS : la démonstration ne fait pas clignoter une pastille.
 function _convNonLus() {
@@ -2849,6 +2854,9 @@ async function openUserProfile(authorId, source) {
         const profile = data[0];
         user = { id: profile.id, name: profile.username || "Passionné", profileEmoji: profile.emoji || "✨", avatar: profile.color || "#8b5cf6", passion: profile.passion_id || "", passions: Array.isArray(profile.passions) ? ((typeof passionsPubliques === "function") ? passionsPubliques(profile.passions) : profile.passions) : undefined, bio: profile.bio || "", photoUrl: profile.avatar_url || null, coverUrl: profile.cover_url || null, isPrivate: !!profile.is_private, rsLinks: Array.isArray(profile.rs_links) ? profile.rs_links : [] };
         try { cacheRemoteProfile(profile); } catch(e) {}
+        // Profil RÉEL : `distant` — sinon `_estConvDemo` le prendrait pour un
+        // personnage du socle et refuserait de lui écrire (2026-09-15).
+        user.distant = true;
         state.seed.users.push(user);
         console.log("[openUserProfile] Trouvé dans Supabase et ajouté à seed.users");
       }
