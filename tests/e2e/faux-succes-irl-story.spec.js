@@ -111,6 +111,44 @@ test.describe("IRL-04 — la promotion attend le verdict", () => {
     expect(r.waitlist).toEqual([]);
     expect(r.notifs.some((n) => /event_update:u_suivant/.test(n))).toBe(true);
   });
+
+  // IRL-04, second volet (contre-revue Astra, 2026-09-15) : la promotion
+  // MANUELLE (bouton « Inscrire » de la liste d'attente, organisateur) restait
+  // optimiste — refus serveur simulé → participant ajouté localement, notifié,
+  // « Participant inscrit » annoncé.
+  test("④ bis promotion manuelle refusée : personne n'est inscrit, rien n'est annoncé, l'échec est dit", async ({ page }) => {
+    await banc(page);
+    const r = await page.evaluate(async () => {
+      const ev = _findCanonicalEvent("ev1") || allEvents().find((e) => e.id === "ev1");
+      ev.organizerId = MY_UID; ev.attendees = ["u_autre"]; ev.waitlist = ["u_suivant"]; ev.maxAttendees = 1;
+      window.__promote = false; window.__notifs = []; window.__toasts = [];
+      const ok = await promoteWaitlisted("ev1", "u_suivant");
+      return { ok, attendees: ev.attendees.slice(), waitlist: ev.waitlist.slice(), notifs: window.__notifs.slice(), toasts: window.__toasts.slice() };
+    });
+    // RÉINJECTION : sur le code d'avant, attendees = ["u_autre","u_suivant"], notif envoyée, « Participant inscrit ».
+    expect(r.ok).toBe(false);
+    expect(r.attendees).toEqual(["u_autre"]);
+    expect(r.waitlist).toEqual(["u_suivant"]);
+    expect(r.notifs).toEqual([]);
+    expect(r.toasts.some((t) => /Participant inscrit/.test(t))).toBe(false);
+    expect(r.toasts.some((t) => /non enregistrée/.test(t))).toBe(true);
+  });
+
+  test("⑤ bis promotion manuelle acceptée : inscrit, prévenu, annoncé", async ({ page }) => {
+    await banc(page);
+    const r = await page.evaluate(async () => {
+      const ev = _findCanonicalEvent("ev1") || allEvents().find((e) => e.id === "ev1");
+      ev.organizerId = MY_UID; ev.attendees = []; ev.waitlist = ["u_suivant"]; ev.maxAttendees = 1;
+      window.__promote = true; window.__notifs = []; window.__toasts = [];
+      const ok = await promoteWaitlisted("ev1", "u_suivant");
+      return { ok, attendees: ev.attendees.slice(), waitlist: ev.waitlist.slice(), notifs: window.__notifs.slice(), toasts: window.__toasts.slice() };
+    });
+    expect(r.ok).toBe(true);
+    expect(r.attendees).toEqual(["u_suivant"]);
+    expect(r.waitlist).toEqual([]);
+    expect(r.notifs.some((n) => /event_update:u_suivant/.test(n))).toBe(true);
+    expect(r.toasts.some((t) => /Participant inscrit/.test(t))).toBe(true);
+  });
 });
 
 test.describe("CONT-06 — « Story publiée » attend le verdict", () => {

@@ -3637,8 +3637,10 @@ function _reconcilierVitrinePassions(essai) {
     try { publiee = localStorage.getItem(cle); } catch (e) {}
     if (!attendue || publiee === MY_UID + ":" + attendue) return;
     supaSavePassionState().then(function (ok) {
-      if (ok) { try { localStorage.setItem(cle, MY_UID + ":" + _empreinteVitrine()); } catch (e) {} }
-      else { try { if (typeof diagLog === "function") diagLog("vitrine passions non réconciliée"); } catch (e) {} }
+      // PRO-04 : `supaSavePassionState` a déjà mémorisé l'empreinte ENVOYÉE ; si
+      // l'état a bougé pendant l'aller-retour, la prochaine réconciliation le voit.
+      if (!ok) { try { if (typeof diagLog === "function") diagLog("vitrine passions non réconciliée"); } catch (e) {} }
+      else if (_empreinteVitrine() !== attendue) { try { if (typeof diagLog === "function") diagLog("vitrine passions : état modifié pendant la publication, republication au prochain tour"); } catch (e) {} }
     }).catch(function () {});
   } catch (e) {}
 }
@@ -3651,6 +3653,12 @@ async function supaSavePassionState() {
   try {
     const charge = _chargeProfilComplete();
     if (!charge) return false;
+    // ⚠️ PRO-04 (contre-revue Astra, 2026-09-15) : l'empreinte mémorisée après
+    // le succès doit être celle de l'état ENVOYÉ, pas de l'état au moment de la
+    // réponse. Une passion ajoutée pendant l'aller-retour (A envoyé, état devenu
+    // B) faisait mémoriser B comme publié : jamais republié, vitrine en retard
+    // pour toujours — la course que la réconciliation au boot devait fermer.
+    const empreinteEnvoyee = _empreinteVitrine();
     await supaEnsureProfileExists();
     // `passion_id` est déjà normalisé par `_passionIdPubliable` dans le
     // constructeur : une passion hors référentiel devient `null` plutôt que de
@@ -3666,7 +3674,7 @@ async function supaSavePassionState() {
     // autorité, et son échec n'invalide jamais le verdict.
     if (ok) { try { await supaMiroirUserPassions(); } catch (e) {} }
     // Empreinte de la dernière publication réussie (réconciliation au boot).
-    if (ok) { try { localStorage.setItem("passio_vitrine_publiee_v1", MY_UID + ":" + _empreinteVitrine()); } catch (e) {} }
+    if (ok) { try { localStorage.setItem("passio_vitrine_publiee_v1", MY_UID + ":" + empreinteEnvoyee); } catch (e) {} }
     return ok;
   } catch (e) { console.warn("profil (passions) :", e && e.message); return false; }
 }

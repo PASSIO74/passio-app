@@ -5966,13 +5966,28 @@ function openEventWaitlist(id) {
 async function promoteWaitlisted(id, userId) {
   const ev = _findCanonicalEvent(id);
   if (!ev || !_canManageEvent(ev)) return;
+  // ⚠️ IRL-04 (contre-revue Astra, 2026-09-15) : la promotion MANUELLE restait
+  // optimiste — la personne passait dans `attendees`, était notifiée et
+  // « Participant inscrit » s'affichait, même quand le serveur refusait (zéro
+  // ligne : elle avait quitté la liste d'attente entre-temps, ou la capacité
+  // était atteinte). Le verdict serveur d'abord, l'écran ensuite — comme la
+  // promotion automatique, corrigée le 14/09.
+  if (window._supaReal && typeof supaPromoteFromWaitlist === "function") {
+    const ok = await supaPromoteFromWaitlist(id, userId);
+    if (!ok) {
+      try { if (typeof diagLog === "function") diagLog("promotion manuelle KO " + id); } catch (e) {}
+      toast("⚠️ Inscription non enregistrée : la personne n'est peut-être plus en liste d'attente, ou l'activité est complète.");
+      openEventWaitlist(id);
+      return false;
+    }
+  }
   ev.waitlist = (ev.waitlist || []).filter(x => x !== userId);
   ev.attendees = (ev.attendees || []).concat([userId]);
   saveState();
-  if (window._supaReal && typeof supaPromoteFromWaitlist === "function") await supaPromoteFromWaitlist(id, userId);
   if (typeof supaInsertNotif === "function") supaInsertNotif(userId, "event_update", id, "t'a inscrit·e depuis la liste d'attente !");
   toast("Participant inscrit");
   openEventWaitlist(id);
+  return true;
 }
 
 // Annule TOUTES les dates à venir d'une série récurrente d'un coup.
@@ -5982,20 +5997,28 @@ async function cancelEventSeries(id) {
   const all = allEvents().filter(e => e.seriesId === ref.seriesId && !_eventIsOver(e));
   if (!confirm("Annuler les " + all.length + " dates à venir de cette série ? Les inscrits seront prévenus.")) return;
   closeModal();
+  // ⚠️ IRL-13 (contre-revue Astra, 2026-09-15) : « Série annulée » était
+  // annoncé même quand TOUS les appels serveur échouaient — chaque refus
+  // faisait `continue` en silence et le toast final ne comptait rien. On
+  // compte, et l'écran dit ce qui s'est passé : tout, une partie, ou rien.
+  let annulees = 0, refusees = 0;
   for (const e of all) {
     const canon = _findCanonicalEvent(e.id);
     if (!canon || _eventIsCancelled(canon)) continue;
     if (window._supaReal && typeof supaCancelEvent === "function") {
       const okOcc = await supaCancelEvent(canon.id, true);
-      if (!okOcc) { try { if (typeof diagLog === "function") diagLog("annulation série KO " + canon.id); } catch (e) {} continue; }
+      if (!okOcc) { refusees++; try { if (typeof diagLog === "function") diagLog("annulation série KO " + canon.id); } catch (e) {} continue; }
     }
     canon.status = "cancelled";
+    annulees++;
     _notifyEventAttendees(canon, "a annulé un événement auquel tu participais", "event_cancelled");
   }
   saveState();
   window._irlMapSig = null;
   renderIRL();
-  toast("Série annulée — inscrits prévenus");
+  if (refusees === 0) toast("Série annulée — inscrits prévenus");
+  else if (annulees === 0) toast("⚠️ Annulation non enregistrée : aucune des " + refusees + " dates n'a pu être annulée. Réessaie.");
+  else toast("⚠️ Série annulée en partie : " + annulees + " date(s) annulée(s), " + refusees + " refusée(s) — réessaie pour le reste.");
 }
 
 // Annulation « douce » : l'événement reste visible et barré pour les inscrits,
