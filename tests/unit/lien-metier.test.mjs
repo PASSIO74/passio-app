@@ -123,8 +123,14 @@ const t = (s) => new Date(T0 - s * 1000).toISOString();
 const EVT = {
   ...BASE,
   posts: [{ id: "post_b", author_id: B }, { id: "post_c", author_id: C }],
+  profiles: [...BASE.profiles, { id: B, username: "Léa", emoji: "🌿" }, { id: C, username: "Chris", emoji: "🎿" }],
   post_likes: [{ post_id: "post_b", user_id: A }],
-  post_comments: [{ id: "cm1", post_id: "post_b", author_id: A, created_at: t(30) }, { id: "cm_vieux", post_id: "post_c", author_id: A, created_at: t(7200) }],
+  // ⚠️ Les commentaires portent leur TEXTE : c'est lui qui dit QUI est mentionné.
+  post_comments: [
+    { id: "cm1", post_id: "post_b", author_id: A, content: "beau spot @Léa tu viens ?", created_at: t(30) },
+    { id: "cm_quelconque", post_id: "post_b", author_id: A, content: "joli !", created_at: t(25) },
+    { id: "cm_vieux", post_id: "post_c", author_id: A, content: "@Léa", created_at: t(7200) },
+  ],
   conv_messages: [{ id: "m1", conv_id: "dm_ab", from_id: A, created_at: t(20) }, { id: "m_vieux", conv_id: "grp_abc", from_id: A, created_at: t(7200) }],
   events: [{ id: "ev1", author_id: B, organizer_id: B, co_organizers: [] }, { id: "ev_a", author_id: A, organizer_id: A, co_organizers: [] }],
   event_attendees: [{ event_id: "ev1", user_id: A, created_at: t(40), rated_at: null }, { event_id: "ev_a", user_id: B, created_at: t(9000) }],
@@ -155,7 +161,9 @@ test("⑩ like / comment : sur une publication DU destinataire, par l'appelant, 
   assert.equal((await lienEvenement(fauxAdmin(EVT), "like", A, C, "post_b", T0)).ok, false, "C n'est pas l'auteur");
   assert.equal((await lienEvenement(fauxAdmin(EVT), "comment", A, B, "post_b", T0)).ok, true);
   assert.equal((await lienEvenement(fauxAdmin(EVT), "comment", A, C, "post_c", T0)).ok, false, "commentaire trop vieux");
-  assert.equal((await lienEvenement(fauxAdmin(EVT), "mention", A, B, "post_b", T0)).ok, true, "mention : le commentaire récent suffit");
+  // ⚠️ ASTRA-24 : « le commentaire récent suffit » était ce que mesurait cette
+  // ligne, et c'était le défaut. Il faut désormais que le commentaire DÉSIGNE B.
+  assert.equal((await lienEvenement(fauxAdmin(EVT), "mention", A, B, "post_b", T0)).ok, true, "mention : le commentaire nomme @Léa");
 });
 
 test("⑪ activités : participant → organisateur, organisateur → inscrit, invitation via une conversation 1:1", async () => {
@@ -187,4 +195,60 @@ test("⑭ lienNotification rend aussi le ref_id de la ligne, pour l'événement"
   const admin = fauxAdmin({ notifications: [{ from_id: A, user_id: B, kind: "like", content: "x", ref_id: "post_b", created_at: t(5) }] });
   const r = await lienNotification(admin, A, B, T0);
   assert.equal(r.ok, true); assert.equal(r.refId, "post_b");
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ASTRA-24 — UNE MENTION SANS DESTINATAIRE N'EST PAS UNE MENTION
+//
+// Le défaut : la branche « commentaire » n'exigeait que le commentaire de
+// l'APPELANT sur `ref_id`, et ne regardait jamais `toUserId`. Combiné à la RLS
+// de `notifications` (mesurée en production le 15/09 : tout compte peut écrire
+// une ligne vers n'importe qui, avec le texte de son choix, du moment qu'il
+// n'est pas bloqué), cela rendait le TEXTE LIBRE de push à un inconnu : la
+// seule marche restante était ce lien métier.
+// ═══════════════════════════════════════════════════════════════════════════
+test("⑬ ASTRA-24 (RÉINJECTION) : commenter une publication ne permet pas de « mentionner » n'importe qui", async () => {
+  // C n'est nommé dans aucun commentaire de A — sur le code d'avant, ce cas
+  // passait, et A pouvait faire afficher son texte sur l'écran de C.
+  assert.equal((await lienEvenement(fauxAdmin(EVT), "mention", A, C, "post_b", T0)).ok, false,
+    "le destinataire n'est désigné par aucun commentaire");
+  // Et la RAISON doit dire ce qui manque, pas laisser croire à un commentaire absent.
+  const v = await lienEvenement(fauxAdmin(EVT), "mention", A, C, "post_b", T0);
+  assert.match(v.raison, /DÉSIGNANT/, "un refus muet ou trompeur envoie enquêter à côté");
+});
+
+test("⑬ bis la mention légitime passe, y compris noyée dans d'autres commentaires", async () => {
+  // Le commentaire qui mentionne n'est PAS le plus récent de A sur ce fil
+  // (`cm_quelconque` l'est). Un `.limit(1)` sans `order` en aurait privé A au
+  // hasard du plan : une garde intermittente se lit comme une panne.
+  assert.equal((await lienEvenement(fauxAdmin(EVT), "mention", A, B, "post_b", T0)).ok, true);
+  // Même règle que le client : insensible à la casse, sous-chaîne.
+  const casse = { ...EVT, post_comments: [{ id: "x", post_id: "post_b", author_id: A, content: "salut @léa", created_at: t(10) }] };
+  assert.equal((await lienEvenement(fauxAdmin(casse), "mention", A, B, "post_b", T0)).ok, true, "@léa vaut @Léa, comme côté client");
+  // Le nom SANS l'arobase n'est pas une mention.
+  const sansArobase = { ...EVT, post_comments: [{ id: "x", post_id: "post_b", author_id: A, content: "Léa était là", created_at: t(10) }] };
+  assert.equal((await lienEvenement(fauxAdmin(sansArobase), "mention", A, B, "post_b", T0)).ok, false);
+  // Un commentaire qui mentionne mais qui est TROP VIEUX ne rouvre rien.
+  const vieux = { ...EVT, post_comments: [{ id: "x", post_id: "post_b", author_id: A, content: "@Léa", created_at: t(7200) }] };
+  assert.equal((await lienEvenement(fauxAdmin(vieux), "mention", A, B, "post_b", T0)).ok, false);
+});
+
+test("⑬ ter fail-closed : un destinataire sans nom, ou une lecture en panne, ne pousse rien", async () => {
+  // Sans `username`, aucune mention ne peut le désigner : on refuse plutôt que
+  // de laisser passer « pas de nom, donc pas de contrainte ».
+  const anonyme = { ...EVT, profiles: [...BASE.profiles, { id: B, username: "", emoji: "🌿" }] };
+  assert.equal((await lienEvenement(fauxAdmin(anonyme), "mention", A, B, "post_b", T0)).ok, false);
+  assert.equal((await lienEvenement(fauxAdmin(EVT, ["profiles"]), "mention", A, B, "post_b", T0)).ok, false, "lecture profiles en panne : refus");
+  assert.equal((await lienEvenement(fauxAdmin(EVT, ["post_comments"]), "mention", A, B, "post_b", T0)).ok, false, "lecture commentaires en panne : refus");
+});
+
+test("⑭ la mention EN GROUPE reste gouvernée par l'appartenance, et c'est un choix écrit", async () => {
+  // Elle n'exige pas que le message nomme la personne : dans un groupe, les
+  // deux comptes peuvent déjà s'écrire, donc la push n'ouvre aucun canal neuf.
+  // Le nom affiché d'un membre (`_groupMemberName`) n'est pas `profiles.username` :
+  // exiger la concordance REFUSERAIT des mentions légitimes.
+  const grp = { ...EVT, conv_messages: [{ id: "m", conv_id: "grp_abc", from_id: A, content: "coucou", created_at: t(20) }] };
+  assert.equal((await lienEvenement(fauxAdmin(grp), "mention", A, B, "grp_abc", T0)).ok, true, "B est membre du groupe");
+  const horsGroupe = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+  assert.equal((await lienEvenement(fauxAdmin(grp), "mention", A, horsGroupe, "grp_abc", T0)).ok, false, "un non-membre reste dehors");
 });
