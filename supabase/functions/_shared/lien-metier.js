@@ -74,12 +74,141 @@ export async function lienNotification(admin, fromUid, toUserId, maintenantMs, f
   const fenetre = typeof fenetreMs === "number" ? fenetreMs : FENETRE_NOTIF_MS;
   try {
     const depuis = new Date(maintenant - fenetre).toISOString();
-    const r = await admin.from("notifications").select("content, kind, created_at")
+    const r = await admin.from("notifications").select("content, kind, created_at, ref_id")
       .eq("from_id", fromUid).eq("user_id", toUserId).gte("created_at", depuis)
       .order("created_at", { ascending: false }).limit(1);
     if (r.error) return { ok: false, raison: "lecture notifications" };
     const ligne = (r.data || [])[0];
     if (!ligne) return { ok: false, raison: "aucune notification récente" };
-    return { ok: true, raison: "", texte: borneTexte(decoderEntites(ligne.content), 200), kind: borneTexte(ligne.kind, 32) };
+    return { ok: true, raison: "", texte: borneTexte(decoderEntites(ligne.content), 200), kind: borneTexte(ligne.kind, 32), refId: ligne.ref_id == null ? "" : String(ligne.ref_id) };
+  } catch (_e) { return { ok: false, raison: "exception" }; }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ⚠️ L'ÉVÉNEMENT MÉTIER, PAS SEULEMENT LA NOTIFICATION (contre-revue Astra du
+// 2026-09-15, MSG-04 PARTIEL). La ligne `notifications` exigée ci-dessus est
+// écrite par L'APPELANT lui-même (la RLS l'y autorise : c'est ainsi que les
+// j'aime et commentaires notifient) — « vérifier son existence ne prouve pas
+// un événement métier légitime ». Une push doit donc être l'écho d'un FAIT que
+// la base a accepté par ailleurs, et qui LIE l'appelant au destinataire :
+//   · message  → un `conv_messages` récent de l'appelant dans la conversation
+//                `ref_id`, dont le destinataire est MEMBRE ;
+//   · like     → un `post_likes` de l'appelant sur la publication `ref_id`,
+//                dont le destinataire est l'AUTEUR ;
+//   · comment  → un `post_comments` récent de l'appelant sur `ref_id`, auteur
+//                de la publication = destinataire ;
+//   · mention  → un message récent de l'appelant dans une conversation `ref_id`
+//                dont le destinataire est membre, ou un commentaire récent de
+//                l'appelant sur la publication `ref_id` (le mentionné n'en est
+//                pas forcément l'auteur) ;
+//   · event_join / event_feedback → `event_attendees` (appelant, `ref_id`),
+//                organisateur de l'activité = destinataire ;
+//   · event_comment → `event_comments` récent (appelant, `ref_id`),
+//                organisateur = destinataire ;
+//   · event_update / event_invite → l'appelant ORGANISE `ref_id`, et le
+//                destinataire y est inscrit (invite : ou, à défaut, partage une
+//                conversation 1:1 avec lui — on n'invite que qui l'on peut joindre) ;
+//   · live_video → un `video_lives` de l'appelant démarré récemment, et le
+//                destinataire le SUIT ;
+//   · follow / follow_request / follow_accept → une ligne `follows` entre eux.
+// Genre inconnu, `ref_id` absent là où il est requis, lecture en erreur : REFUS
+// (fail-closed) — une push manquée vaut mieux qu'une push qui perce.
+const FENETRE_EVENEMENT_MS = 10 * 60_000;
+
+async function unSeul(admin, table, filtres) {
+  let q = admin.from(table).select("*");
+  for (const [col, v] of filtres) q = q.eq(col, v);
+  const r = await q.limit(1);
+  if (!r || r.error) return { erreur: true };
+  return { ligne: (r.data || [])[0] || null };
+}
+function recent(ligne, col, maintenant, fenetre) {
+  if (!ligne) return false;
+  if (!(col in ligne) || ligne[col] == null) return true;   // table sans horodatage : la ligne suffit
+  const t = Date.parse(ligne[col]);
+  return !Number.isNaN(t) && t >= maintenant - fenetre && t <= maintenant + 60_000;
+}
+async function organisateurDe(admin, eventId) {
+  const r = await unSeul(admin, "events", [["id", eventId]]);
+  if (r.erreur || !r.ligne) return null;
+  return { author: r.ligne.author_id || null, organizer: r.ligne.organizer_id || null, co: Array.isArray(r.ligne.co_organizers) ? r.ligne.co_organizers : [] };
+}
+const estOrganisateur = (o, uid) => !!o && (o.author === uid || o.organizer === uid || o.co.includes(uid));
+
+/**
+ * L'événement métier qui justifie une push de genre `kind`, de `fromUid` vers
+ * `toUserId`, à propos de `refId`. Rend `{ ok, raison }`.
+ */
+export async function lienEvenement(admin, kind, fromUid, toUserId, refId, maintenantMs, fenetreMs) {
+  const maintenant = typeof maintenantMs === "number" ? maintenantMs : Date.now();
+  const fenetre = typeof fenetreMs === "number" ? fenetreMs : FENETRE_EVENEMENT_MS;
+  const k = String(kind || "");
+  const ref = refId == null ? "" : String(refId);
+  try {
+    if (k === "message" || k === "mention") {
+      if (ref) {
+        const msg = await unSeul(admin, "conv_messages", [["conv_id", ref], ["from_id", fromUid]]);
+        if (msg.erreur) return { ok: false, raison: "lecture conv_messages" };
+        const membre = await unSeul(admin, "conv_members", [["conv_id", ref], ["user_id", toUserId]]);
+        if (membre.erreur) return { ok: false, raison: "lecture conv_members" };
+        if (msg.ligne && membre.ligne && recent(msg.ligne, "created_at", maintenant, fenetre)) return { ok: true, raison: "" };
+        if (k === "mention") {
+          const com = await unSeul(admin, "post_comments", [["post_id", ref], ["author_id", fromUid]]);
+          if (com.erreur) return { ok: false, raison: "lecture post_comments" };
+          if (com.ligne && recent(com.ligne, "created_at", maintenant, fenetre)) return { ok: true, raison: "" };
+        }
+      }
+      return { ok: false, raison: "aucun message ni commentaire récent de l'appelant lié au destinataire" };
+    }
+    if (k === "like" || k === "comment") {
+      if (!ref) return { ok: false, raison: "ref_id absent" };
+      const post = await unSeul(admin, "posts", [["id", ref]]);
+      if (post.erreur) return { ok: false, raison: "lecture posts" };
+      if (!post.ligne || post.ligne.author_id !== toUserId) return { ok: false, raison: "le destinataire n'est pas l'auteur de la publication" };
+      const fait = k === "like"
+        ? await unSeul(admin, "post_likes", [["post_id", ref], ["user_id", fromUid]])
+        : await unSeul(admin, "post_comments", [["post_id", ref], ["author_id", fromUid]]);
+      if (fait.erreur) return { ok: false, raison: "lecture " + (k === "like" ? "post_likes" : "post_comments") };
+      if (fait.ligne && recent(fait.ligne, "created_at", maintenant, fenetre)) return { ok: true, raison: "" };
+      return { ok: false, raison: "aucun " + k + " récent de l'appelant sur cette publication" };
+    }
+    if (k === "event_join" || k === "event_feedback" || k === "event_comment") {
+      if (!ref) return { ok: false, raison: "ref_id absent" };
+      const org = await organisateurDe(admin, ref);
+      if (!estOrganisateur(org, toUserId)) return { ok: false, raison: "le destinataire n'organise pas cette activité" };
+      const fait = k === "event_comment"
+        ? await unSeul(admin, "event_comments", [["event_id", ref], ["author_id", fromUid]])
+        : await unSeul(admin, "event_attendees", [["event_id", ref], ["user_id", fromUid]]);
+      if (fait.erreur) return { ok: false, raison: "lecture " + (k === "event_comment" ? "event_comments" : "event_attendees") };
+      if (fait.ligne && recent(fait.ligne, k === "event_feedback" ? "rated_at" : "created_at", maintenant, fenetre)) return { ok: true, raison: "" };
+      return { ok: false, raison: "aucune participation ni commentaire récent de l'appelant" };
+    }
+    if (k === "event_update" || k === "event_invite") {
+      if (!ref) return { ok: false, raison: "ref_id absent" };
+      const org = await organisateurDe(admin, ref);
+      if (!estOrganisateur(org, fromUid)) return { ok: false, raison: "l'appelant n'organise pas cette activité" };
+      const inscrit = await unSeul(admin, "event_attendees", [["event_id", ref], ["user_id", toUserId]]);
+      if (inscrit.erreur) return { ok: false, raison: "lecture event_attendees" };
+      if (inscrit.ligne) return { ok: true, raison: "" };
+      if (k === "event_invite") return lienAppel(admin, fromUid, toUserId);
+      return { ok: false, raison: "le destinataire n'est pas inscrit" };
+    }
+    if (k === "live_video") {
+      const live = await unSeul(admin, "video_lives", [["author_id", fromUid]]);
+      if (live.erreur) return { ok: false, raison: "lecture video_lives" };
+      if (!live.ligne || !recent(live.ligne, "started_at", maintenant, fenetre)) return { ok: false, raison: "aucun live récent de l'appelant" };
+      const suit = await unSeul(admin, "follows", [["follower_id", toUserId], ["following_id", fromUid]]);
+      if (suit.erreur) return { ok: false, raison: "lecture follows" };
+      return suit.ligne ? { ok: true, raison: "" } : { ok: false, raison: "le destinataire ne suit pas l'appelant" };
+    }
+    if (k === "follow" || k === "follow_request" || k === "follow_accept") {
+      const a = await unSeul(admin, "follows", [["follower_id", fromUid], ["following_id", toUserId]]);
+      if (a.erreur) return { ok: false, raison: "lecture follows" };
+      if (a.ligne) return { ok: true, raison: "" };
+      const b = await unSeul(admin, "follows", [["follower_id", toUserId], ["following_id", fromUid]]);
+      if (b.erreur) return { ok: false, raison: "lecture follows" };
+      return b.ligne ? { ok: true, raison: "" } : { ok: false, raison: "aucun abonnement entre les deux comptes" };
+    }
+    return { ok: false, raison: "genre de notification inconnu : " + k };
   } catch (_e) { return { ok: false, raison: "exception" }; }
 }
