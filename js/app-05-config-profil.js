@@ -611,6 +611,12 @@ async function startCall(convId, kind) {
     endCall();
     return;
   }
+  // ASTRA-50 : un jeton invalide n'est ni un refus de la personne ni une panne.
+  if (verdictInvite === "session") {
+    toast("Ta session a expiré — reconnecte-toi pour appeler");
+    endCall();
+    return;
+  }
 
   // S'abonne au canal d'appel (réponse SDP / ICE).
   const chan = _callChannel("call:" + callId);
@@ -648,6 +654,40 @@ async function startCall(convId, kind) {
 // le seul cas où l'appel ne peut pas aboutir. Un `false` unique confondait ce
 // refus avec une coupure réseau ; l'appelant aurait abandonné un appel
 // parfaitement légitime au premier paquet perdu.
+// ⚠️ ASTRA-50 (cinquième contre-revue, 15/09/2026) — UNE PANNE RÉSEAU N'EST PAS
+// UN REFUS. Tout `error` qui n'était pas « table absente » devenait « refus » :
+// mesuré avec le SDK embarqué (2.116.0) et un transport en échec, la réponse est
+// `{ status: 0, error: { code: "", message: "TypeError: Failed to fetch" } }` —
+// et l'appel se terminait sur « Appel impossible vers cette personne » avant
+// même d'armer la répétition. Les formes RÉELLES du SDK, mesurées
+// (tests/unit/appel-verdict-invitation.test.mjs, qui charge js/vendor) :
+//   · transport : status 0, code vide, message « TypeError: Failed to fetch » ;
+//   · 503 (page HTML) : status 503, PAS de code, message = le HTML ;
+//   · 429 : status 429, code PGRST000 ;
+//   · refus RLS : status 403, code 42501 ;
+//   · session : status 401, code PGRST301 (« JWT expired ») ;
+//   · table absente : status 404, code PGRST205.
+// Quatre verdicts, pas deux : « refus » n'est rendu que sur une AUTORISATION
+// refusée par le serveur (403 / 42501) ; « session » sur un jeton invalide ;
+// « repli » sur la table absente ; tout le reste — transport, 5xx, 429,
+// inconnu — est « echec », transitoire : la répétition continue, et c'est le
+// délai de sonnerie qui borne.
+// >>> PASSIO_TESTABLE _callClasserReponseInvite (extrait tel quel par le test unitaire)
+function _callClasserReponseInvite(r) {
+  if (!r || typeof r !== "object") return "echec";
+  if (!r.error) return "ok";
+  var code = String(r.error.code || ""), msg = String(r.error.message || ""), status = Number(r.status) || 0;
+  if (code === "PGRST205" || code === "42P01" || (/call_invites/.test(msg) && /schema cache|does not exist/.test(msg))) return "repli";
+  // Le CODE prime sur le statut : un refus RLS (42501) est un refus même si le
+  // statut manque (un double de test) ; le transport, lui, n'a JAMAIS de code.
+  if (code === "42501" || status === 403) return "refus";
+  if (code === "PGRST301" || code === "PGRST302" || code === "PGRST303" || status === 401) return "session";
+  if (status === 0 || (!code && /Failed to fetch|NetworkError|Load failed|network|ECONN|abort/i.test(msg))) return "echec";
+  if (status === 429 || status >= 500) return "echec";
+  if (/^2[23]/.test(code) || status === 400 || status === 409 || status === 422) return "refus";
+  return "echec";
+}
+// <<< PASSIO_TESTABLE
 function _callDeposerInvitation(ring, payload) {
   var repli = function () { return Promise.resolve(_callEmettreInvitation(ring, payload)).then(function (b) { return b ? "repli" : "echec"; }); };
   if (window._callInvitesAbsente === true || typeof supa === "undefined" || !supa || !window._supaReal) return repli();
@@ -656,14 +696,15 @@ function _callDeposerInvitation(ring, payload) {
       { id: payload.callId, from_id: payload.from, to_id: payload.to, kind: payload.kind, repete_le: new Date().toISOString() },
       { onConflict: "id" }
     )).then(function (r) {
-      if (!r || !r.error) return "ok";
-      var code = String(r.error.code || ""), msg = String(r.error.message || "");
-      if (code === "PGRST205" || code === "42P01" || /call_invites/.test(msg) && /schema cache|does not exist/.test(msg)) {
+      var verdict = _callClasserReponseInvite(r);
+      if (verdict === "repli") {
         window._callInvitesAbsente = true;   // mémorisé pour la session (drapeau sur window : un banc peut le lever)
         return repli();
       }
-      try { if (typeof diagLog === "function") diagLog("call_invites refus " + code + " " + msg.slice(0, 80)); } catch (e) {}
-      return "refus";
+      if (verdict !== "ok") {
+        try { if (typeof diagLog === "function") diagLog("call_invites " + verdict + " " + String(r && r.status) + " " + String(r && r.error && r.error.code) + " " + String(r && r.error && r.error.message).slice(0, 80)); } catch (e) {}
+      }
+      return verdict;
     }, function () { return repli(); });
   } catch (e) { return repli(); }
 }
@@ -899,35 +940,64 @@ function _callSend(event, data) {
 
 // Lie les handlers de signalisation à un canal d'appel.
 function _callBindChannelEvents(chan) {
+  // ⚠️ ASTRA-49 (cinquième contre-revue, 15/09/2026) — `ready` ÉTAIT PERDU AVANT
+  // L'ABONNEMENT. Depuis ASTRA-23 l'appelant DÉPOSE l'invitation (HTTP) avant de
+  // s'abonner à `call:<id>` ; la sonnerie part d'un trigger dès la ligne écrite.
+  // Reproduit avec les vrais gestionnaires : réponse HTTP retardée, l'appelé
+  // accepte et envoie `ready` AVANT l'abonnement de l'appelant → zéro
+  // destinataire ; l'appelant reste « calling », l'appelé « connecting », aucune
+  // offre ; l'invitation répétée est ignorée (« déjà en cours »). Le broadcast
+  // est éphémère : un message unique vers un canal sans abonné n'existe pas.
+  // LE PROTOCOLE, désormais : la réponse est REJOUABLE. L'appelé répète `ready`
+  // toutes les secondes jusqu'à recevoir l'offre (borné par sa propre garde de
+  // délai) ; l'appelant crée l'offre UNE fois et la REJOUE à chaque `ready`
+  // tant qu'aucune réponse n'est arrivée ; l'appelé, sur une offre déjà reçue,
+  // REJOUE sa réponse. Chaque message peut être perdu, aucun n'est unique.
+  // (La préparation SÉPARÉE de la sonnerie — ligne écrite, canal rejoint, PUIS
+  // sonnerie — est le durcissement serveur documenté avec ASTRA-23 ; celui-ci
+  // est client, déployable seul, et ferme déjà la course.)
   chan.on("broadcast", { event: "ready" }, async () => {
-    // Le pair a accepté et rejoint le canal → on arrête la sonnerie répétée et
-    // on crée l'offre.
     const cs = window._call;
     if (!cs || cs.role !== "caller" || !cs.pc) return;
-    console.log("[call] ready reçu → création de l'offre");
     if (cs.inviteInterval) { clearInterval(cs.inviteInterval); cs.inviteInterval = null; }
     if (cs.ringSendChan) { try { supa.removeChannel(cs.ringSendChan); } catch (e) {} cs.ringSendChan = null; }
     if (cs.status === "calling") { cs.status = "connecting"; const st = document.getElementById("callStatusText"); if (st) st.textContent = "Connexion…"; }
+    // Une réponse déjà reçue : l'offre a fait son travail, rien à rejouer.
+    if (cs.pc.remoteDescription && cs.pc.remoteDescription.type) return;
     try {
-      const offer = await cs.pc.createOffer();
-      await cs.pc.setLocalDescription({ type: offer.type, sdp: _callTuneSdp(offer.sdp) });
-      _callSend("offer", { sdp: cs.pc.localDescription });
+      if (!cs._offreCreee) {
+        cs._offreCreee = true;
+        console.log("[call] ready reçu → création de l'offre");
+        const offer = await cs.pc.createOffer();
+        await cs.pc.setLocalDescription({ type: offer.type, sdp: _callTuneSdp(offer.sdp) });
+      } else {
+        console.log("[call] ready répété → offre rejouée");
+      }
+      if (cs.pc.localDescription) _callSend("offer", { sdp: cs.pc.localDescription });
     } catch (e) {}
   });
   chan.on("broadcast", { event: "offer" }, async (msg) => {
     const cs = window._call;
     if (!cs || cs.role !== "callee" || !cs.pc) return;
+    // L'offre est reçue : la répétition de `ready` s'arrête.
+    if (cs.readyInterval) { clearInterval(cs.readyInterval); cs.readyInterval = null; }
     try {
+      // Offre déjà traitée : on REJOUE la réponse (elle a pu se perdre), sans
+      // renégocier — un second setRemoteDescription relancerait la négociation.
+      if (cs._offreRecue) { if (cs.pc.localDescription) _callSend("answer", { sdp: cs.pc.localDescription }); return; }
+      cs._offreRecue = true;
       await cs.pc.setRemoteDescription(new RTCSessionDescription(msg.payload.sdp));
       const answer = await cs.pc.createAnswer();
       await cs.pc.setLocalDescription({ type: answer.type, sdp: _callTuneSdp(answer.sdp) });
       _callSend("answer", { sdp: cs.pc.localDescription });
       _callDrainPendingIce();
-    } catch (e) {}
+    } catch (e) { cs._offreRecue = false; }
   });
   chan.on("broadcast", { event: "answer" }, async (msg) => {
     const cs = window._call;
     if (!cs || cs.role !== "caller" || !cs.pc) return;
+    // Réponse déjà posée (réponse rejouée par l'appelé) : rien à refaire.
+    if (cs.pc.remoteDescription && cs.pc.remoteDescription.type) return;
     try { await cs.pc.setRemoteDescription(new RTCSessionDescription(msg.payload.sdp)); _callDrainPendingIce(); } catch (e) {}
   });
   chan.on("broadcast", { event: "ice" }, async (msg) => {
@@ -1015,9 +1085,28 @@ async function acceptIncomingCall() {
   window._call.chan = chan;
   _callBindChannelEvents(chan);
   chan.subscribe((status) => {
-    if (status === "SUBSCRIBED") _callSend("ready", {});
+    if (status !== "SUBSCRIBED") return;
+    // ⚠️ ASTRA-49 : `ready` est REJOUÉ chaque seconde jusqu'à l'offre — l'appelant
+    // peut ne pas être encore abonné au canal quand le premier part.
+    _callSend("ready", {});
+    const cs = window._call;
+    if (!cs || cs.id !== inv.callId) return;
+    if (cs.readyInterval) clearInterval(cs.readyInterval);
+    cs.readyInterval = setInterval(() => {
+      const c = window._call;
+      if (!c || c.id !== inv.callId || (c.pc && c.pc.remoteDescription && c.pc.remoteDescription.type)) { clearInterval(cs.readyInterval); cs.readyInterval = null; return; }
+      _callSend("ready", {});
+    }, CALL_READY_REPETITION_MS);
+    // Borne : sans offre au bout du délai, l'appel entrant est abandonné (comme
+    // la sonnerie côté appelant).
+    cs.readyTimeout = setTimeout(() => {
+      const c = window._call;
+      if (c && c.id === inv.callId && c.status === "connecting" && !(c.pc && c.pc.remoteDescription && c.pc.remoteDescription.type)) { toast("L'appelant ne répond plus"); _callTeardown(); }
+    }, CALL_READY_TIMEOUT_MS);
   });
 }
+const CALL_READY_REPETITION_MS = 1000;
+const CALL_READY_TIMEOUT_MS = 60000;
 
 function declineIncomingCall() {
   const inv = window._callIncoming;
@@ -1048,6 +1137,8 @@ function _callTeardown() {
     cs.status = "ended";
     if (cs.ringTimeout) clearTimeout(cs.ringTimeout);
     if (cs.inviteInterval) { clearInterval(cs.inviteInterval); cs.inviteInterval = null; }
+    if (cs.readyInterval) { clearInterval(cs.readyInterval); cs.readyInterval = null; }
+    if (cs.readyTimeout) { clearTimeout(cs.readyTimeout); cs.readyTimeout = null; }
     if (cs.statsInterval) { clearInterval(cs.statsInterval); cs.statsInterval = null; }
     try { (cs.localStream && cs.localStream.getTracks() || []).forEach(t => t.stop()); } catch (e) {}
     try { if (cs.pc) cs.pc.close(); } catch (e) {}
