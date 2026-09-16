@@ -76,9 +76,12 @@ if (!revues) echec("les revues de la PR " + pr + " n'ont pas pu être lues (`gh 
 const contenuCommit = GH.lireContenuAuCommit(rel, commit, racine);
 if (contenuCommit === null) echec("`" + rel + "` n'a pas pu être lu au commit " + commit.slice(0, 12) + "… : preuve NON VÉRIFIABLE, rien n'est inscrit.");
 const auteurPr = GH.lireAuteurPr(pr, racine);
+// ASTRA-61 : une attestation pour une cible protégée ne s'inscrit qu'avec un
+// fournisseur RÉEL ; approbation positive, indépendante, par un relecteur autorisé.
+try { BAR.exigerFournisseurReel(GH.fournisseur(), BAR.choisirCible({ argProjet: cible })); } catch (e) { echec(e.message); }
 let preuve;
 try {
-  preuve = BAR.verifierPreuveRevue({ attestation: { pr, commit, revue_id: revueId, relecteur, empreinte: emp }, fichier: rel, empreinteAttendue: emp, cible: { ref: cible }, revues, contenuAuCommit: contenuCommit, auteurPr });
+  preuve = BAR.verifierPreuveRevue({ attestation: { pr, commit, revue_id: revueId, relecteur, empreinte: emp }, fichier: rel, empreinteAttendue: emp, cible: { ref: cible }, revues, contenuAuCommit: contenuCommit, auteurPr, relecteursAutorises: GH.lireRelecteursAutorises(racine) });
 } catch (e) { echec(e.message); }
 const chemin = resolve(racine, ".passio", "migrations", "attestations.json");
 let liste = [];
@@ -96,7 +99,7 @@ if (memeFichierCible.length && !args.includes("--remplacer")) {
 }
 
 const entree = { fichier: rel, empreinte: emp, cibles: [cible], pr, commit, revue_id: Number(revueId), relecteur, revue_le: revueLe, consigne_le: aujourdhui, source,
-  revue: { etat: preuve.revue.etat, soumise_le: preuve.revue.soumise_le, meme_auteur_que_la_pr: preuve.memeAuteurQueLaPr } };
+  revue: { etat: preuve.revue.etat, soumise_le: preuve.revue.soumise_le, auteur_pr: preuve.auteurPr, fournisseur: GH.fournisseur().reel ? "github" : "fictif" } };
 if (revueLe !== aujourdhui) { entree.retroactif = true; entree.note = "consignée le " + aujourdhui + " pour une revue revendiquée le " + revueLe + " — reconstruction, jamais une revue préalable"; }
 const gardees = liste.filter((a) => !(a.fichier === rel && (a.cibles || []).includes(cible)));
 const remplacees = liste.length - gardees.length;
@@ -105,6 +108,5 @@ mkdirSync(dirname(chemin), { recursive: true });
 writeFileSync(chemin, JSON.stringify(gardees, null, 2) + "\n", "utf8");
 console.log("✅ attestation inscrite" + (remplacees ? " (" + remplacees + " remplacée(s))" : "") + " :");
 console.log("   " + rel + "\n   " + emp + "\n   cible " + cible + " · " + pr + " · revue n°" + revueId + " (" + preuve.revue.etat + ", " + (preuve.revue.soumise_le || "date inconnue") + ") ancrée sur " + commit.slice(0, 12) + "… · " + relecteur + " · revendiquée le " + entree.revue_le + " · consignée le " + entree.consigne_le + "\n   source : " + source);
-if (preuve.memeAuteurQueLaPr) console.log("   ⚠️ le relecteur est aussi l'AUTEUR de la PR : la preuve établit un geste public ancré sur un SHA, pas une revue par un tiers.");
 if (entree.retroactif) console.log("   ⚠️ RÉTROACTIVE : " + entree.note);
 console.log("\n⚠️ Toute modification ultérieure du fichier invalide cette attestation : la barrière recalcule l'empreinte à chaque envoi.");

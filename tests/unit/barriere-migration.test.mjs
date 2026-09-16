@@ -210,7 +210,14 @@ function fauxGh(fixtures) {
   return join(d, "gh.mjs");
 }
 
-test("ASTRA-51 ② avec une revue GitHub réelle dans sa forme (ancrée, marquée, nommant fichier et cible, contenu identique) : envoyable ; chaque condition manquante refuse", async () => {
+
+// ⚠️ ASTRA-61 (sixième contre-revue, 16/09/2026) : le CLI sur une cible
+// PROTÉGÉE n'accepte plus un fournisseur de preuve FICTIF (`PASSIO_GH_BIN`,
+// `PASSIO_DEPOT`) — le banc ne peut donc plus faire dire « envoyable » au
+// chemin qui certifie. La DÉCISION (approbation positive, indépendante, par
+// un relecteur autorisé, liée au SHA, au contenu et à la cible) se mesure sur
+// la fonction pure ; le CLI se mesure sur ses REFUS.
+test("ASTRA-61 ① le CLI refuse un fournisseur de preuve FICTIF sur une cible protégée — le banc ne certifie rien", async () => {
   const { execFileSync } = await import("node:child_process");
   const { mkdtempSync, writeFileSync, readFileSync } = await import("node:fs");
   const { tmpdir } = await import("node:os");
@@ -218,41 +225,30 @@ test("ASTRA-51 ② avec une revue GitHub réelle dans sa forme (ancrée, marqué
   const sql = readFileSync(FICHIER_51, "utf8");
   const emp = BAR.empreinte(sql);
   const corpsOk = MARQUEUR + " — " + FICHIER_51 + " relu ligne à ligne ; cible: " + PROD + " ; SHA " + SHA;
-  const revueOk = { id: 4242, commit_id: SHA, state: "COMMENTED", submitted_at: "2026-09-15T20:00:00Z", user: { login: "PASSIO74" }, body: corpsOk };
-  const fixtures = (revue, contenu) => ({
-    "repos/PASSIO74/passio-app/pulls/469/reviews": [revue],
+  const revueOk = { id: 4242, commit_id: SHA, state: "APPROVED", submitted_at: "2026-09-15T20:00:00Z", user: { login: "relecteur-tiers" }, body: corpsOk };
+  const fixtures = {
+    "repos/PASSIO74/passio-app/pulls/469/reviews": [revueOk],
     "repos/PASSIO74/passio-app/pulls/469": { user: { login: "PASSIO74" } },
-    ["repos/PASSIO74/passio-app/contents/" + FICHIER_51 + "?ref=" + SHA]: { content: Buffer.from(contenu, "utf8").toString("base64") },
-  });
-  const jouer = (revue, contenu, att) => {
-    const d = mkdtempSync(join(tmpdir(), "astra51-"));
-    writeFileSync(join(d, "att.json"), JSON.stringify([{ fichier: FICHIER_51, empreinte: emp, cibles: [PROD], pr: "#469", commit: SHA, revue_id: 4242, relecteur: "PASSIO74", revue_le: "2026-09-15", consigne_le: "2026-09-15", source: "https://github.com/PASSIO74/passio-app/pull/469#pullrequestreview-4242", ...(att || {}) }]));
-    const gh = fauxGh(fixtures(revue, contenu));
-    try { return { code: 0, out: execFileSync(process.execPath, ["scripts/appliquer-migration.mjs", FICHIER_51, "--verifier", "--projet", PROD], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, GITHUB_ACTIONS: "", PASSIO_ATTESTATIONS: join(d, "att.json"), PASSIO_GH_BIN: gh, PASSIO_DEPOT: "PASSIO74/passio-app" } }) }; }
-    catch (e) { return { code: e.status, out: String(e.stdout || "") + String(e.stderr || "") }; }
+    ["repos/PASSIO74/passio-app/contents/" + FICHIER_51 + "?ref=" + SHA]: { content: Buffer.from(sql, "utf8").toString("base64") },
   };
-  const ok = jouer(revueOk, sql);
-  assert.equal(ok.code, 0, ok.out);
-  assert.match(ok.out, /envoyable/);
-  assert.match(ok.out, /preuve\s+: revue GitHub n°4242 \(COMMENTED/);
-  assert.match(ok.out, /relecteur = auteur de la PR/, "le mono-mainteneur est DIT, pas caché");
-  // Chaque condition, retirée, refuse — et nomme ce qui manque.
-  const autreCommit = jouer({ ...revueOk, commit_id: "f".repeat(40) }, sql);
-  assert.equal(autreCommit.code, 2); assert.match(autreCommit.out, /ancrée sur ffffffffffff/);
-  const sansMarqueur = jouer({ ...revueOk, body: "LGTM " + FICHIER_51 + " cible: " + PROD }, sql);
-  assert.equal(sansMarqueur.code, 2); assert.match(sansMarqueur.out, /marqueur/);
-  const sansFichier = jouer({ ...revueOk, body: MARQUEUR + " cible: " + PROD }, sql);
-  assert.equal(sansFichier.code, 2); assert.match(sansFichier.out, /ne nomme pas `migrations/);
-  const autreCible = jouer({ ...revueOk, body: MARQUEUR + " " + FICHIER_51 + " cible: zzzzzzzzzzzzzzzzzzzz" }, sql);
-  assert.equal(autreCible.code, 2); assert.match(autreCible.out, /ne nomme pas la cible/);
-  const autreRelecteur = jouer({ ...revueOk, user: { login: "quelquun" } }, sql);
-  assert.equal(autreRelecteur.code, 2); assert.match(autreRelecteur.out, /n'est pas le relecteur attesté/);
-  const autreContenu = jouer(revueOk, sql + "\n-- retouché après revue\n");
-  assert.equal(autreContenu.code, 2); assert.match(autreContenu.out, /a regardé un autre contenu/);
-  const revueInconnue = jouer({ ...revueOk, id: 1 }, sql);
-  assert.equal(revueInconnue.code, 2); assert.match(revueInconnue.out, /aucune revue n°4242/);
-  const changesRequested = jouer({ ...revueOk, state: "CHANGES_REQUESTED" }, sql);
-  assert.equal(changesRequested.code, 2); assert.match(changesRequested.out, /ni approuvée ni commentée/);
+  const d = mkdtempSync(join(tmpdir(), "astra61-"));
+  writeFileSync(join(d, "att.json"), JSON.stringify([{ fichier: FICHIER_51, empreinte: emp, cibles: [PROD], pr: "#469", commit: SHA, revue_id: 4242, relecteur: "relecteur-tiers", revue_le: "2026-09-15", consigne_le: "2026-09-15", source: "https://github.com/PASSIO74/passio-app/pull/469#pullrequestreview-4242" }]));
+  writeFileSync(join(d, "relecteurs.json"), JSON.stringify({ relecteurs: ["relecteur-tiers"] }));
+  const gh = fauxGh(fixtures);
+  // Une preuve PARFAITE dans sa forme, servie par un faux gh : le CLI refuse quand même, en nommant le fournisseur.
+  let r;
+  try { r = { code: 0, out: execFileSync(process.execPath, ["scripts/appliquer-migration.mjs", FICHIER_51, "--verifier", "--projet", PROD], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, GITHUB_ACTIONS: "", PASSIO_ATTESTATIONS: join(d, "att.json"), PASSIO_RELECTEURS: join(d, "relecteurs.json"), PASSIO_GH_BIN: gh, PASSIO_DEPOT: "PASSIO74/passio-app" } }) }; }
+  catch (e) { r = { code: e.status, out: String(e.stdout || "") + String(e.stderr || "") }; }
+  assert.equal(r.code, 2, r.out);
+  assert.match(r.out, /fournisseur FICTIF \(PASSIO_GH_BIN=/);
+  assert.doesNotMatch(r.out, /envoyable/);
+  // Même chose pour `attester-migration.mjs` : rien n'est inscrit.
+  let a;
+  try { a = { code: 0, out: execFileSync(process.execPath, ["scripts/attester-migration.mjs", FICHIER_51, "--cible", PROD, "--pr", "#469", "--relecteur", "relecteur-tiers", "--source", "x", "--commit", SHA, "--revue", "4242"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, GITHUB_ACTIONS: "", PASSIO_GH_BIN: gh, PASSIO_DEPOT: "PASSIO74/passio-app", PASSIO_RELECTEURS: join(d, "relecteurs.json") } }) }; }
+  catch (e) { a = { code: e.status, out: String(e.stdout || "") + String(e.stderr || "") }; }
+  assert.equal(a.code, 2, a.out);
+  assert.match(a.out, /fournisseur FICTIF/);
+  assert.doesNotMatch(a.out, /attestation inscrite/);
 });
 
 test("ASTRA-51 ③ sans `gh` joignable la preuve est NON VÉRIFIABLE : refus, jamais « envoyable »", async () => {
@@ -262,22 +258,49 @@ test("ASTRA-51 ③ sans `gh` joignable la preuve est NON VÉRIFIABLE : refus, ja
   const { join } = await import("node:path");
   const d = mkdtempSync(join(tmpdir(), "astra51-"));
   writeFileSync(join(d, "att.json"), JSON.stringify([{ fichier: FICHIER_51, empreinte: BAR.empreinte(readFileSync(FICHIER_51, "utf8")), cibles: [PROD], pr: "#469", commit: SHA, revue_id: 4242, relecteur: "PASSIO74", revue_le: "2026-09-15", consigne_le: "2026-09-15", source: "x" }]));
+  writeFileSync(join(d, "relecteurs.json"), JSON.stringify({ relecteurs: ["PASSIO74"] }));
   let r;
-  try { r = { code: 0, out: execFileSync(process.execPath, ["scripts/appliquer-migration.mjs", FICHIER_51, "--verifier", "--projet", PROD], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, GITHUB_ACTIONS: "", PASSIO_ATTESTATIONS: join(d, "att.json"), PASSIO_GH_BIN: "/chemin/inexistant/gh", PASSIO_DEPOT: "PASSIO74/passio-app" } }) }; }
+  // Sans override (fournisseur réel) mais sans `gh` dans le PATH : NON VÉRIFIABLE, jamais envoyable.
+  try { r = { code: 0, out: execFileSync(process.execPath, ["scripts/appliquer-migration.mjs", FICHIER_51, "--verifier", "--projet", PROD], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, GITHUB_ACTIONS: "", PASSIO_ATTESTATIONS: join(d, "att.json"), PASSIO_RELECTEURS: join(d, "relecteurs.json"), PASSIO_GH_BIN: "", PASSIO_DEPOT: "", PATH: "/chemin/inexistant", Path: "/chemin/inexistant" } }) }; }
   catch (e) { r = { code: e.status, out: String(e.stdout || "") + String(e.stderr || "") }; }
   assert.equal(r.code, 2, r.out);
   assert.match(r.out, /NON VÉRIFIABLE/);
   assert.doesNotMatch(r.out, /envoyable/);
 });
 
-test("ASTRA-51 ④ la décision pure : un même auteur est dit, une approbation vaut, le contenu envoyé doit être celui du commit", () => {
+test("ASTRA-61 ② la décision pure : APPROBATION positive, relecteur ≠ auteur, relecteur AUTORISÉ, liée au SHA, au contenu et à la cible — chaque condition retirée refuse", () => {
   const sql = "begin;\nselect 1;\ncommit;\n";
   const emp = BAR.empreinte(sql);
   const cible = { ref: PROD };
   const att = { pr: "#1", commit: SHA, revue_id: 7, relecteur: "tiers", empreinte: emp };
-  const revue = { id: 7, commit_id: SHA, state: "APPROVED", user: { login: "tiers" }, body: MARQUEUR + " migrations/m.sql cible: " + PROD };
-  const r = BAR.verifierPreuveRevue({ attestation: att, fichier: "migrations/m.sql", empreinteAttendue: emp, cible, revues: [revue], contenuAuCommit: sql, auteurPr: "PASSIO74" });
-  assert.equal(r.ok, true); assert.equal(r.memeAuteurQueLaPr, false);
-  assert.throws(() => BAR.verifierPreuveRevue({ attestation: att, fichier: "migrations/m.sql", empreinteAttendue: BAR.empreinte(sql + "x"), cible, revues: [revue], contenuAuCommit: sql }), /n'est pas celui du commit revu/);
-  assert.throws(() => BAR.verifierPreuveRevue({ attestation: att, fichier: "migrations/m.sql", empreinteAttendue: emp, cible, revues: null, contenuAuCommit: sql }), /NON VÉRIFIABLE/);
+  const corps = MARQUEUR + " migrations/m.sql cible: " + PROD;
+  const revue = { id: 7, commit_id: SHA, state: "APPROVED", user: { login: "tiers" }, body: corps };
+  const base = { attestation: att, fichier: "migrations/m.sql", empreinteAttendue: emp, cible, revues: [revue], contenuAuCommit: sql, auteurPr: "PASSIO74", relecteursAutorises: ["tiers", "autre"] };
+  const r = BAR.verifierPreuveRevue(base);
+  assert.deepEqual([r.ok, r.revue.etat, r.revue.login, r.auteurPr, r.memeAuteurQueLaPr], [true, "APPROVED", "tiers", "PASSIO74", false]);
+  // REPRODUCTION ASTRA-61 : une revue COMMENTED — y compris un REFUS qui porte tous les marqueurs — passait. Désormais : refus.
+  const refusCommente = { ...revue, state: "COMMENTED", body: "REFUS — ne pas appliquer. " + corps };
+  assert.throws(() => BAR.verifierPreuveRevue({ ...base, revues: [refusCommente] }), /seule une APPROBATION \(APPROVED\) vaut preuve/);
+  assert.throws(() => BAR.verifierPreuveRevue({ ...base, revues: [{ ...revue, state: "COMMENTED" }] }), /un commentaire, même conforme, n'approuve rien/);
+  assert.throws(() => BAR.verifierPreuveRevue({ ...base, revues: [{ ...revue, state: "CHANGES_REQUESTED" }] }), /APPROVED/);
+  assert.throws(() => BAR.verifierPreuveRevue({ ...base, revues: [{ ...revue, state: "DISMISSED" }] }), /APPROVED/);
+  // Auto-revue : l'auteur de la PR approuve lui-même (même si l'API le rendait) → refus.
+  assert.throws(() => BAR.verifierPreuveRevue({ ...base, attestation: { ...att, relecteur: "PASSIO74" }, revues: [{ ...revue, user: { login: "PASSIO74" } }], relecteursAutorises: ["PASSIO74", "tiers"] }), /auto-revue|AUTEUR de la PR/);
+  // Auteur de la PR inconnu → l'indépendance n'est pas vérifiable → refus.
+  assert.throws(() => BAR.verifierPreuveRevue({ ...base, auteurPr: null }), /indépendance du relecteur est NON VÉRIFIABLE/);
+  // Relecteur hors liste, ou liste absente/vide → refus.
+  assert.throws(() => BAR.verifierPreuveRevue({ ...base, relecteursAutorises: ["autre"] }), /n'est pas dans la liste des relecteurs autorisés/);
+  assert.throws(() => BAR.verifierPreuveRevue({ ...base, relecteursAutorises: [] }), /personne n'est autorisé/);
+  assert.throws(() => BAR.verifierPreuveRevue({ ...base, relecteursAutorises: null }), /personne n'est autorisé/);
+  // Liens au SHA, au contenu, à la cible, au fichier : inchangés.
+  assert.throws(() => BAR.verifierPreuveRevue({ ...base, revues: [{ ...revue, commit_id: "f".repeat(40) }] }), /ancrée sur ffffffffffff/);
+  assert.throws(() => BAR.verifierPreuveRevue({ ...base, contenuAuCommit: sql + "x" }), /a regardé un autre contenu/);
+  assert.throws(() => BAR.verifierPreuveRevue({ ...base, empreinteAttendue: BAR.empreinte(sql + "x") }), /n'est pas celui du commit revu/);
+  assert.throws(() => BAR.verifierPreuveRevue({ ...base, revues: [{ ...revue, body: MARQUEUR + " migrations/m.sql cible: zzzzzzzzzzzzzzzzzzzz" }] }), /ne nomme pas la cible/);
+  assert.throws(() => BAR.verifierPreuveRevue({ ...base, revues: [{ ...revue, body: "LGTM migrations/m.sql cible: " + PROD }] }), /marqueur/);
+  assert.throws(() => BAR.verifierPreuveRevue({ ...base, revues: null }), /NON VÉRIFIABLE/);
+  // Le fournisseur : réel sans override, fictif avec ; refusé sur cible protégée seulement.
+  assert.throws(() => BAR.exigerFournisseurReel({ reel: false, motifs: ["PASSIO_GH_BIN=x"] }, BAR.choisirCible({ argProjet: PROD })), /fournisseur FICTIF/);
+  assert.doesNotThrow(() => BAR.exigerFournisseurReel({ reel: false, motifs: ["PASSIO_GH_BIN=x"] }, BAR.choisirCible({ argProjet: "abcdefghijabcdefghij" })));
+  assert.doesNotThrow(() => BAR.exigerFournisseurReel({ reel: true, motifs: [] }, BAR.choisirCible({ argProjet: PROD })));
 });
