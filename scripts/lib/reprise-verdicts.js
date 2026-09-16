@@ -192,18 +192,44 @@ function natureArchive({ schemaPresent, schemaDdl, schemaEmpreinte, empreinteAtt
 // succès ni un écart : c'est un objet déposé par `service_role` ou avant le
 // suivi — on ne lui en INVENTE pas, et on le compte à part. Déduire un
 // propriétaire d'une URL ou d'un texte de message serait refaire ASTRA-12.
+// ⚠️ ASTRA-58 (sixième contre-revue, 16/09) : « sans propriétaire dans
+// l'archive » se COMPARE AUSSI. Un objet archivé `owner:null, owner_id:null`
+// est un NUL EXPLICITE (lu en base à la sauvegarde) : la cible doit porter
+// NULL, et une cible qui appartient à B est un ÉCART — la v précédente sautait
+// ces entrées (`continue`) et déclarait la reprise prouvée avec l'objet de A
+// devenu celui de B. Chaque champ est comparé à part (`null` ≠ `""` ≠ valeur).
+// Une entrée qu'on ne sait pas lire (`{}`, `null`, champ absent) n'arrive pas
+// ici : `lireInventaireProprietaires` la REFUSE (état indéterminé).
+const champ = (o, k) => (o && Object.prototype.hasOwnProperty.call(o, k) && o[k] !== undefined && o[k] !== "" ? o[k] : null);
 function comparerProprietaires(attendus, relus) {
   const divergents = [], absents = [];
   let conformes = 0, sansProprietaire = 0;
   const carte = relus instanceof Map ? relus : new Map(Object.entries(relus || {}));
   for (const [cle, att] of Object.entries(attendus || {})) {
-    if (!att || (!att.owner && !att.owner_id)) { sansProprietaire++; continue; }
+    const nul = champ(att, "owner") === null && champ(att, "owner_id") === null;
     const o = carte.get(cle);
     if (!o) { absents.push(cle); continue; }
-    if (String(o.owner || "") === String(att.owner || "") && String(o.owner_id || "") === String(att.owner_id || "")) conformes++;
+    if (String(champ(o, "owner") ?? "") === String(champ(att, "owner") ?? "") && String(champ(o, "owner_id") ?? "") === String(champ(att, "owner_id") ?? "")) { conformes++; if (nul) sansProprietaire++; }
     else divergents.push(cle);
   }
   return { conformes, sansProprietaire, divergents, absents, ok: divergents.length === 0 && absents.length === 0 };
+}
+
+/**
+ * Une entrée d'inventaire est-elle LISIBLE ? Trois états, distingués :
+ *   · `{ owner: "<id>", owner_id: "<id>" }` (au moins un non nul) → explicite ;
+ *   · `{ owner: null, owner_id: null }` → NUL explicite (les deux champs PRÉSENTS) ;
+ *   · tout le reste (`{}`, `null`, champ absent, `undefined`, type inattendu)
+ *     → INCONNU : on ne sait pas ce que la base portait. Rend null si lisible,
+ *     sinon le motif.
+ */
+function entreeProprietaireInvalide(v) {
+  if (v === null || typeof v !== "object" || Array.isArray(v)) return "entrée " + (v === null ? "null" : Array.isArray(v) ? "tableau" : typeof v) + " (propriétaire INCONNU, pas nul)";
+  for (const k of ["owner", "owner_id"]) {
+    if (!Object.prototype.hasOwnProperty.call(v, k)) return "champ `" + k + "` absent (propriétaire INCONNU, pas nul)";
+    if (v[k] !== null && (typeof v[k] !== "string" || v[k] === "")) return "champ `" + k + "` ni nul ni texte non vide";
+  }
+  return null;
 }
 
 // ── ASTRA-45 / ASTRA-48 : l'inventaire des propriétaires, lu STRICTEMENT ──
@@ -236,7 +262,11 @@ function lireInventaireProprietaires(texte, empreinteAttendue, empreinteCalculee
   }
   for (const [k, v] of Object.entries(objets)) {
     if (typeof k !== "string" || k.indexOf("/") < 1) return { erreur: "clé d'objet invalide : " + String(k).slice(0, 60) };
-    if (v !== null && (typeof v !== "object" || Array.isArray(v))) return { erreur: "entrée invalide pour " + k };
+    // ⚠️ ASTRA-58 : `{}` ou `null` n'est pas « sans propriétaire » — c'est une
+    // donnée INCONNUE. Un inventaire qui en porte est INDÉTERMINÉ : rien n'est
+    // rendu, la reprise ne peut pas se dire prouvée.
+    const motif = entreeProprietaireInvalide(v);
+    if (motif) return { erreur: "entrée invalide pour " + k + " : " + motif };
   }
   return { objets, version, total };
 }
@@ -253,7 +283,7 @@ function couvertureProprietaires(clesArchivees, inventaire) {
   for (const k of clesArchivees || []) {
     if (!(k in inventaire)) { nonReleves.push(k); continue; }
     const p = inventaire[k];
-    if (p && (p.owner || p.owner_id)) explicites.push(k); else nuls.push(k);
+    if (champ(p, "owner") !== null || champ(p, "owner_id") !== null) explicites.push(k); else nuls.push(k);
   }
   return { indisponible: false, explicites: explicites.length, nuls: nuls.length, nonReleves, ok: nonReleves.length === 0 };
 }
@@ -305,4 +335,4 @@ function verdictMedias({ index, fichiersDisque, objets, hashes, attenduManifeste
   return { indetermine: false, ok, integrite, attendus: attendus.length, ...d, compteOk };
 }
 
-module.exports = { lireInventaireProprietaires, couvertureProprietaires, lireIndexMedias, integriteArchiveMedias, verdictMedias, FORMAT_PROPRIETAIRES, FORMAT_INDEX, TOLERANCE_SUSPENSION_MS, comparerProprietaires, pageComptes, paginationTerminee, etatSuspension, dureeBanResiduelle, suspensionRestauree, comparerMedias, verdictGlobalReprise, natureArchive };
+module.exports = { lireInventaireProprietaires, couvertureProprietaires, entreeProprietaireInvalide, lireIndexMedias, integriteArchiveMedias, verdictMedias, FORMAT_PROPRIETAIRES, FORMAT_INDEX, TOLERANCE_SUSPENSION_MS, comparerProprietaires, pageComptes, paginationTerminee, etatSuspension, dureeBanResiduelle, suspensionRestauree, comparerMedias, verdictGlobalReprise, natureArchive };

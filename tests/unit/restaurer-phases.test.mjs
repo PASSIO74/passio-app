@@ -264,3 +264,98 @@ test("ASTRA-47 ③ compte DÉJÀ PRÉSENT sur la cible sans sa suspension : relu
     assert.ok(ctx2.bilan.refus.some((r) => /suspension NON POSÉE/.test(r)) && ctx2.bilan.refus.some((r) => /DÉJÀ PASSÉE|N'EST PAS suspendu/.test(r)), JSON.stringify(ctx2.bilan.refus));
   });
 });
+
+// ═══ SIXIÈME CONTRE-REVUE (16/09/2026) — ASTRA-58 / ASTRA-59 ═══
+const { validerArchive } = R._phases;
+const OWN_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+
+test("ASTRA-59 ① REPRODUCTION : index AAA, disque BAD, cible AAA → la cible devenait BAD avant le verdict rouge ; désormais RIEN n'est déposé", async () => {
+  const a = archive({ fichiers: { "content/photos/u/a.jpg": "AAA" } });
+  // L'archive est ALTÉRÉE après sa sauvegarde : le fichier sur disque diffère de l'index.
+  fs.writeFileSync(path.join(a.dossier, "_storage", "content", "photos", "u", "a.jpg"), "BAD");
+  const m = monde({ objets: { "content/photos/u/a.jpg": { taille: 3, etag: md5("AAA"), owner: "11111111-1111-4111-8111-111111111111", owner_id: "11111111-1111-4111-8111-111111111111" } } });
+  const ctx = contexte(a);
+  await avec(m, async () => {
+    // ⓪ la validation, AVANT toute mutation : invalide, et pas « non vérifiable ».
+    const v = validerArchive(ctx);
+    assert.equal(v.ok, false);
+    assert.equal(v.indetermine, false, "une corruption DÉTECTÉE n'est pas « non vérifiable »");
+    assert.ok(v.bloquants.some((b) => /ENDOMMAGÉE.*1 modifié/.test(b)), JSON.stringify(v.bloquants));
+    // Et même si la phase médias était appelée quand même (hors main) : le filet refuse le dépôt.
+    const okMedias = await medias(ctx);
+    assert.equal(okMedias, false);
+    assert.equal(m.objets.get("content/photos/u/a.jpg").etag, md5("AAA"), "la cible est INTACTE : AAA, pas BAD");
+    assert.ok(!m.journal.some((l) => /^POST \/storage\/v1\/object\/content/.test(l)), "aucun upload n'est parti : " + m.journal.filter((l) => /object/.test(l)).join(" | "));
+    const { ok, preuve } = await sansComptes(() => verdictAvecPreuve(ctx));
+    assert.equal(ok, false);
+    assert.ok(preuve.refus.some((r) => /diffère de l'index.*NON déposé/.test(r)), JSON.stringify(preuve.refus));
+  });
+});
+
+test("ASTRA-59 ② une table NDJSON tronquée ou un fichier hors index invalident l'archive avant toute écriture ; sans index c'est « non vérifiable », distinct", async () => {
+  const a = archive({ fichiers: { "content/photos/u/a.jpg": "AAA" } });
+  // Une table annoncée à 2 lignes, présente avec 1.
+  a.man.tables = { posts: { exporte: 2, octets: 10 } };
+  fs.writeFileSync(path.join(a.dossier, "posts.ndjson"), JSON.stringify({ id: 1 }) + "\n");
+  fs.writeFileSync(path.join(a.dossier, "manifeste.json"), JSON.stringify(a.man));
+  const v = validerArchive(contexte(a));
+  assert.equal(v.ok, false);
+  assert.ok(v.bloquants.some((b) => /table posts : 1 ligne\(s\) sur disque, 2 au manifeste/.test(b)), JSON.stringify(v.bloquants));
+  // Fichier en trop sur disque (hors index) : endommagée.
+  const b2 = archive({ fichiers: { "content/photos/u/a.jpg": "AAA" } });
+  fs.writeFileSync(path.join(b2.dossier, "_storage", "content", "photos", "u", "z.jpg"), "ZZZ");
+  const v2 = validerArchive(contexte(b2));
+  assert.equal(v2.ok, false); assert.ok(v2.bloquants.some((b) => /1 hors index/.test(b)));
+  // Sans index (archive d'avant) : NON VÉRIFIABLE, pas « invalide » — et la phase médias ne dépose rien non plus.
+  const c = archive({ fichiers: { "content/photos/u/a.jpg": "AAA" }, index: false });
+  const v3 = validerArchive(contexte(c));
+  assert.deepEqual([v3.ok, v3.indetermine], [false, true]);
+  const m = monde();
+  await avec(m, async () => { assert.equal(await medias(contexte(c)), false); assert.ok(!m.objets.has("content/photos/u/a.jpg"), "sans index lisible, rien n'est déposé"); });
+  // Archive saine : conforme.
+  const d = archive({ fichiers: { "content/photos/u/a.jpg": "AAA" } });
+  assert.equal(validerArchive(contexte(d)).ok, true);
+});
+
+test("ASTRA-58 ③ REPRODUCTION : archive owner:null/owner_id:null, cible appartenant à B → « restaurée » (avant) ; désormais NULL est RENDU et VÉRIFIÉ", async () => {
+  const a = archive({ fichiers: { "content/systeme.png": "AAA" }, inventaire: { "content/systeme.png": { owner: null, owner_id: null } } });
+  // La cible porte déjà l'objet, propriété de B.
+  const m = monde({ objets: { "content/systeme.png": { taille: 3, etag: md5("AAA"), owner: OWN_B, owner_id: OWN_B } } });
+  const ctx = contexte(a);
+  await avec(m, async () => {
+    assert.equal(validerArchive(ctx).ok, true);
+    const okMedias = await medias(ctx);
+    assert.equal(okMedias, true);
+    assert.deepEqual([m.objets.get("content/systeme.png").owner, m.objets.get("content/systeme.png").owner_id], [null, null], "le NUL explicite est écrit sur la cible");
+    assert.ok(m.journal.some((l) => /<gestion>\/database\/query/.test(l)));
+    const { ok, preuve } = await sansComptes(() => verdictAvecPreuve(ctx));
+    assert.equal(ok, true);
+    assert.equal(preuve.proprietaires.conformes, 1);
+    assert.equal(preuve.proprietaires.sans_proprietaire_dans_l_archive, 1);
+  });
+  // Et si la cible RESTE à B (l'UPDATE n'a pas eu lieu — ici : verdict seul, sans phase médias) : DIVERGENT, pas prouvé.
+  const m2 = monde({ objets: { "content/systeme.png": { taille: 3, etag: md5("AAA"), owner: OWN_B, owner_id: OWN_B } } });
+  const ctx2 = contexte(archive({ fichiers: { "content/systeme.png": "AAA" }, inventaire: { "content/systeme.png": { owner: null, owner_id: null } } }));
+  await avec(m2, async () => {
+    integriteArchive(ctx2);
+    const { ok, preuve } = await sansComptes(() => verdictAvecPreuve(ctx2));
+    assert.equal(ok, false, "la cible appartient à B, l'archive dit NULL : écart");
+    assert.deepEqual(preuve.proprietaires.noms.divergents, ["content/systeme.png"]);
+    assert.equal(preuve.prouvee, false);
+  });
+});
+
+test("ASTRA-58 ④ une entrée `{}` dans l'inventaire : archive INVALIDE (propriétaire inconnu), rien n'est écrit, verdict INDÉTERMINÉ", async () => {
+  const a = archive({ fichiers: { "content/systeme.png": "AAA" }, inventaire: { "content/systeme.png": {} } });
+  const m = monde({ objets: { "content/systeme.png": { taille: 3, etag: md5("AAA"), owner: OWN_B, owner_id: OWN_B } } });
+  const ctx = contexte(a);
+  await avec(m, async () => {
+    const v = validerArchive(ctx);
+    assert.equal(v.ok, false);
+    assert.ok(v.bloquants.some((b) => /inventaire des propriétaires.*INCONNU/.test(b)), JSON.stringify(v.bloquants));
+    const { ok, preuve } = await sansComptes(() => verdictAvecPreuve(ctx));
+    assert.equal(ok, false);
+    assert.equal(preuve.proprietaires.indetermine, true);
+    assert.equal(m.objets.get("content/systeme.png").owner, OWN_B, "rien n'a été écrit");
+  });
+});

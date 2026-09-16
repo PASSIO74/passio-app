@@ -212,9 +212,39 @@ test("ASTRA-26 ④ « sans propriétaire dans l'archive » est un TROISIÈME ét
   };
   const relus = { "content/a.jpg": { owner: OWN_A, owner_id: OWN_A }, "content/systeme.png": { owner: null, owner_id: null } };
   const d = V.comparerProprietaires(attendus, relus);
-  assert.equal(d.conformes, 1);
+  // ASTRA-58 (16/09) : le NUL explicite est COMPARÉ lui aussi — ici la cible porte NULL : conforme, et compté à part.
+  assert.equal(d.conformes, 2);
   assert.equal(d.sansProprietaire, 1, "on ne lui INVENTE pas de propriétaire");
-  assert.equal(d.ok, true, "…et son absence n'est pas un écart : c'est un fait, compté à part");
+  assert.equal(d.ok, true, "…la cible porte bien NULL : conforme");
+});
+
+test("ASTRA-58 ① REPRODUCTION : archive owner:null/owner_id:null, cible appartenant à B → déclarée restaurée (avant) ; désormais DIVERGENT", () => {
+  const attendus = { "content/systeme.png": { owner: null, owner_id: null } };
+  const relus = { "content/systeme.png": { owner: OWN_B, owner_id: OWN_B } };
+  const d = V.comparerProprietaires(attendus, relus);
+  assert.deepEqual(d.divergents, ["content/systeme.png"], "la cible appartient à B alors que l'archive dit NULL");
+  assert.equal(d.ok, false);
+  // Chaque champ compte : owner rendu, owner_id pas rendu → divergent aussi.
+  const d2 = V.comparerProprietaires({ "content/a.jpg": { owner: OWN_A, owner_id: OWN_A } }, { "content/a.jpg": { owner: OWN_A, owner_id: null } });
+  assert.deepEqual(d2.divergents, ["content/a.jpg"]);
+  // Une cible `""` vaut « pas de valeur » : conforme à NULL, jamais à un identifiant.
+  assert.equal(V.comparerProprietaires({ "content/s.png": { owner: null, owner_id: null } }, { "content/s.png": { owner: "", owner_id: null } }).ok, true);
+  assert.equal(V.comparerProprietaires({ "content/s.png": { owner: OWN_A, owner_id: OWN_A } }, { "content/s.png": { owner: "", owner_id: "" } }).ok, false);
+});
+
+test("ASTRA-58 ② une entrée `{}`, `null`, ou sans l'un des deux champs est INCONNUE : l'inventaire est refusé (indéterminé), jamais lu comme « sans propriétaire »", () => {
+  const inv = (objets) => V.lireInventaireProprietaires(JSON.stringify({ format: V.FORMAT_PROPRIETAIRES, total: Object.keys(objets).length, objets }), null, null);
+  assert.match(inv({ "content/a.jpg": {} }).erreur, /champ `owner` absent.*INCONNU/);
+  assert.match(inv({ "content/a.jpg": null }).erreur, /entrée null.*INCONNU/);
+  assert.match(inv({ "content/a.jpg": { owner: OWN_A } }).erreur, /champ `owner_id` absent/);
+  assert.match(inv({ "content/a.jpg": { owner: 12, owner_id: null } }).erreur, /ni nul ni texte/);
+  assert.match(inv({ "content/a.jpg": { owner: "", owner_id: null } }).erreur, /ni nul ni texte non vide/);
+  // Les deux formes lisibles : explicite, et NUL explicite (les deux champs présents).
+  assert.equal(inv({ "content/a.jpg": { owner: OWN_A, owner_id: OWN_A }, "content/s.png": { owner: null, owner_id: null } }).erreur, undefined);
+  assert.equal(V.entreeProprietaireInvalide({ owner: null, owner_id: null }), null);
+  // La couverture range le NUL explicite dans `nuls`, jamais dans `explicites`.
+  const c = V.couvertureProprietaires(["content/a.jpg", "content/s.png", "content/x.jpg"], { "content/a.jpg": { owner: OWN_A, owner_id: OWN_A }, "content/s.png": { owner: null, owner_id: null } });
+  assert.deepEqual([c.explicites, c.nuls, c.nonReleves], [1, 1, ["content/x.jpg"]]);
 });
 
 test("ASTRA-26 ⑤ un objet attendu et ABSENT de la cible est un écart", () => {
@@ -269,14 +299,14 @@ test("ASTRA-48 ① REPRODUCTION : un inventaire JSON tronqué devenait {} → at
 });
 
 test("ASTRA-48 ② forme, total et empreinte de l'inventaire sont validés", () => {
-  const ok = V.lireInventaireProprietaires(JSON.stringify({ format: V.FORMAT_PROPRIETAIRES, total: 2, objets: { "content/a.jpg": { owner: "u1", owner_id: "u1" }, "attachments/c/b.webm": null } }), "abc", "abc");
+  const ok = V.lireInventaireProprietaires(JSON.stringify({ format: V.FORMAT_PROPRIETAIRES, total: 2, objets: { "content/a.jpg": { owner: "u1", owner_id: "u1" }, "attachments/c/b.webm": { owner: null, owner_id: null } } }), "abc", "abc");
   assert.equal(ok.erreur, undefined); assert.equal(ok.version, 1); assert.equal(ok.total, 2);
   assert.match(V.lireInventaireProprietaires("[]").erreur, /forme inattendue/);
-  assert.match(V.lireInventaireProprietaires(JSON.stringify({ format: V.FORMAT_PROPRIETAIRES, total: 3, objets: { "content/a.jpg": null } })).erreur, /tronqué/);
+  assert.match(V.lireInventaireProprietaires(JSON.stringify({ format: V.FORMAT_PROPRIETAIRES, total: 3, objets: { "content/a.jpg": { owner: null, owner_id: null } } })).erreur, /tronqué/);
   assert.match(V.lireInventaireProprietaires(JSON.stringify({ format: "autre/9", objets: {} })).erreur, /inconnu/);
   assert.match(V.lireInventaireProprietaires(JSON.stringify({ format: V.FORMAT_PROPRIETAIRES, total: 1, objets: { "sansslash": null } })).erreur, /clé d'objet invalide/);
   assert.match(V.lireInventaireProprietaires("{}", "attendu", "calculee").erreur, /empreinte/);
-  const v0 = V.lireInventaireProprietaires(JSON.stringify({ "content/a.jpg": { owner: "u1" } }));
+  const v0 = V.lireInventaireProprietaires(JSON.stringify({ "content/a.jpg": { owner: "u1", owner_id: "u1" } }));
   assert.equal(v0.version, 0, "les archives d'avant (table plate) sont lues, et dites v0");
   assert.match(V.lireInventaireProprietaires(null).erreur, /absent/);
 });

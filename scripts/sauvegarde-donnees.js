@@ -142,6 +142,65 @@ async function exporterComptes(cfg, dossier) {
  */
 /** Taille de page de l'inventaire des propriétaires (sous tout plafond `max-rows` plausible). */
 const PAGE_PROPRIETAIRES = 500;
+/** Borne de sécurité : au-delà, la pagination s'arrête en ERREUR (jamais en silence). */
+const MAX_PAGES_PROPRIETAIRES = 20000;
+
+// ⚠️ ASTRA-57 (sixième contre-revue, 16/09) — LA PAGINATION « POST + Range,
+// arrêt sur ≠ 206 » NE PAGINAIT PAS. PostgREST ne rend 206 que s'il CONNAÎT le
+// total (`Prefer: count=…`) et que la plage rendue est plus courte que lui ;
+// sans compte, il rend 200 sur CHAQUE page, plafonnée à `max-rows` — la
+// boucle s'arrêtait donc après le premier appel (1 001 objets → 1 000
+// propriétaires, un seul appel, aucune erreur). Et une plage sans ORDRE TOTAL
+// n'est pas une page : deux appels peuvent se chevaucher ou se trouer.
+// Ici, le protocole que PostgREST supporte réellement :
+//   · `limit`/`offset` en paramètres de requête (documentés pour les RPC) et
+//     `order=bucket_id.asc,name.asc` — (bucket_id, name) est UNIQUE dans
+//     `storage.objects` : l'ordre est total, l'offset est stable ;
+//   · `Prefer: count=exact` → `Content-Range: a-b/total` : le TOTAL termine
+//     (on s'arrête quand tout est lu, et on VÉRIFIE que le nombre lu = total) ;
+//     s'il est inconnu (`*`), c'est la PAGE VIDE qui termine (un appel de plus,
+//     jamais un arrêt prématuré) ;
+//   · on avance du nombre de lignes REÇUES (pas de la page demandée : `max-rows`
+//     peut être plus petit) ;
+//   · NON-PROGRESSION : une page dont la première clé a déjà été vue, une clé
+//     en double, ou un nombre de pages absurde → ERREUR nommée, jamais une
+//     boucle ni un inventaire silencieusement partiel.
+// Rend { lignes, total (ou null), appels }. Testé au-delà du plafond réel
+// (`tests/unit/sauvegarde-medias.test.mjs`, PostgREST simulé selon ses règles
+// de statut : 200 sans compte, 206 avec compte et plage incomplète).
+async function paginerProprietaires(cfg, fetchFn) {
+  const lignes = [];
+  const vues = new Set();
+  let total = null, appels = 0;
+  for (let debut = 0; ; ) {
+    if (++appels > MAX_PAGES_PROPRIETAIRES) throw new Error(`pagination des propriétaires : plus de ${MAX_PAGES_PROPRIETAIRES} pages — arrêt de sécurité`);
+    const r = await fetchFn(`${cfg.url}/rest/v1/rpc/proprietaires_objets_stockage?order=bucket_id.asc,name.asc&limit=${PAGE_PROPRIETAIRES}&offset=${debut}`, {
+      method: "POST", headers: entetes(cfg.cle, { "Content-Type": "application/json", Prefer: "count=exact" }), body: "{}",
+    });
+    if (!r.ok && r.status !== 206) throw new Error("HTTP " + r.status + " " + (await r.text()).slice(0, 160));
+    const page = JSON.parse(await r.text());
+    if (!Array.isArray(page)) throw new Error("réponse inattendue");
+    // `Content-Range: 0-499/1234` ou `*/1234` (page vide) ou `0-499/*` (total inconnu).
+    const cr = /\/(\d+|\*)\s*$/.exec(r.headers.get("content-range") || "");
+    if (cr && cr[1] !== "*") {
+      const t = Number(cr[1]);
+      if (total !== null && t !== total) throw new Error(`pagination des propriétaires : le total a changé pendant la lecture (${total} → ${t}) — relancer`);
+      total = t;
+    }
+    if (page.length === 0) break;
+    for (const l of page) {
+      if (!l || typeof l.bucket_id !== "string" || typeof l.name !== "string") throw new Error("pagination des propriétaires : ligne sans bucket_id/name");
+      const k = l.bucket_id + "/" + l.name;
+      if (vues.has(k)) throw new Error(`pagination des propriétaires : non-progression (clé déjà vue : ${k} à l'offset ${debut}) — ordre non total ?`);
+      vues.add(k);
+    }
+    lignes.push(...page);
+    debut += page.length;
+    if (total !== null && debut >= total) break;
+  }
+  return { lignes, total, appels };
+}
+
 async function exporterMedias(cfg, dossier, journal) {
   const base = path.join(dossier, "_storage");
   const seaux = await (await fetch(`${cfg.url}/storage/v1/bucket`, { headers: entetes(cfg.cle) })).json();
@@ -213,25 +272,10 @@ async function exporterMedias(cfg, dossier, journal) {
   const proprietaires = {};
   let proprietairesLus = null;
   try {
-    // ⚠️ ON AVANCE DU NOMBRE DE LIGNES REÇUES, PAS DE LA PAGE DEMANDÉE : si le
-    // plafond `max-rows` du serveur est plus petit que la page demandée, la
-    // réponse est courte SANS être la dernière (mesuré au banc : plafond 100,
-    // page 500 → 100 lignes puis arrêt). PostgREST répond 206 tant que la plage
-    // n'est pas complète et 200 sur la dernière : c'est le 200 qui termine, ou
-    // une page vide.
-    for (let debut = 0; ; ) {
-      const r = await fetch(`${cfg.url}/rest/v1/rpc/proprietaires_objets_stockage`, {
-        method: "POST", headers: entetes(cfg.cle, { "Content-Type": "application/json", Range: `${debut}-${debut + PAGE_PROPRIETAIRES - 1}`, "Range-Unit": "items" }), body: "{}",
-      });
-      if (!r.ok && r.status !== 206) throw new Error("HTTP " + r.status + " " + (await r.text()).slice(0, 160));
-      const lignes = JSON.parse(await r.text());
-      if (!Array.isArray(lignes)) throw new Error("réponse inattendue");
-      for (const l of lignes) proprietaires[l.bucket_id + "/" + l.name] = { owner: l.owner || null, owner_id: l.owner_id || null };
-      proprietairesLus = (proprietairesLus || 0) + lignes.length;
-      if (lignes.length === 0 || r.status !== 206) break;
-      debut += lignes.length;
-      if (debut > 5000000) throw new Error("pagination des propriétaires : plus de 5 000 000 d'objets — arrêt de sécurité");
-    }
+    const pages = await paginerProprietaires(cfg, fetch);
+    for (const l of pages.lignes) proprietaires[l.bucket_id + "/" + l.name] = { owner: l.owner || null, owner_id: l.owner_id || null };
+    proprietairesLus = pages.lignes.length;
+    if (pages.total !== null && pages.total !== proprietairesLus) throw new Error(`pagination des propriétaires : ${proprietairesLus} ligne(s) lue(s), ${pages.total} annoncée(s) par Content-Range`);
     const sans = Object.values(proprietaires).filter((p) => !p.owner && !p.owner_id).length;
     console.log(`  propriétaires Storage : ${proprietairesLus} objet(s) lu(s)${sans ? `, dont ${sans} SANS propriétaire (déposés par service_role ou avant le suivi)` : ""}.`);
   } catch (e) {
@@ -460,7 +504,7 @@ function verifier(dossier) {
 
 // Les internes, pour les tests d'intégration (tests/unit/sauvegarde-medias.test.mjs) :
 // seul `fetch` y est doublé.
-module.exports = { _internes: { exporterMedias, PAGE_PROPRIETAIRES } };
+module.exports = { _internes: { exporterMedias, paginerProprietaires, PAGE_PROPRIETAIRES, MAX_PAGES_PROPRIETAIRES } };
 
 const args = process.argv.slice(2);
 const iv = args.indexOf("--verifier");

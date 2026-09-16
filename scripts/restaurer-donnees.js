@@ -206,6 +206,51 @@ function integriteArchive(ctx) {
   return { ok: true };
 }
 
+// ⚠️ ASTRA-59 (sixième contre-revue, 16/09) — L'ARCHIVE SE VALIDE AVANT TOUTE
+// MUTATION, ET UNE ARCHIVE INVALIDE ARRÊTE TOUT. Le précontrôle d'intégrité
+// (ASTRA-55) DÉTECTAIT un fichier modifié sur disque… puis la phase médias
+// l'envoyait quand même, avec `x-upsert` : index AAA, disque BAD, cible AAA →
+// la cible devenait BAD avant le verdict rouge. Ici, dans l'ordre, sans avoir
+// encore touché la cible :
+//   ① le manifeste et, pour chaque table, le nombre de lignes NDJSON = celui
+//      annoncé (un fichier tronqué ne charge pas une table à moitié) ;
+//   ② l'index des médias : lisible, et chaque fichier du disque conforme
+//      (taille, md5) — un fichier modifié, absent ou en trop = archive
+//      ENDOMMAGÉE ; index absent (archive d'avant) = NON VÉRIFIABLE ;
+//   ③ l'inventaire des propriétaires : lisible (forme, total, empreinte,
+//      chaque entrée — ASTRA-58) quand le manifeste annonce qu'il existe.
+// Rend { ok, bloquants, indetermine }. Le main REFUSE (code 2) sur `ok:false` ;
+// « non vérifiable » ne passe qu'avec `--accepter-archive-non-verifiable`,
+// jamais une corruption DÉTECTÉE. Et `medias()` garde son propre filet : elle
+// ne dépose JAMAIS un fichier qui diffère de l'index (défense en profondeur,
+// pour les appels de phase hors main).
+function validerArchive(ctx) {
+  const bloquants = [], nonVerifiables = [];
+  const b = bilan(ctx);
+  if (!ctx.man || typeof ctx.man !== "object") return { ok: false, bloquants: ["manifeste absent ou illisible"], indetermine: false };
+  // ① tables
+  for (const [t, info] of Object.entries(ctx.man.tables || {})) {
+    const f = path.join(ctx.archive, t + ".ndjson");
+    if (!fs.existsSync(f)) { bloquants.push(`table ${t} : fichier absent (manifeste : ${info.exporte} ligne(s))`); continue; }
+    let n;
+    try { n = lireNdjson(f).length; } catch (e) { bloquants.push(`table ${t} : NDJSON illisible (${String(e.message).slice(0, 60)}) — fichier tronqué ou corrompu`); continue; }
+    if (n !== info.exporte) bloquants.push(`table ${t} : ${n} ligne(s) sur disque, ${info.exporte} au manifeste — fichier tronqué ou étranger`);
+  }
+  // ② médias
+  if (ctx.man.medias && !sansMedias()) {
+    const integ = integriteArchive(ctx);
+    if (!integ.ok) (integ.indetermine ? nonVerifiables : bloquants).push("médias : " + integ.motif);
+    // ③ propriétaires
+    if (ctx.man.medias.proprietaires_lus !== null && ctx.man.medias.proprietaires_lus !== undefined) {
+      const inv = lireInventaire(ctx);
+      if (inv.erreur) bloquants.push("inventaire des propriétaires : " + inv.erreur);
+    }
+  }
+  const ok = bloquants.length === 0 && nonVerifiables.length === 0;
+  b.phases["validation de l'archive"] = ok ? { ok: true } : { ok: false, indetermine: bloquants.length === 0, motif: [...bloquants, ...nonVerifiables].join(" ; ") };
+  return { ok, bloquants, nonVerifiables, indetermine: bloquants.length === 0 && nonVerifiables.length > 0 };
+}
+
 // ───────────────────────────── ① schéma ─────────────────────────────
 async function tablesCible(ctx) {
   const l = await sql(ctx, "select table_name from information_schema.tables where table_schema='public' and table_type='BASE TABLE' order by 1");
@@ -511,8 +556,18 @@ async function medias(ctx) {
     }
     return ratés;
   };
+  // ⚠️ ASTRA-59 : LE FILET DE LA PHASE. L'index (ASTRA-55) dit ce que l'archive
+  // DOIT contenir ; un fichier du disque qui n'y est pas, ou qui n'a pas la
+  // taille et l'empreinte annoncées, N'EST PAS DÉPOSÉ — avec `x-upsert`, il
+  // remplacerait un objet sain de la cible par un octet altéré. Sans index
+  // lisible, aucun dépôt (indéterminé) : la phase est en refus, pas en silence.
+  const idxMedias = lireIndex(ctx);
+  if (idxMedias.erreur) {
+    refus.push(`index des médias : ${idxMedias.erreur} — aucun fichier n'est déposé (on ne remplace pas la cible par un contenu non vérifiable)`);
+  }
   try {
   for (const seau of fs.readdirSync(base)) {
+    if (idxMedias.erreur) break;
     if (!existants.has(seau)) {
       const r = await fetch(`${ctx.url}/storage/v1/bucket`, { method: "POST", headers: entetes(ctx.cle, { "Content-Type": "application/json" }),
         body: JSON.stringify({ id: seau, name: seau, public: SEAUX_PUBLICS.has(seau) }) });
@@ -521,6 +576,13 @@ async function medias(ctx) {
     }
     for (const rel of fichiersSous(path.join(base, seau))) {
       const buf = fs.readFileSync(path.join(base, seau, rel));
+      const attendu = idxMedias.objets[seau + "/" + rel];
+      if (!attendu) { refus.push(`${seau}/${rel} : hors index — NON déposé`); continue; }
+      const md5 = crypto.createHash("md5").update(buf).digest("hex");
+      if (Number(attendu.taille) !== buf.length || String(attendu.md5).toLowerCase() !== md5) {
+        refus.push(`${seau}/${rel} : diffère de l'index (taille ${buf.length} vs ${attendu.taille}, md5 ${md5.slice(0, 8)}… vs ${String(attendu.md5).slice(0, 8)}…) — NON déposé, la cible n'est pas écrasée`);
+        continue;
+      }
       const ext = path.extname(rel).slice(1).toLowerCase();
       const r = await fetch(`${ctx.url}/storage/v1/object/${seau}/${rel.split("/").map(encodeURIComponent).join("/")}`, {
         method: "POST", headers: entetes(ctx.cle, { "Content-Type": MIME[ext] || "application/octet-stream", "x-upsert": "true" }), body: buf,
@@ -558,9 +620,15 @@ async function medias(ctx) {
     }
     const parProprietaire = new Map();
     for (const [cle, p] of Object.entries(table)) {
-      // ⚠️ UN OBJET SANS PROPRIÉTAIRE DANS L'ARCHIVE EN GARDE UN : il a été
-      // déposé par service_role, ou avant le suivi. On ne lui en INVENTE pas.
-      if (!p || (!p.owner && !p.owner_id)) { inconnus++; continue; }
+      // ⚠️ ASTRA-58 : UN NUL EXPLICITE SE RESTAURE AUSSI. L'objet a été déposé
+      // par service_role, ou avant le suivi : la base portait NULL, et l'archive
+      // le dit (`owner:null, owner_id:null`, les deux champs présents). Ne pas
+      // l'écrire laissait la cible à qui l'avait (B, ou le service qui vient de
+      // déposer) — et le verdict passait. On n'INVENTE toujours rien : on écrit
+      // ce que l'archive porte, NULL compris. (`{}`/`null` ne passent pas
+      // `lireInventaire` : indéterminé.)
+      const nul = !p.owner && !p.owner_id;
+      if (nul) inconnus++;
       const k = (p.owner || "") + "|" + (p.owner_id || "");
       if (!parProprietaire.has(k)) parProprietaire.set(k, { owner: p.owner || null, owner_id: p.owner_id || null, cles: [] });
       parProprietaire.get(k).cles.push(cle);
@@ -579,11 +647,11 @@ async function medias(ctx) {
         } catch (e) { echouesProp += lot.length; refus.push(`propriétaires (${lot.length} objet(s)) : ${String(e.message).slice(0, 140)}`); }
       }
     }
-    console.log(`   propriétaires Storage : ${rendus} rendu(s)${inconnus ? `, ${inconnus} sans propriétaire dans l'archive (conservés tels quels)` : ""}${echouesProp ? `, ${echouesProp} EN ÉCHEC` : ""}.`);
+    console.log(`   propriétaires Storage : ${rendus} rendu(s)${inconnus ? `, ${inconnus} sans propriétaire dans l'archive (NULL rendu explicitement)` : ""}${echouesProp ? `, ${echouesProp} EN ÉCHEC` : ""}.`);
     bilan(ctx).phases["propriétaires Storage"] = echouesProp
       ? { ok: false, motif: echouesProp + " objet(s) sans propriétaire rendu" }
       : { ok: true };
-    if (inconnus) bilan(ctx).notes.push(`${inconnus} objet(s) sans propriétaire dans l'archive : déposés par service_role ou avant le suivi — aucun n'est inventé`);
+    if (inconnus) bilan(ctx).notes.push(`${inconnus} objet(s) sans propriétaire dans l'archive : déposés par service_role ou avant le suivi — NULL rendu, aucun n'est inventé`);
   }
   } finally {
     for (const x of await retablir()) refus.push(x);
@@ -756,18 +824,12 @@ async function verdict(ctx) {
       preuve.proprietaires = { ok: false, motif: "relecture impossible — état INDÉTERMINÉ" };
       console.log("   ECART _storage.owner | relecture impossible : état INDÉTERMINÉ");
     } else {
-      const divergents = [], absents = [];
-      let conformes = 0, sansProprietaire = 0;
-      for (const [cle, att] of Object.entries(attendus)) {
-        // ⚠️ Un objet SANS propriétaire dans l'archive en garde un : il a été
-        // déposé par service_role, ou avant le suivi. On ne lui en INVENTE pas,
-        // et son absence n'est pas un écart — c'est un fait, et il est compté.
-        if (!att || (!att.owner && !att.owner_id)) { sansProprietaire++; continue; }
-        const o = relus.get(cle);
-        if (!o) { absents.push(cle); continue; }
-        if (String(o.owner || "") === String(att.owner || "") && String(o.owner_id || "") === String(att.owner_id || "")) conformes++;
-        else divergents.push(cle);
-      }
+      // ⚠️ ASTRA-58 : la comparaison est celle de la bibliothèque (verrouillée
+      // par tests/unit/reprise-verdicts.test.mjs) — champ par champ, NULL
+      // explicite COMPRIS : un objet archivé sans propriétaire dont la cible
+      // appartient à B est un ÉCART, pas un « fait compté à part ».
+      const cmp = RV.comparerProprietaires(attendus, relus);
+      const { divergents, absents, conformes, sansProprietaire } = cmp;
       const nonReleves = couv ? couv.nonReleves : [];
       const okProp = divergents.length === 0 && absents.length === 0 && nonReleves.length === 0 && couv !== null; if (!okProp) ecarts++;
       preuve.proprietaires = { attendus: Object.keys(attendus).length, conformes, sans_proprietaire_dans_l_archive: sansProprietaire,
@@ -841,15 +903,25 @@ async function purger(ctx) {
 // (tests/unit/restaurer-phases.test.mjs) qui les exercent avec un faux `fetch`
 // — seules les interfaces EXTERNES (GoTrue, Storage, API de gestion) sont doublées.
 module.exports = { lots, litteral, ordreInsert, ordreLigneALigne, canoniser, comparerLignes, comparerMedias, PROD_REF, LOT_OCTETS,
-  _phases: { comptes, tables, medias, verdict, integriteArchive, bilan, lireIndex, lireInventaire } };
+  _phases: { comptes, tables, medias, verdict, integriteArchive, validerArchive, bilan, lireIndex, lireInventaire } };
 if (require.main === module) (async () => {
   const ctx = await contexte();
   console.log(`cible : ${ctx.ref} (« ${ctx.nom} »)${ctx.archive ? ` ← archive ${ctx.archive}` : ""}`);
   if (drapeau("--purger")) { await purger(ctx); return; }
-  // L'intégrité de l'archive se vérifie AU MOMENT de l'usage (ASTRA-55), y
-  // compris pour --verifier : une archive endommagée ne prouve rien.
-  integriteArchive(ctx);
+  // ⚠️ ASTRA-59 : L'ARCHIVE SE VALIDE AVANT TOUTE MUTATION (tables, index et
+  // fichiers, inventaire). Invalide → code 2, la cible n'a pas été touchée.
+  // --verifier ne mute rien : on laisse le verdict dire l'écart.
+  const val = validerArchive(ctx);
+  if (!val.ok) {
+    console.log(`⓪ validation de l'archive : ${val.indetermine ? "NON VÉRIFIABLE" : "INVALIDE"}`);
+    for (const x of [...val.bloquants, ...val.nonVerifiables]) console.log("   ✗ " + x);
+  } else console.log("⓪ validation de l'archive : conforme au manifeste (tables, médias, propriétaires).");
   if (drapeau("--verifier")) { process.exit((await verdict(ctx)) ? 0 : 1); }
+  if (!val.ok && !(val.indetermine && drapeau("--accepter-archive-non-verifiable"))) {
+    echec(val.indetermine
+      ? "archive NON VÉRIFIABLE : rien n'a été écrit sur la cible. Refaire la sauvegarde (index des médias), ou passer --accepter-archive-non-verifiable en connaissance de cause."
+      : "archive INVALIDE : rien n'a été écrit sur la cible. Cette archive ne doit pas servir à une restauration.");
+  }
   await schema(ctx);
   await comptes(ctx);
   const t = await tables(ctx);
