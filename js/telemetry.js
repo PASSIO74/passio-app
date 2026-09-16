@@ -960,16 +960,25 @@
           // (page masquée, ou navigateur qui se déclare hors ligne). Un échec
           // réseau page visible et en ligne reste une `error` : celui-là, on ne
           // sait pas l'expliquer, et il ne doit pas se taire.
-          var _masquee = false, _horsLigne = false;
+          //
+          // ⚠️ SUR iOS, `pagehide` ARRIVE AVANT `visibilitychange` (mesuré en
+          // production le 2026-09-16 : `session end` → quatre fetch en échec
+          // « Failed to fetch » → `lifecycle hidden`, la même seconde, sur
+          // quatre appareils d'un même compte). À l'instant de l'échec la page
+          // se dit encore « visible » et en ligne : la cause ÉTAIT prouvée,
+          // mais par le drapeau `unloading` — que cette ligne ne lisait pas.
+          // Même preuve que `contexteEchec()` plus haut, même distinction :
+          // « la page part » n'est pas « notre code a un défaut ».
+          var _masquee = false, _horsLigne = false, _fermeture = !!unloading;
           try { _masquee = (typeof document !== "undefined" && document.visibilityState === "hidden"); } catch (e) {}
           try { _horsLigne = (typeof navigator !== "undefined" && navigator.onLine === false); } catch (e) {}
-          var _transitoire = _masquee || _horsLigne;
+          var _transitoire = _masquee || _horsLigne || _fermeture;
           Telemetry.api({
             action: method + " " + path, endpoint: path,
             duration_ms: dt, status: "error",
             severity: _transitoire ? "warn" : "error",
             http_status: 0, message: err && err.message,
-            meta: { masquee: _masquee, hors_ligne: _horsLigne },
+            meta: { masquee: _masquee, hors_ligne: _horsLigne, fermeture: _fermeture },
             correlation_id: Telemetry._ambientFlowCid(),
           });
         }

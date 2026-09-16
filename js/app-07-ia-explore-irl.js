@@ -5095,13 +5095,24 @@ function admissionMeta(statut, ctx) {
 
 // Un `catch` muet sur un chemin de décision masque un ReferenceError. Tout échec
 // est journalisé et remonté au Centre de pilotage, jamais montré à l'utilisateur.
+// ⚠️ Une COUPURE RÉSEAU n'est pas un défaut de ce bloc : il est conçu pour
+// échouer ouvert (voir l'en-tête), et le serveur tient la barrière. Elle part
+// donc en `warn`, statut `reseau` — le fait reste tracé, il ne remplit plus le
+// Centre de pilotage d'`error` à chaque mise en arrière-plan sur iOS (mesuré le
+// 2026-09-16 : `rpc/declare_birth_year` coupé par `pagehide`, comme les trois
+// lectures de démarrage à côté). Un refus du SERVEUR (code PostgREST, fonction
+// absente) reste une `error` : `estEchecReseau` (app-02) refuse par défaut.
 function admissionEchec(ou, err) {
   var msg = "admission (" + ou + ") : " + ((err && err.message) || err || "?");
   try { if (typeof diagLog === "function") diagLog(msg); } catch (e) {}
   try {
     if (window.tel && tel.error) {
+      var reseau = false;
+      try { reseau = typeof estEchecReseau === "function" && estEchecReseau(err); } catch (e) {}
       tel.error(err instanceof Error ? err : new Error(msg),
-                { action: "admission", meta: admissionMeta("erreur", ou) });
+                { action: "admission",
+                  severity: reseau ? "warn" : "error",
+                  meta: admissionMeta(reseau ? "reseau" : "erreur", ou) });
     }
   } catch (e) {}
 }
