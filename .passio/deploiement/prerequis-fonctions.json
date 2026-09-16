@@ -1,0 +1,44 @@
+{
+  "_commentaire": "ASTRA-64 (2026-09-16) — ce que chaque Edge Function EXIGE de la base pour être déployée. Lu par scripts/verifier-prerequis-fonctions.mjs, exécuté par .github/workflows/edge-functions.yml AVANT `supabase functions deploy` : un prérequis `obligatoire` absent sur la cible RETIENT le déploiement (job rouge, rien n'est déployé). Chaque objet est vérifié dans le catalogue de la cible, en lecture seule. Formes : function:<schema>.<nom>(<types>) · column:<schema>.<table>.<colonne> · table:<schema>.<table> · source:<schema>.<fonction>~<texte attendu dans prosrc>.",
+  "fonctions": {
+    "delete-account": {
+      "migration": "migrations/migration_barriere_suppression_2026-09-15.sql",
+      "obligatoire": true,
+      "sans": "la fonction répond 503 infrastructure_absente et ne purge rien (fail-closed) — la suppression de compte serait INDISPONIBLE pour les utilisateurs : on ne déploie pas avant la migration",
+      "objets": [
+        "table:public.comptes_en_suppression",
+        "column:public.comptes_en_suppression.tentative_vivante",
+        "function:public.reclamer_suppression(text,uuid,text,interval)",
+        "function:public.terminer_suppression(text,uuid,text,jsonb)",
+        "function:public.attendre_ecritures_en_vol(integer)",
+        "function:public.objets_stockage_du_compte(uuid)",
+        "source:public.terminer_suppression~auth_echec",
+        "source:public.reclamer_suppression~tentative_vivante"
+      ]
+    },
+    "export-account": {
+      "migration": "migrations/migration_export_instantane_2026-09-15.sql",
+      "obligatoire": false,
+      "sans": "repli par pages, jamais `complet` (ASTRA-44) — dégradé mais honnête, déploiement autorisé, l'absence est dite dans le résumé",
+      "objets": [
+        "function:public.export_compte_instantane(text,integer,bigint)"
+      ]
+    },
+    "notify-call": {
+      "migration": "migrations/migration_notifications_serveur_2026-09-15.sql",
+      "obligatoire": false,
+      "sans": "les mentions écrites par le serveur (`notifier_mentions`) sont absentes : le client trace `mentions_serveur_absente` et n'envoie rien (transition ASTRA-24) ; la push d'appel et les autres genres fonctionnent — déploiement autorisé, l'absence est dite",
+      "objets": [
+        "function:public.notifier_mentions(text,text,text[])",
+        "function:public.genres_reserves_au_serveur(text)"
+      ]
+    },
+    "ask-ai": {
+      "obligatoire": false,
+      "sans": "aucun prérequis SQL propre (plafond par analytics_events, table de base)",
+      "objets": [
+        "table:public.analytics_events"
+      ]
+    }
+  }
+}

@@ -260,6 +260,29 @@ function feedbackModal() {
   `);
 }
 
+// ⚠️ PILOTE GRATUIT (2026-09-16) — CE QUE CETTE VERSION NE FAIT PAS, DIT DANS
+// L'APPLICATION. Pas de certification, pas de promesse de fiabilité absolue :
+// ce qui est indisponible, ce qui est en test, où écrire. Le contact est celui
+// des mentions légales (`PASSIO_EDITEUR.email`), jamais un texte à part.
+function openLimitesPilote() {
+  $("#devPanel") && $("#devPanel").classList.remove("active");
+  const mail = (typeof PASSIO_EDITEUR !== "undefined" && PASSIO_EDITEUR && PASSIO_EDITEUR.email) ? PASSIO_EDITEUR.email : "";
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Limites de cette version pilote</div>
+    <div class="modal-subtitle">PASSIO est ouvert gratuitement, à un petit nombre de personnes, pour observer les vrais parcours. Voici ce qu'il faut savoir.</div>
+    <ul style="font-size:13px;color:var(--muted);margin:0 0 12px 18px;line-height:1.7;">
+      <li><strong>Indisponible pour l'instant</strong> : les appels audio et vidéo. La messagerie, les photos et les vocaux fonctionnent.</li>
+      <li><strong>En test</strong> : les notifications, l'export de tes données, la suppression de compte. Elles fonctionnent ; si l'une d'elles te répond par une erreur, elle te dit quoi faire — et rien n'est annoncé comme fait s'il ne l'est pas.</li>
+      <li><strong>Pas de garantie de disponibilité</strong> : c'est une beta. Garde une copie de ce qui compte pour toi (« Exporter mes données » dans les réglages).</li>
+      <li><strong>Tes données</strong> : la <span role="button" tabindex="0" onclick="openPrivacyPolicy()" style="color:var(--accent);font-weight:700;cursor:pointer;text-decoration:underline;">politique de confidentialité</span> dit ce qui est collecté et pourquoi. Tu peux supprimer ton compte à tout moment.</li>
+      <li><strong>Un problème, une question, un contenu à signaler</strong> : ${mail ? `<strong style="color:var(--accent);user-select:all;">${escapeHtml(mail)}</strong> (bouton « Feedback & aide » pour écrire depuis l'app)` : "le bouton « Feedback & aide »"}, ou le bouton « Signaler » sur chaque contenu.</li>
+    </ul>
+    <button class="btn primary block" onclick="closeModal()">Compris</button>
+  `);
+}
+window.openLimitesPilote = openLimitesPilote;
+
 function saveFeedback() {
   const champ = (id) => { const el = $("#" + id); return el ? el.value.trim() : ""; };
   const fb = {
@@ -4426,6 +4449,8 @@ async function supaAddComment(postId, content, commentId) {
       created_at: new Date().toISOString(),
     });
     if (error) { console.warn("Comment error:", error.message); return false; }
+    // ASTRA-24 : les mentions, maintenant que le commentaire existe en base.
+    try { if (typeof _notifyCommentMentions === "function") _notifyCommentMentions(postId, content); } catch (e) {}
     return true;
   } catch(e) { console.warn("Comment error:", e); return false; }
 }
@@ -5713,6 +5738,29 @@ async function supaInsertNotif(toUserId, kind, refId, content) {
     // Push Web → réveille le destinataire même app fermée (fire-and-forget).
     if (!error) _pousserPushNotif(toUserId, kind, fullText);
   } catch(e) {}
+}
+// ⚠️ ASTRA-24 (2026-09-15) : LES MENTIONS SONT ÉCRITES PAR LE SERVEUR. Le client
+// porte des IDENTIFIANTS (jamais des noms) à `notifier_mentions`, qui vérifie
+// l'événement et les destinataires, écrit la ligne (origine serveur, texte
+// dérivé) et rend un COMPTE. Puis la push part par `notify-call`, qui n'accepte
+// une 'mention' que si sa ligne est d'origine serveur.
+// TRANSITION : fonction absente (migration non appliquée, PGRST202) → RIEN
+// d'autre — surtout pas l'écriture client d'avant, qui est ce qu'on ferme.
+// Tracé, pour que ça se voie.
+async function _mentionnerServeur(genre, refId, ids) {
+  try {
+    if (typeof supa === "undefined" || !supa || !window._supaReal || !MY_UID || !ids || !ids.length) return false;
+    var res = await supa.rpc("notifier_mentions", { p_genre: genre, p_ref_id: refId, p_mentionnes: ids.slice(0, 20) });
+    if (res && res.error) {
+      var code = String(res.error.code || "");
+      try { if (typeof diagLog === "function") diagLog((code === "PGRST202" ? "mentions_serveur_absente " : "mentions_serveur_refus ") + code + " " + String(res.error.message || "").slice(0, 80)); } catch (e) {}
+      return false;
+    }
+    // Un compte, jamais la liste des écartés : on pousse vers ceux qu'on a
+    // demandés, `notify-call` tranche (ligne serveur ou rien).
+    ids.slice(0, 20).forEach(function (id) { _pousserPushNotif(id, "mention", ""); });
+    return true;
+  } catch (e) { return false; }
 }
 // Le PUSH seul, sans ligne `notifications` : pour les événements dont la ligne est
 // écrite par le SERVEUR (abonnements, `follows_notifier` depuis le 2026-09-11) —

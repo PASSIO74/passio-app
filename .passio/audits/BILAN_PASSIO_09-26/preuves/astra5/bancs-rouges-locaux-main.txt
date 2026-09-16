@@ -1,0 +1,8 @@
+== appliquer-securite (main a5e8c717) code=1
+  ❌ le fichier unique a DÉRIVÉ — python3 scripts/generer-appliquer-tout.py
+== decoupage-migration-passions (main a5e8c717) code=2
+== migration-passions-recherche (main a5e8c717) code=1
+  ❌ un libellé renommé est recalculé sans accent
+== migration-search-path (main a5e8c717) code=1
+❌ pg_trgm introuvable : ce banc ne peut RIEN prouver sans lui (voir le commentaire ci-dessus)
+== ouverture-2026-09-11 (main a5e8c717) code=1

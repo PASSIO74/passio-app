@@ -1,0 +1,7 @@
+# ASTRA-52 — gate d'AVANT (a5e8c717) sur les six variantes d'Astra
+on tableau       avant → manques: 0 (FAUX VERT)
+on scalaire      avant → manques: 0 (FAUX VERT)
+indent 4         avant → manques: 0 (FAUX VERT)
+secrets[quote]   avant → manques: 0 (FAUX VERT)
+|| true          avant → manques: 0 (FAUX VERT)
+pr_target        avant → manques: 0 (FAUX VERT)

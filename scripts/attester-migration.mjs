@@ -3,8 +3,20 @@
 // ATTESTER LA REVUE PRÉALABLE D'UNE MIGRATION — ASTRA-33 ②
 //
 //   node scripts/attester-migration.mjs migrations/<f>.sql --cible <ref> \
-//        --pr '#451' --relecteur '<nom>' --source '<url ou chemin>' \
+//        --pr '#451' --commit <sha40> --revue <id de la revue GitHub> \
+//        --relecteur '<login GitHub>' --source '<url de la revue>' \
 //        [--revue-le AAAA-MM-JJ] [--remplacer]
+//
+// ⚠️ ASTRA-51 (cinquième contre-revue, 15/09/2026) — L'ATTESTATION NE SE TAPE
+// PLUS, ELLE SE VÉRIFIE. Avant : quatre champs libres, validés par leur seule
+// présence ; une PR fictive, l'auteur comme relecteur et « aucune revue » en
+// source rendaient « envoyable ». Désormais l'attestation DÉSIGNE une revue
+// GitHub (`--commit`, `--revue`) et cet outil la LIT avant d'écrire quoi que
+// ce soit (`gh api`) : revue présente, ancrée sur ce commit, portant le
+// marqueur « Contre-revue technique indépendante », le chemin du fichier et
+// `cible: <ref>`, signée par `--relecteur`, et fichier à ce commit identique à
+// celui du disque. Sans `gh`, ou si une seule de ces conditions manque, RIEN
+// n'est inscrit — une attestation non vérifiable n'atteste rien.
 //
 // ⚠️ DATE REVENDIQUÉE ET DATE DE CONSIGNATION SONT DEUX CHAMPS. `revue_le` est
 // la date que l'on REVENDIQUE pour la revue ; `consigne_le` est la date à
@@ -29,6 +41,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { resolve, relative, sep, dirname } from "node:path";
 import { createRequire } from "node:module";
 const BAR = createRequire(import.meta.url)("./lib/barriere-migration.js");
+const GH = createRequire(import.meta.url)("./lib/github-revue.js");
 
 const args = process.argv.slice(2);
 const val = (nom) => { const i = args.indexOf("--" + nom); return i >= 0 ? args[i + 1] : null; };
@@ -42,18 +55,34 @@ const rel = relative(racine, resolve(fichier)).split(sep).join("/");
 if (!rel.startsWith("migrations/") || !rel.endsWith(".sql")) echec("fichier de migration attendu sous migrations/ (reçu : " + rel + ")");
 if (!existsSync(resolve(fichier))) echec("fichier introuvable : " + rel);
 
-const cible = val("cible"), pr = val("pr"), relecteur = val("relecteur"), source = val("source");
+const cible = val("cible"), pr = val("pr"), relecteur = val("relecteur"), source = val("source"), commit = val("commit"), revueId = val("revue");
 const aujourdhui = new Date().toISOString().slice(0, 10);
 const revueLe = val("revue-le") || aujourdhui;
 if (!/^\d{4}-\d{2}-\d{2}$/.test(revueLe)) echec("`--revue-le` attend AAAA-MM-JJ (reçu : " + revueLe + ").");
 if (revueLe > aujourdhui) echec("`--revue-le` est dans le futur (" + revueLe + ") : une revue à venir n'atteste rien.");
-for (const [n, v] of [["cible", cible], ["pr", pr], ["relecteur", relecteur], ["source", source]]) {
-  if (!v) echec("`--" + n + "` est obligatoire : une attestation sans " + n + " n'atteste rien.");
+for (const [n, v] of [["cible", cible], ["pr", pr], ["relecteur", relecteur], ["source", source], ["commit", commit], ["revue", revueId]]) {
+  if (!v) echec("`--" + n + "` est obligatoire : une attestation sans " + n + " n'atteste rien (ASTRA-51 : la revue GitHub doit être désignée, pas décrite).");
 }
+if (!/^[0-9a-f]{40}$/.test(commit)) echec("`--commit` attend un SHA complet (40 hexadécimaux).");
+if (!/^\d+$/.test(revueId)) echec("`--revue` attend l'identifiant numérique de la revue GitHub (`gh api repos/<o>/<r>/pulls/<n>/reviews --jq '.[].id'`).");
 try { BAR.choisirCible({ argProjet: cible }); } catch (e) { echec(e.message); }
 
 const sql = readFileSync(resolve(fichier), "utf8");
 const emp = BAR.empreinte(sql);
+
+// ── LA PREUVE EST LUE AVANT D'ÉCRIRE (ASTRA-51) ────────────────────────────
+const revues = GH.lireRevues(pr, racine);
+if (!revues) echec("les revues de la PR " + pr + " n'ont pas pu être lues (`gh api` — connecté ? dépôt `" + (GH.depot(racine) || "?") + "`) : preuve NON VÉRIFIABLE, rien n'est inscrit.");
+const contenuCommit = GH.lireContenuAuCommit(rel, commit, racine);
+if (contenuCommit === null) echec("`" + rel + "` n'a pas pu être lu au commit " + commit.slice(0, 12) + "… : preuve NON VÉRIFIABLE, rien n'est inscrit.");
+const auteurPr = GH.lireAuteurPr(pr, racine);
+// ASTRA-61 : une attestation pour une cible protégée ne s'inscrit qu'avec un
+// fournisseur RÉEL ; approbation positive, indépendante, par un relecteur autorisé.
+try { BAR.exigerFournisseurReel(GH.fournisseur(), BAR.choisirCible({ argProjet: cible })); } catch (e) { echec(e.message); }
+let preuve;
+try {
+  preuve = BAR.verifierPreuveRevue({ attestation: { pr, commit, revue_id: revueId, relecteur, empreinte: emp }, fichier: rel, empreinteAttendue: emp, cible: { ref: cible }, revues, contenuAuCommit: contenuCommit, auteurPr, relecteursAutorises: GH.lireRelecteursAutorises(racine) });
+} catch (e) { echec(e.message); }
 const chemin = resolve(racine, ".passio", "migrations", "attestations.json");
 let liste = [];
 if (existsSync(chemin)) { try { liste = JSON.parse(readFileSync(chemin, "utf8")); } catch (e) { echec("attestations.json illisible : " + e.message); } }
@@ -69,7 +98,8 @@ if (memeFichierCible.length && !args.includes("--remplacer")) {
         "   Le fichier a changé depuis cette revue. Faire revoir le contenu exact, puis `--remplacer`.");
 }
 
-const entree = { fichier: rel, empreinte: emp, cibles: [cible], pr, relecteur, revue_le: revueLe, consigne_le: aujourdhui, source };
+const entree = { fichier: rel, empreinte: emp, cibles: [cible], pr, commit, revue_id: Number(revueId), relecteur, revue_le: revueLe, consigne_le: aujourdhui, source,
+  revue: { etat: preuve.revue.etat, soumise_le: preuve.revue.soumise_le, auteur_pr: preuve.auteurPr, fournisseur: GH.fournisseur().reel ? "github" : "fictif" } };
 if (revueLe !== aujourdhui) { entree.retroactif = true; entree.note = "consignée le " + aujourdhui + " pour une revue revendiquée le " + revueLe + " — reconstruction, jamais une revue préalable"; }
 const gardees = liste.filter((a) => !(a.fichier === rel && (a.cibles || []).includes(cible)));
 const remplacees = liste.length - gardees.length;
@@ -77,6 +107,6 @@ gardees.push(entree);
 mkdirSync(dirname(chemin), { recursive: true });
 writeFileSync(chemin, JSON.stringify(gardees, null, 2) + "\n", "utf8");
 console.log("✅ attestation inscrite" + (remplacees ? " (" + remplacees + " remplacée(s))" : "") + " :");
-console.log("   " + rel + "\n   " + emp + "\n   cible " + cible + " · " + pr + " · " + relecteur + " · revue revendiquée le " + entree.revue_le + " · consignée le " + entree.consigne_le + "\n   source : " + source);
+console.log("   " + rel + "\n   " + emp + "\n   cible " + cible + " · " + pr + " · revue n°" + revueId + " (" + preuve.revue.etat + ", " + (preuve.revue.soumise_le || "date inconnue") + ") ancrée sur " + commit.slice(0, 12) + "… · " + relecteur + " · revendiquée le " + entree.revue_le + " · consignée le " + entree.consigne_le + "\n   source : " + source);
 if (entree.retroactif) console.log("   ⚠️ RÉTROACTIVE : " + entree.note);
 console.log("\n⚠️ Toute modification ultérieure du fichier invalide cette attestation : la barrière recalcule l'empreinte à chaque envoi.");

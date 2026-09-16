@@ -1,0 +1,14 @@
+# ASTRA-43 — AVANT (js d'origine a5e8c717) — 2026-09-15T19:02:00Z
+    [32m- Expected  -  1[39m
+    [31m+ Received  + 10[39m
+    [31m+     "msgId": "msg_rejet",[39m
+    [31m+     "owner": "3f2a9c64-5b71-4e2d-8a10-9c7b6d5e4f31",[39m
+      417 |     // AVANT : file = [{ msgId: 'msg_rejet', owner: A }] — la résurrection après purge (portée exacte : pas un envoi sous B).
+      419 |     expect(res.statut).toBe("failed");
+[1A[2K  1 failed
+  1 passed (12.4s)
+# ASTRA-43 média — AVANT — 2026-09-15T19:02:54Z
+    [31m+ Received  + 3[39m
+    [31m+   "m_media_rejet",[39m
+      211 |     // AVANT : outbox = ["m_media_rejet"] — le vocal revenait dans une file que l'on venait de vider.
+[1A[2K  1 failed

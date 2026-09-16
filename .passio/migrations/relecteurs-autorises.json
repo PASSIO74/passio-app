@@ -1,0 +1,4 @@
+{
+  "_commentaire": "ASTRA-61 — les comptes GitHub dont une APPROBATION (state APPROVED) sur une PR vaut preuve de revue pour une migration sur une cible protégée. Le relecteur doit être distinct de l'auteur de la PR : GitHub interdit d'approuver sa propre PR, et la barrière refuse une auto-revue même si l'API la rendait. Ajouter un compte ici est un geste de gouvernance (PR + revue), pas un détail.",
+  "relecteurs": []
+}

@@ -1,0 +1,28 @@
+SHA: 9b6fa02988f95400d3142e0a99712f8d7a19faec
+cmd: bash tests/sql/tables-compte-catalogue.test.sh  (PostgreSQL 17.10 jetable, Windows 11)
+── ① LE CATALOGUE VOIT LES TROIS FORMES (et la FK) ───────────────────
+  ✅ table créée dans un bloc DO : vue
+  ✅ table typée : vue
+  ✅ table déplacée par set schema : vue dans public
+── ② LE CONTRÔLE NOMME LES OUBLIS, ET SORT 1 ─────────────────────────
+  ✅ code de sortie 1 (des oublis)
+  ✅ oubli nommé : hors_vue_do.user_id
+  ✅ oubli nommé : hors_vue_typee.author_id
+  ✅ oubli nommé : hors_vue_deplacee.from_id
+  ✅ oubli nommé : hors_vue_deplacee.to_id
+  ✅ oubli nommé : par_fk.member
+  ✅ par_fk.member est vu PAR LA CLÉ ÉTRANGÈRE (nom hors liste)
+  ✅ hors_portee.member_id (sans FK, nom hors liste) n'est PAS vu — c'est la portée du contrôle
+── ③ LE LECTEUR STATIQUE NE SE TAIT PLUS : indéterminées ───────────────
+  ✅ DO + execute create table → indéterminé (SQL construit)
+  ✅ table typée → indéterminée
+  ✅ set schema → indéterminé
+── ④ LE SCHÉMA DES TABLES DE COMPTE EST COUVERT ─────────────────────────
+  ✅ sans les tables fuyantes : code 0
+  ✅ …et le verdict est vert
+  ✅ …toutes les colonnes de TABLES_COMPTE au nom d'identifiant (44 ; profiles.id est hors motif, dit) sont vues et couvertes
+── ⑤ MUTATION : retirer une colonne de TABLES_COMPTE rougit le contrôle ─
+  ✅ posts.author_id retirée de la liste → oubli
+
+RÉSULTAT : 18 contrôle(s) vert(s), 0 rouge(s)
+exit=0

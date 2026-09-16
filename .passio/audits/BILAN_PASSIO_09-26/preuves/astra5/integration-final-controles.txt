@@ -1,0 +1,14 @@
+# Contrôles sur 055efdef3dfcaa5fce82891cd3c2cbb43f68a8ec — 2026-09-15T20:32:27Z
+ℹ tests 301
+ℹ pass 301
+ℹ fail 0
+✅ aucun emploi de la clé de production n'est atteignable depuis une pull request (dans le texte lu des workflows).
+✅ les 49 couples VISIBLES DEPUIS LE DÉPÔT sont purgés, exportés, ou dispensés avec leur raison.
+✅ registre cohérent : aucun résidu traitable oublié, aucune fermeture sans mesure de la cible.
+OK — stub Supabase hors ligne complet : 51 membre(s) appelé(s) par l'app, tous couverts.
+OK — aucun spec ne vérifie uniquement ses propres constructions.
+OK — toute suite qui navigue elle-même pose son isolation (ou l'assume au socle).
+OK — aucune collision de global top-level (1747 déclarations uniques scannées, 43 fichiers).
+✅ AUCUNE fonction fantôme : tous les handlers inline référencent des fonctions définies.
+OK — 62 signalement(s) en contexte à risque, tous dans le socle relu.
+OK — 84 clé(s) de télémétrie relevée(s) dans 43 fichiers, toutes survivent au filtre PII.

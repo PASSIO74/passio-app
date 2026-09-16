@@ -1,0 +1,5 @@
+# ASTRA-53 — mutation « additions + deletions → 0 » dans deploy.yml — 2026-09-15T19:21:47Z
+## nouveau faux gh (exécute l'expression reçue)
+✖ ① le contournement d'Astra : 2 fichiers / 120 lignes passaient pour « 0 ligne » (388.5821ms) ✖ ② du code réparti ENTRE les pages n'est plus perdu (485.7835ms) ✖ ③ une page vide ne remet pas les compteurs à zéro (605.708ms) ✖ ④ une seule page se comporte comme avant — aucune régression (574.3193ms) ✖ ⑤ les verrous e2e ne comptent NI en fichiers NI en lignes ; une PR vide de code est à zéro (1455.9773ms) ℹ pass 2 ℹ fail 5 ✖ ① le contournement d'Astra : 2 fichiers / 120 lignes passaient pour « 0 ligne » (388.5821ms) ✖ ② du code réparti ENTRE les pages n'est plus perdu (485.7835ms) ✖ ③ une page vide ne remet pas les compteurs à zéro (605.708ms) ✖ ④ une seule page se comporte comme avant — aucune régression (574.3193ms) ✖ ⑤ les verrous e2e ne comptent NI en fichiers NI en lignes ; une PR vide de code est à zéro (1455.9773ms) 
+## ancien faux gh (a5e8c717, calcul en JavaScript)
+ℹ pass 7 ℹ fail 0 

@@ -10,6 +10,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const A = require("../../scripts/audit-tables-compte.js");
@@ -17,6 +20,22 @@ const { TABLES_COMPTE } = require("../../supabase/functions/_shared/purge-compte
 const { tablesExport, EXCLUS_EXPORT } = require("../../supabase/functions/_shared/export-compte.js");
 
 const paires = new Set(TABLES_COMPTE.map(([t, c]) => t + "." + c));
+
+// La fonction d'AVANT (a5e8c717), telle quelle, pour REPRODUIRE ce qu'elle ne voyait pas.
+function A_AVANT_tablesDeclarees(sql, fichier) {
+  const out = [];
+  const re = /create\s+table\s+(?:if\s+not\s+exists\s+)?(?:public\.)?"?([a-z_][a-z0-9_]*)"?\s*\(/gi;
+  let m;
+  while ((m = re.exec(sql))) {
+    const nom = m[1];
+    let i = m.index + m[0].length, profondeur = 1;
+    for (; i < sql.length && profondeur > 0; i++) { if (sql[i] === "(") profondeur++; else if (sql[i] === ")") profondeur--; }
+    const corps = sql.slice(m.index + m[0].length, i - 1);
+    const colonnes = corps.split(",").map((l) => (l.trim().split(/\s+/)[0] || "").replace(/"/g, "").toLowerCase()).filter((c) => A.COLONNES_COMPTE.test(c));
+    if (colonnes.length) out.push({ table: nom, colonnes: [...new Set(colonnes)], fichier });
+  }
+  return out;
+}
 
 test("① `call_invites` est purgée DES DEUX CÔTÉS — c'est un lien, comme follows et blocks", () => {
   assert.ok(paires.has("call_invites.from_id"), "l'invitation que j'ai émise");
@@ -54,17 +73,60 @@ test("④ la gate est verte sur le dépôt tel qu'il est", () => {
 test("⑤ RÉINJECTION — une table neuve oubliée fait ROUGIR la gate, et elle nomme le fichier", () => {
   // On simule exactement le défaut : une table née d'une migration, avec une
   // colonne d'identité, absente de TABLES_COMPTE et des exceptions.
-  const declarees = A.tablesDeclarees(
-    'create table if not exists public.appels_futurs (\n  id text primary key,\n  user_id text not null,\n  created_at timestamptz\n);',
-    "migration_fictive.sql"
-  );
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "astra54-"));
+  const f = path.join(d, "migration_fictive.sql");
+  fs.writeFileSync(f, "create table if not exists public.appels_futurs (\n  id text primary key,\n  user_id text not null,\n  created_at timestamptz\n);");
+  const { tables: declarees } = A.tablesDeclarees([f]);
   assert.equal(declarees.length, 1);
   assert.deepEqual(declarees[0].colonnes, ["user_id"]);
+  assert.equal(declarees[0].fichier, "migration_fictive.sql");
   assert.ok(!paires.has("appels_futurs.user_id"), "prémisse : elle n'est pas dans la liste");
   assert.ok(!A.EXCEPTIONS["appels_futurs.user_id"], "prémisse : ni dans les exceptions");
-  // …donc la gate l'aurait signalée : c'est la logique de `auditer`, appliquée ici.
   const seraitUnOubli = !paires.has("appels_futurs.user_id") && !A.EXCEPTIONS["appels_futurs.user_id"];
   assert.equal(seraitUnOubli, true);
+});
+
+// ── ASTRA-54 (cinquième contre-revue, 15/09/2026) : le schéma RÉSULTANT, pas des mots ──
+function migrations(...contenus) {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "astra54-"));
+  return contenus.map((c, i) => { const f = path.join(d, `m${i}.sql`); fs.writeFileSync(f, c); return f; });
+}
+const couples = (r) => r.tables.flatMap((t) => t.colonnes.map((c) => t.table + "." + c)).sort();
+
+test("ASTRA-54 ① REPRODUCTION : `create table x (id)` PUIS `alter table x add user_id` — invisible avant, vu maintenant", () => {
+  const anc = A_AVANT_tablesDeclarees("create table public.x (id text primary key);\nalter table public.x add column user_id text;", "m.sql");
+  assert.deepEqual(anc, [], "reproduction : la gate d'avant ne voyait pas la colonne ajoutée");
+  const r = A.tablesDeclarees(migrations("create table public.x (id text primary key);\nalter table public.x add column user_id text;"));
+  assert.deepEqual(couples(r), ["x.user_id"]);
+  // …même si l'ALTER est dans un AUTRE fichier, plus tard.
+  const r2 = A.tablesDeclarees(migrations("create table public.y (id text primary key);", "alter table if exists only public.y add if not exists author_id uuid references auth.users(id);"));
+  assert.deepEqual(couples(r2), ["y.author_id"]);
+});
+
+test("ASTRA-54 ② REPRODUCTION : le schéma entre guillemets (`\"public\".x`) échappait — plus maintenant ; tout comme le nom sans schéma", () => {
+  const anc = A_AVANT_tablesDeclarees('create table "public"."z" (user_id text);', "m.sql");
+  assert.deepEqual(anc, [], "reproduction : `\"public\".z` échappait");
+  assert.deepEqual(couples(A.tablesDeclarees(migrations('create table "public"."z" (user_id text);'))), ["z.user_id"]);
+  assert.deepEqual(couples(A.tablesDeclarees(migrations("CREATE TABLE IF NOT EXISTS w (\n  \"user_id\" TEXT,\n  primary key (user_id)\n);"))), ["w.user_id"]);
+  assert.deepEqual(couples(A.tablesDeclarees(migrations("create table autre.v (user_id text);"))), [], "un autre schéma n'est pas `public`");
+});
+
+test("ASTRA-54 ③ rename column, rename table, drop column, drop table : l'état FINAL fait foi", () => {
+  assert.deepEqual(couples(A.tablesDeclarees(migrations("create table public.a (owner text);", "alter table public.a rename column owner to user_id;"))), ["a.user_id"]);
+  assert.deepEqual(couples(A.tablesDeclarees(migrations("create table public.a (user_id text);", "alter table public.a rename to b;"))), ["b.user_id"]);
+  assert.deepEqual(couples(A.tablesDeclarees(migrations("create table public.a (user_id text, author_id text);", "alter table public.a drop column author_id;"))), ["a.user_id"]);
+  assert.deepEqual(couples(A.tablesDeclarees(migrations("create table public.a (user_id text);", "drop table if exists public.a cascade;"))), []);
+  // Une contrainte de table n'est pas une colonne ; un commentaire ou une chaîne portant « user_id » non plus.
+  assert.deepEqual(couples(A.tablesDeclarees(migrations("create table public.c (id text, constraint c_pk primary key (id), foreign key (id) references public.p(user_id));\n-- alter table public.c add user_id text;\ninsert into public.c values ('alter table public.c add user_id text;');"))), []);
+});
+
+test("ASTRA-54 ④ une table aux colonnes NON déterminables (as select, like, inherits) est nommée et fait rougir", () => {
+  const r = A.tablesDeclarees(migrations("create table public.copie as select * from public.posts;", "create table public.clone (like public.posts);"));
+  assert.equal(r.indeterminees.length, 2, JSON.stringify(r.indeterminees));
+  assert.ok(r.indeterminees.every((x) => /^public\./.test(x.table)));
+  // Un `do $$ … execute format('alter table …') $$` est nommé comme dynamique.
+  const d = A.tablesDeclarees(migrations("do $$ begin execute format('alter table public.%I add column user_id text', 'x'); end $$;"));
+  assert.equal(d.dynamiques.length, 1);
 });
 
 test("⑥ le lecteur du référentiel voit les tables qui n'ont AUCUN `create table` dans le dépôt", () => {

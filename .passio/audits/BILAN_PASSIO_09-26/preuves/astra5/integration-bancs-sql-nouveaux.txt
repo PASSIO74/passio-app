@@ -1,0 +1,4 @@
+migration-barriere-suppression.test.sh code=0 45/45
+ecriture-en-vol-suppression.test.sh code=0 
+migration-export-instantane.test.sh code=0 
+migration-notifications-serveur.test.sh code=0 

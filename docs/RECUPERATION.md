@@ -100,6 +100,66 @@ Deux constats de plus : une archive prise **pendant un déploiement** porte les 
 
 Ce qui n'est toujours pas rendu par une restauration reste ce qui est écrit plus bas (mots de passe, OAuth, configuration, Edge Functions).
 
+## Ce que l'archive porte depuis la cinquième contre-revue (15/09/2026 — ASTRA-45 / 46 / 47 / 48 / 55)
+
+- **`_storage_index.json`** (`passio-index-medias/1`) : nom, taille et MD5 de **chaque** objet archivé, écrit
+  par la sauvegarde ; son empreinte SHA-256 est dans le manifeste (`medias.index_sha256`). C'est **lui** qui
+  dit ce que l'archive doit contenir — pas les fichiers encore présents sur disque. Le vérificateur et la
+  restauration y confrontent le disque **au moment de l'usage** (une archive endommagée après sa
+  vérification se voit), puis la cible ; un objet **en trop** sur la cible est un écart (ASTRA-55). Sans
+  index (archives d'avant), l'attendu est **indéterminé** et la reprise ne peut pas se dire prouvée sur les
+  médias.
+- **`_storage_proprietaires.json`** (`passio-proprietaires/1`) : versionné, avec son `total`, son empreinte
+  dans le manifeste (`medias.proprietaires_sha256`). Lu **strictement** : illisible, tronqué, d'une autre
+  forme ou d'une autre empreinte → **indéterminé**, jamais « vide et conforme » (ASTRA-48). L'inventaire est
+  lu par **pages** (`Range`, avance du nombre de lignes reçues, fin sur `200`), sous tout plafond `max-rows`
+  (ASTRA-45 — la valeur de production n'a **pas été mesurée**), puis **rapproché objet par objet** de l'index :
+  trois états distincts dans le manifeste — `proprietaires_explicites`, `proprietaires_nuls` (propriétaire
+  explicitement nul en base), `proprietaires_non_releves` — et `proprietaires_inventaire` =
+  `complet | incomplet | indisponible`. Une archive dont l'inventaire n'est pas complet est **partielle**.
+- **Un seul résultat** (ASTRA-46) : chaque phase (comptes, tables, médias, limites de seaux, propriétaires)
+  écrit dans le bilan partagé ; le verdict le lit ; la preuve JSON, l'affichage et le code de sortie suivent
+  le même `prouvee`. Une incohérence interne (phase en échec, verdict prouvé) sort en échec et le dit.
+- **La suspension d'un compte** est comparée à sa **borne** (ASTRA-47) : conforme dans
+  `[attendu, attendu + 1 h]` ± 5 min (arrondi à l'heure de `ban_duration`, dérive d'horloge) ; déjà passée,
+  raccourcie ou prolongée → écart. Un compte **déjà présent** sur la cible (rejeu, conflit) est relu ; si
+  l'archive porte une suspension en cours qu'il n'a pas, elle est posée puis relue ; sinon c'est un refus.
+- Verrous : `tests/unit/reprise-verdicts.test.mjs` (fonctions pures), `tests/unit/restaurer-phases.test.mjs`
+  et `tests/unit/sauvegarde-medias.test.mjs` (les **vraies** phases, seul `fetch` doublé — GoTrue, Storage,
+  API de gestion), `tests/unit/sauvegarde-verifier.test.mjs` (le vrai vérificateur sur de vraies archives).
+  Six mutations détectées, dont « ban non transmis au POST », que la contre-revue avait montrée invisible.
+- **Non mesuré** : aucune restauration réelle sur un projet jetable n'a été rejouée avec ces changements.
+
+## Sixième contre-revue (16/09/2026 — ASTRA-57 / 58 / 59) : trois défauts qui restaient ouverts
+
+- **ASTRA-57 — la pagination des propriétaires ne paginait pas.** « POST + `Range`, arrêt sur ≠ 206 » :
+  PostgREST ne rend **206** que s'il connaît le total (`Prefer: count=…`) et que la plage rendue est plus
+  courte que lui ; sans compte il rend **200 à chaque page**, plafonnée à `max-rows` — la boucle s'arrêtait
+  au premier appel (1 001 objets → 1 000 propriétaires, un appel, zéro erreur). Désormais
+  (`paginerProprietaires`) : `limit`/`offset` en paramètres, `order=bucket_id.asc,name.asc` (ordre **total**
+  : `(bucket_id, name)` est unique), `Prefer: count=exact` → le **total** de `Content-Range` termine et est
+  **vérifié** (lu = annoncé) ; total inconnu → la **page vide** termine ; on avance du nombre **reçu** ;
+  **non-progression** (clé déjà vue, total qui change, plus de 20 000 pages) → erreur nommée, l'archive se
+  dit **partielle**. Testé à 2 501 objets sous un plafond de 1 000, avec un faux PostgREST qui applique ses
+  vraies règles de statut (`tests/unit/sauvegarde-medias.test.mjs`, ASTRA-57 ①–⑥ ; ① rejoue l'ancien
+  protocole et montre l'arrêt prématuré). **Le plafond réel de production reste non mesuré.**
+- **ASTRA-58 — le NUL explicite se restaure et se compare.** Une entrée `owner:null, owner_id:null` (les
+  deux champs **présents**) est ce que la base portait : la restauration écrit NULL sur la cible, et le
+  verdict exige NULL — une cible qui appartient à B est un **écart** (avant : sautée, et « prouvée »). Les
+  champs sont comparés **un par un**. Une entrée `{}`, `null`, ou sans l'un des deux champs est un
+  propriétaire **inconnu** : l'inventaire est refusé (indéterminé), rien n'est écrit, `prouvee:false`.
+- **ASTRA-59 — l'archive se valide AVANT toute mutation.** `validerArchive` : tables (lignes NDJSON =
+  manifeste), index et fichiers (taille, MD5), inventaire (forme, total, empreinte, chaque entrée). Invalide
+  → code 2, **la cible n'a pas été touchée**. Sans index (archive d'avant) → « non vérifiable », distinct
+  d'une corruption détectée, et ne passe qu'avec `--accepter-archive-non-verifiable`. Et la phase médias
+  garde son filet : un fichier qui diffère de l'index ou hors index **n'est jamais déposé** (avec `x-upsert`
+  il remplaçait un objet sain par un octet altéré — reproduit : index AAA, disque BAD, cible AAA → cible BAD).
+- Verrous : `tests/unit/restaurer-phases.test.mjs` ASTRA-58 ③④, ASTRA-59 ①② (vraies phases) ;
+  `tests/unit/reprise-verdicts.test.mjs` ASTRA-58 ①②.
+- **Non mesuré** : le cycle sauvegarde → altération contrôlée → restauration → relecture sur un projet
+  Supabase jetable **n'a pas été rejoué** (aucun projet jetable autorisé sur ce poste : il faut un projet
+  Supabase distinct de la production, son `ref`, et le jeton personnel `sbp_…` — voir le dossier de livraison).
+
 ## Ce qu'une restauration NE REND PAS — écrit, pas tu
 
 - **Les mots de passe** : l'export ne porte pas `encrypted_password`. Chaque compte restauré reçoit un mot de passe aléatoire (jamais journalisé) et repasse par « mot de passe oublié ». Les **identités OAuth** (Google) ne sont pas dans l'export non plus. `created_at` des comptes est celui de la restauration (l'API d'administration l'impose).

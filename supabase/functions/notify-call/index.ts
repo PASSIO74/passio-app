@@ -35,7 +35,10 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
 import { verifierPlafondEnBase, reponsePlafond } from "../_shared/plafond.js";
-import { identiteAppelant, lienAppel, lienNotification, lienEvenement } from "../_shared/lien-metier.js";
+import { identiteAppelant, lienAppel, autoriserPushNotif } from "../_shared/lien-metier.js";
+import { REVISION } from "../_shared/revision.js";
+/** Pilote : les appels sont désactivés (ASTRA-60) — même interrupteur que le client (`PASSIO_APPELS_ACTIFS`, app-05). */
+const APPELS_ACTIFS = false;
 
 // Par appelant : 20 pushes par minute, 200 par heure. Le client n'émet qu'une
 // push par conversation et par 5 min (anti-spam de _notifierMessage) plus les
@@ -50,6 +53,9 @@ function borne(v: unknown, max: number): string | undefined {
 }
 
 const corsHeaders = {
+  // La révision servie, sur toute réponse (dossier de livraison §6) — lisible par le client et par curl.
+  "X-Passio-Revision": REVISION,
+  "Access-Control-Expose-Headers": "X-Passio-Revision",
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -91,6 +97,11 @@ Deno.serve(async (req) => {
   // caractère (virgule, parenthèse) est refusé AVANT d'entrer dans un filtre
   // PostgREST, où il changerait le sens de la requête.
   if (!toUserId || !/^[A-Za-z0-9_-]{1,64}$/.test(toUserId)) return json({ error: "toUserId requis" }, 400);
+  // ⚠️ PILOTE GRATUIT (ASTRA-60, 2026-09-16) : les appels sont DÉSACTIVÉS. Une
+  // push d'appel n'est pas envoyée — un ancien client (en cache) ne réveille
+  // personne. Les notifications (`type:"notif"`) restent servies. Réversible
+  // avec le client (`PASSIO_APPELS_ACTIFS`, app-05).
+  if (type === "call" && !APPELS_ACTIFS) return json({ ok: false, code: "appels_desactives", error: "Les appels ne sont pas disponibles pendant le pilote." }, 503);
   if (type === "call" && !callId) return json({ error: "callId requis pour les appels" }, 400);
   if (toUserId === fromUid) return json({ ok: true, sent: 0, note: "soi-même" });
 
@@ -119,17 +130,16 @@ Deno.serve(async (req) => {
     const lien = await lienAppel(admin, fromUid, toUserId);
     if (!lien.ok) return json({ ok: true, sent: 0, note: "aucun appareil abonné" });
   } else {
-    const lien = await lienNotification(admin, fromUid, toUserId);
-    if (!lien.ok) return json({ ok: true, sent: 0, note: "aucun appareil abonné" });
-    // ⚠️ MSG-04, second étage (contre-revue Astra, 2026-09-15) : la ligne
-    // `notifications` est écrite par l'appelant lui-même — elle ne prouve rien.
-    // L'ÉVÉNEMENT MÉTIER qu'elle annonce doit exister en base et lier les deux
-    // comptes (message dans une conversation du destinataire, j'aime sur SA
-    // publication, abonnement entre eux…). Sinon : même réponse qu'un blocage.
-    const evenement = await lienEvenement(admin, lien.kind, fromUid, toUserId, lien.refId);
-    if (!evenement.ok) return json({ ok: true, sent: 0, note: "aucun appareil abonné" });
-    texteServeur = lien.texte || "";
-    kindServeur = lien.kind || "";
+    // ⚠️ MSG-04 second étage + ASTRA-24 (cinquième contre-revue, 15/09/2026) :
+    // la ligne `notifications` (écrite par l'appelant pour les genres client),
+    // l'ÉVÉNEMENT MÉTIER qui la justifie, et un TEXTE DÉRIVÉ par le serveur —
+    // jamais celui de la ligne. Une 'mention' n'est poussée que si SA ligne a
+    // été écrite par le serveur (`notifier_mentions`). La décision vit dans
+    // `autoriserPushNotif` (lien-metier.js), testée par Node.
+    const decision = await autoriserPushNotif(admin, fromUid, toUserId);
+    if (!decision.ok) return json({ ok: true, sent: 0, note: "aucun appareil abonné" });
+    texteServeur = decision.texte;
+    kindServeur = decision.kind || "";
   }
   const idn = await identiteAppelant(admin, fromUid);
 

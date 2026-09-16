@@ -1,0 +1,15 @@
+[1A[2K[45/58] [local] › tests\e2e\mention-serveur.spec.js:74:3 › ASTRA-24 — les mentions partent au serveur, par identifiants, après l'atterrissage › ② TRANSITION : fonction absente (PGRST202) → rien d'autre, tracé ; aucun repli vers l'écriture client
+[1A[2K[46/58] [local] › tests\e2e\file-messages-par-compte.spec.js:422:3 › AUTH-06 — la file des messages appartient à un compte › ⑫ ASTRA-43 — la même invalidation vaut pour la RÉSOLUTION en erreur transitoire, et un rejet SANS purge remet bien en file
+[1A[2K[47/58] [local] › tests\e2e\mention-serveur.spec.js:87:3 › ASTRA-24 — les mentions partent au serveur, par identifiants, après l'atterrissage › ③ message de groupe : les ids sont résolus à la composition, portés APRÈS l'envoi réussi — pas avant, pas sur un échec
+[1A[2K[48/58] [local] › tests\e2e\message-media-echec.spec.js:109:3 › Média en message — verdict de l'écriture › une insertion refusée marque le média en échec et le met en file de renvoi
+[1A[2K[49/58] [local] › tests\e2e\suppression-compte-verdict.spec.js:46:3 › AUTH-05 / SUP-10 — la suppression du compte attend le verdict › ① purge incomplète (409) : rien n'est annoncé, rien n'est purgé, pas de déconnexion
+[1A[2K[50/58] [local] › tests\e2e\message-media-echec.spec.js:139:3 › Média en message — verdict de l'écriture › une insertion acceptée marque le média envoyé et ne laisse rien en file
+[1A[2K[51/58] [local] › tests\e2e\suppression-compte-verdict.spec.js:64:3 › AUTH-05 / SUP-10 — la suppression du compte attend le verdict › ② fonction injoignable : même retenue
+[1A[2K[52/58] [local] › tests\e2e\message-media-echec.spec.js:155:3 › Média en message — verdict de l'écriture › le repli sans from_id compte comme un succès, pas comme un échec
+[1A[2K[53/58] [local] › tests\e2e\suppression-compte-verdict.spec.js:77:3 › AUTH-05 / SUP-10 — la suppression du compte attend le verdict › ③ verdict positif : déconnexion, purge locale, annonce
+[1A[2K[54/58] [local] › tests\e2e\message-media-echec.spec.js:193:3 › Média en message — verdict de l'écriture › ASTRA-43 — un rejet tardif du média après la purge de la file ne le ressuscite pas
+[1A[2K[55/58] [local] › tests\e2e\suppression-compte-verdict.spec.js:96:3 › AUTH-05 / SUP-10 — la suppression du compte attend le verdict › ④ aucune suppression côté client avant le verdict — la purge est serveur
+[1A[2K[56/58] [local] › tests\e2e\suppression-compte-verdict.spec.js:112:3 › AUTH-05 / SUP-10 — la suppression du compte attend le verdict › ⑤ SUP-10 : pendant la purge serveur, aucun état ne part ; après un refus, les écritures reprennent
+[1A[2K[57/58] [local] › tests\e2e\suppression-compte-verdict.spec.js:145:3 › AUTH-05 / SUP-10 — la suppression du compte attend le verdict › ⑥ ASTRA-42 : `ok:true` SANS `garantie:"barriere"` n'est pas un succès — rien n'est annoncé, rien n'est purgé
+[1A[2K[58/58] [local] › tests\e2e\suppression-compte-verdict.spec.js:159:3 › AUTH-05 / SUP-10 — la suppression du compte attend le verdict › ⑦ ASTRA-42 : sur une réponse non-2xx le corps est lu dans `error.context`, et chaque code a son message
+[1A[2K  58 passed (2.5m)

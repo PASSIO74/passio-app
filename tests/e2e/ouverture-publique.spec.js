@@ -531,6 +531,8 @@ test.describe("⑨ red team : la charge utile d'un broadcast est hostile", () =>
   test("les invitations sont bornées en cadence : un callId neuf par message ne fait plus sonner en boucle", async ({ page }) => {
     await bootOnboarded(page);
     const r = await page.evaluate(() => {
+      // Pilote (ASTRA-60) : on ARME les appels pour mesurer la cadence de l'ancien chemin.
+      try { localStorage.setItem("passio_appels_actifs", "1"); } catch (e) {}
       window._call = null; window._callIncoming = null; window._callInviteAffichee = 0;
       const rendus = [];
       window._callRenderIncomingUI = (inv) => rendus.push(inv.callId);

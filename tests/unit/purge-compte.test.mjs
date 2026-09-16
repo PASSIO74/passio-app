@@ -21,128 +21,9 @@
 //   ⑩ plus de 1 000 objets : tout part (pagination)
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { purgerCompte, listerObjetsDuCompte, TABLES_COMPTE, DOSSIERS_CONTENU, RPC_OBJETS, PAGE } from "../../supabase/functions/_shared/purge-compte.js";
+import { purgerCompte, marquerSupprime, listerObjetsDuCompte, TABLES_COMPTE, DOSSIERS_CONTENU, RPC_OBJETS, RPC_RECLAMER, RPC_TERMINER, RPC_ATTENDRE, PAGE } from "../../supabase/functions/_shared/purge-compte.js";
 
-const U = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-const AUTRE = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
-
-// ⚠️ ASTRA-25 : `barriere` dit ce que fait `comptes_en_suppression` —
-//   "ok"      : la table existe et accepte (le cas normal) ;
-//   "absente" : migration non appliquée → la purge continue et le DIT ;
-//   "refus"   : la table existe et refuse → la purge s'arrête AVANT d'effacer.
-function fauxAdmin({ tables = {}, seaux = {}, pannesDelete = [], pannesCount = [], pannesList = [], pannesRemove = [], rpc = "ok", pannesListApres = [], ecrituresTardives = {}, barriere = "ok" } = {}) {
-  const t = JSON.parse(JSON.stringify(tables));
-  // `ecrituresTardives` : { table: n } — à chaque relecture (count) de cette
-  // table, tant que n > 0, une ligne du compte RÉAPPARAÎT avant le comptage
-  // (le client a repoussé son état entre l'effacement et la relecture).
-  const tardives = { ...ecrituresTardives };
-  const s = JSON.parse(JSON.stringify(seaux));
-  const compteurs = { remove: 0, list: {} };
-  // ⚠️ LE JOURNAL DES GESTES, DANS L'ORDRE. Sans lui, un test peut vérifier
-  // que la barrière est POSÉE sans jamais vérifier QUAND — or c'est sa
-  // POSITION qui est la propriété (« avant tout comptage ») : posée après le
-  // premier relevé, elle redevient la « passe de plus » qu'ASTRA-25 refuse.
-  // Mesuré par réinjection : en déplaçant la pose après le relevé Storage, la
-  // version précédente de ce banc restait VERTE.
-  const journal = [];
-  return {
-    _t: t, _s: s, _n: compteurs, _j: journal,
-    from(table) {
-      const filtres = [];
-      let mode = "select", head = false;
-      const rows = () => (t[table] || []).filter((r) => filtres.every((f) => f(r)));
-      const b = {
-        select(_c, o) { mode = "select"; head = !!(o && o.head); return b; },
-        delete() { mode = "delete"; return b; },
-        upsert(ligne) { mode = "upsert"; b.__ligne = ligne; return b; },
-        eq(col, v) { filtres.push((r) => r[col] === v); return b; },
-        then(res, rej) {
-          let out;
-          journal.push(table + ":" + (head ? "count" : mode));
-          if (table === "comptes_en_suppression") {
-            // La barrière : elle n'est pas une table de données du compte, elle
-            // est l'INFRASTRUCTURE de la purge. Son comportement est piloté.
-            if (barriere === "absente") out = { data: null, error: { code: "PGRST205", message: "Could not find the table 'public.comptes_en_suppression' in the schema cache" } };
-            else if (barriere === "refus" && mode === "upsert") out = { data: null, error: { message: "permission denied" } };
-            else { (t.comptes_en_suppression = t.comptes_en_suppression || []); if (mode === "upsert") t.comptes_en_suppression.push(b.__ligne); if (mode === "delete") t.comptes_en_suppression = []; out = { data: null, error: null }; }
-            return Promise.resolve(out).then(res, rej);
-          }
-          if (mode === "delete") {
-            if (pannesDelete.includes(table)) out = { data: null, error: { message: "panne delete " + table } };
-            else { t[table] = (t[table] || []).filter((r) => !filtres.every((f) => f(r))); out = { data: null, error: null }; }
-          } else if (head) {
-            if (tardives[table] > 0) { tardives[table]--; (t[table] = t[table] || []).push({ user_id: U, author_id: U, id: "tardif" }); }
-            if (pannesCount.includes(table)) out = { data: null, count: null, error: { message: "panne count " + table } };
-            else out = { data: null, count: rows().length, error: null };
-          } else out = { data: rows(), error: null };
-          return Promise.resolve(out).then(res, rej);
-        },
-      };
-      return b;
-    },
-    // La fonction SQL : les objets dont `owner` = p_uid, tous seaux, paginés.
-    rpc(nom, args) {
-      let de = 0, a = Infinity;
-      const b = {
-        range(x, y) { de = x; a = y; return b; },
-        then(res, rej) {
-          let out;
-          journal.push("rpc:" + nom);
-          if (nom !== RPC_OBJETS || rpc === "absente") out = { data: null, error: { code: "PGRST202", message: "function " + nom + " not found" } };
-          else if (rpc === "panne") out = { data: null, error: { message: "panne rpc" } };
-          else {
-            const tous = [];
-            for (const seau of Object.keys(s)) for (const [name, owner] of Object.entries(s[seau])) if (owner === args.p_uid) tous.push({ bucket_id: seau, name });
-            tous.sort((x, y) => (x.bucket_id + x.name).localeCompare(y.bucket_id + y.name));
-            out = { data: tous.slice(de, a + 1), error: null };
-          }
-          return Promise.resolve(out).then(res, rej);
-        },
-      };
-      return b;
-    },
-    storage: {
-      from(seau) {
-        return {
-          list(prefixe, o) {
-            compteurs.list[seau] = (compteurs.list[seau] || 0) + 1;
-            if (pannesList.includes(seau)) return Promise.resolve({ data: null, error: { message: "panne list" } });
-            if (pannesListApres.includes(seau) && compteurs.remove > 0) return Promise.resolve({ data: null, error: { message: "panne relecture" } });
-            const noms = Object.keys(s[seau] || {}).filter((k) => k.startsWith(prefixe + "/")).map((k) => ({ name: k.slice(prefixe.length + 1) }));
-            const offset = (o && o.offset) || 0, limit = (o && o.limit) || 1000;
-            return Promise.resolve({ data: noms.slice(offset, offset + limit), error: null });
-          },
-          remove(chemins) {
-            compteurs.remove++;
-            if (pannesRemove.includes(seau)) return Promise.resolve({ data: null, error: { message: "panne remove" } });
-            for (const c of chemins) delete (s[seau] || {})[c];
-            return Promise.resolve({ data: chemins, error: null });
-          },
-        };
-      },
-    },
-  };
-}
-
-function baseComplete() {
-  const tables = {};
-  for (const [table, col] of TABLES_COMPTE) {
-    tables[table] = tables[table] || [];
-    tables[table].push({ [col]: U, content: "x" }, { [col]: AUTRE, content: "y" });
-  }
-  tables.conv_messages = [
-    { from_id: U, content: JSON.stringify({ type: "media", url: "https://njki.supabase.co/storage/v1/object/public/attachments/attachments/conv_1/1_photo.jpg" }) },
-    { from_id: U, content: JSON.stringify({ type: "audio", url: "https://passio-app.netlify.app/media/attachments/attachments/conv_1/2_voice.webm" }) },
-    { from_id: U, content: "texte simple" },
-    { from_id: AUTRE, content: JSON.stringify({ type: "media", url: "https://njki.supabase.co/storage/v1/object/public/attachments/attachments/conv_1/3_autre.jpg" }) },
-  ];
-  // Le PROPRIÉTAIRE de chaque objet, comme `storage.objects.owner` en production.
-  const seaux = { content: {}, attachments: {
-    "attachments/conv_1/1_photo.jpg": U, "attachments/conv_1/2_voice.webm": U, "attachments/conv_1/3_autre.jpg": AUTRE,
-  } };
-  for (const d of DOSSIERS_CONTENU) { seaux.content[`${d}/${U}/a.jpg`] = U; seaux.content[`${d}/${AUTRE}/b.jpg`] = AUTRE; }
-  return { tables, seaux };
-}
+import { fauxAdmin, baseComplete, U, AUTRE } from "./lib/faux-admin-purge.mjs";
 
 test("① tout ce qui porte l'uid part — lignes, huit dossiers de médias, pièces jointes — et rien d'autre", async () => {
   const admin = fauxAdmin(baseComplete());
@@ -304,84 +185,167 @@ test("⑪ SUP-10 : une ligne repoussée par le client entre l'effacement et la r
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// ASTRA-25 — la barrière de suppression côté serveur.
+// ASTRA-25 — la barrière de suppression côté serveur (v2 depuis la cinquième
+// contre-revue : ASTRA-39 / 40 / 41 / 42).
 //
-// Le défaut : effacer, relire, ré-effacer est une PASSE DE PLUS, pas une
-// barrière. Une écriture qui arrive après le comptage de SA table et avant la
-// relecture finale survit, et `ok` est rendu quand même. Aucun nombre de passes
-// ne ferme cette fenêtre — le gel client ne vaut que pour CE navigateur.
+// Le défaut d'origine : effacer, relire, ré-effacer est une PASSE DE PLUS, pas
+// une barrière. Ce que ces tests mesurent, c'est ce que purge-compte.js FAIT :
+// l'ORDRE (réclamer, attendre, puis seulement relever), le JETON transmis à
+// chaque fonction, et l'ARRÊT sur chaque réponse défavorable. La règle SQL
+// elle-même (sérialisation, jeton, xids en vol) est mesurée sur PostgreSQL réel
+// par `tests/sql/migration-barriere-suppression.test.sh` (52 contrôles) et
+// `tests/sql/ecriture-en-vol-suppression.test.sh` (11 contrôles, deux connexions).
 // ═══════════════════════════════════════════════════════════════════════════
 
-test("ASTRA-25 ① la barrière est posée AVANT tout comptage, et le dit", async () => {
+const JETON = "12345678-1234-4123-8123-123456789abc";
+
+test("ASTRA-25 ① réclamer, attendre, PUIS relever : l'ordre est la propriété", async () => {
   const admin = fauxAdmin({ tables: { user_state: [{ user_id: U }], profiles: [{ id: U }] } });
-  const r = await purgerCompte(admin, U);
-  assert.equal(r.ok, true);
+  const r = await purgerCompte(admin, U, { jeton: JETON });
+  assert.equal(r.ok, true, JSON.stringify(r));
   assert.equal(r.barriere, "posee");
-  // Elle N'EST PAS levée sur un succès : le compte Auth part juste après, et
-  // lever la marque rouvrirait l'écriture dans la fenêtre qui sépare les deux.
-  assert.deepEqual(admin._t.comptes_en_suppression, [{ user_id: U, motif: "delete-account" }]);
-  // ⚠️ ET C'EST SA POSITION QUI EST LA PROPRIÉTÉ, PAS SA PRÉSENCE. Le tout
-  // PREMIER geste adressé à la base doit être la pose. Un banc qui se contente
-  // de la trouver dans le journal reste VERT quand elle glisse après le premier
-  // relevé — mesuré, cette assertion-ci est née de cette réinjection-là.
-  assert.equal(admin._j[0], "comptes_en_suppression:upsert",
-    "la pose doit précéder TOUT le reste ; posée après un relevé, elle ne ferme plus la fenêtre — journal : " + admin._j.join(" → "));
-  assert.ok(admin._j.length > 1, "le journal doit porter la suite de la purge, sinon la position ne prouve rien");
+  assert.equal(r.jeton, JETON);
+  // ⚠️ C'EST LA POSITION QUI EST LA PROPRIÉTÉ. Les deux premiers gestes adressés
+  // à la base sont la réclamation puis l'attente ; le premier relevé vient après.
+  assert.deepEqual(admin._j.slice(0, 3), ["rpc:" + RPC_RECLAMER, "rpc:" + RPC_ATTENDRE, "rpc:" + RPC_OBJETS],
+    "réclamer → attendre → relever ; journal : " + admin._j.join(" → "));
+  // Le jeton part dans la réclamation ET dans la fin d'opération.
+  assert.equal(admin._a[0].args.p_jeton, JETON);
+  const fin = admin._a[admin._a.length - 1];
+  assert.equal(fin.nom, RPC_TERMINER);
+  assert.equal(fin.args.p_jeton, JETON, "la fin d'opération porte le MÊME jeton que la réclamation");
+  assert.equal(fin.args.p_statut, "purgee", "sur un succès la protection est CONSERVÉE (purgee), jamais levée");
+  assert.equal(admin._t.comptes_en_suppression[0].statut, "purgee");
+  // Et JAMAIS d'écriture directe du marqueur (régression v1).
+  assert.ok(!admin._j.some((g) => g.startsWith("comptes_en_suppression:")), "aucun accès direct au marqueur : " + admin._j.join(" → "));
 });
 
-test("ASTRA-25 ① bis un ÉCHEC de pose arrête la purge AVANT le premier relevé", async () => {
-  // Le pendant du cas ① : si l'on ne peut pas poser la barrière, il ne doit y
-  // avoir AUCUN geste ensuite — ni relevé, ni effacement. Sans cette mesure,
-  // « on ne purge pas sans barrière » tiendrait au seul `ok: false` rendu, et
-  // un effacement déjà parti resterait invisible.
+test("ASTRA-25 ① bis un ÉCHEC de réclamation arrête la purge AVANT le premier relevé", async () => {
   const admin = fauxAdmin({ tables: { user_state: [{ user_id: U }] }, barriere: "refus" });
-  const r = await purgerCompte(admin, U);
+  const r = await purgerCompte(admin, U, { jeton: JETON });
   assert.equal(r.ok, false);
-  assert.deepEqual(admin._j, ["comptes_en_suppression:upsert"],
-    "aucun autre geste ne doit avoir eu lieu — journal : " + admin._j.join(" → "));
+  assert.equal(r.code, "barriere");
+  assert.deepEqual(admin._j, ["rpc:" + RPC_RECLAMER], "aucun autre geste ne doit avoir eu lieu — journal : " + admin._j.join(" → "));
+  assert.deepEqual(admin._t.user_state, [{ user_id: U }], "rien n'a été effacé");
 });
 
-test("ASTRA-25 ② migration non appliquée : la purge CONTINUE, et l'annonce — elle ne se tait pas", async () => {
+test("ASTRA-42 ② migration non appliquée : la purge NE PART PAS, et le code le nomme", async () => {
+  // La v1 continuait « en le disant » ; le handler jetait la note et répondait
+  // 200 `ok:true`. Une purge qui ne peut pas prouver qu'elle a fini n'a pas fini.
   const admin = fauxAdmin({ tables: { user_state: [{ user_id: U }] }, barriere: "absente" });
-  const r = await purgerCompte(admin, U);
-  assert.equal(r.ok, true, "la purge d'avant reste possible");
+  const r = await purgerCompte(admin, U, { jeton: JETON });
+  assert.equal(r.ok, false, "sans barrière, pas de succès");
+  assert.equal(r.code, "infrastructure_absente");
   assert.equal(r.barriere, "absente");
-  assert.ok(r.notes.some((n) => /barrière de suppression ABSENTE/.test(n)),
-    "taire l'absence ferait passer une purge SANS barrière pour une purge AVEC");
-  assert.ok(/écriture tardive peut encore survivre/.test(r.notes.join(" ")));
+  assert.ok(r.notes.some((n) => /infrastructure de suppression ABSENTE/.test(n)));
+  assert.deepEqual(admin._j, ["rpc:" + RPC_RECLAMER], "aucun geste après : rien n'est effacé sans barrière");
+  assert.deepEqual(admin._t.user_state, [{ user_id: U }]);
 });
 
-test("ASTRA-25 ③ la barrière existe mais REFUSE : on ne purge pas — rien n'est effacé", async () => {
-  const admin = fauxAdmin({ tables: { user_state: [{ user_id: U }], profiles: [{ id: U }] }, barriere: "refus" });
-  const r = await purgerCompte(admin, U);
-  assert.equal(r.ok, false);
-  assert.ok(r.echecs.some((e) => /barrière:pose/.test(e)));
-  // ⚠️ RIEN n'a été effacé : se priver de la seule garantie qu'on ait, sans le
-  // savoir, serait pire que ne pas purger du tout.
-  assert.deepEqual(admin._t.user_state, [{ user_id: U }], "aucune ligne touchée");
-  assert.deepEqual(admin._t.profiles, [{ id: U }]);
+test("ASTRA-40 ③ réclamation NON acquise (autre tentative vivante, ou compte déjà supprimé) : on s'arrête sans rien toucher", async () => {
+  const occ = fauxAdmin({ tables: { user_state: [{ user_id: U }] }, barriere: "occupee" });
+  const r1 = await purgerCompte(occ, U, { jeton: JETON });
+  assert.equal(r1.ok, false);
+  assert.equal(r1.code, "deja_en_cours");
+  assert.deepEqual(occ._j, ["rpc:" + RPC_RECLAMER]);
+  assert.ok(!occ._a.some((a) => a.nom === RPC_TERMINER), "on ne TERMINE pas une tentative qu'on n'a pas acquise");
+  const sup = fauxAdmin({ tables: { user_state: [{ user_id: U }] }, barriere: "supprimee" });
+  const r2 = await purgerCompte(sup, U, { jeton: JETON });
+  assert.equal(r2.code, "deja_supprimee");
+  assert.deepEqual(sup._t.user_state, [{ user_id: U }]);
 });
 
-test("ASTRA-25 ④ purge INACHEVÉE : la barrière est LEVÉE — le compte n'est pas condamné au silence", async () => {
+test("ASTRA-40 ④ purge INACHEVÉE : la fin d'opération est `echec`, AVEC le jeton — jamais un delete du marqueur", async () => {
   const admin = fauxAdmin({ tables: { user_state: [{ user_id: U }] }, pannesDelete: ["user_state"] });
-  const r = await purgerCompte(admin, U);
+  const r = await purgerCompte(admin, U, { jeton: JETON });
   assert.equal(r.ok, false);
-  assert.deepEqual(admin._t.comptes_en_suppression, [],
-    "une purge abandonnée doit pouvoir être relancée, et le compte redevenir utilisable");
+  assert.equal(r.code, "incomplete");
+  const fin = admin._a.filter((a) => a.nom === RPC_TERMINER);
+  assert.equal(fin.length, 1);
+  assert.equal(fin[0].args.p_jeton, JETON, "le retrait est CONDITIONNEL au jeton : c'est SQL qui décide, mais il faut le lui donner");
+  assert.equal(fin[0].args.p_statut, "echec");
+  assert.ok(fin[0].args.p_detail && fin[0].args.p_detail.echecs.length >= 1, "l'erreur est transmise pour être conservée");
+  assert.equal(admin._t.comptes_en_suppression[0].statut, "echec", "la ligne reste (état durable) ; c'est le statut qui lève la protection");
+  assert.ok(!admin._j.includes("comptes_en_suppression:delete"), "aucun delete direct du marqueur (v1)");
 });
 
-test("ASTRA-25 ⑤ la reproduction d'Astra : une écriture tardive ne rend plus un `ok` mensonger", async () => {
-  // `ecrituresTardives` fait REVENIR une ligne à chaque relecture — c'est la
-  // fenêtre exacte que la contre-revue a mesurée : écrire `user_state` après
-  // son comptage, au moment où `profiles` est relu.
-  // Deux retours : la reprise en efface un, le second est un RESTE nommé.
+test("ASTRA-40 ⑤ la reproduction d'Astra : A échoue TARD, après que B a repris le compte — A ne retire rien, et le dit", async () => {
+  // Chronologie : A réclame (J_A), échoue lentement ; B réclame (J_B) et compte ;
+  // A termine en `echec` → SQL répond jeton_perime (la ligne est à B) ; B finit.
+  // Ici le faux répond jeton_perime à la fin d'A : ce qu'on prouve, c'est qu'A
+  // ne considère PAS sa purge comme la sienne, et que B n'est pas affecté.
+  const adminA = fauxAdmin({ tables: { user_state: [{ user_id: U }] }, pannesDelete: ["user_state"], terminerRefuse: true });
+  const rA = await purgerCompte(adminA, U, { jeton: "aaaaaaaa-0000-4000-8000-000000000001" });
+  assert.equal(rA.ok, false);
+  assert.equal(rA.code, "jeton_perdu");
+  assert.ok(rA.echecs.some((e) => /barrière:fin \(jeton_perime/.test(e)), JSON.stringify(rA.echecs));
+  // Et surtout : une purge dont on n'a plus la garde n'est JAMAIS `ok`, même si
+  // elle n'avait aucun reste — sinon delete-account supprimerait le compte Auth
+  // sur la foi d'une relecture qui ne vaut plus rien.
+  const adminA2 = fauxAdmin({ tables: { user_state: [{ user_id: U }] }, terminerRefuse: true });
+  const rA2 = await purgerCompte(adminA2, U, { jeton: "aaaaaaaa-0000-4000-8000-000000000001" });
+  assert.equal(rA2.echecs.length, 1, "aucun reste, aucun échec de purge…");
+  assert.equal(rA2.ok, false, "…et pourtant PAS ok : la tentative n'est plus la nôtre");
+  assert.equal(rA2.code, "jeton_perdu");
+});
+
+test("ASTRA-41 ⑥ des écritures en vol qui ne finissent pas : la purge ÉCHOUE avant tout effacement", async () => {
+  const admin = fauxAdmin({ tables: { user_state: [{ user_id: U }] }, enVol: { en_vol_initial: 2, restantes: 1, attendu_ms: 5000 } });
+  const r = await purgerCompte(admin, U, { jeton: JETON });
+  assert.equal(r.ok, false);
+  assert.equal(r.code, "en_vol");
+  assert.ok(r.echecs.some((e) => /écritures en vol non terminées \(1\)/.test(e)), JSON.stringify(r.echecs));
+  assert.deepEqual(admin._j, ["rpc:" + RPC_RECLAMER, "rpc:" + RPC_ATTENDRE, "rpc:" + RPC_TERMINER], "rien n'est relevé ni effacé : " + admin._j.join(" → "));
+  assert.deepEqual(admin._t.user_state, [{ user_id: U }]);
+  assert.equal(admin._a[2].args.p_statut, "echec", "la protection est levée : purge relançable");
+  // Attente absente (migration partielle) ou illisible : même fail-closed.
+  const abs = fauxAdmin({ tables: { user_state: [{ user_id: U }] }, enVol: "absente" });
+  const r2 = await purgerCompte(abs, U, { jeton: JETON });
+  assert.equal(r2.ok, false); assert.equal(r2.code, "en_vol");
+  const ill = fauxAdmin({ tables: { user_state: [{ user_id: U }] }, enVol: { bidon: true } });
+  const r3 = await purgerCompte(ill, U, { jeton: JETON });
+  assert.equal(r3.ok, false, "une réponse sans `restantes` numérique n'est pas « zéro en vol »");
+  // Des écritures en vol qui FINISSENT : la purge continue et le note.
+  const okv = fauxAdmin({ tables: { user_state: [{ user_id: U }] }, enVol: { en_vol_initial: 3, restantes: 0, attendu_ms: 120 } });
+  const r4 = await purgerCompte(okv, U, { jeton: JETON });
+  assert.equal(r4.ok, true, JSON.stringify(r4));
+  assert.ok(r4.notes.some((n) => /3 transaction\(s\) en vol attendue\(s\) pendant 120 ms/.test(n)));
+});
+
+test("ASTRA-25 ⑦ la reproduction de la 4e passe : une écriture tardive ne rend plus un `ok` mensonger", async () => {
+  // `ecrituresTardives` fait REVENIR une ligne à chaque relecture. Le faux ne
+  // connaît pas le trigger SQL : il ne peut pas la REFUSER. Ce qu'on vérifie ici
+  // est que le client ne MENT pas quand elle survient ; ce que la barrière
+  // empêche VRAIMENT se mesure en SQL (banc ③ et ④).
   const admin = fauxAdmin({ tables: { user_state: [{ user_id: U }] }, ecrituresTardives: { user_state: 2 } });
-  const r = await purgerCompte(admin, U);
+  const r = await purgerCompte(admin, U, { jeton: JETON });
   assert.equal(r.ok, false, "une ligne qui subsiste ne peut pas rendre `ok`");
   assert.ok(r.restes.some((x) => /^user_state:/.test(x)), JSON.stringify(r.restes));
-  // ⚠️ CE QUE CE CAS NE PROUVE PAS, ET IL FAUT LE DIRE : le faux client ne
-  // connaît pas les policies, donc il ne peut pas REFUSER l'écriture tardive.
-  // Ce que la barrière empêche VRAIMENT se mesure en SQL, contre de vraies
-  // policies : `tests/sql/migration-barriere-suppression.test.sh` ④.
-  // Ici on vérifie seulement que le client ne MENT pas quand elle survient.
+});
+
+test("ASTRA-39 ⑧ COUVERTURE : la liste de la migration est EXACTEMENT TABLES_COMPTE (contrôle indépendant de la migration)", async () => {
+  // La migration porte une copie SQL de la liste ; ce test lit les DEUX et les
+  // compare, paire par paire. Une table ajoutée à la purge et oubliée de la
+  // barrière (ASTRA-39 : passion_quotas, client_errors, analytics_events,
+  // telemetry_events) rougit ici avant tout banc.
+  const { readFileSync } = await import("node:fs");
+  const sql = readFileSync(new URL("../../migrations/migration_barriere_suppression_2026-09-15.sql", import.meta.url), "utf8");
+  const bloc = sql.slice(sql.indexOf("insert into _colonnes_compte values"), sql.indexOf(";", sql.indexOf("insert into _colonnes_compte values")));
+  const paires = [...bloc.matchAll(/\('([a-z_]+)', '([a-z_]+)'\)/g)].map((m) => m[1] + ":" + m[2]);
+  const attendues = TABLES_COMPTE.map(([t, c]) => t + ":" + c);
+  assert.deepEqual(paires.filter((p) => !attendues.includes(p)), [], "paires dans la migration mais pas dans la purge");
+  assert.deepEqual(attendues.filter((p) => !paires.includes(p)), [], "paires de la purge ABSENTES de la barrière");
+  assert.equal(paires.length, attendues.length);
+  for (const t of ["passion_quotas", "client_errors", "analytics_events", "telemetry_events"]) assert.ok(paires.some((p) => p.startsWith(t + ":")), t + " : la table omise par la v1 est couverte");
+});
+
+test("marquerSupprime transmet le jeton et le statut `supprimee`", async () => {
+  const admin = fauxAdmin({});
+  await purgerCompte(admin, U, { jeton: JETON });
+  const r = await marquerSupprime(admin, U, JETON);
+  assert.equal(r.ok, true);
+  const dernier = admin._a[admin._a.length - 1];
+  assert.deepEqual([dernier.nom, dernier.args.p_jeton, dernier.args.p_statut], [RPC_TERMINER, JETON, "supprimee"]);
+  const refus = fauxAdmin({ terminerRefuse: true });
+  assert.equal((await marquerSupprime(refus, U, JETON)).ok, false, "un refus est rendu tel quel, jamais avalé");
 });

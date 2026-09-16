@@ -55,7 +55,8 @@ window._callGetMedia = async function () { return { getTracks: function () { ret
 
 async function banc(page) {
   await page.route(/supabase\.co/, (route) => route.abort());
-  await page.addInitScript((u) => { localStorage.setItem("passio_uid", u); }, UID_MOI);
+  // Pilote (ASTRA-60) : les appels sont désactivés par défaut ; cette suite ARME le code des appels pour continuer de l'exercer.
+  await page.addInitScript((u) => { localStorage.setItem("passio_uid", u); localStorage.setItem("passio_appels_actifs", "1"); }, UID_MOI);
   await bootOnboarded(page, null, 1, { sansIsolationDesDonnees: true });
   await page.evaluate((s) => { eval(s); }, FAUX_RT);
   await page.evaluate((lea) => {

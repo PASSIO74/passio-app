@@ -1,0 +1,2 @@
+  ❌ RES-11 [P2] CI : gates de gouvernance et suites unitaires exécutées en CI seulement à partir de #473
+❌ 1 écart(s) entre le registre et le dépôt — mettre le registre à jour (réexamen explicite), pas le contrôle.

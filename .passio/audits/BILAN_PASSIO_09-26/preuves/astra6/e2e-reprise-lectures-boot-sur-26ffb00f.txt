@@ -1,0 +1,3 @@
+SHA: 26ffb00f (worktree integration, SANS les commits de cette reprise)
+cmd: PASSIO_PORT=8090 npx playwright test --project=local --workers=1 tests/e2e/reprise-lectures-boot.spec.js
+résultat : 12 passed, 1 failed — ⑪ « télémétrie : le transitoire PROUVÉ est warn » (reçu info) : IDENTIQUE au candidat → préexistant / environnement (vert en CI sur #476, run 35020434665, Suites navigateur 1-6/6 toutes vertes)

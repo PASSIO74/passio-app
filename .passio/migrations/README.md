@@ -38,6 +38,22 @@ L'outil calcule l'empreinte du fichier tel qu'il est sur le disque et REFUSE
 d'écraser une attestation existante sans `--remplacer` (une réattestation est un
 geste, pas un effet de bord). Il n'applique rien et ne parle à aucun projet.
 
+## Ce qu'une preuve exige depuis ASTRA-61 (16/09/2026)
+
+- une revue GitHub à l'état **`APPROVED`** — un commentaire (`COMMENTED`), même
+  conforme dans sa forme, n'approuve rien ; un refus commenté non plus ;
+- un relecteur **distinct de l'auteur de la PR** (l'auteur doit être lisible,
+  sinon la preuve est non vérifiable) ;
+- un relecteur inscrit dans **`relecteurs-autorises.json`** (ce dossier) — la
+  liste vide n'autorise personne ; l'ajout d'un compte passe par une PR ;
+- le lien au **SHA** (`commit_id` de la revue), au **contenu** (empreinte du
+  fichier à ce commit = empreinte envoyée) et à la **cible** (`cible: <ref>`
+  dans le corps) est inchangé ;
+- un **fournisseur réel** : `gh` du PATH et dépôt `origin`. Les overrides de
+  banc (`PASSIO_GH_BIN`, `PASSIO_DEPOT`) sont refusés sur une cible protégée —
+  les tests mesurent les refus du CLI et la décision pure, jamais un
+  « envoyable » servi par un faux.
+
 ## Ce que la barrière ne fait pas
 
 Elle ne remplace pas la revue : elle empêche seulement d'appliquer autre chose

@@ -1,0 +1,104 @@
+SHA: 26ffb00f2a867779f48b583d28e7ec12741e3dfb (arbre modifié)
+cmd: bash tests/sql/migration-barriere-suppression.test.sh
+── ① LE DÉFAUT : une écriture après le comptage survit à la purge ────
+  ✅ la purge a effacé l'état de A
+  ✅ …mais l'application encore ouverte de A réécrit : ACCEPTÉ
+  ✅ la ligne est revenue : « supprimer mon compte » répondrait ok avec elle
+  ✅ et un TIERS (B) écrit une ligne qui porte A (B suit A) : ACCEPTÉ
+  ✅ …que le trigger privilégié double d'une notification POUR A
+── ② APPLICATION, VERDICT, REJEU ─────────────────────────────────────
+  ✅ verdict : aucun ECHEC, et au moins dix contrôles OK
+  ✅ aucune table de la purge n'est absente du socle (le trigger couvre TOUT)
+  ✅ rejeu : toujours aucun ECHEC
+  ✅ la clause n'apparaît qu'UNE fois par policy après deux passages
+── ③ COUVERTURE : chaque (table, colonne) de TABLES_COMPTE est gardée ──
+  ✅ toutes les paires sont gardées (A refusé, B accepté) : 45/45
+  ✅ et aucune ligne « par B » ne porte A après tout ça
+── ④ LES ÉCRITURES QUE LA POLICY NE VOIT PAS ─────────────────────────
+  ✅ ANONYME sur client_errors avec uid = A : REFUSÉ
+  ✅ …mais l'anonyme écrit toujours pour un autre
+  ✅ B suit A : refusé à la SOURCE (follows.following_id)
+  ✅ …et même si la ligne follows passait, le trigger PRIVILÉGIÉ ne peut plus écrire la notification pour A
+  ✅ (le warning du trigger de production est bien ce qui s'est produit)
+  ✅ la CLÉ DE SERVICE elle-même ne peut pas recréer une ligne de A (plafond.js → analytics_events)
+  ✅ le refus a le CODE d'un refus RLS (42501) : aucun oracle nouveau
+  ✅ le DELETE reste libre (la purge efface, la personne se retire)
+  ✅ A peut encore LIRE (aucune policy SELECT n'est touchée)
+  ✅ la purge (sans session) efface toujours
+  ✅ l'UPDATE sans with_check garde son contrôle d'origine : la ligne de B est INTACTE
+── ⑤ ASTRA-40 : UN ÉTAT PAR TENTATIVE, UN RETRAIT PAR JETON ──────────
+  ✅ une seconde tentative (jeton J2) pendant que J1 est vivante : NON acquise
+  ✅ …et elle voit le statut en_cours
+  ✅ le retrait par J2 (mauvais jeton) N'ÉCRIT RIEN et le dit
+  ✅ …la protection de J1 tient toujours : A refusé
+  ✅ J1 termine en echec : accepté
+  ✅ …la ligne reste (état durable) mais ne bloque plus : A réécrit
+  ✅ …et l'erreur est conservée
+  ✅ après echec, une nouvelle tentative (J2) est acquise
+  ✅ …tentatives = 2
+  ✅ une tentative en_cours MORTE (20 min) est reprise par J1
+  ✅ …et J2, périmé, ne peut plus rien retirer
+  ✅ purge faite, Auth pas encore parti : 'purgee' CONSERVE la protection
+  ✅ …et la tentative J1 reste VIVANTE (deleteUser suit)
+  ✅ ASTRA-56 ① : une reprise depuis 'purgee' VIVANTE est REFUSÉE (J2)
+  ✅ …avec le motif
+  ✅ …et J2 ne peut rien terminer
+  ✅ 'supprimee' : protection CONSERVÉE (rétention)
+  ✅ …et plus AUCUNE réclamation possible
+  ✅ la rétention refuse une durée < 30 jours (les sauvegardes vivent 30 jours)
+  ✅ …et ne retire rien avant l'échéance
+  ✅ …puis retire le marqueur échu
+  ✅ le service ne peut PAS écrire le marqueur directement (tout passe par les fonctions)
+── ⑤ bis ASTRA-56 : L'ENTRELACEMENT DE DEUX TENTATIVES, SUR POSTGRESQL RÉEL ──
+  ✅ A (J1) réclame
+  ✅ …et attend les écritures en vol : aucune
+  ✅ A termine sa purge : 'purgee', vivante, J1
+  ✅ B (J2) réclame PENDANT que A attend Auth : REFUSÉ
+  ✅ B tente quand même 'echec' (comme la v2 le laissait faire) : rien n'est écrit
+  ✅ …le marqueur n'a pas bougé
+  ✅ …une ligne user_state écrite par le client pendant l'attente Auth : REFUSÉE
+  ✅ …et il n'en reste aucune
+  ✅ A termine Auth et finalise avec SON jeton : accepté
+  ✅ …la réponse porte l'état ÉCRIT (supprimee) et la protection
+  ✅ …protection = true
+  ✅ …marqueur final : supprimee, tentative terminée
+   · tentative INTERROMPUE après 'purgee' (A meurt, 15 min passent)
+  ✅ trop tôt : B refusé
+  ✅ 20 min plus tard : B reprend la tentative morte
+  ✅ …et SAIT que les données sont déjà parties
+  ✅ …la protection tient pendant la reprise
+  ✅ ASTRA-56 ② : B échoue en vol → 'echec' demandé s'ÉCRIT 'purgee' (jamais de levée après une purge)
+  ✅ …la réponse le dit (demande=echec, protection=true)
+  ✅ …le client reste refusé
+  ✅ …et la tentative de B est TERMINÉE (reprenable aussitôt)
+  ✅ …l'erreur est conservée
+  ✅ A, revenue tard, ne peut plus finaliser : jeton_perime, état RÉEL rendu (purgee, protégé)
+   · ÉCHEC AUTH (deleteUser en erreur après la purge)
+  ✅ ASTRA-56 ③ : 'auth_echec' → statut purgee, tentative terminée
+  ✅ …protection conservée, dite
+  ✅ …le client est refusé
+  ✅ …B reprend AUSSITÔT (sans attendre 15 min)
+  ✅ …tentatives = 2
+  ✅ …B finalise : supprimee
+  ✅ un événement inconnu est refusé
+   · MUTATION : réclamation v2 (ignore la vitalité) — la règle ② tient seule
+  ✅ mutation « purgee reprenable » : B obtient le marqueur de A vivante (un banc qui exige le refus rougit)
+  ✅ …mais son 'echec' s'écrit encore 'purgee' : la protection tient malgré la mutation
+  ✅ …le client reste refusé
+  ✅ rétabli : B refusé sur une tentative vivante
+── ⑥ AUCUN ORACLE ────────────────────────────────────────────────────
+  ✅ anon peut appeler le prédicat (policies to public) et n'obtient que false
+  ✅ le marqueur est illisible pour authenticated
+  ✅ le prédicat ne prend AUCUN argument
+  ✅ authenticated ne peut appeler aucune fonction d'état
+── ⑦ MUTATIONS : le banc doit ROUGIR ─────────────────────────────────
+  ✅ mutation « trigger retiré d'une table » : B suit A de nouveau — la fenêtre se rouvre
+  ✅ mutation « clause retirée + trigger inactif » : A réécrit
+  ✅ …le trigger seul suffit déjà : A refusé même sans la clause
+  ✅ …la migration rejouée repose tout : aucun ECHEC
+  ✅ rétabli : B ne suit plus A
+  ✅ mutation « terminer sans vérifier le jeton » : J2 retire la protection de J1 → un banc qui exige jeton_perime rougit
+  ✅ …rétabli : J2 ne retire plus rien
+
+RÉSULTAT : 88 contrôle(s) vert(s), 0 rouge(s)
+exit=0

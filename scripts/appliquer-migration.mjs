@@ -120,7 +120,9 @@ function lireProjetLie() {
   return null;
 }
 function lireAttestations() {
-  const p = resolve(racine, ".passio", "migrations", "attestations.json");
+  // `PASSIO_ATTESTATIONS` : un autre fichier (le test unitaire y pose des
+  // attestations fabriquées pour prouver qu'elles sont REFUSÉES).
+  const p = process.env.PASSIO_ATTESTATIONS ? resolve(process.env.PASSIO_ATTESTATIONS) : resolve(racine, ".passio", "migrations", "attestations.json");
   if (!existsSync(p)) return [];
   try { const j = JSON.parse(readFileSync(p, "utf8")); return Array.isArray(j) ? j : (j.attestations || []); }
   catch (e) { echec("`.passio/migrations/attestations.json` est illisible (" + e.message + ") — une attestation qu'on ne sait pas lire n'atteste rien."); }
@@ -140,6 +142,26 @@ const ref = cible.ref;
 let att;
 try { att = BAR.verifierAttestation({ fichier: rel, sql, cible, attestations: lireAttestations(), sansAttestation }); }
 catch (e) { echec(e.message); }
+// ── ②' LA PREUVE DE REVUE EST VÉRIFIÉE SUR GITHUB (ASTRA-51) ────────────────
+// Sur une cible protégée, l'attestation locale ne suffit pas : la revue qu'elle
+// désigne est LUE (`gh api`) — présente, ancrée sur le commit attesté, portant
+// le marqueur, le fichier et la cible, signée par le relecteur, et le fichier
+// à ce commit identique à celui qu'on envoie. Y compris pour `--verifier` :
+// « envoyable » ne se dit pas sans elle, et « non vérifiable » (pas de `gh`,
+// pas de réseau) REFUSE, il ne devine pas.
+let preuve = null;
+if (att.exigee) {
+  const GH = createRequire(import.meta.url)("./lib/github-revue.js");
+  const a = att.attestation;
+  // ASTRA-61 : sur une cible protégée, seul un fournisseur RÉEL (gh du PATH,
+  // dépôt origin) certifie ; les fixtures des bancs sont refusées ici.
+  try { BAR.exigerFournisseurReel(GH.fournisseur(), cible); } catch (e) { echec(e.message); }
+  const revues = GH.lireRevues(a.pr, racine);
+  const contenuCommit = a.commit ? GH.lireContenuAuCommit(rel, a.commit, racine) : null;
+  try {
+    preuve = BAR.verifierPreuveRevue({ attestation: a, fichier: rel, empreinteAttendue: att.empreinte, cible, revues, contenuAuCommit: contenuCommit, auteurPr: GH.lireAuteurPr(a.pr, racine), relecteursAutorises: GH.lireRelecteursAutorises(racine) });
+  } catch (e) { echec(e.message + "\n   (revues lues : " + (revues ? revues.length : "NON LISIBLES") + " · dépôt : " + (GH.depot(racine) || "inconnu") + ")"); }
+}
 
 console.log("migration : " + rel + " (" + sql.length + " caractères)");
 console.log("empreinte : " + att.empreinte);
@@ -150,6 +172,7 @@ if (att.attestation) {
     (att.attestation.consigne_le && att.attestation.consigne_le !== att.attestation.revue_le ? " · CONSIGNÉE le " + att.attestation.consigne_le : "") +
     " (" + att.attestation.source + ")");
   if (att.retroactive) console.log("           ⚠️ attestation RÉTROACTIVE : reconstruction après coup, jamais une revue préalable.");
+  if (preuve) console.log("preuve    : revue GitHub n°" + preuve.revue.id + " (" + preuve.revue.etat + ", " + (preuve.revue.soumise_le || "?") + ") par " + preuve.revue.login + ", ancrée sur " + String(preuve.revue.commit).slice(0, 12) + "… — contenu au commit = contenu envoyé" + " · approbation indépendante (auteur de la PR : " + preuve.auteurPr + ")");
 }
 else if (att.derive) console.log("           ⚠️ une attestation existe pour ce fichier mais PAS pour ce contenu (cible non protégée : on passe, on le dit).");
 else console.log("revue     : aucune attestation exigée sur une cible non protégée.");
@@ -197,7 +220,11 @@ if (!lignes.length) {
   console.log("\nVERDICT (" + lignes.length + " ligne" + (lignes.length > 1 ? "s" : "") + ") :");
   const cles = Object.keys(lignes[0]);
   for (const l of lignes) console.log("  " + cles.map((k) => String(l[k])).join("  |  "));
-  const rouges = lignes.filter((l) => Object.values(l).some((v) => /ECHEC|anomalie/i.test(String(v))));
+  // ⚠️ Le rouge se lit dans la colonne de VERDICT (`valeur`, sinon la dernière),
+  // jamais dans le libellé du contrôle : « le statut est contraint (en_cours,
+  // echec, …) » disait ECHEC sur une migration parfaitement appliquée (16/09).
+  const colonneVerdict = (l) => (Object.prototype.hasOwnProperty.call(l, "valeur") ? l.valeur : Object.values(l)[Object.values(l).length - 1]);
+  const rouges = lignes.filter((l) => /^(ECHEC|anomalie)/i.test(String(colonneVerdict(l)).trim()));
   phases["verdict"] = rouges.length ? { ok: false, motif: rouges.length + " ligne(s) en ECHEC — la transaction a pourtant été validée : lire l'état en base" } : { ok: true };
 }
 

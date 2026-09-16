@@ -146,6 +146,94 @@ function verifierAttestation({ fichier, sql, cible, attestations, sansAttestatio
   return { empreinte: emp, exigee: true, attestation: a, derive: false, retroactive: Boolean(a.retroactif) };
 }
 
+// ── ②' LA PREUVE DE REVUE, VÉRIFIABLE — ASTRA-51 (cinquième contre-revue, 15/09/2026)
+// L'attestation d'avant était DÉCLARATIVE : quatre champs libres (pr, relecteur,
+// revue_le, source) validés par leur seule présence. Reproduit par la
+// contre-revue : une attestation non versionnée, PR fictive, l'auteur comme
+// relecteur, source « aucune revue » → `--verifier` rend 0, « envoyable ». Un
+// auteur pouvait fabriquer seul la validation en tapant des champs.
+// LA PREUVE, désormais, vit HORS du poste : une REVUE GITHUB sur la PR — un
+// événement daté, signé par un compte, ancré sur un COMMIT, que le dépôt ne
+// peut pas réécrire. L'attestation locale ne fait que la DÉSIGNER
+// (`pr`, `commit`, `revue_id`) ; c'est la vérification qui atteste :
+//   · la revue existe sur cette PR, avec cet identifiant ;
+//   · elle est ancrée sur `commit` (le SHA que la revue a regardé) ;
+//   · son corps porte le marqueur « Contre-revue technique indépendante » (la
+//     même convention que le job « Gouvernance critique »), le CHEMIN du
+//     fichier et la CIBLE (`cible: <ref>`) — la revue dit ce qu'elle a revu ;
+//   · le contenu du fichier À CE COMMIT a l'empreinte attestée, qui est celle
+//     du fichier envoyé — le SHA revu et le contenu envoyé coïncident ;
+//   · l'auteur de la revue est celui que l'attestation nomme.
+// ⚠️ CE QUE CETTE PREUVE NE FAIT PAS, et qui se dit : elle n'établit pas que
+// la revue a été ATTENTIVE, ni qu'elle vient d'une autre personne quand le
+// dépôt n'a qu'un mainteneur (GitHub interdit d'APPROUVER sa propre PR ; un
+// commentaire de revue reste possible). Elle établit qu'un geste public,
+// daté, ancré sur un SHA, a eu lieu sur ce contenu exact — et qu'on ne peut
+// plus le fabriquer en tapant des champs dans un fichier local.
+// `revues` et `contenuAuCommit` sont FOURNIS par l'appelant (lus par `gh api`) :
+// la décision reste pure et testable.
+// ⚠️ ASTRA-61 (sixième contre-revue, 16/09/2026) — UNE APPROBATION POSITIVE,
+// INDÉPENDANTE, PAR UN RELECTEUR AUTORISÉ. La règle du 15/09 acceptait une
+// revue COMMENTED — y compris un commentaire de REFUS qui portait les
+// marqueurs attendus — et une auto-revue (l'auteur de la PR), en le « disant »
+// (`memeAuteurQueLaPr`) sans refuser. Désormais :
+//   · l'état est `APPROVED`, rien d'autre : un commentaire, même conforme, ne
+//     vaut pas approbation ; un `CHANGES_REQUESTED` ou un `DISMISSED` non plus ;
+//   · le relecteur n'est PAS l'auteur de la PR — et l'auteur doit être CONNU :
+//     inconnu = non vérifiable = refus ;
+//   · le relecteur figure dans la liste des RELECTEURS AUTORISÉS
+//     (`.passio/migrations/relecteurs-autorises.json`, versionnée), qui doit
+//     exister et ne pas être vide — sans liste, personne n'est autorisé ;
+//   · le lien au SHA (`commit_id`), au contenu (empreinte au commit = envoyée)
+//     et à la cible (`cible: <ref>` dans le corps) est inchangé.
+// ⚠️ Ce que cette preuve ne fait toujours pas : établir que la revue a été
+// attentive. Elle établit qu'un compte autorisé, distinct de l'auteur, a
+// APPROUVÉ ce contenu exact pour cette cible, sur GitHub, à une date.
+const MARQUEUR_REVUE = "Contre-revue technique indépendante";
+const FORME_SHA = /^[0-9a-f]{40}$/;
+function verifierPreuveRevue({ attestation, fichier, empreinteAttendue, cible, revues, contenuAuCommit, auteurPr, relecteursAutorises } = {}) {
+  const a = attestation || {};
+  const refus = (code, m, d) => { throw new RefusBarriere(code, m, d); };
+  const prNum = String(a.pr || "").replace(/^#/, "");
+  if (!/^\d+$/.test(prNum)) refus("preuve_incomplete", "l'attestation de `" + fichier + "` ne désigne pas une PR (`pr`).");
+  if (!FORME_SHA.test(String(a.commit || ""))) refus("preuve_incomplete", "l'attestation de `" + fichier + "` ne désigne pas le COMMIT revu (`commit`, 40 hex) — sans lui, aucune revue n'est ancrée.");
+  if (!/^\d+$/.test(String(a.revue_id || ""))) refus("preuve_incomplete", "l'attestation de `" + fichier + "` ne désigne pas la REVUE GitHub (`revue_id`) — une revue non désignée n'est pas vérifiable.");
+  if (!Array.isArray(relecteursAutorises) || relecteursAutorises.length === 0) refus("relecteurs_non_definis", "aucune liste de relecteurs autorisés (`.passio/migrations/relecteurs-autorises.json`) : personne n'est autorisé à approuver une migration, la preuve est refusée.");
+  if (!Array.isArray(revues)) refus("preuve_non_verifiable", "les revues de la PR #" + prNum + " n'ont pas pu être lues : la preuve est NON VÉRIFIABLE, donc absente.");
+  const r = revues.find((x) => x && String(x.id) === String(a.revue_id));
+  if (!r) refus("preuve_absente", "aucune revue n°" + a.revue_id + " sur la PR #" + prNum + ".");
+  if (String(r.commit_id || "") !== String(a.commit)) refus("preuve_divergente", "la revue n°" + a.revue_id + " est ancrée sur " + String(r.commit_id || "?").slice(0, 12) + "…, pas sur le commit attesté " + String(a.commit).slice(0, 12) + "….");
+  if (String(r.state || "").toUpperCase() !== "APPROVED") refus("preuve_non_approuvee", "la revue n°" + a.revue_id + " est à l'état " + (r.state || "?") + " — seule une APPROBATION (APPROVED) vaut preuve ; un commentaire, même conforme, n'approuve rien (ASTRA-61).");
+  const corps = String(r.body || "");
+  if (!corps.includes(MARQUEUR_REVUE)) refus("preuve_divergente", "la revue n°" + a.revue_id + " ne porte pas le marqueur « " + MARQUEUR_REVUE + " ».");
+  if (!corps.includes(fichier)) refus("preuve_divergente", "la revue n°" + a.revue_id + " ne nomme pas `" + fichier + "` : elle ne dit pas avoir revu ce fichier.");
+  const ref = cible && cible.ref;
+  if (!ref || !new RegExp("cible\\s*:\\s*" + ref + "\\b").test(corps)) refus("preuve_divergente", "la revue n°" + a.revue_id + " ne nomme pas la cible `cible: " + (ref || "?") + "` : une revue pour une autre cible n'atteste pas celle-ci.");
+  const login = r.user && r.user.login;
+  if (!login || String(a.relecteur || "") !== String(login)) refus("preuve_divergente", "l'auteur de la revue (" + (login || "?") + ") n'est pas le relecteur attesté (" + (a.relecteur || "?") + ").");
+  if (!relecteursAutorises.map(String).includes(String(login))) refus("relecteur_non_autorise", "le relecteur " + login + " n'est pas dans la liste des relecteurs autorisés (" + relecteursAutorises.join(", ") + ") : son approbation ne vaut pas pour une migration.");
+  if (typeof auteurPr !== "string" || !auteurPr) refus("preuve_non_verifiable", "l'auteur de la PR #" + prNum + " n'a pas pu être lu : l'indépendance du relecteur est NON VÉRIFIABLE, la preuve est refusée.");
+  if (String(auteurPr) === String(login)) refus("auto_revue", "le relecteur " + login + " est l'AUTEUR de la PR #" + prNum + " : une auto-revue n'est pas une revue indépendante (ASTRA-61).");
+  if (typeof contenuAuCommit !== "string") refus("preuve_non_verifiable", "le contenu de `" + fichier + "` au commit " + String(a.commit).slice(0, 12) + "… n'a pas pu être lu : preuve NON VÉRIFIABLE.");
+  const empCommit = empreinte(contenuAuCommit);
+  if (empCommit !== a.empreinte) refus("preuve_divergente", "au commit revu, `" + fichier + "` a l'empreinte " + empCommit.slice(0, 12) + "…, pas celle attestée " + String(a.empreinte).slice(0, 12) + "… : la revue a regardé un autre contenu.");
+  if (empreinteAttendue && empCommit !== empreinteAttendue) refus("derive_de_contenu", "le fichier envoyé (" + empreinteAttendue.slice(0, 12) + "…) n'est pas celui du commit revu (" + empCommit.slice(0, 12) + "…).");
+  return { ok: true, revue: { id: r.id, login, etat: r.state, soumise_le: r.submitted_at || null, commit: r.commit_id }, auteurPr, memeAuteurQueLaPr: false };
+}
+
+// ── ②'' LE FOURNISSEUR DE LA PREUVE : RÉEL OU FICTIF ─────────────────────
+// Les tests posent un faux `gh` (`PASSIO_GH_BIN`) et un dépôt forcé
+// (`PASSIO_DEPOT`). Ces fixtures ne certifient RIEN : sur une cible protégée,
+// une preuve lue par un fournisseur fictif est REFUSÉE — c'est la séparation
+// qu'ASTRA-61 exige entre le banc et le chemin qui certifie. `fournisseur` =
+// { reel, motifs[] } rendu par github-revue.js.
+function exigerFournisseurReel(fournisseur, cible) {
+  if (!cible || !cible.protegee) return;
+  if (!fournisseur || fournisseur.reel !== true) {
+    throw new RefusBarriere("preuve_fournisseur_fictif", "la preuve de revue serait lue par un fournisseur FICTIF (" + ((fournisseur && fournisseur.motifs) || ["inconnu"]).join(", ") + ") : sur une cible protégée (" + cible.ref + " — " + cible.role + "), seule une lecture GitHub réelle (`gh` du PATH, dépôt `origin`) certifie.", { fournisseur });
+  }
+}
+
 // ── ③ LE JOURNAL ENTRE DANS LA TRANSACTION ────────────────────────────────
 // Le fait « ce fichier, cette empreinte, cette cible, cette attestation » est
 // écrit DANS la transaction de la migration, juste après son `begin;`. Plus de
@@ -189,4 +277,4 @@ function verdictGlobal(phases) {
   return { ok: echecs.length === 0, echecs, code: echecs.length ? 1 : 0 };
 }
 
-module.exports = { CIBLES_PROTEGEES, RefusBarriere, empreinte, choisirCible, verifierAttestation, sqlColonnesJournal, sqlAvecJournal, verdictGlobal };
+module.exports = { CIBLES_PROTEGEES, RefusBarriere, empreinte, choisirCible, verifierAttestation, verifierPreuveRevue, exigerFournisseurReel, MARQUEUR_REVUE, sqlColonnesJournal, sqlAvecJournal, verdictGlobal };

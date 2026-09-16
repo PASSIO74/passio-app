@@ -1,0 +1,12 @@
+✖ ASTRA-44 ① REPRODUCTION : une ligne déjà lue disparaît et une autre naît entre deux pages → une ligne restée présente en permanence est OMISE, et l'export se dit complet (2.0705ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 10
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 108.2253
+✖ failing tests:
+✖ ASTRA-44 ① REPRODUCTION : une ligne déjà lue disparaît et une autre naît entre deux pages → une ligne restée présente en permanence est OMISE, et l'export se dit complet (2.0705ms)
+  AssertionError [ERR_ASSERTION]: r1000, présente en permanence, doit être dans l'export — ids : 1001, distincts : 1001

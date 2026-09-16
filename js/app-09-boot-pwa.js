@@ -961,10 +961,14 @@ function sendMessageToSupabase(msgId, convId, fileUrl, fileType, fileName, kind)
   // renvoyable. Mesuré en CI (message-media-echec), pas en local.
   var _auteurMedia = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : null;
   var _proprietaireMedia = (typeof _estCompteReel === "function" && _estCompteReel(_auteurMedia)) ? _auteurMedia : null;
+  // ⚠️ ASTRA-43 : la GÉNÉRATION de la file est capturée ici aussi, comme l'auteur,
+  // et portée jusqu'à l'échec — une purge pendant l'envoi du média périme la
+  // remise en file (c'est `_outboxAdd` qui tranche, avec ce contexte).
+  var _generationMedia = (typeof _outboxGenerationActuelle === "function") ? _outboxGenerationActuelle() : null;
   function _echec(raison) {
     _diag("handleAttachFile: ❌ Échec définitif - " + raison);
     try { if (typeof _setMsgStatus === "function") _setMsgStatus(convId, msgId, "failed"); } catch (e) {}
-    try { if (typeof _outboxAdd === "function") _outboxAdd(convId, msgId, _charge, _proprietaireMedia); } catch (e) {}
+    try { if (typeof _outboxAdd === "function") _outboxAdd(convId, msgId, _charge, _proprietaireMedia, { generation: _generationMedia, auteur: _auteurMedia }); } catch (e) {}
     _flowSaved(false, raison);
   }
   function _succes(voie) {

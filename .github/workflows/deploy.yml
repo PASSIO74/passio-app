@@ -316,6 +316,16 @@ jobs:
       - name: Audits statiques (isolation des suites e2e)
         run: node scripts/audit-tests-isolation.js --ci
 
+      # Registre structuré des résidus (cinquième contre-revue Astra, 2026-09-15,
+      # mandat §9). Un résidu dont la condition de réexamen est satisfaite par le
+      # dépôt (la table dont il dépend vient d'être déclarée, le fichier attendu
+      # est arrivé, l'échéance est passée) et que le registre laisse « en
+      # attente » rend ce job rouge : le réexamen doit être ÉCRIT, pas supposé.
+      # Une fermeture sans les quatre états (corrigé, testé, déployé, relu sur la
+      # cible) est refusée de la même façon. Aucun secret, aucun réseau.
+      - name: Registre des résidus (traitables et fermetures)
+        run: node scripts/audit-registre-residus.js --ci
+
       # Referentiel plat des passions (lot flat_passions_v1).
       # Deux controles, et le second est le plus important : le JSON servi au
       # navigateur et la migration SQL sont GENERES depuis data/passions/*.js.
@@ -465,6 +475,20 @@ jobs:
       # les lignes que le manifeste annonce (le script lui-meme, sur des dossiers fabriques).
       - name: Verrous unitaires du verificateur de sauvegarde
         run: node --test tests/unit/sauvegarde-verifier.test.mjs
+
+      # ⚠️ TOUTES LES SUITES UNITAIRES ET LES DEUX GATES, EN CI (cinquieme
+      # contre-revue Astra, 2026-09-15). Jusqu'ici `npm run verif` ne tournait
+      # qu'au poste : audit-cle-production (EXP-11 / ASTRA-52), audit-tables-compte
+      # (ASTRA-27 / ASTRA-54), la barriere des migrations (ASTRA-33 / ASTRA-51),
+      # la purge, l'export, la reprise n'avaient AUCUN verrou dans la CI. Un
+      # controle qui ne tourne que quand on y pense n'est pas un controle.
+      # Aucun secret, aucun reseau : `jq` et `bash` du runner suffisent.
+      - name: Gates de gouvernance (cle de production, tables de compte)
+        run: |
+          node scripts/audit-cle-production.js
+          node scripts/audit-tables-compte.js
+      - name: Toutes les suites unitaires (tests/unit/*.test.mjs)
+        run: node --test "tests/unit/*.test.mjs"
 
       # Le script d'application et le fichier unique colle dans l'editeur SQL
       # sont ce que Benjamin execute sur la VRAIE base. Un outil d'application
