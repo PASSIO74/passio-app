@@ -1,6 +1,6 @@
 # Pilote gratuit PASSIO — candidat, preuves, procédure de mise en service (2026-09-16)
 
-> Sixième contre-revue Astra, reprise du 2026-09-16. Candidat : branche
+> Sixième contre-revue Astra, reprise du 2026-09-16. Candidat : **PR #477**, branche
 > `claude/astra6-pilote-gratuit` (base : candidat d'intégration `26ffb00f` = #476 = #469–#475 sur
 > `main` `a5e8c717`). **Rien n'a été fusionné, appliqué ni déployé** : toutes les opérations de
 > production sont listées en §E et attendent une autorisation finale, unique, précise.
@@ -198,7 +198,7 @@ dans un dossier, `--json <dossier>`).
 | 0 | Mesurer la cible (lecture seule) | `--sql` → connecteur read-only → `--json` | fiche « appliquée / non » par migration ; version servie | — |
 | 1 | Appliquer `migration_barriere_suppression_2026-09-15.sql` (**v3**) | `npm run migration:appliquer -- migrations/… --projet njkiyoklssvefstljemx` (exige l'attestation + approbation réelle) ; relire le verdict **en base** | 14 lignes OK ; `tentative_vivante` présente ; code servi (v1) inchangé = état actuel | idempotente ; inverse dans l'en-tête (drop des fonctions/trigger) — **non destructif des données** |
 | 2 | Appliquer `migration_objets_stockage_compte`, `migration_proprietaires_objets_stockage`, `migration_export_instantane`, `migration_notifications_serveur` **si** l'étape 0 les montre absentes | idem | RPC présentes ; export instantané ; mentions serveur | chacune porte son inverse (fonctions, policies) ; aucune donnée supprimée |
-| 3 | **Fusionner** la PR du candidat dans `main` (squash ou merge, SHA noté) | GitHub | `deploy.yml` : tests, build, **site** ; `edge-functions.yml` : **retenue** (lit la cible) puis déploie les 4 fonctions avec `X-Passio-Revision = SHA` | site : rollback Netlify (`npm run rollback:netlify`) ; fonctions : redéployer le SHA précédent via `workflow_dispatch` sur `main` antérieur |
+| 3 | **Fusionner** la PR **#477** dans `main` (squash ou merge, SHA noté) | GitHub | `deploy.yml` : tests, build, **site** ; `edge-functions.yml` : **retenue** (lit la cible) puis déploie les 4 fonctions avec `X-Passio-Revision = SHA` | site : rollback Netlify (`npm run rollback:netlify`) ; fonctions : redéployer le SHA précédent via `workflow_dispatch` sur `main` antérieur |
 | 4 | Vérifier | `controle-cible-pilote.mjs --public --attendu <SHA>` ; `--json` ; **suppression authentifiée d'un compte jetable** → 200 + `garantie:"barriere"`, relectures à zéro ; second appel concurrent → 409 ; export d'un compte jetable → `instantane` non nul ; une mention synthétique → ligne serveur | tout vert | si un contrôle est rouge : **arrêt**, pas d'étape suivante |
 | 5 | Ouvrir (§F) à un petit nombre, observer 7 jours : `client_errors`, traces `suppression_compte`, `call_ignore_pilote`, `mentions_serveur_absente`, plafonds | pilotage (`dashboard/`), lecture seule | — | fermer = remettre le rideau (`passio_gate_actif` côté client n'est pas un kill-switch serveur : l'arrêt réel = rollback Netlify vers une version « rideau ») |
 
