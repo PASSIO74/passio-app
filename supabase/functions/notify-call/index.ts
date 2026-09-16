@@ -37,6 +37,8 @@ import webpush from "npm:web-push@3.6.7";
 import { verifierPlafondEnBase, reponsePlafond } from "../_shared/plafond.js";
 import { identiteAppelant, lienAppel, autoriserPushNotif } from "../_shared/lien-metier.js";
 import { REVISION } from "../_shared/revision.js";
+/** Pilote : les appels sont désactivés (ASTRA-60) — même interrupteur que le client (`PASSIO_APPELS_ACTIFS`, app-05). */
+const APPELS_ACTIFS = false;
 
 // Par appelant : 20 pushes par minute, 200 par heure. Le client n'émet qu'une
 // push par conversation et par 5 min (anti-spam de _notifierMessage) plus les
@@ -95,6 +97,11 @@ Deno.serve(async (req) => {
   // caractère (virgule, parenthèse) est refusé AVANT d'entrer dans un filtre
   // PostgREST, où il changerait le sens de la requête.
   if (!toUserId || !/^[A-Za-z0-9_-]{1,64}$/.test(toUserId)) return json({ error: "toUserId requis" }, 400);
+  // ⚠️ PILOTE GRATUIT (ASTRA-60, 2026-09-16) : les appels sont DÉSACTIVÉS. Une
+  // push d'appel n'est pas envoyée — un ancien client (en cache) ne réveille
+  // personne. Les notifications (`type:"notif"`) restent servies. Réversible
+  // avec le client (`PASSIO_APPELS_ACTIFS`, app-05).
+  if (type === "call" && !APPELS_ACTIFS) return json({ ok: false, code: "appels_desactives", error: "Les appels ne sont pas disponibles pendant le pilote." }, 503);
   if (type === "call" && !callId) return json({ error: "callId requis pour les appels" }, 400);
   if (toUserId === fromUid) return json({ ok: true, sent: 0, note: "soi-même" });
 

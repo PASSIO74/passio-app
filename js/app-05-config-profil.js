@@ -529,8 +529,36 @@ function _callResolvePeer(convId) {
   };
 }
 
+// ⚠️ PILOTE GRATUIT (ASTRA-60, sixième contre-revue, 2026-09-16) — LES APPELS
+// SONT DÉSACTIVÉS. Avec deux vrais RTCPeerConnection et un bus simulé, perdre
+// une `answer` laisse la négociation sans relance observée ; la correction
+// bornée (acquittement, retransmission, délai de sortie) n'est pas validée.
+// Plutôt que d'ouvrir une fonction incertaine, on la retire du pilote :
+//   · les boutons d'appel ne sont pas rendus (app-04, `appelsDisponibles()`) ;
+//   · `startCall` refuse et le dit (toast) ;
+//   · la sonnerie n'est pas abonnée, une invitation reçue (ancien client en
+//     cache) est IGNORÉE et tracée (`call_ignore_pilote`) ;
+//   · `notify-call` refuse `type:"call"` (503 `appels_desactives`) : un ancien
+//     client ne réveille personne par push.
+// Aucune policy n'est rouverte, aucun canal public : la désactivation est
+// côté code, réversible en passant `PASSIO_APPELS_ACTIFS` à true (+ fonction).
+// Les suites navigateur des appels S'ARMENT elles-mêmes (`passio_appels_actifs`
+// en localStorage) pour continuer d'exercer le code — comme `passio_gate_actif`.
+const PASSIO_APPELS_ACTIFS = false;
+function appelsDisponibles() {
+  if (PASSIO_APPELS_ACTIFS === true) return true;
+  try { return localStorage.getItem("passio_appels_actifs") === "1"; } catch (e) { return false; }
+}
+window.appelsDisponibles = appelsDisponibles;
+const MESSAGE_APPELS_DESACTIVES = "Les appels ne sont pas disponibles pendant le pilote. La messagerie, elle, l'est.";
+
 // Démarre un APPEL SORTANT (kind = "voice" | "video").
 async function startCall(convId, kind) {
+  if (!appelsDisponibles()) {
+    toast(MESSAGE_APPELS_DESACTIVES);
+    try { if (typeof diagLog === "function") diagLog("call_refuse_pilote " + String(kind || "")); } catch (e) {}
+    return;
+  }
   if (window._call) { toast("Un appel est déjà en cours"); return; }
   if (typeof RTCPeerConnection === "undefined") { toast("Ton navigateur ne gère pas les appels"); return; }
   const peer = _callResolvePeer(convId);
@@ -1052,6 +1080,8 @@ function _callDrainPendingIce() {
 // ── Réception d'une invitation entrante (depuis le canal ring:<MY_UID>) ──
 function _callOnInvite(payload) {
   if (!payload || !payload.callId) return;
+  // Pilote (ASTRA-60) : appels désactivés — une invitation (ancien client en cache) est ignorée, et tracée.
+  if (!appelsDisponibles()) { try { if (typeof diagLog === "function") diagLog("call_ignore_pilote"); } catch (e) {} return; }
   // Un `from` qui n'est pas un compte n'est pas une invitation (cf. _callFromValide).
   if (!_callFromValide(payload.from)) return;
   // L'appelant RÉPÈTE l'invitation toutes les 2 s (fiabilité). On ignore donc
@@ -1390,6 +1420,8 @@ function _callRenderActiveUI() {
 // appels entrants. Idempotent ; appelé au boot (supaSubscribe).
 function _subscribeCallRing() {
   if (typeof supa === "undefined" || !supa || !MY_UID || window._callRingChan) return;
+  // Pilote (ASTRA-60) : appels désactivés — pas de sonnerie abonnée (un canal de moins par compte).
+  if (!appelsDisponibles()) return;
   // ⚠️ Un VRAI compte seulement : `MY_UID` est fabriqué (`u_…`) pour tout
   // visiteur, qui ne peut recevoir aucun appel. Abonner sa sonnerie privée
   // ferait mesurer à la sonde un refus « pas de compte » et le prendre pour
