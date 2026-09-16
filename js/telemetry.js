@@ -344,9 +344,27 @@
   // immédiat (le prochain essai relira un token frais). On renvoie tout de même le
   // token courant : un repli sur la clé anon échouerait de toute façon (event.user_id
   // non-null ≠ auth.uid() NULL sous la policy « user_id IS NULL OR user_id=auth.uid() »).
+  //
+  // ⚠️ MAIS ON N'ENVOIE UN JETON DE SESSION QUE SI L'APPLICATION RÉPOND DE CE
+  // COMPTE (`authUserId()` non nul) — mesuré le 2026-09-16 : un appareil SANS
+  // compte (toutes ses lignes en `user_id` NULL, « 0 utilisateur » au pilotage)
+  // portait encore un `sb-<ref>-auth-token` périmé — déconnexion restée hors
+  // ligne, session révoquée — que le SDK ne rafraîchira jamais. Chaque lot
+  // partait avec ce jeton mort : 401 × 6, puis lot JETÉ, quatre fois de suite.
+  // Or `flush` désattribue déjà toute ligne dont l'identité n'est pas celle que
+  // l'app reconnaît : sous `authUserId()` nul le lot est ENTIÈREMENT à NULL, la
+  // clé anon suffit — et c'est la seule identité que le serveur acceptera.
+  // Même repli quand un jeton porté par un vrai compte reste refusé après la
+  // grâce (voir `onAuthReject`) : ce jeton-là est mémorisé (`jetonRefuse`) et
+  // écarté tant qu'il n'a pas CHANGÉ — sinon chaque lot suivant repaierait six
+  // essais et ~30 s avant de partir. Dès que le SDK en écrit un autre, on
+  // retente l'attribution.
+  var jetonRefuse = null;
   function authToken(cfg) {
+    if (!authUserId()) return cfg.anon;
     var s = readStoredSession(cfg);
     if (!s) return cfg.anon;                    // pré-auth : insert user_id NULL toléré
+    if (jetonRefuse && s.access_token === jetonRefuse) return cfg.anon;
     var expMs = (typeof s.expires_at === "number") ? s.expires_at * 1000 : 0;
     if (expMs && Date.now() >= expMs - 10000) nudgeSessionRefresh();  // marge d'horloge 10 s
     return s.access_token || cfg.anon;
@@ -371,7 +389,16 @@
     // estampillé sous un compte puis rejoué sous un autre (déconnexion, changement
     // de compte, expiration) — qu'aucun rafraîchissement de jeton ne réconciliera.
     // On désattribue plutôt que de perdre : NULL est explicitement toléré.
-    var moi = authUserId();
+    // ⚠️ ET L'IDENTITÉ DES LIGNES SUIT LE JETON, JAMAIS L'INVERSE : sous la clé
+    // anon (pas de compte reconnu, jeton retiré par le SDK, ou repli après la
+    // grâce) `auth.uid()` est NULL, donc toute ligne portant un uuid ferait
+    // refuser le lot entier. Le jeton se choisit d'abord, les lignes s'alignent.
+    var jeton = authToken(cfg);
+    var moi = (jeton === cfg.anon) ? null : authUserId();
+    // La décision voyage AVEC la requête : deux envois peuvent être en vol (le
+    // chemin `keepalive` ignore `sending`), et un rejet doit être jugé sur ce
+    // que SON lot portait, jamais sur un drapeau global qui a pu changer.
+    opts = { keepalive: !!opts.keepalive, viaAnon: jeton === cfg.anon, jeton: jeton };
     batch = batch.map(function (ev) {
       if (ev && ev.user_id != null && ev.user_id !== moi) {
         var copie = {}; for (var k in ev) if (Object.prototype.hasOwnProperty.call(ev, k)) copie[k] = ev[k];
@@ -388,7 +415,7 @@
         headers: {
           "Content-Type": "application/json",
           apikey: cfg.anon,
-          Authorization: "Bearer " + authToken(cfg),
+          Authorization: "Bearer " + jeton,
           Prefer: "return=minimal",
         },
         body: JSON.stringify(batch),
@@ -434,19 +461,38 @@
   // Rejet d'AUTH (token périmé) : le SDK rafraîchit la session en tâche de fond (et
   // notre nudge l'a demandé). On relance un envoi en léger backoff, borné, SANS
   // toucher aux compteurs de connectivité. Au-delà de la grâce (session réellement
-  // révoquée ?), on abandonne le lot pour ne pas bloquer la file indéfiniment.
+  // révoquée ?), le lot repart DÉSATTRIBUÉ sous la clé anon — « on désattribue
+  // plutôt que de perdre », la règle de `flush` — et n'est jeté que si même
+  // cette identité-là est refusée (clé anon invalide : le lot ne passera jamais).
+  // ⚠️ Jeter était le comportement d'avant (2026-09-16 : 4 lots perdus sur un
+  // appareil sans compte qui portait un jeton mort) ; un lot désattribué reste
+  // rattachable par appareil et par session, ce que le pilotage exploite.
   function onAuthReject(status, n, opts) {
     sending = false;
-    nudgeSessionRefresh();
-    if (authRetries >= AUTH_MAX_RETRIES) {
+    if (opts.viaAnon) {
+      // Refusé SOUS LA CLÉ ANON, lignes toutes à NULL : ce lot ne passera
+      // jamais, on le retire pour ne pas bloquer la file.
       authRetries = 0;
       queue.splice(0, n); persistBacklog();
       track("connectivity", "server_reject", {
         severity: "warn", status: "error", http_status: status,
-        message: "Lot de télémétrie rejeté (auth) après " + AUTH_MAX_RETRIES + " essais (HTTP " + status + ")",
+        message: "Lot de télémétrie rejeté sous la clé anon (HTTP " + status + ")",
         meta: { dropped: n },
       });
       if (queue.length && !opts.keepalive) flush();
+      return;
+    }
+    nudgeSessionRefresh();
+    if (authRetries >= AUTH_MAX_RETRIES) {
+      authRetries = 0;
+      jetonRefuse = opts.jeton || null;   // écarté tant que le SDK n'en écrit pas un autre
+      track("connectivity", "auth_desattribue", {
+        severity: "info", status: "ok", http_status: status,
+        message: "Jeton de session refusé " + AUTH_MAX_RETRIES + " fois (HTTP " + status + ") : lot désattribué, envoyé sous la clé anon",
+        meta: { desattribue: n },
+      });
+      persistBacklog();
+      if (!opts.keepalive) flush();
       return;
     }
     authRetries++;
@@ -518,6 +564,8 @@
       });
     }
     sendFailures = 0; softFailures = 0; offlineSince = 0; authRetries = 0;
+    // `jetonRefuse` n'est PAS relevé ici : il l'est par un jeton DIFFÉRENT dans
+    // le stockage (voir `authToken`), pas par un succès obtenu sans lui.
     if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
   }
 

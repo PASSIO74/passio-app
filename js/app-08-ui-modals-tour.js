@@ -2683,6 +2683,11 @@ async function boot() {
         try { _exigerRestaurationAvantEcriture(session.user.id); } catch (e) {}
       }
       MY_UID = session.user.id;
+      // ⚠️ `MY_UID` est un `let` de portée script : `window.MY_UID` (lu par
+      // telemetry.js et platform.js) n'en est PAS le reflet. emoji-misc le pose
+      // 100 ms après le chargement depuis `passio_uid` — donc AVANT que
+      // `getSession()` n'ait répondu, et avec l'ancienne valeur (2026-09-16).
+      window.MY_UID = MY_UID;
       // ⚠️ PENDANT UNE RÉCUPÉRATION, ON N'ÉCRIT PAS `passio_uid` (constat majeur
       // de la seconde passe). L'adoption est différée ; écrire la clé ferait
       // croire au démarrage SUIVANT que cet appareil possède déjà l'état du
@@ -2889,6 +2894,7 @@ async function boot() {
         const _uidSession = session.user.id;
         const _oauthEnAttente = !!localStorage.getItem("passio_oauth_pending");
         MY_UID = _uidSession;
+        window.MY_UID = MY_UID;   // reflet pour telemetry.js / platform.js (`let` de portée script)
         localStorage.setItem("passio_uid", MY_UID);
         // Retour OAuth (Google) arrivé après le boot : finaliser + recharger dans l'app.
         if (event === "SIGNED_IN" && _oauthEnAttente) {

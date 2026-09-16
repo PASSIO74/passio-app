@@ -418,9 +418,15 @@ test.describe("Reprise des lectures de démarrage après coupure réseau", () =>
       // intercepte à la source, sans dépendre du transport ni d'un flush.
       window.tel.api = function (f) { window.__evts.push(f); };
       async function tenter() {
+        window.__evts.length = 0;
         try { await fetch("https://faux-hote.supabase.co/rest/v1/banc"); } catch (e) {}
         await new Promise((r) => setTimeout(r, 60));
-        return window.__evts.pop() || null;
+        // ⚠️ SEUL L'ÉVÉNEMENT DU FAUX HÔTE COMPTE : `pageshow` et `online`
+        // relancent des lectures de l'app (reprise), dont les événements `api`
+        // arrivent dans la même fenêtre — prendre « le dernier » rendait ce cas
+        // instable (mesuré : 0/3 puis 1/3 en local, vert en CI par hasard).
+        var miens = window.__evts.filter((f) => /faux-hote/.test(f.endpoint || f.action || ""));
+        return miens.pop() || null;
       }
       const visible = await tenter();                       // en ligne + visible
       Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
