@@ -1,0 +1,15 @@
+date: 2026-09-16T09:26:03Z · main = 5363c44e · Edge Functions run 35079268265 vert
+── SITE : https://passio-app.netlify.app/release.json
+  ℹ commit servi = a5e8c7175d08b6061d9d9c3b8d511cc3a7f143d6 · buildId c33581854df7
+  ❌ le site sert le SHA attendu 5363c44e8b0d
+── EDGE FUNCTIONS : X-Passio-Revision (OPTIONS)
+  ℹ delete-account : HTTP 200 · révision 5363c44e16c9c64d7d75782a857605869114f443
+  ❌ delete-account sert le SHA attendu
+  ℹ export-account : HTTP 200 · révision 5363c44e16c9c64d7d75782a857605869114f443
+  ❌ export-account sert le SHA attendu
+  ℹ notify-call : HTTP 200 · révision 5363c44e16c9c64d7d75782a857605869114f443
+  ❌ notify-call sert le SHA attendu
+  ℹ ask-ai : HTTP 200 · révision 5363c44e16c9c64d7d75782a857605869114f443
+  ❌ ask-ai sert le SHA attendu
+
+❌ 5 écart(s) : la cible n'est pas dans l'état du candidat.

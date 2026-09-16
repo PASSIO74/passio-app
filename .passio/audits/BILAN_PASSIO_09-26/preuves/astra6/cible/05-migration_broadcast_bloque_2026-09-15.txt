@@ -1,0 +1,16 @@
+date: 2026-09-16T09:03:57Z
+migration : migrations/migration_broadcast_bloque_2026-09-15.sql
+empreinte : 58bf50c8983c395211e11f70596cfc7bb1e6ee078d149f65fc7c3bf84d8710aa
+cible     : njkiyoklssvefstljemx (production)
+
+VERDICT (7) :
+  le trigger filtre sur le couple explicite  |  OK
+  le trigger n'APPELLE pas is_blocked_with (muet sur les chemins sans session)  |  OK
+  blocage_entre : SECURITY DEFINER, search_path vide  |  OK
+  blocage_entre : aucun oracle pour anon ni authenticated  |  OK
+  le trigger est bien posé sur conv_messages  |  OK
+  la lecture REST reste fermée au blocage (MSG-10 intacte)  |  OK
+  blocage_entre est symétrique et faux sur un même compte  |  OK
+
+✅ appliquée et journalisée. Mesurer ensuite l'état en base (canal ①).
+exit=0

@@ -1,0 +1,22 @@
+date: 2026-09-16T09:02:03Z · candidat 7accecd9 · applicateur = équivalent SQL Editor sur autorisation explicite
+migration : migrations/migration_barriere_suppression_2026-09-15.sql
+empreinte : dfa768b58696b56a2af1e7be0cbd74e16efcdbcbe9426f17a6413dad0541f881
+cible     : njkiyoklssvefstljemx (production)
+
+VERDICT (13) :
+  table du marqueur posée, sans droit client, sans écriture directe du service  |  OK
+  RLS active sur le marqueur  |  OK
+  le statut est contraint (en_cours, echec, purgee, supprimee)  |  OK
+  v3 : la tentative porte sa vitalité (tentative_vivante) et terminer_suppression connaît auth_echec  |  OK
+  le prédicat ne répond que sur l'appelant (aucun argument)  |  OK
+  SECURITY DEFINER, search_path vide (prédicat, trigger, quatre fonctions)  |  OK
+  le prédicat s'efface sans session (purge, restauration)  |  OK
+  anon et authenticated peuvent appeler le prédicat (les policies to public l'évaluent au rôle courant)  |  OK
+  les quatre fonctions d'état ne sont appelables que par service_role  |  OK
+  aucune policy d'écriture des tables du compte n'est restée sans clause  |  OK
+  chaque table de la purge PRÉSENTE ici porte le trigger, avec TOUTES ses colonnes  |  OK
+  le trigger est BEFORE, INSERT et UPDATE, par ligne  |  OK
+  aucune policy DELETE n'est gardée (la purge doit pouvoir effacer)  |  OK
+
+❌ 2 ligne(s) en ECHEC — transaction validée : lire l'état en base.
+exit=1

@@ -1,0 +1,12 @@
+date: 2026-09-16T09:04:06Z
+migration : migrations/migration_moderation_suspension_2026-09-15.sql
+empreinte : 9d31f11aed00e9d8899abac021f591e9fb535a486d7d66c52fa16f99c174c723
+cible     : njkiyoklssvefstljemx (production)
+
+VERDICT (3) :
+  journal : suspension et levee admises  |  OK
+  journal : une action inconnue reste refusée  |  OK
+  journal : toujours sans droit client  |  OK
+
+✅ appliquée et journalisée. Mesurer ensuite l'état en base (canal ①).
+exit=0

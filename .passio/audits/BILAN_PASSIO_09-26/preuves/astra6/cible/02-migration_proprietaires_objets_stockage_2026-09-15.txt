@@ -1,0 +1,15 @@
+date: 2026-09-16T09:03:06Z
+migration : migrations/migration_proprietaires_objets_stockage_2026-09-15.sql
+empreinte : 6fa366fa94058ce95417efc1489e9a35370773d7c525b5994bcde10fdcf0581c
+cible     : njkiyoklssvefstljemx (production)
+
+VERDICT (6) :
+  fonction posée  |  OK
+  SECURITY DEFINER, search_path vide  |  OK
+  aucun droit pour anon ni authenticated  |  OK
+  service_role peut l'appeler  |  OK
+  elle rend bien les quatre colonnes  |  OK
+  l'autorité de purge par propriétaire est intacte (ASTRA-11)  |  OK
+
+✅ appliquée et journalisée. Mesurer ensuite l'état en base (canal ①).
+exit=0
