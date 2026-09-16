@@ -260,6 +260,29 @@ function feedbackModal() {
   `);
 }
 
+// ⚠️ PILOTE GRATUIT (2026-09-16) — CE QUE CETTE VERSION NE FAIT PAS, DIT DANS
+// L'APPLICATION. Pas de certification, pas de promesse de fiabilité absolue :
+// ce qui est indisponible, ce qui est en test, où écrire. Le contact est celui
+// des mentions légales (`PASSIO_EDITEUR.email`), jamais un texte à part.
+function openLimitesPilote() {
+  $("#devPanel") && $("#devPanel").classList.remove("active");
+  const mail = (typeof PASSIO_EDITEUR !== "undefined" && PASSIO_EDITEUR && PASSIO_EDITEUR.email) ? PASSIO_EDITEUR.email : "";
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Limites de cette version pilote</div>
+    <div class="modal-subtitle">PASSIO est ouvert gratuitement, à un petit nombre de personnes, pour observer les vrais parcours. Voici ce qu'il faut savoir.</div>
+    <ul style="font-size:13px;color:var(--muted);margin:0 0 12px 18px;line-height:1.7;">
+      <li><strong>Indisponible pour l'instant</strong> : les appels audio et vidéo. La messagerie, les photos et les vocaux fonctionnent.</li>
+      <li><strong>En test</strong> : les notifications, l'export de tes données, la suppression de compte. Elles fonctionnent ; si l'une d'elles te répond par une erreur, elle te dit quoi faire — et rien n'est annoncé comme fait s'il ne l'est pas.</li>
+      <li><strong>Pas de garantie de disponibilité</strong> : c'est une beta. Garde une copie de ce qui compte pour toi (« Exporter mes données » dans les réglages).</li>
+      <li><strong>Tes données</strong> : la <span role="button" tabindex="0" onclick="openPrivacyPolicy()" style="color:var(--accent);font-weight:700;cursor:pointer;text-decoration:underline;">politique de confidentialité</span> dit ce qui est collecté et pourquoi. Tu peux supprimer ton compte à tout moment.</li>
+      <li><strong>Un problème, une question, un contenu à signaler</strong> : ${mail ? `<strong style="color:var(--accent);user-select:all;">${escapeHtml(mail)}</strong> (bouton « Feedback & aide » pour écrire depuis l'app)` : "le bouton « Feedback & aide »"}, ou le bouton « Signaler » sur chaque contenu.</li>
+    </ul>
+    <button class="btn primary block" onclick="closeModal()">Compris</button>
+  `);
+}
+window.openLimitesPilote = openLimitesPilote;
+
 function saveFeedback() {
   const champ = (id) => { const el = $("#" + id); return el ? el.value.trim() : ""; };
   const fb = {
