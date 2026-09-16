@@ -429,27 +429,76 @@ test.describe("Reprise des lectures de démarrage après coupure réseau", () =>
       Object.defineProperty(navigator, "onLine", { configurable: true, get: () => false });
       const horsLigne = await tenter();
       Object.defineProperty(navigator, "onLine", { configurable: true, get: () => true });
-      return { visible, masquee, horsLigne };
+      // iOS : `pagehide` arrive AVANT `visibilitychange` — la page se dit encore
+      // « visible » et en ligne, mais ses requêtes en vol tombent quand même
+      // (mesuré en production le 2026-09-16). Le drapeau `unloading` du hook
+      // est posé par l'écouteur `pagehide` de telemetry.js lui-même.
+      window.dispatchEvent(new Event("pagehide"));
+      const fermeture = await tenter();
+      // Retour depuis le bfcache : `pageshow` relève le drapeau, sinon TOUT
+      // échec inexpliqué serait tu pour le reste de la vie de l'onglet.
+      window.dispatchEvent(new Event("pageshow"));
+      const apresRetour = await tenter();
+      return { visible, masquee, horsLigne, fermeture, apresRetour };
     });
 
-    // Les trois doivent exister : sans ce contrôle, un `null` donnerait un
+    // Les cinq doivent exister : sans ce contrôle, un `null` donnerait un
     // TypeError illisible au lieu d'un échec qui dit quoi regarder.
     expect(r.visible).not.toBeNull();
     expect(r.masquee).not.toBeNull();
     expect(r.horsLigne).not.toBeNull();
+    expect(r.fermeture).not.toBeNull();
+    expect(r.apresRetour).not.toBeNull();
     // Un échec réseau page visible et en ligne : personne ne sait l'expliquer,
     // il ne doit pas se taire.
     expect(r.visible.severity).toBe("error");
     expect(r.visible.http_status).toBe(0);
+    expect(r.visible.meta.fermeture).toBe(false);
     // Page masquée / appareil hors ligne : la cause est PROUVÉE au moment de
     // l'échec, ce n'est pas un défaut de notre code.
     expect(r.masquee.severity).toBe("warn");
     expect(r.masquee.meta.masquee).toBe(true);
     expect(r.horsLigne.severity).toBe("warn");
     expect(r.horsLigne.meta.hors_ligne).toBe(true);
-    // Le statut reste « error » dans les trois cas : l'appel a bel et bien
+    // Page en train de partir (`pagehide` reçu) : cause prouvée, même visible.
+    expect(r.fermeture.severity).toBe("warn");
+    expect(r.fermeture.meta.fermeture).toBe(true);
+    expect(r.fermeture.meta.masquee).toBe(false);
+    // Après `pageshow`, le drapeau est retombé : l'inexpliqué recrie.
+    expect(r.apresRetour.severity).toBe("error");
+    expect(r.apresRetour.meta.fermeture).toBe(false);
+    // Le statut reste « error » dans tous les cas : l'appel a bel et bien
     // échoué, on n'efface pas le fait, on cesse seulement de crier.
     expect(r.masquee.status).toBe("error");
+    expect(r.fermeture.status).toBe("error");
+  });
+
+  test("⑪ bis admission : une coupure réseau part en warn, un refus serveur reste error", async ({ page }) => {
+    await bootOnboarded(page, null);
+    const r = await page.evaluate(() => {
+      // `admissionEchec` (app-07) remonte au pilotage par `tel.error` : on
+      // intercepte à la source, comme pour le hook fetch.
+      const evts = [];
+      window.tel = window.tel || {};
+      window.tel.error = function (err, ctx) { evts.push({ message: err && err.message, ctx }); };
+      // Le libellé RÉEL d'une requête coupée (Chrome), avec la classe réelle.
+      admissionEchec("declare", new TypeError("Failed to fetch"));
+      // Un refus PostgREST : la fonction n'existe pas sur cet environnement.
+      admissionEchec("declare", { code: "PGRST202", message: "Could not find the function" });
+      // Une levée sans rien (ReferenceError d'un `typeof` oublié, par exemple).
+      admissionEchec("statut", new ReferenceError("x is not defined"));
+      return evts;
+    });
+    expect(r).toHaveLength(3);
+    expect(r[0].ctx.severity).toBe("warn");
+    expect(r[0].ctx.meta.statut).toBe("reseau");
+    expect(r[0].ctx.action).toBe("admission");
+    expect(r[1].ctx.severity).toBe("error");
+    expect(r[1].ctx.meta.statut).toBe("erreur");
+    expect(r[2].ctx.severity).toBe("error");
+    expect(r[2].ctx.meta.statut).toBe("erreur");
+    // Le contexte (où) survit dans les deux cas : c'est ce qui dit quoi regarder.
+    expect(r[0].ctx.meta.ctx).toBe("declare");
   });
 
   test("⑫ contrat de source : le câblage existe aux deux points de lecture", async () => {
