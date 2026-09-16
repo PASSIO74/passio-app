@@ -87,6 +87,21 @@ language sql
 immutable
 as $$ select p_kind in ('mention', 'follow', 'follow_request', 'follow_accept') $$;
 
+-- ⚠️ Sixième contre-revue (16/09) — L'ESPACE D'IDENTIFIANTS DU SERVEUR. Les
+-- mentions portent un identifiant DÉTERMINISTE (`n_m_<md5>`) pour être
+-- idempotentes (ON CONFLICT). Si un client pouvait écrire une ligne avec cet
+-- identifiant AVANT (à un autre destinataire, un autre genre), l'ON CONFLICT
+-- « mettrait à jour » la ligne du squatteur : la personne mentionnée ne
+-- recevrait rien, et le texte de la mention irait ailleurs. Le préfixe `n_m_`
+-- est donc RÉSERVÉ au serveur (policy ②), ET `notifier_mentions` garde son
+-- conflit par destinataire (③) — les deux, pas l'un ou l'autre.
+create or replace function public.identifiant_reserve_au_serveur(p_id text)
+returns boolean
+language sql
+immutable
+as $$ select p_id like 'n\_m\_%' $$;
+grant execute on function public.identifiant_reserve_au_serveur(text) to anon, authenticated, service_role;
+
 -- ② LES GENRES RÉSERVÉS AU SERVEUR sortent de la policy d'INSERT des clients ─
 -- On RÉÉCRIT la policy existante (deux policies permissives s'additionneraient).
 do $$
@@ -100,11 +115,18 @@ begin
   loop
     expr := coalesce(r.with_check, r.qual);
     if expr is null then continue; end if;
-    if position('genres_reserves_au_serveur' in expr) > 0 then continue; end if;
-    execute format('alter policy %I on public.notifications with check (%s and not public.genres_reserves_au_serveur(kind))', r.policyname, expr);
+    -- ⚠️ Sixième contre-revue (16/09) : la clause pose AUSSI la réserve d'identifiant
+    -- (`n_m_…` est au serveur — voir ③). Idempotent : une policy qui a déjà les
+    -- deux clauses est sautée ; une policy qui n'a que la première reçoit la seconde.
+    if position('genres_reserves_au_serveur' in expr) > 0 and position('identifiant_reserve_au_serveur' in expr) > 0 then continue; end if;
+    if position('genres_reserves_au_serveur' in expr) > 0 then
+      execute format('alter policy %I on public.notifications with check (%s and not public.identifiant_reserve_au_serveur(id))', r.policyname, expr);
+    else
+      execute format('alter policy %I on public.notifications with check (%s and not public.genres_reserves_au_serveur(kind) and not public.identifiant_reserve_au_serveur(id))', r.policyname, expr);
+    end if;
     n := n + 1;
   end loop;
-  raise notice 'genres réservés posés sur % policy(ies)', n;
+  raise notice 'genres et identifiants réservés posés sur % policy(ies)', n;
 end $$;
 
 -- ③ LA MENTION, ÉCRITE PAR LE SERVEUR ──────────────────────────────────────
@@ -153,9 +175,21 @@ begin
     if public.is_blocked_with(cible) then continue; end if;
     if p_genre = 'message' and not exists (select 1 from public.conv_members cm where cm.conv_id = p_ref_id and cm.user_id = cible) then continue; end if;
     ident := 'n_m_' || left(md5(p_genre || '|' || p_ref_id || '|' || moi || '|' || cible), 20);
+    -- ⚠️ ON CONFLICT GARDÉ PAR DESTINATAIRE (sixième contre-revue, 16/09) : la
+    -- mise à jour ne touche la ligne existante QUE si c'est bien la mention de
+    -- CE destinataire par CET émetteur. Une ligne préexistante sous cet
+    -- identifiant qui appartient à quelqu'un d'autre (squat, collision) n'est
+    -- ni réécrite ni comptée : on écrit alors la mention sous un identifiant
+    -- neuf, pour que la personne mentionnée la reçoive quand même.
     insert into public.notifications (id, user_id, kind, from_id, ref_id, content, seen, created_at)
     values (ident, cible, 'mention', moi, p_ref_id, coalesce(nom, 'Quelqu''un') || ' t''a mentionné dans ' || contexte, false, now())
-    on conflict (id) do update set content = excluded.content, seen = false, created_at = now();
+    on conflict (id) do update set content = excluded.content, seen = false, created_at = now()
+      where public.notifications.user_id = excluded.user_id and public.notifications.from_id = excluded.from_id and public.notifications.kind = 'mention';
+    if not found then
+      insert into public.notifications (id, user_id, kind, from_id, ref_id, content, seen, created_at)
+      values ('n_m_' || left(md5(ident || '|' || clock_timestamp()::text || '|' || random()::text), 20), cible, 'mention', moi, p_ref_id,
+              coalesce(nom, 'Quelqu''un') || ' t''a mentionné dans ' || contexte, false, now());
+    end if;
     notifiees := notifiees + 1;
   end loop;
   -- Un COMPTE, jamais la liste : dire qui a été écarté révélerait un blocage.
@@ -184,6 +218,11 @@ union all select 'notifier_mentions : SECURITY DEFINER, search_path vide, refus�
              and has_function_privilege('authenticated', 'public.notifier_mentions(text, text, text[])', 'EXECUTE')
             then 'OK' else 'ECHEC' end
 union all select 'le trigger d''origine ne fait confiance qu''au réglage de transaction',
-       case when (select prosrc from pg_proc where proname = 'notifications_origine') like '%passio.notification_serveur%' then 'OK' else 'ECHEC' end;
+       case when (select prosrc from pg_proc where proname = 'notifications_origine') like '%passio.notification_serveur%' then 'OK' else 'ECHEC' end
+union all select 'l''espace d''identifiants n_m_ est réservé au serveur (policies) et le conflit des mentions est gardé par destinataire',
+       case when not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'notifications' and cmd in ('INSERT', 'ALL')
+                               and coalesce(with_check, qual) is not null and coalesce(with_check, '') not like '%identifiant_reserve_au_serveur%')
+             and (select prosrc from pg_proc where proname = 'notifier_mentions') like '%where public.notifications.user_id = excluded.user_id%'
+            then 'OK' else 'ECHEC' end;
 
 commit;

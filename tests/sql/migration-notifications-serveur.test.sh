@@ -136,6 +136,23 @@ verifier "…aucune ligne vers Chloe" "0" "$(Q "select count(*)::int from public
 verifier "plus de 20 identifiants : REFUSÉ" "REFUSE" "$(_v "$(AUTH "$A" "select public.notifier_mentions('message', 'g1', array(select 'x' || g::text from generate_series(1, 21) g));")")"
 verifier "une mention sur une conversation où l'appelant n'a PAS écrit récemment : REFUSÉ" "REFUSE" "$(_v "$(AUTH "$L1" "select public.notifier_mentions('message', 'g1', array['$A']);")")"
 
+echo "── ⑤ bis UN IDENTIFIANT PRÉEXISTANT, À UN AUTRE DESTINATAIRE, AVANT ON CONFLICT (16/09) ──"
+# L'identifiant déterministe de « A mentionne Lea (1) sur p1 » est calculable par
+# quiconque connaît la règle. On pose D'ABORD, sous cet identifiant, une ligne
+# qui appartient à Chloe (un autre destinataire, un autre genre) — comme le
+# ferait un squat avant la migration, ou une collision.
+IDENT_L1="$(Q "select 'n_m_' || left(md5('commentaire' || '|' || 'p1' || '|' || '$A' || '|' || '$L1'), 20);")"
+Q "delete from public.notifications where kind='mention' and ref_id='p1' and user_id='$L1';" >/dev/null
+Q "insert into public.notifications (id, user_id, kind, from_id, ref_id, content) values ('$IDENT_L1', '$C', 'like', '$B', 'autre', 'la ligne de Chloe');" >/dev/null
+r6="$(AUTH "$A" "select public.notifier_mentions('commentaire', 'p1', array['$L1'])::text;")"
+verifier "la mention est comptée (notifiees = 1)" "1" "$(json "$r6" notifiees)"
+verifier "la ligne de Chloe est INTACTE (destinataire, genre, texte)" "$C|like|la ligne de Chloe" "$(Q "select user_id || '|' || kind || '|' || content from public.notifications where id='$IDENT_L1';")"
+verifier "…et Lea (1) reçoit quand même sa mention, sous un identifiant NEUF" "1" "$(Q "select count(*)::int from public.notifications where kind='mention' and ref_id='p1' and user_id='$L1' and id <> '$IDENT_L1' and id like 'n\\_m\\_%';")"
+verifier "…d'origine serveur, texte dérivé" "serveur|Alex t'a mentionné dans un commentaire" "$(Q "select origine || '|' || content from public.notifications where kind='mention' and ref_id='p1' and user_id='$L1';")"
+verifier "un client ne peut PAS écrire un identifiant de l'espace serveur (n_m_…)" "REFUSE" "$(_v "$(AUTH "$B" "insert into public.notifications (id, user_id, kind, from_id, ref_id, content) values ('n_m_squat_' || md5('x'), '$B', 'like', '$B', 'p9', 'squat');")")"
+verifier "…mais un identifiant ordinaire, oui (genre client)" "OK" "$(_v "$(AUTH "$B" "insert into public.notifications (id, user_id, kind, from_id, ref_id, content) values ('n_ordinaire', '$L1', 'like', '$B', 'p9', 'ok');")")"
+Q "delete from public.notifications where id in ('$IDENT_L1', 'n_ordinaire');" >/dev/null
+
 echo "── ⑥ MUTATIONS : le banc doit ROUGIR ─────────────────────────────────"
 Q "alter policy notifications_insert_own_author on public.notifications with check (from_id = (select auth.uid())::text);" >/dev/null
 verifier "mutation « clause retirée » : 'mention' par un client repasse" "OK" "$(_v "$(AUTH "$A" "insert into public.notifications (id, user_id, kind, from_id, ref_id, content) values ('n_mut', '$L1', 'mention', '$A', 'p1', 'x');")")"
