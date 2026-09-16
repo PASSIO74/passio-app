@@ -77,9 +77,11 @@ test.describe("Télémétrie — jeton de session mort", () => {
     await page.evaluate(() => { window.tel.action("banc_jeton_mort", {}); window.tel.flush(); });
     await page.waitForTimeout(1500);
     expect(envois.length).toBeGreaterThanOrEqual(1);
-    // L'appareil n'a pas de compte : `window.MY_UID` est un `u_…` fabriqué.
-    const uid = await page.evaluate(() => window.MY_UID);
-    expect(uid).toMatch(/^u_/);
+    // L'appareil n'a pas de compte : l'identité que l'app se fabrique
+    // (`getMyUserId`, app-08) est un `u_…`, et c'est ce que la télémétrie lit.
+    const uid = await page.evaluate(() => [getMyUserId(), window.MY_UID]);
+    expect(uid[0]).toMatch(/^u_/);
+    expect(uid[1]).toBe(uid[0]);
     for (const e of envois) {
       expect(e.viaAnon, "chaque lot part sous la clé anon, jamais sous le jeton mort").toBe(true);
       expect(e.userIds).toEqual([null]);
