@@ -75,6 +75,10 @@ test("un problème de connexion remonte en bug + marque l'appareil en difficult�
 test("un échec d'appel API compte comme problème", () => {
   store.add(ev({ event_id: "a1", type: "api", action: "GET x/posts", status: "error",
     severity: "warn", http_status: 0, endpoint: "x/rest/v1/posts", device_id: "dApi" }));
+  // Un `http_status: 0` attend d'abord son contexte (départ de la page, voir
+  // « coupures au départ » et store-coupure-depart.test.js) : ici rien ne
+  // l'explique, donc une fois le délai écoulé il est bien compté.
+  store._reglerAttente(true);
   const bug = store.bugList().find((b) => b.type === "api");
   assert.ok(bug, "un échec API est listé comme problème");
 });
