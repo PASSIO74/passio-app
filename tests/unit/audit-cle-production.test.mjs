@@ -126,3 +126,51 @@ test("⑨ RÉINJECTION sur deploy.yml RÉEL : retirer les deux `if:` fait rougir
   assert.notEqual(ouTrue, texte);
   assert.equal(auditerTexte("deploy.yml", ouTrue).manques.length, 2, "`|| true` n'est pas une garde");
 });
+
+// ═══ ASTRA-62 (sixième contre-revue, 16/09/2026) : trois faux verts synthétiques ═══
+const rouge = (texte) => { const r = auditerTexte("t.yml", texte); return r.manques.length + r.erreurs.length; };
+
+test("ASTRA-62 ① le nom du secret en MINUSCULES est le même secret pour GitHub : référence vue, garde exigée", () => {
+  const etape = (nom) => ["      - name: x", "        env:", `          K: \${{ secrets.${nom} }}`, "        run: echo"];
+  assert.equal(manques(WF("on: [pull_request]", etape("supabase_service_role_key"))), 1, "minuscules");
+  assert.equal(manques(WF("on: [pull_request]", etape("Supabase_Service_Role_Key"))), 1, "casse mixte");
+  assert.equal(manques(WF("on: [pull_request]", ["      - name: x", "        env:", "          K: ${{ secrets['supabase_service_role_key'] }}", "        run: echo"])), 1, "indexation, minuscules");
+  assert.equal(referencesCle("${{ secrets.supabase_service_role_key }}").length, 1);
+  assert.equal(manques(WF("on: [pull_request]", etape("supabase_service_role_key"), "github.event_name == 'push'")), 0, "gardée : accepté");
+});
+
+test("ASTRA-62 ② un job nommé `__proto__` n'est plus invisible : il est lu, et sa clé sans garde rougit", () => {
+  const wf = ["name: x", "on: [pull_request]", "jobs:", "  __proto__:", "    runs-on: ubuntu-latest", "    steps:", ...ETAPE_CLE("      ", null)].join("\n") + "\n";
+  const doc = lireYaml(wf);
+  assert.ok(Object.prototype.hasOwnProperty.call(doc.jobs, "__proto__"), "le job est une clé PROPRE, pas le prototype");
+  assert.equal(Object.getPrototypeOf(doc.jobs), null, "les mappings n'ont pas de prototype");
+  assert.equal(manques(wf), 1, "la clé sans garde dans le job __proto__ est un manque");
+  // Et `constructor` / `prototype` / `hasOwnProperty` sont des clés comme les autres.
+  const wf2 = ["name: x", "on: [pull_request]", "jobs:", "  constructor:", "    runs-on: ubuntu-latest", "    steps:", ...ETAPE_CLE("      ", null)].join("\n") + "\n";
+  assert.equal(manques(wf2), 1);
+  // Une clé en double (deux `if:` sur le même job — laquelle GitHub lit-il ?) n'est pas certifiée : erreur.
+  const wf3 = ["name: x", "on: [pull_request]", "jobs:", "  a:", "    runs-on: ubuntu-latest", "    if: github.event_name == 'push'", "    if: true", "    steps:", ...ETAPE_CLE("      ", null)].join("\n") + "\n";
+  assert.ok(rouge(wf3) >= 1, "clé en double → rouge");
+  assert.throws(() => lireYaml("a: 1\na: 2\n"), /clé en double/);
+});
+
+test("ASTRA-62 ③ `pull_request` encodé par un échappement YAML n'est pas lu à moitié : forme non prise en charge → rouge ; déclencheur inconnu → concerné", () => {
+  // `"pull_reque\u0073t"` : YAML le lit « pull_request », la gate d'avant lisait autre chose → pas concerné → vert.
+  const env = (on) => WF(on, ETAPE_CLE("      ", null));
+  assert.ok(rouge(env('on: ["pull_reque\\u0073t"]')) >= 1, "\\u0073 : rouge (erreur de lecture)");
+  assert.ok(rouge(env('on:\n  "pull_reque\\x73t":\n    branches: [main]')) >= 1, "\\x73 en clé : rouge");
+  assert.ok(rouge(env('on: ["pull\\_request"]')) >= 1, "\\_ (espace insécable YAML) : rouge");
+  assert.throws(() => lireYaml('a: "\\u0073"\n'), /échappement YAML non pris en charge/);
+  // Les échappements admis restent lus.
+  assert.deepEqual(lireYaml('a: "x\\"y\\n"\n').a, 'x"y\n');
+  // Un déclencheur que la gate ne connaît pas (faute, variante) : CONCERNÉ, fail-closed — la clé sans garde rougit.
+  const r = auditerTexte("t.yml", env("on: [pull_requests]"));
+  assert.equal(r.concerne, true);
+  assert.ok(r.erreurs.some((e) => /déclencheur\(s\) inconnu\(s\)/.test(e)), JSON.stringify(r.erreurs));
+  assert.equal(r.manques.length, 1);
+  // Et `secrets: inherit` vers un workflow appelé, depuis une PR, est une référence au contexte entier.
+  const appel = ["name: x", "on: [pull_request]", "jobs:", "  a:", "    uses: ./.github/workflows/autre.yml", "    secrets: inherit"].join("\n") + "\n";
+  assert.equal(manques(appel), 1, "inherit sans garde : manque");
+  const appelGarde = ["name: x", "on: [pull_request, push]", "jobs:", "  a:", "    if: github.event_name == 'push'", "    uses: ./.github/workflows/autre.yml", "    secrets: inherit"].join("\n") + "\n";
+  assert.equal(manques(appelGarde), 0, "inherit gardé : accepté");
+});

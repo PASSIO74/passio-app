@@ -38,12 +38,40 @@ function sansCommentaire(l) {
 }
 const indentDe = (l) => l.length - l.replace(/^ */, "").length;
 
+// ⚠️ ASTRA-62 : LES MAPPINGS SONT DES OBJETS SANS PROTOTYPE, ET UNE CLÉ NE
+// S'ÉCRIT QU'UNE FOIS. Un job nommé `__proto__` posé sur `{}` devenait le
+// PROTOTYPE de l'objet : `Object.entries(jobs)` ne le voyait plus, GitHub si —
+// un job invisible pour la gate, exécuté par GitHub. Avec un objet sans
+// prototype, `__proto__` est une clé comme une autre. Et une clé en double
+// (deux `if:` sur le même job) n'a pas de lecture certaine : refusée.
+function mappingVide() { return Object.create(null); }
+function poser(o, cle, valeur, ligne) {
+  if (Object.prototype.hasOwnProperty.call(o, cle)) throw new ErreurYaml("clé en double : " + String(cle).slice(0, 40), ligne);
+  o[cle] = valeur;
+}
+
 function scalaire(texte, ligne) {
   const t = texte.trim();
   if (t === "") return "";
   if (/^[&*!]/.test(t) || t.startsWith("? ")) throw new ErreurYaml("forme YAML non prise en charge : " + t.slice(0, 20), ligne);
   if (t[0] === "'" ) { if (!t.endsWith("'") || t.length < 2) throw new ErreurYaml("guillemet simple non fermé", ligne); return t.slice(1, -1).replace(/''/g, "'"); }
-  if (t[0] === '"') { if (!t.endsWith('"') || t.length < 2) throw new ErreurYaml("guillemet double non fermé", ligne); return t.slice(1, -1).replace(/\\"/g, '"').replace(/\\n/g, "\n").replace(/\\\\/g, "\\"); }
+  if (t[0] === '"') {
+    if (!t.endsWith('"') || t.length < 2) throw new ErreurYaml("guillemet double non fermé", ligne);
+    // ⚠️ ASTRA-62 : ENSEMBLE FERMÉ d'échappements. YAML en connaît une vingtaine
+    // (s, \x73, \N, \_, \L…) qui recomposent un mot que la gate compare
+    // (« pull_request ») ; les lire à moitié, c'est certifier un texte que
+    // GitHub ne lira pas. Tout échappement hors de {\" \\ \n \t} lève.
+    const corps = t.slice(1, -1);
+    let out = "";
+    for (let i = 0; i < corps.length; i++) {
+      const c = corps[i];
+      if (c !== "\\") { out += c; continue; }
+      const n = corps[++i];
+      if (n === '"') out += '"'; else if (n === "\\") out += "\\"; else if (n === "n") out += "\n"; else if (n === "t") out += "\t";
+      else throw new ErreurYaml("échappement YAML non pris en charge : \\" + (n === undefined ? "" : n), ligne);
+    }
+    return out;
+  }
   if (t[0] === "[") return flux(t, "[", "]", ligne);
   if (t[0] === "{") return flux(t, "{", "}", ligne);
   return t;
@@ -55,8 +83,8 @@ function flux(t, ouvre, ferme, ligne) {
   if (/[\[\]{}]/.test(corps)) throw new ErreurYaml("collection en ligne imbriquée : non prise en charge", ligne);
   const parts = corps === "" ? [] : corps.split(",").map((x) => x.trim()).filter((x) => x !== "");
   if (ouvre === "[") return parts.map((p) => scalaire(p, ligne));
-  const o = {};
-  for (const p of parts) { const m = /^([^:]+):\s*(.*)$/.exec(p); if (!m) throw new ErreurYaml("mapping en ligne illisible : " + p, ligne); o[scalaire(m[1], ligne)] = scalaire(m[2], ligne); }
+  const o = mappingVide();
+  for (const p of parts) { const m = /^([^:]+):\s*(.*)$/.exec(p); if (!m) throw new ErreurYaml("mapping en ligne illisible : " + p, ligne); poser(o, scalaire(m[1], ligne), scalaire(m[2], ligne), ligne); }
   return o;
 }
 
@@ -133,7 +161,7 @@ function lireYaml(texte) {
   function indentDeSuivante(i, minimum) { i = suivanteUtile(i); if (i >= lignes.length) return minimum + 1; const ind = indentDe(lignes[i].brute); if (ind <= minimum) throw new ErreurYaml("valeur attendue, plus indentée", lignes[i].n); return ind; }
 
   function mapping(i, indent) {
-    const out = {};
+    const out = mappingVide();
     while (i < lignes.length) {
       i = suivanteUtile(i);
       if (i >= lignes.length) break;
@@ -149,18 +177,18 @@ function lireYaml(texte) {
       const reste = (m[2] || "").trim();
       if (reste === "") {
         const j = suivanteUtile(i + 1);
-        if (j >= lignes.length || indentDe(lignes[j].brute) <= indent && !(/^\s*-(\s|$)/.test(lignes[j].t) && indentDe(lignes[j].brute) === indent)) { out[cle] = ""; i++; continue; }
+        if (j >= lignes.length || indentDe(lignes[j].brute) <= indent && !(/^\s*-(\s|$)/.test(lignes[j].t) && indentDe(lignes[j].brute) === indent)) { poser(out, cle, "", l.n); i++; continue; }
         // Une séquence peut être au MÊME niveau que sa clé (`on:\n- push`) : YAML l'admet.
         const r = noeud(j, indentDe(lignes[j].brute));
-        out[cle] = r.valeur; i = r.pos; continue;
+        poser(out, cle, r.valeur, l.n); i = r.pos; continue;
       }
-      if (/^[|>]/.test(reste)) { const r = bloc(reste, indent, i + 1, l.n); out[cle] = r.valeur; i = r.pos; continue; }
-      out[cle] = scalaire(reste, l.n); i++;
+      if (/^[|>]/.test(reste)) { const r = bloc(reste, indent, i + 1, l.n); poser(out, cle, r.valeur, l.n); i = r.pos; continue; }
+      poser(out, cle, scalaire(reste, l.n), l.n); i++;
     }
     return { valeur: out, pos: i };
   }
 
-  if (pos >= lignes.length) return {};
+  if (pos >= lignes.length) return mappingVide();
   const racine = noeud(pos, indentDe(lignes[pos].brute));
   const reste = suivanteUtile(racine.pos);
   if (reste < lignes.length) throw new ErreurYaml("contenu inattendu après la racine", lignes[reste].n);

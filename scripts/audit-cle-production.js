@@ -58,7 +58,9 @@ const EVENEMENTS_PR = ["pull_request", "pull_request_target"];
 function referencesCle(chaine) {
   const s = String(chaine);
   const out = [];
-  const re = new RegExp("secrets\\s*(?:\\.\\s*" + NOM_CLE + "\\b|\\[\\s*['\"]" + NOM_CLE + "['\"]\\s*\\])", "g");
+  // ⚠️ ASTRA-62 : les noms de secrets sont INSENSIBLES À LA CASSE pour GitHub
+  // (`secrets.supabase_service_role_key` rend la même valeur) — la gate aussi.
+  const re = new RegExp("secrets\\s*(?:\\.\\s*" + NOM_CLE + "\\b|\\[\\s*['\"]" + NOM_CLE + "['\"]\\s*\\])", "gi");
   let m;
   while ((m = re.exec(s))) out.push({ forme: "directe", texte: m[0] });
   // Le contexte secrets ENTIER, sous toutes ses formes connues.
@@ -77,9 +79,21 @@ function declencheurs(doc) {
   if (on && typeof on === "object") return { evenements: Object.keys(on), lisible: true };
   return { evenements: [], lisible: false, motif: "forme de `on` inconnue" };
 }
+// ⚠️ ASTRA-62 : un déclencheur que la gate NE CONNAÎT PAS n'est pas « pas une
+// pull request » — c'est un nom qu'elle ne sait pas lire (échappement,
+// variante, faute) et que GitHub lira peut-être autrement. Fail-closed : un
+// événement hors de la liste des événements GitHub rend le workflow CONCERNÉ.
+const EVENEMENTS_GITHUB = new Set([
+  "branch_protection_rule", "check_run", "check_suite", "create", "delete", "deployment", "deployment_status", "discussion",
+  "discussion_comment", "fork", "gollum", "issue_comment", "issues", "label", "merge_group", "milestone", "page_build", "public",
+  "pull_request", "pull_request_comment", "pull_request_review", "pull_request_review_comment", "pull_request_target", "push",
+  "registry_package", "release", "repository_dispatch", "schedule", "status", "watch", "workflow_call", "workflow_dispatch", "workflow_run",
+]);
 function concerneParPullRequest(doc) {
   const d = declencheurs(doc);
   if (!d.lisible) return { concerne: true, motif: "déclencheurs illisibles (" + (d.motif || "?") + ") : traité comme concerné", evenements: d.evenements };
+  const inconnus = d.evenements.filter((e) => !EVENEMENTS_GITHUB.has(String(e)));
+  if (inconnus.length) return { concerne: true, motif: "déclencheur(s) inconnu(s) de la gate (" + inconnus.join(", ") + ") : traité comme concerné (fail-closed)", evenements: d.evenements };
   return { concerne: d.evenements.some((e) => EVENEMENTS_PR.includes(e)), evenements: d.evenements };
 }
 
@@ -157,6 +171,14 @@ function auditerTexte(nom, texte) {
     const ifJob = "if" in job ? job.if : undefined;
     const horsSteps = Object.fromEntries(Object.entries(job).filter(([k]) => k !== "steps"));
     niveau("job", horsSteps, "jobs." + jn, ifJob, undefined);
+    // ⚠️ ASTRA-62 : `secrets: inherit` vers un workflow appelé transmet le contexte
+    // ENTIER — la clé de production comprise. C'est une référence, gardée ou non.
+    if (typeof job.uses === "string" && job.secrets === "inherit") {
+      const g = ifJob !== undefined ? gardeAcceptee(ifJob, r.evenements) : { acceptee: false, motif: "aucune condition de job" };
+      const occ = { portee: "job", chemin: "jobs." + jn + ".secrets", forme: "contexte entier", texte: "secrets: inherit", extrait: "uses: " + job.uses, garde: g.acceptee ? "job : " + g.motif : null, motif: g.acceptee ? null : "job : " + g.motif };
+      r.occurrences.push(occ);
+      if (r.concerne && !occ.garde) r.manques.push(occ);
+    }
     for (const [si, step] of (Array.isArray(job.steps) ? job.steps : []).entries()) {
       if (!step || typeof step !== "object") continue;
       const ifEtape = "if" in step ? step.if : undefined;
