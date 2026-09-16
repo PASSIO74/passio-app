@@ -181,4 +181,40 @@ test.describe("AUTH-05 / SUP-10 — la suppression du compte attend le verdict",
     expect(r.signOut).toBe(0);
     expect(r.etatLocal).toBe(true);
   });
+
+  // ═══ ASTRA-56 (sixième contre-revue, 2026-09-16) : le verdict honnête jusqu'à l'interface ═══
+  test("⑧ ASTRA-56 : `finalisation_refusee` (Auth parti, marqueur non finalisé) — session fermée, local purgé, MAIS jamais « Compte supprimé »", async ({ page }) => {
+    await banc(page);
+    const r = await page.evaluate(async () => {
+      const reponse = (status, corps) => Promise.resolve({ data: null, error: { name: "FunctionsHttpError", message: "non-2xx",
+        context: { status, json: () => Promise.resolve(corps) } } });
+      window.__verdict = () => reponse(500, { ok: false, code: "finalisation_refusee", auth_supprimee: true, donnees_purgees: true, marqueur: "echec", protection: false, error: "x" });
+      const ok = await doDeleteAccount();
+      const clesPassio = Object.keys(localStorage).filter((k) => k.indexOf("passio") !== -1);
+      return { ok, toasts: window.__toasts.slice(), signOut: window.__signOut, clesPassio };
+    });
+    // Le compte Auth n'existe plus : la session et le local partent (il n'y a plus rien à relancer)…
+    expect(r.ok).toBe(true);
+    expect(r.signOut).toBe(1);
+    expect(r.clesPassio).toEqual([]);
+    // …mais le succès garanti n'est PAS annoncé : l'état réel est dit, avec le contact.
+    expect(r.toasts.some((t) => /^Compte supprimé/.test(t)), "jamais « Compte supprimé » sans garantie").toBe(false);
+    expect(r.toasts.some((t) => /confirmation finale n'a pas pu être enregistrée/.test(t)), JSON.stringify(r.toasts)).toBe(true);
+  });
+
+  test("⑨ ASTRA-56 : une reprise arrêtée après une purge antérieure ne dit plus « rien n'a été supprimé »", async ({ page }) => {
+    await banc(page);
+    const r = await page.evaluate(async () => {
+      const reponse = (status, corps) => Promise.resolve({ data: null, error: { name: "FunctionsHttpError", message: "non-2xx",
+        context: { status, json: () => Promise.resolve(corps) } } });
+      window.__verdict = () => reponse(409, { ok: false, code: "en_vol", donnees_purgees: true, barriere: "conservee", marqueur: "purgee", error: "x" });
+      const ok = await doDeleteAccount();
+      return { ok, toasts: window.__toasts.slice(), signOut: window.__signOut, etatLocal: localStorage.getItem(STATE_KEY) !== null };
+    });
+    expect(r.ok).toBe(false);
+    expect(r.signOut).toBe(0);
+    expect(r.etatLocal).toBe(true);
+    expect(r.toasts.some((t) => /rien n'a été supprimé/.test(t)), "faux : les données sont parties").toBe(false);
+    expect(r.toasts.some((t) => /déjà été supprimées/.test(t)), JSON.stringify(r.toasts)).toBe(true);
+  });
 });

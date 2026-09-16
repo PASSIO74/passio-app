@@ -222,6 +222,14 @@ export async function listerObjetsDuCompte(admin, uid) {
 //      purge relançable) ; `purgee` la CONSERVE (le compte Auth doit encore
 //      partir) ; `supprimee` (posé par `marquerSupprime` après deleteUser) la
 //      conserve pour la rétention.
+// ⚠️ ASTRA-56 (sixième contre-revue, 16/09) — LA BARRIÈRE v3. Une tentative
+// VIVANTE n'est plus reprenable même en `purgee` (A attend deleteUser : B
+// n'obtient rien) ; `echec` sur un compte dont les données sont parties
+// s'ÉCRIT `purgee` (la protection ne se lève jamais après une purge) ; un
+// deleteUser en échec pose l'événement `auth_echec` (`marquerAuthEchec`) qui
+// TERMINE la tentative sans lever la protection. Ce fichier ne suppose plus
+// l'état du marqueur : il rapporte `statut_marqueur` tel que SQL l'a écrit, et
+// `donnees_purgees` dès que SQL dit qu'une purge antérieure a eu lieu.
 // ⚠️ SANS INFRASTRUCTURE (migration non appliquée) LA PURGE NE PART PLUS
 // (ASTRA-42). La v1 continuait « en le disant » — et le handler jetait la note :
 // HTTP 200, `ok:true`, pour une suppression que rien ne garantissait. Une purge
@@ -247,17 +255,33 @@ async function appelerRpc(admin, nom, args) {
   } catch (e) { return { erreur: { message: (e && e.message) || "exception" } }; }
 }
 
-/** Fin d'opération, conditionnelle au jeton. Rend { ok, motif, statut } ; ok ⇔ la ligne était bien la nôtre. */
+/**
+ * Fin d'opération, conditionnelle au jeton. Rend { ok, motif, statut, protection, donnees_deja_purgees } ;
+ * ok ⇔ la ligne était bien la nôtre. `statut` et `protection` sont ceux que
+ * SQL a ÉCRITS (ou lus, sur un refus) — jamais l'événement demandé (ASTRA-56 :
+ * `echec` demandé sur un compte purgé s'écrit `purgee`, et le dit).
+ */
 async function terminer(admin, uid, jeton, statut, detail) {
   const r = await appelerRpc(admin, RPC_TERMINER, { p_uid: uid, p_jeton: jeton, p_statut: statut, p_detail: detail || null });
-  if (r.erreur) return { ok: false, motif: r.erreur.message || "erreur", statut: null };
+  if (r.erreur) return { ok: false, motif: r.erreur.message || "erreur", statut: null, protection: null, donnees_deja_purgees: null };
   const d = r.data || {};
-  return { ok: d.ok === true, motif: d.motif || null, statut: d.statut || null };
+  return { ok: d.ok === true, motif: d.motif || null, statut: d.statut || null,
+           protection: typeof d.protection === "boolean" ? d.protection : null,
+           donnees_deja_purgees: typeof d.donnees_deja_purgees === "boolean" ? d.donnees_deja_purgees : null };
 }
 
-/** Après `deleteUser` : le marqueur passe en `supprimee` (rétention). Rend { ok, motif, statut }. */
+/** Après `deleteUser` : le marqueur passe en `supprimee` (rétention). Rend { ok, motif, statut, protection }. */
 export async function marquerSupprime(admin, uid, jeton) {
   return terminer(admin, uid, jeton, "supprimee", null);
+}
+
+/**
+ * Après un `deleteUser` en ÉCHEC : la tentative est TERMINÉE, les données sont
+ * parties, la protection reste (`purgee`) — et la ligne redevient reprenable
+ * tout de suite (ASTRA-56, règle ③). Rend { ok, motif, statut, protection }.
+ */
+export async function marquerAuthEchec(admin, uid, jeton, detail) {
+  return terminer(admin, uid, jeton, "auth_echec", detail || null);
 }
 
 /**
@@ -289,22 +313,40 @@ export async function purgerCompte(admin, uid, options) {
   const etat = rec.data || {};
   if (etat.acquise !== true) {
     const code = etat.statut === "supprimee" ? "deja_supprimee" : "deja_en_cours";
-    notes.push(`tentative non acquise : statut ${etat.statut || "?"}`);
+    notes.push(`tentative non acquise : statut ${etat.statut || "?"}${etat.motif ? " (" + etat.motif + ")" : ""}`);
     return { ok: false, code, barriere: "occupee", statut: etat.statut || null, ...base };
   }
+  // ⚠️ ASTRA-56 : une reprise depuis `purgee` (Auth échoué, ou tentative morte
+  // après sa purge) part d'un compte dont les DONNÉES SONT DÉJÀ PARTIES. On le
+  // sait dès ici, et chaque arrêt ultérieur le dira — « rien n'a été supprimé »
+  // serait faux.
+  if (etat.donnees_deja_purgees === true) {
+    base.donnees_purgees = true;
+    notes.push(`reprise : les données de ce compte ont déjà été purgées (${etat.purge_terminee_le || "date inconnue"}) ; reste la suppression Auth`);
+  }
+
+  // Un arrêt en `echec` : SQL n'écrit `echec` que si les données ne sont pas
+  // parties ; sinon il ÉCRIT `purgee` (règle ②) et le rend. On rapporte ce qu'il
+  // a écrit, pas ce qu'on a demandé.
+  const arreter = async (code, detail) => {
+    const fin = await terminer(admin, uid, jeton, "echec", detail);
+    if (!fin.ok) echecs.push(`barrière:fin (${fin.motif || "refus"}, statut ${fin.statut || "?"})`);
+    const out = { ok: false, code: fin.ok ? code : "jeton_perdu", barriere: fin.ok ? (fin.statut === "purgee" ? "conservee" : "levee") : "perdue",
+                  statut_marqueur: fin.statut, ...base };
+    if (fin.donnees_deja_purgees === true) out.donnees_purgees = true;
+    return out;
+  };
 
   // ⓪' LES ÉCRITURES DÉJÀ ENGAGÉES (ASTRA-41).
   const vol = await appelerRpc(admin, RPC_ATTENDRE, { p_max_ms: ATTENTE_EN_VOL_MS });
   if (vol.erreur) {
     echecs.push(`barrière:en_vol (${vol.erreur.message || vol.erreur.code || "erreur"})`);
-    await terminer(admin, uid, jeton, "echec", { echecs });
-    return { ok: false, code: "en_vol", barriere: "posee", ...base };
+    return arreter("en_vol", { echecs });
   }
   const enVol = vol.data || {};
   if (typeof enVol.restantes !== "number" || enVol.restantes > 0) {
     echecs.push(`écritures en vol non terminées (${typeof enVol.restantes === "number" ? enVol.restantes : "illisible"}) après ${enVol.attendu_ms || "?"} ms`);
-    await terminer(admin, uid, jeton, "echec", { echecs, en_vol: enVol });
-    return { ok: false, code: "en_vol", barriere: "posee", ...base };
+    return arreter("en_vol", { echecs, en_vol: enVol });
   }
   if (enVol.en_vol_initial > 0) notes.push(`${enVol.en_vol_initial} transaction(s) en vol attendue(s) pendant ${enVol.attendu_ms} ms`);
 
@@ -371,14 +413,15 @@ export async function purgerCompte(admin, uid, options) {
   // (`purgee`) : le compte Auth part juste après, et lever la marque rouvrirait
   // l'écriture dans la fenêtre qui sépare les deux. Sur un échec, `echec` lève
   // la protection — MAIS seulement si la tentative est encore la nôtre.
-  const fin = await terminer(admin, uid, jeton, purgeOk ? "purgee" : "echec", purgeOk ? null : { echecs, restes });
+  if (!purgeOk) return arreter("incomplete", { echecs, restes });
+  const fin = await terminer(admin, uid, jeton, "purgee", null);
   if (!fin.ok) {
     // Une autre tentative a repris le compte pendant la nôtre (tentative réputée
     // morte, reprise) : NOTRE relecture ne vaut plus rien pour ELLE, et on ne
     // doit surtout pas supprimer le compte Auth sur la foi d'une purge dont on
     // n'a plus la garde.
     echecs.push(`barrière:fin (${fin.motif || "refus"}, statut ${fin.statut || "?"})`);
-    return { ok: false, code: "jeton_perdu", barriere: "perdue", ...base };
+    return { ok: false, code: "jeton_perdu", barriere: "perdue", statut_marqueur: fin.statut, ...base };
   }
-  return { ok: purgeOk, code: purgeOk ? null : "incomplete", barriere: "posee", ...base };
+  return { ok: true, code: null, barriere: "posee", statut_marqueur: fin.statut, ...base };
 }

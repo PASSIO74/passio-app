@@ -223,14 +223,82 @@ Q "update public.comptes_en_suppression set tentative_debut = now() - interval '
 verifier "une tentative en_cours MORTE (20 min) est reprise par J1" "true" "$(json "$(Q "select public.reclamer_suppression('$A', '$J1')::text;")" acquise)"
 verifier "…et J2, périmé, ne peut plus rien retirer" "jeton_perime" "$(json "$(Q "select public.terminer_suppression('$A', '$J2', 'echec')::text;")" motif)"
 verifier "purge faite, Auth pas encore parti : 'purgee' CONSERVE la protection" "REFUSE" "$(Q "select public.terminer_suppression('$A', '$J1', 'purgee');" >/dev/null; ECRIRE_ETAT "$A")"
-verifier "…et une reprise depuis 'purgee' est possible (J2)" "true" "$(json "$(Q "select public.reclamer_suppression('$A', '$J2')::text;")" acquise)"
-verifier "'supprimee' : protection CONSERVÉE (rétention)" "REFUSE" "$(Q "select public.terminer_suppression('$A', '$J2', 'supprimee');" >/dev/null; ECRIRE_ETAT "$A")"
+verifier "…et la tentative J1 reste VIVANTE (deleteUser suit)" "t" "$(Q "select tentative_vivante from public.comptes_en_suppression where user_id='$A';")"
+r4="$(Q "select public.reclamer_suppression('$A', '$J2')::text;")"
+verifier "ASTRA-56 ① : une reprise depuis 'purgee' VIVANTE est REFUSÉE (J2)" "false" "$(json "$r4" acquise)"
+verifier "…avec le motif" "vivante" "$(json "$r4" motif)"
+verifier "…et J2 ne peut rien terminer" "jeton_perime" "$(json "$(Q "select public.terminer_suppression('$A', '$J2', 'echec')::text;")" motif)"
+verifier "'supprimee' : protection CONSERVÉE (rétention)" "REFUSE" "$(Q "select public.terminer_suppression('$A', '$J1', 'supprimee');" >/dev/null; ECRIRE_ETAT "$A")"
 verifier "…et plus AUCUNE réclamation possible" "false" "$(json "$(Q "select public.reclamer_suppression('$A', '$J1')::text;")" acquise)"
 verifier "la rétention refuse une durée < 30 jours (les sauvegardes vivent 30 jours)" "REFUSE" "$(_v "$(Q "select public.purger_marqueurs_suppression(interval '7 days');")")"
 verifier "…et ne retire rien avant l'échéance" "0" "$(Q "select public.purger_marqueurs_suppression(interval '45 days');")"
 Q "update public.comptes_en_suppression set supprimee_le = now() - interval '50 days' where user_id='$A';" >/dev/null
 verifier "…puis retire le marqueur échu" "1" "$(Q "select public.purger_marqueurs_suppression(interval '45 days');")"
 verifier "le service ne peut PAS écrire le marqueur directement (tout passe par les fonctions)" "REFUSE" "$(_v "$(SVC "insert into public.comptes_en_suppression (user_id) values ('$A');")")"
+
+echo "── ⑤ bis ASTRA-56 : L'ENTRELACEMENT DE DEUX TENTATIVES, SUR POSTGRESQL RÉEL ──"
+# Le contre-exemple de la sixième contre-revue, transition par transition. Le
+# marqueur de A vient d'être retiré par la rétention : on repart d'une base
+# sans ligne. `SUPP()` est ce que purge-compte.js fait entre deux appels SQL
+# (ici : rien à effacer, la purge est un DELETE sans session).
+STATUT() { Q "select statut || '/' || tentative_vivante::text || '/' || coalesce(jeton::text,'-') from public.comptes_en_suppression where user_id='$1';"; }
+verifier "A (J1) réclame" "true" "$(json "$(Q "select public.reclamer_suppression('$A', '$J1')::text;")" acquise)"
+verifier "…et attend les écritures en vol : aucune" "0" "$(json "$(Q "select public.attendre_ecritures_en_vol(200)::text;")" restantes)"
+Q "delete from public.user_state where user_id='$A';" >/dev/null
+verifier "A termine sa purge : 'purgee', vivante, J1" "purgee/true/$J1" "$(Q "select public.terminer_suppression('$A', '$J1', 'purgee');" >/dev/null; STATUT "$A")"
+verifier "B (J2) réclame PENDANT que A attend Auth : REFUSÉ" "false" "$(json "$(Q "select public.reclamer_suppression('$A', '$J2')::text;")" acquise)"
+verifier "B tente quand même 'echec' (comme la v2 le laissait faire) : rien n'est écrit" "jeton_perime" "$(json "$(Q "select public.terminer_suppression('$A', '$J2', 'echec', '{\"echecs\":[\"en_vol\"]}')::text;")" motif)"
+verifier "…le marqueur n'a pas bougé" "purgee/true/$J1" "$(STATUT "$A")"
+verifier "…une ligne user_state écrite par le client pendant l'attente Auth : REFUSÉE" "REFUSE" "$(ECRIRE_ETAT "$A")"
+verifier "…et il n'en reste aucune" "0" "$(RESTE)"
+r5="$(Q "select public.terminer_suppression('$A', '$J1', 'supprimee')::text;")"
+verifier "A termine Auth et finalise avec SON jeton : accepté" "true" "$(json "$r5" ok)"
+verifier "…la réponse porte l'état ÉCRIT (supprimee) et la protection" "supprimee" "$(json "$r5" statut)"
+verifier "…protection = true" "true" "$(json "$r5" protection)"
+verifier "…marqueur final : supprimee, tentative terminée" "supprimee/false/$J1" "$(STATUT "$A")"
+Q "delete from public.comptes_en_suppression where user_id='$A';" >/dev/null
+
+echo "   · tentative INTERROMPUE après 'purgee' (A meurt, 15 min passent)"
+Q "select public.reclamer_suppression('$A', '$J1'); select public.terminer_suppression('$A', '$J1', 'purgee');" >/dev/null
+verifier "trop tôt : B refusé" "false" "$(json "$(Q "select public.reclamer_suppression('$A', '$J2')::text;")" acquise)"
+Q "update public.comptes_en_suppression set tentative_debut = now() - interval '20 minutes' where user_id='$A';" >/dev/null
+r6="$(Q "select public.reclamer_suppression('$A', '$J2')::text;")"
+verifier "20 min plus tard : B reprend la tentative morte" "true" "$(json "$r6" acquise)"
+verifier "…et SAIT que les données sont déjà parties" "true" "$(json "$r6" donnees_deja_purgees)"
+verifier "…la protection tient pendant la reprise" "REFUSE" "$(ECRIRE_ETAT "$A")"
+r7="$(Q "select public.terminer_suppression('$A', '$J2', 'echec', '{\"echecs\":[\"en_vol\"]}')::text;")"
+verifier "ASTRA-56 ② : B échoue en vol → 'echec' demandé s'ÉCRIT 'purgee' (jamais de levée après une purge)" "purgee" "$(json "$r7" statut)"
+verifier "…la réponse le dit (demande=echec, protection=true)" "echec/true" "$(json "$r7" demande)/$(json "$r7" protection)"
+verifier "…le client reste refusé" "REFUSE" "$(ECRIRE_ETAT "$A")"
+verifier "…et la tentative de B est TERMINÉE (reprenable aussitôt)" "purgee/false/$J2" "$(STATUT "$A")"
+verifier "…l'erreur est conservée" '{"echecs": ["en_vol"]}' "$(Q "select derniere_erreur::text from public.comptes_en_suppression where user_id='$A';")"
+verifier "A, revenue tard, ne peut plus finaliser : jeton_perime, état RÉEL rendu (purgee, protégé)" "jeton_perime/purgee/true" "$(r="$(Q "select public.terminer_suppression('$A', '$J1', 'supprimee')::text;")"; echo "$(json "$r" motif)/$(json "$r" statut)/$(json "$r" protection)")"
+Q "delete from public.comptes_en_suppression where user_id='$A';" >/dev/null
+
+echo "   · ÉCHEC AUTH (deleteUser en erreur après la purge)"
+Q "select public.reclamer_suppression('$A', '$J1'); select public.terminer_suppression('$A', '$J1', 'purgee');" >/dev/null
+r8="$(Q "select public.terminer_suppression('$A', '$J1', 'auth_echec', '{\"auth\":\"GoTrue indisponible\"}')::text;")"
+verifier "ASTRA-56 ③ : 'auth_echec' → statut purgee, tentative terminée" "purgee/false/$J1" "$(STATUT "$A")"
+verifier "…protection conservée, dite" "true" "$(json "$r8" protection)"
+verifier "…le client est refusé" "REFUSE" "$(ECRIRE_ETAT "$A")"
+verifier "…B reprend AUSSITÔT (sans attendre 15 min)" "true" "$(json "$(Q "select public.reclamer_suppression('$A', '$J2')::text;")" acquise)"
+verifier "…tentatives = 2" "2" "$(Q "select tentatives from public.comptes_en_suppression where user_id='$A';")"
+verifier "…B finalise : supprimee" "supprimee/false/$J2" "$(Q "select public.terminer_suppression('$A', '$J2', 'supprimee');" >/dev/null; STATUT "$A")"
+verifier "un événement inconnu est refusé" "REFUSE" "$(_v "$(Q "select public.terminer_suppression('$A', '$J2', 'n_importe_quoi');")")"
+Q "delete from public.comptes_en_suppression where user_id='$A';" >/dev/null
+
+echo "   · MUTATION : réclamation v2 (ignore la vitalité) — la règle ② tient seule"
+Q "select public.reclamer_suppression('$A', '$J1'); select public.terminer_suppression('$A', '$J1', 'purgee');" >/dev/null
+Q "create or replace function public.reclamer_suppression(p_uid text, p_jeton uuid, p_motif text default 'delete-account', p_perime interval default interval '15 minutes') returns jsonb language plpgsql security definer set search_path = '' as \$m\$ declare c public.comptes_en_suppression%rowtype; begin update public.comptes_en_suppression set statut='en_cours', jeton=p_jeton, tentatives=tentatives+1, tentative_debut=now(), tentative_vivante=true where user_id=p_uid returning * into c; return jsonb_build_object('acquise', true, 'statut', c.statut, 'jeton', c.jeton); end \$m\$;" >/dev/null
+verifier "mutation « purgee reprenable » : B obtient le marqueur de A vivante (un banc qui exige le refus rougit)" "true" "$(json "$(Q "select public.reclamer_suppression('$A', '$J2')::text;")" acquise)"
+verifier "…mais son 'echec' s'écrit encore 'purgee' : la protection tient malgré la mutation" "purgee" "$(json "$(Q "select public.terminer_suppression('$A', '$J2', 'echec')::text;")" statut)"
+verifier "…le client reste refusé" "REFUSE" "$(ECRIRE_ETAT "$A")"
+psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -f "$MIGRATION" >/dev/null 2>&1 || true
+Q "delete from public.comptes_en_suppression where user_id='$A';" >/dev/null
+Q "select public.reclamer_suppression('$A', '$J1'); select public.terminer_suppression('$A', '$J1', 'purgee');" >/dev/null
+verifier "rétabli : B refusé sur une tentative vivante" "false" "$(json "$(Q "select public.reclamer_suppression('$A', '$J2')::text;")" acquise)"
+Q "select public.terminer_suppression('$A', '$J1', 'supprimee');" >/dev/null
+Q "delete from public.comptes_en_suppression where user_id='$A';" >/dev/null
 
 echo "── ⑥ AUCUN ORACLE ────────────────────────────────────────────────────"
 verifier "anon peut appeler le prédicat (policies to public) et n'obtient que false" "f" "$(ANON "select public.suppression_de_mon_compte();")"

@@ -19,10 +19,77 @@ export const AUTRE = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 //   "refus"     : la fonction existe et lève ;
 //   "occupee"   : réclamation NON acquise (une autre tentative est vivante) ;
 //   "supprimee" : NON acquise, le compte est déjà supprimé.
-// `enVol` : la réponse d'`attendre_ecritures_en_vol` ({ en_vol_initial, restantes, attendu_ms }) ou "absente".
+// `enVol` : la réponse d'`attendre_ecritures_en_vol` ({ en_vol_initial, restantes, attendu_ms }) ou "absente",
+//   ou une FONCTION (numéro d'appel → réponse) pour faire échouer une tentative précise.
 // `terminerRefuse` : `terminer_suppression` répond { ok:false, motif:"jeton_perime" } (une autre tentative a repris le compte).
-export function fauxAdmin({ tables = {}, seaux = {}, pannesDelete = [], pannesCount = [], pannesList = [], pannesRemove = [], rpc = "ok", pannesListApres = [], ecrituresTardives = {}, barriere = "ok", enVol = { en_vol_initial: 0, restantes: 0, attendu_ms: 0 }, terminerRefuse = false } = {}) {
+//
+// ⚠️ ASTRA-56 (sixième contre-revue, 2026-09-16) : `barriere: "modele"` remplace
+// « il rend ce qu'on lui dit » par un MODÈLE DES TRANSITIONS SQL de
+// `reclamer_suppression` / `terminer_suppression`, écrit d'après le texte de la
+// migration — `modele: "v3"` (le correctif) ou `modele: "v2"` (le texte du
+// 15/09, pour rejouer le contre-exemple). Ce modèle N'EST PAS la preuve : c'est
+// `tests/sql/migration-barriere-suppression.test.sh` § ⑤ bis qui joue le même
+// entrelacement sur PostgreSQL réel. Il sert à exercer, en Node et de façon
+// déterministe, ce que purge-compte.js et suppression-compte.js FONT des
+// réponses de chaque version — deux tentatives entrelacées comprises
+// (`tests/unit/suppression-entrelacement.test.mjs`).
+// Le modèle honore aussi le TRIGGER : `ecrire(table, ligne)` refuse tant que
+// le marqueur est en `en_cours` / `purgee` / `supprimee` (le comportement de
+// `refuser_ecriture_compte_en_suppression`).
+export const MODELES_BARRIERE = ["v2", "v3"];
+export function fauxAdmin({ tables = {}, seaux = {}, pannesDelete = [], pannesCount = [], pannesList = [], pannesRemove = [], rpc = "ok", pannesListApres = [], ecrituresTardives = {}, barriere = "ok", modele = "v3", enVol = { en_vol_initial: 0, restantes: 0, attendu_ms: 0 }, terminerRefuse = false, perimeMs = 15 * 60 * 1000, horloge = null } = {}) {
   const t = JSON.parse(JSON.stringify(tables));
+  if (!MODELES_BARRIERE.includes(modele)) throw new Error("modèle de barrière inconnu : " + modele);
+  const maintenant = () => (horloge ? horloge() : Date.now());
+  let appelsEnVol = 0;
+  const marqueur = () => (t.comptes_en_suppression || [])[0] || null;
+  const protege = (l) => !!l && ["en_cours", "purgee", "supprimee"].includes(l.statut);
+  // ── Le modèle : `reclamer_suppression` ──
+  function modeleReclamer(uid, jeton, motif) {
+    let l = marqueur();
+    let acquise = false, raison = null;
+    if (!l) {
+      l = { user_id: uid, motif, statut: "en_cours", jeton, tentatives: 1, tentative_debut: maintenant(), tentative_fin: null,
+            tentative_vivante: true, purge_terminee_le: null, supprimee_le: null, derniere_erreur: null };
+      t.comptes_en_suppression = [l]; acquise = true;
+    } else if (l.statut === "supprimee") { acquise = false; raison = "supprimee"; }
+    else if (modele === "v2"
+      ? (l.statut === "en_cours" && l.jeton !== jeton && l.tentative_debut > maintenant() - perimeMs)
+      : (["en_cours", "purgee"].includes(l.statut) && l.jeton !== jeton && l.tentative_vivante && l.tentative_debut > maintenant() - perimeMs)) {
+      acquise = false; raison = "vivante";
+    } else {
+      Object.assign(l, { statut: "en_cours", jeton, motif, tentatives: l.tentatives + 1, tentative_debut: maintenant(), tentative_fin: null, tentative_vivante: true, derniere_erreur: null });
+      acquise = true;
+    }
+    const out = { acquise, statut: l.statut, jeton: l.jeton, tentatives: l.tentatives, tentative_debut: l.tentative_debut, purge_terminee_le: l.purge_terminee_le };
+    if (modele === "v3") { out.motif = raison; out.donnees_deja_purgees = l.purge_terminee_le !== null; }
+    return out;
+  }
+  // ── Le modèle : `terminer_suppression` ──
+  function modeleTerminer(uid, jeton, statut, detail) {
+    const admis = modele === "v2" ? ["echec", "purgee", "supprimee"] : ["echec", "purgee", "auth_echec", "supprimee"];
+    if (!admis.includes(statut)) throw new Error("terminer_suppression : statut " + statut + " inconnu");
+    const l = marqueur();
+    if (!l || l.jeton !== jeton || !["en_cours", "purgee"].includes(l.statut)) {
+      const out = { ok: false, motif: l ? "jeton_perime" : "inconnu", statut: l ? l.statut : null, jeton: l ? l.jeton : null };
+      if (modele === "v3") { out.protection = protege(l); out.donnees_deja_purgees = !!l && l.purge_terminee_le !== null; }
+      return out;
+    }
+    if (modele === "v2") {
+      l.statut = statut; l.tentative_fin = maintenant();
+      l.derniere_erreur = statut === "echec" ? detail : null;
+      if (statut === "purgee" || statut === "supprimee") l.purge_terminee_le = l.purge_terminee_le || maintenant();
+      if (statut === "supprimee") l.supprimee_le = maintenant();
+      return { ok: true, statut: l.statut, jeton: l.jeton, supprimee_le: l.supprimee_le };
+    }
+    l.statut = statut === "supprimee" ? "supprimee" : (statut === "echec" && l.purge_terminee_le === null) ? "echec" : "purgee";
+    l.tentative_vivante = statut === "purgee";
+    l.tentative_fin = statut === "purgee" ? null : maintenant();
+    l.derniere_erreur = (statut === "echec" || statut === "auth_echec") ? detail : null;
+    if (["purgee", "auth_echec", "supprimee"].includes(statut)) l.purge_terminee_le = l.purge_terminee_le || maintenant();
+    if (statut === "supprimee") l.supprimee_le = maintenant();
+    return { ok: true, demande: statut, statut: l.statut, jeton: l.jeton, supprimee_le: l.supprimee_le, protection: protege(l), donnees_deja_purgees: l.purge_terminee_le !== null };
+  }
   // `ecrituresTardives` : { table: n } — à chaque relecture (count) de cette
   // table, tant que n > 0, une ligne du compte RÉAPPARAÎT avant le comptage
   // (le client a repoussé son état entre l'effacement et la relecture).
@@ -40,6 +107,19 @@ export function fauxAdmin({ tables = {}, seaux = {}, pannesDelete = [], pannesCo
   const appels = [];
   return {
     _t: t, _s: s, _n: compteurs, _j: journal, _a: appels,
+    /** Le marqueur tel que le modèle le tient (null sans réclamation). */
+    marqueur,
+    /**
+     * Une écriture d'un CLIENT (l'appelant, un tiers, l'anonyme) sur une table
+     * du compte : refusée avec le code d'un refus RLS tant que le marqueur
+     * protège — c'est le trigger `zz_barriere_suppression`, modélisé. Rend
+     * { ok } ou { ok:false, code:"42501" } et, si ok, la ligne est écrite.
+     */
+    ecrire(table, ligne) {
+      if (protege(marqueur())) return { ok: false, code: "42501", message: 'new row violates row-level security policy for table "' + table + '"' };
+      (t[table] = t[table] || []).push(ligne);
+      return { ok: true };
+    },
     from(table) {
       const filtres = [];
       let mode = "select", head = false;
@@ -83,6 +163,12 @@ export function fauxAdmin({ tables = {}, seaux = {}, pannesDelete = [], pannesCo
             appels.push({ nom, args });
             if (barriere === "absente") out = { data: null, error: { code: "PGRST202", message: "Could not find the function public." + nom + " in the schema cache" } };
             else if (barriere === "refus") out = { data: null, error: { message: "permission denied for function " + nom } };
+            else if (barriere === "modele" && nom === RPC_RECLAMER) out = { data: modeleReclamer(args.p_uid, args.p_jeton, args.p_motif), error: null };
+            else if (barriere === "modele" && nom === RPC_TERMINER) {
+              try { out = { data: modeleTerminer(args.p_uid, args.p_jeton, args.p_statut, args.p_detail), error: null }; }
+              catch (e) { out = { data: null, error: { message: e.message } }; }
+            }
+            else if (nom === RPC_ATTENDRE && typeof enVol === "function") { appelsEnVol++; out = { data: enVol(appelsEnVol), error: null }; }
             else if (nom === RPC_RECLAMER) {
               const acquise = barriere === "ok";
               const statut = barriere === "supprimee" ? "supprimee" : "en_cours";
@@ -92,7 +178,15 @@ export function fauxAdmin({ tables = {}, seaux = {}, pannesDelete = [], pannesCo
               out = enVol === "absente" ? { data: null, error: { code: "PGRST202", message: "Could not find the function public." + nom + " in the schema cache" } } : { data: enVol, error: null };
             } else {
               if (terminerRefuse) out = { data: { ok: false, motif: "jeton_perime", statut: "en_cours", jeton: "autre" }, error: null };
-              else { const l = (t.comptes_en_suppression || [])[0]; if (l) { l.statut = args.p_statut; l.detail = args.p_detail; } out = { data: { ok: true, statut: args.p_statut, jeton: args.p_jeton }, error: null }; }
+              else {
+                // Le faux « docile » (hors modèle) : il écrit le statut demandé, en
+                // appliquant la seule règle de nommage de la v3 (`auth_echec` est un
+                // ÉVÉNEMENT, le statut écrit est `purgee`).
+                const l = (t.comptes_en_suppression || [])[0];
+                const ecrit = args.p_statut === "auth_echec" ? "purgee" : args.p_statut;
+                if (l) { l.statut = ecrit; l.detail = args.p_detail; }
+                out = { data: { ok: true, demande: args.p_statut, statut: ecrit, jeton: args.p_jeton, protection: ecrit !== "echec", donnees_deja_purgees: ecrit !== "echec" }, error: null };
+              }
             }
             return Promise.resolve(out).then(res, rej);
           }

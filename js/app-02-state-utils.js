@@ -4167,20 +4167,33 @@ async function doDeleteAccount() {
       try { corps = await verdict.error.context.json(); } catch (e) { corps = null; }
     }
     var okServeur = !!(verdict && !verdict.error && corps && corps.ok === true && corps.garantie === "barriere");
-    if (!okServeur) {
+    // ⚠️ ASTRA-56 (2026-09-16) : `finalisation_refusee` = le compte Auth EST
+    // parti et les données ont été purgées, mais le marqueur n'a pas pu être
+    // finalisé par cette tentative. Ce n'est PAS un succès garanti (pas de
+    // `garantie`), et ce n'est pas non plus « réessaie » : il n'y a plus de
+    // compte pour réessayer. On ferme la session et le local, et on le DIT
+    // tel quel, avec le contact.
+    var compteFermeSansGarantie = !!(corps && corps.code === "finalisation_refusee" && corps.auth_supprimee === true);
+    if (!okServeur && !compteFermeSansGarantie) {
       var code = (corps && corps.code) || "";
       var restes = (corps && (corps.restes || corps.echecs)) || [];
       try { if (typeof diagLog === "function") diagLog("suppression_compte KO " + (code || "sans code") + " " + (restes.length ? restes.slice(0, 5).join(" ") : String((verdict && verdict.error && verdict.error.message) || "sans verdict"))); } catch (e) {}
+      // Le serveur dit quand les données sont DÉJÀ parties (reprise) : on ne
+      // dit plus « rien n'a été supprimé » dans ce cas.
+      var dejaPurgees = !!(corps && corps.donnees_purgees === true);
       var message;
       if (code === "infrastructure_absente") message = "⚠️ Suppression indisponible pour le moment : rien n'a été supprimé. Réessaie plus tard, ou écris à " + PASSIO_EDITEUR.email;
       else if (code === "deja_en_cours" || code === "jeton_perdu") message = "⏳ Une suppression est déjà en cours pour ce compte. Réessaie dans quelques minutes.";
       else if (code === "deja_supprimee") message = "Ce compte est déjà supprimé.";
-      else if (code === "en_vol") message = "⚠️ Des opérations étaient encore en cours : rien n'a été supprimé. Réessaie.";
+      else if (code === "en_vol") message = dejaPurgees ? "⚠️ Tes données ont déjà été supprimées ; la fermeture du compte n'a pas pu se terminer cette fois. Réessaie." : "⚠️ Des opérations étaient encore en cours : rien n'a été supprimé. Réessaie.";
       else if (code === "auth_non_supprime") message = "⚠️ Tes données ont été supprimées, mais la fermeture du compte a échoué. Réessaie pour terminer, ou écris à " + PASSIO_EDITEUR.email;
-      else message = "⚠️ Suppression incomplète : ton compte n'a PAS été supprimé. Réessaie, ou écris à " + PASSIO_EDITEUR.email;
+      else message = dejaPurgees ? "⚠️ Tes données ont déjà été supprimées ; la fermeture du compte n'a pas pu se terminer cette fois. Réessaie, ou écris à " + PASSIO_EDITEUR.email : "⚠️ Suppression incomplète : ton compte n'a PAS été supprimé. Réessaie, ou écris à " + PASSIO_EDITEUR.email;
       toast(message);
       window._suppressionEnCours = false;
       return false;
+    }
+    if (compteFermeSansGarantie) {
+      try { if (typeof diagLog === "function") diagLog("suppression_compte finalisation_refusee marqueur=" + String(corps.marqueur || "?") + " protection=" + String(corps.protection)); } catch (e) {}
     }
     try { await supa.auth.signOut(); } catch (e) {}
   }
@@ -4197,6 +4210,11 @@ async function doDeleteAccount() {
   // Conversations durables en IndexedDB : non couvertes par le nettoyage localStorage.
   try { if (typeof idbConvClear === "function") await Promise.resolve(idbConvClear()).catch(function () {}); } catch (e) {}
   try { sessionStorage.clear(); } catch (e) {}
+  if (compteFermeSansGarantie) {
+    toast("Ton compte est fermé et tes données supprimées, mais la confirmation finale n'a pas pu être enregistrée. Écris à " + PASSIO_EDITEUR.email + " si tu constates quoi que ce soit.");
+    setTimeout(function () { location.reload(); }, 4000);
+    return true;
+  }
   toast("Compte supprimé. Au revoir");
   setTimeout(function () { location.reload(); }, 1500);
   return true;

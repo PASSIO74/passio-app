@@ -57,6 +57,32 @@
 --   corrige (`delete-account` refuse désormais en 503 sans barrière) ; ici, la
 --   présence des quatre fonctions est ce que la fonction VÉRIFIE en s'en servant.
 --
+-- CE QUE LA SIXIÈME CONTRE-REVUE A MONTRÉ (ASTRA-56, 2026-09-16), ET QUE CETTE
+-- VERSION 3 CORRIGE — un entrelacement rejoué avec les vraies fonctions :
+--   A termine sa purge et pose `purgee` ; A attend encore la suppression Auth.
+--   B réclame : la v2 lui DONNAIT le marqueur (« `purgee` est reprenable »).
+--   B échoue à attendre les écritures en vol et pose `echec` : la v2 LEVAIT la
+--   protection. Une ligne `user_state` est écrite. A finit Auth, son jeton ne
+--   peut plus finaliser (`jeton_perime`) — et le handler annonçait quand même
+--   `garantie:"barriere"`. Résultat : marqueur `echec`, une ligne restante.
+--   Trois règles, ici :
+--   ① UNE TENTATIVE VIVANTE N'EST PAS REPRENABLE, QUEL QUE SOIT SON STATUT.
+--      `tentative_vivante` est posé à la réclamation et RESTE vrai après
+--      `purgee` (la tentative continue : deleteUser). Il ne tombe qu'à un
+--      événement TERMINAL (`echec`, `auth_echec`, `supprimee`) ou par
+--      péremption (`p_perime`, 15 min — une fonction Edge vit ~150 s).
+--   ② LA PROTECTION D'UN COMPTE DONT LES DONNÉES SONT PARTIES NE SE LÈVE JAMAIS.
+--      `echec` demandé sur une ligne où `purge_terminee_le` est posé →
+--      statut `purgee`, pas `echec`. Il n'existe plus de transition
+--      purgee → echec.
+--   ③ UN ÉCHEC D'AUTH EST UN ÉVÉNEMENT NOMMÉ (`auth_echec`) : statut `purgee`,
+--      tentative TERMINÉE (reprenable tout de suite, sans attendre 15 min),
+--      erreur conservée. La v2 laissait la ligne `purgee` sans rien dire de
+--      la tentative.
+--   Et côté fonction : une finalisation refusée (`jeton_perime` après
+--   deleteUser) ne produit plus `garantie:"barriere"` — elle rend l'état RÉEL
+--   du marqueur, lu dans la réponse SQL, sous un code distinct.
+--
 -- RÉTENTION DU MARQUEUR (décision documentée, pas devinée) :
 --   · pendant la purge : `en_cours`, indispensable ;
 --   · après la purge et AVANT la suppression Auth : `purgee` — la protection est
@@ -113,10 +139,24 @@ alter table public.comptes_en_suppression
   add column if not exists purge_terminee_le timestamptz,
   add column if not exists supprimee_le      timestamptz,
   add column if not exists derniere_erreur   jsonb;
+-- v3 (ASTRA-56) : la tentative est-elle encore VIVANTE ? Posée à la
+-- réclamation, conservée après `purgee`, retirée par un événement terminal.
+-- Sur une base v2, la colonne naît ici : une ligne `en_cours` y est réputée
+-- vivante (sa péremption la rendra reprenable), une ligne `purgee` v2 n'a pas
+-- de tentative en vol connue → reprenable, comme en v2.
+do $$
+begin
+  if not exists (select 1 from pg_attribute
+                  where attrelid = 'public.comptes_en_suppression'::regclass
+                    and attname = 'tentative_vivante' and not attisdropped) then
+    alter table public.comptes_en_suppression add column tentative_vivante boolean not null default false;
+    update public.comptes_en_suppression set tentative_vivante = (statut = 'en_cours');
+  end if;
+end $$;
 -- Une ligne héritée de la v1 (sans jeton) ne peut être qu'un compte déjà purgé
 -- et conservé : elle prend le statut correspondant. (La v1 n'a été jouée nulle
 -- part ailleurs que sur des bancs ; ceci est de la ceinture.)
-update public.comptes_en_suppression set statut = 'supprimee', supprimee_le = coalesce(supprimee_le, demandee_le)
+update public.comptes_en_suppression set statut = 'supprimee', supprimee_le = coalesce(supprimee_le, demandee_le), tentative_vivante = false
  where jeton is null and statut = 'en_cours';
 alter table public.comptes_en_suppression drop constraint if exists comptes_en_suppression_statut_check;
 alter table public.comptes_en_suppression
@@ -299,9 +339,13 @@ end $$;
 -- `reclamer_suppression` : UNE tentative à la fois par compte. Verrou
 -- consultatif de transaction sur l'identifiant → deux appels simultanés se
 -- sérialisent ; le second lit le statut posé par le premier et n'obtient rien.
--- Une tentative `en_cours` plus vieille que `p_perime` est réputée morte
--- (fonction interrompue) et reprise. `purgee` (données parties, Auth restée) et
--- `echec` sont reprenables ; `supprimee` ne l'est jamais.
+-- Une tentative VIVANTE (`tentative_vivante`, moins vieille que `p_perime`)
+-- n'est JAMAIS reprise — qu'elle soit `en_cours` (purge) ou `purgee` (Auth en
+-- cours) : c'est la règle ① d'ASTRA-56. Une tentative plus vieille que
+-- `p_perime` est réputée morte (fonction interrompue) et reprise. `echec`,
+-- `purgee` terminée (`auth_echec`) sont reprenables ; `supprimee` ne l'est jamais.
+-- La reprise d'une ligne `purgee` GARDE `purge_terminee_le` : c'est lui qui
+-- interdit ensuite toute levée de protection (règle ②).
 create or replace function public.reclamer_suppression(
   p_uid text, p_jeton uuid, p_motif text default 'delete-account', p_perime interval default interval '15 minutes')
 returns jsonb
@@ -312,38 +356,51 @@ as $$
 declare
   c       public.comptes_en_suppression%rowtype;
   acquise boolean := false;
+  motif   text := null;
 begin
   if p_uid is null or p_jeton is null then raise exception 'reclamer_suppression : uid et jeton obligatoires'; end if;
   perform pg_advisory_xact_lock(hashtext('comptes_en_suppression:' || p_uid));
   select * into c from public.comptes_en_suppression where user_id = p_uid;
   if not found then
-    insert into public.comptes_en_suppression (user_id, motif, statut, jeton, tentatives, tentative_debut)
-    values (p_uid, p_motif, 'en_cours', p_jeton, 1, now())
+    insert into public.comptes_en_suppression (user_id, motif, statut, jeton, tentatives, tentative_debut, tentative_vivante)
+    values (p_uid, p_motif, 'en_cours', p_jeton, 1, now(), true)
     returning * into c;
     acquise := true;
   elsif c.statut = 'supprimee' then
-    acquise := false;
-  elsif c.statut = 'en_cours' and c.jeton is distinct from p_jeton and c.tentative_debut > now() - p_perime then
-    acquise := false;                                   -- une autre tentative est VIVANTE
+    acquise := false; motif := 'supprimee';
+  elsif c.statut in ('en_cours', 'purgee') and c.jeton is distinct from p_jeton
+        and c.tentative_vivante and c.tentative_debut > now() - p_perime then
+    acquise := false; motif := 'vivante';                -- une autre tentative est VIVANTE (purge ou Auth en cours)
   else
     update public.comptes_en_suppression
        set statut = 'en_cours', jeton = p_jeton, motif = p_motif, tentatives = tentatives + 1,
-           tentative_debut = now(), tentative_fin = null, derniere_erreur = null
+           tentative_debut = now(), tentative_fin = null, tentative_vivante = true, derniere_erreur = null
      where user_id = p_uid
     returning * into c;
     acquise := true;
   end if;
-  return jsonb_build_object('acquise', acquise, 'statut', c.statut, 'jeton', c.jeton, 'tentatives', c.tentatives,
-                            'tentative_debut', c.tentative_debut, 'purge_terminee_le', c.purge_terminee_le);
+  return jsonb_build_object('acquise', acquise, 'motif', motif, 'statut', c.statut, 'jeton', c.jeton, 'tentatives', c.tentatives,
+                            'tentative_debut', c.tentative_debut, 'purge_terminee_le', c.purge_terminee_le,
+                            'donnees_deja_purgees', c.purge_terminee_le is not null);
 end $$;
 
 -- `terminer_suppression` : ne touche la ligne QUE si le jeton est le sien et
--- que la tentative est encore `en_cours`. Sinon rien n'est écrit et la
--- réponse le dit (`jeton_perime`) : une tentative tardive ne peut plus retirer
--- la protection posée par une autre (ASTRA-40). Statuts de sortie :
---   `echec`     → protection LEVÉE (le compte redevient utilisable, la purge est relançable) ;
---   `purgee`    → données parties, compte Auth encore là : protection CONSERVÉE ;
---   `supprimee` → compte Auth parti : protection CONSERVÉE (rétention).
+-- que la tentative est encore `en_cours` ou `purgee`. Sinon rien n'est écrit et
+-- la réponse le dit (`jeton_perime`) : une tentative tardive ne peut plus
+-- retirer la protection posée par une autre (ASTRA-40). `p_statut` est
+-- l'ÉVÉNEMENT demandé ; le statut ÉCRIT en découle, et il est rendu :
+--   `echec`      → si les données ne sont PAS parties : `echec`, protection LEVÉE
+--                  (compte utilisable, purge relançable), tentative terminée ;
+--                  si `purge_terminee_le` est posé : `purgee` — la protection ne
+--                  se lève JAMAIS sur un compte dont les données sont parties
+--                  (ASTRA-56, règle ②), tentative terminée, erreur conservée ;
+--   `purgee`     → données parties, compte Auth encore là : protection CONSERVÉE,
+--                  la tentative RESTE vivante (deleteUser suit) ;
+--   `auth_echec` → données parties, deleteUser a échoué : `purgee`, protection
+--                  CONSERVÉE, tentative TERMINÉE (reprenable aussitôt), erreur conservée ;
+--   `supprimee`  → compte Auth parti : protection CONSERVÉE (rétention), tentative terminée.
+-- `protection` (booléen) dit ce que le marqueur FAIT après l'appel — c'est ce
+-- que la fonction Edge rapporte, jamais un état supposé.
 create or replace function public.terminer_suppression(p_uid text, p_jeton uuid, p_statut text, p_detail jsonb default null)
 returns jsonb
 language plpgsql
@@ -353,21 +410,28 @@ as $$
 declare
   c public.comptes_en_suppression%rowtype;
 begin
-  if p_statut not in ('echec', 'purgee', 'supprimee') then raise exception 'terminer_suppression : statut % inconnu', p_statut; end if;
+  if p_statut not in ('echec', 'purgee', 'auth_echec', 'supprimee') then raise exception 'terminer_suppression : statut % inconnu', p_statut; end if;
   update public.comptes_en_suppression
-     set statut = p_statut,
-         tentative_fin = now(),
-         derniere_erreur = case when p_statut = 'echec' then p_detail else null end,
-         purge_terminee_le = case when p_statut in ('purgee', 'supprimee') then coalesce(purge_terminee_le, now()) else purge_terminee_le end,
+     set statut = case when p_statut = 'supprimee' then 'supprimee'
+                       when p_statut = 'echec' and purge_terminee_le is null then 'echec'
+                       else 'purgee' end,
+         tentative_vivante = (p_statut = 'purgee'),
+         tentative_fin = case when p_statut = 'purgee' then null else now() end,
+         derniere_erreur = case when p_statut in ('echec', 'auth_echec') then p_detail else null end,
+         purge_terminee_le = case when p_statut in ('purgee', 'auth_echec', 'supprimee') then coalesce(purge_terminee_le, now()) else purge_terminee_le end,
          supprimee_le = case when p_statut = 'supprimee' then now() else supprimee_le end
    where user_id = p_uid and jeton = p_jeton and statut in ('en_cours', 'purgee')
   returning * into c;
   if not found then
     select * into c from public.comptes_en_suppression where user_id = p_uid;
     return jsonb_build_object('ok', false, 'motif', case when found then 'jeton_perime' else 'inconnu' end,
-                              'statut', c.statut, 'jeton', c.jeton);
+                              'statut', c.statut, 'jeton', c.jeton,
+                              'protection', found and c.statut in ('en_cours', 'purgee', 'supprimee'),
+                              'donnees_deja_purgees', found and c.purge_terminee_le is not null);
   end if;
-  return jsonb_build_object('ok', true, 'statut', c.statut, 'jeton', c.jeton, 'supprimee_le', c.supprimee_le);
+  return jsonb_build_object('ok', true, 'demande', p_statut, 'statut', c.statut, 'jeton', c.jeton, 'supprimee_le', c.supprimee_le,
+                            'protection', c.statut in ('en_cours', 'purgee', 'supprimee'),
+                            'donnees_deja_purgees', c.purge_terminee_le is not null);
 end $$;
 
 -- `attendre_ecritures_en_vol` : les transactions EN COURS à l'instant de l'appel
@@ -447,6 +511,10 @@ union all select 'RLS active sur le marqueur',
        case when (select relrowsecurity from pg_class where oid = 'public.comptes_en_suppression'::regclass) then 'OK' else 'ECHEC' end
 union all select 'le statut est contraint (en_cours, echec, purgee, supprimee)',
        case when exists (select 1 from pg_constraint where conname = 'comptes_en_suppression_statut_check') then 'OK' else 'ECHEC' end
+union all select 'v3 : la tentative porte sa vitalité (tentative_vivante) et terminer_suppression connaît auth_echec',
+       case when exists (select 1 from pg_attribute where attrelid = 'public.comptes_en_suppression'::regclass and attname = 'tentative_vivante' and not attisdropped)
+             and (select prosrc from pg_proc where proname = 'terminer_suppression') like '%auth_echec%'
+            then 'OK' else 'ECHEC' end
 union all select 'le prédicat ne répond que sur l''appelant (aucun argument)',
        case when (select count(*) from pg_proc where proname = 'suppression_de_mon_compte' and pronargs = 0) = 1 then 'OK' else 'ECHEC' end
 union all select 'SECURITY DEFINER, search_path vide (prédicat, trigger, quatre fonctions)',

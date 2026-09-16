@@ -88,6 +88,38 @@ conservée, relance possible, la suppression reprend à la purge — idempotente
 Le client (`doDeleteAccount`, app-02) lit le corps même sur non-2xx (`error.context`) et affiche
 un message par code ; « Compte supprimé » exige `garantie:"barriere"`.
 
+## La barrière v3 : deux tentatives entrelacées (2026-09-16, ASTRA-56, sixième contre-revue)
+
+Le contre-exemple d'Astra, rejoué avec les vraies fonctions : A pose `purgee` et attend
+`deleteUser` ; B réclame et **obtient** le marqueur (la v2 tenait `purgee` pour reprenable) ; B
+échoue en vol et pose `echec` : la protection tombe ; une ligne `user_state` passe ; A finit Auth,
+son jeton ne finalise plus (`jeton_perime`) — et le handler annonçait `garantie:"barriere"`.
+Trois règles, dans la même migration (rejouable sur une base v1 ou v2) :
+
+1. **Une tentative vivante n'est pas reprenable, quel que soit son statut.** `tentative_vivante`
+   est posé à la réclamation et reste vrai après `purgee` ; il tombe à un événement terminal ou
+   par péremption (15 min ; une fonction Edge vit ~150 s). B reçoit `acquise:false, motif:"vivante"`
+   → `409 deja_en_cours`.
+2. **La protection d'un compte dont les données sont parties ne se lève jamais.** `echec` demandé
+   sur une ligne où `purge_terminee_le` est posé s'écrit `purgee`. Il n'existe plus de transition
+   purgee → echec — même si la règle 1 était mutée (banc § ⑤ bis, mutation).
+3. **Un échec d'Auth est un événement nommé** (`auth_echec`, `marquerAuthEchec`) : statut `purgee`,
+   tentative terminée (reprenable **aussitôt**, sans attendre 15 min), erreur conservée.
+
+Et le handler ne suppose plus rien : `terminer_suppression` rend l'état **écrit** (`statut`,
+`protection`, `donnees_deja_purgees`) et c'est lui qui est rapporté. Deux codes de plus :
+`500 finalisation_refusee` (compte Auth parti, données purgées, marqueur non finalisé par ce
+jeton : `auth_supprimee:true`, `marqueur` = état réel, **pas de `garantie`** ; le client ferme la
+session et le local, et le dit tel quel avec le contact) ; et `donnees_purgees:true` sur tout
+arrêt d'une reprise (le message ne dit plus « rien n'a été supprimé »). `deleteUser` sur un
+utilisateur déjà absent (404) est une reprise après une tentative morte, pas un échec.
+
+Preuves : `tests/sql/migration-barriere-suppression.test.sh` § ⑤ bis (PostgreSQL réel :
+entrelacement, tentative interrompue, échec Auth, mutation « purgee reprenable ») ;
+`tests/unit/suppression-entrelacement.test.mjs` (vraies fonctions + modèle des transitions v2/v3,
+deux tentatives entrelacées par une promesse tenue) ; `tests/e2e/suppression-compte-verdict.spec.js`
+⑧⑨ (l'interface).
+
 **Rétention du marqueur** (décision documentée, pas devinée) :
 - renouvellement des sessions : s'arrête à `deleteUser` (sessions et jetons de rafraîchissement
   emportés avec `auth.users` — schéma GoTrue, `on delete cascade` ; **non mesuré sur la cible**) ;
