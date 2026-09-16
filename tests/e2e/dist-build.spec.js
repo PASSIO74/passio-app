@@ -69,4 +69,23 @@ test.describe("build prod (dist) — app.js externalisé derrière le gate", () 
     // …et toujours aucun JS applicatif : les textes viennent de la tête de page.
     expect(await page.evaluate(() => typeof boot)).toBe("undefined");
   });
+
+  // La télémétrie se déclare sous la version du contrat de release — plus le
+  // « 2026.08.0 » figé depuis août, qui rendait « ancien client » et « défaut
+  // vivant » indiscernables au pilotage (2026-09-16). telemetry.js vit en tête
+  // de page (avant le gate), donc la mesure ne demande aucun déverrouillage.
+  test("télémétrie : app_version = le commit du contrat de release, sinon l'empreinte de build", async ({ page }) => {
+    await page.goto("/dist/index.html");
+    await page.waitForSelector("#passioGate .pg-title", { timeout: 15000 });
+    const r = await page.evaluate(() => ({
+      release: window.PASSIO_RELEASE || null,
+      version: window.tel && window.tel.version,
+    }));
+    expect(r.release, "le contrat de release est posé avant telemetry.js").not.toBeNull();
+    expect(r.version).not.toBe("2026.08.0");
+    expect(r.version).not.toBe("dev");
+    const attendu = (typeof r.release.commit === "string" && /^[0-9a-f]{7,40}$/i.test(r.release.commit))
+      ? r.release.commit.slice(0, 8) : "b" + String(r.release.buildId).slice(0, 8);
+    expect(r.version).toBe(attendu);
+  });
 });
