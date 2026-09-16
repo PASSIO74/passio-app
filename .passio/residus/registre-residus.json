@@ -1,6 +1,6 @@
 {
   "format": "passio-residus/1",
-  "mis_a_jour_le": "2026-09-15",
+  "mis_a_jour_le": "2026-09-16",
   "_lecture": "Registre STRUCTURÉ UNIQUE des résidus (cinquième contre-revue Astra, mandat §9). Validé et évalué par scripts/audit-registre-residus.js (CI, job « Audits statiques ») ; lu par le pilotage (dashboard, domaine « résidus » du readiness). Les quatre états sont séparés : corrige, teste, deploye, relu_sur_cible — valeurs oui / non / partiel / non mesuré / sans objet. Un résidu n'est « ferme » qu'avec les quatre à oui. La condition_de_reexamen est évaluée par le contrôle contre le DÉPÔT (fichier présent, objet SQL déclaré par une migration, échéance, autre résidu fermé) ; « déclaré dans le dépôt » n'est pas « en service sur la cible ». Un résidu dont la condition devient satisfaite doit passer à traitable / planifie (avec le chantier) : sinon la CI est rouge. Les nuances acceptées par Astra sont listées à part et ne sont pas des défauts.",
   "residus": [
     {
@@ -11,13 +11,13 @@
       "origine": ["ASTRA-39", "ASTRA-40", "ASTRA-41", "ASTRA-42"],
       "scenario_residuel": "Sur la cible, delete-account (redéployée par les runs CI de 86b372da, c42616ac et a5e8c717 le 2026-09-15) exécute encore le code v1 : si la table marqueur manque, la purge continue et répond HTTP 200 {ok:true} ; une écriture engagée avant la marque peut survivre à la purge (ASTRA-41, rejoué sur PostgreSQL réel) ; deux purges concurrentes retirent leur protection mutuelle (ASTRA-40).",
       "raison_du_maintien": "Le mandat du 2026-09-15 interdit toute migration en production et tout redéploiement d'Edge Function. Le code v2 (#469) refuse de purger sans son infrastructure (503 infrastructure_absente) : le déployer AVANT la migration rendrait la suppression indisponible, c'est l'ordre inverse qui est proposé (dossier 23, section E).",
-      "dependances": ["PR #469", "migration_barriere_suppression_2026-09-15.sql (v2) appliquée", "redéploiement de delete-account"],
+      "dependances": ["migration_barriere_suppression_2026-09-15.sql (v3, ASTRA-56) appliquée avec preuve de revue (RES-15)", "redéploiement de delete-account par edge-functions.yml (retenue ASTRA-64 : ne part qu'après la migration)"],
       "condition_de_reexamen": { "type": "manuel", "quand": "Benjamin applique la migration barrière v2 sur la cible (journal migrations_appliquees) puis redéploie delete-account ; relecture : verdict SQL 12/12 sur la cible et une suppression de compte synthétique répondant garantie:\"barriere\"." },
       "critere_de_fermeture": "Migration v2 journalisée sur la cible, fonction v2 servie (en-tête de version), une suppression synthétique sur la cible rend 200 + garantie:barriere et ses relectures à zéro ; une seconde suppression concurrente rend 409 deja_en_cours.",
       "preuve_attendue": "Lignes du journal migrations_appliquees ; sortie du verdict SQL sur la cible ; réponses HTTP des deux suppressions synthétiques (compte jetable).",
-      "prochaine_etape": "Étape 1 du plan de mise en service (dossier 23 §E) — après fusion de #469 et #473, sur décision de Benjamin.",
+      "prochaine_etape": "Mise en service du pilote (docs/MISE_EN_SERVICE_PILOTE.md, étapes 1–3) — sur autorisation finale de Benjamin.",
       "etats": { "corrige": "oui", "teste": "oui", "deploye": "non", "relu_sur_cible": "non mesuré" },
-      "reexamen": { "statut": "en_attente", "le": "2026-09-15", "note": "Code et bancs livrés (#469 : 52/52, 11/11 sur PostgreSQL 17.6 jetable). Rien n'est en service." }
+      "reexamen": { "statut": "en_attente", "le": "2026-09-16", "note": "Barrière v3 (ASTRA-56) : 88/88 sur PostgreSQL réel, entrelacement A/B rejoué ; la retenue de déploiement (ASTRA-64) rend l'ordre migration → fonction mécanique. Rien n'est en service." }
     },
     {
       "id": "RES-02",
@@ -194,6 +194,86 @@
       "prochaine_etape": "Réexamen à l'échéance.",
       "etats": { "corrige": "sans objet", "teste": "oui", "deploye": "non", "relu_sur_cible": "sans objet" },
       "reexamen": { "statut": "en_attente", "le": "2026-09-15", "note": "Purge et barrière couvrent la colonne ; l'export l'exclut sciemment." }
+    },
+    {
+      "etats": { "corrige": "sans objet", "teste": "oui", "deploye": "non", "relu_sur_cible": "non mesuré" },
+      "reexamen": { "statut": "en_attente", "le": "2026-09-16", "note": "Ouvert par la sixième contre-revue (pilote gratuit)." },
+      "id": "RES-13",
+      "titre": "Appels audio/vidéo désactivés pour le pilote (ASTRA-60) : une answer perdue laisse la négociation WebRTC sans relance",
+      "gravite": "P2",
+      "proprietaire": "Claude (code) — décision de réactivation : Benjamin",
+      "origine": ["ASTRA-60"],
+      "scenario_residuel": "Avec deux vrais RTCPeerConnection et un bus simulé, la perte d'une `answer` n'est pas relancée : l'appel reste « connexion… » jusqu'au délai. Pour le pilote, la fonction est retirée à tous les points d'entrée (boutons, startCall, sonnerie, invitation reçue, push d'appel serveur) — commit 27e01724.",
+      "raison_du_maintien": "Une correction bornée (acquittement, retransmission, délai de sortie) n'a pas pu être validée dans le délai du pilote ; ouvrir une fonction incertaine retarderait l'ouverture. La désactivation est côté code, aucune policy n'est rouverte.",
+      "dependances": ["PASSIO_APPELS_ACTIFS (app-05) et APPELS_ACTIFS (notify-call) à repasser à true ensemble", "acquittement + retransmission de answer/offer + délai de sortie, mesurés avec deux RTCPeerConnection réels"],
+      "condition_de_reexamen": { "type": "manuel", "quand": "Après observation des parcours réels du pilote (messagerie, médias) — au plus tard le 2026-09-30 : décider entre correction bornée et maintien de la désactivation pour la phase d'élargissement." },
+      "critere_de_fermeture": "Suite navigateur avec deux RTCPeerConnection réels où une `answer` perdue est retransmise et l'appel se connecte, ou termine proprement au délai ; interrupteurs remis à true ; tests d'appels verts sans armement de test.",
+      "preuve_attendue": "Sortie Playwright de la suite de relance (avant : rouge sur perte d'answer ; après : vert), et appels-desactives-pilote.spec.js inversé.",
+      "prochaine_etape": "Écrire la suite « answer perdue » (extension d'appel-reponse-rejouable.spec.js) et la correction : ack par message `answer_ack`, retransmission toutes les 2 s, sortie à 30 s."
+    },
+    {
+      "etats": { "corrige": "oui", "teste": "partiel", "deploye": "sans objet", "relu_sur_cible": "non mesuré" },
+      "reexamen": { "statut": "en_attente", "le": "2026-09-16", "note": "Ouvert par la sixième contre-revue (pilote gratuit)." },
+      "id": "RES-14",
+      "titre": "Cycle réel sauvegarde → altération contrôlée → restauration → relecture non rejoué sur un projet Supabase jetable (ASTRA-57/58/59)",
+      "gravite": "P1",
+      "proprietaire": "Benjamin (accès au projet jetable) — exécution : Claude",
+      "origine": ["ASTRA-57", "ASTRA-58", "ASTRA-59", "ASTRA-45"],
+      "scenario_residuel": "Les corrections de pagination, de propriétaires NULL et de validation d'archive sont testées avec de vrais scripts et des services SIMULÉS (PostgREST selon ses règles de statut, Storage, GoTrue, API de gestion). Le plafond max-rows réel, le comportement réel de `order`/`limit`/`offset` sur la RPC et l'UPDATE de storage.objects.owner sur un vrai projet ne sont pas mesurés.",
+      "raison_du_maintien": "Aucun projet Supabase jetable n'est autorisé ni accessible depuis ce poste (il faut un projet distinct de la production, son ref de 20 lettres, et le jeton personnel sbp_… ; restaurer-donnees.js refuse la production par construction).",
+      "dependances": ["projet Supabase jetable (ref) + SUPABASE_ACCESS_TOKEN", "migration_proprietaires_objets_stockage appliquée sur le jetable", "données synthétiques : deux comptes, un objet sans propriétaire, une pièce jointe"],
+      "condition_de_reexamen": { "type": "manuel", "quand": "Dès qu'un projet jetable est fourni — visé avant le 2026-09-23 : sauvegarde complète (`--verifier` COMPLÈTE), altération contrôlée (fichier BAD, owner à B), restauration refusée (code 2) puis restauration saine prouvée (`prouvee:true`), relecture des propriétaires." },
+      "critere_de_fermeture": "Preuve JSON `prouvee:true` sur le jetable avec propriétaires conformes (NULL compris) et archive altérée refusée sans mutation ; sorties conservées dans preuves/.",
+      "preuve_attendue": "Fichiers preuve.json des deux restaurations (refusée, prouvée) et journal de la sauvegarde.",
+      "prochaine_etape": "Benjamin : créer le projet jetable et transmettre ref + jeton (jamais la clé service_role) ; Claude : jouer le cycle et déposer les preuves."
+    },
+    {
+      "etats": { "corrige": "non", "teste": "non", "deploye": "non", "relu_sur_cible": "non mesuré" },
+      "reexamen": { "statut": "en_attente", "le": "2026-09-16", "note": "Ouvert par la sixième contre-revue (pilote gratuit)." },
+      "id": "RES-15",
+      "titre": "Aucun relecteur autorisé inscrit : aucune migration ne peut être attestée pour une cible protégée (ASTRA-61)",
+      "gravite": "P1",
+      "proprietaire": "Benjamin (gouvernance)",
+      "origine": ["ASTRA-61", "ASTRA-51"],
+      "scenario_residuel": "La preuve de revue exige désormais une APPROBATION GitHub par un compte de `.passio/migrations/relecteurs-autorises.json`, distinct de l'auteur de la PR. La liste est vide : `appliquer-migration.mjs --verifier` refuse toute cible protégée (`relecteurs_non_definis`). Le dépôt n'a qu'un collaborateur (PASSIO74), auteur de toutes les PR.",
+      "raison_du_maintien": "Désigner un relecteur est une décision de gouvernance (second compte GitHub humain, ou compte de revue distinct), pas un geste de code. Inscrire PASSIO74 serait une auto-revue, que la barrière refuse par construction.",
+      "dependances": ["un second compte GitHub avec droit de revue sur PASSIO74/passio-app", "PR ajoutant ce login à relecteurs-autorises.json"],
+      "condition_de_reexamen": { "type": "manuel", "quand": "Avant la première application de migration sur la production pour le pilote (étape 1 de la mise en service)." },
+      "critere_de_fermeture": "Liste non vide ; une approbation réelle de la PR d'intégration par ce compte ; `appliquer-migration.mjs --verifier --projet njkiyoklssvefstljemx` rend « envoyable » pour la migration barrière v3 avec fournisseur réel.",
+      "preuve_attendue": "Sortie de --verifier (fournisseur réel, revue n°, login, SHA) et l'URL de la revue GitHub.",
+      "prochaine_etape": "Benjamin : choisir le compte relecteur, l'inviter sur le dépôt, ouvrir la PR d'inscription ; puis approuver la PR d'intégration depuis ce compte."
+    },
+    {
+      "etats": { "corrige": "non", "teste": "non", "deploye": "non", "relu_sur_cible": "non mesuré" },
+      "reexamen": { "statut": "en_attente", "le": "2026-09-16", "note": "Ouvert par la sixième contre-revue (pilote gratuit)." },
+      "id": "RES-16",
+      "titre": "Notifications in-app à texte construit par le client (like, comment, event_*) : aucun événement métier vérifié côté serveur",
+      "gravite": "P2",
+      "proprietaire": "Claude (code)",
+      "origine": ["ASTRA-24"],
+      "scenario_residuel": "`supaInsertNotif` écrit une ligne `notifications` (genre non réservé) avec un texte que le client compose. Garde-fous en place : from_id = appelant (RLS), blocage dans les deux sens, débit borné (trg_rate_limit), échappement à l'affichage, push serveur à texte dérivé. Un compte peut encore faire apparaître « X a aimé ton post » chez quelqu'un sans avoir aimé — nuisance, pas fuite.",
+      "raison_du_maintien": "Chemin validé par les contre-revues précédentes et conservé pour le pilote (mandat : ne pas transformer les P2 en blocages). La dérivation serveur pour ces genres est un chantier de la taille de celui des mentions.",
+      "dependances": ["fonction SQL `notifier_evenement(genre, ref)` vérifiant l'événement (like, commentaire, participation) et dérivant le texte", "réservation des genres restants au serveur (policy)"],
+      "condition_de_reexamen": { "type": "manuel", "quand": "Élargissement du pilote (après la première vague) — au plus tard le 2026-10-15." },
+      "critere_de_fermeture": "Tous les genres écrits par le serveur à partir d'un événement vérifié ; policy d'INSERT client sur notifications fermée ; banc SQL et e2e verts.",
+      "preuve_attendue": "Banc SQL (événement absent → refus) et suite navigateur (le client n'écrit plus notifications).",
+      "prochaine_etape": "Spécifier `notifier_evenement` sur le modèle de `notifier_mentions` ; migrer un genre à la fois (like d'abord)."
+    },
+    {
+      "etats": { "corrige": "sans objet", "teste": "oui", "deploye": "sans objet", "relu_sur_cible": "non mesuré" },
+      "reexamen": { "statut": "en_attente", "le": "2026-09-16", "note": "Ouvert par la sixième contre-revue (pilote gratuit)." },
+      "id": "RES-17",
+      "titre": "Plafond `max-rows` réel de PostgREST sur la production non mesuré (ASTRA-57)",
+      "gravite": "P3",
+      "proprietaire": "Benjamin (lecture du projet)",
+      "origine": ["ASTRA-57", "ASTRA-45"],
+      "scenario_residuel": "La pagination des propriétaires est correcte sous tout plafond (avance du nombre reçu, total de Content-Range, page vide), testée à 2 501 objets sous un plafond simulé de 1 000. La valeur effective du projet (réglage API `max-rows`) n'a pas été lue.",
+      "raison_du_maintien": "Lecture de configuration du projet (tableau de bord API), pas de code ; sans impact sur la correction, qui ne dépend pas de la valeur.",
+      "dependances": ["lecture du réglage « Max rows » dans Project Settings → API"],
+      "condition_de_reexamen": { "type": "manuel", "quand": "Lors de la première sauvegarde complète du pilote (RES-14) : noter la valeur dans docs/RECUPERATION.md." },
+      "critere_de_fermeture": "Valeur notée, et une sauvegarde réelle avec plus d'objets que ce plafond ayant un inventaire COMPLET.",
+      "preuve_attendue": "Capture ou lecture du réglage ; manifeste de sauvegarde avec proprietaires_inventaire = complet.",
+      "prochaine_etape": "Lire le réglage au moment de RES-14."
     }
   ],
   "nuances_acceptees": [
