@@ -37,7 +37,7 @@ if (val("--json")) {
   if (lignes && !Array.isArray(lignes) && Array.isArray(lignes.rows)) lignes = lignes.rows;
   if (Array.isArray(lignes) && lignes.length === 1 && lignes[0] && Array.isArray(lignes[0].json_agg)) lignes = lignes[0].json_agg;
 } else if (val("--psql")) {
-  const out = execFileSync("psql", [val("--psql"), "-tA", "-v", "ON_ERROR_STOP=1", "-c", "select coalesce(json_agg(x), '[]'::json) from (" + SQL_CATALOGUE.replace(/;\s*$/, "") + ") x"], { encoding: "utf8" });
+  const out = execFileSync("psql", [val("--psql"), "-tA", "-v", "ON_ERROR_STOP=1", "-c", "select coalesce(jsonb_agg(x), '[]'::jsonb) from (" + SQL_CATALOGUE.replace(/;\s*$/, "") + ") x"], { encoding: "utf8" });
   lignes = JSON.parse(out.trim() || "[]");
 } else {
   console.error("usage : --sql | --json <fichier> | --psql \"<conninfo>\"");

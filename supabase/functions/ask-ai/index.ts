@@ -20,12 +20,16 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { verifierPlafondEnBase, reponsePlafond } from "../_shared/plafond.js";
+import { REVISION } from "../_shared/revision.js";
 
 // 8 questions par minute, 60 par heure et par compte : large pour un humain
 // (une question toutes les 7 s), fermé pour une boucle.
 const PLAFOND = { parMinute: 8, parHeure: 60 };
 
 const corsHeaders = {
+  // La révision servie, sur toute réponse (dossier de livraison §6) — lisible par le client et par curl.
+  "X-Passio-Revision": REVISION,
+  "Access-Control-Expose-Headers": "X-Passio-Revision",
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",

@@ -36,6 +36,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
 import { verifierPlafondEnBase, reponsePlafond } from "../_shared/plafond.js";
 import { identiteAppelant, lienAppel, autoriserPushNotif } from "../_shared/lien-metier.js";
+import { REVISION } from "../_shared/revision.js";
 
 // Par appelant : 20 pushes par minute, 200 par heure. Le client n'émet qu'une
 // push par conversation et par 5 min (anti-spam de _notifierMessage) plus les
@@ -50,6 +51,9 @@ function borne(v: unknown, max: number): string | undefined {
 }
 
 const corsHeaders = {
+  // La révision servie, sur toute réponse (dossier de livraison §6) — lisible par le client et par curl.
+  "X-Passio-Revision": REVISION,
+  "Access-Control-Expose-Headers": "X-Passio-Revision",
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",

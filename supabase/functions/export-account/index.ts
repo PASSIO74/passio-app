@@ -10,8 +10,12 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { exporterCompte } from "../_shared/export-compte.js";
 import { verifierPlafondEnBase, reponsePlafond } from "../_shared/plafond.js";
+import { REVISION } from "../_shared/revision.js";
 
 const corsHeaders = {
+  // La révision servie, sur toute réponse (dossier de livraison §6) — lisible par le client et par curl.
+  "X-Passio-Revision": REVISION,
+  "Access-Control-Expose-Headers": "X-Passio-Revision",
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
