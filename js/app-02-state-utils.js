@@ -5306,6 +5306,7 @@ async function onbDoAuth() {
       // pas, purgerait l'onboarding en cours.
       if (_authMode !== "signin") { try { attribuerEtatLocalAuCompte(uidCompte); } catch (e) {} }
       MY_UID = uidCompte;
+      window.MY_UID = MY_UID;   // reflet pour telemetry.js / platform.js (`let` de portée script)
       localStorage.setItem("passio_uid", MY_UID);
       if (_authMode === "signin") {
         // Compte existant → marque onboardé et recharge : boot() lance l'app directement
