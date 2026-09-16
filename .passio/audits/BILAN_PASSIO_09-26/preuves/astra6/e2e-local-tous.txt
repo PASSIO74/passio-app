@@ -1,0 +1,56 @@
+SHA: 55d45de79b8ef7bec4eea593e0ad0de4f1bdf45e
+cmd: npx playwright test --project=local --reporter=line  (Chromium, Windows 11, http-server, aucune écriture en base ; workers 50%)
+  1) ocal] › tests\e2e\audit-identite-emoji.spec.js:113:3 › Audit identité / isolation / emoji (2026-08-12) › isolation inter-comptes : AUCUNE clé de compte ne survit, y compris celles ajoutées plus tard 
+    Error: clés de compte survivant à la déconnexion : ["passio_post_delete_outbox_v1"]
+    Error Context: test-results\audit-identite-emoji-Audit-3c94d-s-celles-ajoutées-plus-tard-local\error-context.md
+  2) ocal] › tests\e2e\conv-clavier-ouverture.spec.js:100:3 › Ouverture d'une conversation — clavier et géométrie › remonté dans l'historique, un changement de géométrie ne ramène pas en bas 
+    Error: la lecture de l'historique a été arrachée vers le bas
+    Error Context: test-results\conv-clavier-ouverture-Ouv-3a2ac-métrie-ne-ramène-pas-en-bas-local\error-context.md
+  3) ocal] › tests\e2e\ecritures-identite-compte.spec.js:267:3 › écritures Supabase : l'identité écrite est celle de la session › ④ identité prouvée divergente — l'accusé de lecture ne part pas 
+    Error: mais la session en nomme un autre, et on le sait
+    Error Context: test-results\ecritures-identite-compte--35c77-cusé-de-lecture-ne-part-pas-local\error-context.md
+  4) ocal] › tests\e2e\entete-fil-permanent.spec.js:102:1 › aucune classe ni transition de repli, même sur une machine lente 
+    Error: le ralentissement processeur doit être effectif
+    Error Context: test-results\entete-fil-permanent-aucun-6a9dc--même-sur-une-machine-lente-local\error-context.md
+[583/1600] ocal] › tests\e2e\irl-funnel.spec.js:114:3 › Funnel IRL — création › écriture refusée : irl_create_failed(write_failed) alors que l'écran montre l'événement
+[587/1600] ocal] › tests\e2e\irl-funnel.spec.js:127:3 › Funnel IRL — création › aucune écriture tentée : irl_create_failed(offline), jamais un succès
+[611/1600] ocal] › tests\e2e\irl-funnel.spec.js:216:3 › Funnel IRL — participation › RSVP refusé par la base : irl_join_failed(write_failed), et l'état local optimiste est ANNULÉ
+[616/1600] ocal] › tests\e2e\irl-funnel.spec.js:232:3 › Funnel IRL — participation › aucun backend : irl_join_failed(offline)
+  5) ocal] › tests\e2e\monitoring-file-boot.spec.js:49:3 › Monitoring — file d'erreurs de boot › une erreur levée AVANT le vrai client est mise en file, puis remontée 
+    Error: l'erreur de boot doit avoir survécu à l'attente du vrai client
+    Error Context: test-results\monitoring-file-boot-Monit-77f83--mise-en-file-puis-remontée-local\error-context.md
+[1206/1600] ocal] › tests\e2e\supa-hors-ligne.spec.js:34:3 › Stub Supabase — dégradation hors ligne › CDN injoignable : le stub encaisse le tour des écrans sans TypeError
+  6) ocal] › tests\e2e\reprise-lectures-boot.spec.js:403:3 › Reprise des lectures de démarrage après coupure réseau › ⑪ télémétrie : le transitoire PROUVÉ est warn, l'inexpliqué reste error 
+    Error: expect(received).toBe(expected) // Object.is equality
+    Error Context: test-results\reprise-lectures-boot-Repr-4d3a2-rn-l-inexpliqué-reste-error-local\error-context.md
+  7) ocal] › tests\e2e\passions-plates.spec.js:379:3 › le modèle et les garde-fous › ⑮ publier sous une passion absente du serveur est REFUSÉ, et dit pourquoi 
+    TimeoutError: locator.waitFor: Timeout 15000ms exceeded.
+    Error Context: test-results\passions-plates-le-modèle--96687--est-REFUSÉ-et-dit-pourquoi-local\error-context.md
+  8) ocal] › tests\e2e\tour-jamais-impose.spec.js:95:3 › Le tour historique n'est jamais imposé › ② la coupure PASSIO_ONBOARDING_V2 = false rend le parcours historique 
+    TimeoutError: page.waitForFunction: Timeout 20000ms exceeded.
+    Error Context: test-results\tour-jamais-impose-Le-tour-88c8d-rend-le-parcours-historique-local\error-context.md
+  9) ocal] › tests\e2e\passions-plates.spec.js:1027:3 › la porte d'ajout et son plafond › ㉕ à deux passions, la recherche s'ouvre et ne laisse en prendre qu'une 
+    Error: locator.waitFor: Test timeout of 45000ms exceeded.
+    Error Context: test-results\passions-plates-la-porte-d-d577d-ne-laisse-en-prendre-qu-une-local\error-context.md
+  10) ocal] › tests\e2e\ui-v4a4-outils.spec.js:143:3 › UI-4A4 — Outils, troisième case de Rencontrer › « Tous » remet le neutre depuis le panneau 
+    Error: page.goto: Test timeout of 45000ms exceeded.
+    Error Context: test-results\ui-v4a4-outils-UI-4A4-—-Ou-267fe-le-neutre-depuis-le-panneau-local\error-context.md
+  11) ocal] › tests\e2e\ui-v3-passerelle.spec.js:909:1 › aucune animation quand l'utilisateur demande moins de mouvement 
+    Error: page.goto: Test timeout of 45000ms exceeded.
+    Error Context: test-results\ui-v3-passerelle-aucune-an-8e206--demande-moins-de-mouvement-local\error-context.md
+  12) ocal] › tests\e2e\ui-v4a1-intentions.spec.js:401:3 › UI-4A1 — raccord des intentions › kill switch local UI-4A1 : aucun raccord, la tête UI-4A0 demeure 
+    Error: page.goto: Test timeout of 45000ms exceeded.
+    Error Context: test-results\ui-v4a1-intentions-UI-4A1--6d40f-cord-la-tête-UI-4A0-demeure-local\error-context.md
+  13) ocal] › tests\e2e\ui-v4a1-intentions.spec.js:436:5 › UI-4A1 — raccord des intentions › mobile 320 px : aucun débordement, cibles ≥ 44 px 
+    Error: page.evaluate: TypeError: Cannot read properties of null (reading 'seed')
+    Error Context: test-results\ui-v4a1-intentions-UI-4A1--5e120--débordement-cibles-≥-44-px-local\error-context.md
+  14) ocal] › tests\e2e\ui-v4a2-cartes.spec.js:449:5 › UI-4A2 — carte d'activité V2 › mobile 430 px : aucun débordement, cibles ≥ 44 px 
+    Error: expect(received).toBeGreaterThan(expected)
+    Error Context: test-results\ui-v4a2-cartes-UI-4A2-—-ca-583f1--débordement-cibles-≥-44-px-local\error-context.md
+  15) ocal] › tests\e2e\user-state-invite.spec.js:138:3 › user_state : l'état ne part qu'avec un compte › ① sans compte — saveState n'arme rien, supaSaveUserState ne touche pas user_state 
+    Error: et aucune requête REST directe
+    Error Context: test-results\user-state-invite-user-sta-f7f18-te-ne-touche-pas-user-state-local\error-context.md
+  15 failed
+  6 skipped
+  1579 passed (32.4m)
+exit=1

@@ -1,0 +1,12 @@
+SHA: 55d45de79b8ef7bec4eea593e0ad0de4f1bdf45e
+cmd: node scripts/controle-cible-pilote.mjs --public  (lecture publique, aucune écriture, 2026-09-16T08:05Z)
+── SITE : https://passio-app.netlify.app/release.json
+  ℹ commit servi = a5e8c7175d08b6061d9d9c3b8d511cc3a7f143d6 · buildId c33581854df7
+── EDGE FUNCTIONS : X-Passio-Revision (OPTIONS)
+  ℹ delete-account : HTTP 200 · révision ABSENTE (version antérieure au candidat : non vérifiable)
+  ℹ export-account : HTTP 200 · révision ABSENTE (version antérieure au candidat : non vérifiable)
+  ℹ notify-call : HTTP 200 · révision ABSENTE (version antérieure au candidat : non vérifiable)
+  ℹ ask-ai : HTTP 200 · révision ABSENTE (version antérieure au candidat : non vérifiable)
+
+✅ aucun écart sur ce qui a été mesuré (ce qui n'a pas été lu est dit « non mesuré »).
+exit=0

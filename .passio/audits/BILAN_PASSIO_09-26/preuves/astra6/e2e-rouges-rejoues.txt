@@ -1,0 +1,8 @@
+SHA: 9b6fa02988f95400d3142e0a99712f8d7a19faec
+cmd: npx playwright test --project=local --workers=1 <13 fichiers rouges du run complet>
+  1) ocal] › tests\e2e\reprise-lectures-boot.spec.js:403:3 › Reprise des lectures de démarrage après coupure réseau › ⑪ télémétrie : le transitoire PROUVÉ est warn, l'inexpliqué reste error 
+    Error: expect(received).toBe(expected) // Object.is equality
+    Error Context: test-results\reprise-lectures-boot-Repr-4d3a2-rn-l-inexpliqué-reste-error-local\error-context.md
+  1 failed
+  146 passed (11.1m)
+exit=1

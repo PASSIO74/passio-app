@@ -1,0 +1,49 @@
+SHA: 9b6fa02988f95400d3142e0a99712f8d7a19faec
+cmd: bash tests/sql/migration-notifications-serveur.test.sh  (PostgreSQL 17.10 jetable, Windows 11)
+── ① LE DÉFAUT, MESURÉ AVANT ──────────────────────────────────────────
+  ✅ un client écrit une 'mention' à TEXTE LIBRE vers n'importe qui : ACCEPTÉ
+  ✅ …et la ligne existe, sans événement métier derrière
+── ② APPLICATION, VERDICT, REJEU ─────────────────────────────────────
+  ✅ verdict : aucun ECHEC
+  ✅ rejeu sans erreur
+  ✅ la clause des genres réservés n'est posée qu'une fois
+── ③ LE CLIENT NE PEUT PLUS ÉCRIRE LES GENRES DU SERVEUR, NI SE DIRE SERVEUR ──
+  ✅ 'mention' par un client : REFUSÉ
+  ✅ 'follow' par un client : REFUSÉ
+  ✅ 'comment' par un client : toujours accepté (genre encore client)
+  ✅ …mais son origine est FORCÉE à 'client', quoi qu'il ait envoyé
+── ④ notifier_mentions : L'ÉVÉNEMENT D'ABORD ─────────────────────────
+  ✅ sans commentaire récent de l'appelant : REFUSÉ (P0002)
+  ✅ anon : REFUSÉ
+  ✅ genre inconnu : REFUSÉ
+  ✅ commentaire récent, mention de Lea (2) PAR SON IDENTIFIANT : 1 notifiée (doublon et soi-même écartés)
+  ✅ …c'est Lea (2) qui est notifiée, pas l'homonyme Lea (1) : l'id désigne, pas le nom
+  ✅ …le TEXTE est dérivé par le serveur, pas celui du client
+  ✅ …origine = serveur
+  ✅ …et ref_id = la publication
+  ✅ rejouée (renvoi) : idempotente, toujours UNE ligne
+  ✅ …et le compte rendu reste 1
+── ⑤ DESTINATAIRES AUTORISÉS, ÉCARTÉS SANS LE DIRE ───────────────────
+  ✅ Bruno (bloque A) et un id inconnu sont écartés, Lea (1) notifiée : notifiees = 1, demandees = 3
+  ✅ …aucune ligne vers Bruno (le blocage tient dans les DEUX sens)
+  ✅ message de groupe : Chloe (NON membre) écartée, Lea (1) notifiée
+  ✅ …texte dérivé avec le nom du groupe
+  ✅ …aucune ligne vers Chloe
+  ✅ plus de 20 identifiants : REFUSÉ
+  ✅ une mention sur une conversation où l'appelant n'a PAS écrit récemment : REFUSÉ
+── ⑤ bis UN IDENTIFIANT PRÉEXISTANT, À UN AUTRE DESTINATAIRE, AVANT ON CONFLICT (16/09) ──
+  ✅ la mention est comptée (notifiees = 1)
+  ✅ la ligne de Chloe est INTACTE (destinataire, genre, texte)
+  ✅ …et Lea (1) reçoit quand même sa mention, sous un identifiant NEUF
+  ✅ …d'origine serveur, texte dérivé
+  ✅ un client ne peut PAS écrire un identifiant de l'espace serveur (n_m_…)
+  ✅ …mais un identifiant ordinaire, oui (genre client)
+── ⑥ MUTATIONS : le banc doit ROUGIR ─────────────────────────────────
+  ✅ mutation « clause retirée » : 'mention' par un client repasse
+  ✅ mutation « trigger d'origine coupé » : un client se dit 'serveur'
+  ✅ …rejouée : 'mention' client refusée de nouveau
+  ✅ mutation « plus de contrôle des destinataires » : Bruno (bloqueur) est notifié → un banc qui exige 0 rougit
+  ✅ …rétabli : Bruno n'est plus notifié
+
+RÉSULTAT : 37 contrôle(s) vert(s), 0 rouge(s)
+exit=0

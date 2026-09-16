@@ -1,0 +1,29 @@
+SHA: 9b6fa02988f95400d3142e0a99712f8d7a19faec
+cmd: bash tests/sql/prerequis-fonctions.test.sh  (PostgreSQL 17.10 jetable, Windows 11)
+── ① SANS MIGRATION : delete-account est RETENUE ────────────────────────
+  ✅ code 1 (retenue)
+  ✅ …delete-account nommée RETENUE
+  ✅ …l'objet manquant est nommé
+  ✅ …et la migration à appliquer aussi
+── ② BARRIÈRE v2 SEULE : encore RETENUE (v3 exigée) ─────────────────────
+  ✅ code 1 : une barrière v2 ne suffit pas
+  ✅ …la colonne v3 manque
+  ✅ …et le source de terminer_suppression n'a pas auth_echec
+── ③ v3 APPLIQUÉE : autorisé ; facultatif absent : dit, pas bloquant ────
+  ✅ code 0 : delete-account peut partir
+  ✅ …prérequis présents
+  ✅ export-account (instantané absent) : dégradée, code 0
+  ✅ …⚠️ dit
+  ✅ …et notify-call (mentions serveur absentes) aussi
+── ④ LECTURE SEULE ───────────────────────────────────────────────────────
+  ✅ une écriture dans la même forme de transaction est refusée
+  ✅ …la table n'existe pas
+── ⑤ UNE FONCTION HORS MANIFESTE NE SE DÉPLOIE PAS ────────────────────
+  ✅ code 2
+  ✅ …nommée
+── ⑥ MUTATION : un manifeste sans l'objet obligatoire laisserait partir la fonction ─
+  ✅ mutation « manifeste amputé » : la retenue disparaît (code 0) — un banc qui exige la retenue rougit
+  ✅ …rétabli avec le vrai manifeste : retenue
+
+RÉSULTAT : 18 contrôle(s) vert(s), 0 rouge(s)
+exit=0

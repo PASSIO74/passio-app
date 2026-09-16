@@ -1,0 +1,495 @@
+SHA: 55d45de79b8ef7bec4eea593e0ad0de4f1bdf45e
+cmd: node --test "tests/unit/*.test.mjs"  (JQ_BIN=/c/Users/BENJAMIN/Desktop/PASSIO-wt/jq/jq.exe, Windows 11, Node v24.16.0)
+✔ ASTRA-50 ① REPRODUCTION : transport en échec → le SDK rend status 0, code vide, « TypeError: Failed to fetch » ; c'était « refus », c'est « echec » (10.6298ms)
+✔ ASTRA-50 ② les formes réelles du SDK, chacune à sa place (15.7602ms)
+✔ ASTRA-50 ③ le code prime sur le statut ; l'inconnu est transitoire ; l'absurde n'est jamais « ok » (0.5255ms)
+✔ ASTRA-52 ① `on` en TABLEAU ou en SCALAIRE déclenche bien sur pull_request — la gate d'avant ne le voyait pas (6.2991ms)
+✔ ASTRA-52 ② une indentation de QUATRE espaces est lue comme celle de deux (1.0297ms)
+✔ ASTRA-52 ③ `secrets['SUPABASE_SERVICE_ROLE_KEY']`, `secrets["…"]`, `toJSON(secrets)` et `${{ secrets }}` sont des références (1.5859ms)
+✔ ASTRA-52 ④ `|| true`, une parenthèse, une négation ne sont PAS des gardes (0.6535ms)
+✔ ASTRA-52 ⑤ un commentaire n'est pas une garde, et un `if:` est lu dans l'ARBRE (0.9707ms)
+✔ ASTRA-52 ⑥ `!= 'pull_request'` n'exclut pas `pull_request_target` (0.9163ms)
+✔ ASTRA-52 ⑦ une forme YAML inconnue n'est JAMAIS certifiée sûre : ancre, alias, documents multiples → erreur, rouge (0.7979ms)
+✔ ⑧ sur les workflows RÉELS : tous se lisent, la gate est verte, et les chemins non certifiés sont nommés (32.5457ms)
+✔ ⑨ RÉINJECTION sur deploy.yml RÉEL : retirer les deux `if:` fait rougir la gate ; les remplacer par `|| true` aussi (7.8662ms)
+✔ ASTRA-62 ① le nom du secret en MINUSCULES est le même secret pour GitHub : référence vue, garde exigée (1.2342ms)
+✔ ASTRA-62 ② un job nommé `__proto__` n'est plus invisible : il est lu, et sa clé sans garde rougit (1.5125ms)
+✔ ASTRA-62 ③ `pull_request` encodé par un échappement YAML n'est pas lu à moitié : forme non prise en charge → rouge ; déclencheur inconnu → concerné (1.0088ms)
+✔ ① `call_invites` est purgée DES DEUX CÔTÉS — c'est un lien, comme follows et blocks (1.5545ms)
+✔ ② les tables du Carnet de voyage RETIRÉ sont purgées : « retirée » ne veut pas dire « effacée » (0.5551ms)
+✔ ③ l'export prend ce qui est à moi, pas l'autre bout du lien (0.4413ms)
+✔ ④ la gate est verte sur le dépôt tel qu'il est (193.138ms)
+✔ ⑤ RÉINJECTION — une table neuve oubliée fait ROUGIR la gate, et elle nomme le fichier (13.4821ms)
+✔ ASTRA-54 ① REPRODUCTION : `create table x (id)` PUIS `alter table x add user_id` — invisible avant, vu maintenant (25.3125ms)
+✔ ASTRA-54 ② REPRODUCTION : le schéma entre guillemets (`"public".x`) échappait — plus maintenant ; tout comme le nom sans schéma (32.2669ms)
+✔ ASTRA-54 ③ rename column, rename table, drop column, drop table : l'état FINAL fait foi (20.0933ms)
+✔ ASTRA-54 ④ une table aux colonnes NON déterminables (as select, like, inherits) est nommée et fait rougir (8.6961ms)
+✔ ⑥ le lecteur du référentiel voit les tables qui n'ont AUCUN `create table` dans le dépôt (1.5674ms)
+✔ ⑦ la gate s'exécute et sort 0, en DISANT sa portée (362.1901ms)
+✔ ① un appel en commentaire disparaît, un vrai appel reste (4.1441ms)
+✔ ② le contenu d'une chaîne disparaît, les délimiteurs restent ; les ${} des gabarits restent du code (0.3687ms)
+✔ ③ une chaîne DANS une interpolation ne vaut pas un appel ; une interpolation imbriquée non plus (5.4753ms)
+✔ ④ l'audit des tests creux : page.goto dans un commentaire ne fait pas une page réelle (0.7334ms)
+✔ ① la cible implicite visait la production, la barrière la refuse (1.8934ms)
+✔ ① bis une cible écrite passe, et la divergence avec le projet lié est DITE (0.3778ms)
+✔ ② sans attestation, rien ne part vers une cible protégée (0.9522ms)
+✔ ③ une modification APRÈS revue invalide l'attestation (dérive nommée) (1.6782ms)
+✔ ③ bis CRLF n'est pas une dérive (0.3154ms)
+✔ ④ une attestation ne vaut que pour la cible qu'elle nomme, et pas sans origine (0.4139ms)
+✔ ④ bis `--sans-attestation` ne contourne pas une cible protégée (0.3803ms)
+✔ ⑤ le journal entre DANS la transaction, après `begin;` et jamais après le verdict (0.6017ms)
+✔ ⑤ bis un `begin;` en commentaire ne trompe pas l'injection (0.309ms)
+✔ ⑥ le verdict global refuse de sortir vert si une phase a échoué ou est indéterminée (0.5426ms)
+✔ ⑦ les colonnes du journal se posent sans casser un journal existant (0.1946ms)
+✔ ⑧ une attestation RÉTROACTIVE est utilisable mais ne se dit jamais préalable (0.2387ms)
+✔ ⑨ le CLI refuse réellement une cible implicite et une cible protégée non attestée (422.2896ms)
+✔ ASTRA-51 ① REPRODUCTION : une attestation TAPÉE (PR fictive, auteur relecteur, « aucune revue ») ne rend plus « envoyable » (2168.2738ms)
+✔ ASTRA-61 ① le CLI refuse un fournisseur de preuve FICTIF sur une cible protégée — le banc ne certifie rien (324.6844ms)
+✔ ASTRA-51 ③ sans `gh` joignable la preuve est NON VÉRIFIABLE : refus, jamais « envoyable » (75.686ms)
+✔ ASTRA-61 ② la décision pure : APPROBATION positive, relecteur ≠ auteur, relecteur AUTORISÉ, liée au SHA, au contenu et à la cible — chaque condition retirée refuse (3.0799ms)
+✔ ① l'événement arrivé AVANT la réponse HTTP était perdu — il est désormais compté (9.3423ms)
+✔ ② un événement reçu après l'armement est reçu, avec sa latence (0.6035ms)
+✔ ③ un événement jamais reçu expire, et l'expiration est comptée (0.5317ms)
+✔ ④ un événement que le banc n'attendait pas est un ORPHELIN nommé, jamais un silence (0.522ms)
+✔ ⑤ le TAUX se calcule sur ce qui a été ARMÉ, jamais sur ce qui a été reçu (0.3812ms)
+✔ ⑥ chaque événement garde son acteur et son état — les échecs ne sont pas jetés (0.5706ms)
+✔ ⑦ un doublon est compté, pas confondu avec un second reçu (0.2236ms)
+✔ ⑧ à la fermeture, une attente en cours est un échec NOMMÉ, jamais une promesse pendante (0.3668ms)
+✔ ① contre-épreuve d'Astra : quatre HTTP 200 vides → quatre erreurs « vide », zéro succès (1.5586ms)
+✔ ② un tableau garni avec les champs attendus est un succès ; un champ manquant ou nul ne l'est pas (1.0922ms)
+✔ ③ un profil demandé par id : exactement un élément, et le bon (1.3453ms)
+✔ ④ un statut hors 2xx, un JSON illisible, une forme inattendue : nommés, jamais des succès (0.3036ms)
+✔ ⑤ un uuid attendu est vérifié dans sa forme ; min: 0 est un choix explicite (0.4092ms)
+✔ ⑥ le rapport : percentiles sur les seuls succès, erreurs comptées par motif, débit sur tout (0.262ms)
+✔ ASTRA-37 une réponse sans contenu est un succès mesurable, et un corps inattendu ne l'est pas (0.204ms)
+✔ ① les données d'autrui et les traces techniques ne partent pas ; le reste suit la liste de purge (2.0812ms)
+✔ ② l'export ne lit QUE le compte demandé et rend ses tables, ses médias, son identité (5.1257ms)
+✔ ③ une table illisible est NOMMÉE, elle ne fait pas échouer l'export ; une table pleine est paginée et bornée (21.6734ms)
+✔ ④ ASTRA-14 (RÉINJECTION) : sans colonne created_at, cinq pages pleines → tronqué DIT, plus jamais 5 000 lignes muettes (9.6109ms)
+✔ ⑤ ASTRA-14 : le listing Storage est paginé au-delà de 1 000 et ses erreurs sont nommées (1.8213ms)
+✔ ⑥ un export sans manque est dit COMPLET, avec ses comptes (0.5661ms)
+✔ ASTRA-28 ① 1001 lignes sans created_at NI id : `complet` ne peut plus être vrai (1.2722ms)
+✔ ASTRA-28 ② deux pages de dates ÉGALES : un identifiant était omis, et `complet` disait vrai (1.7922ms)
+✔ ASTRA-28 ③ un doublon ou un compte serveur divergent est une INCOHÉRENCE, jamais un export complet (1.7587ms)
+✔ ASTRA-28 ④ une table TRONQUÉE n'est pas déclarée incohérente — elle est déjà dite tronquée (3.4667ms)
+✔ ASTRA-44 ① REPRODUCTION : une ligne déjà lue disparaît et une autre naît entre deux pages → une ligne restée présente en permanence est OMISE, et l'export se dit complet (1.1384ms)
+✔ ASTRA-44 ② sans la fonction d'instantané (migration non appliquée) : lecture par pages, `complet` JAMAIS vrai, la raison est nommée (1.6576ms)
+✔ ASTRA-44 ③ sous instantané : le dossier porte le snapshot et l'heure de prise, et `complet` est possible (6.0042ms)
+✔ ASTRA-44 ④ COUVERTURE : la liste de la fonction SQL est EXACTEMENT tablesExport() (contrôle indépendant de la migration) (3.6477ms)
+✔ ① un auth.uid() nu est enveloppé, un déjà enveloppé est préservé, rien d'autre ne bouge (1.6151ms)
+✔ ② la policy est ré-émise à l'identique : commande, rôles (texte PostgreSQL ou tableau), permissive, USING, WITH CHECK (1.4823ms)
+✔ ③ seules les policies qui changent sont concernées (1.8293ms)
+✔ ① l'empreinte ignore les fins de ligne (CRLF du poste = LF de la CI), et change au moindre octet (2.1693ms)
+✔ ② la table se crée rejouable, RLS active, aucun droit client (0.3018ms)
+✔ ③ l'insertion porte le fichier relatif, l'empreinte et le verdict ; les apostrophes sont doublées (0.5366ms)
+✔ ④ un chemin hors de migrations/ ou une extension inattendue sont refusés ; le verdict est borné à 50 lignes (1.0286ms)
+✔ ⑤ la lecture est bornée (défaut 50, plafond 500) et triée du plus récent au plus ancien (0.3731ms)
+✔ ① appel : une conversation 1:1 commune ouvre la push (2.2883ms)
+✔ ② appel : un groupe commun ne suffit pas, ni l'absence de conversation, ni un tiers (0.5397ms)
+✔ ③ notification : une ligne récente de moi vers lui ouvre la push, avec SON texte décodé (0.7873ms)
+✔ ④ notification : ligne trop ancienne, ligne d'un autre émetteur, ligne vers un autre → refus (0.4482ms)
+✔ ⑤ identité : lue en base et bornée ; ligne absente → repli neutre (3.4069ms)
+✔ ⑥ une erreur de lecture est un refus, jamais une push (0.6146ms)
+✔ ⑦ decoderEntites : les cinq entités d'escapeHtml, dans le bon ordre (0.3051ms)
+✔ ⑧ ASTRA (RÉINJECTION) : une notification fabriquée SANS événement métier ne pousse rien (1.2048ms)
+✔ ⑨ message : un message récent de l'appelant dans une conversation du destinataire — et pas ailleurs (0.9341ms)
+✔ ⑩ like / comment : sur une publication DU destinataire, par l'appelant, récemment (1.1488ms)
+✔ ⑪ activités : participant → organisateur, organisateur → inscrit, invitation via une conversation 1:1 (0.9584ms)
+✔ ⑫ live et abonnements : un live récent vers un abonné ; une ligne follows entre eux (0.4596ms)
+✔ ⑬ une lecture en erreur est un refus, jamais une push (0.3806ms)
+✔ ⑭ lienNotification rend aussi le ref_id de la ligne, pour l'événement (0.2693ms)
+✔ ⑬ ASTRA-24 (RÉINJECTION) : commenter une publication ne permet pas de « mentionner » n'importe qui (0.529ms)
+✔ ⑬ bis la mention légitime passe, y compris noyée dans d'autres commentaires (1.306ms)
+✔ ⑬ ter fail-closed : un destinataire sans nom, ou une lecture en panne, ne pousse rien (0.5636ms)
+✔ ⑭ la mention EN GROUPE reste gouvernée par l'appartenance, et c'est un choix écrit (0.4251ms)
+✔ ASTRA-24 ① REPRODUCTION : commentaire « Bonjour @Lea » + ligne 'mention' à texte libre → avant : ok, texte libre poussé ; après : refusé (origine client) (0.7597ms)
+✔ ASTRA-24 ② une 'mention' écrite par le SERVEUR (origine serveur) pousse un texte DÉRIVÉ, jamais celui de la ligne (0.8109ms)
+✔ ASTRA-24 ③ les genres encore écrits par le client : événement exigé, texte DÉRIVÉ (le `content` de la ligne n'est plus poussé) (4.0007ms)
+✔ ASTRA-24 ④ textePush : un gabarit par genre, le nom borné, l'inconnu nul (0.196ms)
+✔ ASTRA-24 ⑤ transition : sans colonne `origine` (migration non appliquée), une ligne 'mention' vaut 'client' et ne pousse pas ; les autres genres poussent avec le gabarit (0.4655ms)
+✔ ① aucun signalement → aucune alerte, rien à écrire (3.0189ms)
+✔ ② un signalement ouvert depuis 2 h n'alerte pas encore (seuil 24 h) (1.6328ms)
+✔ ③ un signalement ouvert depuis 30 h alerte, et le titre dit combien (12.9596ms)
+✔ ④ un signalement TRAITÉ ne compte plus, même très ancien (0.3904ms)
+✔ ⑤ AVANT la migration (pas de colonne status) tout signalement est ouvert — l'état d'avant (0.4308ms)
+✔ ⑥ le corps ne porte NI identifiant, NI motif, NI cible — le dépôt est public (0.3296ms)
+✔ ⑦ une date illisible est ignorée sans faire tomber le verdict (1.2652ms)
+✔ ⑧ un target_type HOSTILE (Markdown, saut de ligne) ne sort jamais tel quel — liste blanche (0.4492ms)
+✔ ① une publication se supprime, une rencontre s'ANNULE (jamais supprimée) (2.2414ms)
+✔ ② un commentaire `ec_…` vise event_comments, les autres post_comments (l'erreur du 12/09) (0.3817ms)
+✔ ③ story et message se suppriment ; l'identifiant est encodé (0.2605ms)
+✔ ④ compte et passion : pas de plan, et la raison est dite (0.2283ms)
+✔ ⑤ le texte de décision nomme la décision, jamais la cible, et reste borné (0.331ms)
+✔ ⑥ le signalant est prévenu s'il a un compte (uuid), jamais un placeholder u_… (0.4159ms)
+✔ ⑦ statut après action : rejet → dismissed, retrait/note → handled (0.2328ms)
+✔ ⑧ MOD-01 : suspendre un compte = ban GoTrue en heures, borné à un entier de jours ; un uuid seulement (0.4531ms)
+✔ ⑨ MOD-01 : la personne suspendue reçoit les motifs (DSA art. 17), le signalant la décision (art. 16) — tous deux bornés (0.302ms)
+✔ ASTRA-38 ① une erreur RÉSEAU annonçait la levée (0.3853ms)
+✔ ASTRA-38 ② un HTTP 403/500 avec un corps JSON d'erreur annonçait la levée (0.2464ms)
+✔ ASTRA-38 ③ la réponse d'un AUTRE compte n'est pas une preuve (0.1447ms)
+✔ ASTRA-38 ④ un corps illisible ou sans `id` n'est pas une preuve (0.1393ms)
+✔ ASTRA-38 ⑤ une levée RÉELLE est vérifiée et conforme (0.1652ms)
+✔ ASTRA-38 ⑥ une suspension qui tient encore est vérifiée et NON conforme (0.1231ms)
+✔ ASTRA-38 ⑦ le sens SUSPENDRE partage la même décision, y compris sur l'identité (1.535ms)
+✔ ① page pleine → suivante ; page courte → stop, complet (2.776ms)
+✔ ② 1 201 lignes = 3 pages, toutes rendues, dans l'ordre (1.2755ms)
+✔ ③ la borne de pages arrête et le dit (18.0418ms)
+✔ ④ vide dès le départ (0.3967ms)
+✔ ⑤ exactement une page pleine : une seconde lecture vide confirme la fin (2.9966ms)
+✔ ① verdict pur : sous les deux plafonds, ça passe (3.5738ms)
+✔ ② verdict pur : plafond minute atteint → délai jusqu'à la sortie du plus ancien (0.3043ms)
+✔ ③ verdict pur : plafond horaire atteint → il prime, délai jusqu'à la sortie du plus ancien de l'heure (0.199ms)
+✔ ④ en base : sous le plafond, l'appel est ACCEPTÉ et sa ligne est ÉCRITE avec le bon événement (1.74ms)
+✔ ⑤ en base : le 4ᵉ appel de la minute est REFUSÉ et n'écrit RIEN — insister ne repousse pas la fenêtre (0.3299ms)
+✔ ⑥ en base : des appels étalés sur l'heure butent sur le plafond horaire même si la minute est vide (0.278ms)
+✔ ⑦ en base : les lignes de plus d'une heure ne comptent plus (0.2108ms)
+✔ ⑧ en base : une PANNE de lecture ou d'écriture REFUSE l'appel (fail-closed), jamais ne le laisse passer (0.3142ms)
+✔ ⑨ la réponse de refus est un 429 avec Retry-After, CORS et le délai en JSON (46.3117ms)
+✔ ⑩ RÉINJECTION — une boucle de 1 000 appels d'ask-ai n'en fait passer que 8 (contre 1 000 avant) (31.9182ms)
+✔ ① tout ce qui porte l'uid part — lignes, huit dossiers de médias, pièces jointes — et rien d'autre (33.1697ms)
+✔ ② un delete en erreur est un échec NOMMÉ, et ok est faux (3.5309ms)
+✔ ③ ce qui subsiste après relecture est un reste nommé (3.7891ms)
+✔ ④ ASTRA-11 : un message de A qui porte le chemin d'une pièce jointe de B ne supprime PAS l'objet de B (3.2439ms)
+✔ ⑤ un seau illisible est un échec ; un dossier vide n'en est pas un (7.5131ms)
+✔ ⑥ une relecture illisible compte comme un reste (fail-closed) (1.807ms)
+✔ ⑦ la liste couvre les tables à identifiant de compte du schéma du 2026-09-14, profiles en dernier (0.5681ms)
+✔ ⑧ ASTRA-12 : messages déjà effacés → les fichiers partent quand même ; refus puis reprise ; relecture en panne ≠ zéro reste (6.6176ms)
+✔ ⑨ fonction SQL absente (migration non appliquée) ou en panne = échec nommé, aucune purge sans autorité (5.0469ms)
+✔ ⑩ plus de 1 000 objets : tout part, la liste est paginée (18.9881ms)
+✔ ⑪ SUP-10 : une ligne repoussée par le client entre l'effacement et la relecture est effacée par la reprise ; une ligne qui revient encore est un reste nommé (7.1783ms)
+✔ ASTRA-25 ① réclamer, attendre, PUIS relever : l'ordre est la propriété (6.9731ms)
+✔ ASTRA-25 ① bis un ÉCHEC de réclamation arrête la purge AVANT le premier relevé (0.6142ms)
+✔ ASTRA-42 ② migration non appliquée : la purge NE PART PAS, et le code le nomme (0.3323ms)
+✔ ASTRA-40 ③ réclamation NON acquise (autre tentative vivante, ou compte déjà supprimé) : on s'arrête sans rien toucher (0.3914ms)
+✔ ASTRA-40 ④ purge INACHEVÉE : la fin d'opération est `echec`, AVEC le jeton — jamais un delete du marqueur (2.8911ms)
+✔ ASTRA-40 ⑤ la reproduction d'Astra : A échoue TARD, après que B a repris le compte — A ne retire rien, et le dit (2.0597ms)
+✔ ASTRA-41 ⑥ des écritures en vol qui ne finissent pas : la purge ÉCHOUE avant tout effacement (1.5033ms)
+✔ ASTRA-25 ⑦ la reproduction de la 4e passe : une écriture tardive ne rend plus un `ok` mensonger (1.0567ms)
+✔ ASTRA-39 ⑧ COUVERTURE : la liste de la migration est EXACTEMENT TABLES_COMPTE (contrôle indépendant de la migration) (2.098ms)
+✔ marquerSupprime transmet le jeton et le statut `supprimee` (1.9016ms)
+✔ ① le registre réel est valide, et la gate est verte sur le dépôt réel (265.7963ms)
+✔ ② chaque champ manquant ou valeur hors liste est refusé — toutes les erreurs d'un coup (1.0705ms)
+✔ ③ une condition satisfaite par le dépôt + statut « en_attente » = écart ; déclarée traitable/planifiée = aucun écart (0.7878ms)
+✔ ④ les autres formes de condition : échéance, fichier présent/absent, résidu fermé, toutes/une, manuel (jamais un écart) (1.2713ms)
+✔ ⑤ aucune fermeture sans les quatre états à oui, ni par-dessus une dépendance ouverte (0.647ms)
+✔ ⑥ la lecture SQL voit le schéma résultant : ALTER TABLE ADD COLUMN, "public" entre guillemets, fonctions, policies, triggers ; jamais un commentaire (46.4956ms)
+✔ ⑦ réinjection : RES-06 remis « en_attente » alors que call_invites est déclarée → la gate est rouge, et dit lequel (573.5308ms)
+✔ ⑧ réinjection : une PR pose le fichier attendu par RES-11 (scripts/lib/yaml-workflow.js) → rouge tant que le registre n'est pas réexaminé (546.519ms)
+✔ ⑨ réinjection : un résidu « fermé » avec relu_sur_cible = non mesuré → rouge ; registre illisible → rouge et code 1 en --json (384.489ms)
+✔ ASTRA-31 ① un 503 d'Auth était lu comme « zéro compte » (4.0285ms)
+✔ ASTRA-31 ② un corps JSON inattendu n'est pas une page vide (0.9691ms)
+✔ ASTRA-31 ③ une page PLEINE ne termine pas la pagination (0.3264ms)
+✔ ASTRA-30 ① la suspension d'un compte archivé ne partait pas dans le POST (2.5039ms)
+✔ ASTRA-30 ② on restitue la durée RÉSIDUELLE, jamais la durée d'origine (0.3963ms)
+✔ ASTRA-30 ③ le verdict compare l'ÉTAT de suspension, pas seulement l'UUID (0.614ms)
+✔ ASTRA-29 ① même taille, contenu différent, eTag multipart : « divergents » restait VIDE (0.6373ms)
+✔ ASTRA-29 ② taille absente ET eTag absent : rien n'était comparé du tout (0.3316ms)
+✔ ASTRA-29 ③ une empreinte de secours (GET + hash) TRANCHE, y compris sur un multipart (0.3068ms)
+✔ ASTRA-29 ④ les cas sains restent sains (0.4363ms)
+✔ ASTRA-29 ⑤ `prouvee` ne peut plus coexister avec un refus, une phase en échec ou un non-vérifié (0.5943ms)
+✔ ASTRA-32 ① une archive sans schema.sql sortait « conforme » (0.3911ms)
+✔ ASTRA-32 ② une archive complète est complète, et son DDL est éprouvé (0.2602ms)
+✔ ASTRA-32 ③ un DDL présent mais qui n'est pas CELUI de l'archive est pire qu'absent (0.2072ms)
+✔ ASTRA-32 ④ sans comptes ni médias : partielle, dit en clair, mais pas une anomalie (0.1473ms)
+✔ ASTRA-26 ① un objet restauré sous service_role n'a PLUS son propriétaire — c'est un écart (0.4231ms)
+✔ ASTRA-26 ② un propriétaire rendu à l'identique est conforme (0.1909ms)
+✔ ASTRA-26 ③ un propriétaire RENDU AU MAUVAIS COMPTE est divergent, jamais conforme (0.1396ms)
+✔ ASTRA-26 ④ « sans propriétaire dans l'archive » est un TROISIÈME état, ni succès ni écart (0.1358ms)
+✔ ASTRA-58 ① REPRODUCTION : archive owner:null/owner_id:null, cible appartenant à B → déclarée restaurée (avant) ; désormais DIVERGENT (0.2339ms)
+✔ ASTRA-58 ② une entrée `{}`, `null`, ou sans l'un des deux champs est INCONNUE : l'inventaire est refusé (indéterminé), jamais lu comme « sans propriétaire » (1.1496ms)
+✔ ASTRA-26 ⑤ un objet attendu et ABSENT de la cible est un écart (0.271ms)
+✔ ASTRA-26 ⑥ le verdict global refuse de sortir prouvé si les propriétaires ne le sont pas (0.1991ms)
+✔ ASTRA-47 ① REPRODUCTION : fin attendue 15/10/2026, borne cible 01/01/2020 → ok:true (avant) ; désormais ÉCART (0.2285ms)
+✔ ASTRA-47 ② la tolérance est celle de GoTrue : [attendu, attendu + 1 h], ± 5 min d'horloge (0.3294ms)
+✔ ASTRA-48 ① REPRODUCTION : un inventaire JSON tronqué devenait {} → attendus 0, conformes 0, ok:true ; désormais INDÉTERMINÉ (0.4027ms)
+✔ ASTRA-48 ② forme, total et empreinte de l'inventaire sont validés (0.4321ms)
+✔ ASTRA-45 ① REPRODUCTION : 1 001 fichiers, 1 000 propriétaires, zéro erreur → le dernier objet est NON RELEVÉ, et c'est dit (2.3075ms)
+✔ ASTRA-55 ① REPRODUCTION : manifeste 1 fichier, fichier disparu du disque, objet présent sur la cible → en_trop:1, ok:true (avant) ; désormais ÉCART (0.8018ms)
+✔ ASTRA-55 ② l'index est lu strictement (forme, total, md5, empreinte) (0.479ms)
+✔ ① un lot ne coupe JAMAIS une ligne, et reste sous le plafond quand les lignes le permettent (23.5332ms)
+✔ ① bis une ligne plus grosse que le plafond fait un lot À ELLE SEULE (c'est elle que PostgREST reprend) (11.9601ms)
+✔ ① ter fichier vide ou absent = zéro ligne, zéro lot, pas d'exception (2.2085ms)
+✔ ② le dollar-quoting choisit une étiquette que le contenu ne porte pas (0.6023ms)
+✔ ③ l'INSERT ne nomme QUE les colonnes reçues — les autres prennent leur DEFAULT (follows.created_at, reports.status) (0.5637ms)
+✔ ③ bis le rejeu ligne à ligne isole chaque refus DANS la base, en un seul aller-retour (0.2733ms)
+✔ ④ la production est nommée en dur comme cible INTERDITE (0.1475ms)
+✔ ④ ASTRA-16 (RÉINJECTION) : même nombre de lignes, contenu différent → divergente, jamais OK (0.6677ms)
+✔ ④ bis huit autres identités : manquantes ET en trop, jamais un échange pour un autre (0.3547ms)
+✔ ④ ter médias : nom, taille et empreinte — un objet vide de même nom est divergent (0.7935ms)
+✔ ④ quater une colonne née après l'archive n'est pas une divergence ; une colonne de l'archive absente de la cible, si (0.3636ms)
+✔ ④ quinquies médias multipart : un eTag « <hex>-<n> » n'est pas un MD5 — même taille = identique, taille différente = divergent (exercice du 2026-09-15 : deux vidéos identiques dites divergentes) (0.3474ms)
+   propriétaires Storage : 1 rendu(s).
+④ médias : 0 fichier(s) déposé(s), 1 refus.
+   ✗ content/photos/u/a.jpg : HTTP 413 Payload too large
+
+⑤ VERDICT — table | manifeste | cible
+   OK    _storage | 1 | 1 — 0 manquant(s), 0 divergent(s), 0 NON VÉRIFIÉ(S), 0 en trop
+   OK    _storage.owner | 1 conforme(s), 0 sans propriétaire dans l'archive, 0 divergent(s), 0 absent(s), 0 non relevé(s)
+   preuve écrite : C:\Users\BENJAMIN\AppData\Local\Temp\passio-reprise-xj36gL\preuve.json
+
+❌ la restauration n'est PAS prouvée :
+   · 1 refus pendant les phases
+   · phase « medias » : 1 refus (upload, seau, limite ou propriétaires)
+   propriétaires Storage : 1 rendu(s).
+④ médias : 1 fichier(s) déposé(s), 1 refus.
+   ✗ limite du seau content non rétablie : API de gestion /database/query : HTTP 500 permission denied
+
+⑤ VERDICT — table | manifeste | cible
+   OK    _storage | 1 | 1 — 0 manquant(s), 0 divergent(s), 0 NON VÉRIFIÉ(S), 0 en trop
+   OK    _storage.owner | 1 conforme(s), 0 sans propriétaire dans l'archive, 0 divergent(s), 0 absent(s), 0 non relevé(s)
+   preuve écrite : C:\Users\BENJAMIN\AppData\Local\Temp\passio-reprise-JO5AyM\preuve.json
+
+❌ la restauration n'est PAS prouvée :
+   · 1 refus pendant les phases
+   · limites Storage non restaurées : content
+   · phase « medias » : 1 refus (upload, seau, limite ou propriétaires)
+   propriétaires Storage : 1 rendu(s).
+④ médias : 1 fichier(s) déposé(s), 0 refus.
+
+⑤ VERDICT — table | manifeste | cible
+   OK    _storage | 1 | 1 — 0 manquant(s), 0 divergent(s), 0 NON VÉRIFIÉ(S), 0 en trop
+   OK    _storage.owner | 1 conforme(s), 0 sans propriétaire dans l'archive, 0 divergent(s), 0 absent(s), 0 non relevé(s)
+   preuve écrite : C:\Users\BENJAMIN\AppData\Local\Temp\passio-reprise-74jK7d\preuve.json
+
+✅ restauration prouvée sur abcdefghijabcdefghij (jetable) : lignes, comptes et médias de l'archive retrouvés à l'identique sur la cible.
+   ✗ archive ENDOMMAGÉE : 1 fichier(s) de l'index absent(s), 0 modifié(s), 0 hors index (ex. content/photos/u/a.jpg)
+④ médias : ignorés.
+
+⑤ VERDICT — table | manifeste | cible
+   ECART _storage | 1 | 1 — 0 manquant(s), 0 divergent(s), 0 NON VÉRIFIÉ(S), 0 en trop — ARCHIVE ENDOMMAGÉE (1 absent(s), 0 modifié(s))
+   OK    _storage.owner | 1 conforme(s), 0 sans propriétaire dans l'archive, 0 divergent(s), 0 absent(s), 0 non relevé(s)
+   preuve écrite : C:\Users\BENJAMIN\AppData\Local\Temp\passio-reprise-S2VFnC\preuve.json
+
+❌ la restauration n'est PAS prouvée :
+   · 1 écart(s)
+   · phase « intégrité de l'archive (médias) » : archive ENDOMMAGÉE : 1 fichier(s) de l'index absent(s), 0 modifié(s), 0 hors index (ex. content/photos/u/a.jpg)
+   propriétaires Storage : 1 rendu(s).
+④ médias : 1 fichier(s) déposé(s), 0 refus.
+
+⑤ VERDICT — table | manifeste | cible
+   ECART _storage | 1 | 2 — 0 manquant(s), 0 divergent(s), 0 NON VÉRIFIÉ(S), 1 en trop
+   OK    _storage.owner | 1 conforme(s), 0 sans propriétaire dans l'archive, 0 divergent(s), 0 absent(s), 0 non relevé(s)
+   preuve écrite : C:\Users\BENJAMIN\AppData\Local\Temp\passio-reprise-3chYTS\preuve.json
+
+❌ la restauration n'est PAS prouvée :
+   · 1 écart(s)
+   ⚠ intégrité des médias NON vérifiable : index absent
+   propriétaires Storage : 1 rendu(s).
+④ médias : 0 fichier(s) déposé(s), 1 refus.
+   ✗ index des médias : index absent — aucun fichier n'est déposé (on ne remplace pas la cible par un contenu non vérifiable)
+
+⑤ VERDICT — table | manifeste | cible
+   ECART _storage | attendu NON VÉRIFIABLE (index absent) | 0 — état INDÉTERMINÉ
+   ECART _storage.owner | 0 conforme(s), 0 sans propriétaire dans l'archive, 0 divergent(s), 1 absent(s), couverture NON VÉRIFIABLE (sans index)
+   preuve écrite : C:\Users\BENJAMIN\AppData\Local\Temp\passio-reprise-bhUN6K\preuve.json
+
+❌ la restauration n'est PAS prouvée :
+   · 2 écart(s)
+   · 1 refus pendant les phases
+   · phase « intégrité de l'archive (médias) » : index absent
+   · phase « medias » : 1 refus (upload, seau, limite ou propriétaires)
+   ✗ propriétaires Storage : JSON illisible (Unterminated string in JSON at position 94 (line 1 column 95)) — fichier tronqué ou corrompu — les objets restaurés n'auront pas de propriétaire (purge par compte et édition cassées).
+④ médias : 1 fichier(s) déposé(s), 0 refus.
+
+⑤ VERDICT — table | manifeste | cible
+   OK    _storage | 1 | 1 — 0 manquant(s), 0 divergent(s), 0 NON VÉRIFIÉ(S), 0 en trop
+   ECART _storage.owner | inventaire : JSON illisible (Unterminated string in JSON at position 94 (line 1 column 95)) — fichier tronqué ou corrompu — état INDÉTERMINÉ
+   preuve écrite : C:\Users\BENJAMIN\AppData\Local\Temp\passio-reprise-A1leEW\preuve.json
+
+❌ la restauration n'est PAS prouvée :
+   · 1 écart(s)
+   · phase « propriétaires Storage » : inventaire des propriétaires : JSON illisible (Unterminated string in JSON at position 94 (line 1 column 95)) — fichier tronqué ou corrompu — les objets restent la propriété de service_role
+   propriétaires Storage : 1 rendu(s).
+④ médias : 2 fichier(s) déposé(s), 1 refus.
+   ✗ propriétaires : 1 objet(s) archivé(s) NON RELEVÉ(S) par l'inventaire (ex. content/photos/u/b.jpg)
+
+⑤ VERDICT — table | manifeste | cible
+   OK    _storage | 2 | 2 — 0 manquant(s), 0 divergent(s), 0 NON VÉRIFIÉ(S), 0 en trop
+   ECART _storage.owner | 1 conforme(s), 0 sans propriétaire dans l'archive, 0 divergent(s), 0 absent(s), 1 non relevé(s)
+   preuve écrite : C:\Users\BENJAMIN\AppData\Local\Temp\passio-reprise-CWL5OJ\preuve.json
+
+❌ la restauration n'est PAS prouvée :
+   · 1 écart(s)
+   · 1 refus pendant les phases
+   · phase « medias » : 1 refus (upload, seau, limite ou propriétaires)
+② comptes : 1 créé(s), 0 déjà présent(s), 0 refus, sur 1.
+
+⑤ VERDICT — table | manifeste | cible
+   OK    _auth_users | 1 | 1 — mêmes identifiants
+   ECART _storage | 1 | 0 — 1 manquant(s), 0 divergent(s), 0 NON VÉRIFIÉ(S), 0 en trop
+   ECART _storage.owner | 0 conforme(s), 0 sans propriétaire dans l'archive, 0 divergent(s), 1 absent(s), 0 non relevé(s)
+   preuve écrite : C:\Users\BENJAMIN\AppData\Local\Temp\passio-reprise-zLS6uD\preuve.json
+
+❌ la restauration n'est PAS prouvée :
+   · 2 écart(s)
+② comptes : 0 créé(s), 1 déjà présent(s), 0 refus, sur 1.
+② comptes : 0 créé(s), 1 déjà présent(s), 2 refus, sur 1.
+   ✗ 33333333-3333-4333-8333-333333333333 : déjà présent, suspension NON POSÉE (HTTP 500)
+   ✗ 33333333-3333-4333-8333-333333333333 : déjà présent, l'archive portait une suspension jusqu'au 2026-09-18T08:01:43.181Z ; la borne de la cible (2020-01-01T00:00:00.000Z) est DÉJÀ PASSÉE — le compte est connectable
+   ✗ archive ENDOMMAGÉE : 0 fichier(s) de l'index absent(s), 1 modifié(s), 0 hors index
+   propriétaires Storage : 1 rendu(s).
+④ médias : 0 fichier(s) déposé(s), 1 refus.
+   ✗ content/photos/u/a.jpg : diffère de l'index (taille 3 vs 3, md5 f1b68d66… vs e1faffb3…) — NON déposé, la cible n'est pas écrasée
+
+⑤ VERDICT — table | manifeste | cible
+   ECART _storage | 1 | 1 — 0 manquant(s), 0 divergent(s), 0 NON VÉRIFIÉ(S), 0 en trop — ARCHIVE ENDOMMAGÉE (0 absent(s), 1 modifié(s))
+   OK    _storage.owner | 1 conforme(s), 0 sans propriétaire dans l'archive, 0 divergent(s), 0 absent(s), 0 non relevé(s)
+   preuve écrite : C:\Users\BENJAMIN\AppData\Local\Temp\passio-reprise-9wr4Qw\preuve.json
+
+❌ la restauration n'est PAS prouvée :
+   · 1 écart(s)
+   · 1 refus pendant les phases
+   · phase « intégrité de l'archive (médias) » : archive ENDOMMAGÉE : 0 fichier(s) de l'index absent(s), 1 modifié(s), 0 hors index
+   · phase « validation de l'archive » : médias : archive ENDOMMAGÉE : 0 fichier(s) de l'index absent(s), 1 modifié(s), 0 hors index
+   · phase « medias » : 1 refus (upload, seau, limite ou propriétaires)
+   ✗ archive ENDOMMAGÉE : 0 fichier(s) de l'index absent(s), 0 modifié(s), 1 hors index
+   ⚠ intégrité des médias NON vérifiable : index absent
+   propriétaires Storage : 1 rendu(s).
+④ médias : 0 fichier(s) déposé(s), 1 refus.
+   ✗ index des médias : index absent — aucun fichier n'est déposé (on ne remplace pas la cible par un contenu non vérifiable)
+   propriétaires Storage : 1 rendu(s), 1 sans propriétaire dans l'archive (NULL rendu explicitement).
+④ médias : 1 fichier(s) déposé(s), 0 refus.
+
+⑤ VERDICT — table | manifeste | cible
+   OK    _storage | 1 | 1 — 0 manquant(s), 0 divergent(s), 0 NON VÉRIFIÉ(S), 0 en trop
+   OK    _storage.owner | 1 conforme(s), 1 sans propriétaire dans l'archive, 0 divergent(s), 0 absent(s), 0 non relevé(s)
+   preuve écrite : C:\Users\BENJAMIN\AppData\Local\Temp\passio-reprise-YXA65N\preuve.json
+
+✅ restauration prouvée sur abcdefghijabcdefghij (jetable) : lignes, comptes et médias de l'archive retrouvés à l'identique sur la cible.
+
+⑤ VERDICT — table | manifeste | cible
+   OK    _storage | 1 | 1 — 0 manquant(s), 0 divergent(s), 0 NON VÉRIFIÉ(S), 0 en trop
+   ECART _storage.owner | 0 conforme(s), 0 sans propriétaire dans l'archive, 1 divergent(s), 0 absent(s), 0 non relevé(s)
+   preuve écrite : C:\Users\BENJAMIN\AppData\Local\Temp\passio-reprise-l4emYB\preuve.json
+
+❌ la restauration n'est PAS prouvée :
+   · 1 écart(s)
+
+⑤ VERDICT — table | manifeste | cible
+   OK    _storage | 1 | 1 — 0 manquant(s), 0 divergent(s), 0 NON VÉRIFIÉ(S), 0 en trop
+   ECART _storage.owner | inventaire : entrée invalide pour content/systeme.png : champ `owner` absent (propriétaire INCONNU, pas nul) — état INDÉTERMINÉ
+   preuve écrite : C:\Users\BENJAMIN\AppData\Local\Temp\passio-reprise-tK4Od8\preuve.json
+
+❌ la restauration n'est PAS prouvée :
+   · 1 écart(s)
+   · phase « validation de l'archive » : inventaire des propriétaires : entrée invalide pour content/systeme.png : champ `owner` absent (propriétaire INCONNU, pas nul)
+✔ ASTRA-46 ① REPRODUCTION : un upload refusé → medias:false, mais preuve.prouvee:true et refus:[] (avant) ; désormais un seul résultat (85.1968ms)
+✔ ASTRA-46 ② une limite de seau non remise est un bloquant du verdict, pas un refus local (43.9134ms)
+✔ ASTRA-46 ③ le chemin nominal reste prouvé : upload, propriétaires rendus, limite remise, relectures conformes (14.9505ms)
+✔ ASTRA-55 ⑤ un média disparu de l'archive après sa vérification : l'archive est ENDOMMAGÉE, la reprise n'est pas prouvée même si la cible a l'objet (8.8825ms)
+✔ ASTRA-55 ⑥ un objet EN TROP sur la cible est un écart ; sans index l'attendu est INDÉTERMINÉ (63.7472ms)
+✔ ASTRA-48 ⑤ un inventaire des propriétaires tronqué : phase INDÉTERMINÉE, verdict ÉCART — jamais « attendus 0, conformes 0, ok » (14.4262ms)
+✔ ASTRA-45 ④ un objet archivé que l'inventaire ne relève pas : refus nommé et écart (deux fichiers, un seul propriétaire) (17.5467ms)
+✔ ASTRA-30/47 ⑦ INTÉGRATION : la suspension est TRANSMISE au POST, RELUE, et un ban perdu est un refus (la mutation « ban non transmis » rougit ici) (15.1547ms)
+✔ ASTRA-47 ③ compte DÉJÀ PRÉSENT sur la cible sans sa suspension : relu, suspension POSÉE, relue ; si la pose est refusée, c'est un refus (11.0774ms)
+✔ ASTRA-59 ① REPRODUCTION : index AAA, disque BAD, cible AAA → la cible devenait BAD avant le verdict rouge ; désormais RIEN n'est déposé (17.2707ms)
+✔ ASTRA-59 ② une table NDJSON tronquée ou un fichier hors index invalident l'archive avant toute écriture ; sans index c'est « non vérifiable », distinct (43.1671ms)
+✔ ASTRA-58 ③ REPRODUCTION : archive owner:null/owner_id:null, cible appartenant à B → « restaurée » (avant) ; désormais NULL est RENDU et VÉRIFIÉ (21.7309ms)
+✔ ASTRA-58 ④ une entrée `{}` dans l'inventaire : archive INVALIDE (propriétaire inconnu), rien n'est écrit, verdict INDÉTERMINÉ (13.1585ms)
+✔ ① courant présent : le précédent est celui d'après dans la liste (2.4528ms)
+✔ ② ASTRA-19 (RÉINJECTION) : courant ABSENT → refus explicite, jamais le plus récent (0.4861ms)
+✔ ③ courant = le plus ancien lu → « aucun déploiement avant » ; courant inconnu → refus (0.2477ms)
+✔ ④ seuls les déploiements de production PRÊTS comptent, l'ordre est conservé (1.2995ms)
+✔ ⑤ pagination : on continue tant que la page est pleine et que le courant n'a pas de successeur lu (0.4536ms)
+  propriétaires Storage : 1001 objet(s) lu(s).
+  propriétaires Storage : 350 objet(s) lu(s).
+  propriétaires Storage : 3 objet(s) lu(s), dont 1 SANS propriétaire (déposés par service_role ou avant le suivi).
+  ⚠ propriétaires Storage NON archivés (HTTP 404 {"code":"PGRST202","message":"Could not find the function"}) — appliquer migration_proprietaires_objets_stockage_2026-09-15.sql. L'archive sera PARTIELLE sur ce point.
+  propriétaires Storage : 2501 objet(s) lu(s).
+  ⚠ propriétaires Storage NON archivés (pagination des propriétaires : non-progression (clé déjà vue : content/photos/u/0926.jpg à l'offset 500) — ordre non tot) — appliquer migration_proprietaires_objets_stockage_2026-09-15.sql. L'archive sera PARTIELLE sur ce point.
+✔ ASTRA-45 ⑤ REPRODUCTION : 1 001 fichiers, plafond 1 000, un seul appel (avant) → 1 000 propriétaires, zéro erreur, dernier objet orphelin ; désormais PAGINÉ et COMPLET (879.3869ms)
+✔ ASTRA-45 ⑥ quel que soit le plafond configuré (ici 100), la pagination le franchit (278.3509ms)
+✔ ASTRA-45 ⑦ trois états : propriétaire explicite, propriétaire NUL en base, inventaire INDISPONIBLE — jamais confondus (7.4498ms)
+✔ ASTRA-57 ① REPRODUCTION (avant) : POST + Range, arrêt sur ≠ 206 — avec le statut réel de PostgREST (200 sans compte), UN appel, 1 000 sur 1 001 (2.1584ms)
+✔ ASTRA-57 ② au-delà du plafond réel (2 501 objets, max-rows 1 000) : tout est lu, le total de Content-Range termine, aucune page en trop (1542.9578ms)
+✔ ASTRA-57 ③ total INCONNU (le serveur ignore Prefer: count) : la page vide termine — un appel de plus, jamais un arrêt prématuré (3.6094ms)
+✔ ASTRA-57 ④ max-rows plus petit que la page demandée (100 < 500) : on avance du nombre reçu, total vérifié (1.7022ms)
+✔ ASTRA-57 ⑤ NON-PROGRESSION : un serveur qui ignore l'ordre rend des doublons → ERREUR nommée, jamais un inventaire partiel silencieux (785.3531ms)
+✔ ASTRA-57 ⑥ un total qui change pendant la lecture est une erreur (relancer), pas un inventaire approximatif (3.0149ms)
+✔ ① fichier vide alors que le manifeste annonce 3 lignes : anomalie, sortie 1 (176.6659ms)
+✔ ② fichier conforme : aucune anomalie, sortie 0 (117.2273ms)
+✔ ③ un vide ANNONCÉ est conforme (73.1201ms)
+✔ ④ schema.sql absent : ANOMALIE, sortie 1 — l'archive n'est pas complète (76.8185ms)
+✔ ④ bis --partielle accepte SCIEMMENT une archive sans DDL, et continue de la nommer partielle (72.4084ms)
+✔ ⑤ schema.sql présent mais vide ou étranger (page d'erreur) : anomalie, sortie 1 — un DDL de PASSIO a des dizaines de tables et de policies (70.5462ms)
+✔ ⑥ schema.sql qui est un DDL : conforme (66.9594ms)
+✔ ⑦ un DDL dont l'empreinte ne correspond pas au manifeste : anomalie, sortie 1 (73.3127ms)
+✔ ⑧ le DDL attendu par le manifeste, présent à l'identique : conforme (67.0717ms)
+✔ ⑨ une archive avec un compte suspendu le SIGNALE (73.1786ms)
+✔ ASTRA-45 ② REPRODUCTION : proprietaires_lus:null, fichier owners absent → « COMPLÈTE », code 0 (avant) ; désormais PARTIELLE (72.7214ms)
+✔ ASTRA-45 ③ un inventaire qui ne relève pas un objet archivé : anomalie, code 1 (79.5368ms)
+✔ ASTRA-48 ③ REPRODUCTION : un fichier owners tronqué → « archive COMPLÈTE », code 0 (avant) ; désormais INDÉTERMINÉ, code 1 (78.4548ms)
+✔ ASTRA-48 ④ un inventaire dont l'empreinte diverge du manifeste est refusé (74.0639ms)
+✔ ASTRA-55 ③ REPRODUCTION : le média a disparu du disque après la sauvegarde → l'archive est ENDOMMAGÉE, code 1 (87.4612ms)
+✔ ASTRA-55 ④ un média MODIFIÉ sur disque (même nom) est vu par l'index ; une archive intacte est COMPLÈTE (170.7298ms)
+✔ « Script error. » est écarté : le navigateur refuse d'en dire plus (1.8577ms)
+✔ les variantes d'une même cause se regroupent (2.113ms)
+✔ ⚠️ le tri privilégie le nombre de COMPTES, pas le volume (4.4191ms)
+✔ un cas isolé sous le seuil n'est pas retenu (1.844ms)
+✔ deux comptes suffisent, même sous le seuil d'occurrences (2.8826ms)
+✔ un exemple avec pile d'appel est conservé — sans lui, aucune cause (0.4739ms)
+✔ les données réelles du 2026-09-09 donnent le verdict attendu (0.3021ms)
+✔ aucune erreur → aucune cible, et ce n'est PAS une preuve de santé (0.3185ms)
+✔ le refus d'envoi de message mesuré en prod devient une cause (1.9488ms)
+✔ un appel qui n'a jamais atteint le serveur (statut 0) est du BRUIT (0.4879ms)
+✔ un mot de passe faux n'est pas un défaut du produit (0.3103ms)
+✔ le tri met les comptes AVANT le volume, comme la famille JS (1.5755ms)
+✔ le contexte remplace la pile d'appel ABSENTE, et dit la limite (0.4693ms)
+✔ un code inconnu reste nommable, sans inventer de cause (0.2162ms)
+✔ un bouton dont AUCUN clic n'est suivi d'effet remonte en tête (1.5445ms)
+✔ l'effet d'une AUTRE session ne compte jamais (0.4688ms)
+✔ un effet ARRIVÉ AVANT le clic ne compte pas non plus (0.2841ms)
+✔ un bouton peu cliqué n'est PAS un suspect (0.1736ms)
+✔ le libellé est TRONQUÉ : il porte du texte écrit par des gens (0.2766ms)
+✔ désamorçage : une ligne en forme d'ordre est retirée, pas déguisée (0.5571ms)
+✔ désamorçage : les formes d'injection connues tombent toutes (1.9246ms)
+✔ désamorçage : un VRAI message d'erreur survit intact — sans quoi la cause devient introuvable (0.8695ms)
+✔ désamorçage : on ne peut plus SORTIR du bloc ni parler en titre (0.4434ms)
+✔ désamorçage : la longueur est bornée, en lignes comme en colonnes (1.9609ms)
+✔ l'empreinte normalise les chiffres et les URL — mais PAS le sens (0.1648ms)
+✔ l'empreinte NE SUFFIT PAS à faire un titre : elle laisse passer une consigne intacte (0.1784ms)
+✔ le titre a UNE seule source, il est borné, et il ne porte RIEN de librement choisi (0.7182ms)
+✔ le condensé est stable et distingue deux familles voisines (0.1906ms)
+✔ ⚠️ le cas réel : #316 ne doit PAS rouvrir ce que #313 a corrigé (0.7378ms)
+✔ ⚠️ UNE SEULE occurrence postérieure suffit à rouvrir : la récidive est le signal (0.3122ms)
+✔ un AUTRE défaut n'est jamais tu par la fermeture d'un premier (0.27ms)
+✔ aucune enquête fermée, liste absente ou cible nulle : on ouvre (0.2313ms)
+✔ ⚠️ une date illisible ne fait JAMAIS taire une enquête (0.3249ms)
+✔ le champ `closed_at` de l'API REST est accepté comme `closedAt` de gh (0.2253ms)
+✔ lireApi ne demande que les refus réseau de PRODUCTION (1.8553ms)
+✔ les deux lectures « boutons morts » portent le même filtre, et lirePagine le transmet tel quel (0.5178ms)
+✔ ASTRA-06 : une ligne API sans COMPTE (uuid) n'entre dans aucune cause (0.4805ms)
+✔ ASTRA-08 : la dédup AVANCE dans les candidats au lieu de s'arrêter au premier (0.4275ms)
+✔ ASTRA-06 (RÉINJECTION) : des lignes d'identité NON vérifiée (repli 400) ne sélectionnent jamais une enquête (0.3693ms)
+✔ ASTRA-08 (RÉINJECTION) : choisirCible avance au-delà de cinq candidats déjà fermés (0.9639ms)
+✔ ① le contournement d'Astra : 2 fichiers / 120 lignes passaient pour « 0 ligne » (527.0161ms)
+✔ ② du code réparti ENTRE les pages n'est plus perdu (347.1579ms)
+✔ ③ une page vide ne remet pas les compteurs à zéro (369.9146ms)
+✔ ④ une seule page se comporte comme avant — aucune régression (609.5361ms)
+✔ ⑤ les verrous e2e ne comptent NI en fichiers NI en lignes ; une PR vide de code est à zéro (615.1172ms)
+✔ ⑥ le workflow ne contient plus l'agrégat PAR PAGE, et le périmètre garde sa forme sûre (1.2712ms)
+✔ ⑦ un échec de l'API ne compte pas zéro — il refuse (77.3802ms)
+✔ ① sans infrastructure : 503 infrastructure_absente, ok faux, RIEN purgé, deleteUser jamais appelé (4.0269ms)
+✔ ② succès : 200 après deleteUser, `garantie: barriere`, marqueur `supprimee` avec le même jeton (16.055ms)
+✔ ③ deleteUser échoue après une purge réussie : 500 auth_non_supprime, données purgées dites, protection conservée (4.0383ms)
+✔ ④ restes nommés : 409 incomplete, echecs et restes transmis, pas de deleteUser (2.0512ms)
+✔ ⑤ réclamation non acquise : 409 deja_en_cours / deja_supprimee (5.578ms)
+✔ ⑥ écritures en vol non terminées : 409 en_vol (0.4099ms)
+✔ ⑦ tentative reprise par une autre pendant la purge : 409 jeton_perdu, deleteUser JAMAIS appelé (1.3163ms)
+✔ ⑧ chaque code a un statut et un message ; aucun statut 2xx hors succès (0.2603ms)
+✔ ① AVANT (modèle v2) : B reprend `purgee`, échoue, lève la protection ; une ligne passe ; A ne peut plus finaliser — et le handler NE PRONONCE PAS `garantie` (13.2652ms)
+✔ ② APRÈS (modèle v3) : une tentative vivante n'est pas reprise, l'écriture est refusée, A finalise avec garantie (5.3893ms)
+✔ ③ tentative INTERROMPUE : A meurt après `purgee` ; 15 min plus tard B reprend et finit ; A revenue tard ne prononce rien (6.2228ms)
+✔ ④ ÉCHEC AUTH : 500 auth_non_supprime, protection conservée, tentative TERMINÉE → B reprend aussitôt et finit (3.3208ms)
+✔ ⑤ reprise après `auth_echec` qui échoue en vol : JAMAIS `echec` après une purge — protection conservée, données dites parties (5.3873ms)
+✔ ⑥ `deleteUser` sur un utilisateur déjà absent = reprise d'une suppression interrompue après Auth, pas un échec (3.6344ms)
+✔ ⑦ MUTATION : un handler qui prononce `garantie` quand la finalisation est refusée rougit ici (①, ③) (1.1743ms)
+ℹ tests 323
+ℹ suites 0
+ℹ pass 323
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4050.3632
+exit=0
