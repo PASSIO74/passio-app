@@ -63,7 +63,10 @@ let errorWindow = [];
 export function onEvent(ev) {
   const now = Date.now();
 
-  if (ev.type === "error") {
+  // Une erreur explicitement rétrogradée en `warn` par son émetteur (coupure
+  // réseau sur un chemin qui échoue ouvert, telemetry.js/app-07) n'alimente ni
+  // le pic ni l'alerte multi-utilisateurs : elle n'est pas un défaut.
+  if (ev.type === "error" && ev.severity !== "warn") {
     const bug = store.bug(bugIdOf(ev));
     // Erreur critique isolée
     if (ev.severity === "critical") {

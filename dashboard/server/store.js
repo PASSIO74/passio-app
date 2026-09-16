@@ -10,6 +10,32 @@ import { config } from "./config.js";
 import { JsonDb } from "./jsondb.js";
 
 const ONLINE_MS = 70_000;        // appareil « en ligne » si vu il y a < 70 s
+
+// ── Coupures « au départ » : la page part, ses requêtes tombent ──────────────
+// Quand une page passe en arrière-plan ou se ferme (`session end` / `lifecycle
+// hidden`), le navigateur annule d'un coup toutes ses requêtes en vol : jusqu'à
+// 23 « Failed to fetch » dans la même seconde, mesurés en production. Ce n'est
+// pas un défaut du code, c'est la vie d'une PWA — et pourtant chacune de ces
+// lignes remplissait « Problèmes » en rouge (2026-09-16 : 6 occurrences, 1
+// compte, 4 iPhone, `session end` puis quatre échecs la même seconde).
+//
+// Deux preuves, jugées ici :
+//  ① le CLIENT l'a prouvée à l'instant de l'échec (`meta.masquee`,
+//     `meta.hors_ligne`, `meta.fermeture` — telemetry.js) ;
+//  ② un `session end` ou `lifecycle hidden` de la MÊME session encadre l'échec
+//     à ±FENETRE_DEPART_MS, sur l'horloge du client (`client_ts`).
+// ⚠️ La preuve ② peut arriver APRÈS l'échec : au `pagehide`, tout part dans un
+// seul envoi et les lignes partagent le même `received_at` — l'ordre de lecture
+// n'est pas garanti. Un échec candidat n'est donc pas classé tout de suite : il
+// attend ATTENTE_DEPART_MS (horloge du serveur) que son contexte soit arrivé,
+// puis est compté comme problème s'il n'est toujours pas expliqué. Un échec
+// réseau que rien n'explique reste un problème : on ne tait que le prouvé.
+const FENETRE_DEPART_MS = 3_000;
+const ATTENTE_DEPART_MS = 10_000;
+const DEPARTS_PAR_SESSION = 8;
+// Mêmes libellés que `estEchecReseau` (js/app-02) : la requête n'a jamais eu de
+// réponse. Un refus du serveur porte un code HTTP ≥ 400 et n'est jamais ici.
+const RE_ECHEC_RESEAU = /failed to fetch|fetcherror|networkerror|network request failed|load failed|network connection was lost|connection appears to be offline/i;
 const ACTIVE_MS = 5 * 60_000;    // « actif » si vu il y a < 5 min
 
 /** @typedef {Object} TelemetryEvent
@@ -101,6 +127,10 @@ class Store {
     this.resolvedNames = {};             // uid -> pseudo (résolu depuis profiles)
     // statut/notes de bug persistés (survivent au redémarrage)
     this.bugMeta = new JsonDb("bug-meta", {});
+    // Coupures au départ (voir l'en-tête) : marqueurs de départ par session
+    // (client_ts) et échecs candidats en attente de leur contexte.
+    this.departs = new Map();            // session_id -> [client_ts, …] (bornés)
+    this.enAttente = [];                 // [{ ev, depuis }] — depuis = horloge serveur
   }
 
   /** Définit les identifiants des comptes de test à ne jamais compter. */
@@ -147,19 +177,98 @@ class Store {
     this._touchSession(ev);
     this._touchUser(ev);
     if (ev.type === "link") this._touchLink(ev);
-    if (this._isProblem(ev)) this._recordBug(ev);
+    if (this._estDepart(ev)) this._noterDepart(ev);
+    this._reglerAttente();
+    if (this._isProblem(ev)) {
+      if (this._estCoupureCandidate(ev)) {
+        // Le contexte (le départ de la page) n'est peut-être pas encore arrivé :
+        // on attend avant de compter, jamais avant d'oublier.
+        if (!this._departEncadre(ev)) this.enAttente.push({ ev, depuis: Date.now() });
+      } else {
+        this._compterProbleme(ev);
+      }
+    }
     return true;
   }
 
   /** Un événement « à problème » : erreur JS, coupure de connexion ou appel
    *  API en échec. Élargit la notion de bug pour que TOUT problème rencontré
    *  par un testeur remonte dans « Problèmes » — pas seulement les erreurs JS
-   *  (un testeur en coupure réseau était auparavant totalement invisible). */
+   *  (un testeur en coupure réseau était auparavant totalement invisible).
+   *  ⚠️ Sauf ce que le client a PROUVÉ transitoire à l'instant même de l'échec
+   *  (page masquée, hors ligne, page qui part) : « la requête a échoué » et
+   *  « notre code a un défaut » ne sont pas la même chose, et une erreur
+   *  explicitement rétrogradée en `warn` par son émetteur dit la même chose. */
   _isProblem(ev) {
-    if (ev.type === "error") return true;
+    if (this._echecExpliqueParLeClient(ev)) return false;
+    if (ev.type === "error") return ev.severity !== "warn";
     if (ev.type === "connectivity") return ev.severity === "error" || ev.severity === "warn";
     if (ev.type === "api" && ev.status === "error") return true;
     return false;
+  }
+
+  /** Preuve ① : le client a mesuré la cause au moment de l'échec. */
+  _echecExpliqueParLeClient(ev) {
+    if (ev.type !== "api" || ev.status !== "error") return false;
+    const m = ev.meta || {};
+    return m.masquee === true || m.hors_ligne === true || m.fermeture === true;
+  }
+
+  /** Un échec dont la cause PEUT être un départ de page : requête jamais
+   *  répondue (api, http_status 0) ou erreur JS au libellé réseau. */
+  _estCoupureCandidate(ev) {
+    if (!ev.session_id) return false;
+    if (ev.type === "api" && ev.status === "error") {
+      return ev.http_status === 0 || RE_ECHEC_RESEAU.test(String(ev.message || ""));
+    }
+    if (ev.type === "error") return RE_ECHEC_RESEAU.test(String(ev.message || ""));
+    return false;
+  }
+
+  _estDepart(ev) {
+    return (ev.type === "session" && ev.action === "end")
+        || (ev.type === "lifecycle" && ev.action === "hidden");
+  }
+
+  _noterDepart(ev) {
+    if (!ev.session_id) return;
+    let liste = this.departs.get(ev.session_id);
+    if (!liste) { liste = []; this.departs.set(ev.session_id, liste); }
+    liste.push(ev.client_ts || ev.ts);
+    if (liste.length > DEPARTS_PAR_SESSION) liste.shift();
+    // Un départ qui arrive après ses échecs les explique rétroactivement.
+    this.enAttente = this.enAttente.filter((a) => !(a.ev.session_id === ev.session_id && this._departEncadre(a.ev)));
+  }
+
+  /** Preuve ② : un départ de la même session encadre l'échec (horloge client). */
+  _departEncadre(ev) {
+    const liste = this.departs.get(ev.session_id);
+    if (!liste) return false;
+    const t = ev.client_ts || ev.ts;
+    return liste.some((d) => Math.abs(t - d) <= FENETRE_DEPART_MS);
+  }
+
+  /** Règle les candidats dont le délai d'attente est écoulé : expliqué → oublié,
+   *  sinon → compté comme problème (on ne tait que le prouvé). `force` règle tout
+   *  (tests, arrêt). Appelé à chaque ingestion et avant chaque lecture des bugs. */
+  _reglerAttente(force = false) {
+    if (!this.enAttente.length) return;
+    const now = Date.now();
+    const reste = [];
+    for (const a of this.enAttente) {
+      if (!force && now - a.depuis < ATTENTE_DEPART_MS) { reste.push(a); continue; }
+      if (!this._departEncadre(a.ev)) this._compterProbleme(a.ev);
+    }
+    this.enAttente = reste;
+  }
+
+  /** Un problème AVÉRÉ : compteurs d'appareil et de session, bug regroupé. */
+  _compterProbleme(ev) {
+    const d = ev.device_id ? this.devices.get(ev.device_id) : null;
+    if (d) { d.errorCount = (d.errorCount || 0) + 1; d.lastProblem = ev.ts; }
+    const s = ev.session_id ? this.sessions.get(ev.session_id) : null;
+    if (s) s.errorCount++;
+    this._recordBug(ev);
   }
 
   _touchDevice(ev) {
@@ -174,7 +283,8 @@ class Store {
     if (ev.user_id) { d.userId = ev.user_id; d.userLabel = ev.user_label || d.userLabel; }
     if (ev.session_id) d.sessionId = ev.session_id;
     if (ev.screen) d.screen = ev.screen;
-    if (this._isProblem(ev)) { d.errorCount = (d.errorCount || 0) + 1; d.lastProblem = ev.ts; }
+    // `errorCount` / `lastProblem` : posés par `_compterProbleme`, une fois le
+    // problème avéré (voir « coupures au départ »).
     // Suit l'état de connexion pour repérer un appareil « en difficulté ».
     if (ev.type === "connectivity") {
       if (ev.action === "offline" || ev.action === "send_failed") d.offline = true;
@@ -190,7 +300,7 @@ class Store {
     s.last = ev.ts; s.eventCount++;
     s.userId = ev.user_id || s.userId; s.userLabel = ev.user_label || s.userLabel;
     s.platform = ev.platform; s.browser = ev.browser; s.appVersion = ev.app_version; s.env = ev.env;
-    if (this._isProblem(ev)) s.errorCount++;
+    // `errorCount` : posé par `_compterProbleme`, une fois le problème avéré.
     if (ev.type === "nav" && ev.screen && s.screens[s.screens.length - 1] !== ev.screen) {
       s.screens.push(ev.screen);
       if (s.screens.length > 100) s.screens.shift();
@@ -558,10 +668,11 @@ class Store {
   _status(id) { return (this.bugMeta.get()[id] || {}).status || "nouveau"; }
 
   bugList() {
+    this._reglerAttente();
     return [...this.bugs.values()].map((b) => this._bugDto(b))
       .sort((a, b) => (b.severityRank - a.severityRank) || (b.lastSeen - a.lastSeen));
   }
-  bug(id) { const b = this.bugs.get(id); return b ? this._bugDto(b, true) : null; }
+  bug(id) { this._reglerAttente(); const b = this.bugs.get(id); return b ? this._bugDto(b, true) : null; }
 
   _bugDto(b, full = false) {
     const rank = { info: 1, warn: 2, error: 3, critical: 4 };
