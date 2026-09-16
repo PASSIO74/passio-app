@@ -220,7 +220,11 @@ if (!lignes.length) {
   console.log("\nVERDICT (" + lignes.length + " ligne" + (lignes.length > 1 ? "s" : "") + ") :");
   const cles = Object.keys(lignes[0]);
   for (const l of lignes) console.log("  " + cles.map((k) => String(l[k])).join("  |  "));
-  const rouges = lignes.filter((l) => Object.values(l).some((v) => /ECHEC|anomalie/i.test(String(v))));
+  // ⚠️ Le rouge se lit dans la colonne de VERDICT (`valeur`, sinon la dernière),
+  // jamais dans le libellé du contrôle : « le statut est contraint (en_cours,
+  // echec, …) » disait ECHEC sur une migration parfaitement appliquée (16/09).
+  const colonneVerdict = (l) => (Object.prototype.hasOwnProperty.call(l, "valeur") ? l.valeur : Object.values(l)[Object.values(l).length - 1]);
+  const rouges = lignes.filter((l) => /^(ECHEC|anomalie)/i.test(String(colonneVerdict(l)).trim()));
   phases["verdict"] = rouges.length ? { ok: false, motif: rouges.length + " ligne(s) en ECHEC — la transaction a pourtant été validée : lire l'état en base" } : { ok: true };
 }
 
