@@ -270,8 +270,21 @@
         </label>
         <label class="field">
           <span>Mot de passe</span>
-          <div style="position:relative;"><input type="password" class="input" id="authPassword" placeholder="••••••••" autocomplete="current-password" minlength="6" style="font-size:16px;padding-right:44px;"/><button type="button" onclick="togglePwd('authPassword',this)" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:18px;color:var(--muted);padding:0;">👁</button></div>
+          <div style="position:relative;"><input type="password" class="input" id="authPassword" placeholder="••••••••" autocomplete="current-password" minlength="6" oninput="majAideMotDePasse()" style="font-size:16px;padding-right:44px;"/><button type="button" onclick="togglePwd('authPassword',this)" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:18px;color:var(--muted);padding:0;">👁</button></div>
         </label>
+        <!-- AIDE AU CHOIX DU MOT DE PASSE (2026-09-16) — les TROIS règles que le
+             serveur applique déjà, écrites avant d’être refusé, et une sortie
+             quand le mot de passe choisi a fuité ailleurs.
+             ⚠️ HORS du <label> voisin : un bouton posé DANS un label voit son
+             clic détourné vers le champ du label (même famille que le piège des
+             liens dans la case de consentement).
+             Peint par `majAideMotDePasse` (app-02), montré par `switchAuthTab`
+             en mode création SEULEMENT. -->
+        <div id="authPwdHint" style="display:none;margin:-6px 0 12px;">
+          <div id="authPwdRules" style="display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;line-height:1.5;"></div>
+          <div id="authPwdRefus" style="display:none;font-size:12px;line-height:1.45;margin-top:6px;"></div>
+          <button type="button" id="authPwdSuggest" onclick="authProposerMotDePasse()" style="margin-top:6px;min-height:44px;padding:6px 0;background:none;border:none;font-size:12px;font-weight:800;color:var(--accent);text-decoration:underline;text-align:left;cursor:pointer;">🎲 Proposer un mot de passe</button>
+        </div>
         <label class="field" id="authPasswordConfirmWrap" style="display:none;">
           <span>Confirmer le mot de passe</span>
           <div style="position:relative;"><input type="password" class="input" id="authPasswordConfirm" placeholder="••••••••" autocomplete="new-password" style="font-size:16px;padding-right:44px;"/><button type="button" onclick="togglePwd('authPasswordConfirm',this)" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:18px;color:var(--muted);padding:0;">👁</button></div>

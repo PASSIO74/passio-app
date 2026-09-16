@@ -4514,6 +4514,27 @@ function switchAuthTab(mode) {
     resp.textContent = (typeof passioLigneResponsable === "function") ? passioLigneResponsable() : "";
     resp.style.display = mode === "signup" && resp.textContent ? "" : "none";
   }
+  // ── AIDE AU CHOIX DU MOT DE PASSE — à l’écran UNIQUEMENT à la création ──
+  // En connexion il n’y a rien à choisir, et un compte créé avant le passage à
+  // 8 caractères (2026-09-13) a le droit d’entrer avec le sien.
+  const pwdHint = document.getElementById("authPwdHint");
+  if (pwdHint) pwdHint.style.display = mode === "signup" ? "block" : "none";
+  [["authPassword", "current-password"], ["authPasswordConfirm", "new-password"]].forEach(function (paire) {
+    const el = document.getElementById(paire[0]);
+    if (!el) return;
+    // ⚠️ Le `minlength` SUIT `MOT_DE_PASSE_MIN`, seule source du nombre. Posé
+    // en connexion, il barrerait un ancien mot de passe de 6 caractères,
+    // parfaitement valide côté serveur.
+    if (mode === "signup") el.setAttribute("minlength", String(MOT_DE_PASSE_MIN));
+    else el.removeAttribute("minlength");
+    // ⚠️ C’EST `autocomplete` QUI FAIT APPARAÎTRE « Mot de passe fort » du
+    // trousseau iOS / du gestionnaire du navigateur. Le champ était figé sur
+    // `current-password` : en création, le trousseau se taisait et chacun
+    // devait inventer son mot de passe tout seul — la cause silencieuse du
+    // refus « mot de passe déjà fuité ». Le sens du champ change avec l’onglet.
+    el.setAttribute("autocomplete", mode === "signup" ? "new-password" : paire[1]);
+  });
+  majAideMotDePasse();
   document.getElementById("authSubmitBtn").textContent = mode === "signin" ? "Se connecter" : "Créer mon compte";
   // "Mot de passe oublié ?" pertinent uniquement en connexion
   const forgot = document.getElementById("authForgotLink");
@@ -4881,6 +4902,150 @@ function traduireRefusMotDePasse(m) {
   return m;
 }
 
+// ── AIDER À CHOISIR UN MOT DE PASSE, PLUTÔT QUE DE REFUSER CELUI QU'ON A ─────
+//
+// Rapport d'essai réel (capture, 2026-09-16) : quelqu'un tape « Emma0207@ »,
+// l'écran répond « Ce mot de passe apparaît dans des fuites de données
+// connues », EN HAUT du formulaire — à quatre champs de distance du mot de
+// passe — et ne dit PAS quoi faire. Trois choses manquaient, et aucune n'est
+// une exigence supplémentaire :
+//   ① les règles n'étaient écrites NULLE PART (on les découvrait en étant
+//      refusé, une à la fois) ;
+//   ② le refus du serveur ne se prononçait pas LÀ où on tape ;
+//   ③ « choisis-en un autre » est un ordre, pas une sortie : quelqu'un dont
+//      les trois mots de passe habituels ont fuité n'a aucune idée du suivant.
+//
+// ⚠️ ON N'AJOUTE AUCUNE RÈGLE. Les trois exigences affichées sont EXACTEMENT
+// celles que le serveur applique déjà (Supabase → Email : « Minimum password
+// length » = MOT_DE_PASSE_MIN, « Password requirements » = lettres et
+// chiffres). Les AFFICHER, ce n'est pas compliquer la sélection : c'est cesser
+// de la faire deviner. Pas de majuscule, pas de caractère spécial, pas de
+// jauge de « force » — rien de ce que le serveur ne demande pas.
+const MOT_DE_PASSE_REGLES = [
+  { id: "taille", texte: MOT_DE_PASSE_MIN + " caractères", ok: function (p) { return p.length >= MOT_DE_PASSE_MIN; } },
+  { id: "lettres", texte: "des lettres", ok: function (p) { return /[a-zA-Z]/.test(p); } },
+  { id: "chiffres", texte: "des chiffres", ok: function (p) { return /[0-9]/.test(p); } },
+];
+
+// Verdict par règle. SEULE autorité de « ce mot de passe convient-il ? » côté
+// client : ni `onbDoAuth` ni l'aide à l'écran ne re-testent quoi que ce soit
+// de leur côté (même contrat que `nomCompteValide`).
+function motDePasseVerdict(pwd) {
+  const p = String(pwd == null ? "" : pwd);
+  return MOT_DE_PASSE_REGLES.map(function (r) { return { id: r.id, texte: r.texte, ok: !!r.ok(p) }; });
+}
+
+// Vrai si le mot de passe satisfait TOUTES les règles affichées.
+function motDePasseAccepte(pwd) {
+  return motDePasseVerdict(pwd).every(function (r) { return r.ok; });
+}
+
+// Mots du générateur : français, courants, SANS ACCENT (le mot de passe se
+// retape un jour sur un autre clavier) et sans homographe piégeux. La liste
+// n'a aucune valeur de secret — c'est le TIRAGE qui en a une.
+const MOTS_MDP = ["soleil", "guitare", "montagne", "vent", "sable", "voile", "lune", "jardin",
+  "piano", "danse", "roman", "photo", "tennis", "marche", "course", "surf",
+  "judo", "yoga", "violon", "tambour", "dessin", "peinture", "poterie", "tricot",
+  "couture", "cuisine", "recette", "potager", "bambou", "cactus", "olivier", "noisette",
+  "amande", "mangue", "banane", "cerise", "fraise", "citron", "melon", "raisin",
+  "tomate", "carotte", "oignon", "basilic", "menthe", "lavande", "safran", "cannelle",
+  "vanille", "chocolat", "caramel", "biscuit", "galette", "brioche", "tartine", "marmite",
+  "assiette", "bougie", "lanterne", "boussole", "carnet", "crayon", "pinceau", "palette",
+  "sculpture", "vitrail", "village", "sentier", "falaise", "dune", "lagune", "cascade",
+  "torrent", "glacier", "sommet", "prairie", "roseau", "saule", "platane", "figuier",
+  "mimosa", "tournesol", "coquelicot", "marguerite", "pivoine", "jasmin", "muguet", "colibri",
+  "chouette", "faucon", "cigogne", "dauphin", "baleine", "tortue", "papillon", "abeille",
+  "renard", "marmotte", "chamois", "sanglier", "loutre", "castor", "hibou", "genet"];
+
+// Entier aléatoire dans [0, max[. ⚠️ `Math.random()` ne convient pas pour
+// fabriquer un secret ; il ne sert QUE de repli (contexte non sécurisé, très
+// vieux navigateur), jamais de chemin nominal. Tirage par REJET : un simple
+// `% max` favoriserait les premiers mots de la liste.
+function _aleaEntier(max) {
+  const n = Math.max(1, Math.floor(max));
+  try {
+    const source = (window.crypto || window.msCrypto);
+    if (source && typeof source.getRandomValues === "function") {
+      const buf = new Uint32Array(1), limite = Math.floor(4294967296 / n) * n;
+      let v;
+      do { source.getRandomValues(buf); v = buf[0]; } while (v >= limite);
+      return v % n;
+    }
+  } catch (e) {}
+  return Math.floor(Math.random() * n);
+}
+
+// Un mot de passe PRONONÇABLE, jamais une bouillie de symboles : deux mots
+// tirés au sort et quatre chiffres — « lavande-colibri-4917 ». Il satisfait les
+// trois règles par construction, et il ne peut pas figurer dans une fuite
+// (il vient d'être tiré). ⚠️ Deux mots DIFFÉRENTS : « vent-vent-1234 » se lit
+// comme un bug, et coûte de l'entropie.
+function motDePasseSuggere() {
+  const mots = [];
+  while (mots.length < 2 && mots.length < MOTS_MDP.length) {
+    const m = MOTS_MDP[_aleaEntier(MOTS_MDP.length)];
+    if (mots.indexOf(m) < 0) mots.push(m);
+  }
+  return mots.join("-") + "-" + String(1000 + _aleaEntier(9000));
+}
+
+// Peint l'aide sous le champ : l'état des trois règles, et — s'il y en a un —
+// le refus du SERVEUR, à l'endroit où l'on tape. `refus` non fourni = on
+// efface le refus précédent (retaper, c'est répondre).
+// ⚠️ L'état ne repose JAMAIS sur la seule couleur (✓ / ○) : un daltonien doit
+// lire la même chose (règle d'accessibilité maison).
+function majAideMotDePasse(refus) {
+  const boite = document.getElementById("authPwdHint");
+  const regles = document.getElementById("authPwdRules");
+  if (!boite || !regles) return;
+  const champ = document.getElementById("authPassword");
+  const pwd = champ ? champ.value : "";
+  const vierge = !pwd;
+  regles.innerHTML = motDePasseVerdict(pwd).map(function (r) {
+    // Tant que le champ est vide, aucune règle n'est « ratée » : on énonce, on
+    // ne reproche pas. Le vert n'apparaît qu'à partir du premier caractère.
+    const fait = r.ok && !vierge;
+    return '<span style="display:inline-flex;align-items:center;gap:4px;color:' + (fait ? "#15803d" : "var(--muted)") + ';font-weight:' + (fait ? "700" : "600") + ';">'
+      + '<span aria-hidden="true">' + (fait ? "✓" : "○") + "</span>" + escapeHtml(r.texte) + "</span>";
+  }).join("");
+  const ligne = document.getElementById("authPwdRefus");
+  if (ligne) {
+    ligne.textContent = refus ? String(refus) : "";
+    ligne.style.display = refus ? "block" : "none";
+    ligne.style.color = "#dc2626";
+  }
+}
+
+// « Proposer un mot de passe » : la sortie qui manquait. On remplit les DEUX
+// champs et on AFFICHE le mot de passe en clair — un mot de passe proposé
+// qu'on ne peut pas lire est un mot de passe perdu.
+function authProposerMotDePasse() {
+  const a = document.getElementById("authPassword");
+  if (!a) return;
+  const b = document.getElementById("authPasswordConfirm");
+  const mdp = motDePasseSuggere();
+  a.value = mdp;
+  if (b) b.value = mdp;
+  // Les deux champs passent en clair, et les boutons « œil » doivent DIRE le
+  // même état — sinon le suivant remet le masque à l'envers.
+  [a, b].forEach(function (el) {
+    if (!el) return;
+    el.type = "text";
+    try {
+      const oeil = el.parentElement ? el.parentElement.querySelector("button") : null;
+      if (oeil) oeil.textContent = "🙈";
+    } catch (e) {}
+  });
+  majAideMotDePasse();
+  const ligne = document.getElementById("authPwdRefus");
+  if (ligne) {
+    ligne.textContent = "Note-le : c'est ce mot de passe qu'il faudra pour te reconnecter.";
+    ligne.style.color = "var(--muted)";
+    ligne.style.display = "block";
+  }
+  try { if (window.tel && tel.action) tel.action("mdp_propose", { screen: "auth" }); } catch (e) {}
+}
+
 function nomCompteValide(v) {
   // Les blancs ne font pas une identité : « Ben   jamin » et «  Benjamin  »
   // ne doivent pas donner deux pseudos différents dans `profiles.username`.
@@ -4942,7 +5107,18 @@ async function onbDoAuth() {
   // Validation de format stricte (en plus de la confirmation par e-mail Supabase).
   const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
   if (!EMAIL_RE.test(email)) { _showAuthMsg("Adresse e-mail invalide.", "error"); return; }
-  if (pwd.length < MOT_DE_PASSE_MIN) { _showAuthMsg("Le mot de passe doit contenir au moins " + MOT_DE_PASSE_MIN + " caractères.", "error"); return; }
+  if (pwd.length < MOT_DE_PASSE_MIN) { _showAuthMsg("Le mot de passe doit contenir au moins " + MOT_DE_PASSE_MIN + " caractères.", "error"); majAideMotDePasse(); return; }
+  // ⚠️ EN CRÉATION SEULEMENT, ET ÇA N’AJOUTE AUCUNE RÈGLE : le serveur exige
+  // déjà lettres + chiffres (« Password requirements »), mais il ne le disait
+  // qu’APRÈS un aller-retour réseau, par un message traduit d’anglais. On le
+  // dit avant, à côté de la liste des trois règles, qui montre laquelle manque.
+  // ⚠️ JAMAIS en connexion : un mot de passe choisi avant ce réglage serveur
+  // est parfaitement valide, le refuser à la porte enfermerait son compte.
+  if (_authMode === "signup" && !motDePasseAccepte(pwd)) {
+    _showAuthMsg("Le mot de passe doit mélanger des lettres et des chiffres.", "error");
+    majAideMotDePasse();
+    return;
+  }
   if (_authMode === "signup" && pwd !== pwd2) { _showAuthMsg("Les mots de passe ne correspondent pas.", "error"); return; }
   // ⚠️ LE CONSENTEMENT EST UNE CONDITION D'INSCRIPTION, PAS UNE DÉCORATION.
   // Il est demandé au SEUL moment où un contrat se forme (la création de
@@ -5027,6 +5203,14 @@ async function onbDoAuth() {
     captchaReinitialiser();
     const { data, error } = result;
     if (error) {
+      // ⚠️ LE REFUS DOIT SE PRONONCER LÀ OÙ L’ON TAPE. Sur la capture du
+      // 2026-09-16, le bandeau du HAUT est à quatre champs du mot de passe —
+      // sur un téléphone, il est hors de l’écran quand on regarde le champ, et
+      // « choisis-en un autre » reste alors sans destinataire.
+      // ⚠️ Le discriminant se prend sur le message BRUT, AVANT les réécritures
+      // qui suivent (captcha, « déjà utilisé », quota d’e-mails) : après, la
+      // table ne reconnaîtrait plus son propre refus.
+      const _refusMdp = (traduireRefusMotDePasse(error.message || "") !== (error.message || ""));
       let msg = traduireRefusCaptcha(error.message);
       if (msg.includes("Invalid login")) msg = "E-mail ou mot de passe incorrect.";
       // Compte SUSPENDU par la modération (MOD-01, 2026-09-15) : GoTrue rend
@@ -5061,6 +5245,13 @@ async function onbDoAuth() {
         try { if (window.tel && tel.error) tel.error("signup_quota_email", { screen: "auth" }); } catch (e) {}
       }
       _showAuthMsg(msg, "error");
+      // Le même refus, à côté du champ, AVEC la sortie : « Proposer un mot de
+      // passe » est juste en dessous. Un refus sans porte de sortie est ce qui
+      // fait abandonner l’inscription.
+      if (_refusMdp && _authMode === "signup") {
+        majAideMotDePasse(msg + " Le plus simple : touche « Proposer un mot de passe » juste en dessous.");
+        try { document.getElementById("authPwdHint").scrollIntoView({ block: "center", behavior: "smooth" }); } catch (e) {}
+      }
       if (btn) { btn.disabled = false; btn.textContent = _authMode === "signin" ? "Se connecter" : "Créer mon compte"; }
       return;
     }

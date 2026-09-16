@@ -456,9 +456,14 @@ test.describe("Exploration anonyme puis connexion à un vrai compte", () => {
       // champ-ci qui ferait foi et le marqueur mesuré plus bas disparaîtrait.
       document.getElementById("authName").value = "Prénom saisi pendant l'onboarding";
       document.getElementById("authEmail").value = "neuf@exemple.test";
-      document.getElementById("authPassword").value = "motdepasse";
+      // ⚠️ AVEC UN CHIFFRE (2026-09-16). En CRÉATION, `onbDoAuth` vérifie
+      // désormais lettres + chiffres AVANT d’appeler le serveur — la règle
+      // était déjà celle du serveur, elle se prononce simplement plus tôt et en
+      // français. Un mot de passe sans chiffre sortirait ici, et ce cas ne
+      // mesurerait plus le câblage de propriété qui est son sujet.
+      document.getElementById("authPassword").value = "motdepasse42";
       const c = document.getElementById("authPasswordConfirm");
-      if (c) c.value = "motdepasse";
+      if (c) c.value = "motdepasse42";
       // Consentement aux CGU (2026-09-08) : sans lui, `onbDoAuth` refuse
       // l'inscription avant même d'atteindre le câblage mesuré ici.
       const cgu = document.getElementById("authConsent");
