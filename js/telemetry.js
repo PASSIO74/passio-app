@@ -25,7 +25,28 @@
 (function () {
   "use strict";
 
-  var APP_VERSION = (window.PASSIO_APP_VERSION || "2026.08.0");
+  // Version de l'application telle que le pilotage la lit (`app_version`).
+  // ⚠️ ELLE VALAIT « 2026.08.0 » EN DUR DEPUIS AOÛT — `PASSIO_APP_VERSION`
+  // n'était posé nulle part — donc TOUS les clients, du plus vieux `app.js`
+  // gardé par une PWA au déploiement du jour, se déclaraient identiques :
+  // « ancien client » et « défaut vivant » étaient indiscernables (2026-09-16,
+  // six 401 d'un même appareil que rien dans le code courant ne produit plus).
+  // La source est le contrat de release que `scripts/build.js` pose AVANT ce
+  // script (`window.PASSIO_RELEASE`, le même que /release.json) : le commit
+  // déployé quand la CI le fournit, sinon l'empreinte de build. Hors artefact
+  // (sources servies telles quelles : `npm run serve`, bancs locaux) : « dev ».
+  // Ce que le pilotage regroupe par version reste par version : deux
+  // déploiements sont deux versions, et c'est bien ce qu'on veut lire.
+  function versionApp() {
+    if (window.PASSIO_APP_VERSION) return String(window.PASSIO_APP_VERSION).slice(0, 40);
+    try {
+      var r = window.PASSIO_RELEASE;
+      if (r && typeof r.commit === "string" && /^[0-9a-f]{7,40}$/i.test(r.commit)) return r.commit.slice(0, 8);
+      if (r && typeof r.buildId === "string" && r.buildId) return "b" + r.buildId.slice(0, 8);
+    } catch (e) {}
+    return "dev";
+  }
+  var APP_VERSION = versionApp();
 
   // ─── Activation (opt-out en prod) ──────────────────────────────────────────
   var TELEMETRY_DEFAULT_ON = (window.PASSIO_TELEMETRY_DEFAULT_ON !== false); // false = opt-in strict
