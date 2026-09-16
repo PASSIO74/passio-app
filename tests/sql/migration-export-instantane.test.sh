@@ -35,7 +35,7 @@ if (process.argv[2] === "ddl") {
   const ddl = [];
   for (const [t, cols] of parTable) {
     const avecId = t !== "conv_reads" && !cols.includes("id");   // conv_reads : sans `id`, ordre partiel, dit ; profiles : `id` EST la colonne du compte
-    ddl.push(`create table public.${t} (${avecId ? "id text primary key, " : ""}${cols.map((c) => c + " text" + (c === "id" ? " primary key" : "")).join(", ")}, created_at timestamptz default now(), blob text);`);
+    ddl.push(`create table public.${t} (${avecId ? "id text primary key, " : ""}${cols.map((c) => c + (t === "passion_quotas" ? " uuid" : " text") + (c === "id" ? " primary key" : "")).join(", ")}, created_at timestamptz default now(), blob text);`);
   }
   console.log(ddl.join("\n"));
 } else console.log(tablesExport().map(([t, c]) => t + "|" + c).join("\n"));
@@ -84,7 +84,12 @@ verifier "verdict : aucun ECHEC" "0" "$(printf '%s\n' "$sortie" | grep -cE '\|\s
 psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -q -v ON_ERROR_STOP=1 -f "$MIGRATION" >/dev/null 2>&1 && verifier "rejeu sans erreur" "oui" "oui" || verifier "rejeu sans erreur" "oui" "non"
 
 echo "── ② COUVERTURE : chaque paire de tablesExport() est dans le dossier ──"
-dossier="$(Q "select public.export_compte_instantane('$A', 5000)::text;")"
+# ⚠️ 16/09 : la production TYPE `passion_quotas.user_id` en uuid (le socle aussi, désormais) —
+# `where col = $1` avec $1 text levait « operator does not exist: uuid = text » et
+# l'export tombait en repli partiel sur la cible. Un appel qui LÈVE ici est un rouge
+# nommé, pas un banc qui meurt.
+dossier="$(Q "select public.export_compte_instantane('$A', 5000)::text;" || true)"
+verifier "l'export ne lève pas sur une colonne d'identifiant typée uuid (passion_quotas.user_id)" "" "$(printf '%s' "$dossier" | grep -oE "operator does not exist[^\"]*" | head -1)"
 manque=""
 while IFS='|' read -r t c; do [ -n "$t" ] || continue; printf '%s' "$dossier" | grep -q "\"$t.$c\": {" || manque="$manque $t.$c"; done <<< "$PAIRES"
 verifier "toutes les paires sont lues ($(printf '%s\n' "$PAIRES" | grep -c .))" "" "$manque"

@@ -111,9 +111,9 @@ begin
     ordre := case when a_created and a_id then 'created_at, id' when a_id then 'id' when a_created then 'created_at' else null end;
     -- Le compte et les lignes viennent du MÊME snapshot : ils ne peuvent pas
     -- diverger. `attendu` est rendu quand même, pour que le client le confronte.
-    execute format('select count(*) from public.%I where %I = $1', t, c) into attendu using p_uid;
+    execute format('select count(*) from public.%I where %I::text = $1', t, c) into attendu using p_uid;
     execute format(
-      'select coalesce(jsonb_agg(to_jsonb(x)), ''[]''::jsonb) from (select * from public.%I where %I = $1 %s limit $2) x',
+      'select coalesce(jsonb_agg(to_jsonb(x)), ''[]''::jsonb) from (select * from public.%I where %I::text = $1 %s limit $2) x',
       t, c, case when ordre is null then '' else 'order by ' || ordre end)
       into lignes using p_uid, plafond;
     tables := tables || jsonb_build_object(t || '.' || c, jsonb_build_object(
