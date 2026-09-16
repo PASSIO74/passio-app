@@ -1,0 +1,13 @@
+date: 2026-09-16T09:03:08Z
+migration : migrations/migration_export_instantane_2026-09-15.sql
+empreinte : 1d2c865a4b447324b7ffb7b5459f854e905b9885c50ea56a7695566afb5abad3
+cible     : njkiyoklssvefstljemx (production)
+
+VERDICT (4) :
+  la fonction existe, STABLE (un seul snapshot pour toutes ses requêtes)  |  OK
+  SECURITY DEFINER, search_path vide  |  OK
+  service_role seul peut l'appeler  |  OK
+  le dossier porte le snapshot et l'heure de prise  |  OK
+
+✅ appliquée et journalisée. Mesurer ensuite l'état en base (canal ①).
+exit=0

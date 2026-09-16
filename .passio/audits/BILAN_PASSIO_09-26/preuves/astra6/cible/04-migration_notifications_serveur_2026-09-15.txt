@@ -1,0 +1,14 @@
+date: 2026-09-16T09:03:13Z
+migration : migrations/migration_notifications_serveur_2026-09-15.sql
+empreinte : e9dd7a811b5fdacb5326f666928b5472b5eae581bbada77164230d345f397807
+cible     : njkiyoklssvefstljemx (production)
+
+VERDICT (5) :
+  origine posée, contrainte, trigger BEFORE INSERT présent  |  OK
+  aucune policy d'INSERT client sur notifications sans la clause des genres réservés  |  OK
+  notifier_mentions : SECURITY DEFINER, search_path vide, refusée à anon, ouverte à authenticated  |  OK
+  le trigger d'origine ne fait confiance qu'au réglage de transaction  |  OK
+  l'espace d'identifiants n_m_ est réservé au serveur (policies) et le conflit des mentions est gardé par destinataire  |  OK
+
+✅ appliquée et journalisée. Mesurer ensuite l'état en base (canal ①).
+exit=0

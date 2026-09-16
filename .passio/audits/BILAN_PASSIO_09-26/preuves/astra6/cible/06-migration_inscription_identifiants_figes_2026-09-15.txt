@@ -1,0 +1,15 @@
+date: 2026-09-16T09:04:00Z
+migration : migrations/migration_inscription_identifiants_figes_2026-09-15.sql
+empreinte : 979fdf2c2845e3382dc29798ad2cbe6d85e6f8eb6cda256289fe5f7a739c0d56
+cible     : njkiyoklssvefstljemx (production)
+
+VERDICT (6) :
+  trigger posé sur event_attendees  |  OK
+  il fige event_id ET user_id  |  OK
+  SECURITY DEFINER, search_path vide  |  OK
+  il s'efface sans session (restauration, purge)  |  OK
+  les trois gardes voisines sont intactes  |  OK
+  il est BEFORE UPDATE seulement (un INSERT n'a pas d'old)  |  OK
+
+✅ appliquée et journalisée. Mesurer ensuite l'état en base (canal ①).
+exit=0

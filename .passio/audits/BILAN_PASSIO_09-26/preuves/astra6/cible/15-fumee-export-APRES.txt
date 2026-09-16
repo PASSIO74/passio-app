@@ -1,0 +1,6 @@
+date: 2026-09-16T09:42:40Z · après rejeu de export_instantane (uuid)
+export-account : 200 · révision 5363c44e16c9c64d7d75782a857605869114f443
+  bilan : {"complet":true,"instantane":{"snapshot":"544390:544390:","prise_le":"2026-09-16T09:42:42.823329+00:00","plafond":5000},"tables_exportees":35,"lignes":1,"erreurs":[]}
+  user_state dans l'export : [{"data":{"fumee":"export"},"user_id":"8c23063c-fb06-466a-bd36-7bb69c8a6b8e","updated_at":"2026-09-16T09:42:42.04617+00:00"}]
+delete-account 8c23063c 200 true barriere supprimee
+exit=0

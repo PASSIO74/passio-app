@@ -1,0 +1,16 @@
+date: 2026-09-16T09:13:15Z · AVANT déploiement (fonction servie = v1, barrière v3 déjà en base) · comptes jetables @passio-e2e.test
+A 4df66929-461b-48c1-b0bf-66d9f9e2777b écritures { user_state: 400, posts: 409 } · B 5cfb4567-ada8-4fc8-9a3d-cf1df7be4687 écritures { user_state: 400, posts: 409 }
+
+— A : deux appels concurrents
+  HTTP 409 révision null {"ok":false,"error":"Suppression incomplète : le compte n'a pas été supprimé, réessaie.","echecs":["barrière:pose (permission denied for table comptes_en_suppression)"],"restes":[]}
+  HTTP 409 révision null {"ok":false,"error":"Suppression incomplète : le compte n'a pas été supprimé, réessaie.","echecs":["barrière:pose (permission denied for table comptes_en_suppression)"],"restes":[]}
+
+— B : un appel
+  HTTP 409 révision null {"ok":false,"error":"Suppression incomplète : le compte n'a pas été supprimé, réessaie.","echecs":["barrière:pose (permission denied for table comptes_en_suppression)"],"restes":[]}
+
+— relectures (service_role)
+  4df66929 user_state= 0 posts= 0 profiles= 0 auth.users HTTP 200
+  5cfb4567 user_state= 0 posts= 0 profiles= 0 auth.users HTTP 200
+
+verdict : A ❌ · B ❌ · révision ✅
+exit=1

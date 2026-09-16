@@ -1,0 +1,13 @@
+date: 2026-09-16T09:42:10Z · correctif uuid (where %I::text = $1) · rejeu de la migration rejouable
+migration : migrations/migration_export_instantane_2026-09-15.sql
+empreinte : 733cc1d1d39ded24d5956dd6956b734529d2b561585d4f28ab9e2e1d71c1a4b4
+cible     : njkiyoklssvefstljemx (production)
+
+VERDICT (4) :
+  la fonction existe, STABLE (un seul snapshot pour toutes ses requêtes)  |  OK
+  SECURITY DEFINER, search_path vide  |  OK
+  service_role seul peut l'appeler  |  OK
+  le dossier porte le snapshot et l'heure de prise  |  OK
+
+✅ appliquée et journalisée. Mesurer ensuite l'état en base (canal ①).
+exit=0

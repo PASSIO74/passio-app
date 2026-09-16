@@ -31,3 +31,13 @@ servies **sans en-tête de révision** (version non vérifiable) ; migrations ap
 Aucune fusion, aucune migration, aucun déploiement, aucun test de charge, aucune donnée réelle
 touchée, aucun message envoyé. Le cycle réel de sauvegarde/restauration et la mesure en base de la
 cible attendent respectivement un projet jetable et le connecteur en lecture seule.
+
+## Mise en service (même jour, sur autorisation explicite)
+
+Détail et preuves : `docs/MISE_EN_SERVICE_PILOTE.md` § H. En bref : 8 migrations journalisées sur la
+cible (barrière v3 `dfa768b5`, propriétaires, export instantané puis son correctif uuid `733cc1d1`,
+notifications serveur, broadcast bloqué, inscriptions figées, journal de suspension) ; `canal_appel_lie`
+non appliquée (appels désactivés) ; #477 fusionnée → `main` `5363c44e`, site et quatre fonctions servis
+avec cette révision ; suppression authentifiée vérifiée (200 + garantie, 409 concurrent, relectures à
+zéro, Auth 404) ; appels 503 ; export complet avec instantané. Un défaut trouvé **sur la cible** et
+refermé le jour même (#478). RES-01, RES-10, RES-11 fermés au registre ; RES-15 reste ouvert.

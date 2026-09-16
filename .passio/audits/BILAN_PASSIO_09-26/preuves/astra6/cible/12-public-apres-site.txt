@@ -1,0 +1,16 @@
+date: 2026-09-16T09:37:07Z · run CI & Deploy 35079268075 · main 5363c44e16c9c64d7d75782a857605869114f443
+── SITE : https://passio-app.netlify.app/release.json
+  ℹ commit servi = 5363c44e16c9c64d7d75782a857605869114f443 · buildId 80ecf4e21e0d
+  ✅ le site sert le SHA attendu 5363c44e16c9
+── EDGE FUNCTIONS : X-Passio-Revision (OPTIONS)
+  ℹ delete-account : HTTP 200 · révision 5363c44e16c9c64d7d75782a857605869114f443
+  ✅ delete-account sert le SHA attendu
+  ℹ export-account : HTTP 200 · révision 5363c44e16c9c64d7d75782a857605869114f443
+  ✅ export-account sert le SHA attendu
+  ℹ notify-call : HTTP 200 · révision 5363c44e16c9c64d7d75782a857605869114f443
+  ✅ notify-call sert le SHA attendu
+  ℹ ask-ai : HTTP 200 · révision 5363c44e16c9c64d7d75782a857605869114f443
+  ✅ ask-ai sert le SHA attendu
+
+✅ aucun écart sur ce qui a été mesuré (ce qui n'a pas été lu est dit « non mesuré »).
+exit=0

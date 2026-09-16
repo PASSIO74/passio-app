@@ -1,0 +1,22 @@
+date: 2026-09-16T09:26:07Z · APRÈS déploiement des fonctions (révision attendue = SHA de main)
+A 6d66a34c-583f-4f22-aa73-59861b8e8478 écritures {
+  user_state: 201,
+  posts: '409 {"code":"23503","details":"Key is not present in table \\"profiles\\".","hint":null,"message":"insert '
+} · B 6e2c9950-564b-4949-aedf-509904ec367c écritures {
+  user_state: 201,
+  posts: '409 {"code":"23503","details":"Key is not present in table \\"profiles\\".","hint":null,"message":"insert '
+}
+
+— A : deux appels concurrents
+  HTTP 409 révision 5363c44e16c9c64d7d75782a857605869114f443 {"ok":false,"code":"deja_en_cours","error":"Une suppression est déjà en cours pour ce compte. Réessaie dans quelques minutes.","echecs":[],"restes":[],"notes":["tentative non acquise : statut en_cours (vivante)"],"barrie
+  HTTP 200 révision 5363c44e16c9c64d7d75782a857605869114f443 {"ok":true,"garantie":"barriere","objets":0,"marqueur":"supprimee","notes":[]}
+
+— B : un appel
+  HTTP 200 révision 5363c44e16c9c64d7d75782a857605869114f443 {"ok":true,"garantie":"barriere","objets":0,"marqueur":"supprimee","notes":[]}
+
+— relectures (service_role)
+  6d66a34c user_state= 0 posts= 0 profiles= 0 auth.users HTTP 404
+  6e2c9950 user_state= 0 posts= 0 profiles= 0 auth.users HTTP 404
+
+verdict : A ✅ (un 200+garantie, un 409) · B ✅ (200+garantie) · révision ✅
+exit=0

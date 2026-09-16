@@ -16,8 +16,8 @@
       "critere_de_fermeture": "Migration v2 journalisée sur la cible, fonction v2 servie (en-tête de version), une suppression synthétique sur la cible rend 200 + garantie:barriere et ses relectures à zéro ; une seconde suppression concurrente rend 409 deja_en_cours.",
       "preuve_attendue": "Lignes du journal migrations_appliquees ; sortie du verdict SQL sur la cible ; réponses HTTP des deux suppressions synthétiques (compte jetable).",
       "prochaine_etape": "Mise en service du pilote (docs/MISE_EN_SERVICE_PILOTE.md, étapes 1–3) — sur autorisation finale de Benjamin.",
-      "etats": { "corrige": "oui", "teste": "oui", "deploye": "non", "relu_sur_cible": "non mesuré" },
-      "reexamen": { "statut": "en_attente", "le": "2026-09-16", "note": "Barrière v3 (ASTRA-56) : 88/88 sur PostgreSQL réel, entrelacement A/B rejoué ; la retenue de déploiement (ASTRA-64) rend l'ordre migration → fonction mécanique. Rien n'est en service." }
+      "etats": { "corrige": "oui", "teste": "oui", "deploye": "oui", "relu_sur_cible": "oui" },
+      "reexamen": { "statut": "ferme", "le": "2026-09-16", "note": "Mise en service du 16/09 : migration barrière v3 appliquée (journal, empreinte dfa768b5), delete-account v3 servie (X-Passio-Revision = 5363c44e), fumée authentifiée sur deux comptes jetables : appels concurrents → un 200 + garantie:barriere et un 409 deja_en_cours (vivante) ; relectures à zéro ; auth.users 404 (preuves/astra6/cible/11-fumee-suppression-APRES.txt).", "chantier": "PR #477 → main 5363c44e ; migrations journalisées le 2026-09-16" }
     },
     {
       "id": "RES-02",
@@ -48,8 +48,8 @@
       "critere_de_fermeture": "Mesure de la distribution des volumes par compte sur la cible (p99 par table) ; plafond fixé au-dessus du p99 ou export par lots ordonnés sous le même instantané (cursor + xmin) ; aucun compte réel tronqué.",
       "preuve_attendue": "Requête de mesure (service_role, comptages agrégés, aucune donnée de contenu) et bilan d'export synthétique au-delà du plafond.",
       "prochaine_etape": "Mesure agrégée des volumes après mise en service de #470.",
-      "etats": { "corrige": "oui", "teste": "oui", "deploye": "non", "relu_sur_cible": "non mesuré" },
-      "reexamen": { "statut": "en_attente", "le": "2026-09-15", "note": "Instantané pg_current_snapshot bancé 17/17 (#470), y compris une écriture concurrente réelle pendant l'export." }
+      "etats": { "corrige": "oui", "teste": "oui", "deploye": "oui", "relu_sur_cible": "oui" },
+      "reexamen": { "statut": "en_attente", "le": "2026-09-16", "note": "16/09 : export_compte_instantane appliqué puis CORRIGÉ (uuid, empreinte 733cc1d1) ; fumée sur la cible : complet:true, instantané présent. Le plafond 5 000 lignes/table reste (résidu conservé)." }
     },
     {
       "id": "RES-04",
@@ -81,7 +81,7 @@
       "preuve_attendue": "Agrégat de versions clientes (source : telemetry_events) avant/après ; comptage des traces call_canal_refuse.",
       "prochaine_etape": "Chantier « télémétrie de version cliente » (fichier js/app-10-version-client.js) — sa présence rend ce résidu traitable ; sinon échéance 2026-10-01.",
       "etats": { "corrige": "partiel", "teste": "oui", "deploye": "non", "relu_sur_cible": "non mesuré" },
-      "reexamen": { "statut": "en_attente", "le": "2026-09-15", "note": "Garde client + contrat livrés (#474) ; la propagation reste non mesurée." }
+      "reexamen": { "statut": "en_attente", "le": "2026-09-16", "note": "16/09 : canal_appel_lie volontairement NON appliqué (appels désactivés pour le pilote, RES-13) — à appliquer avec la réactivation des appels, après mesure de la propagation." }
     },
     {
       "id": "RES-06",
@@ -112,8 +112,8 @@
       "critere_de_fermeture": "RPC serveur par genre (notifier_suivi, notifier_message) avec événement vérifié et texte dérivé ; policy d'INSERT client réduite à zéro genre ; client sans écriture directe dans notifications.",
       "preuve_attendue": "Bancs SQL par RPC, e2e client, grep : plus aucun .from('notifications').insert côté client.",
       "prochaine_etape": "Chantier « notifier_suivi » après mise en service de #474.",
-      "etats": { "corrige": "partiel", "teste": "oui", "deploye": "non", "relu_sur_cible": "non mesuré" },
-      "reexamen": { "statut": "en_attente", "le": "2026-09-15", "note": "Push fermée pour tous les genres (texte dérivé) ; in-app fermé pour mention seulement." }
+      "etats": { "corrige": "partiel", "teste": "oui", "deploye": "oui", "relu_sur_cible": "non mesuré" },
+      "reexamen": { "statut": "en_attente", "le": "2026-09-16", "note": "16/09 : migration notifications_serveur appliquée (mentions serveur, n_m_ réservé) ; aucune mention synthétique jouée sur la cible (compte jetable sans conversation)." }
     },
     {
       "id": "RES-08",
@@ -160,8 +160,8 @@
       "critere_de_fermeture": "Pour chaque migration du 2026-09-15 : appliquée (journal) ou non, consigné dans la fiche B du dossier 23 ; versions servies des trois Edge Functions consignées.",
       "preuve_attendue": "Sortie de la requête du journal ; réponses HTTP OPTIONS/GET des fonctions avec leur version.",
       "prochaine_etape": "Première action du plan de mise en service (dossier 23 §E, étape 0).",
-      "etats": { "corrige": "sans objet", "teste": "sans objet", "deploye": "partiel", "relu_sur_cible": "non mesuré" },
-      "reexamen": { "statut": "en_attente", "le": "2026-09-15", "note": "Constaté par lecture de GitHub (PR fermées, runs verts), pas de la cible." }
+      "etats": { "corrige": "sans objet", "teste": "sans objet", "deploye": "oui", "relu_sur_cible": "oui" },
+      "reexamen": { "statut": "ferme", "le": "2026-09-16", "note": "16/09 : état mesuré (journal 14 lignes, 8 appliquées ce jour), site et 4 fonctions servent 5363c44e (X-Passio-Revision, release.json) — preuves/astra6/cible/12-public-apres-site.txt.", "chantier": "PR #477 (main 5363c44e)" }
     },
     {
       "id": "RES-11",
@@ -176,8 +176,8 @@
       "critere_de_fermeture": "#473 sur main, run CI de main montrant les pas « Gates de gouvernance » et « Toutes les suites unitaires » verts.",
       "preuve_attendue": "URL du run CI de main avec les deux pas.",
       "prochaine_etape": "Fusion de #473 (après #469) sur décision de Benjamin.",
-      "etats": { "corrige": "oui", "teste": "oui", "deploye": "non", "relu_sur_cible": "non mesuré" },
-      "reexamen": { "statut": "planifie", "le": "2026-09-15", "note": "Réexaminé sur la branche d'intégration claude/astra5-integration : scripts/lib/yaml-workflow.js présent (#473 combiné), les pas « Gates de gouvernance » et « Toutes les suites unitaires » sont dans deploy.yml du SHA combiné. Fermeture possible seulement après fusion sur main et run CI de main vert (deploye, relu_sur_cible).", "chantier": "PR #473 (combinée dans claude/astra5-integration)" }
+      "etats": { "corrige": "oui", "teste": "oui", "deploye": "oui", "relu_sur_cible": "oui" },
+      "reexamen": { "statut": "ferme", "le": "2026-09-16", "note": "16/09 : run 35079268075 sur main : « Audits statiques et bancs serveur » (gates + unitaires + bancs SQL) et « Gouvernance critique » verts.", "chantier": "PR #477 (main 5363c44e)" }
     },
     {
       "id": "RES-12",
@@ -192,12 +192,12 @@
       "critere_de_fermeture": "Décision consignée : exclusion confirmée (fermé par décision) ou colonne ajoutée à tablesExport() avec banc.",
       "preuve_attendue": "Décision dans le registre ; le cas échéant, test export-compte étendu.",
       "prochaine_etape": "Réexamen à l'échéance.",
-      "etats": { "corrige": "sans objet", "teste": "oui", "deploye": "non", "relu_sur_cible": "sans objet" },
-      "reexamen": { "statut": "en_attente", "le": "2026-09-15", "note": "Purge et barrière couvrent la colonne ; l'export l'exclut sciemment." }
+      "etats": { "corrige": "sans objet", "teste": "oui", "deploye": "oui", "relu_sur_cible": "sans objet" },
+      "reexamen": { "statut": "en_attente", "le": "2026-09-16", "note": "16/09 : purge (TABLES_COMPTE) déployée avec delete-account v3 ; exclusion de l'export inchangée." }
     },
     {
-      "etats": { "corrige": "sans objet", "teste": "oui", "deploye": "non", "relu_sur_cible": "non mesuré" },
-      "reexamen": { "statut": "en_attente", "le": "2026-09-16", "note": "Ouvert par la sixième contre-revue (pilote gratuit)." },
+      "etats": { "corrige": "sans objet", "teste": "oui", "deploye": "oui", "relu_sur_cible": "oui" },
+      "reexamen": { "statut": "en_attente", "le": "2026-09-16", "note": "16/09 : désactivation servie et mesurée sur la cible : notify-call type:call → 503 appels_desactives ; app.js servi porte PASSIO_APPELS_ACTIFS=false (preuves/astra6/cible/13-fumee-appels-export-site.txt). Décision de réactivation au 2026-09-30." },
       "id": "RES-13",
       "titre": "Appels audio/vidéo désactivés pour le pilote (ASTRA-60) : une answer perdue laisse la négociation WebRTC sans relance",
       "gravite": "P2",
@@ -228,8 +228,8 @@
       "prochaine_etape": "Benjamin : créer le projet jetable et transmettre ref + jeton (jamais la clé service_role) ; Claude : jouer le cycle et déposer les preuves."
     },
     {
-      "etats": { "corrige": "non", "teste": "non", "deploye": "non", "relu_sur_cible": "non mesuré" },
-      "reexamen": { "statut": "en_attente", "le": "2026-09-16", "note": "Ouvert par la sixième contre-revue (pilote gratuit)." },
+      "etats": { "corrige": "non", "teste": "non", "deploye": "non", "relu_sur_cible": "sans objet" },
+      "reexamen": { "statut": "en_attente", "le": "2026-09-16", "note": "16/09 : les migrations du pilote ont été appliquées sur AUTORISATION EXPLICITE de Benjamin par l'équivalent de l'éditeur SQL (journal : outil « sql-editor-equivalent », attestation consignée), hors de l'outil à preuve de revue. Le résidu reste entier : aucun relecteur inscrit, prochaine migration par l'outil impossible." },
       "id": "RES-15",
       "titre": "Aucun relecteur autorisé inscrit : aucune migration ne peut être attestée pour une cible protégée (ASTRA-61)",
       "gravite": "P1",

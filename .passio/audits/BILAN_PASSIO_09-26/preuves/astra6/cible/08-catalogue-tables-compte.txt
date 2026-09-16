@@ -1,0 +1,5 @@
+date: 2026-09-16T09:05:39Z · lecture seule (execute_sql read only) · candidat 7accecd9
+catalogue de la cible : 49 colonne(s) d'identifiant de compte dans public — 44 purgée(s)/exportée(s), 5 dispensée(s) avec raison, 0 OUBLI(S)
+ℹ exception(s) sans colonne correspondante dans la cible : reports.target_id, reports.handled_by, moderation_actions.target_id, migrations_appliquees.cible
+✅ toutes les colonnes d'identifiant de compte de la cible sont purgées, exportées, ou dispensées avec leur raison.
+exit=0

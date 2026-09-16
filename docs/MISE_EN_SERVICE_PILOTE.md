@@ -222,7 +222,41 @@ site part, la fonction reste v1 = état actuel, et le job est rouge en le disant
 
 - Dans l'app, « Inviter des amis » (Réglages → Support) copie un lien suivi.
 
-## G. Recommandation
+## H. Mis en service le 2026-09-16 — ce qui a été fait, mesuré après coup
+
+Autorisation explicite de Benjamin (chat, 2026-09-16 : « ok prend la main et fait tout je
+t'autorise »). Tout ce qui suit est **mesuré** (canal ① en lecture seule, lecture publique, fumée
+authentifiée sur comptes jetables `@passio-e2e.test` purgés ensuite), sorties dans
+`.passio/audits/BILAN_PASSIO_09-26/preuves/astra6/cible/`.
+
+| Étape | Fait | Mesure |
+|---|---|---|
+| 0 — état initial | journal lu : 6 migrations (15/09) ; **aucune** barrière, ni propriétaires, ni export instantané, ni notifications serveur ; `delete-account` servie **sans en-tête** ; sauvegarde du jour verte (run 35070840755) | `execute_sql` read only |
+| 1 — barrière v3 | appliquée, journalisée (empreinte `dfa768b5`) ; 37/37 tables du compte avec le trigger ; droits : anon/authenticated aucun, service_role SELECT seul | `01-barriere-v3.txt` |
+| 2 — migrations | `proprietaires_objets_stockage`, `export_instantane`, `notifications_serveur`, `broadcast_bloque`, `inscription_identifiants_figes`, `moderation_suspension` : verdicts tous OK, journalisées ; `canal_appel_lie` **volontairement non appliquée** (appels désactivés — RES-05/13) | `02`–`07-*.txt` |
+| 2 bis — contrôles | prérequis des fonctions **12/12** ; catalogue des tables de compte sur le schéma réel : **49 colonnes, 0 oubli** | `08-catalogue-tables-compte.txt` |
+| 3 — fusion | PR #477 squash → `main` **`5363c44e`** ; CI verte (gouvernance, audits/bancs, 6 lots navigateur, comptes réels, artefact) ; `edge-functions.yml` : **retenue passée**, 4 fonctions déployées, fumée avec révision | runs 35078022087, 35079268075, 35079268265 |
+| 4 — vérification | site `release.json` = `5363c44e` ; **X-Passio-Revision = `5363c44e`** sur les 4 fonctions ; **suppression authentifiée** : deux appels concurrents → un 200 `garantie:"barriere"` + un 409 `deja_en_cours (vivante)`, second compte 200, relectures à zéro, `auth.users` 404 ; `notify-call type:call` → **503 `appels_desactives`** ; `app.js` servi porte `PASSIO_APPELS_ACTIFS=false`, `openLimitesPilote`, `finalisation_refusee` | `10`–`13-*.txt` |
+| 4 bis — défaut trouvé sur la cible | `export-account` rendait `complet:false` : `export_compte_instantane` comparait `uuid = text` (`passion_quotas.user_id` est un uuid en production, le socle du banc typait tout en text). Correctif `%I::text = $1`, banc rouge nommé avant / 18/18 après, migration **rejouée** (empreinte `733cc1d1`), fumée : **`complet:true`, instantané présent** — PR #478 | `14`, `15-*.txt` |
+
+**Comment les migrations ont été appliquées, et pourquoi c'est dit :** par l'équivalent du bouton
+« Run » de l'éditeur SQL (même endpoint, même transaction, journal `migrations_appliquees` écrit
+**dans** la transaction avec `outil = sql-editor-equivalent (autorisation explicite 2026-09-16)` et
+l'autorisation consignée dans `attestation`), **pas** par `appliquer-migration.mjs` : sa preuve de
+revue exige un relecteur autorisé distinct de l'auteur, et la liste est vide (RES-15). L'autorisation
+humaine a été donnée en clair ; elle n'est pas une revue par un tiers, et le registre le garde ouvert.
+
+**Avant / après sur la cible (fonction servie)** : avant le déploiement, la fonction servie était la
+v1 du 15/09 avec la barrière v3 déjà en base → `409 incomplete` « permission denied for table
+comptes_en_suppression » (fail-closed, aucun compte supprimé) — `09-fumee-suppression-AVANT.txt` ;
+après → 200 + garantie. La fenêtre a duré ~25 minutes.
+
+**Reste ouvert après la mise en service** : RES-15 (relecteur), RES-14 (cycle réel de
+restauration), RES-13 (appels, décision au 30/09), RES-02 (rétention des marqueurs : 5 lignes
+`supprimee` des comptes jetables, purge non planifiée), RES-16, RES-17. La mention serveur n'a pas
+été jouée sur la cible (compte jetable sans conversation) : RES-07 reste « non mesuré » sur ce point.
+
+## G. Recommandation (écrite avant la mise en service — conservée telle quelle)
 
 **Non prêt aujourd'hui, prêt après deux gestes qui ne sont pas du code** :
 
