@@ -142,6 +142,70 @@ demander l'aurait bloqué devant un champ qu'il ne peut pas remplir. ⚠️ La r
 `tests/e2e/changement-mdp-securise.spec.js` (12, dont ① et ④ éprouvés par RÉINJECTION — `current_password` retiré → 2 rouges).
 `LICENSE` (racine) dit « Tous droits réservés » — il ne bloque ni la lecture ni le fork d'un dépôt PUBLIC (CGU GitHub D.5) ;
 seul le passage en privé le fait. Verrou : `tests/e2e/mot-de-passe-minimum.spec.js` (7, dont ①/②/④ éprouvés par RÉINJECTION à 6).
+## 🔑 CHOISIR SON MOT DE PASSE — ON AIDE, ON N'EXIGE PAS PLUS (2026-09-16)
+
+Capture d'un essai réel : quelqu'un tape « Emma0207@ » et lit « Ce mot de passe apparaît dans des
+fuites de données connues. Choisis-en un autre, plus original. » — message posé EN HAUT du
+formulaire, à quatre champs du mot de passe, donc hors de l'écran d'un téléphone quand on regarde le
+champ, et qui ne dit NI ce qui est attendu, NI quoi faire ensuite. Demande de Benjamin : « ne
+complique pas trop la sélection ».
+
+⚠️ **AUCUNE RÈGLE N'A ÉTÉ AJOUTÉE, ET C'EST TOUT LE LOT.** Les trois exigences affichées
+(`MOT_DE_PASSE_REGLES`, app-02) sont EXACTEMENT celles que le serveur applique déjà :
+`MOT_DE_PASSE_MIN` caractères, des lettres, des chiffres. Les ÉCRIRE, ce n'est pas compliquer la
+sélection — c'est cesser de la faire deviner refus après refus. **Ne jamais y ajouter majuscule,
+symbole ni jauge de « force »** : le serveur ne les demande pas, et une règle affichée que rien
+n'applique est une friction pure. `motDePasseVerdict`/`motDePasseAccepte` sont la SEULE autorité
+côté client (même contrat que `nomCompteValide` : l'appelant ne re-teste rien).
+
+⚠️ **LE RÉGLAGE « leaked passwords » N'EST PAS DESSERRÉ.** Il est allumé depuis le 2026-09-12 et le
+reste : ce qui manquait n'était pas la permission de choisir un mot de passe fuité, c'était une
+SORTIE. « Choisis-en un autre » est un ordre, pas une sortie — quelqu'un dont les trois mots de
+passe habituels ont fuité n'a aucune idée du suivant, et c'est là qu'on abandonne une inscription.
+
+⚠️ **LA CAUSE SILENCIEUSE ÉTAIT UN `autocomplete`.** `#authPassword` était figé sur
+`current-password` pour les DEUX onglets : en création, le trousseau iOS et les gestionnaires du
+navigateur se taisaient, donc personne ne se voyait proposer « Mot de passe fort » et chacun
+inventait le sien — d'où les mots de passe déjà fuités. `switchAuthTab` bascule désormais l'attribut
+avec l'onglet, et lui seul (verrou ⑥). Il pose aussi le `minlength` en création **seulement** :
+en connexion il barrerait un mot de passe de 6 caractères d'avant le 2026-09-13, parfaitement valide
+côté serveur — enfermer un compte dehors pour un attribut d'affichage.
+
+⚠️ **LE REFUS SE PRONONCE LÀ OÙ L'ON TAPE**, en plus du bandeau (que `mot-de-passe-minimum.spec.js`
+mesure, et qui ne bouge pas) : `#authPwdRefus`, sous le champ, avec la sortie nommée. Le
+discriminant « est-ce un refus de mot de passe ? » se prend sur le message **BRUT**, AVANT les
+réécritures qui suivent dans `onbDoAuth` (captcha, « déjà utilisé », quota d'e-mails) — après, la
+table ne reconnaîtrait plus son propre refus. Retaper efface le refus : répondre, c'est répondre.
+
+⚠️ **« Proposer un mot de passe » remplit les DEUX champs et les affiche EN CLAIR** — un mot de
+passe proposé qu'on ne peut pas lire est un mot de passe perdu, et ne remplir que le premier ferait
+tomber « les mots de passe ne correspondent pas » à la ligne suivante. `motDePasseSuggere()` rend
+deux mots tirés au sort et quatre chiffres (`lavande-colibri-4917`) : prononçable, conforme par
+construction, et hors de toute fuite puisqu'il vient d'être tiré. Tirage par **REJET** sur
+`crypto.getRandomValues` (`_aleaEntier`) — un simple `% max` favoriserait les premiers mots de la
+liste ; `Math.random()` n'est qu'un repli, jamais le chemin nominal.
+
+⚠️ **LA GARDE « lettres + chiffres » NE VAUT QU'EN CRÉATION.** Posée en connexion, elle refuserait à
+la porte un mot de passe choisi avant le réglage serveur — le compte serait inaccessible sans que
+rien ne l'explique. Même raison que le `minlength`. Verrou ⑤, qui mesure les DEUX sens.
+
+⚠️ **L'AIDE VIT HORS DU `<label>` VOISIN** : un bouton posé DANS un label voit son clic détourné
+vers le champ du label (même famille que le piège des liens dans la case de consentement). Elle est
+peinte par `majAideMotDePasse` et par lui seul ; l'état d'une règle ne repose JAMAIS sur la couleur
+(✓ / ○), et le vert retenu est `#15803d` — `#16a34a` tombe à 3,9:1 sur fond clair, sous le seuil AA
+d'un texte de 12 px. Aucune ligne de `styles.css` n'a été touchée (styles en ligne, comme le reste
+du formulaire) : le bloc UI-4A5 reste le dernier.
+
+⚠️ **UN FIXTURE DE TEST PEUT DEVENIR INVALIDE SANS ÊTRE FAUX** : `exploration-anonyme-vs-compte` ⑯
+posait `"motdepasse"` (sans chiffre) pour mesurer le CÂBLAGE DE PROPRIÉTÉ de la branche `signup` —
+la garde le faisait sortir avant son sujet. Le mot de passe du fixture a changé, aucune assertion
+n'a bougé. Même famille que « sculpture sur glace » entrée au référentiel : un test qui tient par
+une prémisse finit par le dire.
+
+Verrou : `tests/e2e/mot-de-passe-aide.spec.js` (8), **éprouvé par RÉINJECTION de cinq mutations** —
+câblage de `switchAuthTab` retiré (2 rouges), écho du refus coupé (2), garde lettres+chiffres
+neutralisée (1), `autocomplete` refigé (1), confirmation non remplie (1).
+
 ## 📧 Confirmation d'e-mail ACTIVE depuis le 2026-08-30 (SMTP Brevo)
 
 `signUp` ne rend **plus** de session : le compte existe, il est inutilisable tant que l'adresse n'est pas confirmée. Depuis le 2026-09-11, PASSIO a sa propre identité : contact `passioadmin@gmail.com` (`PASSIO_EDITEUR.email`, source unique), domaine d'envoi `passio-app.fr` sur des comptes OVH et Brevo dédiés — **plus aucune référence à une autre activité de l'éditeur**. Montage complet, enregistrements DKIM/DMARC, bascule SMTP et gabarits français : `docs/SETUP_SMTP_AUTH.md`.
