@@ -4,7 +4,7 @@
 import test from "node:test";
 import fs from "node:fs";
 import assert from "node:assert/strict";
-import { classer, empreinte, estDuBruit, classerApi, estDuBruitApi, estSansCompte, choisirCible, libelleApi, classerBoutons, desamorcer, dejaCorrige, titreIssue, condense, lireApi, lirePagine, CHEMINS_BOUTONS, FILTRE_PRODUCTION, estVivante, escaladeRecidive, corpsIssue, nomFiche, fichesProches, lireFiches, lireErreurs, lireErreursTelemetrie, fusionnerErreursJs, CHEMIN_ERREURS_TELEMETRIE } from "../../scripts/sentinelle-detecter.mjs";
+import { classer, empreinte, estDuBruit, classerApi, estDuBruitApi, estSansCompte, choisirCible, libelleApi, classerBoutons, desamorcer, dejaCorrige, titreIssue, condense, lireApi, lirePagine, CHEMINS_BOUTONS, FILTRE_PRODUCTION, estVivante, escaladeRecidive, corpsIssue, nomFiche, fichesProches, lireFiches, lireErreurs, lireErreursTelemetrie, fusionnerErreursJs, CHEMIN_ERREURS_TELEMETRIE, etatDeploiement, ATTENTE_DEPLOIEMENT_MS } from "../../scripts/sentinelle-detecter.mjs";
 import os from "node:os";
 import path from "node:path";
 
@@ -598,9 +598,56 @@ test("dejaCorrige avec un correctif DÉPLOYÉ se tait seulement si AUCUNE occurr
   assert.equal(dejaCorrige({ ...tardive, occurrences: undefined }, fermees), false);
   // Sans `deployeA`, la règle historique est INCHANGÉE (les cas d'avant restent verts plus haut).
   assert.equal(dejaCorrige(cible, [{ title: titreIssue(cible), closedAt: "2026-09-12T14:31:53Z" }]), false, "fermée avant la dernière occurrence : on rouvre, comme avant");
-  // Une fermeture à la main (sans déploiement) postérieure ne prime pas sur un
-  // correctif daté : la récidive après le correctif reste une récidive.
-  assert.equal(dejaCorrige(tardive, [...fermees, { title: titreIssue(cible), closedAt: "2026-09-12T19:00:00Z" }]), false);
+  // Une fermeture à la main (sans déploiement) POSTÉRIEURE à toutes les
+  // occurrences tait, même face à un correctif daté (voir le verrou A-03 plus
+  // bas) ; antérieure à la dernière occurrence, elle ne tait rien.
+  assert.equal(dejaCorrige(tardive, [...fermees, { title: titreIssue(cible), closedAt: "2026-09-12T19:00:00Z" }]), true);
+  assert.equal(dejaCorrige(tardive, [...fermees, { title: titreIssue(cible), closedAt: "2026-09-12T17:00:00Z" }]), false);
+});
+
+test("A-03 : une issue de récidive fermée À LA MAIN n'est pas recréée à chaque run — la fermeture tait ce qui la précède, une occurrence postérieure rouvre", () => {
+  // Mutation : retirer le bloc `if (memes.some((f) => { if (datee(f)) return false; ...})) return true;`
+  // de dejaCorrige → rougit (la première assertion : la récidive #360 fermée à
+  // 11:00 serait recréée sur les occurrences de 10:00, à chaque passage du cron).
+  const c = { cle: "GET /rest/v1/events 401", message: "HTTP 401", n: 5, comptes: 2, dernier: "2026-09-13T10:00:00Z", occurrences: [{ at: "2026-09-13T10:00:00Z", app_version: "c7bf4e49" }] };
+  const t = titreIssue(c);
+  const correctifs = [
+    { number: 350, title: t, closedAt: "2026-09-12T14:31:53Z", deployeA: "2026-09-12T15:33:46Z", versions: ["39285792", "c7bf4e49"] },
+    { number: 355, title: t, closedAt: "2026-09-12T17:38:08Z", deployeA: "2026-09-12T17:48:35Z", versions: ["c7bf4e49"] },
+  ];
+  assert.equal(dejaCorrige(c, correctifs), false, "sans fermeture humaine : le build corrigé montre l'erreur, on rouvre (récidive)");
+  assert.equal(escaladeRecidive(c, correctifs).recidive, true, "et c'est une escalade");
+  const recidiveFermee = { number: 360, title: t, closedAt: "2026-09-13T11:00:00Z" };
+  assert.equal(dejaCorrige(c, [...correctifs, recidiveFermee]), true, "récidive #360 fermée à la main APRÈS la dernière occurrence : on se tait");
+  assert.equal(choisirCible([c], [...correctifs, recidiveFermee], []), null, "et aucune cible n'est retenue : plus d'e-mail");
+  const apres = { ...c, dernier: "2026-09-13T12:00:00Z", occurrences: [...c.occurrences, { at: "2026-09-13T12:00:00Z", app_version: "c7bf4e49" }] };
+  assert.equal(dejaCorrige(apres, [...correctifs, recidiveFermee]), false, "une occurrence APRÈS la fermeture humaine : le défaut est vivant, on rouvre");
+  // Même chose après un correctif MANUEL (pas de PR claude/issue-*, donc pas de deployeA).
+  assert.equal(dejaCorrige(c, [{ number: 370, title: t, closedAt: "2026-09-13T10:30:00Z" }]), true);
+  assert.equal(dejaCorrige(apres, [{ number: 370, title: t, closedAt: "2026-09-13T10:30:00Z" }]), false);
+});
+
+test("A-02 : etatDeploiement — un correctif fusionné sans run vert est EN VOL, pas absent", () => {
+  // Mutation : dans etatDeploiement, retirer la ligne `if (liste.some((r) => STATUTS_EN_VOL.has(...)))`
+  // → rougit (un run in_progress rendrait « inconnu », donc la règle par closedAt,
+  // donc la réouverture #355 pendant la fenêtre de déploiement).
+  // Mutation 2 : `now - fusion < attente` → `now - fusion > attente` → rougit
+  // (fusion récente sans run listé ne serait plus en vol).
+  const now = Date.parse("2026-09-12T15:23:00Z");
+  assert.deepEqual(etatDeploiement([{ status: "completed", conclusion: "failure", updatedAt: "2026-09-12T14:40:00Z" }, { status: "completed", conclusion: "success", updatedAt: "2026-09-12T15:33:46Z" }], "2026-09-12T14:31:52Z", { now }),
+    { etat: "deploye", deployeA: "2026-09-12T15:33:46Z" }, "un run vert date le déploiement (le plus récent)");
+  for (const status of ["queued", "in_progress", "pending", "waiting", "requested"]) {
+    assert.equal(etatDeploiement([{ status, conclusion: null, updatedAt: "2026-09-12T14:35:00Z" }], "2026-09-12T14:31:52Z", { now }).etat, "en_vol", status);
+  }
+  assert.equal(etatDeploiement([], "2026-09-12T14:31:52Z", { now }).etat, "en_vol", "fusion il y a 51 min, aucun run listé : en vol");
+  assert.equal(etatDeploiement([], "2026-09-12T11:00:00Z", { now }).etat, "inconnu", "fusion il y a plus de 3 h sans run : inconnu (règle historique)");
+  assert.equal(etatDeploiement([], "2026-09-12T14:31:52Z", { now, attenteMs: 60_000 }).etat, "inconnu", "attente réglable");
+  assert.equal(ATTENTE_DEPLOIEMENT_MS, 3 * 3600_000);
+  const rouge = etatDeploiement([{ status: "completed", conclusion: "failure", updatedAt: "2026-09-12T14:40:00Z" }], "2026-09-12T14:31:52Z", { now });
+  assert.equal(rouge.etat, "inconnu", "run rouge sans re-run : inconnu — retour-issue a rouvert l'issue avec humain");
+  assert.match(rouge.raison, /failure/);
+  assert.equal(etatDeploiement(null, null).etat, "inconnu");
+  assert.equal(etatDeploiement([{ status: "in_progress" }], "hier").etat, "en_vol", "date de fusion illisible mais run en cours : en vol");
 });
 
 test("deux correctifs déployés sur le même titre : le PLUS RÉCENT juge, pas le premier ni « n'importe lequel »", () => {
@@ -688,6 +735,9 @@ test("fichesProches retrouve les fiches par condensé du nom ou par chemin d'end
   assert.deepEqual(fichesProches({ cle: "k", message: "m" }, fiches), [], "aucune fiche proche : liste vide, pas d'invention");
   assert.deepEqual(fichesProches(c, fiches, { max: 1 }).length, 1);
   assert.deepEqual(fichesProches(c, null), []);
+  // Mutation 3 : `brut.length > 1 ? brut : ""` → `brut` → rougit (un endpoint vide,
+  // nommé « / » par classerApi, « rapprocherait » toute fiche dont le titre porte une barre).
+  assert.deepEqual(fichesProches({ cle: "GET / 500", message: "m", chemin: "/" }, fiches), [], "un endpoint vide ne rapproche rien");
 });
 
 test("lireFiches lit un dossier : README exclu, titre = première ligne « # », chemin sous docs/sentinelle/", async () => {
@@ -802,21 +852,35 @@ test("lireErreursTelemetrie : type=error, PRODUCTION, identité serveur, et des 
   await assert.rejects(() => avecFetchRendant([{ ok: false, status: 500 }], () => lireErreursTelemetrie({ url: "https://x.supabase.co", cle: "k", heures: 24 })), /HTTP 500/);
 });
 
-test("fusionnerErreursJs : une empreinte déjà vue dans client_errors n'est pas recomptée, et 5 par session au plus", () => {
-  // Mutation : retirer `if (connues.has(e)) { doublons++; continue; }` → rougit.
-  // Mutation 2 : `maxParSession` par défaut 5 → 50 → rougit.
-  const client = [{ message: "boum 1", uid: "a", created_at: "x" }];
-  const tel = [
-    ...Array.from({ length: 3 }, () => ({ message: "boum 2", uid: "b", created_at: "x", session_id: "s1" })),
+test("fusionnerErreursJs (A-04) : la TÉLÉMÉTRIE (versions, sessions) est la source, client_errors le repli — et 5 par session au plus", () => {
+  // Mutation : inverser la priorité (connues = empreintes de client_errors, la
+  // télémétrie écartée en doublon) → rougit (versions {} et 2 comptes au lieu de 4 :
+  // le rejeu du relecteur). Mutation 2 : `maxParSession` par défaut 5 → 50 → rougit.
+  // Mutation 3 : ne plus écarter client_errors d'empreinte connue → rougit (doublons 0, 6 comptes).
+  const client = [
+    { message: "TypeError: x is null at 12", uid: U(1), created_at: "2026-09-18T08:00:00Z" },
+    { message: "TypeError: x is null at 34", uid: U(2), created_at: "2026-09-18T08:01:00Z" },
+    { message: "seulement vue par platform.js", uid: U(9), created_at: "2026-09-18T08:02:00Z" },
+  ];
+  const tel = Array.from({ length: 4 }, (_, i) => ({ message: `TypeError: x is null at ${i}`, uid: U(10 + i), created_at: "2026-09-18T09:00:00Z", session_id: `s${i}`, app_version: "39285792" }));
+  const f = fusionnerErreursJs(client, tel);
+  assert.equal(f.doublons, 2, "les deux lignes de client_errors de même empreinte sont les doublons, pas la télémétrie");
+  assert.equal(f.lignes.length, 4 + 1);
+  assert.deepEqual(f.lignes.slice(0, 4), tel, "la télémétrie passe en tête, intacte");
+  assert.equal(f.lignes[4], client[2], "une erreur vue seulement par client_errors survit");
+  const { candidates } = classer(f.lignes);
+  assert.equal(candidates[0].comptes, 4, "les 4 comptes de la télémétrie survivent au classement");
+  assert.deepEqual(Object.keys(candidates[0].versions), ["39285792"], "et la version du build : la dédup datée (A3) voit la famille JS");
+  // Plafond par session : la télémétrie n'en a pas côté client.
+  const boucle = [
     ...Array.from({ length: 9 }, () => ({ message: "autre", uid: "c", created_at: "x", session_id: "s2" })),
     { message: "autre", uid: "d", created_at: "x", session_id: "s3" },
   ];
-  const f = fusionnerErreursJs(client, tel);
-  assert.equal(f.doublons, 3, "« boum 2 » = même empreinte que « boum 1 » : déjà comptée par client_errors");
-  assert.equal(f.plafonnees, 4, "s2 : 9 occurrences, 5 gardées");
-  assert.equal(f.lignes.length, 1 + 5 + 1);
-  assert.equal(f.lignes[0], client[0], "client_errors passe en tête, intact");
-  assert.equal(fusionnerErreursJs([], tel, { maxParSession: 1 }).lignes.length, 3);
+  const p = fusionnerErreursJs([], boucle);
+  assert.equal(p.plafonnees, 4, "s2 : 9 occurrences, 5 gardées");
+  assert.equal(p.lignes.length, 6);
+  assert.equal(fusionnerErreursJs([], boucle, { maxParSession: 1 }).lignes.length, 2);
+  assert.equal(fusionnerErreursJs([{ message: "autre", uid: "e", created_at: "x" }], boucle).doublons, 1, "une empreinte plafonnée reste CONNUE : client_errors ne la recompte pas");
   assert.deepEqual(fusionnerErreursJs(), { lignes: [], doublons: 0, plafonnees: 0 });
 });
 

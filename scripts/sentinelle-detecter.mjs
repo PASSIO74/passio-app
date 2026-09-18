@@ -572,7 +572,22 @@ export function dejaCorrige(cible, fermees, options = {}) {
     ? cible.occurrences
     : [{ at: cible.dernier, app_version: null }];
   const memes = fermees.filter((f) => String(f?.title || "") === titre);
-  const datees = memes.filter((f) => Number.isFinite(Date.parse(f?.deployeA)));
+  const datee = (f) => Number.isFinite(Date.parse(f?.deployeA));
+  // ⚠️ UNE FERMETURE À LA MAIN POSTÉRIEURE À TOUTES LES OCCURRENCES TAIT, MÊME
+  // FACE À UN CORRECTIF DATÉ (relecture du lot, 2026-09-18). Sans cette règle,
+  // une issue de RÉCIDIVE (`humain`, sans PR donc sans `deployeA`) fermée par
+  // Benjamin était recréée à CHAQUE run tant que des occurrences restaient dans
+  // la fenêtre de 24 h — jusqu'à huit e-mails par jour pour une décision déjà
+  // prise, indéfiniment si la cause est serveur (le cas même que la récidive
+  // désigne). C'est la règle historique, rendue ADDITIVE : elle tait ce qui
+  // précède la fermeture ; une occurrence postérieure rouvre — c'est la
+  // récidive, et c'est voulu.
+  if (memes.some((f) => {
+    if (datee(f)) return false;
+    const clos = Date.parse(f?.closedAt || f?.closed_at);
+    return Number.isFinite(clos) && clos > dernier;
+  })) return true;
+  const datees = memes.filter(datee);
   if (datees.length) {
     // ⚠️ LE DERNIER CORRECTIF DÉPLOYÉ JUGE, PAS LE PREMIER. Deux correctifs sur
     // le même titre (#350 puis #355) : une occurrence venue du build du PREMIER
@@ -585,11 +600,54 @@ export function dejaCorrige(cible, fermees, options = {}) {
     const dernierCorrectif = datees.reduce((a, b) => (Date.parse(b.deployeA) > Date.parse(a.deployeA) ? b : a));
     return !occurrences.some((o) => estVivante(o, dernierCorrectif, options));
   }
-  // Sans correctif daté : la règle historique, inchangée.
-  return memes.some((f) => {
-    const clos = Date.parse(f?.closedAt || f?.closed_at);
-    return Number.isFinite(clos) && clos > dernier;
-  });
+  // Sans correctif daté ni fermeture postérieure : le défaut est vivant.
+  return false;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// OÙ EN EST LE DÉPLOIEMENT D'UN CORRECTIF FUSIONNÉ ? (relecture du lot, 2026-09-18)
+//
+// ⚠️ LE TROU MESURÉ : #355 (fermée 14:31:53Z, occurrence 15:12:57Z, déploiement
+// vert 15:33:46Z, cron à :23). Entre la fusion et le run vert (11 à 62 min), une
+// enquête fermée n'a pas encore de `deployeA` : la dédup retombait sur la date
+// de fermeture et rouvrait sur la première occurrence d'un vieux client. Le
+// correctif est « EN VOL » : ni déployé, ni absent — et le bon geste est
+// d'ATTENDRE (le titre est traité comme encore ouvert), pas de rouvrir.
+//   · un run `success` → déployé, `deployeA` = fin du dernier run vert ;
+//   · un run en file ou en cours (queued, in_progress, pending, waiting,
+//     requested) → en vol ;
+//   · aucun run listé et fusion depuis moins de 3 h → en vol (le run n'est pas
+//     encore créé, ou la liste retarde) ;
+//   · sinon (run rouge ou annulé, ou plus rien après 3 h) → inconnu : la règle
+//     historique par `closedAt` s'applique, et `retour-issue` (deploy.yml) a
+//     rouvert l'issue avec `humain` si le déploiement a échoué.
+// ═══════════════════════════════════════════════════════════════════════════
+export const ATTENTE_DEPLOIEMENT_MS = 3 * 3600_000;
+const STATUTS_EN_VOL = new Set(["queued", "in_progress", "pending", "waiting", "requested"]);
+
+/**
+ * FONCTION PURE. `runs` = `gh run list --json status,conclusion,updatedAt` du commit de fusion.
+ * @returns {{etat: "deploye", deployeA: string} | {etat: "en_vol", raison: string} | {etat: "inconnu", raison: string}}
+ */
+export function etatDeploiement(runs, mergedAt, options = {}) {
+  const liste = Array.isArray(runs) ? runs : [];
+  const verts = liste
+    .filter((r) => r && r.conclusion === "success")
+    .map((r) => String(r.updatedAt || ""))
+    .filter((s) => Number.isFinite(Date.parse(s)))
+    .sort();
+  if (verts.length) return { etat: "deploye", deployeA: verts[verts.length - 1] };
+  if (liste.some((r) => STATUTS_EN_VOL.has(String(r?.status || "")))) {
+    return { etat: "en_vol", raison: "un run deploy.yml est en file ou en cours" };
+  }
+  const now = options.now ?? Date.now();
+  const attente = options.attenteMs ?? ATTENTE_DEPLOIEMENT_MS;
+  const fusion = Date.parse(mergedAt);
+  if (!liste.length && Number.isFinite(fusion) && now - fusion < attente) {
+    return { etat: "en_vol", raison: "fusionnée il y a moins de 3 h, aucun run deploy.yml encore listé" };
+  }
+  const dernier = liste[0] ? String(liste[0].conclusion || liste[0].status || "?") : null;
+  return { etat: "inconnu", raison: dernier ? `dernier run deploy.yml : ${dernier}` : "aucun run deploy.yml" };
 }
 
 /**
@@ -682,7 +740,10 @@ export function fichesProches(cible, fiches, options = {}) {
   const max = options.max ?? 5;
   if (!cible || !Array.isArray(fiches)) return [];
   const cond = condense(String(cible.cle || cible.message || ""));
-  const chemin = String(cible.chemin || "").trim();
+  // `classerApi` nomme « / » un endpoint vide : ce « chemin » est dans le titre
+  // de toute fiche qui cite une URL, il ne rapproche rien.
+  const brut = String(cible.chemin || "").trim();
+  const chemin = brut.length > 1 ? brut : "";
   return fiches
     .filter((f) => RE_CHEMIN_FICHE.test(String(f?.chemin || "")))
     .filter((f) => {
@@ -901,26 +962,40 @@ export async function lireErreursTelemetrie({ url, cle, heures }) {
 
 /**
  * Fusionne les deux sources d'erreurs JS. FONCTION PURE.
- * Une empreinte déjà vue dans `client_errors` n'est pas recomptée depuis la
- * télémétrie (même erreur, deux moniteurs) ; au-delà de `maxParSession`
- * occurrences d'une même empreinte dans une même session, le reste est écarté.
+ *
+ * ⚠️ LA TÉLÉMÉTRIE EST LA SOURCE RICHE, `client_errors` LE REPLI (relecture du
+ * lot, 2026-09-18). Chaque erreur JS est remontée par les DEUX moniteurs
+ * (js/platform.js → client_errors ; js/telemetry.js → telemetry_events). La
+ * première version gardait `client_errors` et jetait la télémétrie en doublon :
+ * comme `client_errors` n'a ni `app_version` ni `session_id`, tout candidat JS
+ * sortait avec `versions: {}` — la dédup datée sur le build (A3) était morte
+ * pour toute la famille, et les comptes vus seulement par la télémétrie
+ * disparaissaient du tri. Désormais : la télémétrie passe (bornée à
+ * `maxParSession` occurrences d'une même empreinte par session, car elle n'a
+ * pas de plafond côté client), et une ligne de `client_errors` dont
+ * l'empreinte est déjà connue de la télémétrie est le doublon.
  */
 export function fusionnerErreursJs(clientErrors = [], telemetrie = [], options = {}) {
   const max = options.maxParSession ?? 5;
-  const connues = new Set(clientErrors.map((l) => empreinte(l.message)));
+  const connues = new Set();
   const parSession = new Map();
   const retenues = [];
   let doublons = 0, plafonnees = 0;
   for (const l of telemetrie) {
     const e = empreinte(l.message);
-    if (connues.has(e)) { doublons++; continue; }
+    connues.add(e);
     const k = `${String(l.session_id || "")}|${e}`;
     const n = (parSession.get(k) || 0) + 1;
     parSession.set(k, n);
     if (n > max) { plafonnees++; continue; }
     retenues.push(l);
   }
-  return { lignes: [...clientErrors, ...retenues], doublons, plafonnees };
+  const repli = [];
+  for (const l of clientErrors) {
+    if (connues.has(empreinte(l.message))) { doublons++; continue; }
+    repli.push(l);
+  }
+  return { lignes: [...retenues, ...repli], doublons, plafonnees };
 }
 
 /** Lit les appels réseau refusés — EN PRODUCTION SEULEMENT. Exporté pour le verrou. */
