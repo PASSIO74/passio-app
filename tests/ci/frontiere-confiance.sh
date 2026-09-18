@@ -279,115 +279,12 @@ PYW
 if [ $? -eq 0 ]; then ok=$((ok+29)); else ko=$((ko+1)); fi
 
 echo
-echo "═══ Modèle réellement exécuté — garde anti-déclassement ═══"
-WF="${WF}" python3 - <<'PYMODEL'
-import yaml,os,sys
-d=yaml.safe_load(open(os.environ["WF"],encoding='utf-8'))
-steps=d['jobs']['claude']['steps']
-claude=[x for x in steps if x.get('id')=='claude'][0]
-modele=[x for x in steps if x.get('id')=='modele'][0]
-publier=[x for x in steps if x.get('id')=='publier'][0]
-preuve=[x for x in steps if x.get('id')=='preuve'][0]
-env=claude.get('env',{})
-args=claude.get('with',{}).get('claude_args','')
-settings=claude.get('with',{}).get('settings','')
-run=modele.get('run','')
-exigences=[
- ("fallback autorisé Opus 5 demandé explicitement", '--model claude-opus-5' in args),
- ("budget borne a 80 tours apres les incidents 40 tours", '--max-turns 80' in args and '--max-turns 40' not in args),
- ("aucun fallback implicite vers un troisième modèle", '--fallback-model' not in args),
- ("modèle principal et sous-agents figés sur Opus 5", env.get('ANTHROPIC_MODEL') == 'claude-opus-5' and env.get('CLAUDE_CODE_SUBAGENT_MODEL') == 'claude-opus-5' and 'CLAUDE_CODE_SUBAGENT_MODEL' in settings),
- ("ANTHROPIC_API_KEY vidée", env.get('ANTHROPIC_API_KEY') == ''),
- ("bypassPermissions neutralisé explicitement", '--permission-mode default' in args and 'disableBypassPermissionsMode' in settings),
- ("trace JSON ou JSONL system/init lue", 'JSON.parse(raw)' in run and "event?.subtype === 'init'" in run and 'event.model' in run),
- ("apiKeySource none seule valeur OAuth admise", 'event.apiKeySource' in run and "keySource !== 'none'" in run and "actualAuth = keySource || 'ABSENTE'" in run),
- ("Fable 5 ou Opus 5 seulement", "['claude-fable-5', 'claude-opus-5']" in run),
- # Une trace illisible ne doit ni faire tomber une stack trace, ni ouvrir la
- # porte : la garde refuse, mais en disant pourquoi.
- ("lecture de la trace protégée", 'try {' in run.split('readFileSync')[0][-40:] or 'raw = fs.readFileSync' in run and 'catch (erreur)' in run),
- ("trace illisible = refus, jamais passage en force", 'Trace illisible' in run and 'process.exit(1)' in run),
- ("publication et preuve exigent la garde modèle", "steps.modele.outcome == 'success'" in str(publier.get('if','')) and "steps.modele.outcome == 'success'" in str(preuve.get('if',''))),
-]
-ko=0
-for lib,vrai in exigences:
-    print(f"  {'OK ' if vrai else 'KO '} {lib}")
-    if not vrai: ko+=1
-sys.exit(1 if ko else 0)
-PYMODEL
-if [ $? -eq 0 ]; then ok=$((ok+12)); else ko=$((ko+1)); fi
-
-scenario_modele() { # <nom> <format:json|jsonl> <modele> <source> <attendu:PASSE|REFUS>
-  local nom="$1" format="$2" modele="$3" source="$4" attendu="$5"
-  local trace="${BAC}/execution-${format}.json" sortie code verdict
-  if [ "${format}" = "jsonl" ]; then
-    jq -cn --arg m "${modele}" --arg s "${source}" \
-      '{type:"system",subtype:"init",model:$m,apiKeySource:$s}' > "${trace}"
-  else
-    jq -n --arg m "${modele}" --arg s "${source}" \
-      '[{type:"system",subtype:"init",model:$m,apiKeySource:$s}]' > "${trace}"
-  fi
-  export EXECUTION_FILE="${trace}" GITHUB_OUTPUT="${BAC}/modele-output.txt"
-  : > "${GITHUB_OUTPUT}"
-  sortie="$(bash "${BAC}/modele.sh" 2>&1)"; code=$?
-  [ ${code} -eq 0 ] && verdict=PASSE || verdict=REFUS
-  if [ "${verdict}" = "${attendu}" ]; then
-    ok=$((ok+1)); printf '  OK  %-58s → %s\n' "${nom}" "${verdict}"
-  else
-    ko=$((ko+1)); printf '  KO  %-58s → %s (attendu %s)\n' "${nom}" "${verdict}" "${attendu}"
-    echo "${sortie}" | sed 's/^/        /'
-  fi
-}
-
-echo
-echo "═══ Garde modèle — scénarios d'exécution ═══"
-scenario_modele "1. JSON action + Opus 5 + OAuth none"      json  claude-opus-5  none              PASSE
-scenario_modele "2. JSON action + Sonnet 5 refusé"          json  claude-sonnet-5 none              REFUS
-scenario_modele "3. JSON action + clé API refusée"          json  claude-opus-5  ANTHROPIC_API_KEY REFUS
-scenario_modele "4. JSONL compatible + Fable 5 + OAuth"     jsonl claude-fable-5 none              PASSE
-scenario_modele "5. Source d'auth absente refusée"          json  claude-opus-5  ''                REFUS
-scenario_modele "6. Source d'auth inconnue refusée"         json  claude-opus-5  temporary         REFUS
-scenario_modele "7. Helper de clé API refusé"               json  claude-opus-5  apiKeyHelper      REFUS
-
-echo
-echo "═══ Politique modèles du canal claude-pr-task ═══"
-WFT="$(dirname "${WF}")/claude-pr-task.yml" python3 - <<'PYM'
-import yaml,os,sys,re
-p=os.environ["WFT"]
-brut=open(p,encoding='utf-8').read()
-d=yaml.safe_load(brut)
-run="".join(s.get('run','') for s in d['jobs']['claude']['steps'])
-env={}
-for s in d['jobs']['claude']['steps']:
-    env.update(s.get('env') or {})
-
-modeles=set(re.findall(r'claude-[a-z]+-[0-9]+(?:\.[0-9]+)?', brut))
-exig=[
- ("Fable 5 est le modele PRIMAIRE",        'MODELE_PRIMAIRE=claude-fable-5' in run),
- ("Opus 5 est le REPLI",                   'MODELE_REPLI=claude-opus-5' in run),
- # On verifie le SITE D'APPEL de la garde, pas seulement que la fonction
- # existe : neutraliser « if travail_produit; then » en « if false; then »
- # laissait passer la premiere version de cette assertion. Test creux.
- ("le repli est refuse si un fichier a deja ete modifie",
-                                           'if travail_produit; then' in run
-                                           and 'Repli refuse' in run
-                                           and 'exit 1' in run.split('Repli refuse')[1][:200]),
- ("le modele reellement execute est valide",
-                                           'claude-fable-5*|claude-opus-5*' in run),
- ("aucun autre modele n'apparait",         modeles <= {'claude-fable-5','claude-opus-5'}),
- ("ANTHROPIC_API_KEY explicitement vide",  env.get('ANTHROPIC_API_KEY') == ''),
- ("jeton d'abonnement utilise",            'CLAUDE_CODE_OAUTH_TOKEN' in brut),
- ("aucun secret de cle API facturee",      'secrets.ANTHROPIC_API_KEY' not in brut and 'secrets.PASSIO}' not in brut),
- ("l'auth reelle est verifiee (apiKeySource)", 'apiKeySource' in run),
-]
-ko=0
-for lib,vrai in exig:
-    print(f"  {'OK ' if vrai else 'KO '} {lib}")
-    if not vrai: ko+=1
-if modeles - {'claude-fable-5','claude-opus-5'}:
-    print(f"      modeles etrangers : {sorted(modeles - {'claude-fable-5','claude-opus-5'})}")
-sys.exit(1 if ko else 0)
-PYM
-if [ $? -eq 0 ]; then ok=$((ok+9)); else ko=$((ko+1)); fi
+echo "═══ Fable 5.1 exact — configuration et traces des deux canaux ═══"
+if node "${RACINE}/tests/ci/claude-model.cjs"; then
+  ok=$((ok+1))
+else
+  ko=$((ko+1))
+fi
 
 echo "═══ Plafond de tours et diagnostic des refus ═══"
 WF="${WF}" python3 - <<'PYDIAG'
@@ -539,4 +436,3 @@ fi
 echo
 echo "Bilan final : ${ok} OK / ${ko} KO"
 [ "${ko}" -eq 0 ]
-
