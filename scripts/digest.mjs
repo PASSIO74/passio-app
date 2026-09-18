@@ -42,7 +42,10 @@ export const FICHIERS_CRITIQUES = [
 export const MARQUEUR_CONTRE_REVUE = "Contre-revue technique indépendante";
 export const RELECTEUR = "PASSIO74";
 // Issues dont l'ouverture est, par construction, un geste humain en attente.
-export const LABELS_HUMAINS = ["humain", "recidive", "moderation", "disponibilite", "veille"];
+// `veille-muette` / `digest-muet` : un canal qui ne parle plus (jeton, API) ;
+// ces issues ne portent PAS `disponibilite`, sinon la sonde du site les
+// refermerait sous 2-5 h avec « le site répond de nouveau » (constat B-05).
+export const LABELS_HUMAINS = ["humain", "recidive", "moderation", "disponibilite", "veille", "veille-muette", "digest-muet"];
 export const SENTINELLE_ATTENTE_H = 6;
 export const PR_SENTINELLE_ATTENTE_H = 2;
 export const RESIDU_HORIZON_J = 7;
@@ -76,9 +79,11 @@ export function echeanceResidu(ligne) {
 
 // Un titre d'issue ou de PR est du texte d'un tiers (ou d'un script) qui finit
 // dans une issue publique : une ligne, bornée, sans outil Markdown (balise,
-// bloc de code, image `![](…)` qui ferait charger une URL chez qui la lit).
+// bloc de code, image `![](…)` qui ferait charger une URL chez qui la lit),
+// sans `@mention` (une notification chez un inconnu) ni `#n` (un renvoi dans
+// la chronologie d'une autre issue).
 export function propre(texte, max = 110) {
-  return String(texte || "").replace(/[\r\n\t]+/g, " ").replace(/[`<>[\]]/g, "'").replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, max);
+  return String(texte || "").replace(/[\r\n\t]+/g, " ").replace(/[`<>[\]]/g, "'").replace(/@/g, "(a)").replace(/#/g, "n°").replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, max);
 }
 
 const ageH = (iso, now) => (Number.isFinite(Date.parse(iso)) ? Math.floor((now - Date.parse(iso)) / H) : null);
@@ -125,6 +130,8 @@ export function composerDigest(d, now) {
       moderation: "en local : `npm run moderation` puis `traiter --id … --statut handled|dismissed`",
       disponibilite: "regarde app.netlify.com et status.supabase.com ; l'issue se referme seule au retour",
       veille: "lis « Ce que tu fais » dans l'issue ; elle se referme seule quand le signal revient",
+      "veille-muette": "ouvre le run lié dans l'issue : jeton expiré (SUPABASE_ACCESS_TOKEN, SENTINELLE_TOKEN → Settings > Secrets) ou API en panne ; l'issue se referme au prochain verdict rendu",
+      "digest-muet": "ouvre le run lié dans l'issue : API GitHub, SUPABASE_ACCESS_TOKEN ou registre des résidus ; l'issue se referme au prochain digest composé",
       "sentinelle-distante": "ouvre le run lié dans l'issue : audit rouge, page publique ou canari staging",
     }[quoi];
     aFaire.push({
@@ -181,11 +188,16 @@ export function composerDigest(d, now) {
   // Ce que les machines ont fait depuis le dernier digest.
   const fermees = issues.filter((i) => i.state === "closed" && labelsDe(i).includes("sentinelle") && Date.parse(i.closedAt) >= depuisMs);
   const prsFusionnees = prs.filter((pr) => pr.mergedAt && Date.parse(pr.mergedAt) >= depuisMs && /^claude\/issue-\d+-/.test(String(pr.headRefName || "")));
+  // Des runs NON LUS (403 sans `actions: read`, API en panne) ne sont pas
+  // « 0 run » : le digest le dit avec le code HTTP (constat B-01).
   const compte = (nom) => {
-    const liste = (runs[nom] || []).filter((r) => Date.parse(r.updatedAt || r.updated_at) >= depuisMs);
+    const source = runs[nom];
+    if (source && !Array.isArray(source) && source.erreur) return { runs: null, ok: 0, echecs: 0, erreur: String(source.erreur).slice(0, 120) };
+    const liste = (Array.isArray(source) ? source : []).filter((r) => Date.parse(r.updatedAt || r.updated_at) >= depuisMs);
     const ok = liste.filter((r) => r.conclusion === "success").length;
     return { runs: liste.length, ok, echecs: liste.filter((r) => r.conclusion === "failure").length };
   };
+  const nonLus = (c) => `non lus (${c.erreur})`;
   const machines = {
     sentinelle: { fermees: fermees.map((i) => i.number), prsFusionnees: prsFusionnees.map((pr) => pr.number) },
     sauvegarde: compte("sauvegarde"),
@@ -207,10 +219,10 @@ export function composerDigest(d, now) {
     "",
     "## Ce que les machines ont fait",
     `- Sentinelle autonome : ${fermees.length} enquête(s) fermée(s)${fermees.length ? ` (${fermees.map((i) => `#${i.number}`).join(", ")})` : ""}, ${prsFusionnees.length} PR de réparation fusionnée(s)`,
-    `- Sauvegarde : ${machines.sauvegarde.ok} ok / ${machines.sauvegarde.runs} run(s)${machines.sauvegarde.echecs ? `, ${machines.sauvegarde.echecs} en échec` : ""}`,
-    `- Disponibilité : ${machines.disponibilite.runs} sonde(s)${machines.disponibilite.echecs ? `, ${machines.disponibilite.echecs} en échec` : ""}`,
-    `- Veille de production : ${machines.veille.runs} passage(s)${machines.veille.echecs ? `, ${machines.veille.echecs} en échec` : ""} ; issue [VEILLE] ouverte : ${machines.veille.issueOuverte ? "oui" : "non"}`,
-    `- Déploiements main : ${machines.deploiements.ok} succès, ${machines.deploiements.echecs} échec(s)`,
+    `- Sauvegarde : ${machines.sauvegarde.erreur ? nonLus(machines.sauvegarde) : `${machines.sauvegarde.ok} ok / ${machines.sauvegarde.runs} run(s)${machines.sauvegarde.echecs ? `, ${machines.sauvegarde.echecs} en échec` : ""}`}`,
+    `- Disponibilité : ${machines.disponibilite.erreur ? nonLus(machines.disponibilite) : `${machines.disponibilite.runs} sonde(s)${machines.disponibilite.echecs ? `, ${machines.disponibilite.echecs} en échec` : ""}`}`,
+    `- Veille de production : ${machines.veille.erreur ? nonLus(machines.veille) : `${machines.veille.runs} passage(s)${machines.veille.echecs ? `, ${machines.veille.echecs} en échec` : ""}`} ; issue [VEILLE] ouverte : ${machines.veille.issueOuverte ? "oui" : "non"}`,
+    `- Déploiements main : ${machines.deploiements.erreur ? nonLus(machines.deploiements) : `${machines.deploiements.ok} succès, ${machines.deploiements.echecs} échec(s)`}`,
     "",
     "## Usage",
     u ? `- Inscriptions : 24 h ${u.crees24h ?? "?"} créée(s) / ${u.confirmes24h ?? "?"} confirmée(s) ; 7 j ${u.crees7j ?? "?"} / ${u.confirmes7j ?? "?"}` : "- Inscriptions : non lues",
@@ -268,8 +280,11 @@ export async function lireDonnees(env, now = Date.now()) {
   for (const i of await sur(() => gh(env, `repos/${repo}/issues?state=closed&labels=sentinelle&since=${encodeURIComponent(depuis)}&per_page=50`), () => [])) if (!i.pull_request) issues.push(versIssue(i));
 
   const runs = {};
+  // Pas de repli silencieux en `[]` : une lecture refusée rend `{ erreur }` et
+  // composerDigest écrit « non lus (HTTP n) » plutôt que « 0 run » (constat B-01).
   const lireRuns = async (fichier, extra = "") => {
-    const r = await sur(() => gh(env, `repos/${repo}/actions/workflows/${fichier}/runs?per_page=50&created=${encodeURIComponent(">=" + depuis.slice(0, 10))}${extra}`), () => ({ workflow_runs: [] }));
+    const r = await sur(() => gh(env, `repos/${repo}/actions/workflows/${fichier}/runs?per_page=50&created=${encodeURIComponent(">=" + depuis.slice(0, 10))}${extra}`), (e) => ({ erreur: String((e && e.message) || e).slice(0, 160) }));
+    if (r.erreur) return { erreur: r.erreur };
     return (r.workflow_runs || []).map((x) => ({ conclusion: x.conclusion, status: x.status, updatedAt: x.updated_at, url: x.html_url, event: x.event }));
   };
   runs.sauvegarde = await lireRuns("sauvegarde.yml", "&exclude_pull_requests=true");

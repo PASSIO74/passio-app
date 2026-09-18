@@ -20,6 +20,9 @@
 # ⚠️ Un cron GitHub est une DEMANDE : « 08:30 Paris » arrivera entre 08:30 et
 # ~13 h (mesuré sur sauvegarde.yml : 5 h de retard courants). Le digest dit
 # « depuis le dernier digest », pas « depuis hier 08:30 », pour ne rien perdre.
+# `30 6` UTC = 08:30 Paris à l'heure d'été, 07:30 dès le 2026-10-25 (heure
+# d'hiver) : sans importance face à la desserte réelle, et deux lignes de cron
+# donneraient deux digests par jour.
 # ═══════════════════════════════════════════════════════════════════════════
 name: Digest du matin
 
@@ -37,9 +40,12 @@ concurrency:
   group: digest
   cancel-in-progress: false
 
+# `actions: read` : sans elle, les lectures de runs par github.token répondent
+# 403 et « Ce que les machines ont fait » afficherait « 0 run » (constat B-01).
 permissions:
   contents: read
   issues: write
+  actions: read
 
 jobs:
   composer:
@@ -102,9 +108,11 @@ jobs:
           echo "Digest ouvert : #${numero}" >> "${GITHUB_STEP_SUMMARY}"
 
       # ⚠️ UN DIGEST QUI NE PART PLUS RESSEMBLE À « RIEN À FAIRE ». Si le run
-      # échoue, on le dit par une issue `[DIGEST MUET]` — label `disponibilite`
-      # (le canal des pannes de la chaîne) + `digest-muet` (dédup propre), jamais
-      # `claude`. Refermée au prochain run vert.
+      # échoue, on le dit par une issue `[DIGEST MUET]` — label `digest-muet`
+      # SEUL, jamais `claude`, et PAS `disponibilite` : disponibilite.yml
+      # refermerait l'issue dès que le site répond (constat B-05). Le digest
+      # suivant la connaît (LABELS_HUMAINS) et la referme. Refermée au prochain
+      # run vert.
       - name: Issue « DIGEST MUET » si le run a échoué
         if: failure() && github.event_name != 'pull_request'
         env:
@@ -113,7 +121,6 @@ jobs:
           set -u
           run_url="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           gh label create digest-muet --repo "${GITHUB_REPOSITORY}" --color "B60205" --description "Le digest du matin n'a pas pu être composé" --force >/dev/null 2>&1 || true
-          gh label create disponibilite --repo "${GITHUB_REPOSITORY}" --color "B60205" --description "Sonde de disponibilité du site servi" --force >/dev/null 2>&1 || true
           {
             echo "Le digest du matin n'a pas pu être composé : une de ses étapes a échoué."
             echo
@@ -128,7 +135,7 @@ jobs:
             gh issue comment "${existante}" --repo "${GITHUB_REPOSITORY}" --body-file /tmp/muet.md
           else
             gh issue create --repo "${GITHUB_REPOSITORY}" --title "[DIGEST MUET] le digest du matin n'a pas été composé" \
-              --label disponibilite --label digest-muet --body-file /tmp/muet.md
+              --label digest-muet --body-file /tmp/muet.md
           fi
 
       - name: Refermer « DIGEST MUET » puisque le digest est composé

@@ -60,11 +60,14 @@ test("echeanceResidu : « échéance », « au plus tard le », « visé avant l
   assert.equal(echeanceResidu({}), null);
 });
 
-test("propre : un titre est une ligne bornée, sans outil Markdown", () => {
+test("propre : un titre est une ligne bornée, sans outil Markdown, sans @mention ni #renvoi", () => {
   // Mutation : retirer `.replace(/[`<>]/g, "'")` → rougit.
   assert.equal(propre("Titre `code` <img> ![x](u)\nligne 2"), "Titre 'code' 'img' !'x'(u) ligne 2");
   assert.equal(propre("x".repeat(200)).length, 110);
   assert.equal(propre(null), "");
+  // `@quelquun` notifierait un inconnu, `#12` écrirait dans la chronologie de l'issue 12 (constat mineur).
+  // Mutation : `.replace(/@/g, "(a)").replace(/#/g, "n°")` retiré → rougit.
+  assert.equal(propre("cc @quelquun, corrige #12"), "cc (a)quelquun, corrige n°12");
 });
 
 test("composerDigest : une PR critique sans contre-revue donne le geste exact `gh pr review <n> --comment --body \"Contre-revue technique indépendante — …\"`", () => {
@@ -80,25 +83,35 @@ test("composerDigest : une PR critique sans contre-revue donne le geste exact `g
   assert.match(v.texte, /pull\/490/);
 });
 
-test("composerDigest : issues à geste humain (humain, recidive, moderation, disponibilite, veille, [SENTINELLE DISTANTE]) sont listées, une simple issue non", () => {
+test("composerDigest : issues à geste humain (humain, recidive, moderation, disponibilite, veille, veille-muette, digest-muet, [SENTINELLE DISTANTE]) sont listées, une simple issue non", () => {
   // Mutation : LABELS_HUMAINS sans `recidive` → rougit.
   const issues = [
-    { number: 500, title: "[SENTINELLE] TypeError · x", labels: ["sentinelle", "recidive", "humain"], state: "open", createdAt: il_y_a(3), url: "u500" },
+    // #500 a 30 h (> 6 h) : sans la garde « déjà listée par son label humain », elle serait AUSSI une enquête qui traîne (constat B-T04).
+    { number: 500, title: "[SENTINELLE] TypeError · x", labels: ["sentinelle", "recidive", "humain"], state: "open", createdAt: il_y_a(30), url: "u500" },
     { number: 501, title: "[MODÉRATION] 1 signalement(s)", labels: ["moderation"], state: "open", createdAt: il_y_a(30), url: "u501" },
     { number: 502, title: "[SENTINELLE DISTANTE] Santé rouge", labels: [], state: "open", createdAt: il_y_a(2), url: "u502" },
     { number: 503, title: "[VEILLE] 1 alerte(s) : crons", labels: ["veille"], state: "open", createdAt: il_y_a(1), url: "u503" },
     { number: 504, title: "Idée de fonctionnalité", labels: ["enhancement"], state: "open", createdAt: il_y_a(100), url: "u504" },
     { number: 505, title: "[SENTINELLE PAUSE]", labels: [], state: "open", createdAt: il_y_a(1), url: "u505" },
+    { number: 506, title: "[VEILLE MUETTE] la veille de production n'a pas rendu de verdict", labels: ["veille-muette"], state: "open", createdAt: il_y_a(4), url: "u506" },
+    { number: 507, title: "[DIGEST MUET] le digest du matin n'a pas été composé", labels: ["digest-muet"], state: "open", createdAt: il_y_a(20), url: "u507" },
   ];
   const v = composerDigest({ ...VIDE, issues }, VENDREDI);
-  assert.deepEqual(v.aFaire.map((a) => a.cle), ["issue:500", "issue:501", "issue:502", "issue:503"]);
+  assert.deepEqual(v.aFaire.map((a) => a.cle), ["issue:500", "issue:501", "issue:502", "issue:503", "issue:506", "issue:507"]);
   assert.match(v.aFaire[0].titre, /recidive, humain/);
   assert.match(v.aFaire[0].geste, /décision humaine/);
   assert.match(v.aFaire[1].geste, /npm run moderation/);
   assert.match(v.aFaire[1].titre, /ouverte depuis 30 h/);
   assert.equal(v.machines.veille.issueOuverte, true);
   // #500 porte `humain` : elle n'est pas AUSSI comptée comme enquête qui traîne.
+  // Mutation : `|| labels.some((l) => LABELS_HUMAINS.includes(l))` retiré de l'étape 3 → #500 (30 h) apparaît deux fois → rougit.
   assert.ok(!v.aFaire.some((a) => a.cle === "sentinelle:500"));
+  // Une issue MUETTE porte le geste du canal (run lié, jeton), pas celui de la panne Netlify (constat B-05).
+  // Mutation : `veille-muette` retiré de LABELS_HUMAINS, ou son geste remplacé par celui de `disponibilite` → rougit.
+  const muette = v.aFaire.find((a) => a.cle === "issue:506");
+  assert.match(muette.geste, /ouvre le run lié.*SUPABASE_ACCESS_TOKEN/);
+  assert.doesNotMatch(muette.geste, /netlify/);
+  assert.match(v.aFaire.find((a) => a.cle === "issue:507").geste, /prochain digest composé/);
 });
 
 test("composerDigest : une enquête [SENTINELLE] ouverte > 6 h sans label humain est à débloquer ; à 3 h elle ne l'est pas encore", () => {
@@ -173,6 +186,10 @@ test("composerDigest : « ce que les machines ont fait » ne compte que depuis l
     usage: { inscriptions: { crees24h: 2, confirmes24h: 1, crees7j: 5, confirmes7j: 4, nonConfirmesAnciens: 1 }, appareils7j: 95, erreurs24h: 3 },
   };
   const v = composerDigest(d, VENDREDI);
+  // Les enquêtes FERMÉES injectées pour ce bloc ne sont jamais « ce qui t'attend » (constat B-T03).
+  // Mutation : `issues.filter((i) => !i.state || i.state === "open")` → `issues` → #370 (30 h) et #304 (200 h) deviennent des enquêtes qui traînent → rougit.
+  assert.deepEqual(v.aFaire, []);
+  assert.equal(v.emettre, false);
   assert.deepEqual(v.machines.sentinelle, { fermees: [370], prsFusionnees: [371] });
   assert.deepEqual(v.machines.sauvegarde, { runs: 1, ok: 1, echecs: 0 });
   assert.deepEqual(v.machines.disponibilite, { runs: 2, ok: 1, echecs: 1 });
@@ -182,6 +199,24 @@ test("composerDigest : « ce que les machines ont fait » ne compte que depuis l
   assert.match(v.texte, /Appareils actifs 7 j : 95/);
   assert.match(v.texte, /Erreurs client 24 h : 3/);
   assert.match(v.texte, /Déploiements main : 1 succès, 1 échec\(s\)/);
+});
+
+test("composerDigest : des runs NON LUS (403 sans `actions: read`) s'écrivent « non lus (HTTP 403 …) », jamais « 0 run »", () => {
+  // Mutation : `if (source && !Array.isArray(source) && source.erreur) return { … erreur }` retiré → « Sauvegarde : 0 ok / 0 run(s) » → rougit.
+  const runs = {
+    sauvegarde: { erreur: "HTTP 403 sur api.github.com/repos/x/y/actions/workflows/sauvegarde.yml/runs" },
+    disponibilite: { erreur: "HTTP 403 sur api.github.com/repos/x/y/actions/workflows/disponibilite.yml/runs" },
+    "veille-production": { erreur: "HTTP 403 sur api.github.com/repos/x/y/actions/workflows/veille-production.yml/runs" },
+    deploy: [{ conclusion: "success", updatedAt: il_y_a(5) }],
+  };
+  const v = composerDigest({ ...VIDE, runs }, VENDREDI);
+  assert.match(v.texte, /- Sauvegarde : non lus \(HTTP 403 sur api\.github\.com/);
+  assert.match(v.texte, /- Disponibilité : non lus \(HTTP 403/);
+  assert.match(v.texte, /- Veille de production : non lus \(HTTP 403/);
+  assert.match(v.texte, /- Déploiements main : 1 succès, 0 échec\(s\)/);
+  assert.doesNotMatch(v.texte, /0 ok \/ 0 run\(s\)/);
+  assert.equal(v.machines.sauvegarde.runs, null);
+  assert.equal(v.machines.sauvegarde.erreur.length <= 120, true);
 });
 
 test("composerDigest : un titre HOSTILE (Markdown, saut de ligne) ne sort jamais tel quel, et le texte ne porte ni e-mail ni identifiant", () => {
