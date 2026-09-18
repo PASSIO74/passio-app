@@ -1,7 +1,6 @@
 // INCIDENT PACKETS — deterministic evidence bundles prepared before any AI call.
-import fs from "node:fs";
-import path from "node:path";
 import { config } from "./config.js";
+import { revisionCourte } from "./git-revision.js";
 import { JsonDb } from "./jsondb.js";
 import { store } from "./store.js";
 
@@ -79,19 +78,12 @@ function pruneIncidents(d) {
   retention.lastPrunedAt = new Date().toISOString();
 }
 
+// Révision lue par git-revision.js (dépôt principal OU worktree). Jusqu'au
+// 2026-09-18 ce module lisait `.git` à la main en le supposant DOSSIER : dans un
+// worktree la clé de regroupement (`clusterKey`) restait nue. `null` quand on
+// ne sait pas — jamais une révision inventée.
 function repoRevision() {
-  try {
-    const gitDir = path.join(config.repoPath, ".git");
-    const head = fs.readFileSync(path.join(gitDir, "HEAD"), "utf8").trim();
-    if (!head.startsWith("ref:")) return head.slice(0, 12);
-    const ref = head.slice(4).trim();
-    try { return fs.readFileSync(path.join(gitDir, ref), "utf8").trim().slice(0, 12); }
-    catch {
-      const packed = fs.readFileSync(path.join(gitDir, "packed-refs"), "utf8");
-      const line = packed.split("\n").find((l) => l.endsWith(" " + ref));
-      return line ? line.slice(0, 12) : null;
-    }
-  } catch { return null; }
+  return revisionCourte(config.repoPath, 12) || null;
 }
 
 function recentEvidence(alert) {

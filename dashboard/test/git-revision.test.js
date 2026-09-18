@@ -72,3 +72,17 @@ test("⑤ ne SAIT pas → \"\" et null, jamais une révision inventée ; HEAD d�
   assert.equal(lireRevision(corrompu).sha, null);
   assert.equal(revisionCourte(corrompu), "");
 });
+
+test("⑥ worktree : un `gitdir:` RELATIF est résolu depuis le dossier du worktree, pas depuis le cwd", () => {
+  // Mutation : `path.resolve(repoPath, cible)` → `path.resolve(cible)` rougit
+  // (résolu depuis le cwd du processus, le gitdir n'existe pas → sha null).
+  const racine = tmp();
+  const wt = path.join(racine, "wt");
+  const gitDir = path.join(racine, "principal", ".git", "worktrees", "wt3");
+  ecrire(path.join(wt, ".git"), "gitdir: ../principal/.git/worktrees/wt3\n");
+  ecrire(path.join(gitDir, "HEAD"), "ref: refs/heads/main\n");
+  ecrire(path.join(gitDir, "commondir"), "../..\n");
+  ecrire(path.join(racine, "principal", ".git", "refs", "heads", "main"), SHA + "\n");
+  assert.equal(resoudreGitDir(wt), gitDir);
+  assert.deepEqual(lireRevision(wt), { branch: "main", sha: SHA });
+});

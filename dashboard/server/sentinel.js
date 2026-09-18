@@ -43,7 +43,7 @@ import { config } from "./config.js";
 import { revisionCourte } from "./git-revision.js";
 import { JsonDb } from "./jsondb.js";
 import { broadcast } from "./sse.js";
-import { onAlert } from "./alerts.js";
+import { onAlert, raiseInternal } from "./alerts.js";
 import { store } from "./store.js";
 import { trace as traceOne } from "./traces.js";
 import { suspectsFor, suspectsPromptBlock } from "./correlate.js";
@@ -101,13 +101,21 @@ const SETTINGS = {
     .split(",").map((s) => s.trim()).filter(Boolean),
 };
 
-// Rappel envoyé lorsqu'une réponse s'arrête avant le verdict (voir pump()).
-const RAPPEL_VERDICT = [
-  "Ta réponse précédente s'est arrêtée AVANT la section « ## Verdict » (ou ne portait pas",
-  "la ligne finale VERDICT:). Réponds de nouveau, en respectant strictement le format imposé,",
-  "en commençant par « ## Verdict » et en terminant par la ligne « VERDICT: … ». Sans outil,",
-  "sans lecture de fichier : uniquement à partir des données fournies.",
-].join("\n");
+// Rappel ajouté au prompt du SECOND essai (voir pump()). Le second essai est
+// un processus CLI neuf qui n'a jamais vu la première réponse : le rappel parle
+// donc d'« une première réponse à ce dossier », pas de « ta réponse ». Et la
+// consigne d'outils suit le mode — en approfondi Read/Grep/Glob restent permis
+// (le préambule les autorise), en rapide il n'y en a aucun.
+function rappelVerdict(deep) {
+  return [
+    "Une première réponse à ce dossier s'est arrêtée AVANT la section « ## Verdict » (ou ne portait pas",
+    "la ligne finale VERDICT:). Réponds en respectant strictement le format imposé, en commençant",
+    "par « ## Verdict » et en terminant par la ligne « VERDICT: … », seule sur sa ligne.",
+    deep
+      ? "Lecture seule (Read, Grep, Glob) ; ne lance aucune commande, ne modifie rien."
+      : "Sans outil, sans lecture de fichier : uniquement à partir des données fournies.",
+  ].join("\n");
+}
 
 // ─── État vivant (mémoire) ───────────────────────────────────────────────────
 const rt = {
@@ -428,13 +436,15 @@ async function pump() {
     // avec rappel du format, puis, s'il ne rend toujours rien d'exploitable,
     // un ÉCHEC nommé. Le cooldown est conservé (Claude a bien travaillé : c'est
     // le garde-fou n°3), mais l'échec se voit dans l'état, l'audit et une alerte.
-    if (result && !result.error && result.analysis && !extractVerdict(result.analysis)) {
+    // Une analyse VIDE ("") sans erreur est traitée comme un fragment : ce n'est
+    // pas plus un diagnostic qu'une réponse tronquée (revue du 2026-09-18).
+    if (result && !result.error && !extractVerdict(result.analysis)) {
       essais = 2;
-      const r2 = await analyzer(prompt + "\n\n" + RAPPEL_VERDICT, { deep: job.deep });
+      const r2 = await analyzer(prompt + "\n\n" + rappelVerdict(job.deep), { deep: job.deep });
       if (r2 && !r2.error && r2.analysis && extractVerdict(r2.analysis)) result = r2;
       else if (r2 && r2.error) result = { ...result, error: r2.error, via: r2.via || result.via, authNeeded: r2.authNeeded };
       if (!result.error && !extractVerdict(result.analysis)) {
-        result = { ...result, error: "réponse sans verdict après deux essais (sortie tronquée ou format non respecté)", sansVerdict: true };
+        result = { ...result, error: "réponse vide ou sans verdict après deux essais (sortie tronquée ou format non respecté)", sansVerdict: true };
       }
     }
   } catch (e) {
@@ -447,7 +457,9 @@ async function pump() {
   // « consommées » en 2 s avec « OAuth session expired », puis 6 h de silence sur
   // la même cause. Un délai dépassé ou une limite d'usage, eux, ont bien occupé
   // Claude ou son quota : leur cooldown reste (garde-fou n°3, cf. en-tête).
-  const sansCout = Boolean(result?.error) && (result?.via === "none" || result?.authNeeded === true || result?.via == null);
+  // Un SECOND essai en refus d'authentification ne rend rien non plus : le
+  // premier appel, lui, a bien occupé Claude (revue du 2026-09-18).
+  const sansCout = essais === 1 && Boolean(result?.error) && (result?.via === "none" || result?.authNeeded === true || result?.via == null);
   if (sansCout) {
     db.update((d) => { delete d.seen[job.key]; });
     rt.runsWindow = rt.runsWindow.filter((t) => t !== now);
@@ -472,18 +484,11 @@ async function pump() {
     via: result?.via || null,
     essais,
     verdict: result?.error ? null : extractVerdict(result?.analysis),
+    // Informatif, remonté par claudecli.js : `subtype` ≠ "success" (plafond de
+    // tours…) ou des refus d'outils expliquent une sortie tronquée.
+    subtype: typeof result?.subtype === "string" ? result.subtype : null,
+    denials: Number.isFinite(result?.denials) ? result.denials : null,
   };
-  if (result?.sansVerdict) {
-    rt.skipped.sansVerdict++;
-    // Alerte `warn` (jamais analysée : préfixe `sentinelle:` dans skipKeys) —
-    // import dynamique pour ne pas créer de cycle alerts → sentinel → alerts.
-    import("./alerts.js").then((m) => {
-      const emettre = typeof m.raise === "function" ? m.raise : m.raiseManual;
-      emettre({ key: "sentinelle:sans-verdict", level: "warn", title: "Sentinelle : diagnostic sans verdict",
-        message: `« ${record.title} » : deux réponses sans « ## Verdict » — sortie tronquée ou format non respecté. Le cooldown reste posé ; rien n'a été réparé.`,
-        meta: { view: "sentinel", diagnosis: record.id } });
-    }).catch(() => {});
-  }
   db.update((d) => {
     d.diagnoses.unshift(record);
     if (d.diagnoses.length > SETTINGS.keep) d.diagnoses.length = SETTINGS.keep;
@@ -491,6 +496,21 @@ async function pump() {
     const cutoff = Date.now() - SETTINGS.cooldownMs * 4;
     for (const [k, t] of Object.entries(d.seen)) if (t < cutoff) delete d.seen[k];
   });
+  if (result?.sansVerdict) {
+    rt.skipped.sansVerdict++;
+    // Alerte `warn` émise APRÈS la persistance du diagnostic (le lien
+    // meta.diagnosis pointe sur un enregistrement qui existe déjà). Clé
+    // `sentinelle:…` conservée par raiseInternal : c'est ce préfixe, dans
+    // skipKeys, qui empêche la sentinelle de s'analyser elle-même (anti-boucle),
+    // quel que soit DASH_SENTINEL_LEVELS. Import statique : alerts.js n'importe
+    // pas sentinel.js, il n'y a pas de cycle. Un échec d'émission ne doit pas
+    // faire tomber pump() — l'alerte est un bonus, le diagnostic est déjà écrit.
+    try {
+      raiseInternal({ key: "sentinelle:sans-verdict", level: "warn", title: "Sentinelle : diagnostic sans verdict",
+        message: `« ${record.title} » : deux réponses sans « ## Verdict » — sortie tronquée ou format non respecté. Le cooldown reste posé ; rien n'a été réparé.`,
+        meta: { view: "sentinel", diagnosis: record.id } });
+    } catch (e) { console.error("[sentinelle] alerte sans-verdict impossible :", e.message); }
+  }
   rt.total++;
   rt.running = null;
   pumping = false;
@@ -523,9 +543,20 @@ async function pump() {
 export function extractVerdict(analysis) {
   if (!analysis) return null;
   const s = String(analysis);
-  // ① La ligne machine (demandée en dernier, acceptée n'importe où) : la plus sûre.
-  const m0 = s.match(/^\s*VERDICT\s*:\s*(DEFAUT_REEL|DÉFAUT_RÉEL|COMPORTEMENT_ATTENDU|INSUFFISANT)\b/im);
-  if (m0) {
+  // ① La ligne machine, demandée en DERNIÈRE ligne, seule. On retient la
+  //    DERNIÈRE occurrence, et seulement si rien d'autre que du blanc la suit :
+  //    le préambule demande au modèle de CITER les données observées dans
+  //    « ## Preuves », et un message d'alerte hostile peut contenir sa propre
+  //    ligne « VERDICT: DEFAUT_REEL » (sanitizeObserved ne touche ni les sauts
+  //    de ligne ni ce mot). Prise à la première occurrence (revue du
+  //    2026-09-18), cette citation l'emportait sur la conclusion du modèle et
+  //    un « defect » forcé déclenchait le réparateur. La conclusion du modèle
+  //    est toujours ce qu'il écrit en dernier ; une citation ne l'est jamais.
+  //    Si la ligne finale manque (sortie tronquée, texte après), on retombe
+  //    sur ② — la section « ## Verdict », en tête par format.
+  const lignes = [...s.matchAll(/^[ \t]*VERDICT\s*:\s*(DEFAUT_REEL|DÉFAUT_RÉEL|COMPORTEMENT_ATTENDU|INSUFFISANT)\b[ \t\r]*$/gim)];
+  const m0 = lignes[lignes.length - 1];
+  if (m0 && !s.slice(m0.index + m0[0].length).trim()) {
     const v = m0[1].toUpperCase();
     return v.startsWith("D") ? "defect" : v.startsWith("C") ? "expected" : "insufficient";
   }
