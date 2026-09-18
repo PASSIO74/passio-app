@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node server/start.js",
     "dev": "node --watch server/start.js",
-    "test": "node --test test/*.test.js"
+    "test": "node --test --import ./test/isoler-data.js test/*.test.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
