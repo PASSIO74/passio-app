@@ -138,6 +138,22 @@ voisines (431 cas), pas par la relecture :
   `ajouterPassionAuFil("cuisine")` à la main sur une passion non possédée. Il passe désormais par
   `ajouterPassionAuCompte`, le moteur réel, qui possède PUIS rend visible : le cas est devenu plus
   vrai qu'avant.
+- `feed-vues-adr010` ⑩ et ⑬ — trouvés par le **shard 2/6 de la CI**, pas par le run local des
+  suites voisines (la suite n'y était pas). ⑩ cochait « cuisine » sur un compte qui ne l'avait pas ;
+  ⑬ appelait `setFeedPassions(DIX)` avec UNE passion au compte puis donnait les dix au compte : la
+  borne n'en gardait qu'une, neuf bulles restaient grisées (`scale(0.95)`), et « toutes les bulles
+  ont la MÊME largeur » mesurait l'état coché, pas la mise en page (4,3 px d'écart). Les dix sont
+  recochées APRÈS avoir été données au compte.
+
+### Le journal de la CI était illisible d'ici — le rapporteur `github`
+
+Le journal d'un job GitHub Actions vit sur un stockage tiers (blob Azure) qu'un poste sous
+politique d'egress ne peut pas atteindre ; le check-run du shard rouge ne portait que
+« Process completed with exit code 1 », sans le nom du cas. La reproduction locale du shard
+(`--shard=2/6`, 274 cas, 10 min) a donné la réponse — et `playwright.config.js` porte désormais,
+en CI seulement, le rapporteur `github` : chaque échec devient une annotation du check-run
+(fichier, ligne, message), lisible par `GET /check-runs/{id}/annotations`. `dot` reste le
+rapporteur du journal, rien ne change en local.
 
 ### Rouges locaux qui ne sont pas ce lot
 

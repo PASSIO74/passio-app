@@ -1655,7 +1655,12 @@ bulles d'intérêt ne survivent que chez un visiteur), `first-run` (fixture à t
 **trois fixtures qui COCHAIENT une passion sans la posséder** — `feed-envie-filtre` (« musculation »,
 « cuisine » : cocher, c'est posséder, le fixture les ajoute au compte), `feed-premier-rendu` §7
 (« moto » choisie à l'onboarding), `multi-passion-integrite` ⑥ (par `ajouterPassionAuCompte`, le
-moteur réel, et non `ajouterPassionAuFil` à la main). ⚠️ En local, `creation-passion` ⑭ et trois cas
+moteur réel, et non `ajouterPassionAuFil` à la main), `feed-vues-adr010` ⑩ (« cuisine » au compte
+avant de la cocher) et ⑬ (les dix passions recochées APRÈS avoir été données au compte — sinon neuf
+bulles grisées à `scale(0.95)` et « toutes les bulles ont la MÊME largeur » mesurait l'état coché,
+pas la mise en page ; trouvé par le shard 2/6 de la CI, dont le journal est ILLISIBLE d'ici, d'où
+le rapporteur `github` : les échecs Playwright sont désormais des annotations du check-run).
+⚠️ En local, `creation-passion` ⑭ et trois cas
 de `profil-entete-passions` (③ decies quater, sexies, septies) sont ROUGES **sur `origin/main` pur
 aussi** (worktree séparé, port 8099) : divergence d'environnement déjà écrite plus haut, pas ce lot.
 Détail : `docs/lots-ui/25-FIL-PASSIONS-DU-COMPTE-2026-09-18.md`.

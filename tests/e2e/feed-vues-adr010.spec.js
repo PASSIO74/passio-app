@@ -309,7 +309,14 @@ test("⑨ changer « Publier dans » ne modifie pas « Passions à afficher »",
 test("⑩ changer « Passions à afficher » ne modifie pas « Publier dans »", async ({ page }) => {
   await poser(page);
   const avant = await page.evaluate(() => state.user.currentProfileId);
-  await page.evaluate(() => toggleProfileFilter("cuisine"));
+  await page.evaluate(() => {
+    // ⚠️ COCHER, C'EST POSSÉDER (2026-09-18) : les passions du fil sont celles
+    // du compte. « Cuisine » doit être AU compte pour pouvoir être cochée —
+    // sinon `setFeedPassions` l'écarte et le cas mesure un fil inchangé au
+    // lieu de la séparation lecture / écriture qu'il vise.
+    state.user.profiles.push({ id: "pp_1", name: "Audit QA", passion: "cuisine", emoji: "🍳", color: "#7c3aed" });
+    toggleProfileFilter("cuisine");
+  });
   await page.waitForTimeout(300);
   const apres = await page.evaluate(() => ({
     ecriture: state.user.currentProfileId,
@@ -457,6 +464,12 @@ async function poserDixPassions(page) {
       id: "pp_" + i, name: "Audit QA", passion: p, emoji: "🎵", color: "#7c3aed", createdAt: i + 1,
     }));
     state.user.currentProfileId = "pp_0";
+    // ⚠️ COCHER, C'EST POSSÉDER (2026-09-18) : `poser` a appelé
+    // `setFeedPassions(DIX)` avec UNE seule passion au compte, donc la borne
+    // n'en a gardé qu'une — les neuf autres bulles seraient grisées
+    // (`scale(0.95)`), et « toutes les bulles ont la MÊME largeur » mesurerait
+    // l'état coché, pas la mise en page. On recoche une fois les dix possédées.
+    setFeedPassions(noms);
     window._feedDomSig = null;
     renderFeed();
   }, DIX);
