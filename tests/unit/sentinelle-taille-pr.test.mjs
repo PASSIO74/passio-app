@@ -94,7 +94,16 @@ function bashAvant(pages) {
   return { nbFichiers: Number(mots[0]), nbLignes: Number(mots[mots.length - 1]) };
 }
 
-test("① le contournement d'Astra : 2 fichiers / 120 lignes passaient pour « 0 ligne »", () => {
+// ⚠️ ①–⑤ EXÉCUTENT un vrai `jq` (par `executer`). Sur un poste qui n'en a pas
+// (Windows de Benjamin, mesuré le 2026-09-18 : `spawnSync jq ENOENT` × 5), ils
+// tombaient AVANT leur sujet — un rouge qui parle du poste, pas du produit, et
+// que l'on apprend à ignorer. Ils sont donc SAUTÉS, avec la raison écrite : la
+// CI (Ubuntu, jq présent) les exécute intégralement, et c'est elle qui fait foi.
+// ⑥ et ⑦ ne dépendent pas de jq et tournent partout.
+// (`{}` et non `false` : `node:test` exige un OBJET d'options, sinon il lève.)
+const SANS_JQ = jqDisponible() ? {} : { skip: "jq absent du poste (JQ_BIN pour le désigner) — cas exécuté en CI" };
+
+test("① le contournement d'Astra : 2 fichiers / 120 lignes passaient pour « 0 ligne »", SANS_JQ, () => {
   const pages = [[CODE(1, 60, 0), CODE(2, 60, 0), ...Array.from({ length: 28 }, (_, i) => VERROU(i))], [VERROU(99)]];
   const avant = bashAvant(pages);
   assert.deepEqual(avant, { nbFichiers: 2, nbLignes: 0 }, "reproduction : le Bash lisait 2 fichiers et 0 ligne");
@@ -104,25 +113,25 @@ test("① le contournement d'Astra : 2 fichiers / 120 lignes passaient pour « 0
   assert.ok(apres.nbLignes > 60, "et la PR est désormais REFUSÉE");
 });
 
-test("② du code réparti ENTRE les pages n'est plus perdu", () => {
+test("② du code réparti ENTRE les pages n'est plus perdu", SANS_JQ, () => {
   const pages = [[CODE(1, 10, 0)], [CODE(2, 10, 0)], [CODE(3, 10, 0)]];
   assert.deepEqual(bashAvant(pages), { nbFichiers: 1, nbLignes: 10 }, "reproduction : une seule page comptée");
   assert.deepEqual(executer(pages), { nbFichiers: 3, nbLignes: 30 });
 });
 
-test("③ une page vide ne remet pas les compteurs à zéro", () => {
+test("③ une page vide ne remet pas les compteurs à zéro", SANS_JQ, () => {
   const pages = [[CODE(1, 100, 0)], []];
   assert.equal(bashAvant(pages).nbLignes, 0, "reproduction : la page vide écrasait le compte");
   assert.deepEqual(executer(pages), { nbFichiers: 1, nbLignes: 100 });
 });
 
-test("④ une seule page se comporte comme avant — aucune régression", () => {
+test("④ une seule page se comporte comme avant — aucune régression", SANS_JQ, () => {
   const pages = [[CODE(1, 30, 10), VERROU(1)]];
   assert.deepEqual(executer(pages), bashAvant(pages));
   assert.deepEqual(executer(pages), { nbFichiers: 1, nbLignes: 40 });
 });
 
-test("⑤ les verrous e2e ne comptent NI en fichiers NI en lignes ; une PR vide de code est à zéro", () => {
+test("⑤ les verrous e2e ne comptent NI en fichiers NI en lignes ; une PR vide de code est à zéro", SANS_JQ, () => {
   assert.deepEqual(executer([[VERROU(1), VERROU(2)], [VERROU(3)]]), { nbFichiers: 0, nbLignes: 0 });
   assert.deepEqual(executer([[{ filename: "tests/unit/x.test.mjs", additions: 5, deletions: 0 }]]), { nbFichiers: 1, nbLignes: 5 });
 });

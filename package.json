@@ -44,7 +44,7 @@
     "purge:e2e:rest": "node scripts/purge-e2e-rest.js",
     "passions:decouper": "node scripts/decouper-migration-passions.js",
     "moderation": "node scripts/moderation.js",
-    "test:unit": "node --test tests/unit/"
+    "test:unit": "node scripts/tests-unit.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",
