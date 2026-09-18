@@ -34,7 +34,24 @@ import { fileURLToPath } from "node:url";
 import { parse } from "./lib/yaml-mini.mjs";
 
 const RACINE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const JQ = process.env.JQ_BIN || "jq";
+// ⚠️ Le faux `jq` du bac (alignement LF, plus bas) rappelle `"$JQ_BIN"` : ce chemin DOIT
+// être ABSOLU et désigner le vrai binaire. Avec `JQ_BIN=jq` (le cas des runners Ubuntu, où
+// JQ_BIN n'est pas posé), la recherche PATH retombe sur le faux lui-même : récursion infinie,
+// chaîne de bash+tr sans fin, runner tué 36 s après le début de l'étape — mesuré DEUX fois sur
+// la PR #492 (2026-09-18, « The runner has received a shutdown signal »). Localement, sous
+// Windows, JQ_BIN absolu masquait le défaut. D'où : résolution AVANT la création du bac, et
+// refus en tête de fichier plutôt qu'un premier bloc qui explose.
+function cheminAbsoluDeJq() {
+  const voulu = process.env.JQ_BIN || "jq";
+  if (path.isAbsolute(voulu)) return voulu.split("\\").join("/");
+  let sortie = "";
+  try { sortie = execFileSync(process.platform === "win32" ? "where" : "which", [voulu], { encoding: "utf8" }); } catch (e) { sortie = ""; }
+  const trouve = sortie.split(/\r?\n/).map((x) => x.trim()).find(Boolean);
+  assert.ok(trouve && path.isAbsolute(trouve), "jq introuvable sur le PATH (" + voulu + ") : poser JQ_BIN=<chemin absolu>");
+  return trouve.split("\\").join("/");
+}
+const JQ = cheminAbsoluDeJq();
+assert.ok(path.isAbsolute(JQ), "JQ doit être un chemin absolu, reçu : " + JQ);
 const wf = (f) => parse(fs.readFileSync(path.join(RACINE, ".github/workflows", f), "utf8"));
 const etape = (d, job, nom) => {
   const s = d.jobs[job].steps.find((x) => String(x.name || "").startsWith(nom));
@@ -141,6 +158,20 @@ const DEP = wf("deploy.yml");
 const DISPO = wf("disponibilite.yml");
 const CC = wf("claude-code.yml");
 const mod = await import("../../scripts/sentinelle-detecter.mjs");
+
+// ═══ A0 — Le bac lui-même ═════════════════════════════════════════════════
+// Mutation : `const JQ = process.env.JQ_BIN || "jq"` (sans résolution) → sous JQ_BIN absent,
+// l'assertion de tête rougit AVANT le premier bloc (sinon : fourche infinie du faux jq).
+test("bac : le faux jq désigne le VRAI jq par un chemin absolu HORS du bac, et un bloc qui appelle jq rend LF", () => {
+  assert.ok(path.isAbsolute(JQ), "JQ absolu : " + JQ);
+  assert.ok(!JQ.startsWith(BAC + "/"), "JQ ne doit pas pointer dans le bac : " + JQ);
+  assert.match(execFileSync(JQ, ["--version"], { encoding: "utf8" }), /jq-\d/, "JQ n'est pas un jq");
+  const faux = fs.readFileSync(BAC + "/bin/jq", "utf8");
+  assert.ok(faux.includes('"$JQ_BIN"'), "le faux jq délègue à $JQ_BIN");
+  const r = jouer("printf '%s' '{\"a\":[1,2]}' | jq -r '.a | length'");
+  assert.equal(r.code, 0, r.sortie);
+  assert.equal(r.sortie, "2\n", "sortie LF exacte, reçu : " + JSON.stringify(r.sortie));
+});
 
 // ═══ A2 — Veilleur d'enquête ═════════════════════════════════════════════
 test("veilleur : relance UNE fois après 20 min sans run ni PR, remet à un humain après 6 h, ignore humain / fusionnée / trop jeune", () => {
