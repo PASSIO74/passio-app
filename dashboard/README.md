@@ -404,6 +404,51 @@ les deux sens. « Revérifier » passe par le tour de surveillance (il SIGNALE l
 bascule). Le panneau Orchestrateur affiche l'état de connexion du CLI, plus la
 seule vie du pid.
 
+#### Une réponse sans verdict n'est plus un succès, et le bruit réseau n'appelle plus Claude (2026-09-18)
+
+Mesuré sur `sentinel.json` : **4 diagnostics sur 10 étaient des fragments** — en mode
+rapide le modèle n'a aucun outil, mais le prompt lui demandait des « chemins réels » et
+un `git diff` ; il tentait un `Glob` ou un `PowerShell`, le tour s'arrêtait, et le
+morceau de texte d'avant était enregistré `error: null`, audit `ok: true`, cooldown
+posé. Un succès qui n'en était pas un, que rien ne signalait. Et **4 autres sur 10**
+portaient sur « Échec d'envoi de la télémétrie (appareil peut-être hors ligne) » : le
+réseau d'un testeur, rien à réparer, un cran des 8/h et du quota brûlés à chaque fois.
+
+Désormais :
+
+- le préambule **dit au modèle qu'il n'a aucun outil** (mode rapide) et exige le
+  `## Verdict` **en première section**, plus une dernière ligne machine
+  `VERDICT: DEFAUT_REEL | COMPORTEMENT_ATTENDU | INSUFFISANT` ; `extractVerdict` lit
+  cette ligne d'abord — la **dernière** occurrence, et seulement si elle clôt le texte :
+  une ligne `VERDICT:` citée dans « ## Preuves » (message d'alerte hostile) ne l'emporte
+  jamais sur la conclusion — puis tolère « **Verdict :** », « ### Verdict — » ;
+- une réponse **vide ou sans verdict est rejouée une fois** avec un rappel du format ;
+  toujours rien → `error: « réponse vide ou sans verdict après deux essais »`, audit
+  `ok: false`, compteur `skipped.sansVerdict`, alerte `warn` de clé
+  `sentinelle:sans-verdict` (émise par `alerts.raiseInternal`, `meta.diagnosis` = id du
+  diagnostic ; c'est ce préfixe, dans `DASH_SENTINEL_SKIP_KEYS`, qui interdit à la
+  sentinelle de s'analyser elle-même). Le cooldown reste posé : Claude a bien été occupé
+  (garde-fou n°3) — y compris quand le second essai tombe sur un refus d'authentification ;
+  `subtype` et `denials` du CLI sont conservés dans le diagnostic ;
+- le **bruit** est écarté au triage, avant le cooldown : préfixes de clé
+  `DASH_SENTINEL_SKIP_KEYS` (défaut `conn:,spike,apislow:,linkopen:,linkerr:,sentinelle:`)
+  et toute alerte marquée `meta.kind: "reseau"` par son émetteur. Ces alertes restent
+  dans le flux, elles cessent seulement d'appeler Claude ;
+- les alertes écartées sont **journalisées** (`skippedLog`, 50 entrées, persisté —
+  jusqu'ici `skipped` était remis à zéro à chaque relance du superviseur) ;
+- **budget horaire épuisé : la file repart seule** quand le plus vieux cran sort de
+  l'heure, au lieu d'attendre une nouvelle alerte ;
+- la révision du dépôt se lit aussi dans un **worktree** (`.git` fichier `gitdir:`) via
+  `server/git-revision.js` : la clé de cooldown n'est plus nue dans PASSIO-wt/*.
+
+Verrous : `test/sentinel.test.js` (+6) et `test/git-revision.test.js` (5), éprouvés par
+mutation (ligne machine retirée, second essai retiré, erreur « sans verdict » retirée,
+exclusion du bruit retirée, reprise retirée, verdict remis en seconde position).
+
+| Variable | Défaut | Rôle |
+|---|---|---|
+| `DASH_SENTINEL_SKIP_KEYS` | `conn:,spike,apislow:,linkopen:,linkerr:,sentinelle:` | préfixes de clés d'alerte jamais analysés (bruit d'exploitation) |
+
 #### Un échec qui n'a rien coûté à Claude ne brûle plus la sentinelle (2026-09-13)
 
 Le cooldown de 6 h est posé à l'ENTRÉE de la file ; jusqu'ici il n'était jamais

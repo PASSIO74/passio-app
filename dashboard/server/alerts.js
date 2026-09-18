@@ -232,3 +232,17 @@ export function acknowledge(id) {
   return true;
 }
 export function raiseManual(alert) { return emit({ level: alert.level || "info", key: "manual:" + Date.now(), title: alert.title || "Alerte manuelle", message: alert.message || "", manual: true }); }
+
+/**
+ * Alerte levée par un MODULE du serveur (la sentinelle, pas un humain) : la clé
+ * et le `meta` fournis sont CONSERVÉS. `raiseManual` ne convient pas ici — elle
+ * réécrit la clé en `manual:<horodatage>` et jette `meta` (revue du 2026-09-18 :
+ * l'alerte « sentinelle:sans-verdict » n'existait pas, l'anti-boucle par préfixe
+ * ne jouait que par accident via `manual:true`, et le lien vers le diagnostic
+ * était perdu). Ici `manual:false` : c'est le préfixe de la clé, et lui seul,
+ * qui décide si la sentinelle doit l'ignorer. La dédup 1/min par clé s'applique.
+ */
+export function raiseInternal(alert) {
+  if (!alert || !alert.key) throw new Error("raiseInternal : une clé d'alerte est obligatoire");
+  return emit({ level: alert.level || "warn", key: String(alert.key), title: alert.title || String(alert.key), message: alert.message || "", meta: alert.meta || {}, manual: false });
+}

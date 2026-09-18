@@ -589,7 +589,13 @@ export function runClaudeCli(prompt, { deep = false, timeoutMs } = {}) {
         if (authNeeded) confirmAuthFailure({ error: msg }).catch(() => {});
         return finish({ error: msg || "Erreur Claude Code.", authNeeded });
       }
-      if (j && typeof j.result === "string") return finish({ analysis: j.result });
+      if (j && typeof j.result === "string") {
+        // Informatif : `subtype` ≠ "success" (plafond de tours…) ou des refus
+        // d'outils expliquent une sortie tronquée — la sentinelle juge sur le
+        // VERDICT, pas sur ces champs, mais ils sont gardés dans le diagnostic.
+        const refus = Array.isArray(j.permission_denials) ? j.permission_denials.length : 0;
+        return finish({ analysis: j.result, subtype: typeof j.subtype === "string" ? j.subtype.slice(0, 60) : null, denials: refus });
+      }
       if (out.trim()) return finish({ analysis: out.trim() });
       return finish({ error: err.trim() || "Réponse vide de Claude Code." });
     });
