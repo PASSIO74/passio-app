@@ -22,6 +22,12 @@ import { signups } from "./signups.js";
 import { accounts } from "./accounts.js";
 import { detectClaudeCli, claudeCliState, startClaudeCliWatch, claudeCliWatchTick } from "./claudecli.js";
 import { startDiskWatch, diskState } from "./disque.js";
+import { storageHealth } from "./jsondb.js";
+import { chaineAutonome, startChaineAutonome } from "./chaine-autonome.js";
+import { attente } from "./attente.js";
+import { startObservationAlerts } from "./observation-alerts.js";
+import { startIncidentSweep } from "./incident-packets.js";
+import { promotionStatusView } from "./sentinel-promotion-view.js";
 
 /** Ce que le superviseur sait de nous : relances depuis le logon, dernier code de
  *  sortie (transmis par supervise.mjs dans l'environnement à chaque relance). */
@@ -100,7 +106,7 @@ api.get("/stream", auth.requireAuth, (req, res) => {
 
 // `supervise` : compteurs transmis par supervise.mjs (relances depuis le logon) —
 // un serveur relancé 22 fois en dix jours ne doit plus le cacher (revue 2026-09-13).
-api.get("/overview", auth.requireAuth, (req, res) => res.json({ ...store.overview(), ingest: ingestState(), disk: diskState(), supervise: superviseState() }));
+api.get("/overview", auth.requireAuth, (req, res) => res.json({ ...store.overview(), ingest: ingestState(), disk: diskState(), supervise: superviseState(), storage: storageHealth() }));
 api.get("/timeseries", auth.requireAuth, (req, res) => res.json(store.timeseries(Number(req.query.minutes) || 30)));
 api.get("/events", auth.requireAuth, (req, res) => {
   const { type, severity, user, device, session, env, screen, status, q, limit } = req.query;
@@ -117,6 +123,11 @@ api.get("/releases", auth.requireAuth, (req, res) => res.json({ health: releaseH
 api.get("/release-guardian", auth.requireAuth, (req, res) => res.json(releaseGuardianSnapshot()));
 api.get("/anomalies", auth.requireAuth, (req, res) => res.json(anomalySnapshot()));
 api.get("/incidents", auth.requireAuth, (req, res) => res.json(listIncidentPackets(Number(req.query.limit) || 50)));
+// ─── Le témoin de GitHub et ce qui attend un humain (2026-09-18) ────────────
+// Lecture seule, données publiques du dépôt + comptages locaux : @auth suffit
+// (comme /readiness). Jamais un corps d'issue, jamais un identifiant de personne.
+api.get("/chaine-autonome", auth.requireAuth, asyncH(async (req, res) => res.json(await chaineAutonome())));
+api.get("/attente", auth.requireAuth, asyncH(async (req, res) => res.json(await attente({ supervise: superviseState() }))));
 api.post("/incidents/:id/transition", auth.requireCap("alerts"), (req, res) => {
   const incident = transitionIncident(req.params.id, req.body?.phase, {
     evidence: req.body?.evidence,
@@ -284,6 +295,10 @@ api.get("/sentinel", auth.requireCap("claude"), (req, res) =>
 // renseigné : cette réponse traverse le réseau et finit dans un navigateur.
 api.get("/production", auth.requireCap("claude"), (req, res) =>
   res.json(productionState()));
+// Journal de promotion de l'autopilote (lecture seule) : jusqu'ici la route
+// n'était montée que par un test — la boîte noire n'avait aucun écran. Hors
+// de /sentinel/… pour la même raison que /production (frère d'un :param).
+api.get("/promotions", auth.requireCap("claude"), (req, res) => res.json(promotionStatusView(Number(req.query.limit) || 20)));
 api.get("/sentinel/:id", auth.requireCap("claude"), (req, res) => {
   const d = sentinel.getDiagnosis(req.params.id);
   d ? res.json(d) : res.status(404).json({ error: "Diagnostic introuvable" });
@@ -338,10 +353,20 @@ app.listen(config.port, () => {
   // faisait redémarrer le serveur en boucle au lieu de tourner en mode dégradé.
   startIngest().catch((e) => console.error("[ingest] démarrage échoué (mode dégradé, polling et realtime absents) :", e && e.message ? e.message : e));
   startControlHistory();
+  // Le pilotage se surveille (observation → alertes à la bascule), témoigne de
+  // la chaîne GitHub, balaie ses incidents et acquitte le bruit muet. Chaque
+  // minuteur est coupé par sa variable d'environnement (=0) et unref().
+  try { startObservationAlerts(); } catch (e) { console.error("[observation-alerts] non démarré :", e && e.message); }
+  try { startChaineAutonome(undefined, { immediate: true }); } catch (e) { console.error("[chaine-autonome] non démarré :", e && e.message); }
+  try { startIncidentSweep(); } catch (e) { console.error("[incidents] balayage non démarré :", e && e.message); }
+  try { alerts.startAutoAck(); } catch (e) { console.error("[alerts] auto-acquittement non démarré :", e && e.message); }
   // Le sol sous le pilotage : un disque plein a déjà tué le serveur 22 fois
   // (ENOSPC, sept. 2026) et fait perdre sa session au CLI. Voir disque.js.
   startDiskWatch();
-  detectClaudeCli().then(() => {
+  // Rattrapée (2026-09-18) : une détection qui rejette ne doit ni tuer le
+  // processus (rejet non traité, Node ≥ 15) ni empêcher la sentinelle de
+  // démarrer — elle démarre alors en veille (« aucune source d'analyse »).
+  detectClaudeCli().catch((e) => { console.error("[claudecli] détection échouée :", e && e.message ? e.message : e); return null; }).then(() => {
     const s = claudeCliState();
     console.log(`  ▸ Claude Code local : ${s.loggedIn ? "connecté (analyse gratuite dispo)" : s.installed ? "installé mais NON connecté (lancer: claude auth login)" : "absent"}${config.anthropicKey ? " · clé API aussi configurée" : ""}`);
     // La session OAuth du CLI expire ; sans re-détection la sentinelle reste

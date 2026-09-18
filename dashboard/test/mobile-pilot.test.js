@@ -41,6 +41,15 @@ test("mobile surface exposes only whitelisted test launcher and no arbitrary git
   assert.doesNotMatch(js, /\/git\/apply|\/git\/branch|exec\(|spawn\(/);
 });
 
+test("mobile shows what awaits a human, built from nodes only (no innerHTML)", () => {
+  const html = read("mobile.html");
+  const js = read("js/mobile.js");
+  assert.match(html, /id="attente"/);
+  assert.match(js, /\/attente/);
+  assert.match(js, /Rien ne t'attend/);
+  assert.equal((js.match(/\.innerHTML\s*=/g) || []).length, 0, "mobile.js doit rester en construction de nœuds, sans innerHTML");
+});
+
 test("one unavailable domain cannot blank the whole mobile cockpit", () => {
   const js = read("js/mobile.js");
   assert.match(js, /Promise\.allSettled/);
