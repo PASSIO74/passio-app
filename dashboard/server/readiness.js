@@ -33,7 +33,7 @@ export function computeReadiness({ overview, checklist = [], bugs = [], authz = 
     },
     { cle: "bugs_critiques", label: "Bugs critiques ouverts", critique: true, etat: critOuverts > 0 ? "rouge" : "vert", detail: critOuverts ? `${critOuverts} ouvert(s)` : "aucun" },
     { cle: "parcours_critiques", label: "Parcours critiques", critique: true, etat: testes === 0 ? "inconnu" : (echoues > 0 ? "rouge" : "vert"), detail: testes === 0 ? "aucun parcours testé" : `${echoues} échec(s) sur ${testes} testés` },
-    { cle: "disponibilite", label: "Disponibilité API", critique: true, etat: apiSuccess == null ? "inconnu" : (apiSuccess >= 99 ? "vert" : apiSuccess >= 95 ? "ambre" : "rouge"), detail: apiSuccess == null ? "NON INSTRUMENTÉ" : `${apiSuccess}% de succès` },
+    { cle: "disponibilite", label: "Disponibilité API", critique: true, etat: apiSuccess == null ? "inconnu" : (apiSuccess >= 99 ? "vert" : apiSuccess >= 95 ? "ambre" : "rouge"), detail: apiSuccess == null ? "aucun appel API observé — inconnu, pas vert" : `${apiSuccess}% de succès` },
     { cle: "stabilite", label: "Stabilité (erreurs sur 5 min)", critique: true, etat: errors5m === 0 ? "vert" : errors5m < 5 ? "ambre" : "rouge", detail: `${errors5m} erreur(s)` },
     { cle: "release", label: "Release chain (commit → deploy → app → DB)", critique: false, etat: observationEtat(releaseNow.state), detail: releaseNow.detail, meta: releaseNow },
     { cle: "performance", label: "Performance", critique: false, etat: "inconnu", detail: "NON INSTRUMENTÉ — aucune mesure p50/p95 d'interaction" },

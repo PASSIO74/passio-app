@@ -28,7 +28,11 @@ function securityDomain(authz) {
 
 function releaseDomain(r) {
   if (!r || !r.current) return domain("NOT_CONFIGURED", "Release", "Aucun snapshot de release disponible.");
-  return domain(r.state || "DEGRADED", "Release", r.detail || "État de release non qualifié.", r);
+  // Sur le poste, UNKNOWN = preuve pas encore lue (GitHub ou site public) :
+  // dégradée, pas « non configurée » — le P1 factice « compléter les preuves
+  // commit → frontend → DB » n'a plus lieu d'être (2026-09-18).
+  const state = r.state === "UNKNOWN" ? "DEGRADED" : (r.state || "DEGRADED");
+  return domain(state, "Release", r.detail || "État de release non qualifié.", r);
 }
 
 function technicalDomain(readiness) {
@@ -124,7 +128,10 @@ export async function controlCommand() {
     product: productDomain(product),
     technical: technicalDomain(readiness),
     security: securityDomain(authz),
-    observation: domain(observation.state, "Observation", Object.entries(observation.parts || {}).map(([k, v]) => `${k}:${v.state}`).join(" · ") || "Aucun seam", observation.parts),
+    // Le cœur (DB + canari) décide de l'état du domaine : le seam SSE est IDLE
+    // sans navigateur et ne doit pas fabriquer un risque « Observation » P2
+    // permanent la nuit (2026-09-18). Toutes les parts restent dans le détail.
+    observation: domain(observation.core || observation.state, "Observation", Object.entries(observation.parts || {}).map(([k, v]) => `${k}:${v.state}`).join(" · ") || "Aucun seam", observation.parts),
     release: releaseDomain(release),
   };
   const alerts = listAlerts();

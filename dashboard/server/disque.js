@@ -84,8 +84,12 @@ export async function diskWatchTick({ mesure = mesurer, notify = null, now = Dat
   const changed = avant.checked ? low !== avant.low : low; // au démarrage, seul « bas » vaut d'être dit
   if (changed) {
     try {
-      const raise = notify || (await import("./alerts.js")).raiseManual;
-      raise({ level: low ? "warn" : "info", title: low ? "Disque presque plein" : "Disque : de la place à nouveau", message: message(next) });
+      // Clé STABLE `disk:low` dans les deux sens (warn à la chute, info au
+      // retour) : c'est elle que le sink GitHub suit pour refermer l'issue
+      // [POSTE] quand la place est revenue. Cooldown 0 : « une par bascule »
+      // est déjà garanti ici par l'hystérésis.
+      const raise = notify || (await import("./alerts.js")).raise;
+      raise({ key: "disk:low", source: "disque", cooldownMs: 0, level: low ? "warn" : "info", title: low ? "Disque presque plein" : "Disque : de la place à nouveau", message: message(next), meta: { view: "sources", freeGb: Math.round(next.freeGb * 10) / 10 } });
     } catch {}
   }
   return { avant: avant.low, apres: low, changed };

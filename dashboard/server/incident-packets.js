@@ -1,4 +1,19 @@
 // INCIDENT PACKETS — deterministic evidence bundles prepared before any AI call.
+//
+// CYCLE DE VIE (2026-09-18) : 166 paquets sur 166 étaient restés en DETECTED
+// depuis vingt jours — la seule sortie était un POST manuel sans aucune UI, et
+// 11 high jamais résolus rendaient le NO_GO du Release Guardian structurel.
+//   · le regroupement se fait par signal.key (plus par key@révision : un seul
+//     appareil en coupure faisait 40 paquets) ; la révision devient un attribut
+//     (`revisions[]`) ; fenêtre 24 h pour conn:/apislow:, 15 min sinon ;
+//   · `sweepIncidents` (10 min) RÉSOUT automatiquement, acteur « auto », un
+//     paquet ouvert dont la clé est muette depuis 24 h (warn/info) ou 72 h
+//     (high/critical), avec une révision main postérieure à la dernière
+//     occurrence, et sans diagnostic « défaut réel » non réparé sur cette clé ;
+//   · une clé qui revient après clôture ROUVRE le paquet (phase REOPENED,
+//     recurrenceCount++) au lieu de créer un orphelin ;
+//   · les paquets à l'ancien format de clusterKey restent lisibles, sans
+//     fusion rétroactive.
 import { config } from "./config.js";
 import { revisionCourte } from "./git-revision.js";
 import { JsonDb } from "./jsondb.js";
@@ -18,6 +33,15 @@ const db = new JsonDb("incident-packets", {
   },
 });
 const CLUSTER_MS = Number(process.env.DASH_INCIDENT_CLUSTER_MIN || 15) * 60_000;
+// Les clés de bruit réseau se regroupent sur 24 h : un testeur en 3G n'est pas
+// un incident nouveau toutes les 15 minutes.
+const CLUSTER_BRUIT_MS = Number(process.env.DASH_INCIDENT_CLUSTER_BRUIT_H || 24) * 3_600_000;
+const SWEEP_MS = Math.max(0, Number(process.env.DASH_INCIDENT_SWEEP_MIN ?? 10)) * 60_000;
+const SILENCE_WARN_MS = 24 * 3_600_000;
+const SILENCE_HIGH_MS = 72 * 3_600_000;
+const SILENCE_SANS_REVISION_MS = 7 * 24 * 3_600_000;
+
+export function clusterWindowFor(key) { return /^(conn|apislow):/.test(String(key || "")) ? CLUSTER_BRUIT_MS : CLUSTER_MS; }
 
 export const INCIDENT_PHASES = ["DETECTED", "CONFIRMED", "CORRELATED", "DIAGNOSED", "FIX_READY", "VERIFIED", "RESOLVED"];
 const NEXT = Object.fromEntries(INCIDENT_PHASES.slice(0, -1).map((p, i) => [p, INCIDENT_PHASES[i + 1]]));
@@ -130,8 +154,12 @@ function mergeEvidence(a = [], b = []) {
   return out;
 }
 
-export function canTransitionIncident(from, to) {
-  return INCIDENT_PHASES.includes(from) && INCIDENT_PHASES.includes(to) && NEXT[from] === to;
+export function canTransitionIncident(from, to, opts = {}) {
+  if (!INCIDENT_PHASES.includes(from) || !INCIDENT_PHASES.includes(to)) return false;
+  // L'acteur « auto » (balayage) peut résoudre depuis n'importe quelle phase :
+  // c'est le silence prouvé qui résout, pas un parcours de phases humain.
+  if (to === "RESOLVED" && opts.actor === "auto" && from !== "RESOLVED") return true;
+  return NEXT[from] === to;
 }
 
 export function buildIncidentPacket(alert) {
@@ -150,7 +178,9 @@ export function buildIncidentPacket(alert) {
     phaseHistory: [{ phase: "DETECTED", at: new Date(ts).toISOString(), evidence: "alerte primaire" }],
     severity: alert.level || "info",
     occurrences: 1,
-    clusterKey: `${signalKey || "signal"}@${revision || "unknown"}`,
+    clusterKey: signalKey || "signal",
+    revisions: [{ sha: revision, firstSeenAt: new Date(ts).toISOString(), lastSeenAt: new Date(ts).toISOString(), occurrences: 1 }],
+    recurrenceCount: 0,
     signal: {
       alertId: alert.id || null,
       key: signalKey,
@@ -196,17 +226,23 @@ export function recordIncident(alert) {
     d.items = d.items || [];
     ensureRetention(d);
     const now = Date.parse(incoming.createdAt);
+    const fenetre = clusterWindowFor(incoming.clusterKey);
     const cluster = d.items.find((x) =>
       x.status !== "closed" && x.clusterKey === incoming.clusterKey
-      && now - (Date.parse(x.lastSeenAt || x.createdAt) || 0) <= CLUSTER_MS);
+      && now - (Date.parse(x.lastSeenAt || x.createdAt) || 0) <= fenetre);
     if (cluster) {
-      cluster.occurrences = (cluster.occurrences || 1) + 1;
-      cluster.lastSeenAt = incoming.createdAt;
-      cluster.evidence = mergeEvidence(cluster.evidence, incoming.evidence);
-      cluster.evidenceCount = cluster.evidence.length;
-      cluster.signal = { ...cluster.signal, alertId: incoming.signal.alertId, message: incoming.signal.message || cluster.signal.message };
-      const c = confidenceFor(cluster); cluster.confidence = c.level; cluster.confidenceBasis = c.basis;
+      fusionner(cluster, incoming);
       result = cluster;
+      pruneIncidents(d);
+      return;
+    }
+    // La clé revient après une clôture : on rouvre le paquet clos le plus
+    // récent (récidive), on ne fabrique pas un orphelin.
+    const clos = d.items.find((x) => x.status === "closed" && x.clusterKey === incoming.clusterKey);
+    if (clos) {
+      rouvrir(clos, incoming, "auto");
+      fusionner(clos, incoming);
+      result = clos;
       pruneIncidents(d);
       return;
     }
@@ -214,6 +250,46 @@ export function recordIncident(alert) {
     pruneIncidents(d);
   });
   return result;
+}
+
+function fusionner(cluster, incoming) {
+  cluster.occurrences = (cluster.occurrences || 1) + 1;
+  cluster.lastSeenAt = incoming.createdAt;
+  cluster.evidence = mergeEvidence(cluster.evidence, incoming.evidence);
+  cluster.evidenceCount = cluster.evidence.length;
+  cluster.signal = { ...cluster.signal, alertId: incoming.signal.alertId, message: incoming.signal.message || cluster.signal.message };
+  const rev = incoming.context && incoming.context.revision;
+  cluster.revisions = Array.isArray(cluster.revisions) ? cluster.revisions : [];
+  const r = cluster.revisions.find((x) => x.sha === rev);
+  if (r) { r.lastSeenAt = incoming.createdAt; r.occurrences = (r.occurrences || 1) + 1; }
+  else { cluster.revisions.push({ sha: rev, firstSeenAt: incoming.createdAt, lastSeenAt: incoming.createdAt, occurrences: 1 }); if (cluster.revisions.length > 20) cluster.revisions.shift(); }
+  const c = confidenceFor(cluster); cluster.confidence = c.level; cluster.confidenceBasis = c.basis;
+}
+
+function rouvrir(it, incoming, actor) {
+  const at = incoming ? incoming.createdAt : new Date().toISOString();
+  it.reopenedFrom = it.closedAt || null;
+  it.status = "open";
+  it.phase = "DETECTED";
+  it.closedAt = null;
+  it.resolution = null;
+  it.autoResolved = false;
+  it.recurrenceCount = (it.recurrenceCount || 0) + 1;
+  it.phaseHistory = it.phaseHistory || [];
+  it.phaseHistory.push({ phase: "REOPENED", at, evidence: "le signal est revenu après clôture", note: null, actor: safeText(actor, 120) });
+}
+
+/** Rouvre le paquet clos le plus récent portant cette clé. Retourne le paquet, ou null. */
+export function reopenIncidentBySignal(signalKey, { actor = "auto", at = new Date().toISOString() } = {}) {
+  const key = safeText(signalKey, 180);
+  let out = null;
+  db.update((d) => {
+    const clos = (d.items || []).find((x) => x.status === "closed" && x.clusterKey === key);
+    if (!clos) return;
+    rouvrir(clos, { createdAt: at }, actor);
+    out = clos;
+  });
+  return out;
 }
 
 export function listIncidentPackets(limit = 50) { return (db.get().items || []).slice(0, limit); }
@@ -249,7 +325,7 @@ export function transitionIncident(id, nextPhase, opts = {}) {
     const it = (d.items || []).find((x) => x.id === id);
     if (!it) return;
     const current = it.phase || "DETECTED";
-    if (!canTransitionIncident(current, nextPhase)) {
+    if (!canTransitionIncident(current, nextPhase, { actor: opts.actor })) {
       const e = new Error(`Transition incident interdite : ${current} → ${nextPhase}`);
       e.code = 409; throw e;
     }
@@ -271,6 +347,8 @@ export function transitionIncident(id, nextPhase, opts = {}) {
       it.status = "closed";
       it.closedAt = entry.at;
       it.resolution = safeText(opts.resolution || opts.note || opts.evidence || "résolu après vérification", 1000);
+      it.resolvedBy = safeText(opts.actor || null, 120);
+      it.autoResolved = opts.actor === "auto";
       pruneIncidents(d);
     }
     out = it;
@@ -287,3 +365,65 @@ export function closeIncident(id, resolution = null) {
   }
   return transitionIncident(id, "RESOLVED", { resolution, evidence: resolution || "vérification terminée" });
 }
+
+// ─── Balayage : résolution automatique par le silence prouvé ────────────────
+const heures = (ms) => Math.round(ms / 360_000) / 10;
+
+/**
+ * Décide, pour UN paquet ouvert, s'il peut être résolu automatiquement. PUR.
+ *   silenceMs  : 24 h (warn/info) ou 72 h (high/critical) sans occurrence de sa clé ;
+ *   révision   : une révision main enregistrée APRÈS la dernière occurrence — ou,
+ *                pour warn/info seulement, 7 jours de silence sans révision ;
+ *   défaut     : aucun diagnostic « defect » sans réparation vérifiée sur la clé.
+ * Retourne { resoudre, raison, evidence, revision }.
+ */
+export function decisionResolutionAuto(packet, { now = Date.now(), alerts = [], releases = [], diagnostics = [] } = {}) {
+  const key = packet.clusterKey || packet.signal?.key;
+  const signalKey = packet.signal?.key || key;
+  const grave = packet.severity === "high" || packet.severity === "critical";
+  const derniereAlerte = alerts.filter((a) => (a.key || a.title) === signalKey).reduce((m, a) => Math.max(m, Number(a.ts) || 0), 0);
+  const lastSeen = Math.max(Date.parse(packet.lastSeenAt || packet.createdAt) || 0, derniereAlerte);
+  const silence = now - lastSeen;
+  const seuil = grave ? SILENCE_HIGH_MS : SILENCE_WARN_MS;
+  if (silence < seuil) return { resoudre: false, raison: `silence ${heures(silence)} h < ${heures(seuil)} h` };
+  const defautOuvert = diagnostics.some((d) => d.key === signalKey && d.verdict === "defect" && !(d.repair && d.repair.ok));
+  if (defautOuvert) return { resoudre: false, raison: "diagnostic « défaut réel » sans réparation vérifiée" };
+  const revision = releases.filter((r) => r && (r.branch === "main" || r.branch == null) && r.revision && (Date.parse(r.at) || 0) > lastSeen)
+    .sort((a, b) => Date.parse(a.at) - Date.parse(b.at))[0] || null;
+  if (!revision && !(!grave && silence >= SILENCE_SANS_REVISION_MS)) return { resoudre: false, raison: "aucune révision main postérieure à la dernière occurrence" };
+  const evidence = `aucune occurrence de ${signalKey} depuis ${heures(silence)} h` + (revision ? ` ; révision main ${revision.revision} postérieure` : " ; 7 jours de silence");
+  return { resoudre: true, raison: revision ? "auto_quiet_after_deploy" : "auto_quiet_7d", evidence, revision: revision ? revision.revision : null };
+}
+
+/** Un balayage : résout ce qui peut l'être, avec preuve. Fournisseurs injectables. Retourne les ids résolus. */
+export function sweepIncidents({ now = Date.now(), alerts = [], releases = [], diagnostics = [] } = {}) {
+  const resolus = [];
+  for (const it of (db.get().items || []).filter((x) => x.status !== "closed")) {
+    const dec = decisionResolutionAuto(it, { now, alerts, releases, diagnostics });
+    if (!dec.resoudre) continue;
+    try {
+      transitionIncident(it.id, "RESOLVED", { actor: "auto", evidence: dec.evidence, resolution: dec.raison });
+      resolus.push(it.id);
+    } catch {}
+  }
+  return resolus;
+}
+
+let _sweepTimer = null;
+export function startIncidentSweep(everyMs = SWEEP_MS) {
+  if (_sweepTimer || !everyMs) return _sweepTimer;
+  const tour = async () => {
+    try {
+      // Imports paresseux : alerts.js importe ce module (cycle), sentinel.js est lourd.
+      const [alerts, releases, sentinel] = await Promise.all([import("./alerts.js"), import("./release-recorder.js"), import("./sentinel.js")]);
+      sweepIncidents({ alerts: alerts.listAlerts(), releases: releases.releaseHistory(120), diagnostics: sentinel.listDiagnoses(100) });
+    } catch (e) { console.error("[incidents] balayage en échec :", e && e.message ? e.message : e); }
+  };
+  _sweepTimer = setInterval(tour, everyMs);
+  if (typeof _sweepTimer.unref === "function") _sweepTimer.unref();
+  return _sweepTimer;
+}
+export function stopIncidentSweep() { if (_sweepTimer) { clearInterval(_sweepTimer); _sweepTimer = null; } }
+
+/** RÉSERVÉ AUX TESTS. */
+export function _resetIncidentsForTests() { db.update((d) => { d.items = []; ensureRetention(d); }); }

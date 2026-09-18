@@ -11,8 +11,23 @@ import { listIncidentPackets } from "./incident-packets.js";
 import { anomalySnapshot } from "./anomaly-engine.js";
 
 const AUTHZ_MAX_AGE_MIN = Number(process.env.DASH_GUARDIAN_AUTHZ_MAX_AGE_MIN || 30);
+// Un incident high/critical plus vieux que ça (dernière occurrence) ne bloque
+// plus la porte : il est stale, le balayage des incidents le résoudra ou une
+// nouvelle occurrence le rouvrira (2026-09-18 : 11 high depuis le 1er sept.
+// rendaient le NO_GO structurel).
+const INCIDENT_STALE_MS = 72 * 3_600_000;
 
-export function evaluateReleaseGates(input) {
+function coeurObservation(observation) {
+  if (!observation) return null;
+  if (observation.core) return observation.core;
+  const parts = observation.parts || {};
+  const ORDER = { LIVE: 0, IDLE: 0, DEGRADED: 1, NOT_CONFIGURED: 2, UNAVAILABLE: 3 };
+  const cles = ["dbRead", "canary"].filter((k) => parts[k]);
+  if (!cles.length) return observation.state || null;
+  return cles.map((k) => parts[k].state).reduce((w, s) => (ORDER[s] > ORDER[w] ? s : w), "LIVE");
+}
+
+export function evaluateReleaseGates(input, { now = Date.now() } = {}) {
   const authz = input.authz || null;
   const observation = input.observation || null;
   const release = input.release || null;
@@ -21,7 +36,8 @@ export function evaluateReleaseGates(input) {
   const anomalies = input.anomalies || null;
   const domains = readiness?.domaines || [];
   const journey = domains.find((d) => d.cle === "parcours_critiques");
-  const criticalOpen = incidents.filter((i) => i.status !== "closed" && (i.severity === "critical" || i.severity === "high"));
+  const recent = (i) => { const vu = Date.parse(i.lastSeenAt || i.createdAt); return !Number.isFinite(vu) || now - vu < INCIDENT_STALE_MS; };
+  const criticalOpen = incidents.filter((i) => i.status !== "closed" && (i.severity === "critical" || i.severity === "high") && recent(i));
 
   const gates = [
     {
@@ -31,12 +47,14 @@ export function evaluateReleaseGates(input) {
       state: !authz ? "UNKNOWN" : authz.pass !== authz.total || authz.code !== 0 ? "FAIL" : authz.ageMinutes > AUTHZ_MAX_AGE_MIN ? "STALE" : "PASS",
       detail: !authz ? "AUTHZ-CRITICAL jamais exécuté dans cette session" : `${authz.pass}/${authz.total} · âge ${authz.ageMinutes} min · code ${authz.code}`,
     },
+    // Le cœur seulement (DB + canari) : le seam SSE dépend d'un navigateur
+    // ouvert, et un GO ne doit pas exiger un humain devant l'écran (2026-09-18).
     {
       key: "observation",
       required: true,
-      pass: observation?.state === "LIVE",
-      state: observation?.state === "LIVE" ? "PASS" : observation ? "FAIL" : "UNKNOWN",
-      detail: observation ? observation.state : "aucune preuve DB/SSE/canari",
+      pass: coeurObservation(observation) === "LIVE",
+      state: coeurObservation(observation) === "LIVE" ? "PASS" : observation ? "FAIL" : "UNKNOWN",
+      detail: observation ? `${coeurObservation(observation)} (DB + canari)` : "aucune preuve DB/canari",
     },
     {
       key: "critical_journeys",

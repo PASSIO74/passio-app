@@ -394,8 +394,13 @@ async function signaler(avant, apres, notify = null) {
   // `since` ne change qu'à une bascule de disponibilité : il l'identifie.
   if (apres.since !== null && apres.since === _derniereBasculeSignalee) return null;
   _derniereBasculeSignalee = apres.since;
+  // Clé STABLE `claudecli:<raison>` : la même à la chute (warn) et au retour
+  // (info, raison de la panne qui se termine), pour que le sink GitHub referme
+  // l'issue [POSTE] au retour. Cooldown 0 : la bascule est déjà unique ici.
+  const raison = (apres.available === false ? apres.reason : avant.reason) || "logged_out";
+  Object.assign(alerte, { key: "claudecli:" + raison, source: "claudecli", cooldownMs: 0, meta: { view: "sources", reason: raison } });
   try {
-    const raise = notify || (await import("./alerts.js")).raiseManual;
+    const raise = notify || (await import("./alerts.js")).raise;
     raise(alerte);
   } catch (e) {
     // Une alerte perdue (disque plein, store indisponible) laisse au moins une
