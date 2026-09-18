@@ -207,11 +207,14 @@ class Store {
     return false;
   }
 
-  /** Preuve ① : le client a mesuré la cause au moment de l'échec. */
+  /** Preuve ① : le client a mesuré la cause au moment de l'échec — ou le
+   *  serveur a simplement dit non à une porte d'authentification (mot de passe
+   *  faux, e-mail déjà pris : `refus_attendu`, posé par le hook fetch de
+   *  telemetry.js sur les seuls 400/401/403/422 de `/auth/v1/token|signup`). */
   _echecExpliqueParLeClient(ev) {
     if (ev.type !== "api" || ev.status !== "error") return false;
     const m = ev.meta || {};
-    return m.masquee === true || m.hors_ligne === true || m.fermeture === true;
+    return m.masquee === true || m.hors_ligne === true || m.fermeture === true || m.refus_attendu === true;
   }
 
   /** Un échec dont la cause PEUT être un départ de page : requête jamais
