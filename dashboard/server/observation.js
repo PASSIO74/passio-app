@@ -99,13 +99,14 @@ async function probeDbRead() {
 
 /**
  * Compte un canari manqué : appelé avant chaque nouvel envoi si le précédent
- * n'a jamais été observé, et quand l'insertion elle-même échoue. Pur sur l'objet
- * canari, exporté pour être verrouillé.
+ * n'a jamais été observé, et quand l'insertion elle-même échoue. Pure : ne
+ * touche pas à l'objet reçu et l'horloge est un paramètre (`at`, ISO) — par
+ * défaut l'instant courant. Exportée pour être verrouillée.
  */
-export function noterCanariManque(c) {
+export function noterCanariManque(c, at = nowIso()) {
   const next = { ...(c || {}) };
   next.missedCount = (Number(next.missedCount) || 0) + 1;
-  next.lastMissedAt = nowIso();
+  next.lastMissedAt = at;
   next.pendingId = null;
   next.deadlineAt = null;
   return next;

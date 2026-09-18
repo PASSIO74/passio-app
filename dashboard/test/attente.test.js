@@ -13,6 +13,8 @@
 //   · tri par priorité retiré                                   → « tri »
 //   · CLI indisponible avec clé API comptée                      → « CLI »
 //   · sourcesLues / état vide confondus                          → « vide honnête »
+//   · recopier `it.depuis` sans `enMs` (ISO gardé tel quel)       → « depuis en millisecondes »
+//   · `disponibilite: "P0"` → "P3" dans PRIORITE_CHAINE           → « site en panne = P0 »
 // ═══════════════════════════════════════════════════════════════════════════
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -50,6 +52,30 @@ test("chaîne GitHub : issues et PR en attente deviennent des items avec priorit
   assert.equal(pr.cible, "https://github.com/x/40");
   assert.match(pr.detail, /#40 — fix/);
   assert.equal(s.items.find((i) => i.key === "gh:pr_ouverte:41").priorite, "P3");
+});
+
+test("depuis en millisecondes : un item GitHub (ISO) et une alerte (nombre) portent le même type, et le tri les compare", () => {
+  // D1-C3 : app.js fait `Date.now() - depuis` → « depuis NaNj » pour tout item GitHub.
+  const chaine = { attente: [{ type: "humain", numero: 12, titre: "x", depuis: iso(NOW - 3 * H), url: "u" }], chaine: { etat: "vit" }, crons: {} };
+  const alerts = [{ id: "a1", level: "high", acknowledged: false, title: "a", ts: NOW - H }];
+  const s = attenteSnapshot({ chaine, alerts }, NOW);
+  const gh = s.items.find((i) => i.key === "gh:humain:12");
+  assert.equal(typeof gh.depuis, "number");
+  assert.equal(gh.depuis, NOW - 3 * H);
+  assert.equal(typeof s.items.find((i) => i.key === "al:a1").depuis, "number");
+  assert.deepEqual(s.items.map((i) => i.key), ["gh:humain:12", "al:a1"], "même priorité P1 : le plus ancien (GitHub, 3 h) d'abord");
+  const sansDate = attenteSnapshot({ chaine: { attente: [{ type: "humain", numero: 1, titre: "x", depuis: "pas une date", url: "u" }], chaine: { etat: "vit" }, crons: {} } }, NOW);
+  assert.equal(sansDate.items[0].depuis, null, "une date illisible devient null, jamais NaN");
+});
+
+test("site en panne = P0 : une issue disponibilite passe devant tout le reste", () => {
+  const chaine = { attente: [
+    { type: "humain", numero: 1, titre: "h", depuis: iso(NOW - 50 * H), url: "u1" },
+    { type: "disponibilite", numero: 2, titre: "[DISPONIBILITÉ] site en panne", depuis: iso(NOW - H), url: "u2" },
+  ], chaine: { etat: "vit" }, crons: {} };
+  const s = attenteSnapshot({ chaine, alerts: [{ id: "a", level: "high", acknowledged: false, title: "a", ts: NOW - 80 * H }] }, NOW);
+  assert.equal(s.items[0].key, "gh:disponibilite:2");
+  assert.equal(s.items[0].priorite, "P0");
 });
 
 test("sentinelle locale : un correctif vérifié attend sa fusion ; fusionné (audit) n'attend plus ; un refus récent est un P3", () => {

@@ -5,9 +5,13 @@
 // Défaut mesuré (2026-09-18) : observation.js ne signalait RIEN ; dbRead,
 // canari, realtime, polling, ingestion et silence réel ne se voyaient qu'en
 // ouvrant l'écran. Mutations éprouvées (chacune rougit le test nommé) :
-//   · ne plus exiger 5 min de realtime décroché        → « realtime »
+//   · retirer la condition de grâce du realtime
+//     (`mauvais: Boolean(decroche)`)                    → « realtime »
+//   · REALTIME_GRACE_MS = 0 (ou 1 min)                  → « realtime : 4 min 59 s »
 //   · `streak >= 1` pour le polling                     → « polling »
 //   · évaluer le silence la nuit                        → « silence tenu la nuit »
+//   · compter le silence en heures d'horloge (retirer
+//     `Math.max(vu, debutHeuresActivesParis(now))`)     → « silence en heures actives »
 //   · émettre à chaque tour et non à la bascule         → « une bascule = une alerte »
 //   · oublier l'info de retour                          → « retour en info »
 // ═══════════════════════════════════════════════════════════════════════════
@@ -15,7 +19,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 const oa = await import("../server/observation-alerts.js");
-const { evaluer, transitions, observationAlertsTick, _setStateForTests, heureParis, enHeuresActives } = oa;
+const { evaluer, transitions, observationAlertsTick, _setStateForTests, heureParis, enHeuresActives, debutHeuresActivesParis } = oa;
 
 // 2026-09-18 est un vendredi ; 12:00Z = 14:00 à Paris (heure d'été), 02:00Z = 04:00.
 const JOUR = Date.parse("2026-09-18T12:00:00Z");
@@ -53,6 +57,11 @@ test("realtime : décroché depuis moins de 5 min = rien ; au-delà = warn ; ré
   const t0 = evaluer({ obs: obsOk(), ingest: ingOk({ realtimeOk: false, realtimeStatus: "CHANNEL_ERROR", realtimeLastError: "PrivateOnly" }), now: JOUR });
   assert.equal(t0.etats.realtime.mauvais, false, "premier constat : on laisse 5 min");
   assert.equal(t0.realtimeBadSince, JOUR, "…mais on note depuis quand");
+  // D1-TM-06 : la grâce est bien de 5 min — 4 min 59 s = rien, 5 min 01 s = warn.
+  const tAvant = evaluer({ obs: obsOk(), ingest: ingOk({ realtimeOk: false, realtimeStatus: "CHANNEL_ERROR", realtimeLastError: "PrivateOnly" }), now: JOUR + 4 * 60_000 + 59_000, prev: t0 });
+  assert.equal(tAvant.etats.realtime.mauvais, false, "realtime : 4 min 59 s de décrochage, encore dans la grâce");
+  const tApres = evaluer({ obs: obsOk(), ingest: ingOk({ realtimeOk: false, realtimeStatus: "CHANNEL_ERROR", realtimeLastError: "PrivateOnly" }), now: JOUR + 5 * 60_000 + 1000, prev: tAvant });
+  assert.equal(tApres.etats.realtime.mauvais, true, "realtime : 5 min 01 s, la grâce est écoulée");
   const t1 = evaluer({ obs: obsOk(), ingest: ingOk({ realtimeOk: false, realtimeStatus: "CHANNEL_ERROR", realtimeLastError: "PrivateOnly" }), now: JOUR + 6 * 60_000, prev: t0 });
   assert.equal(t1.etats.realtime.mauvais, true);
   assert.match(t1.etats.realtime.detail, /CHANNEL_ERROR/);
@@ -89,6 +98,23 @@ test("silence réel : 5 h sans signal le jour = warn ; jamais vu = désarmé ; t
   const nuitTenue = evaluer({ obs: obsOk(), ingest: ingOk({ lastRealSeenIso: new Date(NUIT - 9 * H).toISOString() }), now: NUIT, prev: e });
   assert.equal(nuitTenue.etats.silence.mauvais, true, "une alerte posée le soir n'est pas « rétablie » par la nuit");
   assert.deepEqual(transitions(e, nuitTenue), []);
+});
+
+test("silence en heures actives : un dernier signal à 23:30 ne sonne pas à 09:05 ; 13:05 sans signal depuis 09:00 sonne", () => {
+  // D1-C2 : compté en heures d'horloge, obs:silence partait chaque matin à
+  // 09:00 (9,6 h depuis la veille au soir) → issue [POSTE] + e-mail quotidien.
+  const MATIN = Date.parse("2026-09-18T07:05:00Z");   // 09:05 à Paris (CEST)
+  const VEILLE_SOIR = Date.parse("2026-09-17T21:30:00Z"); // 23:30 à Paris
+  assert.equal(debutHeuresActivesParis(MATIN), Date.parse("2026-09-18T07:00:00Z"), "09:00 Paris = 07:00Z en été");
+  assert.equal(debutHeuresActivesParis(Date.parse("2026-01-15T14:00:00Z")), Date.parse("2026-01-15T08:00:00Z"), "09:00 Paris = 08:00Z en hiver");
+  const m = evaluer({ obs: obsOk(), ingest: ingOk({ lastRealSeenIso: new Date(VEILLE_SOIR).toISOString() }), now: MATIN });
+  assert.equal(m.etats.silence.mauvais, false, "9,6 h d'horloge mais 5 min d'heures actives : pas une panne");
+  assert.match(m.etats.silence.detail, /0\.1 h en heures actives/);
+  const MIDI = Date.parse("2026-09-18T11:05:00Z"); // 13:05 à Paris : 4 h 05 d'heures actives sans signal
+  const s = evaluer({ obs: obsOk(), ingest: ingOk({ lastRealSeenIso: new Date(VEILLE_SOIR).toISOString() }), now: MIDI });
+  assert.equal(s.etats.silence.mauvais, true, "4 h 05 en heures actives > seuil 4 h");
+  const s2 = evaluer({ obs: obsOk(), ingest: ingOk({ lastRealSeenIso: new Date(Date.parse("2026-09-18T08:00:00Z")).toISOString() }), now: MIDI });
+  assert.equal(s2.etats.silence.mauvais, false, "un signal à 10:00 Paris : 3 h 05 de silence actif seulement");
 });
 
 test("une bascule = une alerte : deux évaluations identiques n'émettent rien, le retour est en info sur la même clé", async () => {

@@ -395,6 +395,24 @@ export function decisionResolutionAuto(packet, { now = Date.now(), alerts = [], 
   return { resoudre: true, raison: revision ? "auto_quiet_after_deploy" : "auto_quiet_7d", evidence, revision: revision ? revision.revision : null };
 }
 
+/**
+ * Les révisions « main » que le balayage a le droit d'invoquer comme preuve. PUR.
+ * Sur le poste, release-recorder enregistre le HEAD du checkout LOCAL (une
+ * branche de travail, provider null) : ce n'est jamais une révision main
+ * déployée, et aucun high/critical ne se résolvait (D1-C1). La preuve est le
+ * dernier deploy main réussi lu sur GitHub par chaine-autonome (`deploy`) ;
+ * l'historique local ne compte que s'il vient d'un build de fournisseur
+ * (`provider` non nul : Netlify), jamais du HEAD du poste.
+ */
+export function revisionsMainPourBalayage({ deploy = null, history = [] } = {}) {
+  const out = [];
+  if (deploy && deploy.headSha && deploy.quand) out.push({ branch: "main", revision: String(deploy.headSha), at: deploy.quand, source: "github_deploy" });
+  for (const r of Array.isArray(history) ? history : []) {
+    if (r && r.provider && r.revision && r.at) out.push({ branch: r.branch ?? null, revision: r.revision, at: r.at, source: r.provider });
+  }
+  return out;
+}
+
 /** Un balayage : résout ce qui peut l'être, avec preuve. Fournisseurs injectables. Retourne les ids résolus. */
 export function sweepIncidents({ now = Date.now(), alerts = [], releases = [], diagnostics = [] } = {}) {
   const resolus = [];
@@ -409,16 +427,26 @@ export function sweepIncidents({ now = Date.now(), alerts = [], releases = [], d
   return resolus;
 }
 
+/**
+ * Un tour du balayage : compose les preuves puis balaie. Les lectures sont
+ * injectables ; par défaut elles viennent des modules réels (imports paresseux :
+ * alerts.js importe ce module — cycle —, sentinel.js est lourd).
+ */
+export async function tourBalayage({ now = Date.now(), alerts = null, history = null, deploy, diagnostics = null } = {}) {
+  const lireDeploy = async () => { try { return (await import("./chaine-autonome.js")).chaineState().deploy || null; } catch { return null; } };
+  const [a, h, d, dep] = await Promise.all([
+    alerts ?? import("./alerts.js").then((m) => m.listAlerts()),
+    history ?? import("./release-recorder.js").then((m) => m.releaseHistory(120)),
+    diagnostics ?? import("./sentinel.js").then((m) => m.listDiagnoses(100)),
+    deploy === undefined ? lireDeploy() : deploy,
+  ]);
+  return sweepIncidents({ now, alerts: a, releases: revisionsMainPourBalayage({ deploy: dep, history: h }), diagnostics: d });
+}
+
 let _sweepTimer = null;
 export function startIncidentSweep(everyMs = SWEEP_MS) {
   if (_sweepTimer || !everyMs) return _sweepTimer;
-  const tour = async () => {
-    try {
-      // Imports paresseux : alerts.js importe ce module (cycle), sentinel.js est lourd.
-      const [alerts, releases, sentinel] = await Promise.all([import("./alerts.js"), import("./release-recorder.js"), import("./sentinel.js")]);
-      sweepIncidents({ alerts: alerts.listAlerts(), releases: releases.releaseHistory(120), diagnostics: sentinel.listDiagnoses(100) });
-    } catch (e) { console.error("[incidents] balayage en échec :", e && e.message ? e.message : e); }
-  };
+  const tour = () => tourBalayage().catch((e) => { console.error("[incidents] balayage en échec :", e && e.message ? e.message : e); });
   _sweepTimer = setInterval(tour, everyMs);
   if (typeof _sweepTimer.unref === "function") _sweepTimer.unref();
   return _sweepTimer;

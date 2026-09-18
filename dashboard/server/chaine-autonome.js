@@ -67,7 +67,7 @@ export async function mesurerChaine({ fetchImpl = null, now = Date.now() } = {})
   const depuis7j = new Date(now - 7 * 24 * H).toISOString().slice(0, 13) + ":00:00Z";
   const [wf, issues, pulls, deploy, fermees, ...runs] = await Promise.all([
     get("/actions/workflows?per_page=50", { cacheMs: 60 * 60_000 }),
-    get("/issues?state=open&per_page=50"),
+    get("/issues?state=open&per_page=100"),
     get("/pulls?state=open&per_page=20"),
     get("/actions/workflows/deploy.yml/runs?branch=main&event=push&per_page=5&exclude_pull_requests=true"),
     // Ce que la chaîne a fait sur 7 jours (bilan « machines ») : lu moins souvent.
@@ -171,7 +171,10 @@ export async function chaineTick({ now = Date.now(), mesure = null, notify = nul
     const avant = prev.crons[f];
     if (!avant || c.etat === "unknown" || avant === "unknown") continue;
     if (!MORT.has(avant) && MORT.has(c.etat)) alertes.push({ key: "chaine:" + f, level: "warn", title: `Chaîne GitHub : ${c.label} ${c.etat === "desactive" ? "désactivée" : "morte"}`, message: c.texte, meta: { view: "exploitation", kind: "chaine", workflow: f }, source: "chaine-autonome", cooldownMs: 0 });
-    else if (MORT.has(avant) && c.etat === "vit") alertes.push({ key: "chaine:" + f, level: "info", title: `Chaîne GitHub : ${c.label} de nouveau vivante`, message: c.texte, meta: { view: "exploitation", kind: "chaine", workflow: f }, source: "chaine-autonome", cooldownMs: 0 });
+    // Le retour est signalé dès que le cron n'est plus mort — « en retard »
+    // compris : un run vient d'avoir lieu (morte → en_retard → vit ne doit pas
+    // laisser l'issue [POSTE] ouverte faute d'info sur la même clé).
+    else if (MORT.has(avant) && !MORT.has(c.etat)) alertes.push({ key: "chaine:" + f, level: "info", title: `Chaîne GitHub : ${c.label} de nouveau vivante`, message: c.texte, meta: { view: "exploitation", kind: "chaine", workflow: f }, source: "chaine-autonome", cooldownMs: 0 });
   }
   const cles = v.attente.map((a) => `${a.type}#${a.numero}`).sort();
   const changement = JSON.stringify(cles) !== JSON.stringify(prev.attenteCles || []);

@@ -154,7 +154,13 @@ la page Sources. Verrou : `test/ingest.test.js` « canal privé ».
 
 ## 2 ter. Tests du pilotage
 
-`npm test` — **497 tests, ~17 s** (dont 5 dans un vrai navigateur, sautés bruyamment si Chromium manque).
+`npm test` — **517 tests, ~17 s** (dont 5 dans un vrai navigateur, sautés bruyamment si Chromium manque).
+
+Dans un `git worktree`, 2 tests de `release-recorder` rougissent (« l'instantané
+lit la révision réelle du dépôt », « le cooldown est levé par un nouveau
+commit ») : `readRef()` lit `.git/HEAD`, or `.git` y est un FICHIER
+`gitdir: …`. Ce n'est pas une régression ; « tout vert » se mesure sur le
+checkout principal.
 
 Le script précharge `test/isoler-data.js` (`--import`) dans CHAQUE processus de
 test : `DASH_DATA_DIR` pointe sur un dossier temporaire avant tout import, les

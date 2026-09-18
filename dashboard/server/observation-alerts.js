@@ -43,6 +43,20 @@ export function heureParis(now = Date.now()) {
 }
 export function enHeuresActives(now = Date.now()) { const h = heureParis(now); return h >= HEURES_ACTIVES[0] && h < HEURES_ACTIVES[1]; }
 
+/**
+ * Instant (ms UTC) du début des heures actives — 09:00 à Paris — du jour de
+ * `now`. Pur. On lit les champs de date à Paris, on les recompose en UTC, et
+ * l'écart entre cette recomposition et `now` EST le décalage Paris/UTC (+1 h
+ * ou +2 h) : 09:00 Paris = Date.UTC(y, m, j, 9) − décalage.
+ */
+export function debutHeuresActivesParis(now = Date.now()) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })
+    .formatToParts(new Date(now)).filter((p) => p.type !== "literal").map((p) => [p.type, Number(p.value)]));
+  const murParis = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour % 24, parts.minute, parts.second);
+  const decalage = Math.round((murParis - now) / 60_000) * 60_000;
+  return Date.UTC(parts.year, parts.month - 1, parts.day, HEURES_ACTIVES[0], 0, 0) - decalage;
+}
+
 const SPEC = {
   dbread: { key: "obs:dbread", level: "high", titre: "Lecture de la base impossible", retour: "Lecture de la base rétablie" },
   canary: { key: "obs:canary", level: "high", titre: "Canari public non observé", retour: "Canari public de nouveau observé" },
@@ -82,7 +96,13 @@ export function evaluer({ obs, ingest, now = Date.now(), prev = null, silenceMs 
   let silence;
   if (!silenceMesurable) silence = { mauvais: false, detail: "" };
   else if (!enHeuresActives(now)) silence = { mauvais: Boolean(prev?.etats?.silence?.mauvais), detail: "hors heures actives : état tenu", tenu: true };
-  else silence = { mauvais: now - vu > silenceMs, detail: `dernier signal réel il y a ${heures(now - vu)} h (seuil ${heures(silenceMs)} h, heures actives 09–21)` };
+  else {
+    // Le silence se compte en temps ACTIF, pas en heures d'horloge : un dernier
+    // signal à 23:30 ne fait pas 9,6 h de silence à 09:05 — la nuit n'est pas
+    // un silence (D1-C2 : sinon l'issue [POSTE] partait chaque matin).
+    const depuis = Math.max(vu, debutHeuresActivesParis(now));
+    silence = { mauvais: now - depuis > silenceMs, detail: `dernier signal réel il y a ${heures(now - vu)} h, soit ${heures(now - depuis)} h en heures actives (seuil ${heures(silenceMs)} h, heures actives 09–21)` };
+  }
   etats.silence = silence;
 
   return { etats, realtimeBadSince, evaluatedAt: now };

@@ -59,16 +59,24 @@ export function titreRelais(record, { desamorcer, condense }) {
   return "[SENTINELLE] " + (lisible || "defaut de production") + " · " + condense(String(record.key || ""));
 }
 
-/** Corps de l'issue : contexte serveur + analyse DÉSAMORCÉE. Jamais un identifiant de personne. */
+/**
+ * Corps de l'issue : contexte serveur + analyse, TOUT désamorcé. La clé, le
+ * endpoint, l'action et l'écran viennent de la télémétrie cliente (alerts.js :
+ * `crit:` + ev.message, `api5xx:` + ev.endpoint, `trace:…:${action}`) : un
+ * client de l'app publique peut y écrire une instruction, et claude-code lit
+ * ce corps. Chaque valeur passe donc par `desamorcer` (une ligne), pas
+ * seulement le bloc d'analyse. Jamais un identifiant de personne.
+ */
 export function corpsRelais(record, { desamorcer }) {
   const meta = record.meta || {};
+  const d1 = (v, n) => desamorcer(String(v || "").replace(/[\n\r]/g, " "), 1).slice(0, n);
   const contexte = [
-    `Clé : \`${String(record.key || "").replace(/`/g, "'").slice(0, 180)}\``,
-    `Niveau : ${record.level || "?"} · verdict : ${record.verdict || "?"}`,
-    meta.incidentId ? `Incident : ${String(meta.incidentId).slice(0, 60)}${meta.incidentClusterKey ? ` (${String(meta.incidentClusterKey).replace(/`/g, "'").slice(0, 120)})` : ""}` : null,
-    meta.endpoint ? `Endpoint : ${String(meta.endpoint).replace(/`/g, "'").slice(0, 180)}` : null,
-    meta.action ? `Action : ${String(meta.action).replace(/`/g, "'").slice(0, 120)}` : null,
-    meta.screen ? `Écran : ${String(meta.screen).replace(/`/g, "'").slice(0, 80)}` : null,
+    `Clé : ${d1(record.key, 180)}`,
+    `Niveau : ${d1(record.level || "?", 20)} · verdict : ${d1(record.verdict || "?", 20)}`,
+    meta.incidentId ? `Incident : ${d1(meta.incidentId, 60)}${meta.incidentClusterKey ? ` (${d1(meta.incidentClusterKey, 120)})` : ""}` : null,
+    meta.endpoint ? `Endpoint : ${d1(meta.endpoint, 180)}` : null,
+    meta.action ? `Action : ${d1(meta.action, 120)}` : null,
+    meta.screen ? `Écran : ${d1(meta.screen, 80)}` : null,
   ].filter(Boolean);
   return [
     "Relayé automatiquement par la sentinelle locale du poste de pilotage (verdict « défaut réel »).",

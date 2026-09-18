@@ -100,7 +100,16 @@ export function sinkGithubPoste({ execFileImpl = execFileNode, db = null, now = 
 
   async function trouverIssue() {
     const n = etat.get().issue;
-    if (n) return n;
+    if (n) {
+      // Refermée à la main entre-temps ? Éditer une issue close n'envoie aucun
+      // e-mail : on l'oublie et on en ouvre une nouvelle. Réponse illisible
+      // (gh absent, réseau) : on garde le numéro connu, sans inventer.
+      const v = await gh(["issue", "view", String(n), "--json", "state"]);
+      let s = null;
+      try { s = v.code === 0 ? JSON.parse(v.out || "null") : null; } catch { s = null; }
+      if (s && s.state && String(s.state).toUpperCase() !== "OPEN") etat.update((d) => { d.issue = null; });
+      else return n;
+    }
     const r = await gh(["issue", "list", "--label", LABEL_POSTE, "--state", "open", "--limit", "5", "--json", "number,title"]);
     if (r.code !== 0) return null;
     let liste = [];

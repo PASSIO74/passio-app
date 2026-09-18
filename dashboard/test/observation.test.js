@@ -60,6 +60,11 @@ test("noterCanariManque incrémente et vide le pendant ; l'observation du canari
   const c = noterCanariManque({ pendingId: "can_a", deadlineAt: "x", missedCount: 1 });
   assert.equal(c.missedCount, 2); assert.equal(c.pendingId, null); assert.equal(c.deadlineAt, null);
   assert.equal(noterCanariManque(null).missedCount, 1);
+  // Pure : l'horloge est injectée, l'objet reçu n'est pas modifié.
+  const source = { pendingId: "can_b", missedCount: 0 };
+  const date = noterCanariManque(source, "2026-09-18T10:00:00.000Z");
+  assert.equal(date.lastMissedAt, "2026-09-18T10:00:00.000Z");
+  assert.deepEqual(source, { pendingId: "can_b", missedCount: 0 }, "l'objet source est intact");
   // Le succès réarme (registre du module, isolé par le préchargement).
   _setCanaryForTests({ pendingId: "can_ok", sentAt: iso(Date.now() - 1000), deadlineAt: iso(Date.now() + 90_000), missedCount: 3 });
   observeSyntheticCanary({ type: "lifecycle", action: _test.CANARY_ACTION, meta: { synthetic: true }, correlation_id: "can_autre" });

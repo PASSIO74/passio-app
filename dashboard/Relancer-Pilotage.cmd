@@ -19,7 +19,7 @@ setlocal enabledelayedexpansion
 set "TROUVE="
 for /f "tokens=5" %%p in ('netstat -ano ^| findstr /R /C:":4610 .*LISTENING"') do (
   echo %%p| findstr /R /C:"^[0-9][0-9]*$" >nul && (
-    echo Arret du serveur du pilotage ^(pid %%p^) — le superviseur le relance en 2 s...
+    echo Arret du serveur du pilotage ^(pid %%p^) - le superviseur le relance en 2 s...
     taskkill /PID %%p /F >nul 2>&1
     set "TROUVE=%%p"
   )

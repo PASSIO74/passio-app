@@ -79,3 +79,34 @@ test("les priorités restent dans l'échelle annoncée", async () => {
   // devient injectable.
   assert.match(c2.global.rule, /technique\/sécurité\/observation/);
 });
+
+// ─── D1-TM-05 : domaines purs Release et Observation ────────────────────────
+// Sur le poste de test (sans PASSIO_PUBLIC_URL) le verdict de release est
+// NOT_CONFIGURED : la conversion UNKNOWN → DEGRADED et la priorité de
+// `observation.core` n'étaient jamais exercées. Mutations éprouvées :
+//   · `r.state === "UNKNOWN" ? "DEGRADED"` → `? "LIVE"`      → « release UNKNOWN »
+//   · `o.core || o.state` → `o.state || o.core`               → « observation.core prime »
+const { releaseDomain, observationDomain } = await import("../server/control-intelligence.js");
+
+test("release UNKNOWN (preuve pas encore lue) = DEGRADED, jamais LIVE ni NOT_CONFIGURED ; sans snapshot = NOT_CONFIGURED", () => {
+  const inconnu = releaseDomain({ current: {}, state: "UNKNOWN", detail: "preuve en attente" });
+  assert.equal(inconnu.state, "DEGRADED");
+  assert.notEqual(inconnu.state, "LIVE", "un faux vert sur le domaine Release alimenterait un GO");
+  assert.equal(inconnu.detail, "preuve en attente");
+  assert.equal(releaseDomain({ current: {}, state: "LIVE", detail: "ok" }).state, "LIVE");
+  assert.equal(releaseDomain({ current: {}, state: "DEGRADED" }).state, "DEGRADED");
+  assert.equal(releaseDomain({ current: {} }).state, "DEGRADED", "sans état : dégradé, pas vert");
+  assert.equal(releaseDomain(null).state, "NOT_CONFIGURED");
+  assert.equal(releaseDomain({ state: "LIVE" }).state, "NOT_CONFIGURED", "sans snapshot courant, un LIVE n'a pas de preuve");
+});
+
+test("observation.core prime sur state : DEGRADED avec cœur LIVE = LIVE ; LIVE avec cœur UNAVAILABLE = UNAVAILABLE ; les parts restent dans le détail", () => {
+  const parts = { dbRead: { state: "LIVE" }, canary: { state: "LIVE" }, sse: { state: "IDLE" } };
+  const coeurBien = observationDomain({ state: "DEGRADED", core: "LIVE", parts });
+  assert.equal(coeurBien.state, "LIVE", "le seam SSE IDLE (aucun navigateur) ne dégrade pas le domaine");
+  assert.match(coeurBien.detail, /dbRead:LIVE · canary:LIVE · sse:IDLE/);
+  assert.equal(observationDomain({ state: "LIVE", core: "UNAVAILABLE", parts }).state, "UNAVAILABLE");
+  assert.equal(observationDomain({ state: "DEGRADED", parts }).state, "DEGRADED", "sans core, state fait foi");
+  assert.equal(observationDomain(null).state, "NOT_CONFIGURED");
+  assert.equal(observationDomain({ state: "LIVE" }).detail, "Aucun seam");
+});

@@ -35,9 +35,15 @@ const TITRE_CHAINE = {
 const ORDRE = { P0: 0, P1: 1, P2: 2, P3: 3 };
 const tronque = (s, n = 120) => String(s || "").replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, n);
 
+// `depuis` est TOUJOURS un nombre de millisecondes (ou null) : la chaîne GitHub
+// apporte des ISO (`created_at`), les alertes et incidents des nombres ; sans
+// cette normalisation, app.js affichait « depuis NaNj » et le tri devenait
+// incohérent pour tous les items GitHub (D1-C3).
+const enMs = (v) => { const d = typeof v === "string" ? Date.parse(v) : v; return Number.isFinite(d) ? d : null; };
+
 export function attenteSnapshot(src = {}, now = Date.now()) {
   const items = [];
-  const ajoute = (it) => items.push({ key: it.key, priorite: it.priorite, titre: tronque(it.titre), detail: tronque(it.detail || "", 200), depuis: it.depuis || null, cible: it.cible || null });
+  const ajoute = (it) => items.push({ key: it.key, priorite: it.priorite, titre: tronque(it.titre), detail: tronque(it.detail || "", 200), depuis: enMs(it.depuis), cible: it.cible || null });
 
   // 1. La chaîne GitHub (issues et PR qui attendent quelqu'un).
   const chaine = src.chaine || null;
@@ -128,13 +134,12 @@ async function modules() {
   return _mods;
 }
 
-/** Instantané agrégé, mis en cache 60 s. `supervise` est fourni par index.js (il connaît le superviseur). */
-export async function attente({ now = Date.now(), supervise = null, force = false } = {}) {
-  if (!force && _memo.valeur && now - _memo.t < MEMO_MS) return _memo.valeur;
+/** Lecture réelle des onze sources ; chaque lecture en échec rend son défaut, jamais une exception. */
+async function lireSources({ now, supervise }) {
   const m = await modules();
   const lire = async (fn, defaut = null) => { try { return await fn(); } catch { return defaut; } };
   const [chaine, exploitation] = await Promise.all([lire(() => m.chaine.chaineAutonome({ now })), lire(() => m.exploitation.exploitation())]);
-  const src = {
+  return {
     chaine, exploitation,
     diagnostics: await lire(() => m.sentinel.listDiagnoses(100), []),
     audit: await lire(() => m.audit.listAudit(3000), []),
@@ -146,11 +151,25 @@ export async function attente({ now = Date.now(), supervise = null, force = fals
     supervise,
     storage: await lire(() => m.jsondb.storageHealth()),
   };
+}
+async function diffuser(evenement, payload) { const m = await modules(); m.sse.broadcast(evenement, payload); }
+
+// Dépendances remplaçables par les tests (lecture des sources, diffusion SSE) :
+// le contrat du wrapper — cache 60 s, UN événement `attente` quand la liste
+// de clés change — se prouve sans sentinel.js ni GitHub.
+let _deps = { lireSources, diffuser };
+
+/** Instantané agrégé, mis en cache 60 s. `supervise` est fourni par index.js (il connaît le superviseur). */
+export async function attente({ now = Date.now(), supervise = null, force = false } = {}) {
+  if (!force && _memo.valeur && now - _memo.t < MEMO_MS) return _memo.valeur;
+  const src = await _deps.lireSources({ now, supervise });
   const snap = attenteSnapshot(src, now);
   const cles = JSON.stringify(snap.items.map((i) => i.key));
-  if (_memo.cles !== null && _memo.cles !== cles) { try { m.sse.broadcast("attente", { n: snap.count }); } catch {} }
+  if (_memo.cles !== null && _memo.cles !== cles) { try { await _deps.diffuser("attente", { n: snap.count }); } catch {} }
   _memo = { t: now, valeur: snap, cles };
   return snap;
 }
 
-export function _resetAttenteForTests() { _memo = { t: 0, valeur: null, cles: null }; }
+/** RÉSERVÉ AUX TESTS. */
+export function _resetAttenteForTests() { _memo = { t: 0, valeur: null, cles: null }; _deps = { lireSources, diffuser }; }
+export function _setDepsForTests({ lireSources: l = null, diffuser: d = null } = {}) { _deps = { lireSources: l || lireSources, diffuser: d || diffuser }; }

@@ -12,12 +12,17 @@
 //   · `opts.actor === "auto"` retiré de canTransition → « acteur auto »
 //   · clusterKey = key@révision                   → « regroupement par clé »
 //   · ne pas rouvrir un paquet clos               → « réouverture »
+//   · retirer `(r.branch === "main" || r.branch == null)`
+//     du filtre de decisionResolutionAuto         → « branche de travail »
+//   · revisionsMainPourBalayage rend l'historique
+//     tel quel (HEAD local du poste)              → « sur le poste » / « tour du balayage »
+//   · tourBalayage passe `history` en releases    → « tour du balayage »
 // ═══════════════════════════════════════════════════════════════════════════
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
 const inc = await import("../server/incident-packets.js");
-const { recordIncident, listIncidentPackets, decisionResolutionAuto, sweepIncidents, canTransitionIncident, reopenIncidentBySignal, clusterWindowFor, _resetIncidentsForTests } = inc;
+const { recordIncident, listIncidentPackets, decisionResolutionAuto, sweepIncidents, tourBalayage, revisionsMainPourBalayage, canTransitionIncident, reopenIncidentBySignal, clusterWindowFor, _resetIncidentsForTests } = inc;
 
 const H = 3_600_000;
 const NOW = Date.parse("2026-09-18T12:00:00Z");
@@ -54,6 +59,47 @@ test("sans révision postérieure : refus (une révision ANTÉRIEURE ne prouve r
   assert.equal(d.resoudre, true); assert.equal(d.raison, "auto_quiet_7d");
   const high = paquet({ severity: "high", lastSeenAt: iso(NOW - 8 * 24 * H) });
   assert.equal(decisionResolutionAuto(high, { now: NOW, releases: [] }).resoudre, false, "un high sans révision n'est jamais résolu par le seul temps");
+});
+
+test("branche de travail : une révision d'une branche de feature postérieure ne prouve rien ; branche null (build sans branche) est acceptée", () => {
+  // D1-TM-04 : sur le poste, releaseHistory enregistre le HEAD local — une
+  // branche de feature en régime normal. Seul ce filtre empêche un commit de
+  // travail de « prouver » une révision main et de résoudre un high.
+  const h = paquet({ severity: "high", clusterKey: "trace:failed:x", signal: { key: "trace:failed:x" }, lastSeenAt: iso(NOW - 80 * H) });
+  const feature = decisionResolutionAuto(h, { now: NOW, releases: [{ at: iso(NOW - 10 * H), branch: "claude/autonomie-pilotage", revision: "feat123" }] });
+  assert.equal(feature.resoudre, false);
+  assert.match(feature.raison, /aucune révision main postérieure/);
+  const sansBranche = decisionResolutionAuto(h, { now: NOW, releases: [{ at: iso(NOW - 10 * H), branch: null, revision: "build456" }] });
+  assert.equal(sansBranche.resoudre, true);
+  assert.equal(sansBranche.revision, "build456");
+});
+
+test("sur le poste : revisionsMainPourBalayage ignore le HEAD local (provider null) et retient le deploy main lu sur GitHub ; un build Netlify compte", () => {
+  // D1-C1 : le balayage nourrissait `releases` avec releaseHistory (HEAD du
+  // checkout local, branche de travail, provider null) : aucun high/critical
+  // ne se résolvait jamais sur le poste.
+  const local = { at: iso(NOW - 10 * H), branch: "claude/autonomie-pilotage", revision: "feat123", provider: null };
+  assert.deepEqual(revisionsMainPourBalayage({ deploy: null, history: [local] }), [], "le HEAD local n'est jamais une preuve");
+  const deploy = { etat: "ok", headSha: "deadbeefcafe", quand: iso(NOW - 5 * H), luLe: NOW };
+  const r = revisionsMainPourBalayage({ deploy, history: [local] });
+  assert.deepEqual(r, [{ branch: "main", revision: "deadbeefcafe", at: iso(NOW - 5 * H), source: "github_deploy" }]);
+  assert.deepEqual(revisionsMainPourBalayage({ deploy: { etat: "unknown", headSha: null, quand: null }, history: [] }), [], "deploy non lu : rien");
+  const netlify = { at: iso(NOW - 3 * H), branch: "main", revision: "abc999", provider: "netlify" };
+  assert.deepEqual(revisionsMainPourBalayage({ deploy: null, history: [netlify] }), [{ branch: "main", revision: "abc999", at: iso(NOW - 3 * H), source: "netlify" }]);
+});
+
+test("tour du balayage : avec le seul HEAD local (branche de travail) un high muet depuis 80 h reste ouvert ; avec le deploy main GitHub il est résolu", async () => {
+  _resetIncidentsForTests();
+  const p = recordIncident(alert("trace:failed:t", "high", NOW - 80 * H));
+  const local = [{ at: iso(NOW - 10 * H), branch: "claude/autonomie-pilotage", revision: "feat123", provider: null }];
+  const rien = await tourBalayage({ now: NOW, alerts: [], history: local, deploy: null, diagnostics: [] });
+  assert.deepEqual(rien, [], "un commit de feature sur le poste n'est pas un déploiement main");
+  assert.equal(listIncidentPackets(10).find((x) => x.id === p.id).status, "open");
+  const resolus = await tourBalayage({ now: NOW, alerts: [], history: local, deploy: { etat: "ok", headSha: "deadbeefcafe", quand: iso(NOW - 5 * H) }, diagnostics: [] });
+  assert.deepEqual(resolus, [p.id]);
+  const clos = listIncidentPackets(10).find((x) => x.id === p.id);
+  assert.equal(clos.status, "closed");
+  assert.match(clos.phaseHistory.at(-1).evidence, /révision main deadbeefcafe postérieure/);
 });
 
 test("défaut réel non réparé sur la clé : jamais résolu automatiquement ; réparé (repair.ok) : oui", () => {

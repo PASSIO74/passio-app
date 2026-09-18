@@ -2337,7 +2337,7 @@ function onClaudeState(cli) {
 // Événement MACHINE (correctif, promotion, PR publiée, récidive) : toast, cloche,
 // et la vue courante se rafraîchit si elle montre ces choses (debounce 800 ms).
 const MACHINE_LIBELLE = { sentinel_repair: "Réparation automatique", sentinel_autopilot: "Autopilote", sentinel_production: "Mise en ligne automatique", sentinel_recurrence: "Récidive" };
-let machineSignalT = 0;
+let machineSignalTimer = null;
 function onMachineEvent(type, d) {
   const lib = MACHINE_LIBELLE[type] || type;
   const phase = d && (d.phase || d.status || "") ? String(d.phase || d.status) : "";
@@ -2347,11 +2347,13 @@ function onMachineEvent(type, d) {
   rafraichirAttente();
 }
 function onAttenteSignal() { rafraichirAttente(); }
+// Debounce (bord de fuite) : une rafale d'événements machine (réparation,
+// autopilote, attente) ne rafraîchit qu'une fois, 800 ms après le DERNIER —
+// un throttle jetait le dernier événement, celui qui porte l'état final.
 function rafraichirAttente() {
   if (!["overview", "sentinel", "brief"].includes(S.currentView) || !S.refresh) return;
-  const now = Date.now();
-  if (now - machineSignalT < 800) return;
-  machineSignalT = now; try { S.refresh(); } catch {}
+  if (machineSignalTimer) clearTimeout(machineSignalTimer);
+  machineSignalTimer = setTimeout(() => { machineSignalTimer = null; try { S.refresh(); } catch {} }, 800);
 }
 
 function updateAlertBadges() {

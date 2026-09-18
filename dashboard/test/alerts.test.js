@@ -17,6 +17,10 @@
 //   · retirer le filtre `level` d'autoAcquitter          → « high reste manuelle »
 //   · appeler le sink avant db.update / sans isolation   → « sink qui jette »
 //   · retirer la clé obligatoire de raise                → « clé obligatoire »
+//   · CONN_WINDOW_MIN_DEVICES = 2                        → « 2 appareils ne suffisent pas » (D1-TM-08)
+//   · AUTOACK_SILENCE_MS = 2 h                           → « auto-acquittement : 3 h de silence » (D1-TM-08)
+//   · `return Boolean(prec)` (fenêtre 24 h retirée)      → « 2e occurrence après 24 h » (D1-TM-08)
+//   · CLES_POSTE sans `obs`                              → « familles de clés du poste » (D1-TM-03)
 // ═══════════════════════════════════════════════════════════════════════════
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -151,7 +155,28 @@ test("3 appareils en difficulté en 15 min → alerte agrégée conn:window (hig
   assert.equal(keys.filter((k) => k === "conn:window").length, 1);
 });
 
+test("2 appareils ne suffisent pas : deux testeurs en difficulté en 15 min ne font pas une conn:window (ce serait une analyse Claude par paire de testeurs en 3G)", () => {
+  vierge();
+  for (const d of ["dev_1", "dev_2"]) onEvent(conn({ device_id: d, meta: { failed_sends: 3 } }), T0);
+  const keys = listAlerts().map((a) => a.key);
+  assert.deepEqual(keys.sort(), ["conn:dev_1", "conn:dev_2"]);
+  assert.ok(!keys.includes("conn:window"), "sous 3 appareils : pas d'alerte agrégée");
+  onEvent(conn({ device_id: "dev_3", meta: { failed_sends: 3 } }), T0 + MIN);
+  assert.ok(listAlerts().some((a) => a.key === "conn:window"), "le troisième appareil dans la fenêtre déclenche");
+});
+
 // ─── Dossiers d'incident ────────────────────────────────────────────────────
+test("2e occurrence après 24 h : une clé conn: qui revient 25 h plus tard est de nouveau une première occurrence (pas de paquet)", () => {
+  vierge();
+  onEvent(conn({ device_id: "dev_p", meta: { failed_sends: 3 } }), T0);
+  assert.equal(listAlerts()[0].incidentId, undefined);
+  onEvent(conn({ device_id: "dev_p", meta: { failed_sends: 3 } }), T0 + 25 * 60 * MIN);
+  assert.equal(listAlerts().length, 2, "hors cooldown 30 min : l'alerte est émise");
+  assert.equal(listAlerts()[0].incidentId, undefined, "25 h après : la fenêtre de 24 h est close, pas de dossier");
+  onEvent(conn({ device_id: "dev_p", meta: { failed_sends: 3 } }), T0 + 26 * 60 * MIN);
+  assert.ok(listAlerts()[0].incidentId, "…mais une 3e sous 24 h de la 2e en ouvre un");
+});
+
 test("pas de dossier d'incident pour info, ni pour la première occurrence conn:/apislow: en 24 h", () => {
   vierge();
   const i = raise({ key: "linkopen:x", level: "info", title: "Lien ouvert" }, T0);
@@ -176,6 +201,16 @@ test("auto-acquittement : warn muette depuis 6 h → ackBy auto ; récente → n
   assert.equal(par["apislow:/a"].ackBy, "auto");
   assert.equal(par["apislow:/b"].acknowledged, false);
   assert.equal(par["obs:canary"].acknowledged, false, "high reste manuelle");
+});
+
+test("auto-acquittement : 3 h de silence ne suffisent pas (seuil 6 h) ; 6 h 01 passe", () => {
+  vierge();
+  raise({ key: "apislow:/c", level: "warn", title: "trois heures" }, T0 - 3 * 60 * MIN);
+  raise({ key: "apislow:/d", level: "warn", title: "six heures une" }, T0 - 6 * 60 * MIN - MIN);
+  assert.equal(autoAcquitter({ now: T0 }), 1);
+  const par = Object.fromEntries(listAlerts().map((a) => [a.key, a]));
+  assert.equal(par["apislow:/c"].acknowledged, false, "muette depuis 3 h seulement : pas encore");
+  assert.equal(par["apislow:/d"].acknowledged, true);
 });
 
 // ─── Sinks ──────────────────────────────────────────────────────────────────
@@ -208,9 +243,20 @@ test("sink GitHub [POSTE] : une issue label poste (jamais claude), dédup 24 h p
     cb(null, "", "");
   };
   const memoire = { data: { issue: null, cles: {}, labelOk: false }, get() { return this.data; }, update(fn) { fn(this.data); return this; } };
-  const s = sinks.sinkGithubPoste({ execFileImpl, db: memoire, now: () => T0 });
+  let horloge = T0;
+  const s = sinks.sinkGithubPoste({ execFileImpl, db: memoire, now: () => horloge });
   assert.equal(s.accepte({ key: "disk:low", level: "warn" }), true);
   assert.equal(s.accepte({ key: "apislow:/x", level: "warn" }), false, "seules les clés du poste sortent");
+  // D1-TM-03 : les familles de clés du poste — obs: (base illisible, canari
+  // mort, ingestion sourde la nuit) est la raison d'être de cette issue.
+  for (const key of ["obs:dbread", "obs:canary", "obs:ingest", "obs:polling", "claudecli:logged_out", "supervise:restarts", "storage:write"]) {
+    assert.equal(s.accepte({ key, level: "high" }), true, `familles de clés du poste : ${key} doit sortir`);
+    assert.equal(sinks.estCleDuPoste(key), true);
+  }
+  for (const key of ["conn:window", "apislow:/x", "trace:failed:x", "multi:abc", "crit:x", "api5xx:/y", "chaine:deploy.yml", "manual:1"]) {
+    assert.equal(s.accepte({ key, level: "high" }), false, `familles de clés du poste : ${key} ne doit jamais sortir en issue [POSTE]`);
+    assert.equal(sinks.estCleDuPoste(key), false);
+  }
   assert.equal(s.accepte({ key: "disk:low", level: "info" }), false, "un retour sans panne connue ne fait rien");
 
   const r1 = await s.envoyer({ key: "disk:low", level: "warn", title: "Disque presque plein", ts: T0 });
@@ -227,6 +273,12 @@ test("sink GitHub [POSTE] : une issue label poste (jamais claude), dédup 24 h p
   const r2 = await s.envoyer({ key: "disk:low", level: "warn", title: "Disque presque plein", ts: T0 + 60_000 });
   assert.equal(r2.action, "dedup");
   assert.equal(appels.length, avant, "même clé sous 24 h : aucun appel gh");
+  horloge = T0 + 23 * 60 * MIN;
+  assert.equal((await s.envoyer({ key: "disk:low", level: "warn", title: "Disque presque plein", ts: horloge })).action, "dedup", "23 h : encore dans la fenêtre");
+  horloge = T0 + 24 * 60 * MIN + 1000;
+  const r3 = await s.envoyer({ key: "disk:low", level: "warn", title: "Disque presque plein", ts: horloge });
+  assert.equal(r3.action, "publie", "24 h passées : la clé est republiée (l'horloge n'est pas figée)");
+  assert.ok(appels.length > avant);
 
   await s.envoyer({ key: "claudecli:logged_out", level: "warn", title: "Claude Code déconnecté", ts: T0 });
   assert.ok(appels.some((a) => a[1] === "issue" && a[2] === "edit" && a[3] === "42"), "une deuxième clé actualise l'issue existante");
@@ -237,6 +289,29 @@ test("sink GitHub [POSTE] : une issue label poste (jamais claude), dédup 24 h p
   await s.envoyer({ key: "claudecli:logged_out", level: "info", title: "Claude Code reconnecté", ts: T0 });
   assert.ok(appels.some((a) => a[1] === "issue" && a[2] === "close" && a[3] === "42"), "toutes les clés revenues : issue refermée");
   assert.equal(s._etat().issue, null);
+});
+
+test("issue [POSTE] refermée à la main : le sink n'édite pas une issue close (aucun e-mail), il en ouvre une nouvelle", async () => {
+  // Mutation : retirer la vérification `gh issue view … --json state` dans trouverIssue → rougit.
+  const appels = [];
+  let etatIssue = "OPEN";
+  let prochain = 42;
+  const execFileImpl = (cmd, args, opts, cb) => {
+    appels.push([cmd, ...args]);
+    if (args[0] === "issue" && args[1] === "view") return cb(null, JSON.stringify({ state: etatIssue }), "");
+    if (args[0] === "issue" && args[1] === "list") return cb(null, "[]", "");
+    if (args[0] === "issue" && args[1] === "create") return cb(null, `https://github.com/PASSIO74/passio-app/issues/${prochain++}\n`, "");
+    cb(null, "", "");
+  };
+  const memoire = { data: { issue: null, cles: {}, labelOk: true }, get() { return this.data; }, update(fn) { fn(this.data); return this; } };
+  const s = sinks.sinkGithubPoste({ execFileImpl, db: memoire, now: () => T0 });
+  assert.equal((await s.envoyer({ key: "disk:low", level: "warn", title: "Disque", ts: T0 })).issue, 42);
+  etatIssue = "CLOSED"; // Benjamin ferme l'issue à la main.
+  const r = await s.envoyer({ key: "obs:dbread", level: "high", title: "Base illisible", ts: T0 });
+  assert.equal(r.action, "publie");
+  assert.equal(r.issue, 43, "une nouvelle issue, pas une édition muette de la #42");
+  assert.ok(!appels.some((a) => a[1] === "issue" && a[2] === "edit" && a[3] === "42"), "la #42 close n'est jamais éditée");
+  assert.equal(s._etat().issue, 43);
 });
 
 test("le corps de l'issue [POSTE] porte clé, titre et geste — jamais un chemin ni un identifiant", () => {

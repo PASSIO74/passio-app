@@ -13,6 +13,7 @@
 //   · émettre `high` à la bascule                       → « jamais high »
 //   · émettre à chaque tour                             → « une bascule = une alerte »
 //   · recopier le corps d'une issue                     → « titres seulement »
+//   · LABELS_ATTENTE réduit à humain/recidive/moderation → « attente : labels » (D1-TM-02)
 // ═══════════════════════════════════════════════════════════════════════════
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -80,6 +81,12 @@ test("attente : labels humain/recidive/…, [SENTINELLE DISTANTE], enquête > 6 
     { numero: 5, titre: "[SENTINELLE] longue", labels: ["sentinelle", "claude"], depuis: iso(NOW - 7 * H), url: "u5" },
     { numero: 6, titre: "[MODÉRATION] signalement", labels: ["moderation"], depuis: iso(NOW - H), url: "u6" },
     { numero: 7, titre: "Contre-revue", labels: [], depuis: iso(NOW - H), url: "u7" },
+    // D1-TM-02 : les quatre autres labels de LABELS_ATTENTE — retirer l'un
+    // d'eux faisait disparaître « site en panne » de « Ce qui t'attend » en vert.
+    { numero: 8, titre: "[DISPONIBILITÉ] site en panne", labels: ["disponibilite"], depuis: iso(NOW - H), url: "u8" },
+    { numero: 9, titre: "[VEILLE] erreurs en hausse", labels: ["veille"], depuis: iso(NOW - H), url: "u9" },
+    { numero: 20, titre: "[DIGEST] 2026-09-18", labels: ["digest"], depuis: iso(NOW - H), url: "u20" },
+    { numero: 21, titre: "[POSTE] Le pilotage a besoin de toi", labels: ["poste"], depuis: iso(NOW - H), url: "u21" },
   ];
   const pulls = [
     { numero: 10, titre: "fix", branche: "claude/issue-5-1", brouillon: false, depuis: iso(NOW - 3 * H), url: "p10", autoMerge: true },
@@ -90,8 +97,9 @@ test("attente : labels humain/recidive/…, [SENTINELLE DISTANTE], enquête > 6 
   ];
   const v = verdictsChaine(mesures({ issues, pulls }), NOW);
   const types = v.attente.map((a) => `${a.type}#${a.numero}`);
-  assert.deepEqual(types, ["humain#1", "humain#2", "sante_rouge#3", "enquete_longue#5", "moderation#6", "correctif_pr#10", "correctif_pr#12", "pr_ouverte#14"]);
+  assert.deepEqual(types, ["humain#1", "humain#2", "sante_rouge#3", "enquete_longue#5", "moderation#6", "disponibilite#8", "veille#9", "digest#20", "poste#21", "correctif_pr#10", "correctif_pr#12", "pr_ouverte#14"]);
   assert.equal(v.enquetesOuvertes, 2, "issues sentinelle sans humain : #4 et #5");
+  assert.deepEqual([...ca.LABELS_ATTENTE].sort(), ["digest", "disponibilite", "humain", "moderation", "poste", "recidive", "veille"], "les sept labels qui attendent un humain");
 });
 
 test("titres seulement : mesurerChaine ne conserve jamais un corps d'issue ou de PR, et tronque les titres à 120", async () => {
@@ -132,5 +140,16 @@ test("tour à bascule : vit→morte = UNE alerte warn (jamais high), même état
   await chaineTick({ now: NOW + 3 * H, mesure: vivant, notify });
   assert.equal(vues.length, 2);
   assert.equal(vues[1].level, "info");
+  // Mineur D1 : morte → en_retard (un run vient d'avoir lieu) → vit doit
+  // signaler le retour, sinon l'issue [POSTE] restait ouverte sur cette clé.
+  // Mutation : `MORT.has(avant) && !MORT.has(c.etat)` → `c.etat === "vit"` → rougit.
+  const enRetard = async () => mesures({ runs: { ...mesures().runs, "sauvegarde.yml": run(31) } });
+  await chaineTick({ now: NOW + 4 * H, mesure: mort, notify });
+  assert.equal(vues.length, 3); assert.equal(vues[2].level, "warn");
+  await chaineTick({ now: NOW + 5 * H, mesure: enRetard, notify });
+  assert.equal(vues.length, 4, "morte → en_retard : le retour est signalé");
+  assert.equal(vues[3].level, "info"); assert.equal(vues[3].key, "chaine:sauvegarde.yml");
+  await chaineTick({ now: NOW + 6 * H, mesure: vivant, notify });
+  assert.equal(vues.length, 4, "en_retard → vit : rien de neuf, le retour a déjà été dit");
   _setStateForTests({ crons: {} });
 });

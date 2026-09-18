@@ -20,6 +20,10 @@
 //     est injecté, ce qui est justement la façon de le tester.
 // ═══════════════════════════════════════════════════════════════════════════
 export const DEPOT = "PASSIO74/passio-app";
+// config.js charge dotenv : sans cet import, un module qui importerait
+// github-lecture avant config lirait un .env encore absent (jeton, DASH_GITHUB_READ).
+import "./config.js";
+
 const CACHE_MS = 10 * 60_000;
 const ERREUR_CACHE_MS = 5 * 60_000;
 const BUDGET_SANS_JETON = 40;

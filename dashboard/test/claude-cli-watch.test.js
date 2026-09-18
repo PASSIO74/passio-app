@@ -343,3 +343,21 @@ test("stop() puis start() pendant un tour en vol ne laisse qu'UNE chaîne de min
   assert.equal(typeof cli.nextWatchDelay, "function");
   assert.equal(ticks, 0);
 });
+
+// ── Clé stable au retour quand la raison a changé pendant la panne ───────────
+// Mineur D1 : la clé `claudecli:<raison>` du retour (info) reprenait la raison
+// du moment ; si la sonde devenait muette pendant la déconnexion (logged_out →
+// probe, sans bascule de disponibilité), l'info sortait sur `claudecli:probe`
+// et le sink [POSTE] ne refermait jamais `claudecli:logged_out`.
+// Mutation : `chute ? key : (_derniereCleChute || …)` → `"claudecli:" + raison` → rougit.
+test("le retour (info) reprend la clé émise à la chute même si la raison a changé entre-temps", async () => {
+  const vues = [];
+  cli._setStateForTests({ ...CONNECTE });
+  await cli.claudeCliWatchTick({ notify: (a) => vues.push(a), detect: () => cli.detectClaudeCli({ probe: sondeDeconnectee }) });
+  assert.equal(vues.length, 1); assert.equal(vues[0].key, "claudecli:logged_out");
+  // La raison change pendant la panne, sans bascule de disponibilité.
+  cli._setStateForTests({ reason: "probe" });
+  await cli.claudeCliWatchTick({ notify: (a) => vues.push(a), detect: () => cli.detectClaudeCli({ probe: sondeConnectee }) });
+  assert.equal(vues.length, 2); assert.equal(vues[1].level, "info");
+  assert.equal(vues[1].key, "claudecli:logged_out", "même clé qu'à la chute : le sink [POSTE] peut refermer");
+});
