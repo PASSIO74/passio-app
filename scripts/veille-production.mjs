@@ -130,58 +130,71 @@ export function signalFlux(m, now) {
     lignes.push(`${m.canaris2h} canari(s) en 2 h`);
   }
 
-  // Le trafic humain n'est jugé qu'en heures actives : 09h–21h Paris.
-  if (p.heure < HEURE_DEBUT || p.heure > HEURE_FIN) {
-    lignes.push(`trafic non évalué entre ${HEURE_FIN + 1}h et ${HEURE_DEBUT}h (Paris)`);
-    return { etat, texte: lignes.join(" ; ") };
-  }
-
   // Heures actives consécutives VIDES, en remontant depuis la dernière heure
-  // pleine. La première heure inactive (avant 09h) arrête la série : un silence
+  // pleine — ou, la nuit (22h-08h), depuis la dernière heure active écoulée.
+  // Un silence de 8 h vu à 18 h doit rester une alerte à 22 h 30 et à 07 h :
+  // sinon l'issue se referme seule dans la nuit et rien ne revient le matin
+  // (constat B-02). Les heures de nuit ne comptent jamais comme silence, et
+  // la première heure inactive (avant 09h) arrête la série : un silence
   // d'hier soir ne s'ajoute jamais à celui de ce matin.
+  const jugeMaintenant = estActive(heureParis(now - H).heure);
+  let t = now - H;
+  while (!estActive(heureParis(t).heure)) t -= H;
+  const finSerie = heureParis(t);
   let vides = 0;
-  for (let t = now - H; ; t -= H) {
+  for (; ; t -= H) {
     const q = heureParis(t);
     if (!estActive(q.heure)) break;
     if ((parCle.get(q.cle) || 0) > 0) break;
     vides++;
   }
-  const seuilWarn = estWeekend(p.jour) ? SILENCE_WARN_WEEKEND_H : SILENCE_WARN_H;
+  const seuilWarn = estWeekend(finSerie.jour) ? SILENCE_WARN_WEEKEND_H : SILENCE_WARN_H;
+  const plage = jugeMaintenant ? "" : ` (fin de la dernière plage active, le ${finSerie.date})`;
   if (vides >= SILENCE_ALERT_H) {
     etat = "alert";
-    lignes.push(`${vides} h actives consécutives sans aucune ligne humaine`);
+    lignes.push(`${vides} h actives consécutives sans aucune ligne humaine${plage}`);
   } else if (vides >= seuilWarn) {
     if (etat !== "alert") etat = "warn";
-    lignes.push(`${vides} h actives consécutives sans aucune ligne humaine (seuil ${seuilWarn} h)`);
+    lignes.push(`${vides} h actives consécutives sans aucune ligne humaine (seuil ${seuilWarn} h)${plage}`);
   }
 
-  // 3 dernières heures vs la même tranche les 7 jours précédents (contexte).
-  const somme = (base, decalJours) => {
-    let s = 0;
-    for (let k = 1; k <= 3; k++) s += parCle.get(heureParis(base - k * H - decalJours * 24 * H).cle) || 0;
-    return s;
-  };
-  const derniere3h = somme(now, 0);
-  const med3h = mediane([1, 2, 3, 4, 5, 6, 7].map((j) => somme(now, j)));
-  lignes.push(`3 dernières heures : ${derniere3h} ligne(s) (médiane 7 j même tranche : ${med3h})`);
+  // 3 dernières heures vs la même tranche les 7 jours précédents (contexte,
+  // en heures actives seulement : la nuit est vide, c'est la normale).
+  if (jugeMaintenant) {
+    const somme = (base, decalJours) => {
+      let s = 0;
+      for (let k = 1; k <= 3; k++) s += parCle.get(heureParis(base - k * H - decalJours * 24 * H).cle) || 0;
+      return s;
+    };
+    const derniere3h = somme(now, 0);
+    const med3h = mediane([1, 2, 3, 4, 5, 6, 7].map((j) => somme(now, j)));
+    lignes.push(`3 dernières heures : ${derniere3h} ligne(s) (médiane 7 j même tranche : ${med3h})`);
+  } else {
+    lignes.push(`trafic courant non évalué (nuit ${HEURE_FIN + 1}h-${HEURE_DEBUT}h Paris)`);
+  }
 
-  // Journée : à 21 h un jour ouvré, une journée < 100 lignes alors que la
-  // médiane des jours ouvrés dépasse 500 est une panne de télémétrie ou d'usage.
-  if (p.heure >= HEURE_FIN && !estWeekend(p.jour)) {
+  // Journée : une journée OUVRÉE < 100 lignes alors que la médiane des jours
+  // ouvrés dépasse 500 est une panne de télémétrie ou d'usage. Jugée sur TOUTE
+  // la nuit qui suit (dès 21 h : la journée ; avant 09 h : la veille), pas sur
+  // la seule heure 21 — un cron servi toutes les 2 à 5 h la manquerait un soir
+  // sur deux, et une alerte de 21 h se refermerait seule à 23 h (constat B-02).
+  const refJour = p.heure >= HEURE_FIN ? now : (p.heure < HEURE_DEBUT ? now - 24 * H : null);
+  if (refJour !== null) {
+    const pj = heureParis(refJour);
     const totalJour = (date) => {
       let s = 0;
       for (const [cle, n] of parCle) if (cle.startsWith(date)) s += n;
       return s;
     };
-    const aujourdhui = totalJour(p.date);
+    const total = totalJour(pj.date);
     const ouvres = [];
     for (let j = 1; j <= 7; j++) {
-      const q = heureParis(now - j * 24 * H);
+      const q = heureParis(refJour - j * 24 * H);
       if (!estWeekend(q.jour)) ouvres.push(totalJour(q.date));
     }
     const medOuvres = mediane(ouvres);
-    lignes.push(`journée : ${aujourdhui} ligne(s) (médiane jours ouvrés : ${medOuvres})`);
-    if (aujourdhui < JOURNEE_MIN_LIGNES && medOuvres > JOURNEE_MEDIANE_MIN) {
+    lignes.push(`journée du ${pj.date} : ${total} ligne(s) (médiane jours ouvrés : ${medOuvres})`);
+    if (!estWeekend(pj.jour) && total < JOURNEE_MIN_LIGNES && medOuvres > JOURNEE_MEDIANE_MIN) {
       etat = "alert";
       lignes.push(`journée ouvrée quasi vide (< ${JOURNEE_MIN_LIGNES} lignes)`);
     }
@@ -283,7 +296,10 @@ export function signalDeploiement(m, now) {
   const ageMin = m.mainHeadDate ? (now - Date.parse(m.mainHeadDate)) / 60_000 : NaN;
   if (Number.isFinite(ageMin) && ageMin > DEPLOIEMENT_RETARD_MIN) {
     return { etat: "alert", texte: `${lignes[0]} ; main est en avance depuis ${Math.round(ageMin)} min sans run en cours : déploiement bloqué`,
-      geste: "Actions > CI & Deploy : le dernier run main a-t-il tourné ? Sinon `gh workflow run deploy.yml --ref main` ; si Netlify sert encore l'ancien build, app.netlify.com > Deploys." };
+      // deploy.yml n'a pas de `workflow_dispatch` : `gh workflow run deploy.yml`
+      // est refusé (constat B-03). Ce qui marche : rejouer le dernier run, ou
+      // un commit vide sur main pour en déclencher un.
+      geste: "Actions > CI & Deploy > dernier run main > « Re-run all jobs » (`gh run rerun <id>`) ; s'il n'y a aucun run pour ce commit, pousse un commit vide sur main (`git commit --allow-empty -m \"Redéploiement\" && git push`) ; si le build est vert mais Netlify sert encore l'ancien, app.netlify.com > Deploys." };
   }
   return { etat: "ok", texte: `${lignes[0]} ; main en avance depuis ${Number.isFinite(ageMin) ? Math.round(ageMin) : "?"} min (délai normal)` };
 }
@@ -301,6 +317,9 @@ export function signalCrons(m, now) {
   for (const [nom, seuil] of Object.entries(SEUILS_CRONS)) {
     const x = m[nom];
     if (!x) { lignes.push(`${nom} : non mesuré`); if (etat === "ok") etat = "unknown"; continue; }
+    // Une lecture refusée (403 sans `actions: read`, 404) doit se lire telle
+    // quelle : « aucun run terminé » cacherait le code HTTP (constat B-01).
+    if (x.erreur) { lignes.push(`${nom} : lecture en échec (${String(x.erreur).slice(0, 120)})`); if (etat === "ok") etat = "unknown"; continue; }
     if (x.state && /^disabled/.test(x.state)) {
       etat = "alert";
       lignes.push(`${nom} : DÉSACTIVÉ (${x.state})`);
@@ -361,8 +380,15 @@ export function signalJetons(m) {
   let etat = "ok";
   const lignes = [];
   const gestes = [];
-  const mort = (x) => !x || x.statut === 401 || x.statut === 403;
+  // Trois états par jeton : 401/403 = refusé (alerte) ; 2xx = ok ; tout le
+  // reste (statut 0 posé par un `catch` réseau, 5xx, 429, absent) = NON LU.
+  // Un jeton non lu n'est pas un jeton valide (constat B-04) : le signal
+  // passe `unknown`, jamais « ok », sauf si une alerte l'emporte.
+  const mort = (x) => !!x && (x.statut === 401 || x.statut === 403);
+  const lu = (x) => !!x && x.statut >= 200 && x.statut < 300;
+  const nonLu = (nom, x) => { lignes.push(`${nom} : non lisible (HTTP ${x && Number.isFinite(x.statut) ? x.statut : "?"})`); if (etat === "ok") etat = "unknown"; };
   if (mort(m.github)) { etat = "alert"; lignes.push("SENTINELLE_TOKEN refusé par GitHub"); gestes.push("github.com/settings/tokens → régénérer, puis Settings > Secrets > SENTINELLE_TOKEN"); }
+  else if (!lu(m.github)) nonLu("SENTINELLE_TOKEN", m.github);
   else if (Number.isFinite(m.github.joursRestants)) {
     const j = m.github.joursRestants;
     if (j < JETON_ALERT_J) { etat = "alert"; lignes.push(`SENTINELLE_TOKEN expire dans ${j} j`); gestes.push("github.com/settings/tokens → régénérer, puis Settings > Secrets > SENTINELLE_TOKEN"); }
@@ -370,8 +396,10 @@ export function signalJetons(m) {
     else lignes.push(`SENTINELLE_TOKEN : ${j} j`);
   } else lignes.push("SENTINELLE_TOKEN : sans date d'expiration lisible");
   if (mort(m.supabase)) { etat = "alert"; lignes.push("SUPABASE_ACCESS_TOKEN refusé"); gestes.push("supabase.com/dashboard/account/tokens → nouveau jeton, puis Settings > Secrets > SUPABASE_ACCESS_TOKEN"); }
+  else if (!lu(m.supabase)) nonLu("SUPABASE_ACCESS_TOKEN", m.supabase);
   else lignes.push("SUPABASE_ACCESS_TOKEN : ok");
   if (mort(m.netlify)) { etat = "alert"; lignes.push("NETLIFY_AUTH_TOKEN refusé"); gestes.push("app.netlify.com/user/applications → nouveau jeton, puis Settings > Secrets > NETLIFY_AUTH_TOKEN"); }
+  else if (!lu(m.netlify)) nonLu("NETLIFY_AUTH_TOKEN", m.netlify);
   else lignes.push("NETLIFY_AUTH_TOKEN : ok");
   return { etat, texte: lignes.join(" ; "), geste: gestes.length ? gestes.join(" ; ") : undefined };
 }
@@ -420,11 +448,21 @@ export function verdictVeille(mesures, now) {
 // ── Garde : l'API de gestion n'exécute que du SELECT ────────────────────────
 // ADR-012 : jamais de DDL/DML depuis la CI. Une requête qui n'est pas un
 // SELECT (ou un WITH … SELECT) unique est REFUSÉE avant d'être envoyée.
+// Les commentaires SQL sont refusés d'emblée (aucune requête du script n'en
+// porte) : retirer `-- …` avant `/* … */` masquait un `;` que PostgreSQL
+// exécute bel et bien (`select 1 /* -- */ ; drop table …`, constat B-T01).
+// Le `;` est contrôlé sur la chaîne BRUTE, après retrait du seul `;` final.
 export function estSelectSeul(sql) {
-  const s = String(sql || "").replace(/--[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "").trim().replace(/;\s*$/, "");
-  if (!s || s.includes(";")) return false;
+  const s = String(sql || "").trim().replace(/;\s*$/, "");
+  if (!s || s.includes(";") || s.includes("--") || s.includes("/*")) return false;
   if (!/^(select|with)\b/i.test(s)) return false;
-  return !/\b(insert|update|delete|drop|alter|create|truncate|grant|revoke|copy|vacuum|call|do)\b/i.test(s);
+  return !/\b(insert|update|delete|drop|alter|create|truncate|grant|revoke|copy|vacuum|call|do|set|lock|refresh|reindex|cluster|execute|prepare|listen|notify)\b/i.test(s);
+}
+
+/** Toutes les mesures en échec : ce n'est pas un verdict, c'est un lecteur muet. */
+export function tousInconnus(verdict) {
+  const signaux = (verdict && verdict.signaux) || [];
+  return signaux.length > 0 && signaux.every((s) => s.etat === "unknown");
 }
 
 // ── Lectures (réseau) ───────────────────────────────────────────────────────
@@ -457,7 +495,7 @@ export const SQL = {
     group by 1 order by 1`,
   erreursDerniereHeure: `select (select count(*) from telemetry_events where env = 'production' and type = 'error' and (meta->>'synthetic') is null and received_at > now() - interval '1 hour')::int
       + (select count(*) from client_errors where created_at > now() - interval '1 hour')::int as "derniereHeure",
-      (select count(distinct device_id) from telemetry_events where env = 'production' and type = 'error' and received_at > now() - interval '1 hour')::int
+      (select count(distinct device_id) from telemetry_events where env = 'production' and type = 'error' and (meta->>'synthetic') is null and received_at > now() - interval '1 hour')::int
       + (select count(distinct uid) from client_errors where created_at > now() - interval '1 hour')::int as appareils`,
   api: `select
       count(*) filter (where http_status >= 500)::int as "n5xx",
@@ -614,7 +652,7 @@ if (estPrincipal) {
     const v = verdictVeille(mesures, Date.now());
     // Si TOUTES les lectures ont échoué, ce n'est pas un verdict, c'est une panne
     // du lecteur : on sort en erreur pour que l'issue [VEILLE MUETTE] parte.
-    if (v.signaux.every((s) => s.etat === "unknown")) {
+    if (tousInconnus(v)) {
       console.error("Aucune mesure n'a pu être lue :\n" + v.resume);
       process.exit(2);
     }

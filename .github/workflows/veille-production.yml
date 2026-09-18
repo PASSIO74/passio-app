@@ -45,9 +45,15 @@ concurrency:
   group: veille-production
   cancel-in-progress: false
 
+# `actions: read` : sans elle, toute portée non listée vaut `none` et les
+# lectures de runs/workflows par github.token répondent 403 « Resource not
+# accessible by integration » — les signaux `deploiement` et `crons` seraient
+# muets à chaque passage (constat B-01). Lecture seule, sans effet sur
+# l'anti-boucle.
 permissions:
   contents: read
   issues: write
+  actions: read
 
 jobs:
   veiller:
@@ -166,9 +172,12 @@ jobs:
 
       # ⚠️ UNE VEILLE QUI NE PARLE PLUS RESSEMBLE À UNE PRODUCTION SAINE. Si une
       # étape ci-dessus a échoué (jeton refusé, API de gestion en panne, script
-      # cassé), on le dit par une issue `[VEILLE MUETTE]` — label `disponibilite`
-      # (le même canal que la sonde du site) + `veille-muette` (dédup propre),
-      # jamais `claude`. Refermée au prochain run vert.
+      # cassé), on le dit par une issue `[VEILLE MUETTE]` — label `veille-muette`
+      # SEUL, jamais `claude`, et PAS `disponibilite` : disponibilite.yml referme
+      # « la première issue ouverte » de ce label dès que le site répond, avec
+      # un commentaire hors sujet (constat B-05). Le digest connaît
+      # `veille-muette` (LABELS_HUMAINS) et porte le geste. Refermée au
+      # prochain run vert.
       - name: Issue « VEILLE MUETTE » si le run a échoué
         if: failure() && github.event_name != 'pull_request'
         env:
@@ -177,7 +186,6 @@ jobs:
           set -u
           run_url="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           gh label create veille-muette --repo "${GITHUB_REPOSITORY}" --color "B60205" --description "La veille de production n'a pas pu rendre de verdict" --force >/dev/null 2>&1 || true
-          gh label create disponibilite --repo "${GITHUB_REPOSITORY}" --color "B60205" --description "Sonde de disponibilité du site servi" --force >/dev/null 2>&1 || true
           {
             echo "La veille de production n'a pas pu rendre de verdict : une de ses étapes a échoué."
             echo
@@ -192,5 +200,5 @@ jobs:
             gh issue comment "${existante}" --repo "${GITHUB_REPOSITORY}" --body-file /tmp/muette.md
           else
             gh issue create --repo "${GITHUB_REPOSITORY}" --title "[VEILLE MUETTE] la veille de production n'a pas rendu de verdict" \
-              --label disponibilite --label veille-muette --body-file /tmp/muette.md
+              --label veille-muette --body-file /tmp/muette.md
           fi
