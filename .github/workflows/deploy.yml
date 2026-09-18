@@ -84,6 +84,13 @@ jobs:
   governance:
     name: Gouvernance critique
     runs-on: ubuntu-latest
+    # `issues: write` (A6, 2026-09-18) : le refus d'un correctif de la sentinelle
+    # est ÉCRIT sur l'issue d'origine, qui passe `humain`. Toujours sans
+    # checkout : la garde n'exécute jamais ce qu'elle police.
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: write
     steps:
       - name: Résoudre la PR et vérifier la contre-revue
         env:
@@ -132,15 +139,47 @@ jobs:
             fi
           fi
           if [ "${sentinelle}" = "true" ]; then
+            # ⚠️ GOUVERNANCE ROUGE VISIBLE (A6, 2026-09-18). Un refus de périmètre
+            # ou de taille laissait l'issue [SENTINELLE] ouverte SANS UN MOT : la
+            # PR attendait, l'auto-fusion n'aboutissait jamais, seul l'e-mail du
+            # check rouge partait — et « une enquête à la fois » restait bloquée
+            # dessus. Le refus est désormais écrit sur l'issue d'origine, qui
+            # passe `humain` (hors du compte « une enquête à la fois »). La PR
+            # n'est PAS fermée d'ici : elle reste à relire. Texte écrit dans un
+            # fichier, jamais interpolé ; `github.token` : rien n'est redéclenché.
+            refuser_sentinelle() {
+              local raison="$1"
+              gh label create humain --repo "${GITHUB_REPOSITORY}" --color "5319E7" --force \
+                --description "La machine s'arrête : une décision humaine est attendue" >/dev/null 2>&1 || true
+              {
+                echo "### ⛔ Gouvernance : correctif refusé"
+                echo
+                echo "${raison}"
+                echo
+                echo "- PR : ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/pull/${pr}"
+                echo "- Run : ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+                echo
+                echo "La PR reste ouverte pour relecture ; elle ne sera ni déployée ni fusionnée automatiquement. Cette issue passe \`humain\` : elle ne bloque plus « une enquête à la fois ». Geste : relire la PR, la reprendre à la main ou la fermer avec la raison."
+              } > "${RUNNER_TEMP}/refus-sentinelle.md"
+              gh issue comment "${issue_num}" --repo "${GITHUB_REPOSITORY}" --body-file "${RUNNER_TEMP}/refus-sentinelle.md" >/dev/null || true
+              gh issue edit "${issue_num}" --repo "${GITHUB_REPOSITORY}" --add-label humain >/dev/null || true
+            }
+            # `docs/sentinelle/*.md` (A5) : la FICHE que l'enquête exige — la
+            # mémoire de la chaîne — est dans le périmètre et hors comptage,
+            # comme le verrou e2e. Rien d'autre sous docs/.
             hors_perimetre=""
             while IFS= read -r file; do
               case "${file}" in
-                js/*.js|styles.css|index.html|sw.js|tests/e2e/*.spec.js) ;;
+                # Un sous-dossier de docs/sentinelle/ n'est pas une fiche : hors périmètre,
+                # comme il est hors exclusion du comptage plus bas (les deux vont ensemble).
+                docs/sentinelle/*/*) hors_perimetre="${hors_perimetre}${file}"$'\n' ;;
+                js/*.js|styles.css|index.html|sw.js|tests/e2e/*.spec.js|docs/sentinelle/*.md) ;;
                 *) hors_perimetre="${hors_perimetre}${file}"$'\n' ;;
               esac
             done <<< "${files}"
             if [ -n "${hors_perimetre}" ]; then
-              echo "::error title=Perimetre de la sentinelle depasse::Cette PR vient d'une enquete [SENTINELLE] (issue #${issue_num}) et touche des fichiers hors du perimetre autorise (js/*.js, styles.css, index.html, sw.js, tests/e2e/*.spec.js) : "$'\n'"${hors_perimetre}Elle ne sera ni deployee ni fusionnee automatiquement."
+              echo "::error title=Perimetre de la sentinelle depasse::Cette PR vient d'une enquete [SENTINELLE] (issue #${issue_num}) et touche des fichiers hors du perimetre autorise (js/*.js, styles.css, index.html, sw.js, tests/e2e/*.spec.js, docs/sentinelle/*.md) : "$'\n'"${hors_perimetre}Elle ne sera ni deployee ni fusionnee automatiquement."
+              refuser_sentinelle "Périmètre dépassé : la PR touche des fichiers hors de js/*.js, styles.css, index.html, sw.js, tests/e2e/*.spec.js, docs/sentinelle/*.md :"$'\n\n'"${hors_perimetre}"
               exit 1
             fi
             # ⚠️ ASTRA-05, second étage (2026-09-15) : l'issue dit aussi « au-delà
@@ -168,7 +207,7 @@ jobs:
             # Le contrôle de périmètre le précède et interdirait `scripts/`, mais
             # une garde qui exécute ce qu'elle surveille est une garde de moins.
             # ASTRA-34:DEBUT (extrait et exécuté par tests/unit/sentinelle-taille-pr.test.mjs)
-            par_fichier="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${pr}/files" --jq '.[] | select(.filename | test("^tests/e2e/.*[.]spec[.]js$") | not) | (.additions + .deletions)')" || par_fichier="__ECHEC__"
+            par_fichier="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${pr}/files" --jq '.[] | select((.filename | test("^tests/e2e/.*[.]spec[.]js$")) or (.filename | test("^docs/sentinelle/[^/]+[.]md$")) | not) | (.additions + .deletions)')" || par_fichier="__ECHEC__"
             if [ "${par_fichier}" = "__ECHEC__" ]; then
               echo "::error title=Taille de la reparation non mesurable::Impossible de lire la liste des fichiers de la PR #${pr}. Par prudence, cette PR [SENTINELLE] ne sera ni deployee ni fusionnee automatiquement."
               exit 1
@@ -177,7 +216,8 @@ jobs:
             nb_lignes="$(printf '%s\n' "${par_fichier}" | awk '/^[0-9]+$/ { s += $1 } END { print s + 0 }')"
             # ASTRA-34:FIN
             if [ "${nb_fichiers}" -gt 2 ] || [ "${nb_lignes}" -gt 60 ]; then
-              echo "::error title=Reparation trop large pour la sentinelle::Cette PR vient d'une enquete [SENTINELLE] (issue #${issue_num}) et touche ${nb_fichiers} fichier(s) de code pour ${nb_lignes} ligne(s) changees (limite : 2 fichiers, 60 lignes, verrou e2e non compte). Ce n'est plus une reparation : elle ne sera ni deployee ni fusionnee automatiquement — un humain decide."
+              echo "::error title=Reparation trop large pour la sentinelle::Cette PR vient d'une enquete [SENTINELLE] (issue #${issue_num}) et touche ${nb_fichiers} fichier(s) de code pour ${nb_lignes} ligne(s) changees (limite : 2 fichiers, 60 lignes, verrou e2e et fiche non comptes). Ce n'est plus une reparation : elle ne sera ni deployee ni fusionnee automatiquement — un humain decide."
+              refuser_sentinelle "Réparation trop large : ${nb_fichiers} fichier(s) de code pour ${nb_lignes} ligne(s) changées (limite : 2 fichiers, 60 lignes, verrou e2e et fiche non comptés). Ce n'est plus une réparation bornée."
               exit 1
             fi
             echo "- Sentinelle (issue #${issue_num}) : périmètre respecté (${nb_fichiers} fichier(s) de code, ${nb_lignes} ligne(s))" >> "${GITHUB_STEP_SUMMARY}"
@@ -838,6 +878,83 @@ jobs:
           NETLIFY_BIN="$RUNNER_NETLIFY/node_modules/.bin/netlify"
           "$NETLIFY_BIN" --version
           "$NETLIFY_BIN" deploy --prod --dir "$GITHUB_WORKSPACE/dist" --auth "$NETLIFY_AUTH_TOKEN" --site "$NETLIFY_SITE_ID"
+
+  # ⚠️ RETOUR SUR L'ISSUE AU DÉPLOIEMENT (A7, 2026-09-18). `Closes #n` ferme
+  # l'issue à la FUSION — c'est ce qui débloque « une enquête à la fois », on le
+  # garde. Mais le déploiement dure encore 11 à 62 min et peut échouer : 8 rouges
+  # sur main en 10 j (09-15/09), dont un job « Déploiement production », sans
+  # qu'aucune issue ne le dise — la prod restait sur le build d'avant et seul
+  # l'e-mail du run rouge partait. Ce job retrouve la PR du commit fusionné et
+  # ses issues (`closingIssuesReferences`), et écrit sur chacune : « déployé »
+  # (heure, run, commit) ou, si le déploiement n'a pas eu lieu (job rouge, ou
+  # sauté parce qu'un test l'est), ROUVRE l'issue `sentinelle` avec le label
+  # `humain` et un commentaire. C'est aussi la date que la dédup du détecteur
+  # lit (`deployeA`, via le run vert de ce commit).
+  # ⚠️ GITHUB_TOKEN, jamais SENTINELLE_TOKEN : ni le commentaire, ni la
+  # réouverture, ni le label ne redéclenchent claude-code.yml — et l'e-mail
+  # part vers Benjamin (GitHub ne notifie personne de ses propres gestes).
+  retour-issue:
+    name: Retour sur l'issue (déployé ou non)
+    if: always() && github.event_name == 'push'
+    needs: [deploy]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: write
+    steps:
+      - name: Commenter « déployé », ou rouvrir
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESULTAT: ${{ needs.deploy.result }}
+        run: |
+          set -euo pipefail
+          R="${GITHUB_REPOSITORY}"
+          run_url="${GITHUB_SERVER_URL}/${R}/actions/runs/${GITHUB_RUN_ID}"
+          pr="$(gh api "repos/${R}/commits/${GITHUB_SHA}/pulls" --jq '.[0].number // empty')"
+          if [ -z "${pr}" ]; then
+            echo "Aucune PR associée à ${GITHUB_SHA} : rien à écrire."
+            exit 0
+          fi
+          issues="$(gh pr view "${pr}" --repo "${R}" --json closingIssuesReferences --jq '.closingIssuesReferences[].number')"
+          if [ -z "${issues}" ]; then
+            echo "PR #${pr} sans issue liée : rien à écrire."
+            exit 0
+          fi
+          quand="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          for n in ${issues}; do
+            case "${n}" in ''|*[!0-9]*) continue ;; esac
+            labels="$(gh api "repos/${R}/issues/${n}" --jq '[.labels[].name] | join(",")')"
+            sentinelle=non
+            case ",${labels}," in *",sentinelle,"*) sentinelle=oui ;; esac
+            if [ "${RESULTAT}" = "success" ]; then
+              echo "✅ Déployé en production à ${quand} — run ${run_url}, commit \`${GITHUB_SHA}\` (PR #${pr})." > "${RUNNER_TEMP}/deploye.md"
+              gh issue comment "${n}" --repo "${R}" --body-file "${RUNNER_TEMP}/deploye.md" >/dev/null
+              echo "#${n} : déployé."
+            else
+              {
+                echo "### ⛔ Fusionné mais NON déployé"
+                echo
+                echo "Le job « Déploiement production » du commit \`${GITHUB_SHA}\` (PR #${pr}) s'est terminé en \`${RESULTAT}\` : la production sert toujours le build d'avant. Run : ${run_url}"
+                echo
+                if [ "${sentinelle}" = "oui" ]; then
+                  echo "Cette issue est ROUVERTE avec le label \`humain\` (elle ne bloque pas « une enquête à la fois »). Geste : lire le run rouge, relancer le déploiement (nouveau push sur main, ou re-run du job), puis refermer l'issue à la main."
+                else
+                  echo "Geste : lire le run rouge et relancer le déploiement (nouveau push sur main, ou re-run du job)."
+                fi
+              } > "${RUNNER_TEMP}/non-deploye.md"
+              gh issue comment "${n}" --repo "${R}" --body-file "${RUNNER_TEMP}/non-deploye.md" >/dev/null
+              if [ "${sentinelle}" = "oui" ]; then
+                gh label create humain --repo "${R}" --color "5319E7" --force \
+                  --description "La machine s'arrête : une décision humaine est attendue" >/dev/null 2>&1 || true
+                gh issue reopen "${n}" --repo "${R}" >/dev/null || true
+                gh issue edit "${n}" --repo "${R}" --add-label humain >/dev/null || true
+                echo "#${n} : NON déployé, rouverte + humain."
+              else
+                echo "#${n} : NON déployé, commenté."
+              fi
+            fi
+          done
 
   preview:
     name: Déploiement preview (PR)

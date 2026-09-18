@@ -152,6 +152,21 @@ test("⑥ le workflow ne contient plus l'agrégat PAR PAGE, et le périmètre ga
   assert.match(y, /files="\$\(gh api --paginate .*--jq '\.\[\]\.filename'\)"/, "le périmètre doit rester en une ligne par fichier");
 });
 
+test("⑧ la FICHE docs/sentinelle/*.md ne compte ni en fichiers ni en lignes ; un autre doc compte", () => {
+  // A5 (2026-09-18) : l'enquête EXIGE une fiche de mémoire, comme elle exige un
+  // verrou — la compter dans les 60 lignes ferait refuser un correctif de
+  // 30 lignes accompagné de sa fiche de 40. Seul `docs/sentinelle/<nom>.md`
+  // est exclu : un README ailleurs sous docs/ reste hors périmètre (contrôle
+  // de périmètre, plus haut) et, s'il passait, serait compté.
+  // Mutation : retirer `or (.filename | test("^docs/sentinelle/[^/]+[.]md$"))`
+  // de la ligne de mesure de deploy.yml → rougit (2 fichiers, 70 lignes).
+  const FICHE = { filename: "docs/sentinelle/2026-09-18-138b32a1.md", additions: 40, deletions: 0 };
+  assert.deepEqual(executer([[CODE(1, 30, 0), FICHE, VERROU(1)]]), { nbFichiers: 1, nbLignes: 30 });
+  assert.deepEqual(executer([[FICHE], [CODE(2, 5, 0)]]), { nbFichiers: 1, nbLignes: 5 }, "réparti entre les pages");
+  assert.deepEqual(executer([[{ filename: "docs/AUTRE.md", additions: 40, deletions: 0 }]]), { nbFichiers: 1, nbLignes: 40 }, "un doc hors docs/sentinelle/ est compté");
+  assert.deepEqual(executer([[{ filename: "docs/sentinelle/sous/dossier.md", additions: 40, deletions: 0 }]]), { nbFichiers: 1, nbLignes: 40 }, "un sous-dossier n'est pas une fiche");
+});
+
 test("⑦ un échec de l'API ne compte pas zéro — il refuse", () => {
   const dir = mkdtempSync(join(tmpdir(), "astra34-ko-"));
   mkdirSync(join(dir, "bin"));
