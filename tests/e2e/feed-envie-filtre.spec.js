@@ -100,7 +100,12 @@ async function poser(page, opts = {}) {
   await page.waitForTimeout(300);
 }
 
-const filTexte = (page) => page.evaluate(() => document.getElementById("feedList").innerText);
+// ⚠️ `textContent`, PAS `innerText` (2026-09-18). `.post` porte
+// `content-visibility: auto` : une carte entièrement hors écran n'est pas mise
+// en page, et `innerText` — sensible au RENDU — l'omet. Mesuré en CI : la
+// sonde rendait le seul module « Passionnés à découvrir » pendant que les deux
+// cartes attendues étaient dans le DOM, sous le pli. `textContent` lit le DOM.
+const filTexte = (page) => page.evaluate(() => document.getElementById("feedList").textContent);
 const titreVide = (page) => page.evaluate(() => {
   const t = document.querySelector("#feedEmpty .empty-title");
   const box = document.getElementById("feedEmpty");
