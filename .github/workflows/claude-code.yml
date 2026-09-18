@@ -383,6 +383,18 @@ jobs:
             7. Si la spécification est ambiguë ou dangereuse, ne devine pas :
                ouvre quand même la PR avec ce que tu peux faire sûrement, et
                explique le doute dans son corps.
+            8. Enquête de la sentinelle (issue étiquetée `sentinelle`) :
+               ${{ contains(join(github.event.issue.labels.*.name, ','), 'sentinelle') && 'OUI' || 'NON' }}.
+               Si OUI : la spécification vient d'une alerte de production. Écris
+               la fiche `docs/sentinelle/<date>-<condensé>.md` qu'elle demande
+               (Cause / Correctif / Verrou / Leçon / Hors-champ, 40 lignes au
+               plus), et termine ton message de commit par quatre lignes
+               `Cause: …`, `Correctif: …`, `Verrou: …`, `Leçon: …` (une phrase
+               chacune, sans retour à la ligne). Le workflow recopie ces quatre
+               lignes sur l'issue : c'est la mémoire de la chaîne, ce qui évite
+               de rejouer la même enquête au défaut suivant. Si la cause n'est
+               pas établie, écris-le dans `Cause:` et ne corrige rien.
+               Si NON : ce bloc n'est pas demandé.
           # ── DROITS D'OUTILS ───────────────────────────────────────────
           # Sans --allowedTools, `parseAllowedTools` renvoie [] : AUCUN serveur
           # MCP GitHub n'est installé et CHAQUE appel Bash est refusé, parce
@@ -875,6 +887,7 @@ jobs:
               echo "pr_ouverte=true" >> "$GITHUB_OUTPUT"
               if [ "${JETON_PERSONNEL}" != "oui" ]; then
                 echo "::warning title=PR sans integration continue::La PR est ouverte par le workflow avec le GITHUB_TOKEN : GitHub ne declenchera aucun controle dessus. La rouvrir depuis un compte humain sur la branche « ${ATTENDUE} » pour obtenir une CI. Poser le secret SENTINELLE_TOKEN rend cette etape autonome."
+                echo "auto_fusion=impossible (PR sans CI : jeton GITHUB_TOKEN)" >> "$GITHUB_OUTPUT"
               else
                 # ⚠️ L'AUTO-FUSION N'EST ARMÉE QUE POUR LA SENTINELLE.
                 # Une tâche demandée par Benjamin doit rester sous ses yeux :
@@ -891,13 +904,20 @@ jobs:
                 case "${TITRE_ISSUE}" in "[SENTINELLE]"*) : ;; *) marque_sentinelle=non ;; esac
                 case "${RELATION_AUTEUR}" in OWNER|MEMBER) : ;; *) marque_sentinelle=non ;; esac
                 if [ "${marque_sentinelle}" = "oui" ]; then
+                  # L'état de l'auto-fusion est RESTITUÉ sur l'issue (sortie
+                  # `auto_fusion`, reprise par le commentaire de succès) : un
+                  # armement refusé n'était visible que dans le résumé du run,
+                  # et la PR attendait un humain sans que rien ne le dise.
                   if gh pr merge "${ATTENDUE}" --repo "${DEPOT}" --auto --squash; then
                     echo "Auto-fusion armée : GitHub fusionnera si toute la CI passe." >> "${GITHUB_STEP_SUMMARY}"
+                    echo "auto_fusion=armée (fusion dès que toute la CI est verte)" >> "$GITHUB_OUTPUT"
                   else
                     echo "::warning title=Auto-fusion non armee::La PR est ouverte et la CI tourne, mais l'auto-fusion a ete refusee (fonction desactivee sur le depot, ou protection de branche absente). La PR attend donc une fusion manuelle."
+                    echo "auto_fusion=refusée par GitHub : fusion manuelle attendue" >> "$GITHUB_OUTPUT"
                   fi
                 else
                   echo "Auto-fusion NON armée (label \`sentinelle\` absent, auteur non OWNER/MEMBER, ou titre sans préfixe) : cette tâche reste à relire." >> "${GITHUB_STEP_SUMMARY}"
+                  echo "auto_fusion=non armée : tâche à relire et fusionner à la main" >> "$GITHUB_OUTPUT"
                 fi
               fi
             else
@@ -1007,8 +1027,35 @@ jobs:
           NB: ${{ steps.preuve.outputs.nb_fichiers }}
           ECARTES: ${{ steps.spec.outputs.ecartes }}
           LIEN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          AUTO_FUSION: ${{ steps.publier.outputs.auto_fusion || 'sans objet (PR déjà ouverte)' }}
+          SENTINELLE: ${{ contains(join(github.event.issue.labels.*.name, ','), 'sentinelle') && 'oui' || 'non' }}
         run: |
           set -euo pipefail
+          # ── La fiche : le bloc Cause / Correctif / Verrou / Leçon du commit ──
+          # C'est du texte du MODÈLE : de la donnée, jamais interpolée dans un
+          # `run:`. Lu dans un FICHIER, passé par le même `desamorcer` que les
+          # issues de la sentinelle (scripts/ n a pas pu être modifié par Claude :
+          # la publication le refuse plus haut), écrit dans un fichier, concaténé.
+          # Sans ce bloc, la leçon restait dans un message de commit que personne
+          # ne relit (mesuré : la même enquête trois fois le 12/09).
+          git log -1 --format=%b "${BRANCHE}" > "${RUNNER_TEMP}/corps-commit.txt" 2>/dev/null || : > "${RUNNER_TEMP}/corps-commit.txt"
+          if ! node --input-type=module -e '
+            import fs from "node:fs";
+            const { desamorcer } = await import("./scripts/sentinelle-detecter.mjs");
+            const corps = fs.readFileSync(process.env.RUNNER_TEMP + "/corps-commit.txt", "utf8");
+            const RE = /^(Cause|Correctif|Verrou|Le[cç]on|Hors-champ)\s*:/i;
+            const bloc = [];
+            for (const l of corps.replace(/\r/g, "").split("\n")) {
+              if (RE.test(l)) bloc.push(l);
+              else if (bloc.length && /^\s+\S/.test(l)) bloc[bloc.length - 1] += " " + l.trim();
+            }
+            const sortie = [];
+            if (bloc.length) sortie.push("### Fiche (message de commit)", "", "```text", desamorcer(bloc.join("\n"), 12), "```", "");
+            else if (process.env.SENTINELLE === "oui") sortie.push("### Fiche absente", "", "Le message de commit ne porte pas le bloc Cause / Correctif / Verrou / Leçon demandé par la spécification : la PR est à relire sur ce point.", "");
+            fs.writeFileSync(process.env.RUNNER_TEMP + "/fiche.md", sortie.join("\n"));
+          '; then
+            printf '%s\n' "### Fiche" "" "(fiche illisible : erreur du workflow, non bloquante)" "" > "${RUNNER_TEMP}/fiche.md"
+          fi
           {
             echo "### ✅ Claude Code a exécuté cette tâche"
             echo
@@ -1021,11 +1068,13 @@ jobs:
             echo "| Pull request | ${PR_LIEN} |"
             echo "| Fichiers modifiés | ${NB} |"
             echo "| Commentaires tiers écartés | ${ECARTES} |"
+            echo "| Auto-fusion | ${AUTO_FUSION} |"
             echo "| Run | ${LIEN} |"
             echo
             echo "La branche existe sur \`origin\`, elle diffère réellement de \`main\`,"
             echo "et la PR ci-dessus pointe exactement dessus. Rien n'a été poussé sur \`main\`."
             echo
+            cat "${RUNNER_TEMP}/fiche.md"
             echo "---"
             echo "_Generated by [Claude Code](https://claude.ai/code)_"
           } > "${RUNNER_TEMP}/succes.md"
