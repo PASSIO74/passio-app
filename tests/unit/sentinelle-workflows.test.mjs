@@ -78,6 +78,8 @@ case "$tout" in
   "issue list"*"--author PASSIO74"*) corps="$(cat "$FX/issues-author.json")" ;;
   "issue list"*"--state closed"*) corps="$(cat "$FX/issues-closed.json")" ;;
   "issue list"*"--label sentinelle --label humain"*) corps="$(cat "$FX/issues-open-humain.json")" ;;
+  # Les tableaux (lot F) : AVANT la forme générique --state open, qui l'avalerait.
+  "issue list"*"--label tableau"*) corps="$(cat "$FX/issues-tableau.json")" ;;
   "issue list"*"--state open"*) corps="$(cat "$FX/issues-open.json")" ;;
   "pr list"*"--state merged"*) corps="$(cat "$FX/prs-merged.json")" ;;
   "pr list"*) corps="$(cat "$FX/prs-all.json")" ;;
@@ -614,16 +616,155 @@ test("digest.yml : Composer — code 3 (digest à émettre) rend emettre=oui et 
 test("veille-production.yml : Verdict — code 3 (alerte) rend alerte=oui et le résumé ; code 0 → non ; sans SUPABASE_ACCESS_TOKEN l'étape REFUSE", () => {
   const run = etape(VEI, "veiller", "Verdict").run;
   const env = fauxNode("veille");
-  const json = JSON.stringify({ titre: "[VEILLE] flux silencieux", corps: "corps", resume: "[alert] flux — silence 5 h\n[ok] base — 200", alerte: true });
+  const json = JSON.stringify({ titre: "[VEILLE] flux silencieux", corps: "corps", resume: "[ALERTE] flux — silence 5 h\n[ok] base — 200", alerte: true });
   let r = jouer(run, { ...env, SUPABASE_ACCESS_TOKEN: "jeton-de-test", FAUX_JSON: json, FAUX_CODE: "3" });
   assert.equal(r.code, 0, "code 3 = alerte, pas une panne : " + r.sortie);
   assert.match(r.out, /^alerte=oui$/m, r.out);
   assert.match(r.summary, /^## Veille de production$/m, r.summary);
-  assert.match(r.summary, /^- \[alert\] flux/m, r.summary);
+  assert.match(r.summary, /^- \[ALERTE\] flux/m, r.summary);
   r = jouer(run, { ...env, SUPABASE_ACCESS_TOKEN: "jeton-de-test", FAUX_JSON: json.replace('"alerte":true', '"alerte":false'), FAUX_CODE: "0" });
   assert.equal(r.code, 0, r.sortie);
   assert.match(r.out, /^alerte=non$/m, r.out);
   r = jouer(run, { ...env, SUPABASE_ACCESS_TOKEN: "", FAUX_JSON: json, FAUX_CODE: "3" });
   assert.equal(r.code, 1, "sans jeton, la veille est aveugle : refus, pas un verdict");
   assert.ok(r.sortie.includes("SUPABASE_ACCESS_TOKEN absent"), r.sortie);
+});
+
+// ═══ F — Tableaux : les comptes rendus vivent dans le centre de pilotage ═════════════════
+// Benjamin ne lit pas ses mails (2026-09-18) : chaque canal RÉÉCRIT le corps d'UNE issue permanente
+// `[TABLEAU] …` (label `tableau`, jamais `claude` ; éditer un corps n'envoie aucune notification) que le
+// centre de pilotage lit. Les deux tableaux PARTAGENT le label : l'upsert filtre le titre localement,
+// jamais par `--search` (index en retard, #316 — forme inconnue du faux gh). Ici l'étape RÉELLE
+// « Verdict » / « Composer » produit d'abord /tmp/resume.md, /tmp/titre.txt, /tmp/corps.md dans le bac,
+// puis l'étape RÉELLE « Tableau » les lit : le contrat entre les deux étapes est mesuré, pas recopié.
+const TABLEAU_VEILLE = { number: 810, title: "[TABLEAU] Veille de production" };
+const TABLEAU_DIGEST = { number: 811, title: "[TABLEAU] Digest" };
+
+/** Verrous STATIQUES communs aux deux étapes Tableau : condition, continue-on-error, jeton, labels, position. */
+function verrouxStatiques(doc, job, idPrecedent) {
+  const t = etape(doc, job, "Tableau");
+  // Mutation F1 : retirer `continue-on-error: true` → rougit (un tableau non écrit tuerait le run : [VEILLE MUETTE]/[DIGEST MUET] pour rien).
+  assert.equal(String(t["continue-on-error"]), "true", "continue-on-error: true — un tableau non écrit n'est pas une veille muette");
+  // Mutation F2 : retirer `steps.<id>.conclusion == 'success'` de la condition → rougit (tableau écrit sans verdict rendu).
+  assert.ok(String(t.if).includes("steps." + idPrecedent + ".conclusion == 'success'"), "n'écrit que sur un verdict rendu : " + t.if);
+  assert.ok(String(t.if).includes("github.event_name != 'pull_request'"), "jamais sur une PR : " + t.if);
+  // Mutation F4 : `GH_TOKEN: ${{ github.token }}` → `${{ secrets.SENTINELLE_TOKEN }}` → rougit (une issue de PASSIO74, éligible à claude-code.yml).
+  assert.equal(t.env.GH_TOKEN, "${{ github.token }}", "le tableau est écrit avec github.token, jamais SENTINELLE_TOKEN");
+  assert.ok(!t.run.includes("SENTINELLE_TOKEN") && !t.run.includes("--search") && !t.run.includes("--label claude"), "ni jeton personnel, ni --search, ni label claude dans le bloc");
+  assert.ok(t.run.includes("--body-file /tmp/tableau.md"), "le corps passe par un fichier, jamais interpolé");
+  // Mutation F12 : retirer le `trap … ERR` → rougit. Sous continue-on-error, une étape Tableau qui échoue à CHAQUE
+  // passage laisserait le run vert et le pilotage sur « aucun tableau lu » pour toujours : l'échec doit s'annoncer.
+  assert.ok(/trap '[^\n]*::warning title=Tableau non écrit::[^\n]*GITHUB_STEP_SUMMARY[^\n]*' ERR/.test(t.run), "un échec du tableau s'annonce (::warning + résumé) même si le run reste vert");
+  const steps = doc.jobs[job].steps;
+  // Mutation F11 : renommer `id: verdict` / `id: digest` (l'id que la condition désigne) → rougit. Sur GitHub,
+  // `steps.<id inexistant>.conclusion` est vide : la condition serait fausse et le tableau JAMAIS réécrit, sans rouge.
+  const iPrec = steps.findIndex((x) => x.id === idPrecedent);
+  assert.ok(iPrec >= 0, "l'étape id=" + idPrecedent + " existe : la condition de Tableau la désigne (" + t.if + ")");
+  assert.ok(steps.indexOf(t) > iPrec, "l'étape Tableau vient APRÈS « " + idPrecedent + " »");
+  return t;
+}
+
+test("veille-production.yml : Tableau — issue absente → `issue create` label `tableau` SEUL (github.token), corps = marqueur, Mis à jour, Run, Alerte, lignes du script sans « - » ; écrit aussi quand Alerte : non", () => {
+  // Mutation F3 : `--label tableau` → `--label tableau --label claude` → rougit (claude-code.yml déclenché à chaque passage).
+  // Mutation F5 : `sed -nE 's/^- //p' /tmp/resume.md` → `cat /tmp/resume.md` → rougit (en-tête et préfixe « - » dans le corps).
+  // Mutation F6 : `echo "<!-- tableau:veille v1 -->"` retiré → rougit (le pilotage ignore un corps sans marqueur).
+  // Mutation F8 : `echo "Alerte : ${ALERTE}"` retiré → rougit.
+  const t = verrouxStatiques(VEI, "veiller", "verdict");
+  // L'étape RÉELLE « Verdict » (faux node, code 3) écrit /tmp/resume.md dans le bac.
+  const env = fauxNode("veille");
+  const json = JSON.stringify({ titre: "[VEILLE] flux silencieux", corps: "corps", alerte: true,
+    resume: "[ALERTE] flux — silence 5 h\n[ATTENTION] jetons — SENTINELLE_TOKEN expire dans 13 j ; SUPABASE_ACCESS_TOKEN : ok\n[ok] base — 200" });
+  const v = jouer(etape(VEI, "veiller", "Verdict").run, { ...env, SUPABASE_ACCESS_TOKEN: "jeton-de-test", FAUX_JSON: json, FAUX_CODE: "3" });
+  assert.equal(v.code, 0, v.sortie);
+  fixtures({ "issues-tableau": [] });
+  const r = jouer(t.run, { GH_TOKEN: "integre", ALERTE: "oui" });
+  assert.equal(r.code, 0, r.sortie);
+  const iLabel = r.lignes.findIndex((x) => x.startsWith("label create tableau "));
+  const iCreate = r.lignes.findIndex((x) => x.startsWith("issue create"));
+  assert.ok(iLabel >= 0 && iCreate > iLabel, "le label `tableau` est créé (--force) AVANT l'issue\n" + r.log);
+  assert.match(r.lignes[iLabel], /--force/, r.lignes[iLabel]);
+  assert.match(r.lignes[iCreate], /^issue create --repo o\/r --title \[TABLEAU\] Veille de production --body-file \S+\/tableau\.md --label tableau :: jeton=integre$/, r.log);
+  assert.doesNotMatch(r.log, /--label claude/, r.log);
+  assert.ok(!r.log.includes("issue edit"), "absente → création seulement\n" + r.log);
+  const corps = fs.readFileSync(BAC + "/tableau.md", "utf8");
+  assert.ok(corps.startsWith("<!-- tableau:veille v1 -->\nMis à jour : "), "le marqueur ouvre le corps\n" + corps);
+  assert.match(corps, /^Mis à jour : \d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/m, corps);
+  assert.match(corps, /^Run : https:\/\/github\.com\/o\/r\/actions\/runs\/1$/m, corps);
+  assert.match(corps, /^Alerte : oui$/m, corps);
+  assert.ok(corps.endsWith("\n\n[ALERTE] flux — silence 5 h\n[ATTENTION] jetons — SENTINELLE_TOKEN expire dans 13 j ; SUPABASE_ACCESS_TOKEN : ok\n[ok] base — 200\n"),
+    "les lignes de signaux telles que le script les rend, après une ligne vide, sans préfixe « - »\n" + corps);
+  assert.ok(!corps.includes("## Veille de production") && !corps.includes("\n- ["), "sans l'en-tête ni le préfixe de /tmp/resume.md\n" + corps);
+  assert.ok(r.summary.includes("Tableau créé : #999"), r.summary);
+  // Alerte : non → le tableau est écrit QUAND MÊME (quel que soit `alerte`).
+  const r2 = jouer(t.run, { GH_TOKEN: "integre", ALERTE: "non" });
+  assert.equal(r2.code, 0, r2.sortie);
+  assert.ok(r2.log.includes("issue create"), "écrit sans alerte aussi\n" + r2.log);
+  assert.match(fs.readFileSync(BAC + "/tableau.md", "utf8"), /^Alerte : non$/m);
+});
+
+test("veille-production.yml : Tableau — issue présente → `issue edit N --body-file`, AUCUN create, et c'est la SIENNE (pas le digest, label partagé)", () => {
+  // Mutation F7 : le jq → `.[0].number // empty` (sans filtre de titre) → rougit (le digest, listé en tête, serait réécrit par la veille).
+  // Mutation : `gh issue edit … --body-file` → `--body "$(cat …)"` → rougit (forme non journalisée avec le corps).
+  fs.writeFileSync(BAC + "/resume.md", "## Veille de production\n\n- [ok] flux — 8 canari(s) en 2 h\n");
+  fixtures({ "issues-tableau": [TABLEAU_DIGEST, TABLEAU_VEILLE] });
+  const r = jouer(etape(VEI, "veiller", "Tableau").run, { GH_TOKEN: "integre", ALERTE: "non" });
+  assert.equal(r.code, 0, r.sortie);
+  const edit = r.lignes.find((x) => x.startsWith("issue edit"));
+  assert.ok(edit && edit.startsWith("issue edit 810 --repo o/r --body-file "), "#810 (la veille), pas #811\n" + r.log);
+  assert.ok(edit.includes(" :: <!-- tableau:veille v1 --> Mis à jour : ") && edit.includes("Alerte : non") && edit.includes("[ok] flux — 8 canari(s) en 2 h"), edit);
+  assert.ok(edit.endsWith(":: jeton=integre"), edit);
+  assert.ok(!r.log.includes("issue create"), "présente → aucune création\n" + r.log);
+  assert.ok(!r.log.includes("811"), "#811 (le digest) intacte\n" + r.log);
+  assert.ok(r.summary.includes("Tableau mis à jour : #810"), r.summary);
+});
+
+test("digest.yml : Tableau — issue absente → `issue create` label `tableau` SEUL (github.token), corps = marqueur, Mis à jour, Run, Émis, `# titre` puis /tmp/corps.md tel quel ; écrit aussi quand Émis : non", () => {
+  // Mutation F3 : `--label tableau` → `--label tableau --label claude` → rougit.
+  // Mutation F6 : `echo "<!-- tableau:digest v1 -->"` retiré → rougit.
+  // Mutation F9 : `echo "# $(cat /tmp/titre.txt)"` retiré → rougit (le pilotage n'a plus de titre).
+  // Mutation F10 : `cat /tmp/corps.md` retiré → rougit.
+  const t = verrouxStatiques(DIG, "composer", "digest");
+  // L'étape RÉELLE « Composer » (faux node, code 3) écrit /tmp/titre.txt et /tmp/corps.md dans le bac.
+  const env = fauxNode("digest");
+  const json = JSON.stringify({ titre: "[DIGEST] 2026-09-18 — 2 à faire", texte: "## À faire\n\n- **#77** contre-revue\n- #503 décision", aFaire: [1, 2], emettre: true, lundi: false });
+  const c = jouer(etape(DIG, "composer", "Composer").run, { ...env, FAUX_JSON: json, FAUX_CODE: "3" });
+  assert.equal(c.code, 0, c.sortie);
+  fixtures({ "issues-tableau": [] });
+  const r = jouer(t.run, { GH_TOKEN: "integre", EMIS: "oui" });
+  assert.equal(r.code, 0, r.sortie);
+  const iLabel = r.lignes.findIndex((x) => x.startsWith("label create tableau "));
+  const iCreate = r.lignes.findIndex((x) => x.startsWith("issue create"));
+  assert.ok(iLabel >= 0 && iCreate > iLabel, "le label `tableau` est créé (--force) AVANT l'issue\n" + r.log);
+  assert.match(r.lignes[iCreate], /^issue create --repo o\/r --title \[TABLEAU\] Digest --body-file \S+\/tableau\.md --label tableau :: jeton=integre$/, r.log);
+  assert.doesNotMatch(r.log, /--label claude/, r.log);
+  assert.ok(!r.log.includes("issue edit"), "absente → création seulement\n" + r.log);
+  const corps = fs.readFileSync(BAC + "/tableau.md", "utf8");
+  assert.ok(corps.startsWith("<!-- tableau:digest v1 -->\nMis à jour : "), "le marqueur ouvre le corps\n" + corps);
+  assert.match(corps, /^Mis à jour : \d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/m, corps);
+  assert.match(corps, /^Run : https:\/\/github\.com\/o\/r\/actions\/runs\/1$/m, corps);
+  assert.match(corps, /^Émis : oui$/m, corps);
+  assert.ok(corps.includes("\n\n# [DIGEST] 2026-09-18 — 2 à faire\n## À faire\n\n- **#77** contre-revue\n- #503 décision\n"), "`# titre` puis le corps composé, tel quel\n" + corps);
+  assert.match(corps, /^_Composé le \d{4}-\d\d-\d\dT.*_$/m, "la signature de Composer est reprise telle quelle\n" + corps);
+  assert.ok(r.summary.includes("Tableau créé : #999"), r.summary);
+  // Émis : non → le tableau est écrit QUAND MÊME (seule l'issue [DIGEST] est conditionnelle).
+  const r2 = jouer(t.run, { GH_TOKEN: "integre", EMIS: "non" });
+  assert.equal(r2.code, 0, r2.sortie);
+  assert.ok(r2.log.includes("issue create"), "écrit sans émission aussi\n" + r2.log);
+  assert.match(fs.readFileSync(BAC + "/tableau.md", "utf8"), /^Émis : non$/m);
+});
+
+test("digest.yml : Tableau — issue présente → `issue edit N --body-file`, AUCUN create, et c'est la SIENNE (pas la veille, label partagé)", () => {
+  // Mutation F7 : le jq → `.[0].number // empty` (sans filtre de titre) → rougit (la veille, listée en tête, serait réécrite par le digest).
+  fs.writeFileSync(BAC + "/titre.txt", "[DIGEST] 2026-09-19 — rien à faire");
+  fs.writeFileSync(BAC + "/corps.md", "Rien à faire.\n");
+  fixtures({ "issues-tableau": [TABLEAU_VEILLE, TABLEAU_DIGEST] });
+  const r = jouer(etape(DIG, "composer", "Tableau").run, { GH_TOKEN: "integre", EMIS: "non" });
+  assert.equal(r.code, 0, r.sortie);
+  const edit = r.lignes.find((x) => x.startsWith("issue edit"));
+  assert.ok(edit && edit.startsWith("issue edit 811 --repo o/r --body-file "), "#811 (le digest), pas #810\n" + r.log);
+  assert.ok(edit.includes(" :: <!-- tableau:digest v1 --> Mis à jour : ") && edit.includes("Émis : non") && edit.includes("# [DIGEST] 2026-09-19 — rien à faire Rien à faire."), edit);
+  assert.ok(edit.endsWith(":: jeton=integre"), edit);
+  assert.ok(!r.log.includes("issue create"), "présente → aucune création\n" + r.log);
+  assert.ok(!r.log.includes("810"), "#810 (la veille) intacte\n" + r.log);
+  assert.ok(r.summary.includes("Tableau mis à jour : #811"), r.summary);
 });

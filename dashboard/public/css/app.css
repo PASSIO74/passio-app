@@ -636,3 +636,15 @@ tbody tr.row-alert:hover{background:rgba(239,68,68,.1)}
 .att-stat b{display:block;font-size:18px}
 .att-stat span{font-size:11px;color:var(--muted)}
 @media(max-width:640px){.att-item{grid-template-columns:auto 1fr;grid-auto-rows:auto}.att-when,.att-link{grid-column:2}}
+/* ── Comptes rendus (Veille / Digest / Sentinelle), sous « Ce qui t'attend » ── */
+.cr-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
+.cr-block{padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--card-2);min-width:0;font-size:12.5px}
+.cr-titre{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.cr-titre strong{display:inline-flex;align-items:center;gap:6px;font-size:13px}
+.cr-meta{font-size:12px;margin-bottom:8px}
+.cr-lignes{display:grid;gap:5px}
+.cr-ligne{display:grid;grid-template-columns:auto auto 1fr;gap:8px;align-items:baseline;overflow-wrap:anywhere}
+.cr-md{line-height:1.5;max-height:360px;overflow:auto;overflow-wrap:anywhere}
+.cr-md h4{margin:8px 0 2px;font-size:13px}.cr-md ul{margin:2px 0 6px 18px;padding:0}
+.cr-issue{display:grid;grid-template-columns:auto 1fr auto auto;gap:8px;align-items:baseline;padding:4px 0;border-top:1px solid var(--border);overflow-wrap:anywhere}
+.cr-issue:first-child{border-top:0}

@@ -314,10 +314,111 @@ function attenteBesoinDuPoste(a) {
   return a.items.find((it) => (it.priorite === "P0" || it.priorite === "P1") && /^(poste:|gh:chaine:|gh:cron:)/.test(String(it.key || ""))) || null;
 }
 
+// ── Comptes rendus (Veille / Digest / Sentinelle) ────────────────────────────
+// Lus par /api/comptes-rendus dans les issues permanentes « [TABLEAU] », pour
+// que le suivi ne dépende pas des mails. `cr` = la réponse, ou null si la route
+// n'a pas répondu : « non lus » n'est jamais un compte rendu vide.
+// RÈGLE : tout ce qui vient de GitHub est DONNÉE. Chaque champ passe par `esc()`
+// AVANT le moindre balisage ; le seul balisage ajouté ensuite est le nôtre
+// (h4 / li / strong / br, tirés de ##, -, **, saut de ligne). Aucun lien n'est
+// construit depuis un texte : seuls les `url` de l'API, déjà bornés côté serveur,
+// deviennent des <a>, et seulement s'ils pointent sur github.com.
+const CR_ETAT_CLS = { ok: "ok", warn: "warn", alert: "error", unknown: "info" };
+const CR_ETAT_LIB = { ok: "ok", warn: "attention", alert: "alerte", unknown: "?" };
+const CR_TEXTE_MAX = 8000;   // corps du digest : au-delà, « … »
+const CR_LIGNE_MAX = 400;    // une ligne de veille, un titre d'issue
+function crPill(etat) { const e = Object.hasOwn(CR_ETAT_CLS, etat) ? etat : "unknown"; return `<span class="pill ${CR_ETAT_CLS[e]}">${CR_ETAT_LIB[e]}</span>`; }
+/** « il y a N min / N h / N j » depuis l'âge en minutes rendu par le serveur ; « date inconnue » sinon. */
+function crIlYA(ageMin) {
+  const m = Number(ageMin);
+  if (!Number.isFinite(m) || m < 0) return "date inconnue";
+  if (m < 60) return `il y a ${Math.round(m)} min`;
+  if (m < 48 * 60) return `il y a ${Math.round(m / 60)} h`;
+  return `il y a ${Math.round(m / 1440)} j`;
+}
+/** Horodatage ms depuis un nombre ou une chaîne ISO ; null si illisible. */
+function crTs(v) { if (v == null) return null; const n = typeof v === "number" ? v : Date.parse(String(v)); return Number.isFinite(n) ? n : null; }
+/** Un champ de l'API, borné PUIS échappé : c'est le seul chemin d'une donnée vers le HTML de la carte. */
+const crTexte = (v, max) => esc(String(v == null ? "" : v).slice(0, max));
+/** Lien vers une URL de l'API — uniquement github.com, jamais une URL tirée d'un texte. */
+function crLien(url, libelle) {
+  const u = String(url || "");
+  return /^https:\/\/github\.com\//.test(u) ? `<a class="att-link" href="${esc(u)}" target="_blank" rel="noopener">${esc(libelle)}</a>` : "";
+}
+/**
+ * Markdown MINIMAL et SÛR : le texte est échappé EN ENTIER d'abord — à partir de
+ * là plus aucun chevron ni guillemet n'est vif —, puis seulement quatre motifs
+ * reçoivent notre balisage : `## ` → <h4>, `- ` → <li>, `**x**` → <strong>,
+ * saut de ligne → <br>. Longueur bornée à CR_TEXTE_MAX, puis « … ».
+ */
+function crMarkdown(texte) {
+  let t = String(texte == null ? "" : texte).replace(/\r\n?/g, "\n");
+  if (t.length > CR_TEXTE_MAX) t = t.slice(0, CR_TEXTE_MAX) + " …";
+  const out = []; let liste = false;
+  const fermer = () => { if (liste) { out.push("</ul>"); liste = false; } };
+  for (const brute of esc(t).split("\n")) {
+    const l = brute.replace(/\*\*([^*]+?)\*\*/g, "<strong>$1</strong>");
+    let m;
+    if ((m = /^#{2,3}\s+(.+)$/.exec(l))) { fermer(); out.push(`<h4>${m[1]}</h4>`); }
+    else if ((m = /^\s*-\s+(.+)$/.exec(l))) { if (!liste) { out.push("<ul>"); liste = true; } out.push(`<li>${m[1]}</li>`); }
+    else { fermer(); const prec = out[out.length - 1] || ""; out.push(l ? l + "<br>" : (/<\/(h4|ul)>$/.test(prec) ? "" : "<br>")); }
+  }
+  fermer();
+  return out.join("");
+}
+function crVeilleHtml(v) {
+  const tete = `<strong>${icon("activity")} Veille de production</strong>`;
+  if (!v || typeof v !== "object") return `<div class="cr-block"><div class="cr-titre">${tete}${crPill("unknown")}</div><div class="muted">aucun tableau de veille lu (première exécution après fusion ?)</div></div>`;
+  const lignes = (Array.isArray(v.lignes) ? v.lignes : []).slice(0, 30).map((l) =>
+    `<div class="cr-ligne">${crPill(l && l.etat)}<b>${crTexte(l && l.cle != null ? l.cle : "?", 80)}</b><span>${crTexte(l ? l.texte : "", CR_LIGNE_MAX)}</span></div>`).join("");
+  const meta = [`mise à jour ${crIlYA(v.ageMin)}`, crLien(v.run, "voir le run")].filter(Boolean).join(" · ");
+  return `<div class="cr-block"><div class="cr-titre">${tete}<span>${crPill(v.etat)}${v.alerte === true ? ` <span class="pill error">alerte : oui</span>` : ""}</span></div>
+    <div class="muted cr-meta">${meta}</div>
+    ${lignes ? `<div class="cr-lignes">${lignes}</div>` : `<div class="muted">tableau lu, mais sans ligne de signal</div>`}</div>`;
+}
+function crDigestHtml(dg) {
+  const tete = `<strong>${icon("messaging")} Digest</strong>`;
+  if (!dg || typeof dg !== "object") return `<div class="cr-block"><div class="cr-titre">${tete}${crPill("unknown")}</div><div class="muted">aucun digest lu (première exécution après fusion ?)</div></div>`;
+  const etat = dg.emis === true ? `<span class="pill warn">à lire</span>` : dg.emis === false ? `<span class="pill ok">rien à faire</span>` : crPill("unknown");
+  const meta = [`composé ${crIlYA(dg.ageMin)}`, dg.emis === false ? "non émis" : "", crLien(dg.run, "voir le run")].filter(Boolean).join(" · ");
+  return `<div class="cr-block"><div class="cr-titre">${tete}${etat}</div>
+    <div class="cr-meta"><b>${crTexte(dg.titre, 200)}</b><div class="muted">${meta}</div></div>
+    ${dg.texte ? `<div class="cr-md">${crMarkdown(dg.texte)}</div>` : `<div class="muted">digest sans corps</div>`}</div>`;
+}
+function crSentinelleHtml(s) {
+  const tete = `<strong>${icon("git")} Sentinelle</strong>`;
+  const ouv = s && Array.isArray(s.ouvertes) ? s.ouvertes : null;
+  const fer = s && Array.isArray(s.fermees7j) ? s.fermees7j : null;
+  if (!ouv && !fer) return `<div class="cr-block"><div class="cr-titre">${tete}${crPill("unknown")}</div><div class="muted">enquêtes non lues (chaîne GitHub injoignable ?)</div></div>`;
+  const issue = (i, quand) => {
+    const labels = (Array.isArray(i.labels) ? i.labels : []).slice(0, 6).map((l) => ` <span class="tag">${crTexte(l, 40)}</span>`).join("");
+    return `<div class="cr-issue"><span class="mono muted">#${crTexte(i.numero, 12)}</span><span><b>${crTexte(i.titre, CR_LIGNE_MAX)}</b>${labels}</span><span class="muted att-when">${quand}</span>${crLien(i.url, "ouvrir")}</div>`;
+  };
+  const ouvertes = (ouv || []).slice(0, 10).map((i) => { const t = crTs(i.depuis); return issue(i, t ? "depuis " + ago(t) : ""); }).join("");
+  const fermees = (fer || []).slice(0, 10).map((i) => { const t = crTs(i.fermeeLe); return issue(i, t ? "close le " + new Date(t).toLocaleDateString("fr-FR") : "close"); }).join("");
+  const pastille = !ouv ? crPill("unknown") : ouv.length ? `<span class="pill warn">${num(ouv.length)} ouverte${ouv.length > 1 ? "s" : ""}</span>` : `<span class="pill ok">aucune ouverte</span>`;
+  return `<div class="cr-block"><div class="cr-titre">${tete}${pastille}</div>
+    <div class="muted cr-meta">enquêtes ouvertes</div>${ouvertes ? `<div class="cr-lignes">${ouvertes}</div>` : `<div class="muted">${ouv ? "aucune" : "non lues"}</div>`}
+    <div class="muted cr-meta" style="margin-top:8px">closes sur 7 j</div>${fermees ? `<div class="cr-lignes">${fermees}</div>` : `<div class="muted">${fer ? "aucune" : "non lues"}</div>`}</div>`;
+}
+/** La carte « Comptes rendus », sous « Ce qui t'attend ». `cr` = réponse de /api/comptes-rendus, ou null. */
+function comptesRendusHtml(cr) {
+  const tete = `<strong>${icon("reports")} Comptes rendus</strong>`;
+  if (!cr || typeof cr !== "object") return `<div class="card card-pad att-card att-unread"><div class="att-head">${tete}<span class="muted">non lus — la route /api/comptes-rendus n'a pas répondu</span></div></div>`;
+  const lu = crTs(cr.luLe);
+  const note = cr.erreur ? `<div class="muted cr-meta">${icon("alertTriangle")} lecture GitHub en erreur : ${crTexte(cr.erreur, 200)}</div>` : "";
+  return `<div class="card card-pad att-card cr-card">
+      <div class="att-head">${tete}<span class="muted">${lu ? `lus il y a ${ago(lu)}` : "issues [TABLEAU], réécrites à chaque passage"}</span></div>
+      ${note}
+      <div class="cr-grid">${crVeilleHtml(cr.veille)}${crDigestHtml(cr.digest)}${crSentinelleHtml(cr.sentinelle)}</div>
+    </div>`;
+}
+
 // ── Accueil (vue d'ensemble simplifiée, sans jargon) ─────────────────────────
 VIEWS.overview = async (view) => {
   mount(`<div id="ovProv"></div>
     <div id="ovAttente"></div>
+    <div id="ovComptesRendus"></div>
     <div id="ovState"></div>
     <div id="ovConn"></div>
     <div class="home-cards" id="ovCards"></div>
@@ -328,10 +429,12 @@ VIEWS.overview = async (view) => {
     </div>`);
 
   async function refresh() {
-    const [ov, su, bugs, att] = await Promise.all([api.get("/overview"), api.get("/signups").catch(() => null), api.get("/bugs").catch(() => []), api.get("/attente").catch(() => null)]);
+    const [ov, su, bugs, att, cr] = await Promise.all([api.get("/overview"), api.get("/signups").catch(() => null), api.get("/bugs").catch(() => []), api.get("/attente").catch(() => null), api.get("/comptes-rendus").catch(() => null)]);
     const t = ov.totals, h = ov.health;
     // ── Ce qui t'attend + ce que les machines ont fait (7 j) ─────────────────
     setHtml("#ovAttente", attenteHtml(att));
+    // ── Comptes rendus (Veille / Digest / Sentinelle), lus dans les issues [TABLEAU] ──
+    setHtml("#ovComptesRendus", comptesRendusHtml(cr));
     const besoin = attenteBesoinDuPoste(att);
     const openBugs = (bugs || []).filter((b) => b.status !== "corrige" && b.status !== "ignore");
     const worst = openBugs.slice().sort((a, b) => (b.severity === "critical") - (a.severity === "critical") || b.count - a.count)[0];

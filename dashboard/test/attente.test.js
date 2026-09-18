@@ -15,6 +15,14 @@
 //   · sourcesLues / état vide confondus                          → « vide honnête »
 //   · recopier `it.depuis` sans `enMs` (ISO gardé tel quel)       → « depuis en millisecondes »
 //   · `disponibilite: "P0"` → "P3" dans PRIORITE_CHAINE           → « site en panne = P0 »
+//   · JETON_P0_MAX_J = 2 (seuil du P0)                           → « jeton : seuil »
+//   · JETON_P1_MAX_J = 5 (seuil du P1)                           → « jeton : seuil »
+//   · P0 → P1 pour ≤ 1 j (niveau)                                → « jeton : niveau »
+//   · clé `jeton:sentinelle` renommée                            → « jeton : clé »
+//   · « expire aujourd'hui » remplacé par « expire dans 0 j »    → « jeton : aujourd'hui »
+//   · VEILLE_MUETTE_MIN = 240 (seuil des 6 h)                     → « veille muette »
+//   · clé `tableau:veille:age` renommée, ou P2 → P1               → « veille muette »
+//   · jours du jeton non corrigés de l'âge du tableau (ageJ = 0)  → « jeton : âge du tableau »
 // ═══════════════════════════════════════════════════════════════════════════
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -161,4 +169,76 @@ test("machines 7 j : comptages depuis l'audit (fenêtre 7 j) et depuis la chaîn
   assert.equal(s.machines7j.enquetesGithubFermees, 2);
   assert.equal(s.machines7j.sauvegardeOk, 1); assert.equal(s.machines7j.veilleOk, 0);
   assert.equal(s.machines7j.chaine, "vit");
+});
+
+// ─── Lot F : les comptes rendus (jeton de la chaîne, veille muette) ─────────
+const GESTE_JETON = "github.com/settings/tokens → régénérer le jeton, puis Settings > Secrets and variables > Actions > SENTINELLE_TOKEN ; sans lui la chaîne de réparation s'arrête";
+const veilleAvec = (jours, ageH = 1) => ({ veille: { majLe: iso(NOW - ageH * H), ageMin: ageH * 60, etat: "ok", lignes: [], jetons: { SENTINELLE_TOKEN: jours, SUPABASE_ACCESS_TOKEN: "ok", NETLIFY_AUTH_TOKEN: "ok" } }, digest: null, sentinelle: { ouvertes: [], fermees7j: [] } });
+const jeton = (jours) => attenteSnapshot({ comptesRendus: veilleAvec(jours) }, NOW).items.find((i) => i.key === "jeton:sentinelle") || null;
+
+test("jeton : seuil — 21 j → rien, 4 j → rien, 3 j → P1, 2 j → P1, 1 j → P0, 0 j → P0 ; null (sans date) → rien", () => {
+  assert.equal(jeton(21), null, "à 21 j la veille porte déjà son [ATTENTION] sous 14 j : rien ici");
+  assert.equal(jeton(4), null);
+  assert.equal(jeton(3).priorite, "P1");
+  assert.equal(jeton(2).priorite, "P1");
+  assert.equal(jeton(1).priorite, "P0", "un jour avant : le rappel demandé");
+  assert.equal(jeton(0).priorite, "P0");
+  assert.equal(jeton(null), null, "sans date d'expiration lisible : rien à rappeler");
+  assert.equal(attenteSnapshot({ comptesRendus: { veille: null, digest: null } }, NOW).items.length, 0, "sans tableau de veille : rien");
+  assert.equal(attenteSnapshot({ comptesRendus: { veille: { majLe: iso(NOW - H), jetons: null } } }, NOW).items.length, 0, "jetons absents : rien");
+});
+
+test("jeton : niveau, clé, aujourd'hui — titre, detail (le geste exact), cible #exploitation et depuis = la mesure", () => {
+  const un = jeton(1);
+  assert.equal(un.key, "jeton:sentinelle");
+  assert.equal(un.priorite, "P0");
+  assert.equal(un.titre, "Renouveler SENTINELLE_TOKEN — expire dans 1 j");
+  assert.equal(un.detail, GESTE_JETON);
+  assert.equal(un.cible, "#exploitation");
+  assert.equal(un.depuis, NOW - H, "depuis = la date du tableau (millisecondes)");
+  assert.equal(jeton(0).titre, "Renouveler SENTINELLE_TOKEN — expire aujourd'hui", "aujourd'hui");
+  assert.equal(jeton(3).titre, "Renouveler SENTINELLE_TOKEN — expire dans 3 j");
+  // P0 passe devant une alerte high non acquittée (P1) : c'est bien un P0.
+  const s = attenteSnapshot({ comptesRendus: veilleAvec(1), alerts: [{ id: "a", level: "high", acknowledged: false, title: "a", ts: NOW - 50 * H }] }, NOW);
+  assert.equal(s.items[0].key, "jeton:sentinelle");
+  assert.ok(s.sourcesLues.includes("comptesRendus"));
+});
+
+test("jeton : âge du tableau — « 3 j » lu sur un tableau de 2 j → P0 « expire dans 1 j » ; « 1 j » sur 47 h → « aujourd'hui » ; « 21 j » sur 2 j → rien ; sous 24 h, rien ne change", () => {
+  // Le cron est servi 4 à 23× moins souvent qu'annoncé : un tableau en retard ne doit pas repousser le rappel.
+  const lu = (jours, ageH) => attenteSnapshot({ comptesRendus: veilleAvec(jours, ageH) }, NOW).items.find((i) => i.key === "jeton:sentinelle") || null;
+  assert.equal(lu(3, 48).priorite, "P0", "3 j lus il y a 2 j = 1 j réel");
+  assert.equal(lu(3, 48).titre, "Renouveler SENTINELLE_TOKEN — expire dans 1 j");
+  assert.equal(lu(1, 47).titre, "Renouveler SENTINELLE_TOKEN — expire aujourd'hui", "1 j lu il y a 47 h : le jeton expire aujourd'hui");
+  assert.equal(lu(0, 72).titre, "Renouveler SENTINELLE_TOKEN — expire aujourd'hui", "jamais négatif");
+  assert.equal(lu(21, 48), null, "19 j réels : rien");
+  assert.equal(lu(4, 30).priorite, "P1", "4 j lus il y a 30 h = 3 j réels → P1");
+  assert.equal(lu(3, 23).priorite, "P1", "sous 24 h, aucun jour retranché");
+  assert.equal(lu(3, 23).titre, "Renouveler SENTINELLE_TOKEN — expire dans 3 j");
+});
+
+// Mutation : retirer `&& src.comptesRendus.perime !== true` → rougit (un cache périmé accuserait le cron).
+test("veille muette : un tableau âgé de 7 h servi depuis un cache GitHub PÉRIMÉ ne pose pas l'item (la panne de lecture est portée ailleurs)", () => {
+  const cr = veilleAvec(21, 7); cr.perime = true;
+  assert.equal(attenteSnapshot({ comptesRendus: cr }, NOW).items.find((i) => i.key === "tableau:veille:age"), undefined);
+  cr.perime = false;
+  assert.ok(attenteSnapshot({ comptesRendus: cr }, NOW).items.find((i) => i.key === "tableau:veille:age"), "lecture fraîche : l'item revient");
+});
+
+test("veille muette : tableau de veille âgé de 7 h → P2 `tableau:veille:age` ; 5 h → rien ; 6 h pile → rien ; l'âge se recalcule depuis majLe", () => {
+  const sept = attenteSnapshot({ comptesRendus: veilleAvec(21, 7) }, NOW).items.find((i) => i.key === "tableau:veille:age");
+  assert.ok(sept, "7 h : la veille ne s'est pas exprimée");
+  assert.equal(sept.priorite, "P2");
+  assert.equal(sept.titre, "La veille ne s'est pas exprimée depuis 7 h");
+  assert.equal(sept.detail, "cron servi 4 à 23× moins souvent qu'annoncé ; au-delà de 6 h, ouvrir Actions › Veille de production");
+  assert.equal(sept.cible, "#exploitation");
+  assert.equal(sept.depuis, NOW - 7 * H);
+  assert.equal(attenteSnapshot({ comptesRendus: veilleAvec(21, 5) }, NOW).items.length, 0, "5 h : rien");
+  assert.equal(attenteSnapshot({ comptesRendus: veilleAvec(21, 6) }, NOW).items.length, 0, "6 h pile : pas encore");
+  // Le mémo de comptesRendus a 5 min : l'âge vient de majLe et de `now`, pas d'un ageMin figé.
+  const perime = attenteSnapshot({ comptesRendus: veilleAvec(21, 7) }, NOW + 2 * H).items.find((i) => i.key === "tableau:veille:age");
+  assert.equal(perime.titre, "La veille ne s'est pas exprimée depuis 9 h");
+  const sansMajLe = attenteSnapshot({ comptesRendus: { veille: { majLe: null, ageMin: 500, jetons: {} } } }, NOW).items.find((i) => i.key === "tableau:veille:age");
+  assert.ok(sansMajLe, "sans majLe lisible, ageMin fait foi");
+  assert.equal(attenteSnapshot({ comptesRendus: { veille: { majLe: null, ageMin: null, jetons: {} } } }, NOW).items.length, 0, "âge inconnu : on n'accuse pas");
 });

@@ -33,6 +33,11 @@ const TITRE_CHAINE = {
   correctif_pr: "Correctif automatique en attente de fusion", pr_ouverte: "PR ouverte (contre-revue à vérifier)",
 };
 const ORDRE = { P0: 0, P1: 1, P2: 2, P3: 3 };
+// Comptes rendus (lot F) : SENTINELLE_TOKEN à ≤ 1 j = P0, 2–3 j = P1, au-delà
+// rien ; tableau de veille muet au-delà de 6 h = P2.
+const JETON_P0_MAX_J = 1;
+const JETON_P1_MAX_J = 3;
+const VEILLE_MUETTE_MIN = 360;
 const tronque = (s, n = 120) => String(s || "").replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, n);
 
 // `depuis` est TOUJOURS un nombre de millisecondes (ou null) : la chaîne GitHub
@@ -102,6 +107,34 @@ export function attenteSnapshot(src = {}, now = Date.now()) {
   const st = src.storage || null;
   if (st && st.available === false) ajoute({ key: "poste:storage", priorite: "P1", titre: "Le pilotage ne peut plus écrire ses données", detail: (st.failing || []).map((f) => f.name).join(", "), cible: "#sources" });
 
+  // 7. Les comptes rendus (tableau de veille lu sur GitHub) : le jeton de la
+  // chaîne de réparation qui expire, et une veille qui ne s'exprime plus.
+  // Benjamin ne lit pas ses mails : le rappel vit ici, un jour avant (P0),
+  // trois jours avant (P1) ; au-delà, la veille porte déjà [ATTENTION] < 14 j.
+  const veille = src.comptesRendus && src.comptesRendus.veille;
+  if (veille) {
+    const majLe = enMs(veille.majLe);
+    const ageMin = majLe != null ? (now - majLe) / 60_000 : veille.ageMin;
+    // Les jours lus datent du tableau : un tableau vieux de 2 j qui dit « 3 j »
+    // parle d'un jeton qui expire dans 1 j. On retranche l'âge (jours entiers).
+    const jLu = veille.jetons ? veille.jetons.SENTINELLE_TOKEN : null;
+    const ageJ = Number.isFinite(ageMin) && ageMin > 0 ? Math.floor(ageMin / 1440) : 0;
+    const j = Number.isInteger(jLu) ? Math.max(0, jLu - ageJ) : null;
+    if (Number.isInteger(j) && j >= 0 && j <= JETON_P1_MAX_J) {
+      ajoute({ key: "jeton:sentinelle", priorite: j <= JETON_P0_MAX_J ? "P0" : "P1",
+        titre: `Renouveler SENTINELLE_TOKEN — ${j === 0 ? "expire aujourd'hui" : `expire dans ${j} j`}`,
+        detail: "github.com/settings/tokens → régénérer le jeton, puis Settings > Secrets and variables > Actions > SENTINELLE_TOKEN ; sans lui la chaîne de réparation s'arrête",
+        depuis: veille.majLe, cible: "#exploitation" });
+    }
+    // Un tableau servi depuis un cache PÉRIMÉ (lecture GitHub en panne, quota épuisé) ne parle pas du cron :
+    // la panne de lecture est déjà portée ailleurs (erreur, quota). On n'accuse la veille que sur une lecture fraîche.
+    if (Number.isFinite(ageMin) && ageMin > VEILLE_MUETTE_MIN && src.comptesRendus.perime !== true) {
+      ajoute({ key: "tableau:veille:age", priorite: "P2", titre: `La veille ne s'est pas exprimée depuis ${Math.round(ageMin / 60)} h`,
+        detail: "cron servi 4 à 23× moins souvent qu'annoncé ; au-delà de 6 h, ouvrir Actions › Veille de production",
+        depuis: majLe, cible: "#exploitation" });
+    }
+  }
+
   items.sort((a, b) => (ORDRE[a.priorite] - ORDRE[b.priorite]) || ((a.depuis || 0) - (b.depuis || 0)));
 
   // Ce que les machines ont fait (7 j) : comptages depuis l'audit et GitHub.
@@ -126,21 +159,24 @@ let _mods = null;
 
 async function modules() {
   if (_mods) return _mods;
-  const [chaine, sentinel, audit, incidents, alerts, exploitation, disque, claudecli, jsondb, sse, config] = await Promise.all([
+  const [chaine, sentinel, audit, incidents, alerts, exploitation, disque, claudecli, jsondb, sse, config, comptesRendus] = await Promise.all([
     import("./chaine-autonome.js"), import("./sentinel.js"), import("./audit.js"), import("./incident-packets.js"), import("./alerts.js"),
     import("./exploitation.js"), import("./disque.js"), import("./claudecli.js"), import("./jsondb.js"), import("./sse.js"), import("./config.js"),
+    import("./comptes-rendus.js"),
   ]);
-  _mods = { chaine, sentinel, audit, incidents, alerts, exploitation, disque, claudecli, jsondb, sse, config };
+  _mods = { chaine, sentinel, audit, incidents, alerts, exploitation, disque, claudecli, jsondb, sse, config, comptesRendus };
   return _mods;
 }
 
-/** Lecture réelle des onze sources ; chaque lecture en échec rend son défaut, jamais une exception. */
+/** Lecture réelle des douze sources ; chaque lecture en échec rend son défaut, jamais une exception. */
 async function lireSources({ now, supervise }) {
   const m = await modules();
   const lire = async (fn, defaut = null) => { try { return await fn(); } catch { return defaut; } };
+  // comptesRendus lit la chaîne mémorisée (aucun appel GitHub de plus) : après chaineAutonome.
   const [chaine, exploitation] = await Promise.all([lire(() => m.chaine.chaineAutonome({ now })), lire(() => m.exploitation.exploitation())]);
+  const comptesRendus = await lire(() => m.comptesRendus.comptesRendus({ now }));
   return {
-    chaine, exploitation,
+    chaine, exploitation, comptesRendus,
     diagnostics: await lire(() => m.sentinel.listDiagnoses(100), []),
     audit: await lire(() => m.audit.listAudit(3000), []),
     incidents: await lire(() => m.incidents.listIncidentPackets(200), []),

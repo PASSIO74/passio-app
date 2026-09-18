@@ -587,8 +587,25 @@ GitHub. Modules non critiques (jamais `auth.js`, `config.js`, `repair.js`,
 | `github-lecture.js` | client GitHub commun : cache par URL, ETag, budget 40/h sans jeton | `GITHUB_READ_TOKEN`, `DASH_GITHUB_READ` |
 | `chaine-autonome.js` | crons GitHub vivants/morts/désactivés, issues et PR en attente, dernier deploy main | `DASH_CHAINE_WATCH_MIN` |
 | `attente.js` | « Ce qui t'attend » + « Ce que les machines ont fait (7 j) » (Accueil, Pilot mobile, Command Center) | — |
+| `comptes-rendus.js` | carte « Comptes rendus » : corps des issues `[TABLEAU]` (veille, digest) parsés comme donnée bornée, enquêtes sentinelle depuis la chaîne mémorisée ; mémo 5 min | — |
 | `incident-packets.js` | regroupement par clé, résolution automatique par silence prouvé + révision main, réouverture | `DASH_INCIDENT_SWEEP_MIN` |
 | `sentinel-relais.js` | verdict « défaut réel » local → issue `[SENTINELLE]` GitHub (opt-in) | `DASH_SENTINEL_RELAIS_GITHUB` |
+
+**Comptes rendus (lot F, 2026-09-18).** Benjamin ne lit pas ses mails : la
+veille de production et le digest réécrivent chacun le corps d'UNE issue
+permanente `[TABLEAU] …` (label `tableau`, jamais `claude` ; éditer un corps ne
+notifie personne) et `comptes-rendus.js` les lit par le client commun
+(`/issues?labels=tableau`, une requête, cache d'URL). `parserTableau(corps)` est
+pur : marqueur `<!-- tableau:<kind> v1 -->` obligatoire, corps borné à 20 000
+caractères et ligne à 400, dates et URL validées par motif, `[ok]/[ATTENTION]/
+[ALERTE]/[?]` → ok/warn/alert/unknown, jours du `SENTINELLE_TOKEN` lus dans la
+ligne `jetons` (« refusé » → 0, « sans date » → null). `GET /api/comptes-rendus`
+(@auth) rend `{ luLe, veille, digest, sentinelle, erreur? }` — sur erreur, des
+null et `erreur`, jamais un faux vert. `attente.js` en tire trois items :
+`jeton:sentinelle` P0 (≤ 1 j, « expire aujourd'hui » à 0) ou P1 (2–3 j) — jours
+lus dans le tableau moins l'âge du tableau en jours entiers —, et
+`tableau:veille:age` P2 quand le tableau a plus de 6 h. Aucune issue `[POSTE]`
+pour le jeton, aucun mail.
 
 **Recette « nouvelle route »** (les trois bancs `routes-caps`, `front-api`,
 `http-routes` la vérifient) : (1) dans `server/index.js`, UNE ligne

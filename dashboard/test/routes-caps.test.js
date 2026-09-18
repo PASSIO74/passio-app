@@ -10,7 +10,7 @@
 //
 // Ce fichier ferme cet écart par trois voies distinctes :
 //
-//   1. INVENTAIRE FIGÉ — les 87 routes et leur garde, dans les deux sens : une
+//   1. INVENTAIRE FIGÉ — les 88 routes et leur garde, dans les deux sens : une
 //      route qui change de garde rougit, une route AJOUTÉE sans garde déclarée
 //      rougit aussi. On ne peut plus élargir une permission en silence.
 //   2. COMPORTEMENT RÉEL des gardes — `requireAuth` et `requireCap` sont
@@ -61,6 +61,7 @@ const ATTENDU = [
   ["GET", "/incidents", "@auth"],
   ["GET", "/chaine-autonome", "@auth"],   // témoin de GitHub : données publiques du dépôt, verdicts, jamais un corps d'issue
   ["GET", "/attente", "@auth"],           // ce qui attend un humain : comptages et titres tronqués, aucune ligne Supabase
+  ["GET", "/comptes-rendus", "@auth"],    // corps des issues [TABLEAU] écrites par nos workflows, lus comme donnée bornée ; sentinelle depuis la chaîne mémorisée
   ["POST", "/incidents/:id/transition", "alerts"],
   ["GET", "/interactions", "@auth"],
   ["GET", "/traces", "@auth"],

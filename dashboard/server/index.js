@@ -25,6 +25,7 @@ import { startDiskWatch, diskState } from "./disque.js";
 import { storageHealth } from "./jsondb.js";
 import { chaineAutonome, startChaineAutonome } from "./chaine-autonome.js";
 import { attente } from "./attente.js";
+import { comptesRendus } from "./comptes-rendus.js";
 import { startObservationAlerts } from "./observation-alerts.js";
 import { startIncidentSweep } from "./incident-packets.js";
 import { promotionStatusView } from "./sentinel-promotion-view.js";
@@ -128,6 +129,10 @@ api.get("/incidents", auth.requireAuth, (req, res) => res.json(listIncidentPacke
 // (comme /readiness). Jamais un corps d'issue, jamais un identifiant de personne.
 api.get("/chaine-autonome", auth.requireAuth, asyncH(async (req, res) => res.json(await chaineAutonome())));
 api.get("/attente", auth.requireAuth, asyncH(async (req, res) => res.json(await attente({ supervise: superviseState() }))));
+// Comptes rendus : les corps des issues `[TABLEAU]` (veille, digest) — écrits par
+// nos propres workflows, lus comme DONNÉE bornée, jamais interprétés ; sentinelle
+// depuis la chaîne mémorisée. Lecture seule : @auth suffit.
+api.get("/comptes-rendus", auth.requireAuth, asyncH(async (req, res) => res.json(await comptesRendus())));
 api.post("/incidents/:id/transition", auth.requireCap("alerts"), (req, res) => {
   const incident = transitionIncident(req.params.id, req.body?.phase, {
     evidence: req.body?.evidence,
