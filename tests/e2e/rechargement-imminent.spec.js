@@ -84,8 +84,12 @@ test.describe("Rechargement imminent : bruit transitoire, pas un défaut", () =>
         return f0.apply(this, arguments);
       };
       // Un appel réseau garanti dans doLogout, quel que soit l'état du banc.
+      // ⚠️ Par `window.fetch` (l'enveloppe), jamais par `f0` : le vrai SDK de la
+      // CI a capturé `fetch` à sa création et contourne toute enveloppe posée
+      // après — en local, c'était `signOut` du faux client qui alimentait la
+      // mesure, par accident (vert en local, rouge en CI, run 35347789562).
       window.supaSaveUserState = async function () {
-        await f0(String(window.PASSIO_SUPABASE.url) + "/rest/v1/user_state?select=uid&limit=1").catch(() => {});
+        await window.fetch(String(window.PASSIO_SUPABASE.url) + "/rest/v1/user_state?select=uid&limit=1").catch(() => {});
       };
       await Promise.race([doLogout("signin"), new Promise((r) => setTimeout(r, 8000))]);
       return vu;
