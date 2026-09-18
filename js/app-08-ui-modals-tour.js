@@ -12,7 +12,24 @@ function renderTopbar() {
 }
 
 // ======== MODALS ========
-function openModal(html) {
+// LOT E (2026-09-18) : identifiant STATIQUE d'une modale pour la télémétrie
+// (`ui_open`/`ui_close` {panel}). L'ouverture d'un panneau n'émettait rien : la
+// sentinelle ne pouvait pas distinguer un bouton mort d'un bouton qui ouvre une
+// fenêtre. L'identifiant vient du premier `data-panel="…"` ou `id="…"` du
+// gabarit — des identifiants ÉCRITS DANS LE CODE — jamais du titre, qui peut
+// être un texte de la personne. Les chiffres et ce qui suit sont retirés (un id
+// suffixé par un identifiant d'objet redevient sa famille).
+var _modalPanelCourant = null;
+function _panelDepuisHtml(html) {
+  try {
+    var s = String(html || "");
+    var m = /\bdata-panel="([A-Za-z][\w-]*)"/.exec(s) || /\bid="([A-Za-z][\w-]*)"/.exec(s);
+    if (!m) return "modal";
+    var p = m[1].replace(/[0-9][\s\S]*$/, "").replace(/[-_]+$/, "").slice(0, 40);
+    return p || "modal";
+  } catch (e) { return "modal"; }
+}
+function openModal(html, panel) {
   const backdrop = $("#modalBackdrop");
   // Si un modal est déjà ouvert, on remplace son contenu sans empiler une nouvelle entrée history.
   // Sinon on pousse une seule entrée pour que le bouton back ferme le modal.
@@ -24,6 +41,9 @@ function openModal(html) {
   const closeBtn = `<button type="button" class="modal-close" onclick="closeModal()" aria-label="Fermer">×</button>`;
   $("#modalContent").innerHTML = closeBtn + html;
   if (backdrop) backdrop.classList.add("active");
+  // `panel` explicite (appelant) sinon dérivé du gabarit — voir _panelDepuisHtml.
+  _modalPanelCourant = (typeof panel === "string" && panel) ? panel.slice(0, 40) : _panelDepuisHtml(html);
+  try { window.tel && tel.action("ui_open", { panel: _modalPanelCourant }); } catch (e) {}
 }
 function closeModal() {
   // ⚠️ Le nettoyage du CDV Live (arrêt du polling, retrait du spectateur) a été
@@ -36,7 +56,13 @@ function closeModal() {
   // et reculer sur une modale déjà fermée ferait quitter l'écran.
   const etaitOuverte = !!(bd && bd.classList.contains("active"));
   if (bd) bd.classList.remove("active");
-  if (etaitOuverte) releaseOverlayHistory();
+  if (etaitOuverte) {
+    releaseOverlayHistory();
+    // Seulement quand une modale ÉTAIT ouverte : `closeModal()` est appelée par
+    // précaution un peu partout, et un `ui_close` sans `ui_open` serait un mensonge.
+    try { window.tel && tel.action("ui_close", { panel: _modalPanelCourant || "modal" }); } catch (e) {}
+    _modalPanelCourant = null;
+  }
 }
 function closeModalOnBackdrop(e) {
   if (e.target.id === "modalBackdrop") closeModal();

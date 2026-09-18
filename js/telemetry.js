@@ -234,7 +234,13 @@
   // toujours remonter, même si l'appareil a déjà atteint le plafond/minute).
   // « link » inclus : une création/partage/ouverture de lien est un signal rare et
   // précieux (funnel du centre de pilotage) — jamais échantillonné ni plafonné.
-  var CRITICAL_TYPE = { error: 1, connectivity: 1, link: 1 };
+  // « flow » et « rt_recv » ajoutés le 2026-09-18 (LOT E) : ce sont les preuves
+  // de la chaîne de validation du pilotage (handler → requête → enregistré →
+  // livré). Plafonnés, une rafale de clics/perf pouvait laisser passer le
+  // `start` et jeter son `step`/`end` → verdict « clic mort » ou « non
+  // confirmé » FABRIQUÉ par le plafond, pas par l'app. Volume faible par
+  // nature (un flow = 2 à 3 événements par action métier), donc sans risque.
+  var CRITICAL_TYPE = { error: 1, connectivity: 1, link: 1, flow: 1, rt_recv: 1 };
 
   // ─── File + envoi ──────────────────────────────────────────────────────────
   var queue = [];
