@@ -270,6 +270,27 @@ function _writeStateNow() {
 // beacon d'état ajouté depuis. Une fois ce verrou posé, plus rien ne s'écrit.
 let _accountPurged = false;
 
+// ⚠️ « LA PAGE VA ÊTRE RECHARGÉE » SE DIT AVANT LE MOINDRE APPEL RÉSEAU (2026-09-18).
+// Mesuré en production : bouton « Se reconnecter » du bandeau « Session expirée »
+// → `doLogout("signin")` → `location.reload()` 1,2 s plus tard. Sur iOS, un
+// rechargement DÉCIDÉ PAR L'APPLICATION coupe les requêtes en vol AVANT
+// `pagehide` : à l'instant de l'échec la page se dit encore visible et en ligne,
+// et un GET /posts de rafraîchissement du fil atterrissait en `severity: "error"`
+// au centre de pilotage — même famille que « newestWorker is null » et que la
+// preuve `unloading` du 2026-09-16, qui, elle, n'arrive qu'à `pagehide`.
+// Une seule autorité, lue par telemetry.js (classement transitoire, jamais un
+// silence : le fait reste écrit en `status: "error"`) et par les
+// rafraîchissements du fil (app-08), qui s'abstiennent : la page part, une
+// requête lancée maintenant serait perdue. Posé, jamais levé : la seule sortie
+// est le rechargement lui-même, et un contexte JS neuf repart à `false`.
+function annoncerRechargement() {
+  try { window._rechargementImminent = true; } catch (e) {}
+}
+function rechargementImminent() {
+  try { return window._rechargementImminent === true; } catch (e) { return false; }
+}
+window.rechargementImminent = rechargementImminent;
+
 function saveState() {
   if (_accountPurged) return;
   clearTimeout(_saveStateTimer);
@@ -553,6 +574,7 @@ async function reconnecterSession() {
       ]);
       if (r && r.data && r.data.session && r.data.session.user) {
         try { toast("Session rétablie ✓", "reward"); } catch (e) {}
+        annoncerRechargement();
         setTimeout(function () { try { location.reload(); } catch (e) {} }, 300);
         return true;
       }
@@ -3930,6 +3952,9 @@ function purgerJetonAuthLocal() {
 window.purgerJetonAuthLocal = purgerJetonAuthLocal;
 
 async function doLogout(intention) {
+  // ⚠️ AVANT `supaSaveUserState` et `signOut` : ce sont des appels réseau, et le
+  // rechargement qui suit coupe ce qui est encore en vol (voir `annoncerRechargement`).
+  annoncerRechargement();
   // Flush immédiat : pousse les changements en attente (debounce 2500ms non encore
   // déclenché) vers Supabase AVANT la déconnexion. Sans ça, toute modification faite
   // dans les 2,5 s précédant le logout est perdue à la reconnexion.

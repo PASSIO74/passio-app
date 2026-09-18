@@ -39,7 +39,9 @@
 //      cache à un seul coup le figeait pour toute la session ;
 //   ⑩ rien n'est armé quand rien n'a échoué (aucune minuterie parasite) ;
 //   ⑪ télémétrie : un échec réseau PROUVÉ transitoire est `warn`, un échec
-//      inexpliqué reste `error` ;
+//      inexpliqué reste `error` ; ⑪ ter : un rechargement ANNONCÉ par l'app
+//      (déconnexion) vaut fermeture avant même `pagehide`, et le fil ne relance
+//      rien ; ⑪ quater : `doLogout` l'annonce AVANT son premier appel réseau ;
 //   ⑫ contrat de source : le câblage existe aux deux points de lecture — sans
 //      ce cas, on pourrait le supprimer sans un seul rouge.
 // ═══════════════════════════════════════════════════════════════════════════
@@ -505,6 +507,91 @@ test.describe("Reprise des lectures de démarrage après coupure réseau", () =>
     expect(r[2].ctx.meta.statut).toBe("erreur");
     // Le contexte (où) survit dans les deux cas : c'est ce qui dit quoi regarder.
     expect(r[0].ctx.meta.ctx).toBe("declare");
+  });
+
+  // ⑪ ter — un rechargement DÉCIDÉ par l'application coupe les requêtes en vol
+  // AVANT `pagehide` sur iOS (mesuré en production le 2026-09-18 : bouton
+  // « Se reconnecter » → `doLogout` → `location.reload()`, GET /posts en `error`
+  // avec page « visible » et en ligne). La preuve est `window._rechargementImminent`,
+  // posé par `annoncerRechargement()` (app-02) avant tout appel réseau de la
+  // déconnexion — et le fil cesse alors de se rafraîchir, la requête serait perdue.
+  test("⑪ ter télémétrie : un rechargement annoncé par l'app vaut fermeture, et le fil ne relance rien", async ({ page }) => {
+    await bootOnboarded(page, null, 1, { query: "?telemetry=1" });
+    await page.route("**/rest/v1/telemetry_events*", (route) =>
+      route.fulfill({ status: 201, contentType: "application/json", body: "[]" }));
+    await page.route("**/faux-hote.supabase.co/**", (route) => route.abort("failed"));
+
+    const r = await page.evaluate(async () => {
+      window.__evts = [];
+      window.tel.api = function (f) { window.__evts.push(f); };
+      async function tenter() {
+        window.__evts.length = 0;
+        try { await fetch("https://faux-hote.supabase.co/rest/v1/posts"); } catch (e) {}
+        await new Promise((r) => setTimeout(r, 60));
+        var miens = window.__evts.filter((f) => /faux-hote/.test(f.endpoint || f.action || ""));
+        return miens.pop() || null;
+      }
+      // Prémisse : visible, en ligne, aucun `pagehide` — l'inexpliqué crie.
+      const avant = await tenter();
+      // Le fil relance une lecture au retour visible : on compte les appels
+      // AVANT et APRÈS l'annonce, sans toucher au réseau.
+      window.__loads = 0;
+      const vrai = window.supaLoadPosts;
+      window.supaLoadPosts = async function () { window.__loads++; return []; };
+      window._supaReal = true;
+      const feedEl = document.getElementById("screen-feed");
+      if (feedEl) feedEl.classList.add("active");
+      document.dispatchEvent(new Event("visibilitychange"));
+      await new Promise((r) => setTimeout(r, 30));
+      const loadsAvant = window.__loads;
+      // L'annonce, telle que `doLogout` la fait — sans déconnecter le banc.
+      annoncerRechargement();
+      const pendant = await tenter();
+      document.dispatchEvent(new Event("visibilitychange"));
+      await new Promise((r) => setTimeout(r, 30));
+      const loadsApres = window.__loads;
+      window.supaLoadPosts = vrai;
+      return { avant, pendant, loadsAvant, loadsApres, expose: typeof window.rechargementImminent === "function" && window.rechargementImminent() };
+    });
+
+    expect(r.avant).not.toBeNull();
+    expect(r.pendant).not.toBeNull();
+    expect(r.avant.severity).toBe("error");
+    expect(r.avant.meta.rechargement).toBe(false);
+    expect(r.avant.meta.fermeture).toBe(false);
+    // Rechargement annoncé : cause prouvée, page pourtant visible et en ligne.
+    expect(r.pendant.severity).toBe("warn");
+    expect(r.pendant.meta.rechargement).toBe(true);
+    expect(r.pendant.meta.fermeture).toBe(true);
+    expect(r.pendant.meta.masquee).toBe(false);
+    // Le fait reste écrit : on cesse de crier, on n'efface rien.
+    expect(r.pendant.status).toBe("error");
+    // Le retour visible relançait le fil AVANT l'annonce, plus APRÈS.
+    expect(r.loadsAvant).toBe(1);
+    expect(r.loadsApres).toBe(1);
+    expect(r.expose).toBe(true);
+  });
+
+  test("⑪ quater contrat de source : la déconnexion ANNONCE le rechargement avant son premier appel réseau", async () => {
+    const src = fs.readFileSync(SOURCE_APP02, "utf8");
+    const i = src.indexOf("async function doLogout(intention)");
+    expect(i, "doLogout est introuvable dans app-02").toBeGreaterThan(-1);
+    const corps = src.slice(i);
+    const annonce = corps.indexOf("annoncerRechargement();");
+    // Les APPELS, jamais les noms : le commentaire qui précède l'annonce les cite.
+    const premierReseau = corps.indexOf("await supaSaveUserState()");
+    const signOut = corps.indexOf("await supa.auth.signOut()");
+    // Sans ce cas, l'annonce pourrait être retirée de `doLogout` — ou déplacée
+    // APRÈS `signOut`, où elle ne couvrirait plus les requêtes que la
+    // déconnexion elle-même lance — sans un seul rouge (défaut `_notifierMessage`).
+    expect(annonce).toBeGreaterThan(-1);
+    expect(annonce).toBeLessThan(premierReseau);
+    expect(annonce).toBeLessThan(signOut);
+    // La sonde du bandeau « Session expirée » passe bien par `doLogout`.
+    expect(src).toMatch(/function _sondeServeurReconnecter\(\) \{\s*\n\s*try \{ if \(typeof doLogout === "function"\) doLogout\("signin"\)/);
+    // Et la télémétrie lit bien le drapeau dans le hook fetch ET dans le contexte d'envoi.
+    const tel = fs.readFileSync(SOURCE_TELEMETRIE, "utf8");
+    expect((tel.match(/rechargementImminent\(\)/g) || []).length).toBeGreaterThanOrEqual(2);
   });
 
   test("⑫ contrat de source : le câblage existe aux deux points de lecture", async () => {
