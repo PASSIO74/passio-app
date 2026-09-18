@@ -2530,6 +2530,28 @@ function navigateTo(screen) {
 
 // Délai maximal accordé à `getSession()` au démarrage (voir UXO-02 dans `boot`).
 const DELAI_SESSION_BOOT_MS = 8000;
+// LOT E (2026-09-18) : « inscription confirmée » = la PREMIÈRE session vue sur
+// un appareil qui porte le marqueur `passio_signup_pending` (posé par onbDoAuth
+// à « compte créé, confirme ton e-mail »). Deux appelants — `boot` (lien de
+// confirmation qui ouvre une session, connexion après rechargement) et le
+// handler SIGNED_IN (connexion dans la page) — mais UNE émission : le marqueur
+// est retiré à la première, la seconde ne trouve rien. Le marqueur est un
+// horodatage : aucune adresse, aucun identifiant. `delai_s` = temps entre la
+// création du compte et cette première session (la confirmation peut se faire
+// sur un autre appareil : le délai est alors celui du retour ici, et c'est dit).
+function signalerInscriptionConfirmee(session) {
+  try {
+    if (!session || !session.user) return false;
+    var brut = localStorage.getItem("passio_signup_pending");
+    if (!brut) return false;
+    localStorage.removeItem("passio_signup_pending");
+    var depuis = Number(brut);
+    var delai = (isFinite(depuis) && depuis > 0) ? Math.max(0, Math.round((Date.now() - depuis) / 1000)) : null;
+    if (window.tel && tel.action) tel.action("signup_confirmed", { delai_s: delai });
+    return true;
+  } catch (e) { return false; }
+}
+
 async function boot() {
   // Charge le SDK Supabase à la demande (lazy, hors page verrouillée) PUIS
   // construit le vrai client, avant le moindre appel `supa.*` ci-dessous.
@@ -2688,6 +2710,8 @@ async function boot() {
       // 100 ms après le chargement depuis `passio_uid` — donc AVANT que
       // `getSession()` n'ait répondu, et avec l'ancienne valeur (2026-09-16).
       window.MY_UID = MY_UID;
+      // LOT E : première session vue après une inscription faite sur cet appareil.
+      try { signalerInscriptionConfirmee(session); } catch (e) {}
       // ⚠️ PENDANT UNE RÉCUPÉRATION, ON N'ÉCRIT PAS `passio_uid` (constat majeur
       // de la seconde passe). L'adoption est différée ; écrire la clé ferait
       // croire au démarrage SUIVANT que cet appareil possède déjà l'état du
@@ -2896,6 +2920,8 @@ async function boot() {
         MY_UID = _uidSession;
         window.MY_UID = MY_UID;   // reflet pour telemetry.js / platform.js (`let` de portée script)
         localStorage.setItem("passio_uid", MY_UID);
+        // LOT E : même signal que dans `boot` (garde par retrait du marqueur).
+        try { signalerInscriptionConfirmee(session); } catch (e) {}
         // Retour OAuth (Google) arrivé après le boot : finaliser + recharger dans l'app.
         if (event === "SIGNED_IN" && _oauthEnAttente) {
           localStorage.removeItem("passio_oauth_pending");
