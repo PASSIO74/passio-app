@@ -3205,7 +3205,71 @@ function comptePassioReel() {
 // ══════════════════════════════════════════════════════════════════════════
 var CLE_PASSIONS_ILLIMITEES = "passio_passions_illimitees_v1";
 
+// ══════════════════════════════════════════════════════════════════════════
+// ⚠️ ET DEPUIS LE 2026-09-18, CE MODE EST RÉSERVÉ À UN SEUL COMPTE
+// ──────────────────────────────────────────────────────────────────────────
+// Demande de Benjamin : « il y a un mode illimité pour les passions, applique-le
+// seulement pour le compte passioadmin@gmail.com. Tous les autres non, moi seul
+// doit en bénéficier. »
+//
+// Jusqu'ici le drapeau était un fait de l'APPAREIL : une ligne de
+// `localStorage` — ou un `window.PASSIO_PASSIONS_ILLIMITEES` de console —
+// suffisait, sur n'importe quel téléphone et pour n'importe quel compte, à
+// lever le plafond de trois passions ET le quota de trois changements. Le
+// commentaire ci-dessus assume la porte dérobée (« la console peut déjà écrire
+// `state.user.profiles` »), ce qui reste vrai ; mais ce n'est pas une raison
+// pour que le PRODUIT l'offre en un tap, dans ses propres Paramètres, à tout le
+// monde.
+//
+// ⚠️ LE DISCRIMINANT EST L'ADRESSE DE LA SESSION, ET IL ÉCHOUE FERMÉ. Pas de
+// session lisible, pas de `user.email`, une autre adresse → le plafond et le
+// quota s'appliquent. C'est l'INVERSE VOULU de la porte d'admission 18+
+// (`requireAdmission`, app-07), qui échoue OUVERT parce qu'elle double une
+// frontière déjà tenue par la RLS : ici rien ne double la garde, donc un
+// inconnu ne doit jamais être servi. Refuser à tort à l'éditeur ne coûte qu'une
+// reconnexion ; accorder à tort, c'est très exactement le défaut qu'on referme.
+//
+// ⚠️ ON LIT LA SESSION, JAMAIS `MY_UID` NI L'ÉTAT LOCAL. `getMyUserId()`
+// fabrique un `u_<aléatoire>` pour tout visiteur, et `state.user` est un
+// fichier de l'appareil que la console réécrit : ni l'un ni l'autre ne prouve
+// un compte. Seul le jeton du SDK le fait, et `_sessionSdkPersistee()` (app-08)
+// est le SEUL endroit du dépôt qui le lit — on n'en écrit pas une deuxième
+// copie (règle du 2026-09-13 : une seule lecture du jeton pour tous les
+// verdicts, deux copies du parsing finissent toujours par diverger).
+//
+// ⚠️ CE DROIT N'EST PAS CELUI DE CRÉER DES PASSIONS, et il ne peut pas l'être :
+// le plafond des créations (3 à vie) est tenu par le SERVEUR (`creer_passion` +
+// `public.passion_quotas`), et AUCUN drapeau client ne lève un plafond serveur.
+// Ce qui se lève ici, ce sont les DEUX limites locales : passions vivantes et
+// changements.
+// ══════════════════════════════════════════════════════════════════════════
+var COMPTE_PASSIONS_ILLIMITEES = "passioadmin@gmail.com";
+
+// L'adresse du compte connecté, normalisée, ou "" si rien ne la prouve.
+// ⚠️ Normalisée aux DEUX bouts (blancs + casse) : une adresse ne se compare
+// jamais octet à octet — « PassioAdmin@Gmail.com » est le même compte, et le
+// jeton porte ce que le fournisseur a écrit, pas ce qu'on a tapé.
+function _emailSessionCourante() {
+  try {
+    if (typeof _sessionSdkPersistee !== "function") return "";
+    var s = _sessionSdkPersistee();
+    var m = s && s.user && s.user.email;
+    return m ? String(m).trim().toLowerCase() : "";
+  } catch (e) { return ""; }
+}
+
+// La SEULE autorité du droit. Ses trois lecteurs (`passionsIllimitees`, la
+// bascule, le bouton) ne re-testent rien — même contrat que `nomCompteValide`.
+function compteAutorisePassionsIllimitees() {
+  return _emailSessionCourante() === COMPTE_PASSIONS_ILLIMITEES;
+}
+
 function passionsIllimitees() {
+  // ⚠️ LE DROIT SE VÉRIFIE AVANT LE DRAPEAU, et l'ordre est le lot entier : un
+  // `window.PASSIO_PASSIONS_ILLIMITEES = true` posé plus loin ne doit jamais
+  // court-circuiter la garde. Aucun autre compte ne passe, par aucune des deux
+  // portes.
+  if (!compteAutorisePassionsIllimitees()) return false;
   try { if (window.PASSIO_PASSIONS_ILLIMITEES === true) return true; } catch (e) {}
   try { if (window.PASSIO_PASSIONS_ILLIMITEES === false) return false; } catch (e) {}
   try { return localStorage.getItem(CLE_PASSIONS_ILLIMITEES) === "1"; } catch (e) { return false; }
@@ -3232,6 +3296,20 @@ function quotaChangementsActif() {
 // « Réactiver ». Sans ce re-rendu, l'écran garderait l'état d'avant la bascule
 // et on croirait le drapeau sans effet.
 function basculerPassionsIllimitees() {
+  // ⚠️ LA GARDE EST RÉPÉTÉE ICI, ET ELLE N'EST PAS REDONDANTE : le bouton est
+  // masqué pour les autres comptes, mais cette fonction est GLOBALE — la
+  // console, un onclick recopié ou un futur raccourci l'atteignent. Sans elle,
+  // le drapeau s'écrirait pour quelqu'un qui n'en tire rien : un interrupteur
+  // qui s'allume et ne fait rien est pire qu'un refus.
+  // ⚠️ ET LE REFUS SE PRONONCE (un refus muet est indiscernable d'une panne,
+  // 2026-09-04) PUIS SE TRACE : une tentative silencieuse ressemble au calme.
+  if (!compteAutorisePassionsIllimitees()) {
+    try { majBoutonPassionsIllimitees(); } catch (e) {}
+    try { diagLog("passions illimitées : refusé, compte non autorisé"); } catch (e) {}
+    toast("Mode réservé au compte de l'éditeur — le plafond reste à "
+      + PASSIONS_OFFERTES + " passions.", "warning");
+    return;
+  }
   var actif = !passionsIllimitees();
   try { localStorage.setItem(CLE_PASSIONS_ILLIMITEES, actif ? "1" : "0"); } catch (e) {}
   // Une bascule en mémoire prendrait le pas sur le stockage à la lecture
@@ -3256,6 +3334,23 @@ function basculerPassionsIllimitees() {
 function majBoutonPassionsIllimitees() {
   var b = document.getElementById("settingsPassionsIllimitees");
   if (!b) return;
+  // ⚠️ POUR TOUT AUTRE COMPTE, LA PORTE N'EXISTE PAS — elle est MASQUÉE, pas
+  // désarmée. Un bouton grisé qui répond « réservé » à chaque tap annoncerait à
+  // chacun un régime de faveur qu'il ne peut pas obtenir, et un `disabled`
+  // n'aurait de toute façon jamais été une garde (elle est dans
+  // `passionsIllimitees`). Même idiome que `majSectionCompte`, qui masque dans
+  // ce panneau STATIQUE tout ce qui suppose un compte.
+  // ⚠️ La visibilité se pilote et se LIT par `style.display` : `[hidden]` ne
+  // replie rien sur un élément dont le CSS impose un `display` (fiche 19).
+  if (!compteAutorisePassionsIllimitees()) {
+    b.style.display = "none";
+    b.setAttribute("data-passions-reserve", "1");
+    b.setAttribute("data-passions-illimitees", "0");
+    b.setAttribute("aria-pressed", "false");
+    return;
+  }
+  b.style.display = "";
+  b.removeAttribute("data-passions-reserve");
   var on = passionsIllimitees();
   b.textContent = on ? "Passions illimitées : ACTIVÉ" : "Passions illimitées (test)";
   b.setAttribute("aria-pressed", on ? "true" : "false");

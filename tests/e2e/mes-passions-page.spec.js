@@ -676,7 +676,65 @@ for (const largeur of [320, 360, 390, 430]) {
 // découle. Le troisième cas mesure cette propagation là où elle compte : sur
 // l'écran, et sur un geste qui aurait été refusé sans le drapeau.
 // ══════════════════════════════════════════════════════════════════════════
+// ⚠️ ET DEPUIS LE 2026-09-18, IL EST RÉSERVÉ À UN SEUL COMPTE (« applique-le
+// seulement pour le compte passioadmin@gmail.com, moi seul doit en
+// bénéficier »). Les trois cas d'origine mesuraient le drapeau ; ils mesurent
+// désormais le drapeau POUR CE COMPTE, et trois cas de plus mesurent le refus :
+// un autre compte, aucun compte, et la porte des Paramètres.
+//
+// ⚠️ LE DISCRIMINANT EST L'ADRESSE DE LA SESSION, ET IL ÉCHOUE FERMÉ : pas de
+// jeton lisible → refus. C'est ce qui rend les cas ci-dessous fragiles à écrire
+// et il n'y a qu'une bonne façon de le faire — voir `poserSession`.
 const CLE_ILLIMITE = "passio_passions_illimitees_v1";
+
+// Une adresse qui n'est celle de personne. Le compte SERVI, lui, n'est jamais
+// écrit en dur ici : il est lu dans la page (`COMPTE_PASSIONS_ILLIMITEES`), et
+// le cas ⑭ sexies est le seul à l'épingler — avec l'adresse de l'éditeur.
+const AUTRE_COMPTE = "quelqun.dautre@example.com";
+
+// ⚠️ LE JETON SE POSE À L'INSTANT OÙ LE DROIT SE LIT, JAMAIS EN
+// `addInitScript` : posé avant le démarrage il DISPARAÎT (un appareil qui porte
+// un compte sans session retrouvée passe par `purgerJetonAuthLocal()`, geste
+// délibéré du produit). Et comme « pas de jeton » = refus, un cas écrit ainsi
+// serait vert quoi qu'il arrive — il mesurerait une fenêtre que le produit
+// referme. `compteAutorisePassionsIllimitees` relit le stockage à CHAQUE appel :
+// c'est son contrat réel. Même idiome que `ecritures-identite-compte.spec.js`.
+// ⚠️ ET LE JETON DOIT ÊTRE UN JWT DE FORME VALIDE, SINON LE SDK LE JETTE —
+// mesuré, pas supposé : avec un `access_token: "jeton-de-banc"`, la clé
+// `sb-<ref>-auth-token` a DISPARU du stockage entre la pose et le premier
+// `openPassionManager()` (supabase-js 2.116 décode le jeton en chargeant sa
+// session, échoue, et appelle `_removeSession`). Le cas rougissait alors sur sa
+// propre prémisse — ce qui est la chance qu'on a eue : sans prémisse mesurée,
+// il aurait rougi sur le SUJET et envoyé enquêter dans le produit. La
+// signature, elle, n'est jamais vérifiée côté client : trois segments
+// base64url suffisent.
+const JETON_UID = "00000000-0000-4000-8000-0000000000ad";
+
+async function poserSession(page, email) {
+  await page.evaluate(([m, uid]) => {
+    const ref = (String((window.PASSIO_SUPABASE && window.PASSIO_SUPABASE.url) || "")
+      .match(/https?:\/\/([^.]+)\./) || [])[1];
+    const b64 = (o) => btoa(JSON.stringify(o))
+      .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    const exp = Math.floor(Date.now() / 1000) + 3600;
+    const jwt = b64({ alg: "HS256", typ: "JWT" }) + "."
+      + b64({ sub: uid, email: m, role: "authenticated", aud: "authenticated", exp, iat: exp - 3600 })
+      + ".banc";
+    localStorage.setItem("sb-" + ref + "-auth-token", JSON.stringify({
+      access_token: jwt,
+      refresh_token: "banc",
+      token_type: "bearer",
+      expires_in: 3600,
+      expires_at: exp,
+      user: { id: uid, email: m },
+    }));
+  }, [email, JETON_UID]);
+}
+
+// La session du compte servi, lue dans la page : un test qui recopierait
+// l'adresse mentirait le jour où le code en change.
+const poserSessionServie = async (page) =>
+  poserSession(page, await page.evaluate(() => COMPTE_PASSIONS_ILLIMITEES));
 
 test("⑭ par défaut, l'illimité est ÉTEINT — le plafond et le quota s'appliquent", async ({ page }) => {
   await poser(page, { vivantes: 3, archivees: 1, changements: 3 });
@@ -700,6 +758,7 @@ test("⑭ par défaut, l'illimité est ÉTEINT — le plafond et le quota s'appl
 test("⑭ bis — allumé, il lève les DEUX limites, et l'écran cesse de les annoncer", async ({ page }) => {
   await page.addInitScript((c) => localStorage.setItem(c, "1"), CLE_ILLIMITE);
   await poser(page, { vivantes: 3, archivees: 1, changements: 3 });
+  await poserSessionServie(page);   // le droit vient du COMPTE, pas du drapeau
   await ouvrir(page);
 
   const vu = await page.evaluate(() => ({
@@ -736,6 +795,7 @@ test("⑭ bis — allumé, il lève les DEUX limites, et l'écran cesse de les a
 test("⑭ ter — allumé, les gestes ABOUTISSENT au-delà du plafond et du quota", async ({ page }) => {
   await page.addInitScript((c) => localStorage.setItem(c, "1"), CLE_ILLIMITE);
   await poser(page, { vivantes: 3, archivees: 1, changements: 3 });
+  await poserSessionServie(page);   // le droit vient du COMPTE, pas du drapeau
   await ouvrir(page);
 
   // ① Réactiver : quatre passions vivantes, une de plus que le plafond.
@@ -781,6 +841,7 @@ test("⑭ quater — la bascule des Paramètres allume, éteint, et dit son ÉTA
   // sans un seul rouge.
   await page.addInitScript((c) => localStorage.setItem(c, "1"), CLE_ILLIMITE);
   await poser(page, { vivantes: 3, changements: 0 });
+  await poserSessionServie(page);   // sans ce compte, la porte est MASQUÉE
 
   await page.evaluate(() => { toggleDevPanel(); });
   await page.waitForTimeout(300);
@@ -816,4 +877,162 @@ test("⑭ quater — la bascule des Paramètres allume, éteint, et dit son ÉTA
   await page.waitForTimeout(500);
   await expect(b).toHaveAttribute("data-passions-illimitees", "1");
   expect(await page.evaluate(() => plafondPassionsActif())).toBe(false);
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// ⑭ quinquies / sexies / septies — LE MODE EST RÉSERVÉ À UN COMPTE
+// ──────────────────────────────────────────────────────────────────────────
+// Demande de Benjamin (2026-09-18) : « applique-le seulement pour le compte
+// passioadmin@gmail.com. Tous les autres non, moi seul doit en bénéficier. »
+//
+// ⚠️ CE QUE CES TROIS CAS MESURENT, ET QUE LES QUATRE PRÉCÉDENTS NE POUVAIENT
+// PAS VOIR : les quatre d'origine posaient le drapeau et vérifiaient qu'il
+// lève les limites. Tous les quatre resteraient VERTS si le droit s'ouvrait à
+// n'importe qui — c'est le REFUS qu'il faut mesurer, et il a trois formes :
+// un autre compte connecté, aucun compte du tout, et la porte des Paramètres.
+// ══════════════════════════════════════════════════════════════════════════
+
+test("⑭ quinquies — un AUTRE compte : ni le drapeau ni `window` ne lèvent quoi que ce soit", async ({ page }) => {
+  // Les deux portes en même temps : la clé de stockage ET la variable de
+  // mémoire, celle qu'une console poserait. La garde se lit AVANT les deux.
+  await page.addInitScript((c) => localStorage.setItem(c, "1"), CLE_ILLIMITE);
+  await poser(page, { vivantes: 3, archivees: 1, changements: 3 });
+  await poserSession(page, AUTRE_COMPTE);
+  await page.evaluate(() => { window.PASSIO_PASSIONS_ILLIMITEES = true; });
+  await ouvrir(page);
+
+  const vu = await page.evaluate(() => ({
+    autorise: compteAutorisePassionsIllimitees(),
+    email: _emailSessionCourante(),
+    drapeau: passionsIllimitees(),
+    plafond: plafondPassionsActif(),
+    plafondAtteint: plafondPassionsAtteint(),
+    quota: quotaChangementsActif(),
+    restants: String(changementsPassionRestants()),
+    places: String(passionsRestantesOffertes()),
+    resume: (document.getElementById("passionsResume").textContent || "").trim(),
+    porte: document.getElementById("nouveauProfilLien").getAttribute("data-passion-porte"),
+  }));
+  expect(vu.email, "la prémisse : c'est bien un autre compte qui est connecté").toBe(AUTRE_COMPTE);
+  expect(vu.autorise, "l'autorité a servi un compte qui n'y a pas droit").toBe(false);
+  expect(vu.drapeau, "le drapeau a levé les limites d'un autre compte").toBe(false);
+  expect(vu.plafond, "le plafond de passions ne s'applique plus").toBe(true);
+  expect(vu.plafondAtteint).toBe(true);
+  expect(vu.quota, "le quota de changements ne s'applique plus").toBe(true);
+  expect(vu.restants).toBe("0");
+  expect(vu.places).toBe("0");
+  expect(vu.resume, "l'écran n'annonce plus la limite qui borne pourtant").toContain(" sur ");
+  expect(vu.porte).toBe("fermee");
+
+  // ⚠️ ET LE GESTE, PAS SEULEMENT L'ÉCRAN : un lot qui n'aurait rendu que les
+  // mentions laisserait l'archivage aboutir au-delà du quota. C'est le point
+  // d'écriture qui tranche (`_inscrireChangementPassion`), et il refuse.
+  const arch = await page.evaluate(() => {
+    const cible = (state.user.profiles || []).find((p) => !p.archived);
+    const rendu = archiverPassion(cible.id);
+    return { rendu, vivantes: (state.user.profiles || []).filter((p) => !p.archived).length };
+  });
+  expect(arch.rendu, "l'archivage a abouti alors que les trois changements sont consommés").toBe(false);
+  expect(arch.vivantes).toBe(3);
+});
+
+test("⑭ sexies — sans session lisible on REFUSE, et l'adresse servie est celle de l'éditeur", async ({ page }) => {
+  // L'échec FERMÉ, et c'est l'inverse VOULU de la porte d'admission 18+ : là,
+  // un statut illisible rend la porte transparente parce que la RLS tient la
+  // frontière derrière ; ici rien ne double la garde, donc un inconnu n'est
+  // jamais servi.
+  await page.addInitScript((c) => localStorage.setItem(c, "1"), CLE_ILLIMITE);
+  await poser(page, { vivantes: 3, changements: 3 });
+
+  const vu = await page.evaluate(() => ({
+    jetons: Object.keys(localStorage).filter((k) => /^sb-.+-auth-token$/.test(k)).length,
+    email: _emailSessionCourante(),
+    autorise: compteAutorisePassionsIllimitees(),
+    drapeau: passionsIllimitees(),
+    plafond: plafondPassionsActif(),
+    quota: quotaChangementsActif(),
+    servi: COMPTE_PASSIONS_ILLIMITEES,
+    editeur: (typeof PASSIO_EDITEUR !== "undefined" && PASSIO_EDITEUR.email) || "",
+  }));
+  expect(vu.jetons, "prémisse : aucune session sur cet appareil").toBe(0);
+  expect(vu.email, "une adresse sortie de nulle part").toBe("");
+  expect(vu.autorise, "sans session, le droit s'est ouvert").toBe(false);
+  expect(vu.drapeau, "le drapeau seul a suffi").toBe(false);
+  expect(vu.plafond, "le plafond ne s'applique plus à un appareil sans compte").toBe(true);
+  expect(vu.quota).toBe(true);
+
+  // ⚠️ L'ADRESSE SERVIE EST CELLE DE L'ÉDITEUR, ET LES DEUX NE DOIVENT PAS
+  // DÉRIVER EN SILENCE. `PASSIO_EDITEUR.email` est une constante d'AFFICHAGE
+  // (mentions légales, contact) : le jour où elle change, ce droit suivrait
+  // vers un compte que personne n'a choisi — ou disparaîtrait sans un mot. Ce
+  // cas rougit alors, et c'est un humain qui tranche.
+  expect(vu.servi, "l'adresse servie n'est plus celle demandée le 2026-09-18")
+    .toBe("passioadmin@gmail.com");
+  expect(vu.servi, "l'adresse servie et celle de l'éditeur ont divergé")
+    .toBe(String(vu.editeur).trim().toLowerCase());
+});
+
+test("⑭ septies — la porte des Paramètres n'existe que pour ce compte, et la bascule refuse", async ({ page }) => {
+  await poser(page, { vivantes: 3, changements: 0 });
+  await poserSession(page, AUTRE_COMPTE);
+
+  await page.evaluate(() => { toggleDevPanel(); });
+  await page.waitForTimeout(300);
+  await page.evaluate(() => {
+    const b = document.getElementById("settingsPassionsIllimitees");
+    const sec = b && b.closest(".settings-section");
+    if (sec) toggleSettingsSection(sec);
+  });
+  await page.waitForTimeout(400);
+
+  // ⚠️ ON MESURE LE `display` CALCULÉ, JAMAIS `offsetParent` : la section
+  // « Démo » est repliée au repos, donc `offsetParent` y est nul pour TOUS ses
+  // boutons, quoi qu'on fasse — un cas écrit ainsi passerait sur le défaut
+  // (piège mesuré deux fois le 2026-09-12).
+  const masque = await page.evaluate(() => {
+    const b = document.getElementById("settingsPassionsIllimitees");
+    return {
+      display: getComputedStyle(b).display,
+      reserve: b.getAttribute("data-passions-reserve"),
+    };
+  });
+  expect(masque.display, "la porte est offerte à un compte qui n'y a pas droit").toBe("none");
+  expect(masque.reserve).toBe("1");
+
+  // La bascule est une fonction GLOBALE : masquer le bouton ne la ferme pas.
+  // Elle refuse, elle le DIT (un refus muet est indiscernable d'une panne), et
+  // elle n'écrit pas le drapeau — un interrupteur qui s'allume sans rien faire
+  // serait pire qu'un refus.
+  const apres = await page.evaluate(() => {
+    basculerPassionsIllimitees();
+    const toasts = Array.from(document.querySelectorAll("#toastStack .toast"));
+    return {
+      stockage: localStorage.getItem("passio_passions_illimitees_v1"),
+      drapeau: passionsIllimitees(),
+      plafond: plafondPassionsActif(),
+      dernierToast: toasts.length ? (toasts[toasts.length - 1].textContent || "") : "",
+    };
+  });
+  expect(apres.stockage, "la bascule a écrit le drapeau d'un compte non autorisé").not.toBe("1");
+  expect(apres.drapeau).toBe(false);
+  expect(apres.plafond).toBe(true);
+  expect(apres.dernierToast, "le refus ne se prononce pas").toMatch(/réserv/i);
+
+  // Et pour le compte servi, la même porte est bien là : une garde qui ferme
+  // aussi à celui qui y a droit n'est pas une garde, c'est une panne.
+  await poserSessionServie(page);
+  const servi = await page.evaluate(() => {
+    majBoutonPassionsIllimitees();
+    const b = document.getElementById("settingsPassionsIllimitees");
+    return {
+      display: getComputedStyle(b).display,
+      reserve: b.getAttribute("data-passions-reserve"),
+      texte: (b.textContent || "").trim(),
+      autorise: compteAutorisePassionsIllimitees(),
+    };
+  });
+  expect(servi.autorise).toBe(true);
+  expect(servi.display, "la porte a disparu pour le compte qui y a droit").not.toBe("none");
+  expect(servi.reserve, "le marqueur de réserve survit à son motif").toBeNull();
+  expect(servi.texte).toBe("Passions illimitées (test)");
 });
