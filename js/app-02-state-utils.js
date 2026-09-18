@@ -4169,6 +4169,11 @@ async function doDeleteAccount() {
     // beacon de `pagehide`) jusqu'au verdict ; un refus rend la main.
     discardPendingStateSave();
     window._suppressionEnCours = true;
+    // LOT E : la chaîne la plus sensible (RGPD) n'avait ni flow ni action —
+    // seul `diagLog`. Le flow s'ouvre juste avant l'appel (le hook fetch tague
+    // la requête `functions/v1/delete-account`) et se règle sur le VERDICT lu.
+    var _delCid = null;
+    try { if (window.tel && tel.flowStart) _delCid = tel.flowStart("delete_account"); } catch (e) {}
     var verdict = null;
     try { verdict = await supa.functions.invoke("delete-account"); } catch (e) { verdict = { error: e }; }
     // ⚠️ ASTRA-42 (2026-09-15) : « Compte supprimé » N'EST ANNONCÉ QUE SUR UN SUCCÈS
@@ -4192,6 +4197,19 @@ async function doDeleteAccount() {
     // compte pour réessayer. On ferme la session et le local, et on le DIT
     // tel quel, avec le contact.
     var compteFermeSansGarantie = !!(corps && corps.code === "finalisation_refusee" && corps.auth_supprimee === true);
+    // LOT E : le verdict au pilotage. Le `code` serveur devient `rc` (settle
+    // renomme message→detail, code→rc) — jamais le message, qui cite l'adresse
+    // de contact. Une fermeture SANS garantie n'est pas un succès : elle sonne
+    // comme un échec avec son code, pour être relue par un humain.
+    try {
+      if (_delCid && window.tel && tel.settle) {
+        var _delCode = (corps && corps.code) || (verdict && verdict.error ? "sans_verdict" : "sans_code");
+        tel.settle(_delCid, "saved", okServeur, okServeur ? null : { message: _delCode, code: _delCode });
+        // Le succès purge `localStorage` (backlog compris) puis recharge : on
+        // écoule tout de suite, en keepalive.
+        if (tel.flush) tel.flush({ keepalive: true });
+      }
+    } catch (e) {}
     if (!okServeur && !compteFermeSansGarantie) {
       var code = (corps && corps.code) || "";
       var restes = (corps && (corps.restes || corps.echecs)) || [];
@@ -4509,6 +4527,23 @@ function traduireRefusCaptcha(m) {
   return m;
 }
 
+// LOT E (2026-09-18) : la RAISON d'un refus d'authentification, en code fermé,
+// pour le pilotage. Déduite du message/code GoTrue SANS jamais recopier le
+// message (il peut citer l'adresse saisie). Ordre : du plus spécifique au plus
+// général — « captcha » avant tout (il peut accompagner n'importe quel refus).
+//   captcha · banni · non_confirme · deja_utilise · quota · mdp · autre
+function rcRefusAuth(error) {
+  var m = String((error && error.message) || "");
+  var c = String((error && error.code) || "");
+  if (/captcha/i.test(m) || /captcha/i.test(c)) return "captcha";
+  if (/banned/i.test(m) || c === "user_banned") return "banni";
+  if (/not confirmed/i.test(m) || c === "email_not_confirmed") return "non_confirme";
+  if (/already registered|already exists/i.test(m) || c === "user_already_exists") return "deja_utilise";
+  if (/rate limit|too many|security purposes/i.test(m) || /rate_limit/.test(c)) return "quota";
+  if (/invalid login|password/i.test(m) || c === "invalid_credentials" || c === "weak_password") return "mdp";
+  return "autre";
+}
+
 function switchAuthTab(mode) {
   _authMode = mode;
   document.getElementById("authTabSignin").classList.toggle("active", mode === "signin");
@@ -4646,6 +4681,8 @@ async function onbResendConfirmation() {
     const captchaToken = await captchaJeton();
     const { error } = await supa.auth.resend(Object.assign({ type: "signup", email }, captchaToken !== undefined ? { options: { captchaToken } } : {}));
     captchaReinitialiser();
+    // LOT E : le renvoi et son issue (`ok`), jamais l'adresse.
+    try { window.tel && tel.action("confirmation_resent", { ok: !error }); } catch (e) {}
     if (error) {
       let m = traduireRefusCaptcha(error.message || "Échec de l'envoi.");
       // Supabase impose un délai minimal entre deux envois (anti-abus) : le
@@ -4658,6 +4695,7 @@ async function onbResendConfirmation() {
     // (anti-énumération) : le message ne doit rien affirmer de plus que l'envoi.
     _showAuthMsg("📧 Si ce compte attend une confirmation, le lien vient d'être renvoyé. Pense aux spams.", "success");
   } catch (e) {
+    try { window.tel && tel.action("confirmation_resent", { ok: false }); } catch (e2) {}
     _showAuthMsg("Erreur réseau. Vérifie ta connexion.", "error");
   }
 }
@@ -5179,6 +5217,12 @@ async function onbDoAuth() {
 
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="auth-loading"></span>' + (_authMode === "signin" ? "Connexion…" : "Création…"); }
 
+  // LOT E : l'INTENTION, avant l'appel. Le seul signal qui existait était la
+  // requête HTTP du hook fetch — muette sur le mode et sur l'issue que l'app lit.
+  // Clé `kind` (pas `mode`) : track() pose `mode: pwa|web` sur CHAQUE événement
+  // et une meta `mode` l'écraserait — le pilotage perdrait le support.
+  try { window.tel && tel.action("auth_submitted", { kind: _authMode }); } catch (e) {}
+
   try {
     let result;
     // Jeton anti-robots : `undefined` tant que le captcha est inactif (appel inchangé).
@@ -5254,6 +5298,11 @@ async function onbDoAuth() {
       // qui suivent (captcha, « déjà utilisé », quota d’e-mails) : après, la
       // table ne reconnaîtrait plus son propre refus.
       const _refusMdp = (traduireRefusMotDePasse(error.message || "") !== (error.message || ""));
+      // LOT E : le refus tel que l'app le LIT, en code fermé (rcRefusAuth) —
+      // jamais le message brut. Le hook fetch marque ces 400 `refus_attendu`
+      // et les tait au pilotage ; « Email not confirmed » ou un captcha cassé
+      // en série ne se voyaient donc nulle part.
+      try { window.tel && tel.action(_authMode === "signin" ? "signin_refused" : "signup_refused", { rc: rcRefusAuth(error) }); } catch (e) {}
       let msg = traduireRefusCaptcha(error.message);
       if (msg.includes("Invalid login")) msg = "E-mail ou mot de passe incorrect.";
       // Compte SUSPENDU par la modération (MOD-01, 2026-09-15) : GoTrue rend
@@ -5308,6 +5357,7 @@ async function onbDoAuth() {
         // milliseconde et l'écran change sans un mot. Ces deux branches ne sont
         // atteignables que depuis l'activation de « Confirm email » (2026-08-30) —
         // le défaut était donc invisible tant que signUp rendait une session.
+        try { window.tel && tel.action("signup_refused", { rc: "deja_utilise" }); } catch (e) {}
         switchAuthTab("signin");
         _showAuthMsg("Cet e-mail est déjà utilisé. Connecte-toi.", "error");
         // ⚠️ LA MÊME SORTIE QUE LES DEUX AUTRES BRANCHES (2026-09-18, relevé par
@@ -5322,6 +5372,12 @@ async function onbDoAuth() {
       // Pas de session → e-mail à confirmer. On NE rentre PAS dans l'app sans
       // adresse confirmée (exigence : « il faut une adresse mail valide »).
       if (!data?.session) {
+        // LOT E : « compte créé, à confirmer ». Le marqueur (un horodatage,
+        // rien d'autre) permet à boot/SIGNED_IN d'émettre `signup_confirmed`
+        // avec le délai à la première session vue sur cet appareil
+        // (signalerInscriptionConfirmee, app-08).
+        try { window.tel && tel.action("signup_pending_confirmation"); } catch (e) {}
+        try { localStorage.setItem("passio_signup_pending", String(Date.now())); } catch (e) {}
         switchAuthTab("signin");
         _showAuthMsg("✅ Compte créé ! Vérifie tes e-mails (et les spams) pour confirmer, puis reviens te connecter.", "success");
         _showResendConfirmation(email);
@@ -5344,6 +5400,12 @@ async function onbDoAuth() {
       // dans l'état en cours, et purger+recharger ici jetterait ce que la
       // personne vient de saisir. Le compte neuf est couvert autrement — sa
       // première session complète repasse par `boot`, qui porte la même garde.
+      if (_authMode === "signin") {
+        // LOT E : connexion réussie. `flush` en keepalive AVANT le rechargement
+        // (deux chemins ci-dessous) : sans lui l'événement attendrait le
+        // minuteur de 3 s et partirait au `pagehide`, ou resterait en backlog.
+        try { if (window.tel) { tel.action("signin_ok"); if (tel.flush) tel.flush({ keepalive: true }); } } catch (e) {}
+      }
       if (_authMode === "signin" && await adopterCompteConnecte(uidCompte)) {
         window.location.reload();
         return;

@@ -492,7 +492,12 @@ class Store {
         activeUsers: activeUsers.length,
         onlineDevices: online.length,
         sessions: activeSessions.length,
-        signups: count((e) => e.action === "signup" || e.action === "account_created"),
+        // LOT E1 (E-M1/E-T1) : `signup`/`account_created` n'ont jamais été émis
+        // par l'app (compteur structurellement à 0). Le client émet désormais
+        // `signup_pending_confirmation` (compte créé, e-mail à confirmer) puis
+        // `signup_confirmed` (première session après confirmation, app-08).
+        signups: count((e) => e.action === "signup_pending_confirmation"),
+        signupsConfirmes: count((e) => e.action === "signup_confirmed"),
         // Compte les marqueurs sémantiques ET les vrais inserts DB (HTTP 201),
         // pour refléter l'activité même si un marqueur ne s'est pas déclenché.
         publications: count((e) => /publish_/.test(e.action || "") || (e.type === "api" && /\/posts(\?|$)/.test(e.endpoint || "") && e.http_status === 201)),

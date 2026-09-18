@@ -122,7 +122,51 @@ export function onEvent(ev) {
       emit({ level: "warn", key: "apislow:" + ev.endpoint, title: "API très lente", message: `${ev.endpoint} — ${ev.duration_ms} ms`, meta: { endpoint: ev.endpoint } });
     }
   }
+
+  // Refus d'authentification en série (LOT E1, E-M1/E-T1). Le hook fetch marque
+  // tout 400 de /auth/v1/token « refus_attendu » (un mot de passe faux n'est pas
+  // un défaut) — mais une vague de « Email not confirmed » (SMTP en panne) ou un
+  // captcha cassé est un défaut d'USAGE que personne ne voyait : le client émet
+  // désormais signin_refused/signup_refused {rc} depuis onbDoAuth, qui lit le
+  // verdict. Un seul appareil qui insiste n'est pas une vague : il faut ≥ 2.
+  if (ev.action === "signin_refused" || ev.action === "signup_refused") {
+    const rc = ev.meta && ev.meta.rc;
+    if (RC_REFUS_SIGNAL.has(rc)) {
+      refusAuthWindow.push({ ts: Number(ev.ts) || now, device: ev.device_id || ev.session_id || "?", rc });
+      refusAuthWindow = refusAuthWindow.filter((r) => now - r.ts < REFUS_AUTH_FENETRE_MS);
+      const vague = serieRefusAuth(refusAuthWindow, rc);
+      if (vague) {
+        emit({ level: "warn", key: "authrefus:" + rc, title: "Refus d'authentification en série",
+          message: `${vague.n} refus « ${RC_REFUS_LIBELLE[rc] || rc} » sur ${vague.appareils} appareils en 1 h`,
+          meta: { rc, n: vague.n, appareils: vague.appareils } });
+        // Une vague = une alerte : on repart de zéro pour ce motif, sinon chaque
+        // refus suivant la relèverait (le cooldown de 60 s ne suffit pas sur 1 h).
+        refusAuthWindow = refusAuthWindow.filter((r) => r.rc !== rc);
+      }
+    }
+  }
 }
+
+// Motifs FERMÉS (rcRefusAuth, app-02) qui signalent un défaut d'usage — jamais
+// `mdp` (mot de passe faux) ni `deja_utilise` : ce sont des refus normaux.
+const RC_REFUS_SIGNAL = new Set(["non_confirme", "captcha"]);
+const RC_REFUS_LIBELLE = { non_confirme: "e-mail non confirmé", captcha: "captcha refusé" };
+const REFUS_AUTH_FENETRE_MS = 60 * 60_000;
+const REFUS_AUTH_SEUIL = 3;
+const REFUS_AUTH_APPAREILS = 2;
+let refusAuthWindow = [];
+
+/** Fonction PURE : la fenêtre (déjà bornée à 1 h) contient-elle une vague pour
+ *  ce motif — ≥ 3 refus venus d'au moins 2 appareils distincts ? Rend
+ *  { n, appareils } ou null. Exportée pour être éprouvée sans le bus d'alertes. */
+export function serieRefusAuth(fenetre, rc) {
+  const memes = (fenetre || []).filter((r) => r.rc === rc);
+  const appareils = new Set(memes.map((r) => r.device)).size;
+  if (memes.length < REFUS_AUTH_SEUIL || appareils < REFUS_AUTH_APPAREILS) return null;
+  return { n: memes.length, appareils };
+}
+/** Réservé aux tests : vide la fenêtre glissante. */
+export function _resetRefusAuth() { refusAuthWindow = []; }
 
 // ─── Chaînes d'actions cassées (traçage bout-en-bout) ──────────────────────
 // Le verdict d'une action n'est connu qu'une fois le flux FIGÉ : il ne peut pas

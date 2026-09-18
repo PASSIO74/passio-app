@@ -61,8 +61,16 @@ const CONTRACTS = {
   unlike_post:  { label: "J'aime retiré", feature: "feed", steps: [S_HANDLER, S_REQUEST_CONFIRM] },
   comment_post: { label: "Commentaire", feature: "feed", steps: [S_HANDLER, S_REQUEST_CONFIRM, S_DELIVER] },
   cint:         { label: "Réaction / like de commentaire", feature: "feed", steps: [S_HANDLER, S_REQUEST_CONFIRM] },
-  event_join:   { label: "Inscription événement", feature: "irl", steps: [S_HANDLER, S_REQUEST_CONFIRM] },
-  event_leave:  { label: "Désinscription événement", feature: "irl", steps: [S_HANDLER, S_REQUEST_CONFIRM] },
+  // RSVP (LOT E, 2026-09-18) : la confirmation est le `saved` EXPLICITE émis par
+  // setEventRsvp au verdict de supaSetEventRsvp/supaLeaveEvent (settle) — pas la
+  // requête ambiante : un update à 0 ligne ou un refus lu par l'app rendent
+  // un 200/23505 que l'auto-tag réseau prendrait pour un succès.
+  event_join:   { label: "Inscription événement", feature: "irl", steps: [S_HANDLER, S_REQUEST_STEP, { key: "saved", label: "Inscription enregistrée", role: "confirm" }] },
+  event_leave:  { label: "Désinscription événement", feature: "irl", steps: [S_HANDLER, S_REQUEST_STEP, { key: "saved", label: "Désinscription enregistrée", role: "confirm" }] },
+  // Suppression de compte : le verdict est celui de l'Edge Function
+  // (ok + garantie « barriere »), consigné par settle dans doDeleteAccount ;
+  // un refus porte son code serveur en `rc` (infrastructure_absente, en_vol…).
+  delete_account: { label: "Suppression de compte", feature: "compte", steps: [S_HANDLER, S_REQUEST_STEP, { key: "saved", label: "Compte supprimé (vérifié serveur)", role: "confirm" }] },
   // Publication : upload(s) média + insert `posts` = plusieurs requêtes ; on
   // s'appuie sur un « saved » explicite (émis par supaPublishPostWithRetry) plutôt
   // que sur l'auto-tag réseau, trop imprécis ici.
@@ -410,7 +418,17 @@ class TraceTracker {
 }
 
 // Actions purement UI (aucune écriture serveur attendue) → exclues de la dette.
-const NON_WRITE_ACTIONS = new Set(["tools_open", "share_post", "share_event"]);
+// `ui_open`/`ui_close` (LOT E) : ouverture/fermeture d'une modale, émises par
+// openModal/closeModal — un effet visible, jamais une écriture.
+// Les signaux d'ISSUE de l'authentification (auth_submitted, signin_ok,
+// signin_refused, signup_refused, signup_pending_confirmation, signup_confirmed,
+// confirmation_resent) sont des VERDICTS déjà rendus, pas des intentions
+// d'écriture à confirmer : ils n'ont pas de contrat et ne sont pas une dette.
+const NON_WRITE_ACTIONS = new Set([
+  "tools_open", "share_post", "share_event", "ui_open", "ui_close",
+  "auth_submitted", "signin_ok", "signin_refused", "signup_refused",
+  "signup_pending_confirmation", "signup_confirmed", "confirmation_resent",
+]);
 
 /**
  * Rapport de couverture d'instrumentation : quelles actions métier ont un

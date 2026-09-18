@@ -240,7 +240,9 @@
 
       var activate = function () {
         if (d.action === "create") { openCreateSheet(); return; }
-        track("ui_v2_nav", { key: d.key, screen: d.screen });
+        // `item`, PAS `key` : « key » est dans DENY_KEY (motif entier), la clé
+        // était jetée en silence par scrubMeta (relevé par audit-telemetry-keys, 2026-09-18).
+        track("ui_v2_nav", { item: d.key, screen: d.screen });
         goToScreen(d.screen);
       };
       el.addEventListener("click", activate);

@@ -12,7 +12,24 @@ function renderTopbar() {
 }
 
 // ======== MODALS ========
-function openModal(html) {
+// LOT E (2026-09-18) : identifiant STATIQUE d'une modale pour la télémétrie
+// (`ui_open`/`ui_close` {panel}). L'ouverture d'un panneau n'émettait rien : la
+// sentinelle ne pouvait pas distinguer un bouton mort d'un bouton qui ouvre une
+// fenêtre. L'identifiant vient du premier `data-panel="…"` ou `id="…"` du
+// gabarit — des identifiants ÉCRITS DANS LE CODE — jamais du titre, qui peut
+// être un texte de la personne. Les chiffres et ce qui suit sont retirés (un id
+// suffixé par un identifiant d'objet redevient sa famille).
+var _modalPanelCourant = null;
+function _panelDepuisHtml(html) {
+  try {
+    var s = String(html || "");
+    var m = /\bdata-panel="([A-Za-z][\w-]*)"/.exec(s) || /\bid="([A-Za-z][\w-]*)"/.exec(s);
+    if (!m) return "modal";
+    var p = m[1].replace(/[0-9][\s\S]*$/, "").replace(/[-_]+$/, "").slice(0, 40);
+    return p || "modal";
+  } catch (e) { return "modal"; }
+}
+function openModal(html, panel) {
   const backdrop = $("#modalBackdrop");
   // Si un modal est déjà ouvert, on remplace son contenu sans empiler une nouvelle entrée history.
   // Sinon on pousse une seule entrée pour que le bouton back ferme le modal.
@@ -24,6 +41,9 @@ function openModal(html) {
   const closeBtn = `<button type="button" class="modal-close" onclick="closeModal()" aria-label="Fermer">×</button>`;
   $("#modalContent").innerHTML = closeBtn + html;
   if (backdrop) backdrop.classList.add("active");
+  // `panel` explicite (appelant) sinon dérivé du gabarit — voir _panelDepuisHtml.
+  _modalPanelCourant = (typeof panel === "string" && panel) ? panel.slice(0, 40) : _panelDepuisHtml(html);
+  try { window.tel && tel.action("ui_open", { panel: _modalPanelCourant }); } catch (e) {}
 }
 function closeModal() {
   // ⚠️ Le nettoyage du CDV Live (arrêt du polling, retrait du spectateur) a été
@@ -36,7 +56,13 @@ function closeModal() {
   // et reculer sur une modale déjà fermée ferait quitter l'écran.
   const etaitOuverte = !!(bd && bd.classList.contains("active"));
   if (bd) bd.classList.remove("active");
-  if (etaitOuverte) releaseOverlayHistory();
+  if (etaitOuverte) {
+    releaseOverlayHistory();
+    // Seulement quand une modale ÉTAIT ouverte : `closeModal()` est appelée par
+    // précaution un peu partout, et un `ui_close` sans `ui_open` serait un mensonge.
+    try { window.tel && tel.action("ui_close", { panel: _modalPanelCourant || "modal" }); } catch (e) {}
+    _modalPanelCourant = null;
+  }
 }
 function closeModalOnBackdrop(e) {
   if (e.target.id === "modalBackdrop") closeModal();
@@ -2530,6 +2556,28 @@ function navigateTo(screen) {
 
 // Délai maximal accordé à `getSession()` au démarrage (voir UXO-02 dans `boot`).
 const DELAI_SESSION_BOOT_MS = 8000;
+// LOT E (2026-09-18) : « inscription confirmée » = la PREMIÈRE session vue sur
+// un appareil qui porte le marqueur `passio_signup_pending` (posé par onbDoAuth
+// à « compte créé, confirme ton e-mail »). Deux appelants — `boot` (lien de
+// confirmation qui ouvre une session, connexion après rechargement) et le
+// handler SIGNED_IN (connexion dans la page) — mais UNE émission : le marqueur
+// est retiré à la première, la seconde ne trouve rien. Le marqueur est un
+// horodatage : aucune adresse, aucun identifiant. `delai_s` = temps entre la
+// création du compte et cette première session (la confirmation peut se faire
+// sur un autre appareil : le délai est alors celui du retour ici, et c'est dit).
+function signalerInscriptionConfirmee(session) {
+  try {
+    if (!session || !session.user) return false;
+    var brut = localStorage.getItem("passio_signup_pending");
+    if (!brut) return false;
+    localStorage.removeItem("passio_signup_pending");
+    var depuis = Number(brut);
+    var delai = (isFinite(depuis) && depuis > 0) ? Math.max(0, Math.round((Date.now() - depuis) / 1000)) : null;
+    if (window.tel && tel.action) tel.action("signup_confirmed", { delai_s: delai });
+    return true;
+  } catch (e) { return false; }
+}
+
 async function boot() {
   // Charge le SDK Supabase à la demande (lazy, hors page verrouillée) PUIS
   // construit le vrai client, avant le moindre appel `supa.*` ci-dessous.
@@ -2688,6 +2736,8 @@ async function boot() {
       // 100 ms après le chargement depuis `passio_uid` — donc AVANT que
       // `getSession()` n'ait répondu, et avec l'ancienne valeur (2026-09-16).
       window.MY_UID = MY_UID;
+      // LOT E : première session vue après une inscription faite sur cet appareil.
+      try { signalerInscriptionConfirmee(session); } catch (e) {}
       // ⚠️ PENDANT UNE RÉCUPÉRATION, ON N'ÉCRIT PAS `passio_uid` (constat majeur
       // de la seconde passe). L'adoption est différée ; écrire la clé ferait
       // croire au démarrage SUIVANT que cet appareil possède déjà l'état du
@@ -2896,6 +2946,8 @@ async function boot() {
         MY_UID = _uidSession;
         window.MY_UID = MY_UID;   // reflet pour telemetry.js / platform.js (`let` de portée script)
         localStorage.setItem("passio_uid", MY_UID);
+        // LOT E : même signal que dans `boot` (garde par retrait du marqueur).
+        try { signalerInscriptionConfirmee(session); } catch (e) {}
         // Retour OAuth (Google) arrivé après le boot : finaliser + recharger dans l'app.
         if (event === "SIGNED_IN" && _oauthEnAttente) {
           localStorage.removeItem("passio_oauth_pending");
@@ -3949,11 +4001,14 @@ function diagLog(msg) {
 // TIMEOUT COURT: Supabase répond ou on considère que c'est un problème réseau
 
 async function supaPublishPostWithRetry(post, maxRetries = 2) {
-  try { window.tel && tel.action(post && post.is_reel ? "publish_reel" : "publish_post", { passion: post && post.passion, postId: post && post.id }); } catch (e) {}
+  // ⚠️ `pid`, PAS `passion` (2026-09-18) : la clé « passion » percute DENY_KEY
+  // (/pass/) et était JETÉE en silence par scrubMeta — le pilotage ne pouvait
+  // pas regrouper les publications par passion. Même valeur, nom neutre.
+  try { window.tel && tel.action(post && post.is_reel ? "publish_reel" : "publish_post", { pid: post && post.passion, postId: post && post.id }); } catch (e) {}
   // Traçage bout-en-bout : chaîne « handler → publication enregistrée ». On confirme
   // via un « saved » explicite au VRAI résultat (l'upload + insert peut échouer/retry).
   var _pubCid = null;
-  try { if (window.tel && tel.flowStart) _pubCid = tel.flowStart(post && post.is_reel ? "publish_reel" : "publish_post", { postId: post && post.id, passion: post && post.passion }); } catch (e) {}
+  try { if (window.tel && tel.flowStart) _pubCid = tel.flowStart(post && post.is_reel ? "publish_reel" : "publish_post", { postId: post && post.id, pid: post && post.passion }); } catch (e) {}
   function _pubDone(ok) {
     try { if (_pubCid && window.tel) { tel.step(_pubCid, "saved", ok ? "ok" : "error"); tel.flowEnd(_pubCid, ok ? "ok" : "error"); _pubCid = null; } } catch (e) {}
     try { _verdictPublication(post, ok); } catch (e) {}
@@ -6177,7 +6232,8 @@ function _creerCanalDb(prive) {
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "posts" }, async payload => {
       const r = payload.new;
       if (r.author_id === MY_UID) return;
-      try { tel && tel.recv("post", { postId: r.id, authorId: r.author_id }); } catch(e) {}
+      // `auteur`, PAS `authorId` : « user » est dans DENY_KEY, la clé était jetée.
+      try { tel && tel.recv("post", { postId: r.id, auteur: r.author_id }); } catch(e) {}
       try {
         const { data: prof } = await supa.from("profiles").select("username,emoji,color").eq("id", r.author_id).maybeSingle();
         const _mu = (r.media_url || "").toLowerCase();

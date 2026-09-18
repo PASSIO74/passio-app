@@ -299,13 +299,104 @@ test("cint : cible = commentId (pas postId) pour l'appariement", () => {
   assert.equal(traces.trace(cid).target, "cmt1");
 });
 
-test("event_join : cible = eventId ; requête OK = success", () => {
+test("event_join : cible = eventId ; requête OK + saved explicite = success", () => {
   reset();
   const cid = "ev1";
   const t0 = Date.now();
   traces.onEvent(ev("flow", "start", { correlation_id: cid, ts: t0, meta: { flow_action: "event_join", eventId: "e42" } }));
   traces.onEvent(ev("api", "POST /event_attendees", { correlation_id: cid, ts: t0 + 30, endpoint: "x/event_attendees", http_status: 201 }));
+  // LOT E (2026-09-18) : la requête ne confirme plus à elle seule — c'est le
+  // `saved` émis par setEventRsvp au verdict de l'écriture (voir les cas suivants).
+  traces.onEvent(ev("flow", "step", { correlation_id: cid, ts: t0 + 50, meta: { step: "saved" } }));
   const tr = traces.trace(cid);
   assert.equal(tr.target, "e42");
   assert.equal(tr.final, "success");
+});
+
+// ── LOT E (2026-09-18) : RSVP et suppression de compte confirmés par « saved » ──
+// MUTATION éprouvée : remettre `event_join`/`event_leave` sur S_REQUEST_CONFIRM
+// (l'auto-tag réseau confirme) → ① rend « success » sans saved, ② rend « partial ».
+test("event_join : la requête seule ne confirme plus ; figé sans saved = unconfirmed", () => {
+  reset();
+  const cid = "ev_req_seule";
+  const old = Date.now() - 20_000;
+  traces.onEvent(ev("flow", "start", { correlation_id: cid, ts: old, meta: { flow_action: "event_join", eventId: "e43" } }));
+  traces.onEvent(ev("api", "PATCH /event_attendees", { correlation_id: cid, ts: old + 30, endpoint: "x/event_attendees", http_status: 200 }));
+  const tr = traces.trace(cid);
+  assert.equal(tr.target, "e43");
+  assert.equal(tr.final, "unconfirmed");
+  assert.equal(tr.steps.find((s) => s.key === "saved").status, "missing");
+});
+
+test("event_join : requête 200 mais refus lu par l'app (saved=fail, rc) = failed, pas partial", () => {
+  reset();
+  const cid = "ev_refus";
+  const t0 = Date.now();
+  traces.onEvent(ev("flow", "start", { correlation_id: cid, ts: t0, meta: { flow_action: "event_join", eventId: "e44", rsvp: "going" } }));
+  traces.onEvent(ev("api", "PATCH /event_attendees", { correlation_id: cid, ts: t0 + 30, endpoint: "x/event_attendees", http_status: 200 }));
+  traces.onEvent(ev("flow", "step", { correlation_id: cid, ts: t0 + 60, status: "error", meta: { step: "saved", rc: "complete", detail: "complete" } }));
+  traces.onEvent(ev("flow", "end", { correlation_id: cid, ts: t0 + 61, status: "error" }));
+  const tr = traces.trace(cid);
+  assert.equal(tr.final, "failed");
+  assert.equal(tr.steps.find((s) => s.key === "saved").meta.rc, "complete");
+});
+
+test("event_join / event_leave : handler → requête → saved ok = success", () => {
+  for (const action of ["event_join", "event_leave"]) {
+    reset();
+    const cid = "ok_" + action;
+    const t0 = Date.now();
+    traces.onEvent(ev("flow", "start", { correlation_id: cid, ts: t0, meta: { flow_action: action, eventId: "e45" } }));
+    traces.onEvent(ev("api", "DELETE /event_attendees", { correlation_id: cid, ts: t0 + 30, endpoint: "x/event_attendees", http_status: 200 }));
+    traces.onEvent(ev("flow", "step", { correlation_id: cid, ts: t0 + 60, meta: { step: "saved" } }));
+    traces.onEvent(ev("flow", "end", { correlation_id: cid, ts: t0 + 61 }));
+    const tr = traces.trace(cid);
+    assert.equal(tr.final, "success", action);
+    assert.equal(tr.steps.map((s) => s.key).join(">"), "handler>request>saved", action);
+  }
+});
+
+// MUTATION éprouvée : retirer le contrat `delete_account` → libellé « Action »
+// (contrat _default) et la chaîne perd l'étape « saved ».
+test("delete_account : contrat dédié ; refus serveur (saved=fail, rc) = failed", () => {
+  reset();
+  const cid = "del_1";
+  const t0 = Date.now();
+  traces.onEvent(ev("flow", "start", { correlation_id: cid, ts: t0, meta: { flow_action: "delete_account" } }));
+  traces.onEvent(ev("api", "POST /functions/v1/delete-account", { correlation_id: cid, ts: t0 + 300, endpoint: "x/functions/v1/delete-account", http_status: 409, status: "error" }));
+  traces.onEvent(ev("flow", "step", { correlation_id: cid, ts: t0 + 320, status: "error", meta: { step: "saved", rc: "en_vol", detail: "en_vol" } }));
+  traces.onEvent(ev("flow", "end", { correlation_id: cid, ts: t0 + 321, status: "error" }));
+  const tr = traces.trace(cid);
+  assert.equal(tr.actionLabel, "Suppression de compte");
+  assert.equal(tr.feature, "compte");
+  assert.equal(tr.final, "failed");
+  assert.equal(tr.steps.find((s) => s.key === "saved").meta.rc, "en_vol");
+
+  reset();
+  const ok = "del_2";
+  traces.onEvent(ev("flow", "start", { correlation_id: ok, ts: t0, meta: { flow_action: "delete_account" } }));
+  traces.onEvent(ev("api", "POST /functions/v1/delete-account", { correlation_id: ok, ts: t0 + 300, endpoint: "x/functions/v1/delete-account", http_status: 200 }));
+  traces.onEvent(ev("flow", "step", { correlation_id: ok, ts: t0 + 320, meta: { step: "saved" } }));
+  traces.onEvent(ev("flow", "end", { correlation_id: ok, ts: t0 + 321 }));
+  assert.equal(traces.trace(ok).final, "success");
+});
+
+// MUTATION éprouvée : retirer ui_open/ui_close (ou les signaux d'auth) de
+// NON_WRITE_ACTIONS → ils réapparaissent dans la dette d'instrumentation.
+test("coverage : ui_open/ui_close et les verdicts d'auth ne sont pas une dette ; une action inconnue l'est", async () => {
+  const { coverage } = await import("../server/traces.js");
+  const { store } = await import("../server/store.js");
+  const sauvegarde = store.events;
+  store.events = [
+    ev("action", "ui_open", { meta: { panel: "deleteAccount" } }),
+    ev("action", "ui_close", { meta: { panel: "deleteAccount" } }),
+    ev("action", "signin_refused", { meta: { rc: "non_confirme" } }),
+    ev("action", "signup_pending_confirmation"),
+    ev("action", "signup_confirmed", { meta: { delai_s: 90 } }),
+    ev("action", "action_sans_contrat_banc"),
+  ];
+  try {
+    const dette = coverage().uninstrumented.map((d) => d.action);
+    assert.deepEqual(dette, ["action_sans_contrat_banc"]);
+  } finally { store.events = sauvegarde; }
 });

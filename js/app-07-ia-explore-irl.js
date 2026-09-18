@@ -3293,7 +3293,9 @@ function toggleJoinEvent(id) {
   const ev = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
   if (!ev) return;
   try { window.tel && tel.action(cur ? "event_leave" : "event_join", { eventId: id }); } catch (e) {}
-  try { window.tel && tel.flowStart && tel.flowStart(cur ? "event_leave" : "event_join", { eventId: id }); } catch (e) {}
+  // LOT E : plus de `flowStart` ici — son cid était jeté (jamais de step ni de
+  // end) et la fiche détail appelait setEventRsvp sans flow. Le flow s'ouvre
+  // dans setEventRsvp, seule porte commune, après ses gardes.
   if (cur) { setEventRsvp(id, null); return; }
   setEventRsvp(id, _eventIsFull(ev) ? "waitlist" : "going");
 }
@@ -3333,6 +3335,23 @@ async function setEventRsvp(id, rsvp) {
     toast("C'est complet — tu es sur liste d'attente");
   }
 
+  // LOT E (2026-09-18) : le flow s'ouvre ICI — seule porte commune à la carte,
+  // à la fiche détail et à la feuille de choix — APRÈS les gardes invité, démo,
+  // annulé et « inchangé » (un flow ouvert avant un `return` fabriquerait un
+  // « clic mort »), et SEULEMENT si une écriture serveur va être tentée : en
+  // mode local il n'y a rien à confirmer. Réglé par `settle` au verdict de
+  // l'écriture (plus bas) ou dans `annuler` (refus).
+  let _rsvpCid = null;
+  try {
+    if (window._supaReal && window.tel && tel.flowStart) _rsvpCid = tel.flowStart(rsvp ? "event_join" : "event_leave", { eventId: id, rsvp: rsvp || "none" });
+  } catch (e) {}
+  const _rsvpRegle = (ok, motif) => {
+    try {
+      if (!_rsvpCid || !window.tel || !tel.settle) return;
+      tel.settle(_rsvpCid, "saved", ok, ok ? null : { message: motif, code: motif });
+      _rsvpCid = null;
+    } catch (e) {}
+  };
   // ⚠️ INSTANTANÉ AVANT L'OPTIMISTE (ROB-02, 2026-09-14) : l'inscription était
   // annoncée (toast, notification, conversation rejointe) AVANT le verdict du
   // serveur, et un refus ne défaisait rien — la personne se croyait inscrite,
@@ -3346,6 +3365,9 @@ async function setEventRsvp(id, rsvp) {
     _refreshEventDetailIfOpen(id);
     toast(message, "warning");
     try { if (typeof diagLog === "function") diagLog("rsvp KO " + id + " " + String(rsvp)); } catch (e) {}
+    // Le refus serveur, avec son motif fermé (complete/annulee/passee) ou
+    // « refus » — jamais le message affiché.
+    _rsvpRegle(false, (rsvp && window._irlRefusMotif) || "refus");
   };
   const strip = (arr) => (arr || []).filter(x => x !== meId && x !== "me");
   ev.attendees = strip(ev.attendees);
@@ -3365,6 +3387,7 @@ async function setEventRsvp(id, rsvp) {
     if (window._supaReal) {
       const parti = await supaLeaveEvent(id);
       if (!parti) { annuler("⚠️ Désinscription non enregistrée — réessaie"); return; }
+      _rsvpRegle(true);
     }
     toast("Désinscrit");
     // Une place se libère → on promeut le premier de la file (et on le prévient).
@@ -3392,6 +3415,7 @@ async function setEventRsvp(id, rsvp) {
       : "⚠️ Inscription non enregistrée — réessaie");
     return;
   }
+  if (rsvpOk === true) _rsvpRegle(true);
 
   if (rsvp === "going" && prev !== "going") {
     pushNotification(`Tu rejoins <b>${escapeHtml(ev.title)}</b>`, "🤝");
