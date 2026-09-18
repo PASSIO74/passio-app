@@ -218,3 +218,141 @@ test.describe("AUTH-05 / SUP-10 — la suppression du compte attend le verdict",
     expect(r.toasts.some((t) => /déjà été supprimées/.test(t)), JSON.stringify(r.toasts)).toBe(true);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LOT E (E-T2, 2026-09-18) — LA CHAÎNE RGPD PARLE AU PILOTAGE
+//
+// `doDeleteAccount` n'avait ni flow ni action : seul `diagLog`. Désormais
+// `tel.flowStart("delete_account")` s'ouvre juste avant l'appel et
+// `tel.settle(cid, "saved", okServeur, {message: code, code})` se règle sur le
+// VERDICT lu (le `code` serveur devient `rc`, jamais le message qui cite
+// l'adresse de contact) ; puis `tel.flush({keepalive:true})` AVANT la purge
+// locale — sinon le lot part dans un `localStorage` déjà vidé.
+// Le contrat serveur (dashboard/test/traces.test.js) exige ce `saved` ; ici on
+// prouve que l'APP l'émet. `?telemetry=1` est OBLIGATOIRE : sans lui
+// `flowStart` rend null et le banc mesurerait le vide.
+// Les trois méthodes sont capturées À LA SOURCE : `settle` appelle `this.step`
+// puis `this.flowEnd` ; `flush` est remplacé (rien ne part, la route est
+// coupée de toute façon) et note si le local est ENCORE là à l'instant de l'appel.
+// ═══════════════════════════════════════════════════════════════════════════
+async function bancTel(page) {
+  await page.route(/supabase\.co/, (route) => route.abort());
+  await page.addInitScript((u) => { localStorage.setItem("passio_uid", u); }, UID_MOI);
+  await bootOnboarded(page, null, 1, { sansIsolationDesDonnees: true, query: "?telemetry=1" });
+  await page.evaluate((s) => { eval(s); }, FAUX_SUPA);
+  await page.evaluate(() => {
+    window.__flow = []; window.__flush = [];
+    const vraiStart = window.tel.flowStart;
+    window.tel.flowStart = function (action, meta) {
+      const cid = vraiStart.call(window.tel, action, meta);
+      window.__flow.push({ etape: "start", cid, action, meta: meta || {} });
+      return cid;
+    };
+    window.tel.step = function (cid, key, status, meta) { window.__flow.push({ etape: "step", cid, key, status, meta: meta || null }); };
+    window.tel.flowEnd = function (cid, status) { window.__flow.push({ etape: "end", cid, status }); };
+    window.tel.flush = function (opts) {
+      window.__flush.push({ keepalive: !!(opts && opts.keepalive),
+        localEncoreLa: Object.keys(localStorage).some((k) => k.indexOf("passio") !== -1) });
+    };
+  });
+}
+const flowDe = (page) => page.evaluate(() => ({ flow: window.__flow.splice(0), flush: window.__flush.splice(0) }));
+// La forme supabase-js d'une réponse non-2xx : le corps est dans `error.context`.
+const REPONSE = `(status, corps) => Promise.resolve({ data: null, error: { name: "FunctionsHttpError", message: "non-2xx",
+  context: { status, json: () => Promise.resolve(corps) } } })`;
+// Un flow complet et cohérent : start → step saved → end, TOUS sur le même cid.
+function chaineDelete(evs) {
+  expect(evs.map((e) => e.etape)).toEqual(["start", "step", "end"]);
+  expect(evs[0].action).toBe("delete_account");
+  expect(evs[0].cid).toMatch(/^fl_/);
+  expect(evs[1].cid).toBe(evs[0].cid);
+  expect(evs[2].cid).toBe(evs[0].cid);
+  expect(evs[1].key).toBe("saved");
+  return evs;
+}
+
+test.describe("Télémétrie — delete_account réglé au verdict serveur (LOT E)", () => {
+
+  // MUTATION : retirer `tel.flowStart("delete_account")` → aucun flow (rouge) ;
+  // retirer `tel.settle(_delCid, "saved", …)` → start seul (rouge) ; retirer
+  // `tel.flush({ keepalive: true })` → __flush vide (rouge) ; déplacer le flush
+  // après la purge locale → localEncoreLa false (rouge).
+  test("⑩ succès garanti : start → saved ok → end ok, même cid ; flush keepalive AVANT la purge locale", async ({ page }) => {
+    await bancTel(page);
+    const r = await page.evaluate(async () => {
+      window.__verdict = () => Promise.resolve({ data: { ok: true, garantie: "barriere", objets: 0 }, error: null });
+      const ok = await doDeleteAccount();
+      return { ok, clesPassio: Object.keys(localStorage).filter((k) => k.indexOf("passio") !== -1) };
+    });
+    const { flow, flush } = await flowDe(page);
+    expect(r.ok).toBe(true);
+    const evs = chaineDelete(flow);
+    expect(evs[1].status).toBe("ok");
+    expect(evs[1].meta).toBeNull();
+    expect(evs[2].status).toBe("ok");
+    expect(flush).toEqual([{ keepalive: true, localEncoreLa: true }]);
+    expect(r.clesPassio, "la purge locale a bien eu lieu — APRÈS le flush").toEqual([]);
+  });
+
+  // MUTATION : `okServeur ? null : { message: _delCode, code: _delCode }` → `null`
+  // → saved error sans rc (rouge) ; settle avec `corps.error` (le message) → detail
+  // non fermé (rouge).
+  test("⑪ refus serveur : saved en ÉCHEC avec rc = code fermé (en_vol), end error ; fonction injoignable : rc=sans_verdict", async ({ page }) => {
+    await bancTel(page);
+    const enVol = await page.evaluate(async (rep) => {
+      const reponse = eval(rep);
+      window.__verdict = () => reponse(409, { ok: false, code: "en_vol", error: "ecris a contact@exemple.test" });
+      return { ok: await doDeleteAccount(), etatLocal: localStorage.getItem(STATE_KEY) !== null };
+    }, REPONSE);
+    let { flow } = await flowDe(page);
+    expect(enVol.ok).toBe(false);
+    expect(enVol.etatLocal, "un refus ne purge rien").toBe(true);
+    let evs = chaineDelete(flow);
+    expect(evs[1].status).toBe("error");
+    // settle mappe message→detail et code→rc : le CODE fermé, jamais `corps.error`.
+    expect(evs[1].meta).toEqual({ detail: "en_vol", rc: "en_vol" });
+    expect(evs[2].status).toBe("error");
+
+    const reseau = await page.evaluate(async () => {
+      window.__verdict = () => Promise.reject(new Error("Failed to fetch"));
+      return { ok: await doDeleteAccount() };
+    });
+    ({ flow } = await flowDe(page));
+    expect(reseau.ok).toBe(false);
+    evs = chaineDelete(flow);
+    expect(evs[1].status).toBe("error");
+    expect(evs[1].meta).toEqual({ detail: "sans_verdict", rc: "sans_verdict" });
+  });
+
+  // MUTATION : `okServeur` remplacé par `okServeur || compteFermeSansGarantie`
+  // dans le settle → saved ok (rouge) : une fermeture SANS garantie sonne comme
+  // un échec, pour être relue par un humain. Mutation telemetry.js :
+  // `slice(0, 40)` → `slice(0, 20)` sur rc → « infrastructure_absen » (rouge).
+  test("⑫ finalisation_refusee : compte fermé MAIS saved error rc=finalisation_refusee, flush avant purge ; rc jamais amputé (infrastructure_absente)", async ({ page }) => {
+    await bancTel(page);
+    const absente = await page.evaluate(async (rep) => {
+      const reponse = eval(rep);
+      window.__verdict = () => reponse(503, { ok: false, code: "infrastructure_absente", error: "x" });
+      return { ok: await doDeleteAccount() };
+    }, REPONSE);
+    let { flow } = await flowDe(page);
+    expect(absente.ok).toBe(false);
+    let evs = chaineDelete(flow);
+    expect(evs[1].meta).toEqual({ detail: "infrastructure_absente", rc: "infrastructure_absente" });
+
+    const fin = await page.evaluate(async (rep) => {
+      const reponse = eval(rep);
+      window.__verdict = () => reponse(500, { ok: false, code: "finalisation_refusee", auth_supprimee: true, donnees_purgees: true, marqueur: "echec", protection: false, error: "x" });
+      const ok = await doDeleteAccount();
+      return { ok, clesPassio: Object.keys(localStorage).filter((k) => k.indexOf("passio") !== -1) };
+    }, REPONSE);
+    const apres = await flowDe(page);
+    expect(fin.ok).toBe(true);
+    expect(fin.clesPassio).toEqual([]);
+    evs = chaineDelete(apres.flow);
+    expect(evs[1].status).toBe("error");
+    expect(evs[1].meta).toEqual({ detail: "finalisation_refusee", rc: "finalisation_refusee" });
+    expect(evs[2].status).toBe("error");
+    expect(apres.flush).toEqual([{ keepalive: true, localEncoreLa: true }]);
+  });
+});

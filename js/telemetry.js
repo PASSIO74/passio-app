@@ -712,7 +712,9 @@
       var meta = null;
       if (!ok && err) {
         meta = { detail: String(err.message || err).slice(0, 120) };
-        if (err.code != null) meta.rc = String(err.code).slice(0, 20);
+        // 40 comme la clé d'étape : les codes serveur fermés (`infrastructure_absente`,
+        // 22 caractères) arrivaient amputés à 20 au pilotage.
+        if (err.code != null) meta.rc = String(err.code).slice(0, 40);
       }
       this.step(cid, key, ok ? "ok" : "error", meta);
       this.flowEnd(cid, ok ? "ok" : "error");

@@ -5219,7 +5219,9 @@ async function onbDoAuth() {
 
   // LOT E : l'INTENTION, avant l'appel. Le seul signal qui existait était la
   // requête HTTP du hook fetch — muette sur le mode et sur l'issue que l'app lit.
-  try { window.tel && tel.action("auth_submitted", { mode: _authMode }); } catch (e) {}
+  // Clé `kind` (pas `mode`) : track() pose `mode: pwa|web` sur CHAQUE événement
+  // et une meta `mode` l'écraserait — le pilotage perdrait le support.
+  try { window.tel && tel.action("auth_submitted", { kind: _authMode }); } catch (e) {}
 
   try {
     let result;

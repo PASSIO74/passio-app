@@ -82,7 +82,7 @@ async function remplirConnexion(page, email = "bloque@exemple.com") {
 const capture = (page) => page.evaluate(() => window.__telCap);
 const noms = (evs) => evs.map((e) => e.name);
 // Aucune meta ne doit porter une adresse : la clé `email` est refusée par le
-// filtre, mais un « rc » ou un « mode » qui la citerait passerait — on vérifie
+// filtre, mais un « rc » ou un « kind » qui la citerait passerait — on vérifie
 // la VALEUR, pas seulement la clé.
 function sansAdresse(evs) {
   for (const e of evs) for (const v of Object.values(e.meta || {})) expect(String(v)).not.toContain("@");
@@ -92,7 +92,7 @@ test.describe("Télémétrie — inscription, confirmation, connexion", () => {
 
   // MUTATION : retirer `tel.action("auth_submitted", …)` ou
   // `tel.action("signup_pending_confirmation")` de onbDoAuth → rouge.
-  test("① compte créé sans session : auth_submitted {mode:signup} puis signup_pending_confirmation, marqueur posé", async ({ page }) => {
+  test("① compte créé sans session : auth_submitted {kind:signup} puis signup_pending_confirmation, marqueur posé", async ({ page }) => {
     await ouvrirAuth(page, {
       signUp: { data: { user: { id: "u1", identities: [{ id: "i1" }] }, session: null }, error: null },
     });
@@ -102,7 +102,7 @@ test.describe("Télémétrie — inscription, confirmation, connexion", () => {
 
     const evs = await capture(page);
     expect(noms(evs)).toEqual(["auth_submitted", "signup_pending_confirmation"]);
-    expect(evs[0].meta).toEqual({ mode: "signup" });
+    expect(evs[0].meta).toEqual({ kind: "signup" });
     sansAdresse(evs);
     // Le marqueur est un HORODATAGE, rien d'autre — relu par boot/SIGNED_IN.
     const marqueur = await page.evaluate(() => localStorage.getItem("passio_signup_pending"));
@@ -137,7 +137,7 @@ test.describe("Télémétrie — inscription, confirmation, connexion", () => {
 
     const evs = await capture(page);
     expect(noms(evs)).toEqual(["auth_submitted", "signin_refused"]);
-    expect(evs[0].meta).toEqual({ mode: "signin" });
+    expect(evs[0].meta).toEqual({ kind: "signin" });
     expect(evs[1].meta).toEqual({ rc: "non_confirme" });
     sansAdresse(evs);
   });
