@@ -4169,6 +4169,11 @@ async function doDeleteAccount() {
     // beacon de `pagehide`) jusqu'au verdict ; un refus rend la main.
     discardPendingStateSave();
     window._suppressionEnCours = true;
+    // LOT E : la chaîne la plus sensible (RGPD) n'avait ni flow ni action —
+    // seul `diagLog`. Le flow s'ouvre juste avant l'appel (le hook fetch tague
+    // la requête `functions/v1/delete-account`) et se règle sur le VERDICT lu.
+    var _delCid = null;
+    try { if (window.tel && tel.flowStart) _delCid = tel.flowStart("delete_account"); } catch (e) {}
     var verdict = null;
     try { verdict = await supa.functions.invoke("delete-account"); } catch (e) { verdict = { error: e }; }
     // ⚠️ ASTRA-42 (2026-09-15) : « Compte supprimé » N'EST ANNONCÉ QUE SUR UN SUCCÈS
@@ -4192,6 +4197,19 @@ async function doDeleteAccount() {
     // compte pour réessayer. On ferme la session et le local, et on le DIT
     // tel quel, avec le contact.
     var compteFermeSansGarantie = !!(corps && corps.code === "finalisation_refusee" && corps.auth_supprimee === true);
+    // LOT E : le verdict au pilotage. Le `code` serveur devient `rc` (settle
+    // renomme message→detail, code→rc) — jamais le message, qui cite l'adresse
+    // de contact. Une fermeture SANS garantie n'est pas un succès : elle sonne
+    // comme un échec avec son code, pour être relue par un humain.
+    try {
+      if (_delCid && window.tel && tel.settle) {
+        var _delCode = (corps && corps.code) || (verdict && verdict.error ? "sans_verdict" : "sans_code");
+        tel.settle(_delCid, "saved", okServeur, okServeur ? null : { message: _delCode, code: _delCode });
+        // Le succès purge `localStorage` (backlog compris) puis recharge : on
+        // écoule tout de suite, en keepalive.
+        if (tel.flush) tel.flush({ keepalive: true });
+      }
+    } catch (e) {}
     if (!okServeur && !compteFermeSansGarantie) {
       var code = (corps && corps.code) || "";
       var restes = (corps && (corps.restes || corps.echecs)) || [];

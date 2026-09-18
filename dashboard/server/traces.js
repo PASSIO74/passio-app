@@ -61,8 +61,16 @@ const CONTRACTS = {
   unlike_post:  { label: "J'aime retiré", feature: "feed", steps: [S_HANDLER, S_REQUEST_CONFIRM] },
   comment_post: { label: "Commentaire", feature: "feed", steps: [S_HANDLER, S_REQUEST_CONFIRM, S_DELIVER] },
   cint:         { label: "Réaction / like de commentaire", feature: "feed", steps: [S_HANDLER, S_REQUEST_CONFIRM] },
-  event_join:   { label: "Inscription événement", feature: "irl", steps: [S_HANDLER, S_REQUEST_CONFIRM] },
-  event_leave:  { label: "Désinscription événement", feature: "irl", steps: [S_HANDLER, S_REQUEST_CONFIRM] },
+  // RSVP (LOT E, 2026-09-18) : la confirmation est le `saved` EXPLICITE émis par
+  // setEventRsvp au verdict de supaSetEventRsvp/supaLeaveEvent (settle) — pas la
+  // requête ambiante : un update à 0 ligne ou un refus lu par l'app rendent
+  // un 200/23505 que l'auto-tag réseau prendrait pour un succès.
+  event_join:   { label: "Inscription événement", feature: "irl", steps: [S_HANDLER, S_REQUEST_STEP, { key: "saved", label: "Inscription enregistrée", role: "confirm" }] },
+  event_leave:  { label: "Désinscription événement", feature: "irl", steps: [S_HANDLER, S_REQUEST_STEP, { key: "saved", label: "Désinscription enregistrée", role: "confirm" }] },
+  // Suppression de compte : le verdict est celui de l'Edge Function
+  // (ok + garantie « barriere »), consigné par settle dans doDeleteAccount ;
+  // un refus porte son code serveur en `rc` (infrastructure_absente, en_vol…).
+  delete_account: { label: "Suppression de compte", feature: "compte", steps: [S_HANDLER, S_REQUEST_STEP, { key: "saved", label: "Compte supprimé (vérifié serveur)", role: "confirm" }] },
   // Publication : upload(s) média + insert `posts` = plusieurs requêtes ; on
   // s'appuie sur un « saved » explicite (émis par supaPublishPostWithRetry) plutôt
   // que sur l'auto-tag réseau, trop imprécis ici.
