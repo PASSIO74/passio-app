@@ -26,9 +26,26 @@ function securityDomain(authz) {
   return domain("LIVE", "Sécurité & autorisation", `${authz.pass}/${authz.total} canaris passent · ${authz.verifieLe || "date inconnue"}.`, authz);
 }
 
-function releaseDomain(r) {
+/** Domaine Release. PUR, exporté pour ses verrous (D1-TM-05). */
+export function releaseDomain(r) {
   if (!r || !r.current) return domain("NOT_CONFIGURED", "Release", "Aucun snapshot de release disponible.");
-  return domain(r.state || "DEGRADED", "Release", r.detail || "État de release non qualifié.", r);
+  // Sur le poste, UNKNOWN = preuve pas encore lue (GitHub ou site public) :
+  // dégradée, pas « non configurée » — le P1 factice « compléter les preuves
+  // commit → frontend → DB » n'a plus lieu d'être (2026-09-18). Jamais LIVE
+  // sans preuve : UNKNOWN ne monte pas, il descend.
+  const state = r.state === "UNKNOWN" ? "DEGRADED" : (r.state || "DEGRADED");
+  return domain(state, "Release", r.detail || "État de release non qualifié.", r);
+}
+
+/**
+ * Domaine Observation. PUR, exporté pour ses verrous (D1-TM-05). Le cœur
+ * (DB + canari, `observation.core`) décide de l'état : le seam SSE est IDLE
+ * sans navigateur et ne doit pas fabriquer un risque « Observation » P2
+ * permanent la nuit (2026-09-18). Toutes les parts restent dans le détail.
+ */
+export function observationDomain(observation) {
+  const o = observation || {};
+  return domain(o.core || o.state || "NOT_CONFIGURED", "Observation", Object.entries(o.parts || {}).map(([k, v]) => `${k}:${v.state}`).join(" · ") || "Aucun seam", o.parts || null);
 }
 
 function technicalDomain(readiness) {
@@ -124,7 +141,7 @@ export async function controlCommand() {
     product: productDomain(product),
     technical: technicalDomain(readiness),
     security: securityDomain(authz),
-    observation: domain(observation.state, "Observation", Object.entries(observation.parts || {}).map(([k, v]) => `${k}:${v.state}`).join(" · ") || "Aucun seam", observation.parts),
+    observation: observationDomain(observation),
     release: releaseDomain(release),
   };
   const alerts = listAlerts();

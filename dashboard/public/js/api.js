@@ -21,7 +21,7 @@ export const api = {
   del: (p) => req("DELETE", p),
 };
 
-/** Connexion SSE avec reconnexion automatique. handlers: { event, alert, test, ping, open, error } */
+/** Connexion SSE avec reconnexion automatique. handlers: { event, alert, test, ping, open, error, machine(type, data), attente } */
 export function connectStream(handlers) {
   let es;
   function open() {
@@ -36,6 +36,14 @@ export function connectStream(handlers) {
     // Bascule de la connexion Claude Code (chute / retour / limite d'usage) : l'écran suit en direct.
     es.addEventListener("claude", (e) => handlers.claude && handlers.claude(JSON.parse(e.data)));
     es.addEventListener("test", (e) => handlers.test && handlers.test(JSON.parse(e.data)));
+    // Événements MACHINE (2026-09-18) : jusqu'ici diffusés sans aucun écouteur —
+    // une PR ouverte par la sentinelle, un correctif rejeté, une promotion ou une
+    // récidive n'apparaissaient ni en toast ni dans la cloche. Un seul handler,
+    // qui reçoit le type : la carte « Ce qui t'attend » se rafraîchit en direct.
+    for (const type of ["sentinel_repair", "sentinel_autopilot", "sentinel_production", "sentinel_recurrence"]) {
+      es.addEventListener(type, (e) => { let d = null; try { d = JSON.parse(e.data); } catch {} if (handlers.machine) handlers.machine(type, d || {}); });
+    }
+    es.addEventListener("attente", (e) => { let d = null; try { d = JSON.parse(e.data); } catch {} if (handlers.attente) handlers.attente(d || {}); });
     es.addEventListener("ping", (e) => {
       let ping = null;
       try { ping = JSON.parse(e.data); } catch {}

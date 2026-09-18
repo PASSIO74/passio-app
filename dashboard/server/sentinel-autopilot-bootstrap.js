@@ -11,6 +11,7 @@ import { attemptRepair } from "./repair.js";
 import { executeAutopilotPromotion } from "./sentinel-autopilot-executor.js";
 import { armRecurrenceWatch, startRecurrenceWatch } from "./sentinel-recurrence.js";
 import { publishRepair, productionState } from "./sentinel-production.js";
+import { relayerVersGithub, RELAIS_ACTIF } from "./sentinel-relais.js";
 
 let installed = false;
 
@@ -20,8 +21,12 @@ export function makeAutopilotRepairer({
   armRecurrence = armRecurrenceWatch,
   publish = publishRepair,
   productionReady = () => productionState().possible,
+  // Relais local → GitHub (DASH_SENTINEL_RELAIS_GITHUB=true) : la réparation
+  // locale n'est PAS appelée ; l'enquête part vers la chaîne qui répare vraiment.
+  relais = RELAIS_ACTIF ? relayerVersGithub : null,
 } = {}) {
   return async function autopilotAwareRepair(record, analyzer) {
+    if (relais) return relais(record, analyzer);
     const rep = await repair(record, analyzer);
     if (!rep || rep.ok !== true) return rep;
 

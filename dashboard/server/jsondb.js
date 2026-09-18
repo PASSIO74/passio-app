@@ -24,6 +24,22 @@ catch (e) { console.error("[jsondb] dossier data impossible à créer :", e.mess
 // par jour dans supervise.log, sur un disque déjà plein).
 const _bruyants = new Set();
 
+// Registre des instances (2026-09-18) : `health()` existait par instance mais un
+// seul module la lisait. Un disque qui refuse d'écrire alerts.json ou
+// sentinel.json restait invisible au pilotage — il ne détectait pas sa propre
+// perte de persistance. `storageHealth()` agrège pour l'observation (part
+// `persistence`) et /api/overview.
+const _instances = new Set();
+
+export function storageHealth() {
+  const failing = [];
+  for (const db of _instances) {
+    const h = db.health();
+    if (!h.available) failing.push({ name: db.name, reason: h.reason, writeFailures: h.writeFailures || 0, lastWriteAt: h.lastWriteAt || null });
+  }
+  return { available: failing.length === 0, total: _instances.size, failing };
+}
+
 export class JsonDb {
   /** @param {string} name  @param {any} initial */
   constructor(name, initial) {
@@ -34,6 +50,7 @@ export class JsonDb {
     this.loadErrorCode = null;
     this.lastWriteError = null;   // { code, message, at } de la dernière écriture ratée, null si la dernière a réussi
     this.writeFailures = 0;       // échecs consécutifs
+    _instances.add(this);
     try {
       if (fs.existsSync(this.file)) {
         this.data = JSON.parse(fs.readFileSync(this.file, "utf8"));

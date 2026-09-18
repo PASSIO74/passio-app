@@ -514,7 +514,9 @@ class Store {
         openBugs: openBugs.length,
         actionsPerMin: last5.length ? Math.round(last5.length / 5) : 0,
         avgLatency,
-        apiSuccessRate: totalApis ? Math.round(((totalApis - apiErrors) / totalApis) * 100) : 100,
+        // null sans aucun appel observé : le silence n'est pas un 100 % de succès
+        // (readiness rend alors « inconnu », jamais vert par défaut — 2026-09-18).
+        apiSuccessRate: totalApis ? Math.round(((totalApis - apiErrors) / totalApis) * 100) : null,
       },
       health: this.health(),
       links: this.linkFunnel(),

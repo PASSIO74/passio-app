@@ -126,7 +126,10 @@ const NAV = [
   ["tests", "Tests automatiques", "tests", null, "avance"],
   ["checklist", "Tests fonctionnels", "reports", null, "avance"],
   ["git", "Modifications Git", "git", "git_read", "avance"],
-  ["flags", "Feature flags", "flags", "flags", "avance"],
+  // « Feature flags » retiré (2026-09-18) : l'application PASSIO ne lit jamais
+  // /api/flags (sa bascule realtime_v3 est un localStorage) — un flag
+  // « Désactivé » n'avait aucun effet : UI trompeuse. Les routes serveur
+  // restent (front-api.test les liste comme orphelines connues).
   ["alerts", "Alertes", "alerts", null, "avance"],
   ["reports", "Rapports", "reports", null, "avance"],
   ["audit", "Journal d'audit", "audit", "audit", "avance"],
@@ -275,9 +278,46 @@ function renderFixResult(r) {
 //  VUES
 // ═══════════════════════════════════════════════════════════════════════════
 
+// ── Ce qui t'attend (carte commune Accueil / Brief) ──────────────────────────
+// `a` = réponse de /api/attente, ou null si la route n'a pas répondu : les deux
+// états sont distincts à l'écran (« non lu » n'est jamais « rien à faire »).
+const PRIO_CLS = { P0: "critical", P1: "error", P2: "warn", P3: "info" };
+function attenteItemHtml(it) {
+  const cible = String(it.cible || "");
+  const externe = /^https?:\/\//.test(cible);
+  const lien = cible ? (externe ? `<a class="att-link" href="${esc(cible)}" target="_blank" rel="noopener">ouvrir</a>` : `<a class="att-link" href="${esc(cible)}">voir</a>`) : "";
+  return `<div class="att-item"><span class="pill ${esc(PRIO_CLS[it.priorite] || "info")}">${esc(it.priorite)}</span>
+    <div class="att-txt"><b>${esc(it.titre)}</b>${it.detail ? `<div class="muted">${esc(it.detail)}</div>` : ""}</div>
+    <span class="att-when muted">${it.depuis ? "depuis " + ago(it.depuis) : ""}</span>${lien}</div>`;
+}
+function attenteHtml(a) {
+  if (!a) return `<div class="card card-pad att-card att-unread"><div class="att-head"><strong>${icon("alertTriangle")} Ce qui t'attend</strong><span class="muted">non lu — la route /api/attente n'a pas répondu</span></div></div>`;
+  const items = a.items || [];
+  const m = a.machines7j || {};
+  const machines = [
+    ["diagnostics", m.diagnostics], ["correctifs vérifiés", m.correctifsVerifies], ["fusionnés", m.correctifsFusionnes], ["PR publiées", m.publications],
+    ["enquêtes GitHub closes", m.enquetesGithubFermees], ["tests auto", m.testsAuto], ["récidives", m.recidives],
+  ].map(([l, v]) => `<div class="att-stat"><b>${v == null ? "—" : num(v)}</b><span>${esc(l)}</span></div>`).join("");
+  const chaine = m.chaine ? `<span class="pill ${m.chaine === "vit" ? "ok" : m.chaine === "unknown" ? "info" : "warn"}">chaîne GitHub : ${esc(m.chaine)}</span>` : "";
+  return `<div class="card card-pad att-card ${items.length ? "" : "att-empty"}">
+      <div class="att-head"><strong>${icon("alertTriangle")} Ce qui t'attend</strong><span class="muted">${items.length ? `${num(items.length)} élément${items.length > 1 ? "s" : ""}` : "Rien ne t'attend"}</span></div>
+      ${items.length ? `<div class="att-list">${items.slice(0, 12).map(attenteItemHtml).join("")}</div>` : `<div class="muted att-none">${icon("checkCircle")} Aucun geste en attente : les machines tournent seules.</div>`}
+    </div>
+    <div class="card card-pad att-card att-machines">
+      <div class="att-head"><strong>${icon("sparkles")} Ce que les machines ont fait (7 j)</strong>${chaine}</div>
+      <div class="att-stats">${machines}</div>
+    </div>`;
+}
+/** Le premier élément P0/P1 qui vient du POSTE ou de la chaîne : il pilote le bandeau d'état. */
+function attenteBesoinDuPoste(a) {
+  if (!a || !Array.isArray(a.items)) return null;
+  return a.items.find((it) => (it.priorite === "P0" || it.priorite === "P1") && /^(poste:|gh:chaine:|gh:cron:)/.test(String(it.key || ""))) || null;
+}
+
 // ── Accueil (vue d'ensemble simplifiée, sans jargon) ─────────────────────────
 VIEWS.overview = async (view) => {
   mount(`<div id="ovProv"></div>
+    <div id="ovAttente"></div>
     <div id="ovState"></div>
     <div id="ovConn"></div>
     <div class="home-cards" id="ovCards"></div>
@@ -288,8 +328,11 @@ VIEWS.overview = async (view) => {
     </div>`);
 
   async function refresh() {
-    const [ov, su, bugs] = await Promise.all([api.get("/overview"), api.get("/signups").catch(() => null), api.get("/bugs").catch(() => [])]);
+    const [ov, su, bugs, att] = await Promise.all([api.get("/overview"), api.get("/signups").catch(() => null), api.get("/bugs").catch(() => []), api.get("/attente").catch(() => null)]);
     const t = ov.totals, h = ov.health;
+    // ── Ce qui t'attend + ce que les machines ont fait (7 j) ─────────────────
+    setHtml("#ovAttente", attenteHtml(att));
+    const besoin = attenteBesoinDuPoste(att);
     const openBugs = (bugs || []).filter((b) => b.status !== "corrige" && b.status !== "ignore");
     const worst = openBugs.slice().sort((a, b) => (b.severity === "critical") - (a.severity === "critical") || b.count - a.count)[0];
 
@@ -329,6 +372,12 @@ VIEWS.overview = async (view) => {
       level = "bad"; banIco = "alertTriangle";
       title = `${t.criticalBugs || problems} problème${(t.criticalBugs || problems) > 1 ? "s" : ""} important${(t.criticalBugs || problems) > 1 ? "s" : ""} à corriger`;
       sub = "Clique sur « Réparer avec Claude » : il explique et corrige.";
+    } else if (besoin) {
+      // Les prérequis des automates (CLI, disque, chaîne GitHub, stockage) :
+      // « Tout fonctionne bien » mentait pendant que la sentinelle était sourde.
+      level = "warn"; banIco = "alertTriangle";
+      title = "Le pilotage a besoin de toi";
+      sub = besoin.titre + (besoin.detail ? " — " + besoin.detail : "");
     } else if (problems || h.errors5m) {
       level = "warn"; banIco = "alertTriangle";
       title = `${problems || h.errors5m} petit${(problems || h.errors5m) > 1 ? "s" : ""} problème${(problems || h.errors5m) > 1 ? "s" : ""} détecté${(problems || h.errors5m) > 1 ? "s" : ""}`;
@@ -483,12 +532,13 @@ VIEWS.brief = async (view) => {
     <div id="briefBody"><div class="empty" style="padding:28px"><span class="spinner"></span></div></div>`);
 
   async function refresh() {
-    const [ov, rd, k, alerts, bugs] = await Promise.all([
+    const [ov, rd, k, alerts, bugs, att] = await Promise.all([
       api.get("/overview").catch(() => null),
       api.get("/readiness").catch(() => null),
       api.get("/kpi").catch(() => null),
       api.get("/alerts").catch(() => []),
       api.get("/bugs").catch(() => []),
+      api.get("/attente").catch(() => null),
     ]);
     if (!ov) { setHtml("#briefBody", `<div class="empty">Données indisponibles.</div>`); return; }
     const t = ov.totals, h = ov.health, ing = ov.ingest || {};
@@ -519,6 +569,8 @@ VIEWS.brief = async (view) => {
     // Un domaine critique non mesuré n'est pas un problème à corriger : c'est un
     // angle mort à instrumenter. La distinction change l'action.
     nonMesures.filter((d) => d.critique).forEach((d) => actions.push(`Instrumenter « ${d.label} » — non mesuré, donc la santé globale ne peut pas être affirmée.`));
+    // Ce qui t'attend (même source que l'Accueil) : les gestes concrets d'abord.
+    (att && att.items ? att.items.slice(0, 5) : []).forEach((it) => actions.push(`[${it.priorite}] ${it.titre}${it.detail ? " — " + it.detail : ""}`));
     if (!actions.length) actions.push("Rien de bloquant — poursuivre les tests et l'observation.");
 
     const sev = { critical: "crit", high: "err", warn: "warn", info: "info" };
@@ -559,7 +611,7 @@ VIEWS.brief = async (view) => {
             return line("Résidus", `<span class="pill ${cls}">${esc(r.etat.toUpperCase())}</span> <span class="muted" style="font-size:12px">${esc(r.detail)}</span>`);
           })() : "") +
           line("Erreurs (5 min)", num(h.errors5m)) +
-          line("Succès API", (t.apiSuccessRate ?? 0) + " %"))}
+          line("Succès API", t.apiSuccessRate == null ? "inconnu (aucun appel observé)" : t.apiSuccessRate + " %"))}
         ${secCard("Ce qui compte", "trending",
           line("Actifs 24h / 7j / 30j (DAU/WAU/MAU)", kpiOk ? `${kv(k.dau)} / ${kv(k.wau)} / ${kv(k.mau)}` : "inconnu") +
           line("Connectés maintenant", num(t.onlineUsers)) +
@@ -580,7 +632,7 @@ VIEWS.brief = async (view) => {
       `PASSIO — Brief exécutif · ${new Date().toLocaleString("fr-FR")}`,
       `Données : ${dataReal ? "RÉEL (Supabase)" : "LOCAL (non connecté)"}${hasData && lastSeen ? ` · dernier signal il y a ${ago(lastSeen)}` : ""}`,
       ``,
-      `ÉTAT : ${h.label} · Readiness ${rd ? rd.score + "/100" : "inconnu"} · Erreurs 5min ${h.errors5m} · Succès API ${t.apiSuccessRate ?? 0}%`,
+      `ÉTAT : ${h.label} · Readiness ${rd ? rd.score + "/100" : "inconnu"} · Erreurs 5min ${h.errors5m} · Succès API ${t.apiSuccessRate == null ? "inconnu" : t.apiSuccessRate + "%"}`,
       `ACTIFS : DAU ${kv(k?.dau)} · WAU ${kv(k?.wau)} · MAU ${kv(k?.mau)}${kpiOk ? "" : " (inconnu — Supabase requis)"}`,
       `EN DIRECT : ${t.onlineUsers} connectés · ${t.actionsPerMin} actions/min · ${t.publications} publications`,
       `ALERTES : ${unack.length} non traitées`,
@@ -1624,9 +1676,31 @@ VIEWS.exploitation = async () => {
       ${carte("Capacité (24 h)", v.capacite, d.configured ? "seuil de télémétrie : " + num(d.seuils.capaciteAlerteLignesJour) + " lignes / jour (rétention 7 j) — mesure de charge : <span class=\"mono\">docs/CAPACITE_2026-09-14.md</span>" : "")}
       ${carte("Coûts", v.couts, `<a href="https://supabase.com/dashboard/project/njkiyoklssvefstljemx/settings/billing/usage" target="_blank" rel="noopener">Usage du projet Supabase</a> · <a href="https://app.netlify.com" target="_blank" rel="noopener">Netlify</a>`)}
     </div>
-    <p class="muted" style="font-size:12px;margin-top:12px">Sources : Supabase (comptages <span class="mono">head: true</span>, clé service_role) · GitHub, API publique sans jeton, cache 10 min. Lu le ${new Date(d.updatedAt).toLocaleString("fr-FR")}${g.luLe ? " · GitHub lu le " + new Date(g.luLe).toLocaleString("fr-FR") : ""}.</p>`);
+    <p class="muted" style="font-size:12px;margin-top:12px">Sources : Supabase (comptages <span class="mono">head: true</span>, clé service_role) · GitHub, API publique sans jeton, cache 10 min. Lu le ${new Date(d.updatedAt).toLocaleString("fr-FR")}${g.luLe ? " · GitHub lu le " + new Date(g.luLe).toLocaleString("fr-FR") : ""}.</p>
+    <div id="exChaine" style="margin-top:16px"><div class="empty">Chaîne autonome : lecture…</div></div>`);
+    // La chaîne GitHub (celle qui répare vraiment) : ses crons, ses issues, ses PR.
+    // Route séparée : son échec ne vide pas les cartes ci-dessus.
+    const ch = await api.get("/chaine-autonome").catch((e) => ({ erreur: e.message }));
+    setHtml("#exChaine", chaineHtml(ch));
   } catch (e) { setHtml("#exBody", `<div class="empty">${esc(e.message)}</div>`); }
 };
+
+// ── Chaîne autonome (témoin de GitHub) ───────────────────────────────────────
+const CRON_CLS = { vit: "ok", en_retard: "warn", morte: "error", desactive: "error", unknown: "unknown" };
+const CHAINE_CLS = { vit: "ok", degradee: "warn", morte: "error", pause: "warn", unknown: "unknown" };
+function chaineHtml(ch) {
+  if (!ch || ch.erreur) return `<div class="card card-pad"><strong>${icon("git")} Chaîne autonome GitHub</strong><div class="muted" style="margin-top:6px">non lue${ch && ch.erreur ? " — " + esc(ch.erreur) : ""}</div></div>`;
+  const c = ch.chaine || { etat: "unknown" };
+  const crons = Object.entries(ch.crons || {}).map(([f, x]) => `<tr><td><b>${esc(x.label)}</b> <span class="mono muted" style="font-size:11px">${esc(f)}</span></td><td><span class="pill ${esc(CRON_CLS[x.etat] || "unknown")}">${esc(x.etat)}</span></td><td>${x.url ? `<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.texte)}</a>` : esc(x.texte)}</td></tr>`).join("");
+  const dep = ch.deploy || {};
+  const q = ch.quota || {};
+  return `<div class="card card-pad">
+      <div class="att-head"><strong>${icon("git")} Chaîne autonome GitHub</strong><span class="pill ${esc(CHAINE_CLS[c.etat] || "unknown")}">${esc(c.etat)}</span></div>
+      ${c.cause ? `<div class="muted" style="font-size:12.5px;margin-bottom:8px">${esc(c.cause)}</div>` : ""}
+      <table class="table"><thead><tr><th>Cron</th><th>État</th><th>Dernier run</th></tr></thead><tbody>${crons}</tbody></table>
+      <div class="muted" style="font-size:12px;margin-top:8px">Déploiement main : ${dep.etat ? esc(dep.etat) : "inconnu"}${dep.headSha ? " · " + esc(String(dep.headSha).slice(0, 8)) : ""}${dep.enCours ? " · en cours" : ""} · ${num(ch.enquetesOuvertes || 0)} enquête(s) ouverte(s) · ${num((ch.attente || []).length)} élément(s) en attente${q.budget ? ` · GitHub ${num(q.comptees1h || 0)}/${num(q.budget)} requêtes cette heure` : q.token ? " · jeton de lecture" : ""}${ch.luLe ? " · lu le " + new Date(ch.luLe).toLocaleString("fr-FR") : ""}</div>
+    </div>`;
+}
 
 VIEWS.database = async () => {
   mount(`<h2 class="page-title">Base de données</h2><p class="page-sub">Supervision en lecture seule. Aucune donnée de ligne, aucun secret. Opérations destructives désactivées.</p><div id="dbBody"><span class="spinner"></span></div>`);
@@ -1782,18 +1856,6 @@ function wireGitMutations() {
   };
 }
 
-// ── Feature flags ───────────────────────────────────────────────────────────
-VIEWS.flags = async () => {
-  mount(`<h2 class="page-title">Feature flags</h2><p class="page-sub">Activation ciblée de fonctionnalités. Chaque changement est audité.</p><div id="flagList"></div>`);
-  async function refresh() {
-    const flags = await api.get("/flags");
-    setHtml("#flagList", flags.map((f) => `<div class="card card-pad" style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><strong>${esc(f.label)}</strong> <span class="mono muted" style="font-size:11px">${esc(f.key)}</span><div class="muted" style="font-size:12px;margin-top:2px">Déploiement ${f.rollout}% · ${f.targetUsers.length} users ciblés</div></div><div style="display:flex;gap:10px;align-items:center"><label style="font-size:12px;display:flex;gap:6px;align-items:center"><input type="range" min="0" max="100" value="${f.rollout}" data-roll="${f.id}" style="width:110px" /> <span data-rollv="${f.id}">${f.rollout}%</span></label><button class="chip-toggle ${f.enabled ? "on" : ""}" data-flag="${f.id}" data-en="${f.enabled}">${f.enabled ? "Activé" : "Désactivé"}</button></div></div></div>`).join(""));
-    $$("[data-flag]").forEach((b) => b.onclick = async () => { const en = b.dataset.en !== "true"; await api.patch("/flags/" + b.dataset.flag, { enabled: en }); toast("Flag mis à jour"); refresh(); });
-    $$("[data-roll]").forEach((r) => { r.oninput = () => { $(`[data-rollv="${r.dataset.roll}"]`).textContent = r.value + "%"; }; r.onchange = async () => { await api.patch("/flags/" + r.dataset.roll, { rollout: Number(r.value) }); toast("Déploiement ajusté"); }; });
-  }
-  refresh();
-};
-
 // ── Alertes ─────────────────────────────────────────────────────────────────
 VIEWS.alerts = async () => {
   mount(`<h2 class="page-title">Alertes</h2><p class="page-sub">Situations anormales détectées automatiquement.</p><div id="alList"></div>`);
@@ -1839,7 +1901,8 @@ VIEWS.sentinel = async () => {
     // la mise en ligne est une information EN PLUS, jamais une condition
     // d'affichage des diagnostics.
     const prod = await api.get("/production").catch(() => null);
-    renderSentinelState(r.state, prod);
+    const promo = await api.get("/promotions?limit=5").catch(() => null);
+    renderSentinelState(r.state, prod, promo);
     $("#sentList").className = "";
     $("#sentList").innerHTML = r.diagnoses.length
       ? r.diagnoses.map(sentItem).join("")
@@ -1870,7 +1933,17 @@ function sentProdLigne(prod) {
   return `<div class="muted" style="font-size:12px;margin-top:4px">${st}</div>`;
 }
 
-function renderSentinelState(st, prod) {
+// Ligne du journal de PROMOTION de l'autopilote (lecture seule) : jusqu'ici la
+// route n'était montée que par un test, et « pourquoi une promotion a été
+// retenue » (learning_quarantine, release_guardian_no_go…) ne se voyait nulle part.
+function sentPromoLigne(promo) {
+  if (!promo) return "";
+  if (!promo.available) return `<div class="muted" style="font-size:12px;margin-top:4px">Journal de promotion indisponible (${esc(promo.reason || "?")})</div>`;
+  const etat = promo.state || "NO_ATTEMPT";
+  return `<div class="muted" style="font-size:12px;margin-top:4px">Promotion locale : <b>${esc(etat)}</b>${promo.reason ? " — " + esc(promo.reason) : ""}${promo.rolledBack ? " · revenue en arrière" : ""}${promo.lock && promo.lock.active ? " · verrou actif" : ""}</div>`;
+}
+
+function renderSentinelState(st, prod, promo) {
   const el = $("#sentState"); if (!el || !st) return;
   const on = st.enabled && st.available;
   const why = !st.available
@@ -1895,6 +1968,7 @@ function renderSentinelState(st, prod) {
       ${why ? `<div class="muted" style="font-size:12px;margin-top:6px">${why}</div>` : ""}
       <div class="muted" style="font-size:12px;margin-top:6px">${esc(repLigne)}</div>
       ${sentProdLigne(prod)}
+      ${sentPromoLigne(promo)}
       ${running}
       ${hasCap("settings") ? `<button class="btn" id="sentToggle" style="margin-top:10px">${st.enabled ? "Mettre en veille" : "Réactiver"}</button>` : ""}
     </div>`;
@@ -2260,6 +2334,28 @@ function onClaudeState(cli) {
   if (S.currentView === "sources" || S.currentView === "claude") { try { S.refresh && S.refresh(); } catch {} }
 }
 
+// Événement MACHINE (correctif, promotion, PR publiée, récidive) : toast, cloche,
+// et la vue courante se rafraîchit si elle montre ces choses (debounce 800 ms).
+const MACHINE_LIBELLE = { sentinel_repair: "Réparation automatique", sentinel_autopilot: "Autopilote", sentinel_production: "Mise en ligne automatique", sentinel_recurrence: "Récidive" };
+let machineSignalTimer = null;
+function onMachineEvent(type, d) {
+  const lib = MACHINE_LIBELLE[type] || type;
+  const phase = d && (d.phase || d.status || "") ? String(d.phase || d.status) : "";
+  const ok = d && d.ok === false ? false : true;
+  toast(`${ok ? "✓" : "⚠"} ${lib}${phase ? " · " + phase : ""}`);
+  pushNotif({ id: "nf_m_" + Date.now(), ts: Date.now(), title: lib + (phase ? " · " + phase : ""), who: esc(d && (d.title || d.signalKey || d.branch) || ""), sub: "", view: "sentinel", level: ok ? "info" : "warn", ic: "sparkles" });
+  rafraichirAttente();
+}
+function onAttenteSignal() { rafraichirAttente(); }
+// Debounce (bord de fuite) : une rafale d'événements machine (réparation,
+// autopilote, attente) ne rafraîchit qu'une fois, 800 ms après le DERNIER —
+// un throttle jetait le dernier événement, celui qui porte l'état final.
+function rafraichirAttente() {
+  if (!["overview", "sentinel", "brief"].includes(S.currentView) || !S.refresh) return;
+  if (machineSignalTimer) clearTimeout(machineSignalTimer);
+  machineSignalTimer = setTimeout(() => { machineSignalTimer = null; try { S.refresh(); } catch {} }, 800);
+}
+
 function updateAlertBadges() {
   const open = S.alerts.filter((a) => !a.acknowledged).length;
   const nb = $("#navAlerts"); if (nb) { nb.hidden = !open; nb.textContent = open; }
@@ -2471,6 +2567,7 @@ async function showApp() {
     open: () => setSse(true), error: () => setSse(false),
     event: onLiveEvent, interaction: onInteractionSignal, trace: onTraceSignal, alert: onAlert, test: onTest, ping: () => setSse(true),
     sentinel: onSentinelDiagnosis, sentinelState: onSentinelState, claude: onClaudeState,
+    machine: onMachineEvent, attente: onAttenteSignal,
   });
   // Événements UI
   window.addEventListener("hashchange", route);

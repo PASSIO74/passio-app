@@ -10,7 +10,7 @@
 //
 // Ce fichier ferme cet écart par trois voies distinctes :
 //
-//   1. INVENTAIRE FIGÉ — les 81 routes et leur garde, dans les deux sens : une
+//   1. INVENTAIRE FIGÉ — les 87 routes et leur garde, dans les deux sens : une
 //      route qui change de garde rougit, une route AJOUTÉE sans garde déclarée
 //      rougit aussi. On ne peut plus élargir une permission en silence.
 //   2. COMPORTEMENT RÉEL des gardes — `requireAuth` et `requireCap` sont
@@ -59,6 +59,8 @@ const ATTENDU = [
   ["GET", "/release-guardian", "@auth"],
   ["GET", "/anomalies", "@auth"],
   ["GET", "/incidents", "@auth"],
+  ["GET", "/chaine-autonome", "@auth"],   // témoin de GitHub : données publiques du dépôt, verdicts, jamais un corps d'issue
+  ["GET", "/attente", "@auth"],           // ce qui attend un humain : comptages et titres tronqués, aucune ligne Supabase
   ["POST", "/incidents/:id/transition", "alerts"],
   ["GET", "/interactions", "@auth"],
   ["GET", "/traces", "@auth"],
@@ -117,6 +119,7 @@ const ATTENDU = [
   ["POST", "/alerts/manual", "alerts"],
   ["GET", "/sentinel", "claude"],
   ["GET", "/production", "claude"],
+  ["GET", "/promotions", "claude"],       // journal de promotion de l'autopilote (lecture seule), hors /sentinel/… (frère d'un :param)
   ["GET", "/sentinel/:id", "claude"],
   ["POST", "/sentinel/toggle", "settings"],
   ["POST", "/sentinel/:id/merge", "git_mutate"],

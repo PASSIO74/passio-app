@@ -154,15 +154,28 @@ la page Sources. Verrou : `test/ingest.test.js` « canal privé ».
 
 ## 2 ter. Tests du pilotage
 
-`npm test` — **347 tests, ~40 s** (dont 5 dans un vrai navigateur).
+`npm test` — **517 tests, ~17 s** (dont 5 dans un vrai navigateur, sautés bruyamment si Chromium manque).
+
+Dans un `git worktree`, 2 tests de `release-recorder` rougissent (« l'instantané
+lit la révision réelle du dépôt », « le cooldown est levé par un nouveau
+commit ») : `readRef()` lit `.git/HEAD`, or `.git` y est un FICHIER
+`gitdir: …`. Ce n'est pas une régression ; « tout vert » se mesure sur le
+checkout principal.
+
+Le script précharge `test/isoler-data.js` (`--import`) dans CHAQUE processus de
+test : `DASH_DATA_DIR` pointe sur un dossier temporaire avant tout import, les
+minuteurs réseau sont à zéro et la lecture GitHub est coupée. Aucun test
+n'écrit dans `dashboard/data/` (mesuré avant : le canari du test d'ingestion
+réécrivait `observation.json` du serveur vivant, EPERM à la clé). Verrou :
+`test/isolation-data.test.js`.
 
 Ce qu'ils couvrent, du plus proche du code au plus proche de l'écran :
 
 | Niveau | Fichiers | Ce que ça prouve |
 |---|---|---|
-| Unités | 40 fichiers | moteurs, policies, agrégations |
-| Contrat page ↔ serveur | `front-api.test.js` | les 60 appels de la page existent, avec le bon verbe |
-| Gardes déclarées | `routes-caps.test.js` | les 81 routes et leur capacité, figées dans les deux sens |
+| Unités | 50 fichiers | moteurs, policies, agrégations |
+| Contrat page ↔ serveur | `front-api.test.js` | les appels de la page (y compris la table de requêtes du Pilot mobile) existent, avec le bon verbe |
+| Gardes déclarées | `routes-caps.test.js` | les 87 routes et leur capacité, figées dans les deux sens |
 | Gardes appliquées | `http-routes.test.js` | un vrai serveur refuse vraiment (401/403), quatre rôles |
 | Écran | `navigateur.test.js` | Chromium : 29 onglets rendus, deux charges d'injection |
 
@@ -559,9 +572,49 @@ Verrou : les deux tests « marque d'eau » de `test/ingest.test.js`, éprouvés 
 mutation (rendre la fraîcheur sensible au canari, ou la figer, rougit chacun le
 sien).
 
+## 10 bis. L'œil et le témoin (2026-09-18) — recettes
+
+Pendant les mois de test, GitHub est la MAIN (sentinelle-autonome → claude-code
+→ auto-merge → deploy) ; le poste est l'ŒIL (temps réel) et le TÉMOIN de
+GitHub. Modules non critiques (jamais `auth.js`, `config.js`, `repair.js`,
+`sentinel.js`) :
+
+| Module | Rôle | Variable |
+|---|---|---|
+| `alerts.js` | `raise({key, level, …})` : clé stable, cooldown par alerte, bruit agrégé (API lente par endpoint / 15 min, connexion testeur avérée), auto-acquittement 6 h, sinks | `DASH_ALERTS_AUTOACK_MIN` |
+| `notify-sinks.js` | issue `[POSTE] Le pilotage a besoin de toi` via `gh` (clés du poste seulement), webhook | `DASH_NOTIFY_GITHUB`, `DASH_NOTIFY_WEBHOOK` |
+| `observation-alerts.js` | alertes à la bascule : DB, canari (2 manqués), realtime, polling, ingestion, silence réel, écriture des JsonDb | `DASH_OBS_ALERTS_MIN`, `DASH_SILENCE_MIN` |
+| `github-lecture.js` | client GitHub commun : cache par URL, ETag, budget 40/h sans jeton | `GITHUB_READ_TOKEN`, `DASH_GITHUB_READ` |
+| `chaine-autonome.js` | crons GitHub vivants/morts/désactivés, issues et PR en attente, dernier deploy main | `DASH_CHAINE_WATCH_MIN` |
+| `attente.js` | « Ce qui t'attend » + « Ce que les machines ont fait (7 j) » (Accueil, Pilot mobile, Command Center) | — |
+| `incident-packets.js` | regroupement par clé, résolution automatique par silence prouvé + révision main, réouverture | `DASH_INCIDENT_SWEEP_MIN` |
+| `sentinel-relais.js` | verdict « défaut réel » local → issue `[SENTINELLE]` GitHub (opt-in) | `DASH_SENTINEL_RELAIS_GITHUB` |
+
+**Recette « nouvelle route »** (les trois bancs `routes-caps`, `front-api`,
+`http-routes` la vérifient) : (1) dans `server/index.js`, UNE ligne
+`api.get("/x", auth.requireAuth, …)` ou `auth.requireCap("cap")` en tête du
+reste — jamais un segment frère d'un `:param` du même préfixe ; (2) ajouter
+`["GET", "/x", "@auth"]` à `ATTENDU` de `test/routes-caps.test.js` ;
+(3) l'appeler depuis `public/js/app.js` via `api.get("/x")` (ou `["nom", "/x"]`
+dans la table de `mobile.js`, ou le littéral `"/api/x"` dans `command.js`) —
+sinon l'ajouter à `CONNUES` de `test/front-api.test.js` avec le pourquoi ;
+(4) `npm test` : `http-routes` éprouve 401/403 seul.
+
+**Recette « module périodique »** (patron `disque.js`) : constantes lues de
+`process.env` à l'import ; `_state` + `xState()` ; `tick({ mesure, notify, now })`
+injectable, signalement à la BASCULE seulement avec hystérésis ; `startXWatch(everyMs,
+{ immediate })` idempotent + `unref()`, coupé par sa variable `=0` (posée dans
+`test/isoler-data.js` et `test/aide-serveur.js`) ; `stopXWatch` ;
+`_setXStateForTests` ; alerte via `raise` avec une clé stable ; aucun réseau à
+l'import. Test : 4 mutations nommées en tête du fichier.
+
+**Redémarrage après modification de code** : `Relancer-Pilotage.cmd` tue le
+seul pid qui écoute sur 4610 (motif strict, sans `/T`), le superviseur relance
+en 2 s. Pour un changement de `.env` : `Arreter-Pilotage.cmd` puis
+`Sentinelle-Demarrage.vbs`.
+
 ## 11. Améliorations recommandées
 
 - Cron `purge_telemetry(30)` (pg_cron) pour la rétention.
-- Notifications d'alerte e-mail/webhook (points de sortie déjà prévus dans `alerts.js`).
 - Export PDF des rapports (structure déjà en JSON/CSV).
 - URLs de médias signées côté Passio (durcissement au-delà du périmètre dashboard).

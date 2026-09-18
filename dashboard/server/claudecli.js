@@ -377,6 +377,7 @@ export function noteQuota(until, message = "", { notify = null } = {}) {
  * seul). Retourne l'alerte émise, ou null.
  */
 let _derniereBasculeSignalee = null;
+let _derniereCleChute = null;
 async function signaler(avant, apres, notify = null) {
   let alerte = null;
   if (avant.available === true && apres.available === false) {
@@ -394,8 +395,18 @@ async function signaler(avant, apres, notify = null) {
   // `since` ne change qu'à une bascule de disponibilité : il l'identifie.
   if (apres.since !== null && apres.since === _derniereBasculeSignalee) return null;
   _derniereBasculeSignalee = apres.since;
+  // Clé STABLE `claudecli:<raison>` : la même à la chute (warn) et au retour
+  // (info), pour que le sink GitHub referme l'issue [POSTE] au retour. La
+  // raison peut changer PENDANT la panne sans bascule (logged_out → probe si
+  // la sonde devient muette) : le retour reprend donc la clé émise à la chute,
+  // pas la raison du moment. Cooldown 0 : la bascule est déjà unique ici.
+  const chute = apres.available === false;
+  const raison = (chute ? apres.reason : avant.reason) || "logged_out";
+  const key = chute ? "claudecli:" + raison : (_derniereCleChute || "claudecli:" + raison);
+  _derniereCleChute = chute ? key : null;
+  Object.assign(alerte, { key, source: "claudecli", cooldownMs: 0, meta: { view: "sources", reason: raison } });
   try {
-    const raise = notify || (await import("./alerts.js")).raiseManual;
+    const raise = notify || (await import("./alerts.js")).raise;
     raise(alerte);
   } catch (e) {
     // Une alerte perdue (disque plein, store indisponible) laisse au moins une

@@ -617,3 +617,22 @@ tbody tr.row-alert:hover{background:rgba(239,68,68,.1)}
 .tsus-sub{font-size:11.5px;color:var(--muted);margin-top:3px}
 .tsus-none{font-size:12.5px;color:var(--muted);line-height:1.5}
 .tsus-warn{margin-top:9px;font-size:11.5px;color:var(--warn)}
+
+/* ── Ce qui t'attend / machines (Accueil, 2026-09-18) ─────────────────────── */
+.att-card{margin-bottom:12px}
+.att-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.att-head strong{display:inline-flex;align-items:center;gap:6px}
+.att-list{display:grid;gap:6px}
+.att-item{display:grid;grid-template-columns:auto 1fr auto auto;gap:10px;align-items:center;padding:8px 10px;border:1px solid var(--border);border-radius:10px;background:var(--card-2)}
+.att-item .att-txt b{font-size:13px}
+.att-item .att-txt .muted{font-size:12px}
+.att-when{font-size:11.5px;white-space:nowrap}
+.att-link{font-size:12px;font-weight:600;white-space:nowrap}
+.att-none{display:flex;align-items:center;gap:8px;font-size:13px}
+.att-empty{border-color:rgba(34,197,94,.35)}
+.att-unread{border-style:dashed}
+.att-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px}
+.att-stat{padding:8px 10px;border-radius:10px;background:var(--card-2);border:1px solid var(--border)}
+.att-stat b{display:block;font-size:18px}
+.att-stat span{font-size:11px;color:var(--muted)}
+@media(max-width:640px){.att-item{grid-template-columns:auto 1fr;grid-auto-rows:auto}.att-when,.att-link{grid-column:2}}

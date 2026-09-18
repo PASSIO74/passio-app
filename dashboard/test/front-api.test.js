@@ -59,6 +59,14 @@ function appelsDeLaPage() {
         const dansLesOptions = /method\s*:\s*"(GET|POST|PATCH|DELETE)"/.exec(m[3] || "");
         appels.push({ methode: m[1] || dansLesOptions?.[1] || "GET", chemin: normaliser(chemin), fichier: f });
       }
+      // ②bis La TABLE de requêtes de `mobile.js` (`["nom", "/chemin"]`, lue par
+      //    `api(path)` dans un map) : invisible au motif précédent, elle rendait
+      //    GET /incidents et GET /observation « sans appelant » alors que le
+      //    Pilot mobile les appelle — une route renommée aurait cassé le mobile
+      //    sans faire rougir ce test (2026-09-18).
+      for (const m of src.matchAll(/\[\s*"[a-z]+"\s*,\s*"(\/[^"]*)"\s*\]/g)) {
+        appels.push({ methode: "GET", chemin: normaliser(m[1]), fichier: f });
+      }
     }
     // ③ Chemins absolus écrits en clair (`command.js` passe le chemin complet).
     for (const m of src.matchAll(/[`"](\/api\/[^`"?)]*)/g)) {
@@ -123,9 +131,8 @@ test("inventaire des routes qu'AUCUNE page n'appelle", () => {
     "GET /anomalies",              // moteur d'anomalies : lu par le pilotage serveur
     "GET /control/history",        // historique du poste de commande
     "GET /git/diff",               // réservé à l'écran de revue de correctif
+    "GET /flags",                  // registre de drapeaux sans effet sur l'app : la vue a été retirée (2026-09-18), les routes restent
     "GET /health",                 // sonde de vie (superviseur, supervision externe)
-    "GET /incidents",              // paquets d'incidents : consommés côté serveur
-    "GET /observation",            // santé d'observation, agrégée par /control/command
     "GET /releases",               // historique de release
     "GET /residus",                // registre des résidus : le brief lit le domaine via /readiness ; l'écran détaillé est à venir
     "GET /test-sessions/:id",      // fiche unitaire, la liste suffit à l'écran
@@ -135,6 +142,7 @@ test("inventaire des routes qu'AUCUNE page n'appelle", () => {
     "POST /flags",                 // création de drapeau : pas encore d'écran
     "POST /git/branch",            // création de branche : réservée
     "POST /incidents/:id/transition",
+    "PATCH /flags/:id",            // idem GET /flags : registre sans écran
   ];
 
   const nouvelles = orphelines.filter((k) => !CONNUES.includes(k));

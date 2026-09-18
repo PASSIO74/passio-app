@@ -99,13 +99,32 @@ function renderTests(t) {
     el.append(b); root.append(el);
   });
 }
+// Ce qui t'attend : construit par card()/textContent uniquement, jamais innerHTML.
+// Un état vide est « Rien ne t'attend » ; une route qui ne répond pas est
+// « non lu » (unavailable), jamais confondu avec un vide.
+function renderAttente(a) {
+  const root = clear("attente");
+  const items = (a && a.items) || [];
+  if (!items.length) { root.append(card("Rien ne t'attend", "PASS", "Aucun geste en attente : les machines tournent seules.")); }
+  items.slice(0, 12).forEach((it) => {
+    const el = card(it.titre || it.key, it.priorite === "P0" ? "FAIL" : it.priorite === "P1" ? "STALE" : "UNKNOWN", (it.detail || "") + (it.depuis ? " · depuis " + new Date(it.depuis).toLocaleString("fr-FR") : ""));
+    if (it.cible && /^https?:\/\//.test(String(it.cible))) { const l = document.createElement("a"); l.href = String(it.cible); l.target = "_blank"; l.rel = "noopener"; l.textContent = "Ouvrir sur GitHub"; l.className = "m-link"; el.append(l); }
+    root.append(el);
+  });
+  const m = clear("machines");
+  const x = (a && a.machines7j) || {};
+  const val = (v) => (v == null ? "—" : String(v));
+  m.append(card("Chaîne GitHub", x.chaine === "vit" ? "PASS" : x.chaine ? "STALE" : "UNKNOWN", `${val(x.enquetesGithubFermees)} enquête(s) close(s) · sauvegarde ${x.sauvegardeOk ? "ok" : "?"} · veille ${x.veilleOk ? "ok" : "?"}`));
+  m.append(card("Sentinelle locale", "UNKNOWN", `${val(x.diagnostics)} diagnostic(s) · ${val(x.correctifsVerifies)} correctif(s) vérifié(s) · ${val(x.correctifsFusionnes)} fusionné(s) · ${val(x.publications)} PR · ${val(x.recidives)} récidive(s)`));
+}
 function showError(e){ $("error").hidden=false; $("error").textContent=e.message || String(e); }
 
 async function refresh(){
   $("refresh").disabled=true; $("error").hidden=true;
   const requests = [
     ["guardian", "/release-guardian"], ["command", "/control/command"], ["observation", "/observation"],
-    ["incidents", "/incidents?limit=50"], ["changes", "/control/changes"], ["tests", "/tests"], ["sentinel", "/sentinel?limit=20"]
+    ["incidents", "/incidents?limit=50"], ["changes", "/control/changes"], ["tests", "/tests"], ["sentinel", "/sentinel?limit=20"],
+    ["attente", "/attente"]
   ];
   const results = await Promise.allSettled(requests.map(([,path]) => api(path)));
   const map = Object.fromEntries(results.map((r, i) => [requests[i][0], r]));
@@ -117,6 +136,7 @@ async function refresh(){
     unavailable("gates", "Release Guardian", map.guardian.reason);
   }
   map.command.status === "fulfilled" ? renderActions(map.command.value) : unavailable("actions", "Actions", map.command.reason);
+  map.attente.status === "fulfilled" ? renderAttente(map.attente.value) : (unavailable("attente", "Ce qui t'attend", map.attente.reason), unavailable("machines", "Machines (7 j)", map.attente.reason));
   map.observation.status === "fulfilled" ? renderObservation(map.observation.value) : unavailable("observation", "Observation", map.observation.reason);
   map.incidents.status === "fulfilled" ? renderIncidents(map.incidents.value) : unavailable("incidentList", "Incidents", map.incidents.reason);
   map.changes.status === "fulfilled" ? renderChanges(map.changes.value) : unavailable("changeList", "Changements", map.changes.reason);

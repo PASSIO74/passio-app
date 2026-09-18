@@ -6,10 +6,12 @@ import { lireRevision } from "./git-revision.js";
 import { JsonDb } from "./jsondb.js";
 import {
   publicReleaseSnapshot,
+  publicReleaseConfigured,
   startPublicReleaseEvidence,
   publicEvidenceExpectationKey,
   MIN_COMMIT_PROOF,
 } from "./public-release-evidence.js";
+import { chaineState } from "./chaine-autonome.js";
 
 const db = new JsonDb("release-recorder", { snapshots: [] });
 const KEEP = Number(process.env.DASH_RELEASE_KEEP || 120);
@@ -51,15 +53,53 @@ function localReleaseManifest() {
   return null;
 }
 
+/** Le poste (aucune variable de build) : la preuve vient de GitHub, pas du checkout local. */
+function surLePoste() { return !process.env.NETLIFY && !process.env.DEPLOY_PROVIDER; }
+
+/** Dernier déploiement main réussi, tel que chaine-autonome.js l'a lu (persisté). */
+function dernierDeployMain() {
+  try { const c = chaineState(); return c && c.deploy && c.deploy.headSha ? c.deploy : null; } catch { return null; }
+}
+
 export function publicReleaseExpectations() {
-  const git = readRef();
   const local = localReleaseManifest();
-  const expectedCommit = process.env.COMMIT_REF || process.env.GITHUB_SHA || git.fullRevision || git.revision || null;
+  let expectedCommit;
+  if (surLePoste()) {
+    // ⚠️ Plus jamais le HEAD local : sur le poste, HEAD est une branche de
+    // travail (mesuré : telemetrie-refus-auth-attendu), et comparer le site
+    // public à un checkout de feature produisait MISMATCH en régime normal
+    // (2026-09-18). L'attente est le head_sha du dernier deploy main réussi.
+    const dep = dernierDeployMain();
+    expectedCommit = dep ? dep.headSha : null;
+  } else {
+    const git = readRef();
+    expectedCommit = process.env.COMMIT_REF || process.env.GITHUB_SHA || git.fullRevision || git.revision || null;
+  }
   // Un buildId local ne vaut comme attente que si son manifeste est lui-même lié
   // au commit courant avec EXACTEMENT la même force de preuve que la sonde publique.
   const expectedBuildId = local?.commit && expectedCommit && sameCommit(local.commit, expectedCommit)
     ? local.buildId : null;
   return { expectedCommit, expectedBuildId };
+}
+
+/**
+ * Verdict de release SUR LE POSTE, pur : preuve = release.json public comparé
+ * au head_sha du dernier deploy main réussi (GitHub). LIVE quand ils
+ * coïncident, DEGRADED (verdict MISMATCH) quand le site sert autre chose —
+ * « déploiement en cours » si un run deploy tourne —, UNKNOWN tant que l'une
+ * des deux sources n'est pas lue, NOT_CONFIGURED seulement si l'URL publique
+ * manque. Jamais un NOT_CONFIGURED structurel pour des variables de build
+ * Netlify qui n'existeront jamais sur le poste.
+ */
+export function verdictReleasePoste({ publicConfigured, publicEvidence, publicAligned, deploy }) {
+  if (!publicConfigured) return { state: "NOT_CONFIGURED", verdict: "NOT_CONFIGURED", missing: ["PASSIO_PUBLIC_URL"], detail: "PASSIO_PUBLIC_URL absente de .env : la preuve publique (release.json) ne peut pas être lue" };
+  if (!deploy || !deploy.headSha) return { state: "UNKNOWN", verdict: "UNKNOWN", missing: ["dernier deploy main (GitHub)"], detail: "dernier déploiement main non encore lu sur GitHub — preuve en attente" };
+  const sha8 = String(deploy.headSha).slice(0, 8);
+  if (publicEvidence && publicEvidence.state === "LIVE" && publicAligned) return { state: "LIVE", verdict: "LIVE", missing: [], detail: `release.json public = dernier deploy main ${sha8} (${deploy.quand || "?"})` };
+  if (publicEvidence && publicEvidence.state === "MISMATCH" && publicAligned) {
+    return { state: "DEGRADED", verdict: "MISMATCH", missing: ["public release:MISMATCH"], detail: deploy.enCours ? `le site public ne sert pas encore ${sha8} — déploiement en cours` : `le site public sert un autre commit que le dernier deploy main ${sha8} (CDN en retard ou déploiement bloqué)` };
+  }
+  return { state: "UNKNOWN", verdict: "UNKNOWN", missing: [`public release:${publicEvidence ? publicEvidence.state : "?"}${publicAligned ? "" : ":STALE_EXPECTATION"}`], detail: `preuve publique non concluante : ${publicEvidence && publicEvidence.error ? publicEvidence.error : (publicEvidence ? publicEvidence.state : "non lue")}` };
 }
 
 export function releaseSnapshot(extra = {}) {
@@ -103,6 +143,10 @@ export function releaseHealth() {
   });
   const currentKey = publicEvidenceExpectationKey(expectations);
   const publicAligned = evidenceKey === currentKey;
+  if (surLePoste()) {
+    const v = verdictReleasePoste({ publicConfigured: publicReleaseConfigured(), publicEvidence, publicAligned, deploy: dernierDeployMain() });
+    return { ...v, current, public: publicEvidence, publicExpected: expectations, publicAligned, publicRequired: false, source: "github_deploy+release_json" };
+  }
   const missing = [];
   if (!current.revision) missing.push("commit");
   if (!current.appVersion) missing.push("frontend version");

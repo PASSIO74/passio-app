@@ -29,6 +29,17 @@ export async function demarrerServeur({ port = 4700 + Math.floor(Math.random() *
       DASH_SESSION_SECRET: "secret-de-test-suffisamment-long-pour-hmac-0123456789",
       DASH_EXTRA_USERS: `dev_test:${MDP}:developer,testeur_test:${MDP}:tester,obs_test:${MDP}:observer`,
       DASH_OPEN_BROWSER: "",
+      // Aucun réseau depuis le serveur de test : minuteurs GitHub / observation /
+      // incidents à zéro, lecture GitHub coupée, aucun `gh`, aucun relais.
+      DASH_CHAINE_WATCH_MIN: "0",
+      DASH_OBS_ALERTS_MIN: "0",
+      DASH_INCIDENT_SWEEP_MIN: "0",
+      DASH_ALERTS_AUTOACK_MIN: "0",
+      DASH_GITHUB_READ: "off",
+      DASH_NOTIFY_GITHUB: "false",
+      DASH_NOTIFY_WEBHOOK: "",
+      DASH_SENTINEL_RELAIS_GITHUB: "false",
+      PASSIO_PUBLIC_URL: "",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
