@@ -3949,11 +3949,14 @@ function diagLog(msg) {
 // TIMEOUT COURT: Supabase répond ou on considère que c'est un problème réseau
 
 async function supaPublishPostWithRetry(post, maxRetries = 2) {
-  try { window.tel && tel.action(post && post.is_reel ? "publish_reel" : "publish_post", { passion: post && post.passion, postId: post && post.id }); } catch (e) {}
+  // ⚠️ `pid`, PAS `passion` (2026-09-18) : la clé « passion » percute DENY_KEY
+  // (/pass/) et était JETÉE en silence par scrubMeta — le pilotage ne pouvait
+  // pas regrouper les publications par passion. Même valeur, nom neutre.
+  try { window.tel && tel.action(post && post.is_reel ? "publish_reel" : "publish_post", { pid: post && post.passion, postId: post && post.id }); } catch (e) {}
   // Traçage bout-en-bout : chaîne « handler → publication enregistrée ». On confirme
   // via un « saved » explicite au VRAI résultat (l'upload + insert peut échouer/retry).
   var _pubCid = null;
-  try { if (window.tel && tel.flowStart) _pubCid = tel.flowStart(post && post.is_reel ? "publish_reel" : "publish_post", { postId: post && post.id, passion: post && post.passion }); } catch (e) {}
+  try { if (window.tel && tel.flowStart) _pubCid = tel.flowStart(post && post.is_reel ? "publish_reel" : "publish_post", { postId: post && post.id, pid: post && post.passion }); } catch (e) {}
   function _pubDone(ok) {
     try { if (_pubCid && window.tel) { tel.step(_pubCid, "saved", ok ? "ok" : "error"); tel.flowEnd(_pubCid, ok ? "ok" : "error"); _pubCid = null; } } catch (e) {}
     try { _verdictPublication(post, ok); } catch (e) {}
@@ -6177,7 +6180,8 @@ function _creerCanalDb(prive) {
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "posts" }, async payload => {
       const r = payload.new;
       if (r.author_id === MY_UID) return;
-      try { tel && tel.recv("post", { postId: r.id, authorId: r.author_id }); } catch(e) {}
+      // `auteur`, PAS `authorId` : « user » est dans DENY_KEY, la clé était jetée.
+      try { tel && tel.recv("post", { postId: r.id, auteur: r.author_id }); } catch(e) {}
       try {
         const { data: prof } = await supa.from("profiles").select("username,emoji,color").eq("id", r.author_id).maybeSingle();
         const _mu = (r.media_url || "").toLowerCase();
