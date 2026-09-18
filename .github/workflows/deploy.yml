@@ -170,6 +170,9 @@ jobs:
             hors_perimetre=""
             while IFS= read -r file; do
               case "${file}" in
+                # Un sous-dossier de docs/sentinelle/ n'est pas une fiche : hors périmètre,
+                # comme il est hors exclusion du comptage plus bas (les deux vont ensemble).
+                docs/sentinelle/*/*) hors_perimetre="${hors_perimetre}${file}"$'\n' ;;
                 js/*.js|styles.css|index.html|sw.js|tests/e2e/*.spec.js|docs/sentinelle/*.md) ;;
                 *) hors_perimetre="${hors_perimetre}${file}"$'\n' ;;
               esac

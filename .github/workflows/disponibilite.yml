@@ -91,7 +91,13 @@ jobs:
           title="[DISPONIBILITÉ] passio-app.netlify.app ne répond pas"
           # ⚠️ Par LABEL, jamais par `--search in:title` : l'index de recherche de
           # GitHub retarde de plusieurs heures (mesuré sur la sentinelle, #316).
-          existing="$(gh issue list --repo "${GITHUB_REPOSITORY}" --state open --label disponibilite --json number --jq '.[0].number // empty')"
+          # ⚠️ ET PAR PRÉFIXE DE TITRE, filtré localement (2026-09-18) : le label
+          # `disponibilite` est PARTAGÉ avec [SENTINELLE MUETTE] (sentinelle-
+          # autonome.yml). Sans ce filtre, cette sonde refermait la MUETTE dans
+          # les 10 minutes dès que le site répondait — le détecteur en panne
+          # n'avait plus d'alerte vivante — et, site en panne, commentait la
+          # MUETTE au lieu d'ouvrir [DISPONIBILITÉ].
+          existing="$(gh issue list --repo "${GITHUB_REPOSITORY}" --state open --label disponibilite --limit 50 --json number,title --jq '[.[] | select(.title | startswith("[DISPONIBILITÉ]"))] | .[0].number // empty')"
           run_url="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           if [ -z "${KO}" ]; then
             if [ -n "${existing}" ]; then

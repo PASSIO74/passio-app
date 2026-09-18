@@ -232,7 +232,8 @@ jobs:
             [ "${fusionnees}" -eq 0 ] || continue
             prs="$(jq -r --arg p "claude/issue-${n}-" '[.[] | select(.headRefName | startswith($p))] | length' /tmp/prs.json)"
             liens_pr="$(jq -r --arg p "claude/issue-${n}-" '[.[] | select(.headRefName | startswith($p)) | "- PR " + .url + " (" + .state + ")"] | join("\n")' /tmp/prs.json)"
-            runs="$(jq -r --arg c "${creee}" '[.[] | select(.createdAt >= $c) | select(.status == "in_progress" or .status == "queued" or .conclusion == "success")] | length' /tmp/runs-claude.json)"
+            # Un run qui ATTEND un runner (pending, waiting, requested) est vivant : le relancer doublerait le travail.
+            runs="$(jq -r --arg c "${creee}" '[.[] | select(.createdAt >= $c) | select(.status == "in_progress" or .status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested" or .conclusion == "success")] | length' /tmp/runs-claude.json)"
             liens_run="$(jq -r --arg c "${creee}" '[.[] | select(.createdAt >= $c) | "- run " + .url + " (" + (.conclusion // .status) + ")"] | join("\n")' /tmp/runs-claude.json)"
             relancee=non
             case ",${labels}," in *",sentinelle-relancee,"*) relancee=oui ;; esac
@@ -330,6 +331,12 @@ jobs:
       # (`versions` : sha8 du commit + commits de main postérieurs). `estVivante`
       # tranche ; sans PR ni déploiement retrouvé, la règle historique par date
       # de fermeture s'applique telle quelle.
+      # ⚠️ ET UN CORRECTIF FUSIONNÉ DONT LE DÉPLOIEMENT N'EST PAS FINI EST « EN
+      # VOL » (`etatDeploiement`) : son titre est traité comme encore OUVERT et
+      # `choisirCible` le saute. Sans cela, le cron qui tombe entre la fusion et
+      # le run vert (11 à 62 min) retombait sur la date de fermeture et rouvrait
+      # #355 exactement comme avant ce lot (mesuré : fermée 14:31, occurrence
+      # 15:12, déploiement vert 15:33, cron à :23).
       # ⚠️ Filtrage par LABEL, jamais par `--search "…" in:title` : l'index de
       # recherche de GitHub retarde (mesuré : #316 en était absente des heures
       # après sa création), et une dédup bâtie sur un index en retard laisse
@@ -354,7 +361,7 @@ jobs:
           node --input-type=module -e '
             import fs from "node:fs";
             import { execFileSync } from "node:child_process";
-            const { titreIssue, choisirCible, escaladeRecidive } = await import("./scripts/sentinelle-detecter.mjs");
+            const { titreIssue, choisirCible, escaladeRecidive, etatDeploiement } = await import("./scripts/sentinelle-detecter.mjs");
             const R = process.env.GITHUB_REPOSITORY;
             const v = JSON.parse(fs.readFileSync("/tmp/verdict.json", "utf8"));
             const fermees = JSON.parse(fs.readFileSync("/tmp/fermees.json", "utf8"));
@@ -366,7 +373,7 @@ jobs:
             const gh = (args) => execFileSync("gh", args, { encoding: "utf8" });
             const SHA = /^[0-9a-f]{40}$/;
             const sha8 = (s) => String(s).slice(0, 8);
-            let enrichies = 0;
+            let enrichies = 0, enVol = 0;
             for (const f of fermees) {
               if (!titres.has(String(f.title || ""))) continue;
               const pr = prs.find((p) => String(p.headRefName || "").startsWith("claude/issue-" + f.number + "-"));
@@ -374,10 +381,18 @@ jobs:
               if (!sha) continue;
               f.sha = sha;
               let runs = [];
-              try { runs = JSON.parse(gh(["run", "list", "--repo", R, "--workflow", "deploy.yml", "--commit", sha, "--event", "push", "--limit", "5", "--json", "conclusion,updatedAt"])); } catch (e) { runs = []; }
-              const vert = runs.filter((r) => r.conclusion === "success").map((r) => String(r.updatedAt)).sort().pop();
-              if (!vert) continue;
-              f.deployeA = vert;
+              try { runs = JSON.parse(gh(["run", "list", "--repo", R, "--workflow", "deploy.yml", "--commit", sha, "--event", "push", "--limit", "5", "--json", "status,conclusion,updatedAt"])); } catch (e) { runs = []; }
+              const etat = etatDeploiement(runs, pr.mergedAt);
+              if (etat.etat === "en_vol") {
+                // Correctif fusionné, déploiement pas fini : on ATTEND, comme si cette enquête était encore ouverte.
+                // (Pas d apostrophe dans ce bloc : il est cité entre apostrophes simples par bash.)
+                f.enVol = etat.raison;
+                ouvertes.push({ number: f.number, title: f.title, enVol: true });
+                enVol++;
+                continue;
+              }
+              if (etat.etat !== "deploye") continue;
+              f.deployeA = etat.deployeA;
               let apres = [];
               try { apres = gh(["api", "repos/" + R + "/compare/" + sha + "...main", "--jq", ".commits[].sha"]).split(/\s+/).filter(Boolean); } catch (e) { apres = []; }
               f.versions = [sha8(sha), ...apres.filter((s) => SHA.test(s)).map(sha8)];
@@ -390,8 +405,8 @@ jobs:
             fs.appendFileSync(process.env.GITHUB_OUTPUT, "deja=" + (cible ? "non" : "oui") + "\nrecidive=" + (escalade && escalade.recidive ? "oui" : "non") + "\n");
             const bilan = [
               "## Dédup datée sur le déploiement", "",
-              fermees.length + " enquête(s) fermée(s) lue(s), " + enrichies + " datée(s) sur un déploiement vert, " + ouvertes.length + " ouverte(s) ; "
-                + liste.length + " candidat(s) -> " + (cible ? "cible retenue" : "aucune cible vivante (occurrences antérieures au correctif, ou titre déjà ouvert)")
+              fermees.length + " enquête(s) fermée(s) lue(s), " + enrichies + " datée(s) sur un déploiement vert, " + enVol + " correctif(s) fusionné(s) dont le déploiement est en cours (on attend), " + (ouvertes.length - enVol) + " ouverte(s) ; "
+                + liste.length + " candidat(s) -> " + (cible ? "cible retenue" : "aucune cible vivante (occurrences antérieures au correctif, titre déjà ouvert, ou correctif en vol)")
                 + (escalade && escalade.recidive ? " ; RÉCIDIVE : " + escalade.n + " correctifs déjà déployés, remise à un humain" : ""),
               "",
             ];
@@ -440,7 +455,8 @@ jobs:
             const c = v.cible;
             const proches = fichesProches(c, await lireFiches("docs/sentinelle"));
             const recidive = process.env.RECIDIVE === "oui" && v.escalade && v.escalade.recidive ? v.escalade : null;
-            fs.writeFileSync("/tmp/issue.md", corpsIssue(v, c, { fichesProches: proches, recidive }));
+            // La date est passée : `corpsIssue`/`nomFiche` restent pures (seul ce bloc lit une horloge).
+            fs.writeFileSync("/tmp/issue.md", corpsIssue(v, c, { fichesProches: proches, recidive, date: new Date().toISOString().slice(0, 10) }));
             fs.writeFileSync("/tmp/titre.txt", titreIssue(c));
             fs.writeFileSync("/tmp/mode.txt", recidive ? "recidive" : "enquete");
             fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, "Fiches proches jointes : " + proches.length + "\n");
@@ -526,11 +542,19 @@ jobs:
           if [ -n "${existante}" ]; then
             gh issue comment "${existante}" --repo "${R}" --body-file /tmp/muette.md
           else
+            # Le label peut manquer si le run est tombé AVANT « Labels du canal » (pause, jeton).
+            gh label create disponibilite --repo "${R}" --color "B60205" --force \
+              --description "Sonde de disponibilité du site servi" >/dev/null 2>&1 || true
             gh issue create --repo "${R}" --title "${titre}" --label disponibilite --body-file /tmp/muette.md
           fi
 
+      # ⚠️ Refermée seulement quand le détecteur a VRAIMENT rendu un verdict
+      # (`steps.detect.outcome == 'success'`) : un run vert où « Lire la
+      # production » a été sautée (une enquête en cours, pause) ne prouve rien
+      # sur le détecteur, et refermer l'alerte sur ce vert-là serait un silence
+      # de plus qui ressemble au calme.
       - name: Sentinelle de nouveau vivante (refermer l'alerte)
-        if: success() && github.event_name != 'pull_request'
+        if: success() && github.event_name != 'pull_request' && steps.detect.outcome == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

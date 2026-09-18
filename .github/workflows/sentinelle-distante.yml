@@ -50,7 +50,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          pause="$(gh issue list --repo "${GITHUB_REPOSITORY}" --state open --search '"[SENTINELLE PAUSE]" in:title author:PASSIO74' --json number --jq 'length')"
+          # ⚠️ Liste par AUTEUR puis filtre LOCAL du titre, jamais `--search in:title`
+          # (même convention que sentinelle-autonome.yml) : l'index de recherche de
+          # GitHub retarde de plusieurs heures, et une pause posée depuis un
+          # téléphone doit être vue AU RUN SUIVANT.
+          pause="$(gh issue list --repo "${GITHUB_REPOSITORY}" --state open --author PASSIO74 --limit 200 --json title --jq '[.[] | select(.title | contains("[SENTINELLE PAUSE]"))] | length')"
           if [ "${pause}" -gt 0 ]; then
             echo "active=false" >> "${GITHUB_OUTPUT}"
             echo "## Sentinelle distante : EN PAUSE" >> "${GITHUB_STEP_SUMMARY}"

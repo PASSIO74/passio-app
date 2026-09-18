@@ -384,7 +384,7 @@ jobs:
                ouvre quand même la PR avec ce que tu peux faire sûrement, et
                explique le doute dans son corps.
             8. Enquête de la sentinelle (issue étiquetée `sentinelle`) :
-               ${{ contains(join(github.event.issue.labels.*.name, ','), 'sentinelle') && 'OUI' || 'NON' }}.
+               ${{ contains(github.event.issue.labels.*.name, 'sentinelle') && 'OUI' || 'NON' }}.
                Si OUI : la spécification vient d'une alerte de production. Écris
                la fiche `docs/sentinelle/<date>-<condensé>.md` qu'elle demande
                (Cause / Correctif / Verrou / Leçon / Hors-champ, 40 lignes au
@@ -1028,7 +1028,8 @@ jobs:
           ECARTES: ${{ steps.spec.outputs.ecartes }}
           LIEN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           AUTO_FUSION: ${{ steps.publier.outputs.auto_fusion || 'sans objet (PR déjà ouverte)' }}
-          SENTINELLE: ${{ contains(join(github.event.issue.labels.*.name, ','), 'sentinelle') && 'oui' || 'non' }}
+          # Égalité sur le NOM du label (contains sur le tableau), pas une sous-chaîne d'un join.
+          SENTINELLE: ${{ contains(github.event.issue.labels.*.name, 'sentinelle') && 'oui' || 'non' }}
         run: |
           set -euo pipefail
           # ── La fiche : le bloc Cause / Correctif / Verrou / Leçon du commit ──
