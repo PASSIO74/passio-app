@@ -177,3 +177,90 @@ test("un compte confirmé entre dans l'app : le chemin nominal est intact", asyn
   await expect(page.locator("#authMsg")).not.toContainText("Vérifie tes e-mails");
   expect(await page.evaluate(() => localStorage.getItem("passio_uid"))).toBe("u_ok");
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LA SORTIE DOIT ÊTRE SOUS LES YEUX (2026-09-18)
+//
+// Deux testeuses iPhone, le 17/09 : « Moi ça bloque ici je n'arrive pas à
+// cliquer sur l'encadré pour confirmer mon adresse mail », capture à l'appui —
+// l'encadré rouge « Confirme ton e-mail » en haut, et l'écran qui s'arrête sur
+// « Se connecter ». Le renvoi existait depuis le 2026-08-30 et il était en
+// DESSOUS de ce bouton.
+//
+// Mesuré au navigateur, iPhone 12 (390 × 664) : `#authResendLink` occupe
+// 647–669 px captcha ÉTEINT — déjà coupé — et 724–746 px avec le widget
+// Turnstile de la production, soit 82 px sous le pli. Mesuré en base : le
+// `confirmation_sent_at` du compte bloqué n'a jamais été renouvelé depuis sa
+// création. Personne n'avait jamais atteint cette sortie.
+//
+// ⚠️ LE LIEN DU BAS N'A PAS BOUGÉ (six cas ci-dessus le visent) : on n'a pas
+// déplacé la sortie, on en a posé une SECONDE là où le refus s'écrit.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// La hauteur utile d'un iPhone 12 sous Safari, barres comprises — pas les
+// 844 px du gabarit. C'est cette différence qui cachait la sortie.
+const ECRAN_IPHONE = { width: 390, height: 664 };
+
+test("⑧ le renvoi est À L'ÉCRAN quand la connexion est refusée faute de confirmation", async ({ page }) => {
+  await page.setViewportSize(ECRAN_IPHONE);
+  await ouvrirAuth(page, {
+    signIn: { data: { session: null }, error: { message: "Email not confirmed" } },
+  });
+  await page.locator("#authTabSignin").click();
+  await page.locator("#authEmail").fill("bloque@exemple.com");
+  await page.locator("#authPassword").fill("motdepasse123");
+  // Le widget anti-robots de la production occupe ~65 px juste au-dessus du
+  // bouton : sans lui, le banc mesurerait un écran plus court que le vrai.
+  await page.evaluate(() => {
+    const c = document.getElementById("authCaptcha");
+    c.style.display = "block";
+    c.innerHTML = '<div style="height:65px;"></div>';
+  });
+  await page.locator("#authSubmitBtn").click();
+
+  const bouton = page.locator("#authResendTopBtn");
+  await expect(bouton).toBeVisible();
+  // RÉINJECTION : sans le bloc #authResendTop, ce cas ne trouve pas son bouton.
+  await expect.poll(async () => {
+    return await page.evaluate(() => {
+      const r = document.getElementById("authResendTopBtn").getBoundingClientRect();
+      return r.top >= 0 && r.bottom <= window.innerHeight && r.height >= 44;
+    });
+  }, { timeout: 5000, message: "la sortie doit tenir dans l'écran et faire au moins 44 px" }).toBe(true);
+
+  // Et le refus NOMME sa sortie : « Confirme ton e-mail » seul ne dit pas quoi faire.
+  await expect(page.locator("#authMsg")).toContainText("Confirme ton e-mail");
+  await expect(page.locator("#authMsg")).toContainText("renvoyer");
+});
+
+test("⑨ le bouton du haut renvoie le lien, exactement comme celui du bas", async ({ page }) => {
+  await page.setViewportSize(ECRAN_IPHONE);
+  await ouvrirAuth(page, {
+    signIn: { data: { session: null }, error: { message: "Email not confirmed" } },
+  });
+  await page.locator("#authTabSignin").click();
+  await page.locator("#authEmail").fill("bloque@exemple.com");
+  await page.locator("#authPassword").fill("motdepasse123");
+  await page.locator("#authSubmitBtn").click();
+
+  await page.locator("#authResendTopBtn").click();
+  const appels = await page.evaluate(() => window.__auth.resend);
+  expect(appels).toHaveLength(1);
+  expect(appels[0].type).toBe("signup");
+  expect(appels[0].email).toBe("bloque@exemple.com");
+  await expect(page.locator("#authMsg")).toContainText("renvoyé");
+});
+
+test("⑩ les DEUX sorties obéissent à la même autorité : un changement d'onglet les referme", async ({ page }) => {
+  await page.setViewportSize(ECRAN_IPHONE);
+  await ouvrirAuth(page, {
+    signUp: { data: { user: { id: "u1", identities: [{ id: "i1" }] }, session: null }, error: null },
+  });
+  await remplirInscription(page, "deux.sorties@exemple.com");
+  await expect(page.locator("#authResendTop")).toBeVisible();
+  await expect(page.locator("#authResendLink")).toBeVisible();
+
+  await page.locator("#authTabSignup").click();
+  await expect(page.locator("#authResendTop")).toBeHidden();
+  await expect(page.locator("#authResendLink")).toBeHidden();
+});

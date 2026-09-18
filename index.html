@@ -259,6 +259,29 @@
 
         <div id="authMsg" class="onb-auth-msg"></div>
 
+        <!-- ══ LA SORTIE DU MUR « CONFIRME TON E-MAIL » SE PRONONCE LÀ OÙ LE
+             REFUS EST ÉCRIT (2026-09-18) ══
+             Deux testeuses iPhone, 17/09 : « je n'arrive pas à cliquer sur
+             l'encadré pour confirmer mon adresse mail ». L'encadré rouge
+             #authMsg disait le refus et RIEN d'autre ; la seule sortie —
+             #authResendLink — vit tout en bas, sous « Se connecter » et sous
+             « Mot de passe oublié ». Mesuré sur iPhone 12 (viewport 664 px),
+             captcha ÉTEINT : le lien va de 647 à 669 px, à cheval sur le pli ; en
+             production le widget Turnstile l'enfonce à 724–746 px, entièrement
+             hors de l'écran. Preuve en base : `confirmation_sent_at` du compte bloqué
+             n'a jamais été renouvelé — personne n'a jamais atteint ce lien.
+             ⚠️ Le bloc du bas est CONSERVÉ tel quel (six verrous le visent) :
+             on n'a pas déplacé la sortie, on en a posé une SECONDE sous les
+             yeux. `_showResendConfirmation` (app-02) est l'autorité UNIQUE qui
+             montre et cache les deux — jamais deux pilotages pour un état. -->
+        <div id="authResendTop" role="status" style="display:none;margin:-4px 0 14px;">
+          <!-- Texte VRAI sur les deux chemins qui l'affichent — « Compte créé ! » comme
+               « déjà utilisé » / « confirme ton e-mail » (relevé par audit-passio :
+               « existe déjà » sous « Compte créé » disait un doublon à qui venait de s'inscrire). -->
+          <p style="margin:0 0 8px;font-size:12px;line-height:1.45;color:var(--muted);">Ton compte attend que tu ouvres le lien envoyé par e-mail. Regarde aussi dans les spams.</p>
+          <button type="button" id="authResendTopBtn" onclick="onbResendConfirmation()" style="display:block;width:100%;min-height:44px;padding:11px 14px;font-size:14px;font-weight:800;color:#fff;background:var(--accent);border:none;border-radius:12px;cursor:pointer;">📧 Renvoyer l'e-mail de confirmation</button>
+        </div>
+
         <label class="field" id="authNameWrap" style="display:none;">
           <span>Nom d'utilisateur</span>
           <input type="text" class="input" id="authName" placeholder="Benjamin" maxlength="40" autocomplete="nickname" style="font-size:16px;"/>
@@ -270,7 +293,7 @@
         </label>
         <label class="field">
           <span>Mot de passe</span>
-          <div style="position:relative;"><input type="password" class="input" id="authPassword" placeholder="••••••••" autocomplete="current-password" minlength="6" oninput="majAideMotDePasse()" style="font-size:16px;padding-right:44px;"/><button type="button" onclick="togglePwd('authPassword',this)" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:18px;color:var(--muted);padding:0;">👁</button></div>
+          <div style="position:relative;"><input type="password" class="input" id="authPassword" placeholder="••••••••" autocomplete="current-password" minlength="6" oninput="majAideMotDePasse()" style="font-size:16px;padding-right:44px;"/><button type="button" onclick="togglePwd('authPassword',this)" aria-label="Afficher ou masquer le mot de passe" style="position:absolute;right:0;top:50%;transform:translateY(-50%);width:44px;height:44px;display:inline-flex;align-items:center;justify-content:center;background:none;border:none;cursor:pointer;font-size:18px;color:var(--muted);padding:0;">👁</button></div>
         </label>
         <!-- AIDE AU CHOIX DU MOT DE PASSE (2026-09-16) — les TROIS règles que le
              serveur applique déjà, écrites avant d’être refusé, et une sortie
@@ -287,7 +310,7 @@
         </div>
         <label class="field" id="authPasswordConfirmWrap" style="display:none;">
           <span>Confirmer le mot de passe</span>
-          <div style="position:relative;"><input type="password" class="input" id="authPasswordConfirm" placeholder="••••••••" autocomplete="new-password" style="font-size:16px;padding-right:44px;"/><button type="button" onclick="togglePwd('authPasswordConfirm',this)" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:18px;color:var(--muted);padding:0;">👁</button></div>
+          <div style="position:relative;"><input type="password" class="input" id="authPasswordConfirm" placeholder="••••••••" autocomplete="new-password" style="font-size:16px;padding-right:44px;"/><button type="button" onclick="togglePwd('authPasswordConfirm',this)" aria-label="Afficher ou masquer le mot de passe" style="position:absolute;right:0;top:50%;transform:translateY(-50%);width:44px;height:44px;display:inline-flex;align-items:center;justify-content:center;background:none;border:none;cursor:pointer;font-size:18px;color:var(--muted);padding:0;">👁</button></div>
         </label>
 
         <label class="field" id="authConsentWrap" style="display:none;flex-direction:row;align-items:flex-start;gap:10px;margin:2px 0 12px;">
@@ -302,8 +325,8 @@
         <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px;">
           <div id="authCaptcha" style="display:none;margin:0 0 2px;"></div>
           <button class="btn primary block" id="authSubmitBtn" onclick="onbDoAuth()" style="padding:14px;font-size:15px;font-weight:800;">Se connecter</button>
-          <span id="authForgotLink" onclick="onbForgotPassword()" style="cursor:pointer;font-size:12px;color:var(--accent);text-align:center;padding:4px;">Mot de passe oublié ?</span>
-          <span id="authResendLink" onclick="onbResendConfirmation()" style="display:none;cursor:pointer;font-size:12px;color:var(--accent);text-align:center;padding:4px;">Renvoyer l'e-mail de confirmation</span>
+          <span id="authForgotLink" onclick="onbForgotPassword()" style="cursor:pointer;font-size:12px;color:var(--accent);text-align:center;padding:11px 4px;min-height:44px;box-sizing:border-box;">Mot de passe oublié ?</span>
+          <span id="authResendLink" onclick="onbResendConfirmation()" style="display:none;cursor:pointer;font-size:12px;color:var(--accent);text-align:center;padding:11px 4px;min-height:44px;box-sizing:border-box;">Renvoyer l'e-mail de confirmation</span>
           <div style="display:flex;align-items:center;gap:8px;color:var(--muted);font-size:11px;margin:2px 0;"><span style="flex:1;height:1px;background:var(--border);"></span>ou<span style="flex:1;height:1px;background:var(--border);"></span></div>
           <button class="btn block" id="authGoogleBtn" onclick="onbGoogleAuth()" style="padding:13px;font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:10px;border:1px solid var(--border);background:#fff;color:#3c4043;">
             <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.91c1.7-1.57 2.69-3.88 2.69-6.62z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.91-2.26c-.81.54-1.84.86-3.05.86-2.34 0-4.33-1.58-5.04-3.71H.96v2.33A9 9 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.96 10.71A5.41 5.41 0 0 1 3.68 9c0-.59.1-1.17.28-1.71V4.96H.96A9 9 0 0 0 0 9c0 1.45.35 2.82.96 4.04l3-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.59C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.96l3 2.33C4.67 5.16 6.66 3.58 9 3.58z"/></svg>
@@ -525,11 +548,6 @@
   <main class="app-main" id="appMain">
 
     <!-- ===== SCREEN: HOME / FEED ===== -->
-    <!-- Banner mode hors-ligne (affiché par le SW quand réseau indisponible) -->
-    <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:#1e1b4b;color:#fff;text-align:center;padding:calc(10px + env(safe-area-inset-top)) 16px 10px;font-size:13px;font-weight:600;letter-spacing:.01em;">
-      Mode hors-ligne — contenu en cache
-      <button onclick="document.getElementById('offlineBanner').style.display='none'" style="background:none;border:none;color:#c4b5fd;font-size:16px;cursor:pointer;margin-left:8px;">×</button>
-    </div>
 
     <section class="screen active" id="screen-feed">
       <!-- Indicateur pull-to-refresh -->
@@ -576,7 +594,6 @@
       </div>
 
       <div class="stories-row" id="storiesRowFeed"></div>
-
 
       <div id="feedList"><div id="feedSkeleton"><div class="skel-post"><div class="skel-head"><div class="skeleton skel-avatar"></div><div style="flex:1;"><div class="skeleton skel-line" style="width:42%;margin-bottom:7px;"></div><div class="skeleton skel-line" style="width:26%;height:9px;"></div></div></div><div class="skeleton skel-line" style="width:96%;margin-bottom:7px;"></div><div class="skeleton skel-line" style="width:78%;"></div></div><div class="skel-post"><div class="skel-head"><div class="skeleton skel-avatar"></div><div style="flex:1;"><div class="skeleton skel-line" style="width:38%;margin-bottom:7px;"></div><div class="skeleton skel-line" style="width:24%;height:9px;"></div></div></div><div class="skeleton skel-line" style="width:90%;margin-bottom:7px;"></div><div class="skeleton skel-line" style="width:64%;"></div></div></div></div>
 
@@ -850,7 +867,6 @@
         <input type="file" id="audioInput" accept="audio/*" style="display:none;" />
       </div>
 
-
       <label class="field" id="fieldPassion">
         <span>Passion liée</span>
         <select class="input" id="postPassion" onchange="onStudioPassionChange()"></select>
@@ -1047,32 +1063,6 @@
       </div>
 
     </section>
-
-    <!-- Post detail full-screen overlay -->
-    <div id="postDetailPage" style="display:none;position:fixed;inset:0;z-index:200;background:#ede9fe;flex-direction:column;overflow-y:auto;-webkit-overflow-scrolling:touch;animation:fadeIn 200ms ease-out;">
-      <div style="position:sticky;top:0;z-index:2;background:#ede9fe;border-bottom:1px solid var(--border);padding:calc(12px + env(safe-area-inset-top)) 16px 12px;display:flex;align-items:center;gap:10px;">
-        <button onclick="closePost()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text);padding:0;line-height:1;">←</button>
-        <span style="font-size:15px;font-weight:800;">Post</span>
-      </div>
-      <div id="postDetailContent" style="padding:16px 16px 100px;"></div>
-    </div>
-
-    <!-- Event detail full-screen overlay -->
-    <div id="eventDetailPage" class="event-detail-page" style="display:none;">
-      <!-- Hero -->
-      <div class="event-detail-hero" id="eventDetailHero">
-        <div id="eventDetailCover"></div>
-        <button class="event-detail-back" onclick="closeEventDetail()">← Retour</button>
-        <button class="event-detail-back" id="eventDetailShareBtn" style="left:auto;right:12px;" aria-label="Partager">Partager</button>
-        <div class="event-detail-hero-title" id="eventDetailHeroTitle"></div>
-      </div>
-      <!-- Scrollable body -->
-      <div class="event-detail-body">
-        <div id="eventDetailContent"></div>
-      </div>
-      <!-- CTA fixed bottom -->
-      <div class="event-detail-cta" id="eventDetailCta"></div>
-    </div>
 
     <!-- ===== SCREEN: IRL ===== -->
     <section class="screen" id="screen-irl">
@@ -1293,6 +1283,53 @@
 
   </main>
 
+  <!-- ══ PAGES PLEIN ÉCRAN : HORS DU CONTENEUR DÉFILANT, ET C'EST UNE RÈGLE (2026-09-18) ══
+       Ces trois blocs `position: fixed` vivaient DANS <main id="appMain">, le
+       conteneur `overflow-y: auto; -webkit-overflow-scrolling: touch`. Sur
+       Chromium, `fixed` se cale sur le viewport quoi qu'il arrive ; sur WebKit
+       (iPhone), la vidéo d'une testeuse (16/09) montre la page détail d'une
+       publication rendue ENTRE la barre du haut et la barre d'onglets, son
+       en-tête « ← Post » hors de vue, et les onglets du bas encore actifs : elle
+       tape « Messages », « Rencontrer », « Découvrir » — l'écran change DESSOUS,
+       la page reste. « Ça bloque quand j'appuie sur les différentes options. »
+       Toutes les autres surfaces plein écran du dépôt (#reelsViewer,
+       #modalBackdrop, #conv-fullpage, #storyViewer, #mediaEditor) sont déjà
+       des sœurs de <main>, jamais ses enfants : ces trois-là étaient les seules
+       exceptions, et exactement celles qui cassaient. Aucun style ni aucun
+       script ne dépendait de leur ancien emplacement (mesuré au grep). -->
+    <!-- Banner mode hors-ligne (affiché par le SW quand réseau indisponible) -->
+    <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:#1e1b4b;color:#fff;text-align:center;padding:calc(10px + env(safe-area-inset-top)) 16px 10px;font-size:13px;font-weight:600;letter-spacing:.01em;">
+      Mode hors-ligne — contenu en cache
+      <button onclick="document.getElementById('offlineBanner').style.display='none'" style="background:none;border:none;color:#c4b5fd;font-size:16px;cursor:pointer;margin-left:8px;">×</button>
+    </div>
+
+    <!-- Post detail full-screen overlay -->
+    <div id="postDetailPage" style="display:none;position:fixed;inset:0;z-index:200;background:#ede9fe;flex-direction:column;overflow-y:auto;-webkit-overflow-scrolling:touch;animation:fadeIn 200ms ease-out;">
+      <div style="position:sticky;top:0;z-index:2;background:#ede9fe;border-bottom:1px solid var(--border);padding:calc(12px + env(safe-area-inset-top)) 16px 12px;display:flex;align-items:center;gap:10px;">
+        <button onclick="closePost()" aria-label="Fermer la publication" title="Fermer" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text);line-height:1;padding:0;min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center;margin:-11px -13px;">←</button>
+        <span style="font-size:15px;font-weight:800;">Post</span>
+      </div>
+      <div id="postDetailContent" style="padding:16px 16px 100px;"></div>
+    </div>
+
+    <!-- Event detail full-screen overlay -->
+    <div id="eventDetailPage" class="event-detail-page" style="display:none;">
+      <!-- Hero -->
+      <div class="event-detail-hero" id="eventDetailHero">
+        <div id="eventDetailCover"></div>
+        <button class="event-detail-back" onclick="closeEventDetail()">← Retour</button>
+        <button class="event-detail-back" id="eventDetailShareBtn" style="left:auto;right:12px;" aria-label="Partager">Partager</button>
+        <div class="event-detail-hero-title" id="eventDetailHeroTitle"></div>
+      </div>
+      <!-- Scrollable body -->
+      <div class="event-detail-body">
+        <div id="eventDetailContent"></div>
+      </div>
+      <!-- CTA fixed bottom -->
+      <div class="event-detail-cta" id="eventDetailCta"></div>
+    </div>
+
+
   <!-- ============ CARNET DE VOYAGE, VIEWER PLEIN ÉCRAN — RETIRÉ (§6) ====== -->
 
   <!-- ============ REELS / BOBINES VIEWER ============ -->
@@ -1401,7 +1438,6 @@
       </div>
     </div>
   </div>
-
 
   <!-- ── Conversation pleine page ── -->
   <div id="conv-fullpage">
@@ -1696,7 +1732,6 @@
 <script src="js/passion-selector.js"></script>
 <script src="js/passions-flat-ui.js"></script>
 
-
 <!-- ======== PWA INSTALL OVERLAY ======== -->
 <div id="pwa-overlay" style="display:none;">
   <div id="pwa-sheet">
@@ -1714,7 +1749,6 @@
 
   </div>
 </div>
-
 
 <script src="js/pwa-landing.js"></script>
 

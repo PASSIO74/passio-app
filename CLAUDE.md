@@ -206,6 +206,131 @@ Verrou : `tests/e2e/mot-de-passe-aide.spec.js` (8), **éprouvé par RÉINJECTION
 câblage de `switchAuthTab` retiré (2 rouges), écho du refus coupé (2), garde lettres+chiffres
 neutralisée (1), `autocomplete` refigé (1), confirmation non remplie (1).
 
+## 📱 DEUX TESTEUSES iPHONE, DEUX REFUS SANS SORTIE ATTEIGNABLE (2026-09-18)
+
+Capture d'écran à l'appui, le 17/09 au soir. ① « Moi ça bloque ici, je n'arrive pas à cliquer sur
+l'encadré pour confirmer mon adresse mail » — l'écran de connexion, l'encadré rouge « Confirme ton
+e-mail », et rien d'autre à l'écran. ② « Moi ça bloque quand j'appuie sur les différentes options » —
+le détail d'une publication, avec sa rangée ❤️ 💬 😊 partage.
+
+⚠️ **AUCUNE DES DEUX N'A LAISSÉ LA MOINDRE TRACE D'ERREUR.** `client_errors` ne porte **rien** d'iOS
+sur cinq jours, et la télémétrie ne montre que des `POST /auth/v1/token` en 400 — le refus attendu.
+C'est l'angle mort déjà écrit pour la Sentinelle : *un bouton qui n'émet rien ressemble exactement au
+calme*. Ces deux défauts ne pouvaient être trouvés QUE par la mesure au navigateur, en gabarit de
+téléphone, sur le geste réel.
+
+### ⚠️ ① LA SORTIE EXISTAIT DEPUIS TROIS SEMAINES — SOUS LE PLI
+
+Le renvoi du lien de confirmation (`#authResendLink`, 2026-08-30) est posé **après** « Se connecter »
+et après « Mot de passe oublié ». Mesuré sur un iPhone 12 (390 × **664** px — la hauteur UTILE sous
+Safari, pas les 844 du gabarit Playwright) : le lien occupe **647–669 px captcha ÉTEINT** — à cheval sur le pli,
+17 px visibles sur 22 — et **724–746 px** avec le widget Turnstile de la production, soit **82 px sous
+le pli**, entièrement hors écran. La
+capture s'arrête exactement sur « Se connecter ».
+⚠️ **ET LA BASE LE CONFIRME, ce n'est pas une déduction** : le compte bloqué porte un
+`confirmation_sent_at` égal à son `created_at`, **jamais renouvelé**. Personne n'avait jamais atteint
+cette sortie — ni elle, ni quiconque.
+⚠️ **ON N'A PAS DÉPLACÉ LA SORTIE, ON EN A POSÉ UNE SECONDE** là où le refus s'écrit :
+`#authResendTop` (index.html), juste sous `#authMsg`, un bouton plein de 44 px avec sa phrase
+d'explication — **vraie sur les DEUX chemins qui l'affichent** (« Compte créé ! » comme « confirme ton
+e-mail ») : la première rédaction disait « ton compte existe déjà » à qui venait de s'inscrire, relevé
+par `audit-passio`. ⚠️ **Et la branche « e-mail déjà utilisé » de l'inscription était le dernier
+cul-de-sac** : recréer son compte est le geste le plus naturel de qui n'a pas reçu son lien, et cette
+branche répondait « déjà utilisé » sans proposer le renvoi — même relecture. Les TROIS branches
+appellent désormais `_showResendConfirmation`. Le défilement cale **le message en haut** (`block:
+"start"` sur `#authMsg`), pas le bloc au centre : centré, il renvoyait « Se connecter » 18 px sous
+le pli avec le captcha — le défaut qu'on venait de corriger, déplacé d'un bouton. Le lien du bas reste **à l'octet près** — six cas de `confirmation-email.spec.js` le
+visent, et un verrou qui cesse d'exercer un geste cesse de le protéger.
+⚠️ **`_showResendConfirmation` (app-02) reste l'autorité UNIQUE des DEUX sorties** : elle les montre,
+les cache (`switchAuthTab` l'appelle avec `""` à chaque bascule) et amène la seconde à l'écran par
+`scrollIntoView`. Deux pilotages pour un même état finissent toujours par diverger sur celui qu'on
+oublie. ⚠️ Et le refus **NOMME** désormais sa sortie : « Confirme ton e-mail avant de te connecter :
+ouvre le lien qu'on t'a envoyé, ou fais-le renvoyer juste en dessous. » Un refus sans porte de sortie
+est ce qui fait abandonner une inscription — même règle que le mot de passe fuité (2026-09-16).
+
+### ⚠️ ② ELLE ÉTAIT ENFERMÉE DANS LA PAGE DÉTAIL — ET LA VIDÉO L'A MONTRÉ, PAS LA CAPTURE
+
+La capture montrait le détail d'une publication ; la **vidéo** (VID-20260916-WA0005, 11 s) montre le
+mécanisme : l'onglet du bas s'allume à chaque tap — Profil, Messages, Rencontrer, Découvrir — et
+**l'écran ne change pas**. La page détail est rendue ENTRE la barre du haut et la barre d'onglets,
+son en-tête « ← Post » est hors de vue, et la barre d'onglets reste tapable par-dessus. Deux causes,
+deux correctifs, et le second vaut même sans le premier :
+
+⚠️ **UNE PAGE `position: fixed` NE VIT JAMAIS DANS `#appMain`.** `#postDetailPage`, `#eventDetailPage`
+et `#offlineBanner` étaient les **seules** surfaces plein écran du dépôt posées DANS le conteneur
+défilant (`overflow-y: auto; -webkit-overflow-scrolling: touch`) — toutes les autres (`#reelsViewer`,
+`#modalBackdrop`, `#conv-fullpage`, `#storyViewer`, `#mediaEditor`) sont des sœurs de `<main>`. Sur
+Chromium, `fixed` se cale sur le viewport quoi qu'il arrive : **le défaut est INVISIBLE au banc**
+(Chromium seul ici, et `closeCurrentOverlay` fonctionnait — c'est le geste de retour que personne
+ne trouve sans bouton). Sur WebKit, la page est rendue dans le scroller, défile avec lui, et la barre
+d'onglets reste au-dessus. Les trois blocs sont sortis de `<main>` (index.html), et les comptes de
+balises structurelles sont **identiques** avant/après (main 1, section 6, div 417/418 — l'écart
+préexistant compris). Aucun style ni script ne dépendait de l'ancien emplacement (mesuré au grep).
+
+⚠️ **ET `goTo` FERME LES DEUX PAGES DE DÉTAIL AVANT LA BASCULE D'ÉCRAN**, comme il le fait déjà pour
+« Mes passions » — la règle de la fiche 19 (« toute page plein écran doit avoir son entrée dans
+`closeCurrentOverlay` ET `goTo` doit la fermer avant la bascule ») n'était appliquée qu'à moitié :
+les deux pages étaient dans `closeCurrentOverlay`, aucune dans `goTo`. Un onglet du bas est une
+NAVIGATION : il referme ce qui est ouvert. C'est ce qui aurait libéré la testeuse dès son premier
+tap, quel que soit le moteur. L'entrée d'historique de la page devient orpheline, comme pour « Mes
+passions » — coût déjà accepté par `goTo` (`_navOverlayDepth = 0`).
+
+⚠️ **ET LA SEULE SORTIE RESTANTE FAISAIT 18 PIXELS.** DEV-01 (2026-09-14) a élargi à 44/40 px la
+cloche, les croix de panneau et les actions de **COMMENTAIRE**. Il s'est arrêté là. Mesuré au
+navigateur sur le détail d'une publication — l'écran même de la capture : **« ← » 18×22** (la seule
+sortie VISIBLE de la page — le geste de retour du système la ferme aussi, mais personne ne le trouve
+sans bouton), actions **55×27 / 47×27 / 31×27 / 35×31**, tri des commentaires **91×22**, « ⋯ »
+d'un commentaire **24×24**, « ⋯ » d'une publication **30×30**. Apple demande 44 pt. **Corriger une
+surface, c'est corriger une surface** — et la famille se re-traque après CHAQUE correctif de ce type.
+
+⚠️ **L'ÉLARGISSEMENT SE PREND VERS LE HAUT, JAMAIS AUTOUR.** Les quatre actions d'une publication
+sont séparées de 4 px : un `inset` symétrique ferait que la zone d'une action recouvre sa voisine et
+lui vole ses taps — on aurait remplacé « trop petit » par « ça fait autre chose ». D'où
+`left: 0; right: 0` (la largeur vient de `min-width: 44px` — les deux boutons étroits 😊 et partage
+s'ÉLARGISSENT vraiment, de 31 et 35 à 44 px, et le partage glisse de 13 px : c'est le seul déplacement
+visible du lot avec `.v3-bridge`, la hauteur de rangée et de carte étant identiques — sans déborder :
+la rangée fait 324 px pour 202 px d'actions) et `top: -17px; bottom: 0` — au-dessus il n'y a que le corps de la
+carte, dont le seul geste est « ouvrir la publication », c'est-à-dire l'issue d'un tap raté.
+
+⚠️ **UNE ZONE DE 44 px NE VAUT QUE SI PERSONNE NE LA PREND, et un voisin la prenait déjà.** Sur les
+cartes qui portent le pont IRL, `.v3-tempt` (lot UI-3) réclame ses 44 px par `margin: -11px 0` +
+`z-index: 1`, et sa moitié haute remontait **dans la boîte VISIBLE** du bouton « partager » :
+mesurée à **22 px de zone pour 31 px de bouton**. Taper l'icône de partage ouvrait « Trouver une
+expérience ». **Défaut ANTÉRIEUR à ce lot**, invisible parce qu'aucune des deux zones n'est peinte.
+Deux zones de 44 px ne tiennent pas dans 42 px de rangée + 2 px de marge : on ne désigne pas un
+gagnant (l'autre resterait volée), on **donne la place** — `.post-actions + .v3-bridge { padding-top: 11px }`,
+soit 9 px de plus sous la rangée, **sur les seules cartes où le pont SUIT la rangée** (5 sur 20 :
+ailleurs l'aperçu de commentaires les sépare déjà — la première rédaction l'appliquait aux 20, relevé
+par `audit-passio`). En-tête, hauteur de rangée, hauteur de carte et hauteur du fil sont mesurés
+identiques ; ce qui bouge est dit au paragraphe précédent.
+
+⚠️ **ON MESURE LA ZONE PAR `elementFromPoint`, JAMAIS PAR `getComputedStyle(::after)`.** Un
+pseudo-élément parfaitement dimensionné mais recouvert ne reçoit aucun tap, et l'attribut serait vert
+sur le défaut — c'est très exactement comme ça que `.v3-tempt` est passé. ⚠️ **Et la première mesure
+était fausse** : les bulles d'aide `.fr-tip` couvraient la rangée, la sonde rendait 1 px partout. Une
+sonde qui rend une valeur absurde ne mesure pas un défaut, elle mesure un obstacle — le retrait des
+bulles fait partie du banc, et la sonde NOMME qui borne la zone (`borneHaut`/`borneBas`), sinon un
+rouge dit « 29 au lieu de 44 » sans dire qui vole les pixels.
+
+⚠️ **`.comment-menu-btn` est DÉJÀ en `position: absolute`** : on ne lui pose pas `position: relative`
+— c'est la leçon `.modal-close` (rouge CI #400).
+
+⚠️ **RÉSIDUS NOMMÉS, PAS RÉGLÉS** : les actions d'un COMMENTAIRE (❤️ 💬 😊) sont à 40 px de haut mais
+24–38 px de large (DEV-01 n'avait traité que la hauteur). Essayé ici par `padding` + marge négative :
+mesuré, les boîtes se recouvrent alors de 10 px et le voisin reprend exactement ce qu'on donne — la
+rangée (`gap: 12px`) n'a pas la place de trois zones de 44 px, ce sera une autre mise en page, pas un
+élargissement ; l'avatar d'un commentaire reste 30×30. Sur l'écran d'auth, les liens « Mot de passe oublié » / « Renvoyer » passent à 44 px de
+haut et les deux « 👁 » de 18×21 à 44×44 (glyphe au même endroit, le champ garde son `padding-right`).
+
+Verrous : `ios-navigation-et-zoom.spec.js` (+3 : les trois pages hors de `#appMain` à la SOURCE, un
+onglet du bas referme la publication, un onglet du bas referme la fiche d'activité),
+`accessibilite-cibles.spec.js` (+3 : ⑤ les options fil ET détail, ⑥ le « ← », ⑦ les deux
+« ⋯ ») et `confirmation-email.spec.js` (+3 : ⑧ la sortie tient dans un écran de 664 px **avec** le
+captcha, ⑨ le bouton du haut renvoie comme le lien du bas, ⑩ les deux sorties obéissent à la même
+autorité). **Éprouvés par RÉINJECTION de cinq mutations** : bloc CSS retiré → 2 rouges ; « ← »
+rendu à 18×22 → 1 rouge ; `#authResendTop` retiré → 3 rouges ; pages remises dans `<main>` → 1 rouge ;
+fermeture retirée de `goTo` → 2 rouges.
+
 ## 📧 Confirmation d'e-mail ACTIVE depuis le 2026-08-30 (SMTP Brevo)
 
 `signUp` ne rend **plus** de session : le compte existe, il est inutilisable tant que l'adresse n'est pas confirmée. Depuis le 2026-09-11, PASSIO a sa propre identité : contact `passioadmin@gmail.com` (`PASSIO_EDITEUR.email`, source unique), domaine d'envoi `passio-app.fr` sur des comptes OVH et Brevo dédiés — **plus aucune référence à une autre activité de l'éditeur**. Montage complet, enregistrements DKIM/DMARC, bascule SMTP et gabarits français : `docs/SETUP_SMTP_AUTH.md`.
