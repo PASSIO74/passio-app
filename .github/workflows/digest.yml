@@ -1,0 +1,150 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# DIGEST DU MATIN — « ce qui t'attend, ce que les machines ont fait »
+#
+# Pendant les mois de test, tout ce qui exige Benjamin doit lui arriver par
+# e-mail GitHub, UNE fois, avec le geste à faire — et rien d'autre. Ce
+# workflow joue `scripts/digest.mjs` (lecture seule : PR, issues, runs,
+# registre des résidus, trois chiffres d'usage) chaque matin et :
+#   · s'il y a quelque chose à faire, OU si c'est lundi (bilan de la semaine),
+#     ouvre UNE issue `[DIGEST] <date> — N à faire`, label `digest`, SANS le
+#     label `claude` (rien à réparer, un humain lit) ; le digest précédent
+#     est refermé ;
+#   · sinon, le résumé du run suffit — aucun e-mail pour dire « rien ».
+# Chaque ligne « à faire » porte le geste exact (dont la contre-revue :
+# `gh pr review <n> --comment --body "Contre-revue technique indépendante — …"`).
+#
+# ⚠️ Rien de nominatif : le dépôt est PUBLIC (numéros, titres neutralisés,
+# comptages). L'usage vient des lectures de veille-production.mjs (agrégats).
+# ⚠️ Le `GITHUB_TOKEN` intégré suffit : l'issue ne doit déclencher aucun autre
+# workflow (règle anti-boucle de GitHub).
+# ⚠️ Un cron GitHub est une DEMANDE : « 08:30 Paris » arrivera entre 08:30 et
+# ~13 h (mesuré sur sauvegarde.yml : 5 h de retard courants). Le digest dit
+# « depuis le dernier digest », pas « depuis hier 08:30 », pour ne rien perdre.
+# `30 6` UTC = 08:30 Paris à l'heure d'été, 07:30 dès le 2026-10-25 (heure
+# d'hiver) : sans importance face à la desserte réelle, et deux lignes de cron
+# donneraient deux digests par jour.
+# ═══════════════════════════════════════════════════════════════════════════
+name: Digest du matin
+
+on:
+  schedule:
+    - cron: "30 6 * * *"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/digest.yml"
+      - "scripts/digest.mjs"
+      - "tests/unit/digest.test.mjs"
+
+concurrency:
+  group: digest
+  cancel-in-progress: false
+
+# `actions: read` : sans elle, les lectures de runs par github.token répondent
+# 403 et « Ce que les machines ont fait » afficherait « 0 run » (constat B-01).
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+jobs:
+  composer:
+    name: Composer le digest
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with: { fetch-depth: 1 }
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with: { node-version: '22' }
+
+      # Sur une PR qui touche ce canal : on éprouve la fonction pure, rien d'autre.
+      - name: Verrous unitaires
+        run: node --test tests/unit/digest.test.mjs
+
+      - name: Composer
+        if: github.event_name != 'pull_request'
+        id: digest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: njkiyoklssvefstljemx
+        run: |
+          set -uo pipefail
+          node scripts/digest.mjs --json > /tmp/digest.json; code=$?
+          # 0 = rien à émettre, 3 = digest à émettre, autre = panne (et une panne se voit).
+          if [ "$code" -ne 0 ] && [ "$code" -ne 3 ]; then cat /tmp/digest.json; exit "$code"; fi
+          echo "emettre=$([ "$code" -eq 3 ] && echo oui || echo non)" >> "${GITHUB_OUTPUT}"
+          set -e
+          node -e '
+            const fs = require("fs");
+            const v = JSON.parse(fs.readFileSync("/tmp/digest.json", "utf8"));
+            fs.writeFileSync("/tmp/titre.txt", v.titre);
+            fs.writeFileSync("/tmp/corps.md", v.texte + "\n\n_Composé le " + new Date().toISOString() + "_\n");
+            console.log(`${v.aFaire.length} à faire, émission : ${v.emettre ? "oui" : "non"}${v.lundi ? " (lundi)" : ""}`);
+          '
+          { echo "# $(cat /tmp/titre.txt)"; echo; cat /tmp/corps.md; } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Ouvrir le digest et refermer le précédent
+        if: github.event_name != 'pull_request' && steps.digest.outputs.emettre == 'oui'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh label create digest --repo "${GITHUB_REPOSITORY}" \
+            --description "Digest du matin : ce qui attend Benjamin, ce que les machines ont fait" \
+            --color "0E8A16" --force >/dev/null 2>&1 || true
+          # Par LABEL, jamais par `--search in:title` (index de recherche en retard, #316).
+          for n in $(gh issue list --repo "${GITHUB_REPOSITORY}" --state open --label digest --json number --jq '.[].number'); do
+            gh issue close "$n" --repo "${GITHUB_REPOSITORY}" --reason completed --comment "Remplacé par le digest du $(date -u +%F)."
+            echo "Digest précédent refermé : #${n}" >> "${GITHUB_STEP_SUMMARY}"
+          done
+          numero="$(gh issue create --repo "${GITHUB_REPOSITORY}" --title "$(cat /tmp/titre.txt)" \
+                     --body-file /tmp/corps.md --label digest | grep -oE '[0-9]+$')"
+          echo "Digest ouvert : #${numero}" >> "${GITHUB_STEP_SUMMARY}"
+
+      # ⚠️ UN DIGEST QUI NE PART PLUS RESSEMBLE À « RIEN À FAIRE ». Si le run
+      # échoue, on le dit par une issue `[DIGEST MUET]` — label `digest-muet`
+      # SEUL, jamais `claude`, et PAS `disponibilite` : disponibilite.yml
+      # refermerait l'issue dès que le site répond (constat B-05). Le digest
+      # suivant la connaît (LABELS_HUMAINS) et la referme. Refermée au prochain
+      # run vert.
+      - name: Issue « DIGEST MUET » si le run a échoué
+        if: failure() && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -u
+          run_url="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          gh label create digest-muet --repo "${GITHUB_REPOSITORY}" --color "B60205" --description "Le digest du matin n'a pas pu être composé" --force >/dev/null 2>&1 || true
+          {
+            echo "Le digest du matin n'a pas pu être composé : une de ses étapes a échoué."
+            echo
+            echo "- Run : ${run_url}"
+            echo "- Causes fréquentes : API GitHub indisponible, SUPABASE_ACCESS_TOKEN expiré (Settings > Secrets), registre des résidus invalide, script cassé par une PR."
+            echo "- Tant qu'il est muet, ce qui t'attend (contre-revues, issues humaines, résidus datés) n'est rappelé par personne."
+            echo
+            echo "Cette issue se referme d'elle-même au prochain digest composé."
+          } > /tmp/muet.md
+          existante="$(gh issue list --repo "${GITHUB_REPOSITORY}" --state open --label digest-muet --json number --jq '.[0].number // empty')"
+          if [ -n "${existante}" ]; then
+            gh issue comment "${existante}" --repo "${GITHUB_REPOSITORY}" --body-file /tmp/muet.md
+          else
+            gh issue create --repo "${GITHUB_REPOSITORY}" --title "[DIGEST MUET] le digest du matin n'a pas été composé" \
+              --label digest-muet --body-file /tmp/muet.md
+          fi
+
+      - name: Refermer « DIGEST MUET » puisque le digest est composé
+        if: github.event_name != 'pull_request' && steps.digest.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for n in $(gh issue list --repo "${GITHUB_REPOSITORY}" --state open --label digest-muet --json number --jq '.[].number'); do
+            gh issue close "$n" --repo "${GITHUB_REPOSITORY}" --reason completed \
+              --comment "Le digest a de nouveau été composé le $(date -u +%F). Refermée automatiquement."
+          done
