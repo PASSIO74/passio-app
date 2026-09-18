@@ -2864,6 +2864,7 @@ function confirmDeleteProfile(profileId, passionLabel) {
 function deleteProfile(profileId) {
   var profiles = state.user.profiles || [];
   if (profiles.length <= 1) { toast("Tu dois garder au moins 1 profil"); closeModal(); return; }
+  var _supprime = profiles.find(function (p) { return p.id === profileId; });
   state.user.profiles = profiles.filter(function(p) { return p.id !== profileId; });
   state.userPosts = state.userPosts.filter(function(p) { return p.profileId !== profileId; });
   if (state.user.currentProfileId === profileId) {
@@ -2879,6 +2880,15 @@ function deleteProfile(profileId) {
   // peut décocher (le rail ne rend que les passions existantes). Même raison
   // qu'à l'archivage, et même point d'écriture.
   _retirerPassionDesFiltres(profileId);
+  // Et le Fil, même geste qu'`archiverPassion` : une passion qui n'est plus au
+  // compte ne doit pas continuer à filtrer un fil où aucune bulle ne la montre.
+  try {
+    if (_supprime && _supprime.passion && typeof setFeedPassions === "function"
+        && _activeFeedPassions.has(_supprime.passion)
+        && !(state.user.profiles || []).some(function (x) { return x && x.passion === _supprime.passion; })) {
+      setFeedPassions(Array.from(_activeFeedPassions).filter(function (x) { return x !== _supprime.passion; }), { save: false });
+    }
+  } catch (e) {}
   saveState();
   // Re-synchronise le profil public pour retirer la passion supprimée de la
   // liste affichée aux autres.
@@ -2914,10 +2924,19 @@ function renderProfileStrip() {
   // On complète donc avec les passions actives sans profil. Ce sont des entrées
   // d'AFFICHAGE : rien n'est créé dans `state.user.profiles`, et les décocher les
   // fait disparaître d'elles-mêmes.
+  //
+  // ⚠️ VISITEUR SEULEMENT DEPUIS LE 2026-09-18. Pour un compte, les passions
+  // du fil SONT celles du compte (`interetsBornesAuCompte`, app-02) : la borne
+  // est posée à l'ÉCRITURE (`setFeedPassions`), et ce rail n'en rajoute aucune
+  // à l'affichage — le Fil et le Profil comptent les mêmes bulles. Défaut
+  // mesuré en production : quatre intérêts d'exploration jamais attachés au
+  // compte faisaient SEPT bulles ici pour « 3 PASSIONS » au Profil. Un
+  // visiteur, lui, n'a que ses intérêts : ils restent peints.
   try {
     var _avecProfil = {};
     profiles.forEach(function (p) { _avecProfil[p.passion] = 1; });
-    var _orphelines = Array.from(_activeFeedPassions).filter(function (id) { return id && !_avecProfil[id]; });
+    var _bornes = (typeof interetsBornesAuCompte === "function") && interetsBornesAuCompte();
+    var _orphelines = _bornes ? [] : Array.from(_activeFeedPassions).filter(function (id) { return id && !_avecProfil[id]; });
     if (_orphelines.length) {
       profiles = profiles.concat(_orphelines.map(function (id) {
         var pas = passionById(id);

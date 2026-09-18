@@ -146,8 +146,11 @@ test("§5 — le profil de départ est énoncé, et modifiable d'un tap", async 
       interets: Array.from(_activeFeedPassions),
     };
   });
-  expect(cree.profils).toEqual([ids[2]]);
-  expect(cree.interets.length).toBe(3);   // les deux autres restent des intérêts
+  // Les TROIS deviennent des passions du compte (2026-09-18), la désignée en
+  // tête : c'est elle que le Studio ouvre.
+  expect(cree.profils[0]).toBe(ids[2]);
+  expect(cree.profils.length).toBe(3);
+  expect(cree.interets.length).toBe(3);
 });
 
 test("§5 — la recherche filtre sans jamais masquer une passion déjà cochée", async ({ page }) => {
