@@ -1001,12 +1001,29 @@
         var dt = ((performance && performance.now) ? performance.now() : Date.now()) - t0;
         // n'enregistre que les appels applicatifs pertinents (Supabase + API)
         if (/supabase|functions|api/i.test(path) && !_selfCall) {
+          // ⚠️ « LE SERVEUR A DIT NON » ET « NOTRE CODE A UN DÉFAUT » NE SONT PAS
+          // LA MÊME CHOSE. Un mot de passe faux est un 400 sur `/auth/v1/token`,
+          // un e-mail déjà pris un 400/422 sur `/auth/v1/signup` : c'est la
+          // réponse ATTENDUE de GoTrue, et l'écran de connexion la traduit déjà
+          // (« E-mail ou mot de passe incorrect. », onbDoAuth). Mesuré en
+          // production le 2026-09-18 : 12 refus, 0 utilisateur touché, 2
+          // appareils — un testeur qui se trompe deux fois de mot de passe
+          // ouvrait un « problème » dans le centre de pilotage, même famille
+          // que les coupures « au départ » (#482). On ne dégrade QUE le refus
+          // 4xx d'une porte d'authentification, jamais un 429 (quota : lui,
+          // il doit se voir) ni un 5xx. Le refus reste un événement `api` en
+          // `error` — les compteurs le voient — mais marqué `refus_attendu`,
+          // la preuve que lit `_echecExpliqueParLeClient` côté pilotage.
+          var _refusAttendu = !res.ok
+            && /\/auth\/v1\/(token|signup)$/i.test(path)
+            && (res.status === 400 || res.status === 401 || res.status === 403 || res.status === 422);
           Telemetry.api({
             action: method + " " + path.replace(/\/rest\/v1\//, "/"),
             endpoint: path, http_status: res.status,
             duration_ms: dt,
             status: res.ok ? (dt > 1500 ? "slow" : "ok") : "error",
-            severity: res.ok ? (dt > 1500 ? "warn" : "info") : "warn",
+            severity: res.ok ? (dt > 1500 ? "warn" : "info") : (_refusAttendu ? "info" : "warn"),
+            meta: _refusAttendu ? { refus_attendu: true } : undefined,
             // Étape « requête » de la chaîne de validation : hérite du flow actif.
             correlation_id: Telemetry._ambientFlowCid(),
           });
