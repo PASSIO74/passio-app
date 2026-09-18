@@ -1646,11 +1646,19 @@ place sur trois jusqu'à l'archiver. Antérieur au lot, hors périmètre.
 Verrou : `tests/e2e/fil-passions-du-compte.spec.js` (10), dont ① sur l'état EXACT de la capture
 (transposé sur le socle embarqué : « metallerie » est une passion créée en production, absente du
 référentiel livré), ⑤ la migration (plafond, remplissage, passion de départ) et ⑦ le câblage à la
-source. **Éprouvé par RÉINJECTION de quatre mutations** — voir la fiche pour les comptes de rouges.
-Suites réécrites : `onboarding-v2` (« un seul profil » → une par choix), `onboarding-acceptation`
-ONB-02/03, `onboarding-passions-v2` §4, `multi-passion-audit-restant` ③/③ bis (le cas « UNE créée,
-TROIS en intérêts » n'existe plus ; les bulles d'intérêt ne survivent que chez un visiteur),
-`first-run` (fixture à trois intérêts). Détail : `docs/lots-ui/25-FIL-PASSIONS-DU-COMPTE-2026-09-18.md`.
+source. **Éprouvé par RÉINJECTION de quatre mutations** : borne retirée de `setFeedPassions` →
+**6 rouges** ; garde du rail retirée → **2** (③ et le câblage) ; attache retirée de la migration →
+**3** ; onboarding rendu à « un seul profil » → **1**. Suites réalignées : `onboarding-v2` (« un
+seul profil » → une par choix), `onboarding-acceptation` ONB-02/03, `onboarding-passions-v2` §4,
+`multi-passion-audit-restant` ③/③ bis (le cas « UNE créée, TROIS en intérêts » n'existe plus ; les
+bulles d'intérêt ne survivent que chez un visiteur), `first-run` (fixture à trois intérêts), et
+**trois fixtures qui COCHAIENT une passion sans la posséder** — `feed-envie-filtre` (« musculation »,
+« cuisine » : cocher, c'est posséder, le fixture les ajoute au compte), `feed-premier-rendu` §7
+(« moto » choisie à l'onboarding), `multi-passion-integrite` ⑥ (par `ajouterPassionAuCompte`, le
+moteur réel, et non `ajouterPassionAuFil` à la main). ⚠️ En local, `creation-passion` ⑭ et trois cas
+de `profil-entete-passions` (③ decies quater, sexies, septies) sont ROUGES **sur `origin/main` pur
+aussi** (worktree séparé, port 8099) : divergence d'environnement déjà écrite plus haut, pas ce lot.
+Détail : `docs/lots-ui/25-FIL-PASSIONS-DU-COMPTE-2026-09-18.md`.
 
 ## 🔢 LE RÉFÉRENTIEL PASSE À 5 001 PASSIONS (vague 3, 2026-09-10)
 

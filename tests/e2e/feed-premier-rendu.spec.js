@@ -115,13 +115,18 @@ async function attendreFilComplet(page, attendu) {
   );
 }
 
-// Termine l'onboarding sur une passion donnée, comme le fait l'écran « passions ».
+// Termine l'onboarding sur une passion donnée (ou une liste), comme le fait
+// l'écran « passions ».
+// ⚠️ Depuis le 2026-09-18, les passions du fil sont celles du compte : un cas
+// qui veut ensuite cocher « moto » doit l'avoir CHOISIE à l'onboarding, sinon
+// `setFeedPassions(["moto"])` est écarté par la borne et le fil est vide au lieu
+// d'être en repli — le cas mesurerait alors autre chose que le repli §7.
 async function terminerOnboarding(page, passion) {
   await page.evaluate((pa) => {
     state.user.name = "Testeur";
     state.user.birthYear = 1990;
     selectedPassions.length = 0;
-    selectedPassions.push(pa);
+    (Array.isArray(pa) ? pa : [pa]).forEach(function (id) { selectedPassions.push(id); });
     onbFinish();
   }, passion);
 }
@@ -288,7 +293,7 @@ test("§7 repli — les onclick pointent vers des fonctions globales existantes"
 test("§7 repli — un aller-retour ne laisse pas le repli collé à l'écran", async ({ page }) => {
   await bootVierge(page);
   await viderPassion(page, "moto");
-  await terminerOnboarding(page, "musique");
+  await terminerOnboarding(page, ["musique", "moto"]);   // les deux sont au compte
 
   const r = await page.evaluate(() => {
     const lire = () => {
@@ -317,7 +322,7 @@ test("§7 — la télémétrie émise survit au filtre PII de js/telemetry.js", 
   await bootVierge(page, { uiV2: false });
   await viderPassion(page, "moto");
   await viderPassionEnvie(page, "yoga", "creation");   // la prémisse, posée explicitement
-  await terminerOnboarding(page, "yoga");   // déclenche feed_moods_widened
+  await terminerOnboarding(page, ["yoga", "moto"]);   // déclenche feed_moods_widened ; moto au compte
   await page.evaluate(() => { setFeedPassions(["moto"]); renderFeed(); }); // repli
 
   const noms = await page.evaluate(() => window.__tel.map((e) => e.nom));

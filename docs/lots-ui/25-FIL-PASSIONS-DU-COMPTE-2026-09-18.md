@@ -106,11 +106,47 @@ famille qu'`archiverPassion` avant le 2026-08-30.
 | ⑥ | l'onboarding V2 : une passion par choix, porte et borne |
 | ⑦ | le câblage à la SOURCE (borne, rejeu, rail, migration par le moteur unique) |
 
-Suites réécrites : `onboarding-v2` (« un seul profil » → une par choix), `onboarding-acceptation`
-ONB-02/ONB-03, `onboarding-passions-v2` §4, `multi-passion-audit-restant` ③/③ bis (le cas « UNE
-créée, TROIS en intérêts » n'existe plus ; les bulles d'intérêt ne survivent que chez un
-visiteur), `first-run` (fixture ramené à trois intérêts : un quatrième butait sur le plafond,
-hors sujet de ces cas).
+### Réinjection (le verrou mord)
+
+| Mutation | Rouges |
+|---|---|
+| borne retirée de `setFeedPassions` (`if (false)`) | **6** — ①, ① bis, ②, ② bis, ⑤, ⑦ |
+| garde du rail retirée (`_bornes = false`) | **2** — ③, ⑦ |
+| attache retirée de `migrerPreferences` | **3** — ⑤, ⑤ bis, ⑦ |
+| `onbFinish` rendu à « un seul profil » | **1** — ⑥ |
+
+Sources restaurées à l'octet après chaque mutation (`git diff --quiet js/`).
+
+### Suites réalignées
+
+`onboarding-v2` (« un seul profil » → une par choix), `onboarding-acceptation` ONB-02/ONB-03,
+`onboarding-passions-v2` §4, `multi-passion-audit-restant` ③/③ bis (le cas « UNE créée, TROIS
+en intérêts » n'existe plus ; les bulles d'intérêt ne survivent que chez un visiteur), `first-run`
+(fixture ramené à trois intérêts : un quatrième butait sur le plafond, hors sujet de ces cas).
+
+**Et trois fixtures qui cochaient une passion sans la posséder**, trouvées par le run des suites
+voisines (431 cas), pas par la relecture :
+
+- `feed-envie-filtre` ② et ⑤ bis — `poser({ passions: ["yoga", "fitness-musculation"] })` sur un
+  compte qui possède yoga et voyage : « musculation » était écartée par la borne et le cas
+  mesurait un fil vide. **Cocher, c'est posséder** : le fixture ajoute au compte toute passion
+  qu'un cas demande.
+- `feed-premier-rendu` §7 (repli, télémétrie) — onboarding sur « musique » puis
+  `setFeedPassions(["moto"])` pour provoquer le repli : « moto » n'était pas au compte.
+  `terminerOnboarding` accepte une liste, et « moto » est choisie à l'onboarding.
+- `multi-passion-integrite` ⑥ (« créer une passion la rend visible dans le Fil ») — appelait
+  `ajouterPassionAuFil("cuisine")` à la main sur une passion non possédée. Il passe désormais par
+  `ajouterPassionAuCompte`, le moteur réel, qui possède PUIS rend visible : le cas est devenu plus
+  vrai qu'avant.
+
+### Rouges locaux qui ne sont pas ce lot
+
+Sur les 431 cas voisins, 9 rouges : 5 étaient les fixtures ci-dessus. Les 4 autres —
+`creation-passion` ⑭ et `profil-entete-passions` ③ decies quater / ③ sexies / ③ septies — sont
+**rouges aussi sur `origin/main` pur**, rejoués dans un worktree séparé (`git worktree add`,
+port 8099) : c'est la divergence « rouge en local, vert en CI » déjà écrite dans CLAUDE.md
+(« LE PIÈGE D'ENVIRONNEMENT EN SENS INVERSE »). Une reproduction qui rougit n'est une reproduction
+que si elle rougit pour la même raison.
 
 ## Points ouverts, délibérément
 
