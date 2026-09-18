@@ -117,6 +117,58 @@ function renderAttente(a) {
   m.append(card("Chaîne GitHub", x.chaine === "vit" ? "PASS" : x.chaine ? "STALE" : "UNKNOWN", `${val(x.enquetesGithubFermees)} enquête(s) close(s) · sauvegarde ${x.sauvegardeOk ? "ok" : "?"} · veille ${x.veilleOk ? "ok" : "?"}`));
   m.append(card("Sentinelle locale", "UNKNOWN", `${val(x.diagnostics)} diagnostic(s) · ${val(x.correctifsVerifies)} correctif(s) vérifié(s) · ${val(x.correctifsFusionnes)} fusionné(s) · ${val(x.publications)} PR · ${val(x.recidives)} récidive(s)`));
 }
+// Comptes rendus (Veille / Digest / Sentinelle), lus dans les issues [TABLEAU] :
+// card()/textContent uniquement, jamais innerHTML. Le corps du digest reste du
+// TEXTE (aucun Markdown interprété ici) ; seuls les `url` de l'API deviennent des
+// liens, et seulement vers github.com. Une route qui ne répond pas est « non lus ».
+const CR_STATE = { ok: "PASS", warn: "STALE", alert: "FAIL", unknown: "UNKNOWN" };
+const crState = (etat) => (Object.hasOwn(CR_STATE, etat) ? CR_STATE[etat] : "UNKNOWN");
+const CR_TEXTE_MAX = 8000;
+function ilYA(ageMin) {
+  const m = Number(ageMin);
+  if (!Number.isFinite(m) || m < 0) return "date inconnue";
+  return m < 60 ? `il y a ${Math.round(m)} min` : m < 2880 ? `il y a ${Math.round(m / 60)} h` : `il y a ${Math.round(m / 1440)} j`;
+}
+function quand(v) { const n = typeof v === "number" ? v : Date.parse(String(v)); return Number.isFinite(n) ? new Date(n).toLocaleString("fr-FR") : "?"; }
+function lienGithub(el, url) {
+  const u = String(url || "");
+  if (!/^https:\/\/github\.com\//.test(u)) return;
+  const l = document.createElement("a"); l.href = u; l.target = "_blank"; l.rel = "noopener"; l.textContent = "Ouvrir sur GitHub"; l.className = "m-link"; el.append(l);
+}
+function renderComptesRendus(cr) {
+  const root = clear("comptesRendus");
+  // Une lecture GitHub en erreur n'est pas « une première exécution » : on le dit, texte borné.
+  if (cr && cr.erreur) root.append(card("Comptes rendus", "UNKNOWN", "lecture GitHub en erreur : " + String(cr.erreur).slice(0, 200)));
+  const v = cr && cr.veille;
+  if (!v) root.append(card("Veille de production", "UNKNOWN", "aucun tableau de veille lu (première exécution après fusion ?)"));
+  else {
+    const el = card("Veille de production", crState(v.etat), "mise à jour " + ilYA(v.ageMin) + (v.alerte === true ? " · alerte : oui" : ""));
+    lienGithub(el, v.run); root.append(el);
+    (Array.isArray(v.lignes) ? v.lignes : []).slice(0, 20).forEach((l) => root.append(card(String(l.cle == null ? "?" : l.cle).slice(0, 80), crState(l.etat), String(l.texte == null ? "" : l.texte).slice(0, 400))));
+  }
+  const dg = cr && cr.digest;
+  if (!dg) root.append(card("Digest", "UNKNOWN", "aucun digest lu (première exécution après fusion ?)"));
+  else {
+    const el = card(String(dg.titre || "Digest").slice(0, 200), dg.emis === true ? "STALE" : dg.emis === false ? "PASS" : "UNKNOWN", "composé " + ilYA(dg.ageMin) + (dg.emis === false ? " · rien à faire" : ""));
+    let t = String(dg.texte == null ? "" : dg.texte); if (t.length > CR_TEXTE_MAX) t = t.slice(0, CR_TEXTE_MAX) + " …";
+    if (t) { const p = document.createElement("p"); p.style.whiteSpace = "pre-wrap"; p.textContent = t; el.append(p); }
+    lienGithub(el, dg.run); root.append(el);
+  }
+  const s = (cr && cr.sentinelle) || {};
+  const ouv = Array.isArray(s.ouvertes) ? s.ouvertes : null;
+  const fer = Array.isArray(s.fermees7j) ? s.fermees7j : null;
+  if (!ouv && !fer) { root.append(card("Sentinelle", "UNKNOWN", "enquêtes non lues (chaîne GitHub injoignable ?)")); return; }
+  root.append(card("Sentinelle", ouv && ouv.length ? "STALE" : "PASS", `${ouv ? ouv.length : "?"} enquête(s) ouverte(s) · ${fer ? fer.length : "?"} close(s) sur 7 j`));
+  (ouv || []).slice(0, 8).forEach((i) => {
+    const labels = Array.isArray(i.labels) ? i.labels.slice(0, 6).join(", ") : "";
+    const el = card("#" + String(i.numero) + " · " + String(i.titre || "").slice(0, 160), "STALE", [labels, i.depuis ? "depuis " + quand(i.depuis) : ""].filter(Boolean).join(" · "));
+    lienGithub(el, i.url); root.append(el);
+  });
+  (fer || []).slice(0, 8).forEach((i) => {
+    const el = card("#" + String(i.numero) + " · " + String(i.titre || "").slice(0, 160), "PASS", i.fermeeLe ? "close le " + quand(i.fermeeLe) : "close");
+    lienGithub(el, i.url); root.append(el);
+  });
+}
 function showError(e){ $("error").hidden=false; $("error").textContent=e.message || String(e); }
 
 async function refresh(){
@@ -124,7 +176,7 @@ async function refresh(){
   const requests = [
     ["guardian", "/release-guardian"], ["command", "/control/command"], ["observation", "/observation"],
     ["incidents", "/incidents?limit=50"], ["changes", "/control/changes"], ["tests", "/tests"], ["sentinel", "/sentinel?limit=20"],
-    ["attente", "/attente"]
+    ["attente", "/attente"], ["comptes", "/comptes-rendus"]
   ];
   const results = await Promise.allSettled(requests.map(([,path]) => api(path)));
   const map = Object.fromEntries(results.map((r, i) => [requests[i][0], r]));
@@ -137,6 +189,7 @@ async function refresh(){
   }
   map.command.status === "fulfilled" ? renderActions(map.command.value) : unavailable("actions", "Actions", map.command.reason);
   map.attente.status === "fulfilled" ? renderAttente(map.attente.value) : (unavailable("attente", "Ce qui t'attend", map.attente.reason), unavailable("machines", "Machines (7 j)", map.attente.reason));
+  map.comptes.status === "fulfilled" ? renderComptesRendus(map.comptes.value) : unavailable("comptesRendus", "Comptes rendus non lus", map.comptes.reason);
   map.observation.status === "fulfilled" ? renderObservation(map.observation.value) : unavailable("observation", "Observation", map.observation.reason);
   map.incidents.status === "fulfilled" ? renderIncidents(map.incidents.value) : unavailable("incidentList", "Incidents", map.incidents.reason);
   map.changes.status === "fulfilled" ? renderChanges(map.changes.value) : unavailable("changeList", "Changements", map.changes.reason);

@@ -126,6 +126,45 @@ jobs:
           cat /tmp/resume.md >> "${GITHUB_STEP_SUMMARY}"
           cat /tmp/resume.md
 
+      # Le tableau (lot F) : UNE issue permanente `[TABLEAU] Veille de production`, label
+      # `tableau` SEUL (jamais `claude`), dont le corps est RÉÉCRIT à chaque passage, alerte
+      # ou non — éditer un corps d'issue n'envoie AUCUNE notification — et que le centre de
+      # pilotage lit (Benjamin ne lit pas ses mails). Par LABEL puis titre filtré localement,
+      # jamais `--search` (index en retard, #316). Un tableau non écrit n'est pas une veille
+      # muette : `continue-on-error`, les étapes suivantes tournent.
+      - name: Tableau
+        if: github.event_name != 'pull_request' && steps.verdict.conclusion == 'success'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ALERTE: ${{ steps.verdict.outputs.alerte }}
+        run: |
+          set -euo pipefail
+          # Sous continue-on-error, un échec ici laisse le run vert : il doit quand même se VOIR (annotation + résumé).
+          trap 'echo "::warning title=Tableau non écrit::[TABLEAU] Veille de production non réécrit : gh, label ou API en échec ; le pilotage lit encore le tableau précédent" ; echo "Tableau NON écrit (voir l annotation)" >> "${GITHUB_STEP_SUMMARY}"' ERR
+          gh label create tableau --repo "${GITHUB_REPOSITORY}" --force --color "0E8A16" \
+            --description "Compte rendu réécrit à chaque passage, lu par le centre de pilotage ; jamais notifié" >/dev/null 2>&1 || true
+          # Le corps est écrit dans un fichier puis passé par --body-file : rien n'est interpolé dans une commande.
+          {
+            echo "<!-- tableau:veille v1 -->"
+            echo "Mis à jour : $(date -u +%FT%TZ)"
+            echo "Run : https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo "Alerte : ${ALERTE}"
+            echo
+            # Les lignes de /tmp/resume.md sans l'en-tête ni le préfixe « - » : `[ok] cle — texte`.
+            sed -nE 's/^- //p' /tmp/resume.md
+          } > /tmp/tableau.md
+          existante="$(gh issue list --repo "${GITHUB_REPOSITORY}" --state open --label tableau --json number,title \
+                        --jq '[.[] | select(.title | startswith("[TABLEAU] Veille de production"))] | .[0].number // empty')"
+          if [ -n "${existante}" ]; then
+            gh issue edit "${existante}" --repo "${GITHUB_REPOSITORY}" --body-file /tmp/tableau.md
+            echo "Tableau mis à jour : #${existante}" >> "${GITHUB_STEP_SUMMARY}"
+          else
+            numero="$(gh issue create --repo "${GITHUB_REPOSITORY}" --title "[TABLEAU] Veille de production" \
+                       --body-file /tmp/tableau.md --label tableau | grep -oE '[0-9]+$')"
+            echo "Tableau créé : #${numero}" >> "${GITHUB_STEP_SUMMARY}"
+          fi
+
       - name: Ouvrir ou mettre à jour l'issue
         if: github.event_name != 'pull_request' && steps.verdict.outputs.alerte == 'oui'
         env:
