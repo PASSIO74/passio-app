@@ -75,6 +75,16 @@ async function poser(page, opts = {}) {
       { id: "pp_yoga", name: "Benjamin", passion: "yoga", emoji: "🧘", color: "#7c3aed", createdAt: 1 },
       { id: "pp_voy", name: "Benjamin", passion: "voyage", emoji: "✈️", color: "#7c3aed", createdAt: 2 },
     ];
+    // ⚠️ COCHER, C'EST POSSÉDER (2026-09-18) : les passions du fil sont celles
+    // du compte, et `setFeedPassions` écarte tout identifiant que le compte n'a
+    // pas. Une passion demandée par le cas lui est donc AJOUTÉE — sinon le cas
+    // mesurerait un fil vide au lieu de la règle qu'il vise (② cochait
+    // « musculation » sans la posséder, ⑤ bis « cuisine »).
+    (o.passions || []).forEach(function (id, i) {
+      if (!state.user.profiles.some(function (p) { return p.passion === id; })) {
+        state.user.profiles.push({ id: "pp_" + id, name: "Benjamin", passion: id, emoji: "✨", color: "#7c3aed", createdAt: 10 + i });
+      }
+    });
     state.user.currentProfileId = "pp_yoga";
     state.user.following = o.suit ? ["u_leane"] : [];
 
@@ -90,7 +100,12 @@ async function poser(page, opts = {}) {
   await page.waitForTimeout(300);
 }
 
-const filTexte = (page) => page.evaluate(() => document.getElementById("feedList").innerText);
+// ⚠️ `textContent`, PAS `innerText` (2026-09-18). `.post` porte
+// `content-visibility: auto` : une carte entièrement hors écran n'est pas mise
+// en page, et `innerText` — sensible au RENDU — l'omet. Mesuré en CI : la
+// sonde rendait le seul module « Passionnés à découvrir » pendant que les deux
+// cartes attendues étaient dans le DOM, sous le pli. `textContent` lit le DOM.
+const filTexte = (page) => page.evaluate(() => document.getElementById("feedList").textContent);
 const titreVide = (page) => page.evaluate(() => {
   const t = document.querySelector("#feedEmpty .empty-title");
   const box = document.getElementById("feedEmpty");

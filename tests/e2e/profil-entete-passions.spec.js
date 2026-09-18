@@ -846,10 +846,12 @@ test("③ decies quater — le Fil se centre AUSSI, le profil visité garde son 
 // centrée tant qu'elle TIENT, coulissante depuis son vrai début dès qu'elle
 // déborde, sans jamais perdre une bulle à gauche.
 //
-// ⚠️ `_activeFeedPassions` EST VIDÉ EXPRÈS. Le rail du Fil complète les passions
-// possédées par les « envies » actives sans profil (`_interet_…`) : avec le
-// socle, il peint CINQ bulles et déborde — le cas ne mesurerait plus rien. On
-// pose donc la prémisse (quatre bulles) plutôt que d'espérer la trouver.
+// ⚠️ `_activeFeedPassions` EST VIDÉ EXPRÈS. Le rail du Fil complétait les
+// passions possédées par les « envies » actives sans profil (`_interet_…`) :
+// avec le socle, il peignait CINQ bulles et débordait — le cas ne mesurait plus
+// rien. Depuis le 2026-09-18 ce complément n'existe plus que chez un visiteur
+// (« les passions du fil sont celles du compte »), mais la prémisse (quatre
+// bulles) reste POSÉE plutôt qu'espérée.
 async function poserFil(page, passions) {
   await poser(page, {
     profiles: passions.map((nom, i) => ({

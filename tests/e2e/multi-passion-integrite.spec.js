@@ -196,7 +196,11 @@ test("⑥ créer une passion la rend visible dans le Fil", async ({ page }) => {
   expect(avant).not.toContain("cuisine");
 
   const apres = await page.evaluate(() => {
-    ajouterPassionAuFil("cuisine");
+    // ⚠️ PAR LE MOTEUR RÉEL (2026-09-18). `ajouterPassionAuFil` seule, sur une
+    // passion que le compte ne possède pas, est désormais écartée par la borne
+    // « les passions du fil sont celles du compte ». Créer, c'est passer par
+    // `ajouterPassionAuCompte` — qui possède PUIS rend visible.
+    ajouterPassionAuCompte("cuisine", "");
     return Array.from(_activeFeedPassions);
   });
   // Le défaut : la passion neuve naissait hors du Fil — tuile grisée, et le

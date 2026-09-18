@@ -59,6 +59,15 @@ module.exports = defineConfig({
   // « flaky », jamais en « failed »). `PASSIO_RETRIES=2` les rétablit localement pour
   // diagnostiquer un test instable.
   retries: process.env.CI ? 2 : Number(process.env.PASSIO_RETRIES || 0),
+  // ⚠️ EN CI, UN ROUGE DOIT SE LIRE DEPUIS L'API, PAS SEULEMENT DANS LE JOURNAL
+  // (2026-09-18). Le journal d'un job vit sur un stockage tiers (blob Azure)
+  // qu'un poste sous politique d'egress ne peut pas atteindre : un shard rouge
+  // ne disait alors QUE « Process completed with exit code 1 » — le nom du cas
+  // en échec était inaccessible sans le navigateur. Le rapporteur `github`
+  // écrit chaque échec en ANNOTATION du check-run (fichier, ligne, message),
+  // lisible par `GET /check-runs/{id}/annotations`. `dot` reste le rapporteur
+  // du journal, comme avant ; en local rien ne change.
+  reporter: process.env.CI ? [["dot"], ["github"]] : "list",
   workers: process.env.CI ? 2 : "50%",
   // Après une suite multi-comptes (PASSIO_E2E_MULTI=1) : purge des comptes
   // jetables %@passio-e2e.test en prod (best-effort, no-op sinon).

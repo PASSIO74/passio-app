@@ -1957,9 +1957,30 @@
     // referait perdre le choix précis au moment MÊME où le visiteur crée son
     // compte — le pire endroit, puisque c'est là qu'il devient durable.
     // Et les choix du visiteur restent EN TÊTE (règle ② ci-dessus).
-    var fusion = idsRetenus(interetsDuVisiteur(p).concat(duCompte));
+    //
+    // ③ LES CHOIX DU VISITEUR DEVIENNENT LES PASSIONS DU COMPTE (2026-09-18).
+    // Jusqu'ici ils n'entraient que comme INTÉRÊTS de fil : le compte lisait
+    // quatre passions dans son Fil et son Profil disait « 0 » — puis « 3 »
+    // après « Mes passions », le Fil montant à SEPT. C'est la capture de
+    // Benjamin. On les ATTACHE donc (`ajouterPassionAuCompte`, le seul moteur
+    // d'ajout, plafond compris), et `setFeedPassions` — borné aux passions
+    // possédées dès qu'il y en a — ne garde que celles-là.
+    var choix = idsRetenus(interetsDuVisiteur(p));
+    var attache = attacherPassionsAuCompte(choix);
+    var retenus = attache.faite ? attache.attachees : choix;
+    var fusion = idsRetenus(retenus.concat(duCompte));
     if (fusion.length) {
       try { if (typeof setFeedPassions === "function") setFeedPassions(fusion); } catch (e) { journal("migration passions", e); return false; }
+    }
+    // ⚠️ UN REFUS QUI NE SE PRONONCE PAS EST INDISCERNABLE D'UNE PANNE : au-delà
+    // du plafond, on dit ce qui a été gardé plutôt que de laisser chercher.
+    if (attache.ecartees.length) {
+      try {
+        var offertes = (typeof PASSIONS_OFFERTES !== "undefined") ? PASSIONS_OFFERTES : attache.attachees.length;
+        if (typeof toast === "function") {
+          toast("Ton compte garde tes " + attache.attachees.length + " premières passions (" + offertes + " offertes).");
+        }
+      } catch (e) {}
     }
 
     // Envies du Fil : même règle, union sans écrasement.
@@ -2001,8 +2022,60 @@
     // migration à refaire, et la refaire est sans effet de bord.
     p.migre = true;
     sauverPrefs();
-    tel("guest_preferences_migrated", { n: fusion.length, s: specs.length });
+    tel("guest_preferences_migrated", { n: fusion.length, s: specs.length, n_ecartees: attache.ecartees.length });
     return true;
+  }
+
+  // ── LES CHOIX DU VISITEUR S'ATTACHENT AU COMPTE (2026-09-18) ──────────────
+  //
+  // Rend `{ faite, attachees, ecartees }`. `faite` vaut `false` quand le moteur
+  // d'ajout n'est pas là (app-06 absent) : l'appelant retombe alors sur les
+  // simples intérêts, comme avant — jamais sur rien.
+  //
+  // ⚠️ `ajouterPassionAuCompte` EST LE SEUL MOTEUR (app-06) : plafond, doublon,
+  // Fil, sauvegarde et synchronisation y sont déjà. On ne recopie rien. Mais au
+  // plafond il OUVRE la fenêtre payante — d'où la mesure des places AVANT
+  // chaque appel : ici personne n'a rien demandé, une fenêtre serait un
+  // mur posé sur un geste automatique.
+  //
+  // ⚠️ LE PROFIL DE REMPLISSAGE DE `boot()` CÈDE LA PLACE. « Musique »
+  // (`_parDefaut`) n'est pas un choix, et laissé là il prendrait l'une des
+  // trois places offertes : le visiteur qui a choisi trois passions n'en
+  // garderait que deux, plus une qu'il n'a jamais demandée. Il ne part que si
+  // l'on attache réellement quelque chose (sinon `currentProfileId` pointerait
+  // dans le vide).
+  //
+  // ⚠️ ON JUGE SUR L'ÉTAT, PAS SUR LE RETOUR : `ajouterPassionAuCompte` rend
+  // `null` aussi quand elle RESTAURE une archivée (chemin qui se suffit à
+  // lui-même). « Attachée » = une entrée vivante qui porte cet identifiant.
+  function attacherPassionsAuCompte(ids) {
+    var res = { faite: false, attachees: [], ecartees: [] };
+    var s = etat();
+    if (!s || !ids || !ids.length) return res;
+    if (typeof ajouterPassionAuCompte !== "function") return res;
+    res.faite = true;
+    s.user = s.user || {};
+    if (!Array.isArray(s.user.profiles)) s.user.profiles = [];
+    var sansRemplissage = s.user.profiles.filter(function (pr) { return !(pr && pr._parDefaut); });
+    if (sansRemplissage.length !== s.user.profiles.length) s.user.profiles = sansRemplissage;
+    var premiere = null;
+    ids.forEach(function (id) {
+      var places = Infinity;
+      try { if (typeof passionsRestantesOffertes === "function") places = passionsRestantesOffertes(); } catch (e) {}
+      if (!(places > 0)) { res.ecartees.push(id); return; }
+      try { ajouterPassionAuCompte(id, ""); } catch (e) { journal("attacher passion", e); }
+      var vivante = null;
+      for (var i = 0; i < s.user.profiles.length; i++) {
+        var pr = s.user.profiles[i];
+        if (pr && pr.passion === id && !pr.archived) { vivante = pr; break; }
+      }
+      if (vivante) { res.attachees.push(id); if (!premiere) premiere = vivante; }
+      else res.ecartees.push(id);
+    });
+    // La passion de départ du Studio est la PREMIÈRE choisie, pas la dernière
+    // attachée (`ajouterPassionAuCompte` rebascule `currentProfileId` à chaque appel).
+    if (premiere) s.user.currentProfileId = premiere.id;
+    return res;
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -2425,6 +2498,9 @@
       }
       apresAuthentification();
       try { if (typeof renderFeed === "function" && ecranActif() === "feed") renderFeed(); } catch (e) {}
+      // Les passions attachées au compte doivent se voir sur les DEUX rails.
+      try { if (typeof renderProfileStrip === "function") renderProfileStrip(); } catch (e) {}
+      try { if (typeof renderProfilesScreen === "function") renderProfilesScreen(); } catch (e) {}
     } catch (e) {
       // Corps entier sous `try` qui REPLANIFIE au lieu de conclure : une
       // exception venue d'un `setTimeout` n'est rattrapée par personne.

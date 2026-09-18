@@ -97,22 +97,31 @@ test("ONB-01 — un compte neuf avec une passion arrive sur un Fil peuplé", asy
   expect(r.titreVide).toBeNull();
 });
 
-test("ONB-02 — trois passions : trois intérêts, UN profil, primaire identifié", async ({ page }) => {
+test("ONB-02 — trois passions : trois passions du compte, les mêmes dans le fil, primaire identifié", async ({ page }) => {
   await boot(page);
   await inscrire(page, ["musique", "photo", "voyage"]);
   const r = await bilan(page);
+  // « Les passions du fil sont celles du compte » (2026-09-18) : la règle
+  // « UN profil, les autres en intérêts » laissait le Fil lire trois passions
+  // pendant que le Profil en affichait une.
   expect(r.interets).toEqual(["musique", "photo", "voyage"]);
-  expect(r.profils).toEqual(["musique"]);
+  expect(r.profils).toEqual(["musique", "photo", "voyage"]);
   expect(r.profilCourant).toBe("musique");
 });
 
-test("ONB-03 — sept passions possibles sans créer sept profils", async ({ page }) => {
+test("ONB-03 — au-delà du plafond, la porte refuse et onbFinish ne garde que PASSIONS_OFFERTES", async ({ page }) => {
   await boot(page);
+  // La porte : le sélecteur n'accepte plus que le plafond du compte.
+  const max = await page.evaluate(() => onbMaxPassions());
+  const offertes = await page.evaluate(() => PASSIONS_OFFERTES);
+  expect(max).toBe(offertes);
+  // Une liste poussée à la main au-delà (contournement) est bornée quand même :
+  // les premières choisies, dans l'ordre, et les mêmes dans le fil.
   const sept = await page.evaluate(() => allPassions().slice(0, 7).map((p) => p.id));
   await inscrire(page, sept);
   const r = await bilan(page);
-  expect(r.interets).toEqual(sept);
-  expect(r.profils.length).toBe(1);
+  expect(r.profils).toEqual(sept.slice(0, offertes));
+  expect(r.interets).toEqual(sept.slice(0, offertes));
   expect(r.profils[0]).toBe(sept[0]);
 });
 

@@ -887,7 +887,11 @@ test.describe("Gate d'authentification", () => {
 test.describe("Transfert du mode invité", () => {
   const prefsInvite = {
     v: 1, passions: ["moto", "photo", "moto", "passion_qui_n_existe_pas"],
-    specialites: ["moto-balade", "photo-portrait", "cuisine-barbecue"],
+    // ⚠️ TROIS intérêts valides au total (moto, moto-balade, photo) : depuis le
+    // 2026-09-18 ils deviennent les PASSIONS du compte neuf, bornées par
+    // `PASSIONS_OFFERTES` — un quatrième serait écarté par le plafond, ce qui
+    // n'est pas le sujet de ces cas (voir fil-passions-du-compte.spec.js ⑤).
+    specialites: ["moto-balade", "cuisine-barbecue"],
     intents: [], tour: { decouvrir: true }, bienvenue: "vue", retour: null, migre: false, debut: 1,
   };
 
@@ -1000,7 +1004,8 @@ test.describe("Transfert du mode invité", () => {
       const apres1 = state.selectedFeedPassions.slice();
       const second = PassioFirstRun.migrerPreferences();  // relance : idempotente
       return { premier, second, apres1, apres2: state.selectedFeedPassions.slice(),
-               specs: state.user.passionSpecialites, tour: state.firstRunTour };
+               specs: state.user.passionSpecialites, tour: state.firstRunTour,
+               vivantes: (state.user.profiles || []).filter((p) => !p.archived).map((p) => p.passion) };
     });
 
     expect(resultat.premier).toBe(true);
@@ -1019,8 +1024,10 @@ test.describe("Transfert du mode invité", () => {
     // précis au moment exact où il devient durable — et le test de l'autre point
     // serait resté vert.
     expect(resultat.apres1).toContain("moto-balade");
-    expect(resultat.apres1).toContain("photo-portrait");
     expect(resultat.apres1).not.toContain("cuisine-barbecue"); // parente non retenue
+    // ⚠️ ET ELLES SONT LES PASSIONS DU COMPTE (2026-09-18) : le Fil et le Profil
+    // disent la même chose — c'est le défaut de la capture de Benjamin.
+    expect(resultat.vivantes).toEqual(resultat.apres1);
     // L'état du tour est reporté : on ne le relance pas depuis le début.
     expect(resultat.tour.decouvrir).toBe(true);
   });

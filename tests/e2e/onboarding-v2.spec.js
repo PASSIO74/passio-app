@@ -8,7 +8,8 @@
 //
 // Invariants vérifiés ici :
 //   · setFeedPassions écrit les DEUX sources et déduplique en gardant l'ordre ;
-//   · onbFinish V2 : un seul profil de départ, tous les intérêts dans le fil ;
+//   · onbFinish V2 : une passion du compte PAR choix (plafond compris), et les
+//     mêmes dans le fil — « les passions du fil sont celles du compte » (2026-09-18) ;
 //   · aucun Passia/score distribué en V2 (ADR-009) ;
 //   · les intérêts survivent à un rechargement complet ;
 //   · un compte antérieur sans selectedFeedPassions est migré depuis ses profils,
@@ -68,7 +69,7 @@ test("setFeedPassions écrit les deux sources, déduplique et garde l'ordre", as
   expect(r.stocke.selectedFeedPassions).toEqual(["sport", "musique", "cuisine"]);
 });
 
-test("onbFinish V2 : un seul profil de départ, mais toutes les passions dans le fil", async ({ page }) => {
+test("onbFinish V2 : chaque passion cochée devient une passion du compte, et le fil montre les mêmes", async ({ page }) => {
   await bootVierge(page);
   const r = await page.evaluate(() => {
     state.user.name = "QA";
@@ -90,8 +91,11 @@ test("onbFinish V2 : un seul profil de départ, mais toutes les passions dans le
                  && typeof window.awardLikeReceived === "undefined",
     };
   });
-  // Trois passions cochées → UN profil (le primaire), trois intérêts de fil.
-  expect(r.profils).toEqual(["sport"]);
+  // Trois passions cochées → TROIS passions du compte (la primaire en tête),
+  // et les mêmes trois dans le fil. La règle « un seul profil, les autres en
+  // intérêts » datait d'avant ADR-011 et le plafond : elle faisait lire au Fil
+  // des passions que le Profil n'affichait pas (capture de Benjamin, 2026-09-18).
+  expect(r.profils).toEqual(["sport", "musique", "cuisine"]);
   expect(r.interets).toEqual(["sport", "musique", "cuisine"]);
   expect(r.persiste).toEqual(["sport", "musique", "cuisine"]);
   // ADR-009 : aucune gamification monétaire — ni valeur, ni clé, ni moteur.
@@ -172,7 +176,7 @@ test("la télémétrie d'activation part avec des clés qui survivent au filtre 
   const sel = evts.find((e) => e.nom === "passions_selected");
   expect(sel.meta.n_interests).toBe(2);
   expect(sel.meta.primary_id).toBe("sport");
-  expect(sel.meta.starter_profiles).toBe(1);
+  expect(sel.meta.starter_profiles).toBe(2);   // une passion du compte par choix (2026-09-18)
 
   // Le filtre PII de telemetry.js est une liste NOIRE : une clé qui la percute
   // est jetée en SILENCE. On rejoue ici le filtre réel sur les clés émises.

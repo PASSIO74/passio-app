@@ -1377,7 +1377,13 @@ window._etatCompteCharge = false;
 // Même raison que le `renderEverything()` du rejeu d'écriture (`supaInit`).
 async function _repriseUserState() {
   const restaure = await supaLoadUserState();
-  if (restaure) { try { if (typeof renderEverything === "function") renderEverything(); } catch (_e) {} }
+  if (restaure) {
+    // Le blob rejoué porte `selectedFeedPassions` et `user.profiles` : le Set
+    // runtime doit les suivre (borné aux passions du compte), sinon le Fil
+    // repeint sur la sélection d'avant le rejeu.
+    try { restoreFeedPassions(); } catch (_e) {}
+    try { if (typeof renderEverything === "function") renderEverything(); } catch (_e) {}
+  }
 }
 function _noterRepriseUserState() {
   try { noterLectureAReprendre("user_state", _repriseUserState); } catch (_e) {}
@@ -5425,7 +5431,18 @@ var ONB_MAX_PASSIONS_V1 = 3;   // plafond historique, conservé pour le repli
 var ONB_SEARCH_SEUIL = 12;     // « permettre la recherche si le catalogue devient long »
 
 function onbMaxPassions() {
-  return onbV2Actif() ? ONB_MAX_PASSIONS : ONB_MAX_PASSIONS_V1;
+  if (!onbV2Actif()) return ONB_MAX_PASSIONS_V1;
+  // ⚠️ LE CHOIX DE L'ONBOARDING SUIT LE PLAFOND DU COMPTE (2026-09-18). Depuis
+  // que chaque passion choisie ici devient une passion du compte (`onbFinish`),
+  // laisser cocher sept passions pour n'en garder que trois serait un mensonge
+  // d'interface. `PASSIONS_OFFERTES` vit dans app-06, chargé APRÈS ce fichier :
+  // lu paresseusement ; plafond coupé (compte de l'éditeur) = les sept de la spec.
+  var max = ONB_MAX_PASSIONS;
+  try {
+    if (typeof plafondPassionsActif === "function" && plafondPassionsActif()
+        && typeof PASSIONS_OFFERTES !== "undefined") max = Math.min(max, PASSIONS_OFFERTES);
+  } catch (e) {}
+  return max;
 }
 
 function renderPassionGrid() {
@@ -6063,12 +6080,80 @@ function syncFeedViewUi() {
   if (bloc && bloc.hidden) bloc.hidden = false;
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// LES PASSIONS DU FIL SONT CELLES DU COMPTE (2026-09-18)
+// ──────────────────────────────────────────────────────────────────────────
+// Rapport de Benjamin, deux captures à l'appui : le rail du Fil peignait
+// « Suivis · Metallerie · Course à pied · Wakeboard · Ski freestyle · … », le
+// Profil disait « 3 PASSIONS ». Mesuré en base sur le compte de la capture :
+// `user.profiles` porte TROIS passions vivantes, `selectedFeedPassions` en
+// porte SEPT — les quatre de trop sont les choix d'une exploration sans compte,
+// migrés par `migrerPreferences` (js/first-run.js) comme INTÉRÊTS de fil,
+// jamais devenus des passions du compte, et que rien ne bornait ensuite : le
+// compte a ajouté ses trois passions au Profil, et le Fil les a EMPILÉES sur
+// les quatre autres.
+//
+// La règle est celle que le dépôt écrit depuis le 2026-09-01 (passions-flat-ui :
+// « le rail du Fil reste une commande de LECTURE — on y coche et décoche ce
+// qu'on possède ; on acquiert au Profil ») : pour un COMPTE, les intérêts du
+// Fil sont un SOUS-ENSEMBLE des passions qu'il possède. Un intérêt que le
+// compte ne possède pas est une bulle de plus que le plafond n'a jamais
+// accordée — et un Fil qui ne dit pas la même chose que le Profil.
+//
+// ⚠️ POUR UN VISITEUR, RIEN NE CHANGE. Il n'a pas de compte et choisit ses
+// intérêts dans le panneau de première visite (`appliquerPrefs`) : ce sont
+// EUX ses passions du moment, et `renderProfileStrip` (app-06) continue de
+// les peindre sans profil (`_interet_…`). La borne ne vaut qu'avec un compte
+// (`comptePassioReel()`, la SEULE définition du mot « compte ») qui possède
+// au moins une passion vivante — un compte neuf SANS passion garde ses
+// intérêts le temps que `migrerPreferences` les lui ATTACHE (c'est désormais
+// ce qu'elle fait : les choix du visiteur deviennent les passions du compte,
+// bornés par `PASSIONS_OFFERTES`).
+//
+// ⚠️ LA BORNE VIT DANS `setFeedPassions`, seul point d'écriture des intérêts,
+// et nulle part ailleurs : posée à chaque porte, la prochaine porte
+// l'oublierait (défaut déjà payé par `quickCreateProfile` et le Studio pour
+// le plafond). `restoreFeedPassions` y passe au démarrage, donc un blob
+// serveur qui porte encore des intérêts orphelins est assaini au premier
+// rendu et re-persisté. `renderProfileStrip` ne rajoute rien à l'affichage
+// pour un compte : les deux rails comptent les mêmes bulles par construction.
+//
+// ⚠️ `_parDefaut` EXCLU : le profil de remplissage fabriqué par `boot()`
+// (« Musique ») n'est pas une possession — le compter ferait d'un compte
+// neuf un compte « qui possède Musique », et la borne jetterait ses vrais
+// choix. Même exclusion que `comptePossedeSesPassions` et `_comptePassionsServeur`.
+function passionsPossedeesIds() {
+  var out = [];
+  try {
+    var profils = (state && state.user && Array.isArray(state.user.profiles)) ? state.user.profiles : [];
+    profils.forEach(function (p) {
+      if (!p || typeof p.passion !== "string" || !p.passion) return;
+      if (p.archived || p._parDefaut) return;
+      if (out.indexOf(p.passion) < 0) out.push(p.passion);
+    });
+  } catch (e) {}
+  return out;
+}
+
+function interetsBornesAuCompte() {
+  try {
+    if (typeof comptePassioReel !== "function" || !comptePassioReel()) return false;
+    return passionsPossedeesIds().length > 0;
+  } catch (e) { return false; }
+}
+
 function setFeedPassions(ids, opts) {
   var liste = Array.isArray(ids) ? ids.filter(function (x) { return typeof x === "string" && x; }) : [];
   // Dédup en conservant l'ordre de sélection : le premier choisi est le primaire.
   var vues = {}, propre = [];
   for (var i = 0; i < liste.length; i++) {
     if (!vues[liste[i]]) { vues[liste[i]] = 1; propre.push(liste[i]); }
+  }
+  // Les passions du fil sont celles du compte (bloc ci-dessus) : un compte
+  // qui possède des passions ne peut pas en lire d'autres dans son Fil.
+  if (interetsBornesAuCompte()) {
+    var possedees = passionsPossedeesIds();
+    propre = propre.filter(function (id) { return possedees.indexOf(id) >= 0; });
   }
   _activeFeedPassions = new Set(propre);
   try { state.selectedFeedPassions = propre.slice(); } catch (e) {}
@@ -6105,7 +6190,15 @@ function setFeedPassions(ids, opts) {
 function restoreFeedPassions() {
   var persistees = [];
   try { persistees = Array.isArray(state.selectedFeedPassions) ? state.selectedFeedPassions : []; } catch (e) {}
-  if (persistees.length) return setFeedPassions(persistees, { save: false });
+  if (persistees.length) {
+    var bornees = setFeedPassions(persistees, { save: false });
+    // La borne « les passions du fil sont celles du compte » a retiré des
+    // intérêts que le compte ne possède pas : on persiste tout de suite, sinon
+    // le blob `user_state` les rapporterait au prochain démarrage et sur
+    // chaque autre appareil (c'est l'état mesuré en production le 2026-09-18).
+    if (bornees.length !== persistees.length) { try { saveState(); } catch (e) {} }
+    return bornees;
+  }
 
   // ── Le vide VOULU n'est pas le vide JAMAIS RENSEIGNÉ (spec §12) ────────────
   //
@@ -6160,7 +6253,14 @@ function onbFinish() {
   // passions créait trois profils, soit une taxe d'identité imposée avant la
   // première valeur. Les autres passions restent des INTÉRÊTS de Fil ; l'utilisateur
   // crée un second profil plus tard, s'il en veut un.
-  var passionsProfil = v2 ? [primaire] : selectedPassions;
+  // ⚠️ DEPUIS LE 2026-09-18, CHAQUE PASSION CHOISIE DEVIENT UNE PASSION DU
+  // COMPTE, dans la limite du plafond (`onbMaxPassions`, qui suit
+  // `PASSIONS_OFFERTES`). La règle V2 d'origine — un seul profil, les autres
+  // choix en simples intérêts — datait d'avant ADR-011 (identité centralisée :
+  // une passion n'est plus un « profil » à remplir) et d'avant le plafond :
+  // elle laissait un compte lire jusqu'à SEPT passions dans son Fil pendant
+  // que son Profil en affichait UNE. Les passions du fil sont celles du compte.
+  var passionsProfil = v2 ? selectedPassions.slice(0, onbMaxPassions()) : selectedPassions;
   state.user.profiles = passionsProfil.map(function (pid) {
     var p = passionById(pid);
     return {
@@ -6180,7 +6280,9 @@ function onbFinish() {
   // commentaire « pas de filtre par défaut après onboarding » : l'utilisateur
   // atterrissait donc sur un fil qui ignorait ses choix.
   if (v2) {
-    setFeedPassions(selectedPassions, { save: false });
+    // Les mêmes que les passions du compte, ni plus ni moins (borne
+    // d'`setFeedPassions` comprise : `state.onboarded` n'est posé qu'après).
+    setFeedPassions(passionsProfil, { save: false });
   } else {
     _activeFeedPassions = new Set();
   }
@@ -6199,7 +6301,7 @@ function onbFinish() {
     if (window.tel && tel.action) {
       tel.action("signup_completed", { signup_method: "email", flag_v2: v2 });
       tel.action("passions_selected", {
-        n_interests: selectedPassions.length,
+        n_interests: passionsProfil.length,
         primary_id: primaire,
         starter_profiles: state.user.profiles.length,
         flag_v2: v2,
@@ -6214,7 +6316,7 @@ function onbFinish() {
 
   try {
     if (v2 && window.tel && tel.action) {
-      tel.action("personalized_feed_viewed", { n_interests: selectedPassions.length, flag_v2: true });
+      tel.action("personalized_feed_viewed", { n_interests: passionsProfil.length, flag_v2: true });
     }
   } catch (e) {}
 

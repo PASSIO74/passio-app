@@ -11,6 +11,7 @@
 //      ne crée qu'un seul profil, et le rail ne dessinait que les profils.
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
+const { bootVisiteur } = require("./first-run-helper");
 
 async function boot(page) {
   await bootOnboarded(page, null, 1, {});
@@ -110,46 +111,72 @@ test("② le formulaire ne promet plus de modération humaine", async ({ page })
   expect(source).not.toContain("Tu seras notifié quand elle sera examinée");
 });
 
-test("③ une passion qui filtre le fil a toujours sa bulle", async ({ page }) => {
+// ⚠️ RÉÉCRIT LE 2026-09-18 — « les passions du fil sont celles du compte ».
+// L'invariant de ③ (« une passion qui filtre le fil a toujours sa bulle ») ne
+// bouge pas, mais il tient désormais par CONSTRUCTION pour un compte : une
+// passion que le compte ne possède pas ne filtre plus rien (`setFeedPassions`
+// la borne), donc elle n'a pas besoin de bulle — et n'en a pas. Le cas de
+// l'onboarding qui posait « UNE créée, TROIS en intérêts » n'existe plus :
+// chaque passion cochée devient une passion du compte. Les bulles d'intérêt
+// sans profil ne survivent que chez un VISITEUR (③ bis).
+test("③ une passion qui filtre le fil a toujours sa bulle — et un compte ne filtre que sur ce qu'il possède", async ({ page }) => {
   await boot(page);
-  await page.evaluate(() => {
-    // Exactement la situation produite par l'onboarding : UNE passion créée,
-    // TROIS passions posées comme intérêts de lecture.
+  const r = await page.evaluate(() => {
     state.user.profiles = [{ id: "pp_0", name: "QA", passion: "musique", emoji: "🎵", color: "#7c3aed" }];
     state.user.currentProfileId = "pp_0";
     setFeedPassions(["musique", "cuisine", "sport"]);
     goTo("feed");
     renderProfileStrip();
+    return { actives: Array.from(_activeFeedPassions) };
   });
   await page.waitForTimeout(400);
   const bulles = await page.evaluate(() =>
     Array.from(document.querySelectorAll("#profileStrip .profile-tile"))
       .map(t => (t.querySelector(".profile-tile-label") || {}).textContent || ""));
-  // Les trois passions qui décident du contenu sont visibles, pas seulement
-  // celle qui a un profil.
+  // Seule la passion POSSÉDÉE filtre, et elle a sa bulle. Les deux autres ne
+  // filtrent pas — et le rail n'en peint aucune fantôme.
+  expect(r.actives).toEqual(["musique"]);
   expect(bulles.join("|")).toContain("Musique");
-  expect(bulles.join("|")).toContain("Cuisine");
-  expect(bulles.join("|")).toContain("Sport");
+  expect(bulles.join("|")).not.toContain("Cuisine");
+  expect(bulles.join("|")).not.toContain("Sport");
+
+  // Dès que le compte POSSÈDE la passion, elle filtre ET elle a sa bulle.
+  const apres = await page.evaluate(() => {
+    ajouterPassionAuCompte("cuisine", "");
+    const rail = document.getElementById("profileStrip");
+    if (rail) rail._lastHtml = null;
+    renderProfileStrip();
+    return {
+      actives: Array.from(_activeFeedPassions),
+      bulles: Array.from(document.querySelectorAll("#profileStrip .profile-tile"))
+        .map(t => (t.querySelector(".profile-tile-label") || {}).textContent || "").join("|"),
+    };
+  });
+  expect(apres.actives).toEqual(["musique", "cuisine"]);
+  expect(apres.bulles).toContain("Cuisine");
 });
 
-test("③ bis — une bulle d'intérêt est décochable, et ne crée aucun profil", async ({ page }) => {
-  await boot(page);
+test("③ bis — chez un VISITEUR, une bulle d'intérêt est décochable, et ne crée aucun profil", async ({ page }) => {
+  await bootVisiteur(page, { sansBienvenue: true });
   await page.evaluate(() => {
-    state.user.profiles = [{ id: "pp_0", name: "QA", passion: "musique", emoji: "🎵", color: "#7c3aed" }];
-    state.user.currentProfileId = "pp_0";
     setFeedPassions(["musique", "cuisine"]);
     goTo("feed");
     renderProfileStrip();
   });
   await page.waitForTimeout(300);
-  const avant = await page.evaluate(() => state.user.profiles.length);
+  const avant = await page.evaluate(() => (state.user.profiles || []).length);
+  // Prémisse : les deux intérêts sont peints, sans profil (c'est un visiteur).
+  const peintes = await page.evaluate(() =>
+    Array.from(document.querySelectorAll("#profileStrip .profile-tile"))
+      .map(t => (t.querySelector(".profile-tile-label") || {}).textContent || "").join("|"));
+  expect(peintes).toContain("Cuisine");
 
   await page.evaluate(() => toggleProfileFilter("cuisine"));
   await page.waitForTimeout(400);
 
   const apres = await page.evaluate(() => ({
     actives: Array.from(_activeFeedPassions),
-    profils: state.user.profiles.length,
+    profils: (state.user.profiles || []).length,
     bulles: Array.from(document.querySelectorAll("#profileStrip .profile-tile"))
       .map(t => (t.querySelector(".profile-tile-label") || {}).textContent || "").join("|"),
   }));
