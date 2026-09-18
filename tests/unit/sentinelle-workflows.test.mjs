@@ -135,7 +135,9 @@ function jouer(script, env = {}) {
     .split('execFileSync("gh", args, { encoding: "utf8" })').join('execFileSync("node", [process.env.FAUX_GH_JS, ...args], { encoding: "utf8" })');
   fs.writeFileSync(BAC + "/etape.sh", texte);
   try {
-    sortie = execFileSync("bash", [BAC + "/etape.sh"], {
+    // `-e` comme GitHub (`bash -e {0}` est le shell par défaut d'un `run:` sans `shell:`) : sans lui, un
+    // `node …; code=$?` qui tue l'étape en production resterait vert ici (défaut du digest, 2026-09-18).
+    sortie = execFileSync("bash", ["-e", BAC + "/etape.sh"], {
       cwd: RACINE, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
       env: {
         ...process.env,
@@ -566,4 +568,62 @@ test("claude-code.yml : le snippet réel d'extraction de la fiche rend le bloc C
   const sans = rejouer("Un commit sans bloc.\n", "oui");
   assert.ok(sans.startsWith("### Fiche absente"), "enquête sentinelle sans bloc : dit en clair\n" + sans);
   assert.equal(rejouer("Un commit sans bloc.\n", "non"), "", "hors sentinelle, rien n'est reproché");
+});
+
+// ═══ B — Veille et digest : le code 3 n'est PAS une panne, sous le VRAI shell de GitHub ════
+// GitHub exécute un `run:` sans `shell:` avec `bash -e {0}` ; `set -uo pipefail` ne retire pas -e. Au premier
+// dispatch du digest (run 35350876138, 2026-09-18), l'étape « Composer » a rougi sur « exit code 3 » — le code qui
+// veut dire « digest à émettre » — et [DIGEST MUET] s'est ouverte ; la veille aurait fait pareil à sa PREMIÈRE
+// alerte réelle ([VEILLE MUETTE] au lieu de [VEILLE]). Un faux `node` imite le script (JSON + code de sortie) et
+// délègue tout le reste (le bloc `node -e` inline) au vrai node.
+// Mutation : `code=0; node … || code=$?` → `node …; code=$?` → rougit (le code 3 est propagé par -e).
+// Mutation : retirer `-e` de jouer() → la mutation précédente redevient VERTE : c'est -e qui rend le banc fidèle.
+const DIG = wf("digest.yml");
+const VEI = wf("veille-production.yml");
+const posix = (p) => p.replace(/^([A-Za-z]):/, (m, d) => "/" + d.toLowerCase());
+function fauxNode(nom) {
+  const dir = BAC + "/bin-" + nom;
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(dir + "/node", `#!/usr/bin/env bash
+case "$*" in
+  *"scripts/digest.mjs"*|*"scripts/veille-production.mjs"*) printf '%s' "$FAUX_JSON"; exit "\${FAUX_CODE:-0}" ;;
+  *) exec "$VRAI_NODE" "$@" ;;
+esac
+`);
+  fs.chmodSync(dir + "/node", 0o755);
+  return { PATH: posix(dir) + ":" + posix(BAC) + "/bin:" + process.env.PATH, VRAI_NODE: process.execPath.split("\\").join("/") };
+}
+
+test("digest.yml : Composer — code 3 (digest à émettre) rend emettre=oui et le résumé ; code 0 → non ; code 2 = panne VISIBLE", () => {
+  const run = etape(DIG, "composer", "Composer").run;
+  const env = fauxNode("digest");
+  const json = JSON.stringify({ titre: "[DIGEST] jeudi 18/09", texte: "corps du digest", aFaire: [], emettre: true, lundi: false });
+  let r = jouer(run, { ...env, FAUX_JSON: json, FAUX_CODE: "3" });
+  assert.equal(r.code, 0, "code 3 = digest à émettre, pas une panne : " + r.sortie);
+  assert.match(r.out, /^emettre=oui$/m, r.out);
+  assert.match(r.summary, /^# \[DIGEST\] jeudi 18\/09$/m, r.summary);
+  assert.ok(r.summary.includes("corps du digest"));
+  r = jouer(run, { ...env, FAUX_JSON: json.replace('"emettre":true', '"emettre":false'), FAUX_CODE: "0" });
+  assert.equal(r.code, 0, r.sortie);
+  assert.match(r.out, /^emettre=non$/m, r.out);
+  r = jouer(run, { ...env, FAUX_JSON: '{"panne":"lecteur cassé"}', FAUX_CODE: "2" });
+  assert.equal(r.code, 2, "une panne du lecteur reste une panne");
+  assert.ok(r.sortie.includes("lecteur cassé"), "et elle est affichée : " + r.sortie);
+});
+
+test("veille-production.yml : Verdict — code 3 (alerte) rend alerte=oui et le résumé ; code 0 → non ; sans SUPABASE_ACCESS_TOKEN l'étape REFUSE", () => {
+  const run = etape(VEI, "veiller", "Verdict").run;
+  const env = fauxNode("veille");
+  const json = JSON.stringify({ titre: "[VEILLE] flux silencieux", corps: "corps", resume: "[alert] flux — silence 5 h\n[ok] base — 200", alerte: true });
+  let r = jouer(run, { ...env, SUPABASE_ACCESS_TOKEN: "jeton-de-test", FAUX_JSON: json, FAUX_CODE: "3" });
+  assert.equal(r.code, 0, "code 3 = alerte, pas une panne : " + r.sortie);
+  assert.match(r.out, /^alerte=oui$/m, r.out);
+  assert.match(r.summary, /^## Veille de production$/m, r.summary);
+  assert.match(r.summary, /^- \[alert\] flux/m, r.summary);
+  r = jouer(run, { ...env, SUPABASE_ACCESS_TOKEN: "jeton-de-test", FAUX_JSON: json.replace('"alerte":true', '"alerte":false'), FAUX_CODE: "0" });
+  assert.equal(r.code, 0, r.sortie);
+  assert.match(r.out, /^alerte=non$/m, r.out);
+  r = jouer(run, { ...env, SUPABASE_ACCESS_TOKEN: "", FAUX_JSON: json, FAUX_CODE: "3" });
+  assert.equal(r.code, 1, "sans jeton, la veille est aveugle : refus, pas un verdict");
+  assert.ok(r.sortie.includes("SUPABASE_ACCESS_TOKEN absent"), r.sortie);
 });
