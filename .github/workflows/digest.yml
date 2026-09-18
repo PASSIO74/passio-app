@@ -75,7 +75,10 @@ jobs:
           SUPABASE_PROJECT_REF: njkiyoklssvefstljemx
         run: |
           set -uo pipefail
-          node scripts/digest.mjs --json > /tmp/digest.json; code=$?
+          # ⚠️ Le shell par défaut de GitHub est `bash -e {0}` et `set -uo pipefail` ne RETIRE pas -e :
+          # écrit `node …; code=$?`, le code 3 (« digest à émettre ») tuait l'étape et ouvrait [DIGEST MUET]
+          # (mesuré au premier dispatch, run 35350876138, 2026-09-18). La forme `|| code=$?` survit à -e.
+          code=0; node scripts/digest.mjs --json > /tmp/digest.json || code=$?
           # 0 = rien à émettre, 3 = digest à émettre, autre = panne (et une panne se voit).
           if [ "$code" -ne 0 ] && [ "$code" -ne 3 ]; then cat /tmp/digest.json; exit "$code"; fi
           echo "emettre=$([ "$code" -eq 3 ] && echo oui || echo non)" >> "${GITHUB_OUTPUT}"

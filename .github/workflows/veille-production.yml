@@ -108,7 +108,10 @@ jobs:
             echo "::error title=SUPABASE_ACCESS_TOKEN absent::Sans le jeton de l'API de gestion, aucune mesure SQL n'est possible : la veille est AVEUGLE. Settings > Secrets and variables > Actions."
             exit 1
           fi
-          node scripts/veille-production.mjs --json > /tmp/verdict.json; code=$?
+          # ⚠️ Shell par défaut `bash -e {0}` : écrit `node …; code=$?`, la PREMIÈRE alerte réelle (code 3) aurait tué
+          # l'étape et ouvert [VEILLE MUETTE] au lieu de [VEILLE] — le même défaut que le digest au premier dispatch
+          # (run 35350876138, 2026-09-18). La forme `|| code=$?` survit à -e.
+          code=0; node scripts/veille-production.mjs --json > /tmp/verdict.json || code=$?
           # 0 = rien en alerte, 3 = alerte, autre = panne du lecteur (et une panne se voit).
           if [ "$code" -ne 0 ] && [ "$code" -ne 3 ]; then cat /tmp/verdict.json; exit "$code"; fi
           echo "alerte=$([ "$code" -eq 3 ] && echo oui || echo non)" >> "${GITHUB_OUTPUT}"
