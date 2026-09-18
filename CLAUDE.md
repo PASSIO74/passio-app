@@ -372,6 +372,19 @@ Ce canal ne voit QUE ce qui lève une erreur JavaScript. Bouton qui n'émet plus
 
 Coupe-circuit : une issue ouverte dont le titre contient `[SENTINELLE PAUSE]` arrête tout le canal au tour suivant (même convention que `sentinelle-distante.yml`). Une enquête à la fois : tant qu'une issue `[SENTINELLE]` est ouverte, aucune autre n'est créée.
 
+## 🤖 SENTINELLE v2, VEILLE ET DIGEST — ce qui tourne seul pendant les mois de test (2026-09-18)
+
+Chantier « autonomie » (PR #489, #490, #492, #493 et la PR veille) : Benjamin lit ses e-mails GitHub, chaque issue porte le geste à faire, le reste tourne seul. Trois docs font foi, ce paragraphe n'est qu'un index.
+
+- **Chaîne GitHub v2** (`docs/SENTINELLE_AUTONOME.md`) : l'issue `[SENTINELLE]` naît avec le SEUL label `sentinelle`, `claude` est posé 8 s plus tard (la création à deux labels lançait trois runs et en perdait un sur trois). Un **veilleur** relance UNE fois une enquête sans run après 20 min et la remet à un humain (label `humain`) après 6 h. La dédup est datée sur le **déploiement** et la version servie, plus sur la fusion ; une récidive après deux correctifs déployés ouvre `recidive` + `humain`, jamais `claude`. Chaque correctif écrit une **fiche** `docs/sentinelle/<n>.md` (cause, correctif, verrou, leçon) ; le job `retour-issue` de `deploy.yml` commente « déployé » ou ROUVRE l'issue avec `humain`. Lecteur en panne → `[SENTINELLE MUETTE]`.
+- **Veille de production et digest** (`docs/VEILLE_PRODUCTION.md`) : `veille-production.yml` (cron 30 min, servi en pratique toutes les 2 à 5 h) mesure ce que la sentinelle ne voit pas — télémétrie humaine silencieuse en heures actives, inscriptions jamais confirmées, erreurs ≥ 5 × la médiane, 5xx et refus en série, commit servi ≠ `main`, cron mort ou désactivé, base, jetons qui expirent — et n'ouvre qu'UNE issue `[VEILLE]` (label `veille`, jamais `claude`), refermée seule. `digest.yml` (matin) ouvre `[DIGEST]` — « ce qui t'attend / ce que les machines ont fait » — seulement s'il y a un geste à faire, ou le lundi.
+- **Centre de pilotage** (PR #493) : l'œil se surveille (DB, canari, realtime, ingestion, persistance) et lit GitHub (vie des six crons, issues par label, PR critiques sans contre-revue) ; carte « Ce qui t'attend » en tête de l'Accueil et du Pilot mobile ; ce qui a besoin du poste (disque, CLI Claude, superviseur) sort par une issue `[POSTE]`. Sur le poste : `DASH_SENTINEL_REPAIR=off` (la réparation locale n'a jamais abouti sur un dépôt sale), `DASH_NOTIFY_GITHUB=true`, `DASH_SENTINEL_RELAIS_GITHUB=true` (un défaut réel vu localement devient une issue `[SENTINELLE]`), `PASSIO_PUBLIC_URL`.
+- **Ce que Benjamin fait, et ne fait pas** : `docs/RUNBOOK_MOIS_DE_TEST.md` (un geste par signal, les trois gestes du poste, la cadence, ce qu'il ne faut pas faire).
+
+⚠️ **La contre-revue est ancrée sur le SHA de tête** : après TOUT push sur une PR du périmètre critique, la reposer (`gh pr review <n> --comment --body-file …`), sinon « Gouvernance critique » refuse et l'auto-fusion attend pour toujours.
+
+⚠️ **Un faux binaire posé sur le PATH d'un banc délègue au vrai par un chemin ABSOLU.** Le faux `jq` de `tests/unit/sentinelle-workflows.test.mjs` rappelait `"$JQ_BIN"`, qui vaut `jq` sur le runner (JQ_BIN absent) : il s'est rappelé lui-même, et deux runners de suite sont morts 36 s après le début des tests, « shutdown signal », sans un test rouge — ce qui ressemble à un incident GitHub et n'en est pas un. Rejouer un tel banc sans `JQ_BIN` avant de pousser.
+
 ## 🔄 PWA — « newestWorker is null » : PREMIER défaut réparé de bout en bout par la chaîne autonome (2026-09-09)
 
 Erreur en production → issue `[SENTINELLE]` #304 → correctif et verrou écrits par le canal → PR #305, 13 contrôles verts → fusion → déploiement. **Aucun geste humain sur le chemin technique.** À conserver comme référence de ce que la chaîne sait faire seule.
