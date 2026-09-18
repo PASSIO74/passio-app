@@ -2845,6 +2845,18 @@ function goTo(screen) {
   // c'est sans danger pour `ouvrirGestionPassions`, qui fait `goTo` PUIS
   // `openPassionManager` — dans cet ordre.
   try { if (typeof closePassionManager === "function") closePassionManager(); } catch (e) {}
+  // ⚠️ LES DEUX PAGES DE DÉTAIL AUSSI, ET POUR LA MÊME RAISON (2026-09-18).
+  // Vidéo d'une testeuse iPhone : la page détail d'une publication ouverte,
+  // elle tape « Messages », « Rencontrer », « Découvrir » — l'onglet s'allume,
+  // l'écran change DESSOUS, la page reste. Sur WebKit ces pages `position:
+  // fixed` étaient rendues DANS le conteneur défilant (elles en ont été
+  // sorties, index.html), donc la barre d'onglets restait tapable par-dessus.
+  // Un onglet du bas est une NAVIGATION : il referme ce qui est ouvert, comme
+  // pour « Mes passions » juste au-dessus — et ça vaut sur tout moteur, parce
+  // que la seule autre sortie était un « ← » de 18 px hors de vue. Une page
+  // qu'on ne peut pas quitter est une application bloquée.
+  try { if (typeof closePost === "function") closePost(); } catch (e) {}
+  try { if (typeof closeEventDetail === "function") closeEventDetail(); } catch (e) {}
 
   $$(".screen").forEach(s => s.classList.remove("active"));
   const el = document.getElementById("screen-" + screen);
@@ -4582,8 +4594,33 @@ async function onbForgotPassword() {
 // SAISIE prime toujours : on renvoie là où la personne regarde.
 function _showResendConfirmation(email) {
   _pendingConfirmEmail = String(email || "").trim();
+  const actif = !!_pendingConfirmEmail;
   const el = document.getElementById("authResendLink");
-  if (el) el.style.display = _pendingConfirmEmail ? "" : "none";
+  if (el) el.style.display = actif ? "" : "none";
+  // ⚠️ LA SORTIE DOIT ÊTRE SOUS LES YEUX, PAS SEULEMENT DANS LE DOM
+  // (2026-09-18). Le lien du bas est mesuré à 647–669 px sur un iPhone 12 de
+  // 664 px de haut, captcha ÉTEINT — déjà à cheval sur le pli — et le widget
+  // Turnstile de la production l'enfonce à 724–746 px : entièrement hors écran. Le refus s'écrivait donc en
+  // haut et sa seule sortie hors de l'écran — « je n'arrive pas à cliquer sur
+  // l'encadré pour confirmer mon adresse mail ». Le bloc #authResendTop est
+  // posé JUSTE SOUS le message : même endroit que le refus, même regard.
+  const haut = document.getElementById("authResendTop");
+  if (haut) haut.style.display = actif ? "block" : "none";
+  // Et on l'amène à l'écran quand le formulaire est déjà défilé : `switchAuthTab`
+  // appelle cette fonction avec "" à chaque bascule, donc jamais sur ce chemin.
+  // ⚠️ ON CALE LE MESSAGE EN HAUT (`block: "start"` sur #authMsg), pas le bloc au
+  // centre : centré, le bloc renvoyait « Se connecter » 18 px sous le pli avec
+  // le captcha (mesuré par audit-passio, 634–682 px pour 664) — on aurait
+  // appliqué au bouton le défaut qu'on venait de corriger pour le lien. Calé en
+  // haut, message + sortie + champs + captcha + bouton tiennent sur un écran.
+  if (actif && haut) {
+    try {
+      setTimeout(function () {
+        var cible = document.getElementById("authMsg") || haut;
+        cible.scrollIntoView({ block: "start", behavior: "smooth" });
+      }, 0);
+    } catch (e) {}
+  }
 }
 
 async function onbResendConfirmation() {
@@ -5224,7 +5261,7 @@ async function onbDoAuth() {
       // le compte est inaccessible pour toujours (« déjà utilisé » à
       // l'inscription, « confirme ton e-mail » à la connexion, et rien d'autre).
       if (msg.includes("Email not confirmed")) {
-        msg = "Confirme ton e-mail avant de te connecter.";
+        msg = "Confirme ton e-mail avant de te connecter : ouvre le lien qu'on t'a envoyé, ou fais-le renvoyer juste en dessous.";
         _showResendConfirmation(email);
       }
       // ⚠️ LE MODE DE PANNE LE PLUS PROBABLE D'UN JOUR DE LANCEMENT, ET IL
@@ -5267,6 +5304,12 @@ async function onbDoAuth() {
         // le défaut était donc invisible tant que signUp rendait une session.
         switchAuthTab("signin");
         _showAuthMsg("Cet e-mail est déjà utilisé. Connecte-toi.", "error");
+        // ⚠️ LA MÊME SORTIE QUE LES DEUX AUTRES BRANCHES (2026-09-18, relevé par
+        // audit-passio). Quelqu'un qui n'a jamais reçu son lien ne sait plus si
+        // son compte existe : le geste le plus naturel est de RECRÉER — et cette
+        // branche répondait « déjà utilisé » sans proposer le renvoi. Le dernier
+        // cul-de-sac sans porte de sortie, sur le chemin le plus probable.
+        _showResendConfirmation(email);
         if (btn) { btn.disabled = false; btn.textContent = "Se connecter"; }
         return;
       }

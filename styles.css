@@ -11301,6 +11301,70 @@ button, a, label, select, summary,
     .story-viewer-close { position: relative; } /* .modal-close est déjà absolu : le forcer en relative le déplaçait (rouge CI #400) */
     .comment-action { padding: 14px 6px; margin: -14px -6px; }
 
+    /* ── SUITE DU MÊME CORRECTIF, ET C'EST UN SURVIVANT (2026-09-18) ──
+       DEV-01 (2026-09-14) a élargi la cloche, les croix de panneau et les
+       actions de COMMENTAIRE — et s'est arrêté là. Les options d'une
+       PUBLICATION, celles qu'on touche le plus, sont restées sous la barre.
+       Mesuré au navigateur en iPhone 12, sur le détail d'une publication :
+       actions 55×27 / 47×27 / 31×27 / 35×31 · tri des commentaires 91×22 et
+       74×22 · « ⋯ » d'un commentaire 24×24 · « ⋯ » d'une publication 30×30.
+       Deux testeuses iPhone, 17/09 : « ça bloque quand j'appuie sur les
+       différentes options ». Corriger une surface, c'est corriger une surface.
+
+       ⚠️ EN HAUTEUR, ON ÉLARGIT PAR UN ::after TRANSPARENT, JAMAIS PAR LE
+       PADDING : la rangée garde ses 42 px et le fond de :hover sa hauteur (un
+       padding de 16 px en ferait une pilule de 44 px de haut qui déborderait
+       le filet de `.post-actions`). EN LARGEUR, en revanche, les deux boutons
+       étroits (😊 31 px, partage 35 px) sont VRAIMENT élargis à 44 px par
+       `min-width` — le partage glisse de 13 px vers la droite, c'est voulu et
+       mesuré (la rangée fait 324 px pour 202 px d'actions : rien ne déborde).
+
+       ⚠️ ET L'ÉLARGISSEMENT EST VERTICAL SEULEMENT SUR UNE RANGÉE. Les quatre
+       actions d'une publication sont séparées de 4 px : un inset horizontal
+       ferait que la zone d'une action recouvre sa voisine et lui vole ses
+       taps — on aurait remplacé « trop petit » par « ça fait autre chose ».
+       D'où `left:0;right:0` ici, et `min-width: 44px` pour que les deux
+       boutons étroits (😊, partage) atteignent la barre par leur VRAIE
+       largeur. Même raison pour `.cmt-sort`, dont les deux boutons ne sont
+       séparés que de 6 px. */
+    .post-action { position: relative; min-width: 44px; justify-content: center; }
+    /* ⚠️ L'ÉLARGISSEMENT SE PREND VERS LE HAUT, PAS AUTOUR. Au-dessus de la
+       rangée il y a son propre rembourrage puis le corps de la carte, dont le
+       seul geste est « ouvrir la publication » — c'est très exactement l'issue
+       d'un tap raté sur une action, donc l'espace le moins cher à prendre. En
+       DESSOUS, sur les cartes qui portent le pont IRL, `.v3-tempt` a déjà sa
+       propre zone de 44 px : deux zones qui se recouvrent, c'est la plus tardive
+       qui gagne, et on aurait échangé « trop petit » contre « ça fait autre
+       chose ». D'où `bottom: 0` — on ne descend pas d'un pixel. */
+    .post-action::after {
+      content: ""; position: absolute; left: 0; right: 0;
+      top: -17px; bottom: 0; min-height: 44px;
+    }
+    .cmt-sort { position: relative; }
+    .cmt-sort::after { content: ""; position: absolute; inset: -11px 0; min-height: 44px; }
+    /* Boutons isolés : l'inset peut être symétrique, rien ne les jouxte. */
+    .post-menu-btn { position: relative; }
+    .post-menu-btn::after { content: ""; position: absolute; inset: -7px; min-width: 44px; min-height: 44px; }
+    /* ⚠️ `.comment-menu-btn` est DÉJÀ en `position: absolute` : le forcer en
+       `relative` le déplacerait — la leçon `.modal-close` (rouge CI #400). */
+    .comment-menu-btn::after { content: ""; position: absolute; inset: -10px; min-width: 44px; min-height: 44px; }
+
+    /* ⚠️ ET UNE ZONE DE 44 px NE VAUT QUE SI PERSONNE NE LA LUI PREND. Mesuré
+       sur les cartes qui portent le pont IRL : `.v3-tempt` (lot UI-3) réclame
+       déjà 44 px par `margin: -11px 0` + `z-index: 1`, et sa moitié haute
+       remontait DANS la rangée d'actions — elle recouvrait les 9 derniers
+       pixels du bouton « partager » (31 px de boîte, 22 px de zone mesurés),
+       c'est-à-dire une partie de sa boîte VISIBLE. Taper l'icône de partage
+       ouvrait « Trouver une expérience ».
+       Le défaut est antérieur à ce lot ; il se voyait d'autant moins qu'aucune
+       des deux zones n'est peinte.
+       Deux zones de 44 px ne tiennent pas dans 42 px + 2 px de marge : on ne
+       choisit pas un gagnant (l'une des deux resterait volée), on DONNE la
+       place — 9 px de plus sous la rangée, et SEULEMENT là où le pont SUIT
+       immédiatement la rangée (5 cartes sur 20) : ailleurs l'aperçu de
+       commentaires les sépare déjà, et 9 px de blanc n'y auraient aucun motif. */
+    :root.passio-ui-3 .post-actions + .v3-bridge { padding-top: 11px; }
+
 
 /* ═══════════════════════════════════════════════════════════════════════════
    PASSIO UI V4 — lot UI-4A5 : « Filtre » est une VUE de « Rencontrer ».

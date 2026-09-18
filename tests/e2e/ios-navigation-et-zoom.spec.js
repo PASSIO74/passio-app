@@ -237,6 +237,80 @@ test.describe("iPhone — navigation, historique et saisie", () => {
     expect(etat.filActif, "on ne doit pas avoir quitté le fil pendant ce temps").toBe(true);
   });
 
+  // ─── ②bis « ÇA BLOQUE QUAND J'APPUIE SUR LES DIFFÉRENTES OPTIONS » (2026-09-18) ──
+  // Vidéo d'une testeuse iPhone (16/09) : la page détail d'une publication
+  // ouverte, elle tape « Messages », « Rencontrer », « Découvrir » — l'onglet
+  // s'allume, l'écran change DESSOUS, la page reste. Deux causes :
+  //   · `#postDetailPage`, `#eventDetailPage` et `#offlineBanner` (`position:
+  //     fixed`) vivaient DANS `#appMain`, le conteneur défilant — sur WebKit
+  //     la page était rendue ENTRE la barre du haut et la barre d'onglets, son
+  //     « ← » hors de vue, et les onglets restaient tapables par-dessus. Toutes
+  //     les autres surfaces plein écran sont des SŒURS de <main> ; ces trois-là
+  //     étaient les seules exceptions. Chromium cale `fixed` sur le viewport
+  //     quoi qu'il arrive : le symptôme est INVISIBLE ici, on mesure la cause,
+  //     à la SOURCE — la place dans le DOM.
+  //   · `goTo` ne fermait que « Mes passions », pas les deux pages de détail :
+  //     un onglet du bas est une navigation, il referme ce qui est ouvert. Ça,
+  //     on le mesure en comportement, et ça vaut sur tout moteur.
+  // Éprouvé par RÉINJECTION : pages remises dans <main> → ①bis rouge ;
+  // fermeture retirée de `goTo` → ②bis et ③bis rouges.
+  test("les pages plein écran ne sont jamais des enfants du conteneur défilant", async ({ page }) => {
+    await bootOnboarded(page);
+    const dedans = await page.evaluate(() => {
+      const main = document.getElementById("appMain");
+      return ["postDetailPage", "eventDetailPage", "offlineBanner"].filter((id) => {
+        const el = document.getElementById(id);
+        return !el || main.contains(el);
+      });
+    });
+    expect(dedans, "surfaces `position: fixed` encore DANS #appMain (ou absentes)").toEqual([]);
+  });
+
+  test("un onglet du bas referme la page publication au lieu de changer d'écran dessous", async ({ page }) => {
+    await bootOnboarded(page);
+    await page.evaluate(() => goTo("feed"));
+    const ouverte = await page.evaluate(async () => {
+      const p = (state.seed.posts || [])[0];
+      if (!p) return false;
+      await openPost(p.id);
+      const el = document.getElementById("postDetailPage");
+      return !!(el && el.style.display && el.style.display !== "none");
+    });
+    expect(ouverte, "aucune publication de départ pour ce cas").toBe(true);
+
+    // Le GESTE de la vidéo : l'onglet « Messages » de la barre du bas.
+    await page.locator('.nav-item[data-screen="messages"]').first().dispatchEvent("click");
+    await page.waitForTimeout(150);
+    const etat = await page.evaluate(() => ({
+      pageOuverte: (function () { const el = document.getElementById("postDetailPage"); return !!(el && el.style.display && el.style.display !== "none"); })(),
+      ecran: (document.querySelector(".screen.active") || {}).id,
+    }));
+    expect(etat.pageOuverte, "la page publication est restée par-dessus le nouvel écran").toBe(false);
+    expect(etat.ecran).toBe("screen-messages");
+  });
+
+  test("un onglet du bas referme aussi la fiche d'activité", async ({ page }) => {
+    await bootOnboarded(page);
+    await page.evaluate(() => goTo("irl"));
+    const ouverte = await page.evaluate(() => {
+      const ev = (state.seed.events || [])[0];
+      if (!ev) return false;
+      openEventDetails(ev.id);
+      const el = document.getElementById("eventDetailPage");
+      return !!(el && el.style.display && el.style.display !== "none");
+    });
+    expect(ouverte, "aucune activité de départ pour ce cas").toBe(true);
+
+    await page.locator('.nav-item[data-screen="feed"]').first().dispatchEvent("click");
+    await page.waitForTimeout(150);
+    const etat = await page.evaluate(() => ({
+      pageOuverte: (function () { const el = document.getElementById("eventDetailPage"); return !!(el && el.style.display && el.style.display !== "none"); })(),
+      ecran: (document.querySelector(".screen.active") || {}).id,
+    }));
+    expect(etat.pageOuverte, "la fiche d'activité est restée par-dessus le nouvel écran").toBe(false);
+    expect(etat.ecran).toBe("screen-feed");
+  });
+
   // ─── ③ « L'ÉCRAN SE FIGE » (le vrai coupable) ────────────────────────────
   // Safari iOS ZOOME la page au focus d'un champ dont la police calculée est
   // sous 16 px, et n'annule pas ce zoom en sortant. Comme `html` est en
