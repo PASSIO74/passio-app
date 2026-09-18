@@ -39,9 +39,8 @@
 // veut jamais dire « tout va bien » ; la santé se mesure ailleurs (fraîcheur de
 // l'ingestion, taux de réussite bout en bout).
 // ═══════════════════════════════════════════════════════════════════════════
-import fs from "node:fs";
-import path from "node:path";
 import { config } from "./config.js";
+import { revisionCourte } from "./git-revision.js";
 import { JsonDb } from "./jsondb.js";
 import { broadcast } from "./sse.js";
 import { onAlert } from "./alerts.js";
@@ -54,7 +53,7 @@ import { audit } from "./audit.js";
 import { sanitizeObserved, dataBlock } from "./donnees-observees.js";
 import { attemptRepair, repairState } from "./repair.js";
 
-const db = new JsonDb("sentinel", { enabled: null, seen: {}, diagnoses: [] });
+const db = new JsonDb("sentinel", { enabled: null, seen: {}, diagnoses: [], skippedLog: [] });
 
 // ─── Réglages (surchargeables par .env) ──────────────────────────────────────
 const env = process.env;
@@ -87,7 +86,28 @@ const SETTINGS = {
   // l'activer en connaissance de cause ; le bouton « Analyse approfondie »,
   // lui, reste inchangé : c'est un humain qui le déclenche et qui lit le résultat.
   deep: env.DASH_SENTINEL_DEEP === "true",
+  // ─── Bruit : des clés d'alerte qui ne désignent JAMAIS un défaut du code.
+  // Mesuré sur les 10 diagnostics de sentinel.json (2026-09-18) : 4 analyses
+  // portaient sur « Échec d'envoi de la télémétrie (appareil peut-être hors
+  // ligne) » — le réseau d'un testeur, rien à réparer — et chacune a coûté un
+  // cran des 8/h, 90 s d'occupation et du quota d'abonnement. Une alerte de
+  // pic mécanique (`spike`) ou de lenteur d'API dit la même chose : un fait
+  // d'exploitation, pas une cause dans js/. Ces alertes restent visibles dans
+  // le flux ; elles cessent seulement d'appeler Claude. Surchargeable par
+  // DASH_SENTINEL_SKIP_KEYS (préfixes, virgules). Le préfixe `sentinelle:`
+  // protège contre une boucle : une alerte émise PAR la sentinelle ne doit
+  // jamais la réveiller, quel que soit DASH_SENTINEL_LEVELS.
+  skipKeys: (env.DASH_SENTINEL_SKIP_KEYS || "conn:,spike,apislow:,linkopen:,linkerr:,sentinelle:")
+    .split(",").map((s) => s.trim()).filter(Boolean),
 };
+
+// Rappel envoyé lorsqu'une réponse s'arrête avant le verdict (voir pump()).
+const RAPPEL_VERDICT = [
+  "Ta réponse précédente s'est arrêtée AVANT la section « ## Verdict » (ou ne portait pas",
+  "la ligne finale VERDICT:). Réponds de nouveau, en respectant strictement le format imposé,",
+  "en commençant par « ## Verdict » et en terminant par la ligne « VERDICT: … ». Sans outil,",
+  "sans lecture de fichier : uniquement à partir des données fournies.",
+].join("\n");
 
 // ─── État vivant (mémoire) ───────────────────────────────────────────────────
 const rt = {
@@ -99,8 +119,9 @@ const rt = {
   lastRunAt: 0,
   runsWindow: [],         // horodatages des analyses de la dernière heure
   deepWindow: [],         // idem, limité aux analyses APPROFONDIES (quota)
-  skipped: { cooldown: 0, budget: 0, deepBudget: 0, level: 0, queue: 0, unavailable: 0 },
+  skipped: { cooldown: 0, budget: 0, deepBudget: 0, level: 0, queue: 0, unavailable: 0, noise: 0, sansVerdict: 0 },
   total: 0,
+  reprise: null,          // minuteur posé quand le budget horaire est épuisé (la file doit repartir seule)
 };
 
 /** Analyseur injectable — les tests remplacent Claude par une fonction locale. */
@@ -146,20 +167,10 @@ let _rev = { v: "", at: 0 };
 export function repoRevision(now = Date.now()) {
   if (now - _rev.at < 60_000) return _rev.v;
   _rev.at = now;
-  try {
-    const gitDir = path.join(config.repoPath, ".git");
-    const head = fs.readFileSync(path.join(gitDir, "HEAD"), "utf8").trim();
-    if (head.startsWith("ref:")) {
-      const ref = head.slice(4).trim();
-      try { _rev.v = fs.readFileSync(path.join(gitDir, ref), "utf8").trim().slice(0, 8); }
-      catch {
-        // Référence empaquetée (packed-refs) : on la cherche là.
-        const packed = fs.readFileSync(path.join(gitDir, "packed-refs"), "utf8");
-        const line = packed.split("\n").find((l) => l.endsWith(" " + ref));
-        _rev.v = line ? line.slice(0, 8) : "";
-      }
-    } else _rev.v = head.slice(0, 8);
-  } catch { _rev.v = ""; }   // pas un dépôt git : on retombe sur la clé nue
+  // `.git` peut être un DOSSIER (dépôt principal) ou un FICHIER `gitdir:`
+  // (worktree) : git-revision.js sait lire les deux. "" = pas un dépôt, ou
+  // illisible : on retombe sur la clé nue plutôt que d'inventer une révision.
+  _rev.v = revisionCourte(config.repoPath, 8);
   return _rev.v;
 }
 
@@ -177,6 +188,12 @@ export function cooldownKey(alert) {
 export function triage(alert, now = Date.now(), seen = db.get().seen) {
   if (!alert || alert.manual) return { take: false, reason: "manuelle" };
   if (!SETTINGS.levels.includes(alert.level)) return { take: false, reason: "level" };
+  // Bruit (cf. SETTINGS.skipKeys) : par préfixe de clé, ou par la marque
+  // `meta.kind: "reseau"` que l'émetteur peut poser sur une alerte qui parle
+  // de la connexion d'un appareil et non d'un défaut du produit.
+  const cleBrute = String(alert.key || alert.title || "");
+  if (SETTINGS.skipKeys.some((p) => cleBrute.startsWith(p))) return { take: false, reason: "bruit" };
+  if (alert.meta && alert.meta.kind === "reseau") return { take: false, reason: "bruit" };
 
   const key = cooldownKey(alert);
   const last = seen[key];
@@ -194,32 +211,48 @@ export function triage(alert, now = Date.now(), seen = db.get().seen) {
 // ═══════════════════════════════════════════════════════════════════════════
 //  CONSTRUCTION DU PROMPT
 // ═══════════════════════════════════════════════════════════════════════════
-const PREAMBLE = [
-  "Tu es la sentinelle de débogage du projet PASSIO (PWA vanilla JS + Supabase).",
-  "Le centre de pilotage a détecté un problème EN CONDITIONS RÉELLES et t'appelle",
-  "automatiquement, sans intervention humaine. Personne ne lit par-dessus ton épaule :",
-  "sois exact plutôt qu'exhaustif, et dis clairement quand tu n'es pas sûr.",
-  "",
-  "Contraintes ABSOLUES :",
-  "• Tu es en LECTURE SEULE : ne modifie aucun fichier, ne lance aucune commande,",
-  "  ne crée aucune branche. Tu proposes un correctif, tu ne l'appliques pas.",
-  "• Ne divulgue aucune clé, aucun secret, aucune donnée personnelle dans ta réponse.",
-  "• Distingue le DÉFAUT du GARDE-FOU : beaucoup de comportements du pilotage sont",
-  "  volontaires (filtre env=production, résidus datés de 7 j, contenu de démo,",
-  "  capacité `db` sur les routes d'intégrité, mutations refusées en prod).",
-  "",
-  "Sans reproduction, tu produis une HYPOTHÈSE causale, pas un diagnostic prouvé :",
-  "sépare ce que les données montrent de ce que tu en déduis. Méfie-toi du biais",
-  "« le dernier commit est le coupable » — les commits récents te sont donnés comme",
-  "piste, pas comme conclusion.",
-  "",
-  "Format de réponse imposé :",
-  "## En clair — 2-3 phrases sans jargon.",
-  "## Verdict — l'un de : DÉFAUT RÉEL / COMPORTEMENT ATTENDU / INSUFFISAMMENT DE DONNÉES.",
-  "## Preuves — ce que les données établissent, factuellement.",
-  "## Hypothèse — ta cause probable, et ce qui manque pour la prouver.",
-  "## Fichiers · ## Correctif proposé · ## Vérification · ## Risques",
-].join("\n");
+// ⚠️ LE VERDICT VIENT EN PREMIER, ET UNE LIGNE MACHINE LE RÉPÈTE EN DERNIER.
+// Jusqu'au 2026-09-18 le format demandait « ## En clair » d'abord et le verdict
+// en deuxième : une sortie coupée tôt perdait précisément la seule section que
+// la machine lit. Et en mode RAPIDE (aucun outil, dossier temporaire), rien ne
+// disait au modèle qu'il n'avait pas d'outil : il tentait un Glob ou un
+// PowerShell, le tour s'arrêtait, et le fragment était enregistré comme un
+// diagnostic (4 cas sur 10 mesurés). Le préambule dépend donc du mode.
+function preambule(deep) {
+  return [
+    "Tu es la sentinelle de débogage du projet PASSIO (PWA vanilla JS + Supabase).",
+    "Le centre de pilotage a détecté un problème EN CONDITIONS RÉELLES et t'appelle",
+    "automatiquement, sans intervention humaine. Personne ne lit par-dessus ton épaule :",
+    "sois exact plutôt qu'exhaustif, et dis clairement quand tu n'es pas sûr.",
+    "",
+    "Contraintes ABSOLUES :",
+    deep
+      ? "• Tu es en LECTURE SEULE : tu peux LIRE le dépôt (Read, Grep, Glob) et rien d'autre, ne modifie aucun fichier,"
+      : "• Tu es en LECTURE SEULE et tu n'as AUCUN outil, aucun accès au dépôt ni au disque : n'essaie jamais de lire,",
+    deep
+      ? "  ne lance aucune commande, ne crée aucune branche. Tu proposes un correctif, tu ne l'appliques pas."
+      : "  lister ou chercher un fichier ; réponds UNIQUEMENT avec les données fournies ci-dessous,",
+    deep ? "" : "  et ne mentionne jamais tes outils ni leur absence. Tu proposes un correctif, tu ne l'appliques pas.",
+    "• Ne divulgue aucune clé, aucun secret, aucune donnée personnelle dans ta réponse.",
+    "• Distingue le DÉFAUT du GARDE-FOU : beaucoup de comportements du pilotage sont",
+    "  volontaires (filtre env=production, résidus datés de 7 j, contenu de démo,",
+    "  capacité `db` sur les routes d'intégrité, mutations refusées en prod).",
+    "",
+    "Sans reproduction, tu produis une HYPOTHÈSE causale, pas un diagnostic prouvé :",
+    "sépare ce que les données montrent de ce que tu en déduis. Méfie-toi du biais",
+    "« le dernier commit est le coupable » — les commits récents te sont donnés comme",
+    "piste, pas comme conclusion.",
+    "",
+    "Format de réponse imposé, dans cet ordre exact :",
+    "## Verdict — l'un de : DÉFAUT RÉEL / COMPORTEMENT ATTENDU / INSUFFISAMMENT DE DONNÉES.",
+    "## En clair — 2-3 phrases sans jargon.",
+    "## Preuves — ce que les données établissent, factuellement.",
+    "## Hypothèse — ta cause probable, et ce qui manque pour la prouver.",
+    "## Fichiers — " + (deep ? "chemins réels lus dans le dépôt." : "UNIQUEMENT des chemins présents dans les données fournies ; sinon écris INCONNU."),
+    "## Correctif proposé · ## Vérification · ## Risques",
+    "Termine par une DERNIÈRE ligne, seule : VERDICT: DEFAUT_REEL ou VERDICT: COMPORTEMENT_ATTENDU ou VERDICT: INSUFFISANT",
+  ].filter((l) => l !== "").join("\n");
+}
 
 /** Contexte générique : l'alerte + les erreurs récentes qui l'entourent. */
 function genericBlock(alert) {
@@ -253,20 +286,20 @@ export async function buildJobPrompt(job) {
     if (t) {
       let suspects = null;
       try { suspects = await suspectsFor(t.startedAt, t.feature); } catch { suspects = null; }
-      return PREAMBLE + "\n\n" + buildTracePrompt(t, suspects ? suspectsPromptBlock(suspects) : "");
+      return preambule(deep) + "\n\n" + buildTracePrompt(t, suspects ? suspectsPromptBlock(suspects) : "");
     }
     // Trace expirée du store mémoire : on retombe sur le contexte générique
     // plutôt que d'inventer — et on le DIT dans le prompt.
-    return PREAMBLE + "\n\n(La trace détaillée a expiré du tampon mémoire ; contexte réduit.)\n\n" + genericBlock(alert);
+    return preambule(deep) + "\n\n(La trace détaillée a expiré du tampon mémoire ; contexte réduit.)\n\n" + genericBlock(alert);
   }
 
   if (kind === "bug") {
     const ctx = await buildContext(alert.meta.bug);
-    if (ctx) return PREAMBLE + "\n\n" + buildPrompt(ctx, { deep });
-    return PREAMBLE + "\n\n(Le bug groupé n'est plus dans le tampon ; contexte réduit.)\n\n" + genericBlock(alert);
+    if (ctx) return preambule(deep) + "\n\n" + buildPrompt(ctx, { deep });
+    return preambule(deep) + "\n\n(Le bug groupé n'est plus dans le tampon ; contexte réduit.)\n\n" + genericBlock(alert);
   }
 
-  return PREAMBLE + "\n\n" + genericBlock(alert);
+  return preambule(deep) + "\n\n" + genericBlock(alert);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -289,9 +322,12 @@ export function consider(alert, now = Date.now()) {
   if (!verdict.take) {
     if (verdict.reason === "cooldown") rt.skipped.cooldown++;
     else if (verdict.reason === "level") rt.skipped.level++;
+    else if (verdict.reason === "bruit") rt.skipped.noise++;
+    // `level` n'est pas journalisé : chaque warn/info du flux en produirait un.
+    if (verdict.reason !== "level") noterSaut(alert, verdict.reason, now);
     return null;
   }
-  if (rt.queue.length >= SETTINGS.queueMax) { rt.skipped.queue++; return null; }
+  if (rt.queue.length >= SETTINGS.queueMax) { rt.skipped.queue++; noterSaut(alert, "queue", now); return null; }
 
   // Le cooldown est posé À L'ENTRÉE (pas à la fin) : pendant une rafale, les 40
   // alertes suivantes de la même cause ne doivent pas s'empiler dans la file.
@@ -320,11 +356,40 @@ export function consider(alert, now = Date.now()) {
   return job;
 }
 
+/**
+ * Journal des alertes écartées — persisté et borné (50). Jusqu'ici `skipped`
+ * n'était qu'un objet mémoire remis à zéro à chaque relance du superviseur
+ * (cinq entre le 13 et le 18/09) : impossible de savoir APRÈS COUP ce que la
+ * sentinelle avait laissé passer, ni pourquoi.
+ */
+function noterSaut(alert, reason, now = Date.now()) {
+  const entree = { ts: now, key: String(alert.key || alert.title || "").slice(0, 180), reason, title: String(alert.title || "").slice(0, 120), level: alert.level || null };
+  db.update((d) => {
+    d.skippedLog = Array.isArray(d.skippedLog) ? d.skippedLog : [];
+    d.skippedLog.unshift(entree);
+    if (d.skippedLog.length > 50) d.skippedLog.length = 50;
+  });
+}
+
+/**
+ * Budget horaire épuisé : la file ne doit pas dormir jusqu'au prochain consider().
+ * Mesuré (revue du 2026-09-18) : pump() rendait sans rien replanifier — les jobs
+ * en file attendaient une nouvelle alerte ou la fin d'une analyse, parfois des
+ * heures. On se réveille quand le plus vieux cran de la fenêtre sort de l'heure.
+ */
+function planifierReprise(now) {
+  if (rt.reprise) return;
+  const plusVieux = rt.runsWindow.length ? Math.min(...rt.runsWindow) : now;
+  const delai = Math.max(250, plusVieux + 3600_000 - now + 10);
+  rt.reprise = setTimeout(() => { rt.reprise = null; pump(); }, delai);
+  rt.reprise.unref?.();
+}
+
 let pumping = false;
 async function pump() {
   if (pumping || rt.running || !rt.queue.length) return;
   const now = Date.now();
-  if (!budgetOk(now)) { rt.skipped.budget++; return; }
+  if (!budgetOk(now)) { rt.skipped.budget++; planifierReprise(now); return; }
   if (now - rt.lastRunAt < SETTINGS.minGapMs) {
     setTimeout(() => pump(), SETTINGS.minGapMs - (now - rt.lastRunAt)).unref?.();
     return;
@@ -351,9 +416,27 @@ async function pump() {
   broadcast("sentinel_state", sentinelState());
 
   let result;
+  let essais = 1;
   try {
     const prompt = await buildJobPrompt(job);
     result = await analyzer(prompt, { deep: job.deep });
+    // ─── Une réponse SANS verdict n'est pas un diagnostic ──────────────────
+    // Mesuré sur sentinel.json (2026-09-18) : 4 diagnostics sur 10 étaient des
+    // fragments (le modèle tentait un outil qu'il n'a pas, le tour s'arrêtait)
+    // enregistrés error=null, audit ok:true, cooldown 6 h posé — un succès qui
+    // n'en était pas un, et personne pour le voir. Désormais : un second essai
+    // avec rappel du format, puis, s'il ne rend toujours rien d'exploitable,
+    // un ÉCHEC nommé. Le cooldown est conservé (Claude a bien travaillé : c'est
+    // le garde-fou n°3), mais l'échec se voit dans l'état, l'audit et une alerte.
+    if (result && !result.error && result.analysis && !extractVerdict(result.analysis)) {
+      essais = 2;
+      const r2 = await analyzer(prompt + "\n\n" + RAPPEL_VERDICT, { deep: job.deep });
+      if (r2 && !r2.error && r2.analysis && extractVerdict(r2.analysis)) result = r2;
+      else if (r2 && r2.error) result = { ...result, error: r2.error, via: r2.via || result.via, authNeeded: r2.authNeeded };
+      if (!result.error && !extractVerdict(result.analysis)) {
+        result = { ...result, error: "réponse sans verdict après deux essais (sortie tronquée ou format non respecté)", sansVerdict: true };
+      }
+    }
   } catch (e) {
     result = { error: e.message || String(e) };
   }
@@ -387,8 +470,20 @@ async function pump() {
     analysis: result?.analysis ? String(result.analysis).slice(0, 60_000) : null,
     error: result?.error || null,
     via: result?.via || null,
-    verdict: extractVerdict(result?.analysis),
+    essais,
+    verdict: result?.error ? null : extractVerdict(result?.analysis),
   };
+  if (result?.sansVerdict) {
+    rt.skipped.sansVerdict++;
+    // Alerte `warn` (jamais analysée : préfixe `sentinelle:` dans skipKeys) —
+    // import dynamique pour ne pas créer de cycle alerts → sentinel → alerts.
+    import("./alerts.js").then((m) => {
+      const emettre = typeof m.raise === "function" ? m.raise : m.raiseManual;
+      emettre({ key: "sentinelle:sans-verdict", level: "warn", title: "Sentinelle : diagnostic sans verdict",
+        message: `« ${record.title} » : deux réponses sans « ## Verdict » — sortie tronquée ou format non respecté. Le cooldown reste posé ; rien n'a été réparé.`,
+        meta: { view: "sentinel", diagnosis: record.id } });
+    }).catch(() => {});
+  }
   db.update((d) => {
     d.diagnoses.unshift(record);
     if (d.diagnoses.length > SETTINGS.keep) d.diagnoses.length = SETTINGS.keep;
@@ -427,7 +522,16 @@ async function pump() {
 /** Récupère le verdict auto-déclaré par l'analyse (section « ## Verdict »). */
 export function extractVerdict(analysis) {
   if (!analysis) return null;
-  const m = String(analysis).match(/##\s*Verdict\s*\n?\s*[—:-]?\s*([^\n]{0,80})/i);
+  const s = String(analysis);
+  // ① La ligne machine (demandée en dernier, acceptée n'importe où) : la plus sûre.
+  const m0 = s.match(/^\s*VERDICT\s*:\s*(DEFAUT_REEL|DÉFAUT_RÉEL|COMPORTEMENT_ATTENDU|INSUFFISANT)\b/im);
+  if (m0) {
+    const v = m0[1].toUpperCase();
+    return v.startsWith("D") ? "defect" : v.startsWith("C") ? "expected" : "insufficient";
+  }
+  // ② La section, tolérante à la FORME (« ## Verdict », « **Verdict :** »,
+  //    « Verdict — ») mais stricte sur le MOT qui suit.
+  const m = s.match(/(?:^|\n)\s*(?:#{1,6}\s*)?\**\s*Verdict\s*\**\s*[:—–-]?\s*\**\s*\n?\s*([^\n]{0,80})/i);
   if (!m) return null;
   const line = m[1].toUpperCase();
   if (line.includes("DÉFAUT") || line.includes("DEFAUT")) return "defect";
@@ -450,10 +554,12 @@ export function sentinelState() {
     queued: rt.queue.length,
     total: rt.total,
     skipped: { ...rt.skipped },
+    skippedLog: (db.get().skippedLog || []).slice(0, 10),
     runsLastHour: rt.runsWindow.filter((t) => Date.now() - t < 3600_000).length,
     settings: {
       levels: SETTINGS.levels, maxPerHour: SETTINGS.maxPerHour,
       cooldownMin: Math.round(SETTINGS.cooldownMs / 60000), deep: SETTINGS.deep,
+      skipKeys: SETTINGS.skipKeys,
     },
   };
 }
@@ -481,9 +587,12 @@ export function startSentinel() {
 export function _reset({ startedAt = Date.now() } = {}) {
   rt.queue.length = 0; rt.running = null; rt.repairing = null; rt.lastRunAt = 0; rt.runsWindow.length = 0; rt.deepWindow.length = 0;
   rt.total = 0; rt.started = true; rt.startedAt = startedAt;
-  rt.skipped = { cooldown: 0, budget: 0, deepBudget: 0, level: 0, queue: 0, unavailable: 0 };
+  rt.skipped = { cooldown: 0, budget: 0, deepBudget: 0, level: 0, queue: 0, unavailable: 0, noise: 0, sansVerdict: 0 };
+  if (rt.reprise) { clearTimeout(rt.reprise); rt.reprise = null; }
   pumping = false;
-  db.update((d) => { d.seen = {}; d.diagnoses = []; });
+  db.update((d) => { d.seen = {}; d.diagnoses = []; d.skippedLog = []; });
 }
 export const _settings = SETTINGS;
 export function _pump() { return pump(); }
+/** Fenêtre horaire des analyses — usage TESTS (éprouver la reprise après budget épuisé). */
+export function _setRunsWindowForTests(ts) { rt.runsWindow = Array.isArray(ts) ? ts.slice() : []; }

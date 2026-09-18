@@ -2,6 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { config } from "./config.js";
+import { lireRevision } from "./git-revision.js";
 import { JsonDb } from "./jsondb.js";
 import {
   publicReleaseSnapshot,
@@ -26,21 +27,14 @@ function sameCommit(a, b) {
   return common >= MIN_COMMIT_PROOF && x.slice(0, common) === y.slice(0, common);
 }
 
+// La lecture de `.git` vit dans git-revision.js : elle sait lire un dépôt
+// principal (dossier) ET un worktree (fichier `gitdir:`, références dans le
+// dépôt commun). Avant, un worktree rendait branch/revision null — l'instantané
+// disait « detached » ou rien, et la comparaison avec la preuve publique perdait
+// son ancre.
 function readRef() {
-  try {
-    const gitDir = path.join(config.repoPath, ".git");
-    const head = fs.readFileSync(path.join(gitDir, "HEAD"), "utf8").trim();
-    if (!head.startsWith("ref:")) return { branch: "detached", revision: head.slice(0, 12), fullRevision: head };
-    const ref = head.slice(4).trim();
-    let sha = null;
-    try { sha = fs.readFileSync(path.join(gitDir, ref), "utf8").trim(); }
-    catch {
-      const packed = fs.readFileSync(path.join(gitDir, "packed-refs"), "utf8");
-      const line = packed.split("\n").find((l) => l.endsWith(" " + ref));
-      sha = line ? line.split(" ")[0] : null;
-    }
-    return { branch: ref.replace(/^refs\/heads\//, ""), revision: sha ? sha.slice(0, 12) : null, fullRevision: sha || null };
-  } catch { return { branch: null, revision: null, fullRevision: null }; }
+  const { branch, sha } = lireRevision(config.repoPath);
+  return { branch, revision: sha ? sha.slice(0, 12) : null, fullRevision: sha || null };
 }
 
 function localReleaseManifest() {

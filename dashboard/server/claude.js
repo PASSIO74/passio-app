@@ -133,7 +133,9 @@ export function buildTracePrompt(t, suspectsBlock = "") {
   lines.push("- UPDATE/DELETE Supabase touchant 0 ligne = RLS manquante · insert conv_messages exige from_id=auth.uid().");
   lines.push("- Jamais de base64 en DB (→ Storage) · supaTs() pour les timestamps · realtime = publication + canal.");
   lines.push("\n## Attendu de ta réponse");
-  lines.push("1. Cause probable  2. Fichiers à inspecter (chemins réels)  3. Explication  4. Correctif (git diff)");
+  // « chemins réels » sans outil de lecture faisait tenter un Glob au modèle en
+  // mode rapide (sentinel.json, 4 sorties tronquées) : la consigne suit le mode.
+  lines.push("1. Cause probable  2. Fichiers à inspecter (uniquement s'ils apparaissent dans le contexte fourni, sinon INCONNU)  3. Explication  4. Correctif (git diff)");
   lines.push("5. Tests / vérifications à relancer  6. Risques et non-régression");
   return lines.join("\n");
 }

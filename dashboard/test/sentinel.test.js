@@ -354,7 +354,9 @@ test("un refus d'authentification rend la clé de cooldown et le cran de budget"
   assert.equal(triage(a).take, true, "la cause n'est PAS en cooldown : la prochaine occurrence sera analysée dès la reconnexion");
   // Le budget horaire n'a pas été entamé : 8 refus d'auth ne peuvent pas rendre la sentinelle muette pour une heure.
   let runs = 0;
-  _setAnalyzer(async () => { runs++; return { analysis: "En clair : ok", via: "cli" }; });
+  // Une réponse SANS verdict est rejouée une fois (2026-09-18) : pour compter les
+  // analyses, l'analyseur rend un verdict — sinon chaque cran vaudrait deux appels.
+  _setAnalyzer(async () => { runs++; return { analysis: "## Verdict\nCOMPORTEMENT ATTENDU", via: "cli" }; });
   for (let i = 0; i < _settings.maxPerHour; i++) { consider(alert({ level: "critical", key: "k_budget_" + i })); await settle(); }
   assert.equal(runs, _settings.maxPerHour, "toutes les analyses suivantes passent : le refus n'a pas consommé de cran");
 });
@@ -371,7 +373,7 @@ test("un délai dépassé, lui, garde son cooldown (Claude a bien été occupé)
 test("une file en attente n'est pas brûlée si la source tombe entre-temps", async () => {
   _reset();
   let runs = 0;
-  _setAnalyzer(async () => { runs++; return { analysis: "En clair : ok", via: "cli" }; });
+  _setAnalyzer(async () => { runs++; return { analysis: "## Verdict\nCOMPORTEMENT ATTENDU", via: "cli" }; });
   const a = alert({ level: "critical", key: "k_file" });
   // Disponible à l'entrée, plus au moment de l'exécution.
   let dispo = true;
@@ -386,4 +388,108 @@ test("une file en attente n'est pas brûlée si la source tombe entre-temps", as
   _setAvailability(() => true);
   assert.equal(triage(a).take, true, "la clé est rendue : l'alerte reviendra et sera analysée après la reconnexion");
   assert.ok(sentinelState().skipped.unavailable >= 1);
+});
+
+// ─── Verdict fiable, bruit écarté, file qui repart (2026-09-18) ──────────────
+// Mesuré sur sentinel.json : 4 diagnostics sur 10 étaient des fragments sans
+// « ## Verdict » (le modèle tentait un outil qu'il n'a pas en mode rapide),
+// enregistrés error=null, audit ok:true, cooldown posé ; et 4 sur 10 portaient
+// sur la connexion d'un testeur — rien à réparer. Mutations éprouvées :
+//  • retirer la ligne machine d'extractVerdict → « formes » rougit ;
+//  • retirer le second essai de pump() → « second essai qui rend le verdict » rougit ;
+//  • retirer l'erreur « sans verdict » → « est un ÉCHEC » rougit ;
+//  • retirer l'exclusion skipKeys / meta.kind du triage → « bruit » rougit ;
+//  • retirer planifierReprise() → « repart SEULE » rougit ;
+//  • remettre « ## En clair » avant le verdict dans preambule() → « en tête » rougit.
+test("verdict : formes — ligne machine, gras, titre de niveau 3 ; un fragment ne ment pas", () => {
+  assert.equal(extractVerdict("## Verdict\nDÉFAUT RÉEL\n## En clair\n…\nVERDICT: DEFAUT_REEL"), "defect");
+  assert.equal(extractVerdict("blabla\nVERDICT: COMPORTEMENT_ATTENDU"), "expected");
+  assert.equal(extractVerdict("VERDICT: INSUFFISANT"), "insufficient");
+  assert.equal(extractVerdict("**Verdict :** COMPORTEMENT ATTENDU"), "expected");
+  assert.equal(extractVerdict("### Verdict — INSUFFISAMMENT DE DONNÉES"), "insufficient");
+  assert.equal(extractVerdict("Je vais d'abord vérifier si le dépôt PASSIO est accessible…"), null);
+});
+
+test("une réponse SANS verdict est rejouée une fois, puis enregistrée comme un ÉCHEC — jamais comme un succès", async () => {
+  _reset();
+  const prompts = [];
+  _setAnalyzer(async (prompt) => { prompts.push(prompt); return { analysis: "Je vais d'abord vérifier si le dépôt PASSIO est accessible…", via: "cli" }; });
+  const a = alert({ level: "critical", key: "k_tronque" });
+  consider(a);
+  await settle(800);
+  const d = listDiagnoses()[0];
+  assert.equal(prompts.length, 2, "un second essai avec rappel du format, pas plus");
+  assert.match(prompts[1], /arrêtée AVANT la section/, "le second essai porte le rappel du format");
+  assert.match(d.error, /sans verdict/);
+  assert.equal(d.verdict, null);
+  assert.equal(d.essais, 2);
+  assert.ok(d.analysis, "la réponse tronquée est conservée pour lecture");
+  assert.equal(sentinelState().skipped.sansVerdict, 1);
+  assert.equal(triage(a).take, false, "le cooldown reste posé : Claude a bien été occupé (garde-fou n°3)");
+});
+
+test("un second essai qui rend le verdict sauve le diagnostic", async () => {
+  _reset();
+  let appels = 0;
+  _setAnalyzer(async () => { appels++; return appels === 1
+    ? { analysis: "fragment sans verdict", via: "cli" }
+    : { analysis: "## Verdict\nCOMPORTEMENT ATTENDU\n\nVERDICT: COMPORTEMENT_ATTENDU", via: "cli" }; });
+  consider(alert({ level: "critical", key: "k_rattrape" }));
+  await settle(800);
+  const d = listDiagnoses()[0];
+  assert.equal(appels, 2);
+  assert.equal(d.error, null);
+  assert.equal(d.verdict, "expected");
+  assert.equal(d.essais, 2);
+  assert.equal(sentinelState().skipped.sansVerdict, 0);
+});
+
+test("bruit : conn:*, spike, apislow:*, sentinelle:* et meta.kind=reseau ne sont JAMAIS analysés, et le saut est journalisé", async () => {
+  _reset();
+  let runs = 0;
+  _setAnalyzer(async () => { runs++; return { analysis: "## Verdict\nDÉFAUT RÉEL", via: "cli" }; });
+  for (const key of ["conn:dev_x", "spike", "apislow:/rest/v1/posts", "sentinelle:sans-verdict"]) {
+    assert.equal(triage(alert({ level: "high", key })).reason, "bruit", key);
+    consider(alert({ level: "high", key }));
+  }
+  const reseau = alert({ level: "high", key: "trace:failed:x", meta: { kind: "reseau" } });
+  assert.equal(triage(reseau).reason, "bruit");
+  consider(reseau);
+  await settle(300);
+  assert.equal(runs, 0, "aucune analyse Claude sur du bruit");
+  const st = sentinelState();
+  assert.equal(st.skipped.noise, 5);
+  assert.equal(st.skippedLog.length, 5);
+  assert.equal(st.skippedLog[0].reason, "bruit");
+  assert.ok(st.settings.skipKeys.includes("conn:"));
+  // Une vraie cause passe toujours.
+  assert.equal(triage(alert({ level: "high", key: "trace:failed:publish_post:saved" })).take, true);
+});
+
+test("budget épuisé : la file repart SEULE quand le plus vieux cran sort de l'heure", async () => {
+  _reset();
+  let runs = 0;
+  _setAnalyzer(async () => { runs++; return { analysis: "## Verdict\nCOMPORTEMENT ATTENDU", via: "cli" }; });
+  const now = Date.now();
+  // Fenêtre pleine, dont un cran qui expire dans ~80 ms.
+  sentinel._setRunsWindowForTests([now - 3600_000 + 80, ...Array.from({ length: _settings.maxPerHour - 1 }, () => now)]);
+  consider(alert({ level: "critical", key: "k_apres_budget" }));
+  await settle(50);
+  assert.equal(runs, 0, "rien ne part tant que le budget est plein");
+  assert.equal(sentinelState().skipped.budget, 1);
+  await new Promise((r) => setTimeout(r, 400));
+  await settle(400);
+  assert.equal(runs, 1, "la file est repartie sans nouvelle alerte ni analyse terminée");
+});
+
+test("le prompt du mode rapide dit au modèle qu'il n'a AUCUN outil, et le verdict vient en tête", async () => {
+  _reset();
+  const rapide = await buildJobPrompt({ kind: "generic", deep: false, alert: alert({ title: "x", message: "y" }) });
+  assert.ok(rapide.includes("AUCUN outil"));
+  assert.ok(rapide.includes("LECTURE SEULE"));
+  assert.ok(rapide.indexOf("## Verdict") < rapide.indexOf("## En clair"), "le verdict précède « En clair »");
+  assert.ok(rapide.includes("VERDICT: DEFAUT_REEL"));
+  const profond = await buildJobPrompt({ kind: "generic", deep: true, alert: alert({ title: "x", message: "y" }) });
+  assert.ok(profond.includes("Read, Grep, Glob"));
+  assert.ok(!profond.includes("AUCUN outil"));
 });
