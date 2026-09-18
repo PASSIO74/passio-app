@@ -1989,6 +1989,9 @@ document.addEventListener("visibilitychange", function() {
   // outbox 15 s) sont suspendus quand l'onglet est caché → au retour, un refresh
   // immédiat du fil si l'écran feed est actif (le realtime couvre le reste).
   try {
+    // Déconnexion ou rechargement en cours (`annoncerRechargement`, app-02) : la
+    // page part, une requête lancée maintenant serait coupée en vol (2026-09-18).
+    if (window._rechargementImminent === true) return;
     const feedEl = document.getElementById("screen-feed");
     if (feedEl && feedEl.classList.contains("active") && window._supaReal && typeof supaLoadPosts === "function") {
       supaLoadPosts().then((posts) => {
@@ -2918,6 +2921,7 @@ async function boot() {
         // chemin normal (adoption si c'est un AUTRE compte, hydratation
         // `user_state`, files rejouées), et rien de ce mode ne survit.
         try { toast("Session rétablie ✓", "reward"); } catch (e) {}
+        try { annoncerRechargement(); } catch (e) {}
         setTimeout(function () { try { location.reload(); } catch (e) {} }, 300);
         return;
       }
@@ -6955,6 +6959,7 @@ function startFeedRefreshLoop() {
   _feedRefreshInterval = setInterval(async () => {
     try {
       if (document.hidden) return; // onglet en arrière-plan : pas de requête (batterie/quota)
+      if (window._rechargementImminent === true) return; // rechargement décidé : la requête serait coupée
       const posts = await supaLoadPosts();
       if (posts && posts.length > 0) {
         const extra = (window._feedExtraPosts || []).filter(p => !posts.some(x => x.id === p.id));

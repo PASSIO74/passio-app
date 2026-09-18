@@ -534,11 +534,19 @@
   // sur un appareil parfaitement joignable. Même distinction que le hook fetch plus
   // bas — « la requête a échoué » et « notre code a un défaut » ne sont pas la même
   // chose, et cette fonction-ci les confondait encore.
+  // ⚠️ Rechargement DÉCIDÉ par l'application (déconnexion, session rétablie) :
+  // `window._rechargementImminent`, posé par app-02 (`annoncerRechargement`) AVANT
+  // `location.reload()`. Même preuve que `unloading`, mais disponible AVANT
+  // `pagehide` — qu'iOS n'émet qu'APRÈS avoir coupé les requêtes en vol
+  // (mesuré en production le 2026-09-18 : GET /posts en `error`, page « visible »).
+  function rechargementImminent() {
+    try { return window._rechargementImminent === true; } catch (e) { return false; }
+  }
   function contexteEchec(opts) {
     var masquee = false, horsLigne = false;
     try { masquee = (typeof document !== "undefined" && document.visibilityState === "hidden"); } catch (e) {}
     try { horsLigne = (typeof navigator !== "undefined" && navigator.onLine === false); } catch (e) {}
-    return { masquee: masquee, hors_ligne: horsLigne, fermeture: unloading || !!(opts && opts.keepalive) };
+    return { masquee: masquee, hors_ligne: horsLigne, fermeture: unloading || rechargementImminent() || !!(opts && opts.keepalive) };
   }
 
   // Backoff commun (3 s → 60 s) sur le TOTAL des échecs consécutifs, expliqués ou
@@ -1063,7 +1071,15 @@
           // mais par le drapeau `unloading` — que cette ligne ne lisait pas.
           // Même preuve que `contexteEchec()` plus haut, même distinction :
           // « la page part » n'est pas « notre code a un défaut ».
-          var _masquee = false, _horsLigne = false, _fermeture = !!unloading;
+          //
+          // ⚠️ ET LA PREUVE PEUT PRÉCÉDER `pagehide` (2026-09-18) : un
+          // `location.reload()` décidé par l'application (déconnexion via
+          // « Se reconnecter ») coupe les requêtes en vol AVANT que `pagehide`
+          // ne pose `unloading` — mesuré en production, GET /posts en `error`
+          // avec page « visible » et en ligne. `window._rechargementImminent`
+          // est posé par app-02 avant le rechargement ; il vaut `fermeture`.
+          var _rechargement = rechargementImminent();
+          var _masquee = false, _horsLigne = false, _fermeture = !!unloading || _rechargement;
           try { _masquee = (typeof document !== "undefined" && document.visibilityState === "hidden"); } catch (e) {}
           try { _horsLigne = (typeof navigator !== "undefined" && navigator.onLine === false); } catch (e) {}
           var _transitoire = _masquee || _horsLigne || _fermeture;
@@ -1072,7 +1088,7 @@
             duration_ms: dt, status: "error",
             severity: _transitoire ? "warn" : "error",
             http_status: 0, message: err && err.message,
-            meta: { masquee: _masquee, hors_ligne: _horsLigne, fermeture: _fermeture },
+            meta: { masquee: _masquee, hors_ligne: _horsLigne, fermeture: _fermeture, rechargement: _rechargement },
             correlation_id: Telemetry._ambientFlowCid(),
           });
         }
