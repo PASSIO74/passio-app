@@ -289,6 +289,20 @@
     // Cette garde vient AVANT le test du code HTTP : c'est l'état de l'appel qui
     // décide, pas son statut seul.
     if (fields && (fields.status === "slow" || fields.severity === "warn" || fields.severity === "error")) return 1;
+    // ⚠️ UNE LIGNE QUI PORTE UN `correlation_id` EST UNE PREUVE INDIVIDUELLE,
+    // PAS UN AGRÉGAT — et c'est le seul endroit où un `api` en 200 ne se résume
+    // pas. `dashboard/server/traces.js` reconstitue un flow (clic → gestionnaire
+    // → requête → confirmation) et son `_setStep` laisse le DERNIER écrivain
+    // fixer l'étape `request`. Échantillonnés, les 200 rapides disparaissent 9
+    // fois sur 10 et la population survivante penche vers les lignes lentes :
+    // mesuré sur un flow réel de production (`fl_mu04au5u-…`, action `cint`), les
+    // événements 3, 4 et 5 sautent, le n° 2 — le seul `slow` — devient le
+    // dernier, le verdict passe de `success` à `slow`, et `alerts.js` lève un
+    // « Action anormalement lente » sur une action qui a parfaitement abouti.
+    // Pire cas voisin : un flow dont la seule requête serait un 200 perdrait son
+    // étape `request` et serait classé `dead_click` — alerte `high` « Clic sans
+    // effet ». Le coût de cette garde est nul : 18 lignes corrélées en 30 jours.
+    if (fields && fields.correlation_id != null && fields.correlation_id !== "") return 1;
     if (type === "api") {
       // `http_status` absent = requête qui n'a jamais abouti → c'est un signal.
       var st = fields && typeof fields.http_status === "number" ? fields.http_status : null;
@@ -786,10 +800,19 @@
       // aujourd'hui ; c'est précisément pour que ça reste vrai.
       meta: scrubMeta(Object.assign(
         { mode: MODE },
-        (fields.meta && typeof fields.meta === "object") ? fields.meta : {},
-        _taux < 1 ? { ech: Math.round(1 / _taux) } : {}
+        (fields.meta && typeof fields.meta === "object") ? fields.meta : {}
       )),
     };
+    // ⚠️ `ech` EST POSÉ APRÈS `scrubMeta`, ET C'EST LA RAISON D'ÊTRE DE CES DEUX
+    // LIGNES. Passé DANS l'objet nettoyé, il tombait sous le plafond de 30 clés
+    // de `scrubMeta` (`Object.keys(obj).slice(0, 30)`) : un appelant à 29 clés ou
+    // plus aurait fait partir une ligne échantillonnée SANS son poids, donc
+    // sous-comptée dix fois au pilotage, en silence. Aucun appelant n'en approche
+    // aujourd'hui — c'est précisément pour que ça reste sans conséquence.
+    // Posé ici, il gagne aussi sur une clé homonyme de l'appelant : sans quoi un
+    // `meta: { ech: 1000 }` piloterait un multiplicateur du tableau de bord
+    // depuis le client (`poidsEvenement` accepte jusqu'à 1000).
+    if (_taux < 1) { if (!ev.meta || typeof ev.meta !== "object") ev.meta = {}; ev.meta.ech = Math.round(1 / _taux); }
     enqueue(ev);
     return ev.correlation_id || ev.event_id;
   }

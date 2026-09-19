@@ -133,14 +133,25 @@
   // version qui a changé. On ne peut pas appeler `versionApp` : telemetry.js est
   // chargé APRÈS ce fichier et n'expose pas la fonction — d'où la copie, dite en
   // clair plutôt que subie.
+  // ⚠️ LES DEUX CHAMPS SONT CONCATÉNÉS, JAMAIS L'UN *OU* L'AUTRE. Le premier jet
+  // rendait `PASSIO_APP_VERSION` SEUL quand il était posé — ce qui aligne bien la
+  // lecture sur `versionApp()` (telemetry.js), mais transforme un champ
+  // d'ÉTIQUETTE en clé de cache. Rien ne le pose côté client aujourd'hui ; le
+  // jour où quelqu'un y écrit une version produit stable (« 2026.10.0 »), la clé
+  // CESSE DE CHANGER AU DÉPLOIEMENT et le référentiel est figé à travers les
+  // releases — exactement le défaut que le cache est censé éviter. En les
+  // concaténant, la clé change dès que l'un des deux bouge : aucune valeur
+  // stable ne peut plus la geler, et l'alignement avec le contrat de release est
+  // conservé.
   function releaseCourante() {
+    var bouts = [];
     try {
-      if (window.PASSIO_APP_VERSION) return String(window.PASSIO_APP_VERSION).slice(0, 40);
+      if (window.PASSIO_APP_VERSION) bouts.push(String(window.PASSIO_APP_VERSION).slice(0, 24));
       var r = window.PASSIO_RELEASE;
-      if (r && typeof r.commit === "string" && /^[0-9a-f]{7,40}$/i.test(r.commit)) return r.commit.slice(0, 8);
-      if (r && typeof r.buildId === "string" && r.buildId) return "b" + r.buildId.slice(0, 8);
+      if (r && typeof r.commit === "string" && /^[0-9a-f]{7,40}$/i.test(r.commit)) bouts.push(r.commit.slice(0, 8));
+      else if (r && typeof r.buildId === "string" && r.buildId) bouts.push("b" + r.buildId.slice(0, 8));
     } catch (e) {}
-    return "";
+    return bouts.join("-").slice(0, 40);
   }
   window.idbPassionsRelease = releaseCourante;
 

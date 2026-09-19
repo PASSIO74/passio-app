@@ -344,6 +344,18 @@
           <span style="display:block;font-size:12px;line-height:1.5;color:var(--muted);margin:0;">J'ai lu et j'accepte les <span id="authCguLink" role="button" tabindex="0" onclick="event.preventDefault();event.stopPropagation();openTermsOfService()" style="color:var(--accent);font-weight:700;cursor:pointer;text-decoration:underline;">conditions générales</span> et la <span id="authPrivacyLink" role="button" tabindex="0" onclick="event.preventDefault();event.stopPropagation();openPrivacyPolicy()" style="color:var(--accent);font-weight:700;cursor:pointer;text-decoration:underline;">politique de confidentialité</span>. J'ai 18 ans ou plus et j'ai compris que PASSIO est une beta fournie sans garantie.</span>
         </label>
 
+        <!-- ⚠️ L'ÉCHO DU REFUS VIT HORS DE L'ÉTIQUETTE, ET CE N'EST PAS UN DÉTAIL DE MISE EN PAGE.
+             L'activation d'une etiquette part du clic sur N'IMPORTE LEQUEL de ses descendants : posee
+             DEDANS (aucun chevron dans ce commentaire : le comptage de balises de CLAUDE.md est un
+             grep, et un nom de balise cite entre chevrons y compte comme une vraie balise),
+             DEDANS, cette ligne ferait COCHER le consentement au simple fait de toucher le texte
+             qui explique qu'il manque — un accord donné par le geste de lire le refus. Même piège
+             que les liens CGU/politique (2026-09-08), qui ont dû être neutralisés au preventDefault.
+             Le refus se prononce LÀ OÙ L'ON AGIT, en plus du bandeau du haut : même patron que
+             #authPwdRefus (2026-09-16). Sans lui, une fois la page défilée jusqu'à la case, on voit
+             un halo sur une case et plus une ligne de texte expliquant pourquoi. -->
+        <div id="authConsentRefus" role="alert" style="display:none;font-size:12px;line-height:1.45;color:#b91c1c;margin:-8px 0 12px;padding-left:30px;"></div>
+
         <!-- Art. 13 RGPD : l'identité du responsable du traitement, AU MOMENT de la collecte
              (ASTRA-09). Rempli par switchAuthTab depuis js/legal-textes.js, en mode inscription seulement. -->
         <p id="authResponsable" style="display:none;font-size:11px;line-height:1.45;color:var(--muted);margin:-6px 0 10px;"></p>

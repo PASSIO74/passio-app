@@ -94,7 +94,9 @@ test("① quater LA TROISIÈME PORTE : une vidéo jointe à une conversation y p
     const vus = [];
     window.passioVideoPourEnvoi = function (f) { vus.push(f.size); return Promise.resolve("data:video/mp4;base64," + "A".repeat(3000)); };
     const traites = [];
-    window._processAttach = function (input, kind, file) { traites.push({ kind, taille: file && file.size }); };
+    window._processAttach = function (input, kind, file) {
+      traites.push({ kind, taille: file && file.size, type: file && file.type, nom: file && file.name });
+    };
     const input = document.getElementById("attachImageFile");
     if (!input) return { absent: true };
     const accept = input.getAttribute("accept") || "";
@@ -111,6 +113,64 @@ test("① quater LA TROISIÈME PORTE : une vidéo jointe à une conversation y p
   // Et ce qui part vers le seau est la version PRÉPARÉE, pas le fichier d'origine.
   expect(r.traites.length, "un seul envoi").toBe(1);
   expect(r.traites[0].taille, "le fichier transmis n'est plus l'original de 9 Mo").toBeLessThan(9 * 1024 * 1024);
+  // ⚠️ CE CAS NE MESURAIT QUE LA TAILLE, ET IL ÉTAIT VERT SUR UNE RÉGRESSION
+  // COMPLÈTE (contre-revue adversariale du 2026-09-19). `_passioDataUrlToFile`
+  // forçait `image/jpeg` + `.jpg` EN DUR — c'était juste tant qu'elle ne servait
+  // qu'aux images. Branchée sur la vidéo, elle faisait que `_processAttach` voyait
+  // un type image (`file.type.startsWith("video/")` faux) → `msg.img`, blob
+  // déposé en `image/jpeg` avec un cache d'un an, et `content.fileType` annonçant
+  // « image » au destinataire, qui recevait une image cassée POUR TOUJOURS.
+  // **Un verrou qui mesure la taille ne mesure pas le type.**
+  expect(r.traites[0].type, "le type doit rester une VIDÉO — sinon le destinataire reçoit une image cassée").toMatch(/^video\//);
+  expect(r.traites[0].nom, "…et l'extension doit suivre le contenu, pas une constante").toMatch(/\.mp4$/);
+});
+
+test("① quinquies une vidéo SANS type MIME passe quand même par l'autorité (sélecteurs Android)", async ({ page }) => {
+  await bootOnboarded(page);
+  // ⚠️ Certains sélecteurs Android rendent `file.type === ""`. Gardée sur le seul
+  // type, la porte laissait alors repasser le fichier BRUT — le contrôle de 40 Mo
+  // juste au-dessus étant IMAGE-SEULEMENT, il n'y avait aucune borne du tout.
+  // Ce n'est pas une régression du lot, mais le lot AFFIRME que cette porte est
+  // bornée : une affirmation qu'un cas dément est pire qu'un trou connu.
+  const r = await page.evaluate(async () => {
+    const vus = [];
+    window.passioVideoPourEnvoi = function (f) { vus.push(f.name); return Promise.resolve("data:video/mp4;base64," + "A".repeat(3000)); };
+    const traites = [];
+    window._processAttach = function (input, kind, file) { traites.push({ type: file && file.type }); };
+    const input = document.getElementById("attachImageFile");
+    if (!input) return { absent: true };
+    const fichier = new File([new Uint8Array(9 * 1024 * 1024)], "sansmime.mov", { type: "" });
+    const dt = new DataTransfer(); dt.items.add(fichier);
+    input.files = dt.files;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    await new Promise((r2) => setTimeout(r2, 500));
+    return { vus, traites };
+  });
+  expect(r.absent).toBeFalsy();
+  expect(r.vus, "l'extension doit suffire quand le type MIME manque").toEqual(["sansmime.mov"]);
+  expect(r.traites[0] && r.traites[0].type, "et le type reconstruit vient du contenu préparé").toMatch(/^video\//);
+});
+
+test("① sexies une compression qui ne rend JAMAIS son verdict ne verrouille pas l'écran", async ({ page }) => {
+  await bootOnboarded(page);
+  // ⚠️ `passioCompressVideo` ne conclut que sur `video.onended`, et sa boucle de
+  // dessin est un `requestAnimationFrame` : une page passée en arrière-plan
+  // pendant l'encodage suspend la lecture, `onended` ne part jamais, la promesse
+  // reste EN VOL — et `#meProgressOv` (position:fixed, inset:0, z-index 5200,
+  // sans croix ni Échap) reste posé : l'application est MORTE jusqu'au
+  // rechargement. Le mode d'échec préexistait à l'éditeur média ; ce lot l'a
+  // branché sur le Studio ET la messagerie, donc il a TRIPLÉ sa surface.
+  const r = await page.evaluate(async () => {
+    window.VIDEO_COMPRESSION_DELAI_MAX = 300;   // on n'attend pas 90 s au banc
+    window.passioCompressVideo = function () { return new Promise(function () {}); };  // ne se règle JAMAIS
+    const t0 = Date.now();
+    let sortie = null;
+    try { sortie = (await window.passioVideoPourEnvoi(new File([new Uint8Array(12 * 1024 * 1024)], "fige.mp4", { type: "video/mp4" }))).slice(0, 5); }
+    catch (e) { sortie = "LEVE:" + (e.motifUtilisateur || e.message); }
+    return { sortie, ms: Date.now() - t0, overlay: !!document.getElementById("meProgressOv") };
+  });
+  expect(r.overlay, "l'overlay plein écran NE DOIT PAS survivre — sans croix ni Échap, c'est l'app qui est morte").toBe(false);
+  expect(r.sortie, "sous 25 Mo, l'expiration retombe sur le repli brut").toBe("data:");
 });
 
 // ── ② GOOGLE EN PREMIER ────────────────────────────────────────────────────
@@ -166,9 +226,15 @@ test.describe("② le bouton Google", () => {
       await page.evaluate(() => { try { PassioFirstRun.allerConnexion(); } catch (e) {} });
       const r = await page.evaluate(async (nom) => {
         switchAuthTab("signup");
-        const vus = [];
+        // ⚠️ ON NE REMPLACE PLUS `scrollIntoView` PAR UN MOUCHARD. La première
+        // rédaction vérifiait qu'on avait DEMANDÉ `block: "center"` — jamais que
+        // le refus restait lisible après le défilement RÉEL. C'est « on mesure
+        // l'appel, pas le résultat », dans le lot même qui cite le défaut du
+        // 2026-09-18. La contre-revue adversariale a calculé qu'à 390 × 664
+        // centrer la case pouvait renvoyer `#authMsg` à ~−100 px : la cible
+        // visible, le motif hors champ — le défaut réparé, en miroir.
+        // On laisse donc défiler pour de vrai et on mesure ce qu'on VOIT.
         const wrap = document.getElementById("authConsentWrap");
-        wrap.scrollIntoView = function (o) { vus.push((o && o.block) || "sans-options"); };
         document.getElementById("authConsent").checked = false;
         // `onbDoAuth` va plus loin que la garde : on lui donne de quoi ne pas
         // buter avant elle, et on ne mesure QUE le comportement de la garde.
@@ -181,12 +247,59 @@ test.describe("② le bouton Google", () => {
         // rougir un cas sur autre chose que son sujet.
         const conf = document.getElementById("authPasswordConfirm"); if (conf) conf.value = "lavande-colibri-4917";
         try { await window[nom](); } catch (e) {}
-        return { vus, msg: (document.getElementById("authMsg").textContent || "") };
+        // Le défilement est `smooth` : on lui laisse le temps d'aboutir, sinon on
+        // mesure la géométrie d'avant — un cas vert sur une prémisse non tenue.
+        await new Promise((r2) => setTimeout(r2, 900));
+        const geo = (el) => { if (!el) return null; const b = el.getBoundingClientRect(); return { haut: Math.round(b.top), bas: Math.round(b.bottom) }; };
+        const echo = document.getElementById("authConsentRefus");
+        return {
+          msg: (document.getElementById("authMsg").textContent || ""),
+          echoTexte: (echo && echo.textContent) || "",
+          echoAffiche: !!(echo && getComputedStyle(echo).display !== "none"),
+          echoGeo: geo(echo),
+          caseGeo: geo(wrap),
+          vue: window.innerHeight,
+        };
       }, porte);
       expect(r.msg, "le refus doit se prononcer").toMatch(/accepte les conditions/i);
-      expect(r.vus, "la case désignée par le refus doit être amenée sous les yeux").toContain("center");
+      // ⚠️ LE RÉSULTAT, PAS L'APPEL : après le défilement réel, la case ET le
+      // motif doivent être À L'ÉCRAN. C'est ce qui rend la réparation robuste
+      // sans être réglée au pixel — l'écho vit à côté de la case, donc la
+      // position exacte du défilement n'a plus à être parfaite.
+      expect(r.caseGeo.haut, "la case doit être dans l'écran").toBeGreaterThanOrEqual(0);
+      expect(r.caseGeo.bas, "…entièrement").toBeLessThanOrEqual(r.vue);
+      expect(r.echoAffiche, "un refus doit se prononcer LÀ OÙ L'ON AGIT, pas seulement en haut").toBe(true);
+      expect(r.echoTexte, "…et dire quoi faire").toMatch(/coche/i);
+      expect(r.echoGeo.haut, "le motif doit être visible après le défilement").toBeGreaterThanOrEqual(0);
+      expect(r.echoGeo.bas, "…entièrement").toBeLessThanOrEqual(r.vue);
     });
   }
+
+  test("② quater cocher EFFACE le refus, et une bascule d'onglet aussi", async ({ page }) => {
+    await sansDonneesDistantes(page);
+    await page.goto("/");
+    await page.evaluate(() => { try { PassioFirstRun.allerConnexion(); } catch (e) {} });
+    // Un refus qui survit à la réponse est un refus qui ment ; et en connexion la
+    // case n'est même plus à l'écran — un refus orphelin y désignerait le vide.
+    const r = await page.evaluate(async () => {
+      switchAuthTab("signup");
+      document.getElementById("authConsent").checked = false;
+      try { await window.onbGoogleAuth(); } catch (e) {}
+      const apresRefus = getComputedStyle(document.getElementById("authConsentRefus")).display !== "none";
+      const boite = document.getElementById("authConsent");
+      boite.checked = true;
+      boite.dispatchEvent(new Event("change", { bubbles: true }));
+      const apresCoche = getComputedStyle(document.getElementById("authConsentRefus")).display !== "none";
+      boite.checked = false;
+      try { await window.onbGoogleAuth(); } catch (e) {}
+      switchAuthTab("signin");
+      const apresBascule = getComputedStyle(document.getElementById("authConsentRefus")).display !== "none";
+      return { apresRefus, apresCoche, apresBascule };
+    });
+    expect(r.apresRefus, "prémisse : le refus est bien posé").toBe(true);
+    expect(r.apresCoche, "répondre, c'est répondre").toBe(false);
+    expect(r.apresBascule, "un refus ne survit pas à une bascule d'onglet").toBe(false);
+  });
 });
 
 // ── ④ L'ÉCHANTILLONNAGE ────────────────────────────────────────────────────
@@ -255,7 +368,13 @@ test("④ bis la ligne gardée PORTE SON POIDS — sans lui le taux d'erreur men
 
 test("⑤ même release servie → le référentiel vient du cache, ZÉRO octet de réseau", async ({ page }) => {
   let telechargements = 0;
-  await page.route("**/data/passions-v1.json", (route) => { telechargements++; route.continue(); });
+  // ⚠️ LE MOTIF DOIT COUVRIR LA QUERY. L'URL porte désormais `?r=<release>` (le
+  // service worker sert `data/*.json` en stale-while-revalidate : sans clé de
+  // release, la copie du déploiement PRÉCÉDENT répondait 200 et se rangeait sous
+  // la clé du NOUVEAU, figeant un référentiel périmé pour toute la release).
+  // Un `**/data/passions-v1.json` sans `*` final n'intercepte alors PLUS RIEN —
+  // et les deux cas ⑤ mesuraient le vide en se croyant verts.
+  await page.route("**/data/passions-v1.json*", (route) => { telechargements++; route.continue(); });
   await poserGateSansPremiereVisite(page);
   // Hors artefact il n'y a pas de release : sans elle le cache est INACTIF et on
   // mesurerait le comportement d'avant. On pose donc la release avant le boot.
@@ -281,7 +400,7 @@ test("⑤ même release servie → le référentiel vient du cache, ZÉRO octet 
 test("⑤ bis un repli HORS LIGNE n'est JAMAIS mis en cache — sinon 19 passions pour toujours", async ({ page }) => {
   await poserGateSansPremiereVisite(page);
   await page.addInitScript(() => { window.PASSIO_RELEASE = { commit: "beefbeefbeefbeef" }; });
-  await page.route("**/data/passions-v1.json", (route) => route.abort());
+  await page.route("**/data/passions-v1.json*", (route) => route.abort());   // `*` final : l'URL porte `?r=<release>`
   await sansDonneesDistantes(page);
   await page.goto("/");
   await page.evaluate(() => window.PassioPassions && window.PassioPassions.charger());
@@ -292,4 +411,42 @@ test("⑤ bis un repli HORS LIGNE n'est JAMAIS mis en cache — sinon 19 passion
     return pq ? pq.passions.length : null;
   });
   expect(enCache, "le repli au socle ne doit pas s'installer comme référentiel de la session suivante").toBeNull();
+});
+
+test("⑤ ter l'URL du référentiel PORTE la release — sans quoi le SW peut figer une copie périmée", async ({ page }) => {
+  // ⚠️ CE CAS EXISTE PARCE QUE LES DEUX PRÉCÉDENTS SONT VERTS AVEC *OU SANS* LA
+  // CLÉ DE RELEASE : ils mesurent le cache, pas la fraîcheur de ce qu'on y met.
+  // `data/passions-v1.json` n'est ni `/`, ni `/media/*`, ni un `.js` : il tombe
+  // dans la DERNIÈRE branche de `sw.js`, en stale-while-revalidate
+  // (`return cached || network`). Au premier démarrage qui suit un déploiement,
+  // l'ancien service worker contrôle encore la page et rend la copie de la
+  // release PRÉCÉDENTE avec un HTTP 200 parfaitement valide — que le cache
+  // durable rangeait alors sous la clé de la release COURANTE, gelant un
+  // référentiel périmé jusqu'au déploiement suivant. La query change la clé de
+  // cache du SW, donc l'ancienne entrée ne peut plus répondre.
+  const urls = [];
+  await page.route("**/data/passions-v1.json*", (route) => { urls.push(route.request().url()); route.continue(); });
+  await poserGateSansPremiereVisite(page);
+  await page.addInitScript(() => { window.PASSIO_RELEASE = { commit: "0123456789abcdef" }; });
+  await sansDonneesDistantes(page);
+  await page.goto("/");
+  await page.evaluate(() => window.PassioPassions && window.PassioPassions.charger());
+  await page.waitForFunction(() => window.PassioPassions && window.PassioPassions.pret(), null, { timeout: 15000 });
+  expect(urls.length, "prémisse : le référentiel est bien demandé au réseau").toBeGreaterThanOrEqual(1);
+  expect(urls[0], "l'URL doit porter la release servie").toContain("r=01234567");
+});
+
+test("⑤ quater HORS ARTEFACT, l'URL est INCHANGÉE — le comportement d'avant tient à l'octet près", async ({ page }) => {
+  // Pas de `window.PASSIO_RELEASE` (serve local, bancs) → ni cache, ni query.
+  // Une optimisation qui changerait le comportement là où elle est inactive
+  // n'est pas inactive.
+  const urls = [];
+  await page.route("**/data/passions-v1.json*", (route) => { urls.push(route.request().url()); route.continue(); });
+  await poserGateSansPremiereVisite(page);
+  await sansDonneesDistantes(page);
+  await page.goto("/");
+  await page.evaluate(() => window.PassioPassions && window.PassioPassions.charger());
+  await page.waitForFunction(() => window.PassioPassions && window.PassioPassions.pret(), null, { timeout: 15000 });
+  expect(urls.length).toBeGreaterThanOrEqual(1);
+  expect(urls[0], "sans release, aucune query ne doit être ajoutée").not.toContain("?");
 });

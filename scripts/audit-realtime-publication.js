@@ -29,7 +29,15 @@
 const fs = require("fs");
 const path = require("path");
 
-const RACINES = ["js", "dashboard/server"];
+// ⚠️ L'EN-TÊTE DISAIT « TOUT LE DÉPÔT » ET LA LISTE EN TENAIT DEUX. Une gate qui
+// déclare un périmètre qu'elle n'a pas est pire qu'une gate absente : on la croit.
+// Restaient dehors `scripts/charge.mjs` (un `postgres_changes` sur `posts`) —
+// c'est-à-dire l'outil même avec lequel on mesure la capacité que ce lot prétend
+// lever —, les suites e2e, le front du pilotage et les Edge Functions. Aucune
+// casse au moment de l'élargissement : tout ce qui était hors périmètre écoute
+// `posts`, qui reste publiée. C'est le SENS MUET que la gate garde en premier, et
+// il n'était pas gardé là où il coûterait le plus cher à découvrir.
+const RACINES = ["js", "dashboard", "scripts", "supabase/functions", "tests/e2e"];
 const DECLARE = path.join(__dirname, "realtime-publication.json");
 
 // ⚠️ RÉCURSIF, ET C'EST LE CŒUR DE LA GATE. La première version ne lisait que
@@ -48,7 +56,12 @@ function fichiersJs(dir) {
       // `vendor/` est du code tiers épinglé : on n'y dépose pas de code maison
       // (règle du 2026-09-11), et `node_modules` n'a rien à faire ici.
       if (e.isDirectory()) { if (e.name !== "vendor" && e.name !== "node_modules") descendre(complet); }
-      else if (e.name.endsWith(".js") || e.name.endsWith(".mjs")) out.push(complet);
+      // ⚠️ LA GATE NE SE LIT PAS ELLE-MÊME. Depuis qu'elle balaie `scripts/`, ses
+      // PROPRES exemples de documentation (`table: "nom_en_clair"`, le motif
+      // `table: "x"`) étaient comptés comme des souscriptions à des tables
+      // inexistantes : elle refusait un dépôt parfaitement sain, en se citant.
+      // Un scanner dans son propre périmètre finit toujours par s'attraper.
+      else if (complet !== __filename && (e.name.endsWith(".js") || e.name.endsWith(".mjs"))) out.push(complet);
     }
   })(abs);
   return out;

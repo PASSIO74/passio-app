@@ -595,12 +595,30 @@ class Store {
       if (e.ts < base) continue;
       const idx = Math.min(minutes - 1, Math.floor((e.ts - base) / 60_000));
       const b = buckets[idx]; if (!b) continue;
-      b.events++;
+      // ⚠️ `b.events` EST PONDÉRÉ, COMME `b.api`. Il ne l'était pas, et `api ⊆
+      // events` par construction : le bucket pouvait donc rendre `api > events`,
+      // un état impossible. Aucun graphe ne les trace ensemble aujourd'hui — un
+      // champ mort incohérent, donc, mais le prochain à mordre.
+      const _poids = poidsEvenement(e);
+      b.events += _poids;
       if (e.type === "error") b.errors++;
-      // Le COMPTE d'appels est pondéré (c'est un volume) ; la LATENCE ne l'est
-      // pas — une moyenne sur un échantillon est déjà la bonne estimation, la
-      // pondérer reviendrait à compter dix fois la même mesure.
-      if (e.type === "api") { b.api += poidsEvenement(e); if (e.duration_ms != null) { b.latencySum += e.duration_ms; b.latencyN++; } }
+      // ⚠️ LA LATENCE EST PONDÉRÉE ELLE AUSSI, et le commentaire qui vivait ici
+      // disait le CONTRAIRE : « une moyenne sur un échantillon est déjà la bonne
+      // estimation ». C'est vrai d'un échantillon UNIFORME, et celui-ci ne l'est
+      // pas — seuls les `api` en 200 sont tirés, les échecs, les 201 et les
+      // `slow` restent ENTIERS, donc la population survivante penche vers les
+      // lignes lentes. Le même commit écrivait déjà cette correction 160 lignes
+      // plus bas, dans `apiPerf` : la moitié de la page était donc juste et
+      // l'autre fausse. Et c'est la moitié la plus VISIBLE qui mentait —
+      // `dashboard/public/js/app.js` trace `#perfChart` sur cette série, juste
+      // au-dessus du tableau `perfRows`, lui pondéré : deux chiffres
+      // contradictoires sur un même écran, la courbe montant sur une production
+      // saine. Une justification écrite qui ne tient pas est pire qu'un oubli :
+      // elle décourage d'aller regarder.
+      if (e.type === "api") {
+        b.api += _poids;
+        if (e.duration_ms != null) { b.latencySum += e.duration_ms * _poids; b.latencyN += _poids; }
+      }
       if (e.action === "send_message") b.messages++;
       if (/publish_/.test(e.action || "")) b.publications++;
     }

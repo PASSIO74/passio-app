@@ -228,6 +228,26 @@
     if (promesse) return promesse;
     promesse = new Promise(function (resoudre) {
       var url = racineData();
+      // ⚠️ L'URL PORTE LA RELEASE, ET SANS ÇA LE CACHE DURABLE POUVAIT FIGER UN
+      // FICHIER PÉRIMÉ POUR TOUTE UNE RELEASE. `data/passions-v1.json` n'est ni
+      // `/`, ni `/media/*`, ni un `.js` : il tombe dans la DERNIÈRE branche du
+      // service worker, en stale-while-revalidate (`return cached || network`,
+      // sw.js). Au premier démarrage qui suit un déploiement, l'ancien SW
+      // contrôle encore la page pendant que le nouveau s'installe : il rend la
+      // copie de la release PRÉCÉDENTE, avec un HTTP 200 parfaitement valide —
+      // et l'écriture ci-dessous la rangeait sous la clé de la release COURANTE.
+      // À partir de là `idbPassionsLoad` la sert à chaque session et le réseau
+      // n'est plus JAMAIS interrogé : les passions créées depuis l'app
+      // disparaissent de la recherche et retombent en « ✨ Passion ». Avant ce
+      // lot la même fenêtre coûtait UNE session (le SWR se rafraîchissait) ; le
+      // cache durable en faisait une release entière.
+      // Le paramètre change la clé de cache du SW, donc l'entrée de la release
+      // précédente ne peut plus répondre. Hors artefact il n'y a pas de release
+      // → URL inchangée, comportement d'avant à l'octet près.
+      try {
+        var _rel = (typeof window.idbPassionsRelease === "function") ? window.idbPassionsRelease() : "";
+        if (_rel) url += (url.indexOf("?") === -1 ? "?" : "&") + "r=" + encodeURIComponent(_rel);
+      } catch (e) {}
       var fini = false;
       function termine(paquet, horsLigne) {
         if (fini) return;

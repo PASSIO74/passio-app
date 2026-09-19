@@ -1189,6 +1189,7 @@ function passioCompressVideo(file, opts, onProgress) {
 var VIDEO_COMPRESSER_AU_DELA = 8 * 1024 * 1024;   // au-delà : ré-encodage 1080p
 var VIDEO_BRUT_MAX = 25 * 1024 * 1024;            // repli brut si la compression échoue
 var VIDEO_PLAFOND_DUR = 150 * 1024 * 1024;        // garde-fou mémoire absolu
+var VIDEO_COMPRESSION_DELAI_MAX = 90000;          // au-delà : la compression n'a pas de verdict
 
 function _erreurVideo(motif) {
   var e = new Error("video-refusee");
@@ -1210,12 +1211,31 @@ async function passioVideoPourEnvoi(file) {
   try {
     if (typeof passioCompressVideo !== "function") throw new Error("unsupported");
     _meShowProgress("Optimisation de la vidéo…");
-    var dataUrl = await passioCompressVideo(file, { maxDim: 1080, bitrate: 2500000 }, _meUpdateProgress);
-    _meHideProgress();
+    // ⚠️ `passioCompressVideo` PEUT NE JAMAIS SE RÉGLER, et l'overlay ne se
+    // retire que sur une sortie. Sa boucle de dessin est un `requestAnimationFrame`
+    // et elle ne conclut que sur `video.onended` : une page passée en arrière-plan
+    // pendant l'encodage (geste banal sur une vidéo d'une minute) suspend la
+    // lecture, `onended` ne part jamais, `rec.stop()` non plus — la promesse reste
+    // EN VOL. C'est l'invariant maison « jamais de rendu cadencé sur rAF : une
+    // page qui ne compose pas de frames ne le déclenche pas », vu par son autre
+    // bout. Conséquence : `#meProgressOv` (position:fixed, inset:0, z-index 5200,
+    // sans croix et sans Échap) reste posé — l'application est MORTE jusqu'au
+    // rechargement. Le mode d'échec préexistait à l'éditeur média ; ce lot l'a
+    // branché sur le Studio ET la messagerie, donc il a TRIPLÉ sa surface sans
+    // appliquer le patron `Promise.race` que le même lot cite ailleurs
+    // (`_referentielEnCours`, passions-flat.js). L'expiration retombe dans le
+    // `catch` ci-dessous : repli brut sous 25 Mo, sinon refus NOMMÉ.
+    var _minuteur;
+    var dataUrl = await Promise.race([
+      passioCompressVideo(file, { maxDim: 1080, bitrate: 2500000 }, _meUpdateProgress),
+      new Promise(function (_r, rej) {
+        _minuteur = setTimeout(function () { rej(new Error("compression-sans-verdict")); }, VIDEO_COMPRESSION_DELAI_MAX);
+      })
+    ]);
+    clearTimeout(_minuteur);
     if (!dataUrl || dataUrl.length < 1000) throw new Error("empty result");
     return dataUrl;
   } catch (e) {
-    _meHideProgress();
     // Compression indisponible (vieux navigateur, codec absent) mais taille
     // encore uploadable : on garde la vidéo brute plutôt que de refuser — le
     // délai d'upload est proportionnel à la taille.
@@ -1232,6 +1252,12 @@ async function passioVideoPourEnvoi(file) {
     // refuse au-delà de 65 secondes (garde de durée, plus haut). Un message qui
     // ne parlerait que de mégaoctets enverrait chercher la mauvaise cause.
     throw _erreurVideo("Vidéo impossible à optimiser (" + mo + " Mo). Elle doit durer moins d'une minute, ou peser moins de 25 Mo. Le plus simple : filme directement dans l'app.");
+  } finally {
+    // ⚠️ UN SEUL POINT DE RETRAIT. Il était appelé sur les deux branches, ce qui
+    // laissait une troisième sortie découverte : un `return`/`throw` ajouté plus
+    // tard dans le `try`. Un overlay plein écran qui survit à sa cause n'est pas
+    // un défaut d'affichage, c'est une application verrouillée.
+    _meHideProgress();
   }
 }
 

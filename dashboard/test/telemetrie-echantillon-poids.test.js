@@ -1,7 +1,11 @@
 // ÉCHANTILLONNAGE PONDÉRÉ (2026-09-19) — la moitié PILOTAGE du correctif.
 //
-// `telemetry.js` ne garde plus qu'une lecture réussie sur dix (`api` http 200) et
-// qu'une mesure `perf` sur dix : la table pesait 43 % de la base pour dix comptes.
+// `telemetry.js` ne garde plus qu'une lecture réussie sur dix (`api` http 200) —
+// et RIEN D'AUTRE : la table pesait 43 % de la base pour dix comptes. (Le premier
+// jet échantillonnait aussi `perf` ; c'était une erreur de fond, arrêtée par
+// `perf-ios.spec.js` ⑧ : 38 % des lignes `perf` sont des `ios_stat_*`, donc DÉJÀ
+// des agrégats, et `page_load`/`ios_context` sont un recensement — on ne résume
+// pas un résumé, on le perd. `ECH_PERF = 1`.)
 // Les ÉCHECS, eux, sont gardés entiers (un 401 est un `api`, donc hors
 // `CRITICAL_TYPE`). Sans pondération, le pilotage verrait donc dix fois trop
 // d'erreurs pour un succès, et `health()` basculerait en « Critique » sur une
@@ -81,4 +85,30 @@ test("⑤ les ÉCRITURES ne sont jamais échantillonnées : un 201 n'a pas de po
   // exacts. C'est la raison pour laquelle le lot n'échantillonne pas les 2xx en bloc.
   const publication = ev({ http_status: 201, endpoint: "rest/v1/posts", meta: { mode: "prod" } });
   assert.equal(poidsEvenement(publication), 1);
+});
+
+test("⑥ `timeseries()` pondère la LATENCE, pas seulement le compte — sinon la courbe ment sous le tableau", () => {
+  // ⚠️ CE CAS EXISTE PARCE QUE LA PONDÉRATION S'ÉTAIT ARRÊTÉE À MI-CHEMIN UNE
+  // SECONDE FOIS (contre-revue adversariale du 2026-09-19). `b.api` était pondéré,
+  // `b.latencySum`/`b.latencyN` ne l'étaient pas, et le commentaire posé au-dessus
+  // le justifiait par « une moyenne sur un échantillon est déjà la bonne
+  // estimation » — affirmation que le MÊME commit réfutait 160 lignes plus bas,
+  // dans `apiPerf` : l'échantillon n'est pas uniforme (seuls les 200 sont tirés),
+  // donc la population survivante penche vers les échecs, qui sont lents.
+  // Et c'est la moitié la plus VISIBLE qui mentait : `#perfChart` trace cette
+  // série, juste au-dessus du tableau `perfRows`, lui pondéré — deux chiffres
+  // contradictoires sur un même écran.
+  const s2 = new (Object.getPrototypeOf(store).constructor)();
+  // 1 lecture rapide GARDÉE qui en représente 10 (80 ms) + 1 échec lent entier (2000 ms).
+  s2.add(ev({ duration_ms: 80, meta: { mode: "prod", ech: 10 } }));
+  s2.add(ev({ duration_ms: 2000, status: "error", severity: "error", http_status: 500, meta: { mode: "prod" } }));
+  const b = s2.timeseries(5).filter((x) => x.api > 0);
+  assert.equal(b.length, 1, "les deux lignes tombent dans le même bucket");
+  // Pondérée : (80×10 + 2000×1) / 11 ≈ 255 ms — la réalité.
+  // Non pondérée : (80 + 2000) / 2 = 1040 ms, soit QUATRE FOIS trop.
+  assert.ok(b[0].latency < 400, `latence pondérée attendue ~255 ms, obtenue ${b[0].latency} ms`);
+  assert.equal(b[0].api, 11, "le compte d'appels reste pondéré");
+  // `api ⊆ events` par construction : un bucket qui rendrait `api > events` est
+  // un état impossible, et c'est ce que l'ancien `b.events++` produisait.
+  assert.ok(b[0].events >= b[0].api, `events (${b[0].events}) ne peut pas être sous api (${b[0].api})`);
 });
