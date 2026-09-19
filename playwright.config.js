@@ -76,7 +76,23 @@ module.exports = defineConfig({
   // sur ce dépôt (vécu le 2026-08-16). Sans ça, la seconde échoue sur « port déjà
   // utilisé » et, pire, `reuseExistingServer` la ferait tester le serveur de
   // l'autre — donc pas forcément le programme qu'elle croit mesurer.
+  // ⚠️ NAVIGATEUR DÉJÀ INSTALLÉ AILLEURS (2026-09-19). Certains environnements
+  // — conteneurs d'exécution distants, images CI préchargées — fournissent un
+  // Chromium au chemin fixe et INTERDISENT son téléchargement. Quand la version
+  // épinglée par @playwright/test n'est pas celle qui est présente, la suite
+  // entière échoue sur « Executable doesn't exist », ce qui n'a rien à voir avec
+  // le produit. `PASSIO_CHROMIUM` laisse pointer le binaire local.
+  // ⚠️ Variable ABSENTE = comportement d'avant À L'OCTET PRÈS : aucune
+  // `launchOptions` n'est posée, Playwright choisit comme il l'a toujours fait.
+  // ⚠️ ET NE JAMAIS MODIFIER CE FICHIER PENDANT QU'UNE SUITE TOURNE : chaque
+  // worker relit la config À SON DÉMARRAGE, donc un patch retiré en cours de
+  // route casse tous les workers nés après — vécu le 2026-09-19, 255 rouges à
+  // 3 ms qui ne mesuraient rien. C'est très exactement pourquoi ce réglage est
+  // une VARIABLE et non une retouche locale du fichier.
   use: {
+    ...(process.env.PASSIO_CHROMIUM
+      ? { launchOptions: { executablePath: process.env.PASSIO_CHROMIUM } }
+      : {}),
     baseURL: "http://127.0.0.1:" + (process.env.PASSIO_PORT || 8080),
     viewport: { width: 390, height: 844 },
     locale: "fr-FR",
