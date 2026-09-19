@@ -50,6 +50,28 @@ const ACTIVE_MS = 5 * 60_000;    // « actif » si vu il y a < 5 min
  */
 
 /** Normalise une ligne telemetry_events (DB) en événement interne. */
+// ⚠️ UNE LIGNE DE TÉLÉMÉTRIE PEUT EN REPRÉSENTER PLUSIEURS (2026-09-19).
+// `telemetry.js` n'envoie plus qu'une lecture réussie sur dix (`api` en http 200)
+// et qu'une mesure de performance sur dix : la table pesait 43 % de la base pour
+// dix comptes. La ligne gardée porte alors son poids dans `meta.ech` (10 = « celle-ci
+// en représente 10 »), et TOUT COMPTAGE QUI SERT À UN RATIO doit le lire.
+//
+// ⚠️ SANS ÇA, LE CORRECTIF FABRIQUERAIT UNE PANNE. Les ÉCHECS ne sont jamais
+// échantillonnés (un 401 est un `api`, pas un `error`, donc hors `CRITICAL_TYPE`) :
+// succès divisés par dix, échecs entiers → le taux d'erreur afficherait dix fois
+// la réalité, et `health()` passerait en « Critique » (seuil 40 %) sur une
+// production parfaitement saine. Les deux moitiés de ce lot ne valent QUE
+// ensemble — c'est pourquoi elles citent chacune l'autre.
+//
+// Absence de `ech` = poids 1 : tout l'historique d'avant le 19/09, et toutes les
+// lignes non échantillonnées, comptent pour elles-mêmes. Une valeur absurde
+// (0, négative, texte, NaN) retombe à 1 — on ne laisse jamais une donnée venue
+// du client décider d'un multiplicateur.
+export function poidsEvenement(ev) {
+  const p = Number(ev && ev.meta && ev.meta.ech);
+  return Number.isFinite(p) && p >= 1 && p <= 1000 ? p : 1;
+}
+
 export function normalize(row) {
   const ts = row.received_at ? Date.parse(row.received_at) : Date.now();
   return {
@@ -480,8 +502,11 @@ class Store {
     const count = (pred) => events.filter(pred).length;
     const apis = events.filter((e) => e.type === "api" && e.duration_ms != null);
     const avgLatency = apis.length ? Math.round(apis.reduce((a, e) => a + e.duration_ms, 0) / apis.length) : 0;
-    const apiErrors = count((e) => e.type === "api" && e.status === "error");
-    const totalApis = count((e) => e.type === "api");
+    // Pondérés : voir `poidsEvenement`. Un comptage brut ici ferait dix fois
+    // trop d'erreurs pour un seul succès gardé sur dix.
+    const somme = (pred) => events.reduce((a, e) => a + (pred(e) ? poidsEvenement(e) : 0), 0);
+    const apiErrors = somme((e) => e.type === "api" && e.status === "error");
+    const totalApis = somme((e) => e.type === "api");
     const openBugs = [...this.bugs.values()].filter((b) => (this._status(b.id) !== "corrige" && this._status(b.id) !== "ignore"));
     const criticalBugs = openBugs.filter((b) => b.severity === "critical");
 
@@ -532,8 +557,12 @@ class Store {
     const errs = win.filter((e) => e.type === "error" || (e.type === "connectivity" && e.severity !== "info")).length;
     const connErrs = win.filter((e) => e.type === "connectivity" && e.severity === "error").length;
     const critical = [...this.bugs.values()].some((b) => b.severity === "critical" && now - b.lastSeen < 5 * 60_000);
+    // ⚠️ PONDÉRÉ — c'est ce ratio qui fait basculer le bandeau en « Critique »
+    // (seuil 40 %). Brut, il crierait à la panne dès l'échantillonnage.
     const apis = win.filter((e) => e.type === "api");
-    const apiErrRate = apis.length ? apis.filter((e) => e.status === "error").length / apis.length : 0;
+    const apiTotal = apis.reduce((a, e) => a + poidsEvenement(e), 0);
+    const apiErrTotal = apis.reduce((a, e) => a + (e.status === "error" ? poidsEvenement(e) : 0), 0);
+    const apiErrRate = apiTotal ? apiErrTotal / apiTotal : 0;
     let level = "operational", label = "Opérationnel";
     if (critical || apiErrRate > 0.4) { level = "critical"; label = "Critique"; }
     else if (errs > 8 || apiErrRate > 0.15 || connErrs >= 3) { level = "degraded"; label = "Dégradé"; }
@@ -557,7 +586,10 @@ class Store {
       const b = buckets[idx]; if (!b) continue;
       b.events++;
       if (e.type === "error") b.errors++;
-      if (e.type === "api") { b.api++; if (e.duration_ms != null) { b.latencySum += e.duration_ms; b.latencyN++; } }
+      // Le COMPTE d'appels est pondéré (c'est un volume) ; la LATENCE ne l'est
+      // pas — une moyenne sur un échantillon est déjà la bonne estimation, la
+      // pondérer reviendrait à compter dix fois la même mesure.
+      if (e.type === "api") { b.api += poidsEvenement(e); if (e.duration_ms != null) { b.latencySum += e.duration_ms; b.latencyN++; } }
       if (e.action === "send_message") b.messages++;
       if (/publish_/.test(e.action || "")) b.publications++;
     }

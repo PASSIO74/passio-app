@@ -78,9 +78,11 @@ une surface »**. Le compresseur a été écrit pour une porte, la seconde porte
 
 **Le gain, et il est double** : 7,5 Mo → ~1,5 Mo par vidéo, soit
 
-- **×5 sur le stockage** (à budget égal, cinq fois plus de vidéos publiées) ;
-- **×5 sur la bande passante Netlify** — 100 Go/mois, c'est ~13 000 vues de vidéo à 7,5 Mo, et
-  **~66 000 vues** à 1,5 Mo ;
+- **×5,2 sur la vidéo** (68 → 13 Mo) mais **×3,2 sur le stockage total** — mesuré sur le corpus
+  réel, 80 → 25 Mo : les 12,5 Mo d'images sont déjà compressés et ne bougent pas. Le ×5 annoncé
+  plus haut dans la première version de ce document venait de la moyenne par vidéo, pas du total ;
+- **×5 sur la bande passante Netlify pour la vidéo** — 100 Go/mois, c'est ~13 000 vues à 7,5 Mo,
+  et **~66 000 vues** à 1,5 Mo ;
 - et un envoi cinq fois plus rapide depuis un téléphone en 4G, donc moins d'abandons.
 
 **Effort** : router `#videoInput` par `passioCompressVideo` avec le repli déjà prévu (la fonction
@@ -111,9 +113,14 @@ temps de démarrage). Un agrégat n'a pas besoin de toutes les lignes.
    calculé sur 2 000 mesures vaut celui calculé sur 20 000. ⚠️ Le taux d'échantillonnage doit voyager
    avec la ligne (une colonne `poids`), sinon les compteurs du pilotage divisent le trafic réel par dix
    sans le dire.
-2. **Sortir `telemetry_events` de la publication `supabase_realtime`.** Mesuré : la table y est, et
-   **aucun client ne s'y abonne**. Chaque insertion traverse aujourd'hui le décodage WAL de Realtime
-   pour zéro destinataire. C'est du coût pur.
+2. ~~**Sortir `telemetry_events` de la publication `supabase_realtime`.**~~ ⚠️ **FAUX, ET CORRIGÉ LE
+   JOUR MÊME.** La table est bien publiée, mais elle N'EST PAS sans abonné : le **Centre de pilotage**
+   s'y abonne depuis son backend (`dashboard/server/ingest.js:217`, clé `service_role`) et en tire tout
+   son flux SSE. La retirer aurait éteint le direct du tableau de bord **sans une erreur** — il serait
+   retombé sur son polling de secours, donc le symptôme aurait été « c'est un peu en retard », jamais
+   « c'est cassé ».
+   **La leçon vaut plus que le geste** : l'inventaire des abonnés se fait sur TOUT le dépôt, backend
+   compris, jamais sur le seul `js/`. C'est ce que fige désormais `npm run audit:realtime`.
 
 ---
 
@@ -123,8 +130,8 @@ Le pooler n'était pas le mur, et la base non plus. Le mur est `postgres_changes
 
 **Mesuré** : la publication `supabase_realtime` porte **26 tables**. Dont :
 
-- `telemetry_events` — personne ne l'écoute (§4) ;
-- `conv_reads` — les accusés de lecture, le plus gros volume d'écritures de la messagerie ;
+- `conv_reads` — les accusés de lecture, le plus gros volume d'écritures de la messagerie
+  (⚠️ **abonné**, lui : `_creerCanalDb` l'écoute pour le ✓✓ en direct — il RESTE publié) ;
 - **six tables `cdv_*`** (`cdv_lives`, `cdv_live_comments`, `cdv_live_reactions`,
   `cdv_live_steps`, `cdv_live_followers`, `cdv_live_collaborators`) — le **Carnet de voyage, RETIRÉ
   par ADR-011 le 2026-08-31**. Elles sont répliquées en temps réel pour une fonctionnalité qui
@@ -142,10 +149,15 @@ drapeaux sont en place, les chemins sont écrits, `_creerCanalDb` bifurque déj�
 
 **Trois gestes, par ordre de coût** :
 
-1. **Gratuit et immédiat** : retirer les 8 tables inutiles de la publication (les 6 `cdv_*`,
-   `telemetry_events`, et `conv_reads` si V2/V3 couvre les accusés de lecture). Une migration d'une
-   ligne par table, aucun effet client tant que personne ne s'y abonne — **à vérifier au grep avant**,
-   `conv_reads` a un abonné dans `_creerCanalDb`.
+1. **Gratuit et immédiat, FAIT le 2026-09-19** : `migrations/migration_realtime_publication_2026-09-19.sql`
+   retire les **13** tables que personne n'écoute — inventaire mécanique, pas à vue :
+   **25 publiées, 12 abonnées**. Y figurent les 6 `cdv_*`, `step_interactions` et `post_collaborators`
+   (fonctionnalités mortes), plus `comment_likes`, `conversations`, `event_reactions`, `events` et
+   `stories` (tables vivantes, aucun `postgres_changes` nulle part). `telemetry_events` et `conv_reads`
+   RESTENT : les deux ont un abonné.
+   Et surtout : `npm run audit:realtime` (gate CI) refuse désormais les deux sens de la divergence —
+   une souscription à une table non publiée (qui ne recevrait **jamais rien, sans une erreur**) comme
+   une table publiée sans abonné. Éprouvée par réinjection des deux.
 2. **Mesurer V2/V3 sur le staging**, puis les allumer. C'est le chantier qui décide de la tenue à
    plusieurs milliers de connectés.
 3. Ne jamais republier une table « au cas où ».
@@ -253,6 +265,48 @@ sauf un. Le 6 est le seul vrai chantier d'architecture, et il est déjà à moit
 
 ---
 
+## 9 bis. CE QUE ÇA DONNE — combien d'utilisateurs, après les cinq gestes
+
+Les cinq gestes sont **appliqués** (2026-09-19). Voici ce que chaque plafond devient. Les colonnes
+« avant » sont des mesures du 19/09 ; les colonnes « après » sont des projections **explicitement
+dérivées** de ces mesures, pas des mesures nouvelles.
+
+| Plafond | Avant | Après | Ce qui borne |
+|---|---|---|---|
+| Connectés en même temps (lecture) | **2 000 – 4 000** | inchangé | compute Micro (mesuré 14/09) |
+| Comptes actifs **en écriture** simultanée | **~20** | inchangé | compute Micro (mesuré 15/09) |
+| Comptes stockés (Storage Pro, 100 Go) | ~12 500 | **~40 000** | médias — 8 → 2,5 Mo/compte |
+| Comptes stockés (si retour au Free, 1 Go) | ~125 | **~400** | idem |
+| Inscriptions **par jour** | **300** | **600 – 1 000** | Brevo, selon la part Google |
+| Lignes de télémétrie / semaine | 61 470 | **~34 000** (−45 %) | rétention 7 j, déjà posée |
+| Référentiel téléchargé | 568 ko **par session** | 568 ko **par déploiement et par appareil** | cache IndexedDB |
+
+**Le chiffre à retenir : de l'ordre de 10 000 à 30 000 comptes inscrits**, avec 2 000 à 4 000 personnes
+connectées en même temps. Ce n'est plus le stockage qui borne (40 000), ni la base, ni la bande
+passante : **c'est l'écriture simultanée**.
+
+⚠️ **ET C'EST UN CALCUL, PAS UNE MESURE — voici son hypothèse, pour qu'on puisse la contester.** Le
+banc du 15/09 montre la latence qui se voit au-delà d'une **vingtaine de comptes écrivant en même
+temps**. Avec les ratios usuels d'un réseau social (1 à 2 % des inscrits en ligne à un instant donné,
+et de l'ordre d'un dixième d'entre eux en train de publier, aimer ou envoyer dans la même seconde),
+20 écrivains simultanés correspondent à **~10 000 inscrits**. Changez l'hypothèse d'engagement et le
+chiffre bouge d'un facteur 3 dans les deux sens — d'où la fourchette. La marche suivante est le
+compute **Small (~15 $/mois)**, pas du code : c'est la conclusion déjà écrite au 14/09, et ces cinq
+gestes ne la déplacent pas, ils repoussent tout **le reste** derrière elle.
+
+⚠️ **NE PAS CONFONDRE CAPACITÉ ET RYTHME D'ARRIVÉE.** Les 300 e-mails/jour de Brevo ne plafonnent pas
+le nombre total d'utilisateurs : ils plafonnent la **vitesse** à laquelle on en gagne. 300/jour, c'est
+9 000 par mois ; 600 à 1 000/jour après le passage de Google en tête, c'est 18 000 à 30 000 par mois.
+Donc même dans le pire cas, atteindre 10 000 inscrits prend un mois — et le jour où l'on envoie le lien
+à « des milliers de personnes » d'un coup, **c'est ce quota-là qui casse en premier**, pas le serveur.
+C'est pourquoi le geste ② compte autant que le ①, alors qu'il ne touche qu'une position de bouton.
+
+⚠️ **CE QUI N'A PAS BOUGÉ ET QUI RESTE LE PLUS GROS RISQUE À L'ÉCHELLE** : les **12 secondes** jusqu'à
+la première carte sur un téléphone lent (PERF-02, mesuré, non corrigé). À dix comptes personne ne le
+voit ; à dix mille, la majorité arrive sur un appareil moyen en réseau moyen. Aucun de ces cinq gestes
+ne la réduit — c'est le découpage d'`app.js`, chantier à part entière, et le seul de la liste dont le
+coût augmente avec le succès.
+
 ## 10. Ce que ce document ne dit pas
 
 - **Le forfait Supabase n'a pas été lu** : le connecteur ① d'ADR-012 est un accès SQL, pas un accès
@@ -267,3 +321,42 @@ sauf un. Le 6 est le seul vrai chantier d'architecture, et il est déjà à moit
   palier. Une fuite mémoire ou une dérive d'index ne s'y verrait pas.
 - **Rien ici n'est un correctif appliqué.** Ce document mesure et propose ; il ne change pas une ligne
   du produit.
+
+---
+
+## 11. Ce qui a été FAIT le 2026-09-19, et ce qui reste un geste
+
+**Appliqué en code, testé, poussé** (branche `claude/app-capacity-no-investment-e039cw`) :
+
+| # | Geste | Où |
+|---|---|---|
+| ① | `passioVideoPourEnvoi`, autorité unique de préparation vidéo, branchée sur les DEUX portes | `js/app-08-*.js`, `js/app-06-*.js` |
+| ② | Google en tête de l'écran d'auth + le refus de consentement amène la case à l'écran | `index.html`, `js/app-02-*.js` |
+| ③ | Gate `npm run audit:realtime` (dans `verif`, donc en CI) + la migration | `scripts/audit-realtime-publication.js`, `migrations/` |
+| ④ | Échantillonnage du seul `api 200` et de `perf`, avec le poids lu par le pilotage | `js/telemetry.js`, `dashboard/server/store.js` |
+| ⑤ | Cache IndexedDB du référentiel, clé sur la release | `js/idb-store.js`, `js/passions-flat.js` |
+
+Verrous : `tests/e2e/capacite-sans-investir.spec.js` (10),
+`dashboard/test/telemetrie-echantillon-poids.test.js` (5) et
+`tests/sql/migration-realtime-publication.test.sh` (10 — la migration est **exécutée** sur un
+PostgreSQL jetable, pas seulement relue), éprouvés par réinjection de six mutations.
+
+**Ce qui reste un geste humain, et pourquoi** :
+
+1. **Coller `migrations/migration_realtime_publication_2026-09-19.sql`** (canal ③ d'ADR-012). Aucune
+   session en conteneur distant ne peut l'appliquer : le canal ① est en lecture seule
+   (`transaction_read_only = on`, vérifié), et il n'y a ni jeton de l'API de gestion ni chaîne de
+   connexion `psql` ici. Le fichier est une seule transaction, avec un verdict qui **annule tout** si
+   `telemetry_events` venait à quitter la publication. ⚠️ Après le coller, **mesurer l'état en base**
+   (canal ①), jamais le tableau imprimé : un miroir périmé imprime OK sur tout.
+2. **Contre-revue de la PR** — seul contrôle humain entre ce canal et la production, et elle est
+   exigée parce que ce lot porte une migration.
+3. **Vérifier le forfait Supabase** au tableau de bord (Billing) : « Pro » est déduit du go/no-go du
+   11/09 et de la compute Micro mesurée, pas lu. En Free, les plafonds du tableau ci-dessus tombent à
+   500 Mo de base et 1 Go de stockage, et le geste ① passe d'important à urgent.
+
+⚠️ **UN DÉFAUT DE CE DOCUMENT A ÉTÉ CORRIGÉ PAR LE TRAVAIL LUI-MÊME** : sa première version
+recommandait de sortir `telemetry_events` de la publication realtime, « aucun client ne s'y abonne ».
+C'était faux — le Centre de pilotage s'y abonne depuis son backend, et la retirer aurait éteint le
+direct du tableau de bord **sans une erreur**. L'inventaire avait été fait sur `js/` seul. C'est la
+raison d'être de la gate du geste ③ : une règle vérifiée à la main se re-vérifie mal.
