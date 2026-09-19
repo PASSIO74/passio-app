@@ -10,6 +10,14 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { store, normalize, poidsEvenement } from "../server/store.js";
 
+// ⚠️ PAS D'ISOLATION ICI, ET C'EST DIT PLUTÔT QUE SIMULÉ. La première rédaction
+// appelait `store.reset?.()` — méthode qui N'EXISTE PAS : la ligne ressemblait à
+// une remise à zéro et n'en était pas une (relevé par `audit-passio`). Les cas
+// ci-dessous ne lisent que des événements qu'ils fabriquent eux-mêmes, ou
+// calculent à la main sur leur propre tableau ; le seul qui interroge le store
+// (④) borne sa lecture à SA fenêtre. Un jour où ce ne sera plus vrai, il faudra
+// une vraie isolation, pas un appel optionnel qui ne fait rien.
+
 let n = 0;
 function ev(over = {}) {
   n++;
@@ -38,7 +46,6 @@ test("② une valeur absurde venue du client ne décide JAMAIS d'un multiplicate
 });
 
 test("③ LE DÉFAUT QUE LE LOT AURAIT CRÉÉ : 1 succès pondéré 10 + 1 échec = 10 %, jamais 50 %", () => {
-  store.reset?.();
   const evts = [
     ev({ meta: { mode: "prod", ech: 10 } }),                                  // 9 autres succès non envoyés
     ev({ status: "error", severity: "error", http_status: 401, meta: { mode: "prod" } }),
@@ -57,7 +64,6 @@ test("③ LE DÉFAUT QUE LE LOT AURAIT CRÉÉ : 1 succès pondéré 10 + 1 éche
 });
 
 test("④ `health()` sur la MÊME chronologie ne dit pas « Critique »", () => {
-  store.reset?.();
   // 10 lectures gardées (poids 10 chacune = 100 réelles) + 2 échecs réels.
   for (let i = 0; i < 10; i++) store.add(ev({ meta: { mode: "prod", ech: 10 } }));
   for (let i = 0; i < 2; i++) store.add(ev({ status: "error", severity: "error", http_status: 401, meta: { mode: "prod" } }));

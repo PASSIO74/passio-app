@@ -276,7 +276,17 @@
             })
             .then(function (j) {
               termine(j, false);
-              try { if (typeof window.idbPassionsSave === "function") window.idbPassionsSave(j); } catch (e) {}
+              // Le cache est optionnel — une écriture ratée ne casse rien — mais
+              // elle ne doit pas s'évanouir : sans trace, un cache qui n'écrit
+              // jamais rien ressemble à un cache qui fonctionne (on retéléchargerait
+              // 568 ko à chaque session sans que personne ne le sache).
+              try {
+                if (typeof window.idbPassionsSave === "function") {
+                  window.idbPassionsSave(j).then(function (ok) {
+                    if (!ok) journal("cache_ecriture_refusee", new Error("idbPassionsSave a rendu false"));
+                  }, function (e2) { journal("cache_ecriture", e2); });
+                }
+              } catch (e) { journal("cache_ecriture_sync", e); }
             })
             .catch(function (e) {
               echecChargement = true;

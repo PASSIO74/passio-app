@@ -29,6 +29,11 @@
 -- leurs données, leurs policies et leurs GRANT : seule la réplication logique
 -- cesse.
 --
+-- ⚠️ NON REJOUABLE, ET C'EST SANS DANGER : un second passage lève sur le premier
+-- `drop table` (la table n'est plus membre), la transaction est annulée, l'état
+-- reste celui du premier passage. Le banc ⑧ le mesure. Ne pas « réparer » en
+-- ajoutant un `if exists` : la levée est le signal qu'on l'a déjà appliquée.
+--
 -- RETOUR ARRIÈRE : `alter publication supabase_realtime add table public.<t>;`
 -- pour la table voulue. Aucune donnée n'est touchée, la reprise est immédiate.
 --

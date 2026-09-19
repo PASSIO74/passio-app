@@ -267,6 +267,16 @@
   // le banc unitaire éprouve, jamais `track` (qui touche la file et le réseau).
   function tauxEchantillon(type, action, fields) {
     if (CRITICAL_TYPE[type]) return 1;
+    // ⚠️ UN APPEL LENT EST UN SIGNAL, MÊME EN 200 — et le premier jet le jetait
+    // comme du bruit (relevé par `audit-passio`). Le hook `fetch` pose
+    // `status: "slow"` / `severity: "warn"` dès 1,5 s AVEC un code 200, et le
+    // pilotage n'arme son alerte « Lenteur » qu'à partir de N appels lents
+    // (`evaluerLenteur`, alerts.js) : à un sur dix, il aurait fallu dix fois plus
+    // de lenteurs RÉELLES pour que l'alerte se déclenche. Un 200 à six secondes
+    // est très exactement ce qu'on cherche à voir.
+    // Cette garde vient AVANT le test du code HTTP : c'est l'état de l'appel qui
+    // décide, pas son statut seul.
+    if (fields && (fields.status === "slow" || fields.severity === "warn" || fields.severity === "error")) return 1;
     if (type === "api") {
       // `http_status` absent = requête qui n'a jamais abouti → c'est un signal.
       var st = fields && typeof fields.http_status === "number" ? fields.http_status : null;
@@ -757,10 +767,15 @@
       // Absent = poids 1. Estampillé ICI et pas dans `tauxEchantillon`, qui doit
       // rester pure. Clé volontairement courte et neutre : `DENY_KEY` (filtre
       // PII) écarte en silence toute clé contenant name/user/label/tel/code…
+      // ⚠️ `ech` EST POSÉ EN DERNIER, donc il GAGNE sur une clé homonyme de
+      // l'appelant. Placé avant, n'importe quel `meta: { ech: 1000 }` aurait
+      // piloté un multiplicateur du tableau de bord depuis le client — et
+      // `poidsEvenement` accepte jusqu'à 1000. Aucun appelant ne le fait
+      // aujourd'hui ; c'est précisément pour que ça reste vrai.
       meta: scrubMeta(Object.assign(
         { mode: MODE },
-        _taux < 1 ? { ech: Math.round(1 / _taux) } : {},
-        (fields.meta && typeof fields.meta === "object") ? fields.meta : {}
+        (fields.meta && typeof fields.meta === "object") ? fields.meta : {},
+        _taux < 1 ? { ech: Math.round(1 / _taux) } : {}
       )),
     };
     enqueue(ev);

@@ -1168,8 +1168,14 @@ function passioCompressVideo(file, opts, onProgress) {
   });
 }
 
-// ⚠️ UNE SEULE AUTORITÉ POUR PRÉPARER UNE VIDÉO À L'ENVOI — LES DEUX PORTES
-// PASSENT PAR ICI. Mesuré le 2026-09-19 : 9 vidéos pesaient 68 Mo, soit 85 % de
+// ⚠️ UNE SEULE AUTORITÉ POUR PRÉPARER UNE VIDÉO À L'ENVOI — LES TROIS PORTES
+// PASSENT PAR ICI : `meOnMedia` (éditeur média), `#videoInput` (Studio, app-06)
+// et `handleAttachFile` (pièce jointe de messagerie, app-09).
+// ⚠️ LA PREMIÈRE RÉDACTION DISAIT « LES DEUX PORTES », ET C'ÉTAIT FAUX : la
+// troisième, la messagerie, n'avait AUCUNE borne de taille (son contrôle de
+// 40 Mo est image-seulement). Relevé par `audit-passio` le jour même. Un lot qui
+// se réclame de « corriger une surface, c'est corriger une surface » et qui en
+// oublie une troisième est exactement ce que la règle décrit. Mesuré le 2026-09-19 : 9 vidéos pesaient 68 Mo, soit 85 % de
 // TOUT le Storage, la plus grosse à 24 Mo — parce que `passioCompressVideo`
 // n'avait QU'UN appelant (`meOnMedia`) et que la porte du Studio (`#videoInput`,
 // app-06) lisait le fichier BRUT jusqu'à 30 Mo. Les images, elles, passent par
@@ -1199,7 +1205,7 @@ async function passioVideoPourEnvoi(file) {
   var _canMp4 = (typeof _passioBestVideoMime === "function") && _passioBestVideoMime().indexOf("video/mp4") === 0;
   if (file.size <= VIDEO_COMPRESSER_AU_DELA && !(_isWebm && _canMp4)) return await _meReadFile(file);
   if (file.size > VIDEO_PLAFOND_DUR) {
-    throw _erreurVideo("Vidéo trop lourde (" + mo + " Mo). Filme directement dans l'app ou choisis une vidéo < 25 Mo.");
+    throw _erreurVideo("Vidéo trop lourde (" + mo + " Mo). Filme directement dans l'app, ou choisis une vidéo de moins d'une minute.");
   }
   try {
     if (typeof passioCompressVideo !== "function") throw new Error("unsupported");
@@ -1213,8 +1219,19 @@ async function passioVideoPourEnvoi(file) {
     // Compression indisponible (vieux navigateur, codec absent) mais taille
     // encore uploadable : on garde la vidéo brute plutôt que de refuser — le
     // délai d'upload est proportionnel à la taille.
+    // ⚠️ ON TRACE AVANT DE REPLIER. Ce `catch` attrape aussi bien un codec
+    // absent qu'une `ReferenceError` dans `passioCompressVideo` : sans trace, une
+    // régression du compresseur ferait retomber TOUT le monde sur l'envoi brut —
+    // c'est-à-dire sur le défaut même que ce lot ferme — et le seul symptôme
+    // serait la courbe de Storage qui remonte des semaines plus tard. Ni la
+    // Sentinelle ni le pilotage ne verraient rien. Famille du bug `diagLog`.
+    try { if (typeof diagLog === "function") diagLog("video_compression_repli: " + ((e && e.message) || e)); } catch (_) {}
+    try { if (window.tel && tel.error) tel.error(e, { action: "video_compression_repli", severity: "warn", meta: { mo: mo } }); } catch (_) {}
     if (file.size <= VIDEO_BRUT_MAX) return await _meReadFile(file);
-    throw _erreurVideo("Vidéo trop lourde à optimiser (" + mo + " Mo). Filme dans l'app ou choisis une vidéo < 25 Mo.");
+    // ⚠️ Le motif le plus fréquent n'est PAS la taille : `passioCompressVideo`
+    // refuse au-delà de 65 secondes (garde de durée, plus haut). Un message qui
+    // ne parlerait que de mégaoctets enverrait chercher la mauvaise cause.
+    throw _erreurVideo("Vidéo impossible à optimiser (" + mo + " Mo). Elle doit durer moins d'une minute, ou peser moins de 25 Mo. Le plus simple : filme directement dans l'app.");
   }
 }
 

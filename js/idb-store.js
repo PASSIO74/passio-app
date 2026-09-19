@@ -126,8 +126,16 @@
   // une simple coupure réseau d'une seconde. C'est la faute exacte du 2026-09-10
   // (« le rejeu RÉTRÉCISSAIT la liste blanche des passions »), et l'appelant la
   // garde en refusant d'appeler `idbPassionsSave` sur ce chemin.
+  // ⚠️ MÊME LECTURE QUE `versionApp()` (telemetry.js), Y COMPRIS
+  // `PASSIO_APP_VERSION` — qui manquait ici au premier jet (relevé par
+  // `audit-passio`). Deux lectures du même contrat de release finissent par
+  // désigner deux versions, et c'est alors le cache qui se croit frais sur une
+  // version qui a changé. On ne peut pas appeler `versionApp` : telemetry.js est
+  // chargé APRÈS ce fichier et n'expose pas la fonction — d'où la copie, dite en
+  // clair plutôt que subie.
   function releaseCourante() {
     try {
+      if (window.PASSIO_APP_VERSION) return String(window.PASSIO_APP_VERSION).slice(0, 40);
       var r = window.PASSIO_RELEASE;
       if (r && typeof r.commit === "string" && /^[0-9a-f]{7,40}$/i.test(r.commit)) return r.commit.slice(0, 8);
       if (r && typeof r.buildId === "string" && r.buildId) return "b" + r.buildId.slice(0, 8);

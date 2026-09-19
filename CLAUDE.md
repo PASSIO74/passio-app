@@ -1506,7 +1506,14 @@ cité de bonne foi dans un fichier que personne n'avait daté. Dossier : `docs/C
 sur 80, la plus grosse à 24 Mo ; les 58 images = 12,5 Mo (elles passent par `passioCompressImage`
 depuis toujours). `passioCompressVideo` (app-08) n'avait **qu'UN appelant**, `meOnMedia` ; la porte du
 Studio (`#videoInput`, app-06) lisait le fichier **BRUT** jusqu'à 30 Mo. Famille « corriger une surface,
-c'est corriger une surface ». **`passioVideoPourEnvoi` (app-08) est désormais la SEULE autorité** —
+c'est corriger une surface ».
+⚠️ **ET IL Y AVAIT UNE TROISIÈME PORTE — le premier jet de ce lot écrivait « les DEUX portes », ce qui
+était faux, et c'est `audit-passio` qui l'a relevé, pas les dix verrous.** `handleAttachFile` (app-09)
+sert `#attachImageFile`, qui porte `accept="image/*,video/*"` : une vidéo jointe à une conversation
+partait en `FileReader` brut vers le seau `attachments`, et le contrôle de 40 Mo juste au-dessus est
+**IMAGE-SEULEMENT** — donc AUCUNE borne, plus permissif que l'ancien Studio. Un lot qui se réclame de
+cette règle et en oublie une troisième surface en est l'illustration, pas l'exception.
+**`passioVideoPourEnvoi` (app-08) est désormais la SEULE autorité des TROIS portes** —
 seuils (8 / 25 / 150 Mo), transcodage webm→mp4, repli brut, refus **portant son `motifUtilisateur`** :
 l'appelant ne re-décide rien. Recopier les seuils dans la seconde porte les aurait fait diverger.
 ⚠️ **LE GAIN SE DIT JUSTE** : ×5,2 sur la VIDÉO (7,5 → ~1,5 Mo), mais **×3,2 sur le stockage RÉEL**
@@ -1518,8 +1525,10 @@ obligatoire depuis le 30/08 : **une inscription = un e-mail**, et Brevo gratuit 
 JOUR**, renvois et mots de passe oubliés compris. C'est le **seul plafond d'ACQUISITION** de PASSIO, et
 Google n'en coûte **aucun**. Le bouton était posé APRÈS « Créer mon compte », « Mot de passe oublié »
 et le renvoi — **sous le pli**, exactement comme `#authResendLink` avant le 18/09. **UN SEUL nœud, une
-seule position** pour les deux onglets ; le séparateur NOMME l'alternative (`majSeparateurGoogle` dans
-`switchAuthTab`). ⚠️ **La case de consentement est maintenant PLUS BAS que le bouton qui l'exige** :
+seule position** pour les deux onglets ; le séparateur NOMME l'alternative (peint par `switchAuthTab`, sans fonction
+dédiée — la première rédaction en nommait une, `majSeparateurGoogle`, qui n'a jamais existé :
+une fonction fantôme DOCUMENTAIRE, qu'`audit:handlers` ne voit pas parce que ce n'est pas un
+onclick). ⚠️ **La case de consentement est maintenant PLUS BAS que le bouton qui l'exige** :
 `_amenerConsentementAuxYeux()` l'amène à l'écran sur refus, depuis les **DEUX** gardes
 (`onbGoogleAuth` ET `onbDoAuth` portent le même refus mot pour mot) — un refus qui désigne un élément
 hors champ est le défaut du 18/09 déplacé d'un cran. `block:"center"`, jamais `"start"` : la case est au
@@ -1552,8 +1561,20 @@ rien, les perdre donne un tableau de bord qui ment. Les échecs (0, 4xx, 5xx) so
 le **taux d'erreur afficherait dix fois la réalité** et `health()` basculerait en « Critique » (seuil
 40 %) sur une production saine. `tauxEchantillon` (pure, telemetry.js) estampille `meta.ech` ;
 `poidsEvenement` (dashboard/server/store.js) le lit, et **retombe à 1** sur toute valeur absurde — une
-donnée venue du client ne décide jamais d'un multiplicateur. La LATENCE n'est pas pondérée (une moyenne
-sur échantillon est déjà la bonne estimation).
+donnée venue du client ne décide jamais d'un multiplicateur.
+⚠️ **LA PONDÉRATION VA JUSQU'AU BOUT, ET LE PREMIER JET S'ARRÊTAIT À MI-CHEMIN.** `health()` et
+`snapshot()` étaient pondérés ; `apiPerf()`, `services()` et les cinq compteurs d'activité ne l'étaient
+pas — donc le taux d'erreur PAR ENDPOINT et la **Carte des services** (seuils 5/15/40 %) criaient encore
+à la panne. Relevé par `audit-passio`.
+⚠️ **ET « une moyenne sur un échantillon est déjà la bonne estimation » ÉTAIT FAUX** : c'est vrai d'un
+échantillon UNIFORME, et celui-ci ne l'est pas — seuls les 200 sont tirés, les échecs et les écritures
+restent entiers, donc la population survivante penche vers les échecs, qui sont lents. Moyenne et p95
+sont désormais pondérés eux aussi. Une justification écrite qui ne tient pas est pire qu'un oubli :
+elle décourage de regarder.
+⚠️ **UN 200 LENT EST UN SIGNAL, PAS DU BRUIT** : le hook `fetch` pose `status: "slow"` dès 1,5 s AVEC un
+code 200, et le pilotage n'arme son alerte « Lenteur » qu'après N appels lents — échantillonnés, il en
+aurait fallu dix fois plus. `tauxEchantillon` rend donc 1 sur tout `status: "slow"` ou
+`severity: "warn"/"error"`, **avant** de regarder le code HTTP.
 
 ⚠️ **⑤ LE CACHE DU RÉFÉRENTIEL EST CLÉ SUR LA RELEASE, PAS SUR UNE DURÉE.** `data/passions-v1.json`
 pèse **568 ko** et le service worker ne le pré-cache pas : retéléchargé à chaque session. Un TTL devine ;
@@ -1571,10 +1592,19 @@ liste blanche »). L'écriture ne se fait que sur la branche réseau RÉUSSIE, e
 rejouée. Réécrit sur le GESTE : un `File` posé dans `#videoInput`, l'événement `change`, et on regarde
 qui est appelé. ⚠️ Au passage, `window.Telemetry` **n'existe pas** — le module s'expose en
 `window.PassioTelemetry` (alias `window.tel`).
-Verrou : `tests/e2e/capacite-sans-investir.spec.js` (10) + `dashboard/test/telemetrie-echantillon-poids.test.js`
-(5), **éprouvés par RÉINJECTION de cinq mutations** — Studio rendu au fichier brut (1 rouge), Google
-remis en bas (1), échantillonnage étendu aux 2xx (2), repli hors ligne mis en cache (1), sortie du refus
-de consentement retirée (1) ; côté pilotage, `poidsEvenement` rendu aveugle (3 rouges).
+⚠️ **ET LA GATE ELLE-MÊME ÉTAIT AVEUGLE À DEUX CHOSES** : elle ne descendait pas dans les sous-dossiers
+et n'acceptait que les guillemets DOUBLES — donc une souscription rangée ailleurs, ou écrite en
+guillemets simples, n'était pas comptée, et l'oubli était muet **dans le sens qu'elle déclare garder en
+premier**. Elle est récursive, accepte les trois guillemets, et **SIGNALE** ce qu'elle ne sait pas lire
+(`table: MA_CONSTANTE`) plutôt que de l'ignorer : une gate qui se tait sur ce qu'elle n'a pas compris ne
+garantit plus rien.
+Verrous : `tests/e2e/capacite-sans-investir.spec.js` (12) + `dashboard/test/telemetrie-echantillon-poids.test.js`
+(5) + `tests/sql/migration-realtime-publication.test.sh` (10 — la migration est **EXÉCUTÉE** sur un
+PostgreSQL jetable, et la variante qui retirerait `telemetry_events` doit LEVER sans rien appliquer).
+**Éprouvés par RÉINJECTION de sept mutations** — Studio rendu au fichier brut (1 rouge), porte de
+messagerie rendue au brut (1), Google remis en bas (1), échantillonnage étendu aux 2xx (2), repli hors
+ligne mis en cache (1), sortie du refus retirée de `onbDoAuth` SEULEMENT (1 — c'est la porte que le
+premier verrou n'exerçait pas), et `poidsEvenement` rendu aveugle (3, côté pilotage).
 
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)
 

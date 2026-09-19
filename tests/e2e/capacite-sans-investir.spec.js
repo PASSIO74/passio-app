@@ -75,7 +75,42 @@ test("① ter compression indisponible → repli BRUT sous 25 Mo, refus NOMMÉ a
     return out;
   });
   expect(r.repli, "sous 25 Mo, un échec de compression ne doit pas refuser la vidéo").toBe(true);
-  expect(r.refus, "un refus DOIT porter son message utilisateur").toMatch(/trop lourde/i);
+  // ⚠️ Le message ne parle plus SEULEMENT de mégaoctets : `passioCompressVideo`
+  // refuse au-delà de 65 secondes, et c'est le motif le plus fréquent — un refus
+  // qui ne citerait que la taille enverrait chercher la mauvaise cause.
+  expect(r.refus, "un refus DOIT porter son message utilisateur").toMatch(/impossible à optimiser|trop lourde/i);
+  expect(r.refus, "…et nommer les DEUX motifs possibles, durée comprise").toMatch(/minute/i);
+});
+
+test("① quater LA TROISIÈME PORTE : une vidéo jointe à une conversation y passe aussi", async ({ page }) => {
+  await bootOnboarded(page);
+  // ⚠️ CE CAS EXISTE PARCE QUE LE LOT A ÉCRIT « LES DEUX PORTES » ALORS QU'IL Y
+  // EN AVAIT TROIS. `#attachImageFile` porte `accept="image/*,video/*"` : une
+  // vidéo jointe en messagerie tombait dans `handleAttachFile` → `_processAttach`
+  // en FileReader brut, et le contrôle de 40 Mo juste au-dessus est
+  // IMAGE-SEULEMENT — donc aucune borne du tout, plus permissif que l'ancien
+  // Studio. Relevé par `audit-passio`, pas par les dix cas précédents.
+  const r = await page.evaluate(async () => {
+    const vus = [];
+    window.passioVideoPourEnvoi = function (f) { vus.push(f.size); return Promise.resolve("data:video/mp4;base64," + "A".repeat(3000)); };
+    const traites = [];
+    window._processAttach = function (input, kind, file) { traites.push({ kind, taille: file && file.size }); };
+    const input = document.getElementById("attachImageFile");
+    if (!input) return { absent: true };
+    const accept = input.getAttribute("accept") || "";
+    const fichier = new File([new Uint8Array(9 * 1024 * 1024)], "clip.mp4", { type: "video/mp4" });
+    const dt = new DataTransfer(); dt.items.add(fichier);
+    input.files = dt.files;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    await new Promise((r2) => setTimeout(r2, 500));
+    return { accept, vus, traites };
+  });
+  expect(r.absent, "#attachImageFile doit exister").toBeFalsy();
+  expect(r.accept, "cette porte accepte bien des vidéos — c'est ce qui en fait une porte vidéo").toContain("video/");
+  expect(r.vus, "la vidéo jointe DOIT traverser l'autorité de préparation").toEqual([9 * 1024 * 1024]);
+  // Et ce qui part vers le seau est la version PRÉPARÉE, pas le fichier d'origine.
+  expect(r.traites.length, "un seul envoi").toBe(1);
+  expect(r.traites[0].taille, "le fichier transmis n'est plus l'original de 9 Mo").toBeLessThan(9 * 1024 * 1024);
 });
 
 // ── ② GOOGLE EN PREMIER ────────────────────────────────────────────────────
@@ -118,23 +153,40 @@ test.describe("② le bouton Google", () => {
     expect(signup).not.toBe(signin);
   });
 
-  test("② ter le refus de consentement AMÈNE la case à l'écran — un refus muet est une panne", async ({ page }) => {
-    await poserGateSansPremiereVisite(page);
-    await sansDonneesDistantes(page);
-  await page.goto("/");
-    await page.evaluate(() => { try { PassioFirstRun.allerConnexion(); } catch (e) {} });
-    const r = await page.evaluate(async () => {
-      switchAuthTab("signup");
-      const vus = [];
-      const wrap = document.getElementById("authConsentWrap");
-      wrap.scrollIntoView = function (o) { vus.push(o && o.block || "sans-options"); };
-      document.getElementById("authConsent").checked = false;
-      await window.onbGoogleAuth();
-      return { vus, msg: (document.getElementById("authMsg").textContent || "") };
+  // ⚠️ LES DEUX PORTES, ET C'EST TOUT L'OBJET DU CAS. La première rédaction
+  // n'exerçait que `onbGoogleAuth` : retirer `_amenerConsentementAuxYeux()` de
+  // `onbDoAuth` laissait les dix cas VERTS — alors que le commentaire d'app-02
+  // cite précisément « posée à une seule porte, l'autre l'aurait oubliée » comme
+  // la faute à ne pas commettre. Un verrou qui n'exerce qu'une porte ne garde
+  // qu'une porte (relevé par `audit-passio`).
+  for (const porte of ["onbGoogleAuth", "onbDoAuth"]) {
+    test(`② ter (${porte}) le refus de consentement AMÈNE la case à l'écran — un refus muet est une panne`, async ({ page }) => {
+      await sansDonneesDistantes(page);
+      await page.goto("/");
+      await page.evaluate(() => { try { PassioFirstRun.allerConnexion(); } catch (e) {} });
+      const r = await page.evaluate(async (nom) => {
+        switchAuthTab("signup");
+        const vus = [];
+        const wrap = document.getElementById("authConsentWrap");
+        wrap.scrollIntoView = function (o) { vus.push((o && o.block) || "sans-options"); };
+        document.getElementById("authConsent").checked = false;
+        // `onbDoAuth` va plus loin que la garde : on lui donne de quoi ne pas
+        // buter avant elle, et on ne mesure QUE le comportement de la garde.
+        const mail = document.getElementById("authEmail"); if (mail) mail.value = "essai@exemple.com";
+        const mdp = document.getElementById("authPassword"); if (mdp) mdp.value = "lavande-colibri-4917";
+        const nomChamp = document.getElementById("authName"); if (nomChamp) nomChamp.value = "Essai Capacite";
+        // ⚠️ `onbDoAuth` valide la confirmation du mot de passe AVANT la garde de
+        // consentement : sans ce champ, on mesurerait « les mots de passe ne
+        // correspondent pas » au lieu du refus visé. Une prémisse non posée fait
+        // rougir un cas sur autre chose que son sujet.
+        const conf = document.getElementById("authPasswordConfirm"); if (conf) conf.value = "lavande-colibri-4917";
+        try { await window[nom](); } catch (e) {}
+        return { vus, msg: (document.getElementById("authMsg").textContent || "") };
+      }, porte);
+      expect(r.msg, "le refus doit se prononcer").toMatch(/accepte les conditions/i);
+      expect(r.vus, "la case désignée par le refus doit être amenée sous les yeux").toContain("center");
     });
-    expect(r.msg, "le refus doit se prononcer").toMatch(/accepte les conditions/i);
-    expect(r.vus, "la case désignée par le refus doit être amenée sous les yeux").toContain("center");
-  });
+  }
 });
 
 // ── ④ L'ÉCHANTILLONNAGE ────────────────────────────────────────────────────

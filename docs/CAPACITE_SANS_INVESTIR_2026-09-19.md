@@ -44,7 +44,7 @@ plus jamais de « combien tiennent », mais des quatre ressources qui, elles, s'
 | Bande passante Netlify | non mesurée ici | **100 Go/mois (gratuit)** | les vidéos, très loin devant |
 | **E-mails de confirmation** | — | **300 par JOUR (Brevo gratuit)** | **chaque inscription** |
 | Écritures simultanées | ~20 comptes actifs avant que la latence se voie (mesuré 15/09) | compute Micro | publier, aimer, envoyer |
-| Temps réel | 26 tables publiées, dont 8 inutiles | coût en O(changements × clients) | `postgres_changes` |
+| Temps réel | **25 tables publiées, 12 abonnées** (13 inutiles) | coût en O(changements × clients) | `postgres_changes` |
 | Comptes | 10 | 50 000 MAU | personne |
 
 Détail utile : 61 470 lignes de télémétrie en 7 jours pour **2 431 sessions**, soit ~25 lignes par
@@ -108,7 +108,7 @@ temps de démarrage). Un agrégat n'a pas besoin de toutes les lignes.
 
 **Deux gestes gratuits** :
 
-1. **Échantillonner** `api` en 2xx et `perf` à 10 %, en gardant **100 %** des erreurs, des refus 4xx/5xx,
+1. **Échantillonner** `api` en **200 SEULEMENT** et `perf` à 10 %, en gardant **100 %** des erreurs, des refus 4xx/5xx,
    de `session`, `action`, `connectivity` et `error`. −45 % de lignes, aucun signal perdu — un p95
    calculé sur 2 000 mesures vaut celui calculé sur 20 000. ⚠️ Le taux d'échantillonnage doit voyager
    avec la ligne (une colonne `poids`), sinon les compteurs du pilotage divisent le trafic réel par dix
@@ -128,7 +128,7 @@ temps de démarrage). Un agrégat n'a pas besoin de toutes les lignes.
 
 Le pooler n'était pas le mur, et la base non plus. Le mur est `postgres_changes`.
 
-**Mesuré** : la publication `supabase_realtime` porte **26 tables**. Dont :
+**Mesuré** : la publication `supabase_realtime` porte **25 tables** pour **12 abonnées**. Dont :
 
 - `conv_reads` — les accusés de lecture, le plus gros volume d'écritures de la messagerie
   (⚠️ **abonné**, lui : `_creerCanalDb` l'écoute pour le ✓✓ en direct — il RESTE publié) ;
@@ -197,7 +197,14 @@ l'une rapporte beaucoup et l'autre est une impasse.
 
 Le stockage local supprime les **lectures répétées**. Le référentiel des passions (568 ko, 5 001
 entrées), les publications déjà vues, les profils déjà croisés : tout cela est immuable ou presque, et
-retéléchargé à chaque session. Le mettre en IndexedDB, c'est moins de requêtes, moins d'egress, et un
+retéléchargé à chaque session.
+
+⚠️ **PRÉCISION QUI CHANGE CE QU'ON PEUT PROMETTRE** (relevée par `audit-passio`) : `data/passions-v1.json`
+n'est pas dans la LISTE DE PRÉ-CACHE du service worker, mais il tombe dans sa branche
+*stale-while-revalidate* (`sw.js`) — il est donc déjà servi depuis le Cache Storage au deuxième
+passage. **Le gain du geste ⑤ est donc la BANDE PASSANTE, pas la latence de démarrage** : la
+revalidation, elle, retélécharge bien les 568 ko en arrière-plan à chaque session. À dire juste,
+sinon le prochain lot ira re-mesurer un gain qui n'existe pas. Le mettre en IndexedDB, c'est moins de requêtes, moins d'egress, et un
 démarrage quasi instantané pour quelqu'un qui revient.
 
 **Et le modèle existe déjà dans le dépôt** : `js/idb-store.js` fait exactement ça pour les
@@ -252,10 +259,10 @@ augmente avec le succès.
 
 | # | Geste | Coût | Gain | Risque |
 |---|---|---|---|---|
-| 1 | **Compresser la vidéo au Studio** (brancher `passioCompressVideo` sur `#videoInput`) | quelques heures | **×5 stockage ET ×5 bande passante** | faible, repli déjà écrit |
+| 1 | **Compresser la vidéo aux TROIS portes** (Studio, éditeur média, pièce jointe de messagerie) | quelques heures | **×3,2 stockage, ×5 bande passante vidéo** | faible, repli déjà écrit |
 | 2 | **Google Sign-In en premier** sur l'écran d'inscription | 1 heure | **×2 inscriptions/jour** | nul |
-| 3 | **Nettoyer la publication realtime** (6 `cdv_*` morts + `telemetry_events`) | 1 heure | coût serveur par écriture | faible, à vérifier au grep |
-| 4 | **Échantillonner `api` et `perf`** à 10 %, avec un poids par ligne | 1 heure | −45 % de lignes en base | faible |
+| 3 | **Nettoyer la publication realtime** (13 tables sans abonné — ⚠️ **PAS** `telemetry_events`, voir §5) | 1 heure | coût serveur par écriture | faible, la gate `audit:realtime` le tient |
+| 4 | **Échantillonner `api` en 200 et `perf`** à 10 %, avec un poids par ligne | 1 heure | −45 % de lignes en base | faible |
 | 5 | **Étendre IndexedDB** au référentiel des passions et au fil | 1 jour | egress + démarrage | faible, patron existant |
 | 6 | **Mesurer puis allumer `PASSIO_REALTIME_V2/V3`** | 2 à 3 jours | c'est le plafond des milliers de connectés | moyen, à faire sur le staging |
 | 7 | **Découper `app.js`** | chantier | la rétention à l'échelle | élevé (hoisting) |
@@ -319,8 +326,9 @@ coût augmente avec le succès.
   « par utilisateur » faite depuis la télémétrie actuelle est donc haute.
 - **La tenue dans la durée n'est pas mesurée** : les bancs du 14 et 15/09 durent 40 secondes par
   palier. Une fuite mémoire ou une dérive d'index ne s'y verrait pas.
-- **Rien ici n'est un correctif appliqué.** Ce document mesure et propose ; il ne change pas une ligne
-  du produit.
+- ~~Rien ici n'est un correctif appliqué.~~ **Vrai de la PREMIÈRE version de ce document, faux depuis** :
+  les cinq gestes ont été appliqués le jour même (§9 bis et §11). Cette phrase a survécu à sa cause,
+  dans la section même qu'on lit pour savoir à quoi se fier — relevé par `audit-passio`.
 
 ---
 
