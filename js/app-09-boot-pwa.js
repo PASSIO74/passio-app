@@ -766,14 +766,55 @@ function passioCompressImage(file, maxDim, quality) {
   });
 }
 
-// Convertit un data URL en File (pour ré-injecter une image compressée).
+// Reconnaît une vidéo par son type MIME, et à défaut par l'extension du nom :
+// certains sélecteurs Android rendent un `type` vide. Seule autorité des portes
+// qui trient image/vidéo — la recopier les ferait diverger.
+function _passioEstVideo(file) {
+  if (!file) return false;
+  if ((file.type || "").indexOf("video/") === 0) return true;
+  if (file.type) return false;              // un type présent et non-vidéo fait foi
+  return /\.(mp4|mov|m4v|webm|mkv|3gp|avi)$/i.test(file.name || "");
+}
+
+// Convertit un data URL en File (ré-injection d'un média traité).
+//
+// ⚠️ LE TYPE ET L'EXTENSION VIENNENT DU DATA URL, JAMAIS D'UNE CONSTANTE.
+// Cette fonction forçait `image/jpeg` + `.jpg` EN DUR, ce qui était juste tant
+// qu'elle ne servait qu'à ré-injecter une image compressée — son seul appelant.
+// Le lot « capacité » du 2026-09-19 lui a branché la VIDÉO (la troisième porte,
+// juste en dessous) et a ainsi cassé l'envoi de vidéo en messagerie DE BOUT EN
+// BOUT, sans lever la moindre erreur :
+//   · `_processAttach` teste `file.type.startsWith("video/")`, devenu FAUX, donc
+//     la vidéo partait en `msg.img` — vignette cassée chez l'expéditeur ;
+//   · le blob déposé dans le seau `attachments` portait `image/jpeg` avec un
+//     `cacheControl` d'un an — mauvais content-type figé pour un an ;
+//   · `content.fileType` disait « image » au destinataire (`app-04`, branche
+//     `d.fileType.indexOf("video/")`), qui recevait une image cassée, pour
+//     toujours.
+// Avant le lot, le `File` brut passait tel quel et `file.type` valait
+// `video/mp4` : le chemin FONCTIONNAIT. C'est donc une régression complète
+// introduite par un correctif — la faute de famille à chercher en premier quand
+// un lot réutilise un helper écrit pour un autre média.
+// ⚠️ Et le verrou du lot était VERT dessus : il n'assertait que la TAILLE du
+// fichier traité. **Un verrou qui mesure la taille ne mesure pas le type.**
+var _PASSIO_EXT_MEDIA = {
+  "video/mp4": "mp4", "video/webm": "webm", "video/quicktime": "mov",
+  "video/x-matroska": "mkv", "video/3gpp": "3gp",
+  "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif"
+};
 function _passioDataUrlToFile(durl, name) {
-  var parts = durl.split(",");
+  var parts = String(durl || "").split(",");
+  // `data:<mime>;base64` → le mime est entre les deux-points et le premier `;`.
+  var mime = (/^data:([^;,]+)/.exec(parts[0]) || [])[1] || "application/octet-stream";
   var bstr = atob(parts[1]);
   var u8 = new Uint8Array(bstr.length);
   for (var i = 0; i < bstr.length; i++) u8[i] = bstr.charCodeAt(i);
-  var base = (name || "photo").replace(/\.[^.]+$/, "");
-  return new File([u8], base + ".jpg", { type: "image/jpeg" });
+  // Extension : la table d'abord, sinon le sous-type du mime (`video/avi` → avi),
+  // sinon `bin`. Jamais l'extension d'ORIGINE : le contenu a pu être transcodé
+  // (webm → mp4), et un `.webm` portant du mp4 est le même mensonge à l'envers.
+  var ext = _PASSIO_EXT_MEDIA[mime] || (mime.split("/")[1] || "bin").replace(/[^a-z0-9]/gi, "").slice(0, 5) || "bin";
+  var base = (name || "media").replace(/\.[^.]+$/, "");
+  return new File([u8], base + "." + ext, { type: mime });
 }
 
 function handleAttachFile(input, kind) {
@@ -789,6 +830,35 @@ function handleAttachFile(input, kind) {
     passioCompressImage(file).then(function (durl) {
       _processAttach(input, kind, _passioDataUrlToFile(durl, file.name));
     }).catch(function () { input.value = ""; toast("Impossible de lire cette image."); });
+    return;
+  }
+  // ⚠️ LA TROISIÈME PORTE VIDÉO, ET ELLE N'AVAIT AUCUN PLAFOND (relevé par
+  // `audit-passio`, 2026-09-19). `#attachImageFile` porte `accept="image/*,
+  // video/*"` : une vidéo jointe à une conversation tombait ici, partait en
+  // `FileReader` brut vers le seau `attachments`, et le contrôle de 40 Mo
+  // juste au-dessus est IMAGE SEULEMENT — donc aucune borne du tout, plus
+  // permissif que l'ancien Studio et ses 30 Mo.
+  // Le lot « capacité » du même jour n'avait branché que `meOnMedia` et
+  // `#videoInput` en écrivant « LES DEUX PORTES » : il y en avait trois. C'est
+  // la famille que ce lot citait lui-même (`quickCreateProfile` et le Studio
+  // sur le plafond de passions) — « corriger une surface, c'est corriger une
+  // surface », y compris quand c'est soi qui corrige.
+  // ⚠️ UNE VIDÉO PEUT ARRIVER SANS TYPE MIME. Certains sélecteurs Android rendent
+  // `file.type === ""` : gardée sur le seul `type`, la porte laissait alors
+  // repasser le fichier BRUT, sans aucune borne (le contrôle de 40 Mo ci-dessus
+  // est IMAGE SEULEMENT). Ce n'est pas une régression — c'était l'état d'avant
+  // pour toute vidéo — mais ce lot AFFIRME que cette porte est bornée, et une
+  // affirmation qu'un cas dément est pire qu'un trou connu. Repli sur l'extension.
+  if (kind === "media" && _passioEstVideo(file)
+      && typeof passioVideoPourEnvoi === "function" && typeof _passioDataUrlToFile === "function") {
+    passioVideoPourEnvoi(file).then(function (durl) {
+      _processAttach(input, kind, _passioDataUrlToFile(durl, file.name));
+    }).catch(function (e) {
+      input.value = "";
+      // Le refus PORTE son message (contrat de `passioVideoPourEnvoi`) ; sans
+      // lui, un refus muet est indiscernable d'une panne.
+      toast((e && e.motifUtilisateur) || "Impossible de lire cette vidéo.");
+    });
     return;
   }
   _processAttach(input, kind, file);

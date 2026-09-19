@@ -4151,40 +4151,37 @@ function renderPhotoPreview() {
 function clearPhoto() { photoDataUrl = null; renderPhotoPreview(); }
 
 // Video upload
-$("#videoInput").addEventListener("change", (e) => {
+// ⚠️ CETTE PORTE ENVOYAIT LE FICHIER BRUT, jusqu'à 30 Mo, pendant que l'éditeur
+// média compressait depuis des mois. Mesuré le 2026-09-19 : 9 vidéos = 68 Mo =
+// 85 % de tout le Storage. Les seuils ne sont PAS recopiés ici — ils vivent dans
+// `passioVideoPourEnvoi` (app-08), seule autorité, qui rend une data URL ou lève
+// une erreur portant le message exact à afficher.
+$("#videoInput").addEventListener("change", async (e) => {
   const f = e.target.files[0];
+  // ⚠️ Sans cette remise à zéro, rechoisir LE MÊME fichier n'émet plus
+  // d'événement `change` et le Studio a l'air de ne pas répondre (meOnMedia le
+  // fait depuis toujours, cette porte ne le faisait pas).
+  e.target.value = "";
   if (!f) return;
-
-  const maxSize = 30 * 1024 * 1024; // 30 Mo
-  if (f.size > maxSize) {
-    const sizeMB = Math.round(f.size / 1024 / 1024);
-    toast(`Vidéo trop lourde (${sizeMB} Mo, max 30 Mo).`);
-    return;
-  }
 
   toast("Chargement vidéo…");
 
-  const reader = new FileReader();
-  reader.onerror = () => toast("Erreur lors de la lecture de la vidéo.");
-  reader.onload = () => {
-    try {
-      videoDataUrl = reader.result;
-      studioType = "video";
+  try {
+    videoDataUrl = await passioVideoPourEnvoi(f);
+    studioType = "video";
 
-      $$("#studioTypeTabs .studio-type").forEach(e => e.classList.remove("active"));
-      document.querySelector('[data-type="video"]')?.classList.add("active");
+    $$("#studioTypeTabs .studio-type").forEach(el => el.classList.remove("active"));
+    document.querySelector('[data-type="video"]')?.classList.add("active");
 
-      $("#studioPhoto").style.display = "none";
-      $("#studioVideo").style.display = "block";
-      $("#studioAudio").style.display = "none";
+    $("#studioPhoto").style.display = "none";
+    $("#studioVideo").style.display = "block";
+    $("#studioAudio").style.display = "none";
 
-      renderVideoPreview();
-      toast("Vidéo chargée", "success");
-    } catch (err) {
-      toast("Erreur lors du traitement de la vidéo.");
-    }
-  };
-  reader.readAsDataURL(f);
+    renderVideoPreview();
+    toast("Vidéo chargée", "success");
+  } catch (err) {
+    toast((err && err.motifUtilisateur) || "Erreur lors du traitement de la vidéo.");
+  }
 });
 
 function renderVideoPreview() {

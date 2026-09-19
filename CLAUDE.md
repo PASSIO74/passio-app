@@ -1492,6 +1492,250 @@ retrier.
 Verrous : `tests/e2e/avatars-et-ia-referentiel.spec.js` (10) et `smoke.spec.js` (+1). Réinjection
 faite pour les quatre.
 
+## 📈 CAPACITÉ SANS INVESTIR — LE « 200 » ÉTAIT PÉRIMÉ, ET LES VRAIS PLAFONDS ÉTAIENT AILLEURS (2026-09-19)
+
+Question de Benjamin : « 200 personnes seulement peuvent l'utiliser, comment monter sans payer ? ».
+Le chiffre venait de `docs/SCALE_RUNBOOK.md:154`, **mesuré le 2026-06-15 sur la compute Nano** : c'est
+la limite du pooler Supavisor, pas de l'application. Depuis, le projet tourne sur **Micro** (mesuré :
+`shared_buffers` 224 Mo, `effective_cache_size` 384 Mo, `max_connections` 60) et la charge du 14/09
+donne **~400 req/s, p95 sous la seconde à 200 simultanés sans pause**, soit **2 000 à 4 000 connectés**.
+⚠️ **Côté LECTURE il n'y a rien à acheter** — et ne pas rouvrir ce point sur le chiffre de 200, qui est
+cité de bonne foi dans un fichier que personne n'avait daté. Dossier : `docs/CAPACITE_SANS_INVESTIR_2026-09-19.md`.
+
+⚠️ **① LA VIDÉO ÉTAIT 85 % DU STOCKAGE, ET LE COMPRESSEUR EXISTAIT DÉJÀ.** Mesuré : 9 vidéos = 68 Mo
+sur 80, la plus grosse à 24 Mo ; les 58 images = 12,5 Mo (elles passent par `passioCompressImage`
+depuis toujours). `passioCompressVideo` (app-08) n'avait **qu'UN appelant**, `meOnMedia` ; la porte du
+Studio (`#videoInput`, app-06) lisait le fichier **BRUT** jusqu'à 30 Mo. Famille « corriger une surface,
+c'est corriger une surface ».
+⚠️ **ET IL Y AVAIT UNE TROISIÈME PORTE — le premier jet de ce lot écrivait « les DEUX portes », ce qui
+était faux, et c'est `audit-passio` qui l'a relevé, pas les dix verrous.** `handleAttachFile` (app-09)
+sert `#attachImageFile`, qui porte `accept="image/*,video/*"` : une vidéo jointe à une conversation
+partait en `FileReader` brut vers le seau `attachments`, et le contrôle de 40 Mo juste au-dessus est
+**IMAGE-SEULEMENT** — donc AUCUNE borne, plus permissif que l'ancien Studio. Un lot qui se réclame de
+cette règle et en oublie une troisième surface en est l'illustration, pas l'exception.
+**`passioVideoPourEnvoi` (app-08) est désormais la SEULE autorité des TROIS portes** —
+seuils (8 / 25 / 150 Mo), transcodage webm→mp4, repli brut, refus **portant son `motifUtilisateur`** :
+l'appelant ne re-décide rien. Recopier les seuils dans la seconde porte les aurait fait diverger.
+⚠️ **LE GAIN SE DIT JUSTE** : ×5,2 sur la VIDÉO (7,5 → ~1,5 Mo), mais **×3,2 sur le stockage RÉEL**
+— mesuré sur le corpus de production, 80 → 25 Mo : les 12,5 Mo d'images, déjà compressées, ne
+bougent pas. Annoncer ×5 sur le total était une extrapolation depuis la moyenne, pas une mesure.
+
+⚠️ **② GOOGLE EST PASSÉ EN TÊTE, ET C'EST UN GESTE DE CAPACITÉ.** La confirmation d'e-mail est
+obligatoire depuis le 30/08 : **une inscription = un e-mail**, et Brevo gratuit en donne **300 PAR
+JOUR**, renvois et mots de passe oubliés compris. C'est le **seul plafond d'ACQUISITION** de PASSIO, et
+Google n'en coûte **aucun**. Le bouton était posé APRÈS « Créer mon compte », « Mot de passe oublié »
+et le renvoi — **sous le pli**, exactement comme `#authResendLink` avant le 18/09. **UN SEUL nœud, une
+seule position** pour les deux onglets ; le séparateur NOMME l'alternative (peint par `switchAuthTab`, sans fonction
+dédiée — la première rédaction en nommait une, `majSeparateurGoogle`, qui n'a jamais existé :
+une fonction fantôme DOCUMENTAIRE, qu'`audit:handlers` ne voit pas parce que ce n'est pas un
+onclick). ⚠️ **La case de consentement est maintenant PLUS BAS que le bouton qui l'exige** :
+`_amenerConsentementAuxYeux()` l'amène à l'écran sur refus, depuis les **DEUX** gardes
+(`onbGoogleAuth` ET `onbDoAuth` portent le même refus mot pour mot) — un refus qui désigne un élément
+hors champ est le défaut du 18/09 déplacé d'un cran. `block:"center"`, jamais `"start"` : la case est au
+milieu, la caler en haut sortirait le message d'erreur de l'écran.
+
+⚠️ **③ `postgres_changes` EST CE QUI NE PASSERA PAS L'ÉCHELLE — et l'inventaire se fait sur TOUT le
+dépôt.** Coût en **O(changements × clients abonnés)** : il grandit avec le PRODUIT, pas avec le nombre
+d'utilisateurs. Mesuré : **25 tables publiées pour 12 abonnées**, dont six `cdv_*` d'une fonctionnalité
+retirée par ADR-011 sept semaines plus tôt.
+⚠️ **`telemetry_events` DOIT RESTER PUBLIÉE, et l'avoir cru sans abonné a failli coûter cher** : le
+**Centre de pilotage** s'y abonne depuis `dashboard/server/ingest.js:217` (service_role) et en tire son
+flux SSE. La retirer aurait éteint le direct **sans une erreur** (repli silencieux sur le polling) — le
+symptôme aurait été « c'est un peu en retard », jamais « c'est cassé ». **Un inventaire d'abonnés lu sur
+le seul `js/` est un inventaire faux.** `conv_reads` est abonnée aussi (`_creerCanalDb`, le ✓✓).
+⚠️ **Le livrable n'est pas la migration, c'est la gate** : `npm run audit:realtime`
+(`scripts/audit-realtime-publication.js` + `scripts/realtime-publication.json`, dans `verif` donc en CI)
+refuse les DEUX sens. Le sens muet est le pire : un `postgres_changes` sur une table **absente** de la
+publication passe `SUBSCRIBED` et ne reçoit **jamais rien** — indiscernable de « il ne s'est rien passé ».
+Éprouvée par réinjection des deux. Migration : `migrations/migration_realtime_publication_2026-09-19.sql`
+(13 tables retirées, verdict qui **ANNULE la transaction** si `telemetry_events` disparaissait).
+
+⚠️ **④ ON N'ÉCHANTILLONNE QUE LE 200 — RIEN D'AUTRE — ET LA LIGNE GARDÉE PORTE SON POIDS.** La
+télémétrie pesait **43 % de la base** pour dix comptes : 61 470 lignes en 7 jours, dont **20 575 `api`
+en http 200** (97 % des `api`). Économie mesurée : **−30 %** (61 470 → ~42 950).
+⚠️ **LE PREMIER JET ÉCHANTILLONNAIT AUSSI `perf`, ANNONÇAIT −45 %, ET C'ÉTAIT UNE ERREUR DE FOND —
+arrêtée par `perf-ios.spec.js` ⑧, pas par la relecture ni par `audit-passio`.** Les 9 867 lignes
+`perf` ne sont PAS des mesures brutes : **38 % sont des `ios_stat_*`, donc DÉJÀ des agrégats** (une
+ligne par instantané, portant p50/p95/p99 et `n`), et `page_load` (20 %) comme `ios_context` (8 %)
+sont un RECENSEMENT — une ligne par session. ~4 lignes par session au total : ce n'était jamais le
+volume. **On ne résume pas un résumé, on le PERD** : une moyenne de p95 tirés au sort ne vaut rien,
+et l'instrumentation PERF-IOS existe précisément pour mesurer. `ECH_PERF = 1`. ⚠️ **Échantillonner les 2xx en bloc aurait divisé par dix l'activité affichée
+au pilotage** : `store.js` compte publications, messages, commentaires, réactions et notifications sur
+`type === "api" && http_status === 201`. 287 lignes en 201 sur sept jours — les garder toutes ne coûte
+rien, les perdre donne un tableau de bord qui ment. Les échecs (0, 4xx, 5xx) sont gardés entiers :
+**un 401 est un `api`, pas un `error`, donc hors `CRITICAL_TYPE`**.
+⚠️ **LES DEUX MOITIÉS NE VALENT QU'ENSEMBLE.** Sans poids, succès divisés par dix et échecs entiers →
+le **taux d'erreur afficherait dix fois la réalité** et `health()` basculerait en « Critique » (seuil
+40 %) sur une production saine. `tauxEchantillon` (pure, telemetry.js) estampille `meta.ech` ;
+`poidsEvenement` (dashboard/server/store.js) le lit, et **retombe à 1** sur toute valeur absurde — une
+donnée venue du client ne décide jamais d'un multiplicateur.
+⚠️ **LA PONDÉRATION VA JUSQU'AU BOUT, ET LE PREMIER JET S'ARRÊTAIT À MI-CHEMIN.** `health()` et
+`snapshot()` étaient pondérés ; `apiPerf()`, `services()` et les cinq compteurs d'activité ne l'étaient
+pas — donc le taux d'erreur PAR ENDPOINT et la **Carte des services** (seuils 5/15/40 %) criaient encore
+à la panne. Relevé par `audit-passio`.
+⚠️ **ET « une moyenne sur un échantillon est déjà la bonne estimation » ÉTAIT FAUX** : c'est vrai d'un
+échantillon UNIFORME, et celui-ci ne l'est pas — seuls les 200 sont tirés, les échecs et les écritures
+restent entiers, donc la population survivante penche vers les échecs, qui sont lents. Moyenne et p95
+sont désormais pondérés eux aussi. Une justification écrite qui ne tient pas est pire qu'un oubli :
+elle décourage de regarder.
+⚠️ **UN 200 LENT EST UN SIGNAL, PAS DU BRUIT** : le hook `fetch` pose `status: "slow"` dès 1,5 s AVEC un
+code 200, et le pilotage n'arme son alerte « Lenteur » qu'après N appels lents — échantillonnés, il en
+aurait fallu dix fois plus. `tauxEchantillon` rend donc 1 sur tout `status: "slow"` ou
+`severity: "warn"/"error"`, **avant** de regarder le code HTTP.
+
+⚠️ **⑤ LE CACHE DU RÉFÉRENTIEL EST CLÉ SUR LA RELEASE, PAS SUR UNE DURÉE.** `data/passions-v1.json`
+pèse **568 ko** et le service worker ne le pré-cache pas : retéléchargé à chaque session. Un TTL devine ;
+la release SAIT (même commit déployé ⇒ même fichier). `idbPassionsLoad/Save` (js/idb-store.js, patron de
+`idbConvLoad/Save`) ; hors artefact `window.PASSIO_RELEASE` est absent → **rien n'est lu ni écrit** et le
+comportement d'avant tient à l'octet près (serve local, bancs).
+⚠️ **ON NE CACHE JAMAIS UN REPLI HORS LIGNE** : `repliHorsLigne()` fabrique ses entrées depuis le socle
+de 19 passions — le mettre en cache installerait un référentiel tronqué pour tous les démarrages
+suivants, sur une coupure d'une seconde. C'est la faute exacte du 2026-09-10 (« le rejeu RÉTRÉCISSAIT la
+liste blanche »). L'écriture ne se fait que sur la branche réseau RÉUSSIE, et le cas ⑤ bis le mesure.
+
+⚠️ **LE PIÈGE DE BANC DU LOT, ET IL RENDAIT LE PREMIER CAS VERT SUR LE DÉFAUT.** Le cas ① testait
+`typeof window.passioVideoPourEnvoi === "function"` : il restait **VERT** en remettant le Studio au
+`FileReader` brut, c'est-à-dire sur le défaut même que le lot ferme. C'est la faute `_notifierMessage`,
+rejouée. Réécrit sur le GESTE : un `File` posé dans `#videoInput`, l'événement `change`, et on regarde
+qui est appelé. ⚠️ Au passage, `window.Telemetry` **n'existe pas** — le module s'expose en
+`window.PassioTelemetry` (alias `window.tel`).
+⚠️ **ET LA GATE ELLE-MÊME ÉTAIT AVEUGLE À DEUX CHOSES** : elle ne descendait pas dans les sous-dossiers
+et n'acceptait que les guillemets DOUBLES — donc une souscription rangée ailleurs, ou écrite en
+guillemets simples, n'était pas comptée, et l'oubli était muet **dans le sens qu'elle déclare garder en
+premier**. Elle est récursive, accepte les trois guillemets, et **SIGNALE** ce qu'elle ne sait pas lire
+(`table: MA_CONSTANTE`) plutôt que de l'ignorer : une gate qui se tait sur ce qu'elle n'a pas compris ne
+garantit plus rien.
+Verrous : `tests/e2e/capacite-sans-investir.spec.js` (12) + `dashboard/test/telemetrie-echantillon-poids.test.js`
+(5) + `tests/sql/migration-realtime-publication.test.sh` (10 — la migration est **EXÉCUTÉE** sur un
+PostgreSQL jetable, et la variante qui retirerait `telemetry_events` doit LEVER sans rien appliquer).
+**Éprouvés par RÉINJECTION de sept mutations** — Studio rendu au fichier brut (1 rouge), porte de
+messagerie rendue au brut (1), Google remis en bas (1), échantillonnage étendu aux 2xx (2), repli hors
+ligne mis en cache (1), sortie du refus retirée de `onbDoAuth` SEULEMENT (1 — c'est la porte que le
+premier verrou n'exerçait pas), et `poidsEvenement` rendu aveugle (3, côté pilotage).
+
+### ⚠️ CONTRE-REVUE ADVERSARIALE DU MÊME JOUR — SEPT DÉFAUTS DE PLUS, APRÈS DEUX PASSES DÉJÀ FAITES
+
+Le lot avait déjà été relu par `audit-passio` (2 défauts) et redressé par un test
+(`perf-ios` ⑧). Une passe `passio-red-team` sur l'état final en a trouvé **sept autres**,
+dont un P0. **Trois passes de relecture ne valent pas une passe adversariale** — et la
+famille commune des trois plus graves mérite d'être nommée : un correctif qui réutilise
+un helper écrit pour un AUTRE média, une justification qui se contredit à 160 lignes
+d'écart dans le même commit, et un verrou qui mesure la taille là où le défaut porte sur
+le type.
+
+⚠️ **[P0] UNE VIDÉO JOINTE À UNE CONVERSATION PARTAIT EN `image/jpeg`, NOMMÉE `.jpg`.**
+`_passioDataUrlToFile` (app-09) forçait type et extension EN DUR — parfaitement juste
+tant qu'elle ne servait qu'à ré-injecter une image compressée, son seul appelant. La
+TROISIÈME porte vidéo, ajoutée la veille, la réutilisait telle quelle. Sans lever une
+seule erreur : `_processAttach` teste `file.type.startsWith("video/")`, devenu FAUX →
+`msg.img` (vignette cassée chez l'expéditeur) ; le blob déposé dans `attachments`
+portait `image/jpeg` avec `cacheControl` d'un an (**mauvais content-type figé pour un
+an**) ; `content.fileType` annonçait « image » au destinataire, qui recevait une image
+cassée POUR TOUJOURS. **Avant le lot, ce chemin FONCTIONNAIT** : régression complète
+introduite par un correctif. **Un helper porte le contrat de son appelant d'origine ; le
+brancher sur un autre média sans relire son corps est la faute à chercher en premier.**
+⚠️ Et le verrou était VERT dessus : il n'assertait que la TAILLE du fichier traité.
+**Un verrou qui mesure la taille ne mesure pas le type.**
+
+⚠️ **[P1] UNE COMPRESSION QUI NE REND JAMAIS SON VERDICT VERROUILLAIT L'ÉCRAN.**
+`passioCompressVideo` ne conclut que sur `video.onended`, et sa boucle de dessin est un
+`requestAnimationFrame` : page passée en arrière-plan pendant l'encodage → lecture
+suspendue, `onended` jamais émis, **promesse jamais réglée**. `#meProgressOv` (fixed,
+inset:0, z-index 5200, **sans croix ni Échap**) restait posé : application morte jusqu'au
+rechargement. C'est l'invariant maison « jamais de rendu cadencé sur rAF » vu par son
+autre bout. Le mode d'échec préexistait à l'éditeur média ; **ce lot l'avait TRIPLÉ**
+(Studio + messagerie) sans appliquer le `Promise.race` qu'il cite ailleurs.
+`VIDEO_COMPRESSION_DELAI_MAX` = 90 s → le `catch` existant, et `_meHideProgress` en
+`finally`. **Brancher un chemin existant sur deux surfaces de plus, c'est hériter de ses
+modes d'échec sur deux surfaces de plus.**
+
+⚠️ **[P1] LA PONDÉRATION DU PILOTAGE S'EST ARRÊTÉE À MI-CHEMIN UNE SECONDE FOIS.**
+`timeseries()` pondérait `b.api` mais pas la LATENCE, et son commentaire le justifiait
+par « une moyenne sur un échantillon est déjà la bonne estimation » — que le **MÊME
+commit** réfutait 160 lignes plus bas dans `apiPerf`. Et c'est la moitié la plus VISIBLE
+qui mentait : `#perfChart` trace cette série **juste au-dessus** du tableau `perfRows`,
+lui pondéré — deux chiffres contradictoires sur un même écran. `b.events` restait brut
+alors que `b.api` ne l'était plus : `api ⊆ events`, donc un bucket pouvait rendre
+`api > events`, un état impossible. **Une justification écrite qui ne tient pas est pire
+qu'un oubli : elle décourage d'aller regarder.**
+
+⚠️ **[P1] L'ÉCHANTILLONNAGE BIAISAIT LES VERDICTS DE TRACE VERS « LENT ».**
+`traces.js` (`_setStep`) laisse le DERNIER écrivain fixer l'étape `request`. Les 200
+rapides jetés 9 fois sur 10, la population survivante penche vers les lignes lentes :
+mesuré sur un flow RÉEL de production (`cint`), les événements 3, 4 et 5 sautent, le seul
+`slow` devient le dernier, le verdict passe de `success` à `slow`, et `alerts.js` lève
+« Action anormalement lente » **sur une action qui a parfaitement abouti**. Pire cas
+voisin : un flow dont la seule requête serait un 200 perdrait son étape `request` →
+`dead_click`, alerte `high`. **Une ligne qui porte un `correlation_id` n'est pas un
+agrégat, c'est une PREUVE INDIVIDUELLE** : `tauxEchantillon` rend 1 dessus, avant tout
+test de code HTTP (18 lignes en 30 jours — coût nul). **Échantillonner, c'est changer la
+COMPOSITION d'une population, pas seulement son volume : tout ce qui lit « le dernier »,
+« le premier » ou « y en a-t-il un » en aval est faussé, même si les moyennes sont
+pondérées.**
+
+⚠️ **[P2] LE CACHE DURABLE POUVAIT FIGER UN RÉFÉRENTIEL PÉRIMÉ POUR UNE RELEASE ENTIÈRE.**
+La garde « on ne cache jamais un repli hors ligne » tenait ; **le trou était ailleurs**.
+`data/passions-v1.json` n'est ni `/`, ni `/media/*`, ni un `.js` : il tombe dans la
+DERNIÈRE branche de `sw.js`, en **stale-while-revalidate**. Au premier démarrage qui suit
+un déploiement, l'ancien SW contrôle encore la page et rend la copie de la release
+PRÉCÉDENTE avec un **HTTP 200 parfaitement valide** — que l'écriture rangeait sous la clé
+de la release COURANTE. Avant ce lot la même fenêtre coûtait UNE session (le SWR se
+rafraîchissait) ; le cache durable en faisait **une release**. L'URL porte donc
+`?r=<release>`. Hors artefact, URL inchangée, comportement d'avant à l'octet près.
+**Un cache durable n'hérite pas de la fraîcheur de son fournisseur : il la FIGE.**
+
+⚠️ **[P2] LE REFUS DE CONSENTEMENT SE PRONONCE LÀ OÙ L'ON AGIT.** Amener la case sous les
+yeux ÉLOIGNE mécaniquement `#authMsg` : à 390 × 664 le motif pouvait repartir hors champ
+— **le défaut du 18/09 reproduit en miroir**, la cible visible et le refus plus.
+`#authConsentRefus` vit **HORS du label** (un clic sur un descendant COCHERAIT le
+consentement : même piège que les liens CGU, 2026-09-08), même patron que `#authPwdRefus`.
+⚠️ Et le verrou **stubbait `scrollIntoView`** : il vérifiait qu'on avait DEMANDÉ
+`block: "center"`, jamais que le refus restait lisible après le défilement réel — « on
+mesure l'appel, pas le résultat », dans le lot même qui cite ce défaut. Il mesure
+désormais la géométrie des DEUX nœuds après défilement.
+
+⚠️ **[P2] LA GATE `audit:realtime` DÉCLARAIT UN PÉRIMÈTRE QU'ELLE N'AVAIT PAS.** Son
+en-tête écrivait « TOUT LE DÉPÔT, BACKEND COMPRIS » ; elle lisait **deux racines sur
+cinq**. Restait dehors `scripts/charge.mjs` — l'outil même avec lequel on mesure la
+capacité que ce lot prétend lever. Cinq racines, 17 souscriptions. ⚠️ **Et elle devait
+s'exclure elle-même** : depuis qu'elle balaie `scripts/`, ses propres exemples de
+documentation (`table: "nom_en_clair"`) étaient comptés comme des souscriptions à des
+tables inexistantes, et elle refusait un dépôt sain **en se citant**. Un scanner dans son
+propre périmètre finit toujours par s'attraper.
+
+⚠️ **[P3] DEUX ÉTIQUETTES DEVENUES PORTEUSES.** `releaseCourante` (idb-store) rendait
+`PASSIO_APP_VERSION` SEUL quand il était posé : le jour où quelqu'un y écrit une version
+produit stable (« 2026.10.0 »), la clé du cache **cesse de changer au déploiement**. Les
+deux champs sont concaténés. Et `ech` était posé **DANS** `scrubMeta`, donc sous son
+plafond de 30 clés : un appelant à 29 clés aurait fait partir une ligne échantillonnée
+**sans son poids**, sous-comptée dix fois, en silence. Estampillé APRÈS.
+**Un champ d'affichage promu clé de cache ou porteur de sens change de contrat sans que
+son nom le dise.**
+
+⚠️ **[P3] UNE VIDÉO SANS TYPE MIME CONTOURNAIT LA PORTE DE MESSAGERIE** (sélecteurs
+Android, `file.type === ""`), où le contrôle de 40 Mo est IMAGE-SEULEMENT — donc aucune
+borne. Pas une régression, mais **le lot AFFIRMAIT que cette porte est bornée : une
+affirmation qu'un cas dément est pire qu'un trou connu.** `_passioEstVideo` retombe sur
+l'extension.
+
+⚠️ **DEUX CONSTATS ÉCARTÉS ET TROIS AXES DÉCLARÉS SAINS, ÉCRITS PLUTÔT QUE TUS** : aucune
+quatrième porte vidéo (six `input[type=file]` inventoriés), aucun abonné `postgres_changes`
+orphelin hors `js/` (recensement complet, `supabase/functions/` compris), et l'ordre des
+tests de `tauxEchantillon` est correct. **Un « rien trouvé sur cet axe » a autant de
+valeur qu'un constat** : sans lui, la session suivante refait l'enquête.
+
+⚠️ **PIÈGE D'OUTILLAGE DU JOUR, DEUX FOIS** : ① `pkill -f "[p]laywright test"` tue quand
+même son propre shell si la MÊME ligne de commande contient plus loin un vrai
+`npx playwright test` — le motif y correspond. Séparer en deux appels. ② Un nom de balise
+écrit entre chevrons **dans un commentaire HTML** est compté par le contrôle de balises
+structurelles de ce fichier (c'est un grep, pas un parseur) : il faisait apparaître une
+étiquette fantôme. Ne pas citer de nom de balise entre chevrons dans `index.html`.
+
+Verrous portés à **17** (`capacite-sans-investir.spec.js`) et **6**
+(`telemetrie-echantillon-poids.test.js`), la latence pondérée éprouvée par RÉINJECTION.
+89 cas des suites voisines verts ; `cgu-consentement` ⑩ rougit à l'identique sur
+`origin/main` PUR (erreur console MapLibre, bac à sable réseau) — étranger au lot.
+
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)
 
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)

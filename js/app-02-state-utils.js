@@ -4585,6 +4585,9 @@ function switchAuthTab(mode) {
   // remettrait le texte SOUS la case, sur toute la largeur.
   const consentWrap = document.getElementById("authConsentWrap");
   if (consentWrap) consentWrap.style.display = mode === "signup" ? "flex" : "none";
+  // L'écho du refus ne survit pas à une bascule d'onglet : en connexion la case
+  // n'est même plus à l'écran, un refus orphelin y désignerait le vide.
+  if (typeof _majRefusConsentement === "function") _majRefusConsentement(false);
   // Art. 13 RGPD : le responsable du traitement, nommé là où les données sont
   // recueillies (ASTRA-09). Texte unique, tenu par js/legal-textes.js.
   const resp = document.getElementById("authResponsable");
@@ -4614,6 +4617,14 @@ function switchAuthTab(mode) {
   });
   majAideMotDePasse();
   document.getElementById("authSubmitBtn").textContent = mode === "signin" ? "Se connecter" : "Créer mon compte";
+  // ⚠️ LE SÉPARATEUR NOMME CE QU'IL Y A EN DESSOUS. Google est désormais le
+  // PREMIER chemin de l'écran (2026-09-19, geste de capacité : un compte Google
+  // ne consomme aucun des 300 e-mails/jour de Brevo, seul plafond d'acquisition
+  // de PASSIO). Un « ou » nu laisserait croire qu'il n'y a rien d'autre, et le
+  // formulaire commence par un champ « Nom d'utilisateur » qui ne dit pas de
+  // quoi il est le début.
+  const gou = document.getElementById("authGoogleOu");
+  if (gou) gou.textContent = mode === "signup" ? "ou inscris-toi avec ton e-mail" : "ou connecte-toi avec ton e-mail";
   // "Mot de passe oublié ?" pertinent uniquement en connexion
   const forgot = document.getElementById("authForgotLink");
   if (forgot) forgot.style.display = mode === "signin" ? "" : "none";
@@ -4729,12 +4740,63 @@ async function onbResendConfirmation() {
 // Nécessite le provider Google activé dans le Dashboard Supabase (Authentication
 // → Providers → Google). Le retour est géré par onAuthStateChange (boot, app-08)
 // qui voit le flag passio_oauth_pending et finalise l'entrée dans l'app.
+// ⚠️ UN REFUS DOIT DÉSIGNER QUELQUE CHOSE QU'ON PEUT ATTEINDRE (2026-09-19).
+// Depuis que le bouton Google est passé EN TÊTE de l'écran, la case de
+// consentement qu'il exige est PLUS BAS que lui — sur un téléphone, souvent hors
+// champ. Le message « accepte les conditions » désignerait alors un élément
+// invisible : très exactement le défaut refermé le 2026-09-18 sur le renvoi de
+// confirmation, déplacé d'un cran. On amène donc la case sous les yeux.
+// ⚠️ LES DEUX GARDES L'APPELLENT — `onbGoogleAuth` ET `onbDoAuth` portent le même
+// refus mot pour mot. Posée à une seule porte, l'autre l'aurait oubliée (faute
+// déjà payée par `quickCreateProfile` et le Studio sur le plafond de passions).
+// ⚠️ `block: "center"` et non `"start"` : la case tient sur une ligne au milieu du
+// formulaire — la caler en haut sortirait le message d'erreur de l'écran (leçon
+// INVERSE de `#authMsg`, qui se cale en haut parce que c'est LUI qu'il faut voir).
+// ⚠️ ET LE REFUS SE PRONONCE AUSSI *À CÔTÉ DE LA CASE*, PAS SEULEMENT EN HAUT.
+// Amener la case sous les yeux ÉLOIGNE mécaniquement `#authMsg` : une fois la
+// page défilée, on ne voyait plus qu'un halo violet sur une case, puis plus rien
+// du tout — le motif était resté en haut, hors champ. Le geste censé réparer le
+// défaut du 18/09 le reproduisait donc en miroir : la cible devient visible, le
+// refus cesse de l'être. Avec l'écho, la position du défilement n'a plus besoin
+// d'être parfaite pour que le refus reste lisible — c'est ce qui rend le lot
+// robuste plutôt que réglé au pixel. Même patron que `#authPwdRefus` (2026-09-16).
+const CONSENT_REFUS_TXT = "Coche cette case pour continuer : elle vaut acceptation des conditions générales et de la politique de confidentialité.";
+
+function _majRefusConsentement(afficher) {
+  const ligne = document.getElementById("authConsentRefus");
+  if (!ligne) return;
+  ligne.textContent = afficher ? CONSENT_REFUS_TXT : "";
+  ligne.style.display = afficher ? "block" : "none";
+}
+
+function _amenerConsentementAuxYeux() {
+  const wrap = document.getElementById("authConsentWrap");
+  if (!wrap || wrap.style.display === "none") return;
+  // L'écho AVANT le défilement : il change la hauteur du bloc, donc le poser
+  // après ferait viser une géométrie périmée.
+  _majRefusConsentement(true);
+  try { wrap.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e) { try { wrap.scrollIntoView(); } catch (_) {} }
+  // Un halo bref : le refus s'écrit EN HAUT, la case est au MILIEU — sans repère
+  // visuel, on lit le message puis on cherche ce qu'il désigne.
+  wrap.style.transition = "box-shadow 240ms ease";
+  wrap.style.boxShadow = "0 0 0 3px var(--accent)";
+  setTimeout(function () { try { wrap.style.boxShadow = ""; } catch (e) {} }, 1600);
+  // Cocher efface le refus : répondre, c'est répondre (règle du 2026-09-16, où
+  // c'était « retaper »). Écouteur posé une seule fois.
+  const boite = document.getElementById("authConsent");
+  if (boite && !boite._refusBranche) {
+    boite._refusBranche = true;
+    boite.addEventListener("change", function () { if (boite.checked) _majRefusConsentement(false); });
+  }
+}
+
 async function onbGoogleAuth() {
   // Le bouton Google est unique pour les deux modes : en création de compte, il
   // forme le même contrat que le formulaire, donc il exige le même accord. En
   // connexion, le compte existe déjà et rien n'est redemandé.
   if (_authMode === "signup" && !document.getElementById("authConsent")?.checked) {
     _showAuthMsg("Pour créer ton compte, accepte les conditions générales et la politique de confidentialité.", "error");
+    _amenerConsentementAuxYeux();
     return;
   }
   // ⚠️ L'INSTANT DE L'ACCORD SE PREND ICI, une seule fois : c'est le moment où
@@ -5233,6 +5295,7 @@ async function onbDoAuth() {
   // donc en mode `signin` cette garde ne peut pas se déclencher.
   if (_authMode === "signup" && !document.getElementById("authConsent")?.checked) {
     _showAuthMsg("Pour créer ton compte, accepte les conditions générales et la politique de confidentialité.", "error");
+    _amenerConsentementAuxYeux();
     return;
   }
   // L'instant de l'accord : celui où la personne a coché, jamais celui où le

@@ -149,10 +149,23 @@ optimisation mineure, pas un bloquant.
 
 ### 5. Connection pooling ✅ DÉJÀ ACTIF (vérifié dashboard 2026-06-15)
 Le pooler Supavisor est **activé par défaut** : Connection poolers SHARED, pool de
-15 connexions backend, **200 clients simultanés** (limites de la compute Nano). Le
+15 connexions backend, **200 clients simultanés** (limites de la compute **Nano**). Le
 client PWA passe par PostgREST (REST), automatiquement poolé. **Rien à faire en
-code.** Pour aller au-delà de 200 clients concurrents → monter la compute tier
-(Nano → Small/Medium…), qui relève automatiquement ces limites (décision billing).
+code.**
+
+> ⚠️ **CE « 200 » EST PÉRIMÉ DEPUIS LE 2026-09-19 — NE PLUS LE CITER COMME LA CAPACITÉ
+> DE PASSIO.** Il a été mesuré le **2026-06-15 sur la compute Nano** et décrit la limite
+> du POOLER, pas de l'application. Deux choses ont changé sans être reportées ici :
+> le projet tourne sur **Micro** (mesuré : `shared_buffers` 224 Mo,
+> `effective_cache_size` 384 Mo, `max_connections` 60 — Nano en aurait la moitié), et
+> la charge du 14/09 donne **~400 req/s de lectures réelles, p95 sous la seconde à 200
+> simultanés sans temps de pause**, soit **2 000 à 4 000 personnes connectées**.
+> Cette ligne, lue sans sa date, a fait croire pendant des mois que l'application
+> plafonnait à 200 personnes. **Une mesure sans sa date et sans son matériel est une
+> affirmation, pas une mesure.** Capacité réelle et plafonds effectifs :
+> `docs/CAPACITE_2026-09-14.md` puis `docs/CAPACITE_SANS_INVESTIR_2026-09-19.md`.
+> La marche suivante reste le compute **Small (~15 $/mois)** — mais elle se décide sur
+> l'ÉCRITURE simultanée (~20 comptes actifs, mesuré le 15/09), pas sur ce 200.
 
 ### 6. Insert messages : double-insert ✅ REVU — gardé volontairement
 Le pattern « avec from_id, sinon sans » (sendMessageFp, sendMessageToSupabase,
