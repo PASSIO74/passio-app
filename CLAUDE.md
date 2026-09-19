@@ -1736,6 +1736,20 @@ Verrous portés à **17** (`capacite-sans-investir.spec.js`) et **6**
 89 cas des suites voisines verts ; `cgu-consentement` ⑩ rougit à l'identique sur
 `origin/main` PUR (erreur console MapLibre, bac à sable réseau) — étranger au lot.
 
+⚠️ **[P3, FERMÉ LE MÊME SOIR] LA VEILLE COMPTAIT DES LIGNES LÀ OÙ IL FAUT COMPTER DU POIDS.**
+`SQL.fluxHeures` (`scripts/veille-production.mjs`) faisait `count(*)` : ce signal mesurait donc
+L'ÉCHANTILLONNAGE autant que l'usage, et son seuil « journée ouvrée quasi vide » (< 100 lignes,
+médiane des jours ouvrés > 500) pouvait se déclencher sur une production saine pendant les 7 jours
+où la médiane porte encore des journées d'avant le déploiement. Il lit désormais `meta->>'ech'`,
+**même contrat que `poidsEvenement`** — valeur absurde → 1, poids borné à 1000 — parce que deux
+lecteurs de la même table qui pondèrent différemment finissent par se contredire. La contre-revue
+recommandait de le DOCUMENTER ; le corriger vaut mieux : la mesure devient invariante à tout
+changement futur du taux. ⚠️ **Et l'ampleur annoncée était surévaluée** : mesuré le 19/09 contre la
+production, le 18/09 fait 2 760 lignes et le 19/09 en fait 1 095 — à −30 % on serait à ~770, loin
+des 100 du seuil. La fausse alerte exigeait une journée déjà très calme. **Une fiche qui surévalue
+finit par ne plus être crue** : le correctif est juste sur le principe, pas sur l'urgence.
+Verrou : `tests/unit/veille-production.test.mjs` (+4 assertions, mutation `count(*)` → rouge).
+
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)
 
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)

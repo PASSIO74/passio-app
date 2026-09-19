@@ -381,4 +381,14 @@ test("estSelectSeul : SELECT et WITH … SELECT passent ; DML, DDL, enchaînemen
   // Le comptage des appareils en erreur exclut le synthétique, comme le comptage des lignes (constat mineur).
   // Mutation : `(meta->>'synthetic') is null` retiré du sous-select distinct device_id → rougit.
   assert.equal((SQL.erreursDerniereHeure.match(/synthetic/g) || []).length, 2);
+  // ⚠️ LE FLUX SE COMPTE EN POIDS, PAS EN LIGNES. Depuis le 2026-09-19 une lecture
+  // `api` en HTTP 200 sur dix est gardée et porte `meta.ech` : un `count(*)` ferait
+  // mesurer à ce signal L'ÉCHANTILLONNAGE au lieu de l'usage, et son seuil
+  // « journée ouvrée quasi vide » pourrait se déclencher sur une production saine.
+  // Même contrat que `poidsEvenement` (dashboard/server/store.js) : valeur absurde
+  // → 1, poids borné à 1000. Mutation : remettre `count(*)` → ce cas rougit.
+  assert.match(SQL.fluxHeures, /meta->>'ech'/, "fluxHeures doit lire l'estampille d'échantillonnage");
+  assert.doesNotMatch(SQL.fluxHeures, /count\(\*\)/, "fluxHeures ne doit plus compter des LIGNES");
+  assert.match(SQL.fluxHeures, /least\(/, "le poids venu du client doit être borné");
+  assert.match(SQL.fluxHeures, /else 1 end/, "une valeur absurde retombe à 1");
 });

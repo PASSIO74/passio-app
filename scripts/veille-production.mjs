@@ -479,7 +479,25 @@ export function filtreHumain() {
 }
 
 export const SQL = {
-  fluxHeures: `select to_char(date_trunc('hour', received_at at time zone 'Europe/Paris'), 'YYYY-MM-DD"T"HH24') as h, count(*)::int as n
+  // ⚠️ ON COMPTE LE POIDS, PAS LES LIGNES — sinon ce signal MESURE
+  // L'ÉCHANTILLONNAGE au lieu de l'usage. Depuis le 2026-09-19, `telemetry.js`
+  // ne garde qu'une lecture `api` en HTTP 200 sur dix et l'estampille
+  // `meta.ech` : une journée d'usage IDENTIQUE rend ~30 % de lignes en moins au
+  // total, et jusqu'à dix fois moins sur la famille dominante. Avec un
+  // `count(*)`, le seuil « journée ouvrée quasi vide » (< 100 lignes, médiane
+  // des jours ouvrés > 500) pouvait donc se déclencher sur une production
+  // parfaitement saine — pendant les 7 jours où la médiane porte encore des
+  // journées d'avant le déploiement. **Une alarme qui crie à tort finit par ne
+  // plus être lue** : elle aurait remplacé une panne silencieuse par une panne
+  // ignorée, ce que ce fichier écrit lui-même à propos du seuil des crons.
+  // ⚠️ MÊME CONTRAT QUE `poidsEvenement` (dashboard/server/store.js), et c'est
+  // délibéré : deux lecteurs de la même table qui pondèrent différemment
+  // finissent par se contredire. Une valeur absurde retombe à 1 et le poids est
+  // borné à 1000 — une donnée venue du client ne décide jamais d'un
+  // multiplicateur. L'historique d'avant le 19/09 n'a pas de `ech` : il pèse 1,
+  // donc il compte pour lui-même et la médiane reste comparable.
+  fluxHeures: `select to_char(date_trunc('hour', received_at at time zone 'Europe/Paris'), 'YYYY-MM-DD"T"HH24') as h,
+      sum(case when meta->>'ech' ~ '^[0-9]{1,4}$' then least((meta->>'ech')::int, 1000) else 1 end)::int as n
     from telemetry_events where ${filtreHumain()} and received_at > now() - interval '9 days' group by 1 order by 1`,
   canaris2h: `select count(*)::int as n from telemetry_events where env = 'production' and action = 'sentinel_observation_canary' and received_at > now() - interval '2 hours'`,
   inscriptions: `select
