@@ -257,6 +257,7 @@
   var offlineSince = 0;         // ms epoch du passage hors-ligne (0 = en ligne)
   var offlineParEchec = false;  // `offlineSince` posé par un échec d'envoi (pas par l'événement `offline`)
   var verdictTimer = null;      // premier échec inexpliqué : verdict DIFFÉRÉ (voir onSendFailure)
+  var verdictRendu = false;     // vrai une fois la série jugée inexpliquée : les seuils 3 / ×10 reprennent
   var VERDICT_DELAY = 4000;     // > premier réessai (3 s) : un succès entre-temps annule l'alarme
   var unloading = false;        // vrai entre `pagehide` et un éventuel `pageshow` :
                                 // le navigateur annule alors les requêtes en vol
@@ -586,15 +587,18 @@
     // le 2026-09-19 : GET /passions, /events, /posts et le POST télémétrie tous en
     // `error` à la même seconde, page « visible » et en ligne, `hidden` 1 s après).
     // Le verdict est donc DIFFÉRÉ : si la page se masque/part d'ici là, ou si le
-    // réessai passe, l'échec était expliqué et rien ne remonte.
-    if (sendFailures === 1) { differerVerdict(httpStatus); armerReessai(); return; }
-    if (sendFailures === 3 || sendFailures % 10 === 0) alarmeEnvoi(httpStatus);
+    // réessai passe, l'échec était expliqué et rien ne remonte. ⚠️ Et AUCUN seuil
+    // ne court-circuite l'attente : une page bavarde (événements critiques, burst
+    // de sortie) enchaîne plusieurs envois morts dans la même seconde — mesuré en
+    // CI, 3 échecs avant que `hidden` n'arrive. Compter n'est pas juger.
+    if (!verdictRendu) { differerVerdict(httpStatus); armerReessai(); return; }
+    if (sendFailures === 3 || sendFailures % 10 === 0) alarmeEnvoi(httpStatus, "error");
     armerReessai();
   }
 
-  function alarmeEnvoi(httpStatus) {
+  function alarmeEnvoi(httpStatus, severity) {
     track("connectivity", "send_failed", {
-      severity: sendFailures >= 3 ? "error" : "warn", status: "error", http_status: httpStatus,
+      severity: severity, status: "error", http_status: httpStatus,
       message: "Échec d'envoi de la télémétrie #" + sendFailures + " (appareil peut-être hors ligne)",
       meta: { failed_sends: sendFailures, ignores: softFailures, online: navigator.onLine, backlog: queue.length },
     });
@@ -614,7 +618,8 @@
       if (!sendFailures) return;                 // déjà résolu (succès entre-temps)
       var ctx = contexteEchec();
       if (ctx.fermeture || ctx.masquee || ctx.hors_ligne) { requalifierEnSoft(); return; }
-      if (sendFailures < 3) alarmeEnvoi(httpStatus);   // ≥ 3 : déjà signalé au seuil
+      verdictRendu = true;
+      alarmeEnvoi(httpStatus, "warn");           // premier verdict = avertissement ; la persistance (seuils) escalade
     }, VERDICT_DELAY);
   }
 
@@ -631,7 +636,7 @@
         meta: { failed_sends: sendFailures, offline_ms: offlineSince ? Date.now() - offlineSince : null, backlog: queue.length },
       });
     }
-    sendFailures = 0; softFailures = 0; offlineSince = 0; offlineParEchec = false; authRetries = 0;
+    sendFailures = 0; softFailures = 0; offlineSince = 0; offlineParEchec = false; verdictRendu = false; authRetries = 0;
     // `jetonRefuse` n'est PAS relevé ici : il l'est par un jeton DIFFÉRENT dans
     // le stockage (voir `authToken`), pas par un succès obtenu sans lui.
     if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }

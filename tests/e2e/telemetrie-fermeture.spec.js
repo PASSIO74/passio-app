@@ -169,8 +169,18 @@ test.describe("Télémétrie — fermeture de page ≠ panne réseau", () => {
       message: "le chemin d'échec doit avoir été exercé", timeout: 10000,
     }).toBeGreaterThan(0);
 
+    // 1 bis. La page est BAVARDE pendant cette seconde (événements qui partent
+    //        dès que la file dépasse 12 — le lot mort y reste, donc CHAQUE
+    //        événement relance un envoi qui meurt) : mesuré en CI, 3 échecs avant
+    //        `hidden`. Un seuil qui compte les échecs sans les juger crierait ici.
+    for (let i = 0; i < 3; i++) {
+      await page.evaluate((i) => { window.tel.action("e2e_bavard_" + i); window.tel.flush(); }, i);
+      await page.waitForTimeout(250);
+    }
+    expect(etat.lots.filter((l) => l.mode === "annule").length, "plusieurs envois morts avant le masquage").toBeGreaterThanOrEqual(3);
+
     // 2. Une seconde plus tard, la preuve arrive : la page se masque (ordre iOS).
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(250);
     await page.evaluate(() => {
       Object.defineProperty(document, "visibilityState", { get: () => "hidden", configurable: true });
       Object.defineProperty(document, "hidden", { get: () => true, configurable: true });
