@@ -229,6 +229,76 @@
   }
   // Types échantillonnés (bruit potentiel). 1 = tout garder.
   var SAMPLE = { click: 1, api: 1, perf: 1, nav: 1, action: 1, heartbeat: 1 };
+
+  // ─── ÉCHANTILLONNAGE DU BRUIT DE LECTURE (2026-09-19) ──────────────────────
+  // Mesuré sur 7 jours en production : 61 470 lignes, dont **20 575 `api` en
+  // http 200** (97 % de toutes les lignes `api`) et **9 867 `perf`** — soit la
+  // MOITIÉ de la base de télémétrie, qui pesait à elle seule 43 % des 69 Mo.
+  // Ces deux familles ne servent qu'à des agrégats (p50/p95, débit) : un p95
+  // calculé sur 2 000 mesures vaut celui calculé sur 20 000.
+  //
+  // ⚠️ ON N'ÉCHANTILLONNE QUE LE 200, ET C'EST TOUT LE LOT. Le pilotage compte
+  // l'ACTIVITÉ RÉELLE sur les codes d'écriture — `store.js` lit publications,
+  // messages, commentaires, réactions et notifications comme
+  // `type === "api" && http_status === 201`. Échantillonner les 2xx en bloc
+  // aurait divisé par dix l'activité affichée à l'écran, sans une erreur :
+  // 287 lignes en 201 et 42 en 204 sur sept jours, le prix de les garder
+  // TOUTES est nul, le prix de les perdre est un tableau de bord qui ment.
+  // Les échecs (0, 4xx, 5xx) sont gardés entiers pour la même raison, et parce
+  // que `CRITICAL_TYPE` ne couvre pas `api` — un 401 est un `api`, pas un
+  // `error`.
+  //
+  // ⚠️ LA LIGNE GARDÉE PORTE SON POIDS (`meta.ech`). Sans lui, le pilotage
+  // verrait les succès divisés par dix et les échecs entiers : le TAUX D'ERREUR
+  // afficherait dix fois la réalité et déclencherait de fausses alertes. Le
+  // poids est lu par `poidsEvenement` (dashboard/server/store.js) — les deux
+  // moitiés de ce correctif ne valent QUE l'une avec l'autre.
+  //
+  // ⚠️ EFFET DE BORD VOULU, À CONNAÎTRE : une ligne écartée par l'échantillon
+  // sort AVANT `overCap()` et ne consomme donc plus de place dans le plafond par
+  // minute (`CAP_PER_MIN`). Sous une rafale, ce sont désormais les `action`, les
+  // `session` et les erreurs qui occupent ce plafond plutôt que 20 000 lectures
+  // en 200 — c'est le sens qu'on veut, mais c'est bien un changement de
+  // comportement, pas seulement un changement de volume.
+  var ECH_API_200 = 0.1;   // 1 lecture réussie sur 10
+
+  // ⚠️ `perf` N'EST PAS ÉCHANTILLONNÉ, ET LE PREMIER JET DE CE LOT LE FAISAIT —
+  // c'est le banc `perf-ios.spec.js` ⑧ qui l'a arrêté, pas la relecture.
+  // MESURÉ sur 7 jours : les 9 867 lignes `perf` ne sont PAS des mesures brutes.
+  // 38 % sont des `ios_stat_*`, c'est-à-dire **déjà des agrégats** — une ligne
+  // par instantané, portant p50/p95/p99 et `n` dans `meta`. Échantillonner un
+  // agrégat n'a aucun sens : on ne résume pas un résumé, on le PERD, et une
+  // moyenne de p95 tirés au sort ne vaut rien. Le reste est un RECENSEMENT :
+  // `page_load` (20 %) et `ios_context` (8 %) sont émis une fois par session.
+  // Au total ~4 lignes par session — ce n'était jamais le volume, contrairement
+  // à ce que le lot avait écrit en rangeant `perf` avec les lectures `api`.
+  // La seule famille qui soit réellement du volume répétitif est `api` en 200.
+  var ECH_PERF = 1;        // recensement et agrégats : on garde TOUT
+
+  // Rend la probabilité de GARDER l'événement. Fonction pure : c'est elle que
+  // le banc unitaire éprouve, jamais `track` (qui touche la file et le réseau).
+  function tauxEchantillon(type, action, fields) {
+    if (CRITICAL_TYPE[type]) return 1;
+    // ⚠️ UN APPEL LENT EST UN SIGNAL, MÊME EN 200 — et le premier jet le jetait
+    // comme du bruit (relevé par `audit-passio`). Le hook `fetch` pose
+    // `status: "slow"` / `severity: "warn"` dès 1,5 s AVEC un code 200, et le
+    // pilotage n'arme son alerte « Lenteur » qu'à partir de N appels lents
+    // (`evaluerLenteur`, alerts.js) : à un sur dix, il aurait fallu dix fois plus
+    // de lenteurs RÉELLES pour que l'alerte se déclenche. Un 200 à six secondes
+    // est très exactement ce qu'on cherche à voir.
+    // Cette garde vient AVANT le test du code HTTP : c'est l'état de l'appel qui
+    // décide, pas son statut seul.
+    if (fields && (fields.status === "slow" || fields.severity === "warn" || fields.severity === "error")) return 1;
+    if (type === "api") {
+      // `http_status` absent = requête qui n'a jamais abouti → c'est un signal.
+      var st = fields && typeof fields.http_status === "number" ? fields.http_status : null;
+      return st === 200 ? ECH_API_200 : 1;
+    }
+    if (type === "perf") return ECH_PERF;   // = 1, voir ci-dessus
+    if (action != null && SAMPLE[action] != null) return SAMPLE[action];
+    if (SAMPLE[type] != null) return SAMPLE[type];
+    return 1;
+  }
   // Types JAMAIS échantillonnés ni plafonnés : ce sont EXACTEMENT les signaux de
   // problème qu'on ne veut pas rater (une erreur / une coupure réseau doit
   // toujours remonter, même si l'appareil a déjà atteint le plafond/minute).
@@ -664,9 +734,9 @@
   function track(type, action, fields) {
     if (!ENABLED) return;
     fields = fields || {};
+    var _taux = tauxEchantillon(type, action, fields);
     if (!CRITICAL_TYPE[type]) {            // erreurs & connexion : jamais filtrées
-      var st = SAMPLE[action] != null ? SAMPLE[action] : (SAMPLE[type] != null ? SAMPLE[type] : 1);
-      if (st < 1 && Math.random() > st) return;
+      if (_taux < 1 && Math.random() > _taux) return;
       if (overCap()) return;
     }
     var u = currentUser();
@@ -705,7 +775,20 @@
       stack: fields.stack ? redactString(String(fields.stack).slice(0, 4000)) : null,
       // `mode` d'abord, puis les clés de l'appelant : un appelant qui pose sa
       // propre clé `mode` gagne — le filtre ne trie pas par origine.
-      meta: scrubMeta(Object.assign({ mode: MODE }, (fields.meta && typeof fields.meta === "object") ? fields.meta : {})),
+      // `ech` = le poids de la ligne : 10 veut dire « celle-ci en représente 10 ».
+      // Absent = poids 1. Estampillé ICI et pas dans `tauxEchantillon`, qui doit
+      // rester pure. Clé volontairement courte et neutre : `DENY_KEY` (filtre
+      // PII) écarte en silence toute clé contenant name/user/label/tel/code…
+      // ⚠️ `ech` EST POSÉ EN DERNIER, donc il GAGNE sur une clé homonyme de
+      // l'appelant. Placé avant, n'importe quel `meta: { ech: 1000 }` aurait
+      // piloté un multiplicateur du tableau de bord depuis le client — et
+      // `poidsEvenement` accepte jusqu'à 1000. Aucun appelant ne le fait
+      // aujourd'hui ; c'est précisément pour que ça reste vrai.
+      meta: scrubMeta(Object.assign(
+        { mode: MODE },
+        (fields.meta && typeof fields.meta === "object") ? fields.meta : {},
+        _taux < 1 ? { ech: Math.round(1 / _taux) } : {}
+      )),
     };
     enqueue(ev);
     return ev.correlation_id || ev.event_id;
@@ -786,6 +869,14 @@
     click: function (label, meta) { track("click", label, { meta: meta }); },
     perf: function (name, ms, meta) { track("perf", name, { duration_ms: ms, status: ms > 2000 ? "slow" : "ok", meta: meta }); },
     api: function (f) { track("api", f && f.action || "request", f); },
+    // ── Fenêtres de MESURE, pour les bancs uniquement ───────────────────────
+    // `tauxEchantillon` est pure : c'est elle qu'on éprouve, jamais `track`, qui
+    // touche la file, le plafond/minute et le réseau. Et `_queue` rend la file
+    // telle qu'elle partira — sans quoi un banc devrait intercepter la requête
+    // pour lire l'estampille `meta.ech`, donc mesurer le transport au lieu de la
+    // décision. Aucune des deux n'écrit quoi que ce soit.
+    _tauxEchantillon: tauxEchantillon,
+    _queue: function () { return queue.slice(); },
     // ── Suivi des liens partagés (funnel honnête) ─────────────────────────────
     // linkCreate : à l'instant où l'app FABRIQUE une URL partageable. Renvoie un
     // identifiant de lien stable (à insérer dans l'URL via tagUrl) qui permettra

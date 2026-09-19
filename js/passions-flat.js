@@ -246,22 +246,88 @@
         // Idempotent : les trois invalidations de cache sont des mises à null.
         try { _essaisRepeint = 0; repeindreLesRails(); } catch (e) { journal("repeint_apres_charge", e); }
       }
-      try {
-        fetch(url, { credentials: "omit" })
-          .then(function (r) {
-            if (!r.ok) throw new Error("HTTP " + r.status);
-            return r.json();
-          })
-          .then(function (j) { termine(j, false); })
-          .catch(function (e) {
-            echecChargement = true;
-            journal("fetch", e);
-            termine(repliHorsLigne(), true);
-          });
-      } catch (e) {
-        echecChargement = true;
-        journal("fetch_sync", e);
-        termine(repliHorsLigne(), true);
+      // ⚠️ CACHE DURABLE AVANT LE RÉSEAU (2026-09-19). 568 ko pour 5 001
+      // passions, retéléchargés à chaque session : le service worker ne
+      // pré-cache pas ce fichier (voir le commentaire du repli, plus haut).
+      // Le cache est clé sur la RELEASE SERVIE (`idbPassionsLoad`) : même commit
+      // déployé ⇒ même fichier, donc un succès de cache dispense entièrement du
+      // réseau, sans aucune devinette de fraîcheur. Hors artefact (serve local,
+      // bancs) il n'y a pas de release → `idbPassionsLoad` rend `null` et on
+      // part sur le réseau exactement comme avant.
+      //
+      // ⚠️ ON N'ÉCRIT LE CACHE QUE SUR LA BRANCHE RÉSEAU RÉUSSIE. Y verser un
+      // repli hors ligne installerait les 19 passions du socle comme référentiel
+      // pour tous les démarrages suivants, sur une coupure d'une seconde — la
+      // faute exacte du 2026-09-10 (« le rejeu RÉTRÉCISSAIT la liste blanche »).
+      // Le repli reste par ailleurs non mémoïsé (`promesse = null`), donc
+      // retentable.
+      //
+      // ⚠️ LE CACHE NE DOIT PAS POUVOIR BLOQUER LE DÉMARRAGE : `idbPassionsLoad`
+      // est déjà borné par le délai d'ouverture de `idb-store.js` (3 s, et un
+      // échec n'y est jamais mémorisé), et toute exception retombe sur le
+      // réseau. Une base indisponible (mode privé strict) est indiscernable
+      // d'un cache vide, ce qui est le bon sens de l'échec ici.
+      function depuisReseau() {
+        try {
+          fetch(url, { credentials: "omit" })
+            .then(function (r) {
+              if (!r.ok) throw new Error("HTTP " + r.status);
+              return r.json();
+            })
+            .then(function (j) {
+              termine(j, false);
+              // Le cache est optionnel — une écriture ratée ne casse rien — mais
+              // elle ne doit pas s'évanouir : sans trace, un cache qui n'écrit
+              // jamais rien ressemble à un cache qui fonctionne (on retéléchargerait
+              // 568 ko à chaque session sans que personne ne le sache).
+              try {
+                if (typeof window.idbPassionsSave === "function") {
+                  window.idbPassionsSave(j).then(function (ok) {
+                    if (!ok) journal("cache_ecriture_refusee", new Error("idbPassionsSave a rendu false"));
+                  }, function (e2) { journal("cache_ecriture", e2); });
+                }
+              } catch (e) { journal("cache_ecriture_sync", e); }
+            })
+            .catch(function (e) {
+              echecChargement = true;
+              journal("fetch", e);
+              termine(repliHorsLigne(), true);
+            });
+        } catch (e) {
+          echecChargement = true;
+          journal("fetch_sync", e);
+          termine(repliHorsLigne(), true);
+        }
+      }
+
+      if (typeof window.idbPassionsLoad === "function") {
+        var _cacheFini = false;
+        // Le cache ne doit pas retarder le réseau s'il traîne : au-delà de ce
+        // délai on part quand même, et un cache arrivé trop tard est ignoré
+        // (`termine` est idempotent par son drapeau `fini`).
+        // ⚠️ Ce délai n'est PAS le coût habituel : `boot()` ouvre déjà la base
+        // au démarrage (`hydrateConvsFromIDB`), donc la lecture se fait en
+        // général en quelques millisecondes sur une base déjà ouverte. Le cas
+        // lent est le tout premier chargement d'un visiteur — et même là rien
+        // n'est bloqué à l'écran : le socle embarqué est peint immédiatement,
+        // le référentiel ne fait que s'y ajouter (fiche du 2026-09-12).
+        var _minuteurCache = setTimeout(function () {
+          if (_cacheFini) return;
+          _cacheFini = true;
+          depuisReseau();
+        }, 1200);
+        window.idbPassionsLoad().then(function (pq) {
+          if (_cacheFini) return;
+          _cacheFini = true; clearTimeout(_minuteurCache);
+          if (pq) { termine(pq, false); return; }   // servi sans un octet de réseau
+          depuisReseau();
+        }).catch(function () {
+          if (_cacheFini) return;
+          _cacheFini = true; clearTimeout(_minuteurCache);
+          depuisReseau();
+        });
+      } else {
+        depuisReseau();
       }
     });
     return promesse;

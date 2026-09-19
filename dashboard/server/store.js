@@ -50,6 +50,28 @@ const ACTIVE_MS = 5 * 60_000;    // « actif » si vu il y a < 5 min
  */
 
 /** Normalise une ligne telemetry_events (DB) en événement interne. */
+// ⚠️ UNE LIGNE DE TÉLÉMÉTRIE PEUT EN REPRÉSENTER PLUSIEURS (2026-09-19).
+// `telemetry.js` n'envoie plus qu'une lecture réussie sur dix (`api` en http 200)
+// et qu'une mesure de performance sur dix : la table pesait 43 % de la base pour
+// dix comptes. La ligne gardée porte alors son poids dans `meta.ech` (10 = « celle-ci
+// en représente 10 »), et TOUT COMPTAGE QUI SERT À UN RATIO doit le lire.
+//
+// ⚠️ SANS ÇA, LE CORRECTIF FABRIQUERAIT UNE PANNE. Les ÉCHECS ne sont jamais
+// échantillonnés (un 401 est un `api`, pas un `error`, donc hors `CRITICAL_TYPE`) :
+// succès divisés par dix, échecs entiers → le taux d'erreur afficherait dix fois
+// la réalité, et `health()` passerait en « Critique » (seuil 40 %) sur une
+// production parfaitement saine. Les deux moitiés de ce lot ne valent QUE
+// ensemble — c'est pourquoi elles citent chacune l'autre.
+//
+// Absence de `ech` = poids 1 : tout l'historique d'avant le 19/09, et toutes les
+// lignes non échantillonnées, comptent pour elles-mêmes. Une valeur absurde
+// (0, négative, texte, NaN) retombe à 1 — on ne laisse jamais une donnée venue
+// du client décider d'un multiplicateur.
+export function poidsEvenement(ev) {
+  const p = Number(ev && ev.meta && ev.meta.ech);
+  return Number.isFinite(p) && p >= 1 && p <= 1000 ? p : 1;
+}
+
 export function normalize(row) {
   const ts = row.received_at ? Date.parse(row.received_at) : Date.now();
   return {
@@ -479,9 +501,13 @@ class Store {
     const last5 = events.filter((e) => now - e.ts < 5 * 60_000);
     const count = (pred) => events.filter(pred).length;
     const apis = events.filter((e) => e.type === "api" && e.duration_ms != null);
-    const avgLatency = apis.length ? Math.round(apis.reduce((a, e) => a + e.duration_ms, 0) / apis.length) : 0;
-    const apiErrors = count((e) => e.type === "api" && e.status === "error");
-    const totalApis = count((e) => e.type === "api");
+    const apisPoids = apis.reduce((a, e) => a + poidsEvenement(e), 0);
+    const avgLatency = apisPoids ? Math.round(apis.reduce((a, e) => a + e.duration_ms * poidsEvenement(e), 0) / apisPoids) : 0;
+    // Pondérés : voir `poidsEvenement`. Un comptage brut ici ferait dix fois
+    // trop d'erreurs pour un seul succès gardé sur dix.
+    const somme = (pred) => events.reduce((a, e) => a + (pred(e) ? poidsEvenement(e) : 0), 0);
+    const apiErrors = somme((e) => e.type === "api" && e.status === "error");
+    const totalApis = somme((e) => e.type === "api");
     const openBugs = [...this.bugs.values()].filter((b) => (this._status(b.id) !== "corrige" && this._status(b.id) !== "ignore"));
     const criticalBugs = openBugs.filter((b) => b.severity === "critical");
 
@@ -500,11 +526,19 @@ class Store {
         signupsConfirmes: count((e) => e.action === "signup_confirmed"),
         // Compte les marqueurs sémantiques ET les vrais inserts DB (HTTP 201),
         // pour refléter l'activité même si un marqueur ne s'est pas déclenché.
-        publications: count((e) => /publish_/.test(e.action || "") || (e.type === "api" && /\/posts(\?|$)/.test(e.endpoint || "") && e.http_status === 201)),
-        messages: count((e) => e.action === "send_message" || (e.type === "api" && /conv_messages/.test(e.endpoint || "") && e.http_status === 201)),
-        comments: count((e) => e.action === "comment_post" || (e.type === "api" && /post_comments/.test(e.endpoint || "") && e.http_status === 201)),
-        reactions: count((e) => /react|like_post/.test(e.action || "") || (e.type === "api" && /(post_likes|comment_interactions|event_reactions)/.test(e.endpoint || "") && e.http_status === 201)),
-        notifications: count((e) => /notif/.test(e.action || "") || (e.type === "api" && /notifications/.test(e.endpoint || "") && e.http_status === 201)),
+        // ⚠️ PONDÉRÉS. La première branche de chacun de ces prédicats teste
+        // `e.action`, et l'`action` d'un événement api vaut « méthode + chemin » :
+        // `/react/` attrape donc `GET …/event_reactions` et `/notif/` attrape
+        // `GET …/notifications` — des LECTURES en 200, désormais échantillonnées.
+        // Sans poids, ces deux compteurs perdaient ~90 % de leurs lignes en
+        // silence (relevé par `audit-passio`). Qu'ils attrapent des lectures est
+        // un défaut ANTÉRIEUR, laissé tel quel ici : le corriger change ce que
+        // le tableau de bord compte, ce n'est pas le sujet de ce lot.
+        publications: somme((e) => /publish_/.test(e.action || "") || (e.type === "api" && /\/posts(\?|$)/.test(e.endpoint || "") && e.http_status === 201)),
+        messages: somme((e) => e.action === "send_message" || (e.type === "api" && /conv_messages/.test(e.endpoint || "") && e.http_status === 201)),
+        comments: somme((e) => e.action === "comment_post" || (e.type === "api" && /post_comments/.test(e.endpoint || "") && e.http_status === 201)),
+        reactions: somme((e) => /react|like_post/.test(e.action || "") || (e.type === "api" && /(post_likes|comment_interactions|event_reactions)/.test(e.endpoint || "") && e.http_status === 201)),
+        notifications: somme((e) => /notif/.test(e.action || "") || (e.type === "api" && /notifications/.test(e.endpoint || "") && e.http_status === 201)),
         errors: count((e) => e.type === "error"),
         // Problèmes de connexion des testeurs (coupures, échecs d'envoi) sur 30 min.
         connectivityIssues: events.filter((e) => e.type === "connectivity" && e.severity !== "info" && now - e.ts < 30 * 60_000).length,
@@ -512,7 +546,9 @@ class Store {
         strugglingDevices: [...this.devices.values()].filter((d) => d.lastProblem && now - d.lastProblem < ACTIVE_MS).length,
         criticalBugs: criticalBugs.length,
         openBugs: openBugs.length,
-        actionsPerMin: last5.length ? Math.round(last5.length / 5) : 0,
+        // Pondéré aussi : c'est un VOLUME, et il se serait effondré de 45 %
+        // sans que rien ne le dise.
+        actionsPerMin: last5.length ? Math.round(last5.reduce((a, e) => a + poidsEvenement(e), 0) / 5) : 0,
         avgLatency,
         // null sans aucun appel observé : le silence n'est pas un 100 % de succès
         // (readiness rend alors « inconnu », jamais vert par défaut — 2026-09-18).
@@ -532,8 +568,12 @@ class Store {
     const errs = win.filter((e) => e.type === "error" || (e.type === "connectivity" && e.severity !== "info")).length;
     const connErrs = win.filter((e) => e.type === "connectivity" && e.severity === "error").length;
     const critical = [...this.bugs.values()].some((b) => b.severity === "critical" && now - b.lastSeen < 5 * 60_000);
+    // ⚠️ PONDÉRÉ — c'est ce ratio qui fait basculer le bandeau en « Critique »
+    // (seuil 40 %). Brut, il crierait à la panne dès l'échantillonnage.
     const apis = win.filter((e) => e.type === "api");
-    const apiErrRate = apis.length ? apis.filter((e) => e.status === "error").length / apis.length : 0;
+    const apiTotal = apis.reduce((a, e) => a + poidsEvenement(e), 0);
+    const apiErrTotal = apis.reduce((a, e) => a + (e.status === "error" ? poidsEvenement(e) : 0), 0);
+    const apiErrRate = apiTotal ? apiErrTotal / apiTotal : 0;
     let level = "operational", label = "Opérationnel";
     if (critical || apiErrRate > 0.4) { level = "critical"; label = "Critique"; }
     else if (errs > 8 || apiErrRate > 0.15 || connErrs >= 3) { level = "degraded"; label = "Dégradé"; }
@@ -557,7 +597,10 @@ class Store {
       const b = buckets[idx]; if (!b) continue;
       b.events++;
       if (e.type === "error") b.errors++;
-      if (e.type === "api") { b.api++; if (e.duration_ms != null) { b.latencySum += e.duration_ms; b.latencyN++; } }
+      // Le COMPTE d'appels est pondéré (c'est un volume) ; la LATENCE ne l'est
+      // pas — une moyenne sur un échantillon est déjà la bonne estimation, la
+      // pondérer reviendrait à compter dix fois la même mesure.
+      if (e.type === "api") { b.api += poidsEvenement(e); if (e.duration_ms != null) { b.latencySum += e.duration_ms; b.latencyN++; } }
       if (e.action === "send_message") b.messages++;
       if (/publish_/.test(e.action || "")) b.publications++;
     }
@@ -715,9 +758,22 @@ class Store {
       const key = e.action || e.endpoint || "?";
       let a = map.get(key);
       if (!a) { a = { endpoint: key, n: 0, sum: 0, max: 0, errors: 0, durations: [] }; map.set(key, a); }
-      a.n++; a.sum += e.duration_ms; a.max = Math.max(a.max, e.duration_ms);
-      if (e.status === "error") a.errors++;
-      a.durations.push(e.duration_ms);
+      // ⚠️ PONDÉRÉ, latence COMPRISE. Le premier jet de ce lot n'avait pondéré
+      // que `health()` et `snapshot()` (relevé par `audit-passio`), et justifiait
+      // de laisser la latence brute par « une moyenne sur un échantillon est déjà
+      // la bonne estimation ». C'est vrai d'un échantillon UNIFORME — celui-ci ne
+      // l'est pas : seuls les 200 sont tirés, les échecs et les écritures restent
+      // entiers. La population survivante penche donc vers les échecs, qui sont
+      // lents : moyenne et p95 bruts mesureraient autre chose que la latence
+      // réelle.
+      const w = poidsEvenement(e);
+      a.n += w; a.sum += e.duration_ms * w; a.max = Math.max(a.max, e.duration_ms);
+      if (e.status === "error") a.errors += w;
+      // Le p95 se lit sur les durées RÉPÉTÉES selon leur poids — sinon un échec
+      // gardé entier pèse autant que dix lectures rapides qui n'en représentent
+      // qu'une. Le poids est borné à 1000 par `poidsEvenement`, et on plafonne
+      // la répétition pour ne pas faire exploser le tableau sur une valeur folle.
+      for (let k = 0; k < Math.min(w, 50); k++) a.durations.push(e.duration_ms);
     }
     return [...map.values()].map((a) => {
       const sorted = a.durations.sort((x, y) => x - y);
@@ -741,14 +797,20 @@ class Store {
       "Realtime": (e) => /realtime/i.test(e.endpoint || e.action || ""),
     };
     return Object.entries(groups).map(([name, pred]) => {
+      // ⚠️ PONDÉRÉ : c'est ce taux qui bascule une carte de service en
+      // « down » (40 %) ou « degraded » (15 %). Brut, avec un succès gardé sur
+      // dix et les échecs entiers, il criait à la panne sur une production saine
+      // — exactement ce que ce lot prétendait avoir fermé ailleurs.
       const evs = win.filter(pred);
-      const errs = evs.filter((e) => e.status === "error").length;
-      const rate = evs.length ? errs / evs.length : 0;
+      const total = evs.reduce((a, e) => a + poidsEvenement(e), 0);
+      const errs = evs.reduce((a, e) => a + (e.status === "error" ? poidsEvenement(e) : 0), 0);
+      const rate = total ? errs / total : 0;
       let status = "unknown";
       if (evs.length) status = rate > 0.4 ? "down" : rate > 0.15 ? "degraded" : rate > 0.05 ? "slow" : "operational";
       const lat = evs.filter((e) => e.duration_ms != null);
-      const avg = lat.length ? Math.round(lat.reduce((a, e) => a + e.duration_ms, 0) / lat.length) : null;
-      return { name, status, samples: evs.length, errorRate: Math.round(rate * 100), avgLatency: avg, lastSeen: evs.length ? Math.max(...evs.map((e) => e.ts)) : null };
+      const latPoids = lat.reduce((a, e) => a + poidsEvenement(e), 0);
+      const avg = latPoids ? Math.round(lat.reduce((a, e) => a + e.duration_ms * poidsEvenement(e), 0) / latPoids) : null;
+      return { name, status, samples: Math.round(total), errorRate: Math.round(rate * 100), avgLatency: avg, lastSeen: evs.length ? Math.max(...evs.map((e) => e.ts)) : null };
     });
   }
 }

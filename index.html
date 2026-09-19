@@ -282,6 +282,32 @@
           <button type="button" id="authResendTopBtn" onclick="onbResendConfirmation()" style="display:block;width:100%;min-height:44px;padding:11px 14px;font-size:14px;font-weight:800;color:#fff;background:var(--accent);border:none;border-radius:12px;cursor:pointer;">📧 Renvoyer l'e-mail de confirmation</button>
         </div>
 
+        <!-- GOOGLE EN PREMIER (2026-09-19) — ET C'EST UN GESTE DE CAPACITÉ, PAS DE GOÛT.
+             La confirmation d'e-mail est obligatoire depuis le 2026-08-30 : une
+             inscription = un e-mail, et le relais Brevo en offre gratuite en donne
+             300 PAR JOUR, renvois et mots de passe oubliés compris. C'est le seul
+             plafond d'ACQUISITION de PASSIO. Google, lui, n'en coûte AUCUN : chaque
+             personne qui passe par là rend une place dans le quota du jour.
+             ⚠️ IL ÉTAIT SOUS LE PLI, exactement comme `#authResendLink` avant le
+             2026-09-18 : posé APRÈS « Créer mon compte », « Mot de passe oublié » et
+             le renvoi, donc après six champs en mode inscription. Même défaut, même
+             famille — une sortie que personne n'atteint n'est pas une sortie.
+             ⚠️ UN SEUL NŒUD, UNE SEULE POSITION, pour les deux onglets : deux
+             emplacements selon le mode, ce sont deux états qui divergent sur celui
+             qu'on oublie. Le séparateur, lui, NOMME l'alternative (peint par `switchAuthTab`,
+             app-02) — « ou » seul ne dit pas ce qu'il y a en dessous.
+             ⚠️ LA CASE DE CONSENTEMENT EST DÉSORMAIS PLUS BAS QUE CE BOUTON, et
+             `onbGoogleAuth` la refuse en mode création : le refus AMÈNE donc la case
+             à l'écran (`_amenerConsentementAuxYeux`). Un refus qui désigne un élément
+             hors champ est le défaut qu'on vient de fermer, déplacé d'un cran. -->
+        <div id="authGoogleBloc" style="display:flex;flex-direction:column;gap:10px;margin:0 0 16px;">
+          <button class="btn block" id="authGoogleBtn" onclick="onbGoogleAuth()" style="padding:13px;font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:10px;border:1px solid var(--border);background:#fff;color:#3c4043;">
+            <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.91c1.7-1.57 2.69-3.88 2.69-6.62z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.91-2.26c-.81.54-1.84.86-3.05.86-2.34 0-4.33-1.58-5.04-3.71H.96v2.33A9 9 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.96 10.71A5.41 5.41 0 0 1 3.68 9c0-.59.1-1.17.28-1.71V4.96H.96A9 9 0 0 0 0 9c0 1.45.35 2.82.96 4.04l3-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.59C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.96l3 2.33C4.67 5.16 6.66 3.58 9 3.58z"/></svg>
+            Continuer avec Google
+          </button>
+          <div style="display:flex;align-items:center;gap:8px;color:var(--muted);font-size:11px;margin:0;"><span style="flex:1;height:1px;background:var(--border);"></span><span id="authGoogleOu">ou avec ton e-mail</span><span style="flex:1;height:1px;background:var(--border);"></span></div>
+        </div>
+
         <label class="field" id="authNameWrap" style="display:none;">
           <span>Nom d'utilisateur</span>
           <input type="text" class="input" id="authName" placeholder="Benjamin" maxlength="40" autocomplete="nickname" style="font-size:16px;"/>
@@ -327,11 +353,6 @@
           <button class="btn primary block" id="authSubmitBtn" onclick="onbDoAuth()" style="padding:14px;font-size:15px;font-weight:800;">Se connecter</button>
           <span id="authForgotLink" onclick="onbForgotPassword()" style="cursor:pointer;font-size:12px;color:var(--accent);text-align:center;padding:11px 4px;min-height:44px;box-sizing:border-box;">Mot de passe oublié ?</span>
           <span id="authResendLink" onclick="onbResendConfirmation()" style="display:none;cursor:pointer;font-size:12px;color:var(--accent);text-align:center;padding:11px 4px;min-height:44px;box-sizing:border-box;">Renvoyer l'e-mail de confirmation</span>
-          <div style="display:flex;align-items:center;gap:8px;color:var(--muted);font-size:11px;margin:2px 0;"><span style="flex:1;height:1px;background:var(--border);"></span>ou<span style="flex:1;height:1px;background:var(--border);"></span></div>
-          <button class="btn block" id="authGoogleBtn" onclick="onbGoogleAuth()" style="padding:13px;font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:10px;border:1px solid var(--border);background:#fff;color:#3c4043;">
-            <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.91c1.7-1.57 2.69-3.88 2.69-6.62z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.91-2.26c-.81.54-1.84.86-3.05.86-2.34 0-4.33-1.58-5.04-3.71H.96v2.33A9 9 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.96 10.71A5.41 5.41 0 0 1 3.68 9c0-.59.1-1.17.28-1.71V4.96H.96A9 9 0 0 0 0 9c0 1.45.35 2.82.96 4.04l3-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.59C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.96l3 2.33C4.67 5.16 6.66 3.58 9 3.58z"/></svg>
-            Continuer avec Google
-          </button>
         </div>
       </div>
     </div>

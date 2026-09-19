@@ -791,6 +791,29 @@ function handleAttachFile(input, kind) {
     }).catch(function () { input.value = ""; toast("Impossible de lire cette image."); });
     return;
   }
+  // ⚠️ LA TROISIÈME PORTE VIDÉO, ET ELLE N'AVAIT AUCUN PLAFOND (relevé par
+  // `audit-passio`, 2026-09-19). `#attachImageFile` porte `accept="image/*,
+  // video/*"` : une vidéo jointe à une conversation tombait ici, partait en
+  // `FileReader` brut vers le seau `attachments`, et le contrôle de 40 Mo
+  // juste au-dessus est IMAGE SEULEMENT — donc aucune borne du tout, plus
+  // permissif que l'ancien Studio et ses 30 Mo.
+  // Le lot « capacité » du même jour n'avait branché que `meOnMedia` et
+  // `#videoInput` en écrivant « LES DEUX PORTES » : il y en avait trois. C'est
+  // la famille que ce lot citait lui-même (`quickCreateProfile` et le Studio
+  // sur le plafond de passions) — « corriger une surface, c'est corriger une
+  // surface », y compris quand c'est soi qui corrige.
+  if (kind === "media" && file.type && file.type.indexOf("video/") === 0
+      && typeof passioVideoPourEnvoi === "function" && typeof _passioDataUrlToFile === "function") {
+    passioVideoPourEnvoi(file).then(function (durl) {
+      _processAttach(input, kind, _passioDataUrlToFile(durl, file.name));
+    }).catch(function (e) {
+      input.value = "";
+      // Le refus PORTE son message (contrat de `passioVideoPourEnvoi`) ; sans
+      // lui, un refus muet est indiscernable d'une panne.
+      toast((e && e.motifUtilisateur) || "Impossible de lire cette vidéo.");
+    });
+    return;
+  }
   _processAttach(input, kind, file);
 }
 

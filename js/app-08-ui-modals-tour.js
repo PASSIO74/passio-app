@@ -1168,6 +1168,73 @@ function passioCompressVideo(file, opts, onProgress) {
   });
 }
 
+// ⚠️ UNE SEULE AUTORITÉ POUR PRÉPARER UNE VIDÉO À L'ENVOI — LES TROIS PORTES
+// PASSENT PAR ICI : `meOnMedia` (éditeur média), `#videoInput` (Studio, app-06)
+// et `handleAttachFile` (pièce jointe de messagerie, app-09).
+// ⚠️ LA PREMIÈRE RÉDACTION DISAIT « LES DEUX PORTES », ET C'ÉTAIT FAUX : la
+// troisième, la messagerie, n'avait AUCUNE borne de taille (son contrôle de
+// 40 Mo est image-seulement). Relevé par `audit-passio` le jour même. Un lot qui
+// se réclame de « corriger une surface, c'est corriger une surface » et qui en
+// oublie une troisième est exactement ce que la règle décrit. Mesuré le 2026-09-19 : 9 vidéos pesaient 68 Mo, soit 85 % de
+// TOUT le Storage, la plus grosse à 24 Mo — parce que `passioCompressVideo`
+// n'avait QU'UN appelant (`meOnMedia`) et que la porte du Studio (`#videoInput`,
+// app-06) lisait le fichier BRUT jusqu'à 30 Mo. Les images, elles, passent par
+// `passioCompressImage` depuis toujours : la discipline existait, elle n'avait
+// jamais atteint la vidéo. Famille « corriger une surface, c'est corriger une
+// surface » — d'où UNE FONCTION, et non une copie des trois seuils dans la
+// seconde porte : posés deux fois, ils divergent sur celui qu'on oublie.
+// Rend une data URL, ou LÈVE une erreur portant `motifUtilisateur` — le message
+// EXACT à afficher. L'appelant ne re-décide rien (même contrat que
+// `nomCompteValide` / `motDePasseVerdict`).
+var VIDEO_COMPRESSER_AU_DELA = 8 * 1024 * 1024;   // au-delà : ré-encodage 1080p
+var VIDEO_BRUT_MAX = 25 * 1024 * 1024;            // repli brut si la compression échoue
+var VIDEO_PLAFOND_DUR = 150 * 1024 * 1024;        // garde-fou mémoire absolu
+
+function _erreurVideo(motif) {
+  var e = new Error("video-refusee");
+  e.motifUtilisateur = motif;
+  return e;
+}
+
+async function passioVideoPourEnvoi(file) {
+  var mo = Math.round((file.size || 0) / 1048576);
+  // Un webm n'est pas lisible sur iPhone : si le navigateur sait encoder en mp4,
+  // on CONVERTIT même un petit fichier (le ré-encodage sert alors de transcodage
+  // universel, pas seulement de compression).
+  var _isWebm = /webm/i.test(file.type || "");
+  var _canMp4 = (typeof _passioBestVideoMime === "function") && _passioBestVideoMime().indexOf("video/mp4") === 0;
+  if (file.size <= VIDEO_COMPRESSER_AU_DELA && !(_isWebm && _canMp4)) return await _meReadFile(file);
+  if (file.size > VIDEO_PLAFOND_DUR) {
+    throw _erreurVideo("Vidéo trop lourde (" + mo + " Mo). Filme directement dans l'app, ou choisis une vidéo de moins d'une minute.");
+  }
+  try {
+    if (typeof passioCompressVideo !== "function") throw new Error("unsupported");
+    _meShowProgress("Optimisation de la vidéo…");
+    var dataUrl = await passioCompressVideo(file, { maxDim: 1080, bitrate: 2500000 }, _meUpdateProgress);
+    _meHideProgress();
+    if (!dataUrl || dataUrl.length < 1000) throw new Error("empty result");
+    return dataUrl;
+  } catch (e) {
+    _meHideProgress();
+    // Compression indisponible (vieux navigateur, codec absent) mais taille
+    // encore uploadable : on garde la vidéo brute plutôt que de refuser — le
+    // délai d'upload est proportionnel à la taille.
+    // ⚠️ ON TRACE AVANT DE REPLIER. Ce `catch` attrape aussi bien un codec
+    // absent qu'une `ReferenceError` dans `passioCompressVideo` : sans trace, une
+    // régression du compresseur ferait retomber TOUT le monde sur l'envoi brut —
+    // c'est-à-dire sur le défaut même que ce lot ferme — et le seul symptôme
+    // serait la courbe de Storage qui remonte des semaines plus tard. Ni la
+    // Sentinelle ni le pilotage ne verraient rien. Famille du bug `diagLog`.
+    try { if (typeof diagLog === "function") diagLog("video_compression_repli: " + ((e && e.message) || e)); } catch (_) {}
+    try { if (window.tel && tel.error) tel.error(e, { action: "video_compression_repli", severity: "warn", meta: { mo: mo } }); } catch (_) {}
+    if (file.size <= VIDEO_BRUT_MAX) return await _meReadFile(file);
+    // ⚠️ Le motif le plus fréquent n'est PAS la taille : `passioCompressVideo`
+    // refuse au-delà de 65 secondes (garde de durée, plus haut). Un message qui
+    // ne parlerait que de mégaoctets enverrait chercher la mauvaise cause.
+    throw _erreurVideo("Vidéo impossible à optimiser (" + mo + " Mo). Elle doit durer moins d'une minute, ou peser moins de 25 Mo. Le plus simple : filme directement dans l'app.");
+  }
+}
+
 async function meOnMedia(ev) {
   var file = ev.target.files && ev.target.files[0]; ev.target.value = "";
   if (!file) return;
@@ -1175,45 +1242,20 @@ async function meOnMedia(ev) {
   if (!isVideo && (file.type || "").indexOf("image/") !== 0) { toast("Photo ou vidéo uniquement"); return; }
   // Une bobine est une vidéo : on refuse les photos même via la galerie.
   if (meState.mode === "bobine" && !isVideo) { toast("Une bobine est une vidéo — choisis une vidéo"); return; }
-  var COMPRESS_OVER = 8 * 1024 * 1024;  // au-delà : ré-encodage 720p (l'upload de vidéos brutes de 20-25 Mo expirait systématiquement → bobines sans vidéo en DB)
-  var LIMIT = 25 * 1024 * 1024;     // repli brut max si la compression échoue
-  var HARD = 150 * 1024 * 1024;     // garde-fou mémoire absolu
   try {
     var dataUrl;
+    // Seuils, transcodage webm→mp4 et repli brut : `passioVideoPourEnvoi`, la
+    // seule autorité, partagée avec la porte du Studio (#videoInput, app-06).
     if (isVideo) {
-      // Un webm n'est pas lisible sur iPhone : si le navigateur sait encoder en
-      // mp4, on CONVERTIT même un petit fichier (le ré-encodage sert alors de
-      // transcodage universel, pas seulement de compression).
-      var _isWebm = /webm/i.test(file.type || "");
-      var _canMp4 = (typeof _passioBestVideoMime === "function") && _passioBestVideoMime().indexOf("video/mp4") === 0;
-      if (file.size <= COMPRESS_OVER && !(_isWebm && _canMp4)) {
-        dataUrl = await _meReadFile(file);
-      } else if (file.size <= HARD && typeof passioCompressVideo === "function") {
-        try {
-          _meShowProgress("Optimisation de la vidéo…");
-          dataUrl = await passioCompressVideo(file, { maxDim: 1080, bitrate: 2500000 }, _meUpdateProgress);
-          _meHideProgress();
-          if (!dataUrl || dataUrl.length < 1000) throw new Error("empty result");
-        } catch (e) {
-          _meHideProgress();
-          if (file.size <= LIMIT) {
-            // Compression indisponible mais taille encore uploadable : on garde la
-            // vidéo brute (le timeout d'upload est désormais proportionnel à la taille).
-            dataUrl = await _meReadFile(file);
-          } else {
-            toast("Vidéo trop lourde à optimiser (" + Math.round(file.size / 1048576) + " Mo). Filme dans l'app ou choisis une vidéo < 25 Mo.");
-            return;
-          }
-        }
-      } else {
-        toast("Vidéo trop lourde (" + Math.round(file.size / 1048576) + " Mo). Filme directement dans l'app ou choisis une vidéo < 25 Mo.");
-        return;
-      }
+      dataUrl = await passioVideoPourEnvoi(file);
     } else {
       try { dataUrl = await window.passioCompressImage(file, 1280, 0.85); } catch (e) { dataUrl = await _meReadFile(file); }
     }
     meSetMedia(dataUrl, isVideo ? "video" : "photo");
-  } catch (e) { _meHideProgress(); toast("Impossible de charger ce média"); }
+  } catch (e) {
+    _meHideProgress();
+    toast((e && e.motifUtilisateur) || "Impossible de charger ce média");
+  }
 }
 function meSetMedia(dataUrl, type) {
   meState.media = dataUrl; meState.mediaType = type;

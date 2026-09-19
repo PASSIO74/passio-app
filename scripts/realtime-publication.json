@@ -1,0 +1,19 @@
+{
+  "_lisezMoi": "Les tables de la publication `supabase_realtime`. Toute table écoutée par un `postgres_changes` DOIT y figurer : sinon la souscription ne reçoit JAMAIS d'événement, et elle ne lève RIEN — le symptôme est un silence, pas une erreur. Toute table qui y figure SANS abonné est du WAL décodé pour personne : `postgres_changes` coûte en O(changements × clients), c'est ce coût-là qui borne le nombre de connectés. Source de vérité en base : migrations/migration_realtime_publication_2026-09-19.sql.",
+  "publiees": [
+    "comment_interactions",
+    "conv_members",
+    "conv_messages",
+    "conv_reads",
+    "event_comments",
+    "notifications",
+    "post_comments",
+    "post_likes",
+    "posts",
+    "profiles",
+    "telemetry_events",
+    "video_lives"
+  ],
+  "publieesSansAbonne": {},
+  "_note": "`publieesSansAbonne` accueille une table publiée volontairement sans abonné, AVEC SA RAISON (même convention que scripts/tests-isolation-socle.json). Elle est vide, et c'est l'état voulu."
+}
