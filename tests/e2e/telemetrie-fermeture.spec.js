@@ -146,4 +146,72 @@ test.describe("Télémétrie — fermeture de page ≠ panne réseau", () => {
 
     await fermerSansTrafic(page, ctx);
   });
+
+  // ── 2026-09-19 : iOS coupe les requêtes AVANT de dire que la page se cache ──
+  // Chronologie réelle du pilotage : GET /passions, /events, /posts et le POST
+  // télémétrie tous en `error` à la même seconde, page « visible » et en ligne,
+  // puis `lifecycle hidden` UNE SECONDE PLUS TARD. À l'instant de l'échec, aucun
+  // des trois drapeaux (masquée / hors ligne / fermeture) n'est encore posé : le
+  // verdict doit donc être DIFFÉRÉ, et la preuve qui arrive dans la seconde doit
+  // requalifier l'échec en échec expliqué. Sans ce test, le cas ② ci-dessus (qui
+  // tolère l'alarme jusqu'à 15 s) resterait vert sur un verdict immédiat.
+  test("iOS : un échec suivi d'un masquage dans la seconde ne fabrique aucune alarme, et rien n'est perdu", async ({ browser }) => {
+    test.setTimeout(90000);
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    const etat = await intercepter(page);
+    await chargerEtAttendrePremierEnvoi(page, etat);
+
+    // 1. L'envoi meurt, page VISIBLE et EN LIGNE (rien ne l'explique encore).
+    etat.mode = "annule";
+    await page.evaluate(() => { window.tel.action("e2e_panne_ios"); window.tel.flush(); });
+    await expect.poll(() => etat.lots.filter((l) => l.mode === "annule").length, {
+      message: "le chemin d'échec doit avoir été exercé", timeout: 10000,
+    }).toBeGreaterThan(0);
+
+    // 2. Une seconde plus tard, la preuve arrive : la page se masque (ordre iOS).
+    await page.waitForTimeout(1000);
+    await page.evaluate(() => {
+      Object.defineProperty(document, "visibilityState", { get: () => "hidden", configurable: true });
+      Object.defineProperty(document, "hidden", { get: () => true, configurable: true });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+
+    // 3. Au-delà du délai de verdict (4 s) + marge : AUCUNE alarme, ni partie ni
+    //    persistée, et l'événement d'origine attend toujours dans le backlog.
+    await page.waitForTimeout(6000);
+    const backlog = await lireBacklog(page);
+    const alarmesEnvoyees = etat.lots.filter((l) => l.mode === "annule").flatMap((l) => l.rows).filter(estAlarme);
+    expect(alarmesEnvoyees.map((r) => r.message), "alarme send_failed fabriquée par une coupure iOS").toEqual([]);
+    expect(backlog.filter(estAlarme).map((r) => r.message), "alarme send_failed persistée pour rejeu").toEqual([]);
+    expect(backlog.some((r) => r.type === "action" && r.action === "e2e_panne_ios"), "l'événement d'origine doit rester dans le backlog").toBe(true);
+
+    await fermerSansTrafic(page, ctx);
+  });
+
+  test("un premier échec effacé par le réessai suivant ne produit ni alarme ni « recovered »", async ({ browser }) => {
+    test.setTimeout(90000);
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    const etat = await intercepter(page);
+    await chargerEtAttendrePremierEnvoi(page, etat);
+
+    etat.mode = "annule";
+    await page.evaluate(() => { window.tel.action("e2e_panne_breve"); window.tel.flush(); });
+    await expect.poll(() => etat.lots.filter((l) => l.mode === "annule").length, { timeout: 10000 }).toBeGreaterThan(0);
+    etat.mode = "ok";                        // le réessai (3 s) passera
+
+    // Le lot d'origine doit finir par partir, sans qu'aucune alarme ni aucune
+    // « récupération » ne l'accompagne : un accroc de 3 s n'est pas un incident.
+    await expect.poll(() => etat.lots.filter((l) => l.mode === "ok").flatMap((l) => l.rows)
+      .some((r) => r.type === "action" && r.action === "e2e_panne_breve"), {
+      message: "le lot d'origine doit repartir au réessai", timeout: 15000,
+    }).toBe(true);
+    await page.waitForTimeout(5000);         // au-delà du délai de verdict
+    const tout = etat.lots.flatMap((l) => l.rows).concat(await lireBacklog(page));
+    const bruit = tout.filter((r) => r.type === "connectivity" && (r.action === "send_failed" || r.action === "recovered"));
+    expect(bruit.map((r) => r.action + " · " + r.message), "aucun send_failed ni recovered pour un accroc résolu").toEqual([]);
+
+    await fermerSansTrafic(page, ctx);
+  });
 });

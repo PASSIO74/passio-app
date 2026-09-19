@@ -255,6 +255,9 @@
   var authRetries = 0;          // rejets d'auth CONSÉCUTIFS (token expiré, ≠ coupure)
   var AUTH_MAX_RETRIES = 6;     // grâce (~30 s) laissée au SDK pour rafraîchir le token
   var offlineSince = 0;         // ms epoch du passage hors-ligne (0 = en ligne)
+  var offlineParEchec = false;  // `offlineSince` posé par un échec d'envoi (pas par l'événement `offline`)
+  var verdictTimer = null;      // premier échec inexpliqué : verdict DIFFÉRÉ (voir onSendFailure)
+  var VERDICT_DELAY = 4000;     // > premier réessai (3 s) : un succès entre-temps annule l'alarme
   var unloading = false;        // vrai entre `pagehide` et un éventuel `pageshow` :
                                 // le navigateur annule alors les requêtes en vol
   var BACKLOG_KEY = "passio_tel_backlog";  // file persistée (survit reload/coupure)
@@ -577,20 +580,50 @@
       return;
     }
     sendFailures++;
-    if (!offlineSince) offlineSince = Date.now();
-    if (sendFailures === 1 || sendFailures === 3 || sendFailures % 10 === 0) {
-      track("connectivity", "send_failed", {
-        severity: sendFailures >= 3 ? "error" : "warn", status: "error", http_status: httpStatus,
-        message: "Échec d'envoi de la télémétrie #" + sendFailures + " (appareil peut-être hors ligne)",
-        meta: { failed_sends: sendFailures, ignores: softFailures, online: navigator.onLine, backlog: queue.length },
-      });
-    }
+    if (!offlineSince) { offlineSince = Date.now(); offlineParEchec = true; }
+    // ⚠️ Un PREMIER échec « inexpliqué » ne prouve rien : iOS coupe les requêtes
+    // en vol AVANT d'émettre `visibilitychange`/`pagehide` (mesuré en production
+    // le 2026-09-19 : GET /passions, /events, /posts et le POST télémétrie tous en
+    // `error` à la même seconde, page « visible » et en ligne, `hidden` 1 s après).
+    // Le verdict est donc DIFFÉRÉ : si la page se masque/part d'ici là, ou si le
+    // réessai passe, l'échec était expliqué et rien ne remonte.
+    if (sendFailures === 1) { differerVerdict(httpStatus); armerReessai(); return; }
+    if (sendFailures === 3 || sendFailures % 10 === 0) alarmeEnvoi(httpStatus);
     armerReessai();
+  }
+
+  function alarmeEnvoi(httpStatus) {
+    track("connectivity", "send_failed", {
+      severity: sendFailures >= 3 ? "error" : "warn", status: "error", http_status: httpStatus,
+      message: "Échec d'envoi de la télémétrie #" + sendFailures + " (appareil peut-être hors ligne)",
+      meta: { failed_sends: sendFailures, ignores: softFailures, online: navigator.onLine, backlog: queue.length },
+    });
+  }
+
+  // L'échec initial est requalifié en échec EXPLIQUÉ : on le compte comme tel et
+  // on efface la « coupure » qu'il avait ouverte (sinon `recovered` la signalerait).
+  function requalifierEnSoft() {
+    softFailures += sendFailures; sendFailures = 0;
+    if (offlineParEchec) { offlineSince = 0; offlineParEchec = false; }
+  }
+
+  function differerVerdict(httpStatus) {
+    if (verdictTimer) return;
+    verdictTimer = setTimeout(function () {
+      verdictTimer = null;
+      if (!sendFailures) return;                 // déjà résolu (succès entre-temps)
+      var ctx = contexteEchec();
+      if (ctx.fermeture || ctx.masquee || ctx.hors_ligne) { requalifierEnSoft(); return; }
+      if (sendFailures < 3) alarmeEnvoi(httpStatus);   // ≥ 3 : déjà signalé au seuil
+    }, VERDICT_DELAY);
   }
 
   // Envoi réussi : si on sortait d'une série d'échecs, trace la RÉCUPÉRATION
   // (fenêtre de coupure) pour que l'incident soit visible dans le dashboard.
   function onSendSuccess() {
+    // Succès AVANT le verdict : l'échec initial était transitoire, aucune alarme
+    // n'a été émise, donc aucune « récupération » à annoncer non plus.
+    if (verdictTimer) { clearTimeout(verdictTimer); verdictTimer = null; requalifierEnSoft(); }
     if (sendFailures >= 3 || offlineSince) {
       track("connectivity", "recovered", {
         severity: "warn", status: "ok",
@@ -598,7 +631,7 @@
         meta: { failed_sends: sendFailures, offline_ms: offlineSince ? Date.now() - offlineSince : null, backlog: queue.length },
       });
     }
-    sendFailures = 0; softFailures = 0; offlineSince = 0; authRetries = 0;
+    sendFailures = 0; softFailures = 0; offlineSince = 0; offlineParEchec = false; authRetries = 0;
     // `jetonRefuse` n'est PAS relevé ici : il l'est par un jeton DIFFÉRENT dans
     // le stockage (voir `authToken`), pas par un succès obtenu sans lui.
     if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
