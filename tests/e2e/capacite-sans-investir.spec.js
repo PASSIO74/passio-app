@@ -210,7 +210,12 @@ test("④ seul le 200 est échantillonné : 201, 204 et les échecs passent ENTI
   });
   expect(r.absent, "PassioTelemetry._tauxEchantillon doit être exposé pour être mesurable").toBeFalsy();
   expect(r.lecture200, "les lectures réussies sont le volume : 1 sur 10").toBeCloseTo(0.1, 5);
-  expect(r.perf).toBeCloseTo(0.1, 5);
+  // ⚠️ `perf` N'EST PAS ÉCHANTILLONNÉ, et ce cas garde la leçon : le premier jet
+  // du lot le tirait à 10 %, ce qui détruisait l'instrumentation PERF-IOS —
+  // `ios_stat_*` sont DÉJÀ des agrégats (p50/p95/p99 par instantané) et
+  // `page_load`/`ios_context` sont une ligne par SESSION. C'est le banc
+  // `perf-ios.spec.js` ⑧ qui l'a arrêté, pas la relecture.
+  expect(r.perf, "un agrégat ne s'échantillonne pas : on le perdrait, on ne le résumerait pas").toBe(1);
   // ⚠️ LE CŒUR DU CAS : `store.js` compte publications, messages et commentaires
   // sur `http_status === 201`. Les échantillonner diviserait par dix l'activité
   // affichée au pilotage, SANS une erreur.

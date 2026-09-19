@@ -1550,9 +1550,16 @@ publication passe `SUBSCRIBED` et ne reçoit **jamais rien** — indiscernable d
 Éprouvée par réinjection des deux. Migration : `migrations/migration_realtime_publication_2026-09-19.sql`
 (13 tables retirées, verdict qui **ANNULE la transaction** si `telemetry_events` disparaissait).
 
-⚠️ **④ ON N'ÉCHANTILLONNE QUE LE 200, ET LA LIGNE GARDÉE PORTE SON POIDS.** La télémétrie pesait **43 %
-de la base** pour dix comptes : 61 470 lignes en 7 jours, dont **20 575 `api` en http 200** (97 % des
-`api`) et 9 867 `perf`. ⚠️ **Échantillonner les 2xx en bloc aurait divisé par dix l'activité affichée
+⚠️ **④ ON N'ÉCHANTILLONNE QUE LE 200 — RIEN D'AUTRE — ET LA LIGNE GARDÉE PORTE SON POIDS.** La
+télémétrie pesait **43 % de la base** pour dix comptes : 61 470 lignes en 7 jours, dont **20 575 `api`
+en http 200** (97 % des `api`). Économie mesurée : **−30 %** (61 470 → ~42 950).
+⚠️ **LE PREMIER JET ÉCHANTILLONNAIT AUSSI `perf`, ANNONÇAIT −45 %, ET C'ÉTAIT UNE ERREUR DE FOND —
+arrêtée par `perf-ios.spec.js` ⑧, pas par la relecture ni par `audit-passio`.** Les 9 867 lignes
+`perf` ne sont PAS des mesures brutes : **38 % sont des `ios_stat_*`, donc DÉJÀ des agrégats** (une
+ligne par instantané, portant p50/p95/p99 et `n`), et `page_load` (20 %) comme `ios_context` (8 %)
+sont un RECENSEMENT — une ligne par session. ~4 lignes par session au total : ce n'était jamais le
+volume. **On ne résume pas un résumé, on le PERD** : une moyenne de p95 tirés au sort ne vaut rien,
+et l'instrumentation PERF-IOS existe précisément pour mesurer. `ECH_PERF = 1`. ⚠️ **Échantillonner les 2xx en bloc aurait divisé par dix l'activité affichée
 au pilotage** : `store.js` compte publications, messages, commentaires, réactions et notifications sur
 `type === "api" && http_status === 201`. 287 lignes en 201 sur sept jours — les garder toutes ne coûte
 rien, les perdre donne un tableau de bord qui ment. Les échecs (0, 4xx, 5xx) sont gardés entiers :

@@ -261,7 +261,19 @@
   // en 200 — c'est le sens qu'on veut, mais c'est bien un changement de
   // comportement, pas seulement un changement de volume.
   var ECH_API_200 = 0.1;   // 1 lecture réussie sur 10
-  var ECH_PERF = 0.1;      // 1 mesure de performance sur 10
+
+  // ⚠️ `perf` N'EST PAS ÉCHANTILLONNÉ, ET LE PREMIER JET DE CE LOT LE FAISAIT —
+  // c'est le banc `perf-ios.spec.js` ⑧ qui l'a arrêté, pas la relecture.
+  // MESURÉ sur 7 jours : les 9 867 lignes `perf` ne sont PAS des mesures brutes.
+  // 38 % sont des `ios_stat_*`, c'est-à-dire **déjà des agrégats** — une ligne
+  // par instantané, portant p50/p95/p99 et `n` dans `meta`. Échantillonner un
+  // agrégat n'a aucun sens : on ne résume pas un résumé, on le PERD, et une
+  // moyenne de p95 tirés au sort ne vaut rien. Le reste est un RECENSEMENT :
+  // `page_load` (20 %) et `ios_context` (8 %) sont émis une fois par session.
+  // Au total ~4 lignes par session — ce n'était jamais le volume, contrairement
+  // à ce que le lot avait écrit en rangeant `perf` avec les lectures `api`.
+  // La seule famille qui soit réellement du volume répétitif est `api` en 200.
+  var ECH_PERF = 1;        // recensement et agrégats : on garde TOUT
 
   // Rend la probabilité de GARDER l'événement. Fonction pure : c'est elle que
   // le banc unitaire éprouve, jamais `track` (qui touche la file et le réseau).
@@ -282,7 +294,7 @@
       var st = fields && typeof fields.http_status === "number" ? fields.http_status : null;
       return st === 200 ? ECH_API_200 : 1;
     }
-    if (type === "perf") return ECH_PERF;
+    if (type === "perf") return ECH_PERF;   // = 1, voir ci-dessus
     if (action != null && SAMPLE[action] != null) return SAMPLE[action];
     if (SAMPLE[type] != null) return SAMPLE[type];
     return 1;

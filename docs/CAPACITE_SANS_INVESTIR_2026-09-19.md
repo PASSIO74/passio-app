@@ -109,7 +109,7 @@ temps de démarrage). Un agrégat n'a pas besoin de toutes les lignes.
 **Deux gestes gratuits** :
 
 1. **Échantillonner** `api` en **200 SEULEMENT** et `perf` à 10 %, en gardant **100 %** des erreurs, des refus 4xx/5xx,
-   de `session`, `action`, `connectivity` et `error`. −45 % de lignes, aucun signal perdu — un p95
+   de `session`, `action`, `connectivity` et `error`. −30 % de lignes, aucun signal perdu — un p95
    calculé sur 2 000 mesures vaut celui calculé sur 20 000. ⚠️ Le taux d'échantillonnage doit voyager
    avec la ligne (une colonne `poids`), sinon les compteurs du pilotage divisent le trafic réel par dix
    sans le dire.
@@ -262,7 +262,7 @@ augmente avec le succès.
 | 1 | **Compresser la vidéo aux TROIS portes** (Studio, éditeur média, pièce jointe de messagerie) | quelques heures | **×3,2 stockage, ×5 bande passante vidéo** | faible, repli déjà écrit |
 | 2 | **Google Sign-In en premier** sur l'écran d'inscription | 1 heure | **×2 inscriptions/jour** | nul |
 | 3 | **Nettoyer la publication realtime** (13 tables sans abonné — ⚠️ **PAS** `telemetry_events`, voir §5) | 1 heure | coût serveur par écriture | faible, la gate `audit:realtime` le tient |
-| 4 | **Échantillonner `api` en 200 et `perf`** à 10 %, avec un poids par ligne | 1 heure | −45 % de lignes en base | faible |
+| 4 | **Échantillonner `api` en 200 et `perf`** à 10 %, avec un poids par ligne | 1 heure | −30 % de lignes en base | faible |
 | 5 | **Étendre IndexedDB** au référentiel des passions et au fil | 1 jour | egress + démarrage | faible, patron existant |
 | 6 | **Mesurer puis allumer `PASSIO_REALTIME_V2/V3`** | 2 à 3 jours | c'est le plafond des milliers de connectés | moyen, à faire sur le staging |
 | 7 | **Découper `app.js`** | chantier | la rétention à l'échelle | élevé (hoisting) |
@@ -285,7 +285,7 @@ dérivées** de ces mesures, pas des mesures nouvelles.
 | Comptes stockés (Storage Pro, 100 Go) | ~12 500 | **~40 000** | médias — 8 → 2,5 Mo/compte |
 | Comptes stockés (si retour au Free, 1 Go) | ~125 | **~400** | idem |
 | Inscriptions **par jour** | **300** | **600 – 1 000** | Brevo, selon la part Google |
-| Lignes de télémétrie / semaine | 61 470 | **~34 000** (−45 %) | rétention 7 j, déjà posée |
+| Lignes de télémétrie / semaine | 61 470 | **~43 000** (−30 %) | rétention 7 j, déjà posée |
 | Référentiel téléchargé | 568 ko **par session** | 568 ko **par déploiement et par appareil** | cache IndexedDB |
 
 **Le chiffre à retenir : de l'ordre de 10 000 à 30 000 comptes inscrits**, avec 2 000 à 4 000 personnes
@@ -313,6 +313,26 @@ la première carte sur un téléphone lent (PERF-02, mesuré, non corrigé). À 
 voit ; à dix mille, la majorité arrive sur un appareil moyen en réseau moyen. Aucun de ces cinq gestes
 ne la réduit — c'est le découpage d'`app.js`, chantier à part entière, et le seul de la liste dont le
 coût augmente avec le succès.
+
+## 9 ter. UNE ERREUR DE CE LOT, ARRÊTÉE PAR UN BANC EXISTANT
+
+Le geste ④ échantillonnait d'abord `api` en 200 **et `perf`**, pour une économie annoncée de −45 %.
+`tests/e2e/perf-ios.spec.js` ⑧ (« la baseline atteint le centre de pilotage avec ses percentiles ») a
+rougi — et il avait raison.
+
+**Mesuré ensuite, ce que `perf` contient réellement** : `ios_stat_*` = **38 %** des lignes, et ce sont
+**déjà des agrégats** — une ligne par instantané, portant `p50`, `p95`, `p99` et `n` dans `meta` ;
+`page_load` **20 %** et `ios_context` **8 %** sont un **recensement**, une ligne par session. Soit
+~4 lignes par session au total. **Ce n'était jamais le volume** — la seule famille réellement
+répétitive est `api` en 200 (33,5 % à elle seule).
+
+⚠️ **ON NE RÉSUME PAS UN RÉSUMÉ, ON LE PERD.** Une moyenne de p95 tirés au sort ne veut rien dire, et
+l'instrumentation PERF-IOS existe précisément pour mesurer : la tirer à 10 % revenait à l'éteindre.
+`ECH_PERF = 1`, et l'économie réelle du geste ④ est donc **−30 %**, pas −45 %.
+
+⚠️ **CE QUI A ARRÊTÉ L'ERREUR N'EST NI LA RELECTURE NI L'AUDIT** — `audit-passio` avait relu ce lot et
+ne l'a pas vue. C'est un banc écrit pour une tout autre raison, des mois plus tôt, qui a tenu. C'est
+l'argument le plus concret de ce document en faveur des verrous qui exercent un GESTE réel.
 
 ## 10. Ce que ce document ne dit pas
 
