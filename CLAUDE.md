@@ -1613,6 +1613,129 @@ messagerie rendue au brut (1), Google remis en bas (1), échantillonnage étendu
 ligne mis en cache (1), sortie du refus retirée de `onbDoAuth` SEULEMENT (1 — c'est la porte que le
 premier verrou n'exerçait pas), et `poidsEvenement` rendu aveugle (3, côté pilotage).
 
+### ⚠️ CONTRE-REVUE ADVERSARIALE DU MÊME JOUR — SEPT DÉFAUTS DE PLUS, APRÈS DEUX PASSES DÉJÀ FAITES
+
+Le lot avait déjà été relu par `audit-passio` (2 défauts) et redressé par un test
+(`perf-ios` ⑧). Une passe `passio-red-team` sur l'état final en a trouvé **sept autres**,
+dont un P0. **Trois passes de relecture ne valent pas une passe adversariale** — et la
+famille commune des trois plus graves mérite d'être nommée : un correctif qui réutilise
+un helper écrit pour un AUTRE média, une justification qui se contredit à 160 lignes
+d'écart dans le même commit, et un verrou qui mesure la taille là où le défaut porte sur
+le type.
+
+⚠️ **[P0] UNE VIDÉO JOINTE À UNE CONVERSATION PARTAIT EN `image/jpeg`, NOMMÉE `.jpg`.**
+`_passioDataUrlToFile` (app-09) forçait type et extension EN DUR — parfaitement juste
+tant qu'elle ne servait qu'à ré-injecter une image compressée, son seul appelant. La
+TROISIÈME porte vidéo, ajoutée la veille, la réutilisait telle quelle. Sans lever une
+seule erreur : `_processAttach` teste `file.type.startsWith("video/")`, devenu FAUX →
+`msg.img` (vignette cassée chez l'expéditeur) ; le blob déposé dans `attachments`
+portait `image/jpeg` avec `cacheControl` d'un an (**mauvais content-type figé pour un
+an**) ; `content.fileType` annonçait « image » au destinataire, qui recevait une image
+cassée POUR TOUJOURS. **Avant le lot, ce chemin FONCTIONNAIT** : régression complète
+introduite par un correctif. **Un helper porte le contrat de son appelant d'origine ; le
+brancher sur un autre média sans relire son corps est la faute à chercher en premier.**
+⚠️ Et le verrou était VERT dessus : il n'assertait que la TAILLE du fichier traité.
+**Un verrou qui mesure la taille ne mesure pas le type.**
+
+⚠️ **[P1] UNE COMPRESSION QUI NE REND JAMAIS SON VERDICT VERROUILLAIT L'ÉCRAN.**
+`passioCompressVideo` ne conclut que sur `video.onended`, et sa boucle de dessin est un
+`requestAnimationFrame` : page passée en arrière-plan pendant l'encodage → lecture
+suspendue, `onended` jamais émis, **promesse jamais réglée**. `#meProgressOv` (fixed,
+inset:0, z-index 5200, **sans croix ni Échap**) restait posé : application morte jusqu'au
+rechargement. C'est l'invariant maison « jamais de rendu cadencé sur rAF » vu par son
+autre bout. Le mode d'échec préexistait à l'éditeur média ; **ce lot l'avait TRIPLÉ**
+(Studio + messagerie) sans appliquer le `Promise.race` qu'il cite ailleurs.
+`VIDEO_COMPRESSION_DELAI_MAX` = 90 s → le `catch` existant, et `_meHideProgress` en
+`finally`. **Brancher un chemin existant sur deux surfaces de plus, c'est hériter de ses
+modes d'échec sur deux surfaces de plus.**
+
+⚠️ **[P1] LA PONDÉRATION DU PILOTAGE S'EST ARRÊTÉE À MI-CHEMIN UNE SECONDE FOIS.**
+`timeseries()` pondérait `b.api` mais pas la LATENCE, et son commentaire le justifiait
+par « une moyenne sur un échantillon est déjà la bonne estimation » — que le **MÊME
+commit** réfutait 160 lignes plus bas dans `apiPerf`. Et c'est la moitié la plus VISIBLE
+qui mentait : `#perfChart` trace cette série **juste au-dessus** du tableau `perfRows`,
+lui pondéré — deux chiffres contradictoires sur un même écran. `b.events` restait brut
+alors que `b.api` ne l'était plus : `api ⊆ events`, donc un bucket pouvait rendre
+`api > events`, un état impossible. **Une justification écrite qui ne tient pas est pire
+qu'un oubli : elle décourage d'aller regarder.**
+
+⚠️ **[P1] L'ÉCHANTILLONNAGE BIAISAIT LES VERDICTS DE TRACE VERS « LENT ».**
+`traces.js` (`_setStep`) laisse le DERNIER écrivain fixer l'étape `request`. Les 200
+rapides jetés 9 fois sur 10, la population survivante penche vers les lignes lentes :
+mesuré sur un flow RÉEL de production (`cint`), les événements 3, 4 et 5 sautent, le seul
+`slow` devient le dernier, le verdict passe de `success` à `slow`, et `alerts.js` lève
+« Action anormalement lente » **sur une action qui a parfaitement abouti**. Pire cas
+voisin : un flow dont la seule requête serait un 200 perdrait son étape `request` →
+`dead_click`, alerte `high`. **Une ligne qui porte un `correlation_id` n'est pas un
+agrégat, c'est une PREUVE INDIVIDUELLE** : `tauxEchantillon` rend 1 dessus, avant tout
+test de code HTTP (18 lignes en 30 jours — coût nul). **Échantillonner, c'est changer la
+COMPOSITION d'une population, pas seulement son volume : tout ce qui lit « le dernier »,
+« le premier » ou « y en a-t-il un » en aval est faussé, même si les moyennes sont
+pondérées.**
+
+⚠️ **[P2] LE CACHE DURABLE POUVAIT FIGER UN RÉFÉRENTIEL PÉRIMÉ POUR UNE RELEASE ENTIÈRE.**
+La garde « on ne cache jamais un repli hors ligne » tenait ; **le trou était ailleurs**.
+`data/passions-v1.json` n'est ni `/`, ni `/media/*`, ni un `.js` : il tombe dans la
+DERNIÈRE branche de `sw.js`, en **stale-while-revalidate**. Au premier démarrage qui suit
+un déploiement, l'ancien SW contrôle encore la page et rend la copie de la release
+PRÉCÉDENTE avec un **HTTP 200 parfaitement valide** — que l'écriture rangeait sous la clé
+de la release COURANTE. Avant ce lot la même fenêtre coûtait UNE session (le SWR se
+rafraîchissait) ; le cache durable en faisait **une release**. L'URL porte donc
+`?r=<release>`. Hors artefact, URL inchangée, comportement d'avant à l'octet près.
+**Un cache durable n'hérite pas de la fraîcheur de son fournisseur : il la FIGE.**
+
+⚠️ **[P2] LE REFUS DE CONSENTEMENT SE PRONONCE LÀ OÙ L'ON AGIT.** Amener la case sous les
+yeux ÉLOIGNE mécaniquement `#authMsg` : à 390 × 664 le motif pouvait repartir hors champ
+— **le défaut du 18/09 reproduit en miroir**, la cible visible et le refus plus.
+`#authConsentRefus` vit **HORS du label** (un clic sur un descendant COCHERAIT le
+consentement : même piège que les liens CGU, 2026-09-08), même patron que `#authPwdRefus`.
+⚠️ Et le verrou **stubbait `scrollIntoView`** : il vérifiait qu'on avait DEMANDÉ
+`block: "center"`, jamais que le refus restait lisible après le défilement réel — « on
+mesure l'appel, pas le résultat », dans le lot même qui cite ce défaut. Il mesure
+désormais la géométrie des DEUX nœuds après défilement.
+
+⚠️ **[P2] LA GATE `audit:realtime` DÉCLARAIT UN PÉRIMÈTRE QU'ELLE N'AVAIT PAS.** Son
+en-tête écrivait « TOUT LE DÉPÔT, BACKEND COMPRIS » ; elle lisait **deux racines sur
+cinq**. Restait dehors `scripts/charge.mjs` — l'outil même avec lequel on mesure la
+capacité que ce lot prétend lever. Cinq racines, 17 souscriptions. ⚠️ **Et elle devait
+s'exclure elle-même** : depuis qu'elle balaie `scripts/`, ses propres exemples de
+documentation (`table: "nom_en_clair"`) étaient comptés comme des souscriptions à des
+tables inexistantes, et elle refusait un dépôt sain **en se citant**. Un scanner dans son
+propre périmètre finit toujours par s'attraper.
+
+⚠️ **[P3] DEUX ÉTIQUETTES DEVENUES PORTEUSES.** `releaseCourante` (idb-store) rendait
+`PASSIO_APP_VERSION` SEUL quand il était posé : le jour où quelqu'un y écrit une version
+produit stable (« 2026.10.0 »), la clé du cache **cesse de changer au déploiement**. Les
+deux champs sont concaténés. Et `ech` était posé **DANS** `scrubMeta`, donc sous son
+plafond de 30 clés : un appelant à 29 clés aurait fait partir une ligne échantillonnée
+**sans son poids**, sous-comptée dix fois, en silence. Estampillé APRÈS.
+**Un champ d'affichage promu clé de cache ou porteur de sens change de contrat sans que
+son nom le dise.**
+
+⚠️ **[P3] UNE VIDÉO SANS TYPE MIME CONTOURNAIT LA PORTE DE MESSAGERIE** (sélecteurs
+Android, `file.type === ""`), où le contrôle de 40 Mo est IMAGE-SEULEMENT — donc aucune
+borne. Pas une régression, mais **le lot AFFIRMAIT que cette porte est bornée : une
+affirmation qu'un cas dément est pire qu'un trou connu.** `_passioEstVideo` retombe sur
+l'extension.
+
+⚠️ **DEUX CONSTATS ÉCARTÉS ET TROIS AXES DÉCLARÉS SAINS, ÉCRITS PLUTÔT QUE TUS** : aucune
+quatrième porte vidéo (six `input[type=file]` inventoriés), aucun abonné `postgres_changes`
+orphelin hors `js/` (recensement complet, `supabase/functions/` compris), et l'ordre des
+tests de `tauxEchantillon` est correct. **Un « rien trouvé sur cet axe » a autant de
+valeur qu'un constat** : sans lui, la session suivante refait l'enquête.
+
+⚠️ **PIÈGE D'OUTILLAGE DU JOUR, DEUX FOIS** : ① `pkill -f "[p]laywright test"` tue quand
+même son propre shell si la MÊME ligne de commande contient plus loin un vrai
+`npx playwright test` — le motif y correspond. Séparer en deux appels. ② Un nom de balise
+écrit entre chevrons **dans un commentaire HTML** est compté par le contrôle de balises
+structurelles de ce fichier (c'est un grep, pas un parseur) : il faisait apparaître une
+étiquette fantôme. Ne pas citer de nom de balise entre chevrons dans `index.html`.
+
+Verrous portés à **17** (`capacite-sans-investir.spec.js`) et **6**
+(`telemetrie-echantillon-poids.test.js`), la latence pondérée éprouvée par RÉINJECTION.
+89 cas des suites voisines verts ; `cgu-consentement` ⑩ rougit à l'identique sur
+`origin/main` PUR (erreur console MapLibre, bac à sable réseau) — étranger au lot.
+
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)
 
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)
