@@ -2169,11 +2169,31 @@ coût pour une latence imperceptible. ⚠️ **Le canari n'est pas concerné** :
 ⚠️ **ORDRE D'APPLICATION, NON NÉGOCIABLE** : ① le pilotage déployé sur le poste, ② *seulement ensuite*
 la migration. Dans l'autre sens, le pilotage garderait une souscription qui passe `SUBSCRIBED` et ne
 livre plus jamais rien — le défaut muet que `audit:realtime` existe pour empêcher.
-**GESTE HUMAIN QUI RESTE** (ADR-012, canal ③) :
-`npm run migration:appliquer -- migrations/migration_realtime_telemetry_2026-09-20.sql`, puis on
-**mesure l'état en base**, jamais le tableau de verdict :
-`select count(*) from pg_publication_tables where pubname='supabase_realtime' and schemaname='public'`
-→ **11**.
+**APPLIQUÉE EN PRODUCTION LE 2026-09-20 — et mesuré, pas déduit** : `pg_publication_tables` rend
+**11** tables, `telemetry_events` absente, les onze du produit intactes. L'ordre a été tenu : pilotage
+relancé sur le poste (pid neuf sur 4610) AVANT la migration. Ne pas rouvrir ce point.
+
+⚠️ **ET ELLE N'EST PAS PASSÉE PAR `migration:appliquer` — LA BARRIÈRE EST INUTILISABLE PAR UN
+PROPRIÉTAIRE SEUL, ET C'EST UNE DÉCOUVERTE, PAS UN INCIDENT.** Sur une cible protégée, ASTRA-51/61
+exige une preuve de revue VÉRIFIÉE chez GitHub, et elle cumule trois conditions qu'un dépôt à UN humain
+ne peut pas satisfaire : ① l'état `APPROVED` (un `COMMENTED`, « même conforme, n'approuve rien ») ;
+② un relecteur inscrit dans `.passio/migrations/relecteurs-autorises.json`, **qui est VIDE** — donc
+« personne n'est autorisé », refus par construction ; ③ **un relecteur DISTINCT de l'auteur de la PR**,
+or toutes les PR de ce dépôt sont sous le compte PASSIO74, et GitHub interdit d'approuver sa propre PR.
+Les trois sont justes prises une à une ; ensemble elles ferment le canal. **Une barrière qui suppose un
+second humain dans un projet qui en a un n'est pas franchissable, elle est contournée** — et un garde-fou
+qu'on contourne à chaque migration ne garde plus rien.
+⚠️ **LA SORTIE PRISE EST DOCUMENTÉE, CE N'EST PAS UN CONTOURNEMENT** : ADR-012 définit le canal ③ comme
+« `psql` **ou le SQL Editor** » — `migration:appliquer` en est UNE implémentation, pas la définition. Le
+contenu exact du fichier a été relu par Benjamin avant le coller (c'est ce que la barrière cherchait à
+garantir), et `--sans-attestation` n'a PAS été employé : il est refusé sur cible protégée, et l'employer
+aurait été se rendre vert en réécrivant le test.
+⚠️ **DEUX SORTIES POSSIBLES, À TRANCHER ET PAS À REDÉCOUVRIR** : inscrire un SECOND compte relecteur
+(geste de gouvernance : PR + revue), ou assumer l'éditeur SQL comme voie normale pour un dépôt à un
+humain et le DIRE dans ADR-012 — aujourd'hui le dépôt outille un chemin que personne ne peut emprunter.
+⚠️ **Et l'empreinte du fichier relu est un acquis à garder** : `sha256` du `.sql` au commit contre-revu
+(`a3210ec`) = celui du fichier appliqué (`76c12ca0…`). C'est la seule partie de la barrière qui a
+fonctionné de bout en bout, et elle vaut indépendamment du reste.
 
 ⚠️ **ET MON CHIFFRE-PHARE ÉTAIT FAUX — RÉÉCRIT LE JOUR MÊME, APRÈS MESURE.** J'annonçais « 91 % du
 TRAVAIL de réplication disparaît, ce poste tombe de 68,9 % à ~6 %, la base fait le tiers du travail ».

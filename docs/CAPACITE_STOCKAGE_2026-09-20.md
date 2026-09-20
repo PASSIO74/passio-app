@@ -111,12 +111,17 @@ C'est la deuxième fois de la journée (après le chiffre-phare de #515).
 
 ## 5. Ce que ça donne, et ce que ça ne donne pas
 
-- **Purge des orphelins** : 80 → 26,5 Mo. Geste d'exploitation (canal ②), à faire depuis le poste :
-  `npm run medias:orphelins` puis `-- --appliquer`, et on **mesure l'état en base ensuite**, jamais
-  le tableau imprimé. ⚠️ La première rédaction vendait ça comme une « marge ×3 sur le mur le plus
-  proche » : **il n'y a pas de mur à cette distance** (section 0), et le geste n'en avait pas besoin
-  — on ne garde pas 53,5 Mo de fichiers que plus rien ne référence, sauvegardés et restaurés à
-  chaque exercice.
+- **Purge des orphelins : FAITE le 2026-09-20, et mesurée en base** (canal ①, jamais le tableau
+  imprimé) — `storage.objects` passe de **72 objets / 80 Mo** à **43 objets / 26,5 Mo**
+  (`content` 38, `attachments` 5). **29 objets supprimés, 53,33 Mo libérés** : l'estimation de
+  53,5 Mo tenait. Les deux plus gros étaient les vidéos de juillet (24,3 et 19,4 Mo), et le lot
+  portait même un `cdv_steps/` — le Carnet de voyage, retiré par ADR-011 en août.
+  ⚠️ La première rédaction vendait ça comme une « marge ×3 sur le mur le plus proche » : **il n'y a
+  pas de mur à cette distance** (section 0), et le geste n'en avait pas besoin — on ne garde pas
+  53 Mo de fichiers que plus rien ne référence, sauvegardés et restaurés à chaque exercice.
+  ⚠️ **Ce n'est pas récurrent tant que personne ne l'appelle** : l'outil n'a ni cron ni appelant, et
+  le stock d'orphelins repartira à la hausse (suppressions de publications, comptes effacés hors
+  `delete-account`). Le relancer de temps en temps, ou lui donner un appelant — pas les deux à moitié.
 - ⚠️ **NE PAS PARTIR SUR CLOUDFLARE R2.** Cette section le présentait comme « le vrai déverrouillage
   d'ordre de grandeur » : c'est la conséquence directe du forfait mal déduit. R2 offre **10 Go**, là
   où le Pro en donne deux ordres de grandeur de plus — on aurait migré **vers un plafond plus bas**,
