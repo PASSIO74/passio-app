@@ -5648,6 +5648,12 @@ function _stopTyping(convId) {
 
 function _subscribeTyping(convId) {
   if (typeof supa === "undefined" || !supa) return;
+  // ⚠️ AUCUNE CONNEXION TEMPS RÉEL SANS COMPTE (capacité, 2026-09-20). Un
+  // visiteur atteint cet appel en ouvrant une conversation de DÉMONSTRATION,
+  // qui n'a aucune ligne serveur : le canal ne lui transporterait jamais rien,
+  // et il coûterait une place sur les 500 du quota. Autorité unique :
+  // `connexionTempsReelAutorisee` (app-02).
+  if (typeof connexionTempsReelAutorisee === "function" && !connexionTempsReelAutorisee()) return;
   if (_typingChannel) { try { supa.removeChannel(_typingChannel); } catch(e) {} _typingChannel = null; }
   // ⚠️ PRIVÉ depuis le 2026-09-11 (policy `passio_rt_recevoir` : membres de la
   // conversation seulement). `window._rtPriveIndisponible` est posé par la
@@ -5689,6 +5695,12 @@ function _creerCanalTyping(convId, prive) {
 let _supaConvChannel = null;
 function _supaConvSpecificChannel(convId, displayName) {
   if (typeof supa === "undefined" || !supa) return;
+  // ⚠️ AUCUNE CONNEXION TEMPS RÉEL SANS COMPTE (capacité, 2026-09-20). Un
+  // visiteur atteint cet appel en ouvrant une conversation de DÉMONSTRATION,
+  // qui n'a aucune ligne serveur : le canal ne lui transporterait jamais rien,
+  // et il coûterait une place sur les 500 du quota. Autorité unique :
+  // `connexionTempsReelAutorisee` (app-02).
+  if (typeof connexionTempsReelAutorisee === "function" && !connexionTempsReelAutorisee()) return;
   // v3 : le topic privé par utilisateur (abonné une fois au boot) couvre déjà
   // cette conv → rien à faire à l'ouverture.
   if (window.PASSIO_REALTIME_V3) return;

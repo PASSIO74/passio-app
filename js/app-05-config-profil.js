@@ -563,7 +563,13 @@ async function startCall(convId, kind) {
   if (typeof RTCPeerConnection === "undefined") { toast("Ton navigateur ne gère pas les appels"); return; }
   const peer = _callResolvePeer(convId);
   if (!peer) { toast("Appel disponible uniquement en conversation privée"); return; }
-  if (typeof supa === "undefined" || !supa || !window._supaReal || typeof MY_UID === "undefined" || !MY_UID) {
+  // ⚠️ MÊME IDIOME QUE SES DEUX SŒURS : `!MY_UID` est vrai pour un
+  // `u_<aléatoire>`. Rien ne fuit aujourd'hui (la ligne suivante écarte les
+  // pairs de démonstration, seuls contacts d'un visiteur), mais laisser
+  // l'idiome intact à côté de deux commentaires qui le déclarent défectueux
+  // ferait conclure qu'il a été audité et validé ici (capacité, 2026-09-20).
+  const compteReel = typeof connexionTempsReelAutorisee !== "function" || connexionTempsReelAutorisee();
+  if (typeof supa === "undefined" || !supa || !window._supaReal || typeof MY_UID === "undefined" || !MY_UID || !compteReel) {
     toast("Connecte-toi pour passer un appel"); return;
   }
   if (!peer.id || /^u_/.test(peer.id)) { toast("Ce contact de démo n'est pas joignable"); return; }
@@ -1582,6 +1588,19 @@ function _callPushNotify(peer, callId, kind) {
 // les invitations realtime répétées de l'appelant prendront le relais ensuite.
 function handlePushIncomingCall(d) {
   if (!d || !d.callId) return;
+  // ⚠️ ENTONNOIR UNIQUE DES DEUX PORTES D'APPEL ENTRANT — le lien profond
+  // `?call=<id>&from=<uuid>` (`_checkIncomingCallFromUrl`) et le message
+  // `INCOMING_CALL` du service worker. Aucune des deux n'est sur le chemin de
+  // `supaSubscribe`, et l'attente du lien profond teste `window._supaReal &&
+  // MY_UID` — **vrai pour un `u_<aléatoire>`**, l'idiome même que ce lot a
+  // corrigé ailleurs. Un visiteur voyait donc l'écran d'appel entrant et, qu'il
+  // accepte OU refuse, ouvrait un canal `call:<id>` : une place sur les 500.
+  // Il ne peut de toute façon recevoir aucun appel — sa sonnerie `ring:` est
+  // gardée par `admissionCompteReel` depuis le 2026-09-11 (capacité, 2026-09-20).
+  if (typeof connexionTempsReelAutorisee === "function" && !connexionTempsReelAutorisee()) {
+    try { diagLog("rt_visiteur : appel entrant ignoré (pas de compte)"); } catch (e) {}
+    return;
+  }
   // S'assurer d'être abonné au canal d'appel pour la suite du handshake.
   try { if (typeof _subscribeCallRing === "function") _subscribeCallRing(); } catch (e) {}
   _callOnInvite({ callId: d.callId, from: d.from, kind: d.kind || "voice", name: d.cname || d.name || "Contact", emoji: d.cemoji || d.emoji || "📞" });
@@ -3734,6 +3753,12 @@ window.addEventListener("pageshow", _vliveRattraper);
 // recul n'est donc pris que lorsque la liste est vide ET le restait déjà —
 // deux tours consécutifs sans live — sinon une coupure d'une seconde ferait
 // reculer le filet pour cinq minutes.
+// ⚠️ ET DEPUIS LE LOT « CONNEXIONS TEMPS RÉEL » (2026-09-20), CE FILET EST LE
+// SEUL CHEMIN D'UN VISITEUR. `supaSubscribe` n'ouvre plus de connexion sans
+// compte, donc l'événement `ended` d'un live ne lui parvient JAMAIS : le
+// reculer jusqu'à 5 min lui laisserait une bulle « 🔴 LIVE » allumée cinq
+// minutes après la fin du direct — chez 97,9 % des sessions. Même couplage que
+// le filet du fil (app-08), même autorité (`connexionTempsReelAutorisee`).
 // Les bornes et la règle de recul vivent dans `filetProchainPas` (app-02),
 // autorité PARTAGÉE avec le filet du fil.
 let _vliveFiletPas = 60000;
@@ -3754,7 +3779,13 @@ function _vliveFiletTour() {
     // arrive : c'est exactement ce que ce filet doit rattraper, et le ralentir
     // laisserait une bulle « 🔴 LIVE » allumée jusqu'à cinq minutes après la
     // fin du direct.
-    _vliveFiletPas = filetProchainPas(_vliveFiletPas, vivant || !apresVide || !avantVide, document.hidden);
+    // ⚠️ `seulChemin` : sans connexion temps réel, aucun événement de live
+    // n'arrive jamais — le filet est la seule source, il ne recule pas. BORNÉ
+    // au fil à l'écran (les bulles « 🔴 LIVE » vivent dans sa barre de
+    // stories) : `filetEstLeSeulChemin` (app-02), MÊME autorité que le filet du
+    // fil, et c'est elle qui porte le compte des DEUX termes du marché.
+    const seulChemin = typeof filetEstLeSeulChemin === "function" && filetEstLeSeulChemin();
+    _vliveFiletPas = filetProchainPas(_vliveFiletPas, vivant || seulChemin || !apresVide || !avantVide, document.hidden);
     _vliveFiletMinuteur = setTimeout(_vliveFiletTour, _vliveFiletPas);
   };
   try {
@@ -3843,7 +3874,17 @@ async function startVideoLive() {
   if (window._vliveHost) return;
   if (window._vliveView) leaveVideoLive();
   if (typeof RTCPeerConnection === "undefined") { toast("Ton navigateur ne gère pas le direct"); return; }
-  if (typeof supa === "undefined" || !supa || !window._supaReal || !MY_UID) { toast("Connecte-toi pour lancer un live"); return; }
+  // ⚠️ LE JUMEAU DE `joinVideoLive`, ET IL ÉTAIT RESTÉ SUR `!MY_UID` — la
+  // condition que le commentaire de sa sœur qualifie de « ne prouvait rien ».
+  // Aucun canal ne fuyait (l'INSERT dans `video_lives` est refusé par la RLS
+  // avant la création du canal), mais un visiteur passait la garde, obtenait
+  // la fenêtre de titre PUIS **la demande de permission caméra/micro** avant
+  // d'être refusé — ce qui heurte la règle de première visite « aucune demande
+  // de permission ». Et laisser l'idiome intact à côté d'un commentaire qui le
+  // déclare défectueux ferait conclure au prochain lecteur qu'il a été audité
+  // et validé ici (capacité, 2026-09-20).
+  const compteReel = typeof connexionTempsReelAutorisee !== "function" || connexionTempsReelAutorisee();
+  if (typeof supa === "undefined" || !supa || !window._supaReal || !MY_UID || !compteReel) { toast("Connecte-toi pour lancer un live"); return; }
 
   const title = await _vlivePromptTitle();
   if (title === null) return;  // annulé
@@ -4122,7 +4163,13 @@ async function joinVideoLive(liveId) {
   if (window._vliveView && window._vliveView.id === liveId) return;
   if (window._vliveView) leaveVideoLive();
   if (typeof RTCPeerConnection === "undefined") { toast("Ton navigateur ne gère pas le direct"); return; }
-  if (typeof supa === "undefined" || !supa || !window._supaReal || !MY_UID) { toast("Connecte-toi pour rejoindre un live"); return; }
+  // ⚠️ `!MY_UID` NE PROUVAIT RIEN : `getMyUserId()` fabrique un `u_<aléatoire>`
+  // pour tout visiteur, qui passait donc cette garde et ouvrait un canal
+  // `vlive:<id>` — une place sur les 500 du quota, pour un direct qu'il ne peut
+  // de toute façon pas rejoindre. Le message était déjà juste, c'est la
+  // condition qui ne l'était pas (capacité, 2026-09-20).
+  const compteReel = typeof connexionTempsReelAutorisee !== "function" || connexionTempsReelAutorisee();
+  if (typeof supa === "undefined" || !supa || !window._supaReal || !MY_UID || !compteReel) { toast("Connecte-toi pour rejoindre un live"); return; }
 
   // Vérifie que le live est encore vivant (statut + heartbeat récent).
   let row = (window._videoLives || []).find(r => r.id === liveId) || null;

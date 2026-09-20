@@ -31,10 +31,11 @@ forfait lui-même, et elle a failli lancer un chantier Cloudflare R2 complet (se
   rallumé pour l'exercice de restauration du 14/09 et **jamais remis en pause**. Le mettre en pause
   ramène la facture à 25 $ — c'est le sens littéral de « sans investir ».
 
-**Les quotas chiffrés du Pro ne sont toujours pas relevés**, et on ne les recopie pas de mémoire :
-ils sont sur la page **Usage** de l'organisation, avec la consommation en regard. Tant qu'ils n'y
-sont pas lus, **aucun classement des plafonds par distance n'est publiable** — c'est précisément
-l'erreur qu'on vient de payer.
+**Les quotas chiffrés du Pro ont été relevés le jour même**, sur la page Usage de l'organisation :
+voir `docs/CAPACITE_CONNEXIONS_TEMPS_REEL_2026-09-20.md` §1 pour le tableau complet. Ce dossier-ci a
+porté « ils ne sont toujours pas relevés » quelques heures. Pour ce qu'il traite : **le stockage est
+à 0,139 Go sur 100** — deux ordres de grandeur de marge, il n'y a bien pas de mur ici. Le plus proche
+qui monte avec la fréquentation est **Realtime Concurrent Peak Connections, 84 / 500**.
 
 ## 1. ~~Les cinq plafonds, classés par distance~~ — RETIRÉ
 
@@ -139,9 +140,9 @@ C'est la deuxième fois de la journée (après le chiffre-phare de #515).
   un plafond réel (300/jour chez Brevo), et les testeuses sont sur iPhone.
 - **Mettre `PASSIO staging` en pause** : 141 h de calcul Micro sur la facture en cours, crédits
   dépassés, 28,75 $ projetés pour 25 $ de forfait. Rallumé le 14/09 pour l'exercice de restauration.
-- ⚠️ **Lire les quotas chiffrés du Pro** sur la page Usage de l'organisation. Tant que ce n'est pas
-  fait, personne ne peut dire quel est le plafond le plus proche — et c'est le trou qui a produit la
-  section 0.
+- ~~**Lire les quotas chiffrés du Pro**~~ — **FAIT le jour même**, voir
+  `docs/CAPACITE_CONNEXIONS_TEMPS_REEL_2026-09-20.md` §1. Le plafond le plus proche qui monte avec la
+  fréquentation est Realtime Concurrent Peak Connections (84 / 500), pas le stockage (0,139 / 100 Go).
 - ~~**Rétention de télémétrie 7 j → 2 j**~~ — **RETIRÉ.** Motivé par « 46 % d'une base plafonnée à
   500 Mo » : ce plafond est celui du palier gratuit. La base fait 71 Mo et le Pro est ailleurs. Une
   migration, donc une contre-revue humaine, pour un problème qui n'existe pas.
