@@ -1,10 +1,38 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { optionsBanc, STAGING_REF, LIMITES, Budget, comptesPourPalier, abonnements,
+import { readFileSync } from "node:fs";
+import { runInNewContext } from "node:vm";
+import { optionsBanc, emailCapacite, DOMAINE_CAPACITE, STAGING_REF, LIMITES, Budget, comptesPourPalier, abonnements,
   partenaire, actionPrevue, pausePrevue, statistiques, verdictPalier, Sondes } from "../../scripts/lib/charge-realiste.mjs";
 import { executer } from "../../scripts/charge-realiste.mjs";
 
 const cible = ["--projet", STAGING_REF];
+test("le sélecteur réel de purge E2E ignore les comptes du domaine capacité, même pendant la CI", async () => {
+  const campagne = "capacite_1789931280746_b9ae922b";
+  const email = emailCapacite(campagne, 199);
+  assert.equal(email, `${campagne}_199@passio-capacite.test`);
+  assert.equal(DOMAINE_CAPACITE, "passio-capacite.test");
+  assert.throws(() => emailCapacite(campagne, 200), /IDENTITE_CAPACITE/);
+  assert.throws(() => emailCapacite("une_autre_campagne", 0), /IDENTITE_CAPACITE/);
+  const source = readFileSync(new URL("../../scripts/purge-e2e-rest.js", import.meta.url), "utf8");
+  const comptesSource = readFileSync(new URL("../e2e/compte-e2e.js", import.meta.url), "utf8");
+  const domaine = /const DOMAINE_E2E = "([^"]+)"/.exec(comptesSource)?.[1];
+  const debut = source.indexOf("async function comptesE2E(cfg)"), fin = source.indexOf("/** Filtre PostgREST", debut);
+  assert.ok(domaine && debut >= 0 && fin > debut, "le sélecteur doit être extrait, jamais remplacer sa règle par une copie");
+  let appels = 0;
+  // Seulement la fonction de sélection du vrai script, jamais son IIFE de
+  // suppression. fetch est local et rend trois fixtures, sans aucun réseau.
+  const selection = await runInNewContext(source.slice(debut, fin) + '\ncomptesE2E({ url: "https://test.invalid" });', {
+    DOMAINE_E2E: domaine, entetes: () => ({}),
+    fetch: async () => { appels++; return { ok: true, json: async () => ({ users: [
+      { id: "capacite", email }, { id: "e2e", email: `e2e_test@${domaine}` },
+      { id: "autre", email: "personne@example.test" },
+    ] }) }; },
+  });
+  assert.deepEqual(Array.from(selection), ["e2e"]);
+  assert.equal(appels, 1);
+});
+
 test("la production, les autres projets et les plafonds excessifs sont refusés avant tout réseau", async () => {
   for (const ref of ["njkiyoklssvefstljemx", "aaaaaaaaaaaaaaaaaaaa", "", STAGING_REF + ".evil"]) {
     assert.throws(() => optionsBanc(["--projet", ref]), /CIBLE_|VALEUR_/);

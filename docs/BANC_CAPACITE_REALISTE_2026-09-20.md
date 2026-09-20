@@ -20,6 +20,8 @@ Fournir `CHARGE_SUPABASE_ANON_KEY` et `CHARGE_SUPABASE_SERVICE_ROLE_KEY` du stag
 
 Le prévol crée deux comptes Auth confirmés sans email envoyé, et 15 profils auteurs UUID au total pour répartir les 120 publications sous les quotas anti-flood. Ces profils supplémentaires ne sont ni des comptes connectés ni des utilisateurs mesurés. Il vérifie le fil à 60 puis 20 éléments, ses likes/commentaires/interactions et le cinquième appel de résolution des auteurs, puis une publication reçue par l'autre compte et un message privé V3 effectivement reçu. Une réponse vide ou une jointure absente échoue.
 
+Les comptes du banc utilisent le domaine réservé **`passio-capacite.test`**. Le domaine `passio-e2e.test` est réservé aux suites E2E : leur teardown CI supprime tous ses comptes sur staging, sans limite d'âge et sans connaître les campagnes locales. Partager ce domaine peut faire disparaître comptes et membres de conversation en pleine mesure, puis produire des HTTP 403 qui ne signalent pas une saturation. Le domaine séparé évite cette purge ; il ne garantit pas l'absence de contention CPU/réseau avec la CI.
+
 ## Campagne
 
 ```powershell
@@ -39,5 +41,7 @@ Chaque socket rejoint les 12 handlers `postgres_changes` du chemin V3 (10 tables
 Toute la campagne partage 180 Mo d'octets applicatifs HTTP/WebSocket, 150 000 frames Realtime émises/reçues, 20 000 appels HTTP et 45 minutes. Le nettoyage dispose séparément de 20 Mo et 2 000 appels, avec son propre chronomètre. Le total prévu est donc au maximum 200 Mo de charges utiles comptées. Une limite atteinte interrompt les requêtes et ferme les sockets ; les octets déjà en transit peuvent dépasser légèrement le compteur d'arrêt. En-têtes, TLS, compression et messages internes du serveur ne sont pas comptés : ce budget client n'est pas une borne contractuelle de facturation Supabase.
 
 `<sortie>.manifest.json` consigne les IDs avant l'insertion des fixtures, et les emails artificiels avant chaque création Auth. Le `finally` nettoie seulement ces IDs, même après échec partiel. Aucun DDL, aucune désactivation de trigger, aucun changement de forfait, aucune suppression des anciennes fixtures `charge_*`. Une création Auth dont la réponse est perdue est signalée comme incertaine avec son email exact ; il faut alors vérifier cet email côté admin. Un arrêt forcé du processus peut empêcher le `finally` : conserver le manifeste et contrôler les résidus avant une autre campagne. Un nettoyage incomplet provoque un code de sortie en échec.
+
+La récupération d'un nettoyage interrompu doit conserver cette portée : cible staging vérifiée, IDs du manifeste de la campagne et, pour une création Auth incertaine, email complet exact du manifeste. **Aucune recherche ou suppression globale par domaine**, y compris `passio-capacite.test`. Un HTTP 404 Auth au nettoyage reste consigné comme compte déjà disparu ; ne pas transformer cette observation en preuve de capacité ou en erreur de charge.
 
 Validation locale sans réseau : `node --test tests/unit/charge-realiste.test.mjs`. Le banc n'a pas été lancé pendant son développement ; l'exécution staging appartient au coordinateur après revue.

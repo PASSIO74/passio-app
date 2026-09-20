@@ -6,7 +6,7 @@ import { homedir } from "node:os";
 import { randomUUID, createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { verdictReponse } from "./charge-verdict.mjs";
-import { optionsBanc, abonnements, actionPrevue, pausePrevue, decalageInitial,
+import { optionsBanc, emailCapacite, abonnements, actionPrevue, pausePrevue, decalageInitial,
   partenaire, clePaire, comptesPourPalier, Budget, LIMITES, statistiques, verdictPalier, Sondes } from "./lib/charge-realiste.mjs";
 
 const sleep = ms => new Promise(resolveSleep => setTimeout(resolveSleep, ms));
@@ -120,7 +120,7 @@ export async function executer(options) {
     const passion = passions[0].id;
     for (let i = 0; i < o.comptesDistincts; i++) {
       if (i) await sleep(2250); // <= 134 logins / 5 min, sans relance en boucle sur 429.
-      const password = randomUUID() + "aA!7", email = `${prefix}_${i}@passio-e2e.test`;
+      const password = randomUUID() + "aA!7", email = emailCapacite(prefix, i);
       emailsAttendus.push(email); sauvegarder();
       const user = await requete("fixture_auth_creation", "/auth/v1/admin/users", { methode: "POST", jwt: cleService,
         corps: { email, password, email_confirm: true }, attentes: { objet: true, champs: ["id"] } });

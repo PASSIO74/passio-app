@@ -1,5 +1,13 @@
 // Fonctions pures du banc : aucun accès réseau, aucune lecture de secret.
 export const STAGING_REF = "fcksxofaelcdmmifnwjo";
+// La CI purge tous les @passio-e2e.test du staging au teardown, sans seuil
+// d'âge. Le banc local ne participe pas à son verrou GitHub : domaine séparé.
+export const DOMAINE_CAPACITE = "passio-capacite.test";
+export function emailCapacite(campagne, index) {
+  if (!/^capacite_\d{13}_[a-f0-9]{8}$/.test(campagne)
+      || !Number.isInteger(index) || index < 0 || index >= 200) throw new Error("IDENTITE_CAPACITE_INVALIDE");
+  return `${campagne}_${index}@${DOMAINE_CAPACITE}`;
+}
 export const LIMITES = Object.freeze({ octets: 180_000_000, octetsNettoyage: 20_000_000,
   messagesRealtime: 150_000, requetes: 20_000, dureeCampagneMs: 45 * 60_000 });
 
