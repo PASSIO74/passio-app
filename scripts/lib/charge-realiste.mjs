@@ -16,7 +16,7 @@ export function optionsBanc(args) {
   for (let i = 0; i < args.length; i++) {
     const name = args[i];
     if (["--executer", "--plan", "--prevol"].includes(name)) values[name] = true;
-    else if (["--projet", "--paliers", "--duree", "--graine", "--sortie", "--scenario"].includes(name)) {
+    else if (["--projet", "--paliers", "--duree", "--graine", "--sortie", "--scenario", "--pages"].includes(name)) {
       if (!args[i + 1] || args[i + 1].startsWith("--")) throw new Error("VALEUR_MANQUANTE");
       values[name] = args[++i];
     } else throw new Error("OPTION_INCONNUE");
@@ -33,8 +33,10 @@ export function optionsBanc(args) {
   if (!Number.isSafeInteger(graine) || graine < 0) throw new Error("GRAINE_INVALIDE");
   const scenario = values["--scenario"] || "complet";
   if (!["lecture", "complet"].includes(scenario)) throw new Error("SCENARIO_INVALIDE");
+  const pagesTexte = values["--pages"] || "60,20";
+  if (!["20", "60,20"].includes(pagesTexte)) throw new Error("PAGES_INVALIDES");
   if (values["--executer"] && !values["--sortie"]) throw new Error("SORTIE_REQUISE");
-  return { projet: STAGING_REF, paliers, duree, graine, pages: [60, 20],
+  return { projet: STAGING_REF, paliers, duree, graine, pages: pagesTexte.split(",").map(Number),
     executer: !!values["--executer"], sortie: values["--sortie"] || null, scenario,
     prevolSeulement: !!values["--prevol"],
     comptesDistincts: values["--prevol"] ? 2 : Math.max(...paliers), limites: LIMITES };

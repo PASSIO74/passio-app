@@ -57,6 +57,25 @@ test("le mode plan et le plan de prévol ne lisent aucune clé et n'appellent pa
   } finally { globalThis.fetch = original; }
 });
 
+test("page 20 seule reste une variante dans le plan exécutable, les autres séquences sont refusées", async () => {
+  assert.deepEqual(optionsBanc(cible).pages, [60, 20]);
+  assert.deepEqual(optionsBanc([...cible, "--pages", "60,20"]).pages, [60, 20]);
+  const original = globalThis.fetch; let appels = 0;
+  globalThis.fetch = async () => { appels++; throw new Error("RESEAU_INTERDIT"); };
+  try {
+    const plan = await executer(optionsBanc([...cible, "--pages", "20", "--paliers", "200", "--duree", "90"]));
+    assert.equal(plan.plan, true);
+    assert.deepEqual(plan.pages, [20]);
+    assert.deepEqual(plan.paliers, [200]);
+    assert.deepEqual(plan.limites, LIMITES);
+    assert.equal(plan.comptesDistincts, 200);
+    assert.equal(appels, 0);
+  } finally { globalThis.fetch = original; }
+  for (const pages of ["60", "20,60", "20,20", "60,20,20", "10", "020", "20 ", "60, 20"]) {
+    assert.throws(() => optionsBanc([...cible, "--pages", pages]), /PAGES_INVALIDES/);
+  }
+});
+
 test("200 personnes exigent 200 identités ; impossible de recycler un pool de 100 comptes", () => {
   const cent = Array.from({ length: 100 }, (_, i) => ({ id: `personne_${i}` }));
   assert.throws(() => comptesPourPalier(cent, 200), /COMPTES_NON_DISTINCTS/);

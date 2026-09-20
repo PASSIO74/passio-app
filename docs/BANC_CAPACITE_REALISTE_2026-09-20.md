@@ -28,6 +28,16 @@ Les comptes du banc utilisent le domaine réservé **`passio-capacite.test`**. L
 node scripts/charge-realiste.mjs --projet fcksxofaelcdmmifnwjo --paliers 25,50,100,200 --duree 90 --executer --sortie work/capacite.json
 ```
 
+Le mode par défaut est `--pages 60,20`. Après une comparaison contrôlée à faible palier, on peut réserver le budget au scénario optimisé :
+
+```powershell
+node scripts/charge-realiste.mjs --projet fcksxofaelcdmmifnwjo --paliers 200 --pages 20 --duree 90 --executer --sortie work/capacite-200-page20.json
+```
+
+`--pages` accepte exclusivement `20` ou `60,20`. Le mode `20` exécute uniquement cette variante à chaque palier, inscrit `comparaisonDemandee: false` et laisse `comparaisons` vide. Son prévol conserve les deux lectures 60/20 pour vérifier le contrat. Il ne fournit donc aucun gain avant/après ; un passage réussi à 200 est un palier observé, pas le maximum de l'application. Un saut de palier doit être décidé après les mesures précédentes sans dégradation de service, pas pour contourner un verdict rouge.
+
+La campagne s'arrête au budget même si tous les paliers n'ont pas été atteints. À partir d'une première mesure à 25 personnes, projeter séparément HTTP et Realtime avant de choisir les variantes : le trafic de diffusion peut croître plus vite que le nombre de personnes. Répéter le contrôle de page 60 à chaque palier peut consommer la réserve avant la mesure à 200. Conserver le budget de 180 Mo plus 20 Mo de nettoyage ; une interruption pour budget signifie « mesure incomplète », pas « application saturée ». Ne jamais fusionner les p95 de campagnes distinctes en une fausse comparaison.
+
 Les paliers sont croissants, compris dans 25/50/100/200, et utilisent autant d'identités distinctes que de personnes annoncées. Les comptes sont créés une seule fois ; 200 comptes prennent au moins 7,5 minutes pour espacer les logins. Préparation, connexion des sockets, échauffement de quatre comptes et nettoyage sont chronométrés séparément de la mesure. La durée configurable est 30 à 160 secondes ; les requêtes ont une échéance de 12 secondes, et une garde arrête les requêtes encore actives à 180 secondes. Les 20 secondes de marge évitent de confondre un dernier parcours en cours avec une saturation à la limite du palier.
 
 Chaque socket rejoint les 12 handlers `postgres_changes` du chemin V3 (10 tables distinctes) et le canal privé de son utilisateur ; la réponse du serveur doit confirmer les 12 handlers. Le scénario complet répartit lectures, likes retirés après insertion, publications et messages entre deux membres. Les pauses déterministes durent 5 à 10 secondes, avec départs étalés. Une requête HTTP n'est jamais présentée comme un utilisateur.

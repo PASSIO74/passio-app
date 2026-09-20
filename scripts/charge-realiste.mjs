@@ -21,6 +21,7 @@ export async function executer(options) {
   // substituer une cible ou relever les plafonds du parseur.
   const o = optionsBanc(["--projet", options.projet, "--paliers", options.paliers.join(","),
     "--duree", String(options.duree), "--graine", String(options.graine), "--scenario", options.scenario,
+    "--pages", options.pages.join(","),
     ...(options.prevolSeulement ? ["--prevol"] : []), ...(options.executer ? ["--executer", "--sortie", options.sortie] : [])]);
   if (!o.executer) return { plan: true, ...o };
   if (process.env.GITHUB_ACTIONS || process.env.CI) throw new Error("EXECUTION_CI_INTERDITE");
@@ -34,11 +35,13 @@ export async function executer(options) {
   let phase = "preparation", arret = null, cleAnon, cleService, stage = null, fermetureVoulue = false;
   const rapport = { version: 1, date: new Date().toISOString(), options: o, campagne: prefix,
     portee: "API authentifiee + Realtime, pas un test navigateur ni une certification production",
+    comparaisonDemandee: o.pages.length === 2,
     limitesMesure: ["Octets applicatifs HTTP et WebSocket emis/recus, hors en-tetes, TLS et compression ; pas la facture egress.",
       "Frames Realtime observees cote clients ; le compteur ne remplace pas Usage Supabase.",
       "Sans telechargement de medias, upload, inscription par email, rendu mobile ou cache du navigateur.",
       "Les 12 handlers du chemin V3 utilisent 10 tables ; publication staging a verifier separement.",
-      "60/20 compare deux tailles de page sur le meme jeu, pas deux builds de l'application."],
+      o.pages.length === 2 ? "60/20 compare deux tailles de page sur le meme jeu, pas deux builds de l'application."
+        : "Page 20 seule : mesure de capacite de ce scenario, aucune comparaison avant/apres."],
     prevol: null, paliers: [], nettoyage: null };
   function sauvegarder() {
     rapport.budget = budget.resume(); rapport.budgetNettoyage = nettoyageBudget?.resume() ?? null;
@@ -387,20 +390,24 @@ export async function executer(options) {
   }
   try {
     sauvegarder(); await preparer(); await prevol();
-    if (!o.prevolSeulement) for (const taille of o.paliers) {
-      const avant = await palier(taille, 60);
-      // Un palier dégradé interdit toute augmentation, y compris la deuxième
-      // variante : on ne poursuit pas une campagne déjà en difficulté.
-      if (!avant.verdict.ok) break;
-      const apres = await palier(taille, 20, avant.empreinte);
-      if (!apres.verdict.ok) break;
+    if (!o.prevolSeulement) {
+      campagne: for (const taille of o.paliers) {
+        let empreinte = null;
+        for (const page of o.pages) {
+          const resultat = await palier(taille, page, empreinte);
+          // Un palier dégradé interdit toute augmentation et toute autre
+          // variante, quel que soit le mode choisi.
+          if (!resultat.verdict.ok) break campagne;
+          empreinte = resultat.empreinte;
+        }
+      }
     }
   } catch (e) { rapport.erreur = motifSur(e); console.error(`Campagne arretee : ${rapport.erreur}.`); }
   finally {
     await fermerSockets();
     try { await nettoyer(); } catch (e) { rapport.nettoyage = { ok: false, motif: motifSur(e) }; }
     clearInterval(gardien); process.removeListener("SIGINT", interruption); process.removeListener("SIGTERM", interruption);
-    rapport.comparaisons = o.paliers.map(taille => {
+    rapport.comparaisons = o.pages.length !== 2 ? [] : o.paliers.map(taille => {
       const avant = rapport.paliers.find(p => p.taille === taille && p.page === 60), apres = rapport.paliers.find(p => p.taille === taille && p.page === 20);
       if (!avant || !apres || avant.empreinte !== apres.empreinte) return { taille, comparable: false };
       const a = avant.familles["http:fil_posts"], b = apres.familles["http:fil_posts"];
