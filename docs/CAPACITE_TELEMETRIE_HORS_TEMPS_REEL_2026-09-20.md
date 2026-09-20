@@ -156,22 +156,47 @@ du produit — à 2 000 connectés, une publication reste évaluée 2 000 fois. 
 devient le poste dominant du temps réel après ce lot. **S'abonner à ce qui est VISIBLE reste un
 changement d'architecture, pas un réglage** — c'est le prochain mur, et il n'est pas franchi ici.
 
-## 6. Le geste qui reste à faire, et il est humain
+## 6. Le geste humain : FAIT le 2026-09-20
 
-La migration est écrite, son banc est vert (11 contrôles, deux réinjections), mais **elle n'est pas
-appliquée** : ADR-012 réserve délibérément le canal ③ à un geste depuis le poste.
-
-```
-npm run migration:appliquer -- migrations/migration_realtime_telemetry_2026-09-20.sql
-```
-
-⚠️ **APRÈS le déploiement du pilotage**, jamais avant. Et on **mesure ensuite l'état en base**
+**Appliquée en production**, dans l'ordre exigé : pilotage mis à jour et relancé sur le poste
+(`Relancer-Pilotage.cmd`, pid neuf en écoute sur 4610) **puis** la migration. Mesuré en base ensuite
 (canal ①), jamais le tableau de verdict imprimé — un miroir périmé imprime OK sur tout :
 
 ```sql
 select count(*) from pg_publication_tables
- where pubname = 'supabase_realtime' and schemaname = 'public';   -- doit rendre 11
+ where pubname = 'supabase_realtime' and schemaname = 'public';   -- rend 11 ✔
 ```
+
+`telemetry_events` est absente ; les onze tables du produit sont intactes, nommées une à une.
+
+### ⚠️ Elle n'est PAS passée par `migration:appliquer`, et c'est le vrai enseignement du geste
+
+La barrière a refusé, deux fois, pour deux raisons successives — et la seconde est structurelle :
+
+1. `aucune cible ÉCRITE` (ASTRA-33) — corrigé en passant `--projet njkiyoklssvefstljemx`.
+2. `aucune revue préalable attestée` — et là c'est un mur. Sur une cible protégée, ASTRA-51/61 exige
+   une preuve de revue **vérifiée chez GitHub**, cumulant trois conditions : état `APPROVED` (un
+   `COMMENTED` ne vaut rien), relecteur inscrit dans `.passio/migrations/relecteurs-autorises.json`
+   — **vide**, donc personne n'est autorisé —, et relecteur **distinct de l'auteur de la PR**, or
+   toutes les PR du dépôt sont sous le compte PASSIO74 et GitHub interdit d'approuver sa propre PR.
+
+**Prises une à une les trois règles sont justes ; ensemble elles ferment le canal pour un dépôt à un
+seul humain.** Une barrière infranchissable n'est pas respectée, elle est contournée — et un garde-fou
+contourné à chaque migration ne garde plus rien.
+
+**Sortie prise, et elle est documentée** : ADR-012 définit le canal ③ comme « `psql` **ou le SQL
+Editor** » ; `migration:appliquer` en est une implémentation, pas la définition. Le contenu exact du
+fichier a été relu avant le coller — ce que la barrière cherchait précisément à garantir — et
+`--sans-attestation` n'a pas été employé (il est refusé sur cible protégée, et l'employer aurait été
+se rendre vert en réécrivant le test).
+
+**Ce qui a fonctionné, et qu'il faut garder** : l'empreinte. `sha256` du `.sql` au commit contre-revu
+(`a3210ec`) = celui du fichier appliqué, `76c12ca0…`. La chaîne « ce qui est relu est ce qui part »
+tient de bout en bout, indépendamment du reste de la barrière.
+
+**À trancher, pas à redécouvrir** : inscrire un second compte relecteur (geste de gouvernance), ou
+assumer l'éditeur SQL comme voie normale et l'écrire dans ADR-012. Aujourd'hui le dépôt outille un
+chemin que personne ne peut emprunter.
 
 ## 7. Trois pièges rencontrés en chemin
 
