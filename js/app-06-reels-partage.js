@@ -743,9 +743,7 @@ function renderProfileContent() {
     myPostsDiv.innerHTML = bobines.length
       ? '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;">'+bobines.map(function(p){
           var poster = p.image || p.poster || "";
-          var thumb = poster
-            ? '<img loading="lazy" decoding="async" src="'+poster+'" style="width:100%;height:100%;object-fit:cover;"/>'
-            : (p.video ? '<video src="'+p.video+'#t=0.1" muted playsinline preload="metadata" style="width:100%;height:100%;object-fit:cover;background:#000;"></video>' : '<div style="width:100%;height:100%;background:linear-gradient(135deg,#7c3aed,#a78bfa);"></div>');
+          var thumb = miniatureVideoPubliqueHTML(poster);
           return '<div onclick="openReelById(\''+escapeJsArg(p.id)+'\')" style="aspect-ratio:9/16;border-radius:8px;overflow:hidden;position:relative;cursor:pointer;">'+thumb+'<span style="position:absolute;left:6px;bottom:6px;font-size:14px;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.6));">🎞️</span></div>';
         }).join("")+'</div>'
       // ⚠️ `emptyBlock` n'a jamais existé → ReferenceError en prod (8× le 20/07)

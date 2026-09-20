@@ -2631,6 +2631,27 @@ function avatarInner(u) {
 // d'un autre utilisateur se propage à l'écran au prochain rendu.
 function cacheRemoteProfile(p) {
   if (!p || !p.id) return;
+  // La résolution groupée et la messagerie partagent la MÊME autorité mémoire.
+  // Une ligne partielle (embed de post) actualise l'identité, mais ne rajeunit
+  // pas les passions/bio qu'elle n'a pas relues. Le temps réel fournit une
+  // ligne complète et renouvelle ainsi le cache sans requête supplémentaire.
+  try {
+    if (typeof _profileCache !== "undefined") {
+      const precedent = _profileCache.get(p.id) || {};
+      const copie = { ...precedent };
+      ["username", "emoji", "color", "passion_id", "passions", "bio"].forEach(function (champ) {
+        if (Object.prototype.hasOwnProperty.call(p, champ)) copie[champ] = p[champ];
+      });
+      if (Object.prototype.hasOwnProperty.call(p, "avatar_url")) copie.photoUrl = p.avatar_url;
+      if (["username", "emoji", "color", "avatar_url", "passion_id", "passions", "bio"].every(function (champ) {
+        return Object.prototype.hasOwnProperty.call(p, champ);
+      })) {
+        copie.resolvedAt = Date.now();
+        copie.resolvedOwner = typeof MY_UID !== "undefined" ? MY_UID : null;
+      }
+      _profileCache.set(p.id, copie);
+    }
+  } catch (e) { try { diagLog("profil_cache: " + (e && e.message)); } catch (_) {} }
   if (typeof MY_UID !== "undefined" && p.id === MY_UID) return; // « moi » = currentProfile
   state.seed.users = state.seed.users || [];
   const entry = {
@@ -2659,6 +2680,12 @@ function cacheRemoteProfile(p) {
     distant: true,
   };
   const i = state.seed.users.findIndex(u => u.id === p.id);
+  if (i >= 0) {
+    const champs = { username: "name", color: "avatar", emoji: "profileEmoji", avatar_url: "photoUrl", passion_id: "passion", passions: "passions", bio: "bio" };
+    Object.keys(champs).forEach(function (champ) {
+      if (!Object.prototype.hasOwnProperty.call(p, champ)) entry[champs[champ]] = state.seed.users[i][champs[champ]];
+    });
+  }
   if (i >= 0) state.seed.users[i] = { ...state.seed.users[i], ...entry };
   else state.seed.users.push(entry);
 }
@@ -3024,6 +3051,7 @@ function goTo(screen) {
   // écran inactif n'a plus de rectangle mesurable. Et démonter l'observateur en
   // quittant, pour qu'aucun ne survive à la navigation.
   var _quitteFil = document.getElementById("screen-feed");
+  var _retourAuFil = screen === "feed" && (!_quitteFil || !_quitteFil.classList.contains("active"));
   if (_quitteFil && _quitteFil.classList.contains("active") && screen !== "feed") {
     try { feedWindowRememberScroll(); feedWindowTeardown(); } catch (e) {}
   }
@@ -3050,6 +3078,7 @@ function goTo(screen) {
   $$(".screen").forEach(s => s.classList.remove("active"));
   const el = document.getElementById("screen-" + screen);
   if (el) el.classList.add("active");
+  arreterVideosPubliquesHorsEcran();
   $("#appMain").scrollTop = 0;
   document.body.classList.toggle("screen-feed-active", screen === "feed");
   // ⚠️ REVENIR AU FIL RÉVEILLE LES DEUX FILETS. Ils ne sont « le seul chemin »
@@ -3057,7 +3086,7 @@ function goTo(screen) {
   // sans ce réveil, il retrouverait au retour un filet reculé à cinq minutes,
   // et on aurait borné le coût en servant du périmé.
   if (screen === "feed") {
-    try { if (typeof feedFiletReveiller === "function") feedFiletReveiller(); } catch (e) {}
+    try { if (typeof feedFiletReveiller === "function") feedFiletReveiller(_retourAuFil); } catch (e) {}
     try { if (typeof vliveFiletReveiller === "function") vliveFiletReveiller(); } catch (e) {}
   }
 
@@ -3467,9 +3496,100 @@ function savePrivacySettings() {
   saveConfig(cfg); closeModal(); toast("Confidentialité mise à jour");
 }
 
+// Politique commune aux vidéos publiques. Le mode économe interdit toute lecture
+// automatique ; un geste explicite reste toujours possible. Aucun média privé,
+// appel ou live ne passe par ces helpers.
+function preferencesVideoPublique() {
+  var cfg = (typeof getCurrentConfig === "function" ? getCurrentConfig() : {}) || {};
+  var content = cfg.content || {};
+  var reseau = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+  return {
+    autoplay: content.autoplay !== false,
+    dataEco: typeof content.dataEco === "boolean" ? content.dataEco : !!(reseau && reseau.saveData)
+  };
+}
+
+function videoPubliqueAutoplay() {
+  var prefs = preferencesVideoPublique();
+  return prefs.autoplay && !prefs.dataEco && !document.hidden;
+}
+
+function boutonVideoPubliqueHTML() {
+  return '<button type="button" data-video-public-play onclick="lireVideoPubliqueBouton(this,event)" aria-label="Lire la vidéo" style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:4;min-width:48px;min-height:48px;border:1px solid #fff8;border-radius:999px;padding:12px 18px;background:#111c;color:#fff;cursor:pointer;">▶ Lire</button>';
+}
+
+function videoPubliqueBouton(video, visible) {
+  var shell = video && video.closest('[data-video-public-shell],.reel-item,#storyCard');
+  var bouton = shell && shell.querySelector('[data-video-public-play]');
+  if (bouton) bouton.hidden = !visible;
+}
+
+function lancerVideoPublique(video, volontaire) {
+  if (!video || (!volontaire && !videoPubliqueAutoplay())) return Promise.resolve(false);
+  if (volontaire) video.dataset.videoPublicVolontaire = "1";
+  var src = video.getAttribute("data-video-public-src");
+  if (src && !video.getAttribute("src")) video.src = src;
+  var lecture = String((Number(video.dataset.videoPublicLecture) || 0) + 1);
+  video.dataset.videoPublicLecture = lecture;
+  var tentative;
+  try { tentative = video.play(); } catch (e) { videoPubliqueBouton(video, true); return Promise.resolve(false); }
+  return Promise.resolve(tentative).then(function () {
+    // play() peut se résoudre APRÈS changement d'écran/arrière-plan : ne pas
+    // masquer la porte de reprise d'une vidéo qui vient d'être arrêtée.
+    if (video.dataset.videoPublicLecture !== lecture || !video.hasAttribute("src")) return false;
+    videoPubliqueBouton(video, false);
+    return true;
+  }, function () {
+    // Un navigateur peut refuser la lecture auto sonore. Garder une vraie porte
+    // de lecture plutôt que contourner le choix de l'utilisateur en boucle.
+    videoPubliqueBouton(video, true);
+    return false;
+  });
+}
+
+function lireVideoPubliqueBouton(bouton, evenement) {
+  if (evenement) evenement.stopPropagation();
+  var shell = bouton && bouton.closest('[data-video-public-shell],.reel-item,#storyCard');
+  var video = shell && shell.querySelector('video[data-video-public-src]');
+  return lancerVideoPublique(video, true);
+}
+
+function arreterVideoPublique(video) {
+  if (!video) return;
+  video.dataset.videoPublicLecture = String((Number(video.dataset.videoPublicLecture) || 0) + 1);
+  try { video.pause(); } catch (e) {}
+  delete video.dataset.videoPublicVolontaire;
+  if (video.hasAttribute("src")) {
+    video.removeAttribute("src");
+    try { video.load(); } catch (e) {}
+  }
+  videoPubliqueBouton(video, true);
+}
+
+function arreterVideosPubliquesHorsEcran() {
+  document.querySelectorAll('.screen:not(.active) video[data-video-public-src]').forEach(arreterVideoPublique);
+}
+
+function videoPubliqueHTML(src) {
+  return '<div class="post-media" data-video-public-shell style="position:relative;min-height:220px;background:#000;">' +
+    '<video data-video-public-src="' + safeUrlAttr(src) + '" controls playsinline preload="none" style="width:100%;min-height:220px;display:block;background:#000;max-height:560px;"></video>' +
+    boutonVideoPubliqueHTML() + '</div>';
+}
+
+function miniatureVideoPubliqueHTML(poster) {
+  return poster
+    ? '<img loading="lazy" decoding="async" src="' + safeUrlAttr(poster) + '" alt="Aperçu de la bobine" style="width:100%;height:100%;object-fit:cover;"/>'
+    : '<div aria-label="Bobine vidéo" style="width:100%;height:100%;background:linear-gradient(135deg,#4c1d95,#7c3aed);display:flex;align-items:center;justify-content:center;color:#fff;font-size:28px;">▶</div>';
+}
+
+document.addEventListener("visibilitychange", function () {
+  if (!document.hidden) return;
+  document.querySelectorAll('video[data-video-public-src]').forEach(arreterVideoPublique);
+});
+
 function openContentSettings() {
   var cfg = getCurrentConfig();
-  var content = cfg.content || { autoplay: true, dataEco: false, showSensitive: false, language: "fr" };
+  var content = Object.assign({ showSensitive: false, language: "fr" }, cfg.content || {}, preferencesVideoPublique());
   openModal('\
     <div class="modal-handle"></div>\
     <div class="modal-title">Contenu & feed</div>\
@@ -3488,7 +3608,9 @@ function openContentSettings() {
 function saveContentSettings() {
   var cfg = getCurrentConfig();
   cfg.content = { autoplay: document.getElementById("contentAutoplay").checked, dataEco: document.getElementById("contentDataEco").checked, showSensitive: document.getElementById("contentSensitive").checked, language: document.getElementById("contentLang").value };
-  saveConfig(cfg); closeModal(); toast("Préférences de contenu mises à jour");
+  saveConfig(cfg);
+  if (!videoPubliqueAutoplay()) document.querySelectorAll('video[data-video-public-src]').forEach(arreterVideoPublique);
+  closeModal(); toast("Préférences de contenu mises à jour");
 }
 
 function openScreenTime() {
@@ -8559,6 +8681,7 @@ function renderFeed() {
 
   renderStories();
 
+  const moreBtnHtml = `<div style="text-align:center;padding:14px 0 24px;"><button class="btn ghost" id="feedLoadMoreBtn" onclick="loadMoreFeedPosts()">⤵ Charger plus de posts</button></div>`;
   if (posts.length === 0) {
     // ── §7 : REPLI EXPLORATION plutôt qu'un cul-de-sac.
     // Déclenché quand les intérêts de l'utilisateur ne donnent rien À AFFICHER —
@@ -8584,9 +8707,12 @@ function renderFeed() {
         && renderFeedExplorationFallback(list)) {
       var emptyElRepli = $("#feedEmpty");
       if (emptyElRepli) emptyElRepli.style.display = "none";
+      if (window._feedServerMayHaveMore && !nothingSelected) list.insertAdjacentHTML("beforeend", moreBtnHtml);
       return;
     }
-    list.innerHTML = "";
+    // Une page de réseau vide APRÈS les filtres n'est pas une fin de liste.
+    // Laisser la porte vers les pages suivantes, sans élargir les passions.
+    list.innerHTML = window._feedServerMayHaveMore && !nothingSelected ? moreBtnHtml : "";
     var emptyEl = $("#feedEmpty");
     if (emptyEl) {
       var emptyTitle = emptyEl.querySelector(".empty-title");
@@ -8665,7 +8791,6 @@ function renderFeed() {
   const renderLimit = window._feedRenderLimit || 20;
   const visible = sortedPosts.slice(0, renderLimit);
   const hasMore = sortedPosts.length > renderLimit || window._feedServerMayHaveMore;
-  const moreBtnHtml = `<div style="text-align:center;padding:14px 0 24px;"><button class="btn ghost" id="feedLoadMoreBtn" onclick="loadMoreFeedPosts()">⤵ Charger plus de posts</button></div>`;
 
   // ── Guard no-op : si le contenu visible est STRICTEMENT le même que le
   // dernier rendu (mêmes posts, mêmes compteurs, mêmes filtres), on ne
@@ -9064,16 +9189,7 @@ function renderPostHTML(p) {
   if (p.type === "video") {
     // ✅ VALIDATION VIDÉO - Vérifier que l'URL est valide
     if (p.video && p.video.trim()) {
-      media = `<div class="post-media">
-        <video
-          src="${safeUrlAttr(p.video)}"
-          controls
-          playsinline
-          preload="metadata"
-          onerror="this.style.background='#000';this.style.color='#888';this.innerHTML='[Vidéo indisponible]';"
-          style="width:100%;display:block;background:#000;border-radius:0;max-height:560px;"
-        ></video>
-      </div>`;
+      media = videoPubliqueHTML(p.video);
     } else {
       media = renderPostCover(p, passion);
     }
@@ -9225,7 +9341,7 @@ async function openPost(id) {
       : `<div class="post-audio" style="padding:14px;background:var(--bg-card);border-radius:13px;border:1px solid var(--border);gap:10px;">🎙 <div style="flex:1;font-size:13px;color:var(--text-dim);">Podcast de ${escapeHtml(author.name || "un créateur")} · Mode démo</div></div>`;
   }
   if (post.type === "video" && post.video) {
-    media = `<div class="post-media"><video src="${safeUrlAttr(post.video)}" controls playsinline preload="metadata" style="width:100%;border-radius:14px;background:#000;"></video></div>`;
+    media = videoPubliqueHTML(post.video);
   }
 
   // Renderer UNIFIÉ (identique au fil / IRL / CDV / modale). Le bloc inline

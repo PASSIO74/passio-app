@@ -2164,10 +2164,11 @@ const SEED_CONVERSATIONS = [
 let conversationsState = null;
 let _saveConvTimer = null;          // debounce localStorage
 const _profileCache = new Map();    // cache profils → évite requêtes répétées
+let _profileCacheGeneration = 0;
 // Vidé à la déconnexion par purgeAccountScopedData (app-02). Le rechargement qui
 // suit emporterait ce cache de toute façon, mais il peut échouer ou tarder : les
 // profils consultés par le compte sortant ne doivent pas rester en mémoire.
-function _clearProfileCache() { try { _profileCache.clear(); } catch (e) {} }
+function _clearProfileCache() { try { _profileCacheGeneration++; _profileCache.clear(); } catch (e) {} }
 
 // Cache pré-rempli depuis les convs déjà connues
 function _primeProfileCache(convs) {
@@ -3379,9 +3380,7 @@ function _renderVisitedContent() {
     el.innerHTML = bobines.length
       ? '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;">' + bobines.map(function(p) {
           var poster = p.image || p.poster || "";
-          var thumb = poster
-            ? '<img loading="lazy" decoding="async" src="' + safeUrlAttr(poster) + '" style="width:100%;height:100%;object-fit:cover;"/>'
-            : (p.video ? '<video src="' + safeUrlAttr(p.video) + '#t=0.1" muted playsinline preload="metadata" style="width:100%;height:100%;object-fit:cover;background:#000;"></video>' : '<div style="width:100%;height:100%;background:linear-gradient(135deg,#7c3aed,#a78bfa);"></div>');
+          var thumb = miniatureVideoPubliqueHTML(poster);
           return '<div onclick="closeModal();openReelById(\'' + escapeJsArg(p.id) + '\')" style="aspect-ratio:9/16;border-radius:8px;overflow:hidden;position:relative;cursor:pointer;">' + thumb + '<span style="position:absolute;left:6px;bottom:6px;font-size:14px;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.6));">🎞️</span></div>';
         }).join("") + '</div>'
       : _vEmpty("Aucune bobine");

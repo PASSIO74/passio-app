@@ -2485,9 +2485,9 @@ function reelVideoFallback(videoEl, fallbackUrl) {
   if (!videoEl || !fallbackUrl) return;
   if (videoEl.dataset.fallbackUsed === "1") return;
   videoEl.dataset.fallbackUsed = "1";
-  videoEl.src = fallbackUrl;
-  videoEl.load();
-  try { videoEl.play().catch(()=>{}); } catch(e) {}
+  videoEl.setAttribute("data-video-public-src", fallbackUrl);
+  videoEl.removeAttribute("src");
+  lancerVideoPublique(videoEl, videoEl.dataset.videoPublicVolontaire === "1");
 }
 
 function buildReels(pinnedId) {
@@ -2625,7 +2625,7 @@ function reelMediaHTML(post) {
     // Sans fallback dédié : placeholder propre si l'appareil ne sait pas décoder
     // la vidéo (ex. ancienne bobine webm lue sur iPhone) au lieu d'un cadre noir.
     const fallback = post.fallback ? ` onerror="reelVideoFallback(this, '${escapeJsArg(post.fallback)}')"` : ` onerror="_reelVideoError(this)"`;
-    return `<video class="reel-media" src="${safeUrlAttr(_reelVideoSrc(post))}"${poster}${fallback} muted playsinline loop preload="metadata"></video>`;
+    return `<video class="reel-media" data-video-public-src="${safeUrlAttr(_reelVideoSrc(post))}"${poster}${fallback} muted playsinline loop preload="none"></video>`;
   }
   // Sinon : utilise la cover photo (existant pour les posts seed) ou la photo uploadée
   const src = post.photo || post.coverPhotoUrl || resolveCoverUrl(post.cover) || "";
@@ -2665,6 +2665,7 @@ function renderReelHTML(post, idx) {
         ${(Array.isArray(post.overlays) && post.overlays.length && typeof _storyOverlaysHtml === "function") ? `<div class="reel-overlays-layer">${_storyOverlaysHtml(post.overlays)}</div>` : ""}
       </div>
       <div class="reel-overlay"></div>
+      ${post.type === "video" ? boutonVideoPubliqueHTML() : ""}
       <span class="reel-tag-mood">${passion.emoji} ${escapeHtml(passion.label)} · ${moodLabel}</span>
       ${post.type === "video" ? `<button class="reel-sound-btn" onclick="toggleReelsSound(event)" aria-label="Activer ou couper le son">${reelsState.soundOn ? "🔊" : "🔇"}</button>` : ""}
       <div class="reel-info">
@@ -2808,7 +2809,7 @@ function closeReels() {
   const pause = document.getElementById("reelsPause");
   if (pause) pause.classList.remove("show");
   // Pause toutes les vidéos
-  document.querySelectorAll("#reelsList video").forEach(vid => { try { vid.pause(); } catch(e){} });
+  document.querySelectorAll("#reelsList video").forEach(arreterVideoPublique);
   if (reelsState && reelsState.observer) { try { reelsState.observer.disconnect(); } catch(e){} reelsState.observer = null; }
   if (etaitOuvert) releaseOverlayHistory();
 }
@@ -2851,17 +2852,9 @@ function playReelAt(idx) {
     // Le SON suit le choix global (bouton 🔊 par bobine, mémorisé pour la session).
     vid.muted = !soundOn; vid.defaultMuted = !soundOn;
     if (i === idx) {
-      try {
-        vid.currentTime = 0;
-        vid.play().catch(() => {
-          // Autoplay AVEC son refusé (pas de geste récent) : on repasse en muet
-          // pour que la bobine joue quand même — le 🔇 reflète l'état réel.
-          if (!vid.muted) { reelsState.soundOn = false; vid.muted = true; vid.defaultMuted = true; _syncReelSoundBtns(); }
-          vid.play().catch(() => {});
-        });
-      } catch(e){}
+      lancerVideoPublique(vid, false);
     }
-    else { try { vid.pause(); } catch(e){} }
+    else arreterVideoPublique(vid);
   });
 }
 
@@ -2876,7 +2869,7 @@ function toggleReelsSound(ev) {
   const vid = cur && cur.querySelector("video");
   if (vid) {
     vid.muted = !reelsState.soundOn; vid.defaultMuted = vid.muted;
-    if (vid.paused) { try { vid.play().catch(()=>{}); } catch(e){} }
+    if (vid.paused) lancerVideoPublique(vid, true);
   }
 }
 function _syncReelSoundBtns() {

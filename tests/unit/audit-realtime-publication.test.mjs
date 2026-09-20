@@ -20,8 +20,9 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync, mkdtempSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const RACINE = new URL("../..", import.meta.url).pathname;
+const RACINE = fileURLToPath(new URL("../..", import.meta.url));
 
 // Rejoue la gate sur un dépôt FABRIQUÉ : même script, arborescence minimale.
 // ⚠️ La gate résout ses racines depuis `__dirname` : il suffit de la COPIER dans

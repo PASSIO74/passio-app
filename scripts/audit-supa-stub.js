@@ -43,7 +43,9 @@ const FICHIER_STUB = path.join(RACINE, "js", "app-08-ui-modals-tour.js");
 
 /** Extrait le source de `_buildNoopSupa` et l'évalue, sans charger toute l'app. */
 function construireStub() {
-  const src = fs.readFileSync(FICHIER_STUB, "utf8");
+  // Les checkouts Windows peuvent employer CRLF ; l'audit doit extraire
+  // exactement la même fonction que sur le runner Linux de la CI.
+  const src = fs.readFileSync(FICHIER_STUB, "utf8").replace(/\r\n/g, "\n");
   const debut = src.indexOf("function _buildNoopSupa() {");
   if (debut === -1) throw new Error("_buildNoopSupa introuvable dans " + FICHIER_STUB);
   // La fonction est au premier niveau : sa fermeture est la 1re accolade en colonne 0.
