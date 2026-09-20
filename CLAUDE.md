@@ -2031,11 +2031,20 @@ isolation qu'on retire par mégarde.**
 
 ⚠️ **LE BANC DE CHARGE NE MESURAIT PAS LA SEULE FORME QUADRATIQUE DU PRODUIT.** `scripts/charge.mjs`
 s'abonnait à **UNE** liaison `postgres_changes`, **filtrée** sur son propre uid. L'app en pose
-**TREIZE**, dont **onze sans filtre**. Or un filtre de colonne est tranché AVANT de toucher la base :
-le banc ne faisait évaluer presque rien, là où le temps réel est 66 % du CPU avec un facteur ×13. Il
-mesurait la latence d'un client gratuit, et on en tirait un chiffre de capacité. Il pose désormais
-les treize ; la corrélation est bornée à `posts` (le canal porte maintenant aussi `conv_messages`,
-`post_comments`, `video_lives`… dont les lignes ont un `id`). ⚠️ **Et la recherche n'exerçait que le
+**DOUZE**, dont **dix sans filtre**. Or un filtre de colonne est tranché AVANT de toucher la base :
+le banc ne faisait évaluer presque rien, là où le temps réel est 66 % du CPU (68,9 % avec la seconde
+forme de décodage WAL — d'où les « ~69 % » de la fiche d'hier : même poste, pas une contradiction)
+avec un facteur ×13. Il mesurait la latence d'un client gratuit, et on en tirait un chiffre de
+capacité. Il pose désormais les douze ; la corrélation est bornée à `posts` (le canal porte
+maintenant aussi `post_comments`, `video_lives`… dont les lignes ont un `id`).
+⚠️ **DOUZE ET NON TREIZE — LE PREMIER JET DE CE LOT A ÉCRIT LE MAUVAIS CHIFFRE**, relevé par
+`audit-passio`. app-08 porte bien une treizième ligne `.on(...)` sur `conv_messages` (6267), mais
+elle est **CONDITIONNELLE** (`if (!PASSIO_REALTIME_V3 && !…_V2)`) et `PASSIO_REALTIME_V3` vaut `true`
+par défaut (app-08:5957) : **aucun client réel ne la pose**. L'y recopier faisait abonner le banc
+SANS FILTRE à la table la plus écrite du produit, sur un chemin que personne n'emprunte — le banc
+aurait rendu un chiffre de capacité trop BAS, et « recopiées d'app-08 » aurait été lu comme une
+vérité par la session suivante. **Compter les `.on(` d'un fichier n'est pas compter ce que
+l'application exécute** ; `audit:realtime`, qui est un grep, ne voit pas cette condition non plus. ⚠️ **Et la recherche n'exerçait que le
 cas favorable** : « rando », cinq lettres, 0,4 à 2,9 ms — alors que tout le coût est dans les
 frappes courtes. Elle exerce **trois lettres**, le pire cas que `LONGUEUR_MIN_SERVEUR` permet encore ;
 descendre à une ou deux mesurerait une charge que plus aucun client n'émet.
@@ -2043,7 +2052,7 @@ descendre à une ou deux mesurerait une charge que plus aucun client n'émet.
 ⚠️ **LA GATE REALTIME NE LISAIT QU'UNE TABLE PAR BLOC.** `audit-realtime-publication.js` prenait le
 PREMIER nom de table de la fenêtre. Une jonction WebSocket brute passe ses liaisons en bloc : un
 marqueur, treize liaisons — **douze sur treize hors garde**, et « 16 souscriptions scannées » pour un
-dépôt qui en porte **29**. Elle lit désormais le bloc entier entre crochets, et **seulement cette
+dépôt qui en porte **28**. Elle lit désormais le bloc entier entre crochets, et **seulement cette
 forme** : élargir la fenêtre du cas normal déborderait sur le corps du callback suivant, où un
 `table:` désigne parfois une table REST (app-04 en a un). ⚠️ **Le commentaire qui explique la règle
 DÉCLENCHE la règle** — mon premier jet citait l'exemple que la gate cherche, elle a refusé le fichier
@@ -2071,10 +2080,15 @@ attrapée par le motif (`passion_quotas`, `passion_requests`, `rpc/rechercher_pa
 correspondent pas).
 
 Verrous : `tests/e2e/isolation-referentiel-passions.spec.js` (9) et
-`tests/unit/audit-realtime-publication.test.mjs` (3). **Éprouvés par RÉINJECTION de quatre
-mutations** — route retirée (**6 rouges**), miroir remplacé par `[]` (**5**), `offset`/`limit`
-ignorés, c'est-à-dire le défaut d'origine (**4**, dont le 9ᵉ cas), forme tableau rendue illisible à
-la gate (**2**). ⚠️ `creation-passion` ⑭ reste rouge **en local sur `origin/main` PUR** (rejoué en
+`tests/unit/audit-realtime-publication.test.mjs` (3, ajouté à `npm run verif`). **Éprouvés par
+RÉINJECTION de quatre mutations** — route retirée (**6 rouges**), miroir remplacé par `[]` (**5**),
+`offset`/`limit` ignorés, c'est-à-dire le défaut d'origine (**4**, dont le 9ᵉ cas), forme tableau
+rendue illisible à la gate (**3**).
+⚠️ **LE PLANCHER DU VERROU CHIFFRÉ EST 27, PAS 28, ET C'EST DÉLIBÉRÉ** : le compte du jour porte un
+**FANTÔME** — `app-08:6264` est un COMMENTAIRE qui contient le marqueur, et sa fenêtre de 400
+caractères attrape la table de la ligne 6267. Reformuler ce commentaire ferait tomber le compte sans
+qu'aucune souscription n'ait bougé, et **un verrou qui rougit sur un innocent finit par être
+désarmé**. 27 reste rouge sur la vraie régression (branche « bloc » cassée → ~17). ⚠️ `creation-passion` ⑭ reste rouge **en local sur `origin/main` PUR** (rejoué en
 worktree séparé, port 8099) — divergence d'environnement déjà écrite, étrangère au lot.
 
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)

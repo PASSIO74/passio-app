@@ -324,7 +324,14 @@ test.describe("Reprise des lectures de démarrage après coupure réseau", () =>
 
   test("⑨ un référentiel de passions TRONQUÉ par une coupure est rechargé", async ({ page }) => {
     await sansReferentielReel(page);
-    await bootOnboarded(page, null);
+    // ⚠️ `sansMiroirPassions` — SANS LUI, LA COUPURE CI-DESSUS N'A PLUS LIEU.
+    // Depuis le 2026-09-20, `bootOnboarded` sert le référentiel depuis le miroir
+    // local pour ne plus le télécharger en production (`app-helper.js`).
+    // Playwright donne la priorité à la DERNIÈRE route posée : celle du helper
+    // écrasait donc l'`abort` ci-dessus, le référentiel arrivait COMPLET au boot,
+    // et `referentielAuRepos` échouait sur sa prémisse — ce cas ne mesurait plus
+    // sa coupure. Même collision que `creation-passion` ⑬.
+    await bootOnboarded(page, null, 1, { sansMiroirPassions: true });
     await poserFauxSupa(page);
     await referentielAuRepos(page);
     const r = await page.evaluate(async (idBanc) => {
@@ -365,7 +372,14 @@ test.describe("Reprise des lectures de démarrage après coupure réseau", () =>
 
   test("⑬ un rejeu ne RÉTRÉCIT jamais la liste blanche des passions", async ({ page }) => {
     await sansReferentielReel(page);
-    await bootOnboarded(page, null);
+    // ⚠️ `sansMiroirPassions` — SANS LUI, LA COUPURE CI-DESSUS N'A PLUS LIEU.
+    // Depuis le 2026-09-20, `bootOnboarded` sert le référentiel depuis le miroir
+    // local pour ne plus le télécharger en production (`app-helper.js`).
+    // Playwright donne la priorité à la DERNIÈRE route posée : celle du helper
+    // écrasait donc l'`abort` ci-dessus, le référentiel arrivait COMPLET au boot,
+    // et `referentielAuRepos` échouait sur sa prémisse — ce cas ne mesurait plus
+    // sa coupure. Même collision que `creation-passion` ⑬.
+    await bootOnboarded(page, null, 1, { sansMiroirPassions: true });
     await poserFauxSupa(page);
     await referentielAuRepos(page);
     const r = await page.evaluate(async (idBanc) => {

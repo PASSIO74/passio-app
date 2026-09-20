@@ -244,13 +244,16 @@ const PIXEL_PNG = Buffer.from(
 // la TROISIÈME requête de toute la base — 2 900 511 appels, 4 368 s de CPU,
 // 5,92 % du total. Pour DIX comptes réels.
 //
-// ⚠️ LE DEMANDEUR N'EST PAS UN UTILISATEUR, C'EST CETTE SUITE — et le calcul le
-// dit sans ambiguïté. `chargerReferentielPassions` (app-02) pagine par 1 000 :
-// 5 001 passions actives = SIX requêtes par démarrage de page. La suite compte
-// 716 démarrages ; un run complet vaut donc ~4 300 appels, et 2 900 511 / 4 296
-// ≈ 675 runs. Le contre-témoin confirme le modèle : la variante SANS le filtre
-// `status` — le client d'avant le 2026-09-09 — porte 141 520 appels, soit ~33
-// runs, très exactement la fenêtre où ce client a vécu.
+// ⚠️ LE DEMANDEUR N'EST PAS UN UTILISATEUR, C'EST CETTE SUITE — et le calcul se
+// prend SANS compter les tests. `chargerReferentielPassions` (app-02) pagine par
+// 1 000 : 5 001 passions actives = SIX requêtes par démarrage de page. Donc
+// 2 900 511 / 6 ≈ 483 000 démarrages, soit ~3 750 PAR JOUR sur 129 jours — pour
+// DIX comptes en production. Le contre-témoin confirme par un calcul distinct :
+// la variante SANS le filtre `status` (le client d'avant le 2026-09-09, vivant
+// ~11 jours) porte 141 520 appels, soit ~2 100 démarrages/jour, même ordre de
+// grandeur. Compter les boots de la suite ne sert que de corroboration, et
+// SOUS-ESTIME (un boot en `beforeEach` sert autant de cas que le fichier en
+// porte) : ne pas rebâtir le constat dessus.
 // C'est la famille de l'avatar de 2,59 Mo demandé 399 fois (2026-09-10) : un
 // coût de production payé par les tests, par un chemin que personne ne regarde.
 // S'y ajoutent ~140 ko d'identifiants par démarrage, soit ~100 Mo d'egress par
@@ -310,8 +313,11 @@ function servirPassions(route) {
     lignes = miroirPassions();
   } catch (e) {
     // Miroir illisible : on rend la main à la production — le comportement
-    // d'avant ce correctif. Mais JAMAIS en silence : un repli muet ici se
-    // lirait comme « la CI ne coûte plus rien », qui serait faux.
+    // d'avant ce correctif. ⚠️ CE QUI REND CE REPLI NON SILENCIEUX N'EST PAS CE
+    // `console.warn` : borné à une ligne par worker, il se noierait dans ~1 700
+    // cas. C'est le cas ⑧ de `isolation-referentiel-passions.spec.js`, qui lit
+    // le miroir SANS filet et lève donc si le fichier est illisible. Le warn
+    // sert à nommer la cause quand on regarde, pas à donner l'alerte.
     if (!_miroirPassionsDit) {
       _miroirPassionsDit = true;
       console.warn("[app-helper] miroir des passions illisible (" + (e && e.message) +
@@ -368,7 +374,13 @@ function servirPassions(route) {
     debut = Number(plage[1]);
     fin = Math.min(Number(plage[2]), total - 1);
     lignes = lignes.slice(debut, fin + 1);
-    partielle = true;                        // PostgREST rend 206 sur un en-tête Range
+    partielle = true;
+    // ⚠️ APPROXIMATION ASSUMÉE : le vrai PostgREST rend 206 pour TOUTE réponse
+    // partielle, `limit`/`offset` compris — pas seulement sur un en-tête Range.
+    // On ne l'imite que sur le Range parce que supabase-js accepte tout 2xx et
+    // qu'aligner le reste demanderait de savoir si la page est la dernière.
+    // C'est une divergence de plus entre ce faux serveur et le vrai : elle est
+    // écrite ici plutôt que découverte par quelqu'un qui compterait dessus.
   }
   return route.fulfill({
     status: partielle ? 206 : 200,

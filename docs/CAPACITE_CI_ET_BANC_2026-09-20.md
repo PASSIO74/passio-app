@@ -104,8 +104,17 @@ zéro octet de production.**
 ## 4. Le banc de charge ne mesurait pas la seule forme quadratique du produit
 
 `scripts/charge.mjs` s'abonnait à **une** liaison `postgres_changes`, **filtrée**
-(`author_id=eq.<son propre uid>`). L'application (`_creerCanalDb`, app-08) en pose **treize**,
-dont **onze sans filtre**.
+(`author_id=eq.<son propre uid>`). L'application (`_creerCanalDb`, app-08) en pose **douze** en
+configuration par défaut, dont **dix sans filtre**.
+
+⚠️ **Le premier jet de ce lot écrivait « treize / onze », et c'était faux** — relevé par
+`audit-passio`. app-08 porte bien une treizième ligne `.on(...)` sur `conv_messages` (6267), mais
+elle est conditionnée à `!PASSIO_REALTIME_V3 && !…_V2`, et `PASSIO_REALTIME_V3` vaut `true` par
+défaut (app-08:5957). **Aucun client réel ne la pose.** L'y recopier faisait abonner le banc *sans
+filtre* à la table la plus écrite du produit, sur un chemin que personne n'emprunte : le banc aurait
+rendu un chiffre de capacité **trop bas**, et son commentaire « recopiées d'app-08 » aurait été lu
+comme une vérité. **Compter les `.on(` d'un fichier n'est pas compter ce que l'application
+exécute** — et `audit:realtime`, qui est un grep, ne voit pas cette condition non plus.
 
 Or un filtre de colonne est tranché **avant** de toucher la base. Le banc faisait donc évaluer
 quasiment rien, là où le temps réel est **66 % du CPU** et porte un facteur d'amplification
@@ -130,7 +139,7 @@ descendre à une ou deux mesurerait une charge que plus aucun client n'émet.
 `audit-realtime-publication.js` repart de chaque occurrence du marqueur et lisait **le premier**
 nom de table de la fenêtre. Une jonction WebSocket brute passe ses liaisons en bloc : un
 marqueur, treize liaisons. **Douze sur treize étaient donc hors garde**, et la gate annonçait
-« 16 souscriptions scannées » pour un dépôt qui en porte 29.
+« 16 souscriptions scannées » pour un dépôt qui en porte 28.
 
 Elle lit désormais le bloc entier entre crochets — et **seulement cette forme** : élargir la
 fenêtre du cas normal ferait déborder sur le corps du callback suivant, où un `table:` désigne
@@ -142,7 +151,13 @@ elle-même. C'est le piège que la gate avait déjà dû fermer **sur elle-même
 rejoué dans un autre fichier.
 
 ⚠️ **Le nom de la variable porte le marqueur.** Renommer le tableau des liaisons rendrait les
-treize invisibles à la gate, sans une erreur.
+douze invisibles à la gate, sans une erreur.
+
+⚠️ **Et le compte porte un FANTÔME.** `js/app-08-ui-modals-tour.js:6264` est un *commentaire* qui
+contient le marqueur ; sa fenêtre de 400 caractères attrape la table de la ligne 6267. Le dépôt
+porte donc **27** souscriptions réelles pour 28 comptées. Le verrou chiffré est calé à **27** :
+reformuler ce commentaire ne doit pas le faire rougir — *un verrou qui rougit sur un innocent finit
+par être désarmé* — et 27 reste rouge sur la vraie régression (branche « bloc » cassée → ~17).
 
 ---
 

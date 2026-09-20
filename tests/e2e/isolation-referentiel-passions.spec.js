@@ -22,11 +22,19 @@
 // `data/passions-v1.json`, le MIROIR GÉNÉRÉ de cette table (même source que
 // `migration_passions_plat.sql`, égalité tenue par `npm run passions:verifier`).
 //
-// ⚠️ HÔTE FICTIF SOUS `.invalid` (RFC 2606, ne résout JAMAIS), même
-// discriminant que `isolation-medias.spec.js` : une requête INTERCEPTÉE est
-// servie (206 + `content-range`), une requête RÉELLEMENT partie échouerait en
-// `ERR_NAME_NOT_RESOLVED`. Sans ce discriminant, un cas serait vert dans les
-// deux états — il ne prouverait rien.
+// ⚠️ L'HÔTE FICTIF `.invalid` (RFC 2606, ne résout jamais) NE COUVRE QUE ④ ET
+// ⑥ — et le dire est plus utile que de laisser croire qu'il couvre tout. Les
+// autres cas passent par `window.supa`, donc par la VRAIE URL Supabase : en CI,
+// avec du réseau, retirer la route les ferait aboutir au lieu d'échouer, et une
+// assertion bâtie sur `ERR_…` y serait verte dans les deux états. La réinjection
+// « route retirée » a d'ailleurs été faite en local SANS réseau, où tout échoue
+// de toute façon.
+// ⚠️ LE SEUL DISCRIMINANT ROBUSTE EN CI EST CELUI DU CAS ③ bis :
+// `etat.taille === miroirPassions().length` — 5 001 (miroir) contre ~5 003
+// (production, qui porte en plus les passions créées depuis l'app). Il tient
+// parce que les deux divergent ; le jour où un delta les fait converger, ce
+// discriminant disparaîtra SANS BRUIT. À relire si ce fichier redevient vert
+// trop facilement.
 // ═══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
 const fs = require("fs");
@@ -150,9 +158,15 @@ test.describe("Isolation — le référentiel des passions vient du miroir local
     expect(tronque, "le chargeur a atteint son plafond de pages").toEqual([]);
   });
 
-  test("④ la seconde forme est couverte : `id=in.(…)` de passions-flat.js", async ({ page }) => {
+  test("④ la seconde forme est servie : `id=in.(…)`, celle de passions-flat.js", async ({ page }) => {
     // ⚠️ N'en servir qu'une laisserait l'autre partir en production — un
     // correctif qui ne corrige qu'une surface.
+    // ⚠️ CE CAS MESURE LA ROUTE, PAS LE GESTE DU PRODUIT, et il faut le dire :
+    // `resoudreNomsManquants` (passions-flat.js:1120) ne demande QUE les ids que
+    // `parId()` ne résout pas — c'est-à-dire précisément ceux ABSENTS du miroir,
+    // pour lesquels la route rendra toujours `[]`. Aucune suite du dépôt
+    // n'exerce cette surface (grep `resoudreNomsManquants` dans `tests/` : zéro),
+    // donc rien ne régresse ; mais ce cas ne prouve pas ce chemin-là.
     await bootOnboarded(page);
     const m = miroirPassions();
     const cibles = [m[3].id, m[7].id];
@@ -205,7 +219,14 @@ test.describe("Isolation — le référentiel des passions vient du miroir local
 
   test("⑦ à la SOURCE : le helper enregistre bien une route sur la table passions", async () => {
     const src = fs.readFileSync(path.join(__dirname, "app-helper.js"), "utf8");
-    const corps = src.slice(src.indexOf("async function sansDonneesDistantes(page)"));
+    // ⚠️ L'ANCRE NE PORTE PAS LA LISTE D'ARGUMENTS, ET CE LOT A PAYÉ POURQUOI.
+    // Écrite `…(page)`, elle a cessé de correspondre à l'instant où la même PR a
+    // ajouté `opts = {}` à la signature : `indexOf` rendait -1, `slice(-1)` le
+    // DERNIER caractère du fichier, et le cas rougissait sur son outillage.
+    // Un verrou de source s'ancre sur le NOM, jamais sur une signature.
+    const debut = src.indexOf("function sansDonneesDistantes(");
+    expect(debut, "la fonction a été renommée : ce verrou ne mesure plus rien").toBeGreaterThan(-1);
+    const corps = src.slice(debut);
     expect(corps).toContain("MOTIF_PASSIONS_DISTANTES");
     // Et le motif ne doit pas déborder sur une table voisine (`passion_quotas`,
     // `passion_requests`) ni sur les RPC (`rpc/rechercher_passions`).
