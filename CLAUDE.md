@@ -1750,6 +1750,180 @@ des 100 du seuil. La fausse alerte exigeait une journée déjà très calme. **U
 finit par ne plus être crue** : le correctif est juste sur le principe, pas sur l'urgence.
 Verrou : `tests/unit/veille-production.test.mjs` (+4 assertions, mutation `count(*)` → rouge).
 
+## 🔁 CAPACITÉ, SUITE : LE MUR N'EST PLUS LA LECTURE, C'EST L'AMPLIFICATION (2026-09-20)
+
+Demande de Benjamin, après le lot du 19/09 : « trouve des solutions pour augmenter encore plus les
+capacités du nombre d'utilisateurs sans investissement ». Première lecture du **temps CPU réel** de
+la base (`extensions.pg_stat_statements`, cumulé sur 129 jours, canal ① d'ADR-012) — elle change le
+cadrage : **le temps réel pèse 69 % du CPU de la base avec DIX comptes**, et son coût est en
+**O(changements × clients abonnés)**, la seule forme quadratique du produit. Dossier :
+`docs/CAPACITE_AMPLIFICATION_2026-09-20.md`.
+
+⚠️ **LE FACTEUR D'AMPLIFICATION EST MESURÉ, PAS DÉDUIT : ×13.** `rows / calls` = **1,03** sur le
+décodage WAL — ce ne sont donc pas des sondages à vide, chaque appel rend une ligne réelle. Or les
+tables publiques n'ont connu qu'environ **550 000 changements de lignes** sur la période, pour
+**7,17 millions de lignes décodées et vérifiées par la RLS**. Ce ×13 n'est pas une constante de
+Supabase : c'est le nombre d'abonnements concurrents qui ont matché chaque changement (dix comptes ×
+douze souscriptions sans filtre). **Il vaut ce qu'on lui donne — c'est la définition opérationnelle
+du mur.**
+
+⚠️ **DIX-NEUF MILLIONS DE BALAYAGES SUR UNE TABLE DE NEUF LIGNES N'EST PAS UN PROBLÈME D'INDEX.**
+`profiles` : 18 964 110 balayages séquentiels, 132 550 791 tuples. Un balayage de neuf lignes est
+gratuit — c'est le NOMBRE DE REQUÊTES qui est le défaut. Même lecture pour `video_lives` (223 315
+balayages, 21 lignes), `follows` (820 671) et `conv_members` (723 854). **Sur une petite table, le
+compteur de balayages est un compteur d'APPELANTS, pas un diagnostic de plan.**
+
+⚠️ **① LA RECHERCHE : LES DEUX PREMIÈRES LETTRES COÛTAIENT 97 % DU MOT.** `rechercher_passions` est
+la requête la plus lente du produit (92,2 ms de moyenne sur 18 185 appels). Mesuré en production,
+cinq répétitions à chaud : **1 lettre = 80 à 133 ms, 2 lettres = 15 à 51 ms, 3 lettres = 0,6 à
+8,5 ms, 4+ = 0,4 à 2,9 ms**. ⚠️ **LA CAUSE EST LA SÉLECTIVITÉ, PAS L'INDEX** — j'ai d'abord écrit « pg_trgm n'extrait aucun
+trigramme sous trois caractères, l'index décroche », et c'est `audit-passio` qui a demandé la
+mesure. Plan réel pour `q='a'` : `Seq Scan rows=4626` (383 écartées), puis **SubPlan 1 et 2,
+`Function Scan on unnest`, `loops=4263` chacun**, 297 ms. `recherche like '%a%'` matche **92 % du
+catalogue** : le balayage est le BON plan, et ce qui coûte est **l'expression de SCORE** — deux
+`unnest(aliases)` + `unaccent_immutable` par ligne retenue — puis le tri. Un index parfait n'y
+changerait rien. **On ne répare pas ça avec un index, on cesse de poser la question.** Comme la
+recherche part à CHAQUE frappe (anti-rebond 160 ms), tout mot tapé traversait
+d'abord son pire cas — « guitare » : 106 ms sur 109, soit **97 %** ; escalade 96 %, randonnée 91 %,
+photographie 81 %. `LONGUEUR_MIN_SERVEUR = 3` (passions-flat.js) : sous ce seuil, **on ne demande
+rien**. ⚠️ **On ne perd rien** : la recherche LOCALE (index préfixe sur les 5 001 entrées et leurs
+alias) répond déjà, immédiatement et hors ligne, et `chercherAsync` la rend telle quelle dès que le
+serveur ne complète pas — le serveur n'apporte que la sous-chaîne au milieu d'un mot et le flou, qui
+n'ont aucun sens sur une ou deux lettres. ⚠️ **Les quatre passions à nom court restent trouvables**
+(C++, C#, Go, DJ — les SEULES sous 3 caractères sur 5 009, mesuré) : l'index local les sert par
+PRÉFIXE, la bonne réponse à « dj ». Ne pas descendre le plancher à 2 pour elles. ⚠️ **Il n'y a pas
+de repli serveur moins cher, mesuré** : un préfixe (`normalized_label like 'a%'` + alias) coûte 68 à
+75 ms — collation `en_US.UTF-8`, donc un btree n'y sert pas un `LIKE 'x%'`, et `unaccent_immutable`
+est appelée par alias et par ligne. **Le bon geste n'est pas de chercher autrement, c'est de ne pas
+demander.** ⚠️ Le plancher se prend sur la frappe **NORMALISÉE** : c'est elle que le serveur recevrait.
+
+⚠️ **ET MA PREMIÈRE ENQUÊTE A CONCLU LE CONTRAIRE, À TORT — LEÇON DE MÉTHODE.** Un `EXPLAIN` où
+j'avais *simplifié* l'`ORDER BY` en retirant l'expression de score montrait un balayage complet
+(`Rows Removed by Filter: 4988`) et un index « jamais lu » : j'ai cru à une migration non appliquée.
+Les deux index GIN **existent et servent** (4 770 lectures chacun), et le plan réel rend un
+`BitmapOr` en 0,4 ms. **Une requête simplifiée pour la lisibilité n'est plus la requête qu'on
+mesure** — et un `idx_scan` lu dans une liste triée par ordre croissant et tronquée à 40 lignes ne
+dit rien de ce qui n'y figure pas.
+
+⚠️ **② UN ÉVÉNEMENT REÇU DÉCLENCHAIT UNE REQUÊTE CHEZ CHAQUE CONNECTÉ.** Les gestionnaires temps
+réel `posts` INSERT et `post_comments` INSERT faisaient `supa.from("profiles").select(...)` À LA
+RÉCEPTION. L'événement étant poussé à TOUS, une seule publication coûtait **N requêtes** — à 2 000
+connectés, 2 000 requêtes pour une publication. ⚠️ **MAIS CE N'EST PAS
+L'ORIGINE DES 19 MILLIONS DE BALAYAGES DE `profiles`, ET JE L'AI D'ABORD ÉCRIT** (relevé par
+`audit-passio`, vérifié dans le schéma de production) : ① sur une table de neuf lignes PostgreSQL
+balaie pour TOUTE requête, donc ce compteur totalise toutes les lectures (6,99 tuples par balayage
+= « table entière, chaque fois ») ; ② la policy SELECT de `posts` porte `NOT EXISTS (SELECT 1 FROM
+profiles pr WHERE pr.id = posts.author_id AND pr.is_private = true)`, donc **un balayage par ligne
+évaluée**, et `startFeedRefreshLoop` rejoue `supaLoadPosts()` toutes les 60 s chez chaque client
+visible — ~86 400 balayages par jour et par onglet. **Le producteur dominant est là, et ce lot n'y
+touche pas.** Attribuer un gros chiffre au défaut qu'on vient de corriger fait croire à la session
+suivante que le poste est réglé : « une fiche qui décrit un défaut déjà refermé coûte autant qu'une
+fiche qui en tait un », en version inverse. Le correctif reste juste POUR SA PROPRE RAISON. ⚠️ **LE CACHE EXISTAIT
+DEPUIS TOUJOURS ET PERSONNE NE LE CONSULTAIT ICI** : `cacheRemoteProfile` écrit dans
+`state.seed.users`, `userById` le lit, et c'est déjà cette source que le fil, les commentaires et la
+messagerie peignent PARTOUT ailleurs. On ne « met pas en cache », on **cesse de contourner le
+cache** (`_profilAuteur`, app-08, autorité unique). ⚠️ **ET ON NE CRÉE PAS UNE TROISIÈME AUTORITÉ** : `_fetchProfile` (app-04) fait déjà « un profil
+sans réseau », avec son `Map`, et il LIT `{ error }` (il refuse de cacher un repli obtenu sur une
+coupure — défaut qu'il a déjà payé). `_profilAuteur` lui DÉLÈGUE au lieu de recopier. ⚠️ La
+fraîcheur ne baisse pas **TANT QUE LE CANAL EST JOINT** : `postgres_changes` ne rejoue rien après
+une coupure, et le canal est rejoint APRÈS le premier `supaLoadPosts()`. ⚠️ Le manque est
+**INSCRIT**, sinon la publication suivante du même auteur repaierait la requête chez tout le monde.
+
+⚠️ **③ LE BATTEMENT DE CŒUR D'UN LIVE RECHARGEAIT LA LISTE CHEZ CHACUN.** L'abonnement `*` sur
+`video_lives` appelait `supaRefreshVideoLives()` — une vraie requête — à chaque événement reçu, chez
+chaque connecté. ⚠️ **ET MON PREMIER REMÈDE ÉTAIT LE MAUVAIS** : un débounce de 250 ms, justifié par
+« un seul live produit plusieurs événements d'affilée ». C'est FAUX, et les chiffres cités le
+démentaient déjà — 2 089 / 2 414 / 2 068, soit **~1,16 UPDATE par live**, donc des événements
+ESPACÉS. Surtout, l'hôte envoie un UPDATE `last_seen` **toutes les 25 SECONDES** : 25 000 ms ≫
+250 ms, aucun n'était coalescé. **Un débounce ne coalesce que ce qui arrive groupé ; il faut
+regarder ce que la production produit VRAIMENT avant de choisir la forme du remède.** Le vrai geste :
+`vliveEvenementSansEffet(payload)` prend AVANT la requête la signature de visibilité que
+`supaRefreshVideoLives` calculait APRÈS (`id + status`) — une mise à jour d'un live déjà connu au
+même statut est un battement de cœur, il n'y a rien à redemander. ⚠️ **On ne saute que ce cas-là** :
+insertion, suppression, identifiant inconnu, statut différent repassent par la requête — un événement
+qu'on ne sait pas lire est un événement qu'on honore. ⚠️ **La même signature que l'application, pas
+une autre** : en copier une seconde les ferait diverger. ⚠️ Un live qui cesse de battre disparaît
+toujours (`supaLoadVideoLives` filtre sur `last_seen`, le filet de 60 s purge). ⚠️ **Rien ne part
+d'une page masquée**, mais le rendez-vous est **REPORTÉ, pas annulé** : `visibilitychange` ET
+`pageshow` le rejouent — la première rédaction NOMMAIT `pageshow` sans jamais l'écouter, alors qu'un
+retour de bfcache iOS l'émet sans forcément l'autre. **Un commentaire qui promet une couverture
+qu'il n'a pas est pire qu'un trou : on croit le cas traité.** ⚠️ Repli sur l'appel direct si app-05
+n'est pas chargé.
+
+⚠️ **④ `conv_members` : UN FILTRE SERVEUR ÉVITE L'ÉVALUATION, PAS LA LIVRAISON — ET J'AVAIS ÉCRIT
+L'INVERSE.** « Poussée à TOUS les connectés » est FAUX (relevé par `audit-passio`, vérifié en base) :
+la policy `conv_members_select_member` est `is_conv_member(conv_id, auth.uid())`, donc Realtime ne
+LIVRAIT la ligne qu'aux membres de cette conversation. Ce qui coûtait en O(N abonnés), c'est la
+DÉCISION : pour savoir à qui livrer, Realtime appelle `is_conv_member` (SECURITY DEFINER) une fois
+par abonnement et par ligne ; un filtre de colonne est tranché avant, sans toucher à la base. Le
+dire juste évite que le prochain lot cherche un « O(N) livraisons » sur `conv_reads` ou
+`comment_interactions`, où le raisonnement serait tout aussi faux — mêmes policies de membre.
+⚠️ **La garde client reste, mais pas pour la raison d'abord écrite** : si `MY_UID` changeait, c'est
+le FILTRE qui deviendrait périmé et jetterait silencieusement les événements de la nouvelle identité
+— aucune garde client ne rattrape ce qui n'arrive jamais. La vraie règle est **ce filtre doit être
+refait quand `MY_UID` change**, ce que personne ne fait, ni ici ni pour `notifications`. La garde
+reste parce qu'un filtre Realtime est une optimisation de TRANSPORT, jamais une frontière de
+sécurité.
+
+⚠️ **UN BANC DE CHARGE QUI N'EXERCE QUE LE CAS FAVORABLE MESURE LA CAPACITÉ DU CAS FAVORABLE** :
+`scripts/charge.mjs` interroge le RPC avec `q: "rando"` — cinq lettres, donc le chemin rapide. La
+mesure de capacité du 14/09 n'a jamais vu le pire cas de la recherche.
+
+⚠️ **CE QUI RESTE OUVERT, NOMMÉ** : les onze autres souscriptions du canal restent sans filtre — à
+2 000 connectés un « j'aime » coûte 2 000 évaluations de RLS pour patcher un compteur que la plupart
+n'ont pas à l'écran (`findPostAnywhere` rend `null`) ; s'abonner à ce qui est VISIBLE est un
+changement d'architecture, pas un réglage. `chargerReferentielPassions` (2 847 316 appels, 5,8 % du
+CPU, six allers-retours par session, plafond `PAGES_MAX` muet) ne se cache ni sur la release ni sur
+un TTL, la liste blanche étant MUTABLE. **Les MINUTEURS sont le `O(connectés)` permanent et ce lot
+n'y touche pas** : `startFeedRefreshLoop` (60 s) × la policy de `posts` est le producteur dominant
+des 19 M de balayages, et le filet `video_lives` (60 s) tourne même sans aucun live (185 760 des
+223 315 balayages pour un seul onglet toujours ouvert) — les deux appellent un RECUL, pas un
+débounce. `creer_passion` accepte un libellé de 2 caractères, invisible aux autres depuis le
+plancher de ① (zéro cas, rien ne garde l'invariant). Une garde serveur pour les frappes courtes
+demande une migration, donc une contre-revue humaine. Le forfait Supabase n'a jamais été LU.
+
+⚠️ **CE QUI A ÉTÉ CHERCHÉ ET N'A RIEN DONNÉ** — un « rien trouvé sur cet axe » a autant de valeur
+qu'un constat : la publication realtime est correcte (12 tables, exactement les écoutées) ; les deux
+index de recherche existent et servent ; `rechercher_passions` n'a que deux appelants
+(`passions-flat.js`, `charge.mjs`), aucune surface oubliée ; `profiles` n'a pas de problème d'index.
+
+⚠️ **PIÈGE D'OUTILLAGE, LE MÊME QU'HIER DANS L'AUTRE SENS** : `pkill -f servir-dist.js` tue son
+propre shell quand la même ligne de commande contient le motif. Écrire `pkill -f 'servir[-]dist'`,
+ou séparer en deux appels.
+
+⚠️ **QUATRE DES QUATRE CAUSES ÉCRITES DANS LA PREMIÈRE RÉDACTION ÉTAIENT FAUSSES, ET LES QUATRE
+CORRECTIFS ÉTAIENT BONS.** C'est le mode d'échec à retenir de ce lot : la mesure désigne le bon
+endroit, et l'explication qu'on en tire peut être entièrement à côté. `audit-passio` les a toutes
+relevées après que les gates étaient vertes et les verrous au vert. **Dans un lot de CAPACITÉ, une
+cause fausse coûte plus que le gain du lot** — elle envoie la session suivante chercher ailleurs, ou
+lui fait croire qu'un poste est réglé. Un seul remède a dû changer de forme (③) ; les trois autres
+n'ont changé que de justification.
+
+Verrou : `tests/e2e/capacite-amplification.spec.js` (11), **éprouvé par RÉINJECTION de neuf
+mutations** — plancher retiré (2 rouges), gestionnaire `posts` rendu à la requête réseau (1),
+coalescence retirée du gestionnaire (1), filtre `conv_members` retiré (1), garde du battement de
+cœur retirée (1), payload non transmis (1), écouteur `pageshow` retiré (1), garde « page masquée »
+retirée (1). ⚠️ **Un verrou qui exerce une forme de charge que la production n'a pas est vert sans
+rien prouver** : le premier cas ⑧ envoyait douze appels dans le même tick — une rafale qu'aucune
+mesure ne montre. Il exerce désormais le battement de cœur réel, espacé.
+
+⚠️ **ET LES TROIS CAS ⑧ ONT ÉTÉ VERTS EN LOCAL ET ROUGES EN CI, À EXACTEMENT UN APPEL PRÈS**
+(0 → 1, 1 → 2). Cause : **`supaInit` appelle `supaRefreshVideoLives()` UNE FOIS AU DÉMARRAGE**
+(app-08, pour peindre les bulles « 🔴 LIVE »), gardé par `window._supaReal` — **faux en local**
+(le SDK n'est pas chargé), **vrai en CI**. Le compteur du banc captait donc cet appel de
+démarrage. C'est la divergence d'environnement que ce dépôt connaît par cœur, prise par son autre
+bout. ⚠️ **Le remède n'est ni un `setTimeout` de complaisance ni une tolérance à +1** — les deux
+rouvrent la course sur un runner plus lent, ou masquent un vrai appel : `compteurVliveAuCalme`
+attend que le compteur soit **STABLE** (plus rien pendant 400 ms, 20 tours au plus) puis le remet
+à zéro. Le sujet de ces cas est « mon geste déclenche-t-il un rechargement ? », pas « l'application
+en fait-elle un au démarrage ». **Un banc qui compte un global appelé par le produit doit d'abord
+attendre le calme.** L'échec a été REPRODUIT en local avant d'être corrigé (appel de démarrage
+simulé à 250 ms → 4 rouges ; avec le correctif, 11 verts, simulation toujours en place). ⚠️ Le cas ⑦ a rougi sur sa première
+rédaction parce que ma tranche de source allait jusqu'à la FIN DU FICHIER et attrapait le
+`from("profiles")` de `supaInit` — un chemin de démarrage, appelé une fois par session : **un verrou
+qui rougit sur un innocent finit par être désarmé**. En local, `creation-passion` ⑭ est rouge **sur
+`origin/main` pur aussi** (worktree séparé, port 8099) — divergence d'environnement déjà écrite.
+
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)
 
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)

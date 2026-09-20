@@ -6170,6 +6170,94 @@ function supaSubscribe() {
 // (anon ET authenticated — les tables gardent leur propre RLS, le canal n'ouvre
 // rien). Repli public si la souscription privée est refusée PAR POLICY (migration
 // pas encore collée), comme la sonnerie — jamais sur une coupure réseau.
+// ══════════════════════════════════════════════════════════════════════════
+// ⑦ UN ÉVÉNEMENT REÇU NE DOIT PAS DÉCLENCHER UNE REQUÊTE (2026-09-20)
+// ──────────────────────────────────────────────────────────────────────────
+// Les gestionnaires `posts` et `post_comments` de ce canal faisaient un
+// `supa.from("profiles").select(...)` À CHAQUE ÉVÉNEMENT REÇU. Or l'événement
+// est poussé à tous ceux que la RLS laisse passer : une seule publication
+// coûtait donc une requête PAR personne en ligne. C'est du
+// O(écritures × connectés) — la forme quadratique, celle qui décide si 2 000
+// connectés tiennent, et elle ne se voit pas parce que chaque requête prise
+// isolément est minuscule.
+//
+// ⚠️ MAIS CE N'EST **PAS** L'ORIGINE DES 18 964 110 BALAYAGES DE `profiles`,
+// et la première rédaction de ce commentaire l'affirmait — relevé par
+// `audit-passio`, vérifié ensuite dans le schéma de production. Deux faits le
+// démentent : ① sur une table de neuf lignes PostgreSQL balaie pour TOUTE
+// requête, donc ce compteur totalise toutes les lectures de `profiles`, quelle
+// qu'en soit l'origine ; ② la policy SELECT de `posts` porte
+// `NOT EXISTS (SELECT 1 FROM profiles pr WHERE pr.id = posts.author_id AND
+// pr.is_private = true)`, donc **un balayage par ligne évaluée** — et
+// `startFeedRefreshLoop` rejoue `supaLoadPosts()` toutes les 60 s chez chaque
+// client visible, soit ~86 400 balayages par jour et par onglet ouvert. Le
+// producteur dominant est là, pas ici. **Attribuer un gros chiffre au défaut
+// qu'on vient de corriger fait croire à la session suivante que le poste est
+// réglé** — c'est la faute « une fiche qui décrit un défaut déjà refermé coûte
+// autant qu'une fiche qui en tait un », en version inverse.
+//
+// Le correctif reste juste pour sa propre raison : le coût en O(connectés) est
+// réel, il grandit avec le succès, et le cache était déjà là.
+//
+// ⚠️ LE CACHE EXISTE DEPUIS TOUJOURS ET PERSONNE NE LE CONSULTAIT ICI.
+// `cacheRemoteProfile` écrit dans `state.seed.users`, `userById` le lit, et
+// c'est déjà cette source que le fil, les commentaires et la messagerie
+// peignent partout ailleurs. La requête réseau était l'exception, pas la règle
+// — on ne « met pas en cache », on cesse de contourner le cache.
+//
+// ⚠️ ET ON NE CRÉE PAS UNE TROISIÈME AUTORITÉ DE CACHE. `_fetchProfile`
+// (app-04) fait déjà « un profil sans réseau », avec son propre `Map`, et il
+// LIT `{ error }` — il refuse de mettre en cache un repli anonyme obtenu sur
+// une coupure, défaut qu'il a déjà payé. On délègue donc au lieu de recopier :
+// deux caches de profil finiraient par diverger sur celui qu'on oublie, et la
+// messagerie repaierait la requête pour la même personne. Repli sur la requête
+// directe seulement si app-04 n'est pas chargé.
+//
+// ⚠️ LA FRAÎCHEUR NE BAISSE PAS **TANT QUE LE CANAL EST JOINT** : l'abonnement
+// `profiles` UPDATE du même canal rafraîchit ce cache en direct. La nuance
+// compte — `postgres_changes` ne rejoue rien après une coupure, et le canal est
+// rejoint APRÈS le premier `supaLoadPosts()` : un renommage tombé dans cet
+// intervalle ne sera pas vu de la session. `state.seed` n'étant pas persisté
+// (`_leanState`), la casse est bornée à la session.
+//
+// ⚠️ ON NE PEUT PAS CONFONDRE AVEC UN COMPTE DE DÉMONSTRATION : les comptes
+// fabriqués par `buildSeed` vivent dans le même tableau (piège déjà payé par
+// `_estConvDemo` le 2026-09-15) mais sont tous en `u_<slug>`, alors que
+// l'identifiant vient ici d'une ligne Supabase. Et la branche « moi » de
+// `userById` est inatteignable : les deux gestionnaires sortent sur
+// `r.author_id === MY_UID` AVANT d'appeler.
+//
+// Rend une promesse dans les DEUX cas, pour que l'appelant ne change pas de
+// forme selon qu'il a touché le réseau ou non.
+function _profilAuteur(uid) {
+  try {
+    if (!uid) return Promise.resolve(null);
+    const cache = (typeof userById === "function") ? userById(uid) : null;
+    if (cache && cache.name) {
+      return Promise.resolve({ username: cache.name, emoji: cache.profileEmoji, color: cache.avatar });
+    }
+  } catch (e) { try { diagLog("profil_auteur_cache", e && e.message); } catch (_e) {} }
+  // Manque au cache : une seule autorité réseau, celle d'app-04, et on INSCRIT
+  // le résultat dans `state.seed.users` — sinon la publication suivante du même
+  // auteur repaierait la requête, chez tout le monde.
+  if (typeof _fetchProfile === "function") {
+    return _fetchProfile(uid).then(function (p) {
+      if (!p) return null;
+      try { if (typeof cacheRemoteProfile === "function") cacheRemoteProfile({ id: uid, username: p.username, emoji: p.emoji, color: p.color, avatar_url: p.photoUrl }); } catch (e) {}
+      return p;
+    }).catch(function (e) { try { diagLog("profil_auteur_fetch", e && e.message); } catch (_e) {} return null; });
+  }
+  return supa.from("profiles").select("id,username,emoji,color,avatar_url").eq("id", uid).maybeSingle()
+    .then(function (r) {
+      if (r && r.error) { try { diagLog("profil_auteur_rls", r.error.message); } catch (_e) {} return null; }
+      const p = r && r.data;
+      if (!p) return null;
+      try { if (typeof cacheRemoteProfile === "function") cacheRemoteProfile(p); } catch (e) {}
+      return p;
+    })
+    .catch(function (e) { try { diagLog("profil_auteur_reseau", e && e.message); } catch (_e) {} return null; });
+}
+
 function _creerCanalDb(prive) {
   const dbChan = supa.channel("realtime:db", { config: { private: prive } });
 
@@ -6207,8 +6295,30 @@ function _creerCanalDb(prive) {
     });
 
   // ── Nouvelle conversation créée pour moi (l'autre personne m'ajoute comme membre) ──
+  // ⚠️ LE FILTRE EST SERVEUR (2026-09-20), ET CE QU'IL ÉVITE EST L'ÉVALUATION,
+  // PAS LA LIVRAISON. La première rédaction écrivait « poussée à TOUS les
+  // connectés » : c'est FAUX, et `audit-passio` l'a relevé. La policy
+  // `conv_members_select_member` est `is_conv_member(conv_id, auth.uid())`, donc
+  // Realtime ne LIVRAIT la ligne qu'aux membres de cette conversation — deux
+  // personnes pour un 1:1, dont une seule était jetée par la garde ci-dessous.
+  // Ce qui coûtait en O(N abonnés), c'est l'ÉVALUATION : pour décider à qui
+  // livrer, Realtime appelle `is_conv_member` (SECURITY DEFINER) une fois par
+  // abonnement et par ligne. Un filtre de colonne est tranché AVANT, sans
+  // toucher à la base. Le gain est donc réel mais d'un autre ordre que celui
+  // annoncé — et le dire juste évite que le prochain lot cherche un « O(N)
+  // livraisons » sur `conv_reads` ou `comment_interactions`, où le raisonnement
+  // serait tout aussi faux : mêmes policies de membre.
+  // ⚠️ LA GARDE CLIENT RESTE, mais PAS pour la raison d'abord écrite. Si
+  // `MY_UID` changeait, c'est le FILTRE qui deviendrait périmé — il jetterait
+  // silencieusement les événements de la nouvelle identité, et aucune garde
+  // client ne peut rattraper ce qui n'est jamais arrivé. Le risque est faible
+  // (les trois points d'écriture de `MY_UID` rechargent la page, et
+  // `notifications` porte le même filtre depuis toujours), mais la vraie règle
+  // est : **ce filtre doit être refait quand `MY_UID` change**. La garde client,
+  // elle, reste parce qu'un filtre Realtime est une optimisation de TRANSPORT,
+  // jamais une frontière de sécurité.
   dbChan
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "conv_members" }, async payload => {
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "conv_members", filter: `user_id=eq.${MY_UID}` }, async payload => {
       const r = payload.new;
       if (!r || r.user_id !== MY_UID) return; // ce n'est pas moi qui suis ajouté
       const convId = r.conv_id;
@@ -6307,7 +6417,7 @@ function _creerCanalDb(prive) {
       // `auteur`, PAS `authorId` : « user » est dans DENY_KEY, la clé était jetée.
       try { tel && tel.recv("post", { postId: r.id, auteur: r.author_id }); } catch(e) {}
       try {
-        const { data: prof } = await supa.from("profiles").select("username,emoji,color").eq("id", r.author_id).maybeSingle();
+        const prof = await _profilAuteur(r.author_id);
         const _mu = (r.media_url || "").toLowerCase();
         const _isVid = _mu.includes(".mp4") || _mu.includes("videos/");
         const newPost = { id: r.id, authorId: r.author_id, authorName: prof?.username || "Passionne", authorEmoji: prof?.emoji || "✨", authorColor: prof?.color || "#8b5cf6", passion: r.passion_id || null, mood: r.mood || "all", type: _isVid ? "video" : "text", text: r.content || "", image: _isVid ? null : (r.media_url || null), video: _isVid ? r.media_url : null, isReel: !!r.is_reel, overlays: r.overlays || null, createdAt: supaTs(r.created_at), likes: 0, liked: false, comments: [], fromSupabase: true };
@@ -6374,7 +6484,7 @@ function _creerCanalDb(prive) {
       try {
         const post = findPostAnywhere(r.post_id);
         if (post) {
-          const { data: prof } = await supa.from("profiles").select("username,emoji").eq("id", r.author_id).maybeSingle();
+          const prof = await _profilAuteur(r.author_id);
           if (!post.comments) post.comments = [];
           if (!post.comments.find(c => c.id === r.id)) {
             post.comments.unshift({ id: r.id, authorId: r.author_id, authorName: prof?.username || "Passionne", authorEmoji: prof?.emoji || "✨", text: r.content || "", content: r.content || "", createdAt: supaTs(r.created_at), fromSupabase: true });
@@ -6421,8 +6531,18 @@ function _creerCanalDb(prive) {
 
   // Lives VIDÉO : apparition/fin d'un direct → rafraîchit les bulles 🔴.
   dbChan
-    .on("postgres_changes", { event: "*", schema: "public", table: "video_lives" }, function() {
-      try { if (typeof supaRefreshVideoLives === "function") supaRefreshVideoLives(); } catch(e) {}
+    .on("postgres_changes", { event: "*", schema: "public", table: "video_lives" }, function(payload) {
+      // ⚠️ LE PAYLOAD EST TRANSMIS (⑧, app-05) : c'est lui qui permet de
+      // reconnaître le battement de cœur de l'hôte (un UPDATE `last_seen`
+      // toutes les 25 s) et de ne RIEN redemander pour lui. Sans l'argument,
+      // la garde ne peut rien décider et chaque battement repaie une requête
+      // chez chaque connecté. Repli sur l'appel direct si app-05 n'est pas
+      // chargé — un lot de capacité ne doit pas pouvoir éteindre les bulles
+      // « 🔴 LIVE ».
+      try {
+        if (typeof vliveRefreshCoalesce === "function") vliveRefreshCoalesce(payload);
+        else if (typeof supaRefreshVideoLives === "function") supaRefreshVideoLives();
+      } catch(e) {}
     });
 
   // Un SEUL join pour l'ensemble des bindings ci-dessus.

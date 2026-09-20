@@ -478,6 +478,60 @@
   var cacheServeur = Object.create(null);      // frappe normalisée → résultats
   var CACHE_MAX = 40;
 
+  // ⚠️ SOUS TROIS CARACTÈRES, ON NE DEMANDE RIEN AU SERVEUR — ET C'EST UN
+  // GESTE DE CAPACITÉ, PAS UNE MICRO-OPTIMISATION (mesuré le 2026-09-20 contre
+  // la production, cinq répétitions à chaud) :
+  //
+  //     1 lettre  →  80 à 133 ms      3 lettres →  0,6 à 8,5 ms
+  //     2 lettres →  15 à  51 ms      4+        →  0,4 à 2,9 ms
+  //
+  // Comme la recherche part à CHAQUE frappe (anti-rebond 160 ms), tout mot tapé
+  // traversait d'abord son pire cas. Mesuré sur la frappe de mots entiers : les
+  // deux premières lettres pèsent 81 % à 97 % du coût serveur du mot
+  // (« guitare » : 106 ms sur 109).
+  //
+  // ⚠️ LA CAUSE EST LA SÉLECTIVITÉ, PAS L'INDEX — et la première rédaction de
+  // ce commentaire disait le contraire (« pg_trgm ne peut extraire aucun
+  // trigramme sous trois caractères, l'index décroche »). C'est `audit-passio`
+  // qui a demandé la mesure, et le plan réel de la production la donne, pour
+  // `q = 'a'` :
+  //
+  //     Seq Scan on passions   rows=4626   (Rows Removed by Filter: 383)
+  //       SubPlan 1  Function Scan on unnest   loops=4263
+  //       SubPlan 2  Function Scan on unnest   loops=4263
+  //     Execution Time: 297 ms
+  //
+  // `recherche like '%a%'` matche 92 % du catalogue : le balayage est le BON
+  // plan, et ce qui coûte, c'est l'expression de SCORE — deux `unnest(aliases)`
+  // + `unaccent_immutable` par ligne retenue, soit 4 263 fois deux — puis le
+  // tri. Un index parfait n'y changerait rien : il faudrait quand même noter
+  // 4 626 lignes. **On ne répare pas ça avec un index, on cesse de poser la
+  // question.**
+  //
+  // ⚠️ ON NE PERD RIEN, et c'est ce qui rend le plancher acceptable : la
+  // recherche LOCALE couvre déjà ces frappes, immédiatement et hors ligne, et
+  // `chercherAsync` la rend telle quelle dès que le serveur ne complète pas. Le
+  // serveur n'apporte que la sous-chaîne au milieu d'un mot et le flou — deux
+  // choses qui n'ont aucun sens sur une ou deux lettres.
+  //
+  // ⚠️ LES QUATRE PASSIONS À NOM COURT RESTENT TROUVABLES (mesuré en base :
+  // C++, C#, Go, DJ — les seules de moins de 3 caractères sur 5 009). Le local
+  // les rend, et par PRÉFIXE, qui est justement la bonne réponse à « dj ». Ne
+  // pas « réparer » ce plancher en le descendant à 2 pour elles.
+  // ⚠️ POINT OUVERT, NOMMÉ : `creer_passion` accepte un libellé normalisé de
+  // DEUX caractères. Une passion ainsi créée serait trouvable par son auteur
+  // (`injecterPassion` l'ajoute au référentiel en mémoire) et invisible aux
+  // autres jusqu'à la régénération du JSON, puisque le serveur n'est plus
+  // interrogé. Zéro cas aujourd'hui — les quatre libellés courts sont tous
+  // curés — et rien ne garde cet invariant.
+  //
+  // ⚠️ IL N'Y A PAS DE REPLI SERVEUR MOINS CHER, mesuré aussi : une recherche
+  // par préfixe (`normalized_label like 'a%'` + alias) coûte 68 à 75 ms, la
+  // base étant en collation `en_US.UTF-8` — un btree n'y sert pas un
+  // `LIKE 'x%'` — et `unaccent_immutable` y est appelée par alias et par ligne.
+  // Le bon geste n'est pas de chercher autrement, c'est de ne pas demander.
+  var LONGUEUR_MIN_SERVEUR = 3;
+
   function serveurUtilisable() {
     if (serveurIndisponible) return false;
     try { return typeof supa !== "undefined" && !!supa && !!window._supaReal; } catch (e) { return false; }
@@ -486,6 +540,10 @@
   function chercherServeur(q, limite) {
     var n = norme(q);
     if (!n) return Promise.resolve(null);
+    // Le plancher se prend sur la frappe NORMALISÉE, jamais sur `q` brut : « é »
+    // et «  a  » deviennent « e » et « a », et c'est cette forme-là que le
+    // serveur recevrait.
+    if (n.length < LONGUEUR_MIN_SERVEUR) return Promise.resolve(null);
     if (cacheServeur[n]) return Promise.resolve(cacheServeur[n]);
     if (!serveurUtilisable()) return Promise.resolve(null);
     return supa.rpc("rechercher_passions", { q: q, lim: limite || 20 })
