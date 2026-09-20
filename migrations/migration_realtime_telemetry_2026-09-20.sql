@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- LA TÉLÉMÉTRIE SORT DU TEMPS RÉEL — 91 % DU TRAVAIL DE RÉPLICATION DISPARAÎT
+-- LA TÉLÉMÉTRIE SORT DU TEMPS RÉEL — 91 % DE CE QUE LA BASE ÉMET, POUR UN ABONNÉ
 -- (2026-09-20)
 --
 -- MESURE (canal ① d'ADR-012, cumul 129 jours, production) :
@@ -22,7 +22,27 @@
 --                             ───────
 --   TOTAL ................... 526 756
 --
--- **Une seule table fait 91,4 % de tout ce que la base réplique.** Et son unique
+-- ⚠️ **CE 91,4 % EST UNE PART DE CHANGEMENTS DE LIGNES, PAS UNE PART DE TRAVAIL.**
+-- L'en-tête de ce fichier a annoncé le contraire pendant une demi-journée, et la
+-- mesure l'a démenti : la requête de décodage est appelée **7 201 615** fois pour
+-- **1 542 479** changements de lignes TOUS SCHÉMAS CONFONDUS — elle est donc
+-- appelée plus souvent qu'il n'existe de changements dans toute la base, et son
+-- coût porte un multiplicateur (le nombre d'abonnements qui matchent chaque
+-- changement, mesuré à ×13 la veille). `telemetry_events`, avec UN abonné, est
+-- précisément la table qui NE le paie PAS. Gain encadré : **6,7 % du poste**
+-- (4,6 pt de CPU) si le coût suit (enregistrements × abonnements), 91,3 %
+-- (62,9 pt) s'il suit les seuls enregistrements — **la borne basse est la
+-- plausible**. À trancher par la mesure d'acceptation (§6 du dossier), pas ici.
+-- Le remède, lui, reste bon quel que soit le verdict : on retire d'une
+-- publication une table qui n'a plus AUCUN abonné.
+--
+-- ⚠️ CONSÉQUENCE SUR LA MIGRATION DU 2026-09-19 : elle n'est plus REJOUABLE
+-- après celle-ci — son verdict ③ exige `telemetry_events` publiée et lèvera.
+-- Ce n'est pas une dérive : c'est l'effet voulu de ce fichier. Quelqu'un qui
+-- recolle l'ancienne lira « ECHEC » et doit lire cette ligne, pas partir en
+-- enquête.
+--
+-- **Une seule table fait 91,4 % de tout ce que la base ÉMET.** Et son unique
 -- abonné est le Centre de pilotage (`dashboard/server/ingest.js`), c'est-à-dire
 -- UN client, sur le poste de l'éditeur — pas les utilisateurs.
 --

@@ -42,9 +42,11 @@ let lastRealSeenIso = null;
  *  ajouter du coût pour une latence que personne ne perçoit. */
 export const POLL_MS = 5000;
 
-let realtimeOk = false;
-let lastRealtimeStatus = null;
-let realtimeLastError = "";
+// ⚠️ `realtimeOk`, `lastRealtimeStatus` et `realtimeLastError` ont été RETIRÉS
+// avec le canal (2026-09-20). Elles n'avaient plus AUCUNE affectation : elles
+// n'auraient rapporté que leur valeur initiale, c'est-à-dire « le temps réel est
+// décroché », pour toujours — et trois surfaces du pilotage le peignaient en
+// « Secours ». Cible supprimée = tout ce qui la vise part avec.
 
 export function getAdmin() { return admin; }
 
@@ -61,17 +63,20 @@ export function ingestState() {
   // ingéré depuis des heures (revue du 2026-09-13).
   const pollingOk = Boolean(poll.lastOkAt && Date.now() - poll.lastOkAt < 30_000);
   return {
-    supabaseReady, realtimeOk, realtimeStatus: lastRealtimeStatus, realtimeLastError,
-    // ⚠️ LE DISCRIMINANT QUI ÉVITE UNE ALARME PERMANENTE. Depuis le retrait du
-    // canal (2026-09-20), `realtimeStatus` reste `null` — et `observation-alerts`
-    // ne déclencherait donc pas, par le simple fait que `null` est falsy. Mais
-    // un verrou qui tient PAR ACCIDENT finit par le dire : le jour où quelqu'un
-    // initialise ce champ à `"IDLE"` pour faire joli, l'alerte « Realtime
-    // décroché » se rallume pour toujours. On déclare donc l'intention.
+    supabaseReady,
+    // ⚠️ LE DISCRIMINANT QUI ÉVITE UNE ALARME — ET UN AFFICHAGE — PERMANENTS.
+    // Il ne suffisait pas de retirer le canal : `observation-alerts` se taisait
+    // alors par ACCIDENT (`realtimeStatus` valant `null`, donc falsy), et les
+    // trois surfaces de `public/js/app.js` annonçaient « Secours (polling) » à
+    // chaque chargement — l'alarme déplacée de l'alerte vers l'écran, très
+    // exactement le mode d'échec que ce lot invoque. Ce drapeau est la SEULE
+    // autorité : alerte et affichage le lisent, et aucun des deux ne dépend plus
+    // d'un champ qui n'est jamais écrit.
     realtimeUtilise: false,
     polling: { ...poll, ok: pollingOk },
-    // Une source vivante = polling qui lit (le realtime ne sert plus).
-    ingestAlive: realtimeOk || pollingOk,
+    // Une source vivante = polling qui lit. C'est désormais le SEUL terme de la
+    // disjonction : le realtime n'en est plus un.
+    ingestAlive: pollingOk,
     lastSeenIso, lastRealSeenIso, buffered: store.events.length,
   };
 }
@@ -243,7 +248,11 @@ export async function startIngest() {
   //
   // ⚠️ LE CANARI N'EST PAS CONCERNÉ : il est observé par `ingestOne`, point de
   // passage UNIQUE de tout événement entrant (historique, realtime, polling).
-  // Il vivait donc déjà sans le canal, et sa fenêtre est de 15 minutes.
+  // Il vivait donc déjà sans le canal. ⚠️ Et sa fenêtre est de 90 SECONDES
+  // (`CANARY_DEADLINE_MS`, observation.js), pas de 15 minutes : 15 min est la
+  // PÉRIODE D'ENVOI (`CANARY_EVERY_MS`). La marge sur le polling est donc 90/5
+  // = 18×, pas 180× — quelqu'un qui porterait `POLL_MS` à 120 s « puisqu'on a
+  // 15 minutes » ferait basculer le canari en UNAVAILABLE.
   //
   // RETOUR ARRIÈRE : republier la table
   // (`alter publication supabase_realtime add table public.telemetry_events;`)
@@ -293,11 +302,26 @@ async function loadTestUids() {
 // n'était ingéré. supabase-js rend les pannes réseau dans `{ error }` — le
 // `catch` n'est qu'une ceinture.
 const poll = { lastAt: null, lastOkAt: null, lastError: null, failStreak: 0, lastRows: 0 };
-// Recouvrement de 2 s : `received_at = now()` est pris au DÉBUT de la transaction
-// et l'ordre de validation peut différer — une ligne validée en retard, sous la
-// marque, n'était jamais rattrapée par `gt(marque)`. La dédup (event_id, canaris)
-// absorbe les relectures.
-const RECOUVREMENT_MS = 2000;
+// ⚠️ RECOUVREMENT : `received_at` a `DEFAULT now()`, pris au DÉBUT de la
+// transaction, alors que la ligne n'est VISIBLE qu'à sa validation. Une ligne
+// dont la validation arrive après la marque n'est jamais rattrapée par
+// `gt(marque)` : elle est perdue, en silence. La dédup (event_id, canaris)
+// absorbe les relectures, donc l'erreur ne coûte que des lectures.
+// ⚠️ IL ÉTAIT À 2 s, SOIT MOINS QUE `POLL_MS` — et tant que le canal
+// `postgres_changes` existait, ça ne se voyait pas : lui décode le WAL, il est
+// insensible à `received_at` et livrait la ligne en retard quand même. **Le
+// retrait du canal transforme cette faiblesse théorique en perte sans recours**,
+// puisque le polling devient le chemin UNIQUE. Porté à 15 s : au-dessus de
+// `POLL_MS`, donc deux tours consécutifs se recouvrent toujours, et au-dessus de
+// toute validation plausible d'un INSERT de télémétrie (lot `keepalive`, attente
+// de verrou, pic). Le coût est trois relectures par ligne, à 1,0 ms la lecture.
+const RECOUVREMENT_MS = 15000;
+// ⚠️ PLAFOND DE DÉBIT, PAS UNE PERTE : les lignes arrivent triées et la marque
+// avance sur la dernière lue, donc le reliquat part au tour suivant. Mais
+// `LOT_MAX / (POLL_MS / 1000)` est le débit soutenable — 400 lignes/s ici. Au-delà,
+// le pilotage prend du retard sans jamais le rattraper, et rien ne le dit.
+// C'est la vraie borne de mise à l'échelle du chemin devenu nominal.
+const LOT_MAX = 2000;
 async function pollIncrement() {
   if (!admin) return;
   const now = Date.now();
@@ -309,7 +333,7 @@ async function pollIncrement() {
       .select("*")
       .gt("received_at", borne)
       .order("received_at", { ascending: true })
-      .limit(500);
+      .limit(LOT_MAX);
     if (error) { poll.failStreak++; poll.lastError = error.message || String(error); return; }
     poll.failStreak = 0; poll.lastError = null; poll.lastOkAt = Date.now(); poll.lastRows = (data || []).length;
     (data || []).forEach(ingestOne);

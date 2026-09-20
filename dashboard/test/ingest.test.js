@@ -203,10 +203,19 @@ test("l'état DÉCLARE que le temps réel n'est plus utilisé — l'alerte ne ti
     "un verrou qui tient par accident se rallume au premier champ d'affichage posé là.");
 });
 
-test("l'état exposé à l'écran porte le statut Realtime et le MOTIF du dernier refus", () => {
+test("les trois champs du canal retiré ne sont plus exposés — sinon l'écran dit « Secours » pour toujours", () => {
   const s = ingestState();
-  assert.ok("realtimeStatus" in s, "sans le statut, « Secours » ne dit pas pourquoi");
-  assert.ok("realtimeLastError" in s, "neuf heures de CHANNEL_ERROR n'ont jamais dit « PrivateOnly »");
+  // ⚠️ Ce cas exigeait l'INVERSE jusqu'au 2026-09-20 (« sans le statut, Secours
+  // ne dit pas pourquoi ») : il gardait l'affichage du motif de refus d'un canal
+  // qui existait. Le canal parti, ces champs n'avaient plus AUCUNE affectation —
+  // ils n'auraient rapporté que leur valeur initiale, « décroché », à jamais, et
+  // trois surfaces du pilotage la peignaient en « Secours ». Cible supprimée =
+  // tout ce qui la vise part avec, verrou compris.
+  for (const mort of ["realtimeOk", "realtimeStatus", "realtimeLastError"]) {
+    assert.ok(!(mort in s), `${mort} est resté dans l'état : il ne peut plus valoir que « décroché »`);
+  }
+  assert.equal(s.ingestAlive, s.polling.ok,
+    "ingestAlive doit être la SEULE lecture : `realtimeOk || pollingOk` gardait un terme mort dans la disjonction");
 });
 
 // ── Marque d'eau : microsecondes, lignes rejetées, canari relu (2026-09-13) ──

@@ -151,9 +151,22 @@ devenu le chemin NOMINAL**, pas un secours.
   et 5 s suffisent à une console de supervision. Accélérer « pour compenser »
   aurait ajouté du coût pour une latence imperceptible.
 - **L'alerte « Realtime décroché » est désarmée explicitement**
-  (`ingestState().realtimeUtilise === false`). Elle ne se déclencherait déjà
-  plus — `realtimeStatus` reste `null` — mais un verrou qui tient par accident
-  se rallume au premier champ d'affichage posé là.
+  (`ingestState().realtimeUtilise === false`), et c'est la SEULE chose qui la
+  désarme : `realtimeOk`, `realtimeStatus` et `realtimeLastError` ont été
+  **retirés de l'état** avec le canal — s'en remettre à leur absence serait
+  tenir par accident. Verrou : `test/observation-alerts.test.js` ⑪, qui passe
+  `ingestState()` **réel** à `evaluer()` réel. Sans lui, retirer la garde
+  laissait 577/577 verts.
+- **Les trois surfaces qui disaient « Secours » ont suivi** (bandeau d'Accueil,
+  page Sources, détail « Collecte ») : elles lisaient `ing.realtimeOk`, devenu
+  une variable sans affectation, donc figée sur « décroché ». Le pilotage aurait
+  annoncé un mode dégradé permanent — l'alarme déplacée de l'alerte vers l'écran.
+- **Le recouvrement du polling est passé de 2 s à 15 s** (`RECOUVREMENT_MS`, au
+  dessus de `POLL_MS`) : `received_at` vaut `now()` au DÉBUT de la transaction,
+  la ligne n'est visible qu'au commit, et le canal — insensible à `received_at`
+  — masquait jusqu'ici les commits tardifs. Sans lui, la ligne était perdue
+  sans recours. `LOT_MAX = 2000` plafonne le débit à 400 lignes/s : au-delà, le
+  pilotage prend un retard qu'il ne rattrape pas, et rien ne le dit.
 - **Le canari n'est pas concerné** : il est observé par `ingestOne`, point de
   passage unique de tout événement entrant.
 - **Retour arrière** : republier la table, puis restaurer le canal — et il

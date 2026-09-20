@@ -19,6 +19,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 const oa = await import("../server/observation-alerts.js");
+// ⚠️ L'ÉTAT RÉEL, pas un fixture : c'est tout l'objet du cas ⑪ ci-dessous.
+const { ingestState } = await import("../server/ingest.js");
 const { evaluer, transitions, observationAlertsTick, _setStateForTests, heureParis, enHeuresActives, debutHeuresActivesParis } = oa;
 
 // 2026-09-18 est un vendredi ; 12:00Z = 14:00 à Paris (heure d'été), 02:00Z = 04:00.
@@ -26,6 +28,11 @@ const JOUR = Date.parse("2026-09-18T12:00:00Z");
 const NUIT = Date.parse("2026-09-18T02:00:00Z");
 const H = 3_600_000;
 const obsOk = () => ({ parts: { dbRead: { state: "LIVE" }, canary: { state: "LIVE" }, sse: { state: "IDLE" }, persistence: { state: "LIVE" } } });
+// ⚠️ Ce fixture porte encore `realtimeOk`/`realtimeStatus` : le produit ne les
+// émet PLUS (canal retiré le 2026-09-20), mais la logique de grâce de
+// `evaluer` doit rester gardée au cas où un canal reviendrait. C'est
+// précisément pourquoi il ne peut pas servir à prouver que l'alerte est
+// éteinte aujourd'hui — d'où le cas ⑪, qui passe `ingestState()` tel quel.
 const ingOk = (over = {}) => ({ supabaseReady: true, realtimeOk: true, realtimeStatus: "SUBSCRIBED", polling: { failStreak: 0, ok: true }, ingestAlive: true, lastRealSeenIso: new Date(JOUR - H).toISOString(), ...over });
 
 test("heure de Paris et heures actives : 14 h = active, 04 h = nuit", () => {
@@ -130,4 +137,41 @@ test("une bascule = une alerte : deux évaluations identiques n'émettent rien, 
   assert.equal(vues.length, 2);
   assert.equal(vues[1].key, "obs:dbread"); assert.equal(vues[1].level, "info");
   _setStateForTests({ etats: null });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ⑪ LE CÂBLAGE — l'ÉTAT RÉEL passé à l'ÉVALUATEUR RÉEL (2026-09-20)
+//
+// Défaut mesuré par `audit-passio` sur ce lot : `realtimeUtilise: false` était
+// vérifié d'un côté (`ingest.test.js` lit le champ) et lu de l'autre
+// (`observation-alerts.js`), mais AUCUN test ne reliait les deux — le fixture
+// `ingOk` ci-dessus n'a jamais porté ce champ. Retirer la garde de
+// `observation-alerts.js` laissait donc **577/577 verts**, c'est-à-dire
+// exactement ce que ce lot prétend éviter : « un verrou qui tient par accident
+// finit par le dire ». C'est la faute `_notifierMessage`, rejouée côté pilotage.
+// ═══════════════════════════════════════════════════════════════════════════
+test("⑪ câblage : l'état RÉEL du pilotage ne peut plus déclencher « Realtime décroché »", () => {
+  const reel = ingestState();
+  assert.equal(reel.realtimeUtilise, false, "prémisse : le produit déclare ne plus utiliser le temps réel");
+
+  // Même bien après la grâce de 5 min, et même si quelqu'un venait poser un
+  // statut d'affichage hostile dans l'état : la garde tient sur le DRAPEAU seul.
+  const base = { ...reel, supabaseReady: true, polling: { failStreak: 0, ok: true }, ingestAlive: true,
+    lastRealSeenIso: new Date(JOUR - H).toISOString() };
+  for (const hostile of [{}, { realtimeStatus: "CHANNEL_ERROR", realtimeLastError: "PrivateOnly" }, { realtimeStatus: "IDLE" }]) {
+    const t0 = evaluer({ obs: obsOk(), ingest: { ...base, ...hostile }, now: JOUR });
+    const t1 = evaluer({ obs: obsOk(), ingest: { ...base, ...hostile }, now: JOUR + 6 * 60_000, prev: t0 });
+    assert.equal(t1.etats.realtime.mauvais, false,
+      `« Realtime décroché » s'est rallumée avec ${JSON.stringify(hostile)} : la garde ne tient pas sur realtimeUtilise`);
+    assert.equal(transitions(t0, t1).filter((a) => a.key === "obs:realtime").length, 0,
+      "une alerte obs:realtime a été émise alors que le canal n'existe plus");
+  }
+});
+
+test("⑪ bis : le chemin d'ingestion n'a plus qu'UN terme — un polling mort rend le pilotage sourd", () => {
+  // Avant le retrait, `ingestAlive = realtimeOk || pollingOk` : un polling mort
+  // était masqué par un realtime vivant. Le canal parti, plus rien ne masque.
+  const reel = ingestState();
+  assert.equal(reel.ingestAlive, reel.polling.ok,
+    "ingestAlive doit valoir exactement polling.ok : un second terme le rendrait complaisant");
 });

@@ -2091,7 +2091,7 @@ qu'aucune souscription n'ait bougé, et **un verrou qui rougit sur un innocent f
 désarmé**. 27 reste rouge sur la vraie régression (branche « bloc » cassée → ~17). ⚠️ `creation-passion` ⑭ reste rouge **en local sur `origin/main` PUR** (rejoué en
 worktree séparé, port 8099) — divergence d'environnement déjà écrite, étrangère au lot.
 
-## 🛰️ LA TÉLÉMÉTRIE SORT DU TEMPS RÉEL — 91 % DU TRAVAIL DE RÉPLICATION DISPARAÎT (2026-09-20)
+## 🛰️ LA TÉLÉMÉTRIE SORT DU TEMPS RÉEL — 91 % DE CE QUE LA BASE ÉMET, POUR UN SEUL ABONNÉ (2026-09-20)
 
 Demande de Benjamin : « augmenter **considérablement** ces chiffres, sans investir ». Les trois volets
 précédents grignotaient des postes réels sans changer l'ordre de grandeur, parce qu'aucun ne touchait
@@ -2120,11 +2120,38 @@ toujours** : c'est pourquoi le lot ne se contente pas de retirer la table — le
 **cesse d'être un secours pour devenir le chemin NOMINAL**, et l'alerte « Realtime décroché » est
 désarmée. On ne dégrade pas en silence, **on change de mécanisme**.
 
-⚠️ **L'ALERTE EST DÉSARMÉE EXPLICITEMENT (`realtimeUtilise: false`), PAS PAR ACCIDENT.** Elle ne se
-déclencherait déjà plus — `decroche` teste `ing.realtimeStatus`, qui reste `null`, donc falsy — mais
-**un verrou qui tient par accident finit par le dire** : le jour où quelqu'un initialise ce champ à
-`"IDLE"` pour faire joli, l'alarme se rallume pour toujours, et une alarme qui crie à tort emporte les
-vraies avec elle.
+⚠️ **L'ALERTE EST DÉSARMÉE EXPLICITEMENT (`realtimeUtilise: false`), PAS PAR ACCIDENT** — et **la
+première rédaction ne gardait ce drapeau NULLE PART** : `ingest.test.js` lisait le champ,
+`observation-alerts.js` le lisait aussi, mais **aucun test ne reliait les deux** (le fixture `ingOk`
+ne l'a jamais porté), donc retirer la garde laissait **577/577 verts**. C'est la faute
+`_notifierMessage`, rejouée côté pilotage, dans le lot même qui invoque la règle. Verrou ⑪ de
+`observation-alerts.test.js` : il passe `ingestState()` **réel** à `evaluer()` réel, avec trois
+statuts hostiles injectés, et rougit sur le retrait de la garde.
+⚠️ **ET DÉSARMER L'ALERTE NE SUFFISAIT PAS : L'ÉCRAN, LUI, DISAIT « SECOURS » POUR TOUJOURS.** Trois
+surfaces de `dashboard/public/js/app.js` (bandeau d'Accueil, page Sources, détail « Collecte »)
+lisaient `ing.realtimeOk`, devenu une variable **sans aucune affectation** — elle ne pouvait plus
+rapporter que sa valeur initiale, « décroché ». Le pilotage aurait affirmé être en mode dégradé à
+chaque chargement, et le prochain lecteur serait parti chercher une panne inexistante : **l'alarme
+déplacée de l'alerte vers l'écran**, très exactement le mode d'échec que ce lot invoque.
+`realtimeOk`, `lastRealtimeStatus` et `realtimeLastError` sont **RETIRÉS de l'état** avec leurs trois
+lecteurs, et `ingestAlive` passe de `realtimeOk || pollingOk` à `pollingOk` — une disjonction dont un
+terme est mort est une disjonction complaisante. **Cible supprimée = tout ce qui la vise part avec**,
+y compris le verrou qui exigeait l'inverse la veille.
+⚠️ **ET LE POLLING DEVENU UNIQUE A PERDU SON SECOND FILET, CE QUE LE LOT NE DISAIT PAS.**
+`received_at` a `DEFAULT now()`, pris au **début de la transaction**, alors que la ligne n'est visible
+qu'à sa **validation** : une ligne validée en retard passe sous la marque et n'est jamais rattrapée
+par `gt(marque)`. `RECOUVREMENT_MS` valait **2 s, soit moins que `POLL_MS`** — et tant que le canal
+existait, ça ne se voyait pas : lui décode le WAL, il est insensible à `received_at` et livrait la
+ligne quand même. **Retirer le canal transforme une faiblesse théorique en perte silencieuse sans
+recours.** Porté à **15 s** (> `POLL_MS`, > toute validation plausible), coût : trois relectures par
+ligne à 1,0 ms. Et `limit(500)` est un **plafond de débit** — `LOT_MAX / (POLL_MS/1000)` — porté à
+2 000, soit 400 lignes/s : au-delà le pilotage prend un retard qu'il ne rattrape jamais, **et rien ne
+le dit**. C'est la vraie borne de mise à l'échelle du chemin devenu nominal.
+⚠️ **LA FENÊTRE DU CANARI EST DE 90 SECONDES, PAS DE 15 MINUTES.** 15 min est `CANARY_EVERY_MS`, la
+période d'**ENVOI** ; `CANARY_DEADLINE_MS` (90 s) est ce qui décide qu'un canari est manqué. La marge
+sur le polling est donc **18×**, pas 180× — et le paragraphe qui justifiait de ne pas resserrer la
+cadence s'appuyait sur le mauvais nombre : quelqu'un qui porterait `POLL_MS` à 120 s « puisqu'on a
+15 minutes » ferait basculer le canari en UNAVAILABLE.
 ⚠️ **LA CADENCE NE CHANGE PAS (5 s), ET C'EST DÉLIBÉRÉ** : le polling est mesuré à **1,0 ms** par
 lecture, 5 s suffisent à une console de supervision, et accélérer « pour compenser » aurait ajouté du
 coût pour une latence imperceptible. ⚠️ **Le canari n'est pas concerné** : il est observé par
@@ -2139,14 +2166,37 @@ livre plus jamais rien — le défaut muet que `audit:realtime` existe pour emp�
 `select count(*) from pg_publication_tables where pubname='supabase_realtime' and schemaname='public'`
 → **11**.
 
-⚠️ **CE QUE ÇA CHANGE, DIT JUSTE** : le décodage WAL est proportionnel aux changements publiés ; en
-retirer 91,4 % fait tomber ce poste de **68,9 % à ~6 %** du CPU actuel — **la base fait environ le
-tiers du travail à trafic identique** — et ça ne s'use pas avec la croissance (le volume de télémétrie
-grandit avec les utilisateurs : c'est un terme retiré de l'équation, pas un gain ponctuel).
+⚠️ **ET MON CHIFFRE-PHARE ÉTAIT FAUX — RÉÉCRIT LE JOUR MÊME, APRÈS MESURE.** J'annonçais « 91 % du
+TRAVAIL de réplication disparaît, ce poste tombe de 68,9 % à ~6 %, la base fait le tiers du travail ».
+C'était une **extrapolation** qui confondait *part des changements* et *part du travail*, et qui
+contredisait la fiche du **MÊME JOUR** sur l'amplification (facteur **×13**). `audit-passio` l'a
+relevé après que les gates étaient vertes ; la mesure lui a donné raison. **Mesuré** : la requête de
+décodage WAL est appelée **7 201 615** fois pour **1 542 479** changements de lignes *tous schémas
+confondus* (×4,67) et 527 675 sur les tables publiées (**×13,65**) — **elle est donc appelée plus
+souvent qu'il n'existe de changements dans TOUTE la base**, donc son coût porte un multiplicateur :
+le nombre d'abonnements qui matchent chaque changement. Et `telemetry_events`, avec **UN** abonné,
+est précisément la table qui **ne le paie pas**. Le gain honnête est un **encadrement** : **6,7 %**
+du poste temps réel (**4,6 pt** de CPU) si le coût suit (enregistrements × abonnements), 91,3 %
+(62,9 pt) s'il suit les seuls enregistrements — **et la borne basse est la plausible**, puisque le
+multiplicateur est mesuré. **Ordre de grandeur du lot : 4 à 5 points de CPU, pas 63.**
+⚠️ **LE REMÈDE RESTE BON, SA JUSTIFICATION CHANGE** : ce n'est plus « le plus gros levier du
+projet », c'est « retirer d'une publication une table sans aucun abonné qui porte neuf dixièmes de ce
+qu'elle émet » — gratuit, sans risque, et c'est un terme qui **grandit avec les utilisateurs**.
+⚠️ **LA MESURE D'ACCEPTATION EST À FAIRE APRÈS LE GESTE** (relever `calls`/`total_exec_time` de la
+requête de décodage, comparer 24 h après) : **tant qu'elle n'est pas relevée, ce lot n'a pas de gain
+mesuré, il a un encadrement.**
+⚠️ **VÉRIFIER LES FENÊTRES DE COMPTEURS AVANT DE COMPARER DEUX SOURCES** : `pg_stat_database.stats_reset`
+(07/05) et `pg_stat_statements_info.stats_reset` (13/05) — six jours d'écart sur 130, donc le ×13
+n'est pas un artefact de période. C'est le contrôle qui manquait le matin même, quand un
+`sum(...) over ()` posé après un `where` avait rendu 69 % pour 5,92 %.
+⚠️ **LA LEÇON N'EST PAS « UNE CAUSE FAUSSE », C'EST UNE UNITÉ FAUSSE** : je mesurais des
+*changements* et j'annonçais du *travail*. **Une part se lit contre la grandeur qu'on prétend
+réduire, jamais contre un proxy commode.**
 ⚠️ **CE QUE ÇA NE FAIT PAS** : la forme quadratique demeure sur les onze tables du produit — à 2 000
-connectés, une publication reste évaluée 2 000 fois. Elle ne pesait que 8,6 % des changements, donc
-elle était invisible derrière la télémétrie ; **elle devient le poste dominant du temps réel après ce
-lot**. S'abonner à ce qui est VISIBLE reste un changement d'architecture, pas un réglage.
+connectés, une publication reste évaluée 2 000 fois. ⚠️ **Et depuis la re-mesure, on ne peut plus
+écrire qu'elle « devient » dominante** : avec un multiplicateur de 13, elle l'était **déjà avant ce
+lot** (8,6 % des changements, mais ~93 % des lignes décodées). S'abonner à ce qui est VISIBLE reste
+un changement d'architecture, pas un réglage — **c'est le mur, et il est devant, pas derrière.**
 
 ⚠️ **LE COMMENTAIRE QUI EXPLIQUE LA RÈGLE DÉCLENCHE LA RÈGLE — TROISIÈME FOIS EN UNE JOURNÉE.** La gate
 `audit:realtime` s'était attrapée elle-même le 19/09, puis avait attrapé le commentaire de
