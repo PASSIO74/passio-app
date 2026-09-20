@@ -12,9 +12,10 @@
 // Ce qu'il surveille, et à quel niveau :
 //   obs:dbread    high      lecture service_role UNAVAILABLE
 //   obs:canary    high      canari UNAVAILABLE (2 manqués de suite, cf. observation.js)
-//   obs:realtime  warn      realtime ≠ SUBSCRIBED depuis > 5 min (le polling reprend)
-//   obs:polling   high      polling de secours ≥ 6 échecs de suite
-//   obs:ingest    critical  ni realtime ni polling : le pilotage est sourd
+//   obs:realtime  warn      DÉSARMÉE depuis le 2026-09-20 (canal retiré) — voir
+//                           `realtimeUtilise` plus bas ; elle ne peut plus naître
+//   obs:polling   high      lecture incrémentale (chemin NOMINAL) ≥ 6 échecs de suite
+//   obs:ingest    critical  plus aucune lecture : le pilotage est sourd
 //   obs:silence   warn      aucun signal RÉEL depuis DASH_SILENCE_MIN (240) — en
 //                           heures actives seulement (09–21 Paris), jamais tant
 //                           qu'aucun signal n'a été vu, tenu la nuit
@@ -60,9 +61,13 @@ export function debutHeuresActivesParis(now = Date.now()) {
 const SPEC = {
   dbread: { key: "obs:dbread", level: "high", titre: "Lecture de la base impossible", retour: "Lecture de la base rétablie" },
   canary: { key: "obs:canary", level: "high", titre: "Canari public non observé", retour: "Canari public de nouveau observé" },
-  realtime: { key: "obs:realtime", level: "warn", titre: "Realtime décroché (repli sur le polling)", retour: "Realtime de nouveau abonné" },
-  polling: { key: "obs:polling", level: "high", titre: "Polling de secours en échec", retour: "Polling de secours rétabli" },
-  ingest: { key: "obs:ingest", level: "critical", titre: "Ingestion sourde : ni realtime ni polling", retour: "Ingestion rétablie" },
+  // ⚠️ Inatteignable depuis le 2026-09-20 (canal retiré), et CONSERVÉE exprès :
+  // une alerte `obs:realtime` restée OUVERTE sur le poste doit pouvoir se
+  // refermer au premier tour. Son message de retour ne dit donc plus « de
+  // nouveau abonné » — ce serait faux — mais ce qui s'est réellement passé.
+  realtime: { key: "obs:realtime", level: "warn", titre: "Realtime décroché (repli sur le polling)", retour: "Canal temps réel retiré (2026-09-20) — ingestion par lecture incrémentale" },
+  polling: { key: "obs:polling", level: "high", titre: "Ingestion : lectures en échec", retour: "Ingestion rétablie" },
+  ingest: { key: "obs:ingest", level: "critical", titre: "Ingestion sourde : plus aucune lecture n'aboutit", retour: "Ingestion rétablie" },
   silence: { key: "obs:silence", level: "warn", titre: "Aucun signal réel depuis des heures", retour: "Des signaux réels arrivent de nouveau" },
   storage: { key: "storage:write", level: "high", titre: "Écriture des données du pilotage impossible", retour: "Écriture des données rétablie" },
 };
@@ -83,7 +88,16 @@ export function evaluer({ obs, ingest, now = Date.now(), prev = null, silenceMs 
   etats.canary = { mauvais: parts.canary?.state === "UNAVAILABLE", detail: parts.canary?.detail || "" };
   etats.storage = { mauvais: parts.persistence?.state === "UNAVAILABLE", detail: parts.persistence?.detail || "" };
 
-  const decroche = ready && ing.realtimeStatus && ing.realtimeStatus !== "SUBSCRIBED";
+  // ⚠️ `realtimeUtilise === false` DÉSARME CETTE ALERTE, ET C'EST LA SEULE CHOSE
+  // QUI LA DÉSARME. Le canal `postgres_changes` du pilotage a été retiré le
+  // 2026-09-20 (il portait à lui seul 91 % des changements que la base réplique,
+  // pour UN abonné) : la lecture incrémentale est devenue le chemin nominal.
+  // `realtimeStatus` et `realtimeLastError` ont été retirés de l'état avec le
+  // canal, donc `ing.realtimeStatus` est `undefined` ici — s'en remettre à ça
+  // serait tenir par ACCIDENT, et le verrou ⑪ de `observation-alerts.test.js`
+  // l'interdit en passant l'état RÉEL de `ingestState()` à cette fonction.
+  const decroche = ready && ing.realtimeUtilise !== false
+    && ing.realtimeStatus && ing.realtimeStatus !== "SUBSCRIBED";
   const realtimeBadSince = decroche ? (prev?.realtimeBadSince || now) : null;
   etats.realtime = { mauvais: Boolean(decroche && now - realtimeBadSince > REALTIME_GRACE_MS), detail: decroche ? `${ing.realtimeStatus}${ing.realtimeLastError ? " — " + ing.realtimeLastError : ""} depuis ${heures(now - realtimeBadSince)} h` : "" };
 

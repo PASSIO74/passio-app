@@ -79,10 +79,20 @@ test("① le dépôt est sain, et la gate le dit avec un COMPTE — pas un simpl
   // attrape la table de la ligne 6267. Reformuler ce commentaire ferait tomber
   // le compte à 27 sans qu'aucune souscription n'ait bougé — et un verrou qui
   // rougit sur un innocent finit par être désarmé.
-  // 27 est donc le plancher : vert aujourd'hui (28), vert si le fantôme
-  // disparaît (27), ROUGE sur la vraie régression — si la branche « bloc »
-  // cassait, `charge.mjs` retomberait de 12 liaisons à 1 et le total à ~17.
-  assert.ok(Number(m[1]) >= 27, `seulement ${m[1]} souscriptions scannées (attendu ≥ 27)`);
+  // ⚠️ LE PLANCHER EST UN GARDE-FOU DE VOLUME, PAS LE VERROU DÉCISIF — c'est le
+  // cas ② qui mesure exactement, sur un dépôt fabriqué. Ici on veut seulement
+  // qu'un effondrement se voie, SANS rougir sur un innocent : le compte du jour
+  // est 27, dont UN FANTÔME (`app-08:6264` est un commentaire qui contient le
+  // marqueur et dont la fenêtre attrape la table de la ligne 6267), donc 26
+  // réelles ; et il bouge à chaque souscription ajoutée ou retirée du produit —
+  // `telemetry_events` vient d'en retirer une le 2026-09-20.
+  // ⚠️ LE PLANCHER EST À 25, PAS À 20 : à 20 la gate cessait de rougir sur une
+  // régression PARTIELLE (perte de 5 ou 6 souscriptions), ce qui vidait le
+  // garde-fou de son seul emploi. 25 garde deux crans de marge sous le compte du
+  // jour (27, dont un fantôme) et reste très au-dessus de ce que laisserait la
+  // régression totale : si la branche « bloc » cassait, `charge.mjs` retomberait
+  // de 12 liaisons à 1 et le total à ~16.
+  assert.ok(Number(m[1]) >= 25, `seulement ${m[1]} souscriptions scannées (attendu ≥ 25)`);
 });
 
 test("② la forme TABLEAU est lue en ENTIER — le compte est EXACTEMENT la taille du bloc", () => {

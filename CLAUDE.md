@@ -2091,6 +2091,229 @@ qu'aucune souscription n'ait bougé, et **un verrou qui rougit sur un innocent f
 désarmé**. 27 reste rouge sur la vraie régression (branche « bloc » cassée → ~17). ⚠️ `creation-passion` ⑭ reste rouge **en local sur `origin/main` PUR** (rejoué en
 worktree séparé, port 8099) — divergence d'environnement déjà écrite, étrangère au lot.
 
+## 🛰️ LA TÉLÉMÉTRIE SORT DU TEMPS RÉEL — 91 % DE CE QUE LA BASE ÉMET, POUR UN SEUL ABONNÉ (2026-09-20)
+
+Demande de Benjamin : « augmenter **considérablement** ces chiffres, sans investir ». Les trois volets
+précédents grignotaient des postes réels sans changer l'ordre de grandeur, parce qu'aucun ne touchait
+le premier poste de la base. Dossier : `docs/CAPACITE_TELEMETRIE_HORS_TEMPS_REEL_2026-09-20.md`.
+
+⚠️ **UNE SEULE TABLE FAIT 91,4 % DE TOUT CE QUE LA BASE RÉPLIQUE.** `pg_stat_user_tables`, somme
+insert+update+delete sur les DOUZE tables publiées : `telemetry_events` **481 554** sur **526 756**.
+Les onze autres réunies font 8,6 % (`profiles` 20 748, `posts` 6 934, `video_lives` 6 583,
+`notifications` 5 901, `conv_messages` 1 901, les six dernières 3 135). Et son abonné, c'est **UN
+client** — `dashboard/server/ingest.js`, le pilotage, sur le poste de l'éditeur. **Neuf dixièmes du
+travail temps réel de la production servaient un seul tableau de bord.**
+
+⚠️ **CE QUE J'AI CRU POUVOIR FAIRE ET QUI EST IMPOSSIBLE — arrêté AVANT d'écrire du SQL.** En croisant
+« publié » et « écouté », j'ai mesuré **229 613 changements (43,6 %) portant des opérations que
+PERSONNE n'écoute** (le DELETE de la purge de télémétrie, l'INSERT et le DELETE de `profiles`, le
+DELETE de `posts`…). Restreindre les opérations table par table est **IMPOSSIBLE** : `pubinsert`,
+`pubupdate`, `pubdelete`, `pubtruncate` sont des colonnes de **`pg_publication`** — `publish` est
+réglable PAR PUBLICATION, jamais par table ; `pg_publication_rel` ne porte qu'un filtre de lignes
+(`prqual`) et une liste de colonnes (`prattrs`). Vérifié sur la prod (PG 17.6). Ce gaspillage est donc
+**réel et inatteignable par ce chemin** ; il disparaît ici parce que la table qui en porte 89 % sort.
+
+⚠️ **CE N'EST PAS UN DÉSAVEU DE LA MIGRATION DU 2026-09-19, QUI AVAIT RAISON.** Elle écrit que retirer
+cette table « aurait éteint le tableau de bord en direct, SANS une erreur » — repli silencieux sur le
+polling, symptôme « c'est un peu en retard », jamais « c'est cassé ». **Le raisonnement tient
+toujours** : c'est pourquoi le lot ne se contente pas de retirer la table — le polling du pilotage
+**cesse d'être un secours pour devenir le chemin NOMINAL**, et l'alerte « Realtime décroché » est
+désarmée. On ne dégrade pas en silence, **on change de mécanisme**.
+
+⚠️ **L'ALERTE EST DÉSARMÉE EXPLICITEMENT (`realtimeUtilise: false`), PAS PAR ACCIDENT** — et **la
+première rédaction ne gardait ce drapeau NULLE PART** : `ingest.test.js` lisait le champ,
+`observation-alerts.js` le lisait aussi, mais **aucun test ne reliait les deux** (le fixture `ingOk`
+ne l'a jamais porté), donc retirer la garde laissait **577/577 verts**. C'est la faute
+`_notifierMessage`, rejouée côté pilotage, dans le lot même qui invoque la règle. Verrou ⑪ de
+`observation-alerts.test.js` : il passe `ingestState()` **réel** à `evaluer()` réel, avec trois
+statuts hostiles injectés, et rougit sur le retrait de la garde.
+⚠️ **ET DÉSARMER L'ALERTE NE SUFFISAIT PAS : L'ÉCRAN, LUI, DISAIT « SECOURS » POUR TOUJOURS.** Trois
+surfaces de `dashboard/public/js/app.js` (bandeau d'Accueil, page Sources, détail « Collecte »)
+lisaient `ing.realtimeOk`, devenu une variable **sans aucune affectation** — elle ne pouvait plus
+rapporter que sa valeur initiale, « décroché ». Le pilotage aurait affirmé être en mode dégradé à
+chaque chargement, et le prochain lecteur serait parti chercher une panne inexistante : **l'alarme
+déplacée de l'alerte vers l'écran**, très exactement le mode d'échec que ce lot invoque.
+`realtimeOk`, `lastRealtimeStatus` et `realtimeLastError` sont **RETIRÉS de l'état** avec leurs trois
+lecteurs, et `ingestAlive` passe de `realtimeOk || pollingOk` à `pollingOk` — une disjonction dont un
+terme est mort est une disjonction complaisante. **Cible supprimée = tout ce qui la vise part avec**,
+y compris le verrou qui exigeait l'inverse la veille.
+⚠️ **ET LE POLLING DEVENU UNIQUE A PERDU SON SECOND FILET, CE QUE LE LOT NE DISAIT PAS.**
+`received_at` a `DEFAULT now()`, pris au **début de la transaction**, alors que la ligne n'est visible
+qu'à sa **validation** : une ligne validée en retard passe sous la marque et n'est jamais rattrapée
+par `gt(marque)`. `RECOUVREMENT_MS` valait **2 s, soit moins que `POLL_MS`** — et tant que le canal
+existait, ça ne se voyait pas : lui décode le WAL, il est insensible à `received_at` et livrait la
+ligne quand même. **Retirer le canal transforme une faiblesse théorique en perte silencieuse sans
+recours.** Porté à **15 s** (> `POLL_MS`, > toute validation plausible), coût : trois relectures par
+ligne à 1,0 ms. Et `limit(500)` est un **plafond de débit** — `LOT_MAX / (POLL_MS/1000)` — porté à
+2 000, soit 400 lignes/s : au-delà le pilotage prend un retard qu'il ne rattrape jamais, **et rien ne
+le dit**. C'est la vraie borne de mise à l'échelle du chemin devenu nominal.
+⚠️ **LA FENÊTRE DU CANARI EST DE 90 SECONDES, PAS DE 15 MINUTES.** 15 min est `CANARY_EVERY_MS`, la
+période d'**ENVOI** ; `CANARY_DEADLINE_MS` (90 s) est ce qui décide qu'un canari est manqué. La marge
+sur le polling est donc **18×**, pas 180× — et le paragraphe qui justifiait de ne pas resserrer la
+cadence s'appuyait sur le mauvais nombre : quelqu'un qui porterait `POLL_MS` à 120 s « puisqu'on a
+15 minutes » ferait basculer le canari en UNAVAILABLE.
+⚠️ **LA CADENCE NE CHANGE PAS (5 s), ET C'EST DÉLIBÉRÉ** : le polling est mesuré à **1,0 ms** par
+lecture, 5 s suffisent à une console de supervision, et accélérer « pour compenser » aurait ajouté du
+coût pour une latence imperceptible. ⚠️ **Le canari n'est pas concerné** : il est observé par
+`ingestOne`, point de passage UNIQUE de tout événement entrant (historique, realtime, polling).
+
+⚠️ **ORDRE D'APPLICATION, NON NÉGOCIABLE** : ① le pilotage déployé sur le poste, ② *seulement ensuite*
+la migration. Dans l'autre sens, le pilotage garderait une souscription qui passe `SUBSCRIBED` et ne
+livre plus jamais rien — le défaut muet que `audit:realtime` existe pour empêcher.
+**GESTE HUMAIN QUI RESTE** (ADR-012, canal ③) :
+`npm run migration:appliquer -- migrations/migration_realtime_telemetry_2026-09-20.sql`, puis on
+**mesure l'état en base**, jamais le tableau de verdict :
+`select count(*) from pg_publication_tables where pubname='supabase_realtime' and schemaname='public'`
+→ **11**.
+
+⚠️ **ET MON CHIFFRE-PHARE ÉTAIT FAUX — RÉÉCRIT LE JOUR MÊME, APRÈS MESURE.** J'annonçais « 91 % du
+TRAVAIL de réplication disparaît, ce poste tombe de 68,9 % à ~6 %, la base fait le tiers du travail ».
+C'était une **extrapolation** qui confondait *part des changements* et *part du travail*, et qui
+contredisait la fiche du **MÊME JOUR** sur l'amplification (facteur **×13**). `audit-passio` l'a
+relevé après que les gates étaient vertes ; la mesure lui a donné raison. **Mesuré** : la requête de
+décodage WAL est appelée **7 201 615** fois pour **1 542 479** changements de lignes *tous schémas
+confondus* (×4,67) et 527 675 sur les tables publiées (**×13,65**) — **elle est donc appelée plus
+souvent qu'il n'existe de changements dans TOUTE la base**, donc son coût porte un multiplicateur :
+le nombre d'abonnements qui matchent chaque changement. Et `telemetry_events`, avec **UN** abonné,
+est précisément la table qui **ne le paie pas**. Le gain honnête est un **encadrement** : **6,7 %**
+du poste temps réel (**4,6 pt** de CPU) si le coût suit (enregistrements × abonnements), 91,3 %
+(62,9 pt) s'il suit les seuls enregistrements — **et la borne basse est la plausible**, puisque le
+multiplicateur est mesuré. **Ordre de grandeur du lot : 4 à 5 points de CPU, pas 63.**
+⚠️ **LE REMÈDE RESTE BON, SA JUSTIFICATION CHANGE** : ce n'est plus « le plus gros levier du
+projet », c'est « retirer d'une publication une table sans aucun abonné qui porte neuf dixièmes de ce
+qu'elle émet » — gratuit, sans risque, et c'est un terme qui **grandit avec les utilisateurs**.
+⚠️ **LA MESURE D'ACCEPTATION EST À FAIRE APRÈS LE GESTE** (relever `calls`/`total_exec_time` de la
+requête de décodage, comparer 24 h après) : **tant qu'elle n'est pas relevée, ce lot n'a pas de gain
+mesuré, il a un encadrement.**
+⚠️ **VÉRIFIER LES FENÊTRES DE COMPTEURS AVANT DE COMPARER DEUX SOURCES** : `pg_stat_database.stats_reset`
+(07/05) et `pg_stat_statements_info.stats_reset` (13/05) — six jours d'écart sur 130, donc le ×13
+n'est pas un artefact de période. C'est le contrôle qui manquait le matin même, quand un
+`sum(...) over ()` posé après un `where` avait rendu 69 % pour 5,92 %.
+⚠️ **LA LEÇON N'EST PAS « UNE CAUSE FAUSSE », C'EST UNE UNITÉ FAUSSE** : je mesurais des
+*changements* et j'annonçais du *travail*. **Une part se lit contre la grandeur qu'on prétend
+réduire, jamais contre un proxy commode.**
+⚠️ **CE QUE ÇA NE FAIT PAS** : la forme quadratique demeure sur les onze tables du produit — à 2 000
+connectés, une publication reste évaluée 2 000 fois. ⚠️ **Et depuis la re-mesure, on ne peut plus
+écrire qu'elle « devient » dominante** : avec un multiplicateur de 13, elle l'était **déjà avant ce
+lot** (8,6 % des changements, mais ~93 % des lignes décodées). S'abonner à ce qui est VISIBLE reste
+un changement d'architecture, pas un réglage — **c'est le mur, et il est devant, pas derrière.**
+
+⚠️ **LE COMMENTAIRE QUI EXPLIQUE LA RÈGLE DÉCLENCHE LA RÈGLE — TROISIÈME FOIS EN UNE JOURNÉE.** La gate
+`audit:realtime` s'était attrapée elle-même le 19/09, puis avait attrapé le commentaire de
+`charge.mjs` le matin même ; ici c'est le verrou de source du pilotage qui rougit parce que le
+commentaire d'`ingest.js` **cite** `admin.channel(` pour expliquer le retour arrière. Correctif
+durable : **un verrou de source qui cherche un jeton RETIRE LES COMMENTAIRES D'ABORD** — sinon il
+interdit d'expliquer ce qu'il garde, et un verrou qu'on ne peut pas documenter finit désarmé.
+
+⚠️ **`alter publication … drop table` N'EST PAS DU DDL DE TABLE**, et `audit:tables-compte` le prenait
+pour tel : elle refusait cette migration — qui ne touche AUCUNE table — en réclamant « un identifiant
+de compte » sur une table qu'elle n'avait jamais lue. **Un faux positif sur une gate de sécurité coûte
+plus qu'un trou** : il pousse à réécrire la migration pour lui plaire, ou à l'inscrire au socle — deux
+façons de la désarmer en croyant la respecter. La forme est neutralisée avant la recherche de DDL, et
+le verrou ⑧ exige qu'un **vrai** `drop table` reste signalé.
+
+⚠️ **UN BANC DE MIGRATION NE DOIT PAS COMPARER SON ÉTAT FINAL AU FICHIER D'AUJOURD'HUI.**
+`migration-realtime-publication.test.sh` ⑦ comparait ses 12 tables à `realtime-publication.json` : il
+rougissait dès que la nouvelle migration en retirait une. Lui reprocher de ne pas contenir l'avenir n'a
+pas de sens — son attendu porte désormais « le JSON + `telemetry_events` », et c'est le banc du 20/09
+qui compare l'état FINAL au JSON.
+
+Verrous : `tests/sql/migration-realtime-telemetry.test.sh` (11 contrôles, la migration est EXÉCUTÉE sur
+un PostgreSQL jetable — dont ⑦ « la variante qui emporterait `posts` doit LEVER sans rien appliquer »
+et ⑧ « sans le retrait, le verdict REFUSE au lieu de dire OK »), `dashboard/test/ingest.test.js` (+3 :
+le canal ne revient pas, la cadence est une constante nommée, l'état DÉCLARE que le temps réel n'est
+plus utilisé) et `tests/unit/audit-tables-compte.test.mjs` ⑧. Suite du pilotage : **577/577**.
+
+## 💾 STOCKAGE : LE MÉNAGE EST UTILE, LE MUR N'ÉTAIT PAS LÀ — LE FORFAIT EST **PRO** (2026-09-20)
+
+Benjamin, après trois volets de capacité : « les résultats ne me conviennent, je veux beaucoup plus
+de volume d'utilisateurs ». Ce lot devait enfin lire le forfait — le point que la fiche de la veille
+laissait ouvert en toutes lettres (« le forfait Supabase n'a jamais été LU »). Dossier :
+`docs/CAPACITE_STOCKAGE_2026-09-20.md`.
+
+⚠️ **ET IL NE L'A PAS LU : IL L'A DÉDUIT, ET LA DÉDUCTION ÉTAIT FAUSSE D'UN FACTEUR 100.** La
+première rédaction titrait « le mur le plus proche, c'est 1 Go de stockage » et concluait à
+**≈ 125 comptes**. Le 1 Go venait du palier GRATUIT, supposé depuis la consigne « sans investir » —
+jamais mesuré. **L'organisation est sur le forfait PRO** (capture de la page Billing, 2026-09-20 :
+« Pro Plan », 25 $/mois, crédits de calcul 9,66 $ absorbés, facture projetée 28,75 $). Le stockage
+est donc à **deux ordres de grandeur** au-dessus des 80 Mo consommés, et **le mur n'est pas là.**
+**Une déduction présentée comme une mesure est la faute que ce fichier reproche partout ailleurs**
+(« l'état ne se lit pas dans un fichier du dépôt, il se mesure ») — ici elle portait sur le forfait,
+et elle a failli lancer un chantier Cloudflare R2 entier pour rien.
+
+⚠️ **LE SPEND CAP EST ACTIVÉ, DONC LES QUOTAS RESTENT DES MURS DURS — ils ne deviennent pas une
+facture.** Texte de la page : *« You won't be charged any extra for usage. However, your projects
+could become unresponsive or enter read only mode if you exceed the included quota. »* Dépasser ne
+coûte pas d'argent, ça met la production en **lecture seule**. Le raisonnement « plafond = mur » de
+tous les lots de capacité TIENT ; seuls les nombres changent.
+
+⚠️ **LES QUOTAS CHIFFRÉS DU PRO N'ONT TOUJOURS PAS ÉTÉ LUS, ET ON NE LES RECOPIE PAS DE MÉMOIRE.**
+Ils sont sur la page **Usage** de l'organisation, avec la consommation en regard. Tant qu'ils n'y
+sont pas relevés, **aucun classement des plafonds par distance n'est publiable** — c'est très
+exactement l'erreur qu'on vient de payer. Seul plafond encore établi : **inscriptions 300/jour chez
+Brevo, illimitées par Google** (voir ci-dessous), qui ne dépend pas de Supabase.
+
+⚠️ **CE QUI RESTE VRAI DU LOT, ET POURQUOI IL GARDE SA VALEUR** : 67 % du stockage est du déchet
+(ci-dessous), et ça ne dépend d'aucun plafond — c'est 53,5 Mo qu'on ne sauvegarde plus, qu'on ne
+restaure plus et qu'on ne paie plus à personne. **Sept vidéos = 59 Mo sur les 70 du seau `content`**,
+la plus grosse 24 Mo, les trois plus grosses de JUILLET (le compresseur du 19/09 ne s'applique
+qu'aux nouveaux envois) : ça reste une charge utile servie à des téléphones sur données mobiles,
+argument qui n'a jamais eu besoin d'un quota pour tenir.
+
+⚠️ **ET UN VRAI POSTE DE COÛT A ÉTÉ VU SUR LA MÊME CAPTURE** : la facture projetée est **28,75 $**
+pour 25 $ de forfait, parce que les crédits de calcul (10 $) sont dépassés par **DEUX** projets —
+`PASSIO74's Project` (Micro, 578 h) **et `PASSIO staging` (Micro, 141 h)**, ce dernier rallumé pour
+l'exercice de restauration du 14/09 et jamais remis en pause. **Mettre le staging en pause ramène la
+facture à 25 $**, ce qui est le sens littéral de « sans investir ». Geste d'exploitation, hors dépôt.
+⚠️ **ET LE PLAFOND QUI BORNE VRAIMENT L'ACQUISITION NE SE CORRIGE PAS PAR DU CODE** : 300 e-mails
+par jour, confirmation obligatoire depuis le 30/08. Le seul geste qui l'a levé est d'avoir remonté
+**Google en tête** (19/09) ; Apple Sign-In ferait pareil, gratuitement.
+
+⚠️ **67 % DU STOCKAGE NE SERT PLUS À RIEN** : `content` 24 orphelins/60 = **50 Mo sur 70**,
+`attachments` 7/12 = **3,5 Mo sur 10**, soit **53,5 Mo sur 80**. Purger fait passer le stockage à
+**26,5 Mo**, sans toucher une donnée vivante. ⚠️ La première rédaction vendait ça comme « marge ×3
+sur le mur le plus proche » : **il n'y a pas de mur à cette distance**, et le geste n'en avait pas
+besoin — on ne garde pas 53,5 Mo de fichiers que plus rien ne référence.
+⚠️ **LA PREMIÈRE MESURE ANNONÇAIT 62 Mo, ET ELLE ÉTAIT FAUSSE** : elle ne lisait pas `user_state`,
+le blob qui porte les **publications PERSO** — six objets, 12 Mo, bien vivants. **Une mesure
+spectaculaire se re-vérifie avant d'y croire**, surtout quand elle décide de suppressions.
+
+⚠️ **UN ORPHELIN EST UNE ABSENCE DE PREUVE, PAS UNE PREUVE D'ABSENCE** — c'est tout le danger de
+`npm run medias:orphelins` (`scripts/medias-orphelins.js`, cœur PUR `classerOrphelins`) : un objet
+est déclaré orphelin parce qu'on n'a trouvé son nom **nulle part**, et « orphelin » veut dire
+« supprimé ». Toute source oubliée **fabrique** des suppressions. QUATRE gardes, trois mécaniques :
+① rapport par défaut (`--appliquer` seul supprime) ; ② **âge minimum 30 j** — l'upload précède
+l'INSERT, et une publication hors ligne attend dans sa file ; ③ **fail-closed** : une source
+illisible fait LEVER, on ne réduit jamais la liste ; ④ plafond de 200 par exécution — un chiffre
+inattendu est un signal, pas une quantité de travail. **Les CINQ sources** : `posts`, `profiles`,
+`stories`, `conv_messages`, **`user_state`** (celle qu'on oublie).
+
+⚠️ **MA JUSTIFICATION DU CHOIX « NOM DE FICHIER » ÉTAIT FAUSSE, ET LA RÉINJECTION L'A DIT.**
+J'avais écrit « comparer l'URL entière classerait orphelin tout média publié avant le CDN » : faux —
+le chemin de l'objet est sous-chaîne de l'URL Supabase **comme** de l'URL CDN, donc la mutation
+laissait le cas **VERT**. La vraie raison est le **SENS DE L'ERREUR** : le nom seul est plus
+permissif, donc tous les faux positifs vont vers « on garde », jamais vers « on supprime ». Le cas
+② bis mesure enfin ce choix (une référence qui porte le nom SANS son dossier). **Deuxième fois de la
+journée qu'une justification est démentie par une mutation** — après le chiffre-phare de #515.
+
+⚠️ **NE PAS PARTIR SUR CLOUDFLARE R2 — LA PREMIÈRE RÉDACTION LE RECOMMANDAIT COMME « le seul levier
+d'ordre de grandeur », ET C'ÉTAIT LA CONSÉQUENCE DIRECTE DU FORFAIT MAL DÉDUIT.** R2 offrirait 10 Go
+là où le Pro en donne deux ordres de grandeur de plus : on aurait migré **vers un plafond plus bas**,
+en ajoutant un fournisseur, un signeur SigV4 et une seconde origine à maintenir. Le chantier a été
+arrêté avant le premier commit. ⚠️ Et si quelqu'un le rouvre un jour : **le seau `attachments` ne
+peut PAS migrer** — R2 n'a pas de RLS, et la confidentialité des pièces jointes repose entièrement
+sur `is_conv_member` + URL signées ; seul `content` serait éligible.
+⚠️ **CE QUE LE LOT NE FAIT TOUJOURS PAS** : il ne change pas le RYTHME de remplissage (8 Mo par
+compte). Restent nommés, et ils valent pour la charge utile mobile bien avant de valoir pour un
+quota : recompresser les sept vidéos de juillet (59 → ~11 Mo), WebP (−25/30 %), Apple Sign-In.
+⚠️ **La rétention de télémétrie 7 j → 2 j sort de la liste** : elle était motivée par « 43 % d'une
+base plafonnée à 500 Mo ». Le plafond du Pro est ailleurs, la base fait 71 Mo — **une migration, donc
+une contre-revue humaine, pour un problème qui n'existe pas.**
+
+Verrou : `tests/unit/medias-orphelins.test.mjs` (9, dans `npm run verif`), **éprouvé par RÉINJECTION
+de quatre mutations** — garde d'âge retirée (3 rouges), chemin entier au lieu du nom (2), nom vide
+classé orphelin (1), source `user_state` retirée (1).
+
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)
 
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)

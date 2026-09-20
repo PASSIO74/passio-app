@@ -452,7 +452,7 @@ VIEWS.overview = async (view) => {
     const provItem = (ic, k, v) => `<div class="prov-item"><span class="prov-ic">${icon(ic)}</span><span class="prov-k">${k}</span><span class="prov-v">${v}</span></div>`;
     setHtml("#ovProv", `<div class="prov-strip">
       ${provItem("database", "Données", dataReal ? `<span class="prov-pill ok">RÉEL · Supabase</span>` : `<span class="prov-pill off">LOCAL · non connecté</span>`)}
-      ${provItem("wifi", "Temps réel", ing.realtimeOk ? `<span class="prov-pill ok">actif</span>` : dataReal ? `<span class="prov-pill off">secours (polling)</span>` : `<span class="prov-pill off">—</span>`)}
+      ${provItem("wifi", "Ingestion", ing.realtimeUtilise === false ? (dataReal ? `<span class="prov-pill ok">lecture incrémentale (5 s)</span>` : `<span class="prov-pill off">—</span>`) : dataReal ? `<span class="prov-pill off">secours (polling)</span>` : `<span class="prov-pill off">—</span>`)}
       ${provItem("clock", "Fraîcheur", hasData && lastSeen ? `dernier signal il y a ${ago(lastSeen)}` : "aucun signal reçu")}
       ${provItem("server", "En mémoire", `${num(ing.buffered || 0)} évén.`)}
       <span class="prov-note">Source : télémétrie Passio (PII-safe, opt-out) · vue à ${hhmmss(ov.updatedAt)}</span>
@@ -2242,17 +2242,22 @@ VIEWS.sources = async () => {
     ing.supabaseReady ? "Clé <span class='mono'>service_role</span> côté serveur (jamais exposée au navigateur)" : "Mode local — renseigner <span class='mono'>dashboard/.env</span>", "—");
   push("Télémétrie (<span class='mono'>telemetry_events</span>)", (ing.buffered || 0) > 0 ? "ok" : ing.supabaseReady ? "unknown" : "off",
     `${num(ing.buffered || 0)} événements en mémoire`, lastSeen ? "il y a " + ago(lastSeen) : "aucun signal", (ing.buffered || 0) > 0 ? "Reçoit" : undefined);
-  // Le MOTIF du refus est affiché : neuf heures de « Secours » sans lui n'ont
-  // jamais dit que le projet n'acceptait plus que des canaux privés (2026-09-12).
-  const rtMotif = !ing.realtimeOk && ing.realtimeLastError ? ` — <span class='mono'>${esc(ing.realtimeLastError)}</span>` : "";
   // Le repli est MESURÉ : « Secours » n'est vrai que si le polling lit vraiment.
   const pl = ing.polling || {};
   const pollTxt = pl.ok ? `polling vivant (dernière lecture il y a ${ago(pl.lastOkAt)}${pl.lastRows ? `, ${num(pl.lastRows)} ligne(s)` : ""})`
     : pl.lastError ? `<b>polling en échec</b> ×${num(pl.failStreak || 0)} — <span class='mono'>${esc(pl.lastError)}</span>` : pl.lastAt ? "polling sans lecture réussie" : "polling pas encore parti";
-  const rtEtat = ing.realtimeOk ? "active" : !ing.supabaseReady ? "off" : pl.ok ? "warn" : "off";
-  push("Realtime (postgres_changes)", rtEtat,
-    ing.realtimeOk ? "Abonné aux INSERT (canal privé)" : ing.supabaseReady ? `Repli sur polling (5 s)${ing.realtimeStatus ? " · " + esc(ing.realtimeStatus) : ""}${rtMotif} · ${pollTxt}` : "Nécessite Supabase", "—",
-    ing.realtimeOk ? "Actif" : !ing.supabaseReady ? "Non connecté" : pl.ok ? "Secours" : "SOURD");
+  // ⚠️ PLUS DE LIGNE « Realtime … Secours ». Le canal `postgres_changes` a été
+  // RETIRÉ le 2026-09-20 : la lecture incrémentale est le chemin NOMINAL, pas un
+  // repli. Laisser « Secours » aurait déplacé l'alarme de l'alerte vers l'écran
+  // — le pilotage aurait affirmé être en mode dégradé pour toujours, et le
+  // prochain lecteur serait parti chercher une panne qui n'existe pas.
+  const nominal = ing.realtimeUtilise === false;
+  const rtEtat = !ing.supabaseReady ? "off" : pl.ok ? (nominal ? "active" : "warn") : "off";
+  push(nominal ? "Ingestion (lecture incrémentale)" : "Realtime (postgres_changes)", rtEtat,
+    !ing.supabaseReady ? "Nécessite Supabase"
+      : nominal ? `Chemin nominal depuis le 2026-09-20 (canal temps réel retiré) · ${pollTxt}`
+      : `Repli sur polling (5 s) · ${pollTxt}`, "—",
+    !ing.supabaseReady ? "Non connecté" : pl.ok ? (nominal ? "Actif" : "Secours") : "SOURD");
   // Assistant Claude (analyse de bug)
   const cli = cs && cs.cli || {};
   // La RAISON de l'indisponibilité est affichée, pas seulement l'état : « sonde
@@ -2296,7 +2301,7 @@ VIEWS.settings = async () => {
   mount(`<h2 class="page-title">Paramètres</h2><p class="page-sub">Configuration et état du centre de pilotage.</p>
     <div class="cols cols-2">
       <div class="card card-pad"><h4 style="margin-top:0">Session</h4><div class="detail-grid">${detail("Utilisateur", esc(S.me.user))}${detail("Rôle", `<span class="pill info">${S.me.role}</span>`)}${detail("Environnement", `<span class="env-badge ${S.me.env}">${S.me.env}</span>`)}${detail("Mutations code", S.me.allowMutations ? "autorisées" : "désactivées")}${detail("Permissions", S.me.caps.map((c) => `<span class="tag">${c}</span>`).join(""))}</div></div>
-      <div class="card card-pad"><h4 style="margin-top:0">Collecte</h4><div class="detail-grid">${detail("Supabase", ov.ingest.supabaseReady ? "connecté" : "non configuré")}${detail("Realtime", ov.ingest.realtimeOk ? "actif" : "inactif")}${detail("Événements en mémoire", num(ov.ingest.buffered))}</div>
+      <div class="card card-pad"><h4 style="margin-top:0">Collecte</h4><div class="detail-grid">${detail("Supabase", ov.ingest.supabaseReady ? "connecté" : "non configuré")}${detail("Ingestion", ov.ingest.realtimeUtilise === false ? "lecture incrémentale (5 s)" : ov.ingest.realtimeOk ? "temps réel" : "inactive")}${detail("Événements en mémoire", num(ov.ingest.buffered))}</div>
       <div class="section-title">Activer la télémétrie sur un appareil</div><p class="muted" style="font-size:13px">Ouvre Passio avec <span class="mono">?telemetry=1</span> sur chaque appareil de test (opt-in RGPD). Ex :</p><div class="stack">https://passio-app.netlify.app/?telemetry=1</div></div>
     </div>
     <div class="card card-pad" style="margin-top:14px" id="claudeCard">${claudeSettingsHtml()}</div>

@@ -619,8 +619,41 @@ test.describe("⑨ red team : la charge utile d'un broadcast est hostile", () =>
         expect(l, f + " : canal PUBLIC en dur — " + l.trim()).not.toMatch(/private:\s*false\b/);
       }
     }
-    // Et l'option nommée du pilotage est bien privée (le motif ci-dessus ne lit que la ligne).
-    expect(lire("dashboard/server/ingest.js")).toMatch(/REALTIME_CHANNEL_OPTS = \{ config: \{ private: true \} \}/);
+    // Et l'option nommée du pilotage est bien privée (le motif ci-dessus ne lit
+    // que la ligne du `.channel(`, pas la définition de la constante).
+    // ⚠️ CONDITIONNELLE DEPUIS LE 2026-09-20, ET C'EST UN RENFORCEMENT, PAS UN
+    // RELÂCHEMENT. Le canal `postgres_changes` du pilotage a été RETIRÉ : il
+    // portait à lui seul 91,4 % des changements que la base réplique, pour un
+    // seul abonné (voir `migrations/migration_realtime_telemetry_2026-09-20.sql`).
+    // Exiger la constante revenait donc à exiger que le canal EXISTE — ce n'est
+    // pas ce que ce verrou garde. Ce qu'il garde, c'est qu'un canal du pilotage
+    // ne soit JAMAIS public : la garantie devient « s'il revient, il est privé ».
+    // C'est la règle maison « cible supprimée = tout ce qui la vise part avec »,
+    // appliquée à un verrou plutôt qu'à du code — et je ne l'avais appliquée
+    // qu'à `dashboard/`, pas à `tests/e2e/` : c'est la CI qui l'a dit.
+    const pilotage = lire("dashboard/server/ingest.js");
+    if (/REALTIME_CHANNEL_OPTS/.test(pilotage)) {
+      expect(pilotage, "le canal du pilotage est revenu : il DOIT être privé").toMatch(
+        /REALTIME_CHANNEL_OPTS = \{ config: \{ private: true \} \}/,
+      );
+    } else {
+      // Retiré : on exige alors qu'il n'y ait plus AUCUN canal ici, sinon un
+      // `admin.channel(topic, {})` sans constante passerait sous les deux
+      // contrôles — la ligne n'aurait ni `private:` ni le nom, donc le
+      // balayage ci-dessus l'aurait déjà refusée ; cette assertion le dit en
+      // clair plutôt que de compter sur lui.
+      // ⚠️ ON LIT LE CODE, PAS LES COMMENTAIRES — et ce contrôle a rougi sur
+      // lui-même avant de l'apprendre : l'en-tête d'`ingest.js` décrit le
+      // mécanisme, donc il cite `.channel(`. Le balayage ci-dessus écartait
+      // déjà les lignes de commentaire ; celui-ci ne le faisait pas. Un verrou
+      // de source qui cherche un jeton doit retirer les commentaires d'abord,
+      // sinon il interdit d'expliquer ce qu'il garde.
+      const codeSeul = pilotage
+        .replace(/\/\*[\s\S]*?\*\//g, " ")
+        .replace(/^[ \t]*\/\/.*$/gm, " ");
+      expect(codeSeul, "canal sans option nommée : il échapperait au contrôle de privacité")
+        .not.toMatch(/\.channel\(/);
+    }
   });
 
   test("une URL signée ne vaut plus qu'une heure, et le cache la relâche avant", async ({ page }) => {

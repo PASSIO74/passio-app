@@ -138,18 +138,51 @@ recul 5, 10, 20, 40, 80 min, puis abandon annoncé ; une demande figée en
 jeu au démarrage (quatre l'étaient depuis le 19-24/08) ; au délai dépassé,
 l'arbre `claude`/`codex` est abattu en entier.
 
-#### Realtime : le canal du pilotage est PRIVÉ (2026-09-12)
+#### Realtime : le canal du pilotage a été RETIRÉ (2026-09-20)
 
-Le projet Supabase n'accepte plus que des canaux privés (« Allow public
-access » OFF, geste ③ de `docs/OUVERTURE_PUBLIQUE_2026-09-11.md`). Le verrou
-du dépôt ne couvrait que les `supa.channel(` de l'app : `dash:telemetry`, en
-`admin.channel(`, est resté public et a été refusé toutes les 14 s pendant
-neuf heures (`PrivateOnly: This project only allows private channels`, ~260
-refus par heure dans les journaux Realtime), le pilotage vivant sur le seul
-polling de secours sans le dire — le motif du refus n'était pas journalisé.
-Corrigé : `{ config: { private: true } }` (mesuré : abonné en 0,9 s avec
-`service_role`), motif gardé (`ingestState().realtimeLastError`) et affiché sur
-la page Sources. Verrou : `test/ingest.test.js` « canal privé ».
+**Le pilotage ne s'abonne plus au temps réel.** `telemetry_events` produisait
+**481 554 changements sur 526 756** (91,4 %) parmi les tables répliquées, pour
+**un seul abonné** — ce backend — alors que le décodage WAL est le premier poste
+de CPU de la base (68,9 %). La table est sortie de la publication
+(`migrations/migration_realtime_telemetry_2026-09-20.sql`) et le **polling est
+devenu le chemin NOMINAL**, pas un secours.
+
+- **La cadence ne change pas** (`POLL_MS = 5000`) : 1,0 ms par lecture mesuré,
+  et 5 s suffisent à une console de supervision. Accélérer « pour compenser »
+  aurait ajouté du coût pour une latence imperceptible.
+- **L'alerte « Realtime décroché » est désarmée explicitement**
+  (`ingestState().realtimeUtilise === false`), et c'est la SEULE chose qui la
+  désarme : `realtimeOk`, `realtimeStatus` et `realtimeLastError` ont été
+  **retirés de l'état** avec le canal — s'en remettre à leur absence serait
+  tenir par accident. Verrou : `test/observation-alerts.test.js` ⑪, qui passe
+  `ingestState()` **réel** à `evaluer()` réel. Sans lui, retirer la garde
+  laissait 577/577 verts.
+- **Les trois surfaces qui disaient « Secours » ont suivi** (bandeau d'Accueil,
+  page Sources, détail « Collecte ») : elles lisaient `ing.realtimeOk`, devenu
+  une variable sans affectation, donc figée sur « décroché ». Le pilotage aurait
+  annoncé un mode dégradé permanent — l'alarme déplacée de l'alerte vers l'écran.
+- **Le recouvrement du polling est passé de 2 s à 15 s** (`RECOUVREMENT_MS`, au
+  dessus de `POLL_MS`) : `received_at` vaut `now()` au DÉBUT de la transaction,
+  la ligne n'est visible qu'au commit, et le canal — insensible à `received_at`
+  — masquait jusqu'ici les commits tardifs. Sans lui, la ligne était perdue
+  sans recours. `LOT_MAX = 2000` plafonne le débit à 400 lignes/s : au-delà, le
+  pilotage prend un retard qu'il ne rattrape pas, et rien ne le dit.
+- **Le canari n'est pas concerné** : il est observé par `ingestOne`, point de
+  passage unique de tout événement entrant.
+- **Retour arrière** : republier la table, puis restaurer le canal — et il
+  devra être **privé**, le verrou le garde encore (voir ci-dessous).
+
+*Pourquoi il devait être privé, et pourquoi ça reste gardé (2026-09-12).* Le
+projet Supabase n'accepte que des canaux privés (« Allow public access » OFF,
+geste ③ de `docs/OUVERTURE_PUBLIQUE_2026-09-11.md`). Le verrou du dépôt ne
+couvrait alors que les `supa.channel(` de l'app : celui du pilotage est resté
+public et a été refusé toutes les 14 s pendant neuf heures (`PrivateOnly: This
+project only allows private channels`, ~260 refus par heure), le pilotage vivant
+sur le seul polling **sans le dire** — le motif n'était pas journalisé. La leçon
+survit au canal : `tests/e2e/ouverture-publique.spec.js` ⑨ exige désormais
+« s'il revient, il est privé », et `test/ingest.test.js` vérifie qu'il n'est pas
+revenu sans que la table soit republiée — un `postgres_changes` sur une table
+absente de la publication passe `SUBSCRIBED` et ne reçoit **jamais rien**.
 
 
 ## 2 ter. Tests du pilotage
