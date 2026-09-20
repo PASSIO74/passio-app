@@ -1905,7 +1905,20 @@ coalescence retirée du gestionnaire (1), filtre `conv_members` retiré (1), gar
 cœur retirée (1), payload non transmis (1), écouteur `pageshow` retiré (1), garde « page masquée »
 retirée (1). ⚠️ **Un verrou qui exerce une forme de charge que la production n'a pas est vert sans
 rien prouver** : le premier cas ⑧ envoyait douze appels dans le même tick — une rafale qu'aucune
-mesure ne montre. Il exerce désormais le battement de cœur réel, espacé. ⚠️ Le cas ⑦ a rougi sur sa première
+mesure ne montre. Il exerce désormais le battement de cœur réel, espacé.
+
+⚠️ **ET LES TROIS CAS ⑧ ONT ÉTÉ VERTS EN LOCAL ET ROUGES EN CI, À EXACTEMENT UN APPEL PRÈS**
+(0 → 1, 1 → 2). Cause : **`supaInit` appelle `supaRefreshVideoLives()` UNE FOIS AU DÉMARRAGE**
+(app-08, pour peindre les bulles « 🔴 LIVE »), gardé par `window._supaReal` — **faux en local**
+(le SDK n'est pas chargé), **vrai en CI**. Le compteur du banc captait donc cet appel de
+démarrage. C'est la divergence d'environnement que ce dépôt connaît par cœur, prise par son autre
+bout. ⚠️ **Le remède n'est ni un `setTimeout` de complaisance ni une tolérance à +1** — les deux
+rouvrent la course sur un runner plus lent, ou masquent un vrai appel : `compteurVliveAuCalme`
+attend que le compteur soit **STABLE** (plus rien pendant 400 ms, 20 tours au plus) puis le remet
+à zéro. Le sujet de ces cas est « mon geste déclenche-t-il un rechargement ? », pas « l'application
+en fait-elle un au démarrage ». **Un banc qui compte un global appelé par le produit doit d'abord
+attendre le calme.** L'échec a été REPRODUIT en local avant d'être corrigé (appel de démarrage
+simulé à 250 ms → 4 rouges ; avec le correctif, 11 verts, simulation toujours en place). ⚠️ Le cas ⑦ a rougi sur sa première
 rédaction parce que ma tranche de source allait jusqu'à la FIN DU FICHIER et attrapait le
 `from("profiles")` de `supaInit` — un chemin de démarrage, appelé une fois par session : **un verrou
 qui rougit sur un innocent finit par être désarmé**. En local, `creation-passion` ⑭ est rouge **sur

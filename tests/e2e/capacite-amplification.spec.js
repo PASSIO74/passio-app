@@ -23,6 +23,35 @@ const { bootOnboarded } = require("./app-helper");
 const RACINE = path.join(__dirname, "..", "..");
 const lire = (f) => fs.readFileSync(path.join(RACINE, f), "utf8");
 
+
+// ⚠️ LE DÉMARRAGE APPELLE `supaRefreshVideoLives` UNE FOIS, ET C'EST INVISIBLE
+// EN LOCAL. `supaInit` (app-08) le fait pour peindre les bulles « 🔴 LIVE »,
+// gardé par `window._supaReal` : FAUX en local (le SDK n'est pas chargé), VRAI
+// en CI. Les trois cas ⑧ ont donc été verts ici et rouges là-bas, à exactement
+// UN appel près (0 → 1, 1 → 2) — la divergence d'environnement que ce dépôt
+// connaît par cœur, prise par son autre bout.
+//
+// On ne « tolère » pas cet appel et on ne l'ignore pas à l'aveugle : on attend
+// que le compteur soit STABLE (plus aucun appel pendant 400 ms), puis on le
+// remet à zéro. Le sujet de ces cas est « mon geste déclenche-t-il un
+// rechargement ? », pas « l'application en fait-elle un au démarrage ». Un
+// simple `setTimeout` de complaisance aurait rouvert la même course sur un
+// runner plus lent.
+async function compteurVliveAuCalme(page) {
+  await page.evaluate(() => {
+    window.__vliveAppels = 0;
+    window.supaRefreshVideoLives = function () { window.__vliveAppels++; return Promise.resolve(); };
+  });
+  let precedent = -1;
+  for (let i = 0; i < 20; i++) {
+    const n = await page.evaluate(() => window.__vliveAppels);
+    if (n === precedent) break;
+    precedent = n;
+    await page.waitForTimeout(400);
+  }
+  await page.evaluate(() => { window.__vliveAppels = 0; });
+}
+
 // ── ⑥ LA RECHERCHE : LES DEUX PREMIÈRES LETTRES COÛTAIENT 97 % DU MOT ───────
 
 test("⑥ sous trois caractères, AUCUNE requête ne part — et le local répond quand même", async ({ page }) => {
@@ -162,9 +191,8 @@ test("⑧ le battement de cœur d'un live ne déclenche AUCUN rechargement", asy
   // live envoie un UPDATE `last_seen` toutes les 25 SECONDES — aucun débounce
   // de 250 ms ne le coalesce. Un verrou qui exerce une forme de charge que la
   // production n'a pas est vert sans rien prouver.
+  await compteurVliveAuCalme(page);
   const r = await page.evaluate(async () => {
-    let appels = 0;
-    window.supaRefreshVideoLives = function () { appels++; return Promise.resolve(); };
     window._videoLives = [{ id: "vl1", status: "live", author_id: "u_x", last_seen: "2026-09-20T06:00:00Z" }];
     // Six battements, espacés comme en production (le débounce a le temps
     // d'expirer entre deux) : rien ne doit partir.
@@ -172,15 +200,15 @@ test("⑧ le battement de cœur d'un live ne déclenche AUCUN rechargement", asy
       window.vliveRefreshCoalesce({ eventType: "UPDATE", new: { id: "vl1", status: "live", last_seen: "2026-09-20T06:0" + i + ":00Z" } });
       await new Promise((r2) => setTimeout(r2, 300));
     }
-    const battements = appels;
+    const battements = window.__vliveAppels;
     // Un changement de STATUT, lui, doit recharger.
     window.vliveRefreshCoalesce({ eventType: "UPDATE", new: { id: "vl1", status: "ended" } });
     await new Promise((r2) => setTimeout(r2, 400));
-    const apresStatut = appels;
+    const apresStatut = window.__vliveAppels;
     // Un live INCONNU aussi : un événement qu'on ne sait pas lire est honoré.
     window.vliveRefreshCoalesce({ eventType: "INSERT", new: { id: "vl2", status: "live" } });
     await new Promise((r2) => setTimeout(r2, 400));
-    return { battements, apresStatut, total: appels };
+    return { battements, apresStatut, total: window.__vliveAppels };
   });
   expect(r.battements, "six battements de cœur : AUCUN rechargement").toBe(0);
   expect(r.apresStatut, "un changement de statut recharge").toBe(1);
@@ -189,35 +217,33 @@ test("⑧ le battement de cœur d'un live ne déclenche AUCUN rechargement", asy
 
 test("⑧ bis un appel sans payload recharge — on n'honore jamais un événement qu'on ne sait pas lire", async ({ page }) => {
   await bootOnboarded(page);
+  await compteurVliveAuCalme(page);
   const r = await page.evaluate(async () => {
-    let appels = 0;
-    window.supaRefreshVideoLives = function () { appels++; return Promise.resolve(); };
     window._videoLives = [{ id: "vl1", status: "live" }];
     window.vliveRefreshCoalesce();                                       // aucun payload
     window.vliveRefreshCoalesce({ eventType: "DELETE", old: { id: "vl1" } });
     await new Promise((r2) => setTimeout(r2, 400));
-    return appels;
+    return window.__vliveAppels;
   });
   expect(r, "sans payload lisible, on recharge (et la rafale reste coalescée en un seul appel)").toBe(1);
 });
 
 test("⑧ ter page masquée : rien ne part, et le retour à l'écran RATTRAPE", async ({ page }) => {
   await bootOnboarded(page);
+  await compteurVliveAuCalme(page);
   const r = await page.evaluate(async () => {
-    let appels = 0;
-    window.supaRefreshVideoLives = function () { appels++; return Promise.resolve(); };
     window._videoLives = [];
     Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
     for (let i = 0; i < 5; i++) window.vliveRefreshCoalesce({ eventType: "INSERT", new: { id: "vl9", status: "live" } });
     await new Promise((r2) => setTimeout(r2, 400));
-    const masquee = appels;
+    const masquee = window.__vliveAppels;
     // ⚠️ Le rendez-vous est REPORTÉ, jamais annulé : un live ouvert pendant que
     // le téléphone est en poche doit apparaître au retour, sinon on aurait
     // remplacé « trop de requêtes » par « une bulle éteinte ».
     Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
     document.dispatchEvent(new Event("visibilitychange"));
     await new Promise((r2) => setTimeout(r2, 500));
-    return { masquee, apresRetour: appels };
+    return { masquee, apresRetour: window.__vliveAppels };
   });
   expect(r.masquee, "une page masquée ne demande rien : la réponse ne peut rien peindre").toBe(0);
   expect(r.apresRetour, "le retour à l'écran rattrape ce qui a été reporté").toBe(1);
@@ -228,9 +254,8 @@ test("⑧ quater `pageshow` rattrape aussi — iOS revient du bfcache sans `visi
   // ⚠️ La première rédaction NOMMAIT `pageshow` dans son commentaire sans
   // jamais l'écouter. Un commentaire qui promet une couverture qu'il n'a pas
   // est pire qu'un trou : on croit le cas traité.
+  await compteurVliveAuCalme(page);
   const r = await page.evaluate(async () => {
-    let appels = 0;
-    window.supaRefreshVideoLives = function () { appels++; return Promise.resolve(); };
     window._videoLives = [];
     Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
     window.vliveRefreshCoalesce({ eventType: "INSERT", new: { id: "vlA", status: "live" } });
@@ -238,7 +263,7 @@ test("⑧ quater `pageshow` rattrape aussi — iOS revient du bfcache sans `visi
     Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
     window.dispatchEvent(new Event("pageshow"));
     await new Promise((r2) => setTimeout(r2, 500));
-    return appels;
+    return window.__vliveAppels;
   });
   expect(r, "`pageshow` seul doit rattraper le report").toBe(1);
 });
