@@ -1975,6 +1975,122 @@ Verrou : `tests/e2e/capacite-amplification.spec.js` ⑩ → ⑪ bis (6 cas), don
 (90 000 / 135 000 / 202 500 / 300 000), le plafond, la page masquée, les entrées absurdes, et quatre
 contrôles de câblage à la source.
 
+## 🧪 LE RÉFÉRENTIEL ÉTAIT CHARGÉ PAR LA CI, ET LE BANC NE MESURAIT PAS CE QU'IL CROYAIT (2026-09-20, la suite)
+
+Troisième volet de « capacité ». Première lecture du CPU de la base **avec le bon dénominateur** —
+une requête d'inventaire calculait ses parts sur le seul sous-ensemble « passions » et rendait
+**69 %** là où il y a **5,92 %** : un `sum(...) over ()` posé après un `where` ne totalise que ce que
+le `where` a laissé. **Une part se lit toujours contre le total, jamais contre le filtre.** Dossier :
+`docs/CAPACITE_CI_ET_BANC_2026-09-20.md`.
+
+⚠️ **LE RÉFÉRENTIEL DES PASSIONS EST LA 3ᵉ REQUÊTE DE TOUTE LA BASE — ET AUCUN UTILISATEUR N'EST
+DERRIÈRE.** `select id from passions where status='active'` : **2 900 511 appels, 4 368 s, 5,92 %**
+du CPU, pour DIX comptes. `chargerReferentielPassions` pagine par 1 000, donc **six requêtes par
+démarrage de page** : 2 900 511 / 6 = **~483 000 démarrages**, soit **~3 750 par JOUR** sur 129
+jours. La production porte DIX comptes — même à dix sessions quotidiennes chacun, cela ferait 2,6 %
+du total. ⚠️ **Le contre-témoin est indépendant et corrobore** : la variante SANS le filtre `status`
+— le client d'avant le 2026-09-09, vivant ~11 jours — porte 141 520 appels, soit **~2 100
+démarrages par jour**, même ordre de grandeur par un calcul distinct. ⚠️ **Le comptage textuel de la
+suite (716 occurrences de boot) est une CORROBORATION, pas la mesure** : il SOUS-ESTIME, un boot
+posé dans un `beforeEach` servant autant de cas que le fichier en porte. Ne pas rebâtir le constat
+dessus. S'y ajoutent **~140 ko
+d'identifiants par démarrage**, soit **~100 Mo d'egress par run**, que nul test ne lit. C'est la
+famille de l'avatar de 2,59 Mo demandé 399 fois : **un coût de production payé par les tests, par un
+chemin que personne ne regarde** — `passions` n'était pas dans `TABLES_DISTANTES`, et personne
+n'avait de raison de l'y chercher.
+
+⚠️ **ON NE RÉPOND PAS `[]`, ON SERT LE MIROIR.** `data/passions-v1.json` n'est pas une imitation :
+c'est le miroir GÉNÉRÉ de cette table (même source `data/passions/*.js` que
+`migration_passions_plat.sql`, égalité tenue par `npm run passions:verifier`). Une réponse vide
+laisserait `estPassionCanonique` au plancher des 19 du socle : une suite qui publie sous une passion
+du référentiel rougirait pour une raison étrangère à son sujet — et **une suite qui passerait quand
+même cesserait d'exercer la liste blanche sans que rien ne le dise**. Divergence assumée : les
+passions `user_suggested` (6 en prod) ne sont pas dans le miroir, donc aucun test ne peut s'appuyer
+dessus — ce qui est la bonne règle de toute façon.
+
+⚠️ **LE DÉFAUT QUE MON PROPRE CORRECTIF A INTRODUIT, ET QUE HUIT VERROUS VERTS N'ONT PAS VU.**
+`postgrest-js` 2.116 traduit `.range(a,b)` en paramètres d'URL **`offset`/`limit`**, JAMAIS en
+en-tête `Range` (lu dans `js/vendor/supabase-js-2.116.0.js`, confirmé par le SQL de prod
+`LIMIT $1 OFFSET $2`). La route ne lisant que l'en-tête, chaque page revenait **pleine** : le
+chargeur partait pour ses **quarante** pages (`PAGES_MAX`), journalisait « référentiel TRONQUÉ » et
+ne posait jamais `complet` — donc rechargeait à chaque appel. **Un correctif de charge qui
+MULTIPLIAIT la charge par sept.** ⚠️ Les huit verrous étaient verts parce qu'ils interrogeaient la
+route avec **leur propre `fetch`** : ils mesuraient le faux serveur, pas le produit. Le 9ᵉ cas — qui
+laisse le vrai chargeur paginer et COMPTE ce qui part — l'a trouvé en une exécution. **Un banc qui
+pose lui-même la requête ne mesure pas le client qui la pose** (la faute `_notifierMessage`, sous un
+autre angle).
+
+⚠️ **UNE ROUTE D'ISOLATION ÉCRASE CELLE D'UNE SUITE, EN SILENCE.** Playwright donne la priorité à la
+route enregistrée en **DERNIER** : `creation-passion` ⑬ posait sa propre route `passions → []`
+AVANT `bootOnboarded` (c'est le chargement du BOOT qu'elle contrôle), et la nouvelle l'écrasait —
+le cache se remplissait, le chargeur ressortait sur sa garde « déjà complet », et le cas mesurait
+**le contraire de son sujet**. D'où `opts.sansMiroirPassions`, échappatoire ÉTROITE : lui faire poser
+`sansIsolationDesDonnees` aurait rendu à la production ses posts, ses stories, ses médias et son
+canal temps réel pour un besoin qui ne porte que sur une table. **Une échappatoire large est une
+isolation qu'on retire par mégarde.**
+
+⚠️ **LE BANC DE CHARGE NE MESURAIT PAS LA SEULE FORME QUADRATIQUE DU PRODUIT.** `scripts/charge.mjs`
+s'abonnait à **UNE** liaison `postgres_changes`, **filtrée** sur son propre uid. L'app en pose
+**DOUZE**, dont **dix sans filtre**. Or un filtre de colonne est tranché AVANT de toucher la base :
+le banc ne faisait évaluer presque rien, là où le temps réel est 66 % du CPU (68,9 % avec la seconde
+forme de décodage WAL — d'où les « ~69 % » de la fiche d'hier : même poste, pas une contradiction)
+avec un facteur ×13. Il mesurait la latence d'un client gratuit, et on en tirait un chiffre de
+capacité. Il pose désormais les douze ; la corrélation est bornée à `posts` (le canal porte
+maintenant aussi `post_comments`, `video_lives`… dont les lignes ont un `id`).
+⚠️ **DOUZE ET NON TREIZE — LE PREMIER JET DE CE LOT A ÉCRIT LE MAUVAIS CHIFFRE**, relevé par
+`audit-passio`. app-08 porte bien une treizième ligne `.on(...)` sur `conv_messages` (6267), mais
+elle est **CONDITIONNELLE** (`if (!PASSIO_REALTIME_V3 && !…_V2)`) et `PASSIO_REALTIME_V3` vaut `true`
+par défaut (app-08:5957) : **aucun client réel ne la pose**. L'y recopier faisait abonner le banc
+SANS FILTRE à la table la plus écrite du produit, sur un chemin que personne n'emprunte — le banc
+aurait rendu un chiffre de capacité trop BAS, et « recopiées d'app-08 » aurait été lu comme une
+vérité par la session suivante. **Compter les `.on(` d'un fichier n'est pas compter ce que
+l'application exécute** ; `audit:realtime`, qui est un grep, ne voit pas cette condition non plus. ⚠️ **Et la recherche n'exerçait que le
+cas favorable** : « rando », cinq lettres, 0,4 à 2,9 ms — alors que tout le coût est dans les
+frappes courtes. Elle exerce **trois lettres**, le pire cas que `LONGUEUR_MIN_SERVEUR` permet encore ;
+descendre à une ou deux mesurerait une charge que plus aucun client n'émet.
+
+⚠️ **LA GATE REALTIME NE LISAIT QU'UNE TABLE PAR BLOC.** `audit-realtime-publication.js` prenait le
+PREMIER nom de table de la fenêtre. Une jonction WebSocket brute passe ses liaisons en bloc : un
+marqueur, treize liaisons — **douze sur treize hors garde**, et « 16 souscriptions scannées » pour un
+dépôt qui en porte **28**. Elle lit désormais le bloc entier entre crochets, et **seulement cette
+forme** : élargir la fenêtre du cas normal déborderait sur le corps du callback suivant, où un
+`table:` désigne parfois une table REST (app-04 en a un). ⚠️ **Le commentaire qui explique la règle
+DÉCLENCHE la règle** — mon premier jet citait l'exemple que la gate cherche, elle a refusé le fichier
+en se citant elle-même : c'est le piège qu'elle avait déjà dû fermer sur elle-même le 19/09, rejoué
+dans un autre fichier. ⚠️ **Le NOM de la variable porte le marqueur** : renommer le tableau des
+liaisons rendrait les treize invisibles, sans une erreur.
+
+⚠️ **DEUX POSTES QUE LA FICHE D'HIER NE NOMMAIT PAS** : ① **le pilotage est le DEUXIÈME consommateur
+de la base — 8,66 % du CPU** en lectures `telemetry_events` (6,68 + 1,36 + 0,62) ; c'est du
+`service_role` depuis `dashboard/`, pas des utilisateurs, et à ne pas confondre avec l'ÉCRITURE de
+télémétrie (0,66 %), qui est le chemin client. Deux cibles mesurées, **non traitées ici
+délibérément** (autre lot, autres tests — les mêler à cette PR compliquerait la contre-revue) :
+`select user_id, received_at … env = $2` (97 666 appels, **50,5 ms**, `kpi.js:87` /
+`retention.js:102`, appelée toutes les ~2 min) et surtout **`count: "exact"`** (5 159 appels,
+**194,4 ms**) — PostgREST compte alors TOUTE la table à chaque appel ; `observation.js:92` est une
+sonde de vivacité qui `limit(1)` et n'a aucune raison de la compter. ⚠️ Ne PAS l'appliquer en
+aveugle à `reconcile.js:70` / `exploitation.js:39`, qui comparent peut-être des comptes EXACTS. ② `SELECT name FROM
+pg_timezone_names` : **704 ms de moyenne, 2 % du CPU** pour 2 098 appels — ce n'est PAS du code
+PASSIO (rechargement de cache de schéma PostgREST / tableau de bord). Nommés pour que personne ne
+reparte l'enquête ; aucun des deux n'est traité ici.
+
+⚠️ **CE QUI A ÉTÉ CHERCHÉ ET N'A RIEN DONNÉ** : aucune troisième lecture REST de `passions` (deux
+seulement — `app-02:2084` et `passions-flat.js:1126`, les deux couvertes) ; aucune table voisine
+attrapée par le motif (`passion_quotas`, `passion_requests`, `rpc/rechercher_passions` n'y
+correspondent pas).
+
+Verrous : `tests/e2e/isolation-referentiel-passions.spec.js` (9) et
+`tests/unit/audit-realtime-publication.test.mjs` (3, ajouté à `npm run verif`). **Éprouvés par
+RÉINJECTION de quatre mutations** — route retirée (**6 rouges**), miroir remplacé par `[]` (**5**),
+`offset`/`limit` ignorés, c'est-à-dire le défaut d'origine (**4**, dont le 9ᵉ cas), forme tableau
+rendue illisible à la gate (**3**).
+⚠️ **LE PLANCHER DU VERROU CHIFFRÉ EST 27, PAS 28, ET C'EST DÉLIBÉRÉ** : le compte du jour porte un
+**FANTÔME** — `app-08:6264` est un COMMENTAIRE qui contient le marqueur, et sa fenêtre de 400
+caractères attrape la table de la ligne 6267. Reformuler ce commentaire ferait tomber le compte sans
+qu'aucune souscription n'ait bougé, et **un verrou qui rougit sur un innocent finit par être
+désarmé**. 27 reste rouge sur la vraie régression (branche « bloc » cassée → ~17). ⚠️ `creation-passion` ⑭ reste rouge **en local sur `origin/main` PUR** (rejoué en
+worktree séparé, port 8099) — divergence d'environnement déjà écrite, étrangère au lot.
+
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)
 
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)

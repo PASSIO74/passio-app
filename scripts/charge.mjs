@@ -163,7 +163,18 @@ const REQUETES = [
   { nom: "fil (posts+profil, 60)", url: `${URL}/rest/v1/posts?select=${encodeURIComponent(COLS_POSTS)}&order=created_at.desc&offset=0&limit=60`, attentes: { tableau: true, min: 1, champs: ["id", "author_id", "created_at"], imbrique: "profiles" } },
   { nom: "rencontres (events, 60)", url: `${URL}/rest/v1/events?select=${encodeURIComponent(COLS_EVENTS)}&order=created_at.desc&limit=60`, attentes: { tableau: true, min: 1, champs: ["id", "title", "date_at"] } },
   { nom: "profil (1)", url: `${URL}/rest/v1/profiles?select=id,username,emoji,color,avatar_url,is_private&id=eq.charge_00001`, attentes: { tableau: true, id: "charge_00001", champs: ["username"] } },
-  { nom: "recherche passions (rpc)", url: `${URL}/rest/v1/rpc/rechercher_passions`, method: "POST", body: JSON.stringify({ q: "rando", lim: 20 }), attentes: { tableau: true, min: 1, champs: ["id", "label"] } },
+  // ⚠️ TROIS LETTRES, ET C'EST LE SUJET. Ce banc interrogeait le RPC avec
+  // « rando » — CINQ lettres, donc le chemin RAPIDE (0,4 à 2,9 ms mesurés). La
+  // recherche est pourtant la requête la plus lente du produit (92,2 ms de
+  // moyenne sur 18 185 appels) et tout son coût est dans les frappes COURTES :
+  // 1 lettre 80–133 ms, 2 lettres 15–51 ms, 3 lettres 0,6–8,5 ms. La mesure de
+  // capacité du 2026-09-14 n'a donc JAMAIS vu le pire cas — un banc qui n'exerce
+  // que le cas favorable mesure la capacité du cas favorable.
+  // Trois lettres est le PIRE CAS QUE LE PRODUIT PERMET ENCORE depuis le
+  // plancher `LONGUEUR_MIN_SERVEUR` (js/passions-flat.js, 2026-09-20) : en
+  // dessous, le client n'interroge plus le serveur du tout. Descendre le banc à
+  // 1 ou 2 lettres mesurerait une charge que plus aucun client n'émet.
+  { nom: "recherche passions (rpc, 3 lettres = pire cas)", url: `${URL}/rest/v1/rpc/rechercher_passions`, method: "POST", body: JSON.stringify({ q: "gui", lim: 20 }), attentes: { tableau: true, min: 1, champs: ["id", "label"] } },
 ];
 // `--requete <mot>` : ne charger qu'une famille (isoler un goulot).
 const filtre = arg("--requete");
@@ -264,6 +275,64 @@ async function purgerComptes(comptes) {
 // « realtime:realtime:db » pour le canal que l'app nomme « realtime:db ». En
 // brut, il faut le faire soi-même — sinon « Unauthorized … topic: db » (mesuré).
 const TOPIC_DB = "realtime:realtime:db";
+
+// ⚠️ LE BANC S'ABONNAIT À UNE SEULE LIAISON, FILTRÉE — DONC À ~1/12 DU COÛT
+// RÉEL, ET DU MAUVAIS CÔTÉ DE LA SEULE FORME QUADRATIQUE DU PRODUIT.
+// L'app (`_creerCanalDb`, app-08) pose DOUZE `postgres_changes` sur
+// `realtime:db` en configuration par DÉFAUT, dont DIX SANS FILTRE. Le coût du
+// temps réel est en O(changements × abonnements qui matchent) : c'est 66 % du
+// CPU de la base à lui seul (68,9 % avec la seconde forme de décodage WAL, d'où
+// les « ~69 % » cités ailleurs — les deux chiffres sont le même poste), et un
+// facteur d'amplification de ×13 relevé sur `pg_stat_statements` (7,17 M de
+// lignes décodées pour ~550 000 changements).
+// Or un filtre de COLONNE est tranché AVANT de toucher la base : un banc
+// abonné à `posts` filtré sur son propre uid ne fait donc évaluer presque
+// RIEN. Il mesurait la latence de livraison d'un client gratuit, et on en
+// tirait un chiffre de capacité.
+// ⚠️ DOUZE ET NON TREIZE, ET LE TREIZIÈME EST UN PIÈGE DE LECTURE. app-08 porte
+// bien une quatorzième ligne `.on(...)` sur `conv_messages` (app-08:6267), mais
+// elle est CONDITIONNELLE : `if (!window.PASSIO_REALTIME_V3 && !…_V2)`, et
+// `PASSIO_REALTIME_V3` vaut `true` par défaut (app-08:5957, « v3 pour tout le
+// monde »). Aucun client réel ne pose cette liaison. L'y recopier ferait
+// abonner le banc SANS FILTRE à la table la plus écrite du produit, sur un
+// chemin que personne n'emprunte : le banc mesurerait une charge inexistante et
+// rendrait un chiffre de capacité trop bas. **Compter les `.on(` d'un fichier
+// n'est pas compter ce que l'application exécute.**
+// Les douze ci-dessous sont recopiées d'app-08 ; deux seulement portent un
+// filtre, et ce sont les deux que l'app filtre (`conv_members`, `notifications`).
+// ⚠️ Les recopier est un COUPLAGE ASSUMÉ : si app-08 change, ce tableau doit
+// suivre, sinon le banc reprend l'écart qu'on vient de fermer. Le contrôle est
+// le nombre — `npm run audit:realtime` compte les souscriptions du dépôt,
+// `scripts/charge.mjs` y est inclus depuis le 2026-09-19. Il ne sait pas, en
+// revanche, qu'une liaison d'app-08 est conditionnelle : ça, c'est à relire.
+function liaisonsApp(uid) {
+  // ⚠️ TABLEAU LITTÉRAL, ET C'EST UNE CONTRAINTE DE GATE, PAS UN STYLE.
+  // `audit-realtime-publication.js` lit les noms de table EN TOUTES LETTRES.
+  // Un nom calculé, une constante importée, une boucle : la gate ne voit plus
+  // rien et se tait — c'est-à-dire qu'une souscription à une table NON PUBLIÉE
+  // passerait `SUBSCRIBED` sans jamais rien recevoir, indiscernable de « il ne
+  // s'est rien passé ».
+  // ⚠️ ET LE NOM DE CETTE VARIABLE EST CE QUI REND LE BLOC VISIBLE : c'est lui
+  // qui porte le marqueur que la gate cherche. Le renommer rendrait ces treize
+  // liaisons invisibles, sans une erreur. Un commentaire qui CITE la règle la
+  // déclenche aussi — c'est ce qui a fait rougir ce fichier au premier jet,
+  // et c'est le piège que la gate a déjà dû fermer sur elle-même.
+  const postgres_changes = [
+    { event: "*", schema: "public", table: "conv_reads" },
+    { event: "INSERT", schema: "public", table: "comment_interactions" },
+    { event: "DELETE", schema: "public", table: "comment_interactions" },
+    { event: "INSERT", schema: "public", table: "conv_members", filter: "user_id=eq." + uid },
+    { event: "UPDATE", schema: "public", table: "profiles" },
+    { event: "INSERT", schema: "public", table: "posts" },
+    { event: "INSERT", schema: "public", table: "post_likes" },
+    { event: "DELETE", schema: "public", table: "post_likes" },
+    { event: "INSERT", schema: "public", table: "notifications", filter: "user_id=eq." + uid },
+    { event: "INSERT", schema: "public", table: "post_comments" },
+    { event: "INSERT", schema: "public", table: "event_comments" },
+    { event: "*", schema: "public", table: "video_lives" },
+  ];
+  return postgres_changes;
+}
 // ⚠️ ASTRA-37 (contre-revue du 15/09) — LE BANC PERDAIT LES ÉVÉNEMENTS REÇUS
 // TROP TÔT. L'attente était enregistrée APRÈS la réponse HTTP, et tout
 // événement sans attente était jeté EN SILENCE (`if (a) { … }`, sans `else`).
@@ -284,13 +353,21 @@ function ecouter(c) {
   const pret = new Promise((res) => {
     const minuteur = setTimeout(() => res(false), 15000);
     ws.onopen = () => {
-      envoyer({ topic: TOPIC_DB, event: "phx_join", ref: String(++ref), join_ref: "1", payload: { config: { broadcast: { self: false }, presence: { key: "" }, private: true, postgres_changes: [{ event: "INSERT", schema: "public", table: "posts", filter: "author_id=eq." + c.uid }] }, access_token: c.jwt } });
+      envoyer({ topic: TOPIC_DB, event: "phx_join", ref: String(++ref), join_ref: "1", payload: { config: { broadcast: { self: false }, presence: { key: "" }, private: true, postgres_changes: liaisonsApp(c.uid) }, access_token: c.jwt } });
     };
     ws.onmessage = (ev) => {
       let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
       if (m.event === "phx_reply" && m.topic === TOPIC_DB) { ouvert = m.payload && m.payload.status === "ok"; clearTimeout(minuteur); res(ouvert); }
       if (m.event === "postgres_changes") {
-        const rec = m.payload && m.payload.data && m.payload.data.record;
+        const d = m.payload && m.payload.data;
+        // ⚠️ ON NE CORRÈLE QUE `posts`. Depuis que le banc s'abonne aux treize
+        // liaisons de l'app, ce canal porte aussi `conv_messages`,
+        // `post_comments`, `video_lives`… dont les lignes ont un `id` elles
+        // aussi : les verser au corrélateur lui ferait compter des « arrivées
+        // précoces » qui n'ont rien à voir avec la publication mesurée, et le
+        // bilan du canal deviendrait illisible. Le filtre est sur la TABLE,
+        // jamais sur la forme de l'identifiant.
+        const rec = d && d.table === "posts" ? d.record : null;
         // Reçu, précoce, doublon ou orphelin : TOUJOURS enregistré, jamais jeté.
         if (rec && rec.id) corr.recevoir(rec.id, performance.now());
       }
