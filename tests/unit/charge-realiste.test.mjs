@@ -2,8 +2,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
+import { createHash } from "node:crypto";
 import { optionsBanc, emailCapacite, DOMAINE_CAPACITE, STAGING_REF, LIMITES, Budget, comptesPourPalier, abonnements,
-  partenaire, actionPrevue, pausePrevue, statistiques, verdictPalier, Sondes } from "../../scripts/lib/charge-realiste.mjs";
+  partenaire, actionPrevue, pausePrevue, statistiques, verdictPalier, Sondes,
+  postPourLike, aimerEtRetirer, delaiFixture, DisponibiliteRealtime } from "../../scripts/lib/charge-realiste.mjs";
 import { executer } from "../../scripts/charge-realiste.mjs";
 
 const cible = ["--projet", STAGING_REF];
@@ -167,4 +169,131 @@ test("un broadcast absent expire et reste une erreur, sans faux succès HTTP", a
   const result = await sondes.armer("dest:message:absent").promise;
   assert.equal(result.ok, false); assert.equal(result.motif, "REALTIME_TIMEOUT");
   assert.equal(sondes.attentes.size, 0);
+});
+
+const uidReady = "user-ready";
+const joinDB = { topic: "realtime:realtime:db", event: "phx_reply", ref: "1", payload: { status: "ok", response: {
+  postgres_changes: abonnements(uidReady).map((a, id) => ({ ...a, id })),
+} } };
+const joinUser = { topic: `realtime:user:${uidReady}`, event: "phx_reply", ref: "2", payload: { status: "ok" } };
+const systemReady = { topic: "realtime:realtime:db", event: "system", payload: { extension: "postgres_changes", status: "ok" } };
+
+test("les deux phx_reply ne donnent pas CDC prêt ; system peut précéder ou suivre les réponses", () => {
+  for (const ordre of [[joinDB, joinUser, systemReady], [systemReady, joinDB, joinUser], [joinUser, systemReady, joinDB]]) {
+    const etat = new DisponibiliteRealtime(uidReady);
+    assert.equal(etat.observer(ordre[0]), false);
+    assert.equal(etat.observer(ordre[1]), false);
+    assert.equal(etat.observer(ordre[2]), true);
+    assert.equal(etat.systemes.ok, 1); assert.equal(etat.handlers, 12);
+  }
+});
+
+test("un signal d'un autre topic ou d'une ancienne socket ne valide pas la nouvelle connexion", () => {
+  const ancien = new DisponibiliteRealtime(uidReady), nouveau = new DisponibiliteRealtime(uidReady);
+  for (const m of [joinDB, joinUser, systemReady]) ancien.observer(m);
+  nouveau.observer(joinDB); nouveau.observer(joinUser);
+  nouveau.observer({ ...systemReady, topic: joinUser.topic });
+  assert.equal(ancien.pret, true); assert.equal(nouveau.pret, false);
+  assert.equal(nouveau.expirer(), "REALTIME_CDC_NON_PRET");
+  assert.equal(nouveau.observer(systemReady), false, "une échéance expirée ne devient pas verte tardivement");
+});
+
+test("system error invalide le CDC même si le canal reste ouvert et les 12 bindings doivent correspondre", () => {
+  const etat = new DisponibiliteRealtime(uidReady);
+  for (const m of [joinDB, joinUser, systemReady]) etat.observer(m);
+  etat.observer({ ...systemReady, payload: { extension: "postgres_changes", status: "error" } });
+  assert.equal(etat.pret, false); assert.equal(etat.erreur, "REALTIME_CDC_ERREUR");
+  assert.equal(etat.systemes.error, 1);
+  const faux = structuredClone(joinDB); faux.payload.response.postgres_changes[0].table = "table_fausse";
+  const invalide = new DisponibiliteRealtime(uidReady); invalide.observer(faux);
+  assert.equal(invalide.erreur, "REALTIME_12_HANDLERS_NON_CONFIRMES");
+});
+
+test("un like mesuré restaure exactement les fixtures ; un échec de DELETE laisse sa clé au journal", async () => {
+  const posts = Array.from({ length: 120 }, (_, i) => ({ id: `post_${i}` }));
+  for (const n of [25, 50, 100, 200]) {
+    const base = new Set(posts.map((p, i) => `${p.id}:compte_${(i + 1) % n}`));
+    const avant = [...base].sort(), journal = new Map();
+    for (let i = 0; i < n; i += 4) for (let tour = 0; tour < 24; tour++) {
+      const cle = { post_id: postPourLike(posts, i, tour, n), user_id: `compte_${i}` };
+      await aimerEtRetirer(cle, journal,
+        async c => { const k = `${c.post_id}:${c.user_id}`; assert.ok(!base.has(k), "ne jamais supprimer ensuite un like de fixture"); base.add(k); },
+        async c => { assert.equal(base.delete(`${c.post_id}:${c.user_id}`), true); });
+    }
+    assert.deepEqual([...base].sort(), avant); assert.equal(journal.size, 0);
+    const residu = { post_id: posts[0].id, user_id: "un_acteur" };
+    await assert.rejects(aimerEtRetirer(residu, journal,
+      async c => base.add(`${c.post_id}:${c.user_id}`), async () => { throw new Error("DELETE_REFUSE"); }), /DELETE_REFUSE/);
+    assert.deepEqual([...journal.values()], [residu]);
+  }
+});
+
+test("la vraie réinitialisation ne réécrit aucun like intact et conserve l'empreinte du fil", async () => {
+  const source = readFileSync(new URL("../../scripts/charge-realiste.mjs", import.meta.url), "utf8");
+  const debut = source.indexOf("async function reinitialiser()"), fin = source.indexOf("async function prevol()", debut);
+  assert.ok(debut >= 0 && fin > debut);
+  const appels = [], mutationsLikes = new Map(), data = { posts: ["fixture_1"], likes: 1, commentaires: 1, reactions: 1, profils: 1 };
+  const ctx = { mutationsPosts: new Set(), mutationsLikes, convs: [], comptes: [{ id: "acteur" }, { id: "fixture_auteur" }], createHash,
+    postsFixture: [{ id: "fixture_1" }], fixtureLikes: [{ post_id: "fixture_1", user_id: "fixture_auteur" }],
+    liste: ids => `in.(${ids.join(",")})`, attendreTableau: () => ({}),
+    rest: async () => ctx.fixtureLikes,
+    changerPhase: () => {}, fil: async () => data,
+    supprimer: async (...args) => { appels.push(args); return []; },
+    inserer: async () => { throw new Error("REINSERTION_FIXTURE_INTERDITE"); },
+  };
+  const reset = runInNewContext(source.slice(debut, fin) + "\nreinitialiser;", ctx);
+  const avant = await reset(), apres = await reset();
+  assert.equal(avant, apres); assert.equal(appels.length, 0);
+  mutationsLikes.set("fixture_1:acteur", { post_id: "fixture_1", user_id: "acteur" });
+  assert.equal(await reset(), avant);
+  assert.equal(appels.length, 1); assert.equal(appels[0][1], "post_likes");
+  assert.equal(appels[0][2].post_id, "eq.fixture_1"); assert.equal(appels[0][2].user_id, "eq.acteur");
+  assert.equal(mutationsLikes.size, 0);
+  ctx.fixtureLikes[0].user_id = "un_autre_compte";
+  await assert.rejects(reset(), /JEU_LIKES_FIXTURE_MODIFIE/, "un simple compte total identique ne suffit pas");
+});
+
+test("la vraie suppression conserve le scope et utilise chaque clé composite ; lecture refusée ou trop large interdit DELETE", async () => {
+  const source = readFileSync(new URL("../../scripts/charge-realiste.mjs", import.meta.url), "utf8");
+  const debut = source.indexOf("async function supprimer(nom, table, params, min = 0)"), fin = source.indexOf("async function obtenirCles()", debut);
+  assert.ok(debut >= 0 && fin > debut);
+  for (const [table, cle] of [["post_likes", { post_id: "post_campagne", user_id: "acteur" }],
+    ["conv_reads", { conv_id: "conv_campagne", user_id: "acteur" }]]) {
+    const appels = [], sourceRows = [cle]; let erreurLecture = false;
+    const ctx = { attendreTableau: () => ({}),
+      cadencer: async (...args) => appels.push({ cadence: args }),
+      rest: async (nom, cibleTable, params, opt = {}) => {
+        appels.push({ methode: opt.methode || "GET", table: cibleTable, params });
+        if (opt.methode === "DELETE") return [cle];
+        if (erreurLecture) throw new Error("LECTURE_REFUSEE");
+        return sourceRows;
+      },
+    };
+    const supprimer = runInNewContext(source.slice(debut, fin) + "\nsupprimer;", ctx);
+    const colonne = Object.keys(cle)[0], scope = { [colonne]: `in.(${cle[colonne]},autre_fixture)`, created_at: "gte.2026-09-20" };
+    await supprimer("nettoyage", table, scope);
+    assert.equal(appels[0].methode, "GET"); assert.equal(appels[0].params[colonne], scope[colonne]);
+    assert.equal(appels[0].params.created_at, scope.created_at);
+    assert.deepEqual(Array.from(appels[1].cadence), [table, "DELETE"]);
+    const deletion = appels[2]; assert.equal(deletion.methode, "DELETE");
+    assert.equal(deletion.params[colonne], `eq.${cle[colonne]}`);
+    assert.equal(deletion.params.user_id, "eq.acteur"); assert.equal(deletion.params.created_at, scope.created_at);
+    appels.length = 0; sourceRows.length = 1000; sourceRows.fill(cle);
+    await assert.rejects(supprimer("nettoyage", table, scope), /NETTOYAGE_PERIMETRE_TROP_GRAND/);
+    assert.equal(appels.filter(a => a.methode === "DELETE").length, 0);
+    appels.length = 0; erreurLecture = true;
+    await assert.rejects(supprimer("nettoyage", table, scope), /LECTURE_REFUSEE/);
+    assert.equal(appels.filter(a => a.methode === "DELETE").length, 0);
+  }
+});
+
+test("la cadence hors mesure prévoit le fanout de deux générations et ne réécrit pas les limites serveur", () => {
+  assert.equal(delaiFixture("post_likes", "POST", 0), 50);
+  for (const n of [25, 50, 100, 200]) {
+    const intervalle = delaiFixture("post_likes", "DELETE", n);
+    assert.ok(1000 / intervalle <= 20);
+    assert.ok(2 * n * 1000 / intervalle <= 80);
+    assert.equal(delaiFixture("conv_reads", "DELETE", n), intervalle);
+  }
+  assert.equal(delaiFixture("posts", "DELETE", 200), 50, "le chemin V3 écoute INSERT sur posts, pas DELETE");
 });

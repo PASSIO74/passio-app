@@ -1086,9 +1086,9 @@ function _meUpdateProgress(p) {
 }
 function _meHideProgress() { var d = document.getElementById("meProgressOv"); if (d) d.remove(); }
 
-// Compresse/ré-encode une vidéo côté client (canvas + MediaRecorder) en 1080p à
-// bitrate plafonné. Best-effort : rejette si le navigateur ne supporte pas, pour
-// laisser l'appelant retomber sur un message clair. Préserve l'audio (volume 0).
+// Compresse/ré-encode une vidéo côté client (canvas + MediaRecorder), avec
+// dimensions réduites et débit cible : l'encodeur ne garantit pas ce débit.
+// Rejette si le navigateur ne supporte pas ; le routage WebAudio préserve le son.
 function passioCompressVideo(file, opts, onProgress) {
   opts = opts || {};
   var maxDim = opts.maxDim || 720, bitrate = opts.bitrate || 1200000;

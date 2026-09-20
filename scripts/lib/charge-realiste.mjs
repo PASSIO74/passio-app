@@ -81,6 +81,61 @@ export function actionPrevue(utilisateur, tour, scenario = "complet") {
 export const pausePrevue = (graine, utilisateur, tour) => 5000 + entierDeterministe(graine, utilisateur, tour) % 5001;
 export const decalageInitial = (graine, utilisateur) => entierDeterministe(graine, utilisateur, 99999) % 5001;
 
+export function postPourLike(posts, index, tour, nombreComptes) {
+  let position = (index + tour) % posts.length;
+  if ((position + 1) % nombreComptes === index) position = (position + 1) % posts.length;
+  return posts[position].id;
+}
+export async function aimerEtRetirer(cle, journal, inserer, retirer) {
+  const key = `${cle.post_id}:${cle.user_id}`;
+  journal.set(key, cle); // Avant POST : sa réponse peut être perdue.
+  await inserer(cle);
+  await retirer(cle);
+  journal.delete(key); // Seulement après confirmation de la suppression.
+}
+
+// Préparation <=20 lignes/s. Pour une table écoutée : prévoir jusqu'à deux
+// générations encore présentes côté serveur et viser <=80 livraisons/s.
+// C'est une marge de banc, pas une preuve que le serveur a purgé ses sockets.
+export function delaiFixture(table, methode, connexions) {
+  const events = methode === "DELETE" ? ["DELETE"] : ["INSERT", "UPDATE"];
+  const observe = abonnements("fixture").some(a => a.table === table && (a.event === "*" || events.includes(a.event)));
+  return Math.max(50, observe ? Math.ceil(2 * connexions * 1000 / 80) : 0);
+}
+
+export class DisponibiliteRealtime {
+  constructor(uid) {
+    this.uid = uid; this.db = false; this.user = false; this.cdc = false;
+    this.erreur = null; this.handlers = 0; this.systemes = { ok: 0, error: 0, autres: 0 };
+  }
+  get pret() { return !this.erreur && this.db && this.user && this.cdc; }
+  observer(m) {
+    const topicDB = "realtime:realtime:db", topicUser = `realtime:user:${this.uid}`;
+    if (m.event === "phx_reply" && ((String(m.ref) === "1" && m.topic === topicDB) || (String(m.ref) === "2" && m.topic === topicUser))) {
+      if (m.payload?.status !== "ok") this.erreur ||= "REALTIME_JOIN_REFUSE";
+      else if (String(m.ref) === "1") {
+        const bindings = m.payload.response?.postgres_changes;
+        const key = a => JSON.stringify([a.event, a.schema, a.table, a.filter || ""]);
+        const attendus = new Set(abonnements(this.uid).map(key));
+        if (!Array.isArray(bindings) || bindings.length !== 12 || new Set(bindings.map(key)).size !== 12
+            || bindings.some(b => b.id == null || !attendus.has(key(b)))) this.erreur ||= "REALTIME_12_HANDLERS_NON_CONFIRMES";
+        else { this.db = true; this.handlers = bindings.length; }
+      } else this.user = true;
+    }
+    if (m.event === "system" && m.topic === topicDB && m.payload?.extension === "postgres_changes") {
+      const status = m.payload.status;
+      this.systemes[status === "ok" || status === "error" ? status : "autres"]++;
+      if (status === "ok") this.cdc = true;
+      else { this.cdc = false; this.erreur ||= "REALTIME_CDC_ERREUR"; }
+    }
+    return this.pret;
+  }
+  expirer() {
+    this.erreur ||= this.db && this.user ? "REALTIME_CDC_NON_PRET" : "REALTIME_JOIN_TIMEOUT";
+    return this.erreur;
+  }
+}
+
 export function partenaire(index, taille) {
   if (!Number.isInteger(index) || index < 0 || index >= taille || taille < 2) throw new Error("PARTENAIRE_INVALIDE");
   return taille % 2 && index === taille - 1 ? 0 : index ^ 1;

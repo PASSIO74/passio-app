@@ -7,6 +7,7 @@ import { randomUUID, createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { verdictReponse } from "./charge-verdict.mjs";
 import { optionsBanc, emailCapacite, abonnements, actionPrevue, pausePrevue, decalageInitial,
+  postPourLike, aimerEtRetirer, delaiFixture, DisponibiliteRealtime,
   partenaire, clePaire, comptesPourPalier, Budget, LIMITES, statistiques, verdictPalier, Sondes } from "./lib/charge-realiste.mjs";
 
 const sleep = ms => new Promise(resolveSleep => setTimeout(resolveSleep, ms));
@@ -32,6 +33,9 @@ export async function executer(options) {
   const debut = Date.now(), actifs = new Set(), controleurs = new Set();
   const comptes = [], emailsAttendus = [], profilsFixture = [], postsFixture = [], convs = [], events = [], mesures = [], sondes = new Sondes();
   const mutationsPosts = new Set();
+  const mutationsLikes = new Map();
+  const receptionsSonde = new Map();
+  let connexionsMax = 0, prochaineMutation = 0;
   let phase = "preparation", arret = null, cleAnon, cleService, stage = null, fermetureVoulue = false;
   const rapport = { version: 1, date: new Date().toISOString(), options: o, campagne: prefix,
     portee: "API authentifiee + Realtime, pas un test navigateur ni une certification production",
@@ -42,14 +46,19 @@ export async function executer(options) {
       "Les 12 handlers du chemin V3 utilisent 10 tables ; publication staging a verifier separement.",
       o.pages.length === 2 ? "60/20 compare deux tailles de page sur le meme jeu, pas deux builds de l'application."
         : "Page 20 seule : mesure de capacite de ce scenario, aucune comparaison avant/apres."],
-    prevol: null, paliers: [], nettoyage: null };
+    prevol: null, paliers: [], nettoyage: null, phases: [], connexionsRealtime: [] };
+  function changerPhase(nom) {
+    phase = nom;
+    rapport.phases.push({ phase: nom, palier: stage?.taille ?? null, page: stage?.page ?? null,
+      date: new Date().toISOString(), depuisDebutMs: Date.now() - debut });
+  }
   function sauvegarder() {
     rapport.budget = budget.resume(); rapport.budgetNettoyage = nettoyageBudget?.resume() ?? null;
     rapport.dureeTotaleMs = Date.now() - debut;
     writeFileSync(destination, JSON.stringify({ ...rapport, mesures }, null, 2));
     writeFileSync(destination + ".manifest.json", JSON.stringify({ projet: o.projet, campagne: prefix,
       comptes: comptes.map(c => c.id), emailsSynthetiquesAttendus: emailsAttendus, profils: profilsFixture, posts: [...postsFixture.map(p => p.id), ...mutationsPosts],
-      conversations: convs.map(c => c.id), evenements: events.map(e => e.id), nettoyage: rapport.nettoyage }, null, 2));
+      conversations: convs.map(c => c.id), evenements: events.map(e => e.id), likesMutations: [...mutationsLikes.values()], nettoyage: rapport.nettoyage }, null, 2));
   }
   function stop(motif) {
     arret ||= motif;
@@ -63,9 +72,10 @@ export async function executer(options) {
     try { (phase === "nettoyage" ? nettoyageBudget : budget).compter(q); }
     catch (e) { if (phase !== "nettoyage") stop(motifSur(e)); throw e; }
   }
-  async function requete(nom, chemin, { methode = "GET", corps, jwt = cleService, attentes = attendreTableau(), extra = {}, management = false } = {}) {
+  async function requete(nom, chemin, { methode = "GET", corps, jwt = cleService, attentes = attendreTableau(), extra = {}, management = false, phaseMesure = phase } = {}) {
     const depart = performance.now(), controller = new AbortController();
-    const current = { phase, palier: stage?.taille ?? null, page: stage?.page ?? null, famille: nom, type: "http", ok: false, motif: null, ms: 0, octets: 0, status: null };
+    const current = { phase: phaseMesure, palier: stage?.taille ?? null, page: stage?.page ?? null, famille: nom, type: "http", ok: false, motif: null, ms: 0, octets: 0, status: null,
+      date: new Date().toISOString(), depuisDebutMs: Date.now() - debut, methode };
     const body = corps === undefined ? undefined : JSON.stringify(corps);
     controleurs.add(controller);
     const timer = setTimeout(() => controller.abort(), 12000);
@@ -99,10 +109,36 @@ export async function executer(options) {
     }
   }
   const rest = (nom, table, params = {}, opt = {}) => requete(nom, `/rest/v1/${table}?${new URLSearchParams(params)}`, opt);
-  const inserer = (nom, table, corps, opt = {}) => rest(nom, table, {}, { methode: "POST", corps,
-    attentes: attendreTableau(1, []), extra: { Prefer: "return=representation" }, ...opt });
+  async function cadencer(table, methode) {
+    const maintenant = performance.now(), depart = Math.max(maintenant, prochaineMutation);
+    prochaineMutation = depart + delaiFixture(table, methode, connexionsMax);
+    await sleep(Math.max(0, depart - maintenant));
+    (phase === "nettoyage" ? nettoyageBudget : budget).verifier();
+  }
+  async function inserer(nom, table, corps, opt = {}) {
+    const operation = ligne => rest(nom, table, {}, { methode: "POST", corps: ligne,
+      attentes: attendreTableau(1, []), extra: { Prefer: "return=representation" }, ...opt });
+    if (phase === "mesure") return operation(corps);
+    const lignes = [];
+    for (const ligne of Array.isArray(corps) ? corps : [corps]) {
+      await cadencer(table, "POST"); lignes.push(...await operation(ligne));
+    }
+    return lignes;
+  }
   async function supprimer(nom, table, params, min = 0) {
-    return rest(nom, table, params, { methode: "DELETE", extra: { Prefer: "return=representation" }, attentes: attendreTableau(min, []) });
+    // Lire seulement les clés du périmètre exact du run, puis supprimer une
+    // ligne par appel. Aucun DELETE de 120 likes en une transaction.
+    const cles = { post_likes: ["post_id", "user_id"], conv_reads: ["conv_id", "user_id"],
+      conv_members: ["conv_id", "user_id"], user_state: ["user_id"] }[table] || ["id"];
+    const lignes = await rest(nom + "_cles", table, { ...params, select: cles.join(","), limit: "1000" }, { attentes: attendreTableau(min, cles) });
+    if (lignes.length >= 1000) throw new Error("NETTOYAGE_PERIMETRE_TROP_GRAND");
+    const sorties = [];
+    for (const ligne of lignes) {
+      await cadencer(table, "DELETE");
+      const filtre = { ...params, ...Object.fromEntries(cles.map(c => [c, `eq.${ligne[c]}`])) };
+      sorties.push(...await rest(nom, table, filtre, { methode: "DELETE", extra: { Prefer: "return=representation" }, attentes: attendreTableau(0, []) }));
+    }
+    return sorties;
   }
   async function obtenirCles() {
     cleAnon = process.env.CHARGE_SUPABASE_ANON_KEY;
@@ -118,6 +154,7 @@ export async function executer(options) {
     if (!cleAnon || !cleService) throw new Error("CLES_STAGING_MANQUANTES");
   }
   async function preparer() {
+    changerPhase("preparation");
     await obtenirCles();
     const passions = await rest("fixture_passion", "passions", { select: "id", limit: "1", order: "sort_order.asc" });
     const passion = passions[0].id;
@@ -176,14 +213,21 @@ export async function executer(options) {
   async function connecter(compte) {
     if (arret) throw new Error(arret);
     const ws = new WebSocket(`wss://${o.projet}.supabase.co/realtime/v1/websocket?apikey=${encodeURIComponent(cleAnon)}&vsn=1.0.0`);
-    actifs.add(ws); let heartbeat, pret = false; const joins = new Map();
+    actifs.add(ws); let heartbeat, pret = false;
+    connexionsMax = Math.max(connexionsMax, actifs.size);
+    const disponibilite = new DisponibiliteRealtime(compte.id), debutConnexion = performance.now();
+    const trace = { generation: rapport.connexionsRealtime.length + 1, compte: compte.index, phase,
+      palier: stage?.taille ?? null, page: stage?.page ?? null, date: new Date().toISOString(),
+      joins: {}, systemes: disponibilite.systemes, cdcPretMs: null, pretMs: null,
+      postsRecus: 0, broadcastsRecus: 0, heartbeatReponses: 0, erreur: null };
+    rapport.connexionsRealtime.push(trace);
     const env = (topic, event, payload, ref) => {
       const texte = JSON.stringify({ topic, event, payload, ref: String(ref), join_ref: event === "phx_join" ? String(ref) : undefined });
       compter({ octets: octets(texte), messagesRealtime: 1 }); ws.send(texte);
     };
     await new Promise((resoudre, rejeter) => {
-      const timer = setTimeout(() => rejeter(new Error("REALTIME_JOIN_TIMEOUT")), 15000);
-      const echouer = code => { clearTimeout(timer); rejeter(new Error(code)); if (pret && !fermetureVoulue && !arret) stop(code); };
+      const timer = setTimeout(() => echouer(disponibilite.expirer()), 15000);
+      const echouer = code => { trace.erreur ||= code; trace.erreurLe ||= new Date().toISOString(); clearTimeout(timer); rejeter(new Error(code)); if (pret && !ws.fermetureBanc && !fermetureVoulue && !arret) stop(code); };
       ws.addEventListener("open", () => {
         try {
           env("realtime:realtime:db", "phx_join", { config: { broadcast: { self: false }, presence: { key: "" }, private: true,
@@ -197,29 +241,41 @@ export async function executer(options) {
           const texte = typeof ev.data === "string" ? ev.data : Buffer.from(ev.data).toString("utf8");
           compter({ octets: octets(texte), messagesRealtime: 1 });
           const m = JSON.parse(texte);
-          if (m.event === "phx_reply" && ["1", "2"].includes(String(m.ref))) {
-            if (m.payload?.status !== "ok") return echouer("REALTIME_JOIN_REFUSE");
-            if (String(m.ref) === "1") {
-              const runtime = m.payload.response?.postgres_changes;
-              if (!Array.isArray(runtime) || runtime.length !== 12) return echouer("REALTIME_12_HANDLERS_NON_CONFIRMES");
-              compte.handlersConfirmes = runtime.length;
-            }
-            joins.set(String(m.ref), true);
-            if (joins.size === 2) { clearTimeout(timer); pret = true; resoudre(); }
+          disponibilite.observer(m);
+          if (m.event === "system" && m.topic === "realtime:realtime:db" && m.payload?.extension === "postgres_changes") {
+            trace.dernierSysteme = { date: new Date().toISOString(), status: ["ok", "error"].includes(m.payload.status) ? m.payload.status : "autre" };
           }
+          if (disponibilite.erreur) return echouer(disponibilite.erreur);
+          if (disponibilite.db && trace.joins.dbMs == null) trace.joins.dbMs = Math.round(performance.now() - debutConnexion);
+          if (disponibilite.user && trace.joins.userMs == null) trace.joins.userMs = Math.round(performance.now() - debutConnexion);
+          if (disponibilite.cdc && trace.cdcPretMs == null) trace.cdcPretMs = Math.round(performance.now() - debutConnexion);
+          if (disponibilite.pret && !pret) {
+            clearTimeout(timer); pret = true; compte.handlersConfirmes = disponibilite.handlers;
+            trace.pretMs = Math.round(performance.now() - debutConnexion); resoudre();
+          }
+          if (m.event === "phx_reply" && String(m.ref) === "hb") trace.heartbeatReponses++;
           if (["phx_error", "phx_close"].includes(m.event)) return echouer("REALTIME_CANAL_FERME");
           if (m.event === "postgres_changes") {
             const data = m.payload?.data;
-            if (data?.table === "posts" && data.record?.id) sondes.recevoir(cleSonde(compte.id, "post", data.record.id));
+            if (data?.table === "posts" && data.record?.id) {
+              trace.postsRecus++;
+              if (!ws.fermetureBanc && pret) {
+                receptionsSonde.get(data.record.id)?.add(compte.index);
+                sondes.recevoir(cleSonde(compte.id, "post", data.record.id));
+              }
+            }
           }
           if (m.event === "broadcast" && m.payload?.event === "INSERT") {
             const payload = m.payload.payload, record = payload?.record || payload?.new || payload;
-            if (record?.id) sondes.recevoir(cleSonde(compte.id, "message", record.id));
+            if (record?.id) { trace.broadcastsRecus++; if (!ws.fermetureBanc && pret) {
+              receptionsSonde.get(record.id)?.add(compte.index);
+              sondes.recevoir(cleSonde(compte.id, "message", record.id));
+            } }
           }
         } catch (e) { echouer(motifSur(e)); }
       });
       ws.addEventListener("error", () => echouer("REALTIME_SOCKET_ERREUR"));
-      ws.addEventListener("close", () => { clearInterval(heartbeat); actifs.delete(ws); if (!ws.fermetureBanc) echouer("REALTIME_SOCKET_FERMEE"); });
+      ws.addEventListener("close", ev => { trace.fermeture = { code: ev.code, date: new Date().toISOString() }; clearInterval(heartbeat); actifs.delete(ws); if (!ws.fermetureBanc) echouer("REALTIME_SOCKET_FERMEE"); });
     });
     return ws;
   }
@@ -253,7 +309,9 @@ export async function executer(options) {
   async function livraison(compte, taille, type) {
     const id = `${prefix}_mesure_${randomUUID()}`, recipient = comptes[partenaire(compte.index, taille)];
     const sonde = sondes.armer(cleSonde(recipient.id, type, id));
-    const contexte = { phase, palier: stage?.taille ?? null, page: stage?.page ?? null, famille: type, type: "realtime" };
+    receptionsSonde.set(id, new Set());
+    const contexte = { phase, palier: stage?.taille ?? null, page: stage?.page ?? null, famille: type, type: "realtime",
+      date: new Date().toISOString(), auteur: compte.index, destinataire: recipient.index, identifiant: id };
     try {
       if (type === "message") await inserer("message_envoyer", "conv_messages", { id, conv_id: convPour(compte, taille).id,
         from_id: compte.id, content: "Message de capacite entre deux comptes authentifies.", created_at: new Date().toISOString() }, { jwt: compte.jwt, attentes: { ...attendreTableau(), id } });
@@ -262,8 +320,19 @@ export async function executer(options) {
         await inserer("post_publier", "posts", { id, author_id: compte.id, passion_id: postsFixture[0].passion_id,
           content: "Publication de capacite.", created_at: new Date().toISOString() }, { jwt: compte.jwt, attentes: { ...attendreTableau(), id } });
       }
-    } catch (e) { sonde.annuler(); mesures.push({ ...contexte, ...await sonde.promise }); throw e; }
-    const resultat = await sonde.promise; mesures.push({ ...contexte, ...resultat });
+    } catch (e) { sonde.annuler(); receptionsSonde.delete(id); mesures.push({ ...contexte, ...await sonde.promise }); throw e; }
+    const resultat = await sonde.promise;
+    const recusAuVerdict = [...receptionsSonde.get(id)], verdictLe = new Date().toISOString();
+    if (!resultat.ok && resultat.motif === "REALTIME_TIMEOUT" && !arret) {
+      try {
+        const rows = await rest("diagnostic_visibilite_realtime", type === "post" ? "posts" : "conv_messages",
+          { id: `eq.${id}`, select: "id", limit: "1" }, { jwt: recipient.jwt, attentes: attendreTableau(0, ["id"]), phaseMesure: "diagnostic_realtime" });
+        resultat.visibiliteDestinataire = { visible: rows.some(r => r.id === id), status: 200 };
+      } catch (e) { resultat.visibiliteDestinataire = { visible: null, motif: motifSur(e) }; }
+    }
+    mesures.push({ ...contexte, ...resultat, verdictLe, recuParAvantVerdict: recusAuVerdict,
+      recuParPendantDiagnostic: [...receptionsSonde.get(id)].filter(i => !recusAuVerdict.includes(i)) });
+    receptionsSonde.delete(id);
     if (!resultat.ok) throw new Error(resultat.motif);
   }
   async function action(compte, taille, page, tour) {
@@ -282,12 +351,11 @@ export async function executer(options) {
         await inserer("message_lire", "conv_reads", { conv_id: conv.id, user_id: compte.id, last_read_at: new Date().toISOString() },
           { jwt, extra: { Prefer: "resolution=merge-duplicates,return=representation" } });
       } else if (nom === "aimer") {
-        let idx = (compte.index + tour) % postsFixture.length;
-        if ((idx + 1) % comptes.length === compte.index) idx = (idx + 1) % postsFixture.length;
-        const postId = postsFixture[idx].id;
-        await inserer("aimer", "post_likes", { post_id: postId, user_id: compte.id }, { jwt });
-        await rest("retirer_like", "post_likes", { post_id: `eq.${postId}`, user_id: `eq.${compte.id}` },
-          { jwt, methode: "DELETE", extra: { Prefer: "return=representation" }, attentes: attendreTableau(1, ["post_id", "user_id"]) });
+        const postId = postPourLike(postsFixture, compte.index, tour, comptes.length);
+        await aimerEtRetirer({ post_id: postId, user_id: compte.id }, mutationsLikes,
+          cle => { sauvegarder(); return inserer("aimer", "post_likes", cle, { jwt }); },
+          cle => rest("retirer_like", "post_likes", { post_id: `eq.${cle.post_id}`, user_id: `eq.${cle.user_id}` },
+            { jwt, methode: "DELETE", extra: { Prefer: "return=representation" }, attentes: attendreTableau(1, ["post_id", "user_id"]) }));
       }
       ok = true;
     } catch (e) { motif = motifSur(e); }
@@ -295,20 +363,27 @@ export async function executer(options) {
     if (!ok && ["HTTP_401", "HTTP_403", "HTTP_429", "REALTIME_TIMEOUT"].includes(motif)) stop(motif);
   }
   async function reinitialiser() {
-    phase = "reinitialisation";
+    changerPhase("reinitialisation");
     if (mutationsPosts.size) { await supprimer("reset_posts", "posts", { id: liste([...mutationsPosts]) }); mutationsPosts.clear(); }
     for (let i = 0; i < convs.length; i += 50) {
       const ids = convs.slice(i, i + 50).map(c => c.id);
       await supprimer("reset_messages", "conv_messages", { conv_id: liste(ids), id: `like.${prefix}_mesure_*` });
       await supprimer("reset_lectures", "conv_reads", { conv_id: liste(ids) });
     }
-    await supprimer("reset_likes", "post_likes", { post_id: liste(postsFixture.map(p => p.id)) });
-    await inserer("reset_likes_fixture", "post_likes", postsFixture.map((p, i) => ({ post_id: p.id, user_id: comptes[(i + 1) % comptes.length].id })));
+    for (const [key, cle] of mutationsLikes) {
+      await supprimer("reset_like_residuel", "post_likes", { post_id: `eq.${cle.post_id}`, user_id: `eq.${cle.user_id}` });
+      mutationsLikes.delete(key);
+    }
+    const likes = await rest("fixture_likes_verification", "post_likes", { select: "post_id,user_id", post_id: liste(postsFixture.map(p => p.id)) },
+      { attentes: attendreTableau(postsFixture.length, ["post_id", "user_id"]) });
+    const attendus = new Set(postsFixture.map((p, i) => `${p.id}:${comptes[(i + 1) % comptes.length].id}`));
+    const recus = new Set(likes.map(l => `${l.post_id}:${l.user_id}`));
+    if (likes.length !== attendus.size || recus.size !== attendus.size || [...recus].some(k => !attendus.has(k))) throw new Error("JEU_LIKES_FIXTURE_MODIFIE");
     const tete = await fil(comptes[0], 60);
     return createHash("sha256").update(JSON.stringify(tete)).digest("hex");
   }
   async function prevol() {
-    phase = "prevol"; const debutPrevol = performance.now(), index = mesures.length;
+    changerPhase("prevol"); const debutPrevol = performance.now(), index = mesures.length;
     try {
       await connecter(comptes[0]); await connecter(comptes[1]);
       const premierFil = await fil(comptes[0], 60);
@@ -323,17 +398,18 @@ export async function executer(options) {
   }
   async function palier(taille, page, empreinteAttendue) {
     const selection = comptesPourPalier(comptes, taille);
+    stage = { taille, page };
     const empreinte = await reinitialiser();
     if (empreinteAttendue && empreinte !== empreinteAttendue) throw new Error("JEU_DE_DONNEES_MODIFIE_ENTRE_VARIANTES");
-    stage = { taille, page }; phase = "connexion";
+    changerPhase("connexion");
     const debutConnexion = performance.now(); let connectes = 0;
     try {
       // Départs espacés, sans fanout Promise.all de 200 ouvertures à la même ms.
       for (const c of selection) { await connecter(c); connectes++; await sleep(20); }
-      phase = "echauffement"; const debutChauffe = performance.now();
+      changerPhase("echauffement"); const debutChauffe = performance.now();
       for (const c of selection.slice(0, 4)) await fil(c, page);
       const chauffeMs = Math.round(performance.now() - debutChauffe);
-      phase = "mesure"; const start = performance.now(), debutMesures = mesures.length, fin = start + o.duree * 1000;
+      changerPhase("mesure"); const start = performance.now(), debutMesures = mesures.length, fin = start + o.duree * 1000;
       const borneDure = setTimeout(() => { if (controleurs.size) stop("DUREE_PALIER_180_S"); }, 180000);
       await Promise.all(selection.map(async c => {
         await sleep(decalageInitial(o.graine, c.index)); let tour = 0;
@@ -352,13 +428,13 @@ export async function executer(options) {
         dureeMs, http, parcours, realtime, messages, livraisonRealtimeQualifiee: o.scenario === "complet" && messages.succes > 0 && messages.erreurs === 0,
         familles: Object.fromEntries([...new Set(subset.map(m => `${m.type}:${m.famille}`))].map(key => [key, statistiques(subset.filter(m => `${m.type}:${m.famille}` === key))])),
         verdict: verdictPalier({ http, parcours, realtime, messages, connectes, attendus: taille, termine: !arret && dureeMs >= o.duree * 1000, fatal: arret, scenario: o.scenario }) };
-      rapport.paliers.push(resultat); sauvegarder();
+      rapport.paliers.push(resultat); changerPhase("fin_mesure"); sauvegarder();
       console.log(`Palier ${taille} personnes / page ${page} : ${resultat.verdict.ok ? "valide dans ce scenario" : "arret"}, HTTP p95 ${http.p95Ms} ms, erreurs ${http.erreurs}/${http.tentatives}.`);
       return resultat;
     } finally { await fermerSockets(); stage = null; }
   }
   async function nettoyer() {
-    phase = "nettoyage";
+    changerPhase("nettoyage");
     nettoyageBudget = new Budget({ ...LIMITES, octets: LIMITES.octetsNettoyage, requetes: 2000 });
     const erreurs = [];
     const essayer = async (label, fn) => { try { await fn(); } catch (e) { erreurs.push({ operation: label, motif: motifSur(e) }); } };
