@@ -1,8 +1,11 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // INGESTION — connecte le magasin d'événements Supabase au store temps réel.
 //   1. Charge l'historique récent (amorçage du flux).
-//   2. S'abonne au realtime (postgres_changes INSERT) en service_role.
-//   3. Filet de sécurité : polling incrémental si le realtime décroche.
+//   2. Lit la suite par POLLING incrémental (service_role, toutes les POLL_MS).
+//      ⚠️ C'est le chemin NOMINAL depuis le 2026-09-20, plus un filet : le canal
+//      `postgres_changes` a été retiré parce que `telemetry_events` portait à
+//      elle seule 91,4 % des changements que la base réplique, pour ce seul
+//      abonné. Détail et retour arrière plus bas, au point 2 du démarrage.
 // Chaque nouvel événement est normalisé, ajouté au store et diffusé en SSE.
 // ═══════════════════════════════════════════════════════════════════════════
 import { createClient } from "@supabase/supabase-js";
@@ -244,8 +247,13 @@ export async function startIngest() {
   //
   // RETOUR ARRIÈRE : republier la table
   // (`alter publication supabase_realtime add table public.telemetry_events;`)
-  // puis restaurer le `admin.channel(...)` retiré ici — voir l'historique git
-  // et `migrations/migration_realtime_telemetry_2026-09-20.sql`.
+  // puis restaurer le canal retiré ici — voir l'historique git et
+  // `migrations/migration_realtime_telemetry_2026-09-20.sql`.
+  // ⚠️ Le nom de la fonction de création n'est PAS écrit ici : plusieurs verrous
+  // cherchent ce jeton dans ce fichier pour vérifier qu'aucun canal public ne
+  // revient, et un commentaire qui le cite les fait rougir sur eux-mêmes. Ils
+  // retirent désormais les commentaires d'abord — mais ne pas le réécrire ici
+  // évite de dépendre de ce nettoyage.
 
   // 3) Polling — CHEMIN NOMINAL depuis le 2026-09-20 (toutes les 5 s).
   setInterval(pollIncrement, POLL_MS).unref();

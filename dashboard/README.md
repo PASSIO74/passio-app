@@ -138,18 +138,38 @@ recul 5, 10, 20, 40, 80 min, puis abandon annoncé ; une demande figée en
 jeu au démarrage (quatre l'étaient depuis le 19-24/08) ; au délai dépassé,
 l'arbre `claude`/`codex` est abattu en entier.
 
-#### Realtime : le canal du pilotage est PRIVÉ (2026-09-12)
+#### Realtime : le canal du pilotage a été RETIRÉ (2026-09-20)
 
-Le projet Supabase n'accepte plus que des canaux privés (« Allow public
-access » OFF, geste ③ de `docs/OUVERTURE_PUBLIQUE_2026-09-11.md`). Le verrou
-du dépôt ne couvrait que les `supa.channel(` de l'app : `dash:telemetry`, en
-`admin.channel(`, est resté public et a été refusé toutes les 14 s pendant
-neuf heures (`PrivateOnly: This project only allows private channels`, ~260
-refus par heure dans les journaux Realtime), le pilotage vivant sur le seul
-polling de secours sans le dire — le motif du refus n'était pas journalisé.
-Corrigé : `{ config: { private: true } }` (mesuré : abonné en 0,9 s avec
-`service_role`), motif gardé (`ingestState().realtimeLastError`) et affiché sur
-la page Sources. Verrou : `test/ingest.test.js` « canal privé ».
+**Le pilotage ne s'abonne plus au temps réel.** `telemetry_events` produisait
+**481 554 changements sur 526 756** (91,4 %) parmi les tables répliquées, pour
+**un seul abonné** — ce backend — alors que le décodage WAL est le premier poste
+de CPU de la base (68,9 %). La table est sortie de la publication
+(`migrations/migration_realtime_telemetry_2026-09-20.sql`) et le **polling est
+devenu le chemin NOMINAL**, pas un secours.
+
+- **La cadence ne change pas** (`POLL_MS = 5000`) : 1,0 ms par lecture mesuré,
+  et 5 s suffisent à une console de supervision. Accélérer « pour compenser »
+  aurait ajouté du coût pour une latence imperceptible.
+- **L'alerte « Realtime décroché » est désarmée explicitement**
+  (`ingestState().realtimeUtilise === false`). Elle ne se déclencherait déjà
+  plus — `realtimeStatus` reste `null` — mais un verrou qui tient par accident
+  se rallume au premier champ d'affichage posé là.
+- **Le canari n'est pas concerné** : il est observé par `ingestOne`, point de
+  passage unique de tout événement entrant.
+- **Retour arrière** : republier la table, puis restaurer le canal — et il
+  devra être **privé**, le verrou le garde encore (voir ci-dessous).
+
+*Pourquoi il devait être privé, et pourquoi ça reste gardé (2026-09-12).* Le
+projet Supabase n'accepte que des canaux privés (« Allow public access » OFF,
+geste ③ de `docs/OUVERTURE_PUBLIQUE_2026-09-11.md`). Le verrou du dépôt ne
+couvrait alors que les `supa.channel(` de l'app : celui du pilotage est resté
+public et a été refusé toutes les 14 s pendant neuf heures (`PrivateOnly: This
+project only allows private channels`, ~260 refus par heure), le pilotage vivant
+sur le seul polling **sans le dire** — le motif n'était pas journalisé. La leçon
+survit au canal : `tests/e2e/ouverture-publique.spec.js` ⑨ exige désormais
+« s'il revient, il est privé », et `test/ingest.test.js` vérifie qu'il n'est pas
+revenu sans que la table soit republiée — un `postgres_changes` sur une table
+absente de la publication passe `SUBSCRIBED` et ne reçoit **jamais rien**.
 
 
 ## 2 ter. Tests du pilotage
