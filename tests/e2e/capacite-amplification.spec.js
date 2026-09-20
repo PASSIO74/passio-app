@@ -26,28 +26,45 @@ const lire = (f) => fs.readFileSync(path.join(RACINE, f), "utf8");
 
 // ⚠️ LE DÉMARRAGE APPELLE `supaRefreshVideoLives` UNE FOIS, ET C'EST INVISIBLE
 // EN LOCAL. `supaInit` (app-08) le fait pour peindre les bulles « 🔴 LIVE »,
-// gardé par `window._supaReal` : FAUX en local (le SDK n'est pas chargé), VRAI
+// et il n'est atteint que lorsque le VRAI SDK est chargé : FAUX en local, VRAI
 // en CI. Les trois cas ⑧ ont donc été verts ici et rouges là-bas, à exactement
 // UN appel près (0 → 1, 1 → 2) — la divergence d'environnement que ce dépôt
 // connaît par cœur, prise par son autre bout.
 //
-// On ne « tolère » pas cet appel et on ne l'ignore pas à l'aveugle : on attend
-// que le compteur soit STABLE (plus aucun appel pendant 400 ms), puis on le
-// remet à zéro. Le sujet de ces cas est « mon geste déclenche-t-il un
-// rechargement ? », pas « l'application en fait-elle un au démarrage ». Un
-// simple `setTimeout` de complaisance aurait rouvert la même course sur un
-// runner plus lent.
+// ⚠️ ET MA PREMIÈRE PARADE NE MARCHAIT PAS, pour une raison qu'il faut retenir :
+// elle attendait que le compteur soit « stable », et **un compteur à zéro qui
+// n'a pas encore bougé est parfaitement stable**. La boucle sortait donc
+// immédiatement, remettait à zéro, et l'appel de démarrage tombait APRÈS. Une
+// détection de calme qui ne distingue pas « c'est fini » de « ça n'a pas encore
+// commencé » ne détecte rien.
+//
+// ⚠️ LA PARADE EST DÉSORMAIS UN SIGNAL, PAS UN DÉLAI. Dans `supaInit`, l'appel
+// aux lives précède immédiatement `supaSubscribe()`, qui pose `window._dbChan` :
+// ce canal est donc la PREUVE que l'appel de démarrage est passé. On attend
+// `_dbChan` quand le vrai SDK est là, et rien du tout quand il ne l'est pas —
+// dans ce cas il n'y a aucun appel de démarrage à attendre. La boucle de
+// stabilité reste derrière, en second filet, mais elle ne décide plus seule.
+// ⚠️ Ni tolérance à « +1 », ni `setTimeout` de complaisance : les deux masquent
+// un vrai appel ou rouvrent la course sur un runner plus lent.
 async function compteurVliveAuCalme(page) {
   await page.evaluate(() => {
     window.__vliveAppels = 0;
     window.supaRefreshVideoLives = function () { window.__vliveAppels++; return Promise.resolve(); };
   });
+  // Le signal : soit le SDK n'est pas réel (aucun appel de démarrage possible),
+  // soit le canal est posé (l'appel a déjà eu lieu et a été compté).
+  await page
+    .waitForFunction(() => !window._supaReal || !!window._dbChan, null, { timeout: 20000 })
+    .catch(() => {});
+  // Second filet : on n'accepte le calme qu'après DEUX observations identiques
+  // ET un plancher d'observation, pour ne pas reprendre le défaut du « zéro
+  // stable ».
   let precedent = -1;
-  for (let i = 0; i < 20; i++) {
+  for (let i = 0; i < 12; i++) {
+    await page.waitForTimeout(300);
     const n = await page.evaluate(() => window.__vliveAppels);
-    if (n === precedent) break;
+    if (i >= 2 && n === precedent) break;
     precedent = n;
-    await page.waitForTimeout(400);
   }
   await page.evaluate(() => { window.__vliveAppels = 0; });
 }
