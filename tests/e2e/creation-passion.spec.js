@@ -32,7 +32,7 @@ async function bootAvecCompte(page, opts = {}) {
   await page.addInitScript((uid) => {
     try { localStorage.setItem("passio_uid", uid); } catch (e) {}
   }, opts.uid === null ? "u_visiteur_sans_compte" : UID);
-  await bootOnboarded(page);
+  await bootOnboarded(page, undefined, 1, opts);
   await page.waitForFunction(() => !!window.PassioPassions, null, { timeout: 15000 });
 }
 
@@ -325,7 +325,14 @@ test.describe("Créer une passion", () => {
     // route posée après ne protégerait que les chargements suivants.
     await page.route("**/rest/v1/passions?*", (route) =>
       route.fulfill({ status: 200, contentType: "application/json", body: "[]" }));
-    await bootAvecCompte(page);
+    // ⚠️ `sansMiroirPassions` — SINON CE CAS MESURE LE CONTRAIRE DE SON SUJET.
+    // Depuis le 2026-09-20, `bootOnboarded` sert le référentiel depuis le
+    // miroir local (`app-helper.js`) pour ne plus le télécharger en production.
+    // Playwright donne la priorité à la DERNIÈRE route posée : celle du helper
+    // écrasait donc le `[]` ci-dessus, le cache se remplissait au boot, et
+    // `chargerReferentielPassions` ressortait sur sa garde « déjà complet »
+    // sans toucher au faux client — `vus` restait vide.
+    await bootAvecCompte(page, { sansMiroirPassions: true });
     const filtres = await page.evaluate(() => {
       const vus = [];
       window._supaReal = true;

@@ -2,6 +2,8 @@
 // Entre dans l'app via un état local onboardé injecté dans localStorage —
 // CI-safe (pas de compte Supabase créé) et rapide. Les fonctions de sync
 // Supabase sont neutralisées après boot pour ne JAMAIS polluer la prod.
+const fs = require("fs");
+const path = require("path");
 const { GATE_TOKEN, GATE_KEY } = require("./gate-helper");
 
 const PASSIONS = ["musique", "sport", "cuisine"];
@@ -97,7 +99,7 @@ async function bootOnboarded(page, errors, nProfiles = 1, opts = {}) {
   // coupe TOUT `*.supabase.co` par `route.abort()` — sa requête `posts` serait
   // devenue un `fulfill []`, donc une simulation différente de celle qu'elle
   // mesure.
-  if (!opts.sansIsolationDesDonnees) await sansDonneesDistantes(page);
+  if (!opts.sansIsolationDesDonnees) await sansDonneesDistantes(page, opts);
 
   if (errors) {
     page.on("pageerror", (e) => errors.js.push("pageerror: " + e.message));
@@ -236,11 +238,173 @@ const PIXEL_PNG = Buffer.from(
   "base64",
 );
 
-async function sansDonneesDistantes(page) {
+// ── LE RÉFÉRENTIEL DES PASSIONS, QUE LA CI TÉLÉCHARGEAIT 4 300 FOIS PAR RUN ──
+// Mesuré le 2026-09-20 (canal ① d'ADR-012, `extensions.pg_stat_statements`,
+// cumul sur 129 jours) : `select id from passions where status = 'active'` est
+// la TROISIÈME requête de toute la base — 2 900 511 appels, 4 368 s de CPU,
+// 5,92 % du total. Pour DIX comptes réels.
+//
+// ⚠️ LE DEMANDEUR N'EST PAS UN UTILISATEUR, C'EST CETTE SUITE — et le calcul le
+// dit sans ambiguïté. `chargerReferentielPassions` (app-02) pagine par 1 000 :
+// 5 001 passions actives = SIX requêtes par démarrage de page. La suite compte
+// 716 démarrages ; un run complet vaut donc ~4 300 appels, et 2 900 511 / 4 296
+// ≈ 675 runs. Le contre-témoin confirme le modèle : la variante SANS le filtre
+// `status` — le client d'avant le 2026-09-09 — porte 141 520 appels, soit ~33
+// runs, très exactement la fenêtre où ce client a vécu.
+// C'est la famille de l'avatar de 2,59 Mo demandé 399 fois (2026-09-10) : un
+// coût de production payé par les tests, par un chemin que personne ne regarde.
+// S'y ajoutent ~140 ko d'identifiants par démarrage, soit ~100 Mo d'egress par
+// run complet — que nul test ne lit jamais.
+//
+// ⚠️ ON NE RÉPOND PAS `[]`, ET C'EST TOUT L'OBJET DU CHOIX. Une réponse vide
+// laisserait `_referentielPassions` à `null`, donc `estPassionCanonique` au
+// PLANCHER des 19 passions du socle : une suite qui publie sous une passion du
+// référentiel deviendrait rouge pour une raison étrangère à son sujet, et —
+// pire — une suite qui passerait quand même cesserait d'exercer la liste
+// blanche sans que rien ne le dise. On sert donc `data/passions-v1.json`, qui
+// n'est pas une imitation : c'est le MIROIR GÉNÉRÉ de cette table (même source
+// `data/passions/*.js` que `migration_passions_plat.sql`, égalité tenue par la
+// gate `npm run passions:verifier`). Contenu identique, zéro octet de prod.
+//
+// ⚠️ DIVERGENCE CONNUE ET ASSUMÉE : les passions créées depuis l'application
+// (`source = 'user_suggested'`, 6 en production) vivent en base et PAS dans le
+// miroir. Aucun test ne peut donc s'appuyer sur elles — ce qui est la bonne
+// règle de toute façon : un banc qui dépend d'une ligne que seul le serveur
+// porte dépend d'un état que personne ne contrôle (la leçon « sculpture sur
+// glace », et celle de `user-passions-miroir`).
+//
+// ⚠️ LE `status=eq.active` EST IGNORÉ À DESSEIN : le miroir ne contient QUE des
+// passions actives, par construction. Le filtrer serait une boucle sur un
+// prédicat toujours vrai, et laisserait croire qu'on sait rendre l'archivage —
+// ce qui est faux, et c'est écrit ici plutôt que deviné plus tard.
+//
+// ⚠️ DEUX FORMES DE REQUÊTE, PAS UNE. Outre le chargeur paginé, `passions-flat.js`
+// demande `select=id,label,emoji,color&id=in.(…)` pour nommer un identifiant que
+// le socle ne connaît pas. N'en servir qu'une laisserait l'autre partir en
+// production — un correctif qui ne corrige qu'une surface.
+const MOTIF_PASSIONS_DISTANTES = /\/rest\/v1\/passions\?/;
+const CHEMIN_MIROIR_PASSIONS = path.join(__dirname, "..", "..", "data", "passions-v1.json");
+let _miroirPassions = null;
+let _miroirPassionsDit = false;
+
+function miroirPassions() {
+  if (_miroirPassions) return _miroirPassions;
+  const j = JSON.parse(fs.readFileSync(CHEMIN_MIROIR_PASSIONS, "utf8"));
+  // Les colonnes se lisent par `champs`, jamais par un indice en dur : le
+  // générateur peut en ajouter une, et un `p[1]` deviendrait faux en silence.
+  const c = {};
+  j.champs.forEach((nom, k) => { c[nom] = k; });
+  _miroirPassions = j.passions.map((p) => ({
+    id: p[c.id], label: p[c.label], emoji: p[c.emoji], color: p[c.color],
+  }));
+  return _miroirPassions;
+}
+
+function servirPassions(route) {
+  const req = route.request();
+  // Les ÉCRITURES passent, comme pour les tables et les médias.
+  if (req.method() !== "GET") return route.continue();
+
+  let lignes;
+  try {
+    lignes = miroirPassions();
+  } catch (e) {
+    // Miroir illisible : on rend la main à la production — le comportement
+    // d'avant ce correctif. Mais JAMAIS en silence : un repli muet ici se
+    // lirait comme « la CI ne coûte plus rien », qui serait faux.
+    if (!_miroirPassionsDit) {
+      _miroirPassionsDit = true;
+      console.warn("[app-helper] miroir des passions illisible (" + (e && e.message) +
+                   ") — les tests repartent sur la production");
+    }
+    return route.continue();
+  }
+
+  const params = new URL(req.url()).searchParams;
+
+  const filtreId = params.get("id") || "";
+  if (filtreId.startsWith("in.")) {
+    const voulus = new Set(
+      filtreId.slice(3).replace(/^\(|\)$/g, "").split(",").map((x) => x.replace(/^"|"$/g, "")),
+    );
+    lignes = lignes.filter((p) => voulus.has(p.id));
+  }
+
+  const colonnes = (params.get("select") || "").split(",").map((x) => x.trim()).filter(Boolean);
+  if (colonnes.length && !colonnes.includes("*")) {
+    lignes = lignes.map((p) => {
+      const o = {};
+      colonnes.forEach((k) => { if (k in p) o[k] = p[k]; });
+      return o;
+    });
+  }
+
+  // ── LA PAGINATION, ET ELLE NE PASSE PAS PAR OÙ L'ON CROIT ────────────────
+  // ⚠️ `postgrest-js` 2.116 TRADUIT `.range(a, b)` EN PARAMÈTRES D'URL
+  //   (`offset=a&limit=b-a+1`), PAS EN EN-TÊTE `Range` — lu dans
+  //   `js/vendor/supabase-js-2.116.0.js`, et confirmé par le SQL enregistré en
+  //   production (`LIMIT $1 OFFSET $2`).
+  //   La première version de cette route ne lisait que l'en-tête : elle rendait
+  //   donc les 5 001 lignes À CHAQUE page. Le chargeur redemande tant qu'une
+  //   page revient PLEINE, il partait donc pour ses 40 pages (`PAGES_MAX`),
+  //   journalisait « référentiel TRONQUÉ » et ne passait JAMAIS `complet` —
+  //   c'est-à-dire qu'il rechargeait à chaque appel. Un correctif de charge qui
+  //   MULTIPLIAIT la charge par sept.
+  // ⚠️ ET HUIT VERROUS ÉTAIENT VERTS DESSUS : ils interrogeaient cette route
+  //   avec leur propre `fetch`, jamais avec le client. Un banc qui mesure le
+  //   faux serveur ne mesure pas le produit — c'est le cas ⑨ qui l'a trouvé.
+  // L'en-tête reste honoré : le vrai PostgREST accepte les deux, et un appelant
+  // futur pourrait l'employer.
+  const params_offset = Number(params.get("offset"));
+  const params_limit = Number(params.get("limit"));
+  const plage = /^(\d+)-(\d+)$/.exec(req.headers()["range"] || "");
+  const total = lignes.length;
+  let debut = 0, fin = total - 1, partielle = false;
+  if (Number.isFinite(params_limit) && params.get("limit") !== null) {
+    debut = Number.isFinite(params_offset) && params.get("offset") !== null ? params_offset : 0;
+    fin = Math.min(debut + params_limit - 1, total - 1);
+    lignes = lignes.slice(debut, fin + 1);
+  } else if (plage) {
+    debut = Number(plage[1]);
+    fin = Math.min(Number(plage[2]), total - 1);
+    lignes = lignes.slice(debut, fin + 1);
+    partielle = true;                        // PostgREST rend 206 sur un en-tête Range
+  }
+  return route.fulfill({
+    status: partielle ? 206 : 200,
+    contentType: "application/json",
+    headers: {
+      "content-range": debut + "-" + Math.max(debut, fin) + "/" + total,
+      // ⚠️ `Content-Range` N'EST PAS UN EN-TÊTE EXPOSÉ PAR DÉFAUT. Le vrai
+      // PostgREST l'expose nommément ; sans cette ligne, un appelant d'une
+      // AUTRE origine lit `null` alors que le corps, lui, est bien arrivé — et
+      // c'est tout `count` / `range` du SDK qui devient muet, sans erreur. Un
+      // faux serveur qui omet ce que le vrai déclare ne mesure pas le vrai.
+      "access-control-allow-origin": "*",
+      "access-control-expose-headers": "content-range",
+    },
+    body: JSON.stringify(lignes),
+  });
+}
+
+async function sansDonneesDistantes(page, opts = {}) {
   await page.route(MOTIF_TABLES_DISTANTES, (route) => {
     if (route.request().method() !== "GET") return route.continue();
     return route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
   });
+
+  // ⚠️ `sansMiroirPassions` — UNE ÉCHAPPATOIRE ÉTROITE, ET IL EN FALLAIT UNE.
+  // Playwright donne la priorité à la route enregistrée en DERNIER : une suite
+  // qui pose sa propre route sur `passions` AVANT `bootOnboarded` (parce que
+  // c'est le chargement du BOOT qu'elle veut contrôler — `creation-passion` ⑬
+  // exige un cache vide pour que son appel explicite atteigne vraiment le
+  // client) se faisait donc écraser par celle-ci, en silence, et mesurait le
+  // contraire de son sujet.
+  // On ne lui fait PAS poser `sansIsolationDesDonnees` : ce serait rendre à la
+  // production ses posts, ses stories, ses médias et son canal temps réel pour
+  // un besoin qui ne porte que sur une table. Une échappatoire large est une
+  // isolation qu'on retire par mégarde.
+  if (!opts.sansMiroirPassions) await page.route(MOTIF_PASSIONS_DISTANTES, servirPassions);
 
   await page.route(MOTIF_MEDIAS_DISTANTS, (route) => {
     // Les ÉCRITURES passent, comme pour les tables : une suite qui exerce un
@@ -275,4 +439,4 @@ async function sansDonneesDistantes(page) {
   await page.routeWebSocket(/\/realtime\/v1\/websocket/, () => {});
 }
 
-module.exports = { onboardedState, bootOnboarded, sansDonneesDistantes, PASSIONS };
+module.exports = { onboardedState, bootOnboarded, sansDonneesDistantes, miroirPassions, PASSIONS };

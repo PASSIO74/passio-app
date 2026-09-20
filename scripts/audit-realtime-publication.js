@@ -77,16 +77,46 @@ function souscriptions(fichier) {
   const out = [];
   let i = 0;
   while ((i = src.indexOf("postgres_changes", i)) !== -1) {
+    const rel = path.relative(path.join(__dirname, ".."), fichier);
+
+    // ⚠️ LA FORME *TABLEAU* ÉTAIT COMPTÉE POUR UNE SEULE LIAISON, ET C'EST LE
+    // SENS MUET QUE CETTE GATE EXISTE POUR FERMER. Une jonction brute
+    // (`scripts/charge.mjs`) passe ses liaisons en bloc :
+    //     postgres_changes: [ {…table: "a"}, {…table: "b"}, … ]
+    // Un seul marqueur, N tables. En n'en lisant que la PREMIÈRE, la gate
+    // déclarait « 16 souscriptions scannées » là où il y en avait 28, et les
+    // douze autres pouvaient viser une table non publiée sans un mot.
+    // On ne scanne en bloc QUE cette forme, et on borne au crochet FERMANT :
+    // élargir la fenêtre du cas normal ferait déborder sur le corps du callback
+    // suivant, où un `table:` désigne parfois une table REST (app-04 en a un).
+    const apres = src.slice(i + "postgres_changes".length, i + "postgres_changes".length + 40);
+    const crochet = apres.indexOf("[");
+    if (crochet !== -1 && !/table:/.test(apres.slice(0, crochet))) {
+      const debut = i + "postgres_changes".length + crochet;
+      let profondeur = 0, j = debut;
+      for (; j < src.length; j++) {
+        if (src[j] === "[") profondeur++;
+        else if (src[j] === "]") { profondeur--; if (profondeur === 0) break; }
+      }
+      const bloc = src.slice(debut, j + 1);
+      const tables = [...bloc.matchAll(/table:\s*["'`]([a-z0-9_]+)["'`]/g)];
+      if (tables.length) {
+        for (const t of tables) out.push({ table: t[1], fichier: rel });
+      } else if (/table:/.test(bloc)) illisibles.push(rel);
+      i += "postgres_changes".length;
+      continue;
+    }
+
     const fenetre = src.slice(i, i + 400);
     // ⚠️ LES TROIS FORMES DE GUILLEMETS. N'accepter que le double faisait
     // manquer une souscription écrite en simples ou en gabarit — sans le dire.
     const m = /table:\s*["'`]([a-z0-9_]+)["'`]/.exec(fenetre);
-    if (m) { out.push({ table: m[1], fichier: path.relative(path.join(__dirname, ".."), fichier) }); }
+    if (m) { out.push({ table: m[1], fichier: rel }); }
     // ⚠️ ET UNE TABLE QU'ON NE SAIT PAS LIRE N'EST PAS UNE TABLE ABSENTE.
     // Un `table: LA_CONSTANTE` ou un nom calculé ne se résout pas ici : plutôt
     // que de l'ignorer en silence — le défaut exact que cette gate existe pour
     // empêcher — on le SIGNALE, à charge d'écrire le nom en clair.
-    else if (/table:/.test(fenetre)) illisibles.push(path.relative(path.join(__dirname, ".."), fichier));
+    else if (/table:/.test(fenetre)) illisibles.push(rel);
     i += "postgres_changes".length;
   }
   return out;
