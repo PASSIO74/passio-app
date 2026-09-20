@@ -1,6 +1,7 @@
 function closePost() {
   const page = document.getElementById("postDetailPage");
   const etaitOuverte = !!(page && page.style.display && page.style.display !== "none");
+  if (page) page.querySelectorAll('video[data-video-public-src]').forEach(arreterVideoPublique);
   if (page) page.style.display = "none";
   // Reprend l'entrée posée par openPost — sinon elle reste morte sur la pile et
   // avale un appui « retour ». Inerte quand la fermeture VIENT d'un retour.

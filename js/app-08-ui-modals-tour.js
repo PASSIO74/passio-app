@@ -1091,7 +1091,7 @@ function _meHideProgress() { var d = document.getElementById("meProgressOv"); if
 // laisser l'appelant retomber sur un message clair. Préserve l'audio (volume 0).
 function passioCompressVideo(file, opts, onProgress) {
   opts = opts || {};
-  var maxDim = opts.maxDim || 1080, bitrate = opts.bitrate || 2500000;
+  var maxDim = opts.maxDim || 720, bitrate = opts.bitrate || 1200000;
   return new Promise(function(resolve, reject) {
     if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) { reject(new Error("unsupported")); return; }
     var url = URL.createObjectURL(file);
@@ -1105,8 +1105,10 @@ function passioCompressVideo(file, opts, onProgress) {
       if (!isFinite(dur) || dur <= 0) { cleanup(); reject(new Error("bad duration")); return; }
       if (dur > 65) { cleanup(); reject(new Error("too long")); return; }
       var scale = Math.min(1, maxDim / Math.max(video.videoWidth || maxDim, video.videoHeight || maxDim));
-      var w = Math.max(2, Math.round((video.videoWidth || maxDim) * scale));
-      var h = Math.max(2, Math.round((video.videoHeight || maxDim) * scale));
+      // H.264 attend des dimensions paires : 1920×1080 ramené à 720 donnerait
+      // sinon 720×405, refusé par certains encodeurs matériels.
+      var w = Math.max(2, Math.round((video.videoWidth || maxDim) * scale / 2) * 2);
+      var h = Math.max(2, Math.round((video.videoHeight || maxDim) * scale / 2) * 2);
       var canvas = document.createElement("canvas"); canvas.width = w; canvas.height = h;
       var ctx = canvas.getContext("2d");
       var cstream;
@@ -1141,7 +1143,7 @@ function passioCompressVideo(file, opts, onProgress) {
       }
       // mp4/H.264 en priorité (lisible sur iPhone) — même logique que meStartRecording.
       var mime = (typeof _passioBestVideoMime === "function") ? _passioBestVideoMime() : "";
-      var recOpts = { videoBitsPerSecond: bitrate, audioBitsPerSecond: 128000 };
+      var recOpts = { videoBitsPerSecond: bitrate, audioBitsPerSecond: 96000 };
       if (mime) recOpts.mimeType = mime;
       var rec;
       try { rec = new MediaRecorder(cstream, recOpts); } catch (e) { cleanup(); reject(e); return; }
@@ -1186,7 +1188,7 @@ function passioCompressVideo(file, opts, onProgress) {
 // Rend une data URL, ou LÈVE une erreur portant `motifUtilisateur` — le message
 // EXACT à afficher. L'appelant ne re-décide rien (même contrat que
 // `nomCompteValide` / `motDePasseVerdict`).
-var VIDEO_COMPRESSER_AU_DELA = 8 * 1024 * 1024;   // au-delà : ré-encodage 1080p
+var VIDEO_COMPRESSER_AU_DELA = 2 * 1024 * 1024;   // au-delà : profil mobile 720p
 var VIDEO_BRUT_MAX = 25 * 1024 * 1024;            // repli brut si la compression échoue
 var VIDEO_PLAFOND_DUR = 150 * 1024 * 1024;        // garde-fou mémoire absolu
 var VIDEO_COMPRESSION_DELAI_MAX = 90000;          // au-delà : la compression n'a pas de verdict
@@ -1197,14 +1199,30 @@ function _erreurVideo(motif) {
   return e;
 }
 
+function tailleVideoPreparee(dataUrl) {
+  var debut = dataUrl.indexOf(",") + 1;
+  var remplissage = /==$/.test(dataUrl) ? 2 : (/=$/.test(dataUrl) ? 1 : 0);
+  return Math.max(0, Math.floor((dataUrl.length - debut) * 3 / 4) - remplissage);
+}
+
+function retourVideoPreparee(file, dataUrl, issue) {
+  // Une mesure par préparation, jamais une par frame ni URL/nom de fichier.
+  // Ce sont les octets réellement produits ; le débit cible n'est pas un gain.
+  try { if (window.tel && tel.action) tel.action("video_preparee", {
+    entree_octets: file.size, sortie_octets: tailleVideoPreparee(dataUrl), issue: issue
+  }); } catch (e) {}
+  return dataUrl;
+}
+
 async function passioVideoPourEnvoi(file) {
   var mo = Math.round((file.size || 0) / 1048576);
   // Un webm n'est pas lisible sur iPhone : si le navigateur sait encoder en mp4,
   // on CONVERTIT même un petit fichier (le ré-encodage sert alors de transcodage
   // universel, pas seulement de compression).
-  var _isWebm = /webm/i.test(file.type || "");
+  var _isWebm = /webm/i.test(file.type || file.name || "");
   var _canMp4 = (typeof _passioBestVideoMime === "function") && _passioBestVideoMime().indexOf("video/mp4") === 0;
-  if (file.size <= VIDEO_COMPRESSER_AU_DELA && !(_isWebm && _canMp4)) return await _meReadFile(file);
+  var transcodageRequis = _isWebm && _canMp4;
+  if (file.size <= VIDEO_COMPRESSER_AU_DELA && !transcodageRequis) return retourVideoPreparee(file, await _meReadFile(file), "original");
   if (file.size > VIDEO_PLAFOND_DUR) {
     throw _erreurVideo("Vidéo trop lourde (" + mo + " Mo). Filme directement dans l'app, ou choisis une vidéo de moins d'une minute.");
   }
@@ -1227,14 +1245,19 @@ async function passioVideoPourEnvoi(file) {
     // `catch` ci-dessous : repli brut sous 25 Mo, sinon refus NOMMÉ.
     var _minuteur;
     var dataUrl = await Promise.race([
-      passioCompressVideo(file, { maxDim: 1080, bitrate: 2500000 }, _meUpdateProgress),
+      passioCompressVideo(file, { maxDim: 720, bitrate: 1200000 }, _meUpdateProgress),
       new Promise(function (_r, rej) {
         _minuteur = setTimeout(function () { rej(new Error("compression-sans-verdict")); }, VIDEO_COMPRESSION_DELAI_MAX);
       })
     ]);
     clearTimeout(_minuteur);
     if (!dataUrl || dataUrl.length < 1000) throw new Error("empty result");
-    return dataUrl;
+    // Réencoder une source déjà efficace peut la grossir. Garder l'original,
+    // sauf conversion WebM→MP4 nécessaire à la compatibilité iPhone.
+    if (!transcodageRequis && tailleVideoPreparee(dataUrl) >= file.size) {
+      return retourVideoPreparee(file, await _meReadFile(file), "original_plus_petit");
+    }
+    return retourVideoPreparee(file, dataUrl, transcodageRequis ? "transcodage" : "compression");
   } catch (e) {
     // Compression indisponible (vieux navigateur, codec absent) mais taille
     // encore uploadable : on garde la vidéo brute plutôt que de refuser — le
@@ -1247,12 +1270,13 @@ async function passioVideoPourEnvoi(file) {
     // Sentinelle ni le pilotage ne verraient rien. Famille du bug `diagLog`.
     try { if (typeof diagLog === "function") diagLog("video_compression_repli: " + ((e && e.message) || e)); } catch (_) {}
     try { if (window.tel && tel.error) tel.error(e, { action: "video_compression_repli", severity: "warn", meta: { mo: mo } }); } catch (_) {}
-    if (file.size <= VIDEO_BRUT_MAX) return await _meReadFile(file);
+    if (file.size <= VIDEO_BRUT_MAX) return retourVideoPreparee(file, await _meReadFile(file), "repli");
     // ⚠️ Le motif le plus fréquent n'est PAS la taille : `passioCompressVideo`
     // refuse au-delà de 65 secondes (garde de durée, plus haut). Un message qui
     // ne parlerait que de mégaoctets enverrait chercher la mauvaise cause.
     throw _erreurVideo("Vidéo impossible à optimiser (" + mo + " Mo). Elle doit durer moins d'une minute, ou peser moins de 25 Mo. Le plus simple : filme directement dans l'app.");
   } finally {
+    clearTimeout(_minuteur);
     // ⚠️ UN SEUL POINT DE RETRAIT. Il était appelé sur les deux branches, ce qui
     // laissait une troisième sortie découverte : un `return`/`throw` ajouté plus
     // tard dans le `try`. Un overlay plein écran qui survit à sa cause n'est pas
@@ -1876,18 +1900,23 @@ function playCurrentStory() {
   // Couche média (photo/vidéo) si présente
   const mediaLayer = document.getElementById("storyMedia");
   const oldSoundBtn = document.getElementById("storySoundBtn"); if (oldSoundBtn) oldSoundBtn.remove();
+  const oldPlayBtn = card.querySelector('[data-video-public-play]'); if (oldPlayBtn) oldPlayBtn.remove();
+  let storyVideo = null;
   if (mediaLayer) {
+    mediaLayer.querySelectorAll('video[data-video-public-src]').forEach(arreterVideoPublique);
     if (s.media && s.mediaType === "video") {
       // Vidéo construite en DOM (muted en PROPRIÉTÉ — l'attribut via innerHTML
       // n'est pas répercuté → autoplay refusé, cf. meSetMedia) + bouton 🔊 :
       // une story vidéo a du SON, il doit être activable (choix mémorisé session).
       mediaLayer.innerHTML = "";
       const sv = document.createElement("video");
-      sv.loop = true; sv.autoplay = true; sv.playsInline = true; sv.preload = "auto";
+      sv.loop = true; sv.playsInline = true; sv.preload = "none";
       sv.muted = !window._storySoundOn; sv.defaultMuted = sv.muted;
       sv.setAttribute("playsinline", ""); sv.setAttribute("webkit-playsinline", "");
-      sv.src = s.media;
+      sv.setAttribute("data-video-public-src", s.media);
       mediaLayer.appendChild(sv);
+      storyVideo = sv;
+      card.insertAdjacentHTML("beforeend", boutonVideoPubliqueHTML());
       const sb = document.createElement("button");
       sb.type = "button"; sb.id = "storySoundBtn"; sb.className = "story-sound-btn";
       sb.setAttribute("aria-label", "Activer ou couper le son");
@@ -1897,17 +1926,10 @@ function playCurrentStory() {
         window._storySoundOn = !window._storySoundOn;
         sv.muted = !window._storySoundOn; sv.defaultMuted = sv.muted;
         sb.textContent = window._storySoundOn ? "🔊" : "🔇";
-        if (sv.paused) { try { sv.play().catch(() => {}); } catch (_) {} }
+        if (sv.paused) lancerVideoPublique(sv, true);
       };
       card.appendChild(sb);
-      try {
-        sv.play().catch(function() {
-          // Autoplay avec son refusé → repli muet (le 🔇 reflète l'état réel).
-          window._storySoundOn = false; sv.muted = true; sv.defaultMuted = true;
-          sb.textContent = "🔇";
-          sv.play().catch(function() {});
-        });
-      } catch (e) {}
+      lancerVideoPublique(sv, false);
     } else if (s.media) {
       mediaLayer.innerHTML = `<img src="${safeUrlAttr(s.media)}" alt="" onerror="this.style.display='none'"/>`;
     } else { mediaLayer.innerHTML = ""; }
@@ -1947,9 +1969,15 @@ function playCurrentStory() {
   // Animate current bar
   const bar = document.getElementById("sp-" + storyItemIdx);
   if (bar) {
-    let start = Date.now();
+    let ecoule = 0, dernierTour = Date.now();
     storyTimer = setInterval(() => {
-      const p = Math.min(100, ((Date.now() - start) / STORY_DURATION) * 100);
+      const maintenant = Date.now(), pas = maintenant - dernierTour;
+      dernierTour = maintenant;
+      // En mode économe/manuel, on attend le geste : la story ne disparaît pas
+      // avant d'avoir été regardée. Une page masquée ne consomme pas les stories.
+      if (document.hidden || (storyVideo && storyVideo.paused)) return;
+      ecoule += pas;
+      const p = Math.min(100, (ecoule / STORY_DURATION) * 100);
       bar.style.width = p + "%";
       if (p >= 100) {
         clearInterval(storyTimer);
@@ -2004,6 +2032,7 @@ function closeStoryViewer() {
   clearInterval(storyTimer);
   const sv = $("#storyViewer");
   const etaitOuvert = !!(sv && sv.classList.contains("active"));
+  if (sv) sv.querySelectorAll('video[data-video-public-src]').forEach(arreterVideoPublique);
   if (sv) sv.classList.remove("active");
   renderStories();
   // Reprend l'entrée posée à l'ouverture (cf. releaseOverlayHistory, app-02) :
@@ -2062,18 +2091,7 @@ document.addEventListener("visibilitychange", function() {
     if (window._rechargementImminent === true) return;
     const feedEl = document.getElementById("screen-feed");
     if (feedEl && feedEl.classList.contains("active") && window._supaReal && typeof supaLoadPosts === "function") {
-      supaLoadPosts().then((posts) => {
-        if (posts && posts.length > 0) {
-          const extra = (window._feedExtraPosts || []).filter(p => !posts.some(x => x.id === p.id));
-          state.supabasePosts = posts.concat(extra);
-          // Même garde que startFeedRefreshLoop : re-render seulement si le
-          // contenu visible a changé pendant l'absence.
-          const sig = (typeof _feedPostsSig === "function") ? _feedPostsSig(state.supabasePosts) : null;
-          if (sig !== null && sig === window._feedRefreshSig) return;
-          if (sig !== null) window._feedRefreshSig = sig;
-          renderFeed();
-        }
-      }).catch(() => {});
+      feedFiletReveiller(true);
     }
   } catch (e) {}
 });
@@ -4382,8 +4400,19 @@ async function supaPublishPost(post) {
 // utilisé par la vue « profil visité », qui doit montrer TOUT son contenu (y
 // compris des posts trop anciens pour la page courante du fil). Dans ce mode on
 // ne touche PAS `_feedServerMayHaveMore` (c'est l'état de pagination DU FIL).
-async function supaLoadPosts(offset = 0, authorId = null) {
+const FEED_SERVER_PAGE_SIZE = 20;
+let _feedPagination = null;
+
+async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
   try {
+    const owner = typeof MY_UID !== "undefined" ? MY_UID : null;
+    const cacheGeneration = typeof _profileCacheGeneration !== "undefined" ? _profileCacheGeneration : 0;
+    const paginationAvant = _feedPagination;
+    const lectureValide = () => owner === (typeof MY_UID !== "undefined" ? MY_UID : null)
+      && cacheGeneration === (typeof _profileCacheGeneration !== "undefined" ? _profileCacheGeneration : 0)
+      && (options.generation === undefined || options.generation === _feedRefreshGeneration);
+    const pageSize = authorId ? 60 : FEED_SERVER_PAGE_SIZE;
+    const extraAvant = !authorId && offset === 0 ? new Set((window._feedExtraPosts || []).map(p => p.id)) : null;
     // ⚠️ `event_id` fait partie du SELECT depuis le 2026-08-28. Il était ÉCRIT
     // par `supaPublishPostWithRetry` mais jamais RELU : une publication reliée
     // à une activité perdait son lien au premier rechargement, et le
@@ -4394,7 +4423,15 @@ async function supaLoadPosts(offset = 0, authorId = null) {
     async function _interroger(cols) {
       let q = supa.from("posts").select(cols);
       if (authorId) q = q.eq("author_id", authorId);
-      return await q.order("created_at", { ascending: false }).range(offset, offset + 59);
+      // Le curseur porte la dernière ligne BRUTE, même si le filtre local la
+      // cache. Une insertion/suppression récente ne décale plus la page suivante.
+      if (!authorId && options.cursor) {
+        const date = JSON.stringify(options.cursor.created_at);
+        const id = JSON.stringify(options.cursor.id);
+        q = q.or("created_at.lt." + date + ",and(created_at.eq." + date + ",id.lt." + id + ")");
+      }
+      const debut = options.cursor && !authorId ? 0 : offset;
+      return await q.order("created_at", { ascending: false }).order("id", { ascending: false }).range(debut, debut + pageSize - 1);
     }
     let { data, error } = await _interroger(COLONNES);
     // Repli symétrique de celui de l'écriture : sur une base où la migration
@@ -4403,8 +4440,45 @@ async function supaLoadPosts(offset = 0, authorId = null) {
     if (error && /event_id/.test(error.message || "")) {
       ({ data, error } = await _interroger(COLONNES.replace(", event_id,", ",")));
     }
-    if (error) return [];
-    if (!authorId) window._feedServerMayHaveMore = ((data || []).length === 60);
+    if (error) { diagLog("feed_lecture: " + error.message); return []; }
+    if (!lectureValide()) return [];
+    const lignesBrutes = data || [];
+    // Ne publier ni curseur ni cache avant le dernier await d'hydratation.
+    function memoriserPage() {
+      if (authorId || !lectureValide()) return;
+      const derniere = lignesBrutes[lignesBrutes.length - 1];
+      const suite = {
+        owner, offset: offset + lignesBrutes.length,
+        cursor: derniere && derniere.created_at ? { created_at: derniere.created_at, id: derniere.id } : null,
+        more: lignesBrutes.length === pageSize,
+        advanced: offset > 0 || !!options.cursor,
+        head: offset === 0 ? lignesBrutes.map(p => p.id).join("|") : (paginationAvant && paginationAvant.head),
+      };
+      // Une page lancée sous l'ancienne tête peut encore fournir des posts,
+      // mais ne doit pas franchir la frontière installée par un refresh récent.
+      if (suite.advanced && _feedPagination !== paginationAvant) return;
+      // Tête inchangée : conserver la position et la fin de liste connues.
+      // Tête modifiée : repartir de sa frontière, sinon une rafale de nouveaux
+      // posts pourrait laisser un trou entre elle et les pages plus anciennes.
+      if (!_feedPagination || _feedPagination.owner !== owner || suite.advanced || !_feedPagination.advanced
+          || suite.head !== _feedPagination.head) {
+        _feedPagination = suite;
+        window._feedServerMayHaveMore = suite.more;
+      }
+      if (extraAvant) {
+        const ids = new Set(lignesBrutes.map(p => p.id));
+        const frontiere = derniere && supaTs(derniere.created_at);
+        window._feedExtraPosts = (window._feedExtraPosts || []).filter(function (p) {
+          if (!extraAvant.has(p.id)) return true; // arrivé en direct pendant la lecture
+          if (ids.has(p.id)) return false;        // relu, éventuellement masqué par les filtres
+          if (lignesBrutes.length < pageSize) return false; // instantané serveur complet
+          // Les anciennes pages restent disponibles ; une suppression dans
+          // la tranche relue, elle, n'est jamais réinjectée par le cache.
+          return !p.createdAt || !frontiere || p.createdAt < frontiere
+            || (p.createdAt === frontiere && p.id < derniere.id);
+        });
+      }
+    }
     // 🔒 Comptes privés : leurs posts ne sont montrés qu'à leurs abonnés (et à
     // eux-mêmes). Filtré côté client (le feed/bobines/profil visité passent tous
     // par ici) — filet visuel de beta, pas une barrière RLS.
@@ -4420,7 +4494,7 @@ async function supaLoadPosts(offset = 0, authorId = null) {
     if (typeof postSupprime === "function") {
       data = data.filter(function (r) { return !postSupprime(r.id); });
     }
-    if (!data || !data.length) return [];
+    if (!data || !data.length) { memoriserPage(); return []; }
     // Charger tous les likes + counts commentaires d'un coup
     const postIds = data.map(r => r.id);
     let likesData = [], commentsData = [], reactsData = [];
@@ -4438,8 +4512,11 @@ async function supaLoadPosts(offset = 0, authorId = null) {
       commentsData = commentsRes.data || [];
       reactsData = reactsRes.data || [];
     } catch(e) {}
+    if (!lectureValide()) return [];
     // Résout les auteurs des commentaires en une requête (sans embed).
-    const commentProfs = await _resolveProfilesByIds((commentsData || []).map(c => c.author_id));
+    const commentProfs = await _resolveProfilesByIds((commentsData || []).map(c => c.author_id), lectureValide);
+    if (!lectureValide()) return [];
+    memoriserPage();
     return data.map((r, idx) => {
       const postLikes = likesData.filter(l => l.post_id === r.id);
       const postComments = commentsData.filter(c => c.post_id === r.id).map(c => {
@@ -4480,7 +4557,8 @@ async function supaLoadPosts(offset = 0, authorId = null) {
       }
 
       // Cache le profil de l'auteur (photo comprise) → propagation partout.
-      try { if (r.profiles && r.author_id) cacheRemoteProfile({ id: r.author_id, username: r.profiles.username, emoji: r.profiles.emoji, color: r.profiles.color, avatar_url: r.profiles.avatar_url, passion_id: r.passion_id }); } catch(e) {}
+      // La passion du POST n'est pas celle du PROFIL : cet embed ne la relit pas.
+      try { if (r.profiles && r.author_id) cacheRemoteProfile({ id: r.author_id, username: r.profiles.username, emoji: r.profiles.emoji, color: r.profiles.color, avatar_url: r.profiles.avatar_url }); } catch(e) {}
       return {
         id: r.id, authorId: r.author_id,
         authorName: r.profiles?.username || "Profil",  // ✅ Doit toujours avoir un username depuis Supabase!
@@ -4701,17 +4779,31 @@ async function hydrateCommentInteractions(post) {
 // `author_id → profiles` en prod → l'embed `profiles(...)` y renvoie 400 et la
 // requête échoue (constaté le 2026-06-17 : commentaires des autres invisibles,
 // 400 au boot). Retourne { [id]: {id,username,emoji,color} }.
-async function _resolveProfilesByIds(ids) {
+async function _resolveProfilesByIds(ids, lectureValide) {
   const out = {};
+  if (lectureValide && !lectureValide()) return out;
   const uniq = [...new Set((ids || []).filter(Boolean))];
   if (!uniq.length) return out;
+  const owner = typeof MY_UID !== "undefined" ? MY_UID : null;
+  const generation = typeof _profileCacheGeneration !== "undefined" ? _profileCacheGeneration : 0;
+  const manque = uniq.filter(function (id) {
+    const cache = typeof _profileCache !== "undefined" ? _profileCache.get(id) : null;
+    if (!cache || cache.resolvedOwner !== owner || !cache.resolvedAt || Date.now() - cache.resolvedAt >= 2 * 60 * 1000) return true;
+    out[id] = { id, username: cache.username, emoji: cache.emoji, color: cache.color, avatar_url: cache.photoUrl,
+      passion_id: cache.passion_id, passions: cache.passions, bio: cache.bio };
+    return false;
+  });
+  if (!manque.length) return out;
   try {
     // `passions` (jsonb) est demandé pour l'identité partagée (§2) : le pseudo
     // s'accompagne partout des passions du compte, et ce résolveur est le point
     // de passage commun des commentaires, stories et événements.
-    const { data } = await supa.from("profiles").select("id,username,emoji,color,avatar_url,passion_id,passions,bio").in("id", uniq);
+    const { data, error } = await supa.from("profiles").select("id,username,emoji,color,avatar_url,passion_id,passions,bio").in("id", manque);
+    if ((lectureValide && !lectureValide()) || owner !== (typeof MY_UID !== "undefined" ? MY_UID : null)
+        || generation !== (typeof _profileCacheGeneration !== "undefined" ? _profileCacheGeneration : 0)) return {};
+    if (error) { diagLog("profils_resolution: " + error.message); return out; }
     (data || []).forEach(p => { out[p.id] = p; try { cacheRemoteProfile(p); } catch(e) {} });
-  } catch(e) {}
+  } catch(e) { try { diagLog("profils_resolution: " + (e && e.message)); } catch (_) {} }
   return out;
 }
 
@@ -7145,6 +7237,8 @@ function feedAddRealtimePost(newPost) {
 }
 window.feedAddRealtimePost = feedAddRealtimePost;
 async function loadMoreFeedPosts() {
+  if (window._feedPageLoading) return;
+  window._feedPageLoading = true;
   const btn = document.getElementById("feedLoadMoreBtn");
   if (btn) { btn.disabled = true; btn.textContent = "Chargement…"; }
   window._feedRenderLimit = (window._feedRenderLimit || 20) + 20;
@@ -7152,21 +7246,40 @@ async function loadMoreFeedPosts() {
     const loadedCount = (state.supabasePosts || []).length;
     // Si on approche de la fin du stock local et que le serveur peut avoir plus → page suivante
     if (window._feedServerMayHaveMore && window._feedRenderLimit >= loadedCount - 10) {
-      const more = await supaLoadPosts(loadedCount);
-      window._feedServerMayHaveMore = (more.length === 60);
-      if (more.length) {
+      const owner = typeof MY_UID !== "undefined" ? MY_UID : null;
+      const cacheGeneration = _profileCacheGeneration, generation = _feedRefreshGeneration;
+      // Une tête modifiée peut faire repasser sur une page déjà en mémoire.
+      // Traverser au plus trois pages sans nouveauté par geste : pas de clic
+      // perdu sur un doublon, et pas de balayage sans borne des données.
+      for (let tentative = 0; tentative < 3; tentative++) {
+        const pagination = _feedPagination && _feedPagination.owner === owner ? _feedPagination : null;
+        const stockAvant = (state.supabasePosts || []).slice();
+        const more = await supaLoadPosts(pagination ? pagination.offset : loadedCount, null,
+          { generation, ...(pagination && pagination.cursor ? { cursor: pagination.cursor } : {}) });
+        if (owner !== (typeof MY_UID !== "undefined" ? MY_UID : null)
+            || cacheGeneration !== _profileCacheGeneration || generation !== _feedRefreshGeneration) break;
         const known = new Set((state.supabasePosts || []).map(p => p.id));
         const fresh = more.filter(p => !known.has(p.id));
-        window._feedExtraPosts = (window._feedExtraPosts || []).concat(fresh);
+        // Protéger aussi la queue de l'ancienne première page : elle peut
+        // sortir des 20 lignes de tête au prochain rafraîchissement.
+        const extras = new Map((window._feedExtraPosts || []).map(p => [p.id, p]));
+        stockAvant.concat(fresh).forEach(p => extras.set(p.id, p));
+        window._feedExtraPosts = Array.from(extras.values());
         state.supabasePosts = (state.supabasePosts || []).concat(fresh);
+        if (fresh.length || !window._feedServerMayHaveMore || _feedPagination === pagination) break;
       }
     }
   } catch (e) { console.warn("loadMoreFeedPosts:", e); }
+  finally { window._feedPageLoading = false; }
   renderFeed();
 }
 
 // ===== SYSTÈME DE REFRESH AUTOMATIQUE DU FEED =====
 let _feedRefreshInterval = null;
+let _feedRefreshTour = null;
+let _feedRefreshInFlight = false;
+let _feedRefreshGeneration = 0;
+let _feedRefreshRelance = false;
 
 // Signature légère du contenu affichable du fil : id + compteurs visibles.
 // Sert à savoir si un refresh de fond apporterait un changement VISIBLE —
@@ -7223,20 +7336,35 @@ let _feedFiletPas = 60000;
 // Le seul point qui remet le filet à sa cadence vive. Appelé par le retour à
 // l'écran et par les gestionnaires temps réel : il vient de se passer quelque
 // chose, donc il peut s'en passer une autre.
-function feedFiletReveiller() {
+function feedFiletReveiller(immediat = false) {
   _feedFiletPas = filetProchainPas(0, true, false);
+  if (immediat && window._supaReal && !document.hidden && _feedRefreshTour
+      && _feedRefreshInterval !== null && !_feedRefreshInFlight) {
+    clearTimeout(_feedRefreshInterval);
+    _feedRefreshInterval = setTimeout(_feedRefreshTour, 0);
+  }
 }
 window.feedFiletReveiller = feedFiletReveiller;
 
 function startFeedRefreshLoop() {
   if (_feedRefreshInterval) return;
+  const generation = ++_feedRefreshGeneration;
   _feedFiletPas = filetProchainPas(0, true, false);
   const tour = async () => {
+    if (generation !== _feedRefreshGeneration) return;
+    // Un stop/start peut survenir pendant la requête du cycle précédent.
+    // Son achèvement réveillera le NOUVEAU cycle, au lieu de perdre le seul
+    // rendez-vous de celui-ci en sortant sur la garde « en vol ».
+    if (_feedRefreshInFlight) { _feedRefreshRelance = true; return; }
+    _feedRefreshInFlight = true;
     let vivant = false;
     try {
       if (document.hidden) return;                    // onglet en arrière-plan : pas de requête (batterie/quota)
       if (window._rechargementImminent === true) return; // rechargement décidé : la requête serait coupée
-      const posts = await supaLoadPosts();
+      const feedEl = document.getElementById("screen-feed");
+      if (!feedEl || !feedEl.classList.contains("active")) return;
+      const posts = await supaLoadPosts(0, null, { generation });
+      if (generation !== _feedRefreshGeneration) return;
       if (posts && posts.length > 0) {
         const extra = (window._feedExtraPosts || []).filter(p => !posts.some(x => x.id === p.id));
         state.supabasePosts = posts.concat(extra);
@@ -7247,7 +7375,6 @@ function startFeedRefreshLoop() {
         const changed = sig !== window._feedRefreshSig;
         window._feedRefreshSig = sig;
         vivant = changed;
-        const feedEl = document.getElementById("screen-feed");
         if (changed && feedEl && feedEl.classList.contains("active")) renderFeed();
       }
     } catch (e) {
@@ -7257,7 +7384,12 @@ function startFeedRefreshLoop() {
       try { diagLog("feed_filet", e && e.message); } catch (_e) {}
       vivant = true;
     } finally {
-      if (_feedRefreshInterval !== null) {
+      _feedRefreshInFlight = false;
+      if (_feedRefreshRelance && _feedRefreshTour && _feedRefreshInterval !== null) {
+        _feedRefreshRelance = false;
+        clearTimeout(_feedRefreshInterval);
+        _feedRefreshInterval = setTimeout(_feedRefreshTour, 0);
+      } else if (_feedRefreshInterval !== null && generation === _feedRefreshGeneration) {
         // ⚠️ SANS TEMPS RÉEL, CE FILET N'EST PLUS UN FILET : C'EST LE SEUL
         // CHEMIN. Le recul jusqu'à 5 min (2026-09-20) était justifié par « les
         // publications arrivent par le temps réel » — vrai pour un compte,
@@ -7276,6 +7408,7 @@ function startFeedRefreshLoop() {
       }
     }
   };
+  _feedRefreshTour = tour;
   _feedRefreshInterval = setTimeout(tour, _feedFiletPas);
 }
 
@@ -7284,16 +7417,16 @@ function stopFeedRefreshLoop() {
     clearTimeout(_feedRefreshInterval);
     _feedRefreshInterval = null;
   }
+  _feedRefreshTour = null;
+  _feedRefreshGeneration++;
+  _feedRefreshRelance = false;
 }
 
 // Le retour de l'onglet à l'écran rend sa cadence vive au filet : quelqu'un
 // regarde, et ce qui est arrivé pendant l'absence doit remonter tout de suite.
 document.addEventListener("visibilitychange", function () {
   if (document.hidden) return;
-  feedFiletReveiller();
-  // Si le filet tourne, on le relance au pas vif : `startFeedRefreshLoop` sort
-  // sur sa garde tant que l'ancien rendez-vous n'est pas annulé.
-  if (_feedRefreshInterval !== null) { stopFeedRefreshLoop(); startFeedRefreshLoop(); }
+  feedFiletReveiller(true);
 });
 
 // ═══ ANALYTICS LÉGÈRES ═══
@@ -7537,7 +7670,7 @@ async function supaInit() {
     console.log("\ud83d\udce5 [INIT] Chargement des posts Supabase");
     const initPosts = await supaLoadPosts();
     console.log(`\u2705 [INIT] ${initPosts.length} posts charg\u00e9s`);
-    if (initPosts.length > 0) {
+    if (initPosts.length > 0 || window._feedServerMayHaveMore) {
       state.supabasePosts = initPosts;
       renderFeed();
     }
