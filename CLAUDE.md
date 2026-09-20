@@ -2224,28 +2224,56 @@ et ⑧ « sans le retrait, le verdict REFUSE au lieu de dire OK »), `dashboard/
 le canal ne revient pas, la cadence est une constante nommée, l'état DÉCLARE que le temps réel n'est
 plus utilisé) et `tests/unit/audit-tables-compte.test.mjs` ⑧. Suite du pilotage : **577/577**.
 
-## 💾 LE MUR LE PLUS PROCHE N'EST PAS LE CPU, C'EST 1 Go DE STOCKAGE (2026-09-20)
+## 💾 STOCKAGE : LE MÉNAGE EST UTILE, LE MUR N'ÉTAIT PAS LÀ — LE FORFAIT EST **PRO** (2026-09-20)
 
 Benjamin, après trois volets de capacité : « les résultats ne me conviennent, je veux beaucoup plus
-de volume d'utilisateurs ». **Il avait raison** : les trois volets travaillaient un axe qui ne borne
-pas le nombre d'utilisateurs. Ce lot lit enfin le forfait — le point que la fiche de la veille
+de volume d'utilisateurs ». Ce lot devait enfin lire le forfait — le point que la fiche de la veille
 laissait ouvert en toutes lettres (« le forfait Supabase n'a jamais été LU »). Dossier :
 `docs/CAPACITE_STOCKAGE_2026-09-20.md`.
 
-⚠️ **LES CINQ PLAFONDS, CLASSÉS PAR DISTANCE** (canal ① d'ADR-012, dix comptes) : **stockage 1 Go —
-80 Mo consommés, 8 Mo/compte, soit ≈ 125 comptes** (≈ 300 avec la compression du 19/09) · base
-500 Mo (71 Mo, quelques milliers) · sortie réseau déportée sur Netlify · MAU 50 000 · **inscriptions
-300/jour chez Brevo, illimitées par Google**. **Le stockage est dix à trente fois plus proche que
-tout ce sur quoi les trois lots précédents ont travaillé.** Cause nette : **sept vidéos = 59 Mo sur
-les 70 du seau `content`**, la plus grosse 24 Mo, et **les trois plus grosses datent de JUILLET** —
-le compresseur ne s'applique qu'aux nouveaux envois.
+⚠️ **ET IL NE L'A PAS LU : IL L'A DÉDUIT, ET LA DÉDUCTION ÉTAIT FAUSSE D'UN FACTEUR 100.** La
+première rédaction titrait « le mur le plus proche, c'est 1 Go de stockage » et concluait à
+**≈ 125 comptes**. Le 1 Go venait du palier GRATUIT, supposé depuis la consigne « sans investir » —
+jamais mesuré. **L'organisation est sur le forfait PRO** (capture de la page Billing, 2026-09-20 :
+« Pro Plan », 25 $/mois, crédits de calcul 9,66 $ absorbés, facture projetée 28,75 $). Le stockage
+est donc à **deux ordres de grandeur** au-dessus des 80 Mo consommés, et **le mur n'est pas là.**
+**Une déduction présentée comme une mesure est la faute que ce fichier reproche partout ailleurs**
+(« l'état ne se lit pas dans un fichier du dépôt, il se mesure ») — ici elle portait sur le forfait,
+et elle a failli lancer un chantier Cloudflare R2 entier pour rien.
+
+⚠️ **LE SPEND CAP EST ACTIVÉ, DONC LES QUOTAS RESTENT DES MURS DURS — ils ne deviennent pas une
+facture.** Texte de la page : *« You won't be charged any extra for usage. However, your projects
+could become unresponsive or enter read only mode if you exceed the included quota. »* Dépasser ne
+coûte pas d'argent, ça met la production en **lecture seule**. Le raisonnement « plafond = mur » de
+tous les lots de capacité TIENT ; seuls les nombres changent.
+
+⚠️ **LES QUOTAS CHIFFRÉS DU PRO N'ONT TOUJOURS PAS ÉTÉ LUS, ET ON NE LES RECOPIE PAS DE MÉMOIRE.**
+Ils sont sur la page **Usage** de l'organisation, avec la consommation en regard. Tant qu'ils n'y
+sont pas relevés, **aucun classement des plafonds par distance n'est publiable** — c'est très
+exactement l'erreur qu'on vient de payer. Seul plafond encore établi : **inscriptions 300/jour chez
+Brevo, illimitées par Google** (voir ci-dessous), qui ne dépend pas de Supabase.
+
+⚠️ **CE QUI RESTE VRAI DU LOT, ET POURQUOI IL GARDE SA VALEUR** : 67 % du stockage est du déchet
+(ci-dessous), et ça ne dépend d'aucun plafond — c'est 53,5 Mo qu'on ne sauvegarde plus, qu'on ne
+restaure plus et qu'on ne paie plus à personne. **Sept vidéos = 59 Mo sur les 70 du seau `content`**,
+la plus grosse 24 Mo, les trois plus grosses de JUILLET (le compresseur du 19/09 ne s'applique
+qu'aux nouveaux envois) : ça reste une charge utile servie à des téléphones sur données mobiles,
+argument qui n'a jamais eu besoin d'un quota pour tenir.
+
+⚠️ **ET UN VRAI POSTE DE COÛT A ÉTÉ VU SUR LA MÊME CAPTURE** : la facture projetée est **28,75 $**
+pour 25 $ de forfait, parce que les crédits de calcul (10 $) sont dépassés par **DEUX** projets —
+`PASSIO74's Project` (Micro, 578 h) **et `PASSIO staging` (Micro, 141 h)**, ce dernier rallumé pour
+l'exercice de restauration du 14/09 et jamais remis en pause. **Mettre le staging en pause ramène la
+facture à 25 $**, ce qui est le sens littéral de « sans investir ». Geste d'exploitation, hors dépôt.
 ⚠️ **ET LE PLAFOND QUI BORNE VRAIMENT L'ACQUISITION NE SE CORRIGE PAS PAR DU CODE** : 300 e-mails
 par jour, confirmation obligatoire depuis le 30/08. Le seul geste qui l'a levé est d'avoir remonté
 **Google en tête** (19/09) ; Apple Sign-In ferait pareil, gratuitement.
 
 ⚠️ **67 % DU STOCKAGE NE SERT PLUS À RIEN** : `content` 24 orphelins/60 = **50 Mo sur 70**,
 `attachments` 7/12 = **3,5 Mo sur 10**, soit **53,5 Mo sur 80**. Purger fait passer le stockage à
-**26,5 Mo** — marge **×3** sur le mur le plus proche, sans toucher une donnée vivante.
+**26,5 Mo**, sans toucher une donnée vivante. ⚠️ La première rédaction vendait ça comme « marge ×3
+sur le mur le plus proche » : **il n'y a pas de mur à cette distance**, et le geste n'en avait pas
+besoin — on ne garde pas 53,5 Mo de fichiers que plus rien ne référence.
 ⚠️ **LA PREMIÈRE MESURE ANNONÇAIT 62 Mo, ET ELLE ÉTAIT FAUSSE** : elle ne lisait pas `user_state`,
 le blob qui porte les **publications PERSO** — six objets, 12 Mo, bien vivants. **Une mesure
 spectaculaire se re-vérifie avant d'y croire**, surtout quand elle décide de suppressions.
@@ -2268,12 +2296,19 @@ permissif, donc tous les faux positifs vont vers « on garde », jamais vers « 
 ② bis mesure enfin ce choix (une référence qui porte le nom SANS son dossier). **Deuxième fois de la
 journée qu'une justification est démentie par une mutation** — après le chiffre-phare de #515.
 
-⚠️ **CE QUE ÇA NE FAIT PAS** : ça ne change pas le RYTHME de remplissage. À 8 Mo par compte, le 1 Go
-revient. Le seul levier d'ordre de grandeur est de **sortir les médias de Supabase** — Cloudflare R2
-donne 10 Go et l'égress gratuit, et l'architecture l'anticipe (`/media/*`, `cdnUrl()`,
-`PASSIO_CDN_BASE`) : seul le chemin d'ÉCRITURE changerait. Il faut un compte tiers, hors de portée
-d'ici. Restent nommés : recompresser les sept vidéos de juillet (59 → ~11 Mo), WebP (−25/30 %),
-rétention télémétrie 7 j → 2 j (migration), Apple Sign-In.
+⚠️ **NE PAS PARTIR SUR CLOUDFLARE R2 — LA PREMIÈRE RÉDACTION LE RECOMMANDAIT COMME « le seul levier
+d'ordre de grandeur », ET C'ÉTAIT LA CONSÉQUENCE DIRECTE DU FORFAIT MAL DÉDUIT.** R2 offrirait 10 Go
+là où le Pro en donne deux ordres de grandeur de plus : on aurait migré **vers un plafond plus bas**,
+en ajoutant un fournisseur, un signeur SigV4 et une seconde origine à maintenir. Le chantier a été
+arrêté avant le premier commit. ⚠️ Et si quelqu'un le rouvre un jour : **le seau `attachments` ne
+peut PAS migrer** — R2 n'a pas de RLS, et la confidentialité des pièces jointes repose entièrement
+sur `is_conv_member` + URL signées ; seul `content` serait éligible.
+⚠️ **CE QUE LE LOT NE FAIT TOUJOURS PAS** : il ne change pas le RYTHME de remplissage (8 Mo par
+compte). Restent nommés, et ils valent pour la charge utile mobile bien avant de valoir pour un
+quota : recompresser les sept vidéos de juillet (59 → ~11 Mo), WebP (−25/30 %), Apple Sign-In.
+⚠️ **La rétention de télémétrie 7 j → 2 j sort de la liste** : elle était motivée par « 43 % d'une
+base plafonnée à 500 Mo ». Le plafond du Pro est ailleurs, la base fait 71 Mo — **une migration, donc
+une contre-revue humaine, pour un problème qui n'existe pas.**
 
 Verrou : `tests/unit/medias-orphelins.test.mjs` (9, dans `npm run verif`), **éprouvé par RÉINJECTION
 de quatre mutations** — garde d'âge retirée (3 rouges), chemin entier au lieu du nom (2), nom vide
