@@ -38,23 +38,36 @@ const lire = (f) => fs.readFileSync(path.join(RACINE, f), "utf8");
 // détection de calme qui ne distingue pas « c'est fini » de « ça n'a pas encore
 // commencé » ne détecte rien.
 //
-// ⚠️ LA PARADE EST DÉSORMAIS UN SIGNAL, PAS UN DÉLAI. Dans `supaInit`, l'appel
-// aux lives précède immédiatement `supaSubscribe()`, qui pose `window._dbChan` :
-// ce canal est donc la PREUVE que l'appel de démarrage est passé. On attend
-// `_dbChan` quand le vrai SDK est là, et rien du tout quand il ne l'est pas —
-// dans ce cas il n'y a aucun appel de démarrage à attendre. La boucle de
-// stabilité reste derrière, en second filet, mais elle ne décide plus seule.
-// ⚠️ Ni tolérance à « +1 », ni `setTimeout` de complaisance : les deux masquent
-// un vrai appel ou rouvrent la course sur un runner plus lent.
+// ⚠️ LA PARADE EST UN SIGNAL BORNÉ, DOUBLÉ D'UNE BOUCLE DE STABILITÉ. Dans
+// `supaInit`, l'appel aux lives précède immédiatement `supaSubscribe()` : on
+// attend donc l'un des quatre témoins de ce passage (voir le corps), et au plus
+// 6 s. C'est la boucle de stabilité qui GARANTIT le calme ; le signal ne fait
+// que l'atteindre plus vite.
 async function compteurVliveAuCalme(page) {
   await page.evaluate(() => {
     window.__vliveAppels = 0;
     window.supaRefreshVideoLives = function () { window.__vliveAppels++; return Promise.resolve(); };
   });
   // Le signal : soit le SDK n'est pas réel (aucun appel de démarrage possible),
-  // soit le canal est posé (l'appel a déjà eu lieu et a été compté).
+  // soit l'appel de démarrage a été OBSERVÉ, soit `supaSubscribe` a pris sa
+  // décision (canal posé, ou refus tracé — il suit immédiatement l'appel).
+  //
+  // ⚠️ `_dbChan` SEUL N'A JAMAIS ÉTÉ SATISFAIT AU BANC, ET CE N'EST PAS LA FAUTE
+  // DU LOT DU 2026-09-20 (j'ai d'abord écrit le contraire). Mesuré : `supaInit`
+  // n'atteint pas `supaSubscribe` sous l'isolation de `bootOnboarded`, donc la
+  // condition restait fausse et **chacun des quatre appels payait ses 20 s** —
+  // avant comme après. Un verrou qui attend un signal que le produit ne pose
+  // pas ne mesure rien, il ralentit.
+  //
+  // ⚠️ LE VRAI GARANT EST LA BOUCLE DE STABILITÉ CI-DESSOUS ; ce signal ne fait
+  // que raccourcir l'attente quand l'appel de démarrage arrive (le cas de la
+  // CI, qui est celui pour lequel il a été écrit). Son délai est donc borné à
+  // 6 s : au-delà, on n'attend plus un signal, on tient un stand.
+  // ⚠️ Ni tolérance à « +1 », ni `setTimeout` de complaisance : les deux masquent
+  // un vrai appel ou rouvrent la course sur un runner plus lent.
   await page
-    .waitForFunction(() => !window._supaReal || !!window._dbChan, null, { timeout: 20000 })
+    .waitForFunction(() => !window._supaReal || !!window._dbChan || window.__vliveAppels > 0
+      || (window._diagLogs || []).some((l) => String(l).includes("rt_visiteur")), null, { timeout: 6000 })
     .catch(() => {});
   // Second filet : on n'accepte le calme qu'après DEUX observations identiques
   // ET un plancher d'observation, pour ne pas reprendre le défaut du « zéro
@@ -364,7 +377,15 @@ test("⑩ bis les DEUX filets passent par la même autorité — à la SOURCE", 
   const lives = lire("js/app-05-config-profil.js");
   // ⚠️ Deux copies d'une même politique finissent toujours par diverger sur
   // celle qu'on oublie : c'est pour ça que l'autorité est unique.
-  expect(feed, "le filet du fil re-planifie via l'autorité").toMatch(/_feedFiletPas = filetProchainPas\(_feedFiletPas, vivant, document\.hidden\)/);
+  // ⚠️ CE VERROU ÉPINGLAIT L'EXPRESSION EXACTE `(_feedFiletPas, vivant,
+  // document.hidden)`, et il a rougi le 2026-09-20 sur un lot qui ne le
+  // contredisait pas : le verdict passé est devenu `vivant || seulChemin`,
+  // parce qu'un visiteur n'a plus de temps réel et que ce filet est alors son
+  // SEUL chemin. Ce qu'il garde vraiment, c'est que la re-planification passe
+  // par l'AUTORITÉ UNIQUE et ne recopie aucune borne — pas la forme littérale
+  // de son second argument. Épingler une expression, c'est faire rougir le
+  // prochain lot pour une raison qui n'est pas la sienne.
+  expect(feed, "le filet du fil re-planifie via l'autorité").toMatch(/_feedFiletPas = filetProchainPas\(_feedFiletPas, vivant[^,]*, document\.hidden\)/);
   expect(lives, "le filet des lives aussi").toMatch(/_vliveFiletPas = filetProchainPas\(_vliveFiletPas,/);
   // Et personne ne recopie les bornes dans son coin.
   expect(feed.match(/300000/g), "aucune borne recopiée dans app-08").toBeNull();
@@ -401,14 +422,24 @@ test("⑩ quater un événement temps réel et le retour à l'écran réveillent
 test("⑪ le filet des lives ne recule que si la liste est vide AVANT et APRÈS", () => {
   const src = lire("js/app-05-config-profil.js");
   const debut = src.indexOf("function _vliveFiletTour()");
-  const corps = src.slice(debut, debut + 1400);
+  const corps = src.slice(debut, debut + 2000);
   // ⚠️ `supaRefreshVideoLives` rend `false` sur une coupure comme sur un vrai
   // calme (elle replie sur un tableau vide) : le recul n'est pris que lorsque
   // la liste était vide AVANT le tour et l'est encore APRÈS. Sinon une coupure
   // d'une seconde ferait reculer le filet pour cinq minutes.
   expect(corps, "l'état d'AVANT est relevé").toContain("const avantVide");
   expect(corps, "celui d'APRÈS aussi").toContain("const apresVide");
-  expect(corps, "et les deux décident, avec le verdict").toContain("vivant || !apresVide || !avantVide");
+  // ⚠️ ON MESURE LES TROIS TERMES, PAS L'EXPRESSION LITTÉRALE. Épinglée mot
+  // pour mot, cette ligne rougissait au premier terme AJOUTÉ par un lot
+  // ultérieur — `seulChemin` (connexions temps réel, 2026-09-20) l'a fait le
+  // lendemain — pour une raison qui n'était pas la sienne, et un verrou qui
+  // rougit sur un innocent finit par être désarmé. L'invariant est que les
+  // trois décident, aux côtés du verdict ; qu'un quatrième les rejoigne ne le
+  // rompt pas.
+  const verdict = (corps.match(/filetProchainPas\(\s*_vliveFiletPas,([^,]*),/) || [])[1] || "";
+  for (const terme of ["vivant", "!apresVide", "!avantVide"]) {
+    expect(verdict, `« ${terme} » décide du recul`).toContain(terme);
+  }
   // ⚠️ Une panne n'est pas un calme.
   expect(corps, "le rejet de la promesse compte comme vivant").toMatch(/function \(\) \{ vivant = true; \}/);
   expect(corps, "l'exception aussi").toMatch(/catch[\s\S]{0,200}vivant = true/);

@@ -1501,6 +1501,14 @@ la limite du pooler Supavisor, pas de l'application. Depuis, le projet tourne su
 donne **~400 req/s, p95 sous la seconde à 200 simultanés sans pause**, soit **2 000 à 4 000 connectés**.
 ⚠️ **Côté LECTURE il n'y a rien à acheter** — et ne pas rouvrir ce point sur le chiffre de 200, qui est
 cité de bonne foi dans un fichier que personne n'avait daté. Dossier : `docs/CAPACITE_SANS_INVESTIR_2026-09-19.md`.
+⚠️ **MAIS « 2 000 À 4 000 CONNECTÉS » N'A JAMAIS ÉTÉ UN PLAFOND DE CONNEXIONS, et il a été répété
+comme tel pendant deux jours.** C'est une déduction d'un banc qui mesure des **req/s** ; le plafond
+réel a été LU le 2026-09-20 sur la page Usage : **Realtime Concurrent Peak Connections, 500** — et
+l'application ouvrait un canal par client, donc **500 personnes simultanées**, pas 2 000. Le chiffre
+de lecture reste juste pour ce qu'il mesure (la base tient la charge) ; il ne dit rien du transport.
+**Le lot du même jour convertit ce plafond en « 500 COMPTES simultanés, visiteurs illimités »** —
+voir « 🔌 LE MUR EST UNE CONNEXION WEBSOCKET ». Troisième fois qu'une grandeur est annoncée contre un
+proxy commode plutôt que contre ce qu'elle prétend borner.
 
 ⚠️ **① LA VIDÉO ÉTAIT 85 % DU STOCKAGE, ET LE COMPRESSEUR EXISTAIT DÉJÀ.** Mesuré : 9 vidéos = 68 Mo
 sur 80, la plus grosse à 24 Mo ; les 58 images = 12,5 Mo (elles passent par `passioCompressImage`
@@ -1876,7 +1884,8 @@ changement d'architecture, pas un réglage. `chargerReferentielPassions` (2 847 
 CPU, six allers-retours par session, plafond `PAGES_MAX` muet) ne se cache ni sur la release ni sur
 un TTL, la liste blanche étant MUTABLE. `creer_passion` accepte un libellé de 2 caractères, invisible aux autres depuis le
 plancher de ① (zéro cas, rien ne garde l'invariant). Une garde serveur pour les frappes courtes
-demande une migration, donc une contre-revue humaine. Le forfait Supabase n'a jamais été LU.
+demande une migration, donc une contre-revue humaine. ⚠️ « Le forfait Supabase n'a jamais été LU »
+figurait ici : **il l'a été le 2026-09-20** (fiche « 🔌 LE MUR EST UNE CONNEXION WEBSOCKET »).
 
 ⚠️ **CE QUI A ÉTÉ CHERCHÉ ET N'A RIEN DONNÉ** — un « rien trouvé sur cet axe » a autant de valeur
 qu'un constat : la publication realtime est correcte (12 tables, exactement les écoutées) ; les deux
@@ -2247,11 +2256,12 @@ could become unresponsive or enter read only mode if you exceed the included quo
 coûte pas d'argent, ça met la production en **lecture seule**. Le raisonnement « plafond = mur » de
 tous les lots de capacité TIENT ; seuls les nombres changent.
 
-⚠️ **LES QUOTAS CHIFFRÉS DU PRO N'ONT TOUJOURS PAS ÉTÉ LUS, ET ON NE LES RECOPIE PAS DE MÉMOIRE.**
-Ils sont sur la page **Usage** de l'organisation, avec la consommation en regard. Tant qu'ils n'y
-sont pas relevés, **aucun classement des plafonds par distance n'est publiable** — c'est très
-exactement l'erreur qu'on vient de payer. Seul plafond encore établi : **inscriptions 300/jour chez
-Brevo, illimitées par Google** (voir ci-dessous), qui ne dépend pas de Supabase.
+⚠️ **LES QUOTAS CHIFFRÉS DU PRO ONT ÉTÉ LUS LE JOUR MÊME, sur la page Usage** — ce paragraphe a dit
+le contraire quelques heures : voir la fiche « 🔌 LE MUR EST UNE CONNEXION WEBSOCKET » pour le
+tableau complet. Ce qu'il faut en retenir ici : **le stockage est à 0,139 Go sur 100**, donc le mur
+n'est pas là et ne le sera pas avant longtemps ; le plus proche qui monte avec la fréquentation est
+**Realtime Concurrent Peak Connections, 84/500**. L'autre plafond établi, **inscriptions 300/jour
+chez Brevo, illimitées par Google**, ne dépend pas de Supabase.
 
 ⚠️ **CE QUI RESTE VRAI DU LOT, ET POURQUOI IL GARDE SA VALEUR** : 67 % du stockage est du déchet
 (ci-dessous), et ça ne dépend d'aucun plafond — c'est 53,5 Mo qu'on ne sauvegarde plus, qu'on ne
@@ -2313,6 +2323,156 @@ une contre-revue humaine, pour un problème qui n'existe pas.**
 Verrou : `tests/unit/medias-orphelins.test.mjs` (9, dans `npm run verif`), **éprouvé par RÉINJECTION
 de quatre mutations** — garde d'âge retirée (3 rouges), chemin entier au lieu du nom (2), nom vide
 classé orphelin (1), source `user_state` retirée (1).
+
+## 🔌 LE MUR EST UNE CONNEXION WEBSOCKET, ET 98 % ÉTAIENT PAYÉES POUR RIEN (2026-09-20)
+
+Demande de Benjamin : « trouve une solution gratuite pour augmenter considérablement le nombre de
+connexion / utilisateur ! Y a-t-il pas d'autres outils ? » Cinquième volet de capacité, et le premier
+qui **LIT** le forfait au lieu de le déduire. Dossier : `docs/CAPACITE_CONNEXIONS_TEMPS_REEL_2026-09-20.md`.
+
+⚠️ **LES PLAFONDS DU PRO SONT ENFIN MESURÉS** (page Usage, cycle 27/08–27/09) : Image
+Transformations **19/100** · **Realtime Concurrent Peak Connections 84/500** · Egress 36,98/250 Go ·
+Cached Egress 24,69/250 Go · MAU **8 560/100 000** · Realtime Messages 253 510/5 000 000 · Storage
+0,139/100 Go · Edge Functions 2 440/2 000 000. Le point ouvert « le forfait Supabase n'a jamais été
+LU » est **FERMÉ**.
+⚠️ **LA PART LA PLUS HAUTE N'EST PAS LE MUR** : les transformations d'images (19 %) comptent des
+images d'ORIGINE distinctes — ce compteur suit le catalogue, pas la fréquentation. Le classement qui
+décide d'un lot de capacité est « qu'est-ce qui monte quand il y a plus de monde ». Marges (plafond ÷
+consommé) : **Realtime ×5,95 · Egress ×6,76** · Cached Egress ×10,1 · MAU ×11,7. Le mur le plus
+proche est le temps réel, **avec l'egress juste derrière**.
+⚠️ **ET CE « JUSTE DERRIÈRE » EST UNE CORRECTION : « egress ×17 » a été publié ici.** Le calcul était
+`250 / 14,79` — le plafond divisé par le **POURCENTAGE** au lieu de la consommation. Les deux autres
+marges étant justes, l'erreur était invisible à la relecture, et elle rangeait l'egress troisième
+alors qu'il est second. **Lire un nombre ne suffit pas, il faut encore le diviser par le bon** — et
+ça compte ici, puisque le remède du lot pousse précisément sur l'egress.
+
+⚠️ **ET CE QUOTA NE COMPTE NI DES CANAUX NI DES MESSAGES : IL COMPTE DES CLIENTS.** supabase-js
+multiplexe TOUS les canaux d'un client sur UN SEUL WebSocket : « 500 connexions » veut dire « 500
+personnes dont l'onglet est ouvert en même temps ». Le réflexe « réduisons le nombre de canaux » est
+donc sans effet sur ce compteur — la consolidation de 2026-07-15 (9 canaux → 1) n'a jamais pu y
+peser, et une dixième liaison n'y pèsera pas davantage. Ne pas rouvrir ce point par les canaux.
+
+⚠️ **97,9 % DE CES CONNEXIONS N'AVAIENT RIEN À FAIRE LÀ** : mesuré sur 7 jours, **2 546 sessions sans
+compte sur 2 600**, et `supaSubscribe` créait `realtime:db` SANS CONDITION (policy ouverte à `anon`).
+`connexionTempsReelAutorisee()` (app-02, délègue à `_uidEstUnCompte`) est la SEULE autorité ; la
+garde précède la pose de `_supaSubscribed`, sinon le compte qui vient de se créer resterait sans
+temps réel toute la session (`onAuthStateChange` rappelle `supaInit`).
+
+⚠️ **CE QUE LE VISITEUR PERD EST RÉEL, ET LA PREMIÈRE RÉDACTION L'A NIÉ** — relevé par `audit-passio`
+après que tout était vert, et **aucun verrou n'aurait pu le démentir**. Elle écrivait « rien qu'il
+puisse recevoir » : `_creerCanalDb` porte treize `.on(`, mais **un client réel n'en pose que DOUZE**
+(la première, `conv_messages`, est sous `if (!PASSIO_REALTIME_V3 && !…_V2)`, et V3 vaut `true`).
+**TROIS** ne le concernent pas (`conv_members`/`notifications` filtrées sur un identifiant qui
+n'existe pas côté serveur, `conv_reads` retenue par la seule RLS), **NEUF portent du contenu PUBLIC
+qu'il reçoit très bien** (`posts`, `post_likes` ×2, `post_comments`, `event_comments`,
+`comment_interactions` ×2, `video_lives`, `profiles` UPDATE). Ce qu'il perd est le RAFRAÎCHISSEMENT
+VIF du public.
+⚠️ **CE COMPTE A ÉTÉ FAUX DEUX FOIS DE SUITE, ET LA SECONDE EST LA PLUS INSTRUCTIVE** : « sept et
+six » de mémoire, puis « quatre et neuf sur treize » — compté cette fois, mais en comptant les `.on(`
+du FICHIER au lieu de ce que l'application EXÉCUTE, c'est-à-dire **mot pour mot le piège consigné le
+matin même** deux sections plus haut (« DOUZE ET NON TREIZE… elle est CONDITIONNELLE »). **Une leçon
+écrite ne protège que celui qui va la relire.**
+
+⚠️ **D'OÙ LE COUPLAGE AVEC LE LOT DE LA VEILLE, ET SANS LUI CE LOT COÛTAIT PLUS QU'IL NE RAPPORTAIT.**
+Les deux filets reculent jusqu'à 5 min quand ils ne trouvent rien, justifié par « ça arrive par le
+temps réel » : retirez le temps réel au visiteur et **ils deviennent son seul chemin**. `seulChemin`
+les tient à 60 s pour lui — la latence qu'un compte subit déjà quand son canal décroche. ⚠️ **Le filet
+des LIVES portait le même couplage et n'a pas été traité du premier coup, ni mesuré** (le cas ④ ne
+lisait qu'app-08) : un visiteur aurait gardé une bulle « 🔴 LIVE » allumée cinq minutes après la fin
+du direct.
+
+⚠️ **ET LE MARCHÉ A DEUX TERMES — LA PREMIÈRE RÉDACTION N'EN COMPTAIT QU'UN**, partout (« 60 s de
+latence contre 97,9 % d'un quota de 500 »). Mesuré : **un tour du filet du fil = QUATRE requêtes**
+(`posts`, puis `post_likes`, `post_comments`, `comment_interactions`), et il tourne pour tout le
+monde. `seulChemin` vrai en permanence = 5 req/min au lieu de ~1 : **×5, en régime permanent, chez
+les 98 % qu'on prétend soulager** — et `supaLoadPosts()` à 60 s **est** le poste dominant de la base
+(fiche « amplification », un balayage de `profiles` par ligne évaluée). Le lot aurait **restauré pour
+98 % des onglets ce que la veille venait de réduire**, en poussant sur l'egress, le second mur.
+⚠️ **D'OÙ LA BORNE** : `filetEstLeSeulChemin()` (app-02, autorité des DEUX filets) n'est vraie que
+**pendant qu'on regarde le fil** (`#screen-feed.active`) ; ailleurs leur fraîcheur n'est visible nulle
+part et ils reculent comme avant, `goTo("feed")` les réveillant au retour (sans quoi on aurait borné
+le coût en servant du périmé). L'onglet masqué était déjà couvert par `filetProchainPas`.
+⚠️ **Une justification à un seul terme n'est pas une justification, c'est une publicité** — et elle a
+survécu à une passe d'audit et à dix verrous verts, parce qu'aucun verrou ne mesure ce qu'un texte
+omet.
+
+⚠️ **L'AUTORITÉ ÉCHOUE OUVERT, DANS LE MÊME SENS QUE SES APPELANTS** : ils la lisent par
+`typeof … === "function" && !…()`, donc autorité absente la connexion s'ouvre. Un `catch` qui
+refuserait irait à l'INVERSE du câblage et couperait le temps réel d'un vrai compte pour une cause
+que personne ne pourrait nommer (`_uidEstUnCompte` porte déjà son propre `catch` : ce chemin est une
+impossibilité, on la TRACE). Même jurisprudence que `requireAdmission`.
+
+⚠️ **CINQ SURFACES DE GESTE RESTAIENT ATTEIGNABLES SANS COMPTE — le lot mesurait le BOOT et se
+taisait sur les gestes**, et il en a d'abord nommé deux : ① ouvrir une conversation de DÉMONSTRATION
+(`_subscribeTyping`, app-04 ; sa voisine `_supaConvSpecificChannel` est gardée aussi mais **ne fuyait
+pas en production**, son `if (PASSIO_REALTIME_V3) return;` la rendant inerte par défaut) · ② taper une
+bulle « 🔴 LIVE » (`joinVideoLive`) · ③ **lancer** un live (`startVideoLive`, le jumeau : aucun canal
+ne fuyait, la RLS refusant l'INSERT avant, mais un visiteur obtenait **la demande de permission
+caméra** avant d'être refusé — contraire à « première visite : aucune demande de permission ») ·
+④ un **lien profond `?call=<id>&from=<uuid>`** (`_checkIncomingCallFromUrl`, armé au boot pour tout le
+monde, attendant `_supaReal && MY_UID` — vrai pour un `u_…` : le visiteur voyait l'écran d'appel et,
+qu'il accepte **ou refuse**, ouvrait `call:<id>` ; gardé à l'entonnoir `handlePushIncomingCall`, qui
+couvre aussi le message `INCOMING_CALL` du SW) · ⑤ `startCall`, même idiome, sans fuite réelle.
+**Toutes les cinq ont été trouvées par une relecture adversariale APRÈS des gates vertes, jamais par
+un verrou** — d'où l'inventaire déclaré des PORTES (cas ⑤ bis). ⚠️ `ring:<uid>` n'était PAS du lot :
+gardé par `admissionCompteReel` depuis le 2026-09-11 — un visiteur ouvrait DEUX canaux au repos.
+
+⚠️ **LES AUTRES OUTILS SONT TOUS PLUS BAS, ET C'EST LA DEUXIÈME FOIS DU JOUR QU'ON L'ÉVITE** : Ably
+200, Pusher Channels 100, Cloudflare Durable Objects payant — contre 500 ici. On aurait migré VERS UN
+PLAFOND PLUS BAS, en ajoutant un fournisseur et une seconde origine : exactement la faute R2 du
+dossier stockage. **Avant de changer de fournisseur, lire le plafond de celui qu'on a.**
+
+⚠️ **CE QUE LE LOT CHANGE VRAIMENT, ET C'EST LA BONNE FAÇON DE LE DIRE** : le plafond n'est pas
+repoussé, il **change de population**. Avant, l'application ouvrait un canal par client, donc les 500
+bornaient **toute personne dont l'onglet est ouvert**. Après, elles ne bornent plus que les **comptes
+simultanés** — un visiteur n'y compte plus du tout. « 500 personnes » devient « 500 comptes
+simultanés, visiteurs illimités », et c'est le contraire d'un réglage : c'est le plafond qui cesse de
+s'appliquer à 97,9 % du trafic.
+
+⚠️ **DEUX CHIFFRES DE LA PAGE USAGE SENTENT LA CI, ET C'EST UNE HYPOTHÈSE, PAS UNE MESURE** :
+**8 560 MAU pour dix comptes réels** et **37 Go d'egress**. `profiles` n'est délibérément PAS dans
+`TABLES_DISTANTES` (une lecture rendue vide ferait tenter une ÉCRITURE en production), donc chaque
+`page.goto` des bancs touche le projet — même famille que l'avatar de 2,59 Mo demandé 399 fois. **À
+MESURER avant d'y croire** (répartition des MAU par jour, creux du week-end contre les heures de CI) :
+les deux chiffres-phares faux du 20/09 sont nés d'exactement ce raccourci.
+
+⚠️ **LE GAIN EST UNE ATTENTE, PAS UNE MESURE, tant que la page Usage n'est pas relue après
+déploiement.** Deux chiffres-phares du même jour ont déjà été faux (le « 1 Go » du stockage, le
+« 91 % de travail » de #515). Attendu : le pic tombe de 84 vers l'ordre de la poignée, et le mur
+suivant devient **l'egress (×6,8)** — cette ligne a dit « MAU » tant que la marge d'egress était mal
+calculée. ⚠️ **Et « 84 » et « 97,9 % » ne parlent pas de la même population** : l'un est un pic de
+SIMULTANÉITÉ, l'autre une part de SESSIONS sur 7 jours, et un onglet de compte reste ouvert bien plus
+longtemps qu'une visite de passage — la part des comptes dans le pic est donc mécaniquement
+supérieure à 2,1 %.
+
+Verrou : `tests/e2e/capacite-connexions-temps-reel.spec.js` (**10**), **éprouvé par RÉINJECTION de
+huit mutations** — garde retirée de `supaSubscribe` (4 rouges), drapeau posé avant la garde (1),
+couplage retiré du filet des lives (1), gardes de geste retirées (2), autorité rendue fail-closed (1),
+borne « fil à l'écran » retirée (1), réveil retiré de `goTo` (1), porte de canal non déclarée (1).
+⚠️ **QUATRE PIÈGES DE BANC, ET DEUX VERROUS QUI NE VERROUILLAIENT RIEN** : ① une tranche prise sur un
+nombre magique cesse de couvrir sa fonction dès qu'elle grandit, **sans un rouge** (`slice(i, i+2600)`
+s'arrêtait à UN caractère de la fin) — on lit jusqu'à l'accolade fermante ; ② un verrou qui épingle
+une EXPRESSION littérale rougit sur le lot suivant pour une raison qui n'est pas la sienne
+(`capacite-amplification` ⑪) — il mesure les TROIS TERMES ; ③ **puis le même verrou l'a refait deux
+fois DANS le lot qui corrigeait la règle** : un `toBe(2)` de lecteurs par fichier (une garde légitime
+le fait rougir), puis un balayage de fichiers entiers qui **a rougi sur TROIS innocents**
+(`app-04:5340`, `app-05:569`, `app-08:1863` — tous posent la condition sur *quelqu'un d'autre*) ; il
+mesure enfin DANS le corps de chaque fonction gardée. **Un verrou qui rougit sur un innocent finit
+par être désarmé**, et c'est la première fois que c'est le verrou gardien de la règle qui l'enfreint ;
+④ **UN VERROU VIDE EST PIRE QUE PAS DE VERROU** : le cas qui mesurait le BOOT d'un visiteur au
+navigateur ne pouvait rien prouver — mesuré, `supaInit` n'atteint JAMAIS `supaSubscribe` sous
+l'isolation de `bootOnboarded`, donc il restait VERT avec la garde retirée. Remplacé par
+l'**inventaire déclaré des PORTES** (chaque site de création de canal, avec la raison qu'un visiteur
+ne l'atteint pas, patron de `tests-isolation-socle.json`) : il ne prouve pas l'inatteignabilité —
+aucun grep ne le peut — **il force à l'écrire**, et une porte neuve rougit jusque-là.
+⚠️ **ET UN RALENTISSEMENT DE BANC QUI NE VENAIT PAS DE CE LOT** : `compteurVliveAuCalme` attendait
+`_dbChan`, jamais posé sous l'isolation (même raison), donc chacun de ses quatre appels payait ses
+20 s — **avant comme après**, et je l'ai d'abord attribué au lot. Signal porté à quatre témoins et
+**borné à 6 s**, la boucle de stabilité restant le vrai garant : **1 min 54 → 1 min 00**.
+⚠️ **`diagLog` NE PRENAIT QU'UN ARGUMENT, ET HUIT APPELS EN PASSAIENT DEUX** — `diagLog("vlive_filet",
+e && e.message)` jetait le message d'erreur EN SILENCE, donc un filet en panne était indiscernable
+d'un filet au calme, et la Sentinelle ne voit que ce qui est journalisé. Corriger les huit appelants
+aurait laissé le neuvième refaire la faute : **c'est l'AUTORITÉ qui accepte le reste**, en le joignant.
 
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)
 

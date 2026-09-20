@@ -4050,9 +4050,18 @@ async function supaUpsertProfile() { return await supaEnsureProfileExists(); }
 // supaLoadPosts levait une ReferenceError avalée par son catch → le fil réseau
 // était VIDE pour tous les comptes. Version minimale sans panneau : buffer
 // window._diagLogs (lu par le panneau de diag d'emoji-misc) + console en debug.
+// ⚠️ ELLE NE PRENAIT QU'UN ARGUMENT, ET HUIT APPELS EN PASSAIENT DEUX (2026-09-20).
+// `diagLog("vlive_filet", e && e.message)` jetait le message d'erreur EN
+// SILENCE : la trace ne portait que l'étiquette, donc un filet en panne était
+// indiscernable d'un filet au calme — et la Sentinelle ne voit que ce qui est
+// journalisé. Corriger les huit appelants aurait laissé le neuvième refaire la
+// faute : **c'est l'autorité qui accepte le reste**, en le joignant.
 function diagLog(msg) {
   try {
     if (!window._diagLogs) window._diagLogs = [];
+    for (var i = 1; i < arguments.length; i++) {
+      if (arguments[i] !== undefined && arguments[i] !== null && arguments[i] !== "") msg += " · " + arguments[i];
+    }
     window._diagLogs.push(`[${new Date().toLocaleTimeString()}] ${msg}`);
     if (window._diagLogs.length > 100) window._diagLogs.shift();
     if (window.PASSIO_DEBUG) console.log("[DIAG]", msg);
@@ -6133,6 +6142,26 @@ window._subscribeUserTopic = _subscribeUserTopic;
 // ════════════════════════════════════════════════════════════════════════
 
 function supaSubscribe() {
+  // ⚠️ UN VISITEUR N'OUVRE AUCUNE CONNEXION TEMPS RÉEL (capacité, 2026-09-20).
+  // `Realtime Concurrent Peak Connections` (500 sur le forfait Pro) compte des
+  // CLIENTS, pas des canaux : les canaux d'un client partagent un seul
+  // WebSocket. Or 97,9 % des sessions de production n'ont pas de compte.
+  // ⚠️ Ce qu'un visiteur PERD est réel — NEUF des treize liaisons de
+  // `realtime:db` (posts, j'aime, commentaires, lives, profils) — et ce qui le
+  // compense est le couplage `seulChemin` du filet, 30 lignes plus bas ici et
+  // dans `_vliveFiletTour` (app-05) : 60 s au lieu de 5 min. Mesure, détail du
+  // marché et de ses deux termes : `connexionTempsReelAutorisee` (app-02),
+  // seule autorité.
+  //
+  // ⚠️ LE DRAPEAU SE POSE APRÈS LA GARDE, JAMAIS AVANT : `supaInit` est rappelé
+  // par `onAuthStateChange`, donc un visiteur qui se connecte doit encore
+  // pouvoir s'abonner. Posé plus haut, il condamnerait le compte qu'il vient de
+  // créer à rester sans temps réel pour toute la session.
+  if (typeof connexionTempsReelAutorisee === "function" && !connexionTempsReelAutorisee()) {
+    // ⚠️ `diagLog` ne prend QU'UN argument (app-08) : un second part en silence.
+    try { diagLog("rt_visiteur : connexion temps réel non ouverte (pas de compte)"); } catch (e) {}
+    return;
+  }
   // Garde anti double-abonnement : supaInit peut être appelé par boot() ET par
   // onAuthStateChange — un seul jeu de canaux realtime doit exister.
   if (window._supaSubscribed) return;
@@ -6158,8 +6187,10 @@ function supaSubscribe() {
   // quota Supabase de canaux concurrents et multiplie les rejoins réseau). Les
   // bindings multiples sur un même canal étaient déjà le pattern du canal CDV
   // (5 tables). Chaque handler est INCHANGÉ — seule la plomberie canal change.
-  // Au repos un client n'a plus que 3 canaux : user:<uid> (messages v3),
-  // ring:<uid> (appels) et realtime:db (celui-ci).
+  // Au repos un COMPTE n'a plus que 3 canaux : user:<uid> (messages v3),
+  // ring:<uid> (appels) et realtime:db (celui-ci). ⚠️ Un visiteur en ouvrait
+  // DEUX, pas trois — `ring:` est gardé par `admissionCompteReel` depuis la
+  // sonde du 2026-09-11 ; il n'en ouvre plus aucun (garde en tête de fonction).
   window._dbChan = _creerCanalDb(window._rtPriveIndisponible !== true);
 }
 // ⚠️ PRIVÉ depuis le 2026-09-11 : quand le tableau de bord Supabase interdit les
@@ -7227,7 +7258,20 @@ function startFeedRefreshLoop() {
       vivant = true;
     } finally {
       if (_feedRefreshInterval !== null) {
-        _feedFiletPas = filetProchainPas(_feedFiletPas, vivant, document.hidden);
+        // ⚠️ SANS TEMPS RÉEL, CE FILET N'EST PLUS UN FILET : C'EST LE SEUL
+        // CHEMIN. Le recul jusqu'à 5 min (2026-09-20) était justifié par « les
+        // publications arrivent par le temps réel » — vrai pour un compte,
+        // FAUX pour un visiteur depuis que `supaSubscribe` ne lui ouvre plus
+        // de connexion. Le laisser reculer échangerait la capacité contre un
+        // fil figé cinq minutes chez 98 % des gens, ce qui coûterait plus que
+        // le gain. On réutilise le contrat existant — « un signe de vie rend la
+        // cadence vive » — plutôt que d'inventer une seconde politique : les
+        // bornes restent dans `filetProchainPas`, qui n'est pas touchée.
+        // ⚠️ BORNÉ AU FIL À L'ÉCRAN : `filetEstLeSeulChemin` (app-02) compte
+        // les DEUX termes du marché — voir son commentaire. Pinné partout, ce
+        // filet coûtait 4 req/min par onglet visiteur, ×5 du régime d'avant.
+        const seulChemin = typeof filetEstLeSeulChemin === "function" && filetEstLeSeulChemin();
+        _feedFiletPas = filetProchainPas(_feedFiletPas, vivant || seulChemin, document.hidden);
         _feedRefreshInterval = setTimeout(tour, _feedFiletPas);
       }
     }

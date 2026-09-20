@@ -523,6 +523,118 @@ function _uidEstUnCompte() {
 window._uidEstUnCompte = _uidEstUnCompte;
 
 // ═══════════════════════════════════════════════════════════════════════════
+// CAPACITÉ — UN VISITEUR NE TIENT PAS DE CONNEXION TEMPS RÉEL (2026-09-20)
+// ──────────────────────────────────────────────────────────────────────────
+// MESURÉ sur la page Usage du forfait Pro : `Realtime Concurrent Peak
+// Connections` = 84 / 500. C'est le quota le plus PROCHE, et il ne compte ni
+// des canaux ni des messages : **il compte des CLIENTS**. supabase-js
+// multiplexe tous les canaux d'un client sur UN SEUL WebSocket, donc
+// « 500 connexions » veut dire « 500 personnes dont l'onglet est ouvert ».
+//
+// ⚠️ ET 97,9 % DE CES PERSONNES N'ONT PAS DE COMPTE. Mesuré en production sur
+// 7 jours (`telemetry_events`, sessions distinctes) : 2 546 sessions sans
+// compte sur 2 600. Chacune ouvrait pourtant sa connexion, parce que
+// `supaSubscribe` créait `realtime:db` SANS CONDITION et que la policy de ce
+// canal est ouverte à `anon`.
+//
+// ⚠️ CE QUE LE VISITEUR PERD EST RÉEL, ET IL FAUT LE DIRE : la première
+// rédaction écrivait « rien qu'il puisse recevoir », **c'est faux**, et un
+// verrou n'aurait jamais pu le démentir. Comptées une par une dans
+// `_creerCanalDb`, les treize liaisons de `realtime:db` se partagent en
+// **QUATRE qui ne le concernent pas** — `conv_members` et `notifications`
+// filtrées sur son identifiant, qui n'existe pas côté serveur, plus
+// `conv_messages` et `conv_reads` que la RLS ne lui livrera jamais — et **NEUF
+// qui portent du contenu PUBLIC qu'il reçoit très bien** : `posts` INSERT,
+// `post_likes` (INSERT et DELETE), `post_comments`, `event_comments`,
+// `comment_interactions` (INSERT et DELETE), `video_lives`, `profiles` UPDATE.
+// ⚠️ Ces deux nombres ont d'abord été écrits « sept et six », de mémoire : un
+// inventaire qu'on n'a pas compté est une affirmation, pas une mesure.
+// Ce qu'il perd, c'est donc le RAFRAÎCHISSEMENT VIF du public : une publication
+// qui apparaît seule, un compteur de j'aime qui monte, une bulle « 🔴 LIVE ».
+//
+// ⚠️ CE QUI LE COMPENSE EST NOMMÉ, ET C'EST LE COUPLAGE DU LOT : les deux
+// filets (le fil dans app-08, les lives dans app-05) restent à 60 s pour lui au
+// lieu de reculer jusqu'à 5 min, parce qu'ils sont devenus **son seul chemin**
+// (`seulChemin`). Le marché est donc « 60 s de latence sur du contenu public
+// contre 97,9 % d'un quota de 500 » — exactement la latence qu'un compte subit
+// déjà quand son canal décroche. Sans ce couplage, le lot aurait « réussi » en
+// figeant le fil cinq minutes chez presque tout le monde.
+//
+// ⚠️ CE N'EST PAS UN PROBLÈME DE NOMBRE DE CANAUX, et s'en prendre aux canaux
+// n'aurait rien donné : les canaux d'un client partagent la MÊME connexion. Le
+// seul levier est le nombre de CLIENTS connectés, pas le nombre d'abonnements
+// par client. (Au repos un visiteur en ouvrait DEUX, pas trois : `ring:<uid>`
+// est déjà gardé par `admissionCompteReel` depuis la sonde du 2026-09-11.)
+//
+// ⚠️ LA FORME DE L'IDENTIFIANT SUFFIT, et c'est voulu : `getMyUserId()`
+// fabrique un `u_<aléatoire>` pour tout visiteur. On ne lit pas le jeton du
+// SDK ici — app-02 ne doit dépendre de rien de chargé après lui (même raison
+// que `_uidEstUnCompte` contre `_compteAuthReel`, fiche du 2026-09-13). Un
+// compte dont la session a expiré garde donc sa connexion : c'est le bon sens
+// de l'échec, il RECEVRA ses messages dès que le jeton se rafraîchit, et il
+// n'est pas la masse qu'on cherche à écarter.
+//
+// ⚠️ SEULE AUTORITÉ, et elle a DEUX lecteurs qui ne posent pas la même
+// question : `supaSubscribe` (« dois-je ouvrir la connexion ? ») et le filet du
+// fil (« suis-je le seul chemin ? »). Les laisser diverger rouvrirait très
+// exactement le défaut que ce lot ferme, par le second.
+//
+// ⚠️ ELLE ÉCHOUE **OUVERT**, comme ses deux appelants. Ils la lisent par
+// `typeof … === "function" && !connexionTempsReelAutorisee()` : autorité
+// absente, la connexion s'ouvre. Un `catch` qui refuserait irait donc dans le
+// sens INVERSE du câblage, et couperait le temps réel d'un vrai compte pour une
+// cause que personne ne pourrait nommer. `_uidEstUnCompte` porte déjà son
+// propre `catch` et ne peut pas lever ; ce chemin est une impossibilité, et on
+// la TRACE plutôt que de la trancher en silence (même jurisprudence que
+// `requireAdmission`, qui double une frontière et échoue ouvert).
+function connexionTempsReelAutorisee() {
+  try { return _uidEstUnCompte(); }
+  catch (e) {
+    try { diagLog("rt_autorite_illisible " + (e && e.message)); } catch (_e) {}
+    return true;
+  }
+}
+window.connexionTempsReelAutorisee = connexionTempsReelAutorisee;
+
+// ⚠️ ET LE COUPLAGE A UN COÛT QUE LA PREMIÈRE RÉDACTION NE COMPTAIT PAS.
+// Elle écrivait le marché à UN SEUL terme — « 60 s de latence contre 97,9 %
+// d'un quota de 500 » — en taisant ce qu'on paie en face. Mesuré : un tour du
+// filet du fil, c'est **QUATRE** requêtes (`posts`, puis les lots
+// `post_likes`, `post_comments`, `comment_interactions`), et le filet tourne
+// pour TOUT LE MONDE. `seulChemin` vrai en permanence, c'est donc 4 req/min
+// par onglet visiteur au lieu de 4 req/5 min : **×5, en régime permanent, chez
+// les 98 % de sessions que le lot prétend soulager** — et c'est très
+// exactement `supaLoadPosts()` à 60 s que la fiche « amplification » de la
+// veille désigne comme le poste dominant de la base (un balayage de `profiles`
+// par ligne évaluée, via la policy SELECT de `posts`). Le lot aurait restauré
+// pour 98 % des onglets ce que la veille venait de réduire.
+// ⚠️ ET L'EGRESS EST LE SECOND MUR (×6,8, quasi à égalité avec les 500
+// connexions) : on aurait poussé sur le mur voisin pour soulager le premier.
+//
+// ⚠️ D'OÙ LA BORNE, ET ELLE EST PRÉCISE : le filet n'est « le seul chemin »
+// que **pendant qu'on REGARDE le fil**. Ailleurs (Messages, Profil, Explorer,
+// Rencontrer) sa fraîcheur n'est visible nulle part, et il recule normalement ;
+// `goTo("feed")` le réveille au retour, donc on ne sert jamais du périmé.
+// L'onglet masqué est déjà couvert par `filetProchainPas` lui-même.
+// ⚠️ UNE SEULE AUTORITÉ POUR LES DEUX FILETS : le fil (app-08) et les lives
+// (app-05) — dont les bulles « 🔴 LIVE » vivent dans la barre de stories DU
+// FIL, donc la même condition. Deux copies d'une même politique finissent
+// toujours par diverger sur celle qu'on oublie.
+// ⚠️ LE SENS DE L'ÉCHEC SUIT CELUI DES APPELANTS : autorité illisible = on
+// considère le temps réel OUVERT, donc le filet n'est PAS le seul chemin et
+// recule comme avant. C'est le comportement d'avant ce lot, à l'octet près.
+function filetEstLeSeulChemin() {
+  const tempsReelOuvert = typeof connexionTempsReelAutorisee !== "function"
+    || connexionTempsReelAutorisee();
+  if (tempsReelOuvert) return false;
+  try {
+    const feed = document.getElementById("screen-feed");
+    return !!(feed && feed.classList.contains("active"));
+  } catch (e) { return false; }
+}
+window.filetEstLeSeulChemin = filetEstLeSeulChemin;
+
+// ═══════════════════════════════════════════════════════════════════════════
 // UXO-02 — MODE « SESSION EXPIRÉE » : le compte est là, la session ne l'est pas
 // (contre-revue Astra, 2026-09-15)
 // ──────────────────────────────────────────────────────────────────────────
@@ -2940,6 +3052,14 @@ function goTo(screen) {
   if (el) el.classList.add("active");
   $("#appMain").scrollTop = 0;
   document.body.classList.toggle("screen-feed-active", screen === "feed");
+  // ⚠️ REVENIR AU FIL RÉVEILLE LES DEUX FILETS. Ils ne sont « le seul chemin »
+  // d'un visiteur que pendant qu'il regarde le fil (`filetEstLeSeulChemin`) :
+  // sans ce réveil, il retrouverait au retour un filet reculé à cinq minutes,
+  // et on aurait borné le coût en servant du périmé.
+  if (screen === "feed") {
+    try { if (typeof feedFiletReveiller === "function") feedFiletReveiller(); } catch (e) {}
+    try { if (typeof vliveFiletReveiller === "function") vliveFiletReveiller(); } catch (e) {}
+  }
 
   // Première visite : le module pose ses indications contextuelles au bon moment
   // (étape « Rencontrer » à la première ouverture de l'IRL) et arme

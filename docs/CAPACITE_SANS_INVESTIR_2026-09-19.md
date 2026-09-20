@@ -1,5 +1,12 @@
 # Accueillir beaucoup plus de monde sans dépenser un euro (2026-09-19)
 
+> ⚠️ **MISE À JOUR DU 2026-09-20 — le « 2 000 à 4 000 connectés » de ce dossier n'est PAS un plafond
+> de connexions.** C'est une déduction d'un banc qui mesure des req/s, et elle reste juste pour ce
+> qu'elle mesure : la base tient la charge. Le plafond du TRANSPORT a été lu depuis sur la page Usage
+> du forfait Pro — **Realtime Concurrent Peak Connections : 500**, l'application ouvrant un canal par
+> client. Les mesures ci-dessous ne sont pas réécrites (ce sont des mesures datées) ; leur portée
+> l'est. Voir `docs/CAPACITE_CONNEXIONS_TEMPS_REEL_2026-09-20.md`.
+
 > Question de Benjamin : « tu m'as dit que 200 personnes seulement peuvent l'utiliser, comment
 > avoir beaucoup plus de capacité sans payer ? En utilisant le stockage chez chaque utilisateur ? »
 > Réponse courte : **le chiffre de 200 est périmé et faux aujourd'hui**, les lectures tiennent déjà
