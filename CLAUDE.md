@@ -1874,11 +1874,7 @@ mesure de capacité du 14/09 n'a jamais vu le pire cas de la recherche.
 n'ont pas à l'écran (`findPostAnywhere` rend `null`) ; s'abonner à ce qui est VISIBLE est un
 changement d'architecture, pas un réglage. `chargerReferentielPassions` (2 847 316 appels, 5,8 % du
 CPU, six allers-retours par session, plafond `PAGES_MAX` muet) ne se cache ni sur la release ni sur
-un TTL, la liste blanche étant MUTABLE. **Les MINUTEURS sont le `O(connectés)` permanent et ce lot
-n'y touche pas** : `startFeedRefreshLoop` (60 s) × la policy de `posts` est le producteur dominant
-des 19 M de balayages, et le filet `video_lives` (60 s) tourne même sans aucun live (185 760 des
-223 315 balayages pour un seul onglet toujours ouvert) — les deux appellent un RECUL, pas un
-débounce. `creer_passion` accepte un libellé de 2 caractères, invisible aux autres depuis le
+un TTL, la liste blanche étant MUTABLE. `creer_passion` accepte un libellé de 2 caractères, invisible aux autres depuis le
 plancher de ① (zéro cas, rien ne garde l'invariant). Une garde serveur pour les frappes courtes
 demande une migration, donc une contre-revue humaine. Le forfait Supabase n'a jamais été LU.
 
@@ -1923,6 +1919,61 @@ rédaction parce que ma tranche de source allait jusqu'à la FIN DU FICHIER et a
 `from("profiles")` de `supaInit` — un chemin de démarrage, appelé une fois par session : **un verrou
 qui rougit sur un innocent finit par être désarmé**. En local, `creation-passion` ⑭ est rouge **sur
 `origin/main` pur aussi** (worktree séparé, port 8099) — divergence d'environnement déjà écrite.
+
+## ⏳ LES DEUX FILETS RECULENT QUAND ILS NE TROUVENT RIEN (2026-09-20, la suite)
+
+Le point laissé ouvert par le lot « amplification », traité dans la foulée. Le fil
+(`startFeedRefreshLoop`, app-08) rejouait `supaLoadPosts()` toutes les 60 s chez chaque client
+visible — et un chargement de fil, ce n'est pas une requête mais **QUATRE** (`posts`, puis les lots
+`post_likes`, `post_comments`, `comment_interactions`) ; le filet des lives (app-05) tournait toutes
+les 60 s **même sans aucun live** (234 949 appels mesurés, le plus gros compteur de la base après le
+temps réel).
+
+⚠️ **AUJOURD'HUI C'EST PEU — ~3,4 % DU CPU — ET C'EST EXACTEMENT POURQUOI IL FAUT LE DIRE JUSTE.**
+Ce coût ne dépend PAS de ce que les gens font, seulement du nombre d'onglets ouverts. À 2 000
+connectés, ces minuteurs font **133 requêtes par seconde d'activité NULLE**, contre ~400 req/s
+mesurés au banc de charge du 14/09 : **un tiers de la capacité mesurée, consommé avant que quiconque
+ait fait quoi que ce soit.** ⚠️ **Et ce ne sont pas les chemins principaux** : publications et lives
+arrivent par le temps réel. Ce sont des FILETS, et **un filet a le droit d'être lent quand il ne
+trouve rien.**
+
+⚠️ **UNE SEULE AUTORITÉ POUR LES DEUX** : `filetProchainPas(pas, vivant, masquee)` (app-02), PURE —
+60 s → ×1,5 → plafond 5 min, retour à 60 s au premier signe de vie. Deux copies d'une même politique
+finissent toujours par diverger sur celle qu'on oublie ; le verrou refuse d'ailleurs qu'une borne
+soit recopiée dans app-05 ou app-08.
+
+⚠️ **TROIS RÈGLES, CHACUNE A COÛTÉ UNE RÉFLEXION** : ① un signe de vie rend la cadence vive,
+toujours — un filet qui reculerait sans revenir mettrait cinq minutes à montrer ce que le temps réel
+a manqué ; ② une page **MASQUÉE NE RECULE PAS** — reculer pendant qu'on ne regarde pas puis servir
+lentement au retour serait le pire des deux ; ③ **×1,5 et non ×2** — doubler atteindrait le plafond
+en quatre tours et rendrait le filet inutile sur une accalmie passagère.
+
+⚠️ **UNE PANNE N'EST PAS UN CALME** : c'est à l'APPELANT de passer `vivant: true` sur une erreur,
+sinon une coupure réseau ferait mettre cinq minutes à retrouver le fil au retour de la connexion.
+
+⚠️ **`setInterval` NE SAIT PAS CHANGER DE PAS**, d'où une chaîne de `setTimeout` pour le fil.
+Conséquence à ne pas manquer : la branche « onglet masqué » doit **RÉ-ARMER**, là où le `return`
+d'avant laissait l'intervalle tourner tout seul — sans ça le filet meurt au premier passage en
+arrière-plan, et on a remplacé « trop de requêtes » par « plus aucune ». La ré-arme vit dans un
+`finally`, donc elle survit à la sortie précoce ET à l'exception.
+
+⚠️ **UN LIVE QUI EXISTE GARDE LA CADENCE VIVE**, quoi qu'il arrive : c'est exactement ce que ce
+filet doit rattraper, et le ralentir laisserait une bulle « 🔴 LIVE » allumée jusqu'à cinq minutes
+après la fin du direct. Le recul n'est pris que si la liste était vide AVANT le tour et l'est encore
+APRÈS — `supaRefreshVideoLives` rend `false` sur une coupure comme sur un vrai calme (elle replie
+sur un tableau vide), donc une seule observation ne suffit pas. Elle **REND son verdict** depuis ce
+lot ; ses quatre appelants d'avant l'ignorent, aucun contrat ne change.
+
+⚠️ **ET LE BANC A CHANGÉ DE FORME EN COURS DE ROUTE — leçon d'outillage.** Une première rédaction
+pilotait le temps avec `page.clock.install()` posé APRÈS le démarrage : la page se fermait au milieu
+des tours (les rendez-vous de l'application s'empilent dans la fenêtre avancée), et les trois cas
+échouaient **sur leur outillage, jamais sur leur sujet**. **Un banc qui meurt de son propre
+instrument ne mesure rien.** La politique a donc été extraite en fonction PURE — meilleur code ET
+éprouvable sans horloge — et le câblage est mesuré à la SOURCE, comme pour les lots précédents.
+
+Verrou : `tests/e2e/capacite-amplification.spec.js` ⑩ → ⑪ bis (6 cas), dont la suite exacte des pas
+(90 000 / 135 000 / 202 500 / 300 000), le plafond, la page masquée, les entrées absurdes, et quatre
+contrôles de câblage à la source.
 
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)
 

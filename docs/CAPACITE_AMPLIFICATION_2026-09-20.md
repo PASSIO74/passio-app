@@ -296,13 +296,7 @@ est une optimisation de transport, jamais une frontière de sécurité.
   coup — de quoi saturer un vCPU à huit requêtes par seconde. Le dépôt veut
   ses gardes aux deux bouts ; celle-ci demande une migration, donc une
   contre-revue humaine.
-- **Les minuteurs sont le `O(connectés)` permanent, et ce lot n'y touche pas.**
-  `startFeedRefreshLoop` (60 s) rejoue `supaLoadPosts()` chez chaque client
-  visible, et la policy de `posts` lit `profiles` par ligne évaluée : c'est le
-  producteur dominant des 19 millions de balayages. Le filet `video_lives`
-  (60 s) tourne même sans aucun live — un seul onglet toujours ouvert produit
-  185 760 des 223 315 balayages mesurés. Les deux appellent un recul
-  (intervalle qui s'allonge quand rien ne change), pas un débounce.
+- ~~Les minuteurs sont le `O(connectés)` permanent~~ → **FAIT, §7 ci-dessous.**
 - **`creer_passion` accepte un libellé de deux caractères** : une telle passion
   serait invisible aux autres depuis le plancher de ⑥, jusqu'à la régénération
   du JSON. Zéro cas aujourd'hui, et rien ne garde l'invariant.
@@ -326,3 +320,63 @@ constat — sans lui, la session suivante refait l'enquête.
   `scripts/charge.mjs`. Aucune surface oubliée.
 - **`profiles` n'a pas de problème d'index** : neuf lignes, un balayage y est
   le bon plan. Le volume venait du nombre d'appels.
+
+
+---
+
+## 7. ⑩ et ⑪ — les deux filets reculent quand ils ne trouvent rien
+
+Le point laissé ouvert au §6, traité dans la foulée.
+
+**Le fil** (`startFeedRefreshLoop`, app-08) rejouait `supaLoadPosts()` toutes les
+60 s chez chaque client visible — et un chargement de fil, ce n'est pas une
+requête mais **quatre** : `posts`, puis les lots `post_likes`, `post_comments` et
+`comment_interactions`. Mesuré : ~235 000 tours, ~10,7 ms chacun.
+**Les lives** (filet d'app-05) tournaient toutes les 60 s **même sans aucun
+live** : 234 949 appels, le plus gros compteur de la base après le temps réel.
+
+⚠️ **AUJOURD'HUI C'EST PEU — ~3,4 % du CPU — ET C'EST EXACTEMENT POURQUOI IL
+FAUT LE DIRE JUSTE.** Ce coût ne dépend pas de ce que les gens font, seulement
+du nombre d'onglets ouverts. À 2 000 connectés, ces minuteurs font **133
+requêtes par seconde d'activité nulle**, contre ~400 req/s mesurés au banc de
+charge du 14/09 : **un tiers de la capacité mesurée, consommé avant que
+quiconque ait fait quoi que ce soit.**
+
+⚠️ **ET CE NE SONT PAS LES CHEMINS PRINCIPAUX** : les publications et les lives
+arrivent par le temps réel. Ces minuteurs sont des **filets**, pour ce que le
+temps réel a manqué. **Un filet a le droit d'être lent quand il ne trouve rien.**
+
+Le pas part de 60 s, s'allonge de ×1,5 à chaque tour sans nouveauté, plafonne à
+5 minutes, et retombe à 60 s au premier signe de vie.
+
+⚠️ **UNE SEULE AUTORITÉ POUR LES DEUX** : `filetProchainPas` (app-02), pure et
+donc éprouvable. Deux copies d'une même politique finissent toujours par diverger
+sur celle qu'on oublie.
+
+⚠️ **Trois règles, chacune a coûté une réflexion** : ① un signe de vie rend la
+cadence vive, toujours — un filet qui reculerait sans revenir mettrait cinq
+minutes à montrer ce que le temps réel a manqué ; ② une page **masquée** ne
+recule pas — reculer pendant qu'on ne regarde pas puis servir lentement au
+retour serait le pire des deux ; ③ ×1,5 et non ×2 — doubler atteindrait le
+plafond en quatre tours et rendrait le filet inutile sur une accalmie passagère.
+
+⚠️ **UNE PANNE N'EST PAS UN CALME** : c'est à l'appelant de passer `vivant: true`
+sur une erreur, sinon une coupure réseau ferait mettre cinq minutes à revenir.
+
+⚠️ **`setInterval` NE SAIT PAS CHANGER DE PAS** : le fil passe à une chaîne de
+`setTimeout`. Conséquence à ne pas manquer — la branche « onglet masqué » doit
+**ré-armer**, là où le `return` d'avant laissait l'intervalle tourner seul. Sans
+ça le filet meurt au premier passage en arrière-plan : « trop de requêtes »
+remplacé par « plus aucune ». La ré-arme vit dans un `finally`.
+
+⚠️ **UN LIVE QUI EXISTE GARDE LA CADENCE VIVE**, quoi qu'il arrive : c'est
+exactement ce que ce filet doit rattraper, et le ralentir laisserait une bulle
+« 🔴 LIVE » allumée jusqu'à cinq minutes après la fin du direct. Le recul n'est
+pris que si la liste était vide **avant** le tour et l'est encore **après**.
+
+⚠️ **ET LE BANC A CHANGÉ DE FORME EN COURS DE ROUTE.** Une première rédaction
+pilotait le temps avec `page.clock.install()` après le démarrage : la page se
+fermait au milieu des tours, et les trois cas échouaient **sur leur outillage,
+jamais sur leur sujet**. *Un banc qui meurt de son propre instrument ne mesure
+rien.* La politique a donc été extraite en fonction pure — meilleur code **et**
+éprouvable — et le câblage est mesuré à la source.
