@@ -2091,6 +2091,89 @@ qu'aucune souscription n'ait bougé, et **un verrou qui rougit sur un innocent f
 désarmé**. 27 reste rouge sur la vraie régression (branche « bloc » cassée → ~17). ⚠️ `creation-passion` ⑭ reste rouge **en local sur `origin/main` PUR** (rejoué en
 worktree séparé, port 8099) — divergence d'environnement déjà écrite, étrangère au lot.
 
+## 🛰️ LA TÉLÉMÉTRIE SORT DU TEMPS RÉEL — 91 % DU TRAVAIL DE RÉPLICATION DISPARAÎT (2026-09-20)
+
+Demande de Benjamin : « augmenter **considérablement** ces chiffres, sans investir ». Les trois volets
+précédents grignotaient des postes réels sans changer l'ordre de grandeur, parce qu'aucun ne touchait
+le premier poste de la base. Dossier : `docs/CAPACITE_TELEMETRIE_HORS_TEMPS_REEL_2026-09-20.md`.
+
+⚠️ **UNE SEULE TABLE FAIT 91,4 % DE TOUT CE QUE LA BASE RÉPLIQUE.** `pg_stat_user_tables`, somme
+insert+update+delete sur les DOUZE tables publiées : `telemetry_events` **481 554** sur **526 756**.
+Les onze autres réunies font 8,6 % (`profiles` 20 748, `posts` 6 934, `video_lives` 6 583,
+`notifications` 5 901, `conv_messages` 1 901, les six dernières 3 135). Et son abonné, c'est **UN
+client** — `dashboard/server/ingest.js`, le pilotage, sur le poste de l'éditeur. **Neuf dixièmes du
+travail temps réel de la production servaient un seul tableau de bord.**
+
+⚠️ **CE QUE J'AI CRU POUVOIR FAIRE ET QUI EST IMPOSSIBLE — arrêté AVANT d'écrire du SQL.** En croisant
+« publié » et « écouté », j'ai mesuré **229 613 changements (43,6 %) portant des opérations que
+PERSONNE n'écoute** (le DELETE de la purge de télémétrie, l'INSERT et le DELETE de `profiles`, le
+DELETE de `posts`…). Restreindre les opérations table par table est **IMPOSSIBLE** : `pubinsert`,
+`pubupdate`, `pubdelete`, `pubtruncate` sont des colonnes de **`pg_publication`** — `publish` est
+réglable PAR PUBLICATION, jamais par table ; `pg_publication_rel` ne porte qu'un filtre de lignes
+(`prqual`) et une liste de colonnes (`prattrs`). Vérifié sur la prod (PG 17.6). Ce gaspillage est donc
+**réel et inatteignable par ce chemin** ; il disparaît ici parce que la table qui en porte 89 % sort.
+
+⚠️ **CE N'EST PAS UN DÉSAVEU DE LA MIGRATION DU 2026-09-19, QUI AVAIT RAISON.** Elle écrit que retirer
+cette table « aurait éteint le tableau de bord en direct, SANS une erreur » — repli silencieux sur le
+polling, symptôme « c'est un peu en retard », jamais « c'est cassé ». **Le raisonnement tient
+toujours** : c'est pourquoi le lot ne se contente pas de retirer la table — le polling du pilotage
+**cesse d'être un secours pour devenir le chemin NOMINAL**, et l'alerte « Realtime décroché » est
+désarmée. On ne dégrade pas en silence, **on change de mécanisme**.
+
+⚠️ **L'ALERTE EST DÉSARMÉE EXPLICITEMENT (`realtimeUtilise: false`), PAS PAR ACCIDENT.** Elle ne se
+déclencherait déjà plus — `decroche` teste `ing.realtimeStatus`, qui reste `null`, donc falsy — mais
+**un verrou qui tient par accident finit par le dire** : le jour où quelqu'un initialise ce champ à
+`"IDLE"` pour faire joli, l'alarme se rallume pour toujours, et une alarme qui crie à tort emporte les
+vraies avec elle.
+⚠️ **LA CADENCE NE CHANGE PAS (5 s), ET C'EST DÉLIBÉRÉ** : le polling est mesuré à **1,0 ms** par
+lecture, 5 s suffisent à une console de supervision, et accélérer « pour compenser » aurait ajouté du
+coût pour une latence imperceptible. ⚠️ **Le canari n'est pas concerné** : il est observé par
+`ingestOne`, point de passage UNIQUE de tout événement entrant (historique, realtime, polling).
+
+⚠️ **ORDRE D'APPLICATION, NON NÉGOCIABLE** : ① le pilotage déployé sur le poste, ② *seulement ensuite*
+la migration. Dans l'autre sens, le pilotage garderait une souscription qui passe `SUBSCRIBED` et ne
+livre plus jamais rien — le défaut muet que `audit:realtime` existe pour empêcher.
+**GESTE HUMAIN QUI RESTE** (ADR-012, canal ③) :
+`npm run migration:appliquer -- migrations/migration_realtime_telemetry_2026-09-20.sql`, puis on
+**mesure l'état en base**, jamais le tableau de verdict :
+`select count(*) from pg_publication_tables where pubname='supabase_realtime' and schemaname='public'`
+→ **11**.
+
+⚠️ **CE QUE ÇA CHANGE, DIT JUSTE** : le décodage WAL est proportionnel aux changements publiés ; en
+retirer 91,4 % fait tomber ce poste de **68,9 % à ~6 %** du CPU actuel — **la base fait environ le
+tiers du travail à trafic identique** — et ça ne s'use pas avec la croissance (le volume de télémétrie
+grandit avec les utilisateurs : c'est un terme retiré de l'équation, pas un gain ponctuel).
+⚠️ **CE QUE ÇA NE FAIT PAS** : la forme quadratique demeure sur les onze tables du produit — à 2 000
+connectés, une publication reste évaluée 2 000 fois. Elle ne pesait que 8,6 % des changements, donc
+elle était invisible derrière la télémétrie ; **elle devient le poste dominant du temps réel après ce
+lot**. S'abonner à ce qui est VISIBLE reste un changement d'architecture, pas un réglage.
+
+⚠️ **LE COMMENTAIRE QUI EXPLIQUE LA RÈGLE DÉCLENCHE LA RÈGLE — TROISIÈME FOIS EN UNE JOURNÉE.** La gate
+`audit:realtime` s'était attrapée elle-même le 19/09, puis avait attrapé le commentaire de
+`charge.mjs` le matin même ; ici c'est le verrou de source du pilotage qui rougit parce que le
+commentaire d'`ingest.js` **cite** `admin.channel(` pour expliquer le retour arrière. Correctif
+durable : **un verrou de source qui cherche un jeton RETIRE LES COMMENTAIRES D'ABORD** — sinon il
+interdit d'expliquer ce qu'il garde, et un verrou qu'on ne peut pas documenter finit désarmé.
+
+⚠️ **`alter publication … drop table` N'EST PAS DU DDL DE TABLE**, et `audit:tables-compte` le prenait
+pour tel : elle refusait cette migration — qui ne touche AUCUNE table — en réclamant « un identifiant
+de compte » sur une table qu'elle n'avait jamais lue. **Un faux positif sur une gate de sécurité coûte
+plus qu'un trou** : il pousse à réécrire la migration pour lui plaire, ou à l'inscrire au socle — deux
+façons de la désarmer en croyant la respecter. La forme est neutralisée avant la recherche de DDL, et
+le verrou ⑧ exige qu'un **vrai** `drop table` reste signalé.
+
+⚠️ **UN BANC DE MIGRATION NE DOIT PAS COMPARER SON ÉTAT FINAL AU FICHIER D'AUJOURD'HUI.**
+`migration-realtime-publication.test.sh` ⑦ comparait ses 12 tables à `realtime-publication.json` : il
+rougissait dès que la nouvelle migration en retirait une. Lui reprocher de ne pas contenir l'avenir n'a
+pas de sens — son attendu porte désormais « le JSON + `telemetry_events` », et c'est le banc du 20/09
+qui compare l'état FINAL au JSON.
+
+Verrous : `tests/sql/migration-realtime-telemetry.test.sh` (11 contrôles, la migration est EXÉCUTÉE sur
+un PostgreSQL jetable — dont ⑦ « la variante qui emporterait `posts` doit LEVER sans rien appliquer »
+et ⑧ « sans le retrait, le verdict REFUSE au lieu de dire OK »), `dashboard/test/ingest.test.js` (+3 :
+le canal ne revient pas, la cadence est une constante nommée, l'état DÉCLARE que le temps réel n'est
+plus utilisé) et `tests/unit/audit-tables-compte.test.mjs` ⑧. Suite du pilotage : **577/577**.
+
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)
 
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)

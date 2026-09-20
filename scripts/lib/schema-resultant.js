@@ -145,8 +145,22 @@ function schemaResultant(fichiers) {
         // (`create table`, `drop table`, `alter table … add|drop|rename|set
         // schema`). Un `alter table … validate constraint` construit ne touche
         // pas au schéma des colonnes : nommé, pas rouge.
-        const construit = /\bexecute\b[\s\S]*?\b(create\s+table|drop\s+table|alter\s+table[^;]*?\b(add|drop|rename|set\s+schema)\b)/i.test(corps);
-        if (/\bexecute\b/i.test(corps) && /\b(create|alter|drop)\s+table\b/i.test(corps)) dynamiques.push({ fichier, extrait: t.slice(0, 80) });
+        // ⚠️ `ALTER PUBLICATION … ADD/DROP/SET TABLE` N'EST PAS DU DDL DE TABLE.
+        // Il ajoute ou retire une table d'une PUBLICATION de réplication
+        // logique : ni colonne, ni contrainte, ni existence de la table ne
+        // bougent. Le motif brut `drop\s+table` l'attrapait pourtant, et la
+        // gate refusait `migration_realtime_telemetry_2026-09-20.sql` — une
+        // migration qui ne touche aucune table — en réclamant « un identifiant
+        // de compte » sur une table qu'elle n'avait pas lue. **Un faux positif
+        // sur une gate de sécurité coûte plus qu'un trou : il pousse à écrire
+        // la migration autrement pour lui plaire, ou à l'inscrire au socle.**
+        // On neutralise donc cette forme AVANT de chercher le DDL de table.
+        const sansPublication = corps.replace(
+          /\balter\s+publication\s+[a-z0-9_".]+\s+(add|drop|set)\s+table\b/gi,
+          " alter publication … ",
+        );
+        const construit = /\bexecute\b[\s\S]*?\b(create\s+table|drop\s+table|alter\s+table[^;]*?\b(add|drop|rename|set\s+schema)\b)/i.test(sansPublication);
+        if (/\bexecute\b/i.test(sansPublication) && /\b(create|alter|drop)\s+table\b/i.test(sansPublication)) dynamiques.push({ fichier, extrait: t.slice(0, 80) });
         if (construit) indeterminees.push({ table: "public.(bloc)", motif: "SQL construit (execute …) portant create/drop table ou alter table add/drop/rename/set schema : non modélisable — " + t.slice(0, 50).replace(/\s+/g, " "), fichier });
         // Ordres DDL ÉCRITS EN CLAIR dans le corps : rejoués de façon additive.
         for (const so of ordres(corps)) {

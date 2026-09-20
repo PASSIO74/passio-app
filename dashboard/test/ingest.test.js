@@ -17,6 +17,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { ingestOne, ingestState, canonIso } from "../server/ingest.js";
 import { store } from "../server/store.js";
 import { isSyntheticCanary } from "../server/observation.js";
@@ -145,20 +146,61 @@ test("les événements hors production sont écartés (runs e2e, dev local)", ()
     "atteindre les compteurs de testeurs réels.");
 });
 
-// ── Le canal Realtime du pilotage est PRIVÉ (2026-09-12) ────────────────────
-// Le projet Supabase n'accepte plus que des canaux privés (« Allow public
-// access » OFF, geste ③ de l'ouverture publique). Le verrou du dépôt ne
-// couvrait que les `supa.channel(` de l'app : ce canal-ci, en `admin.channel(`,
-// est resté public et a été refusé toutes les 14 s pendant neuf heures
-// (« PrivateOnly: This project only allows private channels »), le pilotage
-// vivant sur le seul polling de secours. Mutation : retirer `private: true`
-// rougit ce test — et mesuré sur le vrai projet : public → CHANNEL_ERROR,
-// privé → SUBSCRIBED en 0,9 s avec service_role.
-test("le canal Realtime du pilotage est ouvert en private: true, et son nom n'a pas bougé", async () => {
-  const { REALTIME_TOPIC, REALTIME_CHANNEL_OPTS } = await import("../server/ingest.js");
-  assert.equal(REALTIME_TOPIC, "dash:telemetry");
-  assert.equal(REALTIME_CHANNEL_OPTS?.config?.private, true,
-    "sans private: true, le projet refuse le canal et le pilotage ne vit plus que du polling");
+// ── LE CANAL REALTIME DU PILOTAGE A ÉTÉ RETIRÉ (2026-09-20) ────────────────
+// Il portait à lui seul **91,4 %** des changements que la base réplique
+// (`telemetry_events` : 481 554 sur 526 756, mesuré sur 129 jours), pour UN
+// abonné — ce fichier. Le décodage WAL étant le premier poste de CPU de la
+// production (68,9 %), le retirer est le plus gros levier de capacité du
+// projet, et il ne coûte qu'une latence de 5 s sur une console de supervision.
+//
+// ⚠️ CE VERROU A CHANGÉ DE SUJET, IL N'A PAS ÉTÉ SUPPRIMÉ. Il gardait
+// `private: true` sur `admin.channel(` — une vraie leçon (neuf heures de
+// CHANNEL_ERROR « PrivateOnly » le 2026-09-12), mais dont le SUJET n'existe
+// plus ici ; elle reste verrouillée pour l'app par `ouverture-publique` ⑨, qui
+// balaie tous les `supa.channel(`. Ce qu'il faut garder maintenant, c'est que
+// l'abonnement ne REVIENNE pas sans que la table soit republiée : un
+// `postgres_changes` sur une table absente de la publication passe
+// `SUBSCRIBED` et ne reçoit JAMAIS rien — le défaut muet que `audit:realtime`
+// existe pour empêcher, ici dans le seul fichier que cette gate ne peut pas
+// croiser avec l'état réel de la base.
+// ⚠️ ON LIT LE CODE, PAS LES COMMENTAIRES — et ce verrou a rougi sur lui-même
+// avant d'apprendre la leçon. Le commentaire d'`ingest.js` qui explique le
+// retour arrière CITE `admin.channel(` ; un grep brut y voyait « le canal est
+// revenu ». C'est le troisième piège de cette famille en une journée (la gate
+// `audit:realtime` s'était déjà attrapée elle-même, puis avait attrapé le
+// commentaire de `charge.mjs`). Un verrou de source qui cherche un jeton DOIT
+// donc retirer les commentaires d'abord, sinon il interdit d'expliquer ce
+// qu'il garde — et un verrou qu'on ne peut pas documenter finit désarmé.
+const sansCommentaires = (src) =>
+  src.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^[ \t]*\/\/.*$/gm, " ");
+
+test("le pilotage ne s'abonne plus à telemetry_events — sinon il écouterait une table non publiée", async () => {
+  const src = sansCommentaires(
+    await readFile(new URL("../server/ingest.js", import.meta.url), "utf8"),
+  );
+  assert.ok(!/\.on\(\s*["'`]postgres_changes["'`]/.test(src),
+    "un postgres_changes est revenu dans ingest.js : la table est-elle republiée ? " +
+    "sinon l'abonnement passera SUBSCRIBED et ne livrera jamais rien.");
+  assert.ok(!/admin\.channel\(/.test(src),
+    "le canal du pilotage est revenu — voir migrations/migration_realtime_telemetry_2026-09-20.sql");
+});
+
+test("le polling est le chemin NOMINAL, et sa cadence est une constante nommée", async () => {
+  const { POLL_MS } = await import("../server/ingest.js");
+  assert.equal(typeof POLL_MS, "number");
+  assert.ok(POLL_MS >= 1000 && POLL_MS <= 15000, `cadence invraisemblable : ${POLL_MS} ms`);
+  const src = sansCommentaires(
+    await readFile(new URL("../server/ingest.js", import.meta.url), "utf8"),
+  );
+  assert.ok(/setInterval\(pollIncrement, POLL_MS\)/.test(src),
+    "la cadence est recopiée en dur : deux nombres pour une même politique finissent par diverger");
+});
+
+test("l'état DÉCLARE que le temps réel n'est plus utilisé — l'alerte ne tient pas par accident", () => {
+  const s = ingestState();
+  assert.equal(s.realtimeUtilise, false,
+    "sans ce drapeau, « Realtime décroché » ne se tait que parce que realtimeStatus vaut null — " +
+    "un verrou qui tient par accident se rallume au premier champ d'affichage posé là.");
 });
 
 test("l'état exposé à l'écran porte le statut Realtime et le MOTIF du dernier refus", () => {

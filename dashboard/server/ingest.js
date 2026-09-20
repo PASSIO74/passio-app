@@ -33,14 +33,15 @@ let admin = null;
 // est censé rendre visible.
 let lastSeenIso = canonIso(new Date(Date.now() - 60 * 60_000).toISOString());
 let lastRealSeenIso = null;
+/** Cadence du polling d'ingestion. CHEMIN NOMINAL depuis le retrait du canal
+ *  temps réel (2026-09-20) : 1,0 ms par lecture mesuré, 5 s suffisent à une
+ *  console de supervision. Ne pas resserrer « pour compenser » : ce serait
+ *  ajouter du coût pour une latence que personne ne perçoit. */
+export const POLL_MS = 5000;
+
 let realtimeOk = false;
 let lastRealtimeStatus = null;
 let realtimeLastError = "";
-/** Nom du canal Realtime du pilotage. Exporté pour être VERROUILLÉ par un test :
- *  il DOIT être ouvert en `private: true` (cf. le commentaire du 2) ci-dessous). */
-export const REALTIME_TOPIC = "dash:telemetry";
-/** Options du canal — la seule forme acceptée par le projet depuis le 2026-09-12. */
-export const REALTIME_CHANNEL_OPTS = { config: { private: true } };
 
 export function getAdmin() { return admin; }
 
@@ -58,15 +59,23 @@ export function ingestState() {
   const pollingOk = Boolean(poll.lastOkAt && Date.now() - poll.lastOkAt < 30_000);
   return {
     supabaseReady, realtimeOk, realtimeStatus: lastRealtimeStatus, realtimeLastError,
+    // ⚠️ LE DISCRIMINANT QUI ÉVITE UNE ALARME PERMANENTE. Depuis le retrait du
+    // canal (2026-09-20), `realtimeStatus` reste `null` — et `observation-alerts`
+    // ne déclencherait donc pas, par le simple fait que `null` est falsy. Mais
+    // un verrou qui tient PAR ACCIDENT finit par le dire : le jour où quelqu'un
+    // initialise ce champ à `"IDLE"` pour faire joli, l'alerte « Realtime
+    // décroché » se rallume pour toujours. On déclare donc l'intention.
+    realtimeUtilise: false,
     polling: { ...poll, ok: pollingOk },
-    // Une source vivante = realtime abonné OU polling qui lit. Ni l'un ni l'autre = sourd.
+    // Une source vivante = polling qui lit (le realtime ne sert plus).
     ingestAlive: realtimeOk || pollingOk,
     lastSeenIso, lastRealSeenIso, buffered: store.events.length,
   };
 }
 
 // Exportée pour les tests : c'est le point de passage UNIQUE de tout événement
-// entrant (historique, realtime, polling de secours). Une erreur ici aveugle le
+// entrant (historique, polling — et le realtime, du temps où il existait).
+// Une erreur ici aveugle le
 // pilotage entier, silencieusement — d'où `test/ingest.test.js`.
 /**
  * Marque d'eau CANONIQUE à la microseconde (revue contradictoire du 2026-09-13).
@@ -202,40 +211,44 @@ export async function startIngest() {
       "\n→ La table telemetry_events existe-t-elle ? Applique migrations/migration_telemetry.sql.");
   }
 
-  // 2) Realtime.
-  // ⚠️ `private: true` OBLIGATOIRE depuis le 2026-09-12 : le projet Supabase
-  // n'accepte plus que des canaux privés (« Allow public access » OFF, geste ③
-  // de docs/OUVERTURE_PUBLIQUE_2026-09-11.md). Le verrou du dépôt ne couvrait
-  // que les `supa.channel(` de l'app ; ce canal-ci, en `admin.channel(`, est
-  // resté public et a été refusé toutes les 14 s pendant neuf heures
-  // (« PrivateOnly: This project only allows private channels » dans les
-  // journaux Realtime, ~260 refus par heure), le pilotage vivant sur le seul
-  // polling de secours sans le dire. Mesuré : public → CHANNEL_ERROR en 4 s,
-  // privé → SUBSCRIBED en 0,9 s avec la clé service_role (elle passe les
-  // policies de `realtime.messages`).
-  admin.channel(REALTIME_TOPIC, REALTIME_CHANNEL_OPTS)
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "telemetry_events" }, (payload) => {
-      try { ingestOne(payload.new); } catch (e) { /* ignore */ }
-    })
-    .subscribe((status, err) => {
-      realtimeOk = status === "SUBSCRIBED";
-      // Journaliser le CHANGEMENT d'état, pas chaque tentative : un canal en
-      // `CHANNEL_ERROR` réessaie toutes les 14 s et écrivait ~6 000 lignes par
-      // jour dans `supervise.log` — sur un poste dont le disque plein a déjà
-      // fait planter le pilotage (ENOSPC, 2026-09-10). Le polling de secours
-      // (5 s, ci-dessous) continue d'ingérer pendant ce temps. Le MOTIF (2e
-      // argument) est gardé : sans lui, neuf heures de CHANNEL_ERROR n'ont
-      // jamais dit « PrivateOnly ».
-      const motif = err ? String(err.message || err) : "";
-      if (motif) realtimeLastError = motif;
-      if (status !== lastRealtimeStatus) {
-        lastRealtimeStatus = status;
-        console.log("[ingest] realtime:", status, motif ? `— ${motif}` : "", status === "SUBSCRIBED" ? "" : "(repli sur le polling 5 s ; prochaine ligne au changement d'état)");
-      }
-    });
+  // 2) LE TEMPS RÉEL A ÉTÉ RETIRÉ — 91 % DU TRAVAIL DE RÉPLICATION DE LA BASE
+  //    VENAIT DE CE SEUL ABONNEMENT (2026-09-20).
+  //
+  // Mesuré (canal ① d'ADR-012, `pg_stat_user_tables`, cumul 129 jours) :
+  // `telemetry_events` produit **481 554 changements** sur les **526 756** que
+  // les douze tables publiées produisent en tout, soit **91,4 %**. Or le
+  // décodage WAL de Realtime est le PREMIER poste de CPU de la base (68,9 % à
+  // lui seul), et son coût est proportionnel au nombre de changements publiés.
+  // L'unique abonné de cette table était CE fichier : un client, sur le poste
+  // de l'éditeur. Neuf dixièmes du travail temps réel de la production
+  // servaient donc un seul tableau de bord.
+  //
+  // ⚠️ ON NE DÉGRADE PAS EN SILENCE, ON CHANGE DE MÉCANISME. La migration du
+  // 2026-09-19 avait raison d'écrire que retirer cette table « aurait éteint le
+  // tableau de bord en direct, SANS une erreur » — il serait retombé sur son
+  // polling de secours, donc le symptôme aurait été « c'est un peu en retard »,
+  // jamais « c'est cassé ». Ce raisonnement tient toujours : c'est pourquoi le
+  // polling cesse d'être un SECOURS pour devenir le chemin NOMINAL, et que
+  // l'alerte « Realtime décroché » est désarmée explicitement plus bas — une
+  // alarme qui crierait pour toujours sur un canal fermé exprès cesserait d'être
+  // lue, et emporterait les vraies avec elle.
+  //
+  // ⚠️ LA CADENCE NE CHANGE PAS (5 s), ET C'EST DÉLIBÉRÉ. La tentation était de
+  // la resserrer pour « compenser » ; mais ce polling est déjà mesuré à 1,0 ms
+  // par lecture et 5 s suffisent très largement à une console de supervision.
+  // Accélérer aurait ajouté du coût pour une latence que personne ne perçoit.
+  //
+  // ⚠️ LE CANARI N'EST PAS CONCERNÉ : il est observé par `ingestOne`, point de
+  // passage UNIQUE de tout événement entrant (historique, realtime, polling).
+  // Il vivait donc déjà sans le canal, et sa fenêtre est de 15 minutes.
+  //
+  // RETOUR ARRIÈRE : republier la table
+  // (`alter publication supabase_realtime add table public.telemetry_events;`)
+  // puis restaurer le `admin.channel(...)` retiré ici — voir l'historique git
+  // et `migrations/migration_realtime_telemetry_2026-09-20.sql`.
 
-  // 3) Polling de secours (toutes les 5 s) : rattrape ce que le realtime a raté.
-  setInterval(pollIncrement, 5000).unref();
+  // 3) Polling — CHEMIN NOMINAL depuis le 2026-09-20 (toutes les 5 s).
+  setInterval(pollIncrement, POLL_MS).unref();
 
   // 4) Résolution des pseudos (profiles.username) : au boot puis toutes les 30 s.
   resolveNames();

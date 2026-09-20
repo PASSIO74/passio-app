@@ -148,3 +148,27 @@ test("⑦ la gate s'exécute et sort 0, en DISANT sa portée", () => {
   // et elle le répète à chaque exécution plutôt que de laisser croire au total.
   assert.match(out, /portée de la gate, qui lit le dépôt et non la base/);
 });
+
+test("⑧ `alter publication … drop table` n'est PAS du DDL de table — sinon la gate refuse une migration innocente", () => {
+  // ⚠️ FAUX POSITIF MESURÉ LE 2026-09-20. La gate refusait
+  // `migration_realtime_telemetry_2026-09-20.sql` — qui ne touche AUCUNE
+  // table, elle retire seulement `telemetry_events` de la publication de
+  // réplication logique — parce que son motif brut attrapait `drop table`
+  // dans le `execute` du bloc. Elle réclamait alors « un identifiant de
+  // compte » sur une table qu'elle n'avait jamais lue.
+  // **Un faux positif sur une gate de sécurité coûte plus qu'un trou** : il
+  // pousse à réécrire la migration pour lui plaire, ou à l'inscrire au socle —
+  // deux façons de désarmer la gate en croyant la respecter.
+  const pub = A.tablesDeclarees(migrations(
+    "do $$ begin execute 'alter publication supabase_realtime drop table public.telemetry_events'; end $$;",
+  ));
+  assert.equal(pub.dynamiques.length, 0, "une publication n'est pas une table");
+  assert.equal(pub.indeterminees.length, 0, "rien d'indéterminé : aucune colonne n'a bougé");
+
+  // ⚠️ ET LA GARDE RESTE ENTIÈRE SUR LE VRAI DDL : on n'a pas élargi une
+  // exception, on a retiré une forme qui n'a jamais été du DDL de table.
+  const vrai = A.tablesDeclarees(migrations(
+    "do $$ begin execute 'drop table public.telemetry_events'; end $$;",
+  ));
+  assert.equal(vrai.dynamiques.length, 1, "un vrai `drop table` doit toujours être signalé");
+});

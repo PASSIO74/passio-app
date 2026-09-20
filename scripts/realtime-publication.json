@@ -11,9 +11,8 @@
     "post_likes",
     "posts",
     "profiles",
-    "telemetry_events",
     "video_lives"
   ],
   "publieesSansAbonne": {},
-  "_note": "`publieesSansAbonne` accueille une table publiée volontairement sans abonné, AVEC SA RAISON (même convention que scripts/tests-isolation-socle.json). Elle est vide, et c'est l'état voulu."
+  "_note": "`publieesSansAbonne` accueille une table publiée volontairement sans abonné, AVEC SA RAISON (même convention que scripts/tests-isolation-socle.json). Elle est vide, et c'est l'état voulu.  ⚠️ 2026-09-20 : `telemetry_events` est SORTIE de la publication. Elle produisait 481 554 des 526 756 changements répliqués (91,4 %) pour UN abonné — le Centre de pilotage — alors que le décodage WAL est le premier poste de CPU de la base (68,9 %). Le pilotage lit désormais par son polling, devenu son chemin NOMINAL (dashboard/server/ingest.js). Migration : migrations/migration_realtime_telemetry_2026-09-20.sql ; retour arrière immédiat par `alter publication supabase_realtime add table public.telemetry_events;` + restauration du canal."
 }
