@@ -6413,6 +6413,10 @@ function _creerCanalDb(prive) {
   dbChan
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "posts" }, async payload => {
       const r = payload.new;
+      // ⚠️ LE RÉVEIL EST POSÉ AVANT LA SORTIE « c'est moi » : ma propre
+      // publication prouve autant que celle d'un autre qu'il se passe quelque
+      // chose, et le filet doit reprendre sa cadence vive dans les deux cas.
+      try { feedFiletReveiller(); } catch (e) {}
       if (r.author_id === MY_UID) return;
       // `auteur`, PAS `authorId` : « user » est dans DENY_KEY, la clé était jetée.
       try { tel && tel.recv("post", { postId: r.id, auteur: r.author_id }); } catch(e) {}
@@ -6430,6 +6434,7 @@ function _creerCanalDb(prive) {
   dbChan
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "post_likes" }, payload => {
       const r = payload.new;
+      try { feedFiletReveiller(); } catch (e) {}
       // ⚠️ NE PAS recompter MON propre like : likePost() l'a déjà ajouté en
       // optimiste. Sinon +1 optimiste + +1 echo realtime = « double like ».
       if (!r || r.user_id === MY_UID) return;
@@ -6479,6 +6484,7 @@ function _creerCanalDb(prive) {
   dbChan
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "post_comments" }, async payload => {
       const r = payload.new;
+      try { feedFiletReveiller(); } catch (e) {}
       if (r.author_id === MY_UID) return;
       try { tel && tel.recv("comment", { postId: r.post_id, commentId: r.id }); } catch(e) {}
       try {
@@ -7142,11 +7148,62 @@ function _feedPostsSig(posts) {
   } catch (e) { return "err" + Date.now(); }
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// ⑩ LE FILET DU FIL RECULE QUAND IL NE TROUVE RIEN (2026-09-20)
+// ──────────────────────────────────────────────────────────────────────────
+// ⚠️ CE MINUTEUR EST LE COÛT `O(connectés)` PERMANENT DU PRODUIT, et c'est le
+// poste que le lot du 20/09 a nommé sans y toucher. Il rejoue `supaLoadPosts()`
+// toutes les 60 s chez CHAQUE client visible — et un chargement de fil, ce n'est
+// pas une requête mais QUATRE : `posts`, puis les lots `post_likes`,
+// `post_comments` et `comment_interactions`. Mesuré en production (canal ①,
+// 129 jours) : ~235 000 tours de minuteur, chacun ~10,7 ms de base.
+//
+// ⚠️ AUJOURD'HUI C'EST PEU — environ 3,4 % du CPU de la base — ET C'EST
+// EXACTEMENT POURQUOI IL FAUT LE DIRE JUSTE. Ce coût ne dépend PAS de ce que
+// les gens font : il ne dépend QUE du nombre d'onglets ouverts. À 2 000
+// connectés, ces quatre requêtes par minute et par personne font **133
+// requêtes par seconde d'activité NULLE** — à comparer aux ~400 req/s mesurés
+// au banc de charge du 14/09. **Un tiers de la capacité mesurée serait
+// consommé avant que quiconque ait fait quoi que ce soit.**
+//
+// ⚠️ ET CE N'EST PAS LE CHEMIN PRINCIPAL : les nouvelles publications arrivent
+// par l'abonnement temps réel `posts` INSERT. Ce minuteur est un FILET, pour ce
+// que le temps réel a manqué (canal coupé, événement perdu). Un filet a le
+// droit d'être lent quand il ne trouve rien.
+//
+// Le pas part de 60 s et s'allonge d'un facteur 1,5 à chaque tour où la
+// signature du fil N'A PAS bougé, plafonné à 5 minutes. Il retombe à 60 s dès
+// qu'il se passe quelque chose : un changement trouvé, le retour de l'onglet à
+// l'écran, ou un événement temps réel.
+//
+// ⚠️ ON PASSE DE `setInterval` À UNE CHAÎNE DE `setTimeout`, parce qu'un
+// intervalle ne peut pas changer de pas. Conséquence à ne pas manquer : la
+// branche « onglet masqué » doit REARMER, là où le `return` d'avant laissait
+// l'intervalle tourner tout seul. Sans ça le filet meurt au premier passage en
+// arrière-plan — on aurait remplacé « trop de requêtes » par « plus aucune ».
+// ⚠️ Et un onglet masqué n'ACCUMULE PAS de recul : il se rearme au pas
+// courant, et le retour à l'écran remet à 60 s. Reculer pendant qu'on ne
+// regarde pas, puis servir lentement au retour, serait le pire des deux.
+// Les bornes et la règle de recul vivent dans `filetProchainPas` (app-02),
+// autorité PARTAGÉE avec le filet des lives : deux copies d'une même politique
+// finissent toujours par diverger sur celle qu'on oublie.
+let _feedFiletPas = 60000;
+
+// Le seul point qui remet le filet à sa cadence vive. Appelé par le retour à
+// l'écran et par les gestionnaires temps réel : il vient de se passer quelque
+// chose, donc il peut s'en passer une autre.
+function feedFiletReveiller() {
+  _feedFiletPas = filetProchainPas(0, true, false);
+}
+window.feedFiletReveiller = feedFiletReveiller;
+
 function startFeedRefreshLoop() {
   if (_feedRefreshInterval) return;
-  _feedRefreshInterval = setInterval(async () => {
+  _feedFiletPas = filetProchainPas(0, true, false);
+  const tour = async () => {
+    let vivant = false;
     try {
-      if (document.hidden) return; // onglet en arrière-plan : pas de requête (batterie/quota)
+      if (document.hidden) return;                    // onglet en arrière-plan : pas de requête (batterie/quota)
       if (window._rechargementImminent === true) return; // rechargement décidé : la requête serait coupée
       const posts = await supaLoadPosts();
       if (posts && posts.length > 0) {
@@ -7158,19 +7215,42 @@ function startFeedRefreshLoop() {
         const sig = _feedPostsSig(state.supabasePosts);
         const changed = sig !== window._feedRefreshSig;
         window._feedRefreshSig = sig;
+        vivant = changed;
         const feedEl = document.getElementById("screen-feed");
         if (changed && feedEl && feedEl.classList.contains("active")) renderFeed();
       }
-    } catch (e) {}
-  }, 60000); // Fallback 60s — les mises à jour instantanées passent par realtime:posts
+    } catch (e) {
+      // ⚠️ Une panne n'est PAS un calme : reculer sur une coupure réseau ferait
+      // mettre cinq minutes à retrouver le fil au retour de la connexion. On
+      // laisse le pas où il est.
+      try { diagLog("feed_filet", e && e.message); } catch (_e) {}
+      vivant = true;
+    } finally {
+      if (_feedRefreshInterval !== null) {
+        _feedFiletPas = filetProchainPas(_feedFiletPas, vivant, document.hidden);
+        _feedRefreshInterval = setTimeout(tour, _feedFiletPas);
+      }
+    }
+  };
+  _feedRefreshInterval = setTimeout(tour, _feedFiletPas);
 }
 
 function stopFeedRefreshLoop() {
   if (_feedRefreshInterval) {
-    clearInterval(_feedRefreshInterval);
+    clearTimeout(_feedRefreshInterval);
     _feedRefreshInterval = null;
   }
 }
+
+// Le retour de l'onglet à l'écran rend sa cadence vive au filet : quelqu'un
+// regarde, et ce qui est arrivé pendant l'absence doit remonter tout de suite.
+document.addEventListener("visibilitychange", function () {
+  if (document.hidden) return;
+  feedFiletReveiller();
+  // Si le filet tourne, on le relance au pas vif : `startFeedRefreshLoop` sort
+  // sur sa garde tant que l'ancien rendez-vous n'est pas annulé.
+  if (_feedRefreshInterval !== null) { stopFeedRefreshLoop(); startFeedRefreshLoop(); }
+});
 
 // ═══ ANALYTICS LÉGÈRES ═══
 // Fire-and-forget : n'attend pas la réponse, n'affiche aucune erreur.

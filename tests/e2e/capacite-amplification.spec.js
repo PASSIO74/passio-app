@@ -312,3 +312,114 @@ test("⑨ `conv_members` porte un filtre SERVEUR, et la garde client reste", () 
   // frontière de sécurité : la garde client ne part pas avec.
   expect(src.slice(i, i + 500)).toContain("r.user_id !== MY_UID");
 });
+
+// ── ⑩ ET ⑪ LES DEUX FILETS RECULENT QUAND ILS NE TROUVENT RIEN ─────────────
+//
+// Ce sont les MINUTEURS, le coût `O(connectés)` permanent : ils ne dépendent pas
+// de ce que les gens font, seulement du nombre d'onglets ouverts. Mesuré en
+// production (canal ①, 129 jours) : ~235 000 tours pour le fil — quatre requêtes
+// chacun — et 234 949 appels pour les lives. Aujourd'hui c'est peu (~3,4 % du
+// CPU) ; à 2 000 connectés, c'est 133 requêtes/s d'activité NULLE, contre
+// ~400 req/s mesurés au banc de charge du 14/09.
+//
+// ⚠️ CES CAS N'UTILISENT PAS D'HORLOGE SIMULÉE, ET C'EST UN CHOIX MESURÉ. Une
+// première rédaction posait `page.clock.install()` après le démarrage puis
+// avançait le temps : la page se fermait au milieu des tours (les rendez-vous
+// de l'application s'empilent dans la fenêtre avancée), et les trois cas
+// échouaient sur leur outillage, jamais sur leur sujet. **Un banc qui meurt de
+// son propre instrument ne mesure rien.** La politique de cadence a donc été
+// extraite en fonction PURE, partagée par les deux filets — meilleur code ET
+// éprouvable — et le CÂBLAGE est mesuré à la source, comme pour ⑦ et ⑧.
+
+test("⑩ `filetProchainPas` : vivant rend la cadence vive, le calme recule, le plafond tient", async ({ page }) => {
+  await bootOnboarded(page);
+  const r = await page.evaluate(() => {
+    const f = window.filetProchainPas;
+    const suite = [];
+    let pas = 60000;
+    for (let i = 0; i < 12; i++) { pas = f(pas, false, false); suite.push(pas); }
+    return {
+      depart: f(0, true, false),
+      suite,
+      // ⚠️ Un filet qui reculerait sans jamais revenir mettrait cinq minutes à
+      // montrer ce que le temps réel a manqué.
+      reveil: f(300000, true, false),
+      // ⚠️ Une page masquée NE RECULE PAS : reculer pendant qu'on ne regarde
+      // pas, puis servir lentement au retour, serait le pire des deux mondes.
+      masquee: f(90000, false, true),
+      // Entrées absurdes : on retombe sur le pas vif, jamais sur NaN.
+      absurde: [f(NaN, false, false), f(-5, false, false), f(undefined, false, false)],
+    };
+  });
+  expect(r.depart, "le pas vif est 60 s").toBe(60000);
+  expect(r.suite.slice(0, 4), "recul ×1,5, pas ×2 : doubler atteindrait le plafond en quatre tours").toEqual([90000, 135000, 202500, 300000]);
+  expect(Math.max(...r.suite), "plafonné à 5 minutes").toBe(300000);
+  expect(r.reveil, "un signe de vie rend la cadence vive, depuis le plafond").toBe(60000);
+  expect(r.masquee, "une page masquée garde son pas, elle ne recule pas").toBe(90000);
+  expect(r.absurde, "une valeur absurde retombe sur le pas vif reculé d'un cran, jamais sur NaN").toEqual([90000, 90000, 90000]);
+});
+
+test("⑩ bis les DEUX filets passent par la même autorité — à la SOURCE", () => {
+  const feed = lire("js/app-08-ui-modals-tour.js");
+  const lives = lire("js/app-05-config-profil.js");
+  // ⚠️ Deux copies d'une même politique finissent toujours par diverger sur
+  // celle qu'on oublie : c'est pour ça que l'autorité est unique.
+  expect(feed, "le filet du fil re-planifie via l'autorité").toMatch(/_feedFiletPas = filetProchainPas\(_feedFiletPas, vivant, document\.hidden\)/);
+  expect(lives, "le filet des lives aussi").toMatch(/_vliveFiletPas = filetProchainPas\(_vliveFiletPas,/);
+  // Et personne ne recopie les bornes dans son coin.
+  expect(feed.match(/300000/g), "aucune borne recopiée dans app-08").toBeNull();
+  expect(lives.match(/300000/g), "aucune borne recopiée dans app-05").toBeNull();
+});
+
+test("⑩ ter le filet du fil est une CHAÎNE qui se ré-arme, même masqué", () => {
+  const src = lire("js/app-08-ui-modals-tour.js");
+  const debut = src.indexOf("function startFeedRefreshLoop() {");
+  const corps = src.slice(debut, src.indexOf("function stopFeedRefreshLoop"));
+  // ⚠️ `setInterval` ne peut pas changer de pas : le passage à une chaîne de
+  // `setTimeout` est ce qui rend le recul possible. Conséquence à ne pas
+  // manquer : la branche « onglet masqué » DOIT ré-armer, là où le `return`
+  // d'avant laissait l'intervalle tourner tout seul. Sans ça le filet meurt au
+  // premier passage en arrière-plan — « trop de requêtes » remplacé par « plus
+  // aucune ».
+  expect(corps, "plus de setInterval : il ne sait pas changer de pas").not.toContain("setInterval");
+  expect(corps, "la ré-arme est dans un `finally`, donc elle survit à la sortie précoce ET à l'exception").toMatch(/finally\s*{[\s\S]*setTimeout\(tour/);
+  expect(src, "et `stopFeedRefreshLoop` annule un timeout, plus un interval").toMatch(/stopFeedRefreshLoop[\s\S]{0,200}clearTimeout/);
+});
+
+test("⑩ quater un événement temps réel et le retour à l'écran réveillent le filet — à la SOURCE", () => {
+  const src = lire("js/app-08-ui-modals-tour.js");
+  const debut = src.indexOf("function _creerCanalDb(");
+  const fin = src.indexOf("\nfunction ", debut + 10);
+  const canal = src.slice(debut, fin > debut ? fin : undefined);
+  expect(
+    (canal.match(/feedFiletReveiller\(\)/g) || []).length,
+    "les trois gestionnaires de fil (posts, post_likes, post_comments) doivent réveiller le filet"
+  ).toBeGreaterThanOrEqual(3);
+  expect(src, "le retour de l'onglet à l'écran aussi").toMatch(/visibilitychange[\s\S]{0,400}feedFiletReveiller/);
+});
+
+test("⑪ le filet des lives ne recule que si la liste est vide AVANT et APRÈS", () => {
+  const src = lire("js/app-05-config-profil.js");
+  const debut = src.indexOf("function _vliveFiletTour()");
+  const corps = src.slice(debut, debut + 1400);
+  // ⚠️ `supaRefreshVideoLives` rend `false` sur une coupure comme sur un vrai
+  // calme (elle replie sur un tableau vide) : le recul n'est pris que lorsque
+  // la liste était vide AVANT le tour et l'est encore APRÈS. Sinon une coupure
+  // d'une seconde ferait reculer le filet pour cinq minutes.
+  expect(corps, "l'état d'AVANT est relevé").toContain("const avantVide");
+  expect(corps, "celui d'APRÈS aussi").toContain("const apresVide");
+  expect(corps, "et les deux décident, avec le verdict").toContain("vivant || !apresVide || !avantVide");
+  // ⚠️ Une panne n'est pas un calme.
+  expect(corps, "le rejet de la promesse compte comme vivant").toMatch(/function \(\) \{ vivant = true; \}/);
+  expect(corps, "l'exception aussi").toMatch(/catch[\s\S]{0,200}vivant = true/);
+});
+
+test("⑪ bis `supaRefreshVideoLives` rend son verdict, et le filet le lit", () => {
+  const src = lire("js/app-05-config-profil.js");
+  const debut = src.indexOf("async function supaRefreshVideoLives()");
+  const corps = src.slice(debut, debut + 900);
+  // Sans ce retour, le filet ne peut PAS savoir s'il s'est passé quelque chose
+  // et reculerait sur une liste vivante.
+  expect(corps, "elle rend `changed`").toMatch(/return changed;/);
+  expect(src, "et le filet l'attend").toMatch(/p\.then\(function \(c\) \{ vivant = !!c; \}/);
+});

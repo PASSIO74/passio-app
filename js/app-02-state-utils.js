@@ -731,6 +731,55 @@ const _RE_ECHEC_RESEAU = /failed to fetch|fetcherror|networkerror|network reques
 // une panne de fetch — chaîne VIDE, donc falsy : tester la présence du code
 // suffit, mais il faut le faire avant le message, sinon un futur libellé de
 // refus contenant « fetch » passerait pour une panne réseau.
+// ══════════════════════════════════════════════════════════════════════════
+// LA CADENCE D'UN FILET — UNE SEULE AUTORITÉ POUR LES DEUX (2026-09-20)
+// ──────────────────────────────────────────────────────────────────────────
+// PASSIO a deux minuteurs de rattrapage : le fil (`startFeedRefreshLoop`,
+// app-08) et les lives (`_vliveFiletTour`, app-05). Tous deux doublent un
+// abonnement temps réel qui, lui, est instantané — ils n'existent que pour ce
+// que le temps réel a manqué. Et tous deux coûtaient une requête par minute et
+// par onglet ouvert, quoi qu'il se passe.
+//
+// ⚠️ C'EST LE COÛT `O(connectés)` PERMANENT DU PRODUIT : il ne dépend pas de ce
+// que les gens font, seulement du nombre d'onglets. Mesuré en production
+// (canal ① d'ADR-012, 129 jours) : ~235 000 tours pour le fil — et un tour de
+// fil, ce n'est pas une requête mais QUATRE (`posts`, `post_likes`,
+// `post_comments`, `comment_interactions`) — plus 234 949 appels pour les
+// lives. Aujourd'hui c'est peu, environ 3,4 % du CPU de la base, ET C'EST
+// EXACTEMENT POURQUOI IL FAUT LE DIRE JUSTE : à 2 000 connectés, ces mêmes
+// minuteurs font **133 requêtes par seconde d'activité NULLE**, contre ~400
+// req/s mesurés au banc de charge du 14/09. Un tiers de la capacité mesurée,
+// consommé avant que quiconque ait fait quoi que ce soit.
+//
+// ⚠️ UNE SEULE FONCTION POUR LES DEUX, et c'est la règle maison : deux copies
+// d'une même politique finissent toujours par diverger sur celle qu'on oublie.
+// Elle est PURE — aucun minuteur, aucun état — donc elle s'éprouve sans
+// horloge simulée, là où piloter le temps d'une page applicative entière s'est
+// révélé trop fragile pour mesurer quoi que ce soit.
+//
+// Les trois règles, et chacune a coûté une réflexion :
+//   ① `vivant` (il s'est passé quelque chose) rend la cadence VIVE, toujours.
+//      Un filet qui reculerait sans jamais revenir mettrait cinq minutes à
+//      montrer ce que le temps réel a manqué — on aurait remplacé « trop de
+//      requêtes » par « le fil est mort ».
+//   ② une page MASQUÉE ne recule pas. Reculer pendant qu'on ne regarde pas,
+//      puis servir lentement au retour, serait le pire des deux mondes.
+//   ③ le recul est ×1,5, plafonné. Doubler atteindrait le plafond en quatre
+//      tours et rendrait le filet inutile sur une accalmie passagère.
+// ⚠️ ET UNE PANNE N'EST PAS UN CALME : c'est à l'APPELANT de passer
+// `vivant: true` sur une erreur — une coupure réseau qui ferait reculer le
+// filet lui ferait mettre cinq minutes à revenir au retour de la connexion.
+const FILET_PAS_MIN = 60000;
+const FILET_PAS_MAX = 300000;
+
+function filetProchainPas(pasActuel, vivant, masquee) {
+  var pas = Number(pasActuel);
+  if (!isFinite(pas) || pas < FILET_PAS_MIN) pas = FILET_PAS_MIN;
+  if (vivant) return FILET_PAS_MIN;
+  if (masquee) return Math.min(FILET_PAS_MAX, pas);
+  return Math.min(FILET_PAS_MAX, Math.round(pas * 1.5));
+}
+
 function estEchecReseau(e) {
   try {
     if (!e) return false;

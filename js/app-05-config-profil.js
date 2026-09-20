@@ -3606,6 +3606,10 @@ async function supaRefreshVideoLives() {
   const changed = JSON.stringify(next.map(r => r.id + r.status)) !== JSON.stringify((window._videoLives || []).map(r => r.id + r.status));
   window._videoLives = next;
   if (changed) { try { if (typeof renderStories === "function") renderStories(); } catch (e) {} }
+  // ⚠️ ELLE REND SON VERDICT DEPUIS LE 2026-09-20, et c'est ce qui permet au
+  // filet périodique de reculer. Les quatre appelants d'avant l'ignorent : la
+  // valeur de retour est un AJOUT, aucun contrat existant ne change.
+  return changed;
 }
 window.supaRefreshVideoLives = supaRefreshVideoLives;
 
@@ -3674,6 +3678,9 @@ window.vliveEvenementSansEffet = vliveEvenementSansEffet;
 function vliveRefreshCoalesce(payload) {
   try {
     if (vliveEvenementSansEffet(payload)) return;
+    // Un événement qui compte rend sa cadence vive au filet périodique : il se
+    // passe quelque chose, il peut s'en passer une autre.
+    try { if (typeof vliveFiletReveiller === "function") vliveFiletReveiller(); } catch (e) {}
     // ⚠️ ON NE DEMANDE RIEN DEPUIS UNE PAGE MASQUÉE : la réponse ne peut rien
     // peindre, et WebKit coupe de toute façon les requêtes en vol au passage en
     // arrière-plan (fiche « Failed to fetch »). Le rendez-vous est REPORTÉ, pas
@@ -3700,11 +3707,78 @@ function _vliveRattraper() { if (!document.hidden && _vliveRefreshEnAttente) vli
 document.addEventListener("visibilitychange", _vliveRattraper);
 window.addEventListener("pageshow", _vliveRattraper);
 
+// ══════════════════════════════════════════════════════════════════════════
+// ⑪ LE FILET DES LIVES RECULE QUAND IL N'Y A RIEN À SURVEILLER (2026-09-20)
+// ──────────────────────────────────────────────────────────────────────────
 // Filet : re-check périodique (les bindings realtime couvrent l'instantané,
 // ceci rattrape les lives morts sans événement `ended` — crash, batterie…).
-setInterval(() => {
-  try { if (!document.hidden && window._supaReal) supaRefreshVideoLives(); } catch (e) {}
-}, 60000);
+//
+// ⚠️ IL TOURNAIT TOUTES LES 60 s CHEZ CHAQUE CONNECTÉ, MÊME SANS AUCUN LIVE.
+// Mesuré en production (canal ①, 129 jours) : **234 949 appels** — c'est le
+// plus gros compteur d'appels de la base après le temps réel, pour une table
+// de 21 lignes et une requête à 0,21 ms. Le coût CPU est donc dérisoire ; ce
+// qui ne l'est pas, c'est que ce coût est **proportionnel au nombre d'onglets
+// ouverts et indépendant de toute activité**. À 2 000 connectés, c'est 33
+// requêtes par seconde pour surveiller, la plupart du temps, une liste vide.
+//
+// ⚠️ CE QUE CE FILET SURVEILLE N'EXISTE PAS QUAND IL N'Y A PAS DE LIVE. Son
+// travail est de purger un live mort dont l'événement `ended` s'est perdu :
+// sans live connu, il n'y a rien à purger. Le pas recule donc jusqu'à 5 minutes
+// quand la liste est VIDE et que rien ne change, et retombe à 60 s dès qu'un
+// live est connu, dès qu'un changement est trouvé, ou au retour à l'écran.
+// ⚠️ Un live QUI EXISTE garde la cadence de 60 s, quoi qu'il arrive : c'est
+// exactement le cas que le filet doit rattraper, et le ralentir laisserait une
+// bulle « 🔴 LIVE » allumée jusqu'à cinq minutes après la fin du direct.
+// ⚠️ UNE PANNE N'EST PAS UN CALME : `supaRefreshVideoLives` rend `false` sur
+// une coupure comme sur un vrai calme (elle replie sur un tableau vide). Le
+// recul n'est donc pris que lorsque la liste est vide ET le restait déjà —
+// deux tours consécutifs sans live — sinon une coupure d'une seconde ferait
+// reculer le filet pour cinq minutes.
+// Les bornes et la règle de recul vivent dans `filetProchainPas` (app-02),
+// autorité PARTAGÉE avec le filet du fil.
+let _vliveFiletPas = 60000;
+let _vliveFiletMinuteur = null;
+
+function vliveFiletReveiller() {
+  _vliveFiletPas = filetProchainPas(0, true, false);
+}
+window.vliveFiletReveiller = vliveFiletReveiller;
+
+function _vliveFiletTour() {
+  let vivant = false;
+  const avantVide = !(window._videoLives || []).length;
+  const suite = () => {
+    const apresVide = !(window._videoLives || []).length;
+    // « Vivant » ici, c'est : un changement trouvé, OU un live connu — avant ou
+    // après le tour. Un live qui EXISTE garde la cadence vive quoi qu'il
+    // arrive : c'est exactement ce que ce filet doit rattraper, et le ralentir
+    // laisserait une bulle « 🔴 LIVE » allumée jusqu'à cinq minutes après la
+    // fin du direct.
+    _vliveFiletPas = filetProchainPas(_vliveFiletPas, vivant || !apresVide || !avantVide, document.hidden);
+    _vliveFiletMinuteur = setTimeout(_vliveFiletTour, _vliveFiletPas);
+  };
+  try {
+    if (document.hidden || !window._supaReal) { suite(); return; }
+    const p = supaRefreshVideoLives();
+    if (p && typeof p.then === "function") {
+      p.then(function (c) { vivant = !!c; }, function () { vivant = true; }).then(suite);
+      return;
+    }
+    vivant = !!p;
+  } catch (e) {
+    try { diagLog("vlive_filet", e && e.message); } catch (_e) {}
+    vivant = true;                                   // une panne n'est pas un calme
+  }
+  suite();
+}
+_vliveFiletMinuteur = setTimeout(_vliveFiletTour, _vliveFiletPas);
+
+// Le retour à l'écran rend sa cadence vive au filet.
+document.addEventListener("visibilitychange", function () {
+  if (document.hidden) return;
+  vliveFiletReveiller();
+});
+window.addEventListener("pageshow", vliveFiletReveiller);
 
 // Bulles « 🔴 LIVE » injectées en tête de la barre des stories (renderStories).
 function _vliveChipsHtml() {
