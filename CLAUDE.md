@@ -2224,6 +2224,61 @@ et ⑧ « sans le retrait, le verdict REFUSE au lieu de dire OK »), `dashboard/
 le canal ne revient pas, la cadence est une constante nommée, l'état DÉCLARE que le temps réel n'est
 plus utilisé) et `tests/unit/audit-tables-compte.test.mjs` ⑧. Suite du pilotage : **577/577**.
 
+## 💾 LE MUR LE PLUS PROCHE N'EST PAS LE CPU, C'EST 1 Go DE STOCKAGE (2026-09-20)
+
+Benjamin, après trois volets de capacité : « les résultats ne me conviennent, je veux beaucoup plus
+de volume d'utilisateurs ». **Il avait raison** : les trois volets travaillaient un axe qui ne borne
+pas le nombre d'utilisateurs. Ce lot lit enfin le forfait — le point que la fiche de la veille
+laissait ouvert en toutes lettres (« le forfait Supabase n'a jamais été LU »). Dossier :
+`docs/CAPACITE_STOCKAGE_2026-09-20.md`.
+
+⚠️ **LES CINQ PLAFONDS, CLASSÉS PAR DISTANCE** (canal ① d'ADR-012, dix comptes) : **stockage 1 Go —
+80 Mo consommés, 8 Mo/compte, soit ≈ 125 comptes** (≈ 300 avec la compression du 19/09) · base
+500 Mo (71 Mo, quelques milliers) · sortie réseau déportée sur Netlify · MAU 50 000 · **inscriptions
+300/jour chez Brevo, illimitées par Google**. **Le stockage est dix à trente fois plus proche que
+tout ce sur quoi les trois lots précédents ont travaillé.** Cause nette : **sept vidéos = 59 Mo sur
+les 70 du seau `content`**, la plus grosse 24 Mo, et **les trois plus grosses datent de JUILLET** —
+le compresseur ne s'applique qu'aux nouveaux envois.
+⚠️ **ET LE PLAFOND QUI BORNE VRAIMENT L'ACQUISITION NE SE CORRIGE PAS PAR DU CODE** : 300 e-mails
+par jour, confirmation obligatoire depuis le 30/08. Le seul geste qui l'a levé est d'avoir remonté
+**Google en tête** (19/09) ; Apple Sign-In ferait pareil, gratuitement.
+
+⚠️ **67 % DU STOCKAGE NE SERT PLUS À RIEN** : `content` 24 orphelins/60 = **50 Mo sur 70**,
+`attachments` 7/12 = **3,5 Mo sur 10**, soit **53,5 Mo sur 80**. Purger fait passer le stockage à
+**26,5 Mo** — marge **×3** sur le mur le plus proche, sans toucher une donnée vivante.
+⚠️ **LA PREMIÈRE MESURE ANNONÇAIT 62 Mo, ET ELLE ÉTAIT FAUSSE** : elle ne lisait pas `user_state`,
+le blob qui porte les **publications PERSO** — six objets, 12 Mo, bien vivants. **Une mesure
+spectaculaire se re-vérifie avant d'y croire**, surtout quand elle décide de suppressions.
+
+⚠️ **UN ORPHELIN EST UNE ABSENCE DE PREUVE, PAS UNE PREUVE D'ABSENCE** — c'est tout le danger de
+`npm run medias:orphelins` (`scripts/medias-orphelins.js`, cœur PUR `classerOrphelins`) : un objet
+est déclaré orphelin parce qu'on n'a trouvé son nom **nulle part**, et « orphelin » veut dire
+« supprimé ». Toute source oubliée **fabrique** des suppressions. QUATRE gardes, trois mécaniques :
+① rapport par défaut (`--appliquer` seul supprime) ; ② **âge minimum 30 j** — l'upload précède
+l'INSERT, et une publication hors ligne attend dans sa file ; ③ **fail-closed** : une source
+illisible fait LEVER, on ne réduit jamais la liste ; ④ plafond de 200 par exécution — un chiffre
+inattendu est un signal, pas une quantité de travail. **Les CINQ sources** : `posts`, `profiles`,
+`stories`, `conv_messages`, **`user_state`** (celle qu'on oublie).
+
+⚠️ **MA JUSTIFICATION DU CHOIX « NOM DE FICHIER » ÉTAIT FAUSSE, ET LA RÉINJECTION L'A DIT.**
+J'avais écrit « comparer l'URL entière classerait orphelin tout média publié avant le CDN » : faux —
+le chemin de l'objet est sous-chaîne de l'URL Supabase **comme** de l'URL CDN, donc la mutation
+laissait le cas **VERT**. La vraie raison est le **SENS DE L'ERREUR** : le nom seul est plus
+permissif, donc tous les faux positifs vont vers « on garde », jamais vers « on supprime ». Le cas
+② bis mesure enfin ce choix (une référence qui porte le nom SANS son dossier). **Deuxième fois de la
+journée qu'une justification est démentie par une mutation** — après le chiffre-phare de #515.
+
+⚠️ **CE QUE ÇA NE FAIT PAS** : ça ne change pas le RYTHME de remplissage. À 8 Mo par compte, le 1 Go
+revient. Le seul levier d'ordre de grandeur est de **sortir les médias de Supabase** — Cloudflare R2
+donne 10 Go et l'égress gratuit, et l'architecture l'anticipe (`/media/*`, `cdnUrl()`,
+`PASSIO_CDN_BASE`) : seul le chemin d'ÉCRITURE changerait. Il faut un compte tiers, hors de portée
+d'ici. Restent nommés : recompresser les sept vidéos de juillet (59 → ~11 Mo), WebP (−25/30 %),
+rétention télémétrie 7 j → 2 j (migration), Apple Sign-In.
+
+Verrou : `tests/unit/medias-orphelins.test.mjs` (9, dans `npm run verif`), **éprouvé par RÉINJECTION
+de quatre mutations** — garde d'âge retirée (3 rouges), chemin entier au lieu du nom (2), nom vide
+classé orphelin (1), source `user_state` retirée (1).
+
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)
 
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)
