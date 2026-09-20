@@ -3609,6 +3609,97 @@ async function supaRefreshVideoLives() {
 }
 window.supaRefreshVideoLives = supaRefreshVideoLives;
 
+// ══════════════════════════════════════════════════════════════════════════
+// ⑧ LE BATTEMENT DE CŒUR D'UN LIVE NE DOIT RIEN RECHARGER (2026-09-20)
+// ──────────────────────────────────────────────────────────────────────────
+// ⚠️ MESURÉ : `video_lives` porte 223 315 balayages séquentiels pour une table
+// de VINGT-ET-UNE lignes (canal ① d'ADR-012, 129 jours). L'abonnement temps
+// réel `*` appelait `supaRefreshVideoLives()` — donc une VRAIE requête — à
+// chaque événement reçu, chez chaque personne connectée.
+//
+// ⚠️ ET LA PREMIÈRE RÉDACTION DE CE LOT S'EST TROMPÉE DE REMÈDE, relevée par
+// `audit-passio` : elle posait un débounce de 250 ms en disant « un seul live
+// produit plusieurs événements d'affilée ». C'est FAUX, et les chiffres cités
+// le démentaient déjà — 2 089 INSERT, 2 414 UPDATE, 2 068 DELETE, soit ~1,16
+// UPDATE par live : des événements ESPACÉS par la durée du live, jamais une
+// rafale. Surtout, l'hôte d'un live envoie un UPDATE `last_seen` **toutes les
+// 25 secondes** (le battement de cœur, plus bas dans ce fichier) : 25 000 ms
+// ≫ 250 ms, donc AUCUN de ces événements n'était coalescé. Un live d'une heure
+// = 144 battements × N connectés = 144 × N requêtes, avant comme après.
+// **Un débounce ne coalesce que ce qui arrive groupé ; il faut regarder ce que
+// la production produit VRAIMENT avant de choisir la forme du remède.**
+//
+// ⚠️ LE VRAI GESTE EST DONC DE NE PAS RECHARGER POUR UN ÉVÉNEMENT QUI NE
+// CHANGE RIEN À L'ÉCRAN. `supaRefreshVideoLives` calcule déjà sa signature de
+// visibilité — `id + status` — mais APRÈS avoir payé la requête. On la prend
+// AVANT : une mise à jour dont l'identifiant est déjà connu avec le même
+// statut est un battement de cœur, et il n'y a rien à redemander.
+// ⚠️ ON NE SAUTE QUE CE CAS-LÀ, et c'est volontaire : une insertion, une
+// suppression, un identifiant inconnu ou un statut différent repassent par la
+// requête. Prudence délibérée — un événement qu'on ne sait pas lire est un
+// événement qu'on honore.
+// ⚠️ ET LA SIGNATURE EST EXACTEMENT CELLE QUE L'APPLICATION UTILISE DÉJÀ pour
+// décider de repeindre : si `id + status` ne bouge pas, l'écran ne bouge pas
+// non plus. Copier une AUTRE signature ici ferait diverger les deux.
+// ⚠️ Un live qui cesse de battre disparaît toujours : `supaLoadVideoLives`
+// filtre sur `last_seen`, et le filet périodique de 60 s ci-dessous le purge.
+// Sauter le battement ne prolonge donc aucune bulle morte.
+//
+// La coalescence (débounce de FIN) reste par-dessus, pour les cas qui, eux,
+// arrivent groupés : plusieurs lives qui démarrent ensemble, ou la reprise
+// après un retour à l'écran.
+//
+// ⚠️ `supaRefreshVideoLives` RESTE APPELABLE DIRECTEMENT et n'a pas changé d'un
+// caractère : le filet de 60 s et les appels explicites la gardent.
+var _vliveRefreshMinuteur = null;
+var _vliveRefreshEnAttente = false;
+var VLIVE_COALESCE_MS = 250;
+
+// Vrai UNIQUEMENT pour le battement de cœur : une mise à jour d'un live déjà
+// connu, au même statut. Tout le reste rend `false` et sera rechargé.
+function vliveEvenementSansEffet(payload) {
+  try {
+    if (!payload || payload.eventType !== "UPDATE") return false;
+    var n = payload.new;
+    if (!n || !n.id) return false;
+    var connus = window._videoLives || [];
+    for (var i = 0; i < connus.length; i++) {
+      if (connus[i] && connus[i].id === n.id) return connus[i].status === n.status;
+    }
+    return false;                               // identifiant inconnu : on recharge
+  } catch (e) { return false; }
+}
+window.vliveEvenementSansEffet = vliveEvenementSansEffet;
+
+function vliveRefreshCoalesce(payload) {
+  try {
+    if (vliveEvenementSansEffet(payload)) return;
+    // ⚠️ ON NE DEMANDE RIEN DEPUIS UNE PAGE MASQUÉE : la réponse ne peut rien
+    // peindre, et WebKit coupe de toute façon les requêtes en vol au passage en
+    // arrière-plan (fiche « Failed to fetch »). Le rendez-vous est REPORTÉ, pas
+    // annulé.
+    if (document.hidden) { _vliveRefreshEnAttente = true; return; }
+    if (_vliveRefreshMinuteur) return;              // une rafale, un seul rendez-vous
+    _vliveRefreshMinuteur = setTimeout(function () {
+      _vliveRefreshMinuteur = null;
+      _vliveRefreshEnAttente = false;
+      try { supaRefreshVideoLives(); } catch (e) { try { diagLog("vlive_coalesce", e && e.message); } catch (_e) {} }
+    }, VLIVE_COALESCE_MS);
+  } catch (e) { try { diagLog("vlive_coalesce_arm", e && e.message); } catch (_e) {} }
+}
+window.vliveRefreshCoalesce = vliveRefreshCoalesce;
+
+// Le rattrapage du retour à l'écran : ce qui est arrivé pendant que la page
+// était masquée n'est pas perdu, il est simplement servi au retour.
+// ⚠️ LES DEUX ÉVÉNEMENTS SONT NÉCESSAIRES, et la première rédaction NOMMAIT
+// `pageshow` sans jamais l'écouter (relevé par `audit-passio` — un commentaire
+// qui promet une couverture qu'il n'a pas est pire qu'un trou, on croit le
+// cas traité). Sur iOS, un retour depuis le bfcache émet `pageshow` sans
+// forcément émettre `visibilitychange`.
+function _vliveRattraper() { if (!document.hidden && _vliveRefreshEnAttente) vliveRefreshCoalesce(); }
+document.addEventListener("visibilitychange", _vliveRattraper);
+window.addEventListener("pageshow", _vliveRattraper);
+
 // Filet : re-check périodique (les bindings realtime couvrent l'instantané,
 // ceci rattrape les lives morts sans événement `ended` — crash, batterie…).
 setInterval(() => {
