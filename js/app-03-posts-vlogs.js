@@ -216,7 +216,12 @@ function _postLikeMutationEnd(id, token) {
 // Reprise VIVE : le pas revient à 15 s et un rendez-vous plus lointain que
 // 15–16,5 s est rapproché. Ne touche jamais à un rendez-vous déjà plus proche
 // (la phase initiale, un cycle imminent), ni à l'étalement entre utilisateurs.
+// Un réveil pendant un tour EN COURS serait écrasé par la fin du tour (qui
+// recalcule pas et rendez-vous sur ce que le tour a vu) : on le mémorise, la
+// fin du tour le consomme et garde la cadence vive.
+var _postLikeReveilDemande = false;
 function _postLikeCadenceReveiller() {
+  if (_postLikeRefreshBusy) _postLikeReveilDemande = true;
   _postLikeRefreshPas = POST_LIKE_REFRESH_MS;
   window._postLikeRefreshStats.pasMs = _postLikeRefreshPas;
   // Sans tirage : la phase initiale est le seul tirage d'étalement (verrou
@@ -328,6 +333,7 @@ async function _postLikeRefreshTour() {
   _postLikeRefreshInitialPhase();
   if (Date.now() < _postLikeRefreshNextAt) { _postLikeRefreshWake(); return; }
   _postLikeRefreshBusy = true;
+  _postLikeReveilDemande = false;
   let queried = false;
   try {
     if (!window._supaReal || navigator.onLine === false || typeof supa === "undefined" || !supa) return;
@@ -380,7 +386,11 @@ async function _postLikeRefreshTour() {
       window._postLikeRefreshStats.updated++;
     }
     // Le pas du PROCHAIN créneau se décide sur ce que ce tour a vu ; le
-    // rendez-vous posé en tête de tour est recalé avec le même jitter.
+    // rendez-vous posé en tête de tour est recalé avec le même jitter. Un
+    // réveil arrivé pendant le tour (mon like, retour au premier plan) compte
+    // comme du vivant : la règle « mon action rend la cadence vive » tient
+    // aussi quand elle tombe au milieu d'un tour.
+    if (_postLikeReveilDemande) { vivant = true; _postLikeReveilDemande = false; }
     _postLikeRefreshPas = compteursProchainPas(_postLikeRefreshPas, vivant);
     window._postLikeRefreshStats.pasMs = _postLikeRefreshPas;
     if (!vivant) window._postLikeRefreshStats.cyclesCalmes++;

@@ -198,3 +198,38 @@ test("la politique est pure, plafonnée à 60 s, et le filet du fil n'a pas boug
   expect(src).toContain("_postLikeRefreshPas = compteursProchainPas(_postLikeRefreshPas, vivant);");
   expect(src).toContain('document.addEventListener("visibilitychange", _postLikeRefreshReprise);');
 });
+
+test("mon like pendant un tour EN COURS : le réveil survit à la fin du tour (pas 15 s, rendez-vous rapproché)", async ({ page }) => {
+  await preparer(page);
+  await passer(page, 250);
+  for (let i = 0; i < 3; i++) await cycleSuivant(page);
+  expect((await stats(page)).pas).toBe(50625);
+  // Le prochain HEAD reste EN VOL tant qu'on ne le libère pas.
+  await page.evaluate(() => {
+    window.__headLibere = [];
+    const ancien = supa.from;
+    supa.from = function (table) {
+      const q = ancien(table);
+      const then = q.then;
+      q.then = (yes, no) => new Promise((ok) => { __headLibere.push(ok); }).then(() => then(yes, no));
+      return q;
+    };
+  });
+  const avant = await stats(page);
+  await passer(page, avant.dans);
+  expect(await page.evaluate(() => [__headLibere.length, _postLikeRefreshBusy])).toEqual([1, true]);
+  // Mon like tombe au milieu du tour : la reprise vive est demandée pendant que le tour est occupé.
+  await page.locator('#cadence-stage [data-action="like"]').click();
+  await page.evaluate(() => { __writeResolvers.forEach(r => r(true)); });
+  await passer(page, 1);
+  expect((await stats(page)).pas).toBe(15000);
+  // Le HEAD en vol se termine (réponse écartée : la carte a changé de version) et le tour se clôt.
+  await page.evaluate(() => { __headLibere.forEach(ok => ok()); });
+  await passer(page, 1);
+  const s = await stats(page);
+  expect(s.discarded).toBeGreaterThanOrEqual(1);
+  // Sans mémorisation du réveil, la fin du tour posait 60 000 (50 625 × 1,5 plafonné) et un rendez-vous à 60 s.
+  expect(s.pas).toBe(15000);
+  expect(s.dans).toBeLessThanOrEqual(16500);
+  expect(s.dans).toBeGreaterThan(0);
+});

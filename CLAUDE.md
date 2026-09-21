@@ -2498,7 +2498,7 @@ aurait laissé le neuvième refaire la faute : **c'est l'AUTORITÉ qui accepte l
 
 Demande de Benjamin : « augmenter la capacité de navigation et réduire la consommation par utilisateur,
 sans augmenter les abonnements ni ajouter de service payant », en quatre chantiers. Dossiers :
-`docs/CAPACITE_FIL_COMPTEURS_2026-09-21.md`, `docs/CAPACITE_IMAGES_LEGERES_2026-09-21.md`,
+`docs/CAPACITE_FIL_COMPTEURS_2026-09-21.md` (PR #521, en attente de la migration), `docs/CAPACITE_IMAGES_LEGERES_2026-09-21.md`,
 `docs/CAPACITE_COMPTEURS_CADENCE_2026-09-21.md`, `docs/CAPACITE_TEMPS_REEL_CIBLE_2026-09-21.md`,
 synthèse et campagne staging : `docs/CAPACITE_SYNTHESE_2026-09-21.md`.
 
@@ -2526,12 +2526,19 @@ littérales rouges en CI, alors que les contrôles d'ÉGALITÉ fonction = lectur
 
 ⚠️ **② UNE PHOTO PUBLIÉE EXISTE EN DEUX OBJETS, ET LE MARQUEUR EST DANS LE NOM.** `.app-shell` fait 540 px
 CSS au plus, mais la grille « Photos » du profil et l'album d'une activité servaient la grande (≤ 2 048 px)
-pour des cellules de 120 px. `photos/<uid>/<id>.v720.webp` à côté de `<id>.jpg` ; `media_url` désigne la
+pour des cellules de 120 px. `photos/<uid>/<id>.jpg.v720.webp` à côté de `<id>.jpg` ; `media_url` désigne la
 LÉGÈRE (aucune colonne, aucune requête d'essai, aucun 404 ; un média d'avant n'a pas de marqueur et suit le
-chemin d'avant). Mesuré sur les DIX photos réelles de production avec la fonction du produit : grilles
+chemin d'avant). **Le nom de la grande, extension COMPRISE, reste dans celui de la légère** : la grande garde
+le format de la source, la légère celui de l'encodage (WebP dès que possible) — la première forme
+`<id>.v720.webp` perdait l'extension, `imageGrande` rendait `<id>.webp` (objet inexistant), la suppression
+d'une publication ne retirait que la légère (grande facturée pour toujours) et `medias-orphelins` aurait
+classé chaque grande orpheline (contre-revue du 21/09). `cheminsImageStorage` (app-02) est l'autorité de
+suppression ; pour une légère de première forme, elle tente les formats connus. **Seule la publication
+demande la légère** (`supaUploadMedia(…, { legere: true })`) : le dossier `photos` est COMMUN aux stories,
+qui s'affichent plein écran en `object-fit: cover` — le premier jet les convertissait par erreur. Mesuré sur les DIX photos réelles de production avec la fonction du produit : grilles
 **−68 %**, fil **+7 %** contre la transformation 700/q75 (WebP q0,80 contre q75 — même ordre, mais **zéro
 transformation d'image**, le service compté par image d'origine, 19/100), stockage **+29 %**.
-⚠️ **Une image DÉJÀ ≤ 720 px n'est pas exclue** : une story 720×720 JPEG pèse 46 à 74 Ko là où son
+⚠️ **Une image DÉJÀ ≤ 720 px n'est pas exclue** : une 720×720 JPEG pèse 46 à 74 Ko là où son
 ré-encodage en pèse ~15 — la largeur n'est qu'une des deux raisons d'être lourd. Le premier jet la sautait.
 ⚠️ **La grande n'est affichée NULLE PART**, et c'est écrit tel quel plutôt que de lui inventer un usage :
 `imageGrande()` est prête pour un visualiseur ou un téléchargement.
@@ -2539,7 +2546,9 @@ ré-encodage en pèse ~15 — la largeur n'est qu'une des deux raisons d'être l
 ⚠️ **③ LES COMPTEURS VISIBLES RECULENT QUAND RIEN NE BOUGE** — même politique que les deux filets
 (`compteursProchainPas`, app-03, PURE, copie ESM dans le banc comparée par un verrou `vm`) : 15 → 22,5 →
 33,75 → 50,6 → 60 s, retour à 15 s sur changement, ERREUR (une panne n'est pas un calme), carte jamais
-relue, mon propre like, retour au premier plan, réseau revenu. **La reprise ne tire AUCUN aléa** : le verrou
+relue, mon propre like, retour au premier plan, réseau revenu. **Un réveil pendant un tour EN COURS est
+mémorisé** (`_postLikeReveilDemande`) et consommé en fin de tour : sans cela la fin du tour (jusqu'à 3 HEAD
+de 8 s) écrasait le rendez-vous vif que « mon like » venait de poser (contre-revue du 21/09). **La reprise ne tire AUCUN aléa** : le verrou
 « chacun leur échéance » compte les `Math.random`, et un tirage de plus l'a fait rougir. Compromis : un like
 d'un autre sur une carte immobile apparaît en 60 s au pire. Économie sur CES lectures seulement.
 ⚠️ **PIÈGE DE BANC : `page.clock.install()` laisse le temps RÉEL s'écouler entre deux `evaluate`** — les
@@ -2560,8 +2569,9 @@ en 129 jours**. Un « rien fait sur cet axe, et voilà pourquoi » vaut un const
 (`--compteurs-cadence fixe|adaptative`, même scénario, mêmes fixtures, même graine) ; le chemin
 `fil_compteurs` ne peut pas y être exercé (migration non appliquée, même barrière que la production), les
 images et le temps réel ciblé sont hors de sa portée. Mesuré à 100 comptes, deux passes de 90 s, verdicts valides, nettoyage complet : **−7,5 % de HEAD** sous
-cette charge (les cent acteurs aiment les trois mêmes publications : 86 % des cycles sont « vivants », le
-pire cas du lot), contre −33 %/−65 % au banc unitaire en régime calme. Les deux chiffres sont vrais sur
+cette charge (les cent acteurs aiment les trois mêmes publications : 85 % des cycles sont « vivants », le
+pire cas du lot), contre −33 % au banc unitaire en régime calme sur 90 s (−65 % sur 5 min par arithmétique
+de la politique, non mesuré). Les deux chiffres sont vrais sur
 deux populations ; aucun n'est « la capacité ». Résultats : `docs/CAPACITE_SYNTHESE_2026-09-21.md`.
 ⚠️ **Le poste a été tenu éveillé par `SetThreadExecutionState`** (`scripts/rester-eveille.ps1`, demande
 transitoire, aucun réglage modifié) : les essais précédents à 200 étaient morts de la veille, et le verdict

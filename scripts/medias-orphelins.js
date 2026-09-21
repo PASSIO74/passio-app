@@ -119,6 +119,13 @@ function classerOrphelins(objets, referencesTexte, opts = {}) {
     // pour que rien d'anonyme ne parte jamais à la suppression.
     if (!fichier) { references.push(o); continue; }
     if (hay.includes(fichier)) { references.push(o); continue; }
+    // La GRANDE d'une photo de publication (2026-09-21) n'est référencée que
+    // par sa légère : `<fichier>.v720.<ext>` contient le nom entier (couvert
+    // ci-dessus), mais la première forme du jour — `<sans extension>.v720.` —
+    // ne le contient pas. Sans cette garde, chaque original partait à
+    // `--appliquer`.
+    const sansExt = fichier.replace(/\.[a-z0-9]+$/i, "");
+    if (sansExt && sansExt !== fichier && hay.includes(sansExt + ".v720.")) { references.push(o); continue; }
     const age = maintenant - Date.parse(o.created_at || 0);
     if (!(age >= ageMin)) { tropJeunes.push(o); continue; }
     orphelins.push(o);

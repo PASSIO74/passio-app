@@ -4157,7 +4157,7 @@ async function supaPublishPostWithRetry(post, maxRetries = 2) {
       if (post.type === "photo" && post.image) {
         hadMedia = true;
         mediaUrl = await Promise.race([
-          supaUploadMedia(post.id, "photos", post.image, "image"),
+          supaUploadMedia(post.id, "photos", post.image, "image", { legere: true }),
           new Promise((_, reject) => setTimeout(() => reject(new Error("Upload timeout")), _uploadTimeoutMs(post.image)))
         ]);
       } else if (post.type === "video" && post.video) {
@@ -4352,11 +4352,13 @@ function _imageLegerePourFil(dataUrl) {
     } catch (e) { resolve(null); }
   });
 }
-// Chemin Storage de la légère à côté de la grande : `<chemin>.v720.<ext>`.
+// Chemin Storage de la légère à côté de la grande : `<chemin complet>.v720.<ext>`.
+// Le nom de la grande est gardé ENTIER (extension comprise) : c'est ce qui
+// permet de la retrouver (`imageGrande`, `cheminsImageStorage`, app-02).
 function _cheminImageLegere(filePath, format) {
   var marqueur = (typeof IMAGE_LEGERE_MARQUEUR === "string") ? IMAGE_LEGERE_MARQUEUR : ".v720";
   var ext = format === "webp" ? ".webp" : (format === "png" ? ".png" : ".jpg");
-  return filePath.replace(/\.[a-z0-9]+$/i, "") + marqueur + ext;
+  return filePath + marqueur + ext;
 }
 function _octetsDataUrl(dataUrl) {
   var i = String(dataUrl || "").indexOf(";base64,");
@@ -4373,7 +4375,11 @@ function _blobDepuisDataUrl(dataUrl) {
 }
 
 // Fonction d'upload média vers Supabase Storage (avec fallback)
-async function supaUploadMedia(postId, folder, base64Data, mediaType) {
+// `opts.legere` : produire la version légère à côté de la grande — réservé aux
+// photos de PUBLICATION (app-08, supaPublishPost). Une story (plein écran,
+// object-fit: cover), une couverture de bobine ou d'activité ne la demandent
+// pas : elles gardent leur chemin d'avant.
+async function supaUploadMedia(postId, folder, base64Data, mediaType, opts) {
   console.log(`📤 [UPLOAD] Début upload ${folder}/${postId}`);
 
   if (!base64Data || !base64Data.startsWith("data:")) {
@@ -4395,10 +4401,12 @@ async function supaUploadMedia(postId, folder, base64Data, mediaType) {
       try { base64Data = await _downscaleImageForUpload(base64Data); } catch (e) {}
     }
     // Photos de PUBLICATION seulement (le fil et ses vignettes) : une version
-    // légère à côté de la grande. Avatars et couvertures gardent leur chemin
-    // (transformation à la demande, 192/880 px), hors de ce lot.
-    var _legere = null;
-    if (_estImage && folder === "photos") {
+    // légère à côté de la grande. Avatars, couvertures et stories gardent leur
+    // chemin (transformation à la demande, plein écran), hors de ce lot. Le
+    // dossier ne suffit pas à le dire (les stories photo vont aussi dans
+    // `photos`) : c'est l'appelant qui le demande.
+    var _legere = null, _legereDemandee = !!(opts && opts.legere) && _estImage && folder === "photos";
+    if (_legereDemandee) {
       try { _legere = await _imageLegerePourFil(base64Data); } catch (e) { _legere = null; }
     }
 
@@ -4475,7 +4483,7 @@ async function supaUploadMedia(postId, folder, base64Data, mediaType) {
         grande_octets: _octetsDataUrl(base64Data), legere_octets: _octetsDataUrl(_legere.dataUrl),
         largeur: _legere.largeur, format: _legere.format, issue: _issue
       }); } catch (e) {}
-    } else if (_estImage && folder === "photos" && _obtenue) {
+    } else if (_legereDemandee && _obtenue) {
       try { if (window.tel && tel.action) tel.action("image_legere", { grande_octets: _octetsDataUrl(base64Data), legere_octets: 0, largeur: 0, format: "aucune", issue: "sans_legere" }); } catch (e) {}
     }
     if (_obtenue) return _obtenue;
@@ -4980,7 +4988,7 @@ async function supaPublishStory(story) {
       try {
         var _chemin = String(mediaUrl).split("/content/")[1];
         if (_chemin) {
-          await supa.storage.from("content").remove([_chemin.split("?")[0]]);
+          await supa.storage.from("content").remove(cheminsImageStorage(decodeURIComponent(_chemin)));
           console.warn("story refusée : média orphelin retiré de Storage —", _chemin);
         }
       } catch (e) {}
@@ -6820,8 +6828,9 @@ function _creerCanalDb(prive) {
   // (20 795 changements sur 129 jours, dont 4 537 UPDATE — la CI crée et
   // retouche ses comptes à chaque run). Avant, chaque UPDATE de n'importe qui
   // faisait chez chaque connecté : une entrée de plus dans `state.seed.users`
-  // (donc dans le localStorage, à chaque saveState), un `renderFeed` coalescé
-  // et un `renderMessages` — pour un profil que l'écran ne montre nulle part.
+  // (en mémoire seulement : `_leanState` pose `seed = null` avant d'écrire le
+  // localStorage), un `renderFeed` coalescé et un `renderMessages` — pour un
+  // profil que l'écran ne montre nulle part.
   // Un profil INCONNU localement n'est affiché nulle part : rien à rafraîchir,
   // et s'il apparaît plus tard, `_resolveProfilesByIds` le demandera. Un
   // profil CONNU (auteur du fil, d'un commentaire, correspondant) suit le

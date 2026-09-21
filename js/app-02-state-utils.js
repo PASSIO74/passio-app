@@ -1780,9 +1780,9 @@ async function supaLoadUserState() {
 // légère. Laisse les autres URLs (base64, externes) intactes. Pleine résolution
 // conservée pour le visualiseur plein écran.
 // ── Version LÉGÈRE d'une image de publication (2026-09-21) ────────────────
-// Depuis ce lot, une photo publiée existe en DEUX objets Storage :
-//   photos/<uid>/<id>.jpg           l'original réduit (≤ 2048 px, comme avant)
-//   photos/<uid>/<id>.v720.webp     la version d'affichage (720 px de large)
+// Depuis ce lot, une photo de PUBLICATION existe en DEUX objets Storage :
+//   photos/<uid>/<id>.jpg              l'original réduit (≤ 2048 px, comme avant)
+//   photos/<uid>/<id>.jpg.v720.webp    la version d'affichage (720 px de large)
 // et `media_url` désigne la LÉGÈRE : c'est elle que toute surface montre —
 // aucune surface de PASSIO n'est plus large que 540 px CSS (.app-shell), le
 // fil demandait déjà 700 px à la transformation d'image. La grande se dérive
@@ -1791,19 +1791,47 @@ async function supaLoadUserState() {
 // Le marqueur est dans le NOM DU FICHIER : une URL se suffit, aucune colonne,
 // aucune requête, aucun 404 d'essai — un média d'avant n'a pas de marqueur et
 // suit exactement le chemin d'avant (transformation d'image à la demande).
+// Le nom de la légère CONSERVE le nom complet de la grande (extension comprise)
+// avant le marqueur : la grande s'en déduit sans deviner son format (la légère
+// est encodée en WebP quand le navigateur sait le faire, la grande garde le
+// format de la source — les deux extensions diffèrent presque toujours). La
+// contre-revue du 21/09 a retrouvé la première forme, `<id>.v720.webp`, qui
+// perdait cette extension : quelques photos du jour la portent encore, et pour
+// elles la grande n'est PAS dérivable (`imageGrande` rend la légère,
+// `cheminsImageStorage` tente les formats connus à la suppression).
 const IMAGE_LEGERE_LARGEUR = 720;
 const IMAGE_LEGERE_MARQUEUR = ".v" + IMAGE_LEGERE_LARGEUR;
 const _RE_IMAGE_LEGERE = /\.v720\.(jpe?g|png|webp)(?=$|[?#])/i;
+const _RE_EXT_IMAGE_GRANDE = /\.(jpe?g|png|webp|gif|heic|heif|avif|bmp|tiff?)$/i;
+const _EXTENSIONS_GRANDE_INCONNUE = [".jpg", ".jpeg", ".png", ".webp"];
 function estImageLegere(url) {
   return typeof url === "string" && _RE_IMAGE_LEGERE.test(url.split("?")[0].split("#")[0]);
 }
-// L'original réduit, à côté de la légère. Une URL sans marqueur est rendue telle quelle.
+// L'original réduit, à côté de la légère. Une URL sans marqueur est rendue
+// telle quelle ; une légère de première forme (extension de la grande perdue)
+// est rendue telle quelle aussi — la meilleure image CERTAINE, jamais une
+// URL devinée qui ferait un 404.
 function imageGrande(url) {
   if (!estImageLegere(url)) return url;
-  return url.replace(/\.v720\.(jpe?g|png|webp)/i, ".$1");
+  var sans = url.replace(/\.v720\.(jpe?g|png|webp)/i, "");
+  return _RE_EXT_IMAGE_GRANDE.test(sans.split("?")[0].split("#")[0]) ? sans : url;
+}
+// Chemins Storage à retirer pour un chemin (ou une URL) de média : lui-même,
+// et, pour une légère, la grande à côté. Première forme : on tente les
+// formats connus (`remove` ignore les chemins absents). Une suppression qui
+// n'emporte que la légère laisse la grande — l'objet le plus lourd — facturée
+// pour toujours, sans erreur ni trace.
+function cheminsImageStorage(chemin) {
+  if (typeof chemin !== "string" || !chemin) return [];
+  var propre = chemin.split("?")[0].split("#")[0];
+  if (!estImageLegere(propre)) return [propre];
+  var sans = propre.replace(/\.v720\.(jpe?g|png|webp)$/i, "");
+  if (_RE_EXT_IMAGE_GRANDE.test(sans)) return [propre, sans];
+  return [propre].concat(_EXTENSIONS_GRANDE_INCONNUE.map(function (ext) { return sans + ext; }));
 }
 window.estImageLegere = estImageLegere;
 window.imageGrande = imageGrande;
+window.cheminsImageStorage = cheminsImageStorage;
 
 function passioThumb(url, width) {
   if (!url || typeof url !== "string") return url;
