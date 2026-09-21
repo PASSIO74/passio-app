@@ -1991,7 +1991,9 @@ window._truncU16Safe = _truncU16Safe;
 // ne sont pas des commentaires — elles s'affichent en pastille « 😍 N »). Utilisé
 // par toutes les pastilles « 💬 N » pour une cohérence totale entre les surfaces.
 function commentThreadCount(comments) {
-  var arr = comments || [];
+  // Un post malformé (`comments` objet, chaîne…) ne doit pas faire sauter un
+  // rendu entier : voir feed-malformed-post.spec.js.
+  var arr = Array.isArray(comments) ? comments : [];
   var n = 0;
   arr.forEach(function(c){
     if (!c) return;
@@ -2015,7 +2017,7 @@ function commentThreadCount(comments) {
 // Sans `commentsTotal` (repli sans fonction SQL, contenu de démonstration,
 // commentaire d'activité), on compte la liste, exactement comme avant.
 function nbCommentairesPost(p) {
-  var liste = (p && p.comments) || [];
+  var liste = (p && Array.isArray(p.comments)) ? p.comments : [];
   var charges = commentThreadCount(liste);
   if (!p || !Number.isSafeInteger(p.commentsTotal) || p.commentsTotal < 0) return charges;
   var premierNiveau = 0, serveur = 0, locaux = 0;

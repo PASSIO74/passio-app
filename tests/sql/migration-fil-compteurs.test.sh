@@ -178,11 +178,11 @@ for cible in post_a post_p post_vide; do
   verifier "visiteur sur $cible : fonction = lecture directe ($(ANON "$d;"))" "$(ANON "$d;")" "$(ANON "$f;")"
 done
 # Les valeurs elles-mêmes, pour que la fiche dise ce que la RLS fait vraiment.
-verifier "C (abonné accepté) compte les 3 likes de post_a et a aimé" "3/3/t" "$(EN "$C" "$(cible_dans "$FONCTION" post_a);")"
-verifier "B (bloqué par A) ne voit que SA propre ligne : 1 like, 1 commentaire" "1/1/t" "$(EN "$B" "$(cible_dans "$FONCTION" post_a);")"
-verifier "D (sans lien) voit sa propre ligne : 1 like, 0 commentaire" "1/0/t" "$(EN "$D" "$(cible_dans "$FONCTION" post_a);")"
-verifier "visiteur : rien sur le post privé" "0/0/f" "$(ANON "$(cible_dans "$FONCTION" post_a);")"
-verifier "visiteur : tout sur le post public, sans like à lui" "2/1/f" "$(ANON "$(cible_dans "$FONCTION" post_p);")"
+verifier "C (abonné accepté) compte les 3 likes de post_a et a aimé" "3/3/true" "$(EN "$C" "$(cible_dans "$FONCTION" post_a);")"
+verifier "B (bloqué par A) ne voit que SA propre ligne : 1 like, 1 commentaire" "1/1/true" "$(EN "$B" "$(cible_dans "$FONCTION" post_a);")"
+verifier "D (sans lien) voit sa propre ligne : 1 like, 0 commentaire" "1/0/true" "$(EN "$D" "$(cible_dans "$FONCTION" post_a);")"
+verifier "visiteur : rien sur le post privé" "0/0/false" "$(ANON "$(cible_dans "$FONCTION" post_a);")"
+verifier "visiteur : tout sur le post public, sans like à lui" "2/1/false" "$(ANON "$(cible_dans "$FONCTION" post_p);")"
 
 echo "── ③ APERÇUS ET RÉACTIONS ────────────────────────────────────────────"
 verifier "C : les DEUX aperçus les plus récents de post_a, du plus récent au plus ancien" "ca3,ca2" \
@@ -197,17 +197,17 @@ verifier "réactions de post_p : emoji et gif de la publication, PAS le like ni 
   "$(EN "$D" "select string_agg(x->>'payload', ',') from public.fil_compteurs(array['post_p']) f, jsonb_array_elements(f.reactions) x;")"
 verifier "…chaque réaction porte user_id, kind, payload, created_at" "$B|emoji|😍" \
   "$(EN "$D" "select (reactions->0->>'user_id') || '|' || (reactions->0->>'kind') || '|' || (reactions->0->>'payload') from public.fil_compteurs(array['post_p']);")"
-verifier "post sans rien : 0 / 0 / faux / [] / []" "0|0|f|[]|[]" \
+verifier "post sans rien : 0 / 0 / faux / [] / []" "0|0|false|[]|[]" \
   "$(EN "$D" "select likes || '|' || commentaires || '|' || aime || '|' || apercus::text || '|' || reactions::text from public.fil_compteurs(array['post_vide']);")"
 
 echo "── ④ BORNES ─────────────────────────────────────────────────────────"
-verifier "identifiant inconnu : une ligne à zéro, pas d'erreur" "inconnu|0|0|f" \
+verifier "identifiant inconnu : une ligne à zéro, pas d'erreur" "inconnu|0|0|false" \
   "$(EN "$D" "select post_id || '|' || likes || '|' || commentaires || '|' || aime from public.fil_compteurs(array['inconnu']);")"
 verifier "tableau NULL : zéro ligne" "0" "$(EN "$D" "select count(*) from public.fil_compteurs(null);")"
 verifier "tableau vide : zéro ligne" "0" "$(EN "$D" "select count(*) from public.fil_compteurs('{}');")"
 verifier "un NULL dans le tableau est ignoré" "1" "$(EN "$D" "select count(*) from public.fil_compteurs(array['post_p', null]);")"
 verifier "doublons dédupliqués" "1" "$(EN "$D" "select count(*) from public.fil_compteurs(array['post_p', 'post_p']);")"
-verifier "61 identifiants : 60 lignes, le 61ᵉ ignoré" "60|f" \
+verifier "61 identifiants : 60 lignes, le 61ᵉ ignoré" "60|false" \
   "$(EN "$D" "select count(*) || '|' || bool_or(post_id = 'id61') from public.fil_compteurs((select array_agg('id' || g) from generate_series(1, 61) g));")"
 verifier "une page de 20 : 20 lignes, une par identifiant, dans le tableau" "20" \
   "$(EN "$D" "select count(distinct post_id) from public.fil_compteurs((select array_agg('id' || g) from generate_series(1, 20) g));")"
