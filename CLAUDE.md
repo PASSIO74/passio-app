@@ -2507,7 +2507,7 @@ DONC UNE MAIN HUMAINE.** Ni `post_likes` ni `post_comments` ne portent de clé �
 base), et les agrégats REST sont désactivés (`PGRST123`, mesuré par requête) : aucun `count` PostgREST
 n'est possible. `fil_compteurs(text[])` (SECURITY INVOKER — la RLS de chaque table s'applique ligne par
 ligne, exactement comme le GET d'avant ; la transaction s'ANNULE si la fonction n'était pas INVOKER) rend
-compteurs exacts, mon like, deux aperçus et réactions en UNE lecture. PR #521, **non fusionnée** : périmètre
+compteurs exacts, mon like, deux aperçus et réactions en UNE lecture. PR #521 fusionnée et **migration appliquée le 21/09 sur staging puis production** (barrière franchie par la revue de mainteneur unique, #530 ; journal en base, mesuré : INVOKER, borne 60, `rpc/fil_compteurs` observé dans le client servi). Périmètre
 critique, la CI exige la revue GitHub de PASSIO74 avec le marqueur « Contre-revue technique indépendante »,
 et `.passio/migrations/relecteurs-autorises.json` était **vide** (RES-15) — aucune attestation possible.
 **Levé le 21/09 par décision de Benjamin (ASTRA-61 bis, AGENTS.md)** : le fichier déclare `mainteneur_unique:

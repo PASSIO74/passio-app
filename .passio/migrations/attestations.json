@@ -1,1 +1,44 @@
-[]
+[
+  {
+    "fichier": "migrations/migration_fil_compteurs_2026-09-21.sql",
+    "empreinte": "582494d871212828dee6a14e441be3ce680703aeffe71af77290c45ca3019f87",
+    "cibles": [
+      "fcksxofaelcdmmifnwjo"
+    ],
+    "pr": "#530",
+    "commit": "8e5d9d37bf182e3e31977deaa520552c69c60921",
+    "revue_id": 5269840687,
+    "relecteur": "PASSIO74",
+    "revue_le": "2026-09-21",
+    "consigne_le": "2026-09-21",
+    "source": "https://github.com/PASSIO74/passio-app/pull/530#pullrequestreview-5269840687",
+    "revue": {
+      "etat": "COMMENTED",
+      "soumise_le": "2026-09-21T17:33:53Z",
+      "auteur_pr": "PASSIO74",
+      "fournisseur": "github",
+      "auto_revue_mainteneur_unique": true
+    }
+  },
+  {
+    "fichier": "migrations/migration_fil_compteurs_2026-09-21.sql",
+    "empreinte": "582494d871212828dee6a14e441be3ce680703aeffe71af77290c45ca3019f87",
+    "cibles": [
+      "njkiyoklssvefstljemx"
+    ],
+    "pr": "#530",
+    "commit": "8e5d9d37bf182e3e31977deaa520552c69c60921",
+    "revue_id": 5269840687,
+    "relecteur": "PASSIO74",
+    "revue_le": "2026-09-21",
+    "consigne_le": "2026-09-21",
+    "source": "https://github.com/PASSIO74/passio-app/pull/530#pullrequestreview-5269840687",
+    "revue": {
+      "etat": "COMMENTED",
+      "soumise_le": "2026-09-21T17:33:53Z",
+      "auteur_pr": "PASSIO74",
+      "fournisseur": "github",
+      "auto_revue_mainteneur_unique": true
+    }
+  }
+]

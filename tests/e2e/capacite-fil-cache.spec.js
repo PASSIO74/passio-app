@@ -23,6 +23,21 @@ async function preparer(page, n = 55) {
     }));
     window.__profil = { id: "auteur_commentaire", username: "Camille", emoji: "📷", color: "#123456",
       avatar_url: null, passion_id: "photo", passions: [], bio: "Une bio" };
+    // ⚠️ Le banc ne dépend PAS de l'état du projet distant (2026-09-21) :
+    // `fil_compteurs` appliquée sur staging, le vrai `supa.rpc` répondait
+    // et le fil ne lisait plus `post_likes` — trois cas « hydratation
+    // périmée » attendaient une lecture qui ne venait plus (3 × 45 s en CI).
+    // Le RPC est simulé : absent par défaut (chemin d'avant, ce que ces cas
+    // mesurent), présent pour le cas `compte_pendant_rpc`.
+    sessionStorage.removeItem("passio_fil_compteurs_absente");
+    window.__rpcPresent = false;
+    supa.rpc = function (fn, args) {
+      const req = { table: "rpc/" + fn, ids: (args && args._post_ids) || [] };
+      const res = window.__rpcPresent
+        ? { data: req.ids.map((id) => ({ post_id: id, likes: 0, aime: false, commentaires: 0, apercus: [], reactions: [] })), error: null }
+        : { data: null, error: { code: "PGRST202", message: "Could not find the function public.fil_compteurs (banc)" } };
+      return { then: (ok, ko) => { window.__lectures.push(req); return Promise.resolve(window.__retenirReponse ? window.__retenirReponse(req, res) : res).then(ok, ko); } };
+    };
     supa.from = function (table) {
       const req = { table, orders: [] };
       const q = {
@@ -168,16 +183,17 @@ test("une ancienne page en vol ne remplace pas le curseur d'une tête rafraîchi
   expect(new Set(r.ids).size).toBe(110);
 });
 
-for (const course of ["compte_pendant_likes", "purge_pendant_likes", "generation_pendant_profils"]) {
+for (const course of ["compte_pendant_likes", "purge_pendant_likes", "generation_pendant_profils", "compte_pendant_rpc"]) {
   test("une hydratation devenue périmée ne publie ni posts ni profils : " + course, async ({ page }) => {
     await preparer(page);
     const r = await page.evaluate(async (scenario) => {
+      if (scenario === "compte_pendant_rpc") window.__rpcPresent = true;
       let signaler, liberer;
       const commencee = new Promise(resolve => { signaler = resolve; });
       window.__retenirReponse = (req, res) => {
         if (req.table === "post_comments") res = { data: [{ id: "commentaire_retarde", post_id: "capacite_050",
           author_id: __profil.id, content: "Commentaire", created_at: "2026-09-20T12:00:00" }], error: null };
-        const table = scenario === "generation_pendant_profils" ? "profiles" : "post_likes";
+        const table = scenario === "generation_pendant_profils" ? "profiles" : (scenario === "compte_pendant_rpc" ? "rpc/fil_compteurs" : "post_likes");
         if (req.table === table) {
           signaler();
           return new Promise(resolve => { liberer = () => resolve(res); });
@@ -186,7 +202,7 @@ for (const course of ["compte_pendant_likes", "purge_pendant_likes", "generation
       };
       const lecture = supaLoadPosts(0, null, { generation: _feedRefreshGeneration });
       await commencee;
-      if (scenario === "compte_pendant_likes") MY_UID = "autre_compte";
+      if (scenario === "compte_pendant_likes" || scenario === "compte_pendant_rpc") MY_UID = "autre_compte";
       if (scenario === "generation_pendant_profils") stopFeedRefreshLoop();
       else _clearProfileCache();
       _feedPagination = null;
