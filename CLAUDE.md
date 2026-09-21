@@ -2494,6 +2494,79 @@ e && e.message)` jetait le message d'erreur EN SILENCE, donc un filet en panne �
 d'un filet au calme, et la Sentinelle ne voit que ce qui est journalisé. Corriger les huit appelants
 aurait laissé le neuvième refaire la faute : **c'est l'AUTORITÉ qui accepte le reste**, en le joignant.
 
+## 📉 CAPACITÉ, QUATRE LOTS : CE QUI EST LIVRÉ, CE QUI ATTEND UNE MAIN HUMAINE, ET CE QUI A ÉTÉ MESURÉ (2026-09-21)
+
+Demande de Benjamin : « augmenter la capacité de navigation et réduire la consommation par utilisateur,
+sans augmenter les abonnements ni ajouter de service payant », en quatre chantiers. Dossiers :
+`docs/CAPACITE_FIL_COMPTEURS_2026-09-21.md`, `docs/CAPACITE_IMAGES_LEGERES_2026-09-21.md`,
+`docs/CAPACITE_COMPTEURS_CADENCE_2026-09-21.md`, `docs/CAPACITE_TEMPS_REEL_CIBLE_2026-09-21.md`,
+synthèse et campagne staging : `docs/CAPACITE_SYNTHESE_2026-09-21.md`.
+
+⚠️ **① LE FIL TÉLÉCHARGEAIT DES LISTES POUR EN COMPTER LA LONGUEUR — ET LE REMÈDE EST UNE MIGRATION,
+DONC UNE MAIN HUMAINE.** Ni `post_likes` ni `post_comments` ne portent de clé étrangère vers `posts` (lu en
+base), et les agrégats REST sont désactivés (`PGRST123`, mesuré par requête) : aucun `count` PostgREST
+n'est possible. `fil_compteurs(text[])` (SECURITY INVOKER — la RLS de chaque table s'applique ligne par
+ligne, exactement comme le GET d'avant ; la transaction s'ANNULE si la fonction n'était pas INVOKER) rend
+compteurs exacts, mon like, deux aperçus et réactions en UNE lecture. PR #521, **non fusionnée** : périmètre
+critique, la CI exige la revue GitHub de PASSIO74 avec le marqueur « Contre-revue technique indépendante »,
+et `.passio/migrations/relecteurs-autorises.json` est **vide** (RES-15) — aucune attestation possible.
+Le client fonctionne dans les deux états (PGRST202/42883 → lectures d'avant, mémorisé par release).
+⚠️ **SUR LA PRODUCTION D'AUJOURD'HUI, LA RÉPONSE GROUPÉE PÈSE 2,2 Ko DE PLUS** (4 141 → 6 380 octets
+pour la vraie première page : 13 likes et 9 commentaires sur 20 publications, la structure fixe domine).
+Le gain est trois requêtes de moins et un volume BORNÉ ; la bascule est à ~2 likes + 1 commentaire par
+publication. Une fiche qui annoncerait « −X % d'octets » aujourd'hui mentirait.
+⚠️ **La contre-revue `audit-passio` du premier jet a trouvé 4 P1 + 5 P2 après 10 verrous verts** : la
+signature du filet (app-08) lisait encore `comments.length` (constante à 2 → plus de repeinte), le panneau
+des Bobines ne lisait que `reel.comments` (réduit à deux lignes sans bouton), une discussion ouverte était
+ramenée à deux lignes au tour suivant du filet (les objets sont REMPLACÉS), et le banc SQL ⑤ attendait que
+la mutation s'applique alors que la migration l'annule. **`String(window.PASSIO_RELEASE)` vaut
+« [object Object] »** — une clé de cache « par release » qui ne change jamais ; l'autorité est
+`idbPassionsRelease()`. **`psql` concatène un booléen en `true`/`false`, pas `t`/`f`** : huit attentes
+littérales rouges en CI, alors que les contrôles d'ÉGALITÉ fonction = lecture directe étaient verts.
+
+⚠️ **② UNE PHOTO PUBLIÉE EXISTE EN DEUX OBJETS, ET LE MARQUEUR EST DANS LE NOM.** `.app-shell` fait 540 px
+CSS au plus, mais la grille « Photos » du profil et l'album d'une activité servaient la grande (≤ 2 048 px)
+pour des cellules de 120 px. `photos/<uid>/<id>.v720.webp` à côté de `<id>.jpg` ; `media_url` désigne la
+LÉGÈRE (aucune colonne, aucune requête d'essai, aucun 404 ; un média d'avant n'a pas de marqueur et suit le
+chemin d'avant). Mesuré sur les DIX photos réelles de production avec la fonction du produit : grilles
+**−68 %**, fil **+7 %** contre la transformation 700/q75 (WebP q0,80 contre q75 — même ordre, mais **zéro
+transformation d'image**, le service compté par image d'origine, 19/100), stockage **+29 %**.
+⚠️ **Une image DÉJÀ ≤ 720 px n'est pas exclue** : une story 720×720 JPEG pèse 46 à 74 Ko là où son
+ré-encodage en pèse ~15 — la largeur n'est qu'une des deux raisons d'être lourd. Le premier jet la sautait.
+⚠️ **La grande n'est affichée NULLE PART**, et c'est écrit tel quel plutôt que de lui inventer un usage :
+`imageGrande()` est prête pour un visualiseur ou un téléchargement.
+
+⚠️ **③ LES COMPTEURS VISIBLES RECULENT QUAND RIEN NE BOUGE** — même politique que les deux filets
+(`compteursProchainPas`, app-03, PURE, copie ESM dans le banc comparée par un verrou `vm`) : 15 → 22,5 →
+33,75 → 50,6 → 60 s, retour à 15 s sur changement, ERREUR (une panne n'est pas un calme), carte jamais
+relue, mon propre like, retour au premier plan, réseau revenu. **La reprise ne tire AUCUN aléa** : le verrou
+« chacun leur échéance » compte les `Math.random`, et un tirage de plus l'a fait rougir. Compromis : un like
+d'un autre sur une carte immobile apparaît en 60 s au pire. Économie sur CES lectures seulement.
+⚠️ **PIÈGE DE BANC : `page.clock.install()` laisse le temps RÉEL s'écouler entre deux `evaluate`** — les
+rendez-vous dérivaient de quelques millisecondes et le banc mourait de son instrument. `pauseAt` fige.
+
+⚠️ **④ TEMPS RÉEL : L'INVENTAIRE MESURÉ DIT QUE LE POSTE CLIENT EST `profiles` UPDATE**, table la plus
+modifiée de la base (20 795 changements, la CI retouche ses comptes à chaque run), poussée à tous (table
+publique, aucun filtre) : chaque UPDATE de n'importe qui faisait chez chaque connecté une entrée de plus
+dans `state.seed.users` (donc le localStorage à chaque `saveState`), un rendu du fil et un rendu des
+messages. `profilConnuLocalement(uid)` (app-08) : inconnu → ignoré et compté ; connu → chemin d'avant.
+Gain CLIENT, pas de quota (policy `true`, livraison inchangée).
+⚠️ **`event_comments` par événement ouvert a été REFUSÉ, avec la raison** : un topic privé neuf est
+refusé par `passio_rt_recevoir` (liste blanche `ring:`, `call:`, `vlive:`, `realtime:db`, `typing:`,
+`conv:`, `conv_specific:`) et les canaux publics sont désactivés — une migration de policy pour **36 INSERT
+en 129 jours**. Un « rien fait sur cet axe, et voilà pourquoi » vaut un constat.
+
+⚠️ **LA CAMPAGNE STAGING MESURE UN LOT SUR QUATRE** : le banc modélise la cadence des compteurs
+(`--compteurs-cadence fixe|adaptative`, même scénario, mêmes fixtures, même graine) ; le chemin
+`fil_compteurs` ne peut pas y être exercé (migration non appliquée, même barrière que la production), les
+images et le temps réel ciblé sont hors de sa portée. Mesuré à 100 comptes, deux passes de 90 s, verdicts valides, nettoyage complet : **−7,5 % de HEAD** sous
+cette charge (les cent acteurs aiment les trois mêmes publications : 86 % des cycles sont « vivants », le
+pire cas du lot), contre −33 %/−65 % au banc unitaire en régime calme. Les deux chiffres sont vrais sur
+deux populations ; aucun n'est « la capacité ». Résultats : `docs/CAPACITE_SYNTHESE_2026-09-21.md`.
+⚠️ **Le poste a été tenu éveillé par `SetThreadExecutionState`** (`scripts/rester-eveille.ps1`, demande
+transitoire, aucun réglage modifié) : les essais précédents à 200 étaient morts de la veille, et le verdict
+`DUREE_MESURE_INVALIDE` du banc les aurait de toute façon refusés.
+
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)
 
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)
