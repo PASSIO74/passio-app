@@ -331,3 +331,35 @@ test("construireSinks : rien sans variables d'environnement ; webhook seulement 
   assert.equal(w[0].accepte({ level: "warn" }), false, "niveau minimal high par défaut");
   assert.equal(w[0].accepte({ level: "high" }), true);
 });
+
+// ─── Retour : une panne que la machine a vue finir n'attend personne ────────
+// Mesuré le 2026-09-21 : « Ce qui t'attend » portait 15 alertes high/critical
+// d'observation (5 « Ingestion sourde ») toutes suivies d'un retour `info` sur
+// la même clé 1 à 40 min plus tard — aucune refermée, aucune à faire.
+test("retour : un `info` sur la même clé referme les high/critical ouvertes (ackBy retour), à l'émission", () => {
+  vierge();
+  const panne = raise({ key: "obs:ingest", level: "critical", title: "Ingestion sourde", cooldownMs: 0 }, T0);
+  raise({ key: "obs:dbread", level: "high", title: "Base illisible", cooldownMs: 0 }, T0);
+  raise({ key: "obs:ingest", level: "info", title: "Ingestion rétablie", cooldownMs: 0 }, T0 + MIN);
+  const par = Object.fromEntries(listAlerts().filter((a) => a.level !== "info").map((a) => [a.key, a]));
+  assert.equal(par["obs:ingest"].id, panne.id);
+  assert.equal(par["obs:ingest"].acknowledged, true, "la panne revenue est refermée");
+  assert.equal(par["obs:ingest"].ackBy, "retour");
+  assert.equal(par["obs:ingest"].ackAt, T0 + MIN, "datée du retour, pas de l'acquittement périodique");
+  assert.equal(par["obs:dbread"].acknowledged, false, "une autre clé, sans retour, attend toujours");
+});
+
+test("retour : le passage périodique rattrape un historique où le retour n'a pas refermé (fichier d'avant la règle)", () => {
+  vierge();
+  raise({ key: "obs:ingest", level: "critical", title: "Ingestion sourde", cooldownMs: 0 }, T0 - 3 * MIN);
+  raise({ key: "obs:ingest", level: "critical", title: "Ingestion sourde", cooldownMs: 0 }, T0 - 2 * MIN);
+  raise({ key: "obs:ingest", level: "info", title: "Ingestion rétablie", cooldownMs: 0 }, T0 - MIN);
+  // Nouvelle panne APRÈS le retour : elle n'est pas couverte par lui.
+  raise({ key: "obs:ingest", level: "critical", title: "Ingestion sourde", cooldownMs: 0 }, T0);
+  // On simule le fichier d'avant la règle : tout rouvert.
+  for (const a of listAlerts()) { a.acknowledged = false; delete a.ackBy; delete a.ackAt; }
+  assert.equal(autoAcquitter({ now: T0 }), 2, "les deux pannes d'avant le retour, pas celle d'après");
+  const ouvertes = listAlerts().filter((a) => !a.acknowledged && a.level !== "info");
+  assert.deepEqual(ouvertes.map((a) => a.ts), [T0], "seule la panne postérieure au retour reste ouverte");
+  assert.ok(listAlerts().filter((a) => a.ackBy === "retour").length === 2);
+});

@@ -614,7 +614,7 @@ GitHub. Modules non critiques (jamais `auth.js`, `config.js`, `repair.js`,
 
 | Module | Rôle | Variable |
 |---|---|---|
-| `alerts.js` | `raise({key, level, …})` : clé stable, cooldown par alerte, bruit agrégé (API lente par endpoint / 15 min, connexion testeur avérée), auto-acquittement 6 h, sinks | `DASH_ALERTS_AUTOACK_MIN` |
+| `alerts.js` | `raise({key, level, …})` : clé stable, cooldown par alerte, bruit agrégé (API lente par endpoint / 15 min, connexion testeur avérée), auto-acquittement 6 h, un retour (`info` sur la même clé) referme les high/critical ouvertes (`ackBy:"retour"`), sinks | `DASH_ALERTS_AUTOACK_MIN` |
 | `notify-sinks.js` | issue `[POSTE] Le pilotage a besoin de toi` via `gh` (clés du poste seulement), webhook | `DASH_NOTIFY_GITHUB`, `DASH_NOTIFY_WEBHOOK` |
 | `observation-alerts.js` | alertes à la bascule : DB, canari (2 manqués), realtime, polling, ingestion, silence réel, écriture des JsonDb | `DASH_OBS_ALERTS_MIN`, `DASH_SILENCE_MIN` |
 | `github-lecture.js` | client GitHub commun : cache par URL, ETag, budget 40/h sans jeton | `GITHUB_READ_TOKEN`, `DASH_GITHUB_READ` |
