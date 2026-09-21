@@ -6354,6 +6354,19 @@ function supaSubscribe() {
 //
 // Rend une promesse dans les DEUX cas, pour que l'appelant ne change pas de
 // forme selon qu'il a touché le réseau ou non.
+// Un profil est « connu » quand une surface de cet écran peut le montrer : le
+// cache d'identité partagé (`state.seed.users`, alimenté par le fil, les
+// commentaires, les événements) ou le cache de messagerie (`_profileCache`).
+// Lue par le gestionnaire temps réel `profiles` UPDATE — jamais par un chemin
+// de sécurité : c'est un tri d'affichage, pas une frontière.
+function profilConnuLocalement(uid) {
+  try {
+    if (!uid) return false;
+    if (typeof userById === "function" && userById(uid)) return true;
+    if (typeof _profileCache !== "undefined" && _profileCache && _profileCache.has(uid)) return true;
+  } catch (e) {}
+  return false;
+}
 function _profilAuteur(uid) {
   try {
     if (!uid) return Promise.resolve(null);
@@ -6520,11 +6533,24 @@ function _creerCanalDb(prive) {
   // Quand un utilisateur change sa photo de profil ou son pseudo, on rafraîchit
   // le cache local (state.seed.users) → son avatar se met à jour PARTOUT à
   // l'écran (fil, commentaires, messages) sans rechargement.
+  // ⚠️ SEULEMENT S'IL EST QUELQU'UN POUR CET ÉCRAN (2026-09-21). L'événement
+  // est poussé à TOUS les connectés (`profiles` est publique, le filtre ne peut
+  // rien retenir), et `profiles` est la table la plus modifiée de la base
+  // (20 795 changements sur 129 jours, dont 4 537 UPDATE — la CI crée et
+  // retouche ses comptes à chaque run). Avant, chaque UPDATE de n'importe qui
+  // faisait chez chaque connecté : une entrée de plus dans `state.seed.users`
+  // (donc dans le localStorage, à chaque saveState), un `renderFeed` coalescé
+  // et un `renderMessages` — pour un profil que l'écran ne montre nulle part.
+  // Un profil INCONNU localement n'est affiché nulle part : rien à rafraîchir,
+  // et s'il apparaît plus tard, `_resolveProfilesByIds` le demandera. Un
+  // profil CONNU (auteur du fil, d'un commentaire, correspondant) suit le
+  // chemin d'avant, à l'identique. Autorité : `profilConnuLocalement`.
   dbChan
     .on("postgres_changes", { event: "UPDATE", schema: "public", table: "profiles" }, payload => {
       try {
         const p = payload.new;
         if (!p || !p.id || p.id === MY_UID) return;
+        if (!profilConnuLocalement(p.id)) { window._rtProfilsIgnores = (window._rtProfilsIgnores || 0) + 1; return; }
         cacheRemoteProfile(p);
         // Re-rendre le fil s'il est visible (différé/coalescé : un changement de
         // profil n'a pas besoin d'un rebuild synchrone, et ça évite un renderFeed
