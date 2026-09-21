@@ -4187,7 +4187,7 @@ async function _loadEventAlbum(eventId) {
   }
   box2.innerHTML = items.slice(0, 12).map(p => p.image
     ? `<div class="event-album-cell" onclick="openPost('${escapeJsArg(p.id)}')">
-         <img loading="lazy" decoding="async" src="${safeUrlAttr(p.image)}" alt=""/>
+         <img loading="lazy" decoding="async" src="${safeUrlAttr(passioThumb(p.image, 400))}" alt=""/>
        </div>`
     : `<div class="event-album-cell is-text" onclick="openPost('${escapeJsArg(p.id)}')">
          <span>${escapeHtml((p.text || "").slice(0, 60))}</span>

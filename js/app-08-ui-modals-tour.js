@@ -4304,6 +4304,72 @@ function _downscaleImageForUpload(dataUrl) {
   });
 }
 
+// ── Version légère d'une photo de publication (2026-09-21) ─────────────────
+// Même image, 720 px de large au plus (jamais agrandie), WebP quand le
+// navigateur sait l'encoder (transparence conservée), sinon JPEG — ou PNG si la
+// source est PNG (transparence). L'orientation EXIF est appliquée par le
+// décodeur du navigateur (`image-orientation: from-image`, comme pour
+// `_downscaleImageForUpload`), donc la légère est droite comme la grande.
+// Rend null quand il n'y a rien à gagner (GIF animé, encodage impossible,
+// résultat qui ne fait pas économiser au moins 15 % de l'original) : l'appelant
+// garde alors la seule grande, sans marqueur — le chemin d'avant.
+// ⚠️ Une image DÉJÀ ≤ 720 px n'est pas exclue : mesuré sur la production, une
+// story 720×720 JPEG pèse 46 à 74 Ko là où son ré-encodage en pèse ~15 — la
+// largeur n'est qu'une des deux raisons d'être lourd, le format est l'autre.
+const IMAGE_LEGERE_QUALITE_WEBP = 0.8;
+const IMAGE_LEGERE_QUALITE_JPEG = 0.82;
+const IMAGE_LEGERE_GAIN_MIN = 0.15;
+function _imageLegerePourFil(dataUrl) {
+  return new Promise(function (resolve) {
+    try {
+      if (!/^data:image\/(jpeg|jpg|png|webp)/i.test(dataUrl)) { resolve(null); return; }
+      var largeurCible = (typeof IMAGE_LEGERE_LARGEUR === "number") ? IMAGE_LEGERE_LARGEUR : 720;
+      var img = new Image();
+      img.onload = function () {
+        try {
+          var w = img.naturalWidth, h = img.naturalHeight;
+          if (!w || !h) { resolve(null); return; }
+          var scale = Math.min(1, largeurCible / w); // jamais agrandie
+          var c = document.createElement("canvas");
+          c.width = Math.max(1, Math.round(w * scale)); c.height = Math.max(1, Math.round(h * scale));
+          c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+          var estPng = dataUrl.indexOf("data:image/png") === 0;
+          // WebP d'abord : plus léger, et il garde la transparence d'un PNG.
+          var out = c.toDataURL("image/webp", IMAGE_LEGERE_QUALITE_WEBP), format = "webp";
+          if (out.indexOf("data:image/webp") !== 0) {
+            format = estPng ? "png" : "jpeg";
+            out = estPng ? c.toDataURL("image/png") : c.toDataURL("image/jpeg", IMAGE_LEGERE_QUALITE_JPEG);
+            if (out.indexOf("data:image/" + format) !== 0) { resolve(null); return; }
+          }
+          if (out.length > dataUrl.length * (1 - IMAGE_LEGERE_GAIN_MIN)) { resolve(null); return; } // rien à gagner
+          resolve({ dataUrl: out, format: format, largeur: c.width, hauteur: c.height });
+        } catch (e) { resolve(null); }
+      };
+      img.onerror = function () { resolve(null); };
+      img.src = dataUrl;
+    } catch (e) { resolve(null); }
+  });
+}
+// Chemin Storage de la légère à côté de la grande : `<chemin>.v720.<ext>`.
+function _cheminImageLegere(filePath, format) {
+  var marqueur = (typeof IMAGE_LEGERE_MARQUEUR === "string") ? IMAGE_LEGERE_MARQUEUR : ".v720";
+  var ext = format === "webp" ? ".webp" : (format === "png" ? ".png" : ".jpg");
+  return filePath.replace(/\.[a-z0-9]+$/i, "") + marqueur + ext;
+}
+function _octetsDataUrl(dataUrl) {
+  var i = String(dataUrl || "").indexOf(";base64,");
+  if (i === -1) return 0;
+  var b64 = dataUrl.slice(i + 8), fin = (b64.match(/=+$/) || [""])[0].length;
+  return Math.max(0, Math.floor(b64.length * 3 / 4) - fin);
+}
+function _blobDepuisDataUrl(dataUrl) {
+  var i = dataUrl.indexOf(";base64,");
+  if (i === -1) return null;
+  var bstr = atob(dataUrl.slice(i + 8)), u8 = new Uint8Array(bstr.length);
+  for (var k = 0; k < bstr.length; k++) u8[k] = bstr.charCodeAt(k);
+  return new Blob([u8], { type: (dataUrl.match(/^data:([^;,]+)/) || [])[1] || "application/octet-stream" });
+}
+
 // Fonction d'upload média vers Supabase Storage (avec fallback)
 async function supaUploadMedia(postId, folder, base64Data, mediaType) {
   console.log(`📤 [UPLOAD] Début upload ${folder}/${postId}`);
@@ -4322,8 +4388,16 @@ async function supaUploadMedia(postId, folder, base64Data, mediaType) {
     if (!supa || !window._supaReal) return base64Data;
 
     // Images (hors GIF) : downscale avant conversion en Blob.
-    if (mediaType !== "video" && mediaType !== "audio" && base64Data.indexOf("data:image/") === 0 && base64Data.indexOf("data:image/gif") !== 0) {
+    var _estImage = mediaType !== "video" && mediaType !== "audio" && base64Data.indexOf("data:image/") === 0 && base64Data.indexOf("data:image/gif") !== 0;
+    if (_estImage) {
       try { base64Data = await _downscaleImageForUpload(base64Data); } catch (e) {}
+    }
+    // Photos de PUBLICATION seulement (le fil et ses vignettes) : une version
+    // légère à côté de la grande. Avatars et couvertures gardent leur chemin
+    // (transformation à la demande, 192/880 px), hors de ce lot.
+    var _legere = null;
+    if (_estImage && folder === "photos") {
+      try { _legere = await _imageLegerePourFil(base64Data); } catch (e) { _legere = null; }
     }
 
     // Convertir base64 en Blob — découpe sur « ;base64, » (PAS la première
@@ -4381,6 +4455,27 @@ async function supaUploadMedia(postId, folder, base64Data, mediaType) {
       const { data: publicUrl } = supa.storage.from("content").getPublicUrl(filePath);
       if (publicUrl?.publicUrl) _obtenue = cdnUrl(publicUrl.publicUrl);
     } catch (e) {}
+    // La légère APRÈS la grande : si elle échoue, la grande vit seule, sans
+    // marqueur, et tout se passe comme avant. Jamais l'inverse (une légère sans
+    // grande serait une photo sans original).
+    if (_obtenue && _legere) {
+      var _issue = "legere";
+      try {
+        var _cheminLeger = _cheminImageLegere(filePath, _legere.format);
+        var _resLeger = await supa.storage.from("content").upload(_cheminLeger, _blobDepuisDataUrl(_legere.dataUrl), { cacheControl: "31536000", upsert: true });
+        if (!_resLeger.error) {
+          const { data: _urlLegere } = supa.storage.from("content").getPublicUrl(_cheminLeger);
+          if (_urlLegere?.publicUrl) _obtenue = cdnUrl(_urlLegere.publicUrl); else _issue = "url_legere_absente";
+        } else _issue = "envoi_legere_refuse";
+      } catch (e) { _issue = "envoi_legere_erreur"; }
+      // Une mesure par photo : les octets réellement produits, jamais l'URL.
+      try { if (window.tel && tel.action) tel.action("image_legere", {
+        grande_octets: _octetsDataUrl(base64Data), legere_octets: _octetsDataUrl(_legere.dataUrl),
+        largeur: _legere.largeur, format: _legere.format, issue: _issue
+      }); } catch (e) {}
+    } else if (_estImage && folder === "photos" && _obtenue) {
+      try { if (window.tel && tel.action) tel.action("image_legere", { grande_octets: _octetsDataUrl(base64Data), legere_octets: 0, largeur: 0, format: "aucune", issue: "sans_legere" }); } catch (e) {}
+    }
     if (_obtenue) return _obtenue;
     try { await supa.storage.from("content").remove([filePath]); } catch (e) {}
     console.warn("upload : URL publique introuvable, fichier retiré de Storage —", filePath);

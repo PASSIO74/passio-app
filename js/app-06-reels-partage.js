@@ -733,7 +733,7 @@ function renderProfileContent() {
 
   if (tab==="photos") {
     var photos = mine.filter(function(p){return !p.isReel && (p.type==="photo"||p.image);});
-    myPostsDiv.innerHTML = photos.length ? '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;">'+photos.map(function(p){var src=p.image||"https://picsum.photos/seed/"+p.id+"/300/300";return '<div style="aspect-ratio:1;border-radius:8px;overflow:hidden;"><img loading="lazy" decoding="async" src="'+src+'" style="width:100%;height:100%;object-fit:cover;"/></div>';}).join("")+'</div>' : guidedEmpty("📷","Ajoute ta première photo","Un cliché de ton univers, ton atelier, ton travail en cours.");
+    myPostsDiv.innerHTML = photos.length ? '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;">'+photos.map(function(p){var src=p.image?passioThumb(p.image, 360):"https://picsum.photos/seed/"+p.id+"/300/300";return '<div style="aspect-ratio:1;border-radius:8px;overflow:hidden;"><img loading="lazy" decoding="async" src="'+safeUrlAttr(src)+'" style="width:100%;height:100%;object-fit:cover;"/></div>';}).join("")+'</div>' : guidedEmpty("📷","Ajoute ta première photo","Un cliché de ton univers, ton atelier, ton travail en cours.");
   } else if (tab==="videos") {
     // Vidéos « classiques » : on exclut les bobines (elles ont leur propre onglet).
     var videos = mine.filter(function(p){return p.type==="video" && !p.isReel;});
