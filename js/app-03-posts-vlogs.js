@@ -135,12 +135,36 @@ async function sharePostInFeed(id) {
 const _likePending = new Set();
 
 // Les compteurs publics ne s'abonnent plus aux likes de TOUT le réseau.
-// Au plus trois HEAD exacts, séquentiels, par créneau de 15–16,5 s ; aucune
-// liste d'identifiants n'est téléchargée (ni tronquée par max-rows).
+// Au plus trois HEAD exacts, séquentiels, par créneau ; aucune liste
+// d'identifiants n'est téléchargée (ni tronquée par max-rows).
+// ⚠️ LE CRÉNEAU RECULE QUAND RIEN NE BOUGE (2026-09-21) : 15 s tant qu'un
+// compteur change, puis ×1,5 par cycle sans changement (15 → 22,5 → 33,75 →
+// 50,6 → 60 s, plafond). Même politique que les deux filets
+// (`filetProchainPas`, app-02) : ce que la mesure a montré du fil vaut ici —
+// la lecture à cadence fixe est un coût d'activité NULLE, proportionnel aux
+// onglets ouverts, pas à ce que les gens font. Trois règles :
+//   ① un changement de compteur, une erreur (une panne n'est pas un calme), une
+//      carte jamais relue (on vient de faire défiler du contenu neuf), mon
+//      propre like, le retour au premier plan et la reprise réseau rendent la
+//      cadence VIVE (15 s) — l'affichage de MES gestes reste immédiat et local ;
+//   ② une page masquée ne lit rien et ne recule pas (elle est arrêtée) ;
+//   ③ ×1,5 et non ×2, plafond 60 s : un like d'un autre sur une carte qu'on
+//      regarde apparaît en 60 s au pire, 15 s dès que la carte a bougé.
+// L'étalement entre utilisateurs (jitter et phase initiale) est inchangé.
 const POST_LIKE_REFRESH_MS = 15000;
+const POST_LIKE_REFRESH_MAX_MS = 60000;
 const POST_LIKE_REFRESH_JITTER_MS = 1500;
 const POST_LIKE_REFRESH_INITIAL_JITTER_MS = 15000;
 const POST_LIKE_REFRESH_MAX_POSTS = 3;
+// PURE — même forme que `filetProchainPas` ; le banc de charge en porte une
+// copie ESM et un verrou compare les deux suites (tests/unit/charge-realiste).
+function compteursProchainPas(pasActuel, vivant) {
+  var pas = Number(pasActuel);
+  if (!isFinite(pas) || pas < POST_LIKE_REFRESH_MS) pas = POST_LIKE_REFRESH_MS;
+  if (vivant) return POST_LIKE_REFRESH_MS;
+  return Math.min(POST_LIKE_REFRESH_MAX_MS, Math.round(pas * 1.5));
+}
+let _postLikeRefreshPas = POST_LIKE_REFRESH_MS;
 let _postLikeRefreshTimer = null;
 let _postLikeRefreshDueAt = 0;
 let _postLikeRefreshRunning = false;
@@ -151,7 +175,7 @@ let _postLikeRefreshIdentity = null;
 let _postLikeRefreshPhaseIdentity = null;
 let _postLikeRefreshObserver = null;
 const _postLikeRefreshEntries = new Map();
-window._postLikeRefreshStats = { cycles: 0, reads: 0, updated: 0, errors: 0, discarded: 0, initialDelayMs: 0 };
+window._postLikeRefreshStats = { cycles: 0, reads: 0, updated: 0, errors: 0, discarded: 0, initialDelayMs: 0, pasMs: POST_LIKE_REFRESH_MS, cyclesCalmes: 0, changed: 0 };
 
 function _postLikeIdentity() {
   return String(typeof MY_UID === "undefined" ? "" : MY_UID) + ":"
@@ -187,7 +211,25 @@ function _postLikeMutationEnd(id, token) {
   if (!token || token.identity !== _postLikeIdentity() || _postLikeRefreshEntries.get(id) !== token.entry) return;
   token.entry.pending = Math.max(0, token.entry.pending - 1);
   token.entry.version++;
+  _postLikeCadenceReveiller();
+}
+// Reprise VIVE : le pas revient à 15 s et un rendez-vous plus lointain que
+// 15–16,5 s est rapproché. Ne touche jamais à un rendez-vous déjà plus proche
+// (la phase initiale, un cycle imminent), ni à l'étalement entre utilisateurs.
+function _postLikeCadenceReveiller() {
+  _postLikeRefreshPas = POST_LIKE_REFRESH_MS;
+  window._postLikeRefreshStats.pasMs = _postLikeRefreshPas;
+  // Sans tirage : la phase initiale est le seul tirage d'étalement (verrou
+  // « chacun leur échéance »), et le prochain tour retire son propre jitter.
+  const plafond = Date.now() + POST_LIKE_REFRESH_MS + POST_LIKE_REFRESH_JITTER_MS;
+  if (_postLikeRefreshNextAt > plafond) _postLikeRefreshNextAt = plafond;
   _postLikeRefreshWake();
+}
+// Retour au premier plan, retour de bfcache, réseau revenu : on a manqué ce qui
+// s'est passé, on relit vite.
+function _postLikeRefreshReprise() {
+  if (document.hidden) { _postLikeRefreshWake(); return; } // masquée : le réveil coupe le minuteur
+  _postLikeCadenceReveiller();
 }
 function _postLikeCopies(id) {
   return Array.from(new Set(allPostCopies(id).concat(
@@ -297,8 +339,11 @@ async function _postLikeRefreshTour() {
     if (!candidates.length) return;
     queried = true;
     const identity = _postLikeIdentity(), epoch = _postLikeRefreshEpoch;
-    _postLikeRefreshNextAt = Date.now() + POST_LIKE_REFRESH_MS + Math.floor(Math.random() * POST_LIKE_REFRESH_JITTER_MS);
+    const debutTour = Date.now(), jitter = Math.floor(Math.random() * POST_LIKE_REFRESH_JITTER_MS);
+    _postLikeRefreshNextAt = debutTour + _postLikeRefreshPas + jitter;
     window._postLikeRefreshStats.cycles++;
+    // Une carte jamais relue = du contenu neuf sous les yeux : cadence vive.
+    let vivant = candidates.some(item => !item.entry.checkedAt);
     for (const { id, entry } of candidates) {
       if (!_postLikeRefreshRunning || navigator.onLine === false || identity !== _postLikeIdentity() || epoch !== _postLikeRefreshEpoch || !_postLikeVisibleIds().includes(id)) break;
       if (entry.pending) continue;
@@ -317,6 +362,7 @@ async function _postLikeRefreshTour() {
       // Un zéro est un résultat ; NULL, un refus ou une réponse périmée n'en est pas un.
       if (!result || result.error || !Number.isSafeInteger(result.count) || result.count < 0) {
         window._postLikeRefreshStats.errors++;
+        vivant = true; // une erreur n'est pas une absence de changement
         continue;
       }
       if (!_postLikeRefreshRunning || identity !== _postLikeIdentity() || epoch !== _postLikeRefreshEpoch
@@ -326,12 +372,19 @@ async function _postLikeRefreshTour() {
         continue;
       }
       const copies = _postLikeCopies(id);
+      if (copies.some(function (post) { return post.likes !== result.count; })) { vivant = true; window._postLikeRefreshStats.changed++; }
       copies.forEach(function (post) { post.likes = result.count; }); // MON liked reste local
       entry.version++;
       const post = copies[0];
       if (post) _paintPostLike(id, !!post.liked || (state.user.likedPosts || []).includes(id), result.count, null, false);
       window._postLikeRefreshStats.updated++;
     }
+    // Le pas du PROCHAIN créneau se décide sur ce que ce tour a vu ; le
+    // rendez-vous posé en tête de tour est recalé avec le même jitter.
+    _postLikeRefreshPas = compteursProchainPas(_postLikeRefreshPas, vivant);
+    window._postLikeRefreshStats.pasMs = _postLikeRefreshPas;
+    if (!vivant) window._postLikeRefreshStats.cyclesCalmes++;
+    _postLikeRefreshNextAt = debutTour + _postLikeRefreshPas + jitter;
   } finally {
     _postLikeRefreshBusy = false;
     if (_postLikeRefreshRunning && !document.hidden) {
@@ -349,10 +402,10 @@ function startPostLikeRefresh() {
     _postLikeRefreshObserver = new MutationObserver(_postLikeRefreshWake);
     _postLikeRefreshObserver.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "style", "hidden"] });
     document.addEventListener("scroll", _postLikeRefreshWake, { capture: true, passive: true });
-    document.addEventListener("visibilitychange", _postLikeRefreshWake);
-    window.addEventListener("pageshow", _postLikeRefreshWake);
+    document.addEventListener("visibilitychange", _postLikeRefreshReprise);
+    window.addEventListener("pageshow", _postLikeRefreshReprise);
     window.addEventListener("resize", _postLikeRefreshWake, { passive: true });
-    window.addEventListener("online", _postLikeRefreshWake);
+    window.addEventListener("online", _postLikeRefreshReprise);
   }
   _postLikeRefreshWake();
 }

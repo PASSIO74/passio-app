@@ -8,7 +8,7 @@ import { pathToFileURL } from "node:url";
 import { verdictReponse } from "./charge-verdict.mjs";
 import { optionsBanc, emailCapacite, abonnements, actionPrevue, pausePrevue, decalageInitial,
   postPourLike, aimerEtRetirer, delaiFixture, DisponibiliteRealtime,
-  PROFIL_REALTIME, LIKES_VISIBLES, compteurHead, pauseCompteurs, decalageInitialCompteurs, familleFrameRealtime,
+  PROFIL_REALTIME, LIKES_VISIBLES, compteurHead, pauseCompteurs, pauseCompteursAdaptative, compteursProchainPas, decalageInitialCompteurs, familleFrameRealtime,
   partenaire, clePaire, comptesPourPalier, Budget, LIMITES, statistiques, verdictAvecCompteurs, Sondes } from "./lib/charge-realiste.mjs";
 
 const sleep = ms => new Promise(resolveSleep => setTimeout(resolveSleep, ms));
@@ -24,6 +24,7 @@ export async function executer(options) {
   const o = optionsBanc(["--projet", options.projet, "--paliers", options.paliers.join(","),
     "--duree", String(options.duree), "--graine", String(options.graine), "--scenario", options.scenario,
     "--pages", options.pages.join(","), "--profil-realtime", options.profilRealtime || PROFIL_REALTIME,
+    ...(options.compteursCadence ? ["--compteurs-cadence", options.compteursCadence] : []),
     ...(options.prevolSeulement ? ["--prevol"] : []), ...(options.executer ? ["--executer", "--sortie", options.sortie] : [])]);
   if (!o.executer) return { plan: true, ...o };
   if (process.env.GITHUB_ACTIONS || process.env.CI) throw new Error("EXECUTION_CI_INTERDITE");
@@ -335,31 +336,44 @@ export async function executer(options) {
     if (phase === "mesure") compte.postsVisibles = ids.slice(0, LIKES_VISIBLES.maximum);
     return { posts: ids, likes: likes.length, commentaires: commentaires.length, reactions: reactions.length, profils: profils.length };
   }
-  async function cycleCompteursVisibles(compte, fin) {
+  async function cycleCompteursVisibles(compte, fin, pasMs) {
     const debutCycle = performance.now(), date = new Date().toISOString(); let ok = false, motif = null, lectures = 0;
+    // « Vivant » comme dans le produit : un compteur qui change, une erreur, ou
+    // une carte jamais relue par ce compte. Le premier cycle est donc vivant.
+    let vivant = false;
+    compte.derniersComptes = compte.derniersComptes || new Map();
     try {
       const ids = [...new Set(compte.postsVisibles)].slice(0, LIKES_VISIBLES.maximum);
       if (ids.length !== LIKES_VISIBLES.maximum) throw new Error("POSTS_VISIBLES_INSUFFISANTS");
       for (const id of ids) {
         if (arret || performance.now() >= fin) break;
-        await compterLikes(compte, id); lectures++;
+        const n = await compterLikes(compte, id); lectures++;
+        if (!compte.derniersComptes.has(id) || compte.derniersComptes.get(id) !== n) vivant = true;
+        compte.derniersComptes.set(id, n);
       }
       ok = true;
-    } catch (e) { motif = motifSur(e); }
+    } catch (e) { motif = motifSur(e); vivant = true; }
     mesures.push({ phase, palier: stage?.taille, page: stage?.page, type: "parcours", famille: "compteurs_visibles",
-      date, compte: compte.index, ok, motif, lectures, ms: Math.round(performance.now() - debutCycle) });
+      date, compte: compte.index, ok, motif, lectures, vivant, pasMs: pasMs ?? LIKES_VISIBLES.fraicheurMs, ms: Math.round(performance.now() - debutCycle) });
     if (!ok && ["HTTP_401", "HTTP_403", "HTTP_429", "HEAD_COMPTE_INVALIDE", "POSTS_VISIBLES_INSUFFISANTS"].includes(motif)) stop(motif);
+    return vivant;
   }
   async function surveillerCompteurs(compte, start, fin) {
-    let tour = 0, prochainDebut = start + decalageInitialCompteurs(o.graine, compte.index);
+    let tour = 0, pas = LIKES_VISIBLES.fraicheurMs, prochainDebut = start + decalageInitialCompteurs(o.graine, compte.index);
     while (!arret && prochainDebut < fin) {
       await sleep(Math.max(0, Math.min(prochainDebut, fin) - performance.now()));
       if (arret || performance.now() >= fin) break;
       const debutCycle = performance.now();
-      await cycleCompteursVisibles(compte, fin);
+      const vivant = await cycleCompteursVisibles(compte, fin, pas);
       // Cadence entre débuts ; un cycle lent ne provoque jamais un rattrapage
-      // de cycles manqués ni des HEAD parallèles pour le même compte.
-      prochainDebut = Math.max(performance.now(), debutCycle + pauseCompteurs(o.graine, compte.index, tour++));
+      // de cycles manqués ni des HEAD parallèles pour le même compte. En
+      // cadence adaptative, le pas du prochain cycle se décide sur celui-ci,
+      // comme dans le produit (`compteursProchainPas`, app-03).
+      const pause = o.compteursCadence === "adaptative"
+        ? pauseCompteursAdaptative(o.graine, compte.index, tour, pas = compteursProchainPas(pas, vivant))
+        : pauseCompteurs(o.graine, compte.index, tour);
+      tour++;
+      prochainDebut = Math.max(performance.now(), debutCycle + pause);
     }
   }
   function convPour(compte, taille) { return convs.find(c => c.id === `${prefix}_conv_${clePaire(compte.index, partenaire(compte.index, taille))}`); }
@@ -518,7 +532,10 @@ export async function executer(options) {
         profilRealtime: o.profilRealtime, connexionMs: Math.round(debutChauffe - debutConnexion), echauffementMs: chauffeMs, comptesEchauffement: Math.min(4, taille),
         dureeMs, dureeMuraleMs, validiteMesure: verdict.validiteMesure,
         http, parcours, httpPrincipal, httpCompteurs, parcoursPrincipaux, parcoursCompteurs, realtime, messages, publications,
-        compteursVisibles: { ...LIKES_VISIBLES, cadence: "entre_debuts", coalescenceAvecFil: false,
+        compteursVisibles: { ...LIKES_VISIBLES, cadence: "entre_debuts", politique: o.compteursCadence, coalescenceAvecFil: false,
+          cycles: subset.filter(m => m.type === "parcours" && m.famille === "compteurs_visibles").length,
+          cyclesCalmes: subset.filter(m => m.type === "parcours" && m.famille === "compteurs_visibles" && m.vivant === false).length,
+          headParPersonne: taille ? Number((subset.filter(m => m.type === "http" && m.methode === "HEAD").length / taille).toFixed(2)) : 0,
           portee: "3 premiers posts de la derniere page, visibles pendant toute la mesure ; GET fil ne certifie pas un compte exact" },
         livraisonRealtimeQualifiee: verdict.validiteMesure.ok && o.scenario === "complet" && messages.succes > 0 && messages.erreurs === 0,
         familles: Object.fromEntries([...new Set(subset.map(m => `${m.type}:${m.famille}`))].map(key => [key, statistiques(subset.filter(m => `${m.type}:${m.famille}` === key))])),
