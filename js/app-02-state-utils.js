@@ -242,6 +242,7 @@ function _leanState() {
       // page chargée) : persistée, elle réinjectait au démarrage suivant une
       // liste périmée par-dessus les aperçus frais du fil (contre-revue).
       delete c._commentsSuite;
+      delete c._commentsPagine;
       if (Array.isArray(p.steps)) {
         c.steps = p.steps.map((s) => ({ ...s, photo: stripData(s.photo), video: stripData(s.video), audio: stripData(s.audio) }));
       }
@@ -2014,12 +2015,19 @@ function commentThreadCount(comments) {
 // la RLS montre au lecteur). Le compte affiché est donc :
 //   · le total serveur (ou, s'il est plus grand, ce qui est chargé du serveur —
 //     un commentaire reçu en direct après le chargement compte aussi),
-//   · plus mes commentaires pas encore synchronisés (sans `fromSupabase`),
+//   · plus mes commentaires EN ATTENTE d'envoi (`_pending`/`_failed`, posés
+//     par la file ou le chemin direct à la création) — jamais une simple ligne
+//     sans `fromSupabase` : la liste persistée par l'ancien client (mes
+//     publications, discussions ouvertes avant le lot) n'en portait pas, et
+//     la compter par-dessus le total serveur doublait le compte (contre-revue),
 //   · plus les RÉPONSES des commentaires chargés (le serveur ne compte que le
 //     premier niveau, comme avant : elles ne sont connues qu'une fois le fil
 //     ouvert et hydraté).
 // Sans `commentsTotal` (repli sans fonction SQL, contenu de démonstration,
 // commentaire d'activité), on compte la liste, exactement comme avant.
+function commentaireEnAttente(c) {
+  return !!c && !c.fromSupabase && (c._pending === true || c._failed === true);
+}
 function nbCommentairesPost(p) {
   var liste = (p && Array.isArray(p.comments)) ? p.comments : [];
   var charges = commentThreadCount(liste);
@@ -2028,7 +2036,7 @@ function nbCommentairesPost(p) {
   liste.forEach(function (c) {
     if (!c) return;
     premierNiveau++;
-    if (c.fromSupabase) serveur++; else locaux++;
+    if (c.fromSupabase) serveur++; else if (commentaireEnAttente(c)) locaux++;
   });
   var reponses = charges - premierNiveau;
   return Math.max(p.commentsTotal, serveur) + locaux + reponses;

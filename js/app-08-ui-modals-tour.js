@@ -4607,7 +4607,7 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
         likes: cpl.likes,
         liked: cpl.aime,
         comments: postComments, fromSupabase: true,
-        ...(precedent ? { _commentsSuite: precedent.suite } : {}),
+        ...(precedent ? { _commentsSuite: precedent.suite, ...(precedent.pagine ? { _commentsPagine: true } : {}) } : {}),
         // Compte EXACT des commentaires de premier niveau (RLS du lecteur) ;
         // `comments` ne porte plus que les aperçus. `nbCommentairesPost` (app-02)
         // est la seule autorité d'affichage. Absent (repli), on compte la liste.
@@ -4773,7 +4773,7 @@ function _discussionChargee(postId, apercus, profils) {
       return { id: c.id, authorId: c.author_id, authorName: cp.username || "Profil", authorEmoji: cp.emoji || "✨", text: c.content || "", content: c.content || "", createdAt: supaTs(c.created_at), fromSupabase: true };
     });
     const comments = nouveaux.concat(avant.comments).sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
-    return { comments, suite: avant._commentsSuite || null };
+    return { comments, suite: avant._commentsSuite || null, pagine: avant._commentsPagine === true };
   } catch (e) { return null; }
 }
 // Le chemin d'avant, tel quel : quatre lectures, listes entières, 200

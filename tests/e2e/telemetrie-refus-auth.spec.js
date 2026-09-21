@@ -83,6 +83,19 @@ test.describe("Télémétrie — refus attendu d'une porte d'authentification", 
     expect(user.severity).toBe("warn");
   });
 
+  test("③bis 404 sur /rest/v1/rpc/fil_compteurs (fonction absente : attente de migration ou retour arrière) → info + refus_attendu ; un 500 reste un problème", async ({ page }) => {
+    const absente = await mesurer(page, "/rest/v1/rpc/fil_compteurs", 404);
+    expect(absente).not.toBeNull();
+    expect(absente.status).toBe("error");
+    expect(absente.severity).toBe("info");
+    expect(absente.meta && absente.meta.refus_attendu).toBe(true);
+    const panne = await mesurer(page, "/rest/v1/rpc/fil_compteurs", 500);
+    expect(panne.severity).toBe("warn");
+    expect(panne.meta && panne.meta.refus_attendu).toBeFalsy();
+    const autreRpc = await mesurer(page, "/rest/v1/rpc/autre", 404);
+    expect(autreRpc.severity).toBe("warn");
+  });
+
   test("④ contrat de source : la marque existe dans le hook fetch de telemetry.js", async () => {
     const src = fs.readFileSync(SOURCE_TELEMETRIE, "utf8");
     expect(src).toMatch(/refus_attendu: true/);

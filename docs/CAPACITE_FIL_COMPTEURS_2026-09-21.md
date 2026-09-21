@@ -142,13 +142,33 @@ change aujourd'hui ; c'est une borne, pas une économie mesurée.
   le motif de la garde, sans verdict, la version revue reste en place (témoin
   hors migration : en DEFINER, un compte bloqué compterait 3 likes au lieu de
   1). Ne tourne pas sous Windows (pas de `initdb`) : CI Linux.
-- `tests/e2e/capacite-fil-compteurs.spec.js` (21) : une lecture groupée par
+- `tests/e2e/capacite-fil-compteurs.spec.js` (26) : une lecture groupée par
   page, repli mémorisé, erreur passagère repliée pour la page, trois échecs,
   clé de release, chemin sans SDK, pagination de la discussion avec curseur et
   bouton, page incomplète, dernière page qui recale, erreur de page sans
   squelette, compte tenu localement (local, direct, suppression, réponses),
   discussion conservée à travers le filet, chemin d'avant à 45, panneau des
-  Bobines, autorité pure, signatures de rendu (app-02 et app-08).
+  Bobines, autorité pure, signatures de rendu (app-02 et app-08), et les cinq
+  cas de la critique de complétude ci-dessous.
+- Critique de complétude (troisième passe, 6 constats confirmés à deux
+  vérificateurs chacun, tous corrigés) : **« local » ne veut plus dire « sans
+  `fromSupabase` » mais « en attente d'envoi »** (`commentaireEnAttente` :
+  `_pending`/`_failed`, posés par la file et par les chemins directs à la
+  création) — la liste persistée par l'ancien client sur MES publications
+  (sans drapeau) était comptée par-dessus le total exact, compte doublé sur
+  mon profil (P1) ; une RÉPONSE confirmée par la file n'incrémente plus le
+  total de premier niveau (elle vit dans `comment_interactions`, comptée via
+  `replies` — P1) ; un GIF posté depuis la carte ou le détail passe par la
+  file et se confirme (il restait local pour toujours — P1) ; supprimer un
+  commentaire décrémente TOUTES les copies (la carte du fil gardait l'ancien
+  total sur mes publications — P2) ; un commentaire supprimé en base par son
+  auteur ne revient plus à la réouverture : les pages déjà chargées ne sont
+  gardées que si la page annonce une suite, et seules les lignes plus
+  anciennes que la page sont conservées (`_commentsPagine`, `plancher` — P2) ;
+  le 404 de `rpc/fil_compteurs` est marqué `refus_attendu` par le hook fetch
+  (il ouvrait un « problème » au centre de pilotage ; « une fois par session »
+  était faux : une fois par onglet et par heure — P3). Le titre de la modale
+  suit désormais `nbCommentairesPost` à chaque rafraîchissement du fil.
 - Contre-revue adversariale multi-agents (8 lentilles, 3 vérificateurs par
   constat, 27 constats confirmés) sur le second jet, tous corrigés : mon
   commentaire confirmé en base devient une ligne serveur et entre dans le total
@@ -177,7 +197,7 @@ change aujourd'hui ; c'est une borne, pas une économie mesurée.
 - `tests/e2e/capacite-likes-visibles.spec.js` : la course « ancienne lecture
   du fil » est maintenant exercée sur les deux chemins (4 cas au lieu de 2).
 - Suites voisines vertes en local : `capacite-fil-cache`, `interactions`,
-  `capacite-likes-visibles` (26). Deux cas de cette dernière ont rougi une fois
+  `capacite-likes-visibles` (24). Deux cas de cette dernière ont rougi une fois
   dans une exécution groupée de quatre suites puis sont passés seuls et dans
   la suite complète : cadence d'horloge sous charge locale, pas le lot.
 
@@ -187,7 +207,7 @@ change aujourd'hui ; c'est une borne, pas une économie mesurée.
    sur staging puis production (canal ③) ; vérifier en base (canal ①) que
    `fil_compteurs` est INVOKER.
 2. Fusion et déploiement du client. Dans l'autre ordre, le client fonctionne
-   aussi : un `PGRST202` par session, puis les lectures d'avant.
+   aussi : un `PGRST202` par onglet et par heure (TTL de la mémorisation), puis les lectures d'avant.
 
 Retour arrière : `drop function public.fil_compteurs(text[])` ramène tous les
 clients au chemin d'avant à la session suivante, sans redéploiement ; ou revert
@@ -196,6 +216,6 @@ du commit client. Aucune donnée n'est touchée dans les deux sens.
 ## Pilotage
 
 Aucun nouvel événement. La télémétrie HTTP existante voit `POST /rpc/fil_compteurs`
-à la place des trois GET (`profiles` reste un GET dans les deux cas) ; un `PGRST202` apparaît au plus une fois par session
+à la place des trois GET (`profiles` reste un GET dans les deux cas) ; un `PGRST202` (404, marqué `refus_attendu` par le hook fetch : pas un problème au pilotage) apparaît au plus une fois par onglet et par heure
 tant que la migration n'est pas appliquée (à lire comme « pas encore appliquée »,
 pas comme une panne).

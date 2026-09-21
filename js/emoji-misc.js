@@ -601,12 +601,18 @@ function _postGifComment(threadId, gifUrl) {
   thread.comments.unshift({
     id: cid, authorId: meId, authorName: nm, author: nm,
     authorEmoji: (p && p.emoji) || "✨",
-    text: gifUrl, content: gifUrl, createdAt: Date.now(), at: Date.now()
+    text: gifUrl, content: gifUrl, createdAt: Date.now(), at: Date.now(),
+    _pending: kind !== "event"
   });
   if (typeof thread.save === "function") thread.save();
+  // Même chemin que `submitComment` : la FILE (réessai, statut « Envoi… »,
+  // confirmation qui fait entrer la ligne dans le total exact du fil). Le tir
+  // sans confirmation laissait le GIF « local » pour toujours : compté deux
+  // fois au tour suivant du filet (contre-revue).
   try {
     if (kind === "event" && typeof supaAddEventComment === "function") supaAddEventComment(threadId, gifUrl);
-    else if (typeof supaAddComment === "function" && typeof MY_UID !== "undefined" && MY_UID) supaAddComment(threadId, gifUrl, cid);
+    else if (typeof MY_UID !== "undefined" && MY_UID && typeof _enqueueCommentSync === "function") _enqueueCommentSync({ type: "post_comment", threadId: threadId, commentId: cid, nodeId: cid, text: gifUrl });
+    else if (typeof supaAddComment === "function" && typeof MY_UID !== "undefined" && MY_UID) Promise.resolve(supaAddComment(threadId, gifUrl, cid)).then(function (ok) { if (ok && typeof _commentaireConfirme === "function") _commentaireConfirme(threadId, cid); }).catch(function () {});
   } catch (e) {}
   // Notifie l'auteur du fil (cross-compte).
   try {

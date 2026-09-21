@@ -535,6 +535,10 @@ function _commentaireConfirme(threadId, nodeId) {
   var found = _findCommentNode(threadId, nodeId);
   if (!found || !found.node || found.node.fromSupabase) return;
   found.node.fromSupabase = true;
+  // Une RÉPONSE (`comment_interactions`) n'est pas un commentaire de premier
+  // niveau : le serveur ne la compte pas, `nbCommentairesPost` la compte via
+  // les `replies` — l'ajouter au total la comptait deux fois (contre-revue).
+  if (found.parent) return;
   var copies = (typeof allPostCopies === "function") ? allPostCopies(threadId) : [];
   var vu = new Set();
   copies.forEach(function (c) {
@@ -828,21 +832,31 @@ function _fusionnerPageCommentaires(post, page) {
   var ids = new Set(page.map(function (c) { return c.id; }));
   // Une discussion DÉJÀ paginée plus loin que cette page (réouverture après
   // 20 s) garde ses pages : la page 1 y est fusionnée, le curseur ne recule pas.
-  var dejaPlusLoin = Object.prototype.hasOwnProperty.call(post, "_commentsSuite") && serveurAvant > page.length;
+  // Deux conditions de plus (contre-revue) : la page doit annoncer une SUITE
+  // (sans suite, elle EST la liste entière — une ligne supprimée en base par
+  // son auteur revenait sinon, et avec elle un total faux pour la session), et
+  // seules les lignes PLUS ANCIENNES que la page sont gardées (une ligne dans
+  // la fenêtre de la page qui n'y est plus a été supprimée).
+  var dejaPlusLoin = post._commentsPagine === true && !!page.suite && serveurAvant > page.length;
   var suite = dejaPlusLoin ? (post._commentsSuite || null) : (page.suite || null);
+  var plancher = page.reduce(function (min, c) { var t = c && c.createdAt; return (typeof t === "number" && t < min) ? t : min; }, Infinity);
+  var anciennes = dejaPlusLoin ? (post.comments || []).filter(function (c) { return c && c.fromSupabase && !ids.has(c.id) && (c.createdAt || 0) < plancher; }) : [];
+  var connues = page.length + anciennes.length;
   if (Number.isSafeInteger(total)) {
-    total = suite ? Math.max(total, page.length, dejaPlusLoin ? serveurAvant : 0) : (dejaPlusLoin ? Math.max(serveurAvant, page.length) : page.length);
+    total = suite ? Math.max(total, connues) : connues;
   } else if (suite) {
     total = Math.max(page.length, serveurAvant);
   }
-  var locaux = (post.comments || []).filter(function (c) { return c && !ids.has(c.id) && !c.fromSupabase; });
-  var anciennes = dejaPlusLoin ? (post.comments || []).filter(function (c) { return c && c.fromSupabase && !ids.has(c.id); }) : [];
+  // Ce qui est à moi et en attente d'envoi ; une ligne sans drapeau ni
+  // `fromSupabase` (liste persistée par l'ancien client) est périmée : la page fait foi.
+  var locaux = (post.comments || []).filter(function (c) { return c && !ids.has(c.id) && commentaireEnAttente(c); });
   var liste = page.map(function (c) { return Object.assign({}, c, { text: c.content || c.text || "" }); })
     .concat(anciennes, locaux)
     .sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
   copies.forEach(function (c) {
     c.comments = liste;
     c._commentsSuite = suite;
+    if (!dejaPlusLoin) delete c._commentsPagine;
     if (Number.isSafeInteger(total)) c.commentsTotal = total;
   });
 }
@@ -880,7 +894,7 @@ async function _chargerCommentairesPrecedents(postId) {
     // la hausse — aucun événement DELETE n'est écouté) se recale dessus.
     var total = suite ? _totalConnu(postId, post) : liste.filter(function (c) { return c && c.fromSupabase; }).length;
     _copiesDiscussion(postId, post).forEach(function (c) {
-      c.comments = liste; c._commentsSuite = suite;
+      c.comments = liste; c._commentsSuite = suite; c._commentsPagine = true;
       if (Number.isSafeInteger(total)) c.commentsTotal = total;
     });
     if (nouveaux.length && typeof hydrateCommentInteractions === "function") {
@@ -1285,6 +1299,7 @@ function submitComment(postId) {
     authorName: p?.name || state.user.name || "Moi",
     authorEmoji: p?.emoji || "✨",
     text, content: text, createdAt: Date.now(),
+    _pending: true, // en attente d'envoi : compté par nbCommentairesPost jusqu'à confirmation
   });
   // Ensure author is in seed.users for userById()
   const meEntry = { id: realAuthorId, name: p?.name || state.user.name || "Moi", profileEmoji: p?.emoji || "✨", avatar: p?.color || "#8b5cf6" };
@@ -1515,6 +1530,13 @@ function _refreshCommentThreadUINow(threadId) {
     if (window._openCommentsPostId === threadId) {
       var box = document.getElementById("commentsBox");
       if (box) _setThreadHtml(box, _renderCommentsList(thread.comments, threadId));
+      // Le titre suit l'autorité du compte (une réponse ou un GIF confirmé,
+      // une ligne retirée : la liste bouge, le titre aussi).
+      if (thread.kind === "post" && typeof nbCommentairesPost === "function" && typeof findPostAnywhere === "function") {
+        var _titre = document.querySelector("#commentsModal .modal-title, .modal-title");
+        var _postTitre = findPostAnywhere(threadId);
+        if (_titre && _postTitre && /^Discussion/.test(_titre.textContent || "")) _titre.textContent = "Discussion (" + nbCommentairesPost(_postTitre) + ")";
+      }
     }
   } catch(e) {}
   // ⚠️ La feuille de commentaires d'ÉTAPE (`#stepCommentsBox`, `kind: "step"`) a
@@ -1632,9 +1654,15 @@ function deleteCommentEntry(threadId, commentId, localOnly) {
   var retire = idx > -1 ? thread.comments.splice(idx, 1)[0] : null;
   // Le total serveur du fil (`commentsTotal`) comptait ce commentaire s'il
   // venait de la base ; un commentaire local pas encore envoyé n'y était pas.
+  // Sur TOUTES les copies du post (carte du fil, ma copie userPosts, Bobines) :
+  // une seule décrémentée laissait la carte du fil à l'ancien total.
   if (retire && retire.fromSupabase && thread.kind === "post") {
-    var postDuFil = (typeof findPostAnywhere === "function") ? findPostAnywhere(threadId) : null;
-    if (postDuFil && Number.isSafeInteger(postDuFil.commentsTotal) && postDuFil.commentsTotal > 0) postDuFil.commentsTotal--;
+    var copiesDuFil = (typeof _copiesDiscussion === "function") ? _copiesDiscussion(threadId, null) : [];
+    var vuDel = new Set();
+    copiesDuFil.forEach(function (c) {
+      if (!c || vuDel.has(c)) return; vuDel.add(c);
+      if (Number.isSafeInteger(c.commentsTotal) && c.commentsTotal > 0) c.commentsTotal--;
+    });
   }
   if (typeof thread.save === "function") thread.save();
   // Reflète sur le post local (compteur de la carte fil) le cas échéant — patch
@@ -1806,7 +1834,7 @@ function submitCommentSheet(threadId) {
       var _cid = "c_" + uid();
       var p = (typeof currentProfile === "function") ? currentProfile() : null;
       var realAuthorId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
-      post.comments.unshift({ id: _cid, authorId: realAuthorId, authorName: (p && p.name) || state.user.name || "Moi", authorEmoji: (p && p.emoji) || "✨", text: t, content: t, createdAt: Date.now() });
+      post.comments.unshift({ id: _cid, authorId: realAuthorId, authorName: (p && p.name) || state.user.name || "Moi", authorEmoji: (p && p.emoji) || "✨", text: t, content: t, createdAt: Date.now(), _pending: true });
       if (typeof supaAddComment === "function" && typeof MY_UID !== "undefined" && MY_UID) {
         Promise.resolve(supaAddComment(threadId, t, _cid)).then(function (ok) { if (ok) _commentaireConfirme(threadId, _cid); }).catch(function () {});
       }

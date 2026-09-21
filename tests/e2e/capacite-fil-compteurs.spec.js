@@ -18,8 +18,13 @@ const { bootOnboarded } = require("./app-helper");
 //     d'essai de la session, rien de mémorisé ;
 //   · la discussion se charge par pages de 30, les plus récents d'abord, avec
 //     un curseur `(created_at, id)` et un bouton « précédents · N restants » ;
-//   · mes commentaires locaux, un commentaire reçu en direct et une
-//     suppression tiennent le compte juste sans recharger le fil.
+//   · mes commentaires EN ATTENTE (`_pending`), un commentaire reçu en direct
+//     et une suppression tiennent le compte juste sans recharger le fil ;
+//   · contre-revue (critique de complétude) : une liste persistée par l'ancien
+//     client (sans drapeau) ne double pas le total, une RÉPONSE confirmée
+//     n'entre pas dans le total de premier niveau, un GIF depuis la carte
+//     passe par la file et se confirme, une suppression atteint toutes les
+//     copies, un commentaire supprimé en base ne revient pas à la réouverture.
 // ═══════════════════════════════════════════════════════════════════════════
 
 async function preparer(page, opts = {}) {
@@ -268,7 +273,7 @@ test("le compte tient sans recharger : commentaire local, commentaire reçu en d
     const p = findPostAnywhere("fil_01");
     const out = { depart: nbCommentairesPost(p) };
     // 1. Mon commentaire, pas encore en base : compte tout de suite.
-    p.comments.unshift({ id: "c_local", authorId: MY_UID, text: "Moi", content: "Moi", createdAt: Date.now() });
+    p.comments.unshift({ id: "c_local", authorId: MY_UID, text: "Moi", content: "Moi", createdAt: Date.now(), _pending: true });
     out.local = nbCommentairesPost(p);
     // 2. Un commentaire d'un autre, reçu par le canal temps réel.
     const bindings = [];
@@ -308,7 +313,9 @@ test("nbCommentairesPost : sans total, la liste ; avec total, le plus grand des 
       nbCommentairesPost({ comments: [] }),
       nbCommentairesPost({ comments: [s({ id: 1 }), s({ id: 2, replies: [{ id: "r" }, { id: "e", type: "emoji_reaction" }] })] }),
       nbCommentairesPost({ commentsTotal: 7, comments: [s({ id: 1 }), s({ id: 2 })] }),
-      nbCommentairesPost({ commentsTotal: 7, comments: [s({ id: 1 }), { id: "local" }] }),
+      nbCommentairesPost({ commentsTotal: 7, comments: [s({ id: 1 }), { id: "local", _pending: true }] }),
+      nbCommentairesPost({ commentsTotal: 7, comments: [s({ id: 1 }), { id: "echec", _failed: true }] }),
+      nbCommentairesPost({ commentsTotal: 7, comments: [s({ id: 1 }), { id: "persiste_sans_drapeau" }] }), // liste de l'ancien client : jamais par-dessus le total
       nbCommentairesPost({ commentsTotal: 1, comments: [s({ id: 1 }), s({ id: 2 }), s({ id: 3 })] }),
       nbCommentairesPost({ commentsTotal: 7, comments: [s({ id: 1, replies: [{ id: "r" }] })] }),
       nbCommentairesPost({ commentsTotal: -3, comments: [s({ id: 1 })] }),
@@ -316,7 +323,7 @@ test("nbCommentairesPost : sans total, la liste ; avec total, le plus grand des 
       nbCommentairesPost(null),
     ];
   });
-  expect(r).toEqual([0, 3, 7, 8, 3, 8, 1, 1, 0]);
+  expect(r).toEqual([0, 3, 7, 8, 8, 7, 3, 8, 1, 1, 0]);
 });
 
 test("les signatures de rendu du fil citent l'autorité du compte, pas la longueur des aperçus", async () => {
@@ -527,7 +534,7 @@ test("mon commentaire confirmé devient serveur et entre dans le total : jamais 
     await openComments("fil_01");
     const out = { depart: nbCommentairesPost(p) };
     // J'envoie un commentaire : local, compté tout de suite.
-    p.comments.unshift({ id: "c_moi", authorId: MY_UID, text: "Moi", content: "Moi", createdAt: Date.now() });
+    p.comments.unshift({ id: "c_moi", authorId: MY_UID, text: "Moi", content: "Moi", createdAt: Date.now(), _pending: true });
     out.local = nbCommentairesPost(p);
     // La file confirme l'écriture : le nœud devient serveur, le total avance.
     _cmtObSetStatus("fil_01", "c_moi", true);
@@ -616,4 +623,123 @@ test("la mémorisation « fonction absente » expire après une heure", async ({
   expect(r.forme).toBe(true);
   expect(r.n1).toBe(1); expect(r.n2).toBe(1); expect(r.n3).toBe(2);
   expect(r.total).toBe(45);
+});
+
+test("ma publication : la liste persistée par l'ancien client (sans drapeau) ne double pas le total exact", async ({ page }) => {
+  await preparer(page);
+  const r = await page.evaluate(async () => {
+    // Neuf lignes sans `fromSupabase` ni `_pending` : ce que l'ancien client
+    // laissait dans `userPosts` après une discussion ouverte ou mes propres commentaires.
+    const persistees = Array.from({ length: 9 }, (_, i) => ({ id: "c_" + String(36 + i).padStart(3, "0"), authorId: "camille", text: "ancien " + i, createdAt: 1000 + i }));
+    state.userPosts = [{ id: "fil_00", authorId: MY_UID, text: "À moi", comments: persistees, likes: 0, createdAt: Date.now(), type: "text" }];
+    state.supabasePosts = await supaLoadPosts();
+    const mien = findPostAnywhere("fil_00");
+    const out = { total: mien.commentsTotal, affiche: nbCommentairesPost(mien), carte: nbCommentairesPost(state.supabasePosts.find(p => p.id === "fil_00")) };
+    // Ouverture : la page serveur remplace la liste persistée (mêmes ids → dédoublonnés), rien en double.
+    window._cmtThreadLoadedAt = {};
+    await openComments("fil_00");
+    const q = findPostAnywhere("fil_00");
+    out.ouverture = { charges: q.comments.length, doublons: new Set(q.comments.map(c => c.id)).size, affiche: nbCommentairesPost(q), titre: document.querySelector(".modal-title").textContent };
+    // Le rendu de MON profil et de la carte disent 45, pas 54.
+    out.html = (renderPostHTML(mien).match(/💬\s*(\d+)/) || [])[1];
+    state.userPosts = [];
+    return out;
+  });
+  expect(r.total).toBe(45);
+  expect(r.affiche).toBe(45); expect(r.carte).toBe(45); expect(r.html).toBe("45");
+  expect(r.ouverture).toEqual({ charges: 30, doublons: 30, affiche: 45, titre: "Discussion (45)" });
+});
+
+test("une réponse confirmée par la file devient serveur sans entrer dans le total de premier niveau", async ({ page }) => {
+  await preparer(page);
+  const r = await page.evaluate(async () => {
+    state.supabasePosts = await supaLoadPosts();
+    window._cmtThreadLoadedAt = {};
+    await openComments("fil_01");
+    const p = findPostAnywhere("fil_01");
+    const parent = p.comments.find(c => c.id === "c_seul");
+    parent.replies = [{ id: "reply_1", authorId: MY_UID, text: "ma réponse", createdAt: Date.now(), _pending: true }];
+    const avant = { affiche: nbCommentairesPost(p), total: p.commentsTotal };
+    _cmtObSetStatus("fil_01", "reply_1", true);
+    await new Promise(r => requestAnimationFrame(() => r())); // le rafraîchissement de la modale est différé d'une image
+    return { avant, apres: { affiche: nbCommentairesPost(p), total: p.commentsTotal, serveur: parent.replies[0].fromSupabase === true, titre: document.querySelector(".modal-title").textContent } };
+  });
+  expect(r.avant).toEqual({ affiche: 2, total: 1 });
+  expect(r.apres).toEqual({ affiche: 2, total: 1, serveur: true, titre: "Discussion (2)" });
+});
+
+test("un GIF posté depuis la carte passe par la file : en attente, puis confirmé une seule fois", async ({ page }) => {
+  await preparer(page);
+  const r = await page.evaluate(async () => {
+    state.supabasePosts = await supaLoadPosts();
+    const p = findPostAnywhere("fil_01");
+    window.__envoisGif = [];
+    window.supaAddComment = async (postId, content, cid) => { __envoisGif.push({ postId, content, cid }); return true; };
+    localStorage.removeItem("passio_comment_outbox_v1");
+    const ok = _postGifComment("fil_01", "https://media.tenor.com/x/passio.gif") === false; // false = « commentaire, pas une réaction » (contrat de la fonction)
+    const noeud = p.comments.find(c => c.text === "https://media.tenor.com/x/passio.gif");
+    const enAttente = { ok, pending: noeud && noeud._pending === true, affiche: nbCommentairesPost(p), total: p.commentsTotal };
+    // La file envoie et confirme.
+    await _cmtObFlush();
+    await new Promise(r => setTimeout(r, 50));
+    const apres = { envois: __envoisGif.length, serveur: noeud.fromSupabase === true, pending: noeud._pending === true, affiche: nbCommentairesPost(p), total: p.commentsTotal };
+    // Le serveur compte la ligne ; le filet ne la compte pas deux fois.
+    __commentaires.push({ id: noeud.id, post_id: "fil_01", author_id: MY_UID, content: noeud.text, created_at: "2026-09-21T12:40:00" });
+    state.supabasePosts = await supaLoadPosts();
+    return { enAttente, apres, filet: nbCommentairesPost(findPostAnywhere("fil_01")) };
+  });
+  expect(r.enAttente).toEqual({ ok: true, pending: true, affiche: 2, total: 1 });
+  expect(r.apres).toEqual({ envois: 1, serveur: true, pending: false, affiche: 2, total: 2 });
+  expect(r.filet).toBe(2);
+});
+
+test("ma publication : supprimer un commentaire décrémente le total sur TOUTES les copies", async ({ page }) => {
+  await preparer(page);
+  const r = await page.evaluate(async () => {
+    state.userPosts = [{ id: "fil_01", authorId: MY_UID, text: "À moi", comments: [], likes: 0, createdAt: Date.now(), type: "text" }];
+    state.supabasePosts = await supaLoadPosts();
+    window._cmtThreadLoadedAt = {};
+    await openComments("fil_01");
+    window.supaLoadComments = async () => [];
+    window.supaDeleteComment = async () => true;
+    deleteCommentEntry("fil_01", "c_seul", true);
+    const mien = findPostAnywhere("fil_01"), carte = state.supabasePosts.find(p => p.id === "fil_01");
+    const out = { mien: { total: mien.commentsTotal, affiche: nbCommentairesPost(mien) }, carte: { total: carte.commentsTotal, affiche: nbCommentairesPost(carte) }, html: (renderPostHTML(carte).match(/💬\s*(\d+)/) || [])[1] };
+    state.userPosts = [];
+    return out;
+  });
+  expect(r.mien).toEqual({ total: 0, affiche: 0 });
+  expect(r.carte).toEqual({ total: 0, affiche: 0 });
+  expect(r.html).toBe("0");
+});
+
+test("un commentaire supprimé en base par son auteur ne revient pas à la réouverture, ni dans le total", async ({ page }) => {
+  await preparer(page);
+  const r = await page.evaluate(async () => {
+    // fil_03 : 5 commentaires, discussion entièrement chargée (≤ 30, curseur nul).
+    for (let i = 0; i < 5; i++) __commentaires.push({ id: "d_" + i, post_id: "fil_03", author_id: "camille", content: "D" + i, created_at: "2026-09-21T14:00:0" + i });
+    state.supabasePosts = await supaLoadPosts();
+    window._cmtThreadLoadedAt = {};
+    await openComments("fil_03");
+    const avant = { charges: findPostAnywhere("fil_03").comments.length, affiche: nbCommentairesPost(findPostAnywhere("fil_03")) };
+    // Camille supprime d_0 (le plus ancien) ET d_4 (le plus récent) sur son téléphone.
+    window.__commentaires = __commentaires.filter(c => c.id !== "d_0" && c.id !== "d_4");
+    window._cmtThreadLoadedAt = {}; // > 20 s
+    await openComments("fil_03");
+    const q = findPostAnywhere("fil_03");
+    const apres = { charges: q.comments.length, ids: q.comments.map(c => c.id).sort(), affiche: nbCommentairesPost(q), total: q.commentsTotal, titre: document.querySelector(".modal-title").textContent };
+    // Même chose sur une discussion PAGINÉE (fil_00 : 45, deux pages) : une ligne
+    // de la première page supprimée en base disparaît ; les pages plus anciennes restent.
+    window._cmtThreadLoadedAt = {};
+    await openComments("fil_00");
+    await _chargerCommentairesPrecedents("fil_00");
+    window.__commentaires = __commentaires.filter(c => c.id !== "c_044"); // le plus récent de fil_00
+    window._cmtThreadLoadedAt = {};
+    await openComments("fil_00");
+    const w = findPostAnywhere("fil_00");
+    return { avant, apres, paginee: { charges: w.comments.length, revenu: w.comments.some(c => c.id === "c_044"), affiche: nbCommentairesPost(w), total: w.commentsTotal, suite: w._commentsSuite } };
+  });
+  expect(r.avant).toEqual({ charges: 5, affiche: 5 });
+  expect(r.apres).toEqual({ charges: 3, ids: ["d_1", "d_2", "d_3"], affiche: 3, total: 3, titre: "Discussion (3)" });
+  expect(r.paginee).toEqual({ charges: 44, revenu: false, affiche: 44, total: 44, suite: null });
 });
