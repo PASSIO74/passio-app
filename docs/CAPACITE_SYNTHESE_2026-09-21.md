@@ -3,7 +3,7 @@
 Demande : augmenter la capacité de navigation et réduire la consommation par
 utilisateur, sans abonnement, quota ni service payant supplémentaire. Point de
 départ : `3491317` (PR #519). Ce document est la synthèse ; chaque lot a sa
-fiche (`docs/CAPACITE_FIL_COMPTEURS_2026-09-21.md` — sur la PR #521, non fusionnée,
+fiche (`docs/CAPACITE_FIL_COMPTEURS_2026-09-21.md` — client fusionné (#521), migration `fil_compteurs` en attente d'application humaine,
 `docs/CAPACITE_IMAGES_LEGERES_2026-09-21.md`,
 `docs/CAPACITE_COMPTEURS_CADENCE_2026-09-21.md`,
 `docs/CAPACITE_TEMPS_REEL_CIBLE_2026-09-21.md`).
