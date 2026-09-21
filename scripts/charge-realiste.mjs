@@ -47,6 +47,7 @@ export async function executer(options) {
       "Dix handlers CDC sans post_likes ; publications et messages prives restent testes en Realtime.",
       "Trois compteurs de posts visibles par acteur ; le canal ring des appels (troisieme canal produit) n'est pas exerce.",
       "Les HEAD count=exact sont comptes comme requetes et en latence ; leurs en-tetes ne sont pas inclus dans les octets applicatifs.",
+      "Duree mesuree par horloges monotone et murale : une prolongation au-dela de la duree demandee + 15 s invalide la preuve, sans attribuer la cause au serveur.",
       o.pages.length === 2 ? "60/20 compare deux tailles de page sur le meme jeu, pas deux builds de l'application."
         : "Page 20 seule : mesure de capacite de ce scenario, aucune comparaison avant/apres."],
     prevol: null, paliers: [], nettoyage: null, phases: [], connexionsRealtime: [], framesRealtime: {} };
@@ -488,7 +489,7 @@ export async function executer(options) {
       changerPhase("echauffement"); const debutChauffe = performance.now();
       for (const c of selection.slice(0, 4)) await fil(c, page);
       const chauffeMs = Math.round(performance.now() - debutChauffe);
-      changerPhase("mesure"); const start = performance.now(), debutMesures = mesures.length, fin = start + o.duree * 1000;
+      changerPhase("mesure"); const start = performance.now(), debutMural = Date.now(), debutMesures = mesures.length, fin = start + o.duree * 1000;
       const borneDure = setTimeout(() => { if (controleurs.size) stop("DUREE_PALIER_180_S"); }, 180000);
       const parcoursActeurs = selection.map(async c => {
         await sleep(decalageInitial(o.graine, c.index)); let tour = 0;
@@ -500,7 +501,8 @@ export async function executer(options) {
       });
       await Promise.all([...parcoursActeurs, ...selection.map(c => surveillerCompteurs(c, start, fin))]);
       clearTimeout(borneDure);
-      const dureeMs = Math.round(performance.now() - start), subset = mesures.slice(debutMesures).filter(m => m.phase === "mesure");
+      const dureeMs = Math.round(performance.now() - start), dureeMuraleMs = Date.now() - debutMural;
+      const subset = mesures.slice(debutMesures).filter(m => m.phase === "mesure");
       const http = statistiques(subset.filter(m => m.type === "http")), parcours = statistiques(subset.filter(m => m.type === "parcours")), realtime = statistiques(subset.filter(m => m.type === "realtime"));
       const messages = statistiques(subset.filter(m => m.type === "realtime" && m.famille === "message"));
       const publications = statistiques(subset.filter(m => m.type === "realtime" && m.famille === "post"));
@@ -509,14 +511,16 @@ export async function executer(options) {
       const parcoursCompteurs = statistiques(subset.filter(m => m.type === "parcours" && m.famille === "compteurs_visibles"));
       const parcoursPrincipaux = statistiques(subset.filter(m => m.type === "parcours" && m.famille !== "compteurs_visibles"));
       const verdict = verdictAvecCompteurs({ http: httpPrincipal, parcours: parcoursPrincipaux, realtime, messages, posts: publications, connectes,
-        attendus: taille, termine: !arret && dureeMs >= o.duree * 1000, fatal: arret, scenario: o.scenario }, httpCompteurs, parcoursCompteurs);
+        attendus: taille, termine: !arret && dureeMs >= o.duree * 1000, fatal: arret, scenario: o.scenario,
+        dureeAttendueMs: o.duree * 1000, dureeMs, dureeMuraleMs }, httpCompteurs, parcoursCompteurs);
       const resultat = { taille, comptesDistincts: new Set(selection.map(c => c.id)).size, page, empreinte,
         connectes, handlersParSocket: abonnements(selection[0].id, o.profilRealtime).length, canauxParSocket: 2,
         profilRealtime: o.profilRealtime, connexionMs: Math.round(debutChauffe - debutConnexion), echauffementMs: chauffeMs, comptesEchauffement: Math.min(4, taille),
-        dureeMs, http, parcours, httpPrincipal, httpCompteurs, parcoursPrincipaux, parcoursCompteurs, realtime, messages, publications,
+        dureeMs, dureeMuraleMs, validiteMesure: verdict.validiteMesure,
+        http, parcours, httpPrincipal, httpCompteurs, parcoursPrincipaux, parcoursCompteurs, realtime, messages, publications,
         compteursVisibles: { ...LIKES_VISIBLES, cadence: "entre_debuts", coalescenceAvecFil: false,
           portee: "3 premiers posts de la derniere page, visibles pendant toute la mesure ; GET fil ne certifie pas un compte exact" },
-        livraisonRealtimeQualifiee: o.scenario === "complet" && messages.succes > 0 && messages.erreurs === 0,
+        livraisonRealtimeQualifiee: verdict.validiteMesure.ok && o.scenario === "complet" && messages.succes > 0 && messages.erreurs === 0,
         familles: Object.fromEntries([...new Set(subset.map(m => `${m.type}:${m.famille}`))].map(key => [key, statistiques(subset.filter(m => `${m.type}:${m.famille}` === key))])),
         framesRealtime: Object.values(rapport.framesRealtime).filter(f => f.phase === "mesure" && f.palier === taille && f.page === page), verdict };
       rapport.paliers.push(resultat); changerPhase("fin_mesure"); sauvegarder();

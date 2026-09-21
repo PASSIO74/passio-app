@@ -6,7 +6,8 @@ import { createHash } from "node:crypto";
 import { optionsBanc, emailCapacite, DOMAINE_CAPACITE, STAGING_REF, LIMITES, Budget, comptesPourPalier, abonnements,
   partenaire, actionPrevue, pausePrevue, decalageInitial, statistiques, verdictPalier, Sondes,
   postPourLike, aimerEtRetirer, delaiFixture, DisponibiliteRealtime,
-  PROFIL_REALTIME, LIKES_VISIBLES, compteurHead, pauseCompteurs, decalageInitialCompteurs, familleFrameRealtime, verdictAvecCompteurs } from "../../scripts/lib/charge-realiste.mjs";
+  PROFIL_REALTIME, LIKES_VISIBLES, compteurHead, pauseCompteurs, decalageInitialCompteurs, familleFrameRealtime,
+  verdictAvecCompteurs, verifierDureeMesure, MARGE_FIN_MESURE_MS } from "../../scripts/lib/charge-realiste.mjs";
 import { executer } from "../../scripts/charge-realiste.mjs";
 import { verdictReponse } from "../../scripts/charge-verdict.mjs";
 
@@ -312,7 +313,8 @@ test("les frames distinguent table/opération, broadcast et protocole sans journ
 
 test("les HEAD rapides ne diluent pas un p95 historique rouge ; leur propre coût est aussi bloquant", () => {
   const bon = statistiques([{ ok: true, ms: 50 }]), lent = statistiques([{ ok: true, ms: 1001 }]), vide = statistiques([]);
-  const base = { http: bon, parcours: bon, realtime: bon, messages: bon, connectes: 25, attendus: 25, termine: true };
+  const base = { http: bon, parcours: bon, realtime: bon, messages: bon, connectes: 25, attendus: 25, termine: true,
+    dureeAttendueMs: 90000, dureeMs: 90000, dureeMuraleMs: 90000 };
   assert.equal(verdictAvecCompteurs(base, bon, bon).ok, true);
   assert.ok(verdictAvecCompteurs({ ...base, http: lent }, bon, bon).motifs.includes("P95_HTTP_SUP_1000_MS"));
   assert.ok(verdictAvecCompteurs(base, lent, bon).motifs.includes("P95_COMPTEURS_SUP_1000_MS"));
@@ -320,6 +322,72 @@ test("les HEAD rapides ne diluent pas un p95 historique rouge ; leur propre coû
   assert.ok(verdictAvecCompteurs(base, vide, vide).motifs.includes("COMPTEURS_VISIBLES_NON_EXERCES"));
   assert.ok(verdictAvecCompteurs({ ...base, posts: statistiques([{ ok: true, ms: 2001 }]) }, bon, bon).motifs.includes("P95_PUBLICATIONS_SUP_2000_MS"));
   assert.ok(verdictAvecCompteurs({ ...base, posts: vide }, bon, bon).motifs.includes("PUBLICATIONS_SOUS_CHARGE_NON_VALIDEES"));
+});
+
+test("une durée anormale ou absente invalide la preuve même avec zéro erreur et des p95 parfaits", () => {
+  const bon = statistiques([{ ok: true, ms: 20 }]);
+  const base = { http: bon, parcours: bon, realtime: bon, messages: bon, posts: bon,
+    connectes: 200, attendus: 200, termine: true, dureeAttendueMs: 90000, dureeMs: 90000, dureeMuraleMs: 90000 };
+  assert.equal(MARGE_FIN_MESURE_MS, 15000);
+  for (const [mono, murale] of [[90000, 90000], [105000, 105000], [90000, 89999]]) {
+    assert.equal(verdictAvecCompteurs({ ...base, dureeMs: mono, dureeMuraleMs: murale }, bon, bon).ok, true);
+  }
+  for (const changements of [
+    { dureeMs: 105001 }, { dureeMuraleMs: 105001 }, { dureeMs: 698562, dureeMuraleMs: 698562 },
+    { dureeMuraleMs: 698562 }, { dureeMs: 89999 }, { dureeMuraleMs: 89998 },
+    { dureeMs: NaN }, { dureeMuraleMs: Infinity }, { dureeAttendueMs: 0 },
+    { dureeMs: undefined }, { dureeMuraleMs: undefined }, { dureeAttendueMs: undefined },
+  ]) {
+    const verdict = verdictAvecCompteurs({ ...base, ...changements }, bon, bon);
+    assert.equal(verdict.ok, false);
+    assert.deepEqual(verdict.motifs, ["DUREE_MESURE_INVALIDE"]);
+    assert.equal(verdict.validiteMesure.ok, false);
+  }
+  assert.deepEqual(verifierDureeMesure(base), { ok: true, motif: null, attendueMs: 90000,
+    maximaleMs: 105000, monotoneMs: 90000, muraleMs: 90000, margeFinMs: 15000 });
+});
+
+test("le vrai palier mesure les deux horloges et refuse une suspension même sans watchdog ni erreur réseau", async () => {
+  const source = readFileSync(new URL("../../scripts/charge-realiste.mjs", import.meta.url), "utf8");
+  const debut = source.indexOf("async function palier("), fin = source.indexOf("async function nettoyer()", debut);
+  assert.ok(debut >= 0 && fin > debut);
+  for (const [monoFinale, muraleFinale, attendu] of [[90000, 90000, true], [105000, 105000, true],
+    [105001, 105001, false], [698562, 698562, false], [90000, 698562, false]]) {
+    let mono = 0, murale = 0, debutMono = 0, debutMural = 0, fermetures = 0, sauvegardes = 0;
+    const mesures = [], rapport = { paliers: [], framesRealtime: {} };
+    const ctx = {
+      comptes: Array.from({ length: 25 }, (_, index) => ({ id: 'compte_' + index, index })),
+      comptesPourPalier, LIKES_VISIBLES, postsFixture: [{ id: 'p1' }, { id: 'p2' }, { id: 'p3' }],
+      stage: null, phase: 'preparation', arret: null, controleurs: new Set(), mesures, rapport,
+      o: { duree: 90, graine: 1, scenario: 'complet', profilRealtime: PROFIL_REALTIME },
+      performance: { now: () => mono }, Date: { now: () => murale },
+      // Aucun timer réel, aucune clé, aucun réseau. Le garde doit fonctionner
+      // au retour du palier même si les timeouts n'ont jamais pu se déclencher.
+      setTimeout: () => 1, clearTimeout: () => {}, console: { log: () => {} },
+      sleep: async ms => { mono += ms; murale += ms; },
+      reinitialiser: async () => 'empreinte', connecter: async () => {}, fil: async () => {},
+      changerPhase: phase => { ctx.phase = phase; if (phase === 'mesure') { debutMono = mono; debutMural = murale; } },
+      decalageInitial: () => 0, pausePrevue: () => 5000, surveillerCompteurs: async () => {},
+      action: async () => {
+        for (const [type, famille, methode] of [['http', 'fil', 'GET'], ['parcours', 'fil', null],
+          ['http', 'compteur_like_visible', 'HEAD'], ['parcours', 'compteurs_visibles', null],
+          ['realtime', 'message', null], ['realtime', 'post', null]]) {
+          mesures.push({ phase: 'mesure', type, famille, methode, ok: true, ms: 20, octets: 0 });
+        }
+        mono = debutMono + monoFinale; murale = debutMural + muraleFinale;
+      },
+      statistiques, verdictAvecCompteurs, abonnements,
+      sauvegarder: () => { sauvegardes++; }, fermerSockets: async () => { fermetures++; },
+    };
+    const palier = runInNewContext(source.slice(debut, fin) + '\npalier;', ctx);
+    const resultat = await palier(25, 20, 'empreinte');
+    assert.equal(resultat.dureeMs, monoFinale); assert.equal(resultat.dureeMuraleMs, muraleFinale);
+    assert.equal(resultat.verdict.ok, attendu); assert.equal(resultat.validiteMesure.ok, attendu);
+    assert.equal(resultat.livraisonRealtimeQualifiee, attendu);
+    assert.equal(resultat.http.erreurs, 0); assert.equal(resultat.http.p95Ms, 20);
+    if (!attendu) assert.ok(resultat.verdict.motifs.includes('DUREE_MESURE_INVALIDE'));
+    assert.equal(rapport.paliers.length, 1); assert.equal(sauvegardes, 1); assert.equal(fermetures, 1);
+  }
 });
 
 test("le vrai minuteur lit au plus trois compteurs séquentiels et garde 15–16,5 s entre débuts", async () => {

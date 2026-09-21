@@ -232,8 +232,25 @@ export function verdictPalier({ http, parcours, realtime, messages, posts, conne
   return { ok: motifs.length === 0, motifs };
 }
 
+// Une veille peut retarder aussi bien les requêtes que leurs timeouts. Le
+// résultat ne devient pas une mesure de 90 s parce que tout finit par répondre.
+// Garder les deux horloges : selon l'OS, la monotone peut ignorer la suspension.
+export const MARGE_FIN_MESURE_MS = 15000;
+export function verifierDureeMesure({ dureeAttendueMs, dureeMs, dureeMuraleMs }) {
+  const maximaleMs = dureeAttendueMs + MARGE_FIN_MESURE_MS;
+  const ok = Number.isFinite(dureeAttendueMs) && dureeAttendueMs > 0
+    && Number.isFinite(dureeMs) && Number.isFinite(dureeMuraleMs)
+    && dureeMs >= dureeAttendueMs && dureeMs <= maximaleMs
+    // Date.now est entier, performance.now est arrondi : tolérer 1 ms de quantification.
+    && dureeMuraleMs >= dureeAttendueMs - 1 && dureeMuraleMs <= maximaleMs;
+  return { ok, motif: ok ? null : "DUREE_MESURE_INVALIDE", attendueMs: dureeAttendueMs,
+    maximaleMs, monotoneMs: dureeMs, muraleMs: dureeMuraleMs, margeFinMs: MARGE_FIN_MESURE_MS };
+}
+
 export function verdictAvecCompteurs(principal, httpCompteurs, parcoursCompteurs) {
   const verdict = verdictPalier(principal);
+  verdict.validiteMesure = verifierDureeMesure(principal);
+  if (!verdict.validiteMesure.ok) verdict.motifs.push(verdict.validiteMesure.motif);
   if (!httpCompteurs.tentatives || !parcoursCompteurs.tentatives) verdict.motifs.push("COMPTEURS_VISIBLES_NON_EXERCES");
   if (httpCompteurs.tauxErreur > .01 || parcoursCompteurs.tauxErreur > .01) verdict.motifs.push("ERREURS_COMPTEURS_SUP_1_PCT");
   if (httpCompteurs.p95Ms > 1000 || parcoursCompteurs.p95Ms > 1000) verdict.motifs.push("P95_COMPTEURS_SUP_1000_MS");

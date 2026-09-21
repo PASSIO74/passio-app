@@ -68,4 +68,16 @@ Le 20 septembre, la configuration staging relevée par le coordinateur était 20
 
 La récupération d'un nettoyage interrompu doit conserver cette portée : cible staging vérifiée, IDs du manifeste de la campagne et, pour une création Auth incertaine, email complet exact du manifeste. **Aucune recherche ou suppression globale par domaine**, y compris `passio-capacite.test`. Un HTTP 404 Auth au nettoyage reste consigné comme compte déjà disparu ; ne pas transformer cette observation en preuve de capacité ou en erreur de charge.
 
+Une mesure prolongée par une veille ou un blocage du poste ne constitue pas une
+preuve de capacité. Le verdict contrôle les durées **monotone et murale** :
+pour 90 s demandées, toutes deux doivent rester au plus à **105 s**, marge de
+15 s réservée à la fin des appels en vol. La mesure doit aussi couvrir la durée
+demandée (tolérance de quantification de 1 ms sur l'horloge murale). Une durée
+absente, invalide ou hors borne produit `DUREE_MESURE_INVALIDE`, même avec zéro
+erreur et de bons p95. `dureeMuraleMs` et `validiteMesure` conservent les deux
+horloges, la borne et le motif dans le rapport ; la qualification Realtime est
+aussi refusée. Ce contrôle ne déduit pas la cause et ne modifie aucun réglage
+d'alimentation, seuil de performance ou état distant. Il n'émet aucune nouvelle
+télémétrie : cette garde concerne la preuve locale du banc, hors pilotage produit.
+
 Validation locale sans réseau : `node --test tests/unit/charge-realiste.test.mjs`. Le banc n'a pas été lancé pendant son développement ; l'exécution staging appartient au coordinateur après revue.
