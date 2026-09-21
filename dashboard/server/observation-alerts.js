@@ -23,6 +23,19 @@
 // Le retour est signalé en `info` sur la même clé : c'est ce que suit le sink
 // GitHub [POSTE] pour refermer son issue. Tout est pur et injectable : le
 // minuteur est coupé par DASH_OBS_ALERTS_MIN=0 (tests).
+//
+// REPRISE DE VEILLE (2026-09-21) : mesuré sur trois matins de suite, entre
+// 06:10 et 09:36 — « lecture DB trop ancienne », « Ingestion sourde », puis
+// `TypeError: fetch failed`, chacune rétablie 1 à 40 min plus tard. Ce n'est
+// pas Supabase : quand le poste sort de veille, `dbRead.at` date de toute la
+// nuit (donc « trop ancienne » AVANT qu'une lecture ait été tentée),
+// `poll.lastOkAt` a plus de 30 s (donc « sourde » à l'instant), et le premier
+// appel part avant que le Wi-Fi soit remonté. Le tick constate qu'il a dormi
+// (écart ≫ sa période depuis le tour précédent) et, pendant REPRISE_GRACE_MS,
+// les quatre états RÉSEAU sont TENUS à leur valeur d'avant — le patron du
+// silence hors heures actives. Une panne qui durait AVANT la veille reste
+// signalée (tenue = tenue mauvaise) ; une panne qui NAÎT pendant la grâce
+// sonne à la fin de celle-ci, 10 min plus tard, jamais tue.
 // ═══════════════════════════════════════════════════════════════════════════
 import { JsonDb } from "./jsondb.js";
 import { observationSnapshot } from "./observation.js";
@@ -33,8 +46,16 @@ const SILENCE_MS = Math.max(1, Number(process.env.DASH_SILENCE_MIN || 240)) * 60
 const REALTIME_GRACE_MS = 5 * 60_000;
 const POLL_FAIL_STREAK = 6;
 const HEURES_ACTIVES = [9, 21];
+// Reprise de veille : un écart entre deux tours ≥ 3 périodes (jamais moins de
+// 3 min : un tick d'une minute glisse de quelques secondes, pas de trois) dit
+// que le processus a dormi ; la grâce qui suit est DASH_REPRISE_GRACE_MIN (10).
+const REPRISE_ECART_MS = Math.max(3 * EVERY_MS, 3 * 60_000);
+const REPRISE_GRACE_MS = Math.max(0, Number(process.env.DASH_REPRISE_GRACE_MIN ?? 10)) * 60_000;
+// Les états qui dépendent du RÉSEAU : ceux que la reprise fausse. `storage`
+// est un disque local, `silence` a sa propre tenue, `realtime` est désarmé.
+const ETATS_RESEAU = ["dbread", "canary", "polling", "ingest"];
 
-const db = new JsonDb("observation-alerts", { etats: null, realtimeBadSince: null, updatedAt: null });
+const db = new JsonDb("observation-alerts", { etats: null, realtimeBadSince: null, updatedAt: null, repriseA: null });
 let _timer = null;
 
 /** Heure locale de Paris (0-23), pure : l'horloge du poste peut être ailleurs. */
@@ -75,11 +96,22 @@ const SPEC = {
 const heures = (ms) => Math.round(ms / 360_000) / 10;
 
 /**
+ * Le processus a-t-il dormi entre le tour précédent et celui-ci ? PUR.
+ * `precedentA` = horodatage du tour précédent (ms), ou null au premier tour.
+ */
+export function repriseDetectee(precedentA, now = Date.now(), ecartMs = REPRISE_ECART_MS) {
+  const p = Number(precedentA);
+  return Number.isFinite(p) && p > 0 && now - p > ecartMs;
+}
+
+/**
  * Évalue les sept états à partir d'un instantané d'observation et de l'état
  * d'ingestion. PUR. `prev` apporte la mémoire nécessaire (depuis quand le
- * realtime est décroché, valeur tenue du silence la nuit).
+ * realtime est décroché, valeur tenue du silence la nuit). `reprise` (ms) =
+ * l'instant de la dernière reprise de veille : pendant `graceMs` après elle,
+ * les états réseau sont tenus à leur valeur précédente.
  */
-export function evaluer({ obs, ingest, now = Date.now(), prev = null, silenceMs = SILENCE_MS } = {}) {
+export function evaluer({ obs, ingest, now = Date.now(), prev = null, silenceMs = SILENCE_MS, reprise = null, graceMs = REPRISE_GRACE_MS } = {}) {
   const parts = (obs && obs.parts) || {};
   const ing = ingest || {};
   const ready = Boolean(ing.supabaseReady);
@@ -119,7 +151,21 @@ export function evaluer({ obs, ingest, now = Date.now(), prev = null, silenceMs 
   }
   etats.silence = silence;
 
-  return { etats, realtimeBadSince, evaluatedAt: now };
+  // Reprise de veille : les états réseau sont TENUS, jamais recalculés, tant
+  // que la grâce court — `dbRead.at` et `poll.lastOkAt` datent d'avant le
+  // sommeil, et le premier appel part avant le Wi-Fi. On tient la valeur
+  // d'AVANT (mauvaise comprise : une panne antérieure reste signalée).
+  const r = Number(reprise);
+  const enGrace = Number.isFinite(r) && r > 0 && now >= r && now - r < graceMs;
+  if (enGrace) {
+    const restant = Math.ceil((graceMs - (now - r)) / 60_000);
+    for (const nom of ETATS_RESEAU) {
+      const tenu = Boolean(prev?.etats?.[nom]?.mauvais);
+      etats[nom] = { mauvais: tenu, detail: `reprise de veille : état tenu encore ${restant} min${etats[nom].detail ? " — " + etats[nom].detail : ""}`, tenu: true };
+    }
+  }
+
+  return { etats, realtimeBadSince, evaluatedAt: now, enGrace };
 }
 
 /**
@@ -142,11 +188,15 @@ export function transitions(prev, next) {
 }
 
 /** Un tour : évalue, compare, persiste, émet. Tout est injectable. */
-export async function observationAlertsTick({ now = Date.now(), obs = null, ingest = null, notify = null } = {}) {
+export async function observationAlertsTick({ now = Date.now(), obs = null, ingest = null, notify = null, ecartRepriseMs = REPRISE_ECART_MS, graceMs = REPRISE_GRACE_MS } = {}) {
   const prev = db.get();
-  const next = evaluer({ obs: obs || observationSnapshot(), ingest: ingest || ingestState(), now, prev });
+  // Le tour précédent date de plus de trois périodes : on a dormi (veille du
+  // poste, ou redémarrage du serveur — mêmes lectures froides). La reprise est
+  // datée de CE tour et persistée : la grâce survit à un second redémarrage.
+  const repriseA = repriseDetectee(prev.updatedAt, now, ecartRepriseMs) ? now : (prev.repriseA || null);
+  const next = evaluer({ obs: obs || observationSnapshot(), ingest: ingest || ingestState(), now, prev, reprise: repriseA, graceMs });
   const alertes = transitions(prev.etats ? prev : null, next);
-  db.update((d) => { d.etats = next.etats; d.realtimeBadSince = next.realtimeBadSince; d.updatedAt = now; });
+  db.update((d) => { d.etats = next.etats; d.realtimeBadSince = next.realtimeBadSince; d.updatedAt = now; d.repriseA = repriseA; });
   if (alertes.length) {
     try {
       const raise = notify || (await import("./alerts.js")).raise;
@@ -168,4 +218,4 @@ export function startObservationAlerts(everyMs = EVERY_MS, { immediate = false }
 export function stopObservationAlerts() { if (_timer) { clearInterval(_timer); _timer = null; } }
 
 /** RÉSERVÉ AUX TESTS. */
-export function _setStateForTests(next) { db.update((d) => { d.etats = next?.etats ?? null; d.realtimeBadSince = next?.realtimeBadSince ?? null; }); return db.get(); }
+export function _setStateForTests(next) { db.update((d) => { d.etats = next?.etats ?? null; d.realtimeBadSince = next?.realtimeBadSince ?? null; d.updatedAt = next?.updatedAt ?? null; d.repriseA = next?.repriseA ?? null; }); return db.get(); }
