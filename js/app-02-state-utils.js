@@ -1742,8 +1742,37 @@ async function supaLoadUserState() {
 // redimensionnée (transformation d'image Supabase) pour le fil — beaucoup plus
 // légère. Laisse les autres URLs (base64, externes) intactes. Pleine résolution
 // conservée pour le visualiseur plein écran.
+// ── Version LÉGÈRE d'une image de publication (2026-09-21) ────────────────
+// Depuis ce lot, une photo publiée existe en DEUX objets Storage :
+//   photos/<uid>/<id>.jpg           l'original réduit (≤ 2048 px, comme avant)
+//   photos/<uid>/<id>.v720.webp     la version d'affichage (720 px de large)
+// et `media_url` désigne la LÉGÈRE : c'est elle que toute surface montre —
+// aucune surface de PASSIO n'est plus large que 540 px CSS (.app-shell), le
+// fil demandait déjà 700 px à la transformation d'image. La grande se dérive
+// (`imageGrande`) et reste l'original de référence ; elle n'est affichée
+// nulle part aujourd'hui, et le dire vaut mieux que l'inventer un usage.
+// Le marqueur est dans le NOM DU FICHIER : une URL se suffit, aucune colonne,
+// aucune requête, aucun 404 d'essai — un média d'avant n'a pas de marqueur et
+// suit exactement le chemin d'avant (transformation d'image à la demande).
+const IMAGE_LEGERE_LARGEUR = 720;
+const IMAGE_LEGERE_MARQUEUR = ".v" + IMAGE_LEGERE_LARGEUR;
+const _RE_IMAGE_LEGERE = /\.v720\.(jpe?g|png|webp)(?=$|[?#])/i;
+function estImageLegere(url) {
+  return typeof url === "string" && _RE_IMAGE_LEGERE.test(url.split("?")[0].split("#")[0]);
+}
+// L'original réduit, à côté de la légère. Une URL sans marqueur est rendue telle quelle.
+function imageGrande(url) {
+  if (!estImageLegere(url)) return url;
+  return url.replace(/\.v720\.(jpe?g|png|webp)/i, ".$1");
+}
+window.estImageLegere = estImageLegere;
+window.imageGrande = imageGrande;
+
 function passioThumb(url, width) {
   if (!url || typeof url !== "string") return url;
+  // Déjà taillée pour l'écran : pas de transformation d'image (ni son quota,
+  // ni la lecture d'origine qu'elle déclenche), pas de paramètre de cache.
+  if (estImageLegere(url)) return url;
   // URL déjà servie par le CDN (app-08, `cdnUrl`) : la miniature passe par la
   // même Edge Function, qui relaie `?width=` vers la transformation Supabase.
   // Sinon la miniature repartirait vers Supabase en direct, hors cache.
