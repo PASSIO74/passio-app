@@ -3373,7 +3373,10 @@ function _renderVisitedContent() {
     var photos = posts.filter(function(p) { return !p.isReel && (p.type === "photo" || p.image); });
     el.innerHTML = photos.length
       ? '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;">' + photos.map(function(p) {
-          var src = p.image || "https://picsum.photos/seed/" + p.id + "/300/300";
+          // Cellule d'un tiers d'écran (≤ 180 px) : la vignette, jamais la grande
+          // (≤ 2 048 px) — la grille du profil VISITÉ avait été oubliée par le lot
+          // images légères (contre-revue du 21/09). Une légère passe telle quelle.
+          var src = p.image ? passioThumb(p.image, 360) : "https://picsum.photos/seed/" + p.id + "/300/300";
           return '<div style="aspect-ratio:1;border-radius:8px;overflow:hidden;"><img loading="lazy" decoding="async" src="' + safeUrlAttr(src) + '" style="width:100%;height:100%;object-fit:cover;"/></div>';
         }).join("") + '</div>'
       : _vEmpty("Aucune photo");

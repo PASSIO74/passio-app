@@ -6642,8 +6642,9 @@ function _creerCanalDb(prive) {
   // (20 795 changements sur 129 jours, dont 4 537 UPDATE — la CI crée et
   // retouche ses comptes à chaque run). Avant, chaque UPDATE de n'importe qui
   // faisait chez chaque connecté : une entrée de plus dans `state.seed.users`
-  // (donc dans le localStorage, à chaque saveState), un `renderFeed` coalescé
-  // et un `renderMessages` — pour un profil que l'écran ne montre nulle part.
+  // (en mémoire seulement : `_leanState` pose `seed = null` avant d'écrire le
+  // localStorage), un `renderFeed` coalescé et un `renderMessages` — pour un
+  // profil que l'écran ne montre nulle part.
   // Un profil INCONNU localement n'est affiché nulle part : rien à rafraîchir,
   // et s'il apparaît plus tard, `_resolveProfilesByIds` le demandera. Un
   // profil CONNU (auteur du fil, d'un commentaire, correspondant) suit le

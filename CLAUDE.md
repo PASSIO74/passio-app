@@ -2498,7 +2498,7 @@ aurait laissé le neuvième refaire la faute : **c'est l'AUTORITÉ qui accepte l
 
 Demande de Benjamin : « augmenter la capacité de navigation et réduire la consommation par utilisateur,
 sans augmenter les abonnements ni ajouter de service payant », en quatre chantiers. Dossiers :
-`docs/CAPACITE_FIL_COMPTEURS_2026-09-21.md`, `docs/CAPACITE_IMAGES_LEGERES_2026-09-21.md`,
+`docs/CAPACITE_FIL_COMPTEURS_2026-09-21.md` (PR #521, en attente de la migration), `docs/CAPACITE_IMAGES_LEGERES_2026-09-21.md`,
 `docs/CAPACITE_COMPTEURS_CADENCE_2026-09-21.md`, `docs/CAPACITE_TEMPS_REEL_CIBLE_2026-09-21.md`,
 synthèse et campagne staging : `docs/CAPACITE_SYNTHESE_2026-09-21.md`.
 
@@ -2569,8 +2569,9 @@ en 129 jours**. Un « rien fait sur cet axe, et voilà pourquoi » vaut un const
 (`--compteurs-cadence fixe|adaptative`, même scénario, mêmes fixtures, même graine) ; le chemin
 `fil_compteurs` ne peut pas y être exercé (migration non appliquée, même barrière que la production), les
 images et le temps réel ciblé sont hors de sa portée. Mesuré à 100 comptes, deux passes de 90 s, verdicts valides, nettoyage complet : **−7,5 % de HEAD** sous
-cette charge (les cent acteurs aiment les trois mêmes publications : 86 % des cycles sont « vivants », le
-pire cas du lot), contre −33 %/−65 % au banc unitaire en régime calme. Les deux chiffres sont vrais sur
+cette charge (les cent acteurs aiment les trois mêmes publications : 85 % des cycles sont « vivants », le
+pire cas du lot), contre −33 % au banc unitaire en régime calme sur 90 s (−65 % sur 5 min par arithmétique
+de la politique, non mesuré). Les deux chiffres sont vrais sur
 deux populations ; aucun n'est « la capacité ». Résultats : `docs/CAPACITE_SYNTHESE_2026-09-21.md`.
 ⚠️ **Le poste a été tenu éveillé par `SetThreadExecutionState`** (`scripts/rester-eveille.ps1`, demande
 transitoire, aucun réglage modifié) : les essais précédents à 200 étaient morts de la veille, et le verdict

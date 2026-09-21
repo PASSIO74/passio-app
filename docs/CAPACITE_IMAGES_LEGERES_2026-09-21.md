@@ -52,10 +52,11 @@ migration, aucune conversion des médias existants. Implémentation Claude Code.
 - Affichage : `estImageLegere(url)` / `imageGrande(url)` (app-02, autorité
   unique). `passioThumb` sert une légère **telle quelle** — plus de
   transformation pour une photo publiée après le lot. La grille du profil
-  (`passioThumb(…, 360)`) et l'album d'une activité (`passioThumb(…, 400)`) ne
-  demandent plus la grande, même pour les anciennes photos (transformation à
-  la demande, sans nouvelle image d'origine : celle-ci est déjà comptée par le
-  fil).
+  (`passioThumb(…, 360)`), celle d'un profil **visité** (app-04, oubliée par le
+  premier jet — contre-revue du 21/09) et l'album d'une activité
+  (`passioThumb(…, 400)`) ne demandent plus la grande, même pour les anciennes
+  photos (transformation à la demande, sans nouvelle image d'origine : celle-ci
+  est déjà comptée par le fil).
 - La **grande** reste l'original de référence en Storage. Elle n'est affichée
   **nulle part** aujourd'hui — aucune surface n'excède 540 px CSS — et le dire
   vaut mieux que lui inventer un usage : `imageGrande` est prête pour un

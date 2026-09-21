@@ -3,7 +3,7 @@
 Demande : augmenter la capacité de navigation et réduire la consommation par
 utilisateur, sans abonnement, quota ni service payant supplémentaire. Point de
 départ : `3491317` (PR #519). Ce document est la synthèse ; chaque lot a sa
-fiche (`docs/CAPACITE_FIL_COMPTEURS_2026-09-21.md`,
+fiche (`docs/CAPACITE_FIL_COMPTEURS_2026-09-21.md` — sur la PR #521, non fusionnée,
 `docs/CAPACITE_IMAGES_LEGERES_2026-09-21.md`,
 `docs/CAPACITE_COMPTEURS_CADENCE_2026-09-21.md`,
 `docs/CAPACITE_TEMPS_REEL_CIBLE_2026-09-21.md`).
@@ -52,12 +52,14 @@ demande transitoire `SetThreadExecutionState`, aucun réglage modifié).
 
 **Lecture honnête.** Dans ce scénario, cent acteurs aiment et commentent en
 permanence les trois mêmes publications visibles : les compteurs *changent*
-à presque chaque cycle (86 % des cycles « vivants »), donc la cadence recule
+à presque chaque cycle (85 % des cycles « vivants » : 86 calmes sur 574), donc la cadence recule
 rarement (59 cycles à 22,5 s, aucun au-delà). C'est le **pire cas** pour ce
 lot ; le gain mesuré sous cette charge est **−7,5 % de HEAD**, pas plus. Le
 gain de régime calme — celui d'un onglet qui regarde un fil qui ne bouge pas,
 le cas courant — est mesuré au banc unitaire à horloge simulée : **4 cycles au
-lieu de 6 sur 90 s (−33 %), 7 au lieu de 20 sur 5 min (−65 %)**. Les deux
+lieu de 6 sur 90 s (−33 %)** ; sur 5 min, par arithmétique de la politique
+(15 → 22,5 → 33,75 → 50,6 → 60 s, non mesuré au banc), 7 au lieu de 20
+(−65 %). Les deux
 chiffres sont vrais, sur deux populations différentes ; aucun n'est « la
 capacité ».
 
