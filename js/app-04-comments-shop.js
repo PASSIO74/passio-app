@@ -4222,7 +4222,21 @@ async function _rattraperConversationOuverte() {
   if (!convId) return;
   var fp = document.getElementById("conv-fullpage");
   var nom = fp ? (fp.getAttribute("data-display-name") || "") : "";
+  var avant = (getConversations().find(function (x) { return x.id === convId; }) || {}).messages;
+  avant = avant ? avant.length : 0;
   await _fusionnerMessagesServeur(convId, nom, document.getElementById("convFpThread"));
+  if (window._openedConvId !== convId) return;
+  var c = getConversations().find(function (x) { return x.id === convId; });
+  if (!c) return;
+  // Ce que le chemin temps réel faisait pour une conversation OUVERTE, le
+  // rattrapage le fait aussi : ce qu'on a sous les yeux est lu (pastille et
+  // accusé côté serveur), et les lectures de l'AUTRE pendant le repos sont
+  // relues (✓✓) — sinon la liste recomptait ces messages « non lus ».
+  c.unread = 0;
+  if ((c.messages || []).length > avant) { try { if (typeof supaMarkRead === "function") supaMarkRead(convId); } catch (e) {} }
+  try { if (typeof supaLoadOtherRead === "function") await supaLoadOtherRead(convId); } catch (e) {}
+  try { if (typeof renderMsgBadge === "function") renderMsgBadge(); } catch (e) {}
+  try { if (typeof renderMessages === "function") renderMessages(); } catch (e) {}
 }
 window._rattraperConversationOuverte = _rattraperConversationOuverte;
 

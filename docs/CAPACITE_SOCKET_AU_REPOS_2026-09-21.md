@@ -13,8 +13,11 @@ visiteur n'en ouvre aucun ; un compte en tient un dès qu'il a un onglet ouvert
 — y compris derrière une autre application sur le téléphone, ou dans un onglet
 de bureau oublié depuis une heure. Ce qu'un onglet masqué reçoit, personne ne
 le voit : le fil ne se peint pas (filet arrêté sous `document.hidden`), les
-compteurs ne se lisent pas, et un message privé est de toute façon **notifié
-par le serveur** (push et cloche, `notifier_message`).
+compteurs ne se lisent pas, et un message privé est de toute façon notifié
+**par l'expéditeur** (`_notifierMessage`, app-08 : ligne `notifications` +
+push via `notify-call` — au plus une notification par conversation et par
+fenêtre de 5 min, push seulement si la permission est accordée). Ce qui n'est
+pas notifié est **relu** au réveil.
 
 ## Ce qui change
 
@@ -38,8 +41,26 @@ par le serveur** (push et cloche, `notifier_message`).
   donc on relit : la liste des conversations (`_rafraichirConversationsServeur`,
   factorisée depuis `supaInit`, pastilles non-lu comprises), la conversation
   ouverte (`_rattraperConversationOuverte`, factorisée depuis
-  `openConversation`), les notifications, les lives, et le fil pour un réveil
-  par geste ou réseau (le retour au premier plan le réveille déjà).
+  `openConversation`) — qui est alors **marquée lue** (`supaMarkRead`,
+  `unread = 0`) et dont les accusés de l'autre sont relus (`supaLoadOtherRead`),
+  comme le faisait la réception temps réel —, les notifications, les
+  commentaires d'une activité ouverte, et, pour un réveil par geste ou réseau,
+  le fil et les lives (le retour au premier plan les relit déjà).
+- Contre-revue adversariale (26 constats, 24 confirmés, consolidés en six) :
+  ① `supaSubscribe` et `_subscribeUserTopic` **respectent le repos** — sans
+  cela, le rafraîchissement de jeton d'auth-js (~58 min, onglet visible, relayé
+  aux autres onglets) rappelait `supaInit` → `supaSubscribe` et rouvrait le
+  socket pour toujours, `endormi` restant vrai ; ② la relecture de la liste au
+  réveil **fusionne** dans les objets locaux (`_fusionnerConvsServeurDansLocal`)
+  au lieu de les remplacer — l'entrée serveur ne porte que le dernier message,
+  et remplaçait la conversation ouverte (fil réduit à un message, brouillon et
+  statuts d'envoi perdus) ; liste PUIS conversation ouverte, jamais en
+  parallèle ; ③ conversation ouverte marquée lue et accusés relus (ci-dessus) ;
+  ④ `filetEstLeSeulChemin` lit aussi l'état du socket : un compte visible et
+  immobile dont le socket dort a le filet à 60 s, comme un visiteur, au lieu de
+  reculer à 5 min ; ⑤ `ensureCallPushSubscription` une fois par session, pas un
+  `upsert` par réveil ; les lives ne sont pas relus deux fois au retour ;
+  ⑥ une sonnerie entrante (`_callIncoming`) compte comme un appel.
 - Une mesure par repos : `rt_repos` (`raison`, `reveil`, `duree_ms`), jamais
   d'identifiant. Le stub hors ligne porte `realtime.disconnect`.
 
@@ -71,13 +92,18 @@ canaux au retour avec ses 4 relectures de rattrapage. Aucun chiffre de
 
 ## Vérification
 
-`tests/e2e/capacite-socket-au-repos.spec.js` (5) : politique pure et bornes
-(13 cas), masqué 3 min → repos → retour (canaux, socket, gardes, rattrapage,
-mesure), inactivité 15 min → geste, conversation ouverte visible jamais par
-inactivité mais bien par masquage (canal de frappe repris), appel/live jamais
-coupés, visiteur sans rien à endormir, câblage à la source (réveil par
-`supaSubscribe`, aucun nouveau site `supa.channel(` : l'inventaire des portes
-de `capacite-connexions-temps-reel` est inchangé). Suites voisines vertes :
+`tests/e2e/capacite-socket-au-repos.spec.js` (8) : politique pure et bornes
+(13 cas), masqué 3 min → repos → retour (canaux dont `ring:` simulé, socket,
+gardes, rattrapage mesuré contre l'étalon des gestionnaires du produit, push
+une fois, mesure), inactivité 15 min → geste, conversation ouverte visible
+jamais par inactivité mais bien par masquage (canal de frappe repris),
+rafraîchissement de jeton pendant le repos sans effet + filet « seul chemin »,
+appel (même sonnant)/live jamais coupés, visiteur sans rien à endormir,
+rattrapage de la messagerie sur les vraies fonctions (fusion sans écrasement,
+brouillon et statuts gardés, marqué lu, accusés relus), câblage à la source
+(réveil par `supaSubscribe` et sa garde, ordre liste puis conversation, aucun
+nouveau site `supa.channel(` : l'inventaire des portes de
+`capacite-connexions-temps-reel` est inchangé). Suites voisines vertes :
 `capacite-connexions-temps-reel`, `capacite-amplification`,
 `conv-ouverture-fil`, `multi-passion-integrite`.
 

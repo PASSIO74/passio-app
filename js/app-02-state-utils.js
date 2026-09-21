@@ -624,8 +624,13 @@ window.connexionTempsReelAutorisee = connexionTempsReelAutorisee;
 // considère le temps réel OUVERT, donc le filet n'est PAS le seul chemin et
 // recule comme avant. C'est le comportement d'avant ce lot, à l'octet près.
 function filetEstLeSeulChemin() {
-  const tempsReelOuvert = typeof connexionTempsReelAutorisee !== "function"
-    || connexionTempsReelAutorisee();
+  // ⚠️ DEUX TERMES depuis le socket au repos (2026-09-21) : un compte AUTORISÉ
+  // dont le socket dort (visible, immobile 15 min, sur le fil) n'a plus que le
+  // filet pour voir arriver quelque chose — comme un visiteur. Sans ce terme, le
+  // filet reculait à 5 min pendant le repos (contre-revue).
+  const socketAuRepos = !!(window._rtRepos && window._rtRepos.endormi);
+  const tempsReelOuvert = (typeof connexionTempsReelAutorisee !== "function"
+    || connexionTempsReelAutorisee()) && !socketAuRepos;
   if (tempsReelOuvert) return false;
   try {
     const feed = document.getElementById("screen-feed");

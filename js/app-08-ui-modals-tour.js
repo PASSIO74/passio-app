@@ -5936,9 +5936,16 @@ async function supaLoadOtherRead(convId) {
 // La liste des conversations depuis le serveur, fusionnée avec le local :
 // au démarrage (`supaInit`) et au réveil du socket (`_rtReveiller`) — un
 // message reçu pendant le repos remonte ainsi avec sa pastille non-lu.
-async function _rafraichirConversationsServeur() {
+// `opts.fusion` (réveil du socket) : l'entrée serveur ne porte que le dernier
+// message et aucun champ local ; on la FUSIONNE dans l'entrée locale existante
+// (messages unis par identifiant, brouillon, réaction, statuts d'envoi,
+// accusés, page affichée conservés) au lieu de la remplacer. Au démarrage
+// (sans `fusion`), le remplacement d'avant est conservé à l'identique.
+async function _rafraichirConversationsServeur(opts) {
+  const fusion = !!(opts && opts.fusion);
   // Ce que j'ai supprimé ici ne revient pas du serveur (MSG-06).
-  const supaConvs = (typeof _filtrerConvsServeur === "function") ? _filtrerConvsServeur(await supaLoadMyConversations()) : await supaLoadMyConversations();
+  const supaConvsBrutes = (typeof _filtrerConvsServeur === "function") ? _filtrerConvsServeur(await supaLoadMyConversations()) : await supaLoadMyConversations();
+  const supaConvs = fusion ? _fusionnerConvsServeurDansLocal(supaConvsBrutes) : supaConvsBrutes;
   if (supaConvs && supaConvs.length) {
     const localConvs = getConversations();
     const supaConvIds = new Set(supaConvs.map(c => c.id));
@@ -5951,6 +5958,29 @@ async function _rafraichirConversationsServeur() {
   saveConversations();
   window._convNetLoaded = true; // fin du squelette de la liste de conversations
   try { renderMessages(); } catch(e) {}
+}
+
+// Pour chaque conversation serveur déjà connue localement : l'objet LOCAL est
+// gardé (même référence : l'écran et `_rattraperConversationOuverte` la
+// tiennent), enrichi des champs serveur (identité, membres, `lastAt`,
+// `unread`) et de ses messages inconnus localement. La conversation OUVERTE
+// garde `unread = 0` : ce qu'on regarde n'est pas « non lu ».
+function _fusionnerConvsServeurDansLocal(supaConvs) {
+  if (!Array.isArray(supaConvs)) return supaConvs;
+  const locales = getConversations();
+  return supaConvs.map(function (sc) {
+    const lc = locales.find(function (x) { return x && x.id === sc.id; });
+    if (!lc) return sc;
+    const connus = new Set((lc.messages || []).map(function (m) { return m && m.id; }).filter(Boolean));
+    (sc.messages || []).forEach(function (m) { if (m && m.id && !connus.has(m.id)) { lc.messages = lc.messages || []; lc.messages.push(m); } });
+    if (lc.messages) lc.messages.sort(function (a, b) { return (a.at || 0) - (b.at || 0); });
+    Object.keys(sc).forEach(function (k) {
+      if (k === "messages" || k === "draft" || k === "_otherReadAt" || k === "_otherRead" || k === "_convPage") return;
+      lc[k] = sc[k];
+    });
+    if (window._openedConvId === lc.id) lc.unread = 0;
+    return lc;
+  });
 }
 
 async function supaLoadMyConversations() {
@@ -6341,6 +6371,8 @@ window._subscribePrivateConv = _subscribePrivateConv;
 // Reçoit tous ses messages (le trigger diffuse à chaque membre). Idempotent.
 function _subscribeUserTopic() {
   if (typeof supa === "undefined" || !supa || !MY_UID || window._userTopicChan) return;
+  if (window._rtRepos && window._rtRepos.endormi) return; // socket au repos : le réveil rejoint
+
   window._userTopicChan = supa.channel("user:" + MY_UID, { config: { private: true } })
     .on("broadcast", { event: "INSERT" }, function(msg) {
       var p = msg && msg.payload;
@@ -6373,6 +6405,17 @@ function supaSubscribe() {
     try { diagLog("rt_visiteur : connexion temps réel non ouverte (pas de compte)"); } catch (e) {}
     return;
   }
+  // ⚠️ SOCKET AU REPOS (2026-09-21) : tant que le repos tient, PERSONNE ne
+  // rejoint — pas même `supaInit` rappelé par `onAuthStateChange` sur un
+  // TOKEN_REFRESHED (auth-js rafraîchit le jeton toutes les ~58 min onglet
+  // visible, et le relaie aux autres onglets du compte). Sans cette garde, le
+  // socket fermé à la 15ᵉ minute était rouvert à l'heure suivante et tenu
+  // ensuite indéfiniment, `_rtRepos.endormi` restant vrai (contre-revue).
+  // `_rtReveiller` remet `endormi = false` AVANT d'appeler ici : le réveil passe.
+  if (window._rtRepos && window._rtRepos.endormi) {
+    try { diagLog("rt_repos : abonnement différé au réveil"); } catch (e) {}
+    return;
+  }
   // Garde anti double-abonnement : supaInit peut être appelé par boot() ET par
   // onAuthStateChange — un seul jeu de canaux realtime doit exister.
   if (window._supaSubscribed) return;
@@ -6380,8 +6423,12 @@ function supaSubscribe() {
   // ── Sonnerie d'appels entrants (WebRTC, canal broadcast `ring:<MY_UID>`) ──
   try { if (typeof _subscribeCallRing === "function") _subscribeCallRing(); } catch(e) {}
   // ── Push : (ré)enregistre l'abonnement de cet appareil si déjà autorisé,
-  //    pour recevoir les appels même app fermée. ──
-  try { if (typeof ensureCallPushSubscription === "function") ensureCallPushSubscription(); } catch(e) {}
+  //    pour recevoir les appels même app fermée. UNE fois par session : un
+  //    réveil de socket ne réécrit pas `push_subscriptions`. ──
+  if (!window._pushAbonnementTente) {
+    window._pushAbonnementTente = true;
+    try { if (typeof ensureCallPushSubscription === "function") ensureCallPushSubscription(); } catch(e) {}
+  }
   // ── Réception des messages entrants ──
   if (window.PASSIO_REALTIME_V3) {
     // v3 (design définitif) : UN canal privé par utilisateur, abonné une fois.
@@ -6427,7 +6474,7 @@ function _rtReposEtat() {
     masqueeDepuisMs: document.hidden && r.masqueeDepuis ? now - r.masqueeDepuis : 0,
     inactifDepuisMs: r.dernierGeste ? now - r.dernierGeste : 0,
     conversationOuverte: !!window._openedConvId,
-    appelEnCours: !!window._call,
+    appelEnCours: !!(window._call || window._callIncoming),
     liveEnCours: !!(window._vliveHost || window._vliveView),
   };
 }
@@ -6466,7 +6513,7 @@ function _rtReposTick() {
 function _rtEndormir(raison) {
   const r = window._rtRepos;
   if (r.endormi || typeof supa === "undefined" || !supa) return;
-  if (window._call || window._vliveHost || window._vliveView) return; // jamais pendant un appel ou un live
+  if (window._call || window._callIncoming || window._vliveHost || window._vliveView) return; // jamais pendant un appel (même sonnant) ou un live
   r.endormi = true; r.endormiDepuis = Date.now(); r.raison = raison;
   // Les canaux d'abord, le socket ensuite ; tous les porteurs sont relâchés
   // pour que le réveil les recrée (leurs gardes d'idempotence lisent ces
@@ -6501,11 +6548,22 @@ function _rtReveiller(raison) {
 // on ne le réveille ici que pour les autres retours (geste, réseau).
 function _rtRattraper(raison) {
   if (window._rechargementImminent === true) return;
-  try { if (raison !== "retour" && raison !== "pageshow" && typeof feedFiletReveiller === "function") feedFiletReveiller(true); } catch (e) {}
-  try { if (typeof _rafraichirConversationsServeur === "function") _rafraichirConversationsServeur().catch(function () {}); } catch (e) {}
-  try { if (typeof _rattraperConversationOuverte === "function") _rattraperConversationOuverte().catch(function () {}); } catch (e) {}
+  const retourVisible = raison === "retour" || raison === "pageshow";
+  try { if (!retourVisible && typeof feedFiletReveiller === "function") feedFiletReveiller(true); } catch (e) {}
+  // La liste PUIS la conversation ouverte, jamais en parallèle : la liste
+  // relit trois requêtes, la conversation une seule — dans l'ordre inverse la
+  // liste atterrissait après et remplaçait l'objet fusionné (contre-revue).
+  // Et la liste FUSIONNE (`{ fusion: true }`) : elle ne remplace pas ce que
+  // l'écran tient (messages, brouillon, statuts d'envoi, accusés).
+  (async function () {
+    try { if (typeof _rafraichirConversationsServeur === "function") await _rafraichirConversationsServeur({ fusion: true }); } catch (e) {}
+    try { if (typeof _rattraperConversationOuverte === "function") await _rattraperConversationOuverte(); } catch (e) {}
+  })();
   try { if (typeof supaLoadNotifications === "function") supaLoadNotifications().then(function (ns) { if (ns && ns.length && typeof mergeSupaNotifs === "function") mergeSupaNotifs(ns); }).catch(function () {}); } catch (e) {}
-  try { if (typeof supaRefreshVideoLives === "function") supaRefreshVideoLives(); } catch (e) {}
+  // Les lives sont déjà relus par le `visibilitychange` d'app-05 au retour.
+  try { if (!retourVisible && typeof supaRefreshVideoLives === "function") supaRefreshVideoLives(); } catch (e) {}
+  // La fiche d'une activité ouverte relit ses commentaires (le canal l'aurait fait).
+  try { if (window._openEventDetailId && typeof _loadEventComments === "function") _loadEventComments(window._openEventDetailId); } catch (e) {}
 }
 window._rtEndormir = _rtEndormir;
 window._rtReveiller = _rtReveiller;
