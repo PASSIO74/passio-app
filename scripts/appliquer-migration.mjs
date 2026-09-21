@@ -159,7 +159,7 @@ if (att.exigee) {
   const revues = GH.lireRevues(a.pr, racine);
   const contenuCommit = a.commit ? GH.lireContenuAuCommit(rel, a.commit, racine) : null;
   try {
-    preuve = BAR.verifierPreuveRevue({ attestation: a, fichier: rel, empreinteAttendue: att.empreinte, cible, revues, contenuAuCommit: contenuCommit, auteurPr: GH.lireAuteurPr(a.pr, racine), relecteursAutorises: GH.lireRelecteursAutorises(racine) });
+    preuve = BAR.verifierPreuveRevue({ attestation: a, fichier: rel, empreinteAttendue: att.empreinte, cible, revues, contenuAuCommit: contenuCommit, auteurPr: GH.lireAuteurPr(a.pr, racine), relecteursAutorises: GH.lireRelecteursAutorises(racine), mainteneurUnique: GH.lireMainteneurUnique(racine) });
   } catch (e) { echec(e.message + "\n   (revues lues : " + (revues ? revues.length : "NON LISIBLES") + " · dépôt : " + (GH.depot(racine) || "inconnu") + ")"); }
 }
 
@@ -172,7 +172,7 @@ if (att.attestation) {
     (att.attestation.consigne_le && att.attestation.consigne_le !== att.attestation.revue_le ? " · CONSIGNÉE le " + att.attestation.consigne_le : "") +
     " (" + att.attestation.source + ")");
   if (att.retroactive) console.log("           ⚠️ attestation RÉTROACTIVE : reconstruction après coup, jamais une revue préalable.");
-  if (preuve) console.log("preuve    : revue GitHub n°" + preuve.revue.id + " (" + preuve.revue.etat + ", " + (preuve.revue.soumise_le || "?") + ") par " + preuve.revue.login + ", ancrée sur " + String(preuve.revue.commit).slice(0, 12) + "… — contenu au commit = contenu envoyé" + " · approbation indépendante (auteur de la PR : " + preuve.auteurPr + ")");
+  if (preuve) console.log("preuve    : revue GitHub n°" + preuve.revue.id + " (" + preuve.revue.etat + ", " + (preuve.revue.soumise_le || "?") + ") par " + preuve.revue.login + ", ancrée sur " + String(preuve.revue.commit).slice(0, 12) + "… — contenu au commit = contenu envoyé" + (preuve.memeAuteurQueLaPr ? " · ⚠️ AUTO-REVUE DE MAINTENEUR UNIQUE (" + preuve.mainteneurUnique + "), assumée, pas indépendante (ASTRA-61 bis)" : " · approbation indépendante (auteur de la PR : " + preuve.auteurPr + ")"));
 }
 else if (att.derive) console.log("           ⚠️ une attestation existe pour ce fichier mais PAS pour ce contenu (cible non protégée : on passe, on le dit).");
 else console.log("revue     : aucune attestation exigée sur une cible non protégée.");

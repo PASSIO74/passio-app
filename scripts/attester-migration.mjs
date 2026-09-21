@@ -81,7 +81,7 @@ const auteurPr = GH.lireAuteurPr(pr, racine);
 try { BAR.exigerFournisseurReel(GH.fournisseur(), BAR.choisirCible({ argProjet: cible })); } catch (e) { echec(e.message); }
 let preuve;
 try {
-  preuve = BAR.verifierPreuveRevue({ attestation: { pr, commit, revue_id: revueId, relecteur, empreinte: emp }, fichier: rel, empreinteAttendue: emp, cible: { ref: cible }, revues, contenuAuCommit: contenuCommit, auteurPr, relecteursAutorises: GH.lireRelecteursAutorises(racine) });
+  preuve = BAR.verifierPreuveRevue({ attestation: { pr, commit, revue_id: revueId, relecteur, empreinte: emp }, fichier: rel, empreinteAttendue: emp, cible: { ref: cible }, revues, contenuAuCommit: contenuCommit, auteurPr, relecteursAutorises: GH.lireRelecteursAutorises(racine), mainteneurUnique: GH.lireMainteneurUnique(racine) });
 } catch (e) { echec(e.message); }
 const chemin = resolve(racine, ".passio", "migrations", "attestations.json");
 let liste = [];
@@ -99,7 +99,7 @@ if (memeFichierCible.length && !args.includes("--remplacer")) {
 }
 
 const entree = { fichier: rel, empreinte: emp, cibles: [cible], pr, commit, revue_id: Number(revueId), relecteur, revue_le: revueLe, consigne_le: aujourdhui, source,
-  revue: { etat: preuve.revue.etat, soumise_le: preuve.revue.soumise_le, auteur_pr: preuve.auteurPr, fournisseur: GH.fournisseur().reel ? "github" : "fictif" } };
+  revue: { etat: preuve.revue.etat, soumise_le: preuve.revue.soumise_le, auteur_pr: preuve.auteurPr, fournisseur: GH.fournisseur().reel ? "github" : "fictif", auto_revue_mainteneur_unique: preuve.memeAuteurQueLaPr === true } };
 if (revueLe !== aujourdhui) { entree.retroactif = true; entree.note = "consignée le " + aujourdhui + " pour une revue revendiquée le " + revueLe + " — reconstruction, jamais une revue préalable"; }
 const gardees = liste.filter((a) => !(a.fichier === rel && (a.cibles || []).includes(cible)));
 const remplacees = liste.length - gardees.length;
