@@ -1,12 +1,14 @@
-# Capacité sans investir, quatre lots — synthèse et campagne staging (21 septembre 2026)
+# Capacité sans investir, cinq lots — synthèse et campagne staging (21 septembre 2026)
 
 Demande : augmenter la capacité de navigation et réduire la consommation par
 utilisateur, sans abonnement, quota ni service payant supplémentaire. Point de
 départ : `3491317` (PR #519). Ce document est la synthèse ; chaque lot a sa
-fiche (`docs/CAPACITE_FIL_COMPTEURS_2026-09-21.md` — client fusionné (#521), migration `fil_compteurs` en attente d'application humaine,
+fiche (`docs/CAPACITE_FIL_COMPTEURS_2026-09-21.md`,
 `docs/CAPACITE_IMAGES_LEGERES_2026-09-21.md`,
 `docs/CAPACITE_COMPTEURS_CADENCE_2026-09-21.md`,
-`docs/CAPACITE_TEMPS_REEL_CIBLE_2026-09-21.md`).
+`docs/CAPACITE_TEMPS_REEL_CIBLE_2026-09-21.md`, `docs/CAPACITE_SOCKET_AU_REPOS_2026-09-21.md`).
+
+**Clôture du 21/09 au soir** : les cinq lots sont fusionnés et servis, la migration `fil_compteurs` est appliquée sur staging et production, et les lots déjà fusionnés ont été contre-revus (voir §7).
 
 ## 1. Ce qui est réellement livré
 
@@ -15,12 +17,17 @@ fiche (`docs/CAPACITE_FIL_COMPTEURS_2026-09-21.md` — client fusionné (#521), 
 | ③ Cadence des compteurs visibles | #522 | **fusionnée, déployée** (`3f3e47a1`, servie dans `39e953de`) | 15 → 22,5 → 33,75 → 50,6 → 60 s quand rien ne bouge ; retour à 15 s sur changement, erreur, carte neuve, mon like, premier plan, réseau |
 | ④ Temps réel ciblé | #523 | **fusionnée, déployée** (`715e47cc`) | `profiles` UPDATE d'un profil inconnu localement : ni cache, ni rendu ; inventaire mesuré des dix liaisons |
 | ② Images légères | #524 | **fusionnée, déployée** (`39e953de`) | photo publiée = grande + légère 720 px WebP, `media_url` = légère, grilles et albums sans la grande |
-| ① Compteurs du fil en une lecture | #521 | **ouverte, non fusionnée** | migration `fil_compteurs` (SECURITY INVOKER) + client à repli ; **contre-revue humaine exigée** par la CI (« Gouvernance critique » : revue GitHub de PASSIO74 avec le marqueur) ; `.passio/migrations/relecteurs-autorises.json` est vide (RES-15) — aucune attestation possible tant qu'un relecteur n'y est pas inscrit |
+| ① Compteurs du fil en une lecture | #521 | **fusionnée, déployée** (`77d42574`) ; **migration appliquée** le 21/09 sur staging (17:46 UTC) puis production (17:47 UTC) via la barrière, journal en base | migration `fil_compteurs` (SECURITY INVOKER, mesuré en base après application) + client ; une lecture `rpc/fil_compteurs` par page, observée sur le client servi |
+| ⑤ Socket temps réel au repos | #526 | **fusionnée, déployée** (`b0fdc804`) | un compte masqué ≥ 3 min ou immobile ≥ 15 min ne tient plus de connexion Realtime ; réveil au geste/retour avec rattrapage (messagerie fusionnée, notifications) ; jamais pendant un appel ou un live |
+| Contre-revue des lots ②③ | #528 | **fusionnée, déployée** (`c08d302a`) | grande retirée avec la légère à la suppression, `imageGrande` sans extension devinée, stories exclues, grille du profil visité en vignette, `medias-orphelins` sûr, réveil du compteur mémorisé pendant un tour |
+| Gouvernance des migrations | #530, #531 | **fusionnées** (`5dcb3200`, `95d5c807`) | amendement « mainteneur unique » (ASTRA-61 bis), attestations versionnées |
 
 Version servie vérifiée après déploiement : `https://passio-app.netlify.app/release.json`
-→ `commit 39e953de…`, et le bundle porte `compteursProchainPas`,
-`profilConnuLocalement`, `_imageLegerePourFil`, `.v720`, mais pas
-`fil_compteurs` (attendu : #521 n'est pas fusionnée).
+→ `commit 95d5c807…` (dernier état) ; le bundle porte `compteursProchainPas`,
+`profilConnuLocalement`, `_imageLegerePourFil`, `.v720`, `socketTempsReelAuRepos`,
+`fil_compteurs`, `commentaireEnAttente`, `cheminsImageStorage` ; le client
+servi émet `rpc/fil_compteurs` et aucune liste `post_likes` / `post_comments` /
+`comment_interactions` (observé dans le navigateur, sans mémo « absente »).
 
 ## 2. Mesures avant / après
 
@@ -123,9 +130,12 @@ versionné) pour une reprise éventuelle.
 
 ## 6. Limites restantes et références
 
-- #521 attend une revue humaine ; tant qu'elle n'est pas appliquée, le fil
-  télécharge encore ses listes (et le compte de commentaires reste faux au-delà
-  de 200 sur une page).
+- La revue de la migration est une **auto-revue de mainteneur unique** (ASTRA-61
+  bis, décision de Benjamin), pas une revue indépendante ; elle est tracée
+  (revue n°5269840687 sur #530, attestations, journal en base).
+- Le gain du lot ⑤ en connexions Realtime simultanées n'est pas mesuré en
+  charge (500 connexions non reproductibles au banc) : seule la télémétrie
+  `rt_repos` le dira sur de vrais usages.
 - `post_comments` / `comment_interactions` / `conv_reads` restent des liaisons
   sans filtre : « s'abonner à ce qui est chargé » est un changement
   d'architecture, pas un réglage.
@@ -133,7 +143,34 @@ versionné) pour une reprise éventuelle.
   photos existantes ne sont pas converties.
 - Le banc ne mesure ni médias, ni rendu, ni inscriptions par e-mail.
 
-PR : #521 (ouverte), #522, #523, #524 (fusionnées). CI de main : run
-`35585796708` (`39e953de`) vert, déploiement production vert. Rapports :
+PR : #521, #522, #523, #524, #525, #526, #528, #529, #530, #531 (toutes
+fusionnées). Dernier run de `main` : `35639091624` (`95d5c807`) vert,
+déploiement production vert. Rapports :
 `work/capacite-100-fixe-2026-09-21.json`, `work/capacite-100-adaptative-2026-09-21.json`,
 `work/images-legeres-2026-09-21.json` (non versionnés).
+
+## 7. Contre-revues (21/09, soir)
+
+Faites par Claude Code en revue multi-agents adversariale à la demande de
+Benjamin (lentilles indépendantes → trois vérificateurs par constat →
+critique de complétude), commentaires de revue postés depuis son compte en le
+disant ; 211 agents, ~3 h 50 de calcul.
+
+- **#521** : 27 constats confirmés (passe 2) + 6 (complétude), tous corrigés
+  avant fusion — dont trois P1 sur le compte de commentaires (liste persistée
+  par l'ancien client, réponse et GIF comptés deux fois) et une borne SQL
+  contournable par tableau imbriqué.
+- **Lots ②③④ fusionnés** : 11 constats confirmés → #528. Le plus lourd :
+  supprimer une publication ne retirait que la légère, la grande restait
+  facturée pour toujours ; `imageGrande` dérivait une extension fausse ;
+  `medias-orphelins --appliquer` aurait supprimé chaque original.
+- **#526** : 6 constats confirmés, corrigés avant fusion (conversation
+  ouverte écrasée au réveil, abonnement push rejoué, appel entrant non gardé,
+  `TOKEN_REFRESHED` rouvrant les canaux pendant le repos).
+- Effet de bord de l'application de la migration : trois cas
+  `capacite-fil-cache` dépendaient de l'ABSENCE de la fonction sur staging
+  (rouges sur `main` dès qu'elle a existé) — corrigés dans #531, le banc
+  simule le RPC.
+- Staging : la semence `charge_*` de `scripts/charge.mjs --semer` (300
+  profils / 6 000 publications du 15/09, `author_id` non-UUID) a été purgée
+  le 21/09 ; elle se recrée en une commande avant un banc.
