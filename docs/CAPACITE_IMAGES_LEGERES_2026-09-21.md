@@ -14,12 +14,15 @@ migration, aucune conversion des médias existants. Implémentation Claude Code.
   une transformation d'image Supabase (`?width=700&quality=75`) — service
   compté au forfait par **image d'origine** (19/100 sur le cycle en cours), qui
   grandit avec le catalogue, et qui lit l'original à chaque nouvelle largeur.
-- Production (canal ①, 21/09) : 10 photos de publication, 1 274 635 octets,
-  de 32 à 250 Ko ; 4 sont des stories 720×720 en JPEG de 46 à 74 Ko.
+- Production (canal ①, 21/09) : 10 images du dossier `photos` (publications
+  ET stories : le dossier est commun, l'échantillon ne les distinguait pas),
+  1 274 635 octets, de 32 à 250 Ko ; 3 sont des 720×720 en JPEG de 46 à 74 Ko.
 
 ## Ce qui change
 
-- À l'envoi d'une photo de **publication** (`folder === "photos"`) :
+- À l'envoi d'une photo de **publication** (`supaUploadMedia(…, { legere: true })`,
+  demandé par `supaPublishPost` seul — le dossier `photos` ne suffit pas, les
+  stories photo y vont aussi) :
   `_imageLegerePourFil` (app-08) produit une seconde image, **720 px de large
   au plus, jamais agrandie**, WebP q0,80 quand le navigateur sait l'encoder
   (transparence conservée), sinon JPEG q0,82 ou PNG pour une source PNG ;
@@ -28,10 +31,24 @@ migration, aucune conversion des médias existants. Implémentation Claude Code.
   L'orientation EXIF est appliquée par le décodeur du navigateur, comme pour la
   grande : les deux sont droites.
 - Storage : la grande d'abord (`photos/<uid>/<id>.jpg`, comme avant) PUIS la
-  légère (`photos/<uid>/<id>.v720.webp`). `media_url` désigne la **légère**
-  (le marqueur est dans le nom : aucune colonne, aucune requête d'essai,
-  aucun 404). Si la légère échoue, la grande vit seule sans marqueur — le
-  chemin d'avant ; jamais l'inverse (pas de légère sans original).
+  légère (`photos/<uid>/<id>.jpg.v720.webp` — le nom de la grande, extension
+  comprise, reste dans celui de la légère : la grande garde le format de la
+  source, la légère prend celui de l'encodage, et l'une se déduit de l'autre
+  sans deviner). `media_url` désigne la **légère** (le marqueur est dans le
+  nom : aucune colonne, aucune requête d'essai, aucun 404). Si la légère
+  échoue, la grande vit seule sans marqueur — le chemin d'avant ; jamais
+  l'inverse (pas de légère sans original).
+- Suppression : `cheminsImageStorage` (app-02) rend la légère ET la grande ;
+  `_cheminsMediaPost` (suppression d'une publication) et le retrait d'une
+  story refusée passent par lui. **Contre-revue du 21/09** : la première
+  version ne retirait que la légère (la grande, l'objet le plus lourd, restait
+  facturée pour toujours), `imageGrande` dérivait une extension fausse
+  (`<id>.webp` pour une grande `.jpg`), et `scripts/medias-orphelins.js`
+  aurait classé chaque grande orpheline. Les légères publiées ce jour-là
+  portent la **première forme** `<id>.v720.webp` : pour elles la grande n'est
+  pas dérivable — `imageGrande` rend la légère (jamais une URL devinée), la
+  suppression tente les formats connus (`remove` ignore les absents), et
+  `medias-orphelins` reconnaît `<nom sans extension>.v720.`.
 - Affichage : `estImageLegere(url)` / `imageGrande(url)` (app-02, autorité
   unique). `passioThumb` sert une légère **telle quelle** — plus de
   transformation pour une photo publiée après le lot. La grille du profil
@@ -44,7 +61,10 @@ migration, aucune conversion des médias existants. Implémentation Claude Code.
   vaut mieux que lui inventer un usage : `imageGrande` est prête pour un
   visualiseur plein écran ou un téléchargement si le produit en veut un.
 - Hors périmètre, délibérément : avatars et couvertures (servis à 192/880 px
-  par transformation, hors du fil), stories, GIF (animation), vidéos. Aucune
+  par transformation, hors du fil), stories (visualiseur plein écran en
+  `object-fit: cover` : 720 px y seraient étirés — la première version les
+  incluait par erreur, le dossier étant commun ; corrigé par la contre-revue
+  du 21/09), couvertures de bobine, GIF (animation), vidéos. Aucune
   conversion des photos existantes : elles suivent le chemin d'avant.
 
 ## Mesures (`node scripts/mesure-images-legeres.mjs`, 10 photos réelles de production, Chromium, la fonction du produit)
@@ -69,9 +89,11 @@ migration, aucune conversion des médias existants. Implémentation Claude Code.
   contre q75) — même ordre, mais **zéro transformation d'image** pour ces
   photos : ni quota par image d'origine, ni lecture de l'original par le
   service, ni cache par largeur.
-- **Stockage supplémentaire** : **+29 %** (373 Ko de légères à côté de
-  1 245 Ko de grandes) — payé une fois, sur un poste qui n'est pas un mur
-  (Storage 0,139/100 Go).
+- **Stockage supplémentaire** : **+29 %** (374 448 octets de légères à côté
+  des 1 274 635 octets de grandes ; +30 % rapporté aux neuf photos qui en
+  reçoivent une) — payé une fois, sur un poste qui n'est pas un mur (Storage
+  0,139/100 Go). Depuis l'exclusion des stories, les trois lignes 720×720 ne
+  décrivent plus un cas du périmètre : elles restent comme mesure du format.
 - Coût de préparation : 27 à 89 ms par photo dans Chromium, à l'envoi.
 
 Ce que ces chiffres ne disent pas : la qualité perçue (WebP q0,80 à 720 px est
@@ -81,13 +103,19 @@ JPEG) ; un gain de trafic global, qui dépend de ce que les gens ouvrent.
 
 ## Vérification
 
-- `tests/e2e/capacite-images-legeres.spec.js` (5) : vrai générateur (720 px,
+- `tests/e2e/capacite-images-legeres.spec.js` (6) : vrai générateur (720 px,
   WebP, plus petite, jamais agrandie, GIF exclu), transparence d'un PNG
   mesurée au pixel, vrai `supaUploadMedia` sur un Storage simulé (grande puis
   légère, chemins et types, URL rendue, légère refusée → grande), aucun
-  second objet pour avatars/couvertures/activités/GIF, `passioThumb` sans
-  transformation sur une légère, `imageGrande`, rendu du fil, câblage de la
-  grille et de l'album à la source.
+  second objet pour avatars/couvertures/activités/stories/couvertures de
+  bobine/GIF (appel de la story mesuré à la source, mesure `image_legere` à
+  zéro), `passioThumb` sans transformation sur une légère, `imageGrande`
+  (jpg, png, ancienne, première forme rendue telle quelle), rendu du fil,
+  câblage de la grille et de l'album à la source, suppression (légère + grande,
+  première forme → formats connus, ancienne → un seul objet, story refusée).
+- `tests/unit/medias-orphelins.test.mjs` : la grande d'une photo de
+  publication, référencée seulement par sa légère (les deux formes), n'est
+  jamais orpheline.
 - `capacite-medias-publics` (10) + `capacite-sans-investir` (17) verts.
   `audit:telemetry-keys` : les cinq champs de `image_legere` survivent au
   filtre PII.

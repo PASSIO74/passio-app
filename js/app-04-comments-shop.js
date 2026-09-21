@@ -76,9 +76,11 @@ function _cheminsMediaPost(post) {
     // laisserait chaque nouveau média ORPHELIN à la suppression — sans erreur.
     const markers = ["/storage/v1/object/public/content/", "/media/content/"];
     const marqueur = function (u) { for (var i = 0; i < markers.length; i++) { if (u.indexOf(markers[i]) !== -1) return markers[i]; } return null; };
+    // Une photo légère (2026-09-21) a sa grande à côté : les deux partent.
     return [post && post.image, post && post.video, post && post.audio, post && post.cover]
       .filter(function (u) { return typeof u === "string" && marqueur(u) !== null; })
-      .map(function (u) { var m = marqueur(u); return decodeURIComponent(u.slice(u.indexOf(m) + m.length).split("?")[0]); });
+      .map(function (u) { var m = marqueur(u); return decodeURIComponent(u.slice(u.indexOf(m) + m.length).split("?")[0]); })
+      .reduce(function (acc, chemin) { return acc.concat(cheminsImageStorage(chemin)); }, []);
   } catch (e) { return []; }
 }
 

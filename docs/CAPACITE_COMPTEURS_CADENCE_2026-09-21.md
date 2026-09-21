@@ -22,7 +22,9 @@ sous RLS) pour ne rien apprendre.
   plafond **60 s** (15 → 22,5 → 33,75 → 50,6 → 60).
 - « Vivant » = au moins l'un de : un compteur relu a **changé**, une lecture a
   **échoué** (une panne n'est pas un calme), une carte **jamais relue** est à
-  l'écran (contenu neuf sous les yeux), **mon propre like** vient d'être confirmé,
+  l'écran (contenu neuf sous les yeux), **mon propre like** vient d'être confirmé
+  (même s'il tombe pendant un tour en cours : le réveil est mémorisé et
+  consommé en fin de tour — contre-revue du 21/09, la fin du tour l'écrasait),
   retour au **premier plan** / `pageshow` / **réseau revenu**.
 - Sur ces trois derniers, la reprise est immédiate : pas à 15 s et rendez-vous
   rapproché à 16,5 s au plus (sans nouveau tirage : la phase initiale reste le
@@ -37,7 +39,7 @@ sous RLS) pour ne rien apprendre.
 ## Compromis visible
 
 Un like posé par **quelqu'un d'autre** sur une carte que je regarde sans
-rien faire apparaît en **≤ 60 s** au pire (au lieu de ≤ 16,5 s), et en ≤ 15 s
+rien faire apparaît en **≤ 61,5 s** au pire (60 s + jitter, au lieu de ≤ 16,5 s), et en ≤ 15 s
 dès que quelque chose bouge (un compteur qui change ramène tout le cycle à
 15 s). Les messages privés, notifications et nouvelles publications ne passent
 pas par ce chemin : ils restent en temps réel.
@@ -59,12 +61,12 @@ rapport de campagne joint à la PR de synthèse.
 
 ## Vérification
 
-- `tests/e2e/capacite-compteurs-cadence.spec.js` (6) : suite exacte des écarts
+- `tests/e2e/capacite-compteurs-cadence.spec.js` (7) : suite exacte des écarts
   15/22,5/33,75/50,6/60/60 mesurée sur les HEAD réels du moteur (horloge
   figée), changement et erreur, mon like (rendez-vous ≤ 16,5 s, aucun tirage),
-  masqué/retour, carte neuve, pureté et constantes, filet intact, câblage à la
+  masqué/retour, carte neuve, mon like PENDANT un tour en cours (réveil mémorisé), pureté et constantes, filet intact, câblage à la
   source.
-- `tests/e2e/capacite-likes-visibles.spec.js` (26) : inchangés, verts — dont
+- `tests/e2e/capacite-likes-visibles.spec.js` (24 cas) : inchangés, verts — dont
   « chacun leur échéance » (aucun tirage supplémentaire).
 - `tests/unit/charge-realiste.test.mjs` (+3) : égalité produit/banc de la
   politique (fonction d'app-03 exécutée dans `vm`), option `--compteurs-cadence`,

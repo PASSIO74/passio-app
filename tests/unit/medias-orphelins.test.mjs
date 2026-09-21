@@ -120,3 +120,19 @@ test("⑦ à la SOURCE : le rapport est le défaut, la suppression demande --app
   assert.match(code, /if \(!appliquer\)[\s\S]{0,200}return;/, "sans --appliquer, on sort AVANT toute suppression");
   assert.match(code, /throw new Error\(\s*\n?\s*`source/, "une source illisible doit LEVER, jamais réduire la liste");
 });
+
+test("la GRANDE d'une photo de publication n'est référencée que par sa légère : elle n'est jamais orpheline", () => {
+  const objets = [
+    { name: "photos/u/p.jpg", size: 1, created_at: vieux },
+    { name: "photos/u/p.jpg.v720.webp", size: 1, created_at: vieux },
+    { name: "photos/u/q.png", size: 1, created_at: vieux },      // première forme (21/09) : la légère ne porte pas l'extension
+    { name: "photos/u/q.v720.webp", size: 1, created_at: vieux },
+    { name: "photos/u/z.jpg", size: 1, created_at: vieux },      // rien ne le référence
+  ];
+  const refs = '{"media_url":"https://cdn/media/content/photos/u/p.jpg.v720.webp"},{"media_url":"https://cdn/media/content/photos/u/q.v720.webp"}';
+  const r = classerOrphelins(objets, refs, { maintenant: MAINTENANT });
+  assert.deepEqual(r.orphelins.map((o) => o.name), ["photos/u/z.jpg"]);
+  assert.deepEqual(r.references.map((o) => o.name).sort(), ["photos/u/p.jpg", "photos/u/p.jpg.v720.webp", "photos/u/q.png", "photos/u/q.v720.webp"]);
+  // Un nom sans extension ne se cherche pas suffixé : `hay.includes("" + ".v720.")` ne sauve rien par accident.
+  assert.equal(classerOrphelins([{ name: "photos/u/nom-sans-ext", size: 1, created_at: vieux }], "x.v720.webp", { maintenant: MAINTENANT }).orphelins.length, 1);
+});
