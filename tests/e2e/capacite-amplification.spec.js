@@ -414,8 +414,8 @@ test("⑩ quater un événement temps réel et le retour à l'écran réveillent
   const canal = src.slice(debut, fin > debut ? fin : undefined);
   expect(
     (canal.match(/feedFiletReveiller\(\)/g) || []).length,
-    "les trois gestionnaires de fil (posts, post_likes, post_comments) doivent réveiller le filet"
-  ).toBeGreaterThanOrEqual(3);
+    "les gestionnaires posts et post_comments doivent réveiller le filet ; les likes sont relus sur les cartes visibles"
+  ).toBeGreaterThanOrEqual(2);
   expect(src, "le retour de l'onglet à l'écran aussi").toMatch(/visibilitychange[\s\S]{0,400}feedFiletReveiller/);
 });
 

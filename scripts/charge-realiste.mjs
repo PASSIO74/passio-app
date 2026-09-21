@@ -8,7 +8,8 @@ import { pathToFileURL } from "node:url";
 import { verdictReponse } from "./charge-verdict.mjs";
 import { optionsBanc, emailCapacite, abonnements, actionPrevue, pausePrevue, decalageInitial,
   postPourLike, aimerEtRetirer, delaiFixture, DisponibiliteRealtime,
-  partenaire, clePaire, comptesPourPalier, Budget, LIMITES, statistiques, verdictPalier, Sondes } from "./lib/charge-realiste.mjs";
+  PROFIL_REALTIME, LIKES_VISIBLES, compteurHead, pauseCompteurs, decalageInitialCompteurs, familleFrameRealtime,
+  partenaire, clePaire, comptesPourPalier, Budget, LIMITES, statistiques, verdictAvecCompteurs, Sondes } from "./lib/charge-realiste.mjs";
 
 const sleep = ms => new Promise(resolveSleep => setTimeout(resolveSleep, ms));
 const octets = value => Buffer.byteLength(value, "utf8");
@@ -22,7 +23,7 @@ export async function executer(options) {
   // substituer une cible ou relever les plafonds du parseur.
   const o = optionsBanc(["--projet", options.projet, "--paliers", options.paliers.join(","),
     "--duree", String(options.duree), "--graine", String(options.graine), "--scenario", options.scenario,
-    "--pages", options.pages.join(","),
+    "--pages", options.pages.join(","), "--profil-realtime", options.profilRealtime || PROFIL_REALTIME,
     ...(options.prevolSeulement ? ["--prevol"] : []), ...(options.executer ? ["--executer", "--sortie", options.sortie] : [])]);
   if (!o.executer) return { plan: true, ...o };
   if (process.env.GITHUB_ACTIONS || process.env.CI) throw new Error("EXECUTION_CI_INTERDITE");
@@ -37,16 +38,19 @@ export async function executer(options) {
   const receptionsSonde = new Map();
   let connexionsMax = 0, prochaineMutation = 0;
   let phase = "preparation", arret = null, cleAnon, cleService, stage = null, fermetureVoulue = false;
-  const rapport = { version: 1, date: new Date().toISOString(), options: o, campagne: prefix,
+  const rapport = { version: 2, date: new Date().toISOString(), options: o, campagne: prefix,
     portee: "API authentifiee + Realtime, pas un test navigateur ni une certification production",
     comparaisonDemandee: o.pages.length === 2,
     limitesMesure: ["Octets applicatifs HTTP et WebSocket emis/recus, hors en-tetes, TLS et compression ; pas la facture egress.",
       "Frames Realtime observees cote clients ; le compteur ne remplace pas Usage Supabase.",
       "Sans telechargement de medias, upload, inscription par email, rendu mobile ou cache du navigateur.",
-      "Les 12 handlers du chemin V3 utilisent 10 tables ; publication staging a verifier separement.",
+      "Dix handlers CDC sans post_likes ; publications et messages prives restent testes en Realtime.",
+      "Trois compteurs de posts visibles par acteur ; le canal ring des appels (troisieme canal produit) n'est pas exerce.",
+      "Les HEAD count=exact sont comptes comme requetes et en latence ; leurs en-tetes ne sont pas inclus dans les octets applicatifs.",
+      "Duree mesuree par horloges monotone et murale : une prolongation au-dela de la duree demandee + 15 s invalide la preuve, sans attribuer la cause au serveur.",
       o.pages.length === 2 ? "60/20 compare deux tailles de page sur le meme jeu, pas deux builds de l'application."
         : "Page 20 seule : mesure de capacite de ce scenario, aucune comparaison avant/apres."],
-    prevol: null, paliers: [], nettoyage: null, phases: [], connexionsRealtime: [] };
+    prevol: null, paliers: [], nettoyage: null, phases: [], connexionsRealtime: [], framesRealtime: {} };
   function changerPhase(nom) {
     phase = nom;
     rapport.phases.push({ phase: nom, palier: stage?.taille ?? null, page: stage?.page ?? null,
@@ -87,6 +91,11 @@ export async function executer(options) {
         ...(body ? { "Content-Type": "application/json" } : {}), ...extra };
       const res = await fetch(management ? chemin : base + chemin, { method: methode, headers, body, signal: controller.signal, redirect: "error" });
       current.status = res.status;
+      if (methode === "HEAD") {
+        const compte = compteurHead(res.status, res.headers.get("content-range"));
+        current.ok = true; current.compteur = compte;
+        return compte;
+      }
       const reader = res.body?.getReader(), chunks = []; let total = 0;
       if (reader) while (true) {
         const { done, value } = await reader.read(); if (done) break;
@@ -109,6 +118,9 @@ export async function executer(options) {
     }
   }
   const rest = (nom, table, params = {}, opt = {}) => requete(nom, `/rest/v1/${table}?${new URLSearchParams(params)}`, opt);
+  const compterLikes = (compte, postId, nom = "compteur_like_visible") => rest(nom, "post_likes",
+    { select: "post_id", post_id: `eq.${postId}` },
+    { jwt: compte.jwt, methode: "HEAD", extra: { Prefer: "count=exact" } });
   async function cadencer(table, methode) {
     const maintenant = performance.now(), depart = Math.max(maintenant, prochaineMutation);
     prochaineMutation = depart + delaiFixture(table, methode, connexionsMax);
@@ -215,7 +227,7 @@ export async function executer(options) {
     const ws = new WebSocket(`wss://${o.projet}.supabase.co/realtime/v1/websocket?apikey=${encodeURIComponent(cleAnon)}&vsn=1.0.0`);
     actifs.add(ws); let heartbeat, pret = false;
     connexionsMax = Math.max(connexionsMax, actifs.size);
-    const disponibilite = new DisponibiliteRealtime(compte.id), debutConnexion = performance.now();
+    const disponibilite = new DisponibiliteRealtime(compte.id, o.profilRealtime), debutConnexion = performance.now();
     const trace = { generation: rapport.connexionsRealtime.length + 1, compte: compte.index, phase,
       palier: stage?.taille ?? null, page: stage?.page ?? null, date: new Date().toISOString(),
       joins: {}, systemes: disponibilite.systemes, cdcPretMs: null, pretMs: null,
@@ -231,7 +243,7 @@ export async function executer(options) {
       ws.addEventListener("open", () => {
         try {
           env("realtime:realtime:db", "phx_join", { config: { broadcast: { self: false }, presence: { key: "" }, private: true,
-            postgres_changes: abonnements(compte.id) }, access_token: compte.jwt }, "1");
+            postgres_changes: abonnements(compte.id, o.profilRealtime) }, access_token: compte.jwt }, "1");
           env(`realtime:user:${compte.id}`, "phx_join", { config: { broadcast: { self: false }, presence: { key: "" }, private: true }, access_token: compte.jwt }, "2");
           heartbeat = setInterval(() => { try { env("phoenix", "heartbeat", {}, "hb"); } catch (e) { echouer(motifSur(e)); } }, 25000);
         } catch (e) { echouer(motifSur(e)); }
@@ -241,6 +253,10 @@ export async function executer(options) {
           const texte = typeof ev.data === "string" ? ev.data : Buffer.from(ev.data).toString("utf8");
           compter({ octets: octets(texte), messagesRealtime: 1 });
           const m = JSON.parse(texte);
+          const famille = familleFrameRealtime(m), cleFrame = `${phase}:${stage?.taille ?? "hors_palier"}:${stage?.page ?? "hors_page"}:${famille}`;
+          const compteur = rapport.framesRealtime[cleFrame] ||= { phase, palier: stage?.taille ?? null, page: stage?.page ?? null,
+            famille, receptions: 0, octets: 0 };
+          compteur.receptions++; compteur.octets += octets(texte);
           disponibilite.observer(m);
           if (m.event === "system" && m.topic === "realtime:realtime:db" && m.payload?.extension === "postgres_changes") {
             trace.dernierSysteme = { date: new Date().toISOString(), status: ["ok", "error"].includes(m.payload.status) ? m.payload.status : "autre" };
@@ -295,15 +311,56 @@ export async function executer(options) {
     const ids = posts.map(p => p.id);
     const lots = await Promise.allSettled([
       rest("fil_likes", "post_likes", { select: "post_id,user_id", post_id: liste(ids) }, { jwt, attentes: attendreTableau(0, ["post_id", "user_id"]) }),
-      rest("fil_commentaires", "post_comments", { select: "post_id,id,author_id,content,created_at", post_id: liste(ids), order: "created_at.desc", limit: "200" }, { jwt, attentes: attendreTableau(1, ["id", "author_id"]) }),
+      rest("fil_commentaires", "post_comments", { select: "post_id,id,author_id,content,created_at", post_id: liste(ids), order: "created_at.desc", limit: "200" }, { jwt, attentes: attendreTableau(0, ["post_id", "id", "author_id"]) }),
       rest("fil_interactions", "comment_interactions", { select: "comment_id,user_id,kind,payload,created_at", comment_id: liste(ids) }, { jwt, attentes: attendreTableau(0, ["comment_id", "user_id"]) }),
     ]);
     const refus = lots.find(r => r.status === "rejected");
     if (refus) throw refus.reason;
     const [likes, commentaires, reactions] = lots.map(r => r.value);
+    // Après vingt publications, la page de vingt peut ne plus contenir aucun
+    // post de fixture : ces nouveaux posts n'ont légitimement aucun commentaire.
+    // À l'inverse, une fixture encore visible doit conserver SON commentaire,
+    // avec son auteur attendu ; un tableau vide n'est alors jamais acceptable.
+    const visibles = new Set(ids), parId = new Map(commentaires.map(c => [c.id, c]));
+    if (commentaires.some(c => !visibles.has(c.post_id))) throw new Error("COMMENTAIRE_HORS_PAGE");
+    for (let i = 0; i < postsFixture.length; i++) {
+      const p = postsFixture[i]; if (!visibles.has(p.id)) continue;
+      const c = parId.get(`${prefix}_comment_${i}`);
+      if (!c || c.post_id !== p.id || c.author_id !== profilsFixture[(i + 1) % profilsFixture.length]) {
+        throw new Error("COMMENTAIRE_FIXTURE_MANQUANT_OU_ALTERE");
+      }
+    }
     const auteurs = [...new Set(commentaires.map(c => c.author_id))];
-    const profils = await rest("fil_profils_commentaires", "profiles", { select: "id,username,emoji,color,avatar_url,passion_id,passions,bio", id: liste(auteurs) }, { jwt, attentes: attendreTableau(auteurs.length, ["id", "username"]) });
+    const profils = auteurs.length ? await rest("fil_profils_commentaires", "profiles", { select: "id,username,emoji,color,avatar_url,passion_id,passions,bio", id: liste(auteurs) }, { jwt, attentes: attendreTableau(auteurs.length, ["id", "username"]) }) : [];
+    if (phase === "mesure") compte.postsVisibles = ids.slice(0, LIKES_VISIBLES.maximum);
     return { posts: ids, likes: likes.length, commentaires: commentaires.length, reactions: reactions.length, profils: profils.length };
+  }
+  async function cycleCompteursVisibles(compte, fin) {
+    const debutCycle = performance.now(), date = new Date().toISOString(); let ok = false, motif = null, lectures = 0;
+    try {
+      const ids = [...new Set(compte.postsVisibles)].slice(0, LIKES_VISIBLES.maximum);
+      if (ids.length !== LIKES_VISIBLES.maximum) throw new Error("POSTS_VISIBLES_INSUFFISANTS");
+      for (const id of ids) {
+        if (arret || performance.now() >= fin) break;
+        await compterLikes(compte, id); lectures++;
+      }
+      ok = true;
+    } catch (e) { motif = motifSur(e); }
+    mesures.push({ phase, palier: stage?.taille, page: stage?.page, type: "parcours", famille: "compteurs_visibles",
+      date, compte: compte.index, ok, motif, lectures, ms: Math.round(performance.now() - debutCycle) });
+    if (!ok && ["HTTP_401", "HTTP_403", "HTTP_429", "HEAD_COMPTE_INVALIDE", "POSTS_VISIBLES_INSUFFISANTS"].includes(motif)) stop(motif);
+  }
+  async function surveillerCompteurs(compte, start, fin) {
+    let tour = 0, prochainDebut = start + decalageInitialCompteurs(o.graine, compte.index);
+    while (!arret && prochainDebut < fin) {
+      await sleep(Math.max(0, Math.min(prochainDebut, fin) - performance.now()));
+      if (arret || performance.now() >= fin) break;
+      const debutCycle = performance.now();
+      await cycleCompteursVisibles(compte, fin);
+      // Cadence entre débuts ; un cycle lent ne provoque jamais un rattrapage
+      // de cycles manqués ni des HEAD parallèles pour le même compte.
+      prochainDebut = Math.max(performance.now(), debutCycle + pauseCompteurs(o.graine, compte.index, tour++));
+    }
   }
   function convPour(compte, taille) { return convs.find(c => c.id === `${prefix}_conv_${clePaire(compte.index, partenaire(compte.index, taille))}`); }
   async function livraison(compte, taille, type) {
@@ -390,14 +447,37 @@ export async function executer(options) {
       await fil(comptes[1], 20);
       await livraison(comptes[0], 2, "post");
       if (o.scenario === "complet") await livraison(comptes[0], 2, "message");
+      const compteursLikes = await prevolCompteurLikes();
       rapport.prevol = { ok: true, dureeMs: Math.round(performance.now() - debutPrevol),
         handlersParCompte: comptes.slice(0, 2).map(c => c.handlersConfirmes),
-        messagerieV3: o.scenario === "complet" ? "livraison_confirmee" : "non_qualifiee", fil: premierFil };
+        messagerieV3: o.scenario === "complet" ? "livraison_confirmee" : "non_qualifiee", compteursLikes, fil: premierFil };
     } catch (e) { rapport.prevol = { ok: false, motif: motifSur(e), dureeMs: Math.round(performance.now() - debutPrevol) }; throw e; }
     finally { await fermerSockets(); rapport.prevol.mesures = mesures.length - index; sauvegarder(); }
   }
+  async function prevolCompteurLikes() {
+    const auteur = comptes[0], destinataire = comptes[1];
+    const postId = postPourLike(postsFixture, auteur.index, 0, comptes.length);
+    const avant = await compterLikes(destinataire, postId, "prevol_compteur_avant");
+    if (avant !== 1) throw new Error("COMPTEUR_BASELINE_INATTENDU");
+    const cle = { post_id: postId, user_id: auteur.id }, key = `${postId}:${auteur.id}`;
+    mutationsLikes.set(key, cle); sauvegarder();
+    let ajoute;
+    try {
+      await inserer("prevol_like_persistant", "post_likes", cle, { jwt: auteur.jwt });
+      ajoute = await compterLikes(destinataire, postId, "prevol_compteur_ajoute");
+      if (ajoute !== avant + 1) throw new Error("COMPTEUR_AJOUT_NON_VISIBLE");
+    } finally {
+      await rest("prevol_like_retrait", "post_likes", { post_id: `eq.${postId}`, user_id: `eq.${auteur.id}` },
+        { jwt: auteur.jwt, methode: "DELETE", extra: { Prefer: "return=representation" }, attentes: attendreTableau(1, ["post_id", "user_id"]) });
+      mutationsLikes.delete(key); sauvegarder();
+    }
+    const retire = await compterLikes(destinataire, postId, "prevol_compteur_retire");
+    if (retire !== avant) throw new Error("COMPTEUR_RETRAIT_NON_VISIBLE");
+    return { avant, ajoute, retire, lecture: "jwt_destinataire", persistantJusquaLecture: true };
+  }
   async function palier(taille, page, empreinteAttendue) {
     const selection = comptesPourPalier(comptes, taille);
+    for (const c of selection) c.postsVisibles = postsFixture.slice(-LIKES_VISIBLES.maximum).reverse().map(p => p.id);
     stage = { taille, page };
     const empreinte = await reinitialiser();
     if (empreinteAttendue && empreinte !== empreinteAttendue) throw new Error("JEU_DE_DONNEES_MODIFIE_ENTRE_VARIANTES");
@@ -409,25 +489,40 @@ export async function executer(options) {
       changerPhase("echauffement"); const debutChauffe = performance.now();
       for (const c of selection.slice(0, 4)) await fil(c, page);
       const chauffeMs = Math.round(performance.now() - debutChauffe);
-      changerPhase("mesure"); const start = performance.now(), debutMesures = mesures.length, fin = start + o.duree * 1000;
+      changerPhase("mesure"); const start = performance.now(), debutMural = Date.now(), debutMesures = mesures.length, fin = start + o.duree * 1000;
       const borneDure = setTimeout(() => { if (controleurs.size) stop("DUREE_PALIER_180_S"); }, 180000);
-      await Promise.all(selection.map(async c => {
+      const parcoursActeurs = selection.map(async c => {
         await sleep(decalageInitial(o.graine, c.index)); let tour = 0;
         while (performance.now() < fin && !arret) {
           await action(c, taille, page, tour);
           const restants = fin - performance.now(); if (restants <= 0 || arret) break;
           await sleep(Math.min(pausePrevue(o.graine, c.index, tour++), restants));
         }
-      }));
+      });
+      await Promise.all([...parcoursActeurs, ...selection.map(c => surveillerCompteurs(c, start, fin))]);
       clearTimeout(borneDure);
-      const dureeMs = Math.round(performance.now() - start), subset = mesures.slice(debutMesures).filter(m => m.phase === "mesure");
+      const dureeMs = Math.round(performance.now() - start), dureeMuraleMs = Date.now() - debutMural;
+      const subset = mesures.slice(debutMesures).filter(m => m.phase === "mesure");
       const http = statistiques(subset.filter(m => m.type === "http")), parcours = statistiques(subset.filter(m => m.type === "parcours")), realtime = statistiques(subset.filter(m => m.type === "realtime"));
       const messages = statistiques(subset.filter(m => m.type === "realtime" && m.famille === "message"));
+      const publications = statistiques(subset.filter(m => m.type === "realtime" && m.famille === "post"));
+      const httpCompteurs = statistiques(subset.filter(m => m.type === "http" && m.methode === "HEAD"));
+      const httpPrincipal = statistiques(subset.filter(m => m.type === "http" && m.methode !== "HEAD"));
+      const parcoursCompteurs = statistiques(subset.filter(m => m.type === "parcours" && m.famille === "compteurs_visibles"));
+      const parcoursPrincipaux = statistiques(subset.filter(m => m.type === "parcours" && m.famille !== "compteurs_visibles"));
+      const verdict = verdictAvecCompteurs({ http: httpPrincipal, parcours: parcoursPrincipaux, realtime, messages, posts: publications, connectes,
+        attendus: taille, termine: !arret && dureeMs >= o.duree * 1000, fatal: arret, scenario: o.scenario,
+        dureeAttendueMs: o.duree * 1000, dureeMs, dureeMuraleMs }, httpCompteurs, parcoursCompteurs);
       const resultat = { taille, comptesDistincts: new Set(selection.map(c => c.id)).size, page, empreinte,
-        connectes, handlersParSocket: 12, canauxParSocket: 2, connexionMs: Math.round(debutChauffe - debutConnexion), echauffementMs: chauffeMs, comptesEchauffement: Math.min(4, taille),
-        dureeMs, http, parcours, realtime, messages, livraisonRealtimeQualifiee: o.scenario === "complet" && messages.succes > 0 && messages.erreurs === 0,
+        connectes, handlersParSocket: abonnements(selection[0].id, o.profilRealtime).length, canauxParSocket: 2,
+        profilRealtime: o.profilRealtime, connexionMs: Math.round(debutChauffe - debutConnexion), echauffementMs: chauffeMs, comptesEchauffement: Math.min(4, taille),
+        dureeMs, dureeMuraleMs, validiteMesure: verdict.validiteMesure,
+        http, parcours, httpPrincipal, httpCompteurs, parcoursPrincipaux, parcoursCompteurs, realtime, messages, publications,
+        compteursVisibles: { ...LIKES_VISIBLES, cadence: "entre_debuts", coalescenceAvecFil: false,
+          portee: "3 premiers posts de la derniere page, visibles pendant toute la mesure ; GET fil ne certifie pas un compte exact" },
+        livraisonRealtimeQualifiee: verdict.validiteMesure.ok && o.scenario === "complet" && messages.succes > 0 && messages.erreurs === 0,
         familles: Object.fromEntries([...new Set(subset.map(m => `${m.type}:${m.famille}`))].map(key => [key, statistiques(subset.filter(m => `${m.type}:${m.famille}` === key))])),
-        verdict: verdictPalier({ http, parcours, realtime, messages, connectes, attendus: taille, termine: !arret && dureeMs >= o.duree * 1000, fatal: arret, scenario: o.scenario }) };
+        framesRealtime: Object.values(rapport.framesRealtime).filter(f => f.phase === "mesure" && f.palier === taille && f.page === page), verdict };
       rapport.paliers.push(resultat); changerPhase("fin_mesure"); sauvegarder();
       console.log(`Palier ${taille} personnes / page ${page} : ${resultat.verdict.ok ? "valide dans ce scenario" : "arret"}, HTTP p95 ${http.p95Ms} ms, erreurs ${http.erreurs}/${http.tentatives}.`);
       return resultat;

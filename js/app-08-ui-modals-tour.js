@@ -4497,6 +4497,7 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
     if (!data || !data.length) { memoriserPage(); return []; }
     // Charger tous les likes + counts commentaires d'un coup
     const postIds = data.map(r => r.id);
+    const likeReadTokens = new Map(postIds.map(id => [id, _postLikeReadToken(id)]));
     let likesData = [], commentsData = [], reactsData = [];
     try {
       const [likesRes, commentsRes, reactsRes] = await Promise.all([
@@ -4559,7 +4560,7 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
       // Cache le profil de l'auteur (photo comprise) → propagation partout.
       // La passion du POST n'est pas celle du PROFIL : cet embed ne la relit pas.
       try { if (r.profiles && r.author_id) cacheRemoteProfile({ id: r.author_id, username: r.profiles.username, emoji: r.profiles.emoji, color: r.profiles.color, avatar_url: r.profiles.avatar_url }); } catch(e) {}
-      return {
+      const loadedPost = {
         id: r.id, authorId: r.author_id,
         authorName: r.profiles?.username || "Profil",  // ✅ Doit toujours avoir un username depuis Supabase!
         authorEmoji: r.profiles?.emoji || "✨",  // ✅ Utiliser l'emoji depuis profiles
@@ -4639,6 +4640,7 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
           }
         })() }),
       };
+      return _postLikeReconcileLoaded(loadedPost, likeReadTokens.get(r.id));
     });
   } catch(e) { return []; }
 }
@@ -6553,30 +6555,7 @@ function _creerCanalDb(prive) {
       } catch(e) {}
     });
 
-  // Likes en temps reel
-  dbChan
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "post_likes" }, payload => {
-      const r = payload.new;
-      try { feedFiletReveiller(); } catch (e) {}
-      // ⚠️ NE PAS recompter MON propre like : likePost() l'a déjà ajouté en
-      // optimiste. Sinon +1 optimiste + +1 echo realtime = « double like ».
-      if (!r || r.user_id === MY_UID) return;
-      try { tel && tel.recv("like", { postId: r.post_id }); } catch(e) {}
-      const post = findPostAnywhere(r.post_id);
-      if (post) {
-        post.likes = (post.likes || 0) + 1;
-        try { patchPostLikeDom(post); } catch(e) {}
-        // ADR-009 : le like reçu reste un signal social (compteur + DOM), il ne
-        // déclenche plus aucune récompense Passia/points.
-      }
-    })
-    .on("postgres_changes", { event: "DELETE", schema: "public", table: "post_likes" }, payload => {
-      const r = payload.old;
-      if (!r || r.user_id === MY_UID) return; // mon propre unlike déjà décompté
-      try { tel && tel.recv("unlike", { postId: r.post_id }); } catch(e) {}
-      const post = findPostAnywhere(r.post_id);
-      if (post) { post.likes = Math.max(0, (post.likes || 1) - 1); try { patchPostLikeDom(post); } catch(e) {} }
-    });
+  // Les compteurs de likes visibles sont relus par startPostLikeRefresh (HEAD ciblés).
 
   // ── Notifications entrantes (like, comment, follow…) en temps réel ──
   // 🔧 FIX 2026-06-17 : il n'existait AUCUN canal realtime sur la table
@@ -7678,6 +7657,7 @@ async function supaInit() {
     // 2. D\u00c9MARRER LE REFRESH AUTOMATIQUE DU FEED
     // Cela garantit que les posts d'autres utilisateurs apparaissent en temps quasi-r\u00e9el
     startFeedRefreshLoop();
+    startPostLikeRefresh();
 
     // 3. Les autres requ\u00eates peuvent attendre (moins critiques)
     setTimeout(() => {
