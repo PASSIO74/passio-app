@@ -8,7 +8,7 @@ import { pathToFileURL } from "node:url";
 import { verdictReponse } from "./charge-verdict.mjs";
 import { optionsBanc, emailCapacite, abonnements, actionPrevue, pausePrevue, decalageInitial,
   postPourLike, aimerEtRetirer, delaiFixture, DisponibiliteRealtime,
-  PROFIL_REALTIME, LIKES_VISIBLES, compteurHead, pauseCompteurs, familleFrameRealtime,
+  PROFIL_REALTIME, LIKES_VISIBLES, compteurHead, pauseCompteurs, decalageInitialCompteurs, familleFrameRealtime,
   partenaire, clePaire, comptesPourPalier, Budget, LIMITES, statistiques, verdictAvecCompteurs, Sondes } from "./lib/charge-realiste.mjs";
 
 const sleep = ms => new Promise(resolveSleep => setTimeout(resolveSleep, ms));
@@ -310,14 +310,27 @@ export async function executer(options) {
     const ids = posts.map(p => p.id);
     const lots = await Promise.allSettled([
       rest("fil_likes", "post_likes", { select: "post_id,user_id", post_id: liste(ids) }, { jwt, attentes: attendreTableau(0, ["post_id", "user_id"]) }),
-      rest("fil_commentaires", "post_comments", { select: "post_id,id,author_id,content,created_at", post_id: liste(ids), order: "created_at.desc", limit: "200" }, { jwt, attentes: attendreTableau(1, ["id", "author_id"]) }),
+      rest("fil_commentaires", "post_comments", { select: "post_id,id,author_id,content,created_at", post_id: liste(ids), order: "created_at.desc", limit: "200" }, { jwt, attentes: attendreTableau(0, ["post_id", "id", "author_id"]) }),
       rest("fil_interactions", "comment_interactions", { select: "comment_id,user_id,kind,payload,created_at", comment_id: liste(ids) }, { jwt, attentes: attendreTableau(0, ["comment_id", "user_id"]) }),
     ]);
     const refus = lots.find(r => r.status === "rejected");
     if (refus) throw refus.reason;
     const [likes, commentaires, reactions] = lots.map(r => r.value);
+    // Après vingt publications, la page de vingt peut ne plus contenir aucun
+    // post de fixture : ces nouveaux posts n'ont légitimement aucun commentaire.
+    // À l'inverse, une fixture encore visible doit conserver SON commentaire,
+    // avec son auteur attendu ; un tableau vide n'est alors jamais acceptable.
+    const visibles = new Set(ids), parId = new Map(commentaires.map(c => [c.id, c]));
+    if (commentaires.some(c => !visibles.has(c.post_id))) throw new Error("COMMENTAIRE_HORS_PAGE");
+    for (let i = 0; i < postsFixture.length; i++) {
+      const p = postsFixture[i]; if (!visibles.has(p.id)) continue;
+      const c = parId.get(`${prefix}_comment_${i}`);
+      if (!c || c.post_id !== p.id || c.author_id !== profilsFixture[(i + 1) % profilsFixture.length]) {
+        throw new Error("COMMENTAIRE_FIXTURE_MANQUANT_OU_ALTERE");
+      }
+    }
     const auteurs = [...new Set(commentaires.map(c => c.author_id))];
-    const profils = await rest("fil_profils_commentaires", "profiles", { select: "id,username,emoji,color,avatar_url,passion_id,passions,bio", id: liste(auteurs) }, { jwt, attentes: attendreTableau(auteurs.length, ["id", "username"]) });
+    const profils = auteurs.length ? await rest("fil_profils_commentaires", "profiles", { select: "id,username,emoji,color,avatar_url,passion_id,passions,bio", id: liste(auteurs) }, { jwt, attentes: attendreTableau(auteurs.length, ["id", "username"]) }) : [];
     if (phase === "mesure") compte.postsVisibles = ids.slice(0, LIKES_VISIBLES.maximum);
     return { posts: ids, likes: likes.length, commentaires: commentaires.length, reactions: reactions.length, profils: profils.length };
   }
@@ -337,7 +350,7 @@ export async function executer(options) {
     if (!ok && ["HTTP_401", "HTTP_403", "HTTP_429", "HEAD_COMPTE_INVALIDE", "POSTS_VISIBLES_INSUFFISANTS"].includes(motif)) stop(motif);
   }
   async function surveillerCompteurs(compte, start, fin) {
-    let tour = 0, prochainDebut = start + decalageInitial(o.graine, compte.index);
+    let tour = 0, prochainDebut = start + decalageInitialCompteurs(o.graine, compte.index);
     while (!arret && prochainDebut < fin) {
       await sleep(Math.max(0, Math.min(prochainDebut, fin) - performance.now()));
       if (arret || performance.now() >= fin) break;

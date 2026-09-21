@@ -139,6 +139,7 @@ const _likePending = new Set();
 // liste d'identifiants n'est téléchargée (ni tronquée par max-rows).
 const POST_LIKE_REFRESH_MS = 15000;
 const POST_LIKE_REFRESH_JITTER_MS = 1500;
+const POST_LIKE_REFRESH_INITIAL_JITTER_MS = 15000;
 const POST_LIKE_REFRESH_MAX_POSTS = 3;
 let _postLikeRefreshTimer = null;
 let _postLikeRefreshDueAt = 0;
@@ -147,9 +148,10 @@ let _postLikeRefreshBusy = false;
 let _postLikeRefreshEpoch = 0;
 let _postLikeRefreshNextAt = 0;
 let _postLikeRefreshIdentity = null;
+let _postLikeRefreshPhaseIdentity = null;
 let _postLikeRefreshObserver = null;
 const _postLikeRefreshEntries = new Map();
-window._postLikeRefreshStats = { cycles: 0, reads: 0, updated: 0, errors: 0, discarded: 0 };
+window._postLikeRefreshStats = { cycles: 0, reads: 0, updated: 0, errors: 0, discarded: 0, initialDelayMs: 0 };
 
 function _postLikeIdentity() {
   return String(typeof MY_UID === "undefined" ? "" : MY_UID) + ":"
@@ -247,6 +249,18 @@ function _postLikeVisibleIds() {
   });
   return Array.from(ids);
 }
+function _postLikeRefreshInitialPhase() {
+  const identity = _postLikeIdentity();
+  if (_postLikeRefreshPhaseIdentity === identity || !window._supaReal || navigator.onLine === false
+      || typeof supa === "undefined" || !supa || !_postLikeVisibleIds().length) return;
+  // Déphaser aussi les personnes qui ouvrent ensemble. Tirer UNE échéance à
+  // l'admission : ni scroll, ni retour visible, ni stop/start ne la retirent
+  // ou la repoussent. Le compte suivant reçoit sa propre phase.
+  _postLikeRefreshPhaseIdentity = identity;
+  const delay = Math.max(200, Math.floor(Math.random() * POST_LIKE_REFRESH_INITIAL_JITTER_MS));
+  _postLikeRefreshNextAt = Date.now() + delay;
+  window._postLikeRefreshStats.initialDelayMs = delay;
+}
 function _postLikeRefreshWake() {
   if (!_postLikeRefreshRunning) return;
   if (document.hidden) {
@@ -255,6 +269,7 @@ function _postLikeRefreshWake() {
     _postLikeRefreshTimer = null;
     return;
   }
+  _postLikeRefreshInitialPhase();
   if (_postLikeRefreshBusy) return;
   const delay = Math.max(200, _postLikeRefreshNextAt - Date.now());
   // Les animations/modifications du DOM ne repoussent jamais un rendez-vous
@@ -268,6 +283,7 @@ function _postLikeRefreshWake() {
 async function _postLikeRefreshTour() {
   _postLikeRefreshTimer = null;
   if (!_postLikeRefreshRunning || _postLikeRefreshBusy || document.hidden) return;
+  _postLikeRefreshInitialPhase();
   if (Date.now() < _postLikeRefreshNextAt) { _postLikeRefreshWake(); return; }
   _postLikeRefreshBusy = true;
   let queried = false;

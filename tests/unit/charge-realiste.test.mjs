@@ -6,8 +6,9 @@ import { createHash } from "node:crypto";
 import { optionsBanc, emailCapacite, DOMAINE_CAPACITE, STAGING_REF, LIMITES, Budget, comptesPourPalier, abonnements,
   partenaire, actionPrevue, pausePrevue, decalageInitial, statistiques, verdictPalier, Sondes,
   postPourLike, aimerEtRetirer, delaiFixture, DisponibiliteRealtime,
-  PROFIL_REALTIME, LIKES_VISIBLES, compteurHead, pauseCompteurs, familleFrameRealtime, verdictAvecCompteurs } from "../../scripts/lib/charge-realiste.mjs";
+  PROFIL_REALTIME, LIKES_VISIBLES, compteurHead, pauseCompteurs, decalageInitialCompteurs, familleFrameRealtime, verdictAvecCompteurs } from "../../scripts/lib/charge-realiste.mjs";
 import { executer } from "../../scripts/charge-realiste.mjs";
+import { verdictReponse } from "../../scripts/charge-verdict.mjs";
 
 const cible = ["--projet", STAGING_REF];
 test("le sélecteur réel de purge E2E ignore les comptes du domaine capacité, même pendant la CI", async () => {
@@ -225,7 +226,8 @@ test("le contrat du banc correspond aux bindings V3 réellement créés et aux c
   assert.deepEqual(observes, abonnements("contrat-uid"), "le banc doit échouer si son profil diverge du vrai canal produit");
   const likes = readFileSync(new URL("../../js/app-03-posts-vlogs.js", import.meta.url), "utf8");
   for (const [nom, valeur] of [["POST_LIKE_REFRESH_MS", LIKES_VISIBLES.fraicheurMs],
-    ["POST_LIKE_REFRESH_JITTER_MS", LIKES_VISIBLES.jitterMs], ["POST_LIKE_REFRESH_MAX_POSTS", LIKES_VISIBLES.maximum]]) {
+    ["POST_LIKE_REFRESH_JITTER_MS", LIKES_VISIBLES.jitterMs], ["POST_LIKE_REFRESH_MAX_POSTS", LIKES_VISIBLES.maximum],
+    ["POST_LIKE_REFRESH_INITIAL_JITTER_MS", LIKES_VISIBLES.initialJitterMs]]) {
     const declaration = likes.match(new RegExp(`const ${nom} = (\\d+);`));
     assert.ok(declaration, `autorité produit manquante : ${nom}`); assert.equal(Number(declaration[1]), valeur);
   }
@@ -324,7 +326,7 @@ test("le vrai minuteur lit au plus trois compteurs séquentiels et garde 15–16
   const source = readFileSync(new URL("../../scripts/charge-realiste.mjs", import.meta.url), "utf8");
   const debut = source.indexOf("async function cycleCompteursVisibles("), fin = source.indexOf("function convPour(", debut);
   let now = 0, enVol = 0, maximumEnVol = 0; const appels = [], mesures = [];
-  const ctx = { LIKES_VISIBLES, pauseCompteurs, decalageInitial, o: { graine: 20260920 }, arret: null,
+  const ctx = { LIKES_VISIBLES, pauseCompteurs, decalageInitialCompteurs, o: { graine: 20260920 }, arret: null,
     phase: "mesure", stage: { taille: 25, page: 20 }, mesures, performance: { now: () => now },
     sleep: async ms => { assert.ok(ms >= 0); now += ms; }, motifSur: e => e.message,
     stop: motif => { ctx.arret = motif; },
@@ -336,6 +338,7 @@ test("le vrai minuteur lit au plus trois compteurs séquentiels et garde 15–16
   const surveiller = runInNewContext(source.slice(debut, fin) + "\nsurveillerCompteurs;", ctx);
   const compte = { index: 0, postsVisibles: ["p1", "p2", "p3", "p4", "p5"] };
   await surveiller(compte, 0, 60000);
+  assert.equal(appels[0].now, decalageInitialCompteurs(20260920, 0));
   assert.equal(maximumEnVol, 1); assert.ok(appels.length >= 9);
   assert.equal(mesures.length * 3, appels.length);
   assert.deepEqual([...new Set(appels.map(a => a.id))], ["p1", "p2", "p3"]);
@@ -348,6 +351,72 @@ test("le vrai minuteur lit au plus trois compteurs séquentiels et garde 15–16
   now = 0; await surveiller(compte, 0, 60000);
   assert.equal(ctx.arret, "HTTP_403"); assert.equal(appels.length, avant);
   assert.equal(mesures.at(-1).ok, false); assert.equal(mesures.at(-1).lectures, 0);
+});
+
+test("les compteurs s'étalent sur quinze secondes avec une graine indépendante des parcours", () => {
+  const debuts = Array.from({ length: 200 }, (_, i) => decalageInitialCompteurs(20260920, i));
+  assert.ok(debuts.every(ms => ms >= 200 && ms < 15000));
+  assert.ok(debuts.filter(ms => ms >= 10000).length > 40, "la troisième tranche de cinq secondes doit réellement être utilisée");
+  assert.ok(debuts.filter((ms, i) => ms !== decalageInitial(20260920, i)).length > 190);
+  assert.deepEqual(debuts, Array.from({ length: 200 }, (_, i) => decalageInitialCompteurs(20260920, i)));
+});
+
+function filSimule() {
+  const source = readFileSync(new URL("../../scripts/charge-realiste.mjs", import.meta.url), "utf8");
+  const debut = source.indexOf("async function fil(compte, page)"), fin = source.indexOf("async function cycleCompteursVisibles(", debut);
+  const prefix = "fixture-campagne", profilsFixture = ["00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-000000000002"];
+  const postsFixture = Array.from({ length: 20 }, (_, i) => ({ id: `fixture_${i}` }));
+  const ctx = { prefix, profilsFixture, postsFixture, phase: "mesure", LIKES_VISIBLES,
+    colonnesFil: "id,author_id,profiles", liste: ids => `in.(${ids.join(",")})`,
+    attendreTableau: (min = 1, champs = ["id"]) => ({ tableau: true, min, champs }),
+  };
+  const etat = { posts: postsFixture.map(p => ({ ...p, author_id: profilsFixture[0], profiles: { username: "Auteur" } })),
+    commentaires: postsFixture.map((p, i) => ({ post_id: p.id, id: `${prefix}_comment_${i}`, author_id: profilsFixture[(i + 1) % profilsFixture.length] })), appels: [] };
+  ctx.rest = async (nom, table, params, opt) => {
+    assert.equal(opt.jwt, "jwt-lecteur"); etat.appels.push({ nom, params });
+    let rows;
+    if (table === "posts") rows = etat.posts;
+    else if (table === "post_comments") rows = etat.commentaires;
+    else if (table === "profiles") {
+      assert.notEqual(params.id, "in.()", "une page sans commentaire ne doit pas interroger une liste d'auteurs vide");
+      rows = [...new Set(etat.commentaires.map(c => c.author_id))].map(id => ({ id, username: "Auteur" }));
+    } else rows = [];
+    if (!verdictReponse(200, JSON.stringify(rows), opt.attentes).ok) throw new Error("CONTENU_INATTENDU");
+    return rows;
+  };
+  const lire = runInNewContext(source.slice(debut, fin) + "\nfil;", ctx);
+  return { etat, lire: () => lire({ index: 0, jwt: "jwt-lecteur" }, 20) };
+}
+
+test("vingt nouveaux posts sans commentaire sont valides, sans profiles in.() ni requête superflue", async () => {
+  const { etat, lire } = filSimule();
+  etat.posts = etat.posts.map((p, i) => ({ ...p, id: `nouveau_${i}` })); etat.commentaires = [];
+  const result = await lire();
+  assert.equal(result.posts.length, 20); assert.equal(result.commentaires, 0); assert.equal(result.profils, 0);
+  assert.equal(etat.appels.length, 4); assert.equal(etat.appels.some(a => a.nom === "fil_profils_commentaires"), false);
+});
+
+test("la vraie lecture exige chaque commentaire de fixture encore visible et son auteur exact", async () => {
+  const { etat, lire } = filSimule();
+  const tous = await lire(); assert.equal(tous.commentaires, 20); assert.equal(etat.appels.length, 5);
+  etat.posts = etat.posts.map((p, i) => i ? { ...p, id: `nouveau_${i}` } : p);
+  etat.commentaires = etat.commentaires.slice(0, 1); etat.appels.length = 0;
+  assert.equal((await lire()).commentaires, 1); assert.equal(etat.appels.length, 5);
+  const attendu = { ...etat.commentaires[0] };
+  etat.commentaires = []; await assert.rejects(lire(), /COMMENTAIRE_FIXTURE_MANQUANT_OU_ALTERE/);
+  for (const cle of ["id", "author_id"]) {
+    etat.commentaires = [{ ...attendu, [cle]: "autre" }];
+    await assert.rejects(lire(), /COMMENTAIRE_FIXTURE_MANQUANT_OU_ALTERE/);
+  }
+  etat.commentaires = [{ ...attendu, post_id: "post_hors_page" }];
+  await assert.rejects(lire(), /COMMENTAIRE_HORS_PAGE/);
+});
+
+test("tolérer zéro commentaire ne tolère jamais une page vide ni un commentaire mal formé", async () => {
+  const { etat, lire } = filSimule();
+  etat.posts = []; await assert.rejects(lire(), /CONTENU_INATTENDU/);
+  const autre = filSimule(); delete autre.etat.commentaires[0].author_id;
+  await assert.rejects(autre.lire(), /CONTENU_INATTENDU/);
 });
 
 test("un like mesuré restaure exactement les fixtures ; un échec de DELETE laisse sa clé au journal", async () => {

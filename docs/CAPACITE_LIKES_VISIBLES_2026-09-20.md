@@ -12,6 +12,12 @@ lecture et appels conservent leurs chemins immédiats.
   l'autorité existante `connexionTempsReelAutorisee()`. Les visiteurs anonymes,
   qui n'avaient déjà aucun abonnement, conservent leur filet du fil à 60 s et
   ne reçoivent aucune nouvelle lecture. La connexion réveille l'ordonnanceur.
+- Le premier créneau est déphasé une seule fois, dès qu'un compte connecté
+  possède une carte visible : `max(200, floor(random * 15000))` ms, donc
+  **200 à 14 999 ms**, selon `POST_LIKE_REFRESH_INITIAL_JITTER_MS`. L'échéance
+  reste fixe malgré le scroll, un onglet masqué ou un stop/start. Un nouveau
+  compte ou une purge d'identité reçoit sa propre phase. Le fil conserve ses
+  compteurs déjà chargés pendant cette attente ; le clic local reste immédiat.
 - Seules les cartes de publications réseau réellement visibles sont relues :
   fil, liste de profil, détail et bobine. Une grille sans compteur, une carte
   hors scrollport, une carte recouverte ou un contenu de démonstration ne l’est pas.
@@ -68,7 +74,15 @@ amplification couvrent les chemins existants. La campagne staging doit employer
 les dix bindings du produit et compter séparément les HEAD ; elle ne peut plus
 qualifier ce lot avec l’ancien profil à douze bindings.
 
-Validation locale : les 65 cas des quatre suites ci-dessus ont tous affiché
+Déphasage initial (21 septembre) : les 21 cas existants de la suite compteurs
+passent sur DIST. Après correction de l'horloge des nouveaux tests, les trois
+cas dédiés passent avec un code de sortie 0 : échéance fixe malgré les réveils,
+borne 14 999 ms avec clic immédiat, admission visible et changement de compte.
+Les audits globals, handlers, tests creux et isolation passent ; la revue
+indépendante du delta est favorable. Ce résultat local ne qualifie pas encore
+la capacité de 200 comptes ; une nouvelle campagne reste nécessaire.
+
+Validation locale initiale : les 65 cas des quatre suites ci-dessus ont tous affiché
 `OK`, dont 20 nouveaux cas, puis les quatre vérifications ciblées après la
 garde visiteurs passent aussi, dont le nouveau cas anonyme → connexion →
 déconnexion en vol. La contre-revue indépendante du diff est favorable.
@@ -80,7 +94,8 @@ et tests creux passent. La vérification générale, lancée avant les changemen
 rencontre le défaut Windows CRLF du générateur `OUVERTURE_2026-09-11.sql` ;
 la CI Linux demeure la validation complète requise avant livraison.
 
-Les compteurs locaux `_postLikeRefreshStats` exposent cycles, lectures, mises à
+Les compteurs locaux `_postLikeRefreshStats` exposent le dernier délai initial
+tiré (`initialDelayMs`), cycles, lectures, mises à
 jour, erreurs et réponses écartées, sans identifiants ni contenu. La télémétrie
 HTTP existante observe les appels ; aucun événement distant supplémentaire
 n’est émis à chaque tour. Repli : annuler le commit et redéployer par la CI ;

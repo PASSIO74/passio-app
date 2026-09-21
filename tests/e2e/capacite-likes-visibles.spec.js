@@ -4,14 +4,18 @@ const { bootOnboarded } = require("./app-helper");
 // Vrai rendu/réveil du produit, horloge navigateur et serveur HEAD contrôlé.
 // Aucune donnée distante ni écriture réelle : les barrières retiennent les
 // réponses pour reproduire les courses qu'un test de fonctions pures manquerait.
-async function preparer(page, count = 1) {
+async function preparer(page, count = 1, initialRandom = 0) {
   await bootOnboarded(page);
   await page.clock.install();
-  await page.evaluate((n) => {
+  await page.evaluate(({ n, initialRandom }) => {
     stopFeedRefreshLoop();
     stopPostLikeRefresh();
     _postLikeRefreshNextAt = 0;
+    _postLikeRefreshPhaseIdentity = null;
     _postLikeRefreshEntries.clear();
+    // Rendre les courses existantes déterministes ; les nouveaux cas ci-dessous
+    // exercent explicitement le milieu et la borne haute du déphasage initial.
+    Math.random = () => initialRandom;
     MY_UID = "812aee2b-214f-4949-931e-842599b6d68b";
     window.MY_UID = MY_UID;
     state.user.likedPosts = [];
@@ -60,7 +64,7 @@ async function preparer(page, count = 1) {
       return q;
     };
     startPostLikeRefresh();
-  }, count);
+  }, { n: count, initialRandom });
 }
 
 async function passer(page, ms = 17000) {
@@ -68,6 +72,84 @@ async function passer(page, ms = 17000) {
   await page.evaluate(() => Promise.resolve());
 }
 async function lectures(page) { return page.evaluate(() => __headReads); }
+
+test("phase initiale fixe : scroll, visibilité et stop/start ne la retirent ni ne la repoussent", async ({ page }) => {
+  await preparer(page, 3, 0.5);
+  await page.clock.pauseAt(new Date(await page.evaluate(() => Date.now() + 1000)));
+  const debut = await page.evaluate(() => ({ due: _postLikeRefreshNextAt, delay: _postLikeRefreshStats.initialDelayMs }));
+  expect(debut.delay).toBe(7500);
+  await passer(page, 2000);
+  await page.evaluate(() => {
+    Math.random = () => { throw new Error("la phase ne doit pas être retirée"); };
+    for (let i = 0; i < 12; i++) document.dispatchEvent(new Event("scroll"));
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
+    document.dispatchEvent(new Event("visibilitychange"));
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
+    document.dispatchEvent(new Event("visibilitychange"));
+    stopPostLikeRefresh(); startPostLikeRefresh();
+  });
+  expect(await page.evaluate(() => _postLikeRefreshNextAt)).toBe(debut.due);
+  await passer(page, await page.evaluate(due => due - Date.now() - 1, debut.due));
+  expect(await lectures(page)).toHaveLength(0);
+  await page.evaluate(() => { Math.random = () => 0; });
+  await passer(page, 1);
+  expect(await lectures(page)).toHaveLength(3);
+  await passer(page, 14999);
+  expect(await lectures(page)).toHaveLength(3);
+  await passer(page, 1);
+  expect(await lectures(page)).toHaveLength(6);
+});
+
+test("phase initiale haute de14999ms, premier compteur et clic local immédiat", async ({ page }) => {
+  await preparer(page, 1, 0.99999);
+  await page.clock.pauseAt(new Date(await page.evaluate(() => Date.now() + 1000)));
+  expect(await page.evaluate(() => _postLikeRefreshStats.initialDelayMs)).toBe(14999);
+  await page.locator('#likes-test-stage [data-action="like"]').click();
+  await expect(page.locator('#likes-test-stage [data-action="like"]')).toHaveText("❤️ 5");
+  await page.evaluate(() => __writeResolvers.shift()({ ok: true }));
+  expect(await lectures(page)).toHaveLength(0);
+  await passer(page, await page.evaluate(() => _postLikeRefreshNextAt - Date.now() - 1));
+  expect(await lectures(page)).toHaveLength(0);
+  await passer(page, 1);
+  expect(await lectures(page)).toHaveLength(1);
+  await expect(page.locator('#likes-test-stage [data-action="like"]')).toHaveText("❤️ 7");
+});
+
+test("aucune phase anonyme ou cachée ; connexion visible et nouveau compte ont chacun leur échéance", async ({ page }) => {
+  await preparer(page, 1, 0.5);
+  await page.clock.pauseAt(new Date(await page.evaluate(() => Date.now() + 1000)));
+  await page.evaluate(() => {
+    stopPostLikeRefresh(); _postLikeRefreshPhaseIdentity = null; _postLikeRefreshNextAt = 0;
+    MY_UID = "u_visiteur_phase";
+    window.__tirages = 0; Math.random = () => { __tirages++; return 0.5; };
+    startPostLikeRefresh();
+  });
+  await passer(page, 20000);
+  expect(await page.evaluate(() => __tirages)).toBe(0);
+  expect(await lectures(page)).toHaveLength(0);
+  await page.evaluate(() => {
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
+    MY_UID = "812aee2b-214f-4949-931e-842599b6d68b"; startPostLikeRefresh();
+  });
+  await passer(page, 20000);
+  expect(await page.evaluate(() => __tirages)).toBe(0);
+  await page.evaluate(() => {
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  expect(await page.evaluate(() => ({ draws: __tirages, delay: _postLikeRefreshNextAt - Date.now() }))).toEqual({ draws: 1, delay: 7500 });
+  await passer(page, 5000);
+  await page.evaluate(() => { MY_UID = "a09a84a8-b188-45bb-93f4-82648a2973f3"; startPostLikeRefresh(); });
+  expect(await page.evaluate(() => ({ draws: __tirages, delay: _postLikeRefreshNextAt - Date.now() }))).toEqual({ draws: 2, delay: 7500 });
+  // Visiter l'ancien timer à SA date, puis la nouvelle échéance : un seul
+  // grand saut le déplacerait artificiellement juste avant cette dernière.
+  await passer(page, await page.evaluate(() => _postLikeRefreshDueAt - Date.now()));
+  expect(await lectures(page)).toHaveLength(0);
+  await passer(page, await page.evaluate(() => _postLikeRefreshNextAt - Date.now() - 1));
+  expect(await lectures(page)).toHaveLength(0);
+  await passer(page, 1);
+  expect(await lectures(page)).toHaveLength(1);
+});
 
 test("HEAD exact, compteur supérieur à1000, retrait à zéro et état aimé conservé", async ({ page }) => {
   await preparer(page);

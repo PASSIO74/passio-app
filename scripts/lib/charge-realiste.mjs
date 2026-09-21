@@ -11,7 +11,8 @@ export function emailCapacite(campagne, index) {
 export const LIMITES = Object.freeze({ octets: 180_000_000, octetsNettoyage: 20_000_000,
   messagesRealtime: 150_000, requetes: 20_000, dureeCampagneMs: 45 * 60_000 });
 export const PROFIL_REALTIME = "likes-visibles10";
-export const LIKES_VISIBLES = Object.freeze({ maximum: 3, fraicheurMs: 15000, jitterMs: 1500 });
+export const LIKES_VISIBLES = Object.freeze({ maximum: 3, fraicheurMs: 15000, jitterMs: 1500,
+  initialJitterMs: 15000, minimumDepartMs: 200 });
 
 export function optionsBanc(args) {
   const values = {};
@@ -78,6 +79,8 @@ export function compteurHead(status, contentRange) {
 
 export const pauseCompteurs = (graine, utilisateur, tour) => LIKES_VISIBLES.fraicheurMs
   + entierDeterministe(graine, utilisateur, tour + 40000) % LIKES_VISIBLES.jitterMs;
+export const decalageInitialCompteurs = (graine, utilisateur) => Math.max(LIKES_VISIBLES.minimumDepartMs,
+  entierDeterministe(graine, utilisateur, 50000) % LIKES_VISIBLES.initialJitterMs);
 
 export function familleFrameRealtime(m) {
   if (m.event === "postgres_changes") {
