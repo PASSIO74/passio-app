@@ -150,7 +150,11 @@ insert into public.comment_interactions (id, comment_id, post_id, user_id, kind,
   ('i2', 'post_p', 'post_p', :'c', 'gif',   'https://g/x.gif', '2026-09-02 10:01:00+00'),
   ('i3', 'post_p', 'post_p', :'d', 'like',  null, '2026-09-02 10:02:00+00'),
   ('i4', 'cp1',    'post_p', :'a', 'emoji', '🔥', '2026-09-02 10:03:00+00'),
-  ('i5', 'post_a', 'post_a', :'c', 'emoji', '👏', '2026-09-02 10:04:00+00');
+  ('i5', 'post_a', 'post_a', :'c', 'emoji', '👏', '2026-09-02 10:04:00+00'),
+  -- Deux témoins pour que CHAQUE filtre soit prouvé séparément (contre-revue) :
+  -- une réponse (kind hors liste, payload non NULL) et un emoji sans payload.
+  ('i6', 'post_p', 'post_p', :'c', 'reply', 'une réponse', '2026-09-02 10:05:00+00'),
+  ('i7', 'post_p', 'post_p', :'a', 'emoji', null, '2026-09-02 10:06:00+00');
 SQL
 
 echo "── ① APPLICATION, VERDICT, REJEU ─────────────────────────────────────"
@@ -193,7 +197,7 @@ verifier "…et le contenu, l'auteur et la date du commentaire" "troisième|$A|2
   "$(EN "$C" "select (apercus->0->>'content') || '|' || (apercus->0->>'author_id') || '|' || (apercus->0->>'created_at') from public.fil_compteurs(array['post_a']);")"
 verifier "B (bloqué) : un seul aperçu, le sien" "ca2" \
   "$(EN "$B" "select string_agg(x->>'id', ',') from public.fil_compteurs(array['post_a']) f, jsonb_array_elements(f.apercus) x;")"
-verifier "réactions de post_p : emoji et gif de la publication, PAS le like ni la réaction du commentaire" "😍,https://g/x.gif" \
+verifier "réactions de post_p : emoji et gif de la publication — ni le like, ni la réponse (kind), ni l'emoji sans payload, ni la réaction du commentaire" "😍,https://g/x.gif" \
   "$(EN "$D" "select string_agg(x->>'payload', ',') from public.fil_compteurs(array['post_p']) f, jsonb_array_elements(f.reactions) x;")"
 verifier "…chaque réaction porte user_id, kind, payload, created_at" "$B|emoji|😍" \
   "$(EN "$D" "select (reactions->0->>'user_id') || '|' || (reactions->0->>'kind') || '|' || (reactions->0->>'payload') from public.fil_compteurs(array['post_p']);")"
@@ -211,8 +215,11 @@ verifier "61 identifiants : 60 lignes, le 61ᵉ ignoré" "60|false" \
   "$(EN "$D" "select count(*) || '|' || bool_or(post_id = 'id61') from public.fil_compteurs((select array_agg('id' || g) from generate_series(1, 61) g));")"
 verifier "une page de 20 : 20 lignes, une par identifiant, dans le tableau" "20" \
   "$(EN "$D" "select count(distinct post_id) from public.fil_compteurs((select array_agg('id' || g) from generate_series(1, 20) g));")"
-verifier "un compte sans droit d'exécution (rôle nu) est refusé" "permission denied" \
-  "$(psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -tA -q -c "create role nu nologin; grant usage on schema public to nu; set local role nu; select count(*) from public.fil_compteurs(array['post_p']);" 2>&1 | grep -o 'permission denied' | head -1)"
+verifier "un compte sans droit d'exécution (rôle nu) est refusé SUR LA FONCTION (pas seulement sur une table)" "permission denied for function fil_compteurs" \
+  "$(psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -tA -q -c "create role nu nologin; grant usage on schema public to nu; set local role nu; select count(*) from public.fil_compteurs(array['post_p']);" 2>&1 | grep -o 'permission denied for function fil_compteurs' | head -1)"
+verifier "PUBLIC n'a pas le droit d'exécution" "f" "$(Q "select has_function_privilege('public', 'public.fil_compteurs(text[])', 'execute');")"
+verifier "un tableau imbriqué (61 lignes × 2) est borné à 60 identifiants aplatis" "60" \
+  "$(EN "$D" "select count(*) from public.fil_compteurs((select array_agg(array['a' || g, 'b' || g]) from generate_series(1, 61) g));")"
 
 echo "── ⑤ MUTATION : la même fonction en SECURITY DEFINER est REFUSÉE par la migration ─"
 mutant="$(mktemp)"; trap 'rm -f "$mutant"; nettoyer' EXIT

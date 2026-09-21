@@ -79,35 +79,40 @@ HEAD ou clic » (`_postLikeReconcileLoaded`, éprouvée sur les DEUX chemins).
 
 ### Octets par page de fil, sur les données de production (lecture seule, 21/09)
 
-Page réelle de 20 publications, 13 likes, 9 commentaires, 4 réactions au total
-(la production porte 9 comptes). Mesuré en SQL, sans RLS (le connecteur
-lecture seule ne peut pas prendre le rôle `authenticated` ; l'écart est au plus
-la publication du seul compte privé).
+Page réelle de 20 publications : 13 likes, 9 commentaires (8 aperçus), 4
+réactions, 2 auteurs d'aperçus (la production porte 9 comptes). Mesuré en
+SQL, sans RLS (le connecteur lecture seule ne peut pas prendre le rôle
+`authenticated` ; l'écart est au plus la publication du seul compte privé).
+La requête de mesure est la fonction elle-même, appliquée en ligne ; ses
+résultats bruts : total 3 720, dont 2 041 de structure fixe, 1 140 pour 8
+aperçus, 539 pour 4 réactions.
 
 | | Requêtes après `posts` | Octets JSON |
 |---|---:|---:|
-| Avant : `post_likes` + `post_comments` + `comment_interactions` + `profiles` | 4 | 1 115 + 1 583 + 685 + 758 = **4 141** |
-| Après : `fil_compteurs` (+ `profiles` des auteurs d'aperçus, en cache 2 min) | 1 (+0/1) | **6 380** (+ 758 quand le cache est vide) |
+| Avant : `post_likes` + `post_comments` + `comment_interactions` | 3 GET | 1 115 + 1 583 + 685 = **3 383** |
+| Après : `fil_compteurs` | 1 POST | **3 720** |
+| Dans les deux cas : `profiles` des auteurs d'aperçus (cache 2 min) | +0/1 | +758 quand le cache est vide |
 
-**Sur la production d'aujourd'hui, la réponse groupée est PLUS LOURDE de
-2,2 Ko** : vingt lignes portent chacune ~110 octets de structure
-(`post_id`, `likes`, `aime`, `commentaires`, `apercus`, `reactions`), pour des
-publications qui n'ont presque rien. Le gain est ailleurs : **trois requêtes de
-moins par page** (5 → 2, ou 4 → 1 quand les auteurs sont en cache), et un
-volume **borné** par la page au lieu de croître avec le succès des
-publications. Coût unitaire mesuré : ~86 octets par ligne de like, ~176 par
-commentaire, ~171 par réaction, contre ~110 fixes + ~250 par aperçu après.
+**Sur la production d'aujourd'hui, la réponse groupée pèse 337 octets de PLUS
+(+10 %)** : chaque publication coûte ~102 octets de structure fixe
+(`post_id`, `likes`, `aime`, `commentaires`, `apercus`, `reactions`) pour des
+publications qui n'ont presque rien. Le gain est ailleurs : **deux requêtes de
+moins par page** (3 GET → 1 POST, `profiles` inchangé), et un volume **borné**
+par la page au lieu de croître avec le succès des publications. Coûts unitaires
+mesurés sur cette page : avant ~86 octets par ligne de like, ~176 par
+commentaire (plafonnés à 200 par page), ~171 par réaction ; après ~102 fixes
+par publication + ~142 par aperçu (2 au plus) + ~135 par réaction.
 
-Projection (même formule, pas une mesure) :
+Projection (mêmes coûts unitaires, pas une mesure) :
 
 | Par publication | Avant | Après | Écart |
 |---|---:|---:|---:|
-| 0 like, 0 commentaire (aujourd'hui) | ~0,2 Ko | ~0,1 Ko | +0,1 Ko × 20 |
-| 5 likes, 3 commentaires | ~1,0 Ko | ~0,6 Ko | −36 % |
-| 30 likes, 10 commentaires | ~4,3 Ko | ~0,6 Ko | −86 % |
-| 200 likes, 40 commentaires | ~24 Ko (commentaires plafonnés à 200 par page, compte faux) | ~0,6 Ko | −97 %, et compte juste |
+| 0 like, 0 commentaire (aujourd'hui) | ~0 | ~0,1 Ko | +0,1 Ko × 20 |
+| 5 likes, 3 commentaires | ~0,96 Ko | ~0,39 Ko | −60 % |
+| 30 likes, 10 commentaires | ~4,3 Ko | ~0,39 Ko | −91 % |
+| 200 likes, 40 commentaires | ~19 Ko (commentaires plafonnés à 10 par publication sur une page de 20 → compte FAUX) | ~0,39 Ko | −98 %, et compte juste |
 
-Le point de bascule est ~2 likes + 1 commentaire par publication en moyenne.
+Le point de bascule est ~1 like + 1 commentaire par publication en moyenne.
 
 ### Ouverture d'une discussion
 
@@ -137,13 +142,32 @@ change aujourd'hui ; c'est une borne, pas une économie mesurée.
   le motif de la garde, sans verdict, la version revue reste en place (témoin
   hors migration : en DEFINER, un compte bloqué compterait 3 likes au lieu de
   1). Ne tourne pas sous Windows (pas de `initdb`) : CI Linux.
-- `tests/e2e/capacite-fil-compteurs.spec.js` (17) : une lecture groupée par
+- `tests/e2e/capacite-fil-compteurs.spec.js` (21) : une lecture groupée par
   page, repli mémorisé, erreur passagère repliée pour la page, trois échecs,
   clé de release, chemin sans SDK, pagination de la discussion avec curseur et
   bouton, page incomplète, dernière page qui recale, erreur de page sans
   squelette, compte tenu localement (local, direct, suppression, réponses),
   discussion conservée à travers le filet, chemin d'avant à 45, panneau des
   Bobines, autorité pure, signatures de rendu (app-02 et app-08).
+- Contre-revue adversariale multi-agents (8 lentilles, 3 vérificateurs par
+  constat, 27 constats confirmés) sur le second jet, tous corrigés : mon
+  commentaire confirmé en base devient une ligne serveur et entre dans le total
+  (`_commentaireConfirme`, sinon compté deux fois au tour suivant du filet —
+  P1) ; les lectures de discussion écrivent sur TOUTES les copies du post et
+  relisent l'objet après chaque `await` (le filet remplace les objets) ; mes
+  propres publications reçoivent le total sur leur copie `userPosts` ;
+  réouvrir après 20 s ne jette pas les pages chargées ; la pagination n'est pas
+  persistée (`_leanState`) ni reportée d'une session à l'autre ; `limite + 1`
+  pour ne poser un curseur que s'il reste des lignes ; le panneau des Bobines
+  insère en tête et remet son index de réponse ; la mémorisation « fonction
+  absente » expire après une heure ; migration : borne posée APRÈS
+  aplatissement (un tableau imbriqué passait entier), garde et verdict ciblés
+  par signature (`to_regprocedure`), PUBLIC sans droit d'exécution ; banc SQL :
+  filtres `kind`/`payload` prouvés chacun par un témoin, refus mesuré sur la
+  FONCTION, tableau imbriqué borné ; verrous : horloge figée avant le clic,
+  chaîne de démarrage close avant les journaux, POST refusé si GET, total seul
+  fait bouger la signature, squelette sur une publication sans aperçu, Bobines
+  « précédents » cliqué et dédoublonné.
 - Contre-revue `audit-passio` (agent, lecture seule) sur le premier jet :
   quatre P1 (signature du filet aveugle au total, panneau des Bobines réduit à
   deux lignes, discussion perdue au tour du filet, banc SQL ⑤ inversé) et
@@ -172,6 +196,6 @@ du commit client. Aucune donnée n'est touchée dans les deux sens.
 ## Pilotage
 
 Aucun nouvel événement. La télémétrie HTTP existante voit `POST /rpc/fil_compteurs`
-à la place des trois GET ; un `PGRST202` apparaît au plus une fois par session
+à la place des trois GET (`profiles` reste un GET dans les deux cas) ; un `PGRST202` apparaît au plus une fois par session
 tant que la migration n'est pas appliquée (à lire comme « pas encore appliquée »,
 pas comme une panne).

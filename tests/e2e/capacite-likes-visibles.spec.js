@@ -382,6 +382,10 @@ test("profil verrouillé et grille sans compteur ne produisent aucune lecture", 
 for (const chemin of ["listes", "rpc"]) for (const newValue of ["head", "clic"]) {
   test("une ancienne lecture complète du fil (" + chemin + ") conserve le compteur plus récent : " + newValue, async ({ page }) => {
     await preparer(page);
+    // Horloge FIGÉE : sans cela le premier HEAD (dû à 200 ms réels) pouvait
+    // partir entre la pose des stubs et le clic, et le cas « clic » attendait
+    // 4 + 1 sur un compteur déjà passé à 7 (contre-revue).
+    await page.clock.pauseAt(new Date(await page.evaluate(() => Date.now() + 50)));
     await page.evaluate((chemin) => {
       const original = supa.from;
       sessionStorage.removeItem("passio_fil_compteurs_absente");

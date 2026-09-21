@@ -56,9 +56,17 @@ as $function$
   with cibles as (
     -- 60 identifiants au plus, dédupliqués, sans NULL : la borne est celle de
     -- la plus grande page du produit (profil visité). Au-delà, on ignore.
-    select distinct pid
-      from unnest((coalesce(_post_ids, '{}'::text[]))[1:60]) as u(pid)
-     where pid is not null
+    -- ⚠️ Bornée APRÈS aplatissement : une tranche [1:60] posée avant `unnest`
+    -- ne bornait que la première dimension — un tableau imbriqué (accepté par
+    -- la conversion JSON → text[] de PostgREST) passait entier (contre-revue).
+    select distinct s.pid
+      from (
+        select u.pid
+          from unnest(coalesce(_post_ids, '{}'::text[])) with ordinality as u(pid, n)
+         where u.pid is not null
+         order by u.n
+         limit 60
+      ) s
   )
   select
     c.pid as post_id,
@@ -114,27 +122,25 @@ grant execute on function public.fil_compteurs(text[]) to anon, authenticated;
 -- à l'empêcher — il est lu par un humain — donc la transaction s'ANNULE.
 do $$
 begin
-  if (select p.prosecdef from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-       where n.nspname = 'public' and p.proname = 'fil_compteurs') then
+  if (select p.prosecdef from pg_proc p where p.oid = to_regprocedure('public.fil_compteurs(text[])')) then
     raise exception 'fil_compteurs doit rester SECURITY INVOKER : en DEFINER elle contournerait la RLS de post_likes / post_comments / comment_interactions — transaction annulée';
   end if;
 end $$;
 
 -- Verdict (5 lignes attendues, toutes OK).
+-- Verdict CIBLÉ PAR SIGNATURE (`to_regprocedure`) : une seconde surcharge
+-- `fil_compteurs` ferait rendre deux lignes à une sous-requête par nom seul.
 select 'fonction présente' as controle,
-       case when exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-                          where n.nspname = 'public' and p.proname = 'fil_compteurs') then 'OK' else 'ECHEC' end as valeur
+       case when to_regprocedure('public.fil_compteurs(text[])') is not null then 'OK' else 'ECHEC' end as valeur
 union all select 'SECURITY INVOKER (jamais DEFINER)',
-       case when (select p.prosecdef from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-                   where n.nspname = 'public' and p.proname = 'fil_compteurs') = false then 'OK' else 'ECHEC' end
+       case when (select p.prosecdef from pg_proc p where p.oid = to_regprocedure('public.fil_compteurs(text[])')) = false then 'OK' else 'ECHEC' end
 union all select 'search_path figé',
-       case when (select array_to_string(p.proconfig, ',') from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-                   where n.nspname = 'public' and p.proname = 'fil_compteurs') like '%search_path=%' then 'OK' else 'ECHEC' end
+       case when (select array_to_string(p.proconfig, ',') from pg_proc p where p.oid = to_regprocedure('public.fil_compteurs(text[])')) like '%search_path=%' then 'OK' else 'ECHEC' end
 union all select 'STABLE (lecture seule, appelable en GET)',
-       case when (select p.provolatile from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-                   where n.nspname = 'public' and p.proname = 'fil_compteurs') = 's' then 'OK' else 'ECHEC' end
-union all select 'exposée à anon et authenticated',
+       case when (select p.provolatile from pg_proc p where p.oid = to_regprocedure('public.fil_compteurs(text[])')) = 's' then 'OK' else 'ECHEC' end
+union all select 'exposée à anon et authenticated, pas à PUBLIC',
        case when has_function_privilege('anon', 'public.fil_compteurs(text[])', 'execute')
-             and has_function_privilege('authenticated', 'public.fil_compteurs(text[])', 'execute') then 'OK' else 'ECHEC' end;
+             and has_function_privilege('authenticated', 'public.fil_compteurs(text[])', 'execute')
+             and not has_function_privilege('public', 'public.fil_compteurs(text[])', 'execute') then 'OK' else 'ECHEC' end;
 
 commit;

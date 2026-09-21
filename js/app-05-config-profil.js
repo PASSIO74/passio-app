@@ -2988,7 +2988,9 @@ async function _chargerDiscussionBobine(postId) {
   try {
     const page = await supaLoadComments(postId);
     if (!page || window.currentReelCommentPostId !== postId) return;
-    _fusionnerPageCommentaires(reel, page);
+    _fusionnerPageCommentaires(findPostAnywhere(postId) || reel, page);
+    // Les index d'une réponse en cours ne survivent pas à un re-tri.
+    window.replyingToCommentIdx = null;
     if (typeof hydrateCommentInteractions === "function") { try { await hydrateCommentInteractions(reel); } catch (e) {} }
     window._cmtThreadLoadedAt[postId] = Date.now();
     if (window.currentReelCommentPostId === postId) loadReelComments(postId);
@@ -3187,7 +3189,9 @@ function submitReelComment() {
       likedBy: [],
       replies: []
     };
-    reel.comments.push(newComment);
+    // En TÊTE, comme `submitComment` (app-04) : la liste vit récent → ancien
+    // (chargeurs paginés), et les gestionnaires du panneau adressent par INDEX.
+    reel.comments.unshift(newComment);
     _envoyerCommentaireBobine(postId, {
       type: "post_comment",
       commentId: newComment.id,

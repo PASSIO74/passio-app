@@ -4636,6 +4636,12 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
           }
         })() }),
       };
+      // Mes publications vivent AUSSI dans `userPosts`, que `findPostAnywhere`
+      // préfère : le total exact s'y écrit, sinon la discussion s'ouvre sur un
+      // total recalé à la page (30) au lieu du compte serveur.
+      if (Number.isSafeInteger(loadedPost.commentsTotal) && state.userPosts) {
+        state.userPosts.forEach(function (u) { if (u && u.id === r.id) u.commentsTotal = loadedPost.commentsTotal; });
+      }
       return _postLikeReconcileLoaded(loadedPost, likeReadTokens.get(r.id));
     });
   } catch(e) { return []; }
@@ -4680,11 +4686,21 @@ function _filCompteursCleRelease() {
     return r || "dev";
   } catch (e) { return "dev"; }
 }
+// La mémorisation porte la release ET l'heure : une migration appliquée après
+// le déploiement du client est retentée à l'heure suivante, sans rechargement.
+const FIL_COMPTEURS_ABSENTE_TTL_MS = 60 * 60 * 1000;
 function _filCompteursMemoAbsence() {
-  try { return sessionStorage.getItem(FIL_COMPTEURS_ABSENTE_CLE) === _filCompteursCleRelease(); } catch (e) { return false; }
+  try {
+    const brut = sessionStorage.getItem(FIL_COMPTEURS_ABSENTE_CLE);
+    if (!brut) return false;
+    const i = brut.lastIndexOf("@");
+    const release = i === -1 ? brut : brut.slice(0, i), depuis = i === -1 ? 0 : Number(brut.slice(i + 1));
+    if (release !== _filCompteursCleRelease()) return false;
+    return Number.isFinite(depuis) && depuis > 0 && Date.now() - depuis < FIL_COMPTEURS_ABSENTE_TTL_MS;
+  } catch (e) { return false; }
 }
 function _filCompteursNoterAbsence() {
-  try { sessionStorage.setItem(FIL_COMPTEURS_ABSENTE_CLE, _filCompteursCleRelease()); } catch (e) {}
+  try { sessionStorage.setItem(FIL_COMPTEURS_ABSENTE_CLE, _filCompteursCleRelease() + "@" + Date.now()); } catch (e) {}
 }
 // PGRST202 = « fonction introuvable dans le cache de schéma » ; 42883 = la
 // base elle-même ne la connaît pas (retirée avant le rechargement du cache).
@@ -4746,6 +4762,9 @@ function _discussionChargee(postId, apercus, profils) {
   try {
     const avant = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
     if (!avant || !Array.isArray(avant.comments) || !Object.prototype.hasOwnProperty.call(avant, "_commentsSuite")) return null;
+    // Chargée dans CETTE session seulement : une liste persistée (mes posts)
+    // d'une session précédente est périmée, les aperçus frais priment.
+    if (!window._cmtThreadLoadedAt || !window._cmtThreadLoadedAt[postId]) return null;
     const serveur = avant.comments.filter(function (c) { return c && c.fromSupabase; }).length;
     if (serveur <= (apercus || []).length) return null;
     const connus = new Set(avant.comments.map(function (c) { return c && c.id; }));
@@ -4980,9 +4999,13 @@ async function supaLoadComments(postId, opts) {
       const date = JSON.stringify(opts.avant.created_at), id = JSON.stringify(opts.avant.id);
       q = q.or("created_at.lt." + date + ",and(created_at.eq." + date + ",id.lt." + id + ")");
     }
-    const { data, error } = await q.order("created_at", { ascending: false }).order("id", { ascending: false }).limit(limite);
+    // `limite + 1` lignes demandées, `limite` gardées : la (limite+1)ᵉ prouve
+    // qu'il reste une page — sinon un total multiple de 30 affichait un bouton
+    // « précédents » qui ne chargeait rien.
+    const { data, error } = await q.order("created_at", { ascending: false }).order("id", { ascending: false }).limit(limite + 1);
     if (error) { console.warn("supaLoadComments:", error.message); return null; }
-    const rows = data || [];
+    const encore = (data || []).length > limite;
+    const rows = (data || []).slice(0, limite);
     const profs = await _resolveProfilesByIds(rows.map(r => r.author_id));
     const liste = rows.map(r => {
       const p = profs[r.author_id] || {};
@@ -4996,7 +5019,7 @@ async function supaLoadComments(postId, opts) {
       };
     });
     const derniere = rows[rows.length - 1];
-    liste.suite = rows.length >= limite && derniere && derniere.created_at
+    liste.suite = encore && derniere && derniere.created_at
       ? { created_at: derniere.created_at, id: derniere.id } : null;
     return liste;
   } catch(e) { return null; }
@@ -7969,6 +7992,7 @@ async function supaInit() {
     }, { once: false });
 
     console.log("\u2705 [INIT] Initialisation Supabase compl\u00e8te");
+    window._supaInitTerminee = true; // lu par les bancs : la chaîne de démarrage ne lit plus rien
     return;
     if (supaPosts.length) {
       // Sync les posts likés depuis Supabase

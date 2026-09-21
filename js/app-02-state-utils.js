@@ -238,6 +238,10 @@ function _leanState() {
   if (Array.isArray(lean.userPosts)) {
     lean.userPosts = lean.userPosts.map((p) => {
       const c = { ...p, image: stripData(p.image), video: stripData(p.video), audio: stripData(p.audio), cover: stripData(p.cover) };
+      // La pagination d'une discussion est un état de SESSION (curseur serveur,
+      // page chargée) : persistée, elle réinjectait au démarrage suivant une
+      // liste périmée par-dessus les aperçus frais du fil (contre-revue).
+      delete c._commentsSuite;
       if (Array.isArray(p.steps)) {
         c.steps = p.steps.map((s) => ({ ...s, photo: stripData(s.photo), video: stripData(s.video), audio: stripData(s.audio) }));
       }
@@ -9108,7 +9112,11 @@ function _feedCompteursFrais(p) {
     var copie = Object.assign({}, p);
     copie.likes = vrai.likes;
     if (vrai.comments) copie.comments = vrai.comments;
-    if (Number.isSafeInteger(vrai.commentsTotal)) copie.commentsTotal = vrai.commentsTotal; else delete copie.commentsTotal;
+    // Le total exact vit sur la copie `supabasePosts` ; `findPostAnywhere`
+    // préfère `userPosts` (mes publications), qui ne l'a pas toujours : on
+    // garde le plus grand connu, jamais on ne le jette.
+    var totalMax = [vrai.commentsTotal, p.commentsTotal].filter(Number.isSafeInteger);
+    if (totalMax.length) copie.commentsTotal = Math.max.apply(null, totalMax);
     if (Array.isArray(vrai.reactions)) copie.reactions = vrai.reactions;
     return copie;
   } catch (e) { return p; }

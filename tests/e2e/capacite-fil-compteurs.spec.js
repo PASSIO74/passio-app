@@ -13,8 +13,9 @@ const { bootOnboarded } = require("./app-helper");
 //   · la carte affiche le compte EXACT (7) alors que deux aperçus sont chargés ;
 //   · fonction absente (PGRST202) : repli sur les lectures d'avant, mémorisé
 //     pour la session — un seul essai, jamais un par page ;
-//   · erreur passagère : PAS de repli (il coûterait quatre lectures), compteurs
-//     vides comme avant, et la page suivante réessaie ;
+//   · erreur passagère : les lectures d'avant pour CETTE page (des compteurs
+//     justes valent quatre lectures de plus), trois échecs consécutifs → plus
+//     d'essai de la session, rien de mémorisé ;
 //   · la discussion se charge par pages de 30, les plus récents d'abord, avec
 //     un curseur `(created_at, id)` et un bouton « précédents · N restants » ;
 //   · mes commentaires locaux, un commentaire reçu en direct et une
@@ -23,10 +24,15 @@ const { bootOnboarded } = require("./app-helper");
 
 async function preparer(page, opts = {}) {
   await bootOnboarded(page);
+  // La chaîne de démarrage doit avoir FINI ses lectures avant qu'on pose les
+  // journaux : sinon un `supaLoadPosts` de boot tardif entrait dans `__lectures`
+  // et remplaçait `state.supabasePosts` sous les cas (contre-revue).
+  await page.waitForFunction(() => window._supaInitTerminee === true || !window._supaReal, null, { timeout: 15000 }).catch(() => {});
   await page.evaluate((opts) => {
     stopFeedRefreshLoop();
     stopPostLikeRefresh();
     _clearProfileCache();
+    window._cmtThreadLoadedAt = {};
     _feedPagination = null;
     window._feedExtraPosts = [];
     state.supabasePosts = [];
@@ -67,7 +73,8 @@ async function preparer(page, opts = {}) {
         };
       });
     }
-    supa.rpc = (fn, args) => {
+    supa.rpc = (fn, args, options) => {
+      if (options && (options.get || options.head)) throw new Error("fil_compteurs doit partir en POST : un identifiant peut porter une virgule ou une accolade");
       __rpc.push({ fn, args });
       if (fn !== "fil_compteurs") return Promise.resolve({ data: null, error: null });
       if (__rpcMode === "absente") return Promise.resolve({ data: null, error: { code: "PGRST202", message: "Could not find the function public.fil_compteurs(_post_ids) in the schema cache" } });
@@ -223,7 +230,8 @@ test("la discussion se charge par pages de 30, les plus récents d'abord, puis �
   expect(r.titre).toBe("Discussion (45)");
   expect(r.bouton).toContain("15 restants");
   const page1 = await lectures(page, "post_comments");
-  expect(page1).toEqual([expect.objectContaining({ eq: ["post_id", "fil_00"], limit: 30, orders: ["created_at", "id"], rows: 30, or: undefined })]);
+  // `limite + 1` demandées (31), 30 gardées : la 31ᵉ prouve qu'il reste une page.
+  expect(page1).toEqual([expect.objectContaining({ eq: ["post_id", "fil_00"], limit: 31, orders: ["created_at", "id"], rows: 31, or: undefined })]);
 
   await page.locator("#commentsBox [data-cmtsuite]").click();
   await expect(page.locator("#commentsBox .comment")).toHaveCount(45);
@@ -316,9 +324,17 @@ test("les signatures de rendu du fil citent l'autorité du compte, pas la longue
   // longueur de `comments` (deux aperçus, constante) ignorerait un nouveau total.
   const fs = require("fs");
   const src = fs.readFileSync(require("path").join(__dirname, "..", "..", "js", "app-02-state-utils.js"), "utf8");
-  const occurrences = src.split("nbCommentairesPost(p)").length - 1;
-  expect(occurrences).toBeGreaterThanOrEqual(4); // 2 signatures + carte + détail
-  expect(src).not.toMatch(/\(p\.comments \|\| \[\]\)\.length\) \+ ":"/);
+  // Hors définition : les quatre LECTEURS (deux signatures, carte, ranking).
+  const occurrences = src.split("nbCommentairesPost(p)").length - 1 - src.split("function nbCommentairesPost(p)").length + 1;
+  expect(occurrences).toBeGreaterThanOrEqual(4);
+  for (const fn of ["_feedWindowCardSig", "feedPostScore"]) {
+    const debut = src.indexOf("function " + fn);
+    const corps = src.slice(debut, src.indexOf("\nfunction ", debut + 1));
+    expect(corps, fn + " doit citer l'autorité").toContain("nbCommentairesPost(p)");
+    // Le repli `: (p.comments || []).length` (autorité absente) est toléré ; pas un usage à froid.
+    const sansRepli = corps.split("? nbCommentairesPost(p) : (p.comments || []).length").join("");
+    expect(sansRepli, fn + " ne doit pas compter la liste").not.toMatch(/\(p\.comments \|\| \[\]\)\.length/);
+  }
   // Le filet du fil (app-08) décide de repeindre sur SA signature : elle aussi.
   const src8 = fs.readFileSync(require("path").join(__dirname, "..", "..", "js", "app-08-ui-modals-tour.js"), "utf8");
   const sig = src8.slice(src8.indexOf("function _feedPostsSig"), src8.indexOf("function _feedPostsSig") + 700);
@@ -345,6 +361,14 @@ test("le filet du fil repeint quand le total change, et ne ramène pas une discu
       apres: { total: q.commentsTotal, charges: q.comments.length, tete: q.comments[0].id, auteur: q.comments[0].authorName, suite: q._commentsSuite, affiche: nbCommentairesPost(q) } };
   });
   expect(r.sigChange).toBe(true);
+  // Le total SEUL fait bouger la signature (mêmes aperçus, même tête) ; la tête seule aussi.
+  const seul = await page.evaluate(() => {
+    const p = findPostAnywhere("fil_00");
+    const a = _feedPostsSig([p]); p.commentsTotal--; const b = _feedPostsSig([p]); p.commentsTotal++;
+    const c = _feedPostsSig([p]); const tete = p.comments[0]; p.comments.unshift({ id: "c_tete", fromSupabase: true, createdAt: Date.now() }); const d = _feedPostsSig([p]); p.comments.shift();
+    return { totalSeul: a !== b, revenu: a === c, teteSeule: c !== d };
+  });
+  expect(seul).toEqual({ totalSeul: true, revenu: true, teteSeule: true });
   expect(r.charges).toBe(30);
   expect(r.suite).toEqual({ created_at: "2026-09-21T11:00:15", id: "c_015" });
   expect(r.apres).toEqual({ total: 46, charges: 31, tete: "c_045", auteur: "Camille", suite: { created_at: "2026-09-21T11:00:15", id: "c_015" }, affiche: 46 });
@@ -386,8 +410,23 @@ test("la dernière page recale un total périmé à la hausse", async ({ page })
 
 test("une page en erreur ne laisse pas le squelette : les aperçus restent, le bouton aussi", async ({ page }) => {
   await preparer(page);
-  const r = await page.evaluate(async () => {
+  // D'abord une publication SANS aperçu : le squelette est posé à l'ouverture,
+  // et c'est la branche d'erreur qui doit le remplacer par l'état vide.
+  const vide = await page.evaluate(async () => {
     state.supabasePosts = await supaLoadPosts();
+    const original = supa.from;
+    supa.from = (table) => table === "post_comments"
+      ? { select() { return this; }, eq() { return this; }, or() { return this; }, order() { return this; }, limit() { return this; }, then(ok) { return Promise.resolve({ data: null, error: { message: "permission denied" } }).then(ok); } }
+      : original(table);
+    window._cmtThreadLoadedAt = {};
+    await openComments("fil_05");
+    const box = document.getElementById("commentsBox");
+    const out = { squelette: !!box.querySelector(".cmt-skel-wrap"), vide: !!box.querySelector(".empty"), lignes: box.querySelectorAll(".comment").length };
+    supa.from = original; closeModal();
+    return out;
+  });
+  expect(vide).toEqual({ squelette: false, vide: true, lignes: 0 });
+  const r = await page.evaluate(async () => {
     const p = findPostAnywhere("fil_01");
     const original = supa.from;
     const enPanne = (table) => table === "post_comments"
@@ -447,7 +486,7 @@ test("la clé de mémorisation est l'identifiant de build, jamais « [object Obj
     return { cle, reessai: __rpc.length - n };
   });
   expect(r.cle).not.toContain("object");
-  expect(r.cle).toMatch(/^[0-9a-f]{8}$/);
+  expect(r.cle).toMatch(/^[0-9a-f]{8}@[0-9]+$/); // release + horodatage (réessai après une heure)
   expect(r.reessai).toBe(1);
 });
 
@@ -461,11 +500,120 @@ test("le panneau de commentaires des Bobines charge une page serveur et propose 
     openReelComments("fil_00");
     await new Promise((r) => setTimeout(r, 400));
     const liste = document.getElementById("reelCommentsList");
-    return { items: liste.querySelectorAll(".reel-comment-item").length, charges: p.comments.length,
+    const out = { items: liste.querySelectorAll(".reel-comment-item").length, charges: p.comments.length,
       bouton: (liste.querySelector("[data-cmtsuite]") || {}).textContent || "" };
+    // Un commentaire arrivé en direct pendant ce temps figure DÉJÀ dans la
+    // liste et sera aussi dans la page « précédents » : aucun doublon.
+    p.comments.push({ id: "c_010", authorId: "camille", text: "Commentaire 10", content: "Commentaire 10", createdAt: supaTs("2026-09-21T11:00:10"), fromSupabase: true });
+    liste.querySelector("[data-cmtsuite]").click();
+    await new Promise((r) => setTimeout(r, 400));
+    const ids = Array.from(liste.querySelectorAll(".reel-comment-item")).length;
+    out.apres = { items: ids, charges: p.comments.length, doublons: new Set(p.comments.map(c => c.id)).size, bouton: !!liste.querySelector("[data-cmtsuite]") };
+    return out;
   });
   expect(r.absent).toBeUndefined();
   expect(r.items).toBe(30);
   expect(r.charges).toBe(30);
   expect(r.bouton).toContain("15 restants");
+  expect(r.apres).toEqual({ items: 45, charges: 45, doublons: 45, bouton: false });
+});
+
+test("mon commentaire confirmé devient serveur et entre dans le total : jamais compté deux fois après le filet", async ({ page }) => {
+  await preparer(page);
+  const r = await page.evaluate(async () => {
+    state.supabasePosts = await supaLoadPosts();
+    const p = findPostAnywhere("fil_01");
+    window._cmtThreadLoadedAt = {};
+    await openComments("fil_01");
+    const out = { depart: nbCommentairesPost(p) };
+    // J'envoie un commentaire : local, compté tout de suite.
+    p.comments.unshift({ id: "c_moi", authorId: MY_UID, text: "Moi", content: "Moi", createdAt: Date.now() });
+    out.local = nbCommentairesPost(p);
+    // La file confirme l'écriture : le nœud devient serveur, le total avance.
+    _cmtObSetStatus("fil_01", "c_moi", true);
+    out.confirme = { affiche: nbCommentairesPost(p), total: p.commentsTotal, serveur: !!p.comments.find(c => c.id === "c_moi").fromSupabase };
+    // Le serveur compte désormais ma ligne ; le filet recharge le fil.
+    __commentaires.push({ id: "c_moi", post_id: "fil_01", author_id: MY_UID, content: "Moi", created_at: "2026-09-21T12:30:00" });
+    state.supabasePosts = await supaLoadPosts();
+    const q = findPostAnywhere("fil_01");
+    out.apresFilet = { affiche: nbCommentairesPost(q), total: q.commentsTotal };
+    // Réouverture après 20 s : la page serveur porte ma ligne ; le titre ne recule pas.
+    window._cmtThreadLoadedAt = {};
+    await openComments("fil_01");
+    out.reouverture = { affiche: nbCommentairesPost(findPostAnywhere("fil_01")), titre: document.querySelector(".modal-title").textContent };
+    return out;
+  });
+  expect(r.depart).toBe(1);
+  expect(r.local).toBe(2);
+  expect(r.confirme).toEqual({ affiche: 2, total: 2, serveur: true });
+  expect(r.apresFilet).toEqual({ affiche: 2, total: 2 });
+  expect(r.reouverture).toEqual({ affiche: 2, titre: "Discussion (2)" });
+});
+
+test("réouvrir après 20 s ne jette pas les pages déjà chargées, et un total multiple de 30 n'affiche pas de bouton vide", async ({ page }) => {
+  await preparer(page);
+  const r = await page.evaluate(async () => {
+    state.supabasePosts = await supaLoadPosts();
+    window._cmtThreadLoadedAt = {};
+    await openComments("fil_00");
+    await _chargerCommentairesPrecedents("fil_00"); // 45 chargés, curseur nul
+    const p = findPostAnywhere("fil_00");
+    const avant = { charges: p.comments.length, suite: p._commentsSuite };
+    window._cmtThreadLoadedAt = {}; // cache expiré
+    await openComments("fil_00");
+    const q = findPostAnywhere("fil_00");
+    const apres = { charges: q.comments.length, doublons: new Set(q.comments.map(c => c.id)).size, suite: q._commentsSuite, affiche: nbCommentairesPost(q), bouton: !!document.querySelector("#commentsBox [data-cmtsuite]") };
+    // Exactement 30 commentaires (fil_02) : aucun bouton, aucune lecture à vide.
+    for (let i = 0; i < 30; i++) __commentaires.push({ id: "t_" + String(i).padStart(2, "0"), post_id: "fil_02", author_id: "camille", content: "T" + i, created_at: "2026-09-21T13:00:" + String(i).padStart(2, "0") });
+    state.supabasePosts = await supaLoadPosts();
+    window._cmtThreadLoadedAt = {};
+    await openComments("fil_02");
+    const t = findPostAnywhere("fil_02");
+    return { avant, apres, trente: { charges: t.comments.length, suite: t._commentsSuite, bouton: !!document.querySelector("#commentsBox [data-cmtsuite]"), affiche: nbCommentairesPost(t) } };
+  });
+  expect(r.avant).toEqual({ charges: 45, suite: null });
+  expect(r.apres).toEqual({ charges: 45, doublons: 45, suite: null, affiche: 45, bouton: false });
+  expect(r.trente).toEqual({ charges: 30, suite: null, bouton: false, affiche: 30 });
+});
+
+test("ma propre publication : le total exact atteint la copie userPosts, et la discussion ne se recale pas à la page", async ({ page }) => {
+  await preparer(page);
+  const r = await page.evaluate(async () => {
+    state.userPosts = [{ id: "fil_00", authorId: MY_UID, text: "À moi", comments: [], likes: 0, createdAt: Date.now(), type: "text" }];
+    state.supabasePosts = await supaLoadPosts();
+    const mien = findPostAnywhere("fil_00");
+    const out = { copieUserPosts: mien === state.userPosts[0], total: mien.commentsTotal, affiche: nbCommentairesPost(mien) };
+    window._cmtThreadLoadedAt = {};
+    await openComments("fil_00");
+    out.ouverture = { titre: document.querySelector(".modal-title").textContent, bouton: (document.querySelector("#commentsBox [data-cmtsuite]") || {}).textContent || "" };
+    // La carte du fil (copie supabasePosts) et la copie userPosts disent la même chose.
+    const carte = state.supabasePosts.find(p => p.id === "fil_00");
+    out.coherence = { carte: nbCommentairesPost(carte), mien: nbCommentairesPost(findPostAnywhere("fil_00")), pagesCarte: carte.comments.length };
+    state.userPosts = [];
+    return out;
+  });
+  expect(r.copieUserPosts).toBe(true);
+  expect(r.total).toBe(45); expect(r.affiche).toBe(45);
+  expect(r.ouverture.titre).toBe("Discussion (45)"); expect(r.ouverture.bouton).toContain("15 restants");
+  expect(r.coherence).toEqual({ carte: 45, mien: 45, pagesCarte: 30 });
+});
+
+test("la mémorisation « fonction absente » expire après une heure", async ({ page }) => {
+  await preparer(page, { rpcMode: "absente" });
+  const r = await page.evaluate(async () => {
+    await supaLoadPosts();
+    const memo = sessionStorage.getItem("passio_fil_compteurs_absente");
+    const n1 = __rpc.length;
+    await supaLoadPosts(); // mémorisé : pas d'essai
+    const n2 = __rpc.length;
+    // Une heure plus tard, la fonction a pu être appliquée : on réessaie.
+    const [release, depuis] = memo.split("@");
+    sessionStorage.setItem("passio_fil_compteurs_absente", release + "@" + (Number(depuis) - 3600001));
+    __rpcMode = "ok";
+    const c = await supaLoadPosts();
+    return { forme: /@\d+$/.test(memo), n1, n2, n3: __rpc.length, total: c.find(p => p.id === "fil_00").commentsTotal };
+  });
+  expect(r.forme).toBe(true);
+  expect(r.n1).toBe(1); expect(r.n2).toBe(1); expect(r.n3).toBe(2);
+  expect(r.total).toBe(45);
 });
