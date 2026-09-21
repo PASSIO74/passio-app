@@ -79,4 +79,13 @@ function lireContenuAuCommit(fichier, sha, cwd) {
   try { return Buffer.from(r.content.replace(/\n/g, ""), "base64").toString("utf8"); } catch (e) { return null; }
 }
 
-module.exports = { depot, fournisseur, lireRelecteursAutorises, lireRevues, lireAuteurPr, lireContenuAuCommit };
+/** ASTRA-61 bis : le mainteneur unique déclaré (`mainteneur_unique`) dans le même fichier, ou null. */
+function lireMainteneurUnique(racine) {
+  const fs = require("node:fs"), path = require("node:path");
+  const p = process.env.PASSIO_RELECTEURS ? path.resolve(process.env.PASSIO_RELECTEURS) : path.join(racine, ".passio", "migrations", "relecteurs-autorises.json");
+  try {
+    const j = JSON.parse(fs.readFileSync(p, "utf8"));
+    return j && !Array.isArray(j) && typeof j.mainteneur_unique === "string" && j.mainteneur_unique ? j.mainteneur_unique : null;
+  } catch (e) { return null; }
+}
+module.exports = { depot, fournisseur, lireRelecteursAutorises, lireMainteneurUnique, lireRevues, lireAuteurPr, lireContenuAuCommit };

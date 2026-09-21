@@ -64,6 +64,10 @@ When Benjamin explicitly validates a **normal-risk visual or product-interface l
 
 This standing authorization does **not** cover authentication, authorization/RLS, database migrations, security controls, secrets, destructive or production data writes, agent permissions, automatic remediation, or deployment-infrastructure changes. Those remain critical and require specific explicit authorization plus independent review.
 
+### Sole-maintainer amendment for migrations (ASTRA-61 bis, 2026-09-21)
+
+PASSIO has a single human GitHub account (PASSIO74). Benjamin decided, explicitly, that the migration barrier accepts a **declared sole-maintainer self-review** instead of an independent approval: `.passio/migrations/relecteurs-autorises.json` names `mainteneur_unique`, and for that account only, on its own PR, a review in state COMMENTED (GitHub forbids self-approval) carrying the marker « Contre-revue technique indépendante », the phrase « revue de mainteneur unique : j'assume l'application de cette migration », the file and the target (`cible: <ref>`) is accepted as proof. Everything else is unchanged (authorized list, SHA anchoring, content fingerprint, target, journal). This is a **traceable decision, not an independent review**: the applied-migrations journal records `auto_revue_mainteneur_unique`. Removing the `mainteneur_unique` field restores the strict rule. An AI agent may prepare the review text, but the review is posted from Benjamin's account under his explicit instruction, and the text must say who produced it.
+
 ## PASSIO product guardrails
 
 - Core values: **Découvrir / Partager / Rencontrer (IRL)**.

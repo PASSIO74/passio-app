@@ -1,4 +1,8 @@
 {
   "_commentaire": "ASTRA-61 — les comptes GitHub dont une APPROBATION (state APPROVED) sur une PR vaut preuve de revue pour une migration sur une cible protégée. Le relecteur doit être distinct de l'auteur de la PR : GitHub interdit d'approuver sa propre PR, et la barrière refuse une auto-revue même si l'API la rendait. Ajouter un compte ici est un geste de gouvernance (PR + revue), pas un détail.",
-  "relecteurs": []
+  "_amendement": "ASTRA-61 bis (21/09/2026, décision de Benjamin) — PASSIO n'a qu'un compte humain. `mainteneur_unique` désigne le SEUL compte dont l'auto-revue (état COMMENTED admis, sur sa propre PR) vaut preuve, à condition que le corps porte le marqueur ET la phrase « revue de mainteneur unique : j'assume l'application de cette migration ». Ce n'est pas une revue indépendante ; c'est une décision tracée. Retirer ce champ rétablit la règle stricte.",
+  "relecteurs": [
+    "PASSIO74"
+  ],
+  "mainteneur_unique": "PASSIO74"
 }

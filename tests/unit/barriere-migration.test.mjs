@@ -304,3 +304,33 @@ test("ASTRA-61 ② la décision pure : APPROBATION positive, relecteur ≠ auteu
   assert.doesNotThrow(() => BAR.exigerFournisseurReel({ reel: false, motifs: ["PASSIO_GH_BIN=x"] }, BAR.choisirCible({ argProjet: "abcdefghijabcdefghij" })));
   assert.doesNotThrow(() => BAR.exigerFournisseurReel({ reel: true, motifs: [] }, BAR.choisirCible({ argProjet: PROD })));
 });
+
+test("ASTRA-61 bis ③ mainteneur unique DÉCLARÉ : son auto-revue (COMMENTED, phrase d'assomption) vaut preuve ; sans déclaration, sans phrase, ou pour un autre compte, refus", () => {
+  const sql = "begin;\nselect 1;\ncommit;\n";
+  const emp = B.empreinte(sql);
+  const cible = { ref: PROD };
+  const att = { pr: "#1", commit: SHA, revue_id: 9, relecteur: "PASSIO74", empreinte: emp };
+  const corps = B.MARQUEUR_REVUE + " migrations/m.sql cible: " + PROD + "\n" + B.PHRASE_MAINTENEUR_UNIQUE;
+  const revue = { id: 9, commit_id: SHA, state: "COMMENTED", user: { login: "PASSIO74" }, body: corps };
+  const base = { attestation: att, fichier: "migrations/m.sql", empreinteAttendue: emp, cible, revues: [revue], contenuAuCommit: sql, auteurPr: "PASSIO74", relecteursAutorises: ["PASSIO74"], mainteneurUnique: "PASSIO74" };
+  const r = B.verifierPreuveRevue(base);
+  assert.deepEqual([r.ok, r.revue.etat, r.revue.login, r.memeAuteurQueLaPr, r.mainteneurUnique], [true, "COMMENTED", "PASSIO74", true, "PASSIO74"]);
+  // Sans déclaration : la règle stricte d'ASTRA-61 s'applique, à l'identique.
+  assert.throws(() => B.verifierPreuveRevue({ ...base, mainteneurUnique: null }), /un commentaire, même conforme, n'approuve rien/);
+  assert.throws(() => B.verifierPreuveRevue({ ...base, mainteneurUnique: null, revues: [{ ...revue, state: "APPROVED" }] }), /auto-revue|AUTEUR de la PR/);
+  // Sans la phrase d'assomption : un commentaire conforme n'engage pas.
+  assert.throws(() => B.verifierPreuveRevue({ ...base, revues: [{ ...revue, body: B.MARQUEUR_REVUE + " migrations/m.sql cible: " + PROD }] }), /phrase d'assomption/);
+  // Un REFUS qui porte tout : reste un refus si l'état n'est pas COMMENTED/APPROVED.
+  assert.throws(() => B.verifierPreuveRevue({ ...base, revues: [{ ...revue, state: "CHANGES_REQUESTED" }] }), /APPROVED/);
+  // Un autre compte que le mainteneur déclaré ne bénéficie pas de l'amendement (auto-revue d'un tiers auteur de sa PR).
+  assert.throws(() => B.verifierPreuveRevue({ ...base, attestation: { ...att, relecteur: "tiers" }, revues: [{ ...revue, user: { login: "tiers" } }], auteurPr: "tiers", relecteursAutorises: ["PASSIO74", "tiers"] }), /auto-revue|AUTEUR de la PR/);
+  // Le mainteneur déclaré qui commente la PR d'un AUTRE : pas une auto-revue → APPROVED exigé.
+  assert.throws(() => B.verifierPreuveRevue({ ...base, auteurPr: "tiers" }), /un commentaire, même conforme, n'approuve rien/);
+  // Le mainteneur doit rester dans la liste des relecteurs.
+  assert.throws(() => B.verifierPreuveRevue({ ...base, relecteursAutorises: ["tiers"] }), /n'est pas dans la liste des relecteurs autorisés/);
+  // Le reste ne bouge pas : SHA, contenu, cible, marqueur.
+  assert.throws(() => B.verifierPreuveRevue({ ...base, revues: [{ ...revue, commit_id: "f".repeat(40) }] }), /ancrée sur ffffffffffff/);
+  assert.throws(() => B.verifierPreuveRevue({ ...base, contenuAuCommit: sql + "x" }), /a regardé un autre contenu/);
+  assert.throws(() => B.verifierPreuveRevue({ ...base, revues: [{ ...revue, body: corps.replace(PROD, STAGING) }] }), /ne nomme pas la cible/);
+  assert.throws(() => B.verifierPreuveRevue({ ...base, revues: [{ ...revue, body: corps.replace(B.MARQUEUR_REVUE, "LGTM") }] }), /marqueur/);
+});

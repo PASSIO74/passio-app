@@ -2509,7 +2509,10 @@ n'est possible. `fil_compteurs(text[])` (SECURITY INVOKER — la RLS de chaque t
 ligne, exactement comme le GET d'avant ; la transaction s'ANNULE si la fonction n'était pas INVOKER) rend
 compteurs exacts, mon like, deux aperçus et réactions en UNE lecture. PR #521, **non fusionnée** : périmètre
 critique, la CI exige la revue GitHub de PASSIO74 avec le marqueur « Contre-revue technique indépendante »,
-et `.passio/migrations/relecteurs-autorises.json` est **vide** (RES-15) — aucune attestation possible.
+et `.passio/migrations/relecteurs-autorises.json` était **vide** (RES-15) — aucune attestation possible.
+**Levé le 21/09 par décision de Benjamin (ASTRA-61 bis, AGENTS.md)** : le fichier déclare `mainteneur_unique:
+PASSIO74`, dont l'auto-revue (COMMENTED, marqueur + phrase d'assomption + fichier + `cible: <ref>`) vaut
+preuve pour la barrière — décision tracée, pas revue indépendante ; retirer le champ rétablit la règle stricte.
 Le client fonctionne dans les deux états (PGRST202/42883 → lectures d'avant, mémorisé par release).
 ⚠️ **SUR LA PRODUCTION D'AUJOURD'HUI, LA RÉPONSE GROUPÉE PÈSE 2,2 Ko DE PLUS** (4 141 → 6 380 octets
 pour la vraie première page : 13 likes et 9 commentaires sur 20 publications, la structure fixe domine).

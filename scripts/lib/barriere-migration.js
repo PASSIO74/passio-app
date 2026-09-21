@@ -189,9 +189,26 @@ function verifierAttestation({ fichier, sql, cible, attestations, sansAttestatio
 // ⚠️ Ce que cette preuve ne fait toujours pas : établir que la revue a été
 // attentive. Elle établit qu'un compte autorisé, distinct de l'auteur, a
 // APPROUVÉ ce contenu exact pour cette cible, sur GitHub, à une date.
+//
+// ⚠️ ASTRA-61 bis — MAINTENEUR UNIQUE (décision de Benjamin, 21/09/2026).
+// PASSIO n'a qu'un compte GitHub humain : l'exigence « relecteur distinct de
+// l'auteur » ne pouvait être satisfaite par personne, et la liste des
+// relecteurs autorisés était vide (RES-15). Plutôt que de contourner la
+// barrière (SQL direct, attestation tapée), la règle est AMENDÉE, versionnée
+// et dite : `relecteurs-autorises.json` peut déclarer `mainteneur_unique`.
+// Pour CE compte seulement, et seulement s'il est aussi l'auteur de la PR :
+//   · l'auto-revue est acceptée — GitHub interdit d'approuver sa propre PR,
+//     donc l'état `COMMENTED` est admis EN PLUS d'`APPROVED` ;
+//   · le corps doit porter, en plus du marqueur, la PHRASE D'ASSOMPTION
+//     ci-dessous — un commentaire ordinaire, même conforme, n'engage pas ;
+//   · tout le reste est inchangé : relecteur dans la liste, SHA, contenu,
+//     fichier, cible ; et le journal consigne `memeAuteurQueLaPr: true`.
+// Ce que cela ne fait pas : rendre la revue indépendante. Cela rend la
+// décision TRAÇABLE — qui a assumé quoi, sur quel contenu, pour quelle cible.
 const MARQUEUR_REVUE = "Contre-revue technique indépendante";
+const PHRASE_MAINTENEUR_UNIQUE = "revue de mainteneur unique : j'assume l'application de cette migration";
 const FORME_SHA = /^[0-9a-f]{40}$/;
-function verifierPreuveRevue({ attestation, fichier, empreinteAttendue, cible, revues, contenuAuCommit, auteurPr, relecteursAutorises } = {}) {
+function verifierPreuveRevue({ attestation, fichier, empreinteAttendue, cible, revues, contenuAuCommit, auteurPr, relecteursAutorises, mainteneurUnique } = {}) {
   const a = attestation || {};
   const refus = (code, m, d) => { throw new RefusBarriere(code, m, d); };
   const prNum = String(a.pr || "").replace(/^#/, "");
@@ -203,8 +220,14 @@ function verifierPreuveRevue({ attestation, fichier, empreinteAttendue, cible, r
   const r = revues.find((x) => x && String(x.id) === String(a.revue_id));
   if (!r) refus("preuve_absente", "aucune revue n°" + a.revue_id + " sur la PR #" + prNum + ".");
   if (String(r.commit_id || "") !== String(a.commit)) refus("preuve_divergente", "la revue n°" + a.revue_id + " est ancrée sur " + String(r.commit_id || "?").slice(0, 12) + "…, pas sur le commit attesté " + String(a.commit).slice(0, 12) + "….");
-  if (String(r.state || "").toUpperCase() !== "APPROVED") refus("preuve_non_approuvee", "la revue n°" + a.revue_id + " est à l'état " + (r.state || "?") + " — seule une APPROBATION (APPROVED) vaut preuve ; un commentaire, même conforme, n'approuve rien (ASTRA-61).");
+  const loginRevue = r.user && r.user.login;
+  const mainteneur = (typeof mainteneurUnique === "string" && mainteneurUnique) ? mainteneurUnique : null;
+  // Auto-revue de mainteneur unique : déclarée, par le compte déclaré, sur SA PR.
+  const autoRevueDeclaree = Boolean(mainteneur && loginRevue && String(loginRevue) === mainteneur && typeof auteurPr === "string" && String(auteurPr) === mainteneur);
+  const etat = String(r.state || "").toUpperCase();
+  if (etat !== "APPROVED" && !(autoRevueDeclaree && etat === "COMMENTED")) refus("preuve_non_approuvee", "la revue n°" + a.revue_id + " est à l'état " + (r.state || "?") + " — seule une APPROBATION (APPROVED) vaut preuve ; un commentaire, même conforme, n'approuve rien (ASTRA-61)" + (mainteneur ? " ; l'état COMMENTED n'est admis que pour l'auto-revue du mainteneur unique déclaré (" + mainteneur + ") sur sa propre PR" : "") + ".");
   const corps = String(r.body || "");
+  if (autoRevueDeclaree && !corps.includes(PHRASE_MAINTENEUR_UNIQUE)) refus("preuve_divergente", "la revue n°" + a.revue_id + " est une auto-revue du mainteneur unique mais ne porte pas la phrase d'assomption « " + PHRASE_MAINTENEUR_UNIQUE + " » : un commentaire ordinaire n'engage pas (ASTRA-61 bis).");
   if (!corps.includes(MARQUEUR_REVUE)) refus("preuve_divergente", "la revue n°" + a.revue_id + " ne porte pas le marqueur « " + MARQUEUR_REVUE + " ».");
   if (!corps.includes(fichier)) refus("preuve_divergente", "la revue n°" + a.revue_id + " ne nomme pas `" + fichier + "` : elle ne dit pas avoir revu ce fichier.");
   const ref = cible && cible.ref;
@@ -213,12 +236,12 @@ function verifierPreuveRevue({ attestation, fichier, empreinteAttendue, cible, r
   if (!login || String(a.relecteur || "") !== String(login)) refus("preuve_divergente", "l'auteur de la revue (" + (login || "?") + ") n'est pas le relecteur attesté (" + (a.relecteur || "?") + ").");
   if (!relecteursAutorises.map(String).includes(String(login))) refus("relecteur_non_autorise", "le relecteur " + login + " n'est pas dans la liste des relecteurs autorisés (" + relecteursAutorises.join(", ") + ") : son approbation ne vaut pas pour une migration.");
   if (typeof auteurPr !== "string" || !auteurPr) refus("preuve_non_verifiable", "l'auteur de la PR #" + prNum + " n'a pas pu être lu : l'indépendance du relecteur est NON VÉRIFIABLE, la preuve est refusée.");
-  if (String(auteurPr) === String(login)) refus("auto_revue", "le relecteur " + login + " est l'AUTEUR de la PR #" + prNum + " : une auto-revue n'est pas une revue indépendante (ASTRA-61).");
+  if (String(auteurPr) === String(login) && !autoRevueDeclaree) refus("auto_revue", "le relecteur " + login + " est l'AUTEUR de la PR #" + prNum + " : une auto-revue n'est pas une revue indépendante (ASTRA-61)" + (mainteneur ? " — seul le mainteneur unique déclaré (" + mainteneur + ") peut l'assumer" : " — aucun mainteneur unique n'est déclaré") + ".");
   if (typeof contenuAuCommit !== "string") refus("preuve_non_verifiable", "le contenu de `" + fichier + "` au commit " + String(a.commit).slice(0, 12) + "… n'a pas pu être lu : preuve NON VÉRIFIABLE.");
   const empCommit = empreinte(contenuAuCommit);
   if (empCommit !== a.empreinte) refus("preuve_divergente", "au commit revu, `" + fichier + "` a l'empreinte " + empCommit.slice(0, 12) + "…, pas celle attestée " + String(a.empreinte).slice(0, 12) + "… : la revue a regardé un autre contenu.");
   if (empreinteAttendue && empCommit !== empreinteAttendue) refus("derive_de_contenu", "le fichier envoyé (" + empreinteAttendue.slice(0, 12) + "…) n'est pas celui du commit revu (" + empCommit.slice(0, 12) + "…).");
-  return { ok: true, revue: { id: r.id, login, etat: r.state, soumise_le: r.submitted_at || null, commit: r.commit_id }, auteurPr, memeAuteurQueLaPr: false };
+  return { ok: true, revue: { id: r.id, login, etat: r.state, soumise_le: r.submitted_at || null, commit: r.commit_id }, auteurPr, memeAuteurQueLaPr: autoRevueDeclaree, mainteneurUnique: autoRevueDeclaree ? mainteneur : null };
 }
 
 // ── ②'' LE FOURNISSEUR DE LA PREUVE : RÉEL OU FICTIF ─────────────────────
@@ -277,4 +300,4 @@ function verdictGlobal(phases) {
   return { ok: echecs.length === 0, echecs, code: echecs.length ? 1 : 0 };
 }
 
-module.exports = { CIBLES_PROTEGEES, RefusBarriere, empreinte, choisirCible, verifierAttestation, verifierPreuveRevue, exigerFournisseurReel, MARQUEUR_REVUE, sqlColonnesJournal, sqlAvecJournal, verdictGlobal };
+module.exports = { CIBLES_PROTEGEES, RefusBarriere, empreinte, choisirCible, verifierAttestation, verifierPreuveRevue, exigerFournisseurReel, MARQUEUR_REVUE, PHRASE_MAINTENEUR_UNIQUE, sqlColonnesJournal, sqlAvecJournal, verdictGlobal };
