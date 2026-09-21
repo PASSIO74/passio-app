@@ -4,8 +4,9 @@ import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import { createHash } from "node:crypto";
 import { optionsBanc, emailCapacite, DOMAINE_CAPACITE, STAGING_REF, LIMITES, Budget, comptesPourPalier, abonnements,
-  partenaire, actionPrevue, pausePrevue, statistiques, verdictPalier, Sondes,
-  postPourLike, aimerEtRetirer, delaiFixture, DisponibiliteRealtime } from "../../scripts/lib/charge-realiste.mjs";
+  partenaire, actionPrevue, pausePrevue, decalageInitial, statistiques, verdictPalier, Sondes,
+  postPourLike, aimerEtRetirer, delaiFixture, DisponibiliteRealtime,
+  PROFIL_REALTIME, LIKES_VISIBLES, compteurHead, pauseCompteurs, familleFrameRealtime, verdictAvecCompteurs } from "../../scripts/lib/charge-realiste.mjs";
 import { executer } from "../../scripts/charge-realiste.mjs";
 
 const cible = ["--projet", STAGING_REF];
@@ -94,10 +95,13 @@ test("les partenaires de messagerie sont distincts et connectés même au palier
   assert.equal(partenaire(24, 25), 0);
 });
 
-test("les 12 handlers V3 sont séparés des tables et filtrent les données personnelles", () => {
+test("les dix handlers V3 retirent uniquement les deux likes et gardent les filtres personnels", () => {
   const subscriptions = abonnements("compte-test");
-  assert.equal(subscriptions.length, 12);
-  assert.equal(new Set(subscriptions.map(s => s.table)).size, 10);
+  assert.equal(subscriptions.length, 10);
+  assert.equal(new Set(subscriptions.map(s => s.table)).size, 9);
+  const legacy = abonnements("compte-test", "legacy12");
+  assert.equal(legacy.length, 12);
+  assert.deepEqual(subscriptions, legacy.filter(s => s.table !== "post_likes"));
   assert.equal(subscriptions.some(s => ["conv_messages", "telemetry_events"].includes(s.table)), false);
   for (const table of ["conv_members", "notifications"]) assert.equal(subscriptions.find(s => s.table === table).filter, "user_id=eq.compte-test");
 });
@@ -184,7 +188,7 @@ test("les deux phx_reply ne donnent pas CDC prêt ; system peut précéder ou su
     assert.equal(etat.observer(ordre[0]), false);
     assert.equal(etat.observer(ordre[1]), false);
     assert.equal(etat.observer(ordre[2]), true);
-    assert.equal(etat.systemes.ok, 1); assert.equal(etat.handlers, 12);
+    assert.equal(etat.systemes.ok, 1); assert.equal(etat.handlers, 10);
   }
 });
 
@@ -198,7 +202,7 @@ test("un signal d'un autre topic ou d'une ancienne socket ne valide pas la nouve
   assert.equal(nouveau.observer(systemReady), false, "une échéance expirée ne devient pas verte tardivement");
 });
 
-test("system error invalide le CDC même si le canal reste ouvert et les 12 bindings doivent correspondre", () => {
+test("system error invalide le CDC même si le canal reste ouvert et tous les bindings doivent correspondre", () => {
   const etat = new DisponibiliteRealtime(uidReady);
   for (const m of [joinDB, joinUser, systemReady]) etat.observer(m);
   etat.observer({ ...systemReady, payload: { extension: "postgres_changes", status: "error" } });
@@ -206,7 +210,144 @@ test("system error invalide le CDC même si le canal reste ouvert et les 12 bind
   assert.equal(etat.systemes.error, 1);
   const faux = structuredClone(joinDB); faux.payload.response.postgres_changes[0].table = "table_fausse";
   const invalide = new DisponibiliteRealtime(uidReady); invalide.observer(faux);
-  assert.equal(invalide.erreur, "REALTIME_12_HANDLERS_NON_CONFIRMES");
+  assert.equal(invalide.erreur, "REALTIME_HANDLERS_NON_CONFIRMES");
+});
+
+test("le contrat du banc correspond aux bindings V3 réellement créés et aux constantes du produit", () => {
+  const source = readFileSync(new URL("../../js/app-08-ui-modals-tour.js", import.meta.url), "utf8");
+  const debut = source.indexOf("function _creerCanalDb(prive)"), fin = source.indexOf("// ---- FOLLOW / UNFOLLOW ----", debut);
+  assert.ok(debut >= 0 && fin > debut);
+  const observes = [];
+  const channel = { on(type, binding) { assert.equal(type, "postgres_changes"); observes.push(JSON.parse(JSON.stringify(binding))); return this; }, subscribe() { return this; } };
+  const ctx = { MY_UID: "contrat-uid", window: { PASSIO_REALTIME_V3: true }, supa: { channel: () => channel } };
+  const creer = runInNewContext(source.slice(debut, fin) + "\n_creerCanalDb;", ctx);
+  creer(true);
+  assert.deepEqual(observes, abonnements("contrat-uid"), "le banc doit échouer si son profil diverge du vrai canal produit");
+  const likes = readFileSync(new URL("../../js/app-03-posts-vlogs.js", import.meta.url), "utf8");
+  for (const [nom, valeur] of [["POST_LIKE_REFRESH_MS", LIKES_VISIBLES.fraicheurMs],
+    ["POST_LIKE_REFRESH_JITTER_MS", LIKES_VISIBLES.jitterMs], ["POST_LIKE_REFRESH_MAX_POSTS", LIKES_VISIBLES.maximum]]) {
+    const declaration = likes.match(new RegExp(`const ${nom} = (\\d+);`));
+    assert.ok(declaration, `autorité produit manquante : ${nom}`); assert.equal(Number(declaration[1]), valeur);
+  }
+});
+
+test("legacy12 reste consultable hors ligne mais aucune exécution ne peut le choisir", async () => {
+  assert.equal(optionsBanc(cible).profilRealtime, PROFIL_REALTIME);
+  const plan = await executer(optionsBanc([...cible, "--profil-realtime", "legacy12"]));
+  assert.equal(plan.plan, true); assert.equal(plan.profilRealtime, "legacy12");
+  assert.throws(() => optionsBanc([...cible, "--profil-realtime", "legacy12", "--executer", "--sortie", "interdit.json"]), /LEGACY12_HORS_LIGNE/);
+  assert.throws(() => optionsBanc([...cible, "--profil-realtime", "9"]), /PROFIL_REALTIME_INVALIDE/);
+  const legacy = new DisponibiliteRealtime(uidReady, "legacy12");
+  for (const message of [joinDB, joinUser, systemReady]) legacy.observer(message);
+  assert.equal(legacy.pret, false, "dix bindings ne suffisent pas pour le contrat legacy douze");
+  const actuel = new DisponibiliteRealtime(uidReady);
+  const trop = structuredClone(joinDB);
+  trop.payload.response.postgres_changes = abonnements(uidReady, "legacy12").map((a, id) => ({ ...a, id }));
+  actuel.observer(trop); assert.equal(actuel.erreur, "REALTIME_HANDLERS_NON_CONFIRMES");
+});
+
+test("HEAD exige un total exact, y compris zéro ; succès vide ou total inconnu ne passent pas", () => {
+  for (const [range, n] of [["*/0", 0], ["0-0/1", 1], ["0-999/1234", 1234], ["*/42", 42]]) {
+    assert.equal(compteurHead(200, range), n); assert.equal(compteurHead(206, range), n);
+  }
+  for (const range of [null, "", "0-0/*", "0-1/-1", "0-1/1.5", "count=12", "*/9007199254740992"]) {
+    assert.throws(() => compteurHead(200, range), /HEAD_COMPTE_INVALIDE/);
+  }
+  for (const status of [204, 400, 401, 403, 429, 500]) assert.throws(() => compteurHead(status, "*/1"), new RegExp(`HTTP_${status}`));
+});
+
+test("le vrai chemin HEAD porte le JWT lecteur, compte son appel et refuse un en-tête absent", async () => {
+  const source = readFileSync(new URL("../../scripts/charge-realiste.mjs", import.meta.url), "utf8");
+  const debut = source.indexOf("async function requete("), fin = source.indexOf("async function cadencer(", debut);
+  let status = 200, range = "*/7"; const appels = [], mesures = [], budget = new Budget();
+  const ctx = { performance, AbortController, setTimeout, clearTimeout, Buffer, compteurHead,
+    phase: "mesure", stage: { taille: 25, page: 20 }, debut: Date.now(), arret: null,
+    base: "https://staging.example.test", cleAnon: "anon-factice", cleService: "service-factice", controleurs: new Set(), mesures,
+    octets: x => Buffer.byteLength(x), compter: q => budget.compter(q), attendreTableau: () => ({}),
+    motifSur: e => e.message, URLSearchParams,
+    fetch: async (url, opt) => { appels.push({ url, opt }); return new Response(null, { status, headers: range ? { "content-range": range } : {} }); },
+  };
+  const lire = runInNewContext(source.slice(debut, fin) + "\ncompterLikes;", ctx);
+  assert.equal(await lire({ jwt: "lecteur-factice" }, "post-test"), 7);
+  assert.equal(appels[0].opt.method, "HEAD");
+  assert.equal(appels[0].opt.headers.Authorization, "Bearer lecteur-factice");
+  assert.equal(appels[0].opt.headers.Prefer, "count=exact");
+  const url = new URL(appels[0].url);
+  assert.equal(url.searchParams.get("post_id"), "eq.post-test"); assert.equal(url.searchParams.get("select"), "post_id");
+  assert.equal(budget.requetes, 1); assert.equal(mesures[0].ok, true); assert.equal(mesures[0].compteur, 7);
+  assert.equal(mesures[0].octets, 0, "corps vide ne signifie ni requête ni en-têtes gratuits");
+  range = null; await assert.rejects(lire({ jwt: "lecteur-factice" }, "post-test"), /HEAD_COMPTE_INVALIDE/);
+  status = 403; await assert.rejects(lire({ jwt: "lecteur-factice" }, "post-test"), /HTTP_403/);
+  assert.equal(budget.requetes, 3); assert.equal(mesures[1].ok, false); assert.equal(mesures[2].status, 403);
+  assert.equal(ctx.controleurs.size, 0);
+});
+
+test("le vrai prévol maintient un like jusqu'à lecture du destinataire puis restaure le compteur", async () => {
+  const source = readFileSync(new URL("../../scripts/charge-realiste.mjs", import.meta.url), "utf8");
+  const debut = source.indexOf("async function prevolCompteurLikes()"), fin = source.indexOf("async function palier(", debut);
+  const comptes = [{ id: "auteur", index: 0, jwt: "jwt-auteur" }, { id: "destinataire", index: 1, jwt: "jwt-destinataire" }];
+  const journal = new Map(), etapes = []; let count = 1, invisible = false;
+  const ctx = { comptes, postsFixture: [{ id: "fixture" }], postPourLike, mutationsLikes: journal,
+    sauvegarder: () => {}, attendreTableau: () => ({}),
+    compterLikes: async (compte, post) => { assert.equal(compte, comptes[1]); assert.equal(post, "fixture"); etapes.push(`HEAD:${count}`); return invisible ? 1 : count; },
+    inserer: async (nom, table, cle, opt) => { assert.equal(opt.jwt, "jwt-auteur"); assert.equal(table, "post_likes"); assert.ok(journal.has("fixture:auteur")); count++; etapes.push("INSERT"); },
+    rest: async (nom, table, params, opt) => { assert.equal(opt.methode, "DELETE"); assert.equal(opt.jwt, "jwt-auteur"); assert.equal(params.post_id, "eq.fixture"); assert.equal(params.user_id, "eq.auteur"); count--; etapes.push("DELETE"); return [{}]; },
+  };
+  const prevol = runInNewContext(source.slice(debut, fin) + "\nprevolCompteurLikes;", ctx);
+  const result = await prevol();
+  assert.deepEqual(etapes, ["HEAD:1", "INSERT", "HEAD:2", "DELETE", "HEAD:1"]);
+  assert.deepEqual([result.avant, result.ajoute, result.retire], [1, 2, 1]); assert.equal(journal.size, 0);
+  invisible = true; await assert.rejects(prevol(), /COMPTEUR_AJOUT_NON_VISIBLE/);
+  assert.equal(count, 1); assert.equal(journal.size, 0, "le finally retire aussi l'ajout si sa visibilité est refusée");
+});
+
+test("les frames distinguent table/opération, broadcast et protocole sans journaliser de payload", () => {
+  assert.equal(familleFrameRealtime({ event: "postgres_changes", payload: { data: { table: "posts", type: "INSERT", record: { secret: "interdit" } } } }), "postgres_changes:posts:INSERT");
+  assert.equal(familleFrameRealtime({ event: "postgres_changes", payload: { data: { table: "post_likes", type: "DELETE" } } }), "postgres_changes:post_likes:DELETE");
+  assert.equal(familleFrameRealtime({ event: "broadcast", payload: { event: "INSERT" } }), "broadcast:INSERT");
+  assert.equal(familleFrameRealtime({ event: "phx_reply" }), "protocole:phx_reply");
+});
+
+test("les HEAD rapides ne diluent pas un p95 historique rouge ; leur propre coût est aussi bloquant", () => {
+  const bon = statistiques([{ ok: true, ms: 50 }]), lent = statistiques([{ ok: true, ms: 1001 }]), vide = statistiques([]);
+  const base = { http: bon, parcours: bon, realtime: bon, messages: bon, connectes: 25, attendus: 25, termine: true };
+  assert.equal(verdictAvecCompteurs(base, bon, bon).ok, true);
+  assert.ok(verdictAvecCompteurs({ ...base, http: lent }, bon, bon).motifs.includes("P95_HTTP_SUP_1000_MS"));
+  assert.ok(verdictAvecCompteurs(base, lent, bon).motifs.includes("P95_COMPTEURS_SUP_1000_MS"));
+  assert.ok(verdictAvecCompteurs(base, bon, lent).motifs.includes("P95_COMPTEURS_SUP_1000_MS"));
+  assert.ok(verdictAvecCompteurs(base, vide, vide).motifs.includes("COMPTEURS_VISIBLES_NON_EXERCES"));
+  assert.ok(verdictAvecCompteurs({ ...base, posts: statistiques([{ ok: true, ms: 2001 }]) }, bon, bon).motifs.includes("P95_PUBLICATIONS_SUP_2000_MS"));
+  assert.ok(verdictAvecCompteurs({ ...base, posts: vide }, bon, bon).motifs.includes("PUBLICATIONS_SOUS_CHARGE_NON_VALIDEES"));
+});
+
+test("le vrai minuteur lit au plus trois compteurs séquentiels et garde 15–16,5 s entre débuts", async () => {
+  const source = readFileSync(new URL("../../scripts/charge-realiste.mjs", import.meta.url), "utf8");
+  const debut = source.indexOf("async function cycleCompteursVisibles("), fin = source.indexOf("function convPour(", debut);
+  let now = 0, enVol = 0, maximumEnVol = 0; const appels = [], mesures = [];
+  const ctx = { LIKES_VISIBLES, pauseCompteurs, decalageInitial, o: { graine: 20260920 }, arret: null,
+    phase: "mesure", stage: { taille: 25, page: 20 }, mesures, performance: { now: () => now },
+    sleep: async ms => { assert.ok(ms >= 0); now += ms; }, motifSur: e => e.message,
+    stop: motif => { ctx.arret = motif; },
+    compterLikes: async (compte, id) => {
+      enVol++; maximumEnVol = Math.max(maximumEnVol, enVol); appels.push({ id, now });
+      await Promise.resolve(); now += 10; enVol--; return 1;
+    },
+  };
+  const surveiller = runInNewContext(source.slice(debut, fin) + "\nsurveillerCompteurs;", ctx);
+  const compte = { index: 0, postsVisibles: ["p1", "p2", "p3", "p4", "p5"] };
+  await surveiller(compte, 0, 60000);
+  assert.equal(maximumEnVol, 1); assert.ok(appels.length >= 9);
+  assert.equal(mesures.length * 3, appels.length);
+  assert.deepEqual([...new Set(appels.map(a => a.id))], ["p1", "p2", "p3"]);
+  for (let i = 3; i < appels.length; i += 3) {
+    const ecart = appels[i].now - appels[i - 3].now;
+    assert.ok(ecart >= 15000 && ecart <= 16500);
+  }
+  assert.ok(appels.every(a => a.now < 60000));
+  const avant = appels.length; ctx.compterLikes = async () => { throw new Error("HTTP_403"); };
+  now = 0; await surveiller(compte, 0, 60000);
+  assert.equal(ctx.arret, "HTTP_403"); assert.equal(appels.length, avant);
+  assert.equal(mesures.at(-1).ok, false); assert.equal(mesures.at(-1).lectures, 0);
 });
 
 test("un like mesuré restaure exactement les fixtures ; un échec de DELETE laisse sa clé au journal", async () => {

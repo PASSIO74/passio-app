@@ -10,13 +10,15 @@ export function emailCapacite(campagne, index) {
 }
 export const LIMITES = Object.freeze({ octets: 180_000_000, octetsNettoyage: 20_000_000,
   messagesRealtime: 150_000, requetes: 20_000, dureeCampagneMs: 45 * 60_000 });
+export const PROFIL_REALTIME = "likes-visibles10";
+export const LIKES_VISIBLES = Object.freeze({ maximum: 3, fraicheurMs: 15000, jitterMs: 1500 });
 
 export function optionsBanc(args) {
   const values = {};
   for (let i = 0; i < args.length; i++) {
     const name = args[i];
     if (["--executer", "--plan", "--prevol"].includes(name)) values[name] = true;
-    else if (["--projet", "--paliers", "--duree", "--graine", "--sortie", "--scenario", "--pages"].includes(name)) {
+    else if (["--projet", "--paliers", "--duree", "--graine", "--sortie", "--scenario", "--pages", "--profil-realtime"].includes(name)) {
       if (!args[i + 1] || args[i + 1].startsWith("--")) throw new Error("VALEUR_MANQUANTE");
       values[name] = args[++i];
     } else throw new Error("OPTION_INCONNUE");
@@ -35,14 +37,18 @@ export function optionsBanc(args) {
   if (!["lecture", "complet"].includes(scenario)) throw new Error("SCENARIO_INVALIDE");
   const pagesTexte = values["--pages"] || "60,20";
   if (!["20", "60,20"].includes(pagesTexte)) throw new Error("PAGES_INVALIDES");
+  const profilRealtime = values["--profil-realtime"] || PROFIL_REALTIME;
+  if (![PROFIL_REALTIME, "legacy12"].includes(profilRealtime)) throw new Error("PROFIL_REALTIME_INVALIDE");
+  if (values["--executer"] && profilRealtime === "legacy12") throw new Error("LEGACY12_HORS_LIGNE_SEULEMENT");
   if (values["--executer"] && !values["--sortie"]) throw new Error("SORTIE_REQUISE");
   return { projet: STAGING_REF, paliers, duree, graine, pages: pagesTexte.split(",").map(Number),
-    executer: !!values["--executer"], sortie: values["--sortie"] || null, scenario,
+    executer: !!values["--executer"], sortie: values["--sortie"] || null, scenario, profilRealtime,
     prevolSeulement: !!values["--prevol"],
     comptesDistincts: values["--prevol"] ? 2 : Math.max(...paliers), limites: LIMITES };
 }
 
-export function abonnements(uid) {
+export function abonnements(uid, profil = PROFIL_REALTIME) {
+  if (![PROFIL_REALTIME, "legacy12"].includes(profil)) throw new Error("PROFIL_REALTIME_INVALIDE");
   // Même tableau littéral que le chemin Realtime V3 de l'app. Le canal privé
   // user:<uuid> s'ajoute sur la même socket ; conv_messages n'est pas écoutée
   // en postgres_changes lorsque V3 est actif.
@@ -60,7 +66,28 @@ export function abonnements(uid) {
     { event: "INSERT", schema: "public", table: "event_comments" },
     { event: "*", schema: "public", table: "video_lives" },
   ];
-  return postgres_changes;
+  return profil === "legacy12" ? postgres_changes : postgres_changes.filter(a => a.table !== "post_likes");
+}
+
+export function compteurHead(status, contentRange) {
+  if (![200, 206].includes(status)) throw new Error(`HTTP_${status}`);
+  const match = typeof contentRange === "string" && /^(?:\*|\d+-\d+)\/(\d+)$/.exec(contentRange);
+  if (!match || !Number.isSafeInteger(Number(match[1]))) throw new Error("HEAD_COMPTE_INVALIDE");
+  return Number(match[1]);
+}
+
+export const pauseCompteurs = (graine, utilisateur, tour) => LIKES_VISIBLES.fraicheurMs
+  + entierDeterministe(graine, utilisateur, tour + 40000) % LIKES_VISIBLES.jitterMs;
+
+export function familleFrameRealtime(m) {
+  if (m.event === "postgres_changes") {
+    const d = m.payload?.data || {};
+    const table = /^[a-z_]{1,63}$/.test(d.table || "") ? d.table : "inconnue";
+    const operation = ["INSERT", "UPDATE", "DELETE"].includes(d.type) ? d.type : "autre";
+    return `postgres_changes:${table}:${operation}`;
+  }
+  if (m.event === "broadcast") return `broadcast:${["INSERT", "UPDATE", "DELETE"].includes(m.payload?.event) ? m.payload.event : "autre"}`;
+  return `protocole:${["phx_reply", "phx_close", "phx_error", "system", "presence_state", "presence_diff"].includes(m.event) ? m.event : "autre"}`;
 }
 
 export function entierDeterministe(graine, utilisateur, tour) {
@@ -99,13 +126,15 @@ export async function aimerEtRetirer(cle, journal, inserer, retirer) {
 // C'est une marge de banc, pas une preuve que le serveur a purgé ses sockets.
 export function delaiFixture(table, methode, connexions) {
   const events = methode === "DELETE" ? ["DELETE"] : ["INSERT", "UPDATE"];
-  const observe = abonnements("fixture").some(a => a.table === table && (a.event === "*" || events.includes(a.event)));
+  // Conserver la marge legacy au nettoyage : d'autres clients encore ouverts
+  // peuvent écouter les likes, même si cette campagne ne les écoute plus.
+  const observe = abonnements("fixture", "legacy12").some(a => a.table === table && (a.event === "*" || events.includes(a.event)));
   return Math.max(50, observe ? Math.ceil(2 * connexions * 1000 / 80) : 0);
 }
 
 export class DisponibiliteRealtime {
-  constructor(uid) {
-    this.uid = uid; this.db = false; this.user = false; this.cdc = false;
+  constructor(uid, profil = PROFIL_REALTIME) {
+    this.uid = uid; this.attendus = abonnements(uid, profil); this.db = false; this.user = false; this.cdc = false;
     this.erreur = null; this.handlers = 0; this.systemes = { ok: 0, error: 0, autres: 0 };
   }
   get pret() { return !this.erreur && this.db && this.user && this.cdc; }
@@ -116,9 +145,9 @@ export class DisponibiliteRealtime {
       else if (String(m.ref) === "1") {
         const bindings = m.payload.response?.postgres_changes;
         const key = a => JSON.stringify([a.event, a.schema, a.table, a.filter || ""]);
-        const attendus = new Set(abonnements(this.uid).map(key));
-        if (!Array.isArray(bindings) || bindings.length !== 12 || new Set(bindings.map(key)).size !== 12
-            || bindings.some(b => b.id == null || !attendus.has(key(b)))) this.erreur ||= "REALTIME_12_HANDLERS_NON_CONFIRMES";
+        const attendus = new Set(this.attendus.map(key));
+        if (!Array.isArray(bindings) || bindings.length !== attendus.size || new Set(bindings.map(key)).size !== attendus.size
+            || bindings.some(b => b.id == null || !attendus.has(key(b)))) this.erreur ||= "REALTIME_HANDLERS_NON_CONFIRMES";
         else { this.db = true; this.handlers = bindings.length; }
       } else this.user = true;
     }
@@ -182,7 +211,7 @@ export function statistiques(mesures) {
     octets: mesures.reduce((s, m) => s + (m.octets || 0), 0), motifs };
 }
 
-export function verdictPalier({ http, parcours, realtime, messages, connectes, attendus, termine, fatal, scenario = "complet" }) {
+export function verdictPalier({ http, parcours, realtime, messages, posts, connectes, attendus, termine, fatal, scenario = "complet" }) {
   const motifs = [];
   if (fatal) motifs.push(fatal);
   if (!termine) motifs.push("PALIER_INCOMPLET");
@@ -194,8 +223,19 @@ export function verdictPalier({ http, parcours, realtime, messages, connectes, a
   if (scenario === "complet" && (!realtime.tentatives || realtime.erreurs > 0)) motifs.push("REALTIME_NON_VALIDE");
   if (scenario === "complet" && (!messages?.tentatives || messages.erreurs > 0)) motifs.push("MESSAGERIE_SOUS_CHARGE_NON_VALIDEE");
   if (scenario === "complet" && messages?.p95Ms > 2000) motifs.push("P95_MESSAGES_SUP_2000_MS");
+  if (scenario === "complet" && posts && (!posts.tentatives || posts.erreurs > 0)) motifs.push("PUBLICATIONS_SOUS_CHARGE_NON_VALIDEES");
+  if (posts?.p95Ms > 2000) motifs.push("P95_PUBLICATIONS_SUP_2000_MS");
   if (realtime.p95Ms > 2000) motifs.push("P95_REALTIME_SUP_2000_MS");
   return { ok: motifs.length === 0, motifs };
+}
+
+export function verdictAvecCompteurs(principal, httpCompteurs, parcoursCompteurs) {
+  const verdict = verdictPalier(principal);
+  if (!httpCompteurs.tentatives || !parcoursCompteurs.tentatives) verdict.motifs.push("COMPTEURS_VISIBLES_NON_EXERCES");
+  if (httpCompteurs.tauxErreur > .01 || parcoursCompteurs.tauxErreur > .01) verdict.motifs.push("ERREURS_COMPTEURS_SUP_1_PCT");
+  if (httpCompteurs.p95Ms > 1000 || parcoursCompteurs.p95Ms > 1000) verdict.motifs.push("P95_COMPTEURS_SUP_1000_MS");
+  verdict.ok = verdict.motifs.length === 0;
+  return verdict;
 }
 
 // Une sonde est armée AVANT l'écriture ; les messages reçus pour d'autres

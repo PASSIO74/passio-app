@@ -134,6 +134,219 @@ async function sharePostInFeed(id) {
 // Verrou anti-double-clic : empêche deux likes simultanés sur le même post
 const _likePending = new Set();
 
+// Les compteurs publics ne s'abonnent plus aux likes de TOUT le réseau.
+// Au plus trois HEAD exacts, séquentiels, par créneau de 15–16,5 s ; aucune
+// liste d'identifiants n'est téléchargée (ni tronquée par max-rows).
+const POST_LIKE_REFRESH_MS = 15000;
+const POST_LIKE_REFRESH_JITTER_MS = 1500;
+const POST_LIKE_REFRESH_MAX_POSTS = 3;
+let _postLikeRefreshTimer = null;
+let _postLikeRefreshDueAt = 0;
+let _postLikeRefreshRunning = false;
+let _postLikeRefreshBusy = false;
+let _postLikeRefreshEpoch = 0;
+let _postLikeRefreshNextAt = 0;
+let _postLikeRefreshIdentity = null;
+let _postLikeRefreshObserver = null;
+const _postLikeRefreshEntries = new Map();
+window._postLikeRefreshStats = { cycles: 0, reads: 0, updated: 0, errors: 0, discarded: 0 };
+
+function _postLikeIdentity() {
+  return String(typeof MY_UID === "undefined" ? "" : MY_UID) + ":"
+    + (typeof _profileCacheGeneration === "undefined" ? 0 : _profileCacheGeneration);
+}
+function _postLikeEntry(id) {
+  const identity = _postLikeIdentity();
+  if (identity !== _postLikeRefreshIdentity) {
+    _postLikeRefreshIdentity = identity;
+    _postLikeRefreshEntries.clear();
+    _postLikeRefreshEpoch++;
+  }
+  if (!_postLikeRefreshEntries.has(id)) {
+    // Une longue session ne conserve pas l'historique de toutes les cartes.
+    if (_postLikeRefreshEntries.size >= 300) {
+      for (const [key, value] of _postLikeRefreshEntries) {
+        if (!value.pending) { _postLikeRefreshEntries.delete(key); break; }
+      }
+    }
+    _postLikeRefreshEntries.set(id, { version: 0, pending: 0, checkedAt: 0 });
+  }
+  return _postLikeRefreshEntries.get(id);
+}
+function _postLikeMutationBegin(id) {
+  const entry = _postLikeEntry(id);
+  if (!entry.pending) entry.confirmedLiked = (state.user.likedPosts || []).includes(id);
+  entry.version++;
+  entry.pending++;
+  entry.intent = (entry.intent || 0) + 1;
+  return { identity: _postLikeIdentity(), entry, intent: entry.intent };
+}
+function _postLikeMutationEnd(id, token) {
+  if (!token || token.identity !== _postLikeIdentity() || _postLikeRefreshEntries.get(id) !== token.entry) return;
+  token.entry.pending = Math.max(0, token.entry.pending - 1);
+  token.entry.version++;
+  _postLikeRefreshWake();
+}
+function _postLikeCopies(id) {
+  return Array.from(new Set(allPostCopies(id).concat(
+    (window._feedExtraPosts || []).filter(p => p.id === id),
+    (window._visited && window._visited.posts || []).filter(p => p.id === id),
+    (typeof reelsState === "undefined" ? [] : reelsState.items || []).filter(p => p.id === id)
+  )));
+}
+// Le chargement complet du fil reste utile, mais sa réponse peut précéder un
+// HEAD plus récent ou une intention locale. Il ne doit pas les écraser ensuite.
+function _postLikeReadToken(id) {
+  const entry = _postLikeEntry(id);
+  return { entry, version: entry.version };
+}
+function _postLikeReconcileLoaded(post, token) {
+  const entry = _postLikeRefreshEntries.get(post.id);
+  if (entry && token && (entry !== token.entry || entry.pending || entry.version !== token.version)) {
+    const current = _postLikeCopies(post.id)[0];
+    if (current) { post.likes = current.likes; post.liked = current.liked; }
+  }
+  return post;
+}
+
+// La géométrie seule compterait aussi le fil CACHÉ sous une fiche/modale.
+// On intersecte les scrollports, puis vérifie que la carte reçoit réellement
+// un point de l'écran. Même chemin pour fil, profil, détail et bobines.
+function _postLikeCardVisible(card) {
+  if (!card || !card.isConnected || !card.getClientRects().length) return false;
+  const rect = card.getBoundingClientRect();
+  let left = Math.max(0, rect.left), top = Math.max(0, rect.top);
+  let right = Math.min(window.innerWidth, rect.right), bottom = Math.min(window.innerHeight, rect.bottom);
+  for (let node = card; node && node.nodeType === 1; node = node.parentElement) {
+    const style = getComputedStyle(node);
+    if (style.visibility === "hidden" || style.display === "none" || Number(style.opacity) === 0) return false;
+    if (node !== card) {
+      const clip = node.getBoundingClientRect();
+      if (/(auto|scroll|hidden|clip)/.test(style.overflowX)) { left = Math.max(left, clip.left); right = Math.min(right, clip.right); }
+      if (/(auto|scroll|hidden|clip)/.test(style.overflowY)) { top = Math.max(top, clip.top); bottom = Math.min(bottom, clip.bottom); }
+    }
+  }
+  if (right - left < 2 || bottom - top < 2) return false;
+  return [[0.5, 0.5], [0.1, 0.1], [0.9, 0.1], [0.1, 0.9], [0.9, 0.9]].some(function (point) {
+    const hit = document.elementFromPoint(left + (right - left) * point[0], top + (bottom - top) * point[1]);
+    return hit && card.contains(hit);
+  });
+}
+function _postLikeVisibleIds() {
+  if (document.hidden || window._rechargementImminent === true) return [];
+  // Les visiteurs n'avaient déjà aucun CDC : leur ajouter ces HEAD coûterait
+  // sans rien économiser. Même autorité et même repli que supaSubscribe.
+  if (typeof connexionTempsReelAutorisee === "function" && !connexionTempsReelAutorisee()) return [];
+  const ids = new Set();
+  document.querySelectorAll('.post[data-postid], .reel-item[data-post-id]').forEach(function (card) {
+    const id = card.getAttribute("data-postid") || card.getAttribute("data-post-id");
+    const post = id && _postLikeCopies(id).find(p => p.fromSupabase);
+    if (!post || (typeof isBlocked === "function" && isBlocked(post.authorId))) return;
+    if (card.closest("#visitedContent") && window._visited && window._visited.locked) return;
+    if (!(typeof postSupprime === "function" && postSupprime(id)) && _postLikeCardVisible(card)) ids.add(id);
+  });
+  return Array.from(ids);
+}
+function _postLikeRefreshWake() {
+  if (!_postLikeRefreshRunning) return;
+  if (document.hidden) {
+    _postLikeRefreshEpoch++;
+    clearTimeout(_postLikeRefreshTimer);
+    _postLikeRefreshTimer = null;
+    return;
+  }
+  if (_postLikeRefreshBusy) return;
+  const delay = Math.max(200, _postLikeRefreshNextAt - Date.now());
+  // Les animations/modifications du DOM ne repoussent jamais un rendez-vous
+  // déjà plus proche : un défilement continu ne doit pas affamer le compteur.
+  if (_postLikeRefreshTimer !== null && _postLikeRefreshDueAt <= Date.now() + delay) return;
+  clearTimeout(_postLikeRefreshTimer);
+  _postLikeRefreshTimer = null;
+  _postLikeRefreshDueAt = Date.now() + delay;
+  _postLikeRefreshTimer = setTimeout(_postLikeRefreshTour, delay);
+}
+async function _postLikeRefreshTour() {
+  _postLikeRefreshTimer = null;
+  if (!_postLikeRefreshRunning || _postLikeRefreshBusy || document.hidden) return;
+  if (Date.now() < _postLikeRefreshNextAt) { _postLikeRefreshWake(); return; }
+  _postLikeRefreshBusy = true;
+  let queried = false;
+  try {
+    if (!window._supaReal || navigator.onLine === false || typeof supa === "undefined" || !supa) return;
+    const ids = _postLikeVisibleIds();
+    const candidates = ids.map(id => ({ id, entry: _postLikeEntry(id) }))
+      .filter(item => !item.entry.pending)
+      .sort((a, b) => a.entry.checkedAt - b.entry.checkedAt)
+      .slice(0, POST_LIKE_REFRESH_MAX_POSTS);
+    if (!candidates.length) return;
+    queried = true;
+    const identity = _postLikeIdentity(), epoch = _postLikeRefreshEpoch;
+    _postLikeRefreshNextAt = Date.now() + POST_LIKE_REFRESH_MS + Math.floor(Math.random() * POST_LIKE_REFRESH_JITTER_MS);
+    window._postLikeRefreshStats.cycles++;
+    for (const { id, entry } of candidates) {
+      if (!_postLikeRefreshRunning || navigator.onLine === false || identity !== _postLikeIdentity() || epoch !== _postLikeRefreshEpoch || !_postLikeVisibleIds().includes(id)) break;
+      if (entry.pending) continue;
+      const version = entry.version;
+      entry.checkedAt = Date.now(); // rotation, même sur erreur : pas de famine des autres cartes
+      window._postLikeRefreshStats.reads++;
+      let result;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      try {
+        let query = supa.from("post_likes").select("post_id", { count: "exact", head: true }).eq("post_id", id);
+        if (typeof query.abortSignal === "function") query = query.abortSignal(controller.signal);
+        result = await query;
+      } catch (e) { result = { error: e }; }
+      finally { clearTimeout(timeout); }
+      // Un zéro est un résultat ; NULL, un refus ou une réponse périmée n'en est pas un.
+      if (!result || result.error || !Number.isSafeInteger(result.count) || result.count < 0) {
+        window._postLikeRefreshStats.errors++;
+        continue;
+      }
+      if (!_postLikeRefreshRunning || identity !== _postLikeIdentity() || epoch !== _postLikeRefreshEpoch
+          || _postLikeRefreshEntries.get(id) !== entry || entry.pending || entry.version !== version
+          || !_postLikeVisibleIds().includes(id)) {
+        window._postLikeRefreshStats.discarded++;
+        continue;
+      }
+      const copies = _postLikeCopies(id);
+      copies.forEach(function (post) { post.likes = result.count; }); // MON liked reste local
+      entry.version++;
+      const post = copies[0];
+      if (post) _paintPostLike(id, !!post.liked || (state.user.likedPosts || []).includes(id), result.count, null, false);
+      window._postLikeRefreshStats.updated++;
+    }
+  } finally {
+    _postLikeRefreshBusy = false;
+    if (_postLikeRefreshRunning && !document.hidden) {
+      const delay = Math.max(200, _postLikeRefreshNextAt - Date.now(), queried ? 0 : POST_LIKE_REFRESH_MS);
+      _postLikeRefreshDueAt = Date.now() + delay;
+      _postLikeRefreshTimer = setTimeout(_postLikeRefreshTour, delay);
+    }
+  }
+}
+function startPostLikeRefresh() {
+  if (_postLikeRefreshRunning) { _postLikeRefreshWake(); return; }
+  _postLikeRefreshRunning = true;
+  _postLikeRefreshEpoch++;
+  if (!_postLikeRefreshObserver) {
+    _postLikeRefreshObserver = new MutationObserver(_postLikeRefreshWake);
+    _postLikeRefreshObserver.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "style", "hidden"] });
+    document.addEventListener("scroll", _postLikeRefreshWake, { capture: true, passive: true });
+    document.addEventListener("visibilitychange", _postLikeRefreshWake);
+    window.addEventListener("pageshow", _postLikeRefreshWake);
+    window.addEventListener("resize", _postLikeRefreshWake, { passive: true });
+    window.addEventListener("online", _postLikeRefreshWake);
+  }
+  _postLikeRefreshWake();
+}
+function stopPostLikeRefresh() {
+  _postLikeRefreshRunning = false;
+  _postLikeRefreshEpoch++;
+  clearTimeout(_postLikeRefreshTimer);
+  _postLikeRefreshTimer = null;
+}
+
 // Micro-interactions de like (façon Instagram/Facebook).
 // Petit « pop » du bouton au like.
 function _likePop(el) {
@@ -219,7 +432,7 @@ function _applyLikeLocally(id, liked) {
   // publié existe à la fois dans userPosts et dans supabasePosts ; le fil affiche
   // la copie SERVEUR alors que findPostAnywhere rend la copie LOCALE. On incrémentait
   // donc un compteur invisible : le cœur passait rouge, le nombre ne bougeait pas.
-  var copies = (typeof allPostCopies === "function") ? allPostCopies(id) : (post ? [post] : []);
+  var copies = _postLikeCopies(id);
   copies.forEach(function (p) {
     p.liked = liked;
     p.likes = Math.max(0, (p.likes || 0) + (liked ? 1 : -1));
@@ -331,6 +544,7 @@ function likePost(id, skipRender = false, el = null) {
   }
 
   // Mise à jour optimiste : l'affichage ne dépend JAMAIS du réseau.
+  const refreshMutation = willWrite ? _postLikeMutationBegin(id) : null;
   _applyLikeLocally(id, want);
   if (want) {
     try { supaTrack("like_post", { passion: post.passion }); } catch(_) {}
@@ -344,7 +558,19 @@ function likePost(id, skipRender = false, el = null) {
   if (!willWrite) return;
 
   // Écriture serveur : on envoie l'INTENTION, on ne la re-déduit pas de la base.
-  supaSetPostLike(id, want, _cid).then(function (res) {
+  // Deux intentions espacées de >800 ms restent possibles pendant un réseau
+  // lent. On conserve leur ordre en base et n'annule jamais une intention plus
+  // récente en recevant l'échec de l'ancienne.
+  const write = Promise.resolve(refreshMutation.entry.writeTail).catch(function () {}).then(function () {
+    if (refreshMutation.identity !== _postLikeIdentity()) return { ok: false };
+    return supaSetPostLike(id, want, _cid);
+  });
+  refreshMutation.entry.writeTail = write;
+  write.catch(function (error) { return { ok: false, error }; }).then(function (res) {
+    if (refreshMutation.identity !== _postLikeIdentity()
+        || _postLikeRefreshEntries.get(id) !== refreshMutation.entry) return;
+    if (res && res.ok) refreshMutation.entry.confirmedLiked = want;
+    if (refreshMutation.intent !== refreshMutation.entry.intent) return;
     if (res && res.ok) {
       if (want && post.fromSupabase && post.authorId && post.authorId !== MY_UID) {
         supaInsertNotif(post.authorId, "like", id, "a aimé ton post");
@@ -354,10 +580,12 @@ function likePost(id, skipRender = false, el = null) {
     // Échec RÉEL de l'écriture → on annule l'affichage optimiste. Laisser un ❤️
     // qui n'existe pas en base, c'est le faire disparaître au prochain
     // chargement, sans que personne ne comprenne pourquoi.
-    const p2 = _applyLikeLocally(id, !want);
-    _paintPostLike(id, !want, p2 ? (p2.likes || 0) : 0, null, false);
+    const confirmed = refreshMutation.entry.confirmedLiked;
+    const p2 = (state.user.likedPosts || []).includes(id) === confirmed
+      ? findPostAnywhere(id) : _applyLikeLocally(id, confirmed);
+    _paintPostLike(id, confirmed, p2 ? (p2.likes || 0) : 0, null, false);
     toast(want ? "Ton j'aime n'a pas pu être enregistré." : "Le retrait du j'aime n'a pas pu être enregistré.");
-  });
+  }).finally(function () { _postLikeMutationEnd(id, refreshMutation); });
 }
 
 // ===== DOC VIEWER — SUPPRIMÉ (ADR-009) =====
