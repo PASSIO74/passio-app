@@ -2944,8 +2944,10 @@ function openReelComments(postId) {
 
     // Stocker le postId courant
     window.currentReelCommentPostId = postId;
-    // Charger les commentaires
+    // Charger les commentaires : d'abord ce qu'on a (aperçus, locaux), puis la
+    // première page serveur — le fil ne porte plus que DEUX aperçus (2026-09-21).
     loadReelComments(postId);
+    _chargerDiscussionBobine(postId);
 
     // Focus sur l'input
     setTimeout(() => {
@@ -2972,6 +2974,25 @@ function closeReelComments() {
     }
     window.currentReelCommentPostId = null;
   }
+}
+
+// Page serveur de la discussion d'une bobine, même autorité que la modale du
+// fil (`supaLoadComments` + `_fusionnerPageCommentaires`, cache 20 s partagé).
+async function _chargerDiscussionBobine(postId) {
+  if (typeof supa === "undefined" || !supa || !window._supaReal || typeof MY_UID === "undefined" || !MY_UID) return;
+  if (typeof supaLoadComments !== "function" || typeof _fusionnerPageCommentaires !== "function") return;
+  window._cmtThreadLoadedAt = window._cmtThreadLoadedAt || {};
+  if (Date.now() - (window._cmtThreadLoadedAt[postId] || 0) < 20000) return; // déjà frais
+  const reel = findPostAnywhere(postId);
+  if (!reel) return;
+  try {
+    const page = await supaLoadComments(postId);
+    if (!page || window.currentReelCommentPostId !== postId) return;
+    _fusionnerPageCommentaires(reel, page);
+    if (typeof hydrateCommentInteractions === "function") { try { await hydrateCommentInteractions(reel); } catch (e) {} }
+    window._cmtThreadLoadedAt[postId] = Date.now();
+    if (window.currentReelCommentPostId === postId) loadReelComments(postId);
+  } catch (e) { try { diagLog("bobine_commentaires", e && e.message); } catch (_e) {} }
 }
 
 function loadReelComments(postId) {
@@ -3060,7 +3081,10 @@ function loadReelComments(postId) {
     }
 
     return commentHTML;
-  }).join("");
+  }).join("")
+  // Page suivante en base (pagination serveur du 2026-09-21) : même bouton que
+  // la modale du fil, même chargeur.
+  + ((typeof _commentairesSuiteHtml === "function") ? _commentairesSuiteHtml(postId) : "");
 }
 
 function autoResizeReelCommentInput() {

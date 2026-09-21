@@ -644,6 +644,10 @@ function _renderCommentsList(allComments, postId) {
       + (_remaining > _next ? ' · ' + _remaining + ' restants' : '') + '</button>';
     _visible = _visible.slice(0, _shown);
   }
+  // Tout ce qui est chargé est affiché : s'il reste des commentaires EN BASE
+  // (page suivante), proposer de les charger — c'est la pagination serveur du
+  // 2026-09-21, complément de la pagination d'affichage ci-dessus.
+  if (!_olderBtn) _olderBtn = _commentairesSuiteHtml(postId);
   var _listHtml = _visible.map(c => {
     let name, emoji, avatarColor, authorId;
     authorId = c.authorId || "?";
@@ -763,6 +767,81 @@ function _showMoreComments(threadId) {
   if (typeof _refreshCommentThreadUINow === "function") _refreshCommentThreadUINow(threadId);
   else if (typeof _refreshCommentThreadUI === "function") _refreshCommentThreadUI(threadId);
 }
+// ── Pagination SERVEUR des commentaires (2026-09-21) ────────────────────────
+// La discussion n'est plus téléchargée entière : `supaLoadComments` (app-08)
+// rend une page des plus récents et un curseur `suite`. Ces deux helpers
+// posent la page sur le post et chargent la précédente à la demande.
+// Chargements en vol, HORS du post : un post de `userPosts` est persisté dans
+// l'état, un drapeau qui y resterait vrai bloquerait le bouton après rechargement.
+const _commentairesEnCours = new Set();
+function _fusionnerPageCommentaires(post, page) {
+  if (!post || !Array.isArray(page)) return;
+  // Garder ce qui est à moi et pas encore en base ; tout le reste vient de la page.
+  // Sans total serveur (chemin d'avant : la liste entière du fil, jusqu'à 200),
+  // ce que l'ancienne liste tenait du serveur est le meilleur compte connu ;
+  // sans lui, une page de 30 ferait tomber « 45 » à « 30 ».
+  var serveurAvant = (post.comments || []).filter(function (c) { return c && c.fromSupabase; }).length;
+  post._commentsSuite = page.suite || null;
+  // Le total serveur du dernier chargement du fil se recale sur ce que la page
+  // montre : une page entière en tient au moins autant, une page incomplète est
+  // la liste complète (RLS du lecteur comprise).
+  if (Number.isSafeInteger(post.commentsTotal)) {
+    post.commentsTotal = post._commentsSuite ? Math.max(post.commentsTotal, page.length) : page.length;
+  } else if (post._commentsSuite) {
+    post.commentsTotal = Math.max(page.length, serveurAvant);
+  }
+  // ⚠️ APRÈS le calcul ci-dessus : `locaux` exclut les lignes serveur.
+  var ids = new Set(page.map(function (c) { return c.id; }));
+  var locaux = (post.comments || []).filter(function (c) { return c && !ids.has(c.id) && !c.fromSupabase; });
+  post.comments = page.map(function (c) { return Object.assign({}, c, { text: c.content || c.text || "" }); })
+    .concat(locaux)
+    .sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
+}
+function _commentairesSuiteHtml(postId) {
+  var post = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
+  if (!post || !post._commentsSuite) return "";
+  var charges = (post.comments || []).filter(function (c) { return c && c.fromSupabase; }).length;
+  var restants = Number.isSafeInteger(post.commentsTotal) ? Math.max(0, post.commentsTotal - charges) : 0;
+  if (_commentairesEnCours.has(postId)) {
+    return '<button class="btn ghost block" style="margin:10px auto 2px;display:block;font-size:12px;" disabled>Chargement…</button>';
+  }
+  return '<button class="btn ghost block" data-cmtsuite="' + escapeHtml(postId) + '" style="margin:10px auto 2px;display:block;font-size:12px;" onclick="_chargerCommentairesPrecedents(\'' + escapeJsArg(postId) + '\')">↓ Charger les commentaires précédents'
+    + (restants > 0 ? ' · ' + restants + ' restants' : '') + '</button>';
+}
+async function _chargerCommentairesPrecedents(postId) {
+  var post = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
+  if (!post || !post._commentsSuite || _commentairesEnCours.has(postId)) return;
+  if (typeof supaLoadComments !== "function" || typeof supa === "undefined" || !supa) return;
+  _commentairesEnCours.add(postId);
+  _refreshCommentThreadUINow(postId);
+  try {
+    var page = await supaLoadComments(postId, { avant: post._commentsSuite });
+    if (!page) return; // erreur : on garde la liste et le curseur, le bouton reste
+    var connus = new Set((post.comments || []).map(function (c) { return c.id; }));
+    var nouveaux = page.filter(function (c) { return !connus.has(c.id); })
+      .map(function (c) { return Object.assign({}, c, { text: c.content || c.text || "" }); });
+    post.comments = (post.comments || []).concat(nouveaux)
+      .sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
+    post._commentsSuite = page.suite || null;
+    // Dernière page : la liste est entière, le total du fil (peut-être périmé à
+    // la hausse — aucun événement DELETE n'est écouté) se recale dessus.
+    if (!post._commentsSuite) {
+      post.commentsTotal = post.comments.filter(function (c) { return c && c.fromSupabase; }).length;
+    }
+    if (nouveaux.length && typeof hydrateCommentInteractions === "function") {
+      try { await hydrateCommentInteractions({ comments: nouveaux }); } catch (e) {}
+    }
+    // Ce qu'on vient de charger se voit : la pagination d'affichage suit.
+    window._cmtShown = window._cmtShown || {};
+    window._cmtShown[postId] = Math.max(window._cmtShown[postId] || 30, post.comments.length);
+  } catch (e) {
+    try { diagLog("commentaires_precedents", e && e.message); } catch (_e) {}
+  } finally {
+    _commentairesEnCours.delete(postId);
+    _refreshCommentThreadUINow(postId);
+    try { _patchPostCommentCount(postId); } catch (e) {}
+  }
+}
 // Compat : ancien point d'entrée « tout afficher ».
 function _expandComments(threadId) {
   window._cmtShown = window._cmtShown || {};
@@ -801,7 +880,7 @@ function _patchCmtReact(threadId, nodeId) {
 function _patchPostCommentCount(postId) {
   var post = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
   if (!post) return;
-  var n = (typeof commentThreadCount === "function") ? commentThreadCount(post.comments) : (post.comments || []).length;
+  var n = (typeof nbCommentairesPost === "function") ? nbCommentairesPost(post) : (post.comments || []).length;
   document.querySelectorAll('[data-cmtcount="' + postId + '"]').forEach(function (el) {
     el.innerHTML = "💬 " + n;
   });
@@ -1092,16 +1171,18 @@ async function openComments(postId) {
   // (~300-700 ms) ni re-render. C'est le correctif « ouverture fluide ».
   if (_willLoad) {
     try {
+      // Première page (les plus récents) ; « précédents » charge la suite.
       const supaComments = await supaLoadComments(postId);
       if (window._openCommentsPostId !== postId) return; // l'utilisateur a fermé/changé entre-temps
-      if (supaComments && supaComments.length >= 0) {
+      if (!supaComments) {
+        // Erreur de lecture : on garde ce qu'on a (les aperçus), jamais le
+        // squelette — c'est le défaut « squelette éternel » déjà payé une fois.
+        try { diagLog("commentaires_lecture", "page impossible à charger, aperçus conservés"); } catch (e) {}
+        const boxErr = document.getElementById("commentsBox");
+        if (boxErr) _setThreadHtml(boxErr, localComments.length ? _renderCommentsList(localComments, postId) : _emptyStateHtml);
+      } else if (supaComments.length >= 0) {
         // Merge : garder locaux non-Supabase + Supabase
-        const supaIds = supaComments.map(c => c.id);
-        const localOnly = localComments.filter(c => !supaIds.includes(c.id) && !c.fromSupabase);
-        const merged = [...supaComments.map(c => ({ ...c, text: c.content || c.text || "" })), ...localOnly]
-          .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-        // Mettre à jour le post local
-        post.comments = merged;
+        _fusionnerPageCommentaires(post, supaComments);
         // Hydrate les interactions cross-compte (likes/réponses/emojis) puis re-rend.
         if (typeof hydrateCommentInteractions === "function") {
           try { await hydrateCommentInteractions(post); } catch(e) {}
@@ -1116,7 +1197,7 @@ async function openComments(postId) {
         }
         // Mettre à jour le titre
         const title = document.querySelector(".modal-title");
-        if (title) title.textContent = `Discussion (${post.comments.length})`;
+        if (title) title.textContent = `Discussion (${nbCommentairesPost(post)})`;
       }
     } catch(e) {}
   } else if (typeof supa === "undefined" || !supa || typeof MY_UID === "undefined" || !MY_UID) {
@@ -1175,7 +1256,7 @@ function submitComment(postId) {
   var _box = document.getElementById("commentsBox");
   if (_box) { _box.scrollTop = 0; _flashNewComment(_box, _cid); } // nouveau = en tête (unshift)
   var _tt = document.querySelector(".modal-title");
-  if (_tt) _tt.textContent = "Discussion · " + commentThreadCount(post.comments);
+  if (_tt) _tt.textContent = "Discussion · " + nbCommentairesPost(post);
   if (typeof _syncComposerSendState === "function") _syncComposerSendState(_ta);
   // Compteur 💬 de la carte/du détail patché EN PLACE (fini le renderFeed complet
   // derrière la modale : ~100 ms de rebuild du fil à CHAQUE commentaire publié).
@@ -1410,6 +1491,10 @@ function _refreshCommentThreadUINow(threadId) {
         : '<div style="font-size:12px;color:var(--muted);">Aucun commentaire — sois le premier 💬</div>');
     }
   } catch(e) {}
+  // Panneau de commentaires des Bobines (app-05) : même discussion, même page.
+  try {
+    if (window.currentReelCommentPostId === threadId && typeof loadReelComments === "function") loadReelComments(threadId);
+  } catch(e) {}
   // Feuille générique inline (carte CDV/fil sans ouvrir le détail).
   try {
     var sheet = document.getElementById("cmtThreadList");
@@ -1488,7 +1573,13 @@ function deleteCommentEntry(threadId, commentId, localOnly) {
   var thread = _findCommentThread(threadId);
   if (!thread) return;
   var idx = thread.comments.findIndex(function(c){ return c.id === commentId; });
-  if (idx > -1) thread.comments.splice(idx, 1);
+  var retire = idx > -1 ? thread.comments.splice(idx, 1)[0] : null;
+  // Le total serveur du fil (`commentsTotal`) comptait ce commentaire s'il
+  // venait de la base ; un commentaire local pas encore envoyé n'y était pas.
+  if (retire && retire.fromSupabase && thread.kind === "post") {
+    var postDuFil = (typeof findPostAnywhere === "function") ? findPostAnywhere(threadId) : null;
+    if (postDuFil && Number.isSafeInteger(postDuFil.commentsTotal) && postDuFil.commentsTotal > 0) postDuFil.commentsTotal--;
+  }
   if (typeof thread.save === "function") thread.save();
   // Reflète sur le post local (compteur de la carte fil) le cas échéant — patch
   // en place, sans reconstruire tout le fil.
