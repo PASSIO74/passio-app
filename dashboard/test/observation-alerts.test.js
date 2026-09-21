@@ -175,3 +175,81 @@ test("⑪ bis : le chemin d'ingestion n'a plus qu'UN terme — un polling mort r
   assert.equal(reel.ingestAlive, reel.polling.ok,
     "ingestAlive doit valoir exactement polling.ok : un second terme le rendrait complaisant");
 });
+
+// ─── Reprise de veille : les états réseau sont tenus, pas recalculés ────────
+// Mesuré trois matins de suite (19, 20, 21/09, entre 06:10 et 09:36) : « lecture
+// DB trop ancienne » + « Ingestion sourde » à la seconde où le poste sort de
+// veille (dbRead.at et poll.lastOkAt datent de la nuit), puis `fetch failed`
+// avant que le Wi-Fi soit remonté, chacune rétablie 1 à 40 min après.
+const obsReveil = () => ({ parts: { dbRead: { state: "UNAVAILABLE", detail: "lecture DB trop ancienne" }, canary: { state: "UNAVAILABLE", detail: "2 manqués" }, sse: { state: "IDLE" }, persistence: { state: "LIVE" } } });
+const ingReveil = () => ingOk({ polling: { failStreak: 6, ok: false, lastError: "TypeError: fetch failed" }, ingestAlive: false });
+
+test("reprise : un tour qui suit un trou de 8 h détecte la reprise ; un glissement de 2 min non", () => {
+  const { repriseDetectee } = oa;
+  assert.equal(repriseDetectee(JOUR - 8 * H, JOUR), true);
+  assert.equal(repriseDetectee(JOUR - 2 * 60_000, JOUR), false, "un tick d'une minute glisse, il ne dort pas");
+  assert.equal(repriseDetectee(null, JOUR), false, "premier tour : rien à comparer");
+  assert.equal(repriseDetectee(JOUR - 4 * 60_000, JOUR, 3 * 60_000), true);
+});
+
+test("reprise : pendant la grâce, les quatre états réseau sont tenus à leur valeur d'avant — sains avant, sains pendant", () => {
+  const prev = evaluer({ obs: obsOk(), ingest: ingOk(), now: JOUR - 8 * H });
+  const e = evaluer({ obs: obsReveil(), ingest: ingReveil(), now: JOUR, prev, reprise: JOUR, graceMs: 10 * 60_000 });
+  for (const nom of ["dbread", "canary", "polling", "ingest"]) {
+    assert.equal(e.etats[nom].mauvais, false, `${nom} : tenu sain pendant la grâce`);
+    assert.equal(e.etats[nom].tenu, true);
+    assert.match(e.etats[nom].detail, /reprise de veille : état tenu encore 10 min/);
+  }
+  assert.equal(e.enGrace, true);
+  assert.deepEqual(transitions(prev, e), [], "aucune bascule : rien ne sonne au réveil");
+  // La persistance (disque local) n'est PAS tenue : elle ne dépend pas du réseau.
+  const disque = { ...obsReveil(), parts: { ...obsReveil().parts, persistence: { state: "UNAVAILABLE", detail: "ENOSPC" } } };
+  const e2 = evaluer({ obs: disque, ingest: ingReveil(), now: JOUR, prev, reprise: JOUR, graceMs: 10 * 60_000 });
+  assert.equal(e2.etats.storage.mauvais, true, "un disque plein sonne, réveil ou pas");
+});
+
+test("reprise : une panne qui durait AVANT la veille reste signalée pendant la grâce (tenue mauvaise, pas de faux retour)", () => {
+  const prev = evaluer({ obs: obsReveil(), ingest: ingReveil(), now: JOUR - 8 * H });
+  assert.equal(prev.etats.dbread.mauvais, true);
+  const e = evaluer({ obs: obsOk(), ingest: ingOk(), now: JOUR, prev, reprise: JOUR, graceMs: 10 * 60_000 });
+  assert.equal(e.etats.dbread.mauvais, true, "tenue = tenue mauvaise aussi");
+  assert.deepEqual(transitions(prev, e), [], "pas de retour `info` prématuré sur une lecture qui n'a pas encore eu lieu");
+});
+
+test("reprise : la grâce finit — à 10 min, une panne encore là sonne ; une panne partie ne sonne jamais", () => {
+  const avant = evaluer({ obs: obsOk(), ingest: ingOk(), now: JOUR - 8 * H });
+  const pendant = evaluer({ obs: obsReveil(), ingest: ingReveil(), now: JOUR + 5 * 60_000, prev: avant, reprise: JOUR, graceMs: 10 * 60_000 });
+  assert.equal(pendant.enGrace, true);
+  // Cas nominal : le réseau est revenu, tout est sain à la fin de la grâce.
+  const apresOk = evaluer({ obs: obsOk(), ingest: ingOk(), now: JOUR + 10 * 60_000, prev: pendant, reprise: JOUR, graceMs: 10 * 60_000 });
+  assert.equal(apresOk.enGrace, false);
+  assert.deepEqual(transitions(pendant, apresOk), [], "le faux réveil n'a produit NI alerte NI retour");
+  // Vraie panne née pendant la grâce : elle sonne à la fin, jamais tue.
+  const apresMal = evaluer({ obs: obsReveil(), ingest: ingReveil(), now: JOUR + 10 * 60_000, prev: pendant, reprise: JOUR, graceMs: 10 * 60_000 });
+  const cles = transitions(pendant, apresMal).map((a) => a.key).sort();
+  assert.deepEqual(cles, ["obs:canary", "obs:dbread", "obs:ingest", "obs:polling"], "une panne réelle sonne 10 min plus tard, pas jamais");
+});
+
+test("reprise : le tour la détecte sur l'écart avec le tour précédent, la persiste, et n'émet rien au réveil", async () => {
+  _setStateForTests({ etats: evaluer({ obs: obsOk(), ingest: ingOk(), now: JOUR - 8 * H }).etats, updatedAt: JOUR - 8 * H });
+  const emises = [];
+  const notify = (a) => emises.push(a.key);
+  // Le réveil : lectures froides, réseau pas encore là.
+  const t1 = await observationAlertsTick({ now: JOUR, obs: obsReveil(), ingest: ingReveil(), notify, graceMs: 10 * 60_000 });
+  assert.equal(t1.next.enGrace, true);
+  assert.deepEqual(emises, [], "rien ne sonne au réveil");
+  assert.equal(oa.observationAlertsState().repriseA, JOUR, "la reprise est persistée");
+  // Tours suivants : 1 min plus tard, encore froid — toujours rien ; 12 min plus tard, réseau revenu.
+  await observationAlertsTick({ now: JOUR + 60_000, obs: obsReveil(), ingest: ingReveil(), notify, graceMs: 10 * 60_000 });
+  assert.deepEqual(emises, []);
+  // Le tick tourne CHAQUE minute : sauter de +1 à +12 min serait un second
+  // sommeil aux yeux du détecteur (écart > 3 min), et la grâce repartirait.
+  for (let m = 2; m <= 11; m++) await observationAlertsTick({ now: JOUR + m * 60_000, obs: obsOk(), ingest: ingOk(), notify, graceMs: 10 * 60_000 });
+  const t3 = await observationAlertsTick({ now: JOUR + 12 * 60_000, obs: obsOk(), ingest: ingOk(), notify, graceMs: 10 * 60_000 });
+  assert.equal(t3.next.enGrace, false);
+  assert.deepEqual(emises, [], "un faux réveil ne laisse aucune trace : ni alerte, ni retour");
+  // Sans trou (tour à tour), aucune reprise n'est datée à nouveau.
+  await observationAlertsTick({ now: JOUR + 13 * 60_000, obs: obsOk(), ingest: ingOk(), notify, graceMs: 10 * 60_000 });
+  assert.equal(oa.observationAlertsState().repriseA, JOUR, "la reprise d'avant reste datée, aucune nouvelle");
+  _setStateForTests({ etats: null });
+});

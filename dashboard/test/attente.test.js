@@ -242,3 +242,35 @@ test("veille muette : tableau de veille âgé de 7 h → P2 `tableau:veille:age`
   assert.ok(sansMajLe, "sans majLe lisible, ageMin fait foi");
   assert.equal(attenteSnapshot({ comptesRendus: { veille: { majLe: null, ageMin: null, jetons: {} } } }, NOW).items.length, 0, "âge inconnu : on n'accuse pas");
 });
+
+// ─── Alertes : une ligne par clé, jamais une clé déjà revenue ───────────────
+// Mesuré le 2026-09-21 sur le poste : 15 lignes P0/P1 « Ingestion sourde »,
+// « Lecture de la base impossible », « Canari public non observé » — toutes
+// suivies d'un retour `info` sur la même clé quelques minutes après. Rien à
+// faire, et l'Accueil disait le contraire.
+test("alertes : une clé dont la dernière alerte est un retour (info) n'attend personne, même si les high/critical restent non acquittées", () => {
+  const alerts = [
+    { id: "r", key: "obs:ingest", level: "info", acknowledged: false, title: "Ingestion rétablie", ts: NOW - H },
+    { id: "p2", key: "obs:ingest", level: "critical", acknowledged: false, title: "Ingestion sourde", ts: NOW - 2 * H },
+    { id: "p1", key: "obs:ingest", level: "critical", acknowledged: false, title: "Ingestion sourde", ts: NOW - 30 * H },
+    { id: "c", key: "obs:canary", level: "high", acknowledged: false, title: "Canari non observé", message: "2 canaris manqués", ts: NOW - 3 * H },
+  ];
+  const s = attenteSnapshot({ alerts }, NOW);
+  assert.deepEqual(s.items.map((i) => i.key), ["al:c"], "l'ingestion est revenue : seul le canari, sans retour, attend");
+});
+
+test("alertes : plusieurs occurrences ouvertes d'une même clé = une ligne, datée de la première, qui compte les autres", () => {
+  const alerts = [
+    { id: "p3", key: "obs:dbread", level: "high", acknowledged: false, title: "Lecture de la base impossible", message: "TypeError: fetch failed", ts: NOW - H },
+    { id: "p2", key: "obs:dbread", level: "critical", acknowledged: false, title: "Lecture de la base impossible", message: "trop ancienne", ts: NOW - 20 * H },
+    { id: "p1", key: "obs:dbread", level: "high", acknowledged: false, title: "Lecture de la base impossible", message: "trop ancienne", ts: NOW - 40 * H },
+    { id: "x", key: "obs:dbread", level: "warn", acknowledged: false, title: "warn ignorée", ts: NOW - 50 * H },
+  ];
+  const s = attenteSnapshot({ alerts }, NOW);
+  assert.equal(s.items.length, 1);
+  const it = s.items[0];
+  assert.equal(it.key, "al:p3", "la clé porte l'occurrence la plus récente (c'est elle qu'on ouvre)");
+  assert.equal(it.depuis, NOW - 40 * H, "datée de la première occurrence ouverte");
+  assert.equal(it.priorite, "P0", "une occurrence critical dans le lot : P0");
+  assert.match(it.detail, /TypeError: fetch failed \(3 occurrences\)/);
+});

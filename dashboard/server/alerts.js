@@ -33,6 +33,16 @@
 //   · auto-acquittement : une alerte warn/info muette depuis 6 h (aucune
 //     nouvelle occurrence de sa clé) passe `acknowledged:true, ackBy:"auto"` —
 //     le badge et les risques ne s'empilent plus faute de clic.
+//
+// RETOUR (2026-09-21) : les modules à bascule (observation-alerts, disque, CLI,
+// stockage) signalent la fin d'une panne par `level: "info"` sur la MÊME clé.
+// Le sink GitHub [POSTE] refermait son issue sur ce retour, mais l'alerte
+// high/critical d'origine restait `acknowledged:false` à vie — « Ce qui
+// t'attend » empilait 15 pannes déjà réparées seules (5 « Ingestion sourde »,
+// chacune rétablie 1 à 40 min après). Désormais un retour REFERME les alertes
+// ouvertes de sa clé (`ackBy:"retour"`), à l'émission et au passage
+// périodique (rattrapage de l'historique) : un humain n'a rien à acquitter
+// pour une panne que la machine a déjà vue finir.
 // ═══════════════════════════════════════════════════════════════════════════
 import { store } from "./store.js";
 import { entree } from "./liste-blanche.js";
@@ -100,7 +110,11 @@ function emit(alert, now = Date.now()) {
     ? { ...base, meta: causalMeta, incidentId: incident.id, incident }
     : { ...base, meta: causalMeta };
 
-  db.update((d) => { d.items.unshift(record); if (d.items.length > 500) d.items.pop(); });
+  db.update((d) => {
+    // Un retour referme ce qu'il annonce fini : les alertes ouvertes de sa clé.
+    if (record.level === "info") refermerParRetour(d.items, record.key, now);
+    d.items.unshift(record); if (d.items.length > 500) d.items.pop();
+  });
   broadcast("alert", record);
   for (const fn of subscribers) { try { fn(record); } catch (e) { console.error("[alerts] abonné en échec:", e.message); } }
   // Points de sortie : chacun isolé, asynchrone, et sans effet sur ce qui précède.
@@ -386,21 +400,41 @@ function bugIdOf(ev) {
   return crypto.createHash("sha1").update([ev.type, ev.action, msg, frameNorm, ev.app_version].join("|")).digest("hex").slice(0, 12);
 }
 
+// ─── Retour : une panne que la machine a vue finir n'attend personne ────────
+/** Acquitte (`ackBy:"retour"`) les alertes NON info de `key` encore ouvertes et
+ *  antérieures à `retourTs`. Mute `items` en place ; rend le nombre refermées. */
+function refermerParRetour(items, key, retourTs) {
+  let n = 0;
+  for (const a of items) {
+    if ((a.key || a.title) !== key || a.acknowledged || a.level === "info" || a.ts > retourTs) continue;
+    a.acknowledged = true; a.ackBy = "retour"; a.ackAt = retourTs; n++;
+  }
+  return n;
+}
+
 // ─── Auto-acquittement des alertes muettes ──────────────────────────────────
 const AUTOACK_SILENCE_MS = 6 * 3_600_000;
 const AUTOACK_MS = Math.max(0, Number(process.env.DASH_ALERTS_AUTOACK_MIN ?? 10)) * 60_000;
 let _autoAckTimer = null;
 
 /**
- * Acquitte les alertes warn/info dont la CLÉ n'a plus sonné depuis `silenceMs`.
- * Les high/critical restent manuelles : elles attendent un humain ou la
- * sentinelle. Retourne le nombre d'alertes acquittées.
+ * Acquitte les alertes warn/info dont la CLÉ n'a plus sonné depuis `silenceMs`,
+ * et — quel que soit le niveau — celles dont la clé a reçu un RETOUR (`info`)
+ * plus récent : la panne est finie, la machine l'a vu. Les high/critical sans
+ * retour restent manuelles : elles attendent un humain ou la sentinelle.
+ * Retourne le nombre d'alertes acquittées.
  */
 export function autoAcquitter({ now = Date.now(), silenceMs = AUTOACK_SILENCE_MS } = {}) {
   let n = 0;
   db.update((d) => {
     const derniere = new Map();
-    for (const a of d.items) { const k = a.key || a.title; if (!derniere.has(k)) derniere.set(k, a.ts); else derniere.set(k, Math.max(derniere.get(k), a.ts)); }
+    const retours = new Map();   // clé -> ts du retour le plus récent
+    for (const a of d.items) {
+      const k = a.key || a.title;
+      if (!derniere.has(k)) derniere.set(k, a.ts); else derniere.set(k, Math.max(derniere.get(k), a.ts));
+      if (a.level === "info") retours.set(k, Math.max(retours.get(k) || 0, a.ts));
+    }
+    for (const [k, ts] of retours) n += refermerParRetour(d.items, k, ts);
     for (const a of d.items) {
       if (a.acknowledged || (a.level !== "warn" && a.level !== "info")) continue;
       if (now - derniere.get(a.key || a.title) < silenceMs) continue;
@@ -412,6 +446,9 @@ export function autoAcquitter({ now = Date.now(), silenceMs = AUTOACK_SILENCE_MS
 
 export function startAutoAck(everyMs = AUTOACK_MS) {
   if (_autoAckTimer || !everyMs) return _autoAckTimer;
+  // Un passage dès le démarrage : l'historique (retours déjà reçus) est refermé
+  // avant la première lecture de « Ce qui t'attend », pas 10 min plus tard.
+  try { autoAcquitter(); } catch {}
   _autoAckTimer = setInterval(() => { try { autoAcquitter(); } catch {} }, everyMs);
   if (typeof _autoAckTimer.unref === "function") _autoAckTimer.unref();
   return _autoAckTimer;

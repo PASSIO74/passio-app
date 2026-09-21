@@ -83,9 +83,30 @@ export function attenteSnapshot(src = {}, now = Date.now()) {
     ajoute({ key: "inc:" + i.id, priorite: "P2", titre: "Incident ouvert depuis plus de 3 jours", detail: `${i.signal?.title || i.id} — dernière occurrence il y a ${Math.round((now - vu) / J)} j`, depuis: vu, cible: "#alerts" });
   }
 
-  // 4. Alertes high/critical non acquittées.
-  for (const a of (src.alerts || []).filter((x) => !x.acknowledged && (x.level === "high" || x.level === "critical")).slice(0, 20)) {
-    ajoute({ key: "al:" + a.id, priorite: a.level === "critical" ? "P0" : "P1", titre: a.title, detail: a.message, depuis: a.ts, cible: "#alerts" });
+  // 4. Alertes high/critical non acquittées — UNE par clé, et jamais une clé
+  // dont la dernière alerte est un retour (`info` = la panne est finie, vue par
+  // la machine). alerts.js referme ces alertes à l'émission du retour ; ici on
+  // ne dépend pas de ce qu'il a déjà fait : un fichier d'avant la règle, ou un
+  // retour arrivé entre deux passages, ne remet pas 5 « Ingestion sourde »
+  // réparées seules devant Benjamin. Plusieurs occurrences ouvertes d'une même
+  // clé = une ligne, datée de la PREMIÈRE, qui compte les autres.
+  const parCle = new Map();   // clé -> { derniere, ouvertes[] }
+  for (const a of src.alerts || []) {
+    const k = a.key || a.title;
+    const e = parCle.get(k) || { derniere: a, ouvertes: [] };
+    if ((a.ts || 0) > (e.derniere.ts || 0)) e.derniere = a;
+    if (!a.acknowledged && (a.level === "high" || a.level === "critical")) e.ouvertes.push(a);
+    parCle.set(k, e);
+  }
+  let nAlertes = 0;
+  for (const e of parCle.values()) {
+    if (!e.ouvertes.length || e.derniere.level === "info" || nAlertes >= 20) continue;
+    nAlertes++;
+    e.ouvertes.sort((x, y) => (x.ts || 0) - (y.ts || 0));
+    const premiere = e.ouvertes[0], recente = e.ouvertes[e.ouvertes.length - 1];
+    const critique = e.ouvertes.some((x) => x.level === "critical");
+    ajoute({ key: "al:" + recente.id, priorite: critique ? "P0" : "P1", titre: recente.title,
+      detail: `${recente.message || ""}${e.ouvertes.length > 1 ? ` (${e.ouvertes.length} occurrences)` : ""}`, depuis: premiere.ts, cible: "#alerts" });
   }
 
   // 5. Modération (comptages seulement).
