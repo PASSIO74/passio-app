@@ -3304,8 +3304,10 @@ function _buildNoopSupa() {
     rpc: () => _noopQ(),
     channel: () => ({ on: function(){ return this; }, subscribe: () => null, send: () => Promise.resolve("ok"), httpSend: () => Promise.resolve({ success: false }), track: () => Promise.resolve("ok"), untrack: () => Promise.resolve("ok"), unsubscribe: () => Promise.resolve("ok"), presenceState: () => ({}) }),
     removeChannel: () => {},
-    removeAllChannels: () => {},
+    removeAllChannels: () => [],
     getChannels: () => [],
+    // Socket au repos (2026-09-21) : fermer/rouvrir le transport sans SDK est un no-op.
+    realtime: { disconnect: () => {}, connect: () => {}, isConnected: () => false },
     storage: {
       from: () => ({
         upload: _ko,
@@ -5931,6 +5933,26 @@ async function supaLoadOtherRead(convId) {
   } catch(e) {}
 }
 
+// La liste des conversations depuis le serveur, fusionnée avec le local :
+// au démarrage (`supaInit`) et au réveil du socket (`_rtReveiller`) — un
+// message reçu pendant le repos remonte ainsi avec sa pastille non-lu.
+async function _rafraichirConversationsServeur() {
+  // Ce que j'ai supprimé ici ne revient pas du serveur (MSG-06).
+  const supaConvs = (typeof _filtrerConvsServeur === "function") ? _filtrerConvsServeur(await supaLoadMyConversations()) : await supaLoadMyConversations();
+  if (supaConvs && supaConvs.length) {
+    const localConvs = getConversations();
+    const supaConvIds = new Set(supaConvs.map(c => c.id));
+    const localOnly = localConvs.filter(c => !supaConvIds.has(c.id) && !SEED_CONVERSATIONS.find(s => s.id === c.id));
+    conversationsState = deduplicateConversations([...supaConvs, ...localOnly]);
+  } else {
+    conversationsState = deduplicateConversations(getConversations());
+  }
+  _primeProfileCache(conversationsState); // pré-remplir cache → 0 requête lors de la réception
+  saveConversations();
+  window._convNetLoaded = true; // fin du squelette de la liste de conversations
+  try { renderMessages(); } catch(e) {}
+}
+
 async function supaLoadMyConversations() {
   try {
     const { data: memberships } = await supa.from("conv_members").select("conv_id").eq("user_id", MY_UID);
@@ -6381,7 +6403,113 @@ function supaSubscribe() {
   // DEUX, pas trois — `ring:` est gardé par `admissionCompteReel` depuis la
   // sonde du 2026-09-11 ; il n'en ouvre plus aucun (garde en tête de fonction).
   window._dbChan = _creerCanalDb(window._rtPriveIndisponible !== true);
+  try { _rtReposArmer(); } catch (e) {}
 }
+
+// ═══ SOCKET AU REPOS (2026-09-21) — câblage de `socketTempsReelAuRepos` (app-02) ═══
+// Tant que la politique dit « au repos », le client ne tient AUCUN canal et
+// ferme son WebSocket : il ne compte plus dans « Realtime Concurrent Peak
+// Connections ». Au réveil, `supaSubscribe` rejoint les mêmes canaux (sa garde
+// `_supaSubscribed` est relâchée ici), la conversation ouverte reprend son
+// canal de frappe, et TOUT ce qui a pu arriver pendant le repos est relu :
+// conversations (pastilles), conversation ouverte, notifications, lives, fil.
+// ⚠️ On ne dort jamais pendant un appel ou un live (`window._call`,
+// `_vliveHost/_vliveView`) : leurs canaux vivent sur le même socket.
+// ⚠️ Un visiteur n'est pas concerné : il n'a aucun socket (garde de
+// `supaSubscribe`), donc rien à endormir — et `_rtReveiller` repasse par la
+// même garde.
+const REPOS_RT_TICK_MS = 30000;
+window._rtRepos = { endormi: false, masqueeDepuis: 0, dernierGeste: 0, endormiDepuis: 0, raison: null, cycles: 0, reveils: 0, timer: null, arme: false };
+function _rtReposEtat() {
+  const now = Date.now(), r = window._rtRepos;
+  return {
+    visible: !document.hidden,
+    masqueeDepuisMs: document.hidden && r.masqueeDepuis ? now - r.masqueeDepuis : 0,
+    inactifDepuisMs: r.dernierGeste ? now - r.dernierGeste : 0,
+    conversationOuverte: !!window._openedConvId,
+    appelEnCours: !!window._call,
+    liveEnCours: !!(window._vliveHost || window._vliveView),
+  };
+}
+function _rtReposArmer() {
+  const r = window._rtRepos;
+  if (r.arme) return;
+  r.arme = true;
+  r.dernierGeste = Date.now();
+  r.masqueeDepuis = document.hidden ? Date.now() : 0;
+  const geste = function () {
+    r.dernierGeste = Date.now();
+    if (r.endormi && !document.hidden) _rtReveiller("geste");
+  };
+  ["pointerdown", "keydown", "touchstart", "wheel"].forEach(function (ev) {
+    document.addEventListener(ev, geste, { capture: true, passive: true });
+  });
+  document.addEventListener("scroll", geste, { capture: true, passive: true });
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden) { r.masqueeDepuis = Date.now(); return; }
+    r.masqueeDepuis = 0; r.dernierGeste = Date.now();
+    if (r.endormi) _rtReveiller("retour");
+  });
+  window.addEventListener("pageshow", function () { if (!document.hidden && r.endormi) _rtReveiller("pageshow"); });
+  window.addEventListener("online", function () { if (!document.hidden && r.endormi) _rtReveiller("online"); });
+  r.timer = setInterval(_rtReposTick, REPOS_RT_TICK_MS);
+}
+function _rtReposTick() {
+  const r = window._rtRepos;
+  r.cycles++;
+  if (r.endormi || !window._supaSubscribed) return;
+  if (typeof socketTempsReelAuRepos !== "function") return;
+  const etat = _rtReposEtat();
+  if (!socketTempsReelAuRepos(etat)) return;
+  _rtEndormir(etat.masqueeDepuisMs >= (typeof REPOS_TEMPS_REEL_MASQUE_MS === "number" ? REPOS_TEMPS_REEL_MASQUE_MS : Infinity) ? "masque" : "inactif");
+}
+function _rtEndormir(raison) {
+  const r = window._rtRepos;
+  if (r.endormi || typeof supa === "undefined" || !supa) return;
+  if (window._call || window._vliveHost || window._vliveView) return; // jamais pendant un appel ou un live
+  r.endormi = true; r.endormiDepuis = Date.now(); r.raison = raison;
+  // Les canaux d'abord, le socket ensuite ; tous les porteurs sont relâchés
+  // pour que le réveil les recrée (leurs gardes d'idempotence lisent ces
+  // variables). `removeAllChannels` couvre aussi un canal qu'on ne nommerait pas.
+  try { if (typeof _typingChannel !== "undefined") _typingChannel = null; } catch (e) {}
+  try { if (typeof _supaConvChannel !== "undefined") _supaConvChannel = null; } catch (e) {}
+  window._privateConvChans = {};
+  window._userTopicChan = null;
+  window._callRingChan = null;
+  window._dbChan = null;
+  window._supaSubscribed = false;
+  try { Promise.resolve(supa.removeAllChannels()).catch(function () {}); } catch (e) {}
+  try { if (supa.realtime && typeof supa.realtime.disconnect === "function") supa.realtime.disconnect(); } catch (e) {}
+  try { diagLog("rt_repos : socket fermé (" + raison + ")"); } catch (e) {}
+}
+function _rtReveiller(raison) {
+  const r = window._rtRepos;
+  if (!r.endormi) return;
+  r.endormi = false; r.reveils++;
+  const dureeMs = r.endormiDepuis ? Date.now() - r.endormiDepuis : 0;
+  r.dernierGeste = Date.now();
+  try { supaSubscribe(); } catch (e) { try { diagLog("rt_reveil : " + (e && e.message)); } catch (_e) {} }
+  try { if (window._openedConvId && typeof _subscribeTyping === "function") _subscribeTyping(window._openedConvId); } catch (e) {}
+  // Une mesure par repos : durée et raison, jamais d'identifiant.
+  try { if (window.tel && tel.action) tel.action("rt_repos", { raison: r.raison || "?", reveil: raison, duree_ms: dureeMs }); } catch (e) {}
+  try { diagLog("rt_reveil : socket rouvert (" + raison + ", repos " + Math.round(dureeMs / 1000) + " s)"); } catch (e) {}
+  _rtRattraper(raison);
+}
+// Ce qui a pu arriver pendant le repos : on le RELIT, on ne le devine pas.
+// `postgres_changes` ne rejoue rien. Le fil est déjà réveillé par le
+// gestionnaire `visibilitychange` d'app-08 quand le repos venait du masquage ;
+// on ne le réveille ici que pour les autres retours (geste, réseau).
+function _rtRattraper(raison) {
+  if (window._rechargementImminent === true) return;
+  try { if (raison !== "retour" && raison !== "pageshow" && typeof feedFiletReveiller === "function") feedFiletReveiller(true); } catch (e) {}
+  try { if (typeof _rafraichirConversationsServeur === "function") _rafraichirConversationsServeur().catch(function () {}); } catch (e) {}
+  try { if (typeof _rattraperConversationOuverte === "function") _rattraperConversationOuverte().catch(function () {}); } catch (e) {}
+  try { if (typeof supaLoadNotifications === "function") supaLoadNotifications().then(function (ns) { if (ns && ns.length && typeof mergeSupaNotifs === "function") mergeSupaNotifs(ns); }).catch(function () {}); } catch (e) {}
+  try { if (typeof supaRefreshVideoLives === "function") supaRefreshVideoLives(); } catch (e) {}
+}
+window._rtEndormir = _rtEndormir;
+window._rtReveiller = _rtReveiller;
+window._rtReposTick = _rtReposTick;
 // ⚠️ PRIVÉ depuis le 2026-09-11 : quand le tableau de bord Supabase interdit les
 // canaux publics (« Allow public access » OFF — le geste qui rend les policies
 // Realtime opposables), un canal public est REFUSÉ. Celui-ci portait les accusés
@@ -7877,20 +8005,7 @@ async function supaInit() {
     // au realtime global : le destinataire ne recevait rien tant qu'il n'ouvrait pas
     // lui-m\u00eame la conversation (qu'il ne voyait pas non plus dans sa liste).
     try {
-      // Ce que j'ai supprimé ici ne revient pas du serveur (MSG-06).
-      const supaConvs = (typeof _filtrerConvsServeur === "function") ? _filtrerConvsServeur(await supaLoadMyConversations()) : await supaLoadMyConversations();
-      if (supaConvs && supaConvs.length) {
-        const localConvs = getConversations();
-        const supaConvIds = new Set(supaConvs.map(c => c.id));
-        const localOnly = localConvs.filter(c => !supaConvIds.has(c.id) && !SEED_CONVERSATIONS.find(s => s.id === c.id));
-        conversationsState = deduplicateConversations([...supaConvs, ...localOnly]);
-      } else {
-        conversationsState = deduplicateConversations(getConversations());
-      }
-      _primeProfileCache(conversationsState); // pr\u00e9-remplir cache \u2192 0 requ\u00eate lors de la r\u00e9ception
-      saveConversations();
-      window._convNetLoaded = true; // fin du squelette de la liste de conversations
-      try { renderMessages(); } catch(e) {}
+      await _rafraichirConversationsServeur();
     } catch(e) { window._convNetLoaded = true; console.warn("supaInit conversations:", e); }
     try { supaSubscribe(); } catch(e) { console.warn("supaSubscribe:", e); }
     // Renvoie les messages rest\u00e9s en file d'attente (\u00e9chec/hors-ligne) d'une session pr\u00e9c\u00e9dente.

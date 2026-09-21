@@ -4161,6 +4161,14 @@ async function openConversation(convId) {
   try { renderMessages(); } catch(e) {}
 
   // Charger TOUS les messages depuis Supabase (pas de limite, tous les anciens inclus)
+  await _fusionnerMessagesServeur(convId, displayName, thread);
+}
+
+// La lecture serveur d'une conversation OUVERTE, fusionnée sans perdre l'état
+// local (réaction, statut d'envoi, pierres tombales), re-rendue seulement si
+// quelque chose a changé. Appelée à l'ouverture, et au RÉVEIL du socket
+// (`_rtReveiller`, app-08) : ce qui est arrivé pendant le repos remonte ici.
+async function _fusionnerMessagesServeur(convId, displayName, thread) {
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
     try {
       var supaMessages = await supaLoadMessages(convId);
@@ -4207,6 +4215,16 @@ async function openConversation(convId) {
     } catch(e) { console.warn("openConversation supabase load error:", e); }
   }
 }
+// Rattrapage de la conversation ouverte depuis l'écran (nom et fil retrouvés
+// dans le DOM : aucune référence gardée à travers un repos).
+async function _rattraperConversationOuverte() {
+  var convId = window._openedConvId;
+  if (!convId) return;
+  var fp = document.getElementById("conv-fullpage");
+  var nom = fp ? (fp.getAttribute("data-display-name") || "") : "";
+  await _fusionnerMessagesServeur(convId, nom, document.getElementById("convFpThread"));
+}
+window._rattraperConversationOuverte = _rattraperConversationOuverte;
 
 function renderConvFpThread(c, displayName) {
   var thread = document.getElementById("convFpThread");

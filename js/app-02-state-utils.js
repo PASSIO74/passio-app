@@ -892,6 +892,38 @@ function filetProchainPas(pasActuel, vivant, masquee) {
   return Math.min(FILET_PAS_MAX, Math.round(pas * 1.5));
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// SOCKET AU REPOS (2026-09-21) — un compte qui ne regarde pas ne tient pas de
+// connexion temps réel.
+// Le mur du forfait est « Realtime Concurrent Peak Connections : 500 », et il
+// compte des CLIENTS connectés — un onglet de compte laissé ouvert derrière
+// une autre application, ou un onglet de bureau oublié, y compte autant qu'une
+// personne qui lit. Or ce qu'un onglet masqué recevrait, personne ne le voit :
+// le fil ne se peint pas (filet arrêté), les compteurs ne se lisent pas, et un
+// message privé est de toute façon NOTIFIÉ par le serveur (push, cloche).
+// Politique PURE, même forme que `filetProchainPas` : elle se mesure sans
+// horloge, et le câblage (app-08) est mesuré à part.
+//   ① masqué depuis REPOS_TEMPS_REEL_MASQUE_MS → au repos ;
+//   ② visible mais sans geste depuis REPOS_TEMPS_REEL_INACTIF_MS → au repos,
+//      SAUF conversation ouverte (« messages privés toujours en temps réel »
+//      quand on les regarde) ;
+//   ③ un appel ou un live en cours ne s'endort JAMAIS : leurs canaux vivent
+//      sur le même socket.
+// Le réveil est immédiat au premier geste, au retour au premier plan et au
+// retour du réseau, avec rattrapage (canaux rejoints, fil, conversations,
+// notifications, lives) — voir `_rtReveiller` (app-08).
+const REPOS_TEMPS_REEL_MASQUE_MS = 3 * 60 * 1000;
+const REPOS_TEMPS_REEL_INACTIF_MS = 15 * 60 * 1000;
+function socketTempsReelAuRepos(etat) {
+  if (!etat || typeof etat !== "object") return false;
+  if (etat.appelEnCours || etat.liveEnCours) return false;
+  var masquee = Number(etat.masqueeDepuisMs), inactif = Number(etat.inactifDepuisMs);
+  if (isFinite(masquee) && masquee >= REPOS_TEMPS_REEL_MASQUE_MS) return true;
+  if (etat.visible && !etat.conversationOuverte && isFinite(inactif) && inactif >= REPOS_TEMPS_REEL_INACTIF_MS) return true;
+  return false;
+}
+window.socketTempsReelAuRepos = socketTempsReelAuRepos;
+
 function estEchecReseau(e) {
   try {
     if (!e) return false;
