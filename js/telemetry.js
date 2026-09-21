@@ -1182,9 +1182,15 @@
           // il doit se voir) ni un 5xx. Le refus reste un événement `api` en
           // `error` — les compteurs le voient — mais marqué `refus_attendu`,
           // la preuve que lit `_echecExpliqueParLeClient` côté pilotage.
+          // Même famille (2026-09-21) : le 404 de `POST /rest/v1/rpc/fil_compteurs`
+          // signifie « fonction pas (ou plus) en base » — l'état documenté du
+          // retour arrière et de l'attente de migration (app-08, PGRST202) ; le
+          // client retombe sur les lectures d'avant et le mémorise une heure.
+          // Un 404 par onglet et par heure n'est pas un problème à ouvrir.
           var _refusAttendu = !res.ok
-            && /\/auth\/v1\/(token|signup)$/i.test(path)
-            && (res.status === 400 || res.status === 401 || res.status === 403 || res.status === 422);
+            && ((/\/auth\/v1\/(token|signup)$/i.test(path)
+                 && (res.status === 400 || res.status === 401 || res.status === 403 || res.status === 422))
+              || (/\/rest\/v1\/rpc\/fil_compteurs$/i.test(path) && res.status === 404));
           Telemetry.api({
             action: method + " " + path.replace(/\/rest\/v1\//, "/"),
             endpoint: path, http_status: res.status,

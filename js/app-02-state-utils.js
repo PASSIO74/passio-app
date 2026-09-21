@@ -238,6 +238,11 @@ function _leanState() {
   if (Array.isArray(lean.userPosts)) {
     lean.userPosts = lean.userPosts.map((p) => {
       const c = { ...p, image: stripData(p.image), video: stripData(p.video), audio: stripData(p.audio), cover: stripData(p.cover) };
+      // La pagination d'une discussion est un état de SESSION (curseur serveur,
+      // page chargée) : persistée, elle réinjectait au démarrage suivant une
+      // liste périmée par-dessus les aperçus frais du fil (contre-revue).
+      delete c._commentsSuite;
+      delete c._commentsPagine;
       if (Array.isArray(p.steps)) {
         c.steps = p.steps.map((s) => ({ ...s, photo: stripData(s.photo), video: stripData(s.video), audio: stripData(s.audio) }));
       }
@@ -2085,7 +2090,9 @@ window._truncU16Safe = _truncU16Safe;
 // ne sont pas des commentaires — elles s'affichent en pastille « 😍 N »). Utilisé
 // par toutes les pastilles « 💬 N » pour une cohérence totale entre les surfaces.
 function commentThreadCount(comments) {
-  var arr = comments || [];
+  // Un post malformé (`comments` objet, chaîne…) ne doit pas faire sauter un
+  // rendu entier : voir feed-malformed-post.spec.js.
+  var arr = Array.isArray(comments) ? comments : [];
   var n = 0;
   arr.forEach(function(c){
     if (!c) return;
@@ -2095,6 +2102,38 @@ function commentThreadCount(comments) {
     });
   });
   return n;
+}
+// Nombre de commentaires AFFICHÉ pour une publication — la seule autorité.
+// Depuis le 2026-09-21, le fil ne charge que DEUX aperçus par publication et
+// reçoit le compte exact (`commentsTotal`, commentaires de premier niveau que
+// la RLS montre au lecteur). Le compte affiché est donc :
+//   · le total serveur (ou, s'il est plus grand, ce qui est chargé du serveur —
+//     un commentaire reçu en direct après le chargement compte aussi),
+//   · plus mes commentaires EN ATTENTE d'envoi (`_pending`/`_failed`, posés
+//     par la file ou le chemin direct à la création) — jamais une simple ligne
+//     sans `fromSupabase` : la liste persistée par l'ancien client (mes
+//     publications, discussions ouvertes avant le lot) n'en portait pas, et
+//     la compter par-dessus le total serveur doublait le compte (contre-revue),
+//   · plus les RÉPONSES des commentaires chargés (le serveur ne compte que le
+//     premier niveau, comme avant : elles ne sont connues qu'une fois le fil
+//     ouvert et hydraté).
+// Sans `commentsTotal` (repli sans fonction SQL, contenu de démonstration,
+// commentaire d'activité), on compte la liste, exactement comme avant.
+function commentaireEnAttente(c) {
+  return !!c && !c.fromSupabase && (c._pending === true || c._failed === true);
+}
+function nbCommentairesPost(p) {
+  var liste = (p && Array.isArray(p.comments)) ? p.comments : [];
+  var charges = commentThreadCount(liste);
+  if (!p || !Number.isSafeInteger(p.commentsTotal) || p.commentsTotal < 0) return charges;
+  var premierNiveau = 0, serveur = 0, locaux = 0;
+  liste.forEach(function (c) {
+    if (!c) return;
+    premierNiveau++;
+    if (c.fromSupabase) serveur++; else if (commentaireEnAttente(c)) locaux++;
+  });
+  var reponses = charges - premierNiveau;
+  return Math.max(p.commentsTotal, serveur) + locaux + reponses;
 }
 
 function allPassions() {
@@ -7721,7 +7760,7 @@ function feedPostScore(p, nowBucket, myPassions, followingSet, signalSet) {
   // Engagement : commentaires > réactions ; log-compressé, plafonné (un vieux
   // post viral ne doit pas écraser la fraîcheur).
   var likes = p.likes || 0;
-  var comments = (p.comments || []).length;
+  var comments = (typeof nbCommentairesPost === "function") ? nbCommentairesPost(p) : (p.comments || []).length;
   var reactions = Array.isArray(p.reactions) ? p.reactions.length : 0;
   var engagement = Math.min(3, Math.log(1 + likes + 2 * comments + reactions));
 
@@ -8164,7 +8203,7 @@ function feedWindowEnabled() {
 // Signature d'une carte : ce qui, dans le modèle, change son HTML rendu.
 // Sert au repeint incrémental — jamais à décider d'un affichage.
 function _feedWindowCardSig(p) {
-  return p.id + ":" + (p.likes || 0) + ":" + ((p.comments || []).length)
+  return p.id + ":" + (p.likes || 0) + ":" + nbCommentairesPost(p)
        + ":" + (Array.isArray(p.reactions) ? p.reactions.length : 0);
 }
 
@@ -8900,7 +8939,7 @@ function renderFeed() {
     // lui dans la signature, basculer le drapeau ne repeindrait pas le fil.
     (typeof feedIrlBridgeEnabled === "function" && feedIrlBridgeEnabled()) ? "irl1" : "irl0",
     visible.map(function(p) {
-      return p.id + ":" + (p.likes || 0) + ":" + ((p.comments || []).length) + ":" + (Array.isArray(p.reactions) ? p.reactions.length : 0);
+      return p.id + ":" + (p.likes || 0) + ":" + nbCommentairesPost(p) + ":" + (Array.isArray(p.reactions) ? p.reactions.length : 0);
     }).join("|"),
   ].join("§");
   if (_domSig === window._feedDomSig && list.children.length > 0) {
@@ -9171,10 +9210,15 @@ function _feedCompteursFrais(p) {
     var nbC = (vrai.comments || []).length, nbCp = (p.comments || []).length;
     var nbR = Array.isArray(vrai.reactions) ? vrai.reactions.length : -1;
     var nbRp = Array.isArray(p.reactions) ? p.reactions.length : -1;
-    if ((vrai.likes || 0) === (p.likes || 0) && nbC === nbCp && nbR === nbRp) return p;
+    if ((vrai.likes || 0) === (p.likes || 0) && nbC === nbCp && nbR === nbRp && vrai.commentsTotal === p.commentsTotal) return p;
     var copie = Object.assign({}, p);
     copie.likes = vrai.likes;
     if (vrai.comments) copie.comments = vrai.comments;
+    // Le total exact vit sur la copie `supabasePosts` ; `findPostAnywhere`
+    // préfère `userPosts` (mes publications), qui ne l'a pas toujours : on
+    // garde le plus grand connu, jamais on ne le jette.
+    var totalMax = [vrai.commentsTotal, p.commentsTotal].filter(Number.isSafeInteger);
+    if (totalMax.length) copie.commentsTotal = Math.max.apply(null, totalMax);
     if (Array.isArray(vrai.reactions)) copie.reactions = vrai.reactions;
     return copie;
   } catch (e) { return p; }
@@ -9386,7 +9430,7 @@ function renderPostHTML(p) {
       <span class="post-action ${likeClass}" data-action="like" onclick="likePost('${escapeJsArg(p.id)}', false, this)">
         ${liked ? "❤️" : "🤍"} ${p.likes || 0}
       </span>
-      <span class="post-action" data-cmtcount="${escapeHtml(p.id)}" onclick="openComments('${escapeJsArg(p.id)}')">💬 ${commentThreadCount(p.comments)}</span>
+      <span class="post-action" data-cmtcount="${escapeHtml(p.id)}" onclick="openComments('${escapeJsArg(p.id)}')">💬 ${nbCommentairesPost(p)}</span>
       <span class="post-action" onclick="return showEmojiPickerForPost('${escapeJsArg(p.id)}', event);" title="Emoji & GIF">😊</span>
       <span class="post-action" onclick="event.stopPropagation();sharePost('${escapeJsArg(p.id)}')" title="Partager" aria-label="Partager">
         ${shareIconSvg(18)}
@@ -9463,7 +9507,7 @@ async function openPost(id) {
         <span class="post-action ${liked ? "liked" : ""}" onclick="event.stopPropagation(); likePostDetail('${escapeJsArg(id)}', this);">
           ${liked ? "❤️" : "🤍"} ${post.likes || 0}
         </span>
-        <span class="post-action" data-cmtcount="${escapeHtml(id)}" onclick="openComments('${escapeJsArg(id)}')">💬 ${commentThreadCount(post.comments)}</span>
+        <span class="post-action" data-cmtcount="${escapeHtml(id)}" onclick="openComments('${escapeJsArg(id)}')">💬 ${nbCommentairesPost(post)}</span>
         <span class="post-action" onclick="return showEmojiPickerForPost('${escapeJsArg(id)}', event);" title="Emoji & GIF">😊</span>
         <span class="post-action" onclick="event.stopPropagation();sharePost('${escapeJsArg(id)}')" title="Partager" aria-label="Partager">
           ${shareIconSvg(18)}
@@ -9472,7 +9516,7 @@ async function openPost(id) {
       </div>
     </div>
     <div style="margin-top:8px;">
-      <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:10px;">Commentaires (${commentThreadCount(post.comments)})</div>
+      <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:10px;">Commentaires (${nbCommentairesPost(post)})</div>
       <div id="postDetailComments" data-thread="${escapeHtml(id)}">${allComments || '<div style="font-size:13px;color:var(--muted);text-align:center;padding:20px 0;">Aucun commentaire — sois le premier 💬</div>'}</div>
     </div>
     <div style="height:20px;"></div>
@@ -9496,12 +9540,10 @@ async function _loadPostDetailComments(id, post) {
   window._cmtThreadLoadedAt = window._cmtThreadLoadedAt || {};
   if ((Date.now() - (window._cmtThreadLoadedAt[id] || 0)) < 20000) return; // déjà frais
   try {
+    // Première page (les plus récents) ; « précédents » charge la suite (app-04).
     const supaComments = await supaLoadComments(id);
-    if (supaComments && supaComments.length > 0) {
-      const supaIds = new Set(supaComments.map(c => c.id));
-      const localOnly = (post.comments || []).filter(c => !supaIds.has(c.id) && !c.fromSupabase);
-      post.comments = [...supaComments.map(c => ({ ...c, text: c.content || c.text || "" })), ...localOnly]
-        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    if (supaComments && supaComments.length > 0 && typeof _fusionnerPageCommentaires === "function") {
+      _fusionnerPageCommentaires(post, supaComments);
     }
     if (typeof hydrateCommentInteractions === "function") {
       try { await hydrateCommentInteractions(post); } catch(e) {}

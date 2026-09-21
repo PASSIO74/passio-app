@@ -4600,32 +4600,25 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
       data = data.filter(function (r) { return !postSupprime(r.id); });
     }
     if (!data || !data.length) { memoriserPage(); return []; }
-    // Charger tous les likes + counts commentaires d'un coup
+    // Compteurs, mon like, aperçus et réactions : UNE lecture groupée pour la
+    // page (`fil_compteurs`), et les quatre lectures d'avant en repli tant que
+    // la fonction n'est pas en base.
     const postIds = data.map(r => r.id);
     const likeReadTokens = new Map(postIds.map(id => [id, _postLikeReadToken(id)]));
-    let likesData = [], commentsData = [], reactsData = [];
-    try {
-      const [likesRes, commentsRes, reactsRes] = await Promise.all([
-        supa.from("post_likes").select("post_id, user_id").in("post_id", postIds),
-        // ⚠️ PAS d'embed profiles(...) : post_comments n'a pas de FK vers profiles
-        // en prod → 400 (commentsData restait vide → posts du feed à "0 commentaire").
-        supa.from("post_comments").select("post_id, id, author_id, content, created_at").in("post_id", postIds).order("created_at", { ascending: false }).limit(200),
-        // Réactions emoji/GIF portées par les POSTS (convention comment_id === post_id
-        // dans comment_interactions) → pastille « 😍 N » visible cross-compte.
-        supa.from("comment_interactions").select("comment_id, user_id, kind, payload, created_at").in("comment_id", postIds),
-      ]);
-      likesData = likesRes.data || [];
-      commentsData = commentsRes.data || [];
-      reactsData = reactsRes.data || [];
-    } catch(e) {}
+    const complements = await _chargerComplementsFil(postIds);
     if (!lectureValide()) return [];
-    // Résout les auteurs des commentaires en une requête (sans embed).
-    const commentProfs = await _resolveProfilesByIds((commentsData || []).map(c => c.author_id), lectureValide);
+    // Résout les auteurs des aperçus en une requête (sans embed) — le cache ne
+    // redemande que les manquants.
+    const commentProfs = await _resolveProfilesByIds(complements.auteursApercus, lectureValide);
     if (!lectureValide()) return [];
     memoriserPage();
     return data.map((r, idx) => {
-      const postLikes = likesData.filter(l => l.post_id === r.id);
-      const postComments = commentsData.filter(c => c.post_id === r.id).map(c => {
+      const cpl = complements.parPost.get(r.id) || _complementFilVide();
+      // Une discussion déjà ouverte tient plus que les deux aperçus : le filet
+      // remplace l'objet à chaque tour, il ne doit pas la ramener à deux lignes
+      // (ni perdre son curseur) sous un titre qui en annonce quarante.
+      const precedent = _discussionChargee(r.id, cpl.apercus, commentProfs);
+      const postComments = precedent ? precedent.comments : cpl.apercus.map(c => {
         const cp = commentProfs[c.author_id] || {};
         return {
         id: c.id, authorId: c.author_id,
@@ -4716,12 +4709,15 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
           return null;
         })(),
         createdAt: supaTs(r.created_at),  // ✅ Ajouter Z pour indiquer que c'est UTC!
-        likes: postLikes.length,
-        liked: postLikes.some(l => l.user_id === MY_UID),
+        likes: cpl.likes,
+        liked: cpl.aime,
         comments: postComments, fromSupabase: true,
-        reactions: reactsData
-          .filter(x => x.comment_id === r.id && (x.kind === "emoji" || x.kind === "gif") && x.payload)
-          .map(x => ({ id: (x.kind === "emoji" ? "semoji_" : "sgif_") + x.created_at + "_" + x.user_id,
+        ...(precedent ? { _commentsSuite: precedent.suite, ...(precedent.pagine ? { _commentsPagine: true } : {}) } : {}),
+        // Compte EXACT des commentaires de premier niveau (RLS du lecteur) ;
+        // `comments` ne porte plus que les aperçus. `nbCommentairesPost` (app-02)
+        // est la seule autorité d'affichage. Absent (repli), on compte la liste.
+        ...(Number.isSafeInteger(cpl.commentaires) ? { commentsTotal: cpl.commentaires } : {}),
+        reactions: cpl.reactions.map(x => ({ id: (x.kind === "emoji" ? "semoji_" : "sgif_") + x.created_at + "_" + x.user_id,
             authorId: x.user_id, text: x.payload,
             type: x.kind === "emoji" ? "emoji_reaction" : "gif_reaction", createdAt: supaTs(x.created_at) })),
         isReel: !!r.is_reel, // bobine (exclu du feed, affiché dans Bobines)
@@ -4745,9 +4741,180 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
           }
         })() }),
       };
+      // Mes publications vivent AUSSI dans `userPosts`, que `findPostAnywhere`
+      // préfère : le total exact s'y écrit, sinon la discussion s'ouvre sur un
+      // total recalé à la page (30) au lieu du compte serveur.
+      if (Number.isSafeInteger(loadedPost.commentsTotal) && state.userPosts) {
+        state.userPosts.forEach(function (u) { if (u && u.id === r.id) u.commentsTotal = loadedPost.commentsTotal; });
+      }
       return _postLikeReconcileLoaded(loadedPost, likeReadTokens.get(r.id));
     });
   } catch(e) { return []; }
+}
+
+// ── Compléments d'une page de fil : compteurs, mon like, aperçus, réactions ──
+// Avant le 2026-09-21, une page de 20 publications coûtait QUATRE lectures
+// après celle des posts : TOUTES les lignes de `post_likes` (pour compter et
+// savoir si j'ai aimé), jusqu'à 200 commentaires avec leur contenu (pour en
+// montrer deux), les réactions, puis les profils — un volume qui grandit avec le
+// succès des publications, pas avec ce que le lecteur regarde. La fonction SQL
+// `fil_compteurs` (migrations/migration_fil_compteurs_2026-09-21.sql, SECURITY
+// INVOKER : la RLS de chaque table s'applique telle quelle) rend en UNE lecture,
+// par publication : le compte exact de likes, ma ligne, le compte exact de
+// commentaires, les DEUX aperçus les plus récents et les réactions du post.
+// ⚠️ Le compte de commentaires est celui des lignes que la RLS me montre — comme
+// le GET d'avant, ni plus ni moins.
+// Tant que la fonction n'est pas en base (PGRST202), on retombe sur les lectures
+// d'avant et on le MÉMORISE pour la release : un seul 404 par session, jamais un
+// par page. Toute autre erreur (refus, délai, réseau) retombe AUSSI sur les
+// lectures d'avant pour la page en cours — des compteurs justes valent quatre
+// lectures de plus — et, après `FIL_COMPTEURS_ECHECS_MAX` échecs consécutifs,
+// la fonction n'est plus tentée de la session : un grant manquant ou une
+// fonction retirée sans rechargement du cache ne doivent ni peindre un fil à
+// « 0 », ni payer un essai raté à chaque page. Un succès remet le compte à zéro.
+const FIL_COMPTEURS_ABSENTE_CLE = "passio_fil_compteurs_absente";
+// Échecs CONSÉCUTIFS de la fonction (hors « absente ») avant de cesser de la
+// tenter pour la session. En mémoire seulement : la session suivante réessaie.
+const FIL_COMPTEURS_ECHECS_MAX = 3;
+let _filCompteursEchecs = 0;
+function _complementFilVide() {
+  return { likes: 0, aime: false, commentaires: undefined, apercus: [], reactions: [] };
+}
+// ⚠️ `window.PASSIO_RELEASE` est un OBJET en production ({ schema, buildId,
+// commit… }) : `String()` en ferait « [object Object] », une clé identique
+// d'une release à l'autre — et la fonction, appliquée entre-temps, ne serait
+// plus jamais tentée tant que l'onglet vit. Même autorité que le cache du
+// référentiel (`idbPassionsRelease`, js/idb-store.js) : identifiant de build.
+function _filCompteursCleRelease() {
+  try {
+    var r = (typeof window.idbPassionsRelease === "function") ? window.idbPassionsRelease() : "";
+    return r || "dev";
+  } catch (e) { return "dev"; }
+}
+// La mémorisation porte la release ET l'heure : une migration appliquée après
+// le déploiement du client est retentée à l'heure suivante, sans rechargement.
+const FIL_COMPTEURS_ABSENTE_TTL_MS = 60 * 60 * 1000;
+function _filCompteursMemoAbsence() {
+  try {
+    const brut = sessionStorage.getItem(FIL_COMPTEURS_ABSENTE_CLE);
+    if (!brut) return false;
+    const i = brut.lastIndexOf("@");
+    const release = i === -1 ? brut : brut.slice(0, i), depuis = i === -1 ? 0 : Number(brut.slice(i + 1));
+    if (release !== _filCompteursCleRelease()) return false;
+    return Number.isFinite(depuis) && depuis > 0 && Date.now() - depuis < FIL_COMPTEURS_ABSENTE_TTL_MS;
+  } catch (e) { return false; }
+}
+function _filCompteursNoterAbsence() {
+  try { sessionStorage.setItem(FIL_COMPTEURS_ABSENTE_CLE, _filCompteursCleRelease() + "@" + Date.now()); } catch (e) {}
+}
+// PGRST202 = « fonction introuvable dans le cache de schéma » ; 42883 = la
+// base elle-même ne la connaît pas (retirée avant le rechargement du cache).
+// Dans les deux cas la migration n'est pas (plus) sur ce projet.
+function _erreurFonctionAbsente(err) {
+  if (!err) return false;
+  if (err.code === "PGRST202" || err.code === "42883") return true;
+  return /could not find the function/i.test(String(err.message || ""));
+}
+async function _chargerComplementsFil(postIds) {
+  const parPost = new Map();
+  const ids = [...new Set((postIds || []).filter(Boolean))];
+  const out = { parPost, auteursApercus: [], source: "vide" };
+  if (!ids.length) return out;
+  const legacy = !window._supaReal || _filCompteursMemoAbsence() || _filCompteursEchecs >= FIL_COMPTEURS_ECHECS_MAX;
+  if (!legacy) {
+    try {
+      // POST, jamais GET : un identifiant de publication est un texte choisi par
+      // son auteur ; la forme `{a,b}` d'un tableau en paramètre d'URL casserait
+      // sur une virgule ou une accolade. Le corps JSON les transporte tels quels.
+      const { data, error } = await supa.rpc("fil_compteurs", { _post_ids: ids });
+      if (!error && Array.isArray(data)) {
+        data.forEach(function (row) {
+          if (!row || !row.post_id) return;
+          parPost.set(row.post_id, {
+            likes: Number.isSafeInteger(row.likes) && row.likes >= 0 ? row.likes : 0,
+            aime: row.aime === true,
+            commentaires: Number.isSafeInteger(row.commentaires) && row.commentaires >= 0 ? row.commentaires : undefined,
+            apercus: Array.isArray(row.apercus) ? row.apercus.filter(function (c) { return c && c.id; }) : [],
+            reactions: Array.isArray(row.reactions)
+              ? row.reactions.filter(function (x) { return x && (x.kind === "emoji" || x.kind === "gif") && x.payload; })
+              : [],
+          });
+        });
+        _filCompteursEchecs = 0;
+        out.source = "rpc";
+        out.auteursApercus = [].concat(...Array.from(parPost.values()).map(function (c) { return c.apercus.map(function (a) { return a.author_id; }); }));
+        return out;
+      }
+      if (error && _erreurFonctionAbsente(error)) {
+        _filCompteursNoterAbsence();
+        diagLog("fil_compteurs: fonction absente sur ce projet, repli sur les lectures d'avant pour la session");
+      } else {
+        _filCompteursEchecs++;
+        diagLog("fil_compteurs: " + ((error && error.message) || "réponse invalide") + " (échec " + _filCompteursEchecs + "/" + FIL_COMPTEURS_ECHECS_MAX + ", lectures d'avant pour cette page)");
+      }
+    } catch (e) {
+      _filCompteursEchecs++;
+      diagLog("fil_compteurs: " + (e && e.message) + " (échec " + _filCompteursEchecs + "/" + FIL_COMPTEURS_ECHECS_MAX + ", lectures d'avant pour cette page)");
+    }
+  }
+  return _chargerComplementsFilLegacy(ids, out);
+}
+// La copie précédente d'une publication porte-t-elle une discussion CHARGÉE
+// (page de 30 ou plus, curseur posé par la modale/le détail) ? Si oui, on la
+// garde et on y glisse les aperçus qu'elle n'a pas encore (un commentaire
+// arrivé depuis). Sinon, null : les aperçus suffisent.
+function _discussionChargee(postId, apercus, profils) {
+  try {
+    const avant = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
+    if (!avant || !Array.isArray(avant.comments) || !Object.prototype.hasOwnProperty.call(avant, "_commentsSuite")) return null;
+    // Chargée dans CETTE session seulement : une liste persistée (mes posts)
+    // d'une session précédente est périmée, les aperçus frais priment.
+    if (!window._cmtThreadLoadedAt || !window._cmtThreadLoadedAt[postId]) return null;
+    const serveur = avant.comments.filter(function (c) { return c && c.fromSupabase; }).length;
+    if (serveur <= (apercus || []).length) return null;
+    const connus = new Set(avant.comments.map(function (c) { return c && c.id; }));
+    const nouveaux = (apercus || []).filter(function (c) { return !connus.has(c.id); }).map(function (c) {
+      const cp = (profils && profils[c.author_id]) || {};
+      return { id: c.id, authorId: c.author_id, authorName: cp.username || "Profil", authorEmoji: cp.emoji || "✨", text: c.content || "", content: c.content || "", createdAt: supaTs(c.created_at), fromSupabase: true };
+    });
+    const comments = nouveaux.concat(avant.comments).sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
+    return { comments, suite: avant._commentsSuite || null, pagine: avant._commentsPagine === true };
+  } catch (e) { return null; }
+}
+// Le chemin d'avant, tel quel : quatre lectures, listes entières, 200
+// commentaires au plus pour toute la page (donc un compte FAUX au-delà — c'est
+// précisément ce que `fil_compteurs` corrige). Sans `commentsTotal` : l'affichage
+// compte la liste, comme avant.
+async function _chargerComplementsFilLegacy(postIds, out) {
+  let likesData = [], commentsData = [], reactsData = [];
+  try {
+    const [likesRes, commentsRes, reactsRes] = await Promise.all([
+      supa.from("post_likes").select("post_id, user_id").in("post_id", postIds),
+      // ⚠️ PAS d'embed profiles(...) : post_comments n'a pas de FK vers profiles
+      // en prod → 400 (commentsData restait vide → posts du feed à "0 commentaire").
+      supa.from("post_comments").select("post_id, id, author_id, content, created_at").in("post_id", postIds).order("created_at", { ascending: false }).limit(200),
+      // Réactions emoji/GIF portées par les POSTS (convention comment_id === post_id
+      // dans comment_interactions) → pastille « 😍 N » visible cross-compte.
+      supa.from("comment_interactions").select("comment_id, user_id, kind, payload, created_at").in("comment_id", postIds),
+    ]);
+    likesData = likesRes.data || [];
+    commentsData = commentsRes.data || [];
+    reactsData = reactsRes.data || [];
+  } catch(e) {}
+  const moi = typeof MY_UID !== "undefined" ? MY_UID : null;
+  postIds.forEach(function (id) {
+    const postLikes = likesData.filter(l => l.post_id === id);
+    out.parPost.set(id, {
+      likes: postLikes.length,
+      aime: postLikes.some(l => l.user_id === moi),
+      commentaires: undefined,
+      apercus: commentsData.filter(c => c.post_id === id),
+      reactions: reactsData.filter(x => x.comment_id === id && (x.kind === "emoji" || x.kind === "gif") && x.payload),
+    });
+  });
+  out.source = "legacy";
+  out.auteursApercus = commentsData.map(c => c.author_id);
+  return out;
 }
 
 // ---- LIKES ----
@@ -4914,15 +5081,38 @@ async function _resolveProfilesByIds(ids, lectureValide) {
   return out;
 }
 
-async function supaLoadComments(postId) {
+// Une PAGE de commentaires d'une publication, les plus récents d'abord (le fil
+// de discussion s'affiche récent → ancien). Avant le 2026-09-21, l'ouverture
+// d'une discussion téléchargeait TOUS ses commentaires, sans borne : le coût
+// d'ouvrir une publication très commentée grandissait avec son succès. La page
+// fait `COMMENTAIRES_PAGE` lignes ; `opts.avant` (curseur `{ created_at, id }`
+// de la ligne la plus ancienne déjà chargée) rend la page précédente. Le tableau
+// rendu porte `suite` : le curseur à passer pour continuer, ou `null` quand
+// tout est chargé. Rend `null` sur une erreur (l'appelant garde alors sa liste
+// locale ; une réponse vide légitime est `[]`).
+// Le curseur est `(created_at, id)`, même ordre que la requête : deux
+// commentaires à la même seconde ne font ni trou ni doublon.
+const COMMENTAIRES_PAGE = 30;
+async function supaLoadComments(postId, opts) {
+  opts = opts || {};
+  const limite = Number.isSafeInteger(opts.limite) && opts.limite > 0 ? opts.limite : COMMENTAIRES_PAGE;
   try {
-    const { data, error } = await supa.from("post_comments")
-      .select("*")
-      .eq("post_id", postId).order("created_at", { ascending: true });
-    if (error) { console.warn("supaLoadComments:", error.message); return []; }
-    const rows = data || [];
+    let q = supa.from("post_comments")
+      .select("id, post_id, author_id, content, created_at")
+      .eq("post_id", postId);
+    if (opts.avant && opts.avant.created_at && opts.avant.id) {
+      const date = JSON.stringify(opts.avant.created_at), id = JSON.stringify(opts.avant.id);
+      q = q.or("created_at.lt." + date + ",and(created_at.eq." + date + ",id.lt." + id + ")");
+    }
+    // `limite + 1` lignes demandées, `limite` gardées : la (limite+1)ᵉ prouve
+    // qu'il reste une page — sinon un total multiple de 30 affichait un bouton
+    // « précédents » qui ne chargeait rien.
+    const { data, error } = await q.order("created_at", { ascending: false }).order("id", { ascending: false }).limit(limite + 1);
+    if (error) { console.warn("supaLoadComments:", error.message); return null; }
+    const encore = (data || []).length > limite;
+    const rows = (data || []).slice(0, limite);
     const profs = await _resolveProfilesByIds(rows.map(r => r.author_id));
-    return rows.map(r => {
+    const liste = rows.map(r => {
       const p = profs[r.author_id] || {};
       return {
         id: r.id, authorId: r.author_id,
@@ -4930,9 +5120,14 @@ async function supaLoadComments(postId) {
         authorEmoji: p.emoji || "✨",
         content: r.content,
         createdAt: supaTs(r.created_at),
+        fromSupabase: true,
       };
     });
-  } catch(e) { return []; }
+    const derniere = rows[rows.length - 1];
+    liste.suite = encore && derniere && derniere.created_at
+      ? { created_at: derniere.created_at, id: derniere.id } : null;
+    return liste;
+  } catch(e) { return null; }
 }
 
 // ---- STORIES ----
@@ -6912,13 +7107,16 @@ function _creerCanalDb(prive) {
           if (!post.comments) post.comments = [];
           if (!post.comments.find(c => c.id === r.id)) {
             post.comments.unshift({ id: r.id, authorId: r.author_id, authorName: prof?.username || "Passionne", authorEmoji: prof?.emoji || "✨", text: r.content || "", content: r.content || "", createdAt: supaTs(r.created_at), fromSupabase: true });
+            // Le compte exact du fil (`commentsTotal`) est celui du dernier
+            // chargement : ce commentaire est en base, il compte désormais.
+            if (Number.isSafeInteger(post.commentsTotal)) post.commentsTotal++;
           }
           try { scheduleFeedRender(); } catch(e) {}
           // Si la modale commentaires de ce post est ouverte → l'actualiser en direct.
           try {
             if (window._openCommentsPostId === r.post_id && document.getElementById("commentsBox") && typeof _renderCommentsList === "function") {
               document.getElementById("commentsBox").innerHTML = _renderCommentsList(post.comments, r.post_id);
-              var _t = document.querySelector(".modal-title"); if (_t) _t.textContent = "Discussion (" + post.comments.length + ")";
+              var _t = document.querySelector(".modal-title"); if (_t) _t.textContent = "Discussion (" + (typeof nbCommentairesPost === "function" ? nbCommentairesPost(post) : post.comments.length) + ")";
             }
           } catch(e) {}
           // Page détail (#postDetailComments) + autres surfaces via le refresh unifié.
@@ -7582,7 +7780,9 @@ let _feedRefreshRelance = false;
 function _feedPostsSig(posts) {
   try {
     return (posts || []).map(function(p) {
-      return p.id + ":" + (p.likes || 0) + ":" + ((p.comments || []).length) + ":" + ((p.reactions || []).length || 0);
+      // Signature = ce qui change l'affichage : le compte affiché (le total
+      // serveur, pas la longueur des deux aperçus) et l'aperçu de tête.
+      return p.id + ":" + (p.likes || 0) + ":" + nbCommentairesPost(p) + ":" + (((p.comments || [])[0] || {}).id || "") + ":" + ((p.reactions || []).length || 0);
     }).join("|");
   } catch (e) { return "err" + Date.now(); }
 }
@@ -8095,6 +8295,7 @@ async function supaInit() {
     }, { once: false });
 
     console.log("\u2705 [INIT] Initialisation Supabase compl\u00e8te");
+    window._supaInitTerminee = true; // lu par les bancs : la chaîne de démarrage ne lit plus rien
     return;
     if (supaPosts.length) {
       // Sync les posts likés depuis Supabase

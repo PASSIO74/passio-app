@@ -375,11 +375,27 @@ test("profil verrouillé et grille sans compteur ne produisent aucune lecture", 
   expect(await lectures(page)).toHaveLength(0);
 });
 
-for (const newValue of ["head", "clic"]) {
-  test("une ancienne lecture complète du fil conserve le compteur plus récent : " + newValue, async ({ page }) => {
+// Deux chemins de chargement du fil depuis le 2026-09-21 : la lecture groupée
+// `fil_compteurs` (RPC) et, tant que la fonction n'est pas en base, les listes
+// d'avant. La course est la même dans les deux : une réponse partie AVANT un
+// HEAD ou un clic ne doit pas les écraser en revenant après.
+for (const chemin of ["listes", "rpc"]) for (const newValue of ["head", "clic"]) {
+  test("une ancienne lecture complète du fil (" + chemin + ") conserve le compteur plus récent : " + newValue, async ({ page }) => {
     await preparer(page);
-    await page.evaluate(() => {
+    // Horloge FIGÉE : sans cela le premier HEAD (dû à 200 ms réels) pouvait
+    // partir entre la pose des stubs et le clic, et le cas « clic » attendait
+    // 4 + 1 sur un compteur déjà passé à 7 (contre-revue).
+    await page.clock.pauseAt(new Date(await page.evaluate(() => Date.now() + 50)));
+    await page.evaluate((chemin) => {
       const original = supa.from;
+      sessionStorage.removeItem("passio_fil_compteurs_absente");
+      supa.rpc = (fn, args) => {
+        if (fn !== "fil_compteurs") return Promise.resolve({ data: null, error: null });
+        if (chemin === "listes") return Promise.resolve({ data: null, error: { code: "PGRST202", message: "Could not find the function public.fil_compteurs" } });
+        return new Promise(resolve => { window.__resolveBulk = (res) => resolve(res.data
+          ? { data: res.data.map(l => ({ post_id: l.post_id, likes: 1, aime: false, commentaires: 0, apercus: [], reactions: [] })), error: null }
+          : res); });
+      };
       supa.from = table => {
         let options;
         const q = {
@@ -394,7 +410,7 @@ for (const newValue of ["head", "clic"]) {
         return q;
       };
       window.__bulkResult = supaLoadPosts();
-    });
+    }, chemin);
     if (newValue === "head") await passer(page, 350);
     else await page.locator('#likes-test-stage [data-action="like"]').click();
     const result = await page.evaluate(async () => {
