@@ -83,3 +83,6 @@ docs/demo/
 # jamais un statut serveur — voir scripts/moderation.js).
 .passio/moderation-vus.json
 playwright.poste.config.js
+
+# Rapports et manifestes des campagnes de charge (comptes synthétiques, jamais versionnés).
+work/
