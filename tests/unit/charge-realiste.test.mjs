@@ -6,7 +6,8 @@ import { createHash } from "node:crypto";
 import { optionsBanc, emailCapacite, DOMAINE_CAPACITE, STAGING_REF, LIMITES, Budget, comptesPourPalier, abonnements,
   partenaire, actionPrevue, pausePrevue, decalageInitial, statistiques, verdictPalier, Sondes,
   postPourLike, aimerEtRetirer, delaiFixture, DisponibiliteRealtime,
-  PROFIL_REALTIME, LIKES_VISIBLES, compteurHead, pauseCompteurs, decalageInitialCompteurs, familleFrameRealtime,
+  PROFIL_REALTIME, LIKES_VISIBLES, compteurHead, pauseCompteurs, pauseCompteursAdaptative, compteursProchainPas,
+  CADENCES_COMPTEURS, CADENCE_COMPTEURS, decalageInitialCompteurs, familleFrameRealtime,
   verdictAvecCompteurs, verifierDureeMesure, MARGE_FIN_MESURE_MS } from "../../scripts/lib/charge-realiste.mjs";
 import { executer } from "../../scripts/charge-realiste.mjs";
 import { verdictReponse } from "../../scripts/charge-verdict.mjs";
@@ -574,4 +575,73 @@ test("la cadence hors mesure prévoit le fanout de deux générations et ne ré�
     assert.equal(delaiFixture("conv_reads", "DELETE", n), intervalle);
   }
   assert.equal(delaiFixture("posts", "DELETE", 200), 50, "le chemin V3 écoute INSERT sur posts, pas DELETE");
+});
+
+// ── Cadence adaptative des compteurs (2026-09-21) ─────────────────────────
+test("la politique de cadence du banc est la même suite que celle du produit (app-03), au pas près", () => {
+  const likes = readFileSync(new URL("../../js/app-03-posts-vlogs.js", import.meta.url), "utf8");
+  const debut = likes.indexOf("const POST_LIKE_REFRESH_MS"), fin = likes.indexOf("let _postLikeRefreshPas", debut);
+  assert.ok(debut >= 0 && fin > debut, "autorité produit introuvable");
+  const produit = runInNewContext(likes.slice(debut, fin) + "\ncompteursProchainPas;", {});
+  const plafond = likes.match(/const POST_LIKE_REFRESH_MAX_MS = (\d+);/);
+  assert.ok(plafond); assert.equal(Number(plafond[1]), LIKES_VISIBLES.plafondMs);
+  // Même suite sur un calme prolongé, un réveil, et des entrées absurdes.
+  let a = 15000, b = 15000; const suite = [];
+  for (let i = 0; i < 8; i++) { a = produit(a, false); b = compteursProchainPas(b, false); assert.equal(a, b); suite.push(a); }
+  assert.deepEqual(suite, [22500, 33750, 50625, 60000, 60000, 60000, 60000, 60000]);
+  assert.equal(produit(60000, true), compteursProchainPas(60000, true)); assert.equal(compteursProchainPas(60000, true), 15000);
+  for (const absurde of [undefined, null, "x", -5, 0, 3000, Infinity, NaN]) {
+    assert.equal(produit(absurde, false), compteursProchainPas(absurde, false));
+    assert.equal(compteursProchainPas(absurde, false), 22500);
+  }
+});
+
+test("--compteurs-cadence : adaptative par défaut (le produit), fixe pour la mesure d'avant, rien d'autre", async () => {
+  assert.deepEqual(CADENCES_COMPTEURS, ["fixe", "adaptative"]); assert.equal(CADENCE_COMPTEURS, "adaptative");
+  assert.equal(optionsBanc(cible).compteursCadence, "adaptative");
+  assert.equal(optionsBanc([...cible, "--compteurs-cadence", "fixe"]).compteursCadence, "fixe");
+  assert.throws(() => optionsBanc([...cible, "--compteurs-cadence", "lente"]), /CADENCE_COMPTEURS_INVALIDE/);
+  const plan = await executer({ ...optionsBanc([...cible, "--compteurs-cadence", "fixe"]), executer: false });
+  assert.equal(plan.compteursCadence, "fixe");
+});
+
+test("cadence adaptative du banc : recule sur des compteurs stables, revient à 15 s sur un changement ou une erreur", async () => {
+  const source = readFileSync(new URL("../../scripts/charge-realiste.mjs", import.meta.url), "utf8");
+  const debut = source.indexOf("async function cycleCompteursVisibles("), fin = source.indexOf("function convPour(", debut);
+  function banc(cadence, comptes) {
+    let now = 0; const appels = [], mesures = [];
+    const ctx = { LIKES_VISIBLES, pauseCompteurs, pauseCompteursAdaptative, compteursProchainPas, decalageInitialCompteurs,
+      o: { graine: 20260920, compteursCadence: cadence }, arret: null, phase: "mesure", stage: { taille: 25, page: 20 }, mesures,
+      performance: { now: () => now }, sleep: async ms => { assert.ok(ms >= 0); now += ms; }, motifSur: e => e.message,
+      stop: motif => { ctx.arret = motif; },
+      compterLikes: async (compte, id) => { appels.push({ id, now }); await Promise.resolve(); now += 10; return comptes(id, appels.length); },
+    };
+    const surveiller = runInNewContext(source.slice(debut, fin) + "\nsurveillerCompteurs;", ctx);
+    return { surveiller, appels, mesures, ctx };
+  }
+  // Compteurs stables : les écarts entre débuts suivent 15 → 22,5 → 33,75 → 50,6 → 60 s (+ jitter < 1,5 s).
+  let b = banc("adaptative", () => 7);
+  await b.surveiller({ index: 0, postsVisibles: ["p1", "p2", "p3"] }, 0, 400000);
+  const debuts = b.appels.filter((_, i) => i % 3 === 0).map(a => a.now);
+  const ecarts = debuts.slice(1).map((t, i) => t - debuts[i]);
+  const attendus = [15000, 22500, 33750, 50625, 60000, 60000, 60000];
+  attendus.forEach((pas, i) => { assert.ok(ecarts[i] >= pas && ecarts[i] < pas + 1500, `écart ${i} = ${ecarts[i]} pour un pas de ${pas}`); });
+  assert.equal(b.mesures[0].vivant, true, "le premier cycle est vivant : cartes jamais relues");
+  assert.ok(b.mesures.slice(1).every(m => m.vivant === false));
+  assert.deepEqual(b.mesures.slice(0, 5).map(m => m.pasMs), [15000, 15000, 22500, 33750, 50625]);
+  // Sur 90 s de calme : 4 cycles au lieu de 6.
+  b = banc("adaptative", () => 7); await b.surveiller({ index: 0, postsVisibles: ["p1", "p2", "p3"] }, 0, 90000);
+  const cyclesAdaptatifs = b.mesures.length;
+  const f = banc("fixe", () => 7); await f.surveiller({ index: 0, postsVisibles: ["p1", "p2", "p3"] }, 0, 90000);
+  assert.equal(f.mesures.length, 6); assert.equal(cyclesAdaptatifs, 4);
+  assert.ok(f.mesures.every(m => m.pasMs === 15000));
+  // Un compteur qui change au 4ᵉ cycle ramène le pas à 15 s.
+  b = banc("adaptative", (id, n) => (id === "p2" && n > 9 ? 8 : 7));
+  await b.surveiller({ index: 0, postsVisibles: ["p1", "p2", "p3"] }, 0, 200000);
+  assert.deepEqual(b.mesures.slice(0, 6).map(m => m.vivant), [true, false, false, true, false, false]);
+  assert.deepEqual(b.mesures.slice(0, 6).map(m => m.pasMs), [15000, 15000, 22500, 33750, 15000, 22500]);
+  // Une erreur n'est pas un calme.
+  b = banc("adaptative", (id, n) => { if (n === 7) throw new Error("ERREUR_INTERNE_OU_RESEAU"); return 7; });
+  await b.surveiller({ index: 0, postsVisibles: ["p1", "p2", "p3"] }, 0, 120000);
+  assert.equal(b.mesures[2].ok, false); assert.equal(b.mesures[2].vivant, true); assert.equal(b.mesures[3].pasMs, 15000);
 });

@@ -12,14 +12,30 @@ export const LIMITES = Object.freeze({ octets: 180_000_000, octetsNettoyage: 20_
   messagesRealtime: 150_000, requetes: 20_000, dureeCampagneMs: 45 * 60_000 });
 export const PROFIL_REALTIME = "likes-visibles10";
 export const LIKES_VISIBLES = Object.freeze({ maximum: 3, fraicheurMs: 15000, jitterMs: 1500,
-  initialJitterMs: 15000, minimumDepartMs: 200 });
+  initialJitterMs: 15000, minimumDepartMs: 200, plafondMs: 60000 });
+// Cadences que le banc sait modéliser : `fixe` = le produit d'avant le
+// 2026-09-21 (15–16,5 s entre débuts, quoi qu'il se passe) ; `adaptative` = le
+// produit depuis (×1,5 par cycle sans changement, plafond 60 s, retour à 15 s
+// sur changement, erreur ou carte jamais relue). La comparaison avant/après se
+// fait en lançant les deux sur le même scénario.
+export const CADENCES_COMPTEURS = Object.freeze(["fixe", "adaptative"]);
+export const CADENCE_COMPTEURS = "adaptative";
+// Copie ESM de `compteursProchainPas` (js/app-03) : un verrou compare les deux
+// suites, parce que deux copies d'une même politique divergent sur celle
+// qu'on oublie.
+export function compteursProchainPas(pasActuel, vivant) {
+  let pas = Number(pasActuel);
+  if (!Number.isFinite(pas) || pas < LIKES_VISIBLES.fraicheurMs) pas = LIKES_VISIBLES.fraicheurMs;
+  if (vivant) return LIKES_VISIBLES.fraicheurMs;
+  return Math.min(LIKES_VISIBLES.plafondMs, Math.round(pas * 1.5));
+}
 
 export function optionsBanc(args) {
   const values = {};
   for (let i = 0; i < args.length; i++) {
     const name = args[i];
     if (["--executer", "--plan", "--prevol"].includes(name)) values[name] = true;
-    else if (["--projet", "--paliers", "--duree", "--graine", "--sortie", "--scenario", "--pages", "--profil-realtime"].includes(name)) {
+    else if (["--projet", "--paliers", "--duree", "--graine", "--sortie", "--scenario", "--pages", "--profil-realtime", "--compteurs-cadence"].includes(name)) {
       if (!args[i + 1] || args[i + 1].startsWith("--")) throw new Error("VALEUR_MANQUANTE");
       values[name] = args[++i];
     } else throw new Error("OPTION_INCONNUE");
@@ -42,8 +58,10 @@ export function optionsBanc(args) {
   if (![PROFIL_REALTIME, "legacy12"].includes(profilRealtime)) throw new Error("PROFIL_REALTIME_INVALIDE");
   if (values["--executer"] && profilRealtime === "legacy12") throw new Error("LEGACY12_HORS_LIGNE_SEULEMENT");
   if (values["--executer"] && !values["--sortie"]) throw new Error("SORTIE_REQUISE");
+  const compteursCadence = values["--compteurs-cadence"] || CADENCE_COMPTEURS;
+  if (!CADENCES_COMPTEURS.includes(compteursCadence)) throw new Error("CADENCE_COMPTEURS_INVALIDE");
   return { projet: STAGING_REF, paliers, duree, graine, pages: pagesTexte.split(",").map(Number),
-    executer: !!values["--executer"], sortie: values["--sortie"] || null, scenario, profilRealtime,
+    executer: !!values["--executer"], sortie: values["--sortie"] || null, scenario, profilRealtime, compteursCadence,
     prevolSeulement: !!values["--prevol"],
     comptesDistincts: values["--prevol"] ? 2 : Math.max(...paliers), limites: LIMITES };
 }
@@ -78,6 +96,9 @@ export function compteurHead(status, contentRange) {
 }
 
 export const pauseCompteurs = (graine, utilisateur, tour) => LIKES_VISIBLES.fraicheurMs
+  + entierDeterministe(graine, utilisateur, tour + 40000) % LIKES_VISIBLES.jitterMs;
+// Même jitter déterministe que la cadence fixe, appliqué au pas courant.
+export const pauseCompteursAdaptative = (graine, utilisateur, tour, pas) => pas
   + entierDeterministe(graine, utilisateur, tour + 40000) % LIKES_VISIBLES.jitterMs;
 export const decalageInitialCompteurs = (graine, utilisateur) => Math.max(LIKES_VISIBLES.minimumDepartMs,
   entierDeterministe(graine, utilisateur, 50000) % LIKES_VISIBLES.initialJitterMs);
