@@ -771,7 +771,26 @@ function _sondeServeurReponse(status, url) {
     _sondeServeur.muetJusqua = maintenant + 60000;
     // Laisser au SDK une chance de rafraîchir : si une session vivante existe
     // encore, ce 401 est transitoire ; sinon, c'est fini.
-    var decide = function (vivante) { if (!vivante) _sondeServeurBandeau("session"); };
+    // ⚠️ ET « FINI » VEUT DIRE : ON ENTRE DANS LE MODE SESSION EXPIRÉE (UXO-02),
+    // pas seulement un bandeau. Mesuré en production le 2026-09-21 (ce poste,
+    // compte connu, jeton SDK vidé) : `boot()` n'avait pas pu poser le mode —
+    // `entrerEnSessionExpiree` exige un jeton PERSISTÉ, et il n'y en avait
+    // plus — donc `requireAuthentication("publier")` laissait passer, l'insert
+    // partait en 401, la publication passait « offline » et le rejeu la
+    // renvoyait toutes les 45–90 s : UN clic = CINQ « Action en échec » au
+    // pilotage. Le 401 REST sur un uuid de compte est la preuve qu'il manquait
+    // au démarrage : on la pose ici, et le gate, `_peutPousserEtat` et le rejeu
+    // des publications (app-08) la lisent. Le bandeau rouge, lui, reste.
+    var decide = function (vivante) {
+      if (vivante) return;
+      _sondeServeurBandeau("session");
+      if (window._sessionExpiree !== true) {
+        window._sessionExpiree = true;
+        try { document.documentElement.classList.add("passio-session-expiree"); } catch (e) {}
+        try { if (window.tel && tel.action) tel.action("session_expiree_mode", { via: "401" }); } catch (e) {}
+        try { if (typeof diagLog === "function") diagLog("session expirée (401 REST) : écritures suspendues jusqu'à la reconnexion"); } catch (e) {}
+      }
+    };
     try {
       if (window.supa && supa.auth && typeof supa.auth.getSession === "function") {
         supa.auth.getSession().then(function (r) { decide(!!(r && r.data && r.data.session)); }, function () { decide(false); });

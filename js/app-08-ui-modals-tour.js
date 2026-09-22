@@ -1723,6 +1723,11 @@ function _publicationRejouable(p) {
 function _publicationsEnAttente() {
   if (!window._supaReal || typeof supaPublishPostWithRetry !== "function") return [];
   if (!(typeof _uidEstUnCompte === "function" && _uidEstUnCompte())) return [];
+  // ⚠️ SESSION EXPIRÉE (UXO-02) : sans jeton, chaque rejeu est un 401 CERTAIN —
+  // et une alerte « Action en échec » de plus au pilotage (5 pour 1 clic, mesuré
+  // le 2026-09-21). La publication RESTE en attente (« offline », rien n'est
+  // perdu) ; elle repart au rechargement qui suit la reconnexion.
+  if (typeof sessionExpiree === "function" && sessionExpiree()) return [];
   return (state.userPosts || []).filter(function (p) {
     return p && (p.syncStatus === "offline" || p._pendingSync === true) && p.authorId === MY_UID;
   });
@@ -1755,6 +1760,9 @@ async function _rejouerPublicationsEnAttente() {
 function _planifierReprisePublications() {
   window._reelRetryCount = (window._reelRetryCount || 0);
   if (window._reelRetryTimer || window._reelRetryCount >= 8) return;
+  // Même garde que `_publicationsEnAttente` : pas de minuteur pour un rejeu
+  // qu'on sait refusé. La sonde 401 (app-02) pose le mode ; « online » ne le lève pas.
+  if (typeof sessionExpiree === "function" && sessionExpiree()) return;
   window._reelRetryTimer = setTimeout(_rejouerPublicationsEnAttente, 45000);
   if (!window._reelRetryOnline) {
     window._reelRetryOnline = true;
