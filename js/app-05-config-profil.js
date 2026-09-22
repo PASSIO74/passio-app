@@ -4766,7 +4766,7 @@ function _vliveToggleFollow() {
   if (etat === "attente") {
     state.user.followingPending = state.user.followingPending.filter(id => id !== aid);
     _vlivePeindreSuivi(aid);
-    toast("Demande annulée");
+    toast("Demande annulée — appuie sur « Suivre » pour la renvoyer");
     if (typeof supaUnfollowUser === "function") supaUnfollowUser(aid);
   } else if (etat === "aucun") {
     state.user.following.push(aid);
@@ -4778,7 +4778,7 @@ function _vliveToggleFollow() {
           state.user.following = (state.user.following || []).filter(id => id !== aid);
           _vlivePeindreSuivi(aid);
           toast("Impossible de suivre " + prenom + " pour le moment");
-        } else if (r && r.status === "pending") {
+        } else if (r && r.status !== "accepted") {   // seul un 'accepted' EXPLICITE laisse « ✓ Suivi »
           state.user.following = (state.user.following || []).filter(id => id !== aid);
           if (state.user.followingPending.indexOf(aid) < 0) state.user.followingPending.push(aid);
           _vlivePeindreSuivi(aid);
@@ -4799,7 +4799,16 @@ function _vlivePeindreSuivi(aid) {
   if (!btn) return;
   const etat = (typeof etatSuivi === "function") ? etatSuivi(aid) : "aucun";
   btn.textContent = (typeof libelleBoutonSuivi === "function") ? libelleBoutonSuivi(aid) : (etat === "suivi" ? "✓ Suivi" : "Suivre");
-  btn.classList.toggle("on", etat !== "aucun");
+  // ⚠️ TROIS ÉTATS, TROIS ASPECTS (2026-09-22). `classList.toggle("on", etat !== "aucun")`
+  // donnait à « Demande envoyée » la MÊME classe qu'à « ✓ Suivi » — donc le visuel
+  // d'un abonnement acquis pour une demande qui attend encore. Même conflation que
+  // celle corrigée sur le profil visité, ici sur l'overlay d'un live.
+  btn.classList.toggle("on", etat === "suivi");
+  // L'aspect d'« attente » est posé EN LIGNE : `styles.css` est en CRLF et son
+  // bloc UI-4A5 doit rester le dernier ; une règle de plus n'apporterait rien.
+  btn.style.boxShadow = (etat === "attente") ? "inset 0 0 0 1px rgba(255,255,255,0.85)" : "";
+  var aide = (typeof aideBoutonSuivi === "function") ? aideBoutonSuivi(aid) : "";
+  if (aide) { btn.setAttribute("title", aide); btn.setAttribute("aria-label", aide); }
 }
 window._vliveToggleFollow = _vliveToggleFollow;
 

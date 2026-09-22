@@ -4823,7 +4823,7 @@ function renderExplorer() {
       +   '<div class="list-row-title">' + escapeHtml(u.name || "Passionné") + '</div>'
       +   '<div class="list-row-meta">' + escapeHtml(u.meta || "") + '</div>'
       + '</div>'
-      + '<button class="btn small" id="followBtn_' + escapeHtml(u.id) + '" data-follow-uid="' + escapeHtml(u.id) + '"'
+      + '<button class="btn small" id="followBtn_' + escapeHtml(u.id) + '" data-follow-uid="' + escapeHtml(u.id) + '"' + attrsBoutonSuivi(u.id)
       +   ' onclick="event.stopPropagation();toggleFollowUser(\'' + escapeJsArg(u.id) + '\',\'' + escapeJsArg(u.name || "") + '\')">'
       +   libelleBoutonSuivi(u.id) + '</button>'
       + '</div>';

@@ -762,7 +762,10 @@ test.describe("⑨ bis relecture audit-passio : ce que le lot avait mal câblé"
     expect(r.annule.attente).toEqual([]);
     expect(r.refuse.texte, "un refus explicite annule l'optimiste").toBe("Suivre");
     expect(r.refuse.following).toEqual([]);
-    expect(r.toasts).toContain("Demande annulée");
+    // ⚠️ Le libellé a changé le 2026-09-22 : un geste DESTRUCTEUR nomme sa sortie
+    // (fiche « Suivre un compte privé »). On exerce la RÈGLE, pas une phrase figée.
+    expect(r.toasts.some((x) => /Demande annulée/.test(x))).toBe(true);
+    expect(r.toasts.some((x) => /Demande annulée.*renvoyer/.test(x))).toBe(true);
   });
 
   test("à la SOURCE : le notifier serveur ne fait jamais échouer l'abonnement, et l'emoji du pair est borné", async () => {

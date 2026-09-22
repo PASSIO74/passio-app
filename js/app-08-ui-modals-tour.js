@@ -7244,16 +7244,22 @@ async function supaFollowUser(targetId) {
     // envoyée », elle ne devient pas « ✓ Suivi » par défaut).
     let status = res && res.data && res.data.status;
     if (!status && dup && window._followsSansStatut !== true) {
-      // ⚠️ L'appelant (`toggleFollowUser`) a DÉJÀ poussé l'identifiant dans
-      // `following` avant d'appeler : l'état local dit « suivi » quoi qu'il en
-      // soit. Seule la ligne serveur fait foi — `follows_lecture` l'ouvre au
-      // demandeur, même en attente.
+      // ⚠️ L'appelant (`toggleFollowUser`) a DÉJÀ inscrit l'identifiant dans
+      // `following` OU dans `followingPending` (optimiste) avant d'appeler :
+      // l'état local affirme donc quelque chose quoi qu'il en soit. Seule la
+      // ligne serveur fait foi — `follows_lecture` l'ouvre au demandeur, même
+      // en attente.
       try {
         const rl = await supa.from("follows").select("status").eq("follower_id", MY_UID).eq("following_id", targetId).maybeSingle();
         if (rl && rl.data && rl.data.status) status = rl.data.status;
       } catch (e) {}
     }
-    if (!status && dup && typeof etatSuivi === "function" && etatSuivi(targetId) === "attente") status = "pending";
+    // ⚠️ BORNÉ AUX BASES QUI ONT LA COLONNE `status`. Depuis le 2026-09-22
+    // l'état local peut dire « attente » dès le premier tap (optimiste sur un
+    // compte connu privé) : sans cette borne, un doublon sur une base SANS
+    // colonne `status` — donc sans trigger, donc sans aucun mécanisme
+    // d'acceptation — figerait « Demande envoyée » pour toujours.
+    if (!status && dup && window._followsSansStatut !== true && typeof etatSuivi === "function" && etatSuivi(targetId) === "attente") status = "pending";
     if (!status) status = "accepted";
     try { window.tel && tel.settle(_cid, "saved", ok, res && res.error); } catch (e) {}
     // ⚠️ La notification ne part QUE si la relation existe vraiment, et seulement
@@ -7324,8 +7330,15 @@ async function supaUnfollowUser(targetId) {
   try { if (window.tel && tel.flowStart) _cid = tel.flowStart("unfollow_user", { target: targetId }); } catch (e) {}
   try {
     const res = await supa.from("follows").delete().eq("follower_id", MY_UID).eq("following_id", targetId);
-    try { window.tel && tel.settle(_cid, "saved", !!(!res || !res.error), res && res.error); } catch (e) {}
-  } catch(e) { try { window.tel && tel.settle(_cid, "saved", false, e); } catch (_) {} }
+    const ok = !!(!res || !res.error);
+    try { window.tel && tel.settle(_cid, "saved", ok, res && res.error); } catch (e) {}
+    // ⚠️ LE VERDICT REMONTE (2026-09-22). Cette fonction avalait `{ error }` et
+    // ne rendait RIEN : un DELETE refusé (RLS, réseau) laissait l'écran annoncer
+    // « Demande annulée » pendant que la demande vivait encore côté serveur —
+    // l'image MIROIR exacte du défaut rapporté ce jour-là, sur la branche
+    // destructrice. Le SDK ne LÈVE PAS sur un refus : on lit `{ error }`.
+    return { ok: ok };
+  } catch(e) { try { window.tel && tel.settle(_cid, "saved", false, e); } catch (_) {} return { ok: false }; }
 }
 
 async function supaLoadFollowing() {

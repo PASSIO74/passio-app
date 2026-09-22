@@ -337,6 +337,105 @@ fermeture retirée de `goTo` → 2 rouges.
 Deux règles à ne pas enfreindre : **`switchAuthTab` d'abord, message ensuite** (il remet `#authMsg` à zéro — tout ce qu'on veut voir survivre à une bascule se pose APRÈS elle) ; et les comptes de test ne se créent JAMAIS par `signUp` mais par `tests/e2e/compte-e2e.js` (pré-confirmés via `service_role`, aucun e-mail envoyé).
 Verrou : `tests/e2e/confirmation-email.spec.js` (7). Les quatre conséquences détaillées (chemins morts d'`onbDoAuth`, renvoi de lien, anti-énumération, `authz-critical` comme barrière RLS, risque R11 DKIM/DMARC) : `docs/CONFIRMATION_EMAIL.md`.
 
+## 🔒 SUIVRE UN COMPTE PRIVÉ — « quand je clique dessus il ne se passe rien » (2026-09-22)
+
+Rapport d'usage, capture à l'appui : « quand je clique sur Suivre il le met en évidence, puis quand
+je clique dessus il ne se passe rien ». **MESURÉ AVANT DE CONCLURE, et la mesure a renversé
+l'hypothèse de départ.** `telemetry_events`, 22/09 14:01, compte `812aee2b` vers le compte PRIVÉ
+`6b0a8694` : `click #followBtn_6b0a8694…` → **`POST /rest/v1/follows` 201**, puis **2,4 s plus
+tard** second `click` → **`DELETE /rest/v1/follows` 204**. Les DEUX écritures partent, le verrou
+`_ecritureSuiviEnCours` n'a rien bloqué, `trg_follows_statut` et la colonne `status` sont bien en
+production — **le mécanisme était intact**, et `follows` ne portait aucune ligne vers ce compte
+parce que le second tap avait **détruit la demande**.
+
+⚠️ **LE DÉFAUT N'ÉTAIT PAS « RIEN NE SE PASSE », C'ÉTAIT « L'ÉCRAN NE DIT PAS CE QUI SE PASSE ».**
+J'ai d'abord cherché une promesse jamais réglée qui aurait laissé le verrou posé à vie : c'est un
+mode d'échec réel du code (`_verrouEcriture` se lève sur la réponse, **jamais sur un minuteur**),
+mais ce n'était pas celui-là. **Un bouton dont les deux taps écrivent en base peut être vécu comme
+un bouton mort** — la télémétrie d'API dit ce qui est parti, jamais ce qui a été COMPRIS.
+
+⚠️ **L'OPTIMISTE PROMETTAIT UN ABONNEMENT QUE LE CLIENT SAVAIT IMPOSSIBLE.** Le premier tap peignait
+« ✓ Suivi » en violet PLEIN — le visuel d'un suivi acquis — avant d'être corrigé en « Demande
+envoyée » au verdict serveur. Or l'écran SAIT que le compte est privé : il peint le 🔒 à côté du
+pseudo et le bloc « Ce compte est privé » deux centimètres plus bas. `_ciblePrivee(uid)` (app-04)
+lit `window._visited` et **échoue sur « public »** : `_profileCache` ne porte pas `is_private` (seul
+`openUserProfile` le relit), donc hors du profil visité le comportement d'avant tient à l'octet
+près — c'est ce qui garde `ouverture-publique` ⑦ vert, et le cas ⑤ le mesure.
+
+⚠️ **« EN ATTENTE » N'EST PAS « PAS ENCORE DEMANDÉ », ET C'ÉTAIT PEINT PAREIL.** `_peindreBoutonsSuivi`
+n'avait que deux aspects : violet plein pour « suivi », l'état neutre pour tout le reste. « Demande
+envoyée » était donc **indiscernable d'un « Suivre » qui n'aurait rien fait** — d'où le second tap.
+Trois états, trois aspects : violet plein (suivi acquis), **CONTOUR accent** (demande en vol), neutre.
+
+⚠️ **UN GESTE DESTRUCTEUR DIT CE QU'IL EST, AVANT ET APRÈS.** Rien n'annonçait qu'un second appui
+ANNULE la demande. `aideBoutonSuivi(uid)` (app-02) est la SEULE table de l'infobulle et de
+l'étiquette d'accessibilité — jamais une seconde à côté de `libelleBoutonSuivi`, elles divergeraient
+sur celle qu'on oublie — et le toast d'annulation NOMME la sortie (« appuie sur Suivre pour la
+renvoyer »), même règle que le mot de passe fuité (2026-09-16) et que le renvoi de confirmation
+(2026-09-18) : **un refus ou une annulation sans porte de sortie fait abandonner.**
+
+⚠️ **LA SURFACE QUI EXPLIQUE MENTAIT SUR L'ÉTAT.** Le bloc « Ce compte est privé » est peint À
+L'OUVERTURE et continuait d'écrire « Abonne-toi pour voir ses publications » à quelqu'un dont la
+demande était déjà partie. Il est repeint par `_majBlocPriveVisite`, appelée depuis
+`_peindreBoutonsSuivi` — **seul point qui écrit ces boutons**, donc seul endroit d'où la mise à jour
+ne peut pas être oubliée. Le texte d'origine vit dans l'attribut `data-prive-texte`, sinon une
+annulation laisserait la phrase d'attente derrière elle.
+
+⚠️ **LE VERDICT CORRIGE DÉSORMAIS DANS LES DEUX SENS.** Un compte repassé PUBLIC entre le chargement
+du profil et le tap rend `accepted` : laisser « Demande envoyée » sur un abonnement acquis ferait
+attendre une acceptation qui ne viendrait jamais. Et la branche de refus (`ok: false`) retire
+l'identifiant des DEUX listes — sans quoi l'optimiste « attente » y restait, était persisté, puis
+fusionné en UNION au démarrage suivant : une « Demande envoyée » que rien ne pouvait plus retirer,
+exactement la faute que la branche de refus avait été écrite pour fermer côté `following`.
+
+⚠️ **ET LE CORRECTIF A D'ABORD ÉTÉ DU CODE MORT, AVEC SIX VERROUS VERTS DESSUS.** `_ciblePrivee`
+lisait `window._visited.user.isPrivate` — une clé que **le producteur n'écrit nulle part** (une seule
+affectation de `_visited` dans tout le dépôt, sans champ `user`). La détection rendait donc toujours
+`false`, et le banc était vert parce qu'il **FABRIQUAIT** la prémisse : il posait la forme qui
+l'arrangeait, donc il mesurait la fonction et jamais le câblage. C'est la faute `_notifierMessage`,
+rejouée dans le lot même qui cite la règle — et trouvée par `audit-passio`, après des gates vertes.
+`_visited` publie désormais `isPrivate` **explicitement**, jamais déduit de `locked`
+(= `isPrivate && !isFollowing` : deux notions qu'on ne conflera pas), et les cas ⑦ et ⑧ épinglent
+**les DEUX bouts** — le gabarit du bouton et la ligne qui produit `_visited`.
+
+⚠️ **L'IMAGE MIROIR DU DÉFAUT VIVAIT SUR LA BRANCHE DESTRUCTRICE.** `supaUnfollowUser` (app-08) ne
+rendait **rien** et avalait `{ error }` : un DELETE refusé (RLS, réseau) laissait l'écran annoncer
+« Demande annulée » pendant que la demande vivait encore côté serveur. Elle rend `{ ok }`, et
+l'annulation le lit — sinon on corrigeait un mensonge d'écran en en laissant l'autre, sur le geste
+même que le rapport décrit.
+
+⚠️ **SEUL UN `'accepted'` EXPLICITE PROMEUT**, symétrique de la règle déjà écrite pour le refus
+(« seul un `ok: false` EXPLICITE est un refus ») : `r === true` ou un objet sans `status` satisfont
+« ≠ pending » et annonceraient un abonnement acquis à qui attend encore. Et sur une base **sans**
+colonne `status` il n'existe aucun mécanisme d'acceptation — d'où la borne `_followsSansStatut` sur
+la déduction « doublon + état local en attente ⇒ pending » (app-08), qui figerait sinon « Demande
+envoyée » pour toujours.
+
+⚠️ **QUATRE SURFACES, PAS UNE** (« corriger une surface, c'est corriger une surface ») : profil
+visité, « Créateurs à suivre » (app-06), `#pexCreators` et les suggestions de Rencontrer (app-07)
+passent par `attrsBoutonSuivi(uid)` (app-02) dès le **PREMIER rendu** — `_peindreBoutonsSuivi` ne les
+rattrapait qu'au premier tap, donc revenir sur Découvrir avec une demande en vol rouvrait le défaut
+mot pour mot. Et `_vlivePeindreSuivi` (app-05) donnait à « attente » la **même classe `.on`** qu'à
+« suivi », c'est-à-dire le visuel de l'abonnement acquis : trois états, trois aspects, là aussi.
+
+⚠️ **L'ÉTIQUETTE CONTIENT LE LIBELLÉ VISIBLE** (WCAG 2.5.3, « Label in Name ») : « Tu suis ce
+compte — … » sur un bouton qui affiche « ✓ Suivi » faisait échouer la commande vocale « clique
+Suivi ». C'est « Suivi — appuie pour ne plus suivre ce compte ».
+
+⚠️ **PIÈGE D'ENVIRONNEMENT, DÉJÀ ÉCRIT, RE-VÉRIFIÉ PLUTÔT QUE SUPPOSÉ** : `profil-visite-options`
+(5 cas) est ROUGE en local — `.modal.modal-fullscreen` n'y devient pas visible — **et l'est à
+l'identique sur `origin/main` PUR** (rejoué en worktree séparé, `PASSIO_PORT=8099`). Aucun banc local
+n'ouvre donc la modale de la capture : le cas ⑦ mesure son gabarit **à la SOURCE**, sans quoi le
+bouton du profil visité pourrait perdre son infobulle et son contour sans qu'un seul cas rougisse.
+
+Verrou : `tests/e2e/suivre-compte-prive.spec.js` (11), **éprouvé par RÉINJECTION de huit
+mutations** — producteur de `_visited` rendu muet, c'est-à-dire le défaut P0 lui-même (1 rouge : ⑧) ·
+annulation qui cesse de lire son verdict (1 : ⑨) · promotion sur statut non explicite (1 : ⑩) ·
+`attrsBoutonSuivi` rendu inerte (1 : ⑪) · détection du compte privé retirée (1 : ①) · peinture
+« attente » rendue à l'état neutre (1 : ①) · bloc privé non repeint (1 : ③) · infobulle retirée
+(1 : ②). **Chaque couche est mesurée par exactement un cas**, et le premier verrou du lot ne l'était
+pas : il aurait laissé partir le correctif mort.
+
 ## ✉️ NOTIFIER UN MESSAGE PRIVÉ (2026-09-09) — la cloche ne sonnait que si l'appli était OUVERTE
 
 Envoyer un message n'écrivait **aucune** ligne `notifications` : la seule notification existante était fabriquée **localement par le destinataire** (`pushNotification` dans `_handleIncomingConvMessage`), donc uniquement si son application était ouverte à l'instant exact de l'envoi. Application fermée = message découvert par hasard en ouvrant Messages, sans cloche et sans push. Mesuré en production : la table ne portait aucune ligne `kind = 'message'` alors que `_notifEmoji` (✉️) et `openNotifTarget` (→ `openConversation`) la connaissent depuis toujours — **le tuyau existait, personne n'y versait rien**.
