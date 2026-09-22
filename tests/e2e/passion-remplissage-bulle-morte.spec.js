@@ -395,3 +395,100 @@ test("⑭ réactiver un remplissage archivé le PROMEUT — un geste payant a un
   expect(r.possedees).toContain("musique");
   expect(r.vivantes).toContain("musique");
 });
+
+// ══════════════════════════════════════════════════════════════════════════
+// LA SEPTIÈME SURFACE — CELLE QUI A TRANSFORMÉ LE CORRECTIF EN CUL-DE-SAC
+// ──────────────────────────────────────────────────────────────────────────
+// Rapport de Benjamin dans l'heure qui a suivi le déploiement : « la passion
+// musique ne fonctionne plus du tout ». Le lot avait retiré la bulle morte
+// (juste) et réparé `ajouterPassionAuCompte` pour qu'il PROMEUVE le
+// remplissage (juste aussi) — mais `mesPassions()` (passions-flat-ui), lue
+// BRUTE, la comptait encore comme possédée, et le `deja` d'`ouvrirAjoutPassions`
+// court-circuite le moteur : `if (deja.indexOf(id) >= 0) return;`. Choisir
+// « Musique » et valider ne produisait RIEN — ni passion, ni toast, ni refus.
+// On était passé d'une bulle qui ne répond pas à une passion INTROUVABLE.
+//
+// ⚠️ LA LEÇON DÉPASSE LE REMPLISSAGE : réparer un MOTEUR ne sert à rien tant
+// qu'un garde EN AMONT décide, sur une AUTRE lecture, qu'il n'y a rien à lui
+// demander. C'est le défaut `confirmArchivePassion` du même lot — sauf qu'ici
+// le garde n'était même pas dans le même fichier, et qu'aucun des 14 cas ne
+// passait par la porte réelle. **Un verrou qui appelle le moteur à la main ne
+// mesure pas la porte.**
+// ══════════════════════════════════════════════════════════════════════════
+
+test("⑮ le GESTE RÉEL : choisir « Musique » dans « Mes passions » l'ajoute pour de bon", async ({ page }) => {
+  const etat = etatCapture();
+  etat.user.profiles = etat.user.profiles.slice(0, 3);   // remplissage + sport + cuisine
+  etat.selectedFeedPassions = ["sport", "cuisine"];
+  await boot(page, etat);
+
+  const r = await page.evaluate(() => {
+    // On pilote la porte réelle, pas le moteur : c'est elle qui décidait de
+    // ne rien lui demander.
+    let capte = null;
+    const sel = window.PassionSearchSelector;
+    const vrai = sel.ouvrir;
+    sel.ouvrir = function (cfg) { capte = cfg; };
+    window.PassioFlatUI.ouvrirAjoutPassions();
+    sel.ouvrir = vrai;
+    if (!capte || typeof capte.onValider !== "function") return { pasDeBranche: true };
+
+    let toasts = [];
+    const vraiToast = window.toast;
+    window.toast = function (m) { toasts.push(String(m || "")); };
+    capte.onValider(["musique"]);
+    window.toast = vraiToast;
+
+    const e = state.user.profiles.find((p) => p.passion === "musique");
+    return {
+      marqueur: !!(e && e._parDefaut),
+      possedees: passionsPossedeesIds(),
+      vivantes: passionsVivantes().map((p) => p.passion),
+      fil: Array.from(_activeFeedPassions),
+      toasts,
+    };
+  });
+  expect(r.pasDeBranche).toBeFalsy();
+  // La porte ne la considère plus comme déjà possédée : le moteur est appelé,
+  // il promeut, et le geste se PRONONCE.
+  expect(r.marqueur).toBe(false);
+  expect(r.possedees).toContain("musique");
+  expect(r.vivantes).toContain("musique");
+  expect(r.fil).toContain("musique");
+  expect(r.toasts.join(" ")).toMatch(/ajout/i);
+});
+
+test("⑮ bis — `mesPassions()` ne compte pas le remplissage : la porte et le moteur lisent pareil", async ({ page }) => {
+  await boot(page);   // remplissage + 3 possédées
+  const r = await page.evaluate(() => ({
+    porte: window.PassioFlatUI.mesPassions().slice().sort(),
+    moteur: passionsPossedeesIds().slice().sort(),
+  }));
+  // La règle générale : la porte d'ajout et le point d'écriture doivent lire
+  // la MÊME chose, sinon la porte court-circuite un moteur pourtant réparé.
+  expect(r.porte).toEqual(r.moteur);
+  expect(r.porte).not.toContain("musique");
+});
+
+test("⑩ après un refus au plafond, on ne bascule pas l'écriture sur le remplissage", async ({ page }) => {
+  // ⚠️ LE FIXTURE DOIT RENDRE LA BASCULE DÉTECTABLE. Première rédaction :
+  // `currentProfileId` valait déjà « pp_0 » (le remplissage), donc un test
+  // « avant === après » restait VERT sur le défaut — et `currentProfile()`,
+  // qui écarte le remplissage, masquait le reste. On part donc d'une VRAIE
+  // passion d'écriture, et on lit l'identifiant BRUT, celui qui est persisté.
+  const etat = etatCapture();
+  etat.user.currentProfileId = "pp_1";   // « sport », une possession
+  await boot(page, etat);                 // 3 possédées = plafond
+
+  const r = await page.evaluate(() => {
+    const vrai = window.openPassionPaywall;
+    window.openPassionPaywall = function () {};
+    const avant = state.user.currentProfileId;
+    quickCreateProfile("musique");
+    window.openPassionPaywall = vrai;
+    return { avant, apres: state.user.currentProfileId, ecriture: (currentProfile() || {}).passion };
+  });
+  expect(r.avant).toBe("pp_1");
+  expect(r.apres).toBe("pp_1");           // le refus n'a rien basculé
+  expect(r.ecriture).toBe("sport");       // et surtout pas vers le remplissage
+});

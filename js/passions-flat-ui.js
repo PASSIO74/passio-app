@@ -50,7 +50,26 @@
     try {
       var s = (typeof state !== "undefined") ? state : null;
       var profils = (s && s.user && s.user.profiles) || [];
-      return profils.filter(function (p) { return p && p.passion && !p.archived; })
+      // ⚠️ `_parDefaut` EXCLU — ET C'EST LA SEPTIÈME SURFACE DE LA FAMILLE,
+      // celle qui a transformé le correctif du 2026-09-22 en CUL-DE-SAC.
+      // Rapport de Benjamin dans l'heure qui a suivi le déploiement : « la
+      // passion musique ne fonctionne plus du tout ». Le lot avait retiré la
+      // bulle morte du rail (juste : le remplissage n'est pas une possession)
+      // et réparé `ajouterPassionAuCompte` pour qu'il la PROMEUVE — mais cette
+      // liste-ci, lue BRUTE, la comptait encore comme déjà possédée. Le `deja`
+      // d'`ouvrirAjoutPassions` court-circuite alors le moteur réparé
+      // (`if (deja.indexOf(id) >= 0) return;`) : choisir « Musique » et valider
+      // ne produisait RIEN — ni passion, ni toast, ni refus. On était passé
+      // d'une bulle qui ne répond pas à une passion INTROUVABLE, c'est-à-dire
+      // pire qu'avant.
+      //
+      // ⚠️ LA LEÇON, ET ELLE EST PLUS GÉNÉRALE QUE LE REMPLISSAGE : réparer un
+      // MOTEUR ne sert à rien tant qu'un garde EN AMONT décide, sur une autre
+      // lecture, qu'il n'y a rien à lui demander. Le point d'écriture et la
+      // porte doivent lire la MÊME chose — c'est déjà ce qui avait fait tomber
+      // `confirmArchivePassion` dans le même lot ; ici le garde n'était même
+      // pas dans le même fichier.
+      return profils.filter(function (p) { return p && p.passion && !p.archived && !p._parDefaut; })
                     .map(function (p) { return p.passion; });
     } catch (e) { journal("mesPassions", e); return []; }
   }
