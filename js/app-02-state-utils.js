@@ -2072,6 +2072,45 @@ function libelleBoutonSuivi(uid) {
   return e === "suivi" ? "✓ Suivi" : e === "attente" ? "Demande envoyée" : "Suivre";
 }
 
+// ⚠️ UN BOUTON D'ÉTAT DOIT DIRE CE QU'UN TAP VA FAIRE (2026-09-22). Mesuré en
+// production sur un compte PRIVÉ (télémétrie du 22/09, 14:01) : tap → POST
+// /follows 201, puis DEUX SECONDES plus tard second tap → DELETE /follows 204.
+// Les deux écritures partent, le mécanisme est intact — mais la personne, elle,
+// venait de DÉTRUIRE sa demande d'abonnement en croyant « réessayer », parce que
+// « Demande envoyée » ressemble à un retour à l'état initial et que rien
+// n'annonçait qu'un second appui annule. Cette table est la SEULE source de
+// l'infobulle et de l'étiquette d'accessibilité des boutons « Suivre », comme
+// `libelleBoutonSuivi` l'est des mots : deux tables côte à côte finiraient par
+// diverger sur celle qu'on oublie.
+// ⚠️ CINQ SURFACES ÉMETTENT UN BOUTON « SUIVRE », et au PREMIER RENDU une demande
+// déjà en vol y réapparaissait sans contour ni infobulle — le défaut que ce lot
+// ferme, rouvert au rechargement de l'écran. `_peindreBoutonsSuivi` ne les
+// rattrape qu'APRÈS un geste. Ceci rend les attributs communs pour les gabarits
+// qui peuvent les recevoir tels quels : « Créateurs à suivre » (app-06),
+// `#pexCreators` et les suggestions de Rencontrer (app-07).
+// ⚠️ DEUX SURFACES NE PEUVENT PAS L'UTILISER, et ce n'est pas un oubli : le
+// profil visité (app-04) porte déjà un attribut `style` de gabarit — un second
+// serait un doublon d'attribut — et l'overlay d'un live (app-05) peint son état
+// d'attente par un `box-shadow`, pas par un contour. Les DEUX lisent en revanche
+// `aideBoutonSuivi` et `etatSuivi`, qui restent les autorités communes.
+function attrsBoutonSuivi(uid) {
+  var e = etatSuivi(uid);
+  var aide = aideBoutonSuivi(uid);
+  var styleEtatSuivi = e === "suivi" ? "background:var(--accent);color:#fff;border-color:var(--accent);"
+            : e === "attente" ? "color:var(--accent);border-color:var(--accent);" : "";
+  return ' title="' + escapeHtml(aide) + '" aria-label="' + escapeHtml(aide) + '"'
+       + (e === "attente" ? ' data-suivi-attente="1"' : '')
+       + (styleEtatSuivi ? ' style="' + styleEtatSuivi + '"' : '');
+}
+function aideBoutonSuivi(uid) {
+  var e = etatSuivi(uid);
+  // ⚠️ WCAG 2.5.3 « Label in Name » : l'étiquette CONTIENT le libellé visible,
+  // sinon la commande vocale (« clique Suivi ») ne trouve pas le bouton.
+  if (e === "attente") return "Demande envoyée — appuie pour l'annuler";
+  if (e === "suivi") return "Suivi — appuie pour ne plus suivre ce compte";
+  return "Suivre ce compte";
+}
+
 // Normalise un texte MULTILIGNE saisi dans un <textarea> (biographie…) — il est
 // rendu avec `white-space: pre-line`, donc chaque saut de ligne écrit est un saut
 // de ligne affiché. On respecte STRICTEMENT ce que la personne a tapé, à trois
