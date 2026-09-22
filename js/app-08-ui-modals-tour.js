@@ -2929,6 +2929,9 @@ async function boot() {
                 // pas à un changement de téléphone (symétrique du défaut corrigé
                 // dans `supaUpsertProfile`, qui, lui, la faisait disparaître).
                 archived: !!ps.archived,
+                // ⚠️ Et le REMPLISSAGE, même symétrie : sans ce report, il
+                // revenait en passion possédée à chaque reconstruction.
+                ...(ps._parDefaut ? { _parDefaut: true } : {}),
                 createdAt: Date.now() - idx,
               };
             });
@@ -2963,7 +2966,13 @@ async function boot() {
           }
           // La passion active ne doit JAMAIS être archivée (invariant du lot UI-8) :
           // `profiles[0]` peut l'être maintenant que le rangement est restitué.
-          state.user.currentProfileId = (state.user.profiles.find(function (p) { return !p.archived; })
+          // ⚠️ ET ELLE NE DOIT PAS NON PLUS POINTER LE REMPLISSAGE quand une
+          // vraie passion existe : `passionsVivantes()` (app-06) ne le peint
+          // plus, donc `#postPassion` n'en porte plus l'option — désigner ce
+          // profil comme passion d'écriture ferait publier sous une passion
+          // absente du sélecteur, que le compte ne possède pas.
+          state.user.currentProfileId = (state.user.profiles.find(function (p) { return p && !p.archived && !p._parDefaut; })
+            || state.user.profiles.find(function (p) { return p && !p.archived; })
             || state.user.profiles[0]).id;
           if (srvProf) {
             state.user.general = state.user.general || {};
@@ -3675,6 +3684,16 @@ function _chargeProfilComplete() {
         color: pr.color || "#8b5cf6",
         photoUrl: _httpOnly(pr.photoUrl || pr.photo),
         coverUrl: _httpOnly(pr.coverUrl || pr.coverPhoto),
+        // ⚠️ MARQUEUR DE REMPLISSAGE, POUR LA MÊME RAISON QUE `archived`
+        // (2026-09-22). Cette colonne est la SAUVEGARDE de mes passions, relue
+        // par la reconstruction du boot ; ne pas y reporter `_parDefaut`
+        // BLANCHISSAIT le remplissage — il revenait en vraie passion sur un
+        // appareil neuf, donnant QUATRE vivantes pour un plafond de trois et
+        // ressuscitant la bulle morte que ce lot ferme. Tant que le marqueur ne
+        // décidait de rien, le perdre ne coûtait rien ; il décide désormais de
+        // la bulle, du plafond et de la passion d'écriture. `passionsPubliques()`
+        // le retire à l'affichage, exactement comme `archived`.
+        _parDefaut: !!pr._parDefaut,
         // Marqueur de rangement : lu par `passionsPubliques()` à l'affichage, et
         // par la reconstruction du boot pour restituer l'état exact du compte.
         archived: !!pr.archived,

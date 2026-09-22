@@ -191,8 +191,19 @@
           if (typeof ajouterPassionAuCompte === "function") ajouterPassionAuCompte(id, "");
           var possedee = false;
           try {
-            possedee = ((state && state.user && state.user.profiles) || [])
-              .some(function (x) { return x && x.passion === id && !x.archived; });
+            // ⚠️ `passionsPossedeesIds()` ET NON LA LISTE BRUTE (2026-09-22).
+            // Ce `some` acceptait le profil de REMPLISSAGE (`_parDefaut`) :
+            // au plafond, `ajouterPassionAuCompte` refusait bien et ouvrait la
+            // fenêtre payante, mais `possedee` rendait quand même `true`, donc
+            // `#postPassion` pointait la passion REFUSÉE et l'on publiait
+            // dessous — EN SILENCE, pendant que le mur s'affichait. C'est très
+            // exactement la branche que le commentaire ci-dessus décrit comme
+            // fermée ; le plafond ayant cessé de compter le remplissage, elle
+            // s'était rouverte par en dessous.
+            possedee = (typeof passionsPossedeesIds === "function")
+              ? passionsPossedeesIds().indexOf(id) >= 0
+              : ((state && state.user && state.user.profiles) || [])
+                  .some(function (x) { return x && x.passion === id && !x.archived && !x._parDefaut; });
           } catch (e) { possedee = false; }
           if (!possedee) {
             // Refusé : on laisse `#postPassion` sur son ancienne valeur, et on
