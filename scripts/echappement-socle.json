@@ -258,8 +258,8 @@
       "raison": "Couverture de passion : safeUrlAttr d'un côté, variable CSS de l'autre. Miniature d'abord, désinfectant ensuite."
     },
     {
-      "cle": "js/app-02-state-utils.js | style | style",
-      "raison": "attrsBoutonSuivi (app-02) : ternaire entre TROIS littéraux CSS en dur, choisis par etatSuivi(uid) — aucune valeur d'un autre compte n'entre dans cet attribut."
+      "cle": "js/app-02-state-utils.js | style | styleEtatSuivi",
+      "raison": "attrsBoutonSuivi (app-02) : ternaire entre TROIS litteraux CSS en dur, choisis par etatSuivi(uid) — aucune valeur d'un autre compte n'entre dans cet attribut. Variable au nom DISTINCTIF : la cle du socle porte l'expression, et une cle generique (« style ») accepterait en silence toute future interpolation de ce nom dans app-02."
     }
   ]
 }

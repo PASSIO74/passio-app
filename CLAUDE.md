@@ -359,8 +359,13 @@ un bouton mort** — la télémétrie d'API dit ce qui est parti, jamais ce qui 
 envoyée » au verdict serveur. Or l'écran SAIT que le compte est privé : il peint le 🔒 à côté du
 pseudo et le bloc « Ce compte est privé » deux centimètres plus bas. `_ciblePrivee(uid)` (app-04)
 lit `window._visited` et **échoue sur « public »** : `_profileCache` ne porte pas `is_private` (seul
-`openUserProfile` le relit), donc hors du profil visité le comportement d'avant tient à l'octet
-près — c'est ce qui garde `ouverture-publique` ⑦ vert, et le cas ⑤ le mesure.
+`openUserProfile` le relit), donc pour un compte dont on ne sait rien le comportement d'avant tient —
+c'est ce qui garde `ouverture-publique` ⑦ vert, et le cas ⑤ le mesure.
+⚠️ **« À L'OCTET PRÈS » SERAIT FAUX, ET LA NUANCE COMPTE** : `window._visited` n'est jamais remis à
+`null` (une seule affectation dans tout le dépôt). Une fois un profil privé ouvert, `_ciblePrivee`
+rend donc `true` pour CET uid sur **toutes** les surfaces, pour le reste de la session. C'est
+souhaitable (on ne désapprend pas qu'un compte est privé) mais ce n'est pas l'identité stricte, et
+aucun cas ne le mesure — écrit plutôt que tu.
 
 ⚠️ **« EN ATTENTE » N'EST PAS « PAS ENCORE DEMANDÉ », ET C'ÉTAIT PEINT PAREIL.** `_peindreBoutonsSuivi`
 n'avait que deux aspects : violet plein pour « suivi », l'état neutre pour tout le reste. « Demande
@@ -384,9 +389,12 @@ annulation laisserait la phrase d'attente derrière elle.
 ⚠️ **LE VERDICT CORRIGE DÉSORMAIS DANS LES DEUX SENS.** Un compte repassé PUBLIC entre le chargement
 du profil et le tap rend `accepted` : laisser « Demande envoyée » sur un abonnement acquis ferait
 attendre une acceptation qui ne viendrait jamais. Et la branche de refus (`ok: false`) retire
-l'identifiant des DEUX listes — sans quoi l'optimiste « attente » y restait, était persisté, puis
-fusionné en UNION au démarrage suivant : une « Demande envoyée » que rien ne pouvait plus retirer,
-exactement la faute que la branche de refus avait été écrite pour fermer côté `following`.
+l'identifiant des DEUX listes, là où elle ne nettoyait que `following` : un refus laissait sinon
+« Demande envoyée » à l'écran et dans l'état persisté jusqu'à la prochaine lecture serveur.
+⚠️ **LA PREMIÈRE RÉDACTION JUSTIFIAIT ÇA PAR UNE FUSION « EN UNION » QUI N'EXISTE PAS** :
+`followingPending` est **REMPLACÉ** par `supaLoadFollowing`, jamais fusionné (vérifié au grep). Le
+correctif est juste, sa raison écrite ne l'était pas — et le dépôt paie régulièrement ce défaut-là
+(« dans un lot de capacité, une cause fausse coûte plus que le gain du lot »).
 
 ⚠️ **ET LE CORRECTIF A D'ABORD ÉTÉ DU CODE MORT, AVEC SIX VERROUS VERTS DESSUS.** `_ciblePrivee`
 lisait `window._visited.user.isPrivate` — une clé que **le producteur n'écrit nulle part** (une seule
@@ -401,8 +409,8 @@ rejouée dans le lot même qui cite la règle — et trouvée par `audit-passio`
 ⚠️ **L'IMAGE MIROIR DU DÉFAUT VIVAIT SUR LA BRANCHE DESTRUCTRICE.** `supaUnfollowUser` (app-08) ne
 rendait **rien** et avalait `{ error }` : un DELETE refusé (RLS, réseau) laissait l'écran annoncer
 « Demande annulée » pendant que la demande vivait encore côté serveur. Elle rend `{ ok }`, et
-l'annulation le lit — sinon on corrigeait un mensonge d'écran en en laissant l'autre, sur le geste
-même que le rapport décrit.
+l'annulation le lit — **aux DEUX surfaces** (profil visité et overlay live), sinon on corrigeait un
+mensonge d'écran en en laissant l'autre, sur le geste même que le rapport décrit.
 
 ⚠️ **SEUL UN `'accepted'` EXPLICITE PROMEUT**, symétrique de la règle déjà écrite pour le refus
 (« seul un `ok: false` EXPLICITE est un refus ») : `r === true` ou un objet sans `status` satisfont
@@ -411,12 +419,22 @@ colonne `status` il n'existe aucun mécanisme d'acceptation — d'où la borne `
 la déduction « doublon + état local en attente ⇒ pending » (app-08), qui figerait sinon « Demande
 envoyée » pour toujours.
 
-⚠️ **QUATRE SURFACES, PAS UNE** (« corriger une surface, c'est corriger une surface ») : profil
-visité, « Créateurs à suivre » (app-06), `#pexCreators` et les suggestions de Rencontrer (app-07)
-passent par `attrsBoutonSuivi(uid)` (app-02) dès le **PREMIER rendu** — `_peindreBoutonsSuivi` ne les
-rattrapait qu'au premier tap, donc revenir sur Découvrir avec une demande en vol rouvrait le défaut
-mot pour mot. Et `_vlivePeindreSuivi` (app-05) donnait à « attente » la **même classe `.on`** qu'à
-« suivi », c'est-à-dire le visuel de l'abonnement acquis : trois états, trois aspects, là aussi.
+⚠️ **CINQ SURFACES, PAS UNE — ET LA PREMIÈRE RÉDACTION EN COMPTAIT QUATRE.** `_peindreBoutonsSuivi`
+ne rattrape un bouton qu'au premier tap : au PREMIER RENDU, revenir sur Découvrir avec une demande en
+vol rouvrait le défaut mot pour mot. `attrsBoutonSuivi(uid)` (app-02) sert les gabarits qui peuvent
+le recevoir tel quel — app-06 et les DEUX d'app-07 ; le profil visité porte déjà un attribut `style`
+(un second serait un doublon) et l'overlay d'un live peint son attente par un `box-shadow`, donc ces
+deux-là lisent les autorités communes (`aideBoutonSuivi`, `etatSuivi`) sans passer par le helper.
+⚠️ **LA CINQUIÈME A ÉTÉ OUBLIÉE UNE PASSE DE PLUS, ET C'ÉTAIT LA PIRE** : le gabarit de l'overlay
+live (`app-05`) calculait `iFollow = etatSuivi(...) !== "aucun"`, donc posait la classe `.on` — le
+visuel d'un abonnement acquis — sur une demande qui attend. Corriger `_vlivePeindreSuivi` ne
+suffisait pas : **il n'a d'appelant que `_vliveToggleFollow`**, donc quitter le live et y revenir
+repeignait l'état faux, et le tap suivant détruisait la demande. **Une repeinte ne couvre jamais un
+premier rendu ; il faut corriger le GABARIT.**
+⚠️ **ET LA SYMÉTRIE ENTRE LES DEUX APPELANTS DE `supaFollowUser` EST UN INVARIANT** : tous deux
+testent `status === "pending"`. Tester « ≠ accepted » dans l'un rétrograderait l'optimiste sur un
+verdict NON EXPLICITE — le même signal traité en sens opposé selon la surface, et un changement
+d'état **en l'absence** de preuve.
 
 ⚠️ **L'ÉTIQUETTE CONTIENT LE LIBELLÉ VISIBLE** (WCAG 2.5.3, « Label in Name ») : « Tu suis ce
 compte — … » sur un bouton qui affiche « ✓ Suivi » faisait échouer la commande vocale « clique

@@ -2082,21 +2082,25 @@ function libelleBoutonSuivi(uid) {
 // l'infobulle et de l'étiquette d'accessibilité des boutons « Suivre », comme
 // `libelleBoutonSuivi` l'est des mots : deux tables côte à côte finiraient par
 // diverger sur celle qu'on oublie.
-// ⚠️ QUATRE SURFACES ÉMETTENT UN BOUTON « SUIVRE », ET TROIS NE POSAIENT QUE LE
-// LIBELLÉ : profil visité (app-04), « Créateurs à suivre » (app-06),
-// `#pexCreators` et les suggestions de Rencontrer (app-07). `_peindreBoutonsSuivi`
-// les repeint TOUTES au tap — mais au PREMIER RENDU, une demande déjà en vol y
-// réapparaissait sans contour ni infobulle, c'est-à-dire exactement le défaut que
-// ce lot ferme, rouvert au rechargement de l'écran. Ceci rend les attributs
-// communs ; `_peindreBoutonsSuivi` reste la seule autorité APRÈS un geste.
+// ⚠️ CINQ SURFACES ÉMETTENT UN BOUTON « SUIVRE », et au PREMIER RENDU une demande
+// déjà en vol y réapparaissait sans contour ni infobulle — le défaut que ce lot
+// ferme, rouvert au rechargement de l'écran. `_peindreBoutonsSuivi` ne les
+// rattrape qu'APRÈS un geste. Ceci rend les attributs communs pour les gabarits
+// qui peuvent les recevoir tels quels : « Créateurs à suivre » (app-06),
+// `#pexCreators` et les suggestions de Rencontrer (app-07).
+// ⚠️ DEUX SURFACES NE PEUVENT PAS L'UTILISER, et ce n'est pas un oubli : le
+// profil visité (app-04) porte déjà un attribut `style` de gabarit — un second
+// serait un doublon d'attribut — et l'overlay d'un live (app-05) peint son état
+// d'attente par un `box-shadow`, pas par un contour. Les DEUX lisent en revanche
+// `aideBoutonSuivi` et `etatSuivi`, qui restent les autorités communes.
 function attrsBoutonSuivi(uid) {
   var e = etatSuivi(uid);
   var aide = aideBoutonSuivi(uid);
-  var style = e === "suivi" ? "background:var(--accent);color:#fff;border-color:var(--accent);"
+  var styleEtatSuivi = e === "suivi" ? "background:var(--accent);color:#fff;border-color:var(--accent);"
             : e === "attente" ? "color:var(--accent);border-color:var(--accent);" : "";
   return ' title="' + escapeHtml(aide) + '" aria-label="' + escapeHtml(aide) + '"'
        + (e === "attente" ? ' data-suivi-attente="1"' : '')
-       + (style ? ' style="' + style + '"' : '');
+       + (styleEtatSuivi ? ' style="' + styleEtatSuivi + '"' : '');
 }
 function aideBoutonSuivi(uid) {
   var e = etatSuivi(uid);

@@ -4723,7 +4723,16 @@ function _vliveRenderUI(mode, row) {
       '<span class="vlive-chip" id="vliveViewers">👁 0</span>' +
       '<span class="vlive-chip" id="vliveTimer">00:00</span>' +
       '<span class="vlive-name">' + escapeHtml(name) + '</span>' +
-      (canFollow ? '<button class="vlive-follow' + (iFollow ? " on" : "") + '" id="vliveFollowBtn" onclick="_vliveToggleFollow()">' + ((typeof libelleBoutonSuivi === "function") ? escapeHtml(libelleBoutonSuivi(authorId)) : (iFollow ? "✓ Suivi" : "Suivre")) + '</button>' : "") +
+      // ⚠️ CINQUIÈME SURFACE, et c'est celle qui rouvrait le défaut au PREMIER
+      // RENDU : `iFollow` (« ≠ aucun ») donnait la classe `.on` — le visuel d'un
+      // abonnement acquis — à une demande qui attend encore. `_vlivePeindreSuivi`
+      // corrige la conflation, mais il n'a d'appelant que `_vliveToggleFollow` :
+      // quitter le live et y revenir repeignait l'état faux, et le tap suivant
+      // détruisait la demande. Le gabarit lit donc les MÊMES autorités.
+      (canFollow ? '<button class="vlive-follow' + (_vliveEtatSuivi(authorId) === "suivi" ? " on" : "") + '" id="vliveFollowBtn"'
+        + ((typeof aideBoutonSuivi === "function") ? ' title="' + escapeHtml(aideBoutonSuivi(authorId)) + '" aria-label="' + escapeHtml(aideBoutonSuivi(authorId)) + '"' : "")
+        + (_vliveEtatSuivi(authorId) === "attente" ? ' style="box-shadow:inset 0 0 0 1px rgba(255,255,255,0.85);"' : "")
+        + ' onclick="_vliveToggleFollow()">' + ((typeof libelleBoutonSuivi === "function") ? escapeHtml(libelleBoutonSuivi(authorId)) : (iFollow ? "✓ Suivi" : "Suivre")) + '</button>' : "") +
       '<button class="vlive-icon-btn" onclick="_vliveShare()" aria-label="Partager le live">↗</button>' +
       '<button class="vlive-close" onclick="' + (isHost ? "endVideoLive()" : "leaveVideoLive()") + '" aria-label="Quitter">✕</button>' +
     '</div>' +
@@ -4767,7 +4776,17 @@ function _vliveToggleFollow() {
     state.user.followingPending = state.user.followingPending.filter(id => id !== aid);
     _vlivePeindreSuivi(aid);
     toast("Demande annulée — appuie sur « Suivre » pour la renvoyer");
-    if (typeof supaUnfollowUser === "function") supaUnfollowUser(aid);
+    // ⚠️ LE VERDICT SE LIT SUR LE GESTE DESTRUCTEUR, ici comme dans app-04 :
+    // un DELETE refusé laissait l'écran annoncer une annulation qui n'a pas eu lieu.
+    if (typeof supaUnfollowUser === "function") {
+      Promise.resolve(supaUnfollowUser(aid)).then(function (r) {
+        if (!r || r.ok !== false) return;
+        if (state.user.followingPending.indexOf(aid) < 0) state.user.followingPending.push(aid);
+        _vlivePeindreSuivi(aid);
+        toast("Annulation non enregistrée — ta demande est toujours en cours");
+        try { saveState(); } catch (e) {}
+      }).catch(function () {});
+    }
   } else if (etat === "aucun") {
     state.user.following.push(aid);
     _vlivePeindreSuivi(aid);
@@ -4778,7 +4797,12 @@ function _vliveToggleFollow() {
           state.user.following = (state.user.following || []).filter(id => id !== aid);
           _vlivePeindreSuivi(aid);
           toast("Impossible de suivre " + prenom + " pour le moment");
-        } else if (r && r.status !== "accepted") {   // seul un 'accepted' EXPLICITE laisse « ✓ Suivi »
+        } else if (r && r.status === "pending") {
+          // ⚠️ MÊME TEST QUE `toggleFollowUser` (app-04), délibérément. Tester
+          // « ≠ accepted » rétrograderait l'optimiste sur un verdict NON EXPLICITE
+          // (`r === true`, objet sans `status`) : les deux appelants de
+          // `supaFollowUser` traiteraient le même signal en sens opposé, et
+          // celui-ci changerait d'état EN L'ABSENCE de preuve.
           state.user.following = (state.user.following || []).filter(id => id !== aid);
           if (state.user.followingPending.indexOf(aid) < 0) state.user.followingPending.push(aid);
           _vlivePeindreSuivi(aid);
@@ -4794,10 +4818,17 @@ function _vliveToggleFollow() {
   }
   try { saveState(); } catch (e) {}
 }
+// Lecture unique de l'état de suivi pour l'overlay live : le gabarit et la
+// repeinte doivent répondre la MÊME chose, sinon le premier rendu et le tap
+// divergent — c'est très exactement ce qui rouvrait le défaut ici.
+function _vliveEtatSuivi(aid) {
+  return (typeof etatSuivi === "function") ? etatSuivi(aid) : "aucun";
+}
+
 function _vlivePeindreSuivi(aid) {
   const btn = document.getElementById("vliveFollowBtn");
   if (!btn) return;
-  const etat = (typeof etatSuivi === "function") ? etatSuivi(aid) : "aucun";
+  const etat = _vliveEtatSuivi(aid);
   btn.textContent = (typeof libelleBoutonSuivi === "function") ? libelleBoutonSuivi(aid) : (etat === "suivi" ? "✓ Suivi" : "Suivre");
   // ⚠️ TROIS ÉTATS, TROIS ASPECTS (2026-09-22). `classList.toggle("on", etat !== "aucun")`
   // donnait à « Demande envoyée » la MÊME classe qu'à « ✓ Suivi » — donc le visuel
@@ -4809,6 +4840,7 @@ function _vlivePeindreSuivi(aid) {
   btn.style.boxShadow = (etat === "attente") ? "inset 0 0 0 1px rgba(255,255,255,0.85)" : "";
   var aide = (typeof aideBoutonSuivi === "function") ? aideBoutonSuivi(aid) : "";
   if (aide) { btn.setAttribute("title", aide); btn.setAttribute("aria-label", aide); }
+  else { btn.removeAttribute("title"); btn.removeAttribute("aria-label"); }
 }
 window._vliveToggleFollow = _vliveToggleFollow;
 

@@ -234,7 +234,7 @@ test("⑩ un verdict sans `status` explicite ne promeut PAS en « ✓ Suivi »",
   expect(r.suivi).toEqual([]);
 });
 
-test("⑪ les QUATRE surfaces posent l'aide et l'aspect d'état dès le PREMIER rendu", async ({ page }) => {
+test("⑪ les CINQ surfaces posent l'aide et l'aspect d'état dès le PREMIER rendu", async ({ page }) => {
   await bootOnboarded(page);
   const r = await page.evaluate(() => {
     state.user.following = []; state.user.followingPending = ["u_att"]; 
@@ -248,9 +248,29 @@ test("⑪ les QUATRE surfaces posent l'aide et l'aspect d'état dès le PREMIER 
   expect(r.suiv).toContain("background:var(--accent)");
   expect(r.rien).not.toContain("style=");
   expect(r.rien).toMatch(/aria-label="Suivre ce compte"/);
-  // Les trois gabarits qui ne sont PAS le profil visité doivent l'appeler.
-  for (const f of ["/js/app-06-reels-partage.js", "/js/app-07-ia-explore-irl.js"]) {
+  // ⚠️ ON COMPTE LES OCCURRENCES : app-07 porte DEUX gabarits (`#pexCreators` et
+  // les suggestions de Rencontrer), et un `toContain` resterait vert si l'un des
+  // deux perdait l'appel.
+  const attendu = { "/js/app-06-reels-partage.js": 1, "/js/app-07-ia-explore-irl.js": 2 };
+  for (const [f, n] of Object.entries(attendu)) {
     const src = await page.request.get(f).then((x) => x.text());
-    expect(src).toContain("attrsBoutonSuivi(u.id)");
+    expect((src.match(/attrsBoutonSuivi\(u\.id\)/g) || []).length, f).toBe(n);
   }
+  // ⚠️ LA CINQUIÈME SURFACE (overlay d'un live) ne peut pas prendre le helper
+  // — son attente est un `box-shadow`, pas un contour — mais son GABARIT doit lire
+  // les mêmes autorités : `_vlivePeindreSuivi` n'a d'appelant que le tap, donc un
+  // premier rendu fautif y réapparaissait à chaque retour dans le live.
+  const a5 = await page.request.get("/js/app-05-config-profil.js").then((x) => x.text());
+  const i5 = a5.indexOf('id="vliveFollowBtn"');
+  expect(i5).toBeGreaterThan(0);
+  const gab = a5.slice(a5.lastIndexOf("canFollow ?", i5), a5.indexOf("</button>", i5));
+  expect(gab).toContain('_vliveEtatSuivi(authorId) === "suivi"');   // jamais « ≠ aucun »
+  expect(gab).not.toContain('iFollow ? " on"');
+  expect(gab).toContain("aideBoutonSuivi(authorId)");
+  expect(gab).toContain('_vliveEtatSuivi(authorId) === "attente"');
+  // Et les DEUX appelants de `supaFollowUser` testent le MÊME signal.
+  const a4 = await page.request.get("/js/app-04-comments-shop.js").then((x) => x.text());
+  expect((a5.match(/r\.status === "pending"/g) || []).length).toBeGreaterThan(0);
+  expect(a5).not.toContain('r.status !== "accepted"');
+  expect((a4.match(/r\.status !== "pending"/g) || []).length).toBeGreaterThan(0);
 });
