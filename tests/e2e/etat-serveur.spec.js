@@ -11,10 +11,6 @@
 //   ② un 401 REST avec un compte réel et sans session vivante → bandeau
 //     « Session expirée » avec « Se reconnecter » ; un 401 chez un visiteur ou
 //     avec une session encore vivante → rien ;
-//   ② ter (2026-09-22) ce même 401 POSE le mode « session expirée » (UXO-02) :
-//     le gate refuse l'action engageante, l'état ne pousse plus, et la
-//     publication en attente n'est pas rejouée — mesuré en production le
-//     2026-09-21 : un clic « Publier » sans jeton = cinq « Action en échec » ;
 //   ③ le câblage : une vraie réponse 500 de l'hôte Supabase passe par la sonde ;
 //   ④ les échecs RÉSEAU ne sont pas comptés (domaine du bandeau hors-ligne).
 const { test, expect } = require("@playwright/test");
@@ -59,41 +55,6 @@ test.describe("ROB-03 — état du serveur", () => {
     await page.evaluate(() => { _sondeServeur.muetJusqua = 0; Object.defineProperty(window.supa, "auth", { configurable: true, value: { getSession: async () => ({ data: { session: null } }) } }); _sondeServeurReponse(401, "https://x.supabase.co/auth/v1/token"); });
     await page.waitForTimeout(150);
     expect(await bandeau(page)).toBeNull();
-  });
-
-  test("② ter 401 REST, session morte : le mode « session expirée » est posé — le gate refuse, l'état ne pousse plus, la publication en attente n'est PAS rejouée", async ({ page }) => {
-    await banc(page, true);
-    // Prémisse : au démarrage, sans jeton SDK persisté, le mode n'est pas posé
-    // (session-expiree.spec ②) — c'est exactement l'état mesuré en production le 2026-09-21.
-    expect(await page.evaluate(() => window._sessionExpiree === true)).toBe(false);
-    await page.evaluate(() => {
-      Object.defineProperty(window.supa, "auth", { configurable: true, value: { getSession: async () => ({ data: { session: null } }) } });
-      state.userPosts = state.userPosts || [];
-      state.userPosts.push({ id: "p_401", type: "text", text: "publication refusée en 401", authorId: MY_UID, createdAt: Date.now(), syncStatus: "offline", _pendingSync: true });
-      window._reelRetryTimer = null; window._reelRetryCount = 0;
-      _sondeServeurReponse(401, "https://x.supabase.co/rest/v1/posts");
-    });
-    // RÉINJECTION : sur le code d'avant, le bandeau s'allume mais `_sessionExpiree` reste faux.
-    await page.waitForFunction(() => window._sessionExpiree === true);
-    const r = await page.evaluate(() => {
-      const gate = requireAuthentication("publier");
-      _planifierReprisePublications();
-      return {
-        gate, texte: document.body.innerText,
-        classe: document.documentElement.classList.contains("passio-session-expiree"),
-        pousse: _peutPousserEtat(),
-        enAttente: _publicationsEnAttente().length,
-        minuteur: !!window._reelRetryTimer,
-        gardee: (state.userPosts || []).some((p) => p.id === "p_401" && p.syncStatus === "offline"),
-      };
-    });
-    expect(r.gate, "l'action engageante ne part pas").toBe(false);
-    expect(r.texte).toMatch(/Reconnecte-toi pour publier/);
-    expect(r.classe).toBe(true);
-    expect(r.pousse, "l'état ne pousse plus vers le serveur").toBe(false);
-    expect(r.enAttente, "aucun rejeu : chaque rejeu serait un 401 de plus").toBe(0);
-    expect(r.minuteur, "aucun minuteur de rejeu armé").toBe(false);
-    expect(r.gardee, "la publication reste en attente, rien n'est perdu").toBe(true);
   });
 
   test("② bis visiteur (placeholder u_…) : un 401 est normal, aucun bandeau", async ({ page }) => {
