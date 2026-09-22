@@ -127,6 +127,47 @@ test.describe("CONT-02 / ROB-01 — file de renvoi des publications", () => {
     expect(await inserts(page)).toEqual([]);
   });
 
+  // ⑦ SESSION MORTE (2026-09-22). Mesuré en production le 21/09 sur ce poste :
+  // compte connu (uuid dans passio_uid), jeton SDK vidé, `boot()` sans mode
+  // UXO-02 (il exige un jeton persisté). Un clic « Publier » → insert 401 →
+  // « offline » → rejeu toutes les 45–90 s → CINQ « Action en échec » au
+  // pilotage pour UN geste. Ici : le 401 pose le mode, le gate refuse le clic
+  // suivant en le disant, aucun rejeu ni minuteur, et la publication est GARDÉE.
+  test("⑦ un 401 (session morte) pose le mode « session expirée » : gate fermé, aucun rejeu, publication gardée", async ({ page }) => {
+    await banc(page);
+    await page.evaluate(() => {
+      Object.defineProperty(window.supa, "auth", { configurable: true, value: { getSession: async () => ({ data: { session: null } }) } });
+      window.__posts = { data: null, error: { code: "42501", message: "new row violates row-level security policy for table \"posts\"" }, status: 401 };
+      window._reelRetryTimer = null; window._reelRetryCount = 0;
+    });
+    expect(await page.evaluate(() => window._sessionExpiree === true), "prémisse : le mode n'est pas posé au démarrage sans jeton").toBe(false);
+    await page.evaluate(async (p) => { state.userPosts.unshift(p); await supaPublishPostWithRetry(p); }, post("p7"));
+    // RÉINJECTION : sur le code d'avant, 2 inserts (retry interne), mode absent, minuteur armé.
+    expect(await inserts(page), "un seul insert : on ne réessaie pas un 401").toEqual(["p7"]);
+    expect(await page.evaluate(() => window._sessionExpiree === true), "le mode est posé").toBe(true);
+    expect(await statut(page, "p7"), "la publication reste en attente, rien n'est perdu").toBe("offline");
+    expect(await page.evaluate(() => !!window._reelRetryTimer), "aucun minuteur de rejeu").toBe(false);
+    expect(await page.evaluate(() => _publicationsEnAttente().length), "rien à rejouer tant que la session est morte").toBe(0);
+    expect(await page.evaluate(() => _rejouerPublicationsEnAttente())).toBe(0);
+    expect(await inserts(page)).toEqual(["p7"]);
+    const gate = await page.evaluate(() => ({ ok: requireAuthentication("publier"), texte: document.body.innerText, pousse: _peutPousserEtat() }));
+    expect(gate.ok, "le clic suivant ne part pas").toBe(false);
+    expect(gate.texte).toMatch(/Reconnecte-toi pour publier/);
+    expect(gate.pousse, "l'état ne pousse plus vers le serveur").toBe(false);
+  });
+
+  test("⑦ bis un 401 avec une session encore vivante est transitoire : le chemin d'avant (retry puis « offline »), pas de mode", async ({ page }) => {
+    await banc(page);
+    await page.evaluate(() => {
+      Object.defineProperty(window.supa, "auth", { configurable: true, value: { getSession: async () => ({ data: { session: { user: { id: MY_UID } } } }) } });
+      window.__posts = { data: null, error: { code: "PGRST301", message: "JWT expired" }, status: 401 };
+    });
+    await page.evaluate(async (p) => { state.userPosts.unshift(p); await supaPublishPostWithRetry(p); }, post("p7b"));
+    expect(await page.evaluate(() => window._sessionExpiree === true)).toBe(false);
+    expect(await statut(page, "p7b")).toBe("offline");
+    expect((await inserts(page)).length, "le retry interne a bien joué").toBeGreaterThan(1);
+  });
+
   test("⑤ un média absent de cet appareil n'est jamais inséré sans média", async ({ page }) => {
     await banc(page);
     const r = await page.evaluate(async (p) => {

@@ -1723,6 +1723,11 @@ function _publicationRejouable(p) {
 function _publicationsEnAttente() {
   if (!window._supaReal || typeof supaPublishPostWithRetry !== "function") return [];
   if (!(typeof _uidEstUnCompte === "function" && _uidEstUnCompte())) return [];
+  // ⚠️ SESSION EXPIRÉE (UXO-02) : sans jeton, chaque rejeu est un 401 CERTAIN —
+  // et une alerte « Action en échec » de plus au pilotage (5 pour 1 clic, mesuré
+  // le 2026-09-21). La publication RESTE en attente (« offline », rien n'est
+  // perdu) ; elle repart au rechargement qui suit la reconnexion.
+  if (typeof sessionExpiree === "function" && sessionExpiree()) return [];
   return (state.userPosts || []).filter(function (p) {
     return p && (p.syncStatus === "offline" || p._pendingSync === true) && p.authorId === MY_UID;
   });
@@ -1755,6 +1760,9 @@ async function _rejouerPublicationsEnAttente() {
 function _planifierReprisePublications() {
   window._reelRetryCount = (window._reelRetryCount || 0);
   if (window._reelRetryTimer || window._reelRetryCount >= 8) return;
+  // Même garde que `_publicationsEnAttente` : pas de minuteur pour un rejeu
+  // qu'on sait refusé. La sonde 401 (app-02) pose le mode ; « online » ne le lève pas.
+  if (typeof sessionExpiree === "function" && sessionExpiree()) return;
   window._reelRetryTimer = setTimeout(_rejouerPublicationsEnAttente, 45000);
   if (!window._reelRetryOnline) {
     window._reelRetryOnline = true;
@@ -4222,10 +4230,26 @@ async function supaPublishPostWithRetry(post, maxRetries = 2) {
       // (connexion encore saturée) → la ligne n'était jamais créée alors que la
       // vidéo, elle, était bien sur Storage (bobines orphelines constatées en prod).
       const insertPromise = supa.from("posts").insert([postData]).select();
-      const { data, error } = await Promise.race([
+      const { data, error, status } = await Promise.race([
         insertPromise,
         new Promise((_, reject) => setTimeout(() => reject(new Error("Insert timeout")), 12000))
       ]);
+      // ⚠️ 401 = JETON ABSENT OU INVALIDE (PGRST301/302/303, ou rôle anon) : la
+      // session est morte, pas le réseau. Réessayer est un 401 certain, et
+      // chaque essai est une alerte « Action en échec » au pilotage (5 pour 1
+      // clic, mesuré le 2026-09-21). Si aucune session vivante ne peut être
+      // rétablie, on POSE le mode session expirée (app-02) : le gate refuse le
+      // clic suivant en le disant, le rejeu s'arrête, la publication RESTE en
+      // attente et repart après la reconnexion.
+      if (error && (status === 401 || /^PGRST30[123]$/.test(String(error.code || ""))) && _uidEstUnCompte()) {
+        let vivante = false;
+        try { const r = await supa.auth.getSession(); vivante = !!(r && r.data && r.data.session); } catch (e2) {}
+        if (!vivante) {
+          try { if (typeof poserSessionExpiree === "function") poserSessionExpiree("401_publication"); } catch (e2) {}
+          console.warn("publication refusée : session expirée (401)");
+          return _pubDone(false);
+        }
+      }
       // Colonne `event_id` absente (migration IRL v2 non appliquée) → réessayer
       // sans le rattachement à l'événement plutôt que de perdre le post.
       if (error && postData.event_id && /event_id/.test(error.message || "")) {
