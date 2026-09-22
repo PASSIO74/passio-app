@@ -1447,9 +1447,34 @@ function passionsUnifieesActives() {
 // Les passions utilisables (non archivées) et les archivées. Une liste vide de
 // passions vivantes ne doit jamais arriver — `archiverPassion` refuse la
 // dernière — mais on retombe sur la liste complète plutôt que sur un écran vide.
+// ⚠️ LE PROFIL DE REMPLISSAGE (`_parDefaut`) N'EST PAS UNE PASSION POSSÉDÉE,
+// ET IL ÉTAIT PEINT COMME TELLE — défaut mesuré en production le 2026-09-22 sur
+// le compte de l'éditeur : une bulle « Musique » dans le rail du Fil, grisée,
+// que TAPER NE FAISAIT RIEN. Le remplissage est fabriqué par `boot()` quand le
+// serveur ne rend aucun profil (`allPassions()[0]` = « Musique ») ; il est déjà
+// exclu de `passionsPossedeesIds` (app-02), donc `setFeedPassions` JETAIT
+// l'identifiant à chaque tap — l'état ne changeait pas, le rail se repeignait
+// à l'identique, et rien ne se prononçait. **Un refus qui ne se prononce pas
+// est indiscernable d'une panne** (jurisprudence du 2026-09-04) ; ici il n'y
+// avait même rien à refuser : la bulle n'aurait jamais dû exister.
+//
+// La borne vit donc à l'AFFICHAGE, dans l'autorité unique des passions
+// utilisables, et elle a le même discriminant que la borne d'écriture : dès
+// que le compte possède une vraie passion, le remplissage cède. Rien n'est
+// supprimé — l'entrée reste dans `state.user.profiles`, et « Ajouter Musique »
+// la PROMEUT (`ajouterPassionAuCompte`) au lieu d'en créer une seconde.
+//
+// ⚠️ LE REPLI EST CONSERVÉ À L'OCTET PRÈS pour un compte qui n'a QUE son
+// remplissage : le rendre vide donnerait un Studio sans passion de
+// destination et un profil sans bulle. Une liste vide ne doit jamais arriver —
+// `archiverPassion` refuse la dernière — mais on retombe sur la liste complète
+// plutôt que sur un écran vide.
+function _estRemplissagePassion(p) { return !!(p && p._parDefaut); }
 function passionsVivantes() {
   var tous = (state.user && state.user.profiles) || [];
-  var vifs = tous.filter(function (p) { return !p.archived; });
+  var vifs = tous.filter(function (p) { return p && !p.archived; });
+  var possedees = vifs.filter(function (p) { return !_estRemplissagePassion(p); });
+  if (possedees.length) return possedees;
   return vifs.length ? vifs : tous;
 }
 function passionsArchivees() {
@@ -1931,7 +1956,14 @@ function confirmArchivePassion(profileId) {
   var pr = (state.user.profiles || []).find(function (p) { return p.id === profileId; });
   if (!pr) return;
   var et = _passionEtiquette(pr);
-  var vivantes = (state.user.profiles || []).filter(function (p) { return !p.archived; });
+  // ⚠️ LA MÊME EXPRESSION QU'AU POINT D'ÉCRITURE (`archiverPassion`), et c'est
+  // tout l'enjeu : ce filtre maison comptait le profil de REMPLISSAGE. Un
+  // compte « remplissage + une vraie passion » en voyait DEUX ici — la porte
+  // ouvrait la confirmation, annonçait le coût, l'utilisateur validait — et le
+  // point d'écriture, lui, en comptait UNE et refusait. Lire, comprendre,
+  // valider, se faire refuser : la leçon `meOpen` prise par son autre bout,
+  // enfreinte par le correctif qui n'avait redressé qu'un des deux bouts.
+  var vivantes = passionsVivantes().filter(function (p) { return !_estRemplissagePassion(p); });
   if (vivantes.length <= 1) {
     toast("Tu dois garder au moins une passion active");
     return;
@@ -1997,7 +2029,14 @@ function archiverPassion(profileId, silencieux) {
   var pr = (state.user.profiles || []).find(function (p) { return p.id === profileId; });
   if (!pr) { closeModal(); return false; }
   if (pr.archived) { closeModal(); return false; }   // déjà rangée : rien à consommer
-  var vivantes = (state.user.profiles || []).filter(function (p) { return !p.archived; });
+  // ⚠️ `passionsVivantes()` ET NON UN FILTRE MAISON : le profil de remplissage
+  // (`_parDefaut`) n'est pas une passion active. Compté ici, il autorisait à
+  // ranger sa DERNIÈRE vraie passion (« 2 vivantes, donc on peut en archiver
+  // une ») et laissait un compte sans aucune passion possédée derrière une
+  // garde qui promet exactement l'inverse. C'est aussi lui qui servait de
+  // `_remplacante` à `currentProfileId` : on publiait alors sous une passion
+  // qu'on ne possède pas.
+  var vivantes = passionsVivantes().filter(function (p) { return !_estRemplissagePassion(p); });
   if (vivantes.length <= 1) { toast("Tu dois garder au moins une passion active"); closeModal(); return false; }
   // ⚠️ LE POINT D'ÉCRITURE, répété après la porte. Tout appelant futur passe
   // ici : `echangerPassion`, un test, un deep link, une main future. Le journal
@@ -2075,6 +2114,11 @@ function restaurerPassion(profileId, silencieux) {
   }
   pr.archived = false;
   delete pr.archivedAt;
+  // ⚠️ RESTAURER, C'EST POSSÉDER. Sans cette ligne, réactiver un remplissage
+  // archivé consommait un changement et ne faisait RÉAPPARAÎTRE RIEN — ni
+  // carte, ni bulle, ni compteur, puisque `passionsVivantes()` l'écarte. Un
+  // geste payant sans effet visible est pire qu'un refus.
+  delete pr._parDefaut;
   try { _inscrireChangementPassion(pr, "restore"); } catch (e) {}
   // Symétrique d'`archiverPassion`, qui l'avait retirée du Fil : sans ça, un
   // aller-retour archiver→restaurer perdait le réglage, en silence.
@@ -2484,7 +2528,17 @@ function renderProfilesScreen() {
     // ── L'en-tête de la page : le résumé, le quota, l'état de la porte ──────
     try { _rendrePagePassionsEntete(); } catch (e) { _passionsPageEchec("entete", e); }
 
-    list.innerHTML = passionsVivantes().map(function (p) {
+    // ⚠️ L'EN-TÊTE ET LES CARTES DOIVENT COMPTER PAREIL (2026-09-22).
+    // `_rendrePagePassionsEntete` lit `nbPassionsVivantes()`, qui exclut le
+    // profil de REMPLISSAGE ; `passionsVivantes()`, lui, le RETOURNE en repli
+    // (pour qu'un compte qui n'a que lui garde une passion de destination au
+    // Studio). Un compte dans cet état lisait donc « 0 passion active sur 3 »
+    // au-dessus d'UNE carte « Musique » — la carte étant le mensonge, pas le
+    // compteur : il ne possède rien, et ses trois places sont libres. On retire
+    // la carte ICI, sur cette page seulement, plutôt que de toucher l'autorité
+    // et son repli dont dépendent dix autres surfaces. L'état vide de cette
+    // page existe déjà (`refonte-multi-passion` ① quater).
+    list.innerHTML = passionsVivantes().filter(function (p) { return !_estRemplissagePassion(p); }).map(function (p) {
       var et = _passionEtiquette(p);
       var _pPhoto = p.photoUrl || p.photo || null;
       var avatarStyle = _pPhoto
@@ -2869,7 +2923,9 @@ function deleteProfile(profileId) {
     // ⚠️ Le repli doit désigner une passion VIVANTE : sinon supprimer la
     // dernière non archivée rendait active une passion rangée — un état que
     // tout le lot UI-8 suppose impossible.
-    var _vivantes = (state.user.profiles || []).filter(function (x) { return !x.archived; });
+    // ⚠️ Hors remplissage : l'id persisté ne doit pas diverger de l'autorité
+    // (`currentProfile()`, app-02), qui, elle, l'écarte déjà à la lecture.
+    var _vivantes = passionsVivantes().filter(function (x) { return !_estRemplissagePassion(x); });
     state.user.currentProfileId = (_vivantes[0] || state.user.profiles[0]).id;
   }
   // selectedFeedPassions ne contient pas d'IDs de profil, rien à nettoyer ici
@@ -3453,10 +3509,18 @@ function _inscrireChangementPassion(pr, type) {
   } catch (e) { return type !== "archive"; }
 }
 
+// ⚠️ `_parDefaut` EXCLU, et ce compteur était le dernier à ne pas le faire.
+// Le commentaire de `nbPassionsTotales` juste en dessous affirmait déjà que le
+// remplissage « n'est compté NULLE PART ailleurs » — c'était faux ICI, et ça
+// coûtait une des trois places offertes à tout compte entré par « Se
+// connecter » (chemin où `attacherPassionsAuCompte` ne passe pas et où le
+// remplissage survit). Trois passions choisies + le remplissage = quatre
+// vivantes, donc `plafondPassionsAtteint()` à TROIS : la porte d'ajout
+// refusait la troisième passion d'un compte qui n'en possédait que deux.
 function nbPassionsVivantes() {
   try {
     return ((state && state.user && state.user.profiles) || [])
-      .filter(function (p) { return p && !p.archived; }).length;
+      .filter(function (p) { return p && !p.archived && !p._parDefaut; }).length;
   } catch (e) { return 0; }
 }
 
@@ -3528,7 +3592,13 @@ function openPassionPaywall(opts) {
   let echange = "";
   if (cible && !quotaEpuise) {
     const etC = _passionEtiquette(cible);
-    const vivantes = (state.user.profiles || []).filter(function (p) { return !p.archived; });
+    // ⚠️ `passionsVivantes()` ET NON LA LISTE BRUTE : le profil de remplissage
+    // y apparaissait avec son bouton « Ranger », et cette ligne ne pouvait
+    // débloquer RIEN — il n'occupe aucune place (`nbPassionsVivantes` ne le
+    // compte pas), donc l'archiver consommait un changement puis l'échange
+    // butait sur le plafond et se reprenait : « rien n'a changé ». Une sortie
+    // proposée qui ne sort de nulle part est pire qu'une absence de sortie.
+    const vivantes = passionsVivantes().filter(function (p) { return !_estRemplissagePassion(p); });
     echange = '<div style="font-weight:800;font-size:13px;color:var(--text);margin:2px 0 8px;">'
       + "Ou échange : range une passion pour reprendre " + escapeHtml(etC.emoji + " " + etC.label)
       + "</div>"
@@ -3817,8 +3887,26 @@ async function confirmCreateProfile() {
 // après avoir rendu l'écran).
 function ajouterPassionAuCompte(pid, bio) {
   if (!pid) return null;
-  const _existante = (state.user.profiles || []).find(function (x) { return x.passion === pid && !x.archived; });
+  // ⚠️ LE REMPLISSAGE N'EST PAS UNE POSSESSION, ET LE PRENDRE POUR UNE
+  // POSSESSION RENDAIT « Ajouter Musique » MUET. Ce test acceptait l'entrée
+  // `_parDefaut` fabriquée par `boot()` : quelqu'un qui cherchait « Musique »
+  // dans « Mes passions » et validait obtenait un retour « déjà là », donc
+  // AUCUNE écriture, AUCUN passage par `ajouterPassionAuFil`, et le marqueur
+  // de remplissage intact — la bulle restait insélectionnable pour toujours,
+  // sans un message. C'est la moitié du défaut mesuré le 2026-09-22 ; l'autre
+  // moitié est la bulle elle-même (`passionsVivantes`).
+  const _existante = (state.user.profiles || []).find(function (x) {
+    return x && x.passion === pid && !x.archived && !_estRemplissagePassion(x);
+  });
   if (_existante) return _existante;          // déjà là : rien à créer
+
+  // Le remplissage porte peut-être DÉJÀ cette passion : on le PROMEUT plus
+  // bas, une fois le plafond consulté — on n'en crée pas un second. Deux
+  // entrées pour la même passion seraient dédupliquées en silence par la
+  // fusion défensive d'app-02, et c'est l'entrée promue qui doit survivre.
+  const _remplissage = (state.user.profiles || []).find(function (x) {
+    return x && x.passion === pid && !x.archived && _estRemplissagePassion(x);
+  });
 
   // ⚠️ LE PLAFOND EST GARDÉ ICI, AU POINT DE CONVERGENCE, ET AUSSI AUX PORTES.
   // Garder seulement les portes laisserait passer tout appelant futur ; garder
@@ -3845,6 +3933,27 @@ function ajouterPassionAuCompte(pid, bio) {
   }
 
   if (_arch) { restaurerPassion(_arch.id); return null; }
+
+  // ⚠️ PROMOTION DU REMPLISSAGE — APRÈS le plafond, jamais avant. Le
+  // remplissage ne compte pour aucune place (`nbPassionsVivantes` l'exclut),
+  // donc l'adopter en OCCUPE une : au plafond, la fenêtre doit refuser et
+  // proposer l'échange, comme pour n'importe quelle autre passion. Sous le
+  // plafond, on retire le marqueur et l'entrée devient une possession
+  // ordinaire : `passionsPossedeesIds` la rend, `setFeedPassions` cesse de la
+  // jeter, et la bulle redevient sélectionnable. Aucune ligne n'est créée ni
+  // détruite — c'est le même objet, avec la même passion, qui cesse d'être un
+  // remplissage.
+  if (_remplissage) {
+    delete _remplissage._parDefaut;
+    _remplissage.createdAt = _remplissage.createdAt || Date.now();
+    if (bio && !_remplissage.bio) _remplissage.bio = bio;
+    state.user.currentProfileId = _remplissage.id;
+    ajouterPassionAuFil(pid);
+    saveState();
+    if (typeof supaSavePassionState === "function") { try { supaSavePassionState(); } catch (e) {} }
+    if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch (e) {} }
+    return _remplissage;
+  }
 
   // Identité centralisée : on réutilise toujours le nom principal du compte.
   const name = (state.user.general && state.user.general.username) || state.user.name || "Passionné";

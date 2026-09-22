@@ -50,7 +50,26 @@
     try {
       var s = (typeof state !== "undefined") ? state : null;
       var profils = (s && s.user && s.user.profiles) || [];
-      return profils.filter(function (p) { return p && p.passion && !p.archived; })
+      // ⚠️ `_parDefaut` EXCLU — ET C'EST LA SEPTIÈME SURFACE DE LA FAMILLE,
+      // celle qui a transformé le correctif du 2026-09-22 en CUL-DE-SAC.
+      // Rapport de Benjamin dans l'heure qui a suivi le déploiement : « la
+      // passion musique ne fonctionne plus du tout ». Le lot avait retiré la
+      // bulle morte du rail (juste : le remplissage n'est pas une possession)
+      // et réparé `ajouterPassionAuCompte` pour qu'il la PROMEUVE — mais cette
+      // liste-ci, lue BRUTE, la comptait encore comme déjà possédée. Le `deja`
+      // d'`ouvrirAjoutPassions` court-circuite alors le moteur réparé
+      // (`if (deja.indexOf(id) >= 0) return;`) : choisir « Musique » et valider
+      // ne produisait RIEN — ni passion, ni toast, ni refus. On était passé
+      // d'une bulle qui ne répond pas à une passion INTROUVABLE, c'est-à-dire
+      // pire qu'avant.
+      //
+      // ⚠️ LA LEÇON, ET ELLE EST PLUS GÉNÉRALE QUE LE REMPLISSAGE : réparer un
+      // MOTEUR ne sert à rien tant qu'un garde EN AMONT décide, sur une autre
+      // lecture, qu'il n'y a rien à lui demander. Le point d'écriture et la
+      // porte doivent lire la MÊME chose — c'est déjà ce qui avait fait tomber
+      // `confirmArchivePassion` dans le même lot ; ici le garde n'était même
+      // pas dans le même fichier.
+      return profils.filter(function (p) { return p && p.passion && !p.archived && !p._parDefaut; })
                     .map(function (p) { return p.passion; });
     } catch (e) { journal("mesPassions", e); return []; }
   }
@@ -191,8 +210,19 @@
           if (typeof ajouterPassionAuCompte === "function") ajouterPassionAuCompte(id, "");
           var possedee = false;
           try {
-            possedee = ((state && state.user && state.user.profiles) || [])
-              .some(function (x) { return x && x.passion === id && !x.archived; });
+            // ⚠️ `passionsPossedeesIds()` ET NON LA LISTE BRUTE (2026-09-22).
+            // Ce `some` acceptait le profil de REMPLISSAGE (`_parDefaut`) :
+            // au plafond, `ajouterPassionAuCompte` refusait bien et ouvrait la
+            // fenêtre payante, mais `possedee` rendait quand même `true`, donc
+            // `#postPassion` pointait la passion REFUSÉE et l'on publiait
+            // dessous — EN SILENCE, pendant que le mur s'affichait. C'est très
+            // exactement la branche que le commentaire ci-dessus décrit comme
+            // fermée ; le plafond ayant cessé de compter le remplissage, elle
+            // s'était rouverte par en dessous.
+            possedee = (typeof passionsPossedeesIds === "function")
+              ? passionsPossedeesIds().indexOf(id) >= 0
+              : ((state && state.user && state.user.profiles) || [])
+                  .some(function (x) { return x && x.passion === id && !x.archived && !x._parDefaut; });
           } catch (e) { possedee = false; }
           if (!possedee) {
             // Refusé : on laisse `#postPassion` sur son ancienne valeur, et on

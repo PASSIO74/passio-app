@@ -2807,6 +2807,153 @@ RÉINJECTION de trois mutations** — garde retirée de `passionsIllimitees` (**
 sexies), masquage du bouton neutralisé (**1**), refus de la bascule neutralisé (**1**). Les quatre cas
 d'origine, eux, restent **verts sous la mutation 1** : c'est bien le REFUS qu'aucun d'eux ne mesurait.
 
+## 🎵 UNE BULLE « MUSIQUE » QUE TAPER NE FAISAIT RIEN — LE PROFIL DE REMPLISSAGE SE PRENAIT POUR UNE PASSION (2026-09-22)
+
+Rapport de Benjamin, capture à l'appui : « je viens de rajouter une passion (musique) sur mon
+profil mais je n'arrive pas à la sélectionner ». Le rail du Fil peint « Suivis · **Musique
+(grisée)** · Metallerie · Course à pied · Wakeboard » ; taper « Musique » ne change rien, et **rien
+ne se prononce**.
+
+⚠️ **MESURÉ EN PRODUCTION LE JOUR MÊME (canal ① d'ADR-012), ET C'EST LA MESURE QUI A DÉSIGNÉ LA
+CAUSE.** `user_state` du compte de la capture porte bien une entrée « musique » — et elle porte
+`_parDefaut: true`. C'est le profil de **REMPLISSAGE** fabriqué par `boot()` quand le serveur ne rend
+aucun profil (`allPassions()[0]` = « Musique »), **pas une passion choisie**, et
+`selectedFeedPassions` ne la contient pas. Benjamin n'avait rien ajouté : il essayait d'adopter un
+fantôme que l'application lui montrait comme une possession.
+
+⚠️ **DEUX DÉFAUTS, ET IL FALLAIT LES DEUX POUR PRODUIRE LE SYMPTÔME.** ① `passionsVivantes()`
+(app-06) ne l'excluait pas → la bulle était **PEINTE** ; mais `passionsPossedeesIds()` (app-02)
+l'exclut depuis le 2026-09-18, donc `setFeedPassions` **JETAIT** l'identifiant à chaque tap : le rail
+se repeignait à l'identique, sans un mot. Une **promesse d'affichage que l'écriture refuse** — et
+ici il n'y avait même rien à refuser, la bulle n'aurait pas dû exister. ② `ajouterPassionAuCompte()`
+prenait le remplissage pour une possession (`_existante`) : aller l'ajouter dans « Mes passions »
+rendait « déjà là », donc **aucune écriture, aucun passage par `ajouterPassionAuFil`, marqueur
+intact**. Le seul geste qui pouvait réparer la situation était muet.
+
+⚠️ **LA RÈGLE, UNE FOIS POUR TOUTES : LE REMPLISSAGE N'EST UNE PASSION NULLE PART** — ni peint, ni
+compté dans le plafond, ni passion d'écriture, ni publié. Et « ajouter » cette passion-là le
+**PROMEUT** (`delete _parDefaut`, même objet, aucune seconde entrée) **APRÈS** le contrôle du
+plafond : il n'occupe aucune place, donc l'adopter en prend une, et au plafond la fenêtre payante
+refuse et **se prononce**, comme pour n'importe quelle autre passion.
+
+⚠️ **LE COMPTEUR DU PLAFOND ÉTAIT LE DERNIER À NE PAS LE SAVOIR, ET ÇA COÛTAIT UNE PLACE SUR TROIS.**
+Le commentaire de `nbPassionsTotales` affirmait déjà que le remplissage « n'est compté NULLE PART
+ailleurs » — c'était **faux dans `nbPassionsVivantes`**, juste au-dessus. Conséquence vivante pour
+tout compte entré par « Se connecter » (chemin où `attacherPassionsAuCompte` ne passe pas et où le
+remplissage survit) : trois passions choisies + le remplissage = quatre vivantes, donc
+`plafondPassionsAtteint()` **à TROIS** — la porte d'ajout refusait la troisième passion d'un compte
+qui n'en possédait que deux. **Une affirmation écrite dans un commentaire n'est pas une garantie ;
+seule la ligne de code qui la tient l'est.**
+
+⚠️ **LE REPLI EST CONSERVÉ À L'OCTET PRÈS** : un compte qui n'a QUE son remplissage garde sa bulle et
+sa passion de destination au Studio (`passionsVivantes()` retombe sur les vivantes quand aucune
+possession n'existe). Sans compte possédant, `interetsBornesAuCompte()` est faux et la bulle reste
+cochable — c'est-à-dire qu'elle n'est **jamais** morte. La bulle morte n'existait qu'à partir de la
+PREMIÈRE vraie passion : le discriminant de l'affichage est le même que celui de l'écriture.
+
+### ⚠️ ET UNE SEPTIÈME, TROUVÉE PAR BENJAMIN DANS L'HEURE QUI A SUIVI LE DÉPLOIEMENT
+
+« La passion musique ne fonctionne plus du tout. » Le lot avait retiré la bulle morte (juste) et
+réparé `ajouterPassionAuCompte` pour qu'il PROMEUVE le remplissage (juste aussi) — mais
+**`mesPassions()` (js/passions-flat-ui.js), lue BRUTE, la comptait encore comme possédée**, et le
+`deja` d'`ouvrirAjoutPassions` court-circuite le moteur : `if (deja.indexOf(id) >= 0) return;`.
+Choisir « Musique » et valider ne produisait **RIEN** — ni passion, ni toast, ni refus. **On était
+passé d'une bulle qui ne répond pas à une passion INTROUVABLE, c'est-à-dire PIRE QU'AVANT.**
+
+⚠️ **LA LEÇON DÉPASSE LE REMPLISSAGE, ET C'EST LA PLUS CHÈRE DU LOT** : **réparer un MOTEUR ne sert
+à rien tant qu'un garde EN AMONT décide, sur une AUTRE lecture, qu'il n'y a rien à lui demander.**
+C'est le défaut `confirmArchivePassion` du même lot — sauf qu'ici le garde n'était **pas dans le
+même fichier**, et qu'**aucun des 14 verrous ne passait par la porte réelle** : tous appelaient
+`ajouterPassionAuCompte` à la main. **Un verrou qui appelle le moteur à la main ne mesure pas la
+porte.** Le cas ⑮ exerce désormais le GESTE (`ouvrirAjoutPassions` → `onValider(["musique"])`).
+
+⚠️ **DEUX AUTRES DÉCISIONS DE POSSESSION LISAIENT BRUT**, refermées avec : `quickCreateProfile`
+(app-07) trouvait le remplissage après un refus au plafond et basculait `currentProfileId` dessus,
+sans un mot (`np` nul, donc pas de toast) ; et la fiche d'une passion annonçait « tu as cette
+passion » sur le seul remplissage (`hasProfile`). **Résidu nommé** : `publishPost` (app-06) teste
+« pas archivée » sur la liste brute — le durcir produirait le message FAUX « cette passion est
+archivée », et `#postPassion` ne propose plus le remplissage, donc le chemin est inatteignable.
+
+⚠️ **ET MON PROPRE CAS ⑯ ÉTAIT VERT SUR SON DÉFAUT** : le fixture posait `currentProfileId` **déjà**
+sur le remplissage, donc « avant === après » passait quoi qu'il arrive, et `currentProfile()` — qui
+écarte le remplissage — masquait le reste. On part d'une VRAIE passion d'écriture et on lit
+l'identifiant **BRUT**, celui qui est persisté. Trouvé par la RÉINJECTION, pas par la relecture.
+
+⚠️ **CE QU'ON NE PEUT PAS PROUVER DEPUIS UN BAC DE SESSION** : `passio-app.netlify.app` n'y est pas
+joignable (HTTP `000`, quand `api.github.com` rend 200). La preuve « le fichier servi porte le
+changement » est donc **hors de portée d'une session distante** ; il reste le job vert et l'essai
+réel. Une sonde qui ne peut pas joindre sa cible rend un faux négatif, pas une mesure — ne jamais
+lire son silence comme « le déploiement a échoué ».
+
+### ⚠️ SIX SURFACES DE PLUS, TROUVÉES PAR `audit-passio` APRÈS HUIT VERROUS VERTS
+
+« Corriger une surface, c'est corriger une surface. » Le premier jet redressait trois fonctions ;
+six autres endroits lisaient encore `state.user.profiles` **BRUT**, et **trois devenaient faux à
+cause du lot** — c'est le mode d'échec à retenir : **un correctif qui déplace une règle doit être
+suivi partout où l'ancienne servait.**
+
+⚠️ **[P1] LA PORTE ET LE POINT D'ÉCRITURE NE COMPTAIENT PLUS PAREIL.** `archiverPassion` avait été
+redressée, **pas `confirmArchivePassion`**. Un compte « remplissage + une vraie passion » en voyait
+DEUX à la porte : la confirmation s'ouvrait, annonçait le coût, l'utilisateur validait — et le point
+d'écriture en comptait UNE et refusait. **Lire, comprendre, valider, se faire refuser** : la leçon
+`meOpen` prise par son autre bout, enfreinte par le correctif qui n'avait redressé qu'un des deux
+bouts. ⚠️ **Et le verrou était vert dessus** : il appelait `archiverPassion` à la main, jamais sa
+porte — il mesurait la fonction, pas le câblage.
+
+⚠️ **[P1] AU STUDIO, ON PUBLIAIT SOUS LA PASSION QUE LE MUR VENAIT DE REFUSER.** `ouvrirChoixStudio`
+(passions-flat-ui) testait la possession sur la liste brute : au plafond, `ajouterPassionAuCompte`
+refusait bien et ouvrait la fenêtre payante, mais `possedee` rendait quand même `true`, donc
+`#postPassion` — la SEULE source de vérité de `publishPost` — pointait la passion refusée. **EN
+SILENCE, pendant que le mur s'affichait.** Le commentaire immédiatement au-dessus décrit ce piège en
+toutes lettres et le déclarait fermé : **le plafond ayant cessé de compter le remplissage, la
+branche s'était rouverte par en dessous.**
+
+⚠️ **[P1] L'ALLER-RETOUR SERVEUR BLANCHISSAIT LE MARQUEUR — le défaut ressuscité par la base.** Le
+jsonb `profiles.passions` est la SAUVEGARDE de mes passions, relue par la reconstruction du boot ;
+il ne portait pas `_parDefaut`, et le boot ne le restituait pas. Sur un appareil neuf, le
+remplissage revenait en **vraie passion** : quatre vivantes pour un plafond de trois, et la bulle
+morte de retour. **Tant que le marqueur ne décidait de rien, le perdre ne coûtait rien ; il décide
+désormais de la bulle, du plafond et de la passion d'écriture.** Il voyage donc et se restitue,
+**exactement comme `archived`, qui avait déjà payé ce défaut** — et `passionsPubliques()` le retire à
+l'affichage, sans quoi mon profil annonçait **quatre passions aux visiteurs** quand le mien en
+comptait trois.
+
+⚠️ **[P2] « Mes passions » disait 0 et peignait 1 carte.** L'en-tête lit `nbPassionsVivantes()` (qui
+exclut), la liste peignait `passionsVivantes()` (qui le rend en repli). **La carte était le mensonge,
+pas le compteur** : ce compte ne possède rien et ses trois places sont libres. La carte est retirée
+sur cette page seulement — toucher l'autorité et son repli aurait atteint dix autres surfaces.
+
+⚠️ **[P2] LA FENÊTRE D'ÉCHANGE PROPOSAIT DE « RANGER » LE REMPLISSAGE**, ligne qui ne pouvait
+débloquer **RIEN** : il n'occupe aucune place, donc l'archiver consommait un changement puis
+l'échange butait sur le plafond et se reprenait (« rien n'a changé »). **Une sortie proposée qui ne
+sort de nulle part est pire qu'une absence de sortie.**
+
+⚠️ **[P2] RÉACTIVER UN REMPLISSAGE ARCHIVÉ CONSOMMAIT UN CHANGEMENT SANS RIEN FAIRE RÉAPPARAÎTRE** —
+ni carte, ni bulle, ni compteur, `passionsVivantes()` l'écartant. **Un geste payant sans effet
+visible est pire qu'un refus** : `restaurerPassion` le promeut, comme `ajouterPassionAuCompte`.
+
+⚠️ **RÉSIDUS NOMMÉS, PAS RÉGLÉS** : sous la coupure `passio_ui_8="0"`, `renderProfileStrip` et
+`renderStudio` retombent sur la liste brute et le remplissage redevient peint — chemin de coupure,
+comportement d'avant, assumé. `currentProfile()` (app-02) teste `_parDefaut` en ligne plutôt que
+d'appeler `_estRemplissagePassion` (app-06) : délibéré, cette autorité est appelée très tôt et ne
+doit pas dépendre d'un fichier chargé après elle.
+
+⚠️ **PIÈGE D'ENVIRONNEMENT DE LA JOURNÉE** : le bac ne porte pas la révision de Chromium attendue
+par le `@playwright/test` du dépôt. **Ne pas réinstaller** : la config prévoit déjà
+`PASSIO_CHROMIUM=<chemin du binaire>`, qui pose `launchOptions.executablePath`. En local,
+`creation-passion` ⑭ et trois cas de `profil-entete-passions` sont **ROUGES sur `origin/main` PUR**
+(rejoué en worktree séparé, port 8099) — divergence d'environnement déjà écrite, étrangère au lot.
+
+Verrou : `tests/e2e/passion-remplissage-bulle-morte.spec.js` (**14**), dont ② qui est la formulation
+GÉNÉRALE du défaut et vaut pour toute bulle future (« aucune bulle peinte n'est refusée par
+l'écriture »), ⑨ qui mesure la porte **par le geste**, ⑩ le Studio au plafond, ⑪ l'aller-retour
+serveur à la source, et ⑧ le câblage de `boot()` — un chemin qu'aucun banc local ne parcourt.
+**Éprouvé par RÉINJECTION de DIX mutations**, chacune rougissant sa cible : bulle repeinte (3
+rouges), ajout rendu muet (2), plafond qui recompte le remplissage (3), garde de `currentProfile`
+retirée (1), porte d'archivage rendue au filtre brut (1), Studio rendu à la lecture brute (1),
+`passionsPubliques` rendue à l'ancien filtre (1), restauration qui ne promeut plus (1), échange rendu
+à la liste brute (1), cartes rendues au repli (1).
+
 ## 🎯 LES PASSIONS DU FIL SONT CELLES DU COMPTE (2026-09-18)
 
 Rapport de Benjamin, deux captures prises à la même minute : le rail du Fil peignait « Suivis ·

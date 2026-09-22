@@ -349,7 +349,9 @@ function openPassionExplorer(pid, retourUserId, libelleConnu) {
   // fonction qui peut échouer. On le garde, il ne coûte rien.
   if (!p) { toast("Passion non trouvée"); return; }
   var posts = allFeedPosts().filter(function(x) { return x.passion === pid; });
-  var hasProfile = (state.user.profiles || []).find(function(up) { return up.passion === pid; });
+  // ⚠️ `_parDefaut` EXCLU (même famille) : la fiche d'une passion annonçait
+  // « tu as cette passion » sur le seul profil de remplissage.
+  var hasProfile = (state.user.profiles || []).find(function(up) { return up.passion === pid && !up._parDefaut; });
 
   // ⚠️ LES CRÉATEURS NE SORTAIENT QUE DU SEED. Toute passion du référentiel plat
   // — c'est-à-dire tout ce que la recherche sait désormais trouver — affichait
@@ -552,7 +554,13 @@ function quickCreateProfile(pid) {
   // depuis les archives (qui rend la main après avoir rendu l'écran). On ne
   // conclut donc pas sur la valeur rendue : on regarde si la passion est
   // VIVANTE, seule question qui décide de la suite.
-  const vivante = (state.user.profiles || []).find(function (x) { return x.passion === pid && !x.archived; });
+  // ⚠️ `_parDefaut` EXCLU : sur un refus au plafond, cette recherche trouvait
+  // le REMPLISSAGE et concluait « vivante » — on basculait `currentProfileId`
+  // sur une passion que le compte ne possède pas, sans un mot (`np` est nul,
+  // donc pas de toast). Même famille que `mesPassions` : la question posée est
+  // « le compte possède-t-il cette passion MAINTENANT ? », et un remplissage
+  // n'est pas une possession.
+  const vivante = (state.user.profiles || []).find(function (x) { return x.passion === pid && !x.archived && !x._parDefaut; });
   if (!vivante) return;
   state.user.currentProfileId = vivante.id;
   saveState();

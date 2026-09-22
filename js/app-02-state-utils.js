@@ -2596,7 +2596,12 @@ function messageEchecPassion() {
 
 function passionsPubliques(list) {
   if (!Array.isArray(list)) return [];
-  return list.filter(function (p) { return p && p.id && !p.archived; });
+  // ⚠️ `_parDefaut` RETIRÉ AUSSI (2026-09-22) : le profil de remplissage n'est
+  // pas une passion. Publié tel quel, mon profil annonçait QUATRE passions aux
+  // visiteurs quand le mien en comptait trois — « Musique » comprise, que
+  // personne n'a choisie. Il reste dans le jsonb (c'est la sauvegarde du
+  // compte), il ne se montre pas.
+  return list.filter(function (p) { return p && p.id && !p.archived && !p._parDefaut; });
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -2884,8 +2889,28 @@ function cacheRemoteProfile(p) {
   else state.seed.users.push(entry);
 }
 
+// ⚠️ LE PROFIL DE REMPLISSAGE N'EST PAS UNE PASSION D'ÉCRITURE (2026-09-22).
+// `boot()` rebase déjà `currentProfileId` hors du remplissage, mais il ne le
+// fait que sur SA branche (serveur sans profil) : un état relu depuis
+// `localStorage` — le cas ordinaire — garde l'identifiant tel quel, et il
+// désignait `profiles[0]`, c'est-à-dire le remplissage lui-même. Or
+// `passionsVivantes()` (app-06) ne le peint plus : `#postPassion` n'en porte
+// donc plus l'option, et publier se serait fait sous une passion absente du
+// sélecteur, que le compte ne possède pas. La garde vit ici, à l'autorité que
+// TOUS les appelants consultent, plutôt qu'à chaque point de lecture.
+//
+// ⚠️ Elle ne PERSISTE rien : c'est une lecture, et un point d'écriture
+// (`switchToProfile`, `ajouterPassionAuCompte`, `archiverPassion`) reste le
+// seul endroit qui déplace `currentProfileId`. Le repli est intact pour un
+// compte qui n'a QUE son remplissage : sans vraie passion, on le rend.
 function currentProfile() {
-  return state.user.profiles.find(p => p.id === state.user.currentProfileId) || state.user.profiles[0];
+  const liste = (state.user && state.user.profiles) || [];
+  const p = liste.find(x => x && x.id === state.user.currentProfileId);
+  if (p && p._parDefaut) {
+    const vraie = liste.find(x => x && !x.archived && !x._parDefaut);
+    if (vraie) return vraie;
+  }
+  return p || liste[0];
 }
 
 // ===== IDENTITÉ D'EXPÉDITEUR PAR MESSAGE =====
