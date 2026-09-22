@@ -2734,6 +2734,40 @@ possession n'existe). Sans compte possédant, `interetsBornesAuCompte()` est fau
 cochable — c'est-à-dire qu'elle n'est **jamais** morte. La bulle morte n'existait qu'à partir de la
 PREMIÈRE vraie passion : le discriminant de l'affichage est le même que celui de l'écriture.
 
+### ⚠️ ET UNE SEPTIÈME, TROUVÉE PAR BENJAMIN DANS L'HEURE QUI A SUIVI LE DÉPLOIEMENT
+
+« La passion musique ne fonctionne plus du tout. » Le lot avait retiré la bulle morte (juste) et
+réparé `ajouterPassionAuCompte` pour qu'il PROMEUVE le remplissage (juste aussi) — mais
+**`mesPassions()` (js/passions-flat-ui.js), lue BRUTE, la comptait encore comme possédée**, et le
+`deja` d'`ouvrirAjoutPassions` court-circuite le moteur : `if (deja.indexOf(id) >= 0) return;`.
+Choisir « Musique » et valider ne produisait **RIEN** — ni passion, ni toast, ni refus. **On était
+passé d'une bulle qui ne répond pas à une passion INTROUVABLE, c'est-à-dire PIRE QU'AVANT.**
+
+⚠️ **LA LEÇON DÉPASSE LE REMPLISSAGE, ET C'EST LA PLUS CHÈRE DU LOT** : **réparer un MOTEUR ne sert
+à rien tant qu'un garde EN AMONT décide, sur une AUTRE lecture, qu'il n'y a rien à lui demander.**
+C'est le défaut `confirmArchivePassion` du même lot — sauf qu'ici le garde n'était **pas dans le
+même fichier**, et qu'**aucun des 14 verrous ne passait par la porte réelle** : tous appelaient
+`ajouterPassionAuCompte` à la main. **Un verrou qui appelle le moteur à la main ne mesure pas la
+porte.** Le cas ⑮ exerce désormais le GESTE (`ouvrirAjoutPassions` → `onValider(["musique"])`).
+
+⚠️ **DEUX AUTRES DÉCISIONS DE POSSESSION LISAIENT BRUT**, refermées avec : `quickCreateProfile`
+(app-07) trouvait le remplissage après un refus au plafond et basculait `currentProfileId` dessus,
+sans un mot (`np` nul, donc pas de toast) ; et la fiche d'une passion annonçait « tu as cette
+passion » sur le seul remplissage (`hasProfile`). **Résidu nommé** : `publishPost` (app-06) teste
+« pas archivée » sur la liste brute — le durcir produirait le message FAUX « cette passion est
+archivée », et `#postPassion` ne propose plus le remplissage, donc le chemin est inatteignable.
+
+⚠️ **ET MON PROPRE CAS ⑯ ÉTAIT VERT SUR SON DÉFAUT** : le fixture posait `currentProfileId` **déjà**
+sur le remplissage, donc « avant === après » passait quoi qu'il arrive, et `currentProfile()` — qui
+écarte le remplissage — masquait le reste. On part d'une VRAIE passion d'écriture et on lit
+l'identifiant **BRUT**, celui qui est persisté. Trouvé par la RÉINJECTION, pas par la relecture.
+
+⚠️ **CE QU'ON NE PEUT PAS PROUVER DEPUIS UN BAC DE SESSION** : `passio-app.netlify.app` n'y est pas
+joignable (HTTP `000`, quand `api.github.com` rend 200). La preuve « le fichier servi porte le
+changement » est donc **hors de portée d'une session distante** ; il reste le job vert et l'essai
+réel. Une sonde qui ne peut pas joindre sa cible rend un faux négatif, pas une mesure — ne jamais
+lire son silence comme « le déploiement a échoué ».
+
 ### ⚠️ SIX SURFACES DE PLUS, TROUVÉES PAR `audit-passio` APRÈS HUIT VERROUS VERTS
 
 « Corriger une surface, c'est corriger une surface. » Le premier jet redressait trois fonctions ;
