@@ -3223,7 +3223,12 @@ async function openUserProfile(authorId, source) {
 
   // État partagé de la vue « profil visité » : posts + sélections passion/type.
   // Conventions IDENTIQUES à mon écran profil : rien de coché = aucun filtre.
-  window._visited = { authorId: authorId, posts: userPosts, passionSel: new Set(), tabSel: new Set(), locked: !canSeeContent };
+  // ⚠️ `isPrivate` EST PUBLIÉ EXPLICITEMENT, et pas déduit de `locked`.
+  // `locked` vaut `isPrivate && !isFollowing` : s'en servir conflerait « compte
+  // privé » et « je n'y ai pas accès », deux notions qui divergeront au premier
+  // lot qui touche l'une des deux. C'est la SEULE trace de confidentialité d'un
+  // compte visité côté client (`_profileCache` ne porte pas `is_private`).
+  window._visited = { authorId: authorId, isPrivate: !!user.isPrivate, posts: userPosts, passionSel: new Set(), tabSel: new Set(), locked: !canSeeContent };
 
   // Onglets de contenu : MÊMES 5 icônes que sur mon profil (multi-sélection).
   var _VTAB_SVGS = {
@@ -3267,8 +3272,8 @@ async function openUserProfile(authorId, source) {
     ? ''
     : '<div style="text-align:center;padding:36px 20px;border:1px dashed var(--border);border-radius:16px;margin-top:16px;">'
       + '<div style="font-size:34px;margin-bottom:10px;">🔒</div>'
-      + '<div style="font-weight:800;font-size:15px;color:var(--text);margin-bottom:6px;">Ce compte est privé</div>'
-      + '<div style="font-size:12px;color:var(--muted);line-height:1.5;">Abonne-toi pour voir ses publications, photos, bobines et carnets.</div>'
+      + '<div data-prive-titre="1" style="font-weight:800;font-size:15px;color:var(--text);margin-bottom:6px;">' + (etatSuivi(authorId) === "attente" ? "Demande envoyée" : "Ce compte est privé") + '</div>'
+      + '<div data-prive-texte="' + escapeHtml(TEXTE_COMPTE_PRIVE) + '" style="font-size:12px;color:var(--muted);line-height:1.5;">' + escapeHtml(etatSuivi(authorId) === "attente" ? TEXTE_DEMANDE_EN_VOL : TEXTE_COMPTE_PRIVE) + '</div>'
       + '</div>';
 
   // 🖼️ En-tête : MÊME visuel que le profil principal (couverture 3:2 + avatar
@@ -3305,7 +3310,7 @@ async function openUserProfile(authorId, source) {
     <!-- BOUTONS -->\
     <div id="visitedProfileActions" style="display:flex;gap:8px;justify-content:center;margin:14px 0 4px;">\
       <button class="btn primary" onclick="closeModal();startDirectMessage(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "Passionné") + '\',\'' + escapeJsArg(user.profileEmoji || "✨") + '\',\'' + escapeJsArg(user.avatar || "#8b5cf6") + '\',\'' + escapeJsArg(user.photoUrl || "") + '\')" style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;">Message</button>\
-      <button class="btn ghost" id="followBtn_' + authorId + '" onclick="toggleFollowUser(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\')" style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;' + (isFollowing ? 'background:var(--accent);color:#fff;border-color:var(--accent);' : '') + '">' + libelleBoutonSuivi(authorId) + '</button>\
+      <button class="btn ghost" id="followBtn_' + authorId + '" onclick="toggleFollowUser(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\')" title="' + escapeHtml(aideBoutonSuivi(authorId)) + '" aria-label="' + escapeHtml(aideBoutonSuivi(authorId)) + '"' + (etatSuivi(authorId) === "attente" ? ' data-suivi-attente="1"' : '') + ' style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;' + (isFollowing ? 'background:var(--accent);color:#fff;border-color:var(--accent);' : (etatSuivi(authorId) === "attente" ? 'color:var(--accent);border-color:var(--accent);' : '')) + '">' + libelleBoutonSuivi(authorId) + '</button>\
     </div>\
     </div>\
     \
@@ -3618,6 +3623,51 @@ function _verrouEcriture(table, id, promesse) {
   return Promise.resolve(promesse).then(function (r) { delete table[id]; return r; }, function (e) { delete table[id]; throw e; });
 }
 
+// ⚠️ SUR UN COMPTE PRIVÉ, L'OPTIMISTE PROMETTAIT UN SUIVI QUI N'AURAIT PAS LIEU.
+// L'affichage passait par « ✓ Suivi » en violet plein — le visuel d'un
+// abonnement acquis — avant d'être corrigé en « Demande envoyée » au verdict du
+// serveur. Or l'écran SAIT déjà que le compte est privé : il peint le 🔒 à côté
+// du pseudo et le bloc « Ce compte est privé » juste en dessous. Quand on le
+// sait, on n'annonce pas l'inverse pendant 100 ms.
+// ⚠️ ELLE ÉCHOUE SUR « PUBLIC », et c'est voulu : `_profileCache` ne porte PAS
+// `is_private` (seul `openUserProfile` le relit), donc hors du profil visité on
+// ne sait rien et le comportement d'avant tient à l'octet près. Le SERVEUR
+// tranche de toute façon (`trg_follows_statut`) ; ceci n'avance que ce que le
+// client tient déjà pour acquis.
+// Une phrase écrite en trois endroits finit par diverger sur celui qu'on oublie :
+// le gabarit, l'attribut de restitution et le repli lisent la MÊME constante.
+var TEXTE_DEMANDE_EN_VOL = "Tu verras ses publications dès qu'elle aura accepté ta demande.";
+var TEXTE_COMPTE_PRIVE = "Abonne-toi pour voir ses publications, photos, bobines et carnets.";
+
+function _ciblePrivee(uid) {
+  try {
+    var v = window._visited;
+    if (v && v.authorId === uid) return !!v.isPrivate;
+  } catch (e) { try { diagLog("cible_privee: " + (e && e.message)); } catch (_) {} }
+  return false;
+}
+
+// Le bloc « Ce compte est privé » du profil visité est peint À L'OUVERTURE et ne
+// connaît donc que l'état d'alors : il continuait d'écrire « Abonne-toi pour
+// voir ses publications » à quelqu'un dont la demande était déjà partie. C'est la
+// surface qui EXPLIQUE, et elle mentait sur l'état — elle est repeinte à chaque
+// changement de bouton, depuis `_peindreBoutonsSuivi`, seul point qui les écrit.
+function _majBlocPriveVisite(userId) {
+  try {
+    var v = window._visited;
+    if (!v || v.authorId !== userId) return;
+    var attente = (typeof etatSuivi === "function") && etatSuivi(userId) === "attente";
+    Array.prototype.forEach.call(document.querySelectorAll("[data-prive-titre]"), function (el) {
+      el.textContent = attente ? "Demande envoyée" : "Ce compte est privé";
+    });
+    Array.prototype.forEach.call(document.querySelectorAll("[data-prive-texte]"), function (el) {
+      el.textContent = attente
+        ? TEXTE_DEMANDE_EN_VOL
+        : (el.getAttribute("data-prive-texte") || TEXTE_COMPTE_PRIVE);
+    });
+  } catch (e) { try { diagLog("maj_bloc_prive: " + (e && e.message)); } catch (_) {} }
+}
+
 function toggleFollowUser(userId, userName) {
   // Mode invité (première visite) : cette action engage le compte. Le gate
   // EXPLIQUE l'action puis propose la création de compte ; il ne rejoue jamais
@@ -3635,20 +3685,42 @@ function toggleFollowUser(userId, userName) {
   //           'pending' (compte privé : la personne devra accepter) ;
   //   attente → un second tap ANNULE la demande (même ligne `follows`) ;
   //   suivi → on se désabonne.
-  // L'affichage est optimiste dans le sens « suivi », puis CORRIGÉ au verdict
-  // serveur : c'est `trg_follows_statut` qui tranche, jamais le client.
+  // L'affichage est optimiste vers l'état que le client CROIT atteignable —
+  // « attente » quand il sait la cible privée (`_ciblePrivee`), « suivi » sinon —
+  // puis CORRIGÉ au verdict : c'est `trg_follows_statut` qui tranche, pas nous.
   if (etat === "attente") {
     state.user.followingPending = state.user.followingPending.filter(function (id) { return id !== userId; });
     _peindreBoutonsSuivi(userId, "aucun");
-    toast("Demande annulée");
-    _verrouEcriture(_ecritureSuiviEnCours, userId, supaUnfollowUser(userId)).catch(function () {});
+    // ⚠️ Un geste DESTRUCTEUR dit par où revenir : c'est ce tap-là qui a effacé
+    // une demande d'abonnement en production le 22/09, deux secondes après
+    // l'avoir envoyée.
+    toast("Demande annulée — appuie sur « Suivre » pour la renvoyer");
+    // ⚠️ ON LIT LE VERDICT DE LA SUPPRESSION. Un DELETE refusé laissait la
+    // demande vivante côté serveur pendant que l'écran la disait annulée — le
+    // défaut rapporté, dans l'autre sens.
+    _verrouEcriture(_ecritureSuiviEnCours, userId, supaUnfollowUser(userId)).then(function (r) {
+      if (!r || r.ok !== false) return;
+      if (state.user.followingPending.indexOf(userId) < 0) state.user.followingPending.push(userId);
+      _peindreBoutonsSuivi(userId, "attente");
+      toast("Annulation non enregistrée — ta demande est toujours en cours");
+      saveState();
+    }).catch(function () {});
     saveState();
     return;
   }
   if (etat === "aucun") {
-    state.user.following.push(userId);
-    _peindreBoutonsSuivi(userId, "suivi");
-    toast("Tu suis " + nom + " !");
+    // Compte connu privé → l'optimiste va DIRECTEMENT en attente : on n'annonce
+    // pas un abonnement que le serveur va refuser dans la milliseconde.
+    var prive = _ciblePrivee(userId);
+    if (prive) {
+      if (state.user.followingPending.indexOf(userId) < 0) state.user.followingPending.push(userId);
+      _peindreBoutonsSuivi(userId, "attente");
+      toast("Demande envoyée à " + nom + " — tu verras ses publications dès qu'elle l'aura acceptée");
+    } else {
+      state.user.following.push(userId);
+      _peindreBoutonsSuivi(userId, "suivi");
+      toast("Tu suis " + nom + " !");
+    }
     _verrouEcriture(_ecritureSuiviEnCours, userId, supaFollowUser(userId)).then(function (r) {
       // ⚠️ ÉCHEC RÉEL = ANNULER L'OPTIMISTE (invariant CLAUDE.md). Le lot ajoute
       // deux refus possibles sur `follows` (blocage, débit) : sans cette branche,
@@ -3658,8 +3730,27 @@ function toggleFollowUser(userId, userName) {
       // clients des suites : seul un `ok: false` EXPLICITE est un refus.
       if (r && r.ok === false) {
         state.user.following = (state.user.following || []).filter(function (id) { return id !== userId; });
+        state.user.followingPending = (state.user.followingPending || []).filter(function (id) { return id !== userId; });
         _peindreBoutonsSuivi(userId, "aucun");
         toast("Impossible de suivre " + nom + " pour le moment");
+        saveState();
+        return;
+      }
+      // ⚠️ LE VERDICT CORRIGE DANS LES DEUX SENS depuis que l'optimiste peut
+      // partir en « attente » : un compte repassé PUBLIC entre le chargement du
+      // profil et le tap rend 'accepted', et laisser « Demande envoyée » sur un
+      // abonnement acquis ferait attendre une acceptation qui ne viendra jamais.
+      // ⚠️ SEUL UN 'accepted' EXPLICITE PROMEUT. La règle symétrique est écrite
+      // quelques lignes plus haut pour le refus (« seul un `ok: false` EXPLICITE
+      // est un refus ») : `r === true` ou un objet sans `status` satisfont
+      // « ≠ pending » et feraient annoncer un abonnement acquis à quelqu'un dont
+      // la demande attend encore — et sur une base sans colonne `status` il n'y a
+      // aucun mécanisme d'acceptation.
+      if (r && r.status === "accepted" && prive) {
+        state.user.followingPending = (state.user.followingPending || []).filter(function (id) { return id !== userId; });
+        if (state.user.following.indexOf(userId) < 0) state.user.following.push(userId);
+        _peindreBoutonsSuivi(userId, "suivi");
+        toast("Tu suis " + nom + " !");
         saveState();
         return;
       }
@@ -3667,7 +3758,7 @@ function toggleFollowUser(userId, userName) {
       state.user.following = (state.user.following || []).filter(function (id) { return id !== userId; });
       if (state.user.followingPending.indexOf(userId) < 0) state.user.followingPending.push(userId);
       _peindreBoutonsSuivi(userId, "attente");
-      toast("Demande envoyée à " + nom + " — tu verras ses publications dès qu'elle sera acceptée");
+      if (!prive) toast("Demande envoyée à " + nom + " — tu verras ses publications dès qu'elle l'aura acceptée");
       saveState();
     }).catch(function () {});
     saveState();
@@ -3686,11 +3777,23 @@ function toggleFollowUser(userId, userName) {
 function _peindreBoutonsSuivi(userId, etat) {
   // L'état est écrit AVANT chaque appel : le libellé se lit dans la seule table.
   var libelle = libelleBoutonSuivi(userId);
+  // Appelée NUE, comme `libelleBoutonSuivi` juste au-dessus : un `typeof` y
+  // masquerait une vraie erreur d'ordre de chargement au lieu de la faire voir.
+  var aide = aideBoutonSuivi(userId);
   _boutonsSuivi(userId).forEach(function (btn) {
     btn.innerHTML = libelle;
     if (etat === "suivi") {
       btn.style.background = "var(--accent)";
       btn.style.color = "#fff";
+      btn.style.borderColor = "var(--accent)";
+    } else if (etat === "attente") {
+      // ⚠️ « EN ATTENTE » N'EST PAS « PAS ENCORE DEMANDÉ ». Peint comme l'état
+      // neutre, le bouton était indiscernable d'un « Suivre » qui n'aurait rien
+      // fait — d'où le second tap qui a détruit la demande en production. Un
+      // CONTOUR accent, jamais le violet plein, qui reste la marque du suivi
+      // acquis : trois états, trois aspects.
+      btn.style.background = "";
+      btn.style.color = "var(--accent)";
       btn.style.borderColor = "var(--accent)";
     } else {
       btn.style.background = "";
@@ -3698,7 +3801,12 @@ function _peindreBoutonsSuivi(userId, etat) {
       btn.style.borderColor = "";
     }
     if (etat === "attente") btn.setAttribute("data-suivi-attente", "1"); else btn.removeAttribute("data-suivi-attente");
+    // L'infobulle ET l'étiquette d'accessibilité disent ce qu'un tap fera : un
+    // bouton d'état muet sur son geste est ce qui a coûté la demande du 22/09.
+    if (aide) { btn.setAttribute("title", aide); btn.setAttribute("aria-label", aide); }
+    else { btn.removeAttribute("title"); btn.removeAttribute("aria-label"); }
   });
+  _majBlocPriveVisite(userId);
 }
 
 // ======== MODÉRATION (UI) ========

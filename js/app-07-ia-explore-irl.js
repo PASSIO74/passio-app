@@ -375,7 +375,7 @@ function openPassionExplorer(pid, retourUserId, libelleConnu) {
       // ⚠️ `data-follow-uid` ET PAS `id` : l'écran « Rechercher » émet déjà
       // `followBtn_<uid>` pour les mêmes comptes, et il PRÉCÈDE la modale dans le
       // document — `getElementById` retournait donc le bouton caché derrière.
-      '<button class="btn small" data-follow-uid="' + escapeHtml(u.id) + '"' +
+      '<button class="btn small" data-follow-uid="' + escapeHtml(u.id) + '"' + attrsBoutonSuivi(u.id) +
         ' onclick="event.stopPropagation();toggleFollowUser(\'' + escapeJsArg(u.id) + '\',\'' + escapeJsArg(u.name || "") + '\')">' +
         libelleBoutonSuivi(u.id) + '</button>' +
     '</div>';
@@ -486,7 +486,7 @@ function _pexChargerCreateurs(pid, creatorsSeed) {
             '<div class="list-row-title">' + escapeHtml(nom) + '</div>' +
             '<div class="list-row-meta">' + escapeHtml(String(u.bio || "").slice(0, 60)) + '</div>' +
           '</div>' +
-          '<button class="btn small" data-follow-uid="' + escapeHtml(u.id) + '"' +
+          '<button class="btn small" data-follow-uid="' + escapeHtml(u.id) + '"' + attrsBoutonSuivi(u.id) +
             ' onclick="event.stopPropagation();toggleFollowUser(\'' + escapeJsArg(u.id) + '\',\'' + escapeJsArg(nom) + '\')">' +
             libelleBoutonSuivi(u.id) + '</button>' +
         '</div>';
