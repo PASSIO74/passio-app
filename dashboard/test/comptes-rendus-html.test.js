@@ -113,27 +113,28 @@ test("U4 : l'Accueil demande /comptes-rendus dans le MÊME Promise.all que /atte
   assert.ok(/^function comptesRendusHtml\(cr\)/m.test(APP), "comptesRendusHtml existe");
 });
 
-test("U3 : mobile.js — renderComptesRendus construit ses nœuds (ni innerHTML ni insertAdjacentHTML) ; lienGithub n'accepte que https://github.com/", () => {
-  const rendu = bloc(MOBILE, /^function renderComptesRendus\(cr\) \{[\s\S]*?\n\}$/m, "renderComptesRendus", "mobile.js");
-  assert.ok(!/innerHTML|insertAdjacentHTML|outerHTML|document\.write/.test(rendu), "rendu par card()/textContent seulement");
-  assert.ok(!/\.href\s*=/.test(rendu), "aucun href posé hors lienGithub");
-  assert.ok(/\bcard\(/.test(rendu) && /lienGithub\(/.test(rendu), rendu);
-  const lien = bloc(MOBILE, /^function lienGithub\(el, url\) \{[\s\S]*?\n\}$/m, "lienGithub", "mobile.js");
-  assert.ok(lien.includes("^https:\\/\\/github\\.com\\/"), "le filtre github.com est là : " + lien);
-  assert.ok(/if \(!\/\^https:\\\/\\\/github\\\.com\\\/\/\.test\(u\)\) return;/.test(lien), "… et il REFUSE (return) tout le reste : " + lien);
-  assert.ok(lien.includes('l.rel = "noopener"') && lien.includes('l.textContent ='), lien);
-  // crState : un état hors contrat (clé du prototype) ne devient pas une fonction dans la pastille.
-  assert.ok(/^const crState = \(etat\) => \(Object\.hasOwn\(CR_STATE, etat\) \? CR_STATE\[etat\] : "UNKNOWN"\);$/m.test(MOBILE), "crState par hasOwn");
-  assert.ok(!/CR_STATE\[[^\]]+\]\s*\|\|/.test(MOBILE), "aucun lookup direct `CR_STATE[x] ||` (constructor → fonction)");
+test("U3 : mobile.js — rendreComptesRendus construit ses nœuds (ni innerHTML ni insertAdjacentHTML) ; lienDetail n'accepte que https://github.com/ ou une ancre locale", () => {
+  const rendu = bloc(MOBILE, /^function rendreComptesRendus\(d\) \{[\s\S]*?\n\}$/m, "rendreComptesRendus", "mobile.js");
+  assert.ok(!/innerHTML|insertAdjacentHTML|outerHTML|document\.write/.test(rendu), "rendu par carte()/textContent seulement");
+  assert.ok(!/\.href\s*=/.test(rendu), "aucun href posé hors lienDetail");
+  assert.ok(/\bcarte\(/.test(rendu) && /lienDetail\(/.test(rendu), rendu);
+  const lien = bloc(MOBILE, /^function lienDetail\(c, cible\) \{[\s\S]*?\n\}$/m, "lienDetail", "mobile.js");
+  assert.ok(lien.includes("/^https:\\/\\/github\\.com\\//.test(u)"), "le filtre github.com est là : " + lien);
+  assert.ok(lien.includes("/^#[a-z0-9_-]+$/i.test(u)"), "… l'ancre locale est bornée à [a-z0-9_-] : " + lien);
+  assert.ok(lien.includes("if (!href) return;"), "… et tout le reste est REFUSÉ : " + lien);
+  assert.ok(lien.includes('a.rel = "noopener"'), lien);
+  // crEtat : un état hors contrat (clé du prototype) ne devient pas une fonction dans l'étiquette.
+  assert.ok(/^const crEtat = \(e\) => \(Object\.hasOwn\(CR_ETAT, e\) \? CR_ETAT\[e\] : \["Inconnu", "gris"\]\);$/m.test(MOBILE), "crEtat par hasOwn");
+  assert.ok(!/CR_ETAT\[[^\]]+\]\s*\|\|/.test(MOBILE), "aucun lookup direct `CR_ETAT[x] ||` (constructor → fonction)");
 });
 
-test("U5 : le Pilot mobile demande /comptes-rendus dans sa liste de fetch, rend renderComptesRendus(map.comptes.value) et mobile.html porte la section sous m-attente", () => {
+test("U5 : le Pilot mobile demande /comptes-rendus dans sa liste de fetch, rend les comptes rendus sur succès et « non lu » sur échec", () => {
   assert.ok(MOBILE.includes('["comptes", "/comptes-rendus"]'), "la route est dans la liste des requêtes (Promise.allSettled)");
-  assert.ok(MOBILE.includes('map.comptes.status === "fulfilled" ? renderComptesRendus(map.comptes.value) : unavailable("comptesRendus", "Comptes rendus non lus", map.comptes.reason)'),
-    "rendu sur succès, « non lus » sur échec — jamais une carte vide");
+  const rendu = bloc(MOBILE, /^function rendreComptesRendus\(d\) \{[\s\S]*?\n\}$/m, "rendreComptesRendus", "mobile.js");
+  assert.ok(rendu.includes('if (!cr) { nonLu("comptesRendus", "Comptes rendus", d.erreurs.comptes); return; }'),
+    "échec → « non lu », jamais une carte vide");
   assert.ok(HTML.includes('id="comptesRendus"'), "le conteneur existe");
-  assert.ok(/<section class="m-attente m-comptes-rendus" aria-label="Comptes rendus">/.test(HTML), "la section m-comptes-rendus");
-  assert.ok(HTML.indexOf('id="attente"') < HTML.indexOf('id="comptesRendus"'), "sous « Ce qui t'attend »");
-  assert.ok(HTML.indexOf('id="comptesRendus"') < HTML.indexOf('<nav class="m-tabs"'), "dans l'onglet Santé, avant la barre d'onglets");
-  assert.ok(MOBILE.includes("aucun tableau de veille lu (première exécution après fusion ?)"), "le message du cahier quand la veille est null");
+  const machines = HTML.slice(HTML.indexOf('<section id="machines"'), HTML.indexOf('<section id="reglages"'));
+  assert.ok(machines.includes('id="comptesRendus"'), "dans l'onglet Machines");
+  assert.ok(MOBILE.includes("aucun tableau de veille lu"), "le message quand la veille est null");
 });

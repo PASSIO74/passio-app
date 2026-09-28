@@ -1,12 +1,20 @@
 {
-  "name": "PASSIO Pilot",
-  "short_name": "Passio Pilot",
-  "description": "Pilotage mobile du Control Center et de Sentinel",
+  "name": "PASSIO Pilotage",
+  "short_name": "Pilotage",
+  "description": "Le centre de pilotage PASSIO dans la poche : santé de l'app, alertes, utilisateurs, machines.",
+  "id": "/mobile.html",
   "start_url": "/mobile.html",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#0a0810",
-  "theme_color": "#0a0810",
+  "background_color": "#0b0912",
+  "theme_color": "#0b0912",
   "orientation": "portrait-primary",
-  "categories": ["productivity", "utilities"]
+  "lang": "fr",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    { "src": "/icons/pilot-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/pilot-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/pilot-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icons/pilot.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
 }

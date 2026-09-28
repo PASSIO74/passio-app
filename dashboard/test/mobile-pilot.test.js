@@ -60,9 +60,10 @@ test("one unavailable domain cannot blank the whole mobile cockpit", () => {
 test("Sentinel is visible from mobile but remains read-only", () => {
   const html = read("mobile.html");
   const js = read("js/mobile.js");
-  assert.match(html, /data-tab="sentinel"/);
+  assert.match(html, /data-tab="machines"/);
+  assert.match(html, /id="sentinelleEtat"/);
   assert.match(js, /\/sentinel\?limit=20/);
-  assert.doesNotMatch(js, /\/sentinel\/toggle|\/sentinel\/[^"']+\/merge/);
+  assert.doesNotMatch(js, /\/sentinel\/toggle|\/sentinel\/[^"'`]+\/merge/);
 });
 
 test("mobile renders autopilot result without exposing a mutation endpoint", () => {

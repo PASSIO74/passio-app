@@ -132,7 +132,6 @@ test("inventaire des routes qu'AUCUNE page n'appelle", () => {
     "GET /control/history",        // historique du poste de commande
     "GET /git/diff",               // réservé à l'écran de revue de correctif
     "GET /flags",                  // registre de drapeaux sans effet sur l'app : la vue a été retirée (2026-09-18), les routes restent
-    "GET /health",                 // sonde de vie (superviseur, supervision externe)
     "GET /releases",               // historique de release
     "GET /residus",                // registre des résidus : le brief lit le domaine via /readiness ; l'écran détaillé est à venir
     "GET /test-sessions/:id",      // fiche unitaire, la liste suffit à l'écran

@@ -1,5 +1,8 @@
-const CACHE = "passio-pilot-v3";
-const STATIC = ["/mobile.html", "/css/mobile.css", "/js/mobile.js", "/mobile-manifest.webmanifest"];
+const CACHE = "passio-pilot-v4";
+const STATIC = [
+  "/mobile.html", "/css/mobile.css", "/js/mobile.js", "/mobile-manifest.webmanifest",
+  "/icons/pilot.svg", "/icons/pilot-180.png", "/icons/pilot-192.png", "/icons/pilot-512.png",
+];
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE).then(c => c.addAll(STATIC)).then(() => self.skipWaiting()));
@@ -19,8 +22,8 @@ self.addEventListener("fetch", event => {
   if (event.request.method !== "GET") return;
   if (u.pathname.startsWith("/api/")) return; // preuves vivantes : jamais interceptées ni mises en cache
   // Le SW est servi depuis la racine pour contrôler mobile.html, mais il ne doit
-  // JAMAIS devenir le cache général du Control Center. Seuls les quatre assets
-  // explicitement nécessaires au pilot mobile sont sous sa responsabilité.
+  // JAMAIS devenir le cache général du Control Center. Seuls les assets
+  // explicitement nécessaires au pilot mobile (page, style, script, manifeste, icônes) sont sous sa responsabilité.
   if (!STATIC.includes(u.pathname)) return;
 
   // Network-first : quand le téléphone est en ligne, il récupère la surface la

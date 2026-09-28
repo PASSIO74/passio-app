@@ -1,74 +1,153 @@
 <!doctype html>
-<html lang="fr" data-theme="dark">
+<html lang="fr">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <meta name="theme-color" content="#0a0810" />
+  <meta name="theme-color" content="#0b0912" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="Passio Pilot" />
-  <title>Passio Pilot</title>
+  <meta name="apple-mobile-web-app-title" content="Pilotage" />
+  <title>PASSIO Pilotage</title>
   <link rel="manifest" href="mobile-manifest.webmanifest" />
+  <link rel="icon" type="image/svg+xml" href="icons/pilot.svg" />
+  <link rel="apple-touch-icon" href="icons/pilot-180.png" />
   <link rel="stylesheet" href="css/mobile.css" />
 </head>
 <body>
-  <header class="m-head">
-    <div><strong>PASSIO</strong><span>Pilot mobile</span></div>
-    <button id="refresh" class="m-btn">Actualiser</button>
-  </header>
-  <main class="m-main">
-    <section class="m-hero">
-      <div class="m-label">Release Guardian</div>
-      <div class="m-hero-row"><span id="decision" class="m-pill">—</span><strong id="headline">Chargement…</strong></div>
-      <small id="generated">—</small>
-    </section>
+  <!-- ─── Écran : poste injoignable ─────────────────────────────────────── -->
+  <section id="ecranInjoignable" class="ecran-plein" hidden>
+    <img src="icons/pilot-192.png" alt="" class="logo" width="72" height="72" />
+    <h1>Le pilotage ne répond pas</h1>
+    <p>Le téléphone n'arrive pas à joindre le poste de pilotage.</p>
+    <ul class="aide-liste">
+      <li>Le PC est-il allumé, avec le pilotage lancé ?</li>
+      <li>Le téléphone est-il sur le <strong>même Wi-Fi</strong> que le PC ?</li>
+      <li>Sur le PC, lance une fois <strong>Autoriser-Telephone.cmd</strong> (dossier <code>dashboard</code>).</li>
+    </ul>
+    <button id="reessayer" class="btn btn-plein" type="button">Réessayer</button>
+  </section>
 
-    <section class="m-attente" aria-label="Ce qui t'attend">
-      <h2>Ce qui t'attend</h2><div id="attente" class="m-stack"></div>
-      <h2>Les machines ont fait (7 j)</h2><div id="machines" class="m-stack"></div>
-    </section>
+  <!-- ─── Écran : connexion ─────────────────────────────────────────────── -->
+  <section id="ecranConnexion" class="ecran-plein" hidden>
+    <img src="icons/pilot-192.png" alt="" class="logo" width="72" height="72" />
+    <h1>PASSIO Pilotage</h1>
+    <p>Connecte-toi avec les identifiants du centre de pilotage.</p>
+    <form id="formConnexion" class="form" autocomplete="on">
+      <label>Identifiant
+        <input id="cxUser" name="username" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required />
+      </label>
+      <label>Mot de passe
+        <input id="cxPass" name="password" type="password" autocomplete="current-password" required />
+      </label>
+      <label class="case"><input id="cxRemember" type="checkbox" checked /> Rester connecté sur ce téléphone</label>
+      <p id="cxErreur" class="erreur" role="alert" hidden></p>
+      <button id="cxBouton" class="btn btn-plein" type="submit">Se connecter</button>
+    </form>
+  </section>
 
-    <section class="m-attente m-comptes-rendus" aria-label="Comptes rendus">
-      <h2>Comptes rendus</h2><div id="comptesRendus" class="m-stack"></div>
-    </section>
+  <!-- ─── Application ───────────────────────────────────────────────────── -->
+  <div id="app" hidden>
+    <header class="entete">
+      <div class="entete-texte">
+        <h1 id="titreOnglet">Accueil</h1>
+        <span id="etatMaj" class="etat-maj">Chargement…</span>
+      </div>
+      <button id="actualiser" class="btn-rond" type="button" aria-label="Actualiser">↻</button>
+    </header>
 
-    <nav class="m-tabs" aria-label="Pilotage">
-      <button class="active" data-tab="home">Santé</button>
-      <button data-tab="sentinel">Sentinel</button>
-      <button data-tab="incidents">Incidents</button>
-      <button data-tab="changes">Changements</button>
-      <button data-tab="tests">Tests</button>
+    <main class="contenu">
+      <!-- Accueil -->
+      <section id="accueil" class="onglet actif" data-titre="Accueil">
+        <div id="verdict" class="verdict gris">
+          <span class="verdict-point" aria-hidden="true"></span>
+          <div><strong id="verdictTitre">Chargement…</strong><p id="verdictDetail"></p></div>
+        </div>
+        <div id="chiffres" class="chiffres"></div>
+        <h2>Ce qui t'attend</h2>
+        <div id="attente" class="pile"></div>
+        <h2>Activité récente</h2>
+        <div id="activite" class="chiffres chiffres-petits"></div>
+      </section>
+
+      <!-- Alertes -->
+      <section id="alertes" class="onglet" data-titre="Alertes">
+        <div class="titre-ligne"><h2>Alertes non vues</h2><button id="toutVu" class="btn btn-petit" type="button" hidden>Tout marquer vu</button></div>
+        <div id="listeAlertes" class="pile"></div>
+        <h2>Bugs ouverts</h2>
+        <div id="listeBugs" class="pile"></div>
+        <h2>Incidents ouverts</h2>
+        <div id="listeIncidents" class="pile"></div>
+      </section>
+
+      <!-- Utilisateurs -->
+      <section id="utilisateurs" class="onglet" data-titre="Utilisateurs">
+        <h2>En ce moment</h2>
+        <div id="maintenant" class="chiffres"></div>
+        <h2>Inscriptions</h2>
+        <div id="inscriptions" class="chiffres chiffres-petits"></div>
+        <div id="grapheInscriptions" class="graphe" aria-label="Inscriptions des 14 derniers jours"></div>
+        <h2>Fréquentation (30 j)</h2>
+        <div id="frequentation" class="chiffres chiffres-petits"></div>
+        <h2>Appareils</h2>
+        <div id="listeAppareils" class="pile"></div>
+      </section>
+
+      <!-- Machines -->
+      <section id="machines" class="onglet" data-titre="Machines">
+        <h2>Les machines ont fait (7 j)</h2>
+        <div id="machinesFait" class="pile"></div>
+        <h2>Sentinelle</h2>
+        <div id="sentinelleEtat" class="pile"></div>
+        <details class="repli"><summary>Diagnostics récents</summary><div id="sentinelleListe" class="pile"></div></details>
+        <h2>Comptes rendus</h2>
+        <div id="comptesRendus" class="pile"></div>
+        <h2>Mise en production</h2>
+        <div id="miseEnProd" class="pile"></div>
+        <details class="repli"><summary>Contrôles détaillés</summary><div id="controles" class="pile"></div></details>
+        <details class="repli"><summary>Actions conseillées</summary><div id="actionsConseillees" class="pile"></div></details>
+        <details class="repli"><summary>Ce qui a changé</summary><div id="changements" class="pile"></div></details>
+        <details class="repli"><summary>Observation</summary><div id="observation" class="pile"></div></details>
+        <h2>Tests</h2>
+        <p class="discret">Seules les suites autorisées peuvent être lancées. Aucun terminal n'est exposé.</p>
+        <div id="listeTests" class="pile"></div>
+      </section>
+
+      <!-- Réglages -->
+      <section id="reglages" class="onglet" data-titre="Réglages">
+        <h2>Compte</h2>
+        <div id="compte" class="pile"></div>
+        <h2>Actualisation</h2>
+        <div class="carte">
+          <label class="case case-large"><input id="autoMaj" type="checkbox" checked /> Actualiser automatiquement toutes les 30 s</label>
+        </div>
+        <h2>Installer sur ce téléphone</h2>
+        <div class="carte">
+          <p id="installTexte" class="discret"></p>
+          <button id="installer" class="btn btn-plein" type="button" hidden>Installer l'application</button>
+        </div>
+        <h2>Ouvrir depuis le téléphone</h2>
+        <div id="adresses" class="pile"></div>
+        <h2>Liens</h2>
+        <div class="pile">
+          <a class="carte lien-carte" href="/">Version ordinateur du pilotage <span aria-hidden="true">›</span></a>
+          <a class="carte lien-carte" href="https://passio-app.netlify.app" target="_blank" rel="noopener">Ouvrir PASSIO <span aria-hidden="true">›</span></a>
+        </div>
+        <button id="deconnexion" class="btn btn-danger" type="button">Se déconnecter</button>
+      </section>
+
+      <div id="bandeauErreur" class="bandeau-erreur" role="status" hidden></div>
+    </main>
+
+    <nav class="barre" aria-label="Navigation">
+      <button class="actif" data-tab="accueil" type="button"><span class="ico" aria-hidden="true">⌂</span>Accueil</button>
+      <button data-tab="alertes" type="button"><span class="ico" aria-hidden="true">!</span>Alertes<span id="badgeAlertes" class="badge" hidden></span></button>
+      <button data-tab="utilisateurs" type="button"><span class="ico" aria-hidden="true">☺</span>Utilisateurs</button>
+      <button data-tab="machines" type="button"><span class="ico" aria-hidden="true">⚙</span>Machines</button>
+      <button data-tab="reglages" type="button"><span class="ico" aria-hidden="true">≡</span>Réglages</button>
     </nav>
+  </div>
 
-    <section id="home" class="m-pane active">
-      <div id="gates" class="m-stack"></div>
-      <h2>3 actions maintenant</h2><div id="actions" class="m-stack"></div>
-      <h2>Observation</h2><div id="observation" class="m-stack"></div>
-    </section>
-
-    <section id="sentinel" class="m-pane">
-      <h2>Sentinel</h2>
-      <p class="m-muted">État vivant, file, réparations et derniers diagnostics. Ce panneau reste en lecture seule.</p>
-      <div id="sentinelState" class="m-stack"></div>
-      <h2>Diagnostics récents</h2><div id="sentinelList" class="m-stack"></div>
-    </section>
-
-    <section id="incidents" class="m-pane">
-      <h2>Incidents ouverts</h2><div id="incidentList" class="m-stack"></div>
-    </section>
-
-    <section id="changes" class="m-pane">
-      <h2>Qu’est-ce qui a changé ?</h2><div id="changeList" class="m-stack"></div>
-    </section>
-
-    <section id="tests" class="m-pane">
-      <h2>Tests autorisés</h2>
-      <p class="m-muted">Aucun terminal n’est exposé. Seules les suites en liste blanche du Control Center peuvent être lancées.</p>
-      <div id="testList" class="m-stack"></div>
-    </section>
-
-    <div id="error" class="m-error" hidden></div>
-  </main>
   <script type="module" src="js/mobile.js"></script>
 </body>
 </html>
