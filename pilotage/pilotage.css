@@ -166,3 +166,13 @@ a { color: var(--accent); }
 
 .barre.quatre { grid-template-columns: repeat(4, 1fr); }
 .btn-google { width: 100%; background: #fff; color: #1f1f1f; border-color: #dadce0; }
+.bandeau-ok { margin-top: 16px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--vert);
+  background: color-mix(in srgb, var(--vert) 12%, var(--carte)); font-size: 14px; }
+.jauge { height: 10px; border-radius: 5px; background: var(--ligne); overflow: hidden; margin-top: 10px; }
+.jauge > span { display: block; height: 100%; border-radius: 5px; background: var(--vert); }
+.jauge.orange > span { background: var(--orange); }
+.jauge.rouge > span { background: var(--rouge); }
+.mini-graphe { display: flex; align-items: flex-end; gap: 3px; height: 34px; margin-top: 10px; }
+.mini-graphe span { flex: 1; background: var(--accent-plein); border-radius: 2px 2px 0 0; min-height: 2px; }
+.mini-graphe span.zero { background: var(--ligne); }
+.repli p { margin: 6px 14px; }

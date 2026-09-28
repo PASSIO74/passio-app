@@ -23,20 +23,40 @@ async function poserSession(page, email = "passioadmin@gmail.com") {
     }));
   }, ["sb-njkiyoklssvefstljemx-auth-token", jwt(email), email]);
 }
+const MAINTENANT = new Date().toISOString();
+const SERIE = [0, 1, 0, 2, 1, 0, 3].map((n, i) => ({ jour: "2026-09-2" + (2 + i), n }));
 const ETAT = {
-  genereLe: new Date().toISOString(),
+  genereLe: MAINTENANT,
   verdict: { couleur: "orange", titre: "À surveiller", raisons: ["1 enquête(s) Sentinelle en cours"] },
-  sante: { evenements15: 40, erreursJs15: 2, api5xx15: 0, erreurs24h: 3, principales: [{ message: CHARGE, n: 3, comptes: 1, dernier: new Date().toISOString() }] },
-  utilisateurs: { total: 41, inscritsJour: 1, inscritsSemaine: 6, maintenant: { comptes: 2, appareils: 3 }, aujourdhui: { comptes: 9, appareils: 12 } },
-  signalements: { ouverts: 0 },
+  disponibilite: { repond: true, depuis: MAINTENANT, veilleLe: MAINTENANT },
+  sante: { evenements15: 40, erreursJs15: 2, api5xx15: 0, erreurs24h: 3, principales: [] },
+  erreurs: { serie: SERIE, details: [{ message: CHARGE, n: 3, comptes: 1, plateformes: [{ nom: "Android", n: 3 }], pages: [{ nom: "/fil", n: 3 }], premier: MAINTENANT, dernier: MAINTENANT, serie: SERIE }] },
+  utilisateurs: { total: 41, inscritsJour: 1, inscritsSemaine: 6, serieInscriptions: SERIE, maintenant: { comptes: 2, appareils: 3 }, aujourdhui: { comptes: 9, appareils: 12 } },
+  signalements: { ouverts: 1, liste: [{ id: "rep_1", type: "post", motif: CHARGE, le: MAINTENANT }] },
+  capacite: { mesuresServeur: true, jauges: [
+    { cle: "connexions", libelle: "Connexions en direct (comptes)", valeur: 360, plafond: 500, unite: "", pct: 72, couleur: "orange", estimation: true },
+    { cle: "base", libelle: "Base de données", valeur: 104857600, plafond: 8589934592, unite: "octets", pct: 1.2, couleur: "vert", estimation: false },
+  ] },
+  alertes: { appareils: 2, vapid: true },
   github: {
-    issues: [{ numero: 12, titre: CHARGE, labels: ["sentinelle", "humain"], url: "javascript:alert(1)", depuis: new Date().toISOString(), pr: false },
-      { numero: 13, titre: "fix: correctif", labels: [], url: "https://github.com/PASSIO74/passio-app/pull/13", depuis: new Date().toISOString(), pr: true }],
-    runs: { sentinelle: { etat: "completed", conclusion: "success", le: new Date().toISOString(), url: "https://github.com/PASSIO74/passio-app/actions/runs/1" }, veille: null, deploy: { etat: "completed", conclusion: "success", le: new Date().toISOString(), url: null } },
+    issues: [{ numero: 12, titre: CHARGE, labels: ["sentinelle", "humain"], url: "javascript:alert(1)", depuis: MAINTENANT, pr: false, pause: false },
+      { numero: 13, titre: "fix: correctif", labels: [], url: "https://github.com/PASSIO74/passio-app/pull/13", depuis: MAINTENANT, pr: true, pause: false }],
+    runs: { sentinelle: { etat: "completed", conclusion: "success", le: MAINTENANT, url: "https://github.com/PASSIO74/passio-app/actions/runs/1" }, veille: null, deploy: { etat: "completed", conclusion: "success", le: MAINTENANT, url: null } },
+    pause: false,
   },
   relancesPossibles: [{ cle: "sentinelle", libelle: "Sentinelle" }],
+  gestesGithub: true,
   nonLus: [],
 };
+
+/** Route la fonction : l'état pour « etat », { ok, message } pour tout geste, et garde les corps reçus. */
+async function routerFonction(page, envois, etat = ETAT) {
+  await page.route(FONCTION, async (r) => {
+    const corps = r.request().postDataJSON();
+    envois.push({ corps, auth: r.request().headers().authorization || "" });
+    await r.fulfill({ json: corps.action === "etat" ? etat : { ok: true, message: "Fait (banc)." } });
+  });
+}
 
 test.use({ viewport: { width: 390, height: 780 }, isMobile: true, hasTouch: true });
 
@@ -48,22 +68,30 @@ test("① sans session : écran de connexion, jamais l'application", async ({ pa
   await expect(page.locator("#app")).toBeHidden();
 });
 
-test("② état rendu, titre hostile en texte, lien non-GitHub refusé, aucune barre horizontale", async ({ page }) => {
+test("② état rendu, titres hostiles en texte, lien non-GitHub refusé, aucune barre horizontale", async ({ page }) => {
   const soucis = [];
   page.on("pageerror", (e) => soucis.push(e.message));
   await poserSession(page);
-  await page.route(FONCTION, (r) => r.fulfill({ json: ETAT }));
+  await routerFonction(page, []);
   await page.goto("/pilotage/");
   await expect(page.locator("#verdictTitre")).toHaveText("À surveiller");
+  await expect(page.locator("#site")).toContainText("Le site répond");
   await expect(page.locator("#badgeAccueil")).toHaveText("1");
+  await expect(page.locator("#badgeMachines")).toHaveText("1");
   expect(await page.textContent("#attente")).toContain(CHARGE);
+  expect(await page.textContent("#erreurs")).toContain(CHARGE);
   expect(await page.evaluate(() => window.__pwn)).toBeUndefined();
-  expect(await page.locator('#attente a[href^="javascript"]').count()).toBe(0);
-  for (const t of ["machines", "utilisateurs", "reglages", "accueil"]) {
+  expect(await page.locator('a[href^="javascript"]').count()).toBe(0);
+  for (const t of ["machines", "utilisateurs", "capacite", "reglages", "accueil"]) {
     await page.click(`.barre button[data-tab="${t}"]`);
     await expect(page.locator("#" + t)).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
   }
+  expect(await page.textContent("#signalements")).toContain(CHARGE);
+  expect(await page.evaluate(() => window.__pwn)).toBeUndefined();
+  await expect(page.locator("#jauges")).toContainText("72 %");
+  await expect(page.locator("#jauges")).toContainText("100 Mo sur 8 Go");
+  await expect(page.locator("#alertes")).toContainText("2 appareil(s)");
   expect(soucis).toEqual([]);
 });
 
@@ -75,20 +103,58 @@ test("③ un autre compte reçoit le refus en clair", async ({ page }) => {
   await expect(page.locator("#refusTexte")).toContainText("quelquun@exemple.fr");
 });
 
-test("④ relancer envoie la cible de la liste, avec le jeton de session", async ({ page }) => {
+test("④ chaque geste envoie EXACTEMENT sa demande, avec le jeton, après confirmation", async ({ page }) => {
   await poserSession(page);
   const envois = [];
-  await page.route(FONCTION, async (r) => {
-    const corps = r.request().postDataJSON();
-    envois.push({ corps, auth: r.request().headers().authorization || "" });
-    await r.fulfill({ json: corps.action === "relancer" ? { ok: true } : ETAT });
-  });
+  await routerFonction(page, envois);
   page.on("dialog", (d) => d.accept());
   await page.goto("/pilotage/");
+  await expect(page.locator("#verdictTitre")).toHaveText("À surveiller");
+  const dernierGeste = () => envois.filter((e) => e.corps.action !== "etat").pop();
+
   await page.click('.barre button[data-tab="machines"]');
+  await page.click('#prs button:has-text("Fusionner")');
+  await expect(page.locator("#bandeauOk")).toContainText("Fait (banc).");
+  expect(dernierGeste().corps).toEqual({ action: "fusionner", numero: 13 });
+  expect(dernierGeste().auth).toMatch(/^Bearer ey/);
+
+  await page.click('#prs button:has-text("Refuser")');
+  await expect.poll(() => dernierGeste().corps).toEqual({ action: "fermer", numero: 13 });
+  await page.click('#pause button:has-text("Mettre en pause")');
+  await expect.poll(() => dernierGeste().corps).toEqual({ action: "pause" });
   await page.click('#relances button:has-text("Lancer maintenant")');
-  await expect(page.locator("#relances button")).toHaveText("Lancé ✓");
-  const relance = envois.find((e) => e.corps.action === "relancer");
-  expect(relance.corps).toEqual({ action: "relancer", cible: "sentinelle" });
-  expect(relance.auth).toMatch(/^Bearer ey/);
+  await expect.poll(() => dernierGeste().corps).toEqual({ action: "relancer", cible: "sentinelle" });
+
+  await page.click('.barre button[data-tab="utilisateurs"]');
+  await page.click('#signalements button:has-text("Rejeter")');
+  await expect.poll(() => dernierGeste().corps).toEqual({ action: "signalement", id: "rep_1", statut: "dismissed" });
+});
+
+test("⑤ un geste refusé à la confirmation n'envoie rien", async ({ page }) => {
+  await poserSession(page);
+  const envois = [];
+  await routerFonction(page, envois);
+  page.on("dialog", (d) => d.dismiss());
+  await page.goto("/pilotage/");
+  await page.click('.barre button[data-tab="machines"]');
+  await page.click('#prs button:has-text("Fusionner")');
+  await page.waitForTimeout(300);
+  expect(envois.filter((e) => e.corps.action !== "etat")).toEqual([]);
+});
+
+test("⑥ sans jeton GitHub : aucun bouton de geste GitHub, l'explication à la place", async ({ page }) => {
+  await poserSession(page);
+  await routerFonction(page, [], { ...ETAT, gestesGithub: false, relancesPossibles: [] });
+  await page.goto("/pilotage/");
+  await page.click('.barre button[data-tab="machines"]');
+  await expect(page.locator("#relances")).toContainText("PILOTAGE_GITHUB_TOKEN");
+  expect(await page.locator('#prs button, #pause button, #attente button').count()).toBe(0);
+});
+
+test("⑦ site injoignable : dit en tête d'accueil", async ({ page }) => {
+  await poserSession(page);
+  await routerFonction(page, [], { ...ETAT, disponibilite: { repond: false, depuis: MAINTENANT, veilleLe: MAINTENANT }, verdict: { couleur: "rouge", titre: "Problème en cours", raisons: ["le site ne répond pas"] } });
+  await page.goto("/pilotage/");
+  await expect(page.locator("#site")).toContainText("Le site ne répond pas");
+  await expect(page.locator("#verdict")).toHaveClass(/rouge/);
 });

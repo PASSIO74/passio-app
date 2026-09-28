@@ -104,3 +104,113 @@ export function verdict(e) {
   if (!e || !e.sante) return { couleur: "gris", titre: "Pas de nouvelles", raisons: ["La production n'a pas pu être lue."] };
   return { couleur: "vert", titre: "Tout va bien", raisons: ["Aucune erreur récente, rien d'urgent."] };
 }
+
+// ─── Lot 2 (2026-09-28) : alertes, détails, capacité, disponibilité ──────────
+
+/** Titre de l'issue qui met la Sentinelle en pause (convention de sentinelle-autonome.yml). */
+export const TITRE_PAUSE = "[SENTINELLE PAUSE] depuis le pilotage";
+export const estPause = (titre) => /\[SENTINELLE PAUSE\]/.test(String(titre || ""));
+
+/** Famille d'appareil lisible depuis un user-agent (rien d'autre n'en sort). */
+export function plateforme(ua) {
+  const u = String(ua || "");
+  if (/iPhone|iPad|iPod/i.test(u)) return "iPhone/iPad";
+  if (/Android/i.test(u)) return "Android";
+  if (/Windows/i.test(u)) return "Windows";
+  if (/Macintosh|Mac OS X/i.test(u)) return "Mac";
+  if (/Linux/i.test(u)) return "Linux";
+  return "Autre";
+}
+
+/** Le chemin d'une URL de page (sans requête ni fragment : ils portent parfois des jetons). */
+export function cheminPage(url) {
+  try { const p = new URL(String(url)).pathname; return p.length > 60 ? p.slice(0, 60) + "…" : p; } catch { return null; }
+}
+
+/** Compte par jour (UTC) sur les `jours` derniers jours, du plus ancien au plus récent. */
+export function serieJours(dates, jours = 7, maintenant = Date.now()) {
+  const out = [];
+  const debut = new Date(maintenant); debut.setUTCHours(0, 0, 0, 0);
+  for (let i = jours - 1; i >= 0; i--) {
+    const j = new Date(debut.getTime() - i * 864e5);
+    out.push({ jour: j.toISOString().slice(0, 10), n: 0 });
+  }
+  const index = new Map(out.map((x, i) => [x.jour, i]));
+  for (const d of dates || []) {
+    const t = Date.parse(d);
+    if (!Number.isFinite(t)) continue;
+    const i = index.get(new Date(t).toISOString().slice(0, 10));
+    if (i != null) out[i].n++;
+  }
+  return out;
+}
+
+/** Détail d'une famille d'erreurs : appareils, pages, premiers/derniers vus, série 7 j. */
+export function detailsErreurs(lignes, max = 8, maintenant = Date.now()) {
+  const groupes = new Map();
+  for (const l of lignes || []) {
+    const cle = borne(l && l.message, 160) || "(sans message)";
+    const g = groupes.get(cle) || { message: cle, n: 0, comptes: new Set(), plateformes: {}, pages: {}, dates: [], premier: null, dernier: null };
+    g.n++;
+    if (l.uid) g.comptes.add(String(l.uid));
+    const p = plateforme(l.ua); g.plateformes[p] = (g.plateformes[p] || 0) + 1;
+    const c = cheminPage(l.url); if (c) g.pages[c] = (g.pages[c] || 0) + 1;
+    const t = Date.parse(l.created_at);
+    if (Number.isFinite(t)) { g.dates.push(l.created_at); if (!g.premier || t < g.premier) g.premier = t; if (!g.dernier || t > g.dernier) g.dernier = t; }
+    groupes.set(cle, g);
+  }
+  const top = (o) => Object.entries(o).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, n]) => ({ nom: k, n }));
+  return [...groupes.values()].sort((a, b) => (b.dernier || 0) - (a.dernier || 0) || b.n - a.n).slice(0, max).map((g) => ({
+    message: g.message, n: g.n, comptes: g.comptes.size,
+    plateformes: top(g.plateformes), pages: top(g.pages),
+    premier: g.premier ? new Date(g.premier).toISOString() : null,
+    dernier: g.dernier ? new Date(g.dernier).toISOString() : null,
+    serie: serieJours(g.dates, 7, maintenant),
+  }));
+}
+
+/**
+ * Les jauges de capacité. `mesure` = valeur, `plafond` = limite du forfait
+ * (mesurée le 2026-09-20, CLAUDE.md « LE MUR EST UNE CONNEXION WEBSOCKET »).
+ * `estimation` = la valeur est un indicateur approché, et l'écran le dit.
+ */
+export const PLAFONDS = {
+  connexions: { libelle: "Connexions en direct (comptes)", plafond: 500, unite: "" },
+  emails: { libelle: "E-mails d'inscription (24 h)", plafond: 300, unite: "" },
+  base: { libelle: "Base de données", plafond: 8 * 1024 ** 3, unite: "octets" },
+  stockage: { libelle: "Stockage des médias", plafond: 100 * 1024 ** 3, unite: "octets" },
+};
+export function jauges(m) {
+  const out = [];
+  const ajoute = (cle, valeur, estimation) => {
+    const p = PLAFONDS[cle];
+    if (valeur == null || !Number.isFinite(Number(valeur))) { out.push({ cle, libelle: p.libelle, valeur: null, plafond: p.plafond, unite: p.unite, pct: null, couleur: "gris", estimation }); return; }
+    const pct = Math.round((Number(valeur) / p.plafond) * 1000) / 10;
+    out.push({ cle, libelle: p.libelle, valeur: Number(valeur), plafond: p.plafond, unite: p.unite, pct, couleur: pct >= 90 ? "rouge" : pct >= 70 ? "orange" : "vert", estimation });
+  };
+  ajoute("connexions", m && m.connexions, true);
+  ajoute("emails", m && m.emails, true);
+  ajoute("base", m && m.base, false);
+  ajoute("stockage", m && m.stockage, false);
+  return out;
+}
+
+/**
+ * Faut-il sonner le téléphone ? On ne sonne QUE sur un changement qui compte :
+ * passage au rouge, site injoignable, retour à la normale — et un rappel toutes
+ * les 6 h si le rouge dure. L'orange ne sonne jamais (il se lit à l'ouverture).
+ * `prec` = dernier état mémorisé { couleur, dispo, alerteLe } ou null.
+ */
+export function decideAlerte(prec, actuel, maintenant = Date.now(), rappelMs = 6 * 3600e3) {
+  const p = prec || { couleur: "vert", dispo: true, alerteLe: null };
+  const a = actuel || {};
+  if (a.dispo === false && p.dispo !== false) return { sonner: true, titre: "🔴 PASSIO ne répond plus", texte: "Le site ne répond pas à la sonde. Ouvre le pilotage." };
+  if (a.dispo !== false && p.dispo === false) return { sonner: true, titre: "✅ PASSIO répond de nouveau", texte: "Le site est revenu." };
+  if (a.couleur === "rouge" && p.couleur !== "rouge") return { sonner: true, titre: "🔴 Problème sur PASSIO", texte: (a.raisons || []).slice(0, 2).join(" · ") || "Ouvre le pilotage." };
+  if (a.couleur === "rouge" && p.alerteLe && maintenant - Date.parse(p.alerteLe) >= rappelMs) return { sonner: true, titre: "🔴 Toujours un problème sur PASSIO", texte: (a.raisons || []).slice(0, 2).join(" · ") };
+  if (a.couleur !== "rouge" && p.couleur === "rouge") return { sonner: true, titre: "✅ Problème résolu", texte: a.couleur === "orange" ? "Plus d'urgence, quelques points à surveiller." : "Tout va bien de nouveau." };
+  return { sonner: false };
+}
+
+/** Statuts qu'un signalement peut prendre depuis le téléphone. */
+export const STATUTS_SIGNALEMENT = ["handled", "dismissed"];
