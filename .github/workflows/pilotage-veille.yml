@@ -1,0 +1,45 @@
+name: Pilotage — veille (secours)
+
+# ═══════════════════════════════════════════════════════════════════════════
+# DÉCLENCHEUR DE SECOURS DE LA VEILLE DU PILOTAGE (2026-09-28)
+#
+# Le déclencheur principal est pg_cron (migration_pilotage_veille_2026-09-28.sql),
+# toutes les 5 min, fiable à la minute. Celui-ci le DOUBLE : il fait marcher les
+# alertes avant que la migration soit collée, et continue si pg_cron cessait.
+# Un cron GitHub est une DEMANDE servie quand GitHub a de la place (41 % des
+# créneaux, trous de 4 à 5 h mesurés le 2026-09-09) : c'est un filet, jamais
+# la garantie. Deux déclencheurs ne font pas sonner deux fois : la fonction est
+# plafonnée à 1 veille par minute et ne sonne que sur un CHANGEMENT d'état.
+#
+# La clé est la clé ANON, publique (elle est dans l'application servie) :
+# « veille » ne rend que des agrégats et ne peut que notifier l'éditeur.
+# Aucun secret, aucune écriture dans le dépôt, aucun workflow déclenché.
+# ═══════════════════════════════════════════════════════════════════════════
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: pilotage-veille
+  cancel-in-progress: false
+
+jobs:
+  veille:
+    name: Appeler la veille
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: "Appel POST pilotage (action veille)"
+        env:
+          ANON: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5qa2l5b2tsc3N2ZWZzdGxqZW14Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTc3MDQsImV4cCI6MjA5NDI3MzcwNH0.wbFAexVW75vlXZ7mRRxeZ28zKevOAYYe0lda0F22dTM"
+        run: |
+          set -euo pipefail
+          code=$(curl -s -o reponse.json -w "%{http_code}" --max-time 60 -X POST \
+            -H "Content-Type: application/json" -H "Authorization: Bearer $ANON" \
+            -d '{"action":"veille"}' https://njkiyoklssvefstljemx.supabase.co/functions/v1/pilotage)
+          echo "HTTP $code"; head -c 300 reponse.json; echo
+          { echo "## Veille du pilotage"; echo; echo "- HTTP $code"; echo "- $(head -c 300 reponse.json)"; } >> "$GITHUB_STEP_SUMMARY"
+          [ "$code" = "200" ]

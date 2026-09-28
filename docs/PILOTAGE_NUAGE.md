@@ -29,6 +29,8 @@ migration `migration_pilotage_veille_2026-09-28.sql`). Elle sonne les appareils 
 PASSIO a les notifications activées, **seulement** sur un changement : passage au rouge, site
 injoignable, retour à la normale, et un rappel toutes les 6 h si le rouge dure. L'orange ne sonne
 jamais. Le tap ouvre `/pilotage/`. Logique : `decideAlerte` (`_shared/pilotage.js`).
+Déclencheur de secours sans migration : `.github/workflows/pilotage-veille.yml` (toutes les 10 min, servi
+quand GitHub a de la place) — les alertes marchent dès la fusion, pg_cron les rend ponctuelles.
 L'état mémorisé vit dans `analytics_events` (`event = 'pilotage_etat'`, une ligne par changement).
 
 ⚠️ **Un texte d'erreur client n'est JAMAIS transmis à un agent** : « Confier à la Sentinelle »
