@@ -27,7 +27,7 @@ on:
   workflow_dispatch:
     inputs:
       fonction:
-        description: "Une fonction précise (vide = les quatre)"
+        description: "Une fonction précise (vide = toutes)"
         required: false
         default: ""
 
@@ -65,6 +65,7 @@ jobs:
           node --test tests/unit/suppression-compte.test.mjs
           node --test tests/unit/suppression-entrelacement.test.mjs
           node --test tests/unit/export-compte.test.mjs
+          node --test tests/unit/pilotage.test.mjs
 
       - uses: supabase/setup-cli@v1
         with:
@@ -90,7 +91,7 @@ jobs:
             exit 1
           fi
           FONCTIONS="${{ github.event.inputs.fonction }}"
-          if [ -z "$FONCTIONS" ]; then FONCTIONS="ask-ai notify-call delete-account export-account"; fi
+          if [ -z "$FONCTIONS" ]; then FONCTIONS="ask-ai notify-call delete-account export-account pilotage"; fi
           node scripts/verifier-prerequis-fonctions.mjs --fonctions "$FONCTIONS" --projet "$PROJECT_REF"
 
       # La RÉVISION servie (dossier de livraison §6) : le SHA déployé est écrit
@@ -112,7 +113,7 @@ jobs:
             exit 1
           fi
           FONCTIONS="${{ github.event.inputs.fonction }}"
-          if [ -z "$FONCTIONS" ]; then FONCTIONS="ask-ai notify-call delete-account export-account"; fi
+          if [ -z "$FONCTIONS" ]; then FONCTIONS="ask-ai notify-call delete-account export-account pilotage"; fi
           for f in $FONCTIONS; do
             echo "── déploiement : $f ──"
             supabase functions deploy "$f" --project-ref "$PROJECT_REF"

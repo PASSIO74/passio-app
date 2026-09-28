@@ -39,6 +39,16 @@
       "objets": [
         "table:public.analytics_events"
       ]
+    },
+    "pilotage": {
+      "obligatoire": false,
+      "sans": "aucun prérequis SQL propre : lit des tables de base (télémétrie, erreurs client, profils, signalements) et plafonne par analytics_events",
+      "objets": [
+        "table:public.analytics_events",
+        "table:public.telemetry_events",
+        "table:public.client_errors",
+        "table:public.reports"
+      ]
     }
   }
 }
