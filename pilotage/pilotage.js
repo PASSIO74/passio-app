@@ -1,16 +1,16 @@
 // PASSIO Pilotage — la version NUAGE, sans PC (2026-09-28).
-// Données : Edge Function `pilotage` (Supabase), réservée au compte éditeur.
-// Session : celle de PASSIO sur ce téléphone (même origine, même jeton).
+// Données et gestes : Edge Function `pilotage` (Supabase), réservée au compte
+// éditeur. Session : celle de PASSIO sur ce téléphone (même origine).
 // Règles : nœuds + textContent uniquement, jamais innerHTML ; les seuls liens
-// posés vers l'extérieur vont à github.com ; seule écriture possible : relancer
-// un workflow de la liste blanche (côté serveur, pas ici).
+// vers l'extérieur vont à github.com ; chaque geste demande une confirmation et
+// n'est qu'une DEMANDE — la fonction décide (liste blanche, jeton, plafond).
 (function () {
   "use strict";
   const $ = (id) => document.getElementById(id);
   const cfg = window.PILOTAGE_SUPABASE || {};
   const sb = window.supabase && window.supabase.createClient(cfg.url, cfg.anon, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
   const FONCTION = cfg.url + "/functions/v1/pilotage";
-  let derniere = 0, enCours = false, compte = null;
+  let derniere = 0, enCours = false, compte = null, gestesGithub = false;
 
   // ─── Nœuds ────────────────────────────────────────────────────────────────
   function el(tag, cls, text) { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = String(text); return n; }
@@ -24,10 +24,16 @@
     if (texte) c.append(el("p", null, texte));
     return c;
   }
+  function actions(c) { let a = c.querySelector(":scope > .carte-actions"); if (!a) { a = el("div", "carte-actions"); c.append(a); } return a; }
   function lien(c, url, texte) {
     if (!/^https:\/\/github\.com\//.test(String(url || ""))) return;
     const a = el("a", null, texte || "Ouvrir sur GitHub"); a.href = url; a.target = "_blank"; a.rel = "noopener";
-    const b = el("div", "carte-actions"); b.append(a); c.append(b);
+    actions(c).append(a);
+  }
+  function bouton(c, texte, corps, confirmation) {
+    const b = el("button", "btn", texte); b.type = "button";
+    b.addEventListener("click", () => geste(b, corps, confirmation));
+    actions(c).append(b); return b;
   }
   function chiffre(v, libelle, couleur) { const c = el("div", "chiffre" + (couleur ? " " + couleur : "")); c.append(el("b", null, v == null ? "—" : v), el("span", null, libelle)); return c; }
   function ilYA(v) {
@@ -39,7 +45,34 @@
     if (s < 172800) return "il y a " + Math.round(s / 3600) + " h";
     return "il y a " + Math.round(s / 86400) + " j";
   }
+  function taille(o) {
+    if (o == null) return "—";
+    const u = ["o", "Ko", "Mo", "Go", "To"]; let i = 0, v = Number(o);
+    while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+    return (v >= 10 || i === 0 ? Math.round(v) : Number(v.toFixed(1))).toString().replace(".", ",") + " " + u[i];
+  }
   const nonLu = (id, titre) => vider(id).append(carte(titre, "Non lu", "Cette partie n'a pas pu être lue.", "gris"));
+  function graphe(id, serie) {
+    const g = vider(id);
+    const s = Array.isArray(serie) ? serie : [];
+    g.hidden = !s.length;
+    const max = Math.max(1, ...s.map((x) => Number(x.n) || 0));
+    s.forEach((x, i) => {
+      const n = Number(x.n) || 0;
+      const b = el("div", "barre-j" + (n ? "" : " zero"));
+      b.style.height = Math.max(2, Math.round((n / max) * 100)) + "%";
+      b.title = x.jour + " : " + n;
+      if (i === 0 || i === s.length - 1) b.append(el("span", null, String(x.jour || "").slice(5).replace("-", "/")));
+      g.append(b);
+    });
+  }
+  function miniGraphe(serie) {
+    const g = el("div", "mini-graphe");
+    const s = Array.isArray(serie) ? serie : [];
+    const max = Math.max(1, ...s.map((x) => Number(x.n) || 0));
+    s.forEach((x) => { const b = el("span", Number(x.n) ? "" : "zero"); b.style.height = Math.max(6, Math.round((Number(x.n) / max) * 100)) + "%"; b.title = x.jour + " : " + x.n; g.append(b); });
+    return g;
+  }
 
   // ─── Écrans ───────────────────────────────────────────────────────────────
   function ecran(nom) {
@@ -48,6 +81,8 @@
     $("app").hidden = nom !== "app";
   }
   function erreur(t) { const b = $("bandeauErreur"); b.hidden = !t; b.textContent = t || ""; }
+  let minuteurOk = null;
+  function succes(t) { const b = $("bandeauOk"); b.hidden = !t; b.textContent = t || ""; clearTimeout(minuteurOk); minuteurOk = setTimeout(() => { b.hidden = true; }, 6000); }
   function majEtat() {
     const e = $("etatMaj");
     if (!navigator.onLine) { e.textContent = "Hors ligne"; e.className = "etat-maj hors-ligne"; return; }
@@ -61,7 +96,7 @@
   }
   document.querySelectorAll(".barre button").forEach((b) => b.addEventListener("click", () => onglet(b.dataset.tab)));
 
-  // ─── Appel de la fonction ─────────────────────────────────────────────────
+  // ─── Appels ───────────────────────────────────────────────────────────────
   async function appeler(corps) {
     const { data } = await sb.auth.getSession();
     const jeton = data && data.session && data.session.access_token;
@@ -76,13 +111,31 @@
     if (!r.ok) { const e = new Error((j && j.error) || ("HTTP " + r.status)); e.status = r.status; throw e; }
     return j;
   }
+  async function geste(b, corps, confirmation) {
+    if (confirmation && !confirm(confirmation)) return;
+    b.disabled = true;
+    try {
+      const r = await appeler(corps);
+      succes((r && r.message) || "Fait.");
+      derniere = 0; await actualiser();
+    } catch (e) { erreur("Refusé : " + e.message); b.disabled = false; }
+  }
 
   // ─── Rendu ────────────────────────────────────────────────────────────────
   function rendre(d) {
+    gestesGithub = !!d.gestesGithub;
     const v = d.verdict || { couleur: "gris", titre: "Pas de nouvelles", raisons: [] };
     $("verdict").className = "verdict " + v.couleur;
     $("verdictTitre").textContent = v.titre;
     $("verdictDetail").textContent = (v.raisons || []).slice(0, 3).join(" · ");
+
+    const dispo = d.disponibilite;
+    const si = vider("site");
+    if (dispo) {
+      si.append(dispo.repond
+        ? carte("Le site répond", "En ligne", dispo.depuis ? "sans interruption depuis " + ilYA(dispo.depuis).replace("il y a ", "") : "vérifié à l'instant", "vert")
+        : carte("Le site ne répond pas", "Hors ligne", dispo.depuis ? "depuis " + ilYA(dispo.depuis).replace("il y a ", "") : "à l'instant", "rouge"));
+    }
 
     const s = d.sante, u = d.utilisateurs, gh = d.github;
     const ch = vider("chiffres");
@@ -93,32 +146,54 @@
       chiffre(d.signalements ? d.signalements.ouverts : null, "signalements", d.signalements && d.signalements.ouverts ? "orange" : null),
     );
 
-    // Ce qui t'attend : issues suivies (hors PR)
+    // Ce qui t'attend
     const at = vider("attente");
     let aFaire = 0;
     if (!gh) nonLu("attente", "Enquêtes GitHub");
     else {
-      const issues = (gh.issues || []).filter((i) => !i.pr);
+      const issues = (gh.issues || []).filter((i) => !i.pr && !i.pause);
       if (!issues.length) at.append(carte("Rien ne t'attend", "OK", "Aucune enquête ni alerte ouverte.", "vert"));
       issues.forEach((i) => {
         const humain = i.labels.includes("humain");
         if (humain) aFaire++;
         const [mot, coul] = humain ? ["À toi", "rouge"] : i.labels.includes("sentinelle") ? ["Sentinelle", "orange"] : i.labels.includes("veille") ? ["Veille", "orange"] : ["Info", "gris"];
         const c = carte("#" + i.numero + " · " + i.titre, mot, "ouverte " + ilYA(i.depuis), coul);
-        lien(c, i.url); at.append(c);
+        lien(c, i.url);
+        if (gestesGithub) bouton(c, "Fermer", { action: "fermer", numero: i.numero }, "Fermer #" + i.numero + " ? (à faire si c'est réglé ou sans objet)");
+        at.append(c);
       });
     }
-    const badge = $("badgeAccueil");
-    badge.hidden = !aFaire; badge.textContent = String(aFaire);
+    const badge = $("badgeAccueil"); badge.hidden = !aFaire; badge.textContent = String(aFaire);
 
+    // Erreurs détaillées
     const er = vider("erreurs");
-    if (!s) nonLu("erreurs", "Erreurs");
+    const e7 = d.erreurs;
+    if (!e7) nonLu("erreurs", "Erreurs");
     else {
-      if (!s.principales || !s.principales.length) er.append(carte("Aucune erreur", "OK", "", "vert"));
-      (s.principales || []).forEach((x) => er.append(carte(x.message, x.n + " fois", x.comptes + " compte(s) · dernière " + ilYA(x.dernier), x.n >= 10 ? "rouge" : "orange")));
+      if (!e7.details || !e7.details.length) er.append(carte("Aucune erreur sur 7 jours", "OK", "", "vert"));
+      (e7.details || []).forEach((x) => {
+        const recent = x.dernier && Date.now() - Date.parse(x.dernier) < 864e5;
+        const c = carte(x.message, x.n + " fois", x.comptes + " compte(s) · dernière " + ilYA(x.dernier), recent ? (x.n >= 10 ? "rouge" : "orange") : "gris");
+        const det = el("details", "repli");
+        det.append(el("summary", null, "Détails"));
+        det.append(el("p", null, "Première fois : " + ilYA(x.premier)));
+        if (x.plateformes && x.plateformes.length) det.append(el("p", null, "Appareils : " + x.plateformes.map((p) => p.nom + " (" + p.n + ")").join(", ")));
+        if (x.pages && x.pages.length) det.append(el("p", null, "Pages : " + x.pages.map((p) => p.nom + " (" + p.n + ")").join(", ")));
+        det.append(el("p", null, "Sur 7 jours :"));
+        det.append(miniGraphe(x.serie));
+        c.append(det);
+        if (gestesGithub && recent) bouton(c, "Confier à la Sentinelle", { action: "relancer", cible: "sentinelle" }, "Lancer la Sentinelle maintenant ? Elle analysera les erreurs récentes et ouvrira une enquête si besoin.");
+        er.append(c);
+      });
     }
 
     // Machines
+    const pa = vider("pause");
+    if (gh) {
+      const c = gh.pause ? carte("En pause", "Pause", "La Sentinelle n'ouvre plus d'enquête.", "orange") : carte("Active", "OK", "Elle surveille les erreurs et répare.", "vert");
+      if (gestesGithub) bouton(c, gh.pause ? "Reprendre" : "Mettre en pause", { action: gh.pause ? "reprendre" : "pause" }, gh.pause ? "Relancer la Sentinelle ?" : "Mettre la Sentinelle en pause ? Plus aucune enquête ne sera ouverte jusqu'à la reprise.");
+      pa.append(c);
+    }
     const ru = vider("runs");
     if (!gh) nonLu("runs", "Exécutions");
     else {
@@ -130,35 +205,77 @@
         const c = carte(NOMS[k], mot, ilYA(r.le), coul); lien(c, r.url, "Voir l'exécution"); ru.append(c);
       });
     }
-    const rl = vider("relances");
-    if (!d.relancesPossibles || !d.relancesPossibles.length) rl.append(carte("Relances indisponibles", "", "Pour relancer depuis le téléphone, pose le secret PILOTAGE_GITHUB_TOKEN sur la fonction « pilotage » (voir Réglages sur GitHub). La Sentinelle tourne quand même toute seule.", "gris"));
-    (d.relancesPossibles || []).forEach((x) => {
-      const c = carte(x.libelle, "", "");
-      const acts = el("div", "carte-actions");
-      const b = el("button", "btn", "Lancer maintenant"); b.type = "button";
-      b.addEventListener("click", async () => {
-        if (!confirm("Lancer « " + x.libelle + " » maintenant ?")) return;
-        b.disabled = true;
-        try { await appeler({ action: "relancer", cible: x.cle }); b.textContent = "Lancé ✓"; }
-        catch (e) { erreur("Relance refusée : " + e.message); b.disabled = false; }
-      });
-      acts.append(b); c.append(acts); rl.append(c);
-    });
     const pr = vider("prs");
+    let nPr = 0;
     if (gh) {
       const prs = (gh.issues || []).filter((i) => i.pr);
+      nPr = prs.length;
       if (!prs.length) pr.append(carte("Aucun correctif en attente", "", "", "gris"));
-      prs.slice(0, 15).forEach((i) => { const c = carte("#" + i.numero + " · " + i.titre, "PR", "ouverte " + ilYA(i.depuis)); lien(c, i.url); pr.append(c); });
+      prs.slice(0, 15).forEach((i) => {
+        const c = carte("#" + i.numero + " · " + i.titre, "PR", "ouverte " + ilYA(i.depuis));
+        lien(c, i.url, "Voir le détail");
+        if (gestesGithub) {
+          bouton(c, "Fusionner", { action: "fusionner", numero: i.numero }, "Fusionner #" + i.numero + " ? Il sera déployé en production si les tests sont verts.");
+          bouton(c, "Refuser", { action: "fermer", numero: i.numero }, "Refuser et fermer #" + i.numero + " ?");
+        }
+        pr.append(c);
+      });
     }
+    const bm = $("badgeMachines"); bm.hidden = !nPr; bm.textContent = String(nPr);
+    const rl = vider("relances");
+    if (!d.relancesPossibles || !d.relancesPossibles.length) rl.append(carte("Gestes indisponibles", "", "Pour agir depuis le téléphone (relancer, fusionner, fermer, pause), pose le secret PILOTAGE_GITHUB_TOKEN sur la fonction « pilotage ». La Sentinelle tourne quand même toute seule.", "gris"));
+    (d.relancesPossibles || []).forEach((x) => { const c = carte(x.libelle, "", ""); bouton(c, "Lancer maintenant", { action: "relancer", cible: x.cle }, "Lancer « " + x.libelle + " » maintenant ?"); rl.append(c); });
 
     // Utilisateurs
-    const m = vider("maintenant"), a = vider("aujourdhui"), co = vider("comptes");
+    const m = vider("maintenant"), co = vider("comptes");
     if (!u) { nonLu("maintenant", "Utilisateurs"); }
     else {
-      m.append(chiffre(u.maintenant.comptes, "comptes connectés"), chiffre(u.maintenant.appareils, "appareils"));
-      a.append(chiffre(u.aujourdhui.comptes, "comptes actifs"), chiffre(u.aujourdhui.appareils, "appareils"));
-      co.append(chiffre(u.inscritsJour, "inscrits 24 h"), chiffre(u.inscritsSemaine, "inscrits 7 j"), chiffre(u.total, "au total"));
+      m.append(chiffre(u.maintenant.comptes, "comptes connectés"), chiffre(u.maintenant.appareils, "appareils"),
+        chiffre(u.aujourdhui.comptes, "comptes actifs 24 h"), chiffre(u.aujourdhui.appareils, "appareils 24 h"));
+      co.append(chiffre(u.inscritsJour, "aujourd'hui"), chiffre(u.inscritsSemaine, "7 jours"), chiffre(u.total, "au total"));
+      graphe("grapheInscriptions", u.serieInscriptions);
     }
+    graphe("grapheErreurs", e7 && e7.serie);
+    const si2 = vider("signalements");
+    const sg = d.signalements;
+    if (!sg) nonLu("signalements", "Signalements");
+    else {
+      if (!sg.liste || !sg.liste.length) si2.append(carte("Aucun signalement en attente", "OK", "", "vert"));
+      (sg.liste || []).forEach((x) => {
+        const c = carte("Signalement · " + x.type, "À traiter", (x.motif ? "« " + x.motif + " » · " : "") + ilYA(x.le), "orange");
+        bouton(c, "Traité", { action: "signalement", id: x.id, statut: "handled" }, "Marquer ce signalement comme traité ?");
+        bouton(c, "Rejeter", { action: "signalement", id: x.id, statut: "dismissed" }, "Rejeter ce signalement (sans suite) ?");
+        si2.append(c);
+      });
+    }
+
+    // Capacité
+    const ja = vider("jauges");
+    if (!d.capacite) nonLu("jauges", "Capacité");
+    else {
+      (d.capacite.jauges || []).forEach((j) => {
+        const val = j.unite === "octets" ? taille(j.valeur) + " sur " + taille(j.plafond) : (j.valeur == null ? "—" : j.valeur) + " sur " + j.plafond;
+        const c = carte(j.libelle, j.pct == null ? "Non mesuré" : String(j.pct).replace(".", ",") + " %", val + (j.estimation ? " (estimation)" : ""), j.couleur);
+        const bar = el("div", "jauge " + j.couleur); const f = el("span"); f.style.width = Math.min(100, j.pct || 0) + "%"; bar.append(f); c.append(bar);
+        ja.append(c);
+      });
+      if (!d.capacite.mesuresServeur) ja.append(el("p", "discret", "Base et stockage : la migration « pilotage_veille » n'est pas encore appliquée."));
+      ja.append(el("p", "discret", "La bande passante (egress) ne se lit que sur la page Usage de Supabase."));
+    }
+
+    // Réglages : alertes
+    const al = vider("alertes");
+    const a = d.alertes;
+    if (a) {
+      al.append(a.appareils
+        ? carte(a.appareils + " appareil(s) recevront les alertes", "Actif", "Tu es prévenu quand le voyant passe au rouge, quand le site ne répond plus, et quand c'est réglé.", "vert")
+        : carte("Aucun appareil ne reçoit les alertes", "Inactif", "Ouvre PASSIO avec le compte éditeur et active les notifications quand elles sont proposées.", "orange"));
+      const dispo2 = d.disponibilite;
+      al.append(carte("Veille automatique", dispo2 && dispo2.veilleLe ? "Active" : "Pas encore",
+        dispo2 && dispo2.veilleLe ? "dernier changement noté " + ilYA(dispo2.veilleLe) + " · vérifie toutes les 5 min" : "Elle démarre quand la migration « pilotage_veille » est appliquée.",
+        dispo2 && dispo2.veilleLe ? "vert" : "gris"));
+    }
+
     const manquants = d.nonLus || [];
     erreur(manquants.length ? manquants.length + " domaine(s) non lu(s) (" + manquants.join(", ") + ") — le reste est à jour." : "");
   }

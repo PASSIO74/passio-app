@@ -49,6 +49,22 @@ self.addEventListener("push", e => {
   let data = {};
   try { data = e.data ? e.data.json() : {}; } catch (_e) { data = {}; }
 
+  // Alerte du PILOTAGE (fonction `pilotage`, veille pg_cron) : le tap ouvre
+  // /pilotage/, jamais l'app. Texte borné : il vient du serveur, mais une
+  // notification n'a rien à faire d'un paragraphe.
+  if (data.type === "pilotage") {
+    const titre = String(data.titre || "PASSIO Pilotage").slice(0, 80);
+    e.waitUntil(self.registration.showNotification(titre, {
+      body: String(data.texte || "").slice(0, 160),
+      tag: "passio-pilotage",
+      renotify: true,
+      icon: "./pilotage/icons/pilot-192.png",
+      badge: "./icon-192.png",
+      data: { url: "./pilotage/" },
+    }));
+    return;
+  }
+
   // Notif sociale (like, follow, commentaire, message…) — app fermée ou en arrière-plan.
   if (data.type === "notif") {
     const opts = {
@@ -88,6 +104,17 @@ self.addEventListener("push", e => {
 self.addEventListener("notificationclick", e => {
   e.notification.close();
   if (e.action === "decline") return;
+
+  // Alerte du pilotage → ouvrir le pilotage (onglet existant s'il y en a un).
+  if (e.notification.tag === "passio-pilotage") {
+    e.waitUntil(
+      self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(clients => {
+        for (const c of clients) { if (c.url && c.url.indexOf("/pilotage/") >= 0 && "focus" in c) return c.focus(); }
+        if (self.clients.openWindow) return self.clients.openWindow("./pilotage/");
+      })
+    );
+    return;
+  }
 
   // Notif sociale → ouvrir/focuser l'app (pas de paramètres d'appel).
   if (e.notification.tag && e.notification.tag.startsWith("passio-notif-")) {

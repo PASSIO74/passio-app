@@ -49,35 +49,48 @@
           <span class="verdict-point" aria-hidden="true"></span>
           <div><strong id="verdictTitre">Chargement…</strong><p id="verdictDetail"></p></div>
         </div>
+        <div id="site" class="pile"></div>
         <div id="chiffres" class="chiffres"></div>
         <h2>Ce qui t'attend</h2>
         <div id="attente" class="pile"></div>
-        <h2>Erreurs des dernières 24 h</h2>
+        <h2>Erreurs (7 jours)</h2>
         <div id="erreurs" class="pile"></div>
       </section>
 
       <section id="machines" class="onglet" data-titre="Machines">
-        <p class="discret">La Sentinelle tourne dans GitHub, jour et nuit, sans PC : elle lit les erreurs de l'app, ouvre une enquête, et Claude propose le correctif qui est fusionné s'il passe tous les tests.</p>
+        <p class="discret">La Sentinelle tourne dans GitHub, jour et nuit, sans PC : elle lit les erreurs de l'app, ouvre une enquête, et Claude propose le correctif, fusionné s'il passe tous les tests.</p>
+        <h2>Sentinelle</h2>
+        <div id="pause" class="pile"></div>
         <h2>Dernières exécutions</h2>
         <div id="runs" class="pile"></div>
+        <h2>Correctifs en attente (PR)</h2>
+        <div id="prs" class="pile"></div>
         <h2>Relancer maintenant</h2>
         <div id="relances" class="pile"></div>
-        <h2>Correctifs en cours (PR)</h2>
-        <div id="prs" class="pile"></div>
       </section>
 
       <section id="utilisateurs" class="onglet" data-titre="Utilisateurs">
         <h2>En ce moment</h2>
         <div id="maintenant" class="chiffres"></div>
-        <h2>Aujourd'hui</h2>
-        <div id="aujourdhui" class="chiffres"></div>
-        <h2>Comptes</h2>
+        <h2>Inscriptions (7 jours)</h2>
         <div id="comptes" class="chiffres chiffres-petits"></div>
+        <div id="grapheInscriptions" class="graphe" aria-label="Inscriptions des 7 derniers jours"></div>
+        <h2>Erreurs par jour</h2>
+        <div id="grapheErreurs" class="graphe" aria-label="Erreurs des 7 derniers jours"></div>
+        <h2>Signalements à traiter</h2>
+        <div id="signalements" class="pile"></div>
+      </section>
+
+      <section id="capacite" class="onglet" data-titre="Capacité">
+        <p class="discret">Les limites du forfait. Orange à 70 %, rouge à 90 % : c'est le moment d'agir, avant que l'app ralentisse ou refuse des inscriptions.</p>
+        <div id="jauges" class="pile"></div>
       </section>
 
       <section id="reglages" class="onglet" data-titre="Réglages">
         <h2>Compte</h2>
         <div id="compte" class="pile"></div>
+        <h2>Alertes sur le téléphone</h2>
+        <div id="alertes" class="pile"></div>
         <h2>Installer sur ce téléphone</h2>
         <div class="carte">
           <p id="installTexte" class="discret"></p>
@@ -92,13 +105,15 @@
         <button id="deconnexion" class="btn btn-danger" type="button">Se déconnecter du pilotage</button>
       </section>
 
+      <div id="bandeauOk" class="bandeau-ok" role="status" hidden></div>
       <div id="bandeauErreur" class="bandeau-erreur" role="status" hidden></div>
     </main>
 
-    <nav class="barre quatre" aria-label="Navigation">
+    <nav class="barre" aria-label="Navigation">
       <button class="actif" data-tab="accueil" type="button"><span class="ico" aria-hidden="true">⌂</span>Accueil<span id="badgeAccueil" class="badge" hidden></span></button>
-      <button data-tab="machines" type="button"><span class="ico" aria-hidden="true">⚙</span>Machines</button>
+      <button data-tab="machines" type="button"><span class="ico" aria-hidden="true">⚙</span>Machines<span id="badgeMachines" class="badge" hidden></span></button>
       <button data-tab="utilisateurs" type="button"><span class="ico" aria-hidden="true">☺</span>Utilisateurs</button>
+      <button data-tab="capacite" type="button"><span class="ico" aria-hidden="true">◔</span>Capacité</button>
       <button data-tab="reglages" type="button"><span class="ico" aria-hidden="true">≡</span>Réglages</button>
     </nav>
   </div>
