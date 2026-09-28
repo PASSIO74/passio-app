@@ -172,6 +172,16 @@ if (fs.existsSync(vendorDir)) {
   }
   console.log("  + js/vendor/ :", nVendor, "fichier(s) copié(s)");
 }
+// 8. Le PILOTAGE NUAGE (pilotage/) — page téléphone autonome, hors du monolithe
+//    (ses scripts ne doivent jamais être inlinés dans l'app). Copié tel quel,
+//    même règle que data/ et js/vendor/ : un asset qui n'existe qu'en CI est un
+//    asset qu'on découvre manquant en production.
+const pilotageDir = path.join(root, "pilotage");
+if (fs.existsSync(pilotageDir)) {
+  const cible = path.join(path.dirname(outPath), "pilotage");
+  fs.cpSync(pilotageDir, cible, { recursive: true });
+  console.log("  + pilotage/ : copié");
+}
 console.log("Build OK →", outPath,
   "(", Buffer.byteLength(html), "octets ) + app.js (", Buffer.byteLength(appJs),
   "octets, v=" + appHash + ") + styles.css (", Buffer.byteLength(css),

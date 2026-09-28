@@ -33,6 +33,11 @@ export const config = {
 
   sessionSecret: env.DASH_SESSION_SECRET || "dev-insecure-secret-change-me",
   sessionHours: Number(env.DASH_SESSION_HOURS || 12),
+  // « Rester connecté » (Pilot mobile, 2026-09-28) : durée d'une session demandée
+  // explicitement depuis le téléphone, où retaper le mot de passe deux fois par
+  // jour rend l'outil impraticable. Bornée à 90 j ; 0 désactive l'option (le
+  // serveur retombe alors sur `sessionHours`, quoi que la page demande).
+  rememberDays: Math.min(90, Math.max(0, Number(env.DASH_REMEMBER_DAYS ?? 30) || 0)),
   adminUser: env.DASH_ADMIN_USER || "admin",
   adminPassword: env.DASH_ADMIN_PASSWORD || "admin",
   extraUsers: parseExtraUsers(env.DASH_EXTRA_USERS),

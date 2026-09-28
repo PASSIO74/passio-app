@@ -5,6 +5,7 @@
 // côté client, comparaison en temps constant.
 // ═══════════════════════════════════════════════════════════════════════════
 import crypto from "node:crypto";
+import os from "node:os";
 import { config } from "./config.js";
 import { audit } from "./audit.js";
 import { liveFixAvailable, claudeCliState } from "./claudecli.js";
@@ -30,8 +31,8 @@ function b64url(buf) { return Buffer.from(buf).toString("base64url"); }
 function sign(payloadStr) {
   return crypto.createHmac("sha256", config.sessionSecret).update(payloadStr).digest("base64url");
 }
-export function createToken(user, role) {
-  const payload = { u: user, role, exp: Date.now() + config.sessionHours * 3600_000 };
+export function createToken(user, role, hours = config.sessionHours) {
+  const payload = { u: user, role, exp: Date.now() + hours * 3600_000 };
   const body = b64url(JSON.stringify(payload));
   return body + "." + sign(body);
 }
@@ -77,10 +78,22 @@ export function login(req, res) {
   const ok = u && timingSafeEqualStr(u.password, password || "");
   if (!ok) { noteFail(ip); audit("login_failed", { user, ip }, null); return res.status(401).json({ error: "Identifiants invalides." }); }
   noteSuccess(ip);
-  const token = createToken(u.user, u.role);
-  res.cookie("dash_session", token, { httpOnly: true, sameSite: "lax", secure: config.isProd, maxAge: config.sessionHours * 3600_000 });
+  const hours = dureeSessionHeures(req.body && req.body.remember);
+  const token = createToken(u.user, u.role, hours);
+  res.cookie("dash_session", token, { httpOnly: true, sameSite: "lax", secure: config.isProd, maxAge: hours * 3600_000 });
   audit("login", { user: u.user, role: u.role, ip }, u.user);
   res.json({ user: u.user, role: u.role, caps: capsFor(u.role) });
+}
+
+/**
+ * Durée d'une session : `sessionHours` par défaut, `rememberDays` seulement sur
+ * demande EXPLICITE (`remember === true`, jamais une chaîne ni un 1) et si
+ * l'option n'est pas coupée côté serveur. La page ne choisit pas la durée,
+ * elle ne peut que demander l'option que le serveur autorise.
+ */
+export function dureeSessionHeures(remember) {
+  if (remember === true && config.rememberDays > 0) return config.rememberDays * 24;
+  return config.sessionHours;
 }
 
 export function logout(req, res) {
@@ -91,7 +104,25 @@ export function logout(req, res) {
 
 export function me(req, res) {
   if (!req.session) return res.status(401).json({ error: "non authentifié" });
-  res.json({ user: req.session.u, role: req.session.role, caps: capsFor(req.session.role), env: config.dashEnv, allowMutations: config.allowMutations, claudeLive: liveFixAvailable(), claudeVia: config.anthropicKey ? "api" : claudeCliState().available ? "cli" : "manuel", claudeInstalled: claudeCliState().installed });
+  res.json({ user: req.session.u, role: req.session.role, caps: capsFor(req.session.role), expiresAt: req.session.exp || null, rememberDays: config.rememberDays, adressesTelephone: adressesTelephone(), env: config.dashEnv, allowMutations: config.allowMutations, claudeLive: liveFixAvailable(), claudeVia: config.anthropicKey ? "api" : claudeCliState().available ? "cli" : "manuel", claudeInstalled: claudeCliState().installed });
+}
+
+/**
+ * Adresses du poste joignables depuis un téléphone du même réseau (IPv4 privées
+ * seulement : une adresse publique ou de lien local n'a rien à faire sur l'écran).
+ * Réservé à une session authentifiée (servi par /me), jamais par /health.
+ */
+export function adressesTelephone(interfaces = os.networkInterfaces(), port = config.port) {
+  const out = [];
+  for (const liste of Object.values(interfaces || {})) {
+    for (const i of liste || []) {
+      const fam = i && (i.family === "IPv4" || i.family === 4);
+      if (!fam || i.internal) continue;
+      if (!/^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.)/.test(i.address)) continue;
+      out.push(`http://${i.address}:${port}/mobile.html`);
+    }
+  }
+  return [...new Set(out)];
 }
 
 // Middleware : injecte req.session si cookie valide.

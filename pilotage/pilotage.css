@@ -1,4 +1,4 @@
-/* PASSIO Pilotage — version téléphone. Simple, lisible, pouce en bas. */
+/* PASSIO Pilotage (nuage) — mêmes styles que le Pilot mobile du PC (dashboard/public/css/mobile.css). */
 :root {
   color-scheme: dark;
   --fond: #0b0912;
@@ -163,3 +163,6 @@ a { color: var(--accent); }
 @media (min-width: 700px) {
   .barre { max-width: 640px; margin: 0 auto; border-left: 1px solid var(--ligne); border-right: 1px solid var(--ligne); }
 }
+
+.barre.quatre { grid-template-columns: repeat(4, 1fr); }
+.btn-google { width: 100%; background: #fff; color: #1f1f1f; border-color: #dadce0; }

@@ -185,6 +185,35 @@ revenu sans que la table soit republiée — un `postgres_changes` sur une table
 absente de la publication passe `SUBSCRIBED` et ne reçoit **jamais rien**.
 
 
+## 2 quater. Le pilotage sur le téléphone (2026-09-28)
+
+Une vraie application de poche, installable sur l'écran d'accueil : `public/mobile.html`
+(+ `js/mobile.js`, `css/mobile.css`, `mobile-sw.js`, `icons/`). Cinq onglets au pouce :
+
+| Onglet | Ce qu'on y voit / fait |
+|---|---|
+| **Accueil** | une phrase et une couleur (Tout va bien · À surveiller · Problème en cours), 4 chiffres, « Ce qui t'attend », l'activité récente |
+| **Alertes** | alertes non vues (« Marquer vu », « Tout marquer vu »), bugs ouverts (« Corrigé » / « Ignorer »), incidents |
+| **Utilisateurs** | en ligne maintenant, inscriptions (+ graphe 14 j), fréquentation jour/semaine/mois, appareils actifs |
+| **Machines** | ce que les machines ont fait, Sentinelle (lecture seule), comptes rendus, mise en production, tests autorisés |
+| **Réglages** | compte, actualisation auto, installation, adresses du PC, déconnexion |
+
+**Installer (une fois)** : sur le PC, double-clic sur **`Autoriser-Telephone.cmd`** (ouvre le port
+4610 du pare-feu sur les réseaux **privés** seulement, et affiche l'adresse). Sur le téléphone, même
+Wi-Fi : ouvrir `http://<IP-du-PC>:4610/mobile.html`, se connecter (« Rester connecté » coché), puis
+iPhone → Partager → « Sur l'écran d'accueil » ; Android → menu ⋮ → « Ajouter à l'écran d'accueil ».
+Les adresses sont aussi imprimées au démarrage du serveur et listées dans Réglages. Hors de chez soi :
+Tailscale (gratuit) sur le PC et le téléphone — son adresse `100.x` apparaît dans la liste.
+
+⚠️ **« Rester connecté »** : `DASH_REMEMBER_DAYS` (défaut 30, plafond 90, `0` coupe l'option). Seul
+un `remember: true` EXPLICITE l'obtient ; sans lui la session garde `DASH_SESSION_HOURS`.
+⚠️ **Écritures bornées** : marquer une alerte vue, classer un bug, lancer une suite en liste
+blanche, se (dé)connecter — rien d'autre (verrou `test/mobile-app.test.js`). Tout est construit par
+nœuds + `textContent`, jamais `innerHTML` (un titre d'alerte hostile est éprouvé au navigateur).
+⚠️ En `http://` sur le réseau local, le navigateur n'active pas le service worker (contexte non
+sécurisé) : l'icône s'installe quand même, seul le mode hors ligne manque — c'est voulu, un cockpit
+hors ligne afficherait des données périmées.
+
 ## 2 ter. Tests du pilotage
 
 `npm test` — **517 tests, ~17 s** (dont 5 dans un vrai navigateur, sautés bruyamment si Chromium manque).

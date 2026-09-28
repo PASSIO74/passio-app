@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#0b0912" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Pilotage" />
+  <meta name="robots" content="noindex" />
+  <title>PASSIO Pilotage</title>
+  <link rel="manifest" href="/pilotage/manifest.webmanifest" />
+  <link rel="icon" type="image/svg+xml" href="/pilotage/icons/pilot.svg" />
+  <link rel="apple-touch-icon" href="/pilotage/icons/pilot-180.png" />
+  <link rel="stylesheet" href="/pilotage/pilotage.css" />
+</head>
+<body>
+  <!-- Connexion -->
+  <section id="ecranConnexion" class="ecran-plein" hidden>
+    <img src="/pilotage/icons/pilot-192.png" alt="" class="logo" width="72" height="72" />
+    <h1>PASSIO Pilotage</h1>
+    <p>Réservé au compte de l'éditeur. Fonctionne sans PC : tout tourne dans le nuage.</p>
+    <button id="cxGoogle" class="btn btn-google" type="button">Se connecter avec Google</button>
+    <p class="discret">Ou connecte-toi dans <a href="/">PASSIO</a> avec le compte éditeur, puis reviens ici : la connexion est partagée.</p>
+    <p id="cxErreur" class="erreur" role="alert" hidden></p>
+  </section>
+
+  <!-- Refus -->
+  <section id="ecranRefus" class="ecran-plein" hidden>
+    <img src="/pilotage/icons/pilot-192.png" alt="" class="logo" width="72" height="72" />
+    <h1>Accès réservé</h1>
+    <p id="refusTexte">Ce compte n'a pas accès au pilotage.</p>
+    <button id="refusDeco" class="btn" type="button">Changer de compte</button>
+  </section>
+
+  <div id="app" hidden>
+    <header class="entete">
+      <div class="entete-texte">
+        <h1 id="titreOnglet">Accueil</h1>
+        <span id="etatMaj" class="etat-maj">Chargement…</span>
+      </div>
+      <button id="actualiser" class="btn-rond" type="button" aria-label="Actualiser">↻</button>
+    </header>
+
+    <main class="contenu">
+      <section id="accueil" class="onglet actif" data-titre="Accueil">
+        <div id="verdict" class="verdict gris">
+          <span class="verdict-point" aria-hidden="true"></span>
+          <div><strong id="verdictTitre">Chargement…</strong><p id="verdictDetail"></p></div>
+        </div>
+        <div id="chiffres" class="chiffres"></div>
+        <h2>Ce qui t'attend</h2>
+        <div id="attente" class="pile"></div>
+        <h2>Erreurs des dernières 24 h</h2>
+        <div id="erreurs" class="pile"></div>
+      </section>
+
+      <section id="machines" class="onglet" data-titre="Machines">
+        <p class="discret">La Sentinelle tourne dans GitHub, jour et nuit, sans PC : elle lit les erreurs de l'app, ouvre une enquête, et Claude propose le correctif qui est fusionné s'il passe tous les tests.</p>
+        <h2>Dernières exécutions</h2>
+        <div id="runs" class="pile"></div>
+        <h2>Relancer maintenant</h2>
+        <div id="relances" class="pile"></div>
+        <h2>Correctifs en cours (PR)</h2>
+        <div id="prs" class="pile"></div>
+      </section>
+
+      <section id="utilisateurs" class="onglet" data-titre="Utilisateurs">
+        <h2>En ce moment</h2>
+        <div id="maintenant" class="chiffres"></div>
+        <h2>Aujourd'hui</h2>
+        <div id="aujourdhui" class="chiffres"></div>
+        <h2>Comptes</h2>
+        <div id="comptes" class="chiffres chiffres-petits"></div>
+      </section>
+
+      <section id="reglages" class="onglet" data-titre="Réglages">
+        <h2>Compte</h2>
+        <div id="compte" class="pile"></div>
+        <h2>Installer sur ce téléphone</h2>
+        <div class="carte">
+          <p id="installTexte" class="discret"></p>
+          <button id="installer" class="btn btn-plein" type="button" hidden>Installer l'application</button>
+        </div>
+        <h2>Liens</h2>
+        <div class="pile">
+          <a class="carte lien-carte" href="/">Ouvrir PASSIO <span aria-hidden="true">›</span></a>
+          <a class="carte lien-carte" href="https://github.com/PASSIO74/passio-app/issues" target="_blank" rel="noopener">Enquêtes sur GitHub <span aria-hidden="true">›</span></a>
+          <a class="carte lien-carte" href="https://github.com/PASSIO74/passio-app/actions" target="_blank" rel="noopener">Machines sur GitHub (Actions) <span aria-hidden="true">›</span></a>
+        </div>
+        <button id="deconnexion" class="btn btn-danger" type="button">Se déconnecter du pilotage</button>
+      </section>
+
+      <div id="bandeauErreur" class="bandeau-erreur" role="status" hidden></div>
+    </main>
+
+    <nav class="barre quatre" aria-label="Navigation">
+      <button class="actif" data-tab="accueil" type="button"><span class="ico" aria-hidden="true">⌂</span>Accueil<span id="badgeAccueil" class="badge" hidden></span></button>
+      <button data-tab="machines" type="button"><span class="ico" aria-hidden="true">⚙</span>Machines</button>
+      <button data-tab="utilisateurs" type="button"><span class="ico" aria-hidden="true">☺</span>Utilisateurs</button>
+      <button data-tab="reglages" type="button"><span class="ico" aria-hidden="true">≡</span>Réglages</button>
+    </nav>
+  </div>
+
+  <script src="/pilotage/config.js"></script>
+  <script src="/js/vendor/supabase-js-2.116.0.js"></script>
+  <script src="/pilotage/pilotage.js"></script>
+</body>
+</html>

@@ -11,6 +11,10 @@
 /release.json
   Cache-Control: no-store, no-cache, must-revalidate
 
+# pilotage/ : cockpit téléphone, jamais une vieille version
+/pilotage/*
+  Cache-Control: no-cache
+
 # index.html : toujours frais
 /index.html
   Cache-Control: no-store, no-cache, must-revalidate

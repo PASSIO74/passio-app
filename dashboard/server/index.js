@@ -350,6 +350,7 @@ app.get("*", (req, res) => res.sendFile(path.join(publicDir, "index.html")));
 app.listen(config.port, () => {
   console.log(`\n  PASSIO — Centre de pilotage`);
   console.log(`  ▸ http://localhost:${config.port}`);
+  for (const a of auth.adressesTelephone()) console.log(`  ▸ Téléphone (même Wi-Fi) : ${a}`);
   console.log(`  ▸ Environnement dashboard : ${config.dashEnv}${config.isProd ? " (mutations code DÉSACTIVÉES)" : ""}`);
   console.log(`  ▸ Supabase : ${supabaseReady ? "connecté (service_role)" : "NON configuré → mode local (voir .env)"}`);
   console.log(`  ▸ Mutations git : ${config.allowMutations ? "autorisées (hors prod)" : "désactivées"}\n`);
