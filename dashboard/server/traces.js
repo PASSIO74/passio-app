@@ -32,6 +32,17 @@ const FLOW_WINDOW_MS = 30_000;   // fenêtre de vie d'un flow (au-delà : figé)
 const RUNNING_MS = 8_000;        // en deçà et incomplet : encore « en cours »
 const DUP_WINDOW_MS = 4_000;     // même (user+action+cible) rapproché = doublon
 const MAX_TRACES = 400;          // borne mémoire du journal
+// ⚠️ ORPHELINS : un envoi de télémétrie part en UN insert, donc toutes ses
+// lignes partagent le même `received_at` — et l'ordre de lecture de lignes à
+// égalité n'est PAS garanti (index `received_at DESC` lu à rebours par le
+// polling ascendant). Le 2026-09-30, le flow `fl_muo0e9t3-…` (event_join) a vu
+// sa requête, son `saved` et son `end` lus AVANT son `start` : jetés comme
+// « sans start connu », le flow n'a gardé que « handler » et a été déclaré
+// « Clic sans effet » alors que l'inscription était enregistrée en base.
+// Un événement corrélé sans flow connu est donc MIS DE CÔTÉ, puis rejoué dès
+// que son `start` arrive. Rien n'est inventé : sans `start`, il ne crée rien.
+const MAX_ORPHAN_FLOWS = 200;    // corrélations en attente de leur start
+const MAX_ORPHAN_EVENTS = 40;    // événements gardés par corrélation
 
 // ─── Contrats de résultat par action ────────────────────────────────────────
 // Chaque étape : key, label, role.
@@ -117,9 +128,37 @@ class TraceTracker {
     this.flows = new Map();
     /** @type {Array<string>} ordre d'arrivée (pour la borne mémoire) */
     this.order = [];
+    /** @type {Map<string, Array<object>>} événements corrélés arrivés avant leur start */
+    this.orphans = new Map();
   }
 
-  reset() { this.flows.clear(); this.order = []; }
+  reset() { this.flows.clear(); this.order = []; this.orphans.clear(); }
+
+  // Met de côté un événement dont le flow n'est pas (encore) connu.
+  _keepOrphan(cid, ev) {
+    if (!cid) return;
+    let list = this.orphans.get(cid);
+    if (!list) {
+      list = [];
+      this.orphans.set(cid, list);
+      if (this.orphans.size > MAX_ORPHAN_FLOWS) {
+        this.orphans.delete(this.orphans.keys().next().value);
+      }
+    }
+    if (list.length < MAX_ORPHAN_EVENTS) list.push(ev);
+  }
+
+  // Rejoue, dans l'ordre client, les événements arrivés avant le start.
+  _replayOrphans(cid) {
+    const list = this.orphans.get(cid);
+    if (!list) return;
+    this.orphans.delete(cid);
+    list.sort((a, b) => (a.ts || 0) - (b.ts || 0));
+    for (const o of list) {
+      if (o.type === "flow") this._onFlow(o);
+      else if (o.type === "api") this._onApi(o);
+    }
+  }
 
   _get(cid) { return cid ? this.flows.get(cid) : null; }
 
@@ -193,10 +232,12 @@ class TraceTracker {
       const action = meta.flow_action || "action";
       const flow = this._get(cid) || this._create(cid, ev, action);
       this._setStep(flow, "handler", "ok", ev.ts, meta);
+      this._replayOrphans(cid);
       return true;
     }
     const flow = this._get(cid);
-    if (!flow) return false;   // step/end sans start connu : ignoré (pas d'invention)
+    // step/end sans start connu : mis de côté, jamais inventé (voir ORPHELINS).
+    if (!flow) { this._keepOrphan(cid, ev); return false; }
     if (ev.action === "step") {
       const key = meta.step || "step";
       const status = ev.status === "error" ? "fail" : (ev.status === "slow" ? "slow" : "ok");
@@ -216,7 +257,7 @@ class TraceTracker {
   // du flow actif. On enregistre la requête (OK / lente / échec HTTP).
   _onApi(ev) {
     const flow = this._get(ev.correlation_id);
-    if (!flow) return false;
+    if (!flow) { this._keepOrphan(ev.correlation_id, ev); return false; }
     const status = ev.status === "error" ? "fail" : (ev.status === "slow" ? "slow" : "ok");
     this._setStep(flow, "request", status, ev.ts, { endpoint: ev.endpoint }, ev.http_status);
     return true;

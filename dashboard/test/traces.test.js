@@ -400,3 +400,44 @@ test("coverage : ui_open/ui_close et les verdicts d'auth ne sont pas une dette ;
     assert.deepEqual(dette, ["action_sans_contrat_banc"]);
   } finally { store.events = sauvegarde; }
 });
+
+// Incident réel du 2026-09-30 (fl_muo0e9t3-…, event_join) : toutes les lignes
+// d'un même envoi partagent `received_at`, et le polling les a lues requête,
+// saved et end AVANT le start. Jetées, elles laissaient un flow « handler »
+// seul, déclaré « Clic sans effet » alors que l'inscription était en base.
+test("ordre de lecture inversé : start lu APRÈS requête/saved/end = success, pas dead_click", () => {
+  reset();
+  const cid = "c_inverse";
+  const t0 = Date.now() - 20_000; // figé
+  const meta0 = { flow_action: "event_join", eventId: "xpzx", rsvp: "going" };
+  traces.onEvent(ev("flow", "end", { correlation_id: cid, ts: t0 + 720, screen: "irl" }));
+  traces.onEvent(ev("flow", "step", { correlation_id: cid, ts: t0 + 720, screen: "irl", meta: { step: "saved" } }));
+  traces.onEvent(ev("api", "POST x/event_attendees", { correlation_id: cid, ts: t0 + 720, screen: "irl", endpoint: "x/event_attendees", http_status: 201 }));
+  traces.onEvent(ev("api", "PATCH x/event_attendees", { correlation_id: cid, ts: t0 + 476, screen: "irl", endpoint: "x/event_attendees", http_status: 200 }));
+  traces.onEvent(ev("flow", "start", { correlation_id: cid, ts: t0, screen: "irl", meta: meta0 }));
+
+  const tr = traces.trace(cid);
+  assert.equal(tr.final, "success");
+  assert.equal(tr.steps.find((s) => s.key === "request").status, "ok");
+  assert.equal(tr.steps.find((s) => s.key === "saved").status, "ok");
+  // Plus rien d'orphelin pour cette corrélation, et aucun verdict à alerter.
+  assert.equal(traces.orphans.has(cid), false);
+  assert.equal(traces.drainNewVerdicts().some((v) => v.cid === cid), false);
+});
+
+test("orphelins sans start : ne créent AUCUN flow (rien n'est inventé)", () => {
+  reset();
+  const cid = "c_orphelin";
+  traces.onEvent(ev("api", "POST x/event_attendees", { correlation_id: cid, http_status: 201 }));
+  traces.onEvent(ev("flow", "step", { correlation_id: cid, meta: { step: "saved" } }));
+  assert.equal(traces.trace(cid), null);
+  assert.equal(traces.flows.size, 0);
+});
+
+test("orphelins bornés : la mémoire d'attente ne grossit pas sans fin", () => {
+  reset();
+  for (let i = 0; i < 1000; i++) {
+    traces.onEvent(ev("api", "POST x", { correlation_id: "c_b" + i, http_status: 200 }));
+  }
+  assert.ok(traces.orphans.size <= 200);
+});
