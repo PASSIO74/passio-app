@@ -1,6 +1,6 @@
 {
   "format": "passio-residus/1",
-  "mis_a_jour_le": "2026-09-16",
+  "mis_a_jour_le": "2026-09-30",
   "_lecture": "Registre STRUCTURÉ UNIQUE des résidus (cinquième contre-revue Astra, mandat §9). Validé et évalué par scripts/audit-registre-residus.js (CI, job « Audits statiques ») ; lu par le pilotage (dashboard, domaine « résidus » du readiness). Les quatre états sont séparés : corrige, teste, deploye, relu_sur_cible — valeurs oui / non / partiel / non mesuré / sans objet. Un résidu n'est « ferme » qu'avec les quatre à oui. La condition_de_reexamen est évaluée par le contrôle contre le DÉPÔT (fichier présent, objet SQL déclaré par une migration, échéance, autre résidu fermé) ; « déclaré dans le dépôt » n'est pas « en service sur la cible ». Un résidu dont la condition devient satisfaite doit passer à traitable / planifie (avec le chantier) : sinon la CI est rouge. Les nuances acceptées par Astra sont listées à part et ne sont pas des défauts.",
   "residus": [
     {
@@ -76,12 +76,12 @@
       "scenario_residuel": "Après application de migration_canal_appel_lie, un onglet encore chargé sur un client antérieur à 45df96c0 s'abonne à call:<id> avant de déposer l'invitation : refusé, l'appel sonne dans le vide jusqu'au délai et rien ne le dit (l'ancien code journalise seulement). Aucune télémétrie de version cliente n'existe : la part d'onglets anciens est inconnue ; aucun mécanisme ne force leur rechargement.",
       "raison_du_maintien": "Rouvrir le canal à tous les comptes réintroduirait ASTRA-23 (un tiers lisait l'offre SDP). La garde client de #474 ne protège que les onglets déjà à jour. Le contrat de transition est écrit (docs/APPELS_TRANSITION.md) ; la mesure manque.",
       "dependances": ["PR #474", "PR #472", "migration_canal_appel_lie appliquée après propagation du client"],
-      "condition_de_reexamen": { "type": "une", "de": [ { "type": "fichier_present", "chemin": "js/app-10-version-client.js" }, { "type": "date", "le": "2026-10-01" } ] },
+      "condition_de_reexamen": { "type": "une", "de": [ { "type": "fichier_present", "chemin": "js/app-10-version-client.js" }, { "type": "residu_ferme", "id": "RES-13" }, { "type": "date", "le": "2026-10-31" } ] },
       "critere_de_fermeture": "Télémétrie de version cliente (release.json vu par le service worker, compteur agrégé sans identité) montrant < 1 % d'onglets antérieurs à 45df96c0 pendant 7 jours avant l'application de la migration ; après application, aucune trace call_canal_refuse sur 7 jours.",
       "preuve_attendue": "Agrégat de versions clientes (source : telemetry_events) avant/après ; comptage des traces call_canal_refuse.",
-      "prochaine_etape": "Chantier « télémétrie de version cliente » (fichier js/app-10-version-client.js) — sa présence rend ce résidu traitable ; sinon échéance 2026-10-01.",
+      "prochaine_etape": "Chantier « télémétrie de version cliente » (js/app-10-version-client.js) à livrer AVANT la réactivation des appels (RES-13) : sa présence, la fermeture de RES-13 ou l'échéance 2026-10-31 rendent ce résidu traitable.",
       "etats": { "corrige": "partiel", "teste": "oui", "deploye": "non", "relu_sur_cible": "non mesuré" },
-      "reexamen": { "statut": "en_attente", "le": "2026-09-16", "note": "16/09 : canal_appel_lie volontairement NON appliqué (appels désactivés pour le pilote, RES-13) — à appliquer avec la réactivation des appels, après mesure de la propagation." }
+      "reexamen": { "statut": "en_attente", "le": "2026-09-30", "note": "30/09, décision (Claude, par délégation de Benjamin — règle : ce qui est le mieux pour l'app) : REPORT au 2026-10-31, aligné sur RES-13. Tant que les appels sont désactivés (PASSIO_APPELS_ACTIFS=false, notify-call → 503) et canal_appel_lie non appliqué, aucun onglet ancien ne peut perdre d'appel : risque nul en l'état. Il renaît à la réactivation, d'où la condition « RES-13 fermé ». 16/09 : canal_appel_lie volontairement NON appliqué." }
     },
     {
       "id": "RES-06",
@@ -197,7 +197,7 @@
     },
     {
       "etats": { "corrige": "sans objet", "teste": "oui", "deploye": "oui", "relu_sur_cible": "oui" },
-      "reexamen": { "statut": "en_attente", "le": "2026-09-16", "note": "16/09 : désactivation servie et mesurée sur la cible : notify-call type:call → 503 appels_desactives ; app.js servi porte PASSIO_APPELS_ACTIFS=false (preuves/astra6/cible/13-fumee-appels-export-site.txt). Décision de réactivation au 2026-09-30." },
+      "reexamen": { "statut": "en_attente", "le": "2026-09-30", "note": "30/09, décision (Claude, par délégation de Benjamin — règle : ce qui est le mieux pour l'app) : MAINTIEN de la désactivation pour la phase d'élargissement. Les appels ne sont pas sur le chemin Fil → interaction → IRL ; rouvrir une fonction dont la négociation peut rester bloquée sur « connexion… » coûterait plus de confiance qu'elle n'en apporte. La correction bornée (answer_ack, retransmission 2 s, sortie 30 s) reste le chantier. 16/09 : désactivation servie et mesurée sur la cible (notify-call type:call → 503 appels_desactives ; PASSIO_APPELS_ACTIFS=false — preuves/astra6/cible/13-fumee-appels-export-site.txt)." },
       "id": "RES-13",
       "titre": "Appels audio/vidéo désactivés pour le pilote (ASTRA-60) : une answer perdue laisse la négociation WebRTC sans relance",
       "gravite": "P2",
@@ -206,14 +206,14 @@
       "scenario_residuel": "Avec deux vrais RTCPeerConnection et un bus simulé, la perte d'une `answer` n'est pas relancée : l'appel reste « connexion… » jusqu'au délai. Pour le pilote, la fonction est retirée à tous les points d'entrée (boutons, startCall, sonnerie, invitation reçue, push d'appel serveur) — commit 27e01724.",
       "raison_du_maintien": "Une correction bornée (acquittement, retransmission, délai de sortie) n'a pas pu être validée dans le délai du pilote ; ouvrir une fonction incertaine retarderait l'ouverture. La désactivation est côté code, aucune policy n'est rouverte.",
       "dependances": ["PASSIO_APPELS_ACTIFS (app-05) et APPELS_ACTIFS (notify-call) à repasser à true ensemble", "acquittement + retransmission de answer/offer + délai de sortie, mesurés avec deux RTCPeerConnection réels"],
-      "condition_de_reexamen": { "type": "manuel", "quand": "Après observation des parcours réels du pilote (messagerie, médias) — au plus tard le 2026-09-30 : décider entre correction bornée et maintien de la désactivation pour la phase d'élargissement." },
+      "condition_de_reexamen": { "type": "manuel", "quand": "Quand la suite « answer perdue » (deux RTCPeerConnection réels) est verte — au plus tard le 2026-10-31 : réactiver les appels si elle l'est, sinon reconduire la désactivation avec une nouvelle date." },
       "critere_de_fermeture": "Suite navigateur avec deux RTCPeerConnection réels où une `answer` perdue est retransmise et l'appel se connecte, ou termine proprement au délai ; interrupteurs remis à true ; tests d'appels verts sans armement de test.",
       "preuve_attendue": "Sortie Playwright de la suite de relance (avant : rouge sur perte d'answer ; après : vert), et appels-desactives-pilote.spec.js inversé.",
       "prochaine_etape": "Écrire la suite « answer perdue » (extension d'appel-reponse-rejouable.spec.js) et la correction : ack par message `answer_ack`, retransmission toutes les 2 s, sortie à 30 s."
     },
     {
       "etats": { "corrige": "oui", "teste": "partiel", "deploye": "sans objet", "relu_sur_cible": "non mesuré" },
-      "reexamen": { "statut": "en_attente", "le": "2026-09-16", "note": "Ouvert par la sixième contre-revue (pilote gratuit)." },
+      "reexamen": { "statut": "en_attente", "le": "2026-09-30", "note": "30/09, décision (Claude, par délégation de Benjamin) : À FAIRE, pas de report de confort. Une sauvegarde jamais restaurée pour de vrai n'est pas une preuve de récupération, et c'est le seul filet pendant que de vrais utilisateurs arrivent. Seul blocage : le projet Supabase jetable (geste humain, ~5 min). Nouvelle échéance 2026-10-07 ; Claude joue le cycle dès réception. Ouvert par la sixième contre-revue (pilote gratuit)." },
       "id": "RES-14",
       "titre": "Cycle réel sauvegarde → altération contrôlée → restauration → relecture non rejoué sur un projet Supabase jetable (ASTRA-57/58/59)",
       "gravite": "P1",
@@ -222,7 +222,7 @@
       "scenario_residuel": "Les corrections de pagination, de propriétaires NULL et de validation d'archive sont testées avec de vrais scripts et des services SIMULÉS (PostgREST selon ses règles de statut, Storage, GoTrue, API de gestion). Le plafond max-rows réel, le comportement réel de `order`/`limit`/`offset` sur la RPC et l'UPDATE de storage.objects.owner sur un vrai projet ne sont pas mesurés.",
       "raison_du_maintien": "Aucun projet Supabase jetable n'est autorisé ni accessible depuis ce poste (il faut un projet distinct de la production, son ref de 20 lettres, et le jeton personnel sbp_… ; restaurer-donnees.js refuse la production par construction).",
       "dependances": ["projet Supabase jetable (ref) + SUPABASE_ACCESS_TOKEN", "migration_proprietaires_objets_stockage appliquée sur le jetable", "données synthétiques : deux comptes, un objet sans propriétaire, une pièce jointe"],
-      "condition_de_reexamen": { "type": "manuel", "quand": "Dès qu'un projet jetable est fourni — visé avant le 2026-09-23 : sauvegarde complète (`--verifier` COMPLÈTE), altération contrôlée (fichier BAD, owner à B), restauration refusée (code 2) puis restauration saine prouvée (`prouvee:true`), relecture des propriétaires." },
+      "condition_de_reexamen": { "type": "manuel", "quand": "Dès qu'un projet jetable est fourni — au plus tard le 2026-10-07 : sauvegarde complète (`--verifier` COMPLÈTE), altération contrôlée (fichier BAD, owner à B), restauration refusée (code 2) puis restauration saine prouvée (`prouvee:true`), relecture des propriétaires." },
       "critere_de_fermeture": "Preuve JSON `prouvee:true` sur le jetable avec propriétaires conformes (NULL compris) et archive altérée refusée sans mutation ; sorties conservées dans preuves/.",
       "preuve_attendue": "Fichiers preuve.json des deux restaurations (refusée, prouvée) et journal de la sauvegarde.",
       "prochaine_etape": "Benjamin : créer le projet jetable et transmettre ref + jeton (jamais la clé service_role) ; Claude : jouer le cycle et déposer les preuves."
