@@ -35,6 +35,16 @@
     b.addEventListener("click", () => geste(b, corps, confirmation));
     actions(c).append(b); return b;
   }
+  // « Réparer » : une seule fabrique pour les trois surfaces (bloc À réparer,
+  // carte d'enquête, carte d'exécution) — deux copies divergeraient.
+  function clefReparation(x) { return x.cible === "issue" ? "issue:" + x.numero : "run:" + x.cle; }
+  function boutonReparer(c, x) {
+    if (!gestesGithub || !x) return;
+    if (x.enCours) { c.append(el("p", "discret", "Réparation en cours : #" + x.enCours + " — le correctif arrivera dans « Correctifs en attente ».")); return; }
+    const corps = x.cible === "issue" ? { action: "reparer", cible: "issue", numero: x.numero } : { action: "reparer", cible: "run", cle: x.cle };
+    const b = bouton(c, "Réparer", corps, "Confier la réparation de « " + x.libelle + " » à Claude ? Il ouvrira un correctif (PR) que tu fusionneras ici.");
+    b.classList.add("btn-reparer");
+  }
   function chiffre(v, libelle, couleur) { const c = el("div", "chiffre" + (couleur ? " " + couleur : "")); c.append(el("b", null, v == null ? "—" : v), el("span", null, libelle)); return c; }
   function ilYA(v) {
     const t = typeof v === "number" ? v : Date.parse(String(v));
@@ -138,6 +148,16 @@
     }
 
     const s = d.sante, u = d.utilisateurs, gh = d.github;
+    const reparables = (gh && Array.isArray(gh.aReparer)) ? gh.aReparer : [];
+    const parCle = new Map(reparables.map((x) => [clefReparation(x), x]));
+    const rp = vider("reparer");
+    $("blocReparer").hidden = !(gestesGithub && reparables.length);
+    reparables.forEach((x) => {
+      const c = carte(x.libelle, x.enCours ? "En cours" : "À réparer", "", x.enCours ? "orange" : "rouge");
+      boutonReparer(c, x);
+      lien(c, x.url, x.cible === "run" ? "Voir l'exécution" : "Ouvrir sur GitHub");
+      rp.append(c);
+    });
     const ch = vider("chiffres");
     ch.append(
       chiffre(u ? u.maintenant.appareils : null, "appareils en ligne"),
@@ -158,6 +178,7 @@
         if (humain) aFaire++;
         const [mot, coul] = humain ? ["À toi", "rouge"] : i.labels.includes("sentinelle") ? ["Sentinelle", "orange"] : i.labels.includes("veille") ? ["Veille", "orange"] : ["Info", "gris"];
         const c = carte("#" + i.numero + " · " + i.titre, mot, "ouverte " + ilYA(i.depuis), coul);
+        boutonReparer(c, parCle.get("issue:" + i.numero));
         lien(c, i.url);
         if (gestesGithub) bouton(c, "Fermer", { action: "fermer", numero: i.numero }, "Fermer #" + i.numero + " ? (à faire si c'est réglé ou sans objet)");
         at.append(c);
@@ -202,7 +223,7 @@
         const r = gh.runs && gh.runs[k];
         if (!r) { ru.append(carte(NOMS[k], "Inconnu", "", "gris")); return; }
         const [mot, coul] = r.etat !== "completed" ? ["En cours", "orange"] : r.conclusion === "success" ? ["OK", "vert"] : r.conclusion === "failure" ? ["Échec", "rouge"] : [r.conclusion || "?", "gris"];
-        const c = carte(NOMS[k], mot, ilYA(r.le), coul); lien(c, r.url, "Voir l'exécution"); ru.append(c);
+        const c = carte(NOMS[k], mot, ilYA(r.le), coul); boutonReparer(c, parCle.get("run:" + k)); lien(c, r.url, "Voir l'exécution"); ru.append(c);
       });
     }
     const pr = vider("prs");

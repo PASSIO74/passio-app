@@ -176,3 +176,4 @@ a { color: var(--accent); }
 .mini-graphe span { flex: 1; background: var(--accent-plein); border-radius: 2px 2px 0 0; min-height: 2px; }
 .mini-graphe span.zero { background: var(--ligne); }
 .repli p { margin: 6px 14px; }
+.carte-actions .btn-reparer { background: var(--accent-plein); border-color: var(--accent-plein); color: #fff; }

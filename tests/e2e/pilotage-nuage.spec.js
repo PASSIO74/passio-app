@@ -43,6 +43,7 @@ const ETAT = {
       { numero: 13, titre: "fix: correctif", labels: [], url: "https://github.com/PASSIO74/passio-app/pull/13", depuis: MAINTENANT, pr: true, pause: false }],
     runs: { sentinelle: { etat: "completed", conclusion: "success", le: MAINTENANT, url: "https://github.com/PASSIO74/passio-app/actions/runs/1" }, veille: null, deploy: { etat: "completed", conclusion: "success", le: MAINTENANT, url: null } },
     pause: false,
+    aReparer: [],
   },
   relancesPossibles: [{ cle: "sentinelle", libelle: "Sentinelle" }],
   gestesGithub: true,
@@ -157,4 +158,49 @@ test("⑦ site injoignable : dit en tête d'accueil", async ({ page }) => {
   await page.goto("/pilotage/");
   await expect(page.locator("#site")).toContainText("Le site ne répond pas");
   await expect(page.locator("#verdict")).toHaveClass(/rouge/);
+});
+
+test("⑧ « Réparer » : bloc sous le voyant, bouton sur l'enquête et sur l'exécution, demande exacte ; masqué sans problème ni jeton", async ({ page }) => {
+  await poserSession(page);
+  const envois = [];
+  const gh = {
+    ...ETAT.github,
+    issues: [{ numero: 556, titre: "[VEILLE] 2 alerte(s) : flux, deploiement", labels: ["veille"], url: "https://github.com/PASSIO74/passio-app/issues/556", depuis: MAINTENANT, pr: false, pause: false },
+      { numero: 600, titre: "[RÉPARER] #12", labels: ["reparation"], url: "https://github.com/PASSIO74/passio-app/issues/600", depuis: MAINTENANT, pr: false, pause: false }],
+    runs: { ...ETAT.github.runs, deploy: { etat: "completed", conclusion: "failure", le: MAINTENANT, url: "https://github.com/PASSIO74/passio-app/actions/runs/9" } },
+    aReparer: [
+      { cible: "issue", numero: 556, libelle: "#556 · [VEILLE] 2 alerte(s)", url: "https://github.com/PASSIO74/passio-app/issues/556", enCours: null },
+      { cible: "run", cle: "deploy", libelle: "Déploiement en échec", url: "https://github.com/PASSIO74/passio-app/actions/runs/9", enCours: null },
+      { cible: "issue", numero: 12, libelle: CHARGE, url: "javascript:alert(1)", enCours: 600 },
+    ],
+  };
+  await routerFonction(page, envois, { ...ETAT, github: gh, verdict: { couleur: "rouge", titre: "Problème en cours", raisons: ["dernier déploiement en échec"] } });
+  page.on("dialog", (d) => d.accept());
+  await page.goto("/pilotage/");
+  await expect(page.locator("#blocReparer")).toBeVisible();
+  await expect(page.locator("#reparer button:has-text('Réparer')")).toHaveCount(2);
+  await expect(page.locator("#reparer")).toContainText("Réparation en cours : #600");
+  expect(await page.textContent("#reparer")).toContain(CHARGE);
+  expect(await page.evaluate(() => window.__pwn)).toBeUndefined();
+  expect(await page.locator('a[href^="javascript"]').count()).toBe(0);
+  const dernierGeste = () => envois.filter((e) => e.corps.action !== "etat").pop();
+
+  await page.click("#reparer article:nth-child(2) button:has-text('Réparer')");
+  await expect.poll(() => dernierGeste() && dernierGeste().corps).toEqual({ action: "reparer", cible: "run", cle: "deploy" });
+  await page.click("#attente button:has-text('Réparer')");
+  await expect.poll(() => dernierGeste().corps).toEqual({ action: "reparer", cible: "issue", numero: 556 });
+  await page.click('.barre button[data-tab="machines"]');
+  await page.click("#runs button:has-text('Réparer')");
+  await expect.poll(() => envois.filter((e) => e.corps.action === "reparer").length).toBe(3);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+});
+
+test("⑨ « Réparer » absent quand rien n'est à réparer, ou sans jeton GitHub", async ({ page }) => {
+  await poserSession(page);
+  const aReparer = [{ cible: "run", cle: "deploy", libelle: "Déploiement en échec", url: null, enCours: null }];
+  await routerFonction(page, [], { ...ETAT, gestesGithub: false, relancesPossibles: [], github: { ...ETAT.github, aReparer } });
+  await page.goto("/pilotage/");
+  await expect(page.locator("#verdictTitre")).toHaveText("À surveiller");
+  await expect(page.locator("#blocReparer")).toBeHidden();
+  expect(await page.locator("button:has-text('Réparer')").count()).toBe(0);
 });
