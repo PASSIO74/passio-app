@@ -2,7 +2,7 @@
 // l'app : c'est lui qui contrôle ces pages). Réseau d'abord : un cockpit ne
 // doit jamais afficher une vieille version ; le cache ne sert qu'hors ligne.
 // Les appels à Supabase (autre origine) ne sont jamais interceptés.
-const CACHE = "passio-pilotage-v2";
+const CACHE = "passio-pilotage-v3";
 const STATIC = ["/pilotage/", "/pilotage/index.html", "/pilotage/pilotage.js", "/pilotage/pilotage.css", "/pilotage/config.js",
   "/pilotage/manifest.webmanifest", "/pilotage/icons/pilot-192.png"];
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(STATIC)).catch(() => {}).then(() => self.skipWaiting())); });

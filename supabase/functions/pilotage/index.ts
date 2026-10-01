@@ -11,7 +11,7 @@
 //
 // ② PILOTE — JWT de la personne, réservé au compte de l'éditeur (`autorise`,
 //    échec fermé : 401 sans session, 403 pour tout autre compte).
-//      etat · relancer · fusionner · fermer · pause · reprendre · signalement
+//      etat · relancer · fusionner · fermer · pause · reprendre · signalement · reparer
 //    Les gestes GitHub exigent le secret PILOTAGE_GITHUB_TOKEN (sinon 501, dit).
 //    Plafond 30/min, 600/h.
 //
@@ -27,6 +27,7 @@ import { REVISION } from "../_shared/revision.js";
 import {
   autorise, RELANCES, LABELS_SUIVIS, TITRE_PAUSE, STATUTS_SIGNALEMENT, estPause,
   erreursFrequentes, detailsErreurs, serieJours, jauges, resumerIssue, resumerRun, verdict, decideAlerte,
+  aReparer, titreReparation, corpsReparation, estReparation, REPARATIONS_MAX,
 } from "../_shared/pilotage.js";
 
 const corsHeaders = {
@@ -71,6 +72,7 @@ Deno.serve(async (req) => {
     case "pause": return pause(true);
     case "reprendre": return pause(false);
     case "signalement": return traiterSignalement(admin, String(corps.id || ""), String(corps.statut || ""));
+    case "reparer": return reparer(corps);
     default: return json({ error: "Action inconnue." }, 400);
   }
 });
@@ -261,7 +263,8 @@ async function lireGithub() {
     return resumerRun(j && j.workflow_runs && j.workflow_runs[0]);
   };
   const [sentinelle, veille, deploy] = await Promise.all([run("sentinelle-autonome.yml"), run("veille-production.yml"), run("deploy.yml")]);
-  const val = { issues, runs: { sentinelle, veille, deploy }, pause: issues.some((i) => i.pause) };
+  const val: Record<string, unknown> = { issues, runs: { sentinelle, veille, deploy }, pause: issues.some((i) => i.pause) };
+  val.aReparer = aReparer(val);
   cacheGh = { at: Date.now(), val };
   return val;
 }
@@ -325,6 +328,37 @@ async function traiterSignalement(admin: Admin, id: string, statut: string) {
   if (error) return json({ error: "Écriture refusée." }, 502);
   if (!data || !data.length) return json({ error: "Déjà traité, ou introuvable." }, 404);
   return json({ ok: true, message: statut === "handled" ? "Signalement traité." : "Signalement rejeté." });
+}
+
+// ─── Réparer : une issue `[RÉPARER] …` confiée à Claude (claude-code.yml) ──────
+// La cible est RE-VÉRIFIÉE ici depuis GitHub (jamais crue du téléphone) : une
+// issue doit être ouverte et réparable, une exécution doit être en échec.
+const attendre = (ms: number) => new Promise((r) => setTimeout(r, ms));
+async function reparer(corps: Record<string, unknown>) {
+  if (!JETON_GH) return sansJeton();
+  const cible = String(corps.cible || "");
+  const demande = cible === "issue" ? { cible, numero: Number(corps.numero) }
+    : cible === "run" ? { cible, cle: String(corps.cle || "") } : null;
+  if (!demande || !titreReparation(demande)) return json({ error: "Cible de réparation invalide." }, 400);
+  cacheGh = null;
+  let etatGh: { aReparer: { cible: string; numero?: number; cle?: string; url: string | null; enCours: number | null }[]; issues: { titre: string; pr: boolean }[] };
+  try { etatGh = await lireGithub() as typeof etatGh; } catch { return json({ error: "GitHub illisible." }, 502); }
+  const c = etatGh.aReparer.find((x) => x.cible === demande.cible && (x.cible === "issue" ? x.numero === (demande as { numero: number }).numero : x.cle === (demande as { cle: string }).cle));
+  if (!c) return json({ error: "Rien à réparer ici : le problème est déjà réglé, ou il est déjà entre les mains de la Sentinelle." }, 409);
+  if (c.enCours) return json({ ok: true, message: "Réparation déjà en cours (#" + c.enCours + ")." });
+  const ouvertes = etatGh.issues.filter((i) => !i.pr && estReparation(i.titre)).length;
+  if (ouvertes >= REPARATIONS_MAX) return json({ error: `Déjà ${ouvertes} réparations en cours : attends qu'une se termine.` }, 429);
+  // Le label doit exister AVANT d'être posé (un ajout sur un label absent échoue).
+  await gh(`/repos/${DEPOT}/labels`, { method: "POST", body: JSON.stringify({ name: "reparation", color: "7C3AED", description: "Réparation demandée depuis le pilotage téléphone" }) }).catch(() => null);
+  const r = await gh(`/repos/${DEPOT}/issues`, { method: "POST", body: JSON.stringify({ title: titreReparation(c), body: corpsReparation(c, DEPOT), labels: ["reparation"] }) });
+  if (!r.ok) return json({ error: `GitHub a refusé l'ouverture (HTTP ${r.status}).` }, 502);
+  const issue = await r.json();
+  // `claude` APRÈS la création, seul dans son événement (course mesurée du 10 au 12/09).
+  await attendre(8000);
+  const l = await gh(`/repos/${DEPOT}/issues/${issue.number}/labels`, { method: "POST", body: JSON.stringify({ labels: ["claude"] }) });
+  cacheGh = null;
+  if (!l.ok) return json({ ok: true, message: `Issue #${issue.number} ouverte, mais le label « claude » a été refusé (HTTP ${l.status}) : pose-le à la main.` });
+  return json({ ok: true, message: `Réparation lancée : #${issue.number}. Le correctif arrivera dans « Correctifs en attente ».` });
 }
 
 function json(body: unknown, status = 200): Response {
