@@ -36,7 +36,10 @@ export const CRONS = {
   "disponibilite.yml": { label: "Disponibilité du site", retardH: 6, morteH: 24 },
   "sauvegarde.yml": { label: "Sauvegarde quotidienne", retardH: 30, morteH: 54 },
   "moderation-alerte.yml": { label: "Alerte modération", retardH: 30, morteH: 54 },
-  "veille-production.yml": { label: "Veille production", retardH: 3, morteH: 12 },
+  // Mesuré le 2026-10-02 sur les 8 derniers runs : cron « */30 » servi toutes
+  // les 3,4 à 7,7 h. À 3 h, la chaîne était « dégradée » en permanence — un
+  // voyant qui ne s'éteint jamais n'est plus lu.
+  "veille-production.yml": { label: "Veille production", retardH: 9, morteH: 24 },
 };
 export const LABELS_ATTENTE = ["humain", "recidive", "moderation", "disponibilite", "veille", "digest", "poste"];
 const PR_ENQUETE_MAX_H = 2;
@@ -48,9 +51,18 @@ let _memo = { t: 0, valeur: null };
 
 const titre = (s) => String(s || "").replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, 120);
 
-function runsDe(r) {
+// L'API GitHub ne garantit pas l'ordre de `workflow_runs` dès qu'un filtre
+// (`branch`, `exclude_pull_requests`) est posé : le 2026-10-02 le poste lisait
+// comme « dernier deploy main » un run du 2026-09-03, alors que trois deploys
+// avaient eu lieu depuis — le balayage des incidents, qui exige une révision
+// main POSTÉRIEURE à la dernière occurrence, ne résolvait donc plus rien.
+// On trie nous-mêmes (le plus récent d'abord), et `branche` filtre côté client.
+export function runsDe(r, { branche = null } = {}) {
   if (r.erreur && !r.data) return { erreur: r.erreur };
-  const runs = (r.data && r.data.workflow_runs) || [];
+  const date = (x) => Date.parse(x.run_started_at || x.created_at || x.updated_at) || 0;
+  const runs = ((r.data && r.data.workflow_runs) || [])
+    .filter((x) => !branche || !x.head_branch || x.head_branch === branche)
+    .slice().sort((a, b) => date(b) - date(a));
   const termine = runs.find((x) => x.status === "completed") || null;
   const succes = runs.find((x) => x.conclusion === "success") || null;
   const enCours = runs.some((x) => x.status === "in_progress" || x.status === "queued");
@@ -69,7 +81,7 @@ export async function mesurerChaine({ fetchImpl = null, now = Date.now() } = {})
     get("/actions/workflows?per_page=50", { cacheMs: 60 * 60_000 }),
     get("/issues?state=open&per_page=100"),
     get("/pulls?state=open&per_page=20"),
-    get("/actions/workflows/deploy.yml/runs?branch=main&event=push&per_page=5&exclude_pull_requests=true"),
+    get("/actions/workflows/deploy.yml/runs?event=push&per_page=20"),
     // Ce que la chaîne a fait sur 7 jours (bilan « machines ») : lu moins souvent.
     get(`/issues?state=closed&labels=sentinelle&since=${encodeURIComponent(depuis7j)}&per_page=50`, { cacheMs: 30 * 60_000 }),
     ...Object.keys(CRONS).map((f) => get(`/actions/workflows/${f}/runs?per_page=5&exclude_pull_requests=true`)),
@@ -77,7 +89,7 @@ export async function mesurerChaine({ fetchImpl = null, now = Date.now() } = {})
   const workflows = wf.erreur && !wf.data ? { erreur: wf.erreur } : Object.fromEntries(((wf.data && wf.data.workflows) || []).map((w) => [String(w.path || "").split("/").pop(), w.state]));
   const parCron = {};
   Object.keys(CRONS).forEach((f, i) => { parCron[f] = runsDe(runs[i]); });
-  const dep = runsDe(deploy);
+  const dep = runsDe(deploy, { branche: "main" });
   return {
     luLe: new Date(now).toISOString(),
     workflows,

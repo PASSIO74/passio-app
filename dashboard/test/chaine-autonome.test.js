@@ -153,3 +153,28 @@ test("tour à bascule : vit→morte = UNE alerte warn (jamais high), même état
   assert.equal(vues.length, 4, "en_retard → vit : rien de neuf, le retour a déjà été dit");
   _setStateForTests({ crons: {} });
 });
+
+// ── 2026-10-02 : ordre des runs non garanti par GitHub ──────────────────────
+// Le poste lisait comme « dernier deploy main » un run du 2026-09-03 (réponse
+// filtrée mal ordonnée) : plus aucune révision main « postérieure », donc plus
+// aucun incident high résolu seul. Mutation éprouvée : retirer le tri de
+// runsDe → ce test rougit.
+test("runsDe : trie lui-même du plus récent au plus ancien, et ne garde que la branche demandée", () => {
+  const r = { data: { workflow_runs: [
+    { status: "completed", conclusion: "success", created_at: "2026-09-03T12:00:00Z", updated_at: "2026-09-03T12:10:00Z", head_sha: "vieux", head_branch: "main", html_url: "v" },
+    { status: "completed", conclusion: "success", created_at: "2026-10-01T07:51:42Z", updated_at: "2026-10-01T08:20:00Z", head_sha: "pr", head_branch: "fix/x", html_url: "p" },
+    { status: "completed", conclusion: "success", created_at: "2026-09-30T13:51:24Z", updated_at: "2026-09-30T14:20:00Z", head_sha: "milieu", head_branch: "main", html_url: "m" },
+    { status: "completed", conclusion: "failure", created_at: "2026-09-30T14:39:15Z", updated_at: "2026-09-30T15:00:00Z", head_sha: "rouge", head_branch: "main", html_url: "r" },
+  ] } };
+  const d = ca.runsDe(r, { branche: "main" });
+  assert.equal(d.dernier.sha, "rouge", "le plus récent run main terminé, quel que soit l'ordre servi");
+  assert.equal(d.dernierSucces.sha, "milieu", "le plus récent SUCCÈS main — jamais le vieux run servi en tête");
+  assert.equal(ca.runsDe(r).dernierSucces.sha, "pr", "sans filtre de branche, toutes les branches comptent");
+});
+
+test("veille-production : tolérances alignées sur le service mesuré de GitHub (3,4 à 7,7 h) — 8 h vit encore, 10 h en retard, 25 h morte", () => {
+  const avec = (h) => verdictsChaine(mesures({ runs: { ...mesures().runs, "veille-production.yml": run(h) } }), NOW).crons["veille-production.yml"].etat;
+  assert.equal(avec(8), "vit");
+  assert.equal(avec(10), "en_retard");
+  assert.equal(avec(25), "morte");
+});
