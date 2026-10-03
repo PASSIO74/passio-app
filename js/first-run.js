@@ -565,7 +565,8 @@
   // était perdu, alors que la destination était bien ouverte. Les deux formes
   // sont donc reconnues — mais la vérité, c'est l'ÉCRAN, pas le hash : voir
   // `ecranOccupe()`, qui regarde ce qui est réellement affiché.
-  var RE_LIEN_PROFOND = /^#(reel=|irl-event-|irl-checkin-|event-|post-|profil-|conv-)/;
+  // `user-` : le lien de partage d'un profil (app-06, 2026-10-03).
+  var RE_LIEN_PROFOND = /^#(reel=|irl-event-|irl-checkin-|event-|post-|user-|profil-|conv-)/;
 
   function lienProfond() {
     try { return RE_LIEN_PROFOND.test(window.location.hash || ""); } catch (e) { return false; }
@@ -590,6 +591,11 @@
     // interdit. Mesuré, pas déduit.
     var ev = document.getElementById("eventDetailPage");
     if (ev && ev.style && ev.style.display !== "none" && ev.style.display !== "") return true;
+    // Même mécanique pour la page d'une publication, que le lien `#post-<id>`
+    // (app-06) ouvre — et dont il NETTOIE le hash avant : `lienProfond()` ne la
+    // voit donc plus, seul son affichage la dit.
+    var pd = document.getElementById("postDetailPage");
+    if (pd && pd.style && pd.style.display !== "none" && pd.style.display !== "") return true;
     // Feuille basse / panneau plein écran ouverts par un autre lot.
     if (document.querySelector(".ctx-tools-root.open, #convFullpage.active, #conv-fullpage.active")) return true;
     var l = document.getElementById("landing");
