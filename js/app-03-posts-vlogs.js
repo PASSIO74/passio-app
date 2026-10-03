@@ -33,11 +33,14 @@ function sharePost(id) {
     const btn = document.getElementById("_shareOutBtn");
     if (!btn) return;
     btn.addEventListener("click", function() {
-      // Un carnet partagé doit OUVRIR le carnet, pas la page d'accueil.
-      // ⚠️ Plus de lien profond `#carnet-<id>` : le Carnet de voyage a été retiré
-      // (ADR-011 §6) et plus AUCUN routeur ne l'attrape. Le lien promettait
-      // d'ouvrir un carnet et déposait le destinataire sur le fil, sans un mot.
-      const shareUrl = "https://passio-app.netlify.app";
+      // Le lien doit OUVRIR la publication, pas la page d'accueil (2026-10-03) :
+      // il envoyait l'URL de l'accueil en dur depuis le retrait de `#carnet-<id>`
+      // (ADR-011 §6), et le destinataire tombait sur un fil quelconque.
+      // `#post-<id>` est lu par `_ouvrirLienPartage` (app-06).
+      const rawUrl = (typeof lienPartagePublication === "function")
+        ? lienPartagePublication(id) : "https://passio-app.netlify.app";
+      const shareUrl = (window.tel && tel.shareLink)
+        ? tel.shareLink(rawUrl, "post", id, navigator.share ? "native" : "clipboard") : rawUrl;
       partagerOuCopier({ title: "PASSIO", text: txt, url: shareUrl }, "Lien copié");
     });
   }, 0);

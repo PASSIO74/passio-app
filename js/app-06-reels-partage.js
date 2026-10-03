@@ -161,6 +161,204 @@ window.addEventListener("hashchange", function () {
   if (g && typeof g.then === "function") g.then(demarrer); else demarrer();
 })();
 
+// ══════════════════════════════════════════════════════════════════════════
+// LIENS PARTAGÉS D'UNE PUBLICATION ET D'UN PROFIL — #post-<id>, #user-<id>
+// (2026-10-03)
+//
+// ⚠️ DEUX BOUCLES DE PARTAGE SUR QUATRE ÉTAIENT ROMPUES, EN SILENCE.
+//   · « Partager en dehors » une PUBLICATION envoyait l'URL de l'accueil
+//     (`https://passio-app.netlify.app`, en dur) : le destinataire tombait sur
+//     un fil quelconque, jamais sur ce qu'on lui montrait. Le lien précédent
+//     (`#carnet-<id>`) avait été retiré avec le Carnet de voyage, et rien ne
+//     l'avait remplacé.
+//   · « Partager le profil » fabriquait `#user-<id>`… que PERSONNE ne lisait.
+//     Même défaut que `#irl-event-` (2026-07-21) et `#reel=` : un lien fabriqué,
+//     envoyé, et lu par personne.
+// Or un lien partagé est le SEUL chemin d'entrée de quelqu'un qui ne connaît
+// pas encore PASSIO : c'est la boucle d'acquisition elle-même.
+//
+// Mêmes règles que les deux routeurs voisins (`#reel=` ci-dessus, `#irl-event-`
+// en app-07), pour les mêmes raisons :
+//   ① attendre que l'application soit prête SANS consommer d'essai de contenu
+//      (`state` vaut null avant `loadState()`) ;
+//   ② mémoriser la cible au premier passage (toute navigation pendant l'attente
+//      réécrit le hash) ;
+//   ③ le corps entier sous `try` : une exception REPLANIFIE, elle ne conclut pas ;
+//   ④ le hash n'est nettoyé que sur le chemin de SUCCÈS, et AVANT l'ouverture :
+//      `openPost` pose son entrée « #post » et `openModal` la sienne — le retour
+//      arrière doit fermer la page, pas rejouer le lien en boucle ;
+//   ⑤ rien ne s'ouvre par-dessus la landing ou l'onboarding.
+// Et deux règles propres :
+//   ⑥ une publication absente de la page chargée (plus ancienne que le fil
+//      courant) est cherchée UNE fois, de façon CIBLÉE : son auteur, puis ses
+//      publications — même chemin que le profil visité (app-04), fusion dans
+//      `supabasePosts`, JAMAIS dans `seed.posts`. La RLS tranche : une
+//      publication d'un compte privé ne remonte pas, et le lien le DIT ;
+//   ⑦ un compte BLOQUÉ n'est jamais ouvert par un lien, ni sa publication.
+// ⚠️ `#post-<id>` est un préfixe RÉSERVÉ AU PARTAGE : `openPost` pose « #post »
+// sans identifiant, donc le routeur ne réagit jamais à sa propre navigation.
+var LIEN_PARTAGE_RE = /^#(post|user)-(.+)$/;
+var _lienPartage = null;          // { genre, id } capturé au premier passage
+var _lienPartageEssais = 0;       // « le contenu n'est pas encore là »
+var _lienPartageAttentes = 0;     // « l'application n'est pas prête »
+var _lienPartageCible = false;    // la recherche ciblée ⑥ a-t-elle été faite ?
+var _lienPartageTimer = null;
+
+function _lienPartageLire() {
+  var m = LIEN_PARTAGE_RE.exec(location.hash || "");
+  if (!m) return null;
+  var id = m[2];
+  try { id = decodeURIComponent(id); } catch (e) {}
+  return id ? { genre: m[1], id: id } : null;
+}
+
+function _lienPartageReplanifier(delai) {
+  if (_lienPartageTimer) return;
+  _lienPartageTimer = setTimeout(function () {
+    _lienPartageTimer = null;
+    _ouvrirLienPartage();
+  }, delai || 700);
+}
+
+function _lienPartageAppPrete() {
+  if (document.documentElement.classList.contains("passio-locked")) return false;
+  if (typeof state === "undefined" || !state || !state.seed || !state.user) return false;
+  if (typeof findPostAnywhere !== "function" || typeof openPost !== "function") return false;
+  if (typeof openUserProfile !== "function") return false;
+  var l = document.getElementById("landing");
+  if (l && l.classList.contains("active")) return false;
+  var o = document.getElementById("onboarding");
+  if (o && o.classList.contains("active")) return false;
+  return true;
+}
+
+function _lienPartageConclure(message) {
+  _lienPartage = null;
+  _lienPartageEssais = 0;
+  _lienPartageAttentes = 0;
+  _lienPartageCible = false;
+  if (message && typeof toast === "function") toast(message);
+}
+
+// ⑥ Une publication plus ancienne que la page chargée : on cherche son auteur,
+// puis on charge SES publications. Une seule fois par lien — un identifiant
+// inconnu ne doit pas faire marteler la base.
+async function _lienPartageChercherPost(id) {
+  _lienPartageCible = true;
+  if (!window._supaReal || typeof supa === "undefined" || !supa || typeof supaLoadPosts !== "function") return;
+  try {
+    var r = await supa.from("posts").select("author_id").eq("id", id).maybeSingle();
+    if (r.error) { diagLog("lien_partage_post", r.error.message); return; }
+    var auteur = r.data && r.data.author_id;
+    if (!auteur) return;
+    var lus = await supaLoadPosts(0, auteur);
+    state.supabasePosts = state.supabasePosts || [];
+    (lus || []).forEach(function (p) {
+      if (p && p.id && !state.supabasePosts.some(function (q) { return q.id === p.id; })) state.supabasePosts.push(p);
+    });
+  } catch (e) {
+    diagLog("lien_partage_post", e && e.message);
+  }
+}
+
+function _ouvrirLienPartage() {
+  var lu = _lienPartageLire();
+  if (lu) _lienPartage = lu;
+  var cible = _lienPartage;
+  if (!cible) return false;
+
+  try {
+    // Bornée : 600 × 700 ms ≈ 7 min, le temps d'une inscription. Le hash reste
+    // en place, donc un rechargement retente.
+    if (!_lienPartageAppPrete()) {
+      if (++_lienPartageAttentes <= 600) _lienPartageReplanifier();
+      return false;
+    }
+
+    if (cible.genre === "user") {
+      if (typeof isBlocked === "function" && isBlocked(cible.id)) {
+        _reelLinkNettoyerHash();
+        _lienPartageConclure("Ce profil n'est pas disponible");
+        return false;
+      }
+      _reelLinkNettoyerHash();
+      _lienPartageConclure("");
+      // `openUserProfile` cherche lui-même le compte en base et DIT « Profil non
+      // trouvé » s'il n'existe pas : on ne double pas ce verdict.
+      openUserProfile(cible.id, "lien");
+      try { if (window.tel && tel.action) tel.action("shared_link_open", { kind: "profile" }); } catch (e) {}
+      return true;
+    }
+
+    var post = findPostAnywhere(cible.id);
+    if (!post) {
+      // Une publication RÉELLE peut n'arriver qu'avec `supaLoadPosts` : on
+      // retente, puis on la cherche de façon ciblée (⑥), puis on conclut.
+      if (!_lienPartageCible && _lienPartageEssais >= 3 && window._supaReal) {
+        _lienPartageChercherPost(cible.id).then(function () { _lienPartageReplanifier(50); });
+        _lienPartageEssais++;
+        return false;
+      }
+      if (++_lienPartageEssais <= 12) { _lienPartageReplanifier(); return false; }
+      _lienPartageConclure("Publication introuvable ou supprimée");
+      return false;
+    }
+    if (typeof isBlocked === "function" && isBlocked(post.authorId)) {
+      _reelLinkNettoyerHash();
+      _lienPartageConclure("Cette publication n'est pas disponible");
+      return false;
+    }
+
+    _reelLinkNettoyerHash();
+    _lienPartageConclure("");
+    openPost(cible.id);
+    try { if (window.tel && tel.action) tel.action("shared_link_open", { kind: "post" }); } catch (e) {}
+    return true;
+  } catch (e) {
+    // Une exception ne conclut JAMAIS : c'est exactement ce qui tuait la reprise
+    // des liens voisins en silence. On la trace et on retente.
+    diagLog("lien_partage", e && e.message);
+    if (++_lienPartageAttentes <= 600) _lienPartageReplanifier();
+    return false;
+  }
+}
+
+// Un lien collé pendant que l'application tourne. On sort si le hash n'est pas
+// un lien de partage ; budget neuf seulement si la CIBLE change.
+window.addEventListener("hashchange", function () {
+  var lu = _lienPartageLire();
+  if (!lu) return;
+  if (!_lienPartage || lu.genre !== _lienPartage.genre || lu.id !== _lienPartage.id) {
+    _lienPartage = lu;
+    _lienPartageEssais = 0;
+    _lienPartageAttentes = 0;
+    _lienPartageCible = false;
+  }
+  _ouvrirLienPartage();
+});
+
+(function _lienPartageBoot() {
+  if (!LIEN_PARTAGE_RE.test(location.hash || "")) return;
+  var demarrer = function () { _lienPartageReplanifier(400); };
+  var g = window.__gateReady;
+  if (g && typeof g.then === "function") g.then(demarrer); else demarrer();
+})();
+
+// En production le bloc app peut arriver après le premier sondage : on repart au
+// signal, compteurs remis à zéro (règle des modules voisins).
+window.addEventListener("passio:app-ready", function () {
+  if (!_lienPartage && !LIEN_PARTAGE_RE.test(location.hash || "")) return;
+  _lienPartageAttentes = 0;
+  _lienPartageEssais = 0;
+  _ouvrirLienPartage();
+});
+
+// Le lien à diffuser pour une publication : le préfixe que le routeur ci-dessus
+// lit, et rien d'autre. Seule source de cette forme d'URL.
+function lienPartagePublication(id) {
+  return location.origin + location.pathname + "#post-" + encodeURIComponent(id);
+}
+
 function copyReelLink(postId, encodedUrl) {
   const url = decodeURIComponent(encodedUrl);
   if (navigator.clipboard) {

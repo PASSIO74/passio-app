@@ -2697,6 +2697,36 @@ deux populations ; aucun n'est « la capacité ». Résultats : `docs/CAPACITE_S
 transitoire, aucun réglage modifié) : les essais précédents à 200 étaient morts de la veille, et le verdict
 `DUREE_MESURE_INVALIDE` du banc les aurait de toute façon refusés.
 
+## 🔗 DEUX BOUCLES DE PARTAGE SUR QUATRE ÉTAIENT ROMPUES — publication et profil (2026-10-03)
+
+Question de Benjamin : « comment avoir des millions d'utilisateurs ? ». Mesuré d'abord (canal ①) : **10 comptes, 0 créé
+en 7 jours, 1 connecté en 7 jours, 8 appareils, 42 sessions de production en une semaine**. Le mur n'est pas la
+capacité (500 comptes simultanés, visiteurs illimités) : c'est la **diffusion**. Or un lien partagé est le SEUL chemin
+d'entrée de quelqu'un qui ne connaît pas PASSIO — et sur les quatre types de partage, deux menaient nulle part :
+« Partager en dehors » une **publication** envoyait l'URL de l'accueil **en dur** (depuis le retrait de `#carnet-<id>`,
+rien ne l'avait remplacé) ; « Partager le profil » fabriquait **`#user-<id>`, que personne ne lisait**. Bobines
+(`#reel=`), rencontres (`#irl-event-`) et lives (`?live=`) étaient routés. Même famille que `#irl-event-` (2026-07-21)
+et `#reel=` : **un lien fabriqué, envoyé, et lu par personne — sans une erreur nulle part.**
+⚠️ **`_ouvrirLienPartage` (app-06) est le routeur des deux**, avec les règles des deux routeurs voisins (attendre l'app
+sans consommer d'essai, cible mémorisée, corps sous `try`, hash nettoyé AVANT l'ouverture et seulement sur succès, rien
+par-dessus landing/onboarding) plus deux propres : ⑥ une publication absente de la page chargée est cherchée **UNE
+fois, de façon CIBLÉE** (`posts.author_id` puis `supaLoadPosts(0, auteur)`, fusion dans `supabasePosts`, jamais
+`seed.posts` — la RLS tranche pour un compte privé, et le lien le DIT) ; ⑦ un compte **bloqué** n'est jamais ouvert.
+⚠️ **`#post-<id>` est un préfixe RÉSERVÉ AU PARTAGE** : `openPost` pose `#post` SANS identifiant, donc le routeur ne
+réagit jamais à sa propre navigation. Ne pas faire poser `#post-<id>` par `openPost`. `lienPartagePublication(id)` est
+la seule source de cette URL. `first-run.js` reconnaît `user-` comme lien profond, et `ecranOccupe()` regarde
+`#postDetailPage` (le hash est nettoyé avant l'ouverture : seul l'affichage dit qu'elle est à l'écran).
+⚠️ **`openUserProfile` relit TOUJOURS le profil en base avant d'ouvrir** : au démarrage, cette lecture attend
+l'initialisation du SDK — 15,7 s mesurées hors réseau (bac local), quelques ms en CI. D'où le délai large du cas ②.
+⚠️ **CE QUI RESTE, NOMMÉ** : tous les liens sont des **hash**, donc invisibles aux robots d'aperçu (WhatsApp, iMessage,
+Messenger) — chaque partage s'affiche avec l'aperçu GÉNÉRIQUE de `index.html`. Des aperçus par contenu demandent des
+URL en chemin (`/p/<id>`, `/e/<id>`, `/u/<id>`) servies par une Edge Function qui lit la base en clé anon (RLS) et
+écrit du contenu d'autrui dans du HTML **sur l'origine de l'application** : c'est un lot de **sécurité** (échappement,
+CSP propre — le `[[headers]]` de netlify.toml ne s'applique PAS aux réponses d'une Edge Function), donc revue dédiée,
+pas un ajout en passant.
+Verrou : `tests/e2e/liens-partage-post-profil.spec.js` (7), **éprouvé par RÉINJECTION de quatre mutations** — routeur
+rendu muet (3 rouges), recherche ciblée retirée (1), garde de blocage retirée (1), partage rendu à l'accueil (1).
+
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)
 
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)
