@@ -5866,12 +5866,16 @@ async function onbDoAuth() {
       // `invite_de` (app-06) : l'invitation voyage AVEC le compte. Le lien de
       // confirmation s'ouvre souvent dans un autre navigateur que celui où le
       // lien d'invitation a été ouvert — l'invitation locale n'y existe pas.
+      const _invitation = (typeof invitationPourInscription === "function") ? invitationPourInscription() : {};
       result = await supa.auth.signUp({ email, password: pwd, options: Object.assign({ data: Object.assign({
         name: nom, display_name: nom,
         cgu_version: PASSIO_CGU_VERSION,
         cgu_accepted_at: _cguAccepteA,
         confidentialite_version: PASSIO_CONFIDENTIALITE_VERSION,
-      }, (typeof invitationPourInscription === "function") ? invitationPourInscription() : {}) }, captchaToken !== undefined ? { captchaToken } : {}) });
+      }, _invitation) }, captchaToken !== undefined ? { captchaToken } : {}) });
+      // L'invitation est partie avec le compte : elle n'a plus rien à faire sur
+      // l'appareil, où elle serait sinon reproposée au compte suivant.
+      if (_invitation.invite_de && result && !result.error && typeof oublierInvitation === "function") oublierInvitation();
       // Copie locale pour le profil et les prochaines synchros.
       try {
         if (typeof state !== "undefined") {

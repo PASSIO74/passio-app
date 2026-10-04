@@ -102,11 +102,13 @@ test.describe("Invitation — l'arrivée d'un visiteur", () => {
     }));
     expect(avant.inv && avant.inv.de).toBe(INVITANT);
     expect(avant.url).not.toContain("inv=");
+    // AUCUN appel à la main : c'est le CÂBLAGE (la reprise bornée posée au
+    // chargement) qui doit accueillir dès que l'auteur devient lisible. Le SDK
+    // est coupé au banc, donc la lecture répond « attendre » jusqu'ici.
     await page.evaluate(() => {
       window.__telCap = [];
       window.tel.action = (name) => { window.__telCap.push(name); };
-      window._invitationLireAuteur = async () => ({ nom: "Léa" });
-      accueillirInvitation();
+      window._invitationLireAuteur = async () => ({ nom: "Léa", prive: false });
     });
     const t = page.locator("#toastStack .toast", { hasText: "Léa t'invite sur PASSIO" });
     await expect(t).toHaveCount(1);
@@ -124,8 +126,8 @@ test.describe("Invitation — l'arrivée d'un visiteur", () => {
     await expect(ligne).toBeVisible();
     await expect(ligne).toContainText("Léa t'invite sur PASSIO");
     await expect(ligne).toContainText("tu suivras automatiquement Léa");
-    // En connexion, il n'y a rien à annoncer. (Par la fonction de l'onglet : le
-    // bouton « ← Continuer à explorer » recouvre la rangée d'onglets au banc.)
+    // En connexion, il n'y a rien à annoncer. (Par la fonction de l'onglet : au
+    // banc, une bulle d'aide `.fr-tip` recouvre la rangée d'onglets.)
     await page.evaluate(() => switchAuthTab("signin"));
     await expect(ligne).toBeHidden();
   });
@@ -190,6 +192,15 @@ test.describe("Invitation — l'inscription l'emporte", () => {
     const d = await page.evaluate(() => window.__auth.signUp[0].options.data);
     expect(d.invite_de).toBe(INVITANT);
     expect(d.name).toBe("Sam");
+    // Partie avec le compte, l'invitation quitte l'appareil : le compte suivant
+    // créé ici ne se la verra pas reproposer.
+    expect(await page.evaluate(() => localStorage.getItem("passio_invitation_v1"))).toBeNull();
+  });
+
+  test("③ un compte PRIVÉ : l'annonce dit « demande », pas « tu suivras »", async ({ page }) => {
+    await ouvrirCreation(page, { de: INVITANT, at: Date.now(), nom: "Léa", prive: true, accueillie: true });
+    await expect(page.locator("#authInvite")).toContainText("une demande d'abonnement partira vers Léa");
+    await expect(page.locator("#authInvite")).not.toContainText("tu suivras");
   });
 
   test("③ ter invitant jamais nommé : pas d'annonce, donc rien ne part", async ({ page }) => {
@@ -210,6 +221,30 @@ test.describe("Invitation — l'inscription l'emporte", () => {
     await expect.poll(() => page.evaluate(() => window.__auth.signUp.length)).toBe(1);
     const d = await page.evaluate(() => window.__auth.signUp[0].options.data);
     expect("invite_de" in d).toBe(false);
+  });
+
+  test("③ quinquies l'invitation remplacée ailleurs n'est pas emportée à la place de celle affichée", async ({ page }) => {
+    await ouvrirCreation(page, { de: INVITANT, at: Date.now(), nom: "Léa", accueillie: true });
+    // Un autre onglet écrit une autre invitation : ce formulaire-ci n'en sait rien
+    // (l'événement `storage` ne part pas vers l'onglet qui écrit lui-même).
+    await page.evaluate((moi) => {
+      localStorage.setItem("passio_invitation_v1", JSON.stringify({ de: moi, at: Date.now(), nom: "Autre", accueillie: true }));
+    }, MOI);
+    await page.locator("#authSubmitBtn").click();
+    await expect.poll(() => page.evaluate(() => window.__auth.signUp.length)).toBe(1);
+    const d = await page.evaluate(() => window.__auth.signUp[0].options.data);
+    expect("invite_de" in d).toBe(false);
+  });
+
+  test("③ sexies l'invitation remplacée ailleurs repeint l'annonce (événement `storage`)", async ({ page }) => {
+    await ouvrirCreation(page, { de: INVITANT, at: Date.now(), nom: "Léa", accueillie: true });
+    await expect(page.locator("#authInvite")).toContainText("Léa t'invite sur PASSIO");
+    await page.evaluate((moi) => {
+      localStorage.setItem("passio_invitation_v1", JSON.stringify({ de: moi, at: Date.now(), nom: "Autre", accueillie: true }));
+      window.dispatchEvent(new StorageEvent("storage", { key: "passio_invitation_v1" }));
+    }, MOI);
+    await expect(page.locator("#authInvite")).toContainText("Autre t'invite sur PASSIO");
+    expect(await page.evaluate(() => invitationPourInscription())).toEqual({ invite_de: MOI });
   });
 
   test("③ bis sans invitation, ni ligne ni clé", async ({ page }) => {
@@ -258,14 +293,15 @@ test.describe("Invitation — le compte neuf suit son invitant", () => {
       localStorage.setItem("passio_invitation_v1", JSON.stringify({ de: inv, at: Date.now() - 60000 }));
       const neuf = await appliquerInvitation({ user: { id: moi, created_at: new Date().toISOString(), user_metadata: {} } });
       return { ancien, resteApresAncien, neuf, suivisAvant: window.__suivis.length,
-        trace: state.user.invitationTraitee && state.user.invitationTraitee.verdict };
+        trace: state.user.invitationTraitee ? state.user.invitationTraitee.verdict : undefined };
     }, [INVITANT, MOI]);
     expect(r.ancien).toBe("compte_existant");
     expect(r.resteApresAncien).toBeNull();
-    // Personne n'est suivi d'office : la question est posée, une seule fois.
+    // Personne n'est suivi d'office : la question est posée, et rien n'est figé
+    // tant qu'elle n'a pas de réponse.
     expect(r.neuf).toBe("proposee");
     expect(r.suivisAvant).toBe(0);
-    expect(r.trace).toBe("proposee");
+    expect(r.trace).toBeUndefined();
     await expect(page.locator("#modalBackdrop.active .modal-title")).toContainText("Invitation de Léa");
     await page.locator("#_invSuivre").click();
     await expect.poll(() => page.evaluate(() => window.__suivis.slice())).toEqual([INVITANT]);
@@ -282,20 +318,49 @@ test.describe("Invitation — le compte neuf suit son invitant", () => {
     await expect(page.locator("#toastStack .toast", { hasText: "Tu suis maintenant Léa" })).toHaveCount(1);
   });
 
-  test("④ ter bis « Plus tard » ne suit personne, et la question n'est pas reposée", async ({ page }) => {
+  test("④ ter bis « Non merci » clôt ; une fenêtre fermée SANS réponse est reproposée, trois fois au plus", async ({ page }) => {
     await bancApplication(page);
     const s = { user: { id: MOI, created_at: new Date().toISOString(), user_metadata: {} } };
-    await page.evaluate(async ([inv, s]) => {
+    const poser = () => page.evaluate((inv) => {
+      if (!localStorage.getItem("passio_invitation_v1")) localStorage.setItem("passio_invitation_v1", JSON.stringify({ de: inv, at: Date.now() - 60000 }));
+    }, INVITANT);
+    // Fermée sans réponse, trois fois : la question revient, puis on cesse.
+    const verdicts = [];
+    for (let i = 0; i < 4; i++) {
+      await poser();
+      verdicts.push(await page.evaluate(async (s) => { const v = await appliquerInvitation(s); closeModal(); return v; }, s));
+    }
+    expect(verdicts).toEqual(["proposee", "proposee", "proposee", "ignoree"]);
+    // « Non merci » sur une invitation neuve : clôt sans suivre.
+    await page.evaluate(() => { delete state.user.invitationTraitee; });
+    await poser();
+    await page.evaluate(async (s) => appliquerInvitation(s), s);
+    await page.locator("#_invNon").click();
+    const r = await page.evaluate(async (s) => ({ trace: state.user.invitationTraitee.verdict, suivis: window.__suivis.length,
+      encore: await appliquerInvitation(s) }), s);
+    expect(r).toEqual({ trace: "refuse", suivis: 0, encore: "aucune" });
+  });
+
+  test("④ ter quater « Suivre » qui échoue ne fige rien : on le reproposera", async ({ page }) => {
+    await bancApplication(page, { suivi: { ok: false, status: null } });
+    await page.evaluate(async ([inv, moi]) => {
       localStorage.setItem("passio_invitation_v1", JSON.stringify({ de: inv, at: Date.now() - 60000 }));
-      await appliquerInvitation(s);
-    }, [INVITANT, s]);
-    await page.locator("#_invPlusTard").click();
-    const r = await page.evaluate(async ([inv, s]) => {
+      await appliquerInvitation({ user: { id: moi, created_at: new Date().toISOString(), user_metadata: {} } });
+    }, [INVITANT, MOI]);
+    await page.locator("#_invSuivre").click();
+    await expect(page.locator("#toastStack .toast", { hasText: "on te le reproposera" })).toHaveCount(1);
+    const r = await page.evaluate(() => ({ trace: state.user.invitationTraitee || null,
+      reste: !!localStorage.getItem("passio_invitation_v1") }));
+    expect(r).toEqual({ trace: null, reste: true });
+  });
+
+  test("④ ter quinquies compte PRIVÉ : la question dit « demande »", async ({ page }) => {
+    await bancApplication(page, { auteur: { nom: "Léa", prive: true } });
+    await page.evaluate(async ([inv, moi]) => {
       localStorage.setItem("passio_invitation_v1", JSON.stringify({ de: inv, at: Date.now() - 60000 }));
-      return { encore: await appliquerInvitation(s), suivis: window.__suivis.length,
-        ouvert: !!document.querySelector("#modalBackdrop.active") };
-    }, [INVITANT, s]);
-    expect(r).toEqual({ encore: "deja", suivis: 0, ouvert: false });
+      await appliquerInvitation({ user: { id: moi, created_at: new Date().toISOString(), user_metadata: {} } });
+    }, [INVITANT, MOI]);
+    await expect(page.locator("#_invSuivre")).toHaveText("Demander à suivre Léa");
   });
 
   test("④ ter ter une fenêtre déjà ouverte n'est jamais remplacée : on reposera plus tard", async ({ page }) => {
@@ -352,6 +417,30 @@ test.describe("Invitation — le compte neuf suit son invitant", () => {
     expect(r).toEqual({ v: ["echec", "echec", "echec", "deja"], suivis: 3, trace: "echec" });
   });
 
+  test("④ octies la métadonnée d'un compte de plus de 7 jours ne vaut plus rien", async ({ page }) => {
+    await bancApplication(page);
+    const r = await page.evaluate(async ([inv, moi]) => ({
+      v: await appliquerInvitation({ user: { id: moi, created_at: new Date(Date.now() - 8 * 86400000).toISOString(), user_metadata: { invite_de: inv } } }),
+      suivis: window.__suivis.length,
+    }), [INVITANT, MOI]);
+    expect(r).toEqual({ v: "trop_ancien", suivis: 0 });
+  });
+
+  test("④ nonies un geste MANUEL sur l'invitant clôt l'invitation : un désabonnement n'est jamais défait", async ({ page }) => {
+    // Premier démarrage en « attente » (lecture de l'auteur impossible), puis la
+    // personne suit et ne suit plus l'invitant à la main.
+    await bancApplication(page, { auteur: { attendre: true } });
+    const r = await page.evaluate(async ([inv, moi]) => {
+      const s = { user: { id: moi, created_at: new Date().toISOString(), user_metadata: { invite_de: inv } } };
+      const premier = await appliquerInvitation(s);
+      const manuel = invitationGesteManuel(inv);
+      window._invitationLireAuteur = async () => ({ nom: "Léa" });
+      const suivant = await appliquerInvitation(s);
+      return { premier, manuel, trace: state.user.invitationTraitee.verdict, suivant, suivis: window.__suivis.length };
+    }, [INVITANT, MOI]);
+    expect(r).toEqual({ premier: "attente", manuel: true, trace: "manuel", suivant: "deja", suivis: 0 });
+  });
+
   test("④ septies la coupure : rien n'est appliqué", async ({ page }) => {
     await bancApplication(page);
     const r = await page.evaluate(async (s) => {
@@ -359,6 +448,37 @@ test.describe("Invitation — le compte neuf suit son invitant", () => {
       return { v: await appliquerInvitation(s), suivis: window.__suivis.length };
     }, sessionNeuve({ invite_de: INVITANT }));
     expect(r).toEqual({ v: "coupee", suivis: 0 });
+  });
+});
+
+test.describe("Invitation — la lecture de l'invitant", () => {
+  test("⑥ nom valable → nommé (et privé dit) ; sans nom, absent ou en panne → jamais annoncé", async ({ page }) => {
+    await bootOnboarded(page);
+    const r = await page.evaluate(async (inv) => {
+      const avantFrom = supa.from, avantReel = window._supaReal;
+      const repondre = (rep) => { supa.from = () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => rep }) }) }); };
+      window._supaReal = true;
+      const out = {};
+      repondre({ data: { username: "  Léa  ", is_private: true }, error: null });
+      out.nomme = await _invitationLireAuteur(inv);
+      repondre({ data: { username: "", is_private: false }, error: null });
+      out.sansNom = await _invitationLireAuteur(inv);
+      repondre({ data: null, error: null });
+      out.absent = await _invitationLireAuteur(inv);
+      repondre({ data: null, error: { message: "panne" } });
+      out.panne = await _invitationLireAuteur(inv);
+      window._supaReal = false;
+      out.horsLigne = await _invitationLireAuteur(inv);
+      supa.from = avantFrom; window._supaReal = avantReel;
+      return out;
+    }, INVITANT);
+    expect(r).toEqual({
+      nomme: { nom: "Léa", prive: true },
+      sansNom: { absent: true },
+      absent: { absent: true },
+      panne: { attendre: true },
+      horsLigne: { attendre: true },
+    });
   });
 });
 
@@ -377,6 +497,13 @@ test.describe("Invitation — le câblage", () => {
     expect(corps(app02, "onbDoAuth")).toContain("invitationPourInscription()");
     // Compte créé AVEC une session : l'onboarding continue sans redémarrage.
     expect(corps(app02, "onbFinish")).toContain("appliquerInvitation(s)");
+    // L'accueil automatique : capture au chargement, reprise bornée, signal de prod.
+    const app06 = lire("js/app-06-reels-partage.js");
+    expect(app06).toMatch(/\ncapterInvitation\(\);\n/);
+    expect(app06).toMatch(/addEventListener\("passio:app-ready", function \(\) \{\n\s+_invitationAccueilEssais = 0;\n\s+accueillirInvitation\(\);/);
+    expect(corps(app06, "_invitationBoot")).toContain("_invitationReplanifierAccueil()");
+    // Le geste manuel sur l'invitant passe par la clôture.
+    expect(corps(lire("js/app-04-comments-shop.js"), "toggleFollowUser")).toContain("invitationGesteManuel(userId)");
     // L'invitation est une clé d'APPAREIL : la purge d'adoption ne doit pas l'emporter.
     const cles = app02.slice(app02.indexOf("var ACCOUNT_SCOPED_KEYS"), app02.indexOf("];", app02.indexOf("var ACCOUNT_SCOPED_KEYS")));
     expect(cles).not.toContain("passio_invitation_v1");
