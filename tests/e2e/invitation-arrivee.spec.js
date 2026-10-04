@@ -23,7 +23,11 @@ const path = require("path");
 const { bootOnboarded, sansDonneesDistantes } = require("./app-helper");
 const { bootVisiteur, GATE_TOKEN, GATE_KEY } = require("./first-run-helper");
 
-const INVITANT = "14c697ac-7958-41ea-8e23-8c00b4784a47";
+// Identifiant FICTIF, mesuré absent de `profiles` en production le 2026-10-04.
+// La première rédaction utilisait celui d'un VRAI compte : en CI le vrai SDK se
+// charge, `_invitationLireAuteur` lisait son vrai nom et l'annonce paraissait là
+// où ③ ter l'attend absente — vert en local et sur la PR, rouge sur `main`.
+const INVITANT = "1a7e1a7e-0000-4000-8000-0000000c0de1";
 const MOI = "9d3f1c2a-1b2c-4d5e-8f90-a1b2c3d4e5f6";
 const RACINE = path.join(__dirname, "..", "..");
 const lire = (f) => fs.readFileSync(path.join(RACINE, f), "utf8");
@@ -155,7 +159,7 @@ test.describe("Invitation — l'arrivée d'un visiteur", () => {
 });
 
 test.describe("Invitation — l'inscription l'emporte", () => {
-  async function ouvrirCreation(page, invitation) {
+  async function ouvrirCreation(page, invitation, opts) {
     await page.addInitScript(([k, t, inv]) => {
       sessionStorage.setItem(k, t);
       sessionStorage.setItem("passio_pwa_dismissed", "1");
@@ -164,6 +168,13 @@ test.describe("Invitation — l'inscription l'emporte", () => {
       if (inv) localStorage.setItem("passio_invitation_v1", JSON.stringify(inv));
     }, [GATE_KEY, GATE_TOKEN, invitation]);
     await sansDonneesDistantes(page);
+    if (opts && opts.profilsInjoignables) {
+      // Posée APRÈS l'isolation (Playwright donne la main à la DERNIÈRE route) :
+      // la lecture de l'invitant échoue, donc il n'est jamais nommé — en local
+      // (sans SDK) comme en CI (vrai SDK), même état.
+      await page.route("**/rest/v1/profiles?**", (r) => r.fulfill({
+        status: 503, contentType: "application/json", body: '{"message":"indisponible"}' }));
+    }
     await page.goto("/index.html");
     await page.waitForSelector("#landing.active", { timeout: 25000 });
     await page.getByRole("button", { name: "Créer un compte" }).first().click();
@@ -204,7 +215,7 @@ test.describe("Invitation — l'inscription l'emporte", () => {
   });
 
   test("③ ter invitant jamais nommé : pas d'annonce, donc rien ne part", async ({ page }) => {
-    await ouvrirCreation(page, { de: INVITANT, at: Date.now() });
+    await ouvrirCreation(page, { de: INVITANT, at: Date.now() }, { profilsInjoignables: true });
     await expect(page.locator("#authInvite")).toBeHidden();
     await page.locator("#authSubmitBtn").click();
     await expect.poll(() => page.evaluate(() => window.__auth.signUp.length)).toBe(1);
