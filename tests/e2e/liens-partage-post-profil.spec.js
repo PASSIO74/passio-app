@@ -150,6 +150,38 @@ test.describe("Liens partagés #post-<id> et #user-<id>", () => {
     expect(ou).toEqual({ supa: true, seed: false });
   });
 
+  // ⑧ et ⑧ bis : revue de sécurité du 2026-10-03. `openUserProfile` retrouve
+  // aussi un compte par son PSEUDO ; la garde de blocage, elle, examinait la
+  // valeur reçue. Un lien `#user-<pseudo>` ouvrait donc un compte bloqué. Deux
+  // couches, chacune mesurée seule : la forme (routeur) et le compte RÉSOLU.
+  test("⑧ un lien de profil qui n'est pas un identifiant de compte n'ouvre rien", async ({ page }) => {
+    const st = onboardedState(1);
+    st.user.blocked = [COMPTE_SEED];
+    await bootOnboarded(page, null, 1, { state: st, query: "#user-" + encodeURIComponent("Léa Moreau") });
+    await page.waitForFunction(() => /Profil introuvable/.test(document.body.textContent || ""),
+      null, { timeout: 20000 });
+    const ouvert = await page.evaluate(() => {
+      const b = document.getElementById("modalBackdrop");
+      return !!b && b.classList.contains("active") && /Léa Moreau/.test(b.textContent || "");
+    });
+    expect(ouvert).toBe(false);
+  });
+
+  test("⑧ bis un compte bloqué retrouvé par pseudo n'est pas ouvert depuis un lien", async ({ page }) => {
+    const st = onboardedState(1);
+    st.user.blocked = [COMPTE_SEED];
+    await bootOnboarded(page, null, 1, { state: st });
+    const r = await page.evaluate(async () => {
+      await openUserProfile("Léa Moreau", "lien");
+      const b = document.getElementById("modalBackdrop");
+      return {
+        ouvert: !!b && b.classList.contains("active") && /Léa Moreau/.test(b.textContent || ""),
+        dit: /pas disponible/.test(document.body.textContent || ""),
+      };
+    });
+    expect(r).toEqual({ ouvert: false, dit: true });
+  });
+
   test("⑦ un compte bloqué n'est jamais ouvert par un lien", async ({ page }) => {
     const st = onboardedState(1);
     st.user.blocked = [COMPTE_SEED];

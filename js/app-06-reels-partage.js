@@ -198,6 +198,7 @@ window.addEventListener("hashchange", function () {
 // ⚠️ `#post-<id>` est un préfixe RÉSERVÉ AU PARTAGE : `openPost` pose « #post »
 // sans identifiant, donc le routeur ne réagit jamais à sa propre navigation.
 var LIEN_PARTAGE_RE = /^#(post|user)-(.+)$/;
+var LIEN_PARTAGE_COMPTE_RE = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|u_[A-Za-z0-9_-]{1,64})$/i;
 var _lienPartage = null;          // { genre, id } capturé au premier passage
 var _lienPartageEssais = 0;       // « le contenu n'est pas encore là »
 var _lienPartageAttentes = 0;     // « l'application n'est pas prête »
@@ -276,6 +277,18 @@ function _ouvrirLienPartage() {
     }
 
     if (cible.genre === "user") {
+      // ⚠️ UN IDENTIFIANT DE COMPTE, ET RIEN D'AUTRE. `openUserProfile` sait
+      // aussi retrouver un compte par son PSEUDO (local, puis `ilike` en base —
+      // où `%` et `_` sont des jokers). Un lien `#user-<pseudo>` aurait donc
+      // ouvert un compte dont l'identifiant n'est pas celui que la garde de
+      // blocage ci-dessous examine : un compte BLOQUÉ restait atteignable par
+      // un lien fabriqué (revue de sécurité du 2026-10-03). Comptes réels :
+      // uuid d'auth ; comptes de démonstration : `u_…` (pour qui
+      // `openUserProfile` ne tente jamais le pseudo).
+      if (!LIEN_PARTAGE_COMPTE_RE.test(cible.id)) {
+        _lienPartageConclure("Profil introuvable");
+        return false;
+      }
       if (typeof isBlocked === "function" && isBlocked(cible.id)) {
         _reelLinkNettoyerHash();
         _lienPartageConclure("Ce profil n'est pas disponible");

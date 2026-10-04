@@ -3066,6 +3066,15 @@ async function openUserProfile(authorId, source) {
     return;
   }
 
+  // Ouverture par un LIEN PARTAGÉ (app-06) : le blocage se juge sur le compte
+  // RÉSOLU, jamais sur la valeur reçue — celle-ci peut avoir été retrouvée par
+  // pseudo. Seconde couche derrière la garde de forme du routeur. Bornée à la
+  // source « lien » : les autres appelants gardent leur comportement d'avant.
+  if (source === "lien" && typeof isBlocked === "function" && (isBlocked(user.id) || isBlocked(authorId))) {
+    toast("Ce profil n'est pas disponible");
+    return;
+  }
+
   // 🔄 Charger le profil COMPLET depuis Supabase (toujours, même si user déjà
   // trouvé en local) : passions enrichies (bio/photos), couverture, réseaux
   // sociaux, mode privé — pour reproduire le MÊME visuel que « mon profil ».
