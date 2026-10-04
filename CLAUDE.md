@@ -2788,6 +2788,34 @@ fonction n'a pas `cache: "manual"`, donc rien n'est gardé au bord — c'est le 
 le partage d'une BOBINE reste en `#reel=`, sans aperçu ; et l'assemblage de l'import `../lib/` par le CLI Netlify ne se
 prouve qu'au déploiement.
 
+## 📣 INVITER JUSTE APRÈS AVOIR ORGANISÉ — le partage existait, personne ne s'en servait (2026-10-04)
+
+Mesuré en production le jour même (canal ① d'ADR-012) : **aucun lien partagé en sept jours** — pas un seul événement
+`link` dans `telemetry_events` (rétention 7 j) — pour **six activités créées en trente**, 45 sessions de production et
+2 comptes actifs dans la semaine. Les boucles de partage réparées la veille (liens courts, aperçus) ne servent à rien
+si personne ne partage, et personne ne revient sur la fiche de SA propre activité pour l'envoyer. Le moment où l'on a
+le plus envie d'inviter est celui où l'on vient d'organiser : `submitEvent` (app-07) appelle désormais
+`proposerInvitationActivite(ev)` à la fin d'une CRÉATION réussie — fenêtre « Ton activité est en ligne », bouton
+« Inviter mes amis » → `inviterActivite`, qui diffuse le lien de `lienPartageDe` (donc court en production, avec
+l'aperçu titre/date/ville) et un texte qui nomme l'activité.
+⚠️ **LE PARTAGE PART DU CLIC, JAMAIS DE LA FIN DE LA PUBLICATION** : la publication est asynchrone et
+`navigator.share` exige un geste de l'utilisateur — appelé après un `await`, il est refusé. D'où une fenêtre et un
+bouton, pas une feuille de partage ouverte d'office.
+⚠️ **SEULEMENT SI L'ACTIVITÉ EXISTE POUR LES AUTRES** (`ok && backend && !editId`) : en local, hors ligne ou sur un
+refus, le lien mènerait à « introuvable » ; une édition n'est pas une création. ⚠️ **On ne remplace jamais une fenêtre
+ouverte pendant la publication** (envoi de la couverture, géocodage) : `openModal` n'empile pas. ⚠️ Télémétrie
+`activite_invite_proposee` / `_partagee` / `_plus_tard` — **jamais un nom en `irl_create_`/`irl_join_`**, que le funnel
+IRL compte (`irl-funnel.spec.js`). Coupures : `localStorage.passio_invite_apres_creation_v1="0"` ou
+`window.PASSIO_INVITE_APRES_CREATION=false`.
+⚠️ **LE CAS « ÉDITION » ÉTAIT VERT POUR UNE MAUVAISE RAISON** : le banc stubbait `supaUpdateEvent` à `null`, donc
+l'enregistrement échouait et l'invitation ne pouvait pas partir de toute façon — la mutation « édition non exclue »
+restait verte. Le cas pose désormais une écriture qui RÉUSSIT et vérifie que l'édition a abouti. **Un cas négatif qui
+peut être vert pour une autre raison que la sienne ne prouve rien** : prouver d'abord que la prémisse tient.
+Verrou : `tests/e2e/invitation-activite.spec.js` (6), **éprouvé par RÉINJECTION de sept mutations** — appel retiré
+(3 rouges), serveur ignoré (1), édition non exclue (1), fenêtre ouverte remplacée (1), coupure ignorée (1), titre non
+échappé (1), lien recopié à la main au lieu de `lienPartageDe` (1 — un espion est le seul moyen de le voir en local,
+où les deux formes coïncident).
+
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)
 
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)

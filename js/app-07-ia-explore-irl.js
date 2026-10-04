@@ -6368,6 +6368,83 @@ async function submitEvent(editId) {
       : extraOccurrences.length ? `${extraOccurrences.length + 1} dates publiées !` : "Événement publié !")
     : "Enregistré ici, mais pas encore envoyé — réessaie quand tu auras du réseau",
     ok ? "success" : "warning");
+  // L'invitation ne se propose que si l'activité EXISTE pour les autres :
+  // publiée côté serveur (`backend && ok`), et jamais à l'édition.
+  if (ok && backend && !editId) proposerInvitationActivite(ev);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// INVITER JUSTE APRÈS AVOIR ORGANISÉ (2026-10-04)
+//
+// Mesuré en production le jour même (canal ① d'ADR-012) : AUCUN lien partagé en
+// sept jours — pas un seul événement `link` dans `telemetry_events` — pour six
+// activités créées en trente. Partager existait (le bouton de la fiche), mais
+// personne ne revient sur la fiche de sa propre activité pour l'envoyer. Le
+// moment où l'on a le plus envie d'inviter est celui où l'on vient d'organiser :
+// c'est là que la proposition se pose, une fois, avec un seul geste.
+//
+// ⚠️ LE PARTAGE PART DU CLIC, JAMAIS DE LA FIN DE LA PUBLICATION : la
+// publication est asynchrone, et `navigator.share` exige un geste de
+// l'utilisateur — appelé depuis un `await`, il est refusé. D'où une fenêtre et
+// un bouton, pas une feuille de partage ouverte d'office.
+// ⚠️ SEULEMENT SI L'ACTIVITÉ EXISTE POUR LES AUTRES (`ok && backend`) : en
+// local, hors ligne ou sur un refus, le lien mènerait à « introuvable ».
+// ⚠️ ON NE REMPLACE JAMAIS UNE FENÊTRE OUVERTE PENDANT LA PUBLICATION (envoi
+// de la couverture, géocodage) : `openModal` n'empile pas, la proposition
+// effacerait ce que la personne est en train de faire.
+// ⚠️ Le lien est celui de `lienPartageDe` (app-06, SEULE source) : court en
+// production, donc avec l'aperçu de l'activité dans la conversation.
+// Coupures : `localStorage.passio_invite_apres_creation_v1 = "0"` ou
+// `window.PASSIO_INVITE_APRES_CREATION = false`.
+// ═══════════════════════════════════════════════════════════════════════════
+function _inviteApresCreationActive() {
+  try {
+    if (window.PASSIO_INVITE_APRES_CREATION === false) return false;
+    if (localStorage.getItem("passio_invite_apres_creation_v1") === "0") return false;
+  } catch (e) {}
+  return true;
+}
+
+function proposerInvitationActivite(ev) {
+  if (!ev || !ev.id || !_inviteApresCreationActive()) return;
+  const fond = document.getElementById("modalBackdrop");
+  if (fond && fond.classList.contains("active")) return;
+  const d = fmtEventDate(ev.date);
+  const quand = [d.day, d.month].filter(Boolean).join(" ") + (d.time ? ", " + d.time : "");
+  openModal(`
+    <div class="modal-title">Ton activité est en ligne 🎉</div>
+    <div class="modal-subtitle">Une activité se remplit d'abord avec les gens que tu connais. Envoie-la à ton groupe ou à tes amis : le lien les amène directement dessus.</div>
+    <div id="_inviteEvApercu" style="background:var(--bg-soft);border-radius:14px;padding:12px 14px;margin:14px 0 16px;font-size:13px;color:var(--text-dim);line-height:1.5;">
+      <strong style="color:var(--text);">${escapeHtml(ev.title || "Activité")}</strong><br>${escapeHtml(quand)}${ev.city ? " · " + escapeHtml(ev.city) : ""}
+    </div>
+    <button class="btn primary block" id="_inviteEvBtn" style="margin-bottom:10px;">${shareIconSvg(16)} Inviter mes amis</button>
+    <button class="btn ghost block" id="_inviteEvPlusTard">Plus tard</button>
+  `);
+  try { if (window.tel && tel.action) tel.action("activite_invite_proposee", { v: 1 }); } catch (e) {}
+  // Écouteurs posés en code : aucun texte d'autrui dans un onclick inline.
+  setTimeout(() => {
+    const go = document.getElementById("_inviteEvBtn");
+    if (go) go.addEventListener("click", function () { inviterActivite(ev, quand); });
+    const tard = document.getElementById("_inviteEvPlusTard");
+    if (tard) tard.addEventListener("click", function () {
+      try { if (window.tel && tel.action) tel.action("activite_invite_plus_tard", { v: 1 }); } catch (e) {}
+      closeModal();
+    });
+  }, 0);
+}
+
+// Appelé DEPUIS le clic (geste utilisateur) : `partagerOuCopier` peut ouvrir la
+// feuille de partage du système, ou copier le lien quand elle n'existe pas.
+function inviterActivite(ev, quand) {
+  const rawUrl = (typeof lienPartageDe === "function")
+    ? lienPartageDe("event", ev.id) : location.origin + location.pathname + "#irl-event-" + ev.id;
+  const canal = navigator.share ? "native" : "clipboard";
+  const url = (window.tel && tel.shareLink) ? tel.shareLink(rawUrl, "event", ev.id, canal) : rawUrl;
+  const texte = "Je t'invite : " + (ev.title || "une activité")
+    + (quand ? " — " + quand : "") + (ev.city ? " · " + ev.city : "") + ". Rejoins-moi sur PASSIO 👇";
+  try { if (window.tel && tel.action) tel.action("activite_invite_partagee", { v: 1, canal: canal }); } catch (e) {}
+  partagerOuCopier({ title: ev.title || "PASSIO", text: texte, url: url }, "Lien d'invitation copié — colle-le dans ta conversation");
+  closeModal();
 }
 
 // Notifie tous les inscrits (hors moi) d'un changement sur l'événement.
