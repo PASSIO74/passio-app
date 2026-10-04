@@ -5977,6 +5977,12 @@ async function onbDoAuth() {
         if (btn) { btn.disabled = false; btn.textContent = "Se connecter"; }
         return;
       }
+      // Un compte vient de NAÎTRE (la branche « déjà utilisé » est sortie juste
+      // au-dessus) : si un lien suivi a amené cet appareil, c'est la dernière
+      // marche de son entonnoir au pilotage. Émis ICI, sur l'appareil d'arrivée,
+      // et pas à la confirmation : le lien de confirmation s'ouvre souvent dans
+      // un AUTRE navigateur, qui ne sait rien du lien d'arrivée.
+      try { if (window.tel && tel.linkSignup) tel.linkSignup("email", { invite: !!(data && data.user && data.user.user_metadata && data.user.user_metadata.invite_de) }); } catch (e) {}
       // Pas de session → e-mail à confirmer. On NE rentre PAS dans l'app sans
       // adresse confirmée (exigence : « il faut une adresse mail valide »).
       if (!data?.session) {

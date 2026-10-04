@@ -2861,6 +2861,38 @@ avant l'envoi du formulaire et que la confirmation s'ouvre dans un autre navigat
 pas signée ; au banc, une bulle `.fr-tip` recouvre la rangée d'onglets du formulaire d'auth (à vérifier en usage
 réel, hors lot) ; l'annonce ajoute ~90 px en création, sous laquelle « Créer mon compte » descend d'autant.
 
+## 📈 ENTONNOIR DES LIENS — LA MARCHE « COMPTE CRÉÉ » (2026-10-04)
+
+Le pilotage suivait un lien partagé jusqu'à « ouvert (confirmé) » (`?plk=`), et s'arrêtait là : il ne
+disait pas si l'ouverture avait fait NAÎTRE un compte — la seule mesure qui dise si les partages et les
+invitations font venir du monde. ① `captureLinkOpen` (js/telemetry.js) mémorise le lien d'arrivée de
+l'appareil, `passio_lien_arrivee_v1 = { lk, at }` (clé d'APPAREIL, hors `ACCOUNT_SCOPED_KEYS`, TTL
+14 j, le DERNIER lien ouvert l'emporte) ; ② `tel.linkSignup(voie, { invite })` émet `link_signup`
+(`correlation_id` = le lien) et CONSOMME la mémoire — une inscription, un signal.
+⚠️ **ÉMIS SUR L'APPAREIL D'ARRIVÉE, PAS À LA CONFIRMATION** : `onbDoAuth` l'appelle quand `signUp`
+rend un compte neuf (après la sortie « déjà utilisé », qui n'est PAS une inscription, et avant la
+branche « à confirmer ») — le lien de confirmation s'ouvre souvent dans un autre navigateur, qui ne
+sait rien du lien d'arrivée. Le chemin **Google** n'appelle jamais `signUp` sur l'appareil :
+`signalerInscriptionViaLien(session)` (app-08, aux DEUX entrées de session, à côté de
+`signalerInscriptionConfirmee`) le reconnaît à la première session d'un compte NEUF — créé il y a
+moins de 30 min ET après l'ouverture du lien (`Date.parse`, jamais `supaTs`, qui replie sur
+`Date.now()`). Un compte existant OUBLIE le lien (`tel.linkArrivalForget`), sinon il s'attribuerait au
+prochain compte créé sur l'appareil. Sur une inscription qui rend une session, `onAuthStateChange`
+passe AVANT la fin de `signUp` : c'est lui qui émet, et la mémoire consommée empêche le doublon.
+⚠️ **LE PILOTAGE NE DÉDUIT RIEN** (`_touchLink`, dashboard/server/store.js) : il compte `link_signup`,
+statut `signed_up` (« a fait venir un compte »), et `signupRate` se lit parmi les liens CONFIRMÉS
+ouverts, jamais parmi les créés. Seul un `invite === true` compte comme invitant, un `delai_s` non
+numérique devient `null` — une valeur venue du client ne fabrique rien. Visiteurs : « … puis inscrits »
+croise les deux signaux du MÊME appareil.
+⚠️ **LE TEST ③ ter D'`invitation-arrivee` A BLOQUÉ LE DÉPLOIEMENT DE #573** : `INVITANT` était
+l'identifiant d'un VRAI compte de production — en CI le vrai SDK atteint la base et lisait son vrai
+nom, en local la base n'est pas joignable (vert local et sur la PR, rouge sur `main`). Un identifiant
+d'essai est FICTIF et mesuré absent de `profiles`, jamais recopié d'une requête.
+Verrous : `tests/e2e/lien-inscription.spec.js` (8) et `dashboard/test/links-inscriptions.test.js` (5),
+**éprouvés par RÉINJECTION de dix mutations**, chacune rouge (mémoire non posée, appel retiré, émis
+avant « déjà utilisé », garde « compte neuf » retirée, mémoire non consommée, péremption retirée ;
+inscription ignorée, taux sur tous les liens, invitant non booléen, statut absent).
+
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)
 
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)

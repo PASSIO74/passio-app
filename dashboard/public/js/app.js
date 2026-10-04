@@ -45,7 +45,7 @@ function ago(ts) {
 }
 const SEV_COLOR = { critical: "var(--crit)", error: "var(--err)", warn: "var(--warn)", info: "var(--info)", debug: "var(--muted-2)" };
 const TYPE_FR = { nav: "Navigation", action: "Action", click: "Clic", error: "Erreur", api: "API", perf: "Perf", session: "Session", lifecycle: "Cycle de vie", connectivity: "Connexion", link: "Lien", db: "Base" };
-function dotColor(ev) { return ev.type === "error" ? SEV_COLOR[ev.severity] || "var(--err)" : ev.type === "connectivity" ? (SEV_COLOR[ev.severity] || "var(--warn)") : (ev.type === "link" && ev.action === "link_open") ? "var(--ok)" : ev.status === "error" ? "var(--err)" : ev.status === "slow" ? "var(--warn)" : ev.type === "api" ? "var(--info)" : ev.type === "link" ? "#c084fc" : "var(--accent)"; }
+function dotColor(ev) { return ev.type === "error" ? SEV_COLOR[ev.severity] || "var(--err)" : ev.type === "connectivity" ? (SEV_COLOR[ev.severity] || "var(--warn)") : (ev.type === "link" && (ev.action === "link_open" || ev.action === "link_signup")) ? "var(--ok)" : ev.status === "error" ? "var(--err)" : ev.status === "slow" ? "var(--warn)" : ev.type === "api" ? "var(--info)" : ev.type === "link" ? "#c084fc" : "var(--accent)"; }
 function toast(msg) { const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(() => (t.hidden = true), 2600); }
 async function copy(text, label) { try { await navigator.clipboard.writeText(text); toast((label || "Copié") + " ✓"); } catch { toast("Copie impossible"); } }
 function num(n) { return (n == null ? "—" : n.toLocaleString("fr-FR")); }
@@ -69,6 +69,7 @@ const ACTION_FR = {
   recovered: "Connexion rétablie", server_reject: "Lot rejeté (serveur)",
   link_create: "Lien créé", link_share: "Lien partagé", link_copy: "Lien copié",
   link_open: "Lien ouvert (confirmé)", link_load_error: "Échec d'ouverture du lien",
+  link_signup: "Compte créé via un lien",
 };
 function actionLabel(ev) {
   if (ev.action && ACTION_FR[ev.action]) return ACTION_FR[ev.action];
@@ -546,6 +547,8 @@ VIEWS.overview = async (view) => {
           <span class="ovlk-arrow">${icon("route")}</span>
           ${seg("ouvertures confirmées", lk.opened || 0, "ok")}
           <span class="ovlk-arrow">${icon("route")}</span>
+          ${seg("comptes créés", lk.totalSignups || 0, (lk.totalSignups || 0) > 0 ? "ok" : "")}
+          <span class="ovlk-arrow">${icon("route")}</span>
           ${seg("non confirmés", lk.sharedUnconfirmed || 0, (lk.sharedUnconfirmed || 0) > 0 ? "warn" : "")}
           <div class="ovlk-seg ovlk-rate"><span class="ovlk-n">${lk.openRate == null ? "n/a" : lk.openRate + " %"}</span><span class="ovlk-l">taux d'ouverture</span></div>
         </div>
@@ -915,6 +918,7 @@ function filteredFeed(title, sub, pred) {
 // ── Liens partagés (cycle de vie création → partage → ouverture confirmée) ───
 // Sémantique HONNÊTE des statuts : chaque étape est adossée à un signal RÉEL.
 const LINK_STATUS = {
+  signed_up:    { pill: "ok",    label: "a fait venir un compte", desc: "un compte est né sur un appareil que ce lien avait amené" },
   created:      { pill: "info",  label: "créé",                 desc: "généré, pas encore partagé" },
   shared:       { pill: "warn",  label: "partagé · non confirmé", desc: "envoyé, aucun signal d'ouverture reçu" },
   opened:       { pill: "ok",    label: "ouvert (confirmé)",    desc: "la page a chargé sur l'appareil cible" },
@@ -933,6 +937,7 @@ function linkTimelineRow(ev) {
   else if (ev.action === "link_share" || ev.action === "link_copy") { txt = `Lien ${shortLink(id)} partagé${ev.meta && ev.meta.link_channel ? " (" + ev.meta.link_channel + ")" : ""}`; cls = "accent"; }
   else if (ev.action === "link_open") { txt = `Lien ${shortLink(id)} — Ouverture confirmée (page chargée)${dev}`; cls = "ok"; }
   else if (ev.action === "link_load_error") { txt = `Lien ${shortLink(id)} — Échec de chargement${dev}`; cls = "error"; }
+  else if (ev.action === "link_signup") { txt = `Lien ${shortLink(id)} — Compte créé${ev.meta && ev.meta.voie ? " (" + ev.meta.voie + ")" : ""}${ev.meta && ev.meta.invite ? " · invitant suivi" : ""}${dev}`; cls = "ok"; }
   else { txt = `Lien ${shortLink(id)} — ${esc(actionLabel(ev))}`; cls = "info"; }
   return `<div class="tl-row" onclick='window.__linkDetail(${escJsArg(id)})'>
     <span class="tl-time">${hhmmss(ev.ts)}</span><span class="tl-dot ${cls}"></span>
@@ -941,7 +946,7 @@ function linkTimelineRow(ev) {
 
 VIEWS.links = async () => {
   mount(`<h2 class="page-title">Liens partagés</h2>
-    <p class="page-sub">Cycle de vie de chaque lien généré par Passio : <b>créé → partagé → ouverture confirmée</b>. Principe d'honnêteté : on ne prétend <u>jamais</u> qu'un lien a été « cliqué ». Une ouverture n'est comptée que si la page a <b>réellement chargé</b> sur l'appareil cible et renvoyé un signal (marqueur <span class="mono">?plk</span>). Un lien partagé sans signal reste « non confirmé ».</p>
+    <p class="page-sub">Cycle de vie de chaque lien généré par Passio : <b>créé → partagé → ouverture confirmée → compte créé</b>. Principe d'honnêteté : on ne prétend <u>jamais</u> qu'un lien a été « cliqué ». Une ouverture n'est comptée que si la page a <b>réellement chargé</b> sur l'appareil cible et renvoyé un signal (marqueur <span class="mono">?plk</span>). Un lien partagé sans signal reste « non confirmé ».</p>
     <div id="lkProv"></div>
     <div class="grid kpi-grid" id="lkFunnel"></div>
     <div class="cols cols-2" style="margin-top:16px">
@@ -949,12 +954,12 @@ VIEWS.links = async () => {
       <div class="card chart-card"><h4>Répartition par statut</h4><div class="chart-meta">Où en sont les liens dans l'entonnoir</div><div id="lkBreakdown"></div></div>
     </div>
     <div class="feed-toolbar" style="margin-top:16px">
-      <select class="select" id="lkStatus"><option value="">Tous statuts</option><option value="created">Créés</option><option value="shared">Partagés · non confirmés</option><option value="opened">Ouverts (confirmés)</option><option value="opened_error">Ouverture en échec</option></select>
+      <select class="select" id="lkStatus"><option value="">Tous statuts</option><option value="signed_up">Ont fait venir un compte</option><option value="created">Créés</option><option value="shared">Partagés · non confirmés</option><option value="opened">Ouverts (confirmés)</option><option value="opened_error">Ouverture en échec</option></select>
       <select class="select" id="lkKind"><option value="">Tous types</option></select>
       <button class="btn btn-sm" id="lkExport">${icon("download")} Exporter</button>
       <span class="muted" style="margin-left:auto;font-size:12px" id="lkCount"></span>
     </div>
-    <div class="table-wrap"><table><thead><tr><th>Statut</th><th>Lien</th><th>Type / cible</th><th>Créé par</th><th>Partages</th><th>Ouvertures</th><th>Dernière activité</th></tr></thead><tbody id="lkRows"></tbody></table></div>`);
+    <div class="table-wrap"><table><thead><tr><th>Statut</th><th>Lien</th><th>Type / cible</th><th>Créé par</th><th>Partages</th><th>Ouvertures</th><th>Comptes</th><th>Dernière activité</th></tr></thead><tbody id="lkRows"></tbody></table></div>`);
 
   let data = { funnel: {}, links: [] };
   let kindInit = false;
@@ -962,7 +967,7 @@ VIEWS.links = async () => {
 
   async function refresh() {
     try { data = await api.get("/links?limit=400"); }
-    catch (e) { setHtml("#lkRows", `<tr><td colspan="7" class="empty">${esc(e.message)}</td></tr>`); return; }
+    catch (e) { setHtml("#lkRows", `<tr><td colspan="8" class="empty">${esc(e.message)}</td></tr>`); return; }
     const f = data.funnel || {};
     // Provenance (comme partout : jamais un chiffre sans dire d'où il vient).
     setHtml("#lkProv", `<div class="prov-strip">
@@ -979,6 +984,8 @@ VIEWS.links = async () => {
       { ic: "checkCircle",  l: "Ouvertures confirmées",   v: num(f.opened || 0),   s: "page réellement chargée", ok: true },
       { ic: "alertTriangle",l: "Partagés · non confirmés",v: num(f.sharedUnconfirmed || 0), s: "aucun signal d'ouverture", warn: (f.sharedUnconfirmed || 0) > 0 },
       { ic: "trending",     l: "Taux d'ouverture",        v: openRate,             s: "des liens partagés, confirmés ouverts" },
+      { ic: "users",        l: "Comptes créés via un lien", v: num(f.totalSignups || 0), s: `${num(f.signedUp || 0)} lien${(f.signedUp || 0) > 1 ? "s" : ""} · dont ${num(f.signupsInvite || 0)} avec invitant`, ok: (f.totalSignups || 0) > 0 },
+      { ic: "trending",     l: "Taux d'inscription",      v: f.signupRate == null ? '<span class="muted">n/a</span>' : f.signupRate + " %", s: "des liens ouverts, ayant fait naître un compte" },
     ];
     setHtml("#lkFunnel", cards.map((c) => `<div class="kpi${c.ok ? " kpi-ok" : ""}${c.warn ? " kpi-warn" : ""}">
       <div class="kpi-label">${icon(c.ic)} ${c.l}</div><div class="kpi-value">${c.v}</div><div class="kpi-sub">${c.s}</div></div>`).join(""));
@@ -987,7 +994,7 @@ VIEWS.links = async () => {
     const byStatus = {};
     (data.links || []).forEach((l) => { byStatus[l.status] = (byStatus[l.status] || 0) + 1; });
     const totalL = (data.links || []).length || 1;
-    const order = ["opened", "shared", "created", "opened_error"];
+    const order = ["signed_up", "opened", "shared", "created", "opened_error"];
     setHtml("#lkBreakdown", order.filter((s) => byStatus[s]).map((s) => {
       const cfg = LINK_STATUS[s]; const n = byStatus[s]; const pctv = Math.round((n / totalL) * 100);
       return `<div class="lk-bar-row"><span class="pill ${cfg.pill}">${cfg.label}</span>
@@ -1009,7 +1016,7 @@ VIEWS.links = async () => {
   function renderRows() {
     const f = readF();
     let rows = (data.links || []).filter((l) => (!f.status || l.status === f.status) && (!f.kind || l.kind === f.kind));
-    setHtml("#lkRows", rows.map(linkRow).join("") || '<tr><td colspan="7" class="empty">Aucun lien correspondant.</td></tr>');
+    setHtml("#lkRows", rows.map(linkRow).join("") || '<tr><td colspan="8" class="empty">Aucun lien correspondant.</td></tr>');
     $("#lkCount").textContent = rows.length + " lien" + (rows.length > 1 ? "s" : "");
   }
   $("#lkStatus").onchange = renderRows; $("#lkKind").onchange = renderRows;
@@ -1028,6 +1035,7 @@ function linkRow(l) {
     <td>${l.createdBy || l.createdByLabel ? nameFor(l.createdBy, l.createdByLabel) : '<span class="muted">—</span>'}</td>
     <td>${l.shareCount || 0} ${chans}</td>
     <td>${opens}</td>
+    <td>${l.signupCount ? `<b class="sev-ok">${l.signupCount}</b>${l.signupsInvite ? ` <span class="muted">· ${l.signupsInvite} avec invitant</span>` : ""}` : '<span class="muted">—</span>'}</td>
     <td class="muted">${ago(l.lastEvent)}</td></tr>`;
 }
 window.__linkDetail = async (id) => {
@@ -1040,6 +1048,9 @@ window.__linkDetail = async (id) => {
   const openRows = (l.opens || []).slice().reverse().map((o) => `<div class="tl-row">
     <span class="tl-time">${hhmmss(o.ts)}</span><span class="tl-dot ${o.status === "error" ? "error" : "ok"}"></span>
     <span class="tl-txt">${o.status === "error" ? "Échec de chargement" : "Ouverture confirmée"} <span class="muted">· ${esc(o.platform || "?")}${o.browser ? "/" + esc(o.browser) : ""}${o.userLabel ? " · " + esc(o.userLabel) : o.user ? " · " + nameFor(o.user) : ""}</span></span></div>`).join("");
+  const signupRows = (l.signups || []).slice().reverse().map((x) => `<div class="tl-row">
+    <span class="tl-time">${hhmmss(x.ts)}</span><span class="tl-dot ok"></span>
+    <span class="tl-txt">Compte créé <span class="muted">· ${esc(x.voie || "?")} · ${esc(x.platform || "?")}${x.invite ? " · invitant suivi" : ""}${x.delaiS != null ? " · " + esc(String(Math.round(x.delaiS / 60))) + " min après l'ouverture" : ""}</span></span></div>`).join("");
   const shareRows = (l.shares || []).slice().reverse().map((s) => `<div class="tl-row">
     <span class="tl-time">${hhmmss(s.ts)}</span><span class="tl-dot accent"></span>
     <span class="tl-txt">Partagé <span class="muted">· ${esc(s.channel || "?")}</span></span></div>`).join("");
@@ -1052,10 +1063,12 @@ window.__linkDetail = async (id) => {
       ${detail("Créé par", l.createdBy || l.createdByLabel ? nameFor(l.createdBy, l.createdByLabel) : "—")}
       ${detail("Partages", `${l.shareCount || 0}${(l.channels || []).length ? " · " + l.channels.map(esc).join(", ") : ""}`)}
       ${detail("Ouvertures confirmées", `${l.openCount || 0} sur ${l.openDevices || 0} appareil(s)${l.errorOpens ? " · " + l.errorOpens + " en échec" : ""}`)}
+      ${detail("Comptes créés", `${l.signupCount || 0}${l.signupsInvite ? " · dont " + l.signupsInvite + " avec invitant" : ""}`)}
     </div>
     <div class="fix-note ${l.openCount ? "ok" : "" }" style="margin-top:12px">${icon(l.openCount ? "checkCircle" : "alertTriangle")} ${esc(cfg.desc || "")}${!l.openCount && l.shareCount ? " — ce lien a été partagé mais aucune ouverture n'a été confirmée pour l'instant." : ""}</div>
     ${shareRows ? `<div class="section-title">Partages</div><div class="timeline">${shareRows}</div>` : ""}
     ${openRows ? `<div class="section-title">Ouvertures</div><div class="timeline">${openRows}</div>` : ""}
+    ${signupRows ? `<div class="section-title">Comptes créés</div><div class="timeline">${signupRows}</div>` : ""}
     <div class="copy-row"><button class="btn btn-sm" onclick='window.__copy(${escJsArg(l.id)},"Identifiant du lien")'>${icon("copy")} Copier l'ID</button>
     <a class="btn btn-sm" href="#activity">${icon("activity")} Voir dans le flux</a></div>`);
 };
@@ -1101,6 +1114,7 @@ VIEWS.visitors = async () => {
     const cards = [
       { ic: "route",       l: "Visiteurs (appareils)", v: num(f.total || 0),    s: "ont ouvert l'app au moins une fois" },
       { ic: "share",       l: "Arrivés par un lien",   v: num(f.viaLink || 0),  s: "ouverture confirmée via ?plk" },
+      { ic: "users",       l: "… puis inscrits",       v: num(f.viaLinkSignedUp || 0), s: "compte créé sur l'appareil arrivé par un lien", ok: (f.viaLinkSignedUp || 0) > 0 },
       { ic: "users",       l: "Comptes créés",         v: num(f.signedUp || 0), s: "visiteurs devenus membres", ok: (f.signedUp || 0) > 0 },
       { ic: "activity",    l: "En ligne maintenant",   v: num(f.online || 0),   s: "actifs il y a < 70 s" },
       { ic: "check",       l: "En production",         v: num(f.prod || 0),     s: "hors préversion / dev local" },
