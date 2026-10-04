@@ -4525,7 +4525,9 @@ window.addEventListener("passio:app-ready", function () {
 function shareEvent(id) {
   const ev = allEvents().find(e => e.id === id);
   if (!ev) { toast("Événement introuvable."); return; }
-  const rawUrl = location.origin + location.pathname + "#irl-event-" + id;
+  // Lien COURT en production (aperçu de l'activité chez WhatsApp, iMessage…) : app-06.
+  const rawUrl = (typeof lienPartageDe === "function")
+    ? lienPartageDe("event", id) : location.origin + location.pathname + "#irl-event-" + id;
   const url = (window.tel && tel.shareLink) ? tel.shareLink(rawUrl, "event", id, navigator.share ? "native" : "clipboard") : rawUrl;
   const d = fmtEventDate(ev.date);
   const text = `${ev.title} · ${ev.city || ""} · ${d.day} ${d.month}`;

@@ -17,7 +17,16 @@
 //   ⑥ une publication absente de la page chargée est cherchée de façon CIBLÉE
 //      (son auteur, puis ses publications) avant de conclure ;
 //   ⑦ un compte bloqué n'est jamais ouvert par un lien.
+//   ⑨ (2026-10-04) en production, le lien diffusé est COURT (`/p/`, `/u/`,
+//      `/e/`) pour porter un aperçu ; en local il reste en hash ; la coupure et
+//      un identifiant hors forme gardent le hash ;
+//   ⑩ les TROIS boutons de partage passent par `lienPartageDe` (le câblage, pas
+//      la fonction : un appelant qui la contournerait garderait l'aperçu générique) ;
+//   ⑪ le service worker ne garde jamais un lien court en cache (sinon il
+//      resservirait le 302 à vie) et, hors ligne, renvoie vers le lien profond.
 const { test, expect } = require("@playwright/test");
+const fs = require("fs");
+const path = require("path");
 const { bootOnboarded, onboardedState } = require("./app-helper");
 
 // Publications et compte du contenu de démonstration : présents dès le boot.
@@ -180,6 +189,70 @@ test.describe("Liens partagés #post-<id> et #user-<id>", () => {
       };
     });
     expect(r).toEqual({ ouvert: false, dit: true });
+  });
+
+  test("⑨ en production le lien diffusé est court ; en local, coupé ou hors forme, il reste en hash", async ({ page }) => {
+    await bootOnboarded(page, null, 1);
+    const r = await page.evaluate((uuid) => {
+      const o = location.origin + location.pathname;
+      return {
+        o, origine: location.origin,
+        local: [lienPartageDe("post", "p1"), lienPartageDe("user", "u_lea"), lienPartageDe("event", "e1")],
+        prod: [lienPartageDe("post", "p1", "passio-app.netlify.app"), lienPartageDe("user", uuid, "passio-app.netlify.app"),
+          lienPartageDe("event", "xo6c4wxsymtu3da1k", "passio-app.netlify.app")],
+        preview: lienPartageDe("post", "p1", "pr-570--passio-app.netlify.app"),
+        imposteur: lienPartageDe("post", "p1", "passio-app.netlify.app.evil.example"),
+        pseudo: lienPartageDe("user", "Léa Moreau", "passio-app.netlify.app"),
+        compat: lienPartagePublication("p1"),
+        coupe: (() => { localStorage.setItem("passio_liens_courts_v1", "0");
+          const v = lienPartageDe("post", "p1", "passio-app.netlify.app");
+          localStorage.removeItem("passio_liens_courts_v1"); return v; })(),
+      };
+    }, "14c697ac-7958-41ea-8e23-8c00b4784a47");
+    expect(r.local).toEqual([r.o + "#post-p1", r.o + "#user-u_lea", r.o + "#irl-event-e1"]);
+    expect(r.prod).toEqual([r.origine + "/p/p1", r.origine + "/u/14c697ac-7958-41ea-8e23-8c00b4784a47", r.origine + "/e/xo6c4wxsymtu3da1k"]);
+    expect(r.preview).toBe(r.origine + "/p/p1");
+    expect(r.imposteur).toBe(r.o + "#post-p1");
+    // Un pseudo n'est pas un identifiant de compte : la fonction le renverrait à l'accueil.
+    expect(r.pseudo).toBe(r.o + "#user-" + encodeURIComponent("Léa Moreau"));
+    expect(r.compat).toBe(r.o + "#post-p1");
+    expect(r.coupe).toBe(r.o + "#post-p1");
+  });
+
+  test("⑩ les trois boutons de partage diffusent le lien de lienPartageDe", async ({ page }) => {
+    await bootOnboarded(page, null, 1);
+    const diffuses = await page.evaluate(async () => {
+      const urls = [];
+      window.partagerOuCopier = (data) => { urls.push(data && data.url); };
+      window.lienPartageDe = (type, id) => "https://lien.test/" + type + "/" + id;
+      const attendre = () => new Promise((r) => setTimeout(r, 60));
+      sharePost("p1"); await attendre();
+      document.getElementById("_shareOutBtn").click();
+      try { closeModal(); } catch (e) {}
+      shareUserProfile("u_lea", "Léa Moreau");
+      shareEvent("e1"); await attendre();
+      document.getElementById("_shareEvOutBtn").click();
+      return urls;
+    });
+    // Le suivi de partage (`?plk=`) s'ajoute à l'URL fournie, il ne la remplace pas.
+    expect(diffuses.map((u) => String(u).replace(/\?plk=[^#]*$/, ""))).toEqual([
+      "https://lien.test/post/p1", "https://lien.test/user/u_lea", "https://lien.test/event/e1",
+    ]);
+  });
+
+  test("⑪ le service worker ne met jamais un lien court en cache, et le rouvre hors ligne", async () => {
+    const sw = fs.readFileSync(path.join(__dirname, "..", "..", "sw.js"), "utf8");
+    const corps = sw.slice(sw.indexOf('addEventListener("fetch"'));
+    const debut = corps.indexOf("if (/^\\/[pue]\\//.test(url.pathname)) {");
+    expect(debut, "branche des liens courts dans le gestionnaire fetch").toBeGreaterThan(0);
+    const bloc = corps.slice(debut, corps.indexOf("\n  }\n", debut));
+    // AVANT toute branche qui met en cache : sinon un 302 serait gardé à vie.
+    expect(debut).toBeLessThan(corps.indexOf("caches.open(CACHE)"));
+    expect(bloc).not.toMatch(/caches\./);
+    // Hors navigation, rien ; hors ligne, vers le lien profond (même table que la fonction).
+    expect(bloc).toContain('if (e.request.mode !== "navigate") return;');
+    expect(bloc).toContain('{ p: "#post-", u: "#user-", e: "#irl-event-" }');
+    expect(bloc).toMatch(/fetch\(e\.request\)\.catch\(\(\) => Response\.redirect\(/);
   });
 
   test("⑦ un compte bloqué n'est jamais ouvert par un lien", async ({ page }) => {

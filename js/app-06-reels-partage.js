@@ -366,10 +366,55 @@ window.addEventListener("passio:app-ready", function () {
   _ouvrirLienPartage();
 });
 
-// Le lien à diffuser pour une publication : le préfixe que le routeur ci-dessus
-// lit, et rien d'autre. Seule source de cette forme d'URL.
+// ═══════════════════════════════════════════════════════════════════════════
+// LE LIEN À DIFFUSER — liens COURTS en production (2026-10-04)
+//
+// Un lien en hash (`/#post-<id>`) s'ouvre bien, mais un robot d'aperçu
+// (WhatsApp, iMessage, Messenger…) ne lit JAMAIS le fragment : chaque partage
+// s'affichait avec l'aperçu GÉNÉRIQUE d'index.html. Les liens COURTS
+// (`/p/<id>`, `/u/<id>`, `/e/<id>`) sont des chemins, servis par l'Edge
+// Function netlify/edge-functions/apercu.js : un robot reçoit l'aperçu de CE
+// contenu, un humain est renvoyé (302) vers le lien profond en hash — celui que
+// les routeurs d'app-06 et d'app-07 ouvrent déjà. Rien ne change pour eux.
+//
+// ⚠️ LA FORME COURTE N'EXISTE QUE LÀ OÙ LA FONCTION TOURNE : la production et
+// les previews Netlify. En local (`npm run serve`), `/p/<id>` serait un 404 :
+// on y garde la forme en hash. Un identifiant hors des formes que la fonction
+// accepte (mêmes expressions qu'elle) garde lui aussi le hash — sinon elle le
+// renverrait à l'accueil, la cible perdue.
+// ⚠️ Coupures : `localStorage.passio_liens_courts_v1 = "0"` ou
+// `window.PASSIO_LIENS_COURTS = false` rendent la forme en hash partout.
+// Un lien court déjà envoyé reste valide tant que la fonction est déployée.
+// `lienPartageDe` est la SEULE source de ces trois formes d'URL.
+// ═══════════════════════════════════════════════════════════════════════════
+var LIEN_COURT_ID_RE = /^[A-Za-z0-9_-]{1,100}$/;
+var LIENS_PARTAGE = {
+  post:  { court: "/p/", hash: "#post-",      idRe: LIEN_COURT_ID_RE },
+  user:  { court: "/u/", hash: "#user-",      idRe: LIEN_PARTAGE_COMPTE_RE },
+  event: { court: "/e/", hash: "#irl-event-", idRe: LIEN_COURT_ID_RE },
+};
+
+function _liensCourtsActifs(hote) {
+  try {
+    if (window.PASSIO_LIENS_COURTS === false) return false;
+    if (localStorage.getItem("passio_liens_courts_v1") === "0") return false;
+  } catch (e) {}
+  var h = String(hote || (location && location.hostname) || "");
+  return h === "passio-app.netlify.app" || /--passio-app\.netlify\.app$/.test(h);
+}
+
+// `hote` ne sert qu'aux tests (le banc tourne sur localhost) : il remplace le
+// NOM d'hôte consulté, jamais l'origine écrite dans le lien.
+function lienPartageDe(type, id, hote) {
+  var f = LIENS_PARTAGE[type];
+  var cle = String(id == null ? "" : id);
+  if (!f) return location.origin + location.pathname;
+  if (_liensCourtsActifs(hote) && f.idRe.test(cle)) return location.origin + f.court + cle;
+  return location.origin + location.pathname + f.hash + encodeURIComponent(cle);
+}
+
 function lienPartagePublication(id) {
-  return location.origin + location.pathname + "#post-" + encodeURIComponent(id);
+  return lienPartageDe("post", id);
 }
 
 function copyReelLink(postId, encodedUrl) {
@@ -979,15 +1024,6 @@ function switchProfileTab(tab, btn) {
   _persistProfileTabs();
   _syncProfileTabButtons();
   renderProfileContent();
-}
-
-function shareMyProfile() {
-  var name = ((state.user.general||{}).username || state.user.name || "Passionné");
-  // Lien de profil suivi (?plk) : apparie le partage à une ouverture confirmée.
-  var _lk = (window.tel && tel.linkCreate) ? tel.linkCreate("profile", (window.MY_UID || name)) : "";
-  var url = (_lk && tel.tagUrl) ? tel.tagUrl(window.location.href, _lk) : window.location.href;
-  _telLinkShare(url, navigator.share ? "native" : "clipboard");
-  partagerOuCopier({ title: name + " sur PASSIO", text: "Découvre mon profil sur PASSIO !", url: url }, "Lien copié");
 }
 
 // Upload une photo de profil/couverture vers Supabase Storage puis pousse l'URL

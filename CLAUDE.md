@@ -2726,15 +2726,67 @@ compte BLOQUÉ, la garde ayant examiné une chaîne qui n'était pas son identif
 démonstration — pour qui `openUserProfile` ne tente jamais le pseudo), sinon « Profil introuvable » ; ② `openUserProfile`
 re-juge le blocage sur le compte **RÉSOLU** quand la source est `"lien"`, et seulement elle — les autres appelants
 gardent leur comportement. **Une garde posée sur l'entrée d'une fonction qui résout l'entrée autrement ne garde rien.**
-⚠️ **CE QUI RESTE, NOMMÉ** : tous les liens sont des **hash**, donc invisibles aux robots d'aperçu (WhatsApp, iMessage,
-Messenger) — chaque partage s'affiche avec l'aperçu GÉNÉRIQUE de `index.html`. Des aperçus par contenu demandent des
-URL en chemin (`/p/<id>`, `/e/<id>`, `/u/<id>`) servies par une Edge Function qui lit la base en clé anon (RLS) et
-écrit du contenu d'autrui dans du HTML **sur l'origine de l'application** : c'est un lot de **sécurité** (échappement,
-CSP propre — le `[[headers]]` de netlify.toml ne s'applique PAS aux réponses d'une Edge Function), donc revue dédiée,
-pas un ajout en passant.
+⚠️ **« CE QUI RESTE » DE CE LOT EST FAIT LE LENDEMAIN** : les liens courts et leurs aperçus (section suivante).
 Verrou : `tests/e2e/liens-partage-post-profil.spec.js` (9), **éprouvé par RÉINJECTION de six mutations** — routeur
 rendu muet (3 rouges), recherche ciblée retirée (1), garde de blocage retirée (1), partage rendu à l'accueil (1), garde
 de forme retirée (1 : ⑧), re-jugement sur le compte résolu retiré (1 : ⑧ bis).
+
+## 🖼️ LIENS COURTS ET APERÇUS — un partage montre enfin CE contenu (2026-10-04)
+
+Suite directe de la section précédente. Tous les liens étaient des **hash** (`/#post-<id>`) : un robot d'aperçu
+(WhatsApp, iMessage, Messenger, Telegram…) ne lit JAMAIS le fragment, donc chaque partage s'affichait avec la carte
+générique d'`index.html` — la même pour une randonnée, un profil ou une rencontre. En production, les trois boutons
+« Partager en dehors » diffusent désormais **`/p/<id>`, `/u/<id>`, `/e/<id>`**, servis par
+`netlify/edge-functions/apercu.js` : un **humain reçoit un 302** vers le lien profond en hash (les routeurs d'app-06 et
+d'app-07 l'ouvrent comme avant, `?plk=` conservé s'il est valide), un **robot d'aperçu reçoit une page** qui décrit le
+contenu. Cœur PUR dans `netlify/lib/apercu-coeur.js`, testé tel quel en Node.
+⚠️ **C'EST DU CONTENU D'AUTRUI ÉCRIT DANS DU HTML SUR L'ORIGINE DE L'APPLICATION — un lot de sécurité.** Sept règles,
+écrites en tête du cœur : lecture sous la **clé ANON seule** (jamais `service_role` « pour voir plus » : l'aperçu
+publierait ce que la RLS refuse), auteur privé **re-vérifié** sur son profil (défense en profondeur sur la RLS de
+`posts`), **un carnet (`vlog` non nul) n'a JAMAIS d'aperçu** (sa visibilité vit dans le jsonb, hors RLS — c'est le
+client qui l'écarte), un compte privé ne livre ni bio ni photo, textes bornés en points de code et purgés des marques
+bidirectionnelles puis échappés, image seulement depuis le seau PUBLIC `content` (`attachments`, `data:`, autre hôte,
+`..` ou `%2e` : rien — `new URL` NORMALISE `a/%2e%2e/b` en `b`, d'où un refus sur la forme BRUTE), libellé de passion
+seulement s'il est `active` (une passion retirée par la modération se tait), page **sans script** sous
+`default-src 'none'` + `sandbox`, `noindex` (partager n'est pas publier sur Google).
+⚠️ **JAMAIS `/bot/i` POUR RECONNAÎTRE UN ROBOT** : « CUBOT » est une marque de téléphone Android. La liste est
+nominative ; un robot non reconnu retombe sur l'aperçu générique (l'état d'avant), un humain pris pour un robot voit un
+lien « Ouvrir sur PASSIO ». Personne n'est bloqué. ⚠️ **ET UN JETON N'Y ENTRE QUE S'IL EST PROPRE AU ROBOT, jamais
+au NAVIGATEUR INTÉGRÉ de la même application** — trouvé par la contre-revue `passio-red-team` du jour, après des gates
+vertes : `snapchat` et `pinterest/` reconnaissaient aussi les vues web de Snapchat (« Snapchat/12.x ») et de Pinterest
+(« [Pinterest/iOS] »), qui sont des HUMAINS — ils recevaient la page nue au lieu du 302, un tap de plus sur le canal
+même que ce lot vise. Les robots y ont leur propre jeton (« Snap URL Preview », « Pinterestbot », « Pinterest/0. ») ;
+Viber, Tumblr, Zalo, Mattermost, Rocket.Chat sont SORTIS faute de jeton propre connu, et Applebot aussi (indexation).
+Le test ③ porte désormais sept navigateurs intégrés réels. Au passage : la liste des caractères invisibles est passée
+aux classes Unicode (`\p{Cc}\p{Cf}\p{Zl}\p{Zp}`, le liant U+200D excepté) — la liste écrite à la main laissait passer
+U+061C et U+200B, de quoi fabriquer un « PASSIO » visuellement identique sous le domaine officiel ; `imageSure` refuse
+tout blanc dans l'URL brute (`new URL` retire tabulations et sauts de ligne AVANT de résoudre `..`) ; et
+`shareMyProfile` (app-06), qui diffusait `location.href` sans aucun appelant dans le dépôt, est RETIRÉE — une fonction
+morte qui double une vivante offre au prochain correctif un endroit plausible où se poser.
+⚠️ **LA FORME COURTE N'EXISTE QUE LÀ OÙ LA FONCTION TOURNE** (production et previews Netlify) : en local, `/p/<id>`
+serait un 404, `lienPartageDe` (app-06, SEULE source des trois formes) garde le hash. Un identifiant hors des formes
+que la fonction accepte (mêmes expressions qu'elle, dont `LIEN_PARTAGE_COMPTE_RE` : un pseudo n'est pas un compte)
+garde aussi le hash — sinon elle le renverrait à l'accueil. Coupures : `localStorage.passio_liens_courts_v1="0"` ou
+`window.PASSIO_LIENS_COURTS=false`. Le service worker ne met JAMAIS `/p/`, `/u/`, `/e/` en cache (son
+stale-while-revalidate garderait sinon un 302 ou une page d'aperçu à vie) : réseau seul pour une navigation, et HORS
+LIGNE — une PWA installée capte le lien — il redirige vers le lien profond, que l'app ouvre depuis son repli
+`index.html`, plutôt que vers la page d'erreur du navigateur.
+⚠️ **La fonction n'est pas joignable depuis un bac de session** (HTTP `000` sur `passio-app.netlify.app`) : la preuve
+en production est le job « Déploiement production » vert (le CLI assemble les Edge Functions, `../lib/` compris) puis
+un `curl -A "WhatsApp/2.24" https://passio-app.netlify.app/p/<id>` depuis un poste.
+Verrous : `tests/unit/apercu-liens.test.mjs` (14, dans `npm run verif` — l'enveloppe est appelée avec un faux
+PostgREST qui NOTE chaque lecture et sa clé) et `tests/e2e/liens-partage-post-profil.spec.js` (+3 : ⑨ forme selon
+l'hôte, coupure et hors forme ; ⑩ le CÂBLAGE des trois boutons ; ⑪ la branche du service worker). **Éprouvés par
+RÉINJECTION de vingt mutations**, chacune rouge sur son cas : carnet non écarté (2), guillemet non échappé (2),
+détection `/bot/i` (2), seau non vérifié (1), profil privé ignoré (2), page servie aux humains (1), auteur privé ignoré
+(2), passion non filtrée (1), `plk` non validé (1), profil et activité contournant `lienPartageDe` (1 chacun), coupure
+ignorée (1), forme non vérifiée (1), service worker sans garde (1) ; puis, après la contre-revue, jetons de navigateur
+intégré remis (1), liste d'invisibles d'origine (1), blancs admis dans l'URL d'image (1), moitié de paire orpheline (1),
+service worker qui intercepte hors navigation (1) ou qui met en cache (1).
+⚠️ **RÉSIDUS NOMMÉS** : n'importe qui peut se dire robot et coûter jusqu'à trois lectures PostgREST par requête (la
+fonction n'a pas `cache: "manual"`, donc rien n'est gardé au bord — c'est le cache du ROBOT que `max-age=300` vise) ;
+le partage d'une BOBINE reste en `#reel=`, sans aperçu ; et l'assemblage de l'import `../lib/` par le CLI Netlify ne se
+prouve qu'au déploiement.
 
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)
 
