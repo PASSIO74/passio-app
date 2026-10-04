@@ -167,6 +167,12 @@ self.addEventListener("fetch", e => {
   // propres en-têtes. On laisse passer, comme les appels externes.
   if (url.pathname.startsWith("/media/")) return;
 
+  // Liens courts de partage (/p/<id>, /u/<id>, /e/<id>) : l'Edge Function
+  // netlify/edge-functions/apercu.js répond un 302 vers le lien profond. Le
+  // stale-while-revalidate ci-dessous n'a rien à en faire — et s'il gardait un
+  // jour une réponse, il la resservirait à vie. On laisse passer.
+  if (/^\/[pue]\//.test(url.pathname)) return;
+
   // index.html → toujours réseau d'abord pour avoir la dernière version
   if (
     url.pathname === "/" ||

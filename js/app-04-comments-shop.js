@@ -4097,7 +4097,9 @@ function openBlockedList() {
 }
 
 function shareUserProfile(userId, name) {
-  const rawUrl = location.origin + location.pathname + "#user-" + userId;
+  // Lien COURT en production (aperçu du profil chez WhatsApp, iMessage…) : app-06.
+  const rawUrl = (typeof lienPartageDe === "function")
+    ? lienPartageDe("user", userId) : location.origin + location.pathname + "#user-" + userId;
   const url = (window.tel && tel.shareLink) ? tel.shareLink(rawUrl, "profile", userId, navigator.share ? "native" : "clipboard") : rawUrl;
   const data = { title: name || "Profil PASSIO", text: "Découvre " + (name || "ce profil") + " sur PASSIO", url };
   partagerOuCopier(data, "Lien du profil copié");
