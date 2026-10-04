@@ -358,6 +358,7 @@ class Store {
         shareCount: 0, channels: new Set(), shares: [],
         opens: [], openDevices: new Set(), openCount: 0, errorOpens: 0,
         firstOpen: null, lastOpen: null, lastEvent: ev.ts,
+        signups: [], signupCount: 0, signupDevices: new Set(), signupsInvite: 0, firstSignup: null,
       };
       this.links.set(id, l);
       // Borne la carte (les liens les plus anciens sont évincés).
@@ -392,11 +393,22 @@ class Store {
       if (err) l.errorOpens++;
       l.firstOpen = l.firstOpen || ev.ts;
       l.lastOpen = ev.ts;
+    } else if (ev.action === "link_signup") {
+      // Dernière marche (2026-10-04) : un compte est NÉ sur l'appareil que ce
+      // lien avait amené. Émis par le client une fois par inscription (la
+      // mémoire du lien d'arrivée est consommée) — jamais déduit ici.
+      l.signupCount++;
+      if (ev.device_id) l.signupDevices.add(ev.device_id);
+      if (m.invite === true) l.signupsInvite++;
+      l.signups.push({ ts: ev.ts, device: ev.device_id, platform: ev.platform, voie: m.voie || "?", invite: m.invite === true, delaiS: Number.isFinite(m.delai_s) ? m.delai_s : null });
+      if (l.signups.length > 50) l.signups.shift();
+      l.firstSignup = l.firstSignup || ev.ts;
     }
   }
 
   // Étape la plus avancée PROUVÉE par un signal (jamais de supposition).
   _linkStatus(l) {
+    if (l.signupCount > 0) return "signed_up"; // le lien a fait naître au moins un compte
     if (l.openCount > 0) return (l.errorOpens && l.errorOpens === l.openCount) ? "opened_error" : "opened";
     if (l.shareCount > 0) return "shared";     // partagé mais AUCUN signal d'ouverture → non confirmé
     if (l.createdAt) return "created";
@@ -412,8 +424,9 @@ class Store {
       shareCount: l.shareCount, channels: [...l.channels],
       openCount: l.openCount, openDevices: l.openDevices.size, errorOpens: l.errorOpens,
       firstOpen: l.firstOpen, lastOpen: l.lastOpen, lastEvent: l.lastEvent,
+      signupCount: l.signupCount, signupsInvite: l.signupsInvite, firstSignup: l.firstSignup,
     };
-    if (full) { dto.shares = l.shares.slice(); dto.opens = l.opens.slice(); }
+    if (full) { dto.shares = l.shares.slice(); dto.opens = l.opens.slice(); dto.signups = l.signups.slice(); }
     return dto;
   }
 
@@ -435,11 +448,22 @@ class Store {
     const orphanOpens = all.filter((l) => !l.createdAt && l.openCount > 0).length;
     const totalOpens = all.reduce((a, l) => a + l.openCount, 0);
     const sharedThenOpened = all.filter((l) => l.shareCount > 0 && l.openCount > 0).length;
+    // Inscriptions : une marche de plus, au même dénominateur honnête — parmi les
+    // liens CONFIRMÉS ouverts, combien ont fait naître un compte.
+    const opened = all.filter((l) => l.openCount > 0);
+    const openedThenSigned = opened.filter((l) => l.signupCount > 0).length;
+    const signedUp = all.filter((l) => l.signupCount > 0).length;
+    const totalSignups = all.reduce((a, l) => a + l.signupCount, 0);
     return {
       total: all.length, created, shared,
       opened: openedOk, openedError: openedErr, sharedUnconfirmed, orphanOpens, totalOpens,
       // Taux d'ouverture confirmée PARMI les liens partagés (dénominateur honnête).
       openRate: shared ? Math.round((sharedThenOpened / shared) * 100) : null,
+      signedUp, totalSignups,
+      signupsInvite: all.reduce((a, l) => a + l.signupsInvite, 0),
+      // Taux d'inscription PARMI les liens confirmés ouverts (jamais parmi les créés).
+      signupRate: opened.length ? Math.round((openedThenSigned / opened.length) * 100) : null,
+      signupsToday: all.reduce((a, l) => a + l.signups.filter((x) => now - x.ts < DAY).length, 0),
       createdToday: all.filter((l) => l.createdAt && now - l.createdAt < DAY).length,
       openedToday: all.filter((l) => l.firstOpen && now - l.firstOpen < DAY).length,
       lastActivity: all.length ? Math.max(...all.map((l) => l.lastEvent)) : null,
@@ -712,8 +736,12 @@ class Store {
     // Appareils arrivés via une ouverture de lien confirmée (?plk).
     const viaLink = new Set();
     for (const l of this.links.values()) for (const dev of l.openDevices) viaLink.add(dev);
+    // Appareils arrivés par un lien ET où un compte est né (signal client).
+    const viaLinkSignedUp = new Set();
+    for (const l of this.links.values()) for (const dev of l.signupDevices) if (viaLink.has(dev)) viaLinkSignedUp.add(dev);
     return {
       total: devs.length,
+      viaLinkSignedUp: viaLinkSignedUp.size,
       prod: devs.filter((d) => (d.env || "production") === "production").length,
       viaLink: viaLink.size,
       signedUp: devs.filter((d) => d.userId).length,

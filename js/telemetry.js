@@ -744,6 +744,25 @@
     try { localStorage.removeItem(BACKLOG_KEY); } catch (e) {}
   }
 
+  // ─── Lien d'arrivée : quel lien suivi a amené CET appareil (2026-10-04) ─────
+  // `captureLinkOpen` le mémorise ; `linkSignup` le consomme quand un compte naît
+  // ici. C'est la dernière marche de l'entonnoir du pilotage : partagé → ouvert
+  // → COMPTE CRÉÉ. Clé d'APPAREIL (jamais dans ACCOUNT_SCOPED_KEYS : elle doit
+  // survivre à la purge d'adoption), un identifiant de lien et une date, rien
+  // d'autre — pas d'URL, pas de cible.
+  var LIEN_ARRIVEE_KEY = "passio_lien_arrivee_v1";
+  var LIEN_ARRIVEE_TTL_MS = 14 * 24 * 3600 * 1000;
+  var LIEN_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+  function lienArrivee() {
+    try {
+      var a = JSON.parse(localStorage.getItem(LIEN_ARRIVEE_KEY) || "null");
+      if (!a || typeof a.lk !== "string" || !LIEN_ID_RE.test(a.lk) || !(a.at > 0)) return null;
+      if (Date.now() - a.at > LIEN_ARRIVEE_TTL_MS) { localStorage.removeItem(LIEN_ARRIVEE_KEY); return null; }
+      return a;
+    } catch (e) { return null; }
+  }
+  function oublierLienArrivee() { try { localStorage.removeItem(LIEN_ARRIVEE_KEY); } catch (e) {} }
+
   // ─── API publique ───────────────────────────────────────────────────────────
   function track(type, action, fields) {
     if (!ENABLED) return;
@@ -958,6 +977,34 @@
       this.linkShare(id, channel || "?");
       return url;
     },
+    // linkSignup : un compte vient de NAÎTRE sur l'appareil qu'un lien suivi a
+    // amené. Consomme le lien d'arrivée (une inscription = un signal, jamais
+    // deux) et rend vrai s'il a émis. `voie` : email | google | … ; `invite` :
+    // l'inscription emportait-elle un invitant annoncé (app-06) ?
+    // ⚠️ L'APPELANT DIT « UN COMPTE EST NÉ » ; il ne dit jamais « le lien l'a
+    // amené ». C'est la mémoire de l'appareil qui le dit, et rien d'autre.
+    linkSignup: function (voie, meta) {
+      var a = lienArrivee();
+      if (!a) return false;
+      oublierLienArrivee();
+      track("link", "link_signup", {
+        correlation_id: a.lk, severity: "info", status: "ok",
+        message: "Compte créé après l'ouverture du lien",
+        meta: {
+          link_id: a.lk,
+          voie: String(voie || "?").slice(0, 24),
+          invite: !!(meta && meta.invite),
+          delai_s: Math.max(0, Math.round((Date.now() - a.at) / 1000)),
+        },
+      });
+      flush();
+      return true;
+    },
+    // Le lien d'arrivée ne désigne pas un compte qui EXISTAIT déjà : quelqu'un qui
+    // se reconnecte depuis un lien n'est pas une inscription, et la mémoire ne
+    // doit pas attendre le prochain compte créé sur l'appareil pour s'y attribuer.
+    linkArrivalForget: oublierLienArrivee,
+    _lienArrivee: lienArrivee,
     error: function (err, ctx) {
       var e = err || {};
       track("error", (ctx && ctx.action) || "js_error", {
@@ -1004,6 +1051,9 @@
       // de le tronquer, pour qu'aucun texte étranger n'entre dans la base par un
       // lien fabriqué. La sanitisation dans track() reste le filet de sécurité.
       if (!/^[A-Za-z0-9_-]{1,64}$/.test(plk)) return;
+      // Lien d'arrivée de l'appareil : le DERNIER lien ouvert l'emporte (c'est
+      // lui qui a fait revenir la personne). Lu par `linkSignup`.
+      try { localStorage.setItem(LIEN_ARRIVEE_KEY, JSON.stringify({ lk: plk, at: Date.now() })); } catch (e) {}
       track("link", "link_open", {
         correlation_id: plk, severity: "info", status: "ok",
         message: "Ouverture de lien confirmée (page chargée)",

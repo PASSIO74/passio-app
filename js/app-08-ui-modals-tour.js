@@ -2675,6 +2675,33 @@ function signalerInscriptionConfirmee(session) {
   } catch (e) { return false; }
 }
 
+// ── Inscription arrivée par un lien partagé (2026-10-04) ───────────────────
+// Le chemin e-mail émet `link_signup` à l'appel de `signUp` (app-02). Le chemin
+// Google n'appelle jamais `signUp` sur cet appareil : le compte naît au RETOUR,
+// donc on le reconnaît ici, à la première session vue. Un compte est « neuf »
+// s'il a été créé il y a moins de 30 min ET après l'ouverture du lien ; sinon
+// c'est quelqu'un qui avait déjà un compte, et le lien d'arrivée est OUBLIÉ —
+// sans quoi il s'attribuerait au prochain compte créé sur l'appareil.
+// ⚠️ `Date.parse`, jamais `supaTs` : `supaTs` replie sur `Date.now()` quand il
+// ne sait pas lire, ce qui ferait passer un compte existant pour neuf.
+var INSCRIPTION_LIEN_FENETRE_MS = 30 * 60 * 1000;
+function signalerInscriptionViaLien(session) {
+  try {
+    if (!session || !session.user || !window.tel || typeof tel._lienArrivee !== "function") return "sans_objet";
+    var a = tel._lienArrivee();
+    if (!a) return "aucun_lien";
+    var cree = Date.parse(session.user.created_at || "");
+    var neuf = (Date.now() - cree <= INSCRIPTION_LIEN_FENETRE_MS) && (cree >= a.at - 2 * 60 * 1000);
+    if (!neuf) { tel.linkArrivalForget(); return "compte_existant"; }
+    var fournisseur = (session.user.app_metadata && session.user.app_metadata.provider) || "?";
+    var invite = !!(session.user.user_metadata && session.user.user_metadata.invite_de);
+    return tel.linkSignup(fournisseur, { invite: invite }) ? "signale" : "aucun_lien";
+  } catch (e) {
+    try { if (window.tel && tel.error) tel.error(e, { action: "inscription_via_lien", severity: "warn" }); } catch (e2) {}
+    return "erreur";
+  }
+}
+
 async function boot() {
   // Charge le SDK Supabase à la demande (lazy, hors page verrouillée) PUIS
   // construit le vrai client, avant le moindre appel `supa.*` ci-dessous.
@@ -2835,6 +2862,7 @@ async function boot() {
       window.MY_UID = MY_UID;
       // LOT E : première session vue après une inscription faite sur cet appareil.
       try { signalerInscriptionConfirmee(session); } catch (e) {}
+      try { signalerInscriptionViaLien(session); } catch (e) {}
       // ⚠️ PENDANT UNE RÉCUPÉRATION, ON N'ÉCRIT PAS `passio_uid` (constat majeur
       // de la seconde passe). L'adoption est différée ; écrire la clé ferait
       // croire au démarrage SUIVANT que cet appareil possède déjà l'état du
@@ -3068,6 +3096,7 @@ async function boot() {
         localStorage.setItem("passio_uid", MY_UID);
         // LOT E : même signal que dans `boot` (garde par retrait du marqueur).
         try { signalerInscriptionConfirmee(session); } catch (e) {}
+        try { signalerInscriptionViaLien(session); } catch (e) {}
         // Retour OAuth (Google) arrivé après le boot : finaliser + recharger dans l'app.
         if (event === "SIGNED_IN" && _oauthEnAttente) {
           localStorage.removeItem("passio_oauth_pending");
