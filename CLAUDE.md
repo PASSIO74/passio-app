@@ -2718,14 +2718,23 @@ la seule source de cette URL. `first-run.js` reconnaît `user-` comme lien profo
 `#postDetailPage` (le hash est nettoyé avant l'ouverture : seul l'affichage dit qu'elle est à l'écran).
 ⚠️ **`openUserProfile` relit TOUJOURS le profil en base avant d'ouvrir** : au démarrage, cette lecture attend
 l'initialisation du SDK — 15,7 s mesurées hors réseau (bac local), quelques ms en CI. D'où le délai large du cas ②.
+⚠️ **LA GARDE DE BLOCAGE REGARDAIT LA VALEUR REÇUE, PAS LE COMPTE OUVERT — trouvé par la revue de sécurité
+automatique APRÈS la fusion de #567, refermé en suite.** `openUserProfile` sait aussi retrouver un compte par son
+**PSEUDO** (local, puis `ilike` en base, où `%` et `_` sont des jokers) : un lien `#user-<pseudo>` ouvrait donc un
+compte BLOQUÉ, la garde ayant examiné une chaîne qui n'était pas son identifiant. Deux couches, chacune mesurée seule :
+① le routeur n'accepte qu'un **identifiant de compte** (`LIEN_PARTAGE_COMPTE_RE` : uuid d'auth, ou `u_…` de
+démonstration — pour qui `openUserProfile` ne tente jamais le pseudo), sinon « Profil introuvable » ; ② `openUserProfile`
+re-juge le blocage sur le compte **RÉSOLU** quand la source est `"lien"`, et seulement elle — les autres appelants
+gardent leur comportement. **Une garde posée sur l'entrée d'une fonction qui résout l'entrée autrement ne garde rien.**
 ⚠️ **CE QUI RESTE, NOMMÉ** : tous les liens sont des **hash**, donc invisibles aux robots d'aperçu (WhatsApp, iMessage,
 Messenger) — chaque partage s'affiche avec l'aperçu GÉNÉRIQUE de `index.html`. Des aperçus par contenu demandent des
 URL en chemin (`/p/<id>`, `/e/<id>`, `/u/<id>`) servies par une Edge Function qui lit la base en clé anon (RLS) et
 écrit du contenu d'autrui dans du HTML **sur l'origine de l'application** : c'est un lot de **sécurité** (échappement,
 CSP propre — le `[[headers]]` de netlify.toml ne s'applique PAS aux réponses d'une Edge Function), donc revue dédiée,
 pas un ajout en passant.
-Verrou : `tests/e2e/liens-partage-post-profil.spec.js` (7), **éprouvé par RÉINJECTION de quatre mutations** — routeur
-rendu muet (3 rouges), recherche ciblée retirée (1), garde de blocage retirée (1), partage rendu à l'accueil (1).
+Verrou : `tests/e2e/liens-partage-post-profil.spec.js` (9), **éprouvé par RÉINJECTION de six mutations** — routeur
+rendu muet (3 rouges), recherche ciblée retirée (1), garde de blocage retirée (1), partage rendu à l'accueil (1), garde
+de forme retirée (1 : ⑧), re-jugement sur le compte résolu retiré (1 : ⑧ bis).
 
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)
 
