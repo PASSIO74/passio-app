@@ -168,10 +168,19 @@ self.addEventListener("fetch", e => {
   if (url.pathname.startsWith("/media/")) return;
 
   // Liens courts de partage (/p/<id>, /u/<id>, /e/<id>) : l'Edge Function
-  // netlify/edge-functions/apercu.js répond un 302 vers le lien profond. Le
-  // stale-while-revalidate ci-dessous n'a rien à en faire — et s'il gardait un
-  // jour une réponse, il la resservirait à vie. On laisse passer.
-  if (/^\/[pue]\//.test(url.pathname)) return;
+  // netlify/edge-functions/apercu.js répond un 302 vers le lien profond. JAMAIS
+  // de cache ici : le stale-while-revalidate ci-dessous, s'il gardait un jour une
+  // réponse, la resservirait à vie. Réseau seul — et HORS LIGNE, quand la PWA
+  // installée capte le lien, on renvoie vers le lien profond que l'app ouvre
+  // depuis son repli index.html (même table que la fonction), plutôt que vers la
+  // page d'erreur du navigateur.
+  if (/^\/[pue]\//.test(url.pathname)) {
+    if (e.request.mode !== "navigate") return;
+    const lien = /^\/([pue])\/([A-Za-z0-9_-]{1,100})\/?$/.exec(url.pathname);
+    const hash = lien ? { p: "#post-", u: "#user-", e: "#irl-event-" }[lien[1]] + lien[2] : "";
+    e.respondWith(fetch(e.request).catch(() => Response.redirect(self.location.origin + "/" + hash, 302)));
+    return;
+  }
 
   // index.html → toujours réseau d'abord pour avoir la dernière version
   if (

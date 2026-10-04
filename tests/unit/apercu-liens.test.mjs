@@ -21,6 +21,17 @@ const UA_FACEBOOK = "facebookexternalhit/1.1 (+http://www.facebook.com/externalh
 const UA_TELEGRAM = "TelegramBot (like TwitterBot)";
 const UA_DISCORD = "Mozilla/5.0 (compatible; Discordbot/2.0; +https://discordapp.com)";
 const UA_SLACK = "Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)";
+const UA_SNAP_ROBOT = "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:61.0) Gecko/20100101 Firefox/61.0 Snap URL Preview Service; bot; snapchat; https://developers.snap.com/robots";
+const UA_PINTEREST_ROBOT = "Pinterest/0.2 (+http://www.pinterest.com/)";
+const UA_BLUESKY_ROBOT = "Mozilla/5.0 (compatible; Bluesky Cardyb/1.1; +mailto:support@bsky.app)";
+// Navigateurs INTÉGRÉS d'applications : ce sont des HUMAINS.
+const UA_SNAPCHAT_APP = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Snapchat/12.80.0.33 (like Safari/8618.1.15.10.15, panda)";
+const UA_PINTEREST_APP = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 [Pinterest/iOS]";
+const UA_FACEBOOK_APP = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/21F79 [FBAN/FBIOS;FBAV/470.0.0.37.106;FBBV/600000000]";
+const UA_LINKEDIN_APP = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 [LinkedInApp]/9.29.6";
+const UA_TELEGRAM_APP = "Mozilla/5.0 (Linux; Android 14; Pixel 8 Build/AP2A; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/129.0 Mobile Safari/537.36 Telegram-Android/11.1.3";
+const UA_TIKTOK_APP = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 musical_ly_35.1.0 JsSdk/2.0 NetType/WIFI Channel/App Store";
+const UA_APPLEBOT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.1.1 Safari/605.1.15 (Applebot/0.1; +http://www.apple.com/go/applebot)";
 
 const UUID = "14c697ac-7958-41ea-8e23-8c00b4784a47";
 const CDN = "https://passio-app.netlify.app/media/content/";
@@ -93,13 +104,26 @@ test("② la destination garde le seul `plk` valide et vise le routeur de l'appl
 
 // ── ③ Qui reçoit la page ──────────────────────────────────────────────────
 test("③ les robots d'aperçu sont reconnus, les humains jamais — CUBOT compris", () => {
-  for (const ua of [UA_WHATSAPP, UA_IMESSAGE, UA_FACEBOOK, UA_TELEGRAM, UA_DISCORD, UA_SLACK]) assert.equal(estRobotApercu(ua), true, ua);
-  for (const ua of [UA_IPHONE, UA_ANDROID, UA_CUBOT, UA_INSTAGRAM, "", null]) assert.equal(estRobotApercu(ua), false, String(ua));
+  for (const ua of [UA_WHATSAPP, UA_IMESSAGE, UA_FACEBOOK, UA_TELEGRAM, UA_DISCORD, UA_SLACK,
+    UA_SNAP_ROBOT, UA_PINTEREST_ROBOT, UA_BLUESKY_ROBOT]) assert.equal(estRobotApercu(ua), true, ua);
+  // Un navigateur INTÉGRÉ d'application est un humain : il doit recevoir le 302, pas
+  // la page d'aperçu nue (contre-revue du 2026-10-04). Un moteur d'indexation non plus.
+  for (const ua of [UA_IPHONE, UA_ANDROID, UA_CUBOT, UA_INSTAGRAM, UA_SNAPCHAT_APP, UA_PINTEREST_APP,
+    UA_FACEBOOK_APP, UA_LINKEDIN_APP, UA_TELEGRAM_APP, UA_TIKTOK_APP, UA_APPLEBOT, "", null]) {
+    assert.equal(estRobotApercu(ua), false, String(ua));
+  }
 });
 
 // ── ④ Textes ──────────────────────────────────────────────────────────────
 test("④ un texte est borné en points de code, sans contrôle ni marque bidirectionnelle, puis échappé", () => {
   assert.equal(texteBorne("a\u{202E}b\x00c\nd\u{2066}e", 50), "a b c d e");
+  // Ceux que la première liste laissait passer : U+061C, largeur nulle, étiquettes.
+  assert.equal(texteBorne("PA\u{200B}SS\u{061C}IO\u{2060}\u{E0041}!", 50), "PA SS IO !");
+  // Le liant U+200D survit : il soude les émojis composés.
+  assert.equal(texteBorne("👩\u{200D}🍳 cheffe", 50), "👩\u{200D}🍳 cheffe");
+  // Une coupe au milieu d'une paire ne laisse pas de moitié orpheline.
+  // (5 × 8 = 40 unités lues : la 40ᵉ est la moitié haute de 🚴.)
+  assert.equal(texteBorne("x" + " ".repeat(38) + "🚴", 5), "x");
   const long = "🚴".repeat(300);
   const borne = texteBorne(long, 200);
   assert.equal(Array.from(borne).length, 200);
@@ -117,6 +141,8 @@ test("⑤ une image n'est publiée que depuis le seau PUBLIC `content`, en forma
     "javascript:alert(1)", "data:image/png;base64,AAAA", "http://passio-app.netlify.app/media/content/a.jpg",
     "https://evil.example/media/content/a.jpg", CDN + "../attachments/a.jpg", CDN + "a/%2e%2e/b.jpg",
     CDN + "videos/u/v.mp4", CDN + "photos/u/a.svg", CDN + "a.jpg\"onerror=x", null, 42,
+    // `new URL` retire tabulations et sauts de ligne avant de résoudre `..`.
+    CDN + "a/.\t./b.png", CDN + "a/.\n./b.png", CDN + "a b.png",
   ]) assert.equal(imageSure(non), null, String(non));
 });
 

@@ -41,7 +41,8 @@
 //    Un robot non reconnu retombe sur l'aperçu générique (l'état d'avant) ; un
 //    humain pris pour un robot voit une page avec un lien « Ouvrir sur PASSIO ».
 //    Aucun des deux n'est bloqué. Les moteurs de RECHERCHE ne sont pas dans la
-//    liste, et la page dit `noindex` : partager n'est pas publier sur Google.
+//    liste (Applebot compris), et la page dit `noindex` : partager n'est pas
+//    publier sur Google.
 // ═══════════════════════════════════════════════════════════════════════════
 
 export const ORIGINE_CANONIQUE = "https://passio-app.netlify.app";
@@ -89,26 +90,45 @@ export function destination(cible, search) {
 
 // ⑦ Robots d'aperçu de lien (pas de moteur de recherche). iMessage s'annonce
 // « facebookexternalhit … Facebot Twitterbot » ; Signal emprunte « WhatsApp ».
+// ⚠️ UN JETON N'ENTRE ICI QUE S'IL EST PROPRE AU ROBOT, jamais au NAVIGATEUR
+// INTÉGRÉ de la même application : Snapchat et Pinterest ouvrent les liens dans
+// une vue web qui s'annonce « Snapchat/12.x » ou « [Pinterest/iOS] » — un jeton
+// `snapchat` ou `pinterest/` y servait la page d'aperçu nue à un HUMAIN, un tap
+// de plus sur le canal même que ce lot vise (contre-revue du 2026-10-04). Leurs
+// robots ont leur propre jeton (« Snap URL Preview », « Pinterestbot »,
+// « Pinterest/0. »). Faute de jeton propre connu, Viber, Tumblr, Zalo,
+// Mattermost et Rocket.Chat sont DEHORS : un robot non reconnu retombe sur
+// l'aperçu générique, l'état d'avant, ce qui vaut mieux que gêner un humain.
 // ⚠️ Jamais un simple /bot/i : « CUBOT » est une marque de téléphone Android.
+// ⚠️ Pas d'Applebot : c'est un robot d'INDEXATION (Siri, Spotlight).
 const ROBOT_APERCU_RE = new RegExp([
   "facebookexternalhit", "facebot", "facebookcatalog", "whatsapp", "twitterbot",
   "telegrambot", "slackbot", "slack-imgproxy", "discordbot", "linkedinbot",
-  "skypeuripreview", "redditbot", "pinterestbot", "pinterest/", "applebot",
-  "embedly", "iframely", "vkshare", "viber", "snapchat", "mastodon", "cardyb",
-  "bluesky", "tumblr", "mattermost", "rocket\\.chat", "google-pagerenderer",
-  "microsoftpreview", "bitlybot", "line-poker", "kakaotalk-scrap", "zalo",
+  "skypeuripreview", "redditbot", "pinterestbot", "pinterest/0\\.", "snap url preview",
+  "embedly", "iframely", "vkshare", "mastodon", "cardyb", "google-pagerenderer",
+  "microsoftpreview", "bitlybot", "line-poker", "kakaotalk-scrap",
 ].join("|"), "i");
 
 export function estRobotApercu(ua) {
   return ROBOT_APERCU_RE.test(String(ua || ""));
 }
 
-// ④ Contrôles C0/C1, marques et isolats bidirectionnels, séparateurs de ligne.
-const INVISIBLES_RE = /[\x00-\x1F\x7F-\x9F\u{200E}\u{200F}\u{202A}-\u{202E}\u{2066}-\u{2069}\u{2028}\u{2029}]/gu;
+// ④ Tout caractère de CONTRÔLE ou de FORMAT (C0/C1, marques et isolats
+// bidirectionnels dont U+061C, espaces de largeur nulle, caractères étiquettes),
+// séparateurs de ligne et de paragraphe. Seul le liant U+200D survit : il
+// soude les émojis composés (famille, métiers). Contre-revue du 2026-10-04 : la
+// première liste, écrite à la main, laissait passer U+061C et U+200B, de quoi
+// fabriquer un pseudo visuellement identique à « PASSIO » sous le domaine officiel.
+const INVISIBLES_RE = /(?!\u{200D})[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu;
 
 /** Texte d'aperçu : une seule ligne, au plus `max` points de code. */
 export function texteBorne(s, max) {
-  const propre = String(s == null ? "" : s).replace(INVISIBLES_RE, " ").replace(/\s+/g, " ").trim();
+  // On ne nettoie jamais plus que nécessaire : une publication de plusieurs
+  // mégaoctets ne coûte pas plus cher qu'une de deux lignes.
+  // La coupe peut tomber au milieu d'une paire de substitution : la moitié haute
+  // orpheline est retirée.
+  const brut = String(s == null ? "" : s).slice(0, max * 8).replace(/[\u{D800}-\u{DBFF}]$/u, "");
+  const propre = brut.replace(INVISIBLES_RE, " ").replace(/\s+/g, " ").trim();
   const cp = Array.from(propre);
   if (cp.length <= max) return propre;
   return cp.slice(0, Math.max(1, max - 1)).join("").trimEnd() + "…";
@@ -129,7 +149,9 @@ export function imageSure(url) {
   if (typeof url !== "string" || url.length > 600) return null;
   // Avant toute analyse : `new URL` NORMALISE `a/%2e%2e/b` en `b`, et l'objet
   // désigné ne serait plus celui que la ligne référence. On refuse la forme brute.
-  if (/%2e|%2f|%5c|\\|\/\.\.?(?:\/|$)/i.test(url)) return null;
+  // `new URL` RETIRE aussi tabulations et sauts de ligne (`a/.\t./b` devient
+  // `a/../b`, puis `b`) : aucun blanc ni contrôle n'est admis dans la forme brute.
+  if (/[\x00-\x20\x7f]|%2e|%2f|%5c|\\|\/\.\.?(?:\/|$)/i.test(url)) return null;
   let u;
   try { u = new URL(url); } catch (e) { return null; }
   if (u.protocol !== "https:" || u.username || u.password || u.port) return null;

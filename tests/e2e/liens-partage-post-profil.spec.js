@@ -22,7 +22,8 @@
 //      un identifiant hors forme gardent le hash ;
 //   ⑩ les TROIS boutons de partage passent par `lienPartageDe` (le câblage, pas
 //      la fonction : un appelant qui la contournerait garderait l'aperçu générique) ;
-//   ⑪ le service worker laisse passer les liens courts (sinon il garderait le 302).
+//   ⑪ le service worker ne garde jamais un lien court en cache (sinon il
+//      resservirait le 302 à vie) et, hors ligne, renvoie vers le lien profond.
 const { test, expect } = require("@playwright/test");
 const fs = require("fs");
 const path = require("path");
@@ -239,14 +240,19 @@ test.describe("Liens partagés #post-<id> et #user-<id>", () => {
     ]);
   });
 
-  test("⑪ le service worker laisse passer les liens courts", async () => {
+  test("⑪ le service worker ne met jamais un lien court en cache, et le rouvre hors ligne", async () => {
     const sw = fs.readFileSync(path.join(__dirname, "..", "..", "sw.js"), "utf8");
-    const i = sw.indexOf('addEventListener("fetch"');
-    const corps = sw.slice(i);
-    const garde = corps.indexOf("/^\\/[pue]\\//.test(url.pathname)) return;");
-    expect(garde, "garde des liens courts dans le gestionnaire fetch").toBeGreaterThan(0);
-    // AVANT toute mise en cache : sinon un 302 ou une page d'aperçu serait gardé à vie.
-    expect(garde).toBeLessThan(corps.indexOf("e.respondWith("));
+    const corps = sw.slice(sw.indexOf('addEventListener("fetch"'));
+    const debut = corps.indexOf("if (/^\\/[pue]\\//.test(url.pathname)) {");
+    expect(debut, "branche des liens courts dans le gestionnaire fetch").toBeGreaterThan(0);
+    const bloc = corps.slice(debut, corps.indexOf("\n  }\n", debut));
+    // AVANT toute branche qui met en cache : sinon un 302 serait gardé à vie.
+    expect(debut).toBeLessThan(corps.indexOf("caches.open(CACHE)"));
+    expect(bloc).not.toMatch(/caches\./);
+    // Hors navigation, rien ; hors ligne, vers le lien profond (même table que la fonction).
+    expect(bloc).toContain('if (e.request.mode !== "navigate") return;');
+    expect(bloc).toContain('{ p: "#post-", u: "#user-", e: "#irl-event-" }');
+    expect(bloc).toMatch(/fetch\(e\.request\)\.catch\(\(\) => Response\.redirect\(/);
   });
 
   test("⑦ un compte bloqué n'est jamais ouvert par un lien", async ({ page }) => {

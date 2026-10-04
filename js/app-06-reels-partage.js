@@ -1026,15 +1026,6 @@ function switchProfileTab(tab, btn) {
   renderProfileContent();
 }
 
-function shareMyProfile() {
-  var name = ((state.user.general||{}).username || state.user.name || "Passionné");
-  // Lien de profil suivi (?plk) : apparie le partage à une ouverture confirmée.
-  var _lk = (window.tel && tel.linkCreate) ? tel.linkCreate("profile", (window.MY_UID || name)) : "";
-  var url = (_lk && tel.tagUrl) ? tel.tagUrl(window.location.href, _lk) : window.location.href;
-  _telLinkShare(url, navigator.share ? "native" : "clipboard");
-  partagerOuCopier({ title: name + " sur PASSIO", text: "Découvre mon profil sur PASSIO !", url: url }, "Lien copié");
-}
-
 // Upload une photo de profil/couverture vers Supabase Storage puis pousse l'URL
 // dans la table `profiles` (via supaUpsertProfile) → visible par TOUS les autres
 // comptes. Affichage optimistic en base64 d'abord, remplacé par l'URL Storage.
