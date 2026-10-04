@@ -58,6 +58,9 @@ export const IMAGE_GENERIQUE = ORIGINE_CANONIQUE + "/icon-512.png";
 const ID_CONTENU_RE = /^[A-Za-z0-9_-]{1,100}$/;
 const ID_COMPTE_RE = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|u_[A-Za-z0-9_-]{1,64})$/i;
 const PLK_RE = /^[A-Za-z0-9_-]{1,64}$/;
+// L'invitant : un uuid de compte, jamais un `u_…` de démonstration (il n'existe
+// pas côté serveur, l'application n'en ferait rien).
+const INV_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const TYPES = {
   p: { type: "publication", court: "/p/", hash: "#post-", idRe: ID_CONTENU_RE },
@@ -80,11 +83,21 @@ export function analyserChemin(pathname) {
   return { type: t.type, id, hash: t.hash, chemin: t.court + id };
 }
 
-/** Le lien profond de l'application, avec le seul `plk` (suivi de partage) s'il est valide. */
+/**
+ * Le lien profond de l'application, avec deux paramètres au plus, chacun
+ * seulement s'il a SA forme : `plk` (suivi de partage) et `inv` (le compte qui
+ * a partagé — l'invitation, lue par app-06). Tout le reste est jeté : rien de
+ * reçu ne passe tel quel dans un en-tête `Location`.
+ */
 export function destination(cible, search) {
-  let plk = null;
-  try { plk = new URLSearchParams(String(search || "")).get("plk"); } catch (e) { plk = null; }
-  const q = plk && PLK_RE.test(plk) ? "?plk=" + plk : "";
+  let params = null;
+  try { params = new URLSearchParams(String(search || "")); } catch (e) { params = null; }
+  const plk = params ? params.get("plk") : null;
+  const inv = params ? params.get("inv") : null;
+  const morceaux = [];
+  if (plk && PLK_RE.test(plk)) morceaux.push("plk=" + plk);
+  if (inv && INV_RE.test(inv)) morceaux.push("inv=" + inv.toLowerCase());
+  const q = morceaux.length ? "?" + morceaux.join("&") : "";
   return "/" + q + cible.hash + cible.id;
 }
 

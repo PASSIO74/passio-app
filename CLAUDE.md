@@ -2816,6 +2816,51 @@ Verrou : `tests/e2e/invitation-activite.spec.js` (6), **éprouvé par RÉINJECTI
 échappé (1), lien recopié à la main au lieu de `lienPartageDe` (1 — un espion est le seul moyen de le voir en local,
 où les deux formes coïncident).
 
+## 👋 L'INVITATION — « Léa t'invite », et Léa suivie à la création du compte (2026-10-04)
+
+Suite des liens courts et de l'invitation après création d'activité. Un lien partagé arrivait ANONYME : rien ne
+disait qui l'avait envoyé, et le compte créé au bout repartait sans un seul abonnement — un fil vide, alors que la
+personne qui l'a fait venir est celle qu'il veut retrouver. Module unique en fin de section partage d'app-06.
+① `lienPartageDe` signe le lien `?inv=<uuid>` quand un VRAI compte partage (jamais un `u_…`) ; l'Edge Function
+(`destination`) et le service worker hors ligne ne laissent passer `inv` que s'il est un uuid. ⚠️ Il désigne
+l'auteur d'ORIGINE et survit aux transferts. ② `capterInvitation()` tourne au CHARGEMENT d'app-06 : mémorise
+`passio_invitation_v1` (clé d'APPAREIL, hors `ACCOUNT_SCOPED_KEYS` — elle doit survivre à la purge d'adoption),
+retire `inv` de l'URL, ignore un appareil qui porte déjà un compte. ⚠️ **`MY_UID` est un `let` d'app-08 : dans le
+monolithe de prod il est en TDZ à cet instant** — `_uidEstUnCompte` avale l'erreur, d'où le repli sur `passio_uid`
+(`_appareilPorteUnCompte`). Le toast « Léa t'invite » part de la reprise bornée (dev) ou de `passio:app-ready` (prod).
+③ `#authInvite` (création seulement, peinte par `majInvitationAuth`, appelée par `switchAuthTab`) ANNONCE
+l'abonnement — ou la DEMANDE vers un compte privé — et porte « Ne pas suivre » (44 px).
+④ **L'ABONNEMENT AUTOMATIQUE N'A LIEU QUE SI L'ANNONCE ÉTAIT À L'ÉCRAN.** `signUp` n'emporte `invite_de` dans
+`user_metadata` que si `#authInvite` est visible ET nomme l'invitant en attente (`data-de` : un autre onglet peut
+remplacer l'invitation pendant que le formulaire montre l'ancienne ; l'événement `storage` repeint). L'invitation
+locale est consommée par l'envoi. ⑤ `appliquerInvitation(session)` — `boot` (après `supaInit`) et `onbFinish`
+(quand `signUp` a rendu une session) — suit l'invitant annoncé UNE fois ; ⑥ une invitation de l'APPAREIL seul
+(Google, téléphone partagé, lien fabriqué) est **PROPOSÉE** (« Suivre Léa ? » / « Non merci »), jamais imposée.
+⚠️ **DEUX REVUES DE SÉCURITÉ AUTOMATIQUES ont refusé les deux premières rédactions**, à raison : la première
+suivait d'office sur la seule foi de la clé locale (abonner quelqu'un à un compte qu'il n'a jamais vu nommé), la
+seconde emportait l'invitation COURANTE au lieu de celle AFFICHÉE. **Un consentement vaut pour ce qui a été
+montré, pas pour ce qui est en mémoire au moment du clic.**
+⚠️ **`audit-passio` en a trouvé deux autres APRÈS 19 tests verts** : ① aucun test n'exerçait l'accueil AUTOMATIQUE
+(tous appelaient `accueillirInvitation()` à la main — câblage supprimable sans un rouge) ; ② `invite_de` est
+PERMANENTE, et le seul verrou (`state.user.invitationTraitee`, blob « le dernier qui écrit gagne ») ne tenait pas
+un désabonnement fait entre un premier démarrage en « attente » et le suivant. Remèdes : fenêtre de **7 jours**
+après la création du compte, et **tout geste manuel sur l'invitant clôt l'invitation** (`invitationGesteManuel`,
+appelé par `toggleFollowUser`). ⚠️ **On n'efface PAS la métadonnée par `updateUser`** : l'événement `USER_UPDATED`
+atteint le gestionnaire `onAuthStateChange` du chemin `onbFinish`, dont la garde d'appropriation bloquerait toute
+écriture d'état — un effet de bord pire que le défaut. ⚠️ `Date.parse(created_at)` et PAS `supaTs` : `supaTs`
+replie sur `Date.now()`, ce qui ferait passer un compte EXISTANT pour neuf ; `NaN` retombe du côté sûr.
+⚠️ La proposition n'écrit son verdict que sur une RÉPONSE : fermée sans choix, remplacée (`openModal` n'empile pas)
+ou « Suivre » qui échoue → reposée au démarrage suivant, trois fois au plus (`ignoree`). Un compte sans nom valable
+n'est jamais annoncé (on ne fait pas consentir à suivre quelqu'un qu'on ne nomme pas). `diagLog` n'écrit qu'en
+mémoire : les `catch` du module passent aussi par `tel.error` (`_invitationEchec`).
+Coupures : `passio_invitations_v1="0"` ou `window.PASSIO_INVITATIONS=false`. Télémétrie : `invitation_accueil`,
+`invitation_proposee`, `invitation_refusee`, `invitation_suivie` (`verdict`, `source` : compte | appareil).
+Verrous : `tests/e2e/invitation-arrivee.spec.js` (27) et `apercu-liens.test.mjs` ② bis, **éprouvés par RÉINJECTION
+de vingt-six mutations, chacune rouge**. ⚠️ **RÉSIDUS NOMMÉS** : l'invitation est perdue si le nom n'était pas résolu
+avant l'envoi du formulaire et que la confirmation s'ouvre dans un autre navigateur ; une bobine (`#reel=`) n'est
+pas signée ; au banc, une bulle `.fr-tip` recouvre la rangée d'onglets du formulaire d'auth (à vérifier en usage
+réel, hors lot) ; l'annonce ajoute ~90 px en création, sous laquelle « Créer mon compte » descend d'autant.
+
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)
 
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)

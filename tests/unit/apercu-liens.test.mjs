@@ -102,6 +102,16 @@ test("② la destination garde le seul `plk` valide et vise le routeur de l'appl
   assert.equal(destination(p, "?plk=a%0D%0ASet-Cookie:x"), "/#post-pa1");
 });
 
+test("② bis l'invitant (`inv`) passe s'il est un uuid de compte, et rien d'autre", () => {
+  const p = analyserChemin("/p/pa1"), e = analyserChemin("/e/ev1");
+  assert.equal(destination(e, "?inv=" + UUID), "/?inv=" + UUID + "#irl-event-ev1");
+  assert.equal(destination(p, "?inv=" + UUID.toUpperCase() + "&plk=ok"), "/?plk=ok&inv=" + UUID + "#post-pa1");
+  // Un compte de démonstration, un pseudo, une injection d'en-tête : jetés.
+  for (const mauvais of ["u_lea", "lea", UUID + "x", UUID + "%0D%0ASet-Cookie:x", "%22%3E"]) {
+    assert.equal(destination(p, "?plk=ok&inv=" + mauvais), "/?plk=ok#post-pa1", mauvais);
+  }
+});
+
 // ── ③ Qui reçoit la page ──────────────────────────────────────────────────
 test("③ les robots d'aperçu sont reconnus, les humains jamais — CUBOT compris", () => {
   for (const ua of [UA_WHATSAPP, UA_IMESSAGE, UA_FACEBOOK, UA_TELEGRAM, UA_DISCORD, UA_SLACK,

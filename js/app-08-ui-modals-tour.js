@@ -2994,6 +2994,19 @@ async function boot() {
         try { renderEverything(); } catch(e) {}
         document.body.classList.add("screen-feed-active");
         try { supaInit(); } catch(e) {}
+        // Compte NEUF venu par un lien d'invitation (app-06) : il suit l'invitant
+        // qui lui a été ANNONCÉ à l'inscription, ou on lui DEMANDE s'il veut le
+        // suivre (invitation de l'appareil seul). Après `supaLoadUserState` —
+        // l'état du compte dit si l'invitation a déjà servi — et sans retenir
+        // le démarrage.
+        try {
+          if (typeof appliquerInvitation === "function") {
+            Promise.resolve(appliquerInvitation(session)).catch(function (e) {
+              diagLog("invitation_boot", e && e.message);
+              try { if (window.tel && tel.error) tel.error(e, { action: "invitation_boot", severity: "warn" }); } catch (_) {}
+            });
+          }
+        } catch (e) {}
         return;
       }
     }

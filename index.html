@@ -257,6 +257,13 @@
           <button class="onb-auth-tab" id="authTabSignup" onclick="switchAuthTab('signup')">Créer un compte</button>
         </div>
 
+        <!-- Invitation en attente (2026-10-04) : en création de compte SEULEMENT,
+             peinte par `majInvitationAuth` (app-06) et par lui seul. Elle ANNONCE
+             l'abonnement à l'invitant, que `appliquerInvitation` fera au premier
+             démarrage du compte. Texte posé par `textContent` : le nom vient d'un
+             autre compte. -->
+        <div id="authInvite" role="status" style="display:none;margin:0 0 14px;padding:10px 12px;border-radius:12px;background:var(--accent-tile, #f1ebff);border:1px solid var(--accent-tile-line, #d9c8ff);font-size:13px;line-height:1.45;font-weight:600;color:var(--text, #1f1235);"></div>
+
         <div id="authMsg" class="onb-auth-msg"></div>
 
         <!-- ══ LA SORTIE DU MUR « CONFIRME TON E-MAIL » SE PRONONCE LÀ OÙ LE

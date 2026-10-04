@@ -5100,6 +5100,9 @@ function switchAuthTab(mode) {
   if (typeof _majRefusConsentement === "function") _majRefusConsentement(false);
   // Art. 13 RGPD : le responsable du traitement, nommé là où les données sont
   // recueillies (ASTRA-09). Texte unique, tenu par js/legal-textes.js.
+  // Invitation en attente (app-06) : la création de compte DIT qu'elle fera
+  // suivre l'invitant — on ne fait suivre personne sans l'avoir annoncé.
+  if (typeof majInvitationAuth === "function") majInvitationAuth(mode);
   const resp = document.getElementById("authResponsable");
   if (resp) {
     resp.textContent = (typeof passioLigneResponsable === "function") ? passioLigneResponsable() : "";
@@ -5860,12 +5863,19 @@ async function onbDoAuth() {
       // survit à la confirmation d'e-mail, au changement d'appareil et à la
       // purge locale. La VERSION est aussi importante que la date — sans elle,
       // « a accepté » ne dit pas QUOI.
-      result = await supa.auth.signUp({ email, password: pwd, options: Object.assign({ data: {
+      // `invite_de` (app-06) : l'invitation voyage AVEC le compte. Le lien de
+      // confirmation s'ouvre souvent dans un autre navigateur que celui où le
+      // lien d'invitation a été ouvert — l'invitation locale n'y existe pas.
+      const _invitation = (typeof invitationPourInscription === "function") ? invitationPourInscription() : {};
+      result = await supa.auth.signUp({ email, password: pwd, options: Object.assign({ data: Object.assign({
         name: nom, display_name: nom,
         cgu_version: PASSIO_CGU_VERSION,
         cgu_accepted_at: _cguAccepteA,
         confidentialite_version: PASSIO_CONFIDENTIALITE_VERSION,
-      } }, captchaToken !== undefined ? { captchaToken } : {}) });
+      }, _invitation) }, captchaToken !== undefined ? { captchaToken } : {}) });
+      // L'invitation est partie avec le compte : elle n'a plus rien à faire sur
+      // l'appareil, où elle serait sinon reproposée au compte suivant.
+      if (_invitation.invite_de && result && !result.error && typeof oublierInvitation === "function") oublierInvitation();
       // Copie locale pour le profil et les prochaines synchros.
       try {
         if (typeof state !== "undefined") {
@@ -6981,6 +6991,18 @@ function onbFinish() {
   } catch (e) {}
 
   try { if (typeof supaInit === "function") supaInit(); } catch(e) {}
+  // Compte créé AVEC une session (rare depuis « Confirm email ») : l'onboarding
+  // continue sans redémarrage, donc `boot` ne passera pas avant la prochaine
+  // ouverture — l'invitation (app-06) s'applique ici.
+  try {
+    if (typeof appliquerInvitation === "function" && typeof _uidEstUnCompte === "function" && _uidEstUnCompte()
+        && typeof supa !== "undefined" && supa && supa.auth && typeof supa.auth.getSession === "function") {
+      supa.auth.getSession().then(function (r) {
+        var s = r && r.data && r.data.session;
+        if (s) return appliquerInvitation(s);
+      }).catch(function (e) { diagLog("invitation_onboarding", e && e.message); });
+    }
+  } catch (e) {}
   // Flush IMMÉDIAT des profils-passion vers user_state dès la fin de l'onboarding.
   // Sans ça, si l'utilisateur ferme l'app dans les 2.5s suivant le choix de ses
   // passions, le debounce n'a pas eu le temps de sauvegarder → profils perdus à

@@ -3684,6 +3684,9 @@ function toggleFollowUser(userId, userName) {
   if (window.requireAuthentication && !requireAuthentication("suivre")) return;
   if (!_boutonsSuivi(userId).length) return;
   if (_ecritureSuiviEnCours[userId]) return; // écriture en cours : le tap est ignoré
+  // Un geste MANUEL sur la personne qui m'a invité clôt l'invitation (app-06) :
+  // aucun démarrage suivant ne doit défaire ce que je viens de décider.
+  if (typeof invitationGesteManuel === "function") invitationGesteManuel(userId);
   state.user.following = state.user.following || [];
   state.user.followingPending = state.user.followingPending || [];
   var nom = userName || "cet utilisateur";
