@@ -11,9 +11,11 @@
 //      création de compte, qui ANNONCE l'abonnement à venir ;
 //   ③ `signUp` emporte l'invitation dans `user_metadata` (elle voyage avec le
 //      compte), et rien quand il n'y en a pas ;
-//   ④ au premier démarrage du compte, l'invitant est suivi UNE fois — demande
-//      en attente vers un compte privé, rien pour un compte existant, soi-même,
-//      un compte bloqué ou introuvable, ni avant que l'état du compte ait parlé ;
+//   ④ au premier démarrage du compte, l'invitant ANNONCÉ à l'inscription est
+//      suivi UNE fois — demande en attente vers un compte privé ; une invitation
+//      de l'appareil seul est PROPOSÉE, jamais imposée ; rien pour un compte
+//      existant, soi-même, un compte bloqué ou introuvable, ni avant que l'état
+//      du compte ait parlé ;
 //   ⑤ le CÂBLAGE : `boot` applique, `switchAuthTab` peint la ligne.
 const { test, expect } = require("@playwright/test");
 const fs = require("fs");
@@ -190,6 +192,26 @@ test.describe("Invitation — l'inscription l'emporte", () => {
     expect(d.name).toBe("Sam");
   });
 
+  test("③ ter invitant jamais nommé : pas d'annonce, donc rien ne part", async ({ page }) => {
+    await ouvrirCreation(page, { de: INVITANT, at: Date.now() });
+    await expect(page.locator("#authInvite")).toBeHidden();
+    await page.locator("#authSubmitBtn").click();
+    await expect.poll(() => page.evaluate(() => window.__auth.signUp.length)).toBe(1);
+    const d = await page.evaluate(() => window.__auth.signUp[0].options.data);
+    expect("invite_de" in d).toBe(false);
+  });
+
+  test("③ quater « Ne pas suivre » retire l'annonce ET l'invitation", async ({ page }) => {
+    await ouvrirCreation(page, { de: INVITANT, at: Date.now(), nom: "Léa", accueillie: true });
+    await page.locator("#authInviteNon").click();
+    await expect(page.locator("#authInvite")).toBeHidden();
+    expect(await page.evaluate(() => localStorage.getItem("passio_invitation_v1"))).toBeNull();
+    await page.locator("#authSubmitBtn").click();
+    await expect.poll(() => page.evaluate(() => window.__auth.signUp.length)).toBe(1);
+    const d = await page.evaluate(() => window.__auth.signUp[0].options.data);
+    expect("invite_de" in d).toBe(false);
+  });
+
   test("③ bis sans invitation, ni ligne ni clé", async ({ page }) => {
     await ouvrirCreation(page, null);
     await expect(page.locator("#authInvite")).toBeHidden();
@@ -227,7 +249,7 @@ test.describe("Invitation — le compte neuf suit son invitant", () => {
     expect(r).toEqual({ v: "demande", pending: [INVITANT], following: [] });
   });
 
-  test("④ ter invitation locale : compte neuf suivi, compte EXISTANT jamais", async ({ page }) => {
+  test("④ ter invitation de l'APPAREIL : on DEMANDE au compte neuf, jamais au compte existant", async ({ page }) => {
     await bancApplication(page);
     const r = await page.evaluate(async ([inv, moi]) => {
       localStorage.setItem("passio_invitation_v1", JSON.stringify({ de: inv, at: Date.now() - 60000 }));
@@ -235,16 +257,57 @@ test.describe("Invitation — le compte neuf suit son invitant", () => {
       const resteApresAncien = localStorage.getItem("passio_invitation_v1");
       localStorage.setItem("passio_invitation_v1", JSON.stringify({ de: inv, at: Date.now() - 60000 }));
       const neuf = await appliquerInvitation({ user: { id: moi, created_at: new Date().toISOString(), user_metadata: {} } });
-      return { ancien, resteApresAncien, neuf, suivis: window.__suivis,
-        resteApresNeuf: localStorage.getItem("passio_invitation_v1"),
-        tel: window.__telCap.filter((e) => e.name === "invitation_suivie").map((e) => e.meta) };
+      return { ancien, resteApresAncien, neuf, suivisAvant: window.__suivis.length,
+        trace: state.user.invitationTraitee && state.user.invitationTraitee.verdict };
     }, [INVITANT, MOI]);
     expect(r.ancien).toBe("compte_existant");
     expect(r.resteApresAncien).toBeNull();
-    expect(r.neuf).toBe("suivi");
-    expect(r.suivis).toEqual([INVITANT]);
-    expect(r.resteApresNeuf).toBeNull();
-    expect(r.tel).toEqual([{ verdict: "suivi", source: "appareil" }]);
+    // Personne n'est suivi d'office : la question est posée, une seule fois.
+    expect(r.neuf).toBe("proposee");
+    expect(r.suivisAvant).toBe(0);
+    expect(r.trace).toBe("proposee");
+    await expect(page.locator("#modalBackdrop.active .modal-title")).toContainText("Invitation de Léa");
+    await page.locator("#_invSuivre").click();
+    await expect.poll(() => page.evaluate(() => window.__suivis.slice())).toEqual([INVITANT]);
+    const apres = await page.evaluate(async (s) => ({
+      following: state.user.following.slice(),
+      trace: state.user.invitationTraitee.verdict,
+      tel: window.__telCap.filter((e) => e.name === "invitation_suivie").map((e) => e.meta),
+      encore: await appliquerInvitation(s),
+    }), { user: { id: MOI, created_at: new Date().toISOString(), user_metadata: {} } });
+    expect(apres.following).toEqual([INVITANT]);
+    expect(apres.trace).toBe("suivi");
+    expect(apres.tel).toEqual([{ verdict: "suivi", source: "appareil" }]);
+    expect(apres.encore).toBe("aucune");
+    await expect(page.locator("#toastStack .toast", { hasText: "Tu suis maintenant Léa" })).toHaveCount(1);
+  });
+
+  test("④ ter bis « Plus tard » ne suit personne, et la question n'est pas reposée", async ({ page }) => {
+    await bancApplication(page);
+    const s = { user: { id: MOI, created_at: new Date().toISOString(), user_metadata: {} } };
+    await page.evaluate(async ([inv, s]) => {
+      localStorage.setItem("passio_invitation_v1", JSON.stringify({ de: inv, at: Date.now() - 60000 }));
+      await appliquerInvitation(s);
+    }, [INVITANT, s]);
+    await page.locator("#_invPlusTard").click();
+    const r = await page.evaluate(async ([inv, s]) => {
+      localStorage.setItem("passio_invitation_v1", JSON.stringify({ de: inv, at: Date.now() - 60000 }));
+      return { encore: await appliquerInvitation(s), suivis: window.__suivis.length,
+        ouvert: !!document.querySelector("#modalBackdrop.active") };
+    }, [INVITANT, s]);
+    expect(r).toEqual({ encore: "deja", suivis: 0, ouvert: false });
+  });
+
+  test("④ ter ter une fenêtre déjà ouverte n'est jamais remplacée : on reposera plus tard", async ({ page }) => {
+    await bancApplication(page);
+    const r = await page.evaluate(async ([inv, moi]) => {
+      openModal('<div class="modal-title" id="_autre">Autre chose</div>');
+      localStorage.setItem("passio_invitation_v1", JSON.stringify({ de: inv, at: Date.now() - 60000 }));
+      const v = await appliquerInvitation({ user: { id: moi, created_at: new Date().toISOString(), user_metadata: {} } });
+      return { v, autre: !!document.getElementById("_autre"), trace: state.user.invitationTraitee || null,
+        reste: !!localStorage.getItem("passio_invitation_v1") };
+    }, [INVITANT, MOI]);
+    expect(r).toEqual({ v: "attente", autre: true, trace: null, reste: true });
   });
 
   test("④ quater soi-même, bloqué, introuvable, déjà suivi : personne n'est suivi", async ({ page }) => {
@@ -312,6 +375,8 @@ test.describe("Invitation — le câblage", () => {
     const app02 = lire("js/app-02-state-utils.js");
     expect(corps(app02, "switchAuthTab")).toContain("majInvitationAuth(mode)");
     expect(corps(app02, "onbDoAuth")).toContain("invitationPourInscription()");
+    // Compte créé AVEC une session : l'onboarding continue sans redémarrage.
+    expect(corps(app02, "onbFinish")).toContain("appliquerInvitation(s)");
     // L'invitation est une clé d'APPAREIL : la purge d'adoption ne doit pas l'emporter.
     const cles = app02.slice(app02.indexOf("var ACCOUNT_SCOPED_KEYS"), app02.indexOf("];", app02.indexOf("var ACCOUNT_SCOPED_KEYS")));
     expect(cles).not.toContain("passio_invitation_v1");

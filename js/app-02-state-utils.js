@@ -6987,6 +6987,18 @@ function onbFinish() {
   } catch (e) {}
 
   try { if (typeof supaInit === "function") supaInit(); } catch(e) {}
+  // Compte créé AVEC une session (rare depuis « Confirm email ») : l'onboarding
+  // continue sans redémarrage, donc `boot` ne passera pas avant la prochaine
+  // ouverture — l'invitation (app-06) s'applique ici.
+  try {
+    if (typeof appliquerInvitation === "function" && typeof _uidEstUnCompte === "function" && _uidEstUnCompte()
+        && typeof supa !== "undefined" && supa && supa.auth && typeof supa.auth.getSession === "function") {
+      supa.auth.getSession().then(function (r) {
+        var s = r && r.data && r.data.session;
+        if (s) return appliquerInvitation(s);
+      }).catch(function (e) { diagLog("invitation_onboarding", e && e.message); });
+    }
+  } catch (e) {}
   // Flush IMMÉDIAT des profils-passion vers user_state dès la fin de l'onboarding.
   // Sans ça, si l'utilisateur ferme l'app dans les 2.5s suivant le choix de ses
   // passions, le debounce n'a pas eu le temps de sauvegarder → profils perdus à

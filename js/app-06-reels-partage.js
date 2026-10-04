@@ -445,11 +445,15 @@ function lienPartagePublication(id) {
 //    `signUp`) : le lien de confirmation s'ouvre souvent dans un AUTRE
 //    navigateur que celui de WhatsApp, où l'invitation locale n'existe pas.
 // ⑤ Au premier démarrage du compte (`boot`), `appliquerInvitation` fait suivre
-//    l'invitant UNE fois. Seul un compte NEUF est concerné : métadonnée posée à
-//    l'inscription, ou compte créé APRÈS l'invitation locale — un compte
-//    existant qui se connecte depuis un lien ne suit personne. Le verdict est
-//    écrit dans l'état du COMPTE (synchronisé) : se désabonner ensuite n'est
-//    jamais défait au démarrage suivant, ni sur un autre appareil.
+//    l'invitant UNE fois — seulement si l'invitation part de `user_metadata`,
+//    c'est-à-dire d'une inscription par e-mail faite PENDANT que l'annonce ③
+//    était à l'écran (« Ne pas suivre » la retire). Seul un compte NEUF est
+//    concerné : un compte existant qui se connecte depuis un lien ne suit
+//    personne. Le verdict est écrit dans l'état du COMPTE (synchronisé) : se
+//    désabonner ensuite n'est jamais défait au démarrage suivant, ni ailleurs.
+// ⑥ Une invitation venue de l'APPAREIL seulement (Google, appareil partagé)
+//    n'a pas forcément été annoncée à qui crée le compte : on DEMANDE « Suivre
+//    Léa ? », on ne suit pas d'office (revue de sécurité du 2026-10-04).
 // ⚠️ La relation passe par `supaFollowUser`, donc par la RLS : blocage, compte
 //    privé (demande en attente) et débit sont tranchés par le SERVEUR.
 // ⚠️ Coupures : `localStorage.passio_invitations_v1 = "0"` ou
@@ -611,19 +615,41 @@ function majInvitationAuth(mode) {
     }
     var inv = invitationEnAttente();
     var montrer = mode === "signup" && !!(inv && inv.nom) && !_appareilPorteUnCompte();
-    el.textContent = montrer
-      ? "👋 " + inv.nom + " t'invite sur PASSIO. En créant ton compte, tu suivras automatiquement " + inv.nom + "."
-      : "";
+    // Rendu DOM (`textContent`) : le nom vient d'un AUTRE compte.
+    el.textContent = "";
+    if (montrer) {
+      var texte = document.createElement("span");
+      texte.textContent = "👋 " + inv.nom + " t'invite sur PASSIO. En créant ton compte, tu suivras automatiquement " + inv.nom + ". ";
+      // ⚠️ UN ABONNEMENT ANNONCÉ SE REFUSE AU MÊME ENDROIT : sans cette sortie,
+      // la seule façon de ne pas suivre aurait été de ne pas créer de compte.
+      var non = document.createElement("button");
+      non.type = "button";
+      non.id = "authInviteNon";
+      non.textContent = "Ne pas suivre";
+      non.style.cssText = "background:none;border:none;padding:6px 0;min-height:32px;color:var(--accent);font-weight:700;font-size:13px;text-decoration:underline;cursor:pointer;";
+      non.addEventListener("click", function () {
+        oublierInvitation();
+        try { if (window.tel && tel.action) tel.action("invitation_refusee", { v: 1 }); } catch (e) {}
+        majInvitationAuth();
+      });
+      el.appendChild(texte);
+      el.appendChild(non);
+    }
     el.style.display = montrer ? "block" : "none";
   } catch (e) {
     diagLog("invitation_formulaire", e && e.message);
   }
 }
 
-// ④ Ce que `signUp` emporte dans `user_metadata`.
+// ④ Ce que `signUp` emporte dans `user_metadata` — SEULEMENT si l'annonce
+// était à l'écran au moment du geste : c'est elle qui vaut accord pour
+// l'abonnement automatique. Nom jamais résolu, ligne masquée, invitation
+// refusée (« Ne pas suivre ») : rien ne part.
 function invitationPourInscription() {
   var inv = _invitationsActives() ? invitationEnAttente() : null;
-  return inv ? { invite_de: inv.de } : {};
+  var el = document.getElementById("authInvite");
+  var annoncee = !!(el && el.style.display === "block");
+  return (inv && inv.nom && annoncee) ? { invite_de: inv.de } : {};
 }
 
 function _invitationTraitee(verdict) {
@@ -632,6 +658,70 @@ function _invitationTraitee(verdict) {
   oublierInvitation();
   try { saveState(); } catch (e) {}
   return verdict;
+}
+
+// L'écriture elle-même, commune aux deux chemins (automatique et proposé).
+// Rend { ok, demande } ; ne touche ni au verdict ni à l'invitation.
+async function _suivreInvitant(de) {
+  var r = null;
+  try { r = await supaFollowUser(de); } catch (e) { r = null; }
+  if (!r || r.ok !== true) return { ok: false, demande: false };
+  var demande = r.status === "pending";
+  state.user.following = state.user.following || [];
+  state.user.followingPending = state.user.followingPending || [];
+  var liste = demande ? state.user.followingPending : state.user.following;
+  if (liste.indexOf(de) < 0) liste.push(de);
+  return { ok: true, demande: demande };
+}
+
+function _annoncerSuiviInvitant(de, nom, demande) {
+  toast((demande
+    ? "Demande d'abonnement envoyée à " + nom
+    : "Tu suis maintenant " + nom) + " : c'est son invitation qui t'a fait venir", "reward", function () {
+      try { if (typeof openUserProfile === "function") openUserProfile(de); } catch (e) {}
+    });
+  try { if (typeof renderEverything === "function") renderEverything(); } catch (e) {}
+}
+
+// ⑥ Une invitation de l'APPAREIL (inscription par Google, appareil partagé,
+// confirmation sur le même navigateur sans passer par le formulaire) n'a pas
+// forcément été ANNONCÉE à la personne qui crée le compte : on ne la fait pas
+// suivre d'office, on lui DEMANDE. Revue de sécurité du 2026-10-04 : suivre sur
+// la seule foi d'une clé locale, c'était abonner quelqu'un à un compte qu'il n'a
+// jamais vu nommé (un lien ouvert par un autre sur le même téléphone, ou un
+// lien fabriqué).
+// La question n'est posée qu'UNE fois : le verdict « proposee » est écrit à
+// l'ouverture, et le bouton le remplace par le résultat.
+function _proposerSuiviInvitant(de, nom) {
+  var fond = document.getElementById("modalBackdrop");
+  // `openModal` n'empile pas : on ne remplace jamais une fenêtre ouverte, on
+  // reposera la question au prochain démarrage.
+  if (fond && fond.classList.contains("active")) return "attente";
+  _invitationTraitee("proposee");
+  openModal('<div class="modal-handle"></div>'
+    + '<div class="modal-title">👋 Invitation de ' + escapeHtml(nom) + '</div>'
+    + '<div class="modal-subtitle">' + escapeHtml(nom) + " t'a fait découvrir PASSIO. Tu veux suivre ses publications ?</div>"
+    + '<button class="btn primary block" id="_invSuivre">Suivre ' + escapeHtml(nom) + '</button>'
+    + '<button class="btn ghost block" id="_invPlusTard" style="margin-top:8px;">Plus tard</button>');
+  try { if (window.tel && tel.action) tel.action("invitation_proposee", { v: 1 }); } catch (e) {}
+  setTimeout(function () {
+    var oui = document.getElementById("_invSuivre");
+    var non = document.getElementById("_invPlusTard");
+    if (non) non.addEventListener("click", function () {
+      try { if (window.tel && tel.action) tel.action("invitation_refusee", { v: 1 }); } catch (e) {}
+      closeModal();
+    });
+    if (oui) oui.addEventListener("click", async function () {
+      oui.disabled = true;
+      var r = await _suivreInvitant(de);
+      closeModal();
+      if (!r.ok) { toast("Impossible de suivre " + nom + " pour le moment"); return; }
+      var verdict = _invitationTraitee(r.demande ? "demande" : "suivi");
+      try { if (window.tel && tel.action) tel.action("invitation_suivie", { verdict: verdict, source: "appareil" }); } catch (e) {}
+      _annoncerSuiviInvitant(de, nom, r.demande);
+    });
+  }, 0);
+  return "proposee";
 }
 
 // ⑤ Rend un verdict lisible (les tests le lisent ; le démarrage l'ignore).
@@ -645,6 +735,7 @@ async function appliquerInvitation(session) {
     var locale = invitationEnAttente();
     var de = null, source = "";
     if (meta.invite_de && INVITATION_UID_RE.test(String(meta.invite_de))) {
+      // Posée par `signUp` alors que l'annonce était à l'écran : c'est l'accord.
       de = String(meta.invite_de).toLowerCase();
       source = "compte";
     } else if (locale) {
@@ -667,27 +758,17 @@ async function appliquerInvitation(session) {
     var auteur = await _invitationLireAuteur(de);
     if (auteur.attendre) return "attente";
     if (auteur.absent) return _invitationTraitee("absent");
-    var r = null;
-    try { r = await supaFollowUser(de); } catch (e) { r = null; }
-    if (!r || r.ok !== true) {
+    if (source === "appareil") return _proposerSuiviInvitant(de, auteur.nom);
+    var r = await _suivreInvitant(de);
+    if (!r.ok) {
       state.user.invitationEssais = (state.user.invitationEssais || 0) + 1;
       if (state.user.invitationEssais >= INVITATION_ESSAIS_MAX) return _invitationTraitee("echec");
       try { saveState(); } catch (e) {}
       return "echec";
     }
-    var demande = r.status === "pending";
-    state.user.following = state.user.following || [];
-    state.user.followingPending = state.user.followingPending || [];
-    var liste = demande ? state.user.followingPending : state.user.following;
-    if (liste.indexOf(de) < 0) liste.push(de);
-    var verdict = _invitationTraitee(demande ? "demande" : "suivi");
+    var verdict = _invitationTraitee(r.demande ? "demande" : "suivi");
     try { if (window.tel && tel.action) tel.action("invitation_suivie", { verdict: verdict, source: source }); } catch (e) {}
-    toast((demande
-      ? "Demande d'abonnement envoyée à " + auteur.nom
-      : "Tu suis maintenant " + auteur.nom) + " : c'est son invitation qui t'a fait venir", "reward", function () {
-        try { if (typeof openUserProfile === "function") openUserProfile(de); } catch (e) {}
-      });
-    try { if (typeof renderEverything === "function") renderEverything(); } catch (e) {}
+    _annoncerSuiviInvitant(de, auteur.nom, r.demande);
     return verdict;
   } catch (e) {
     diagLog("invitation_application", e && e.message);
