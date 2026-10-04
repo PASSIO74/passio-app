@@ -178,7 +178,10 @@ self.addEventListener("fetch", e => {
     if (e.request.mode !== "navigate") return;
     const lien = /^\/([pue])\/([A-Za-z0-9_-]{1,100})\/?$/.exec(url.pathname);
     const hash = lien ? { p: "#post-", u: "#user-", e: "#irl-event-" }[lien[1]] + lien[2] : "";
-    e.respondWith(fetch(e.request).catch(() => Response.redirect(self.location.origin + "/" + hash, 302)));
+    // L'invitation (`inv`, un uuid de compte) suit le lien, comme le fait la fonction en ligne.
+    const inv = url.searchParams.get("inv");
+    const q = inv && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(inv) ? "?inv=" + inv.toLowerCase() : "";
+    e.respondWith(fetch(e.request).catch(() => Response.redirect(self.location.origin + "/" + q + hash, 302)));
     return;
   }
 

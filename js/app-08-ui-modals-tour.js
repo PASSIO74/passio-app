@@ -2994,6 +2994,14 @@ async function boot() {
         try { renderEverything(); } catch(e) {}
         document.body.classList.add("screen-feed-active");
         try { supaInit(); } catch(e) {}
+        // Compte NEUF venu par un lien d'invitation : il suit son invitant, une
+        // fois (app-06). Après `supaLoadUserState` — l'état du compte dit si
+        // l'invitation a déjà servi — et sans retenir le démarrage.
+        try {
+          if (typeof appliquerInvitation === "function") {
+            Promise.resolve(appliquerInvitation(session)).catch(function (e) { diagLog("invitation_boot", e && e.message); });
+          }
+        } catch (e) {}
         return;
       }
     }

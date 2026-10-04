@@ -5100,6 +5100,9 @@ function switchAuthTab(mode) {
   if (typeof _majRefusConsentement === "function") _majRefusConsentement(false);
   // Art. 13 RGPD : le responsable du traitement, nommé là où les données sont
   // recueillies (ASTRA-09). Texte unique, tenu par js/legal-textes.js.
+  // Invitation en attente (app-06) : la création de compte DIT qu'elle fera
+  // suivre l'invitant — on ne fait suivre personne sans l'avoir annoncé.
+  if (typeof majInvitationAuth === "function") majInvitationAuth(mode);
   const resp = document.getElementById("authResponsable");
   if (resp) {
     resp.textContent = (typeof passioLigneResponsable === "function") ? passioLigneResponsable() : "";
@@ -5860,12 +5863,15 @@ async function onbDoAuth() {
       // survit à la confirmation d'e-mail, au changement d'appareil et à la
       // purge locale. La VERSION est aussi importante que la date — sans elle,
       // « a accepté » ne dit pas QUOI.
-      result = await supa.auth.signUp({ email, password: pwd, options: Object.assign({ data: {
+      // `invite_de` (app-06) : l'invitation voyage AVEC le compte. Le lien de
+      // confirmation s'ouvre souvent dans un autre navigateur que celui où le
+      // lien d'invitation a été ouvert — l'invitation locale n'y existe pas.
+      result = await supa.auth.signUp({ email, password: pwd, options: Object.assign({ data: Object.assign({
         name: nom, display_name: nom,
         cgu_version: PASSIO_CGU_VERSION,
         cgu_accepted_at: _cguAccepteA,
         confidentialite_version: PASSIO_CONFIDENTIALITE_VERSION,
-      } }, captchaToken !== undefined ? { captchaToken } : {}) });
+      }, (typeof invitationPourInscription === "function") ? invitationPourInscription() : {}) }, captchaToken !== undefined ? { captchaToken } : {}) });
       // Copie locale pour le profil et les prochaines synchros.
       try {
         if (typeof state !== "undefined") {

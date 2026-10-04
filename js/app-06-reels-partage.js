@@ -405,17 +405,307 @@ function _liensCourtsActifs(hote) {
 
 // `hote` ne sert qu'aux tests (le banc tourne sur localhost) : il remplace le
 // NOM d'hôte consulté, jamais l'origine écrite dans le lien.
+// Le lien porte `?inv=<mon compte>` quand un VRAI compte partage (voir plus bas,
+// « L'INVITATION ») : c'est ce qui permet à la personne qui l'ouvre d'être
+// accueillie par mon nom, puis de me suivre en créant son compte.
 function lienPartageDe(type, id, hote) {
   var f = LIENS_PARTAGE[type];
   var cle = String(id == null ? "" : id);
   if (!f) return location.origin + location.pathname;
-  if (_liensCourtsActifs(hote) && f.idRe.test(cle)) return location.origin + f.court + cle;
-  return location.origin + location.pathname + f.hash + encodeURIComponent(cle);
+  var inv = _invitationParametre();
+  if (_liensCourtsActifs(hote) && f.idRe.test(cle)) return location.origin + f.court + cle + inv;
+  return location.origin + location.pathname + inv + f.hash + encodeURIComponent(cle);
 }
 
 function lienPartagePublication(id) {
   return lienPartageDe("post", id);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// L'INVITATION — « Léa t'invite », et Léa suivie à l'inscription (2026-10-04)
+//
+// Mesuré en production le 2026-10-04 : 10 comptes, aucun créé dans la semaine.
+// Un lien partagé est le seul chemin d'entrée de quelqu'un qui ne connaît pas
+// PASSIO, et ce chemin arrivait ANONYME : rien ne disait qui avait envoyé le
+// lien, et le compte créé au bout repartait de zéro, sans un seul abonnement —
+// donc un fil vide, alors que la personne qui l'a fait venir est précisément
+// celle qu'elle veut retrouver.
+//
+// ① Le lien porte `inv=<uuid>` : l'identifiant du compte qui partage. Il n'est
+//    posé que par un VRAI compte (`_uidEstUnCompte`) : un `u_…` de démonstration
+//    n'existe pas côté serveur.
+// ② À l'arrivée, un VISITEUR mémorise l'invitation sur l'appareil (clé
+//    d'APPAREIL, hors `ACCOUNT_SCOPED_KEYS` : elle doit survivre à la purge
+//    d'adoption), le paramètre est retiré de la barre d'adresse, et un toast
+//    nomme la personne. Un appareil qui porte déjà un compte n'est pas un
+//    invité : rien n'est mémorisé.
+// ③ Le formulaire de création DIT ce qui va se passer (`#authInvite`) : on ne
+//    fait pas suivre quelqu'un sans le lui avoir annoncé.
+// ④ L'invitation voyage avec le compte (`user_metadata.invite_de`, posé par
+//    `signUp`) : le lien de confirmation s'ouvre souvent dans un AUTRE
+//    navigateur que celui de WhatsApp, où l'invitation locale n'existe pas.
+// ⑤ Au premier démarrage du compte (`boot`), `appliquerInvitation` fait suivre
+//    l'invitant UNE fois. Seul un compte NEUF est concerné : métadonnée posée à
+//    l'inscription, ou compte créé APRÈS l'invitation locale — un compte
+//    existant qui se connecte depuis un lien ne suit personne. Le verdict est
+//    écrit dans l'état du COMPTE (synchronisé) : se désabonner ensuite n'est
+//    jamais défait au démarrage suivant, ni sur un autre appareil.
+// ⚠️ La relation passe par `supaFollowUser`, donc par la RLS : blocage, compte
+//    privé (demande en attente) et débit sont tranchés par le SERVEUR.
+// ⚠️ Coupures : `localStorage.passio_invitations_v1 = "0"` ou
+//    `window.PASSIO_INVITATIONS = false` — plus de paramètre posé, plus rien
+//    de mémorisé, plus rien d'appliqué.
+// ═══════════════════════════════════════════════════════════════════════════
+var INVITATION_CLE = "passio_invitation_v1";
+var INVITATION_TTL_MS = 14 * 86400000;
+// L'horloge de l'appareil (date de l'invitation) contre celle du serveur (date
+// de création du compte) : quelques minutes d'écart ne doivent pas faire
+// prendre un compte neuf pour un compte existant.
+var INVITATION_MARGE_MS = 15 * 60000;
+var INVITATION_ESSAIS_MAX = 3;
+var INVITATION_UID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+var _invitationAccueilEssais = 0;
+var _invitationAccueilTimer = null;
+
+function _invitationsActives() {
+  try {
+    if (window.PASSIO_INVITATIONS === false) return false;
+    if (localStorage.getItem("passio_invitations_v1") === "0") return false;
+  } catch (e) {}
+  return true;
+}
+
+// ① « ?inv=<mon compte> », ou rien.
+function _invitationParametre() {
+  if (!_invitationsActives()) return "";
+  if (typeof _uidEstUnCompte !== "function" || !_uidEstUnCompte()) return "";
+  return "?inv=" + String(MY_UID).toLowerCase();
+}
+
+function invitationEnAttente() {
+  try {
+    var brut = localStorage.getItem(INVITATION_CLE);
+    if (!brut) return null;
+    var o = JSON.parse(brut);
+    if (!o || !INVITATION_UID_RE.test(String(o.de || "")) || !(o.at > 0)
+        || Date.now() - o.at > INVITATION_TTL_MS) {
+      oublierInvitation();
+      return null;
+    }
+    return o;
+  } catch (e) {
+    oublierInvitation();
+    return null;
+  }
+}
+
+function _invitationEcrire(o) {
+  try { localStorage.setItem(INVITATION_CLE, JSON.stringify(o)); } catch (e) {}
+}
+
+function oublierInvitation() {
+  try { localStorage.removeItem(INVITATION_CLE); } catch (e) {}
+}
+
+function _appareilPorteUnCompte() {
+  if (typeof _uidEstUnCompte === "function" && _uidEstUnCompte()) return true;
+  try { return INVITATION_UID_RE.test(localStorage.getItem("passio_uid") || ""); } catch (e) { return false; }
+}
+
+// ② Lu au CHARGEMENT de ce fichier, avant `boot()` : le paramètre ne doit ni
+// survivre dans la barre d'adresse (il serait re-partagé avec le lien suivant),
+// ni attendre un routeur qui réécrit l'URL.
+function capterInvitation() {
+  try {
+    var params = new URLSearchParams(location.search);
+    var de = params.get("inv");
+    if (de === null) return null;
+    params.delete("inv");
+    var q = params.toString();
+    try { history.replaceState(null, "", location.pathname + (q ? "?" + q : "") + location.hash); } catch (e) {}
+    if (!_invitationsActives() || !INVITATION_UID_RE.test(de)) return null;
+    de = de.toLowerCase();
+    // Un appareil qui porte déjà un compte n'est pas un invité, et mon propre
+    // lien ne m'invite pas. ⚠️ `MY_UID` est un `let` d'app-08 : en production
+    // les fichiers sont concaténés en UN script et il n'est pas encore
+    // initialisé ici (`_uidEstUnCompte` avale l'erreur et rend `false`). La clé
+    // `passio_uid` dit la même chose, sans dépendre de l'ordre de chargement.
+    if (_appareilPorteUnCompte()) return null;
+    var inv = { de: de, at: Date.now() };
+    _invitationEcrire(inv);
+    return inv;
+  } catch (e) {
+    try { diagLog("invitation_capture", e && e.message); } catch (_) {}
+    return null;
+  }
+}
+
+// Le nom de l'invitant, ou le verdict « on ne sait pas encore » / « n'existe
+// pas ». `profiles` est lisible sans compte (policy « Lecture publique »).
+async function _invitationLireAuteur(de) {
+  if (!window._supaReal || typeof supa === "undefined" || !supa) return { attendre: true };
+  try {
+    var r = await supa.from("profiles").select("username").eq("id", de).maybeSingle();
+    if (r.error) { diagLog("invitation_auteur", r.error.message); return { attendre: true }; }
+    if (!r.data) return { absent: true };
+    var nom = (typeof nomCompteValide === "function") ? nomCompteValide(r.data.username || "") : "";
+    return { nom: nom || "Un membre de PASSIO" };
+  } catch (e) {
+    diagLog("invitation_auteur", e && e.message);
+    return { attendre: true };
+  }
+}
+
+function _invitationReplanifierAccueil() {
+  if (_invitationAccueilTimer) return;
+  if (++_invitationAccueilEssais > 40) return;
+  _invitationAccueilTimer = setTimeout(function () {
+    _invitationAccueilTimer = null;
+    accueillirInvitation();
+  }, 500);
+}
+
+// ② Le toast d'arrivée, UNE fois par invitation. Touché, il ouvre la création
+// de compte.
+function accueillirInvitation() {
+  try {
+    var inv = invitationEnAttente();
+    if (!inv || inv.accueillie) return false;
+    if (_appareilPorteUnCompte()) return false;
+    if (document.documentElement.classList.contains("passio-locked")
+        || typeof state === "undefined" || !state || !state.user || typeof toast !== "function") {
+      _invitationReplanifierAccueil();
+      return false;
+    }
+    _invitationLireAuteur(inv.de).then(function (a) {
+      var courante = invitationEnAttente();
+      // Une autre invitation a pu arriver entre-temps : on ne nomme pas la mauvaise personne.
+      if (!courante || courante.de !== inv.de || courante.accueillie) return;
+      if (a.attendre) { _invitationReplanifierAccueil(); return; }
+      if (a.absent) { oublierInvitation(); return; }
+      courante.nom = a.nom;
+      courante.accueillie = true;
+      _invitationEcrire(courante);
+      toast("👋 " + a.nom + " t'invite sur PASSIO — touche ici pour créer ton compte", "reward", function () {
+        try { if (window.PassioFirstRun && PassioFirstRun.allerInscription) PassioFirstRun.allerInscription("invitation"); } catch (e) {}
+      });
+      try { if (window.tel && tel.action) tel.action("invitation_accueil", { v: 1 }); } catch (e) {}
+      majInvitationAuth();
+    });
+    return true;
+  } catch (e) {
+    diagLog("invitation_accueil", e && e.message);
+    return false;
+  }
+}
+
+// ③ La ligne du formulaire de création. `mode` vient de `switchAuthTab` ; sans
+// lui, on relit l'onglet actif.
+function majInvitationAuth(mode) {
+  try {
+    var el = document.getElementById("authInvite");
+    if (!el) return;
+    if (!mode) {
+      var onglet = document.getElementById("authTabSignup");
+      mode = (onglet && onglet.classList.contains("active")) ? "signup" : "signin";
+    }
+    var inv = invitationEnAttente();
+    var montrer = mode === "signup" && !!(inv && inv.nom) && !_appareilPorteUnCompte();
+    el.textContent = montrer
+      ? "👋 " + inv.nom + " t'invite sur PASSIO. En créant ton compte, tu suivras automatiquement " + inv.nom + "."
+      : "";
+    el.style.display = montrer ? "block" : "none";
+  } catch (e) {
+    diagLog("invitation_formulaire", e && e.message);
+  }
+}
+
+// ④ Ce que `signUp` emporte dans `user_metadata`.
+function invitationPourInscription() {
+  var inv = _invitationsActives() ? invitationEnAttente() : null;
+  return inv ? { invite_de: inv.de } : {};
+}
+
+function _invitationTraitee(verdict) {
+  state.user.invitationTraitee = { verdict: verdict, at: Date.now() };
+  delete state.user.invitationEssais;
+  oublierInvitation();
+  try { saveState(); } catch (e) {}
+  return verdict;
+}
+
+// ⑤ Rend un verdict lisible (les tests le lisent ; le démarrage l'ignore).
+async function appliquerInvitation(session) {
+  try {
+    if (!_invitationsActives()) return "coupee";
+    var user = session && session.user;
+    if (!user || !user.id) return "sans_session";
+    var moi = String(user.id).toLowerCase();
+    var meta = user.user_metadata || {};
+    var locale = invitationEnAttente();
+    var de = null, source = "";
+    if (meta.invite_de && INVITATION_UID_RE.test(String(meta.invite_de))) {
+      de = String(meta.invite_de).toLowerCase();
+      source = "compte";
+    } else if (locale) {
+      var cree = Date.parse(user.created_at || "");
+      // Compte créé AVANT l'invitation : quelqu'un qui avait déjà un compte et
+      // s'est connecté depuis le lien. Il ne suit personne.
+      if (!(cree >= locale.at - INVITATION_MARGE_MS)) { oublierInvitation(); return "compte_existant"; }
+      de = locale.de;
+      source = "appareil";
+    }
+    if (!de) return "aucune";
+    if (de === moi) { oublierInvitation(); return "soi"; }
+    // L'état du COMPTE doit avoir parlé : c'est lui qui dit si l'invitation a
+    // déjà servi. Sans verdict d'hydratation, on s'abstient (prochain démarrage).
+    if (typeof state === "undefined" || !state || !state.user) return "attente";
+    if (typeof _peutPousserEtat === "function" && !_peutPousserEtat()) return "attente";
+    if (state.user.invitationTraitee) { oublierInvitation(); return "deja"; }
+    if (typeof isBlocked === "function" && isBlocked(de)) return _invitationTraitee("bloque");
+    if (typeof etatSuivi === "function" && etatSuivi(de) !== "aucun") return _invitationTraitee("deja_suivi");
+    var auteur = await _invitationLireAuteur(de);
+    if (auteur.attendre) return "attente";
+    if (auteur.absent) return _invitationTraitee("absent");
+    var r = null;
+    try { r = await supaFollowUser(de); } catch (e) { r = null; }
+    if (!r || r.ok !== true) {
+      state.user.invitationEssais = (state.user.invitationEssais || 0) + 1;
+      if (state.user.invitationEssais >= INVITATION_ESSAIS_MAX) return _invitationTraitee("echec");
+      try { saveState(); } catch (e) {}
+      return "echec";
+    }
+    var demande = r.status === "pending";
+    state.user.following = state.user.following || [];
+    state.user.followingPending = state.user.followingPending || [];
+    var liste = demande ? state.user.followingPending : state.user.following;
+    if (liste.indexOf(de) < 0) liste.push(de);
+    var verdict = _invitationTraitee(demande ? "demande" : "suivi");
+    try { if (window.tel && tel.action) tel.action("invitation_suivie", { verdict: verdict, source: source }); } catch (e) {}
+    toast((demande
+      ? "Demande d'abonnement envoyée à " + auteur.nom
+      : "Tu suis maintenant " + auteur.nom) + " : c'est son invitation qui t'a fait venir", "reward", function () {
+        try { if (typeof openUserProfile === "function") openUserProfile(de); } catch (e) {}
+      });
+    try { if (typeof renderEverything === "function") renderEverything(); } catch (e) {}
+    return verdict;
+  } catch (e) {
+    diagLog("invitation_application", e && e.message);
+    return "erreur";
+  }
+}
+
+capterInvitation();
+window.addEventListener("passio:app-ready", function () {
+  _invitationAccueilEssais = 0;
+  accueillirInvitation();
+});
+(function _invitationBoot() {
+  if (!invitationEnAttente()) return;
+  var g = window.__gateReady;
+  var demarrer = function () { _invitationReplanifierAccueil(); };
+  if (g && typeof g.then === "function") g.then(demarrer); else demarrer();
+})();
 
 function copyReelLink(postId, encodedUrl) {
   const url = decodeURIComponent(encodedUrl);
