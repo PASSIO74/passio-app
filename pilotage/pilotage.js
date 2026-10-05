@@ -253,6 +253,8 @@
     else {
       m.append(chiffre(u.maintenant.comptes, "comptes connectés"), chiffre(u.maintenant.appareils, "appareils"),
         chiffre(u.aujourdhui.comptes, "comptes actifs 24 h"), chiffre(u.aujourdhui.appareils, "appareils 24 h"));
+      // Public seulement depuis le 2026-10-05 : les écartés sont dits, pas tus.
+      if (typeof u.aujourdhui.horsPublic === "number") m.append(chiffre(u.aujourdhui.horsPublic, "robots / équipe 24 h (non comptés)"));
       co.append(chiffre(u.inscritsJour, "aujourd'hui"), chiffre(u.inscritsSemaine, "7 jours"), chiffre(u.total, "au total"));
       graphe("grapheInscriptions", u.serieInscriptions);
     }

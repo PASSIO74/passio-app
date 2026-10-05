@@ -145,6 +145,45 @@ export function serieJours(dates, jours = 7, maintenant = Date.now()) {
   return out;
 }
 
+// ─── TRAFIC HORS PUBLIC — robots, émulations, équipe (2026-10-05) ───────────
+// Mesuré du 28/09 au 04/10 : 15 des 19 appareils sans compte étaient nos propres
+// vérifications d'après déploiement (« iPhone » 390 × 844 déclarant une
+// connexion « 4g », ce qu'aucun navigateur iOS n'expose). Le téléphone les
+// affichait en « appareils en ligne / 24 h ». js/telemetry.js pose `meta.trafic` ;
+// ceci le LIT, plus le rattrapage iOS + connexion pour les lignes d'avant.
+// ⚠️ MÊME CONTRAT que dashboard/server/trafic.js et `filtrePublic()` de
+// scripts/veille-production.mjs — tests/unit/trafic-hors-public.test.mjs les
+// confronte. Copie délibérée : le dashboard est déployé seul (Render).
+export const TRAFICS_HORS_PUBLIC = Object.freeze(["robot", "emulation", "equipe"]);
+
+/** `"robot" | "emulation" | "equipe"` pour un trafic qui n'est pas le public, sinon `null`. */
+export function traficHorsPublic(ligne) {
+  if (!ligne || typeof ligne !== "object") return null;
+  const m = ligne.meta && typeof ligne.meta === "object" ? ligne.meta : null;
+  const t = m && m.trafic != null ? m.trafic : ligne.trafic;
+  if (typeof t === "string" && TRAFICS_HORS_PUBLIC.includes(t)) return t;
+  if (ligne.platform === "ios" && typeof ligne.connection === "string" && ligne.connection !== "") return "emulation";
+  return null;
+}
+
+/**
+ * Comptes et appareils DU PUBLIC parmi des lignes de télémétrie, et combien
+ * d'appareils ont été écartés. Un appareil écarté une fois l'est pour la
+ * fenêtre : ses lignes sans marque (ancien client en cache) ne le font pas
+ * revenir dans le public.
+ */
+export function compterAudience(lignes) {
+  const horsPublic = new Set();
+  for (const r of lignes || []) if (r && r.device_id && traficHorsPublic(r)) horsPublic.add(r.device_id);
+  const comptes = new Set(), appareils = new Set();
+  for (const r of lignes || []) {
+    if (!r || (r.device_id && horsPublic.has(r.device_id)) || traficHorsPublic(r)) continue;
+    if (r.user_id) comptes.add(r.user_id);
+    if (r.device_id) appareils.add(r.device_id);
+  }
+  return { comptes: comptes.size, appareils: appareils.size, horsPublic: horsPublic.size };
+}
+
 /** Détail d'une famille d'erreurs : appareils, pages, premiers/derniers vus, série 7 j. */
 export function detailsErreurs(lignes, max = 8, maintenant = Date.now()) {
   const groupes = new Map();

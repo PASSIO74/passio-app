@@ -171,6 +171,69 @@
   }
   var SCREEN_SIZE = (window.screen ? screen.width + "x" + screen.height : "");
 
+  // ─── TRAFIC HORS PUBLIC : robots, émulations, équipe (2026-10-05) ──────────
+  // Mesuré en production du 28/09 au 04/10 : 19 appareils sans compte, et 15
+  // d'entre eux n'étaient PERSONNE. Dix « iPhone » en 390 × 844 qui déclaraient
+  // une connexion « 4g » — or `navigator.connection` n'existe sur AUCUN
+  // navigateur iOS (WebKit ne l'implémente pas ; les vrais iPhone de la même
+  // semaine envoient ""), arrivés 13 à 16 min après chaque fusion sur `main`,
+  // zéro clic : nos propres vérifications d'après déploiement. Plus des
+  // fenêtres 800 × 600, 1366 × 768 ou 400 × 400 d'une seconde. L'entonnoir du
+  // pilotage (visiteurs → lien → compte) les comptait comme des visiteurs : son
+  // taux de conversion mesurait nos contrôles, pas le public.
+  //
+  // ⚠️ ON NE JETTE RIEN. L'événement part exactement comme avant — une erreur
+  // vue par un robot reste une erreur de la production, et la veille comme la
+  // Sentinelle la lisent toujours. Il porte seulement `meta.trafic`, et ce sont
+  // les chiffres d'AUDIENCE qui l'écartent : visiteurs, entonnoir des liens,
+  // appareils en ligne (dashboard/server/trafic.js), pilotage téléphone
+  // (supabase/functions/_shared/pilotage.js), « appareils actifs 7 j » de la
+  // veille et du digest. Trois lecteurs, UNE définition :
+  // tests/unit/trafic-hors-public.test.mjs les confronte.
+  //   • "robot"     — `navigator.webdriver` (Playwright, Puppeteer, Selenium),
+  //                   « HeadlessChrome », ou un robot d'indexation connu ;
+  //   • "emulation" — un agent iPhone/iPad/iPod servi par un moteur Chromium
+  //                   (`navigator.connection` ou `navigator.userAgentData`, deux
+  //                   API qu'aucun navigateur iOS n'expose) : mode appareil des
+  //                   DevTools, navigateur intégré d'un outil, Playwright ;
+  //   • "equipe"    — appareil marqué UNE fois par `?equipe=1` (retiré par
+  //                   `?equipe=0`) : les téléphones de l'équipe, un test de lien
+  //                   en navigation privée, les vérifications de Claude en prod.
+  // Ordre : robot > emulation > equipe — un fait mesuré passe avant une
+  // déclaration. Un visiteur ordinaire ne reçoit AUCUNE clé de plus.
+  // ⚠️ LIMITE CONNUE : si un navigateur iOS à moteur Blink sortait un jour
+  // (Union européenne), il serait classé « emulation ». Aucun n'existait au
+  // 05/10/2026 ; si cela change, c'est ici et dans trafic.js qu'il faut regarder.
+  // ⚠️ PAS DE LOOKBEHIND dans ROBOT_UA_RE : Safari < 16.4 refuse la syntaxe à
+  // l'analyse, et c'est TOUT ce fichier qui ne se chargerait plus. D'où une
+  // liste nommée plutôt que `bot\b` — qui attraperait aussi les téléphones CUBOT.
+  var TRAFIC_KEY = "passio_trafic";
+  var ROBOT_UA_RE = /headlesschrome|chrome-lighthouse|google-inspectiontool|googlebot|adsbot-google|mediapartners-google|storebot-google|bingbot|applebot|yandexbot|baiduspider|duckduckbot|petalbot|bytespider|gptbot|claudebot|perplexitybot|amazonbot|semrushbot|ahrefsbot|gtmetrix|pingdom|uptimerobot/i;
+  function lireTraficEquipe() {
+    try {
+      var v = new URLSearchParams(location.search).get("equipe");
+      if (v === "1") localStorage.setItem(TRAFIC_KEY, "equipe");
+      else if (v === "0") localStorage.removeItem(TRAFIC_KEY);
+      // Comme `?plk` : le marqueur quitte la barre d'adresse, sinon un lien
+      // copié ensuite marquerait « équipe » chaque personne qui l'ouvre.
+      if (v !== null && window.history && history.replaceState) {
+        var u = new URL(location.href); u.searchParams.delete("equipe");
+        history.replaceState(history.state, "", u.pathname + u.search + u.hash);
+      }
+      return localStorage.getItem(TRAFIC_KEY) === "equipe";
+    } catch (e) { return false; }
+  }
+  function detecterTrafic() {
+    var equipe = lireTraficEquipe();
+    try {
+      var ua = navigator.userAgent || "";
+      if (navigator.webdriver === true || ROBOT_UA_RE.test(ua)) return "robot";
+      if (/iphone|ipad|ipod/i.test(ua) && (navigator.connection || navigator.userAgentData)) return "emulation";
+    } catch (e) {}
+    return equipe ? "equipe" : null;
+  }
+  var TRAFIC = detecterTrafic();
+
   // ─── Masquage PII ─────────────────────────────────────────────────────────
   // ⚠️ C'est une liste NOIRE, pas une liste blanche — la documentation du projet
   // affirmait le contraire, c'était faux. Le choix reste délibéré : une liste
@@ -832,6 +895,12 @@
     // `meta: { ech: 1000 }` piloterait un multiplicateur du tableau de bord
     // depuis le client (`poidsEvenement` accepte jusqu'à 1000).
     if (_taux < 1) { if (!ev.meta || typeof ev.meta !== "object") ev.meta = {}; ev.meta.ech = Math.round(1 / _taux); }
+    // `trafic` : même règle que `ech`, posé APRÈS le filtre — il échappe au
+    // plafond de 30 clés, et seul ce fichier le décide. Un appelant ne peut ni
+    // l'effacer sur un robot, ni le fabriquer sur un visiteur (où il est retiré) :
+    // c'est lui qui fait sortir un appareil des chiffres d'audience du pilotage.
+    if (TRAFIC) { if (!ev.meta || typeof ev.meta !== "object") ev.meta = {}; ev.meta.trafic = TRAFIC; }
+    else if (ev.meta && typeof ev.meta === "object" && Object.prototype.hasOwnProperty.call(ev.meta, "trafic")) delete ev.meta.trafic;
     enqueue(ev);
     return ev.correlation_id || ev.event_id;
   }
@@ -854,6 +923,7 @@
     enabled: ENABLED,
     deviceId: DEVICE_ID,
     sessionId: SESSION_ID,
+    trafic: TRAFIC,          // null | "robot" | "emulation" | "equipe" (voir TRAFIC HORS PUBLIC)
     track: track,
     nav: function (screen) { window._telScreen = screen; track("nav", "screen_view", { screen: screen }); },
     action: function (name, meta) { track("action", name, { meta: meta }); },

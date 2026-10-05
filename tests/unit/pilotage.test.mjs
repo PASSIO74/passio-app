@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { autorise, COMPTE_PILOTE, RELANCES, erreursFrequentes, resumerIssue, verdict, decideAlerte, plateforme, cheminPage, serieJours, detailsErreurs, jauges, estPause, TITRE_PAUSE, STATUTS_SIGNALEMENT, aReparer, issueReparable, titreReparation, corpsReparation, estReparation, RUNS_REPARABLES, REPARATIONS_MAX, LABELS_SUIVIS } from "../../supabase/functions/_shared/pilotage.js";
+import { autorise, COMPTE_PILOTE, RELANCES, erreursFrequentes, resumerIssue, verdict, decideAlerte, plateforme, cheminPage, serieJours, detailsErreurs, jauges, estPause, TITRE_PAUSE, STATUTS_SIGNALEMENT, aReparer, issueReparable, titreReparation, corpsReparation, estReparation, RUNS_REPARABLES, REPARATIONS_MAX, LABELS_SUIVIS, compterAudience, traficHorsPublic } from "../../supabase/functions/_shared/pilotage.js";
 
 const confirme = (email) => ({ email, email_confirmed_at: "2026-09-01T00:00:00Z" });
 
@@ -173,4 +173,35 @@ test("⑬ aReparer : issues réparables + exécutions en échec, et la réparati
   assert.deepEqual(r.map((x) => [x.cible, x.numero || x.cle, x.enCours]), [["issue", 556, null], ["run", "deploy", 600]]);
   assert.deepEqual(aReparer(null), []);
   assert.deepEqual(aReparer({ issues: [], runs: { deploy: { conclusion: "cancelled" } } }), []);
+});
+
+// ─── Audience du téléphone : le public seulement (2026-10-05) ───────────────
+// Mesuré du 28/09 au 04/10 : 15 des 19 appareils sans compte étaient nos propres
+// vérifications. MUTATIONS : retirer le saut des appareils écartés de
+// compterAudience → ⑯ rougit ; revenir au `select("user_id,device_id")` sans
+// compterAudience dans la fonction → ⑰ rougit.
+test("⑯ compterAudience : robots, émulations et équipe sortent des comptes ET des appareils", () => {
+  const lignes = [
+    { user_id: "u-lea", device_id: "d-lea", platform: "android", connection: "4g" },
+    { user_id: null, device_id: "d-lea", platform: "android", connection: "4g" },
+    { user_id: null, device_id: "d-robot", platform: "windows", connection: "4g", trafic: "robot" },
+    { user_id: null, device_id: "d-emul", platform: "ios", connection: "4g", trafic: null },     // ligne d'avant ce lot
+    { user_id: "u-ben", device_id: "d-ben", platform: "ios", connection: "", trafic: "equipe" },
+    // Même téléphone de l'équipe, ligne d'un ancien client en cache, sans marque :
+    { user_id: "u-ben", device_id: "d-ben", platform: "ios", connection: "", trafic: null },
+    { user_id: "u-sam", device_id: "d-sam", platform: "ios", connection: "" },                 // vrai iPhone
+  ];
+  assert.deepEqual(compterAudience(lignes), { comptes: 2, appareils: 2, horsPublic: 3 });
+  assert.deepEqual(compterAudience([]), { comptes: 0, appareils: 0, horsPublic: 0 });
+  assert.deepEqual(compterAudience(null), { comptes: 0, appareils: 0, horsPublic: 0 });
+  assert.equal(traficHorsPublic({ meta: { trafic: "robot" } }), "robot");
+  assert.equal(traficHorsPublic({ trafic: "pirate" }), null, "valeur inconnue = public");
+});
+
+test("⑰ la fonction compte l'audience par compterAudience, et lit `trafic` sans rapatrier la meta", () => {
+  const fn = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
+  const corps = fn.slice(fn.indexOf("async function lireUtilisateurs"), fn.indexOf("async function lireSignalements"));
+  assert.match(corps, /trafic:meta->>trafic/);
+  assert.match(corps, /return compterAudience\(data \|\| \[\]\)/);
+  assert.doesNotMatch(corps, /select\("user_id,device_id"\)/);
 });

@@ -18,6 +18,17 @@ Instrumentation automatique (`js/telemetry.js`) : **navigation** (wrap `goTo`), 
 | Inscriptions / comptes | `signups()`, `accounts()` | Supabase (service_role) | à la demande | RÉEL |
 | **Readiness score** (0-100) | Pondération : stabilité 20, bugs critiques 25, tests fonctionnels 25, couverture checklist 15, dispo API 15 | `/readiness` | temps réel | RÉEL (aide à la décision, **pas** une garantie — mention explicite dans l'API) |
 
+## Trafic hors public — robots, émulations, équipe (2026-10-05)
+Mesuré du 28/09 au 04/10 en production : 15 des 19 appareils sans compte n'étaient personne (dix « iPhone » 390 × 844 déclarant une connexion « 4g », arrivés juste après chaque fusion sur `main`). `js/telemetry.js` pose désormais `meta.trafic` sur chaque événement d'un tel appareil — et sur aucun autre :
+
+| Valeur | Quand | Comment la poser / l'enlever |
+|---|---|---|
+| `robot` | `navigator.webdriver`, « HeadlessChrome », robot d'indexation connu | automatique |
+| `emulation` | agent iPhone/iPad servi par Chromium (`navigator.connection` ou `navigator.userAgentData`, qu'aucun navigateur iOS n'expose) ; rattrapé côté serveur pour les lignes d'avant (`platform = ios` + `connection` non vide) | automatique |
+| `equipe` | appareil de l'équipe | ouvrir une fois `https://passio-app.netlify.app/?equipe=1` (mémorisé sur l'appareil, retiré de la barre d'adresse) ; `?equipe=0` l'enlève |
+
+**Écartés de** : visiteurs et entonnoir des liens (`dashboard/server/store.js`), « appareils en ligne » (accueil du dashboard), « en ligne / 24 h » du pilotage téléphone (`compterAudience`), « Appareils actifs 7 j » de la veille et du digest (`filtrePublic()`). **Gardés dans** : erreurs, problèmes, santé, flux et silence de la veille, Sentinelle — une erreur vue par un robot reste une erreur de la production. Une définition, trois lecteurs : `tests/unit/trafic-hors-public.test.mjs` les confronte.
+
 ## KPI produit — statut honnête (mis à jour 2026-08-08)
 | KPI candidat | Statut | Pourquoi |
 |---|---|---|
