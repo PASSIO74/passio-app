@@ -4244,6 +4244,9 @@ var ACCOUNT_SCOPED_KEYS = [
   //     un contournement en un clic.
   //   passio_device_id, passio_telemetry, passio_pwa_*, passio_logo_variant,
   //     passio_debug — propres à l'appareil, sans lien avec un compte.
+  //   passio_trafic — « appareil de l'équipe » (`?equipe=1`, telemetry.js) :
+  //     c'est le TÉLÉPHONE qu'on sort des chiffres d'audience, quel que soit le
+  //     compte qui s'y connecte ensuite.
   //   passio_auth_intent_v1 — l'intention de reconnexion, posée APRÈS cette
   //     purge par `doLogout` et consommée par `boot()`. L'ajouter ici
   //     refermerait le piège qu'elle ouvre : la déconnexion redeviendrait un

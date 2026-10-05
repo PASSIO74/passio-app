@@ -8,6 +8,7 @@
 import crypto from "node:crypto";
 import { config } from "./config.js";
 import { JsonDb } from "./jsondb.js";
+import { traficHorsPublic, ventilerTrafic } from "./trafic.js";
 
 const ONLINE_MS = 70_000;        // appareil « en ligne » si vu il y a < 70 s
 
@@ -303,6 +304,11 @@ class Store {
     d.lastSeen = ev.ts;
     d.platform = ev.platform; d.browser = ev.browser; d.appVersion = ev.app_version;
     d.env = ev.env;
+    // Robot, émulation ou équipe (trafic.js) : le DERNIER événement décide —
+    // `?equipe=0` doit pouvoir rendre un téléphone au public sans redémarrage.
+    // Un appareil classé reste dans la liste (on le montre, marqué) mais sort
+    // des chiffres d'audience : visiteurs, entonnoir des liens, en ligne.
+    d.trafic = traficHorsPublic(ev);
     if (ev.connection) d.connection = ev.connection;
     if (ev.screen_size) d.screenSize = ev.screen_size;
     if (ev.user_id) { d.userId = ev.user_id; d.userLabel = ev.user_label || d.userLabel; }
@@ -359,6 +365,7 @@ class Store {
         opens: [], openDevices: new Set(), openCount: 0, errorOpens: 0,
         firstOpen: null, lastOpen: null, lastEvent: ev.ts,
         signups: [], signupCount: 0, signupDevices: new Set(), signupsInvite: 0, firstSignup: null,
+        opensHorsPublic: 0, signupsHorsPublic: 0,
       };
       this.links.set(id, l);
       // Borne la carte (les liens les plus anciens sont évincés).
@@ -380,6 +387,14 @@ class Store {
       l.shares.push({ ts: ev.ts, channel: m.link_channel || "?" });
       if (l.shares.length > 50) l.shares.shift();
       if (!l.createdBy && ev.user_id) { l.createdBy = ev.user_id; l.createdByLabel = ev.user_label; }
+    } else if ((ev.action === "link_open" || ev.action === "link_load_error" || ev.action === "link_signup") && traficHorsPublic(ev)) {
+      // ⚠️ UNE OUVERTURE PAR UN ROBOT N'EST PAS UNE OUVERTURE (2026-10-05). Un
+      // lien testé par l'équipe en navigation privée, ou ouvert par une
+      // vérification automatique, passait « ouvert » — voire « a fait venir un
+      // compte » — sans qu'aucune personne du public ne l'ait touché. Compté à
+      // part, pour qu'on voie qu'il a eu lieu, jamais dans l'entonnoir.
+      if (ev.action === "link_signup") l.signupsHorsPublic++;
+      else l.opensHorsPublic++;
     } else if (ev.action === "link_open" || ev.action === "link_load_error") {
       const err = ev.action === "link_load_error" || ev.status === "error";
       l.opens.push({
@@ -425,6 +440,7 @@ class Store {
       openCount: l.openCount, openDevices: l.openDevices.size, errorOpens: l.errorOpens,
       firstOpen: l.firstOpen, lastOpen: l.lastOpen, lastEvent: l.lastEvent,
       signupCount: l.signupCount, signupsInvite: l.signupsInvite, firstSignup: l.firstSignup,
+      opensHorsPublic: l.opensHorsPublic || 0, signupsHorsPublic: l.signupsHorsPublic || 0,
     };
     if (full) { dto.shares = l.shares.slice(); dto.opens = l.opens.slice(); dto.signups = l.signups.slice(); }
     return dto;
@@ -464,6 +480,9 @@ class Store {
       // Taux d'inscription PARMI les liens confirmés ouverts (jamais parmi les créés).
       signupRate: opened.length ? Math.round((openedThenSigned / opened.length) * 100) : null,
       signupsToday: all.reduce((a, l) => a + l.signups.filter((x) => now - x.ts < DAY).length, 0),
+      // Écartés de tout ce qui précède (robots, émulations, équipe) — dits, pas tus.
+      opensHorsPublic: all.reduce((a, l) => a + (l.opensHorsPublic || 0), 0),
+      signupsHorsPublic: all.reduce((a, l) => a + (l.signupsHorsPublic || 0), 0),
       createdToday: all.filter((l) => l.createdAt && now - l.createdAt < DAY).length,
       openedToday: all.filter((l) => l.firstOpen && now - l.firstOpen < DAY).length,
       lastActivity: all.length ? Math.max(...all.map((l) => l.lastEvent)) : null,
@@ -518,7 +537,10 @@ class Store {
   overview() {
     const now = Date.now();
     const events = this.events;
-    const online = [...this.devices.values()].filter((d) => now - d.lastSeen < ONLINE_MS);
+    // Audience : un robot, une émulation ou un téléphone de l'équipe n'est pas
+    // « quelqu'un en ligne » (trafic.js). Les volumes et la santé, eux, gardent
+    // tout : une requête en échec reste un échec, d'où qu'elle vienne.
+    const online = [...this.devices.values()].filter((d) => !d.trafic && now - d.lastSeen < ONLINE_MS);
     const activeUsers = [...this.users.values()].filter((u) => now - u.lastSeen < ACTIVE_MS);
     const onlineUsers = new Set(online.map((d) => d.userId).filter(Boolean));
     const activeSessions = [...this.sessions.values()].filter((s) => now - s.last < ACTIVE_MS);
@@ -725,6 +747,8 @@ class Store {
         viaLinks, viaLink: viaLinks[0] || null,
         errorCount: d.errorCount || 0,
         netTrouble: !!d.offline,
+        // null = public ; sinon "robot" | "emulation" | "equipe" — montré, pas compté.
+        trafic: d.trafic || null,
       };
     }).sort((a, b) => (Number(b.online) - Number(a.online)) || (b.lastSeen - a.lastSeen));
   }
@@ -732,10 +756,16 @@ class Store {
   /** Entonnoir des visiteurs : ouverture app → arrivée par lien → compte créé. */
   visitorFunnel() {
     const now = Date.now(), DAY = 24 * 60 * 60_000;
-    const devs = [...this.devices.values()];
+    // ⚠️ LE PUBLIC SEULEMENT (2026-10-05). Mesuré la semaine du 28/09 : 15 des
+    // 19 « visiteurs » sans compte étaient nos propres vérifications — l'entonnoir
+    // rapportait des robots à des comptes. Les écartés sont DITS (`horsPublic`),
+    // jamais tus, et restent visibles, marqués, dans la liste des visiteurs.
+    const tous = [...this.devices.values()];
+    const devs = tous.filter((d) => !d.trafic);
+    const publics = new Set(devs.map((d) => d.deviceId));
     // Appareils arrivés via une ouverture de lien confirmée (?plk).
     const viaLink = new Set();
-    for (const l of this.links.values()) for (const dev of l.openDevices) viaLink.add(dev);
+    for (const l of this.links.values()) for (const dev of l.openDevices) if (publics.has(dev)) viaLink.add(dev);
     // Appareils arrivés par un lien ET où un compte est né (signal client).
     const viaLinkSignedUp = new Set();
     for (const l of this.links.values()) for (const dev of l.signupDevices) if (viaLink.has(dev)) viaLinkSignedUp.add(dev);
@@ -748,6 +778,8 @@ class Store {
       online: devs.filter((d) => now - d.lastSeen < ONLINE_MS).length,
       today: devs.filter((d) => now - d.firstSeen < DAY).length,
       lastSeen: devs.length ? Math.max(...devs.map((d) => d.lastSeen)) : null,
+      // Écartés de TOUS les chiffres ci-dessus : { total, robot, emulation, equipe }.
+      horsPublic: ventilerTrafic(tous.map((d) => d.trafic || null)),
       // ⚠️ RUPTURE DE SÉRIE au 2026-08-15 — ne pas comparer avant/après.
       //
       // Un appareil n'apparaît ici que s'il a produit au moins un événement

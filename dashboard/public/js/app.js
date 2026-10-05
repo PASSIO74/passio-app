@@ -552,7 +552,7 @@ VIEWS.overview = async (view) => {
           ${seg("non confirmés", lk.sharedUnconfirmed || 0, (lk.sharedUnconfirmed || 0) > 0 ? "warn" : "")}
           <div class="ovlk-seg ovlk-rate"><span class="ovlk-n">${lk.openRate == null ? "n/a" : lk.openRate + " %"}</span><span class="ovlk-l">taux d'ouverture</span></div>
         </div>
-        <div class="muted" style="font-size:11.5px;margin-top:8px">Une ouverture n'est comptée que sur signal réel reçu — jamais supposée.</div></div>`);
+        <div class="muted" style="font-size:11.5px;margin-top:8px">Une ouverture n'est comptée que sur signal réel reçu — jamais supposée${(lk.opensHorsPublic || 0) > 0 ? ` · ${num(lk.opensHorsPublic)} ouverture${lk.opensHorsPublic > 1 ? "s" : ""} de robots ou de l'équipe écartée${lk.opensHorsPublic > 1 ? "s" : ""}` : ""}.</div></div>`);
     } else { setHtml("#ovLinks", ""); }
 
     // ── Flux live simplifié ─────────────────────────────────────────────────
@@ -974,7 +974,8 @@ VIEWS.links = async () => {
       <div class="prov-item"><span class="prov-ic">${icon("share")}</span><span class="prov-k">Liens suivis</span><span class="prov-v">${num(f.total || 0)}</span></div>
       <div class="prov-item"><span class="prov-k">Aujourd'hui</span><span class="prov-v">${num(f.createdToday || 0)} créés · ${num(f.openedToday || 0)} ouverts</span></div>
       <div class="prov-item"><span class="prov-ic">${icon("clock")}</span><span class="prov-k">Dernière activité</span><span class="prov-v">${f.lastActivity ? "il y a " + ago(f.lastActivity) : "—"}</span></div>
-      <span class="prov-note">Chaque ouverture = un signal réel reçu (jamais supposé)</span></div>`);
+      ${(f.opensHorsPublic || 0) + (f.signupsHorsPublic || 0) > 0 ? `<div class="prov-item" title="Ouvertures et inscriptions venues de robots, d'émulations ou d'appareils de l'équipe (?equipe=1) : écartées de l'entonnoir"><span class="prov-k">Hors chiffres</span><span class="prov-v">${num(f.opensHorsPublic || 0)} ouv. · ${num(f.signupsHorsPublic || 0)} inscr.</span></div>` : ""}
+      <span class="prov-note">Chaque ouverture = un signal réel reçu (jamais supposé) · robots, émulations et équipe écartés</span></div>`);
 
     // Entonnoir : cartes chiffrées honnêtes.
     const openRate = f.openRate == null ? '<span class="muted">n/a</span>' : f.openRate + " %";
@@ -1077,6 +1078,13 @@ window.__linkDetail = async (id) => {
 const PLATFORM_FR = { ios: "iPhone / iPad", android: "Android", windows: "Windows", mac: "Mac", linux: "Linux", other: "Autre" };
 const platLabel = (p) => PLATFORM_FR[p] || p || "Autre";
 const ENV_FR = { production: "Production", preview: "Préversion", development: "Dev local" };
+// Trafic hors public (2026-10-05, server/trafic.js) : montré, jamais compté.
+const TRAFIC_FR = {
+  robot: ["robot", "Automatisation détectée (navigator.webdriver, navigateur sans écran ou robot d'indexation)"],
+  emulation: ["émulation", "Un « iPhone » servi par un moteur Chromium : mode appareil des DevTools ou navigateur d'outil"],
+  equipe: ["équipe", "Appareil marqué par ?equipe=1 — retiré par ?equipe=0"],
+};
+const traficPill = (t) => (TRAFIC_FR[t] ? ` <span class="pill warn" style="font-size:10px" title="${esc(TRAFIC_FR[t][1])} — hors chiffres">${esc(TRAFIC_FR[t][0])}</span>` : "");
 const shortDev = (id) => "#" + String(id || "").replace(/^dev_/, "").slice(-6);
 // Un visiteur = un appareil. Registre live joint aux comptes (profiles) créés.
 VIEWS.visitors = async () => {
@@ -1087,7 +1095,7 @@ VIEWS.visitors = async () => {
     <div class="feed-toolbar" style="margin-top:16px">
       <input class="select" id="viSearch" placeholder="Rechercher (profil, OS, navigateur, écran…)" style="width:230px">
       <select class="select" id="viEnv"><option value="">Tout environnement</option><option value="production">Production</option><option value="preview">Préversion</option><option value="development">Dev local</option></select>
-      <select class="select" id="viSeg"><option value="">Tous les visiteurs</option><option value="signed">A créé un compte</option><option value="anon">Sans compte</option><option value="link">Arrivé par un lien</option><option value="online">En ligne maintenant</option><option value="trouble">A rencontré un souci</option></select>
+      <select class="select" id="viSeg"><option value="">Tous les visiteurs</option><option value="signed">A créé un compte</option><option value="anon">Sans compte</option><option value="link">Arrivé par un lien</option><option value="online">En ligne maintenant</option><option value="trouble">A rencontré un souci</option><option value="public">Public seulement</option><option value="horspublic">Hors chiffres (robots, émulations, équipe)</option></select>
       <button class="btn btn-sm" id="viExport">${icon("download")} Exporter</button>
       <span class="muted" style="margin-left:auto;font-size:12px" id="viCount"></span>
     </div>
@@ -1106,13 +1114,19 @@ VIEWS.visitors = async () => {
     window.__visitorsCache = data.visitors || [];
     (data.visitors || []).forEach((v) => { if (v.userId && v.userLabel) S.names[v.userId] = v.userLabel; });
     const f = data.funnel || {};
+    // Hors chiffres (2026-10-05) : robots, émulations, équipe — DITS ici, marqués
+    // dans la liste, jamais additionnés au public.
+    const hp = f.horsPublic || {};
+    const hpDetail = [["robot", "robot"], ["emulation", "émulation"], ["equipe", "équipe"]]
+      .filter(([k]) => hp[k] > 0).map(([k, l]) => num(hp[k]) + " " + l + (hp[k] > 1 ? "s" : "")).join(" · ");
     setHtml("#viProv", `<div class="prov-strip">
-      <div class="prov-item"><span class="prov-ic">${icon("devices")}</span><span class="prov-k">Appareils suivis</span><span class="prov-v">${num(f.total || 0)}</span></div>
+      <div class="prov-item"><span class="prov-ic">${icon("devices")}</span><span class="prov-k">Appareils du public</span><span class="prov-v">${num(f.total || 0)}</span></div>
       <div class="prov-item"><span class="prov-k">Aujourd'hui</span><span class="prov-v">${num(f.today || 0)} nouveaux</span></div>
       <div class="prov-item"><span class="prov-ic">${icon("clock")}</span><span class="prov-k">Dernière ouverture</span><span class="prov-v">${f.lastSeen ? "il y a " + ago(f.lastSeen) : "—"}</span></div>
-      <span class="prov-note">1 appareil ≈ 1 personne · identité connue seulement après création d'un compte</span></div>`);
+      <div class="prov-item" title="Écartés de tous les chiffres de cette page — filtre « Hors chiffres » pour les voir"><span class="prov-k">Hors chiffres</span><span class="prov-v">${num(hp.total || 0)}${hpDetail ? ` <span class="muted">(${hpDetail})</span>` : ""}</span></div>
+      <span class="prov-note">1 appareil ≈ 1 personne · identité connue seulement après création d'un compte · robots, émulations et appareils de l'équipe (<span class="mono">?equipe=1</span>) ne sont pas comptés</span></div>`);
     const cards = [
-      { ic: "route",       l: "Visiteurs (appareils)", v: num(f.total || 0),    s: "ont ouvert l'app au moins une fois" },
+      { ic: "route",       l: "Visiteurs (appareils)", v: num(f.total || 0),    s: "du public, ont ouvert l'app au moins une fois" },
       { ic: "share",       l: "Arrivés par un lien",   v: num(f.viaLink || 0),  s: "ouverture confirmée via ?plk" },
       { ic: "users",       l: "… puis inscrits",       v: num(f.viaLinkSignedUp || 0), s: "compte créé sur l'appareil arrivé par un lien", ok: (f.viaLinkSignedUp || 0) > 0 },
       { ic: "users",       l: "Comptes créés",         v: num(f.signedUp || 0), s: "visiteurs devenus membres", ok: (f.signedUp || 0) > 0 },
@@ -1130,6 +1144,8 @@ VIEWS.visitors = async () => {
     if (seg === "link") return (v.viaLinks || []).length > 0;
     if (seg === "online") return v.online;
     if (seg === "trouble") return v.errorCount > 0 || v.netTrouble;
+    if (seg === "public") return !v.trafic;
+    if (seg === "horspublic") return !!v.trafic;
     return true;
   }
   function renderRows() {
@@ -1153,7 +1169,7 @@ function visitorRow(v) {
   const name = v.signedUp
     ? `<strong>${nameFor(v.userId, v.userLabel)}</strong> <span class="pill ok" style="font-size:10px">membre</span>`
     : `<span class="muted">Visiteur ${shortDev(v.deviceId)}</span>`;
-  const dev = `${esc(platLabel(v.platform))} <span class="muted">· ${esc(v.browser || "?")}</span>${v.screenSize ? ` <span class="muted mono" style="font-size:11px">${esc(v.screenSize)}</span>` : ""}${v.env && v.env !== "production" ? ` <span class="pill info" style="font-size:10px">${esc(ENV_FR[v.env] || v.env)}</span>` : ""}`;
+  const dev = `${esc(platLabel(v.platform))} <span class="muted">· ${esc(v.browser || "?")}</span>${v.screenSize ? ` <span class="muted mono" style="font-size:11px">${esc(v.screenSize)}</span>` : ""}${v.env && v.env !== "production" ? ` <span class="pill info" style="font-size:10px">${esc(ENV_FR[v.env] || v.env)}</span>` : ""}${traficPill(v.trafic)}`;
   const via = (v.viaLinks || []).length ? `<span class="mono" title="Lien d'arrivée">${shortLink(v.viaLink)}</span>${v.viaLinks.length > 1 ? ` <span class="muted">+${v.viaLinks.length - 1}</span>` : ""}` : '<span class="muted">direct</span>';
   const act = `${num(v.sessions || 0)} sess. <span class="muted">· ${num(v.events || 0)} év.</span>${v.errorCount ? ` <span class="pill error" style="font-size:10px" title="Problèmes rencontrés">${v.errorCount}</span>` : ""}`;
   const status = v.online ? '<span class="pill ok">en ligne</span>' : v.netTrouble ? '<span class="pill error">réseau</span>' : v.active ? '<span class="pill accent">actif</span>' : '<span class="pill info">hors ligne</span>';
@@ -1175,6 +1191,7 @@ window.__visitorDetail = (deviceId) => {
     ["Taille d'écran", v.screenSize ? `<span class="mono">${esc(v.screenSize)}</span>` : "—"],
     ["Connexion", v.connection ? esc(v.connection) : "—"],
     ["Environnement", esc(ENV_FR[v.env] || v.env)],
+    ["Trafic", TRAFIC_FR[v.trafic] ? `${traficPill(v.trafic)} <span class="muted">${esc(TRAFIC_FR[v.trafic][1])} — hors chiffres</span>` : "public (compté)"],
     ["Version de l'app", `<span class="mono">${esc(v.appVersion || "?")}</span>`],
     ["Arrivé par", (v.viaLinks || []).length ? v.viaLinks.map((id) => `<a class="mono" onclick='window.__linkDetail(${escJsArg(id)})' style="cursor:pointer">${shortLink(id)}</a>`).join(" ") : '<span class="muted">accès direct (pas de lien suivi)</span>'],
     ["Sessions", num(v.sessions || 0)],

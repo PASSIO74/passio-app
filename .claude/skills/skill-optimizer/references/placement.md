@@ -21,7 +21,10 @@ doit pas pouvoir s'auto-accorder des droits : c'est délibéré. Si un réglage
 Conventions, invariants, architecture. Chargé dans **chaque** conversation du
 projet → chaque ligne se paie à chaque tour. N'y mettre que ce qui est vrai
 partout dans le projet et court. Le détail va dans `docs/` et n'est lu qu'au besoin
-(c'est ce qui a fait passer CLAUDE.md de 110 Ko à 18 Ko le 2026-08-07).
+(c'est ce qui a fait passer CLAUDE.md de 110 Ko à 18 Ko le 2026-08-07 — puis il est
+remonté à 410 000 caractères en deux mois, une fiche par lot : depuis le 2026-10-05 le
+récit des lots va dans `docs/journal/<domaine>.md`, et `scripts/audit-claude-md.js`
+refuse un CLAUDE.md de plus de 40 000 caractères).
 
 ### 3. Skill — `.claude/skills/<nom>/SKILL.md`
 Un workflow spécialisé, chargé **uniquement quand son déclencheur matche**.

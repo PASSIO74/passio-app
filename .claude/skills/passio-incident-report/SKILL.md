@@ -26,7 +26,7 @@ Un champ non mesuré s'écrit `null` avec un statut explicite. **Jamais une vale
 
 Écrire le registre d'abord, la vue humaine ensuite : c'est le sens qui garde les deux cohérents.
 
-Journal chronologique : `PASSIO_ENGINEERING_LOG.md`. Décision d'architecture : `.passio/adr/`. Piège réutilisable ailleurs : `docs/PIEGES_CONNUS.md` — et si l'invariant vaut pour toute modification future, `CLAUDE.md`.
+Journal chronologique : `PASSIO_ENGINEERING_LOG.md`. Décision d'architecture : `.passio/adr/`. Piège réutilisable ailleurs : `docs/PIEGES_CONNUS.md`. Récit du lot : `docs/journal/<domaine>.md`. Et si l'invariant vaut pour toute modification future, UNE ligne dans `CLAUDE.md` (« 🧭 Journal par domaine ») — jamais la fiche.
 
 ## Nommage
 

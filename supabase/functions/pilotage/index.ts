@@ -27,7 +27,7 @@ import { REVISION } from "../_shared/revision.js";
 import {
   autorise, RELANCES, LABELS_SUIVIS, TITRE_PAUSE, STATUTS_SIGNALEMENT, estPause,
   erreursFrequentes, detailsErreurs, serieJours, jauges, resumerIssue, resumerRun, verdict, decideAlerte,
-  aReparer, titreReparation, corpsReparation, estReparation, REPARATIONS_MAX,
+  aReparer, titreReparation, corpsReparation, estReparation, REPARATIONS_MAX, compterAudience,
 } from "../_shared/pilotage.js";
 
 const corsHeaders = {
@@ -194,10 +194,14 @@ async function lireUtilisateurs(admin: Admin) {
   const total = await compter(admin.from("profiles").select("id", { count: "exact", head: true }));
   const dates = (crees || []).map((r) => String(r.created_at).replace(" ", "T") + (/[zZ]|[+-]\d\d:?\d\d$/.test(String(r.created_at)) ? "" : "Z"));
   const jour = dates.filter((d) => Date.now() - Date.parse(d) < 864e5).length;
+  // Le PUBLIC seulement (2026-10-05) : robots, émulations et appareils de
+  // l'équipe sortent de « en ligne » et « 24 h » (compterAudience, _shared).
+  // `trafic` est lu par PostgREST (`meta->>trafic`) : la meta entière n'est
+  // pas rapatriée pour 5 000 lignes.
   const actifs = async (ms: number) => {
-    const { data, error } = await admin.from("telemetry_events").select("user_id,device_id").eq("env", "production").gte("received_at", ilYa(ms)).limit(5000);
+    const { data, error } = await admin.from("telemetry_events").select("user_id,device_id,platform,connection,trafic:meta->>trafic").eq("env", "production").gte("received_at", ilYa(ms)).limit(5000);
     if (error) throw error;
-    return { comptes: new Set((data || []).map((r) => r.user_id).filter(Boolean)).size, appareils: new Set((data || []).map((r) => r.device_id).filter(Boolean)).size };
+    return compterAudience(data || []);
   };
   const [maintenant, aujourdhui] = await Promise.all([actifs(5 * 60e3), actifs(864e5)]);
   return { total, inscritsJour: jour, inscritsSemaine: dates.length, serieInscriptions: serieJours(dates), maintenant, aujourdhui };

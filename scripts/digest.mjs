@@ -226,7 +226,7 @@ export function composerDigest(d, now) {
     "",
     "## Usage",
     u ? `- Inscriptions : 24 h ${u.crees24h ?? "?"} créée(s) / ${u.confirmes24h ?? "?"} confirmée(s) ; 7 j ${u.crees7j ?? "?"} / ${u.confirmes7j ?? "?"}` : "- Inscriptions : non lues",
-    `- Appareils actifs 7 j : ${Number.isFinite(usage.appareils7j) ? usage.appareils7j : "non lu"}`,
+    `- Appareils actifs 7 j : ${Number.isFinite(usage.appareils7j) ? usage.appareils7j + " (public seulement : robots, émulations et équipe écartés)" : "non lu"}`,
     `- Erreurs client 24 h : ${Number.isFinite(usage.erreurs24h) ? usage.erreurs24h : "non lu"}`,
     "",
     "Ce digest est écrit par `.github/workflows/digest.yml` (label `digest`, jamais `claude`). Le geste à faire est dans chaque ligne ;",

@@ -479,6 +479,23 @@ export function filtreHumain() {
   return "env = 'production' and (action is null or action <> 'sentinel_observation_canary') and (meta->>'synthetic') is null";
 }
 
+// ─── Le PUBLIC, pour les chiffres d'audience (2026-10-05) ────────────────────
+// Mesuré du 28/09 au 04/10 : 15 des 19 appareils sans compte étaient nos propres
+// vérifications d'après déploiement — le digest annonçait « Appareils actifs
+// 7 j : 23 » pour une poignée de personnes. telemetry.js pose `meta.trafic`
+// (robot, emulation, equipe) ; une ligne iOS qui porte une connexion vient d'un
+// moteur Chromium (aucun navigateur iOS n'expose `navigator.connection`).
+// ⚠️ AUDIENCE SEULEMENT : `filtreHumain()` — le FLUX et le silence — n'est pas
+// touché ; un robot qui fait vivre la chaîne de télémétrie la fait bien vivre.
+// ⚠️ MÊME CONTRAT que dashboard/server/trafic.js et `traficHorsPublic`
+// (supabase/functions/_shared/pilotage.js) — tests/unit/trafic-hors-public.test.mjs.
+export const TRAFICS_HORS_PUBLIC = Object.freeze(["robot", "emulation", "equipe"]);
+export function filtrePublic() {
+  // ⚠️ `coalesce` partout : un `platform` NULL rendrait la négation NULL, et la
+  // ligne disparaîtrait du compte sans être un robot (logique à trois valeurs).
+  return `coalesce(meta->>'trafic', '') not in (${TRAFICS_HORS_PUBLIC.map((t) => `'${t}'`).join(", ")}) and not (coalesce(platform, '') = 'ios' and coalesce(connection, '') <> '')`;
+}
+
 export const SQL = {
   // ⚠️ ON COMPTE LE POIDS, PAS LES LIGNES — sinon ce signal MESURE
   // L'ÉCHANTILLONNAGE au lieu de l'usage. Depuis le 2026-09-19, `telemetry.js`
@@ -524,7 +541,7 @@ export const SQL = {
     from telemetry_events where env = 'production' and type = 'api' and received_at > now() - interval '1 hour'`,
   tailleBase: `select pg_database_size(current_database())::bigint as octets`,
   purgePlanifiee: `select exists(select 1 from cron.job where jobname like 'purge_telemetry%' and active) as purge`,
-  usage7j: `select count(distinct device_id)::int as "appareils7j" from telemetry_events where ${filtreHumain()} and received_at > now() - interval '7 days'`,
+  usage7j: `select count(distinct device_id)::int as "appareils7j" from telemetry_events where ${filtreHumain()} and ${filtrePublic()} and received_at > now() - interval '7 days'`,
   erreurs24h: `select (select count(*) from telemetry_events where env = 'production' and type = 'error' and (meta->>'synthetic') is null and received_at > now() - interval '24 hours')::int
       + (select count(*) from client_errors where created_at > now() - interval '24 hours')::int as "erreurs24h"`,
 };
