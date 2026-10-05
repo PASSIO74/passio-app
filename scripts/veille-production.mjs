@@ -56,7 +56,8 @@ export const DEPLOIEMENT_RETARD_MIN = 90;
 export const SEUILS_CRONS = {
   "sentinelle-autonome": { warn: 8, alert: 24 },
   "sentinelle-distante": { warn: 12, alert: 36 },
-  "disponibilite": { warn: 6, alert: 24 },
+  // Mesuré le 2026-10-05 : cron « */10 » servi avec des trous jusqu'à 6,4 h.
+  "disponibilite": { warn: 9, alert: 24 },
   "sauvegarde": { warn: 30, alert: 54 },
   "moderation-alerte": { warn: 30, alert: 54 },
 };
@@ -566,15 +567,29 @@ export async function mesurerErreurs(env) {
 }
 export async function mesurerApi(env) { return (await lireSql(env, SQL.api))[0]; }
 
+/**
+ * Le run le plus récent d'une liste, selon SA date — jamais selon l'ordre servi.
+ * Mesuré le 2026-10-05 : `status=completed&per_page=1&exclude_pull_requests=true`
+ * a rendu pour sentinelle-distante un run vieux de 58,8 h alors que le dernier
+ * datait de 2 h (réponse filtrée servie par une réplique en retard) — alerte
+ * « crons » à tort. On demande plusieurs runs et on trie nous-mêmes. PUR.
+ * @param {Array<{created_at?:string,run_started_at?:string,updated_at?:string,status?:string}>} runs
+ * @param {(r:object)=>boolean} [garde]
+ */
+export function runPlusRecent(runs, garde = () => true) {
+  const date = (r) => Date.parse(r.run_started_at || r.created_at || r.updated_at) || 0;
+  return (Array.isArray(runs) ? runs : []).filter(garde).reduce((m, r) => (!m || date(r) > date(m) ? r : m), null);
+}
+
 export async function mesurerDeploiement(env) {
   const repo = env.GITHUB_REPOSITORY;
   const prod = (env.PASSIO_PROD_URL || "https://passio-app.netlify.app").replace(/\/+$/, "");
   const release = await lireJson(`${prod}/release.json?veille=${Date.now()}`, { headers: { "Cache-Control": "no-cache" } }, "release.json");
   const main = await lireGitHub(env, `repos/${repo}/commits/main`);
-  const runs = await lireGitHub(env, `repos/${repo}/actions/workflows/deploy.yml/runs?branch=main&event=push&per_page=5`);
-  const liste = (runs && runs.workflow_runs) || [];
+  const runs = await lireGitHub(env, `repos/${repo}/actions/workflows/deploy.yml/runs?event=push&per_page=20`);
+  const liste = ((runs && runs.workflow_runs) || []).filter((r) => !r.head_branch || r.head_branch === "main");
   const enCours = liste.some((r) => r.status !== "completed");
-  const dernier = liste.find((r) => r.status === "completed") || null;
+  const dernier = runPlusRecent(liste, (r) => r.status === "completed");
   return {
     commitServi: release && release.commit ? String(release.commit) : null,
     mainHead: main && main.sha ? String(main.sha) : null,
@@ -590,8 +605,8 @@ export async function mesurerCrons(env) {
   for (const nom of Object.keys(SEUILS_CRONS)) {
     try {
       const wf = await lireGitHub(env, `repos/${repo}/actions/workflows/${nom}.yml`);
-      const runs = await lireGitHub(env, `repos/${repo}/actions/workflows/${nom}.yml/runs?status=completed&per_page=1&exclude_pull_requests=true`);
-      const r = runs && runs.workflow_runs && runs.workflow_runs[0];
+      const runs = await lireGitHub(env, `repos/${repo}/actions/workflows/${nom}.yml/runs?per_page=10`);
+      const r = runPlusRecent(runs && runs.workflow_runs, (x) => x.status === "completed");
       out[nom] = { state: wf && wf.state, dernierRunFin: r ? r.updated_at : null };
     } catch (e) { out[nom] = enErreur(e); }
   }

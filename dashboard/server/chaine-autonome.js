@@ -33,7 +33,7 @@ const H = 3_600_000;
 export const CRONS = {
   "sentinelle-autonome.yml": { label: "Sentinelle autonome (enquêtes)", retardH: 8, morteH: 24, coeur: true },
   "sentinelle-distante.yml": { label: "Sentinelle distante (santé staging)", retardH: 12, morteH: 36 },
-  "disponibilite.yml": { label: "Disponibilité du site", retardH: 6, morteH: 24 },
+  "disponibilite.yml": { label: "Disponibilité du site", retardH: 9, morteH: 24 },
   "sauvegarde.yml": { label: "Sauvegarde quotidienne", retardH: 30, morteH: 54 },
   "moderation-alerte.yml": { label: "Alerte modération", retardH: 30, morteH: 54 },
   // Mesuré le 2026-10-02 sur les 8 derniers runs : cron « */30 » servi toutes

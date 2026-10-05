@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import {
   verdictVeille, signalFlux, signalInscriptions, signalErreurs, signalApi, signalDeploiement,
   signalCrons, signalBase, signalJetons, heureParis, mediane, estSelectSeul, tousInconnus, SQL,
-  SILENCE_WARN_H, SILENCE_WARN_WEEKEND_H, SILENCE_ALERT_H, SEUILS_CRONS,
+  SILENCE_WARN_H, SILENCE_WARN_WEEKEND_H, SILENCE_ALERT_H, SEUILS_CRONS, runPlusRecent,
 } from "../../scripts/veille-production.mjs";
 
 const H = 3600_000;
@@ -391,4 +391,20 @@ test("estSelectSeul : SELECT et WITH … SELECT passent ; DML, DDL, enchaînemen
   assert.doesNotMatch(SQL.fluxHeures, /count\(\*\)/, "fluxHeures ne doit plus compter des LIGNES");
   assert.match(SQL.fluxHeures, /least\(/, "le poids venu du client doit être borné");
   assert.match(SQL.fluxHeures, /else 1 end/, "une valeur absurde retombe à 1");
+});
+
+// 2026-10-05 : la veille a vu sentinelle-distante « sans run depuis 58,8 h »
+// alors que le dernier datait de 2 h — `per_page=1` filtré renvoyait un vieux
+// run. Mutation éprouvée : runPlusRecent → `runs[0]` rougit ce test.
+test("runPlusRecent : le plus récent selon sa date, quel que soit l'ordre servi, et la garde filtre", () => {
+  const runs = [
+    { id: "vieux", created_at: "2026-10-02T20:50:00Z", status: "completed" },
+    { id: "encours", created_at: "2026-10-05T07:30:00Z", status: "in_progress" },
+    { id: "recent", created_at: "2026-10-05T05:40:54Z", status: "completed" },
+    { id: "milieu", created_at: "2026-10-04T23:10:37Z", status: "completed" },
+  ];
+  assert.equal(runPlusRecent(runs, (r) => r.status === "completed").id, "recent");
+  assert.equal(runPlusRecent(runs).id, "encours");
+  assert.equal(runPlusRecent([]), null);
+  assert.equal(runPlusRecent(undefined), null);
 });
