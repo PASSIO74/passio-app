@@ -3582,13 +3582,16 @@ function openNotifSettings() {
     <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">Messages</span><input type="checkbox" id="notifMessages" ' + (notifs.messages ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
     <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">Likes & commentaires</span><input type="checkbox" id="notifLikes" ' + (notifs.likes ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
     <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">Événements IRL</span><input type="checkbox" id="notifEvents" ' + (notifs.events ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
-    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;"><span style="font-size:13px;">Système</span><input type="checkbox" id="notifSystem" ' + (notifs.system ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
+    <label style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><span style="font-size:13px;">Système</span><input type="checkbox" id="notifSystem" ' + (notifs.system ? 'checked' : '') + ' style="width:20px;height:20px;accent-color:var(--accent);"></label>\
+    <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;"><span style="font-size:13px;">Récap de la semaine<br><span style="font-size:11.5px;color:var(--muted);">Une carte en tête du fil, une fois par semaine, dans l\'app seulement.</span></span><input type="checkbox" id="notifRecap" ' + (notifs.recap !== false ? 'checked' : '') + ' style="width:20px;height:20px;flex:0 0 auto;accent-color:var(--accent);"></label>\
     <button class="btn primary block" onclick="saveNotifSettings()" style="margin-top:14px;">Sauvegarder</button>\
   ');
 }
 function saveNotifSettings() {
   var cfg = getCurrentConfig();
-  cfg.notifs = { posts: document.getElementById("notifPosts").checked, messages: document.getElementById("notifMessages").checked, likes: document.getElementById("notifLikes").checked, events: document.getElementById("notifEvents").checked, system: document.getElementById("notifSystem").checked };
+  // `recap` (2026-10-06) : le récap de la semaine, js/recap-semaine.js — absent = oui.
+  var recap = document.getElementById("notifRecap");
+  cfg.notifs = { posts: document.getElementById("notifPosts").checked, messages: document.getElementById("notifMessages").checked, likes: document.getElementById("notifLikes").checked, events: document.getElementById("notifEvents").checked, system: document.getElementById("notifSystem").checked, recap: recap ? recap.checked : true };
   saveConfig(cfg); closeModal(); toast("Notifications mises à jour");
 }
 
@@ -4234,6 +4237,9 @@ var ACCOUNT_SCOPED_KEYS = [
   // la première ceinture, le filtre au rejeu la seconde.
   "passio_outbox_v1",        // file des messages en attente d'envoi
   "passio_cmt_outbox_v1",    // file des commentaires en attente d'envoi
+  // Ajoutée le 2026-10-06 : la semaine où le récap a été traité POUR CE COMPTE
+  // (js/recap-semaine.js). Un autre compte sur l'appareil a droit à son récap.
+  "passio_recap_semaine_v1",
   //   passio_post_delete_outbox_v1 — PAS ici, délibérément : elle ne porte que
   //     des identifiants (aucun texte), porte déjà le compte (`uid`, filtré au
   //     rejeu), et son rôle est de finir une suppression pour les AUTRES comptes
