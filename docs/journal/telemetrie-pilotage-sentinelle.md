@@ -18,6 +18,7 @@
 - 📊 ANALYTICS `analytics_events` — 271 refus **401** en production (2026-09-09)
 - 🛰️ LA TÉLÉMÉTRIE SORT DU TEMPS RÉEL — 91 % DE CE QUE LA BASE ÉMET, POUR UN SEUL ABONNÉ (2026-09-20)
 - 🕵️ TRAFIC HORS PUBLIC — 15 « VISITEURS » SUR 19 ÉTAIENT NOS PROPRES CONTRÔLES (2026-10-05)
+- 🌱 ACTIVATION DES NOUVEAUX COMPTES — UN COMPTE SUR TROIS FAIT UN GESTE DANS SA PREMIÈRE SEMAINE (2026-10-06)
 
 ---
 
@@ -259,3 +260,24 @@ Mesuré en production (canal ① d'ADR-012, `telemetry_events`, 28/09 → 04/10)
 ⚠️ **LIMITES DITES** : un navigateur iOS à moteur Blink (Union européenne) serait classé `emulation` — aucun n'existait au 05/10/2026. Et une vérification dans un navigateur de bureau SANS automation (pas de `webdriver`) n'est reconnue que par `?equipe=1` : d'où la règle de `CLAUDE.md` — **regarder la production avec `https://passio-app.netlify.app/?equipe=1`**.
 
 Mesuré sur la base le jour même : « appareils actifs 7 j » passe de 23 à 13 par le seul rattrapage iOS. Verrous, chacun mutation-testé (chaque mutation rougit exactement ses cas) : `tests/e2e/telemetrie-trafic.spec.js` (7), `dashboard/test/trafic.test.js` (7), `tests/unit/trafic-hors-public.test.mjs` (4), `tests/unit/pilotage.test.mjs` ⑯ ⑰. Registre : `.passio/METRICS_REGISTRY.md` § « Trafic hors public ».
+
+---
+
+## 🌱 ACTIVATION DES NOUVEAUX COMPTES — UN COMPTE SUR TROIS FAIT UN GESTE DANS SA PREMIÈRE SEMAINE (2026-10-06)
+
+Le pilotage comptait les inscriptions et les appareils, jamais ce que les nouveaux comptes FONT. Mesuré en base le 2026-10-06 (comptes confirmés, hors e2e et éditeur) : sur les 3 comptes créés entre 7 et 30 jours plus tôt, UN a fait un geste social dans sa première semaine — un message 28 min après l'inscription, puis une publication et une activité organisée ; les deux autres n'ont rien fait, jamais. Sur 60 jours : 3 sur 6. Une inscription sur deux s'arrête à l'inscription, et aucun écran ne le disait.
+
+**Définition** (`supabase/functions/_shared/pilotage.js`) : un compte est ACTIVÉ s'il fait, dans les 7 jours qui suivent sa création, au moins un geste de `GESTES_ACTIVATION` — publication, story, commentaire (publication ou activité), abonnement, participation à une activité, activité organisée, message. Ouvrir l'app ne compte pas : c'est la promesse du produit (« partage tes passions et rencontre les gens ») qu'on mesure, pas une visite.
+- **Cohorte** : comptes CONFIRMÉS des 30 derniers jours (`compteMesurable`) — ni supprimés, ni anonymes, ni e2e, ni l'éditeur (`COMPTE_PILOTE` + `PILOTAGE_EMAILS` côté fonction). Un compte non confirmé n'a jamais pu entrer : c'est l'entonnoir d'inscription (« non confirmés » de la veille), pas l'activation.
+- **Taux** : sur les comptes MÛRS seulement (7 jours entiers écoulés) ; les plus jeunes sont « en cours » — un compte de 2 jours sans geste n'est pas un échec. Sans compte mûr, pas de taux (`null`, « — »), jamais un faux 0 %.
+- **`premiers`** : le geste par lequel chaque compte activé a commencé — ce qui active, concrètement.
+
+⚠️ **LE LIKE N'EN EST PAS** : `post_likes` n'a pas d'horodatage, rien ne le date dans la fenêtre. Une colonne `created_at` le ferait entrer dans la liste.
+
+⚠️ **UNE DÉFINITION, DEUX LECTEURS** : la fonction `pilotage` (téléphone, onglet Utilisateurs) lit PostgREST — `listUsers` paginé, puis une requête par table de la liste ; le digest du matin lit `sqlActivation()` par l'API de gestion (il voit `auth.users`), requête GÉNÉRÉE depuis la MÊME liste et les MÊMES exclusions. La décision est la même fonction (`activation()`, que `activationDepuisLignes` alimente). Ajouter une table à `GESTES_ACTIVATION` la fait entrer dans les deux lecteurs et dans le manifeste des prérequis (`.passio/deploiement/prerequis-fonctions.json`, non bloquant — une table absente donne « non lu »).
+
+⚠️ **FUSEAUX** : `posts`, `stories`, `post_comments`, `events`, `conv_messages` sont en `timestamp` SANS fuseau (UTC) ; `follows`, `event_attendees`, `event_comments` en `timestamptz`. `dateUtc` lit une date sans désignateur en UTC — jamais en heure locale —, et le SQL convertit les `timestamptz` (`at time zone 'UTC'`) avant de tout rendre en ISO `Z`. Le banc se place délibérément à New York : à l'heure UTC, une machine ne verrait jamais l'erreur.
+
+⚠️ **La requête doit passer `estSelectSeul`** — la veille vérifie TOUT son catalogue SQL à l'import et PLANTE sinon (pas de `;`, pas de `--`, aucun mot comme `set`, `do`, `call`…). Les libellés n'y entrent pas (une apostrophe casserait la chaîne) : le SQL rend le NOM DE TABLE, le libellé est posé en JS.
+
+Verrous : `tests/unit/activation.test.mjs` (10, dont l'accord des deux lecteurs sur un même jeu de données ; mutations éprouvées : borne `<=`→`<`, jeunes comptés au taux, heure locale, e2e non exclus, fuseau SQL retiré — chacune rougit), `tests/e2e/pilotage-nuage.spec.js` ② et ③ bis (rendu, « Non lu »). Registre : `.passio/METRICS_REGISTRY.md` § « Activation ».

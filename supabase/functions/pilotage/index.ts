@@ -28,6 +28,7 @@ import {
   autorise, RELANCES, LABELS_SUIVIS, TITRE_PAUSE, STATUTS_SIGNALEMENT, estPause,
   erreursFrequentes, detailsErreurs, serieJours, jauges, resumerIssue, resumerRun, verdict, decideAlerte,
   aReparer, titreReparation, corpsReparation, estReparation, REPARATIONS_MAX, compterAudience,
+  activation, compteMesurable, dateUtc, GESTES_ACTIVATION, COHORTE_ACTIVATION_JOURS,
 } from "../_shared/pilotage.js";
 
 const corsHeaders = {
@@ -145,7 +146,7 @@ async function sonnerPilote(admin: Admin, titre: string, texte: string): Promise
 // ─── ② État complet pour le téléphone ───────────────────────────────────────
 async function etat(admin: Admin) {
   const parts = {
-    sante: lireSante(admin), utilisateurs: lireUtilisateurs(admin), signalements: lireSignalements(admin),
+    sante: lireSante(admin), utilisateurs: lireUtilisateurs(admin), activation: lireActivation(admin), signalements: lireSignalements(admin),
     github: lireGithub(), erreurs: lireErreurs7j(admin), capacite: lireCapacite(admin),
     disponibilite: lireDisponibilite(admin), alertes: lireAlertes(admin),
   };
@@ -205,6 +206,33 @@ async function lireUtilisateurs(admin: Admin) {
   };
   const [maintenant, aujourdhui] = await Promise.all([actifs(5 * 60e3), actifs(864e5)]);
   return { total, inscritsJour: jour, inscritsSemaine: dates.length, serieInscriptions: serieJours(dates), maintenant, aujourdhui };
+}
+
+// Activation (2026-10-06) : un nouveau compte a-t-il fait un GESTE SOCIAL dans
+// ses 7 premiers jours ? Définition, exclusions et décision : `_shared/pilotage.js`
+// (GESTES_ACTIVATION, compteMesurable, activation) — les mêmes que le digest.
+async function lireActivation(admin: Admin) {
+  const maintenant = Date.now();
+  const depuis = maintenant - COHORTE_ACTIVATION_JOURS * 864e5;
+  const comptes: { id: string; cree: string }[] = [];
+  for (let page = 1; page <= 20; page++) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
+    if (error) throw error;
+    const lot = (data && data.users) || [];
+    for (const u of lot) if (compteMesurable(u, EXTRA) && dateUtc(u.created_at) >= depuis) comptes.push({ id: u.id, cree: u.created_at });
+    if (lot.length < 1000) break;
+  }
+  const ids = comptes.map((c) => c.id);
+  const gestes: { uid: string; le: string; geste: string }[] = [];
+  if (ids.length) {
+    const lots = await Promise.all(GESTES_ACTIVATION.map(async (g) => {
+      const { data, error } = await admin.from(g.table).select(`${g.uid},created_at`).in(g.uid, ids).order("created_at", { ascending: true }).limit(5000);
+      if (error) throw error;
+      return ((data || []) as Record<string, unknown>[]).map((r) => ({ uid: String(r[g.uid]), le: String(r.created_at), geste: g.table }));
+    }));
+    for (const l of lots) gestes.push(...l);
+  }
+  return activation(comptes, gestes, maintenant);
 }
 
 async function lireSignalements(admin: Admin) {

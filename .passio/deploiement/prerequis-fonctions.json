@@ -42,12 +42,28 @@
     },
     "pilotage": {
       "obligatoire": false,
-      "sans": "aucun prérequis SQL propre : lit des tables de base (télémétrie, erreurs client, profils, signalements) et plafonne par analytics_events",
+      "sans": "aucun prérequis SQL propre : lit des tables de base (télémétrie, erreurs client, profils, signalements, et depuis le 2026-10-06 les gestes de l'activation — GESTES_ACTIVATION de supabase/functions/_shared/pilotage.js) et plafonne par analytics_events",
       "objets": [
         "table:public.analytics_events",
         "table:public.telemetry_events",
         "table:public.client_errors",
-        "table:public.reports"
+        "table:public.reports",
+        "column:public.posts.author_id",
+        "column:public.posts.created_at",
+        "column:public.stories.author_id",
+        "column:public.stories.created_at",
+        "column:public.post_comments.author_id",
+        "column:public.post_comments.created_at",
+        "column:public.event_comments.author_id",
+        "column:public.event_comments.created_at",
+        "column:public.follows.follower_id",
+        "column:public.follows.created_at",
+        "column:public.event_attendees.user_id",
+        "column:public.event_attendees.created_at",
+        "column:public.events.author_id",
+        "column:public.events.created_at",
+        "column:public.conv_messages.from_id",
+        "column:public.conv_messages.created_at"
       ]
     }
   }
