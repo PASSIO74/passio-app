@@ -69,8 +69,16 @@ async function fauxClient(page, rep) {
 
 const lancer = (page) => page.evaluate(() => PassioRecapSemaine.tenter());
 
-/** Recharger comme `bootOnboarded` démarre : fil actif, puis la landing de secours retirée. */
+/**
+ * Recharger comme `bootOnboarded` démarre : fil actif, puis la landing de secours
+ * retirée. La session de banc part AVANT le rechargement : démarrer avec une
+ * session (fausse) ferait parler le SDK au serveur d'authentification — et, pour
+ * celle d'un autre compte, basculer l'app sur lui au beau milieu du cas.
+ */
 async function recharger(page) {
+  await page.evaluate(() => {
+    Object.keys(localStorage).filter((k) => /^sb-.*-auth-token/.test(k)).forEach((k) => localStorage.removeItem(k));
+  });
   await page.reload();
   await page.waitForFunction(() => window.PassioRecapSemaine && document.getElementById("screen-feed").classList.contains("active"), null, { timeout: 20000 });
   await page.waitForTimeout(2500);
