@@ -8,7 +8,7 @@ import fs from "node:fs";
 import vm from "node:vm";
 import {
   palierDu, rappelsDus, envoyerRappels, texteSur, jourRelatif, duree, dateUtc, cleRappel,
-  MARQUE_UID, MARQUE_EVENEMENT, MAX_PAR_TOUR,
+  MARQUE_EVENEMENT, MAX_PAR_TOUR, marqueUid,
 } from "../../supabase/functions/_shared/rappels.js";
 
 const H = 3600e3;
@@ -114,21 +114,41 @@ test("⑧ borne par tour : au plus MAX_PAR_TOUR rappels, le reste au tour suivan
   assert.equal(rappelsDus({ maintenant: T0, activites: [activite(T0 + H, { author_id: null })], participants: p, dejaEnvoyes: [] }).length, MAX_PAR_TOUR);
 });
 
-/** Faux client PostgREST : rend les lignes de chaque table, note chaque écriture dans l'ORDRE. */
+/**
+ * Faux client PostgREST : applique les filtres `in`/`eq` sur les colonnes que les
+ * lignes portent, pagine par `range`, note chaque écriture dans l'ORDRE et chaque
+ * tri demandé — et refuse un INSERT qui dépasserait `trg_rate_limit` (120 lignes
+ * par minute et par `user_id` sur analytics_events), comme la production.
+ */
 function fauxAdmin({ events = [], attendees = [], marques = [], subs = [], refuserMarque = false }) {
   const journal = [];
+  const lignes = { events, event_attendees: attendees, analytics_events: marques, push_subscriptions: subs };
   const table = (nom) => {
     const q = {
-      _op: "select",
+      _op: "select", _filtres: [], _range: null,
       select() { return q; }, gte() { return q; }, lte() { return q; }, neq() { return q; },
-      eq() { return q; }, in(col, vals) { q._in = vals; return q; }, limit() { return q; },
-      insert(rows) { journal.push({ op: "insert", nom, rows }); q._op = "insert"; return q; },
+      order(col) { journal.push({ op: "order", nom, col }); return q; },
+      eq(col, v) { q._filtres.push([col, [v]]); return q; },
+      in(col, vals) { q._filtres.push([col, vals]); q._in = vals; return q; },
+      range(a, b) { q._range = [a, b]; return q; },
+      limit() { return q; },
+      insert(rows) { journal.push({ op: "insert", nom, rows }); q._op = "insert"; q._rows = rows; return q; },
       delete() { q._op = "delete"; return q; },
       then(res, rej) {
         let out;
-        if (q._op === "insert") out = (nom === "analytics_events" && refuserMarque) ? { error: { message: "refusé" } } : { error: null };
-        else if (q._op === "delete") { journal.push({ op: "delete", nom, valeurs: q._in }); out = { error: null }; }
-        else out = { data: { events, event_attendees: attendees, analytics_events: marques, push_subscriptions: subs }[nom] || [], error: null };
+        if (q._op === "insert") {
+          const parUid = {};
+          for (const r of q._rows) parUid[r.user_id] = (parUid[r.user_id] || 0) + 1;
+          const limite = nom === "analytics_events" && Object.values(parUid).some((n) => n > 120);
+          out = (nom === "analytics_events" && refuserMarque) ? { error: { message: "refusé" } }
+            : limite ? { error: { message: "rate limit: max 120 insertions/minute sur analytics_events" } } : { error: null };
+        } else if (q._op === "delete") { journal.push({ op: "delete", nom, valeurs: q._in }); out = { error: null }; }
+        else {
+          let l = (lignes[nom] || []).filter((r) => q._filtres.every(([c, vals]) => !(c in r) || vals.includes(r[c])));
+          if (q._range) l = l.slice(q._range[0], q._range[1] + 1);
+          journal.push({ op: "select", nom });
+          out = { data: l, error: null };
+        }
         return Promise.resolve(out).then(res, rej);
       },
     };
@@ -155,12 +175,12 @@ test("⑨ enveloppe : la marque est écrite AVANT l'envoi ; charge « rappel » 
   assert.deepEqual(envois[0].opts, { TTL: 3600, urgency: "high" });
   const marque = admin.journal.find((j) => j.op === "insert");
   assert.deepEqual(marque.rows.map((x) => [x.user_id, x.event, x.properties.cle]).sort(),
-    [[MARQUE_UID, MARQUE_EVENEMENT, cleRappel("ev_1", "h2", A)], [MARQUE_UID, MARQUE_EVENEMENT, cleRappel("ev_1", "h2", B)]].sort());
+    [[marqueUid(A), MARQUE_EVENEMENT, cleRappel("ev_1", "h2", A)], [marqueUid(B), MARQUE_EVENEMENT, cleRappel("ev_1", "h2", B)]].sort());
   assert.deepEqual(admin.journal.find((j) => j.op === "delete"), { op: "delete", nom: "push_subscriptions", valeurs: ["https://push/a2"] });
 
   // Tour suivant : les marques existent → rien ne repart.
   const admin2 = fauxAdmin({ events: [activite(T0 + H, { author_id: null })], attendees: [inscrit(A), inscrit(B)], subs,
-    marques: marque.rows.map((x) => ({ properties: x.properties })) });
+    marques: marque.rows.map((x) => ({ user_id: x.user_id, event: x.event, properties: x.properties })) });
   const envois2 = [];
   assert.deepEqual(await envoyerRappels(admin2, async (s) => { envois2.push(s); }, T0 + 5 * 60e3), { activites: 1, dus: 0, envoyes: 0 });
   assert.equal(envois2.length, 0);
@@ -173,6 +193,28 @@ test("⑩ enveloppe : marque refusée → on LÈVE et RIEN ne part ; aucune acti
   assert.equal(envoye, 0);
   const vide = fauxAdmin({});
   assert.deepEqual(await envoyerRappels(vide, async () => { throw new Error("jamais"); }, T0), { activites: 0, dus: 0, envoyes: 0 });
+});
+
+test("⑩ bis une activité de 150 inscrits : le lot de marques passe la limite de 120/min par user_id, et tous sont rappelés", async () => {
+  const p = [];
+  for (let i = 0; i < 150; i++) p.push(inscrit(`66666666-6666-4666-8666-${String(i).padStart(12, "0")}`));
+  const admin = fauxAdmin({ events: [activite(T0 + H, { author_id: null })], attendees: p });
+  const r = await envoyerRappels(admin, async () => {}, T0);
+  assert.equal(r.dus, 150, "une seule clé système aurait fait échouer les 150 marques — donc tous les rappels");
+  const uids = new Set(admin.journal.find((j) => j.op === "insert").rows.map((x) => x.user_id));
+  assert.equal(uids.size, 150, "une marque par destinataire, sous son propre identifiant système");
+  for (const u of uids) assert.match(u, /^systeme:rappels:[0-9a-f-]{36}$/, "jamais un uuid nu : un client pourrait l'écrire");
+});
+
+test("⑩ ter lectures TRIÉES et PAGINÉES : 1 200 activités sont toutes lues, la plus proche d'abord", async () => {
+  const evs = [];
+  for (let i = 0; i < 1200; i++) evs.push(activite(T0 + H + i * 60e3, { id: "ev_" + String(i).padStart(4, "0"), author_id: null }));
+  const p = [inscrit(A, "going", T0 - 864e5, "ev_1199")];
+  const admin = fauxAdmin({ events: evs, attendees: p });
+  const r = await envoyerRappels(admin, async () => {}, T0);
+  assert.equal(r.activites, 1200, "une limite plate en aurait laissé hors du tour");
+  assert.equal(r.dus, 1, "l'inscrit de la 1 200ᵉ activité est rappelé");
+  assert.ok(admin.journal.some((j) => j.op === "order" && j.nom === "events" && j.col === "date_at"), "le plus proche d'abord");
 });
 
 test("⑪ dateUtc lit la base comme supaTs : sans fuseau = UTC", () => {
@@ -247,6 +289,9 @@ test("⑬ câblage : la veille lance les rappels sans pouvoir tomber avec eux ; 
   const veille = idx.slice(idx.indexOf("async function veille("), idx.indexOf("async function lireEtatMemorise("));
   assert.match(veille, /Promise\.allSettled\(\[[^\]]*rappels\(admin\)[^\]]*\]\)/, "les rappels tournent DANS l'allSettled de la veille");
   assert.match(veille, /rappels_echec/, "un échec laisse une trace");
+  const debut = veille.lastIndexOf("return json(");
+  const reponse = veille.slice(debut, veille.indexOf("\n", debut));
+  assert.doesNotMatch(reponse, /rap\b|rappels/, "la réponse SANS compte ne livre aucun compteur de rappels");
   assert.match(idx, /envoyerRappels\(admin,/);
   const app07 = fs.readFileSync("js/app-07-ia-explore-irl.js", "utf8");
   assert.match(app07, /d\.type === "OUVRIR_ACTIVITE"\) _ouvrirActiviteDepuisNotification\(d\.id\)/);

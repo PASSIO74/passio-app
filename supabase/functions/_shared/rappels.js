@@ -23,11 +23,16 @@
 //      APRÈS l'ouverture du palier ne reçoit pas ce palier (s'inscrire à H-20
 //      ne doit pas faire sonner le téléphone dans la seconde) ;
 //   ③ une fois, pas plus : la marque `<activité>:<palier>:<compte>` est écrite
-//      dans `analytics_events` sous un `user_id` système AVANT l'envoi — aucun
-//      client ne peut l'écrire ni l'effacer (policy `analytics_insert_own`),
+//      dans `analytics_events` AVANT l'envoi, sous `systeme:rappels:<compte>` —
+//      aucun client ne peut l'écrire ni l'effacer (policy `analytics_insert_own` :
+//      `user_id = auth.uid()`, et aucune policy de lecture ni de suppression),
 //      donc ni la forger pour taire le rappel d'un autre, ni la supprimer pour
-//      se le faire renvoyer. Au plus une fois : une push perdue n'est pas
-//      rejouée, un doublon est pire qu'un oubli ;
+//      se le faire renvoyer. UN identifiant système PAR DESTINATAIRE, jamais un
+//      seul pour tous : `trg_rate_limit` borne la table à 120 lignes par minute
+//      ET PAR `user_id` — une seule clé aurait fait échouer le lot entier dès
+//      121 rappels dus (une activité de 150 inscrits), donc plus aucun rappel,
+//      jamais. Au plus une fois : une push perdue n'est pas rejouée, un doublon
+//      est pire qu'un oubli ;
 //   ④ seuls les participants qui VIENNENT (`going`, `maybe` — la même liste que
 //      `joinedEvents` côté client), plus l'organisateur ; jamais la liste
 //      d'attente ni un refus ; jamais une activité annulée ;
@@ -42,7 +47,10 @@
 
 export const FUSEAU = "Europe/Paris";
 export const MARQUE_EVENEMENT = "rappel_activite";
+/** Les échecs de la veille (`rappels_echec`) : une ligne par tour au plus. */
 export const MARQUE_UID = "systeme:rappels";
+/** L'identifiant système de la marque d'UN destinataire (voir ③). */
+export const marqueUid = (uid) => MARQUE_UID + ":" + uid;
 export const RSVP_RAPPELES = ["going", "maybe"];
 /** Au plus tant de rappels par tour de veille : le reste part au tour suivant (5 min). */
 export const MAX_PAR_TOUR = 300;
@@ -128,7 +136,7 @@ export function textesRappel(activite, debut, maintenant, palier) {
  *           participants: Array<{event_id, user_id, rsvp, created_at}>,
  *           dejaEnvoyes: Set<string> | string[] }} e
  */
-export function rappelsDus({ maintenant, activites, participants, dejaEnvoyes }) {
+export function rappelsDus({ maintenant, activites, participants, dejaEnvoyes, max = MAX_PAR_TOUR }) {
   const deja = dejaEnvoyes instanceof Set ? dejaEnvoyes : new Set(dejaEnvoyes || []);
   const parActivite = new Map();
   for (const p of participants || []) {
@@ -164,7 +172,7 @@ export function rappelsDus({ maintenant, activites, participants, dejaEnvoyes })
         ttl: Math.max(60, Math.floor((palier.cle === "h2" ? reste : Math.min(reste - 2 * HEURE, 6 * HEURE)) / 1000)),
         urgence: palier.cle === "h2" ? "high" : "normal",
       });
-      if (dus.length >= MAX_PAR_TOUR) return dus;
+      if (dus.length >= max) return dus;
     }
   }
   return dus;
@@ -173,53 +181,81 @@ export function rappelsDus({ maintenant, activites, participants, dejaEnvoyes })
 /** `date_at` est un `timestamp` SANS fuseau, stocké en UTC : on compare sans le « Z ». */
 function isoNaif(ms) { return new Date(ms).toISOString().slice(0, 23); }
 
+const PAGE = 500;
+const PAGES_MAX = 20;
+const PAQUET = 100;
+
+/** Toutes les lignes d'une requête, page par page (PostgREST plafonne une réponse). */
+async function toutesLesPages(construire) {
+  const out = [];
+  for (let p = 0; p < PAGES_MAX; p++) {
+    const { data, error } = await construire().range(p * PAGE, (p + 1) * PAGE - 1);
+    if (error) throw error;
+    const l = data || [];
+    out.push(...l);
+    if (l.length < PAGE) return out;
+  }
+  return out;
+}
+
+const paquets = (l, n) => { const r = []; for (let i = 0; i < l.length; i += n) r.push(l.slice(i, i + n)); return r; };
+
 /**
  * L'enveloppe : lit, décide (rappelsDus), MARQUE puis envoie. Les dépendances
  * sont injectées (`admin` = client service_role, `envoyer` = web-push) pour
  * qu'un banc Node l'exerce avec un faux PostgREST.
  * Lève sur une lecture ou une marque refusée : rien n'est envoyé sans marque.
+ * Les lectures sont TRIÉES (le plus proche d'abord) et PAGINÉES : une limite
+ * plate laissait des activités au hasard hors du tour, indéfiniment.
  */
 export async function envoyerRappels(admin, envoyer, maintenant = Date.now()) {
-  const { data: activites, error: e1 } = await admin.from("events")
+  const activites = await toutesLesPages(() => admin.from("events")
     .select("id,title,city,date_at,status,author_id,created_at")
     .gte("date_at", isoNaif(maintenant)).lte("date_at", isoNaif(maintenant + 24 * HEURE + 60e3))
-    .neq("status", "cancelled").limit(500);
-  if (e1) throw e1;
-  if (!activites || !activites.length) return { activites: 0, dus: 0, envoyes: 0 };
+    .neq("status", "cancelled").order("date_at", { ascending: true }).order("id", { ascending: true }));
+  if (!activites.length) return { activites: 0, dus: 0, envoyes: 0 };
 
-  const ids = activites.map((a) => a.id);
-  const { data: participants, error: e2 } = await admin.from("event_attendees")
-    .select("event_id,user_id,rsvp,created_at").in("event_id", ids).in("rsvp", RSVP_RAPPELES).limit(5000);
-  if (e2) throw e2;
+  const participants = [];
+  for (const ids of paquets(activites.map((a) => a.id), PAQUET)) {
+    participants.push(...await toutesLesPages(() => admin.from("event_attendees")
+      .select("event_id,user_id,rsvp,created_at").in("event_id", ids).in("rsvp", RSVP_RAPPELES)
+      .order("event_id", { ascending: true }).order("user_id", { ascending: true })));
+  }
 
-  const { data: marques, error: e3 } = await admin.from("analytics_events")
-    .select("properties").eq("event", MARQUE_EVENEMENT).eq("user_id", MARQUE_UID)
-    .gte("created_at", new Date(maintenant - 3 * 864e5).toISOString()).limit(20000);
-  if (e3) throw e3;
-  const dejaEnvoyes = new Set((marques || []).map((m) => m && m.properties && m.properties.cle).filter(Boolean));
+  // Les marques ne sont lues QUE pour les destinataires possibles de ce tour :
+  // le volume suit les inscrits des prochaines 24 h, jamais l'historique.
+  const candidats = rappelsDus({ maintenant, activites, participants, dejaEnvoyes: [], max: Infinity });
+  if (!candidats.length) return { activites: activites.length, dus: 0, envoyes: 0 };
+  const dejaEnvoyes = new Set();
+  for (const uids of paquets([...new Set(candidats.map((r) => marqueUid(r.uid)))], PAQUET)) {
+    const marques = await toutesLesPages(() => admin.from("analytics_events")
+      .select("properties").eq("event", MARQUE_EVENEMENT).in("user_id", uids)
+      .gte("created_at", new Date(maintenant - 3 * 864e5).toISOString()).order("id", { ascending: true }));
+    for (const m of marques) if (m && m.properties && m.properties.cle) dejaEnvoyes.add(m.properties.cle);
+  }
 
-  const dus = rappelsDus({ maintenant, activites, participants: participants || [], dejaEnvoyes });
+  const dus = rappelsDus({ maintenant, activites, participants, dejaEnvoyes });
   if (!dus.length) return { activites: activites.length, dus: 0, envoyes: 0 };
 
   // ③ La marque AVANT l'envoi : refusée → on lève et RIEN ne part.
   const { error: e4 } = await admin.from("analytics_events").insert(dus.map((r) => ({
-    user_id: MARQUE_UID, event: MARQUE_EVENEMENT, properties: { cle: r.cle, palier: r.palier },
+    user_id: marqueUid(r.uid), event: MARQUE_EVENEMENT, properties: { cle: r.cle, palier: r.palier },
   })));
   if (e4) throw e4;
 
-  const uids = [...new Set(dus.map((r) => r.uid))];
-  const { data: abonnements, error: e5 } = await admin.from("push_subscriptions")
-    .select("endpoint,user_id,subscription").in("user_id", uids);
-  if (e5) throw e5;
-  const parCompte = new Map();
-  for (const s of abonnements || []) {
-    const l = parCompte.get(s.user_id) || [];
-    l.push(s);
-    parCompte.set(s.user_id, l);
-  }
-
   let envoyes = 0, sansAppareil = 0;
   const morts = [];
+  const parCompte = new Map();
+  for (const uids of paquets([...new Set(dus.map((r) => r.uid))], PAQUET)) {
+    const { data: abonnements, error: e5 } = await admin.from("push_subscriptions")
+      .select("endpoint,user_id,subscription").in("user_id", uids);
+    if (e5) throw e5;
+    for (const s of abonnements || []) {
+      const l = parCompte.get(s.user_id) || [];
+      l.push(s);
+      parCompte.set(s.user_id, l);
+    }
+  }
   await Promise.all(dus.map(async (r) => {
     const subs = parCompte.get(r.uid) || [];
     if (!subs.length) { sansAppareil++; return; }

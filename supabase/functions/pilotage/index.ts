@@ -108,7 +108,11 @@ async function veille(admin: Admin) {
       dispoDepuis: !prec || prec.dispo !== actuel.dispo ? new Date().toISOString() : prec.dispoDepuis || null,
     } });
   }
-  return json({ ok: true, couleur: actuel.couleur, dispo: actuel.dispo, sonne: d.sonner, envoyes, rappels: rap.status === "fulfilled" ? rap.value : { erreur: true } });
+  // Les compteurs des rappels ne sortent PAS dans cette réponse : la veille est
+  // appelable avec la seule clé anon (publique), et combien d'activités ont lieu
+  // dans les 24 h ou combien de comptes sont abonnés ne regardent personne. Ils
+  // se lisent dans `analytics_events` (marques `rappel_activite`, `rappels_echec`).
+  return json({ ok: true, couleur: actuel.couleur, dispo: actuel.dispo, sonne: d.sonner, envoyes });
 }
 
 /** Rappels d'activité (J-1, H-2) sur les appareils des participants, appli fermée comprise. */

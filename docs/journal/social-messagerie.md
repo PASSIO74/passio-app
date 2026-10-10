@@ -215,14 +215,37 @@ l'enveloppe contre un faux PostgREST ; la preuve en production est le run `edge-
 (fumée OPTIONS 200 / POST sans jeton 401 / révision servie), puis une marque `rappel_activite` dans
 `analytics_events` la veille d'une vraie activité.
 
-Verrous : `tests/unit/rappels.test.mjs` (13, dans `npm run verif`) et
-`tests/e2e/rappels-activite.spec.js` (8). **Éprouvés par RÉINJECTION de vingt et une mutations**,
+Verrous : `tests/unit/rappels.test.mjs` (15, dans `npm run verif`) et
+`tests/e2e/rappels-activite.spec.js` (8). **Éprouvés par RÉINJECTION de vingt-cinq mutations** (les
+quatre dernières après la revue : une seule clé système, une seule page, marques non relues, réponse
+qui livre les compteurs),
 chacune rouge : inscription récente rappelée, marque refusée mais envoi quand même, liste d'attente
 rappelée, marque ignorée, heure en UTC, bidi non purgé, activité annulée rappelée, service worker
 sans branche « rappel », clic sans branche « destination », identifiant non revérifié au service
 worker, veille sans rappels ; écouteur de page retiré, même hash non traité, identifiant non vérifié
 dans la page, rappel de cloche inerte ; proposition retirée, proposée avant le verdict serveur, garde
 « trop tard » retirée, repos de 14 jours retiré, fenêtre ouverte ignorée, visiteur admis.
+
+⚠️ **CE QUE LA REVUE DE SÉCURITÉ AUTOMATIQUE A RELEVÉ, ET CE QUI EN A ÉTÉ FAIT.** ① La réponse de
+la veille livrait les compteurs des rappels (activités dans les 24 h, envois, appareils) — or la
+veille s'appelle avec la seule clé anon : **retirés**, ils se lisent dans `analytics_events`, et le
+verrou ⑬ refuse leur retour. ② « Exiger un secret partagé pour la veille » : **non retenu** —
+appeler la veille ne fait rien qu'elle ne ferait d'elle-même dans les 5 minutes (les rappels sont
+calculés sur l'heure du serveur et marqués), elle est plafonnée à 1/min, et le secret imposerait de
+réécrire le cron (migration). ③ « Index unique sur la marque + ON CONFLICT » : **résidu nommé** —
+la marque est lue puis écrite, donc deux veilles lancées à la même milliseconde (le plafond 1/min
+est lui-même un compte puis une écriture) enverraient le rappel deux fois ; au pire une notification
+re-sonne sous le MÊME tag. Le fermer demande un index, donc une migration contre-revue : à faire si
+un doublon est un jour observé, pas avant. ④ **Le défaut le plus grave était là, et c'est la revue
+qui l'a vu, pas les 21 mutations** : `analytics_events` porte `trg_rate_limit` à **120 lignes par
+minute ET PAR `user_id`** (lu en base), et toutes les marques partaient sous UN identifiant système —
+une activité de 150 inscrits faisait échouer le lot entier à chaque tour, donc **plus aucun rappel,
+pour personne, jamais**. Une marque porte désormais `systeme:rappels:<compte>` (`marqueUid`) : un
+compteur par destinataire, toujours infalsifiable (`analytics_insert_own` exige `user_id =
+auth.uid()`, un uuid nu). Le banc reproduit la limite de la production. ⑤ Les lectures étaient
+plafonnées (500 activités, 5 000 inscrits) SANS tri : au-delà, des activités sortaient du tour au
+hasard, indéfiniment. Elles sont triées (la plus proche d'abord), paginées, et les marques ne sont
+plus lues sur trois jours d'historique mais pour les seuls destinataires du tour.
 
 ⚠️ **RÉSIDUS NOMMÉS** : un iPhone ne reçoit de push que si PASSIO est installée sur l'écran
 d'accueil (iOS 16.4+) — `_rappelsVerdict` rend alors `non_supporte` et rien n'est proposé ; la
