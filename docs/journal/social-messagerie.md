@@ -14,6 +14,7 @@
 - 🔒 SUIVRE UN COMPTE PRIVÉ — « quand je clique dessus il ne se passe rien » (2026-09-22)
 - ✉️ NOTIFIER UN MESSAGE PRIVÉ (2026-09-09) — la cloche ne sonnait que si l'appli était OUVERTE
 - 🪦 SUPPRIMER UNE PUBLICATION — pierres tombales (2026-09-01)
+- ⏰ RAPPELS D'ACTIVITÉ PAR PUSH — le rappel ne sonnait que si l'appli était OUVERTE (2026-10-05)
 
 ---
 
@@ -149,3 +150,83 @@ Verrou : `tests/e2e/notification-message.spec.js` (12), dont ④ bis qui RÉINJE
 Toute suppression passe par `deletePost` (app-04) : `marquerPostSupprime(id)` pose d'ABORD la pierre tombale (`state.deletedPostIds`, persistée en `localStorage` ET synchronisée par le blob `user_state`, fusionnée en **UNION** jamais par remplacement), puis `purgerPostsSupprimes()` (app-02) — seul point qui connaît les **QUATRE** tableaux où vit un post (`userPosts`, `supabasePosts`, `seed.posts`, `window._feedExtraPosts`). Ne jamais refaire ce filtrage à la main.
 Un rechargement serveur s'écrit dans `supabasePosts`, **JAMAIS** dans `seed.posts`. La propriété d'un post se teste par `_estMonPost(p)` — l'AUTEUR, jamais `_source` — et se retrouve par `findPostAnywhere`.
 Verrou : `tests/e2e/suppression-durable.spec.js` (8 cas). Les quatre causes du défaut, la file de suppression serveur (`passio_post_delete_outbox_v1`, `_delObRun`) et le post-mortem : `docs/SUPPRESSION_DURABLE.md`.
+
+## ⏰ RAPPELS D'ACTIVITÉ PAR PUSH — le rappel ne sonnait que si l'appli était OUVERTE (2026-10-05)
+
+Question de Benjamin : « c'est quoi la suite ? ». Mesuré d'abord (canal ①) : **11 comptes, 1 créé
+en 7 jours, 59 sessions de production, 0 lien partagé, 0 publication en 7 jours, 6 activités en
+30 jours, 8 inscriptions en 30 jours, 10 abonnements push sur 6 comptes.** Le mur est la diffusion
+(la part de Benjamin : une ville, deux ou trois passions, de vraies activités partagées). Côté code,
+le défaut qui tuerait ce lancement : **une activité où la moitié des inscrits oublie de venir.**
+
+⚠️ **LE RAPPEL EXISTAIT, ET IL NE PARTAIT QUE SI L'APPLI ÉTAIT OUVERTE.** `_checkEventReminders`
+(app-07, J-7 / J-1 / H-2 depuis le 2026-07-21) tourne DANS LA PAGE et n'écrit que dans la cloche :
+appli fermée, rien. Le rappel de H-2, « celui qui fait effectivement VENIR », était le plus sûr de ne
+jamais partir. Même famille que la cloche des messages privés (2026-09-09).
+
+⚠️ **AUCUNE MIGRATION : LE MINUTEUR SERVEUR EXISTAIT.** La veille de pilotage (pg_cron toutes les
+5 min → fonction `pilotage`, `{ action: "veille" }`) appelle désormais `envoyerRappels`
+(`supabase/functions/_shared/rappels.js`, cœur PUR `rappelsDus`). Un cron GitHub (servi à 41 %, des
+trous de 4 à 5 h) était inutilisable pour un rappel à H-2. Les rappels tournent DANS l'`allSettled`
+de la veille : une panne ne la fait pas tomber, et laisse une trace (`analytics_events`,
+`event = rappels_echec`). Déployé par `edge-functions.yml` à la fusion.
+
+⚠️ **LES RÈGLES, TOUTES DANS `rappelsDus`** : deux paliers poussés (la veille entre H-24 et H-2,
+puis H-2) — J-7 reste dans la cloche, une push une semaine avant est du bruit ; **on ne rappelle
+jamais ce qu'on vient de faire** (inscription APRÈS l'ouverture du palier → silence) ; `going` et
+`maybe` (la liste de `joinedEvents`) plus l'organisateur, jamais la liste d'attente ni une activité
+annulée ; comptes réels (uuid) seulement ; texte de l'organisateur purgé (contrôle, bidi, sauts) et
+borné ; heure ABSOLUE en heure de Paris (une veille reprise en retard ne dit jamais « dans 2 h » à
+30 minutes du départ). Au plus `MAX_PAR_TOUR` (300) par tour, le reste au suivant.
+
+⚠️ **UNE FOIS, PAS PLUS — ET LA MARQUE N'EST PAS UNE NOTIFICATION.** La marque
+`<activité>:<palier>:<compte>` est écrite dans `analytics_events` sous `user_id = systeme:rappels`
+**AVANT** l'envoi (marque refusée → on lève, rien ne part). Pas dans `notifications` : un client y
+écrit (sauf `n_m_…`), donc pourrait forger la ligne pour TAIRE le rappel d'un autre, et il peut
+effacer les siennes, donc se faire renvoyer le rappel à chaque tour. Au plus une fois : une push
+perdue n'est pas rejouée, un doublon est pire qu'un oubli.
+
+⚠️ **ENVOYER NE SERVAIT À RIEN SANS ABONNÉS — ET PERSONNE NE L'ÉTAIT PAR CE CHEMIN.** La seule
+demande de permission partait à l'ouverture d'une conversation privée, avec un toast qui promettait
+« les appels » (coupés pendant le pilote). Quelqu'un qui rejoint une activité depuis un lien WhatsApp
+n'était jamais abonné. `proposerRappelsActivite(ev)` (app-07) propose « ⏰ Un rappel avant d'y
+aller ? » **juste après une inscription CONFIRMÉE par le serveur** (`rsvpOk === true`, jamais sur
+l'optimiste), et `_rappelsVerdict` se tait partout ailleurs : sans compte réel, navigateur qui ne
+pousse pas (Safari hors application installée), permission déjà tranchée (accordée → abonnement
+SILENCIEUX ; refusée → on n'insiste jamais), « Plus tard » il y a moins de 14 jours, activité dans
+moins de 2 h (aucun rappel ne partirait), fenêtre déjà ouverte (`openModal` n'empile pas). Le clic
+« Activer » EST le geste qu'exige `Notification.requestPermission`. Coupures :
+`localStorage.passio_rappels_push_v1="0"` ou `window.PASSIO_RAPPELS_PUSH=false`. Télémétrie
+`rappels_proposes` / `rappels_actives` (`verdict`) / `rappels_plus_tard`.
+
+⚠️ **LE TAP OUVRE L'ACTIVITÉ, ET LE DIGEST EN PROFITE.** `sw.js` affiche la push `type: "rappel"`
+(un tag par activité : H-2 remplace la veille) et, au tap, ouvre `./#irl-event-<id>` (appli fermée)
+ou confie l'identifiant à la page ouverte (`OUVRIR_ACTIVITE` → `_ouvrirActiviteDepuisNotification`,
+qui repasse par le routeur `#irl-event-`, jamais un second chemin). L'identifiant est revérifié au
+service worker ET dans la page ; seules deux URL sont ouvertes (l'accueil, une activité). **Survivant
+refermé au passage** : la notification du digest « ça se passe près de toi » (`tag: "irl-digest"`,
+`data.url`) tombait dans le traitement d'un APPEL et ouvrait l'accueil avec un `?call=` vide. Le
+rappel de la cloche (dans la page) porte `kind: "event_reminder"` + `refId` : le toucher ouvre
+l'activité au lieu d'une ligne inerte.
+
+⚠️ **CE QU'ON NE PEUT PAS PROUVER D'ICI** : la livraison réelle d'une push (Google/Apple) et
+l'exécution Deno. Le service worker est exécuté pour de vrai dans une machine virtuelle Node, et
+l'enveloppe contre un faux PostgREST ; la preuve en production est le run `edge-functions.yml` vert
+(fumée OPTIONS 200 / POST sans jeton 401 / révision servie), puis une marque `rappel_activite` dans
+`analytics_events` la veille d'une vraie activité.
+
+Verrous : `tests/unit/rappels.test.mjs` (13, dans `npm run verif`) et
+`tests/e2e/rappels-activite.spec.js` (8). **Éprouvés par RÉINJECTION de vingt et une mutations**,
+chacune rouge : inscription récente rappelée, marque refusée mais envoi quand même, liste d'attente
+rappelée, marque ignorée, heure en UTC, bidi non purgé, activité annulée rappelée, service worker
+sans branche « rappel », clic sans branche « destination », identifiant non revérifié au service
+worker, veille sans rappels ; écouteur de page retiré, même hash non traité, identifiant non vérifié
+dans la page, rappel de cloche inerte ; proposition retirée, proposée avant le verdict serveur, garde
+« trop tard » retirée, repos de 14 jours retiré, fenêtre ouverte ignorée, visiteur admis.
+
+⚠️ **RÉSIDUS NOMMÉS** : un iPhone ne reçoit de push que si PASSIO est installée sur l'écran
+d'accueil (iOS 16.4+) — `_rappelsVerdict` rend alors `non_supporte` et rien n'est proposé ; la
+cloche garde son propre rappel local (J-7, J-1, H-2), donc l'appli ouverte après une push montre
+aussi le rappel dans la cloche (une ligne, pas une seconde notification système) ; les heures sont
+dites en heure de Paris, quel que soit le fuseau de l'activité.
+

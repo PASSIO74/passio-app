@@ -8,6 +8,9 @@
 //    et n'ÉCRIT qu'une notification vers les appareils de l'éditeur, et
 //    seulement sur un CHANGEMENT (decideAlerte). Plafonnée à 1/min, 20/h :
 //    l'appeler en boucle ne fait rien de plus que la laisser tourner.
+//    Elle porte AUSSI les rappels d'activité par push (_shared/rappels.js,
+//    2026-10-05) : le minuteur serveur existait, aucune migration n'est
+//    nécessaire. Idempotents (une marque par rappel) : la rappeler ne renvoie rien.
 //
 // ② PILOTE — JWT de la personne, réservé au compte de l'éditeur (`autorise`,
 //    échec fermé : 401 sans session, 403 pour tout autre compte).
@@ -29,6 +32,7 @@ import {
   erreursFrequentes, detailsErreurs, serieJours, jauges, resumerIssue, resumerRun, verdict, decideAlerte,
   aReparer, titreReparation, corpsReparation, estReparation, REPARATIONS_MAX, compterAudience,
 } from "../_shared/pilotage.js";
+import { envoyerRappels, MARQUE_UID } from "../_shared/rappels.js";
 
 const corsHeaders = {
   "X-Passio-Revision": REVISION,
@@ -81,8 +85,14 @@ Deno.serve(async (req) => {
 async function veille(admin: Admin) {
   const plafond = await verifierPlafondEnBase(admin, "systeme:pilotage-veille", "pilotage-veille", { parMinute: 1, parHeure: 20 });
   if (!plafond.ok) return json({ ok: true, ignore: "trop tôt" });
-  const [sante, signalements, github, dispo] = await Promise.allSettled([lireSante(admin), lireSignalements(admin), lireGithub(), sonder()]);
+  const [sante, signalements, github, dispo, rap] = await Promise.allSettled([lireSante(admin), lireSignalements(admin), lireGithub(), sonder(), rappels(admin)]);
   const val = <T>(r: PromiseSettledResult<T>) => (r.status === "fulfilled" ? r.value : null);
+  // Un rappel en panne ne doit ni casser la veille ni passer inaperçu : il
+  // laisse une trace mesurable (analytics_events, user_id système).
+  if (rap.status === "rejected") {
+    const m = String((rap.reason && (rap.reason as { message?: string }).message) || rap.reason).slice(0, 200);
+    try { await admin.from("analytics_events").insert({ user_id: MARQUE_UID, event: "rappels_echec", properties: { message: m } }); } catch { /* */ }
+  }
   const e = { sante: val(sante), signalements: val(signalements), github: val(github) };
   const v = verdict(e);
   const actuel = { couleur: v.couleur, raisons: v.raisons, dispo: val(dispo) !== false };
@@ -98,7 +108,16 @@ async function veille(admin: Admin) {
       dispoDepuis: !prec || prec.dispo !== actuel.dispo ? new Date().toISOString() : prec.dispoDepuis || null,
     } });
   }
-  return json({ ok: true, couleur: actuel.couleur, dispo: actuel.dispo, sonne: d.sonner, envoyes });
+  return json({ ok: true, couleur: actuel.couleur, dispo: actuel.dispo, sonne: d.sonner, envoyes, rappels: rap.status === "fulfilled" ? rap.value : { erreur: true } });
+}
+
+/** Rappels d'activité (J-1, H-2) sur les appareils des participants, appli fermée comprise. */
+async function rappels(admin: Admin) {
+  const pub = Deno.env.get("VAPID_PUBLIC_KEY"), priv = Deno.env.get("VAPID_PRIVATE_KEY");
+  if (!pub || !priv) return { inactif: "VAPID absent" };
+  webpush.setVapidDetails(Deno.env.get("VAPID_SUBJECT") || "mailto:passioadmin@gmail.com", pub, priv);
+  // deno-lint-ignore no-explicit-any
+  return envoyerRappels(admin, (sub: any, charge: string, opts: any) => webpush.sendNotification(sub, charge, opts));
 }
 
 async function lireEtatMemorise(admin: Admin) {
