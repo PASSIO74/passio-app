@@ -135,8 +135,10 @@
   function ageCompte(uid) {
     try {
       if (typeof _sessionSdkPersistee !== "function") return null;
-      var s = _sessionSdkPersistee();
-      var u = s && s.user;
+      // ⚠️ Pas `s` : scripts/audit-supa-stub.js suit les alias de `window.supa`
+      // par leur NOM, et `s` en est un plus haut (`clientReel`).
+      var session = _sessionSdkPersistee();
+      var u = session && session.user;
       if (!u || u.id !== uid) return null;
       var t = Date.parse(u.created_at);
       return Number.isFinite(t) ? Date.now() - t : null;
