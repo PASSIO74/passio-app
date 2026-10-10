@@ -42,12 +42,15 @@
     },
     "pilotage": {
       "obligatoire": false,
-      "sans": "aucun prérequis SQL propre : lit des tables de base (télémétrie, erreurs client, profils, signalements) et plafonne par analytics_events",
+      "sans": "aucun prérequis SQL propre : lit des tables de base (télémétrie, erreurs client, profils, signalements ; activités, participants et abonnements push pour les rappels d'activité) et plafonne par analytics_events",
       "objets": [
         "table:public.analytics_events",
         "table:public.telemetry_events",
         "table:public.client_errors",
-        "table:public.reports"
+        "table:public.reports",
+        "column:public.events.date_at",
+        "column:public.event_attendees.rsvp",
+        "table:public.push_subscriptions"
       ]
     }
   }

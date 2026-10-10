@@ -43,6 +43,10 @@ self.addEventListener("activate", e => {
 // ════════════════════════════════════════════════════════════════════════
 // WEB PUSH — appels entrants même app fermée
 // ════════════════════════════════════════════════════════════════════════
+// Identifiant d'activité admis dans une URL ouverte par une notification
+// (même forme que le routeur `#irl-event-` d'app-07 et que _shared/rappels.js).
+const ID_ACTIVITE_RE = /^[\w-]{1,64}$/;
+
 // Réception d'une push : affiche une notification « Appel entrant » persistante
 // avec un bouton Répondre. Le tap ouvre l'app sur l'écran d'appel.
 self.addEventListener("push", e => {
@@ -61,6 +65,23 @@ self.addEventListener("push", e => {
       icon: "./pilotage/icons/pilot-192.png",
       badge: "./icon-192.png",
       data: { url: "./pilotage/" },
+    }));
+    return;
+  }
+
+  // Rappel d'activité (veille pg_cron → fonction `pilotage`, _shared/rappels.js,
+  // 2026-10-05) — app fermée. Le tap ouvre l'activité. L'identifiant entre dans
+  // une URL : il est revérifié ici, quoi que le serveur ait vérifié. Une même
+  // activité garde UNE notification (tag) : le rappel de H-2 remplace la veille.
+  if (data.type === "rappel") {
+    const id = ID_ACTIVITE_RE.test(String(data.eventId || "")) ? String(data.eventId) : "";
+    e.waitUntil(self.registration.showNotification("⏰ " + String(data.titre || "Ton activité").slice(0, 70), {
+      body: String(data.texte || "").slice(0, 160),
+      tag: "passio-rappel-" + (id || "activite"),
+      renotify: true,
+      icon: "./icon-192.png",
+      badge: "./icon-192.png",
+      data: { url: id ? "./#irl-event-" + id : "./" },
     }));
     return;
   }
@@ -127,7 +148,30 @@ self.addEventListener("notificationclick", e => {
     return;
   }
 
+  // Notification qui porte sa DESTINATION (`data.url`) : rappel d'activité, et
+  // le digest « ça se passe près de toi » (app-07, `tag: "irl-digest"`) — qui,
+  // faute de cette branche, tombait dans le traitement d'un APPEL ci-dessous et
+  // ouvrait l'accueil avec un `?call=` vide au lieu de l'activité. Seules deux
+  // formes sont admises (l'accueil, ou une activité) : rien d'autre n'est ouvert.
   const d = e.notification.data || {};
+  if (typeof d.url === "string" && !d.callId) {
+    const m = /^\.\/#irl-event-([\w-]{1,64})$/.exec(d.url);
+    const id = m ? m[1] : "";
+    e.waitUntil(
+      self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(clients => {
+        for (const c of clients) {
+          if ("focus" in c) {
+            // App ouverte : elle ouvre l'activité elle-même (même routeur qu'un lien).
+            if (id) c.postMessage({ type: "OUVRIR_ACTIVITE", id });
+            return c.focus();
+          }
+        }
+        if (self.clients.openWindow) return self.clients.openWindow(id ? "./#irl-event-" + id : "./");
+      })
+    );
+    return;
+  }
+
   const qs = "?call=" + encodeURIComponent(d.callId || "") +
              "&from=" + encodeURIComponent(d.from || "") +
              "&kind=" + encodeURIComponent(d.kind || "voice") +
