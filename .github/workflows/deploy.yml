@@ -723,6 +723,35 @@ jobs:
       - name: Lancer les tests
         run: npx playwright test --project=local --shard=${{ matrix.shard }}/6
 
+  # ── WEBKIT — le moteur de Safari, celui de TOUS les navigateurs de l'iPhone ──
+  # (2026-10-06). Sur iPhone, Chrome, Firefox et les navigateurs intégrés
+  # (Instagram, TikTok…) sont tous du WebKit, et la quasi-totalité des testeurs
+  # est sur iPhone : jusqu'ici aucune suite ne tournait sur ce moteur. Le projet
+  # `webkit-iphone` de playwright.config.js (opt-in `PASSIO_WEBKIT=1`) rejoue un
+  # SOCLE de suites au gabarit d'un iPhone 13 — la liste vit dans
+  # `SUITES_WEBKIT`, hors de `.github/`. Comme `test-local` : aucun secret,
+  # aucune écriture en base. BLOQUANT : il entre dans `smoke` et dans `deploy`.
+  test-webkit:
+    name: Suites WebKit (iPhone)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Installer Playwright (WebKit)
+        run: |
+          npm install --no-save @playwright/test
+          npx playwright install --with-deps webkit
+
+      - name: Lancer les suites WebKit
+        env:
+          PASSIO_WEBKIT: "1"
+        run: npx playwright test --project=webkit-iphone
+
   gates-artefact:
     name: Gates artefact production (dist)
     runs-on: ubuntu-latest
@@ -776,37 +805,39 @@ jobs:
   smoke:
     name: Tests smoke (Playwright)
     if: always()
-    needs: [audits, test-prod, test-local, gates-artefact]
+    needs: [audits, test-prod, test-local, gates-artefact, test-webkit]
     runs-on: ubuntu-latest
     steps:
-      - name: Agréger le verdict des quatre jobs
+      - name: Agréger le verdict des cinq jobs
         env:
           R_AUDITS: ${{ needs.audits.result }}
           R_PROD: ${{ needs.test-prod.result }}
           R_LOCAL: ${{ needs.test-local.result }}
           R_ARTEFACT: ${{ needs.gates-artefact.result }}
+          R_WEBKIT: ${{ needs.test-webkit.result }}
         run: |
           set -u
           echo "audits         : ${R_AUDITS}"
           echo "test-prod      : ${R_PROD}"
           echo "test-local     : ${R_LOCAL}"
           echo "gates-artefact : ${R_ARTEFACT}"
+          echo "test-webkit    : ${R_WEBKIT}"
           rouge=0
-          for r in "${R_AUDITS}" "${R_PROD}" "${R_LOCAL}" "${R_ARTEFACT}"; do
+          for r in "${R_AUDITS}" "${R_PROD}" "${R_LOCAL}" "${R_ARTEFACT}" "${R_WEBKIT}"; do
             # `skipped` est un échec ici : un job de test qui ne s'exécute pas ne
             # prouve rien, et le laisser passer rendrait ce contexte complaisant.
             [ "${r}" = "success" ] || rouge=1
           done
           if [ "${rouge}" -ne 0 ]; then
-            echo "::error title=Suite non verte::Au moins un des quatre jobs de test n'est pas en succès."
+            echo "::error title=Suite non verte::Au moins un des cinq jobs de test n'est pas en succès."
             exit 1
           fi
-          echo "Les quatre jobs de test sont verts."
+          echo "Les cinq jobs de test sont verts."
 
   deploy:
     name: Déploiement production
     if: github.event_name == 'push'
-    needs: [governance, audits, test-prod, test-local, gates-artefact]
+    needs: [governance, audits, test-prod, test-local, gates-artefact, test-webkit]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5

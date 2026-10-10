@@ -1,6 +1,6 @@
 // Config Playwright — tests smoke de PASSIO
 // Lance un serveur statique local puis teste l'app comme un vrai navigateur.
-const { defineConfig } = require("@playwright/test");
+const { defineConfig, devices } = require("@playwright/test");
 
 // ───────────────────────────────────────────────────────────────────────────
 // DEUX PROJETS, ET C'EST CE QUI DÉBLOQUE LA CHAÎNE (2026-09-02).
@@ -44,6 +44,52 @@ const SUITES_PROD = [
   "suppression-compte.spec.js",  // sous PASSIO_E2E_MULTI
 ];
 const MOTIFS_PROD = SUITES_PROD.map((f) => "**/" + f);
+
+// ───────────────────────────────────────────────────────────────────────────
+// WEBKIT — LE MOTEUR DE SAFARI, CELUI DE TOUS LES NAVIGATEURS DE L'IPHONE (2026-10-06)
+//
+// Sur iPhone, Chrome, Firefox et les navigateurs intégrés d'Instagram ou de
+// TikTok sont TOUS du WebKit (règle d'Apple) — et la quasi-totalité des
+// testeurs de Passio est sur iPhone. Jusqu'ici, AUCUNE suite ne tournait sur ce
+// moteur : 900 tests Chromium, zéro WebKit. Les défauts « ça marche sur
+// Android » (zones sûres, `position: fixed` dans un conteneur défilant, 100dvh)
+// ont tous été trouvés par des testeurs, jamais par la CI.
+//
+// Le projet `webkit-iphone` rejoue sur WebKit, au gabarit d'un iPhone 13
+// (agent, tactile, densité 3), un SOCLE de suites choisies sur les parcours
+// qui comptent : démarrage, cadrage et zones sûres, premier rendu du fil,
+// première visite d'un visiteur, lien d'inscription, ouverture d'une
+// conversation, pilotage téléphone. Aucune n'écrit en base.
+//
+// ⚠️ OPT-IN PAR `PASSIO_WEBKIT=1`. Sans la variable, les projets sont EXACTEMENT
+// `prod` et `local`, comme avant : `npx playwright test` ne demande jamais un
+// navigateur que le poste n'a pas installé. La CI (job « Suites WebKit
+// (iPhone) ») pose la variable et installe WebKit elle-même.
+// ⚠️ Une suite ajoutée ici doit exister, ne pas être dans SUITES_PROD, et
+// passer sur WebKit — tests/unit/webkit-ci.test.mjs le vérifie (hors le
+// passage, que seule la CI mesure).
+const SUITES_WEBKIT = [
+  "smoke.spec.js",               // démarrage de l'application
+  "cadrage.spec.js",             // hauteur d'écran mesurée (jamais 100dvh)
+  "ios-zones-sures.spec.js",     // encoche / Dynamic Island
+  "feed-premier-rendu.spec.js",  // premier rendu du fil
+  "first-run.spec.js",           // première visite d'un visiteur
+  "lien-inscription.spec.js",    // arrivée par un lien d'inscription
+  "conv-ouverture-fil.spec.js",  // ouvrir une conversation
+  "pilotage-nuage.spec.js",      // le pilotage téléphone de l'éditeur
+];
+const PROJET_WEBKIT = {
+  name: "webkit-iphone",
+  testMatch: SUITES_WEBKIT.map((f) => "**/" + f),
+  use: {
+    ...devices["iPhone 13"],
+    browserName: "webkit",
+    // Même surface utile que le projet Chromium : seul le MOTEUR change.
+    viewport: { width: 390, height: 844 },
+    // `PASSIO_CHROMIUM` désigne un binaire Chromium : il ne s'applique jamais ici.
+    launchOptions: {},
+  },
+};
 
 module.exports = defineConfig({
   testDir: "./tests/e2e",
@@ -103,6 +149,7 @@ module.exports = defineConfig({
   projects: [
     { name: "prod", testMatch: MOTIFS_PROD },
     { name: "local", testIgnore: MOTIFS_PROD },
+    ...(process.env.PASSIO_WEBKIT === "1" ? [PROJET_WEBKIT] : []),
   ],
   // Mesure de couverture fonctionnelle (PASSIO_COUVERTURE=1) : le serveur
   // statique est remplacé par un serveur qui sert les MÊMES octets plus un
