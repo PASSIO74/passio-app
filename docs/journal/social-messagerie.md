@@ -15,6 +15,7 @@
 - ✉️ NOTIFIER UN MESSAGE PRIVÉ (2026-09-09) — la cloche ne sonnait que si l'appli était OUVERTE
 - 🪦 SUPPRIMER UNE PUBLICATION — pierres tombales (2026-09-01)
 - ⏰ RAPPELS D'ACTIVITÉ PAR PUSH — le rappel ne sonnait que si l'appli était OUVERTE (2026-10-05)
+- 🗓️ RÉCAP DE LA SEMAINE — une carte en tête du fil, dans l'app seulement (2026-10-06)
 - 😍 UNE RÉACTION EMOJI S'EFFAÇAIT ELLE-MÊME — suppression et insertion en parallèle (2026-10-10)
 
 ---
@@ -253,6 +254,30 @@ d'accueil (iOS 16.4+) — `_rappelsVerdict` rend alors `non_supporte` et rien n'
 cloche garde son propre rappel local (J-7, J-1, H-2), donc l'appli ouverte après une push montre
 aussi le rappel dans la cloche (une ligne, pas une seconde notification système) ; les heures sont
 dites en heure de Paris, quel que soit le fuseau de l'activité.
+
+---
+
+## 🗓️ RÉCAP DE LA SEMAINE — une carte en tête du fil, dans l'app seulement (2026-10-06)
+
+Rien ne disait à un compte ce qui s'était passé pour lui pendant la semaine : les notifications arrivent une à une dans la cloche, et le fil ne distingue pas ce qui est neuf. Mesuré le même jour (`docs/journal/telemetrie-pilotage-sentinelle.md`, activation) : sur les comptes créés entre 7 et 30 jours plus tôt, un sur trois seulement a fait un geste social dans sa première semaine.
+
+**Ce qui existe désormais** : `js/recap-semaine.js` (IIFE `window.PassioRecapSemaine`, hors bloc app, inliné au build) pose UNE carte « Ta semaine sur PASSIO », en FRÈRE juste avant `#feedList`, au plus une fois par semaine ISO (lundi, date LOCALE) et par compte : publications des 7 derniers jours dans les passions du compte (`passionsPossedeesIds()`, hors ses propres publications), abonnements, commentaires et mentions, j'aime, inscriptions à ses activités (comptés sur SES `notifications` des 7 jours), activités à venir dans ses passions (7 prochains jours, hors `cancelled`). Chaque ligne mène là où ça se passe : Rencontrer (`goTo("irl")`), la cloche (`openNotifications()`), ou le fil juste dessous.
+
+**Les règles du réengagement sain** (`docs/PASSIO_NOTIFICATIONS_V2_HEALTHY_REENGAGEMENT_2026-08-20.md` §3 niveau D, §32), toutes tenues :
+- **dans l'app seulement** — aucune notification système, aucun e-mail : le récap résume quand on revient, il ne fait revenir personne. Une version « digest poussé » serait OPT-IN (même document) et demanderait un envoyeur serveur : pas faite ;
+- **une semaine vide n'est pas annoncée** (aucune ligne = aucune carte), et la semaine est marquée AVANT les lectures : un échec ne fait pas relire à chaque ouverture ;
+- **des faits, aucun langage de pression** — le banc refuse « raté », « perdre », « série », « reviens » ;
+- **coupé en un geste** (« Ne plus afficher le récap » → `passio_config.notifs.recap = false`, toast qui dit où le remettre) et dans Paramètres › Personnalisation › Notifications (case « Récap de la semaine ») ; coupure d'urgence `localStorage.passio_recap_semaine = "0"` ou `window.PASSIO_RECAP_SEMAINE = false`.
+
+⚠️ **UNE SESSION, ET UN COMPTE D'AU MOINS 3 JOURS.** `_uidEstUnCompte()` est vrai pour un identifiant resté sur l'appareil SANS session : sans session, rien n'est lu (une lecture anonyme compterait des publications pour personne). L'âge vient de `supa.auth.getSession()` (stockage local du SDK, aucun appel réseau). La première semaine d'un compte est celle de la découverte ; et c'est aussi ce qui tient les comptes jetables des suites « production » à l'écart — créés il y a quelques minutes, ils ne lisent rien. Sans session ou trop jeune : la semaine n'est PAS marquée, la prochaine ouverture réévalue.
+
+⚠️ **La marque de semaine est un bien de COMPTE** : `passio_recap_semaine_v1 = { uid, semaine }`, dans `ACCOUNT_SCOPED_KEYS` (purgée au changement de compte) et comparée au compte courant — un autre compte sur l'appareil a droit à son récap.
+
+⚠️ **Lectures** : trois, en parallèle — `posts` en comptage seul (`head: true`), `notifications` (colonne `kind`, 500 au plus), `events` en QUATRE colonnes publiques nommées (jamais `select("*")`, 42501). Le SDK ne lève pas sur un refus : `{ error }` est lu et journalisé (`diagLog("recap-semaine: <lecture> — …")`), et seule la ligne concernée se tait. La carte est construite au DOM (`textContent`, `addEventListener`) : aucun `onclick` inline, aucun contenu d'autrui (des nombres et des libellés fixes). Son style est injecté par le module (`#recapSemaineCss`, classes `.recap-semaine-*`) : rien dans `styles.css`, dont le bloc UI-4A5 doit rester le dernier.
+
+Verrou : `tests/e2e/recap-semaine.spec.js` (10, client du module REMPLACÉ par un faux qui note chaque appel — forme des lectures mesurée, rien ne part en production). Mutations éprouvées, chacune rougit son cas : semaine non marquée, activité annulée comptée, marque sans le compte, « Ne plus afficher » ignoré, refus non journalisé, lecture sans session ou pour un compte de moins de 3 jours.
+
+---
 
 ## 😍 UNE RÉACTION EMOJI S'EFFAÇAIT ELLE-MÊME — suppression et insertion en parallèle (2026-10-10)
 

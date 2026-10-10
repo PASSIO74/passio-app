@@ -25,6 +25,7 @@
 - 🔞 ADMISSION 18+ ET COLONNES EXPLICITES — le CLIENT (2026-09-08)
 - 🔞 ADMISSION 18+ — fondation serveur APPLIQUÉE EN PRODUCTION le 2026-09-08, interrupteur **ALLUMÉ** (mesuré le 2026-09-10)
 - 🚪 PREMIÈRE VISITE — « l'application est elle-même le pitch » (ACTIF PAR DÉFAUT)
+- 🔥 PREMIÈRE VISITE — LES PASSIONS POPULAIRES EN DIRECT : la grille suit les publications (2026-10-06)
 
 ---
 
@@ -450,3 +451,17 @@ Convention de test : une suite qui démarre d'un appareil VIERGE et attend la la
 ⚠️ Une passion du référentiel plat s'affichait « ✨ Passion » sans son nom tant que le sélecteur n'avait pas été ouvert. `js/passions-flat.js` charge désormais le référentiel **uniquement si un identifiant à l'écran n'est pas nommé par le socle embarqué**, et APRÈS l'hydratation — l'invariant « 568 Ko jamais au démarrage » (`passions-plates.spec.js` ⑤ et ⑰ bis) tient. Charger ne suffit pas : il faut invalider `_lastHtml` et `_feedDomSig` avant de repeindre.
 Les quatorze pièges mesurés, le fil de découverte, le catalogue additif `SPECIALITES`/`SYNONYMES`, la migration des préférences, la propriété de l'état local et les corrections après essai réel : `docs/PREMIERE_VISITE.md`. Verrous dédiés : `tests/e2e/exploration-anonyme-vs-compte.spec.js` (12) et `tests/e2e/connexion-compte-existant.spec.js` (15).
 ⚠️ **Une spécialité proposée sous une passion EST une passion du référentiel plat**, avec son identifiant canonique (`["cyclisme","Vélo et cyclisme"]`) : les identifiants fabriqués (`"sport:velo"`) n'entraient pas dans `_activeFeedPassions` et le fil ne montrait que la passion PARENTE. Les intérêts du fil sont **parente PUIS spécialités** (`interetsDuVisiteur`), jamais l'une à la place de l'autre, aux DEUX points d'écriture (`appliquerPrefs` et `migrerPreferences`) ; `npm run passions:verifier` refuse un identifiant absent de `data/passions/`.
+
+---
+
+## 🔥 PREMIÈRE VISITE — LES PASSIONS POPULAIRES EN DIRECT : la grille suit les publications (2026-10-06)
+
+Les 12 tuiles du panneau « Qu'est-ce qui te passionne ? » étaient une liste écrite à la main le jour du lot (`POPULAIRES`, `js/first-run.js`) : Musique, Sport, Cuisine, Voyage en tête. Mesuré le 2026-10-06 sur 90 jours de publications VISIBLES d'un visiteur : Yoga 8 (2 auteurs), Podcast 2, puis Musculation, Photo, Voyage, Tech, Cuisine — et rien en Musique, Sport ni Art, trois des quatre premières tuiles. Un visiteur qui coche ce qu'on lui montre en premier arrivait sur un fil sans une publication de sa passion.
+
+**Ce qui change** : les passions où des gens PUBLIENT passent en tête (`classerPopulaires` : d'abord le nombre de PERSONNES qui publient, puis le nombre de publications, puis la plus récente). La liste écrite COMPLÈTE, elle ne disparaît jamais : au plus 8 tuiles vivantes (`POPULAIRES_VIVANTES_MAX`), donc au moins 4 grands domaines toujours là, et sans réponse — base vide, refus, hors ligne, SDK absent — la grille est celle d'avant, à l'identique.
+- **La lecture est celle du fil invité** : `posts`, trois colonnes (`passion_id, author_id, created_at`), 90 jours, 300 lignes au plus, clé anon — mêmes policies, donc la publication d'un compte privé n'y compte pas (le visiteur ne la verrait pas). Aucune écriture, aucun socket.
+- **Quand** : différée de 1,5 s après la pose de la carte de bienvenue (pour que les tuiles ne se réordonnent pas sous le doigt), sinon à l'ouverture du panneau ; une seule en vol, gardée pour la page ; sans client réel (`window._supaReal`), rien — la prochaine ouverture réessaie, jamais en boucle. `{ error }` est LU et journalisé (`journal("populaires")`) : le SDK ne lève pas sur un refus.
+- **Une passion précise du référentiel** (« Musculation ») n'est peinte qu'avec son libellé : tant que le référentiel n'est pas chargé, sa tuile attend (`assurerMetasPopulaires` le charge puis repeint) — jamais une tuile « Passion ✨ ». Retenue, elle est mémorisée dans `_refVues` comme un résultat de recherche : validée, elle atteint le fil (`_activeFeedPassions`).
+- `_parDefaut` (profil de remplissage) et tout identifiant réservé `_…` ne sont une passion nulle part — ni ici.
+
+⚠️ **LES SUITES VISITEUR NE LE VOIENT PAS, ET C'EST VOULU** : `bootVisiteur` coupe tout ce qui contient « supabase » — le SDK local compris (`js/vendor/supabase-js-…`) —, donc `_supaReal` reste faux et la grille reste la liste écrite : les 56 cas de `first-run.spec.js` et `premiere-visite-referentiel.spec.js` qui cliquent « moto » ou « musique » ne dépendent pas de la production. Le banc dédié, `tests/e2e/populaires-vivantes.spec.js` (6), charge le VRAI client et sert la lecture par une route posée APRÈS `sansDonneesDistantes`. Mutations éprouvées : plafond de 8 retiré, classement par publications avant les personnes, vivantes plus en tête — chacune rougit ; la mémorisation `_refVues` retirée ne rougit pas (au clic, le référentiel est chargé), c'est dit dans l'en-tête du banc.

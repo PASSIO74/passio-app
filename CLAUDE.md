@@ -174,6 +174,7 @@ Chaque fichier porte un sommaire daté. Une ligne ci-dessous = une règle qu'on 
 - Tout comptage qui sert un ratio lit le poids `meta.ech` (`poidsEvenement`) ; on n'échantillonne que l'`api` en 200. `meta.trafic` sort un appareil de l'AUDIENCE, jamais des erreurs (trois lecteurs, un banc : `tests/unit/trafic-hors-public.test.mjs`).
 - Un événement produit par le `GITHUB_TOKEN` ne déclenche aucun workflow : `SENTINELLE_TOKEN` fait vivre la chaîne ; l'auto-fusion n'est armée que pour la Sentinelle.
 - `MY_UID` est un `let` de portée script, `window.MY_UID` n'en est pas le reflet ; `analytics_events` ne tolère pas `user_id NULL` (la garde est en amont).
+- Activation (7 j) : UNE définition, `GESTES_ACTIVATION` + `activation()` (`_shared/pilotage.js`), lue par la fonction `pilotage` ET par le digest (SQL GÉNÉRÉ de la même liste) — jamais une copie à la main (`tests/unit/activation.test.mjs`).
 
 ## 📚 Références projet
 
