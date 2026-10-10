@@ -35,9 +35,9 @@
 // ⚠️ `events` : jamais `select("*")` (colonnes réservées, 42501) — quatre
 //    colonnes publiques nommées.
 // ⚠️ UNE SESSION, ET UN COMPTE D'AU MOINS 3 JOURS. `_uidEstUnCompte()` est vrai
-//    pour un identifiant laissé sur l'appareil sans session : sans session, on
-//    ne lit RIEN (une lecture anonyme compterait des publications pour
-//    personne). Et la première semaine d'un compte est celle de la découverte,
+//    pour un identifiant laissé sur l'appareil sans session : sans session (lue
+//    par `_sessionSdkPersistee()`, jamais par le SDK), ou avec la session d'un
+//    AUTRE compte, on ne lit RIEN. Et la première semaine d'un compte est celle de la découverte,
 //    pas d'un récap — ce qui tient aussi les comptes jetables des suites
 //    « production » à l'écart : créés il y a quelques minutes, ils ne lisent rien.
 // ⚠️ Module HORS du bloc app : à l'évaluation, ni `state` ni `supa` n'existent.
@@ -125,17 +125,22 @@
     return window._supaReal && s && typeof s.from === "function" ? s : null;
   }
 
-  // Âge du compte de la SESSION, en ms ; `null` sans session (ou illisible).
-  // `getSession` lit le stockage local du SDK : aucun appel réseau.
-  function ageCompte(s) {
+  // Âge du compte de la SESSION PERSISTÉE, en ms ; `null` sans session lisible,
+  // ou quand la session nomme un AUTRE compte que `MY_UID`.
+  // ⚠️ JAMAIS `supa.auth.getSession()` : le SDK peut RÉÉCRIRE ou EFFACER une
+  // session qu'il juge incomplète — un lecteur ne doit rien modifier, et le
+  // dépôt n'a qu'UNE lecture du jeton : `_sessionSdkPersistee()` (app-08, verrou
+  // ⓪ de tests/e2e/ecritures-identite-compte.spec.js). Mesuré le 2026-10-06 :
+  // avec `getSession`, les cas ④ et ⑥ de ce banc-là perdaient leur session.
+  function ageCompte(uid) {
     try {
-      if (!s.auth || typeof s.auth.getSession !== "function") return Promise.resolve(null);
-      return Promise.resolve(s.auth.getSession()).then(function (r) {
-        var u = r && r.data && r.data.session && r.data.session.user;
-        var t = u ? Date.parse(u.created_at) : NaN;
-        return Number.isFinite(t) ? Date.now() - t : null;
-      }, function (e) { journal("session", e); return null; });
-    } catch (e) { journal("session", e); return Promise.resolve(null); }
+      if (typeof _sessionSdkPersistee !== "function") return null;
+      var s = _sessionSdkPersistee();
+      var u = s && s.user;
+      if (!u || u.id !== uid) return null;
+      var t = Date.parse(u.created_at);
+      return Number.isFinite(t) ? Date.now() - t : null;
+    } catch (e) { journal("session", e); return null; }
   }
 
   // ── Lectures ───────────────────────────────────────────────────────────────
@@ -319,21 +324,20 @@
     if (!voulu()) return;
     var semaine = semaineIso(new Date());
     if (dejaTraitee(uid, semaine)) return;
+    // Sans session (ou celle d'un autre compte), ou compte de moins de 3 jours :
+    // rien n'est lu, et la semaine n'est PAS marquée — la prochaine ouverture réévalue.
+    var age = ageCompte(uid);
+    if (age === null || age < AGE_MIN_MS) return;
+    marquer(uid, semaine);
     enCours = true;
-    ageCompte(clientReel()).then(function (age) {
-      // Sans session, ou compte de moins de 3 jours : rien n'est lu, et la
-      // semaine n'est PAS marquée — la prochaine ouverture réévalue.
-      if (age === null || age < AGE_MIN_MS) { enCours = false; return null; }
-      marquer(uid, semaine);
-      return lire(uid).then(function (r) {
-        enCours = false;
-        // Le compte a pu changer pendant la lecture : on ne peint pas pour un autre.
-        if (compte() !== uid || !actif() || !voulu()) return;
-        var l = lignes(r);
-        if (!l.length) return;
-        if (poser(l)) track("weekly_recap_shown", { lignes: l.length });
-      });
-    }).then(null, function (e) { enCours = false; journal("lecture", e); });
+    lire(uid).then(function (r) {
+      enCours = false;
+      // Le compte a pu changer pendant la lecture : on ne peint pas pour un autre.
+      if (compte() !== uid || !actif() || !voulu()) return;
+      var l = lignes(r);
+      if (!l.length) return;
+      if (poser(l)) track("weekly_recap_shown", { lignes: l.length });
+    }, function (e) { enCours = false; journal("lecture", e); });
   }
 
   function amorcer() {

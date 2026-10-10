@@ -32,11 +32,22 @@ async function compte(page, uid = UID) {
 
 /**
  * Remplace le client du module ; `rep[table]` = ce que rend la lecture de cette
- * table ; `rep.ageJours` = âge du compte de la session (absent = 30 j,
- * `null` = pas de session).
+ * table. Pose la session PERSISTÉE que lit `_sessionSdkPersistee()` (jamais le
+ * SDK) : `rep.ageJours` = âge du compte (absent = 30 j, `null` = pas de
+ * session), `rep.uidSession` = son titulaire (absent = le compte du banc).
  */
 async function fauxClient(page, rep) {
-  await page.evaluate((r) => {
+  await page.evaluate(([r, uidBanc]) => {
+    const ref = (String((window.PASSIO_SUPABASE && window.PASSIO_SUPABASE.url) || "").match(/https?:\/\/([^.]+)\./) || [])[1];
+    const cle = "sb-" + ref + "-auth-token";
+    if (r.ageJours === null) localStorage.removeItem(cle);
+    // Session COMPLÈTE : le SDK efface une session sans `refresh_token` au premier
+    // appel REST qui passe par lui (même piège que ecritures-identite-compte).
+    else localStorage.setItem(cle, JSON.stringify({
+      access_token: "jeton-de-banc", refresh_token: "jeton-de-banc-renouvellement", token_type: "bearer",
+      expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600,
+      user: { id: r.uidSession || uidBanc, created_at: new Date(Date.now() - (r.ageJours === undefined ? 30 : r.ageJours) * 864e5).toISOString() },
+    }));
     window.__appels = [];
     function requete(table) {
       const appel = { table, ops: [] };
@@ -48,14 +59,12 @@ async function fauxClient(page, rep) {
       q.then = (ok, ko) => Promise.resolve(r[table] || { data: [], count: 0, error: null }).then(ok, ko);
       return q;
     }
-    const age = r.ageJours === undefined ? 30 : r.ageJours;
-    const session = age === null ? null : { user: { created_at: new Date(Date.now() - age * 864e5).toISOString() } };
-    window.supa = { from: requete, auth: { getSession: () => Promise.resolve({ data: { session }, error: null }) } };
+    window.supa = { from: requete };
     window._supaReal = true;
     window.__toasts = [];
     window.toast = (t) => window.__toasts.push(String(t));
     localStorage.removeItem("passio_recap_semaine");
-  }, rep);
+  }, [rep, UID]);
 }
 
 const lancer = (page) => page.evaluate(() => PassioRecapSemaine.tenter());
@@ -234,7 +243,7 @@ test("⑧ sans compte (visiteur ou identifiant local), et coupé par le drapeau 
   expect(await page.evaluate(() => window.__appels.length)).toBe(0);
 });
 
-test("⑨ bis sans session, ou compte de moins de 3 jours : aucune lecture, et la semaine reste à faire", async ({ page }) => {
+test("⑨ bis sans session, session d'un autre compte, ou compte de moins de 3 jours : aucune lecture, et la semaine reste à faire", async ({ page }) => {
   await compte(page);
   await fauxClient(page, { ...SEMAINE_PLEINE, ageJours: null });
   await lancer(page);
@@ -250,6 +259,14 @@ test("⑨ bis sans session, ou compte de moins de 3 jours : aucune lecture, et l
   await expect(page.locator("#recapSemaine")).toHaveCount(0);
   expect(await page.evaluate(() => window.__appels.length)).toBe(0);
   expect(await page.evaluate(() => localStorage.getItem("passio_recap_semaine_v1"))).toBeNull();
+
+  // La session d'un AUTRE compte (identité divergente) : rien non plus.
+  await recharger(page);
+  await fauxClient(page, { ...SEMAINE_PLEINE, uidSession: AUTRE });
+  await lancer(page);
+  await page.waitForTimeout(400);
+  await expect(page.locator("#recapSemaine")).toHaveCount(0);
+  expect(await page.evaluate(() => window.__appels.length)).toBe(0);
 
   // Le même compte, quatre jours plus tard : le récap vient.
   await recharger(page);

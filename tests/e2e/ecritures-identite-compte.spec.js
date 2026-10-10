@@ -111,8 +111,18 @@ async function banc(page, { uidLocal, uidSession }) {
     await page.evaluate((u) => {
       const ref = (String((window.PASSIO_SUPABASE && window.PASSIO_SUPABASE.url) || "")
         .match(/https?:\/\/([^.]+)\./) || [])[1];
+      // ⚠️ Une session COMPLÈTE (refresh_token compris), et c'est délibéré
+      // (2026-10-06) : le SDK EFFACE une session incomplète au premier appel
+      // REST qui passe par lui (`__loadSession` → `isValidSession` → `_removeSession`).
+      // Les lectures que l'app rejoue au démarrage tombent souvent dans les
+      // 300 ms qui suivent cette écriture : ④ et ⑥ perdaient alors leur session
+      // et rougissaient au hasard de la charge — tracé, pas déduit. Ce banc
+      // mesure l'IDENTITÉ, pas la tolérance du SDK à une session tronquée.
       localStorage.setItem("sb-" + ref + "-auth-token", JSON.stringify({
         access_token: "jeton-de-banc",
+        refresh_token: "jeton-de-banc-renouvellement",
+        token_type: "bearer",
+        expires_in: 3600,
         expires_at: Math.floor(Date.now() / 1000) + 3600,
         user: { id: u },
       }));
