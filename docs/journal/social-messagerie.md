@@ -16,6 +16,7 @@
 - 🪦 SUPPRIMER UNE PUBLICATION — pierres tombales (2026-09-01)
 - ⏰ RAPPELS D'ACTIVITÉ PAR PUSH — le rappel ne sonnait que si l'appli était OUVERTE (2026-10-05)
 - 🗓️ RÉCAP DE LA SEMAINE — une carte en tête du fil, dans l'app seulement (2026-10-06)
+- 😍 UNE RÉACTION EMOJI S'EFFAÇAIT ELLE-MÊME — suppression et insertion en parallèle (2026-10-10)
 
 ---
 
@@ -275,3 +276,44 @@ Rien ne disait à un compte ce qui s'était passé pour lui pendant la semaine :
 ⚠️ **Lectures** : trois, en parallèle — `posts` en comptage seul (`head: true`), `notifications` (colonne `kind`, 500 au plus), `events` en QUATRE colonnes publiques nommées (jamais `select("*")`, 42501). Le SDK ne lève pas sur un refus : `{ error }` est lu et journalisé (`diagLog("recap-semaine: <lecture> — …")`), et seule la ligne concernée se tait. La carte est construite au DOM (`textContent`, `addEventListener`) : aucun `onclick` inline, aucun contenu d'autrui (des nombres et des libellés fixes). Son style est injecté par le module (`#recapSemaineCss`, classes `.recap-semaine-*`) : rien dans `styles.css`, dont le bloc UI-4A5 doit rester le dernier.
 
 Verrou : `tests/e2e/recap-semaine.spec.js` (10, client du module REMPLACÉ par un faux qui note chaque appel — forme des lectures mesurée, rien ne part en production). Mutations éprouvées, chacune rougit son cas : semaine non marquée, activité annulée comptée, marque sans le compte, « Ne plus afficher » ignoré, refus non journalisé, lecture sans session ou pour un compte de moins de 3 jours.
+
+---
+
+## 😍 UNE RÉACTION EMOJI S'EFFAÇAIT ELLE-MÊME — suppression et insertion en parallèle (2026-10-10)
+
+Trouvé par la CI, pas par un rapport : après la fusion de #590 (rappels), `multi-comptes.spec.js`
+(« interactions sur un post », exécutée sur le staging) a rougi **2 fois sur 4** le même matin, sur
+un code navigateur identique à l'octet entre les exécutions vertes et rouges — donc pas #590, et le
+déploiement production a été sauté. **« Flake » n'était pas une cause** : la réaction 😍 de B
+n'arrivait pas chez A et n'était pas en base au rechargement.
+
+⚠️ **LA CAUSE : DEUX ÉCRITURES DONT L'ORDRE COMPTE PARTAIENT EN MÊME TEMPS.** « Une réaction par
+personne » s'écrit en deux requêtes : `supaCommentRemoveReactions` (DELETE de MES réactions emoji
+sur la cible) puis `supaCommentInteract` (INSERT de la nouvelle). `addEmojiToPost` et
+`addEmojiToComment` lançaient la première **sans l'attendre**. Deux requêtes concurrentes ne sont
+traitées dans aucun ordre garanti : quand le DELETE passait APRÈS l'INSERT, il effaçait la réaction
+qu'on venait de poser — chez tout le monde, au rechargement comme en temps réel, **sans une erreur
+nulle part** (le SDK ne lève pas, le geste était « réussi » à l'écran). En production, c'est une
+réaction qui disparaît au hasard.
+
+⚠️ **UNE FILE PAR CIBLE, PAS SEULEMENT « ATTENDRE LA SUPPRESSION »** : `_syncReactionEmoji(cible,
+postId, emoji)` (emoji-misc.js) enchaîne suppression puis insertion, ET fait attendre le geste
+suivant sur la même cible. Attendre la seule suppression laissait deux réactions tapées vite
+(😍 puis 🔥) croiser l'insertion de la première avec la suppression de la seconde — deux réactions
+du même compte, le défaut que la suppression existe pour empêcher. `emoji` vide = retrait seul
+(re-tap). Les likes de commentaire n'ont pas ce défaut : retrait et ajout y sont deux branches d'un
+même `if`, jamais deux requêtes d'un même geste.
+
+Verrou : `tests/e2e/reaction-ordre.spec.js` (4) — un faux serveur dont la suppression est LENTE et
+l'insertion rapide, et on lit l'état FINAL du serveur, jamais l'appel. **Éprouvé par réinjection** :
+l'ancien code → 3 rouges ; attendre la suppression sans file par cible → 1 rouge (les deux
+réactions rapides).
+
+⚠️ **AU PASSAGE, UN BANC QUI TENAIT PAR CHANCE** : sur la PR de ce correctif,
+`ecritures-identite-compte.spec.js` ④ ⑥ ⑨ ont rougi 9 fois sur 9 (« la session du banc est
+lisible » → null), pour un simple redécoupage des shards. Le banc posait `access_token:
+"jeton-de-banc"` sans `refresh_token` : supabase-js 2.116 juge cette session invalide dès qu'il la
+recharge (minuteur, `getSession`) et l'efface — piège déjà écrit pour `mes-passions-page` le 18/09,
+resté ouvert ici. Reproduit : après la pose, un `getSession()` rend la lecture nulle avec l'ancien
+jeton et intacte avec un JWT de forme valide. Le banc pose désormais la même forme que `poserSession`.
+
