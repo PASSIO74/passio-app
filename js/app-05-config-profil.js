@@ -1566,7 +1566,12 @@ async function requestCallNotifications() {
     if (window._callNotifAsked) return;
     window._callNotifAsked = true;
     const perm = await Notification.requestPermission();
-    if (perm === "granted") { toast("Tu recevras les appels même app fermée"); await ensureCallPushSubscription(); }
+    // Le toast ne promet que ce qui part : les appels sont coupés pendant le
+    // pilote (`appelsDisponibles`), les messages et les rappels d'activité non.
+    if (perm === "granted") {
+      toast(appelsDisponibles() ? "Tu recevras les appels même app fermée" : "Tu seras prévenu·e de tes messages même app fermée");
+      await ensureCallPushSubscription();
+    }
   } catch (e) {}
 }
 window.requestCallNotifications = requestCallNotifications;

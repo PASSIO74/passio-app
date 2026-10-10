@@ -153,6 +153,7 @@ Chaque fichier porte un sommaire daté. Une ligne ci-dessous = une règle qu'on 
 **Social : suivre, messagerie, notifications, publications** → `docs/journal/social-messagerie.md`
 - `follows.status` : le serveur tranche (`trg_follows_statut`), seul un `'accepted'` explicite promeut ; CINQ surfaces peignent l'état de suivi — les changer toutes.
 - Notification de message : identifiant déterministe `n_<msgId>_<8>` (c'est lui qui empêche le doublon) ; le CONTENU du message ne voyage jamais dans une notification.
+- Rappels d'activité J-1 / H-2 : poussés par la veille de pilotage (`_shared/rappels.js`), marqués dans `analytics_events` AVANT l'envoi (jamais dans `notifications`, qu'un client forge ou efface) ; l'abonnement push se propose juste après une inscription CONFIRMÉE, nulle part ailleurs.
 
 **Partage, liens courts, invitation** → `docs/journal/partage-liens-invitation.md` (`_ouvrirLienPartage`, `netlify/`, `?plk`)
 - `#post-<id>` est réservé au partage ; les aperçus écrivent du contenu d'autrui dans du HTML sur l'origine de l'app : lot de SÉCURITÉ. Jamais `/bot/i` pour reconnaître un robot (« CUBOT » est un téléphone).
