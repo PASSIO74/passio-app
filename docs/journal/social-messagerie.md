@@ -284,3 +284,11 @@ l'insertion rapide, et on lit l'état FINAL du serveur, jamais l'appel. **Éprou
 l'ancien code → 3 rouges ; attendre la suppression sans file par cible → 1 rouge (les deux
 réactions rapides).
 
+⚠️ **AU PASSAGE, UN BANC QUI TENAIT PAR CHANCE** : sur la PR de ce correctif,
+`ecritures-identite-compte.spec.js` ④ ⑥ ⑨ ont rougi 9 fois sur 9 (« la session du banc est
+lisible » → null), pour un simple redécoupage des shards. Le banc posait `access_token:
+"jeton-de-banc"` sans `refresh_token` : supabase-js 2.116 juge cette session invalide dès qu'il la
+recharge (minuteur, `getSession`) et l'efface — piège déjà écrit pour `mes-passions-page` le 18/09,
+resté ouvert ici. Reproduit : après la pose, un `getSession()` rend la lecture nulle avec l'ancien
+jeton et intacte avec un JWT de forme valide. Le banc pose désormais la même forme que `poserSession`.
+
