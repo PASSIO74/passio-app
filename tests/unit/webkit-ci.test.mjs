@@ -12,18 +12,36 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { createRequire } from "node:module";
+import Module, { createRequire } from "node:module";
 import { parse } from "./lib/yaml-mini.mjs";
 
 const require = createRequire(import.meta.url);
 const CHEMIN_CONFIG = require.resolve("../../playwright.config.js");
 
+// ⚠️ Le job « Audits statiques » n'installe AUCUNE dépendance : `require`
+// de la configuration y échouait (MODULE_NOT_FOUND sur @playwright/test, premier
+// passage CI de #595). La configuration est donc lue contre un FAUX
+// `@playwright/test` — identité pour `defineConfig`, un gabarit « iPhone 13 »
+// reconnaissable pour `devices` : on vérifie ce que la configuration en FAIT,
+// pas le catalogue de Playwright.
+const FAUX_IPHONE = { userAgent: "Mozilla/5.0 (iPhone; banc)", viewport: { width: 390, height: 664 },
+  deviceScaleFactor: 3, isMobile: true, hasTouch: true, defaultBrowserType: "webkit" };
+const FAUX_PLAYWRIGHT = { defineConfig: (c) => c, devices: { "iPhone 13": FAUX_IPHONE } };
+const CLE_FAUX = "@playwright/test";
+
 function config(webkit) {
   const avant = process.env.PASSIO_WEBKIT;
   if (webkit) process.env.PASSIO_WEBKIT = "1"; else delete process.env.PASSIO_WEBKIT;
+  const resoudre = Module._resolveFilename;
+  Module._resolveFilename = function (demande, ...reste) {
+    return demande === CLE_FAUX ? CLE_FAUX : resoudre.call(this, demande, ...reste);
+  };
+  require.cache[CLE_FAUX] = { id: CLE_FAUX, filename: CLE_FAUX, loaded: true, exports: FAUX_PLAYWRIGHT };
   delete require.cache[CHEMIN_CONFIG];
   try { return require(CHEMIN_CONFIG); }
   finally {
+    Module._resolveFilename = resoudre;
+    delete require.cache[CLE_FAUX];
     if (avant === undefined) delete process.env.PASSIO_WEBKIT; else process.env.PASSIO_WEBKIT = avant;
     delete require.cache[CHEMIN_CONFIG];
   }
@@ -38,7 +56,8 @@ test("① sans PASSIO_WEBKIT, les projets sont EXACTEMENT prod et local ; avec, 
   assert.equal(w.use.browserName, "webkit");
   assert.equal(w.use.isMobile, true);
   assert.equal(w.use.hasTouch, true);
-  assert.match(w.use.userAgent, /iPhone/);
+  assert.equal(w.use.userAgent, FAUX_IPHONE.userAgent, "le gabarit vient de devices[\"iPhone 13\"]");
+  assert.equal(w.use.deviceScaleFactor, 3);
   assert.deepEqual(w.use.viewport, { width: 390, height: 844 }, "même surface utile que Chromium : seul le moteur change");
   assert.deepEqual(w.use.launchOptions, {}, "PASSIO_CHROMIUM ne s'applique jamais à WebKit");
 });
