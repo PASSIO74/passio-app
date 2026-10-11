@@ -170,12 +170,14 @@ Chaque fichier porte un sommaire daté. Une ligne ci-dessous = une règle qu'on 
 - Les LECTURES ont leur file de rejeu comme les écritures ; `estEchecReseau(e)` (app-02) est la seule autorité réseau/refus ; on ne rejoue que l'idempotent.
 - Un visiteur n'ouvre pas de socket temps réel ; `postgres_changes` est ce qui ne passe pas l'échelle (`npm run audit:realtime`) ; `filetProchainPas` (app-02) règle seul la cadence des filets — une panne n'est pas un calme.
 - Forfait Supabase PRO, spend cap actif : les quotas sont des murs durs. Un média orphelin est une absence de preuve, pas une preuve d'absence.
+- Une LECTURE « de moi » (filtrée sur `MY_UID`) passe par l'autorité de compte comme une écriture : un visiteur n'a rien à lire, et ces lectures précédaient le fil (`visiteur-sans-lectures-compte.spec.js`).
 
 **Télémétrie, pilotage, Sentinelle, veille** → `docs/journal/telemetrie-pilotage-sentinelle.md` (`js/telemetry.js`, `dashboard/`, `pilotage/`, `scripts/veille-production.mjs`, workflows `sentinelle-*`)
 - Tout comptage qui sert un ratio lit le poids `meta.ech` (`poidsEvenement`) ; on n'échantillonne que l'`api` en 200. `meta.trafic` sort un appareil de l'AUDIENCE, jamais des erreurs (trois lecteurs, un banc : `tests/unit/trafic-hors-public.test.mjs`).
 - Un événement produit par le `GITHUB_TOKEN` ne déclenche aucun workflow : `SENTINELLE_TOKEN` fait vivre la chaîne ; l'auto-fusion n'est armée que pour la Sentinelle.
 - `MY_UID` est un `let` de portée script, `window.MY_UID` n'en est pas le reflet ; `analytics_events` ne tolère pas `user_id NULL` (la garde est en amont).
 - Activation (7 j) : UNE définition, `GESTES_ACTIVATION` + `activation()` (`_shared/pilotage.js`), lue par la fonction `pilotage` ET par le digest (SQL GÉNÉRÉ de la même liste) — jamais une copie à la main (`tests/unit/activation.test.mjs`).
+- File de télémétrie : un événement EN VOL ne repart pas (sauf au `pagehide`, où le navigateur annule l'envoi ordinaire) et un succès retire son lot PAR IDENTITÉ, jamais « les n premiers » (`telemetrie-doublons.spec.js`).
 
 ## 📚 Références projet
 

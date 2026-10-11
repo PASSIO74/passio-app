@@ -205,6 +205,9 @@ test.describe("Notification d'un message privé", () => {
     await bootOnboarded(page);
     const convs = await page.evaluate(async (fake) => {
       eval(fake);
+      // Un COMPTE : depuis le 2026-10-11, un visiteur ne lit plus ses
+      // conversations (`visiteur-sans-lectures-compte.spec.js`).
+      MY_UID = "7c6b5a49-3827-4165-9473-2b1a0f9e8d7c"; window.MY_UID = MY_UID;
       var t = new Date().toISOString();
       window.__reponses["conv_members"] = { data: [{ conv_id: "c1", user_id: MY_UID }, { conv_id: "c1", user_id: "u_leane" }], error: null };
       window.__reponses["conversations"] = { data: [{ id: "c1", is_group: false, created_by: "u_leane" }], error: null };
@@ -226,6 +229,9 @@ test.describe("Notification d'un message privé", () => {
     await bootOnboarded(page);
     const convs = await page.evaluate(async (fake) => {
       eval(fake);
+      // Un COMPTE : depuis le 2026-10-11, un visiteur ne lit plus ses
+      // conversations (`visiteur-sans-lectures-compte.spec.js`).
+      MY_UID = "7c6b5a49-3827-4165-9473-2b1a0f9e8d7c"; window.MY_UID = MY_UID;
       var vieux = new Date(Date.now() - 3600e3).toISOString();
       var neuf = new Date().toISOString();
       window.__reponses["conv_members"] = { data: [{ conv_id: "c1", user_id: MY_UID }, { conv_id: "c1", user_id: "u_leane" }], error: null };

@@ -19,6 +19,7 @@
 - 💾 STOCKAGE : LE MÉNAGE EST UTILE, LE MUR N'ÉTAIT PAS LÀ — LE FORFAIT EST **PRO** (2026-09-20)
 - 🔌 LE MUR EST UNE CONNEXION WEBSOCKET, ET 98 % ÉTAIENT PAYÉES POUR RIEN (2026-09-20)
 - 📉 CAPACITÉ, QUATRE LOTS : CE QUI EST LIVRÉ, CE QUI ATTEND UNE MAIN HUMAINE, ET CE QUI A ÉTÉ MESURÉ (2026-09-21)
+- 🚪 UN VISITEUR NE LIT PAS LE COMPTE QU'IL N'A PAS (2026-10-11)
 
 ---
 
@@ -975,3 +976,56 @@ deux populations ; aucun n'est « la capacité ». Résultats : `docs/CAPACITE_S
 ⚠️ **Le poste a été tenu éveillé par `SetThreadExecutionState`** (`scripts/rester-eveille.ps1`, demande
 transitoire, aucun réglage modifié) : les essais précédents à 200 étaient morts de la veille, et le verdict
 `DUREE_MESURE_INVALIDE` du banc les aurait de toute façon refusés.
+
+## 🚪 UN VISITEUR NE LIT PAS LE COMPTE QU'IL N'A PAS (2026-10-11)
+
+Demande de Benjamin : « comment améliorer l'app maintenant, pour des millions d'utilisateurs ». Lot de
+CAPACITÉ côté visiteurs — la population que le modèle « 500 comptes simultanés, visiteurs illimités »
+prétend ne pas borner.
+⚠️ **LE PREMIER DIAGNOSTIC ÉTAIT FAUX, ET LA FAÇON DONT IL L'ÉTAIT EST LE VRAI ENSEIGNEMENT.** Lu dans
+`edge_logs` (24 h) : ~21 requêtes/min et par IP sur `profiles`, `user_state`, `conv_members`, `follows` —
+annoncé à Benjamin comme « un polling toutes les ~3 s ». **Il n'y a aucun polling** : les filets sont à
+60 s minimum (`filetProchainPas`), et `startAutoRefresh` est mort depuis le 2026-06-29. Ces requêtes
+venaient des BANCS (`HeadlessChrome`, puis le WebKit de #595) : ~1 300 démarrages par jour contre la
+production, chacun sous un identifiant `u_<aléatoire>` différent. **73 % des requêtes REST d'une journée
+(15 491 sur 21 294) venaient d'eux.** Un motif lu dans les journaux de production est d'abord un motif de
+BANC tant qu'on n'a pas lu l'agent utilisateur et la valeur des filtres.
+⚠️ **CE QUE LA RELECTURE A TROUVÉ À LA PLACE, ET QUI VAUT AUSSI POUR LES VRAIS VISITEURS** : ces
+15 491 requêtes étaient des lectures « de moi » sous l'identifiant du visiteur — `user_state` (3 906),
+`profiles?id=eq.u_…` (3 890), `conv_members` (3 882), `blocks` (1 299), `follows` (1 283),
+`story_views` (1 186), plus `notifications`. ~12 par visite, toutes condamnées à un 200 vide : le
+`u_<aléatoire>` de `getMyUserId()` n'existe dans aucune table. Les ÉCRITURES étaient gardées depuis
+#367 (`_uidEstUnCompte`, `_compteAuthReel`) ; les LECTURES non.
+⚠️ **DEUX D'ENTRE ELLES RETARDAIENT LE FIL** : `supaInit` ATTEND `supaLoadUserState()` puis la lecture du
+profil AVANT `supaLoadPosts()`. Sur la séquence d'un visiteur lue dans les journaux : `user_state` à
++0,0 s, profil à +0,5 s, fil à +0,8 s. Deux allers-retours payés par chaque visiteur avant de voir une
+publication — sur un réseau mobile, c'est plus que la moitié d'une seconde.
+**Correctif** : la garde vit DANS chaque lecteur, avec l'autorité qui garde déjà les écritures —
+`supaLoadUserState` (app-02, `_uidEstUnCompte` ; trois appelants : `boot`, `supaInit`, le rejeu),
+`supaLoadMyConversations`, `supaLoadNotifications`, `supaLoadBlocks`, `supaLoadStoryViews`,
+`supaLoadFollowing` (app-08, `_compteAuthReel`), et le bloc « profil » de `supaInit`. Chaque lecteur rend la
+valeur qu'il rendait déjà sur un résultat vide : aucun appelant ne voit la différence.
+⚠️ **`supaLoadUserState` SORT PAR SON `finally`** : `_etatCompteCharge` est posé sur cette sortie comme
+sur toute sortie précoce — des modules l'attendent pour trancher (`reperesAutorises`). Un visiteur ne
+touche plus à `_comptePassionsServeur` : il restait `false` « par lecture vide », il reste indéfini,
+c'est-à-dire « verdict non rendu » — le seul lecteur (`comptePossedeSesPassions`) ne sert qu'à un compte.
+⚠️ **CE QUI N'EST PAS DE CE LOT** : ouvrir une conversation de DÉMONSTRATION lit encore `conv_reads` et
+`conv_messages` sous l'identifiant du visiteur (`c_a`, `c_b`) — c'est un GESTE, pas le démarrage ; et le
+référentiel des passions reste paginé en six lectures (`chargerReferentielPassions`), délibérément.
+⚠️ **QUATRE SUITES LISAIENT UN « COMPTE » SOUS L'IDENTIFIANT D'UN VISITEUR** — `bootOnboarded` laisse
+`MY_UID` au placeholder `u_…`, et `reprise-lectures-boot` (②–⑧), `notification-message` (⑦, ⑦ bis),
+`ouverture-publique` (`supaLoadFollowing`) appelaient les lecteurs ainsi. Elles parlent désormais au nom d'un
+COMPTE (uuid de banc). ⚠️ **Deux d'entre elles restaient VERTES sans plus rien exercer** : ③ (« un refus
+RLS ne s'inscrit jamais ») et ④ (« une lecture aboutie acquitte ») — aucune lecture, donc rien à inscrire ni
+à acquitter. Même famille que le fixture `tourSeen: true` (fiche du 2026-09-12) : un verrou vert après un
+changement de garde n'a rien prouvé tant qu'on n'a pas vérifié qu'il passe encore par le chemin.
+⚠️ **ET UN CINQUIÈME ÉTAIT EN COURSE AVEC LE DÉMARRAGE** : `capacite-socket-au-repos` ② posait ses stubs
+pendant que le bloc différé de 2 s de `supaInit` (lives, notifications…) était encore à venir. Il ne
+restait vert que parce que les deux lectures supprimées ici retardaient ce bloc au-delà de la fenêtre ; le
+démarrage plus rapide le faisait tomber DEDANS, au hasard (2 rouges sur 3). Le banc attend désormais
+`_supaInitTerminee` puis l'échéance du bloc (24 verts sur 24, trois répétitions).
+Verrou : `tests/e2e/visiteur-sans-lectures-compte.spec.js` (4) — ① un visiteur ne lit aucune table « de
+moi » et le FIL est la première requête du démarrage ; ② un compte réel les lit TOUTES (une garde trop large
+couperait sa synchronisation sans un bruit) ; ③ chaque lecteur seul rend sa valeur vide, sans requête ;
+④ source. **Éprouvé par RÉINJECTION** (sources de `main` remises en place) : ①, ③ et ④ rougissent, ② reste
+vert — il garde l'autre sens.

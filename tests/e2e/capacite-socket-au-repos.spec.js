@@ -19,6 +19,17 @@ const { bootOnboarded } = require("./app-helper");
 
 async function preparer(page, opts = {}) {
   await bootOnboarded(page);
+  // ⚠️ LE DÉMARRAGE DOIT ÊTRE AU REPOS AVANT LA MESURE (2026-10-11). `supaInit`
+  // diffère de 2 s un bloc qui appelle `supaRefreshVideoLives`, les
+  // notifications et le reste : s'il tombe APRÈS l'installation des stubs
+  // ci-dessous, il compte un « rattrapage » que personne n'a fait — dans
+  // l'étalon OU dans la mesure, au hasard. Ce cas ne restait vert que parce
+  // que le démarrage d'un visiteur attendait deux lectures de compte avant de
+  // planifier ce bloc ; elles ne partent plus (`visiteur-sans-lectures-compte`),
+  // le bloc tombe plus tôt, en plein dans la fenêtre. On attend donc la fin de
+  // `supaInit` PUIS l'échéance du bloc différé.
+  await page.waitForFunction(() => window._supaInitTerminee === true, null, { timeout: 20000 });
+  await page.waitForTimeout(2200);
   await page.clock.install();
   await page.evaluate((opts) => {
     stopFeedRefreshLoop(); stopPostLikeRefresh();

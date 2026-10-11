@@ -409,6 +409,17 @@
   var unloading = false;        // vrai entre `pagehide` et un éventuel `pageshow` :
                                 // le navigateur annule alors les requêtes en vol
   var BACKLOG_KEY = "passio_tel_backlog";  // file persistée (survit reload/coupure)
+  // ⚠️ CE QUI EST PARTI ET ATTEND SON VERDICT (2026-10-11). `event_id` → jeton
+  // de l'envoi qui le porte. Mesuré en production sur 30 jours : 718 lignes sur
+  // 3 949 (18 %) étaient la COPIE d'un événement déjà reçu, et 602 d'entre elles
+  // arrivaient moins de 5 s après l'original. Cause : le chemin `keepalive`
+  // (onglet masqué, `pagehide`) ignore `sending` et reprenait la TÊTE de la file
+  // — c'est-à-dire exactement les événements déjà en vol — puis chaque succès
+  // retirait `batch.length` événements de la tête : le second retrait jetait
+  // des événements JAMAIS envoyés. Deux défauts pour un : des doublons qui
+  // gonflent tout comptage, et des pertes qui ne laissent aucune trace.
+  var enVol = Object.create(null);
+  var envoiSeq = 0;
 
   // Persiste la file : si l'appareil est en coupure et que l'onglet se ferme,
   // les événements (dont les erreurs de connexion) sont rejoués au prochain
@@ -551,6 +562,49 @@
   // Envoi d'un lot par POST REST direct + keepalive (survit à la fermeture de
   // l'onglet, contrairement au client SDK). La file n'est vidée qu'en cas de
   // succès → une coupure garde les événements pour un rejeu ultérieur.
+  // ⚠️ UN ÉVÉNEMENT EN VOL NE REPART PAS — avec UNE exception, et elle est
+  // voulue. Au `pagehide`, le navigateur ANNULE une requête ordinaire en vol
+  // (seul `keepalive` survit au déchargement) : ses événements sont alors
+  // doublés en keepalive, sinon une visite qui se termine perdrait ses derniers
+  // gestes — précisément ceux d'un visiteur qui ne revient pas. Onglet
+  // seulement MASQUÉ, la requête ordinaire continue : rien n'est doublé.
+  // Un événement parti en keepalive n'est JAMAIS redoublé (il survit).
+  // ⚠️ ET UN VERDICT QUI N'ARRIVE JAMAIS NE BLOQUE RIEN : une page restaurée du
+  // cache aller-retour (bfcache) peut ne jamais voir se régler la promesse d'un
+  // keepalive parti au `pagehide`. Passé EN_VOL_MAX_MS, l'événement redevient
+  // envoyable — un doublon tardif vaut mieux qu'un événement figé pour la vie
+  // de l'onglet.
+  var EN_VOL_MAX_MS = 60000;
+  function _peutPartir(ev, keepalive) {
+    var j = ev && ev.event_id ? enVol[ev.event_id] : null;
+    if (!j) return true;
+    if (Date.now() - j.t > EN_VOL_MAX_MS) { delete enVol[ev.event_id]; return true; }
+    return !!(keepalive && unloading && !j.keepalive);
+  }
+  // Retire de la file les événements DE CE LOT, par identité — jamais « les n
+  // premiers » : deux envois peuvent se chevaucher, et la tête de la file n'est
+  // plus forcément ce qui vient de partir.
+  function _retirerDeLaFile(lot) {
+    if (!lot || !lot.length) return;
+    var ids = Object.create(null), refs = [];
+    lot.forEach(function (ev) {
+      if (ev && ev.event_id) ids[ev.event_id] = 1; else refs.push(ev);
+    });
+    queue = queue.filter(function (ev) {
+      if (ev && ev.event_id) return !ids[ev.event_id];
+      return refs.indexOf(ev) === -1;
+    });
+  }
+  // Rend la main sur les événements d'un envoi réglé (succès, refus ou panne) —
+  // seulement ceux que CET envoi porte encore : au `pagehide`, un keepalive a pu
+  // reprendre un événement d'une requête ordinaire, et c'est alors lui qui en
+  // répond.
+  function _liberer(jeton, lot) {
+    (lot || []).forEach(function (ev) {
+      if (ev && ev.event_id && enVol[ev.event_id] === jeton) delete enVol[ev.event_id];
+    });
+  }
+
   function flush(opts) {
     opts = opts || {};
     if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
@@ -558,8 +612,17 @@
     var cfg = supaCfg();
     if (!cfg) return;                      // config pas prête → file persistée, on réessaiera
     if (!opts.keepalive && sending) return;
-    var batch = queue.slice(0, opts.keepalive ? 20 : 60);  // keepalive : lots plus petits (limite 64 Ko)
+    var max = opts.keepalive ? 20 : 60;    // keepalive : lots plus petits (limite 64 Ko)
+    var batch = [];
+    for (var qi = 0; qi < queue.length && batch.length < max; qi++) {
+      if (_peutPartir(queue[qi], !!opts.keepalive)) batch.push(queue[qi]);
+    }
     if (!batch.length) return;
+    // Le lot ORIGINAL (références de la file) : c'est lui qu'on retire au succès,
+    // les copies désattribuées ci-dessous n'étant pas dans la file.
+    var lot = batch;
+    var envoi = { seq: ++envoiSeq, keepalive: !!opts.keepalive, t: Date.now() };
+    lot.forEach(function (ev) { if (ev && ev.event_id) enVol[ev.event_id] = envoi; });
     // Un lot part en UN SEUL insert multi-lignes : une ligne refusée par la RLS
     // annule TOUTES les autres. Il suffit donc d'un événement dont l'identité ne
     // correspond plus à la session courante pour détruire ses 59 voisins légitimes.
@@ -576,7 +639,7 @@
     // La décision voyage AVEC la requête : deux envois peuvent être en vol (le
     // chemin `keepalive` ignore `sending`), et un rejet doit être jugé sur ce
     // que SON lot portait, jamais sur un drapeau global qui a pu changer.
-    opts = { keepalive: !!opts.keepalive, viaAnon: jeton === cfg.anon, jeton: jeton };
+    opts = { keepalive: !!opts.keepalive, viaAnon: jeton === cfg.anon, jeton: jeton, lot: lot, envoi: envoi };
     batch = batch.map(function (ev) {
       if (ev && ev.user_id != null && ev.user_id !== moi) {
         var copie = {}; for (var k in ev) if (Object.prototype.hasOwnProperty.call(ev, k)) copie[k] = ev[k];
@@ -599,18 +662,19 @@
         body: JSON.stringify(batch),
         keepalive: !!opts.keepalive,
       });
-    } catch (e) { sending = false; onSendFailure(0, batch.length, opts); return; }
+    } catch (e) { sending = false; _liberer(envoi, lot); onSendFailure(0, lot.length, opts); return; }
     req.then(function (res) {
       sending = false;
+      _liberer(envoi, lot);
       if (res && res.ok) {
-        queue.splice(0, batch.length);     // retire ce qui est parti
+        _retirerDeLaFile(lot);             // retire CE qui est parti, par identité
         persistBacklog();
         onSendSuccess();
         if (queue.length && !opts.keepalive) flush();   // écoule le reste
       } else {
-        onSendReject(res ? res.status : 0, batch.length, opts);
+        onSendReject(res ? res.status : 0, lot.length, opts);
       }
-    }, function () { sending = false; onSendFailure(0, batch.length, opts); });
+    }, function () { sending = false; _liberer(envoi, lot); onSendFailure(0, lot.length, opts); });
   }
 
   // Réponse serveur non-OK : distingue un REJET définitif (RLS/validation 4xx →
@@ -624,7 +688,7 @@
     if (status === 401 || status === 403) { onAuthReject(status, n, opts); return; }
     var permanent = status >= 400 && status < 500 && status !== 408 && status !== 429;
     if (permanent) {
-      queue.splice(0, n); persistBacklog();
+      _retirerDeLaFile(opts.lot); persistBacklog();
       track("connectivity", "server_reject", {
         severity: "warn", status: "error", http_status: status,
         message: "Lot de télémétrie rejeté par le serveur (HTTP " + status + ")",
@@ -651,7 +715,7 @@
       // Refusé SOUS LA CLÉ ANON, lignes toutes à NULL : ce lot ne passera
       // jamais, on le retire pour ne pas bloquer la file.
       authRetries = 0;
-      queue.splice(0, n); persistBacklog();
+      _retirerDeLaFile(opts.lot); persistBacklog();
       track("connectivity", "server_reject", {
         severity: "warn", status: "error", http_status: status,
         message: "Lot de télémétrie rejeté sous la clé anon (HTTP " + status + ")",

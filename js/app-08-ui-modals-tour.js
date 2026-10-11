@@ -6271,7 +6271,17 @@ function _fusionnerConvsServeurDansLocal(supaConvs) {
   });
 }
 
+// ⚠️ LECTURES « DE MOI » RÉSERVÉES À UN COMPTE (2026-10-11) — conversations,
+// notifications, blocages, stories vues, abonnements. Chacune filtre sur
+// `MY_UID` ; pour un visiteur c'est le `u_<aléatoire>` de `getMyUserId()`, qui
+// n'existe dans aucune table : la réponse est un 200 vide, à chaque démarrage.
+// Mesuré sur les journaux de production (24 h) : 15 491 requêtes REST sur
+// 21 294 venues des bancs (73 %) étaient ces lectures de visiteur, ~12 par
+// visite. Même autorité que les écritures et le temps réel (`_compteAuthReel`,
+// forme d'un uuid Supabase) ; chaque lecteur rend la valeur qu'il rendait déjà
+// sur un résultat vide, donc aucun appelant ne voit la différence.
 async function supaLoadMyConversations() {
+  if (!_compteAuthReel()) return [];
   try {
     const { data: memberships } = await supa.from("conv_members").select("conv_id").eq("user_id", MY_UID);
     if (!memberships?.length) return [];
@@ -7403,6 +7413,7 @@ async function supaUnfollowUser(targetId) {
 }
 
 async function supaLoadFollowing() {
+  if (!_compteAuthReel()) return [];   // lecture « de moi » : voir supaLoadMyConversations
   try {
     let res = null;
     if (window._followsSansStatut !== true) {
@@ -7472,6 +7483,7 @@ async function supaUnblockUser(targetId) {
   } catch(e) { console.warn("déblocage :", e && e.message); return false; }
 }
 async function supaLoadBlocks() {
+  if (!_compteAuthReel()) return [];   // lecture « de moi » : voir supaLoadMyConversations
   try {
     const { data } = await supa.from("blocks").select("blocked_id").eq("blocker_id", MY_UID);
     return (data || []).map(r => r.blocked_id);
@@ -7510,7 +7522,9 @@ async function supaMarkStoryView(storyId) {
   } catch (e) {}
 }
 async function supaLoadStoryViews() {
-  if (!window._supaReal || !MY_UID) return [];
+  // Lecture « de moi » : voir supaLoadMyConversations. L'écriture voisine
+  // (`supaMarkStoryView`) était déjà gardée par `_compteAuthReel`, la lecture non.
+  if (!window._supaReal || !_compteAuthReel()) return [];
   try {
     const { data } = await supa.from("story_views").select("story_id").eq("user_id", MY_UID);
     return (data || []).map(r => r.story_id);
@@ -7767,6 +7781,7 @@ function _notifEmoji(kind) {
 }
 
 async function supaLoadNotifications() {
+  if (!_compteAuthReel()) return [];   // lecture « de moi » : voir supaLoadMyConversations
   try {
     // ⚠️ NE PAS faire `.select("*, profiles!from_id(...)")` : `notifications.from_id`
     // est une simple colonne TEXT SANS FK vers profiles (cf. supabase_tables.sql)
@@ -8217,7 +8232,14 @@ async function supaInit() {
     // Le nom ne change QUE via \u00ab Modifier le profil \u00bb (saveMainProfile, explicite).
     // S'il n'y a pas encore de profil serveur (compte neuf), on publie le local
     // (cr\u00e9ation de la ligne \u2192 d\u00e9couvrable dans la recherche + FK conversations).
-    try {
+    // ⚠️ SEULEMENT POUR UN COMPTE (2026-10-11). Un visiteur n'a pas de ligne
+    // `profiles` : cette lecture rendait toujours un 200 vide — c'est la création
+    // juste en dessous qu'un lot précédent avait gardée, pas la lecture. Or elle
+    // est ATTENDUE avant `supaLoadPosts()` : chaque visiteur payait un aller-retour
+    // de plus avant de voir le fil (3 890 lectures de visiteur en 24 h, journaux
+    // de production). Sauter le bloc entier ne perd rien : sans compte, la
+    // branche « créer » et le repli du `catch` ne partaient déjà pas.
+    if (_compteAuthReel()) { try {
       const { data: srv } = await supa.from("profiles")
         .select("username,emoji,color,avatar_url,passion_id,bio").eq("id", MY_UID).maybeSingle();
       // ⚠️ `srv` non nul PROUVE que la ligne existe, et cette preuve ne dépend NI
@@ -8257,7 +8279,7 @@ async function supaInit() {
         // création-ci qui frappait une porte fermée exprès, à chaque démarrage.
         await supaEnsureProfileExists();
       }
-    } catch(e) { if (_compteAuthReel()) { try { await supaEnsureProfileExists(); } catch(_e) {} } }
+    } catch(e) { if (_compteAuthReel()) { try { await supaEnsureProfileExists(); } catch(_e) {} } } }
 
     // 1. CHARGER LES POSTS au d\u00e9marrage
     console.log("\ud83d\udce5 [INIT] Chargement des posts Supabase");
