@@ -19,6 +19,7 @@
 - 🛰️ LA TÉLÉMÉTRIE SORT DU TEMPS RÉEL — 91 % DE CE QUE LA BASE ÉMET, POUR UN SEUL ABONNÉ (2026-09-20)
 - 🕵️ TRAFIC HORS PUBLIC — 15 « VISITEURS » SUR 19 ÉTAIENT NOS PROPRES CONTRÔLES (2026-10-05)
 - 🌱 ACTIVATION DES NOUVEAUX COMPTES — UN COMPTE SUR TROIS FAIT UN GESTE DANS SA PREMIÈRE SEMAINE (2026-10-06)
+- 🧮 TÉLÉMÉTRIE : 18 % DE DOUBLONS, ET DES PERTES SANS TRACE (2026-10-11)
 
 ---
 
@@ -281,3 +282,37 @@ Le pilotage comptait les inscriptions et les appareils, jamais ce que les nouvea
 ⚠️ **La requête doit passer `estSelectSeul`** — la veille vérifie TOUT son catalogue SQL à l'import et PLANTE sinon (pas de `;`, pas de `--`, aucun mot comme `set`, `do`, `call`…). Les libellés n'y entrent pas (une apostrophe casserait la chaîne) : le SQL rend le NOM DE TABLE, le libellé est posé en JS.
 
 Verrous : `tests/unit/activation.test.mjs` (10, dont l'accord des deux lecteurs sur un même jeu de données ; mutations éprouvées : borne `<=`→`<`, jeunes comptés au taux, heure locale, e2e non exclus, fuseau SQL retiré — chacune rougit), `tests/e2e/pilotage-nuage.spec.js` ② et ③ bis (rendu, « Non lu »). Registre : `.passio/METRICS_REGISTRY.md` § « Activation ».
+
+## 🧮 TÉLÉMÉTRIE : 18 % DE DOUBLONS, ET DES PERTES SANS TRACE (2026-10-11)
+
+Mesuré en production sur 30 jours (`telemetry_events`, env = production) : **718 lignes sur 3 949 (18 %)
+étaient la copie d'un événement déjà reçu** — même `event_id` —, dont **602 arrivées moins de 5 s** après
+l'original. Cas vécu le 2026-10-04 : UN tap sur « Continuer avec Google » (`client_ts` 15:05:29.285),
+enregistré QUATRE fois (`received_at` à :30.97, :31.18, :31.26 et :50.87, ce dernier au retour de Google).
+Lu au pilotage — et dans une analyse de ce jour — comme « 5 taps en 26 s, le bouton ne répond pas » : il y
+en avait DEUX, dont un refusé faute de case cochée. **Avant de lire un comptage de gestes, dédoublonner
+sur `event_id`** ; le serveur du pilotage le fait déjà en mémoire (`store.js`, `seen`), les lectures SQL non.
+⚠️ **LE MÉCANISME** : le chemin `keepalive` (onglet masqué, `pagehide`) ignore `sending` — c'est voulu,
+une page qui part ne peut pas attendre — mais il reprenait `queue.slice(0, 20)`, la TÊTE de la file, donc
+exactement les événements déjà partis dans la requête ordinaire en vol. Puis chaque succès faisait
+`queue.splice(0, batch.length)` : le second retrait jetait **des événements jamais envoyés**. Deux défauts
+pour un, et le second ne laissait aucune trace.
+**Correctif** (`js/telemetry.js`) : `enVol` (événement → jeton de l'envoi qui le porte) ; un lot ne prend
+que ce qui n'est pas en vol (`_peutPartir`) ; un succès, un refus définitif ou un refus sous la clé anon
+retirent LEUR lot par identité (`_retirerDeLaFile`), jamais « les n premiers » ; tout envoi réglé rend la
+main sur ses seuls événements (`_liberer`).
+⚠️ **L'EXCEPTION EST VOULUE ET ELLE EST VERROUILLÉE** : au `pagehide`, ce qu'une requête ORDINAIRE porte
+est doublé en keepalive — le navigateur annule l'ordinaire au déchargement, et sans ce doublement une visite
+qui se termine perdrait ses derniers gestes, précisément ceux d'un visiteur qui ne revient pas. Un événement
+parti en KEEPALIVE n'est, lui, jamais redoublé (il survit au déchargement). Et un verdict qui n'arrive
+jamais (page restaurée du bfcache) ne bloque rien au-delà de `EN_VOL_MAX_MS` (60 s).
+⚠️ **CE QUE LE CLIENT NE PEUT PAS RÉGLER** : ~16 % des doublons arrivent plus de 5 s après l'original —
+le backlog persisté au déchargement est rejoué au chargement suivant alors que le keepalive avait abouti.
+Le client ne peut pas savoir qu'il a abouti. Remède complet : index UNIQUE sur `event_id` et
+`Prefer: resolution=ignore-duplicates` à l'insertion — une migration, donc le canal ③ d'ADR-012.
+Verrou : `tests/e2e/telemetrie-doublons.spec.js` (4) — ① masquage pendant un envoi ; ② un succès ne jette
+pas ce qui est arrivé entre-temps ; ③ `pagehide` anti-perte ; ④ masquage puis `pagehide`. **Éprouvé par
+RÉINJECTION** (`telemetry.js` de `main`) : les QUATRE rougissent — 2 copies pour ①, ② et ③, **3 pour ④**,
+le motif exact de la production. ⚠️ Premier jet du banc FAUX : il comptait comme « arrivé » un lot retenu
+puis ANNULÉ (le mode à l'envoi, pas l'issue) — ③ rougissait sur un code juste. Un lot est arrivé quand le
+serveur l'a accepté, jamais parce qu'il est parti.
