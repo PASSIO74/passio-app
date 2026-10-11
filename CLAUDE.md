@@ -43,6 +43,7 @@ Réseau social des passions. PWA vanilla JS (pas de framework, pas de bundler) +
 - Serveur local : `npm run serve` → http://localhost:8080 (plus de code d'accès depuis le 2026-09-11 ; http-server, plus besoin de Python)
 - **Vérification rapide : `npm run verif` (~2 s)** — les SEPT gates statiques que la CI exige. À lancer AVANT tout : un rouge s'y trouve en 2 s au lieu d'un cycle CI de ~30 min.
 - Tests : `npx playwright install chromium` puis `npm test`. Ciblé : `npm run test:local` (897 suites navigateur, aucune écriture en base) · `npm run test:prod` (les 7 suites à comptes réels) · `npm run test:local -- tests/e2e/x.spec.js`. Le helper `tests/e2e/gate-helper.js` déverrouille le gate.
+- **WebKit (le moteur de TOUS les navigateurs de l'iPhone)** : `PASSIO_WEBKIT=1 npx playwright test --project=webkit-iphone` après `npx playwright install webkit` — socle `SUITES_WEBKIT` de `playwright.config.js` (sans la variable, les projets restent `prod` et `local`) ; en CI, job BLOQUANT « Suites WebKit (iPhone) » (2026-10-06, `tests/unit/webkit-ci.test.mjs`).
 - Build prod : `node scripts/build.js dist/index.html`
 - Déploiement : `git push origin main` → GitHub Actions teste, build, minifie, déploie sur Netlify (https://passio-app.netlify.app)
 
