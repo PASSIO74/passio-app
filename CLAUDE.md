@@ -154,6 +154,8 @@ Chaque fichier porte un sommaire daté. Une ligne ci-dessous = une règle qu'on 
 **Social : suivre, messagerie, notifications, publications** → `docs/journal/social-messagerie.md`
 - `follows.status` : le serveur tranche (`trg_follows_statut`), seul un `'accepted'` explicite promeut ; CINQ surfaces peignent l'état de suivi — les changer toutes.
 - Notification de message : identifiant déterministe `n_<msgId>_<8>` (c'est lui qui empêche le doublon) ; le CONTENU du message ne voyage jamais dans une notification.
+- Deux écritures dont l'ORDRE compte (retirer puis poser) ne partent jamais en parallèle : une réaction emoji s'effaçait elle-même quand le DELETE dépassait l'INSERT (`_syncReactionEmoji`, une file par cible).
+- Rappels d'activité J-1 / H-2 : poussés par la veille de pilotage (`_shared/rappels.js`), marqués dans `analytics_events` AVANT l'envoi (jamais dans `notifications`, qu'un client forge ou efface) ; l'abonnement push se propose juste après une inscription CONFIRMÉE, nulle part ailleurs.
 
 **Partage, liens courts, invitation** → `docs/journal/partage-liens-invitation.md` (`_ouvrirLienPartage`, `netlify/`, `?plk`)
 - `#post-<id>` est réservé au partage ; les aperçus écrivent du contenu d'autrui dans du HTML sur l'origine de l'app : lot de SÉCURITÉ. Jamais `/bot/i` pour reconnaître un robot (« CUBOT » est un téléphone).
@@ -173,6 +175,7 @@ Chaque fichier porte un sommaire daté. Une ligne ci-dessous = une règle qu'on 
 - Tout comptage qui sert un ratio lit le poids `meta.ech` (`poidsEvenement`) ; on n'échantillonne que l'`api` en 200. `meta.trafic` sort un appareil de l'AUDIENCE, jamais des erreurs (trois lecteurs, un banc : `tests/unit/trafic-hors-public.test.mjs`).
 - Un événement produit par le `GITHUB_TOKEN` ne déclenche aucun workflow : `SENTINELLE_TOKEN` fait vivre la chaîne ; l'auto-fusion n'est armée que pour la Sentinelle.
 - `MY_UID` est un `let` de portée script, `window.MY_UID` n'en est pas le reflet ; `analytics_events` ne tolère pas `user_id NULL` (la garde est en amont).
+- Activation (7 j) : UNE définition, `GESTES_ACTIVATION` + `activation()` (`_shared/pilotage.js`), lue par la fonction `pilotage` ET par le digest (SQL GÉNÉRÉ de la même liste) — jamais une copie à la main (`tests/unit/activation.test.mjs`).
 
 ## 📚 Références projet
 

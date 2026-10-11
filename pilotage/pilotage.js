@@ -258,6 +258,18 @@
       co.append(chiffre(u.inscritsJour, "aujourd'hui"), chiffre(u.inscritsSemaine, "7 jours"), chiffre(u.total, "au total"));
       graphe("grapheInscriptions", u.serieInscriptions);
     }
+    // Activation (2026-10-06) : le taux ne compte que les comptes qui ont eu
+    // leurs 7 jours entiers ; les plus jeunes sont « en cours », pas des échecs.
+    const ac = vider("activation"), ap = $("activationPremiers"), act = d.activation;
+    ap.hidden = true;
+    if (!act) nonLu("activation", "Activation");
+    else {
+      ac.append(chiffre(act.taux == null ? null : act.taux + " %", "activés en " + act.jours + " j", act.taux != null && act.taux < 50 ? "orange" : ""),
+        chiffre(act.activesMures + " / " + act.mures, "comptes de " + act.jours + " à " + act.cohorteJours + " j"),
+        chiffre(act.enCours, "de moins de " + act.jours + " j" + (act.enCoursActives ? " (dont " + act.enCoursActives + " déjà actif" + (act.enCoursActives > 1 ? "s" : "") + ")" : "")));
+      const premiers = Object.entries(act.premiers || {}).sort((x, y) => y[1] - x[1]).map(([g, n]) => g + " " + n).join(" · ");
+      if (premiers) { ap.textContent = "Premier geste des comptes activés : " + premiers; ap.hidden = false; }
+    }
     graphe("grapheErreurs", e7 && e7.serie);
     const si2 = vider("signalements");
     const sg = d.signalements;

@@ -350,3 +350,136 @@ export function aReparer(gh) {
   }
   return out;
 }
+
+// ─── ACTIVATION DES NOUVEAUX COMPTES (2026-10-06) ───────────────────────────
+// Un compte est ACTIVÉ s'il fait au moins un GESTE SOCIAL dans les 7 jours qui
+// suivent sa création : publier (publication ou story), commenter (une
+// publication ou une activité), suivre quelqu'un, rejoindre ou organiser une
+// activité, envoyer un message. C'est la promesse du produit — « partage tes
+// passions et rencontre les gens » —, pas une visite : ouvrir l'app ne compte pas.
+// Mesuré le 2026-10-06 (comptes confirmés, hors e2e et éditeur) : sur les 3
+// comptes créés entre 7 et 30 jours plus tôt, UN a fait un geste ; les deux
+// autres n'en ont fait aucun, jamais. Le pilotage ne le montrait nulle part.
+// ⚠️ Le like n'en est pas : `post_likes` n'a pas d'horodatage — rien ne le date
+// dans la fenêtre. Ajouter une colonne `created_at` le ferait entrer ici.
+// ⚠️ UNE définition, DEUX lecteurs : la fonction `pilotage` (PostgREST, le
+// téléphone) et le digest du matin (SQL de l'API de gestion, `sqlActivation()`
+// GÉNÉRÉ depuis la même liste). Même liste, même décision (`activation()`) :
+// tests/unit/activation.test.mjs les confronte.
+export const ACTIVATION_JOURS = 7;
+export const COHORTE_ACTIVATION_JOURS = 30;
+export const DOMAINE_E2E = "@passio-e2e.test";
+
+/** `naif` : colonne `timestamp` SANS fuseau, dont les valeurs sont en UTC. */
+export const GESTES_ACTIVATION = Object.freeze([
+  Object.freeze({ table: "posts", uid: "author_id", naif: true, libelle: "publication" }),
+  Object.freeze({ table: "stories", uid: "author_id", naif: true, libelle: "story" }),
+  Object.freeze({ table: "post_comments", uid: "author_id", naif: true, libelle: "commentaire" }),
+  Object.freeze({ table: "event_comments", uid: "author_id", naif: false, libelle: "commentaire d'activité" }),
+  Object.freeze({ table: "follows", uid: "follower_id", naif: false, libelle: "abonnement" }),
+  Object.freeze({ table: "event_attendees", uid: "user_id", naif: false, libelle: "participation à une activité" }),
+  Object.freeze({ table: "events", uid: "author_id", naif: true, libelle: "activité organisée" }),
+  Object.freeze({ table: "conv_messages", uid: "from_id", naif: true, libelle: "message" }),
+]);
+
+/**
+ * Horodatage → millisecondes. Une valeur SANS désignateur de fuseau vient d'une
+ * colonne `timestamp` : elle est en UTC — jamais l'heure locale de la machine
+ * qui lit (même piège que `supaTs` côté app). `+00` est complété en `+00:00`.
+ */
+export function dateUtc(v) {
+  if (typeof v === "number") return v;
+  if (v == null || v === "") return NaN;
+  let s = String(v).trim().replace(" ", "T");
+  if (/[+-]\d\d$/.test(s)) s += ":00";
+  return Date.parse(/(?:[zZ]|[+-]\d\d:?\d\d)$/.test(s) ? s : s + "Z");
+}
+
+/**
+ * Le compte entre-t-il dans la mesure ? Non s'il est supprimé, anonyme, non
+ * confirmé (il n'a jamais pu entrer : c'est l'affaire de l'entonnoir
+ * d'inscription), compte de test e2e ou compte de l'éditeur (`extra` =
+ * PILOTAGE_EMAILS, comme `autorise`).
+ */
+export function compteMesurable(u, extra = "") {
+  if (!u || typeof u !== "object" || !u.id) return false;
+  if (u.deleted_at || u.is_anonymous) return false;
+  if (!u.email_confirmed_at && !u.confirmed_at) return false;
+  const email = String(u.email || "").trim().toLowerCase();
+  if (!email || email.endsWith(DOMAINE_E2E)) return false;
+  const editeurs = [COMPTE_PILOTE, ...String(extra || "").split(",")].map((s) => s.trim().toLowerCase()).filter(Boolean);
+  return !editeurs.includes(email);
+}
+
+const LIBELLE_GESTE = new Map(GESTES_ACTIVATION.map((g) => [g.table, g.libelle]));
+
+/**
+ * La mesure. `comptes` : `{ id, cree }` déjà MESURABLES ; `gestes` : `{ uid, le,
+ * geste }` (`geste` = la table). Un compte « mûr » a eu ses 7 jours entiers :
+ * seul lui entre au taux — un compte de 2 jours sans geste n'est pas un échec,
+ * il est « en cours ». `premiers` : par quel geste les comptes activés ont
+ * commencé (ce qui active, concrètement).
+ */
+export function activation(comptes, gestes, maintenant = Date.now(), jours = ACTIVATION_JOURS, cohorteJours = COHORTE_ACTIVATION_JOURS) {
+  const fenetre = jours * 864e5;
+  const debut = maintenant - cohorteJours * 864e5;
+  const premier = new Map();
+  for (const g of gestes || []) {
+    if (!g || g.uid == null) continue;
+    const t = dateUtc(g.le);
+    if (!Number.isFinite(t)) continue;
+    const p = premier.get(String(g.uid));
+    if (!p || t < p.t) premier.set(String(g.uid), { t, geste: String(g.geste || "") });
+  }
+  const out = { cohorte: 0, mures: 0, activesMures: 0, taux: null, enCours: 0, enCoursActives: 0, premiers: {}, jours, cohorteJours };
+  const vus = new Set();
+  for (const c of comptes || []) {
+    if (!c || c.id == null || vus.has(String(c.id))) continue;
+    const cree = dateUtc(c.cree);
+    if (!Number.isFinite(cree) || cree < debut || cree > maintenant) continue;
+    vus.add(String(c.id));
+    out.cohorte++;
+    const p = premier.get(String(c.id));
+    const active = !!p && p.t - cree <= fenetre;
+    if (active) {
+      const lib = LIBELLE_GESTE.get(p.geste) || p.geste || "geste";
+      out.premiers[lib] = (out.premiers[lib] || 0) + 1;
+    }
+    if (maintenant - cree >= fenetre) { out.mures++; if (active) out.activesMures++; }
+    else { out.enCours++; if (active) out.enCoursActives++; }
+  }
+  out.taux = out.mures ? Math.round((100 * out.activesMures) / out.mures) : null;
+  return out;
+}
+
+/**
+ * La même mesure en UN SELECT pour l'API de gestion (digest du matin), qui lit
+ * `auth.users` directement. GÉNÉRÉE depuis GESTES_ACTIVATION et les mêmes
+ * exclusions que `compteMesurable` : une table ajoutée à la liste entre dans
+ * les deux lecteurs à la fois. Une ligne par (compte, table) : le PREMIER geste
+ * de chaque table, en ISO UTC ; `activationDepuisLignes` refait la décision.
+ */
+export function sqlActivation(cohorteJours = COHORTE_ACTIVATION_JOURS) {
+  const iso = (col) => `to_char(${col}, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`;
+  const gestes = GESTES_ACTIVATION.map((g) =>
+    `select ${g.uid}::text as uid, ${g.naif ? "created_at" : "(created_at at time zone 'UTC')"} as le, '${g.table}' as geste from public.${g.table} where ${g.uid}::text in (select id from comptes)`
+  ).join(" union all ");
+  return `with comptes as (select id::text as id, (created_at at time zone 'UTC') as cree from auth.users`
+    + ` where deleted_at is null and coalesce(is_anonymous, false) = false and email_confirmed_at is not null`
+    + ` and lower(coalesce(email, '')) not like '%${DOMAINE_E2E}' and lower(coalesce(email, '')) <> '${COMPTE_PILOTE}'`
+    + ` and created_at > now() - interval '${Number(cohorteJours) || COHORTE_ACTIVATION_JOURS} days'),`
+    + ` gestes as (${gestes})`
+    + ` select c.id, ${iso("c.cree")} as cree, g.geste, ${iso("min(g.le)")} as premier`
+    + ` from comptes c left join gestes g on g.uid = c.id group by c.id, c.cree, g.geste`;
+}
+
+/** Lignes de `sqlActivation()` → `activation()`. */
+export function activationDepuisLignes(lignes, maintenant = Date.now()) {
+  const comptes = [], gestes = [];
+  for (const l of lignes || []) {
+    if (!l || l.id == null) continue;
+    comptes.push({ id: l.id, cree: l.cree });
+    if (l.geste && l.premier) gestes.push({ uid: l.id, le: l.premier, geste: l.geste });
+  }
+  return activation(comptes, gestes, maintenant);
+}

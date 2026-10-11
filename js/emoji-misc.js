@@ -527,6 +527,34 @@ function _applyOneReaction(arr, text, type) {
   return { removedSame: false };
 }
 
+// ── Synchroniser UNE réaction emoji : la suppression AVANT l'insertion ──────
+// « Une réaction par personne » s'écrit en deux requêtes : effacer MES
+// réactions emoji sur la cible, puis insérer la nouvelle. Elles partaient EN
+// MÊME TEMPS (suppression jamais attendue) : quand le serveur traitait la
+// suppression APRÈS l'insertion, il effaçait la réaction qu'on venait de poser
+// — elle disparaissait chez tout le monde, au rechargement comme en temps réel,
+// sans une erreur nulle part. Trouvé par `multi-comptes.spec.js` (interactions
+// sur un post), rouge 2 fois sur 4 sur le staging le 2026-10-10.
+// Une FILE PAR CIBLE, et pas seulement « attendre la suppression » : deux
+// réactions tapées vite (😍 puis 🔥) croiseraient sinon l'insertion de la
+// première avec la suppression de la seconde, et laisseraient DEUX réactions
+// du même compte — le défaut que la suppression existe pour empêcher.
+// `emoji` vide = retrait seul (re-tap sur la même réaction).
+var _fileReactions = {};
+function _syncReactionEmoji(cible, postId, emoji) {
+  var precedente = _fileReactions[cible] || Promise.resolve();
+  var geste = precedente.then(function () {
+    return (typeof supaCommentRemoveReactions === "function") ? supaCommentRemoveReactions(cible) : null;
+  }).then(function () {
+    if (emoji && typeof supaCommentInteract === "function") return supaCommentInteract(cible, postId, "emoji", emoji);
+  }).catch(function (e) {
+    try { if (typeof diagLog === "function") diagLog("réaction emoji : " + (e && e.message)); } catch (_) {}
+  });
+  _fileReactions[cible] = geste;
+  geste.then(function () { if (_fileReactions[cible] === geste) delete _fileReactions[cible]; });
+  return geste;
+}
+
 function addEmojiToPost(postId, emoji) {
   console.log("✨ addEmojiToPost:", postId, emoji);
   var post = findPostAnywhere(postId);
@@ -540,11 +568,8 @@ function addEmojiToPost(postId, emoji) {
   // POST lui-même). On efface d'abord MES réactions (journal append-only) puis on
   // (ré)insère la nouvelle — sauf toggle off. Chargée par supaLoadPosts, propagée
   // par realtime:comment_interactions.
-  if (typeof supaCommentRemoveReactions === "function") supaCommentRemoveReactions(postId);
-  if (!res.removedSame) {
-    if (typeof supaCommentInteract === "function") supaCommentInteract(postId, postId, "emoji", emoji);
-    _notifyPostReaction(post, emoji);
-  }
+  _syncReactionEmoji(postId, postId, res.removedSame ? "" : emoji);
+  if (!res.removedSame) _notifyPostReaction(post, emoji);
 
   if (typeof saveState === "function") saveState();
   updatePostReactionsUI(postId);
@@ -660,8 +685,7 @@ function addEmojiToComment(postId, commentId, emoji) {
   if (typeof thread.save === "function") thread.save(); else saveState();
   // Sync Supabase → la réaction emoji apparaît chez tous les comptes (efface mes
   // réactions précédentes d'abord, sauf toggle off).
-  if (typeof supaCommentRemoveReactions === "function") supaCommentRemoveReactions(commentId);
-  if (!res.removedSame && typeof supaCommentInteract === "function") supaCommentInteract(commentId, postId, "emoji", emoji);
+  _syncReactionEmoji(commentId, postId, res.removedSame ? "" : emoji);
   console.log("✅ Emoji reaction added + synced:", emoji);
 
   // Patch EN PLACE la pastille « 😍 N » (fluidité : pas de rebuild du fil → scroll

@@ -1772,6 +1772,13 @@
 <script src="js/passion-selector.js"></script>
 <script src="js/passions-flat-ui.js"></script>
 
+<!-- RÉCAP DE LA SEMAINE (2026-10-06) — hors bloc app : composant autonome (IIFE
+     window.PassioRecapSemaine), inliné individuellement au build. Une carte en
+     tête du fil, au plus une fois par semaine et par compte, dans l'app
+     seulement. Coupé par localStorage.passio_recap_semaine="0",
+     window.PASSIO_RECAP_SEMAINE=false, ou Paramètres › Notifications. -->
+<script src="js/recap-semaine.js"></script>
+
 <!-- ======== PWA INSTALL OVERLAY ======== -->
 <div id="pwa-overlay" style="display:none;">
   <div id="pwa-sheet">

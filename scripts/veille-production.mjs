@@ -34,6 +34,10 @@
 //   codes de sortie : 0 rien à signaler, 3 alerte, autre = panne du lecteur.
 // ═══════════════════════════════════════════════════════════════════════════
 
+// L'activation des nouveaux comptes (2026-10-06) : UNE définition, partagée avec
+// la fonction `pilotage` — la requête est GÉNÉRÉE depuis la même liste de gestes.
+import { sqlActivation, activationDepuisLignes } from "../supabase/functions/_shared/pilotage.js";
+
 // ── Constantes de calibrage (mesures de la carte mesures-prod, 2026-09-18) ──
 // Heures actives réelles du trafic humain : 09h–21h Paris (F10). Rien n'est
 // évalué la nuit : un silence nocturne est la normale, pas un signal.
@@ -543,7 +547,9 @@ export const SQL = {
   purgePlanifiee: `select exists(select 1 from cron.job where jobname like 'purge_telemetry%' and active) as purge`,
   usage7j: `select count(distinct device_id)::int as "appareils7j" from telemetry_events where ${filtreHumain()} and ${filtrePublic()} and received_at > now() - interval '7 days'`,
   erreurs24h: `select (select count(*) from telemetry_events where env = 'production' and type = 'error' and (meta->>'synthetic') is null and received_at > now() - interval '24 hours')::int
-      + (select count(*) from client_errors where created_at > now() - interval '24 hours')::int as "erreurs24h"`,
+      + (select count(*) from client_errors where created_at > now() - interval '24 hours')::int as "erreurs24h"`,  // Comptes confirmés des 30 derniers jours (hors e2e et éditeur) et le premier
+  // geste social de chacun, par table — la décision est `activationDepuisLignes`.
+  activation: sqlActivation(),
 };
 
 for (const [k, q] of Object.entries(SQL)) if (!estSelectSeul(q)) throw new Error(`SQL.${k} n'est pas un SELECT seul`);
@@ -670,10 +676,12 @@ export async function mesurerUsage(env) {
   const inscriptions = await mesure(() => mesurerInscriptions(env));
   const u = await mesure(() => lireSql(env, SQL.usage7j));
   const e = await mesure(() => lireSql(env, SQL.erreurs24h));
+  const activation = await mesure(async () => activationDepuisLignes(await lireSql(env, SQL.activation)));
   return {
     inscriptions,
     appareils7j: Array.isArray(u) && u[0] ? Number(u[0].appareils7j) : null,
     erreurs24h: Array.isArray(e) && e[0] ? Number(e[0].erreurs24h) : null,
+    activation,
   };
 }
 

@@ -32,6 +32,7 @@ const ETAT = {
   sante: { evenements15: 40, erreursJs15: 2, api5xx15: 0, erreurs24h: 3, principales: [] },
   erreurs: { serie: SERIE, details: [{ message: CHARGE, n: 3, comptes: 1, plateformes: [{ nom: "Android", n: 3 }], pages: [{ nom: "/fil", n: 3 }], premier: MAINTENANT, dernier: MAINTENANT, serie: SERIE }] },
   utilisateurs: { total: 41, inscritsJour: 1, inscritsSemaine: 6, serieInscriptions: SERIE, maintenant: { comptes: 2, appareils: 3 }, aujourdhui: { comptes: 9, appareils: 12 } },
+  activation: { cohorte: 4, mures: 3, activesMures: 1, taux: 33, enCours: 1, enCoursActives: 0, premiers: { message: 1 }, jours: 7, cohorteJours: 30 },
   signalements: { ouverts: 1, liste: [{ id: "rep_1", type: "post", motif: CHARGE, le: MAINTENANT }] },
   capacite: { mesuresServeur: true, jauges: [
     { cle: "connexions", libelle: "Connexions en direct (comptes)", valeur: 360, plafond: 500, unite: "", pct: 72, couleur: "orange", estimation: true },
@@ -90,6 +91,11 @@ test("② état rendu, titres hostiles en texte, lien non-GitHub refusé, aucune
   }
   expect(await page.textContent("#signalements")).toContain(CHARGE);
   expect(await page.evaluate(() => window.__pwn)).toBeUndefined();
+  // Activation (2026-10-06) : taux sur les comptes MÛRS, les jeunes à part, et ce qui active.
+  await expect(page.locator("#activation")).toContainText("33 %");
+  await expect(page.locator("#activation")).toContainText("1 / 3");
+  await expect(page.locator("#activation")).toContainText("de moins de 7 j");
+  await expect(page.locator("#activationPremiers")).toHaveText("Premier geste des comptes activés : message 1");
   await expect(page.locator("#jauges")).toContainText("72 %");
   await expect(page.locator("#jauges")).toContainText("100 Mo sur 8 Go");
   await expect(page.locator("#alertes")).toContainText("2 appareil(s)");
@@ -102,6 +108,16 @@ test("③ un autre compte reçoit le refus en clair", async ({ page }) => {
   await page.goto("/pilotage/");
   await expect(page.locator("#ecranRefus")).toBeVisible();
   await expect(page.locator("#refusTexte")).toContainText("quelquun@exemple.fr");
+});
+
+test("③ bis activation illisible : « Non lu », jamais un faux 0 %", async ({ page }) => {
+  await poserSession(page);
+  await routerFonction(page, [], { ...ETAT, activation: null, nonLus: ["activation"] });
+  await page.goto("/pilotage/");
+  await page.click('.barre button[data-tab="utilisateurs"]');
+  await expect(page.locator("#activation")).toContainText("Non lu");
+  await expect(page.locator("#activation")).not.toContainText("%");
+  await expect(page.locator("#activationPremiers")).toBeHidden();
 });
 
 test("④ chaque geste envoie EXACTEMENT sa demande, avec le jeton, après confirmation", async ({ page }) => {

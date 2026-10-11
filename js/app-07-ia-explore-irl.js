@@ -3424,6 +3424,12 @@ async function setEventRsvp(id, rsvp) {
     return;
   }
   if (rsvpOk === true) _rsvpRegle(true);
+  // Le rappel J-1 / H-2 part du serveur en push : encore faut-il que cet
+  // appareil y soit abonné. On le propose ICI — inscription CONFIRMÉE — et
+  // nulle part avant (rappels.js côté serveur, `proposerRappelsActivite` ci-dessous).
+  if (rsvpOk === true && (rsvp === "going" || rsvp === "maybe")) {
+    try { proposerRappelsActivite(ev); } catch (e) { try { diagLog("rappels : proposition — " + (e && e.message)); } catch (_) {} }
+  }
 
   if (rsvp === "going" && prev !== "going") {
     pushNotification(`Tu rejoins <b>${escapeHtml(ev.title)}</b>`, "🤝");
@@ -4295,10 +4301,12 @@ function _checkEventReminders() {
       var when = tier.key === "d1"
         ? (diff <= 12 * 3600000 ? "aujourd'hui" : "demain")
         : tier.label;
+      // `event_reminder` + `refId` : toucher le rappel dans la cloche ouvre
+      // l'activité (openNotifTarget), au lieu d'une ligne inerte.
       if (typeof pushNotification === "function") {
         pushNotification("Rappel : <b>" + escapeHtml(e.title) + "</b> " + when
           + " à " + _eventTimeLabel(e)
-          + (e.city ? " · " + escapeHtml(e.city) : ""), "⏰");
+          + (e.city ? " · " + escapeHtml(e.city) : ""), "⏰", "me", { kind: "event_reminder", refId: e.id });
       }
       reminded.push(mark);
     });
@@ -4311,8 +4319,11 @@ function _checkEventReminders() {
       return ev && ev.date > now - 7 * 86400000;
     });
     localStorage.setItem("passio_event_reminded", JSON.stringify(reminded));
-  } catch (e) {}
+  } catch (e) { try { diagLog("rappels : " + (e && e.message)); } catch (_) {} }
 }
+// ⚠️ Ce rappel-ci ne vit que DANS LA PAGE : appli fermée, il ne part pas. Les
+// paliers J-1 et H-2 partent AUSSI du serveur, en push (veille de pilotage,
+// supabase/functions/_shared/rappels.js, 2026-10-05) ; la cloche garde J-7.
 
 // ════════════════════════════════════════════════════════════════════════
 // DIGEST HEBDOMADAIRE « ça se passe près de toi »
@@ -4503,6 +4514,100 @@ window.addEventListener("hashchange", function () {
   }
   _openIrlEventFromHash();
 });
+// ── Proposer les rappels par push, juste après « Je viens » (2026-10-05) ────
+// Le serveur pousse la veille et 2 h avant (supabase/functions/_shared/rappels.js)
+// — sur les seuls appareils ABONNÉS. Or la seule demande de permission de
+// l'application partait à l'ouverture d'une conversation privée : quelqu'un
+// qui rejoint une activité depuis un lien WhatsApp n'était jamais abonné, et le
+// rappel le plus utile ne lui serait jamais parvenu. Le moment juste est
+// l'inscription confirmée : la raison est évidente, le geste est frais.
+// Règles : jamais sans compte réel ; jamais si le navigateur ne sait pas pousser
+// (Safari hors application installée) ; permission déjà accordée → abonnement
+// silencieux ; refusée → on n'insiste jamais ; « Plus tard » → pas avant 14 jours ;
+// jamais pour une activité qui commence dans moins de 2 h (aucun rappel ne
+// partirait) ; jamais par-dessus une fenêtre ouverte (`openModal` n'empile pas).
+// Coupures : `localStorage.passio_rappels_push_v1="0"` ou `window.PASSIO_RAPPELS_PUSH=false`.
+var RAPPELS_PROPOSES_KEY = "passio_rappels_proposes_v1";
+var RAPPELS_REPOS_MS = 14 * 864e5;
+
+function rappelsPushActifs() {
+  if (window.PASSIO_RAPPELS_PUSH === false) return false;
+  try { return localStorage.getItem("passio_rappels_push_v1") !== "0"; } catch (e) { return true; }
+}
+
+/** Le verdict, sans rien afficher : "proposer" | "abonner" | une raison de se taire. */
+function _rappelsVerdict(ev, maintenant) {
+  if (!rappelsPushActifs()) return "coupe";
+  if (!ev || !(ev.date - maintenant > 2 * 3600e3 + 5 * 60e3)) return "trop_tard";
+  if (typeof _uidEstUnCompte !== "function" || !_uidEstUnCompte()) return "sans_compte";
+  if (typeof Notification === "undefined" || !("serviceWorker" in navigator) || !("PushManager" in window)) return "non_supporte";
+  if (Notification.permission === "granted") return "abonner";
+  if (Notification.permission !== "default") return "refuse";
+  try {
+    var dernier = Number(localStorage.getItem(RAPPELS_PROPOSES_KEY) || 0);
+    if (dernier && maintenant - dernier < RAPPELS_REPOS_MS) return "repos";
+  } catch (e) {}
+  var b = document.getElementById("modalBackdrop");
+  if (b && b.classList.contains("active")) return "fenetre_ouverte";
+  return "proposer";
+}
+
+function proposerRappelsActivite(ev) {
+  var v = _rappelsVerdict(ev, Date.now());
+  if (v === "abonner") {
+    if (typeof ensureCallPushSubscription === "function") ensureCallPushSubscription();
+    return v;
+  }
+  if (v !== "proposer") return v;
+  try { localStorage.setItem(RAPPELS_PROPOSES_KEY, String(Date.now())); } catch (e) {}
+  openModal(
+    '<div class="modal-handle"></div>'
+    + '<div class="modal-title">⏰ Un rappel avant d\'y aller ?</div>'
+    + '<div class="modal-subtitle">On te prévient la veille et 2 h avant <b>' + escapeHtml(ev.title || "ton activité")
+    + '</b>, même si l\'appli est fermée.</div>'
+    + '<button class="btn primary block" id="_rappelsOuiBtn" onclick="activerRappelsActivite()">Activer les rappels</button>'
+    + '<button class="btn ghost block" style="margin-top:8px;" onclick="reporterRappelsActivite()">Plus tard</button>'
+  );
+  try { if (window.tel && tel.action) tel.action("rappels_proposes", { delai_h: Math.round((ev.date - Date.now()) / 3600e3) }); } catch (e) {}
+  return v;
+}
+
+// Le clic EST le geste qu'exige `Notification.requestPermission`.
+async function activerRappelsActivite() {
+  try { closeModal(); } catch (e) {}
+  var perm = "default";
+  try { perm = await Notification.requestPermission(); } catch (e) {}
+  try { if (window.tel && tel.action) tel.action("rappels_actives", { verdict: String(perm) }); } catch (e) {}
+  if (perm !== "granted") { toast("Rappels non activés — tu peux les autoriser dans les réglages du téléphone"); return false; }
+  if (typeof ensureCallPushSubscription === "function") await ensureCallPushSubscription();
+  toast("C'est noté : rappel la veille et 2 h avant ⏰");
+  return true;
+}
+
+function reporterRappelsActivite() {
+  try { closeModal(); } catch (e) {}
+  try { if (window.tel && tel.action) tel.action("rappels_plus_tard", {}); } catch (e) {}
+}
+
+// Tap sur un rappel d'activité (ou le digest) pendant que l'application est
+// OUVERTE : le service worker la met au premier plan et lui confie l'activité
+// (sw.js, `OUVRIR_ACTIVITE`). On passe par le hash : c'est le routeur ci-dessus
+// qui attend l'application et retente le chargement — jamais un second chemin.
+function _ouvrirActiviteDepuisNotification(id) {
+  id = String(id || "");
+  if (!/^[\w-]{1,64}$/.test(id)) return false;
+  var cible = "#irl-event-" + id;
+  if (location.hash !== cible) { location.hash = cible; return true; } // → hashchange
+  _irlEvLinkId = id; _irlEvLinkEssais = 0; _irlEvLinkAttentes = 0;
+  _openIrlEventFromHash();
+  return true;
+}
+if (typeof navigator !== "undefined" && navigator.serviceWorker && navigator.serviceWorker.addEventListener) {
+  navigator.serviceWorker.addEventListener("message", function (e) {
+    var d = e && e.data;
+    if (d && d.type === "OUVRIR_ACTIVITE") _ouvrirActiviteDepuisNotification(d.id);
+  });
+}
 (function _irlDeepLinkBoot() {
   if (!/#irl-event-/.test(location.hash || "")) return;
   // Après le gate + le boot (les événements Supabase arrivent en différé).

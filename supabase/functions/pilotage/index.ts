@@ -8,6 +8,9 @@
 //    et n'ÉCRIT qu'une notification vers les appareils de l'éditeur, et
 //    seulement sur un CHANGEMENT (decideAlerte). Plafonnée à 1/min, 20/h :
 //    l'appeler en boucle ne fait rien de plus que la laisser tourner.
+//    Elle porte AUSSI les rappels d'activité par push (_shared/rappels.js,
+//    2026-10-05) : le minuteur serveur existait, aucune migration n'est
+//    nécessaire. Idempotents (une marque par rappel) : la rappeler ne renvoie rien.
 //
 // ② PILOTE — JWT de la personne, réservé au compte de l'éditeur (`autorise`,
 //    échec fermé : 401 sans session, 403 pour tout autre compte).
@@ -28,7 +31,9 @@ import {
   autorise, RELANCES, LABELS_SUIVIS, TITRE_PAUSE, STATUTS_SIGNALEMENT, estPause,
   erreursFrequentes, detailsErreurs, serieJours, jauges, resumerIssue, resumerRun, verdict, decideAlerte,
   aReparer, titreReparation, corpsReparation, estReparation, REPARATIONS_MAX, compterAudience,
+  activation, compteMesurable, dateUtc, GESTES_ACTIVATION, COHORTE_ACTIVATION_JOURS,
 } from "../_shared/pilotage.js";
+import { envoyerRappels, MARQUE_UID } from "../_shared/rappels.js";
 
 const corsHeaders = {
   "X-Passio-Revision": REVISION,
@@ -81,8 +86,14 @@ Deno.serve(async (req) => {
 async function veille(admin: Admin) {
   const plafond = await verifierPlafondEnBase(admin, "systeme:pilotage-veille", "pilotage-veille", { parMinute: 1, parHeure: 20 });
   if (!plafond.ok) return json({ ok: true, ignore: "trop tôt" });
-  const [sante, signalements, github, dispo] = await Promise.allSettled([lireSante(admin), lireSignalements(admin), lireGithub(), sonder()]);
+  const [sante, signalements, github, dispo, rap] = await Promise.allSettled([lireSante(admin), lireSignalements(admin), lireGithub(), sonder(), rappels(admin)]);
   const val = <T>(r: PromiseSettledResult<T>) => (r.status === "fulfilled" ? r.value : null);
+  // Un rappel en panne ne doit ni casser la veille ni passer inaperçu : il
+  // laisse une trace mesurable (analytics_events, user_id système).
+  if (rap.status === "rejected") {
+    const m = String((rap.reason && (rap.reason as { message?: string }).message) || rap.reason).slice(0, 200);
+    try { await admin.from("analytics_events").insert({ user_id: MARQUE_UID, event: "rappels_echec", properties: { message: m } }); } catch { /* */ }
+  }
   const e = { sante: val(sante), signalements: val(signalements), github: val(github) };
   const v = verdict(e);
   const actuel = { couleur: v.couleur, raisons: v.raisons, dispo: val(dispo) !== false };
@@ -98,7 +109,20 @@ async function veille(admin: Admin) {
       dispoDepuis: !prec || prec.dispo !== actuel.dispo ? new Date().toISOString() : prec.dispoDepuis || null,
     } });
   }
+  // Les compteurs des rappels ne sortent PAS dans cette réponse : la veille est
+  // appelable avec la seule clé anon (publique), et combien d'activités ont lieu
+  // dans les 24 h ou combien de comptes sont abonnés ne regardent personne. Ils
+  // se lisent dans `analytics_events` (marques `rappel_activite`, `rappels_echec`).
   return json({ ok: true, couleur: actuel.couleur, dispo: actuel.dispo, sonne: d.sonner, envoyes });
+}
+
+/** Rappels d'activité (J-1, H-2) sur les appareils des participants, appli fermée comprise. */
+async function rappels(admin: Admin) {
+  const pub = Deno.env.get("VAPID_PUBLIC_KEY"), priv = Deno.env.get("VAPID_PRIVATE_KEY");
+  if (!pub || !priv) return { inactif: "VAPID absent" };
+  webpush.setVapidDetails(Deno.env.get("VAPID_SUBJECT") || "mailto:passioadmin@gmail.com", pub, priv);
+  // deno-lint-ignore no-explicit-any
+  return envoyerRappels(admin, (sub: any, charge: string, opts: any) => webpush.sendNotification(sub, charge, opts));
 }
 
 async function lireEtatMemorise(admin: Admin) {
@@ -145,7 +169,7 @@ async function sonnerPilote(admin: Admin, titre: string, texte: string): Promise
 // ─── ② État complet pour le téléphone ───────────────────────────────────────
 async function etat(admin: Admin) {
   const parts = {
-    sante: lireSante(admin), utilisateurs: lireUtilisateurs(admin), signalements: lireSignalements(admin),
+    sante: lireSante(admin), utilisateurs: lireUtilisateurs(admin), activation: lireActivation(admin), signalements: lireSignalements(admin),
     github: lireGithub(), erreurs: lireErreurs7j(admin), capacite: lireCapacite(admin),
     disponibilite: lireDisponibilite(admin), alertes: lireAlertes(admin),
   };
@@ -205,6 +229,33 @@ async function lireUtilisateurs(admin: Admin) {
   };
   const [maintenant, aujourdhui] = await Promise.all([actifs(5 * 60e3), actifs(864e5)]);
   return { total, inscritsJour: jour, inscritsSemaine: dates.length, serieInscriptions: serieJours(dates), maintenant, aujourdhui };
+}
+
+// Activation (2026-10-06) : un nouveau compte a-t-il fait un GESTE SOCIAL dans
+// ses 7 premiers jours ? Définition, exclusions et décision : `_shared/pilotage.js`
+// (GESTES_ACTIVATION, compteMesurable, activation) — les mêmes que le digest.
+async function lireActivation(admin: Admin) {
+  const maintenant = Date.now();
+  const depuis = maintenant - COHORTE_ACTIVATION_JOURS * 864e5;
+  const comptes: { id: string; cree: string }[] = [];
+  for (let page = 1; page <= 20; page++) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
+    if (error) throw error;
+    const lot = (data && data.users) || [];
+    for (const u of lot) if (compteMesurable(u, EXTRA) && dateUtc(u.created_at) >= depuis) comptes.push({ id: u.id, cree: u.created_at });
+    if (lot.length < 1000) break;
+  }
+  const ids = comptes.map((c) => c.id);
+  const gestes: { uid: string; le: string; geste: string }[] = [];
+  if (ids.length) {
+    const lots = await Promise.all(GESTES_ACTIVATION.map(async (g) => {
+      const { data, error } = await admin.from(g.table).select(`${g.uid},created_at`).in(g.uid, ids).order("created_at", { ascending: true }).limit(5000);
+      if (error) throw error;
+      return ((data || []) as Record<string, unknown>[]).map((r) => ({ uid: String(r[g.uid]), le: String(r.created_at), geste: g.table }));
+    }));
+    for (const l of lots) gestes.push(...l);
+  }
+  return activation(comptes, gestes, maintenant);
 }
 
 async function lireSignalements(admin: Admin) {

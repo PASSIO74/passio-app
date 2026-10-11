@@ -380,6 +380,46 @@
   // socle ne doit pas laisser un trou.
   var POPULAIRES = ["musique","sport","cuisine","voyage","photo","art","cinema","tech","jeuxvideo","yoga","litterature","moto"];
 
+  // ── POPULAIRES EN DIRECT (2026-10-06) ─────────────────────────────────────
+  // La liste ci-dessus est écrite à la main depuis le lot. Mesuré le 2026-10-06
+  // sur 90 jours de publications visibles d'un visiteur : Yoga 8 (2 auteurs),
+  // Podcast 2, puis Musculation, Photo, Voyage, Tech, Cuisine — et RIEN en
+  // Musique, Sport ni Art, trois des quatre premières tuiles. Un visiteur qui
+  // coche ce qu'on lui montre en premier arrivait sur un fil sans une seule
+  // publication de sa passion.
+  // Désormais les passions où des gens PUBLIENT passent en tête. La lecture est
+  // celle du fil invité (clé anon, mêmes policies : la publication d'un compte
+  // privé n'y compte pas, le visiteur ne la verrait pas). La liste écrite
+  // COMPLÈTE, elle ne disparaît jamais : au plus 8 tuiles vivantes, donc au
+  // moins 4 grands domaines toujours là ; sans réponse, rien ne change.
+  var NB_POPULAIRES = 12;
+  var POPULAIRES_VIVANTES_MAX = 8;
+  var POPULAIRES_FENETRE_J = 90;
+  var POPULAIRES_ECHANTILLON = 300;
+  var _populairesVivantes = null;   // identifiants classés ; null = rien n'est revenu
+  var _populairesEnVol = false;
+
+  // PURE. Lignes `{ passion_id, author_id, created_at }` → identifiants classés :
+  // d'abord le nombre de PERSONNES qui publient (un seul compte prolixe ne fait
+  // pas une communauté), puis le nombre de publications, puis la plus récente.
+  // Un identifiant réservé (`_parDefaut`, profil de remplissage) n'est une
+  // passion nulle part — ni ici.
+  function classerPopulaires(lignes) {
+    var par = Object.create(null);
+    (Array.isArray(lignes) ? lignes : []).forEach(function (l) {
+      var id = l && l.passion_id;
+      if (typeof id !== "string" || !id || id.charAt(0) === "_") return;
+      var e = par[id] || (par[id] = { id: id, auteurs: Object.create(null), n: 0, dernier: "" });
+      if (l.author_id) e.auteurs[String(l.author_id)] = 1;
+      e.n++;
+      var t = String(l.created_at || "");
+      if (t > e.dernier) e.dernier = t;
+    });
+    return Object.keys(par).map(function (k) { var e = par[k]; e.a = Object.keys(e.auteurs).length; return e; })
+      .sort(function (x, y) { return (y.a - x.a) || (y.n - x.n) || (y.dernier > x.dernier ? 1 : y.dernier < x.dernier ? -1 : 0); })
+      .map(function (e) { return e.id; });
+  }
+
   function catalogue() {
     try {
       if (typeof allPassions === "function") {
@@ -791,6 +831,10 @@
     var carte = hote.firstChild;
     liste.parentNode.insertBefore(carte, liste);
     if (p.bienvenue !== "vue") { p.bienvenue = "vue"; sauverPrefs(); }
+    // Les populaires vivantes, lues AVANT que le panneau ne s'ouvre : les tuiles
+    // ne doivent pas se réordonner sous le doigt (2026-10-06). Différé, jamais
+    // attendu — le démarrage ne dépend d'aucune requête.
+    setTimeout(chargerPopulairesVivantes, 1500);
     return true;
   }
 
@@ -840,6 +884,7 @@
     if (_panneauTimer) { clearTimeout(_panneauTimer); _panneauTimer = null; }
     if (_panneauOrigine === "bienvenue") tel("welcome_personalize_clicked", {});
     assurerReferentiel();   // les libellés des spécialités viennent du référentiel plat
+    chargerPopulairesVivantes();
     try { openModal(panneauHTML()); } catch (e) { journal("ouverture du panneau", e); return; }
     setTimeout(function () {
       var champ = document.getElementById("frSearch");
@@ -986,6 +1031,66 @@
     });
   }
 
+  // Les tuiles par défaut : d'abord les passions VIVANTES (où des gens publient),
+  // seulement celles dont on connaît le libellé ; puis la liste écrite, dans son
+  // ordre, jusqu'à 12. Une passion du référentiel retenue ici est mémorisée
+  // comme celles de la recherche (`_refVues`) : validée, elle atteint le fil.
+  function populairesVisibles(resultatsSocle) {
+    var socle = Object.create(null);
+    (resultatsSocle || []).forEach(function (r) { if (r && r.passion && r.passion.id) socle[r.passion.id] = r.passion; });
+    var out = [], vus = Object.create(null), vivantes = 0;
+    function pousser(p, vivante) {
+      if (!p || !p.id || vus[p.id] || out.length >= NB_POPULAIRES) return;
+      if (vivante && vivantes >= POPULAIRES_VIVANTES_MAX) return;
+      vus[p.id] = 1;
+      if (vivante) vivantes++;
+      out.push({ passion: p, specialites: [] });
+    }
+    (_populairesVivantes || []).forEach(function (id) {
+      var meta = socle[id] || metaPassion(id);
+      if (meta && !socle[id]) meta = memoriserPassionRef(meta);
+      pousser(meta, true);
+    });
+    POPULAIRES.forEach(function (id) { pousser(socle[id], false); });
+    return out;
+  }
+
+  // Une lecture, au plus une fois en vol, gardée pour la session (une page :
+  // `_populairesVivantes`). Sans client réel (SDK absent, hors ligne), on ne
+  // fait rien et la prochaine ouverture réessaiera — jamais en boucle.
+  function chargerPopulairesVivantes() {
+    if (_populairesVivantes || _populairesEnVol) return;
+    var client = window.supa;
+    if (!window._supaReal || !client || typeof client.from !== "function") return;
+    _populairesEnVol = true;
+    var requete;
+    try {
+      var depuis = new Date(Date.now() - POPULAIRES_FENETRE_J * 864e5).toISOString();
+      requete = client.from("posts").select("passion_id,author_id,created_at")
+        .gte("created_at", depuis).order("created_at", { ascending: false }).limit(POPULAIRES_ECHANTILLON);
+    } catch (e) { _populairesEnVol = false; journal("populaires", e); return; }
+    Promise.resolve(requete).then(function (r) {
+      _populairesEnVol = false;
+      // ⚠️ Le SDK ne LÈVE PAS sur un refus : `{ error }` se lit, et se dit.
+      if (r && r.error) { journal("populaires", r.error.message || r.error); return; }
+      _populairesVivantes = classerPopulaires(r && r.data);
+      if (!_populairesVivantes.length) return;   // rien de vivant : la grille ne bouge pas
+      assurerMetasPopulaires();
+      rafraichirPanneau();
+    }, function (e) { _populairesEnVol = false; journal("populaires", e); });
+  }
+
+  // Une passion précise (« Musculation ») n'a de libellé qu'une fois le
+  // référentiel chargé : sa tuile attend, elle n'est jamais peinte « Passion ».
+  function assurerMetasPopulaires() {
+    try {
+      var m = window.PassioPassions;
+      if (!m || !m.actif() || m.pret()) return;
+      if (!(_populairesVivantes || []).some(function (id) { return !metaPassion(id); })) return;
+      m.charger().then(function () { rafraichirPanneau(); }).catch(function (e) { journal("populaires_referentiel", e); });
+    } catch (e) { journal("populaires_referentiel", e); }
+  }
+
   // Grille : les 12 populaires par défaut, le catalogue entier une fois déplié
   // ou dès qu'une recherche est en cours.
   //
@@ -1000,11 +1105,7 @@
     } else if (_panneauTout) {
       visibles = fusionnerAvecReferentiel(resultats);
     } else {
-      var rang = {};
-      POPULAIRES.forEach(function (id, i) { rang[id] = i; });
-      visibles = resultats
-        .filter(function (r) { return rang[r.passion.id] !== undefined; })
-        .sort(function (a, b) { return rang[a.passion.id] - rang[b.passion.id]; });
+      visibles = populairesVisibles(resultats);
     }
     if (!visibles.length) {
       // ⚠️ « Aucune passion ne correspond » PENDANT que le référentiel répond
@@ -2416,6 +2517,8 @@
     validerPersonnalisation: validerPersonnalisation,
     chercher: chercher,
     specialitesDe: specialitesDe,
+    // Exposée pour que le banc éprouve le classement RÉEL (2026-10-06).
+    classerPopulaires: classerPopulaires,
     // Bienvenue
     fermerBienvenue: fermerBienvenue,
     // Tour

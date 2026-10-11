@@ -107,13 +107,29 @@ async function banc(page, { uidLocal, uidSession }) {
   // ainsi reste VERT sur le défaut, puisque « pas de jeton » = fail-open.
   // `_identiteDivergeDeLaSession` lit le stockage À CHAQUE APPEL : c'est donc à
   // l'instant de l'écriture qu'il faut le poser, ce qui est son contrat réel.
+  // ⚠️ ET LE JETON A LA FORME D'UNE VRAIE SESSION (2026-10-10) : un
+  // `access_token` qui n'est pas un JWT, ou une session sans `refresh_token`,
+  // est jugé invalide par supabase-js 2.116 dès qu'il recharge sa session (son
+  // minuteur de rafraîchissement, un `getSession`) — il appelle alors
+  // `_removeSession` et la clé disparaît. Avec `"jeton-de-banc"`, le cas ne
+  // tenait que si le SDK ne relisait rien entre la pose et la lecture : rouge
+  // 9 fois sur 9 en CI le 10/10 sur un simple redécoupage des shards, « la
+  // session du banc est lisible » rendant null. Même forme que `poserSession`
+  // (mes-passions-page.spec.js) ; la signature n'est jamais vérifiée côté client.
   if (uidSession) {
     await page.evaluate((u) => {
       const ref = (String((window.PASSIO_SUPABASE && window.PASSIO_SUPABASE.url) || "")
         .match(/https?:\/\/([^.]+)\./) || [])[1];
+      const b64 = (o) => btoa(JSON.stringify(o)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+      const exp = Math.floor(Date.now() / 1000) + 3600;
+      const jwt = b64({ alg: "HS256", typ: "JWT" }) + "."
+        + b64({ sub: u, role: "authenticated", aud: "authenticated", exp, iat: exp - 3600 }) + ".banc";
       localStorage.setItem("sb-" + ref + "-auth-token", JSON.stringify({
-        access_token: "jeton-de-banc",
-        expires_at: Math.floor(Date.now() / 1000) + 3600,
+        access_token: jwt,
+        refresh_token: "banc",
+        token_type: "bearer",
+        expires_in: 3600,
+        expires_at: exp,
         user: { id: u },
       }));
     }, uidSession);

@@ -29,6 +29,13 @@ Mesuré du 28/09 au 04/10 en production : 15 des 19 appareils sans compte n'éta
 
 **Écartés de** : visiteurs et entonnoir des liens (`dashboard/server/store.js`), « appareils en ligne » (accueil du dashboard), « en ligne / 24 h » du pilotage téléphone (`compterAudience`), « Appareils actifs 7 j » de la veille et du digest (`filtrePublic()`). **Gardés dans** : erreurs, problèmes, santé, flux et silence de la veille, Sentinelle — une erreur vue par un robot reste une erreur de la production. Une définition, trois lecteurs : `tests/unit/trafic-hors-public.test.mjs` les confronte.
 
+## Activation des nouveaux comptes (2026-10-06) — RÉEL
+| Métrique | Définition | Source | Fraîcheur | Qualité |
+|---|---|---|---|---|
+| Activation à 7 j | Part des comptes confirmés créés entre 7 et 30 jours plus tôt (hors e2e et éditeur) qui ont fait au moins un geste social dans leurs 7 premiers jours : publication, story, commentaire (publication ou activité), abonnement, participation à une activité, activité organisée, message. Les comptes de moins de 7 jours sont « en cours », hors taux ; sans compte mûr, pas de taux. | `GESTES_ACTIVATION` + `activation()` (`supabase/functions/_shared/pilotage.js`) — fonction `pilotage` (PostgREST) et digest (`sqlActivation()`, API de gestion) | à la demande (téléphone), chaque matin (digest) | RÉEL |
+
+Le like n'en est pas (`post_likes` sans horodatage). Une définition, deux lecteurs : `tests/unit/activation.test.mjs` les confronte sur un même jeu de données. Mesure du jour : 1 compte activé sur 3 comptes mûrs.
+
 ## KPI produit — statut honnête (mis à jour 2026-08-08)
 | KPI candidat | Statut | Pourquoi |
 |---|---|---|

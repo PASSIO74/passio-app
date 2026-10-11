@@ -95,6 +95,20 @@ const labelsDe = (issue) => (issue.labels || []).map((l) => (typeof l === "strin
  * @param {{prs:Array, issues:Array, runs:Record<string,Array>, residus:{lignes:Array}|{erreur:string}, usage:object, depuis:string}} d
  * @returns {{aFaire:Array<{cle:string,titre:string,geste:string,lien:string}>, machines:object, usage:object, emettre:boolean, lundi:boolean, titre:string, texte:string}}
  */
+/**
+ * Activation des nouveaux comptes (2026-10-06) — `activation()` de
+ * supabase/functions/_shared/pilotage.js, lue par la veille. Des comptages, rien
+ * d'autre : le dépôt est public.
+ */
+export function ligneActivation(a) {
+  if (!a || a.erreur || !Number.isFinite(a.mures)) return `- Activation des nouveaux comptes : non lue${a && a.erreur ? ` (${String(a.erreur).slice(0, 120)})` : ""}`;
+  const mures = a.mures
+    ? `${a.activesMures} / ${a.mures} compte(s) de ${a.jours} à ${a.cohorteJours} j ont fait un geste social dans leurs ${a.jours} premiers jours (${a.taux} %)`
+    : `aucun compte de ${a.jours} à ${a.cohorteJours} j`;
+  const enCours = a.enCours ? ` ; ${a.enCours} compte(s) de moins de ${a.jours} j${a.enCoursActives ? `, dont ${a.enCoursActives} déjà actif(s)` : ""}` : "";
+  return `- Activation à ${a.jours} j : ${mures}${enCours}`;
+}
+
 export function composerDigest(d, now) {
   const t = Number.isFinite(now) ? now : Date.now();
   const p = heureParis(t);
@@ -228,6 +242,7 @@ export function composerDigest(d, now) {
     u ? `- Inscriptions : 24 h ${u.crees24h ?? "?"} créée(s) / ${u.confirmes24h ?? "?"} confirmée(s) ; 7 j ${u.crees7j ?? "?"} / ${u.confirmes7j ?? "?"}` : "- Inscriptions : non lues",
     `- Appareils actifs 7 j : ${Number.isFinite(usage.appareils7j) ? usage.appareils7j + " (public seulement : robots, émulations et équipe écartés)" : "non lu"}`,
     `- Erreurs client 24 h : ${Number.isFinite(usage.erreurs24h) ? usage.erreurs24h : "non lu"}`,
+    ligneActivation(usage.activation),
     "",
     "Ce digest est écrit par `.github/workflows/digest.yml` (label `digest`, jamais `claude`). Le geste à faire est dans chaque ligne ;",
     "le mode d'emploi complet est dans docs/RUNBOOK_MOIS_DE_TEST.md. Aucun identifiant, aucun e-mail : le dépôt est public.",
