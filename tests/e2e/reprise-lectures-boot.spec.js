@@ -65,8 +65,18 @@ const ID_BANC = "zzz-passion-de-banc-reprise-nexiste-pas";
  * crée une propriété SÉPARÉE que le code applicatif ne regarde jamais. Le vrai
  * levier est la mutation de l'objet, que les deux voient.
  */
-async function poserFauxSupa(page) {
-  await page.evaluate((idBanc) => {
+// ⚠️ `compte` : `supaLoadUserState` ne lit plus RIEN sous l'identifiant `u_…`
+// d'un visiteur (2026-10-11, `visiteur-sans-lectures-compte.spec.js`) — un
+// visiteur n'a pas d'état de compte. Les cas qui mesurent la reprise de la
+// lecture `user_state` parlent donc au nom d'un COMPTE ; sans lui, ③ et ④
+// resteraient verts sans plus rien exercer (aucune lecture = rien à inscrire).
+// Les cas du référentiel (⑨, ⑬) gardent l'identité du banc : un compte
+// réveillerait au `online` des lectures que ce faux serveur sert en pages de
+// passions.
+const UID_COMPTE_BANC = "5b1c2d3e-4f50-4a61-8b72-9c83d4e5f601";
+async function poserFauxSupa(page, opts = {}) {
+  await page.evaluate(([idBanc, uidCompte]) => {
+    if (uidCompte) { MY_UID = uidCompte; window.MY_UID = uidCompte; }
     window.__appels = { user_state: 0, passions: 0 };
     // Scénario courant, changé d'un test à l'autre : "reseau" | "refus" | "ok".
     window.__scenario = "reseau";
@@ -113,7 +123,7 @@ async function poserFauxSupa(page) {
       return chaine;
     };
     window._supaReal = true;
-  }, ID_BANC);
+  }, [ID_BANC, opts.compte ? UID_COMPTE_BANC : null]);
 }
 
 /**
@@ -210,7 +220,7 @@ test.describe("Reprise des lectures de démarrage après coupure réseau", () =>
 
   test("② une lecture user_state coupée par le réseau s'inscrit au registre", async ({ page }) => {
     await bootOnboarded(page, null);
-    await poserFauxSupa(page);
+    await poserFauxSupa(page, { compte: true });
     const etat = await page.evaluate(async () => {
       window.__scenario = "reseau";
       await window.supaLoadUserState();
@@ -221,7 +231,7 @@ test.describe("Reprise des lectures de démarrage après coupure réseau", () =>
 
   test("③ un refus RLS ne s'inscrit JAMAIS : on ne martèle pas une porte fermée", async ({ page }) => {
     await bootOnboarded(page, null);
-    await poserFauxSupa(page);
+    await poserFauxSupa(page, { compte: true });
     const etat = await page.evaluate(async () => {
       window.__scenario = "refus";
       await window.supaLoadUserState();
@@ -233,7 +243,7 @@ test.describe("Reprise des lectures de démarrage après coupure réseau", () =>
 
   test("④ une lecture aboutie acquitte ET rend son crédit d'essais", async ({ page }) => {
     await bootOnboarded(page, null);
-    await poserFauxSupa(page);
+    await poserFauxSupa(page, { compte: true });
     const etat = await page.evaluate(async () => {
       window.__scenario = "reseau";
       await window.supaLoadUserState();          // échoue → inscrit
@@ -249,7 +259,7 @@ test.describe("Reprise des lectures de démarrage après coupure réseau", () =>
 
   test("⑤ le retour en visibilité rejoue la lecture coupée", async ({ page }) => {
     await bootOnboarded(page, null);
-    await poserFauxSupa(page);
+    await poserFauxSupa(page, { compte: true });
     const r = await page.evaluate(async () => {
       window.__scenario = "reseau";
       await window.supaLoadUserState();
@@ -265,7 +275,7 @@ test.describe("Reprise des lectures de démarrage après coupure réseau", () =>
 
   test("⑥ l'événement online rejoue lui aussi", async ({ page }) => {
     await bootOnboarded(page, null);
-    await poserFauxSupa(page);
+    await poserFauxSupa(page, { compte: true });
     const r = await page.evaluate(async () => {
       window.__scenario = "reseau";
       await window.supaLoadUserState();
@@ -280,7 +290,7 @@ test.describe("Reprise des lectures de démarrage après coupure réseau", () =>
 
   test("⑦ le rejeu est BORNÉ à trois essais — une coupure durable ne boucle pas", async ({ page }) => {
     await bootOnboarded(page, null);
-    await poserFauxSupa(page);
+    await poserFauxSupa(page, { compte: true });
     const r = await page.evaluate(async () => {
       window.__scenario = "reseau";                 // le réseau ne revient jamais
       await window.supaLoadUserState();
@@ -302,7 +312,7 @@ test.describe("Reprise des lectures de démarrage après coupure réseau", () =>
 
   test("⑧ on ne rejoue ni depuis une page masquée ni hors ligne", async ({ page }) => {
     await bootOnboarded(page, null);
-    await poserFauxSupa(page);
+    await poserFauxSupa(page, { compte: true });
     const r = await page.evaluate(async () => {
       window.__scenario = "reseau";
       await window.supaLoadUserState();

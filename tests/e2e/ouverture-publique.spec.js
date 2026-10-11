@@ -399,6 +399,9 @@ test.describe("⑦ compte privé : abonnement sur demande", () => {
   test("`supaLoadFollowing` sépare acceptés et en attente, et replie sans la colonne", async ({ page }) => {
     await bootOnboarded(page);
     const r = await page.evaluate(async () => {
+      // Un COMPTE : depuis le 2026-10-11, un visiteur ne lit plus ses abonnements
+      // (`visiteur-sans-lectures-compte.spec.js`).
+      MY_UID = "7c6b5a49-3827-4165-9473-2b1a0f9e8d7c"; window.MY_UID = MY_UID;
       delete window._followsSansStatut;
       let appels = [];
       supa.from = () => ({ select: (cols) => ({ eq: async () => {

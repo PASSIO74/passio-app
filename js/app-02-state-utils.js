@@ -1640,6 +1640,15 @@ async function supaLoadUserState() {
   try {
     if (typeof supa === "undefined" || !supa || !window._supaReal) return false;
     if (typeof MY_UID === "undefined" || !MY_UID) return false;
+    // ⚠️ UN VISITEUR N'A PAS D'ÉTAT DE COMPTE À LIRE (2026-10-11). `MY_UID` vaut
+    // alors le `u_<aléatoire>` de `getMyUserId()` : la lecture ne peut rendre
+    // qu'un 200 vide, et elle part en TÊTE de `supaInit`, AVANT le fil — un
+    // aller-retour réseau payé par chaque visiteur avant de voir une publication.
+    // Mesuré sur les journaux de production (24 h) : 3 906 lectures `user_state`
+    // sous un identifiant de visiteur, aucune utile. Même autorité que les
+    // écritures (`_uidEstUnCompte`, plus haut) ; la sortie passe par `finally`,
+    // donc `_etatCompteCharge` est posé comme sur toute sortie précoce.
+    if (!_uidEstUnCompte()) return false;
     const { data, error } = await supa.from("user_state").select("data,updated_at").eq("user_id", MY_UID).maybeSingle();
     if (error) {
       // ⚠️ UNE COUPURE RÉSEAU N'EST PAS UN REFUS, ET LA CONFONDRE COÛTE LA
