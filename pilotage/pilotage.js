@@ -122,6 +122,9 @@
     return j;
   }
   async function geste(b, corps, confirmation) {
+    // `corps` peut être une fonction : elle lit un champ AU CLIC (couper une
+    // fonctionnalité, écrire un bandeau). Rien à envoyer → rien n'est demandé.
+    if (typeof corps === "function") { corps = corps(); if (!corps) return; }
     if (confirmation && !confirm(confirmation)) return;
     b.disabled = true;
     try {
@@ -295,8 +298,15 @@
         ja.append(c);
       });
       if (!d.capacite.mesuresServeur) ja.append(el("p", "discret", "Base et stockage : la migration « pilotage_veille » n'est pas encore appliquée."));
+      if (d.capacite.connexionsTronquees) ja.append(el("p", "discret", "Connexions : borne basse (lecture tronquée à 1 000 lignes) tant que la fonction « pilotage_audience » n'est pas en base."));
       ja.append(el("p", "discret", "La bande passante (egress) ne se lit que sur la page Usage de Supabase."));
     }
+
+    // Protection automatique (2026-10-11) : les réglages distants.
+    const prot = vider("protection");
+    if (!d.reglages) nonLu("protection", "Protection");
+    else if (d.reglages.absente) prot.append(carte("Pas encore allumée", "Migration", "Appliquer " + (d.reglages.migration || "la migration des réglages distants") + " (npm run migration:appliquer) : la veille pourra alors ralentir l'app d'elle-même.", "gris"));
+    else rendreProtection(prot, d.reglages);
 
     // Réglages : alertes
     const al = vider("alertes");
@@ -315,8 +325,65 @@
     erreur(manquants.length ? manquants.length + " domaine(s) non lu(s) (" + manquants.join(", ") + ") — le reste est à jour." : "");
   }
 
+  // ─── Protection automatique ────────────────────────────────────────────────
+  const NIVEAUX = ["Normal", "Économie (×2)", "Survie (×4)"];
+  const EFFETS = ["", "rafraîchissements deux fois moins fréquents, temps réel endormi plus tôt",
+    "rafraîchissements quatre fois moins fréquents, temps réel réservé à ce qu'on regarde"];
+  const LIBELLES_COUPURES = {
+    passio_invitations_v1: "Invitations", passio_invite_apres_creation_v1: "Inviter après avoir organisé",
+    passio_liens_courts_v1: "Liens de partage courts", passio_irl_proposal_v1: "Proposer une activité",
+    passio_rappels_push_v1: "Rappels d'activité (push)", passio_recap_semaine: "Récap de la semaine",
+    passio_feed_rank: "Classement du fil", passio_feed_irl_bridge_v1: "Activités dans le fil",
+    passio_feed_intents_v1: "Intentions du fil", passio_feed_window_v1: "Fenêtre du fil",
+    passio_first_run_experience_v1: "Première visite guidée", flat_passions_v1: "Référentiel des passions plat",
+  };
+  const libelleCoupure = (k) => LIBELLES_COUPURES[k] ? LIBELLES_COUPURES[k] + " (" + k + ")" : k;
+  function champ(tag, attrs) { const n = document.createElement(tag); n.className = "champ"; Object.entries(attrs || {}).forEach(([k, v]) => n.setAttribute(k, v)); return n; }
+  function rendreProtection(zone, rg) {
+    const dl = rg.delestage || { niveau: 0 };
+    const n = [0, 1, 2].includes(dl.niveau) ? dl.niveau : 0;
+    const qui = dl.pose_par === "pilote" ? "posé à la main" : dl.pose_par === "veille" ? "posé par la veille" : "réglage automatique";
+    const cd = carte("Délestage : " + NIVEAUX[n], dl.pose_par === "pilote" ? "Manuel" : "Auto",
+      [EFFETS[n], dl.motif, qui + (dl.maj ? " " + ilYA(dl.maj) : "")].filter(Boolean).join(" · "), n === 2 ? "rouge" : n === 1 ? "orange" : "vert");
+    [0, 1, 2].forEach((k) => {
+      if (k === n && dl.pose_par === "pilote") return;
+      bouton(cd, NIVEAUX[k], { action: "reglages", cle: "delestage", valeur: { niveau: k } },
+        "Passer toute l'app en « " + NIVEAUX[k] + " » ? La veille ne le changera plus tant que tu ne le rends pas à l'automatique.");
+    });
+    if (dl.pose_par === "pilote") bouton(cd, "Rendre à l'automatique", { action: "reglages", cle: "delestage", valeur: null }, "Rendre le délestage à la veille automatique ?");
+    zone.append(cd);
+
+    const coupees = (rg.coupures && rg.coupures.cles) || [];
+    const cc = carte("Fonctionnalités coupées", coupees.length ? String(coupees.length) : "Aucune",
+      coupees.length ? "Éteintes chez tout le monde : " + coupees.map(libelleCoupure).join(", ") : "Rien n'est coupé à distance.", coupees.length ? "orange" : "vert");
+    coupees.forEach((k) => bouton(cc, "Rallumer : " + (LIBELLES_COUPURES[k] || k), { action: "reglages", cle: "coupures", valeur: { cles: coupees.filter((x) => x !== k) } }, "Rallumer « " + libelleCoupure(k) + " » chez tout le monde ?"));
+    const possibles = (rg.coupuresPossibles || []).filter((k) => !coupees.includes(k));
+    if (possibles.length) {
+      const sel = champ("select", { "aria-label": "Fonctionnalité à couper", id: "coupureChoix" });
+      possibles.forEach((k) => { const o = document.createElement("option"); o.value = k; o.textContent = libelleCoupure(k); sel.append(o); });
+      actions(cc).append(sel);
+      bouton(cc, "Couper chez tout le monde", () => ({ action: "reglages", cle: "coupures", valeur: { cles: coupees.concat([sel.value]) } }),
+        "Éteindre cette fonctionnalité chez TOUS les utilisateurs ? (effet sous 5 min ; au prochain démarrage pour certaines)");
+    }
+    zone.append(cc);
+
+    const b = rg.bandeau;
+    const cb = carte("Message à tous", b ? (b.niveau === "alerte" ? "Alerte" : "Info") : "Aucun", b ? "« " + b.texte + " »" : "Aucun message affiché.", b ? (b.niveau === "alerte" ? "rouge" : "orange") : "vert");
+    if (b) bouton(cb, "Retirer le message", { action: "reglages", cle: "bandeau", valeur: null }, "Retirer le message affiché à tous ?");
+    const txt = champ("input", { type: "text", maxlength: "200", placeholder: "Ex. : inscriptions par e-mail saturées, passe par Google", "aria-label": "Texte du message", id: "bandeauTexte" });
+    const niv = champ("select", { "aria-label": "Niveau du message", id: "bandeauNiveau" });
+    [["info", "Info"], ["alerte", "Alerte"]].forEach(([v, l]) => { const o = document.createElement("option"); o.value = v; o.textContent = l; niv.append(o); });
+    actions(cb).append(txt, niv);
+    bouton(cb, "Afficher à tous", () => { const t = txt.value.trim(); if (!t) { erreur("Écris d'abord le message."); return null; } return { action: "reglages", cle: "bandeau", valeur: { texte: t, niveau: niv.value } }; },
+      "Afficher ce message en haut de l'app, chez tous les utilisateurs ?");
+    zone.append(cb);
+  }
+
+  // Un geste qui tombe PENDANT une lecture ne doit pas laisser l'écran sur
+  // l'état d'avant : la lecture en cours finit, puis une seconde part.
+  let aRelire = false;
   async function actualiser() {
-    if (enCours) return;
+    if (enCours) { aRelire = true; return; }
     enCours = true; $("actualiser").classList.add("tourne");
     try {
       const d = await appeler({ action: "etat" });
@@ -325,7 +392,10 @@
       if (e.status === 401) { ecran("connexion"); return; }
       if (e.status === 403) { ecran("refus"); $("refusTexte").textContent = "Le compte " + (compte || "") + " n'a pas accès au pilotage. Connecte-toi avec le compte de l'éditeur."; return; }
       erreur(e.status === 404 ? "La fonction « pilotage » n'est pas encore déployée." : "Lecture impossible : " + e.message + ". Dernières données conservées.");
-    } finally { enCours = false; $("actualiser").classList.remove("tourne"); majEtat(); }
+    } finally {
+      enCours = false; $("actualiser").classList.remove("tourne"); majEtat();
+      if (aRelire) { aRelire = false; actualiser(); }
+    }
   }
   $("actualiser").addEventListener("click", actualiser);
 

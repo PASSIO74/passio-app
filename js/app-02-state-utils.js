@@ -924,6 +924,18 @@ function filetProchainPas(pasActuel, vivant, masquee) {
   return Math.min(FILET_PAS_MAX, Math.round(pas * 1.5));
 }
 
+// DÉLESTAGE (2026-10-11) — un délai de filet, de compteur ou de repos du temps
+// réel, multiplié par le facteur posé À DISTANCE (js/reglages-distants.js :
+// 1, 2 ou 4, depuis le pilotage ou la veille quand la charge monte). Appliqué
+// au moment d'ARMER le minuteur, jamais dans `filetProchainPas` /
+// `compteursProchainPas`, qui restent pures et gardent leurs bornes : un
+// délestage posé ou levé prend effet au tour suivant, sans rien réinitialiser.
+function delaiDeleste(ms) {
+  var f = typeof delestageFacteur === "function" ? delestageFacteur() : 1;
+  return (f === 2 || f === 4) ? ms * f : ms;
+}
+window.delaiDeleste = delaiDeleste;
+
 // ═══════════════════════════════════════════════════════════════════════════
 // SOCKET AU REPOS (2026-09-21) — un compte qui ne regarde pas ne tient pas de
 // connexion temps réel.

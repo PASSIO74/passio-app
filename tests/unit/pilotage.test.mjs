@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { autorise, COMPTE_PILOTE, RELANCES, erreursFrequentes, resumerIssue, verdict, decideAlerte, plateforme, cheminPage, serieJours, detailsErreurs, jauges, estPause, TITRE_PAUSE, STATUTS_SIGNALEMENT, aReparer, issueReparable, titreReparation, corpsReparation, estReparation, RUNS_REPARABLES, REPARATIONS_MAX, LABELS_SUIVIS, compterAudience, traficHorsPublic } from "../../supabase/functions/_shared/pilotage.js";
+import { bornesJours, estObjetAbsent, MAX_LIGNES_POSTGREST, autorise, COMPTE_PILOTE, RELANCES, erreursFrequentes, resumerIssue, verdict, decideAlerte, plateforme, cheminPage, serieJours, detailsErreurs, jauges, estPause, TITRE_PAUSE, STATUTS_SIGNALEMENT, aReparer, issueReparable, titreReparation, corpsReparation, estReparation, RUNS_REPARABLES, REPARATIONS_MAX, LABELS_SUIVIS, compterAudience, traficHorsPublic } from "../../supabase/functions/_shared/pilotage.js";
 
 const confirme = (email) => ({ email, email_confirmed_at: "2026-09-01T00:00:00Z" });
 
@@ -62,6 +62,9 @@ test("⑥ verdict : vert, orange, rouge, gris", () => {
   assert.equal(verdict({ ...base, github: { issues: [], runs: { deploy: { conclusion: "failure" } } } }).couleur, "rouge");
   assert.equal(verdict({ ...base, github: { issues: [], runs: { sentinelle: { le: "2020-01-01T00:00:00Z" } } } }).couleur, "orange", "Sentinelle muette");
   assert.equal(verdict({ github: null }).couleur, "gris");
+  const plein = verdict({ ...base, sante: { erreursJs15: 0, api5xx15: 0, telemetrieMinute: 2900 } });
+  assert.equal(plein.couleur, "orange", "télémétrie au plafond : un vert ne prouverait plus rien");
+  assert.match(plein.raisons.join(" "), /télémétrie au plafond \(2900\/min\)/);
 });
 
 test("⑦ l'alerte ne sonne que sur un changement qui compte", () => {
@@ -105,6 +108,9 @@ test("⑨ jauges : pourcentage, couleurs 70/90, valeur absente = non mesuré", (
   assert.equal(j.emails.couleur, "rouge");
   assert.equal(j.base.couleur, "vert");
   assert.equal(j.stockage.pct, null); assert.equal(j.stockage.couleur, "gris");
+  assert.equal(j.telemetrie.pct, null, "télémétrie non mesurée = non mesuré, jamais 0 %");
+  const t = Object.fromEntries(jauges({ telemetrie: 2850 }).map((x) => [x.cle, x]));
+  assert.equal(t.telemetrie.pct, 95); assert.equal(t.telemetrie.couleur, "rouge");
 });
 
 test("⑩ pause Sentinelle : même convention que sentinelle-autonome.yml", () => {
@@ -202,6 +208,58 @@ test("⑰ la fonction compte l'audience par compterAudience, et lit `trafic` san
   const fn = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
   const corps = fn.slice(fn.indexOf("async function lireUtilisateurs"), fn.indexOf("async function lireSignalements"));
   assert.match(corps, /trafic:meta->>trafic/);
-  assert.match(corps, /return compterAudience\(data \|\| \[\]\)/);
+  // 2026-10-11 : le comptage DISTINCT en base d'abord (`pilotage_audience`,
+  // exact à toute échelle), le repli par lignes ensuite — qui passe toujours
+  // par compterAudience et dit qu'il est tronqué.
+  assert.match(corps, /admin\.rpc\("pilotage_audience"/);
+  assert.match(corps, /\.\.\.compterAudience\(l\)/);
+  assert.match(corps, /tronque: l\.length >= MAX_LIGNES_POSTGREST/);
   assert.doesNotMatch(corps, /select\("user_id,device_id"\)/);
+});
+
+// ─── À L'ÉCHELLE (2026-10-11) ────────────────────────────────────────────────
+test("⑱ bornesJours : les MÊMES jours que serieJours, bornes UTC [début, fin)", () => {
+  const t = Date.parse("2026-10-11T15:30:00Z");
+  const b = bornesJours(7, t);
+  assert.deepEqual(b.map((x) => x.jour), serieJours([], 7, t).map((x) => x.jour));
+  assert.equal(b[6].debut, "2026-10-11T00:00:00.000Z");
+  assert.equal(b[6].fin, "2026-10-12T00:00:00.000Z");
+  assert.equal(b[0].debut, "2026-10-05T00:00:00.000Z");
+});
+
+test("⑲ estObjetAbsent : migration pas appliquée ≠ refus (mutation : prendre un 42501 pour une absence)", () => {
+  for (const code of ["PGRST205", "PGRST202", "42P01", "42883"]) assert.equal(estObjetAbsent({ code }), true, code);
+  assert.equal(estObjetAbsent({ code: "PGRST204", message: "Could not find the table 'public.x' in the schema cache" }), true);
+  assert.equal(estObjetAbsent({ code: "42501", message: "permission denied for table reglages_distants" }), false);
+  assert.equal(estObjetAbsent({ message: "permission denied: relation does not exist" }), false);
+  assert.equal(estObjetAbsent(null), false);
+  assert.equal(MAX_LIGNES_POSTGREST, 1000);
+});
+
+test("⑳ la fonction ne déduit plus aucun COMPTE d'une liste bornée, et cherche l'éditeur au-delà de la page 1", () => {
+  const fn = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
+  assert.doesNotMatch(fn, /\.limit\(5000\)/, "max-rows rend 1 000 lignes au plus : un .limit(5000) est un mensonge");
+  assert.doesNotMatch(fn, /erreurs24h: \(data \|\| \[\]\)\.length/);
+  assert.doesNotMatch(fn, /inscritsSemaine: dates\.length/);
+  const u = fn.slice(fn.indexOf("async function uidsPilotes"), fn.indexOf("/** Notification sur les appareils"));
+  assert.match(u, /for \(let page = 1; page <= \d+; page\+\+\)/, "uidsPilotes doit parcourir les pages");
+  assert.match(u, /trouves\.size >= attendus\.size/, "et s'arrêter dès que chaque adresse est trouvée");
+});
+
+test("㉑ la veille délestage sans jamais tomber, et le pilote ne pose qu'une valeur revalidée", () => {
+  const fn = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
+  const v = fn.slice(fn.indexOf("async function veille"), fn.indexOf("/** Rappels d'activité"));
+  assert.match(v, /try \{ delestage = await delestageAuto\(/, "une erreur de délestage ne doit pas casser la veille");
+  const d = fn.slice(fn.indexOf("async function delestageAuto"), fn.indexOf("// Geste du pilote."));
+  assert.match(d, /decideDelestage\(actuel, \{ pctConnexions, comptes5xx15 \}\)/);
+  assert.match(d, /if \(a\.exact\) \{/, "seule la mesure exacte (auth_uid serveur) pilote le délestage");
+  assert.doesNotMatch(d, /api5xx15/, "les LIGNES en panne sont forgeables : jamais un levier de délestage");
+  assert.match(d, /pose_par: "veille"/);
+  assert.match(d, /if \(!lignes\) return \{ absente: true \}/, "table absente : la veille n'écrit rien");
+  const p = fn.slice(fn.indexOf("async function poserReglage"), fn.indexOf("// Journal des gestes"));
+  assert.match(p, /normaliserReglage\(cle, corps\.valeur\)/);
+  assert.match(p, /pose_par: "pilote"/);
+  assert.match(fn, /case "reglages": return poserReglage\(admin, corps\);/);
+  // Le geste est APRÈS la porte d'authentification (autorise + plafond).
+  assert.ok(fn.indexOf('case "reglages"') > fn.indexOf("if (!autorise(user, EXTRA))"));
 });

@@ -178,6 +178,7 @@ Chaque fichier porte un sommaire daté. Une ligne ci-dessous = une règle qu'on 
 - `MY_UID` est un `let` de portée script, `window.MY_UID` n'en est pas le reflet ; `analytics_events` ne tolère pas `user_id NULL` (la garde est en amont).
 - Activation (7 j) : UNE définition, `GESTES_ACTIVATION` + `activation()` (`_shared/pilotage.js`), lue par la fonction `pilotage` ET par le digest (SQL GÉNÉRÉ de la même liste) — jamais une copie à la main (`tests/unit/activation.test.mjs`).
 - File de télémétrie : un événement EN VOL ne repart pas (sauf au `pagehide`, où le navigateur annule l'envoi ordinaire) et un succès retire son lot PAR IDENTITÉ, jamais « les n premiers » (`telemetrie-doublons.spec.js`).
+- Confinement (2026-10-11) : `reglages_distants` (délestage ×2/×4, coupures d'une LISTE BLANCHE, bandeau) est lu par chaque appareil et écrit par la seule fonction `pilotage` ; le facteur s'applique à l'ARMEMENT d'un minuteur (`delaiDeleste`), jamais dans une politique pure ; un COMPTE du pilotage se compte en base, jamais par la longueur d'une liste (max-rows = 1 000). Plan 100 000 : `docs/PASSIO_100K_AUTONOMIE.md`.
 
 ## 📚 Références projet
 

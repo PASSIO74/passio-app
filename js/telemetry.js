@@ -895,6 +895,15 @@
     if (!ENABLED) return;
     fields = fields || {};
     var _taux = tauxEchantillon(type, action, fields);
+    // DÉLESTAGE (2026-10-11, js/reglages-distants.js) : sous charge, une
+    // famille DÉJÀ échantillonnée (les lectures `api` en 200) l'est 2 ou 4 fois
+    // plus. Jamais une famille gardée entière (erreurs, échecs, lenteurs,
+    // écritures, preuves de flow : `_taux === 1`) — et le poids `meta.ech`
+    // suit, donc le pilotage compte juste.
+    if (_taux < 1 && typeof delestageFacteur === "function") {
+      var _fDel = delestageFacteur();
+      if (_fDel === 2 || _fDel === 4) _taux = _taux / _fDel;
+    }
     if (!CRITICAL_TYPE[type]) {            // erreurs & connexion : jamais filtrées
       if (_taux < 1 && Math.random() > _taux) return;
       if (overCap()) return;
@@ -1374,7 +1383,10 @@
           var _refusAttendu = !res.ok
             && ((/\/auth\/v1\/(token|signup)$/i.test(path)
                  && (res.status === 400 || res.status === 401 || res.status === 403 || res.status === 422))
-              || (/\/rest\/v1\/rpc\/fil_compteurs$/i.test(path) && res.status === 404));
+              || (/\/rest\/v1\/rpc\/fil_compteurs$/i.test(path) && res.status === 404)
+              // Même contrat (2026-10-11) : la table des réglages distants pas
+              // encore en base — js/reglages-distants.js le mémorise une heure.
+              || (/\/rest\/v1\/reglages_distants$/i.test(path) && res.status === 404));
           Telemetry.api({
             action: method + " " + path.replace(/\/rest\/v1\//, "/"),
             endpoint: path, http_status: res.status,

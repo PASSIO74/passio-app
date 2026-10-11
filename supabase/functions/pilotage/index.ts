@@ -14,7 +14,7 @@
 //
 // ② PILOTE — JWT de la personne, réservé au compte de l'éditeur (`autorise`,
 //    échec fermé : 401 sans session, 403 pour tout autre compte).
-//      etat · relancer · fusionner · fermer · pause · reprendre · signalement · reparer
+//      etat · relancer · fusionner · fermer · pause · reprendre · signalement · reparer · reglages
 //    Les gestes GitHub exigent le secret PILOTAGE_GITHUB_TOKEN (sinon 501, dit).
 //    Plafond 30/min, 600/h.
 //
@@ -29,11 +29,15 @@ import { verifierPlafondEnBase, reponsePlafond } from "../_shared/plafond.js";
 import { REVISION } from "../_shared/revision.js";
 import {
   autorise, RELANCES, LABELS_SUIVIS, TITRE_PAUSE, STATUTS_SIGNALEMENT, estPause,
-  erreursFrequentes, detailsErreurs, serieJours, jauges, resumerIssue, resumerRun, verdict, decideAlerte,
+  erreursFrequentes, detailsErreurs, jauges, resumerIssue, resumerRun, verdict, decideAlerte,
   aReparer, titreReparation, corpsReparation, estReparation, REPARATIONS_MAX, compterAudience,
   activation, compteMesurable, dateUtc, GESTES_ACTIVATION, COHORTE_ACTIVATION_JOURS,
+  PLAFONDS, bornesJours, estObjetAbsent, MAX_LIGNES_POSTGREST, COMPTE_PILOTE,
 } from "../_shared/pilotage.js";
 import { envoyerRappels, MARQUE_UID } from "../_shared/rappels.js";
+import {
+  CLES_REGLAGES, COUPURES_AUTORISEES, normaliserReglage, normaliserMotif, decideDelestage, resumerReglages,
+} from "../_shared/reglages.js";
 
 const corsHeaders = {
   "X-Passio-Revision": REVISION,
@@ -78,6 +82,7 @@ Deno.serve(async (req) => {
     case "reprendre": return pause(false);
     case "signalement": return traiterSignalement(admin, String(corps.id || ""), String(corps.statut || ""));
     case "reparer": return reparer(corps);
+    case "reglages": return poserReglage(admin, corps);
     default: return json({ error: "Action inconnue." }, 400);
   }
 });
@@ -95,6 +100,12 @@ async function veille(admin: Admin) {
     try { await admin.from("analytics_events").insert({ user_id: MARQUE_UID, event: "rappels_echec", properties: { message: m } }); } catch { /* */ }
   }
   const e = { sante: val(sante), signalements: val(signalements), github: val(github) };
+  // Délestage automatique (2026-10-11) : la production RALENTIT avant le mur
+  // au lieu de tomber dessus. Jamais bloquant pour la veille : une table ou une
+  // fonction de comptage absente (migration pas encore appliquée) = rien.
+  let delestage: Record<string, unknown> | null = null;
+  try { delestage = await delestageAuto(admin); }
+  catch (err) { delestage = { erreur: String((err as { message?: string })?.message || err).slice(0, 120) }; }
   const v = verdict(e);
   const actuel = { couleur: v.couleur, raisons: v.raisons, dispo: val(dispo) !== false };
   const prec = await lireEtatMemorise(admin);
@@ -113,7 +124,8 @@ async function veille(admin: Admin) {
   // appelable avec la seule clé anon (publique), et combien d'activités ont lieu
   // dans les 24 h ou combien de comptes sont abonnés ne regardent personne. Ils
   // se lisent dans `analytics_events` (marques `rappel_activite`, `rappels_echec`).
-  return json({ ok: true, couleur: actuel.couleur, dispo: actuel.dispo, sonne: d.sonner, envoyes });
+  return json({ ok: true, couleur: actuel.couleur, dispo: actuel.dispo, sonne: d.sonner, envoyes,
+    delestage: delestage && "niveau" in delestage ? delestage.niveau : null });
 }
 
 /** Rappels d'activité (J-1, H-2) sur les appareils des participants, appli fermée comprise. */
@@ -143,9 +155,27 @@ async function sonder(): Promise<boolean> {
   return false;
 }
 
+// ⚠️ À L'ÉCHELLE (2026-10-11) : la première version ne lisait que la PAGE 1 des
+// comptes (1 000). Au 1 001ᵉ inscrit, le compte de l'éditeur pouvait sortir de
+// cette page et les alertes cesser d'arriver sur son téléphone — EN SILENCE,
+// le jour même où le trafic les rend indispensables. On parcourt donc les
+// pages jusqu'à avoir trouvé chaque adresse autorisée (ou la fin de la liste),
+// et on garde le résultat 10 min dans l'isolat (un bonus, jamais une garantie).
+let cacheUidsPilotes: { at: number; uids: string[] } | null = null;
 async function uidsPilotes(admin: Admin): Promise<string[]> {
-  const { data } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
-  return ((data && data.users) || []).filter((u) => autorise(u, EXTRA)).map((u) => u.id);
+  if (cacheUidsPilotes && cacheUidsPilotes.uids.length && Date.now() - cacheUidsPilotes.at < 600e3) return cacheUidsPilotes.uids;
+  const attendus = new Set([COMPTE_PILOTE, ...EXTRA.split(",")].map((x) => x.trim().toLowerCase()).filter(Boolean));
+  const uids: string[] = [];
+  const trouves = new Set<string>();
+  for (let page = 1; page <= 300; page++) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
+    if (error) break;
+    const lot = (data && data.users) || [];
+    for (const u of lot) if (autorise(u, EXTRA)) { uids.push(u.id); trouves.add(String(u.email).trim().toLowerCase()); }
+    if (lot.length < 1000 || trouves.size >= attendus.size) break;
+  }
+  cacheUidsPilotes = { at: Date.now(), uids };
+  return uids;
 }
 
 /** Notification sur les appareils de l'éditeur où PASSIO a les notifications activées. */
@@ -171,7 +201,7 @@ async function etat(admin: Admin) {
   const parts = {
     sante: lireSante(admin), utilisateurs: lireUtilisateurs(admin), activation: lireActivation(admin), signalements: lireSignalements(admin),
     github: lireGithub(), erreurs: lireErreurs7j(admin), capacite: lireCapacite(admin),
-    disponibilite: lireDisponibilite(admin), alertes: lireAlertes(admin),
+    disponibilite: lireDisponibilite(admin), alertes: lireAlertes(admin), reglages: lireReglages(admin),
   };
   const noms = Object.keys(parts) as (keyof typeof parts)[];
   const res = await Promise.allSettled(noms.map((k) => parts[k]));
@@ -198,37 +228,160 @@ async function compter(q: PromiseLike<{ count: number | null; error: unknown }>)
 async function lireSante(admin: Admin) {
   const depuis = ilYa(15 * 60e3);
   const prod = () => admin.from("telemetry_events").select("id", { count: "exact", head: true }).eq("env", "production").gte("received_at", depuis);
-  const [evenements15, erreursJs15, api5xx15] = await Promise.all([
+  const [evenements15, erreursJs15, api5xx15, telemetrieMinute] = await Promise.all([
     compter(prod()), compter(prod().eq("type", "error")), compter(prod().eq("type", "api").gte("http_status", 500)),
+    // Toutes origines confondues, comme le plafond global qu'elle mesure
+    // (`trg_debit_global`, 3 000 insertions/min) : au-delà, les lots sont REFUSÉS
+    // et chaque compteur ci-dessus sous-estime la réalité.
+    compter(admin.from("telemetry_events").select("id", { count: "exact", head: true }).gte("received_at", ilYa(60e3))),
   ]);
-  const { data, error } = await admin.from("client_errors").select("message,uid,created_at").gte("created_at", ilYa(24 * 3600e3)).order("created_at", { ascending: false }).limit(300);
+  const depuis24 = ilYa(24 * 3600e3);
+  const [{ data, error }, erreurs24h] = await Promise.all([
+    admin.from("client_errors").select("message,uid,created_at").gte("created_at", depuis24).order("created_at", { ascending: false }).limit(300),
+    // Le NOMBRE se compte en base : la liste ci-dessus est bornée (300, et
+    // PostgREST ne rend jamais plus de 1 000 lignes) — sa longueur plafonnait
+    // l'affichage à 300 erreurs par jour, quelle que soit la réalité.
+    compter(admin.from("client_errors").select("id", { count: "exact", head: true }).gte("created_at", depuis24)),
+  ]);
   if (error) throw error;
-  return { evenements15, erreursJs15, api5xx15, erreurs24h: (data || []).length, principales: erreursFrequentes(data || []) };
+  return { evenements15, erreursJs15, api5xx15, telemetrieMinute, erreurs24h, principales: erreursFrequentes(data || []) };
 }
 
 async function lireErreurs7j(admin: Admin) {
-  const { data, error } = await admin.from("client_errors").select("message,uid,created_at,ua,url").gte("created_at", ilYa(7 * 864e5)).order("created_at", { ascending: false }).limit(1000);
+  const [{ data, error }, serie] = await Promise.all([
+    admin.from("client_errors").select("message,uid,created_at,ua,url").gte("created_at", ilYa(7 * 864e5)).order("created_at", { ascending: false }).limit(1000),
+    serieComptee((debut, fin) => admin.from("client_errors").select("id", { count: "exact", head: true }).gte("created_at", debut).lt("created_at", fin)),
+  ]);
   if (error) throw error;
-  return { serie: serieJours((data || []).map((l) => l.created_at)), details: detailsErreurs(data || []) };
+  // Les DÉTAILS portent sur les 1 000 plus récentes (et le disent) ; la SÉRIE
+  // est comptée jour par jour en base, jamais déduite d'une liste tronquée.
+  return { serie, details: detailsErreurs(data || []), detailsPartiels: (data || []).length >= MAX_LIGNES_POSTGREST };
 }
 
 async function lireUtilisateurs(admin: Admin) {
-  const { data: crees, error } = await admin.from("profiles").select("created_at").gte("created_at", ilYa(7 * 864e5)).limit(5000);
-  if (error) throw error;
-  const total = await compter(admin.from("profiles").select("id", { count: "exact", head: true }));
-  const dates = (crees || []).map((r) => String(r.created_at).replace(" ", "T") + (/[zZ]|[+-]\d\d:?\d\d$/.test(String(r.created_at)) ? "" : "Z"));
-  const jour = dates.filter((d) => Date.now() - Date.parse(d) < 864e5).length;
+  // ⚠️ À L'ÉCHELLE (2026-10-11) : tout se COMPTE en base. L'ancienne lecture
+  // « limite 5 000 » rendait en réalité 1 000 lignes au plus (max-rows de
+  // PostgREST) : au-delà de 1 000 inscriptions par semaine, le téléphone
+  // affichait 1 000, et la série du jour en perdait — sans un mot.
+  const profils = () => admin.from("profiles").select("id", { count: "exact", head: true });
+  const [total, jour, semaine, serieInscriptions] = await Promise.all([
+    compter(profils()),
+    compter(profils().gte("created_at", ilYa(864e5))),
+    compter(profils().gte("created_at", ilYa(7 * 864e5))),
+    serieComptee((debut, fin) => profils().gte("created_at", debut).lt("created_at", fin)),
+  ]);
   // Le PUBLIC seulement (2026-10-05) : robots, émulations et appareils de
   // l'équipe sortent de « en ligne » et « 24 h » (compterAudience, _shared).
   // `trafic` est lu par PostgREST (`meta->>trafic`) : la meta entière n'est
   // pas rapatriée pour 5 000 lignes.
-  const actifs = async (ms: number) => {
-    const { data, error } = await admin.from("telemetry_events").select("user_id,device_id,platform,connection,trafic:meta->>trafic").eq("env", "production").gte("received_at", ilYa(ms)).limit(5000);
-    if (error) throw error;
-    return compterAudience(data || []);
-  };
-  const [maintenant, aujourdhui] = await Promise.all([actifs(5 * 60e3), actifs(864e5)]);
-  return { total, inscritsJour: jour, inscritsSemaine: dates.length, serieInscriptions: serieJours(dates), maintenant, aujourdhui };
+  const [maintenant, aujourdhui] = await Promise.all([audience(admin, 300), audience(admin, 86400)]);
+  return { total, inscritsJour: jour, inscritsSemaine: semaine, serieInscriptions, maintenant, aujourdhui };
+}
+
+// Série « par jour » COMPTÉE en base (7 requêtes HEAD), mêmes jours que
+// `serieJours` : jamais déduite d'une liste que max-rows a pu tronquer.
+async function serieComptee(q: (debut: string, fin: string) => PromiseLike<{ count: number | null; error: unknown }>) {
+  const jours = bornesJours(7);
+  const n = await Promise.all(jours.map((j) => compter(q(j.debut, j.fin))));
+  return jours.map((j, i) => ({ jour: j.jour, n: n[i] }));
+}
+
+// Audience d'une fenêtre (2026-10-11). D'abord `pilotage_audience` (comptage
+// DISTINCT en base, exact à toute échelle) ; tant que la migration n'est pas
+// appliquée, repli sur l'ancienne lecture de lignes — qui ne voit que les
+// 1 000 dernières (max-rows) et le DIT (`tronque`), au lieu d'afficher un
+// plafond comme une mesure. `connexions` = COMPTES distincts par `auth_uid`
+// (seuls les comptes ouvrent le temps réel depuis le 2026-09-20 ; public ou
+// non : un robot connecté consomme une connexion comme un autre).
+// `comptes5xx15` = comptes distincts touchés par une réponse ≥ 500 en 15 min.
+// Ces deux-là pilotent le délestage : ils ne comptent que l'identité posée par
+// le SERVEUR, jamais un `user_id` ou un `device_id` écrits par le client.
+async function audience(admin: Admin, secondes: number) {
+  const { data, error } = await admin.rpc("pilotage_audience", { p_secondes: secondes });
+  if (!error && data && typeof data === "object") {
+    const d = data as Record<string, number>;
+    return { comptes: Number(d.comptes) || 0, appareils: Number(d.appareils) || 0, horsPublic: Number(d.hors_public) || 0,
+      connexions: Number(d.comptes_connectes) || 0, comptes5xx15: Number(d.comptes_5xx_15min) || 0, exact: true, tronque: false };
+  }
+  if (error && !estObjetAbsent(error)) throw error;
+  const { data: lignes, error: e2 } = await admin.from("telemetry_events").select("user_id,device_id,platform,connection,trafic:meta->>trafic")
+    .eq("env", "production").gte("received_at", ilYa(secondes * 1000)).order("received_at", { ascending: false }).limit(MAX_LIGNES_POSTGREST);
+  if (e2) throw e2;
+  const l = lignes || [];
+  const conn = new Set(l.filter((r) => r.user_id && r.device_id).map((r) => r.device_id)).size;
+  return { ...compterAudience(l), connexions: conn, comptes5xx15: null, exact: false, tronque: l.length >= MAX_LIGNES_POSTGREST };
+}
+
+// ─── Réglages distants (2026-10-11) ─────────────────────────────────────────
+// `public.reglages_distants` : lisible par tous (les appareils le relisent
+// toutes les 5 min), écrite ICI seulement (service_role). Logique et bornes :
+// _shared/reglages.js. Table absente (migration pas encore appliquée) : la
+// lecture rend `absente: true`, l'écriture le dit, la veille n'y touche pas.
+const MIGRATION_REGLAGES = "migrations/migration_reglages_distants_2026-10-11.sql";
+async function lireLignesReglages(admin: Admin) {
+  const { data, error } = await admin.from("reglages_distants").select("cle,valeur,pose_par,motif,maj");
+  if (error) { if (estObjetAbsent(error)) return null; throw error; }
+  return data || [];
+}
+async function lireReglages(admin: Admin) {
+  const lignes = await lireLignesReglages(admin);
+  if (!lignes) return { absente: true, migration: MIGRATION_REGLAGES, coupuresPossibles: COUPURES_AUTORISEES };
+  return { absente: false, ...resumerReglages(lignes), coupuresPossibles: COUPURES_AUTORISEES };
+}
+
+async function delestageAuto(admin: Admin) {
+  const lignes = await lireLignesReglages(admin);
+  if (!lignes) return { absente: true };
+  const ligne = lignes.find((l) => l.cle === "delestage") || null;
+  const actuel = ligne ? { niveau: (ligne.valeur as { niveau?: number })?.niveau, pose_par: ligne.pose_par, maj: ligne.maj } : null;
+  // ⚠️ SEULE la mesure EXACTE (pilotage_audience) pilote : le repli par lignes
+  // compte des `device_id` écrits par le client — un levier qu'un seul compte
+  // pourrait tenir pour ralentir toute la production. Pas de mesure = rien ne
+  // bouge (decideDelestage le garantit).
+  let pctConnexions: number | null = null, comptes5xx15: number | null = null;
+  try {
+    const a = await audience(admin, 300);
+    if (a.exact) {
+      pctConnexions = Math.round((a.connexions / PLAFONDS.connexions.plafond) * 1000) / 10;
+      comptes5xx15 = a.comptes5xx15;
+    }
+  } catch { /* mesure absente : la décision le sait */ }
+  const d = decideDelestage(actuel, { pctConnexions, comptes5xx15 });
+  if (!d.changer) return { niveau: d.niveau };
+  const { error } = await admin.from("reglages_distants").upsert({
+    cle: "delestage", valeur: { niveau: d.niveau }, pose_par: "veille", motif: normaliserMotif(d.motif), maj: new Date().toISOString(),
+  }, { onConflict: "cle" });
+  if (error) throw error;
+  try { await admin.from("analytics_events").insert({ user_id: "systeme:pilotage", event: "delestage_auto", properties: { niveau: d.niveau, pctConnexions, comptes5xx15 } }); } catch { /* */ }
+  await sonnerPilote(admin, d.niveau > (actuel?.niveau || 0) ? `🛡️ Délestage automatique : niveau ${d.niveau}` : `✅ Délestage ${d.niveau ? "allégé : niveau " + d.niveau : "levé"}`, d.motif || "");
+  return { niveau: d.niveau, change: true };
+}
+
+// Geste du pilote. `valeur: null` LÈVE le réglage (pour le délestage : rend la
+// main à la veille). La valeur est revalidée ici, jamais crue du téléphone.
+async function poserReglage(admin: Admin, corps: Record<string, unknown>) {
+  const cle = String(corps.cle || "");
+  if (!CLES_REGLAGES.includes(cle)) return json({ error: "Réglage inconnu." }, 400);
+  const motif = normaliserMotif(corps.motif) || "Posé depuis le pilotage téléphone";
+  const lignes = await lireLignesReglages(admin).catch(() => undefined);
+  if (lignes === undefined) return json({ error: "Réglages illisibles." }, 502);
+  if (lignes === null) return json({ error: `La table des réglages n'existe pas encore : appliquer ${MIGRATION_REGLAGES}.` }, 503);
+  if (corps.valeur === null) {
+    const { error } = await admin.from("reglages_distants").delete().eq("cle", cle);
+    if (error) return json({ error: "Écriture refusée." }, 502);
+    await journaliserReglage(admin, cle, null);
+    return json({ ok: true, message: cle === "delestage" ? "Délestage rendu à la veille automatique." : "Réglage levé : les appareils le verront sous 5 min." });
+  }
+  const n = normaliserReglage(cle, corps.valeur);
+  if (n.erreur) return json({ error: n.erreur }, 400);
+  const { error } = await admin.from("reglages_distants").upsert({ cle, valeur: n.valeur, pose_par: "pilote", motif, maj: new Date().toISOString() }, { onConflict: "cle" });
+  if (error) return json({ error: "Écriture refusée." }, 502);
+  await journaliserReglage(admin, cle, n.valeur);
+  return json({ ok: true, message: "Réglage posé : les appareils le verront sous 5 min." });
+}
+// Journal des gestes : QUOI a été posé, jamais l'adresse de qui (un seul pilote).
+async function journaliserReglage(admin: Admin, cle: string, valeur: unknown) {
+  try { await admin.from("analytics_events").insert({ user_id: "systeme:pilotage", event: "reglage_pilote", properties: { cle, valeur } }); } catch { /* */ }
 }
 
 // Activation (2026-10-06) : un nouveau compte a-t-il fait un GESTE SOCIAL dans
@@ -245,17 +398,34 @@ async function lireActivation(admin: Admin) {
     for (const u of lot) if (compteMesurable(u, EXTRA) && dateUtc(u.created_at) >= depuis) comptes.push({ id: u.id, cree: u.created_at });
     if (lot.length < 1000) break;
   }
-  const ids = comptes.map((c) => c.id);
+  // ⚠️ À L'ÉCHELLE (2026-10-11) : `.in(uid, ids)` met chaque identifiant dans
+  // l'URL — au-delà de ~200 comptes la requête dépasse la taille admise et
+  // échoue ; et chaque lecture rend 1 000 lignes au plus (max-rows). Les
+  // comptes partent donc par paquets de 100, et au-delà de 1 500 comptes dans
+  // la cohorte le téléphone en mesure un ÉCHANTILLON régulier (un sur k, par
+  // date de création) et le dit. Le digest du matin, lui, reste exact (SQL).
+  const ECHANTILLON_MAX = 1500, PAQUET = 100;
+  const sur = comptes.length;
+  let pris = comptes;
+  if (sur > ECHANTILLON_MAX) {
+    const tries = [...comptes].sort((x, y) => dateUtc(x.cree) - dateUtc(y.cree));
+    const pas = sur / ECHANTILLON_MAX;
+    pris = Array.from({ length: ECHANTILLON_MAX }, (_, i) => tries[Math.floor(i * pas)]);
+  }
+  const ids = pris.map((c) => c.id);
   const gestes: { uid: string; le: string; geste: string }[] = [];
-  if (ids.length) {
+  let partiel = false;
+  for (let i = 0; i < ids.length; i += PAQUET) {
+    const paquet = ids.slice(i, i + PAQUET);
     const lots = await Promise.all(GESTES_ACTIVATION.map(async (g) => {
-      const { data, error } = await admin.from(g.table).select(`${g.uid},created_at`).in(g.uid, ids).order("created_at", { ascending: true }).limit(5000);
+      const { data, error } = await admin.from(g.table).select(`${g.uid},created_at`).in(g.uid, paquet).order("created_at", { ascending: true }).limit(MAX_LIGNES_POSTGREST);
       if (error) throw error;
+      if ((data || []).length >= MAX_LIGNES_POSTGREST) partiel = true;
       return ((data || []) as Record<string, unknown>[]).map((r) => ({ uid: String(r[g.uid]), le: String(r.created_at), geste: g.table }));
     }));
     for (const l of lots) gestes.push(...l);
   }
-  return activation(comptes, gestes, maintenant);
+  return { ...activation(pris, gestes, maintenant), echantillon: sur > ECHANTILLON_MAX ? { sur, pris: pris.length } : null, partiel };
 }
 
 async function lireSignalements(admin: Admin) {
@@ -268,8 +438,9 @@ async function lireSignalements(admin: Admin) {
 async function lireCapacite(admin: Admin) {
   // Connexions : depuis le 2026-09-20 seuls les COMPTES ouvrent le temps réel,
   // donc « appareils de comptes actifs sur 5 min » approche le compteur Supabase.
-  const { data: act } = await admin.from("telemetry_events").select("device_id").eq("env", "production").not("user_id", "is", null).gte("received_at", ilYa(5 * 60e3)).limit(5000);
-  const connexions = new Set((act || []).map((r) => r.device_id).filter(Boolean)).size;
+  const aud = await audience(admin, 300);
+  const connexions = aud.connexions;
+  const telemetrie = await compter(admin.from("telemetry_events").select("id", { count: "exact", head: true }).gte("received_at", ilYa(60e3)));
   // E-mails : une inscription = un e-mail de confirmation (renvois non comptés).
   const emails = await compter(admin.from("profiles").select("id", { count: "exact", head: true }).gte("created_at", ilYa(864e5)));
   let base: number | null = null, stockage: number | null = null;
@@ -278,7 +449,7 @@ async function lireCapacite(admin: Admin) {
     base = Number(m.base_octets) || null;
     stockage = Object.values((m.stockage || {}) as Record<string, number>).reduce((a, b) => a + Number(b || 0), 0);
   }
-  return { jauges: jauges({ connexions, emails, base, stockage }), mesuresServeur: !error };
+  return { jauges: jauges({ connexions, emails, base, stockage, telemetrie }), mesuresServeur: !error, connexionsExactes: aud.exact, connexionsTronquees: aud.tronque };
 }
 
 async function lireDisponibilite(admin: Admin) {

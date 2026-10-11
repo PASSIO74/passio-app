@@ -220,3 +220,77 @@ test("⑨ « Réparer » absent quand rien n'est à réparer, ou sans jeton GitH
   await expect(page.locator("#blocReparer")).toBeHidden();
   expect(await page.locator("button:has-text('Réparer')").count()).toBe(0);
 });
+
+// ─── Protection automatique (2026-10-11) : les réglages distants ─────────────
+const REGLAGES = {
+  absente: false,
+  delestage: { niveau: 1, pose_par: "veille", maj: MAINTENANT, motif: "Délestage automatique : connexions temps réel à 84 %" },
+  coupures: { cles: ["passio_invitations_v1"], maj: MAINTENANT },
+  bandeau: { texte: CHARGE, niveau: "alerte", maj: MAINTENANT },
+  coupuresPossibles: ["passio_invitations_v1", "passio_recap_semaine", "passio_ui_8"],
+};
+
+test("⑩ Protection : état lu, textes hostiles en texte, chaque geste envoie EXACTEMENT sa demande", async ({ page }) => {
+  await poserSession(page);
+  const envois = [];
+  await routerFonction(page, envois, { ...ETAT, reglages: REGLAGES });
+  page.on("dialog", (d) => d.accept());
+  await page.goto("/pilotage/");
+  await page.click('.barre button[data-tab="capacite"]');
+  const p = page.locator("#protection");
+  await expect(p).toContainText("Délestage : Économie (×2)");
+  await expect(p).toContainText("posé par la veille");
+  await expect(p).toContainText("Invitations (passio_invitations_v1)");
+  expect(await p.textContent()).toContain(CHARGE);
+  expect(await page.evaluate(() => window.__pwn)).toBeUndefined();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+  const champ = await page.locator("#bandeauTexte").boundingBox();
+  expect(champ.height).toBeGreaterThanOrEqual(44);
+  expect(await page.locator("#bandeauTexte").evaluate((e) => parseFloat(getComputedStyle(e).fontSize))).toBeGreaterThanOrEqual(16);
+
+  // Chaque geste réussi relit l'état et REPEINT le panneau (champs compris) :
+  // on attend ce repeint avant le geste suivant, comme le ferait un doigt.
+  const gestes = () => envois.filter((e) => e.corps.action !== "etat");
+  const nEtats = () => envois.filter((e) => e.corps.action === "etat").length;
+  async function faire(bouton, attendu) {
+    const e0 = nEtats(), g0 = gestes().length;
+    await p.locator("button", { hasText: bouton }).click();
+    await expect.poll(() => gestes().length).toBe(g0 + 1);
+    expect(gestes().pop().corps).toEqual(attendu);
+    await expect.poll(nEtats).toBeGreaterThan(e0);
+    await expect(page.locator("#actualiser")).not.toHaveClass(/tourne/);
+  }
+  await faire("Survie (×4)", { action: "reglages", cle: "delestage", valeur: { niveau: 2 } });
+  await faire("Rallumer : Invitations", { action: "reglages", cle: "coupures", valeur: { cles: [] } });
+  await page.selectOption("#coupureChoix", "passio_ui_8");
+  await faire("Couper chez tout le monde", { action: "reglages", cle: "coupures", valeur: { cles: ["passio_invitations_v1", "passio_ui_8"] } });
+  await faire("Retirer le message", { action: "reglages", cle: "bandeau", valeur: null });
+  const n = gestes().length;
+  await p.locator("button", { hasText: "Afficher à tous" }).click();
+  await expect(page.locator("#bandeauErreur")).toContainText("Écris d'abord le message.");
+  expect(gestes().length, "un message vide n'est pas envoyé").toBe(n);
+  await page.fill("#bandeauTexte", "Maintenance à 22 h");
+  await page.selectOption("#bandeauNiveau", "info");
+  await faire("Afficher à tous", { action: "reglages", cle: "bandeau", valeur: { texte: "Maintenance à 22 h", niveau: "info" } });
+});
+
+test("⑪ Protection : délestage manuel → « Rendre à l'automatique » ; table absente → la migration est nommée", async ({ page }) => {
+  await poserSession(page);
+  const envois = [];
+  await routerFonction(page, envois, { ...ETAT, reglages: { ...REGLAGES, delestage: { niveau: 2, pose_par: "pilote", maj: MAINTENANT, motif: null } } });
+  page.on("dialog", (d) => d.accept());
+  await page.goto("/pilotage/");
+  await page.click('.barre button[data-tab="capacite"]');
+  const p = page.locator("#protection");
+  await expect(p).toContainText("Manuel");
+  await expect(p.locator("button", { hasText: "Survie (×4)" }), "le niveau déjà posé à la main n'a pas de bouton").toHaveCount(0);
+  await p.locator("button", { hasText: "Rendre à l'automatique" }).click();
+  await expect.poll(() => envois.filter((e) => e.corps.action !== "etat").pop()?.corps).toEqual({ action: "reglages", cle: "delestage", valeur: null });
+
+  await page.unroute(FONCTION);
+  await routerFonction(page, [], { ...ETAT, reglages: { absente: true, migration: "migrations/migration_reglages_distants_2026-10-11.sql", coupuresPossibles: [] } });
+  await page.click("#actualiser");
+  await expect(p).toContainText("Pas encore allumée");
+  await expect(p).toContainText("migration_reglages_distants_2026-10-11.sql");
+  await expect(p.locator("button")).toHaveCount(0);
+});
