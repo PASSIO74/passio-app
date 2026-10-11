@@ -6767,10 +6767,16 @@ const REPOS_RT_TICK_MS = 30000;
 window._rtRepos = { endormi: false, masqueeDepuis: 0, dernierGeste: 0, endormiDepuis: 0, raison: null, cycles: 0, reveils: 0, timer: null, arme: false };
 function _rtReposEtat() {
   const now = Date.now(), r = window._rtRepos;
+  // Délestage (2026-10-11, js/reglages-distants.js) : sous charge, le socket
+  // s'endort 2 ou 4 fois plus tôt — c'est le mur des 500 connexions qu'on
+  // éloigne. On ÉTIRE les durées écoulées plutôt que de toucher aux seuils de
+  // `socketTempsReelAuRepos`, qui reste pure ; jamais pendant un appel ou un
+  // live (la politique les exclut avant de regarder une durée).
+  const f = typeof delestageFacteur === "function" ? delestageFacteur() : 1;
   return {
     visible: !document.hidden,
-    masqueeDepuisMs: document.hidden && r.masqueeDepuis ? now - r.masqueeDepuis : 0,
-    inactifDepuisMs: r.dernierGeste ? now - r.dernierGeste : 0,
+    masqueeDepuisMs: document.hidden && r.masqueeDepuis ? (now - r.masqueeDepuis) * f : 0,
+    inactifDepuisMs: r.dernierGeste ? (now - r.dernierGeste) * f : 0,
     conversationOuverte: !!window._openedConvId,
     appelEnCours: !!(window._call || window._callIncoming),
     liveEnCours: !!(window._vliveHost || window._vliveView),
@@ -8012,12 +8018,12 @@ function startFeedRefreshLoop() {
         // filet coûtait 4 req/min par onglet visiteur, ×5 du régime d'avant.
         const seulChemin = typeof filetEstLeSeulChemin === "function" && filetEstLeSeulChemin();
         _feedFiletPas = filetProchainPas(_feedFiletPas, vivant || seulChemin, document.hidden);
-        _feedRefreshInterval = setTimeout(tour, _feedFiletPas);
+        _feedRefreshInterval = setTimeout(tour, delaiDeleste(_feedFiletPas));
       }
     }
   };
   _feedRefreshTour = tour;
-  _feedRefreshInterval = setTimeout(tour, _feedFiletPas);
+  _feedRefreshInterval = setTimeout(tour, delaiDeleste(_feedFiletPas));
 }
 
 function stopFeedRefreshLoop() {

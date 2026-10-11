@@ -3812,7 +3812,7 @@ function _vliveFiletTour() {
     // fil, et c'est elle qui porte le compte des DEUX termes du marché.
     const seulChemin = typeof filetEstLeSeulChemin === "function" && filetEstLeSeulChemin();
     _vliveFiletPas = filetProchainPas(_vliveFiletPas, vivant || seulChemin || !apresVide || !avantVide, document.hidden);
-    _vliveFiletMinuteur = setTimeout(_vliveFiletTour, _vliveFiletPas);
+    _vliveFiletMinuteur = setTimeout(_vliveFiletTour, delaiDeleste(_vliveFiletPas));
   };
   try {
     if (document.hidden || !window._supaReal) { suite(); return; }
@@ -3828,7 +3828,7 @@ function _vliveFiletTour() {
   }
   suite();
 }
-_vliveFiletMinuteur = setTimeout(_vliveFiletTour, _vliveFiletPas);
+_vliveFiletMinuteur = setTimeout(_vliveFiletTour, delaiDeleste(_vliveFiletPas));
 
 // Le retour à l'écran rend sa cadence vive au filet.
 document.addEventListener("visibilitychange", function () {

@@ -90,6 +90,9 @@ export function verdict(e) {
   if (s.api5xx15 >= 5) rouge.push(`${s.api5xx15} pannes serveur en 15 min`);
   else if (s.api5xx15 > 0) orange.push(`${s.api5xx15} panne(s) serveur en 15 min`);
   if (runs.deploy && runs.deploy.conclusion === "failure") rouge.push("dernier déploiement en échec");
+  // Télémétrie au plafond (2026-10-11) : les compteurs ci-dessus SOUS-ESTIMENT,
+  // un vert ne prouverait plus rien — on le dit au lieu de le taire.
+  if (s.telemetrieMinute >= 0.9 * PLAFONDS.telemetrie.plafond) orange.push(`télémétrie au plafond (${s.telemetrieMinute}/min) : les chiffres sous-estiment`);
   const humain = issues.filter((i) => !i.pr && i.labels.includes("humain")).length;
   if (humain) rouge.push(`${humain} sujet(s) qui t'attendent`);
   const enquetes = issues.filter((i) => !i.pr && i.labels.includes("sentinelle")).length;
@@ -143,6 +146,37 @@ export function serieJours(dates, jours = 7, maintenant = Date.now()) {
     if (i != null) out[i].n++;
   }
   return out;
+}
+
+/**
+ * Les bornes UTC [début, fin) des `jours` derniers jours, du plus ancien au plus
+ * récent — les MÊMES jours que `serieJours`, pour compter en base jour par jour
+ * (2026-10-11) au lieu de déduire une série d'une liste que max-rows tronque.
+ */
+export function bornesJours(jours = 7, maintenant = Date.now()) {
+  return serieJours([], jours, maintenant).map(({ jour }) => {
+    const debut = new Date(jour + "T00:00:00Z");
+    return { jour, debut: debut.toISOString(), fin: new Date(debut.getTime() + 864e5).toISOString() };
+  });
+}
+
+/**
+ * PostgREST ne rend JAMAIS plus de lignes que son `max-rows` (1 000 sur ce
+ * projet), quoi que demande `.limit()`. Une lecture qui en rend autant est
+ * TRONQUÉE : on le dit, on ne l'affiche pas comme un compte.
+ */
+export const MAX_LIGNES_POSTGREST = 1000;
+
+/**
+ * La table ou la fonction n'existe pas (migration pas encore appliquée) :
+ * PGRST205 (table), PGRST202 (fonction), 42P01 / 42883 (PostgreSQL). C'est un
+ * état documenté de transition, pas une panne.
+ */
+export function estObjetAbsent(err) {
+  if (!err || typeof err !== "object") return false;
+  const code = String(err.code || "");
+  if (["PGRST205", "PGRST202", "42P01", "42883"].includes(code)) return true;
+  return /schema cache|does not exist/i.test(String(err.message || "")) && !/permission/i.test(String(err.message || ""));
 }
 
 // ─── TRAFIC HORS PUBLIC — robots, émulations, équipe (2026-10-05) ───────────
@@ -218,6 +252,11 @@ export const PLAFONDS = {
   emails: { libelle: "E-mails d'inscription (24 h)", plafond: 300, unite: "" },
   base: { libelle: "Base de données", plafond: 8 * 1024 ** 3, unite: "octets" },
   stockage: { libelle: "Stockage des médias", plafond: 100 * 1024 ** 3, unite: "octets" },
+  // Le plafond GLOBAL d'insertion de la télémétrie (`trg_debit_global`,
+  // migration_ouverture_publique_2026-09-11 : 3 000/min, toutes origines).
+  // Au-delà, les lots sont refusés : le pilotage devient AVEUGLE au moment où
+  // le trafic est le plus fort — c'est un mur d'observation, pas de service.
+  telemetrie: { libelle: "Télémétrie reçue (par minute)", plafond: 3000, unite: "" },
 };
 export function jauges(m) {
   const out = [];
@@ -231,6 +270,7 @@ export function jauges(m) {
   ajoute("emails", m && m.emails, true);
   ajoute("base", m && m.base, false);
   ajoute("stockage", m && m.stockage, false);
+  ajoute("telemetrie", m && m.telemetrie, false);
   return out;
 }
 

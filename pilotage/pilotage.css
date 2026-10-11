@@ -177,3 +177,6 @@ a { color: var(--accent); }
 .mini-graphe span.zero { background: var(--ligne); }
 .repli p { margin: 6px 14px; }
 .carte-actions .btn-reparer { background: var(--accent-plein); border-color: var(--accent-plein); color: #fff; }
+
+/* Protection automatique (2026-10-11) : champs des réglages distants. 16 px : iOS ne zoome pas. */
+.champ { font: inherit; font-size: 16px; min-height: 44px; border-radius: 12px; border: 1px solid var(--ligne); background: var(--carte2); color: var(--texte); padding: 0 12px; box-sizing: border-box; width: 100%; }

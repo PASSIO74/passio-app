@@ -349,7 +349,7 @@ async function _postLikeRefreshTour() {
     queried = true;
     const identity = _postLikeIdentity(), epoch = _postLikeRefreshEpoch;
     const debutTour = Date.now(), jitter = Math.floor(Math.random() * POST_LIKE_REFRESH_JITTER_MS);
-    _postLikeRefreshNextAt = debutTour + _postLikeRefreshPas + jitter;
+    _postLikeRefreshNextAt = debutTour + delaiDeleste(_postLikeRefreshPas) + jitter;
     window._postLikeRefreshStats.cycles++;
     // Une carte jamais relue = du contenu neuf sous les yeux : cadence vive.
     let vivant = candidates.some(item => !item.entry.checkedAt);
@@ -397,11 +397,11 @@ async function _postLikeRefreshTour() {
     _postLikeRefreshPas = compteursProchainPas(_postLikeRefreshPas, vivant);
     window._postLikeRefreshStats.pasMs = _postLikeRefreshPas;
     if (!vivant) window._postLikeRefreshStats.cyclesCalmes++;
-    _postLikeRefreshNextAt = debutTour + _postLikeRefreshPas + jitter;
+    _postLikeRefreshNextAt = debutTour + delaiDeleste(_postLikeRefreshPas) + jitter;
   } finally {
     _postLikeRefreshBusy = false;
     if (_postLikeRefreshRunning && !document.hidden) {
-      const delay = Math.max(200, _postLikeRefreshNextAt - Date.now(), queried ? 0 : POST_LIKE_REFRESH_MS);
+      const delay = Math.max(200, _postLikeRefreshNextAt - Date.now(), queried ? 0 : delaiDeleste(POST_LIKE_REFRESH_MS));
       _postLikeRefreshDueAt = Date.now() + delay;
       _postLikeRefreshTimer = setTimeout(_postLikeRefreshTour, delay);
     }

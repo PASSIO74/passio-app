@@ -52,6 +52,12 @@
   <!-- PWA : installation automatique adaptée à l'appareil ET au navigateur -->
   <script src="js/platform.js"></script>
 
+  <!-- 🛡️ RÉGLAGES DISTANTS (2026-10-11) : délestage, coupures et bandeau posés
+       depuis le pilotage ou par la veille. AVANT la télémétrie et toute l'app :
+       les coupures en cache doivent être posées avant que les lots lisent leur
+       drapeau. Inerte en local. Voir js/reglages-distants.js. -->
+  <script src="js/reglages-distants.js"></script>
+
   <!-- Télémétrie (centre de pilotage) : opt-in via ?telemetry=1, sans PII.
        Chargée après platform.js dont elle réutilise window.supa. -->
   <script src="js/telemetry.js"></script>

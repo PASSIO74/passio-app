@@ -78,6 +78,8 @@ Le script liste d'abord les déploiements de production avec le commit que chacu
 
 ⚠️ **Kill switch distant** : il n'y en a pas d'autre que celui-ci — remettre la version d'avant en 2 s. Les drapeaux du dépôt (`passio_*="0"`) sont des coupures **locales**, par appareil ; aucun interrupteur serveur ne coupe une fonctionnalité chez tout le monde, sauf `irl_adult_only` (18+). C'est écrit, pas réglé.
 
+✅ **Réglé le 2026-10-11** : `public.reglages_distants` (migration `migration_reglages_distants_2026-10-11.sql`) — depuis le pilotage téléphone (Capacité → Protection automatique), une fonctionnalité d'une liste blanche s'éteint chez tous en 5 min sans déploiement, un message s'affiche à tous, et la veille ralentit d'elle-même toute l'app devant un mur de capacité. Le retour arrière Netlify reste le geste pour un mauvais DÉPLOIEMENT. Détail : `docs/journal/telemetrie-pilotage-sentinelle.md` (🛡️ RÉGLAGES DISTANTS).
+
 ## L'exercice du 2026-09-15 : base VIDE, preuve écrite, parcours de comptes restaurés
 
 Astra (fiche 21, point 4) : « restaurer sur cible vide et prouver des parcours avec comptes et médias ». Fait le 15/09 vers 12 h UTC, dans une fenêtre sans CI (la CI crée des comptes `@passio-e2e.test` sur le staging à chaque run : un exercice lancé pendant un run rend des « écarts » qui ne sont que ses comptes — mesuré une première fois avec 39 `user_safety` pour 2 dans l'archive).

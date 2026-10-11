@@ -140,7 +140,10 @@ test("⑦ la fonction `pilotage` lit l'activation par la liste partagée, et la 
   assert.match(src, /activation: lireActivation\(admin\)/);
   assert.match(src, /GESTES_ACTIVATION\.map\(/, "les tables viennent de la liste, pas d'une copie");
   assert.match(src, /compteMesurable\(u, EXTRA\)/);
-  assert.match(src, /return activation\(comptes, gestes, maintenant\)/);
+  // 2026-10-11 : à l'échelle, la cohorte peut être un ÉCHANTILLON régulier
+  // (au-delà de 1 500 comptes) — même décision, et l'écart est DIT.
+  assert.match(src, /\.\.\.activation\(pris, gestes, maintenant\), echantillon:/);
+  assert.match(src, /\.in\(g\.uid, paquet\)/, "les identifiants partent par paquets, jamais tous dans une URL");
 });
 
 test("⑧ le téléphone affiche le taux, la cohorte mûre, les comptes en cours, et « non lu » sans donnée", () => {

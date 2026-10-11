@@ -20,6 +20,7 @@
 - 🕵️ TRAFIC HORS PUBLIC — 15 « VISITEURS » SUR 19 ÉTAIENT NOS PROPRES CONTRÔLES (2026-10-05)
 - 🌱 ACTIVATION DES NOUVEAUX COMPTES — UN COMPTE SUR TROIS FAIT UN GESTE DANS SA PREMIÈRE SEMAINE (2026-10-06)
 - 🧮 TÉLÉMÉTRIE : 18 % DE DOUBLONS, ET DES PERTES SANS TRACE (2026-10-11)
+- 🛡️ RÉGLAGES DISTANTS ET DÉLESTAGE — LA PRODUCTION RALENTIT AU LIEU DE TOMBER, ET LE PILOTAGE NE MENT PLUS À L'ÉCHELLE (2026-10-11)
 
 ---
 
@@ -316,3 +317,22 @@ RÉINJECTION** (`telemetry.js` de `main`) : les QUATRE rougissent — 2 copies p
 le motif exact de la production. ⚠️ Premier jet du banc FAUX : il comptait comme « arrivé » un lot retenu
 puis ANNULÉ (le mode à l'envoi, pas l'issue) — ③ rougissait sur un code juste. Un lot est arrivé quand le
 serveur l'a accepté, jamais parce qu'il est parti.
+
+## 🛡️ RÉGLAGES DISTANTS ET DÉLESTAGE — LA PRODUCTION RALENTIT AU LIEU DE TOMBER, ET LE PILOTAGE NE MENT PLUS À L'ÉCHELLE (2026-10-11)
+
+Question de Benjamin : « si demain 100 000 personnes l'utilisent, que tout soit auto-réparé ». Plan complet, murs chiffrés et gestes humains : `docs/PASSIO_100K_AUTONOMIE.md`.
+
+**Ce qui manquait n'était pas la détection ni la réparation (veille, Sentinelle), c'était le CONFINEMENT** : entre l'alerte et le correctif déployé (25 à 79 min mesurés), rien ne pouvait ralentir la production devant un mur de quota ni éteindre une fonctionnalité chez tout le monde. EXP-03 le disait depuis le 14/09 (« aucun interrupteur serveur… écrit, pas réglé »).
+
+- **`public.reglages_distants`** (3 lignes : `delestage`, `coupures`, `bandeau`), lue par chaque appareil toutes les 5 min (`js/reglages-distants.js`), écrite par la SEULE fonction `pilotage` : geste `reglages` du téléphone, ou délestage automatique de la veille pg_cron (`decideDelestage`, `_shared/reglages.js` : monte à 80 % / 95 % des 500 connexions ou quand 10 / 40 comptes distincts reçoivent une réponse 5xx en 15 min, redescend d'un cran après 30 min sous un seuil plus bas ; un réglage du pilote n'est jamais touché ; toutes mesures absentes = rien ne bouge).
+- ⚠️ **Une action automatique sur TOUTE la production ne se décide que sur des signaux infalsifiables.** La télémétrie s'écrit depuis n'importe quel navigateur (clé anon comprise) : le premier jet comptait des LIGNES « 500 » et des `device_id`, soit un levier pour qu'un seul compte — ou un anonyme — ralentisse tout le monde. Le délestage compte des COMPTES DISTINCTS par `auth_uid` (identité posée par le trigger serveur, ASTRA-06) : `comptes_connectes` et `comptes_5xx_15min` de `pilotage_audience`, et le repli par lignes n'y participe jamais (`if (a.exact)`). Le banc SQL forge 50 appareils pour un compte et 40 lignes anon : ils pèsent 1 et 0.
+- ⚠️ **Mur d'observation trouvé en chemin** : `trg_debit_global` plafonne la télémétrie à 3 000 insertions/min TOUTES ORIGINES et recompte la dernière minute à chaque ligne. Au-delà, les lots sont refusés (400 → jetés par le client) : en pointe à 100 000 inscrits, le pilotage serait aveugle et ses compteurs faussement verts. Jauge « Télémétrie reçue » + voyant orange au-delà de 90 % ; le remède (limiteur par lot et par compte) est le P1 du plan 100 000.
+- **Le facteur (1, 2, 4) s'applique au moment d'ARMER un minuteur** (`delaiDeleste`, app-02), jamais dans `filetProchainPas` / `compteursProchainPas`, qui restent pures. Repos du temps réel : les DURÉES écoulées sont étirées dans `_rtReposEtat`, la politique `socketTempsReelAuRepos` est intacte. Télémétrie : seule une famille DÉJÀ échantillonnée l'est davantage, et `meta.ech` suit.
+- ⚠️ **Les coupures distantes sont une LISTE BLANCHE**, jamais un motif `passio_*` : écrire "0" sur `passio_mvp_state_v1` effacerait un compte. Exclues délibérément : `passio_telemetry` (aveuglerait la veille qui décide) et `passio_realtime_v3` ("0" retombe sur le canal global v1, PLUS coûteux sous charge). Le client ne lève que ce qu'il a posé (`passio_coupures_distantes_v1`) : un "0" posé par l'appareil n'est jamais retiré par le serveur.
+- ⚠️ **Le module est INERTE en local** (localhost, banc Playwright) : une suite ne doit jamais hériter d'un délestage posé en production. Un banc qui l'exerce pose `window.PASSIO_REGLAGES_DISTANTS = true`.
+- ⚠️ **Le cache est appliqué AVANT l'app** (script en tête, juste après `platform.js`) : une coupure doit être posée avant que les lots lisent leur drapeau. Un délestage en cache expire après 6 h sans confirmation (un téléphone resté hors ligne une semaine ne démarre pas ralenti).
+
+**Et le pilotage aurait menti en silence au-delà de 1 000** : PostgREST rend au plus `max-rows` = 1 000 lignes quoi que demande `.limit(5000)`. `uidsPilotes` ne lisait que la PAGE 1 des comptes (au 1 001ᵉ inscrit, plus d'alerte sur le téléphone de l'éditeur) ; la jauge « connexions » comptait les appareils parmi 1 000 lignes (figée sous le mur qu'elle annonce) ; inscriptions et erreurs étaient la LONGUEUR d'une liste bornée ; l'activation mettait tous les identifiants dans une URL. Règle : **un compte se COMPTE en base (`count: "exact", head: true`, ou une fonction SQL), jamais par la longueur d'une liste** — `tests/unit/pilotage.test.mjs` ⑳ refuse tout `.limit(5000)` dans la fonction.
+
+Migration `migrations/migration_reglages_distants_2026-10-11.sql` (table + `pilotage_audience`, comptage distinct confronté à `compterAudience` par le banc SQL) livrée dans une PR SÉPARÉE (périmètre critique, contre-revue). Avant son application, tout est en ligne et inerte : 404 mémorisé 1 h et marqué `refus_attendu` côté client, 503 nommant la migration côté geste, repli « borne basse » côté jauge.
+Verrous : `tests/unit/reglages.test.mjs` (11), `tests/e2e/reglages-distants.spec.js` (8), `tests/e2e/pilotage-nuage.spec.js` ⑩ ⑪, `tests/unit/pilotage.test.mjs` ⑱–㉑, `tests/sql/migration-reglages-distants.test.sh` (25).
