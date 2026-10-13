@@ -123,18 +123,30 @@ export function normaliserMotif(m) {
 // Un réglage posé par le PILOTE n'est jamais touché : la main gagne.
 // Une mesure absente (`null`) ne fait jamais monter ; si TOUTES le sont, rien
 // ne bouge — on ne lève pas une protection à l'aveugle.
-// ⚠️ DEUX MESURES, ET AUCUNE N'EST FALSIFIABLE PAR UN CLIENT. La télémétrie
+// `aveugle` (2026-10-13) : la télémétrie touche son plafond global, les lots
+// légitimes sont refusés et les mesures BAISSENT sans que la charge baisse —
+// alors on peut monter, pas descendre… pendant 2 h au plus (`aveugleMaxMs`) :
+// un flot anonyme sature la télémétrie à volonté, il ne doit pas pouvoir
+// tenir la production ralentie sans fin. Le voyant « télémétrie au plafond »
+// prévient déjà le pilote, qui peut lever le délestage d'un toucher.
+// ⚠️ DEUX MESURES, AUCUNE FALSIFIABLE À BON MARCHÉ PAR UN CLIENT. La télémétrie
 // s'écrit depuis n'importe quel navigateur, clé anon comprise : compter des
 // LIGNES en panne, ou des `device_id`, donnerait à un seul compte malveillant
 // le levier de ralentir toute la production. On compte donc des COMPTES
 // DISTINCTS par `auth_uid` — l'identité que le trigger serveur pose depuis le
 // jeton (ASTRA-06), jamais celle que le client écrit :
 //   · `pctConnexions` = comptes distincts actifs sur 5 min / 500 ;
-//   · `comptes5xx15`  = comptes distincts ayant reçu une réponse ≥ 500 en 15 min.
+//   · `comptes5xx15`  = comptes distincts ayant reçu une réponse ≥ 500 en 15 min,
+//     comptes de PLUS DE 7 JOURS seulement, e-mail confirmé (pilotage_audience,
+//     contre-revue du 2026-10-13 : dix comptes neufs forgeant une ligne « 503 »
+//     délestaient toute la production). Les connexions restent la charge brute :
+//     les forger exige des centaines de comptes actifs, la charge même. Un
+//     délestage posé à tort se lève d'un toucher (le pilote gagne toujours).
 export const SEUILS_DELESTAGE = Object.freeze({
   monter: { 2: { pctConnexions: 95, comptes5xx15: 40 }, 1: { pctConnexions: 80, comptes5xx15: 10 } },
   descendre: { 2: { pctConnexions: 85, comptes5xx15: 20 }, 1: { pctConnexions: 70, comptes5xx15: 4 } },
   tenueMs: 30 * 60e3,
+  aveugleMaxMs: 2 * 3600e3,
 });
 
 const fini = (x) => typeof x === "number" && Number.isFinite(x);
@@ -163,8 +175,9 @@ export function decideDelestage(actuel, mesures, maintenant = Date.now()) {
   if (niveauActuel === 0) return reste;
 
   const s = SEUILS_DELESTAGE.descendre[niveauActuel];
-  const sous = (pct == null || pct < s.pctConnexions) && (e5 == null || e5 < s.comptes5xx15);
   const depuis = actuel && actuel.maj ? Date.parse(actuel.maj) : NaN;
+  if (m.aveugle === true && !(Number.isFinite(depuis) && maintenant - depuis >= SEUILS_DELESTAGE.aveugleMaxMs)) return reste;
+  const sous = (pct == null || pct < s.pctConnexions) && (e5 == null || e5 < s.comptes5xx15);
   const tenu = Number.isFinite(depuis) && maintenant - depuis >= SEUILS_DELESTAGE.tenueMs;
   if (sous && tenu) {
     const n = niveauActuel - 1;

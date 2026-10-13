@@ -28,7 +28,7 @@ import webpush from "npm:web-push@3.6.7";
 import { verifierPlafondEnBase, reponsePlafond } from "../_shared/plafond.js";
 import { REVISION } from "../_shared/revision.js";
 import {
-  autorise, RELANCES, LABELS_SUIVIS, TITRE_PAUSE, STATUTS_SIGNALEMENT, estPause,
+  autorise, RELANCES, LABELS_SUIVIS, TITRE_PAUSE, STATUTS_SIGNALEMENT, estPauseDuPilote,
   erreursFrequentes, detailsErreurs, jauges, resumerIssue, resumerRun, verdict, decideAlerte,
   aReparer, titreReparation, corpsReparation, estReparation, REPARATIONS_MAX, compterAudience,
   activation, compteMesurable, dateUtc, GESTES_ACTIVATION, COHORTE_ACTIVATION_JOURS,
@@ -38,6 +38,10 @@ import { envoyerRappels, MARQUE_UID } from "../_shared/rappels.js";
 import {
   CLES_REGLAGES, COUPURES_AUTORISEES, normaliserReglage, normaliserMotif, decideDelestage, resumerReglages,
 } from "../_shared/reglages.js";
+import {
+  RETOUR, EVT, enquetesEnCours, doitReveillerSentinelle, decideRetour, deploiementsProduction, choisirPrecedent,
+  continuerPagination, TITRE_PROPOSITION, corpsProposition, modeRetour, reveilsEpuises, idGeste, commitCourt,
+} from "../_shared/autonomie.js";
 
 const corsHeaders = {
   "X-Passio-Revision": REVISION,
@@ -49,6 +53,17 @@ const DEPOT = Deno.env.get("PILOTAGE_DEPOT") || "PASSIO74/passio-app";
 const JETON_GH = Deno.env.get("PILOTAGE_GITHUB_TOKEN") || "";
 const SITE = Deno.env.get("PILOTAGE_SITE") || "https://passio-app.netlify.app";
 const EXTRA = Deno.env.get("PILOTAGE_EMAILS") || "";
+// Retour arrière (_shared/autonomie.js, modeRetour) : sans jeton Netlify, rien ;
+// avec, la veille PROPOSE et le pilote retire d'un toucher. Jamais de retrait
+// automatique : le déclencheur est de la télémétrie écrite par des navigateurs,
+// et un retrait automatique pourrait annuler un correctif de sécurité.
+const JETON_NETLIFY = Deno.env.get("PILOTAGE_NETLIFY_TOKEN") || "";
+const MODE_RETOUR = modeRetour(JETON_NETLIFY);
+const SITE_NETLIFY = Deno.env.get("PILOTAGE_NETLIFY_SITE") || "eee53fe0-9fb2-41f4-ab70-0a4e2c3f01a1";
+// Clé des marques de geste (idGeste) : un HMAC sous un secret que seule la
+// fonction connaît. La clé service_role est posée sur toute fonction et ne
+// sort jamais ; un HMAC ne la révèle pas.
+const SECRET_GESTES = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 type Admin = ReturnType<typeof createClient>;
 
 Deno.serve(async (req) => {
@@ -83,13 +98,19 @@ Deno.serve(async (req) => {
     case "signalement": return traiterSignalement(admin, String(corps.id || ""), String(corps.statut || ""));
     case "reparer": return reparer(corps);
     case "reglages": return poserReglage(admin, corps);
+    case "retour_apercu": return retourApercu(admin);
+    case "retour_arriere": return retourManuel(admin, corps);
     default: return json({ error: "Action inconnue." }, 400);
   }
 });
 
 // ─── ① Veille ───────────────────────────────────────────────────────────────
+// Appelable par n'importe qui (clé anon) : elle ne fait jamais rien de plus que
+// ce que ferait pg_cron, et au plus une fois par minute. Le plafond horaire
+// vaut 60 (une par minute) : à 20, vingt appels anonymes en début d'heure
+// affamaient la veille pendant les 40 minutes suivantes (contre-revue).
 async function veille(admin: Admin) {
-  const plafond = await verifierPlafondEnBase(admin, "systeme:pilotage-veille", "pilotage-veille", { parMinute: 1, parHeure: 20 });
+  const plafond = await verifierPlafondEnBase(admin, "systeme:pilotage-veille", "pilotage-veille", { parMinute: 1, parHeure: 60 });
   if (!plafond.ok) return json({ ok: true, ignore: "trop tôt" });
   const [sante, signalements, github, dispo, rap] = await Promise.allSettled([lireSante(admin), lireSignalements(admin), lireGithub(), sonder(), rappels(admin)]);
   const val = <T>(r: PromiseSettledResult<T>) => (r.status === "fulfilled" ? r.value : null);
@@ -100,12 +121,8 @@ async function veille(admin: Admin) {
     try { await admin.from("analytics_events").insert({ user_id: MARQUE_UID, event: "rappels_echec", properties: { message: m } }); } catch { /* */ }
   }
   const e = { sante: val(sante), signalements: val(signalements), github: val(github) };
-  // Délestage automatique (2026-10-11) : la production RALENTIT avant le mur
-  // au lieu de tomber dessus. Jamais bloquant pour la veille : une table ou une
-  // fonction de comptage absente (migration pas encore appliquée) = rien.
-  let delestage: Record<string, unknown> | null = null;
-  try { delestage = await delestageAuto(admin); }
-  catch (err) { delestage = { erreur: String((err as { message?: string })?.message || err).slice(0, 120) }; }
+  // L'ALERTE D'ABORD : rien de ce qui suit (Netlify, GitHub, base) ne doit
+  // pouvoir la retarder ni la faire taire.
   const v = verdict(e);
   const actuel = { couleur: v.couleur, raisons: v.raisons, dispo: val(dispo) !== false };
   const prec = await lireEtatMemorise(admin);
@@ -120,12 +137,26 @@ async function veille(admin: Admin) {
       dispoDepuis: !prec || prec.dispo !== actuel.dispo ? new Date().toISOString() : prec.dispoDepuis || null,
     } });
   }
+  // Puis ce qui agit seul (délestage 2026-10-11 ; réveil et proposition
+  // 2026-10-12, _shared/autonomie.js). Chaque étape est isolée : une panne de
+  // l'une ne casse ni les autres ni la veille. Les signaux sont lus UNE fois
+  // (pilotage_audience, fenêtre de 5 min) ; absents (migration pas encore
+  // appliquée), rien ne bouge.
+  let signaux: Audience | null = null;
+  try { signaux = await audience(admin, 300); } catch { /* signaux absents : chaque étape le sait */ }
+  const etape = async (f: () => Promise<Record<string, unknown>>) => {
+    try { return await f(); } catch (err) { return { erreur: String((err as { message?: string })?.message || err).slice(0, 120) }; }
+  };
+  const delestage = await etape(() => delestageAuto(admin, signaux));
+  const reveil = await etape(() => reveillerSentinelle(admin, e.github as GhEtat | null, signaux));
+  const retour = await etape(() => proposerRetour(admin));
   // Les compteurs des rappels ne sortent PAS dans cette réponse : la veille est
   // appelable avec la seule clé anon (publique), et combien d'activités ont lieu
   // dans les 24 h ou combien de comptes sont abonnés ne regardent personne. Ils
   // se lisent dans `analytics_events` (marques `rappel_activite`, `rappels_echec`).
   return json({ ok: true, couleur: actuel.couleur, dispo: actuel.dispo, sonne: d.sonner, envoyes,
-    delestage: delestage && "niveau" in delestage ? delestage.niveau : null });
+    delestage: delestage && "niveau" in delestage ? delestage.niveau : null,
+    sentinelleReveillee: !!(reveil && reveil.lance), retourPropose: !!(retour && retour.propose) });
 }
 
 /** Rappels d'activité (J-1, H-2) sur les appareils des participants, appli fermée comprise. */
@@ -210,6 +241,8 @@ async function etat(admin: Admin) {
   res.forEach((r, i) => { if (r.status === "fulfilled") out[noms[i]] = r.value; else { out[noms[i]] = null; nonLus.push(noms[i]); } });
   out.nonLus = nonLus;
   out.relancesPossibles = JETON_GH ? Object.entries(RELANCES).map(([cle, v]) => ({ cle, libelle: v.libelle })) : [];
+  // Ce qui agit seul, et pourquoi c'est éteint quand ça l'est (_shared/autonomie.js).
+  out.autonomie = { reveilSentinelle: !!JETON_GH, retour: { mode: MODE_RETOUR, jeton: !!JETON_NETLIFY, proposition: await lireProposition(admin) } };
   out.gestesGithub = !!JETON_GH;
   const v = verdict(out as Parameters<typeof verdict>[0]);
   const dispo = out.disponibilite as { repond?: boolean } | null;
@@ -274,7 +307,11 @@ async function lireUtilisateurs(admin: Admin) {
   // l'équipe sortent de « en ligne » et « 24 h » (compterAudience, _shared).
   // `trafic` est lu par PostgREST (`meta->>trafic`) : la meta entière n'est
   // pas rapatriée pour 5 000 lignes.
-  const [maintenant, aujourdhui] = await Promise.all([audience(admin, 300), audience(admin, 86400)]);
+  // Isolées (contre-revue) : à l'échelle, la passe de 24 h peut dépasser le
+  // statement_timeout ; elle devient « non mesurée » sans emporter le total,
+  // les inscriptions et la fenêtre de 5 min.
+  const [m5, j24] = await Promise.allSettled([audience(admin, 300), audience(admin, 86400)]);
+  const maintenant = m5.status === "fulfilled" ? m5.value : null, aujourdhui = j24.status === "fulfilled" ? j24.value : null;
   return { total, inscritsJour: jour, inscritsSemaine: semaine, serieInscriptions, maintenant, aujourdhui };
 }
 
@@ -296,12 +333,18 @@ async function serieComptee(q: (debut: string, fin: string) => PromiseLike<{ cou
 // `comptes5xx15` = comptes distincts touchés par une réponse ≥ 500 en 15 min.
 // Ces deux-là pilotent le délestage : ils ne comptent que l'identité posée par
 // le SERVEUR, jamais un `user_id` ou un `device_id` écrits par le client.
-async function audience(admin: Admin, secondes: number) {
+type Audience = {
+  comptes: number; appareils: number; horsPublic: number; connexions: number | null; comptes5xx15: number | null;
+  echecs30: number | null; saturation: number | null; exact: boolean; tronque: boolean;
+};
+const nombre = (x: unknown) => (x == null || !Number.isFinite(Number(x)) ? null : Number(x));
+async function audience(admin: Admin, secondes: number): Promise<Audience> {
   const { data, error } = await admin.rpc("pilotage_audience", { p_secondes: secondes });
   if (!error && data && typeof data === "object") {
-    const d = data as Record<string, number>;
-    return { comptes: Number(d.comptes) || 0, appareils: Number(d.appareils) || 0, horsPublic: Number(d.hors_public) || 0,
-      connexions: Number(d.comptes_connectes) || 0, comptes5xx15: Number(d.comptes_5xx_15min) || 0, exact: true, tronque: false };
+    const d = data as Record<string, unknown>;
+    return { comptes: nombre(d.comptes) || 0, appareils: nombre(d.appareils) || 0, horsPublic: nombre(d.hors_public) || 0,
+      connexions: nombre(d.comptes_connectes), comptes5xx15: nombre(d.comptes_5xx_15min), echecs30: nombre(d.comptes_echecs_30min),
+      saturation: nombre(d.saturation_minute_max), exact: true, tronque: false };
   }
   if (error && !estObjetAbsent(error)) throw error;
   const { data: lignes, error: e2 } = await admin.from("telemetry_events").select("user_id,device_id,platform,connection,trafic:meta->>trafic")
@@ -309,7 +352,7 @@ async function audience(admin: Admin, secondes: number) {
   if (e2) throw e2;
   const l = lignes || [];
   const conn = new Set(l.filter((r) => r.user_id && r.device_id).map((r) => r.device_id)).size;
-  return { ...compterAudience(l), connexions: conn, comptes5xx15: null, exact: false, tronque: l.length >= MAX_LIGNES_POSTGREST };
+  return { ...compterAudience(l), connexions: conn, comptes5xx15: null, echecs30: null, saturation: null, exact: false, tronque: l.length >= MAX_LIGNES_POSTGREST };
 }
 
 // ─── Réglages distants (2026-10-11) ─────────────────────────────────────────
@@ -329,7 +372,11 @@ async function lireReglages(admin: Admin) {
   return { absente: false, ...resumerReglages(lignes), coupuresPossibles: COUPURES_AUTORISEES };
 }
 
-async function delestageAuto(admin: Admin) {
+// Au plafond global de télémétrie (3 000 lignes/min), les lots légitimes sont
+// refusés : les mesures deviennent BASSES sans que la charge le soit. Au-delà
+// de 90 % du plafond, la veille ne lève plus une protection (contre-revue).
+const SATURATION_AVEUGLE = 0.9;
+async function delestageAuto(admin: Admin, a: Audience | null) {
   const lignes = await lireLignesReglages(admin);
   if (!lignes) return { absente: true };
   const ligne = lignes.find((l) => l.cle === "delestage") || null;
@@ -338,21 +385,19 @@ async function delestageAuto(admin: Admin) {
   // compte des `device_id` écrits par le client — un levier qu'un seul compte
   // pourrait tenir pour ralentir toute la production. Pas de mesure = rien ne
   // bouge (decideDelestage le garantit).
-  let pctConnexions: number | null = null, comptes5xx15: number | null = null;
-  try {
-    const a = await audience(admin, 300);
-    if (a.exact) {
-      pctConnexions = Math.round((a.connexions / PLAFONDS.connexions.plafond) * 1000) / 10;
-      comptes5xx15 = a.comptes5xx15;
-    }
-  } catch { /* mesure absente : la décision le sait */ }
-  const d = decideDelestage(actuel, { pctConnexions, comptes5xx15 });
+  let pctConnexions: number | null = null, comptes5xx15: number | null = null, aveugle = false;
+  if (a && a.exact) {
+    pctConnexions = a.connexions == null ? null : Math.round((a.connexions / PLAFONDS.connexions.plafond) * 1000) / 10;
+    comptes5xx15 = a.comptes5xx15;
+    aveugle = a.saturation != null && a.saturation >= SATURATION_AVEUGLE * PLAFONDS.telemetrie.plafond;
+  }
+  const d = decideDelestage(actuel, { pctConnexions, comptes5xx15, aveugle });
   if (!d.changer) return { niveau: d.niveau };
   const { error } = await admin.from("reglages_distants").upsert({
     cle: "delestage", valeur: { niveau: d.niveau }, pose_par: "veille", motif: normaliserMotif(d.motif), maj: new Date().toISOString(),
   }, { onConflict: "cle" });
   if (error) throw error;
-  try { await admin.from("analytics_events").insert({ user_id: "systeme:pilotage", event: "delestage_auto", properties: { niveau: d.niveau, pctConnexions, comptes5xx15 } }); } catch { /* */ }
+  try { await admin.from("analytics_events").insert({ user_id: "systeme:pilotage", event: "delestage_auto", properties: { niveau: d.niveau, pctConnexions, comptes5xx15, aveugle } }); } catch { /* */ }
   await sonnerPilote(admin, d.niveau > (actuel?.niveau || 0) ? `🛡️ Délestage automatique : niveau ${d.niveau}` : `✅ Délestage ${d.niveau ? "allégé : niveau " + d.niveau : "levé"}`, d.motif || "");
   return { niveau: d.niveau, change: true };
 }
@@ -383,6 +428,224 @@ async function poserReglage(admin: Admin, corps: Record<string, unknown>) {
 async function journaliserReglage(admin: Admin, cle: string, valeur: unknown) {
   try { await admin.from("analytics_events").insert({ user_id: "systeme:pilotage", event: "reglage_pilote", properties: { cle, valeur } }); } catch { /* */ }
 }
+
+// ─── Réveil de la Sentinelle (_shared/autonomie.js) ─────────────────────────
+// La veille tient la minute ; le cron GitHub de la Sentinelle est servi 4 à 8
+// fois par jour. Des échecs chez ≥ 2 comptes de plus de 24 h en 30 min
+// (comptés EN BASE : `comptes_echecs_30min` de pilotage_audience), aucune
+// enquête en cours, pas de pause, pas de run récent → workflow_dispatch.
+// Plafonné à 2 réveils par heure et 12 par jour EN BASE.
+type GhEtat = { issues?: { pr: boolean; labels: string[] }[]; runs?: { sentinelle?: { etat?: string; le?: string } | null }; pause?: boolean };
+// ⚠️ Le paramètre ne s'appelle PAS `gh` : il masquerait la fonction `gh()`
+// qui parle à GitHub, et le dispatch lèverait « gh is not a function ».
+async function reveillerSentinelle(admin: Admin, etatGh: GhEtat | null, a: Audience | null) {
+  if (!JETON_GH) return { inactif: true };
+  if (!etatGh || !Array.isArray(etatGh.issues)) return { illisible: true };
+  if (!a || !a.exact || a.echecs30 == null) return { raison: "mesure_absente" };
+  const d = doitReveillerSentinelle({ pause: !!etatGh.pause, enquetes: enquetesEnCours(etatGh.issues), dernierRun: (etatGh.runs && etatGh.runs.sentinelle) || null, comptesErreurs: a.echecs30 });
+  if (!d.reveiller) return { raison: d.raison };
+  const plafond = await verifierPlafondEnBase(admin, "systeme:sentinelle-reveil", "sentinelle-reveil", { parMinute: 1, parHeure: 2 });
+  if (!plafond.ok) return { raison: "plafond" };
+  const { count: reveils24h, error: er } = await admin.from("analytics_events").select("id", { count: "exact", head: true })
+    .eq("event", EVT.reveil).eq("user_id", "systeme:pilotage").gte("created_at", ilYa(864e5));
+  if (er || reveilsEpuises(reveils24h ?? NaN)) return { raison: "quota_du_jour" };
+  const r = await gh(`/repos/${DEPOT}/actions/workflows/${RELANCES.sentinelle.fichier}/dispatches`, { method: "POST", body: JSON.stringify({ ref: "main" }) });
+  if (r.status !== 204) return { raison: "refus_github_" + r.status };
+  cacheGh = null;
+  try { await admin.from("analytics_events").insert({ user_id: "systeme:pilotage", event: EVT.reveil, properties: { raison: d.raison } }); } catch { /* */ }
+  return { lance: true };
+}
+// ─── fin réveil
+
+// ─── Retour arrière (_shared/autonomie.js) ──────────────────────────────────
+// Jeton Netlify posé : dans les 90 min d'une mise en ligne, un échec NOUVEAU
+// chez ≥ 5 comptes de plus de 7 jours (compté en base) ouvre une issue et sonne
+// le téléphone. Le pilote demande un APERÇU (version servie → version qui sera
+// remise), confirme, et la fonction remet CETTE version-là — revalidée ici.
+// JAMAIS de retrait automatique. Le geste est JOURNALISÉ AVANT d'être fait ; le
+// verdict est ce que le SITE sert ensuite, pas ce que l'API répond (contrat de
+// scripts/rollback-netlify.mjs).
+function netlify(chemin: string, init: RequestInit = {}) {
+  // Un délai TOUJOURS : une API qui accepte la connexion sans répondre ne doit
+  // ni suspendre la veille ni laisser le pilote devant un bouton muet.
+  return fetch("https://api.netlify.com/api/v1" + chemin, { signal: AbortSignal.timeout(10000), ...init,
+    headers: { Authorization: `Bearer ${JETON_NETLIFY}`, "Content-Type": "application/json", ...(init.headers || {}) } });
+}
+async function releaseDe(base: string): Promise<{ commit?: string } | null> {
+  try {
+    const r = await fetch(base + "/release.json", { signal: AbortSignal.timeout(8000), headers: { "Cache-Control": "no-cache" } });
+    return r.ok ? await r.json() : null;
+  } catch { return null; }
+}
+type Deploiement = { id: string; context?: string; state?: string; deploy_ssl_url?: string; published_at?: string; created_at?: string };
+// La version qui SERAIT remise, sans rien toucher : partagée par l'aperçu et le
+// geste. Pagine comme scripts/rollback-netlify.mjs (les aperçus de PR occupent
+// la liste) et saute les versions retirées dans les 24 h (`de_deploy` des
+// marques) : un retour puis un redéploiement ne remet pas la version cassée.
+async function lirePrecedent(admin: Admin) {
+  const rs = await netlify(`/sites/${SITE_NETLIFY}`);
+  if (!rs.ok) return { erreur: "netlify_" + rs.status };
+  const site = await rs.json();
+  const courant = site && site.published_deploy as Deploiement | undefined;
+  if (!courant || !courant.id) return { erreur: "courant_inconnu" };
+  const { data: marques, error } = await admin.from("analytics_events").select("properties").eq("event", EVT.manuel)
+    .eq("user_id", "systeme:pilotage").gte("created_at", ilYa(RETOUR.exclusionMs)).limit(100);
+  if (error) return { erreur: "journal_illisible" };
+  const exclus = new Set((marques || []).map((m) => m.properties && (m.properties as { de_deploy?: unknown }).de_deploy).filter((x): x is string => typeof x === "string"));
+  const prods: Deploiement[] = [];
+  for (let page = 1; page <= RETOUR.pagesMax; page++) {
+    const rd = await netlify(`/sites/${SITE_NETLIFY}/deploys?per_page=${RETOUR.parPage}&page=${page}`);
+    if (!rd.ok) return { erreur: "netlify_deploys_" + rd.status };
+    const l = await rd.json();
+    prods.push(...deploiementsProduction(l));
+    if (!continuerPagination(l, RETOUR.parPage, prods, courant.id, exclus)) break;
+  }
+  const choix = choisirPrecedent(prods, courant.id, exclus);
+  if (!choix.cible) return { erreur: "precedent_" + choix.erreur };
+  const cible = prods.find((d) => d.id === choix.cible)!;
+  const base = /^https:\/\/[a-z0-9-]+--[a-z0-9-]+\.netlify\.app$/.test(String(cible.deploy_ssl_url || "")) ? cible.deploy_ssl_url! : `https://${cible.id}--passio-app.netlify.app`;
+  const [avant, remise] = await Promise.all([releaseDe(SITE), releaseDe(base)]);
+  const versionRemise = remise && typeof remise.commit === "string" && /^[0-9a-f]{7,40}$/.test(remise.commit) ? remise.commit : null;
+  if (!versionRemise) return { erreur: "precedent_illisible" };   // on ne restaure pas ce qu'on ne sait pas vérifier
+  if (avant && avant.commit === versionRemise) return { erreur: "precedent_identique" };
+  return {
+    courant: { id: courant.id, commit: avant && typeof avant.commit === "string" ? avant.commit : null, publie: courant.published_at || courant.created_at || null },
+    cible: { id: cible.id, commit: versionRemise, publie: cible.published_at || cible.created_at || null },
+  };
+}
+// L'aperçu du pilote : ce qui tourne, ce qui serait remis. Rien n'est touché.
+async function retourApercu(admin: Admin) {
+  if (!JETON_NETLIFY) return json({ error: "Geste indisponible : le secret PILOTAGE_NETLIFY_TOKEN n'est pas posé sur la fonction." }, 501);
+  const p = await lirePrecedent(admin);
+  if ("erreur" in p) return json({ error: "Aucune version à remettre : " + p.erreur }, 409);
+  return json({ ok: true,
+    courant: { commit: commitCourt(p.courant.commit), publie: p.courant.publie },
+    cible: { id: p.cible.id, commit: commitCourt(p.cible.commit), publie: p.cible.publie } });
+}
+// Le geste lui-même. ⚠️ CONCURRENCE (revues du 2026-10-12 et 13) : un double
+// appui retirerait DEUX versions — le second lirait la version remise comme
+// « courante ». Verrous : un geste réussi ferme le bouton 10 min ; la cible
+// doit être celle de l'APERÇU que le pilote a confirmé ; deux appels
+// SIMULTANÉS écrivent la même clé primaire (idGeste, HMAC sous secret serveur)
+// et la base refuse le second ; la version servie est relue juste avant la
+// restauration. Un geste qui échoue avant la restauration efface sa marque.
+async function remettrePrecedent(admin: Admin, cibleDemandee: string) {
+  const { data: recents, error: er } = await admin.from("analytics_events").select("id").eq("event", EVT.manuel)
+    .eq("user_id", "systeme:pilotage").gte("created_at", ilYa(RETOUR.entreDeuxGestesMs)).limit(1);
+  if (er) return { erreur: "journal_illisible" };
+  if (recents && recents.length) return { erreur: "retour_recent" };
+  const p = await lirePrecedent(admin);
+  if ("erreur" in p) return p;
+  if (p.cible.id !== cibleDemandee) return { erreur: "cible_changee" };
+  const id = await idGeste(`${EVT.manuel}:${p.courant.id}:${Math.floor(Date.now() / 3600e3)}`, SECRET_GESTES);
+  const { error: ej } = await admin.from("analytics_events").insert({ id, user_id: "systeme:pilotage", event: EVT.manuel,
+    properties: { vers: commitCourt(p.cible.commit), cible: p.cible.id, de: commitCourt(p.courant.commit), de_deploy: p.courant.id } });
+  // Sans marque, pas de geste : rien ne garantirait qu'il ne se rejoue pas.
+  if (ej) return { erreur: (ej as { code?: string }).code === "23505" ? "retour_en_cours" : "journal_refuse" };
+  const annuler = async (raison: string) => {
+    try { await admin.from("analytics_events").delete().eq("id", id); } catch { /* */ }
+    try { await admin.from("analytics_events").insert({ user_id: "systeme:pilotage", event: EVT.echec, properties: { raison } }); } catch { /* */ }
+    return { erreur: raison };
+  };
+  try {
+    const rs2 = await netlify(`/sites/${SITE_NETLIFY}`);
+    const encore = rs2.ok ? await rs2.json() : null;
+    if (!encore || !encore.published_deploy || encore.published_deploy.id !== p.courant.id) return await annuler("courant_change");
+  } catch { return await annuler("netlify_injoignable"); }
+  let rr: Response;
+  try { rr = await netlify(`/sites/${SITE_NETLIFY}/deploys/${p.cible.id}/restore`, { method: "POST" }); }
+  catch {
+    // La demande est peut-être partie : la marque reste (bouton fermé 10 min),
+    // et le pilote est prévenu qu'il doit regarder ce que le site sert.
+    try { await admin.from("analytics_events").insert({ user_id: "systeme:pilotage", event: EVT.incertain, properties: { cible: p.cible.id } }); } catch { /* */ }
+    return { erreur: "restore_incertain" };
+  }
+  if (!rr.ok) return await annuler("restore_" + rr.status);
+  let confirme = false;
+  for (let i = 0; i < 10 && !confirme; i++) {
+    const s2 = await releaseDe(SITE);
+    confirme = !!(s2 && s2.commit === p.cible.commit);
+    if (!confirme) await attendre(2000);
+  }
+  return { cible: p.cible.id, versionRemise: p.cible.commit, confirme };
+}
+async function proposerRetour(admin: Admin) {
+  if (MODE_RETOUR === "inactif") return { inactif: true };
+  const rs = await netlify(`/sites/${SITE_NETLIFY}`);
+  if (!rs.ok) return { raison: "netlify_" + rs.status };
+  const site = await rs.json();
+  const courant = site && site.published_deploy;
+  const deployeA = courant && (courant.published_at || courant.created_at);
+  // Hors fenêtre : rien à lire, rien à décider (le cas de 99 % des passages).
+  if (!courant || !deployeA || Date.now() - Date.parse(deployeA) > RETOUR.apresDeploiementMaxMs) return { raison: "hors_fenetre" };
+  const servie = await releaseDe(SITE);
+  const commit = servie && typeof servie.commit === "string" && /^[0-9a-f]{7,40}$/.test(servie.commit) ? servie.commit : null;
+  if (!commit) return { raison: "version_inconnue" };
+  const version = commit.slice(0, 8);
+  const { data: mem } = await admin.from("analytics_events").select("properties,created_at").eq("event", EVT.propose)
+    .eq("user_id", "systeme:pilotage").order("created_at", { ascending: false }).limit(1);
+  const dernier = mem && mem[0] ? { version: (mem[0].properties || {}).version, le: mem[0].created_at } : null;
+  // Familles d'échec comptées EN BASE, comptes anciens seulement (migration).
+  const { data: familles, error } = await admin.rpc("pilotage_familles_erreurs", { p_version: version, p_depuis: new Date(Date.parse(deployeA)).toISOString() });
+  if (error) { if (estObjetAbsent(error)) return { raison: "migration_absente" }; throw error; }
+  const d = decideRetour({ actif: true, version, deployeA, familles: familles || [], dernier });
+  if (!d.retour) return { raison: d.raison };
+  // Clé HMAC : deux veilles concurrentes ne proposent pas deux fois, et aucun
+  // client ne peut pré-occuper la clé d'une version.
+  const id = await idGeste(`${EVT.propose}:${version}`, SECRET_GESTES);
+  // Le texte de la famille est pour le PILOTE (rendu en texte) ; il ne sort
+  // jamais vers GitHub ni dans la notification.
+  const { error: ej } = await admin.from("analytics_events").insert({ id, user_id: "systeme:pilotage", event: EVT.propose,
+    properties: { version, deployeA, empreinte: d.famille.empreinte, comptes: d.famille.comptes, n: d.famille.n, famille: String(d.cle).slice(0, 300) } });
+  if (ej) return { raison: (ej as { code?: string }).code === "23505" ? "deja_proposee" : "journal_refuse" };
+  let issue = false;
+  if (JETON_GH) {
+    await gh(`/repos/${DEPOT}/labels`, { method: "POST", body: JSON.stringify({ name: "humain", color: "B60205" }) }).catch(() => null);
+    const ri = await gh(`/repos/${DEPOT}/issues`, { method: "POST", body: JSON.stringify({
+      title: `${TITRE_PROPOSITION} version ${version}`, labels: ["humain"], body: corpsProposition({ version: commit, famille: d.famille, deployeA }),
+    }) }).catch(() => null);
+    issue = !!(ri && ri.ok);
+    cacheGh = null;
+  }
+  const envoyes = await sonnerPilote(admin, "⏪ Une version casse", `La version ${version} provoque un échec nouveau chez ${d.famille.comptes} comptes. Pilotage › Capacité : « Remettre la version précédente ».`).catch(() => 0);
+  if (!issue && !envoyes) {
+    // Personne n'est prévenu : la marque s'efface, la veille suivante réessaie.
+    try { await admin.from("analytics_events").delete().eq("id", id); } catch { /* */ }
+    return { raison: "personne_prevenu" };
+  }
+  return { propose: true, issue, envoyes };
+}
+// La dernière proposition (24 h), pour que le pilote VOIE ce qu'il confirme.
+// Derrière la porte d'authentification (etat) ; le texte est rendu en texte.
+async function lireProposition(admin: Admin) {
+  if (MODE_RETOUR === "inactif") return null;
+  try {
+    const { data } = await admin.from("analytics_events").select("properties,created_at").eq("event", EVT.propose)
+      .eq("user_id", "systeme:pilotage").gte("created_at", ilYa(864e5)).order("created_at", { ascending: false }).limit(1);
+    const x = data && data[0];
+    if (!x) return null;
+    const pr = (x.properties || {}) as Record<string, unknown>;
+    return { le: x.created_at, version: commitCourt(String(pr.version || "")), comptes: Number(pr.comptes) || 0,
+      empreinte: String(pr.empreinte || "").replace(/[^0-9a-f]/g, "").slice(0, 8), famille: String(pr.famille || "").slice(0, 300) };
+  } catch { return null; }
+}
+// Le bouton du pilote : remettre la version de l'APERÇU, à tout moment, sans PC.
+// Réservé à l'éditeur (porte d'authentification + plafond, comme tout geste).
+const MESSAGES_RETOUR: Record<string, string> = {
+  retour_recent: "Un retour arrière vient d'être fait : attends 10 min avant d'en refaire un (sinon deux versions partiraient).",
+  retour_en_cours: "Un retour arrière est déjà en cours : attends 10 min avant d'en refaire un.",
+  cible_changee: "La version en ligne a changé depuis l'aperçu : rouvre le geste pour voir la nouvelle cible.",
+  restore_incertain: "Netlify n'a pas répondu : regarde dans une minute quelle version le site sert. Le bouton est fermé 10 min.",
+};
+async function retourManuel(admin: Admin, corps: Record<string, unknown>) {
+  if (!JETON_NETLIFY) return json({ error: "Geste indisponible : le secret PILOTAGE_NETLIFY_TOKEN n'est pas posé sur la fonction." }, 501);
+  const cible = String(corps.cible || "");
+  if (!/^[0-9a-f]{24}$/.test(cible)) return json({ error: "Ouvre d'abord l'aperçu : la version à remettre doit être confirmée." }, 400);
+  const g = await remettrePrecedent(admin, cible);
+  if ("erreur" in g) return json({ error: MESSAGES_RETOUR[g.erreur] || "Retour arrière refusé : " + g.erreur }, 409);
+  return json({ ok: true, message: g.confirme ? `Version précédente en ligne (${commitCourt(g.versionRemise)}).` : "Retour demandé : le site ne la sert pas encore, vérifie dans une minute." });
+}
+// ─── fin retour
 
 // Activation (2026-10-06) : un nouveau compte a-t-il fait un GESTE SOCIAL dans
 // ses 7 premiers jours ? Définition, exclusions et décision : `_shared/pilotage.js`
@@ -469,7 +732,7 @@ function gh(chemin: string, init: RequestInit = {}) {
   const headers: Record<string, string> = { "Accept": "application/vnd.github+json", "User-Agent": "passio-pilotage", "X-GitHub-Api-Version": "2022-11-28" };
   if (JETON_GH) headers.Authorization = `Bearer ${JETON_GH}`;
   if (init.body) headers["Content-Type"] = "application/json";
-  return fetch("https://api.github.com" + chemin, { ...init, headers: { ...headers, ...(init.headers || {}) } });
+  return fetch("https://api.github.com" + chemin, { signal: AbortSignal.timeout(10000), ...init, headers: { ...headers, ...(init.headers || {}) } });
 }
 
 let cacheGh: { at: number; val: unknown } | null = null;
@@ -480,7 +743,9 @@ async function lireGithub() {
   const res = await gh(`/repos/${DEPOT}/issues?state=open&per_page=50`);
   if (!res.ok) throw new Error("GitHub HTTP " + res.status);
   const brut = await res.json();
-  const issues = (Array.isArray(brut) ? brut : []).map((i) => ({ ...resumerIssue(i), pause: estPause(i && i.title) }))
+  // Seule une pause ouverte par le PILOTE compte (sentinelle-autonome.yml :
+  // `--author PASSIO74`) : le dépôt est public, n'importe qui ouvre une issue.
+  const issues = (Array.isArray(brut) ? brut : []).map((i) => ({ ...resumerIssue(i), pause: estPauseDuPilote(i) }))
     .filter((i) => i.pr || i.pause || i.labels.some((l: string) => LABELS_SUIVIS.includes(l)));
   const run = async (f: string) => {
     const r = await gh(`/repos/${DEPOT}/actions/workflows/${f}/runs?per_page=1&branch=main&exclude_pull_requests=true`);
@@ -535,7 +800,7 @@ async function pause(activer: boolean) {
   cacheGh = null;
   const res = await gh(`/repos/${DEPOT}/issues?state=open&per_page=100`);
   if (!res.ok) return json({ error: "GitHub illisible." }, 502);
-  const ouvertes = ((await res.json()) as { number: number; title: string; pull_request?: unknown }[]).filter((i) => !i.pull_request && estPause(i.title));
+  const ouvertes = ((await res.json()) as { number: number; title: string; pull_request?: unknown; user?: { login?: string } }[]).filter((i) => !i.pull_request && estPauseDuPilote(i));
   if (activer) {
     if (ouvertes.length) return json({ ok: true, message: "La Sentinelle était déjà en pause." });
     const r = await gh(`/repos/${DEPOT}/issues`, { method: "POST", body: JSON.stringify({ title: TITRE_PAUSE, body: "Pause demandée depuis le pilotage téléphone. Fermer cette issue (ou « Reprendre » dans le pilotage) relance la Sentinelle." }) });

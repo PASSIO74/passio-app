@@ -219,7 +219,10 @@
       headers: { apikey: cfg.anon, Authorization: "Bearer " + cfg.anon, Accept: "application/json" },
       cache: "no-store",
     }).then(function (res) {
-      if (res.status === 404) { ecrire(CLE_ABSENTE, String(Date.now())); return false; }
+      // Table absente = AUCUN réglage (contre-revue du 2026-10-13) : avant la
+      // migration rien n'a été posé, et après un retour arrière (drop table)
+      // une coupure lue la veille ne doit pas rester en place pour toujours.
+      if (res.status === 404) { ecrire(CLE_ABSENTE, String(Date.now())); appliquer(normaliser([]), Date.now()); return false; }
       if (!res.ok) return false;
       return res.json().then(function (lignes) {
         retirer(CLE_ABSENTE);

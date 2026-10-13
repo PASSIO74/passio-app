@@ -42,7 +42,7 @@
     },
     "pilotage": {
       "obligatoire": false,
-      "sans": "aucun prérequis SQL propre : lit des tables de base (télémétrie, erreurs client, profils, signalements ; activités, participants et abonnements push pour les rappels d'activité ; et depuis le 2026-10-06 les gestes de l'activation — GESTES_ACTIVATION de supabase/functions/_shared/pilotage.js) et plafonne par analytics_events. Depuis le 2026-10-11, FACULTATIFS : `reglages_distants` et `pilotage_audience(integer)` (migrations/migration_reglages_distants_2026-10-11.sql) — sans eux, la veille ne délestage pas, le geste « réglages » répond 503 en nommant la migration, et l'audience retombe sur une lecture de lignes qui se dit tronquée",
+      "sans": "aucun prérequis SQL propre : lit des tables de base (télémétrie, erreurs client, profils, signalements ; activités, participants et abonnements push pour les rappels d'activité ; et depuis le 2026-10-06 les gestes de l'activation — GESTES_ACTIVATION de supabase/functions/_shared/pilotage.js) et plafonne par analytics_events. Depuis le 2026-10-11, FACULTATIFS : `reglages_distants`, `pilotage_audience(integer)` et `pilotage_familles_erreurs(text, timestamptz)` (migrations/migration_reglages_distants_2026-10-11.sql) — sans eux, la veille ne délestage pas, ne réveille pas la Sentinelle et ne propose aucun retour arrière, le geste « réglages » répond 503 en nommant la migration, et l'audience retombe sur une lecture de lignes qui se dit tronquée",
       "objets": [
         "table:public.analytics_events",
         "table:public.telemetry_events",
@@ -68,7 +68,8 @@
         "column:public.conv_messages.from_id",
         "column:public.conv_messages.created_at",
         "table:public.reglages_distants",
-        "function:public.pilotage_audience(integer)"
+        "function:public.pilotage_audience(integer)",
+        "function:public.pilotage_familles_erreurs(text,timestamp with time zone)"
       ]
     }
   }

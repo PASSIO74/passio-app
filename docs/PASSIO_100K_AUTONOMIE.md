@@ -22,8 +22,10 @@ disponibilité, la sauvegarde quotidienne et le digest du matin te disent le res
    plus échantillonnée), puis en « survie » (×4) à 95 % ; elle redescend d'un cran à la fois après
    30 min de calme. Rien ne casse pour l'utilisateur : il voit un « j'aime » d'un autre un peu plus tard.
    Tu es prévenu sur ton téléphone à chaque changement. **Ces deux mesures ne comptent que des comptes
-   réels identifiés par le serveur** : n'importe qui peut écrire de fausses lignes de télémétrie, personne
-   ne doit pouvoir ralentir toute l'app avec.
+   réels identifiés par le serveur, et les pannes seulement chez des comptes de plus de 7 jours** :
+   n'importe qui peut écrire de fausses lignes de télémétrie, et des comptes se créent en une minute —
+   la contre-revue du 13/10 a montré que dix comptes neufs suffisaient à ralentir toute l'app. Un
+   délestage posé à tort se lève d'un toucher (« Normal » dans le pilotage).
 2. **Un interrupteur distant** : depuis le pilotage (onglet Capacité → Protection automatique), tu
    éteins une fonctionnalité qui casse **chez tout le monde en 5 min**, sans déploiement, pendant que la
    Sentinelle répare — et tu peux afficher un message à tous (« les inscriptions par e-mail sont
@@ -55,6 +57,8 @@ pas fait, tout le reste est déjà en ligne et attend sans rien casser (le panne
 | Contenir | **délestage automatique** (nouveau) | 5 min | ralentit toute l'app avant le mur, redescend seul |
 | Contenir | **coupure distante, bandeau** (nouveau) | à la demande, effet ≤ 5 min | éteint une fonctionnalité chez tous, prévient tous |
 | Revenir | `npm run rollback:netlify` | à la main, 2 s | remet en ligne la version d'avant (mesuré le 14/09) |
+| Revenir | **retour arrière proposé** (2026-10-12, s'allume avec le jeton Netlify) | 5 min | propose le retrait d'une version qui casse 5 comptes anciens avec une erreur nouvelle ; tu le fais d'un toucher (« Remettre la version précédente » dans le pilotage). Jamais seul : un retrait automatique pourrait annuler un correctif de sécurité |
+| Réparer | **réveil de la Sentinelle par la veille** (2026-10-12) | 5 min | lance l'enquête dès 2 comptes en erreur, sans attendre le cron GitHub |
 | Garder | sauvegarde quotidienne | 1/jour | archive vérifiée ; restauration prouvée sur base vide le 15/09 |
 | Économiser | socket au repos, filets adaptatifs, compteurs en une lecture, images légères | permanent | 98 % des connexions temps réel inutiles supprimées (lots du 20–21/09) |
 
@@ -62,12 +66,12 @@ pas fait, tout le reste est déjà en ligne et attend sans rien casser (le panne
 
 | Pièce | Fichier | Verrou |
 |---|---|---|
-| Logique pure : validation, liste blanche des coupures, décision de délestage (montée immédiate, descente d'un cran après 30 min, hystérésis, la main du pilote gagne, l'aveugle ne lève rien) | `supabase/functions/_shared/reglages.js` | `tests/unit/reglages.test.mjs` (11, mutations nommées) |
-| Client : lecture toutes les 5 min (±30 s d'étalement), cache appliqué AVANT l'app, 404 mémorisé 1 h, coupures posées/levées sans jamais toucher un « 0 » de l'appareil, bandeau en texte, inerte en local | `js/reglages-distants.js` | `tests/e2e/reglages-distants.spec.js` (8) |
+| Logique pure : validation, liste blanche des coupures, décision de délestage (montée immédiate, descente d'un cran après 30 min, hystérésis, la main du pilote gagne, l'aveugle ne lève rien, au plafond de télémétrie on ne descend pas avant 2 h) | `supabase/functions/_shared/reglages.js` | `tests/unit/reglages.test.mjs` (12, mutations nommées) |
+| Client : lecture toutes les 5 min (±30 s d'étalement), cache appliqué AVANT l'app, 404 = aucun réglage (mémorisé 1 h), coupures posées/levées sans jamais toucher un « 0 » de l'appareil, bandeau en texte, inerte en local | `js/reglages-distants.js` | `tests/e2e/reglages-distants.spec.js` (9) |
 | Câblage du facteur : filets du fil et des lives, compteurs visibles, repos du temps réel, échantillon de télémétrie | `delaiDeleste` (app-02), app-03/05/08, `telemetry.js` | `reglages.test.mjs` ⑪ |
 | Fonction `pilotage` : geste `reglages` (revalidé, réservé à l'éditeur), délestage automatique dans la veille, état des réglages | `supabase/functions/pilotage/index.ts` | `tests/unit/pilotage.test.mjs` ⑳ ㉑ |
 | Pilotage téléphone : panneau « Protection automatique » | `pilotage/` | `tests/e2e/pilotage-nuage.spec.js` ⑩ ⑪ |
-| Table `reglages_distants` + `pilotage_audience()` | `migrations/migration_reglages_distants_2026-10-11.sql` (PR séparée, contre-revue) | `tests/sql/migration-reglages-distants.test.sh` (25, dont la confrontation avec `compterAudience` et les mesures infalsifiables) |
+| Table `reglages_distants` + `pilotage_audience()` + `pilotage_familles_erreurs()` | `migrations/migration_reglages_distants_2026-10-11.sql` (PR séparée, contre-revue) | `tests/sql/migration-reglages-distants.test.sh` (47 : confrontation avec `compterAudience`, comptes neufs / non confirmés / anonymes qui ne pèsent rien, familles nouvelles d'abord, verdict qui lève sur quatre mutants) |
 
 ## 3. Le pilotage à l'échelle : cinq compteurs qui auraient menti en silence
 
@@ -105,11 +109,23 @@ les relire sur la page Pricing de chaque service le jour du geste.**
 ## 5. Ce qu'on peut encore perfectionner — par ordre de rendement
 
 ### Pour que l'app tienne (P1, avant le lancement large)
-1. **Retour arrière automatique** : dans les 30 min après un déploiement, la veille compare le taux
-   d'erreurs de la nouvelle version (`app_version`) à celui de la précédente ; au-delà d'un seuil sur
-   plusieurs appareils, elle remet la version d'avant en ligne (`POST /deploys/<id>/restore`, 2 s
-   mesurées) et ouvre une issue `humain`. Il faut poser un jeton Netlify sur la fonction `pilotage`.
-   C'est la seule panne que le délestage ne contient pas : un mauvais déploiement.
+1. ✅ **Retour arrière depuis le téléphone, proposé par la veille — livré le 2026-10-12.** Dès que le
+   secret `PILOTAGE_NETLIFY_TOKEN` (jeton Netlify) est posé sur la fonction `pilotage` (Supabase › Edge
+   Functions › pilotage › Secrets) :
+   - le pilotage gagne un bouton « Remettre la version précédente » (2 s, sans PC) qui te montre
+     d'abord la version servie et celle qui sera remise ; tu confirmes en connaissance de cause ;
+   - dans les 90 min d'une mise en ligne, un échec NOUVEAU (erreur ou appel refusé, vu chez moins de
+     deux comptes anciens sur une autre version dans les 24 h) chez au moins 5 comptes distincts
+     **créés plus de 7 jours avant** la mise en ligne déclenche une issue `humain` et une notification ;
+     le pilotage affiche l'échec lui-même ;
+   - jamais de retrait automatique : le signal vient des navigateurs, et quelques comptes malveillants
+     pourraient sinon faire retirer un correctif de sécurité (deux revues du 12/10). Un double appui ne
+     retire pas deux versions : le bouton se ferme 10 min après un geste réussi ; une version retirée
+     dans les 24 h n'est jamais remise par ce bouton.
+   Tout est compté EN BASE (`pilotage_familles_erreurs`), sur des comptes dont l'ancienneté est lue
+   côté authentification : cinq comptes créés pour l'occasion, ou un seul appareil qui boucle, ne
+   proposent rien et ne cachent rien (revues du 12 et du 13/10). C'est la seule panne que le délestage ne
+   contient pas : un mauvais déploiement. Logique : `supabase/functions/_shared/autonomie.js`.
 2. **Train de déploiement** : fusionner autant qu'on veut, mais ne déployer qu'une à deux fois par jour
    (sauf correctif Sentinelle). Divise la bande passante d'un facteur 10 à 20 et le risque d'autant.
 3. **Télémétrie à l'échelle** : remplacer le plafond global de 3 000 insertions/min (qui recompte la
@@ -120,11 +136,14 @@ les relire sur la page Pricing de chaque service le jour du geste.**
    confirmation (signal `inscriptions`).
 
 ### Pour que la Sentinelle répare plus, plus vite (P2)
-5. **Réveil par la veille, pas par le cron GitHub** : la veille pg_cron (tenue à la minute) déclenche la
-   Sentinelle par `workflow_dispatch` dès qu'une famille d'erreurs neuve dépasse un seuil — au lieu
-   d'attendre un cron servi 4 à 8 fois par jour. Délai alerte → correctif divisé par 2 à 4.
-6. **Priorité par personnes touchées** : à 100 000 utilisateurs il y aura plusieurs défauts à la fois ;
-   l'enquête suivante est celle qui touche le plus de comptes distincts, pas la plus fréquente.
+5. ✅ **Réveil par la veille — livré le 2026-10-12, actif dès la migration.** Dès que 2 comptes réels
+   (identité serveur, confirmés, créés depuis plus de 24 h) ont un échec en 30 min (erreur ou appel
+   refusé, compté en base), sans enquête en cours, sans pause et sans run de moins de 45 min, la veille
+   (pg_cron, 5 min) lance la Sentinelle par `workflow_dispatch` — 2 réveils par heure et 12 par jour au plus. Avant :
+   un cron GitHub servi 4 à 8 fois par jour.
+6. ✅ **Priorité par personnes touchées — c'était déjà le cas** : `classer()` et `classerApi()`
+   (`scripts/sentinelle-detecter.mjs`) trient les candidats par comptes distincts, puis par occurrences.
+   La première version de ce plan le comptait à tort comme « à faire ».
 7. **Couper pendant qu'on répare** : quand une enquête vise un fichier d'un lot sous drapeau (liste
    blanche des coupures), la Sentinelle propose — ou pose si la règle est explicite — la coupure
    distante du lot, et la lève au déploiement du correctif.
@@ -151,5 +170,5 @@ payante ; poser l'alerte de budget Supabase.
 **Chaque semaine (15 min)** : digest du matin → les lignes « à toi » ; signalements ; jauges.
 **Quand le téléphone sonne** : ouvrir le pilotage. Rouge « erreurs » → la Sentinelle est déjà dessus,
 tu peux couper la fonctionnalité en attendant. Rouge « site » → `npm run rollback:netlify -- --restaurer
-precedent` (ou le futur retour arrière automatique). « Délestage automatique » → rien à faire, sauf si
+precedent` (ou, jeton Netlify posé, « Remettre la version précédente » dans le pilotage). « Délestage automatique » → rien à faire, sauf si
 ça dure : c'est le signe qu'un quota du §4 doit monter.
