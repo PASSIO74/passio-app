@@ -17,6 +17,7 @@
 - ⏰ RAPPELS D'ACTIVITÉ PAR PUSH — le rappel ne sonnait que si l'appli était OUVERTE (2026-10-05)
 - 🗓️ RÉCAP DE LA SEMAINE — une carte en tête du fil, dans l'app seulement (2026-10-06)
 - 😍 UNE RÉACTION EMOJI S'EFFAÇAIT ELLE-MÊME — suppression et insertion en parallèle (2026-10-10)
+- 🏷️ UN PSEUDO CHANGÉ RESTAIT L'ANCIEN DANS LA MESSAGERIE (2026-10-13)
 
 ---
 
@@ -317,3 +318,27 @@ recharge (minuteur, `getSession`) et l'efface — piège déjà écrit pour `mes
 resté ouvert ici. Reproduit : après la pose, un `getSession()` rend la lecture nulle avec l'ancien
 jeton et intacte avec un JWT de forme valide. Le banc pose désormais la même forme que `poserSession`.
 
+---
+
+## 🏷️ UN PSEUDO CHANGÉ RESTAIT L'ANCIEN DANS LA MESSAGERIE (2026-10-13)
+
+Rapport d'usage, capture à l'appui : « j'ai changé un nom de pseudo sur mon profil mais dans la
+messagerie le nouveau nom n'apparaît pas ». La liste Messages affichait « Profil » ; en base,
+`profiles.username` valait déjà « Ben test 1 sur portable » — et la ligne des passions de la MÊME
+carte (lue sur le profil vivant par `ui-v6a-messages.js`) était à jour. Le serveur avait raison,
+l'écran lisait une copie.
+
+**Cause.** `c.userName` est écrit à la création du fil (`startDirectMessage`) et `renderMessages`
+le préférait au profil (`c.userName || u.name`). Le rafraîchissement serveur le corrige en principe,
+mais `deduplicateConversations` garde l'entrée la plus RÉCENTE d'une paire — une copie locale à
+laquelle on vient d'écrire (« à l'instant ») — et ne rattrape son nom que s'il vaut « Passionné ».
+Second relais de la copie périmée : `_primeProfileCache` écrasait une entrée déjà résolue de
+`_profileCache` avec ce nom figé, que `_profilAuteur` pouvait ensuite réinscrire dans
+`state.seed.users`.
+
+**Correctif.** `_alignerIdentiteConv(c)` (app-04) : un profil RÉEL en cache (`distant: true`) fait
+foi, la copie (nom, photo) est réalignée sur lui à chaque rendu de la liste et à l'ouverture d'une
+conversation, puis sauvegardée. Un interlocuteur de démonstration (sans `distant`) garde le nom du
+fil. `_primeProfileCache` n'écrase plus une entrée existante.
+
+**Verrou.** `tests/e2e/conv-nom-suit-pseudo.spec.js` (3) — ① et ④ rouges sans le correctif.
