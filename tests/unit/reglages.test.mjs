@@ -100,6 +100,18 @@ test("⑧ la main du pilote gagne, et l'aveugle ne lève rien (mutation : ignore
   assert.equal(decideDelestage({ niveau: 1, pose_par: "veille", maj: "pas une date" }, { pctConnexions: 0, comptes5xx15: 0 }, T0).changer, false, "date illisible = pas de tenue prouvée");
 });
 
+test("⑧ bis télémétrie AVEUGLE (plafond global atteint) : on peut monter, pas descendre — 2 h au plus (mutations : lire des mesures muettes comme un calme, ou tenir sans fin)", () => {
+  const veille2 = { niveau: 2, pose_par: "veille", maj: ilYa(60) };   // tenue de 30 min passée, borne de 2 h pas encore
+  assert.equal(decideDelestage(veille2, { pctConnexions: 0, comptes5xx15: 0, aveugle: true }, T0).changer, false, "mesures basses sous saturation : pas une baisse de charge");
+  assert.equal(decideDelestage(veille2, { pctConnexions: 0, comptes5xx15: 0 }, T0).niveau, 1, "sans saturation, la même mesure fait descendre");
+  const d = decideDelestage(null, { pctConnexions: 96, comptes5xx15: 0, aveugle: true }, T0);
+  assert.deepEqual([d.changer, d.niveau], [true, 2], "monter reste possible");
+  // Un flot anonyme sature la télémétrie à volonté : l'aveugle ne tient pas le délestage plus de 2 h.
+  const vieux = { niveau: 2, pose_par: "veille", maj: ilYa(SEUILS_DELESTAGE.aveugleMaxMs / 60e3 + 1) };
+  assert.equal(decideDelestage(vieux, { pctConnexions: 0, comptes5xx15: 0, aveugle: true }, T0).niveau, 1, "après 2 h d'aveuglement, la descente normale reprend");
+  assert.equal(SEUILS_DELESTAGE.aveugleMaxMs, 2 * 3600e3);
+});
+
 test("⑨ resumerReglages : une ligne invalide en base ne fabrique pas un réglage", () => {
   const r = resumerReglages([
     { cle: "delestage", valeur: { niveau: 2 }, pose_par: "veille", maj: "2026-10-11T10:00:00Z", motif: "x" },

@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { bornesJours, estObjetAbsent, MAX_LIGNES_POSTGREST, autorise, COMPTE_PILOTE, RELANCES, erreursFrequentes, resumerIssue, verdict, decideAlerte, plateforme, cheminPage, serieJours, detailsErreurs, jauges, estPause, TITRE_PAUSE, STATUTS_SIGNALEMENT, aReparer, issueReparable, titreReparation, corpsReparation, estReparation, RUNS_REPARABLES, REPARATIONS_MAX, LABELS_SUIVIS, compterAudience, traficHorsPublic } from "../../supabase/functions/_shared/pilotage.js";
+import { bornesJours, estObjetAbsent, MAX_LIGNES_POSTGREST, autorise, COMPTE_PILOTE, RELANCES, erreursFrequentes, resumerIssue, verdict, decideAlerte, plateforme, cheminPage, serieJours, detailsErreurs, jauges, estPause, estPauseDuPilote, PILOTE_GITHUB, TITRE_PAUSE, STATUTS_SIGNALEMENT, aReparer, issueReparable, titreReparation, corpsReparation, estReparation, RUNS_REPARABLES, REPARATIONS_MAX, LABELS_SUIVIS, compterAudience, traficHorsPublic } from "../../supabase/functions/_shared/pilotage.js";
 
 const confirme = (email) => ({ email, email_confirmed_at: "2026-09-01T00:00:00Z" });
 
@@ -118,6 +118,17 @@ test("⑩ pause Sentinelle : même convention que sentinelle-autonome.yml", () =
   assert.equal(estPause("[SENTINELLE] erreur"), false);
   const y = fs.readFileSync(".github/workflows/sentinelle-autonome.yml", "utf8");
   assert.match(y, /SENTINELLE PAUSE/, "le workflow lit bien ce marqueur");
+  // Le dépôt est PUBLIC : seule la pause du pilote compte, comme pour le workflow (contre-revue du 2026-10-13).
+  assert.match(y, new RegExp("--author " + PILOTE_GITHUB), "même auteur que sentinelle-autonome.yml");
+  assert.equal(estPauseDuPilote({ title: TITRE_PAUSE, user: { login: PILOTE_GITHUB } }), true);
+  assert.equal(estPauseDuPilote({ title: TITRE_PAUSE, user: { login: "inconnu" } }), false, "une issue d'un tiers ne met rien en pause");
+  assert.equal(estPauseDuPilote({ title: TITRE_PAUSE }), false, "auteur illisible : pas une pause");
+  assert.equal(estPauseDuPilote({ title: "autre", user: { login: PILOTE_GITHUB } }), false);
+  assert.equal(estPauseDuPilote(null), false);
+  const fn = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
+  assert.doesNotMatch(fn, /\bestPause\(/, "la fonction ne lit jamais une pause sans son auteur");
+  assert.match(fn, /pause: estPauseDuPilote\(i\)/);
+  assert.match(fn.slice(fn.indexOf("async function pause")), /estPauseDuPilote\(i\)/);
   assert.deepEqual(STATUTS_SIGNALEMENT, ["handled", "dismissed"]);
 });
 
@@ -249,10 +260,13 @@ test("⑳ la fonction ne déduit plus aucun COMPTE d'une liste bornée, et cherc
 test("㉑ la veille délestage sans jamais tomber, et le pilote ne pose qu'une valeur revalidée", () => {
   const fn = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
   const v = fn.slice(fn.indexOf("async function veille"), fn.indexOf("/** Rappels d'activité"));
-  assert.match(v, /try \{ delestage = await delestageAuto\(/, "une erreur de délestage ne doit pas casser la veille");
+  assert.match(v, /const etape = async \(f:[^\n]*\n\s*try \{ return await f\(\); \} catch/, "chaque étape est isolée : une erreur ne casse pas la veille");
+  assert.match(v, /await etape\(\(\) => delestageAuto\(admin, signaux\)\)/);
+  assert.ok(v.indexOf("decideAlerte(") > 0 && v.indexOf("decideAlerte(") < v.indexOf("await etape("), "l'alerte part AVANT ce qui agit seul");
   const d = fn.slice(fn.indexOf("async function delestageAuto"), fn.indexOf("// Geste du pilote."));
-  assert.match(d, /decideDelestage\(actuel, \{ pctConnexions, comptes5xx15 \}\)/);
-  assert.match(d, /if \(a\.exact\) \{/, "seule la mesure exacte (auth_uid serveur) pilote le délestage");
+  assert.match(d, /decideDelestage\(actuel, \{ pctConnexions, comptes5xx15, aveugle \}\)/);
+  assert.match(d, /if \(a && a\.exact\) \{/, "seule la mesure exacte (auth_uid serveur) pilote le délestage");
+  assert.match(d, /aveugle = a\.saturation != null && a\.saturation >= SATURATION_AVEUGLE \* PLAFONDS\.telemetrie\.plafond/, "au plafond de télémétrie, la veille ne lève rien");
   assert.doesNotMatch(d, /api5xx15/, "les LIGNES en panne sont forgeables : jamais un levier de délestage");
   assert.match(d, /pose_par: "veille"/);
   assert.match(d, /if \(!lignes\) return \{ absente: true \}/, "table absente : la veille n'écrit rien");
@@ -260,6 +274,12 @@ test("㉑ la veille délestage sans jamais tomber, et le pilote ne pose qu'une v
   assert.match(p, /normaliserReglage\(cle, corps\.valeur\)/);
   assert.match(p, /pose_par: "pilote"/);
   assert.match(fn, /case "reglages": return poserReglage\(admin, corps\);/);
-  // Le geste est APRÈS la porte d'authentification (autorise + plafond).
-  assert.ok(fn.indexOf('case "reglages"') > fn.indexOf("if (!autorise(user, EXTRA))"));
+  // Le geste est APRÈS la porte d'authentification (autorise + plafond) : la
+  // porte doit EXISTER (indexOf -1 rendait ce verrou vrai sans elle), et rien
+  // avant elle ne mène à un geste (contre-revue du 2026-10-13).
+  const porte = fn.indexOf("if (!autorise(user, EXTRA))");
+  assert.ok(porte > 0, "la porte d'authentification existe");
+  assert.ok(fn.indexOf('case "reglages"') > porte);
+  assert.doesNotMatch(fn.slice(fn.indexOf("Deno.serve("), porte), /poserReglage|retourManuel|retourApercu|remettrePrecedent|\/restore|reparer\(|fusionner\(/, "aucun geste avant la porte");
+  assert.equal(fn.split("poserReglage(").length - 1, 2, "déclaration + case, aucun autre appelant");
 });

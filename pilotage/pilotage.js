@@ -35,6 +35,33 @@
     b.addEventListener("click", () => geste(b, corps, confirmation));
     actions(c).append(b); return b;
   }
+  // Retour arrière (2026-10-13) : le pilote VOIT ce qu'il confirme. Un premier
+  // appel rend l'aperçu (version servie → version qui serait remise, revalidée
+  // côté serveur) ; la confirmation nomme les deux ; le geste envoie la cible
+  // de l'aperçu, que la fonction refuse si la situation a changé entre-temps.
+  function dateCourte(v) {
+    const t = Date.parse(String(v || ""));
+    return Number.isFinite(t) ? new Date(t).toLocaleString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "date inconnue";
+  }
+  function boutonRetour(c) {
+    const b = el("button", "btn", "Remettre la version précédente"); b.type = "button";
+    b.addEventListener("click", async () => {
+      b.disabled = true;
+      let a;
+      try { a = await appeler({ action: "retour_apercu" }); }
+      catch (e) { erreur("Refusé : " + e.message); b.disabled = false; return; }
+      const cible = (a && a.cible) || {}, courant = (a && a.courant) || {};
+      const q = "Remettre en ligne la version " + cible.commit + " (publiée le " + dateCourte(cible.publie) + ") à la place de " + courant.commit
+        + " (publiée le " + dateCourte(courant.publie) + ") ?\n\nLe prochain déploiement de main remettra la version actuelle.";
+      if (!confirm(q)) { b.disabled = false; return; }
+      try {
+        const r = await appeler({ action: "retour_arriere", cible: cible.id });
+        succes((r && r.message) || "Fait.");
+        derniere = 0; await actualiser();
+      } catch (e) { erreur("Refusé : " + e.message); b.disabled = false; }
+    });
+    actions(c).append(b); return b;
+  }
   // « Réparer » : une seule fabrique pour les trois surfaces (bloc À réparer,
   // carte d'enquête, carte d'exécution) — deux copies divergeraient.
   function clefReparation(x) { return x.cible === "issue" ? "issue:" + x.numero : "run:" + x.cle; }
@@ -163,8 +190,8 @@
     });
     const ch = vider("chiffres");
     ch.append(
-      chiffre(u ? u.maintenant.appareils : null, "appareils en ligne"),
-      chiffre(u ? u.aujourdhui.comptes : null, "comptes actifs (24 h)"),
+      chiffre(u && u.maintenant ? u.maintenant.appareils : null, "appareils en ligne"),
+      chiffre(u && u.aujourdhui ? u.aujourdhui.comptes : null, "comptes actifs (24 h)"),
       chiffre(s ? s.erreursJs15 : null, "erreurs (15 min)", s && s.erreursJs15 >= 10 ? "rouge" : s && s.erreursJs15 ? "orange" : null),
       chiffre(d.signalements ? d.signalements.ouverts : null, "signalements", d.signalements && d.signalements.ouverts ? "orange" : null),
     );
@@ -254,10 +281,13 @@
     const m = vider("maintenant"), co = vider("comptes");
     if (!u) { nonLu("maintenant", "Utilisateurs"); }
     else {
-      m.append(chiffre(u.maintenant.comptes, "comptes connectés"), chiffre(u.maintenant.appareils, "appareils"),
-        chiffre(u.aujourdhui.comptes, "comptes actifs 24 h"), chiffre(u.aujourdhui.appareils, "appareils 24 h"));
+      // Chaque fenêtre est mesurée à part (2026-10-13) : une passe de 24 h qui
+      // échoue à l'échelle est dite « non mesurée », sans emporter le reste.
+      const m5 = u.maintenant || {}, j24 = u.aujourdhui || {};
+      m.append(chiffre(u.maintenant ? m5.comptes : null, "comptes connectés"), chiffre(u.maintenant ? m5.appareils : null, "appareils"),
+        chiffre(u.aujourdhui ? j24.comptes : null, "comptes actifs 24 h"), chiffre(u.aujourdhui ? j24.appareils : null, "appareils 24 h"));
       // Public seulement depuis le 2026-10-05 : les écartés sont dits, pas tus.
-      if (typeof u.aujourdhui.horsPublic === "number") m.append(chiffre(u.aujourdhui.horsPublic, "robots / équipe 24 h (non comptés)"));
+      if (typeof j24.horsPublic === "number") m.append(chiffre(j24.horsPublic, "robots / équipe 24 h (non comptés)"));
       co.append(chiffre(u.inscritsJour, "aujourd'hui"), chiffre(u.inscritsSemaine, "7 jours"), chiffre(u.total, "au total"));
       graphe("grapheInscriptions", u.serieInscriptions);
     }
@@ -307,6 +337,28 @@
     if (!d.reglages) nonLu("protection", "Protection");
     else if (d.reglages.absente) prot.append(carte("Pas encore allumée", "Migration", "Appliquer " + (d.reglages.migration || "la migration des réglages distants") + " (npm run migration:appliquer) : la veille pourra alors ralentir l'app d'elle-même.", "gris"));
     else rendreProtection(prot, d.reglages);
+    // Ce qui agit seul (2026-10-12) : réveil de la Sentinelle ; le retour arrière,
+    // lui, n'est JAMAIS automatique — la veille le propose, le pilote le fait.
+    const au = d.autonomie;
+    if (au) {
+      prot.append(au.reveilSentinelle
+        ? carte("Réveil de la Sentinelle", "Actif", "Dès que 2 comptes de plus de 24 h ont un échec en 30 min (erreur ou appel refusé) et qu'aucune enquête n'est en cours, la veille lance la Sentinelle sans attendre son horaire (2 fois par heure et 12 fois par jour au plus).", "vert")
+        : carte("Réveil de la Sentinelle", "Inactif", "Il faut le secret PILOTAGE_GITHUB_TOKEN sur la fonction « pilotage ». La Sentinelle tourne quand même à son horaire.", "gris"));
+      const ra = au.retour || {};
+      const cr = ra.mode === "proposer"
+        ? carte("Retour arrière", "Proposé", "Si une mise en ligne provoque un échec nouveau chez 5 comptes de plus de 7 jours, tu es prévenu ici et sur le téléphone. Le bouton te montre la version qui sera remise avant que tu confirmes. Jamais seul : un retrait automatique pourrait annuler un correctif de sécurité.", "vert")
+        : carte("Retour arrière", "Éteint", "Pour l'activer, poser le secret PILOTAGE_NETLIFY_TOKEN (jeton Netlify) sur la fonction « pilotage » — Supabase › Edge Functions › pilotage › Secrets. En attendant, le retour arrière reste le geste `npm run rollback:netlify` sur le PC.", "gris");
+      // La dernière proposition (24 h) : la version, le nombre de comptes, et
+      // l'échec lui-même — écrit par des navigateurs, donc rendu en TEXTE.
+      const pr = ra.proposition;
+      if (pr && pr.version) {
+        const cp = carte("Version " + pr.version + " : échec nouveau", "À décider", pr.comptes + " comptes de plus de 7 jours touchés, proposé " + ilYA(pr.le) + ".", "orange");
+        if (pr.famille) cp.append(el("p", "discret", pr.famille));
+        prot.append(cp);
+      }
+      if (ra.jeton) boutonRetour(cr);
+      prot.append(cr);
+    }
 
     // Réglages : alertes
     const al = vider("alertes");

@@ -18,7 +18,9 @@ const { bootOnboarded } = require("./app-helper");
 //   ⑤ le bandeau est du TEXTE (jamais du HTML), fermable, cible ≥ 44 px ;
 //   ⑥ inerte en local sans demande explicite : les suites n'héritent jamais
 //     d'un réglage de production ;
-//   ⑦ la coupure du module rend ce qu'il avait pris.
+//   ⑦ la coupure du module rend ce qu'il avait pris ;
+//   ⑧ table RETIRÉE (404 après un retour arrière) : un réglage lu la veille
+//     ne reste pas en place pour toujours — 404 = aucun réglage.
 // ═══════════════════════════════════════════════════════════════════════════
 
 const MOTIF = /\/rest\/v1\/reglages_distants\?/;
@@ -47,6 +49,10 @@ async function preparer(page, opts = {}) {
   return serveur;
 }
 const servir = (serveur, lignes) => { serveur.status = 200; serveur.lignes = lignes; };
+// Un 404 récent mémorisé : la relecture du démarrage (3 à 8 s après « load »)
+// ne part pas, et ce que le cas mesure est le CACHE seul. Sans lui, un 404
+// (= aucun réglage) lèverait le réglage en cache selon l'horloge du banc.
+const SANS_RELECTURE = () => ({ passio_reglages_distants_absente: String(Date.now()) });
 
 test("① table absente : rien ne change, le 404 est mémorisé et ne repart pas", async ({ page }) => {
   const serveur = await preparer(page);
@@ -98,14 +104,14 @@ test("③ coupures : liste blanche seulement, et on ne lève que ce qu'on a pos�
 
 test("④ le cache s'applique AVANT l'app ; un délestage trop vieux n'est pas repris", async ({ page }) => {
   const recuLe = Date.now() - 7 * 3600e3;
-  await preparer(page, { cache: { recuLe, reglages: { delestage: 2, coupures: ["passio_invitations_v1"], bandeau: null } } });
+  await preparer(page, { cache: { recuLe, reglages: { delestage: 2, coupures: ["passio_invitations_v1"], bandeau: null } }, local: SANS_RELECTURE() });
   expect(await page.evaluate(() => window.__auChargement)).toEqual({ invitations: "0" });
   expect(await page.evaluate(() => delestageFacteur()), "7 h sans confirmation : le délestage est oublié").toBe(1);
   expect(await page.evaluate(() => PassioReglages.coupures())).toEqual(["passio_invitations_v1"]);
 });
 
 test("④ bis un délestage récent en cache vaut dès le démarrage", async ({ page }) => {
-  await preparer(page, { cache: { recuLe: Date.now() - 60000, reglages: { delestage: 1, coupures: [], bandeau: null } } });
+  await preparer(page, { cache: { recuLe: Date.now() - 60000, reglages: { delestage: 1, coupures: [], bandeau: null } }, local: SANS_RELECTURE() });
   expect(await page.evaluate(() => [delestageFacteur(), delaiDeleste(15000)])).toEqual([2, 30000]);
 });
 
@@ -141,4 +147,12 @@ test("⑦ la coupure du module rend les coupures qu'il avait posées", async ({ 
     invit: localStorage.getItem("passio_invitations_v1"), recap: localStorage.getItem("passio_recap_semaine"),
     posees: localStorage.getItem("passio_coupures_distantes_v1"), actif: PassioReglages.actif(),
   }))).toEqual({ invit: null, recap: "0", posees: null, actif: false });
+});
+
+test("⑧ table retirée (404) : les réglages lus la veille sont rendus, rien ne reste coupé", async ({ page }) => {
+  await preparer(page, { cache: { recuLe: Date.now() - 60000, reglages: { delestage: 1, coupures: ["passio_invitations_v1"], bandeau: null } }, local: SANS_RELECTURE() });
+  expect(await page.evaluate(() => [localStorage.getItem("passio_invitations_v1"), delestageFacteur()]), "le cache s'applique d'abord").toEqual(["0", 2]);
+  expect(await page.evaluate(() => PassioReglages.rafraichir(true))).toBe(false);
+  expect(await page.evaluate(() => ({ invit: localStorage.getItem("passio_invitations_v1"), coupures: PassioReglages.coupures(), f: delestageFacteur() })))
+    .toEqual({ invit: null, coupures: [], f: 1 });
 });

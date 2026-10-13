@@ -113,6 +113,16 @@ export function verdict(e) {
 /** Titre de l'issue qui met la Sentinelle en pause (convention de sentinelle-autonome.yml). */
 export const TITRE_PAUSE = "[SENTINELLE PAUSE] depuis le pilotage";
 export const estPause = (titre) => /\[SENTINELLE PAUSE\]/.test(String(titre || ""));
+/** Le compte GitHub du pilote. Le dépôt est PUBLIC : n'importe qui ouvre une issue. */
+export const PILOTE_GITHUB = "PASSIO74";
+/**
+ * Une issue de pause ne compte que si le PILOTE l'a ouverte — même règle que
+ * sentinelle-autonome.yml (`gh issue list --author PASSIO74`). Sans elle, un
+ * inconnu éteignait le réveil de la Sentinelle avec un titre (contre-revue du
+ * 2026-10-13), pendant que la Sentinelle, elle, l'ignorait.
+ */
+export const estPauseDuPilote = (i, pilote = PILOTE_GITHUB) =>
+  !!i && estPause(i.title) && String((i.user && i.user.login) || "") === pilote;
 
 /** Famille d'appareil lisible depuis un user-agent (rien d'autre n'en sort). */
 export function plateforme(ua) {

@@ -52,11 +52,11 @@ const ETAT = {
 };
 
 /** Route la fonction : l'état pour « etat », { ok, message } pour tout geste, et garde les corps reçus. */
-async function routerFonction(page, envois, etat = ETAT) {
+async function routerFonction(page, envois, etat = ETAT, reponses = {}) {
   await page.route(FONCTION, async (r) => {
     const corps = r.request().postDataJSON();
     envois.push({ corps, auth: r.request().headers().authorization || "" });
-    await r.fulfill({ json: corps.action === "etat" ? etat : { ok: true, message: "Fait (banc)." } });
+    await r.fulfill({ json: corps.action === "etat" ? etat : reponses[corps.action] || { ok: true, message: "Fait (banc)." } });
   });
 }
 
@@ -293,4 +293,45 @@ test("⑪ Protection : délestage manuel → « Rendre à l'automatique » ; tab
   await expect(p).toContainText("Pas encore allumée");
   await expect(p).toContainText("migration_reglages_distants_2026-10-11.sql");
   await expect(p.locator("button")).toHaveCount(0);
+});
+
+test("⑫ Autonomie : réveil et retour disent leur état ; le pilote VOIT la proposition et la version remise avant de confirmer", async ({ page }) => {
+  await poserSession(page);
+  const envois = [], dialogues = [];
+  await routerFonction(page, envois, { ...ETAT, reglages: REGLAGES, autonomie: { reveilSentinelle: true, retour: { mode: "inactif", jeton: false, proposition: null } } });
+  page.on("dialog", (d) => { dialogues.push(d.message()); d.accept(); });
+  await page.goto("/pilotage/");
+  await page.click('.barre button[data-tab="capacite"]');
+  const p = page.locator("#protection");
+  await expect(p.locator("article", { hasText: "Réveil de la Sentinelle" })).toContainText("Actif");
+  const eteint = p.locator("article", { hasText: "Retour arrière" });
+  await expect(eteint).toContainText("Éteint");
+  await expect(eteint).toContainText("PILOTAGE_NETLIFY_TOKEN");
+  await expect(eteint.locator("button")).toHaveCount(0);
+  await page.unroute(FONCTION);
+  // Une proposition dont l'échec est un texte HOSTILE (écrit par un navigateur) : rendu en texte.
+  const famille = "error:<img src=x onerror=alert(1)> TypeError";
+  const APERCU = { ok: true, courant: { commit: "aaaa1111", publie: "2026-10-13T09:00:00Z" }, cible: { id: "6eca16aa0123456789abcdef", commit: "bbbb2222", publie: "2026-10-12T18:00:00Z" } };
+  await routerFonction(page, envois, { ...ETAT, reglages: REGLAGES, autonomie: { reveilSentinelle: false,
+    retour: { mode: "proposer", jeton: true, proposition: { le: new Date().toISOString(), version: "aaaa1111", comptes: 6, empreinte: "0badf00d", famille } } } },
+    { retour_apercu: APERCU });
+  await page.click("#actualiser");
+  const prop = p.locator("article", { hasText: "Retour arrière" }).filter({ hasText: "Proposé" });
+  await expect(prop).toContainText("Proposé");
+  await expect(prop).toContainText("Jamais seul");
+  await expect(p).not.toContainText("Automatique");
+  const decision = p.locator("article", { hasText: "À décider" });
+  await expect(decision).toHaveCount(1);
+  await expect(decision).toContainText("aaaa1111");
+  await expect(decision).toContainText("6 comptes");
+  await expect(decision).toContainText(famille);
+  await expect(decision.locator("img")).toHaveCount(0);
+  await expect(p.locator("article", { hasText: "Réveil de la Sentinelle" })).toContainText("PILOTAGE_GITHUB_TOKEN");
+  await prop.locator("button", { hasText: "Remettre la version précédente" }).click();
+  // D'abord l'aperçu, puis UNE confirmation qui nomme les deux versions, puis le geste avec la cible de l'aperçu.
+  await expect.poll(() => envois.filter((e) => e.corps.action !== "etat").pop()?.corps).toEqual({ action: "retour_arriere", cible: "6eca16aa0123456789abcdef" });
+  expect(envois.filter((e) => e.corps.action !== "etat").map((e) => e.corps.action)).toEqual(["retour_apercu", "retour_arriere"]);
+  expect(dialogues).toHaveLength(1);
+  expect(dialogues[0]).toContain("bbbb2222");
+  expect(dialogues[0]).toContain("aaaa1111");
 });
