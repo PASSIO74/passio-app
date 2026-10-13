@@ -66,6 +66,11 @@ jobs:
           node --test tests/unit/suppression-entrelacement.test.mjs
           node --test tests/unit/export-compte.test.mjs
           node --test tests/unit/pilotage.test.mjs
+          node --test tests/unit/activation.test.mjs
+          node --test tests/unit/reglages.test.mjs
+          node --test tests/unit/rappels.test.mjs
+          node --test tests/unit/autonomie.test.mjs
+          node --test tests/unit/autonomie-seuils-sql.test.mjs
 
       - uses: supabase/setup-cli@v1
         with:
