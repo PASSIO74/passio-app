@@ -26,6 +26,7 @@
 - 🔞 ADMISSION 18+ — fondation serveur APPLIQUÉE EN PRODUCTION le 2026-09-08, interrupteur **ALLUMÉ** (mesuré le 2026-09-10)
 - 🚪 PREMIÈRE VISITE — « l'application est elle-même le pitch » (ACTIF PAR DÉFAUT)
 - 🔥 PREMIÈRE VISITE — LES PASSIONS POPULAIRES EN DIRECT : la grille suit les publications (2026-10-06)
+- 🖥️ L'ANCIENNE LANDING REVENAIT SUR UN ORDINATEUR — compte connu, ni session ni état local (2026-10-13)
 
 ---
 
@@ -465,3 +466,10 @@ Les 12 tuiles du panneau « Qu'est-ce qui te passionne ? » étaient une liste �
 - `_parDefaut` (profil de remplissage) et tout identifiant réservé `_…` ne sont une passion nulle part — ni ici.
 
 ⚠️ **LES SUITES VISITEUR NE LE VOIENT PAS, ET C'EST VOULU** : `bootVisiteur` coupe tout ce qui contient « supabase » — le SDK local compris (`js/vendor/supabase-js-…`) —, donc `_supaReal` reste faux et la grille reste la liste écrite : les 56 cas de `first-run.spec.js` et `premiere-visite-referentiel.spec.js` qui cliquent « moto » ou « musique » ne dépendent pas de la production. Le banc dédié, `tests/e2e/populaires-vivantes.spec.js` (6), charge le VRAI client et sert la lecture par une route posée APRÈS `sansDonneesDistantes`. Mutations éprouvées : plafond de 8 retiré, classement par publications avant les personnes, vivantes plus en tête — chacune rougit ; la mémorisation `_refVues` retirée ne rougit pas (au clic, le référentiel est chargé), c'est dit dans l'en-tête du banc.
+
+## 🖥️ L'ANCIENNE LANDING REVENAIT SUR UN ORDINATEUR — compte connu, ni session ni état local (2026-10-13)
+
+Capture de Benjamin (Edge, Windows) : `passio-app.netlify.app` ouvrait le pitch d'avant la première visite, coiffé du bandeau rouge « Session expirée ». L'appareil portait l'uuid d'un compte connecté autrefois (`passio_uid`) et un jeton SDK périmé, mais **aucun état onboardé** : `compteExistant()` (first-run) refusait l'entrée invitée, `entrerEnSessionExpiree()` (qui exige `state.onboarded`) aussi, et `boot()` retombait sur `showLanding()`.
+Remède : `sortirCompteSansSession()` (app-08), appelée juste avant `showLanding()` — elle termine la déconnexion que la session morte a commencée, comme le bouton « Se reconnecter » (`doLogout("signin")`) : purge des clés de compte et du jeton, intention `signin`, rechargement → fil invité + écran de connexion. **Jamais** sur un état onboardé (UXO-02 le garde, en lecture), jamais quand `getSession()` a dépassé son délai (la session peut arriver), jamais pendant une adoption (`passio_restauration_requise`), une seule fois par onglet.
+Verrou : `tests/e2e/compte-sans-session-landing.spec.js` (3) — réinjection faite : sans l'appel, ① rougit.
+
