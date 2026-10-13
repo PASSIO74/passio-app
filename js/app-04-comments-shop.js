@@ -2352,7 +2352,9 @@ function _clearProfileCache() { try { _profileCacheGeneration++; _profileCache.c
 // Cache pré-rempli depuis les convs déjà connues
 function _primeProfileCache(convs) {
   (convs || []).forEach(function(c) {
-    if (c.userId && c.userName) {
+    // Jamais par-dessus une entrée déjà résolue : le nom gardé dans une
+    // conversation est une COPIE, figée au moment où elle a été créée.
+    if (c.userId && c.userName && !_profileCache.has(c.userId)) {
       _profileCache.set(c.userId, { username: c.userName, emoji: c.userEmoji || "✨", color: c.userColor || "#8b5cf6" });
     }
   });
@@ -2442,6 +2444,23 @@ function _estConvDemo(c) {
   // venait d'être chargé rendait « Conversation de démonstration » et
   // n'envoyait rien — mesuré sur le staging, le jour même du correctif UXO-03.
   try { return !c.isGroup && !!c.userId && (state.seed.users || []).some(function (u) { return u && u.id === c.userId && !u.distant; }); } catch (e) { return false; }
+}
+// ⚠️ LE NOM D'UNE CONVERSATION EST UNE COPIE (2026-10-13). `c.userName` est
+// écrit à la création du fil et ne suivait plus le profil : un membre qui
+// changeait de pseudo restait affiché sous l'ancien nom dans la liste Messages,
+// alors que la ligne des passions, lue sur le profil vivant, était à jour —
+// « Profil » au lieu de « Ben test 1 sur portable ». Le profil RÉEL mis en
+// cache (`distant: true`, app-02) fait foi ; la copie est réalignée sur lui.
+// Rend `true` si la conversation a changé (à sauvegarder).
+function _alignerIdentiteConv(c) {
+  if (!c || c.isGroup || !c.userId || typeof userById !== "function") return false;
+  var u = null;
+  try { u = userById(c.userId); } catch (e) { return false; }
+  if (!u || !u.distant) return false;
+  var change = false;
+  if (u.name && u.name !== "Passionné" && u.name !== c.userName) { c.userName = u.name; change = true; }
+  if (u.photoUrl && u.photoUrl !== c.userPhoto) { c.userPhoto = u.photoUrl; change = true; }
+  return change;
 }
 // Non-lus RÉELS : la démonstration ne fait pas clignoter une pastille.
 function _convNonLus() {
@@ -4202,6 +4221,10 @@ function renderMessages() {
     ? `<button class="btn ghost block" style="margin:10px auto;display:block;" onclick="_loadMoreConvs()">Voir les conversations plus anciennes (${total - shown})</button>`
     : "";
 
+  let _identiteAlignee = false;
+  visible.forEach(function (c) { if (_alignerIdentiteConv(c)) _identiteAlignee = true; });
+  if (_identiteAlignee) saveConversations();
+
   list.innerHTML = visible.map(c => {
     const seedUsersArr = state.seed.users || [];
     const u = seedUsersArr.find(x => x.id === c.userId) || { name: "Inconnu", avatar: "#7c3aed", profileEmoji: "🙂" };
@@ -4313,6 +4336,7 @@ async function openConversation(convId) {
   // pouvoir RECEVOIR un appel même app fermée (geste utilisateur = autorisé).
   if (!c.isGroup) { try { if (typeof requestCallNotifications === "function") requestCallNotifications(); } catch(e) {} }
   c._convPage = 1; // repart du bas (messages récents) à chaque ouverture
+  _alignerIdentiteConv(c); // pseudo changé depuis la création du fil
   const u = (state.seed.users || []).find(x => x.id === c.userId) || { name: "Inconnu", avatar: "#7c3aed", profileEmoji: "🙂" };
 
   var displayName, displayEmoji, displayAvatar;
