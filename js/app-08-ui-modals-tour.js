@@ -394,6 +394,50 @@ function entrerEnSessionExpiree() {
   return true;
 }
 
+// ======== COMPTE CONNU SANS SESSION NI ÉTAT LOCAL (2026-10-13) ========
+// Mesuré par Benjamin sur un ordinateur de bureau : l'ANCIENNE landing (le
+// pitch d'avant la première visite) s'affichait, coiffée du bandeau rouge
+// « Session expirée ». L'appareil portait l'uuid d'un compte connecté autrefois
+// (`passio_uid`) et un jeton SDK périmé, mais aucun état onboardé : la garde
+// `compteExistant()` de first-run refusait l'entrée invitée, et
+// `entrerEnSessionExpiree()` (qui exige `state.onboarded`) aussi — `boot()`
+// retombait sur `showLanding()`, un écran qu'aucun appareil ne devrait plus voir.
+//
+// Il n'y a ici RIEN de local à protéger (pas d'état onboardé) : on termine donc
+// la déconnexion que la session morte a commencée, exactement comme le bouton
+// « Se reconnecter » du bandeau (`doLogout("signin")`) — purge des clés de
+// compte et du jeton, intention « signin », rechargement. Le démarrage suivant
+// entre dans le fil invité avec l'écran de connexion par-dessus.
+// ⚠️ Pas quand `getSession()` a dépassé son délai (appelant) : la session peut
+// encore arriver, on ne jette pas un jeton peut-être valide. Ni pendant une
+// adoption de compte (`CLE_RESTAURATION_REQUISE`).
+// ⚠️ Ne peut pas boucler : la purge retire `passio_uid`, et une marque de
+// `sessionStorage` interdit une seconde tentative dans le même onglet.
+function sortirCompteSansSession() {
+  try {
+    if (!(window.PassioFirstRun && PassioFirstRun.actif())) return false;
+    if (state && state.onboarded) return false;
+    var u = localStorage.getItem("passio_uid");
+    if (!(typeof u === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(u))) return false;
+    // Adoption en cours (`adopterCompteConnecte` vient de purger et recharger) :
+    // ce compte-là est VIVANT, sa restauration attend seulement le réseau.
+    if (localStorage.getItem(CLE_RESTAURATION_REQUISE)) return false;
+    if (sessionStorage.getItem("passio_sortie_compte_v1")) return false;
+    sessionStorage.setItem("passio_sortie_compte_v1", "1");
+  } catch (e) { return false; }
+  try { if (window.tel && window.tel.action) window.tel.action("compte_sans_session_sortie", {}); } catch (e) {}
+  try { annoncerRechargement(); } catch (e) {}
+  try { purgerJetonAuthLocal(); } catch (e) {}
+  Promise.resolve()
+    .then(function () { return purgeAccountScopedData(); })
+    .catch(function () {})
+    .then(function () {
+      try { poserIntentionAuth("signin"); } catch (e) {}
+      try { location.reload(); } catch (e) {}
+    });
+  return true;
+}
+
 // Le bandeau vit entre la barre du haut et `#appMain`, en flux (l'app-shell
 // est une colonne flex) : il pousse le contenu, il ne le recouvre pas. Styles
 // en ligne, fonds OPAQUES (le contrôle de contraste ignore l'alpha) — et pas
@@ -2761,6 +2805,9 @@ async function boot() {
     try { if (typeof _showPasswordRecoveryUI === "function") _showPasswordRecoveryUI(); } catch(e) {}
   }
 
+  // Vrai quand `getSession()` n'a pas répondu à temps : la session peut encore
+  // arriver, rien ne doit alors être conclu sur son absence (voir plus bas).
+  let _sessionDelaiEcoule = false;
   // Vérifie si l'utilisateur est déjà connecté via Supabase Auth
   try {
     // ⚠️ BORNÉ (UXO-02, 2026-09-15). Avec un jeton persisté mais EXPIRÉ et
@@ -2773,7 +2820,7 @@ async function boot() {
     // TOKEN_REFRESHED et le gestionnaire plus bas RECHARGE — rien n'est perdu.
     const { data: { session } } = await Promise.race([
       supa.auth.getSession(),
-      new Promise(function (r) { setTimeout(function () { r({ data: { session: null } }); }, DELAI_SESSION_BOOT_MS); }),
+      new Promise(function (r) { setTimeout(function () { _sessionDelaiEcoule = true; r({ data: { session: null } }); }, DELAI_SESSION_BOOT_MS); }),
     ]);
     // ⚠️ SESSION SURVIVANTE + RECONNEXION DEMANDÉE = DÉCONNEXION INACHEVÉE.
     // `supa.auth.signOut()` est sous un `try` avale-tout et `ACCOUNT_SCOPED_KEYS`
@@ -3229,6 +3276,9 @@ async function boot() {
 
   // ── Compte présent, session absente (UXO-02) : le fil local, en lecture ──
   if (entrerEnSessionExpiree()) return;
+
+  // ── Compte connu, jamais onboardé ici, session perdue (2026-10-13) ──
+  if (!_sessionDelaiEcoule && sortirCompteSansSession()) return;
 
   showLanding();
 }

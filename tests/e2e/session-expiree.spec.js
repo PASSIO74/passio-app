@@ -170,7 +170,9 @@ test.describe("UXO-02 — session expirée : le fil local, en lecture", () => {
     const app08 = fs.readFileSync(path.join(__dirname, "..", "..", "js", "app-08-ui-modals-tour.js"), "utf8");
     const iEntree = app08.indexOf("if (entrerEnSessionExpiree()) return;");
     expect(iEntree, "boot() appelle entrerEnSessionExpiree").toBeGreaterThan(0);
-    expect(app08.slice(iEntree, iEntree + 90), "…juste avant showLanding()").toMatch(/entrerEnSessionExpiree\(\)\) return;\r?\n\r?\n  showLanding\(\);\r?\n\}/);
+    // Entre les deux, depuis le 2026-10-13, la seule sortie d'un compte connu SANS état local
+    // (`sortirCompteSansSession`, compte-sans-session-landing.spec.js) — jamais un état onboardé.
+    expect(app08.slice(iEntree, iEntree + 260), "…juste avant showLanding()").toMatch(/entrerEnSessionExpiree\(\)\) return;\r?\n\r?\n  \/\/[^\r\n]*\r?\n  if \(!_sessionDelaiEcoule && sortirCompteSansSession\(\)\) return;\r?\n\r?\n  showLanding\(\);\r?\n\}/);
     expect(app08, "l'attente de session au démarrage est bornée").toMatch(/Promise\.race\(\[\s*supa\.auth\.getSession\(\)/);
     expect(app08).toMatch(/session\?\.user && window\._sessionExpiree === true/);
     const app02 = fs.readFileSync(path.join(__dirname, "..", "..", "js", "app-02-state-utils.js"), "utf8");
