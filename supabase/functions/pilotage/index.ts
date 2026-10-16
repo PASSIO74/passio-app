@@ -263,9 +263,10 @@ async function lireSante(admin: Admin) {
   const prod = () => admin.from("telemetry_events").select("id", { count: "exact", head: true }).eq("env", "production").gte("received_at", depuis);
   const [evenements15, erreursJs15, api5xx15, telemetrieMinute] = await Promise.all([
     compter(prod()), compter(prod().eq("type", "error")), compter(prod().eq("type", "api").gte("http_status", 500)),
-    // Toutes origines confondues, comme le plafond global qu'elle mesure
-    // (`trg_debit_global`, 3 000 insertions/min) : au-delà, les lots sont REFUSÉS
-    // et chaque compteur ci-dessus sous-estime la réalité.
+    // Toutes origines confondues, comme le plafond qu'elle mesure (3 000
+    // lignes/min : `trg_debit_global` jusqu'au 2026-10-16, puis `trg_debit_lot`
+    // et ses trois réservoirs) : au-delà, les lots sont REFUSÉS et chaque
+    // compteur ci-dessus sous-estime la réalité.
     compter(admin.from("telemetry_events").select("id", { count: "exact", head: true }).gte("received_at", ilYa(60e3))),
   ]);
   const depuis24 = ilYa(24 * 3600e3);

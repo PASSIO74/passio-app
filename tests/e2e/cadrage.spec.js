@@ -53,14 +53,19 @@ test("un viewport qui rétrécit après le chargement est rattrapé", async ({ p
 
   // Simule l'apparition de la barre système / d'une barre d'URL après le boot.
   await page.setViewportSize({ width: 375, height: 640 });
-  await page.waitForTimeout(300);
 
-  const m = await page.evaluate(() => {
+  // Le rattrapage passe par requestAnimationFrame : sous la charge de la CI,
+  // WebKit le sert parfois au-delà de 300 ms. Attendre le RÉSULTAT (3 s au
+  // plus), pas une durée fixe — le déploiement du 13/10 a sauté sur cette
+  // seule horloge, le même arbre étant vert sur sa PR. Jamais rattrapé = rouge.
+  const mesure = () => page.evaluate(() => {
     const nav = Array.from(document.querySelectorAll(".app-nav"))
       .find((el) => !el.hidden && getComputedStyle(el).display !== "none");
     const r = nav.getBoundingClientRect();
     return { viewport: window.innerHeight, navBas: Math.round(r.bottom) };
   });
+  await expect.poll(async () => { const m = await mesure(); return m.navBas <= m.viewport; }, { timeout: 3000 }).toBe(true);
+  const m = await mesure();
   expect(m.viewport).toBe(640);
   expect(m.navBas).toBeLessThanOrEqual(m.viewport);
 });

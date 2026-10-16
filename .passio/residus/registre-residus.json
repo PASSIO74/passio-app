@@ -1,6 +1,6 @@
 {
   "format": "passio-residus/1",
-  "mis_a_jour_le": "2026-09-30",
+  "mis_a_jour_le": "2026-10-16",
   "_lecture": "Registre STRUCTURÉ UNIQUE des résidus (cinquième contre-revue Astra, mandat §9). Validé et évalué par scripts/audit-registre-residus.js (CI, job « Audits statiques ») ; lu par le pilotage (dashboard, domaine « résidus » du readiness). Les quatre états sont séparés : corrige, teste, deploye, relu_sur_cible — valeurs oui / non / partiel / non mesuré / sans objet. Un résidu n'est « ferme » qu'avec les quatre à oui. La condition_de_reexamen est évaluée par le contrôle contre le DÉPÔT (fichier présent, objet SQL déclaré par une migration, échéance, autre résidu fermé) ; « déclaré dans le dépôt » n'est pas « en service sur la cible ». Un résidu dont la condition devient satisfaite doit passer à traitable / planifie (avec le chantier) : sinon la CI est rouge. Les nuances acceptées par Astra sont listées à part et ne sont pas des défauts.",
   "residus": [
     {
@@ -26,14 +26,14 @@
       "proprietaire": "Claude (code) — Benjamin (planification sur la cible)",
       "origine": ["ASTRA-42", "RÉTENTION DU MARQUEUR"],
       "scenario_residuel": "Les lignes de compte_en_suppression (uid, statut, jeton, dates) sont conservées indéfiniment : purger_marqueurs_suppression(interval ≥ 30 jours) existe mais n'est appelée par aucune planification. Un uid supprimé reste lisible par service_role sans limite de temps.",
-      "raison_du_maintien": "La disponibilité de pg_cron sur la cible n'est pas mesurée ; une planification écrite sans elle serait un faux confort. La rétention minimale (durée des access tokens signés + opérations en vol) est documentée dans docs/EDGE_FUNCTION_DELETE_ACCOUNT.md ; l'absence de purge ne réduit aucune protection.",
+      "raison_du_maintien": "Levée le 2026-10-16 : pg_cron 1.6.4 est installé sur la cible (mesuré par le canal ①, cinq tâches en service). La planification est écrite (migration_purge_marqueurs_2026-10-16.sql, rétention 45 jours = 30 jours de sauvegardes + marge, docs/EDGE_FUNCTION_DELETE_ACCOUNT.md) ; il reste à l'appliquer sur la cible et à relire une exécution. L'absence de purge ne réduit aucune protection.",
       "dependances": ["RES-01", "disponibilité de pg_cron sur la cible (non mesurée)"],
-      "condition_de_reexamen": { "type": "une", "de": [ { "type": "date", "le": "2026-10-15" }, { "type": "objet_sql", "genre": "function", "nom": "public.planifier_purge_marqueurs" } ] },
+      "condition_de_reexamen": { "type": "manuel", "quand": "Benjamin applique migration_purge_marqueurs_2026-10-16.sql sur la cible (canal ③) ; Claude relit ensuite cron.job (tâche purge_marqueurs_suppression) et comptes_en_suppression (aucun « supprimee » de plus de 45 jours)." },
       "critere_de_fermeture": "Une planification (pg_cron ou tâche externe) appelle purger_marqueurs_suppression avec un intervalle ≥ 30 jours, et une exécution sur la cible est relue (marqueurs plus anciens que l'intervalle absents, plus récents présents).",
       "preuve_attendue": "Ligne cron.job (ou journal de la tâche externe) et relecture de compte_en_suppression avant/après.",
-      "prochaine_etape": "Mesurer pg_cron sur la cible (select * from pg_extension where extname='pg_cron') puis écrire la planification dans une migration dédiée.",
-      "etats": { "corrige": "partiel", "teste": "oui", "deploye": "non", "relu_sur_cible": "non mesuré" },
-      "reexamen": { "statut": "en_attente", "le": "2026-09-15", "note": "Fonction de purge bancée (#469) ; aucune planification." }
+      "prochaine_etape": "Contre-revue de Benjamin sur la PR qui porte migration_purge_marqueurs_2026-10-16.sql, application (canal ③), puis relecture sur la cible : ligne cron.job et marqueurs « supprimee » de plus de 45 jours absents.",
+      "etats": { "corrige": "oui", "teste": "oui", "deploye": "non", "relu_sur_cible": "non mesuré" },
+      "reexamen": { "statut": "planifie", "le": "2026-10-16", "chantier": "PR #605 — migrations/migration_purge_marqueurs_2026-10-16.sql (branche ccr-ee5a16e4-osm5eb)", "note": "Réexamen à l'échéance du 15/10 : pg_cron mesuré présent sur la cible ; public.planifier_purge_marqueurs() écrite et bancée (tests/sql/migration-purge-marqueurs.test.sh, 9 contrôles) ; en attente de la contre-revue et de l'application." }
     },
     {
       "id": "RES-03",
@@ -44,12 +44,12 @@
       "scenario_residuel": "Un compte dont une table dépasse le plafond reçoit un export marqué tronque:true pour cette table (dit dans le bilan, pas complet). Si la RPC export_compte_instantane est absente sur la cible, le repli par pages livre les données sans instantané et n'est jamais annoncé « complet » : la personne obtient un export explicitement partiel.",
       "raison_du_maintien": "Le plafond borne le temps d'une seule transaction STABLE ; la distribution réelle des volumes par compte n'est pas mesurée. Un plafond adaptatif sans mesure serait arbitraire.",
       "dependances": ["PR #470", "migration_export_instantane_2026-09-15.sql appliquée"],
-      "condition_de_reexamen": { "type": "date", "le": "2026-10-15" },
+      "condition_de_reexamen": { "type": "date", "le": "2027-01-15" },
       "critere_de_fermeture": "Mesure de la distribution des volumes par compte sur la cible (p99 par table) ; plafond fixé au-dessus du p99 ou export par lots ordonnés sous le même instantané (cursor + xmin) ; aucun compte réel tronqué.",
       "preuve_attendue": "Requête de mesure (service_role, comptages agrégés, aucune donnée de contenu) et bilan d'export synthétique au-delà du plafond.",
-      "prochaine_etape": "Mesure agrégée des volumes après mise en service de #470.",
+      "prochaine_etape": "Remesurer la distribution des volumes par compte à l'échéance, ou dès 1 000 comptes actifs ; si une table dépasse 1 000 lignes pour un compte, passer à l'export par lots ordonnés sous le même instantané.",
       "etats": { "corrige": "oui", "teste": "oui", "deploye": "oui", "relu_sur_cible": "oui" },
-      "reexamen": { "statut": "en_attente", "le": "2026-09-16", "note": "16/09 : export_compte_instantane appliqué puis CORRIGÉ (uuid, empreinte 733cc1d1) ; fumée sur la cible : complet:true, instantané présent. Le plafond 5 000 lignes/table reste (résidu conservé)." }
+      "reexamen": { "statut": "en_attente", "le": "2026-10-16", "note": "Réexamen à l'échéance du 15/10, mesuré sur la cible (canal ①, comptages agrégés, aucune donnée de contenu) : le compte le plus volumineux a 166 lignes dans comment_interactions, puis 93 notifications, 47 commentaires, 42 j'aime ; p99 = maximum à ce volume. Le plafond de 5 000 lignes par table est 30 fois au-dessus : aucun compte réel n'est tronqué. Le résidu reste ouvert, la marge fondant avec l'usage : prochaine mesure au 2027-01-15. (16/09 : export_compte_instantane appliqué et corrigé, fumée complet:true.)" }
     },
     {
       "id": "RES-04",

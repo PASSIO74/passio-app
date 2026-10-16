@@ -23,6 +23,7 @@
 - 🛡️ RÉGLAGES DISTANTS ET DÉLESTAGE — LA PRODUCTION RALENTIT AU LIEU DE TOMBER, ET LE PILOTAGE NE MENT PLUS À L'ÉCHELLE (2026-10-11)
 - ⏪ LA VEILLE RÉVEILLE LA SENTINELLE ET PROPOSE DE RETIRER UN MAUVAIS DÉPLOIEMENT (2026-10-12)
 - 🔎 CONTRE-REVUE DU 2026-10-13 — CE QUI DÉCIDE SE COMPTE EN BASE, SUR DES COMPTES ANCIENS
+- 🚰 TÉLÉMÉTRIE ÉQUITABLE — UN COMPTEUR PAR LOT, TROIS RÉSERVOIRS (2026-10-16)
 
 ---
 
@@ -365,3 +366,13 @@ Contre-revue adversariale de la migration et du lot ⏪ (cinq relecteurs, un ang
 - **Exploitation** : l'alerte de la veille part AVANT ce qui agit seul ; chaque étape est isolée ; Netlify et GitHub ont un délai de 10 s ; le plafond horaire de la veille est de 60 (à 20, vingt appels anonymes l'affamaient 40 min par heure) ; au plafond de télémétrie (90 % de 3 000/min), la veille peut monter un délestage mais ne le lève pas avant 2 h (`aveugle`, borné : un flot anonyme sature la télémétrie à volonté et ne doit pas tenir la production ralentie sans fin). La passe de 24 h de l'audience est isolée (à l'échelle elle dépasse le `statement_timeout` de 8 s : « non mesurée », sans emporter le reste). Une proposition dont ni l'issue ni la notification n'est partie efface sa marque et sera refaite.
 - **Verrous** : les tests qui lisent le source s'ancrent sur l'instruction (`indexOf` à -1 rendait vrai un verrou de position) ; 21 mutations tirées des constats (geste avant la porte, retrait appelé depuis la veille, marque après `/restore`, effacement oublié, plafond ignoré, marque mal orthographiée, texte client dans le titre ou la notification, une seule page, exclusion oubliée, pause sans auteur, alerte après l'autonomie…) rougissent toutes un verrou. `edge-functions.yml` lance maintenant `autonomie`, `reglages`, `rappels` et `activation` avant de déployer.
 - **Reste ouvert, assumé** : la veille reste appelable avec la clé anon (un secret posé par pg_cron demanderait Vault) ; un délestage peut encore être forcé par des centaines de comptes actifs (c'est alors la charge même) ; les seuils de délestage sont absolus, pas relatifs à l'audience — à revoir avec des mesures à l'échelle.
+
+## 🚰 TÉLÉMÉTRIE ÉQUITABLE — UN COMPTEUR PAR LOT, TROIS RÉSERVOIRS (2026-10-16)
+
+P1 du plan 100 000. Migration `migrations/migration_telemetrie_equitable_2026-10-16.sql` (PR critique, contre-revue), banc `tests/sql/migration-telemetrie-equitable.test.sh` (35).
+
+- **Le mur** : `trg_debit_global` (par LIGNE) recomptait toute la dernière minute à chaque insertion (60 000 lectures d'index pour un lot de 20 au plafond), et la clé anon étant publique, une boucle anonyme qui tenait le compteur à 3 000 faisait refuser la télémétrie de TOUT LE MONDE — y compris les comptes anciens sur lesquels la veille décide (délestage, réveil, proposition).
+- **Le remplaçant** : `trg_debit_lot`, AFTER INSERT **FOR EACH STATEMENT** (`referencing new table`) : un lot = une instruction PostgREST = un upsert dans `telemetrie_debit (minute, reservoir, source)`. Trois réservoirs selon `auth.uid()` (jamais une colonne du client) : `anciens` (confirmé, non anonyme, ≥ 7 jours, lu dans `auth.users`) 1 800/min, `neufs` 600, `anonymes` 600 ; 300/min par compte. Total : 3 000, comme avant — la base ne grossit pas plus vite. `service_role` n'est pas limité. Un lot refusé n'écrit RIEN (ni lignes, ni compteur).
+- ⚠️ **L'ancien déclencheur posait aussi `received_at = now()` (ASTRA-02).** Le retirer sans reporter cette garde laissait un client antidater ses lignes et sortir de toute fenêtre. La pose de l'heure vit désormais dans `telemetry_pose_identite`, avec l'identité ; le verdict lève si elle disparaît (mutant du banc). `limiter_debit_global` reste en place pour `client_errors`.
+- ⚠️ **Un banc SQL doit reproduire le décor de la production, pas un décor commode** : le premier jet du banc créait `id bigserial` — les droits par défaut de Supabase ne couvrent pas les séquences, l'insertion anonyme échouait pour une raison qui n'existe pas en production. `id uuid default gen_random_uuid()`, comme en base.
+- **Suite** : la jauge « Télémétrie reçue » mesure toujours le total par minute (vrai à 3 000) ; lire `telemetrie_debit` par réservoir, et ne déclarer la veille « aveugle » que quand le réservoir `anciens` sature, viendra avec l'application de la migration.
