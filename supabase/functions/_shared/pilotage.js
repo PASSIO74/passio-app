@@ -262,8 +262,9 @@ export const PLAFONDS = {
   emails: { libelle: "E-mails d'inscription (24 h)", plafond: 300, unite: "" },
   base: { libelle: "Base de données", plafond: 8 * 1024 ** 3, unite: "octets" },
   stockage: { libelle: "Stockage des médias", plafond: 100 * 1024 ** 3, unite: "octets" },
-  // Le plafond GLOBAL d'insertion de la télémétrie (`trg_debit_global`,
-  // migration_ouverture_publique_2026-09-11 : 3 000/min, toutes origines).
+  // Le plafond d'insertion de la télémétrie : 3 000/min en tout (`trg_debit_global`,
+  // ouverture publique 2026-09-11 ; puis `trg_debit_lot`, 2026-10-16 : anciens
+  // 1 800, neufs 600, anonymes 600 — un flot anonyme n'aveugle plus les comptes).
   // Au-delà, les lots sont refusés : le pilotage devient AVEUGLE au moment où
   // le trafic est le plus fort — c'est un mur d'observation, pas de service.
   telemetrie: { libelle: "Télémétrie reçue (par minute)", plafond: 3000, unite: "" },
