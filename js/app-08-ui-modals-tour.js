@@ -6265,7 +6265,7 @@ async function supaLoadOtherRead(convId) {
     if (c && maxAt) {
       c._otherReadAt = maxAt; c._otherRead = true;
       if (window._openedConvId === convId) {
-        try { var fp = document.getElementById("conv-fullpage"); renderConvFpThread(c, fp ? fp.getAttribute("data-display-name") : (c.userName||"")); } catch(e) {}
+        try { var fp = document.getElementById("conv-fullpage"); _rerendreFilSansArracher(c, fp ? fp.getAttribute("data-display-name") : (c.userName||"")); } catch(e) {}
       }
     }
   } catch(e) {}

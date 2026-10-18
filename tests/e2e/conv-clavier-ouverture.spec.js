@@ -119,4 +119,59 @@ test.describe("Ouverture d'une conversation — clavier et géométrie", () => {
     });
     expect(enBas, "la lecture de l'historique a été arrachée vers le bas").toBe(false);
   });
+
+  // La lecture serveur de la conversation part à l'ouverture et revient quand
+  // elle revient. Mesuré le 2026-10-18 (CI de #605 rouge trois fois de suite sur
+  // le test précédent) : quand elle revenait APRÈS que la personne avait remonté
+  // le fil, le re-rendu remettait le bas. Ici la lecture est retardée exprès —
+  // c'est un réseau mobile ordinaire.
+  async function lectureServeurLente(page, lignes) {
+    let servie = false;
+    await page.route(/\/rest\/v1\/conv_messages\?/, async (route) => {
+      if (route.request().method() !== "GET") return route.continue();
+      await new Promise((r) => setTimeout(r, 900));
+      servie = true;
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(lignes) });
+    });
+    return () => servie;
+  }
+
+  test("une lecture serveur qui revient tard ne ramène pas en bas une relecture de l'historique", async ({ page }) => {
+    await bootOnboarded(page);
+    const servie = await lectureServeurLente(page, []);
+    await semerConv(page, 40);
+    await page.locator(".msg-card").first().click();
+    await page.waitForTimeout(300);
+
+    await page.evaluate(() => {
+      const t = document.getElementById("convFpThread");
+      t.scrollTop = 0;
+      t.dispatchEvent(new Event("scroll"));
+    });
+    await expect.poll(servie, { timeout: 5000 }).toBe(true);
+    await page.waitForTimeout(300);
+
+    const haut = await page.evaluate(() => document.getElementById("convFpThread").scrollTop);
+    expect(haut, "la relecture de l'historique a été arrachée par la lecture serveur").toBeLessThan(80);
+  });
+
+  test("collé en bas, le message apporté par la lecture serveur s'affiche en bas", async ({ page }) => {
+    await bootOnboarded(page);
+    const servie = await lectureServeurLente(page, [{
+      id: "m_serveur", conv_id: "c_lea", from_id: "u_lea", content: "Arrivé du serveur",
+      created_at: new Date().toISOString(), profiles: null,
+    }]);
+    await semerConv(page, 40);
+    await page.locator(".msg-card").first().click();
+    await expect.poll(servie, { timeout: 5000 }).toBe(true);
+    await page.waitForTimeout(300);
+
+    const m = await page.evaluate(() => {
+      const t = document.getElementById("convFpThread");
+      const der = [...t.querySelectorAll(".conv-bubble-wrap")].pop();
+      return { enBas: t.scrollTop + t.clientHeight >= t.scrollHeight - 80, texte: der ? der.textContent : "" };
+    });
+    expect(m.texte, "le message du serveur n'est pas le dernier du fil").toContain("Arrivé du serveur");
+    expect(m.enBas, "collé en bas, on doit y rester quand le serveur apporte un message").toBe(true);
+  });
 });

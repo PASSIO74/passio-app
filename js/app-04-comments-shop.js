@@ -4427,7 +4427,9 @@ async function openConversation(convId) {
   // son contenu. (Le `will-change` permanent a été retiré de `styles.css` :
   // la transition promeut déjà la couche le temps de l'animation.)
   renderConvFpThread(c, displayName);
-  if (thread) thread.scrollTop = thread.scrollHeight;
+  // `_auBas` survit d'une conversation à l'autre (le nœud est réutilisé) :
+  // une conversation qu'on ouvre part du bas, quelle que soit la précédente.
+  if (thread) { thread.scrollTop = thread.scrollHeight; thread._auBas = true; }
 
   // ── Afficher pleine page ──
   if (fp) {
@@ -4537,8 +4539,7 @@ async function _fusionnerMessagesServeur(convId, displayName, thread) {
       // Re-render seulement si la fusion a réellement changé quelque chose
       // (nouveau message, statut, ou passage non-lu → lu des accusés).
       if (window._openedConvId === convId && (_sigOf(c2.messages) !== _sigBefore || !_readBefore)) {
-        renderConvFpThread(c2, displayName);
-        if (thread) thread.scrollTop = thread.scrollHeight;
+        _rerendreFilSansArracher(c2, displayName);
       }
     } catch(e) { console.warn("openConversation supabase load error:", e); }
   }
@@ -4832,6 +4833,19 @@ function _convFpRepinBottom() {
   if (!t || t._loadingOlder || t._loadingMore) return;
   if (t._auBas === false) return; // relecture en cours d'un historique : on ne touche à rien
   t.scrollTop = t.scrollHeight;
+}
+
+// Re-rendu du fil ouvert au RETOUR D'UNE LECTURE ASYNCHRONE (fusion serveur,
+// accusés de lecture). Mesuré le 2026-10-18 : une lecture `conv_messages` qui
+// revient 900 ms après l'ouverture ramenait en bas quelqu'un qui avait déjà
+// remonté l'historique — `renderConvFpThread` remet toujours le bas. Sur un
+// réseau mobile lent, c'est le cas ordinaire. On rend la position lue.
+function _rerendreFilSansArracher(c, displayName) {
+  var t = document.getElementById("convFpThread");
+  var relecture = !!t && t._auBas === false;
+  var haut = t ? t.scrollTop : 0;
+  renderConvFpThread(c, displayName);
+  if (t) t.scrollTop = relecture ? haut : t.scrollHeight;
 }
 
 (function _wireConvFpGeometry() {
