@@ -6,10 +6,18 @@
 #   ① la tâche `purge_marqueurs_suppression` est planifiée UNE fois, avec la
 #     rétention de 45 jours ;
 #   ② elle purge les marqueurs `supprimee` de plus de 45 jours, et rien d'autre
-#     (ni les récents, ni ceux qui ne sont pas `supprimee`) ;
-#   ③ la migration est rejouable (une seule tâche, jamais deux) ;
+#     (ni les récents, ni ceux qui ne sont pas `supprimee`) : 44 jours restent,
+#     46 partent — la rétention est bornée des deux côtés ; la commande est
+#     exactement celle attendue ;
+#   ③ la migration est rejouable (une seule tâche). LIMITE : le simulacre de
+#     cron.job est unique sur `jobname` et `cron.schedule` y fait un upsert,
+#     comme pg_cron 1.6 sur (jobname, username) — ce contrôle ne peut donc pas
+#     rougir si l'on retire le `cron.unschedule` ; il prouve que le rejeu ne
+#     lève pas. La fonction purgée est une copie fidèle de
+#     migration_barriere_suppression_2026-09-15.sql (corps de la purge) ;
 #   ④ ni anon ni authenticated ne replanifient ;
-#   ⑤ un mutant qui oublie la planification fait LEVER le verdict.
+#   ⑤ les mutants font LEVER le verdict par son message : planification
+#     oubliée, tâche désactivée, fonction purgée absente.
 # pg_cron n'existe pas dans un PostgreSQL nu : un schéma `cron` minimal le
 # remplace (job, schedule, unschedule) — la commande planifiée est exécutée
 # telle quelle par le banc, comme pg_cron le ferait.
@@ -49,7 +57,7 @@ create role anon nologin; create role authenticated nologin; create role service
 grant usage on schema public to anon, authenticated, service_role;
 alter default privileges in schema public grant execute on functions to anon, authenticated, service_role;
 create schema cron;
-create table cron.job (jobid bigserial primary key, jobname text unique, schedule text, command text);
+create table cron.job (jobid bigserial primary key, jobname text unique, schedule text, command text, active boolean not null default true);
 create function cron.schedule(p_nom text, p_horaire text, p_commande text) returns bigint language sql as \$\$
   insert into cron.job(jobname, schedule, command) values (p_nom, p_horaire, p_commande)
   on conflict (jobname) do update set schedule = excluded.schedule, command = excluded.command returning jobid \$\$;
@@ -71,16 +79,18 @@ verif() { if [ "$2" = "$3" ]; then echo "  ✅ $1"; ok=$((ok+1)); else echo "  �
 FICHIER "$MIGRATION" >/dev/null
 verif "① une tâche planifiée" "$(Q "select count(*) from cron.job where jobname = 'purge_marqueurs_suppression'")" "1"
 verif "① chaque jour à 03:41 UTC" "$(Q "select schedule from cron.job where jobname = 'purge_marqueurs_suppression'")" "41 3 * * *"
+verif "① la commande exacte" "$(Q "select command from cron.job where jobname = 'purge_marqueurs_suppression'")" "select public.purger_marqueurs_suppression(interval '45 days')"
 
 Q "insert into public.comptes_en_suppression values
    ('vieux', 'supprimee', now() - interval '60 days'),
    ('recent', 'supprimee', now() - interval '10 days'),
    ('limite', 'supprimee', now() - interval '44 days'),
+   ('passee', 'supprimee', now() - interval '46 days'),
    ('en_cours', 'en_cours', now() - interval '90 days')" >/dev/null
 # pg_cron exécuterait la commande telle quelle : le banc fait de même.
 CMD="$(Q "select command from cron.job where jobname = 'purge_marqueurs_suppression'")"
 Q "$CMD" >/dev/null
-verif "② la commande planifiée purge le seul marqueur supprimé de plus de 45 jours" "$(Q "select string_agg(uid, ',' order by uid) from public.comptes_en_suppression")" "en_cours,limite,recent"
+verif "② la commande planifiée purge les marqueurs supprimés de plus de 45 jours (46 et 60), garde 44 et 10" "$(Q "select string_agg(uid, ',' order by uid) from public.comptes_en_suppression")" "en_cours,limite,recent"
 
 FICHIER "$MIGRATION" >/dev/null
 verif "③ rejouable : toujours UNE tâche" "$(Q "select count(*) from cron.job where jobname = 'purge_marqueurs_suppression'")" "1"
@@ -95,6 +105,16 @@ MUTANT="$BASE/mutant.sql"
 grep -v "^select public.planifier_purge_marqueurs() as planification;" "$MIGRATION" > "$MUTANT"; chmod a+r "$MUTANT"
 if FICHIER "$MUTANT" >/dev/null 2>&1; then verif "⑤ planification oubliée : verdict" "appliqué" "levé"; else verif "⑤ planification oubliée : verdict" "levé" "levé"; fi
 verif "⑤ rien d'appliqué" "$(Q "select count(*) from pg_proc where proname = 'planifier_purge_marqueurs'")" "0"
+# tâche désactivée : le simulacre rend la tâche inactive dès sa création
+Q "alter table cron.job alter column active set default false" >/dev/null
+sortie="$(FICHIER "$MIGRATION" 2>&1 || true)"
+verif "⑤ tâche désactivée : le verdict lève par son message" "$(printf '%s' "$sortie" | grep -c 'ECHEC : la tâche purge_marqueurs_suppression est désactivée')" "1"
+Q "alter table cron.job alter column active set default true; delete from cron.job" >/dev/null
+# fonction purgée absente (barrière non appliquée sur la cible)
+Q "alter function public.purger_marqueurs_suppression(interval) rename to purger_marqueurs_suppression_cachee" >/dev/null
+sortie="$(FICHIER "$MIGRATION" 2>&1 || true)"
+verif "⑤ fonction purgée absente : le verdict lève par son message" "$(printf '%s' "$sortie" | grep -c 'ECHEC : purger_marqueurs_suppression(interval) absente')" "1"
+verif "⑤ … rien de planifié" "$(Q "select count(*) from cron.job")" "0"
 
 echo "Banc purge-marqueurs : $ok OK, $ko échec(s)"
 [ "$ko" -eq 0 ]

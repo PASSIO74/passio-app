@@ -27,13 +27,13 @@
       "origine": ["ASTRA-42", "RÉTENTION DU MARQUEUR"],
       "scenario_residuel": "Les lignes de compte_en_suppression (uid, statut, jeton, dates) sont conservées indéfiniment : purger_marqueurs_suppression(interval ≥ 30 jours) existe mais n'est appelée par aucune planification. Un uid supprimé reste lisible par service_role sans limite de temps.",
       "raison_du_maintien": "Levée le 2026-10-16 : pg_cron 1.6.4 est installé sur la cible (mesuré par le canal ①, cinq tâches en service). La planification est écrite (migration_purge_marqueurs_2026-10-16.sql, rétention 45 jours = 30 jours de sauvegardes + marge, docs/EDGE_FUNCTION_DELETE_ACCOUNT.md) ; il reste à l'appliquer sur la cible et à relire une exécution. L'absence de purge ne réduit aucune protection.",
-      "dependances": ["RES-01", "disponibilité de pg_cron sur la cible (non mesurée)"],
+      "dependances": ["RES-01", "pg_cron 1.6.4 sur la cible (mesuré le 2026-10-16, canal ①)"],
       "condition_de_reexamen": { "type": "manuel", "quand": "Benjamin applique migration_purge_marqueurs_2026-10-16.sql sur la cible (canal ③) ; Claude relit ensuite cron.job (tâche purge_marqueurs_suppression) et comptes_en_suppression (aucun « supprimee » de plus de 45 jours)." },
       "critere_de_fermeture": "Une planification (pg_cron ou tâche externe) appelle purger_marqueurs_suppression avec un intervalle ≥ 30 jours, et une exécution sur la cible est relue (marqueurs plus anciens que l'intervalle absents, plus récents présents).",
       "preuve_attendue": "Ligne cron.job (ou journal de la tâche externe) et relecture de compte_en_suppression avant/après.",
       "prochaine_etape": "Contre-revue de Benjamin sur la PR qui porte migration_purge_marqueurs_2026-10-16.sql, application (canal ③), puis relecture sur la cible : ligne cron.job et marqueurs « supprimee » de plus de 45 jours absents.",
       "etats": { "corrige": "oui", "teste": "oui", "deploye": "non", "relu_sur_cible": "non mesuré" },
-      "reexamen": { "statut": "planifie", "le": "2026-10-16", "chantier": "PR #605 — migrations/migration_purge_marqueurs_2026-10-16.sql (branche ccr-ee5a16e4-osm5eb)", "note": "Réexamen à l'échéance du 15/10 : pg_cron mesuré présent sur la cible ; public.planifier_purge_marqueurs() écrite et bancée (tests/sql/migration-purge-marqueurs.test.sh, 9 contrôles) ; en attente de la contre-revue et de l'application." }
+      "reexamen": { "statut": "planifie", "le": "2026-10-16", "chantier": "PR #605 — migrations/migration_purge_marqueurs_2026-10-16.sql (branche ccr-ee5a16e4-osm5eb)", "note": "Réexamen à l'échéance du 15/10 : pg_cron mesuré présent sur la cible ; public.planifier_purge_marqueurs() écrite et bancée (tests/sql/migration-purge-marqueurs.test.sh, 13 contrôles ; verdict : fonction purgée présente, tâche unique, active, commande exacte) ; en attente de la contre-revue et de l'application." }
     },
     {
       "id": "RES-03",

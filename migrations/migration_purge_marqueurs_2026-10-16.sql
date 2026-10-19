@@ -46,11 +46,19 @@ select public.planifier_purge_marqueurs() as planification;
 -- ── VERDICT ─────────────────────────────────────────────────────────────────
 do $v$
 begin
+  -- pg_cron ne valide pas la commande à la planification : une fonction absente
+  -- échouerait chaque nuit dans cron.job_run_details, que rien ne lit.
+  if to_regprocedure('public.purger_marqueurs_suppression(interval)') is null then
+    raise exception 'ECHEC : purger_marqueurs_suppression(interval) absente — migration_barriere_suppression non appliquée ?';
+  end if;
   if (select count(*) from cron.job where jobname = 'purge_marqueurs_suppression') <> 1 then
     raise exception 'ECHEC : la tâche purge_marqueurs_suppression n''est pas planifiée une fois';
   end if;
   if (select command from cron.job where jobname = 'purge_marqueurs_suppression') not like '%purger_marqueurs_suppression(interval ''45 days'')%' then
     raise exception 'ECHEC : la tâche n''appelle pas purger_marqueurs_suppression(45 jours)';
+  end if;
+  if not (select j.active from cron.job j where j.jobname = 'purge_marqueurs_suppression') then
+    raise exception 'ECHEC : la tâche purge_marqueurs_suppression est désactivée';
   end if;
   if has_function_privilege('anon', 'public.planifier_purge_marqueurs()', 'EXECUTE')
      or has_function_privilege('authenticated', 'public.planifier_purge_marqueurs()', 'EXECUTE') then
