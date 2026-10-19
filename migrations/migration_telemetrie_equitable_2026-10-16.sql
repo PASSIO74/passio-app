@@ -48,8 +48,10 @@
 -- La clé service_role (fonctions Edge, scripts) n'est pas limitée.
 --
 -- Signal de la Sentinelle (`comptes_echecs_30min`) : il compte les comptes de
--- plus de 24 h, donc aussi ceux de 1 à 7 jours, qui passent par `neufs`. Un
--- flot de comptes neufs peut lui cacher cette cohorte-là, jamais les anciens.
+-- plus de 24 h, donc aussi ceux de 1 à 7 jours, qui passent par `neufs` ; la
+-- charge (`comptes_connectes`) compte aussi les neufs. Un réservoir `neufs`
+-- saturé les fait sous-compter (écrit dans pilotage_audience), jamais les
+-- anciens.
 --
 -- ⚠️ L'ANCIEN DÉCLENCHEUR IMPOSAIT AUSSI L'HEURE (ASTRA-02) : `received_at`
 -- a un DEFAULT now(), pas une valeur forcée, et un client qui l'antidate sort

@@ -32,7 +32,7 @@ import {
   erreursFrequentes, detailsErreurs, jauges, resumerIssue, resumerRun, verdict, decideAlerte,
   aReparer, titreReparation, corpsReparation, estReparation, REPARATIONS_MAX, compterAudience,
   activation, compteMesurable, dateUtc, GESTES_ACTIVATION, COHORTE_ACTIVATION_JOURS,
-  PLAFONDS, bornesJours, estObjetAbsent, MAX_LIGNES_POSTGREST, COMPTE_PILOTE, estAveugle,
+  PLAFONDS, bornesJours, estObjetAbsent, MAX_LIGNES_POSTGREST, COMPTE_PILOTE, estAveugle, mesureAveugle,
 } from "../_shared/pilotage.js";
 import { envoyerRappels, MARQUE_UID } from "../_shared/rappels.js";
 import {
@@ -112,7 +112,9 @@ Deno.serve(async (req) => {
 async function veille(admin: Admin) {
   const plafond = await verifierPlafondEnBase(admin, "systeme:pilotage-veille", "pilotage-veille", { parMinute: 1, parHeure: 60 });
   if (!plafond.ok) return json({ ok: true, ignore: "trop tôt" });
-  const [sante, signalements, github, dispo, rap] = await Promise.allSettled([lireSante(admin), lireSignalements(admin), lireGithub(), sonder(), rappels(admin)]);
+  // Les signaux (pilotage_audience, 5 min) sont lus AVEC le reste : l'alerte
+  // en a besoin (veille aveugle) et ne les attend pas plus que les autres.
+  const [sante, signalements, github, dispo, rap, aud] = await Promise.allSettled([lireSante(admin), lireSignalements(admin), lireGithub(), sonder(), rappels(admin), audience(admin, 300)]);
   const val = <T>(r: PromiseSettledResult<T>) => (r.status === "fulfilled" ? r.value : null);
   // Un rappel en panne ne doit ni casser la veille ni passer inaperçu : il
   // laisse une trace mesurable (analytics_events, user_id système).
@@ -120,7 +122,8 @@ async function veille(admin: Admin) {
     const m = String((rap.reason && (rap.reason as { message?: string }).message) || rap.reason).slice(0, 200);
     try { await admin.from("analytics_events").insert({ user_id: MARQUE_UID, event: "rappels_echec", properties: { message: m } }); } catch { /* */ }
   }
-  const e = { sante: val(sante), signalements: val(signalements), github: val(github) };
+  const signaux: Audience | null = val(aud);
+  const e = { sante: val(sante), signalements: val(signalements), github: val(github), aveugle: signaux && signaux.exact ? mesureAveugle(signaux) : null };
   // L'ALERTE D'ABORD : rien de ce qui suit (Netlify, GitHub, base) ne doit
   // pouvoir la retarder ni la faire taire.
   const v = verdict(e);
@@ -139,11 +142,9 @@ async function veille(admin: Admin) {
   }
   // Puis ce qui agit seul (délestage 2026-10-11 ; réveil et proposition
   // 2026-10-12, _shared/autonomie.js). Chaque étape est isolée : une panne de
-  // l'une ne casse ni les autres ni la veille. Les signaux sont lus UNE fois
-  // (pilotage_audience, fenêtre de 5 min) ; absents (migration pas encore
-  // appliquée), rien ne bouge.
-  let signaux: Audience | null = null;
-  try { signaux = await audience(admin, 300); } catch { /* signaux absents : chaque étape le sait */ }
+  // l'une ne casse ni les autres ni la veille. Les signaux ont été lus UNE fois,
+  // plus haut (pilotage_audience, fenêtre de 5 min) ; absents (migration pas
+  // encore appliquée), rien ne bouge.
   const etape = async (f: () => Promise<Record<string, unknown>>) => {
     try { return await f(); } catch (err) { return { erreur: String((err as { message?: string })?.message || err).slice(0, 120) }; }
   };
@@ -244,6 +245,8 @@ async function etat(admin: Admin) {
   // Ce qui agit seul, et pourquoi c'est éteint quand ça l'est (_shared/autonomie.js).
   out.autonomie = { reveilSentinelle: !!JETON_GH, retour: { mode: MODE_RETOUR, jeton: !!JETON_NETLIFY, proposition: await lireProposition(admin) } };
   out.gestesGithub = !!JETON_GH;
+  const maintenant = (out.utilisateurs as { maintenant?: Audience | null } | null)?.maintenant || null;
+  out.aveugle = maintenant && maintenant.exact ? mesureAveugle(maintenant) : null;
   const v = verdict(out as Parameters<typeof verdict>[0]);
   const dispo = out.disponibilite as { repond?: boolean } | null;
   if (dispo && dispo.repond === false) { v.couleur = "rouge"; v.titre = "Problème en cours"; v.raisons = ["le site ne répond pas", ...v.raisons.filter((x: string) => !/^Aucune/.test(x))]; }
@@ -702,7 +705,11 @@ async function lireCapacite(admin: Admin) {
   // donc « appareils de comptes actifs sur 5 min » approche le compteur Supabase.
   const aud = await audience(admin, 300);
   const connexions = aud.connexions;
-  const telemetrie = await compter(admin.from("telemetry_events").select("id", { count: "exact", head: true }).gte("received_at", ilYa(60e3)));
+  // La jauge de télémétrie montre le mur qui AVEUGLE la veille quand
+  // pilotage_audience le rend (réservoir des anciens sous trg_debit_lot) ;
+  // sinon le total reçu sur 60 s contre 3 000, comme avant.
+  const mur = aud.exact ? mesureAveugle(aud) : null;
+  const telemetrie = mur ? mur.mesure : await compter(admin.from("telemetry_events").select("id", { count: "exact", head: true }).gte("received_at", ilYa(60e3)));
   // E-mails : une inscription = un e-mail de confirmation (renvois non comptés).
   const emails = await compter(admin.from("profiles").select("id", { count: "exact", head: true }).gte("created_at", ilYa(864e5)));
   let base: number | null = null, stockage: number | null = null;
@@ -711,7 +718,7 @@ async function lireCapacite(admin: Admin) {
     base = Number(m.base_octets) || null;
     stockage = Object.values((m.stockage || {}) as Record<string, number>).reduce((a, b) => a + Number(b || 0), 0);
   }
-  return { jauges: jauges({ connexions, emails, base, stockage, telemetrie }), mesuresServeur: !error, connexionsExactes: aud.exact, connexionsTronquees: aud.tronque };
+  return { jauges: jauges({ connexions, emails, base, stockage, telemetrie, telemetriePlafond: mur ? mur.plafond : null }), mesuresServeur: !error, connexionsExactes: aud.exact, connexionsTronquees: aud.tronque };
 }
 
 async function lireDisponibilite(admin: Admin) {

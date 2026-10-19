@@ -91,8 +91,14 @@ export function verdict(e) {
   else if (s.api5xx15 > 0) orange.push(`${s.api5xx15} panne(s) serveur en 15 min`);
   if (runs.deploy && runs.deploy.conclusion === "failure") rouge.push("dernier déploiement en échec");
   // Télémétrie au plafond (2026-10-11) : les compteurs ci-dessus SOUS-ESTIMENT,
-  // un vert ne prouverait plus rien — on le dit au lieu de le taire.
-  if (s.telemetrieMinute >= 0.9 * PLAFONDS.telemetrie.plafond) orange.push(`télémétrie au plafond (${s.telemetrieMinute}/min) : les chiffres sous-estiment`);
+  // un vert ne prouverait plus rien — on le dit au lieu de le taire. Le mur
+  // est celui que mesure la veille (`e.aveugle`, mesureAveugle) : sous
+  // `trg_debit_lot`, le réservoir des comptes anciens — juger le total contre
+  // 3 000 taisait l'aveuglement (contre-revue du 2026-10-19). Sans cette mesure
+  // (pilotage_audience absente), le total contre 3 000 comme avant.
+  const av = e && e.aveugle;
+  if (av && av.aveugle) orange.push(`veille aveugle : la télémétrie qui décide est au plafond (${av.mesure}/${av.plafond} lignes/min) — délestage figé, réveil et retour arrière muets`);
+  else if (!av && s.telemetrieMinute >= 0.9 * PLAFONDS.telemetrie.plafond) orange.push(`télémétrie au plafond (${s.telemetrieMinute}/min) : les chiffres sous-estiment`);
   const humain = issues.filter((i) => !i.pr && i.labels.includes("humain")).length;
   if (humain) rouge.push(`${humain} sujet(s) qui t'attendent`);
   const enquetes = issues.filter((i) => !i.pr && i.labels.includes("sentinelle")).length;
@@ -280,16 +286,21 @@ export const PLAFONDS = {
  * 2026-10-16). Sans ces champs, on retombe sur le total et `PLAFONDS`.
  */
 export const SATURATION_AVEUGLE = 0.9;
-export function estAveugle(a) {
-  if (!a) return false;
+export function mesureAveugle(a) {
+  if (!a) return null;
   const mesure = a.saturationAveugle ?? a.saturation;
-  const mur = Number(a.saturationPlafond) > 0 ? Number(a.saturationPlafond) : PLAFONDS.telemetrie.plafond;
-  return mesure != null && Number.isFinite(Number(mesure)) && Number(mesure) >= SATURATION_AVEUGLE * mur;
+  if (mesure == null || !Number.isFinite(Number(mesure))) return null;
+  const plafond = Number(a.saturationPlafond) > 0 ? Number(a.saturationPlafond) : PLAFONDS.telemetrie.plafond;
+  return { mesure: Number(mesure), plafond, aveugle: Number(mesure) >= SATURATION_AVEUGLE * plafond };
+}
+export function estAveugle(a) {
+  const m = mesureAveugle(a);
+  return !!(m && m.aveugle);
 }
 export function jauges(m) {
   const out = [];
-  const ajoute = (cle, valeur, estimation) => {
-    const p = PLAFONDS[cle];
+  const ajoute = (cle, valeur, estimation, mur) => {
+    const p = mur ? { ...PLAFONDS[cle], ...mur } : PLAFONDS[cle];
     if (valeur == null || !Number.isFinite(Number(valeur))) { out.push({ cle, libelle: p.libelle, valeur: null, plafond: p.plafond, unite: p.unite, pct: null, couleur: "gris", estimation }); return; }
     const pct = Math.round((Number(valeur) / p.plafond) * 1000) / 10;
     out.push({ cle, libelle: p.libelle, valeur: Number(valeur), plafond: p.plafond, unite: p.unite, pct, couleur: pct >= 90 ? "rouge" : pct >= 70 ? "orange" : "vert", estimation });
@@ -298,7 +309,13 @@ export function jauges(m) {
   ajoute("emails", m && m.emails, true);
   ajoute("base", m && m.base, false);
   ajoute("stockage", m && m.stockage, false);
-  ajoute("telemetrie", m && m.telemetrie, false);
+  // Le mur qui aveugle la veille, quand pilotage_audience le rend (pire minute
+  // des 5 dernières) : le réservoir des anciens sous trg_debit_lot, le total
+  // sinon. Sans lui, le total reçu sur 60 s contre PLAFONDS.
+  const murTel = m && Number(m.telemetriePlafond) > 0
+    ? { plafond: Number(m.telemetriePlafond), libelle: Number(m.telemetriePlafond) === PLAFONDS.telemetrie.plafond ? "Télémétrie reçue (pire minute, 5 min)" : "Télémétrie des comptes anciens (pire minute, 5 min)" }
+    : null;
+  ajoute("telemetrie", m && m.telemetrie, false, murTel);
   return out;
 }
 

@@ -8,13 +8,15 @@
 #   ② `received_at` reste posé par le SERVEUR (ASTRA-02) : un client qui
 #     antidate sa ligne n'en sort pas la fenêtre ;
 #   ③ un lot est compté UNE fois, à sa taille ; plus de 120 lignes par
-#     instruction = refus PT413 ;
+#     instruction = refus PT413 ; ce compteur est par transaction (deux
+#     requêtes sur une même connexion ne s'additionnent pas) ;
 #   ④ réservoirs : les anciens ont 1 800 à eux seuls ; neufs et anonymes
 #     partagent 2 400, 1 600 au plus chacun (l'un ne prive jamais l'autre de
 #     800) ; 150 lignes/min par compte ;
 #   ⑤ un réservoir déjà plein refuse AVANT d'écrire (trg_debit_avant), en
-#     PT429 (HTTP 429) ; un lot qui le fait déborder est annulé en entier,
-#     lignes et compteur ;
+#     PT429 (HTTP 429) ; un lot qui fait déborder un réservoir, le partage
+#     neufs + anonymes ou le plafond d'un compte est annulé en entier, lignes
+#     et compteurs (trg_debit_lot) ;
 #   ⑥ un compte non confirmé ou anonyme n'est pas « ancien » ;
 #   ⑦ service_role n'est pas limité ;
 #   ⑧ ni anon ni authenticated ne lisent ou n'écrivent les compteurs, ni
@@ -182,6 +184,27 @@ verif "⑤ … n'écrit aucune ligne" "$(Q "select count(*) from public.telemetr
 verif "⑤ … et ne gonfle pas le compteur" "$(compteur anciens '*')" "1790"
 passe "⑤ un lot de 10 tient encore (1 800)" authenticated "${O}13" "$(lignes 10)"
 verif "⑤ … compté au réservoir et au compte" "$(compteur anciens '*')/$(compteur anciens "u:${O}13")" "1800/10"
+
+# ⑤ les trois autres débordements, refusés APRÈS décompte (le pré-contrôle laisse passer :
+#    le compteur est sous le plafond) — sans eux, retirer un contrôle de trg_debit_lot
+#    laissait le banc vert (contre-revue du 2026-10-19)
+poser "$(cpt neufs '*' 1590)"
+refus_par "⑤ neufs à 1 590 : un lot de 20 déborde le réservoir des neufs" authenticated "${N}09" "$(lignes 20)" PT429 telemetrie_debit_lot
+verif "⑤ … compteur des neufs inchangé" "$(compteur neufs '*')" "1590"
+poser "$(cpt neufs '*' 1000); $(cpt anonymes '*' 1390)"
+refus_par "⑤ neufs 1 000 + anonymes 1 390 : un lot de 20 déborde le partage (2 400)" authenticated "${N}09" "$(lignes 20)" PT429 telemetrie_debit_lot
+verif "⑤ … compteur des neufs inchangé" "$(compteur neufs '*')" "1000"
+poser "$(cpt anciens "u:${O}05" 140); $(cpt anciens '*' 140)"
+refus_par "⑤ compte à 140 : un lot de 20 déborde ses 150" authenticated "${O}05" "$(lignes 20)" PT429 telemetrie_debit_lot
+verif "⑤ … compteurs du compte et du réservoir inchangés" "$(compteur anciens "u:${O}05")/$(compteur anciens '*')" "140/140"
+
+# ③ le compteur de lot est par TRANSACTION : PostgREST réutilise ses connexions, deux
+#    requêtes de 70 sur la même connexion passent (un compteur de session les refuserait)
+poser ""
+T="begin; set local role anon; set local request.jwt.claim.role = 'anon'; set local request.jwt.claim.sub = ''; $(lignes 70); commit;"
+AVANT="$(Q "select count(*) from public.telemetry_events")"
+psql -h "$BASE" -p "$PORT" -U postgres -d "$DB" -tA -q -v ON_ERROR_STOP=1 -c "$T" -c "$T" >/dev/null 2>&1 || true
+verif "③ deux requêtes de 70 sur une même connexion : 140 lignes écrites" "$(( $(Q "select count(*) from public.telemetry_events") - AVANT ))" "140"
 
 # ⑦ service_role n'est pas limité, ni en débit ni en taille
 passe "⑦ service_role écrit 150 lignes d'un coup, réservoirs pleins" service_role "" "$(lignes 150)"

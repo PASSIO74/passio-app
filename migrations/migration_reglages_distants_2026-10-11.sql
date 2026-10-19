@@ -34,9 +34,20 @@
 --      AVEUGLE, mesuré contre le mur qui coupe vraiment ses signaux. Sous
 --      `trg_debit_global` (3 000/min, toutes origines), c'est le total ; sous
 --      `trg_debit_lot` (migration_telemetrie_equitable_2026-10-16), c'est le
---      réservoir des comptes anciens (1 800/min, `telemetrie_plafond`) — le
---      seul que lisent les signaux qui agissent, et que personne d'autre ne
---      remplit. Au-delà de 90 %, la veille ne lève plus une protection.
+--      réservoir des comptes anciens (1 800/min, `telemetrie_plafond`), que
+--      personne d'autre ne remplit et que lisent les pannes du délestage
+--      (`comptes_5xx_15min`) ; les deux murs à la fois (migration d'avant
+--      rejouée) : le pire des deux. Au-delà de 90 %, la veille ne lève plus
+--      une protection.
+--      ⚠️ CE QUE CE SIGNAL NE COUVRE PAS (contre-revue du 2026-10-19) :
+--      `comptes_connectes` compte AUSSI les comptes neufs, et le réveil
+--      (`comptes_echecs_30min`) les comptes de 1 à 7 jours — qui passent par le
+--      réservoir `neufs`. Quand il sature, ces deux signaux sous-comptent :
+--      la descente du délestage sur les connexions peut alors être trop tôt.
+--      Choix assumé : bloquer la descente sur ce réservoir donnerait à six
+--      comptes neufs et à la clé anon le levier de figer la production deux
+--      heures ; il faudrait ≥ 350 comptes actifs, surtout neufs, pour qu'une
+--      descente soit fausse (mesuré : 2 comptes distincts au plus sur 5 min).
 --    Sur 24 h, ces signaux valent NULL : personne ne les lit, et chaque passe
 --    sur un jour entier coûte (statement_timeout de 8 s à l'échelle).
 --
@@ -200,6 +211,14 @@ begin
      where d.reservoir = 'anciens' and d.source = '*'
        and d.minute >= date_trunc('minute', now() - interval '5 minutes');
     v_plafond := public.telemetrie_plafond('anciens');
+    -- Les DEUX murs à la fois (une migration d'avant rejouée) : le pire des deux.
+    if exists (select 1 from pg_trigger g
+                where g.tgrelid = 'public.telemetry_events'::regclass
+                  and g.tgname = 'trg_debit_global' and not g.tgisinternal and g.tgenabled = 'O')
+       and v_sat::numeric / 3000 > v_aveugle::numeric / v_plafond then
+      v_aveugle := v_sat;
+      v_plafond := 3000;
+    end if;
   else
     v_aveugle := v_sat;
     v_plafond := 3000;

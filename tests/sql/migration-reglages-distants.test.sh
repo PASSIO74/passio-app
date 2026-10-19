@@ -184,6 +184,13 @@ Q "create table public.telemetrie_debit (minute timestamptz, reservoir text, sou
      (date_trunc('minute', now()), 'anciens', 'u:eeeeeeee-0000-4000-8000-000000000099', 2000)" >/dev/null
 verif "⑦ aveugle sous trg_debit_lot : le pire des anciens (source *) des 5 dernières minutes, contre 1 800" \
   "$(R service_role "select (a->>'saturation_aveugle') || '/' || (a->>'saturation_plafond') from (select public.pilotage_audience(300) a) x")" "1700/1800"
+# Les deux murs à la fois (migration du 11/09 rejouée après celle du 16/10) : le pire des deux.
+Q "create trigger trg_debit_global after insert on public.telemetry_events for each statement execute function public.banc_rien();
+   insert into public.telemetry_events(received_at) select date_trunc('minute', now()) - interval '3 minutes' + interval '1 second' from generate_series(1, 2950)" >/dev/null
+verif "⑦ deux murs actifs : le pire des deux (total 2 950/3 000 > anciens 1 700/1 800)" \
+  "$(R service_role "select ((a->>'saturation_aveugle')::int >= 2950)::text || '/' || (a->>'saturation_plafond') from (select public.pilotage_audience(300) a) x")" "true/3000"
+Q "drop trigger trg_debit_global on public.telemetry_events" >/dev/null
+verif "⑦ le mur global retiré : de nouveau les anciens" "$(R service_role "select (a->>'saturation_aveugle') || '/' || (a->>'saturation_plafond') from (select public.pilotage_audience(300) a) x")" "1700/1800"
 Q "alter table public.telemetry_events disable trigger trg_debit_lot" >/dev/null
 verif "⑦ trg_debit_lot désactivé : retour au plafond global" "$(R service_role "select public.pilotage_audience(300)->>'saturation_plafond'")" "3000"
 Q "drop trigger trg_debit_lot on public.telemetry_events; drop function public.banc_rien(); drop function public.telemetrie_plafond(text); drop table public.telemetrie_debit" >/dev/null

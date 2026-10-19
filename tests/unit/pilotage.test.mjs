@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { bornesJours, estObjetAbsent, MAX_LIGNES_POSTGREST, autorise, COMPTE_PILOTE, RELANCES, erreursFrequentes, resumerIssue, verdict, decideAlerte, plateforme, cheminPage, serieJours, detailsErreurs, jauges, estPause, estPauseDuPilote, PILOTE_GITHUB, TITRE_PAUSE, STATUTS_SIGNALEMENT, aReparer, issueReparable, titreReparation, corpsReparation, estReparation, RUNS_REPARABLES, REPARATIONS_MAX, LABELS_SUIVIS, compterAudience, traficHorsPublic, estAveugle, SATURATION_AVEUGLE } from "../../supabase/functions/_shared/pilotage.js";
+import { bornesJours, estObjetAbsent, MAX_LIGNES_POSTGREST, autorise, COMPTE_PILOTE, RELANCES, erreursFrequentes, resumerIssue, verdict, decideAlerte, plateforme, cheminPage, serieJours, detailsErreurs, jauges, estPause, estPauseDuPilote, PILOTE_GITHUB, TITRE_PAUSE, STATUTS_SIGNALEMENT, aReparer, issueReparable, titreReparation, corpsReparation, estReparation, RUNS_REPARABLES, REPARATIONS_MAX, LABELS_SUIVIS, compterAudience, traficHorsPublic, estAveugle, mesureAveugle, SATURATION_AVEUGLE } from "../../supabase/functions/_shared/pilotage.js";
 
 const confirme = (email) => ({ email, email_confirmed_at: "2026-09-01T00:00:00Z" });
 
@@ -65,6 +65,14 @@ test("⑥ verdict : vert, orange, rouge, gris", () => {
   const plein = verdict({ ...base, sante: { erreursJs15: 0, api5xx15: 0, telemetrieMinute: 2900 } });
   assert.equal(plein.couleur, "orange", "télémétrie au plafond : un vert ne prouverait plus rien");
   assert.match(plein.raisons.join(" "), /télémétrie au plafond \(2900\/min\)/);
+  // Avec la mesure de la veille (mesureAveugle) : le mur qui décide, pas le total.
+  // Anciens à 1 800/1 800 et total à 1 800 : orange, « veille aveugle ».
+  const aveugle = verdict({ ...base, sante: { erreursJs15: 0, api5xx15: 0, telemetrieMinute: 1800 }, aveugle: mesureAveugle({ saturation: 1800, saturationAveugle: 1800, saturationPlafond: 1800 }) });
+  assert.equal(aveugle.couleur, "orange", "réservoir des anciens plein : la veille est aveugle, le pilote doit le voir");
+  assert.match(aveugle.raisons.join(" "), /veille aveugle .*1800\/1800/);
+  // Anciens 1 500 + neufs 1 300 = 2 800 au total, aucun réservoir ne refuse : pas d'orange.
+  const voyante = verdict({ ...base, sante: { erreursJs15: 0, api5xx15: 0, telemetrieMinute: 2800 }, aveugle: mesureAveugle({ saturation: 2800, saturationAveugle: 1500, saturationPlafond: 1800 }) });
+  assert.equal(voyante.couleur, "vert", "un total élevé sans réservoir plein n'est pas un aveuglement");
 });
 
 test("⑦ l'alerte ne sonne que sur un changement qui compte", () => {
@@ -111,6 +119,12 @@ test("⑨ jauges : pourcentage, couleurs 70/90, valeur absente = non mesuré", (
   assert.equal(j.telemetrie.pct, null, "télémétrie non mesurée = non mesuré, jamais 0 %");
   const t = Object.fromEntries(jauges({ telemetrie: 2850 }).map((x) => [x.cle, x]));
   assert.equal(t.telemetrie.pct, 95); assert.equal(t.telemetrie.couleur, "rouge");
+  // Le mur de la veille quand il est connu : 1 700 anciens sur 1 800 = rouge, libellé des anciens.
+  const a = Object.fromEntries(jauges({ telemetrie: 1700, telemetriePlafond: 1800 }).map((x) => [x.cle, x]));
+  assert.equal(a.telemetrie.plafond, 1800); assert.equal(a.telemetrie.pct, 94.4); assert.equal(a.telemetrie.couleur, "rouge");
+  assert.match(a.telemetrie.libelle, /comptes anciens/);
+  const g = Object.fromEntries(jauges({ telemetrie: 1500, telemetriePlafond: 3000 }).map((x) => [x.cle, x]));
+  assert.equal(g.telemetrie.pct, 50); assert.match(g.telemetrie.libelle, /reçue/);
 });
 
 test("⑩ pause Sentinelle : même convention que sentinelle-autonome.yml", () => {
@@ -262,6 +276,13 @@ test("㉑ la veille délestage sans jamais tomber, et le pilote ne pose qu'une v
   const v = fn.slice(fn.indexOf("async function veille"), fn.indexOf("/** Rappels d'activité"));
   assert.match(v, /const etape = async \(f:[^\n]*\n\s*try \{ return await f\(\); \} catch/, "chaque étape est isolée : une erreur ne casse pas la veille");
   assert.match(v, /await etape\(\(\) => delestageAuto\(admin, signaux\)\)/);
+  // L'alerte voit l'aveuglement : la mesure de la veille entre dans le verdict, lue AVEC le reste.
+  assert.match(v, /Promise\.allSettled\(\[lireSante\(admin\),[^\n]*audience\(admin, 300\)\]\)/);
+  assert.ok(v.indexOf("aveugle: signaux && signaux.exact ? mesureAveugle(signaux) : null") > 0
+    && v.indexOf("aveugle: signaux && signaux.exact ? mesureAveugle(signaux) : null") < v.indexOf("const v = verdict(e);"), "le verdict de la veille reçoit la mesure d'aveuglement");
+  const et = fn.slice(fn.indexOf("async function etat"), fn.indexOf("const ilYa ="));
+  assert.ok(et.indexOf("out.aveugle = maintenant && maintenant.exact ? mesureAveugle(maintenant) : null;") > 0
+    && et.indexOf("out.aveugle =") < et.indexOf("const v = verdict(out"), "l'écran du pilote juge avec la même mesure");
   assert.ok(v.indexOf("decideAlerte(") > 0 && v.indexOf("decideAlerte(") < v.indexOf("await etape("), "l'alerte part AVANT ce qui agit seul");
   const d = fn.slice(fn.indexOf("async function delestageAuto"), fn.indexOf("// Geste du pilote."));
   assert.match(d, /decideDelestage\(actuel, \{ pctConnexions, comptes5xx15, aveugle \}\)/);
