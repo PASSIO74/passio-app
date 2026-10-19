@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { bornesJours, estObjetAbsent, MAX_LIGNES_POSTGREST, autorise, COMPTE_PILOTE, RELANCES, erreursFrequentes, resumerIssue, verdict, decideAlerte, plateforme, cheminPage, serieJours, detailsErreurs, jauges, estPause, estPauseDuPilote, PILOTE_GITHUB, TITRE_PAUSE, STATUTS_SIGNALEMENT, aReparer, issueReparable, titreReparation, corpsReparation, estReparation, RUNS_REPARABLES, REPARATIONS_MAX, LABELS_SUIVIS, compterAudience, traficHorsPublic } from "../../supabase/functions/_shared/pilotage.js";
+import { bornesJours, estObjetAbsent, MAX_LIGNES_POSTGREST, autorise, COMPTE_PILOTE, RELANCES, erreursFrequentes, resumerIssue, verdict, decideAlerte, plateforme, cheminPage, serieJours, detailsErreurs, jauges, estPause, estPauseDuPilote, PILOTE_GITHUB, TITRE_PAUSE, STATUTS_SIGNALEMENT, aReparer, issueReparable, titreReparation, corpsReparation, estReparation, RUNS_REPARABLES, REPARATIONS_MAX, LABELS_SUIVIS, compterAudience, traficHorsPublic, estAveugle, SATURATION_AVEUGLE } from "../../supabase/functions/_shared/pilotage.js";
 
 const confirme = (email) => ({ email, email_confirmed_at: "2026-09-01T00:00:00Z" });
 
@@ -266,7 +266,7 @@ test("㉑ la veille délestage sans jamais tomber, et le pilote ne pose qu'une v
   const d = fn.slice(fn.indexOf("async function delestageAuto"), fn.indexOf("// Geste du pilote."));
   assert.match(d, /decideDelestage\(actuel, \{ pctConnexions, comptes5xx15, aveugle \}\)/);
   assert.match(d, /if \(a && a\.exact\) \{/, "seule la mesure exacte (auth_uid serveur) pilote le délestage");
-  assert.match(d, /aveugle = a\.saturation != null && a\.saturation >= SATURATION_AVEUGLE \* PLAFONDS\.telemetrie\.plafond/, "au plafond de télémétrie, la veille ne lève rien");
+  assert.match(d, /aveugle = estAveugle\(a\);/, "au mur de la télémétrie, la veille ne lève rien");
   assert.doesNotMatch(d, /api5xx15/, "les LIGNES en panne sont forgeables : jamais un levier de délestage");
   assert.match(d, /pose_par: "veille"/);
   assert.match(d, /if \(!lignes\) return \{ absente: true \}/, "table absente : la veille n'écrit rien");
@@ -282,4 +282,23 @@ test("㉑ la veille délestage sans jamais tomber, et le pilote ne pose qu'une v
   assert.ok(fn.indexOf('case "reglages"') > porte);
   assert.doesNotMatch(fn.slice(fn.indexOf("Deno.serve("), porte), /poserReglage|retourManuel|retourApercu|remettrePrecedent|\/restore|reparer\(|fusionner\(/, "aucun geste avant la porte");
   assert.equal(fn.split("poserReglage(").length - 1, 2, "déclaration + case, aucun autre appelant");
+});
+
+test("㉒ aveugle : jugé contre le mur que rend pilotage_audience (anciens sous trg_debit_lot), jamais contre un total qui ne coupe rien", () => {
+  assert.equal(SATURATION_AVEUGLE, 0.9);
+  // Sous trg_debit_lot : 1 700 anciens sur 1 800 = aveugle, même si le total (2 000) est loin de 3 000.
+  assert.equal(estAveugle({ saturation: 2000, saturationAveugle: 1700, saturationPlafond: 1800 }), true);
+  // Un flot anonyme qui porte le total à 5 000 ne rend pas aveugle : les anciens ont leur réservoir.
+  assert.equal(estAveugle({ saturation: 5000, saturationAveugle: 300, saturationPlafond: 1800 }), false);
+  // Sous trg_debit_global : le total, contre 3 000.
+  assert.equal(estAveugle({ saturation: 2700, saturationAveugle: 2700, saturationPlafond: 3000 }), true);
+  assert.equal(estAveugle({ saturation: 2699, saturationAveugle: 2699, saturationPlafond: 3000 }), false);
+  // Réponse d'avant ces champs : le total, contre PLAFONDS (3 000).
+  assert.equal(estAveugle({ saturation: 2800 }), true);
+  assert.equal(estAveugle({ saturation: 100 }), false);
+  // Pas de mesure : jamais aveugle par défaut (decideDelestage ne bouge alors rien de toute façon).
+  assert.equal(estAveugle({ saturation: null, saturationAveugle: null, saturationPlafond: null }), false);
+  assert.equal(estAveugle(null), false);
+  // Un plafond absurde (0, négatif) ne rend pas tout aveugle : retour à PLAFONDS.
+  assert.equal(estAveugle({ saturationAveugle: 10, saturationPlafond: 0 }), false);
 });

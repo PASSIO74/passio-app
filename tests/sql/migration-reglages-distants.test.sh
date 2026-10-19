@@ -19,7 +19,9 @@
 #   ⑦ les signaux de la veille ne comptent que des comptes RÉELS ET ANCIENS
 #     (auth.users : e-mail confirmé, pas anonyme, 7 jours / 24 h) — dix comptes
 #     neufs qui forgent une ligne « 503 » ne délestent rien ; la saturation se
-#     lit ; sur 24 h, les signaux valent NULL ;
+#     lit, et l'aveuglement contre le mur qui coupe vraiment les signaux (le
+#     total sous trg_debit_global, le réservoir des anciens sous
+#     trg_debit_lot) ; sur 24 h, les signaux valent NULL ;
 #   ⑧ pilotage_familles_erreurs : familles par comptes anciens DISTINCTS, les
 #     NOUVELLES d'abord ; des lignes anonymes ou de comptes neufs ne rendent ni
 #     « nouvelle » ni « déjà vue » une famille.
@@ -143,7 +145,7 @@ verif "④ connexions = comptes DISTINCTS (auth_uid serveur), 50 appareils forg�
 verif "④ pannes = comptes DISTINCTS touchés en 15 min, lignes anon forgées ignorées" "$(R service_role "select public.pilotage_audience(300)->>'comptes_5xx_15min'")" "2"
 verif "④ fenêtre bornée (60 s au moins, 24 h au plus)" "$(R service_role "select (public.pilotage_audience(5)->>'secondes') || '/' || (public.pilotage_audience(999999)->>'secondes')")" "60/86400"
 
-verif "④ 24 h : les signaux de la veille valent NULL (personne ne les lit, une passe coûte)" "$(R service_role "select concat_ws('/', coalesce(a->>'comptes_connectes','nul'), coalesce(a->>'comptes_5xx_15min','nul'), coalesce(a->>'comptes_echecs_30min','nul'), coalesce(a->>'saturation_minute_max','nul')) from (select public.pilotage_audience(86400) a) x")" "nul/nul/nul/nul"
+verif "④ 24 h : les signaux de la veille valent NULL (personne ne les lit, une passe coûte)" "$(R service_role "select concat_ws('/', coalesce(a->>'comptes_connectes','nul'), coalesce(a->>'comptes_5xx_15min','nul'), coalesce(a->>'comptes_echecs_30min','nul'), coalesce(a->>'saturation_minute_max','nul'), coalesce(a->>'saturation_aveugle','nul'), coalesce(a->>'saturation_plafond','nul')) from (select public.pilotage_audience(86400) a) x")" "nul/nul/nul/nul/nul/nul"
 
 # ⑦ Comptes neufs (1 h), non confirmé, anonyme : forgent des « 503 » — aucun ne compte.
 N="bbbbbbbb-0000-4000-8000-0000000000"
@@ -169,6 +171,22 @@ verif "⑦ famille d'un appel : statut et CHEMIN (hôte et requête retirés)" "
 verif "⑦ pas un échec : message vide, statut 0, refus attendu, 2xx" "$(R service_role "select count(*) from (values (public.pilotage_famille_echec('error', null, null, null, '', '{}')), (public.pilotage_famille_echec('api', 'error', 0, 'h/x', null, '{}')), (public.pilotage_famille_echec('api', 'error', 409, 'h/x', null, '{\"refus_attendu\":true}')), (public.pilotage_famille_echec('api', 'ok', 200, 'h/x', null, '{}'))) v(f) where f is not null")" "0"
 Q "insert into public.telemetry_events(received_at) select date_trunc('minute', now()) - interval '2 minutes' + interval '1 second' from generate_series(1, 120)" >/dev/null
 verif "⑦ saturation : la pire minute des 5 dernières se lit" "$(R service_role "select ((public.pilotage_audience(300)->>'saturation_minute_max')::int >= 120)::text")" "true"
+verif "⑦ aveugle sous le plafond global (pas de trg_debit_lot) : la saturation totale, contre 3 000" \
+  "$(R service_role "select (a->>'saturation_aveugle' = a->>'saturation_minute_max')::text || '/' || (a->>'saturation_plafond') from (select public.pilotage_audience(300) a) x")" "true/3000"
+# Sous le limiteur par lot, l'aveuglement se lit sur le réservoir des ANCIENS : un
+# flot anonyme de 5 000 ne rend pas la veille aveugle, 1 700 anciens si.
+Q "create table public.telemetrie_debit (minute timestamptz, reservoir text, source text, n integer, primary key (minute, reservoir, source));
+   create function public.telemetrie_plafond(p text) returns integer language sql immutable as \$\$ select case p when 'anciens' then 1800 end \$\$;
+   create function public.banc_rien() returns trigger language plpgsql as \$\$ begin return null; end \$\$;
+   create trigger trg_debit_lot after insert on public.telemetry_events referencing new table as nouvelles for each statement execute function public.banc_rien();
+   insert into public.telemetrie_debit values (date_trunc('minute', now()), 'anonymes', '*', 5000), (date_trunc('minute', now()) - interval '2 minutes', 'anciens', '*', 900),
+     (date_trunc('minute', now()) - interval '1 minute', 'anciens', '*', 1700), (date_trunc('minute', now()) - interval '20 minutes', 'anciens', '*', 1800),
+     (date_trunc('minute', now()), 'anciens', 'u:eeeeeeee-0000-4000-8000-000000000099', 2000)" >/dev/null
+verif "⑦ aveugle sous trg_debit_lot : le pire des anciens (source *) des 5 dernières minutes, contre 1 800" \
+  "$(R service_role "select (a->>'saturation_aveugle') || '/' || (a->>'saturation_plafond') from (select public.pilotage_audience(300) a) x")" "1700/1800"
+Q "alter table public.telemetry_events disable trigger trg_debit_lot" >/dev/null
+verif "⑦ trg_debit_lot désactivé : retour au plafond global" "$(R service_role "select public.pilotage_audience(300)->>'saturation_plafond'")" "3000"
+Q "drop trigger trg_debit_lot on public.telemetry_events; drop function public.banc_rien(); drop function public.telemetrie_plafond(text); drop table public.telemetrie_debit" >/dev/null
 
 # ⑧ Familles d'échec d'une version (mise en ligne il y a 30 min).
 V=abcdef12; W=ffff0000

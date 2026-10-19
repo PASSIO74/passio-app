@@ -26,6 +26,14 @@
 -- Le détecteur (`scripts/sentinelle-detecter.mjs`, `lireApi`) préfère
 -- `auth_uid` dès que la colonne existe et retombe sur `user_id` sinon — il
 -- est déployable AVANT ce coller, et ce coller est collable AVANT lui.
+--
+-- ⚠️ APRÈS migration_telemetrie_equitable_2026-10-16 : `trg_debit_global` n'est
+-- plus sur `telemetry_events`, et c'est `telemetry_pose_identite` qui y pose
+-- l'heure (ASTRA-02). Ce fichier reste rejouable APRÈS elle sans rouvrir la
+-- faille : sa version de `telemetry_pose_identite` pose aussi l'heure (sans
+-- effet tant que `trg_debit_global` la posait déjà). Rejoué après elle, le
+-- contrôle ① « deux triggers de débit » dit ECHEC — attendu, il n'en reste
+-- qu'un, sur `client_errors` (contre-revue du 2026-10-16).
 -- ═══════════════════════════════════════════════════════════════════════════
 begin;
 
@@ -56,6 +64,7 @@ create or replace function public.telemetry_pose_identite()
 returns trigger language plpgsql security definer set search_path = public, pg_temp as $$
 begin
   new.auth_uid := auth.uid();   -- NULL pour un visiteur, l'identité réelle sinon
+  new.received_at := now();     -- ASTRA-02 : jamais l'heure du client (voir l'en-tête)
   return new;
 end $$;
 revoke execute on function public.telemetry_pose_identite() from public, anon, authenticated;

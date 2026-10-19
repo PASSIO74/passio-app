@@ -263,12 +263,29 @@ export const PLAFONDS = {
   base: { libelle: "Base de données", plafond: 8 * 1024 ** 3, unite: "octets" },
   stockage: { libelle: "Stockage des médias", plafond: 100 * 1024 ** 3, unite: "octets" },
   // Le plafond d'insertion de la télémétrie : 3 000/min en tout (`trg_debit_global`,
-  // ouverture publique 2026-09-11 ; puis `trg_debit_lot`, 2026-10-16 : anciens
-  // 1 800, neufs 600, anonymes 600 — un flot anonyme n'aveugle plus les comptes).
-  // Au-delà, les lots sont refusés : le pilotage devient AVEUGLE au moment où
-  // le trafic est le plus fort — c'est un mur d'observation, pas de service.
+  // ouverture publique 2026-09-11). Sous `trg_debit_lot` (2026-10-16) : anciens
+  // 1 800 à eux seuls, neufs + anonymes 2 400 (1 600 chacun) — un flot anonyme
+  // n'aveugle plus les comptes, et l'aveuglement se juge sur les anciens
+  // (`estAveugle`). Cette jauge reste le total reçu, repère de charge.
   telemetrie: { libelle: "Télémétrie reçue (par minute)", plafond: 3000, unite: "" },
 };
+/**
+ * La veille est-elle AVEUGLE ? Quand le mur qui coupe ses signaux est atteint,
+ * les lots légitimes sont refusés : les mesures deviennent BASSES sans que la
+ * charge le soit, et elle ne lève plus une protection (contre-revue du
+ * 2026-10-13). Le mur est celui que rend `pilotage_audience` : le total sous
+ * `trg_debit_global` (3 000/min), le réservoir des comptes anciens sous
+ * `trg_debit_lot` (1 800/min) — juger sur le total laissait la veille se
+ * croire voyante pendant que les anciens étaient refusés (contre-revue du
+ * 2026-10-16). Sans ces champs, on retombe sur le total et `PLAFONDS`.
+ */
+export const SATURATION_AVEUGLE = 0.9;
+export function estAveugle(a) {
+  if (!a) return false;
+  const mesure = a.saturationAveugle ?? a.saturation;
+  const mur = Number(a.saturationPlafond) > 0 ? Number(a.saturationPlafond) : PLAFONDS.telemetrie.plafond;
+  return mesure != null && Number.isFinite(Number(mesure)) && Number(mesure) >= SATURATION_AVEUGLE * mur;
+}
 export function jauges(m) {
   const out = [];
   const ajoute = (cle, valeur, estimation) => {

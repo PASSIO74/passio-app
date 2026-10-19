@@ -29,8 +29,14 @@
 --    · `comptes_echecs_30min` : comptes distincts touchés par un échec
 --      (`pilotage_famille_echec`) en 30 min — le réveil de la Sentinelle ;
 --    · `saturation_minute_max` : lignes reçues par minute, au pire des
---      5 dernières — au plafond global (3 000/min), la télémétrie est AVEUGLE
---      et la veille ne lève plus une protection sur des mesures muettes.
+--      5 dernières, toutes origines (la jauge) ;
+--    · `saturation_aveugle` / `saturation_plafond` : ce qui rend la veille
+--      AVEUGLE, mesuré contre le mur qui coupe vraiment ses signaux. Sous
+--      `trg_debit_global` (3 000/min, toutes origines), c'est le total ; sous
+--      `trg_debit_lot` (migration_telemetrie_equitable_2026-10-16), c'est le
+--      réservoir des comptes anciens (1 800/min, `telemetrie_plafond`) — le
+--      seul que lisent les signaux qui agissent, et que personne d'autre ne
+--      remplit. Au-delà de 90 %, la veille ne lève plus une protection.
 --    Sur 24 h, ces signaux valent NULL : personne ne les lit, et chaque passe
 --    sur un jour entier coûte (statement_timeout de 8 s à l'échelle).
 --
@@ -147,6 +153,9 @@ declare
   v_s      integer     := greatest(60, least(coalesce(p_secondes, 300), 86400));
   v_depuis timestamptz := now() - make_interval(secs => v_s);
   v_out    jsonb;
+  v_sat    integer;
+  v_aveugle integer;
+  v_plafond integer;
 begin
   with l as (
     -- `hors` ne vaut jamais NULL : une ligne `platform` NULL est du public,
@@ -174,7 +183,26 @@ begin
 
   if v_s > 900 then
     return v_out || jsonb_build_object('comptes_connectes', null, 'comptes_5xx_15min', null,
-                                       'comptes_echecs_30min', null, 'saturation_minute_max', null);
+                                       'comptes_echecs_30min', null, 'saturation_minute_max', null,
+                                       'saturation_aveugle', null, 'saturation_plafond', null);
+  end if;
+
+  -- TOUTES les lignes, tous environnements : la jauge, et le mur de trg_debit_global.
+  select coalesce(max(c), 0) into v_sat from (
+    select count(*) as c from public.telemetry_events t
+     where t.received_at >= now() - interval '5 minutes'
+     group by date_trunc('minute', t.received_at)) m;
+  if to_regclass('public.telemetrie_debit') is not null
+     and exists (select 1 from pg_trigger g
+                  where g.tgrelid = 'public.telemetry_events'::regclass
+                    and g.tgname = 'trg_debit_lot' and not g.tgisinternal and g.tgenabled = 'O') then
+    select coalesce(max(d.n), 0) into v_aveugle from public.telemetrie_debit d
+     where d.reservoir = 'anciens' and d.source = '*'
+       and d.minute >= date_trunc('minute', now() - interval '5 minutes');
+    v_plafond := public.telemetrie_plafond('anciens');
+  else
+    v_aveugle := v_sat;
+    v_plafond := 3000;
   end if;
 
   return v_out || jsonb_build_object(
@@ -196,12 +224,9 @@ begin
          and public.pilotage_famille_echec(t.type, t.status, t.http_status, t.endpoint, t.message, t.meta) is not null
          and u.created_at < now() - interval '24 hours'
          and u.email_confirmed_at is not null and not coalesce(u.is_anonymous, false)),
-    -- TOUTES les lignes, tous environnements : c'est ce que compte le plafond global.
-    'saturation_minute_max', (
-      select coalesce(max(c), 0) from (
-        select count(*) as c from public.telemetry_events t
-         where t.received_at >= now() - interval '5 minutes'
-         group by date_trunc('minute', t.received_at)) m)
+    'saturation_minute_max', v_sat,
+    'saturation_aveugle', v_aveugle,
+    'saturation_plafond', v_plafond
   );
 end
 $fn$;

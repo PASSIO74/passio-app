@@ -179,7 +179,7 @@ Chaque fichier porte un sommaire daté. Une ligne ci-dessous = une règle qu'on 
 - Activation (7 j) : UNE définition, `GESTES_ACTIVATION` + `activation()` (`_shared/pilotage.js`), lue par la fonction `pilotage` ET par le digest (SQL GÉNÉRÉ de la même liste) — jamais une copie à la main (`tests/unit/activation.test.mjs`).
 - File de télémétrie : un événement EN VOL ne repart pas (sauf au `pagehide`, où le navigateur annule l'envoi ordinaire) et un succès retire son lot PAR IDENTITÉ, jamais « les n premiers » (`telemetrie-doublons.spec.js`).
 - Confinement (2026-10-11) : `reglages_distants` (délestage ×2/×4, coupures d'une LISTE BLANCHE, bandeau) est lu par chaque appareil et écrit par la seule fonction `pilotage` ; le facteur s'applique à l'ARMEMENT d'un minuteur (`delaiDeleste`), jamais dans une politique pure ; un COMPTE du pilotage se compte en base, jamais par la longueur d'une liste (max-rows = 1 000). Plan 100 000 : `docs/PASSIO_100K_AUTONOMIE.md`.
-- Télémétrie (2026-10-16) : le débit se compte PAR LOT (`trg_debit_lot`, déclencheur par instruction) en trois réservoirs selon `auth.uid()` — anciens 1 800/min, neufs 600, anonymes 600, 300 par compte ; `received_at` est posé par le serveur dans `telemetry_pose_identite` (ASTRA-02) — ne jamais retirer cette garde.
+- Télémétrie (2026-10-16) : le débit se compte PAR LOT (`trg_debit_lot`) selon `auth.uid()` — anciens 1 800/min à eux seuls, neufs + anonymes 2 400 (1 600 chacun), 150 par compte, refus en 429 que le client attend (jamais un 400 qu'il jette et renvoie) ; `received_at` est posé par le serveur dans `telemetry_pose_identite` (ASTRA-02) — ne jamais retirer cette garde.
 
 ## 📚 Références projet
 
