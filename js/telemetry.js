@@ -400,6 +400,8 @@
                                 // onglet masqué, navigateur qui se déclare hors ligne.
                                 // Ils règlent le backoff ; ils ne lèvent PAS d'alarme.
   var authRetries = 0;          // rejets d'auth CONSÉCUTIFS (token expiré, ≠ coupure)
+  var limite = false;           // débit refusé (429) : une seule trace par épisode
+  var limiteJusqua = 0;         // … et rien ne repart avant cet instant (ms), quel que soit l'appelant
   var AUTH_MAX_RETRIES = 6;     // grâce (~30 s) laissée au SDK pour rafraîchir le token
   var offlineSince = 0;         // ms epoch du passage hors-ligne (0 = en ligne)
   var offlineParEchec = false;  // `offlineSince` posé par un échec d'envoi (pas par l'événement `offline`)
@@ -609,6 +611,16 @@
     opts = opts || {};
     if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
     if (!queue.length) return;
+    // Débit refusé (429) : AUCUN appelant ne fait repartir un lot avant la
+    // minute suivante — erreurs, liens, boucle de démarrage, `pagehide`
+    // appellent flush() directement, sans passer par le minuteur. La file est
+    // persistée : la fermeture la rejouera au prochain chargement.
+    if (limiteJusqua && Date.now() < limiteJusqua) {
+      // Un appelant a pu retirer le minuteur (retour au premier plan) : on le
+      // réarme sur la fin de l'attente, pour que la file reparte seule.
+      if (!retryTimer) retryTimer = setTimeout(function () { retryTimer = null; flush(); }, limiteJusqua - Date.now());
+      return;
+    }
     var cfg = supaCfg();
     if (!cfg) return;                      // config pas prête → file persistée, on réessaiera
     if (!opts.keepalive && sending) return;
@@ -686,6 +698,7 @@
     // réessaie APRÈS refresh du token — sans le compter comme une coupure (aucun
     // événement offline/recovered parasite pour un simple retour d'arrière-plan).
     if (status === 401 || status === 403) { onAuthReject(status, n, opts); return; }
+    if (status === 429) { onThrottle(n, opts); return; }
     var permanent = status >= 400 && status < 500 && status !== 408 && status !== 429;
     if (permanent) {
       _retirerDeLaFile(opts.lot); persistBacklog();
@@ -698,6 +711,35 @@
       return;
     }
     onSendFailure(status, n, opts);
+  }
+
+  // 429 = débit refusé (`trg_debit_lot` en base répond PT429 — un réservoir ou
+  // le plafond de ce compte est plein pour la minute — ou la passerelle). Ni un
+  // rejet ni une panne : le lot RESTE en file et repart à la minute suivante
+  // (horloge locale, plus une gigue : les appareils refusés ne reviennent pas
+  // ensemble). Aucun compteur de connectivité ne bouge — sinon « appareil
+  // peut-être hors ligne » sur un appareil joignable. Avant (2026-10-16), le
+  // refus était un 400 : lot jeté, `server_reject` émis et renvoyé aussitôt,
+  // refusé à son tour — une boucle au rythme du réseau jusqu'à la minute
+  // suivante. Une seule trace `connectivity/throttled` par épisode.
+  function onThrottle(n, opts) {
+    sending = false;
+    persistBacklog();
+    var attente = (61 - new Date().getSeconds()) * 1000 + Math.floor(Math.random() * 10000);
+    limiteJusqua = Date.now() + attente;
+    if (unloading) return;                 // plus de page : rejoué au prochain chargement
+    if (retryTimer) clearTimeout(retryTimer);
+    // Le minuteur d'abord : la trace ci-dessous passe par `enqueue`, qui
+    // n'envoie rien tant qu'un réessai est armé.
+    retryTimer = setTimeout(function () { retryTimer = null; flush(); }, attente);
+    if (!limite) {
+      limite = true;
+      track("connectivity", "throttled", {
+        severity: "info", status: "ok", http_status: 429,
+        message: "Télémétrie limitée par le serveur : envoi repris à la minute suivante",
+        meta: { garde: n, backlog: queue.length },
+      });
+    }
   }
 
   // Rejet d'AUTH (token périmé) : le SDK rafraîchit la session en tâche de fond (et
@@ -848,6 +890,7 @@
       });
     }
     sendFailures = 0; softFailures = 0; offlineSince = 0; offlineParEchec = false; verdictRendu = false; authRetries = 0;
+    limite = false; limiteJusqua = 0;
     // `jetonRefuse` n'est PAS relevé ici : il l'est par un jeton DIFFÉRENT dans
     // le stockage (voir `authToken`), pas par un succès obtenu sans lui.
     if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
