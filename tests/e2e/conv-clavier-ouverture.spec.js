@@ -169,9 +169,41 @@ test.describe("Ouverture d'une conversation — clavier et géométrie", () => {
     const m = await page.evaluate(() => {
       const t = document.getElementById("convFpThread");
       const der = [...t.querySelectorAll(".conv-bubble-wrap")].pop();
-      return { enBas: t.scrollTop + t.clientHeight >= t.scrollHeight - 80, texte: der ? der.textContent : "" };
+      // Le VRAI bas : une tolérance de 80 px laissait passer une bulle à moitié
+      // cachée (contre-revue du 2026-10-19 : mutant « ne revient jamais en bas »).
+      return { enBas: t.scrollHeight - t.scrollTop - t.clientHeight <= 2, texte: der ? der.textContent : "" };
     });
     expect(m.texte, "le message du serveur n'est pas le dernier du fil").toContain("Arrivé du serveur");
     expect(m.enBas, "collé en bas, on doit y rester quand le serveur apporte un message").toBe(true);
+  });
+
+  test("une lecture serveur qui AJOUTE des messages garde le même message en haut d'une relecture", async ({ page }) => {
+    await bootOnboarded(page);
+    const maintenant = Date.now();
+    const servie = await lectureServeurLente(page, [1, 2, 3].map((i) => ({
+      id: "m_srv" + i, conv_id: "c_lea", from_id: "u_lea", content: "Nouveau " + i,
+      created_at: new Date(maintenant + i * 1000).toISOString(), profiles: null,
+    })));
+    await semerConv(page, 60);
+    await page.locator(".msg-card").first().click();
+    await page.waitForTimeout(300);
+
+    const premierVisible = () => page.evaluate(() => {
+      const t = document.getElementById("convFpThread");
+      const h = t.getBoundingClientRect().top;
+      const b = [...t.querySelectorAll(".conv-bubble-wrap[data-mid]")].find((x) => x.getBoundingClientRect().bottom > h);
+      return b ? b.getAttribute("data-mid") : null;
+    });
+    await page.evaluate(() => {
+      const t = document.getElementById("convFpThread");
+      t.scrollTop = 900;
+      t.dispatchEvent(new Event("scroll"));
+    });
+    await page.waitForTimeout(100);
+    const avant = await premierVisible();
+    expect(avant).toBeTruthy();
+    await expect.poll(servie, { timeout: 5000 }).toBe(true);
+    await page.waitForTimeout(300);
+    expect(await premierVisible(), "la fusion a déplacé la lecture vers d'autres messages").toBe(avant);
   });
 });
