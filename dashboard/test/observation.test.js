@@ -59,7 +59,8 @@ test("canari : un envoi en retard sur sa deadline compte comme manqué provisoir
 test("canari refusé par le LIMITEUR de débit (réservoir anonymes plein) : DEGRADED « limité », jamais UNAVAILABLE ni compté manqué", () => {
   // Reconnaître un refus de débit : 429, PT429, ou le message de l'ancien plafond ; une panne n'en est pas un.
   assert.equal(estRefusDeDebit({ code: "PT429", message: "rate limit: anonymes plein (1600 lignes/minute)" }, 429), true);
-  assert.equal(estRefusDeDebit({ code: "P0001", message: "rate limit: plafond global de 3000 insertions/minute atteint sur telemetry_events" }, 400), true, "l'ancien plafond (trg_debit_global)");
+  assert.equal(estRefusDeDebit({ code: "P0001", message: "rate limit: plafond global de 3000 insertions/minute atteint sur telemetry_events" }, 400), false,
+    "l'ancien plafond GLOBAL aveugle tout, comptes compris : c'est un manqué, il doit sonner");
   assert.equal(estRefusDeDebit({ code: "P0001", message: "échec : rate limit dépassé ailleurs" }, 400), false, "un mot repéré dans un message n'est pas un refus de débit");
   assert.equal(estRefusDeDebit({ code: "XX000", message: "rate limit: imitation" }, 500), false, "le préfixe sans le code ne suffit pas");
   assert.equal(estRefusDeDebit(null, 429), true);
@@ -73,9 +74,16 @@ test("canari refusé par le LIMITEUR de débit (réservoir anonymes plein) : DEG
   assert.equal(apres.pendingId, null);
   assert.equal(avant.limitedAt, undefined, "pure : l'objet reçu n'est pas modifié");
   const e = etatCanari(apres, NOW, opts);
-  assert.equal(e.state, "DEGRADED");
-  assert.equal(e.limite, true);
-  assert.match(e.detail, /limité/);
+  assert.equal(e.state, "DEGRADED", "un manqué réel PUIS un refus : DEGRADED, mais pas « limité »");
+  assert.notEqual(e.limite, true, "un canari perdu ne se maquille pas en « limité »");
+  assert.match(e.detail, /non observé/);
+  // Sans manqué : « limité », avec le refus tel que le serveur l'a nommé.
+  const net = etatCanari(noterCanariLimite({ lastSuccessAt: iso(NOW - 40 * 60_000), missedCount: 0 }, iso(NOW - 60_000), "rate limit: neufs + anonymes plein (2400 lignes/minute)"), NOW, opts);
+  assert.equal(net.state, "DEGRADED"); assert.equal(net.limite, true);
+  assert.match(net.detail, /neufs \+ anonymes plein/, "le détail nomme le réservoir qui refuse, pas une phrase fixe");
+  // Un manqué réel et deux refus : UNAVAILABLE sans attendre l'heure.
+  const deuxRefus = noterCanariLimite(apres, iso(NOW - 30_000), "rate limit: anonymes plein (1600 lignes/minute)");
+  assert.equal(etatCanari(deuxRefus, NOW, opts).state, "UNAVAILABLE");
   // Deux manqués RÉELS puis des refus de débit : la base répond, mais l'observation
   // bout-en-bout n'est pas prouvée — l'UNAVAILABLE acquis n'est jamais masqué.
   assert.equal(etatCanari({ ...apres, missedCount: 2 }, NOW, opts).state, "UNAVAILABLE");

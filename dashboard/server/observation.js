@@ -117,16 +117,17 @@ export function noterCanariManque(c, at = nowIso()) {
 }
 
 /**
- * Refus de DÉBIT (`trg_debit_lot` : PT429 → HTTP 429 ; l'ancien plafond :
- * « rate limit ») : distinct d'une panne. Pure, exportée pour être verrouillée.
+ * Refus de DÉBIT par réservoir (`trg_debit_lot` : PT429 → HTTP 429) : la base
+ * répond et les comptes passent, distinct d'une panne. Pure, exportée pour
+ * être verrouillée.
+ * ⚠️ PAS l'ancien plafond GLOBAL (`trg_debit_global`, P0001 « rate limit: … ») :
+ * lui refuse TOUTE la télémétrie, comptes compris — c'est l'aveuglement même
+ * que le canari doit faire sonner, il reste un manqué (contre-revue du
+ * 2026-10-19 : classé « limité », il retardait l'alerte de 30 min).
  */
 export function estRefusDeDebit(error, status) {
   if (status === 429) return true;
-  if (!error) return false;
-  if (error.code === "PT429") return true;
-  // L'ancien plafond (`trg_debit_global`, avant la migration du 16/10) : P0001
-  // et SON préfixe — jamais un mot repéré n'importe où dans un message.
-  return error.code === "P0001" && /^rate limit:/.test(String(error.message || ""));
+  return !!error && error.code === "PT429";
 }
 
 /**
@@ -179,7 +180,8 @@ async function sendCanary() {
       };
     });
   } catch (e) {
-    db.update((d) => { d.canary = { ...noterCanariManque(d.canary || {}), configured: true, sentAt, lastError: String(e.message || e).slice(0, 240) }; });
+    // Un vrai échec met fin à « la base répond » : plus de « limité ».
+    db.update((d) => { d.canary = { ...noterCanariManque(d.canary || {}), configured: true, sentAt, lastError: String(e.message || e).slice(0, 240), limitedAt: null, limitedCount: 0 }; });
   }
 }
 
@@ -204,12 +206,18 @@ export function etatCanari(c, now = Date.now(), { everyMs = CANARY_EVERY_MS, dea
   if (missed >= CANARY_MISSED_UNAVAILABLE) {
     return { state: "UNAVAILABLE", detail: `${missed} canaris consécutifs non observés (dernier envoi ${c?.sentAt || "?"})`, missed, at: c?.lastSuccessAt || null };
   }
+  // Le refus lui-même, tel que le serveur l'a nommé (quel réservoir) : jamais
+  // une phrase fixe, qui envoyait chercher un flot de visiteurs quand c'est le
+  // réservoir partagé avec les comptes neufs qui refusait.
+  const refus = c?.lastError || "refusé par le limiteur de débit";
   const limites = Number(c?.limitedCount) || 0;
-  if (limite && limites >= CANARY_LIMITED_UNAVAILABLE) {
-    return { state: "UNAVAILABLE", detail: `${limites} canaris consécutifs refusés par le limiteur de débit : le bout-en-bout n'est plus prouvé`, missed, at: c?.lastSuccessAt || null, limite: true };
+  // Un manqué réel PUIS des refus : deux refus suffisent à ne plus attendre.
+  if (limite && (limites >= CANARY_LIMITED_UNAVAILABLE || (missed >= 1 && limites >= 2))) {
+    return { state: "UNAVAILABLE", detail: `${limites} canaris consécutifs refusés par le limiteur de débit${missed ? ` après ${missed} non observé(s)` : ""} : le bout-en-bout n'est plus prouvé (${refus})`, missed, at: c?.lastSuccessAt || null, limite: true };
   }
-  if (limite && !enRetard) {
-    return { state: "DEGRADED", detail: `canari limité par le débit de télémétrie (${c.limitedAt}) : la base répond, le réservoir des anonymes est plein`, missed, at: c?.lastSuccessAt || null, limite: true };
+  // « Limité » seulement sans manqué réel : un canari perdu ne se maquille pas.
+  if (limite && missed === 0) {
+    return { state: "DEGRADED", detail: `canari limité par le débit de télémétrie (${c.limitedAt}) : la base répond — ${refus}`, missed, at: c?.lastSuccessAt || null, limite: true };
   }
   if (missed === 0 && c?.lastSuccessAt && now - Date.parse(c.lastSuccessAt) <= everyMs * 2) {
     return { state: "LIVE", detail: `bout-en-bout ${c.lastLatencyMs ?? "?"} ms`, at: c.lastSuccessAt, missed: 0 };
