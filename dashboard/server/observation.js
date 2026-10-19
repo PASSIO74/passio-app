@@ -112,6 +112,25 @@ export function noterCanariManque(c, at = nowIso()) {
   return next;
 }
 
+/**
+ * Refus de DÉBIT (`trg_debit_lot` : PT429 → HTTP 429 ; l'ancien plafond :
+ * « rate limit ») : distinct d'une panne. Pure, exportée pour être verrouillée.
+ */
+export function estRefusDeDebit(error, status) {
+  if (status === 429) return true;
+  if (!error) return false;
+  if (error.code === "PT429") return true;
+  return /\brate limit\b/i.test(String(error.message || ""));
+}
+
+/**
+ * Canari refusé par le limiteur : ni manqué ni succès. Le compte des manqués
+ * ne bouge pas, le canari en attente non plus (il n'y en a pas de nouveau).
+ */
+export function noterCanariLimite(c, at = nowIso(), detail = "") {
+  return { ...(c || {}), configured: true, limitedAt: at, lastError: detail || "refusé par le limiteur de débit" };
+}
+
 async function sendCanary() {
   if (!config.supabaseUrl || !config.supabaseAnonKey) {
     db.update((d) => { d.canary = { ...(d.canary || {}), configured: false, lastError: "SUPABASE_ANON_KEY manquante" }; });
@@ -136,12 +155,20 @@ async function sendCanary() {
       message: "synthetic observation canary",
       meta: { synthetic: true, canary_id: id, exclude_analytics: true, exclude_alerts: true },
     };
-    const { error } = await anon.from("telemetry_events").insert(row);
+    const { error, status } = await anon.from("telemetry_events").insert(row);
+    if (error && estRefusDeDebit(error, status)) {
+      // La base a répondu, et c'est le limiteur qui refuse (réservoir des
+      // anonymes plein) : la production SERT. Pas un manqué — un canari
+      // « limité », que l'état dit tel quel. Le canari ne sort pas du limiteur
+      // pour autant : un champ du client qui l'en exempterait serait forgeable.
+      db.update((d) => { d.canary = noterCanariLimite(d.canary || {}, nowIso(), String(error.message || "").slice(0, 240)); });
+      return;
+    }
     if (error) throw error;
     db.update((d) => {
       d.canary = {
         ...(d.canary || {}), configured: true, pendingId: id, sentAt,
-        deadlineAt: new Date(Date.now() + CANARY_DEADLINE_MS).toISOString(), lastError: null,
+        deadlineAt: new Date(Date.now() + CANARY_DEADLINE_MS).toISOString(), lastError: null, limitedAt: null,
       };
     });
   } catch (e) {
@@ -158,8 +185,15 @@ export function etatCanari(c, now = Date.now(), { everyMs = CANARY_EVERY_MS, dea
   if (!configure || c?.configured === false) {
     return { state: "NOT_CONFIGURED", detail: c?.lastError || "canari public non configuré", missed: 0 };
   }
+  // Dernier envoi refusé par le limiteur (après le dernier succès) : la base
+  // répond, ce n'est pas une panne. DEGRADED « limité », jamais UNAVAILABLE.
+  const limite = Boolean(c?.limitedAt && (!c?.lastSuccessAt || Date.parse(c.limitedAt) > Date.parse(c.lastSuccessAt))
+    && now - Date.parse(c.limitedAt) <= everyMs * 2);
   const enRetard = Boolean(c?.pendingId && c?.deadlineAt && now > Date.parse(c.deadlineAt));
   const missed = (Number(c?.missedCount) || 0) + (enRetard ? 1 : 0);
+  if (limite && !enRetard) {
+    return { state: "DEGRADED", detail: `canari limité par le débit de télémétrie (${c.limitedAt}) : la base répond, le réservoir des anonymes est plein`, missed, at: c?.lastSuccessAt || null, limite: true };
+  }
   if (missed >= CANARY_MISSED_UNAVAILABLE) {
     return { state: "UNAVAILABLE", detail: `${missed} canaris consécutifs non observés (dernier envoi ${c?.sentAt || "?"})`, missed, at: c?.lastSuccessAt || null };
   }
