@@ -73,3 +73,67 @@ test("un 429 garde le lot, attend la minute suivante, et ne déclare ni rejet ni
   expect(toutes).not.toContain("server_reject");
   expect(toutes).not.toContain("send_failed");
 });
+
+// Les deux tests ci-dessous : contre-revue du 2026-10-19.
+async function preparerLimitee(page, { heure } = {}) {
+  await sansDonneesDistantes(page);
+  const envois = [];
+  const etat = { mode: "refuser" };   // "couper" (échec réseau) | "refuser" (429) | "accepter"
+  await page.route("**/rest/v1/telemetry_events*", async (route) => {
+    const req = route.request();
+    if (req.method() !== "POST") return route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+    let rows = [];
+    try { rows = JSON.parse(req.postData() || "[]"); } catch (e) { rows = []; }
+    const mode = etat.mode;
+    envois.push({ mode, actions: rows.map((r) => r.action) });
+    if (mode === "couper") { etat.mode = "refuser"; return route.abort("failed"); }
+    if (mode === "refuser") {
+      return route.fulfill({ status: 429, contentType: "application/json",
+        body: JSON.stringify({ code: "PT429", message: "rate limit: anonymes plein (1600 lignes/minute)", hint: etat.hint || "30" }) });
+    }
+    return route.fulfill({ status: 201, contentType: "application/json", body: "" });
+  });
+  await page.clock.install(heure ? { time: heure } : undefined);
+  await page.addInitScript(([k, t]) => {
+    sessionStorage.setItem(k, t);
+    sessionStorage.setItem("passio_pwa_dismissed", "1");
+  }, [GATE_KEY, GATE_TOKEN]);
+  await page.goto("/index.html?telemetry=1");
+  await page.waitForFunction(() => window.tel && window.PASSIO_SUPABASE && typeof getMyUserId === "function" && !!getMyUserId(), null, { timeout: 15000 });
+  return { envois, etat };
+}
+
+test("l'indice du serveur l'emporte quand il demande d'attendre plus longtemps que l'horloge locale", async ({ page }) => {
+  test.setTimeout(60000);
+  // Horloge locale à :50 — elle croit la minute finie dans 11 s ; le serveur
+  // (en retard sur elle) dit 30 s : réessayer à 11-21 s serait refusé une 2ᵉ fois.
+  const { envois, etat } = await preparerLimitee(page, { heure: new Date("2026-10-19T08:00:50Z") });
+  etat.hint = "30";
+  await page.evaluate(() => { window.tel.action("banc_indice", {}); window.tel.flush(); });
+  await expect.poll(() => envois.length, { timeout: 10000 }).toBeGreaterThanOrEqual(1);
+  const apresRefus = envois.length;
+  await page.clock.fastForward(25000);
+  expect(envois.length, "réessai à l'heure locale, avant la minute du serveur").toBe(apresRefus);
+  etat.mode = "accepter";
+  await page.clock.fastForward(20000);
+  await expect.poll(() => envois.filter((e) => e.mode === "accepter").flatMap((e) => e.actions).includes("banc_indice"), { timeout: 10000 }).toBe(true);
+});
+
+test("un 429 après un échec réseau solde le verdict : ni « peut-être hors ligne » ni « rétabli »", async ({ page }) => {
+  test.setTimeout(60000);
+  const { envois, etat } = await preparerLimitee(page);
+  etat.mode = "couper";
+  await page.evaluate(() => { window.tel.action("banc_coupure", {}); window.tel.flush(); });
+  await expect.poll(() => envois.filter((e) => e.mode === "couper").length, { timeout: 10000 }).toBe(1);
+  // Le réessai (3 s) arrive avant le verdict différé, et reçoit un 429.
+  await page.clock.fastForward(3500);
+  await expect.poll(() => envois.filter((e) => e.mode === "refuser").length, { timeout: 10000 }).toBeGreaterThanOrEqual(1);
+  await page.clock.fastForward(10000);
+  etat.mode = "accepter";
+  await page.clock.fastForward(75000);
+  await expect.poll(() => envois.filter((e) => e.mode === "accepter").flatMap((e) => e.actions).includes("banc_coupure"), { timeout: 10000 }).toBe(true);
+  const acceptees = envois.filter((e) => e.mode === "accepter").flatMap((e) => e.actions);
+  expect(acceptees, "un appareil joignable, seulement limité, déclaré hors ligne").not.toContain("send_failed");
+  expect(acceptees).not.toContain("recovered");
+  expect(acceptees).toContain("throttled");
+});
