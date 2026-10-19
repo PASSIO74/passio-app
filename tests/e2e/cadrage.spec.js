@@ -64,10 +64,14 @@ test("un viewport qui rétrécit après le chargement est rattrapé", async ({ p
     const r = nav.getBoundingClientRect();
     return { viewport: window.innerHeight, navBas: Math.round(r.bottom) };
   });
-  await expect.poll(async () => { const m = await mesure(); return m.navBas <= m.viewport; }, { timeout: 3000 }).toBe(true);
+  // La condition porte AUSSI sur le viewport : l'état d'AVANT (812, barre à
+  // 812) la satisfaisait déjà, et l'attente devenait nulle (contre-revue du
+  // 2026-10-16). Et la barre doit rester COLLÉE en bas, pas seulement au-dessus.
+  await expect.poll(async () => { const m = await mesure(); return m.viewport === 640 && m.navBas <= m.viewport; }, { timeout: 3000 }).toBe(true);
   const m = await mesure();
   expect(m.viewport).toBe(640);
   expect(m.navBas).toBeLessThanOrEqual(m.viewport);
+  expect(m.viewport - m.navBas, "un shell qui rétrécit trop laisse une bande vide sous la barre").toBeLessThanOrEqual(1);
 });
 
 test("la safe-area du bas s'AJOUTE à la barre au lieu de rogner les icônes", async ({ page }) => {
