@@ -32,6 +32,10 @@ const CANARY_DEADLINE_MS = Number(process.env.DASH_CANARY_DEADLINE_S || 90) * 10
 const DB_READ_EVERY_MS = Number(process.env.DASH_DB_READ_EVERY_MIN || 5) * 60_000;
 // Échecs consécutifs du canari à partir desquels la part est UNAVAILABLE.
 const CANARY_MISSED_UNAVAILABLE = 2;
+// Canaris CONSÉCUTIFS refusés par le limiteur de débit à partir desquels la
+// part est UNAVAILABLE : une heure (4 × 15 min) de réservoir anonyme tenu plein
+// est un incident en soi, et le bout-en-bout n'est plus prouvé.
+const CANARY_LIMITED_UNAVAILABLE = 4;
 
 let admin = null;
 let anon = null;
@@ -120,7 +124,9 @@ export function estRefusDeDebit(error, status) {
   if (status === 429) return true;
   if (!error) return false;
   if (error.code === "PT429") return true;
-  return /\brate limit\b/i.test(String(error.message || ""));
+  // L'ancien plafond (`trg_debit_global`, avant la migration du 16/10) : P0001
+  // et SON préfixe — jamais un mot repéré n'importe où dans un message.
+  return error.code === "P0001" && /^rate limit:/.test(String(error.message || ""));
 }
 
 /**
@@ -128,7 +134,8 @@ export function estRefusDeDebit(error, status) {
  * ne bouge pas, le canari en attente non plus (il n'y en a pas de nouveau).
  */
 export function noterCanariLimite(c, at = nowIso(), detail = "") {
-  return { ...(c || {}), configured: true, limitedAt: at, lastError: detail || "refusé par le limiteur de débit" };
+  const prev = c || {};
+  return { ...prev, configured: true, limitedAt: at, limitedCount: (Number(prev.limitedCount) || 0) + 1, lastError: detail || "refusé par le limiteur de débit" };
 }
 
 async function sendCanary() {
@@ -168,7 +175,7 @@ async function sendCanary() {
     db.update((d) => {
       d.canary = {
         ...(d.canary || {}), configured: true, pendingId: id, sentAt,
-        deadlineAt: new Date(Date.now() + CANARY_DEADLINE_MS).toISOString(), lastError: null, limitedAt: null,
+        deadlineAt: new Date(Date.now() + CANARY_DEADLINE_MS).toISOString(), lastError: null, limitedAt: null, limitedCount: 0,
       };
     });
   } catch (e) {
@@ -191,11 +198,18 @@ export function etatCanari(c, now = Date.now(), { everyMs = CANARY_EVERY_MS, dea
     && now - Date.parse(c.limitedAt) <= everyMs * 2);
   const enRetard = Boolean(c?.pendingId && c?.deadlineAt && now > Date.parse(c.deadlineAt));
   const missed = (Number(c?.missedCount) || 0) + (enRetard ? 1 : 0);
-  if (limite && !enRetard) {
-    return { state: "DEGRADED", detail: `canari limité par le débit de télémétrie (${c.limitedAt}) : la base répond, le réservoir des anonymes est plein`, missed, at: c?.lastSuccessAt || null, limite: true };
-  }
+  // Les manqués RÉELS d'abord : un refus de débit prouve que la base répond,
+  // pas que l'observation bout-en-bout fonctionne — il ne masque jamais un
+  // UNAVAILABLE déjà acquis (revue de sécurité automatique du 2026-10-19).
   if (missed >= CANARY_MISSED_UNAVAILABLE) {
     return { state: "UNAVAILABLE", detail: `${missed} canaris consécutifs non observés (dernier envoi ${c?.sentAt || "?"})`, missed, at: c?.lastSuccessAt || null };
+  }
+  const limites = Number(c?.limitedCount) || 0;
+  if (limite && limites >= CANARY_LIMITED_UNAVAILABLE) {
+    return { state: "UNAVAILABLE", detail: `${limites} canaris consécutifs refusés par le limiteur de débit : le bout-en-bout n'est plus prouvé`, missed, at: c?.lastSuccessAt || null, limite: true };
+  }
+  if (limite && !enRetard) {
+    return { state: "DEGRADED", detail: `canari limité par le débit de télémétrie (${c.limitedAt}) : la base répond, le réservoir des anonymes est plein`, missed, at: c?.lastSuccessAt || null, limite: true };
   }
   if (missed === 0 && c?.lastSuccessAt && now - Date.parse(c.lastSuccessAt) <= everyMs * 2) {
     return { state: "LIVE", detail: `bout-en-bout ${c.lastLatencyMs ?? "?"} ms`, at: c.lastSuccessAt, missed: 0 };
